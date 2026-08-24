@@ -138,7 +138,7 @@ LightningIndexer(const at::Tensor &q, const at::Tensor &k, const at::Tensor &w, 
 // Bind the C++ function to Python module
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("lightning_indexer_metadata", &LightningIndexerMetadata, "lightning_indexer_metadata");
-    m.def("lightning_indexer", &LightningIndexer, "lightning_indexer");
+    m.def("npu_lightning_indexer_metadata", &LightningIndexerMetadata, "npu_lightning_indexer_metadata");
+    m.def("npu_lightning_indexer", &LightningIndexer, "npu_lightning_indexer");
 }
 } // namespace op_api

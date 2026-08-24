@@ -10,16 +10,16 @@
 from typing import Optional
 import torch
 from torch.library import impl
-from cann_ops_transformer.op_builder.builder import OpBuilder
-from cann_ops_transformer.op_builder.builder import AS_LIBRARY
+from npu_ops_transformer.op_builder.builder import OpBuilder
+from npu_ops_transformer.op_builder.builder import AS_LIBRARY
 
 LI_METADATA_SIZE = 2048
-LI_METADATA_OP_NAME = "lightning_indexer_metadata"
+LI_METADATA_OP_NAME = "npu_lightning_indexer_metadata"
 
 
 class LightningIndexerOpBuilder(OpBuilder):
     def __init__(self):
-        super(LightningIndexerOpBuilder, self).__init__("lightning_indexer")
+        super(LightningIndexerOpBuilder, self).__init__("npu_lightning_indexer")
 
     def sources(self):
         """Path to C++ source code."""
@@ -28,11 +28,11 @@ class LightningIndexerOpBuilder(OpBuilder):
     def schema(self) -> str:
         """PyTorch operator signature."""
         return [
-            "lightning_indexer_metadata(int num_heads_q, int num_heads_k, int head_dim, int topk, *, "
+            "npu_lightning_indexer_metadata(int num_heads_q, int num_heads_k, int head_dim, int topk, *, "
             "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_k=None, Tensor? seqused_q=None, Tensor? seqused_k=None, "
             "Tensor? cmp_residual_k=None, int? batch_size=None, int? max_seqlen_q=None, int? max_seqlen_k=None, "
             "str? layout_q=None, str? layout_k=None, int? mask_mode=None, int? cmp_ratio=None) -> Tensor",
-            "lightning_indexer(Tensor q, Tensor k, Tensor w, "
+            "npu_lightning_indexer(Tensor q, Tensor k, Tensor w, "
             "int topk, *, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_k=None,"
             "Tensor? seqused_q=None, Tensor? seqused_k=None, "
             "Tensor? cmp_residual_k=None, Tensor? block_table=None, "
@@ -48,8 +48,8 @@ class LightningIndexerOpBuilder(OpBuilder):
         Essential for Autograd and FakeTensor support.
         """
 
-        @torch.library.register_fake("cann_ops_transformer::" + LI_METADATA_OP_NAME)
-        def lightning_indexer_metadata_meta(
+        @torch.library.register_fake("npu_ops_transformer::" + LI_METADATA_OP_NAME)
+        def npu_lightning_indexer_metadata_meta(
             num_heads_q: int,
             num_heads_k: int,
             head_dim: int,
@@ -70,7 +70,7 @@ class LightningIndexerOpBuilder(OpBuilder):
             return torch.empty((LI_METADATA_SIZE), dtype=torch.int32, device="npu")
 
         @impl(AS_LIBRARY, self.name, "Meta")
-        def lightning_indexer_meta(
+        def npu_lightning_indexer_meta(
             q,
             k,
             w,
@@ -122,11 +122,11 @@ class LightningIndexerOpBuilder(OpBuilder):
 
 
 # Instantiate the builder
-lightning_indexer_op_builder = LightningIndexerOpBuilder()
+npu_lightning_indexer_op_builder = LightningIndexerOpBuilder()
 
 
 @impl(AS_LIBRARY, LI_METADATA_OP_NAME, "PrivateUse1")
-def lightning_indexer_metadata(
+def npu_lightning_indexer_metadata(
     num_heads_q: int,
     num_heads_k: int,
     head_dim: int,
@@ -156,8 +156,8 @@ def lightning_indexer_metadata(
     mask_mode = 0 if mask_mode is None else mask_mode
     cmp_ratio = 1 if cmp_ratio is None else cmp_ratio
 
-    op_module = lightning_indexer_op_builder.load()
-    return op_module.lightning_indexer_metadata(
+    op_module = npu_lightning_indexer_op_builder.load()
+    return op_module.npu_lightning_indexer_metadata(
         num_heads_q,
         num_heads_k,
         head_dim,
@@ -177,8 +177,8 @@ def lightning_indexer_metadata(
     )
 
 
-@torch.library.register_kernel("cann_ops_transformer::" + LI_METADATA_OP_NAME, None)
-def lightning_indexer_metadata_fallback(
+@torch.library.register_kernel("npu_ops_transformer::" + LI_METADATA_OP_NAME, None)
+def npu_lightning_indexer_metadata_fallback(
     num_heads_q: int,
     num_heads_k: int,
     head_dim: int,
@@ -198,7 +198,7 @@ def lightning_indexer_metadata_fallback(
 ):
     # 处理所有 tensor 都为 None 的情况
     # 调用 NPU 实现
-    return lightning_indexer_metadata(
+    return npu_lightning_indexer_metadata(
         num_heads_q,
         num_heads_k,
         head_dim,
@@ -218,11 +218,11 @@ def lightning_indexer_metadata_fallback(
     )
 
 
-torch.compiler.allow_in_graph(lightning_indexer_metadata)
+torch.compiler.allow_in_graph(npu_lightning_indexer_metadata)
 
 
-@impl(AS_LIBRARY, lightning_indexer_op_builder.name, "PrivateUse1")
-def lightning_indexer(
+@impl(AS_LIBRARY, npu_lightning_indexer_op_builder.name, "PrivateUse1")
+def npu_lightning_indexer(
     q,
     k,
     w,
@@ -247,8 +247,8 @@ def lightning_indexer(
     dispatcher implementation for NPU.zhe
     'PrivateUse1' is the combine key for custom NPU backends.
     """
-    op_module = lightning_indexer_op_builder.load()
-    return op_module.lightning_indexer(
+    op_module = npu_lightning_indexer_op_builder.load()
+    return op_module.npu_lightning_indexer(
         q,
         k,
         w,

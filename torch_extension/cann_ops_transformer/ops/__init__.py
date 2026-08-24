@@ -36,7 +36,7 @@ from .dense_lightning_indexer_kl_loss_grad import (
     dense_lightning_indexer_kl_loss_grad,
     dense_lightning_indexer_kl_loss_grad_metadata,
 )
-from .lightning_indexer import lightning_indexer, lightning_indexer_metadata
+from .lightning_indexer import npu_lightning_indexer, npu_lightning_indexer_metadata
 from .quant_lightning_indexer import (
     quant_lightning_indexer,
     quant_lightning_indexer_metadata,
