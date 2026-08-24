@@ -37,6 +37,10 @@ extern "C" {
  *                                  PA_ND: shape=(NumBlocks, BlockSize, N_kv, D)，分页注意力格式
  *                                  PA_Nz: shape=(NumBlocks, N_kv, BlockSize/16, D, 16)，分页注意力NZ格式
  * @param v                   [IN]  value tensor。数据类型与q一致，layout由layoutKv决定，shape同k。
+ * @param relH                [IN]  分解式相对位置偏置高度轴tensor。数据类型与q一致。
+ *                                  shape=(B, N_q, S1, h)，h为key序列网格高度。
+ * @param relW                [IN]  分解式相对位置偏置宽度轴tensor。数据类型与q一致。
+ *                                  shape=(B, N_q, S1, w)，w为key序列网格宽度，S2=h*w。
  * @param blockTableOptional  [IN]  可选。分页KV缓存的块映射表，数据类型INT32。
  *                                  shape=(B, MaxBlocksPerSeq)，与layoutKv=PA_ND/PA_Nz配合使用。
  * @param cuSeqlensQOptional  [IN]  可选。query的累积序列长度（前缀和），数据类型INT32。
@@ -73,7 +77,8 @@ extern "C" {
  * @return aclnnStatus 执行状态。ACLNN_SUCCESS表示成功。
  */
 aclnnStatus aclnnFlashAttnGetWorkspaceSize(
-    const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *blockTableOptional,
+    const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *relH, const aclTensor *relW,
+    const aclTensor *blockTableOptional,
     const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
     const aclTensor *sequsedKvOptional, const aclTensor *sinksOptional, const aclTensor *attnMaskOptional,
     const aclTensor *metadataOptional, double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight,

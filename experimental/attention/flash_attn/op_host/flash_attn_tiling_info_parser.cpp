@@ -68,6 +68,14 @@ ge::graphStatus FaInfoParser::CheckRequiredInOutExistence() const
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.value.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of value"),
                 return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.relH.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of rel_h"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.relH.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of rel_h"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.relW.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of rel_w"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.relW.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of rel_w"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.attnOut.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of atten_out"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.attnOut.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of atten_out"),
@@ -189,6 +197,10 @@ void FaInfoParser::GetInputParaInfo()
     opParamInfo_.key.shape = context_->GetInputShape(KEY_INDEX);
     opParamInfo_.value.desc = context_->GetInputDesc(VALUE_INDEX);
     opParamInfo_.value.shape = context_->GetInputShape(VALUE_INDEX);
+    opParamInfo_.relH.desc = context_->GetInputDesc(REL_H_INDEX);
+    opParamInfo_.relH.shape = context_->GetInputShape(REL_H_INDEX);
+    opParamInfo_.relW.desc = context_->GetInputDesc(REL_W_INDEX);
+    opParamInfo_.relW.shape = context_->GetInputShape(REL_W_INDEX);
     GetOptionalInputParaInfo();
 }
 
@@ -303,6 +315,23 @@ void FaInfoParser::GetQueryTSize()
 void FaInfoParser::GetKeyTSize()
 {
     keyTSize_ = (keyShape_->HasShapeT()) ? static_cast<uint32_t>(keyShape_->GetShapeT()) : 0;
+}
+
+ge::graphStatus FaInfoParser::GetRelHwInfo()
+{
+    if (opParamInfo_.relH.shape == nullptr || opParamInfo_.relW.shape == nullptr) {
+        OP_LOGE(opName_, "Shape of rel_h or rel_w is nullptr.");
+        return ge::GRAPH_FAILED;
+    }
+    const auto &relHShape = opParamInfo_.relH.shape->GetStorageShape();
+    const auto &relWShape = opParamInfo_.relW.shape->GetStorageShape();
+    if (relHShape.GetDimNum() == 0 || relWShape.GetDimNum() == 0) {
+        OP_LOGE(opName_, "rel_h or rel_w has 0 dimensions.");
+        return ge::GRAPH_FAILED;
+    }
+    relHSize_ = relHShape.GetDim(relHShape.GetDimNum() - 1);
+    relWSize_ = relWShape.GetDim(relWShape.GetDimNum() - 1);
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FaInfoParser::GetQkHeadDim()
@@ -623,6 +652,8 @@ void FaInfoParser::GenerateAxisInfo(FaTilingInfo &faInfo)
     faInfo.vHeadDim = vHeadDim_;
     faInfo.qTSize = queryTSize_;
     faInfo.kTSize = keyTSize_;
+    faInfo.relHSize = relHSize_;
+    faInfo.relWSize = relWSize_;
 }
 
 void FaInfoParser::GenerateDtypeInfo(FaTilingInfo &faInfo)
@@ -685,6 +716,10 @@ ge::graphStatus FaInfoParser::ParseAxisInfo()
     }
 
     GetKeyTSize();
+
+    if (ge::GRAPH_SUCCESS != GetRelHwInfo()) {
+        return ge::GRAPH_FAILED;
+    }
 
     if (ge::GRAPH_SUCCESS != GetGSize() || ge::GRAPH_SUCCESS != GetS2Size()) {
         return ge::GRAPH_FAILED;

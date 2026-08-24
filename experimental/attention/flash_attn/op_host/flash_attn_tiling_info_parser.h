@@ -42,6 +42,7 @@ public:
     void GetOptionalInputParaInfo();
     void GetInputParaInfo();
     void GetOutputParaInfo();
+    ge::graphStatus GetRelHwInfo();
     ge::graphStatus GetAttrParaInfo();
     ge::graphStatus GetOpParaInfo();
 
@@ -101,6 +102,8 @@ public:
     int64_t vHeadDim_ = 0;
     int64_t queryTSize_ = 0;
     int64_t keyTSize_ = 0;
+    int64_t relHSize_ = 0;
+    int64_t relWSize_ = 0;
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
 
     // kvcache strides (tensor v2 view inputs)

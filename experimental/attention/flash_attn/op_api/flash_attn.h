@@ -24,6 +24,8 @@ namespace l0op {
  * @param q                   query tensor
  * @param k                   key tensor
  * @param v                   value tensor
+ * @param relH                分解式相对位置偏置高度轴（REQUIRED，FP16/BF16）
+ * @param relW                分解式相对位置偏置宽度轴（REQUIRED，FP16/BF16）
  * @param blockTableOptional  分页KV缓存块映射表（可选，INT32）
  * @param cuSeqlensQOptional  query累积序列长度tensor（可选，INT32）
  * @param cuSeqlensKvOptional kv累积序列长度tensor（可选，INT32）
@@ -50,6 +52,8 @@ const std::array<const aclTensor *, 2> FlashAttn(
     const aclTensor *q,
     const aclTensor *k,
     const aclTensor *v,
+    const aclTensor *relH,
+    const aclTensor *relW,
     const aclTensor *blockTableOptional,
     const aclTensor *cuSeqlensQOptional,
     const aclTensor *cuSeqlensKvOptional,

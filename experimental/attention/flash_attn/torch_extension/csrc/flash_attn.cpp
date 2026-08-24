@@ -35,7 +35,9 @@ at::Tensor FlashAttnMetadata(const c10::optional<at::Tensor> &cuSeqlensQ, const 
 }
 
 std::tuple<at::Tensor, at::Tensor> FlashAttn(
-    const at::Tensor &q, const at::Tensor &k, const at::Tensor &v, const c10::optional<at::Tensor> &blockTable,
+    const at::Tensor &q, const at::Tensor &k, const at::Tensor &v,
+    const at::Tensor &relH, const at::Tensor &relW,
+    const c10::optional<at::Tensor> &blockTable,
     const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cuSeqlensKv,
     const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &sequsedKv,
     const c10::optional<at::Tensor> &sinks, const c10::optional<at::Tensor> &attnMask,
@@ -90,9 +92,9 @@ std::tuple<at::Tensor, at::Tensor> FlashAttn(
     char *layoutOutPtr = const_cast<char *>(layoutOut.c_str());
 
     // Python bool → C++ int64_t: pybind11 auto-converts return_softmax_lse (True→1, False→0) before reaching here
-    ACLNN_CMD(aclnnFlashAttn, q, k, v, blockTable, cuSeqlensQ, cuSeqlensKv, sequsedQ, sequsedKv, sinks, attnMask,
-              metadata, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKv, layoutQPtr, layoutKvPtr,
-              layoutOutPtr, returnSoftmaxLse, attentionOutput, softmaxLse);
+    ACLNN_CMD(aclnnFlashAttn, q, k, v, relH, relW, blockTable, cuSeqlensQ, cuSeqlensKv, sequsedQ, sequsedKv, sinks,
+              attnMask, metadata, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKv, layoutQPtr,
+              layoutKvPtr, layoutOutPtr, returnSoftmaxLse, attentionOutput, softmaxLse);
 
     return std::tuple<at::Tensor, at::Tensor>(attentionOutput, softmaxLse);
 }

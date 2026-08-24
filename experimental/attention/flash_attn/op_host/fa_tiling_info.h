@@ -32,6 +32,8 @@ namespace flash_attn {
 const std::string QUERY_NAME = "q";
 const std::string KEY_NAME = "k";
 const std::string VALUE_NAME = "v";
+const std::string REL_H_NAME = "rel_h";
+const std::string REL_W_NAME = "rel_w";
 const std::string BLOCK_TABLE_NAME = "block_table";
 const std::string CU_SEQLENS_Q_NAME = "cu_seqlens_q";
 const std::string CU_SEQLENS_KV_NAME = "cu_seqlens_kv";
@@ -162,6 +164,8 @@ struct FAParaInfo {
     FARequiredParaInfo query = {nullptr, nullptr};
     FARequiredParaInfo key = {nullptr, nullptr};
     FARequiredParaInfo value = {nullptr, nullptr};
+    FARequiredParaInfo relH = {nullptr, nullptr};
+    FARequiredParaInfo relW = {nullptr, nullptr};
 
     FAOptionalParaInfo blockTable = {nullptr, nullptr};
     FAOptionalParaInfo cuSeqlensQ = {nullptr, nullptr};
@@ -209,6 +213,9 @@ public:
     int64_t qTSize = 0;
     int64_t kTSize = 0;
     float softmaxScale = 0;
+
+    int64_t relHSize = 0;
+    int64_t relWSize = 0;
 
     uint64_t totalOutputSize = 0;
     uint64_t totalLseSize = 0;
@@ -401,7 +408,8 @@ const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {{ge::DT_UNDE
 
 const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {QUERY_NAME, {ge::DT_FLOAT16, ge::DT_BF16}}, {KEY_NAME, {ge::DT_FLOAT16, ge::DT_BF16}},
-    {VALUE_NAME, {ge::DT_FLOAT16, ge::DT_BF16}}, {ATTN_MASK_NAME, {ge::DT_INT8}},
+    {VALUE_NAME, {ge::DT_FLOAT16, ge::DT_BF16}}, {REL_H_NAME, {ge::DT_FLOAT16, ge::DT_BF16}},
+    {REL_W_NAME, {ge::DT_FLOAT16, ge::DT_BF16}},  {ATTN_MASK_NAME, {ge::DT_INT8}},
     {BLOCK_TABLE_NAME, {ge::DT_INT32}},          {ATTN_OUT_NAME, {ge::DT_FLOAT16, ge::DT_BF16}},
     {SOFTMAX_LSE_NAME, {ge::DT_FLOAT}},
 };
