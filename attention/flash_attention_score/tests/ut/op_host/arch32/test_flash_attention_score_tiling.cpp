@@ -16,9 +16,15 @@ using namespace std;
 
 class FlashAttentionScoreTiling : public testing::Test {
 protected:
-    static void SetUpTestCase() { std::cout << "FlashAttentionScoreTiling SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "FlashAttentionScoreTiling SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "FlashAttentionScoreTiling TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "FlashAttentionScoreTiling TearDown" << std::endl;
+    }
 };
 
 // SBH

@@ -312,7 +312,10 @@ public:
         reserved = 0U;
     }
 
-    uint32_t GetRawTilingKey() const { return *(reinterpret_cast<const uint32_t *>(this)); }
+    uint32_t GetRawTilingKey() const
+    {
+        return *(reinterpret_cast<const uint32_t *>(this));
+    }
 
     std::string ToString() const
     {
@@ -361,8 +364,14 @@ public:
     }
 
 protected:
-    [[nodiscard]] gert::TilingContext *GetContext() { return context_; }
-    bool IsCapable() override { return true; }
+    [[nodiscard]] gert::TilingContext *GetContext()
+    {
+        return context_;
+    }
+    bool IsCapable() override
+    {
+        return true;
+    }
     // 1、获取平台信息比如CoreNum、UB/L1/L0C资源大小
     ge::graphStatus GetPlatformInfo() override;
     // 2、获取INPUT/OUTPUT/ATTR信息
@@ -418,9 +427,15 @@ protected:
                isSupportedHead && isSupportedDtype && isSupportedMask && isKeepProbOne && hasNoExtraFeature;
     }
 
-    virtual int64_t GetMinS1BasicBlock() const { return std::min(64L, alignedS1); }
+    virtual int64_t GetMinS1BasicBlock() const
+    {
+        return std::min(64L, alignedS1);
+    }
 
-    virtual bool IsTemplateMatched() const { return expectTemplate == actualTemplate; }
+    virtual bool IsTemplateMatched() const
+    {
+        return expectTemplate == actualTemplate;
+    }
 
     ge::graphStatus CheckContext();
     virtual bool AnalyzeDtype();
@@ -589,7 +604,10 @@ protected:
     FlashAttentionScoreGeneralTilingData *tilingData = context_->GetTilingData<FlashAttentionScoreGeneralTilingData>();
 };
 
-int64_t FlashAttentionScoreTilingBase::GetNRatio() { return BMM_SOFTMAX_RATIO; }
+int64_t FlashAttentionScoreTilingBase::GetNRatio()
+{
+    return BMM_SOFTMAX_RATIO;
+}
 
 void FlashAttentionScoreTilingBase::GetMaxWorkspaceFlag()
 {
@@ -1951,9 +1969,15 @@ void FlashAttentionScoreTilingBase::CalcS1S2BasicBlock(const BufferNum &bufferNu
     }
 }
 
-void FlashAttentionScoreTilingBase::CalcNRatio() { return; }
+void FlashAttentionScoreTilingBase::CalcNRatio()
+{
+    return;
+}
 
-void FlashAttentionScoreTilingBase::CalcDBasicBlock() { return; }
+void FlashAttentionScoreTilingBase::CalcDBasicBlock()
+{
+    return;
+}
 
 int64_t FlashAttentionScoreTilingBase::CalcMaxS1BasicBlockSize(int64_t actualD, const BufferNum &bufferNum) const
 {
@@ -2578,10 +2602,16 @@ void FlashAttentionScoreTilingBase::SetSparseParams()
 }
 
 /* 在子类中设置matmulConstArr列表 */
-void FlashAttentionScoreTilingBase::SetMatmulConstArr() { return; }
+void FlashAttentionScoreTilingBase::SetMatmulConstArr()
+{
+    return;
+}
 
 /* 检查是否满足进行matmul常量化的基本条件 */
-bool FlashAttentionScoreTilingBase::CheckScalarConstCondation() { return false; }
+bool FlashAttentionScoreTilingBase::CheckScalarConstCondation()
+{
+    return false;
+}
 
 /* 检查当前tiling中的baseMNK是否与子类枚举的常量化参数匹配 */
 bool FlashAttentionScoreTilingBase::MatchMatmulConst(MatmulConstParams &matmulConst)
@@ -2778,7 +2808,10 @@ protected:
         }
     }
 
-    int64_t GetNRatio() override { return s1Ratio; }
+    int64_t GetNRatio() override
+    {
+        return s1Ratio;
+    }
 
     bool CalcUBSize(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock) override
     {
@@ -2786,7 +2819,10 @@ protected:
         return true;
     }
 
-    void GetBufferNum(BufferNum &bufferNum) const override { bufferNum.bufferS1S2Num = s1dHighPerfBufferNum; }
+    void GetBufferNum(BufferNum &bufferNum) const override
+    {
+        bufferNum.bufferS1S2Num = s1dHighPerfBufferNum;
+    }
 
     void CalcS1S2BasicBlock([[maybe_unused]] const BufferNum &bufferNum) override
     {
@@ -2799,7 +2835,10 @@ protected:
         s2BasicBlock = std::min(128L, alignedS2);
     }
 
-    void CalcDBasicBlock() override { dBasicBlock = std::min(128L, alignedD); }
+    void CalcDBasicBlock() override
+    {
+        dBasicBlock = std::min(128L, alignedD);
+    }
 
     bool SetBmm1TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock, [[maybe_unused]] int64_t batch,
                             matmul_tiling::MatmulApiTiling &bmm1) override
@@ -2972,7 +3011,10 @@ protected:
     int64_t dVec2BasicBlock_ = 1;
     int64_t s1Vec2BasicBlock_ = 1;
 
-    void GetBufferNum(BufferNum &bufferNum) const override { bufferNum.bufferS1S2Num = HIGH_PERF_BUFFER_NUM; }
+    void GetBufferNum(BufferNum &bufferNum) const override
+    {
+        bufferNum.bufferS1S2Num = HIGH_PERF_BUFFER_NUM;
+    }
 
     void CalcS1S2BasicBlock([[maybe_unused]] const BufferNum &bufferNum) override
     {
@@ -3080,7 +3122,10 @@ protected:
         tensorSizeParams.set_bmm2ResUbSize(coreParams.get_s1Vec2BaseSize() * dBasicBlock);
     }
 
-    void CalcDBasicBlock() override { dBasicBlock = alignedD; }
+    void CalcDBasicBlock() override
+    {
+        dBasicBlock = alignedD;
+    }
 
     bool SetBmm1TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock, int64_t batch,
                             matmul_tiling::MatmulApiTiling &bmm1) override
@@ -3185,7 +3230,10 @@ protected:
         return true;
     }
 
-    bool IsTemplateMatched() const override { return true; }
+    bool IsTemplateMatched() const override
+    {
+        return true;
+    }
 
     bool CalcUBSize(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock) override
     {
@@ -3243,9 +3291,15 @@ protected:
     int64_t dAlignSize = 16;
     bool enableL1Reuse = false;
 
-    int64_t GetNRatio() override { return nRatio; }
+    int64_t GetNRatio() override
+    {
+        return nRatio;
+    }
 
-    void GetBufferNum(BufferNum &bufferNum) const override { bufferNum.bufferS1S2Num = HIGH_PERF_BUFFER_NUM; }
+    void GetBufferNum(BufferNum &bufferNum) const override
+    {
+        bufferNum.bufferS1S2Num = HIGH_PERF_BUFFER_NUM;
+    }
 
     int64_t find_optimal_s1BasicBlock()
     {
@@ -3324,7 +3378,10 @@ protected:
         }
     }
 
-    void CalcDBasicBlock() override { dBasicBlock = std::min(128L, alignedD); }
+    void CalcDBasicBlock() override
+    {
+        dBasicBlock = std::min(128L, alignedD);
+    }
 
     bool IsSpecialShape()
     {
@@ -3467,7 +3524,10 @@ protected:
         return false;
     }
 
-    bool IsTemplateMatched() const override { return true; }
+    bool IsTemplateMatched() const override
+    {
+        return true;
+    }
 
     bool CalcUBSize(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock) override
     {
@@ -3606,7 +3666,10 @@ protected:
     int64_t dAlignSize = 16;
     int64_t sAlignSize = 64;
 
-    int64_t GetNRatio() override { return nRatio; }
+    int64_t GetNRatio() override
+    {
+        return nRatio;
+    }
 
     void CalcNRatio() override
     {
@@ -3625,7 +3688,10 @@ protected:
         }
     }
 
-    void GetBufferNum(BufferNum &bufferNum) const override { bufferNum.bufferS1S2Num = HIGH_PERF_BUFFER_NUM; }
+    void GetBufferNum(BufferNum &bufferNum) const override
+    {
+        bufferNum.bufferS1S2Num = HIGH_PERF_BUFFER_NUM;
+    }
 
     void CalcS1S2BasicBlock([[maybe_unused]] const BufferNum &bufferNum) override
     {
@@ -3641,7 +3707,10 @@ protected:
         }
     }
 
-    void CalcDBasicBlock() override { dBasicBlock = std::min(128L, alignedD); }
+    void CalcDBasicBlock() override
+    {
+        dBasicBlock = std::min(128L, alignedD);
+    }
 
     void SetMultiCoreParams() override
     {
@@ -3777,7 +3846,10 @@ protected:
         return false;
     }
 
-    bool IsTemplateMatched() const override { return true; }
+    bool IsTemplateMatched() const override
+    {
+        return true;
+    }
 
     bool CalcUBSize(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock) override
     {
@@ -3894,7 +3966,10 @@ protected:
         }
     }
 
-    void GetBufferNum(BufferNum &bufferNum) const override { bufferNum.bufferS1S2Num = HIGH_PERF_BUFFER_NUM; }
+    void GetBufferNum(BufferNum &bufferNum) const override
+    {
+        bufferNum.bufferS1S2Num = HIGH_PERF_BUFFER_NUM;
+    }
 
     void CalcS1S2BasicBlock([[maybe_unused]] const BufferNum &bufferNum) override
     {
@@ -3911,7 +3986,10 @@ protected:
         s2BasicBlock = std::min(TND_S1_BASICBLOCK_128, alignedS2);
     }
 
-    void CalcDBasicBlock() override { dBasicBlock = std::min(128L, alignedD); }
+    void CalcDBasicBlock() override
+    {
+        dBasicBlock = std::min(128L, alignedD);
+    }
 
     bool SetBmm1TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock, [[maybe_unused]] int64_t batch,
                             matmul_tiling::MatmulApiTiling &bmm1) override
@@ -4097,7 +4175,10 @@ protected:
         multiCoreParams.set_splitFactorSize(CeilDivision(totalSize, actualSplitAiCoreNum));
         multiCoreParams.set_splitFactorTailSize(CalcTailSize(totalSize, multiCoreParams.get_splitFactorSize()));
     }
-    bool IsTemplateMatched() const override { return true; }
+    bool IsTemplateMatched() const override
+    {
+        return true;
+    }
 
     bool CalcUBSize(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock) override
     {
