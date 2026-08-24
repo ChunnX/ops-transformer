@@ -11,13 +11,13 @@ from typing import Optional
 
 import torch
 from torch.library import impl
-from cann_ops_transformer.op_builder.builder import OpBuilder
-from cann_ops_transformer.op_builder.builder import AS_LIBRARY
-
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 class FusedCausalConv1dOpBuilder(OpBuilder):
     def __init__(self):
-        super(FusedCausalConv1dOpBuilder, self).__init__("fused_causal_conv1d")
+        super(FusedCausalConv1dOpBuilder, self).__init__(
+            "fused_causal_conv1d", category="attention"
+            )
 
     def sources(self):
         """Path to C++ source code."""
@@ -52,7 +52,7 @@ class FusedCausalConv1dOpBuilder(OpBuilder):
     def register_meta(self):
         """Register Meta implementation for shape/dtype inference."""
 
-        @impl(AS_LIBRARY, self.name, "Meta")
+        @impl(get_as_library(), self.name, "Meta")
         def fused_causal_conv1d_meta(
             x: torch.Tensor,
             weight: torch.Tensor,
@@ -80,9 +80,9 @@ class FusedCausalConv1dOpBuilder(OpBuilder):
 
 
 _fused_causal_conv1d_op_builder = FusedCausalConv1dOpBuilder()
+_fused_causal_conv1d_op_builder._ensure_initialized()
 
-
-@impl(AS_LIBRARY, _fused_causal_conv1d_op_builder.name, "PrivateUse1")
+@impl(get_as_library(), _fused_causal_conv1d_op_builder.name, "PrivateUse1")
 def _fused_causal_conv1d(
     x: torch.Tensor,
     weight: torch.Tensor,
