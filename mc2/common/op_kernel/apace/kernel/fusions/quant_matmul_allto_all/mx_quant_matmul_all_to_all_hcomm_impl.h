@@ -229,13 +229,13 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
         bool isTail = (tid >= tileCnt_);
         uint32_t curTileM = isTail ? tailM_ : tileM_;
         uint32_t curTiling = isTail ? 1 : 0;
+        // 只在头尾切换时重新SetupParams+InitMmad(与PR#10054一致,避免for循环中重复内联)
         if (curTiling != lastTiling) {
             SetupParams(isTail ? tilingData_->tailQbmmTilingData : tilingData_->tileQbmmTilingData,
                 rankDim_, 0, maxTileM_, false, param);
             quantMatmulKernelImpl_.InitMmad(param);
             lastTiling = curTiling;
         }
-        // C输出: 远端rank写mmResult, 本rank写y_(cGmSelfAddr)
         param.mmadParams.aGmAddr = aCur;
         param.mmadParams.scaleAGmAddr = aScaleCur;
         param.mmadParams.cGmAddr = mmResultGM_ + static_cast<uint64_t>(tid) * maxTileM_ * axisNPerRank_ * sizeof(YType);
