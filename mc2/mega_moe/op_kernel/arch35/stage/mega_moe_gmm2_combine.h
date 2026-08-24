@@ -544,7 +544,8 @@ template <uint8_t CombineQuantMode, bool IsShared, bool IsLayered = false, typen
 __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &scheduler, TensorA &gmA, TensorScaleA &gmScaleA,
                                        TensorScaleB &gmScaleB, TensorC &l0cOutGm, const GMMAddrInfo &gmmAddrInfo,
                                        int32_t &gmTileSequence, const Config &config, uint32_t startLoopIdx,
-                                       uint32_t tileNum, uint32_t expertTokenCount, uint32_t rowOffsetInExpert)
+                                       uint32_t tileNum, uint32_t expertTokenCount, uint32_t rowOffsetInExpert,
+                                       CriticalPathWaitTraceContext *waitTraceContext = nullptr)
 {
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
     GroupSyncSlotLayout groupSyncSlotLayout{};
@@ -562,11 +563,15 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
         if constexpr (Config::IS_WAVE_FLAG_GRAINED) {
             uint32_t waveIdx = mLoc / L1_TILE_M_256;
             if (waveIdx != lastWaveWaited) {
+                uint32_t waitBeginCycle = BeginWaitInterval(waitTraceContext);
                 WaitForGmm2InputReady<IsShared>(gmmAddrInfo, config, mLoc);
+                EndWaitInterval(waitTraceContext, waitBeginCycle);
                 lastWaveWaited = waveIdx;
             }
         } else if (loopIdx == startLoopIdx) {
+            uint32_t waitBeginCycle = BeginWaitInterval(waitTraceContext);
             WaitForGmm2InputReady<IsShared>(gmmAddrInfo, config, mLoc);
+            EndWaitInterval(waitTraceContext, waitBeginCycle);
         }
 
         auto gmBlockA = gmA.Slice(Te::MakeCoord(mLoc, 0), Te::MakeShape(Get<M_VALUE>(actualShape), config.k));
@@ -597,7 +602,8 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
 template <typename ElementC, typename MakeLayoutC, typename Scheduler, typename TensorC, typename Config>
 __aicore__ inline void Gmm2Aiv1EpilogueA8W4(Scheduler &scheduler, TensorC &l0cOutGm, const Params &params,
                                             const GMMAddrInfo &gmmAddrInfo, int32_t &gmTileSequence,
-                                            const Config &config, uint32_t startLoopIdx, uint32_t tileNum)
+                                            const Config &config, uint32_t startLoopIdx, uint32_t tileNum,
+                                            CriticalPathWaitTraceContext *waitTraceContext = nullptr)
 {
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
@@ -606,7 +612,9 @@ __aicore__ inline void Gmm2Aiv1EpilogueA8W4(Scheduler &scheduler, TensorC &l0cOu
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
 
         int32_t expectedReadySequence = gmTileSequence + 1;
+        uint32_t waitBeginCycle = BeginWaitInterval(waitTraceContext);
         WaitUntilGmFlagAtLeast(gmmAddrInfo.gmmToEpilogueFlag, expectedReadySequence);
+        EndWaitInterval(waitTraceContext, waitBeginCycle);
         auto tensorBlockGm = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc),
                                             Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         auto layoutL0cUB = MakeLayoutC{}(config.tileM, L1_TILE_N);
@@ -705,7 +713,8 @@ template <uint8_t CombineQuantMode, typename BlockMmad, typename BlockPrologue, 
           bool IsShared, bool IsLayered = false, typename Scheduler, typename Config>
 __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const Params &params, const GMMAddrInfo &gmmAddrInfo,
                                     const Config &config, uint32_t startLoopIdx, uint32_t tileNum,
-                                    int32_t &gmTileSequence, uint32_t expertTokenCount, uint32_t rowOffsetInExpert)
+                                    int32_t &gmTileSequence, uint32_t expertTokenCount, uint32_t rowOffsetInExpert,
+                                    CriticalPathWaitTraceContext *waitTraceContext = nullptr)
 {
     using KernelConfig = typename Config::KernelConfig;
     using ElementA = typename KernelConfig::ElementAType;
@@ -744,7 +753,7 @@ __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const Params &params, 
                         decltype(workSet.gmA), decltype(workSet.gmScaleA), decltype(workSet.gmScaleB),
                         std::remove_reference_t<decltype(workSet.gmC)>, Config>(
             blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB, workSet.gmC, gmmAddrInfo,
-            gmTileSequence, config, startLoopIdx, tileNum, expertTokenCount, rowOffsetInExpert);
+            gmTileSequence, config, startLoopIdx, tileNum, expertTokenCount, rowOffsetInExpert, waitTraceContext);
     } else {
         if (GetSubBlockIdx() == 0) {
             BlockPrologue blockPrologue;
@@ -752,7 +761,8 @@ __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const Params &params, 
         } else {
             if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered) {
                 Gmm2Aiv1EpilogueA8W4<ElementC, MakeLayoutC>(workSet.scheduler, workSet.gmC, params, gmmAddrInfo,
-                                                            gmTileSequence, config, startLoopIdx, tileNum);
+                                                            gmTileSequence, config, startLoopIdx, tileNum,
+                                                            waitTraceContext);
             }
         }
     }
@@ -820,7 +830,7 @@ __aicore__ inline void RunGmm2A8W4(const Params &params,
                                    const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &gmTileSequence,
                                    const BlockJobContext &blockJob, uint32_t expertTokenCount,
-                                   uint32_t rowOffsetInExpert)
+                                   uint32_t rowOffsetInExpert, CriticalPathWaitTraceContext *waitTraceContext = nullptr)
 {
     static_assert(std::is_same_v<ElementA, __fp8e4m3>, "Activation must be __fp8e4m3");
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
@@ -845,9 +855,9 @@ __aicore__ inline void RunGmm2A8W4(const Params &params,
     }
 
     GmmKernel::Gmm2ExecA8W4<CombineQuantMode, BlockMmad, BlockPrologue, ElementC, MakeLayoutC, IsShared, IsLayered,
-                            GmmKernel::BlockScheduler, decltype(config)>(scheduler, params, gmmAddrInfo, config,
-                                                                         startLoopIdx, tileNum, gmTileSequence,
-                                                                         expertTokenCount, rowOffsetInExpert);
+                            GmmKernel::BlockScheduler, decltype(config)>(
+        scheduler, params, gmmAddrInfo, config, startLoopIdx, tileNum, gmTileSequence, expertTokenCount,
+        rowOffsetInExpert, waitTraceContext);
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
@@ -1002,7 +1012,8 @@ template <uint8_t CombineMode>
 __aicore__ inline void ScheduleQuantizedMoeExpertCombine(
     const QuantCombineConfig &context, const MoeStageCommonConfig &common, const QuantCombineBufferConfig &bufferConfig,
     const Params &params, const GMMAddrInfo &gmmAddrInfo, uint32_t expertTokenCount, uint32_t globalTokenStartIndex,
-    uint32_t expertIdx, uint32_t sliceTokenStart, uint32_t sliceTokenCount)
+    uint32_t expertIdx, uint32_t sliceTokenStart, uint32_t sliceTokenCount,
+    CriticalPathWaitTraceContext *waitTraceContext = nullptr)
 {
     if constexpr (g_coreType == AIC || CombineMode == COMBINE_NO_QUANT) {
         return;
@@ -1030,7 +1041,9 @@ __aicore__ inline void ScheduleQuantizedMoeExpertCombine(
         uint32_t syncSlotIndex = groupCount <= context.job.totalJobs ? context.job.jobIndex : groupIndex;
         __gm__ int32_t *syncCounterAddress =
             GetCombineSyncCounterAddress(gmmAddrInfo.gmm2CombineSyncCounter, syncSlotIndex);
+        uint32_t waitBeginCycle = BeginWaitInterval(waitTraceContext);
         WaitUntilGmFlagEquals(syncCounterAddress, static_cast<int32_t>(gmm2NTilesPerGroup));
+        EndWaitInterval(waitTraceContext, waitBeginCycle);
 
         uint32_t groupTokenStart = groupIndex * COMBINE_TOKEN_GROUP_SIZE;
         uint32_t groupTokenCount = COMBINE_TOKEN_GROUP_SIZE < expertTokenCount - groupTokenStart ?

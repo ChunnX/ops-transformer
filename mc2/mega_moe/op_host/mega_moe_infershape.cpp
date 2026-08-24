@@ -13,6 +13,7 @@
  */
 
 #include "register/op_impl_registry.h"
+#include <algorithm>
 #include "mc2_log.h"
 #include "platform/platform_info.h"
 #include "runtime/rt_external_base.h"
@@ -24,6 +25,8 @@ namespace ops {
 static constexpr size_t DIM_ONE = 1UL;
 static constexpr size_t DIM_TWO = 2UL;
 static constexpr int64_t NEG_ONE = -1;
+// 诊断构建使用 y 承载关键路径 trace。FP16/BF16 均为 2 字节，预留 1 MiB 对应的元素数。
+static constexpr int64_t TRACE_OUTPUT_ELEMENT_COUNT = 512L * 1024L;
 
 static constexpr size_t DISPATCH_FFN_COMBINE_INPUT_CONTEXT_INDEX = 0;
 static constexpr size_t DISPATCH_FFN_COMBINE_INPUT_X_INDEX = 1;
@@ -75,15 +78,17 @@ static ge::graphStatus InferShapeMegaMoe(gert::InferShapeContext *context)
 
     int64_t bs = xShape->GetDim(0);
     int64_t h = xShape->GetDim(1);
+    int64_t traceOutputBs = (TRACE_OUTPUT_ELEMENT_COUNT + h - 1) / h;
+    int64_t outputBs = std::max(bs, traceOutputBs);
 
     yShape->SetDimNum(DIM_TWO);
-    yShape->SetDim(0U, bs);
+    yShape->SetDim(0U, outputBs);
     yShape->SetDim(1U, h);
 
     expertTokenNumsShape->SetDimNum(DIM_ONE);
     expertTokenNumsShape->SetDim(0U, *moeExpertNum / *epWorldSize);
 
-    OP_LOGD(context->GetNodeName(), "y shape is [%ld, %ld] after infershape.", bs, h);
+    OP_LOGD(context->GetNodeName(), "y shape is [%ld, %ld] after infershape.", outputBs, h);
     OP_LOGD(context->GetNodeName(), "End to do InferShapeMegaMoe.");
     return ge::GRAPH_SUCCESS;
 }
