@@ -16,7 +16,7 @@
 #define __OP_HOST_RECURRENT_KDA_TILING_H__
 #include <tiling/tiling_api.h>
 #include "register/tilingdata_base.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "err/ops_err.h"
 #include "../op_kernel/recurrent_kda_tiling_data.h"
 #include "recurrent_kda_tiling_processor.h"

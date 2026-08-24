@@ -12,11 +12,7 @@
  * \file recurrent_kda.cpp
  * \brief
  */
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
-#include "arch35/recurrent_kda.h"
-#else
-#include "recurrent_kda.h"
-#endif
+#include "arch22/recurrent_kda.h"
 #include "recurrent_kda_tiling_data.h"
 
 
