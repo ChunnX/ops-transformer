@@ -16,6 +16,9 @@ import math
 import os
 import random
 from pathlib import Path
+
+# 必须先于 torch/torch_npu 加载，否则 tensorflow 的 dlopen 与 torch_npu 产生 ELF 解析冲突导致段错误
+import tensorflow as tf  # noqa: E402
 import numpy as np
 import pandas as pd
 import pytest
@@ -24,7 +27,6 @@ import check_valid_param
 import kv_quant_sparse_flash_attention_golden
 import result_compare_method
 import traceback
-import tensorflow as tf
 import json
 
 
@@ -314,7 +316,7 @@ def convert_param_combination_to_cs_format(param_combination):
     block_size = param_combination.get("block_size") or 256
     block_num = param_combination.get("block_num")
     enable_sinks = param_combination.get("enable_sinks", False)
-    
+
     # 参数校验：TND layout 下 T 不能超过 B*S
     if layout_query == "TND" and T1 is not None:
         if T1 > B * S1:
@@ -470,7 +472,7 @@ def convert_param_combination_to_cs_format(param_combination):
     if enable_sinks == True:
         shape_input["sinks"] = [N1]
         dtype_input["sinks"] = "fp32"
-    
+
     default_range_input = {
         "query": [2, 10],
         "key": [-100, 100.0],

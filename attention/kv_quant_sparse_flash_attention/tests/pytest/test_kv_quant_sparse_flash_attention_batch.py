@@ -14,6 +14,9 @@ import os
 from pathlib import Path
 import concurrent.futures
 import pytest
+
+# 必须先于 torch/torch_npu 加载，否则 tensorflow 的 dlopen 与 torch_npu 产生 ELF 解析冲突导致段错误
+import tensorflow as tf  # noqa: F401
 import torch
 import utils
 
