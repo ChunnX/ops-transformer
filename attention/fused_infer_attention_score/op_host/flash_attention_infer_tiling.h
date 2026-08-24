@@ -171,8 +171,14 @@ public:
     FAInferTiling() = default;
     explicit FAInferTiling(const FAInferContext &faInfo);
     ge::graphStatus DoTiling(FAInferTilingData &tilingdata);
-    void SetCoreNum(uint32_t blockNum) { this->blockNum_ = blockNum; }
-    uint32_t GetCoreNum() { return this->blockNum_; }
+    void SetCoreNum(uint32_t blockNum)
+    {
+        this->blockNum_ = blockNum;
+    }
+    uint32_t GetCoreNum()
+    {
+        return this->blockNum_;
+    }
     uint64_t GetTilingKey();
 
 private:

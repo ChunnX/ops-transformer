@@ -110,7 +110,10 @@ public:
         blockStartOffset = kvStart * maxKVStackLen % pagedBlockSize;
     }
 
-    __aicore__ inline void getBlockShape(GemmCoord &actualShape, uint32_t &nowLen) { actualShape[COORD_DIM2] = nowLen; }
+    __aicore__ inline void getBlockShape(GemmCoord &actualShape, uint32_t &nowLen)
+    {
+        actualShape[COORD_DIM2] = nowLen;
+    }
 
     __aicore__ inline void getKVOffset(uint64_t &kOffset, uint32_t nIdx, uint32_t &strideKV)
     {
