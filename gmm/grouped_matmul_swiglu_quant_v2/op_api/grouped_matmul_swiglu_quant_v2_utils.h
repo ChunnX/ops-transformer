@@ -922,6 +922,13 @@ protected:
         for (size_t i = 0; i < weightLength; i++) {
             const aclTensor *weight = (*gmmDsqParams_.weight)[i];
             const aclTensor *weightScale = (*gmmDsqParams_.weightScale)[i];
+            if (weight->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ &&
+                weight->GetDataType() == DataType::DT_FLOAT8_E5M2) {
+                OP_LOGE_FOR_INVALID_DTYPE(apiName_.c_str(), "weight",
+                                          op::ToString(weight->GetDataType()).GetString(),
+                                          "{INT8, FLOAT8_E4M3FN, HIFLOAT8}");
+                return false;
+            }
             GMM_SWIGLU_CHECK_DTYPE(weight, "weight", XW_DTYPE_SUPPORT_LIST_PERTOKEN, return false);
             DataType xDtype = gmmDsqParams_.x->GetDataType();
             if (xDtype == DataType::DT_INT8) {

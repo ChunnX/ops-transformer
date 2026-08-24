@@ -914,8 +914,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDtypePertoken()
                                 inputParams_.outDataDtype == ge::DT_HIFLOAT8;
         const bool isFp8 = (inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN ||
                             inputParams_.aDtype == ge::DT_FLOAT8_E5M2) &&
-                           (inputParams_.bDtype == ge::DT_FLOAT8_E4M3FN ||
-                            inputParams_.bDtype == ge::DT_FLOAT8_E5M2) &&
+                           inputParams_.bDtype == ge::DT_FLOAT8_E4M3FN &&
                            (inputParams_.outDataDtype == ge::DT_FLOAT8_E4M3FN ||
                             inputParams_.outDataDtype == ge::DT_FLOAT8_E5M2);
         OP_CHECK_IF(!(isInt8 || isHifloat8 || isFp8),
@@ -926,7 +925,8 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDtypePertoken()
                                          ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
                             ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype)),
                         "in per-token mode, FRACTAL_NZ weight requires x, weight and y to use the same "
-                        "INT8/HIFLOAT8 family, or each to be FLOAT8_E4M3FN/FLOAT8_E5M2"),
+                        "INT8/HIFLOAT8 family; for FP8, weight must be FLOAT8_E4M3FN while x and y may be "
+                        "FLOAT8_E4M3FN or FLOAT8_E5M2"),
                     return false);
     }
     OP_CHECK_IF(inputParams_.perTokenScaleDtype != ge::DT_FLOAT,
