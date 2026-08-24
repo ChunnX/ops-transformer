@@ -14,7 +14,7 @@
  */
 #pragma once
 
-#include "../policy/dispatch_policy_mega_moe.h"
+#include "apace/block/policy/dispatch_policy.h"
 #include "blaze/gemm/tile/tile_trait.h"
 #include "kernel_basic_intf.h"
 #include "blaze/gemm/block/block_mmad.h"
@@ -31,17 +31,19 @@ using AscendC::HardEvent;
 using AscendC::SetFlag;
 using AscendC::TEventID;
 using AscendC::WaitFlag;
-using Blaze::Gemm::DOUBLE_BUFFER;
+
+using Apace::Gemm::DOUBLE_BUFFER;
+using Apace::Gemm::MX_FP8FP4_L1_K_CONFIG_256;
+using Apace::Gemm::MX_FP8FP4_L1_K_CONFIG_512;
+using Apace::Gemm::MX_FP8FP4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD;
+using Apace::Gemm::MX_FP8FP4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD;
+using Apace::Gemm::MX_FP8FP4_SCALE_K_L1_SIZE;
+using Apace::Gemm::SYNC_MODE4;
+
 using Blaze::Gemm::FINAL_ACCUMULATION;
-using Blaze::Gemm::MX_FP8FP4_L1_K_CONFIG_256;
-using Blaze::Gemm::MX_FP8FP4_L1_K_CONFIG_512;
-using Blaze::Gemm::MX_FP8FP4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD;
-using Blaze::Gemm::MX_FP8FP4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD;
-using Blaze::Gemm::MX_FP8FP4_SCALE_K_L1_SIZE;
 using Blaze::Gemm::MXFP_DIVISOR_SIZE;
 using Blaze::Gemm::MXFP_MULTI_BASE_SIZE;
 using Blaze::Gemm::NON_FINAL_ACCUMULATION;
-using Blaze::Gemm::SYNC_MODE4;
 
 // Macro aliases keep the specialization declaration compact for this dispatch-policy binding.
 #define BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS \
@@ -49,7 +51,7 @@ using Blaze::Gemm::SYNC_MODE4;
               class LayoutC_, class BiasType_, class LayoutBias_>
 
 #define BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION \
-    BlockMmad<MatmulMxFp8Fp4DynamicKL1TailResplit, ATypeTuple_, LayoutATuple_, BTypeTuple_, LayoutBTuple_, CType_, \
+    BlockMmad<Apace::Gemm::MatmulMxFp8Fp4DynamicKL1TailResplit, ATypeTuple_, LayoutATuple_, BTypeTuple_, LayoutBTuple_, CType_, \
               LayoutC_, BiasType_, LayoutBias_>
 
 /*!
@@ -82,7 +84,7 @@ using Blaze::Gemm::SYNC_MODE4;
 BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS
 class BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION {
 public:
-    using DispatchPolicy = MatmulMxFp8Fp4DynamicKL1TailResplit;
+    using DispatchPolicy = Apace::Gemm::MatmulMxFp8Fp4DynamicKL1TailResplit;
     using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
 

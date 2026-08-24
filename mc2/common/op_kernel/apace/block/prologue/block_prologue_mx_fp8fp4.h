@@ -98,7 +98,7 @@
 #include "blaze/gemm/tile/copy_weight_ub_to_l1.h"
 #include "block_prologue.h"
 
-namespace Blaze {
+namespace Apace {
 namespace Gemm {
 namespace Prologue {
 
@@ -109,12 +109,12 @@ using AscendC::SetFlag;
 using AscendC::TEventID;
 using AscendC::WaitFlag;
 
-using Blaze::Gemm::DOUBLE_BUFFER;
-using Blaze::Gemm::MX_FP8FP4_L1_K_CONFIG_256;
-using Blaze::Gemm::MX_FP8FP4_L1_K_CONFIG_512;
-using Blaze::Gemm::MX_FP8FP4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD;
-using Blaze::Gemm::MX_FP8FP4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD;
-using Blaze::Gemm::SYNC_MODE4;
+using Apace::Gemm::DOUBLE_BUFFER;
+using Apace::Gemm::MX_FP8FP4_L1_K_CONFIG_256;
+using Apace::Gemm::MX_FP8FP4_L1_K_CONFIG_512;
+using Apace::Gemm::MX_FP8FP4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD;
+using Apace::Gemm::MX_FP8FP4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD;
+using Apace::Gemm::SYNC_MODE4;
 
 static constexpr int32_t QUADRUPLE_BUFFER_NUM = 4;
 static constexpr uint64_t SERIAL_HALF_K_PARTS = 2;
@@ -130,12 +130,12 @@ struct PrologueMxCastWOffsetParam {
 // Macro aliases keep this dispatch-policy specialization concise and readable.
 #define BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS template <class OutType_, class InType_>
 
-#define BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION BlockPrologue<MatmulMxFp8Fp4DynamicKL1TailResplit, OutType_, InType_>
+#define BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION BlockPrologue<Apace::Gemm::MatmulMxFp8Fp4DynamicKL1TailResplit, OutType_, InType_>
 
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
 class BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION {
 public:
-    using DispatchPolicy = MatmulMxFp8Fp4DynamicKL1TailResplit;
+    using DispatchPolicy = Apace::Gemm::MatmulMxFp8Fp4DynamicKL1TailResplit;
     using OutType = OutType_;
     using InType = InType_;
 
@@ -467,4 +467,4 @@ __aicore__ inline auto BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::MakeL1WeightTens
 #undef BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
 } // namespace Prologue
 } // namespace Gemm
-} // namespace Blaze
+} // namespace Apace
