@@ -151,7 +151,7 @@ static inline ge::graphStatus MoeTokenUnpermuteWithEpInputParamCheck(
     return ge::GRAPH_SUCCESS;
 }
 
-static inline void Init(
+static inline ge::graphStatus Init(
     const gert::TilingContext* context, const int64_t topK, MoeTokenUnpermuteWithEpParam& param, const bool isUnpermute)
 {
     auto ascendPlaform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
@@ -175,7 +175,7 @@ static inline void Init(
     auto rangePtr = attrPtr->GetAttrPointer<gert::ContinuousVector>(UNPERMUTE_WITH_EP_ARRT_RANGE);
     if (rangePtr != nullptr) {
         OP_CHECK_IF(rangePtr->GetSize() != RANGE_SIZE,
-            OP_LOGE(context->GetNodeName(), "the size of range only support 2"), return);
+            OP_LOGE(context->GetNodeName(), "the size of range only support 2"), return ge::GRAPH_FAILED);
         const int64_t* rangeList = reinterpret_cast<const int64_t*>(rangePtr->GetData());
         param.input.start = rangeList[0];
         param.input.end = rangeList[1];
@@ -205,6 +205,7 @@ static inline void Init(
         param.input.tokensNum = safeDiv(param.input.totalLength, param.input.topK);
     }
     param.input.haveProbs = (probsShape != nullptr);
+    return ge::GRAPH_SUCCESS;
 }
 
 static void SetCoreNum(MoeTokenUnpermuteWithEpParam& param)
@@ -373,7 +374,9 @@ ge::graphStatus PermuteWithEpGradTilingCompute(gert::TilingContext* context, con
     if (MoeTokenUnpermuteWithEpInputParamCheck(context, isUnpermute) == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
     }
-    Init(context, topK, param, isUnpermute);
+    if (Init(context, topK, param, isUnpermute) == ge::GRAPH_FAILED) {
+        return ge::GRAPH_FAILED;
+    }
     SetCoreNum(param);
     TilingHiddenSize(param);
     SetBufferNum(param);

@@ -304,7 +304,7 @@ TEST_F(MoeTokenPermuteWithEpGradTiling, test_tiling_range_size_invalid)
                                                 {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
                                             },
                                             &compileInfo);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 0);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
 TEST_F(MoeTokenPermuteWithEpGradTiling, test_tiling_int64_indices)
