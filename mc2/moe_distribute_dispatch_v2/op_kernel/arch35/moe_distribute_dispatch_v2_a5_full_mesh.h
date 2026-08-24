@@ -126,6 +126,7 @@ private:
     __aicore__ inline void LocalWindowCopy();
     __aicore__ inline void SetValidExpertInfo(uint32_t expInfoSize, uint32_t &validNum);
     __aicore__ inline uint32_t CheckDataArriveWithFlag(uint32_t srcExpDataIdx, int32_t beginIdx, int32_t copyCnt);
+    __aicore__ inline bool CheckSentinelArrive(uint32_t srcExpDataIdx, int32_t beginIdx, int32_t copyCnt);
     __aicore__ inline void CopyInAndOut(LocalTensor<XOutType> xTmpTensor, GM_ADDR wAddr, uint32_t index,
                                         uint32_t dstPosition, uint32_t arriveCount, uint32_t dataBufferId,
                                         bool isDataBufferReused);
@@ -1345,6 +1346,23 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMe
     return flagSumOutTensor.GetValue(0) == expectFlagSum ? static_cast<uint32_t>(copyCnt) : 0U;
 }
 
+// 队头批批尾哨兵：仅读末token末块的32B flag。该块未置位则整批必未到齐（乱序到达下负判可靠），
+// 免去全量flag gather与ReduceSum，等待期轮询读流量从批数据量级降为单次32B读。
+template <TemplateMC2A5FullMeshTypeClass>
+__aicore__ inline bool MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::CheckSentinelArrive(
+    uint32_t srcExpDataIdx, int32_t beginIdx, int32_t copyCnt)
+{
+    DataCopyParams sentinelCopyParams{1U, 1U, 0U, 0U};
+    GlobalTensor<float> sentinelGlobal;
+    GM_ADDR sAddr = (__gm__ uint8_t *)(windowGM_) + srcExpDataIdx * expertPerSizeOnWin_ +
+                    (beginIdx + copyCnt - 1) * hCommuSize_ + (blockCntPerToken_ - 1) * SPLIT_BLOCK_SIZE +
+                    SPLIT_BLOCK_DATA_SIZE;
+    sentinelGlobal.SetGlobalBuffer((__gm__ float *)(sAddr));
+    DataCopy(flagRecvTensor_, sentinelGlobal, sentinelCopyParams);
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+    return flagRecvTensor_.GetValue(0) == 1.0F;
+}
+
 template <TemplateMC2A5FullMeshTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::CopyInAndOut(
     LocalTensor<XOutType> xTmpTensor, GM_ADDR wAddr, uint32_t index, uint32_t dstPosition, uint32_t arriveCount,
@@ -1504,7 +1522,10 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
                       maxCopyTokenCnt :
                       expertLeftNumTensor_(index); // 按照ub大小一次搬入多个token
         srcDataBlockIdx = GetLocalWindowSrcDataBlockIdx(srcExpertId, localExpertNum);
-        arriveCount = CheckDataArriveWithFlag(srcDataBlockIdx, expertFinishNumTensor_(index), copyCnt);
+        // 哨兵负判：批尾flag未置位则整批必未到齐，跳过全量gather与ReduceSum，直接轮转下一专家
+        arriveCount = CheckSentinelArrive(srcDataBlockIdx, expertFinishNumTensor_(index), copyCnt) ?
+                          CheckDataArriveWithFlag(srcDataBlockIdx, expertFinishNumTensor_(index), copyCnt) :
+                          0U;
         if (arriveCount == copyCnt) {
             dstPosition = srcExpertId != 0 ? sendCntTensor_(srcExpertId - 1) : 0;
             dstPosition += expertFinishNumTensor_(index);
