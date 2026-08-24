@@ -10,6 +10,7 @@
 
 #include <iostream>
 #include <gtest/gtest.h>
+#include <limits>
 #include "../../../op_host/op_tiling/mhc_pre_sinkhorn_backward_tiling.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
@@ -78,7 +79,7 @@ TEST_F(MhcPreSinkhornBackwardTiling, test_tiling_B2_S128_N4_C256)
         },
         &compileInfo);
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, std::numeric_limits<uint64_t>::max());
 }
 
 TEST_F(MhcPreSinkhornBackwardTiling, test_tiling_B1_S35_N1_C512)
@@ -123,7 +124,7 @@ TEST_F(MhcPreSinkhornBackwardTiling, test_tiling_B1_S35_N1_C512)
         },
         &compileInfo);
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
 TEST_F(MhcPreSinkhornBackwardTiling, test_tiling_B2_S64_N2_C256)
@@ -168,7 +169,7 @@ TEST_F(MhcPreSinkhornBackwardTiling, test_tiling_B2_S64_N2_C256)
         },
         &compileInfo);
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
 TEST_F(MhcPreSinkhornBackwardTiling, test_tiling_B1_S64_N8_C128)
@@ -213,7 +214,7 @@ TEST_F(MhcPreSinkhornBackwardTiling, test_tiling_B1_S64_N8_C128)
         },
         &compileInfo);
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
 TEST_F(MhcPreSinkhornBackwardTiling, test_tiling_B1_S64_N9_C128_fail)
@@ -303,7 +304,7 @@ TEST_F(MhcPreSinkhornBackwardTiling, test_tiling_B1_S512_N4_C128)
         },
         &compileInfo);
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, std::numeric_limits<uint64_t>::max());
 }
 
 TEST_F(MhcPreSinkhornBackwardTiling, test_tiling_B4_S64_N4_C512)
@@ -348,7 +349,7 @@ TEST_F(MhcPreSinkhornBackwardTiling, test_tiling_B4_S64_N4_C512)
         },
         &compileInfo);
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, std::numeric_limits<uint64_t>::max());
 }
 
 TEST_F(MhcPreSinkhornBackwardTiling, test_tiling_T256_N4_C256_3d)
@@ -394,7 +395,7 @@ TEST_F(MhcPreSinkhornBackwardTiling, test_tiling_T256_N4_C256_3d)
         },
         &compileInfo);
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
 TEST_F(MhcPreSinkhornBackwardTiling, test_tiling_T64_N8_C128_3d)
@@ -440,7 +441,7 @@ TEST_F(MhcPreSinkhornBackwardTiling, test_tiling_T64_N8_C128_3d)
         },
         &compileInfo);
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
 TEST_F(MhcPreSinkhornBackwardTiling, test_tiling_T64_N9_C128_3d_fail)

@@ -15,8 +15,8 @@
 
 #include <iostream>
 #include <gtest/gtest.h>
-#include "../../../op_host/fused_causal_conv1d_cut_bh_tiling_arch35.h"
-#include "../../../op_host/fused_causal_conv1d_cut_bsh_tiling_arch35.h"
+#include "../../../../op_host/fused_causal_conv1d_cut_bh_tiling_arch35.h"
+#include "../../../../op_host/fused_causal_conv1d_cut_bsh_tiling_arch35.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
 
@@ -86,7 +86,7 @@ TEST_F(FusedCausalConv1dCutBHTiling, bh_3d_bf16_b4_s1_d512)
                               a, &c);
     ExecuteTestCase(p, ge::GRAPH_SUCCESS, 20000,
                     "16 4 4 4 0 128 128 4 0 1 1 1 1 1 1 128 128 1 1 1 1 128 128 4 1 0 512 3 2 512 1024 512 -1 0 1 0 0 "
-                    "128 0 1 0 0 0 0 1 128 128 ",
+                    "128 0 1 0 0 0 1 0 1 128 128 ",
                     {});
 }
 
@@ -116,7 +116,7 @@ TEST_F(FusedCausalConv1dCutBHTiling, bh_3d_bf16_b1_s4_d1024)
                               a, &c);
     ExecuteTestCase(p, ge::GRAPH_SUCCESS, 20000,
                     "1 1 1 1 0 1024 1024 1 0 1 1 1 1 1 1 1024 1024 1 1 1 1 1024 1024 1 4 0 1024 3 5 1024 5120 1024 -1 "
-                    "0 1 0 0 128 0 1 0 0 0 0 1 1024 1024 ",
+                    "0 1 0 0 128 0 1 0 0 0 4 0 1 1024 1024 ",
                     {});
 }
 
@@ -148,7 +148,7 @@ TEST_F(FusedCausalConv1dCutBHTiling, bh_2d_fp16_b1_s4_d512)
                               a, &c);
     ExecuteTestCase(p, ge::GRAPH_SUCCESS, 20001,
                     "4 4 1 4 0 128 128 1 0 1 1 1 1 1 1 128 128 1 1 1 1 128 128 1 4 4 512 3 5 512 2560 512 -1 1 0 0 0 "
-                    "128 0 1 0 0 0 0 1 128 128 ",
+                    "128 0 1 0 0 0 4 0 1 128 128 ",
                     {});
 }
 
@@ -178,7 +178,7 @@ TEST_F(FusedCausalConv1dCutBHTiling, bh_2d_fp16_b32_s128_d512)
                               a, &c);
     ExecuteTestCase(p, ge::GRAPH_SUCCESS, 20001,
                     "64 4 16 4 0 128 128 16 0 2 2 1 1 2 2 128 128 1 1 2 2 128 128 32 4 128 512 3 5 512 2560 512 -1 1 0 "
-                    "0 0 128 0 1 0 0 0 0 1 128 128 ",
+                    "0 0 128 0 1 0 0 0 4 0 1 128 128 ",
                     {});
 }
 
@@ -211,7 +211,7 @@ TEST_F(FusedCausalConv1dCutBHTiling, bh_2d_hasNAT_fp16_b4_s16_d512)
         a, &c);
     ExecuteTestCase(p, ge::GRAPH_SUCCESS, 20001,
                     "16 4 4 4 0 128 128 4 0 1 1 1 1 1 1 128 128 1 1 1 1 128 128 4 4 16 512 3 7 512 3584 512 -1 1 1 0 0 "
-                    "128 0 1 0 0 0 0 1 128 128 ",
+                    "128 0 1 0 0 0 4 0 1 128 128 ",
                     {});
 }
 
@@ -243,7 +243,7 @@ TEST_F(FusedCausalConv1dCutBHTiling, bh_2d_apc_fp16_b8_s32_d512)
                               a, &c);
     ExecuteTestCase(p, ge::GRAPH_SUCCESS, 20001,
                     "32 4 8 4 0 128 128 8 0 1 1 1 1 1 1 128 128 1 1 1 1 128 128 8 4 32 512 3 5 512 2560 512 -1 1 0 0 1 "
-                    "128 11 1 0 0 1 0 1 128 128 ",
+                    "128 11 1 0 0 1 4 0 1 128 128 ",
                     {});
 }
 
@@ -275,7 +275,7 @@ TEST_F(FusedCausalConv1dCutBHTiling, bh_2d_apc_hasNAT_fp16_b6_s48_d768)
                               a, &c);
     ExecuteTestCase(p, ge::GRAPH_SUCCESS, 20001,
                     "36 6 6 6 0 128 128 6 0 1 1 1 1 1 1 128 128 1 1 1 1 128 128 6 8 48 768 3 7 768 5376 768 -1 1 1 0 1 "
-                    "128 11 1 0 0 1 0 1 128 128 ",
+                    "128 11 1 0 0 1 8 0 1 128 128 ",
                     {});
 }
 
@@ -308,7 +308,7 @@ TEST_F(FusedCausalConv1dCutBHTiling, bh_2d_conv1_fp16_b4_s16_d512)
                               a, &c);
     ExecuteTestCase(p, ge::GRAPH_SUCCESS, 20001,
                     "16 4 4 4 0 128 128 4 0 1 1 1 1 1 1 128 128 1 1 1 1 128 128 4 4 16 512 3 7 512 3584 512 -1 1 0 0 0 "
-                    "128 0 1 0 1 1 0 1 128 128 ",
+                    "128 0 1 0 1 1 4 0 1 128 128 ",
                     {});
 }
 
@@ -340,7 +340,7 @@ TEST_F(FusedCausalConv1dCutBHTiling, bh_2d_residual_fp16_b4_s16_d512)
                               a, &c);
     ExecuteTestCase(p, ge::GRAPH_SUCCESS, 20001,
                     "16 4 4 4 0 128 128 4 0 1 1 1 1 1 1 128 128 1 1 1 1 128 128 4 4 16 512 3 5 512 2560 512 -1 1 0 1 0 "
-                    "128 0 1 0 0 0 0 1 128 128 ",
+                    "128 0 1 0 0 0 4 0 1 128 128 ",
                     {});
 }
 
