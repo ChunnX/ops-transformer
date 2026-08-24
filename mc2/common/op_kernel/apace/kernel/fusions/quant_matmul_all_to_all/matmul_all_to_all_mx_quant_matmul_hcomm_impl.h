@@ -45,11 +45,12 @@ struct QuantMatmulAllToAllPipelineContext {
 };
 
 /**
- * Apace-specific two-stage pipeline: Blaze matmul -> Hcomm AllToAll.
+ * Apace-specific pure-AIC pipeline: Blaze matmul -> Hcomm AllToAll.
  *
  * The legacy pipeline contains an AIV transpose stage between computation and
  * communication. The Apace matmul writes rank-major data directly, so this
- * pipeline only keeps the cross-core completion handshake before Hcomm reads GM.
+ * pipeline executes both stages on AIC. SyncAll<false>() waits for every Cube
+ * core to finish writing GM before AIC block 0 submits the Hcomm task.
  */
 template <typename ComputationType, typename CommunicationType, typename ContextType>
 class QuantMatmulAllToAllPipeline {
@@ -76,13 +77,7 @@ public:
         for (uint32_t index = 0; index < taskCnt; ++index) {
             if ASCEND_IS_AIC {
                 computeStage_->Process(index);
-                AscendC::CrossCoreSetFlag<0, PIPE_FIX>(8);
-                AscendC::CrossCoreWaitFlag(8);
-                AscendC::CrossCoreSetFlag<2, PIPE_FIX>(9);
-            }
-            if ASCEND_IS_AIV {
-                AscendC::CrossCoreWaitFlag(9);
-                AscendC::SyncAll<true>();
+                AscendC::SyncAll<false>();
                 commStage_->Process(index);
             }
         }

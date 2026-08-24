@@ -148,7 +148,7 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::InitTilingContextParameters()
     constexpr uint64_t APACE_IMPL_MAX_RANK_DIM = 8;
     usingApaceImpl_ = contextInfo.args_.rankDim <= APACE_IMPL_MAX_RANK_DIM;
     OP_LOGI(opName_, "MatmulAlltoAll MX implementation: %s, rankDim=%lu.",
-            usingApaceImpl_ ? "Apace" : "legacy", contextInfo.args_.rankDim);
+            usingApaceImpl_ ? "Apace(pure-AIC)" : "legacy", contextInfo.args_.rankDim);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -187,7 +187,7 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::GetWorkspaceSize()
     // buffer is required. The former equally-sized transpose buffer is removed.
     inferredInfo.permuteLen = 0;
     workspaces[0] = libApiWorkSpaceSize_ + inferredInfo.mmResultLen;
-    OP_LOGD(opName_, "Apace direct workspace size=%lu, mmResultLen=%lu, permuteLen=0.",
+    OP_LOGD(opName_, "Apace pure-AIC direct workspace size=%lu, mmResultLen=%lu, permuteLen=0.",
             workspaces[0], inferredInfo.mmResultLen);
     return ge::GRAPH_SUCCESS;
 }
@@ -1055,7 +1055,7 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoHcommMxQuantMMTiling()
                                     transB, hcommTilingData_.tailQbmmTilingData);
         }
     }
-    OP_LOGD(opName_, "Apace direct MX tiling: tileM=%lu tileCnt=%lu tailM=%lu tailCnt=%lu K=%lu fullN=%lu rankN=%lu.",
+    OP_LOGD(opName_, "Apace pure-AIC direct MX tiling: tileM=%lu tileCnt=%lu tailM=%lu tailCnt=%lu K=%lu fullN=%lu rankN=%lu.",
             inferredInfo.tileM, inferredInfo.tileCnt, inferredInfo.tailM, inferredInfo.tailCnt,
             contextInfo.args_.kValue, contextInfo.args_.nValue, rankN);
     return ge::GRAPH_SUCCESS;

@@ -108,7 +108,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
         DEFINE_APACE_CONTEXT_FOR_QUANT_MATMUL_ALL_TO_ALL_MX(MxComputationContextType);                               \
         DEFINE_APACE_COMPUTATION_FOR_QUANT_MATMUL_ALL_TO_ALL_MX(MxComputationType);                                  \
         MxComputationType matmulImplName(&pipe);                                                                       \
-        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, ServerType, MC2AlltoAllContext, hcommMatmulAllToAllTilingData,        \
+        DEFINE_MC2_HCCL_FOR_COMMUNICATION(true, ServerType, MC2AlltoAllContext, hcommMatmulAllToAllTilingData,         \
                                           MC2AlltoAllPrimitives, 1, 0, CommunicationType);                             \
         CommunicationType commImplName(&tilingData);                                                                   \
         using SchedulerContextType = Apace::QuantMatmulAllToAllPipelineContext<MxComputationContextType>;             \
@@ -130,6 +130,10 @@ __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
 {
     // kernel的使用类型，这里是cube和vic混用，cube是主核，cube:vec=1:2
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    // APACE MX keys run Blaze and Hcomm entirely on Cube cores. Other keys
+    // retain the legacy MIX_AIC task type because they still use AIV stages.
+    KERNEL_TASK_TYPE(1074, KERNEL_TYPE_AIC_ONLY); // CCU, usingApaceImpl = 1
+    KERNEL_TASK_TYPE(1586, KERNEL_TYPE_AIC_ONLY); // AICPU, usingApaceImpl = 1
     TPipe pipe;
     constexpr HcclServerType commServerType =
         (COMMMODE == COMMMODE_CCU) ? HcclServerType::HCCL_SERVER_TYPE_CCU : HcclServerType::HCCL_SERVER_TYPE_AICPU;
