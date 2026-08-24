@@ -284,7 +284,7 @@ static void PrintParams(const Config &cfg)
     printf("============================================================\n");
 }
 
-static void PrintMetadata(const optiling::detail::QliV2Metadata &meta,
+static void PrintMetadata(const optiling::detail::LiV2Metadata &meta,
                            uint32_t aicCoreNum, uint32_t aivCoreNum)
 {
     printf("\n");
@@ -397,7 +397,7 @@ int main(int argc, char *argv[])
                                     {static_cast<int64_t>(cfg.batchSize)});
     ctx.AddInput(tensorCmpRes);
 
-    // Output 0: metadata  shape [1024]
+    // Output 0: metadata  shape [LI_V2_METADATA_TOTAL_SIZE]
     auto tensorMeta = MakeTensor(metadataBuf.data(),
                                   {static_cast<int64_t>(optiling::LI_V2_METADATA_TOTAL_SIZE)});
     ctx.AddOutput(tensorMeta);
@@ -424,7 +424,7 @@ int main(int argc, char *argv[])
     // ==================================================================
     // Run the kernel
     // ==================================================================
-    QuantLightningIndexerV2MetadataCpuKernel kernel;
+    LightningIndexerV2MetadataCpuKernel kernel;
     uint32_t ret = kernel.Compute(ctx);
 
     if (ret != KERNEL_STATUS_OK) {
@@ -437,14 +437,14 @@ int main(int argc, char *argv[])
     // ==================================================================
     // Print output metadata
     // ==================================================================
-    const auto &meta = *static_cast<const optiling::detail::QliV2Metadata *>(
+    const auto &meta = *static_cast<const optiling::detail::LiV2Metadata *>(
         static_cast<const void *>(metadataBuf.data()));
     PrintMetadata(meta, cfg.aicCoreNum, cfg.aivCoreNum);
 
     // ==================================================================
     // Dump raw metadata to binary file (for Python integration)
     // Env var METADATA_OUTPUT specifies the output file path.
-    // Format: 1024 x int32_t, little-endian, 4096 bytes total.
+    // Format: LI_V2_METADATA_TOTAL_SIZE x int32_t, little-endian.
     // ==================================================================
     const char *metaOutPath = std::getenv("METADATA_OUTPUT");
     if (metaOutPath != nullptr && metaOutPath[0] != '\0') {
