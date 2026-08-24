@@ -194,7 +194,7 @@ TEST_F(BlockAttnResPrepareTilingTest, CubeTilingAllocatesMm1AndDoubleBufferedEWo
     EXPECT_EQ(tilingData->nAlign, 16U);
     EXPECT_EQ(tilingData->mm1NAlign, 16U);
     const uint64_t expectedWorkspaceElems =
-        static_cast<uint64_t>(tilingData->baseS) * tilingData->baseT * tilingData->totalN +
+        static_cast<uint64_t>(tilingData->baseS) * tilingData->mm1NAlign +
         2U * static_cast<uint64_t>(tilingData->sAlign) * tilingData->nAlign;
     EXPECT_EQ(tilingData->workspacePerCoreElems, expectedWorkspaceElems);
     EXPECT_EQ(tilingData->reduceUbElems, 64U);
@@ -210,6 +210,10 @@ TEST_F(BlockAttnResPrepareTilingTest, CubeTGroupingPreservesPerCoreTokenLoad)
     ASSERT_NE(tilingData, nullptr);
     EXPECT_EQ(tilingData->baseT, 1U);
     EXPECT_EQ(tilingData->totalWorkUnits, 32U);
+    const uint64_t expectedWorkspaceElems =
+        static_cast<uint64_t>(tilingData->baseS) * tilingData->mm1NAlign +
+        2U * static_cast<uint64_t>(tilingData->sAlign) * tilingData->nAlign;
+    EXPECT_EQ(tilingData->workspacePerCoreElems, expectedWorkspaceElems);
 }
 
 TEST_F(BlockAttnResPrepareTilingTest, CubeTilingFallsBackWhenTwoAivPeersAreUnavailable)
