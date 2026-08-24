@@ -49,6 +49,14 @@ __aicore__ constexpr uint64_t AlignUp32(uint64_t size)
     return (size + 31) >> 5 << 5; // 31 & 5 is Alignup 32
 }
 
+__aicore__ uint16_t GetRealDealSizeWrapper(uint16_t realSize) {
+    return GetRealDealSize(realSize);
+}
+
+__aicore__ uint64_t AlignUp32Wrapper(uint64_t size) {
+    return AlignUp32(size);
+}
+
 struct AntiquantTaskParamBaseAPI {
     uint32_t batchSize;
     uint32_t seqSize;
@@ -270,13 +278,13 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::LoadAnt
     if (taskParam.isKvCacheNz) {
         scaleOffset = taskParam.bIdx * taskParam.kvHeadNum * taskParam.seqSize * grpNum +
                       taskParam.n2Idx * taskParam.seqSize * grpNum + taskParam.s2Idx * taskParam.singleSInnerSize * 1 +
-                      taskParam.kvPaddingBeginOffset * 1 + subBlockIdx * GetRealDealSize(s2RealSize) * 1;
+                      taskParam.kvPaddingBeginOffset * 1 + subBlockIdx * GetRealDealSizeWrapper(s2RealSize) * 1;
         if constexpr (FLASH_DECODE) {
             scaleOffset += taskParam.flashDecodeS2Idx * taskParam.sInnerLoopSize * 1;
         }
 
         LocalTensor<Q_T> antiqScaleE8M0Ub = antiqScaleInputQue.template AllocTensor<Q_T>();
-        CopyAntiqScaleE8M0Nz(antiqScaleE8M0Ub, antiqScaleGm, scaleOffset / 2, AlignUp32(taskParam.copyTotalS), grpNum,
+        CopyAntiqScaleE8M0Nz(antiqScaleE8M0Ub, antiqScaleGm, scaleOffset / 2, AlignUp32Wrapper(taskParam.copyTotalS), grpNum,
                              taskParam.seqSize);
         antiqScaleInputQue.template EnQue(antiqScaleE8M0Ub);
         antiqScaleE8M0Ub = antiqScaleInputQue.DeQue<Q_T>();
@@ -292,20 +300,20 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::LoadAnt
                               taskParam.n2Idx * taskParam.antiqSeqSize * grpNum +
                               taskParam.s2Idx * taskParam.singleSInnerSize * grpNum +
                               taskParam.kvPaddingBeginOffset * grpNum +
-                              subBlockIdx * GetRealDealSize(s2RealSize) * grpNum;
+                              subBlockIdx * GetRealDealSizeWrapper(s2RealSize) * grpNum;
             } else {
                 scaleOffset =
                     taskParam.bIdx * taskParam.kvHeadNum * taskParam.antiqSeqSize * grpNum +
                     taskParam.n2Idx * taskParam.antiqSeqSize * grpNum +
                     (taskParam.s2Idx * taskParam.singleSInnerSize + (taskParam.antiqSeqSize - taskParam.seqSize)) *
                         grpNum +
-                    taskParam.kvPaddingBeginOffset * grpNum + subBlockIdx * GetRealDealSize(s2RealSize) * grpNum;
+                    taskParam.kvPaddingBeginOffset * grpNum + subBlockIdx * GetRealDealSizeWrapper(s2RealSize) * grpNum;
             }
         } else {
             scaleOffset = taskParam.bIdx * taskParam.kvHeadNum * taskParam.seqSize * grpNum +
                           taskParam.n2Idx * taskParam.seqSize * grpNum +
                           taskParam.s2Idx * taskParam.singleSInnerSize * grpNum +
-                          taskParam.kvPaddingBeginOffset * grpNum + subBlockIdx * GetRealDealSize(s2RealSize) * grpNum;
+                          taskParam.kvPaddingBeginOffset * grpNum + subBlockIdx * GetRealDealSizeWrapper(s2RealSize) * grpNum;
         }
         if constexpr (FLASH_DECODE) {
             scaleOffset += taskParam.flashDecodeS2Idx * taskParam.sInnerLoopSize * grpNum;
@@ -342,31 +350,31 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::LoadAnt
             if (taskParam.isPrefixLoop) {
                 scaleOffset = taskParam.bIdx * taskParam.kvHeadNum * taskParam.antiqSeqSize +
                               taskParam.n2Idx * taskParam.antiqSeqSize + taskParam.s2Idx * taskParam.singleSInnerSize +
-                              taskParam.kvPaddingBeginOffset + subBlockIdx * GetRealDealSize(s2RealSize);
+                              taskParam.kvPaddingBeginOffset + subBlockIdx * GetRealDealSizeWrapper(s2RealSize);
             } else {
                 scaleOffset = taskParam.bIdx * taskParam.kvHeadNum * taskParam.antiqSeqSize +
                               taskParam.n2Idx * taskParam.antiqSeqSize + taskParam.s2Idx * taskParam.singleSInnerSize +
                               (taskParam.antiqSeqSize - taskParam.seqSize) + taskParam.kvPaddingBeginOffset +
-                              subBlockIdx * GetRealDealSize(s2RealSize);
+                              subBlockIdx * GetRealDealSizeWrapper(s2RealSize);
             }
         } else {
             scaleOffset = taskParam.bIdx * taskParam.kvHeadNum * taskParam.seqSize +
                           taskParam.n2Idx * taskParam.seqSize + taskParam.s2Idx * taskParam.singleSInnerSize +
-                          taskParam.kvPaddingBeginOffset + subBlockIdx * GetRealDealSize(s2RealSize);
+                          taskParam.kvPaddingBeginOffset + subBlockIdx * GetRealDealSizeWrapper(s2RealSize);
         }
     } else {
         if constexpr (enableKVPrefix) {
             if (taskParam.isPrefixLoop) {
                 scaleOffset = taskParam.bIdx * taskParam.antiqSeqSize + taskParam.s2Idx * taskParam.singleSInnerSize +
-                              taskParam.kvPaddingBeginOffset + subBlockIdx * GetRealDealSize(s2RealSize);
+                              taskParam.kvPaddingBeginOffset + subBlockIdx * GetRealDealSizeWrapper(s2RealSize);
             } else {
                 scaleOffset = taskParam.bIdx * taskParam.antiqSeqSize + taskParam.s2Idx * taskParam.singleSInnerSize +
                               (taskParam.antiqSeqSize - taskParam.seqSize) + taskParam.kvPaddingBeginOffset +
-                              subBlockIdx * GetRealDealSize(s2RealSize);
+                              subBlockIdx * GetRealDealSizeWrapper(s2RealSize);
             }
         } else {
             scaleOffset = taskParam.bIdx * taskParam.antiqSeqSize + taskParam.s2Idx * taskParam.singleSInnerSize +
-                          taskParam.kvPaddingBeginOffset + subBlockIdx * GetRealDealSize(s2RealSize);
+                          taskParam.kvPaddingBeginOffset + subBlockIdx * GetRealDealSizeWrapper(s2RealSize);
         }
     }
     if constexpr (FLASH_DECODE) {
@@ -714,7 +722,7 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAnt
     } else {
         subBlockIdx = 1;
     }
-    uint64_t outOffset = subBlockIdx * GetRealDealSize(s2RealSize) * 16 + copyLoopIdx * taskParam.copySplitS * 16;
+    uint64_t outOffset = subBlockIdx * GetRealDealSizeWrapper(s2RealSize) * 16 + copyLoopIdx * taskParam.copySplitS * 16;
 
     struct DataCopyParams dataCopyParams;
     dataCopyParams.blockCount = taskParam.headDimAlignBlock / elementTypeSize;
