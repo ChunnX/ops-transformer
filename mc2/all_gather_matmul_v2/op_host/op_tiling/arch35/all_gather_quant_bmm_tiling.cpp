@@ -530,8 +530,6 @@ ge::graphStatus AllGatherQuantBmmTiling::DoOpTiling()
     MC2_CHECK_LOG_RET(opName_, CheckHCCLSize());
     MC2_CHECK_LOG_RET(opName_, CheckInput());
     SetTilingKeyParams();
-    OP_TILING_CHECK(SetMc2Hcomm() != ge::GRAPH_SUCCESS, OP_LOGE(opName_, "Tiling SetHcommCfg failed."),
-                    return ge::GRAPH_FAILED);
     SetRcsTilingData(MutableRCSTilingDataA5());
     DoSplitMTiling(MutableRCSTilingDataA5());
     if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
@@ -539,6 +537,8 @@ ge::graphStatus AllGatherQuantBmmTiling::DoOpTiling()
     }
     DoAllGatherTiling(MutableRCSTilingDataA5(), MutableTCubeTileTilingData(), MutableTCubeTailTilingData(),
                       allGatherMatmulTilingDataFp8_->debugMode, allGatherMatmulTilingDataFp8_->dataType);
+    OP_TILING_CHECK(SetMc2Hcomm() != ge::GRAPH_SUCCESS, OP_LOGE(opName_, "Tiling SetHcommCfg failed."),
+                    return ge::GRAPH_FAILED);
     if (isMxScene_) {
         MC2_CHECK_LOG_RET(opName_, DoApaceMatmulTiling());
     } else {
@@ -722,6 +722,7 @@ ge::graphStatus AllGatherQuantBmmTiling::PostTiling()
         SetHcommTilingInfo();
         hcommTilingData_.mc2InitTiling = allGatherMatmulTilingDataFp8_->mc2InitTiling;
         hcommTilingData_.mc2CcTiling = allGatherMatmulTilingDataFp8_->mc2CcTiling;
+        hcommTilingData_.gatherLen = MutableRCSTilingDataA5().gatherLen;
         Apace::hcommAllGatherMatmulTilingData *outTilingData =
             context_->GetTilingData<Apace::hcommAllGatherMatmulTilingData>();
         OP_TILING_CHECK(outTilingData == nullptr, OP_LOGE(opName_, "Fail to get hcomm tiling data from context"),

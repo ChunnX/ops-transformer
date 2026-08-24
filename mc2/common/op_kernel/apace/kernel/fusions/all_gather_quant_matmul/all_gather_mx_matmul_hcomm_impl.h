@@ -99,7 +99,7 @@ public:
     {}
 
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR cGM,
-                                GM_ADDR workspaceGM);
+                                GM_ADDR gatherOut, GM_ADDR workspaceGM);
     __aicore__ inline void Run();
 
     using QuantMatmulKernelImpl = AllGatherQbmmMxKernel<AType, BType, CType, HcommCommWaitPolicy<ServerType>>;
@@ -181,7 +181,8 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
 
 template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType, bool IsMxFp4>
 __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, ServerType, IsMxFp4>::Init(
-    GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR cGM, GM_ADDR workspaceGM)
+    GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR cGM, GM_ADDR gatherOut,
+    GM_ADDR workspaceGM)
 {
     aGM_ = aGM;
     aScaleGM_ = aScaleGM;
@@ -194,15 +195,20 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
 
     // HCCL initialization
     commState_.hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
-    commState_.hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(Apace::hcommAllGatherMatmulTilingData, mc2CcTiling)));
+    commState_.hccl_.SetCcTilingV2(
+        static_cast<uint64_t>(offsetof(Apace::hcommAllGatherMatmulTilingData, mc2CcTiling)));
     rankId_ = commState_.hccl_.GetRankId();
     rankSize_ = commState_.hccl_.GetRankDim();
 
-    // Gather buffer layout: scale 段在前，data 段在后（rank-major）
+    // Gather buffer: scale 始终用 workspace; data 用 gatherOut（当可用）或 workspace
     scaleRegionBytes_ = static_cast<uint64_t>(rankSize_) * m_ * scaleBytesPerMRow_;
     dataRegionBytes_ = static_cast<uint64_t>(rankSize_) * m_ * dataBytesPerMRow_;
     gatherScaleAddr_ = workspaceGM_;
-    gatherDataAddr_ = workspaceGM_ + scaleRegionBytes_;
+    if (tilingData_->gatherLen == 0 && gatherOut != 0) {
+        gatherDataAddr_ = gatherOut;
+    } else {
+        gatherDataAddr_ = workspaceGM_ + scaleRegionBytes_;
+    }
 
     // Submit AllGather (non-blocking <true>)
     CommitAllGather();

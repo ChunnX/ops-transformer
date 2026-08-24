@@ -49,5 +49,6 @@ struct hcommAllGatherMatmulTilingData {
     Mc2CcTiling mc2CcTiling;           // HCCL CC task 配置
     CommTilingData commTile;           // AllGather 切分参数（splitAxis=M_per_rank, nonSplitAxis=K）
     QuantMatmulTilingData mmTile;      // Matmul tiling 参数
+    uint64_t gatherLen;                // 0: gather_out 输出可用，通信写入 gatherOut; >0: 用 workspace
 };
 } // namespace Apace
