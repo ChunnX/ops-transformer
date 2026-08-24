@@ -175,7 +175,8 @@ public:
              * 但当前FD处理的这部分s2是无效的。为规避潜在的风险，只要带mask(constInfo.isExistRowInvalid)
              * 就认为可能存在无效行
              */
-            bool isExistRowInvalid = FLASH_DECODE ? HAS_MASK : constInfo.isExistRowInvalid;
+            bool isExistRowInvalid =
+                FLASH_DECODE ? (HAS_MASK || constInfo.isExistRowInvalid) : constInfo.isExistRowInvalid;
             if (!isExistRowInvalid) {
                 return false;
             }
