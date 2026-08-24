@@ -16,8 +16,8 @@
 #pragma once
 
 #include "blaze/gemm/block/block_mmad_matmul_basic.h"
-#include "blaze/gemm/block/block_scheduler_gmm_no_quant.h"
-#include "blaze/gemm/kernel/kernel_grouped_matmul_no_quant.h"
+#include "blaze/gemm/block/block_scheduler_grouped_matmul.h"
+#include "blaze/gemm/kernel/kernel_grouped_matmul.h"
 #include "grouped_matmul_add_tiling_data.h"
 
 namespace GroupedMatmulAdd {
