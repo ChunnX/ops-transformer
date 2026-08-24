@@ -2,9 +2,10 @@
 
 本目录用于运行 QuantBlockSparseAttn 的 MXFP8 full-quant golden/NPU 对比用例。
 
-Golden 将“存在稀疏 KV 位置”和“已建立数值 softmax 状态”分开处理：若某行的所有合法 QK score
-均为 `-Inf`，则与 kernel 一致保留 `attention_out=0`、`lse=EMPTY_LSE`；由 `NaN` 或 `+Inf`
-触发的有效 softmax 行仍传播 `NaN`。为了兼容旧版算子和已生成的 golden，MXFP8 的
+Golden 与 kernel 使用相同的 softmax max 状态机：max 初始化为 `-FLT_MAX`，最终仍等于该哨兵值
+即表示 softmax 从未启动，不再使用 sum 或额外的 `any_valid` 状态二次判断。若某行的所有合法 QK
+score 均为 `-Inf`，则保留 `attention_out=0`、`lse=EMPTY_LSE`；由 `NaN` 或 `+Inf` 触发的有效
+softmax 行仍传播 `NaN`。为了兼容旧版算子和已生成的 golden，MXFP8 的
 `EMPTY_LSE` 使用 FP32 `-FLT_MAX`（`-3.4028235e+38`）；该语义同时适用于单 tile
 和多 tile 的最终归一化。
 

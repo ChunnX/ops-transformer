@@ -1642,15 +1642,14 @@ def _exp_sub(lhs, rhs, use_quant_matmul):
     return torch.exp(lhs_fp32 - rhs_fp32)
 
 
-def _softmax_row_is_active(local_max, has_valid_position):
-    """Match the VF state transition for rows whose valid scores are all -Inf.
+def _softmax_row_is_active(local_max):
+    """Match the VF's finite-sentinel softmax state transition.
 
     The VF reduces each row from the finite ``-FLT_MAX`` sentinel.  Therefore
-    an all-``-Inf`` row cannot update the maximum and its probabilities remain
-    zero.  NaN is deliberately *not* filtered here: once a valid row produces
-    NaN (for example ``+Inf - +Inf``), the kernel propagates that NaN.
+    that exact max value means the row has never started. NaN is deliberately
+    active because ``NaN != -FLT_MAX`` in the kernel and must keep propagating.
     """
-    return has_valid_position & ~torch.isneginf(local_max)
+    return local_max != EMPTY_LSE
 
 
 def _npu_mxfp8_pv_matmul_impl(p_fp8, v_fp8, p_scale, v_scale):
@@ -1986,8 +1985,6 @@ def cpu_mxfp8_golden(
     softmax_lse = torch.full((total_q, n1), EMPTY_LSE, dtype=torch.float32)
 
     qb_max = math.ceil(max(q_lengths) / SPARSE_BLOCK_SIZE)
-    neg_inf = float("-inf")
-
     logger.info(
         "[CPU Golden] reference sparse flow: layout_q=%s, OUT=TND, LSE=TN", layout_q
     )
@@ -2034,11 +2031,11 @@ def cpu_mxfp8_golden(
                     head_idx,
                 )
 
-                m_run = torch.full((nq,), neg_inf, dtype=torch.float32)
+                # Kernel softmax max is initialized to the finite -FLT_MAX
+                # sentinel, so golden uses the exact same state representation.
+                m_run = torch.full((nq,), EMPTY_LSE, dtype=torch.float32)
                 l_run = torch.zeros((nq,), dtype=torch.float32)
                 acc = torch.zeros((nq, head_dim), dtype=torch.float32)
-                any_position_valid = torch.zeros((nq,), dtype=torch.bool)
-                any_softmax_active = torch.zeros((nq,), dtype=torch.bool)
 
                 for task_chunks in all_task_chunks:
                     positions = [pos for chunk in task_chunks for pos in chunk]
@@ -2067,7 +2064,6 @@ def cpu_mxfp8_golden(
                     valid_mask = _valid_mask_for_positions(
                         q_indices, positions, q_len, kv_len
                     )
-                    any_position_valid |= valid_mask.any(dim=-1)
                     scores = _qk_matmul(
                         q_block,
                         q_scale_block,
@@ -2101,19 +2097,23 @@ def cpu_mxfp8_golden(
                             subloop_start, subloop_end = chunk_offsets[subloop_idx]
                             s_subloop = scores[:, subloop_start:subloop_end]
                             vm_subloop = valid_mask[:, subloop_start:subloop_end]
-                            subloop_has = vm_subloop.any(dim=-1)
 
                             masked_scores = torch.where(
                                 vm_subloop,
                                 s_subloop,
-                                torch.full_like(s_subloop, neg_inf),
+                                torch.full_like(s_subloop, EMPTY_LSE),
                             )
                             # VF order: score max -> softmax scale -> ceil to
                             # an ln2 multiple -> merge with the online max.
                             local_max = masked_scores.max(dim=-1).values
-                            subloop_active = _softmax_row_is_active(
-                                local_max, subloop_has
+                            # The VF reduction starts from -FLT_MAX. In
+                            # particular, a valid -Inf or exact -FLT_MAX score
+                            # cannot move the max away from the empty sentinel.
+                            local_max = torch.maximum(
+                                local_max,
+                                torch.full_like(local_max, EMPTY_LSE),
                             )
+                            subloop_active = _softmax_row_is_active(local_max)
                             local_max = _align_up_to_ln2(local_max, use_quant_matmul)
                             # CUDA fused attention treats a finite negative score
                             # whose ln2-aligned max overflows to -Inf like an empty
@@ -2121,7 +2121,7 @@ def cpu_mxfp8_golden(
                             # active and propagates NaN through sum=0/max=+Inf.
                             subloop_active &= ~torch.isneginf(local_max)
                             round_active |= subloop_active
-                            subloop_started = m_subloop != neg_inf
+                            subloop_started = _softmax_row_is_active(m_subloop)
                             m_candidate = torch.where(
                                 subloop_started,
                                 torch.maximum(m_subloop, local_max),
@@ -2157,7 +2157,7 @@ def cpu_mxfp8_golden(
                             )
 
                         m_new = m_subloop
-                        run_started = m_before_round != neg_inf
+                        run_started = _softmax_row_is_active(m_before_round)
                         history_rescale = _exp_sub(
                             m_before_round, m_new, use_quant_matmul
                         )
@@ -2189,16 +2189,11 @@ def cpu_mxfp8_golden(
                         acc = acc * history_rescale.view(nq, 1) + pv
                         l_run = l_run * history_rescale + round_sum
                         m_run = torch.where(round_active, m_new, m_run)
-                        any_softmax_active |= round_active
 
-                # 稀疏位置有效与 softmax 数值状态有效需要分别判断。仅包含 -Inf
-                # score 的行保留兼容空输出（0 / -FLT_MAX LSE）；softmax 已生效
-                # 且包含 NaN 的行继续传播 NaN，与已有 00011 行为保持一致。
-                # Golden 的未启动 max 状态使用 -Inf 表示 kernel 的
-                # -FLT_MAX sentinel。只有 max 未启动且 sum==0 才是空行；
-                # max=+Inf/sum=0 必须保持 active，以传播 CUDA 的 NaN。
-                row_empty = torch.isneginf(m_run) & (l_run == 0)
-                row_active = any_position_valid & any_softmax_active & ~row_empty
+                # Kernel 与 golden 都只用最终 max 状态判断空行。sum 仍用于
+                # 归一化和 log(sum)，但不参与有效性判断；因此 +Inf/NaN max
+                # 即使伴随 sum=0 也保持 active，并自然传播非有限结果。
+                row_active = _softmax_row_is_active(m_run)
                 safe_l = torch.where(row_active, l_run, torch.ones_like(l_run))
                 attn = acc / safe_l.view(nq, 1)
                 lse = torch.log(safe_l) + m_run
