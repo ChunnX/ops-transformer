@@ -158,6 +158,7 @@ private:
     uint32_t hAlignSize_{0}; // UB对齐后的hidden size
     uint64_t combineStateWinOffset_{0};
     uint64_t combineDataWinOffset_{0};
+    uint64_t payloadStashWinOffset_{0};
 
     uint32_t hWeightAlignSize_{0}; // token+weight对齐后的hidden size
     uint32_t XTypeAlign32Size_{0};
@@ -193,6 +194,7 @@ private:
     uint64_t hcommHandle_[Mc2Aclnn::HCCL_MAX_RANK_SIZE];
     GM_ADDR combineSendDataWorkspaceAddr_{nullptr};
     GM_ADDR flagWorkspaceAddr_{nullptr};
+    GM_ADDR payloadStashWinAddr_{nullptr};
     GM_ADDR rankCountWorkspaceAddr_{nullptr};
     GM_ADDR perCoreRankCountWorkspaceAddr_{nullptr};
     uint64_t perCoreRankCountStride_{0};
@@ -255,6 +257,8 @@ MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR context, GM_ADDR x, GM_
 
     combineStateWinOffset_ = tilingData->combineStateWinOffset;
     combineDataWinOffset_ = tilingData->combineDataWinOffset;
+    payloadStashWinOffset_ = tilingData->payloadStashWinOffset;
+    payloadStashWinAddr_ = GetUrmaWinAddrByRankId(rankId_, payloadStashWinOffset_);
 
     xGm_.SetGlobalBuffer((__gm__ XType *)x);
     recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t *)recvSrcMetadata);
@@ -438,6 +442,11 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressT
                 SendSlot(tokenIndex, srcRank, srcTokenIdx, srcTopKIdx, 0U, weight);
                 continue;
             }
+            // Stage remote payloads in the local registered HCCL window. The destination layout and
+            // transmitted byte count stay unchanged; this isolates the cost of reading Hcomm sources
+            // directly from xGm versus from a communication-window stash.
+            SendLocalToken(tokenIndex,
+                           payloadStashWinAddr_ + static_cast<uint64_t>(tokenIndex) * hAlignSize_);
             uint32_t countOffset = static_cast<uint32_t>(srcRank) * rankCountBlockElements;
             uint32_t localIndex = static_cast<uint32_t>(rankCounts.GetValue(countOffset));
             uint32_t entryOffset = (static_cast<uint32_t>(srcRank) * entriesPerRank + localIndex) * entryElements;
@@ -591,7 +600,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendSlot(
 
     if (srcRank != static_cast<int32_t>(rankId_)) {
         uint64_t commHandle = GetCommHandle(srcRank, channelIndex);
-        GM_ADDR tokenAddr = (GM_ADDR)xGm_.GetPhyAddr(tokenIndex * axisH_);
+        GM_ADDR tokenAddr = payloadStashWinAddr_ + static_cast<uint64_t>(tokenIndex) * hAlignSize_;
         PrepareWrite<DEFAULT_WQE_CONFIG>(
             commHandle, winRankAddr_[srcRank], remoteRankWinAddr + sendTokenOffset, tokenAddr,
             axisH_ * sizeof(XType));

@@ -39,6 +39,7 @@ struct MoeEpCombineInfo {
     uint64_t sendDataWorkspaceSizePerRank = 0; // N * K * actual perSlotBytes
     uint64_t combineStateWinOffset = 0;
     uint64_t combineDataWinOffset = 0;
+    uint64_t payloadStashWinOffset = 0;
 };
 
 struct MoeEpCombineTilingData {
