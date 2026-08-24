@@ -10,7 +10,7 @@
 
 /*!
  * \file quant_batch_matmul_mx_kernel.h
- * \brief MatmulAllToAll MX 场景 matmul 内核
+ * \brief MatmulAllToAll MX 专用kernel: 逐rank遍历x2的N列, 输出rank-major
  */
 
 #pragma once
@@ -77,7 +77,6 @@ public:
       BIAS_DISABLED = 0,
       BIAS_ENABLED = 1
     };
-    uint32_t batchCount;
     uint32_t baseM;
     uint32_t baseN;
     uint32_t baseK;
@@ -87,18 +86,13 @@ public:
   };
 
   struct LocalParams {
-    uint32_t rankId;
-    uint32_t rankSize;
-    uint64_t origM;
-    uint32_t selfBatchIdx;
-    GM_ADDR cGmSelfAddr;
-    bool skipSelfBatch;
-    uint64_t fullN;    // 完整N(totalN),用于layoutB
-    uint64_t rankDim;  // rank数量,用于逐rank遍历N
+    uint64_t fullN;    // totalN, 用于layoutB
+    uint64_t rankDim;  // rank数量
+    uint64_t origM;    // 完整M(axisM), 用于C的rank偏移
   };
 
   struct Params {
-    ProblemShape problemShape;
+    ProblemShape problemShape;  // M=tileM, N=perRankN, K, batch=1
     BlockMmadParams mmadParams;
     L1Params l1Params;
     BlockSchedulerParams schParams;
@@ -106,248 +100,87 @@ public:
     LocalParams localParams;
   };
 
-  __aicore__ inline void Init(const Params &params);
-  __aicore__ inline void InitMmad(const Params &params);
-  __aicore__ inline void Run(const Params &params);
-  __aicore__ inline void operator()(const Params &params) { Run(params); }
+  __aicore__ inline void InitMmad(const Params &params) {
+    if ASCEND_IS_AIV { return; }
+    isBias_ = (params.qbmmParams.isBias == QBMMTiling::BIAS_ENABLED);
+    BlockShape l0TileShape{params.qbmmParams.baseM, params.qbmmParams.baseN, params.qbmmParams.baseK, 0};
+    mmadOp_.Init(params.problemShape, l0TileShape, params.l1Params, isBias_,
+                 params.qbmmParams.dbL0c > 1);
+  }
+
+  __aicore__ inline void operator()(const Params &params) {
+    if ASCEND_IS_AIV { return; }
+
+    int64_t M = Te::Get<MNK_M>(params.problemShape);   // tileM
+    int64_t rankN = Te::Get<MNK_N>(params.problemShape); // perRankN
+    int64_t K = Te::Get<MNK_K>(params.problemShape);
+    int64_t fullN = static_cast<int64_t>(params.localParams.fullN);
+    uint64_t rankDim = params.localParams.rankDim;
+    uint64_t origM = params.localParams.origM;
+    if (rankDim == 0 || fullN != rankN * static_cast<int64_t>(rankDim)) { return; }
+
+    int64_t scaleKLen = Blaze::Gemm::CeilDiv(K, static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+
+    auto layoutA = MakeLayoutA{}(M, K);
+    auto layoutScaleA = MakeLayoutScaleA{}(M, scaleKLen);
+    auto layoutB = MakeLayoutB{}(K, fullN);
+    auto layoutScaleB = MakeLayoutScaleB{}(scaleKLen, fullN);
+    auto layoutBias = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, fullN);
+    auto layoutC = MakeLayoutC{}(M, rankN);
+
+    __gm__ AType *aAddr = reinterpret_cast<__gm__ AType *>(params.mmadParams.aGmAddr);
+    __gm__ BType *bAddr = reinterpret_cast<__gm__ BType *>(params.mmadParams.bGmAddr);
+    __gm__ CType *cAddr = reinterpret_cast<__gm__ CType *>(params.mmadParams.cGmAddr);
+    __gm__ BiasType *biasAddr = isBias_ ? reinterpret_cast<__gm__ BiasType *>(params.mmadParams.biasGmAddr) : nullptr;
+    __gm__ TypeScaleA *scaleAAddr = reinterpret_cast<__gm__ TypeScaleA *>(params.mmadParams.scaleAGmAddr);
+    __gm__ TypeScaleB *scaleBAddr = reinterpret_cast<__gm__ TypeScaleB *>(params.mmadParams.scaleBGmAddr);
+
+    auto gmA = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(aAddr), layoutA);
+    auto gmScaleA = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(scaleAAddr), layoutScaleA);
+    auto gmB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(bAddr), layoutB);
+    auto gmScaleB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(scaleBAddr), layoutScaleB);
+    auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(biasAddr), layoutBias);
+
+    for (uint32_t rankIdx = 0; rankIdx < rankDim; ++rankIdx) {
+      // C输出rank-major: cAddr + rankIdx * origM * rankN
+      __gm__ CType *rankCAddr = cAddr + static_cast<uint64_t>(rankIdx) * origM * static_cast<uint64_t>(rankN);
+      auto gmC = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(rankCAddr), layoutC);
+
+      // 本rank在x2中的N偏移
+      int64_t fullNPos = static_cast<int64_t>(rankIdx) * rankN;
+
+      BlockScheduler bs(params.problemShape, params.schParams);
+      BlockCoord blockIdx;
+      int64_t mPos = 0L, nPos = 0L;
+      constexpr int64_t kPos = 0L;
+
+      while (bs.GetTileIdx(blockIdx)) {
+        BlockShape singleShape =
+          bs.template GetBlockShape<QuantMode::MX_PERGROUP_MODE, QuantMode::MX_PERGROUP_MODE, weightNz>(blockIdx);
+        if (Te::Get<IDX_M_TILEIDX>(singleShape) <= 0 || Te::Get<IDX_N_TILEIDX>(singleShape) <= 0) { return; }
+
+        bs.GetTileCoord(blockIdx, mPos, nPos);
+        auto gmBlockA = gmA.Slice(Te::MakeCoord(mPos, kPos),
+          Te::MakeShape(Te::Get<IDX_M_TILEIDX>(singleShape), K));
+        auto gmBlockScaleA = gmScaleA.Slice(Te::MakeCoord(mPos, kPos),
+          Te::MakeShape(Te::Get<IDX_M_TILEIDX>(singleShape), scaleKLen));
+        auto gmBlockB = gmB.Slice(Te::MakeCoord(kPos, fullNPos + nPos),
+          Te::MakeShape(K, Te::Get<IDX_N_TILEIDX>(singleShape)));
+        auto gmBlockScaleB = gmScaleB.Slice(Te::MakeCoord(kPos, fullNPos + nPos),
+          Te::MakeShape(scaleKLen, Te::Get<IDX_N_TILEIDX>(singleShape)));
+        auto gmBlockBias = gmBias.Slice(Te::MakeCoord(0L, fullNPos + nPos),
+          Te::MakeShape(1L, Te::Get<IDX_N_TILEIDX>(singleShape)));
+        auto gmBlockC = gmC.Slice(Te::MakeCoord(mPos, nPos),
+          Te::MakeShape(Te::Get<IDX_M_TILEIDX>(singleShape), Te::Get<IDX_N_TILEIDX>(singleShape)));
+        mmadOp_(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBlockBias, gmBlockC, singleShape);
+      }
+    }
+  }
 
 private:
-  __aicore__ inline void ResetGmAddr(const Params &params);
-  __aicore__ inline void ProcessSingleBatch(const Params &params, BlockScheduler &bs,
-                         uint64_t restBatch, bool isTailRound,
-                         uint32_t rankIdx, int64_t rankN, int64_t fullN, int64_t scaleKLen);
-
-  template <typename TensorB, typename TensorScaleB, typename TensorC>
-  __aicore__ inline void SetL2Cache(
-    const ProblemShape &problemShape, uint64_t curBaseM, uint64_t baseN, uint64_t scaleKL1,
-    TensorB &gmB, TensorScaleB &gmScaleB, TensorC &gmC);
-
-  template <typename TensorScaleB>
-  __aicore__ inline void SetScaleL2Cache(
-    const ProblemShape &problemShape, uint64_t baseN, uint64_t scaleKL1, TensorScaleB &gmScaleB);
-
   BlockMmad mmadOp_;
-
-  __gm__ AType *aGmAddr_{};
-  __gm__ BType *bGmAddr_{};
-  __gm__ CType *cGmAddr_{};
-  __gm__ CType *cGmSelfAddr_{};
-  __gm__ BiasType *biasGmAddr_{};
-  __gm__ TypeScaleA *scaleAGmAddr_{};
-  __gm__ TypeScaleB *scaleBGmAddr_{};
-
   bool isBias_{false};
-  bool needUpdateTail_{false};
-  bool disableCL2Cache_{false};
 };
-
-QBMM_MX_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void QuantBatchMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Init(const Params &params)
-{
-  if ASCEND_IS_AIV {
-    return;
-  }
-  isBias_ = (params.qbmmParams.isBias == QBMMTiling::BIAS_ENABLED);
-  disableCL2Cache_ = params.qbmmParams.disableCL2Cache;
-  needUpdateTail_ = false;
-  ResetGmAddr(params);
-}
-
-QBMM_MX_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void QuantBatchMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::InitMmad(const Params &params)
-{
-  if ASCEND_IS_AIV {
-    return;
-  }
-  BlockShape l0TileShape{params.qbmmParams.baseM, params.qbmmParams.baseN, params.qbmmParams.baseK, 0};
-  bool enableL0CPingPong = (params.qbmmParams.dbL0c > 1);
-  mmadOp_.Init(params.problemShape, l0TileShape, params.l1Params, isBias_, enableL0CPingPong);
-}
-
-QBMM_MX_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void QuantBatchMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Run(const Params &params)
-{
-  Init(params);
-
-  BlockScheduler bs(params.problemShape, params.schParams);
-
-  int64_t rankN = Te::Get<MNK_N>(params.problemShape);  // perRankN
-  int64_t K = Te::Get<MNK_K>(params.problemShape);
-  int64_t fullN = static_cast<int64_t>(params.localParams.fullN);  // totalN
-  uint32_t rankDim = static_cast<uint32_t>(params.localParams.rankDim);
-  if (rankDim == 0 || fullN != rankN * static_cast<int64_t>(rankDim)) {
-    return;
-  }
-  constexpr uint64_t sizeShift = IsFp4<AType>() ? 1 : 0;
-  int64_t scaleKLen =
-    Blaze::Gemm::CeilDiv(K, static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
-
-  uint64_t singleBatchTileCnt = bs.GetTotalCnt();
-  uint64_t tailRoundStart =
-    (singleBatchTileCnt * rankDim / AscendC::GetBlockNum()) * AscendC::GetBlockNum();
-
-  for (uint32_t rankIdx = 0; rankIdx < rankDim; ++rankIdx) {
-    uint64_t curBatch = static_cast<uint64_t>(rankIdx) + 1;
-    bool isTailRound = curBatch * singleBatchTileCnt > tailRoundStart;
-    uint64_t restBatch = rankDim - curBatch;
-
-    ResetGmAddr(params);
-    // x2按N切分: bGmAddr偏移到本rank的perRankN列起始位置
-    // layoutB用fullN, gmBlockB.Slice时nPos偏移 rankIdx*rankN+nPos
-    // 这里不偏移bGmAddr_,在ProcessSingleBatch中通过fullNPos偏移
-
-    // C输出: rank-major布局,每个rank的结果写到 cGmAddr + rankIdx * origM * rankN
-    cGmAddr_ += static_cast<uint64_t>(rankIdx) * params.localParams.origM * static_cast<uint64_t>(rankN);
-
-    ProcessSingleBatch(params, bs, restBatch, isTailRound, rankIdx, rankN, fullN, scaleKLen);
-  }
-}
-
-QBMM_MX_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void QuantBatchMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::ResetGmAddr(const Params &params)
-{
-  if ASCEND_IS_AIV {
-    return;
-  }
-  aGmAddr_ = reinterpret_cast<__gm__ AType *>(params.mmadParams.aGmAddr);
-  bGmAddr_ = reinterpret_cast<__gm__ BType *>(params.mmadParams.bGmAddr);
-  cGmAddr_ = reinterpret_cast<__gm__ CType *>(params.mmadParams.cGmAddr);
-  cGmSelfAddr_ = reinterpret_cast<__gm__ CType *>(params.localParams.cGmSelfAddr);
-  scaleAGmAddr_ = reinterpret_cast<__gm__ TypeScaleA *>(params.mmadParams.scaleAGmAddr);
-  scaleBGmAddr_ = reinterpret_cast<__gm__ TypeScaleB *>(params.mmadParams.scaleBGmAddr);
-  if (isBias_) {
-    biasGmAddr_ = reinterpret_cast<__gm__ BiasType *>(params.mmadParams.biasGmAddr);
-  }
-}
-
-QBMM_MX_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void QuantBatchMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::ProcessSingleBatch(
-  const Params &params, BlockScheduler &bs, uint64_t restBatch, bool isTailRound,
-  uint32_t rankIdx, int64_t rankN, int64_t fullN, int64_t scaleKLen)
-{
-  // layoutB用fullN(totalN), layoutC用rankN(perRankN)
-  auto layoutA = MakeLayoutA{}(Te::Get<MNK_M>(params.problemShape), Te::Get<MNK_K>(params.problemShape));
-  auto layoutScaleA = MakeLayoutScaleA{}(Te::Get<MNK_M>(params.problemShape), scaleKLen);
-  auto layoutB = MakeLayoutB{}(Te::Get<MNK_K>(params.problemShape), fullN);
-  auto layoutScaleB = MakeLayoutScaleB{}(scaleKLen, fullN);
-  auto layoutBias = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, fullN);
-  auto layoutC = MakeLayoutC{}(Te::Get<MNK_M>(params.problemShape), rankN);
-
-  auto gmA = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(aGmAddr_), layoutA);
-  auto gmScaleA = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(scaleAGmAddr_), layoutScaleA);
-  auto gmB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(bGmAddr_), layoutB);
-  auto gmScaleB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(scaleBGmAddr_), layoutScaleB);
-  auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(biasGmAddr_), layoutBias);
-  auto gmC = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(cGmAddr_), layoutC);
-
-  auto& mTailTile = params.schParams.mTailTile;
-  auto& nTailTile = params.schParams.nTailTile;
-  if (needUpdateTail_ ||
-    (isTailRound && ((bs.GetEndBlockIdx() + 1) + (restBatch * bs.GetTotalCnt())) * mTailTile * nTailTile <=
-              AscendC::GetBlockNum())) {
-    needUpdateTail_ = true;
-    bs.UpdateTailTile(mTailTile, nTailTile);
-  }
-  SetL2Cache(
-    params.problemShape, params.qbmmParams.baseM, params.qbmmParams.baseN, params.l1Params.scaleKL1, gmB, gmScaleB,
-    gmC);
-
-  // 本rank在x2中的N偏移起始位置
-  int64_t fullNPos = static_cast<int64_t>(rankIdx) * rankN;
-
-  BlockCoord blockIdx;
-  int64_t mPos = 0L;
-  int64_t nPos = 0L;
-  constexpr int64_t kPos = 0L;
-  while (bs.GetTileIdx(blockIdx)) {
-    BlockShape singleShape =
-      bs.template GetBlockShape<QuantMode::MX_PERGROUP_MODE, QuantMode::MX_PERGROUP_MODE, weightNz>(blockIdx);
-    if (Te::Get<IDX_M_TILEIDX>(singleShape) <= 0 || Te::Get<IDX_N_TILEIDX>(singleShape) <= 0) {
-      return;
-    }
-
-    bs.GetTileCoord(blockIdx, mPos, nPos);
-    auto gmBlockA = gmA.Slice(
-      Te::MakeCoord(mPos, kPos),
-      Te::MakeShape(Te::Get<IDX_M_TILEIDX>(singleShape), Te::Get<MNK_K>(params.problemShape)));
-    auto gmBlockScaleA =
-      gmScaleA.Slice(Te::MakeCoord(mPos, kPos), Te::MakeShape(Te::Get<IDX_M_TILEIDX>(singleShape), scaleKLen));
-    // x2按N切分: 从fullNPos+nPos位置切出perRankN列
-    auto gmBlockB = gmB.Slice(
-      Te::MakeCoord(kPos, fullNPos + nPos),
-      Te::MakeShape(Te::Get<MNK_K>(params.problemShape), Te::Get<IDX_N_TILEIDX>(singleShape)));
-    auto gmBlockScaleB =
-      gmScaleB.Slice(Te::MakeCoord(kPos, fullNPos + nPos), Te::MakeShape(scaleKLen, Te::Get<IDX_N_TILEIDX>(singleShape)));
-    auto gmBlockBias =
-      gmBias.Slice(Te::MakeCoord(0L, fullNPos + nPos), Te::MakeShape(1L, Te::Get<IDX_N_TILEIDX>(singleShape)));
-    // C输出rank-major: nPos在perRankN范围内
-    auto gmBlockC = gmC.Slice(
-      Te::MakeCoord(mPos, nPos),
-      Te::MakeShape(Te::Get<IDX_M_TILEIDX>(singleShape), Te::Get<IDX_N_TILEIDX>(singleShape)));
-    mmadOp_(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBlockBias, gmBlockC, singleShape);
-  }
-  bs.UpdateNextBatchBlockRoundParams();
-}
-
-QBMM_MX_KERNEL_CLASS_TEM_PARAMS
-template <typename TensorScaleB>
-__aicore__ inline void QuantBatchMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::SetScaleL2Cache(
-  const ProblemShape &problemShape, uint64_t baseN, uint64_t scaleKL1, TensorScaleB &gmScaleB)
-{
-  if (Te::Get<MNK_B>(problemShape) != 1) {
-    return;
-  }
-  if constexpr (transB) {
-    const int64_t scaleKRowBytes =
-      Blaze::Gemm::CeilDiv(Te::Get<MNK_K>(problemShape), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
-      MXFP_MULTI_BASE_SIZE;
-    const int64_t scaleKL1RowBytes = Blaze::Gemm::CeilDiv(scaleKL1, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
-    const bool scaleAlignForL2Stream = (scaleKRowBytes & kCacheLineAlignMask) == 0 &&
-      (scaleKL1RowBytes & kCacheLineAlignMask) == 0;
-    gmScaleB.SetL2CacheHint(
-      scaleAlignForL2Stream ? Te::CacheMode::CACHE_MODE_DISABLE : Te::CacheMode::CACHE_MODE_NORMAL);
-  } else {
-    const int64_t scaleNStrideBytes = Te::Get<MNK_N>(problemShape) * MXFP_MULTI_BASE_SIZE;
-    const int64_t scaleBaseNStrideBytes = baseN * MXFP_MULTI_BASE_SIZE;
-    const bool scaleAlignForL2Stream = (scaleNStrideBytes & kCacheLineAlignMask) == 0 &&
-      (scaleBaseNStrideBytes & kCacheLineAlignMask) == 0;
-    gmScaleB.SetL2CacheHint(
-      scaleAlignForL2Stream ? Te::CacheMode::CACHE_MODE_DISABLE : Te::CacheMode::CACHE_MODE_NORMAL);
-  }
-}
-
-QBMM_MX_KERNEL_CLASS_TEM_PARAMS
-template <typename TensorB, typename TensorScaleB, typename TensorC>
-__aicore__ inline void QuantBatchMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::SetL2Cache(
-  const ProblemShape &problemShape, uint64_t curBaseM, uint64_t baseN, uint64_t scaleKL1, TensorB &gmB,
-  TensorScaleB &gmScaleB, TensorC &gmC)
-{
-  if (disableCL2Cache_) {
-    gmC.SetL2CacheHint(Te::CacheMode::CACHE_MODE_DISABLE);
-  }
-
-  const bool fullMTile = curBaseM >= Te::Get<MNK_M>(problemShape);
-  if (!fullMTile) {
-    return;
-  }
-
-  SetScaleL2Cache(problemShape, baseN, scaleKL1, gmScaleB);
-
-  if constexpr (weightNz) {
-    gmB.SetL2CacheHint(Te::CacheMode::CACHE_MODE_DISABLE);
-  } else {
-    if constexpr (transB) {
-      bool bAlignForL2Stream = (Te::Get<MNK_K>(problemShape) & kCacheLineAlignMask) == 0;
-      gmB.SetL2CacheHint(
-        bAlignForL2Stream ? Te::CacheMode::CACHE_MODE_DISABLE : Te::CacheMode::CACHE_MODE_NORMAL);
-    } else {
-      bool bAlignForL2Stream =
-        (Te::Get<MNK_N>(problemShape) & kCacheLineAlignMask) == 0 && (baseN & kCacheLineAlignMask) == 0;
-      gmB.SetL2CacheHint(
-        bAlignForL2Stream ? Te::CacheMode::CACHE_MODE_DISABLE : Te::CacheMode::CACHE_MODE_NORMAL);
-    }
-  }
-}
 
 } // namespace Kernel
 } // namespace Gemm

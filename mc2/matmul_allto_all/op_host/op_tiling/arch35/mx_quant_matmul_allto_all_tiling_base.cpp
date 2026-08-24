@@ -1035,7 +1035,7 @@ void MxQuantMatmulAllToAllTilingBase::SetHcommTilingInfo(CommTilingData &tilingI
     tilingInfo.splitAxisTileCnt = inferredInfo.tileCnt;
     tilingInfo.splitAxisTailSize = inferredInfo.tailM;
     tilingInfo.splitAxisTailCnt = inferredInfo.tailCnt;
-    tilingInfo.nonSplitAxisSize = contextInfo.args_.nValue;
+    tilingInfo.nonSplitAxisSize = contextInfo.args_.nValue / contextInfo.args_.rankDim;
 }
 
 /**
