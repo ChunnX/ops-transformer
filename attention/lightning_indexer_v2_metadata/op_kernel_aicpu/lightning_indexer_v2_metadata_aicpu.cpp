@@ -205,8 +205,11 @@ int32_t LightningIndexerV2MetadataCpuKernel::GetQueryBatchSize()
 ValidSocVersion LightningIndexerV2MetadataCpuKernel::ProcessSocVersion()
 {
     const std::string ascend950 = "Ascend950";
+    const std::string ascend910_96 = "Ascend910_96";  // A6: 待确认实际soc字符串
     if (socVersion_.find(ascend950) != std::string::npos) {
         return ValidSocVersion::ASCEND950;
+    } else if (socVersion_.find(ascend910_96) != std::string::npos) {
+        return ValidSocVersion::ASCEND910_96;
     } else {
         return ValidSocVersion::ASCEND910B;
     }
@@ -233,6 +236,11 @@ bool LightningIndexerV2MetadataCpuKernel::ParamsInit()
         if (groupSize_ > 32 || topk_ > 2048) {
             s1BaseSize_ = 2;
         }
+        mBaseSize_ = s1BaseSize_ * groupSize_;
+        s2BaseSize_ = 128U;
+    } else if (validSocVersion == ValidSocVersion::ASCEND910_96) {
+        // A6: s1BaseSize始终为4，不做SMALL拆分
+        s1BaseSize_ = 4;
         mBaseSize_ = s1BaseSize_ * groupSize_;
         s2BaseSize_ = 128U;
     } else {

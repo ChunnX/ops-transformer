@@ -18,6 +18,11 @@
 #include "kernel_operator.h"
 #include "common/lightning_indexer_v2_vector1_base.h"
 
+// A6 宏占位：待确认A6的__CCE_AICORE__值后替换为实际值
+#ifndef isA6
+#define isA6 0
+#endif
+
 namespace liV2Vector1 {
 
 __aicore__ inline void UIntToFloatReturnValue(const LocalTensor<float> &out_,
@@ -198,10 +203,12 @@ __simd_callee__ inline void ReduceSum2LoopBody(AscendC::MicroAPI::RegTensor<floa
         BroadcastLane(regwBrc[0], regW[0], i);
         BroadcastLane(regwBrc[1], brcWeight_, i);
 
+#ifndef isA6
         AscendC::MicroAPI::Relu(regQK0[0], regQK0[0], maskAllB32);
         AscendC::MicroAPI::Relu(regQK0[1], regQK0[1], maskAllB32);
         AscendC::MicroAPI::Relu(regQK1[0], regQK1[0], maskAllB32);
         AscendC::MicroAPI::Relu(regQK1[1], regQK1[1], maskAllB32);
+#endif
 
         AscendC::MicroAPI::MulAddDst(regSum0[0], regQK0[0], regwBrc[0], maskAllB32);
         AscendC::MicroAPI::MulAddDst(regSum0[1], regQK0[1], regwBrc[0], maskAllB32);
@@ -322,34 +329,44 @@ __simd_vf__ inline void MulWeightAndReduceSum(__ubuf__ uint32_t* out_,
 
 template<typename QK_T, typename W_T, typename SCORE_T>
 __aicore__ inline void BatchMulWeightAndReduceSum(const LocalTensor<SCORE_T> &out_, // out [S2Base] [128 ]
-                                              uint32_t outStride,
-                                              const LocalTensor<QK_T> &qk_, // q*k^t [G, S2Base] [64 128]
-                                              uint32_t qkVLStride,
-                                              uint32_t qkStride,
-                                              const LocalTensor<W_T> &weight_, // w [G] [64 ]
-                                              uint32_t weightStride,
-                                              const int gSize, // G 64
-                                              const int row)
+                                               uint32_t outStride,
+                                               const LocalTensor<QK_T> &qk_, // q*k^t [G, S2Base] [64 128]
+                                               uint32_t qkVLStride,
+                                               uint32_t qkStride,
+                                               const LocalTensor<W_T> &weight_, // w [G] [64 ]
+                                               uint32_t weightStride,
+                                               const int gSize, // G 64
+                                               const int batch)
 {
-    // 暂只支持这两种情况, 后续改成循环
-    if (row != 2 && row != 1) {
+    if (batch < 1) {
         return;
     }
     auto weight = (__ubuf__ W_T *)weight_.GetPhyAddr();
     auto qk = (__ubuf__ QK_T *)qk_.GetPhyAddr();
     auto out = (__ubuf__ SCORE_T *)out_.GetPhyAddr();
 
-    if (row == 2) {
-        auto weight1 = weight + weightStride;
-        auto qk1 = qk + qkStride;
-        auto out1 = out + outStride;
+    // 偶数行：每次处理2行
+    int pairCount = batch / 2;
+    for (int p = 0; p < pairCount; p++) {
+        auto curOut = out + p * 2 * outStride;
+        auto curOut1 = curOut + outStride;
+        auto curQk = qk + p * 2 * qkStride;
+        auto curQk1 = curQk + qkStride;
+        auto curWeight = weight + p * 2 * weightStride;
+        auto curWeight1 = curWeight + weightStride;
 
-        MulWeightAndReduceSum2(out, out1, outStride,
-                            qk, qk1, qkVLStride, qkStride,
-                            weight, weight1, weightStride,
+        MulWeightAndReduceSum2(curOut, curOut1, outStride,
+                            curQk, curQk1, qkVLStride, qkStride,
+                            curWeight, curWeight1, weightStride,
                             gSize);
-    } else {
-        MulWeightAndReduceSum(out, qk, qkVLStride, weight, gSize);
+    }
+
+    // 奇数行：最后一行用 S1=1 处理
+    if (batch % 2 != 0) {
+        auto lastOut = out + (batch - 1) * outStride;
+        auto lastQk = qk + (batch - 1) * qkStride;
+        auto lastWeight = weight + (batch - 1) * weightStride;
+        MulWeightAndReduceSum(lastOut, lastQk, qkVLStride, lastWeight, gSize);
     }
 }
 }

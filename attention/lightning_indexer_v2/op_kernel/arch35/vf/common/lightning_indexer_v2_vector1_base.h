@@ -17,6 +17,11 @@
 
 #include "basic_api/kernel_basic_intf.h"
 
+// A6 宏占位：待确认A6的__CCE_AICORE__值后替换为实际值
+#ifndef isA6
+#define isA6 0
+#endif
+
 namespace liV2Vector1 {
 template <typename T>
 struct UIntSortTraits;
@@ -226,7 +231,12 @@ __simd_callee__ inline void DuplicateZero(AscendC::MicroAPI::RegTensor<T> (&regA
     }
 }
 
+// A6: relu在cube随路做(fixpipe reluEn)，vec1不做relu; A5: relu在vec1做
+#ifdef isA6
+template <typename T, size_t N, bool ApplyRelu = false>
+#else
 template <typename T, size_t N, bool ApplyRelu = true>
+#endif
 __simd_callee__ inline void WeightedAccum(AscendC::MicroAPI::RegTensor<T> (&accum)[N],
                                           AscendC::MicroAPI::RegTensor<T> (&input)[N],
                                           AscendC::MicroAPI::RegTensor<T> &weight, AscendC::MicroAPI::MaskReg &mask)

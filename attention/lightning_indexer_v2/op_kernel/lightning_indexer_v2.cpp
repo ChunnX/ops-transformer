@@ -16,7 +16,15 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "lightning_indexer_v2_template_tiling_key.h"
-#if (__CCE_AICORE__ == 310)
+
+// A6 宏占位：待确认A6的__CCE_AICORE__值后替换为实际值
+#ifndef isA6
+#define isA6 0
+#endif
+
+#if isA6
+    #include "arch920r1/lightning_indexer_v2_kernel_arch920r1.h"
+#elif (__CCE_AICORE__ == 310)
     #include "arch35/lightning_indexer_v2_kernel_arch35.h"
 #else
     #include "arch22/lightning_indexer_v2_kernel_arch22.h"
@@ -46,7 +54,11 @@ __global__ __aicore__ void lightning_indexer_v2(__gm__ uint8_t *q, __gm__ uint8_
 {
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
+#if isA6
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
+#else
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+#endif
 
     if (ORIG_DTYPE_Q == DT_BF16) {
         INVOKE_LI_NO_KFC_OP_IMPL(LightningIndexerV2Kernel, bfloat16_t, bfloat16_t, int32_t, float, uint32_t,

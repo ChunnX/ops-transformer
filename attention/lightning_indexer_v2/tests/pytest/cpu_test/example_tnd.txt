@@ -1,0 +1,21 @@
+# TND layout example with 4 batches
+soc_version   = Ascend950
+num_heads_q   = 16
+num_heads_k   = 2
+head_dim      = 128
+topk          = 16
+
+batch_size    = 4
+max_seqlen_q  = 64
+max_seqlen_k  = 2048
+layout_q      = TND
+layout_k      = TND
+mask_mode     = 0
+cmp_ratio     = 1
+quant_mode    = 0
+
+seqused_q = [64, 128, 32, 96]
+seqused_k = [2048, 4096, 1024, 3072]
+
+# cu_seqlens auto-computed from seqused if omitted
+# cmp_residual_k defaults to zeros if omitted

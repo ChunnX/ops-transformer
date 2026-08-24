@@ -14,6 +14,19 @@
  */
 #ifndef LIGHTNING_INDEXER_V2_COMMON_ARCH35_H
 #define LIGHTNING_INDEXER_V2_COMMON_ARCH35_H
+
+// A6 宏占位：待确认A6的__CCE_AICORE__值后替换为实际值
+#ifndef isA6
+#define isA6 0
+#endif
+
+// CVRATIO: A6(1:1)=1, A5(1:2)=2
+#ifdef isA6
+    #define CVRATIO 1
+#else
+    #define CVRATIO 2
+#endif
+
 using namespace AscendC;
 namespace LIV2Common {
 
