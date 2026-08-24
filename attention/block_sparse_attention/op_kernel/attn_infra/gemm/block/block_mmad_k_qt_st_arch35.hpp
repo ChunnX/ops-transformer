@@ -227,7 +227,12 @@ public:
         auto l1QLayoutTla = tla::MakeLayout<ElementQ, LayoutTagL1B>(embed, qSTile);
         auto l1QTensorTla = tla::MakeTensor(l1QTensor[0], l1QLayoutTla, Arch::PositionL1{});
 
-        uint32_t mL1LoopNum = CeilDiv(kSTile, l1ATileM);
+        // Actual loop counts control work, while base-tile counts keep L1/L0 stage
+        // counters at a fixed stride when the last 512-row KV tile is short.
+        uint32_t mL1LoopNumAct = CeilDiv(kSTile, l1ATileM);
+        uint32_t mL1LoopNumBase = CeilDiv(kvSBaseTile, l1ATileM);
+        uint32_t mL0LoopNumPerL1Tile = CeilDiv(l1ATileM, L0_TILE_M);
+        uint32_t mL0LoopNumBase = CeilDiv(kvSBaseTile, L0_TILE_M);
         uint32_t nL0LoopNum = CeilDiv(qSTile, L0_TILE_N);
         uint32_t kL0LoopNum = CeilDiv(embed, L0_TILE_K);
 
@@ -236,9 +241,10 @@ public:
         // which means a column in l0C cannot be chunked and processed by dualMode FixPipe seperately.
         // therefore, FixPipe won't launch until each portion(chunked only by columns, based on nbuffer strategy)
         // of the base tile is ready on l0C
-        for (uint32_t mL1Itr = 0; mL1Itr < mL1LoopNum; mL1Itr++) {
-            uint32_t l1TileMAct = (mL1Itr == mL1LoopNum - 1) ? (kSTile - mL1Itr * l1ATileM) : l1ATileM;
-            uint32_t mLoopCounterL1 = GetCurLoopCounter(gatheredKvSTileIdx, mL1LoopNum, mL1Itr);
+        for (uint32_t mL1Itr = 0; mL1Itr < mL1LoopNumAct; mL1Itr++) {
+            uint32_t l1TileMAct =
+                (mL1Itr == mL1LoopNumAct - 1) ? (kSTile - mL1Itr * l1ATileM) : l1ATileM;
+            uint32_t mLoopCounterL1 = GetCurLoopCounter(gatheredKvSTileIdx, mL1LoopNumBase, mL1Itr);
             uint32_t l1KBufId = mLoopCounterL1 % l1KBufNum;
             uint32_t l1AEventId = l1KBufId + 1;
             auto l1KLayoutTla = tla::MakeLayout<ElementK, LayoutTagL1A>(l1TileMAct, embed);
@@ -252,9 +258,9 @@ public:
             uint32_t mL0LoopNum = CeilDiv(l1TileMAct, L0_TILE_M);
             for (uint32_t mL0Itr = 0; mL0Itr < mL0LoopNum; mL0Itr++) {
                 uint32_t l0TileMAct = (mL0Itr == mL0LoopNum - 1) ? (l1TileMAct - mL0Itr * L0_TILE_M) : L0_TILE_M;
-                uint32_t mLoopCounterL0 = GetCurLoopCounter(mL1Itr, mL0LoopNum, mL0Itr);
+                uint32_t mLoopCounterL0 = GetCurLoopCounter(mL1Itr, mL0LoopNumPerL1Tile, mL0Itr);
                 // l0C nbuffer chunked only in m loop
-                uint32_t l0CLoopCounter = GetCurLoopCounter(mLoopCounterL1, mL0LoopNum, mL0Itr);
+                uint32_t l0CLoopCounter = GetCurLoopCounter(gatheredKvSTileIdx, mL0LoopNumBase, mLoopCounterL0);
                 uint32_t l0CBufId = l0CLoopCounter % L0_STAGES;
                 uint32_t l0CEventId = l0CBufId;
                 auto l0CLayoutTla = tla::MakeLayoutL0C(l0TileMAct, qSTile);
@@ -315,25 +321,27 @@ public:
                             l0TileNAct,
                             l0TileKAct,
                             initMmad);
-                        if (l1ToL0BNoRepeatFlag && (mL1Itr == mL1LoopNum - 1) && (mL0Itr == mL0LoopNum - 1)) {
+                        if (l1ToL0BNoRepeatFlag && (mL1Itr == mL1LoopNumAct - 1) &&
+                            (mL0Itr == mL0LoopNum - 1)) {
                             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
                         }
                         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
                     }
                 }
                 // fixpipe
-                if (mL0Itr == 0) {
+                if (mL1Itr == 0 && mL0Itr == 0) {
                     // reverse crossCoreSync, do fixPipe only after ubSTensor is fully released
                     WaitCrossCoreSync<4, PIPE_FIX>(mm1ToSmFlag);
                 }
                 AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
                 AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
 
+                uint32_t mGlobalOffset = mL1Itr * l1ATileM + mL0Itr * L0_TILE_M;
                 if constexpr (MIXED_PRECISION_SOFTMAX) {
                     uint32_t mFixPAligned16 = RoundUp(l0TileMAct, 16);
                     uint32_t nFixPAligned = FULL_QUANT_FP8 ? RoundUp(qSTile, 64) : RoundUp(qSTile, 32);
                     uint32_t nPerSubCore = nFixPAligned / 2;
-                    auto ubSTensorTlaTile = GetTile(ubSTensor, tla::MakeCoord(mL0Itr * L0_TILE_M, 0),
+                    auto ubSTensorTlaTile = GetTile(ubSTensor, tla::MakeCoord(mGlobalOffset, 0),
                                                     tla::MakeShape(mFixPAligned16, nPerSubCore));
                     auto l0CTensorTlaTileSub0 =
                         GetTile(l0CTensorTla, tla::MakeCoord(0, 0), tla::MakeShape(l0TileMAct, nPerSubCore));
@@ -353,7 +361,7 @@ public:
                     uint32_t nFixPAligned8 = RoundUp(qSTile, 8);
                     if constexpr (FULL_QUANT_FP8) {
                         uint32_t nPerSubCore = nFixPAligned8 / 2;
-                        auto ubSTensorTlaTile = GetTile(ubSTensor, tla::MakeCoord(mL0Itr * L0_TILE_M, 0),
+                        auto ubSTensorTlaTile = GetTile(ubSTensor, tla::MakeCoord(mGlobalOffset, 0),
                                                         tla::MakeShape(mFixPAligned8, nPerSubCore));
                         auto l0CTensorTlaTileSub0 =
                             GetTile(l0CTensorTla, tla::MakeCoord(0, 0), tla::MakeShape(l0TileMAct, nPerSubCore));
@@ -364,7 +372,7 @@ public:
                         copyL0CToDstSub0(ubSTensorTlaTile, l0CTensorTlaTileSub0, deqScalar, false);
                         copyL0CToDstSub1(ubSTensorTlaTile, l0CTensorTlaTileSub1, deqScalar, true);
                     } else {
-                        auto ubSTensorTlaTile = GetTile(ubSTensor, tla::MakeCoord(mL0Itr * L0_TILE_M, 0),
+                        auto ubSTensorTlaTile = GetTile(ubSTensor, tla::MakeCoord(mGlobalOffset, 0),
                                                         tla::MakeShape(mFixPAligned8, nFixPAligned8));
                         CopyL0CToDst copyL0CToDst;
                         copyL0CToDst(ubSTensorTlaTile, l0CTensorTla);
