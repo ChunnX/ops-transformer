@@ -31,7 +31,7 @@
 #include "apace/basic/fragment_tensor/fragment_tensor_api.h"
 #include "apace/tiling/quant_matmul_tiling_data.h"
 
-namespace AllGatherQuantMatmulImpl {
+namespace Apace {
 
 using namespace AscendC;
 
@@ -589,4 +589,4 @@ AllGatherQbmmMxKernel<AType, BType, CType>::ResolveTileCtx(
     return ctx;
 }
 
-} // namespace AllGatherQuantMatmulImpl
+} // namespace Apace

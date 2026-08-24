@@ -56,7 +56,7 @@ __aicore__ inline void AllGatherQuantMatmulUbmemKernelImpl(GM_ADDR hcclContext, 
     using BlockEpilogue = Block::BlockEpilogueEmpty;
     using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
 
-    using Impl = Apace::AllGatherQuantMatmulImpl<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
+    using Impl = Apace::AllGatherQuantMatmulUbmemImpl<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
     using KernelImpl = typename Impl::KernelImpl;
 
     __gm__ QuantMatmulTilingData *tilingData = (__gm__ QuantMatmulTilingData *)tilingGM;

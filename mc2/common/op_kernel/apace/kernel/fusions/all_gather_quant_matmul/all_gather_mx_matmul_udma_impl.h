@@ -26,7 +26,7 @@
 #include "apace/tiling/comm_tiling_data.h"
 #include "include/tensor_api/tensor.h"
 
-namespace AllGatherQuantMatmulImpl {
+namespace Apace {
 
 using namespace AscendC;
 using namespace Apace::AivComm;
@@ -266,7 +266,7 @@ __aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::AllGather
          static_cast<uint64_t>(CacheLine::ENTIRE_DATA_CACHE), static_cast<uint64_t>(DcciDst::CACHELINE_OUT));
 }
 
-} // namespace AllGatherQuantMatmulImpl
+} // namespace Apace
 
 __global__ __aicore__ void AllGatherQuantMatmulKernel(
     __gm__ Apace::AivComm::CommContext *hcommCtx,
@@ -275,7 +275,7 @@ __global__ __aicore__ void AllGatherQuantMatmulKernel(
     AllGatherMxMatmulUdmaTilingData tilingData)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
-    AllGatherQuantMatmulImpl::AllGatherMxMatmulUdmaImpl<
+    Apace::AllGatherMxMatmulUdmaImpl<
         fp8_e4m3fn_t, fp8_e4m3fn_t, bfloat16_t>
         impl;
     impl.Init(hcommCtx, aGM, aScaleGM, bGM, bScaleGM, cGM, &tilingData);
