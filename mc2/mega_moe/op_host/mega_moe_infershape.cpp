@@ -32,6 +32,7 @@ static constexpr size_t DISPATCH_FFN_COMBINE_INPUT_TOPK_WEIGHTS_INDEX = 3;
 
 static constexpr size_t DISPATCH_FFN_COMBINE_OUTPUT_Y_INDEX = 0;
 static constexpr size_t DISPATCH_FFN_COMBINE_OUTPUT_EXPERT_TOKEN_NUMS_INDEX = 1;
+static constexpr size_t DISPATCH_FFN_COMBINE_OUTPUT_ACTIVATION_DEBUG_INDEX = 2;
 
 static constexpr size_t DISPATCH_FFN_COMBINE_ATTR_MOE_EXPERT_NUM_INDEX = 0;
 static constexpr size_t DISPATCH_FFN_COMBINE_ATTR_EP_WORLD_SIZE_INDEX = 1;
@@ -42,6 +43,7 @@ static constexpr size_t DISPATCH_FFN_COMBINE_ATTR_DISPATCH_QUANT_OUT_DTYPE_INDEX
 static constexpr size_t DISPATCH_FFN_COMBINE_ATTR_COMBINE_QUANT_MODE_INDEX = 6;
 static constexpr size_t DISPATCH_FFN_COMBINE_ATTR_COMM_ALG_INDEX = 7;
 static constexpr size_t DISPATCH_FFN_COMBINE_ATTR_GLOBAL_BS_INDEX = 8;
+static constexpr size_t DISPATCH_FFN_COMBINE_ATTR_ACTIVATION_DEBUG_SIZE_INDEX = 19;
 
 static ge::graphStatus InferShapeMegaMoe(gert::InferShapeContext *context)
 {
@@ -58,6 +60,8 @@ static ge::graphStatus InferShapeMegaMoe(gert::InferShapeContext *context)
 
     gert::Shape *expertTokenNumsShape = context->GetOutputShape(DISPATCH_FFN_COMBINE_OUTPUT_EXPERT_TOKEN_NUMS_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, expertTokenNumsShape);
+    gert::Shape *activationDebugShape = context->GetOutputShape(DISPATCH_FFN_COMBINE_OUTPUT_ACTIVATION_DEBUG_INDEX);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, activationDebugShape);
 
     const auto attrs = context->GetAttrs();
     OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
@@ -67,6 +71,9 @@ static ge::graphStatus InferShapeMegaMoe(gert::InferShapeContext *context)
 
     const auto epWorldSize = attrs->GetAttrPointer<int64_t>(DISPATCH_FFN_COMBINE_ATTR_EP_WORLD_SIZE_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, epWorldSize);
+    const auto activationDebugSize =
+        attrs->GetAttrPointer<int64_t>(DISPATCH_FFN_COMBINE_ATTR_ACTIVATION_DEBUG_SIZE_INDEX);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, activationDebugSize);
 
     OP_CHECK_IF(*epWorldSize <= 0,
                 OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "ep_world_size", std::to_string(*epWorldSize).c_str(),
@@ -82,6 +89,8 @@ static ge::graphStatus InferShapeMegaMoe(gert::InferShapeContext *context)
 
     expertTokenNumsShape->SetDimNum(DIM_ONE);
     expertTokenNumsShape->SetDim(0U, *moeExpertNum / *epWorldSize);
+    activationDebugShape->SetDimNum(DIM_ONE);
+    activationDebugShape->SetDim(0U, *activationDebugSize);
 
     OP_LOGD(context->GetNodeName(), "y shape is [%ld, %ld] after infershape.", bs, h);
     OP_LOGD(context->GetNodeName(), "End to do InferShapeMegaMoe.");
@@ -95,6 +104,7 @@ static ge::graphStatus InferDataTypeMegaMoe(gert::InferDataTypeContext *context)
     auto xDtype = context->GetInputDataType(DISPATCH_FFN_COMBINE_INPUT_X_INDEX);
     context->SetOutputDataType(DISPATCH_FFN_COMBINE_OUTPUT_Y_INDEX, xDtype);
     context->SetOutputDataType(DISPATCH_FFN_COMBINE_OUTPUT_EXPERT_TOKEN_NUMS_INDEX, ge::DT_INT32);
+    context->SetOutputDataType(DISPATCH_FFN_COMBINE_OUTPUT_ACTIVATION_DEBUG_INDEX, ge::DT_BF16);
 
     OP_LOGD(context->GetNodeName(), "End to do InferDataTypeMegaMoe.");
     return ge::GRAPH_SUCCESS;
