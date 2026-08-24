@@ -623,7 +623,7 @@ void FiaTilingNonQuantMlaArch35::SetFATilingData()
 
     tilingData_.baseTiling.fiaAttenMaskParams.preTokens = fiaInfo_->preToken;
     tilingData_.baseTiling.fiaAttenMaskParams.nextTokens = fiaInfo_->nextToken;
-    tilingData_.baseTiling.fiaAttenMaskParams.isRowInvalidOpen = (fiaInfo_->innerPrecise >> 1) & 1;
+    tilingData_.baseTiling.fiaAttenMaskParams.isRowInvalidOpen = 1;
     tilingData_.baseTiling.fiaAttenMaskParams.isExistRowInvalid = fiaInfo_->isExistRowInvalid;
 
     tilingData_.baseTiling.fiaPseParams.pseS1Size = fiaInfo_->pseShiftS1;
