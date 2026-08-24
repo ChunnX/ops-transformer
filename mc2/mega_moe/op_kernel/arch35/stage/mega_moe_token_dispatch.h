@@ -83,8 +83,8 @@ struct DispatchMte3TraceStats {
 };
 
 // Minimal state required to keep the Dispatch MTE ring alive across route
-// batches and source-rank changes inside one expert tile. Only the last
-// fetched token is pending; there is no materialized descriptor queue.
+// batches, source-rank changes and GMM1 tiles inside one expert segment. Only
+// the last fetched token is pending; there is no materialized descriptor queue.
 struct DispatchTransferStreamState {
     int32_t issuedTokenCount = 0;
     int32_t pendingDestinationRow = 0;
@@ -271,7 +271,7 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(
 
 // Append one already selected wave task directly to the existing MTE ring.
 // sourceRank is a property of this task, so changing rank does not drain the
-// ring. The last fetched token remains pending until the next task or tile end.
+// ring. The last fetched token remains pending until the next task or segment end.
 template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
 __aicore__ inline void AppendDispatchTokenToStream(
     const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
@@ -317,7 +317,7 @@ __aicore__ inline void AppendDispatchTokenToStream(
 }
 
 // Store the final pending token and wait only for the slots used by the current
-// stream. The interleaved path invokes this at a GMM1 tile-ready boundary.
+// stream. The interleaved path invokes this once at the expert-segment boundary.
 template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
 __aicore__ inline void FinishInterleavedDispatchStream(
     const TokenDispatchConfig &context, const Params &params,
@@ -643,47 +643,47 @@ __aicore__ inline bool ResolveDispatchCoreTaskTable(
     return resolvedTaskCount == table.taskCount;
 }
 
-__aicore__ inline void PublishInterleavedDispatchTileReady(
+// The rank-round path keeps one MTE stream alive for the complete expert
+// segment. After that stream is drained once, publish this core's exact row
+// contribution to every GMM1 tile covered by the segment.
+__aicore__ inline void PublishInterleavedDispatchTilesReady(
     const TokenDispatchConfig &context, const Params &params,
-    uint32_t localExpertId, int32_t tileIdx, int32_t readyRowCount,
+    uint32_t localExpertId, int32_t expertGlobalRowBegin,
+    int32_t segmentRowBegin, int32_t segmentRowEnd, int32_t gmm1TileRowCount,
     DispatchMte3TraceStats *traceStats = nullptr)
 {
-    if (readyRowCount <= 0) {
+    if (segmentRowBegin >= segmentRowEnd) {
         return;
     }
+
     uint32_t waitBegin = BeginDispatchTransferTrace(traceStats);
     SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
     if (traceStats != nullptr) {
         EndDispatchTransferTrace(traceStats, waitBegin, traceStats->readySyncWaitCycles);
     }
+
+    int32_t coreCount = static_cast<int32_t>(
+        context.blockJob.totalJobs == 0U ? 1U : context.blockJob.totalJobs);
+    int32_t firstTileIdx = segmentRowBegin / gmm1TileRowCount;
+    int32_t lastTileIdx = (segmentRowEnd - 1) / gmm1TileRowCount;
     __gm__ int32_t *gmm1TileReadyCount =
         reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagDispatchToGmm1Ptr) +
         static_cast<uint64_t>(localExpertId) * context.dispatchFlagSlotsPerExpert;
-    AtomicAdd(gmm1TileReadyCount + static_cast<int64_t>(tileIdx) * INT_CACHELINE,
-              readyRowCount);
-}
 
-template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
-__aicore__ inline void FinishInterleavedDispatchTile(
-    const TokenDispatchConfig &context, const Params &params,
-    TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
-    int32_t tileIdx, int32_t readyRowCount, DispatchTransferStreamState &stream,
-    DispatchMte3TraceStats *traceStats = nullptr, uint32_t transferBegin = 0U)
-{
-    if (stream.issuedTokenCount <= 0 || readyRowCount <= 0) {
-        return;
+    for (int32_t tileIdx = firstTileIdx; tileIdx <= lastTileIdx; ++tileIdx) {
+        int32_t tileRowBegin = tileIdx * gmm1TileRowCount;
+        int32_t tileRowEnd = tileRowBegin + gmm1TileRowCount;
+        int32_t overlapRowBegin = segmentRowBegin > tileRowBegin ? segmentRowBegin : tileRowBegin;
+        int32_t overlapRowEnd = segmentRowEnd < tileRowEnd ? segmentRowEnd : tileRowEnd;
+        int32_t firstOwnedRow = GetFirstDispatchRowOwnedByCore(
+            context, expertGlobalRowBegin, overlapRowBegin, overlapRowEnd);
+        if (firstOwnedRow >= overlapRowEnd) {
+            continue;
+        }
+        int32_t readyRowCount = (overlapRowEnd - 1 - firstOwnedRow) / coreCount + 1;
+        AtomicAdd(gmm1TileReadyCount + static_cast<int64_t>(tileIdx) * INT_CACHELINE,
+                  readyRowCount);
     }
-    if (transferBegin == 0U) {
-        transferBegin = BeginDispatchTransferTrace(traceStats);
-    }
-    FinishInterleavedDispatchStream<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-        context, params, scratch, stream, traceStats);
-    if (traceStats != nullptr) {
-        EndDispatchTransferTrace(traceStats, transferBegin, traceStats->transferPipelineCycles);
-    }
-    PublishInterleavedDispatchTileReady(
-        context, params, localExpertId, tileIdx, readyRowCount, traceStats);
-    stream.issuedTokenCount = 0;
 }
 
 // 发布一个 source-rank 段覆盖到的 GMM1 tile ready 计数。
@@ -843,24 +843,9 @@ __aicore__ inline void DispatchExpertTokensRankRoundRobin(
     }
 
     DispatchTransferStreamState stream{};
-    int32_t currentTileIdx = -1;
-    int32_t currentTileRowCount = 0;
-    uint32_t currentTileTransferBegin = 0U;
+    uint32_t transferBegin = BeginDispatchTransferTrace(traceStats);
     for (int32_t taskIdx = 0; taskIdx < taskTable.taskCount; ++taskIdx) {
         int32_t expertRow = firstOwnedRow + taskIdx * coreCount;
-        int32_t tileIdx = expertRow / gmm1TileRowCount;
-        if (currentTileIdx >= 0 && tileIdx != currentTileIdx) {
-            FinishInterleavedDispatchTile<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-                context, params, scratch, localExpertId, currentTileIdx,
-                currentTileRowCount, stream, traceStats, currentTileTransferBegin);
-            currentTileIdx = -1;
-            currentTileRowCount = 0;
-            currentTileTransferBegin = 0U;
-        }
-        if (currentTileIdx < 0) {
-            currentTileIdx = tileIdx;
-            currentTileTransferBegin = BeginDispatchTransferTrace(traceStats);
-        }
         int32_t rankIdx = scratch.topkIndexTensor.GetValue(
             taskTable.rankListOffset + taskIdx);
         int32_t topkIndex = scratch.topkIndexTensor.GetValue(
@@ -869,13 +854,15 @@ __aicore__ inline void DispatchExpertTokensRankRoundRobin(
         AppendDispatchTokenToStream<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
             context, params, winRankAddr, scratch, rankIdx,
             topkIndex, destinationRow, stream, traceStats);
-        ++currentTileRowCount;
     }
-    if (currentTileIdx >= 0) {
-        FinishInterleavedDispatchTile<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-            context, params, scratch, localExpertId, currentTileIdx,
-            currentTileRowCount, stream, traceStats, currentTileTransferBegin);
+    FinishInterleavedDispatchStream<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+        context, params, scratch, stream, traceStats);
+    if (traceStats != nullptr) {
+        EndDispatchTransferTrace(traceStats, transferBegin, traceStats->transferPipelineCycles);
     }
+    PublishInterleavedDispatchTilesReady(
+        context, params, localExpertId, expertGlobalRowBegin,
+        segmentRowBegin, segmentRowEnd, gmm1TileRowCount, traceStats);
 }
 
 /**
