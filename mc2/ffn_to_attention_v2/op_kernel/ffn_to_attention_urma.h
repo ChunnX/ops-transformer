@@ -51,15 +51,15 @@ public:
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void ReadTokenMetaData(ReadTokenMetaDataStruct &metaDataStruct, uint32_t yOffset);
+    __aicore__ inline void ReadTokenMetaData(ReadTokenMetaDataStruct &metaDataStruct, uint64_t yOffset);
     __aicore__ inline GM_ADDR GetWindowAddr(uint32_t curAttenWorkRank);
     __aicore__ inline uint64_t GetUrmaCommHandle(uint32_t dstRank);
     __aicore__ inline void HcommInit();
     __aicore__ inline void InitLocalFlag();
-    __aicore__ inline void SendToLocal(GM_ADDR remoteDataAddr, GM_ADDR remoteFlagAddr, uint32_t yOffset,
+    __aicore__ inline void SendToLocal(GM_ADDR remoteDataAddr, GM_ADDR remoteFlagAddr, uint64_t yOffset,
                                        const DataCopyExtParams &xCopyParams);
     __aicore__ inline void SendToRemote(uint32_t dstRank, GM_ADDR remoteDataAddr, GM_ADDR remoteFlagAddr,
-                                        uint32_t yOffset);
+                                        uint64_t yOffset);
 
     TPipe *tpipe_{nullptr};
     Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
@@ -86,17 +86,19 @@ private:
     uint32_t aivId_{0};
     uint32_t rankId_{0};
     uint64_t actualTokenNum_{0};
+    uint64_t maxTokenNum_{0};
     uint32_t axisH_{0};
     uint32_t axisHS_{0};
+    uint32_t axisA_{0};
     uint32_t microBatchNum_{0};
     uint32_t axisBS_{0};
     uint32_t expertNumPerToken_{0};
     uint32_t aivNum_{0};
-    uint32_t batchSizeSendCnt_{0};
-    uint64_t perMicroBatchOffset_{0};
-    uint64_t perExpertOffset_{0};
+    uint32_t worldSize_{0};
+    uint64_t batchSizeSendCnt_{0};
     uint64_t hSize_{0};
     uint64_t winTokenInfoTableSize_{0};
+    uint64_t requiredWindowSize_{0};
 };
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -117,9 +119,15 @@ FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::Init(GM_ADDR mc2Context,
     axisBS_ = tilingData->ffnToAttentionV2Info.BS;
     axisH_ = tilingData->ffnToAttentionV2Info.H;
     axisHS_ = tilingData->ffnToAttentionV2Info.HS;
+    axisA_ = tilingData->ffnToAttentionV2Info.A;
     microBatchNum_ = tilingData->ffnToAttentionV2Info.microBatchNum;
     expertNumPerToken_ = tilingData->ffnToAttentionV2Info.expertNumPerToken;
     aivNum_ = tilingData->ffnToAttentionV2Info.aivNum;
+    worldSize_ = tilingData->ffnToAttentionV2Info.worldSize;
+    maxTokenNum_ = tilingData->ffnToAttentionV2Info.maxTokenNum;
+
+    ascendc_assert(aivNum_ > 0U, "aivNum must be greater than zero");
+    ascendc_assert(axisH_ <= axisHS_, "H must be <= HS, H=%u, HS=%u", axisH_, axisHS_);
 
     xGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ xType *>(x));
     sessionIdsGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(sessionIds));
@@ -132,7 +140,11 @@ FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::Init(GM_ADDR mc2Context,
     }
 
     DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(actualTokenNumGMTensor_);
-    actualTokenNum_ = actualTokenNumGMTensor_.GetValue(0);
+    int64_t actualTokenNum = actualTokenNumGMTensor_.GetValue(0);
+    ascendc_assert(actualTokenNum >= 0, "actualTokenNum must be non-negative, actualTokenNum=%ld", actualTokenNum);
+    actualTokenNum_ = static_cast<uint64_t>(actualTokenNum);
+    ascendc_assert(actualTokenNum_ <= maxTokenNum_,
+                   "actualTokenNum exceeds x dim0, actualTokenNum=%lu, maxTokenNum=%lu", actualTokenNum_, maxTokenNum_);
     hSize_ = static_cast<uint64_t>(axisH_) * sizeof(xType);
 
     tpipe_->InitBuffer(xQueue_, BUFFER_NUM, hSize_);
@@ -140,12 +152,15 @@ FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::Init(GM_ADDR mc2Context,
     statusTensor_ = statusBuf_.Get<int32_t>();
     statusTensor_.SetValue(0, 1);
 
-    batchSizeSendCnt_ = axisBS_ * expertNumPerToken_;
-    perMicroBatchOffset_ = static_cast<uint64_t>(batchSizeSendCnt_) * axisHS_;
-    perExpertOffset_ = static_cast<uint64_t>(expertNumPerToken_) * axisHS_;
+    batchSizeSendCnt_ = static_cast<uint64_t>(axisBS_) * expertNumPerToken_;
     winTokenInfoTableSize_ =
         Ceil(static_cast<uint64_t>(microBatchNum_) * batchSizeSendCnt_ * sizeof(int32_t), WIN_ADDR_ALIGN) *
         WIN_ADDR_ALIGN;
+    const uint64_t totalSlotNum = static_cast<uint64_t>(microBatchNum_) * axisBS_ * expertNumPerToken_;
+    requiredWindowSize_ = winTokenInfoTableSize_ + totalSlotNum * axisHS_ * sizeof(xType);
+    ascendc_assert(requiredWindowSize_ <= tilingData->ffnToAttentionV2Info.totalWinSize,
+                   "required window exceeds available window, required=%lu, available=%lu", requiredWindowSize_,
+                   tilingData->ffnToAttentionV2Info.totalWinSize);
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -185,34 +200,57 @@ FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::GetUrmaCommHandle(uint32
 template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void
 FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::ReadTokenMetaData(ReadTokenMetaDataStruct &metaDataStruct,
-                                                                          uint32_t yOffset)
+                                                                          uint64_t yOffset)
 {
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
         sessionIdsGMTensor_[yOffset]);
-    metaDataStruct.curAttenWorkIds = sessionIdsGMTensor_(yOffset);
+    int32_t curAttenWorkId = sessionIdsGMTensor_.GetValue(yOffset);
+    ascendc_assert(curAttenWorkId >= 0, "sessionId must be non-negative, sessionId=%d, yOffset=%lu", curAttenWorkId,
+                   yOffset);
+    metaDataStruct.curAttenWorkIds = static_cast<uint32_t>(curAttenWorkId);
     metaDataStruct.curAttenWorkRank = metaDataStruct.curAttenWorkIds;
 
     if constexpr (isInputRankTable) {
+        ascendc_assert(metaDataStruct.curAttenWorkIds < axisA_,
+                       "sessionId exceeds attnRankTable, sessionId=%u, attnRankNum=%u, yOffset=%lu",
+                       metaDataStruct.curAttenWorkIds, axisA_, yOffset);
         DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
             attnRankTableGMTensor_[metaDataStruct.curAttenWorkIds]);
-        metaDataStruct.curAttenWorkRank = attnRankTableGMTensor_(metaDataStruct.curAttenWorkIds);
+        int32_t curAttenWorkRank = attnRankTableGMTensor_.GetValue(metaDataStruct.curAttenWorkIds);
+        ascendc_assert(curAttenWorkRank >= 0, "attention rank must be non-negative, rank=%d, sessionId=%u",
+                       curAttenWorkRank, metaDataStruct.curAttenWorkIds);
+        metaDataStruct.curAttenWorkRank = static_cast<uint32_t>(curAttenWorkRank);
     }
+    ascendc_assert(metaDataStruct.curAttenWorkRank < worldSize_,
+                   "attention rank exceeds worldSize, rank=%u, worldSize=%u, yOffset=%lu",
+                   metaDataStruct.curAttenWorkRank, worldSize_, yOffset);
 
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
         microBatchIdsGMTensor_[yOffset]);
-    metaDataStruct.curMicroBatchIds = microBatchIdsGMTensor_(yOffset);
+    int32_t curMicroBatchId = microBatchIdsGMTensor_.GetValue(yOffset);
+    ascendc_assert(curMicroBatchId >= 0 && static_cast<uint32_t>(curMicroBatchId) < microBatchNum_,
+                   "microBatchId out of range, microBatchId=%d, microBatchNum=%u, yOffset=%lu", curMicroBatchId,
+                   microBatchNum_, yOffset);
+    metaDataStruct.curMicroBatchIds = static_cast<uint32_t>(curMicroBatchId);
 
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(tokenIdsGMTensor_[yOffset]);
-    metaDataStruct.curTokenBatchOffset = tokenIdsGMTensor_(yOffset);
+    int32_t curTokenBatchOffset = tokenIdsGMTensor_.GetValue(yOffset);
+    ascendc_assert(curTokenBatchOffset >= 0 && static_cast<uint32_t>(curTokenBatchOffset) < axisBS_,
+                   "tokenId out of range, tokenId=%d, BS=%u, yOffset=%lu", curTokenBatchOffset, axisBS_, yOffset);
+    metaDataStruct.curTokenBatchOffset = static_cast<uint32_t>(curTokenBatchOffset);
 
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
         expertOffsetsGMTensor_[yOffset]);
-    metaDataStruct.curTokenTopkOffset = expertOffsetsGMTensor_(yOffset);
+    int32_t curTokenTopkOffset = expertOffsetsGMTensor_.GetValue(yOffset);
+    ascendc_assert(curTokenTopkOffset >= 0 && static_cast<uint32_t>(curTokenTopkOffset) < expertNumPerToken_,
+                   "expertOffset out of range, expertOffset=%d, expertNumPerToken=%u, yOffset=%lu",
+                   curTokenTopkOffset, expertNumPerToken_, yOffset);
+    metaDataStruct.curTokenTopkOffset = static_cast<uint32_t>(curTokenTopkOffset);
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::SendToLocal(
-    GM_ADDR remoteDataAddr, GM_ADDR remoteFlagAddr, uint32_t yOffset, const DataCopyExtParams &xCopyParams)
+    GM_ADDR remoteDataAddr, GM_ADDR remoteFlagAddr, uint64_t yOffset, const DataCopyExtParams &xCopyParams)
 {
     DataCopyPadExtParams<xType> copyPadExtParams{false, 0U, 0U, 0U};
     xTmpTensor_ = xQueue_.AllocTensor<xType>();
@@ -234,7 +272,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
 
 template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::SendToRemote(
-    uint32_t dstRank, GM_ADDR remoteDataAddr, GM_ADDR remoteFlagAddr, uint32_t yOffset)
+    uint32_t dstRank, GM_ADDR remoteDataAddr, GM_ADDR remoteFlagAddr, uint64_t yOffset)
 {
     uint64_t channel = GetUrmaCommHandle(dstRank);
     GM_ADDR localDataAddr = xAddr_ + static_cast<uint64_t>(yOffset) * hSize_;
@@ -245,6 +283,8 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
     ret = hcomm_.WriteNbi(channel, remoteFlagAddr, localFlagAddr_, sizeof(int32_t));
     ascendc_assert(ret == 0, "WriteNbi flag failed, ret=%d, rankId=%u, dstRank=%u, aivId=%u", ret, rankId_, dstRank,
                    aivId_);
+    ret = hcomm_.Drain(channel);
+    ascendc_assert(ret == 0, "Drain failed, ret=%d, rankId=%u, dstRank=%u, aivId=%u", ret, rankId_, dstRank, aivId_);
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -255,33 +295,39 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
         HcommInit();
         InitLocalFlag();
 
-        uint32_t sendTokenNum = actualTokenNum_ / aivNum_;
-        uint32_t remainderTokenNum = actualTokenNum_ % aivNum_;
+        uint64_t sendTokenNum = actualTokenNum_ / aivNum_;
+        uint64_t remainderTokenNum = actualTokenNum_ % aivNum_;
         if (aivId_ < remainderTokenNum) {
             sendTokenNum += 1U;
         }
 
         DataCopyExtParams xCopyParams = {1U, static_cast<uint32_t>(hSize_), 0U, 0U, 0U};
-        for (uint32_t tokenCnt = 0; tokenCnt < sendTokenNum; ++tokenCnt) {
-            uint32_t yOffset = aivId_ + tokenCnt * aivNum_;
+        for (uint64_t tokenCnt = 0; tokenCnt < sendTokenNum; ++tokenCnt) {
+            uint64_t yOffset = static_cast<uint64_t>(aivId_) + tokenCnt * aivNum_;
             ReadTokenMetaDataStruct metaDataStruct;
             ReadTokenMetaData(metaDataStruct, yOffset);
 
             GM_ADDR curRankWinAddr = GetWindowAddr(metaDataStruct.curAttenWorkRank);
-            uint64_t tokenInfoTableOffset =
-                static_cast<uint64_t>(metaDataStruct.curMicroBatchIds) * batchSizeSendCnt_;
-            uint64_t tokenDataOffset =
-                (static_cast<uint64_t>(metaDataStruct.curMicroBatchIds) * perMicroBatchOffset_ +
-                 static_cast<uint64_t>(metaDataStruct.curTokenBatchOffset) * perExpertOffset_ +
-                 static_cast<uint64_t>(metaDataStruct.curTokenTopkOffset) * axisHS_) *
-                sizeof(xType);
-            GM_ADDR remoteDataAddr = curRankWinAddr + winTokenInfoTableSize_ + tokenDataOffset;
-            GM_ADDR remoteFlagAddr =
-                curRankWinAddr +
-                (tokenInfoTableOffset +
-                 static_cast<uint64_t>(metaDataStruct.curTokenBatchOffset) * expertNumPerToken_ +
-                 static_cast<uint64_t>(metaDataStruct.curTokenTopkOffset)) *
-                    sizeof(int32_t);
+            ascendc_assert(curRankWinAddr != nullptr, "window address is null, dstRank=%u",
+                           metaDataStruct.curAttenWorkRank);
+            const uint64_t tokenSlot =
+                (static_cast<uint64_t>(metaDataStruct.curMicroBatchIds) * axisBS_ +
+                 metaDataStruct.curTokenBatchOffset) *
+                    expertNumPerToken_ +
+                metaDataStruct.curTokenTopkOffset;
+            const uint64_t tokenDataOffset = tokenSlot * axisHS_ * sizeof(xType);
+            const uint64_t remoteDataOffset = winTokenInfoTableSize_ + tokenDataOffset;
+            const uint64_t remoteFlagOffset = tokenSlot * sizeof(int32_t);
+            ascendc_assert(remoteDataOffset <= requiredWindowSize_ &&
+                               hSize_ <= requiredWindowSize_ - remoteDataOffset,
+                           "token data address exceeds window, dataOffset=%lu, dataSize=%lu, windowSize=%lu",
+                           remoteDataOffset, hSize_, requiredWindowSize_);
+            ascendc_assert(remoteFlagOffset <= winTokenInfoTableSize_ &&
+                               sizeof(int32_t) <= winTokenInfoTableSize_ - remoteFlagOffset,
+                           "token flag address exceeds info table, flagOffset=%lu, infoSize=%lu", remoteFlagOffset,
+                           winTokenInfoTableSize_);
+            GM_ADDR remoteDataAddr = curRankWinAddr + remoteDataOffset;
+            GM_ADDR remoteFlagAddr = curRankWinAddr + remoteFlagOffset;
 
             if (metaDataStruct.curAttenWorkRank == rankId_) {
                 SendToLocal(remoteDataAddr, remoteFlagAddr, yOffset, xCopyParams);
