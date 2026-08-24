@@ -10,29 +10,22 @@
 
 #include "kernel_operator.h"
 #include "arch35/block_attn_res_update_full_d.h"
-#include "arch35/block_attn_res_update_tiling_data.h"
+#include "arch35/block_attn_res_update_tiling_key.h"
 
-// Six tensor inputs + two tensor outputs + workspace + tiling.
-// ACLNNGraph aliases partial_block_ref with partial_block. Direct kernel launchers must pass the same GM address in
-// both ABI slots. This kernel writes through partial_block and does not use workspace storage.
-extern "C" __global__ __aicore__ void block_attn_res_update(GM_ADDR partial_block, GM_ADDR delta, GM_ADDR pseudo_query,
-                                                            GM_ADDR numerator, GM_ADDR logit_max, GM_ADDR exp_sum,
-                                                            GM_ADDR partial_block_ref, GM_ADDR h, GM_ADDR workspace,
-                                                            GM_ADDR tiling)
+// The argument order follows the OpDef input/output order. partial_block is the read address, and partial_block_ref is
+// the reference-output write address. ACLNNGraph aliases them for reference launches. The kernel does not use
+// workspace.
+template <bool SINGLE_TILE>
+__global__ __aicore__ void block_attn_res_update(GM_ADDR partial_block, GM_ADDR delta, GM_ADDR pseudo_query,
+                                                 GM_ADDR numerator, GM_ADDR logit_max, GM_ADDR exp_sum,
+                                                 GM_ADDR partial_block_ref, GM_ADDR h, GM_ADDR workspace,
+                                                 GM_ADDR tiling)
 {
-    (void)partial_block_ref;
+    AscendC::InitSocState();
     (void)workspace;
     REGISTER_NONE_TILING;
     GET_TILING_DATA_WITH_STRUCT(BlockAttnResUpdateTilingData, tilingData, tiling);
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
 
-    if (TILING_KEY_IS(1)) {
-        BlockAttnResUpdateOps::BlockAttnResUpdateFullDKernel<true> op;
-        op.Init(partial_block, delta, pseudo_query, numerator, logit_max, exp_sum, h, &tilingData);
-        op.Process();
-    } else if (TILING_KEY_IS(0)) {
-        BlockAttnResUpdateOps::BlockAttnResUpdateFullDKernel<false> op;
-        op.Init(partial_block, delta, pseudo_query, numerator, logit_max, exp_sum, h, &tilingData);
-        op.Process();
-    }
+    BlockAttnResUpdateOps::BlockAttnResUpdateFullD<SINGLE_TILE> op;
+    op(partial_block, delta, pseudo_query, numerator, logit_max, exp_sum, partial_block_ref, h, &tilingData);
 }
