@@ -60,6 +60,8 @@ import torch
 __spec__ = {
     "und_gen_qkv_rms_norm_rope_cache": "UndGenQkvRmsNormRopeCacheTestSpec",
     "aclnnUndGenQkvRmsNormRopeCache": "AclnnUndGenQkvRmsNormRopeCacheTestSpec",
+    "torch.ops.cann_ops_transformer.und_gen_qkv_rms_norm_rope_cache":
+        "TorchUndGenQkvRmsNormRopeCacheTestSpec",
 }
 
 __all__ = [
@@ -76,6 +78,7 @@ __all__ = [
     "build_case",
     "UndGenQkvRmsNormRopeCacheTestSpec",
     "AclnnUndGenQkvRmsNormRopeCacheTestSpec",
+    "TorchUndGenQkvRmsNormRopeCacheTestSpec",
 ]
 
 # 本期支持范围
@@ -747,6 +750,15 @@ except ImportError:                      # 不在 ops-test-kit 环境里（如�
 TOLERANCE = {"bfloat16": {"standard": "cross_check", "level": "L1"}}
 
 
+class _SpecBase:
+    """三条通路共用的判据。golden / customize_inputs 各自实现（入参契约不同）。"""
+
+    tolerance = TOLERANCE
+
+    def compare(*outputs, **kwargs):
+        return _cross_check(*outputs)
+
+
 def _dtype_name(array):
     """numpy（bf16 由 ml_dtypes 承载）或 torch 张量 -> resolve_tolerance 认的 dtype 名。"""
     import numpy as np
@@ -781,7 +793,7 @@ def _cross_check(*outputs):
     return results
 
 
-class UndGenQkvRmsNormRopeCacheTestSpec:
+class UndGenQkvRmsNormRopeCacheTestSpec(_SpecBase):
     """UndGenQkvRmsNormRopeCache 的 kernel / GEIR 通路测试规范。
 
     参数序与 op_host/und_gen_qkv_rms_norm_rope_cache_def.cpp 的输入一致（不含输出），
@@ -789,11 +801,6 @@ class UndGenQkvRmsNormRopeCacheTestSpec:
 
     判据见上方 TOLERANCE：cross_check / L1，标杆即 golden 自身。
     """
-
-    tolerance = TOLERANCE
-
-    def compare(*outputs, **kwargs):
-        return _cross_check(*outputs)
 
     def customize_inputs(und_qkv,
                          und_weights_q,
@@ -921,18 +928,13 @@ def _write_back(dst, values):
         dst[...] = values.astype(dst.dtype)
 
 
-class AclnnUndGenQkvRmsNormRopeCacheTestSpec:
+class AclnnUndGenQkvRmsNormRopeCacheTestSpec(_SpecBase):
     """aclnnUndGenQkvRmsNormRopeCache 的 aclnn 通路测试规范。
 
     形参名与 aclnn 头文件一一对应共 18 个，逐个声明只会让签名比正文还长，
     故按 README「`*args` 收集未消费条目」的写法按位置接收，拆分见 _aclnn_split_args。
     判据同 kernel 侧。
     """
-
-    tolerance = TOLERANCE
-
-    def compare(*outputs, **kwargs):
-        return _cross_check(*outputs)
 
     def customize_inputs(*args, **kwargs):
         """索引改写，取值规则与 kernel 侧完全一致（共用 _gen_index_values）。
@@ -966,3 +968,28 @@ class AclnnUndGenQkvRmsNormRopeCacheTestSpec:
         return (_torch_to_np(q_t, ref.dtype),
                 _torch_to_np(k_t, ref.dtype),
                 _torch_to_np(v_t, ref.dtype))
+
+
+# --------------------------------------------------------------------------- #
+# E2E（torch）通路
+# --------------------------------------------------------------------------- #
+# 入参序与 aclnn 完全一致（12 个张量 + 5 个属性，且都按位置下发），只是尾部少了
+# aclnn 的 qOut —— _aclnn_split_args 只取前 17 个，所以 golden / customize_inputs
+# 直接继承 aclnn 那套即可，不必另写一份。
+#
+# 另两处与 kernel 通路的差异：
+#   1. api_name 是 torch schema 名 `torch.ops.cann_ops_transformer.<op>`
+#      （op_builder/builder.py 的 Library("cann_ops_transformer","DEF") 注册），
+#      TTK 的 TorchOpsPackageLoader 已把该命名空间列入白名单；
+#   2. 算子只 return q，k_cache / v_cache 是原地写回的入参 —— 靠 CSV 的
+#      `inplace_input_indexes=(4,5)` 让框架把它们按下标升序追加到 return 值之后
+#      （framework_api/profiling.py），于是输出序仍是 (q, k_cache, v_cache)，
+#      与 golden 的返回序一致。
+
+
+class TorchUndGenQkvRmsNormRopeCacheTestSpec(AclnnUndGenQkvRmsNormRopeCacheTestSpec):
+    """UndGenQkvRmsNormRopeCache 的 E2E（torch）通路测试规范。
+
+    入参是设备上的 torch.Tensor，_as_torch / _write_back 已同时覆盖 numpy 与 torch，
+    因此 golden 与 customize_inputs 全部沿用 aclnn 侧实现。
+    """
