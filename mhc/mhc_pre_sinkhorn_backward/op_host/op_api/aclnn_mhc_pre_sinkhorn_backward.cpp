@@ -15,6 +15,7 @@
 #include "securec.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
+#include "opdev/format_utils.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
@@ -153,14 +154,14 @@ static bool CheckNotNull(const AclnnMhcPreSinkhornBackwardParams &params)
            CheckInputNotNullImpl(params.gradPhi, "gradPhi") && CheckInputNotNullImpl(params.gradAlpha, "gradAlpha") &&
            CheckInputNotNullImpl(params.gradBias, "gradBias");
 }
-
+//改为ACLNN_ERR_INNER_TILING_ERROR,561002
 static bool CheckDimNum(const aclTensor *tensor, size_t expected, const char *name, bool isRange = false,
                         size_t expected2 = 0)
 {
     auto dimNum = tensor->GetViewShape().GetDimNum();
     bool valid = isRange ? (dimNum == expected || dimNum == expected2) : (dimNum == expected);
     if (!valid) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s tensor dim num must be %s, but got %zu", name,
+        OP_LOGE(ACLNN_ERR_INNER_TILING_ERROR, "%s tensor dim num must be %s, but got %zu", name,
                 isRange ? (std::to_string(expected) + " or " + std::to_string(expected2)).c_str() :
                           std::to_string(expected).c_str(),
                 dimNum);
@@ -206,11 +207,11 @@ static bool CheckInputOutDims(const AclnnMhcPreSinkhornBackwardParams &params)
 {
     return CheckInputDims(params) && CheckOutputDims(params);
 }
-
+//改动ACLNN_ERR_INNER_TILING_ERROR 561002
 static bool CheckShapeDim(const gert::Shape &shape, uint64_t index, uint64_t expected, const char *msg)
 {
     if (shape.GetDim(index) != expected) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s, and dim %lu must be %lu, actual is %ld", msg, index, expected,
+        OP_LOGE(ACLNN_ERR_INNER_TILING_ERROR, "%s, and dim %lu must be %lu, actual is %ld", msg, index, expected,
                 shape.GetDim(index));
         return false;
     }
@@ -488,9 +489,46 @@ static bool CheckOutputDtype(const AclnnMhcPreSinkhornBackwardParams &params)
            CheckDtype(params.gradBias, DataType::DT_FLOAT, "gradBias");
 }
 
+static bool CheckDtypeConsistency(const AclnnMhcPreSinkhornBackwardParams &params)
+{
+    auto gradHinDtype = params.gradHin->GetDataType();
+    auto xDtype = params.x->GetDataType();
+    if (gradHinDtype != xDtype) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gradHin dtype [%s] must match x dtype [%s].",
+                op::ToString(gradHinDtype).GetString(), op::ToString(xDtype).GetString());
+        return false;
+    }
+    return true;
+}
+
+//追加CheckDtypeConsistency(params)，校验gradHin和x的dtype必须一致，返回161002
 static bool CheckDtypeValid(const AclnnMhcPreSinkhornBackwardParams &params)
 {
-    return CheckInputDtype(params) && CheckOutputDtype(params);
+    return CheckInputDtype(params) && CheckOutputDtype(params) && CheckDtypeConsistency(params);
+}
+
+//后面新增了三个函数IsPrivateFormat、CheckTensorFormat和CheckFormat
+//校验所有输入输出的format，否则返回161002
+static bool CheckTensorFormat(const aclTensor *tensor, const char *name)
+{
+    if (op::IsPrivateFormat(tensor->GetViewFormat())) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s tensor format must be ND, actual is [%s].", name,
+                op::ToString(tensor->GetViewFormat()).GetString());
+        return false;
+    }
+    return true;
+}
+
+static bool CheckFormat(const AclnnMhcPreSinkhornBackwardParams &params)
+{
+    return CheckTensorFormat(params.gradHin, "gradHin") && CheckTensorFormat(params.gradHPost, "gradHPost") &&
+           CheckTensorFormat(params.gradHRes, "gradHRes") && CheckTensorFormat(params.x, "x") &&
+           CheckTensorFormat(params.phi, "phi") && CheckTensorFormat(params.alpha, "alpha") &&
+           CheckTensorFormat(params.bias, "bias") && CheckTensorFormat(params.hPre, "hPre") &&
+           CheckTensorFormat(params.hcBeforeNorm, "hcBeforeNorm") && CheckTensorFormat(params.invRms, "invRms") &&
+           CheckTensorFormat(params.sumOut, "sumOut") && CheckTensorFormat(params.normOut, "normOut") &&
+           CheckTensorFormat(params.gradX, "gradX") && CheckTensorFormat(params.gradPhi, "gradPhi") &&
+           CheckTensorFormat(params.gradAlpha, "gradAlpha") && CheckTensorFormat(params.gradBias, "gradBias");
 }
 
 static aclnnStatus CheckParams(const AclnnMhcPreSinkhornBackwardParams &params)
@@ -498,28 +536,31 @@ static aclnnStatus CheckParams(const AclnnMhcPreSinkhornBackwardParams &params)
     // 1. 检查参数是否为空指针
     CHECK_RET(CheckNotNull(params), ACLNN_ERR_PARAM_NULLPTR);
 
-    // 2. 校验输入、输出参数维度
-    CHECK_RET(CheckInputOutDims(params), ACLNN_ERR_PARAM_INVALID);
+    // 2. 校验输入、输出参数维度,ACLNN_ERR_INNER_TILING_ERROR 561002
+    CHECK_RET(CheckInputOutDims(params), ACLNN_ERR_INNER_TILING_ERROR);
 
-    // 3. 校验输入、输出shape参数
-    CHECK_RET(CheckShape(params), ACLNN_ERR_PARAM_INVALID);
+    // 3. 校验输入、输出shape参数,ACLNN_ERR_INNER_TILING_ERROR 561002
+    CHECK_RET(CheckShape(params), ACLNN_ERR_INNER_TILING_ERROR);
 
     // 4. 检查输入的数据类型是否在支持的数据类型范围之内
     CHECK_RET(CheckDtypeValid(params), ACLNN_ERR_PARAM_INVALID);
 
-    // 5. 校验N、C取值范围（需在IsEmpty检查之前，避免C=0/N=0被误判为空tensor）
+    // 5. 校验输入、输出的format是否为ND
+    CHECK_RET(CheckFormat(params), ACLNN_ERR_PARAM_INVALID);
+
+    // 6. 校验N、C取值范围（需在IsEmpty检查之前，避免C=0/N=0被误判为空tensor）
     auto &xShape = params.x->GetViewShape();
     bool is3D = xShape.GetDimNum() == 3;
     int64_t nVal = is3D ? xShape.GetDim(1) : xShape.GetDim(2);
     int64_t cVal = is3D ? xShape.GetDim(2) : xShape.GetDim(3);
     if (nVal <= 0 || nVal > 8) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "N must be > 0 and <= 8, but got %ld", nVal);
-        return ACLNN_ERR_PARAM_INVALID;
+        OP_LOGE(ACLNN_ERR_INNER_TILING_ERROR, "N must be > 0 and <= 8, but got %ld", nVal);
+        return ACLNN_ERR_INNER_TILING_ERROR;
     }
     if (cVal <= 0 || cVal >= 100000 || cVal % 128 != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE(ACLNN_ERR_INNER_TILING_ERROR,
                 "C must be > 0, < 100000 and divisible by 128, but got %ld", cVal);
-        return ACLNN_ERR_PARAM_INVALID;
+        return ACLNN_ERR_INNER_TILING_ERROR;
     }
 
     return ACLNN_SUCCESS;
