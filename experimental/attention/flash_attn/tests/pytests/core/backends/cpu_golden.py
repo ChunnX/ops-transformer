@@ -35,12 +35,21 @@ def _fix_invalid_rows(softmax_res, x_max, x_sum):
     return softmax_res, x_max, x_sum
 
 
-def _attend(q, k, v, atten_mask, scale, need_fix_invalid):
+def _attend(q, k, v, atten_mask, scale, need_fix_invalid, rel_h_bias=None, rel_w_bias=None):
     q = q.float()
     k = k.float()
     v = v.float()
 
     qk = torch.matmul(q, k.permute(0, 1, 3, 2)).mul(scale)
+    if rel_h_bias is not None and rel_w_bias is not None:
+        h_size = rel_h_bias.shape[-1]
+        w_size = rel_w_bias.shape[-1]
+        rel_h_exp = rel_h_bias.unsqueeze(-1).expand(*rel_h_bias.shape[:-1], h_size, w_size)
+        rel_h_exp = rel_h_exp.reshape(*rel_h_exp.shape[:-2], h_size * w_size)
+        rel_w_exp = rel_w_bias.unsqueeze(-2).expand(*rel_w_bias.shape[:-1], h_size, w_size)
+        rel_w_exp = rel_w_exp.reshape(*rel_w_exp.shape[:-2], h_size * w_size)
+        bias = rel_h_exp + rel_w_exp
+        qk = qk + bias[..., :qk.shape[-1]]
     if atten_mask is not None:
         qk = qk.masked_fill_(atten_mask.cpu().bool(), value=torch.tensor(-1.7e38))
     
@@ -122,6 +131,9 @@ def tforward_tnd(q, k, v, **kwargs):
 
     scale = kwargs.get("scale", 1 / (d ** 0.5))
 
+    rel_h = kwargs.get("rel_h", None)
+    rel_w = kwargs.get("rel_w", None)
+
     band_index = 0
 
     qk_size = [int(seqused_q[i] * math.ceil(seqused_kv[i] / 16) * 16) for i in range(b)]
@@ -143,6 +155,11 @@ def tforward_tnd(q, k, v, **kwargs):
         ki = k[:, :, kv_start:kv_start + act_kv_len]
         vi = v[:, :, kv_start:kv_start + act_kv_len]
 
+        rel_h_i = rel_w_i = None
+        if rel_h is not None and rel_w is not None:
+            rel_h_i = rel_h[:, :, q_start:q_start + act_q_len, :]
+            rel_w_i = rel_w[:, :, q_start:q_start + act_q_len, :]
+
         if n1 != n2:
             ki = broadcastKV(n1, n2, ki, ki.dtype)
             vi = broadcastKV(n1, n2, vi, vi.dtype)
@@ -154,7 +171,7 @@ def tforward_tnd(q, k, v, **kwargs):
 
         need_fix = _should_fix_invalid_rows(mask_mode, win_left, win_right, act_q_len, act_kv_len, prefix)
 
-        outi, x_maxi, x_sumi = _attend(qi, ki, vi, atten_maski, scale, need_fix)
+        outi, x_maxi, x_sumi = _attend(qi, ki, vi, atten_maski, scale, need_fix, rel_h_i, rel_w_i)
         out_golden[:, :, q_start:q_start + act_q_len] = outi
         x_max[:, q_start:q_start + act_q_len] = x_maxi.squeeze(0).squeeze(-1)	 
         x_sum[:, q_start:q_start + act_q_len] = x_sumi.squeeze(0).squeeze(-1)
@@ -163,6 +180,8 @@ def tforward_tnd(q, k, v, **kwargs):
 
 def tforward(q, k, v, **kwargs):
     input_layout = kwargs.get("input_layout")
+    rel_h = kwargs.get("rel_h", None)
+    rel_w = kwargs.get("rel_w", None)
     if input_layout != "TND":
         b = kwargs.get("B")
         n1 = kwargs.get("N1")
@@ -173,6 +192,15 @@ def tforward(q, k, v, **kwargs):
         q = q.reshape(1, b, n1, s1, q.shape[-1]).transpose(1, 2).reshape(1, n1, b * s1, q.shape[-1])
         k = k.reshape(1, b, n2, s2, k.shape[-1]).transpose(1, 2).reshape(1, n2, b * s2, k.shape[-1])
         v = v.reshape(1, b, n2, s2, v.shape[-1]).transpose(1, 2).reshape(1, n2, b * s2, v.shape[-1])
+
+        if rel_h is not None:
+            h_dim = rel_h.shape[-1]
+            rel_h = rel_h.reshape(1, b, n1, s1, h_dim).transpose(1, 2).reshape(1, n1, b * s1, h_dim)
+            kwargs["rel_h"] = rel_h
+        if rel_w is not None:
+            w_dim = rel_w.shape[-1]
+            rel_w = rel_w.reshape(1, b, n1, s1, w_dim).transpose(1, 2).reshape(1, n1, b * s1, w_dim)
+            kwargs["rel_w"] = rel_w
 
         cu_q = [i * s1 for i in range(b + 1)]
         cu_kv = [i * s2 for i in range(b + 1)]

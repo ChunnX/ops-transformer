@@ -112,10 +112,13 @@ def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
     )
 
     # === kernel kwargs ===
+    rel_h = inputs.get("rel_h")
+    rel_w = inputs.get("rel_w")
     kernel_kwargs = dict(
         softmax_scale=scale, mask_mode=mask_mode,
         win_left=wl, win_right=wr,
         block_table=bt, sinks=None, attn_mask=attn_mask,
+        rel_h=rel_h, rel_w=rel_w,
         cu_seqlens_q=cu_q, cu_seqlens_kv=cu_kv,
         seqused_q=sq, seqused_kv=skv,
         max_seqlen_q=msq,
@@ -233,6 +236,10 @@ class InputSpec:
                 dims.append(len(cu) if cu else params.get("B", 1) + 1)
             elif token == "num_blocks":
                 dims.append(params.get("num_blocks", 1))
+            elif token == "H":
+                dims.append(params.get("H", 1))
+            elif token == "W":
+                dims.append(params.get("W", 1))
             else:
                 dims.append(int(token))
         return tuple(dims)
@@ -297,4 +304,13 @@ flash_attn_inputs = (
             "PA_BNBD": "num_blocks,N2,block_size,_V",
             "PA_NZ": "num_blocks,N2,DV_nz_sub,block_size,nz_blk_elem"},
             when=lambda p: "v_range" not in p, layout_override="layout_kv")
+    # rel_h / rel_w — 分解式相对位置偏置，按 layout_q 生成
+    .tensor("rel_h", layout={
+            "BNSD": "B,N1,S1,H", "BSND": "B,S1,N1,H", "TND": "total_s1,N1,H"},
+            method="uniform", low=-1.0, high=1.0,
+            when=lambda p: p.get("H") is not None)
+    .tensor("rel_w", layout={
+            "BNSD": "B,N1,S1,W", "BSND": "B,S1,N1,W", "TND": "total_s1,N1,W"},
+            method="uniform", low=-1.0, high=1.0,
+            when=lambda p: p.get("W") is not None)
 )

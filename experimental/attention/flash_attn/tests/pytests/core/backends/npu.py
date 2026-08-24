@@ -33,13 +33,13 @@ except ImportError:
 class FlashAttnGraphNetwork(torch.nn.Module):
     """torch.compile 图模式包装器。"""
 
-    def forward(self, q, k, v, block_table, attn_mask, metadata,
+    def forward(self, q, k, v, rel_h, rel_w, block_table, attn_mask, metadata,
                 cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
                 softmax_scale, mask_mode, win_left, win_right,
                 max_seqlen_q, max_seqlen_kv, layout_q, layout_kv, layout_out,
                 return_softmax_lse):
         out, lse_out = torch.ops.cann_ops_transformer.flash_attn(
-            q, k, v,
+            q, k, v, rel_h, rel_w,
             block_table=block_table,
             sinks=None,
             attn_mask=attn_mask,
@@ -195,6 +195,7 @@ class NPUBackend(Backend):
             net = self._get_graph_net()
             out, lse = net(
                 inputs["q"], inputs["k"], inputs["v"],
+                inputs.get("rel_h"), inputs.get("rel_w"),
                 kernel_kwargs.get("block_table"),
                 kernel_kwargs.get("attn_mask"),
                 metadata,
@@ -214,7 +215,15 @@ class NPUBackend(Backend):
                 kernel_kwargs.get("return_softmax_lse", False),
             )
         else:
-            out, lse = flash_attn(inputs["q"], inputs["k"], inputs["v"],
+            rel_h_t = inputs.get("rel_h")
+            rel_w_t = inputs.get("rel_w")
+            if rel_h_t is not None:
+                rel_h_t = rel_h_t.to(self._device)
+            if rel_w_t is not None:
+                rel_w_t = rel_w_t.to(self._device)
+            kernel_kwargs.pop("rel_h", None)
+            kernel_kwargs.pop("rel_w", None)
+            out, lse = flash_attn(inputs["q"], inputs["k"], inputs["v"], rel_h_t, rel_w_t,
                                       metadata=metadata, **kernel_kwargs)
         torch.npu.synchronize()
         return {"out": out, "lse": lse}

@@ -43,6 +43,11 @@ class CPUBackend(Backend):
         tforward_kwargs = dict(params)
         tforward_kwargs["scale"] = params.get("scale", 1 / (params["D"] ** 0.5))
 
+        if "rel_h" in inputs and inputs["rel_h"] is not None:
+            tforward_kwargs["rel_h"] = _to_tforward(inputs["rel_h"], layout_q, params)
+        if "rel_w" in inputs and inputs["rel_w"] is not None:
+            tforward_kwargs["rel_w"] = _to_tforward(inputs["rel_w"], layout_q, params)
+
         out_cpu, x_max, x_sum = tforward(q_cpu, k_cpu, v_cpu, **tforward_kwargs)
         lse = torch.log(x_sum) + x_max
         lse[x_max <= torch.finfo(torch.float32).min + 1.0] = float('inf')
