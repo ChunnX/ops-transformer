@@ -56,28 +56,39 @@ waveEnd   = (expertIdx, rowOffsetInExpert)
 - 一个大 expert 的部分 row；
 - 大 expert 尾段与后续小 expert。
 
-随后 Dispatch 按 expert 顺序处理 wave 内各 segment。大 expert 跨 wave 时，rank-round-robin 游标会延续，不会从 ordinal 0 重新开始调度。
+随后 Dispatch 按 expert 顺序处理 wave 内各 segment。大 expert 跨 wave 时，`rowOffsetInExpert`
+就是该 segment 在完整 rank-round-robin 序列中的绝对 row，因此不需要额外保存或推进 Dispatch 游标。
 
 ## 3. compact 索引生成
 
-对当前 expert，本核先从 `cumsumInfo` 取得每个 rank 的 token 数。对于当前 chunk 实际覆盖的 ordinal 区间，再逐 rank 执行：
+对当前 expert，本核先从 `cumsumInfo` 取得每个 rank 的 token 数，再按“活跃 rank 集合不变”的
+round 区间规划本核任务。每个区间只扫描一次 rank count，本核仅生成满足
+`destinationRow % coreCount == coreIdx` 的描述符：
+
+```text
+{rankId, compactOrdinal, destinationRow}
+```
+
+随后只对本核确实用到的 rank 执行：
 
 ```text
 读取 mask slice
   -> CreateVecIndex 生成连续 topkIndex
   -> GatherMask 得到该 rank 的 compact topkIndex
-  -> 将所需 ordinal 区间暂存到 topkIndexTensor
+  -> 用 compactOrdinal 直接回填本核描述符中的 topkIndex
 ```
 
-这里不再构造 Layer，不做 logical row 到 `(rank, rankOrdinal)` 的逆运算，也不再按 rank 启停一次完整搬运流水。
+这里不构造全 expert Layer，也不生成、复制或回放全 wave 的 compact list。规划和回填的
+逐 row 工作量都是本核任务数，约为 `segmentRows / coreCount`。
 
-`topkIndexTensor` 在当前 chunk 内分成两个不重叠区域：
+`topkIndexTensor` 分成三个不重叠且对齐的区域：
 
 ```text
-[各 rank 的 compact task list][CreateVecIndex 临时区]
+[本核 rankId 表][本核 topkIndex/ordinal 表][CreateVecIndex 临时区]
 ```
 
-这样复用已有 UB，不新增 GM descriptor workspace。
+两个本核任务表分别按 32B 对齐，临时区按 256 个 int32 对齐。这样复用已有 UB，不新增
+GM descriptor workspace，也不再使用任意 4B 偏移的 VEC 搬运。
 
 ## 4. 正向 rank-round-robin 任务顺序
 
@@ -91,12 +102,12 @@ ordinal 2: r0t2, r1t2, r2t2, ...
 
 某个 rank 耗尽后直接跳过。
 
-例如两个 expert 的 Gather 存储顺序是：
+例如两个 expert 的逻辑任务顺序是：
 
 ```text
 task0 = E0 r0 a0
-task1 = E0 r0 a1
-task2 = E0 r1 b0
+task1 = E0 r1 b0
+task2 = E0 r0 a1
 task3 = E0 r1 b1
 task4 = E0 r1 b2
 task5 = E1 r0 c0
@@ -104,13 +115,8 @@ task6 = E1 r2 d0
 task7 = E1 r2 d1
 ```
 
-实际 Dispatch 顺序为：
-
-```text
-task0, task2, task1, task3, task4, task5, task6, task7
-```
-
-也就是先取 E0 每张活跃卡的第一个 token，再取第二个；E0 完成后继续 E1。
+即先取 E0 每张活跃卡的第一个 token，再取第二个；E0 完成后继续 E1。每个 core 的
+本地任务表已经是最终执行顺序，不再遍历完整序列后用 core id 过滤。
 
 ## 5. 分核和 workspace row
 
@@ -126,8 +132,8 @@ destinationRow % coreCount == coreIdx
 
 ```text
 core0: task0, task4
-core1: task2, task5
-core2: task1, task6
+core1: task1, task5
+core2: task2, task6
 core3: task3, task7
 ```
 
@@ -146,7 +152,6 @@ rankId + topkIndex + destinationRow
 并直接接入已有 MTE2/MTE3 ring。source rank 改变时只切换远端 GM 基址，不结束 ring；只有以下情况才 drain：
 
 - 当前 GMM1 tile 结束，需要发布 tile ready；
-- 当前 chunk 结束，需要复用 compact/index UB；
 - 当前 expert segment 结束。
 
 每个 destination row 只归属一个 core。core 完成某 tile 中自己负责的 row 后，通过 AtomicAdd 累加实际 ready row 数。所有 core 的计数达到该 tile 的目标 row 数后，GMM1 才会启动。
@@ -165,9 +170,11 @@ trace 仅通过既有 `MEGA_MOE_ENABLE_WAVE_TRACE` 宏控制，没有新增打�
 
 ## 8. 当前仍需通过实测判断的开销
 
-当前版本刻意先实现清晰、可验证的正向调度，仍有两项已知成本：
+当前版本仍有两项需要通过 trace 量化的成本：
 
-1. 每个 AIV1 core 都会独立执行 compact gather，以避免新增跨核 descriptor 和同步；
+1. 每个 AIV1 core 独立 compact 自己用到的 source rank，以避免新增跨核 descriptor 和同步；
 2. 大 expert 跨多个 wave 时，Gather 仍可能从前序 mask batch 开始扫描，再跳到本 wave 所需 ordinal。
 
-这两项应先结合保留的 trace 判断实际占比，再决定是否引入 mask cursor 或共享索引；当前版本不再保留旧 Layer、rank precheck 和 rank-major transfer stream 逻辑。
+这两项应先结合保留的 trace 判断实际占比，再决定是否引入 mask cursor 或共享索引。当前
+版本已删除全 wave 的 Plan/Gather/Replay、跨 wave rank-round cursor、旧 Layer 和
+rank-major transfer stream。
