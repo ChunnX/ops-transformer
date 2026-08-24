@@ -17,7 +17,7 @@
 
 #include "kernel_basic_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_udma_tiling_data.h"
+#include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_tiling_data.h"
 #include "apace/kernel/matmul/quant_batch_matmul/all_gather_qbmm_mx_kernel.h"
 #include "adv_api/hcomm/hcomm.h"
 #include "apace/core/aiv_comm/collective_comm_context.h"
@@ -36,6 +36,13 @@ using LayoutB = AscendC::Te::DNExtLayoutPtn;
 using LayoutC = AscendC::Te::NDExtLayoutPtn;
 using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
 
+struct UdmaCommWaitPolicy {
+    __aicore__ inline void WaitTile(uint32_t tileIdx)
+    {
+        AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE2>(tileIdx);
+    }
+};
+
 template <typename AType, typename BType, typename CType>
 class AllGatherMxMatmulUdmaImpl {
 public:
@@ -44,7 +51,7 @@ public:
                                 GM_ADDR bScaleGM, GM_ADDR cGM, const AllGatherMxMatmulUdmaTilingData *tilingData);
     __aicore__ inline void Process();
 
-    using QuantMatmulKernelImpl = AllGatherQbmmMxKernel<AType, BType, CType>;
+    using QuantMatmulKernelImpl = AllGatherQbmmMxKernel<AType, BType, CType, UdmaCommWaitPolicy>;
     using KernelParams = typename QuantMatmulKernelImpl::Params;
     using QBMMTiling = typename QuantMatmulKernelImpl::QBMMTiling;
     using FragmentParams = typename QuantMatmulKernelImpl::FragmentParams;
