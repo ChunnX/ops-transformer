@@ -31,6 +31,11 @@ constexpr uint32_t L0C_MAX_SIZE = 256 * 1024;
 
 constexpr uint32_t L0_MAX_SIZE = 64 * 1024;
 constexpr uint32_t L1_MAX_SIZE = 512 * 1024;
+// BSND 的 N（kernel 里为 gSize）<= 该阈值时：gather 64、K 双槽、Q/Dy 单槽 + common 中转
+constexpr int64_t SFAG_HEAD_N_L1_RESIDENT = 64;
+constexpr uint32_t SFAG_GATHER_S2_HEAD_N = 64;
+constexpr uint32_t SFAG_L1_DS_P_EACH = 64 * 1024;
+constexpr uint32_t SFAG_L1_COMMON_SIZE = 104 * 1024;
 // 当前判断仅在FP32场景生效，后续需考虑FP16/BF16并结合L0DB开关
 #define IS_L0_EXCEED(M, N, K, T1) (M * K * sizeof(T1) > L0_MAX_SIZE || K * N * sizeof(T1) > L0_MAX_SIZE);
 constexpr uint32_t RESERVED_WORKSPACE_SIZE = 64 * 1024;
@@ -168,6 +173,8 @@ struct FagConstInfo {
     int64_t selectedBlockCount = 2048;
     int64_t selectedBlockSize = 1;
     int64_t selectedCountOffset = 0;
+    // true: host tiling 判定 gSize <= SFAG_HEAD_N_L1_RESIDENT，gather 64 + K 双槽常驻
+    bool isHeadNLe64 = false;
 };
 
 // fp8反量化因子
