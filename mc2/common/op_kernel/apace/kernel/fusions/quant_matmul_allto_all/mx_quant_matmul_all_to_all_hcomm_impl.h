@@ -259,10 +259,6 @@ template <typename X1Type, typename X2Type, typename YType,
           typename QuantMatmulAllToAllTilingDataType,
           AscendC::HcclServerType ServerType, bool IsMxFp4>
 __aicore__ inline void
-template <typename X1Type, typename X2Type, typename YType,
-          typename QuantMatmulAllToAllTilingDataType,
-          AscendC::HcclServerType ServerType, bool IsMxFp4>
-__aicore__ inline void
 QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
                               QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::Run()
 {
