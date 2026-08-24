@@ -311,49 +311,41 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     auto &&commTiling = tilingData_->commTilingData;
     uint64_t perRankN = commTiling.nonSplitAxisSize / rankDim_;
 
-    // AIC/AIV分离方案(参考urma):
-    // AIC: for循环逐tile做matmul,每个tile完成后CrossCoreSetFlag通知AIV
-    // AIV: for循环CrossCoreWaitFlag等待AIC,然后HCCL AllToAll通信
-    // 两种模板分别在不同核编译,避免同时内联导致编译卡死
+    // 与urma方案一致: AIC只调用1次matmul(完整M), AIV for循环逐tile HCCL通信
+    // AIC: 1次quantMatmulKernelImpl_(完整M) + CrossCoreSetFlag逐tile通知AIV
+    // AIV: for循环CrossCoreWaitFlag + AlltoAll<true> + Wait(逐tile通信)
 
     if ASCEND_IS_AIC {
+        // 1次调用,ProblemShape.M=完整M, kernel内部遍历所有tile
         Params params;
         const auto &mmTile = tilingData_->tileQbmmTilingData;
-        SetupParams(mmTile, CalcTileM(0), params);
+        SetupParams(mmTile, static_cast<uint32_t>(splitAxisSize_), params);
+        params.mmadParams.aGmAddr = x1_;
+        params.mmadParams.scaleAGmAddr = x1Scale_;
+        params.mmadParams.cGmAddr = mmResultGM_;
+        params.problemShape = ProblemShape{
+            static_cast<int64_t>(splitAxisSize_),
+            static_cast<int64_t>(perRankN),
+            static_cast<int64_t>(mmTile.k),
+            static_cast<int64_t>(rankDim_)};
         quantMatmulKernelImpl_.InitMmad(params);
+        quantMatmulKernelImpl_(params);
 
+        // 逐tile通知AIV matmul已完成
+        AscendC::SyncAll();
         for (uint32_t tid = 0; tid < totalTileCnt_; ++tid) {
-            uint32_t curTileM = CalcTileM(tid);
-            uint64_t tileOffset = CalcTileOffset(tid);
-            uint64_t aByteOffset = tileOffset * mmTile.k * sizeof(X1Type) / (IsMxFp4 ? MXFP_DATA_NUM_PER_BYTE : 1);
-            uint64_t scaleKLen = Blaze::Gemm::CeilDiv(static_cast<uint64_t>(mmTile.k), MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE;
-            uint64_t scaleAByteOffset = tileOffset * scaleKLen * sizeof(AscendC::fp8_e8m0_t);
-
-            params.mmadParams.aGmAddr = x1_ + aByteOffset;
-            params.mmadParams.scaleAGmAddr = x1Scale_ + scaleAByteOffset;
-            params.mmadParams.cGmAddr = mmResultGM_ + tileOffset * perRankN * sizeof(YType);
-            params.problemShape = ProblemShape{
-                static_cast<int64_t>(curTileM),
-                static_cast<int64_t>(perRankN),
-                static_cast<int64_t>(mmTile.k),
-                static_cast<int64_t>(rankDim_)};
-
-            quantMatmulKernelImpl_(params);
-            AscendC::SyncAll();
             AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(tid);
         }
     }
 
     if ASCEND_IS_AIV {
-        // HCCL已在Init中初始化,逐tile整块AllToAll通信
-        // matmul结果写mmResult[rankM, perRankN], AllToAll整块发送
+        // for循环逐tile HCCL通信(与urma的for循环Commit/Wait结构一致)
         for (uint32_t tid = 0; tid < totalTileCnt_; ++tid) {
             AscendC::CrossCoreWaitFlag<0x2, PIPE_S>(tid);
             AscendC::SyncAll<true>();
 
             uint32_t curTileM = CalcTileM(tid);
             uint64_t tileOffset = CalcTileOffset(tid);
-            // 整块发送: sendCount=curTileM*perRankN, strideCount=curTileM*perRankN, batchCnt=1
             uint64_t sendCount = static_cast<uint64_t>(curTileM) * perRankN;
             curHandle_ = hccl_.template AlltoAll<true>(
                 mmResultGM_ + tileOffset * perRankN * sizeof(YType),
