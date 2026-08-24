@@ -123,8 +123,7 @@ private:
     static constexpr uint16_t MTE1_MTE2_EVENT_FLAG = 6;
 
     __aicore__ inline void InitBaseParams();
-    __aicore__ inline void SetupParams(const QuantMatmulTilingData &mmTile, uint32_t batchSize,
-                                       uint32_t batchRankOffset, uint64_t origM, bool isLocal, Params &params);
+    __aicore__ inline void SetupParams(const QuantMatmulTilingData &mmTile, uint32_t curTileM, Params &params);
     __aicore__ inline void RunRemoteMatmul();
 };
 
@@ -186,28 +185,28 @@ template <typename X1Type, typename X2Type, typename YType,
 __aicore__ inline void
 QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
                               QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::SetupParams(
-    const QuantMatmulTilingData &mmTile, uint32_t batchSize, uint32_t batchRankOffset,
-    uint64_t origM, bool isLocal, Params &params)
+    const QuantMatmulTilingData &mmTile, uint32_t curTileM, Params &params)
 {
+    // batchSize=1: 每卡只算自己的x1×x2,不遍历其他rank的B段
+    // x2每卡完整[K, N],不需要按rank切分
     params.problemShape = ProblemShape{
-        static_cast<int64_t>(mmTile.m),
+        static_cast<int64_t>(curTileM),
         static_cast<int64_t>(axisNPerRank_),
         static_cast<int64_t>(axisK_),
-        static_cast<int64_t>(batchSize)};
+        1};  // batch=1
 
-    constexpr uint64_t sizeShift = IsMxFp4 ? 1 : 0;
     params.mmadParams = BlockMmadParams{
         x1_,
-        x2_ + ((static_cast<uint64_t>(batchRankOffset) * axisNPerRank_ * axisK_) >> sizeShift),
-        isLocal ? y_ : mmResultGM_, nullptr,
-        x1Scale_, x2Scale_ + static_cast<uint64_t>(batchRankOffset) * axisNPerRank_ * scaleAElemCnt_};
+        x2_,  // x2每卡完整,不偏移
+        mmResultGM_, nullptr,
+        x1Scale_, x2Scale_};
 
     params.l1Params = L1Params{static_cast<uint64_t>(mmTile.stepK) * mmTile.baseK, mmTile.scaleKL1, mmTile.nBufferNum};
     params.schParams = BlockSchedulerParams{mmTile.baseM, mmTile.baseN, mmTile.mTailTile, mmTile.nTailTile,
         mmTile.mBaseTailSplitCnt, mmTile.nBaseTailSplitCnt, mmTile.mTailMain, mmTile.nTailMain};
-    params.qbmmParams = QBMMTiling{batchSize, mmTile.baseM, mmTile.baseN, mmTile.baseK,
+    params.qbmmParams = QBMMTiling{1, mmTile.baseM, mmTile.baseN, mmTile.baseK,  // batchCount=1
         isBias_ ? QBMMTiling::BIAS_ENABLED : QBMMTiling::BIAS_DISABLED, mmTile.dbL0c, false};
-    params.localParams = LocalParams{rankId_, rankDim_, origM, rankId_, 0, false};
+    params.localParams = LocalParams{0, 1, curTileM, 0, 0, false};  // rankId=0, rankSize=1
 }
 
 template <typename X1Type, typename X2Type, typename YType,
@@ -218,7 +217,7 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
                               QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::RunRemoteMatmul()
 {
     Params param;
-    SetupParams(tilingData_->tileQbmmTilingData, rankDim_, 0, maxTileM_, false, param);
+    SetupParams(tilingData_->tileQbmmTilingData, tileM_, param);
     quantMatmulKernelImpl_.InitMmad(param);
 
     GM_ADDR aCur = x1_;
@@ -228,21 +227,18 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
         bool isTail = (tid >= tileCnt_);
         uint32_t curTileM = isTail ? tailM_ : tileM_;
         uint32_t curTiling = isTail ? 1 : 0;
-        // 只在头尾切换时重新SetupParams+InitMmad(与PR#10054一致,避免for循环中重复内联)
         if (curTiling != lastTiling) {
             SetupParams(isTail ? tilingData_->tailQbmmTilingData : tilingData_->tileQbmmTilingData,
-                rankDim_, 0, maxTileM_, false, param);
+                curTileM, param);
             quantMatmulKernelImpl_.InitMmad(param);
             lastTiling = curTiling;
         }
         param.mmadParams.aGmAddr = aCur;
         param.mmadParams.scaleAGmAddr = aScaleCur;
-        // mmResult偏移用实际累计tileM(不是maxTileM),与AIV sendBuffer一致
         uint64_t tileOffset = (tid < tileCnt_)
             ? static_cast<uint64_t>(tid) * tileM_
             : static_cast<uint64_t>(tileCnt_) * tileM_ + static_cast<uint64_t>(tid - tileCnt_) * tailM_;
         param.mmadParams.cGmAddr = mmResultGM_ + tileOffset * axisNPerRank_ * sizeof(YType);
-        param.localParams.cGmSelfAddr = 0;
         quantMatmulKernelImpl_(param);
 
         AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(tid);
