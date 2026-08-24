@@ -441,28 +441,31 @@ public:
             SetFlag<HardEvent::V_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
             WaitFlag<HardEvent::V_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
             uint32_t mOffset = taskInfo.gS1Idx + startRow;
-            if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-                uint32_t prefixBS1 = qActSeqLensParser.GetTBase(taskInfo.bIdx);
-                uint64_t bN2Offset = prefixBS1 * constInfo.gSize * constInfo.n2Size + taskInfo.n2Idx * constInfo.gSize;
-                DataCopySoftmaxLseTNDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
-                                                           constInfo);
-            } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
-                uint32_t prefixBS1 = qActSeqLensParser.GetTBase(taskInfo.bIdx);
-                uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
-                uint64_t bN2Offset = prefixBS1 * constInfo.gSize * constInfo.n2Size + taskInfo.n2Idx * constInfo.gSize;
-                DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
-                                                           constInfo, s1Size);
-            } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
-                uint64_t bN2Offset = taskInfo.bIdx * constInfo.gSize * constInfo.n2Size * constInfo.s1Size +
-                                     taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
-                DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
-                                                            actualGSplitSize, constInfo);
-            } else { // BNSD
-                uint64_t bN2Offset = taskInfo.bIdx * constInfo.gSize * constInfo.n2Size * constInfo.s1Size +
-                                     taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
-                uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
-                DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
-                                                            actualGSplitSize, constInfo, qActSeqLens);
+
+            GmCoord lseGmCoord{.bIdx = taskInfo.bIdx,
+                               .n2Idx = taskInfo.n2Idx,
+                               .gS1Idx = mOffset,
+                               .dIdx = 0,
+                               .gS1DealSize = actualGSplitSize,
+                               .dDealSize = 0};
+
+            if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) {
+                constexpr GmFormat LSE_FORMAT =
+                    (layout == LayOutTypeEnum::LAYOUT_TND) ? GmFormat::LSE_TN2G : GmFormat::LSE_N2GT;
+                FaGmTensor<T, LSE_FORMAT> lseGmTensor_;
+                lseGmTensor_.gmTensor = softmaxLseGm;
+                lseGmTensor_.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, actualSeqLengthsGmQ,
+                                                   constInfo.actualSeqLenSize);
+                CopyLseUbToGm<T, LSE_FORMAT, GetOutUbFormat<layout>()> copyLseUbToGm_;
+                copyLseUbToGm_(lseGmTensor_, maxLseUb, lseGmCoord);
+            } else { // BSND BSH BNSD
+                constexpr GmFormat LSE_FORMAT = GmFormat::LSE_BN2GS1;
+                FaGmTensor<T, LSE_FORMAT> lseGmTensor_;
+                lseGmTensor_.gmTensor = softmaxLseGm;
+                lseGmTensor_.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
+                                                   actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+                CopyLseUbToGm<T, LSE_FORMAT, GetOutUbFormat<layout>()> copyLseUbToGm_;
+                copyLseUbToGm_(lseGmTensor_, maxLseUb, lseGmCoord);
             }
         }
     }

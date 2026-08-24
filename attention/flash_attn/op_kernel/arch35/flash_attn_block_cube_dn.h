@@ -18,8 +18,12 @@
 #include "../utils/flash_attn_type.h"
 #if __has_include("../../../common/op_kernel/matmul.h")
 #include "../../../common/op_kernel/matmul.h"
+#include "../../../common/op_kernel/memcopy/fa_gm_tensor.h"
+#include "../../../common/op_kernel/memcopy/copy_gm_to_l1.h"
 #else
 #include "../../common/matmul.h"
+#include "../../common/op_kernel/memcopy/fa_gm_tensor.h"
+#include "../../common/op_kernel/memcopy/copy_gm_to_l1.h"
 #endif
 
 using namespace fa_base_matmul;
@@ -204,9 +208,7 @@ public:
         }
     }
 
-    __aicore__ inline void InitCrossCoreSync()
-    {
-    }
+    __aicore__ inline void InitCrossCoreSync() {}
 
     __aicore__ inline void UnInitCrossCoreSync()
     {
