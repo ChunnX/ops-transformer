@@ -88,7 +88,8 @@ class _MegaMoeOpBuilder(OpBuilder):
             "float? activation_clamp=None, Dict(str, float)? activation_params=None, "
             "int? dispatch_quant_out_dtype=None,  "
             "int? weight1_type=None, int? weight2_type=None, int? topo_type=None, "
-            "int? rank_num_per_server=None, int topk_weights_type=0) -> (Tensor, Tensor)"
+            "int? rank_num_per_server=None, int topk_weights_type=0, "
+            "bool activation_debug=False, int activation_debug_size=0) -> (Tensor, Tensor, Tensor)"
         )
 
     def register_meta(self):
@@ -128,6 +129,8 @@ class _MegaMoeOpBuilder(OpBuilder):
             topo_type=None,
             rank_num_per_server=None,
             topk_weights_type=0,
+            activation_debug=False,
+            activation_debug_size=0,
         ):
             torch._check(
                 ep_world_size != 0,
@@ -138,7 +141,10 @@ class _MegaMoeOpBuilder(OpBuilder):
             local_moe_expert_num = moe_expert_num // ep_world_size
             y = x.new_empty(tuple([bs, h]), dtype=x.dtype)
             expert_token_nums = x.new_empty((local_moe_expert_num), dtype=torch.int32)
-            return (y, expert_token_nums)
+            activation_debug_out = x.new_empty(
+                (activation_debug_size if activation_debug else 0,), dtype=torch.bfloat16
+            )
+            return (y, expert_token_nums, activation_debug_out)
 
 
 _mega_moe_op_builder = _MegaMoeOpBuilder()
@@ -181,6 +187,8 @@ def _npu_mega_moe(
     topo_type=None,
     rank_num_per_server=None,
     topk_weights_type=0,
+    activation_debug=False,
+    activation_debug_size=0,
 ):
     activation_params_list = _normalize_activation_params(
         activation, activation_clamp, activation_params
@@ -220,6 +228,8 @@ def _npu_mega_moe(
         topo_type,
         rank_num_per_server,
         topk_weights_type,
+        activation_debug,
+        activation_debug_size,
     )
 
 
@@ -395,8 +405,26 @@ def mega_moe(
     shared_l2_weights_sf: Optional[List[torch.Tensor]] = None,
     shared_l1_bias: Optional[List[torch.Tensor]] = None,
     shared_l2_bias: Optional[List[torch.Tensor]] = None,
+    activation_direct_output: bool = False,
 ):
-    return torch.ops.cann_ops_transformer.npu_mega_moe(
+    # 紧凑 GMM2 后附带 META_INFO_SIZE=8 个 int32；尾段依次保存 Combine 槽位、MoE 加权和、
+    # 共享专家值和最终 cast 前总和（均为 FP32）。
+    shared_expert_num = 0
+    if shared_l1_weights:
+        first_shared_weight = shared_l1_weights[0]
+        shared_expert_num = (
+            len(shared_l1_weights)
+            if first_shared_weight.dim() == 2
+            else int(first_shared_weight.shape[0])
+        )
+    activation_debug_size = (
+        sym_buffer.max_recv_token_num * (x.shape[1] + 16)
+        + x.shape[0] * sym_buffer.num_topk * x.shape[1] * 2
+        + x.shape[0] * x.shape[1] * 2
+        + x.shape[0] * shared_expert_num * x.shape[1] * 2
+        + x.shape[0] * x.shape[1] * 2
+    ) if activation_direct_output else 0
+    outputs = torch.ops.cann_ops_transformer.npu_mega_moe(
         sym_buffer.context,
         x,
         topk_ids,
@@ -431,4 +459,9 @@ def mega_moe(
         topo_type=sym_buffer.topo_type,
         rank_num_per_server=sym_buffer.rank_num_per_server,
         topk_weights_type=sym_buffer.topk_weights_type,
+        activation_debug=activation_direct_output,
+        activation_debug_size=activation_debug_size,
     )
+    if activation_direct_output:
+        return outputs
+    return outputs[0], outputs[1]

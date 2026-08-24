@@ -875,7 +875,8 @@ __aicore__ inline void UpdateMoeExpertGmm2GlobalBuffer(const GmmExecutionConfig 
                                                        const WorkspaceInfo &workspace,
                                                        const ExpertWeightTensorListAddrs &weights,
                                                        GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
-                                                       uint32_t rowOffsetInExpert = 0U)
+                                                       uint32_t rowOffsetInExpert = 0U,
+                                                       GM_ADDR gmm2DebugOut = nullptr)
 {
     constexpr uint32_t weightElementsPerByte = PackedElementTraits<WeightType>::ELEMENTS_PER_BYTE;
     constexpr uint32_t activationOutputElementsPerByte = PackedElementTraits<ActivationOutType>::ELEMENTS_PER_BYTE;
@@ -888,8 +889,9 @@ __aicore__ inline void UpdateMoeExpertGmm2GlobalBuffer(const GmmExecutionConfig 
         Ops::Base::CeilDiv(activationOutputWidth, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
 
     if constexpr (ConfigureGmm2Output) {
+        GM_ADDR gmm2OutputBase = gmm2DebugOut == nullptr ? workspace.gmm2MmadResPtr : gmm2DebugOut;
         gmmAddrInfo.gmm2OutGlobal =
-            workspace.gmm2MmadResPtr + globalTokenStartIndex * tokenHiddenDim * sizeof(bfloat16_t);
+            gmm2OutputBase + globalTokenStartIndex * tokenHiddenDim * sizeof(bfloat16_t);
     }
     gmmAddrInfo.metaInfoGlobal = workspace.metaInfoPtr + globalTokenStartIndex * META_INFO_SIZE * sizeof(int32_t);
     gmmAddrInfo.aGlobal = workspace.activationQuantDataPtr + globalTokenStartIndex * activationOutputWidth /

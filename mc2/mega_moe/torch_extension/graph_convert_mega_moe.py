@@ -88,6 +88,8 @@ if _TORCHAIR_AVAILABLE:
         activation: str = "swiglu",
         activation_params: Optional[List[float]] = None,
         topk_weights_type: int = 0,
+        activation_debug: bool = False,
+        activation_debug_size: int = 0,
         dependencies=[],
         node_name=None,
     ):
@@ -109,6 +111,7 @@ if _TORCHAIR_AVAILABLE:
         .OPTIONAL_INPUT(scales, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))\n
         .OUTPUT(y, TensorType({DT_BF16, DT_FLOAT16}))\n
         .OUTPUT(expert_token_nums, TensorType({DT_INT32}))\n
+        .OUTPUT(activation_debug_out, TensorType({DT_BF16}))\n
         .REQUIRED_ATTR(moe_expert_num, Int)\n
         .REQUIRED_ATTR(ep_world_size, Int)\n
         .REQUIRED_ATTR(ccl_buffer_size, Int)\n
@@ -120,6 +123,8 @@ if _TORCHAIR_AVAILABLE:
         .ATTR(num_max_tokens_per_rank, Int, 0)\n
         .ATTR(activation, String, "swiglu")\n
         .ATTR(activation_params, ListFloat, {})\n
+        .ATTR(activation_debug, Bool, false)\n
+        .ATTR(activation_debug_size, Int, 0)\n
         """
         if activation_params is None:
             activation_params = []
@@ -152,11 +157,14 @@ if _TORCHAIR_AVAILABLE:
             "activation": attr.Str(activation),
             "activation_params": attr.ListFloat(activation_params),
             "topk_weights_type": attr.Int(topk_weights_type),
+            "activation_debug": attr.Bool(activation_debug),
+            "activation_debug_size": attr.Int(activation_debug_size),
         }
 
         outputs = [
             "y",
             "expert_token_nums",
+            "activation_debug_out",
         ]
 
         return ge_op(
@@ -201,8 +209,11 @@ if _TORCHAIR_AVAILABLE:
             .attr("activation", attr.Str("swiglu"))
             .attr("activation_params", attr.ListFloat([]))
             .attr("topk_weights_type", attr.Int(0))
+            .attr("activation_debug", attr.Bool(False))
+            .attr("activation_debug_size", attr.Int(0))
             .output("y", "DT_BF16, DT_FLOAT16")
-            .output("expert_token_nums", "DT_INT32"),
+            .output("expert_token_nums", "DT_INT32")
+            .output("activation_debug_out", "DT_BF16"),
         )
 
     @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.npu_mega_moe.default)
@@ -234,6 +245,8 @@ if _TORCHAIR_AVAILABLE:
         weight1_type: int = 28,
         weight2_type: int = 28,
         topk_weights_type: int = 0,
+        activation_debug: bool = False,
+        activation_debug_size: int = 0,
         meta_outputs: TensorSpec = None,
     ):
         activation_values = _normalize_activation_params(
@@ -263,4 +276,6 @@ if _TORCHAIR_AVAILABLE:
             activation=activation,
             activation_params=activation_values,
             topk_weights_type=topk_weights_type,
+            activation_debug=activation_debug,
+            activation_debug_size=activation_debug_size,
         )
