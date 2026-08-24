@@ -522,7 +522,10 @@ ge::graphStatus QfaInfoParser::GetGSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QfaInfoParser::GetActualSeqInfo() { return ge::GRAPH_SUCCESS; }
+ge::graphStatus QfaInfoParser::GetActualSeqInfo()
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 void QfaInfoParser::GenerateFeatureInfo(QfaTilingInfo &qfaInfo)
 {
@@ -552,7 +555,10 @@ void QfaInfoParser::GenerateLayoutInfo(QfaTilingInfo &qfaInfo)
     qfaInfo.layoutQDescale = layoutQDescale_;
 }
 
-void QfaInfoParser::GenerateQuantInfo(QfaTilingInfo &qfaInfo) { qfaInfo.quantMode = quantMode_; }
+void QfaInfoParser::GenerateQuantInfo(QfaTilingInfo &qfaInfo)
+{
+    qfaInfo.quantMode = quantMode_;
+}
 
 void QfaInfoParser::GenerateAxisInfo(QfaTilingInfo &qfaInfo)
 {
