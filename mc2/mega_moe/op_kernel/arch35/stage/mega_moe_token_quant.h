@@ -119,6 +119,33 @@ __aicore__ inline void QuantizeLocalTokens(const AivJobContext &job, const MoeSt
     __ubuf__ uint16_t *halfScaleAddr = reinterpret_cast<__ubuf__ uint16_t *>(
         scratch.mxTempTensor[Ops::Base::CeilAlign(config.quantScaleNumAlignPerToken, static_cast<uint32_t>(ALIGN_32))]
             .GetPhyAddr());
+    /*
+     * h 非 64 元素对齐（h%64==32，即 scale 组数 scaleNum 为奇数）时，量化链路存在三处
+     * "计算不覆盖、却会进入定长记录或参与计算"的跨 launch UB 残留：
+     *  ① xIn 尾部（有效 h 元素之后到 CeilAlign(h,128) 末尾）：ComputeMaxExp 尾块仅 32 元素有效，
+     *     但 mask 激活 lane0-31、经 deinterleave 覆盖元素位置 [h-32, h+32)，其中 [h, h+32) 为残留；
+     *  ② xOut 记录内 scale 偶数补齐槽（第 scaleNum 个 scale 字节）：ComputeScale 的掩码写止于
+     *     scale[scaleNum-1]，该槽永不被写入，随定长记录原样写出；
+     *  ③ mxTempTensor 的 halfScale[scaleNum..] 补偶槽：同样永不被 ComputeScale 写入，却被
+     *     ComputeFp8Data 尾块经 E2B 广播进 [h, h+32) 位置的乘法（0×Inf/NaN 仍为 NaN）。
+     * GMM 侧按 64 元素 K 块 + e8m0 scale 成对（偶数个）消费该记录，上述残留一旦呈 NaN/大指数
+     * （跨迭代复用 UB 时的上一轮残留即如此），整行 GMM 输出被污染为 NaN，最终 combine 输出成块清零。
+     * 故此处把四个收发 buffer 与 mxTemp scratch 整体清零一次：有效区随后每 token 均被完整覆写，
+     * 三处残留位从此恒为确定的 0（e8m0 0x00 = 2^-127、数据 0、halfScale 0，均为良性）；
+     * h%64==0 时不存在上述缝隙，本清零不改变任何可观测行为。
+     */
+    auto xIn0View = scratch.xInTensor0.template ReinterpretCast<int16_t>();
+    auto xIn1View = scratch.xInTensor1.template ReinterpretCast<int16_t>();
+    auto xOut0View = scratch.xOutTensor0.template ReinterpretCast<int16_t>();
+    auto xOut1View = scratch.xOutTensor1.template ReinterpretCast<int16_t>();
+    auto mxTempView = scratch.mxTempTensor.template ReinterpretCast<int16_t>();
+    Duplicate<int16_t>(xIn0View, 0, static_cast<int32_t>(xIn0View.GetSize()));
+    Duplicate<int16_t>(xIn1View, 0, static_cast<int32_t>(xIn1View.GetSize()));
+    Duplicate<int16_t>(xOut0View, 0, static_cast<int32_t>(xOut0View.GetSize()));
+    Duplicate<int16_t>(xOut1View, 0, static_cast<int32_t>(xOut1View.GetSize()));
+    Duplicate<int16_t>(mxTempView, 0, static_cast<int32_t>(mxTempView.GetSize()));
+    PipeBarrier<PIPE_V>();
+    SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID2>();
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
     for (uint32_t index = 0; index < tokenRange.count; ++index) {
