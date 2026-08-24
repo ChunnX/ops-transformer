@@ -623,24 +623,23 @@ L2_CACHE_BYTES = 128 * 1024 * 1024
 
 
 def decide_swizzle(b, n, s1, s2, d, core_num, dtype_bytes=2, g_size=1):
-    """host 侧判据：线性切分下同时在跑的核，其工作集是否超 L2。
+    """**tiling.cpp 中 host 判据的 Python 镜像**，仅供 JIT 脚本使用。
 
-    `n` 传 **N1**(Q 侧 head 数)，`g_size` 传 G；KV 侧 head 数 N2 = n // g。
-    必须与 host 的 FlashAttnGradTilingFunc 逐位一致 —— 判据算错不会报错，
-    只会让 host 派发的二进制与测试验证的那份不是同一个。
+    生产路径上这个判据由 host 承担，权威实现与全部标定依据都在
+    `op_host/flash_attn_grad_tiling.cpp` 的 `FlashAttnGradTilingFunc()`
+    (搜 `int64_t swizzle = 0;`)。本函数只是把那段整数运算逐行照抄成
+    Python，让 JIT 脚本(test/prof/bench)能自己拼出 tilingkey ——
+    JIT 不走 host，拿不到 host 算好的值。
 
-    仿 ASC 的 CheckExceedL2Cache(tiling_normal_regbase.cpp:1000-1017)：
-    模拟线性切分，算出 core_num 个核同一时刻覆盖多少个不同 head，再乘上
-    每 head 要碰的全部张量。ASC 那边累加的是
-      q + dx + y (fp16) + dq (fp32)   以及   k + v (fp16) + dk + dv (fp32)
-    这里按 head 粒度做同样的累加 —— 一个核会遍历整个 head 的块网格。
+    **改判据必须同时改两处，且以 tiling.cpp 为准。** 两边算得不一样不会
+    报任何错，只会让 JIT 验证的二进制与 host 实际派发的那份不是同一个
+    (GQA 下曾因此有 19 个 shape 静默不一致)。
+    `test_..._pypto.py` 里有 `test_gate_matches_host()` 守护这件事。
 
-    只算 K+V 会严重低估：N=32 时那样得 128MB 恰好等于 L2 而判为不超，
-    但实测 swizzle 反而快 34%(10106 -> 6675us)。
-
-    对应 ASC tiling_normal_regbase.cpp:442 的
-      enableSwizzle = (isExceedL2Cache || isLargeInvalidBlk)
-                      && blockOuter == aicNum
+    入参口径与 host 一一对应：
+      n       <- n1Size (Q 侧 head 数)，KV 侧 N2 = n // g_size
+      g_size  <- gSize
+      core_num<- aicNum (物理 cube 核数，**不是** blockDim)
     """
     s1_outer = (s1 + CUBE_BASEM - 1) // CUBE_BASEM
     s2_outer = (s2 + CUBE_BASEN - 1) // CUBE_BASEN
@@ -656,48 +655,10 @@ def decide_swizzle(b, n, s1, s2, d, core_num, dtype_bytes=2, g_size=1):
     # k + v 读 (fp16) + dk + dv 写 (fp32) —— GQA 下同一个 KV head 被 G 个
     # Q head 共享，故 KV 侧字节按 G 摊薄，只记一份(与 host 的 `/ gSize` 一致)
     per_head += (2 * s2 * d * dtype_bytes + 2 * s2 * d * fp32) // g_size
-    # ---- 判据依赖 S1/S2 的**方向**，不能只看工作集大小 ----
-    # swizzle 换来的是「同核连续处理一整列 s1Outer 个块」，即 K/V 只载一次、
-    # dK/dV 在 L0C 连续累加；付出的是分配粒度变粗(一列 = s1Outer 块)。
-    # 这笔收支比直接取决于列有多长：
-    #
-    # 1) **S2 比 S1 长时(s2Outer > s1Outer) swizzle 从不获益**。列长只有
-    #    s1Outer 个块，复用窗口短；而列数 b*n*s2Outer 很大，线性切分本身
-    #    就已经落在同一 head 内，swizzle 没有额外的局部性可赚。
-    #    实测 5/5 全负(36 核 D=128)：
-    #      N8  1024/8192  106MB  线性 237.2 / swizzle 250.3   -5.5%
-    #      N16 1024/8192  212MB       491.9 /        492.1    -0.0%
-    #      N16 2048/8192  232MB       848.2 /        858.4    -1.2%
-    #      N24 1024/8192  318MB       723.1 /        728.0    -0.7%
-    #      N32  512/8192  404MB       629.3 /        632.1    -0.4%
-    #    注意后两点工作集已达 318/404MB，远超任何阈值却仍是线性胜 ——
-    #    所以这必须是一条**独立的方向判据**，调阈值救不回来。
-    #
-    # 2) S1 明显长于 S2 时(s1Outer >= 2*s2Outer)拐点比对称情形更早：列长
-    #    s1Outer 大、列数少，复用收益更足，故阈值降到 1.25x L2。该方向的
-    #    分界实测落在 138MB(负) 与 172MB(正) 之间：
-    #      N12 8192/512  129MB  194.9 / 245.9  -26.2%   线性
-    #      N12 8192/1024 138MB  330.0 / 353.0   -7.0%   线性
-    #      N24 4096/512  138MB  201.2 / 201.6   -0.2%   线性
-    #      N16 8192/512  172MB  277.4 / 263.7   +4.9%   swizzle
-    #      N16 8192/1024 184MB  509.3 / 474.3   +6.9%   swizzle
-    #      N20 8192/1024 230MB  781.8 / 583.1  +25.4%   swizzle
-    #      N24 8192/1024 276MB  994.6 / 698.5  +29.8%   swizzle
-    #      N32 8192/512  344MB  725.9 / 523.4  +27.9%   swizzle
-    #    1.1~1.4x 是同一个平台(误判数都为 2)，取中点 1.25x。
-    #
-    # 3) 对称情形(s1Outer == s2Outer)保持原有的 2x L2 —— 该档已按
-    #    N=8/10/12/16/24 校准过，不能因上面两条而回归：
-    #      N=8  176MB 线性 1556 / swizzle 1761  -> 线性
-    #      N=10 220MB       1904 /        2007  -> 线性
-    #      N=12 264MB       2833 /        2677  -> swizzle
-    #      N=16 352MB       4121 /        3550
-    #      N=24 528MB       6483 /        4982
-    #    N=10 在 220MB 仍偏好线性，而 S1 重方向 172MB 就该开 —— 两档分界
-    #    确实不同，单一阈值无法同时满足，故按方向分档。
-    #
-    # 全部 29 个实测点上：原判据(方向无关 2xL2)误判 7 个、累计代价 67.7%；
-    # 本判据误判 2 个、累计代价 18.0%。
+    # 判据依赖 S1/S2 的**方向**，不只看工作集大小：S2 更长时恒不开、
+    # S1 明显更长时拐点更早(1.25x L2)、对称时保持 2x L2。
+    # 三档阈值的实测标定数据(29 个点)全部记录在 tiling.cpp 的同一段里，
+    # 此处不复制 —— 复制两份必然漂移，要看依据请看那边。
     if s2_outer > s1_outer:
         return 0
     threshold = (1.25 if s1_outer >= 2 * s2_outer else 2.0) * L2_CACHE_BYTES

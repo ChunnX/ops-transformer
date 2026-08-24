@@ -435,6 +435,9 @@ def run_test():
     # 也支持 "NAME:i,j" 只跑某个命名用例集里的指定下标，
     # 例如 CASE_FILTER=DV:0,3（设备级错误会终止进程，逐个跑才能定位形状）。
     flt = os.environ.get("CASE_FILTER", "")
+    # CASE_FILTER=GATE 只跑 host 判据一致性守护（纯算术，不下发设备）
+    if flt == "GATE":
+        return 0 if test_gate_matches_host() else 1
     _named = {"G": GENERALIZED_CASES, "GQA": GQA_CASES, "DV": DV_CASES,
               "ASYM": ASYM_CASES}
     if ":" in flt:
@@ -467,6 +470,75 @@ def run_test():
         return 1
     print(f"=== All {len(cases)} cases PASSED ===")
     return 0
+
+
+def test_gate_matches_host():
+    """守护 decide_swizzle() 与 host tiling.cpp 的判据逐位一致。
+
+    生产路径的判据由 host 的 FlashAttnGradTilingFunc() 承担，
+    `decide_swizzle()` 只是它的 Python 镜像，供 JIT 自己拼 tilingkey 用。
+    两边算得不一样**不会报任何错**，只会让 JIT 验证的二进制与 host 实际
+    派发的那份不是同一个 —— GQA 下曾因 KV 字节未按 G 摊薄而静默不一致
+    (19 个 shape)。故这里把 tiling.cpp 的整数运算照抄一份做交叉校验：
+    改判据时若只改了一边，这个用例会立刻失败。
+
+    CASE_FILTER=GATE 单独运行（纯 host 侧算术，不下发设备）。
+    """
+    CM = CN = 128
+    L2 = 128 * 1024 * 1024
+
+    def host_gate(b, n2, g, s1, s2, d, cores):
+        """逐行照抄 op_host/flash_attn_grad_tiling.cpp 的 swizzle 段。
+        注意用整除以复现 C++ int64 语义（含 5*L2/4）。"""
+        s1o = (s1 + CM - 1) // CM
+        s2o = (s2 + CN - 1) // CN
+        per_head_blocks = s1o * s2o
+        fused_heads = b * n2 * g
+        if per_head_blocks <= 0 or cores <= 0:
+            return 0
+        per_core = (fused_heads * per_head_blocks + cores - 1) // cores
+        live = len({(c * per_core) // per_head_blocks for c in range(cores)})
+        per_head = (3 * s1 * d * 2 + s1 * d * 4
+                    + (2 * s2 * d * 2 + 2 * s2 * d * 4) // g)
+        threshold = (5 * L2) // 4 if s1o >= 2 * s2o else 2 * L2
+        if s2o > s1o:
+            return 0
+        if live * per_head <= threshold:
+            return 0
+        if fused_heads * s2o < 2 * cores:
+            return 0
+        return 1
+
+    Ss = [1, 32, 64, 100, 128, 129, 200, 256, 257, 300, 456,
+          512, 1024, 2048, 4096, 8192]
+    bad = []
+    total = 0
+    for g in (1, 2, 3, 4, 8):
+        for n2 in (1, 2, 3, 16):
+            for b in (1, 2):
+                for s1 in Ss:
+                    for s2 in Ss:
+                        for cores in (1, 8, 36):
+                            for d in (128, 192):
+                                total += 1
+                                mine = decide_swizzle(b, n2 * g, s1, s2, d,
+                                                      cores, g_size=g)
+                                theirs = host_gate(b, n2, g, s1, s2, d, cores)
+                                if mine != theirs:
+                                    bad.append((b, n2, g, s1, s2, d, cores,
+                                                mine, theirs))
+    print(f"[gate] checked {total} combos against the tiling.cpp formula")
+    if bad:
+        print(f"[gate] MISMATCH in {len(bad)} combos "
+              f"(kernel mirror vs host authority):")
+        for x in bad[:10]:
+            print(f"    b{x[0]} n2={x[1]} G={x[2]} S1={x[3]} S2={x[4]} "
+                  f"D{x[5]} cores={x[6]}: mirror={x[7]} host={x[8]}")
+        print("    -> fix op_host/flash_attn_grad_tiling.cpp and "
+              "decide_swizzle() together (tiling.cpp is authoritative)")
+        return False
+    print("[gate] PASS: mirror matches host on every combo")
+    return True
 
 
 if __name__ == "__main__":

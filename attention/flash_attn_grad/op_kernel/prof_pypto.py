@@ -23,7 +23,9 @@ B = int(os.environ.get("B", "1"))
 N = int(os.environ.get("N", "1"))
 S1 = int(os.environ.get("S1", "8192"))
 S2 = int(os.environ.get("S2", "8192"))
-D = 128
+# D 与 Dv 可不等长(Q/K 用 D，V/dO 用 Dv)；两者都要参与 tilingkey 分档
+D = int(os.environ.get("D", "128"))
+Dv = int(os.environ.get("DV", str(D)))
 CORES = int(os.environ.get("CORES", "36"))
 # 布局只影响 GM 视图，不改变计算量；两种布局的耗时应基本一致
 LAYOUT = os.environ.get("FAG_LAYOUT", "BSND").upper()
@@ -42,24 +44,27 @@ def main():
     # 按目标布局分配：BNSD 为 [B,N,S,D]
     _sq = (B, N1, S1, D) if IS_BNSD else (B, S1, N1, D)
     _skv = (B, N2, S2, D) if IS_BNSD else (B, S2, N2, D)
+    # V/dO/y(attn_out) 的最后一维是 Dv，不是 D
+    _sqv = (B, N1, S1, Dv) if IS_BNSD else (B, S1, N1, Dv)
+    _skvv = (B, N2, S2, Dv) if IS_BNSD else (B, S2, N2, Dv)
     q = torch.randn(*_sq, device=device, dtype=torch.float16)
     k = torch.randn(*_skv, device=device, dtype=torch.float16)
-    v = torch.randn(*_skv, device=device, dtype=torch.float16)
-    dy = torch.randn(*_sq, device=device, dtype=torch.float16)
-    y = torch.randn(*_sq, device=device, dtype=torch.float16)
+    v = torch.randn(*_skvv, device=device, dtype=torch.float16)
+    dy = torch.randn(*_sqv, device=device, dtype=torch.float16)
+    y = torch.randn(*_sqv, device=device, dtype=torch.float16)
     scale = 1.0 / math.sqrt(D)
     # softmax_lse [B,N1,S1]：lse = max + log(sum(exp(s-max)))。
     # profiling 只关心耗时，取 0 即 max=0/sum=1 的等价情形。
     lse = torch.zeros(B, N1, S1, device=device, dtype=torch.float32)
     dq_ws = torch.zeros(*_sq, device=device, dtype=torch.float32)
     dk_ws = torch.zeros(*_skv, device=device, dtype=torch.float32)
-    dv_ws = torch.zeros(*_skv, device=device, dtype=torch.float32)
+    dv_ws = torch.zeros(*_skvv, device=device, dtype=torch.float32)
     # fp16 最终输出：kernel 的 post 阶段写(scale + cast)
     dq_o = torch.zeros(*_sq, device=device, dtype=torch.float16)
     dk_o = torch.zeros(*_skv, device=device, dtype=torch.float16)
-    dv_o = torch.zeros(*_skv, device=device, dtype=torch.float16)
+    dv_o = torch.zeros(*_skvv, device=device, dtype=torch.float16)
     tiling = FlashAttnGradTilingData(
-        b=B, s1=S1, s2=S2, n1=N1, n2=N2, d=D, dv=D, scaleValue=scale,
+        b=B, s1=S1, s2=S2, n1=N1, n2=N2, d=D, dv=Dv, scaleValue=scale,
         gSize=G,
         viewD0Q=(B * N1) if IS_BNSD else B,
         viewD2Q=1 if IS_BNSD else N1,
@@ -74,14 +79,20 @@ def main():
     _force = os.environ.get("FAG_FORCE_SWIZZLE")
     if _force is not None:
         swizzle = int(_force)
-    ws_elems = (B * S1 * N1 * D) + 2 * (B * S2 * N2 * D)
+    # dv 段按 Dv 宽(与 host 的 workspace 切分一致)
+    ws_elems = (B * S1 * N1 * D) + (B * S2 * N2 * D) + (B * S2 * N2 * Dv)
     workspace = torch.zeros(ws_elems, device=device, dtype=torch.float32)
 
     def once():
         flash_attn_grad[
             None, CORES,
-            {"template": 0, "layout": 0, "has_atten_mask": 0,
-             "swizzle": swizzle},
+            # 新版 PTO 会严校验 launch key 必须覆盖 schema 全部字段，
+            # 少一个就报 "do not match schema fields"，故 d_align/dv_align
+            # 必须一起给出(取值即 tile 的分配列宽)。
+            {"template": 0, "layout": 1 if IS_BNSD else 0,
+             "has_atten_mask": 0, "swizzle": swizzle,
+             "d_align": 128 if D <= 128 else 192,
+             "dv_align": 128 if Dv <= 128 else 192},
             {"q": pl.DT_FP16},
         ](q, k, v, dy, y, lse,
           None, None, None, None, None, None, None,
