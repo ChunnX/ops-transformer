@@ -224,6 +224,49 @@ int main() {
   std::vector<int64_t> scheduleContextShape = {1024};
   void* scheduleContextDeviceAddr = nullptr;
   aclTensor* scheduleContextRef = nullptr;
+  // ==== FfnArea 中的扁平 id 缓冲 ====
+  // 这四个字段是二级指针:context 里存的是 device 地址,算子在 kernel 内解引用。
+  // NORM 路径(needSchedule=0)必须提供,否则 kernel 会从地址 0 起搬运,触发 MTE 访问越界。
+  // expert_ids_buf 为扁平布局,长度 Y;其余三个按 session 组织,长度 A。
+  std::vector<int32_t> hostExpertIds(Y);
+  for (int64_t i = 0; i < Y; ++i) {
+      hostExpertIds[i] = static_cast<int32_t>(i % expertNum);
+  }
+  void *expertIdsBuf = nullptr;
+  ret = aclrtMalloc(&expertIdsBuf, hostExpertIds.size() * sizeof(int32_t), ACL_MEM_MALLOC_HUGE_FIRST);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("malloc expert ids buf failed. ERROR: %d\n", ret); return ret);
+  ret = aclrtMemcpy(expertIdsBuf, hostExpertIds.size() * sizeof(int32_t), hostExpertIds.data(),
+                    hostExpertIds.size() * sizeof(int32_t), ACL_MEMCPY_HOST_TO_DEVICE);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("cpy expert ids buf failed. ERROR: %d\n", ret); return ret);
+  scheduleContext.ffn.expert_ids_buf = reinterpret_cast<uint64_t>(expertIdsBuf);
+  scheduleContext.ffn.expert_ids_buf_size = hostExpertIds.size() * sizeof(int32_t);
+
+  std::vector<int32_t> hostSessionIds(A, 0);
+  std::vector<int32_t> hostMicroBatchIds(A, 0);
+  std::vector<int32_t> hostLayerIds(A, 0);
+  const uint64_t idsBufSize = static_cast<uint64_t>(A) * sizeof(int32_t);
+  void *sessionIdsBuf = nullptr;
+  void *microBatchIdsBuf = nullptr;
+  void *layerIdsBuf = nullptr;
+  ret = aclrtMalloc(&sessionIdsBuf, idsBufSize, ACL_MEM_MALLOC_HUGE_FIRST);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("malloc session ids buf failed. ERROR: %d\n", ret); return ret);
+  ret = aclrtMalloc(&microBatchIdsBuf, idsBufSize, ACL_MEM_MALLOC_HUGE_FIRST);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("malloc micro batch ids buf failed. ERROR: %d\n", ret); return ret);
+  ret = aclrtMalloc(&layerIdsBuf, idsBufSize, ACL_MEM_MALLOC_HUGE_FIRST);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("malloc layer ids buf failed. ERROR: %d\n", ret); return ret);
+  ret = aclrtMemcpy(sessionIdsBuf, idsBufSize, hostSessionIds.data(), idsBufSize, ACL_MEMCPY_HOST_TO_DEVICE);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("cpy session ids buf failed. ERROR: %d\n", ret); return ret);
+  ret = aclrtMemcpy(microBatchIdsBuf, idsBufSize, hostMicroBatchIds.data(), idsBufSize, ACL_MEMCPY_HOST_TO_DEVICE);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("cpy micro batch ids buf failed. ERROR: %d\n", ret); return ret);
+  ret = aclrtMemcpy(layerIdsBuf, idsBufSize, hostLayerIds.data(), idsBufSize, ACL_MEMCPY_HOST_TO_DEVICE);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("cpy layer ids buf failed. ERROR: %d\n", ret); return ret);
+  scheduleContext.ffn.session_ids_buf = reinterpret_cast<uint64_t>(sessionIdsBuf);
+  scheduleContext.ffn.session_ids_buf_size = idsBufSize;
+  scheduleContext.ffn.micro_batch_ids_buf = reinterpret_cast<uint64_t>(microBatchIdsBuf);
+  scheduleContext.ffn.micro_batch_ids_buf_size = idsBufSize;
+  scheduleContext.ffn.layer_ids_buf = reinterpret_cast<uint64_t>(layerIdsBuf);
+  scheduleContext.ffn.layer_ids_buf_size = idsBufSize;
+
   std::vector<int8_t> hostCtxData(1024, 0);
   std::memcpy(hostCtxData.data(), &scheduleContext, sizeof(ScheduleContext));
   ret = CreateAclTensor(hostCtxData, scheduleContextShape, &scheduleContextDeviceAddr, aclDataType::ACL_INT8,
@@ -338,6 +381,10 @@ int main() {
   aclrtFree(actualTokenNumAddr);
   aclrtFree(tokenInfoBuf);
   aclrtFree(tokenDataBuf);
+  aclrtFree(expertIdsBuf);
+  aclrtFree(sessionIdsBuf);
+  aclrtFree(microBatchIdsBuf);
+  aclrtFree(layerIdsBuf);
   if (workspaceSize > 0) {
     aclrtFree(workspaceAddr);
   }
