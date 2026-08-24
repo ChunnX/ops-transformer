@@ -61,9 +61,15 @@ constexpr float FLOAT_EPS = 1e-6F;
         } \
     } while (0)
 
-bool IsFp8(DataType dtype) { return dtype == DataType::DT_FLOAT8_E4M3FN || dtype == DataType::DT_FLOAT8_E5M2; }
+bool IsFp8(DataType dtype)
+{
+    return dtype == DataType::DT_FLOAT8_E4M3FN || dtype == DataType::DT_FLOAT8_E5M2;
+}
 
-bool IsFp4(DataType dtype) { return dtype == DataType::DT_FLOAT4_E2M1 || dtype == DataType::DT_FLOAT4_E1M2; }
+bool IsFp4(DataType dtype)
+{
+    return dtype == DataType::DT_FLOAT4_E2M1 || dtype == DataType::DT_FLOAT4_E1M2;
+}
 
 bool IsSupportedMxInputPair(DataType xDtype, DataType weightDtype)
 {
@@ -76,9 +82,15 @@ bool IsMxOutputDtypeValue(int64_t dtype)
            dtype == FLOAT4_E1M2_VALUE;
 }
 
-bool IsMxScaleDtype(DataType dtype) { return dtype == DataType::DT_FLOAT8_E8M0; }
+bool IsMxScaleDtype(DataType dtype)
+{
+    return dtype == DataType::DT_FLOAT8_E8M0;
+}
 
-bool IsEmptyQuantMode(const char *quantMode) { return quantMode == nullptr || quantMode[0] == '\0'; }
+bool IsEmptyQuantMode(const char *quantMode)
+{
+    return quantMode == nullptr || quantMode[0] == '\0';
+}
 
 aclnnStatus CheckMxQuantDtype(const aclTensor *x, const aclTensor *weight, const aclTensor *xScaleOptional,
                               const aclTensor *weightScale, const aclTensor *y, const aclTensor *yScale,

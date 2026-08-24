@@ -71,7 +71,10 @@ TensorListDesc MakeTensorListDesc(const string &shapes, const string &dtype, con
 }
 
 struct GroupedMatmulActivationQuantWeightNzOpApiCase {
-    const char *GetQuantModePtr() const { return quantMode == kNullPtrSpec ? nullptr : quantMode.c_str(); }
+    const char *GetQuantModePtr() const
+    {
+        return quantMode == kNullPtrSpec ? nullptr : quantMode.c_str();
+    }
 
     aclnnStatus RunGetWorkspaceWithNullY(const TensorDesc &xDesc, const TensorDesc &groupListDesc,
                                          const TensorListDesc &weightDesc, const TensorListDesc &weightScaleDesc,
@@ -423,7 +426,10 @@ string BuildCaseName(const testing::TestParamInfo<GroupedMatmulActivationQuantWe
 class grouped_matmul_activation_quant_weight_nz_opapi_csv_test
     : public testing::TestWithParam<GroupedMatmulActivationQuantWeightNzOpApiCase> {};
 
-TEST_P(grouped_matmul_activation_quant_weight_nz_opapi_csv_test, run_case) { GetParam().Run(); }
+TEST_P(grouped_matmul_activation_quant_weight_nz_opapi_csv_test, run_case)
+{
+    GetParam().Run();
+}
 
 INSTANTIATE_TEST_SUITE_P(grouped_matmul_activation_quant_weight_nz_opapi_csv,
                          grouped_matmul_activation_quant_weight_nz_opapi_csv_test,

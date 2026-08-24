@@ -140,7 +140,10 @@ int64_t ResolveYGeDtype(const c10::optional<int64_t> &yDtype, aclDataType xAclDt
     TORCH_CHECK(false, "y_dtype is None only supports inferring from FP8 or FP4 x dtype.");
 }
 
-int64_t CeilDiv(int64_t value, int64_t factor) { return (value + factor - 1) / factor; }
+int64_t CeilDiv(int64_t value, int64_t factor)
+{
+    return (value + factor - 1) / factor;
+}
 
 int64_t InferNzLogicalN(const at::Tensor &weightScaleTensor)
 {

@@ -245,7 +245,10 @@ const vector<GroupedMatmulActivationQuantTilingCase> &GetAscend950Cases()
 class TestGroupedMatmulActivationQuantTiling950
     : public testing::TestWithParam<GroupedMatmulActivationQuantTilingCase> {};
 
-TEST_P(TestGroupedMatmulActivationQuantTiling950, csvDrivenCase) { GetParam().Run(); }
+TEST_P(TestGroupedMatmulActivationQuantTiling950, csvDrivenCase)
+{
+    GetParam().Run();
+}
 
 INSTANTIATE_TEST_SUITE_P(GMM_ACTIVATION_QUANT_TILING_950, TestGroupedMatmulActivationQuantTiling950,
                          testing::ValuesIn(GetAscend950Cases()), MakeParamName);

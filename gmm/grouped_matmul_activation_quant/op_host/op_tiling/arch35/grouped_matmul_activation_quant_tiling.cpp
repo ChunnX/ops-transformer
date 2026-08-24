@@ -512,7 +512,10 @@ ge::graphStatus GroupedMatmulActivationQuantTiling950::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedMatmulActivationQuantTiling950::PostTiling() { return SaveTilingDataToContext(tilingData_); }
+ge::graphStatus GroupedMatmulActivationQuantTiling950::PostTiling()
+{
+    return SaveTilingDataToContext(tilingData_);
+}
 
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulActivationQuant, GroupedMatmulActivationQuantTiling950, 0);
 
