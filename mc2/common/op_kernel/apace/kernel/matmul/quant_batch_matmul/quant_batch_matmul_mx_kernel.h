@@ -160,13 +160,7 @@ public:
         auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(biasGmAddr_), layoutBias);
         auto gmC = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(cGmAddr_), layoutC);
 
-        BlockScheduler bs;
-        bs.Init(params.schParams.baseM, params.schParams.baseN,
-                Te::Get<MNK_M>(params.problemShape), Te::Get<MNK_N>(params.problemShape),
-                params.schParams.mTailTile, params.schParams.nTailTile,
-                params.schParams.mBaseTailSplitCnt, params.schParams.nBaseTailSplitCnt,
-                params.schParams.mTailMain, params.schParams.nTailMain,
-                static_cast<uint32_t>(GetBlockIdx()));
+        BlockScheduler bs(params.problemShape, params.schParams);
 
         BlockCoord blockIdx;
         int64_t mPos = 0L;
