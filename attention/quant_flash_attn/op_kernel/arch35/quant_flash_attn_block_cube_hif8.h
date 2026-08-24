@@ -95,7 +95,6 @@ public:
     static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
     static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
     static constexpr uint32_t l1BaseD = 128;
-    static constexpr uint32_t s2SplitSize = 256U;
     static constexpr uint32_t MXFP_DIVISOR_SIZE = 64U;
     static constexpr LayOutTypeEnum LAYOUT = layout;
     static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
@@ -384,7 +383,7 @@ public:
         // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16 *sizeof(T)
         // 源NZ矩阵中相邻Z排布的起始地址偏移
         fixpipeParams.srcStride = ((runInfo.actMSize + 15) / 16) * 16;
-        fixpipeParams.dstStride = s2SplitSize; // mmResUb上两行之间的间隔，单位：element
+        fixpipeParams.dstStride = s2BaseSize; // mmResUb上两行之间的间隔，单位：element
         fixpipeParams.dualDstCtl = 1;          // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
@@ -489,7 +488,7 @@ public:
         Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers_.Get();
         mm2ResL0C.Wait<HardEvent::FIX_M>();
 
-        constexpr uint32_t baseK = s2SplitSize;
+        constexpr uint32_t baseK = s2BaseSize;
         uint32_t s2RealSizeAlign = ((runInfo.actSingleLoopS2Size + 63) >> 6) << 6;
         uint64_t l1BaseKOffset = s2RealSizeAlign * mBaseSize;
         uint32_t kLoops = (runInfo.actSingleLoopS2Size + baseK - 1) / baseK;

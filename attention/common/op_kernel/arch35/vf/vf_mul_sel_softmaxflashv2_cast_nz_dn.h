@@ -3189,7 +3189,7 @@ ProcessVec1DnNoUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB
                         __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN,
                         const T scale, float deScaleQK, float pScale, const T minValue, float keepProb,
                         const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
-                        int64_t maskLine)
+                         int64_t maskLine)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -3199,10 +3199,6 @@ ProcessVec1DnNoUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB
     RegTensor<float> vreg_x_sum_5;
     RegTensor<float> vreg_x_sum_6;
     RegTensor<float> vreg_x_sum_7;
-    RegTensor<float> vreg_x_sum0;
-    RegTensor<float> vreg_x_sum1;
-    RegTensor<float> vreg_x_sum2;
-    RegTensor<float> vreg_x_sum3;
 
     RegTensor<float> vreg_x_exp_0;
     RegTensor<float> vreg_x_exp_1;
@@ -3311,9 +3307,6 @@ ProcessVec1DnNoUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
     Muls(max0, max0, dScale, preg_108);
-    Muls(max0, max0, INV_LN2, preg_108);
-    Truncate<T, RoundMode::CAST_CEIL>(max0, max0, preg_108);
-    Muls(max0, max0, LN2, preg_108);
 
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)new_global_max, max0, preg_108);
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
@@ -3544,9 +3537,6 @@ ProcessVec1DnUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, 
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
     Muls(max0, max0, dScale, preg_108);
-    Muls(max0, max0, INV_LN2, preg_108);
-    Truncate<T, RoundMode::CAST_CEIL>(max0, max0, preg_108);
-    Muls(max0, max0, LN2, preg_108);
     Max(max0, max0, vreg_x_max_f32_b, preg_108);
     FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
 
