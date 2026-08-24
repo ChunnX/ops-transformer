@@ -2198,9 +2198,7 @@ def cpu_mxfp8_golden(
                 # -FLT_MAX sentinel。只有 max 未启动且 sum==0 才是空行；
                 # max=+Inf/sum=0 必须保持 active，以传播 CUDA 的 NaN。
                 row_empty = torch.isneginf(m_run) & (l_run == 0)
-                row_active = (
-                    any_position_valid & any_softmax_active & ~row_empty
-                )
+                row_active = any_position_valid & any_softmax_active & ~row_empty
                 safe_l = torch.where(row_active, l_run, torch.ones_like(l_run))
                 attn = acc / safe_l.view(nq, 1)
                 lse = torch.log(safe_l) + m_run
