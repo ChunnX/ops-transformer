@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file quant_matmul_allto_all_tiling_data.h
+ * \file quant_matmul_all_to_all_tiling_data.h
  * \brief Serialized tiling data passed from the host launcher to the kernel.
  */
 
@@ -21,12 +21,12 @@
 #include "../../../tiling/comm_tiling_data.h"
 #include "../../../core/aiv_comm/collective_comm_context.h"
 
-// Hcomm通信MX量化tiling结构体（apace hcomm纯C通信路径使用）
 struct hcommAllToAllMatmulTilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
     CommTilingData commTilingData;
     QuantMatmulTilingData tileQbmmTilingData;
     QuantMatmulTilingData tailQbmmTilingData;
+    QuantMatmulTilingData localQbmmTilingData;
     uint32_t localMatmul{0};
 };

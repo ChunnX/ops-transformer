@@ -10,30 +10,28 @@
 
 /*!
  * \file mx_quant_matmul_all_to_all_hcomm_impl.h
- * \brief QuantMatmul AllToAll — 计算→通信融合实现（HCCL纯C通信）
+ * \brief MatmulAllToAll MX 算子 hcomm 实现（HCCL PUT 模式）
  *
- * 基于PR#10054 urma方案重新设计:
- * - 使用QuantBatchMatmulMxKernel(纯计算kernel,无CommPolicy/WaitTile)
- * - AIC侧for循环逐tile调用kernel,每个tile算完后异步下发AllToAll
- * - rankId/rankSize用实际值(非写死0/1)
- * - B矩阵按rank偏移: bGm + rankId * N * K
- * - 逐tile通算掩盖: tile N的matmul与tile N-1的AllToAll并行
+ * 基于PR#10054 urma方案，将UDMA GET改为HCCL PUT:
+ * - AIC: for循环逐tile matmul(QuantBatchMatmulMxKernel) + CrossCoreSetFlag通知AIV
+ * - AIV: for循环 CrossCoreWaitFlag + HCCL AllToAll(PUT发送mmResult到y)
  *
- * 数据流: MatMul → AllToAll(通信在后)
- * - 无scale通信(scale在matmul阶段本地消费)
- * - 通信数据类型为YType(matmul输出)
- * - 无splitK(每卡本地完整K维度)
+ * 数据流: MatMul→AllToAll (计算在前,通信在后)
+ * matmul结果写mmResult(GM), AIV从mmResult PUT发送到各卡y_
  */
 
 #pragma once
 
 #include "lib/hccl/hccl.h"
+#include "basic_api/kernel_basic_intf.h"
+#include "kernel_tiling/kernel_tiling.h"
 #include "blaze/gemm/utils/common_utils.h"
 #include "blaze/gemm/policy/dispatch_policy.h"
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
 #include "../../matmul/quant_batch_matmul/quant_batch_matmul_mx_kernel.h"
 #include "include/tensor_api/tensor.h"
+#include "quant_matmul_all_to_all_tiling_data.h"
 
 namespace Apace {
 
@@ -99,32 +97,39 @@ private:
     GM_ADDR mmResultGM_;
 
     AscendC::Hccl<ServerType> hccl_;
+    AscendC::HcclHandle curHandle_{0};
+    AscendC::HcclHandle prevHandle_{0};
+    bool hasPrevHandle_{false};
+
     uint32_t rankId_{0};
     uint32_t rankDim_{0};
-    uint64_t splitAxisSize_{0};
-    uint32_t totalTileCnt_{0};
-    uint32_t headTileCnt_{0};
     uint32_t tileM_{0};
     uint32_t tailM_{0};
+    uint32_t tileCnt_{0};
     uint32_t tailCnt_{0};
+    uint32_t totalTileCnt_{0};
+    uint64_t axisM_{0};
+    uint64_t axisK_{0};
+    uint64_t axisNPerRank_{0};
+    uint64_t maxTileM_{0};
+    uint64_t cByteStrideN_{0};
+    uint64_t aByteStrideK_{0};
+    uint64_t scaleAByteStride_{0};
+    uint64_t scaleAElemCnt_{0};
+
     bool isBias_{false};
 
     static constexpr uint64_t yHcclDataType_ = GetYHcclDataType<YType>();
     static constexpr uint64_t MXFP_GROUP_SIZE = 64UL;
     static constexpr uint64_t MXFP_MULTI_BASE_SIZE = 2UL;
     static constexpr uint64_t MXFP_DATA_NUM_PER_BYTE = 2UL;
-    static constexpr uint64_t ALIGN_NUM = 512UL;
+    static constexpr uint16_t MTE1_MTE2_EVENT_FLAG = 6;
 
-    // 逐tile流水: 当前handle和前一个handle(pipeline深度2)
-    AscendC::HcclHandle curHandle_{0};
-    AscendC::HcclHandle prevHandle_{0};
-    bool hasPrevHandle_{false};
-
-    __aicore__ inline void SetupParams(const QuantMatmulTilingData &mmTile, uint32_t curTileM, Params &params);
-    __aicore__ inline void RunMatmulTile(uint32_t tileIdx, uint32_t curTileM);
-    __aicore__ inline AscendC::HcclHandle IssueAllToAll(uint32_t tileIdx, uint32_t curTileM);
-    __aicore__ inline uint64_t CalcTileOffset(uint32_t tileIdx);
-    __aicore__ inline uint32_t CalcTileM(uint32_t tileIdx);
+    __aicore__ inline void InitBaseParams();
+    __aicore__ inline void SetupParams(const QuantMatmulTilingData &mmTile, uint32_t batchSize,
+                                       uint32_t batchRankOffset, uint64_t origM, bool isLocal, Params &params);
+    __aicore__ inline void RunRemoteMatmul();
+    __aicore__ inline void RunAllToAll();
 };
 
 template <typename X1Type, typename X2Type, typename YType,
@@ -136,15 +141,7 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR x1_scale, GM_ADDR x2_scale,
     GM_ADDR workspaceGM)
 {
-    auto &&commTiling = tilingData_->commTilingData;
-    tileM_ = commTiling.splitAxisTileSize;
-    tailM_ = commTiling.splitAxisTailSize;
-    headTileCnt_ = commTiling.splitAxisTileCnt;
-    tailCnt_ = commTiling.splitAxisTailCnt;
-    totalTileCnt_ = headTileCnt_ + tailCnt_;
-    splitAxisSize_ = static_cast<uint64_t>(tileM_) * headTileCnt_ +
-                     static_cast<uint64_t>(tailM_) * tailCnt_;
-
+    tilingData_ = tilingData_;
     x1_ = x1;
     x2_ = x2;
     y_ = y;
@@ -155,6 +152,8 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     workspaceGM_ = workspaceGM;
     mmResultGM_ = workspaceGM;
 
+    InitBaseParams();
+
     hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
     hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(QuantMatmulAllToAllTilingDataType, mc2CcTiling)));
     rankId_ = hccl_.GetRankId();
@@ -164,28 +163,25 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
 template <typename X1Type, typename X2Type, typename YType,
           typename QuantMatmulAllToAllTilingDataType,
           AscendC::HcclServerType ServerType, bool IsMxFp4>
-__aicore__ inline uint64_t
+__aicore__ inline void
 QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
-                              QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::CalcTileOffset(
-    uint32_t tileIdx)
+                              QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::InitBaseParams()
 {
-    if (tileIdx < headTileCnt_) {
-        return static_cast<uint64_t>(tileIdx) * tileM_;
-    } else {
-        return static_cast<uint64_t>(headTileCnt_) * tileM_ +
-               static_cast<uint64_t>(tileIdx - headTileCnt_) * tailM_;
-    }
-}
-
-template <typename X1Type, typename X2Type, typename YType,
-          typename QuantMatmulAllToAllTilingDataType,
-          AscendC::HcclServerType ServerType, bool IsMxFp4>
-__aicore__ inline uint32_t
-QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
-                              QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::CalcTileM(
-    uint32_t tileIdx)
-{
-    return (tileIdx < headTileCnt_) ? tileM_ : tailM_;
+    auto &&commTD = tilingData_->commTilingData;
+    axisK_ = tilingData_->tileQbmmTilingData.k;
+    axisNPerRank_ = tilingData_->tileQbmmTilingData.n;
+    tileM_ = static_cast<uint32_t>(commTD.splitAxisTileSize);
+    tailM_ = static_cast<uint32_t>(commTD.splitAxisTailSize);
+    tileCnt_ = static_cast<uint32_t>(commTD.splitAxisTileCnt);
+    tailCnt_ = static_cast<uint32_t>(commTD.splitAxisTailCnt);
+    totalTileCnt_ = tileCnt_ + tailCnt_;
+    axisM_ = static_cast<uint64_t>(tileCnt_) * tileM_ + static_cast<uint64_t>(tailCnt_) * tailM_;
+    maxTileM_ = (tileM_ > tailM_) ? tileM_ : tailM_;
+    cByteStrideN_ = axisNPerRank_ * sizeof(YType);
+    uint32_t scaleKGroups = (axisK_ + Blaze::Gemm::MXFP_DIVISOR_SIZE - 1) / Blaze::Gemm::MXFP_DIVISOR_SIZE;
+    scaleAElemCnt_ = scaleKGroups * Blaze::Gemm::MXFP_MULTI_BASE_SIZE;
+    aByteStrideK_ = axisK_ * sizeof(X1Type);
+    scaleAByteStride_ = scaleAElemCnt_ * sizeof(AscendC::fp8_e8m0_t);
 }
 
 template <typename X1Type, typename X2Type, typename YType,
@@ -194,55 +190,28 @@ template <typename X1Type, typename X2Type, typename YType,
 __aicore__ inline void
 QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
                               QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::SetupParams(
-    const QuantMatmulTilingData &mmTile, uint32_t curTileM, Params &params)
+    const QuantMatmulTilingData &mmTile, uint32_t batchSize, uint32_t batchRankOffset,
+    uint64_t origM, bool isLocal, Params &params)
 {
-    auto &&commTiling = tilingData_->commTilingData;
-    uint64_t axisN = commTiling.nonSplitAxisSize;
-    uint64_t axisK = mmTile.k;
-    uint64_t perRankN = axisN / rankDim_;
-
-    // 与urma方案保持一致:
-    // ProblemShape: M=curTileM, N=perRankN(每卡N), K=完整K, batch=rankDim
     params.problemShape = ProblemShape{
-        static_cast<int64_t>(curTileM),
-        static_cast<int64_t>(perRankN),
-        static_cast<int64_t>(axisK),
-        static_cast<int64_t>(rankDim_)};
+        static_cast<int64_t>(mmTile.m),
+        static_cast<int64_t>(axisNPerRank_),
+        static_cast<int64_t>(axisK_),
+        static_cast<int64_t>(batchSize)};
 
     constexpr uint64_t sizeShift = IsMxFp4 ? 1 : 0;
-    uint64_t scaleKLen = Blaze::Gemm::CeilDiv(axisK, MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE;
-
-    // A: 全局布局[rankDim*rankM, K], kernel内部按rank*oriM偏移
-    params.mmadParams.aGmAddr = x1_;
-    // B: 全局布局, kernel内部按rank*K偏移读取各rank的B段
-    params.mmadParams.bGmAddr = x2_;
-    // C: 远端rank结果写mmResult(workspace), 本rank结果写y_(通过cGmSelfAddr)
-    params.mmadParams.cGmAddr = mmResultGM_;
-    params.mmadParams.biasGmAddr = bias_;
-    params.mmadParams.scaleAGmAddr = x1Scale_;
-    params.mmadParams.scaleBGmAddr = x2Scale_;
+    params.mmadParams = BlockMmadParams{
+        x1_,
+        x2_ + ((static_cast<uint64_t>(batchRankOffset) * axisNPerRank_ * axisK_) >> sizeShift),
+        isLocal ? y_ : mmResultGM_, nullptr,
+        x1Scale_, x2Scale_ + static_cast<uint64_t>(batchRankOffset) * axisNPerRank_ * scaleAElemCnt_};
 
     params.l1Params = L1Params{static_cast<uint64_t>(mmTile.stepK) * mmTile.baseK, mmTile.scaleKL1, mmTile.nBufferNum};
-    params.schParams = BlockSchedulerParams{
-        mmTile.baseM, mmTile.baseN, mmTile.mTailTile, mmTile.nTailTile,
+    params.schParams = BlockSchedulerParams{mmTile.baseM, mmTile.baseN, mmTile.mTailTile, mmTile.nTailTile,
         mmTile.mBaseTailSplitCnt, mmTile.nBaseTailSplitCnt, mmTile.mTailMain, mmTile.nTailMain};
-
-    params.qbmmParams.batchCount = rankDim_;
-    params.qbmmParams.baseM = mmTile.baseM;
-    params.qbmmParams.baseN = mmTile.baseN;
-    params.qbmmParams.baseK = mmTile.baseK;
-    params.qbmmParams.isBias = isBias_ ? QBMMTiling::BIAS_ENABLED : QBMMTiling::BIAS_DISABLED;
-    params.qbmmParams.dbL0c = mmTile.dbL0c;
-    params.qbmmParams.skipSelfBatch = false;
-
-    // rankId/rankSize用实际值,与urma方案一致
-    // cGmSelfAddr=0: 所有rank结果累加写mmResult, 然后整块AllToAll发送
-    params.localParams.rankId = rankId_;
-    params.localParams.rankSize = rankDim_;
-    params.localParams.originalM = curTileM;
-    params.localParams.selfRankId = rankId_;
-    params.localParams.cGmSelfAddr = 0;
-    params.localParams.skipSelfBatch = false;
+    params.qbmmParams = QBMMTiling{batchSize, mmTile.baseM, mmTile.baseN, mmTile.baseK,
+        isBias_ ? QBMMTiling::BIAS_ENABLED : QBMMTiling::BIAS_DISABLED, mmTile.dbL0c, false};
+    params.localParams = LocalParams{rankId_, rankDim_, origM, rankId_, y_, false};
 }
 
 template <typename X1Type, typename X2Type, typename YType,
@@ -250,55 +219,87 @@ template <typename X1Type, typename X2Type, typename YType,
           AscendC::HcclServerType ServerType, bool IsMxFp4>
 __aicore__ inline void
 QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
-                              QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::RunMatmulTile(
-    uint32_t tileIdx, uint32_t curTileM)
+                              QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::RunRemoteMatmul()
 {
-    auto &&commTiling = tilingData_->commTilingData;
-    const auto &mmTile = (tileIdx < headTileCnt_) ? tilingData_->tileQbmmTilingData : tilingData_->tileQbmmTilingData;
+    Params param;
+    SetupParams(tilingData_->tileQbmmTilingData, rankDim_, 0, maxTileM_, false, param);
+    quantMatmulKernelImpl_.InitMmad(param);
 
-    Params params;
-    SetupParams(mmTile, curTileM, params);
+    GM_ADDR aCur = x1_;
+    GM_ADDR aScaleCur = x1Scale_;
+    GM_ADDR cSelfCur = y_;
+    uint32_t lastTiling = 0;
+    for (uint32_t tid = 0; tid < totalTileCnt_; ++tid) {
+        bool isTail = (tid >= tileCnt_);
+        uint32_t curTileM = isTail ? tailM_ : tileM_;
+        uint32_t curTiling = isTail ? 1 : 0;
+        if (curTiling != lastTiling) {
+            SetupParams(isTail ? tilingData_->tailQbmmTilingData : tilingData_->tileQbmmTilingData,
+                rankDim_, 0, maxTileM_, false, param);
+            quantMatmulKernelImpl_.InitMmad(param);
+            lastTiling = curTiling;
+        }
+        // C输出: 远端rank写mmResult, 本rank写y_(cGmSelfAddr)
+        param.mmadParams.aGmAddr = aCur;
+        param.mmadParams.scaleAGmAddr = aScaleCur;
+        param.mmadParams.cGmAddr = mmResultGM_ + static_cast<uint64_t>(tid) * maxTileM_ * axisNPerRank_ * sizeof(YType);
+        param.localParams.cGmSelfAddr = cSelfCur;
+        quantMatmulKernelImpl_(param);
 
-    // 计算当前tile在各rank的A中的M偏移
-    // urma方案: A是全局布局[rankDim*rankM, K], 每个tile的A偏移 = tileOffset * K
-    // kernel内部按 rank * curTileM + mPos 遍历各rank的A段
-    uint64_t tileOffset = CalcTileOffset(tileIdx);
+        AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(tid);
+        aCur += static_cast<uint64_t>(curTileM) * aByteStrideK_;
+        aScaleCur += static_cast<uint64_t>(curTileM) * scaleAByteStride_;
+        cSelfCur += static_cast<uint64_t>(curTileM) * cByteStrideN_;
 
-    // A矩阵偏移: x1_ + tileOffset * K (每个tile在M方向的起始偏移)
-    uint64_t aByteOffset = tileOffset * mmTile.k * sizeof(X1Type) / (IsMxFp4 ? MXFP_DATA_NUM_PER_BYTE : 1);
-    params.mmadParams.aGmAddr = x1_ + aByteOffset;
-
-    // Scale A偏移
-    uint64_t scaleKLen = Blaze::Gemm::CeilDiv(static_cast<uint64_t>(mmTile.k), MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE;
-    uint64_t scaleAByteOffset = tileOffset * scaleKLen * sizeof(AscendC::fp8_e8m0_t);
-    params.mmadParams.scaleAGmAddr = x1Scale_ + scaleAByteOffset;
-
-    // C输出偏移: mmResult_ + tileOffset * perRankN (每个tile输出perRankN列)
-    uint64_t perRankN = commTiling.nonSplitAxisSize / rankDim_;
-    params.mmadParams.cGmAddr = mmResultGM_ + tileOffset * perRankN * sizeof(YType);
-
-    quantMatmulKernelImpl_.InitMmad(params);
-    quantMatmulKernelImpl_(params);
+        if (tailCnt_ > 0 && tid < totalTileCnt_ - 1) {
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(MTE1_MTE2_EVENT_FLAG);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(MTE1_MTE2_EVENT_FLAG);
+            AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(0);
+        }
+    }
 }
 
 template <typename X1Type, typename X2Type, typename YType,
           typename QuantMatmulAllToAllTilingDataType,
           AscendC::HcclServerType ServerType, bool IsMxFp4>
-__aicore__ inline AscendC::HcclHandle
+__aicore__ inline void
 QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
-                              QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::IssueAllToAll(
-    uint32_t tileIdx, uint32_t curTileM)
+                              QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::RunAllToAll()
 {
-    auto &&commTiling = tilingData_->commTilingData;
-    uint64_t perRankN = commTiling.nonSplitAxisSize / rankDim_;
-    uint64_t tileOffset = CalcTileOffset(tileIdx);
+    for (uint32_t tid = 0; tid < totalTileCnt_; ++tid) {
+        AscendC::CrossCoreWaitFlag<0x2, PIPE_S>(tid);
+        AscendC::SyncAll<true>();
 
-    // 逐行发送: sendCount=perRankN, strideCount=perRankN(行内相邻rank间距), batchCnt=curTileM(行数)
-    return hccl_.template AlltoAll<true>(
-        mmResultGM_ + tileOffset * perRankN * sizeof(YType),
-        y_ + tileOffset * perRankN * sizeof(YType),
-        perRankN, static_cast<AscendC::HcclDataType>(yHcclDataType_),
-        perRankN, static_cast<uint8_t>(curTileM));
+        uint32_t curTileM = (tid >= tileCnt_) ? tailM_ : tileM_;
+        uint64_t tileOffset = (tid < tileCnt_)
+            ? static_cast<uint64_t>(tid) * tileM_
+            : static_cast<uint64_t>(tileCnt_) * tileM_ + static_cast<uint64_t>(tid - tileCnt_) * tailM_;
+        // HCCL PUT: 从mmResult发送到各卡y_
+        // 远端rank的结果在mmResult中,本rank结果已直接写y_(cGmSelfAddr)
+        // AllToAll发送mmResult中的远端数据,接收其他卡发送的数据到y_
+        uint64_t sendCount = static_cast<uint64_t>(curTileM) * axisNPerRank_;
+        curHandle_ = hccl_.template AlltoAll<true>(
+            mmResultGM_ + static_cast<uint64_t>(tid) * maxTileM_ * axisNPerRank_ * sizeof(YType),
+            y_ + tileOffset * axisNPerRank_ * sizeof(YType),
+            sendCount, static_cast<AscendC::HcclDataType>(yHcclDataType_),
+            sendCount, 1);
+
+        if (hasPrevHandle_) {
+            hccl_.Wait(prevHandle_);
+        }
+        prevHandle_ = curHandle_;
+        hasPrevHandle_ = true;
+    }
+
+    AscendC::SyncAll();
+    if (hasPrevHandle_) {
+        hccl_.Wait(prevHandle_);
+    }
+    hccl_.Wait(curHandle_);
+
+    AscendC::SyncAll();
+    hccl_.Finalize();
 }
 
 template <typename X1Type, typename X2Type, typename YType,
@@ -308,66 +309,11 @@ __aicore__ inline void
 QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
                               QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::Run()
 {
-    auto &&commTiling = tilingData_->commTilingData;
-    uint64_t perRankN = commTiling.nonSplitAxisSize / rankDim_;
-
-    // 与urma方案流水一致(PUT模式):
-    // AIC: 1次matmul(完整M) → SyncAll → 逐tile SetFlag通知AIV
-    // AIV: for循环 WaitFlag + HCCL AllToAll(PUT发送mmResult到y) + Wait(prev)
-    // matmul结果写mmResult(GM), AIV从mmResult PUT发送
-
     if ASCEND_IS_AIC {
-        Params params;
-        const auto &mmTile = tilingData_->tileQbmmTilingData;
-        SetupParams(mmTile, static_cast<uint32_t>(splitAxisSize_), params);
-        params.mmadParams.aGmAddr = x1_;
-        params.mmadParams.scaleAGmAddr = x1Scale_;
-        params.mmadParams.cGmAddr = mmResultGM_;
-        params.problemShape = ProblemShape{
-            static_cast<int64_t>(splitAxisSize_),
-            static_cast<int64_t>(perRankN),
-            static_cast<int64_t>(mmTile.k),
-            static_cast<int64_t>(rankDim_)};
-        quantMatmulKernelImpl_.InitMmad(params);
-        quantMatmulKernelImpl_(params);
-
-        AscendC::SyncAll();
-        for (uint32_t tid = 0; tid < totalTileCnt_; ++tid) {
-            AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(tid);
-        }
+        RunRemoteMatmul();
     }
-
     if ASCEND_IS_AIV {
-        // for循环逐tile HCCL通信(与urma的for循环Commit/Wait结构一致)
-        for (uint32_t tid = 0; tid < totalTileCnt_; ++tid) {
-            AscendC::CrossCoreWaitFlag<0x2, PIPE_S>(tid);
-            AscendC::SyncAll<true>();
-
-            uint32_t curTileM = CalcTileM(tid);
-            uint64_t tileOffset = CalcTileOffset(tid);
-            uint64_t sendCount = static_cast<uint64_t>(curTileM) * perRankN;
-            curHandle_ = hccl_.template AlltoAll<true>(
-                mmResultGM_ + tileOffset * perRankN * sizeof(YType),
-                y_ + tileOffset * perRankN * sizeof(YType),
-                sendCount, static_cast<AscendC::HcclDataType>(yHcclDataType_),
-                sendCount, 1);
-
-            if (hasPrevHandle_) {
-                hccl_.Wait(prevHandle_);
-            }
-            prevHandle_ = curHandle_;
-            hasPrevHandle_ = true;
-        }
-
-        // 等待最后一个tile的通信完成
-        AscendC::SyncAll();
-        if (hasPrevHandle_) {
-            hccl_.Wait(prevHandle_);
-        }
-        hccl_.Wait(curHandle_);
-
-        AscendC::SyncAll();
-        hccl_.Finalize();
+        RunAllToAll();
     }
 }
 

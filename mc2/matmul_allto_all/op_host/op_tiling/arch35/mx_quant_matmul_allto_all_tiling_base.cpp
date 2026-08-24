@@ -708,8 +708,10 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoHcommMxQuantMMTiling()
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingSwat;
         tilingSwat.GetTilingData(perRankM, nValue, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData);
     }
-    // 生成尾块tiling(与头块相同,因为QuantBatchMatmulMxKernel按tileM/baseM切分)
+    // 生成尾块tiling
     hcommTilingData_.tailQbmmTilingData = hcommTilingData_.tileQbmmTilingData;
+    // 生成本地tiling(与头块相同)
+    hcommTilingData_.localQbmmTilingData = hcommTilingData_.tileQbmmTilingData;
     hcommTilingData_.localMatmul = localMatmulDisabled;
     OP_LOGD(opName_, "HcommMxQuantMM tiling: perRankM=%lu perRankK=%lu N=%lu", perRankM, perRankK, nValue);
     return ge::GRAPH_SUCCESS;
