@@ -122,17 +122,11 @@ void QuantBlockSparseAttnTiling::FillInputParams()
     inputParams.set_isGqa(info.isGqa ? 1 : 0);
     inputParams.set_isSoftMaxLseEnable(info.returnSoftmaxLseVal ? 1 : 0);
     uint32_t fp8PScaleShapeSize = 0U;
-    uint8_t pScaleDtype = MX_PSCALE_DTYPE_E8M0;
     if (info.opParamInfo.pScale.shape != nullptr) {
         const int64_t shapeSize = info.opParamInfo.pScale.shape->GetStorageShape().GetShapeSize();
         fp8PScaleShapeSize = (shapeSize > 0) ? static_cast<uint32_t>(shapeSize) : 0U;
-        if (fp8PScaleShapeSize > 0U && info.opParamInfo.pScale.desc != nullptr) {
-            const ge::DataType dtype = info.opParamInfo.pScale.desc->GetDataType();
-            pScaleDtype = (dtype == ge::DT_FLOAT) ? MX_PSCALE_DTYPE_FP32 : MX_PSCALE_DTYPE_E8M0;
-        }
     }
     inputParams.set_pScaleShapeSize(fp8PScaleShapeSize);
-    inputParams.set_pScaleDtype(pScaleDtype);
 }
 
 void QuantBlockSparseAttnTiling::FillMultiCoreParams()
