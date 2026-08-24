@@ -700,17 +700,18 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoHcommMxQuantMMTiling()
     bool transB = contextInfo.args_.isBTrans;
     constexpr uint32_t localMatmulDisabled = 0;
 
-    // x2按K切分: 每卡持有[K, totalN], Blaze tiling按totalN计算
+    // x2每卡完整[K, totalN], Blaze tiling按perRankN计算(kernel内部逐rank切N)
+    uint64_t perRankN = nValue / contextInfo.args_.rankDim;
     if (isMxfp4_) {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingSwat;
-        tilingSwat.GetTilingData(perRankM, nValue, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData);
+        tilingSwat.GetTilingData(perRankM, perRankN, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData);
     } else {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingSwat;
-        tilingSwat.GetTilingData(perRankM, nValue, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData);
+        tilingSwat.GetTilingData(perRankM, perRankN, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData);
     }
     hcommTilingData_.tailQbmmTilingData = hcommTilingData_.tileQbmmTilingData;
     hcommTilingData_.localMatmul = localMatmulDisabled;
-    OP_LOGD(opName_, "HcommMxQuantMM tiling: perRankM=%lu perRankK=%lu N=%lu", perRankM, perRankK, nValue);
+    OP_LOGD(opName_, "HcommMxQuantMM tiling: perRankM=%lu perRankK=%lu perRankN=%lu", perRankM, perRankK, perRankN);
     return ge::GRAPH_SUCCESS;
 }
 

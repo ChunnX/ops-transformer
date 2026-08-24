@@ -179,33 +179,30 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
                               QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::SetupParams(
     const QuantMatmulTilingData &mmTile, uint32_t curTileM, Params &params)
 {
-    // batchSize=1: 每卡只算自己的x1×x2
-    // x2按K切分: [rankDim, K, totalN], 每卡通过rankId*K偏移读取自己的[K, totalN]
-    // ProblemShape.N=totalN(完整N), matmul输出[curTileM, totalN]写mmResult
-    // AllToAll逐行发送perRankN列(sendCount=perRankN, strideCount=perRankN, batchCnt=curTileM)
+    // batchSize=1, ProblemShape.N=perRankN
+    // x2每卡完整[K, totalN], kernel内部逐rank切N(fullNPos=rankIdx*perRankN+nPos)
+    // matmul输出rank-major: [rankDim, curTileM, perRankN], 每rank连续
+    // AllToAll整块发送: sendCount=curTileM*perRankN, batchCnt=1
     uint64_t totalN = axisNPerRank_ * rankDim_;
     params.problemShape = ProblemShape{
         static_cast<int64_t>(curTileM),
-        static_cast<int64_t>(totalN),
+        static_cast<int64_t>(axisNPerRank_),  // perRankN
         static_cast<int64_t>(axisK_),
         1};
 
-    constexpr uint64_t sizeShift = IsMxFp4 ? 1 : 0;
-    uint64_t scaleKLen = Blaze::Gemm::CeilDiv(static_cast<uint64_t>(axisK_), MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE;
-    // x2按K切分: bGmAddr = x2_ + rankId_ * K
     params.mmadParams = BlockMmadParams{
         x1_,
-        x2_ + (rankId_ * axisK_ * sizeof(X2Type) / (IsMxFp4 ? MXFP_DATA_NUM_PER_BYTE : 1)),
+        x2_,  // x2每卡完整[K, totalN], 不偏移(kernel内部按fullNPos切N)
         mmResultGM_, nullptr,
-        x1Scale_,
-        x2Scale_ + rankId_ * scaleKLen * sizeof(AscendC::fp8_e8m0_t)};
+        x1Scale_, x2Scale_};
 
     params.l1Params = L1Params{static_cast<uint64_t>(mmTile.stepK) * mmTile.baseK, mmTile.scaleKL1, mmTile.nBufferNum};
     params.schParams = BlockSchedulerParams{mmTile.baseM, mmTile.baseN, mmTile.mTailTile, mmTile.nTailTile,
         mmTile.mBaseTailSplitCnt, mmTile.nBaseTailSplitCnt, mmTile.mTailMain, mmTile.nTailMain};
     params.qbmmParams = QBMMTiling{1, mmTile.baseM, mmTile.baseN, mmTile.baseK,
         isBias_ ? QBMMTiling::BIAS_ENABLED : QBMMTiling::BIAS_DISABLED, mmTile.dbL0c, false};
-    params.localParams = LocalParams{0, 1, curTileM, 0, 0, false};
+    // fullN=totalN, rankDim=rankDim_, kernel内部逐rank遍历N输出rank-major
+    params.localParams = LocalParams{0, 1, curTileM, 0, 0, false, totalN, rankDim_};
 }
 
 template <typename X1Type, typename X2Type, typename YType,
@@ -234,12 +231,12 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
         }
         param.mmadParams.aGmAddr = aCur;
         param.mmadParams.scaleAGmAddr = aScaleCur;
-        // mmResult偏移按totalN步进(每tile输出[curTileM, totalN])
-        uint64_t totalN = axisNPerRank_ * rankDim_;
+        // mmResult rank-major布局: [rankDim, curTileM, perRankN]
+        // 每个tile的偏移 = tileOffset * perRankN (kernel内部按rankIdx*curTileM*perRankN偏移C)
         uint64_t tileOffset = (tid < tileCnt_)
             ? static_cast<uint64_t>(tid) * tileM_
             : static_cast<uint64_t>(tileCnt_) * tileM_ + static_cast<uint64_t>(tid - tileCnt_) * tailM_;
-        param.mmadParams.cGmAddr = mmResultGM_ + tileOffset * totalN * sizeof(YType);
+        param.mmadParams.cGmAddr = mmResultGM_ + tileOffset * axisNPerRank_ * sizeof(YType);
         quantMatmulKernelImpl_(param);
 
         aCur += static_cast<uint64_t>(curTileM) * aByteStrideK_;
@@ -267,25 +264,26 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
         RunRemoteMatmul();
 
         AscendC::SyncAll();
-        uint64_t totalN = axisNPerRank_ * rankDim_;
+        // mmResult rank-major: [rankDim, headM, perRankN], 每rank连续
+        // AllToAll整块发送: sendCount=headM*perRankN, strideCount=同, batchCnt=1
         uint32_t headM = tileM_ * tileCnt_;
         uint32_t tailM = tailM_ * tailCnt_;
 
         AscendC::HcclHandle h0{0}, h1{0};
         if (headM > 0) {
-            // 逐行发送: sendCount=perRankN, strideCount=perRankN(行内相邻rank间距), batchCnt=headM(行数)
+            uint64_t sendCount = static_cast<uint64_t>(headM) * axisNPerRank_;
             h0 = hccl_.template AlltoAll<true>(
                 mmResultGM_, y_,
-                axisNPerRank_, static_cast<AscendC::HcclDataType>(yHcclDataType_),
-                axisNPerRank_, static_cast<uint8_t>(headM > 255 ? 255 : headM));
+                sendCount, static_cast<AscendC::HcclDataType>(yHcclDataType_),
+                sendCount, 1);
         }
         if (tailM > 0) {
-            uint64_t headOffset = static_cast<uint64_t>(headM) * totalN * sizeof(YType);
-            uint64_t tailRecvOffset = static_cast<uint64_t>(headM) * axisNPerRank_ * sizeof(YType);
+            uint64_t headOffset = static_cast<uint64_t>(headM) * axisNPerRank_ * sizeof(YType);
+            uint64_t sendCount = static_cast<uint64_t>(tailM) * axisNPerRank_;
             h1 = hccl_.template AlltoAll<true>(
-                mmResultGM_ + headOffset, y_ + tailRecvOffset,
-                axisNPerRank_, static_cast<AscendC::HcclDataType>(yHcclDataType_),
-                axisNPerRank_, static_cast<uint8_t>(tailM > 255 ? 255 : tailM));
+                mmResultGM_ + headOffset, y_ + headOffset,
+                sendCount, static_cast<AscendC::HcclDataType>(yHcclDataType_),
+                sendCount, 1);
         }
 
         AscendC::SyncAll();
