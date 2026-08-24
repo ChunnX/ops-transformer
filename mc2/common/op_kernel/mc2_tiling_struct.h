@@ -210,17 +210,13 @@ constexpr uint32_t RUNTIME_INFO_PER_CORE_SIZE = 512U;  // 每核 512 字节
 constexpr uint32_t RUNTIME_INFO_TOTAL_SIZE =
     RUNTIME_INFO_CORE_MAX * RUNTIME_INFO_PER_CORE_SIZE; // 64KB
 
-// 通信/计算阶段枚举 (各算子共用)
+// 通信阶段枚举：仅 HCCL 五态状态机
 enum RuntimePhase : uint8_t {
-    RT_PHASE_INIT           = 0,
-    RT_PHASE_COMM_PREPARE   = 1,   // 通信准备 (AllGather/AlltoAll prepare)
-    RT_PHASE_COMM_WAIT      = 2,   // 通信等待 (hccl.Wait)
-    RT_PHASE_COMM_PROCESS   = 3,   // 通信执行中
-    RT_PHASE_COMPUTE_LOCAL  = 4,   // 本卡计算
-    RT_PHASE_COMPUTE_GATHER = 5,   // 远端数据计算
-    RT_PHASE_TRANSPOSE      = 6,   // 转置
-    RT_PHASE_REDUCE         = 7,   // 归约
-    RT_PHASE_FINALIZE       = 8,   // 结束清理
+    RT_PHASE_COMM_INIT      = 0,   // HCCL Init: 通信初始化
+    RT_PHASE_COMM_PREPARE   = 1,   // HCCL Prepare: 通信准备 (AllGather/AlltoAll prepare)
+    RT_PHASE_COMM_COMMIT    = 2,   // HCCL Commit: 通信提交 (下发描述符并激活)
+    RT_PHASE_COMM_WAIT      = 3,   // HCCL Wait: 等待通信完成 (hccl.Wait)
+    RT_PHASE_COMM_FINALIZE  = 4,   // HCCL Finalize: 结束清理
     RT_PHASE_RESERVED       = 255,
 };
 
@@ -228,9 +224,10 @@ enum RuntimePhase : uint8_t {
 struct alignas(512) RuntimeInfoPerCore {
     uint32_t magicNum;        // 4B  魔数 0x4D433252 ("MC2R")
     uint16_t coreId;          // 2B  core ID (C核: 0~aicCoreNum-1, V核: aicCoreNum~total-1)
-    uint8_t  execTurn;        // 1B  执行轮次 (从 0 开始递增)
-    uint8_t  execPosition;    // 1B  执行位置 (当前 tile/turn 索引)
-    uint8_t  commPhase;       // 1B  当前阶段 (RuntimePhase)
+    uint8_t  execTurn;        // 1B  tile 进度: 主轮/尾轮 tile 循环内逐 tile 递增 (每轮从 0 起)
+    uint8_t  execPosition;    // 1B  position tag: 类别打点 (主轮/尾轮/转置/scale 等),
+                              //     值由各 kernel 就地定义并写入, 编号约定见各算子 kernel 源文件
+    uint8_t  commPhase;       // 1B  当前通信阶段 (RuntimePhase, 仅 HCCL 五态)
     uint8_t  reserved[503];   // 503B 预留
 }; // 512 bytes
 

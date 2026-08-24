@@ -19,6 +19,11 @@
 #include "../../../common/op_kernel/mc2_runtime_info.h"
 
 namespace Mc2Kernel {
+// execPosition 打点 tag (头文件不建共用枚举, 各 kernel 就地定义)
+constexpr uint8_t POS_SCALE_COMM = 1; // scale 通信/转置阶段
+constexpr uint8_t POS_MAIN_CALC = 2;  // 主轮计算阶段
+constexpr uint8_t POS_TAIL_CALC = 3;  // 尾轮计算阶段
+
 template <typename T1, typename T2>
 __aicore__ inline T1 CeilDiv(T1 a, T2 b)
 {
@@ -127,23 +132,23 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
     }
 
     // 启动scale通信和转置
-    runtimeInfo_.WriteGmByPassDCache(0, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+    runtimeInfo_.WriteGmByPassDCache(0, POS_SCALE_COMM, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
     ProcessScale();
 
     // 启动主块流水
     if (mc2Tiling_.tileCnt > 0) {
-        runtimeInfo_.WriteGmByPassDCache(0, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+        runtimeInfo_.WriteGmByPassDCache(0, POS_MAIN_CALC, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         ProcessTile(mc2Tiling_.tileCnt);
     }
 
     // 启动尾块流水
     if (mc2Tiling_.tailCnt > 0) {
-        runtimeInfo_.WriteGmByPassDCache(1, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+        runtimeInfo_.WriteGmByPassDCache(0, POS_TAIL_CALC, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         ProcessTail(mc2Tiling_.tailCnt);
     }
 
     // 结束流水线
-    runtimeInfo_.UpdatePhase(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_FINALIZE));
+    runtimeInfo_.WritePhaseByPassDCache(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_FINALIZE));
     pipeLine_->End();
 }
 
@@ -231,7 +236,7 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
     pipeLineContext_.computationContext->additionalData.x2Scale = x2Scale_;
     pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mc2QuantMmTileTilingData);
 
-    pipeLine_->Process(taskCnt);
+    pipeLine_->Process(taskCnt, &runtimeInfo_);
 }
 
 template <typename SchedulerType, typename SchedulerContextType, typename AlltoAllMatmulTilingDataType, bool IsMxFp4>
@@ -279,7 +284,7 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
     pipeLineContext_.computationContext->additionalData.x2Scale = x2Scale_;
     pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mc2QuantMmTailTilingData);
 
-    pipeLine_->Process(taskCnt);
+    pipeLine_->Process(taskCnt, &runtimeInfo_);
 }
 
 } // namespace Mc2Kernel

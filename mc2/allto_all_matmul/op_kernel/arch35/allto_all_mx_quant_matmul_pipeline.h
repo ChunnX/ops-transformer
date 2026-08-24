@@ -17,6 +17,7 @@
 #define ALLTO_ALL_MX_QUANT_MATMUL_PIPELINE_H
 
 #include "../../../common/op_kernel/mc2_templates/scheduler/pipeline_builder.h"
+#include "../../../common/op_kernel/mc2_runtime_info.h"
 
 // 流水线模板
 namespace Mc2Kernel {
@@ -46,7 +47,7 @@ public:
 
     __aicore__ inline void GetContext(ContextType *context);
 
-    __aicore__ inline void Process(uint32_t taskCnt);
+    __aicore__ inline void Process(uint32_t taskCnt, Mc2Kernel::Mc2RuntimeInfo *runtimeInfo = nullptr);
 
     __aicore__ inline void ProcessScale();
 
@@ -82,10 +83,15 @@ __aicore__ inline void AlltoAllMXQuantMatmulPipeLine<CommunicationType, Transpos
 template <typename CommunicationType, typename TransposeType, typename ScaleTransposeType, typename ComputationType,
           typename ContextType>
 __aicore__ inline void AlltoAllMXQuantMatmulPipeLine<CommunicationType, TransposeType, ScaleTransposeType,
-                                                     ComputationType, ContextType>::Process(uint32_t taskCnt)
+                                                      ComputationType, ContextType>::Process(uint32_t taskCnt,
+                                                                                           Mc2Kernel::Mc2RuntimeInfo
+                                                                                               *runtimeInfo)
 {
     commStage_->PrepareAll(taskCnt);
     for (uint32_t index = 0; index < taskCnt; index++) {
+        if (runtimeInfo != nullptr) {
+            runtimeInfo->WriteTurnByPassDCache(static_cast<uint8_t>(index));
+        }
         if ASCEND_IS_AIV {
             commStage_->Process(index);
             AscendC::SyncAll<true>();

@@ -60,7 +60,7 @@ public:
         mySlot->coreId = static_cast<uint16_t>(slotIdx_);
         mySlot->execTurn = 0;
         mySlot->execPosition = 0;
-        mySlot->commPhase = static_cast<uint8_t>(Mc2Tiling::RT_PHASE_INIT);
+        mySlot->commPhase = static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_INIT);
 
         WriteGMByPassDCache();
     }
@@ -77,13 +77,33 @@ public:
         WriteGMByPassDCache();
     }
 
-    __aicore__ inline void UpdatePhase(uint8_t phase)
+    __aicore__ inline void WritePhaseByPassDCache(uint8_t phase)
     {
         if (runtimeInfoBase_ == nullptr) {
             return;
         }
         __gm__ Mc2Tiling::RuntimeInfoPerCore *mySlot = &runtimeInfoBase_[slotIdx_];
         mySlot->commPhase = phase;
+        WriteGMByPassDCache();
+    }
+
+    __aicore__ inline void WriteTurnByPassDCache(uint8_t tileIdx)
+    {
+        if (runtimeInfoBase_ == nullptr) {
+            return;
+        }
+        __gm__ Mc2Tiling::RuntimeInfoPerCore *mySlot = &runtimeInfoBase_[slotIdx_];
+        mySlot->execTurn = tileIdx;
+        WriteGMByPassDCache();
+    }
+
+    __aicore__ inline void WritePosTagByPassDCache(uint8_t tag)
+    {
+        if (runtimeInfoBase_ == nullptr) {
+            return;
+        }
+        __gm__ Mc2Tiling::RuntimeInfoPerCore *mySlot = &runtimeInfoBase_[slotIdx_];
+        mySlot->execPosition = tag;
         WriteGMByPassDCache();
     }
 
