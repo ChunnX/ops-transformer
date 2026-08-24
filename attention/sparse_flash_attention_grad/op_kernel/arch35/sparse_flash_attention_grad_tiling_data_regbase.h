@@ -46,7 +46,7 @@ public:
     int64_t selectedKWorkSpaceOffset;
     int64_t mm4ResWorkSpaceOffset;
     int64_t mm5ResWorkSpaceOffset;
-
+    int64_t isHeadNLe64;
     int64_t get_b() const
     {
         return b;
@@ -122,6 +122,10 @@ public:
     int64_t get_mm5ResWorkSpaceOffset() const
     {
         return mm5ResWorkSpaceOffset;
+    }
+    int64_t get_isHeadNLe64() const
+    {
+        return isHeadNLe64;
     }
 
     void set_b(int64_t bParam)
@@ -199,6 +203,10 @@ public:
     void set_mm5ResWorkSpaceOffset(int64_t mm5ResWorkSpaceOffsetParam)
     {
         this->mm5ResWorkSpaceOffset = mm5ResWorkSpaceOffsetParam;
+    }
+    void set_isHeadNLe64(int64_t isHeadNLe64Param)
+    {
+        this->isHeadNLe64 = isHeadNLe64Param;
     }
 };
 

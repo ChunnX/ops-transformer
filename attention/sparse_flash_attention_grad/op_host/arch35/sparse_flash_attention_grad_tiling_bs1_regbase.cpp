@@ -582,6 +582,7 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     baseParams_->set_b(tmpData.b);
     baseParams_->set_g(tmpData.g);
     OP_CHECK_IF(baseParams_->get_g() == 0, OP_LOGE(context_, "g is 0"), return ge::GRAPH_FAILED);
+    baseParams_->set_isHeadNLe64(tmpData.g <= SFAG_HEAD_N_L1_RESIDENT ? 1 : 0);
     baseParams_->set_n2(tmpData.n2);
     baseParams_->set_s1(tmpData.s1);
     baseParams_->set_s2(tmpData.s2);
