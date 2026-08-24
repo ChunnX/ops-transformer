@@ -21,7 +21,6 @@
 
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #include "arch35/grouped_matmul_add_kernel.h"
-#include "arch35/grouped_matmul_add_basic_cgmct.h"
 #else
 #include "grouped_matmul_add_kernel.h"
 #endif

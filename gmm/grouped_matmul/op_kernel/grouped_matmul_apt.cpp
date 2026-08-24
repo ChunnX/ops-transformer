@@ -85,7 +85,6 @@ static constexpr VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_DYNAMIC = {4, 0};
 #endif
 #else
 #include "arch35/non_quant/grouped_matmul_kernel.h"
-#include "arch35/non_quant/grouped_matmul_basic_kernel.h"
 #include "arch35/non_quant/grouped_matmul_tiling_key.h"
 #endif
 
