@@ -4,7 +4,7 @@
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
@@ -19,7 +19,7 @@
 
 /*!
  * \file test_aclnn_block_attn_res_update.cpp
- * \brief BlockAttnResUpdate aclnn example for Ascend 950PR/Ascend 950DT.
+ * \brief block_attn_res_update aclnn example for Ascend 950PR/Ascend 950DT.
  */
 
 #define CHECK_RET(cond, return_expr)                                                                                   \
@@ -41,6 +41,8 @@
     do {                                                                                                               \
         printf(message, ##__VA_ARGS__);                                                                                \
     } while (0)
+
+constexpr size_t FIRST_ELEMENT_INDEX = 0UL;
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
@@ -103,6 +105,8 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 
     *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, formatType, shape.data(),
                               shape.size(), *deviceAddr);
+    CHECK_RET(*tensor != nullptr, LOG_PRINT("aclCreateTensor failed - returned nullptr\n");
+              return ACL_ERROR_FAILURE);
     return ACL_SUCCESS;
 }
 
@@ -117,7 +121,7 @@ int RunBlockAttnResUpdate(int32_t deviceId, aclrtStream &stream)
     const std::vector<int64_t> queryShape = {hiddenSize};
     const std::vector<int64_t> statsShape = {tokenNum};
 
-    std::vector<float> partialBlockHostData(GetShapeSize(matrixShape), 0.25F);
+    std::vector<float> partialBlockRefHostData(GetShapeSize(matrixShape), 0.25F);
     std::vector<uint16_t> deltaHostData(GetShapeSize(matrixShape), FloatToBfloat16(0.125F));
     std::vector<float> pseudoQueryHostData(GetShapeSize(queryShape), 1.0F / static_cast<float>(hiddenSize));
     std::vector<float> numeratorHostData(GetShapeSize(matrixShape), 0.5F);
@@ -125,7 +129,7 @@ int RunBlockAttnResUpdate(int32_t deviceId, aclrtStream &stream)
     std::vector<float> expSumHostData(GetShapeSize(statsShape), 1.0F);
     std::vector<uint16_t> hHostData(GetShapeSize(matrixShape), 0U);
 
-    void *partialBlockDeviceAddr = nullptr;
+    void *partialBlockRefDeviceAddr = nullptr;
     void *deltaDeviceAddr = nullptr;
     void *pseudoQueryDeviceAddr = nullptr;
     void *numeratorDeviceAddr = nullptr;
@@ -133,7 +137,7 @@ int RunBlockAttnResUpdate(int32_t deviceId, aclrtStream &stream)
     void *expSumDeviceAddr = nullptr;
     void *hDeviceAddr = nullptr;
 
-    aclTensor *partialBlock = nullptr;
+    aclTensor *partialBlockRef = nullptr;
     aclTensor *delta = nullptr;
     aclTensor *pseudoQuery = nullptr;
     aclTensor *numerator = nullptr;
@@ -141,11 +145,11 @@ int RunBlockAttnResUpdate(int32_t deviceId, aclrtStream &stream)
     aclTensor *expSum = nullptr;
     aclTensor *h = nullptr;
 
-    ret = CreateAclTensor<float>(partialBlockHostData, matrixShape, &partialBlockDeviceAddr,
-                                 aclDataType::ACL_FLOAT, aclFormat::ACL_FORMAT_ND, &partialBlock);
-    std::unique_ptr<void, aclError (*)(void *)> partialBlockDeviceAddrPtr(partialBlockDeviceAddr, aclrtFree);
-    std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> partialBlockTensorPtr(partialBlock,
-                                                                                        aclDestroyTensor);
+    ret = CreateAclTensor<float>(partialBlockRefHostData, matrixShape, &partialBlockRefDeviceAddr,
+                                 aclDataType::ACL_FLOAT, aclFormat::ACL_FORMAT_ND, &partialBlockRef);
+    std::unique_ptr<void, aclError (*)(void *)> partialBlockRefDeviceAddrPtr(partialBlockRefDeviceAddr, aclrtFree);
+    std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> partialBlockRefTensorPtr(partialBlockRef,
+                                                                                           aclDestroyTensor);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     ret = CreateAclTensor<uint16_t>(deltaHostData, matrixShape, &deltaDeviceAddr, aclDataType::ACL_BF16,
@@ -189,7 +193,7 @@ int RunBlockAttnResUpdate(int32_t deviceId, aclrtStream &stream)
     aclOpExecutor *executor = nullptr;
     void *workspaceAddr = nullptr;
 
-    ret = aclnnBlockAttnResUpdateGetWorkspaceSize(partialBlock, delta, pseudoQuery, numerator, logitMax, expSum,
+    ret = aclnnBlockAttnResUpdateGetWorkspaceSize(partialBlockRef, delta, pseudoQuery, numerator, logitMax, expSum,
                                                    eps, h, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("aclnnBlockAttnResUpdateGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
@@ -207,18 +211,19 @@ int RunBlockAttnResUpdate(int32_t deviceId, aclrtStream &stream)
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
-    const size_t partialBlockSize = partialBlockHostData.size() * sizeof(float);
-    ret = aclrtMemcpy(partialBlockHostData.data(), partialBlockSize, partialBlockDeviceAddr, partialBlockSize,
+    const size_t partialBlockRefSize = partialBlockRefHostData.size() * sizeof(float);
+    ret = aclrtMemcpy(partialBlockRefHostData.data(), partialBlockRefSize, partialBlockRefDeviceAddr,
+                      partialBlockRefSize,
                       ACL_MEMCPY_DEVICE_TO_HOST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy partialBlock to host failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy partialBlockRef to host failed. ERROR: %d\n", ret); return ret);
 
     const size_t hSize = hHostData.size() * sizeof(uint16_t);
     ret = aclrtMemcpy(hHostData.data(), hSize, hDeviceAddr, hSize, ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy h to host failed. ERROR: %d\n", ret); return ret);
 
-    LOG_PRINT("partialBlock[0] after in-place update: %.6f\n", partialBlockHostData[0]);
-    LOG_PRINT("h[0]: %.6f\n", Bfloat16ToFloat(hHostData[0]));
-    LOG_PRINT("BlockAttnResUpdate example execute success.\n");
+    LOG_PRINT("partialBlockRef[0] after in-place update: %.6f\n", partialBlockRefHostData[FIRST_ELEMENT_INDEX]);
+    LOG_PRINT("h[0]: %.6f\n", Bfloat16ToFloat(hHostData[FIRST_ELEMENT_INDEX]));
+    LOG_PRINT("block_attn_res_update example execute success.\n");
     return ACL_SUCCESS;
 }
 
