@@ -54,9 +54,9 @@ public:
                   "MXFullQuantMode currently only supports TND query and PA_BNBD KV");
     static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == 128U && DV_BASE == 128U,
                   "MXFullQuantMode currently only supports S1=128, S2=512, D=128 and DV=128");
-    // 延迟两个 task 执行 C2/V2。
+    // A/B：保持 C2/V2 均延迟两个 task，仅将 RunInfo 环形缓存从三槽扩为四槽。
     static constexpr uint32_t PRELOAD_N = 2U;
-    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1U;
+    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = 4U;
 
     __aicore__ inline QuantBlockSparseAttnMxKernel() = default;
 
@@ -376,7 +376,7 @@ private:
 
     __aicore__ inline void ProcessMainLoop()
     {
-        // 三槽环形缓存组织 C1/V1 与延迟 C2/V2。
+        // 四槽环形缓存；C1/V1/C2/V2 的执行顺序与三槽基线保持一致。
         MxRunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
         uint64_t loop = 0U;
         uint32_t mLoop = 0U;

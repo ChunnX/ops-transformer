@@ -60,7 +60,8 @@ public:
     static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == 128U && DV_BASE == 128U,
                   "MX vector currently only supports S1=128, S2=512, D=128 and DV=128");
     static constexpr uint32_t DB = 2U;
-    static constexpr uint32_t PRELOAD_N = 2U;
+    // A/B：保持 V2 延迟两个 task，仅将 softmax 环形状态从三槽扩为四槽。
+    static constexpr uint32_t SOFTMAX_BUFFER_NUM = 4U;
     static constexpr uint32_t MX_SCALE_GROUP = 32U;
     static constexpr uint32_t dTemplateAlign64 = 128U;
     static constexpr uint32_t DN_VSELR_INDEX_SIZE = 256U;
@@ -107,16 +108,19 @@ public:
             tPipe_->InitBuffer(stage1OutQue_[1], 1, STAGE1_OUT_UB_SIZE);
             // 单个 256-column subLoop 的 e8m0 PScale。
             tPipe_->InitBuffer(pScaleSubLoop0Que_, 1, PSCALE_SUB_LOOP_UB_SIZE);
-            // 三槽 softmax 状态对应 PRELOAD_N+1 环形流水。
+            // 四槽 softmax 状态；V1/V2 调度顺序保持三槽基线不变。
             tPipe_->InitBuffer(softmaxSumBuf_[0], SOFTMAX_STATE_UB_SIZE);
             tPipe_->InitBuffer(softmaxSumBuf_[1], SOFTMAX_STATE_UB_SIZE);
             tPipe_->InitBuffer(softmaxSumBuf_[2], SOFTMAX_STATE_UB_SIZE);
+            tPipe_->InitBuffer(softmaxSumBuf_[3], SOFTMAX_STATE_UB_SIZE);
             tPipe_->InitBuffer(softmaxMaxBuf_[0], SOFTMAX_STATE_UB_SIZE);
             tPipe_->InitBuffer(softmaxMaxBuf_[1], SOFTMAX_STATE_UB_SIZE);
             tPipe_->InitBuffer(softmaxMaxBuf_[2], SOFTMAX_STATE_UB_SIZE);
+            tPipe_->InitBuffer(softmaxMaxBuf_[3], SOFTMAX_STATE_UB_SIZE);
             tPipe_->InitBuffer(softmaxExpBuf_[0], SOFTMAX_STATE_UB_SIZE);
             tPipe_->InitBuffer(softmaxExpBuf_[1], SOFTMAX_STATE_UB_SIZE);
             tPipe_->InitBuffer(softmaxExpBuf_[2], SOFTMAX_STATE_UB_SIZE);
+            tPipe_->InitBuffer(softmaxExpBuf_[3], SOFTMAX_STATE_UB_SIZE);
             // online softmax update 临时状态。
             tPipe_->InitBuffer(preLoopMaxBuf_, SOFTMAX_STATE_UB_SIZE);
             tPipe_->InitBuffer(preLoopSumBuf_, SOFTMAX_STATE_UB_SIZE);
@@ -183,8 +187,8 @@ public:
             return;
         }
 
-        const uint32_t softmaxBufIdx = runInfo.mLoop % (PRELOAD_N + 1U);
-        const uint32_t expBufIdx = runInfo.loop % (PRELOAD_N + 1U);
+        const uint32_t softmaxBufIdx = runInfo.mLoop % SOFTMAX_BUFFER_NUM;
+        const uint32_t expBufIdx = runInfo.loop % SOFTMAX_BUFFER_NUM;
         const uint32_t stage1Offset = (runInfo.loop * 2U + SUB_LOOP) % DB;
         LocalTensor<float> sumUb = softmaxSumBuf_[softmaxBufIdx].template Get<float>()[0];
         LocalTensor<float> maxUb = softmaxMaxBuf_[softmaxBufIdx].template Get<float>()[0];
@@ -253,8 +257,8 @@ public:
         }
 
         const uint32_t vecMSize = runInfo.actVecMSize;
-        const uint32_t loopIdx = runInfo.loop % (PRELOAD_N + 1U);
-        const uint32_t mLoopIdx = runInfo.mLoop % (PRELOAD_N + 1U);
+        const uint32_t loopIdx = runInfo.loop % SOFTMAX_BUFFER_NUM;
+        const uint32_t mLoopIdx = runInfo.mLoop % SOFTMAX_BUFFER_NUM;
         const bool isFirstS2Loop = runInfo.isFirstS2Loop;
         const bool isLastS2Loop = runInfo.isLastS2Loop;
         const int64_t vec2CalcSize = static_cast<int64_t>(vecMSize) * dTemplateAlign64;
@@ -519,7 +523,7 @@ private:
     {
         if constexpr (HAS_ATTEN) {
             // 使用所有 S2 loop 累计后的 max 判断整行是否始终无有效 key。
-            LocalTensor<float> maxUb = softmaxMaxBuf_[runInfo.mLoop % (PRELOAD_N + 1U)].template Get<float>();
+            LocalTensor<float> maxUb = softmaxMaxBuf_[runInfo.mLoop % SOFTMAX_BUFFER_NUM].template Get<float>();
             FaVectorApi::RowInvalidUpdateVF<MM_T>(vec2ResUb, maxUb, runInfo.actVecMSize, constInfo.dSizeV,
                                                   static_cast<int64_t>(dTemplateAlign64));
         }
@@ -573,9 +577,9 @@ private:
     TQue<QuePosition::VECOUT, 1> pScaleSubLoop0Que_;
     TQue<QuePosition::VECOUT, 1> softmaxLseQueue_;
     TBuf<> stage2OutBuf_;
-    TBuf<> softmaxMaxBuf_[PRELOAD_N + 1U];
-    TBuf<> softmaxSumBuf_[PRELOAD_N + 1U];
-    TBuf<> softmaxExpBuf_[PRELOAD_N + 1U];
+    TBuf<> softmaxMaxBuf_[SOFTMAX_BUFFER_NUM];
+    TBuf<> softmaxSumBuf_[SOFTMAX_BUFFER_NUM];
+    TBuf<> softmaxExpBuf_[SOFTMAX_BUFFER_NUM];
     TBuf<> preLoopMaxBuf_;
     TBuf<> preLoopSumBuf_;
     TBuf<> firstLoopSumBuf_;
