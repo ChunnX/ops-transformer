@@ -82,7 +82,8 @@ TEST_F(BSASelectBlockMaskTilingTest, tiling_bnsd_case0)
         },
         &compileInfo);
 
-    uint64_t expectTilingKey = 1UL;
+    // BNSD+BNSD -> GET_TPL_TILING_KEY(1, 1) = 17（4-bit LAYOUT 模板编码）
+    uint64_t expectTilingKey = 17UL;
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
@@ -136,7 +137,7 @@ TEST_F(BSASelectBlockMaskTilingTest, tiling_bnsd_block64)
         },
         &compileInfo);
 
-    uint64_t expectTilingKey = 1UL;
+    uint64_t expectTilingKey = 17UL;
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
@@ -190,7 +191,7 @@ TEST_F(BSASelectBlockMaskTilingTest, tiling_bf16_case)
         },
         &compileInfo);
 
-    uint64_t expectTilingKey = 1UL;
+    uint64_t expectTilingKey = 17UL;
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
@@ -244,7 +245,7 @@ TEST_F(BSASelectBlockMaskTilingTest, tiling_batch2_case)
         },
         &compileInfo);
 
-    uint64_t expectTilingKey = 1UL;
+    uint64_t expectTilingKey = 17UL;
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }

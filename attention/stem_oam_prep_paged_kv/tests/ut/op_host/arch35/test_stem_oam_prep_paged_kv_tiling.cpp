@@ -93,7 +93,7 @@ std::vector<OpAttr> MakeAttrs(float lambdaMag = 0.3f, const std::string &kvLayou
 {
     return {
         {"lambdaMag", Ops::Transformer::AnyValue::CreateFrom<float>(lambdaMag)},
-        {"kvLayout", Ops::Transformer::AnyValue::CreateFrom<const char*>(kvLayout.c_str())},
+        {"kvLayout", Ops::Transformer::AnyValue::CreateFrom<std::string>(kvLayout)},
         {"stemBlockSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(stemBlockSize)},
         {"stemStride", Ops::Transformer::AnyValue::CreateFrom<int64_t>(stemStride)},
     };

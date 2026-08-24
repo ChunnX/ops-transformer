@@ -250,6 +250,7 @@ TEST_F(l2_causal_conv1d_update_test, Ascend950_update_x_dimnum_invalid)
 
 TEST_F(l2_causal_conv1d_update_test, Ascend950_update_3d_seqlen_not_1)
 {
+    // 3D x with seqLen>1 is accepted (multi-token / speculative decode).
     auto x = TensorDesc({4, 5, 512}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-10, 10);
     auto weight = TensorDesc({4, 512}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-10, 10);
     auto convStates = TensorDesc({4, 4, 512}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-10, 10);
@@ -262,7 +263,7 @@ TEST_F(l2_causal_conv1d_update_test, Ascend950_update_3d_seqlen_not_1)
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_EQ(ret, ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(ret, ACLNN_SUCCESS);
 }
 
 TEST_F(l2_causal_conv1d_update_test, Ascend950_update_kernel_width_invalid)

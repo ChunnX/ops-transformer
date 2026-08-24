@@ -13,6 +13,7 @@
 #include <limits>
 #include "tiling/platform/platform_ascendc.h"
 #include "tiling_case_executor.h"
+#include "../../../../op_host/kv_compress_epilog_tiling_arch35.h"
 
 class KvCompressEpilogTiling : public testing::Test
 {
@@ -28,8 +29,17 @@ protected:
     }
 };
 
+static optiling::KvCompressEpilogCompileInfo MakeCompileInfo()
+{
+    optiling::KvCompressEpilogCompileInfo compileInfo = {};
+    compileInfo.coreNum = 64;
+    compileInfo.ubSize = 262144;
+    return compileInfo;
+}
+
 TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_e8m0)
 {
+    auto compileInfo = MakeCompileInfo();
     gert::TilingContextPara optilingContextPara("KvCompressEpilog",
         {
             // cache: 4D [blockNum, blockSize, 1, headDim] = [128,16,1,384], num_slots=2048
@@ -38,7 +48,8 @@ TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_e8m0)
             {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+            // inplace Output("cache") is REQUIRED; shape must match input cache
+            {{{128, 16, 1, 384}, {128, 16, 1, 384}}, ge::DT_UINT8, ge::FORMAT_ND},
         },
         {
             {"quant_group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
@@ -46,14 +57,14 @@ TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_e8m0)
             {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
             {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        nullptr, "Ascend950"
+        &compileInfo, "Ascend950"
     );
     ExecuteTestCase(optilingContextPara, ge::GRAPH_SUCCESS, std::numeric_limits<uint64_t>::max());
 }
 
 // mode2: rope hifloat8 静态量化 + nope FLOAT4_E2M1 per-group 动态量化。
 // d=256 -> nope=192, 可被 16/32/64 整除; tiling key 应为 2。
-static gert::TilingContextPara MakeMode2Para(int64_t groupSize)
+static gert::TilingContextPara MakeMode2Para(optiling::KvCompressEpilogCompileInfo *compileInfo, int64_t groupSize)
 {
     return gert::TilingContextPara("KvCompressEpilog",
         {
@@ -63,7 +74,7 @@ static gert::TilingContextPara MakeMode2Para(int64_t groupSize)
             {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+            {{{128, 16, 1, 384}, {128, 16, 1, 384}}, ge::DT_UINT8, ge::FORMAT_ND},
         },
         {
             {"quant_group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupSize)},
@@ -71,32 +82,36 @@ static gert::TilingContextPara MakeMode2Para(int64_t groupSize)
             {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
             {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(2.0f)},
         },
-        nullptr, "Ascend950"
+        compileInfo, "Ascend950"
     );
 }
 
 TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_hif8_fp4_group64)
 {
-    auto para = MakeMode2Para(64);
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakeMode2Para(&compileInfo, 64);
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, 0UL);  // 单一 tiling key 0
 }
 
 TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_hif8_fp4_group32)
 {
-    auto para = MakeMode2Para(32);
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakeMode2Para(&compileInfo, 32);
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, 0UL);  // 单一 tiling key 0
 }
 
 TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_hif8_fp4_group16)
 {
-    auto para = MakeMode2Para(16);
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakeMode2Para(&compileInfo, 16);
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, 0UL);  // 单一 tiling key 0
 }
 
 // mode2 仅支持 group_size in {16,32,64}, 其它取值应 tiling 失败。
 TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_hif8_fp4_bad_group)
 {
-    auto para = MakeMode2Para(128);
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakeMode2Para(&compileInfo, 128);
     ExecuteTestCase(para, ge::GRAPH_FAILED, std::numeric_limits<uint64_t>::max());
 }
 
@@ -112,7 +127,8 @@ TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_hif8_fp4_bad_group)
 //     mode0(bf16)  concatCol = (256-64)+128+3*2 = 326, kvCacheCol = RoundUp(326,32)=352。
 // cache 4D 用 [2048,1,1,headDim] (blockNum=2048, blockSize=1) 直接以末维控制 headDim。
 // ---------------------------------------------------------------------------
-static gert::TilingContextPara MakeHeadDimPara(int64_t quantMode, int64_t headDim, int64_t groupSize = 128)
+static gert::TilingContextPara MakeHeadDimPara(optiling::KvCompressEpilogCompileInfo *compileInfo,
+                                               int64_t quantMode, int64_t headDim, int64_t groupSize = 128)
 {
     return gert::TilingContextPara("KvCompressEpilog",
         {
@@ -122,7 +138,7 @@ static gert::TilingContextPara MakeHeadDimPara(int64_t quantMode, int64_t headDi
             {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+            {{{2048, 1, 1, headDim}, {2048, 1, 1, headDim}}, ge::DT_UINT8, ge::FORMAT_ND},
         },
         {
             {"quant_group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupSize)},
@@ -130,7 +146,7 @@ static gert::TilingContextPara MakeHeadDimPara(int64_t quantMode, int64_t headDi
             {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
             {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        nullptr, "Ascend950"
+        compileInfo, "Ascend950"
     );
 }
 
@@ -139,21 +155,24 @@ static gert::TilingContextPara MakeHeadDimPara(int64_t quantMode, int64_t headDi
 //     成功本身即证明 E8M0 不补齐(kvCacheCol == concatCol == 323 <= 324)。
 TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_e8m0_headdim_unaligned_ok)
 {
-    auto para = MakeHeadDimPara(/*quantMode=*/1, /*headDim=*/324);
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakeHeadDimPara(&compileInfo, /*quantMode=*/1, /*headDim=*/324);
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, std::numeric_limits<uint64_t>::max());
 }
 
 // (b) mode0(group_bf16) + 32 对齐 kvCacheCol(=352) 且 headDim(384) > kvCacheCol -> 成功。
 TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_mode0_headdim_aligned_ok)
 {
-    auto para = MakeHeadDimPara(/*quantMode=*/0, /*headDim=*/384);
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakeHeadDimPara(&compileInfo, /*quantMode=*/0, /*headDim=*/384);
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, std::numeric_limits<uint64_t>::max());
 }
 
 // (c) 错误: headDim(320) < kvCacheCol(=concatCol=323) -> GRAPH_FAILED (cache 行宽不足, 写出越界)。
 TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_headdim_le_concat_fail)
 {
-    auto para = MakeHeadDimPara(/*quantMode=*/1, /*headDim=*/320);
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakeHeadDimPara(&compileInfo, /*quantMode=*/1, /*headDim=*/320);
     ExecuteTestCase(para, ge::GRAPH_FAILED, std::numeric_limits<uint64_t>::max());
 }
 
@@ -161,7 +180,8 @@ TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_headdim_le_concat_fail)
 //     (能容纳 concat 数据, 但 32B 对齐后 kvCacheCol(352) > headDim(340) 写出会越界)。
 TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_mode0_pad_overflow_fail)
 {
-    auto para = MakeHeadDimPara(/*quantMode=*/0, /*headDim=*/340);
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakeHeadDimPara(&compileInfo, /*quantMode=*/0, /*headDim=*/340);
     ExecuteTestCase(para, ge::GRAPH_FAILED, std::numeric_limits<uint64_t>::max());
 }
 
@@ -169,14 +189,16 @@ TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_mode0_pad_overflow_fail
 //     E8M0 d=256 -> kvCacheCol=323, headDim=323 (恰好相等) -> 成功 (headDim>=kvCacheCol)。
 TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_e8m0_headdim_eq_kvcachecol_ok)
 {
-    auto para = MakeHeadDimPara(/*quantMode=*/1, /*headDim=*/323);
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakeHeadDimPara(&compileInfo, /*quantMode=*/1, /*headDim=*/323);
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, std::numeric_limits<uint64_t>::max());
 }
 
 // (e2) 边界成功: mode0 d=256 -> kvCacheCol=352, headDim=352 (恰好相等) -> 成功。
 TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_mode0_headdim_eq_kvcachecol_ok)
 {
-    auto para = MakeHeadDimPara(/*quantMode=*/0, /*headDim=*/352);
+    auto compileInfo = MakeCompileInfo();
+    auto para = MakeHeadDimPara(&compileInfo, /*quantMode=*/0, /*headDim=*/352);
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, std::numeric_limits<uint64_t>::max());
 }
 
@@ -186,6 +208,7 @@ TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_mode0_headdim_eq_kvcach
 // (f) 错误: 2D cache (旧 [num_slots, kvCacheCol] 布局) -> GRAPH_FAILED (维数 != 4)。
 TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_cache_2d_rejected)
 {
+    auto compileInfo = MakeCompileInfo();
     gert::TilingContextPara para("KvCompressEpilog",
         {
             {{{2048, 384}, {2048, 384}}, ge::DT_UINT8, ge::FORMAT_ND},  // 2D cache, 不再支持
@@ -193,7 +216,7 @@ TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_cache_2d_rejected)
             {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+            {{{2048, 384}, {2048, 384}}, ge::DT_UINT8, ge::FORMAT_ND},
         },
         {
             {"quant_group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
@@ -201,7 +224,7 @@ TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_cache_2d_rejected)
             {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
             {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        nullptr, "Ascend950"
+        &compileInfo, "Ascend950"
     );
     ExecuteTestCase(para, ge::GRAPH_FAILED, std::numeric_limits<uint64_t>::max());
 }
@@ -209,6 +232,7 @@ TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_cache_2d_rejected)
 // (g) 错误: 4D cache 但倒数第二维 != 1 ([128,16,2,384]) -> GRAPH_FAILED。
 TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_cache_dim2_not_one_rejected)
 {
+    auto compileInfo = MakeCompileInfo();
     gert::TilingContextPara para("KvCompressEpilog",
         {
             {{{128, 16, 2, 384}, {128, 16, 2, 384}}, ge::DT_UINT8, ge::FORMAT_ND},  // dim2=2, 非法
@@ -216,7 +240,7 @@ TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_cache_dim2_not_one_reje
             {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
-            {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+            {{{128, 16, 2, 384}, {128, 16, 2, 384}}, ge::DT_UINT8, ge::FORMAT_ND},
         },
         {
             {"quant_group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
@@ -224,8 +248,7 @@ TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_cache_dim2_not_one_reje
             {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
             {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
-        nullptr, "Ascend950"
+        &compileInfo, "Ascend950"
     );
     ExecuteTestCase(para, ge::GRAPH_FAILED, std::numeric_limits<uint64_t>::max());
 }
-
