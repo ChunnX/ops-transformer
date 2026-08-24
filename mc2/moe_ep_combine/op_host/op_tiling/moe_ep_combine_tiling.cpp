@@ -341,6 +341,8 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
     uint64_t scaleoutReservedPerSlotBytes = AlignUpWin(scaleoutSlotRawBytes);
 
     uint64_t combineDataWinOffset;
+    uint64_t combinePayloadStashWinOffset;
+    uint64_t availablePayloadStashWinSize;
     uint64_t winNeedTotal;
     if (networkMode == NETWORK_HYBRID) {
         uint64_t scaleoutRecvDataSize =
@@ -351,24 +353,30 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
         uint64_t scaleupFinalRecvDataOffset = scaleoutRecvDataOffset + scaleoutRecvDataSize;
         uint64_t scaleoutRecvStatusOffset = scaleupFinalRecvDataOffset + scaleupFinalRecvDataSize;
         combineDataWinOffset = scaleoutRecvStatusOffset + scaleoutRecvStatusSize;
-        uint64_t payloadStashWinOffset = combineDataWinOffset + combineDataSizePerRank;
-        uint64_t payloadStashWinSize = nmt * scaleoutReservedPerSlotBytes;
-        winNeedTotal = payloadStashWinOffset + payloadStashWinSize;
+        combinePayloadStashWinOffset = combineDataWinOffset + combineDataSizePerRank;
+        availablePayloadStashWinSize = nmt * scaleoutReservedPerSlotBytes;
+        winNeedTotal = combinePayloadStashWinOffset + availablePayloadStashWinSize;
     } else {
         uint64_t dispatchRecvWinDataReservedSize = epWorldSize * nmt * dispatchReservedPerSlotBytes;
         uint64_t stateAndRecvDataWinSize =
             dispatchWinStateSize + combineWinStateSize + dispatchRecvWinDataReservedSize + combineDataSizePerRank;
         uint64_t dispatchSendWinDataReservedSize = dispatchRecvWinDataReservedSize;
         combineDataWinOffset = dispatchWinStateSize + combineWinStateSize + dispatchRecvWinDataReservedSize;
+        combinePayloadStashWinOffset = stateAndRecvDataWinSize;
+        availablePayloadStashWinSize = dispatchSendWinDataReservedSize;
         winNeedTotal = stateAndRecvDataWinSize + dispatchSendWinDataReservedSize;
     }
     const gert::StorageShape *recvxShape = context->GetInputShape(RECVX_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, recvxShape);
     uint64_t recvTokenCapacity = static_cast<uint64_t>(recvxShape->GetStorageShape().GetDim(0));
-    uint64_t combinePayloadStashWinOffset = winNeedTotal;
     // Only hidden is staged for this experiment, so a 32-byte-aligned hidden stride is sufficient.
-    uint64_t combinePayloadStashWinSize = recvTokenCapacity * hiddenAlign;
-    winNeedTotal = combinePayloadStashWinOffset + combinePayloadStashWinSize;
+    uint64_t requiredPayloadStashWinSize = recvTokenCapacity * hiddenAlign;
+    OP_TILING_CHECK(requiredPayloadStashWinSize > availablePayloadStashWinSize,
+                    OP_LOGE(nodeName,
+                            "Existing dispatch payload stash is too small for combine hidden payloads, "
+                            "need %lu bytes, available %lu bytes.",
+                            requiredPayloadStashWinSize, availablePayloadStashWinSize),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(winNeedTotal > maxWindowSize,
                     OP_LOGE(nodeName, "HCCL_BUFFSIZE too small, need %luMB, available %luMB.",
                             (winNeedTotal / MB_SIZE) + 1UL, maxWindowSize / MB_SIZE),
