@@ -1012,7 +1012,7 @@ __aicore__ inline void UpdateMoeExpertGmm1GlobalBuffer(
                 expertOffset * syncLayout.activationFlagSlotCountPerExpert / INT_CACHELINE + expertMGroupOffset,
                 0L,
                 0L,
-                0L};
+                globalTokenStartIndex * n / ACTIVATION_N_HALF};
             epilogueOp.UpdateGlobalAddr(vecBaseOffset);
         }
     }
@@ -1103,7 +1103,7 @@ __aicore__ inline void UpdateSharedExpertGmm1GlobalBuffer(const MoeStageCommonCo
             0L,
             0L,
             0L,
-            0L};
+            static_cast<int64_t>(expertIdx * m * activationN)};
         epilogueOp.UpdateGlobalAddr(vecBaseOffset);
     }
 }
