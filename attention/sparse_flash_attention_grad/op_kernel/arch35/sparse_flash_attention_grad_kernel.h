@@ -300,6 +300,22 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         LaunchDeterScatter(deterRunInfos[(deterTaskId + 1) & 1]);
         deterTaskId++;
     }
+
+    if ASCEND_IS_AIV {
+        this->vecBlock.FinalizeDSinkAcc(this->constInfo);
+    }
+
+    // 不能依赖 CrossCore flag(11-14)：David 上非全核 barrier / set-wait 计数错配，
+    // 单 writer 会提前读到未写完的 slot（d_sinks 跨核 reduce 存在竞态）。
+    // SyncAll<false> 已在 entry 复用且验证可靠，此处复用同一硬 barrier
+    if constexpr (IS_SINKS) {
+        this->SyncALLCores();
+        if ASCEND_IS_AIV {
+            LocalTensor<CALC_TYPE> dSinkScratch = this->mm1ResBuf[0].template Get<CALC_TYPE>();
+            LocalTensor<CALC_TYPE> dSinkReduceOut = this->mm1ResBuf[1].template Get<CALC_TYPE>();
+            this->vecBlock.ReduceDSink(dSinkScratch, dSinkReduceOut, this->constInfo);
+        }
+    }
     this->FreeEventID();
 }
 
@@ -361,6 +377,9 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         }
     }
     DrainUnDeter(runInfos, taskId);
+    if ASCEND_IS_AIV {
+        this->vecBlock.FinalizeDSinkAcc(this->constInfo);
+    }
     this->FreeEventID();
 }
 } // namespace SfagBaseApi
