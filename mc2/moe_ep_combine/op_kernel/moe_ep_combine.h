@@ -333,7 +333,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressT
 
         for (uint32_t i = 0; i < curChunkTokens; ++i) {
             int32_t srcRank = metadataLocal.GetValue(i * RECV_META_FIELDS);
-            if (srcRank < 0 || srcRank >= static_cast<int32_t>(epWorldSize_)) {
+            if (srcRank < 0 || srcRank >= static_cast<int32_t>(epWorldSize_) ||
+                srcRank == static_cast<int32_t>(rankId_)) {
                 continue;
             }
             uint32_t countOffset = static_cast<uint32_t>(srcRank) * rankCountBlockElements;
@@ -351,23 +352,36 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressT
     SyncFunc<AscendC::HardEvent::MTE3_S>();
     SyncAll<true>();
 
-    // Exclusive prefix of preceding cores gives this core a disjoint interval for every rank.
-    for (uint32_t core = 0; core < aivId_; ++core) {
-        GlobalTensor<int32_t> previousCoreCounts;
-        previousCoreCounts.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
-            perCoreRankCountWorkspaceAddr_ + static_cast<uint64_t>(core) * perCoreRankCountStride_));
-        DataCopy(rankCounts, previousCoreCounts, rankCountElements);
+    // Group preceding rows into a few MTE2 copies, as in PR 10309 GetSlotStartNum().
+    uint32_t rankCountRowBytes = rankCountElements * sizeof(int32_t);
+    uint32_t prefixRowsPerBatch = ADDRESS_TABLE_BUFFER_BYTES / rankCountRowBytes;
+    ascendc_assert(prefixRowsPerBatch > 0U, "combine prefix UB is too small, epWorldSize=%u", epWorldSize_);
+    LocalTensor<int32_t> prefixRows = addressTableBuf_.Get<int32_t>();
+    GlobalTensor<int32_t> allPerCoreRankCounts;
+    allPerCoreRankCounts.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(perCoreRankCountWorkspaceAddr_));
+    const DataCopyPadExtParams<int32_t> prefixPadParams{false, 0U, 0U, 0U};
+    for (uint32_t coreStart = 0; coreStart < aivId_; coreStart += prefixRowsPerBatch) {
+        uint32_t copyRows = (coreStart + prefixRowsPerBatch > aivId_) ?
+                                aivId_ - coreStart : prefixRowsPerBatch;
+        DataCopyExtParams prefixCopyParams{
+            static_cast<uint16_t>(copyRows), rankCountRowBytes,
+            static_cast<uint32_t>(perCoreRankCountStride_ - rankCountRowBytes), 0U, 0U};
+        DataCopyPad(prefixRows,
+                    allPerCoreRankCounts[static_cast<uint64_t>(coreStart) *
+                                         perCoreRankCountStride_ / sizeof(int32_t)],
+                    prefixCopyParams, prefixPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_S>();
-        for (uint32_t rank = 0; rank < epWorldSize_; ++rank) {
-            rankPrefix.SetValue(rank, rankPrefix.GetValue(rank) +
-                static_cast<uint32_t>(rankCounts.GetValue(rank * rankCountBlockElements)));
+        for (uint32_t row = 0; row < copyRows; ++row) {
+            for (uint32_t rank = 0; rank < epWorldSize_; ++rank) {
+                uint32_t offset = row * rankCountElements + rank * rankCountBlockElements;
+                rankPrefix.SetValue(rank, rankPrefix.GetValue(rank) +
+                    static_cast<uint32_t>(prefixRows.GetValue(offset)));
+            }
         }
         SyncFunc<AscendC::HardEvent::S_MTE2>();
     }
 
-    // Reload this core's row. The last AIV writes prefix + own count as the final count for every rank.
-    DataCopy(rankCounts, perCoreRankCounts, rankCountElements);
-    SyncFunc<AscendC::HardEvent::MTE2_S>();
+    // rankCounts still holds this core's row. The last AIV writes prefix + own count as each remote rank's total.
     if (aivId_ == aivNum_ - 1U) {
         for (uint32_t rank = 0; rank < epWorldSize_; ++rank) {
             uint32_t countOffset = rank * rankCountBlockElements;
@@ -380,7 +394,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressT
         DataCopyPad(totalRankCounts, rankCounts, rankCountCopyParams);
         SyncFunc<AscendC::HardEvent::MTE3_S>();
     }
-    SyncFunc<AscendC::HardEvent::S_MTE2>();
 
     // Each group fits even if all records target the same rank. Records are grouped by rank in UB.
     uint32_t entriesPerRank = ADDRESS_TABLE_BUFFER_BYTES / epWorldSize_ / ADDRESS_ENTRY_UB_BYTES;
@@ -414,18 +427,23 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressT
             if (srcRank < 0 || srcRank >= static_cast<int32_t>(epWorldSize_)) {
                 continue;
             }
-            uint32_t countOffset = static_cast<uint32_t>(srcRank) * rankCountBlockElements;
-            uint32_t localIndex = static_cast<uint32_t>(rankCounts.GetValue(countOffset));
-            uint32_t entryOffset = (static_cast<uint32_t>(srcRank) * entriesPerRank + localIndex) * entryElements;
-            addressEntries.SetValue(entryOffset, static_cast<uint32_t>(groupStart) + i);
-            addressEntries.SetValue(entryOffset + 1,
-                static_cast<uint32_t>(metadataLocal.GetValue(i * RECV_META_FIELDS + 1)));
-            addressEntries.SetValue(entryOffset + 2,
-                static_cast<uint32_t>(metadataLocal.GetValue(i * RECV_META_FIELDS + 2)));
+            uint32_t tokenIndex = static_cast<uint32_t>(groupStart) + i;
+            int32_t srcTokenIdx = metadataLocal.GetValue(i * RECV_META_FIELDS + 1);
+            int32_t srcTopKIdx = metadataLocal.GetValue(i * RECV_META_FIELDS + 2);
             uint32_t weight = 0U;
             if constexpr (HasTopkWeight == 1) {
                 weight = weightsLocal.GetValue(i);
             }
+            if (srcRank == static_cast<int32_t>(rankId_)) {
+                SendSlot(tokenIndex, srcRank, srcTokenIdx, srcTopKIdx, 0U, weight);
+                continue;
+            }
+            uint32_t countOffset = static_cast<uint32_t>(srcRank) * rankCountBlockElements;
+            uint32_t localIndex = static_cast<uint32_t>(rankCounts.GetValue(countOffset));
+            uint32_t entryOffset = (static_cast<uint32_t>(srcRank) * entriesPerRank + localIndex) * entryElements;
+            addressEntries.SetValue(entryOffset, tokenIndex);
+            addressEntries.SetValue(entryOffset + 1, static_cast<uint32_t>(srcTokenIdx));
+            addressEntries.SetValue(entryOffset + 2, static_cast<uint32_t>(srcTopKIdx));
             addressEntries.SetValue(entryOffset + 3, weight);
             rankCounts.SetValue(countOffset, static_cast<int32_t>(localIndex + 1));
         }
@@ -677,8 +695,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     uint32_t channelIndex = splitRankTokens ? coreIndexInGroup : 0;
 
     bool sendsTokens = actualA_ != 0 && aivId_ < activeAivNum;
-    bool sendsLocalTokens = sendsTokens &&
-                            (splitRankTokens ? targetRank == rankId_ : rankId_ % activeAivNum == aivId_);
     if (sendsTokens) {
         if (splitRankTokens) {
             uint32_t entryCount = GetAddressTableCount(targetRank);
@@ -696,16 +712,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         }
     }
 
-    // Append one ODR 6 completion write after all payload writes on this channel.
-    // Channels without payload also publish completion so the receiver cannot wait forever.
-    if (sendsLocalTokens) {
-        SyncFunc<AscendC::HardEvent::MTE3_S>();
-    }
-    if (useRemainingAivForLocal) {
-        // Extra local AIVs do not publish additional flags. Wait for their local MTE3 writes before
-        // the configured channel AIVs publish the original number of completion flags.
-        SyncAll<true>();
-    }
+    // Local copies completed before BuildAddressTable's final barrier. Remote channels can publish
+    // completion independently without a second all-core barrier here.
     uint32_t completionChannelCount = useRemainingAivForLocal ? channelsPerRank_ : groupSize;
     bool publishesChannelFlag = aivId_ < activeAivNum &&
                                 (!splitRankTokens || coreIndexInGroup < completionChannelCount);

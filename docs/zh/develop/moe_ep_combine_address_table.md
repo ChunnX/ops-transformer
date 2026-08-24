@@ -152,11 +152,11 @@ for (uint64_t tokenIndex = scanStart; tokenIndex < scanEnd; ++tokenIndex) {
 修改后把流程拆成两个阶段，其中建表阶段内部采用与 PR 10309 相同的“计数 → 前缀 → 批量写表”结构：
 
 ```text
-阶段 1：所有 AIV 分片计数，计算 per-core/per-rank 前缀，批量生成地址表
+阶段 1：所有 AIV 分片计数并计算 prefix；本地条目直接拷贝，远端条目批量生成地址表
                                   |
                              SyncAll<true>()
                                   |
-阶段 2：通信核只读取目标 rank 的地址表，本地核组切分本 rank 地址表
+阶段 2：通信核只读取远端 rank 的地址表，并独立发送 payload 与 completion flag
 ```
 
 原来的 `SendSlot()`、batch WriteNbi、channel 分配和 completion flag 协议保持不变。
@@ -202,7 +202,7 @@ actualA_ / 48
 
 ### 5.3 保存 per-core 计数行
 
-每个核第一次扫描自己的区间，只在 UB 中增加对应 rank 的局部计数：
+每个核第一次扫描自己的区间，只在 UB 中增加对应远端 rank 的局部计数；本 rank 不进入地址表计数：
 
 ```cpp
 rankCounts[srcRank * 8]++;
@@ -218,14 +218,14 @@ perCoreRankCountWorkspace[aivId][rank]
 
 ### 5.4 exclusive prefix 分配无冲突区间
 
-完成一次 `SyncAll<true>()` 后，AIV `c` 读取编号小于 `c` 的 per-core 计数行。对每个 rank `r`：
+完成一次 `SyncAll<true>()` 后，AIV `c` 分组搬入编号小于 `c` 的 per-core 计数行。对每个远端 rank `r`：
 
 ```text
 rankPrefix[c][r] = sum(perCoreRankCount[0 .. c-1][r])
 ```
 
-这就是 AIV `c` 在 `addressTable[r]` 中的起始位置。不同核得到的区间首尾相接且不重叠，所以写表时
-不需要 atomic。地址表顺序按 AIV 编号及各 AIV 扫描顺序稳定排列。
+这就是 AIV `c` 在 `addressTable[r]` 中的起始位置。一次 MTE2 可以搬入多行，避免原实现逐核
+`DataCopy + MTE2_S`。不同核得到的区间首尾相接且不重叠，所以写表时不需要 atomic。
 
 最后一个 AIV 的 prefix 已经包含所有前序核计数，因此最终总条目数为：
 
@@ -253,8 +253,12 @@ addressTable[srcRank][entryIndex]
 | 12 | `uint32_t` | `weight` | 可选 topK weight |
 | 16～511 | 未使用 | padding | 隔离 cache line，并复用现有 workspace 布局 |
 
-每个核第二次扫描自己的 metadata 区间，把记录按 `srcRank` 放入 40KB UB buffer。每组 token 数不超过
-单个 rank 的 UB 分区容量，因此即使一组记录全部属于同一 rank 也不会越界。
+每个核第二次扫描自己的 metadata 区间：
+
+- `srcRank == rankId`：像 PR 10309 的 `SetAddrInfoTable()` 本地分支一样，立即执行本地拷贝，不写地址表；
+- 远端 rank：把记录按 `srcRank` 放入 40KB UB buffer，再批量写地址表。
+
+每组 token 数不超过单个 rank 的 UB 分区容量，因此即使一组远端记录全部属于同一 rank 也不会越界。
 
 每个 rank 的写入起点为 `rankPrefix[rank]`，写入地址为：
 
@@ -294,8 +298,9 @@ SyncAll<true>();
 | --- | --- | --- |
 | PR 已有的 per-core count | 第一次 metadata 扫描 | 为新增地址表逻辑准备每核计数 |
 | `scaleupCounter[core][rank]` | `perCoreRankCountWorkspace[core][rank]` | 保存每核计数行，普通 MTE3 写入 |
-| `GetSlotStartNum()` | exclusive prefix 循环 | 为每核分配不重叠的 per-rank 表区间 |
-| `SetAddrInfoTable()` | UB 中按 rank 组装 Combine 记录 | 两者记录字段不同 |
+| `GetSlotStartNum()` | 分组搬运 + exclusive prefix | 减少逐核 MTE2 流水，为每核分配表区间 |
+| `SetAddrInfoTable()` 本地分支 | 建表时直接 `SendSlot()` 本地拷贝 | 本地数据不进入地址表 |
+| `SetAddrInfoTable()` 远端分支 | UB 中按 rank 组装 Combine 记录 | 两者记录字段不同 |
 | `WriteAddrInfoTable()` | strided MTE3 `DataCopy` | 32B 有效块写入 512B stride 的 GM |
 
 PR 10309 新增的地址表 diff 没有 atomic。其完整文件中的 `SetAtomicAdd` 属于 PR 之前已经存在的
@@ -313,7 +318,7 @@ PR 10309 新增的地址表 diff 没有 atomic。其完整文件中的 `SetAtomi
 | AIV | 修改后任务 |
 | --- | --- |
 | AIV 0～6 | 每个核读取一个远端 rank 的地址表，并使用该 rank 的 channel 0 |
-| AIV 7～47 | 共同切分本 rank 的地址表，执行本地拷贝 |
+| AIV 7～47 | 本地拷贝已在建表阶段完成；这里不再消费本 rank 地址表 |
 
 所以不会产生多个远端 AIV 并发操作同一个 Hcomm channel 的问题。
 
@@ -338,17 +343,16 @@ entryCount = statusTensor.GetValue(0);
 
 ### 6.3 本地 rank
 
-本地 rank 仍可使用剩余核。例如本地组有 41 个核时，把本 rank 地址表的 `[0, entryCount)`
-均匀切成 41 段：
+本地条目在 `BuildAddressTable()` 第二次分片扫描时由所有 AIV 直接处理，因此仍然是多核并行，且省掉：
 
 ```text
-AIV 7  -> local table slice 0
-AIV 8  -> local table slice 1
-...
-AIV 47 -> local table slice 40
+本地地址表 GM 写入
+本地地址表 GM 读回
+发送阶段为额外本地 AIV 设置的第二次 SyncAll
 ```
 
-因此地址表改造不会退化成本地只有一个核拷贝。
+建表末尾的 `SyncAll<true>()` 已保证所有本地 MTE3 写入完成。之后每个远端 channel 可以独立发送
+completion flag，不再被最慢的其他 channel 通过全核 barrier 拖住。
 
 ### 6.4 地址表批量搬入 UB
 
@@ -397,7 +401,7 @@ batch 满 127 个 WQE 时提交，阶段末尾通过 `FlushPreparedWrites()` 提
 
 ### 7.2 本地路径
 
-本地条目仍执行：
+本地条目在建表阶段直接执行：
 
 ```text
 x GM -> UB -> local combine receive window
@@ -411,8 +415,9 @@ x GM -> UB -> local combine receive window
 
 - payload 使用 ODR=5；
 - channel completion flag 使用 ODR=6；
-- 本地额外核先完成 MTE3 写入；
+- 本地写入在建表末尾的全核同步前完成；
 - 原有 channel 核发布约定数量的完成 flag；
+- 远端发送结束后不再增加第二次全核同步；
 - 最后调用 `FlushPreparedWrites()`。
 
 地址表只是改变了“如何找到需要发送的 token”，没有改变接收窗口地址、channel handle 或完成协议。
@@ -487,9 +492,9 @@ epWorldSize * COMM_ALIGN
 
 ```text
 建表阶段：计数和组表各扫描一次，全卡合计 2 * actualA_
-消费阶段：每个 rank 只遍历自己的 entry，全卡合计 actualA_
+消费阶段：只遍历远端 rank 的 entry，均衡 8 卡时全卡合计约 7/8 * actualA_
 
-全卡 Scalar 条目处理量约 3 * actualA_
+全卡 Scalar 条目处理量约 2.875 * actualA_
 ```
 
 单个远端通信核的 metadata 相关关键路径从：
@@ -517,10 +522,10 @@ actualA_
 | 原始 metadata 扫描 | 每个远端核完整扫描 | 所有 AIV 分片，合计扫描一次 |
 | rank 过滤 | 每个通信核重复判断 | 建表阶段统一完成 |
 | 远端核输入 | 原始 metadata | 目标 rank 的紧凑地址表 |
-| 本地核输入 | 原始 metadata 分片 | 本 rank 地址表分片 |
+| 本地核输入 | 原始 metadata 分片 | 建表第二遍直接本地拷贝，不落地址表 |
 | 单 channel 核分工 | 每个远端 rank 一个核 | 不变 |
 | `groupSize` | 远端等于 channel 数，本地等于剩余核数 | 不变 |
-| `SendSlot()` | 直接由 metadata 扫描调用 | 由地址表消费调用 |
+| `SendSlot()` | 直接由 metadata 扫描调用 | 本地由建表调用，远端由地址表消费调用 |
 | Hcomm channel | 原有 handle | 不变 |
 | batch WriteNbi | 127 WQE 一批 | 不变 |
 | completion flag | 原有 ODR=6 协议 | 不变 |
@@ -533,7 +538,7 @@ actualA_
 
 - metadata 两次分片扫描（第一次计数，第二次组表）；
 - 每个 AIV 一次 per-rank 计数行普通 MTE3 写入；
-- 读取前序 AIV 计数行并计算 exclusive prefix；
+- 分组读取前序 AIV 计数行并计算 exclusive prefix；
 - 最后一个 AIV 写入各 rank 最终条目数；
 - 地址表 GM 写入和再次读取；
 - 计数发布和建表结束处的全核同步；
@@ -547,8 +552,8 @@ actualA_
 4. `PrepareWrite` 和 `BatchCommit` 时间；
 5. 修改前后的端到端 kernel 时间。
 
-当前实现已经采用 PR 10309 的 per-core count、exclusive prefix 和批量 MTE3 写表结构。后续若 prefix
-阶段成为瓶颈，可像 10309 一样进一步用分组搬运与 Vector ReduceSum 代替逐个读取前序核计数行。
+当前实现已经采用 PR 10309 的 per-core count、分组搬运、exclusive prefix、本地直接拷贝和远端批量
+MTE3 写表结构。后续若 prefix 阶段仍成为瓶颈，可进一步用 Vector ReduceSum 代替分组后的 Scalar 累加。
 
 ## 12. 正确性检查建议
 
@@ -684,10 +689,12 @@ AIV 1: perCoreRankCount[1] = [0,1,0,0,0,0,0,0]
 AIV 8: perCoreRankCount[8] = [1,0,0,0,0,0,0,0]
 ```
 
+当前卡是 rank 3，所以 AIV 3 和 AIV 11 对应的本地条目不会增加 `perCoreRankCount[][3]`。
+
 最后一个 AIV 根据自己的 prefix 加自身计数得到：
 
 ```text
-rankCount = [2, 2, 2, 2, 2, 2, 2, 2]
+rankCount = [2, 2, 2, 0, 2, 2, 2, 2]
 ```
 
 对 rank 0，AIV 0 和 AIV 8 的 exclusive prefix 分别为：
@@ -704,7 +711,7 @@ AIV 0 -> addressTable[0][0] = {0, 0, 3, 0.125}
 AIV 8 -> addressTable[0][1] = {8, 1, 3, 0.125}
 ```
 
-其他 rank 同理。表项位置不通过逐条 atomic 抢占，而是由 per-core prefix 预先确定。
+其他远端 rank 同理。本地 rank 3 的两条记录在第二次扫描时直接拷贝，不生成表项。
 
 ### 14.4 最终逻辑地址表
 
@@ -718,8 +725,6 @@ AIV 8 -> addressTable[0][1] = {8, 1, 3, 0.125}
 | 1 | 1 | 9 | 1 | 3 | 0.125 |
 | 2 | 0 | 2 | 0 | 3 | 0.125 |
 | 2 | 1 | 10 | 1 | 3 | 0.125 |
-| 3 | 0 | 3 | 0 | 3 | 0.125 |
-| 3 | 1 | 11 | 1 | 3 | 0.125 |
 | 4 | 0 | 4 | 0 | 3 | 0.125 |
 | 4 | 1 | 12 | 1 | 3 | 0.125 |
 | 5 | 0 | 5 | 0 | 3 | 0.125 |
@@ -741,6 +746,8 @@ addressTable[1] = [
     {tokenIndex=1,  srcTokenIdx=0, srcTopKIdx=3, weight=0.125},
     {tokenIndex=9,  srcTokenIdx=1, srcTopKIdx=3, weight=0.125},
 ]
+
+addressTable[3] = []  // 当前卡，本地条目直接拷贝
 
 ...
 
@@ -781,7 +788,7 @@ rankTableBase(0) + 1 * 512:
     +16 ... +511             = 未使用
 ```
 
-8 张 rank 表整体可表示为：
+8 张 rank 表整体可表示为，其中本地 rank 3 为空：
 
 ```text
 combineSendDataWorkspaceAddr
@@ -815,13 +822,13 @@ combineSendDataWorkspaceAddr
 | 5 | 6 | `addressTable[6][0..2)` | 0 |
 | 6 | 7 | `addressTable[7][0..2)` | 0 |
 
-AIV 7～47 负责本地 rank 3：
+AIV 7～47 在发送阶段不再读取本地表：
 
 ```text
-addressTable[3][0..2)
+addressTable[3] = empty
 ```
 
-因为本例本地只有 2 条记录，所以 41 个本地核中只有前两个核各处理一条，其余核得到空区间。
+本地两条记录已经分别由处理 `tokenIndex=3` 和 `tokenIndex=11` 的建表 AIV 直接拷贝完成。
 
 ### 14.7 一个表项最终写到哪里
 
@@ -861,7 +868,7 @@ weight/state 目标地址为：
 dstState = rank0CombineStateWindow + 11 * 512;
 ```
 
-再看 `addressTable[3][0]`：
+再看建表阶段遇到的本地记录：
 
 ```text
 tokenIndex  = 3
@@ -871,7 +878,7 @@ srcTopKIdx  = 3
 slot        = 0 * 8 + 3 = 3
 ```
 
-它不走远端 Hcomm，而是由本地核执行：
+它不进入地址表，也不走远端 Hcomm，而是立即执行：
 
 ```text
 x[3] -> UB -> rank 3 本地 combine data window 的 slot 3
@@ -891,9 +898,9 @@ x[3] -> UB -> rank 3 本地 combine data window 的 slot 3
 
 ```text
 建表阶段：计数和组表各处理 16 条，共 32 条
-消费阶段：8 张表各 2 条，共处理 16 条
-总计：    48 次条目处理
+消费阶段：7 张远端表各 2 条，共处理 14 条
+总计：    46 次条目处理
 ```
 
-该小例子中条目处理量从 128 降到 48。实际 `actualA_` 更大时，远端核不再重复扫描其他 rank
+该小例子中条目处理量从 128 降到 46。实际 `actualA_` 更大时，远端核不再重复扫描其他 rank
 metadata 的收益会更加明显，但还需要扣除计数汇总、prefix、地址表 GM 写入/读取和全核同步的新增成本。
