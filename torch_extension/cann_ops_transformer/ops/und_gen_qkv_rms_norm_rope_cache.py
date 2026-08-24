@@ -16,7 +16,9 @@ from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 
 class UndGenQkvRmsNormRopeCacheOpBuilder(OpBuilder):
     def __init__(self):
-        super(UndGenQkvRmsNormRopeCacheOpBuilder, self).__init__("und_gen_qkv_rms_norm_rope_cache")
+        super(UndGenQkvRmsNormRopeCacheOpBuilder, self).__init__(
+            "und_gen_qkv_rms_norm_rope_cache"
+        )
 
     def sources(self):
         return ["ops/csrc/und_gen_qkv_rms_norm_rope_cache.cpp"]
