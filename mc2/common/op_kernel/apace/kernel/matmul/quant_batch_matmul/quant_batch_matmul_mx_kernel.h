@@ -124,7 +124,7 @@ public:
                      params.localParams.rankSize);
     }
 
-    __aicore__ inline void operator()(const Params &params)
+    __aicore__ inline void operator()(const Params &params) const
     {
         auto rankId = params.localParams.rankId;
         auto rankSize = params.localParams.rankSize;
@@ -224,7 +224,7 @@ public:
     }
 
 private:
-    BlockMmad mmadOp_;
+    mutable BlockMmad mmadOp_;
     bool isBias_{false};
     bool isAtomicAdd_{false};
 };
