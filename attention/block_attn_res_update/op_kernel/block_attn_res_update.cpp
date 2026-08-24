@@ -28,4 +28,5 @@ __global__ __aicore__ void block_attn_res_update(GM_ADDR partial_block, GM_ADDR 
 
     BlockAttnResUpdateOps::BlockAttnResUpdateFullD<SINGLE_TILE> op;
     op(partial_block, delta, pseudo_query, numerator, logit_max, exp_sum, h, &tilingData);
+    AscendC::PipeBarrier<PIPE_ALL>();
 }
