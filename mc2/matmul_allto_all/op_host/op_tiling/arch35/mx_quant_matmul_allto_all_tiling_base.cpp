@@ -710,7 +710,7 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoHcommMxQuantMMTiling()
     }
     hcommTilingData_.tailQbmmTilingData = hcommTilingData_.tileQbmmTilingData;
     hcommTilingData_.localMatmul = localMatmulDisabled;
-    OP_LOGD(opName_, "HcommMxQuantMM tiling: perRankM=%lu perRankK=%lu perRankN=%lu", perRankM, perRankK, perRankN);
+    OP_LOGD(opName_, "HcommMxQuantMM tiling: perRankM=%lu perRankK=%lu N=%lu", perRankM, perRankK, nValue);
     return ge::GRAPH_SUCCESS;
 }
 
