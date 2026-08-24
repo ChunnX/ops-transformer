@@ -77,24 +77,16 @@ struct HcommCommWaitPolicy {
         if (tileIdx == 0) {
             return;
         }
-        AscendC::PRINTF("[WaitTile] rank=%u, block=%u, tileIdx=%u, tileCnt=%u\n",
-                        state_->hccl_.GetRankId(), AscendC::GetBlockIdx(), tileIdx, state_->tileCnt_);
         // dependTileIdx=1 (MAIN r0): 首次远端等待，额外等 scale（全量）
         if (tileIdx == 1) {
             state_->hccl_.Wait(state_->scaleHandle_);
-            AscendC::PRINTF("[WaitScale] rank=%u, block=%u, tileIdx=%u, done\n",
-                            state_->hccl_.GetRankId(), AscendC::GetBlockIdx(), tileIdx);
         }
         // dependTileIdx=1..tileCnt (MAIN): 等 data head（repeat=tileCnt，每次 Wait 消费一轮）
         if (tileIdx <= state_->tileCnt_) {
             state_->hccl_.Wait(state_->dataHeadHandle_);
-            AscendC::PRINTF("[WaitDataHead] rank=%u, block=%u, tileIdx=%u, done\n",
-                            state_->hccl_.GetRankId(), AscendC::GetBlockIdx(), tileIdx);
         } else {
             // dependTileIdx>tileCnt (TAIL): 等 data tail
             state_->hccl_.Wait(state_->dataTailHandle_);
-            AscendC::PRINTF("[WaitDataTail] rank=%u, block=%u, tileIdx=%u, done\n",
-                            state_->hccl_.GetRankId(), AscendC::GetBlockIdx(), tileIdx);
         }
     }
 };
@@ -103,7 +95,8 @@ template <typename AType, typename BType, typename CType, AscendC::HcclServerTyp
 class AllGatherMxQuantMatmulHcommImpl {
 public:
     explicit __aicore__ inline AllGatherMxQuantMatmulHcommImpl(Apace::hcommAllGatherMatmulTilingData *tilingData)
-        : tilingData_(tilingData) {}
+        : tilingData_(tilingData)
+    {}
 
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR cGM,
                                 GM_ADDR workspaceGM);
@@ -145,7 +138,7 @@ private:
     uint64_t headRows_{};
     uint64_t scaleKLen_{};
     uint64_t scaleKGroups_{};
-    uint64_t kForComm_{};  // 通信用 K 元素数（FP4 时 = CeilDiv(K,2)）
+    uint64_t kForComm_{}; // 通信用 K 元素数（FP4 时 = CeilDiv(K,2)）
     uint64_t dataBytesPerMRow_{};
     uint64_t scaleBytesPerMRow_{};
     uint64_t cBytesPerM_{};
@@ -168,8 +161,7 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
     tailM_ = static_cast<uint32_t>(ct.splitAxisTailSize);
     k_ = tilingData_->mmTile.k;
     n_ = tilingData_->mmTile.n;
-    m_ = static_cast<uint32_t>(ct.splitAxisTileSize * ct.splitAxisTileCnt +
-                               ct.splitAxisTailSize * ct.splitAxisTailCnt);
+    m_ = static_cast<uint32_t>(ct.splitAxisTileSize * ct.splitAxisTileCnt + ct.splitAxisTailSize * ct.splitAxisTailCnt);
     commTurn_ = tileCnt_ + tailCnt_;
     paddedTailM_ = (tailM_ > 0) ? ((tailM_ + kPaddingLength - 1) / kPaddingLength * kPaddingLength) : 0U;
     headRows_ = static_cast<uint64_t>(tileCnt_) * tileM_;
@@ -202,8 +194,7 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
 
     // HCCL initialization
     commState_.hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
-    commState_.hccl_.SetCcTilingV2(
-        static_cast<uint64_t>(offsetof(Apace::hcommAllGatherMatmulTilingData, mc2CcTiling)));
+    commState_.hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(Apace::hcommAllGatherMatmulTilingData, mc2CcTiling)));
     rankId_ = commState_.hccl_.GetRankId();
     rankSize_ = commState_.hccl_.GetRankDim();
 
@@ -224,58 +215,48 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
 template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType, bool IsMxFp4>
 __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, ServerType, IsMxFp4>::CommitAllGather()
 {
-    AscendC::PRINTF("[CommitAllGather] rank=%u, block=%u, m=%u, k=%u, n=%u, tileM=%u, tileCnt=%u, tailM=%u, tailCnt=%u, "
-                    "kForComm=%llu, scaleKLen=%llu, headRows=%llu\n",
-                    rankId_, AscendC::GetBlockIdx(), m_, k_, n_, tileM_, tileCnt_, tailM_, tailCnt_,
-                    kForComm_, scaleKLen_, headRows_);
     // Scale: 全量一次性提交（repeat=1）
-    commState_.scaleHandle_ = commState_.hccl_.template AllGather<true>(
-        aScaleGM_, gatherScaleAddr_,
-        static_cast<uint64_t>(m_) * scaleKLen_,
-        static_cast<AscendC::HcclDataType>(scaleDataType_),
-        static_cast<uint64_t>(m_) * scaleKLen_,
-        static_cast<uint8_t>(1));
+    commState_.scaleHandle_ =
+        commState_.hccl_.template AllGather<true>(aScaleGM_, gatherScaleAddr_, static_cast<uint64_t>(m_) * scaleKLen_,
+                                                  static_cast<AscendC::HcclDataType>(scaleDataType_),
+                                                  static_cast<uint64_t>(m_) * scaleKLen_, static_cast<uint8_t>(1));
 
     // Data Head: 批量提交所有 head tile（repeat=tileCnt）
     // count/stride 用 kForComm_（FP4 时 CeilDiv(K,2) 减半），地址偏移用 k_*sizeof(AType)（FP4 打包后字节数）
     commState_.dataHeadHandle_ = commState_.hccl_.template AllGather<true>(
-        aGM_, gatherDataAddr_,
-        static_cast<uint64_t>(tileM_) * kForComm_,
-        static_cast<AscendC::HcclDataType>(dataDataType_),
-        static_cast<uint64_t>(m_) * kForComm_,
+        aGM_, gatherDataAddr_, static_cast<uint64_t>(tileM_) * kForComm_,
+        static_cast<AscendC::HcclDataType>(dataDataType_), static_cast<uint64_t>(m_) * kForComm_,
         static_cast<uint8_t>(tileCnt_));
-
-    AscendC::PRINTF("[CommitAllGather] rank=%u, block=%u, dataHeadHandle=%llu, scaleHandle=%llu, "
-                    "gatherDataAddr=0x%llx, gatherScaleAddr=0x%llx, scaleRegionBytes=%llu, dataRegionBytes=%llu\n",
-                    rankId_, AscendC::GetBlockIdx(),
-                    static_cast<uint64_t>(commState_.dataHeadHandle_),
-                    static_cast<uint64_t>(commState_.scaleHandle_),
-                    gatherDataAddr_, gatherScaleAddr_, scaleRegionBytes_, dataRegionBytes_);
 
     // Data Tail: 批量提交所有 tail tile（repeat=tailCnt）
     if (tailCnt_ > 0) {
         commState_.dataTailHandle_ = commState_.hccl_.template AllGather<true>(
-            aGM_ + headRows_ * k_ * sizeof(AType),
-            gatherDataAddr_ + headRows_ * k_ * sizeof(AType),
-            static_cast<uint64_t>(tailM_) * kForComm_,
-            static_cast<AscendC::HcclDataType>(dataDataType_),
-            static_cast<uint64_t>(m_) * kForComm_,
-            static_cast<uint8_t>(tailCnt_));
-        AscendC::PRINTF("[CommitAllGather] rank=%u, block=%u, dataTailHandle=%llu\n",
-                        rankId_, AscendC::GetBlockIdx(),
-                        static_cast<uint64_t>(commState_.dataTailHandle_));
+            aGM_ + headRows_ * k_ * sizeof(AType), gatherDataAddr_ + headRows_ * k_ * sizeof(AType),
+            static_cast<uint64_t>(tailM_) * kForComm_, static_cast<AscendC::HcclDataType>(dataDataType_),
+            static_cast<uint64_t>(m_) * kForComm_, static_cast<uint8_t>(tailCnt_));
     }
 }
 
 template <typename AType, typename BType, typename CType, AscendC::HcclServerType ServerType, bool IsMxFp4>
-__aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, ServerType, IsMxFp4>::SetupKernelParams(KernelParams &params)
+__aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, ServerType, IsMxFp4>::SetupKernelParams(
+    KernelParams &params)
 {
     params.mmTile = &(tilingData_->mmTile);
-    params.qbmmParams = {tilingData_->mmTile.baseM, tilingData_->mmTile.baseN,
-                         tilingData_->mmTile.baseK, tilingData_->mmTile.dbL0c};
-    params.fragParams = {tileCnt_, tileM_, tailCnt_, tailM_, paddedTailM_, commTurn_,
-                         headRows_, rankId_, rankSize_, m_,
-                         static_cast<uint64_t>(k_), static_cast<uint64_t>(n_), scaleKLen_};
+    params.qbmmParams = {tilingData_->mmTile.baseM, tilingData_->mmTile.baseN, tilingData_->mmTile.baseK,
+                         tilingData_->mmTile.dbL0c};
+    params.fragParams = {tileCnt_,
+                         tileM_,
+                         tailCnt_,
+                         tailM_,
+                         paddedTailM_,
+                         commTurn_,
+                         headRows_,
+                         rankId_,
+                         rankSize_,
+                         m_,
+                         static_cast<uint64_t>(k_),
+                         static_cast<uint64_t>(n_),
+                         scaleKLen_};
     params.aGM = aGM_;
     params.aScaleGM = aScaleGM_;
     params.bGM = bGM_;
