@@ -81,6 +81,16 @@ struct ExpertTokenCountExportScratch {
     LocalTensor<int32_t> compactTensor;
 };
 
+// Accumulated wall-clock intervals for one Dispatch wave. The trace writer
+// emits these counters once per wave, avoiding per-rank and per-batch records.
+struct WaveDispatchTraceMetrics {
+    uint32_t prepareDispatchCountsCycles = 0U;
+    uint32_t rankRoundPlanCycles = 0U;
+    uint32_t maskLoadAndGatherCycles = 0U;
+    uint32_t transferPipelineCycles = 0U;
+    uint32_t readyPublishCycles = 0U;
+};
+
 template <typename ActivationType>
 __aicore__ inline LocalTensor<ActivationType> GetDispatchCopyBuffer(
     const TokenDispatchConfig &context, const TokenDispatchScratch<ActivationType> &scratch, int32_t bufferIdx)
@@ -599,7 +609,8 @@ __aicore__ inline int32_t PlanDispatchCoreRankRoutes(
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
     uint32_t remoteRankIdx, int32_t expertGlobalRowBegin,
     int32_t segmentRowBegin, int32_t segmentRowEnd, int32_t firstOwnedRow,
-    const DispatchCoreRouteQueue &queue, const DispatchCoreRankPlan &rankPlan)
+    const DispatchCoreRouteQueue &queue, const DispatchCoreRankPlan &rankPlan,
+    WaveDispatchTraceMetrics *traceMetrics)
 {
     if (rankPlan.taskCount <= 0) {
         return 0;
@@ -649,6 +660,9 @@ __aicore__ inline int32_t PlanDispatchCoreRankRoutes(
             maskSliceBytes = static_cast<int32_t>(context.maskAlignSize) - maskByteBegin;
         }
 
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+        uint32_t maskTraceBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+#endif
         remoteRankMaskGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(
             params.peermemInfo.maskRecvPtr +
             (static_cast<uint64_t>(localExpertId) * context.common.worldSize + remoteRankIdx) * maskSlotSize +
@@ -660,6 +674,11 @@ __aicore__ inline int32_t PlanDispatchCoreRankRoutes(
         GatherMask(scratch.validTopkIndexTensor, routeIndexTensor, scratch.maskBatchU32Tensor, true,
                    static_cast<uint32_t>(validRouteCount), {1, 1, 0, 0}, batchMatchedRouteCount);
         SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+        if (traceMetrics != nullptr) {
+            traceMetrics->maskLoadAndGatherCycles += MegaMoeWaveTraceDetail::Now() - maskTraceBegin;
+        }
+#endif
 
         int32_t batchOrdinalBegin = matchedRouteCount;
         int32_t batchOrdinalEnd = matchedRouteCount + static_cast<int32_t>(batchMatchedRouteCount);
@@ -724,7 +743,8 @@ __aicore__ inline DispatchCoreRouteQueue PlanDispatchCoreRouteQueue(
     const TokenDispatchConfig &context, const Params &params,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
     int32_t expertGlobalRowBegin, int32_t segmentRowBegin, int32_t segmentRowEnd,
-    int32_t firstOwnedRow, int32_t expectedTaskCount, int32_t taskCapacity)
+    int32_t firstOwnedRow, int32_t expectedTaskCount, int32_t taskCapacity,
+    WaveDispatchTraceMetrics *traceMetrics)
 {
     DispatchCoreRouteQueue queue{};
     queue.taskCapacity = taskCapacity;
@@ -737,20 +757,38 @@ __aicore__ inline DispatchCoreRouteQueue PlanDispatchCoreRouteQueue(
         return queue;
     }
 
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    uint32_t planTraceBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+    uint32_t maskCyclesBefore = traceMetrics == nullptr ? 0U : traceMetrics->maskLoadAndGatherCycles;
+#endif
     int32_t plannedTotalTaskCount = 0;
     for (uint32_t rankIdx = 0U; rankIdx < context.common.worldSize; ++rankIdx) {
         DispatchCoreRankPlan rankPlan = GetDispatchCoreRankPlan(
             context, scratch, rankIdx, expertGlobalRowBegin, segmentRowBegin, segmentRowEnd);
         int32_t plannedTaskCount = PlanDispatchCoreRankRoutes(
             context, params, scratch, localExpertId, rankIdx, expertGlobalRowBegin,
-            segmentRowBegin, segmentRowEnd, firstOwnedRow, queue, rankPlan);
+            segmentRowBegin, segmentRowEnd, firstOwnedRow, queue, rankPlan, traceMetrics);
         if (plannedTaskCount != rankPlan.taskCount) {
             queue.taskCount = 0;
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+            if (traceMetrics != nullptr) {
+                uint32_t planCycles = MegaMoeWaveTraceDetail::Now() - planTraceBegin;
+                uint32_t maskCycles = traceMetrics->maskLoadAndGatherCycles - maskCyclesBefore;
+                traceMetrics->rankRoundPlanCycles += planCycles > maskCycles ? planCycles - maskCycles : 0U;
+            }
+#endif
             return queue;
         }
         plannedTotalTaskCount += plannedTaskCount;
     }
     queue.taskCount = plannedTotalTaskCount == expectedTaskCount ? plannedTotalTaskCount : 0;
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    if (traceMetrics != nullptr) {
+        uint32_t planCycles = MegaMoeWaveTraceDetail::Now() - planTraceBegin;
+        uint32_t maskCycles = traceMetrics->maskLoadAndGatherCycles - maskCyclesBefore;
+        traceMetrics->rankRoundPlanCycles += planCycles > maskCycles ? planCycles - maskCycles : 0U;
+    }
+#endif
     return queue;
 }
 
@@ -1026,7 +1064,8 @@ template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTil
 __aicore__ inline void DispatchExpertTokensRankRoundRobin(
     const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
-    int32_t expertGlobalRowBegin, uint32_t dispatchRowCount, uint32_t expertRowOffset)
+    int32_t expertGlobalRowBegin, uint32_t dispatchRowCount, uint32_t expertRowOffset,
+    WaveDispatchTraceMetrics *traceMetrics)
 {
     if (dispatchRowCount == 0U) {
         return;
@@ -1079,11 +1118,19 @@ __aicore__ inline void DispatchExpertTokensRankRoundRobin(
     int32_t expectedTaskCount =
         (segmentRowEnd - 1 - firstOwnedRow) / coreCount + 1;
 
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    uint32_t countTraceBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+#endif
     LoadDispatchExpertRankCounts(context, scratch, localExpertId, expertGlobalRowBegin);
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    if (traceMetrics != nullptr) {
+        traceMetrics->prepareDispatchCountsCycles += MegaMoeWaveTraceDetail::Now() - countTraceBegin;
+    }
+#endif
     DispatchCoreRouteQueue queue = PlanDispatchCoreRouteQueue(
         context, params, scratch, localExpertId, expertGlobalRowBegin,
         segmentRowBegin, segmentRowEnd, firstOwnedRow,
-        expectedTaskCount, maxTaskCapacity);
+        expectedTaskCount, maxTaskCapacity, traceMetrics);
     if (queue.taskCount != expectedTaskCount) {
         return;
     }
@@ -1098,13 +1145,27 @@ __aicore__ inline void DispatchExpertTokensRankRoundRobin(
     metaInfoGlobalTensor.SetGlobalBuffer(
         reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.metaInfoPtr));
 
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    uint32_t transferTraceBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+#endif
     CopyInterleavedDispatchRouteQueue<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
         context, winRankAddr, scratch, expertGlobalRowBegin + firstOwnedRow,
         coreCount, expectedTaskCount, tokenRevGlobalTensor,
         scaleRevGlobalTensor, metaInfoGlobalTensor);
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    if (traceMetrics != nullptr) {
+        traceMetrics->transferPipelineCycles += MegaMoeWaveTraceDetail::Now() - transferTraceBegin;
+    }
+    uint32_t readyTraceBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+#endif
     PublishInterleavedDispatchTilesReady(
         context, params, localExpertId, expertGlobalRowBegin,
         segmentRowBegin, segmentRowEnd, gmm1TileRowCount);
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    if (traceMetrics != nullptr) {
+        traceMetrics->readyPublishCycles += MegaMoeWaveTraceDetail::Now() - readyTraceBegin;
+    }
+#endif
 }
 
 /**

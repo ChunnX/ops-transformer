@@ -898,6 +898,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetInfo(
         ExpertRowCursor waveEnd = dispatchCursor;
         uint32_t waveMGroupCount = 0U;
         uint32_t waveLogicalRowCount = 0U;
+        WaveDispatchTraceMetrics dispatchTraceMetrics{};
 #if MEGA_MOE_ENABLE_WAVE_TRACE != 0
         uint32_t traceBegin = MegaMoeWaveTraceDetail::Now();
 #endif
@@ -934,7 +935,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetInfo(
                                                TopkWeightsPrefetch>(
                 tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_, expertIdx,
                 expertGlobalRowBegin,
-                segmentEnd - segmentBegin, segmentBegin);
+                segmentEnd - segmentBegin, segmentBegin, &dispatchTraceMetrics);
         }
         dispatchCursor = waveEnd;
         waveInfo.endCursor = waveEnd;
@@ -945,6 +946,22 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetInfo(
         MegaMoeWaveTraceDetail::EventScope traceScope{
             waveIndex, waveBegin.expertIdx, waveBegin.rowOffsetInExpert,
             waveLogicalRowCount, waveMGroupCount};
+        uint32_t traceOffset = 0U;
+        traceOffset = waveTrace_.RecordAggregatedChild(
+            MegaMoeWaveTraceEvent::DISPATCH_COUNT_PREP, MegaMoeWaveTraceEvent::DISPATCH,
+            traceScope, traceBegin, traceEnd, dispatchTraceMetrics.prepareDispatchCountsCycles, traceOffset);
+        traceOffset = waveTrace_.RecordAggregatedChild(
+            MegaMoeWaveTraceEvent::DISPATCH_RANK_ROUND_PLAN, MegaMoeWaveTraceEvent::DISPATCH,
+            traceScope, traceBegin, traceEnd, dispatchTraceMetrics.rankRoundPlanCycles, traceOffset);
+        traceOffset = waveTrace_.RecordAggregatedChild(
+            MegaMoeWaveTraceEvent::DISPATCH_MASK_LOAD_AND_GATHER, MegaMoeWaveTraceEvent::DISPATCH,
+            traceScope, traceBegin, traceEnd, dispatchTraceMetrics.maskLoadAndGatherCycles, traceOffset);
+        traceOffset = waveTrace_.RecordAggregatedChild(
+            MegaMoeWaveTraceEvent::DISPATCH_TRANSFER_PIPELINE, MegaMoeWaveTraceEvent::DISPATCH,
+            traceScope, traceBegin, traceEnd, dispatchTraceMetrics.transferPipelineCycles, traceOffset);
+        waveTrace_.RecordAggregatedChild(
+            MegaMoeWaveTraceEvent::DISPATCH_READY_PUBLISH, MegaMoeWaveTraceEvent::DISPATCH,
+            traceScope, traceBegin, traceEnd, dispatchTraceMetrics.readyPublishCycles, traceOffset);
         waveTrace_.Record(MegaMoeWaveTraceEvent::DISPATCH, traceScope,
                           traceBegin, traceEnd);
 #endif

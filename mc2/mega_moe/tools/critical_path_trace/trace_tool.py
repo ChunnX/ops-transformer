@@ -28,7 +28,7 @@ EVENT_NAMES = {
     9: "Wait GMM1",
     10: "Wait Activation",
     11: "Wait GMM2",
-    12: "Dispatch transfer pipeline (aggregate)",
+    12: "TransferPipeline (aggregate)",
     13: "Wait Dispatch MTE3 reuse (aggregate)",
     14: "Wait Dispatch MTE3 drain (aggregate)",
     15: "Wait Dispatch ready sync (aggregate)",
@@ -37,6 +37,10 @@ EVENT_NAMES = {
     18: "Combine MTE3 issue (aggregate)",
     19: "Wait Combine MTE3 reuse (aggregate)",
     20: "Wait Combine MTE3 drain (aggregate)",
+    21: "PrepareDispatchCounts (aggregate)",
+    22: "RankRoundPlan (aggregate)",
+    23: "MaskLoadAndGather (aggregate)",
+    24: "ReadyPublish (aggregate)",
 }
 EVENT_COLORS = {
     1: "#06b6d4",
@@ -59,9 +63,13 @@ EVENT_COLORS = {
     18: "#ea580c",
     19: "#fbbf24",
     20: "#dc2626",
+    21: "#14b8a6",
+    22: "#6366f1",
+    23: "#a855f7",
+    24: "#e11d48",
 }
 WAIT_EVENT_IDS = frozenset((8, 9, 10, 11, 13, 14, 15, 19, 20))
-AGGREGATE_EVENT_IDS = frozenset((12, 13, 14, 15, 16, 17, 18, 19, 20))
+AGGREGATE_EVENT_IDS = frozenset((12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24))
 WAIT_INSTRUMENTED_PARENT_IDS = frozenset((1, 2, 4, 5, 7))
 EVENT_TRACE_POINTS = {
     1: (
@@ -143,6 +151,22 @@ EVENT_TRACE_POINTS = {
     20: (
         "当前 wave 完成发包后进入 DrainWaveCombineRowRing（累计值）",
         "当前 wave 剩余 row-ring MTE3 全部完成（累计值）",
+    ),
+    21: (
+        "LoadDispatchExpertRankCounts：开始准备当前专家各 source rank 的 token 计数",
+        "计数及其前缀信息写入当前 core 的 UB scratch（wave 内多专家累计）",
+    ),
+    22: (
+        "PlanDispatchCoreRouteQueue：开始当前专家段的 rank-round 路由规划",
+        "compact {rank, topkIndex} 任务队列规划完成；不含 MaskLoadAndGather（累计值）",
+    ),
+    23: (
+        "PlanDispatchCoreRankRoutes：开始 mask GM→UB、CreateVecIndex 与 GatherMask",
+        "GatherMask 结果对 Scalar 可见（wave 内各 rank/batch 累计）",
+    ),
+    24: (
+        "PublishInterleavedDispatchTilesReady：开始等待数据可见并统计 tile 完成量",
+        "当前专家段负责的 GMM1 ready counter 发布完成（累计值）",
     ),
 }
 
@@ -551,6 +575,17 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
   </tr></thead><tbody></tbody></table></div>
 </section>
 <section class="panel">
+  <h2>Dispatch 分项</h2>
+  <div class="muted">五个分项是每个 AIV1 core 在当前 wave 内所有专家段的精确 cycle 累计；
+  RankRoundPlan 已扣除其内部嵌套的 MaskLoadAndGather，因而各列互不重叠。Other/control 为 Dispatch
+  父阶段减去五项后的 wave 游标规划、地址设置、检查等剩余时间。</div>
+  <div class="table-scroll"><table id="dispatchTable"><thead><tr>
+    <th>AI Block</th><th>Wave</th><th>Token 数</th><th>Dispatch 总计</th><th>PrepareDispatchCounts</th>
+    <th>RankRoundPlan</th><th>MaskLoadAndGather</th><th>TransferPipeline</th><th>ReadyPublish</th>
+    <th>Other/control</th><th>已归类占比</th>
+  </tr></thead><tbody></tbody></table></div>
+</section>
+<section class="panel">
   <h2>Combine 分项</h2>
   <div class="muted">分项是每个 wave 内多个短区间的精确 cycle 累计。MTE3 issue 只统计指令下发；
   后台传输造成的可见阻塞分别计入 slot reuse wait 和 wave drain wait。Other/control 为总 Combine
@@ -693,7 +728,7 @@ function render() {{
   const events=records.flatMap(r=>r.events.map(e=>({{...e,role:r.role,core:r.core}})));
   document.getElementById('selectionSummary').textContent=`${{blockGroups.length}} 个 Block · ${{records.length}} 条泳道 · ${{events.length}} 个事件`;
   renderTimeline(blockGroups,allBlockGroupsForWave(),events);
-  renderLaneTable(blockGroups); renderWaveTable(events); renderCombineTable(events); renderEventTable(events);
+  renderLaneTable(blockGroups); renderWaveTable(events); renderDispatchTable(events); renderCombineTable(events); renderEventTable(events);
 }}
 function renderTimeline(blockGroups,pinSourceGroups,events) {{
   const root=document.getElementById('timeline');
@@ -834,6 +869,34 @@ function renderWaveTable(events) {{
   document.querySelector('#waveTable tbody').innerHTML=rows.map(g=>{{
     const wait=g.waitKnown?g.wait.toLocaleString():'—', waitPercent=g.waitKnown&&g.cycles?(g.wait/g.cycles*100).toFixed(1)+'%':'—';
     return `<tr><td>${{g.core}}</td><td>${{g.wave}}</td><td>${{g.role}}</td><td>${{g.event}}</td><td>${{g.count}}</td><td>${{g.tokens}}</td><td>${{g.mGroups}}</td><td>${{g.cycles.toLocaleString()}}</td><td>${{g.active.toLocaleString()}}</td><td>${{wait}}</td><td>${{waitPercent}}</td><td>${{g.max.toLocaleString()}}</td></tr>`;
+  }}).join('');
+}}
+function renderDispatchTable(events) {{
+  const groups=new Map();
+  for(const e of events) {{
+    if(e.role!=='AIV1') continue;
+    const relevant=e.event_id===1 ||
+      (e.parent_event_id===1 && [12,21,22,23,24].includes(e.event_id));
+    if(!relevant) continue;
+    const key=`${{e.core}}|${{e.wave}}`;
+    const g=groups.get(key)||{{core:e.core,wave:e.wave,tokens:0,total:0,counts:0,plan:0,mask:0,transfer:0,ready:0}};
+    if(e.event_id===1) {{ g.total+=e.duration_cycles; g.tokens=Math.max(g.tokens,e.token_count); }}
+    else if(e.event_id===21) g.counts+=e.duration_cycles;
+    else if(e.event_id===22) g.plan+=e.duration_cycles;
+    else if(e.event_id===23) g.mask+=e.duration_cycles;
+    else if(e.event_id===12) g.transfer+=e.duration_cycles;
+    else if(e.event_id===24) g.ready+=e.duration_cycles;
+    groups.set(key,g);
+  }}
+  const rows=[...groups.values()].filter(g=>g.total>0).sort((a,b)=>a.core-b.core||a.wave-b.wave);
+  const fmt=value=>`${{value.toLocaleString()}} (${{(value/1000).toFixed(3)}} μs)`;
+  document.querySelector('#dispatchTable tbody').innerHTML=rows.map(g=>{{
+    const classified=g.counts+g.plan+g.mask+g.transfer+g.ready;
+    const other=Math.max(0,g.total-classified);
+    const ratio=g.total?(classified/g.total*100).toFixed(1)+'%':'—';
+    return `<tr><td>${{g.core}}</td><td>${{g.wave}}</td><td>${{g.tokens}}</td><td>${{fmt(g.total)}}</td>`
+      +`<td>${{fmt(g.counts)}}</td><td>${{fmt(g.plan)}}</td><td>${{fmt(g.mask)}}</td>`
+      +`<td>${{fmt(g.transfer)}}</td><td>${{fmt(g.ready)}}</td><td>${{fmt(other)}}</td><td>${{ratio}}</td></tr>`;
   }}).join('');
 }}
 function renderCombineTable(events) {{
