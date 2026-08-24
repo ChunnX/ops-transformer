@@ -16,7 +16,7 @@
 namespace l0op {
 
 const aclTensor *BlockAttnResUpdate(
-    aclTensor *partialBlock, const aclTensor *delta, const aclTensor *pseudoQuery, const aclTensor *numerator,
+    aclTensor *partialBlockRef, const aclTensor *delta, const aclTensor *pseudoQuery, const aclTensor *numerator,
     const aclTensor *logitMax, const aclTensor *expSum, float eps, aclOpExecutor *executor);
 
 } // namespace l0op

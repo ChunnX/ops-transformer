@@ -38,17 +38,18 @@ using ops::ut::SplitStr2Vec;
 using ops::ut::Trim;
 
 constexpr size_t kCsvColumnCount = 27UL;
+constexpr size_t kCaseNameColumnIndex = 1UL;
 constexpr const char *kRunModeGetWorkspace = "GET_WORKSPACE";
 constexpr const char *kRunModeNullWorkspaceSize = "NULL_WORKSPACE_SIZE";
 constexpr const char *kRunModeNullExecutorOut = "NULL_EXECUTOR_OUT";
-constexpr const char *kRunModeNullPartialBlock = "NULL_PARTIAL_BLOCK";
+constexpr const char *kRunModeNullPartialBlockRef = "NULL_PARTIAL_BLOCK_REF";
 constexpr const char *kRunModeNullDelta = "NULL_DELTA";
 constexpr const char *kRunModeNullPseudoQuery = "NULL_PSEUDO_QUERY";
 constexpr const char *kRunModeNullNumerator = "NULL_NUMERATOR";
 constexpr const char *kRunModeNullLogitMax = "NULL_LOGIT_MAX";
 constexpr const char *kRunModeNullExpSum = "NULL_EXP_SUM";
 constexpr const char *kRunModeNullH = "NULL_H";
-constexpr const char *kRunModePhase2NullExecutor = "PHASE2_NULL_EXECUTOR";
+constexpr const char *kRunModeBlockAttnResUpdateNullExecutor = "BLOCK_ATTN_RES_UPDATE_NULL_EXECUTOR";
 
 TensorDesc MakeTensorDesc(const string &spec, const string &dtype, const string &format)
 {
@@ -59,16 +60,16 @@ TensorDesc MakeTensorDesc(const string &spec, const string &dtype, const string 
 }
 
 struct BlockAttnResUpdateOpApiCase {
-    aclnnStatus RunSpecialCase(const TensorDesc &partialBlockDesc, const TensorDesc &deltaDesc,
+    aclnnStatus RunSpecialCase(const TensorDesc &partialBlockRefDesc, const TensorDesc &deltaDesc,
                                const TensorDesc &pseudoQueryDesc, const TensorDesc &numeratorDesc,
                                const TensorDesc &logitMaxDesc, const TensorDesc &expSumDesc,
                                const TensorDesc &hDesc) const
     {
-        if (runMode == kRunModePhase2NullExecutor) {
+        if (runMode == kRunModeBlockAttnResUpdateNullExecutor) {
             return aclnnBlockAttnResUpdate(nullptr, 0U, nullptr, nullptr);
         }
 
-        auto partialBlock = partialBlockDesc.ToAclType();
+        auto partialBlockRef = partialBlockRefDesc.ToAclType();
         auto delta = deltaDesc.ToAclType();
         auto pseudoQuery = pseudoQueryDesc.ToAclType();
         auto numerator = numeratorDesc.ToAclType();
@@ -76,7 +77,7 @@ struct BlockAttnResUpdateOpApiCase {
         auto expSum = expSumDesc.ToAclType();
         auto h = hDesc.ToAclType();
 
-        aclTensor *partialBlockArg = partialBlock.get();
+        aclTensor *partialBlockRefArg = partialBlockRef.get();
         const aclTensor *deltaArg = delta.get();
         const aclTensor *pseudoQueryArg = pseudoQuery.get();
         const aclTensor *numeratorArg = numerator.get();
@@ -92,8 +93,8 @@ struct BlockAttnResUpdateOpApiCase {
             workspaceSizeArg = nullptr;
         } else if (runMode == kRunModeNullExecutorOut) {
             executorArg = nullptr;
-        } else if (runMode == kRunModeNullPartialBlock) {
-            partialBlockArg = nullptr;
+        } else if (runMode == kRunModeNullPartialBlockRef) {
+            partialBlockRefArg = nullptr;
         } else if (runMode == kRunModeNullDelta) {
             deltaArg = nullptr;
         } else if (runMode == kRunModeNullPseudoQuery) {
@@ -112,7 +113,7 @@ struct BlockAttnResUpdateOpApiCase {
         }
 
         const aclnnStatus ret = aclnnBlockAttnResUpdateGetWorkspaceSize(
-            partialBlockArg, deltaArg, pseudoQueryArg, numeratorArg, logitMaxArg, expSumArg, eps, hArg,
+            partialBlockRefArg, deltaArg, pseudoQueryArg, numeratorArg, logitMaxArg, expSumArg, eps, hArg,
             workspaceSizeArg, executorArg);
         if (executor != nullptr) {
             aclDestroyAclOpExecutor(executor);
@@ -127,7 +128,8 @@ struct BlockAttnResUpdateOpApiCase {
         }
         ops::ut::SetPlatformSocVersion(socVersion);
 
-        const TensorDesc partialBlockDesc = MakeTensorDesc(partialBlockSpec, partialBlockDtype, partialBlockFormat);
+        const TensorDesc partialBlockRefDesc =
+            MakeTensorDesc(partialBlockRefSpec, partialBlockRefDtype, partialBlockRefFormat);
         const TensorDesc deltaDesc = MakeTensorDesc(deltaSpec, deltaDtype, deltaFormat);
         const TensorDesc pseudoQueryDesc = MakeTensorDesc(pseudoQuerySpec, pseudoQueryDtype, pseudoQueryFormat);
         const TensorDesc numeratorDesc = MakeTensorDesc(numeratorSpec, numeratorDtype, numeratorFormat);
@@ -138,13 +140,13 @@ struct BlockAttnResUpdateOpApiCase {
         aclnnStatus ret = ACLNN_SUCCESS;
         if (runMode == kRunModeGetWorkspace) {
             auto ut = OP_API_UT(aclnnBlockAttnResUpdate,
-                                INPUT(partialBlockDesc, deltaDesc, pseudoQueryDesc, numeratorDesc, logitMaxDesc,
+                                INPUT(partialBlockRefDesc, deltaDesc, pseudoQueryDesc, numeratorDesc, logitMaxDesc,
                                       expSumDesc, eps),
                                 OUTPUT(hDesc));
             uint64_t workspaceSize = 0U;
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else {
-            ret = RunSpecialCase(partialBlockDesc, deltaDesc, pseudoQueryDesc, numeratorDesc, logitMaxDesc,
+            ret = RunSpecialCase(partialBlockRefDesc, deltaDesc, pseudoQueryDesc, numeratorDesc, logitMaxDesc,
                                  expSumDesc, hDesc);
         }
         EXPECT_EQ(ret, ops::ut::ParseAclnnStatus(expectRet)) << "case=" << caseName;
@@ -154,9 +156,9 @@ struct BlockAttnResUpdateOpApiCase {
     string caseName;
     bool enable = true;
     string expectRet;
-    string partialBlockSpec;
-    string partialBlockDtype;
-    string partialBlockFormat;
+    string partialBlockRefSpec;
+    string partialBlockRefDtype;
+    string partialBlockRefFormat;
     string deltaSpec;
     string deltaDtype;
     string deltaFormat;
@@ -205,7 +207,7 @@ vector<BlockAttnResUpdateOpApiCase> LoadCases(const string &csvFilePath)
             continue;
         }
 
-        const string caseName = cols.size() > 1U ? Trim(cols[1]) : "";
+        const string caseName = cols.size() > kCaseNameColumnIndex ? Trim(cols[kCaseNameColumnIndex]) : "";
         try {
             BlockAttnResUpdateOpApiCase c;
             size_t i = 0U;
@@ -213,9 +215,9 @@ vector<BlockAttnResUpdateOpApiCase> LoadCases(const string &csvFilePath)
             c.caseName = Trim(cols[i++]);
             c.enable = ParseBool(Trim(cols[i++]));
             c.expectRet = Trim(cols[i++]);
-            c.partialBlockSpec = Trim(cols[i++]);
-            c.partialBlockDtype = Trim(cols[i++]);
-            c.partialBlockFormat = Trim(cols[i++]);
+            c.partialBlockRefSpec = Trim(cols[i++]);
+            c.partialBlockRefDtype = Trim(cols[i++]);
+            c.partialBlockRefFormat = Trim(cols[i++]);
             c.deltaSpec = Trim(cols[i++]);
             c.deltaDtype = Trim(cols[i++]);
             c.deltaFormat = Trim(cols[i++]);
