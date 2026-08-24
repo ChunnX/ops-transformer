@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file aclnn_quant_flash_attn.h
- * \brief QuantFlashAttn aclnn level-2 interface
+ * \file aclnn_mixed_quant_sparse_flash_mla.h
+ * \brief MixedQuantSparseFlashMla aclnn level-2 interface
  */
 
-#ifndef OP_API_INC_LEVEL2_ACLNN_QUANT_FLASH_ATTN_H_
-#define OP_API_INC_LEVEL2_ACLNN_QUANT_FLASH_ATTN_H_
+#ifndef OP_API_INC_LEVEL2_ACLNN_MIXED_QUANT_SPARSE_FLASH_MLA_H_
+#define OP_API_INC_LEVEL2_ACLNN_MIXED_QUANT_SPARSE_FLASH_MLA_H_
 
 #include "aclnn/aclnn_base.h"
 
@@ -23,7 +23,7 @@ extern "C" {
 #endif
 
 /**
- * @brief First phase of aclnnQuantFlashAttn: calculate workspace size.
+ * @brief First phase of aclnnMixedQuantSparseFlashMla: calculate workspace size.
  * @domain aclnn_ops_train_infer
  *
  * @param q                   [IN]  query tensor. Dtype FP8_E4M3 (quant_mode=1).
@@ -72,7 +72,7 @@ extern "C" {
  * @param executor            [OUT] Op executor handle for second phase.
  * @return aclnnStatus. ACLNN_SUCCESS on success.
  */
-aclnnStatus aclnnQuantFlashAttnGetWorkspaceSize(
+aclnnStatus aclnnMixedQuantSparseFlashMlaGetWorkspaceSize(
     const aclTensor *q, const aclTensor *k, const aclTensor *v,
     const aclTensor *qDescale, const aclTensor *kDescale, const aclTensor *vDescale,
     const aclTensor *blockTableOptional,
@@ -90,18 +90,18 @@ aclnnStatus aclnnQuantFlashAttnGetWorkspaceSize(
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
- * @brief Second phase of aclnnQuantFlashAttn: execute computation.
+ * @brief Second phase of aclnnMixedQuantSparseFlashMla: execute computation.
  * @param workspace       [IN] Workspace device memory pointer from first phase.
  * @param workspaceSize   [IN] Workspace size in bytes.
  * @param executor        [IN] Op executor handle from first phase.
  * @param stream          [IN] ACL stream for execution.
  * @return aclnnStatus.
  */
-aclnnStatus aclnnQuantFlashAttn(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+aclnnStatus aclnnMixedQuantSparseFlashMla(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                 const aclrtStream stream);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // OP_API_INC_LEVEL2_ACLNN_QUANT_FLASH_ATTN_H_
+#endif // OP_API_INC_LEVEL2_ACLNN_MIXED_QUANT_SPARSE_FLASH_MLA_H_

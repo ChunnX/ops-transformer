@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef OP_API_INC_LEVEL0_QUANT_FLASH_ATTN_H_
-#define OP_API_INC_LEVEL0_QUANT_FLASH_ATTN_H_
+#ifndef OP_API_INC_LEVEL0_MIXED_QUANT_SPARSE_FLASH_MLA_H_
+#define OP_API_INC_LEVEL0_MIXED_QUANT_SPARSE_FLASH_MLA_H_
 
 #include <array>
 #include "opdev/op_executor.h"
@@ -17,8 +17,8 @@
 namespace l0op {
 
 /**
- * @brief QuantFlashAttn level-0 operator.
- *        Encapsulates the low-level scheduling of QuantFlashAttn, completing InferShape and Kernel Launch registration.
+ * @brief MixedQuantSparseFlashMla level-0 operator.
+ *        Encapsulates the low-level scheduling of MixedQuantSparseFlashMla, completing InferShape and Kernel Launch registration.
  *        This interface is internal and only for use by the aclnn layer.
  *
  * @param q                   query tensor (FP8_E4M3 for quant_mode=1)
@@ -52,7 +52,7 @@ namespace l0op {
  * @return std::array<const aclTensor*, 2> [attnOut, softmaxLse]
  *         Any element being nullptr indicates InferShape or Launch failure for that output.
  */
-const std::array<const aclTensor *, 2> QuantFlashAttn(
+const std::array<const aclTensor *, 2> MixedQuantSparseFlashMla(
     const aclTensor *q,
     const aclTensor *k,
     const aclTensor *v,
@@ -84,4 +84,4 @@ const std::array<const aclTensor *, 2> QuantFlashAttn(
 
 } // namespace l0op
 
-#endif // OP_API_INC_LEVEL0_QUANT_FLASH_ATTN_H_
+#endif // OP_API_INC_LEVEL0_MIXED_QUANT_SPARSE_FLASH_MLA_H_
