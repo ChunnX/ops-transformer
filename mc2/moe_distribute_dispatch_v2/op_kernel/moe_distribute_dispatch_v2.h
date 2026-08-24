@@ -331,6 +331,14 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     ctx_.InitAndCheck(mc2Context, tilingData->moeDistributeDispatchV2Info.epWorldSize, totalWinSizeEp_, tpipe_,
                       expandXOut);
 
+    if (aivId_ == 0) {
+        for (int32_t r = 0; r < 8; r++) {
+            GM_ADDR raw = ctx_.GetWindAddrByRankId(r, epRankIdOriginal_);
+            PRINTF("[Init] epHcclBuffer[%d]=%lu (0x%016lX), exceeds48=%d\n",
+                   r, (uint64_t)raw, (uint64_t)raw, (int32_t)((uint64_t)raw > 281474976710656ULL));
+        }
+    }
+
     totalUbSize_ = static_cast<uint32_t>(tilingData->moeDistributeDispatchV2Info.totalUbSize);
 
     axisBS_ = tilingData->moeDistributeDispatchV2Info.bs;
@@ -478,6 +486,12 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
 #endif
     winDataSizeOffsetEp_ =
         dataState_ * (totalWinSizeEp_ / 2) + axisMaxBS_ * (axisK_ + sharedExpertNum_) * hSizeAlignCombine;
+    if (aivId_ == 0) {
+        PRINTF("[Init] winDataSizeOffsetEp=%lu, dataState=%u, totalWinSizeEp=%lu, axisMaxBS=%u, "
+               "axisK=%u, sharedExpertNum=%u, hSizeAlignCombine=%lu, axisH=%u\n",
+               winDataSizeOffsetEp_, dataState_, totalWinSizeEp_, axisMaxBS_, axisK_, sharedExpertNum_,
+               hSizeAlignCombine, axisH_);
+    }
 
     windowGM_ = GetWindAddrByRankId(epRankIdOriginal_);
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
