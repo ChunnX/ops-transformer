@@ -1180,10 +1180,13 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopyPhyAddrToGm(LocalTe
                                                                          int64_t bS1Idx, int64_t s1Idx, int64_t validS2,
                                                                          int64_t alignNum, ConstInfo &constInfo)
 {
-    static constexpr int64_t numPerBlock = 32;
+    static constexpr int64_t bytesPerBlock = 32;
+    static constexpr int64_t phyAddrPerBlock = bytesPerBlock / sizeof(int64_t);
+    bool appendSentinelBlock = validS2 % alignNum == 0 && validS2 + phyAddrPerBlock <= constInfo.sparseBlockCount;
     DataCopyParams dataCopyParams;
     dataCopyParams.blockCount = 1U; // 每次处理1行
-    dataCopyParams.blockLen = ((validS2 + alignNum - 1) / alignNum * alignNum) * sizeof(int64_t) / numPerBlock;
+    dataCopyParams.blockLen =
+        ((validS2 + alignNum - 1) / alignNum * alignNum) * sizeof(int64_t) / bytesPerBlock + appendSentinelBlock;
     dataCopyParams.srcGap = 0U;
     dataCopyParams.dstGap = 0U;
     DataCopy(this->kvPhyAddrGm[(bS1Idx + s1Idx) * constInfo.sparseBlockCount * 2], kvPhyAddrUb, dataCopyParams);
@@ -1353,6 +1356,12 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::GetKVPhyAddr(uint32_t h
             WaitFlag<AscendC::HardEvent::MTE3_V>(7);
             GetKVPhyAddrVF<uint32_t>(kvPhyAddrUb, sparseIdxUb, blkTableUb, s2Loop, s2Tail, constInfo.blockSize,
                                      shiftRightNum, constInfo.sparseBlockSize, constInfo.dSizeVInput, kvStride);
+            static constexpr int32_t phyAddrPerBlock = 4;
+            if (curValidS2 % s2NumPerLoop == 0 &&
+                curValidS2 + phyAddrPerBlock <= static_cast<int32_t>(constInfo.sparseBlockCount)) {
+                // A full VF tail has no invalid lanes. Append one 32-B block of -1 as the CopyIn stop sentinel.
+                Duplicate(kvPhyAddrUb[curValidS2 * 2], UINT32_MAX, phyAddrPerBlock * 2);
+            }
             SetFlag<AscendC::HardEvent::V_MTE2>(4);
             SetFlag<AscendC::HardEvent::V_MTE3>(5);
             WaitFlag<AscendC::HardEvent::V_MTE3>(5);
