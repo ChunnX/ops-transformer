@@ -246,7 +246,6 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
         param.localParams.cGmSelfAddr = cSelfCur;
         quantMatmulKernelImpl_(param);
 
-        AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(tid);
         aCur += static_cast<uint64_t>(curTileM) * aByteStrideK_;
         aScaleCur += static_cast<uint64_t>(curTileM) * scaleAByteStride_;
         cSelfCur += static_cast<uint64_t>(curTileM) * cByteStrideN_;
@@ -309,11 +308,44 @@ __aicore__ inline void
 QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
                               QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::Run()
 {
+    // AIC_ONLY模式: matmul+HCCL通信都在AIC上
+    // for循环逐tile matmul + CrossCoreSetFlag不需要(AIC_ONLY无AIV)
+    // 改为: for循环逐tile matmul, 每个tile完成后SyncAll+异步AllToAll
+    // 但for循环中调用AlltoAll<true>会编译卡死(HCCL重模板)
+    // 解决: for循环只做matmul, SyncAll后统一下发AllToAll(头块+尾块固定2次)
+
     if ASCEND_IS_AIC {
         RunRemoteMatmul();
-    }
-    if ASCEND_IS_AIV {
-        RunAllToAll();
+
+        // matmul完成后统一下发AllToAll
+        AscendC::SyncAll();
+        uint64_t perRankN = axisNPerRank_;
+        uint32_t headM = tileM_ * tileCnt_;
+        uint32_t tailM = tailM_ * tailCnt_;
+
+        AscendC::HcclHandle h0{0}, h1{0};
+        if (headM > 0) {
+            uint64_t sendCount = static_cast<uint64_t>(headM) * perRankN;
+            h0 = hccl_.template AlltoAll<true>(
+                mmResultGM_, y_,
+                sendCount, static_cast<AscendC::HcclDataType>(yHcclDataType_),
+                sendCount, 1);
+        }
+        if (tailM > 0) {
+            uint64_t headOffset = static_cast<uint64_t>(headM) * perRankN * sizeof(YType);
+            uint64_t sendCount = static_cast<uint64_t>(tailM) * perRankN;
+            h1 = hccl_.template AlltoAll<true>(
+                mmResultGM_ + headOffset, y_ + headOffset,
+                sendCount, static_cast<AscendC::HcclDataType>(yHcclDataType_),
+                sendCount, 1);
+        }
+
+        AscendC::SyncAll();
+        if (headM > 0) { hccl_.Wait(h0); }
+        if (tailM > 0) { hccl_.Wait(h1); }
+
+        AscendC::SyncAll();
+        hccl_.Finalize();
     }
 }
 
