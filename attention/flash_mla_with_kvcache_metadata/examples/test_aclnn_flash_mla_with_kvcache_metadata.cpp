@@ -117,9 +117,9 @@ int64_t CapacityAlignedWords(int64_t batch)
 
 template <typename FnRun>
 int RunMetadataOnce(aclrtStream stream, int64_t batch, int64_t maxSeqQ, int64_t maxSeqKv, int64_t nHeadQ,
-                    int64_t nHeadKv, int64_t headDim, int64_t maskMode, const char *layoutQ, const char *layoutKv,
-                    const char *layoutOut, int64_t bufferWords, std::vector<int32_t> *outWords, bool isMla,
-                    FnRun run)
+                    int64_t nHeadKv, int64_t headDimQk, int64_t headDimV, int64_t maskMode, const char *layoutQ,
+                    const char *layoutKv, const char *layoutOut, int64_t bufferWords, std::vector<int32_t> *outWords,
+                    bool isMla, FnRun run)
 {
     // flash_attn_metadata host checker: TND layoutQ requires cu_seqlens_q;
     // PA layoutKv requires per-batch KV lengths.
@@ -156,13 +156,13 @@ int RunMetadataOnce(aclrtStream stream, int64_t batch, int64_t maxSeqQ, int64_t 
     void *workspaceAddr = nullptr;
     if (isMla) {
         r = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuT, seqKvT, nullptr, batch, maxSeqQ, maxSeqKv, nHeadQ, nHeadKv,
-                                                             headDim, maskMode, layoutQ, layoutKv, layoutOut, metaT,
+                                                             headDimQk, headDimV, maskMode, layoutQ, layoutKv, layoutOut, metaT,
                                                              &workspaceSize, &executor);
     } else {
         // flash_attn_metadata 侧仍为克隆前的旧签名，语义等价映射：cuSeqlensQ 槽=cuT、
-        // cacheSeqlens 槽=seqKvT(每 batch kv 长)、其余两个槽=-1。
+        // cacheSeqlens 槽=seqKvT(每 batch kv 长)、其余两个槽=-1；单 head_dim 槽按其含义传 headDimQk。
         r = aclnnFlashAttnMetadataGetWorkspaceSize(cuT, nullptr, nullptr, seqKvT, batch, maxSeqQ, maxSeqKv, nHeadQ,
-                                                   nHeadKv, headDim, maskMode, -1, -1, layoutQ, layoutKv, layoutOut,
+                                                   nHeadKv, headDimQk, maskMode, -1, -1, layoutQ, layoutKv, layoutOut,
                                                    metaT, &workspaceSize, &executor);
     }
     if (r != ACL_SUCCESS) {
@@ -208,19 +208,20 @@ int RunMetadataOnce(aclrtStream stream, int64_t batch, int64_t maxSeqQ, int64_t 
 static int RunByteGolden(aclrtStream stream)
 {
     // MLA-producer 结构校验（flash_attn_metadata 侧 checker 约束 headDim<=256/kvHeads!=1，
-    // 与 MLA checker（kvHeads==1/headDim==512/TND-PA_NZ-TND）不交，跨克隆字节 golden 结构上
+    // 与 MLA checker（kvHeads==1/headDimQk==576/headDimV==512/TND-PA_NZ-TND）不交，跨克隆字节 golden 结构上
     // 不再可比，改为对 flash_mla_with_kvcache_metadata 自身的调度完整性做断言：
-    //   1) sectionNum>=2（kvS=32768/headDim=512 按 L2 预算逐 batch 切分，实测 8）
+    //   1) sectionNum>=2（kvS=32768/headDimQk=576 按 L2 预算逐 batch 切分，实测 8）
     //   2) 头字段 M_BASE_SIZE==64 / S2_BASE_SIZE==128（D17 强制）
     //   3) 每 section 活跃 FA 核为前辍（不活跃核零后缀）+ 覆盖 bn2 区间连续
     //   4) FD 区全零（fdOn=false：本 kernel 未启用核间 s2 归约调度，不做归约 section）
-    LOG_PRINT("\n==== MLA producer structural check (b8/kvS=32768/headDim=512) ====\n");
+    LOG_PRINT("\n==== MLA producer structural check (b8/kvS=32768/headDimQk=576) ====\n");
     int64_t batch = 8;
     int64_t maxSeqQ = 8;
     int64_t maxSeqKv = 32768;
     int64_t nHeadQ = 17;
     int64_t nHeadKv = 1;
-    int64_t headDim = 512;
+    int64_t headDimQk = 576;
+    int64_t headDimV = 512;
     int64_t maskMode = 3;
     const char *layoutQ = "TND";
     const char *layoutKv = "PA_NZ";
@@ -229,8 +230,8 @@ static int RunByteGolden(aclrtStream stream)
     int64_t words = CapacityAlignedWords(batch);
     std::vector<int32_t> mlaOut(words, 0);
 
-    int64_t r = RunMetadataOnce(stream, batch, maxSeqQ, maxSeqKv, nHeadQ, nHeadKv, headDim, maskMode, layoutQ, layoutKv,
-                                layoutOut, words, &mlaOut, true, aclnnFlashMlaWithKvcacheMetadata);
+    int64_t r = RunMetadataOnce(stream, batch, maxSeqQ, maxSeqKv, nHeadQ, nHeadKv, headDimQk, headDimV, maskMode, layoutQ,
+                                layoutKv, layoutOut, words, &mlaOut, true, aclnnFlashMlaWithKvcacheMetadata);
     if (r != 0) {
         LOG_PRINT("[FAIL] flash_mla_with_kvcache_metadata run failed\n");
         return -1;
@@ -441,10 +442,10 @@ static int RunNegativeRuntimeOnly()
         aclOpExecutor *executor = nullptr;
         uint64_t ws = 0;
         if (ret == 0) {
-            ret = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuT, seqKvT, nullptr, batch, 8, 32768,
-                                                                   17, 1, 512,
-                                                                   3, "TND", "PA_NZ", "TND", metaT, &ws,
-                                                                   &executor);
+ret = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuT, seqKvT, nullptr, batch, 8, 32768,
+                                                               17, 1, 576, 512,
+                                                               3, "TND", "PA_NZ", "TND", metaT, &ws,
+                                                               &executor);
             printf("[negative-child] GetWorkspaceSize with undersized buffer: aclnnStatus=%ld\n", ret);
             if (ret == 0) {
                 void *wsAddr = nullptr;

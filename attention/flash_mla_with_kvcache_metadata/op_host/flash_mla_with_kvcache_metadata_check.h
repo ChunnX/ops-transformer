@@ -36,23 +36,26 @@ public:
     static inline aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cacheSeqlensOptional,
                                           const aclTensor *sequsedQOptional, int64_t batchSize, int64_t maxSeqlenQ,
                                           int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
-                                          int64_t headDim, int64_t maskMode, const char *layoutQ, const char *layoutKv,
-                                          const char *layoutOut, const aclTensor *metadata);
+                                          int64_t headDimQk, int64_t headDimV, int64_t maskMode, const char *layoutQ,
+                                          const char *layoutKv, const char *layoutOut, const aclTensor *metadata);
 
 private:
     static constexpr int64_t NONE_VALUE = -1;
-    // MLA 硬约束（m0070）：kv head num 恒 1；head_dim = qk nope 宽 512；mask {0,3}
+    // MLA 硬约束（m0070）：kv head num 恒 1；head_dim_qk = q/k_cache 最后维 576（nope 512 + rope 64）；
+    // head_dim_v = 512（value/输出宽）；mask {0,3}
     // 布局矩阵：q∈{TND,BNSD,BSND}、kv∈{PA_NZ,NZ,PA_BBND,PA_BNBD}、layoutOut 必须与 layoutQ 一致
     static constexpr int64_t MLA_KV_HEADS = 1;
-    static constexpr int64_t MLA_HEAD_DIM = 512;
+    static constexpr int64_t MLA_HEAD_DIM_QK = 576;
+    static constexpr int64_t MLA_HEAD_DIM_V = 512;
 
     static inline bool IsTensorExist(const aclTensor *tensor);
     static inline bool IsPA(const char *layout);
     static inline aclnnStatus CheckSeqLens(bool isCu, int64_t batchSize, const aclTensor *seqLens);
 
     static inline aclnnStatus CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-                                            int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
-                                            const char *layoutQ, const char *layoutKv, const char *layoutOut);
+                                            int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDimQk,
+                                            int64_t headDimV, const char *layoutQ, const char *layoutKv,
+                                            const char *layoutOut);
 
     static inline aclnnStatus CheckMask(int64_t maskMode);
 
@@ -72,10 +75,10 @@ inline aclnnStatus
 FlashMlaWithKvcacheMetadataCheck::ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cacheSeqlensOptional,
                                               const aclTensor *sequsedQOptional, int64_t batchSize, int64_t maxSeqlenQ,
                                               int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
-                                              int64_t headDim, int64_t maskMode, const char *layoutQ, const char *layoutKv,
-                                              const char *layoutOut, const aclTensor *metadata)
+                                              int64_t headDimQk, int64_t headDimV, int64_t maskMode, const char *layoutQ,
+                                              const char *layoutKv, const char *layoutOut, const aclTensor *metadata)
 {
-    auto ret = CheckBaseAttr(batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim,
+    auto ret = CheckBaseAttr(batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDimQk, headDimV,
                              layoutQ, layoutKv, layoutOut);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     ret = CheckMask(maskMode);
@@ -90,8 +93,9 @@ FlashMlaWithKvcacheMetadataCheck::ParamsCheck(const aclTensor *cuSeqlensQOptiona
 
 inline aclnnStatus
 FlashMlaWithKvcacheMetadataCheck::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-                                                int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
-                                                const char *layoutQ, const char *layoutKv, const char *layoutOut)
+                                                int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDimQk,
+                                                int64_t headDimV, const char *layoutQ, const char *layoutKv,
+                                                const char *layoutOut)
 {
     int64_t MIN_BATCH = 0;
     int64_t MAX_BATCH = 65536;
@@ -105,8 +109,11 @@ FlashMlaWithKvcacheMetadataCheck::CheckBaseAttr(int64_t batchSize, int64_t maxSe
     CHECK_COND(numHeadsQ > 0, ACLNN_ERR_RUNTIME_ERROR, "numHeadsQ must be greater than 0, but got %ld", numHeadsQ);
     CHECK_COND(numHeadsKv == MLA_KV_HEADS, ACLNN_ERR_RUNTIME_ERROR,
                "MLA kv head num must be %ld, but got %ld", MLA_KV_HEADS, numHeadsKv);
-    CHECK_COND(headDim == MLA_HEAD_DIM, ACLNN_ERR_RUNTIME_ERROR,
-               "MLA head_dim (qk nope width) must be %ld, but got %ld", MLA_HEAD_DIM, headDim);
+    CHECK_COND(headDimQk == MLA_HEAD_DIM_QK, ACLNN_ERR_RUNTIME_ERROR,
+               "MLA head_dim_qk (q/k_cache last dim, nope 512 + rope 64) must be %ld, but got %ld", MLA_HEAD_DIM_QK,
+               headDimQk);
+    CHECK_COND(headDimV == MLA_HEAD_DIM_V, ACLNN_ERR_RUNTIME_ERROR,
+               "MLA head_dim_v (value/output width) must be %ld, but got %ld", MLA_HEAD_DIM_V, headDimV);
 
     static const std::unordered_set<std::string> layoutQSet = {"TND", "BNSD", "BSND"};
     CHECK_COND(layoutQSet.count(layoutQ) > 0, ACLNN_ERR_RUNTIME_ERROR,

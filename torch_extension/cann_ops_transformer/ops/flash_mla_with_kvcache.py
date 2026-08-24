@@ -69,7 +69,7 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
     def schema(self) -> str:
         """PyTorch operator signature (m0070 interface: no v, no q_rope/k_rope)."""
         return [
-            "flash_mla_with_kvcache_metadata(int num_heads_q, int num_heads_kv, int head_dim, *, "
+            "flash_mla_with_kvcache_metadata(int num_heads_q, int num_heads_kv, int head_dim_qk, int head_dim_v, *, "
             "Tensor? cu_seqlens_q=None, Tensor? cache_seqlens=None, Tensor? seqused_q=None, "
             "int? batch_size=None, int? max_seqlen_q=None, int? max_seqlen_kv=None, "
             "int? mask_mode=None, str? layout_q=None, str? layout_kv=None, str? layout_out=None) -> Tensor",
@@ -93,7 +93,8 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
         def flash_mla_with_kvcache_metadata_meta(
             num_heads_q: int,
             num_heads_kv: int,
-            head_dim: int,
+            head_dim_qk: int,
+            head_dim_v: int,
             cu_seqlens_q: Optional[torch.Tensor] = None,
             cache_seqlens: Optional[torch.Tensor] = None,
             seqused_q: Optional[torch.Tensor] = None,
@@ -178,7 +179,8 @@ flash_mla_with_kvcache_op_builder = FlashMlaWithKvcacheOpBuilder()
 def flash_mla_with_kvcache_metadata(
     num_heads_q: int,
     num_heads_kv: int,
-    head_dim: int,
+    head_dim_qk: int,
+    head_dim_v: int,
     cu_seqlens_q: Optional[torch.Tensor] = None,
     cache_seqlens: Optional[torch.Tensor] = None,
     seqused_q: Optional[torch.Tensor] = None,
@@ -221,7 +223,8 @@ def flash_mla_with_kvcache_metadata(
         max_seqlen_kv,
         num_heads_q,
         num_heads_kv,
-        head_dim,
+        head_dim_qk,
+        head_dim_v,
         mask_mode,
         layout_q,
         layout_kv,
@@ -237,7 +240,8 @@ _flash_mla_with_kvcache_metadata = flash_mla_with_kvcache_metadata
 def flash_mla_with_kvcache_metadata_fallback(
     num_heads_q: int,
     num_heads_kv: int,
-    head_dim: int,
+    head_dim_qk: int,
+    head_dim_v: int,
     cu_seqlens_q: Optional[torch.Tensor] = None,
     cache_seqlens: Optional[torch.Tensor] = None,
     seqused_q: Optional[torch.Tensor] = None,
@@ -253,7 +257,8 @@ def flash_mla_with_kvcache_metadata_fallback(
     return _flash_mla_with_kvcache_metadata(
         num_heads_q=num_heads_q,
         num_heads_kv=num_heads_kv,
-        head_dim=head_dim,
+        head_dim_qk=head_dim_qk,
+        head_dim_v=head_dim_v,
         cu_seqlens_q=cu_seqlens_q,
         cache_seqlens=cache_seqlens,
         seqused_q=seqused_q,

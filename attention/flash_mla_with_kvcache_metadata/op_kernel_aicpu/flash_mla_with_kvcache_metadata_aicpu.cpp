@@ -58,7 +58,8 @@ bool FlashMlaWithKvcacheMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
 
     bool requiredAttrs = GetAttrValue(ctx, "num_heads_q", numHeadsQ_) &&
                          GetAttrValue(ctx, "num_heads_kv", numHeadsKv_) &&
-                         GetAttrValue(ctx, "head_dim", headDim_) &&
+                         GetAttrValue(ctx, "head_dim_qk", headDimQk_) &&
+                         GetAttrValue(ctx, "head_dim_v", headDimV_) &&
                          GetAttrValue(ctx, "soc_version", socVersion_) &&
                          GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
                          GetAttrValue(ctx, "aiv_core_num", aivCoreNum_);
@@ -201,7 +202,10 @@ void FlashMlaWithKvcacheMetadataCpuKernel::InitBaseInfo()
     baseInfo.queryHeadNum = numHeadsQ_;
     baseInfo.kvSeqSize = maxSeqlenKv_;
     baseInfo.kvHeadNum = numHeadsKv_;
-    baseInfo.headDim = headDim_;
+    // head_dim_qk = q/k_cache 最后维 576（nope 512 + rope 64，meta.txt 约束）；head_dim_v = 512
+    // 为 value/输出宽。调度（AdjustSinnerAndSouter）用 head_dim_qk；head_dim_v 由主算子
+    // head_dim_v attr 独立约束（本 kernel 仅读入做参数一致性校验，不参与切分计算）。
+    baseInfo.headDim = headDimQk_;
     load_balance::SparseMode maskMode = load_balance::SparseMode::BUTT;
     if (maskMode_ != 0) {
         maskMode = static_cast<load_balance::SparseMode>(maskMode_);
