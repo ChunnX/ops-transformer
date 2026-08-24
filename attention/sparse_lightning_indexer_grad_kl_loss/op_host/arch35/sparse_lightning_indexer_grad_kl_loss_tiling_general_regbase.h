@@ -61,6 +61,9 @@ protected:
         accumS2 = 0;
         sparseMode = 3;
         scaleValue = 1.0f;
+        t1Size = 0;
+        t2Size = 0;
+        totalAivNum = 40;
         dQueryRopeSize = 0;
         dKeyRopeSize = 0;
 
@@ -133,6 +136,9 @@ protected:
     uint64_t l2CacheSize;
 
     int64_t realT1Size;
+    int64_t t1Size;
+    int64_t t2Size;
+    int32_t totalAivNum;
     int64_t dQueryRopeSize;
     int64_t dKeyRopeSize;
     int64_t accumS1;
@@ -143,7 +149,6 @@ protected:
     platform_ascendc::SocVersion socVersion;
     bool deterministic;
     bool hasRope = false;
-    bool hasSink = false;
 
     const char *opName;
     const char *inputLayout;

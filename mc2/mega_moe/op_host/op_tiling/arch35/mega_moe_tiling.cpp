@@ -939,11 +939,10 @@ static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilin
 
 static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
 {
-    bool isA8W8 = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
-                  tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
-    bool useMteA8W8Wave = tilingData->topoType == TOPO_TYPE_MTE && isA8W8;
-    bool isA8W4 = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4;
-    bool useGroupGrainedActivationFlag = tilingData->topoType == TOPO_TYPE_MTE && (isA8W8 || isA8W4);
+    bool useMteA8W8Wave =
+        tilingData->topoType == TOPO_TYPE_MTE && (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
+                                                  tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
+    bool useGroupGrainedActivationFlag = tilingData->topoType == TOPO_TYPE_MTE;
     bool useGroupSyncCounters =
         tilingData->topoType == TOPO_TYPE_URMA || (tilingData->combineQuantMode != COMBINE_NO_QUANT && !useMteA8W8Wave);
     uint64_t maxWavesPerExpert = ops::CeilDiv<uint64_t>(tilingData->maxOutputSize, L1_TILE_M_256);
@@ -1827,7 +1826,7 @@ static ge::graphStatus TilingCheckMegaMoe(const gert::TilingContext *context, Me
                                           const char *nodeName)
 {
     OP_TILING_CHECK(CheckTensorPtrNullptr(context, config, nodeName) == ge::GRAPH_FAILED,
-                    OP_LOGE(nodeName, "params check nulld failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "params check nullptr failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(CheckTensorDim(context, config, nodeName) == ge::GRAPH_FAILED,
                     OP_LOGE(nodeName, "params shape is invalid."), return ge::GRAPH_FAILED);
