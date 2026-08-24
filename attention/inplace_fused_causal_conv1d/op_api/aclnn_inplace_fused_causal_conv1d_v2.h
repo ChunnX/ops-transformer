@@ -19,7 +19,7 @@ extern "C" {
 #endif
 
 /**
- * @brief aclnnInplaceFusedCausalConv1d的第一段接口，根据具体的计算流程，计算workspace大小。
+ * @brief aclnnInplaceFusedCausalConv1dV2的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_infer
  */
 ACLNN_API aclnnStatus aclnnInplaceFusedCausalConv1dV2GetWorkspaceSize(
@@ -31,7 +31,7 @@ ACLNN_API aclnnStatus aclnnInplaceFusedCausalConv1dV2GetWorkspaceSize(
     int64_t residualConnection, int64_t blockSize, int64_t convMode,
     int64_t maxDraftTokens, uint64_t *workspaceSize, aclOpExecutor **executor);
 
-/* @brief aclnnInplaceFusedCausalConv1d的第二段接口，用于执行计算。 */
+/* @brief aclnnInplaceFusedCausalConv1dV2的第二段接口，用于执行计算。 */
 ACLNN_API aclnnStatus aclnnInplaceFusedCausalConv1dV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                                       aclrtStream stream);
 
