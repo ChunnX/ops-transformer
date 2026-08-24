@@ -82,64 +82,28 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const QfaTilingInfo &qfaInf
 
 ge::graphStatus CommonChecker::CheckSingleParaDtype(const QfaTilingInfo &qfaInfo)
 {
-    bool isHif8Mode = (qfaInfo.quantMode == QfaQuantMode::A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32);
-    // q: tensor_type supports FLOAT8_E4M3FN (MXFP8/GQA_FP8) or HIFLOAT8 (HIF8)
-    const gert::CompileTimeTensorDesc *queryDesc = qfaInfo.opParamInfo.query.desc;
-    if (queryDesc != nullptr) {
-        if (isHif8Mode) {
-            OP_CHECK_IF(queryDesc->GetDataType() != ge::DT_HIFLOAT8,
-                        OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, QUERY_NAME.c_str(),
-                            DataTypeToSerialString(queryDesc->GetDataType()).c_str(), "HIFLOAT8"),
-                        return ge::GRAPH_FAILED);
-        } else {
-            OP_CHECK_IF(
-                queryDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN,
-                OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, QUERY_NAME.c_str(),
-                                          DataTypeToSerialString(queryDesc->GetDataType()).c_str(), "FLOAT8_E4M3FN"),
-                return ge::GRAPH_FAILED);
+    const std::vector<ge::DataType> supportedQuantDtypes = {ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8};
+    const auto checkQuantDtype = [&](const gert::CompileTimeTensorDesc *desc,
+                                     const std::string &name) -> ge::graphStatus {
+        if (desc == nullptr) {
+            return ge::GRAPH_SUCCESS;
         }
-        if (CheckFormatSupport(queryDesc, QUERY_NAME) != ge::GRAPH_SUCCESS) {
+        OP_CHECK_IF(std::find(supportedQuantDtypes.begin(), supportedQuantDtypes.end(), desc->GetDataType()) ==
+                        supportedQuantDtypes.end(),
+                    OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, name.c_str(),
+                                              DataTypeToSerialString(desc->GetDataType()).c_str(),
+                                              "FLOAT8_E4M3FN/HIFLOAT8"),
+                    return ge::GRAPH_FAILED);
+        if (CheckFormatSupport(desc, name) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
-    }
+        return ge::GRAPH_SUCCESS;
+    };
 
-    // k: same dtype constraint as q
-    const gert::CompileTimeTensorDesc *keyDesc = qfaInfo.opParamInfo.key.desc;
-    if (keyDesc != nullptr) {
-        if (isHif8Mode) {
-            OP_CHECK_IF(keyDesc->GetDataType() != ge::DT_HIFLOAT8,
-                        OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, KEY_NAME.c_str(),
-                            DataTypeToSerialString(keyDesc->GetDataType()).c_str(), "HIFLOAT8"),
-                        return ge::GRAPH_FAILED);
-        } else {
-            OP_CHECK_IF(keyDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN,
-                        OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, KEY_NAME.c_str(),
-                                                  DataTypeToSerialString(keyDesc->GetDataType()).c_str(), "FLOAT8_E4M3FN"),
-                        return ge::GRAPH_FAILED);
-        }
-        if (CheckFormatSupport(keyDesc, KEY_NAME) != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
-    }
-
-    // v: same dtype constraint as q
-    const gert::CompileTimeTensorDesc *valueDesc = qfaInfo.opParamInfo.value.desc;
-    if (valueDesc != nullptr) {
-        if (isHif8Mode) {
-            OP_CHECK_IF(valueDesc->GetDataType() != ge::DT_HIFLOAT8,
-                        OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, VALUE_NAME.c_str(),
-                            DataTypeToSerialString(valueDesc->GetDataType()).c_str(), "HIFLOAT8"),
-                        return ge::GRAPH_FAILED);
-        } else {
-            OP_CHECK_IF(
-                valueDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN,
-                OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, VALUE_NAME.c_str(),
-                                          DataTypeToSerialString(valueDesc->GetDataType()).c_str(), "FLOAT8_E4M3FN"),
-                return ge::GRAPH_FAILED);
-        }
-        if (CheckFormatSupport(valueDesc, VALUE_NAME) != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
+    if (checkQuantDtype(qfaInfo.opParamInfo.query.desc, QUERY_NAME) != ge::GRAPH_SUCCESS ||
+        checkQuantDtype(qfaInfo.opParamInfo.key.desc, KEY_NAME) != ge::GRAPH_SUCCESS ||
+        checkQuantDtype(qfaInfo.opParamInfo.value.desc, VALUE_NAME) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
 
     // attn_out: data_type 仅支持 BFLOAT16
@@ -164,19 +128,15 @@ ge::graphStatus CommonChecker::CheckSingleParaDtype(const QfaTilingInfo &qfaInfo
 ge::graphStatus CommonChecker::CheckSingleParaShapeDim(const QfaTilingInfo &qfaInfo)
 {
     const std::vector<uint32_t> supportedKvDims = {DIM_NUM_3, DIM_NUM_4, DIM_NUM_5};
-    bool isHif8Mode = (qfaInfo.quantMode == QfaQuantMode::A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32);
-    const std::vector<uint32_t> supportedQOutDims = isHif8Mode
-        ? std::vector<uint32_t>{DIM_NUM_3, DIM_NUM_4}
-        : std::vector<uint32_t>{DIM_NUM_3};
+    const std::vector<uint32_t> supportedQOutDims = {DIM_NUM_3, DIM_NUM_4};
 
-    // q: shape dim HIF8支持3D/4D, 其他仅支持3D
+    // q: shape dim 支持 3D/4D
     const gert::StorageShape *queryShape = qfaInfo.opParamInfo.query.shape;
     if (queryShape != nullptr) {
         uint32_t queryDimNum = queryShape->GetStorageShape().GetDimNum();
         OP_CHECK_IF(std::find(supportedQOutDims.begin(), supportedQOutDims.end(), queryDimNum) == supportedQOutDims.end(),
                     OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, QUERY_NAME.c_str(),
-                                                 (std::to_string(queryDimNum) + "D").c_str(),
-                                                 isHif8Mode ? "3D/4D" : "3D"),
+                                                 (std::to_string(queryDimNum) + "D").c_str(), "3D/4D"),
                     return ge::GRAPH_FAILED);
     }
 
@@ -200,14 +160,13 @@ ge::graphStatus CommonChecker::CheckSingleParaShapeDim(const QfaTilingInfo &qfaI
                     return ge::GRAPH_FAILED);
     }
 
-    // attn_out: shape dim HIF8支持3D/4D, 其他仅支持3D
+    // attn_out: shape dim 支持 3D/4D
     const gert::StorageShape *attnOutShape = qfaInfo.opParamInfo.attnOut.shape;
     if (attnOutShape != nullptr) {
         uint32_t attnOutDimNum = attnOutShape->GetStorageShape().GetDimNum();
         OP_CHECK_IF(std::find(supportedQOutDims.begin(), supportedQOutDims.end(), attnOutDimNum) == supportedQOutDims.end(),
                     OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, ATTN_OUT_NAME.c_str(),
-                                                 (std::to_string(attnOutDimNum) + "D").c_str(),
-                                                 isHif8Mode ? "3D/4D" : "3D"),
+                                                 (std::to_string(attnOutDimNum) + "D").c_str(), "3D/4D"),
                     return ge::GRAPH_FAILED);
     }
 
@@ -248,7 +207,7 @@ ge::graphStatus CommonChecker::CheckQuantDataType(const QfaTilingInfo &qfaInfo)
 
 ge::graphStatus CommonChecker::CheckDtypeConsistency(const QfaTilingInfo &qfaInfo)
 {
-    // 文档约束: q、k、v 的数据类型必须相同（均为 FLOAT8_E4M3FN）
+    // 文档约束: q、k、v 的数据类型必须相同
     const gert::CompileTimeTensorDesc *queryDesc = qfaInfo.opParamInfo.query.desc;
     const gert::CompileTimeTensorDesc *keyDesc = qfaInfo.opParamInfo.key.desc;
     const gert::CompileTimeTensorDesc *valueDesc = qfaInfo.opParamInfo.value.desc;
@@ -258,13 +217,17 @@ ge::graphStatus CommonChecker::CheckDtypeConsistency(const QfaTilingInfo &qfaInf
     OP_CHECK_IF(keyDesc != nullptr && keyDesc->GetDataType() != queryDtype,
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
                     qfaInfo.opName, KEY_NAME.c_str(), DataTypeToSerialString(keyDesc->GetDataType()).c_str(),
-                    "The dtype of key must be the same as dtype(FLOAT8_E4M3FN) of query"),
+                    ("The dtype of key must be the same as dtype(" +
+                     std::string(DataTypeToSerialString(queryDtype)) + ") of query")
+                        .c_str()),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(valueDesc != nullptr && valueDesc->GetDataType() != queryDtype,
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
                     qfaInfo.opName, VALUE_NAME.c_str(), DataTypeToSerialString(valueDesc->GetDataType()).c_str(),
-                    "The dtype of value must be the same as dtype(FLOAT8_E4M3FN) of query"),
+                    ("The dtype of value must be the same as dtype(" +
+                     std::string(DataTypeToSerialString(queryDtype)) + ") of query")
+                        .c_str()),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

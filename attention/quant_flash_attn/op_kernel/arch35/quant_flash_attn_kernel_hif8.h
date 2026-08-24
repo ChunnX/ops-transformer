@@ -59,12 +59,12 @@ public:
     static constexpr bool USE_DN = CubeBlockType::USE_DN;
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
 
-    static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
+    static constexpr uint32_t PRELOAD_N = 2; // 2 : C1 C1 C1 C2
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
     static constexpr bool FLASH_DECODE = VecFaBlockType::FLASH_DECODE;
-    static constexpr LayOutTypeEnum LAYOUT_Q = CubeBlockType::LAYOUT; // V100 只支持一种??
+    static constexpr LayOutTypeEnum LAYOUT_Q = CubeBlockType::LAYOUT;
     static constexpr LayOutTypeEnum LAYOUT_KV = CubeBlockType::LAYOUT;
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<LAYOUT_Q>();
     static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<LAYOUT_KV, PAGE_ATTENTION>();
@@ -233,7 +233,6 @@ public:
         constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T);
         l1BufferManager_.Init(pipe_, 524288); // 512 * 1024
         // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
-        // TODO，共享buffer初始化放到block层
         l1PBuffers_.Init(l1BufferManager_, mm2LeftSize);
         ubBufferManager_.Init(pipe_, mm1ResultSize * 2 + mm2ResultSize);
         bmm2Buffers_.Init(ubBufferManager_, mm2ResultSize);
@@ -280,8 +279,7 @@ public:
         constInfo_.coreNum = qfaBaseParams.coreNum;
         constInfo_.needInitOutput = qfaBaseParams.needInitOutput;
         constInfo_.outputLayout = static_cast<FA_LAYOUT>(qfaBaseParams.outputLayout);
-        constInfo_.sparseMode =
-            qfaAttenMaskParams.sparseMode; // TODO，后续sparseType、attenMaskCompressMode引用全部改成sparseMode
+        constInfo_.sparseMode = qfaAttenMaskParams.sparseMode;
         constInfo_.preTokens = qfaAttenMaskParams.winLefts;
         constInfo_.nextTokens = qfaAttenMaskParams.winRights;
         constInfo_.attenMaskBatch = qfaAttenMaskParams.attenMaskBatch;
