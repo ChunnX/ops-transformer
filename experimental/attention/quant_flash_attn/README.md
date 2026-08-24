@@ -27,7 +27,7 @@
 
   `quant_flash_attn`是基于`torch_npu`的`cann_ops_transformer`扩展接口，用于调用`QuantFlashAttn`算子完成 MxFP4 量化场景下的全量化注意力计算，训练推理归一化。当前支持 MxFP4 场景：
 
-  - **MxFP4场景**（`quant_mode=5`）：Q/K/V 均采用 MxFP4（per-block group 量化），P 采用 MxFP4，Softmax 在 FP16 下计算。
+  - **MxFP4场景**（`quant_mode=5`）：Q/K/V 均采用 MxFP4，P 采用 MxFP4，Softmax 在 FP16 下计算。
 
   `quant_flash_attn_metadata`是`quant_flash_attn`的元数据生成接口，用于在主算子执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果，主算子可选择传入该metadata以优化调度。典型调用流程如下：
 
@@ -69,11 +69,8 @@
 
 > [!NOTE]
 >
-> Q、K、V数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小batch_size、S（Seq-Length）表示输入样本序列长度、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸headdim，且满足D=H/N、G = Q_N / KV_N 表示GQA分组数。
->
-> [!NOTE]
->
-> MxFP4场景（`quant_mode=5`）下，仅支持 Q_N == KV_N（即 G=1，不支持 GQA），仅支持 D=128，仅支持 BNSD 排布。
+> - Q、K、V数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小batch_size、S（Seq-Length）表示输入样本序列长度、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸headdim，且满足D=H/N、G = Q_N / KV_N 表示GQA分组数。
+> - MxFP4场景（`quant_mode=5`）下，仅支持 Q_N == KV_N（即 G=1，不支持 GQA），仅支持 D=128，仅支持 BNSD 排布。
 
 ## 函数原型
 
