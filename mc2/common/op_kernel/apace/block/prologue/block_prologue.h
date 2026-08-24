@@ -14,9 +14,9 @@
  */
 #pragma once
 
-#include "../gemm/policy/dispatch_policy_mega_moe.h"
+#include "apace/block/policy/dispatch_policy.h"
 
-namespace Blaze {
+namespace Apace {
 namespace Gemm {
 namespace Prologue {
 
@@ -28,4 +28,4 @@ class BlockPrologue {
 
 } // namespace Prologue
 } // namespace Gemm
-} // namespace Blaze
+} // namespace Apace
