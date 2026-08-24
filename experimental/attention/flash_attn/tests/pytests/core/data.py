@@ -112,13 +112,10 @@ def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
     )
 
     # === kernel kwargs ===
-    rel_h = inputs.get("rel_h")
-    rel_w = inputs.get("rel_w")
     kernel_kwargs = dict(
         softmax_scale=scale, mask_mode=mask_mode,
         win_left=wl, win_right=wr,
         block_table=bt, sinks=None, attn_mask=attn_mask,
-        rel_h=rel_h, rel_w=rel_w,
         cu_seqlens_q=cu_q, cu_seqlens_kv=cu_kv,
         seqused_q=sq, seqused_kv=skv,
         max_seqlen_q=msq,

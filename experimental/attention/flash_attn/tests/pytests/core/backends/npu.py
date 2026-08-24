@@ -221,8 +221,6 @@ class NPUBackend(Backend):
                 rel_h_t = rel_h_t.to(self._device)
             if rel_w_t is not None:
                 rel_w_t = rel_w_t.to(self._device)
-            kernel_kwargs.pop("rel_h", None)
-            kernel_kwargs.pop("rel_w", None)
             out, lse = flash_attn(inputs["q"], inputs["k"], inputs["v"], rel_h_t, rel_w_t,
                                       metadata=metadata, **kernel_kwargs)
         torch.npu.synchronize()

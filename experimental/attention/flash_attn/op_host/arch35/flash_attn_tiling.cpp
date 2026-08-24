@@ -315,6 +315,7 @@ void FlashAttnTilingImpl::SetFATilingData()
     tilingData_.baseTiling.flashAttnBaseParams.seqUsedKvSize = seqUsedKvFlag_ ? faInfo_->bSize : 0;
     tilingData_.baseTiling.flashAttnBaseParams.relHSize = faInfo_->relHSize;
     tilingData_.baseTiling.flashAttnBaseParams.relWSize = faInfo_->relWSize;
+    tilingData_.baseTiling.flashAttnBaseParams.isRelHwExist = faInfo_->relHwFlag ? 1 : 0;
     tilingData_.baseTiling.flashAttnBaseParams.isSoftMaxLseEnable = faInfo_->softmaxLseFlag;
     tilingData_.baseTiling.flashAttnBaseParams.iscuSeqLengthsNull = !cuSeqLenQFlag_;
     tilingData_.baseTiling.flashAttnBaseParams.iscuSeqLengthsKVNull = !cuSeqLenKVFlag_;
@@ -408,6 +409,7 @@ void FlashAttnTilingImpl::PrintAllTilingData()
     OP_LOGD(faInfo_->opName, "seqUsedKvSize:%d", flashAttnBaseParams.seqUsedKvSize);
     OP_LOGD(faInfo_->opName, "relHSize:%d", flashAttnBaseParams.relHSize);
     OP_LOGD(faInfo_->opName, "relWSize:%d", flashAttnBaseParams.relWSize);
+    OP_LOGD(faInfo_->opName, "isRelHwExist:%d", flashAttnBaseParams.isRelHwExist);
     OP_LOGD(faInfo_->opName, "scaleValue:%f", flashAttnBaseParams.scaleValue);
     OP_LOGD(faInfo_->opName, "iscuSeqLengthsNull:%d", flashAttnBaseParams.iscuSeqLengthsNull);
     OP_LOGD(faInfo_->opName, "iscuSeqLengthsKVNull:%d", flashAttnBaseParams.iscuSeqLengthsKVNull);

@@ -19,7 +19,8 @@ extern "C" {
 #endif
 
 extern aclnnStatus aclnnInnerFlashAttnGetWorkspaceSize(
-    const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *relH, const aclTensor *relW,
+    const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *relHOptional,
+    const aclTensor *relWOptional,
     const aclTensor *blockTableOptional,
     const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
     const aclTensor *sequsedKvOptional, const aclTensor *sinksOptional, const aclTensor *attnMaskOptional,

@@ -20,8 +20,8 @@ OP_TYPE_REGISTER(FlashAttn);
 
 const std::array<const aclTensor *, 2> FlashAttn(
     const aclTensor *q, const aclTensor *k, const aclTensor *v,
-    const aclTensor *relH,
-    const aclTensor *relW,
+    const aclTensor *relHOptional,
+    const aclTensor *relWOptional,
     const aclTensor *blockTableOptional,
     const aclTensor *cuSeqlensQOptional,
     const aclTensor *cuSeqlensKvOptional,
@@ -37,11 +37,17 @@ const std::array<const aclTensor *, 2> FlashAttn(
     int32_t returnSoftmaxLse,
     aclOpExecutor *executor)
 {
-    L0_DFX(FlashAttn, q, k, v, relH, relW, blockTableOptional, cuSeqlensQOptional, cuSeqlensKvOptional,
+    L0_DFX(FlashAttn, q, k, v, relHOptional, relWOptional, blockTableOptional, cuSeqlensQOptional, cuSeqlensKvOptional,
            sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional,
            softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV, layoutQ, layoutKv, layoutOut,
            returnSoftmaxLse);
 
+    if (relHOptional == nullptr) {
+        relHOptional = executor->AllocTensor(q->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
+    }
+    if (relWOptional == nullptr) {
+        relWOptional = executor->AllocTensor(q->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
+    }
     if (blockTableOptional == nullptr) {
         blockTableOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
     }
@@ -71,7 +77,7 @@ const std::array<const aclTensor *, 2> FlashAttn(
     auto softmaxLseAlloc = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
 
     auto ret = INFER_SHAPE(FlashAttn,
-                           OP_INPUT(q, k, v, relH, relW, blockTableOptional, cuSeqlensQOptional, cuSeqlensKvOptional,
+                           OP_INPUT(q, k, v, relHOptional, relWOptional, blockTableOptional, cuSeqlensQOptional, cuSeqlensKvOptional,
                                     sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional),
                            OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
                            OP_ATTR(softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
@@ -83,7 +89,7 @@ const std::array<const aclTensor *, 2> FlashAttn(
 
     ret = ADD_TO_LAUNCHER_LIST_AICORE(
         FlashAttn,
-        OP_INPUT(q, k, v, relH, relW, blockTableOptional, cuSeqlensQOptional, cuSeqlensKvOptional,
+        OP_INPUT(q, k, v, relHOptional, relWOptional, blockTableOptional, cuSeqlensQOptional, cuSeqlensKvOptional,
                  sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional),
         OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
         OP_ATTR(softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,

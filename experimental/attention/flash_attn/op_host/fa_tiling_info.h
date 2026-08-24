@@ -164,8 +164,8 @@ struct FAParaInfo {
     FARequiredParaInfo query = {nullptr, nullptr};
     FARequiredParaInfo key = {nullptr, nullptr};
     FARequiredParaInfo value = {nullptr, nullptr};
-    FARequiredParaInfo relH = {nullptr, nullptr};
-    FARequiredParaInfo relW = {nullptr, nullptr};
+    FAOptionalParaInfo relH = {nullptr, nullptr};
+    FAOptionalParaInfo relW = {nullptr, nullptr};
 
     FAOptionalParaInfo blockTable = {nullptr, nullptr};
     FAOptionalParaInfo cuSeqlensQ = {nullptr, nullptr};
@@ -216,6 +216,7 @@ public:
 
     int64_t relHSize = 0;
     int64_t relWSize = 0;
+    bool relHwFlag = false;
 
     uint64_t totalOutputSize = 0;
     uint64_t totalLseSize = 0;

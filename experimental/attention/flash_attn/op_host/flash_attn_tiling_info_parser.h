@@ -38,6 +38,7 @@ public:
     void GetOptionalInputParaSeqLengthInfo();
     void GetOptionalInputParaPageAttentionInfo();
     void GetOptionalInputParaSinksInfo();
+    void GetOptionalInputParaRelHwInfo();
 
     void GetOptionalInputParaInfo();
     void GetInputParaInfo();
@@ -104,6 +105,7 @@ public:
     int64_t keyTSize_ = 0;
     int64_t relHSize_ = 0;
     int64_t relWSize_ = 0;
+    bool relHwFlag_ = false;
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
 
     // kvcache strides (tensor v2 view inputs)

@@ -154,20 +154,20 @@ __global__ __aicore__ void flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key
                 attnOut, softmaxLse, user, &tilingData->baseTiling);
         op.Process();
     } else {
-//         using CubeBlock = BaseApi::FANoQuantGqaBlockCubeNd<FA_T>;
-//         using VecFaBlock = BaseApi::FANoQuantGqaBlockVecNd<FA_T>;
-//         using VecFdBlock = BaseApi::FiaBlockVecFlashDecode<FA_T>;
-//         using VecDummy = BaseApi::FANoQuantGqaBlockVecDummyNd<FA_T>;
-//         using CubeDummy = BaseApi::FANoQuantGqaBlockCubeDummyNd<FA_T>;
-// #ifdef __DAV_C310_CUBE__
-//         using Kernel = BaseApi::FlashAttentionNoQuantGqaKernelNd<FA_T, CubeBlock, VecDummy, VecDummy>;
-// #else
-//         using Kernel = BaseApi::FlashAttentionNoQuantGqaKernelNd<FA_T, CubeDummy, VecFaBlock, VecFdBlock>;
-// #endif
-//         Kernel op;
-//         op.Init(query, key, value, blockTable, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, sinks, attnMask, metadata,
-//                 attnOut, softmaxLse, user, &tilingData->baseTiling);
-//         op.Process();
+        using CubeBlock = BaseApi::FANoQuantGqaBlockCubeNd<FA_T>;
+        using VecFaBlock = BaseApi::FANoQuantGqaBlockVecNd<FA_T>;
+        using VecFdBlock = BaseApi::FiaBlockVecFlashDecode<FA_T>;
+        using VecDummy = BaseApi::FANoQuantGqaBlockVecDummyNd<FA_T>;
+        using CubeDummy = BaseApi::FANoQuantGqaBlockCubeDummyNd<FA_T>;
+#ifdef __DAV_C310_CUBE__
+        using Kernel = BaseApi::FlashAttentionNoQuantGqaKernelNd<FA_T, CubeBlock, VecDummy, VecDummy>;
+#else
+        using Kernel = BaseApi::FlashAttentionNoQuantGqaKernelNd<FA_T, CubeDummy, VecFaBlock, VecFdBlock>;
+#endif
+        Kernel op;
+        op.Init(query, key, value, blockTable, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, sinks, attnMask, metadata,
+                attnOut, softmaxLse, user, &tilingData->baseTiling);
+        op.Process();
     }
 #endif
 

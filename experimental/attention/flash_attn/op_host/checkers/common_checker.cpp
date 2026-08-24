@@ -93,10 +93,6 @@ ge::graphStatus CommonChecker::CheckParaExistence(const FaTilingInfo &faInfo)
                 OP_LOGE_WITH_INVALID_INPUT(faInfo.opName, "key"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(faInfo.opParamInfo.value.desc == nullptr || faInfo.opParamInfo.value.shape == nullptr,
                 OP_LOGE_WITH_INVALID_INPUT(faInfo.opName, "value"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(faInfo.opParamInfo.relH.desc == nullptr || faInfo.opParamInfo.relH.shape == nullptr,
-                OP_LOGE_WITH_INVALID_INPUT(faInfo.opName, "rel_h"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(faInfo.opParamInfo.relW.desc == nullptr || faInfo.opParamInfo.relW.shape == nullptr,
-                OP_LOGE_WITH_INVALID_INPUT(faInfo.opName, "rel_w"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(faInfo.opParamInfo.attnOut.desc == nullptr || faInfo.opParamInfo.attnOut.shape == nullptr,
                 OP_LOGE_WITH_INVALID_INPUT(faInfo.opName, "attn_out"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -111,14 +107,14 @@ ge::graphStatus CommonChecker::CheckNonQuantDataType(const FaTilingInfo &faInfo)
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(faInfo.opParamInfo.query.desc, QUERY_NAME) ||
         ge::GRAPH_SUCCESS != CheckDtypeSupport(faInfo.opParamInfo.key.desc, KEY_NAME) ||
         ge::GRAPH_SUCCESS != CheckDtypeSupport(faInfo.opParamInfo.value.desc, VALUE_NAME) ||
-        ge::GRAPH_SUCCESS != CheckDtypeSupport(faInfo.opParamInfo.relH.desc, REL_H_NAME) ||
-        ge::GRAPH_SUCCESS != CheckDtypeSupport(faInfo.opParamInfo.relW.desc, REL_W_NAME) ||
+        (faInfo.relHwFlag && ge::GRAPH_SUCCESS != CheckDtypeSupport(faInfo.opParamInfo.relH.desc, REL_H_NAME)) ||
+        (faInfo.relHwFlag && ge::GRAPH_SUCCESS != CheckDtypeSupport(faInfo.opParamInfo.relW.desc, REL_W_NAME)) ||
         ge::GRAPH_SUCCESS != CheckDtypeSupport(faInfo.opParamInfo.attnOut.desc, ATTN_OUT_NAME) ||
         ge::GRAPH_SUCCESS != CheckFormatSupport(faInfo.opParamInfo.query.desc, QUERY_NAME) ||
         ge::GRAPH_SUCCESS != CheckFormatSupport(faInfo.opParamInfo.key.desc, KEY_NAME) ||
         ge::GRAPH_SUCCESS != CheckFormatSupport(faInfo.opParamInfo.value.desc, VALUE_NAME) ||
-        ge::GRAPH_SUCCESS != CheckFormatSupport(faInfo.opParamInfo.relH.desc, REL_H_NAME) ||
-        ge::GRAPH_SUCCESS != CheckFormatSupport(faInfo.opParamInfo.relW.desc, REL_W_NAME) ||
+        (faInfo.relHwFlag && ge::GRAPH_SUCCESS != CheckFormatSupport(faInfo.opParamInfo.relH.desc, REL_H_NAME)) ||
+        (faInfo.relHwFlag && ge::GRAPH_SUCCESS != CheckFormatSupport(faInfo.opParamInfo.relW.desc, REL_W_NAME)) ||
         ge::GRAPH_SUCCESS != CheckFormatSupport(faInfo.opParamInfo.attnOut.desc, ATTN_OUT_NAME)) {
         return ge::GRAPH_FAILED;
     }
@@ -153,7 +149,7 @@ ge::graphStatus CommonChecker::CheckDtypeConsistency(const FaTilingInfo &faInfo)
     }
 
     const gert::CompileTimeTensorDesc *relHDesc = faInfo.opParamInfo.relH.desc;
-    if (relHDesc != nullptr) {
+    if (faInfo.relHwFlag && relHDesc != nullptr) {
         if (relHDesc->GetDataType() != queryDtype) {
             std::string reason = "The dtype of rel_h must be the same as dtype(" + ToString(queryDtype) + ") of query";
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(faInfo.opName, "rel_h",
@@ -163,7 +159,7 @@ ge::graphStatus CommonChecker::CheckDtypeConsistency(const FaTilingInfo &faInfo)
     }
 
     const gert::CompileTimeTensorDesc *relWDesc = faInfo.opParamInfo.relW.desc;
-    if (relWDesc != nullptr) {
+    if (faInfo.relHwFlag && relWDesc != nullptr) {
         if (relWDesc->GetDataType() != queryDtype) {
             std::string reason = "The dtype of rel_w must be the same as dtype(" + ToString(queryDtype) + ") of query";
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(faInfo.opName, "rel_w",
