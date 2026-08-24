@@ -77,6 +77,8 @@ constexpr uint64_t ALIGNED_LEN_256 = 256UL;
 constexpr uint32_t SEND_DOUBLE_BUFFER_NUM = 2U;
 static constexpr uint32_t ADDRESS_ENTRY_UB_BYTES = UB_ALIGN;
 static constexpr uint32_t ADDRESS_ENTRY_GM_BYTES = WIN_ADDR_ALIGN;
+static constexpr uint32_t ADDRESS_TABLE_BUFFER_BYTES = 40U * 1024U;
+static constexpr uint32_t META_CHUNK_TOKEN_MAX = 2048U;
 static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {
     .odr = 5,
     .fence = 1,
@@ -111,6 +113,7 @@ private:
         uint64_t commHandle, GM_ADDR dstBase, GM_ADDR dst, GM_ADDR src, uint64_t len);
     __aicore__ inline void FlushPreparedWrites();
     __aicore__ inline void BuildAddressTable();
+    __aicore__ inline uint32_t GetAddressTableCount(uint32_t targetRank);
     __aicore__ inline void SendAddressTableRange(uint32_t targetRank, uint32_t entryStart,
                                                  uint32_t entryEnd, uint32_t channelIndex);
     __aicore__ inline void SendPhaseExpertToToken();
@@ -179,6 +182,8 @@ private:
 
     TBuf<> metadataBuf_; // 发送阶段recvSrcMetadata的UB缓冲，批量搬运避免GetValue
     TBuf<> weightsBuf_;
+    TBuf<> addressTableBuf_;
+    TBuf<> rankInfoBuf_;
 
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_; // 数据队列
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;                 // 通信上下文
@@ -189,6 +194,8 @@ private:
     GM_ADDR combineSendDataWorkspaceAddr_{nullptr};
     GM_ADDR flagWorkspaceAddr_{nullptr};
     GM_ADDR rankCountWorkspaceAddr_{nullptr};
+    GM_ADDR perCoreRankCountWorkspaceAddr_{nullptr};
+    uint64_t perCoreRankCountStride_{0};
     uint32_t aivId_{0};
     HcommBatchHandle activeBatchHandle_{};
     uint64_t activeBatchChannel_{0};
@@ -217,6 +224,9 @@ MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR context, GM_ADDR x, GM_
                          static_cast<uint64_t>(aivId_) * WIN_ADDR_ALIGN;
     rankCountWorkspaceAddr_ = combineSendDataWorkspaceAddr_ + epWorldSize_ * sendDataWorkspaceSizePerRank_ +
                               static_cast<uint64_t>(aivNum_) * WIN_ADDR_ALIGN;
+    perCoreRankCountStride_ = Ceil(static_cast<uint64_t>(epWorldSize_) * UB_ALIGN, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    perCoreRankCountWorkspaceAddr_ = rankCountWorkspaceAddr_ +
+                                     static_cast<uint64_t>(epWorldSize_) * WIN_ADDR_ALIGN;
     hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN; // UB 32字节对齐
     hWeightAlignSize_ = hAlignSize_ + UB_ALIGN;                      // UB 32字节对齐
     tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
@@ -279,30 +289,37 @@ MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR context, GM_ADDR x, GM_
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressTable()
 {
-    // Keep one 512-byte counter slot per rank so AtomicAdd on different ranks never shares a cache line.
-    if (aivId_ == 0) {
-        for (uint32_t rank = 0; rank < epWorldSize_; ++rank) {
-            __gm__ int32_t *countAddr = reinterpret_cast<__gm__ int32_t *>(
-                rankCountWorkspaceAddr_ + static_cast<uint64_t>(rank) * WIN_ADDR_ALIGN);
-            AscendC::WriteGmByPassDCache(countAddr, int32_t(0));
-        }
-        PipeBarrier<PIPE_ALL>();
-    }
-    SyncAll<true>();
-
-    if (actualA_ == 0) {
-        return;
-    }
-
+    // Follow dispatch PR 10309: count per core, derive an exclusive prefix, then batch-write records.
     constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
-    constexpr uint32_t metaChunkTokenMax = 8192U;
-    uint32_t metaChunkTokens = (actualA_ < metaChunkTokenMax) ? actualA_ : metaChunkTokenMax;
+    constexpr uint32_t rankCountBlockElements = UB_ALIGN / sizeof(int32_t);
+    uint32_t metaChunkTokens = (actualA_ < META_CHUNK_TOKEN_MAX) ? actualA_ : META_CHUNK_TOKEN_MAX;
+    metaChunkTokens = (metaChunkTokens == 0U) ? 1U : metaChunkTokens;
     uint32_t metaChunkBytes = Ceil(metaChunkTokens * metaBytesPerToken, UB_ALIGN) * UB_ALIGN;
+    uint32_t rankCountElements = epWorldSize_ * rankCountBlockElements;
+    uint32_t prefixElements = Ceil(epWorldSize_ * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN / sizeof(uint32_t);
     tpipe_->InitBuffer(metadataBuf_, metaChunkBytes);
     if constexpr (HasTopkWeight == 1) {
         uint32_t weightChunkBytes = Ceil(metaChunkTokens * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
         tpipe_->InitBuffer(weightsBuf_, weightChunkBytes);
     }
+    tpipe_->InitBuffer(addressTableBuf_, ADDRESS_TABLE_BUFFER_BYTES);
+    tpipe_->InitBuffer(rankInfoBuf_, rankCountElements * sizeof(int32_t) + prefixElements * sizeof(uint32_t));
+
+    LocalTensor<int32_t> rankCounts = rankInfoBuf_.Get<int32_t>();
+    LocalTensor<uint32_t> rankPrefix = rankCounts[rankCountElements].template ReinterpretCast<uint32_t>();
+    Duplicate<int32_t>(rankCounts, 0, rankCountElements);
+    Duplicate<uint32_t>(rankPrefix, 0U, prefixElements);
+    SyncFunc<AscendC::HardEvent::V_S>();
+
+    GlobalTensor<int32_t> totalRankCounts;
+    totalRankCounts.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(rankCountWorkspaceAddr_));
+    DataCopyParams rankCountCopyParams{static_cast<uint16_t>(epWorldSize_), static_cast<uint16_t>(UB_ALIGN),
+                                       0U, static_cast<uint16_t>(WIN_ADDR_ALIGN - UB_ALIGN)};
+    if (aivId_ == 0) {
+        DataCopyPad(totalRankCounts, rankCounts, rankCountCopyParams);
+    }
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
+    SyncAll<true>();
 
     uint64_t tokensPerCore = actualA_ / aivNum_;
     uint64_t remainder = actualA_ % aivNum_;
@@ -316,16 +333,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressT
         uint64_t chunkEnd = (chunkStart + metaChunkTokens > scanEnd) ? scanEnd : chunkStart + metaChunkTokens;
         uint32_t curChunkTokens = static_cast<uint32_t>(chunkEnd - chunkStart);
 
-        LocalTensor<uint32_t> weightsLocal;
-        if constexpr (HasTopkWeight == 1) {
-            weightsLocal = weightsBuf_.Get<uint32_t>();
-            DataCopyExtParams weightCopyParams{
-                1U, static_cast<uint32_t>(curChunkTokens * sizeof(uint32_t)), 0U, 0U, 0U};
-            const DataCopyPadExtParams<uint32_t> weightPadParams{false, 0U, 0U, 0U};
-            DataCopyPad(weightsLocal, topkWeightsGm_[chunkStart].template ReinterpretCast<uint32_t>(),
-                        weightCopyParams, weightPadParams);
-        }
-
         DataCopyExtParams metaCopyParams{1U, curChunkTokens * metaBytesPerToken, 0U, 0U, 0U};
         DataCopyPad(metadataLocal, recvSrcMetadataGm_[chunkStart * RECV_META_FIELDS],
                     metaCopyParams, metaPadParams);
@@ -336,33 +343,119 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressT
             if (srcRank < 0 || srcRank >= static_cast<int32_t>(epWorldSize_)) {
                 continue;
             }
-
-            __gm__ int32_t *countAddr = reinterpret_cast<__gm__ int32_t *>(
-                rankCountWorkspaceAddr_ + static_cast<uint64_t>(srcRank) * WIN_ADDR_ALIGN);
-            int32_t entryIndex = AscendC::AtomicAdd(countAddr, int32_t(1));
-            ascendc_assert(entryIndex >= 0 &&
-                               static_cast<uint64_t>(entryIndex) <
-                                   static_cast<uint64_t>(numMaxTokensPerRank_) * topK_,
-                           "combine address table overflow, rank=%d, index=%d", srcRank, entryIndex);
-
-            __gm__ uint32_t *entryAddr = reinterpret_cast<__gm__ uint32_t *>(
-                GetLocalSendDataWorkspaceAddr(srcRank) +
-                static_cast<uint64_t>(entryIndex) * ADDRESS_ENTRY_GM_BYTES);
-            AscendC::WriteGmByPassDCache(entryAddr, static_cast<uint32_t>(chunkStart) + i);
-            AscendC::WriteGmByPassDCache(entryAddr + 1,
-                static_cast<uint32_t>(metadataLocal.GetValue(i * RECV_META_FIELDS + 1)));
-            AscendC::WriteGmByPassDCache(entryAddr + 2,
-                static_cast<uint32_t>(metadataLocal.GetValue(i * RECV_META_FIELDS + 2)));
-            uint32_t weight = 0;
-            if constexpr (HasTopkWeight == 1) {
-                weight = weightsLocal.GetValue(i);
-            }
-            AscendC::WriteGmByPassDCache(entryAddr + 3, weight);
+            uint32_t countOffset = static_cast<uint32_t>(srcRank) * rankCountBlockElements;
+            rankCounts.SetValue(countOffset, rankCounts.GetValue(countOffset) + 1);
         }
         SyncFunc<AscendC::HardEvent::S_MTE2>();
     }
-    PipeBarrier<PIPE_ALL>();
+
+    // Publish this core's row for prefix calculation and atomically aggregate only the rank totals.
+    GlobalTensor<int32_t> perCoreRankCounts;
+    perCoreRankCounts.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+        perCoreRankCountWorkspaceAddr_ + static_cast<uint64_t>(aivId_) * perCoreRankCountStride_));
+    SyncFunc<AscendC::HardEvent::S_MTE3>();
+    DataCopy(perCoreRankCounts, rankCounts, rankCountElements);
+    SetAtomicAdd<int32_t>();
+    DataCopyPad(totalRankCounts, rankCounts, rankCountCopyParams);
+    SetAtomicNone();
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
     SyncAll<true>();
+
+    // Exclusive prefix of preceding cores gives this core a disjoint interval for every rank.
+    for (uint32_t core = 0; core < aivId_; ++core) {
+        GlobalTensor<int32_t> previousCoreCounts;
+        previousCoreCounts.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+            perCoreRankCountWorkspaceAddr_ + static_cast<uint64_t>(core) * perCoreRankCountStride_));
+        DataCopy(rankCounts, previousCoreCounts, rankCountElements);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+        for (uint32_t rank = 0; rank < epWorldSize_; ++rank) {
+            rankPrefix.SetValue(rank, rankPrefix.GetValue(rank) +
+                static_cast<uint32_t>(rankCounts.GetValue(rank * rankCountBlockElements)));
+        }
+        SyncFunc<AscendC::HardEvent::S_MTE2>();
+    }
+
+    // Each group fits even if all records target the same rank. Records are grouped by rank in UB.
+    uint32_t entriesPerRank = ADDRESS_TABLE_BUFFER_BYTES / epWorldSize_ / ADDRESS_ENTRY_UB_BYTES;
+    ascendc_assert(entriesPerRank > 0U, "combine address-table UB is too small, epWorldSize=%u", epWorldSize_);
+    LocalTensor<uint32_t> addressEntries = addressTableBuf_.Get<uint32_t>();
+    constexpr uint32_t entryElements = ADDRESS_ENTRY_UB_BYTES / sizeof(uint32_t);
+    DataCopyParams addressCopyParams{0U, static_cast<uint16_t>(ADDRESS_ENTRY_UB_BYTES), 0U,
+                                     static_cast<uint16_t>(ADDRESS_ENTRY_GM_BYTES - ADDRESS_ENTRY_UB_BYTES)};
+    for (uint64_t groupStart = scanStart; groupStart < scanEnd; groupStart += entriesPerRank) {
+        uint64_t groupEnd = (groupStart + entriesPerRank > scanEnd) ? scanEnd : groupStart + entriesPerRank;
+        uint32_t groupTokens = static_cast<uint32_t>(groupEnd - groupStart);
+        DataCopyExtParams metaCopyParams{1U, groupTokens * metaBytesPerToken, 0U, 0U, 0U};
+        DataCopyPad(metadataLocal, recvSrcMetadataGm_[groupStart * RECV_META_FIELDS], metaCopyParams, metaPadParams);
+
+        LocalTensor<uint32_t> weightsLocal;
+        if constexpr (HasTopkWeight == 1) {
+            weightsLocal = weightsBuf_.Get<uint32_t>();
+            DataCopyExtParams weightCopyParams{1U, groupTokens * sizeof(uint32_t), 0U, 0U, 0U};
+            const DataCopyPadExtParams<uint32_t> weightPadParams{false, 0U, 0U, 0U};
+            DataCopyPad(weightsLocal, topkWeightsGm_[groupStart].template ReinterpretCast<uint32_t>(),
+                        weightCopyParams, weightPadParams);
+        }
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+
+        Duplicate<int32_t>(rankCounts, 0, rankCountElements);
+        SyncFunc<AscendC::HardEvent::V_S>();
+        for (uint32_t i = 0; i < groupTokens; ++i) {
+            int32_t srcRank = metadataLocal.GetValue(i * RECV_META_FIELDS);
+            if (srcRank < 0 || srcRank >= static_cast<int32_t>(epWorldSize_)) {
+                continue;
+            }
+            uint32_t countOffset = static_cast<uint32_t>(srcRank) * rankCountBlockElements;
+            uint32_t localIndex = static_cast<uint32_t>(rankCounts.GetValue(countOffset));
+            uint32_t entryOffset = (static_cast<uint32_t>(srcRank) * entriesPerRank + localIndex) * entryElements;
+            addressEntries.SetValue(entryOffset, static_cast<uint32_t>(groupStart) + i);
+            addressEntries.SetValue(entryOffset + 1,
+                static_cast<uint32_t>(metadataLocal.GetValue(i * RECV_META_FIELDS + 1)));
+            addressEntries.SetValue(entryOffset + 2,
+                static_cast<uint32_t>(metadataLocal.GetValue(i * RECV_META_FIELDS + 2)));
+            uint32_t weight = 0U;
+            if constexpr (HasTopkWeight == 1) {
+                weight = weightsLocal.GetValue(i);
+            }
+            addressEntries.SetValue(entryOffset + 3, weight);
+            rankCounts.SetValue(countOffset, static_cast<int32_t>(localIndex + 1));
+        }
+
+        SyncFunc<AscendC::HardEvent::S_MTE3>();
+        for (uint32_t rank = 0; rank < epWorldSize_; ++rank) {
+            uint32_t countOffset = rank * rankCountBlockElements;
+            uint32_t count = static_cast<uint32_t>(rankCounts.GetValue(countOffset));
+            if (count == 0U) {
+                continue;
+            }
+            uint32_t writeStart = rankPrefix.GetValue(rank);
+            ascendc_assert(static_cast<uint64_t>(writeStart) + count <=
+                               static_cast<uint64_t>(numMaxTokensPerRank_) * topK_,
+                           "combine address table overflow, rank=%u, start=%u, count=%u", rank, writeStart, count);
+            GlobalTensor<uint32_t> addressTable;
+            addressTable.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(GetLocalSendDataWorkspaceAddr(rank)));
+            addressCopyParams.blockCount = static_cast<uint16_t>(count);
+            DataCopy(addressTable[static_cast<uint64_t>(writeStart) * ADDRESS_ENTRY_GM_BYTES / sizeof(uint32_t)],
+                     addressEntries[rank * entriesPerRank * entryElements], addressCopyParams);
+            rankPrefix.SetValue(rank, writeStart + count);
+        }
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
+        SyncFunc<AscendC::HardEvent::S_MTE2>();
+    }
+    SyncAll<true>();
+}
+
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline uint32_t MoeEpCombine<TemplateMoeEpCombineTypeFunc>::GetAddressTableCount(uint32_t targetRank)
+{
+    GlobalTensor<uint32_t> totalRankCounts;
+    totalRankCounts.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(rankCountWorkspaceAddr_));
+    DataCopy(statusTensor_, totalRankCounts[static_cast<uint64_t>(targetRank) * WIN_ADDR_ALIGN / sizeof(uint32_t)],
+             UB_ALIGN / sizeof(uint32_t));
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+    uint32_t count = statusTensor_.GetValue(0);
+    SyncFunc<AscendC::HardEvent::S_MTE2>();
+    return count;
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -373,7 +466,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendAddressTa
         return;
     }
 
-    uint32_t metaChunkTokens = (actualA_ < 8192U) ? actualA_ : 8192U;
+    uint32_t metaChunkTokens = (actualA_ < META_CHUNK_TOKEN_MAX) ? actualA_ : META_CHUNK_TOKEN_MAX;
     uint32_t metaChunkBytes = Ceil(metaChunkTokens * RECV_META_FIELDS * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     uint32_t entryChunkMax = metaChunkBytes / ADDRESS_ENTRY_UB_BYTES;
     LocalTensor<uint32_t> entriesLocal = metadataBuf_.Get<uint32_t>();
@@ -579,9 +672,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
                             (splitRankTokens ? targetRank == rankId_ : rankId_ % activeAivNum == aivId_);
     if (sendsTokens) {
         if (splitRankTokens) {
-            __gm__ int32_t *countAddr = reinterpret_cast<__gm__ int32_t *>(
-                rankCountWorkspaceAddr_ + static_cast<uint64_t>(targetRank) * WIN_ADDR_ALIGN);
-            uint32_t entryCount = static_cast<uint32_t>(AscendC::ReadGmByPassDCache(countAddr));
+            uint32_t entryCount = GetAddressTableCount(targetRank);
             uint32_t entriesPerCore = entryCount / groupSize;
             uint32_t remainder = entryCount % groupSize;
             uint32_t entryStart = coreIndexInGroup * entriesPerCore +
@@ -590,9 +681,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
             SendAddressTableRange(targetRank, entryStart, entryEnd, channelIndex);
         } else {
             for (uint32_t rank = aivId_; rank < epWorldSize_; rank += activeAivNum) {
-                __gm__ int32_t *countAddr = reinterpret_cast<__gm__ int32_t *>(
-                    rankCountWorkspaceAddr_ + static_cast<uint64_t>(rank) * WIN_ADDR_ALIGN);
-                uint32_t entryCount = static_cast<uint32_t>(AscendC::ReadGmByPassDCache(countAddr));
+                uint32_t entryCount = GetAddressTableCount(rank);
                 SendAddressTableRange(rank, 0U, entryCount, 0U);
             }
         }
