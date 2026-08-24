@@ -738,11 +738,11 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       - 仅动态量化（mx量化）场景支持，scaleOptional数据类型必须为FLOAT8_E8M0。
       - 本版本scaleOptional FRACTAL_NZ format暂不支持x或weight为FLOAT4_E2M1/FLOAT4_E1M2的场景。
       - 仅支持weight为FRACTAL_NZ format的场景；当scaleOptional为FRACTAL_NZ format时，weight也必须为FRACTAL_NZ format。
+      - 仅支持transpose_weight为false的场景。
       - 仅支持groupType为0，即M轴分组场景；不支持groupType为2的K轴分组场景。
       - 仅支持x为单tensor、out为单tensor的场景，weight支持单tensor和多tensor两种场景。
       - weight单tensor场景下，scaleOptional为单tensor，shape为(g, ceil(N / 16), ceil(K / 64), 16, 2)。
       - weight多tensor场景下，scaleOptional为多tensor且长度与weight相同，每个tensor的shape为(ceil(N / 16), ceil(K / 64), 16, 2)。
-      - 无论weight是否转置，scaleOptional FRACTAL_NZ format下的shape均按(ceil(N / 16), ceil(K / 64), 16, 2)排布，不随weight转置交换KScale与N的位置。
       - 非FRACTAL_NZ format下，scaleOptional继续使用上表中的原ND shape约束。
 
     - perTokenScaleOptional要满足下表：

@@ -685,24 +685,29 @@ bool GroupedQmmTiling::CheckScaleNnShape(const gert::StorageShape *wScaleStorage
     OP_CHECK_IF(!IsMicroScaling(),
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opType, "scale",
                                                       ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype),
-                                                      "scale Nn only supports FLOAT8_E8M0 in mx quant mode"),
+                                                      "scale FRACTAL_NZ only supports FLOAT8_E8M0 in mx quant mode"),
                 return false);
     auto isFp4Dtype = [](ge::DataType dt) { return dt == ge::DT_FLOAT4_E2M1 || dt == ge::DT_FLOAT4_E1M2; };
     OP_CHECK_IF(
         isFp4Dtype(inputParams_.aDtype) || isFp4Dtype(inputParams_.bDtype),
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(inputParams_.opType, "x, weight",
-                                               ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
-                                                            ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
-                                               "scale Nn does not support FLOAT4_E2M1 or FLOAT4_E1M2 in this version"),
+                                                ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
+                                                             ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
+                                                "scale FRACTAL_NZ does not support FLOAT4_E2M1 or FLOAT4_E1M2 in "
+                                                "this version"),
         return false);
     OP_CHECK_IF(inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ,
                 OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(inputParams_.opType, "weight",
                                                         ge::TypeUtils::FormatToSerialString(inputParams_.bFormat),
-                                                        "scale Nn requires weight format to be FRACTAL_NZ"),
+                                                        "scale FRACTAL_NZ requires weight format to be FRACTAL_NZ"),
+                return false);
+    OP_CHECK_IF(inputParams_.transB,
+                OP_LOGE_FOR_INVALID_VALUE(inputParams_.opType, "transpose_weight",
+                                          inputParams_.transB ? "true" : "false", "false when scale is FRACTAL_NZ"),
                 return false);
     OP_CHECK_IF(inputParams_.groupType != SPLIT_M,
                 OP_LOGE_FOR_INVALID_VALUE(inputParams_.opType, "groupType", std::to_string(inputParams_.groupType),
-                                          "0 when scale is Nn"),
+                                          "0 when scale is FRACTAL_NZ"),
                 return false);
 
     const gert::Shape &originShape = wScaleStorageShape->GetOriginShape();
