@@ -700,15 +700,13 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoHcommMxQuantMMTiling()
     bool transB = contextInfo.args_.isBTrans;
     constexpr uint32_t localMatmulDisabled = 0;
 
-    // x2按rank切分N: nValue传入perRankN(nValue/rankDim), Blaze tiling按perRankN计算
-    uint64_t perRankN = nValue / contextInfo.args_.rankDim;
-
+    // x2按K切分: 每卡持有[K, totalN], Blaze tiling按totalN计算
     if (isMxfp4_) {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingSwat;
-        tilingSwat.GetTilingData(perRankM, perRankN, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData);
+        tilingSwat.GetTilingData(perRankM, nValue, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData);
     } else {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingSwat;
-        tilingSwat.GetTilingData(perRankM, perRankN, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData);
+        tilingSwat.GetTilingData(perRankM, nValue, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData);
     }
     hcommTilingData_.tailQbmmTilingData = hcommTilingData_.tileQbmmTilingData;
     hcommTilingData_.localMatmul = localMatmulDisabled;
@@ -1036,7 +1034,7 @@ void MxQuantMatmulAllToAllTilingBase::SetHcommTilingInfo(CommTilingData &tilingI
     tilingInfo.splitAxisTileCnt = inferredInfo.tileCnt;
     tilingInfo.splitAxisTailSize = inferredInfo.tailM;
     tilingInfo.splitAxisTailCnt = inferredInfo.tailCnt;
-    tilingInfo.nonSplitAxisSize = contextInfo.args_.nValue / contextInfo.args_.rankDim;
+    tilingInfo.nonSplitAxisSize = contextInfo.args_.nValue;
 }
 
 /**
