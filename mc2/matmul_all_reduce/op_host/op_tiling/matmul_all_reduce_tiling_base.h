@@ -121,7 +121,9 @@ enum class ParamValue {
 class MatmulAllReduceTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     explicit MatmulAllReduceTilingBase(gert::TilingContext *context)
-        : TilingBaseClass(context), mmrCtxInfo_(mmrCtxInfoSelf_), tilingData_(tilingDataSelf_)
+        : TilingBaseClass(context),
+          mmrCtxInfo_(mmrCtxInfoSelf_),
+          tilingData_(tilingDataSelf_)
     {
         Reset();
         // tilingdata作为类的成员随构造函数实例化，使用引用来统一数据访问接口，同时用实体对象来管理数据的生命周期
@@ -131,13 +133,17 @@ public:
                         OP_LOGE(opName_, "fail to memset tiling data"), return;);
     }
     MatmulAllReduceTilingBase(gert::TilingContext *context, MMRCtxInfo *mmrCtxInfo)
-        : TilingBaseClass(context), mmrCtxInfo_(*mmrCtxInfo), tilingData_(tilingDataSelf_)
+        : TilingBaseClass(context),
+          mmrCtxInfo_(*mmrCtxInfo),
+          tilingData_(tilingDataSelf_)
     {
         Reset();
     }
     MatmulAllReduceTilingBase(gert::TilingContext *context, MMRCtxInfo *mmrCtxInfo,
                               Mc2Tiling::MatmulAllReduceTilingData *tilingData)
-        : TilingBaseClass(context), mmrCtxInfo_(*mmrCtxInfo), tilingData_(*tilingData)
+        : TilingBaseClass(context),
+          mmrCtxInfo_(*mmrCtxInfo),
+          tilingData_(*tilingData)
     {
         Reset();
     }
@@ -156,22 +162,10 @@ protected:
     ge::graphStatus DoLibApiTiling() override;
     ge::graphStatus GetWorkspaceSize() override;
     ge::graphStatus PostTiling() override;
-    virtual Mc2Tiling::RCSTiling &MutableRCSTilingData()
-    {
-        return tilingData_.param;
-    }
-    virtual Mc2Tiling::Mc2Msg &MutableMc2MsgData()
-    {
-        return tilingData_.msg;
-    }
-    virtual AscendC::tiling::TCubeTiling &MutableTCubeTileTilingData()
-    {
-        return tilingData_.matmulTiling;
-    }
-    virtual AscendC::tiling::TCubeTiling &MutableTCubeTailTilingData()
-    {
-        return tilingData_.tailTiling;
-    }
+    virtual Mc2Tiling::RCSTiling &MutableRCSTilingData() { return tilingData_.param; }
+    virtual Mc2Tiling::Mc2Msg &MutableMc2MsgData() { return tilingData_.msg; }
+    virtual AscendC::tiling::TCubeTiling &MutableTCubeTileTilingData() { return tilingData_.matmulTiling; }
+    virtual AscendC::tiling::TCubeTiling &MutableTCubeTailTilingData() { return tilingData_.tailTiling; }
     ge::graphStatus AnalyzeShapeAttr();
     void PrintTilingData();
     virtual void PrintExtendMatmulTiling([[maybe_unused]] bool isTail) {};
@@ -273,6 +267,9 @@ protected:
     bool isA8W8_{false};
     bool isA16W8_{false};
     bool isA16W4_{false};
+    bool biasOnVec_{
+        false}; // arch35 非量化场景 bias 移至 vec epilogue 累加（仅 arch35 子类 DoOpTiling 设置，其余架构保持 false）
+    uint32_t biasUbCnt_{0U}; // bias epilogue 的 N 方向 UB 切分粒度（CalcUbTiling 计算后暂存，子类写入 extTiling）
     AllReduceScenario scenario_{AllReduceScenario::INVALID};
     MMRCtxInfo mmrCtxInfoSelf_{};
     MMRCtxInfo &mmrCtxInfo_;
