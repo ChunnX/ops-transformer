@@ -104,7 +104,10 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm2
     UpdateMoeExpertGmm2GlobalBuffer<Weight1Type, ActivationQuantOutType, QuantScaleOutType, true,
                                     configureCombineCounter, true>(gmmExecutionConfig_, syncWorkspaceLayout_,
                                                                    params_.workspaceInfo, moeWeightTensorListAddrs_,
-                                                                   gmmAddrInfo, state, tokenStartIndexInExpert);
+                                                                   gmmAddrInfo, state, tokenStartIndexInExpert,
+                                                                   params_.tilingData->activationDebug
+                                                                       ? params_.activationDebugOutGmAddr
+                                                                       : nullptr);
     ProblemShape sliceProblemShape = state.problemShape;
     Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
     RunGmm2A8W4<CombineQuantMode, ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType,

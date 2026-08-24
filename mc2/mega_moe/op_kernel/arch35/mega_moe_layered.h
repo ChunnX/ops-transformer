@@ -97,7 +97,8 @@ public:
                                 GM_ADDR weight2, GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2,
                                 GM_ADDR scales, GM_ADDR sharedWeight1, GM_ADDR sharedWeight2,
                                 GM_ADDR sharedWeightScales1, GM_ADDR sharedWeightScales2, GM_ADDR yOut,
-                                GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData);
+                                GM_ADDR expertTokenNumsOut, GM_ADDR activationDebugOut, GM_ADDR workspaceGM,
+                                MegaMoeTilingData *tilingData);
     __aicore__ inline void Process();
 
 private:
@@ -321,7 +322,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
     GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights, GM_ADDR weight1, GM_ADDR weight2,
     GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR scales, GM_ADDR sharedWeight1,
     GM_ADDR sharedWeight2, GM_ADDR sharedWeightScales1, GM_ADDR sharedWeightScales2, GM_ADDR yOut,
-    GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData)
+    GM_ADDR expertTokenNumsOut, GM_ADDR activationDebugOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData)
 {
     m_ = tilingData->bs;
     k_ = tilingData->h;
@@ -366,6 +367,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
 
     params_.y2GmAddr = yOut;
     params_.expertTokenNumsOutGmAddr = expertTokenNumsOut;
+    params_.activationDebugOutGmAddr = activationDebugOut;
     params_.probsGmAddr = topkWeights;
     params_.workspaceInfo = WorkspaceInfo(workspaceGM, tilingData, serverNum_);
     params_.peermemInfo = PeermemInfo(winRankAddr_[rankId_], tilingData, A_ELEMS_PER_BYTE, serverNum_);
@@ -392,7 +394,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
                       .actMode = static_cast<uint8_t>(ActivationQuantMsg::ActMode::SWIGLU),
                       .actSubMode = static_cast<uint8_t>(ActivationQuantMsg::ActSubMode::DEFAULT),
                       .activationAlpha = 1.0f,
-                      .activationBeta = 1.0f});
+                      .activationBeta = 1.0f,
+                      .activationDebugGmAddr = nullptr,
+                      .activationDebug = false});
     // 各 win 区相对 win 基址(rankSyncInWorldPtr)的偏移; 所有卡 win 布局一致, 跨卡读写用同一偏移。
     maskWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.maskRecvPtr - params_.peermemInfo.rankSyncInWorldPtr);
     dispatchWinOffset_ =
@@ -1736,13 +1740,16 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::UpdateGlo
                 Get<IDX_FLAG_OFFSET>(state.baseOffset),
                 0L,
                 0L,
-                0L};
+                static_cast<int64_t>(state.expertBeforeCnt) * hiddenDim_ / ACTIVATION_N_HALF};
             epilogueOp_.UpdateGlobalAddr(vecBaseOffset);
         }
     } else if constexpr (Mode == AddrUpdateMode::GMM2) {
+        GM_ADDR gmm2OutputBase = params_.tilingData->activationDebug && params_.activationDebugOutGmAddr != nullptr
+                                     ? params_.activationDebugOutGmAddr
+                                     : params_.workspaceInfo.gmm2MmadResPtr;
         // guard 与 WorkspaceInfo 分配条件一致，由 TilingKey 保证同步。
         gmmAddrInfo.gmm2OutGlobal =
-            params_.workspaceInfo.gmm2MmadResPtr + Get<IDX_GMM2_OFFSET>(state.baseOffset) * sizeof(bfloat16_t);
+            gmm2OutputBase + Get<IDX_GMM2_OFFSET>(state.baseOffset) * sizeof(bfloat16_t);
         gmmAddrInfo.metaInfoGlobal =
             params_.workspaceInfo.metaInfoPtr +
             static_cast<uint64_t>(state.expertBeforeCnt) * META_INFO_SIZE * sizeof(int32_t);
@@ -2174,6 +2181,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Unpermute
         WaitFlag<AscendC::HardEvent::S_V>(event);
         Cast(dataInFp32, dataInBf16, AscendC::RoundMode::CAST_NONE, k_);
         PipeBarrier<PIPE_V>();
+        ExportSharedExpertDebug(k_, topK_, m_, sharedExpertNum_, params_, tokenIdx, sharedIdx, dataInFp32);
         Add(dataResFp32Tensor_, dataResFp32Tensor_, dataInFp32, k_);
         PipeBarrier<PIPE_V>();
         SetFlag<AscendC::HardEvent::V_MTE2>(event);
@@ -2262,6 +2270,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Unpermute
                                                              fp32ScaleTensor_, nScale, k_);
                 }
                 PipeBarrier<PIPE_V>();
+                ExportCombineDebugSlot(k_, topK_, params_, tokenIdx, expId, dataInFp32);
                 if constexpr (TopkWeightsPrefetch) {
                     if (expId == 0) {
                         DataCopy(dataResFp32Tensor_, dataInFp32, k_);
@@ -2282,6 +2291,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Unpermute
                 }
                 SetFlag<AscendC::HardEvent::V_MTE2>(event);
             }
+            ExportMoeSumDebug(k_, topK_, m_, params_, tokenIdx, dataResFp32Tensor_);
             // 共享专家结果累加（直接加，不乘 topk_weight）
             if (sharedExpertNum_ > 0) {
                 UnpermuteSharedExpert(tokenIdx);
@@ -2439,7 +2449,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
             Get<IDX_FLAG_OFFSET>(state.baseOffset),
             0L,
             0L,
-            0L};
+            IsShared ? static_cast<int64_t>(expertIdx) * m_ * hiddenDim_ / ACTIVATION_N_HALF
+                     : static_cast<int64_t>(state.expertBeforeCnt) * hiddenDim_ / ACTIVATION_N_HALF};
         if constexpr (IsShared) {
             sharedEpilogueOp_.UpdateGlobalAddr(vecBaseOffset);
         } else {
@@ -2538,7 +2549,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessSh
                             .actMode = static_cast<uint8_t>(ActivationQuantMsg::ActMode::SWIGLU),
                             .actSubMode = static_cast<uint8_t>(ActivationQuantMsg::ActSubMode::DEFAULT),
                             .activationAlpha = 1.0f,
-                            .activationBeta = 1.0f});
+                            .activationBeta = 1.0f,
+                            .activationDebugGmAddr = nullptr,
+                            .activationDebug = false});
 
     GMMAddrInfo sharedGmm1AddrInfo;
     ExpertLoopState sharedGmm1State{initShape, initOffset, 0};
@@ -2708,6 +2721,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
     if constexpr (g_coreType == AIV) {
         UnpermuteBuffInit();
         CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
+        AivJobContext debugMetaJob{aivCoreIdx_, blockAivNum_};
+        ExportGmm2DebugMetaInfo(k_, params_, debugMetaJob);
         Unpermute();
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
