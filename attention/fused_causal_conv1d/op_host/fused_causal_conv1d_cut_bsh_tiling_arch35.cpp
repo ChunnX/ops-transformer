@@ -41,6 +41,7 @@ constexpr int32_t ATTR_MAX_QUERY_LEN_INDEX = 3;
 constexpr int32_t ATTR_RESIDUAL_CONNECTION_INDEX = 4;
 constexpr int32_t ATTR_BLOCK_SIZE_INDEX = 5;
 constexpr int32_t ATTR_CONV_MODE_INDEX = 6;
+constexpr int32_t ATTR_MAX_DRAFT_TOKENS_INDEX = 7;
 
 constexpr uint64_t OUTPUT_CONV_STATES_INDEX = 0;
 constexpr uint64_t OUTPUT_Y_INDEX = 1;
@@ -320,7 +321,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckCacheIndicesDim()
 }
 
 // 属性合法性校验：activation_mode / pad_slot_id / run_mode / residual_connection /
-//                 block_size / max_query_len / conv_mode
+//                 block_size / max_query_len / conv_mode / max_draft_tokens
 // BSH 模板仅处理 2D 输入，max_query_len 不允许为 -1
 ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckAttrs()
 {
@@ -386,6 +387,13 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckAttrs()
     if (convMode_ != 0UL && convMode_ != 1UL) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "conv_mode", std::to_string(convMode_).c_str(),
                                               "The value of conv_mode must be 0 or 1");
+        return ge::GRAPH_FAILED;
+    }
+
+    // max_draft_tokens ∈ [0, 16]
+    if (maxDraftTokens_ < 0 || maxDraftTokens_ > 16) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "max_draft_tokens", std::to_string(maxDraftTokens_).c_str(),
+                                              "The value of max_draft_tokens must be between 0 and 16");
         return ge::GRAPH_FAILED;
     }
 
