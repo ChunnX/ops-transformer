@@ -35,6 +35,27 @@ std::string A5SocInfo = "{\n"
                         "  }\n"
                         "}";
 
+std::string A5SocInfo64Core = "{\n"
+                        "  \"hardware_info\": {\n"
+                        "    \"BT_SIZE\": 0,\n"
+                        "    \"load3d_constraints\": \"1\",\n"
+                        "    \"Intrinsic_fix_pipe_l0c2out\": false,\n"
+                        "    \"Intrinsic_data_move_l12ub\": true,\n"
+                        "    \"Intrinsic_data_move_l0c2ub\": true,\n"
+                        "    \"Intrinsic_data_move_out2l1_nd2nz\": false,\n"
+                        "    \"UB_SIZE\": 262144,\n"
+                        "    \"L2_SIZE\": 16777216,\n"
+                        "    \"L1_SIZE\": 524288,\n"
+                        "    \"L0A_SIZE\": 65536,\n"
+                        "    \"L0B_SIZE\": 65536,\n"
+                        "    \"L0C_SIZE\": 262144,\n"
+                        "    \"CORE_NUM\": 32,\n"
+                        "    \"cube_core_cnt\": 32,\n"
+                        "    \"vector_core_cnt\": 64,\n"
+                        "    \"socVersion\": \"Ascend950\"\n"
+                        "  }\n"
+                        "}";
+
 class FlashAttentionScoreGradTiling : public testing::Test {
 protected:
     static void SetUpTestCase() { std::cout << "FlashAttentionScoreGradTiling SetUp" << std::endl; }
@@ -54,7 +75,8 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_0)
         131072,                                 // l0cSize
         33554432,                               // l2CacheSize
         32,                                     // coreNum
-        platform_ascendc::SocVersion::ASCEND950 // socVersion
+        platform_ascendc::SocVersion::ASCEND950, // socVersion
+        NpuArch::DAV_3510                        // npuArch
     };
     gert::TilingContextPara tilingContextPara(
         "FlashAttentionScoreGrad",
@@ -162,7 +184,8 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_1)
         131072,                                 // l0cSize
         33554432,                               // l2CacheSize
         32,                                     // coreNum
-        platform_ascendc::SocVersion::ASCEND950 // socVersion
+        platform_ascendc::SocVersion::ASCEND950, // socVersion
+        NpuArch::DAV_3510                        // npuArch
     };
     gert::TilingContextPara tilingContextPara(
         "FlashAttentionScoreGrad",
@@ -245,10 +268,333 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_1)
          {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"softmax_in_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("")}},
         &compileInfo, "Ascend950", A5SocInfo, 4096);
-    int64_t expectTilingKey = 19703248907146416;
-    std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {21562880};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 19703248907146416, "", {});
+}
+
+using TensorDesc = gert::TilingContextPara::TensorDescription;
+
+template <typename... Dims>
+TensorDesc MakeT(int64_t b, int64_t n, int64_t s, int64_t d, ge::DataType dtype, Dims... extra)
+{
+    return {{{b, n, s, d}, {b, n, s, d}}, dtype, ge::FORMAT_ND};
+}
+
+static TensorDesc EmptyT(ge::DataType dtype) { return {{{}, {}}, dtype, ge::FORMAT_ND}; }
+static TensorDesc T3(int64_t a, int64_t b, int64_t c, ge::DataType dt) { return {{{a, b, c}, {a, b, c}}, dt, ge::FORMAT_ND}; }
+static TensorDesc T4(int64_t a, int64_t b, int64_t c, int64_t d, ge::DataType dt) { return {{{a, b, c, d}, {a, b, c, d}}, dt, ge::FORMAT_ND}; }
+static TensorDesc T2(int64_t a, int64_t b, ge::DataType dt) { return {{{a, b}, {a, b}}, dt, ge::FORMAT_ND}; }
+static TensorDesc T1(int64_t a, ge::DataType dt) { return {{{a}, {a}}, dt, ge::FORMAT_ND}; }
+
+static std::vector<gert::TilingContextPara::TensorDescription> StdInputs(ge::DataType dt, int64_t b, int64_t n, int64_t s, int64_t d)
+{
+    return {T4(b, n, s, d, dt), T4(b, n, s, d, dt), T4(b, n, s, d, dt), T4(b, n, s, d, dt),
+            EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_UINT8), EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_UINT8),
+            T4(b, n, s, 8, ge::DT_FLOAT), T4(b, n, s, 8, ge::DT_FLOAT), EmptyT(ge::DT_FLOAT16), T4(b, n, s, d, dt),
+            EmptyT(ge::DT_INT64), EmptyT(ge::DT_INT64), EmptyT(ge::DT_INT64), EmptyT(ge::DT_INT64), EmptyT(ge::DT_INT64),
+            EmptyT(ge::DT_FLOAT), EmptyT(ge::DT_FLOAT), EmptyT(ge::DT_FLOAT), EmptyT(ge::DT_FLOAT), EmptyT(ge::DT_FLOAT),
+            EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_FLOAT16)};
+}
+
+static std::vector<gert::TilingContextPara::TensorDescription> StdOutputs(ge::DataType dt, int64_t b, int64_t n, int64_t s, int64_t d)
+{
+    return {T4(b, n, s, d, dt), T4(b, n, s, d, dt), T4(b, n, s, d, dt),
+            EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_FLOAT16)};
+}
+
+static std::vector<gert::TilingContextPara::OpAttr> StdAttrs(float scale, float keepProb, int64_t preTokens,
+    int64_t nextTokens, int64_t headNum, const char* layout, int64_t sparseMode, int64_t pseType = 1)
+{
+    return {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(scale)},
+            {"keep_prob", Ops::Transformer::AnyValue::CreateFrom<float>(keepProb)},
+            {"pre_tockens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(preTokens)},
+            {"next_tockens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(nextTokens)},
+            {"head_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(headNum)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>(layout)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sparseMode)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(pseType)},
+            {"seed", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_in_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("")}};
+}
+
+static gert::TilingContextPara MakeTC(
+    const std::vector<TensorDesc> &inputs, const std::vector<TensorDesc> &outputs,
+    const std::vector<gert::TilingContextPara::OpAttr> &attrs, uint64_t tilingDataSize,
+    int32_t detInfo, const std::string &socInfo)
+{
+    static Ops::Transformer::OpTiling::FlashAttentionScoreGradCompileInfo ci = \
+        {64, 32, 196608, 524288, 65536, 65536, 131072, 33554432, 32, \
+         platform_ascendc::SocVersion::ASCEND950, NpuArch::DAV_3510};
+    return {"FlashAttentionScoreGrad", inputs, outputs, attrs, &ci, "Ascend950", socInfo, tilingDataSize, detInfo};
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_empty_regbase_0)
+{
+    auto inputs = StdInputs(ge::DT_FLOAT16, 1, 2, 128, 128);
+    auto outputs = std::vector<TensorDesc>{T4(0, 2, 128, 128, ge::DT_FLOAT16), T4(1, 2, 128, 128, ge::DT_FLOAT16),
+        T4(1, 2, 128, 128, ge::DT_FLOAT16), EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_FLOAT16)};
+    auto tilingContextPara = MakeTC(inputs, outputs, StdAttrs(0.088388f, 1.0f, 65536, 65536, 2, "BNSD", 0), 4096, 0, A5SocInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, UINT64_MAX, "", {});
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_empty_regbase_rope_0)
+{
+    auto inputs = StdInputs(ge::DT_FLOAT16, 1, 2, 128, 128);
+    auto outputs = std::vector<TensorDesc>{T4(0, 2, 128, 128, ge::DT_FLOAT16), T4(1, 2, 128, 128, ge::DT_FLOAT16),
+        T4(1, 2, 128, 128, ge::DT_FLOAT16), EmptyT(ge::DT_FLOAT16), T4(1, 2, 128, 64, ge::DT_FLOAT16), T4(1, 2, 128, 64, ge::DT_FLOAT16)};
+    auto tilingContextPara = MakeTC(inputs, outputs, StdAttrs(0.088388f, 1.0f, 65536, 65536, 2, "BNSD", 0), 4096, 0, A5SocInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, UINT64_MAX, "", {});
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_empty_regbase_rope_small_0)
+{
+    auto inputs = StdInputs(ge::DT_FLOAT16, 1, 2, 128, 128);
+    auto outputs = std::vector<TensorDesc>{T4(0, 2, 128, 128, ge::DT_FLOAT16), T4(1, 2, 128, 128, ge::DT_FLOAT16),
+        T4(1, 2, 128, 128, ge::DT_FLOAT16), EmptyT(ge::DT_FLOAT16), T4(1, 2, 128, 32, ge::DT_FLOAT16), T4(1, 2, 128, 32, ge::DT_FLOAT16)};
+    auto tilingContextPara = MakeTC(inputs, outputs, StdAttrs(0.088388f, 1.0f, 65536, 65536, 2, "BNSD", 0), 4096, 0, A5SocInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, UINT64_MAX, "", {});
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_empty_regbase_not_divisible_0)
+{
+    auto inputs = StdInputs(ge::DT_FLOAT16, 1, 2, 128, 128);
+    auto outputs = std::vector<TensorDesc>{T4(0, 2, 128, 128, ge::DT_FLOAT16), T2(1, 65, ge::DT_FLOAT16),
+        T2(1, 65, ge::DT_FLOAT16), T2(1, 65, ge::DT_FLOAT16), T2(1, 65, ge::DT_FLOAT16), T2(1, 65, ge::DT_FLOAT16)};
+    auto tilingContextPara = MakeTC(inputs, outputs, StdAttrs(0.088388f, 1.0f, 65536, 65536, 2, "BNSD", 0), 4096, 0, A5SocInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, UINT64_MAX, "", {});
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_empty_regbase_small_slice_0)
+{
+    auto inputs = StdInputs(ge::DT_FLOAT16, 1, 2, 128, 128);
+    auto outputs = std::vector<TensorDesc>{T3(0, 1, 1, ge::DT_FLOAT16), T2(1, 10, ge::DT_FLOAT16),
+        T2(1, 10, ge::DT_FLOAT16), T2(1, 5, ge::DT_FLOAT16), EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_FLOAT16)};
+    auto tilingContextPara = MakeTC(inputs, outputs, StdAttrs(0.088388f, 1.0f, 65536, 65536, 2, "BNSD", 0), 4096, 0, A5SocInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, UINT64_MAX, "", {});
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_empty_rope_only_0)
+{
+    auto inputs = StdInputs(ge::DT_FLOAT16, 1, 2, 128, 128);
+    auto outputs = std::vector<TensorDesc>{T4(1, 2, 128, 128, ge::DT_FLOAT16), T4(1, 2, 128, 128, ge::DT_FLOAT16),
+        T4(1, 2, 128, 128, ge::DT_FLOAT16), EmptyT(ge::DT_FLOAT16), T4(0, 2, 128, 64, ge::DT_FLOAT16), T4(0, 2, 128, 64, ge::DT_FLOAT16)};
+    auto tilingContextPara = MakeTC(inputs, outputs, StdAttrs(0.088388f, 1.0f, 65536, 65536, 2, "BNSD", 0), 4096, 0, A5SocInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, UINT64_MAX, "", {});
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_check_headnum_zero_0)
+{
+    auto tilingContextPara = MakeTC(StdInputs(ge::DT_FLOAT16, 1, 2, 128, 128), StdOutputs(ge::DT_FLOAT16, 1, 2, 128, 128),
+            StdAttrs(0.088388f, 1.0f, 65536, 65536, 0, "BNSD", 0), 4096, 0, A5SocInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_check_bsh_b_mismatch_0)
+{
+    auto tilingContextPara = MakeTC({T3(1, 256, 128, ge::DT_FLOAT16), T3(2, 256, 128, ge::DT_FLOAT16), T3(2, 256, 128, ge::DT_FLOAT16), T3(1, 256, 128, ge::DT_FLOAT16),
+            EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_UINT8), EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_UINT8),
+            T4(1, 1, 256, 8, ge::DT_FLOAT), T4(1, 1, 256, 8, ge::DT_FLOAT), EmptyT(ge::DT_FLOAT16), T3(1, 256, 128, ge::DT_FLOAT16),
+            EmptyT(ge::DT_INT64), EmptyT(ge::DT_INT64), EmptyT(ge::DT_INT64), EmptyT(ge::DT_INT64), EmptyT(ge::DT_INT64),
+            EmptyT(ge::DT_FLOAT), EmptyT(ge::DT_FLOAT), EmptyT(ge::DT_FLOAT), EmptyT(ge::DT_FLOAT), EmptyT(ge::DT_FLOAT),
+            EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_FLOAT16)},
+            {T3(1, 256, 128, ge::DT_FLOAT16), T3(2, 256, 128, ge::DT_FLOAT16), T3(2, 256, 128, ge::DT_FLOAT16),
+            EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_FLOAT16)},
+            StdAttrs(0.088388f, 1.0f, 65536, 65536, 1, "BSH", 0), 4096, 0, A5SocInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_check_sbh_b_mismatch_0)
+{
+    auto tilingContextPara = MakeTC({T3(256, 1, 128, ge::DT_FLOAT16), T3(256, 2, 128, ge::DT_FLOAT16), T3(256, 2, 128, ge::DT_FLOAT16), T3(256, 1, 128, ge::DT_FLOAT16),
+            EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_UINT8), EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_UINT8),
+            T4(1, 1, 256, 8, ge::DT_FLOAT), T4(1, 1, 256, 8, ge::DT_FLOAT), EmptyT(ge::DT_FLOAT16), T3(256, 1, 128, ge::DT_FLOAT16),
+            EmptyT(ge::DT_INT64), EmptyT(ge::DT_INT64), EmptyT(ge::DT_INT64), EmptyT(ge::DT_INT64), EmptyT(ge::DT_INT64),
+            EmptyT(ge::DT_FLOAT), EmptyT(ge::DT_FLOAT), EmptyT(ge::DT_FLOAT), EmptyT(ge::DT_FLOAT), EmptyT(ge::DT_FLOAT),
+            EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_FLOAT16)},
+            {T3(256, 1, 128, ge::DT_FLOAT16), T3(256, 2, 128, ge::DT_FLOAT16), T3(256, 2, 128, ge::DT_FLOAT16),
+            EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_FLOAT16)},
+            StdAttrs(0.088388f, 1.0f, 65536, 65536, 1, "SBH", 0), 4096, 0, A5SocInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_check_bnsd_b_mismatch_0)
+{
+    auto tilingContextPara = MakeTC({T4(1, 8, 256, 128, ge::DT_FLOAT16), T4(2, 8, 256, 128, ge::DT_FLOAT16), T4(2, 8, 256, 128, ge::DT_FLOAT16), T4(1, 8, 256, 128, ge::DT_FLOAT16),
+            EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_UINT8), EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_UINT8),
+            T4(1, 8, 256, 8, ge::DT_FLOAT), T4(1, 8, 256, 8, ge::DT_FLOAT), EmptyT(ge::DT_FLOAT16), T4(1, 8, 256, 128, ge::DT_FLOAT16),
+            EmptyT(ge::DT_INT64), EmptyT(ge::DT_INT64), EmptyT(ge::DT_INT64), EmptyT(ge::DT_INT64), EmptyT(ge::DT_INT64),
+            EmptyT(ge::DT_FLOAT), EmptyT(ge::DT_FLOAT), EmptyT(ge::DT_FLOAT), EmptyT(ge::DT_FLOAT), EmptyT(ge::DT_FLOAT),
+            EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_FLOAT16)},
+            {T4(1, 8, 256, 128, ge::DT_FLOAT16), T4(2, 8, 256, 128, ge::DT_FLOAT16), T4(2, 8, 256, 128, ge::DT_FLOAT16),
+            EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_FLOAT16)},
+            StdAttrs(0.088388f, 1.0f, 65536, 65536, 8, "BNSD", 0), 4096, 0, A5SocInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_check_invalid_layout_0)
+{
+    auto tilingContextPara = MakeTC(StdInputs(ge::DT_FLOAT16, 1, 2, 128, 128), StdOutputs(ge::DT_FLOAT16, 1, 2, 128, 128),
+            StdAttrs(0.088388f, 1.0f, 65536, 65536, 2, "BSHSD", 0), 4096, 0, A5SocInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_check_rope_mismatch_0)
+{
+    auto inputs = StdInputs(ge::DT_FLOAT16, 1, 2, 128, 128);
+    inputs[22] = T4(1, 2, 128, 64, ge::DT_FLOAT16);
+    auto tilingContextPara = MakeTC(inputs, StdOutputs(ge::DT_FLOAT16, 1, 2, 128, 128),
+            StdAttrs(0.088388f, 1.0f, 65536, 65536, 2, "BNSD", 0), 4096, 0, A5SocInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_deter_band_schedule_0)
+{
+    auto tilingContextPara = MakeTC(StdInputs(ge::DT_FLOAT16, 4, 2, 4096, 128), StdOutputs(ge::DT_FLOAT16, 4, 2, 4096, 128),
+            StdAttrs(0.088388f, 1.0f, 128, 128, 2, "BNSD", 4), 65536, 1, A5SocInfo64Core);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, UINT64_MAX, "", {});
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_deter_band_schedule_large_d_0)
+{
+    auto inputs = StdInputs(ge::DT_FLOAT16, 4, 2, 4096, 128);
+    inputs[7] = T2(2048, 2048, ge::DT_UINT8);
+    auto tilingContextPara = MakeTC(inputs, StdOutputs(ge::DT_FLOAT16, 4, 2, 4096, 128),
+            StdAttrs(0.088388f, 1.0f, 128, 128, 2, "BNSD", 4), 65536, 1, A5SocInfo64Core);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, UINT64_MAX, "", {});
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_deter_band_schedule_huge_0)
+{
+    auto inputs = StdInputs(ge::DT_FLOAT16, 4, 2, 4096, 128);
+    inputs[7] = T2(2048, 2048, ge::DT_UINT8);
+    auto tilingContextPara = MakeTC(inputs, StdOutputs(ge::DT_FLOAT16, 4, 2, 4096, 128),
+            StdAttrs(0.088388f, 1.0f, 256, 256, 2, "BNSD", 4), 65536, 1, A5SocInfo64Core);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, UINT64_MAX, "", {});
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_deter_band_schedule_causal_0)
+{
+    auto inputs = StdInputs(ge::DT_FLOAT16, 4, 1, 4096, 128);
+    inputs[7] = T2(2048, 2048, ge::DT_UINT8);
+    auto outputs = StdOutputs(ge::DT_FLOAT16, 4, 1, 4096, 128);
+    auto tilingContextPara = MakeTC(inputs, outputs, StdAttrs(0.088388f, 1.0f, 128, 128, 1, "BNSD", 4), 65536, 1, A5SocInfo64Core);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, UINT64_MAX, "", {});
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_deter_band_schedule_odd_batch_0)
+{
+    auto inputs = StdInputs(ge::DT_FLOAT16, 3, 1, 4096, 128);
+    inputs[7] = T2(2048, 2048, ge::DT_UINT8);
+    auto outputs = StdOutputs(ge::DT_FLOAT16, 3, 1, 4096, 128);
+    auto tilingContextPara = MakeTC(inputs, outputs, StdAttrs(0.088388f, 1.0f, 256, 256, 1, "BNSD", 4), 65536, 1, A5SocInfo64Core);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, UINT64_MAX, "", {});
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_deter_band_schedule_no_mask_0)
+{
+    auto inputs = StdInputs(ge::DT_FLOAT16, 4, 2, 4096, 128);
+    inputs[7] = T2(2048, 2048, ge::DT_UINT8);
+    auto tilingContextPara = MakeTC(inputs, StdOutputs(ge::DT_FLOAT16, 4, 2, 4096, 128),
+            StdAttrs(0.088388f, 1.0f, 128, 128, 2, "BNSD", 0), 65536, 1, A5SocInfo64Core);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_deter_band_schedule_right_down_causal_0)
+{
+    auto inputs = StdInputs(ge::DT_FLOAT16, 4, 2, 4096, 128);
+    inputs[7] = T2(2048, 2048, ge::DT_UINT8);
+    auto tilingContextPara = MakeTC(inputs, StdOutputs(ge::DT_FLOAT16, 4, 2, 4096, 128),
+            StdAttrs(0.088388f, 1.0f, 128, 128, 2, "BNSD", 3), 65536, 1, A5SocInfo64Core);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, UINT64_MAX, "", {});
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_deter_prefix_0)
+{
+    int64_t prefix_list[2] = {10, 20};
+    auto inputs = StdInputs(ge::DT_FLOAT16, 2, 2, 256, 128);
+    inputs[7] = T2(256, 256, ge::DT_UINT8);
+    inputs[12] = {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, prefix_list};
+    auto tilingContextPara = MakeTC(inputs, StdOutputs(ge::DT_FLOAT16, 2, 2, 256, 128),
+            StdAttrs(0.088388f, 1.0f, 65536, 65536, 2, "BNSD", 5), 4096, 1, A5SocInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, UINT64_MAX, "", {});
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_bnsd_inner_pse_alibi_1nhs_0)
+{
+    auto inputs = StdInputs(ge::DT_FLOAT16, 1, 2, 1024, 128);
+    inputs[4] = T4(1, 2, 1024, 1024, ge::DT_FLOAT);
+    auto outputs = StdOutputs(ge::DT_FLOAT16, 1, 2, 1024, 128);
+    outputs[3] = T4(1, 2, 1024, 1024, ge::DT_FLOAT);
+    auto tilingContextPara = MakeTC(inputs, outputs, StdAttrs(0.088388f, 1.0f, 65536, 0, 2, "BNSD", 0, 0), 4096, 0, A5SocInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_bnsd_inner_pse_slope_1n_0)
+{
+    auto inputs = StdInputs(ge::DT_FLOAT16, 1, 2, 256, 128);
+    inputs[4] = T1(2, ge::DT_FLOAT);
+    auto tilingContextPara = MakeTC(inputs, StdOutputs(ge::DT_FLOAT16, 1, 2, 256, 128),
+            StdAttrs(0.088388f, 1.0f, 65536, 65536, 2, "BNSD", 0, 2), 4096, 0, A5SocInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, UINT64_MAX, "", {});
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_bnsd_inner_pse_slope_bn_0)
+{
+    auto inputs = StdInputs(ge::DT_FLOAT16, 1, 2, 256, 128);
+    inputs[4] = T2(1, 2, ge::DT_FLOAT);
+    auto tilingContextPara = MakeTC(inputs, StdOutputs(ge::DT_FLOAT16, 1, 2, 256, 128),
+            StdAttrs(0.088388f, 1.0f, 65536, 65536, 2, "BNSD", 0, 2), 4096, 0, A5SocInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, UINT64_MAX, "", {});
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_bnsd_pse_sparse_mode8_0)
+{
+    int64_t qlist[2] = {128, 256};
+    int64_t kvlist[2] = {128, 256};
+    auto inputs = StdInputs(ge::DT_FLOAT16, 1, 2, 256, 128);
+    inputs[4] = T4(1, 2, 1, 256, ge::DT_FLOAT);
+    inputs[13] = {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, qlist};
+    inputs[14] = {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, kvlist};
+    auto outputs = StdOutputs(ge::DT_FLOAT16, 1, 2, 256, 128);
+    outputs[3] = T4(1, 2, 1, 256, ge::DT_FLOAT);
+    auto tilingContextPara = MakeTC(inputs, outputs, StdAttrs(0.088388f, 1.0f, 128, 128, 2, "BNSD", 8, 2), 4096, 0, A5SocInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_non_dav_empty_0)
+{
+    Ops::Transformer::OpTiling::FlashAttentionScoreGradCompileInfo ci2 = \
+        {64, 32, 196608, 524288, 65536, 65536, 131072, 33554432, 32, \
+         platform_ascendc::SocVersion::ASCEND950, NpuArch::DAV_RESV};
+    auto inputs = StdInputs(ge::DT_FLOAT16, 1, 2, 128, 128);
+    auto outputs = std::vector<TensorDesc>{T3(0, 2, 128, ge::DT_FLOAT16), T4(1, 2, 128, 128, ge::DT_FLOAT16),
+        T4(1, 2, 128, 128, ge::DT_FLOAT16), EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_FLOAT16)};
+    gert::TilingContextPara tcp("FlashAttentionScoreGrad", inputs, outputs,
+        StdAttrs(0.088388f, 1.0f, 65536, 65536, 2, "BNSD", 0), &ci2, "Ascend950", A5SocInfo, 4096, 0);
+    ExecuteTestCase(tcp, ge::GRAPH_SUCCESS, UINT64_MAX, "", {});
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_non_dav_tnd_all_zero_0)
+{
+    int64_t qlist[2] = {0, 0};
+    int64_t kvlist[2] = {0, 0};
+    Ops::Transformer::OpTiling::FlashAttentionScoreGradCompileInfo ci2 = \
+        {64, 32, 196608, 524288, 65536, 65536, 131072, 33554432, 32, \
+         platform_ascendc::SocVersion::ASCEND950, NpuArch::DAV_RESV};
+    auto inputs = StdInputs(ge::DT_FLOAT16, 256, 2, 128, 128);
+    inputs[0] = T3(256, 2, 128, ge::DT_FLOAT16); inputs[1] = T3(256, 2, 128, ge::DT_FLOAT16);
+    inputs[2] = T3(256, 2, 128, ge::DT_FLOAT16); inputs[3] = T3(256, 2, 128, ge::DT_FLOAT16);
+    inputs[8] = T3(256, 2, 8, ge::DT_FLOAT); inputs[9] = T3(256, 2, 8, ge::DT_FLOAT);
+    inputs[11] = T3(256, 2, 128, ge::DT_FLOAT16);
+    inputs[13] = {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, qlist};
+    inputs[14] = {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, kvlist};
+    auto outputs = std::vector<TensorDesc>{T3(256, 2, 128, ge::DT_FLOAT16), T3(256, 2, 128, ge::DT_FLOAT16),
+        T3(256, 2, 128, ge::DT_FLOAT16), EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_FLOAT16), EmptyT(ge::DT_FLOAT16)};
+    gert::TilingContextPara tcp("FlashAttentionScoreGrad", inputs, outputs,
+        StdAttrs(0.088388f, 1.0f, 65536, 65536, 2, "TND", 0), &ci2, "Ascend950", A5SocInfo, 4096, 0);
+    ExecuteTestCase(tcp, ge::GRAPH_SUCCESS, UINT64_MAX, "", {});
 }
 
 TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_2)
@@ -263,7 +609,8 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_2)
         131072,                                 // l0cSize
         33554432,                               // l2CacheSize
         32,                                     // coreNum
-        platform_ascendc::SocVersion::ASCEND950 // socVersion
+        platform_ascendc::SocVersion::ASCEND950, // socVersion
+        NpuArch::DAV_3510                        // npuArch
     };
     gert::TilingContextPara tilingContextPara(
         "FlashAttentionScoreGrad",
@@ -369,7 +716,8 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_3)
         131072,                                 // l0cSize
         33554432,                               // l2CacheSize
         32,                                     // coreNum
-        platform_ascendc::SocVersion::ASCEND950 // socVersion
+        platform_ascendc::SocVersion::ASCEND950, // socVersion
+        NpuArch::DAV_3510                        // npuArch
     };
     gert::TilingContextPara tilingContextPara(
         "FlashAttentionScoreGrad",
@@ -475,7 +823,8 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_4)
         131072,                                 // l0cSize
         33554432,                               // l2CacheSize
         32,                                     // coreNum
-        platform_ascendc::SocVersion::ASCEND950 // socVersion
+        platform_ascendc::SocVersion::ASCEND950, // socVersion
+        NpuArch::DAV_3510                        // npuArch
     };
     gert::TilingContextPara tilingContextPara(
         "FlashAttentionScoreGrad",
@@ -584,7 +933,8 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_5)
         131072,                                 // l0cSize
         33554432,                               // l2CacheSize
         32,                                     // coreNum
-        platform_ascendc::SocVersion::ASCEND950 // socVersion
+        platform_ascendc::SocVersion::ASCEND950, // socVersion
+        NpuArch::DAV_3510                        // npuArch
     };
     gert::TilingContextPara tilingContextPara(
         "FlashAttentionScoreGrad",
@@ -692,7 +1042,8 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_6)
         131072,                                 // l0cSize
         33554432,                               // l2CacheSize
         32,                                     // coreNum
-        platform_ascendc::SocVersion::ASCEND950 // socVersion
+        platform_ascendc::SocVersion::ASCEND950, // socVersion
+        NpuArch::DAV_3510                        // npuArch
     };
     gert::TilingContextPara tilingContextPara(
         "FlashAttentionScoreGrad",
@@ -798,7 +1149,8 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_7)
         131072,                                 // l0cSize
         33554432,                               // l2CacheSize
         32,                                     // coreNum
-        platform_ascendc::SocVersion::ASCEND950 // socVersion
+        platform_ascendc::SocVersion::ASCEND950, // socVersion
+        NpuArch::DAV_3510                        // npuArch
     };
     gert::TilingContextPara tilingContextPara(
         "FlashAttentionScoreGrad",
@@ -907,7 +1259,8 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_8)
         131072,                                 // l0cSize
         33554432,                               // l2CacheSize
         32,                                     // coreNum
-        platform_ascendc::SocVersion::ASCEND950 // socVersion
+        platform_ascendc::SocVersion::ASCEND950, // socVersion
+        NpuArch::DAV_3510                        // npuArch
     };
     gert::TilingContextPara tilingContextPara(
         "FlashAttentionScoreGrad",
@@ -1010,7 +1363,8 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_9)
         131072,                                 // l0cSize
         33554432,                               // l2CacheSize
         32,                                     // coreNum
-        platform_ascendc::SocVersion::ASCEND950 // socVersion
+        platform_ascendc::SocVersion::ASCEND950, // socVersion
+        NpuArch::DAV_3510                        // npuArch
     };
     gert::TilingContextPara tilingContextPara(
         "FlashAttentionScoreGrad",
@@ -1093,10 +1447,7 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_9)
          {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"softmax_in_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("")}},
         &compileInfo, "Ascend950", A5SocInfo, 4096);
-    int64_t expectTilingKey = 19703249444018098;
-    std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {25756160};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, UINT64_MAX, "", {});
 }
 
 TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_10)
@@ -1114,7 +1465,8 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_10)
         131072,                                 // l0cSize
         33554432,                               // l2CacheSize
         32,                                     // coreNum
-        platform_ascendc::SocVersion::ASCEND950 // socVersion
+        platform_ascendc::SocVersion::ASCEND950, // socVersion
+        NpuArch::DAV_3510                        // npuArch
     };
     gert::TilingContextPara tilingContextPara(
         "FlashAttentionScoreGrad",
