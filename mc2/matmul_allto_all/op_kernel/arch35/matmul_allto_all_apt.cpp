@@ -103,23 +103,13 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
 #endif
 
 #ifndef MATMUL_ALLTO_ALL_APACE_MX_QUANT_IMPL
-#define MATMUL_ALLTO_ALL_APACE_MX_QUANT_IMPL(tilingData, pipe, ServerType)                                             \
+#define MATMUL_ALLTO_ALL_APACE_MX_QUANT_IMPL(tilingData, ServerType)                                                   \
     do {                                                                                                               \
-        DEFINE_APACE_CONTEXT_FOR_QUANT_MATMUL_ALL_TO_ALL_MX(MxComputationContextType);                               \
-        DEFINE_APACE_COMPUTATION_FOR_QUANT_MATMUL_ALL_TO_ALL_MX(MxComputationType);                                  \
-        MxComputationType matmulImplName(&pipe);                                                                       \
-        DEFINE_MC2_HCCL_FOR_COMMUNICATION(true, ServerType, MC2AlltoAllContext, hcommMatmulAllToAllTilingData,         \
-                                          MC2AlltoAllPrimitives, 1, 0, CommunicationType);                             \
-        CommunicationType commImplName(&tilingData);                                                                   \
-        using SchedulerContextType = Apace::QuantMatmulAllToAllPipelineContext<MxComputationContextType>;             \
-        using SchedulerType = Apace::QuantMatmulAllToAllPipeline<                                                     \
-            MxComputationType, CommunicationType, SchedulerContextType>;                                               \
-        SchedulerType SchedulerImpl(&matmulImplName, &commImplName);                                                   \
-        Mc2Kernel::MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType,                                    \
-                                                hcommMatmulAllToAllTilingData, true>                                   \
-            op(&SchedulerImpl);                                                                                        \
-        op.Init(x1, x2, bias, y, x1Scale, x2Scale, workspaceGM, &tilingData, &pipe);                                   \
-        op.Process();                                                                                                  \
+        Apace::MatmulAllToAllMxQuantMatmulHcommImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y,                                      \
+                                                     hcommMatmulAllToAllTilingData, ServerType>                        \
+            op(&tilingData);                                                                                           \
+        op.Init(x1, x2, bias, y, x1Scale, x2Scale, workspaceGM);                                                       \
+        op.Run();                                                                                                      \
     } while (0)
 #endif
 
@@ -130,10 +120,6 @@ __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
 {
     // kernel的使用类型，这里是cube和vic混用，cube是主核，cube:vec=1:2
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    // APACE MX keys run Blaze and Hcomm entirely on Cube cores. Other keys
-    // retain the legacy MIX_AIC task type because they still use AIV stages.
-    KERNEL_TASK_TYPE(1074, KERNEL_TYPE_AIC_ONLY); // CCU, usingApaceImpl = 1
-    KERNEL_TASK_TYPE(1586, KERNEL_TYPE_AIC_ONLY); // AICPU, usingApaceImpl = 1
     TPipe pipe;
     constexpr HcclServerType commServerType =
         (COMMMODE == COMMMODE_CCU) ? HcclServerType::HCCL_SERVER_TYPE_CCU : HcclServerType::HCCL_SERVER_TYPE_AICPU;
@@ -154,7 +140,7 @@ __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     REGISTER_TILING_DEFAULT(QuantMatmulAlltoAllTilingData);
     if constexpr (USING_APACE_IMPL) {
         GET_TILING_DATA_WITH_STRUCT(hcommMatmulAllToAllTilingData, tilingData, tilingGM);
-        MATMUL_ALLTO_ALL_APACE_MX_QUANT_IMPL(tilingData, pipe, commServerType);
+        MATMUL_ALLTO_ALL_APACE_MX_QUANT_IMPL(tilingData, commServerType);
     } else {
         GET_TILING_DATA_WITH_STRUCT(QuantMatmulAlltoAllTilingData, tilingData, tilingGM);
         MATMUL_ALLTO_ALL_APT_MX_QUANT_IMPL(tilingData, pipe, commServerType);
@@ -167,7 +153,7 @@ __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     } else if constexpr (QUANTMODE == MX_QUANT_MODE) {
         if constexpr (USING_APACE_IMPL) {
             GET_TILING_DATA_WITH_STRUCT(hcommMatmulAllToAllTilingData, tilingData, tilingGM);
-            MATMUL_ALLTO_ALL_APACE_MX_QUANT_IMPL(tilingData, pipe, commServerType);
+            MATMUL_ALLTO_ALL_APACE_MX_QUANT_IMPL(tilingData, commServerType);
         } else {
             GET_TILING_DATA_WITH_STRUCT(QuantMatmulAlltoAllTilingData, tilingData, tilingGM);
             MATMUL_ALLTO_ALL_APT_MX_QUANT_IMPL(tilingData, pipe, commServerType);
