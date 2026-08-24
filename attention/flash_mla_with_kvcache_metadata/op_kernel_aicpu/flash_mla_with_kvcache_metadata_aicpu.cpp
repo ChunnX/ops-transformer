@@ -66,13 +66,10 @@ bool FlashMlaWithKvcacheMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     KERNEL_CHECK_FALSE(requiredAttrs, false, "Missing Required attrs missing!");
 
     // attributes optional
-    GetAttrValueOpt(ctx, "batch_size", batchSize_);
     GetAttrValueOpt(ctx, "max_seqlen_q", maxSeqlenQ_);
     GetAttrValueOpt(ctx, "max_seqlen_kv", maxSeqlenKv_);
     GetAttrValueOpt(ctx, "mask_mode", maskMode_);
     GetAttrValueOpt(ctx, "layout_q", layoutQ_);
-    GetAttrValueOpt(ctx, "layout_kv", layoutKv_);
-    GetAttrValueOpt(ctx, "layout_out", layoutOut_);
 
     KERNEL_CHECK_FALSE(ParamsCheck(), false, "Params check failed");
     return ParamsInit();
@@ -90,6 +87,9 @@ bool FlashMlaWithKvcacheMetadataCpuKernel::ParamsCheck()
 {
     KERNEL_CHECK_FALSE(CheckActualQuerySeq(), false, "Check query sequence failed");
     KERNEL_CHECK_FALSE(CheckActualKvSeq(), false, "Check kv sequence failed");
+    // batch size 由必传的 cacheSeqlens 长度推导（每 batch 一项），batch_size attr 已移除
+    KERNEL_CHECK_FALSE(!actualSeqlenKv_.empty(), false,
+                       "cacheSeqlens must be provided to derive batch_size");
     return true;
 }
 
@@ -197,7 +197,7 @@ void FlashMlaWithKvcacheMetadataCpuKernel::InitLoadBalanceParams()
 
 void FlashMlaWithKvcacheMetadataCpuKernel::InitBaseInfo()
 {
-    baseInfo.batchSize = (actualSeqlenQ_.empty()) ? batchSize_ : actualSeqlenQ_.size();
+    baseInfo.batchSize = actualSeqlenKv_.size();
     baseInfo.querySeqSize = maxSeqlenQ_;
     baseInfo.queryHeadNum = numHeadsQ_;
     baseInfo.kvSeqSize = maxSeqlenKv_;
@@ -218,7 +218,6 @@ void FlashMlaWithKvcacheMetadataCpuKernel::InitBaseInfo()
     baseInfo.preToken = std::numeric_limits<uint32_t>::max();
     baseInfo.nextToken = std::numeric_limits<uint32_t>::max();
     baseInfo.layoutQuery = load_balance::ConvertToLayout(layoutQ_);
-    baseInfo.layoutKv = load_balance::ConvertToLayout(layoutKv_);
     baseInfo.queryType = load_balance::DataType::FP16;
     baseInfo.kvType = load_balance::DataType::FP16;
     baseInfo.isCumulativeKvSeq = isActualSeqlenKvAccum_;

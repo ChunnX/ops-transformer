@@ -50,24 +50,23 @@ int64_t CalculateMlaMetadataSizeBytes(int64_t batchSize)
     return ((bytes + MLA_METADATA_ALIGN_BYTES - 1) / MLA_METADATA_ALIGN_BYTES) * MLA_METADATA_ALIGN_BYTES;
 }
 
-at::Tensor FlashMlaWithKvcacheMetadata(const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cacheSeqlens,
-                                       const c10::optional<at::Tensor> &sequsedQ, int64_t batchSize, int64_t maxSeqlenQ,
+at::Tensor FlashMlaWithKvcacheMetadata(const c10::optional<at::Tensor> &cuSeqlensQ, const at::Tensor &cacheSeqlens,
+                                       const c10::optional<at::Tensor> &sequsedQ, int64_t maxSeqlenQ,
                                        int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDimQk,
-                                       int64_t headDimV, int64_t maskMode, std::string layoutQ, std::string layoutKv,
-                                       std::string layoutOut, const at::Tensor &output)
+                                       int64_t headDimV, int64_t maskMode, std::string layoutQ,
+                                       const at::Tensor &output)
 {
-    // Device inference from the optional seq-lens tensors (sparse_flash_mla precedent).
+    // Device inference from the seq-lens tensors (sparse_flash_mla precedent): cacheSeqlens 必传, cu/seq 可选.
     at::Device outputDevice = at::Device(std::string("npu"));
     if (cuSeqlensQ.has_value()) {
         outputDevice = cuSeqlensQ.value().device();
-    } else if (cacheSeqlens.has_value()) {
-        outputDevice = cacheSeqlens.value().device();
-    } else if (sequsedQ.has_value()) {
-        outputDevice = sequsedQ.value().device();
+    } else {
+        outputDevice = cacheSeqlens.device();
     }
 
-    // Explicit capacity check (B2/D16): batchSize here is the batch size resolved on the Python side
-    // (see flash_mla_with_kvcache.py flash_mla_with_kvcache_metadata impl), so the kv==1 worst-case bound is computable.
+    // Explicit capacity check (B2/D16): batchSize is derived from the required cacheSeqlens length
+    // (batch = cacheSeqlens.size(0), same source as the Python side), so the kv==1 worst-case bound is computable.
+    int64_t batchSize = cacheSeqlens.size(0);
     int64_t requiredBytes = CalculateMlaMetadataSizeBytes(batchSize);
     TORCH_CHECK(static_cast<int64_t>(output.nbytes()) >= requiredBytes,
                 "The metadata tensor is too small: ", output.nbytes(), " bytes, required at least ", requiredBytes,
@@ -75,19 +74,16 @@ at::Tensor FlashMlaWithKvcacheMetadata(const c10::optional<at::Tensor> &cuSeqlen
                                                      "aligned to 4096; kv head num is 1 for MLA). Use the buffer returned by flash_mla_with_kvcache_metadata.");
 
     auto cuSeqlensQVal = get_valid_tensor(cuSeqlensQ, outputDevice);
-    auto cacheSeqlensVal = get_valid_tensor(cacheSeqlens, outputDevice);
     auto sequsedQVal = get_valid_tensor(sequsedQ, outputDevice);
 
     // ACLNN_CMD's ConvertTypes binds non-const lvalue refs -> hoist layout strings into char* lvalues
     // (direct .c_str()/.data() rvalues fail to compile; flash_attn.cpp same pattern).
     char *layoutQPtr = const_cast<char *>(layoutQ.c_str());
-    char *layoutKvPtr = const_cast<char *>(layoutKv.c_str());
-    char *layoutOutPtr = const_cast<char *>(layoutOut.c_str());
 
     // Call order must match the schema/def input order (N5): cu_seqlens_q, cache_seqlens, seqused_q first,
-    // then int attrs, then layouts, then the output buffer.
-    ACLNN_CMD(aclnnFlashMlaWithKvcacheMetadata, cuSeqlensQVal, cacheSeqlensVal, sequsedQVal, batchSize, maxSeqlenQ, maxSeqlenKv,
-              numHeadsQ, numHeadsKv, headDimQk, headDimV, maskMode, layoutQPtr, layoutKvPtr, layoutOutPtr, output);
+    // then int attrs, then layout_q, then the output buffer.
+    ACLNN_CMD(aclnnFlashMlaWithKvcacheMetadata, cuSeqlensQVal, cacheSeqlens, sequsedQVal, maxSeqlenQ, maxSeqlenKv,
+              numHeadsQ, numHeadsKv, headDimQk, headDimV, maskMode, layoutQPtr, output);
     return output;
 }
 
