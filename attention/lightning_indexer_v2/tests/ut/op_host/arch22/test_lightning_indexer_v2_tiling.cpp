@@ -140,14 +140,14 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_3)
             {{{2, 39, 64, 128}, {2, 39, 64, 128}}, ge::DT_BF16, ge::FORMAT_ND}, // q            input0
             {{{2, 64, 1, 128}, {2, 64, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},   // k            input1
             {{{2, 39, 64}, {2, 39, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},          // w            input2
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                    // cu_seqlens_q input3
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                    // cu_seqlens_k input4
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                    // seqused_q    input5
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                    // seqused_k    input6
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                    // cmp_residual_k input7
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                    // block_table  input8
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                    // output_idx_offset input9
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true}                     // metadata     input10
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // cu_seqlens_q input3
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // cu_seqlens_k input4
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // seqused_q    input5
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // seqused_k    input6
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // cmp_residual_k input7
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // block_table  input8
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // output_idx_offset input9
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}                             // metadata     input10
         },
         {
             {{{2, 39, 1, 2048}, {2, 39, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices
@@ -163,7 +163,7 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_3)
         &compileInfo, "Ascend910B", 64, 262144, 16384);
     int64_t expectTilingKey = 203547;
     std::string expectTilingData = "2 167503724608 8796093022272 274877906944 0 3 "
-                                   "9223372036854775807 9223372036854775807 1 0 ";
+                                   "9223372036854775807 9223372036854775807 1 0 0 ";
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
@@ -181,14 +181,14 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_4)
              ge::DT_BF16,
              ge::FORMAT_ND}, // k            input1 (block_num=2, block_size=16, N2=1, D=128)
             {{{2, 39, 64}, {2, 39, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},       // w            input2
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                 // cu_seqlens_q input3
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // cu_seqlens_q input3
             {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, seqused_k_list}, // cu_seqlens_k input4
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                 // seqused_q    input5
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // seqused_q    input5
             {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true},                 // seqused_k    input6
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                 // cmp_residual_k input7
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // cmp_residual_k input7
             {{{2, 1}, {2, 1}}, ge::DT_INT32, ge::FORMAT_ND},                 // block_table  input8
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                 // output_idx_offset input9
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true}                  // metadata     input10
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // output_idx_offset input9
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}                          // metadata     input10
         },
         {
             {{{2, 39, 1, 2048}, {2, 39, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices
@@ -204,7 +204,7 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_4)
         &compileInfo, "Ascend910B", 64, 262144, 16384);
     int64_t expectTilingKey = 1090722587;
     std::string expectTilingData = "2 167503724608 8796093022224 274877906944 4294967312 3 "
-                                   "9223372036854775807 9223372036854775807 1 0 ";
+                                   "9223372036854775807 9223372036854775807 1 0 0 ";
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
@@ -219,14 +219,14 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_5)
             {{{2, 39, 64, 128}, {2, 39, 64, 128}}, ge::DT_BF16, ge::FORMAT_ND}, // q            input0
             {{{2, 64, 1, 128}, {2, 64, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},   // k            input1
             {{{2, 39, 64}, {2, 39, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},          // w            input2
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                    // cu_seqlens_q input3
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                    // cu_seqlens_k input4
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                    // seqused_q    input5
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                    // seqused_k    input6
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                    // cmp_residual_k input7
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                    // block_table  input8
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                    // output_idx_offset input9
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true}                     // metadata     input10
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // cu_seqlens_q input3
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // cu_seqlens_k input4
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // seqused_q    input5
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // seqused_k    input6
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // cmp_residual_k input7
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // block_table  input8
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // output_idx_offset input9
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}                             // metadata     input10
         },
         {
             {{{2, 39, 1, 2048}, {2, 39, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices
@@ -254,17 +254,17 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_6)
             {{{2, 39, 64, 128}, {2, 39, 64, 128}}, ge::DT_BF16, ge::FORMAT_ND}, // q            input0
             {{{2, 64, 1, 128}, {2, 64, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},   // k            input1
             {{{2, 39, 64}, {2, 39, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},          // w            input2
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                    // cu_seqlens_q input3
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                    // cu_seqlens_k input4
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                    // seqused_q    input5
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                    // seqused_k    input6
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                    // cmp_residual_k input7
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                    // block_table  input8
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true},                    // output_idx_offset input9
-            {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND, true}                     // metadata     input10
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // cu_seqlens_q input3
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // cu_seqlens_k input4
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // seqused_q    input5
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // seqused_k    input6
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // cmp_residual_k input7
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // block_table  input8
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                            // output_idx_offset input9
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}                             // metadata     input10
         },
         {
-            {{{2, 39, 1, 2048}, {2, 39, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices
+            {{{2, 39, 1, 3000}, {2, 39, 1, 3000}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices
             {{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND}                            // sparse_values
         },
         {{"topk", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3000)},
