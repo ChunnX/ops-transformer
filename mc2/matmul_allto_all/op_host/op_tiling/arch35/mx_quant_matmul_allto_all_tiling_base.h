@@ -55,6 +55,7 @@ protected:
     bool IsCapable() override;
     ge::graphStatus DoOpTiling() override;
     ge::graphStatus PostTiling() override;
+    ge::graphStatus GetWorkspaceSize() override;
     uint64_t GetTilingKey() const override;
     CutResult GetTilingResult() override;
     ge::graphStatus CheckOpInputInfo();
@@ -76,6 +77,7 @@ protected:
     ge::graphStatus CheckMxQuantScaleDataType(const gert::TilingContext *context, const char *opName);
     void SetTilingInfo(MatmulAlltoAllTilingInfo &tilingInfo) const;
     void SetHcommTilingInfo(CommTilingData &tilingInfo) const;
+    void AlignCutResForKernel(CutResult &cutRes, uint64_t mValue) const;
     ge::graphStatus DoHcommMxQuantMMTiling();
     void PrintMxQuantMatmulAlltoAllTilingData(QuantMatmulAlltoAllTilingData &outTilingData);
 

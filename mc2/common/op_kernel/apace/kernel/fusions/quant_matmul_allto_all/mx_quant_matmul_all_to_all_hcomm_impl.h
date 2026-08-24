@@ -10,23 +10,12 @@
 
 /*!
  * \file mx_quant_matmul_all_to_all_hcomm_impl.h
- * \brief QuantMatmul AllToAll — 计算→通信融合实现（纯C核通信），带流水掩盖
+ * \brief MatmulAllToAll MX hcomm实现(PR#10391方案)
  *
- * 流水掩盖机制（与主线pipeline类似）：
- *   - Init() 中提前异步下发所有 AllToAll 通信任务（AlltoAll<true> → handle）
- *   - Run() 中逐 tile 循环：计算 tile N 的同时，上一轮 tile N-1 的通信在后台并行执行
- *   - 通信数据为 mmResult（matmul 输出），通信完成后直接写入 y
- *
- * 数据流方向：MatMul → AllToAll（与 allto_all_matmul 相反）
- *   - 无 scale 通信：scale 在 matmul 阶段本地消费
- *   - 通信数据类型为 YType（matmul 输出）
- *   - 无 splitK：每卡本地完整 K 维度
- *   - matmul 按 tile 分批调用 Blaze kernel，每次计算一个 M tile
- *
- * Workspace 布局: [mmResult (rankM * rankN * sizeof(YType))]
- * AllToAll: sendBuffer=mmResult, recvBuffer=y
- *
- * \note 本实现仅启动 AIC 核（cube-only）。
+ * AIC_ONLY + 逐tile compute+SyncAll+comm:
+ * - for循环逐tile: kernel(tileM, perRankN) → SyncAll → AllToAll(tileM*perRankN)
+ * - kernel逐rank遍历x2的N列, 输出rank-major [rankDim, tileM, perRankN]
+ * - AllToAll整块发送(batchCnt=1)
  */
 
 #pragma once
@@ -36,73 +25,12 @@
 #include "blaze/gemm/policy/dispatch_policy.h"
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
-#include "../../matmul/quant_batch_matmul/all_to_all_qbmm_mx_kernel.h"
+#include "../../matmul/quant_batch_matmul/quant_batch_matmul_mx_kernel.h"
 #include "include/tensor_api/tensor.h"
+#include "quant_matmul_all_to_all_tiling_data.h"
 
 namespace Apace {
 
-// PostComputeCommPolicy: 在Blaze kernel内部每个tile计算开始前，
-// 异步下发上一个tile的AllToAll通信（上一个tile的matmul结果已写完到GM）
-// 同时Wait上上个tile的AllToAll（pipeline深度2），实现逐tile通算掩盖
-template <typename HcclType, typename YType, typename TilingDataType>
-struct PostComputeCommPolicy {
-    HcclType *hccl_{nullptr};
-    TilingDataType *tilingData_{nullptr};
-    GM_ADDR mmResultGM_{0};
-    GM_ADDR y_{0};
-    uint64_t rankDim_{0};
-    uint64_t nonSplitAxisSize_{0};
-    uint64_t yHcclDataType_{0};
-    uint32_t baseM_{0};  // Blaze scheduler的M block步进,用于计算tile偏移
-    AscendC::HcclHandle curHandle_{0};
-    uint32_t lastCommTileIdx_{0xFFFFFFFF}; // 去重: 已处理的最大tileIdx
-    uint32_t lastIssuedTileIdx_{0xFFFFFFFF}; // 已下发AllToAll的最大tileIdx
-
-    __aicore__ inline uint64_t CalcTileOffset(uint32_t tileIdx)
-    {
-        // 用baseM计算偏移,确保与Blaze kernel内部mPos一致
-        return static_cast<uint64_t>(tileIdx) * baseM_;
-    }
-
-    __aicore__ inline uint32_t CalcTileM(uint32_t tileIdx)
-    {
-        // 所有tile的M大小都是baseM（Blaze scheduler统一步进）
-        return baseM_;
-    }
-
-    __aicore__ inline void IssueAllToAll(uint32_t tileIdx)
-    {
-        uint32_t tileM = CalcTileM(tileIdx);
-        uint64_t perRankN = nonSplitAxisSize_ / rankDim_;
-        uint64_t tileOffset = CalcTileOffset(tileIdx);
-        // 逐行发送: sendCount=perRankN(每rank的数据量), strideCount=perRankN(行内相邻rank间距), batchCnt=tileM(行数)
-        curHandle_ = hccl_->template AlltoAll<true>(
-            mmResultGM_ + tileOffset * nonSplitAxisSize_ * sizeof(YType),
-            y_ + tileOffset * perRankN * sizeof(YType),
-            perRankN, static_cast<AscendC::HcclDataType>(yHcclDataType_),
-            perRankN, static_cast<uint8_t>(tileM));
-        lastIssuedTileIdx_ = tileIdx;
-    }
-
-    __aicore__ inline void WaitTile(uint32_t tileIdx)
-    {
-        // 去重: 同一tileIdx只处理一次
-        if (tileIdx <= lastCommTileIdx_) {
-            return;
-        }
-
-        // WaitTile(tileIdx)下发tileIdx-1的AllToAll(异步,不Wait)
-        if (tileIdx > 0) {
-            uint32_t prevTileIdx = tileIdx - 1;
-            // 无论主循环还是末尾循环,都下发prevTileIdx的AllToAll
-            // 末尾循环时所有matmul已完成,数据有效
-            IssueAllToAll(prevTileIdx);
-        }
-        lastCommTileIdx_ = tileIdx;
-    }
-};
-
-// 获取 YType 对应的 HCCL 数据类型
 template <typename T>
 constexpr uint64_t GetYHcclDataType()
 {
@@ -128,7 +56,6 @@ public:
                                 GM_ADDR x1_scale, GM_ADDR x2_scale, GM_ADDR workspaceGM);
     __aicore__ inline void Run();
 
-    // Layout 定义
     using LayoutA = AscendC::Te::NDExtLayoutPtn;
     using LayoutB = AscendC::Te::DNExtLayoutPtn;
     using LayoutC = AscendC::Te::NDExtLayoutPtn;
@@ -136,27 +63,21 @@ public:
     using BiasType = float;
     using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
 
-    // 组件定义 — 使用PostComputeCommPolicy，逐tile通算掩盖
-    using CommPolicy = PostComputeCommPolicy<AscendC::Hccl<ServerType>, YType, QuantMatmulAllToAllTilingDataType>;
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerQuantBatchMatmulV3<
         ProblemShape, 0, LayoutA, LayoutB, X1Type>;
     using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<0, false>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<
         DispatchPolicy, X1Type, LayoutA, X2Type, LayoutB, YType, LayoutC, BiasType, LayoutBias>;
-    using QuantMatmulKernelImpl = Blaze::Gemm::Kernel::AllToAllQbmmMxKernel<
-        ProblemShape, BlockMmad, BlockScheduler, CommPolicy>;
+    using QuantMatmulKernelImpl = Blaze::Gemm::Kernel::QuantBatchMatmulMxKernel<
+        ProblemShape, BlockMmad, BlockScheduler>;
 
-    // 参数类型
     using Params = typename QuantMatmulKernelImpl::Params;
     using BlockMmadParams = typename QuantMatmulKernelImpl::BlockMmadParams;
     using L1Params = typename QuantMatmulKernelImpl::L1Params;
-    using LocalParams = typename QuantMatmulKernelImpl::LocalParams;
     using BlockSchedulerParams = typename QuantMatmulKernelImpl::BlockSchedulerParams;
     using QBMMTiling = typename QuantMatmulKernelImpl::QBMMTiling;
-    using MatmulMode = typename QuantMatmulKernelImpl::MatmulMode;
 
     QuantMatmulKernelImpl quantMatmulKernelImpl_;
-    CommPolicy commPolicy_;
 
 private:
     QuantMatmulAllToAllTilingDataType *tilingData_;
@@ -168,26 +89,33 @@ private:
     GM_ADDR x1Scale_;
     GM_ADDR x2Scale_;
     GM_ADDR workspaceGM_;
-    GM_ADDR mmResultGM_;  // matmul 输出缓冲区
+    GM_ADDR mmResultGM_;
 
     AscendC::Hccl<ServerType> hccl_;
     uint32_t rankId_{0};
     uint32_t rankDim_{0};
-    uint64_t splitAxisSize_{0};  // 本卡 M 大小（= rankM = M/rankDim）
-    uint32_t totalTileCnt_{0};   // 总 tile 数 = tileCnt + tailCnt
-    uint32_t headTileCnt_{0};    // 头块 tile 数
+    uint32_t tileM_{0};
+    uint32_t tailM_{0};
+    uint32_t tileCnt_{0};
+    uint32_t tailCnt_{0};
+    uint32_t totalTileCnt_{0};
+    uint64_t axisM_{0};
+    uint64_t axisK_{0};
+    uint64_t axisNPerRank_{0};
+    uint64_t maxTileM_{0};
+    uint64_t aByteStrideK_{0};
+    uint64_t scaleAByteStride_{0};
+    uint64_t scaleAElemCnt_{0};
+
     bool isBias_{false};
 
     static constexpr uint64_t yHcclDataType_ = GetYHcclDataType<YType>();
     static constexpr uint64_t MXFP_GROUP_SIZE = 64UL;
     static constexpr uint64_t MXFP_MULTI_BASE_SIZE = 2UL;
     static constexpr uint64_t MXFP_DATA_NUM_PER_BYTE = 2UL;
-    static constexpr uint64_t ALIGN_NUM = 512UL;
 
-    // 流水掩盖：逐 tile 计算+通信交替
-    __aicore__ inline void SetupTileParams(Params &out, uint32_t tileIdx, uint32_t curTileM, GM_ADDR aGMOffset,
-                                           GM_ADDR cGMOffset, GM_ADDR scaleAOffset);
-    __aicore__ inline void PrepareLastTileAllToAll();
+    __aicore__ inline void InitBaseParams();
+    __aicore__ inline void SetupParams(const QuantMatmulTilingData &mmTile, uint32_t curTileM, Params &params);
 };
 
 template <typename X1Type, typename X2Type, typename YType,
@@ -199,16 +127,6 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR x1_scale, GM_ADDR x2_scale,
     GM_ADDR workspaceGM)
 {
-    auto &&commTiling = tilingData_->commTilingData;
-    splitAxisSize_ = static_cast<uint64_t>(commTiling.splitAxisTileSize) * commTiling.splitAxisTileCnt +
-                     static_cast<uint64_t>(commTiling.splitAxisTailSize) * commTiling.splitAxisTailCnt;
-    // totalTileCnt_必须与Blaze kernel内部的totalTiles一致
-    // Blaze kernel: totalTiles = (oriM + headTileSize - 1) / headTileSize
-    // headTileSize = mmTile.baseM, oriM = splitAxisSize_(rankM)
-    uint32_t baseM = tilingData_->tileQbmmTilingData.baseM;
-    totalTileCnt_ = static_cast<uint32_t>((splitAxisSize_ + baseM - 1) / baseM);
-    headTileCnt_ = commTiling.splitAxisTileCnt;
-
     x1_ = x1;
     x2_ = x2;
     y_ = y;
@@ -217,27 +135,14 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     x1Scale_ = x1_scale;
     x2Scale_ = x2_scale;
     workspaceGM_ = workspaceGM;
-
-    // workspace 布局: mmResult 用于存储 matmul 输出
     mmResultGM_ = workspaceGM;
 
-    // 初始化 HCCL
+    InitBaseParams();
+
     hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
     hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(QuantMatmulAllToAllTilingDataType, mc2CcTiling)));
     rankId_ = hccl_.GetRankId();
     rankDim_ = hccl_.GetRankDim();
-
-    // 配置PostComputeCommPolicy：绑定hccl、tilingData、GM地址
-    // Blaze kernel内部逐tile调用WaitTile时，自动下发上一个tile的AllToAll
-    commPolicy_.hccl_ = &hccl_;
-    commPolicy_.tilingData_ = tilingData_;
-    commPolicy_.mmResultGM_ = mmResultGM_;
-    commPolicy_.y_ = y_;
-    commPolicy_.rankDim_ = rankDim_;
-    commPolicy_.nonSplitAxisSize_ = tilingData_->commTilingData.nonSplitAxisSize;
-    commPolicy_.yHcclDataType_ = yHcclDataType_;
-    commPolicy_.baseM_ = tilingData_->tileQbmmTilingData.baseM;
-    quantMatmulKernelImpl_.GetCommPolicy() = commPolicy_;
 }
 
 template <typename X1Type, typename X2Type, typename YType,
@@ -245,18 +150,22 @@ template <typename X1Type, typename X2Type, typename YType,
           AscendC::HcclServerType ServerType, bool IsMxFp4>
 __aicore__ inline void
 QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
-                              QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::PrepareLastTileAllToAll()
+                              QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::InitBaseParams()
 {
-    // Blaze kernel完成后，下发最后一个tile的AllToAll
-    // WaitTile(tileIdx)下发tileIdx-1，最后一个tile无后续WaitTile触发
-    uint32_t lastTileIdx = totalTileCnt_ - 1;
-    if (lastTileIdx != commPolicy_.lastIssuedTileIdx_) {
-        commPolicy_.IssueAllToAll(lastTileIdx);
-    }
-
-    // Wait所有已下发的AllToAll
-    AscendC::SyncAll();
-    hccl_.Wait(commPolicy_.curHandle_);
+    auto &&commTD = tilingData_->commTilingData;
+    axisK_ = tilingData_->tileQbmmTilingData.k;
+    axisNPerRank_ = tilingData_->tileQbmmTilingData.n;
+    tileM_ = static_cast<uint32_t>(commTD.splitAxisTileSize);
+    tailM_ = static_cast<uint32_t>(commTD.splitAxisTailSize);
+    tileCnt_ = static_cast<uint32_t>(commTD.splitAxisTileCnt);
+    tailCnt_ = static_cast<uint32_t>(commTD.splitAxisTailCnt);
+    totalTileCnt_ = tileCnt_ + tailCnt_;
+    axisM_ = static_cast<uint64_t>(tileCnt_) * tileM_ + static_cast<uint64_t>(tailCnt_) * tailM_;
+    maxTileM_ = (tileM_ > tailM_) ? tileM_ : tailM_;
+    uint32_t scaleKGroups = (axisK_ + Blaze::Gemm::MXFP_DIVISOR_SIZE - 1) / Blaze::Gemm::MXFP_DIVISOR_SIZE;
+    scaleAElemCnt_ = scaleKGroups * Blaze::Gemm::MXFP_MULTI_BASE_SIZE;
+    aByteStrideK_ = axisK_ * sizeof(X1Type);
+    scaleAByteStride_ = scaleAElemCnt_ * sizeof(AscendC::fp8_e8m0_t);
 }
 
 template <typename X1Type, typename X2Type, typename YType,
@@ -264,46 +173,30 @@ template <typename X1Type, typename X2Type, typename YType,
           AscendC::HcclServerType ServerType, bool IsMxFp4>
 __aicore__ inline void
 QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
-                              QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::SetupTileParams(
-    Params &out, uint32_t tileIdx, uint32_t curTileM, GM_ADDR aGMOffset, GM_ADDR cGMOffset, GM_ADDR scaleAOffset)
+                              QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::SetupParams(
+    const QuantMatmulTilingData &mmTile, uint32_t curTileM, Params &params)
 {
-    auto &&commTiling = tilingData_->commTilingData;
-    const auto &mmTile = tilingData_->tileQbmmTilingData;
-    auto &&nonSplitAxisSize = commTiling.nonSplitAxisSize;  // rankN
+    uint64_t totalN = axisNPerRank_ * rankDim_;
+    // ProblemShape: M=curTileM(tile级), N=perRankN, K, batch=1
+    params.problemShape = ProblemShape{
+        static_cast<int64_t>(curTileM),
+        static_cast<int64_t>(axisNPerRank_),
+        static_cast<int64_t>(axisK_),
+        1};
 
-    // ProblemShape: M=curTileM(当前tile的M), N=nonSplitAxisSize, K=mmTile.k, batch=1
-    ProblemShape problemShape{static_cast<int64_t>(curTileM),
-                              static_cast<int64_t>(nonSplitAxisSize),
-                              static_cast<int64_t>(mmTile.k), 1UL};
+    params.mmParams = BlockMmadParams{
+        x1_, x2_, mmResultGM_, bias_,
+        x1Scale_, x2Scale_};
 
-    BlockMmadParams mmadParams;
-    mmadParams.aGmAddr = aGMOffset;
-    mmadParams.scaleAGmAddr = scaleAOffset;
-    mmadParams.bGmAddr = x2_;
-    mmadParams.scaleBGmAddr = x2Scale_;
-    mmadParams.cGmAddr = cGMOffset;
-    mmadParams.biasGmAddr = bias_;
-
-    LocalParams localParams{0,                     // rankId=0
-                            1,                     // rankSize=1
-                            static_cast<uint64_t>(curTileM), // originalM = 完整M
-                            x1_,                   // localAGmAddr
-                            x1Scale_,              // localScaleAGmAddr
-                            0,                     // localMatmul=0
-                            1,                     // splitKNum=1
-                            MatmulMode::REMOTE,    // REMOTE
-                            mmTile.baseM};         // headTileSize=baseM,确保tileIdx=mPos/baseM与mmResult写入位置一致
-
-    L1Params l1Params{static_cast<uint64_t>(mmTile.stepK) * mmTile.baseK, mmTile.scaleKL1,
-                      mmTile.nBufferNum};
-
-    BlockSchedulerParams schedulerParams{
-        mmTile.baseM, mmTile.baseN, mmTile.mTailTile, mmTile.nTailTile,
+    params.l1Params = L1Params{static_cast<uint64_t>(mmTile.stepK) * mmTile.baseK, mmTile.scaleKL1, mmTile.nBufferNum};
+    params.schedulerParams = BlockSchedulerParams{mmTile.baseM, mmTile.baseN, mmTile.mTailTile, mmTile.nTailTile,
         mmTile.mBaseTailSplitCnt, mmTile.nBaseTailSplitCnt, mmTile.mTailMain, mmTile.nTailMain};
-
-    QBMMTiling qbmmParams{mmTile.baseM, mmTile.baseN, mmTile.baseK, mmTile.dbL0c, isBias_};
-
-    out = {problemShape, mmadParams, l1Params, schedulerParams, qbmmParams, localParams};
+    params.qbmmParams = QBMMTiling{mmTile.baseM, mmTile.baseN, mmTile.baseK, mmTile.dbL0c,
+        isBias_ ? 1u : 0u};
+    // rankStride = curTileM * perRankN (每rank的C输出步长,以CType元素为单位)
+    params.fullN = totalN;
+    params.rankStride = static_cast<uint64_t>(curTileM) * axisNPerRank_;
+    params.rankDim = rankDim_;
 }
 
 template <typename X1Type, typename X2Type, typename YType,
@@ -313,35 +206,53 @@ __aicore__ inline void
 QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
                               QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::Run()
 {
-    auto &&commTiling = tilingData_->commTilingData;
+    // PR#10391方案: AIC_ONLY, 逐tile compute+SyncAll+comm
+    // for循环逐tile: kernel(tileM, perRankN) → SyncAll → AllToAll(tileM*perRankN)
+    if ASCEND_IS_AIC {
+        GM_ADDR aCur = x1_;
+        GM_ADDR aScaleCur = x1Scale_;
+        uint32_t lastTiling = 0;
+        const auto &headTile = tilingData_->tileQbmmTilingData;
+        const auto &tailTile = tilingData_->tailQbmmTilingData;
 
-    // 逐tile通算掩盖流程（通过PostComputeCommPolicy在Blaze kernel内部实现）:
-    // Blaze kernel遍历每个tile时，在matmul开始前调用WaitTile(tileIdx)
-    // PostComputeCommPolicy::WaitTile(tileIdx)异步下发tileIdx-1的AllToAll
-    // 这样tile N的matmul与tile N-1的AllToAll并行执行
-    //
-    // 时间轴:
-    // AIC(计算):   [matmul t0] [matmul t1] [matmul t2] ... [matmul tN-1]
-    // AICPU(通信):              [comm t0  ] [comm t1  ] ... [comm tN-2] [comm tN-1]
+        Params param;
+        for (uint32_t tid = 0; tid < totalTileCnt_; ++tid) {
+            bool isTail = (tid >= tileCnt_);
+            uint32_t curTileM = isTail ? tailM_ : tileM_;
 
-    // Phase 1: 一次性调用Blaze kernel算完所有tile
-    // kernel内部逐tile调用WaitTile，自动下发前一个tile的AllToAll
-    if (totalTileCnt_ > 0) {
-        // 设置完整M，让kernel内部遍历所有tile
-        Params params;
-        SetupTileParams(params, 0, static_cast<uint32_t>(splitAxisSize_), x1_, mmResultGM_, x1Scale_);
-        quantMatmulKernelImpl_(params);
+            // 每tile重新SetupParams(kernel内部mmOp_.Init每次调用)
+            SetupParams(isTail ? tailTile : headTile, curTileM, param);
+
+            // 更新A和scaleA偏移
+            param.mmParams.aGmAddr = aCur;
+            param.mmParams.scaleAGmAddr = aScaleCur;
+            // C输出: mmResultGM_基址(kernel内部按rankIdx*rankStride偏移)
+            param.mmParams.cGmAddr = mmResultGM_;
+
+            // matmul (kernel内部调用mmOp_.Init + 逐rank遍历)
+            quantMatmulKernelImpl_(param);
+
+            AscendC::SyncAll();
+
+            // AllToAll整块发送: sendCount=curTileM*perRankN, batchCnt=1
+            uint64_t tileOffset = (tid < tileCnt_)
+                ? static_cast<uint64_t>(tid) * tileM_
+                : static_cast<uint64_t>(tileCnt_) * tileM_ + static_cast<uint64_t>(tid - tileCnt_) * tailM_;
+            uint64_t sendCount = static_cast<uint64_t>(curTileM) * axisNPerRank_;
+            AscendC::HcclHandle h = hccl_.template AlltoAll<true>(
+                mmResultGM_,
+                y_ + tileOffset * axisNPerRank_ * sizeof(YType),
+                sendCount, static_cast<AscendC::HcclDataType>(yHcclDataType_),
+                sendCount, 1);
+            hccl_.Wait(h);
+
+            aCur += static_cast<uint64_t>(curTileM) * aByteStrideK_;
+            aScaleCur += static_cast<uint64_t>(curTileM) * scaleAByteStride_;
+        }
+
+        AscendC::SyncAll();
+        hccl_.Finalize();
     }
-
-    // Phase 2: Blaze kernel完成后，下发剩余tile并Wait所有通信
-    // PrepareLastTileAllToAll内部会做SyncAll(确保所有rank完成下发)再Wait
-    if (totalTileCnt_ > 0) {
-        PrepareLastTileAllToAll();
-    }
-
-    // Phase 3: Finalize
-    AscendC::SyncAll();
-    hccl_.Finalize();
 }
 
 } // namespace Apace
