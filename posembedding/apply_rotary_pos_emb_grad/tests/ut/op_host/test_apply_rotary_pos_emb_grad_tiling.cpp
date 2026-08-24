@@ -475,8 +475,11 @@ TEST_F(ApplyRotaryPosEmbGradBabTiling, ab_fp16_bsnd_d48_unaligned)
         },
         &compileInfo, "Ascend950", 48, 253952);
     uint64_t expectTilingKey = 17246988369;
-    string expectTilingData = 
-        "2 64 2 1 1 1 1 6144 52736 13056 137438953520 4503599627370496000 128 4 48 0 0 0 0 0 0 192 48 1 0 0 0 0 0 0 48 48 1 0 0 0 0 0 0 1 1 1 0 0 0 0 0 0 128 4 48 0 0 0 0 0 0 192 48 1 0 0 0 0 0 0 2 64 48 4 4 0 0 0 0 0 0 0 0 0 0 0 0 2 64 48 4 4 64 2 43 3 2 1 4 4 3 4 43 0 4294967297 ";
+    string expectTilingData =
+        "2 64 2 1 1 1 1 6144 52736 13056 137438953520 4503599627370496000 128 4 48 0 0 0 0 0 0 192 "
+        "48 1 0 0 0 0 0 0 48 48 1 0 0 0 0 0 0 1 1 1 0 0 0 0 0 0 128 4 48 0 0 0 0 0 0 192 48 1 0 0 "
+        "0 0 0 0 2 64 48 4 4 0 0 0 0 0 0 0 0 0 0 0 0 2 64 48 4 4 64 2 43 3 2 1 4 4 3 4 43 0 1 "
+        "4294967297 ";
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, {});
 }
 
@@ -500,8 +503,10 @@ TEST_F(ApplyRotaryPosEmbGradBabTiling, ab_fp32_bsnd_dcos0)
         },
         &compileInfo, "Ascend950", 48, 253952);
     uint64_t expectTilingKey = 67108865;  // dcos0: TilingReduce 跳过 → EMPTY pattern
-    string expectTilingData = 
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2 64 128 4 4 0 0 0 0 0 0 0 0 0 0 0 0 2 64 128 4 4 128 2 43 3 2 1 4 4 3 4 43 0 4294967296 ";
+    string expectTilingData =
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2 64 128 4 4 0 0 0 0 0 0 0 0 0 0 0 0 2 64 128 4 "
+        "4 128 2 43 3 2 1 4 4 3 4 43 0 0 4294967296 ";
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, {});
 }
 
@@ -526,6 +531,8 @@ TEST_F(ApplyRotaryPosEmbGradBabTiling, a_fp32_bsnd_dcos0)
         &compileInfo, "Ascend950", 48, 253952);
     uint64_t expectTilingKey = 134217729;  // dcos0: TilingReduce 跳过 → EMPTY pattern
     string expectTilingData =
-        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 128 1 128 1 1 43 3 1 1 3 1 1 1 43 0 3 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 12884901888 ";
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 128 1 128 1 1 43 3 1 1 3 1 1 1 43 0 3 0 0 0 0 0 "
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 12884901888 ";
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, {});
 }
