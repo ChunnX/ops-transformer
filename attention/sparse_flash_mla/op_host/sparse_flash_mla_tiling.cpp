@@ -86,7 +86,10 @@ static bool IsPowerOfTwoInRange(uint32_t value, uint32_t minValue, uint32_t maxV
     return value >= minValue && value <= maxValue && (value & (value - 1U)) == 0U;
 }
 
-static bool IsA5Arch(NpuArch npuArch) { return npuArch == NpuArch::DAV_3510; }
+static bool IsA5Arch(NpuArch npuArch)
+{
+    return npuArch == NpuArch::DAV_3510;
+}
 
 static bool IsPaBlockSizeSupport(NpuArch npuArch, int32_t blockSize)
 {
@@ -341,7 +344,10 @@ ge::graphStatus SMLAInfoParser::CheckRequiredInOutExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SMLAInfoParser::CheckRequiredAttrExistence() const { return ge::GRAPH_SUCCESS; }
+ge::graphStatus SMLAInfoParser::CheckRequiredAttrExistence() const
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus SMLAInfoParser::CheckRequiredParaExistence() const
 {
@@ -352,7 +358,10 @@ ge::graphStatus SMLAInfoParser::CheckRequiredParaExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SMLAInfoParser::CheckUnrequiredParaExistence() const { return ge::GRAPH_SUCCESS; }
+ge::graphStatus SMLAInfoParser::CheckUnrequiredParaExistence() const
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus SMLAInfoParser::GetOpName()
 {
@@ -1439,9 +1448,15 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCuSeqLensCmpKv() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SMLATilingCheck::CheckSingleParaNumHeads() const { return ge::GRAPH_SUCCESS; }
+ge::graphStatus SMLATilingCheck::CheckSingleParaNumHeads() const
+{
+    return ge::GRAPH_SUCCESS;
+}
 
-ge::graphStatus SMLATilingCheck::CheckSingleParaKvHeadNums() const { return ge::GRAPH_SUCCESS; }
+ge::graphStatus SMLATilingCheck::CheckSingleParaKvHeadNums() const
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus SMLATilingCheck::CheckSingleParaOriSparseIndices() const
 {
@@ -1658,9 +1673,15 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCmpRatio() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SMLATilingCheck::CheckSingleParaOriMaskMode() const { return ge::GRAPH_SUCCESS; }
+ge::graphStatus SMLATilingCheck::CheckSingleParaOriMaskMode() const
+{
+    return ge::GRAPH_SUCCESS;
+}
 
-ge::graphStatus SMLATilingCheck::CheckSingleParaCmpMaskMode() const { return ge::GRAPH_SUCCESS; }
+ge::graphStatus SMLATilingCheck::CheckSingleParaCmpMaskMode() const
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus SMLATilingCheck::CheckSingleParaOriWinLeft() const
 {
@@ -2107,7 +2128,10 @@ ge::graphStatus SMLATilingCheck::CheckFeatureDtype() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SMLATilingCheck::CheckFeaturePa() const { return ge::GRAPH_SUCCESS; }
+ge::graphStatus SMLATilingCheck::CheckFeaturePa() const
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus SMLATilingCheck::CheckFeature() const
 {
@@ -2232,7 +2256,10 @@ ge::graphStatus SMLATilingCheck::CheckActualSeqLens() const
     }
     return ge::GRAPH_SUCCESS;
 }
-ge::graphStatus SMLATilingCheck::CheckBlockTable() const { return ge::GRAPH_SUCCESS; }
+ge::graphStatus SMLATilingCheck::CheckBlockTable() const
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus SMLATilingCheck::CheckMultiParaConsistency()
 {
