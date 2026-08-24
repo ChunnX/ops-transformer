@@ -71,6 +71,10 @@ private:
     int64_t blockTailN_{0};
     int64_t ubFactorBS_{0};
     int64_t ubFactorN_{0};
+    // P2: 部分积直写模式 — blockNumN==1(每核独占其 bs 行的完整 N 范围)且单 N tile 时,
+    // 部分积在本核 UB 内即可归约完成, kernel 直写 grad_cos/grad_sin 输出,
+    // 免除 partial workspace 往返写+读与 Phase2 的 SyncAll+Reduce
+    bool directPartial_{false};
 };
 
 ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassAB::SplitUb()
@@ -159,6 +163,9 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassAB::DoOpTiling()
         OP_LOGE(context_->GetNodeName(), "AB SplitCore failed"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(SplitUb() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "AB SplitUb failed"), return ge::GRAPH_FAILED);
+    // directPartial 判定(须在 SplitUb 之后): 单 N tile 即 ubFactorN_ == blockFactorN_,
+    // 保证 kernel 每个部分积缓冲一次性覆盖全部 N 行, tile 内归约结果即为最终值
+    directPartial_ = (dCosFlag_ == 1) && (blockNumN_ == 1) && (blockFactorN_ <= ubFactorN_);
     OP_CHECK_IF(InitTilingData() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "AB InitTilingData failed"), return ge::GRAPH_FAILED);
     reduceInputFloat_ = true;
@@ -174,10 +181,11 @@ void ApplyRotaryPosEmbGradRegbaseTilingClassAB::PrintTilingData()
         "cosb=%ld, bs=%ld, bn=%ld, totalNQ=%ld, totalNK=%ld, dAlign=%ld, "
         "blockNumBS=%ld, blockFactorBS=%ld, blockTailBS=%ld, "
         "blockNumN=%ld, blockFactorN=%ld, blockTailN=%ld, "
-        "ubFactorBS=%ld, ubFactorN=%ld, rotaryMode=%ld, dCosFlag=%u, tilingKey=%lu",
+        "ubFactorBS=%ld, ubFactorN=%ld, rotaryMode=%ld, dCosFlag=%u, directPartial=%u, tilingKey=%lu",
         usedCoreNum_, b_, s_, d_, nQ_, nK_, cosb_, bs_, bn_, totalNQ_, totalNK_, dAlign_,
         blockNumBS_, blockFactorBS_, blockTailBS_, blockNumN_, blockFactorN_, blockTailN_,
-        ubFactorBS_, ubFactorN_, static_cast<int64_t>(rotaryMode_), dCosFlag_, tilingKey_);
+        ubFactorBS_, ubFactorN_, static_cast<int64_t>(rotaryMode_), dCosFlag_,
+        directPartial_ ? 1U : 0U, tilingKey_);
 }
 
 ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassAB::PostTiling()
@@ -201,6 +209,7 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassAB::PostTiling()
     p.ubFactorN = ubFactorN_;
     p.usedCoreNum = usedCoreNum_;
     p.rotaryMode = static_cast<int64_t>(rotaryMode_);
+    p.directPartial = directPartial_ ? 1U : 0U;
 
     // 同步填充 ropeGradParams (供 apt.cpp 计算 dcos/dsin 部分积 workspace 的 partSize:
     // partSize = b*s*max(nQ,nK)*d，与 AB kernel 按 bs*maxN 线性写 workspace 的布局一致:

@@ -56,6 +56,8 @@ struct ApplyRopeGradRegbaseABParams {
     int64_t ubFactorN;         // UB N rows per iteration
     int64_t usedCoreNum;       // actual cores used
     int64_t rotaryMode;        // HALF = 0
+    uint32_t directPartial;    // 1=部分积UB内归约直写输出(免ws往返+SyncAll+Reduce), 仅当
+                               // dCosFlag=1 且 blockNumN==1 且单N tile(每核拥有完整N范围)时置位
 };
 
 struct ApplyRopeGradTilingData {

@@ -85,9 +85,15 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
     } else if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_AB)) {
         ApplyRotaryPosEmbGradAB<DTYPE_GRAD_QUERY_EMBED, (DcosFlag != 0)> op(&pipe, &tilingData.ropeGradABParams);
         if constexpr (DcosFlag) {
-            GM_ADDR dSinWorkSpace = usrWorkSpace + partSize * PARTIAL_TYPE_SIZE;
-            op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin, query, key,
-                gradQueryOut, gradKeyOut, usrWorkSpace, dSinWorkSpace);
+            if (tilingData.ropeGradABParams.directPartial != 0) {
+                // P2 directPartial: 部分积核内归约后直写输出, cosWs/sinWs 形参传真实输出地址
+                op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin, query, key,
+                    gradQueryOut, gradKeyOut, gradCosOut, gradSinOut);
+            } else {
+                GM_ADDR dSinWorkSpace = usrWorkSpace + partSize * PARTIAL_TYPE_SIZE;
+                op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin, query, key,
+                    gradQueryOut, gradKeyOut, usrWorkSpace, dSinWorkSpace);
+            }
         } else {
             op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin, query, key,
                 gradQueryOut, gradKeyOut, nullptr, nullptr);
@@ -140,10 +146,17 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
         constexpr bool isBroadcastPartialFloatTemplate =
             DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_BAB) ||
             DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_AB);
-        // SyncAll 内部先执行核内 PipeBarrier<PIPE_ALL> (排空本核 MTE3 写 GM) 再做全核同步,
-        // 覆盖跨核 RAW 依赖: Phase1 各核写 workspace -> Phase2 reduce 跨核读取全量分片,
-        // 无需额外的前置 PipeBarrier; dCosFlag=0 时本块编译期裁剪, 两输出路径不受影响
-        SyncAll();
+        // P2: AB directPartial 模式下部分积已在 Phase1 核内归约直写输出,
+        // 本核只读写自己拥有的输出行, 无跨核 GM 依赖, 跳过 SyncAll+Reduce
+        bool skipReduce = false;
+        if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_AB)) {
+            skipReduce = (tilingData.ropeGradABParams.directPartial != 0);
+        }
+        if (!skipReduce) {
+            // SyncAll 内部先执行核内 PipeBarrier<PIPE_ALL> (排空本核 MTE3 写 GM) 再做全核同步,
+            // 覆盖跨核 RAW 依赖: Phase1 各核写 workspace -> Phase2 reduce 跨核读取全量分片,
+            // 无需额外的前置 PipeBarrier; dCosFlag=0 时本块编译期裁剪, 两输出路径不受影响
+            SyncAll();
 
         // 第一份 workspace 存 dcos_partial，第二份存 dsin_partial
         // gradCosOut = reduce(dcos_partial), gradSinOut = reduce(dsin_partial)
@@ -166,6 +179,7 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
             reduceOp1.Init(&pipe, dSinWorkSpace, gradSinOut, reduceWorkSpace);
             reduceOp1.Process();
             pipe.Reset();
+        }
         }
     }
 }
