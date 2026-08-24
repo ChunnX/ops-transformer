@@ -38,13 +38,17 @@ public:
 
     __aicore__ inline void RunCount(uint32_t numRecv, GM_ADDR recvLocalEntryOutGM, GM_ADDR coreStartGM,
                                     GM_ADDR segCountGM);
-
-    __aicore__ inline void RunScatterCast(uint32_t numRecv, GM_ADDR recvLocalEntryOutGM, GM_ADDR uniqueLocalEntryOutGM,
-                                          GM_ADDR numUniqueOutGM, GM_ADDR gradUniqueOutGM, GM_ADDR gradUniqueFp32GM,
+    __aicore__ inline void RunScatterCast(uint32_t numRecv, GM_ADDR recvLocalEntryOutGM,
+                                          GM_ADDR uniqueLocalEntryOutGM, GM_ADDR numUniqueOutGM,
+                                          GM_ADDR gradUniqueOutGM, GM_ADDR gradUniqueFp32GM,
                                           GM_ADDR recvGradGM, GM_ADDR coreStartGM, GM_ADDR segCountGM,
                                           GM_ADDR sortCompanionGM);
 
     __aicore__ inline void WriteNumUniqueZero(GM_ADDR numUniqueOutGM);
+
+    __aicore__ inline void SetGradSumBuf(AscendC::TBuf<> &gradSumBuf) { gradSumBuf_ = &gradSumBuf; }
+
+    __aicore__ inline void SetGradSubBatch(uint32_t batch) { gradSubBatch_ = batch; }
 
     uint64_t usaZeroCycle_{0};
     uint64_t usaCountCycle_{0};
@@ -63,9 +67,8 @@ private:
                                                  GM_ADDR gradUniqueFp32GM);
     __aicore__ inline void ScatterCastFused(uint32_t numRecv, GM_ADDR recvLocalEntryOutGM,
                                             GM_ADDR uniqueLocalEntryOutGM, GM_ADDR numUniqueOutGM,
-                                            GM_ADDR gradUniqueOutGM, GM_ADDR gradUniqueFp32GM,
-                                            GM_ADDR recvGradGM, GM_ADDR coreStartGM, GM_ADDR segCountGM,
-                                            GM_ADDR sortCompanionGM);
+                                            GM_ADDR gradUniqueOutGM, GM_ADDR gradUniqueFp32GM, GM_ADDR recvGradGM,
+                                            GM_ADDR coreStartGM, GM_ADDR segCountGM, GM_ADDR sortCompanionGM);
     __aicore__ inline void LoadCoreRange(uint32_t numRecv, GM_ADDR coreStartGM, uint32_t &start, uint32_t &end);
     __aicore__ inline int32_t ComputePreCoreOffset(GM_ADDR segCountGM);
     __aicore__ inline uint32_t ProcessScatterBatch(uint32_t cur, uint32_t end, int32_t &runningOffset,
@@ -100,6 +103,7 @@ private:
     AscendC::TBuf<> *tempBuf_{nullptr};
     AscendC::TBuf<> *statusBuf_{nullptr};
     AscendC::TBuf<> *gradSumBuf_{nullptr};
+    uint32_t gradSubBatch_{Mc2Kernel::GRAD_SUB_BATCH};
 
     int32_t myPreCoreOffset_{0};
     int32_t mySegCount_{0};
@@ -525,8 +529,8 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
     if (maxGradPerBatch < 1U) {
         maxGradPerBatch = 1U;
     }
-    if (maxGradPerBatch > Mc2Kernel::GRAD_SUB_BATCH) {
-        maxGradPerBatch = Mc2Kernel::GRAD_SUB_BATCH;
+    if (maxGradPerBatch > gradSubBatch_) {
+        maxGradPerBatch = gradSubBatch_;
     }
     for (uint32_t subStart = 0; subStart < batchLen; subStart += maxGradPerBatch) {
         uint32_t subLen = batchLen - subStart;
@@ -645,10 +649,11 @@ __aicore__ inline void EngramFetchGradUnique::CastGradUniquePerCore(GM_ADDR segC
     }
 }
 
-__aicore__ inline void EngramFetchGradUnique::ScatterCastFused(
-    uint32_t numRecv, GM_ADDR recvLocalEntryOutGM, GM_ADDR uniqueLocalEntryOutGM, GM_ADDR numUniqueOutGM,
-    GM_ADDR gradUniqueOutGM, GM_ADDR gradUniqueFp32GM, GM_ADDR recvGradGM, GM_ADDR coreStartGM,
-    GM_ADDR segCountGM, GM_ADDR sortCompanionGM)
+__aicore__ inline void EngramFetchGradUnique::ScatterCastFused(uint32_t numRecv, GM_ADDR recvLocalEntryOutGM,
+                                                               GM_ADDR uniqueLocalEntryOutGM, GM_ADDR numUniqueOutGM,
+                                                               GM_ADDR gradUniqueOutGM, GM_ADDR gradUniqueFp32GM,
+                                                               GM_ADDR recvGradGM, GM_ADDR coreStartGM,
+                                                               GM_ADDR segCountGM, GM_ADDR sortCompanionGM)
 {
     int32_t preCoreOffset = ComputePreCoreOffset(segCountGM);
     myPreCoreOffset_ = preCoreOffset;
@@ -723,7 +728,8 @@ __aicore__ inline void EngramFetchGradUnique::ScatterCastFused(
                         if (inputDtype_ == Mc2Kernel::ENGRAM_DT_FLOAT) {
                             AscendC::LocalTensor<float> inT = gradBuf.ReinterpretCast<float>();
                             for (uint32_t j = 0; j < pendingLen; j++) {
-                                AscendC::Add(accumFp32, accumFp32, inT[static_cast<uint64_t>(j) * hiddenDim], hiddenDim);
+                                AscendC::Add(accumFp32, accumFp32, inT[static_cast<uint64_t>(j) * hiddenDim],
+                                             hiddenDim);
                             }
                         } else if (inputDtype_ == Mc2Kernel::ENGRAM_DT_BFLOAT16) {
                             AscendC::LocalTensor<bfloat16_t> inT = gradBuf.ReinterpretCast<bfloat16_t>();
@@ -759,19 +765,22 @@ __aicore__ inline void EngramFetchGradUnique::ScatterCastFused(
                             AscendC::Cast(outTile, accumFp32, AscendC::RoundMode::CAST_RINT, hiddenDim);
                             AscendC::PipeBarrier<PIPE_V>();
                             SyncFunc<AscendC::HardEvent::V_MTE3>(*pipe_);
-                            AscendC::DataCopyParams outParams{1U,
-                                static_cast<uint16_t>(hiddenDim * sizeof(bfloat16_t)), 0U, 0U};
-                            uint64_t outOff = static_cast<uint64_t>(runningUniqueOffset) * hiddenDim * sizeof(bfloat16_t);
-                            AscendC::DataCopyPad(gradUniqueOutGM_u[outOff], outTile.ReinterpretCast<uint8_t>(), outParams);
+                            AscendC::DataCopyParams outParams{1U, static_cast<uint16_t>(hiddenDim * sizeof(bfloat16_t)),
+                                                              0U, 0U};
+                            uint64_t outOff =
+                                static_cast<uint64_t>(runningUniqueOffset) * hiddenDim * sizeof(bfloat16_t);
+                            AscendC::DataCopyPad(gradUniqueOutGM_u[outOff], outTile.ReinterpretCast<uint8_t>(),
+                                                 outParams);
                         } else {
                             AscendC::LocalTensor<half> outTile = pongBuf_->Get<half>();
                             AscendC::Cast(outTile, accumFp32, AscendC::RoundMode::CAST_RINT, hiddenDim);
                             AscendC::PipeBarrier<PIPE_V>();
                             SyncFunc<AscendC::HardEvent::V_MTE3>(*pipe_);
-                            AscendC::DataCopyParams outParams{1U,
-                                static_cast<uint16_t>(hiddenDim * sizeof(half)), 0U, 0U};
+                            AscendC::DataCopyParams outParams{1U, static_cast<uint16_t>(hiddenDim * sizeof(half)), 0U,
+                                                              0U};
                             uint64_t outOff = static_cast<uint64_t>(runningUniqueOffset) * hiddenDim * sizeof(half);
-                            AscendC::DataCopyPad(gradUniqueOutGM_u[outOff], outTile.ReinterpretCast<uint8_t>(), outParams);
+                            AscendC::DataCopyPad(gradUniqueOutGM_u[outOff], outTile.ReinterpretCast<uint8_t>(),
+                                                 outParams);
                         }
                         SyncFunc<AscendC::HardEvent::MTE3_V>(*pipe_);
                     }
@@ -797,10 +806,10 @@ __aicore__ inline void EngramFetchGradUnique::ScatterCastFused(
                 groupEnd++;
             }
 
-            for (uint32_t subStart = groupStart; subStart < groupEnd; subStart += (Mc2Kernel::GRAD_SUB_BATCH - 1U)) {
+            for (uint32_t subStart = groupStart; subStart < groupEnd; subStart += (gradSubBatch_ - 1U)) {
                 uint32_t subLen = groupEnd - subStart;
-                if (subLen > (Mc2Kernel::GRAD_SUB_BATCH - 1U)) {
-                    subLen = Mc2Kernel::GRAD_SUB_BATCH - 1U;
+                if (subLen > (gradSubBatch_ - 1U)) {
+                    subLen = gradSubBatch_ - 1U;
                 }
 
                 if (hasPending) {
@@ -842,7 +851,8 @@ __aicore__ inline void EngramFetchGradUnique::ScatterCastFused(
                     AscendC::GlobalTensor<uint8_t> gradSrcGM;
                     gradSrcGM.SetGlobalBuffer((__gm__ uint8_t *)gradAddr);
                     AscendC::DataCopyExtParams gradParams{1U, hiddenBytesU32, 0U, 0U, 0U};
-                    AscendC::DataCopyPad(gradBuf[static_cast<uint64_t>(j) * hiddenBytesU32], gradSrcGM, gradParams, gradPad);
+                    AscendC::DataCopyPad(gradBuf[static_cast<uint64_t>(j) * hiddenBytesU32], gradSrcGM, gradParams,
+                                         gradPad);
                 }
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(pingPong == 0 ? evtMte2V0 : evtMte2V1);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(pingPong == 0 ? evtMte2V0 : evtMte2V1);
@@ -867,16 +877,16 @@ __aicore__ inline void EngramFetchGradUnique::ScatterCastFused(
                 AscendC::LocalTensor<bfloat16_t> inT = gradBuf.ReinterpretCast<bfloat16_t>();
                 AscendC::LocalTensor<float> castBuf = accumFp32[hiddenDim];
                 for (uint32_t j = 0; j < pendingLen; j++) {
-                    AscendC::Cast(castBuf, inT[static_cast<uint64_t>(j) * hiddenDim],
-                                  AscendC::RoundMode::CAST_NONE, hiddenDim);
+                    AscendC::Cast(castBuf, inT[static_cast<uint64_t>(j) * hiddenDim], AscendC::RoundMode::CAST_NONE,
+                                  hiddenDim);
                     AscendC::Add(accumFp32, accumFp32, castBuf, hiddenDim);
                 }
             } else {
                 AscendC::LocalTensor<half> inT = gradBuf.ReinterpretCast<half>();
                 AscendC::LocalTensor<float> castBuf = accumFp32[hiddenDim];
                 for (uint32_t j = 0; j < pendingLen; j++) {
-                    AscendC::Cast(castBuf, inT[static_cast<uint64_t>(j) * hiddenDim],
-                                  AscendC::RoundMode::CAST_NONE, hiddenDim);
+                    AscendC::Cast(castBuf, inT[static_cast<uint64_t>(j) * hiddenDim], AscendC::RoundMode::CAST_NONE,
+                                  hiddenDim);
                     AscendC::Add(accumFp32, accumFp32, castBuf, hiddenDim);
                 }
             }
@@ -890,8 +900,8 @@ __aicore__ inline void EngramFetchGradUnique::ScatterCastFused(
         if (outputDtype_ == Mc2Kernel::ENGRAM_DT_FLOAT) {
             SyncFunc<AscendC::HardEvent::V_MTE3>(*pipe_);
             AscendC::DataCopyParams outParams{1U, static_cast<uint16_t>(hiddenBytesU32), 0U, 0U};
-            AscendC::DataCopyPad(gradUniqueOutGM_f[static_cast<uint64_t>(runningUniqueOffset) * hiddenDim],
-                                 accumFp32, outParams);
+            AscendC::DataCopyPad(gradUniqueOutGM_f[static_cast<uint64_t>(runningUniqueOffset) * hiddenDim], accumFp32,
+                                 outParams);
             SyncFunc<AscendC::HardEvent::MTE3_S>(*pipe_);
         } else {
             AscendC::PipeBarrier<PIPE_V>();
@@ -901,8 +911,7 @@ __aicore__ inline void EngramFetchGradUnique::ScatterCastFused(
                 AscendC::Cast(outTile, accumFp32, AscendC::RoundMode::CAST_RINT, hiddenDim);
                 AscendC::PipeBarrier<PIPE_V>();
                 SyncFunc<AscendC::HardEvent::V_MTE3>(*pipe_);
-                AscendC::DataCopyParams outParams{1U,
-                    static_cast<uint16_t>(hiddenDim * sizeof(bfloat16_t)), 0U, 0U};
+                AscendC::DataCopyParams outParams{1U, static_cast<uint16_t>(hiddenDim * sizeof(bfloat16_t)), 0U, 0U};
                 uint64_t outOff = static_cast<uint64_t>(runningUniqueOffset) * hiddenDim * sizeof(bfloat16_t);
                 AscendC::DataCopyPad(gradUniqueOutGM_u[outOff], outTile.ReinterpretCast<uint8_t>(), outParams);
             } else {
@@ -910,8 +919,7 @@ __aicore__ inline void EngramFetchGradUnique::ScatterCastFused(
                 AscendC::Cast(outTile, accumFp32, AscendC::RoundMode::CAST_RINT, hiddenDim);
                 AscendC::PipeBarrier<PIPE_V>();
                 SyncFunc<AscendC::HardEvent::V_MTE3>(*pipe_);
-                AscendC::DataCopyParams outParams{1U,
-                    static_cast<uint16_t>(hiddenDim * sizeof(half)), 0U, 0U};
+                AscendC::DataCopyParams outParams{1U, static_cast<uint16_t>(hiddenDim * sizeof(half)), 0U, 0U};
                 uint64_t outOff = static_cast<uint64_t>(runningUniqueOffset) * hiddenDim * sizeof(half);
                 AscendC::DataCopyPad(gradUniqueOutGM_u[outOff], outTile.ReinterpretCast<uint8_t>(), outParams);
             }
