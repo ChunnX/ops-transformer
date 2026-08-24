@@ -51,6 +51,7 @@ __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
         AscendC::Std::tuple<BType, ScaleType>, AscendC::Std::tuple<LayoutB, LayoutScaleB>,
         CType, LayoutC, BiasTypeT, LayoutBias>;
     using Kernel = Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, BlockMmad, void, void>;
+    using GmmTiling = typename Kernel::GmmTiling;
 
     const int64_t n = static_cast<int64_t>(gmmBaseParams->nSize);
     const int64_t k = static_cast<int64_t>(gmmBaseParams->kSize);
@@ -90,7 +91,7 @@ __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
     params.prologueParams.nBubSize = static_cast<uint64_t>(mmTilingData->baseN);
     params.groupListGmAddr = groupList;
 
-    typename Kernel::GMMTiling gmmTiling;
+    GmmTiling gmmTiling;
     gmmTiling.groupNum = gmmBaseParams->groupNum;
     gmmTiling.coreNum = gmmBaseParams->coreNum;
     gmmTiling.n = n;
