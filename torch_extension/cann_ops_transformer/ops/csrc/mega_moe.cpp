@@ -102,10 +102,10 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     int64_t dispatchQuantResultType =
         dispatchQuantOutDtype.has_value() ? static_cast<int64_t>(GetAclDataType(dispatchQuantOutDtype.value())) : 28;
 
-    int64_t traceOutputH = (TRACE_OUTPUT_ELEMENT_COUNT + bs - 1) / bs;
-    int64_t outputH = std::max(h, traceOutputH);
+    int64_t traceOutputBs = (TRACE_OUTPUT_ELEMENT_COUNT + h - 1) / h;
+    int64_t outputBs = std::max(bs, traceOutputBs);
     at::Tensor y;
-    y = at::empty({bs, outputH}, topkIds.options().dtype(x.scalar_type()));
+    y = at::empty({outputBs, h}, topkIds.options().dtype(x.scalar_type()));
 
     TensorListWrapper weight1Wrapper = {weight1Ref, weight1RefDtype};
     TensorListWrapper weight2Wrapper = {weight2Ref, weight2RefDtype};

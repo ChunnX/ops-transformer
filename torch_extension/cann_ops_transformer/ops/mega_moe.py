@@ -139,8 +139,8 @@ class _MegaMoeOpBuilder(OpBuilder):
             local_moe_expert_num = moe_expert_num // ep_world_size
             # 诊断构建使用 y 承载关键路径 trace，至少预留 1 MiB 的 FP16/BF16 元素空间。
             trace_output_element_count = 512 * 1024
-            output_h = max(h, (trace_output_element_count + bs - 1) // bs)
-            y = x.new_empty(tuple([bs, output_h]), dtype=x.dtype)
+            output_bs = max(bs, (trace_output_element_count + h - 1) // h)
+            y = x.new_empty(tuple([output_bs, h]), dtype=x.dtype)
             expert_token_nums = x.new_empty((local_moe_expert_num), dtype=torch.int32)
             return (y, expert_token_nums)
 

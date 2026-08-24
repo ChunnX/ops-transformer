@@ -78,17 +78,17 @@ static ge::graphStatus InferShapeMegaMoe(gert::InferShapeContext *context)
 
     int64_t bs = xShape->GetDim(0);
     int64_t h = xShape->GetDim(1);
-    int64_t traceOutputH = (TRACE_OUTPUT_ELEMENT_COUNT + bs - 1) / bs;
-    int64_t outputH = std::max(h, traceOutputH);
+    int64_t traceOutputBs = (TRACE_OUTPUT_ELEMENT_COUNT + h - 1) / h;
+    int64_t outputBs = std::max(bs, traceOutputBs);
 
     yShape->SetDimNum(DIM_TWO);
-    yShape->SetDim(0U, bs);
-    yShape->SetDim(1U, outputH);
+    yShape->SetDim(0U, outputBs);
+    yShape->SetDim(1U, h);
 
     expertTokenNumsShape->SetDimNum(DIM_ONE);
     expertTokenNumsShape->SetDim(0U, *moeExpertNum / *epWorldSize);
 
-    OP_LOGD(context->GetNodeName(), "y shape is [%ld, %ld] after infershape.", bs, outputH);
+    OP_LOGD(context->GetNodeName(), "y shape is [%ld, %ld] after infershape.", outputBs, h);
     OP_LOGD(context->GetNodeName(), "End to do InferShapeMegaMoe.");
     return ge::GRAPH_SUCCESS;
 }
