@@ -356,7 +356,10 @@ void QSFAMlaTiling::CalcUbBmm()
     qPreSizeMla_ = qsfaInfo_->gSize * (headDimAlign_ + 64U) * qsfaInfo_->s1Size;
 }
 
-void QSFAMlaTiling::CheckUbSpace() { CalcUbBmm(); }
+void QSFAMlaTiling::CheckUbSpace()
+{
+    CalcUbBmm();
+}
 
 void QSFAMlaTiling::CalcInnerSize(uint32_t qsfaS2Size)
 {
@@ -392,7 +395,10 @@ void QSFAMlaTiling::SplitBalanced()
     usedCoreNum_ = aicNum_;
 }
 
-void QSFAMlaTiling::Split() { SplitBalanced(); }
+void QSFAMlaTiling::Split()
+{
+    SplitBalanced();
+}
 
 void QSFAMlaTiling::FillTilingBaseParamsMla()
 {
@@ -430,7 +436,10 @@ void QSFAMlaTiling::FillTilingSplitKVMla()
     }
 }
 
-void QSFAMlaTiling::FillTilingSingleCoreParamsMla() { tilingData_.singleCoreParams.set_usedCoreNum(usedCoreNum_); }
+void QSFAMlaTiling::FillTilingSingleCoreParamsMla()
+{
+    tilingData_.singleCoreParams.set_usedCoreNum(usedCoreNum_);
+}
 
 void QSFAMlaTiling::FillTilingSingleCoreTensorSizeMla()
 {
@@ -467,7 +476,10 @@ void QSFAMlaTiling::NormalCalcFDWorkSpace(const uint32_t actCoreNum)
     }
 }
 
-void QSFAMlaTiling::CalcFDWorkSpace(const uint32_t actCoreNum) { NormalCalcFDWorkSpace(actCoreNum); }
+void QSFAMlaTiling::CalcFDWorkSpace(const uint32_t actCoreNum)
+{
+    NormalCalcFDWorkSpace(actCoreNum);
+}
 
 void QSFAMlaTiling::GetWorkspaceSize()
 {
@@ -761,9 +773,15 @@ ge::graphStatus QSFATilingCheck::CheckSingleParaKey() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSFATilingCheck::CheckSingleParaNumHeads() const { return ge::GRAPH_SUCCESS; }
+ge::graphStatus QSFATilingCheck::CheckSingleParaNumHeads() const
+{
+    return ge::GRAPH_SUCCESS;
+}
 
-ge::graphStatus QSFATilingCheck::CheckSingleParaKvHeadNums() const { return ge::GRAPH_SUCCESS; }
+ge::graphStatus QSFATilingCheck::CheckSingleParaKvHeadNums() const
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus QSFATilingCheck::CheckSingleParaSparseMode() const
 {
@@ -901,7 +919,10 @@ ge::graphStatus QSFATilingCheck::CheckParaExistenceMlaAntiquant() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSFATilingCheck::CheckParaExistenceMla() const { return CheckParaExistenceMlaAntiquant(); }
+ge::graphStatus QSFATilingCheck::CheckParaExistenceMla() const
+{
+    return CheckParaExistenceMlaAntiquant();
+}
 
 ge::graphStatus QSFATilingCheck::CheckParaExistence()
 {
@@ -1416,9 +1437,15 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquant() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSFATilingCheck::CheckFeatureMla() const { return CheckFeatureMlaAntiquant(); }
+ge::graphStatus QSFATilingCheck::CheckFeatureMla() const
+{
+    return CheckFeatureMlaAntiquant();
+}
 
-ge::graphStatus QSFATilingCheck::CheckFeature() const { return CheckFeatureMla(); }
+ge::graphStatus QSFATilingCheck::CheckFeature() const
+{
+    return CheckFeatureMla();
+}
 
 void QSFATilingCheck::Init()
 {

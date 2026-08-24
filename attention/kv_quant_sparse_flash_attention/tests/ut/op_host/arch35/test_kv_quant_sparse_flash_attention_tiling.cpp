@@ -14,9 +14,15 @@
 
 class KvQuantSparseFlashAttentionTilingArch35 : public testing::Test {
 protected:
-    static void SetUpTestCase() { std::cout << "KvQuantSparseFlashAttentionTilingArch35 SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "KvQuantSparseFlashAttentionTilingArch35 SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "KvQuantSparseFlashAttentionTilingArch35 TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "KvQuantSparseFlashAttentionTilingArch35 TearDown" << std::endl;
+    }
 };
 
 // 0
