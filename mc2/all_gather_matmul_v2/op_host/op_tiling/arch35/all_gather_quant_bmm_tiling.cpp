@@ -512,9 +512,14 @@ ge::graphStatus AllGatherQuantBmmTiling::SetMc2Hcomm()
     OP_LOGD(opName_, "Tiling SetMc2Hcom commMode_: %s", commMode_);
     OP_LOGD(opName_, "Tiling SetMc2Hcom commEngine: %d", commEngine);
     mc2CcTilingConfig.SetCommEngine(commEngine);
-    uint8_t skipBufferWindowCopy = (allGatherMatmulTilingDataFp8_->param.gatherLen == 0) ?
-                                       static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT) :
-                                       static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_OUTPUT);
+    uint8_t skipBufferWindowCopy = static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT);
+    if (isMxScene_) {
+        skipBufferWindowCopy = static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT);
+    } else {
+        skipBufferWindowCopy = (allGatherMatmulTilingDataFp8_->param.gatherLen == 0) ?
+                                   static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT) :
+                                   static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_OUTPUT);
+    }
     mc2CcTilingConfig.SetSkipBufferWindowCopy(skipBufferWindowCopy);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(allGatherMatmulTilingDataFp8_->mc2InitTiling) != 0,
                     OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"),
