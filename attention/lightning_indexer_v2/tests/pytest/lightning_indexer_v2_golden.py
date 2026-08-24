@@ -27,10 +27,10 @@ import ast
 from liv2_parameter_normalization import normalize_liv2_params
 
 try:
-    import cann_ops_transformer
+    import npu_ops_transformer
 except ImportError:
-    cann_ops_transformer = None
-from cann_ops_transformer.ops import lightning_indexer, lightning_indexer_metadata
+    npu_ops_transformer = None
+from npu_ops_transformer.ops import npu_lightning_indexer, npu_lightning_indexer_metadata
 
 DISCONTINUOUS_KEYS = True  # key非连续
 DEFAULT_SPLIT_S1 = False  # golden切分S1Flag
@@ -1305,7 +1305,7 @@ def liv2_output_single(
         }
         return output_tensors
     else:
-        metadata = lightning_indexer_metadata(
+        metadata = npu_lightning_indexer_metadata(
             num_heads_q=q_head_num,
             num_heads_k=k_head_num,
             head_dim=head_dim,
@@ -1331,7 +1331,7 @@ def liv2_output_single(
             )
         else:
             key = key.npu()
-        npu_result, npu_topk_value = lightning_indexer(
+        npu_result, npu_topk_value = npu_lightning_indexer(
             query.npu(),
             key.npu(),
             weights.npu(),

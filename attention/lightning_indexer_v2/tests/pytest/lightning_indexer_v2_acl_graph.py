@@ -30,7 +30,7 @@ class LIV2Network(nn.Module):
 
     def forward(self, query, key, weights, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, block_table,
                 output_idx_offset, metadata, topk, max_seqlen_q, layout_q, layout_k, mask_mode, cmp_ratio, return_value):
-        return torch.ops.cann_ops_transformer.lightning_indexer(query, key, weights,
+        return torch.ops.npu_ops_transformer.npu_lightning_indexer(query, key, weights,
                                                                 cu_seqlens_q = cu_seqlens_q,
                                                                 cu_seqlens_k = cu_seqlens_k,
                                                                 seqused_q = seqused_q,
@@ -95,7 +95,7 @@ def _liv2_prepare_tensors_and_metadata(params, tensor_dict):
     head_dim = int(params[7])
     batch_size = int(params[0])
 
-    metadata = torch.ops.cann_ops_transformer.lightning_indexer_metadata(
+    metadata = torch.ops.npu_ops_transformer.npu_lightning_indexer_metadata(
         num_heads_q = q_head_num,
         num_heads_k = k_head_num,
         head_dim = head_dim,

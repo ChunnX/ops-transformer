@@ -19,7 +19,7 @@ import pytest
 import random
 import math
 import ast
-from cann_ops_transformer.ops import lightning_indexer, lightning_indexer_metadata
+from npu_ops_transformer.ops import npu_lightning_indexer, npu_lightning_indexer_metadata
 
 def test_liv2_process(filepath, device_id=0):
     # 加载测试数据
@@ -87,7 +87,7 @@ def test_liv2_process(filepath, device_id=0):
     max_seqlen_q_meta = test_data['max_seqlen_q_meta']
     max_seqlen_k_meta = test_data['max_seqlen_k_meta']
 
-    metadata = lightning_indexer_metadata(
+    metadata = npu_lightning_indexer_metadata(
                     num_heads_q = q_head_num,
                     num_heads_k = k_head_num,
                     head_dim = head_dim,
@@ -107,7 +107,7 @@ def test_liv2_process(filepath, device_id=0):
 
     metadata = metadata.npu()
     #调用li算子
-    npu_result, npu_topk_value = lightning_indexer(query, key, weights,
+    npu_result, npu_topk_value = npu_lightning_indexer(query, key, weights,
                                              cu_seqlens_q = cu_seqlens_q,
                                              cu_seqlens_k = cu_seqlens_k,
                                              seqused_q = seqused_q,
