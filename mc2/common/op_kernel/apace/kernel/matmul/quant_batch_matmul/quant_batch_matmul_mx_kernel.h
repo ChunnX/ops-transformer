@@ -135,9 +135,9 @@ public:
         auto layoutA = MakeLayoutA{}(rankSize * params.localParams.originalM, Te::Get<MNK_K>(params.problemShape));
         auto layoutB = MakeLayoutB{}(rankSize * Te::Get<MNK_K>(params.problemShape), Te::Get<MNK_N>(params.problemShape));
 
-        uint32_t scaleKLen = static_cast<uint32_t>(
-            Blaze::Gemm::CeilDiv(static_cast<uint64_t>(Te::Get<MNK_K>(params.problemShape)),
-                                 static_cast<uint64_t>(MXFP_DIVISOR_SIZE))) * MXFP_MULTI_BASE_SIZE;
+        auto scaleKLen =
+            Blaze::Gemm::CeilDiv(static_cast<int64_t>(Te::Get<MNK_K>(params.problemShape)),
+                                 static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
         auto layoutScaleA = MakeLayoutScaleA{}(rankSize * oriM, scaleKLen);
         auto layoutScaleB = MakeLayoutScaleB{}(rankSize * scaleKLen, Te::Get<MNK_N>(params.problemShape));
         auto layoutBias = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, Te::Get<MNK_N>(params.problemShape));
