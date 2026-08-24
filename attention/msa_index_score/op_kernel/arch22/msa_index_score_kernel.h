@@ -30,7 +30,7 @@
 #include "catlass/coord.hpp"
 #include "catlass/gemm_coord.hpp"
 #include "catlass/matrix_coord.hpp"
-#include "catlass/layout/layout.hpp"
+#include "catlass/layout/msa_layout.hpp"
 #include "catlass/gemm/gemm_type.hpp"
 
 #include "../msa_index_score_common.h"
