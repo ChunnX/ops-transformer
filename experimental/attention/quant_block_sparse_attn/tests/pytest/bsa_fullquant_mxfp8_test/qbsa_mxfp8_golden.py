@@ -1477,7 +1477,7 @@ def generate_data():
 #   - 输出 OUT 固定 TND，MXFP8 TND LSE 固定 TN
 # ==============================================================================
 
-EMPTY_LSE = float("-inf")
+EMPTY_LSE = -3.4028234663852886e38
 MASK_VALUE = -10000.0
 # Keep the exact FP32 constants and operation order used by the VF.  For
 # large-magnitude negative scores, ``x / log(2)`` and ``x * INV_LN2`` can
@@ -2192,7 +2192,7 @@ def cpu_mxfp8_golden(
                         any_softmax_active |= round_active
 
                 # 稀疏位置有效与 softmax 数值状态有效需要分别判断。仅包含 -Inf
-                # score 的行保留 CUDA 空输出（0 / -Inf LSE）；softmax 已生效
+                # score 的行保留兼容空输出（0 / -FLT_MAX LSE）；softmax 已生效
                 # 且包含 NaN 的行继续传播 NaN，与已有 00011 行为保持一致。
                 # Golden 的未启动 max 状态使用 -Inf 表示 kernel 的
                 # -FLT_MAX sentinel。只有 max 未启动且 sum==0 才是空行；
