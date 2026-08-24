@@ -18,7 +18,6 @@
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
-#include "mhc_pre_backward_mm_policy.h"
 
 namespace MhcPreBackwardUtils {
 
@@ -64,10 +63,9 @@ using namespace AscendC;
 constexpr uint32_t DOUBLE_BUFFER = 2;
 constexpr uint32_t INOUT_QUEUE_SIZE = 32 * 1024;              // 32KB
 constexpr uint32_t SMALL_QUEUE_SIZE = 1 * 1024;               // 1KB
-constexpr uint32_t C0_UB_BUFFER_SIZE = 32 * 1024;              // 每个AIV接收128 * 64个float
-constexpr uint32_t FP32_BUF_SIZE = (248 - 32 * 3 - 1 - 32 * 2) * 1024; // 87KB
+constexpr uint32_t FP32_BUF_SIZE = (248 - 32 * 3 - 1) * 1024; // 151KB
 constexpr uint32_t PROCESS_V2_CHUNK_SIZE = 128;               // ProcessV2函数使用的chunk大小
-constexpr uint32_t SINGLE_M = 128;                            // C0 SplitN输出后每个AIV占32KB
+constexpr uint32_t SINGLE_M = 1024;
 constexpr uint32_t ND_BLOCK_SIZE = 128;
 constexpr uint32_t ALPHA_GRAD_LAST_DIM_SIZE = 3;
 constexpr uint32_t ALPHA_GRAD_PADDING = 24;
@@ -88,10 +86,9 @@ constexpr float ONE = 1.0f;
 constexpr float ZERO = 0.0f;
 constexpr uint32_t MATMUL_WRITE_OFFSET_M = 256;
 constexpr uint32_t MATMUL_WRITE_OFFSET_N = 128;
-constexpr uint32_t CROSS_CORE_FLAG_INDEX = 0x4;
-constexpr uint32_t CROSS_CORE_FLAG_ID_MAX = 16;
-constexpr uint32_t CROSS_CORE_AIC_SYNC_AIV_FLAG = 0x4;
-constexpr uint32_t CROSS_CORE_AIV_SYNC_AIC_FLAG = 0x6;
+constexpr uint32_t CROSS_CORE_FLAG_INDEX = 0x2;
+constexpr uint32_t CROSS_CORE_WAIT_FLAG_C0 = 0x9;
+constexpr uint32_t CROSS_CORE_WAIT_FLAG_C1 = 0x8;
 constexpr uint32_t VEC_DEAL_VECIDX_DIV = 2;
 
 constexpr MicroAPI::CastTrait ctHalf2Fp32Zero = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
@@ -143,13 +140,10 @@ struct V0V1Buffers {
     uint32_t gatherLength;
 };
 
-// 保持原有 SplitN 语义：不打开 A/B ibShare，避免库式 copy-out 强制切到 SplitM。
 using aT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using bT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
-using cT_C0 = MatmulType<TPosition::VECIN, CubeFormat::ND_ALIGN, float>;
-using biasT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
-using MT_C0 = matmul::MatmulImpl<aT_C0, bT_C0, cT_C0, biasT_C0, CFG_NORM,
-                                 MatmulCallBackFunc<nullptr, nullptr, nullptr>, MhcPreBackwardSplitNMatmulPolicy>;
+using cT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
+using MT_C0 = matmul::MatmulImpl<aT_C0, bT_C0, cT_C0>;
 
 using aT_C1 = MatmulType<TPosition::GM, CubeFormat::ND, float, true>;
 using bT_C1 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
