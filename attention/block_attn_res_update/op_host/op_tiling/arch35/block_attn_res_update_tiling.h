@@ -11,20 +11,9 @@
 #ifndef BLOCK_ATTN_RES_UPDATE_TILING_H
 #define BLOCK_ATTN_RES_UPDATE_TILING_H
 
-#include <cstdint>
-#include "platform/soc_spec.h"
 #include "register/op_impl_registry.h"
 
 namespace optiling {
-
-struct BlockAttnResUpdateCompileInfo {
-    uint64_t ubSize = 0;
-    uint64_t l2Size = 0;
-    uint32_t workspaceNum = 0;
-    uint32_t aivNum = 0;
-    uint32_t aicNum = 0;
-    NpuArch npuArch = NpuArch::DAV_RESV;
-};
 
 ge::graphStatus Tiling4BlockAttnResUpdate(gert::TilingContext *context);
 ge::graphStatus TilingPrepare4BlockAttnResUpdate(gert::TilingParseContext *context);

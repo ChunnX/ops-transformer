@@ -36,26 +36,47 @@ namespace {
 constexpr const char *OP_NAME = "BlockAttnResUpdate";
 constexpr const char *SOC_VERSION = "Ascend950";
 constexpr const char *NPU_ARCH = "3510";
-constexpr uint64_t L2_SIZE = 128UL * 1024UL * 1024UL;
 constexpr size_t MIN_INPUT_COLUMN_COUNT = 25UL;
 constexpr size_t SUCCESS_COLUMN_COUNT = 36UL;
+constexpr size_t INPUT_COUNT = 6UL;
+constexpr size_t OUTPUT_COUNT = 2UL;
+constexpr uint64_t VALID_AIC_NUM = 32UL;
+constexpr uint64_t VALID_UB_SIZE = 245760UL;
+constexpr uint64_t VALID_TILING_DATA_CAPACITY = 4096UL;
 
-ge::DataType ParseDtype(const std::string &value) { return ops::ut::ParseGeDtype(ops::ut::Trim(value)); }
+ge::DataType ParseDtype(const std::string &value)
+{
+    return ops::ut::ParseGeDtype(ops::ut::Trim(value));
+}
 
 gert::StorageShape ParseShape(const std::string &value)
 {
     return ops::ut::MakeGertStorageShape(ops::ut::ParseDims(ops::ut::Trim(value)));
 }
 
+gert::TilingContextPara MakeValidTilingContextPara()
+{
+    return gert::TilingContextPara(OP_NAME,
+                                   {
+                                       {ParseShape("3:63"), ge::DT_FLOAT, ge::FORMAT_ND},
+                                       {ParseShape("3:63"), ge::DT_BF16, ge::FORMAT_ND},
+                                       {ParseShape("63"), ge::DT_FLOAT, ge::FORMAT_ND},
+                                       {ParseShape("3:63"), ge::DT_FLOAT, ge::FORMAT_ND},
+                                       {ParseShape("3"), ge::DT_FLOAT, ge::FORMAT_ND},
+                                       {ParseShape("3"), ge::DT_FLOAT, ge::FORMAT_ND},
+                                   },
+                                   {
+                                       {ParseShape("3:63"), ge::DT_FLOAT, ge::FORMAT_ND},
+                                       {ParseShape("3:63"), ge::DT_BF16, ge::FORMAT_ND},
+                                   },
+                                   std::vector<gert::TilingContextPara::OpAttr>{}, nullptr, NPU_ARCH, VALID_AIC_NUM,
+                                   VALID_UB_SIZE, VALID_TILING_DATA_CAPACITY);
+}
+
 struct BlockAttnResUpdateTilingCase {
     void Run() const
     {
-        optiling::BlockAttnResUpdateCompileInfo compileInfo{};
-        compileInfo.ubSize = ubSize;
-        compileInfo.l2Size = L2_SIZE;
-        compileInfo.aivNum = aivNum;
-        compileInfo.aicNum = aivNum / 2U;
-        compileInfo.npuArch = NpuArch::DAV_3510;
+        const uint32_t aicNum = aivNum / 2U;
 
         std::vector<gert::TilingContextPara::OpAttr> attrs;
         if (eps != "DEFAULT") {
@@ -75,8 +96,7 @@ struct BlockAttnResUpdateTilingCase {
                                          {ParseShape(partialRefShape), partialRefDtype, ge::FORMAT_ND},
                                          {ParseShape(hShape), hDtype, ge::FORMAT_ND},
                                      },
-                                     attrs, &compileInfo, NPU_ARCH, compileInfo.aicNum, compileInfo.ubSize,
-                                     tilingDataCapacity);
+                                     attrs, nullptr, NPU_ARCH, aicNum, ubSize, tilingDataCapacity);
 
         TilingInfo actual;
         const bool actualResult = ExecuteTiling(para, actual);
@@ -277,7 +297,49 @@ TEST(BlockAttnResUpdateTilingDirect, RejectsNullContexts)
     EXPECT_EQ(opImpl->tiling_parse(nullptr), ge::GRAPH_FAILED);
 }
 
-TEST_P(BlockAttnResUpdateTilingTest, CsvDrivenCase) { GetParam().Run(); }
+TEST(BlockAttnResUpdateTilingDirect, AcceptsMatchingNdPhysicalLayout)
+{
+    auto para = MakeValidTilingContextPara();
+    TilingInfo actual;
+    EXPECT_TRUE(ExecuteTiling(para, actual));
+}
+
+TEST(BlockAttnResUpdateTilingDirect, RejectsStorageShapeDifferentFromOrigin)
+{
+    for (size_t inputIndex = 0U; inputIndex < INPUT_COUNT; ++inputIndex) {
+        auto para = MakeValidTilingContextPara();
+        gert::Shape &storageShape = para.inputTensorDesc_[inputIndex].shape_.MutableStorageShape();
+        storageShape.SetDim(0U, storageShape.GetDim(0U) + 1);
+
+        TilingInfo actual;
+        EXPECT_FALSE(ExecuteTiling(para, actual)) << "inputIndex=" << inputIndex;
+    }
+
+    for (size_t outputIndex = 0U; outputIndex < OUTPUT_COUNT; ++outputIndex) {
+        auto para = MakeValidTilingContextPara();
+        gert::Shape &storageShape = para.outputTensorDesc_[outputIndex].shape_.MutableStorageShape();
+        storageShape.SetDim(0U, storageShape.GetDim(0U) + 1);
+
+        TilingInfo actual;
+        EXPECT_FALSE(ExecuteTiling(para, actual)) << "outputIndex=" << outputIndex;
+    }
+}
+
+TEST(BlockAttnResUpdateTilingDirect, RejectsNonNdInputFormats)
+{
+    for (size_t inputIndex = 0U; inputIndex < INPUT_COUNT; ++inputIndex) {
+        auto para = MakeValidTilingContextPara();
+        para.inputTensorDesc_[inputIndex].format_ = ge::FORMAT_NCHW;
+
+        TilingInfo actual;
+        EXPECT_FALSE(ExecuteTiling(para, actual)) << "inputIndex=" << inputIndex;
+    }
+}
+
+TEST_P(BlockAttnResUpdateTilingTest, CsvDrivenCase)
+{
+    GetParam().Run();
+}
 
 INSTANTIATE_TEST_SUITE_P(BLOCK_ATTN_RES_UPDATE_ASCEND950, BlockAttnResUpdateTilingTest,
                          testing::ValuesIn(GetTilingCases().cases), MakeParamName);

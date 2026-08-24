@@ -15,44 +15,51 @@
 #include <limits>
 #include "log/log.h"
 #include "op_host/tiling_templates_registry.h"
+#include "platform/soc_spec.h"
 #include "securec.h"
 #include "util/math_util.h"
+#include "../../../op_kernel/arch35/block_attn_res_update_tiling_key.h"
 
 namespace optiling {
 namespace block_attn_res_update {
 namespace {
 
 constexpr const char *OP_NAME = "BlockAttnResUpdate";
-constexpr uint32_t FP32_ALIGN_ELEMENTS = 8;  // 8 * 4 B = 32 B
-constexpr uint32_t BF16_ALIGN_ELEMENTS = 16; // 16 * 2 B = 32 B
-constexpr uint32_t FP32_BYTES = 4;
-constexpr uint32_t BF16_BYTES = 2;
-constexpr uint32_t DOUBLE_BUFFER_NUM = 2;
-constexpr uint32_t MAX_DATA_COPY_BLOCK_COUNT = 4095;
-constexpr uint32_t SYSTEM_RESERVED_UB_BYTES = 8 * 1024;
-constexpr uint64_t FULL_D_TILING_KEY = 0;
-constexpr uint64_t SINGLE_TILE_TILING_KEY = 1;
+constexpr uint32_t FP32_ALIGN_ELEMENTS = 8U;  // 8 * 4 B = 32 B
+constexpr uint32_t BF16_ALIGN_ELEMENTS = 16U; // 16 * 2 B = 32 B
+constexpr uint32_t FP32_BYTES = 4U;
+constexpr uint32_t BF16_BYTES = 2U;
+constexpr uint32_t DOUBLE_BUFFER_NUM = 2U;
+// Each ping-pong buffer stores partial and numerator as two equal FP32 matrices.
+constexpr uint32_t FP32_MATRIX_NUM_PER_BUFFER = 2U;
+// The stats tensor contains logitMax, expSum, and score planes.
+constexpr uint32_t STATS_PLANE_NUM = 3U;
+// A 2-D data-copy command supports at most 4095 blocks; each T row is one block.
+constexpr uint32_t MAX_DATA_COPY_BLOCK_COUNT = 4095U;
+// Exclude an 8 KiB system margin from the UB capacity available to tensor storage.
+constexpr uint32_t SYSTEM_RESERVED_UB_BYTES = 8U * 1024U;
 // Keep the generic full-D strategy as a fallback. A preferred split-D strategy should use a numerically smaller value.
 constexpr int32_t FULL_D_TILING_PRIORITY = 1000;
 
 } // namespace
 
-bool BlockAttnResUpdateFullDTiling::IsCapable() { return true; }
+bool BlockAttnResUpdateFullDTiling::IsCapable()
+{
+    return true;
+}
 
 ge::graphStatus BlockAttnResUpdateFullDTiling::DoOpTiling()
 {
     tilingInfo_ = BlockAttnResUpdateFullDTilingInfo{};
-    const uint64_t tPerCore = tSize_ / compileInfo_.aivNum + (tSize_ % compileInfo_.aivNum != 0U);
-    if (tPerCore > std::numeric_limits<uint32_t>::max()) {
-        OP_LOGE(opName_, "T per core exceeds the uint32_t range, T=%lu, configured cores=%u, tPerCore=%lu.", tSize_,
-                compileInfo_.aivNum, tPerCore);
-        return ge::GRAPH_FAILED;
-    }
+    const uint64_t tPerCore = tSize_ / aivNum_ + (tSize_ % aivNum_ != 0U);
+    OP_CHECK_IF(tPerCore > std::numeric_limits<uint32_t>::max(),
+                OP_LOGE(opName_, "T per core exceeds the uint32_t range, T=%lu, configured cores=%u, tPerCore=%lu.",
+                        tSize_, aivNum_, tPerCore),
+                return ge::GRAPH_FAILED);
     const uint64_t usedCoreNum = tSize_ / tPerCore + (tSize_ % tPerCore != 0U);
-    if (usedCoreNum > std::numeric_limits<uint16_t>::max()) {
-        OP_LOGE(opName_, "Used core count exceeds the uint16_t tiling range, cores=%lu.", usedCoreNum);
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF(usedCoreNum > std::numeric_limits<uint16_t>::max(),
+                OP_LOGE(opName_, "Used core count exceeds the uint16_t tiling range, cores=%lu.", usedCoreNum),
+                return ge::GRAPH_FAILED);
     const uint64_t tRemainder = tSize_ % tPerCore;
     const uint64_t lastTPerCore = tRemainder == 0U ? tPerCore : tRemainder;
 
@@ -66,6 +73,8 @@ ge::graphStatus BlockAttnResUpdateFullDTiling::DoOpTiling()
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
+    // Preserve the UB-fit tile count, then distribute T evenly across those tiles to avoid a tiny final tile.
+    // balancedTileT never exceeds reuseTileT, so it retains the UB-fit guarantee.
     const uint64_t reuseTileT = tilingInfo_.tileT;
     const uint64_t tileNumPerCore = (tPerCore + reuseTileT - 1U) / reuseTileT;
     const uint64_t balancedTileT = (tPerCore + tileNumPerCore - 1U) / tileNumPerCore;
@@ -86,28 +95,30 @@ uint64_t BlockAttnResUpdateFullDTiling::CalcUbBytes(uint32_t tileT, uint32_t &st
     const uint64_t partialBytes = static_cast<uint64_t>(tileT) * tilingInfo_.dAlignFp32 * FP32_BYTES;
     const uint64_t deltaHBytes = static_cast<uint64_t>(tileT) * tilingInfo_.dAlignBf16 * BF16_BYTES;
     const uint64_t numeratorBytes = partialBytes;
-    const uint64_t statsBytes = static_cast<uint64_t>(3) * statsTStride * FP32_BYTES;
+    const uint64_t statsBytes = static_cast<uint64_t>(STATS_PLANE_NUM) * statsTStride * FP32_BYTES;
     const uint64_t bufferBytes = partialBytes + deltaHBytes + numeratorBytes + statsBytes;
     return queryBytes + static_cast<uint64_t>(DOUBLE_BUFFER_NUM) * bufferBytes;
 }
 
 bool BlockAttnResUpdateFullDTiling::TryUbTiling(uint64_t maxTPerCore)
 {
-    if (compileInfo_.ubSize <= SYSTEM_RESERVED_UB_BYTES) {
+    if (ubSize_ <= SYSTEM_RESERVED_UB_BYTES) {
         return false;
     }
 
     // Keep at least two tiles on the busiest core so both ping-pong buffers participate when possible.
     const uint64_t maxTileT = (maxTPerCore + static_cast<uint64_t>(DOUBLE_BUFFER_NUM) - 1U) / DOUBLE_BUFFER_NUM;
     const uint64_t maxCandidateT = std::min<uint64_t>(maxTileT, MAX_DATA_COPY_BLOCK_COUNT);
-    const uint64_t bytesPerT = static_cast<uint64_t>(tilingInfo_.dAlignFp32) * FP32_BYTES * 2 +
-                               static_cast<uint64_t>(tilingInfo_.dAlignBf16) * BF16_BYTES + 3 * FP32_BYTES;
+    const uint64_t bytesPerT = static_cast<uint64_t>(tilingInfo_.dAlignFp32) * FP32_BYTES * FP32_MATRIX_NUM_PER_BUFFER +
+                               static_cast<uint64_t>(tilingInfo_.dAlignBf16) * BF16_BYTES +
+                               static_cast<uint64_t>(STATS_PLANE_NUM) * FP32_BYTES;
     const uint64_t queryBytes = static_cast<uint64_t>(tilingInfo_.dAlignFp32) * FP32_BYTES;
-    const uint64_t usableUbBytes = compileInfo_.ubSize - SYSTEM_RESERVED_UB_BYTES;
+    const uint64_t usableUbBytes = ubSize_ - SYSTEM_RESERVED_UB_BYTES;
     if (usableUbBytes <= queryBytes || bytesPerT == 0) {
         return false;
     }
 
+    // Estimate an initial candidate from the per-row cost, then verify the exact aligned footprint while shrinking.
     uint64_t candidateT = std::min<uint64_t>(
         maxCandidateT, (usableUbBytes - queryBytes) / (static_cast<uint64_t>(DOUBLE_BUFFER_NUM) * bytesPerT));
     while (candidateT > 0) {
@@ -132,17 +143,18 @@ ge::graphStatus BlockAttnResUpdateFullDTiling::SelectUbTiling(uint64_t maxTPerCo
                 "tileT=%u buffers=%u "
                 "UB=%lu/%lu.",
                 tSize_, dSize_, tilingInfo_.dAlignFp32, tilingInfo_.dAlignBf16, tilingInfo_.usedCoreNum,
-                tilingInfo_.tileT, DOUBLE_BUFFER_NUM, tilingInfo_.selectedUbBytes, compileInfo_.ubSize);
+                tilingInfo_.tileT, DOUBLE_BUFFER_NUM, tilingInfo_.selectedUbBytes, ubSize_);
         return ge::GRAPH_SUCCESS;
     }
     OP_LOGE(opName_, "One complete D vector does not fit in UB with double buffering (D=%u, ubSize=%lu).", dSize_,
-            compileInfo_.ubSize);
+            ubSize_);
     return ge::GRAPH_FAILED;
 }
 
 uint64_t BlockAttnResUpdateFullDTiling::GetTilingKey() const
 {
-    return tilingInfo_.tPerCore <= tilingInfo_.tileT ? SINGLE_TILE_TILING_KEY : FULL_D_TILING_KEY;
+    // SINGLE_TILE omits ping-pong reuse events when every row assigned to a core fits in one tile.
+    return GET_TPL_TILING_KEY(tilingInfo_.tPerCore <= tilingInfo_.tileT);
 }
 
 void BlockAttnResUpdateFullDTiling::SetTilingData()
@@ -160,30 +172,19 @@ void BlockAttnResUpdateFullDTiling::SetTilingData()
 
 ge::graphStatus BlockAttnResUpdateFullDTiling::PostTiling()
 {
-    if (context_ == nullptr) {
-        OP_LOGE(OP_NAME, "Context is nullptr.");
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF(context_ == nullptr, OP_LOGE(OP_NAME, "Context is nullptr."), return ge::GRAPH_FAILED);
     auto *rawTilingData = context_->GetRawTilingData();
-    if (rawTilingData == nullptr) {
-        OP_LOGE(opName_, "Raw tiling data is nullptr.");
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF(rawTilingData == nullptr, OP_LOGE(opName_, "Raw tiling data is nullptr."), return ge::GRAPH_FAILED);
     void *tilingDataBuffer = rawTilingData->GetData();
-    if (tilingDataBuffer == nullptr) {
-        OP_LOGE(opName_, "Raw tiling data buffer is nullptr.");
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF(tilingDataBuffer == nullptr, OP_LOGE(opName_, "Raw tiling data buffer is nullptr."),
+                return ge::GRAPH_FAILED);
     constexpr size_t tilingDataSize = sizeof(BlockAttnResUpdateTilingData);
     OP_CHECK_IF(rawTilingData->GetCapacity() < tilingDataSize,
                 OP_LOGE(opName_, "Context tiling data capacity %zu is less than actual tiling data size %zu.",
                         rawTilingData->GetCapacity(), tilingDataSize),
                 return ge::GRAPH_FAILED);
     size_t *workspaces = context_->GetWorkspaceSizes(1);
-    if (workspaces == nullptr) {
-        OP_LOGE(opName_, "Workspace size buffer is nullptr.");
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF(workspaces == nullptr, OP_LOGE(opName_, "Workspace size buffer is nullptr."), return ge::GRAPH_FAILED);
 
     const errno_t ret = memcpy_s(tilingDataBuffer, rawTilingData->GetCapacity(), &tilingData_, tilingDataSize);
     OP_CHECK_IF(ret != EOK, OP_LOGE(opName_, "Failed to copy tiling data, ret=%d.", ret), return ge::GRAPH_FAILED);
