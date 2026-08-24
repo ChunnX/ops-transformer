@@ -38,8 +38,6 @@ struct MoeEpCombineInfo {
     uint64_t totalUbSize = 0;
     uint64_t combineStateWinOffset = 0;
     uint64_t combineDataWinOffset = 0;
-    uint64_t taskListOffset = 0; // 任务列表区起始（SYSTEM_NEED_WORKSPACE 之后）
-    uint32_t taskCapacity = 0;   // 任务列表容量上界（= recvxDim0）
 };
 
 struct MoeEpCombineTilingData {

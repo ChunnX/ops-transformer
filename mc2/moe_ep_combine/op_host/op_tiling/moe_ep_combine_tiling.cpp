@@ -66,7 +66,6 @@ constexpr int64_t K_MAX = 32;
 constexpr int64_t META_INNER_DIM = 4;
 constexpr uint32_t NETWORK_DIRECT = 0U;
 constexpr uint32_t NETWORK_HYBRID = 1U;
-constexpr uint64_t TASK_ENTRY_BYTES = 16UL; // 任务条目 int32x4: [row, srcTokenIdx, srcTopKIdx, weight]
 
 static void PrintTilingDataInfo(const char *nodeName, const MoeEpCombineInfo &info)
 {
@@ -76,11 +75,8 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeEpCombineInfo &in
             info.cfg.topK, info.cfg.numMaxTokensPerRank);
     OP_LOGD(nodeName, "perSlotBytes=%u, hasTopkWeights=%u, aivNum=%u", info.cfg.perSlotBytes, info.hasTopkWeights,
             info.aivNum);
-    OP_LOGD(nodeName,
-            "totalWinSizeEp=%lu, combineStateWinOffset=%lu, combineDataWinOffset=%lu, "
-            "taskListOffset=%lu, taskCapacity=%u, totalUbSize=%lu",
-            info.totalWinSizeEp, info.combineStateWinOffset, info.combineDataWinOffset, info.taskListOffset,
-            info.taskCapacity, info.totalUbSize);
+    OP_LOGD(nodeName, "totalWinSizeEp=%lu, combineStateWinOffset=%lu, combineDataWinOffset=%lu, totalUbSize=%lu",
+            info.totalWinSizeEp, info.combineStateWinOffset, info.combineDataWinOffset, info.totalUbSize);
 }
 
 static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context, const char *nodeName,
@@ -150,7 +146,6 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
                     return ge::GRAPH_FAILED);
     const int64_t recvSrcMetadataDim0 = recvSrcMetadataShape->GetStorageShape().GetDim(0);
     const int64_t recvSrcMetadataDim1 = recvSrcMetadataShape->GetStorageShape().GetDim(1);
-    info.taskCapacity = static_cast<uint32_t>(recvxDim0);
     OP_TILING_CHECK(recvSrcMetadataDim0 != recvxDim0,
                     OP_LOGE(nodeName, "recv_src_metadata dim0 must equal x dim0(%ld), but got %ld.", recvxDim0,
                             recvSrcMetadataDim0),
@@ -414,17 +409,7 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
 
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
-    // 任务列表区: 远程列表 + 本地列表(每核固定分段) + 计数区(rankCnt/rankBase/localCnt(32B 槽)/displs)
-    // + 同步标志区(flag1A[aivNum]/flagRemote[aivNum]/flagDispls，各 32B 槽，替代 SyncAll 硬同步)
-    uint64_t taskBytes = static_cast<uint64_t>(info.taskCapacity) * TASK_ENTRY_BYTES;
-    uint64_t localListBytes = (static_cast<uint64_t>(info.taskCapacity) + aivNum) * TASK_ENTRY_BYTES;
-    uint64_t epWorldSize = static_cast<uint64_t>(info.cfg.epWorldSize);
-    uint64_t countsBytes =
-        (2UL * static_cast<uint64_t>(aivNum) * epWorldSize + (epWorldSize + 1UL)) * sizeof(int32_t) +
-        static_cast<uint64_t>(aivNum) * UB_ALIGN;
-    uint64_t flagBytes = (2UL * static_cast<uint64_t>(aivNum) + 1UL) * UB_ALIGN;
-    workSpaces[0] = AlignUpWin(SYSTEM_NEED_WORKSPACE + taskBytes + localListBytes + countsBytes + flagBytes);
-    info.taskListOffset = SYSTEM_NEED_WORKSPACE;
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE;
 
     uint32_t tplHasTopkWeights = info.hasTopkWeights ? 1 : 0;
     uint64_t tilingKey = GET_TPL_TILING_KEY(tplHasTopkWeights, TILINGKEY_TPL_A5);
