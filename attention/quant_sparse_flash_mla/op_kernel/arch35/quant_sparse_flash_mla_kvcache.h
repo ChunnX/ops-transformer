@@ -386,6 +386,23 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, Glob
 }
 
 TEMPLATE_INTF
+__aicore__ inline int64_t ConvertS2MetadataBlockToToken(
+    const RunParamStr &runParam, const ConstInfo &constInfo, uint32_t s2BlockIdx)
+{
+    int64_t s2BaseSize = static_cast<int64_t>(constInfo.s2BaseSize);
+    int64_t oriLen = runParam.s2LineOriEndIdx - runParam.s2LineStartIdx;
+    int64_t cmpLen = runParam.s2CmpLineEndIdx - runParam.s2CmpLineStartIdx;
+    int64_t reductionBlockSize = runParam.baseBlockNumPerReductionBlock * s2BaseSize;
+    int64_t oriReductionBlockNum = (oriLen + reductionBlockSize - 1) / reductionBlockSize;
+    if (s2BlockIdx <= oriReductionBlockNum) {
+        int64_t oriToken = static_cast<int64_t>(s2BlockIdx) * reductionBlockSize;
+        return oriToken < oriLen ? oriToken : oriLen;
+    }
+    int64_t cmpToken = (static_cast<int64_t>(s2BlockIdx) - oriReductionBlockNum) * reductionBlockSize;
+    return oriLen + (cmpToken < cmpLen ? cmpToken : cmpLen);
+}
+
+TEMPLATE_INTF
 __aicore__ inline void InitTaskParamByRun(const RunParamStr &runParam, RunInfo &runInfo)
 {
     runInfo.boIdx = runParam.boIdx;

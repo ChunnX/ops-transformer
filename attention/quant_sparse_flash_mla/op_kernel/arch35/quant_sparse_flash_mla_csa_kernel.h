@@ -102,8 +102,6 @@ private:
     __aicore__ inline void InitMMResBuf(__gm__ uint8_t *workspace);
     __aicore__ inline void ComputeConstexpr();
     __aicore__ inline void ParseFdRunInfo(FdRunInfo &fdRunInfo);
-    __aicore__ inline int64_t ConvertS2MetadataBlockToToken(
-        const RunParamStr &runParam, const ConstInfo &constInfo, uint32_t s2BlockIdx);
     __aicore__ inline bool ApplyS2MetadataRange(RunParamStr &runParam, ConstInfo &constInfo,
         int64_t s2StartPoint, int64_t s2EndPoint, bool isFirstS2RangeTask, bool isLastS2RangeTask);
     __aicore__ inline void SetRunInfo(RunInfo &runInfo, RunParamStr &runParam, int64_t taskId, int64_t s2LoopCount,
@@ -439,8 +437,8 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Init
         bmm1Buffers.Get().SetCrossCore();
     }
     uint32_t v0ResSize = constInfo.s2BaseSize * 512U * sizeof(Q_T);
-    uint64_t totalOffset = IS_SPLIT_G ? static_cast<uint64_t>(v0ResSize) * 3 * (aicIdx >> 1U) :
-                                        static_cast<uint64_t>(v0ResSize) * 3 * aicIdx;
+    int64_t totalOffset = IS_SPLIT_G ? static_cast<int64_t>(v0ResSize) * 3 * (aicIdx >> 1U) :
+                                       static_cast<int64_t>(v0ResSize) * 3 * aicIdx;
     v0ResGmBufferManager.Init(workspace + totalOffset);
     v0ResGmBuffers.Init(v0ResGmBufferManager, v0ResSize);
     v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
@@ -634,9 +632,10 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
                     bool isFirstS2RangeTask =
                         bnIdx == bN2StartIdx && gS1Index == runParam.gs1LoopStartIdx;
                     bool isLastS2RangeTask = lastBN && gS1Index == runParam.gs1LoopEndIdx - 1;
-                    int64_t s2StartPoint = ConvertS2MetadataBlockToToken(runParam, this->constInfo, s2StartIdx);
+                    int64_t s2StartPoint =
+                        ConvertS2MetadataBlockToToken<TEMPLATE_INTF_ARGS>(runParam, this->constInfo, s2StartIdx);
                     int64_t s2EndPoint = isLastS2RangeTask && s2EndIdx == 0 ? 0 :
-                        ConvertS2MetadataBlockToToken(runParam, this->constInfo, s2EndIdx);
+                        ConvertS2MetadataBlockToToken<TEMPLATE_INTF_ARGS>(runParam, this->constInfo, s2EndIdx);
                     s2NoNeedCalc = ApplyS2MetadataRange(runParam, this->constInfo, s2StartPoint, s2EndPoint,
                                                         isFirstS2RangeTask, isLastS2RangeTask);
                 } else {
@@ -724,23 +723,6 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
             }
         }
     }
-}
-
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline int64_t QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::ConvertS2MetadataBlockToToken(
-    const RunParamStr &runParam, const ConstInfo &constInfo, uint32_t s2BlockIdx)
-{
-    int64_t s2BaseSize = static_cast<int64_t>(constInfo.s2BaseSize);
-    int64_t oriLen = runParam.s2LineOriEndIdx - runParam.s2LineStartIdx;
-    int64_t cmpLen = runParam.s2CmpLineEndIdx - runParam.s2CmpLineStartIdx;
-    int64_t reductionBlockSize = runParam.baseBlockNumPerReductionBlock * s2BaseSize;
-    int64_t oriReductionBlockNum = (oriLen + reductionBlockSize - 1) / reductionBlockSize;
-    if (s2BlockIdx <= oriReductionBlockNum) {
-        int64_t oriToken = static_cast<int64_t>(s2BlockIdx) * reductionBlockSize;
-        return oriToken < oriLen ? oriToken : oriLen;
-    }
-    int64_t cmpToken = (static_cast<int64_t>(s2BlockIdx) - oriReductionBlockNum) * reductionBlockSize;
-    return oriLen + (cmpToken < cmpLen ? cmpToken : cmpLen);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -867,8 +849,8 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::SetR
     int64_t baseBlockIdInReduceBlock = s2LoopCount % runParam.baseBlockNumPerReductionBlock;
     runInfo.reduceBlockId = s2LoopCount / runParam.baseBlockNumPerReductionBlock;
     runInfo.isFirstBase = baseBlockIdInReduceBlock == 0;
-    runInfo.isLastBase = runParam.baseBlockNumPerReductionBlock - baseBlockIdInReduceBlock == 1LL ||
-                         s2LoopCount == s2LoopLimit;
+    runInfo.isLastBaseInReduceBlock =
+        runParam.baseBlockNumPerReductionBlock - baseBlockIdInReduceBlock == 1LL || s2LoopCount == s2LoopLimit;
     if constexpr (IS_BATCH_CONSISTENCY) {
         runInfo.isFirstReduce = baseBlockIdInReduceBlock == 1;
     } else {
