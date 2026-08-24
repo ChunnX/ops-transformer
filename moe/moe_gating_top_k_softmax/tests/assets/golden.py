@@ -62,8 +62,7 @@ class AclnnMoeGatingTopKSoftmaxTestSpec:
         num_expert = gating.shape[-1]
         softmax = _softmax_torch(gating, -1)
 
-        sort_key = softmax.to(torch.float16) if ori_dtype == torch.float16 else softmax
-        indices = torch.argsort(sort_key, dim=-1, descending=True, stable=True)
+        indices = torch.argsort(softmax, dim=-1, descending=True, stable=True)
         indices = indices[:, :k].to(torch.int64)
         out = torch.gather(softmax, -1, indices)
 
@@ -106,8 +105,7 @@ class MoeGatingTopKSoftmaxTestSpec:
         num_expert = gating.shape[-1]
         softmax = _softmax_numpy(gating, -1)
 
-        sort_key = softmax.astype(numpy.float16) if x.dtype == numpy.float16 else softmax
-        indices = numpy.argsort(-sort_key, axis=-1, kind="stable")
+        indices = numpy.argsort(-softmax, axis=-1, kind="stable")
         indices = indices[:, :k]
         out = numpy.take_along_axis(softmax, indices, axis=-1)
 
