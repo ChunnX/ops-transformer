@@ -25,13 +25,13 @@
 
 - **接口功能**：
 
-  `cann_ops_transformer.block_attn_res_update`将当前`delta`原地累加到FP32类型的`partial_block`，计算当前partial block的RMSNorm score，并与Phase 1产生的online softmax中间状态合并，返回当前层结果`h`。更新后的partial block直接写回输入`partial_block`。底层调用`aclnnBlockAttnResUpdate`接口完成计算。
+  `cann_ops_transformer.block_attn_res_update`将当前`delta`原地累加到FP32类型的`partial_block`，计算更新后`partial_block`的RMSNorm score，并与`block_attn_res_prepare`产生的online softmax中间状态合并，返回当前层结果`h`。更新后的`partial_block`直接写回输入`partial_block`。底层调用`aclnnBlockAttnResUpdate`接口完成计算。
 
 - **计算公式**：
 
   设`T`表示展平后的token数，`D`表示hidden size。主要计算过程如下：
 
-  1. 更新当前partial block：
+  1. 更新当前`partial_block`：
 
      $$
      p[t,d] = partial\_block[t,d] + \operatorname{FP32}(delta[t,d])
@@ -93,19 +93,19 @@ cann_ops_transformer.block_attn_res_update(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
-| `partial_block` | Tensor | 必选 | 当前已累计的partial block。必须为NPU上的连续Tensor，调用完成后被原地更新。 | `torch.float32` | `(T, D)` |
-| `delta` | Tensor | 必选 | 本次需要累加的partial增量。必须为NPU上的连续Tensor，shape必须与`partial_block`一致。 | `torch.bfloat16` | `(T, D)` |
-| `pseudo_query` | Tensor | 必选 | 算子外部预计算的伪query。必须为NPU上的连续Tensor，长度必须等于`D`。 | `torch.float32` | `(D,)` |
-| `numerator` | Tensor | 必选 | Phase 1输出的历史online softmax加权和。必须为NPU上的连续Tensor，shape必须与`partial_block`一致。 | `torch.float32` | `(T, D)` |
-| `logit_max` | Tensor | 必选 | Phase 1输出的历史最大logit。必须为NPU上的连续Tensor，长度必须等于`T`。 | `torch.float32` | `(T,)` |
-| `exp_sum` | Tensor | 必选 | Phase 1输出的历史softmax分母累积值。必须为NPU上的连续Tensor，长度必须等于`T`。 | `torch.float32` | `(T,)` |
+| `partial_block` | Tensor | 必选 | 当前已累计的`partial_block`。必须为NPU上的连续Tensor，调用完成后被原地更新。 | `torch.float32` | `(T, D)` |
+| `delta` | Tensor | 必选 | 本次需要累加的`delta`。必须为NPU上的连续Tensor，shape必须与`partial_block`一致。 | `torch.bfloat16` | `(T, D)` |
+| `pseudo_query` | Tensor | 必选 | `block_attn_res_prepare`预计算的`pseudo_query`。必须为NPU上的连续Tensor，长度必须等于`D`。 | `torch.float32` | `(D,)` |
+| `numerator` | Tensor | 必选 | `block_attn_res_prepare`输出的历史online softmax加权和。必须为NPU上的连续Tensor，shape必须与`partial_block`一致。 | `torch.float32` | `(T, D)` |
+| `logit_max` | Tensor | 必选 | `block_attn_res_prepare`输出的历史最大logit。必须为NPU上的连续Tensor，长度必须等于`T`。 | `torch.float32` | `(T,)` |
+| `exp_sum` | Tensor | 必选 | `block_attn_res_prepare`输出的历史softmax分母累积值。必须为NPU上的连续Tensor，长度必须等于`T`。 | `torch.float32` | `(T,)` |
 | `eps` | float | 必选 | RMSNorm计算中的FP32数值稳定项，必须为有限正数。 | float | - |
 
 ## 返回值说明
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
-| `h` | Tensor | 必选 | 当前层BlockAttnRes输出。数据类型和shape与`delta`一致，为连续Tensor。 | `torch.bfloat16` | `(T, D)` |
+| `h` | Tensor | 必选 | `block_attn_res_update`输出。数据类型和shape与`delta`一致，为连续Tensor。 | `torch.bfloat16` | `(T, D)` |
 
 ## 约束说明
 
@@ -114,7 +114,7 @@ cann_ops_transformer.block_attn_res_update(
 - 6个Tensor输入必须位于同一NPU device，且均为连续Tensor。
 - 输出`h`为连续Tensor，且位于输入所在的NPU device。
 - token维`T`满足`T >= 0`，hidden维`D`满足`0 <= D <= 8192`。
-- 当`T == 0`或`D == 0`时支持空Tensor快速返回。所有输入仍须满足正常的rank和shape关系，
+- 当`T == 0`或`D == 0`时支持空Tensor快速返回。所有输入仍须满足正常的dimension和shape关系，
   dtype、连续性、同device和`eps`约束也继续生效；ACLNN L0返回shape与`delta`一致的空`h`，
   `partial_block`保持不变，不进入InferShape、tiling和kernel。
 - `partial_block`、`delta`和`numerator`的shape必须一致，均为`(T, D)`。

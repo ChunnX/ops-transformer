@@ -24,27 +24,25 @@ extern "C" {
 /**
  * @brief 计算执行 aclnnBlockAttnResUpdate 所需的 workspace 大小并创建执行器。
  * @domain aclnn_ops_infer
- * @param partialBlock [in/out] 必选连续输入输出，数据类型为 FLOAT，计算结果原地写回。
+ * @param partialBlockRef [in/out] 必选连续输入输出，数据类型为 FLOAT，计算结果原地写回。
  * @param delta [in] 必选连续输入，数据类型为 BFLOAT16。
  * @param pseudoQuery [in] 必选连续输入，数据类型为 FLOAT。
  * @param numerator [in] 必选连续输入，数据类型为 FLOAT。
  * @param logitMax [in] 必选连续输入，数据类型为 FLOAT。
  * @param expSum [in] 必选连续输入，数据类型为 FLOAT。
- * @param eps [in] 必选 FP32 浮点属性，必须为有限正数。
+ * @param eps [in] 可选 FP32 浮点属性，默认值为 1e-6F；传入时必须为有限正数。
  * @param h [out] 必选连续输出，数据类型为 BFLOAT16，shape 与 delta 一致。
  * @param workspaceSize [out] 返回所需 workspace 大小。
  * @param executor [out] 返回执行器。
- * @note T >= 0 且 0 <= D <= 8192。当 T == 0 或 D == 0 时，所有 Tensor 仍须满足完整的 rank 和
- *       shape 关系；L0 保持 partialBlock 不变，返回 shape 与 delta 一致的空 h，不下发 kernel。
  * @return aclnnStatus 状态码。
  */
 ACLNN_API aclnnStatus aclnnBlockAttnResUpdateGetWorkspaceSize(
-    aclTensor *partialBlock, const aclTensor *delta, const aclTensor *pseudoQuery, const aclTensor *numerator,
+    aclTensor *partialBlockRef, const aclTensor *delta, const aclTensor *pseudoQuery, const aclTensor *numerator,
     const aclTensor *logitMax, const aclTensor *expSum, float eps, aclTensor *h, uint64_t *workspaceSize,
     aclOpExecutor **executor);
 
 /**
- * @brief 执行 BlockAttnResUpdate 算子计算。
+ * @brief 执行 block_attn_res_update 算子计算。
  * @param workspace [in] workspace 内存地址。
  * @param workspaceSize [in] workspace 大小。
  * @param executor [in] 执行器。
