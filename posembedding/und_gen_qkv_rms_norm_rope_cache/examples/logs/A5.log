@@ -1,0 +1,13 @@
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[16:39:17] >>> [A5] cd /workspace/cann/ops-transformer/posembedding/und_gen_qkv_rms_norm_rope_cache/examples && export LD_LIBRARY_PATH=$ASCEND_HOME_PATH/opp/vendors/custom_transformer/op_api/lib/:$LD_LIBRARY_PATH && python3 test_torch_und_gen_qkv_rms_norm_rope_cache.py --all-sets --full > /workspace/torch_pr_all.log 2>&1; echo EXIT=$?; grep -c '精度 PASS' /workspace/torch_pr_all.log; grep -n 'FAIL\|Traceback\|Error' /workspace/torch_pr_all.log | head -20; tail -6 /workspace/torch_pr_all.log
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EXIT=0
+52
+      k_cache: max_abs=0.00391 max_rel=0.00725 不达标元素=0/536576
+      v_cache: max_abs=0.00000 max_rel=0.00000 不达标元素=0/536576
+      -> 精度 PASS
+
+接口连通性: 52/52 PASS
+数值精度:   52/52 PASS
+[16:39:32] <<< 完成 (exit: 0)

@@ -1,0 +1,150 @@
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[16:40:57] >>> [A5] tail -12 /workspace/ttk_pr_kernel.log 2>/dev/null; echo '---'; wc -l /workspace/ttk_pr_kernel.log
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+| VEC   0  % ???? Mhz                      | 2226008 es_catid_slotseq OnDynOpTiling        RUNNING  0s  |
+| HBM   4  % 3200 Mhz Bandwidth: 0  %      | 2226009 t_all_gen_catgen OnBinOpTiling        RUNNING  0s  |
++-------------------------------------------------------------------------------------------------------+ 
+2026-08-18 16:45:06,431 [INFO] [2226007 w_t56_bs33_h16 OnReturning] [profiling.py:505]: 
+########################
+Performance result:                Comparison result:                 Memory check:
+DYN_PERF: UNKNOWN                  DYN_GOLD: PASS,PASS,PASS           DYN_MEM: OK,OK,OK,OK             
+CST_PERF: CST_OFF                  CST_GOLD: CST_OFF                  CST_MEM: UNKNOWN                 
+BIN_PERF: UNKNOWN                  BIN_GOLD: PASS,PASS,PASS           BIN_MEM: OK,OK,OK,OK             
+STATUS: FAIL                       PRECISION_STATUS: PASS
+########################
+ 
+---
+354 /workspace/ttk_pr_kernel.log
+[16:40:57] <<< 完成 (exit: 0)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[16:41:35] >>> [A5] grep -n 'STATUS: \|PRECISION_STATUS' /workspace/ttk_pr_kernel.log | tail -6; echo '--- summary ---'; grep -n 'Total\|PASS\|FAIL' /workspace/ttk_pr_kernel.log | tail -20
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1208:STATUS: FAIL                       PRECISION_STATUS: FAIL
+1287:STATUS: FAIL                       PRECISION_STATUS: PASS
+1353:STATUS: FAIL                       PRECISION_STATUS: FAIL
+1384:STATUS: FAIL                       PRECISION_STATUS: PASS
+1489:STATUS: FAIL                       PRECISION_STATUS: FAIL
+1568:STATUS: FAIL                       PRECISION_STATUS: PASS
+--- summary ---
+1151:STATUS: FAIL                       PRECISION_STATUS: PASS
+1205:DYN_PERF: UNKNOWN                  DYN_GOLD: FAIL,PASS,PASS           DYN_MEM: OK,OK,OK,OK             
+1207:BIN_PERF: UNKNOWN                  BIN_GOLD: FAIL,PASS,PASS           BIN_MEM: OK,OK,OK,OK             
+1208:STATUS: FAIL                       PRECISION_STATUS: FAIL
+1284:DYN_PERF: UNKNOWN                  DYN_GOLD: PASS,PASS,PASS           DYN_MEM: OK,OK,OK,OK             
+1286:BIN_PERF: UNKNOWN                  BIN_GOLD: PASS,PASS,PASS           BIN_MEM: OK,OK,OK,OK             
+1287:STATUS: FAIL                       PRECISION_STATUS: PASS
+1292:| Version: 3.0.0 Summary (Device Total: 1) Progress: 45% 15 / 33 ET: 58s Rev: f419709                   |
+1350:DYN_PERF: UNKNOWN                  DYN_GOLD: FAIL,FAIL,PASS           DYN_MEM: OK,OK,OK,OK             
+1352:BIN_PERF: UNKNOWN                  BIN_GOLD: FAIL,FAIL,PASS           BIN_MEM: OK,OK,OK,OK             
+1353:STATUS: FAIL                       PRECISION_STATUS: FAIL
+1381:DYN_PERF: UNKNOWN                  DYN_GOLD: PASS,PASS,PASS           DYN_MEM: OK,OK,OK,OK             
+1383:BIN_PERF: UNKNOWN                  BIN_GOLD: PASS,PASS,PASS           BIN_MEM: OK,OK,OK,OK             
+1384:STATUS: FAIL                       PRECISION_STATUS: PASS
+1486:DYN_PERF: UNKNOWN                  DYN_GOLD: FAIL,FAIL,PASS           DYN_MEM: OK,OK,OK,OK             
+1488:BIN_PERF: UNKNOWN                  BIN_GOLD: FAIL,FAIL,PASS           BIN_MEM: OK,OK,OK,OK             
+1489:STATUS: FAIL                       PRECISION_STATUS: FAIL
+1565:DYN_PERF: UNKNOWN                  DYN_GOLD: PASS,PASS,PASS           DYN_MEM: OK,OK,OK,OK             
+1567:BIN_PERF: UNKNOWN                  BIN_GOLD: PASS,PASS,PASS           BIN_MEM: OK,OK,OK,OK             
+1568:STATUS: FAIL                       PRECISION_STATUS: PASS
+[16:41:36] <<< 完成 (exit: 0)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[16:43:50] >>> [A5] head -1 /workspace/ttk_pr_kernel.csv | tr ',' '\n' | cat -n | tail -25
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    37	precision_metrics
+    38	network_name
+    39	input_dtypes
+    40	input_ori_shapes
+    41	output_ori_shapes
+    42	input_ori_formats
+    43	output_ori_formats
+    44	attributes
+    45	input_shapes
+    46	output_dtypes
+    47	output_shapes
+    48	input_formats
+    49	output_formats
+    50	input_data_ranges
+    51	precision_tolerances
+    52	absolute_precision
+    53	output_inplace_indexes
+    54	output_shape_unknown_indexes
+    55	is_enabled
+    56	remark
+    57	soc_series
+    58	priority
+    59	dump_file_prefix
+    60	manual_input_binaries
+    61	manual_golden_binaries
+[16:43:50] <<< 完成 (exit: 0)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[16:44:00] >>> [A5] head -1 /workspace/ttk_pr_kernel.csv | tr ',' '\n' | cat -n | head -36
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     1	testcase_name
+     2	op_name
+     3	dyn_tiling_time_us
+     4	bin_tiling_time_us
+     5	dyn_kernel_name
+     6	cst_kernel_name
+     7	bin_kernel_name
+     8	dyn_block_dim
+     9	cst_block_dim
+    10	bin_block_dim
+    11	dyn_perf_us
+    12	cst_perf_us
+    13	bin_perf_us
+    14	dyn_compile_s
+    15	cst_compile_s
+    16	bin_compile_s
+    17	perf_status
+    18	dyn_precision
+    19	cst_precision
+    20	bin_precision
+    21	precision_status
+    22	dyn_oob_result
+    23	cst_oob_result
+    24	bin_oob_result
+    25	memory_oob_status
+    26	dyn_tiling_key
+    27	dyn_tiling_data
+    28	bin_tiling_key
+    29	bin_tiling_data
+    30	dyn_workspaces
+    31	cst_workspaces
+    32	bin_workspaces
+    33	data_input_size_b
+    34	data_output_size_b
+    35	soc
+    36	xpu_metrics
+[16:44:00] <<< 完成 (exit: 0)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[16:46:26] >>> [A5] grep -E 'Progress:|PassRate' /workspace/ttk_pr_pin1.log | tail -3
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+| Version: 3.0.0 Summary (Device Total: 1) Progress: 60% 20 / 33 ET: 158s Rev: f419709                  |
+| Version: 3.0.0 Summary (Device Total: 1) Progress: 66% 22 / 33 ET: 168s Rev: f419709                  |
+| Version: 3.0.0 Summary (Device Total: 1) Progress: 69% 23 / 33 ET: 178s Rev: f419709                  |
+[16:46:26] <<< 完成 (exit: 0)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[19:55:46] >>> [A5] if ps -p 2381013 >/dev/null 2>&1; then echo RUNNING; grep -c 'PRECISION_STATUS' /workspace/ttk_l1_pr10200/kernel_full.log; else tail -9 /workspace/ttk_l1_pr10200/kernel_full.log; echo '--- 失败原因分布'; python3 -c "
+import csv,collections
+rows=list(csv.DictReader(open('/workspace/ttk_l1_pr10200/kernel_full.csv')))
+print(len(rows), collections.Counter(r.get('bin_precision','') for r in rows))
+" 2>/dev/null; fi
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-08-18 19:48:35,896 [INFO] [2381014 MP MT] [instance_base.py:136]: ttk Profiling complete 
+2026-08-18 19:48:38,201 [INFO] [2381014 MP MT] [instance_base.py:311]: 
+==================== TTK Test Summary ===================
+  Total    : 100
+  PASS     : 0
+  FAIL     : 100
+  SKIP/NA  : 0
+  PassRate : 0.00%  (0/100)
+========================================================= 
+--- 失败原因分布
+100 Counter({'BINARY_MATCH_FAILURE': 100})
+[19:55:46] <<< 完成 (exit: 0)

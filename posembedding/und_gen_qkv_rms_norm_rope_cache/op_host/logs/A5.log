@@ -1,0 +1,6 @@
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[19:44:12] >>> [A5] cd /workspace/ops-test-kit && unset ASCEND_CUSTOM_OPP_PATH && nohup env PYTHONHASHSEED=0 python3 -m ttk kernel -i /workspace/ttk_l1_pr10200/UndGenQkvRmsNormRopeCache_l1_functional.csv -b=release --pc 8 -o /workspace/ttk_l1_pr10200/kernel_full.csv > /workspace/ttk_l1_pr10200/kernel_full.log 2>&1 & echo STARTED pid=$!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STARTED pid=2381013
+[19:44:30] <<< 完成 (exit: 0)
