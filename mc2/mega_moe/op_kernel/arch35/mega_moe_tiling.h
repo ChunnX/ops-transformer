@@ -70,19 +70,18 @@ constexpr uint32_t DEQUANT_FP32_SCALE_EXPANSION = 4U;
  *   recvVariableBytes(Brecv, D) = Brecv / 8 + 2 * Brecv * sizeof(int32_t)
  *                                  + D * (tokenScaleBytes + 32)；
  *   recvFixedBytes = 32 + Align32(worldSize * moeExpertPerRank * 4) + worldSize * 32
- *                    + Align32(worldSize * 2 * 4)
- *                    + Align32(moeExpertPerRank * 4)；
+ *                    + max(Align32(worldSize * 2 * 4), Align32(moeExpertPerRank * 4))；
  *   recvFixedBytes + recvVariableBytes(Brecv, D) <= availableUbBytes。
  *
- * 12288 的成立前提按 k=8192、moeExpertNum<=2048、worldSize<=1024、moeExpertPerRank<=1024 和 D=6
- * 保守验证。分别取各 tensor 的独立上限时：
- *   recvFixedBytes             <= 32 + 8192 + 32768 + 8192 + 4096 = 53280B；
- *   route batch tensor         = 12288 / 8 + 2 * 12288 * 4 = 99840B；
- *   5 个 dispatch slot         <= 5 * (8192B token + 256B scale + 128B weight + 32B triple)
- *                               = 43040B；
- *   合计 196160B，约 192KB；当前支持平台动态获取的 UB 预算可容纳该布局。
- * 因此该基准在所有合法规格下至少支持双 buffer，最坏规格支持 5 个 buffer；常用规格仍可达到当前
- * 上限 6 个 buffer。若修改
+ * 6-slot 的成立前提按 k=8192、moeExpertNum<=2048、worldSize<=1024、moeExpertPerRank<=1024
+ * 保守验证。分别取各 tensor 的独立上限时，极限规格动态收缩 Brecv：
+ *   recvFixedBytes             <= 32 + 8192 + 32768 + max(8192, 4096) = 49184B；
+ *   route batch tensor         = 11776 / 8 + 2 * 11776 * 4 = 95680B；
+ *   6 个 dispatch slot         <= 6 * (8192B token + 256B scale + 128B weight + 32B triple)
+ *                               = 51648B；
+ *   合计 196512B，约 192KB；当前支持平台动态获取的 UB 预算可容纳该布局。
+ * CalcDispatchBufferConfig 在极限固定区规格下会把 route batch 从基准 12288 缩至 11776，优先保持
+ * 6 个 dispatch slot；常用规格仍使用原有 route batch。若修改
  * MAX_H、MAX_MOE_EXPERT_NUM、worldSize/moeExpertPerRank 上限、DispatchBuffInit 固定 tensor 布局或
  * dispatch buffer 数量上限，必须重新验证该前提。
  *

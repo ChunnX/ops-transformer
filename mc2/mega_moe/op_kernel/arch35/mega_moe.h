@@ -417,14 +417,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     scratch.sendCntTensor =
         LocalTensor<int32_t>(TPosition::VECCALC, sendCntTensorAddr,
                              sendCntTensorSize / sizeof(int32_t));
-    uint32_t rankScanCursorTensorAddr = sendCntTensorAddr + sendCntTensorSize;
-    uint32_t rankScanCursorTensorSize = Ops::Base::CeilAlign(
-        context.common.worldSize * 2U * static_cast<uint32_t>(sizeof(int32_t)),
-        static_cast<uint32_t>(ALIGN_32));
-    scratch.rankScanCursorTensor =
-        LocalTensor<int32_t>(TPosition::VECCALC, rankScanCursorTensorAddr,
-                             rankScanCursorTensorSize / sizeof(int32_t));
-    uint32_t maskBatchTensorAddr = rankScanCursorTensorAddr + rankScanCursorTensorSize;
+    uint32_t maskBatchTensorAddr = sendCntTensorAddr + sendCntTensorSize;
     uint32_t maskBatchTensorSize = static_cast<uint32_t>(bufferConfig.routeItemsPerBatch / 8);
     scratch.maskBatchTensor =
         LocalTensor<uint8_t>(TPosition::VECCALC, maskBatchTensorAddr, maskBatchTensorSize);

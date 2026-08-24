@@ -687,8 +687,15 @@ static MegaMoeDispatchBufferConfig CalcDispatchBufferConfig(const MegaMoeTilingD
     }
     bufferConfig.copyBufferBytes = copyBufferBytes;
 
-    // fixedBufferBytes 包含 expertTokenCntTensor_、cumsumInfoTensor_、sendCntTensor_、
-    // 独立的 rankScanCursorTensor_ 和 expertTokenNumsOutTensor_。
+    // 普通模板需要 expertTokenNumsOutTensor_，wave 模板需要独立的 rankScanCursorTensor_；
+    // 两条 kernel 路径互斥，因此公共 tiling 只需为二者中的较大者预留固定 UB。
+    uint32_t expertTokenNumsOutBytes = static_cast<uint32_t>(
+        ops::CeilAlign(static_cast<uint64_t>(tilingData->moeExpertPerRank) * sizeof(int32_t),
+                       static_cast<uint64_t>(ALIGN_32)));
+    uint32_t rankScanCursorBytes = static_cast<uint32_t>(
+        ops::CeilAlign(static_cast<uint64_t>(tilingData->epWorldSize) * 2U * sizeof(int32_t),
+                       static_cast<uint64_t>(ALIGN_32)));
+    uint32_t pathExclusiveFixedBytes = std::max(expertTokenNumsOutBytes, rankScanCursorBytes);
     uint32_t fixedBufferBytes =
         static_cast<uint32_t>(ALIGN_32) +
         static_cast<uint32_t>(
@@ -696,11 +703,25 @@ static MegaMoeDispatchBufferConfig CalcDispatchBufferConfig(const MegaMoeTilingD
                                sizeof(int32_t),
                            static_cast<uint64_t>(ALIGN_32))) +
         tilingData->epWorldSize * static_cast<uint32_t>(ALIGN_32) +
-        static_cast<uint32_t>(ops::CeilAlign(
-            static_cast<uint64_t>(tilingData->epWorldSize) * 2U * sizeof(int32_t),
-            static_cast<uint64_t>(ALIGN_32))) +
-        static_cast<uint32_t>(ops::CeilAlign(static_cast<uint64_t>(tilingData->moeExpertPerRank) * sizeof(int32_t),
-                                             static_cast<uint64_t>(ALIGN_32)));
+        pathExclusiveFixedBytes;
+    // dispatchSlotBytes 表示一个 ring slot：一份 token/scale copy buffer 加一条 32B triple。
+    uint32_t dispatchSlotBytes = copyBufferBytes + static_cast<uint32_t>(ALIGN_32);
+    // 6-slot MTE 流水优先于 route scan batch 大小。极限 worldSize 下 cursor 会扩大固定区，
+    // 此时先缩小 route batch，避免把原本的 6-slot 流水降为 5-slot。
+    uint32_t maxRingBytes =
+        static_cast<uint32_t>(MAX_DISPATCH_BUFFER_COUNT) * dispatchSlotBytes;
+    if (availableUbBytes > fixedBufferBytes + maxRingBytes) {
+        uint32_t routeBudgetForMaxRing = availableUbBytes - fixedBufferBytes - maxRingBytes;
+        uint32_t routeItemsForMaxRing = routeBudgetForMaxRing * 8U / 65U;
+        routeItemsForMaxRing = routeItemsForMaxRing /
+            static_cast<uint32_t>(ALIGN_256) * static_cast<uint32_t>(ALIGN_256);
+        if (routeItemsForMaxRing >= static_cast<uint32_t>(ALIGN_256) &&
+            routeItemsForMaxRing < static_cast<uint32_t>(bufferConfig.routeItemsPerBatch)) {
+            bufferConfig.routeItemsPerBatch = static_cast<int32_t>(routeItemsForMaxRing);
+            bufferConfig.routeBatchCount = static_cast<int32_t>(
+                (sendTotalNum + routeItemsForMaxRing - 1U) / routeItemsForMaxRing);
+        }
+    }
     uint32_t maskBufferBytes = static_cast<uint32_t>(bufferConfig.routeItemsPerBatch / 8);
     // routeIndexBufferBytes 是单个 int32 route index tensor 的大小。
     uint32_t routeIndexBufferBytes =
@@ -708,8 +729,6 @@ static MegaMoeDispatchBufferConfig CalcDispatchBufferConfig(const MegaMoeTilingD
     // bytesWithoutDispatchSlots 包含固定 tensor、maskBatchTensor_、topkIndexTensor_ 和
     // validTopkIndexTensor_（此二者等大）。
     uint32_t bytesWithoutDispatchSlots = fixedBufferBytes + maskBufferBytes + 2U * routeIndexBufferBytes;
-    // dispatchSlotBytes 表示一个 ring slot：一份 token/scale copy buffer 加一条 32B triple。
-    uint32_t dispatchSlotBytes = copyBufferBytes + static_cast<uint32_t>(ALIGN_32);
     // dispatchSlotBudgetBytes 是扣除非 ring tensor 后可用于分配 ring slot 的 UB。
     uint32_t dispatchSlotBudgetBytes =
         availableUbBytes > bytesWithoutDispatchSlots ? availableUbBytes - bytesWithoutDispatchSlots : 0U;
