@@ -165,6 +165,10 @@ private:
     uint32_t blockIdx_ = GetBlockIdx() / GetTaskRation();
     uint32_t aivCoreIdx_ = GetBlockIdx();
     uint16_t gmm2PingPongIdx_ = 0;
+    // Dispatch consumes each expert as a forward rank-round-robin stream. The
+    // cursor survives a large expert split across consecutive Dispatch waves.
+    DispatchRankRoundCursor dispatchRankRoundCursor_{};
+    uint32_t dispatchScheduleExpertIdx_ = 0U;
     // 共享专家相关成员
     uint32_t sharedExpertNum_ = 0;
     uint32_t moeExpertPerRank_ = 0;
@@ -915,11 +919,20 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
             int32_t expertGlobalRowBegin = expertIdx == 0U ? 0 :
                 tokenDispatchScratch_.cumsumInfoTensor.GetValue(expertIdx * worldSize_ - 1U);
 
-            DispatchExpertTokensRankInterleaved<ActivationType, QuantScaleOutType, GMM1_TILE_M,
-                                                TopkWeightsPrefetch>(
+            if (dispatchScheduleExpertIdx_ != expertIdx) {
+                dispatchRankRoundCursor_ = DispatchRankRoundCursor{};
+                dispatchScheduleExpertIdx_ = expertIdx;
+            }
+            DispatchExpertTokensRankRoundRobin<ActivationType, QuantScaleOutType, GMM1_TILE_M,
+                                               TopkWeightsPrefetch>(
                 tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_, expertIdx,
                 expertGlobalRowBegin,
-                segmentEnd - segmentBegin, segmentBegin, dispatchTraceStatsPtr);
+                segmentEnd - segmentBegin, segmentBegin, dispatchRankRoundCursor_,
+                dispatchTraceStatsPtr);
+            if (segmentEnd >= expertRowCount) {
+                dispatchRankRoundCursor_ = DispatchRankRoundCursor{};
+                dispatchScheduleExpertIdx_ = expertIdx + 1U;
+            }
         }
         dispatchCursor = waveEnd;
 #if MEGA_MOE_ENABLE_WAVE_TRACE != 0
