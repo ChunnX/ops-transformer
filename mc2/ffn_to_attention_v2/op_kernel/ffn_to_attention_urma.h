@@ -167,10 +167,12 @@ FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::Init(GM_ADDR mc2Context,
     const uint64_t totalSlotNum = static_cast<uint64_t>(microBatchNum_) * axisBS_ * expertNumPerToken_;
     requiredWindowSize_ = winTokenInfoTableSize_ + totalSlotNum * axisHS_ * sizeof(xType);
     if constexpr (URMA_FLAG_TRACE) {
-        PRINTF("[F2A_URMA][INIT] rank=%u aiv=%u actualTokenNum=%lu aivNum=%u workspaceFlagAddr=%lu "
-               "infoSize=%lu windowSize=%lu\n",
-               rankId_, aivId_, actualTokenNum_, aivNum_, reinterpret_cast<uint64_t>(localFlagAddr_),
-               winTokenInfoTableSize_, requiredWindowSize_);
+        PRINTF("[F2A_URMA][INIT] rank=%u aiv=%u actualTokenNum=%lu aivNum=%u infoSize=%lu windowSize=%lu\n",
+               rankId_, aivId_, actualTokenNum_, aivNum_, winTokenInfoTableSize_, requiredWindowSize_);
+        PRINTF("[F2A_URMA][WORKSPACE] rank=%u aiv=%u base=%lu offset=%lu flagAddr=%lu flagAddrAlign=%lu\n",
+               rankId_, aivId_, reinterpret_cast<uint64_t>(workspaceGM), urmaFlagWorkspaceOffset_,
+               reinterpret_cast<uint64_t>(localFlagAddr_),
+               reinterpret_cast<uint64_t>(localFlagAddr_) % URMA_FLAG_SLOT_SIZE);
     }
 }
 
@@ -204,10 +206,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
                reinterpret_cast<uint64_t>(localFlagAddr_), flagSlotElementNum);
     }
     DataCopy(localFlagGMTensor, statusTensor_, flagSlotElementNum);
-    if constexpr (URMA_FLAG_TRACE) {
-        PRINTF("[F2A_URMA][FLAG_INIT_COPY_SUBMITTED] rank=%u aiv=%u\n", rankId_, aivId_);
-    }
-    SyncFunc<HardEvent::MTE3_S>();
+    PipeBarrier<PIPE_MTE3>();
     if constexpr (URMA_FLAG_TRACE) {
         PRINTF("[F2A_URMA][FLAG_INIT_GM_WRITE_DONE] rank=%u aiv=%u addr=%lu stagedFlag=%d\n", rankId_, aivId_,
                reinterpret_cast<uint64_t>(localFlagAddr_), URMA_FLAG_VALUE);
