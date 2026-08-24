@@ -35,6 +35,69 @@ struct TokenUnpermuteScratch {
     LocalTensor<bfloat16_t> topKWeightsBf16Tensor;
 };
 
+// metaInfo 在 Dispatch 写入后由 GMM2/Combine 只读，并持续有效到算子结束。
+// 在所有 rank 的 Combine 发送完成后，将稳定的紧凑行 metadata 复制到调试输出尾段：
+// [maxOutputSize, hidden] BF16 + [maxOutputSize, META_INFO_SIZE] INT32。
+__aicore__ inline void ExportGmm2DebugMetaInfo(uint32_t tokenHiddenDim, const Params &params,
+                                               const AivJobContext &job)
+{
+    if constexpr (g_coreType == AIC) {
+        return;
+    }
+    if (!params.tilingData->activationDebug || params.activationDebugOutGmAddr == nullptr || job.totalJobs == 0U) {
+        return;
+    }
+    WorkRange rowRange = TilingByJobContext(params.tilingData->maxOutputSize, job.jobIndex, job.totalJobs, 1U);
+    if (rowRange.count == 0U) {
+        return;
+    }
+
+    GlobalTensor<int32_t> metaInfoSource;
+    metaInfoSource.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.metaInfoPtr));
+    uint64_t dataBytes = static_cast<uint64_t>(params.tilingData->maxOutputSize) * tokenHiddenDim *
+                         sizeof(bfloat16_t);
+    GlobalTensor<int32_t> metaInfoDebug;
+    metaInfoDebug.SetGlobalBuffer(
+        reinterpret_cast<__gm__ int32_t *>(params.activationDebugOutGmAddr + dataBytes));
+
+    constexpr uint32_t ROWS_PER_COPY = 64U;
+    LocalTensor<int32_t> metaInfoUb(TPosition::VECCALC, 0U, ROWS_PER_COPY * META_INFO_SIZE);
+    uint64_t rowEnd = rowRange.start + rowRange.count;
+    for (uint64_t rowStart = rowRange.start; rowStart < rowEnd; rowStart += ROWS_PER_COPY) {
+        uint32_t rowCount = static_cast<uint32_t>(rowEnd - rowStart);
+        rowCount = rowCount < ROWS_PER_COPY ? rowCount : ROWS_PER_COPY;
+        uint32_t copyElements = rowCount * META_INFO_SIZE;
+        uint64_t elementOffset = rowStart * META_INFO_SIZE;
+        DataCopy(metaInfoUb, metaInfoSource[elementOffset], copyElements);
+        SyncFuncStatic<HardEvent::MTE2_MTE3, SYNC_EVENT_ID1>();
+        DataCopy(metaInfoDebug[elementOffset], metaInfoUb, copyElements);
+        SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID1>();
+    }
+}
+
+// 将 Combine 回源并完成通信反量化、但尚未乘 top-k 权重和求和的 FP32 槽位写入调试输出尾段。
+// 调试输出布局：
+// [maxOutputSize, hidden] BF16 + [maxOutputSize, META_INFO_SIZE] INT32 + [tokenNum, topK, hidden] FP32。
+__aicore__ inline void ExportCombineDebugSlot(uint32_t tokenHiddenDim, uint32_t topK, const Params &params,
+                                              int32_t tokenIdx, int32_t topkIdx,
+                                              const LocalTensor<float> &slotFp32)
+{
+    if (!params.tilingData->activationDebug || params.activationDebugOutGmAddr == nullptr) {
+        return;
+    }
+    uint64_t gmm2DataBytes = static_cast<uint64_t>(params.tilingData->maxOutputSize) * tokenHiddenDim *
+                             sizeof(bfloat16_t);
+    uint64_t metaBytes = static_cast<uint64_t>(params.tilingData->maxOutputSize) * META_INFO_SIZE * sizeof(int32_t);
+    GlobalTensor<float> combineDebug;
+    combineDebug.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(
+        params.activationDebugOutGmAddr + gmm2DataBytes + metaBytes));
+    uint64_t slotOffset =
+        (static_cast<uint64_t>(tokenIdx) * topK + static_cast<uint64_t>(topkIdx)) * tokenHiddenDim;
+    SyncFuncStatic<HardEvent::V_MTE3, SYNC_EVENT_ID4>();
+    DataCopy(combineDebug[slotOffset], slotFp32, tokenHiddenDim);
+    SyncFuncStatic<HardEvent::MTE3_V, SYNC_EVENT_ID4>();
+}
+
 // 加载并转换一批 top-k 权重。
 template <typename TopkWeightsType>
 __aicore__ inline void LoadTokenUnpermuteWeights(const MoeStageCommonConfig &common, const Params &params,
@@ -94,7 +157,8 @@ __aicore__ inline void LoadMoeExpertInput(const TokenUnpermuteConfig &context, c
 // 累加一个 token 对应的全部 MoE 专家输入。
 template <uint8_t CombineMode, bool TopkWeightsPrefetch>
 __aicore__ inline void AccumulateMoeExpertsForToken(const TokenUnpermuteConfig &context,
-                                                    const MoeStageCommonConfig &common, TokenUnpermuteScratch &scratch,
+                                                    const MoeStageCommonConfig &common, const Params &params,
+                                                    TokenUnpermuteScratch &scratch,
                                                     int32_t tokenIdx, int32_t localIdx,
                                                     const GlobalTensor<bfloat16_t> &expandedX,
                                                     const MegaMoeUnpermuteBufferConfig &bufferConfig)
@@ -113,6 +177,7 @@ __aicore__ inline void AccumulateMoeExpertsForToken(const TokenUnpermuteConfig &
         SetFlag<HardEvent::S_V>(event);
         WaitFlag<HardEvent::S_V>(event);
         PipeBarrier<PIPE_V>();
+        ExportCombineDebugSlot(common.tokenHiddenDim, common.topK, params, tokenIdx, expertIdx, dataInFp32);
         if (expertIdx == 0) {
             if constexpr (TopkWeightsPrefetch) {
                 DataCopy(scratch.dataResFp32Tensor, dataInFp32, common.tokenHiddenDim);
@@ -191,8 +256,8 @@ __aicore__ inline void ProcessTokenUnpermuteBatch(
     }
     for (int32_t localIdx = 0; localIdx < batchTokenCount; ++localIdx) {
         int32_t tokenIdx = jobOffset + batchTokenOffset + localIdx;
-        AccumulateMoeExpertsForToken<CombineMode, TopkWeightsPrefetch>(context, common, scratch, tokenIdx, localIdx,
-                                                                       expandedX, bufferConfig);
+        AccumulateMoeExpertsForToken<CombineMode, TopkWeightsPrefetch>(context, common, params, scratch, tokenIdx,
+                                                                       localIdx, expandedX, bufferConfig);
         for (uint32_t sharedExpertIdx = 0; sharedExpertIdx < common.sharedExpertNum; ++sharedExpertIdx) {
             AccumulateSharedExpertForToken<Gmm1TileM>(common, params, scratch, tokenIdx, localIdx, sharedExpertIdx,
                                                       bufferConfig);
