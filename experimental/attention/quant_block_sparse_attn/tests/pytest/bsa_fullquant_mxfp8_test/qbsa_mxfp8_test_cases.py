@@ -35,6 +35,7 @@ TestCases = [
         "layout_out": "TND",
         "kv_cache_layout": "BnNBsD",
         "p_scale_value": 1.0,
+        "p_scale_type": "fp32",
         "softmax_scale": 0.08838834764831843,
         "return_softmax_lse": True,
         "seed": 54,

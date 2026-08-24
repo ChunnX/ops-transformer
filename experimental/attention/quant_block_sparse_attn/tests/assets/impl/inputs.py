@@ -460,10 +460,13 @@ def _mxfp8_customize_inputs(
     _inplace_copy(k_descale, module.fp32_to_e8m0fnu_safe(k_scale_pa, "K descale"))
     _inplace_copy(v_descale, module.fp32_to_e8m0fnu_safe(v_scale_pa, "V descale"))
     if p_scale is not None and _numel(p_scale) > 0:
-        _inplace_copy(
-            p_scale,
-            module.fp32_to_e8m0fnu_safe(data["p_scale"], "P scale"),
-        )
+        if data["p_scale"].dtype == torch.float32:
+            _inplace_copy(p_scale, data["p_scale"])
+        else:
+            _inplace_copy(
+                p_scale,
+                module.fp32_to_e8m0fnu_safe(data["p_scale"], "P scale"),
+            )
     _inplace_copy(sparse_indices, data["sparse_indices"])
     _inplace_copy(sparse_seq_len, data["sparse_seq_len"])
     # mask_mode=0 does not consume atten_mask.  TTK may intentionally allocate
