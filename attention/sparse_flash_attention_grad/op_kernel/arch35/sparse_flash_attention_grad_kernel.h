@@ -243,6 +243,9 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         }
 
         if (sTaskId > 0) {
+            // 有的核还在 ProcessPreload、有的核已经空转时，不能先冲进 DeterCubeVecScatter。
+            // mode0 flag 计数器最多 16，空核先 Set 会把计数器打满，e18d（1 活核 + 27 空核）会 507014。
+            this->SyncALLCores();
             DeterCubeVecScatter(deterRunInfos[(sTaskId + 1) & 1]);
         }
         sTaskId++;
@@ -253,6 +256,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     }
     // 延迟一轮的最后一组 scatter。所有核 sTaskId 相同，要做一起做、要跳一起跳。
     if (sTaskId > 0) {
+        this->SyncALLCores();
         DeterCubeVecScatter(deterRunInfos[(sTaskId + 1) & 1]);
     }
     this->FreeEventID();
