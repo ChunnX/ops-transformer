@@ -364,14 +364,14 @@ cann_ops_transformer.quant_flash_attn(
         </tr>
         <tr>
             <td>layout_q</td>
-            <td>支持TND/NTD</td>
+            <td>支持TND</td>
             <td rowspan="4">当前不支持不传入，未传入将发出拦截报警</td>
             <td rowspan="4">无</td>
             <td rowspan="4">无</td>
         </tr>
         <tr>
             <td>layout_q_descale</td>
-            <td>支持TND/N2TGD/NT</td>
+            <td>支持TND/N2TGD</td>
         </tr>
         <tr>
             <td>layout_kv</td>
@@ -819,8 +819,8 @@ mask_mode参数解释
             <td rowspan="6">无</td>
             <td>
                 <ul>
-                    <li>当layout_q不为TND且不为NTD时，seqused_q与max_seqlen_q至少传入其中一个</li>
-                    <li>当layout_q为TND/NTD或layout_kv为TND时，不支持传入batch_size</li>
+                    <li>当layout_q不为TND时，seqused_q与max_seqlen_q至少传入其中一个</li>
+                    <li>当layout_q为TND或layout_kv为TND时，不支持传入batch_size</li>
                 </ul>
             </td>
         </tr>
@@ -845,8 +845,8 @@ mask_mode参数解释
             </td>
             <td>
                 <ul>
-                    <li>当layout_q为TND或NTD时，必须传入（此时seqused_q与max_seqlen_q均为可选）</li>
-                    <li>当layout_q不为TND且不为NTD时，不支持传入</li>
+                    <li>当layout_q为TND时，必须传入（此时seqused_q与max_seqlen_q均为可选）</li>
+                    <li>当layout_q不为TND时，不支持传入</li>
                 </ul>
             </td>
         </tr>
@@ -877,7 +877,7 @@ mask_mode参数解释
             </td>
             <td>
                 <ul>
-                    <li>当layout_q不为TND且不为NTD时，seqused_q与max_seqlen_q至少传入其中一个</li>
+                    <li>当layout_q不为TND时，seqused_q与max_seqlen_q至少传入其中一个</li>
                 </ul>
             </td>
         </tr>
