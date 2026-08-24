@@ -120,7 +120,12 @@ private:
     __aicore__ inline void RunPosRecord();
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
-        return ctx_.GetWindAddrByRankId(rankId, epRankIdOriginal_) + winDataSizeOffsetEp_;
+        GM_ADDR base = ctx_.GetWindAddrByRankId(rankId, epRankIdOriginal_);
+        PRINTF("[GetWindAddr] aivId=%u, rankId=%d, hcclBufAddr=%lu, winDataSizeOffsetEp=%lu, "
+               "dataState=%u, totalWinSizeEp=%lu, finalAddr=%lu\n",
+               aivId_, rankId, (uint64_t)base, winDataSizeOffsetEp_, dataState_, totalWinSizeEp_,
+               (uint64_t)(base + winDataSizeOffsetEp_));
+        return base + winDataSizeOffsetEp_;
     }
 
     __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId)
