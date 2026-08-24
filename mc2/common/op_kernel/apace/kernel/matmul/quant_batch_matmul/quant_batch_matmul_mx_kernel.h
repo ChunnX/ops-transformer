@@ -118,7 +118,7 @@ public:
         isBias_ = (params.qbmmParams.isBias != QBMMTiling::BIAS_DISABLED);
         isAtomicAdd_ = false;
         mmadOp_.Init(params.problemShape,
-                     Te::MakeShape(params.schParams.baseM, params.schParams.baseN,
+                     Te::MakeShape(static_cast<int64_t>(params.schParams.baseM), static_cast<int64_t>(params.schParams.baseN),
                                    Te::Get<MNK_K>(params.problemShape), C0_SIZE),
                      params.l1Params, isBias_, params.qbmmParams.dbL0c > 1,
                      params.localParams.rankSize);
@@ -194,7 +194,7 @@ public:
                     gmA.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
                               AscendC::Te::MakeShape(Te::Get<MNK_M>(singleShape), Te::Get<MNK_K>(params.problemShape)));
                 auto gmBlockScaleA = gmScaleA.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
-                                                     AscendC::Te::MakeShape(Get<MNK_M>(singleShape), scaleKLen));
+                                                     AscendC::Te::MakeShape(Te::Get<MNK_M>(singleShape), scaleKLen));
                 auto gmBlockB = gmB.Slice(AscendC::Te::MakeCoord(rank * Te::Get<MNK_K>(params.problemShape), nPos),
                                           AscendC::Te::MakeShape(Te::Get<MNK_K>(params.problemShape),
                                                                   Te::Get<MNK_N>(singleShape)));
