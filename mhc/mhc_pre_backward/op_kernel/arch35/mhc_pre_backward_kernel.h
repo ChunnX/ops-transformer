@@ -1015,8 +1015,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, 
     mm0.SetTensorA(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)]); // [BS, N^2+2N]
     mm0.SetTensorB(phiGm_[offsetND], false);                                 // [N^2+2N, ND]
     // SplitN策略将结果直接写入库式 VECIN queue；每个 AIV 读取自己负责的 N 半区。
-    mm0.Iterate();
-    mm0.GetTensorC(c0OutUb_, 0, true);
+    while (mm0.Iterate()) {
+        mm0.GetTensorC(c0OutUb_, 0, true);
+    }
     mm0.End();
 }
 
