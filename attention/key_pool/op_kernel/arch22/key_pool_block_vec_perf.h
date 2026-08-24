@@ -893,6 +893,7 @@ __aicore__ inline void KeyPoolBlockVectorPerf<COMP>::CopyOutVec1ResToOutput(cons
         bIdx++;
         sIdx = 0;
     }
+    PipeBarrier<PIPE_MTE3>();
     outputQue1.FreeTensor(outputUb);
 }
 
@@ -1398,6 +1399,7 @@ __aicore__ inline void KeyPoolBlockVectorPerf<COMP>::ComputeIncrementalPool()
                 (static_cast<uint64_t>(bIdx) * outputPoolCapacity + clearStart) * constInfo_.headDim + dStartIdx;
             DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], zeroUb, clearCount, dDealSize, dDealSize,
                                 constInfo_.headDim);
+            PipeBarrier<PIPE_MTE3>();
             outputQue1.FreeTensor(zeroUb);
         }
     }
