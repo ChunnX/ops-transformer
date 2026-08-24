@@ -88,11 +88,9 @@ constexpr float ZERO = 0.0f;
 constexpr uint32_t MATMUL_WRITE_OFFSET_M = 256;
 constexpr uint32_t MATMUL_WRITE_OFFSET_N = 128;
 constexpr uint32_t CROSS_CORE_FLAG_INDEX = 0x4;
-constexpr uint32_t CROSS_CORE_AIV1_FLAG_OFFSET = 16;
-constexpr uint32_t CROSS_CORE_WAIT_FLAG_C0_BUFFER0 = 0x8;
-constexpr uint32_t CROSS_CORE_WAIT_FLAG_C0_BUFFER1 = 0x9;
-constexpr uint32_t CROSS_CORE_WAIT_FLAG_C1_BUFFER0 = 0x6;
-constexpr uint32_t CROSS_CORE_WAIT_FLAG_C1_BUFFER1 = 0x7;
+constexpr uint32_t CROSS_CORE_FLAG_ID_MAX = 16;
+constexpr uint32_t CROSS_CORE_AIC_SYNC_AIV_FLAG = 0x4;
+constexpr uint32_t CROSS_CORE_AIV_SYNC_AIC_FLAG = 0x6;
 constexpr uint32_t VEC_DEAL_VECIDX_DIV = 2;
 
 constexpr MicroAPI::CastTrait ctHalf2Fp32Zero = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,

@@ -41,9 +41,12 @@ __global__ __aicore__ void mhc_pre_backward(GM_ADDR x, GM_ADDR phi, GM_ADDR alph
             gradGamma, user,     &pipe, &tilingData};
         MT_C0 mm0;
         MT_C1 mm1;
-        mm0.SetSubBlockIdx(0);
-        mm0.Init(&tilingData.matmulTilingC0, &pipe);
-        mm1.Init(&tilingData.matmulTilingC1, &pipe);
+        if ASCEND_IS_AIC {
+            mm0.SetSubBlockIdx(0);
+            mm0.Init(&tilingData.matmulTilingC0, &pipe);
+            mm1.SetSubBlockIdx(0);
+            mm1.Init(&tilingData.matmulTilingC1, &pipe);
+        }
         MhcPreBackwardKernel<DTYPE_X, float32_t> op(mm0, mm1);
         op.Init(initParams);
         op.Process();
