@@ -34,6 +34,7 @@ constexpr uint8_t SYNC_C5_TO_V4_FLAG = 10;
 constexpr uint8_t SCATTER_CUBE_SYNC_FLAG = 11;
 constexpr uint8_t SCATTER_VEC_SYNC_FLAG = 12;
 constexpr uint8_t SCATTER_SYNC_FLAG = 13;
+constexpr uint8_t SCATTER_TO_FIX_SYNC_FLAG = 14;
 
 // MM_IDX
 constexpr uint8_t DQ_IDX = 0;
@@ -63,6 +64,7 @@ struct DqkvResPos {
     X(IS_TND, bool, false) \
     X(IS_ROPE, bool, false) \
     X(IS_DETER, bool, false) \
+    X(IS_SINKS, bool, false) \
     X(s2TemplateType, S2TemplateType, S2TemplateType::Aligned128) \
     X(dTemplateType, DTemplateType, DTemplateType::Aligned128)
 
@@ -84,8 +86,7 @@ struct DqkvResPos {
 #define GEN_ARG_NAME(name, ...) name,
 #define TEMPLATE_ARGS \
     CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME) \
-    CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) \
-    end
+    CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
 
 /* 4. 生成BASE的有默认值的Template, BASE带ChildClass*/
 #define TEMPLATES_DEF_BASE \
