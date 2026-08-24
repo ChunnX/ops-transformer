@@ -241,7 +241,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td><a href="../../attention/sparse_flash_attention_grad/README.md">sparse_flash_attention_grad</a></td>
     <td>✓</td>
     <td>✓</td>
-    <td>✗</td>
+    <td>✓</td>
     <td>✗</td>
     <td>AI Core</td>
     <td>SparseFlashAttention的反向梯度计算。</td>
