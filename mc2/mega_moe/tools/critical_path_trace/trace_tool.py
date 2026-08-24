@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 """Parse the minimal MegaMoe A4W4 token-wave trace carried in output y."""
 
 from __future__ import annotations
@@ -78,8 +88,8 @@ EVENT_TRACE_POINTS = {
         "Dispatch 输入 ready 后",
     ),
     9: (
-        "Activation AIV0：等待 GMM1 tile 或 Cube ping-pong 数据前",
-        "GMM1 tile ready 后",
+        "Activation AIV0：trace-only V_S 确认前序 Vector 工作完成后",
+        "后置 V_S 确认 PIPE_V 的 GMM1 tile 等待解除后",
     ),
     10: (
         "GMM2 AIC：进入 WaitForGmm2InputReady 前",

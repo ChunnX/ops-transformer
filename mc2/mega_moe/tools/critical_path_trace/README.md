@@ -159,7 +159,7 @@ stage, wave, expert, tokenStartInExpert, tokenCount, mGroupCount, parentStage, b
 
 ```text
 Wait Dispatch：GMM1 AIC 等待 Dispatch 输入
-Wait GMM1：Activation AIV0 等待 GMM1 tile 或 Cube ping-pong 数据
+Wait GMM1：Activation AIV0 通过 PIPE_V 等待 GMM1 tile 或 Cube ping-pong 数据
 Wait Activation：GMM2 AIC 等待 Activation 输出
 Wait GMM2：Combine AIV1 等待 GMM2 completion counter
 ```
@@ -182,11 +182,15 @@ GMM/Activation/Combine 事件按 Wave 内的专家 token 切片记录。Dispatch
 
 - AIC GMM1/GMM2 复用实现内部的计算完成或同步发布边界；
 - AIV1 Dispatch/Combine 和 AIV0 Activation 复用各阶段已有的完成发布边界；
+- generic AIV0 的 C/V 等待在 begin 前和 wait 后各增加一次 trace-only `V_S`，使 Scalar 时间戳对应
+  PIPE_V 真正进入并退出等待的边界；
 - AIV0 GMM2 prologue 在外层额外执行一次 `MTE3_S`，再读取 Scalar 时间戳。
 
 ## 4. 当前有意保留的限制
 
 - 每条 core 记录最多 256 个事件；独立 wait 事件也占用容量，超出后在记录中设置 `truncated=1`；
+- generic C/V 等待的两次 `V_S` 会减少 Scalar 对 Vector 的超前下发，只用于定位等待区间，带打点包的绝对耗时
+  不能作为正式性能结果；
 - trace 最终借用输出 `y` 承载，实际单核容量会根据 `y` 的字节数动态缩小。极小 BS 若无法容纳协议头和全部
   core 记录，解析器会报告 magic 不匹配；容量不足但仍可写入时，应结合报告中的 `event_capacity` 和
   `truncated` 判断数据是否完整；

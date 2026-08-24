@@ -644,17 +644,31 @@ __aicore__ inline void Gmm1Aiv0EpilogueGeneric(WorkSet &workSet, const GMMAddrIn
         auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
+
+        // CrossCoreWaitFlag is issued to PIPE_V, while GetSystemCycle runs on Scalar. In trace builds, drain
+        // preceding Vector work before the begin timestamp, then wait for PIPE_V again before recording the end.
+        // This isolates the actual GMM1-tile wait instead of measuring only the Scalar-side issue interval.
+        bool traceWaitEnabled = waitTraceContext != nullptr && waitTraceContext->writer.IsEnabled();
+        if (traceWaitEnabled) {
+            SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID0>();
+        }
         uint32_t waitBeginCycle = BeginWaitInterval(waitTraceContext);
         if constexpr (IsGmm1Interleaved) {
             WaitForCube(pingpongIdx);
-            EndWaitInterval(waitTraceContext, waitBeginCycle);
+        } else {
+            WaitForCube();
+        }
+        if (traceWaitEnabled) {
+            SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID0>();
+        }
+        EndWaitInterval(waitTraceContext, waitBeginCycle);
+
+        if constexpr (IsGmm1Interleaved) {
             Gmm1Aiv0InterleavedEpilogueTileGeneric<IsWaveFlagGrained>(config, activationQuantOp, gmmAddrInfo,
                                                                       actualShape, mLoc, nLoc, pingpongIdx);
             NotifyCube(pingpongIdx);
             pingpongIdx = 1U - pingpongIdx;
         } else {
-            WaitForCube();
-            EndWaitInterval(waitTraceContext, waitBeginCycle);
             Gmm1Aiv0EpilogueTileGeneric<IsWaveFlagGrained>(config, activationQuantOp, gmmAddrInfo, actualShape, mLoc,
                                                            nLoc);
             NotifyCube();
