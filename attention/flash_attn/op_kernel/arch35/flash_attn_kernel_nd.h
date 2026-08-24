@@ -20,7 +20,6 @@
 
 #include "flash_attn_block_cube_nd.h"
 #include "flash_attn_block_vec_nd.h"
-#include "memory_copy_arch35.h"
 #include "flash_attn_block_vec_flashdecode.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
@@ -445,13 +444,25 @@ public:
         }
     }
 
-    __aicore__ inline void ComputeMm1(RunInfoX &runInfo) { cubeBlock_.IterateBmm1(runInfo); }
+    __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
+    {
+        cubeBlock_.IterateBmm1(runInfo);
+    }
 
-    __aicore__ inline void ComputeMm2(RunInfoX &runInfo) { cubeBlock_.IterateBmm2(runInfo); }
+    __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
+    {
+        cubeBlock_.IterateBmm2(runInfo);
+    }
 
-    __aicore__ inline void ComputeVec1(RunInfoX &runInfo) { vecFaBlock_.ProcessVec1(runInfo); }
+    __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
+    {
+        vecFaBlock_.ProcessVec1(runInfo);
+    }
 
-    __aicore__ inline void ComputeVec2(RunInfoX &runInfo) { vecFaBlock_.ProcessVec2(runInfo); }
+    __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
+    {
+        vecFaBlock_.ProcessVec2(runInfo);
+    }
 
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
                                       RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
