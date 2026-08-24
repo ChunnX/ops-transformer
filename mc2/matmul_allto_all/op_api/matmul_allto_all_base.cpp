@@ -59,6 +59,11 @@ static bool CheckNotNull(const aclTensor *x1, const aclTensor *x2, const aclTens
 // 950 非量化场景支持x1的m轴为0，即token提示词为空
 static bool CheckNotEmptyTensor(const aclTensor *x1, const aclTensor *x2, bool transposeX2)
 {
+    if (x1->GetViewShape().GetDimNum() < TWO_DIMS || x2->GetViewShape().GetDimNum() < TWO_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x1/x2",
+            (std::to_string(x1->GetViewShape().GetDimNum()) + "D").c_str(), "2D");
+        return false;
+    }
     if (GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
         auto mVal = x1->GetViewShape().GetDim(0);
         OP_API_CHECK((mVal == ZERO), {
@@ -172,8 +177,8 @@ static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTenso
 }
 
 // 兼容性处理，非ND格式转换为ND格式
-static bool ReFormatNotND(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
-                          const aclTensor *output)
+static bool ReFormatNotND(const aclTensor *&x1, const aclTensor *&x2, const aclTensor *&biasOptional,
+                          const aclTensor *&output)
 {
     // 内部只处理ND格式，这里做reformat操作
     if (x1->GetStorageFormat() != op::Format::FORMAT_ND) {
@@ -201,10 +206,10 @@ static bool ReFormatNotND(const aclTensor *x1, const aclTensor *x2, const aclTen
     return true;
 }
 
-static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
+static aclnnStatus CheckAndHandleParams(const aclTensor *&x1, const aclTensor *&x2, const aclTensor *&biasOptional,
                                         const aclIntArray *alltoAllAxesOptional, const char *group,
                                         const char *commMode, bool transposeX1, bool transposeX2,
-                                        const aclTensor *output)
+                                        const aclTensor *&output)
 {
     // 1. 检查参数是否为空指针
     CHECK_RET(CheckNotNull(x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);

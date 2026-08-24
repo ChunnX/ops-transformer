@@ -70,6 +70,10 @@ EsTransposeFunc GetEsTransposeFunc()
 ge::es::EsTensorHolder TransposeDL(const ge::es::EsTensorLike &x, const ge::es::EsTensorLike &perm)
 {
     static EsTransposeFunc func = GetEsTransposeFunc();
+    if (func == nullptr) {
+        OPS_LOG_E("MatmulAllToAllTransposeA5FusionPass", "EsTranspose func is null, fusion pass skipped.");
+        return ge::es::EsTensorHolder();
+    }
     auto *builder = ge::es::ResolveBuilder(x, perm);
     auto result = func(x.ToTensorHolder(builder).GetCTensorHolder(), perm.ToTensorHolder(builder).GetCTensorHolder());
     return result;

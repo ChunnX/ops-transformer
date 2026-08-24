@@ -127,6 +127,9 @@ static ge::graphStatus GetMatmulAxisInfoForMatmulAlltoAll(const gert::InferShape
 
     const auto x1Shape = context->GetInputShape(INDEX_IN_X1);
     const auto x2Shape = context->GetInputShape(INDEX_IN_X2);
+    OPS_CHECK(x1Shape->GetDimNum() < DIM_TWO || x2Shape->GetDimNum() < DIM_TWO,
+              OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "x1/x2 shape rank"),
+              return ge::GRAPH_FAILED);
     shape.outputDim = x1Shape->GetDimNum();
     shape.m = x1Shape->GetDim(0U);
     shape.n = transX2 ? x2Shape->GetDim(0U) : x2Shape->GetDim(1U);
@@ -219,6 +222,8 @@ static ge::graphStatus InferDataTypeMatmulAlltoAll(gert::InferDataTypeContext *c
     OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const int64_t *x1QuantMode = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_X1_QUANT_MODE);
     const int64_t *x2QuantMode = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_X2_QUANT_MODE);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, x1QuantMode);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, x2QuantMode);
     OPS_CHECK(!(*x1QuantMode == 0 && *x2QuantMode == 0) &&
                   !(*x1QuantMode == X1_PERTOKEN_QUANT_NUM && *x2QuantMode == X2_PERCHANNEL_QUANT_NUM) &&
                   !(*x1QuantMode == X1_MXFP8_QUANT_NUM && *x2QuantMode == X2_MXFP8_QUANT_NUM),

@@ -51,9 +51,9 @@ const char *MatmulAlltoAllInfo = "MatmulAlltoAllFallback";
 // 公共输入参数结构体
 struct CommonMatmulParas {
     /* const aclTensor *会导致Release重载方法匹配不上，造成内存泄漏 */
-    aclTensor *x1Acl;
-    aclTensor *x2Acl;
-    const gert::Tensor *bias;
+    aclTensor *x1Acl = nullptr;
+    aclTensor *x2Acl = nullptr;
+    const gert::Tensor *bias = nullptr;
 };
 
 // Attr参数结构体
@@ -61,14 +61,14 @@ struct AttrParas {
     aclTensor *commScaleOptional = nullptr;
     aclTensor *x1OffsetOptional = nullptr;
     aclTensor *x2OffsetOptional = nullptr;
-    const char *group;
-    const gert::TypedContinuousVector<int64_t> *alltoAllAxesOptional;
-    int64_t commQuantMode;
-    int64_t commQuantDtype;
-    bool transposeX1;
-    bool transposeX2;
+    const char *group = nullptr;
+    const gert::TypedContinuousVector<int64_t> *alltoAllAxesOptional = nullptr;
+    int64_t commQuantMode = 0;
+    int64_t commQuantDtype = 0;
+    bool transposeX1 = false;
+    bool transposeX2 = false;
     int64_t groupSize = 0;
-    const char *commMode;
+    const char *commMode = nullptr;
 };
 
 // 量化输入参数结构体
@@ -254,10 +254,9 @@ static ge::graphStatus MatmulAlltoAllExecuteFunc(gert::OpExecuteContext *host_ap
     const auto alltoAllAxesOptional = attrs->GetListInt(INDEX_ATTR_ALL2ALL_AXES);
     std::vector<int64_t> actSeqArray;
     if (alltoAllAxesOptional != nullptr) {
-        OPS_CHECK(alltoAllAxesOptional == nullptr,
-                  OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "alltoAllAxesOptional"),
-                  return ge::GRAPH_FAILED);
         ParseRecvCounts(alltoAllAxesOptional, actSeqArray);
+    } else {
+        actSeqArray = {-1, -2};
     }
 
     const int64_t *x1QuantModePtr = attrs->GetInt(INDEX_ATTR_X1_QUANT_MODE);
@@ -287,6 +286,10 @@ static ge::graphStatus MatmulAlltoAllExecuteFunc(gert::OpExecuteContext *host_ap
         OPS_ERR_IF(ret != ge::GRAPH_SUCCESS,
                    OPS_LOG_E(MatmulAlltoAllInfo, "Aclnn quant matmul allto all api error code %d", ret),
                    return ge::GRAPH_FAILED);
+    } else {
+        OPS_LOG_E(MatmulAlltoAllInfo,
+                  "Unsupported quant mode combination: x1QuantMode=%ld, x2QuantMode=%ld", x1QuantMode, x2QuantMode);
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }

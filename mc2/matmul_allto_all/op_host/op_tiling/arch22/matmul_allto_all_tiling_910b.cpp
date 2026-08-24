@@ -416,6 +416,8 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckAndSetAttrsInfo(MatmulAlltoAllInf
     const char *commMode = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
     const int64_t *x1_quant_mode = attrs->GetAttrPointer<int64_t>(ATTR_X1_QUANTMODE_INDEX);
     const int64_t *x2_quant_mode = attrs->GetAttrPointer<int64_t>(ATTR_X2_QUANTMODE_INDEX);
+    OP_TILING_CHECK(x1_quant_mode == nullptr || x2_quant_mode == nullptr,
+                    OP_LOGE_WITH_INVALID_INPUT(opName_, "x1_quant_mode/x2_quant_mode"), return ge::GRAPH_FAILED);
     // 判断为空或者空字符串
     OP_TILING_CHECK(group == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "group"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(group[0] == '\0', OP_LOGE_WITH_INVALID_INPUT(opName_, "group"), return ge::GRAPH_FAILED);
