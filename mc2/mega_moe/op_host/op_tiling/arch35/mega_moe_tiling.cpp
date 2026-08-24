@@ -1926,6 +1926,11 @@ static ge::graphStatus SetInputParam(const gert::TilingContext *context, MegaMoe
     tilingData->hiddenDim = static_cast<uint32_t>(hiddenDim);
     tilingData->topK = static_cast<uint32_t>(topK);
     tilingData->isPerExpertWeightTensor = isPerExpertWeightTensor;
+    auto attrs = context->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
+    auto activationDebug = attrs->GetAttrPointer<bool>(config.attrActivationDebugIndex);
+    OP_CHECK_NULL_WITH_CONTEXT(context, activationDebug);
+    tilingData->activationDebug = *activationDebug;
 
     return ge::GRAPH_SUCCESS;
 }
