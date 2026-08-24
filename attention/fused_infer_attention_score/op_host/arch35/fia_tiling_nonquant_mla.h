@@ -111,6 +111,7 @@ private:
     bool actualSeqLenQFlag_ = false;
     bool actualSeqLenKVFlag_ = false;
     bool actualSharedPrefixLenFlag_ = false;
+    bool isRowInvalidOpenAuto_ = false;
     std::vector<int64_t> actualSeqLengthsQ_ = {};
     std::vector<int64_t> actualSeqLengthsKV_ = {};
     uint64_t tilingKey_ = 0;
