@@ -3256,7 +3256,15 @@ protected:
         int64_t splitFactor = CeilDiv(total_size, static_cast<int64_t>(aivNum));
         int64_t expectBasicBlock = CeilDiv(bSize * n2Size * gSize * s1Size, splitFactor * aivNum);
         int64_t s1BasicBlock = AlignUp(expectBasicBlock, FRACTAL_NUM);
+        if (tilingData->inputParams.get_layoutType() == LAYOUT_BSND) {
+            int64_t opt_s1OuterSize = CeilDiv(s1Size, s1BasicBlock);
+            int64_t opt_total_size = bSize * n2Size * gSize * opt_s1OuterSize;
 
+            int64_t opt_splitFactor = CeilDiv(opt_total_size, static_cast<int64_t>(aivNum));
+            if (opt_s1OuterSize % opt_splitFactor != 0 || s1OuterSize % splitFactor == 0) {
+                s1BasicBlock = 128;
+            }
+        }
         return s1BasicBlock;
     }
 
