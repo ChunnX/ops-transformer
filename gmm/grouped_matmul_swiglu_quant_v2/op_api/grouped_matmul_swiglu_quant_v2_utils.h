@@ -127,6 +127,7 @@ constexpr int64_t MXFP4_NZ_N_ALIGN = 128L;
 constexpr int64_t MXFP8_NZ_N_ALIGN = 64L;
 constexpr int64_t MXFP4_ND_N_ALIGN = 4L;
 constexpr int64_t MXFP8_ND_N_ALIGN = 2L;
+constexpr int64_t PERTOKEN_WEIGHT_NZ_N_ALIGN = 64L;
 constexpr size_t SINGLE_TENSOR_SIZE = 1;
 constexpr int64_t MAX_GROUP_LIST_SIZE = 1024L;
 constexpr int64_t QUNAT_MODE_MX = 2;
@@ -397,9 +398,8 @@ protected:
                 apiName_.c_str(), "dequantMode and quantMode",
                 "dequantMode=" + std::to_string(gmmDsqParams_.dequantMode) +
                     ", quantMode=" + std::to_string(gmmDsqParams_.quantMode),
-                "when the format of weight is ND, the values of dequantMode and quantMode must be 0 (pertoken) or "
-                "2 (mx), and they must be equal; when the format of weight is NZ, the values of dequantMode and "
-                "quantMode must be 2 (mx), and they must be equal");
+                "the values of dequantMode and quantMode must be 0 (pertoken) or 2 (mx), and they must be equal; "
+                "FRACTAL_NZ weight supports pertoken mode for INT8, FLOAT8 or HIFLOAT8 x and weight");
             return false;
         }
         ge::DataType dequantDtype = static_cast<ge::DataType>(gmmDsqParams_.dequantDtype);
@@ -806,10 +806,20 @@ protected:
     {
         int64_t m = gmmDsqParams_.x->GetViewShape().GetDim(0); // 从x的第0维获取m
         int64_t k = gmmDsqParams_.x->GetViewShape().GetDim(1); // 从x的第1维获取k
+        const aclTensor *weight = (*gmmDsqParams_.weight)[0];
         // 转置情况下从weight的第1维获取n，非转置情况下从weight的第2维获取n
-        int64_t n = gmmDsqParams_.transposeWeight ? ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1) :
-                                                    ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(2);
-        int64_t e = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0); // 从weight的第0维获取e
+        int64_t n = gmmDsqParams_.transposeWeight ? weight->GetViewShape().GetDim(1) :
+                                                    weight->GetViewShape().GetDim(2);
+        int64_t e = weight->GetViewShape().GetDim(0); // 从weight的第0维获取e
+
+        if (weight->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ &&
+            (n <= 0 || n % PERTOKEN_WEIGHT_NZ_N_ALIGN != 0)) {
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                apiName_.c_str(), "weight", ViewShapeToString(weight),
+                "in per-token mode, axis N of FRACTAL_NZ weight must be greater than 0 and an integer multiple "
+                "of 64");
+            return false;
+        }
 
         // x的shape期望为[M, K]
         op::Shape xExpectShape = {m, k};
@@ -826,7 +836,6 @@ protected:
         op::Shape outputScaleExpectShape = {m};
         const aclTensor *x = gmmDsqParams_.x;
         const aclTensor *xScale = gmmDsqParams_.xScale;
-        const aclTensor *weight = (*gmmDsqParams_.weight)[0];
         const aclTensor *weightScale = (*gmmDsqParams_.weightScale)[0];
         const aclTensor *output = gmmDsqParams_.output;
         const aclTensor *outputScale = gmmDsqParams_.outputScale;
@@ -923,6 +932,13 @@ protected:
         for (size_t i = 0; i < weightLength; i++) {
             const aclTensor *weight = (*gmmDsqParams_.weight)[i];
             const aclTensor *weightScale = (*gmmDsqParams_.weightScale)[i];
+            if (weight->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ &&
+                weight->GetDataType() == DataType::DT_FLOAT8_E5M2) {
+                OP_LOGE_FOR_INVALID_DTYPE(apiName_.c_str(), "weight",
+                                          op::ToString(weight->GetDataType()).GetString(),
+                                          "{INT8, FLOAT8_E4M3FN, HIFLOAT8}");
+                return false;
+            }
             GMM_SWIGLU_CHECK_DTYPE(weight, "weight", XW_DTYPE_SUPPORT_LIST_PERTOKEN, return false);
             DataType xDtype = gmmDsqParams_.x->GetDataType();
             if (xDtype == DataType::DT_INT8) {
