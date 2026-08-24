@@ -344,6 +344,8 @@ class PKIGoldenRef:
         qk_bmm_res = torch.matmul(
             cur_q.squeeze(0), cur_k.permute(0, 1, 3, 2).squeeze(0)
         ).unsqueeze(0)
+        # 算子文档公式: S = Q @ K_pool^T * 1/sqrt(headDim)
+        qk_bmm_res = qk_bmm_res / (float(self.head_dim) ** 0.5)
 
         qk_relu_out = _safe_to_dtype(qk_bmm_res, compute_dtype).clamp_min(0.0)
 

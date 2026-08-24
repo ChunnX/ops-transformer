@@ -188,6 +188,7 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::InitTilingData(const PoolKeyIn
     constInfo.wsOffScore = tilingData->wsOffScore;
     constInfo.wsOffLdScore = tilingData->wsOffLdScore;
     constInfo.wsOffLdIdx = tilingData->wsOffLdIdx;
+    constInfo.qkScale = tilingData->qkScale;
     constInfo.isSparseCountOver2K = (constInfo.sparseCount > 2048);
 }
 

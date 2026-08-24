@@ -83,6 +83,7 @@ void SetTilingData(optiling::PoolKeyIndexerTilingData *td, const KernelTestConfi
     td->wsOffScore = 0;
     td->wsOffLdScore = 0;
     td->wsOffLdIdx = 0;
+    td->qkScale = 1.0f / std::sqrt(static_cast<float>(HEAD_DIM));
 }
 
 template <typename T>

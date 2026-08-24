@@ -98,6 +98,9 @@ protected:
     uint64_t keyCoreOffset = 0ULL;
     uint64_t weightsCoreOffset = 0ULL;
     uint64_t indiceOutCoreOffset = 0ULL;
+    // values 输出行宽恒为 sparseCount, 与 indices(poolSize>1 时为 outputLen)
+    // 不同, 必须单独维护基址偏移, 不可复用 indiceOutCoreOffset
+    uint64_t valueOutCoreOffset = 0ULL;
 
     // ================================Global Buffer区=================================
     GlobalTensor<Q_T> queryGm;
@@ -176,6 +179,7 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::InitTilingData(const PoolKeyIn
     constInfo.wsOffScore = tilingData->wsOffScore;
     constInfo.wsOffLdScore = tilingData->wsOffLdScore;
     constInfo.wsOffLdIdx = tilingData->wsOffLdIdx;
+    constInfo.qkScale = tilingData->qkScale;
 
     constInfo.outputLayout = LAYOUT_T; // 输出和输入形状一致
     if (LAYOUT_T == PkiLayout::TND) {
@@ -579,11 +583,17 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::CalcRunInfo(uint32_t loop,
         uint32_t idxOutStride = (constInfo.poolSize > 1) ? (constInfo.sparseCount * constInfo.poolSize + constInfo.poolSize - 1) : constInfo.sparseCount;
         indiceOutCoreOffset = actualSeqQPrefixSum * constInfo.kHeadNum * idxOutStride +
                               runInfo.n2Idx * idxOutStride;
+        // values 输出行宽恒为 sparseCount(与 indices 的 outputLen 行宽不同),
+        // batch>0 时若复用 indiceOutCoreOffset(poolSize>1) 会按 outputLen 行距
+        // 错位寻址, 导致 valueOutGm 写到相邻 batch 的错误位置
+        valueOutCoreOffset = actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount +
+                             runInfo.n2Idx * constInfo.sparseCount;
     }
     runInfo.tensorQueryOffset = queryCoreOffset;
     runInfo.tensorKeyOffset = keyCoreOffset + runInfo.s2Idx * constInfo.s2BaseSize * constInfo.kHeadNum * constInfo.headDim;
     runInfo.tensorWeightsOffset = weightsCoreOffset;
     runInfo.indiceOutOffset = indiceOutCoreOffset;
+    runInfo.valueOutOffset = valueOutCoreOffset;
 }
 
 template <typename LIT>
@@ -615,17 +625,29 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::ProcessInvalid()
                 (baseSize + singleCoreSize <= totalOutputSize) ? singleCoreSize : totalOutputSize - baseSize;
             GlobalTensor<OUT_T> output = indiceOutGm[baseSize];
             AscendC::InitGlobalMemory(output, dealSize, constInfo.INVALID_IDX);
-            if (constInfo.returnValue) {
+        }
+        if (constInfo.returnValue) {
+            // values 输出行宽恒为 sparseCount(与 indices 的 outputLen 行宽不同),
+            // 不可复用 indices 的 baseSize/dealSize(poolSize>1 时二者总大小不同,
+            // 复用会越出 values 张量边界), 需按自身总大小独立切分清理
+            uint64_t totalValueSize =
+                constInfo.batchSize * constInfo.qSeqSize * constInfo.kHeadNum * constInfo.sparseCount;
+            uint64_t singleCoreValueSize =
+                PkiCommon::Align((totalValueSize + aivCoreNum - 1) / aivCoreNum, GM_ALIGN_BYTES / sizeof(uint32_t));
+            uint64_t valueBase = tmpBlockIdx * singleCoreValueSize;
+            if (valueBase < totalValueSize) {
+                uint64_t valueDealSize =
+                    (valueBase + singleCoreValueSize <= totalValueSize) ? singleCoreValueSize : totalValueSize - valueBase;
                 event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
                 SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
                 WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
 
                 GlobalTensor<uint32_t> valueOutGmTmp;
                 valueOutGmTmp.SetGlobalBuffer((__gm__ uint32_t *)valueOutGm.GetPhyAddr());
-                GlobalTensor<uint32_t> valueOut = valueOutGmTmp[baseSize];
+                GlobalTensor<uint32_t> valueOut = valueOutGmTmp[valueBase];
 
                 uint32_t negInf = constInfo.INVALID_VAL;
-                AscendC::InitGlobalMemory(valueOut, dealSize, negInf);
+                AscendC::InitGlobalMemory(valueOut, valueDealSize, negInf);
             }
         }
     }

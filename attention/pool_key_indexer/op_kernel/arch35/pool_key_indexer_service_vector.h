@@ -412,7 +412,8 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec1(const PkiCo
                           s2BaseSize_ +
                       s1IdxTmp * gSize_ * s2BaseSize_],
             weightUB_[pingpong * CeilDiv(s1BaseSize_, 2) * gSizeAlign16 + s1IdxTmp * gSizeAlign16],
-            gSize_);
+            gSize_,
+            constInfo_.qkScale);
     }
     SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + pingpong);
     SetFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);

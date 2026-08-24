@@ -471,7 +471,9 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec(const PkiCom
             LocalTensor<float> sortIndiceUb = reduceOutBuff[cuS2LenVecAlign];
             Duplicate(sortScoreUb.template ReinterpretCast<int32_t>(), PkiServiceVec::NEG_INF, cuS2LenVecAlign);
             PipeBarrier<PIPE_V>();
-            Adds(sortScoreUb, reduceOutInner, 0.0f, cuS2Len);
+            // 池级分数乘 1/sqrt(headDim)(文档公式 S = Q@K^T/sqrt(headDim));
+            // 缩放为正数, 与 ReLU/加权求和可交换, 在聚合后统一应用
+            Muls(sortScoreUb, reduceOutInner, constInfo_.qkScale, cuS2Len);
             PipeBarrier<PIPE_V>();
             LocalTensor<int32_t> sortIndiceUbInt = sortIndiceUb.template ReinterpretCast<int32_t>();
             // 无效数据索引填充为-1
@@ -551,7 +553,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec(const PkiCom
                         if (constInfo_.returnValue) {
                             outQueue_.EnQue<float>(outValueUb);
                             outValueUb = outQueue_.DeQue<float>();
-                            PkiServiceVec::CopyOut(valueOutGm[info.indiceOutOffset + cuS1Idx * constInfo_.sparseCount + i * offset],
+                            PkiServiceVec::CopyOut(valueOutGm[info.valueOutOffset + cuS1Idx * constInfo_.sparseCount + i * offset],
                                                    outValueUb, copyLen);
                         }
                         outQueue_.FreeTensor(outValueUb);
@@ -590,7 +592,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec(const PkiCom
                         PkiServiceVec::CopyOut(indiceOutGm[info.indiceOutOffset + cuS1Idx * constInfo_.sparseCount + i * offset],
                                                idxULocal1, copyLen);
                         if (constInfo_.returnValue) {
-                            PkiServiceVec::CopyOut(valueOutGm[info.indiceOutOffset + cuS1Idx * constInfo_.sparseCount + i * offset],
+                            PkiServiceVec::CopyOut(valueOutGm[info.valueOutOffset + cuS1Idx * constInfo_.sparseCount + i * offset],
                                                    outValueUb, copyLen);
                         }
                         outQueue_.FreeTensor(outValueUb);
@@ -623,6 +625,9 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec(const PkiCom
                 tmpiBuff.SetValue(9, static_cast<int64_t>(info.poolTailK));
                 tmpiBuff.SetValue(10, static_cast<int64_t>(info.actS2SizeOrig));
                 tmpiBuff.SetValue(11, static_cast<int64_t>(info.actS1Size));
+                // slot 12: values 输出偏移(行宽 sparseCount, 与 slot 8 的 indices
+                // 偏移行宽不同, poolSize>1 时不可复用 slot 8)
+                tmpiBuff.SetValue(12, static_cast<int64_t>(info.valueOutOffset + cuS1Idx * constInfo_.sparseCount));
                 // 写入头尾判断
                 // [head, tail]
                 // head: 与前面规约，与前后规约
@@ -703,6 +708,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessLD()
     int64_t nextneedFd;
     int64_t valueOffset = 0;
     int64_t outOffset = 0;
+    int64_t valueOutOffsetLd = 0; // slot 12: values 输出偏移(行宽 sparseCount)
 
     LocalTensor<float> curValueIdxUb = ldToBeMrgBuf_.Get<float>();
     LocalTensor<float> tmpUb = ldTmpBuf_.Get<float>();
@@ -759,6 +765,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessLD()
         poolTailKLd = vec1ParamGm.GetValue(wsInfoOffset + 9);
         L_origLd = vec1ParamGm.GetValue(wsInfoOffset + 10);
         actS1SizeLd = vec1ParamGm.GetValue(wsInfoOffset + 11);
+        valueOutOffsetLd = vec1ParamGm.GetValue(wsInfoOffset + 12);
 
         while (needFd == 1) {
             // 搬入头规约数据
@@ -889,7 +896,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessLD()
                 DataCopyPad(indiceOutGm[outOffset], idxULocal1,
                             {1, idxOutBytes, 0, 0});
             }
-            DataCopyPad(valueOutGm[outOffset], outValueUb,
+            DataCopyPad(valueOutGm[valueOutOffsetLd], outValueUb,
                         {1, static_cast<uint16_t>(constInfo_.sparseCount * sizeof(float)), 0, 0});
             SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
         }

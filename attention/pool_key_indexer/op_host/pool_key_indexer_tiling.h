@@ -116,6 +116,7 @@ TILING_DATA_FIELD_DEF(uint32_t, keyDequantScaleStride0)
 TILING_DATA_FIELD_DEF(uint64_t, wsOffScore)
 TILING_DATA_FIELD_DEF(uint64_t, wsOffLdScore)
 TILING_DATA_FIELD_DEF(uint64_t, wsOffLdIdx)
+TILING_DATA_FIELD_DEF(float, qkScale) // 1/sqrt(headDim), score 缩放系数
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(PoolKeyIndexer, PoolKeyIndexerTilingData)
 

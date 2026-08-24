@@ -98,6 +98,7 @@ struct ConstInfo {
     uint64_t qHeadNum = 0ULL;
     uint64_t kHeadNum = 1ULL;
     uint64_t headDim = 128ULL;
+    float qkScale = 1.0f; // 1/sqrt(headDim), 池级分数缩放系数
     uint64_t sparseCount = 0ULL;
     uint64_t topk = 0ULL;
     uint64_t poolSize = 1ULL;

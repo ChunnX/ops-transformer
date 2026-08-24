@@ -98,7 +98,9 @@ def run_case(layout, s2_pools, s1, t, seed=123):
     )
     g_idx, g_val = ref.forward(golden_q, golden_k, weights, asq, ask, pool_tail_k=ptk)
     ok_idx = compare_indices(g_idx, npu_idx)
-    ok_val = compare_values(g_val, npu_val, torch.float16)
+    # values 仅参考(集合比对策略下不作门禁), 打印统计供人工核查
+    val_stats = compare_values(g_val, npu_val, torch.float16)
+    ok_val = val_stats["ratio"] == 1.0
     return ok_count, got, exp, ok_idx, ok_val
 
 

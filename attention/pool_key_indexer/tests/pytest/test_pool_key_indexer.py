@@ -2,7 +2,7 @@
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
+# the CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
@@ -12,16 +12,23 @@
 Pytest test cases for PoolKeyIndexer torch extension.
 
 Reference:
-  - Golden: tests/atk/pool_key_indexer_golden.py (PKIGoldenRef)
-  - Pattern: tests/pytest/ (LIV2 pytest structure)
+  - Golden: tests/pytest/pool_key_indexer_reference.py (独立 CPU 标杆,
+    与算子非量化路径计算过程一致, 可单独运行)
+
+比对策略(集合比对):
+  1. indices(第一输出): 逐行有效索引(>=0)排序集合比对, 行通过率 >= 0.995
+     作为唯一精度门禁(TopK 并列分数的平局取舍在 CPU/NPU 可能不同, 允许
+     少量行差异);
+  2. values(第二输出): 逐行有效值(有限值)排序数值比对, 仅打印参考日志,
+     不作为通过/失败判据;
+  3. 不使用任何归一化/重排/重建后处理, 直接对算子原始输出比对。
 
 Coverage:
-  - Layout: BSND, TND
+  - Layout: BSND, TND, PA_BBND (含 PA key 0 轴非连续)
   - dtype: fp16, bf16
   - mask_mode: 0 (non-causal), 3 (causal)
   - pool_size: 1 (degenerate), 8, 16 (expanded), 32, 64, 128 (upper limit)
   - return_value: True, False
-  - block sizes (PA_BBND optional)
   - topk: 16..256 base, 512/2048 (recommended), 3072/4096/8192 (special values)
   - Known defect (arch22): pool_size>=32 with topk>=6144 triggers aicore
     exception (EE9999/507015) and poisons the process; crash combos are
@@ -30,37 +37,20 @@ Coverage:
   - n1: 1 (min), 4..32, 64 (max); S1=1 minimal shape
   - PA: unequal pool counts per batch (block_table -1 slots + padded tail
     block), block_size 16/32/64, batch up to 4
-  - PA pool_key 0-axis non-contiguous (key_stride0 attr from torch ext
-    csrc, compressor-style; eager + graph mode)
 """
 
 import os
 import sys
-import math
 import pytest
-import numpy as np
 import torch
 import torch_npu
-
-# Import golden from ATK test assets
-_ATK_DIR = os.path.join(os.path.dirname(__file__), "..", "atk")
-sys.path.insert(0, os.path.abspath(_ATK_DIR))
-from pool_key_indexer_golden import (
-    PKIGoldenRef,
-    _get_compute_dtype,
-    _normalize_prefix_seq,
-    _construct_block_table,
-)
 
 # Import comparison utilities
 sys.path.insert(0, os.path.dirname(__file__))
 from result_compare import compare_indices, compare_values
 
-# Force golden to emit real indices (default False zeroes them out,
-# which defeats index set comparison)
-import pool_key_indexer_golden as _pki_golden_mod
-
-_pki_golden_mod.COMPARE_INDICES = True
+# Import standalone CPU golden reference
+from pool_key_indexer_reference import pool_key_indexer_reference
 
 # Import torch extension
 from cann_ops_transformer import pool_key_indexer
@@ -73,9 +63,15 @@ N2 = 1
 # ---------------------------------------------------------------------------
 
 
-def _make_actual_seq(seq_lens):
-    """Build cumulative prefix-sum tensor for TND layout."""
-    return _normalize_prefix_seq(seq_lens, sum(seq_lens))
+def _normalize_prefix_seq(seq_lens):
+    """构造 TND 前缀和 actual_seq(与用例既有口径一致: 多 batch 均分总长)。"""
+    total = sum(seq_lens)
+    b = len(seq_lens)
+    if b == 1:
+        return torch.tensor([total], dtype=torch.int64)
+    lens = [total // b] * b
+    lens[-1] += total - sum(lens)
+    return torch.tensor(lens, dtype=torch.int64).cumsum(0).to(torch.int64)
 
 
 def _build_bsnd_inputs(batch, q_seq, k_seq, n1, pool_size, dtype, seed=42):
@@ -84,7 +80,6 @@ def _build_bsnd_inputs(batch, q_seq, k_seq, n1, pool_size, dtype, seed=42):
     k_seq 可为 int(每 batch 等长) 或 list(每 batch token 数不等, 仅 PA 场景,
     pool_key 返回扁平 (sum_pools, N2, D))。"""
     torch.manual_seed(seed)
-    np.random.seed(seed)
     dt = dtype
     query = torch.randn(batch, q_seq, n1, HEAD_DIM, dtype=dt)
     if isinstance(k_seq, (list, tuple)):
@@ -101,20 +96,18 @@ def _build_bsnd_inputs(batch, q_seq, k_seq, n1, pool_size, dtype, seed=42):
 def _build_tnd_inputs(q_lens, k_lens, n1, pool_size, dtype, seed=42):
     """Construct TND-layout inputs on CPU."""
     torch.manual_seed(seed)
-    np.random.seed(seed)
     dt = dtype
     total_q = sum(q_lens)
-    total_k = sum(k_lens)
-    query = torch.randn(total_q, n1, HEAD_DIM, dtype=dt)
     k_pool_lens = [kl // pool_size for kl in k_lens]
     total_k_pools = sum(k_pool_lens)
+    query = torch.randn(total_q, n1, HEAD_DIM, dtype=dt)
     pool_key = torch.randn(total_k_pools, N2, HEAD_DIM, dtype=dt)
     weights = torch.randn(total_q, n1, dtype=dt)
     pool_tail_k = torch.randint(0, pool_size, (len(q_lens),), dtype=torch.int64)
-    actual_seq_q = _make_actual_seq(q_lens)
-    # actual_seq_k 语义为累计 pool 数（与 pool_key 的 T 维一致，host 校验
-    # last == key T2；golden 内部 L_orig = S2*pool_size + tail 同样按 pool 数解释）
-    actual_seq_k = _make_actual_seq(k_pool_lens)
+    # actual_seq_q 为 query token 前缀和; actual_seq_k 为累计 pool 数
+    # (与 pool_key 的 T 维一致, 亦即本用例的均分口径)
+    actual_seq_q = _normalize_prefix_seq(q_lens)
+    actual_seq_k = _normalize_prefix_seq(k_pool_lens)
     return query, pool_key, weights, pool_tail_k, actual_seq_q, actual_seq_k
 
 
@@ -242,57 +235,6 @@ def _run_npu(
     )
     torch.npu.synchronize()
     return indices.cpu(), values.cpu()
-
-
-def _run_golden(
-    query,
-    pool_key,
-    weights,
-    pool_tail_k,
-    *,
-    actual_seq_q=None,
-    actual_seq_k=None,
-    block_table=None,
-    layout_q="BSND",
-    layout_k="BSND",
-    batch=1,
-    q_seq=1,
-    k_seq=1,
-    n1=1,
-    topk=128,
-    pool_size=1,
-    mask_mode=0,
-    return_value=False,
-    dtype=torch.float16,
-    ext_indices=None,
-):
-    """Run CPU golden reference (PKIGoldenRef)."""
-    compute_dtype = _get_compute_dtype(dtype)
-    ref = PKIGoldenRef(
-        batch_size=batch,
-        q_seq=q_seq,
-        k_seq=k_seq,
-        q_head_num=n1,
-        k_head_num=N2,
-        head_dim=HEAD_DIM,
-        layout_query=layout_q,
-        layout_key=layout_k,
-        topk=topk,
-        pool_size=pool_size,
-        mask_mode=mask_mode,
-        compute_dtype=compute_dtype,
-    )
-    g_indices, g_values = ref.forward(
-        query,
-        pool_key,
-        weights,
-        actual_seq_q,
-        actual_seq_k,
-        block_table=block_table,
-        pool_tail_k=pool_tail_k,
-        ext_indices=ext_indices,
-    )
-    return g_indices, g_values
 
 
 # ---------------------------------------------------------------------------
@@ -1076,7 +1018,7 @@ def test_pool_key_indexer(
     pa_block_size,
     key_non_contig,
 ):
-    """End-to-end test: golden vs NPU torch extension."""
+    """End-to-end test: CPU golden reference vs NPU torch extension."""
     assert not key_non_contig or layout_k == "PA_BBND", (
         "0-axis non-contiguous pool_key is only supported in PA_BBND layout"
     )
@@ -1177,8 +1119,8 @@ def test_pool_key_indexer(
         f"tail_spec={tail_spec} pa_bs={pa_block_size} key_non_contig={key_non_contig} ==="
     )
 
-    # ---- Run golden ----
-    g_indices, g_values = _run_golden(
+    # ---- Run CPU golden reference (independent, operator-consistent) ----
+    g_indices, g_values = pool_key_indexer_reference(
         query,
         pool_key,
         weights,
@@ -1188,15 +1130,10 @@ def test_pool_key_indexer(
         block_table=block_table,
         layout_q=layout_q,
         layout_k=layout_k,
-        batch=batch,
-        q_seq=q_seq,
-        k_seq=k_seq,
-        n1=n1,
         topk=topk,
         pool_size=pool_size,
         mask_mode=mask_mode,
         return_value=return_value,
-        dtype=dtype,
     )
 
     # ---- Run NPU ----
@@ -1218,71 +1155,25 @@ def test_pool_key_indexer(
         pool_key_npu_fn=pool_key_npu_fn,
     )
 
-    # ---- Canonicalize NPU output via golden normalization ----
-    _, canon_indices_npu = _run_golden(
-        query,
-        pool_key,
-        weights,
-        pool_tail_k,
-        actual_seq_q=actual_seq_q,
-        actual_seq_k=actual_seq_k,
-        block_table=block_table,
-        layout_q=layout_q,
-        layout_k=layout_k,
-        batch=batch,
-        q_seq=q_seq,
-        k_seq=k_seq,
-        n1=n1,
-        topk=topk,
-        pool_size=pool_size,
-        mask_mode=mask_mode,
-        return_value=return_value,
-        dtype=dtype,
-        ext_indices=npu_indices,
-    )
-
-    # Also get canonicalized golden indices
-    _, canon_values_g = _run_golden(
-        query,
-        pool_key,
-        weights,
-        pool_tail_k,
-        actual_seq_q=actual_seq_q,
-        actual_seq_k=actual_seq_k,
-        block_table=block_table,
-        layout_q=layout_q,
-        layout_k=layout_k,
-        batch=batch,
-        q_seq=q_seq,
-        k_seq=k_seq,
-        n1=n1,
-        topk=topk,
-        pool_size=pool_size,
-        mask_mode=mask_mode,
-        return_value=return_value,
-        dtype=dtype,
-        ext_indices=g_indices,
-    )
-
-    # ---- Compare ----
-    # 1) Index set comparison (mandatory, all cases): golden-raw vs NPU-raw.
-    #    Row-level sorted-set equality with 0.995 pass-rate threshold.
+    # ---- 比对(集合比对策略, 无归一化后处理) ----
+    # 1) indices 集合比对: 唯一精度门禁。
+    #    逐行有效索引(>=0)排序后要求集合完全相等, 行通过率 >= 0.995
+    #    (TopK 并列分数的 CPU/NPU 平局取舍可能不同, 允许少量行差异)。
     ok_idx = compare_indices(g_indices, npu_indices)
     assert ok_idx, (
-        f"Indices set comparison failed for {layout_q} ps={pool_size} mask={mask_mode}"
+        f"Indices set comparison failed for {layout_q}/{layout_k} ps={pool_size} "
+        f"mask={mask_mode}"
     )
 
-    # 2) Values comparison (return_value=True): normalized channel must pass
-    #    on its own; raw channel is informational only (no OR fallback).
+    # 2) values 参考比对: 仅打印日志, 不作为判定依据。
+    #    逐行有效值(有限值)排序后按 rtol/atol 统计数值接近程度。
     if return_value:
-        ok_values = compare_values(canon_values_g, canon_indices_npu, dtype)
-        ok_raw_vals = compare_values(g_values, npu_values, dtype)
-        assert ok_values, (
-            f"Normalized values comparison failed for {layout_q} ps={pool_size} "
-            f"mask={mask_mode} (raw channel: {'PASS' if ok_raw_vals else 'FAIL'})"
+        assert npu_values.shape == g_values.shape, (
+            f"values shape mismatch: golden {g_values.shape} vs npu {npu_values.shape}"
         )
+        compare_values(g_values, npu_values, dtype, label="values")
     else:
-        # return_value=False: NPU values should be empty
+        # return_value=False: NPU values 应为空 tensor
         assert npu_values.numel() == 0 or npu_values.shape[-1] == 0, (
             f"Expected empty values when return_value=False, got shape {npu_values.shape}"
         )

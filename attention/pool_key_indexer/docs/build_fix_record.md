@@ -909,3 +909,173 @@ rm -rf build
 bash build.sh --pkg --soc=ascend950 --vendor_name=custom --ops=pool_key_indexer
 # 观察: grep "error in backend" build 日志 → 214 处 fp8 标量语义错误
 ```
+
+---
+
+---
+
+# values 输出 batch>0 错位修复记录（valueOutGm 复用 indices 行宽偏移）
+
+> 2026-08-24 四轮排查。测试侧弃用"归一化比对"改直比原始输出后，values 参考通道暴露 kernel 真实缺陷：indices 全对、values 在 poolSize>1 且 batch>0 时整体错位。属于 Bug 1（indices 行宽）的同族遗漏——当时只修了 indices 通道，values 通道漏改。
+
+## 问题现象
+
+- 仅 `return_value=True` 且 `pool_size>1` 且 `batch>1` 的用例 values 错位：B=2 时约 50% 行失配、B=3 时 33%、B=4 时 30%（恰为 batch0 占比），`max_abs_err` 高达数百
+- 实测 batch1 起的 values 全为 0（写偏后被相邻清理覆盖/未写到）；indices 通道 42 用例全部 100% 集合匹配
+- 旧"归一化比对"用 golden 分数重排重建 values 再比对，恰好掩盖了该缺陷（重建值来自 golden 而非算子原始输出）
+
+## 根因
+
+`valueOutGm` 写入偏移直接复用了 **indices 通道的行基址偏移**，而两个输出张量行宽不同：
+
+| 输出 | 行宽 | 说明 |
+|------|------|------|
+| sparseIndices | `outputLen = sparseCount*poolSize + poolSize-1`（ps>1）| ps=1 时退化等于 sparseCount |
+| sparseValues | 恒为 `sparseCount` | 与 ps 无关 |
+
+arch22 三处同族错误：
+1. `CalcRunInfo`：只算 `indiceOutCoreOffset`（outputLen 行距）并塞进 `runInfo.indiceOutOffset`；`RunInfo.valueOutOffset` 字段声明了但从未赋值。`ProcessVec` 直写路径两处 `valueOutGm[info.indiceOutOffset + cuS1Idx*sparseCount + ...]`——batch>0 时基址按 outputLen 行距累计，行号越深偏得越远
+2. `ProcessLD`（跨核归并输出）：`DataCopyPad(valueOutGm[outOffset], ...)` 与 indices 共用 slot 8 偏移（outputLen 行距）
+3. `ProcessInvalid`（无任务全量清理）：values 清理复用 indices 的 `baseSize/dealSize`（idxOutStride 总量），ps>1 时越出 values 张量边界
+
+对照 arch35（950）实现确认正确形态：其 `CalcRunInfo` 早已独立维护 `valueOutCoreOffset`（sparseCount 行距）并下发 `runInfo.valueOutOffset`，kernel 侧 `valueOutGm[info.valueOutOffset + ...]`。
+
+## 修复（arch22，910b 实测路径）
+
+| 文件 | 修改 |
+|------|------|
+| `arch22/pool_key_indexer_kernel.h` | ① 新增成员 `valueOutCoreOffset`；② `CalcRunInfo` 按 sparseCount 行距独立计算并赋值 `runInfo.valueOutOffset`；③ `ProcessInvalid` 的 values 清理按自身总大小（`batchSize*qSeqSize*kHeadNum*sparseCount`）独立切分，不再复用 indices 的 baseSize/dealSize |
+| `arch22/pool_key_indexer_service_vector.h` | ① `ProcessVec` 两处直写 `valueOutGm[...]` 改用 `info.valueOutOffset`；② LD 参数块新增 slot 12（`valueOutOffset + cuS1Idx*sparseCount`）；③ `ProcessLD` 读取 slot 12 为 `valueOutOffsetLd`，values 搬出改用该偏移 |
+
+LD 链上各核对同一 s1 行写的 slot 12 值一致（同 batch 同 cuS1Idx），与 slot 8 的读法完全同构，故读取位置沿用既有逻辑。slot 12 与 slot 8 在同一 `tmpiBuff` 块内写入（`CopyOut` 16 个参数），头/尾槽两种写入形态均覆盖。
+
+## 验证
+
+| 项目 | 修复前 | 修复后 |
+|------|--------|--------|
+| pytest 42 用例（indices 门禁） | 42/42 通过 | 42/42 通过（无回归） |
+| values 参考比对（30 个 val=True 用例） | 多 batch ps>1 用例 30%~50% 行失配，max_err 60~307 | **全部 100% 行匹配，max_abs_err=0.000000** |
+| `_dbg_rawval.py`（bsnd_bf16_ps8 B=2 失配复现点） | batch1 row0 max_err=23.88 | 逐值一致 |
+| `boundary_causal_test.py`（2 场景×2 布局×t=0..15 全扫） | — | ALL PASS（含 values 100%） |
+| ps=1 回归（outputLen==sparseCount，两偏移恒等） | — | 无影响 |
+
+## 遗留
+
+1. arch35（950）values 通道本就正确（独立 `valueOutOffset`），但其 **indices** 通道存在同族行宽问题（`indiceOutCoreOffset` 用 sparseCount 行距，而 service_vector 按 `outputLen_` 行寻址）——因 arch35 存量编译失败（fp8 后端 214 处，见前文遗留）且本机无 950 环境，未改动，待 arch35 维护者修复编译后一并处理
+2. 本轮仅重编 ascend910b 包并安装验证；arch35 相关待办见前文
+
+## 经验教训
+
+1. **同一算子的两个输出张量若有不同行宽，所有"行基址/行距/清理"公式必须各建各的**——修复 Bug 1 时只按 grep `indiceOutGm` 修 indices 通道，漏掉了 `valueOutGm` 共用同一偏移变量的三处；正确做法是以"偏移变量 × 消费点"二维矩阵审计
+2. **结构体字段声明了但无赋值点 = 静默失效**（`RunInfo.valueOutOffset`），与 Bug 2（poolTailK）同款模式，review 时对"声明未赋值"要专门扫一遍
+3. 比对框架引入"重建/归一化"后处理会系统性掩盖被测通道的真实缺陷——被验证的必须是算子的原始输出，后处理只能用于诊断不能用于判定
+
+---
+
+# 标杆/算子 缩放系数缺失修复记录（1/sqrt(headDim)）
+
+## 问题现象
+
+`tests/pytest/pool_key_indexer_reference.py` docstring 声明"不做 1/sqrt(headDim) 缩放"，与算子文档
+`docs/aclnnKpoolIndexer.md` 计算公式冲突：
+
+$$S = Q \otimes K_{pool}^T \odot \frac{1}{\sqrt{headDim}}$$
+
+标杆与算子（非量化路径）均未做缩放，双方"一致地错"——indices 集合比对（TopK 次序对正缩放不变）
+无法暴露，values 数值通道与文档规格不符。
+
+## 修复方案
+
+缩放系数为正数，与 ReLU、多头加权求和数学可交换，统一在**聚合后**施加，不影响 TopK 次序。
+系数由 host 侧预计算、经 TilingData 下发（与本仓 attention 算子 softmaxScale/scaleValue 惯例一致）。
+
+| 文件 | 修改 |
+|------|------|
+| `tests/pytest/pool_key_indexer_reference.py` | `_compute_batch` 点积乘 `1/sqrt(d)`；docstring 同步修正 |
+| `tests/atk/pool_key_indexer_golden.py` | `_cal_atten_per_batch` matmul 后除 `sqrt(head_dim)`（同族缺陷同步修复） |
+| `op_host/pool_key_indexer_tiling.h` | TilingData 新增 `TILING_DATA_FIELD_DEF(float, qkScale)` |
+| `op_host/pool_key_indexer_tiling.cpp` | `SetTilingData`: `set_qkScale(1.0f / std::sqrt(info.headDim))` |
+| `op_kernel/pool_key_indexer_common.h` | `ConstInfo` 新增 `float qkScale = 1.0f` |
+| `op_kernel/arch22/pool_key_indexer_kernel.h` | `InitTilingData` 读取 `tilingData->qkScale` |
+| `op_kernel/arch35/pool_key_indexer_kernel.h` | 同上 |
+| `op_kernel/arch22/pool_key_indexer_service_vector.h` | `ProcessVec` 分数拷贝处 `Adds(...,0.0)` → `Muls(...,qkScale)`（零额外指令） |
+| `op_kernel/arch35/vf/pool_key_indexer_vector1.h` | `MulWeightAndReduceSum` 增加 scale 参数，聚合后、转 sortable key 前乘缩放 |
+| `op_kernel/arch35/pool_key_indexer_service_vector.h` | 调用点传入 `constInfo_.qkScale` |
+| `tests/ut/op_kernel/test_pool_key_indexer.cpp` | `SetTilingData` 补填 `qkScale`（新增 tiling 字段需同步 UT，否则 UT 读到未初始化值） |
+
+附带修复（本轮验证中发现的比对工具缺陷）：`tests/pytest/result_compare.py` 的 `compare_values`
+原实现只对**未过 allclose 的失败行**计算 `row_err`，通过行直接 `continue`，导致全通过时
+`max_abs_err` 恒为 0.0（统计假象）。已改为通过行也记录真实误差。
+
+## 验证（ascend910b， 42/42 用例通过）
+
+| 检查项 | 结果 |
+|--------|------|
+| indices 门禁 | 42/42（正缩放不改变 TopK 次序，无回归） |
+| values 数值通道（fp16/bf16 × BSND/TND/PA × causal/non-causal） | 100% 行匹配，真实 max_abs_err=1e-6~3e-6（ULP 级，源自累加顺序与缩放施加位置的浮点舍入差异） |
+| 独立探针（/tmp 探针脚本直比） | max_abs_err=1.9e-6, max_rel_err=1.0e-4 |
+| boundary_causal_test.py / simple_test.py | ALL PASS / PASSED |
+
+注：TilingData 布局变更（新增字段）后，op_host 与 op_kernel 必须同包重编重装，否则旧 kernel 读新
+tiling 会取到越界/错位值。
+
+---
+
+# pytest 用例覆盖度分析与缺口登记（2026-08-24）
+
+统计对象：`tests/pytest/test_pool_key_indexer.py`，42 个参数化用例（当时全部通过）。
+
+## 已覆盖维度
+
+| 维度 | 覆盖情况 |
+|------|----------|
+| layout 组合 | 4/4 全覆盖：BSND/BSND(23)、BSND/PA(6)、TND/TND(9)、TND/PA(4) |
+| dtype | fp16(35)、bf16(7) |
+| mask_mode | 0(17)、3(25) |
+| return_value | True(30)、False(12) |
+| pool_size | 1(退化)、8、16、32、64、128(上限) |
+| topk | 16、64、128、256、512、2048(建议值)、3072/4096/8192(全部大值特殊档) |
+| sparseCount | 1(退化)、2、4、8、16、32、64、128、256、512、3072(>2048 大分档路径) |
+| n1 | 1(最小)~64(上限)全档 |
+| batch | 1/2/3/4 + 不等长 list |
+| pool_tail_k | 随机 / 0 / 15 / 127(ps-1) / 混合[0,4,7] |
+| PA 特性 | 不等池数(-1 空槽+尾块 padding)、block_size 16/32/64、B=4、0 轴非连续 key(2 例) |
+| kernel 关键分支 | splitMFlag(n1=64 且 sc≤2048)、actS1Size≤4 缓存排序、isSparseCountOver2K |
+
+## 缺口登记（按风险排序）
+
+### P0 — kernel 有专门分支但 pytest 从未执行
+
+1. **BSND + actual_seq_q 部分有效**： 所有 BSND/BSND 用例 `actual_seq_q=None`。
+   `needDealActS1LessThanS1` → `CleanInvalidOutput`（无效 S1 行输出 -1）路径零覆盖
+   （arch22 `pool_key_indexer_service_vector.h` 的 BSND 无效 S1 清理段）。
+2. **BSND/BSND + actual_seq_k 每 batch 池数不等**： 仅 PA 场景传了 actual_seq_k，
+   密集布局的池截断寻址路径未验证。
+3. **S1 > K + causal**： 无任何用例（仅 1 例 S1==K）。前段行 `cuRealAcSeq≤0` →
+   全 -1 输出路径未覆盖。
+
+### P1 — 组合缺口
+
+4. **bf16 × BSND/PA_BBND**： 7 个 bf16 用例分布在 BSND/BSND、TND/TND、TND/PA，
+   无 BSND/PA 组合。
+5. **topk 特殊值 5120/6144/7168 未测**（其中 ps≥32 且 topk≥6144 有已知 arch22 崩陷缺陷，
+   已在 TEST_CASES 注释登记为不执行，见下）。
+6. **pool_size 非幂数**（2/3/4/5/127）： 只测了 1 和 2 的幂——非对齐 pool_size 走
+   `Align(poolSize,8)` 掩码路径。
+
+### P2 — 低风险
+
+7. PA × ps=1（退化）、PA × 大 topk(>2048)。
+8. actual_seq 为 0 的空 batch（`DealActSeqLenIsZero`）。
+9. PA B=1、PA tail 确定性值。
+10. topk=1（最小值）。
+
+### N/A（当前硬件不可测）
+
+- quantMode 0/1（FP8/mxFP8）： 仅 Ascend 950 支持，当前 910B3 环境无法覆盖。
+
+### 已知缺陷（关联）
+
+- arch22/910B： pool_size≥32 且 topk≥6144 组合触发 aicore exception（EE9999/507015），
+  崩溃污染进程内后续用例，故不作为 xfail 纳入（TEST_CASES 内 NOTE 登记），kernel 修复后
+  可补：`tnd_fp16_ps32_topk6144_causal`、`bsnd_fp16_ps64_topk8192_causal`。

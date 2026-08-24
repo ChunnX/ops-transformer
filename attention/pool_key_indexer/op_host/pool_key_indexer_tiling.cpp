@@ -934,6 +934,8 @@ void PoolKeyIndexerTiling::SetTilingData(PoolKeyIndexerTilingInfo &info)
     tilingData_.set_maxBlockNumPerBatch(info.maxBlockNumPerBatch);
     tilingData_.set_keyStride0(info.keyStride0);
     tilingData_.set_keyDequantScaleStride0(info.keyDequantScaleStride0);
+    // 算子文档公式: S = Q @ K_pool^T * 1/sqrt(headDim), host 侧预计算缩放系数
+    tilingData_.set_qkScale(1.0f / std::sqrt(static_cast<float>(info.headDim)));
 }
 
 ge::graphStatus PoolKeyIndexerTiling::DoTiling(PoolKeyIndexerTilingInfo *tilingInfo)

@@ -1,4 +1,8 @@
-"""Analyze raw-values mismatch: golden vs NPU on one failing case."""
+"""Analyze raw-values: golden vs NPU on the bsnd_bf16_ps8_nocausal_val case.
+
+(values 偏移缺陷已于 2026-08-24 修复: valueOutGm 独立按 sparseCount 行宽寻址,
+本脚本保留作回归核查, 标杆切换为独立实现 pool_key_indexer_reference)
+"""
 
 import sys
 import torch
@@ -8,10 +12,10 @@ sys.path.insert(0, "/opt/gjw/ops-transformer/attention/pool_key_indexer/tests/py
 from test_pool_key_indexer import (
     _build_bsnd_inputs,
     _run_npu,
-    _run_golden,
     N2,
     HEAD_DIM,
 )
+from pool_key_indexer_reference import pool_key_indexer_reference
 
 torch_npu.npu.set_device(0)
 torch.manual_seed(42)
@@ -23,22 +27,17 @@ query, pool_key, weights, pool_tail_k = _build_bsnd_inputs(
     batch, q_seq, k_seq, n1, pool_size, dtype
 )
 
-g_idx, g_val = _run_golden(
+g_idx, g_val = pool_key_indexer_reference(
     query,
     pool_key,
     weights,
     pool_tail_k,
     layout_q="BSND",
     layout_k="BSND",
-    batch=batch,
-    q_seq=q_seq,
-    k_seq=k_seq,
-    n1=n1,
     topk=topk,
     pool_size=pool_size,
     mask_mode=0,
     return_value=True,
-    dtype=dtype,
 )
 n_idx, n_val = _run_npu(
     query,
