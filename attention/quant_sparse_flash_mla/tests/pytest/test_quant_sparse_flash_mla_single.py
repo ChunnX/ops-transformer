@@ -91,6 +91,7 @@ for params in ENABLED_PARAMS:
         "q_datarange": params.get("q_datarange", [[-5, 5]]),
         "ori_kv_datarange": params.get("ori_kv_datarange", [[-5, 5]]),
         "cmp_kv_datarange": params.get("cmp_kv_datarange", [[-5, 5]]),
+        "batch_consistency": params.get("batch_consistency", [False]),
     }
 
     param_names = list(param_values.keys())
