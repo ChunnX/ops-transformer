@@ -1048,7 +1048,7 @@ void MxQuantMatmulAllToAllTilingBase::SetHcommTilingInfo(CommTilingData &tilingI
 ge::graphStatus MxQuantMatmulAllToAllTilingBase::GetWorkspaceSize()
 {
     if (!usingApaceImpl_) {
-        return MatmulAlltoAllTilingBase::GetWorkspaceSize();
+        return MatmulAllToAllTilingBase::GetWorkspaceSize();
     }
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "Get workspace failed"), return ge::GRAPH_FAILED);
