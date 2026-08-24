@@ -34,6 +34,9 @@ if (BUILD_OPEN_PROJECT)  # custom
             OPTIONS --cce-auto-sync=on
             OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel
             OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/common/inc/kernel
+            OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/moe_distribute_dispatch_v2/op_kernel
+            OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/moe_distribute_dispatch_v3/op_kernel
+            OPTIONS -I$ENV{ASCEND_OPP_PATH}/built-in/op_impl/ai_core/tbe/impl/ops_nn/ascendc/common
         )
     endif()
 
