@@ -1081,10 +1081,10 @@ uint32_t FlashAttentionScoreGradTilingNormalRegbase::GetDeterSparseTilingKey()
                 fBaseParams.s1Token >= fBaseParams.s1 &&
                 (fBaseParams.s2Token > NEGATIVE_128 && fBaseParams.s2Token <= 0)) ||
                (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) &&
-                fBaseParams.isS1S2Same)) {
+                (fBaseParams.isS1S2Same ||
+                 (fBaseParams.layoutType == INPUT_FORMAT_TND && fBaseParams.g == 1)))) {
         return static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL);
     } else if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::BAND) ||
-               // RIGHT_DOWN_CAUSAL场景和Band类似，直接走Band分支
                fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) ||
                fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::NO_MASK)) {
         return static_cast<uint32_t>(DeterSparseType::DETER_BAND);
