@@ -834,7 +834,7 @@ __aicore__ inline void EngramFetchGradArch35::CrossRankBarrier()
 __aicore__ inline void EngramFetchGradArch35::Process()
 {
     if ASCEND_IS_AIV {
-        // processStartCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
+        processStartCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
         InitFlagsAndDispls();
         SyncAll<true>();
 
@@ -844,31 +844,60 @@ __aicore__ inline void EngramFetchGradArch35::Process()
         CrossRankBarrier();
 
         UnsortGrad();
-        // sendStartCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
+        sendStartCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
         SendGradToPeers();
-        // sendEndCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
-        // uniqueScatterAddStartCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
-        UniqueScatterAdd();
-        // uniqueScatterAddEndCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
+        sendEndCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
-        // processEndCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
+        GlobalTensor<int32_t> numRecvGM;
+        numRecvGM.SetGlobalBuffer((__gm__ int32_t *)numRecvOutGM_);
+        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(numRecvGM);
+        uint32_t numRecv = static_cast<uint32_t>(numRecvGM.GetValue(0));
+        uint64_t t0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+        if (numRecv == 0) {
+            FinishExchangeGrad();
+            uniqueScatter_.WriteNumUniqueZero(numUniqueOutGM_);
+            processEndCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
+            AscendC::printf("ENGRAM core=%uu numRecv=0\n", aivId_);
+        } else {
+            InitCompanion(numRecv);
+            SyncAll<true>();
+            uint64_t t1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
-        // uint64_t totalUs = (processEndCycle_ - processStartCycle_) / 1000U;
-        // uint64_t preUs = (uniqueScatterAddStartCycle_ - processStartCycle_) / 1000U;
-        // uint64_t usaUs = (uniqueScatterAddEndCycle_ - uniqueScatterAddStartCycle_) / 1000U;
-        // uint64_t sendUs = (sendEndCycle_ - sendStartCycle_) / 1000U;
-        // uint64_t sortUs = usaSortCycle_ / 1000U;
-        // uint64_t drainRecvUs = usaDrainRecvCycle_ / 1000U;
-        // AscendC::printf("ENGRAM core=%uu total=%lluu pre=%lluu send=%lluu usa=%lluu | initAndOverlapSend=%lluu
-        // sort=%lluu count=%lluu zero=%lluu drainRecv=%lluu scatterAdd=%lluu cast=%lluu\n",
-        //                 aivId_, totalUs, preUs, sendUs, usaUs,
-        //                 usaInitAndOverlapSendCycle_ / 1000U,
-        //                 sortUs,
-        //                 uniqueScatter_.usaCountCycle_ / 1000U,
-        //                 uniqueScatter_.usaZeroCycle_ / 1000U,
-        //                 drainRecvUs,
-        //                 uniqueScatter_.usaScatterAddCycle_ / 1000U,
-        //                 uniqueScatter_.usaCastCycle_ / 1000U);
+            RunSort(numRecv);
+            uint64_t t2 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
+            uniqueScatter_.RunCount(numRecv, recvLocalEntryOutGM_, coreStartGM_, segCountGM_);
+            uint64_t t3 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
+            uniqueScatter_.ZeroGradUnique(numRecv, gradUniqueOutGM_, gradUniqueFp32GM_);
+            uint64_t t4 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
+            FinishExchangeGrad();
+            SyncAll<true>();
+            uint64_t t5 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
+            uniqueScatter_.RunScatterCast(numRecv, recvLocalEntryOutGM_, uniqueLocalEntryOutGM_, numUniqueOutGM_,
+                                          gradUniqueOutGM_, gradUniqueFp32GM_, recvGradGM_, coreStartGM_, segCountGM_,
+                                          sortCompanionGM_);
+            uint64_t t6 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
+            processEndCycle_ = t6;
+
+            uint64_t preUs = (sendStartCycle_ - processStartCycle_) / 1000U;
+            uint64_t sendUs = (sendEndCycle_ - sendStartCycle_) / 1000U;
+            uint64_t gapUs = (t0 - sendEndCycle_) / 1000U;
+            uint64_t totalUs = (t6 - processStartCycle_) / 1000U;
+            AscendC::printf("ENGRAM core=%uu pre=%lluu send=%lluu gap=%lluu init=%lluu sort=%lluu count=%lluu zero=%lluu drain=%lluu scatterCast=%lluu total=%lluu\n",
+                            aivId_,
+                            preUs, sendUs, gapUs,
+                            (t1 - t0) / 1000U,
+                            (t2 - t1) / 1000U,
+                            (t3 - t2) / 1000U,
+                            (t4 - t3) / 1000U,
+                            (t5 - t4) / 1000U,
+                            (t6 - t5) / 1000U,
+                            totalUs);
+        }
     }
 }
 
