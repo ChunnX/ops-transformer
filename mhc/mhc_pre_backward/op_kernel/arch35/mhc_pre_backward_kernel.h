@@ -983,8 +983,12 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, 
     mm0.End();
     c0OutQueue_.EnQue(c0OutUb);
 
-    // 通知V2计算
-    AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_FIX>(CROSS_CORE_WAIT_FLAG_C0);
+    // 两个UB buffer使用独立flag，避免AIC预取下一块时覆盖尚未被AIV消费的通知。
+    if (buffIdx == 0) {
+        AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_FIX>(CROSS_CORE_WAIT_FLAG_C0_BUFFER0);
+    } else {
+        AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_FIX>(CROSS_CORE_WAIT_FLAG_C0_BUFFER1);
+    }
 }
 
 template <class T, class P>
@@ -992,9 +996,14 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC1(uint32_t offsetND, 
                                                              uint32_t offsetBS, uint32_t currentBSBlock,
                                                              uint32_t buffIdx)
 {
-    AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1);
+    uint32_t currentBuffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
+    if (currentBuffIdx == 0) {
+        AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1_BUFFER0);
+    } else {
+        AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1_BUFFER1);
+    }
     // 1C2V 对应操作两块 workspaceGm_
-    buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
+    buffIdx = currentBuffIdx;
     // 设置矩阵形状
     uint64_t offsetXs = workspaceBuf_.GetXRsOffset(GetBlockIdx(), buffIdx);
     mm1.SetOrgShape(fusionSize_, currentNDBlock, totalLength_, currentBSBlock, nD_); // [M,N,Ka,Kb,orgKc]
@@ -1036,16 +1045,25 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2Pipeline()
         LocalTensor<P> sumBuf = vecOutQueueSmall_.AllocTensor<P>();
         for (uint32_t offsetBS = 0; offsetBS < totalLength_; offsetBS += SINGLE_M) {
             uint32_t currentBSBlock = Min(SINGLE_M, uint32_t(totalLength_ - offsetBS));
-            // 等待C0完成计算
-            AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C0);
+            uint32_t currentBuffIdx = buffId % VEC_CORE_VECIDX_MOD;
+            // 等待C0完成计算；每个UB buffer使用独立flag。
+            if (currentBuffIdx == 0) {
+                AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C0_BUFFER0);
+            } else {
+                AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C0_BUFFER1);
+            }
 
             // C0结果已由SplitN策略直接写入当前AIV的UB。
             LocalTensor<P> c0OutUb = c0OutQueue_.DeQue<P>();
             ProcessV2(offsetND, copySizeND, offsetBS, offsetBS + currentBSBlock, sumBuf, buffId, c0OutUb);
             c0OutQueue_.FreeTensor(c0OutUb);
-            buffId++;
             // 通知C1计算
-            AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_MTE3>(CROSS_CORE_WAIT_FLAG_C1);
+            if (currentBuffIdx == 0) {
+                AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_MTE3>(CROSS_CORE_WAIT_FLAG_C1_BUFFER0);
+            } else {
+                AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_MTE3>(CROSS_CORE_WAIT_FLAG_C1_BUFFER1);
+            }
+            buffId++;
         }
         if (withGamma_) {
             vecOutQueueSmall_.EnQue(sumBuf);
