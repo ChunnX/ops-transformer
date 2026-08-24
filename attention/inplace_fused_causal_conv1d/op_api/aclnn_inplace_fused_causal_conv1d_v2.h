@@ -28,8 +28,8 @@ ACLNN_API aclnnStatus aclnnInplaceFusedCausalConv1dV2GetWorkspaceSize(
     const aclTensor *numAcceptedTokens, const aclTensor *numComputedTokens,
     const aclTensor *blockIdxFirstScheduledToken, const aclTensor *blockIdxLastScheduledToken,
     const aclTensor *initialStateIdx, int64_t activationMode, int64_t padSlotId, int64_t runMode, int64_t maxQueryLen,
-    int64_t residualConnection, int64_t blockSize, int64_t convMode,
-    int64_t maxDraftTokens, uint64_t *workspaceSize, aclOpExecutor **executor);
+    int64_t residualConnection, int64_t blockSize, int64_t convMode, int64_t maxDraftTokens, uint64_t *workspaceSize,
+    aclOpExecutor **executor);
 
 /* @brief aclnnInplaceFusedCausalConv1dV2的第二段接口，用于执行计算。 */
 ACLNN_API aclnnStatus aclnnInplaceFusedCausalConv1dV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,

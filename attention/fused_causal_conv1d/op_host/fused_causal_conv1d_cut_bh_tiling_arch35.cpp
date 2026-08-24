@@ -19,7 +19,10 @@
 
 namespace optiling {
 
-bool FusedCausalConv1dCutBHTiling::IsCapable() { return true; }
+bool FusedCausalConv1dCutBHTiling::IsCapable()
+{
+    return true;
+}
 
 ge::graphStatus FusedCausalConv1dCutBHTiling::GetPlatformInfo()
 {
@@ -170,31 +173,27 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetShapeInfo()
     if (apcEnable_) {
         auto blockIdxLastDesc = context_->GetOptionalInputDesc(BLOCK_IDX_LAST_SCHEDULED_TOKEN_INDEX);
         if (blockIdxLastDesc == nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                context_->GetNodeName(), "block_idx_last_scheduled_token", "nullptr",
-                "block_idx_last_scheduled_token cannot be nullptr when APC");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "block_idx_last_scheduled_token", "nullptr",
+                                                  "block_idx_last_scheduled_token cannot be nullptr when APC");
             return ge::GRAPH_FAILED;
         }
         auto initialStateIdxDesc = context_->GetOptionalInputDesc(INITIAL_STATE_IDX_INDEX);
         if (initialStateIdxDesc == nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                context_->GetNodeName(), "initial_state_idx", "nullptr",
-                "initial_state_idx cannot be nullptr when APC");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "initial_state_idx", "nullptr",
+                                                  "initial_state_idx cannot be nullptr when APC");
             return ge::GRAPH_FAILED;
         }
         auto cacheIndicesShape = context_->GetOptionalInputShape(CACHE_INDICES_INDEX);
         if (cacheIndicesShape == nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                context_->GetNodeName(), "cache_indices", "nullptr",
-                "cache_indices cannot be nullptr when APC is enabled");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "cache_indices", "nullptr",
+                                                  "cache_indices cannot be nullptr when APC is enabled");
             return ge::GRAPH_FAILED;
         }
         auto cacheIndicesOriginShape = cacheIndicesShape->GetOriginShape();
         if (cacheIndicesOriginShape.GetDimNum() != DIM_2) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                context_->GetNodeName(), "cache_indices",
-                std::to_string(cacheIndicesOriginShape.GetDimNum()).c_str(),
-                "The shape dim of cache_indices must be 2 when APC is enabled");
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "cache_indices",
+                                                     std::to_string(cacheIndicesOriginShape.GetDimNum()).c_str(),
+                                                     "The shape dim of cache_indices must be 2 when APC is enabled");
             return ge::GRAPH_FAILED;
         }
         maxNumBlocks_ = cacheIndicesOriginShape.GetDim(DIM_1);
@@ -405,8 +404,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateXShape()
     if (xInputMode_ == X_INPUT_2D) {
         // 2D 模式下通过属性传入最大序列长度
         if (maxQueryLen_ < 1 || maxQueryLen_ > MAX_M + 1) {
-            std::string reasonMsg =
-                "The value of max_query_len must be greater than 0";
+            std::string reasonMsg = "The value of max_query_len must be greater than 0";
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "max_query_len",
                                                   std::to_string(maxQueryLen_).c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
@@ -736,7 +734,8 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateAttrs()
 
     // max_draft_tokens ∈ [0, 16]
     if (maxDraftTokens_ < 0 || maxDraftTokens_ > 16) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "max_draft_tokens", std::to_string(maxDraftTokens_).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "max_draft_tokens",
+                                              std::to_string(maxDraftTokens_).c_str(),
                                               "The value of max_draft_tokens must be between 0 and 16");
         return ge::GRAPH_FAILED;
     }
@@ -1245,7 +1244,10 @@ void FusedCausalConv1dCutBHTiling::DumpTilingInfo()
     OP_LOGI(context_->GetNodeName(), "lastCoreubTailFactorDim: %ld", tilingData_.lastCoreubTailFactorDim);
 }
 
-ge::graphStatus FusedCausalConv1dCutBHTiling::DoLibApiTiling() { return ge::GRAPH_SUCCESS; }
+ge::graphStatus FusedCausalConv1dCutBHTiling::DoLibApiTiling()
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus FusedCausalConv1dCutBHTiling::GetWorkspaceSize()
 {

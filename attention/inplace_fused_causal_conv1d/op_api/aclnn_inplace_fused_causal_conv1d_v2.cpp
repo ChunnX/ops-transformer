@@ -31,8 +31,8 @@ aclnnStatus InplaceFusedCausalConv1dV2CommonProcess(
     const aclTensor *numAcceptedTokens, const aclTensor *numComputedTokens,
     const aclTensor *blockIdxFirstScheduledToken, const aclTensor *blockIdxLastScheduledToken,
     const aclTensor *initialStateIdx, int64_t activationMode, int64_t padSlotId, int64_t runMode, int64_t maxQueryLen,
-    int64_t residualConnection, int64_t blockSize, int64_t convMode, int64_t maxDraftTokens,
-    uint64_t *workspaceSize, aclOpExecutor **executor)
+    int64_t residualConnection, int64_t blockSize, int64_t convMode, int64_t maxDraftTokens, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 {
     // Mandatory tensors must be checked before any dereference (CreateView / Contiguous).
     OP_CHECK_NULL(x, return ACLNN_ERR_PARAM_NULLPTR);
@@ -125,8 +125,8 @@ ACLNN_API aclnnStatus aclnnInplaceFusedCausalConv1dV2GetWorkspaceSize(
     const aclTensor *numAcceptedTokens, const aclTensor *numComputedTokens,
     const aclTensor *blockIdxFirstScheduledToken, const aclTensor *blockIdxLastScheduledToken,
     const aclTensor *initialStateIdx, int64_t activationMode, int64_t padSlotId, int64_t runMode, int64_t maxQueryLen,
-    int64_t residualConnection, int64_t blockSize, int64_t convMode,
-    int64_t maxDraftTokens, uint64_t *workspaceSize, aclOpExecutor **executor)
+    int64_t residualConnection, int64_t blockSize, int64_t convMode, int64_t maxDraftTokens, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnInplaceFusedCausalConv1dV2,
                    DFX_IN(x, weight, convStates, queryStartLoc, cacheIndices, initialStateMode, bias, numAcceptedTokens,
@@ -135,8 +135,8 @@ ACLNN_API aclnnStatus aclnnInplaceFusedCausalConv1dV2GetWorkspaceSize(
     return InplaceFusedCausalConv1dV2CommonProcess(
         x, weight, convStates, queryStartLoc, cacheIndices, initialStateMode, bias, numAcceptedTokens,
         numComputedTokens, blockIdxFirstScheduledToken, blockIdxLastScheduledToken, initialStateIdx, activationMode,
-        padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode, maxDraftTokens,
-        workspaceSize, executor);
+        padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode, maxDraftTokens, workspaceSize,
+        executor);
 }
 
 ACLNN_API aclnnStatus aclnnInplaceFusedCausalConv1dV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
