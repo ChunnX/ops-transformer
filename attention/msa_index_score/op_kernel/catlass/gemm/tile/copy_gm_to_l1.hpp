@@ -14,7 +14,7 @@
 #include "catlass/catlass.hpp"
 #include "catlass/numeric_size.hpp"
 #include "catlass/arch/arch.hpp"
-#include "catlass/layout/layout.hpp"
+#include "catlass/layout/msa_layout.hpp"
 #include "catlass/gemm/gemm_type.hpp"
 
 namespace Catlass::Gemm::Tile {

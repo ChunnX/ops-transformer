@@ -13,7 +13,7 @@
 
 #include "catlass/catlass.hpp"
 #include "catlass/numeric_size.hpp"
-#include "catlass/layout/layout.hpp"
+#include "catlass/layout/msa_layout.hpp"
 #include "catlass/gemm/gemm_type.hpp"
 
 namespace Catlass::Gemm::helper {
