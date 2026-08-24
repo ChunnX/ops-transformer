@@ -107,12 +107,11 @@ aclnnStatus FusedCausalConv1dCommonProcess(const aclTensor *x, const aclTensor *
     CHECK_COND(initialStateIdx == nullptr || initialStateIdxFinal != nullptr, ACLNN_ERR_PARAM_NULLPTR,
                "Contiguous initialStateIdx failed.");
 
-    bool ok =
-        l0op::FusedCausalConv1d(xFinal, weightFinal, convStatesFinal, queryStartLocFinal, cacheIndicesFinal,
-                                initialStateModeFinal, biasFinal, numAcceptedTokensFinal, numComputedTokensFinal,
-                                blockIdxFirstFinal, blockIdxLastFinal, initialStateIdxFinal, activationMode, padSlotId,
-                                runMode, maxQueryLen, residualConnection, blockSize, convMode, maxDraftTokens,
-                                y, uniqueExecutor.get());
+    bool ok = l0op::FusedCausalConv1d(xFinal, weightFinal, convStatesFinal, queryStartLocFinal, cacheIndicesFinal,
+                                      initialStateModeFinal, biasFinal, numAcceptedTokensFinal, numComputedTokensFinal,
+                                      blockIdxFirstFinal, blockIdxLastFinal, initialStateIdxFinal, activationMode,
+                                      padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode,
+                                      maxDraftTokens, y, uniqueExecutor.get());
     CHECK_RET(ok, ACLNN_ERR_INNER_TILING_ERROR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
@@ -136,18 +135,19 @@ ACLNN_API aclnnStatus aclnnFusedCausalConv1dGetWorkspaceSize(
     const aclTensor *numAcceptedTokens, const aclTensor *numComputedTokens,
     const aclTensor *blockIdxFirstScheduledToken, const aclTensor *blockIdxLastScheduledToken,
     const aclTensor *initialStateIdx, int64_t activationMode, int64_t padSlotId, int64_t runMode, int64_t maxQueryLen,
-    int64_t residualConnection, int64_t blockSize, int64_t convMode,
-    aclTensor *y, uint64_t *workspaceSize, aclOpExecutor **executor)
+    int64_t residualConnection, int64_t blockSize, int64_t convMode, aclTensor *y, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnFusedCausalConv1d,
                    DFX_IN(x, weight, convStates, queryStartLoc, cacheIndices, initialStateMode, bias, numAcceptedTokens,
                           numComputedTokens, blockIdxFirstScheduledToken, blockIdxLastScheduledToken, initialStateIdx),
                    DFX_OUT(y, convStates));
-    return FusedCausalConv1dCommonProcess(
-        x, weight, convStates, queryStartLoc, cacheIndices, initialStateMode, bias, numAcceptedTokens,
-        numComputedTokens, blockIdxFirstScheduledToken, blockIdxLastScheduledToken, initialStateIdx, activationMode,
-        padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode, MAX_DRAFT_TOKENS_DEFAULT, y,
-        workspaceSize, executor);
+
+    return FusedCausalConv1dCommonProcess(x, weight, convStates, queryStartLoc, cacheIndices, initialStateMode, bias,
+                                          numAcceptedTokens, numComputedTokens, blockIdxFirstScheduledToken,
+                                          blockIdxLastScheduledToken, initialStateIdx, activationMode, padSlotId,
+                                          runMode, maxQueryLen, residualConnection, blockSize, convMode,
+                                          MAX_DRAFT_TOKENS_DEFAULT, y, workspaceSize, executor);
 }
 
 ACLNN_API aclnnStatus aclnnFusedCausalConv1d(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,

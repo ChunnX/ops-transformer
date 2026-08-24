@@ -42,7 +42,9 @@ bool FusedCausalConv1d(const aclTensor *x, const aclTensor *weight, aclTensor *c
         OP_INPUT(x, weight, convStates, queryStartLoc, cacheIndices, initialStateMode, bias, numAcceptedTokens,
                  numComputedTokens, blockIdxFirstScheduledToken, blockIdxLastScheduledToken, initialStateIdx),
         OP_OUTPUT(convStates, y),
-        OP_ATTR(activationMode, padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode, maxDraftTokens));
+        OP_ATTR(activationMode, padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode,
+                maxDraftTokens));
+
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "FusedCausalConv1d ADD_TO_LAUNCHER_LIST_AICORE failed.");
         return false;

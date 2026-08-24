@@ -79,7 +79,6 @@ REG_OP(FusedCausalConv1d)
     .OUTPUT(conv_states, TensorType({DT_BF16, DT_FLOAT16}))
     .OUTPUT(y, TensorType({DT_BF16, DT_FLOAT16}))
     .OP_END_FACTORY_REG(FusedCausalConv1d)
-
 } // namespace ge
 
 #endif // OPS_BUILT_IN_OP_PROTO_INC_FUSED_CAUSAL_CONV1D_H_
