@@ -32,13 +32,7 @@
 #endif
 
 #include "../../../op_kernel/arch35/block_attn_res_update_tiling_data.h"
-
-#ifdef __CCE_KT_TEST__
-extern "C" __global__ __aicore__ void block_attn_res_update(GM_ADDR partialBlock, GM_ADDR delta, GM_ADDR pseudoQuery,
-                                                            GM_ADDR numerator, GM_ADDR logitMax, GM_ADDR expSum,
-                                                            GM_ADDR partialBlockRef, GM_ADDR h, GM_ADDR workspace,
-                                                            GM_ADDR tiling);
-#endif
+#include "../../../op_kernel/arch35/block_attn_res_update_tiling_key.h"
 
 struct BlockAttnResUpdateKernelTestParam {
     std::string socVersion;
@@ -105,7 +99,7 @@ public:
                 }
 
                 param.prefix = ops::ut::Trim(fields[index++]);
-                ++index; // coreNum is reserved for compatibility with the referenced kernel UT CSV schema.
+                ++index; // coreNum is part of the CSV schema; this launcher derives its block count from numBlocks.
                 param.t = ParseU32(fields[index++], "t");
                 param.d = ParseU32(fields[index++], "d");
                 param.seed = ParseU32(fields[index++], "seed");
@@ -135,7 +129,6 @@ public:
         const size_t bf16MatrixBytes = elementCount * sizeof(uint16_t);
         const size_t queryBytes = static_cast<size_t>(param.d) * sizeof(float);
         const size_t statsBytes = static_cast<size_t>(param.t) * sizeof(float);
-        constexpr size_t WORKSPACE_BYTES = 1024UL;
 
         std::vector<float> partialInput(elementCount);
         std::vector<uint16_t> deltaInput(elementCount);
@@ -152,7 +145,6 @@ public:
         GmBuffer logitMaxGm(statsBytes);
         GmBuffer expSumGm(statsBytes);
         GmBuffer hGm(bf16MatrixBytes);
-        GmBuffer workspaceGm(WORKSPACE_BYTES);
         GmBuffer tilingGm(param.tilingData.size() * sizeof(int32_t));
 
         ASSERT_TRUE(partialGm.IsValid());
@@ -162,7 +154,6 @@ public:
         ASSERT_TRUE(logitMaxGm.IsValid());
         ASSERT_TRUE(expSumGm.IsValid());
         ASSERT_TRUE(hGm.IsValid());
-        ASSERT_TRUE(workspaceGm.IsValid());
         ASSERT_TRUE(tilingGm.IsValid());
 
         std::memcpy(partialGm.Get(), partialInput.data(), partialBytes);
@@ -172,16 +163,18 @@ public:
         std::memcpy(logitMaxGm.Get(), logitMaxInput.data(), statsBytes);
         std::memcpy(expSumGm.Get(), expSumInput.data(), statsBytes);
         std::memset(hGm.Get(), 0xFF, bf16MatrixBytes);
-        std::memset(workspaceGm.Get(), 0, WORKSPACE_BYTES);
         std::memcpy(tilingGm.Get(), param.tilingData.data(), param.tilingData.size() * sizeof(int32_t));
 
         const uint32_t launchBlocks = std::min(MAX_NUM_BLOCKS, param.numBlocks);
+        const auto kernelFunc =
+            param.tilingKey == GET_TPL_TILING_KEY(true) ? &block_attn_res_update<true> : &block_attn_res_update<false>;
         ICPU_SET_TILING_KEY(param.tilingKey);
-        // Match the referenced matmul op_kernel UT scope: verify that every CSV scheduling branch launches cleanly.
-        // Ascend950 Reg/VF numerical instructions are not emulated by the CANN 9.2 tikicpulib CPU backend.
-        ASSERT_TRUE(KERNEL_RUN_KF(block_attn_res_update, launchBlocks, partialGm.Get(), deltaGm.Get(),
-                                  pseudoQueryGm.Get(), numeratorGm.Get(), logitMaxGm.Get(), expSumGm.Get(),
-                                  partialGm.Get(), hGm.Get(), workspaceGm.Get(), tilingGm.Get()))
+        // CANN 9.2 tikicpulib does not emulate Ascend950 Reg/VF arithmetic, so this UT validates CSV scheduling and a
+        // clean kernel launch rather than numerical results.
+        // partial_block_ref and workspace are ABI-only here; nullptr makes any accidental kernel access fail this UT.
+        ASSERT_TRUE(KERNEL_RUN_KF(kernelFunc, launchBlocks, partialGm.Get(), deltaGm.Get(), pseudoQueryGm.Get(),
+                                  numeratorGm.Get(), logitMaxGm.Get(), expSumGm.Get(), nullptr, hGm.Get(), nullptr,
+                                  tilingGm.Get()))
             << "case=" << param.caseName << ", kernel CPU simulation failed";
     }
 #endif
@@ -242,6 +235,10 @@ private:
             tiling.statsTStride != expectStatsTStride) {
             throw std::runtime_error("tilingData contains an invalid T scheduling field");
         }
+        const uint64_t expectedTilingKey = GET_TPL_TILING_KEY(tiling.tPerCore <= tiling.tileT);
+        if (param.tilingKey != expectedTilingKey) {
+            throw std::runtime_error("tilingKey does not match the SINGLE_TILE scheduling condition");
+        }
         if (!std::isfinite(tiling.eps) || tiling.eps <= 0.0F || tiling.invD != 1.0F / static_cast<float>(param.d)) {
             throw std::runtime_error("tilingData contains an invalid eps or invD value");
         }
@@ -272,8 +269,14 @@ private:
         GmBuffer(const GmBuffer &) = delete;
         GmBuffer &operator=(const GmBuffer &) = delete;
 
-        uint8_t *Get() const { return data_; }
-        bool IsValid() const { return data_ != nullptr; }
+        uint8_t *Get() const
+        {
+            return data_;
+        }
+        bool IsValid() const
+        {
+            return data_ != nullptr;
+        }
 
     private:
         uint8_t *data_ = nullptr;

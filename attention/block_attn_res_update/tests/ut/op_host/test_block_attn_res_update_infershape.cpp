@@ -35,7 +35,10 @@ constexpr const char *OP_NAME = "BlockAttnResUpdate";
 constexpr const char *SOC_VERSION = "Ascend950";
 constexpr size_t CSV_COLUMN_COUNT = 15UL;
 
-ge::DataType ParseDtype(const std::string &value) { return ops::ut::ParseGeDtype(ops::ut::Trim(value)); }
+ge::DataType ParseDtype(const std::string &value)
+{
+    return ops::ut::ParseGeDtype(ops::ut::Trim(value));
+}
 
 gert::StorageShape ParseShape(const std::string &value)
 {
@@ -245,7 +248,10 @@ TEST(BlockAttnResUpdateInferDirect, RejectsNullContexts)
     EXPECT_EQ(opImpl->infer_datatype(nullptr), ge::GRAPH_FAILED);
 }
 
-TEST_P(BlockAttnResUpdateInferTest, CsvDrivenCase) { GetParam().Run(); }
+TEST_P(BlockAttnResUpdateInferTest, CsvDrivenCase)
+{
+    GetParam().Run();
+}
 
 INSTANTIATE_TEST_SUITE_P(BLOCK_ATTN_RES_UPDATE_INFERENCE, BlockAttnResUpdateInferTest,
                          testing::ValuesIn(GetInferCases().cases), MakeParamName);

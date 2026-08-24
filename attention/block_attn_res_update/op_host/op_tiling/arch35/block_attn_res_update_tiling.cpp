@@ -12,11 +12,12 @@
 
 #include "log/log.h"
 #include "op_host/tiling_templates_registry.h"
-#include "tiling/platform/platform_ascendc.h"
 
 namespace optiling {
 namespace {
 constexpr const char *OP_NAME = "BlockAttnResUpdate";
+// Platform data is read directly from TilingContext, so the parse stage carries no compile-time payload.
+struct TilingParsePlaceholder {};
 } // namespace
 
 ge::graphStatus Tiling4BlockAttnResUpdate(gert::TilingContext *context)
@@ -29,27 +30,11 @@ ge::graphStatus Tiling4BlockAttnResUpdate(gert::TilingContext *context)
 ge::graphStatus TilingPrepare4BlockAttnResUpdate(gert::TilingParseContext *context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE(OP_NAME, "Context is nullptr."), return ge::GRAPH_FAILED);
-    auto *compileInfo = context->GetCompiledInfo<BlockAttnResUpdateCompileInfo>();
-    OP_CHECK_IF(compileInfo == nullptr, OP_LOGE(OP_NAME, "CompileInfo is nullptr."), return ge::GRAPH_FAILED);
-    auto *platformInfo = context->GetPlatformInfo();
-    OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(OP_NAME, "PlatformInfo is nullptr."), return ge::GRAPH_FAILED);
-
-    auto platform = platform_ascendc::PlatformAscendC(platformInfo);
-    platform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfo->ubSize);
-    platform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, compileInfo->l2Size);
-    compileInfo->workspaceNum = platform.GetLibApiWorkSpaceSize();
-    compileInfo->aivNum = platform.GetCoreNumAiv();
-    compileInfo->aicNum = platform.GetCoreNumAic();
-    compileInfo->npuArch = platform.GetCurNpuArch();
-    OP_CHECK_IF(
-        compileInfo->aivNum == 0 || compileInfo->ubSize == 0,
-        OP_LOGE(OP_NAME, "Invalid platform data: aivNum=%u, ubSize=%lu.", compileInfo->aivNum, compileInfo->ubSize),
-        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 IMPL_OP_OPTILING(BlockAttnResUpdate)
     .Tiling(Tiling4BlockAttnResUpdate)
-    .TilingParse<BlockAttnResUpdateCompileInfo>(TilingPrepare4BlockAttnResUpdate);
+    .TilingParse<TilingParsePlaceholder>(TilingPrepare4BlockAttnResUpdate);
 
 } // namespace optiling

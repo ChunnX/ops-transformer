@@ -30,6 +30,9 @@ constexpr uint32_t BARU_BF16_ALIGN_MASK = BARU_BF16_ALIGN_ELEMENTS - 1U;
 constexpr uint32_t BARU_VREG_FP32_ELEMENTS = 64;
 constexpr uint32_t BARU_VREG_FP32_SHIFT = 6;
 constexpr uint32_t BARU_VREG_FP32_MASK = BARU_VREG_FP32_ELEMENTS - 1U;
+// Each generic VF iteration processes two adjacent vector registers.
+constexpr uint32_t BARU_VREG_PAIR_NUM = 2;
+constexpr uint32_t BARU_VREG_PAIR_ELEMENTS = BARU_VREG_PAIR_NUM * BARU_VREG_FP32_ELEMENTS;
 // Two disjoint UB regions are alternated so transfers for adjacent tiles do not reuse an in-flight buffer.
 constexpr uint32_t BARU_BUFFER_NUM = 2;
 // The stats UB tensor stores the online-softmax state and the Phase 1 score in separate T-major planes.
@@ -52,9 +55,9 @@ constexpr AscendC::Reg::CastTrait BARU_CAST_FP32_TO_BF16 = {
     AscendC::RoundMode::CAST_RINT,
 };
 
-/**
- * One-VREG Phase 1 path. The query is invariant across T, so load and tail-clear it once.
- */
+// Phase 1 computes p = partial + delta and
+// score = dot(p, pseudoQuery) / sqrt(mean(p * p) + eps), then stores p and one score per T row.
+// One-VREG specialization: the query is invariant across T, so load and tail-clear it once.
 __simd_vf__ inline void BlockAttnResUpdatePhase1OneVLVF(__ubuf__ float *partial, __ubuf__ bfloat16_t *delta,
                                                         __ubuf__ float *pseudoQuery, __ubuf__ float *stats,
                                                         uint16_t tSize, uint32_t dSize, uint32_t dAlignFp32,
@@ -107,9 +110,8 @@ __simd_vf__ inline void BlockAttnResUpdatePhase1OneVLVF(__ubuf__ float *partial,
     }
 }
 
-/**
- * Two-VREG Phase 1 path. Both query vectors stay resident across the T loop; the second is tail-cleared once.
- */
+// Two-VREG Phase 1 specialization: both query vectors stay resident across the T loop, and the second is tail-cleared
+// once.
 __simd_vf__ inline void BlockAttnResUpdatePhase1TwoVLVF(__ubuf__ float *partial, __ubuf__ bfloat16_t *delta,
                                                         __ubuf__ float *pseudoQuery, __ubuf__ float *stats,
                                                         uint16_t tSize, uint32_t dSize, uint32_t dAlignFp32,
@@ -177,10 +179,7 @@ __simd_vf__ inline void BlockAttnResUpdatePhase1TwoVLVF(__ubuf__ float *partial,
     }
 }
 
-/**
- * Phase 1 updates partial in FP32 and stores one score for every T index.
- * D is the effective reduction length; aligned strides are used only for UB addressing.
- */
+// Generic Phase 1 path. D is the effective reduction length; aligned strides are used only for UB addressing.
 __simd_vf__ inline void BlockAttnResUpdatePhase1VF(__ubuf__ float *partial, __ubuf__ bfloat16_t *delta,
                                                    __ubuf__ float *pseudoQuery, __ubuf__ float *stats, uint16_t tSize,
                                                    uint32_t dSize, uint32_t dAlignFp32, uint32_t dAlignBf16,
@@ -228,7 +227,7 @@ __simd_vf__ inline void BlockAttnResUpdatePhase1VF(__ubuf__ float *partial, __ub
         // Process every complete 2 * VL pair first. Query vectors are loaded near use instead of being kept
         // resident across the whole T loop.
         for (uint16_t loop = 0; loop < pairFullLoops; ++loop) {
-            const uint32_t vectorOffset0 = static_cast<uint32_t>(loop) * 2U * BARU_VREG_FP32_ELEMENTS;
+            const uint32_t vectorOffset0 = static_cast<uint32_t>(loop) * BARU_VREG_PAIR_ELEMENTS;
             const uint32_t vectorOffset1 = vectorOffset0 + BARU_VREG_FP32_ELEMENTS;
 
             Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(partialReg0, partial + partialTOffset + vectorOffset0);
@@ -255,9 +254,9 @@ __simd_vf__ inline void BlockAttnResUpdatePhase1VF(__ubuf__ float *partial, __ub
 
         // Pair an odd complete vector with the tail to retain two independent accumulation chains.
         for (uint16_t loop = 0; loop < hasMixedPair; ++loop) {
-            const uint32_t vectorOffset0 =
-                (static_cast<uint32_t>(pairFullLoops) * 2U + static_cast<uint32_t>(loop) * 2U) *
-                BARU_VREG_FP32_ELEMENTS;
+            const uint32_t vectorOffset0 = (static_cast<uint32_t>(pairFullLoops) * BARU_VREG_PAIR_NUM +
+                                            static_cast<uint32_t>(loop) * BARU_VREG_PAIR_NUM) *
+                                           BARU_VREG_FP32_ELEMENTS;
             const uint32_t vectorOffset1 = vectorOffset0 + BARU_VREG_FP32_ELEMENTS;
             Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(partialReg0, partial + partialTOffset + vectorOffset0);
             Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(partialReg1, partial + partialTOffset + vectorOffset1);
@@ -283,7 +282,8 @@ __simd_vf__ inline void BlockAttnResUpdatePhase1VF(__ubuf__ float *partial, __ub
 
         // Odd-full-only and tail-only are mutually exclusive and share one single-VL remainder body.
         for (uint16_t loop = 0; loop < hasSingleRemainder; ++loop) {
-            const uint32_t vectorOffset = (static_cast<uint32_t>(pairFullLoops) * 2U + loop) * BARU_VREG_FP32_ELEMENTS;
+            const uint32_t vectorOffset =
+                (static_cast<uint32_t>(pairFullLoops) * BARU_VREG_PAIR_NUM + loop) * BARU_VREG_FP32_ELEMENTS;
             Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(partialReg0, partial + partialTOffset + vectorOffset);
             Reg::LoadAlign<bfloat16_t, Reg::LoadDist::DIST_UNPACK_B16>(deltaReg0, delta + deltaTOffset + vectorOffset);
             Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(loopQueryReg0, pseudoQuery + vectorOffset);
@@ -311,9 +311,10 @@ __simd_vf__ inline void BlockAttnResUpdatePhase1VF(__ubuf__ float *partial, __ub
     }
 }
 
-/**
- * One-VREG Phase 2 path. The fixed D body removes the inner loop and builds its mask once per VF call.
- */
+// Phase 2 performs a numerically stable online-softmax merge:
+// newMax = max(logitMax, score), alpha = exp(logitMax - newMax), beta = exp(score - newMax),
+// h = (numerator * alpha + partial * beta) / (expSum * alpha + beta).
+// One-VREG specialization: the fixed D body removes the inner loop and builds its mask once per VF call.
 __simd_vf__ inline void BlockAttnResUpdatePhase2OneVLVF(__ubuf__ float *partial, __ubuf__ bfloat16_t *deltaH,
                                                         __ubuf__ float *numerator, __ubuf__ float *stats,
                                                         uint16_t tSize, uint32_t dSize, uint32_t dAlignFp32,
@@ -359,9 +360,7 @@ __simd_vf__ inline void BlockAttnResUpdatePhase2OneVLVF(__ubuf__ float *partial,
     }
 }
 
-/**
- * Two-VREG Phase 2 path. Two independent register chains expose the fixed pair to RVEC dual issue.
- */
+// Two-VREG Phase 2 specialization: two independent register chains expose the fixed pair to RVEC dual issue.
 __simd_vf__ inline void BlockAttnResUpdatePhase2TwoVLVF(__ubuf__ float *partial, __ubuf__ bfloat16_t *deltaH,
                                                         __ubuf__ float *numerator, __ubuf__ float *stats,
                                                         uint16_t tSize, uint32_t dSize, uint32_t dAlignFp32,
@@ -419,11 +418,9 @@ __simd_vf__ inline void BlockAttnResUpdatePhase2TwoVLVF(__ubuf__ float *partial,
     }
 }
 
-/**
- * Generic Phase 2 path updates the online-softmax coefficients and forms BF16 h.
- * Alpha and beta are normalized once per T index so that each D loop needs only Mul + MulDstAdd.
- * The two VF calls are ordered on V; delta has been fully consumed before this phase reuses it as h.
- */
+// Generic Phase 2 path computes the online-softmax merge coefficients and forms BF16 h.
+// Alpha and beta are normalized once per T row so that each D loop needs only Mul + MulDstAdd.
+// Phase 1 and Phase 2 run in program order on V, so delta is fully consumed before its UB region is reused for h.
 __simd_vf__ inline void BlockAttnResUpdatePhase2VF(__ubuf__ float *partial, __ubuf__ bfloat16_t *deltaH,
                                                    __ubuf__ float *numerator, __ubuf__ float *stats, uint16_t tSize,
                                                    uint32_t dSize, uint32_t dAlignFp32, uint32_t dAlignBf16,
@@ -473,7 +470,7 @@ __simd_vf__ inline void BlockAttnResUpdatePhase2VF(__ubuf__ float *partial, __ub
         const uint32_t bf16TOffset = static_cast<uint32_t>(tIdx) * dAlignBf16;
         // Separate register sets expose two adjacent D vectors to RVEC dual issue.
         for (uint16_t loop = 0; loop < pairFullLoops; ++loop) {
-            const uint32_t vectorOffset0 = static_cast<uint32_t>(loop) * 2U * BARU_VREG_FP32_ELEMENTS;
+            const uint32_t vectorOffset0 = static_cast<uint32_t>(loop) * BARU_VREG_PAIR_ELEMENTS;
             const uint32_t vectorOffset1 = vectorOffset0 + BARU_VREG_FP32_ELEMENTS;
             Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(partialReg0, partial + fp32TOffset + vectorOffset0);
             Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(partialReg1, partial + fp32TOffset + vectorOffset1);
@@ -493,9 +490,9 @@ __simd_vf__ inline void BlockAttnResUpdatePhase2VF(__ubuf__ float *partial, __ub
 
         // Keep an odd full vector paired with the tail so the original two-vector ILP is preserved.
         for (uint16_t loop = 0; loop < hasMixedPair; ++loop) {
-            const uint32_t vectorOffset0 =
-                (static_cast<uint32_t>(pairFullLoops) * 2U + static_cast<uint32_t>(loop) * 2U) *
-                BARU_VREG_FP32_ELEMENTS;
+            const uint32_t vectorOffset0 = (static_cast<uint32_t>(pairFullLoops) * BARU_VREG_PAIR_NUM +
+                                            static_cast<uint32_t>(loop) * BARU_VREG_PAIR_NUM) *
+                                           BARU_VREG_FP32_ELEMENTS;
             const uint32_t vectorOffset1 = vectorOffset0 + BARU_VREG_FP32_ELEMENTS;
             Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(partialReg0, partial + fp32TOffset + vectorOffset0);
             Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(partialReg1, partial + fp32TOffset + vectorOffset1);
@@ -514,7 +511,8 @@ __simd_vf__ inline void BlockAttnResUpdatePhase2VF(__ubuf__ float *partial, __ub
         }
 
         for (uint16_t loop = 0; loop < hasOddFullOnly; ++loop) {
-            const uint32_t vectorOffset = (static_cast<uint32_t>(pairFullLoops) * 2U + loop) * BARU_VREG_FP32_ELEMENTS;
+            const uint32_t vectorOffset =
+                (static_cast<uint32_t>(pairFullLoops) * BARU_VREG_PAIR_NUM + loop) * BARU_VREG_FP32_ELEMENTS;
             Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(partialReg0, partial + fp32TOffset + vectorOffset);
             Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(numeratorReg0, numerator + fp32TOffset + vectorOffset);
             Reg::Mul<float>(tmpReg0, partialReg0, betaReg, allMask);
@@ -538,28 +536,42 @@ __simd_vf__ inline void BlockAttnResUpdatePhase2VF(__ubuf__ float *partial, __ub
 }
 
 template <bool SINGLE_TILE>
-class BlockAttnResUpdateFullDKernel {
+class BlockAttnResUpdateFullD {
 public:
-    __aicore__ inline __attribute__((always_inline)) BlockAttnResUpdateFullDKernel()
+    // Multi-tile mode seeds one MTE3-to-MTE2 reuse token for each ping-pong buffer. The destructor drains the final
+    // tokens; single-tile mode never reuses a buffer.
+    __aicore__ inline __attribute__((always_inline)) BlockAttnResUpdateFullD()
     {
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+        if constexpr (!SINGLE_TILE) {
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+        }
     }
 
-    __aicore__ inline __attribute__((always_inline)) ~BlockAttnResUpdateFullDKernel()
+    __aicore__ inline __attribute__((always_inline)) ~BlockAttnResUpdateFullD()
     {
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+        if constexpr (!SINGLE_TILE) {
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+        }
     }
 
+    __aicore__ inline __attribute__((always_inline)) void operator()(GM_ADDR partialBlock, GM_ADDR delta,
+                                                                     GM_ADDR pseudoQuery, GM_ADDR numerator,
+                                                                     GM_ADDR logitMax, GM_ADDR expSum, GM_ADDR h,
+                                                                     const BlockAttnResUpdateTilingData *tilingData)
+    {
+        Init(partialBlock, delta, pseudoQuery, numerator, logitMax, expSum, h, tilingData);
+        Process();
+    }
+
+private:
     __aicore__ inline __attribute__((always_inline)) void Init(GM_ADDR partialBlock, GM_ADDR delta, GM_ADDR pseudoQuery,
                                                                GM_ADDR numerator, GM_ADDR logitMax, GM_ADDR expSum,
                                                                GM_ADDR h,
                                                                const BlockAttnResUpdateTilingData *tilingData)
     {
         tilingData_ = tilingData;
-        blockIdx_ = AscendC::GetBlockIdx();
-        InitCoreRange();
 
         partialBlockGm_ = reinterpret_cast<__gm__ float *>(partialBlock);
         deltaGm_ = reinterpret_cast<__gm__ bfloat16_t *>(delta);
@@ -573,16 +585,30 @@ public:
 
     __aicore__ inline __attribute__((always_inline)) void Process()
     {
-        if (blockIdx_ >= tilingData_->usedCoreNum || coreTSize_ == 0) {
+        const uint32_t blockIdx = AscendC::GetBlockIdx();
+        const uint32_t usedCoreNum = tilingData_->usedCoreNum;
+        if (blockIdx >= usedCoreNum) {
             return;
         }
 
-        const uint32_t coreTSize = coreTSize_;
+        const uint32_t tPerCore = tilingData_->tPerCore;
+        const int64_t coreTStart = static_cast<int64_t>(blockIdx) * static_cast<int64_t>(tPerCore);
+        const uint32_t coreTSize = (blockIdx + 1U == usedCoreNum) ? tilingData_->lastTPerCore : tPerCore;
         const uint32_t dSize = tilingData_->dSize;
         const uint32_t tileT = tilingData_->tileT;
         const uint32_t dAlignFp32 = (dSize + BARU_FP32_ALIGN_MASK) & ~BARU_FP32_ALIGN_MASK;
         const uint32_t dAlignBf16 = (dSize + BARU_BF16_ALIGN_MASK) & ~BARU_BF16_ALIGN_MASK;
         const uint32_t statsTStride = tilingData_->statsTStride;
+
+        auto copyGmToUb = Te::MakeCopy(Te::CopyGM2UB{});
+        auto queryGmLayout = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, static_cast<int64_t>(dSize));
+        auto pseudoQueryGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(pseudoQueryGm_), queryGmLayout);
+        auto queryUbLayout = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, static_cast<int64_t>(dAlignFp32));
+        auto pseudoQueryUbMem = Te::MakeMemPtr<Te::Location::UB, float>(0);
+        auto pseudoQueryUb = Te::MakeTensor(pseudoQueryUbMem, queryUbLayout);
+        // Start the core-invariant Phase 1 input first, then prepare the remaining scalar descriptors while MTE2 runs.
+        Te::Copy(copyGmToUb, pseudoQueryUb, pseudoQueryGm);
+
         // Keep runtime 0/1 loop bounds on the scalar side. Deriving them inside __simd_vf__ can trigger
         // HiIPUVectorLoopUnrollPass failures at -O2/-O3.
         const uint16_t fullDLoops = static_cast<uint16_t>(dSize >> BARU_VREG_FP32_SHIFT);
@@ -597,79 +623,73 @@ public:
                                           static_cast<uint32_t>(hasDTail) * (dSize & BARU_VREG_FP32_MASK);
         const float eps = tilingData_->eps;
         const float invD = tilingData_->invD;
-        const int64_t coreTDim = static_cast<int64_t>(coreTSize);
-        const int64_t dDim = static_cast<int64_t>(dSize);
-        const int64_t tileTDim = static_cast<int64_t>(tileT);
-        const int64_t dAlignFp32Dim = static_cast<int64_t>(dAlignFp32);
-        const int64_t dAlignBf16Dim = static_cast<int64_t>(dAlignBf16);
-        const int64_t statsTStrideDim = static_cast<int64_t>(statsTStride);
-        const int64_t coreGmOffset = coreTStart_ * static_cast<int64_t>(dSize);
-
-        auto matrixGmLayout = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(coreTDim, dDim);
-        auto statsGmLayout = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, coreTDim);
-        auto queryGmLayout = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, dDim);
+        auto matrixGmLayout =
+            Te::MakeFrameLayout<Te::NDExtLayoutPtn>(static_cast<int64_t>(coreTSize), static_cast<int64_t>(dSize));
+        auto statsGmLayout = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, static_cast<int64_t>(coreTSize));
         auto partialBlockGm =
-            Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(partialBlockGm_ + coreGmOffset), matrixGmLayout);
-        auto deltaGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(deltaGm_ + coreGmOffset), matrixGmLayout);
-        auto numeratorGm =
-            Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(numeratorGm_ + coreGmOffset), matrixGmLayout);
-        auto logitMaxGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(logitMaxGm_ + coreTStart_), statsGmLayout);
-        auto expSumGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(expSumGm_ + coreTStart_), statsGmLayout);
-        auto pseudoQueryGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(pseudoQueryGm_), queryGmLayout);
-        auto hGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(hGm_ + coreGmOffset), matrixGmLayout);
+            Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(partialBlockGm_ + coreTStart * static_cast<int64_t>(dSize)),
+                           matrixGmLayout);
+        auto deltaGm = Te::MakeTensor(
+            Te::MakeMemPtr<Te::Location::GM>(deltaGm_ + coreTStart * static_cast<int64_t>(dSize)), matrixGmLayout);
+        auto numeratorGm = Te::MakeTensor(
+            Te::MakeMemPtr<Te::Location::GM>(numeratorGm_ + coreTStart * static_cast<int64_t>(dSize)), matrixGmLayout);
+        auto logitMaxGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(logitMaxGm_ + coreTStart), statsGmLayout);
+        auto expSumGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(expSumGm_ + coreTStart), statsGmLayout);
+        auto hGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(hGm_ + coreTStart * static_cast<int64_t>(dSize)),
+                                  matrixGmLayout);
 
-        auto fp32UbLayout = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(tileTDim, dAlignFp32Dim);
-        auto bf16UbLayout = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(tileTDim, dAlignBf16Dim);
-        auto statsUbLayout =
-            Te::MakeFrameLayout<Te::NDExtLayoutPtn>(static_cast<int64_t>(BARU_STATS_PLANE_NUM), statsTStrideDim);
-        auto queryUbLayout = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, dAlignFp32Dim);
-        auto pseudoQueryUbMem = Te::MakeMemPtr<Te::Location::UB, float>(0);
-        auto pseudoQueryUb = Te::MakeTensor(pseudoQueryUbMem, queryUbLayout);
+        auto fp32UbLayout =
+            Te::MakeFrameLayout<Te::NDExtLayoutPtn>(static_cast<int64_t>(tileT), static_cast<int64_t>(dAlignFp32));
+        auto bf16UbLayout =
+            Te::MakeFrameLayout<Te::NDExtLayoutPtn>(static_cast<int64_t>(tileT), static_cast<int64_t>(dAlignBf16));
+        auto statsUbLayout = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(static_cast<int64_t>(BARU_STATS_PLANE_NUM),
+                                                                     static_cast<int64_t>(statsTStride));
 
-        auto copyGmToUb = Te::MakeCopy(Te::CopyGM2UB{});
         auto copyUbToGm = Te::MakeCopy(Te::CopyUB2GM{});
-        // pseudoQuery is core-invariant and occupies a disjoint UB region. Issue its single GM2UB copy once;
-        // the first buffer's MTE2_V event still covers this copy and the following partial/delta copies.
-        Te::Copy(copyGmToUb, pseudoQueryUb, pseudoQueryGm);
 
+        // SINGLE_TILE executes one iteration; multi-tile mode alternates the two UB buffers until coreTSize is covered.
         for (uint32_t tileTStart = 0, bufferId = 0; SINGLE_TILE || tileTStart < coreTSize;) {
             const uint32_t remainingT = coreTSize - tileTStart;
             const uint32_t currentTSize = remainingT < tileT ? remainingT : tileT;
             const int64_t tileTStartDim = static_cast<int64_t>(tileTStart);
-            const auto matrixTileShape = Te::MakeShape(static_cast<int64_t>(currentTSize), dDim);
-            const auto statsTileShape = Te::MakeShape(1L, static_cast<int64_t>(currentTSize));
+            const auto matrixTileShape = Te::MakeShape(static_cast<int64_t>(currentTSize), static_cast<int64_t>(dSize));
 
             auto partialBlockGmTile = partialBlockGm.Slice(Te::MakeCoord(tileTStartDim, 0L), matrixTileShape);
             auto deltaGmTile = deltaGm.Slice(Te::MakeCoord(tileTStartDim, 0L), matrixTileShape);
+
+            const uint64_t partialUbOffset = queryUbBytes_ + static_cast<uint64_t>(bufferId) * bufferUbBytes_;
+            const uint64_t deltaHUbOffset = partialUbOffset + partialUbBytes_;
+            auto partialUbMem = Te::MakeMemPtr<Te::Location::UB, float>(partialUbOffset);
+            auto deltaHUbMem = Te::MakeMemPtr<Te::Location::UB, bfloat16_t>(deltaHUbOffset);
+            auto partialUbStorage = Te::MakeTensor(partialUbMem, fp32UbLayout);
+            auto deltaHUbStorage = Te::MakeTensor(deltaHUbMem, bf16UbLayout);
+            auto partialUb = partialUbStorage.Slice(Te::MakeCoord(0L, 0L), matrixTileShape);
+            auto deltaHUb = deltaHUbStorage.Slice(Te::MakeCoord(0L, 0L), matrixTileShape);
+
+            // Phase 1 copy-in. Prepare Phase 2 descriptors below while these MTE2 transfers are in flight.
+            if constexpr (!SINGLE_TILE) {
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(bufferId);
+            }
+            Te::Copy(copyGmToUb, partialUb, partialBlockGmTile);
+            Te::Copy(copyGmToUb, deltaHUb, deltaGmTile);
+
+            const auto statsTileShape = Te::MakeShape(1L, static_cast<int64_t>(currentTSize));
             auto numeratorGmTile = numeratorGm.Slice(Te::MakeCoord(tileTStartDim, 0L), matrixTileShape);
             auto logitMaxGmTile = logitMaxGm.Slice(Te::MakeCoord(0L, tileTStartDim), statsTileShape);
             auto expSumGmTile = expSumGm.Slice(Te::MakeCoord(0L, tileTStartDim), statsTileShape);
             auto hGmTile = hGm.Slice(Te::MakeCoord(tileTStartDim, 0L), matrixTileShape);
 
-            const uint64_t partialUbOffset = queryUbBytes_ + static_cast<uint64_t>(bufferId) * bufferUbBytes_;
-            const uint64_t deltaHUbOffset = partialUbOffset + partialUbBytes_;
             const uint64_t numeratorUbOffset = deltaHUbOffset + deltaHUbBytes_;
             const uint64_t statsUbOffset = numeratorUbOffset + partialUbBytes_;
-            auto partialUbMem = Te::MakeMemPtr<Te::Location::UB, float>(partialUbOffset);
-            auto deltaHUbMem = Te::MakeMemPtr<Te::Location::UB, bfloat16_t>(deltaHUbOffset);
             auto numeratorUbMem = Te::MakeMemPtr<Te::Location::UB, float>(numeratorUbOffset);
             auto statsUbMem = Te::MakeMemPtr<Te::Location::UB, float>(statsUbOffset);
-            auto partialUbStorage = Te::MakeTensor(partialUbMem, fp32UbLayout);
-            auto deltaHUbStorage = Te::MakeTensor(deltaHUbMem, bf16UbLayout);
             auto numeratorUbStorage = Te::MakeTensor(numeratorUbMem, fp32UbLayout);
             auto statsUbStorage = Te::MakeTensor(statsUbMem, statsUbLayout);
-            auto partialUb = partialUbStorage.Slice(Te::MakeCoord(0L, 0L), matrixTileShape);
-            auto deltaHUb = deltaHUbStorage.Slice(Te::MakeCoord(0L, 0L), matrixTileShape);
             auto numeratorUb = numeratorUbStorage.Slice(Te::MakeCoord(0L, 0L), matrixTileShape);
             auto logitMaxUb = statsUbStorage.Slice(Te::MakeCoord(static_cast<int64_t>(BARU_LOGIT_MAX_PLANE_INDEX), 0L),
                                                    statsTileShape);
             auto expSumUb =
                 statsUbStorage.Slice(Te::MakeCoord(static_cast<int64_t>(BARU_EXP_SUM_PLANE_INDEX), 0L), statsTileShape);
-
-            // Phase 1 copy-in.
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(bufferId);
-            Te::Copy(copyGmToUb, partialUb, partialBlockGmTile);
-            Te::Copy(copyGmToUb, deltaHUb, deltaGmTile);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(bufferId);
 
             // Phase 1 compute.
@@ -680,7 +700,7 @@ public:
                                                              pseudoQueryUbMem.Get(), statsUbMem.Get(),
                                                              static_cast<uint16_t>(currentTSize), dSize, dAlignFp32,
                                                              dAlignBf16, statsTStride, eps, invD, hasDTail);
-            } else if (dSize <= 2U * BARU_VREG_FP32_ELEMENTS) {
+            } else if (dSize <= BARU_VREG_PAIR_ELEMENTS) {
                 asc_vf_call<BlockAttnResUpdatePhase1TwoVLVF>(partialUbMem.Get(), deltaHUbMem.Get(),
                                                              pseudoQueryUbMem.Get(), statsUbMem.Get(),
                                                              static_cast<uint16_t>(currentTSize), dSize, dAlignFp32,
@@ -712,7 +732,7 @@ public:
                 asc_vf_call<BlockAttnResUpdatePhase2OneVLVF>(
                     partialUbMem.Get(), deltaHUbMem.Get(), numeratorUbMem.Get(), statsUbMem.Get(),
                     static_cast<uint16_t>(currentTSize), dSize, dAlignFp32, dAlignBf16, statsTStride);
-            } else if (dSize <= 2U * BARU_VREG_FP32_ELEMENTS) {
+            } else if (dSize <= BARU_VREG_PAIR_ELEMENTS) {
                 asc_vf_call<BlockAttnResUpdatePhase2TwoVLVF>(
                     partialUbMem.Get(), deltaHUbMem.Get(), numeratorUbMem.Get(), statsUbMem.Get(),
                     static_cast<uint16_t>(currentTSize), dSize, dAlignFp32, dAlignBf16, statsTStride);
@@ -727,25 +747,15 @@ public:
             // Phase 2 copy-out closes this buffer's reuse dependency chain.
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(phase2EventId);
             Te::Copy(copyUbToGm, hGmTile, deltaHUb);
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(bufferId);
+            if constexpr (!SINGLE_TILE) {
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(bufferId);
+            }
             if constexpr (SINGLE_TILE) {
                 break;
             }
             tileTStart += currentTSize;
             bufferId ^= 1U;
         }
-    }
-
-private:
-    __aicore__ inline __attribute__((always_inline)) void InitCoreRange()
-    {
-        if (blockIdx_ >= tilingData_->usedCoreNum) {
-            coreTStart_ = 0;
-            coreTSize_ = 0;
-            return;
-        }
-        coreTStart_ = static_cast<int64_t>(blockIdx_) * static_cast<int64_t>(tilingData_->tPerCore);
-        coreTSize_ = (blockIdx_ == tilingData_->usedCoreNum - 1U) ? tilingData_->lastTPerCore : tilingData_->tPerCore;
     }
 
     __aicore__ inline __attribute__((always_inline)) void InitUbLayout()
@@ -758,19 +768,16 @@ private:
         deltaHUbBytes_ = static_cast<uint64_t>(tilingData_->tileT) * dAlignBf16 * BARU_BF16_BYTES;
         const uint64_t statsBytes =
             static_cast<uint64_t>(BARU_STATS_PLANE_NUM) * tilingData_->statsTStride * BARU_FP32_BYTES;
-        // One ping-pong region contains partial and numerator (two equal FP32 matrices), delta/h (BF16),
-        // and the logitMax, expSum, and score FP32 stats planes.
-        bufferUbBytes_ = 2 * partialUbBytes_ + deltaHUbBytes_ + statsBytes;
+        // UB layout: [query][buffer 0][buffer 1]. Each buffer contains partial, delta/h, numerator, and the logitMax,
+        // expSum, and score stats planes in that order.
+        const uint64_t numeratorUbBytes = partialUbBytes_;
+        bufferUbBytes_ = partialUbBytes_ + numeratorUbBytes + deltaHUbBytes_ + statsBytes;
     }
 
     uint64_t queryUbBytes_ = 0;
     uint64_t partialUbBytes_ = 0;
     uint64_t deltaHUbBytes_ = 0;
     uint64_t bufferUbBytes_ = 0;
-
-    int64_t coreTStart_ = 0;
-    uint32_t blockIdx_ = 0;
-    uint32_t coreTSize_ = 0;
 
     const BlockAttnResUpdateTilingData *tilingData_ = nullptr;
     __gm__ float *partialBlockGm_ = nullptr;
