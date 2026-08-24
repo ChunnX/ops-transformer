@@ -985,12 +985,11 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, 
     }
     mm0.End();
 
-    // 两个UB buffer使用独立flag，避免AIC预取下一块时覆盖尚未被AIV消费的通知。
-    if (buffIdx == 0) {
-        AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_FIX>(CROSS_CORE_WAIT_FLAG_C0_BUFFER0);
-    } else {
-        AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_FIX>(CROSS_CORE_WAIT_FLAG_C0_BUFFER1);
-    }
+    // mode 4 下分别通知与当前 AIC 配对的两个 AIV，AIV1 的事件号偏移 16。
+    uint32_t c0ReadyFlag =
+        buffIdx == 0 ? CROSS_CORE_WAIT_FLAG_C0_BUFFER0 : CROSS_CORE_WAIT_FLAG_C0_BUFFER1;
+    AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_FIX>(c0ReadyFlag);
+    AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_FIX>(c0ReadyFlag + CROSS_CORE_AIV1_FLAG_OFFSET);
 }
 
 template <class T, class P>
@@ -999,11 +998,11 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC1(uint32_t offsetND, 
                                                              uint32_t buffIdx)
 {
     uint32_t currentBuffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
-    if (currentBuffIdx == 0) {
-        AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1_BUFFER0);
-    } else {
-        AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1_BUFFER1);
-    }
+    uint32_t v2ReadyFlag =
+        currentBuffIdx == 0 ? CROSS_CORE_WAIT_FLAG_C1_BUFFER0 : CROSS_CORE_WAIT_FLAG_C1_BUFFER1;
+    // 两个 AIV 均完成当前 buffer 后，C1 才能读取完整的 Split-N 输出。
+    AscendC::CrossCoreWaitFlag<CROSS_CORE_FLAG_INDEX, PIPE_FIX>(v2ReadyFlag);
+    AscendC::CrossCoreWaitFlag<CROSS_CORE_FLAG_INDEX, PIPE_FIX>(v2ReadyFlag + CROSS_CORE_AIV1_FLAG_OFFSET);
     // 1C2V 对应操作两块 workspaceGm_
     buffIdx = currentBuffIdx;
     // 设置矩阵形状
@@ -1049,21 +1048,17 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2Pipeline()
             uint32_t currentBSBlock = Min(SINGLE_M, uint32_t(totalLength_ - offsetBS));
             uint32_t currentBuffIdx = buffId % VEC_CORE_VECIDX_MOD;
             // 等待C0完成计算；每个UB buffer使用独立flag。
-            if (currentBuffIdx == 0) {
-                AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C0_BUFFER0);
-            } else {
-                AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C0_BUFFER1);
-            }
+            uint32_t c0ReadyFlag = currentBuffIdx == 0 ? CROSS_CORE_WAIT_FLAG_C0_BUFFER0 :
+                                                        CROSS_CORE_WAIT_FLAG_C0_BUFFER1;
+            AscendC::CrossCoreWaitFlag<CROSS_CORE_FLAG_INDEX, PIPE_V>(c0ReadyFlag);
 
             // C0结果已由SplitN策略直接写入当前AIV的UB。
             ProcessV2(offsetND, copySizeND, offsetBS, offsetBS + currentBSBlock, sumBuf, buffId,
                       c0OutUb_[currentBuffIdx]);
             // 通知C1计算
-            if (currentBuffIdx == 0) {
-                AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_MTE3>(CROSS_CORE_WAIT_FLAG_C1_BUFFER0);
-            } else {
-                AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_MTE3>(CROSS_CORE_WAIT_FLAG_C1_BUFFER1);
-            }
+            uint32_t v2ReadyFlag = currentBuffIdx == 0 ? CROSS_CORE_WAIT_FLAG_C1_BUFFER0 :
+                                                        CROSS_CORE_WAIT_FLAG_C1_BUFFER1;
+            AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_MTE3>(v2ReadyFlag);
             buffId++;
         }
         if (withGamma_) {
