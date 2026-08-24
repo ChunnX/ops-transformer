@@ -493,7 +493,7 @@ __simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *src
     MicroAPI::RegTensor<T> vregResFinal;
     MicroAPI::RegTensor<float> vregEmptyProbe;
     MicroAPI::RegTensor<float> vregMinValue;
-    MicroAPI::RegTensor<float> vregEmptyLseValue;
+    MicroAPI::RegTensor<float> vregInfValue;
     MicroAPI::RegTensor<float> vregZero;
     MicroAPI::RegTensor<float> vregOne;
     MicroAPI::MaskReg pregCompare;
@@ -510,12 +510,9 @@ __simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *src
     MicroAPI::MaskReg pregAll = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg pregTail = MicroAPI::UpdateMask<T>(pltTail);
     MicroAPI::Duplicate<float, float>(vregMinValue, minValue);
-    if constexpr (useJointEmptyCheck) {
-        // MXFP8 兼容旧版空行协议：OUT=0，LSE=-FLT_MAX。
-        MicroAPI::Duplicate<float, float>(vregEmptyLseValue, minValue);
-    } else {
+    if constexpr (!useJointEmptyCheck) {
         // 保持原 FP8 实例化的寄存器初始化与指令路径不变。
-        MicroAPI::Duplicate<float, float>(vregEmptyLseValue, infValue);
+        MicroAPI::Duplicate<float, float>(vregInfValue, infValue);
     }
     MicroAPI::Duplicate<float, float>(vregZero, 0.0f);
     if constexpr (useJointEmptyCheck) {
@@ -535,7 +532,7 @@ __simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *src
             // 单独的 sum == 0 也可能来自 +Inf max，此时应保留 NaN 传播语义。
             MicroAPI::Select<float>(vregEmptyProbe, vregSum, vregOne, pregCompare);
             MicroAPI::Compare<float, CMPMODE::EQ>(pregZeroSum, vregEmptyProbe, vregZero, pregAll);
-            MicroAPI::Select<T>(vregResFinal, vregEmptyLseValue, vregRes, pregZeroSum);
+            MicroAPI::Select<T>(vregResFinal, vregMinValue, vregRes, pregZeroSum);
         } else {
             MicroAPI::Select<T>(vregResFinal, vregMinValue, vregRes, pregCompare);
             // 保持原 FP8 实例化的 sum == 0 处理不变。
@@ -557,7 +554,7 @@ __simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *src
         if constexpr (useJointEmptyCheck) {
             MicroAPI::Select<float>(vregEmptyProbe, vregSum, vregOne, pregCompare);
             MicroAPI::Compare<float, CMPMODE::EQ>(pregZeroSum, vregEmptyProbe, vregZero, pregTail);
-            MicroAPI::Select<T>(vregResFinal, vregEmptyLseValue, vregRes, pregZeroSum);
+            MicroAPI::Select<T>(vregResFinal, vregMinValue, vregRes, pregZeroSum);
         } else {
             MicroAPI::Select<T>(vregResFinal, vregMinValue, vregRes, pregCompare);
             // 保持原 FP8 实例化的 sum == 0 处理不变。
