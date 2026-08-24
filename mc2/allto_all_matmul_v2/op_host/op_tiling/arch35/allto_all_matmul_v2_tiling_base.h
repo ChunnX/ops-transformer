@@ -73,6 +73,7 @@ protected:
     static constexpr size_t IDX_OUTPUT_Y = 0;
     static constexpr size_t IDX_ATTR_GROUP = 0;
     static constexpr size_t IDX_ATTR_WORLD_SIZE = 1;
+    static constexpr size_t IDX_ATTR_HCCL_BUFFER_SIZE = 2;
     static constexpr size_t IDX_ATTR_Y_DTYPE = 3;
     static constexpr size_t IDX_ATTR_X1_QUANT_MODE = 4;
     static constexpr size_t IDX_ATTR_X2_QUANT_MODE = 5;
@@ -607,6 +608,25 @@ protected:
             return ge::GRAPH_FAILED;
         }
         uint64_t ka = k_; // Ka = per-rank K
+
+        auto *hccBufPtr = context_->GetAttrs()->GetAttrPointer<int64_t>(IDX_ATTR_HCCL_BUFFER_SIZE);
+        OP_LOGI(opName, "[hcclBufferSize] builder-assigned hcclBufferSize = %ld",
+                hccBufPtr ? static_cast<long>(*hccBufPtr) : -1L);
+
+        {
+            auto *x1sh = context_->GetInputShape(IDX_INPUT_X1);
+            auto x1Dtype = context_->GetInputDesc(IDX_INPUT_X1)->GetDataType();
+            uint64_t mTotal = x1sh ? x1sh->GetStorageShape().GetDim(0U) : 0;
+            uint64_t kPerRank = k_; // Ka = per-rank K（AlltoAll 通信 x1 的 K 维是 Ka，非 K_total）
+            double typeSize = (x1Dtype == ge::DT_FLOAT4_E2M1) ? 0.5 : 1.0;
+            double requiredBuf = static_cast<double>(mTotal) * static_cast<double>(kPerRank) * typeSize * 1.1;
+            if (hccBufPtr != nullptr && static_cast<double>(*hccBufPtr) < requiredBuf) {
+                OP_LOGE_WITHOUT_REPORT(opName, "[hcclBufferSize] hcclBufferSize(%ld) is less than "
+                        "M_total(%lu) * Ka(%lu) * sizeof(x1Dtype)(%.1f) * 1.1 = %.1f",
+                        static_cast<long>(*hccBufPtr), mTotal, kPerRank, typeSize, requiredBuf);
+                return ge::GRAPH_FAILED;
+            }
+        }
 
         auto *rt = context_->GetRawTilingData();
         auto cap = rt->GetCapacity();
