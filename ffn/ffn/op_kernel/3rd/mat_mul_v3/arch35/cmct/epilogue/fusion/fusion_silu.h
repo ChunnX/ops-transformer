@@ -10,7 +10,7 @@
 
 /*!
  * \file fusion_silu.h
- * \brief silu(x) = x / (1 + e^(-x))，AIV 向量核逐元素 epilogue，与 FusionGelu 同构。
+ * \brief silu(x) = x / (1 + e^-x)，AIV epilogue。
  */
 
 #pragma once
@@ -44,19 +44,21 @@ public:
     int64_t ubCalcM_{0};
     int64_t ubCalcN_{0};
     int64_t strideN_{0};
+    AscendC::LocalTensor<DataTypeIn> inputLocal_;
 
     template <class LocalTensor>
     __aicore__ inline void Init(Params const& params, LocalTensor ubTensor, int64_t ubCalcM, int64_t ubCalcN,
                                 int64_t& ubOffset, int64_t& stageSize)
     {
-        static constexpr int64_t stageNum = 1;
+        static constexpr int64_t stageNum = 2;
         int64_t lastUBSize = AscendC::TOTAL_UB_SIZE - ubOffset * sizeof(DataTypeIn);
         ASCENDC_ASSERT((lastUBSize > ubCalcN * sizeof(DataTypeIn)), {
             KERNEL_LOG(KERNEL_ERROR, , "ub size limit %ld, %ld!", lastUBSize, ubCalcN * sizeof(DataTypeIn));
         });
         stageSize_ = AscendC::Std::min(
             static_cast<int64_t>(lastUBSize / stageNum / sizeof(DataTypeIn) / ubCalcN * ubCalcN), ubCalcM * ubCalcN);
-        ubOffset += 0; // silu 原地风格，无额外临时 buffer
+        inputLocal_ = ubTensor[ubOffset];
+        ubOffset += stageSize_;
         stageSize = stageSize_;
     }
 
@@ -64,7 +66,8 @@ public:
                                       AscendC::LocalTensor<DataTypeIn>& outputLocal, int64_t offset, int64_t curAivM,
                                       int64_t curAivN, int64_t strideN, int64_t stageSize)
     {
-        TPipeSetWaitFlag<AscendC::HardEvent::MTE3_V>();
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
         AscendC::Silu(outputLocal, srcLocal, stageSize);
         AscendC::PipeBarrier<PIPE_V>();
     }

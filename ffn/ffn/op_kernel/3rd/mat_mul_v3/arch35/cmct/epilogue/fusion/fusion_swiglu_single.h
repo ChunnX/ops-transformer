@@ -50,6 +50,7 @@ public:
     };
 
     int64_t stageSize_{0};
+    AscendC::LocalTensor<DataTypeIn> inputLocal_;
 
     template <class LocalTensor>
     __aicore__ inline void Init(Params const& params, LocalTensor ubTensor, int64_t ubCalcM, int64_t ubCalcN,
@@ -59,9 +60,11 @@ public:
         ASCENDC_ASSERT((lastUBSize > ubCalcN * sizeof(DataTypeIn)), {
             KERNEL_LOG(KERNEL_ERROR, , "ub size limit %ld, %ld!", lastUBSize, ubCalcN * sizeof(DataTypeIn));
         });
+        static constexpr int64_t stageNum = 2;
         stageSize_ = AscendC::Std::min(
-            static_cast<int64_t>(lastUBSize / sizeof(DataTypeIn) / ubCalcN * ubCalcN), ubCalcM * ubCalcN);
-        ubOffset += 0;
+            static_cast<int64_t>(lastUBSize / stageNum / sizeof(DataTypeIn) / ubCalcN * ubCalcN), ubCalcM * ubCalcN);
+        inputLocal_ = ubTensor[ubOffset];
+        ubOffset += stageSize_;
         stageSize = stageSize_;
     }
 
@@ -69,18 +72,15 @@ public:
                                       AscendC::LocalTensor<DataTypeIn>& outputLocal, int64_t offset, int64_t curAivM,
                                       int64_t curAivN, int64_t strideN, int64_t stageSize)
     {
-        TPipeSetWaitFlag<AscendC::HardEvent::MTE3_V>();
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
         int64_t rows = stageSize / curAivN;
         int64_t outWidth = curAivN / 2;
         for (int64_t r = 0; r < rows; ++r) {
             AscendC::LocalTensor<DataTypeIn> srcRow = srcLocal[r * curAivN];
             AscendC::LocalTensor<DataTypeIn> outRow = outputLocal[r * outWidth];
-            // silu(gate 半块)，全宽，写入输出区。
-            // 注意：不要换成 Muls/Exp/Adds/Reciprocal/Mul/Mul 显式链——该链每元素
-            // 7 条寄存器操作（vs Silu+Mul 的 5 条）且每行 6 次 membase 调用（vs 2 次）。
             AscendC::Silu(outRow, srcRow, static_cast<uint32_t>(outWidth));
             AscendC::PipeBarrier<PIPE_V>();
-            // ② silu(g) * up 半块，全宽，in-place
             AscendC::Mul(outRow, outRow, srcRow[outWidth], static_cast<uint32_t>(outWidth));
             AscendC::PipeBarrier<PIPE_V>();
         }
