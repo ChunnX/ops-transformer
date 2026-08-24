@@ -434,6 +434,10 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessTopK(const L
 
     int32_t validAllS2Len = cuRealAcSeq;
     for (uint32_t i = 0; i < curAivS1ProcNum; i++) {
+        if (i > 0) {
+            SetFlag<HardEvent::MTE3_MTE2>(MTE3_MTE2_EVENT);
+            WaitFlag<HardEvent::MTE3_MTE2>(MTE3_MTE2_EVENT);
+        }
         uint32_t rowIdx = blockId_ % 2 * CeilDiv(curS1ProcNum, 2) + i;
         uint32_t vecOffset = blockId_ % 2 * CeilDiv(s1BaseSize_, 2) + i;
         int64_t outputIdxOffset = 0;
