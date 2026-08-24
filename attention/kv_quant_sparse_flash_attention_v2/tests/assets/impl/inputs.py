@@ -150,8 +150,6 @@ class KvQuantSparseFlashAttentionV2InputAdapter:
         outputs = pytest_golden.compute_golden(generated, params)
         if outputs is None:
             raise RuntimeError("KvQuantSparseFlashAttentionV2 pytest compute_golden failed")
-        if hasattr(torch, "npu"):
-            torch.npu.synchronize()
 
         self.copy_tensor(query, generated.get("query_cache"), "query")
         self.copy_tensor(key, generated.get("key_cache"), "key")
