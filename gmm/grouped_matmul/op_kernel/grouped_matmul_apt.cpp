@@ -31,6 +31,9 @@ using GMMS8S4BasicApiTilingData = GroupedMatmulTilingData::GMMS8S4BasicApiTiling
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_tiling_key.h"
 #if defined(V310_GMM_QUANT_CUBE) || defined(V310_GMM_QUANT_PERTENSOR_CUBE)
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_cube_on_the_fly.h"
+#if IS_BLAZE
+#include "arch35/quant_adaptive_sliding_window_templates/gqmm_cube_tensor_api_kernel.h"
+#endif
 #endif
 #if defined(V310_GMM_QUANT_MX) && IS_BLAZE
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_tensor_api_mx_kernel.h"
@@ -86,6 +89,9 @@ static constexpr VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_DYNAMIC = {4, 0};
 #else
 #include "arch35/non_quant/grouped_matmul_basic_kernel.h"
 #include "arch35/non_quant/grouped_matmul_tiling_key.h"
+#if IS_BLAZE
+#include "arch35/non_quant/gmm_tensor_api_kernel.h"
+#endif
 #endif
 
 using namespace AscendC;
@@ -97,6 +103,14 @@ using namespace GROUPED_MATMUL;
 #endif
 
 namespace {
+// blaze fixpipe block 的 MMAD bias 类型约束（Te API check_data_type）：
+// A8W8（int8×int8，L0C=int32）bias 仅支持 int32；fp8/fp4（L0C=float）bias 仅支持 float。
+// 用 C++ 类型判断（DTYPE_X/DTYPE_BIAS 是类型别名，不能用预处理宏比较）；不支持的组合回落 cgmct。
+template <class GmmCubeXType, class GmmCubeBiasType>
+constexpr bool GmmCubeBiasSupported =
+    AscendC::Std::is_same_v<GmmCubeXType, int8_t> ? AscendC::Std::is_same_v<GmmCubeBiasType, int32_t>
+                                                   : AscendC::Std::is_same_v<GmmCubeBiasType, float>;
+
 #if defined(FORMAT_WEIGHT) && FORMAT_WEIGHT == FORMAT_FRACTAL_NZ
 constexpr CubeFormat wFormat = CubeFormat::NZ;
 #else
@@ -319,13 +333,53 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
 #endif
 
 #if defined(V310_GMM_QUANT_CUBE) || defined(V310_GMM_QUANT_PERTENSOR_CUBE) // scale64/perTensor/double perTensor
+    // IS_BLAZE（Ascend950）走 Blaze 高阶 kernel（gqmm_cube_tensor_api_kernel.h），读同一份
+    // GMMQuantTilingData（含 GMMArray 多组 shape）；非 blaze 平台回落 cgmct GmmASWKernel。
     if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS && KERNEL_TYPE == GMM_DEQUANT_FIXP) {
+#if IS_BLAZE && !defined(GMM_NOQUANT_FORCE_CGMCT)
+        if constexpr (GmmCubeBiasSupported<DTYPE_X, DTYPE_BIAS>) {
+        if constexpr (wFormat == CubeFormat::NZ) {
+            GmmCubeTensorApiKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y,
+                                   AscendC::Te::NDExtLayoutPtn, AscendC::Te::NZLayoutPtn,
+                                   AscendC::Te::NDExtLayoutPtn>(x, weight, bias, scale, groupList, perTokenScale, y,
+                                                                user1, tiling);
+        } else {
+            GmmCubeTensorApiKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y,
+                                   AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn,
+                                   AscendC::Te::NDExtLayoutPtn>(x, weight, bias, scale, groupList, perTokenScale, y,
+                                                                user1, tiling);
+        }
+        } else {
+            GET_TILING_DATA_WITH_STRUCT(GMMQuantTilingData, tilingData, tiling);
+            GMM_QUANT_IMPL_CLASS(false, false, GmmASWKernel);
+        }
+#else
         GET_TILING_DATA_WITH_STRUCT(GMMQuantTilingData, tilingData, tiling);
         GMM_QUANT_IMPL_CLASS(false, false, GmmASWKernel);
+#endif
     } else if constexpr (QUANT_B_TRANS == GMM_TRANS && QUANT_A_TRANS == GMM_NO_TRANS &&
                          KERNEL_TYPE == GMM_DEQUANT_FIXP) {
+#if IS_BLAZE && !defined(GMM_NOQUANT_FORCE_CGMCT)
+        if constexpr (GmmCubeBiasSupported<DTYPE_X, DTYPE_BIAS>) {
+        if constexpr (wFormat == CubeFormat::NZ) {
+            GmmCubeTensorApiKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y,
+                                   AscendC::Te::NDExtLayoutPtn, AscendC::Te::ZNLayoutPtn,
+                                   AscendC::Te::NDExtLayoutPtn>(x, weight, bias, scale, groupList, perTokenScale, y,
+                                                                user1, tiling);
+        } else {
+            GmmCubeTensorApiKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y,
+                                   AscendC::Te::NDExtLayoutPtn, AscendC::Te::DNExtLayoutPtn,
+                                   AscendC::Te::NDExtLayoutPtn>(x, weight, bias, scale, groupList, perTokenScale, y,
+                                                                user1, tiling);
+        }
+        } else {
+            GET_TILING_DATA_WITH_STRUCT(GMMQuantTilingData, tilingData, tiling);
+            GMM_QUANT_IMPL_CLASS(false, true, GmmASWKernel);
+        }
+#else
         GET_TILING_DATA_WITH_STRUCT(GMMQuantTilingData, tilingData, tiling);
         GMM_QUANT_IMPL_CLASS(false, true, GmmASWKernel);
+#endif
     }
 #endif
 #if defined(V310_GMM_QUANT_PERTENSOR_CUBE) // perTensor/double perTensor
@@ -525,17 +579,33 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
 #endif
 #else
     REGISTER_TILING_DEFAULT(GMMNoQuantTilingData);
+    // IS_BLAZE（DEVKIT >= 9.1，Ascend950）走 Blaze 高阶 kernel（gmm_tensor_api_kernel.h），读同一份
+    // GMMNoQuantTilingData；非 blaze 平台回落旧 cgmct GmmNoQuantAswt。
+    // 开发期对照：定义 GMM_NOQUANT_FORCE_CGMCT 时强制走旧路径（blaze/旧实现双跑一致性验证，正式发布不定义）。
     if constexpr (NO_QUANT_B_TRANS == GMM_NO_TRANS && NO_QUANT_A_TRANS == GMM_NO_TRANS) {
+#if IS_BLAZE && !defined(GMM_NOQUANT_FORCE_CGMCT)
+        if constexpr (wFormat == CubeFormat::NZ) {
+            GmmNoQuantTensorApiKernel<DTYPE_X, DTYPE_Y, DTYPE_BIAS, AscendC::Te::NDExtLayoutPtn,
+                                      AscendC::Te::NZLayoutPtn, AscendC::Te::NDExtLayoutPtn>(
+                x, weight, bias, groupList, y, workspace, tiling);
+        } else {
+            GmmNoQuantTensorApiKernel<DTYPE_X, DTYPE_Y, DTYPE_BIAS, AscendC::Te::NDExtLayoutPtn,
+                                      AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>(
+                x, weight, bias, groupList, y, workspace, tiling);
+        }
+#else
         if constexpr (wFormat == CubeFormat::NZ) {
             GmmNoQuantAswt<layout::RowMajor, layout::Nz>(x, weight, bias, groupList, y, tiling);
         } else {
             GmmNoQuantAswt<layout::RowMajor, layout::RowMajor>(x, weight, bias, groupList, y, tiling);
         }
+#endif
     } else if constexpr (NO_QUANT_B_TRANS == GMM_NO_TRANS && NO_QUANT_A_TRANS == GMM_TRANS) { // x transposed
         if ASCEND_IS_AIV {
             EmptyTensor<DTYPE_Y>(x, weight, groupList, y, tiling);
         }
         if ASCEND_IS_AIC {
+            // (0,1) 是 MIX_AIC_1_1（A-trans），不在 AIC_ONLY 升级范围，AIC 保持旧 cgmct 路径。
             if constexpr (wFormat == CubeFormat::NZ) {
                 GmmNoQuantAswt<layout::ColumnMajor, layout::Nz>(x, weight, bias, groupList, y, tiling);
             } else {
@@ -543,11 +613,23 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
             }
         }
     } else if constexpr (NO_QUANT_B_TRANS == GMM_TRANS && NO_QUANT_A_TRANS == GMM_NO_TRANS) { // weight transposed
+#if IS_BLAZE && !defined(GMM_NOQUANT_FORCE_CGMCT)
+        if constexpr (wFormat == CubeFormat::NZ) {
+            GmmNoQuantTensorApiKernel<DTYPE_X, DTYPE_Y, DTYPE_BIAS, AscendC::Te::NDExtLayoutPtn,
+                                      AscendC::Te::ZNLayoutPtn, AscendC::Te::NDExtLayoutPtn>(
+                x, weight, bias, groupList, y, workspace, tiling);
+        } else {
+            GmmNoQuantTensorApiKernel<DTYPE_X, DTYPE_Y, DTYPE_BIAS, AscendC::Te::NDExtLayoutPtn,
+                                      AscendC::Te::DNExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>(
+                x, weight, bias, groupList, y, workspace, tiling);
+        }
+#else
         if constexpr (wFormat == CubeFormat::NZ) {
             GmmNoQuantAswt<layout::RowMajor, layout::Zn>(x, weight, bias, groupList, y, tiling);
         } else {
             GmmNoQuantAswt<layout::RowMajor, layout::ColumnMajor>(x, weight, bias, groupList, y, tiling);
         }
+#endif
     }
 #endif
 #endif
