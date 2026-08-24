@@ -33,13 +33,6 @@
 
 #include "../../../op_kernel/arch35/block_attn_res_update_tiling_data.h"
 
-#ifdef __CCE_KT_TEST__
-extern "C" __global__ __aicore__ void block_attn_res_update(GM_ADDR partialBlock, GM_ADDR delta, GM_ADDR pseudoQuery,
-                                                            GM_ADDR numerator, GM_ADDR logitMax, GM_ADDR expSum,
-                                                            GM_ADDR partialBlockRef, GM_ADDR h, GM_ADDR workspace,
-                                                            GM_ADDR tiling);
-#endif
-
 struct BlockAttnResUpdateKernelTestParam {
     std::string socVersion;
     std::string caseName;
@@ -176,12 +169,16 @@ public:
         std::memcpy(tilingGm.Get(), param.tilingData.data(), param.tilingData.size() * sizeof(int32_t));
 
         const uint32_t launchBlocks = std::min(MAX_NUM_BLOCKS, param.numBlocks);
+        BlockAttnResUpdateTilingData hostTiling{};
+        std::memcpy(&hostTiling, param.tilingData.data(), sizeof(hostTiling));
+        const auto kernelFunc =
+            hostTiling.tPerCore <= hostTiling.tileT ? &block_attn_res_update<true> : &block_attn_res_update<false>;
         ICPU_SET_TILING_KEY(param.tilingKey);
         // Match the referenced matmul op_kernel UT scope: verify that every CSV scheduling branch launches cleanly.
         // Ascend950 Reg/VF numerical instructions are not emulated by the CANN 9.2 tikicpulib CPU backend.
-        ASSERT_TRUE(KERNEL_RUN_KF(block_attn_res_update, launchBlocks, partialGm.Get(), deltaGm.Get(),
-                                  pseudoQueryGm.Get(), numeratorGm.Get(), logitMaxGm.Get(), expSumGm.Get(),
-                                  partialGm.Get(), hGm.Get(), workspaceGm.Get(), tilingGm.Get()))
+        ASSERT_TRUE(KERNEL_RUN_KF(kernelFunc, launchBlocks, partialGm.Get(), deltaGm.Get(), pseudoQueryGm.Get(),
+                                  numeratorGm.Get(), logitMaxGm.Get(), expSumGm.Get(), partialGm.Get(), hGm.Get(),
+                                  workspaceGm.Get(), tilingGm.Get()))
             << "case=" << param.caseName << ", kernel CPU simulation failed";
     }
 #endif
@@ -272,8 +269,14 @@ private:
         GmBuffer(const GmBuffer &) = delete;
         GmBuffer &operator=(const GmBuffer &) = delete;
 
-        uint8_t *Get() const { return data_; }
-        bool IsValid() const { return data_ != nullptr; }
+        uint8_t *Get() const
+        {
+            return data_;
+        }
+        bool IsValid() const
+        {
+            return data_ != nullptr;
+        }
 
     private:
         uint8_t *data_ = nullptr;

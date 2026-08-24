@@ -17,6 +17,7 @@
 #include "op_host/tiling_templates_registry.h"
 #include "securec.h"
 #include "util/math_util.h"
+#include "../../../op_kernel/arch35/block_attn_res_update_tiling_key.h"
 
 namespace optiling {
 namespace block_attn_res_update {
@@ -30,14 +31,15 @@ constexpr uint32_t BF16_BYTES = 2;
 constexpr uint32_t DOUBLE_BUFFER_NUM = 2;
 constexpr uint32_t MAX_DATA_COPY_BLOCK_COUNT = 4095;
 constexpr uint32_t SYSTEM_RESERVED_UB_BYTES = 8 * 1024;
-constexpr uint64_t FULL_D_TILING_KEY = 0;
-constexpr uint64_t SINGLE_TILE_TILING_KEY = 1;
 // Keep the generic full-D strategy as a fallback. A preferred split-D strategy should use a numerically smaller value.
 constexpr int32_t FULL_D_TILING_PRIORITY = 1000;
 
 } // namespace
 
-bool BlockAttnResUpdateFullDTiling::IsCapable() { return true; }
+bool BlockAttnResUpdateFullDTiling::IsCapable()
+{
+    return true;
+}
 
 ge::graphStatus BlockAttnResUpdateFullDTiling::DoOpTiling()
 {
@@ -142,7 +144,7 @@ ge::graphStatus BlockAttnResUpdateFullDTiling::SelectUbTiling(uint64_t maxTPerCo
 
 uint64_t BlockAttnResUpdateFullDTiling::GetTilingKey() const
 {
-    return tilingInfo_.tPerCore <= tilingInfo_.tileT ? SINGLE_TILE_TILING_KEY : FULL_D_TILING_KEY;
+    return GET_TPL_TILING_KEY(tilingInfo_.tPerCore <= tilingInfo_.tileT);
 }
 
 void BlockAttnResUpdateFullDTiling::SetTilingData()

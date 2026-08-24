@@ -8,6 +8,9 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#ifdef __CCE_KT_TEST__
+#include "../../../../op_kernel/block_attn_res_update.cpp"
+#endif
 #include "../test_block_attn_res_update_utils.h"
 
 namespace {
