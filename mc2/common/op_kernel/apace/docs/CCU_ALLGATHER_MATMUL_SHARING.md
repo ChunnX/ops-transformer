@@ -315,6 +315,128 @@ Variable 布局（(commTurn+1) × 10 个，1 个 varHandle 管理）：
 
 AIC block 0 **一次性预写所有 round 的参数**（在 CCU 启动前全部写好），循环中不再写 Variable——这样所有 AIC 核（含 block 0）预写完成后立即进入轮询 + matmul 循环，全力参与 Blaze 多核切分计算，不会因为每轮写参数而打断计算流水。
 
+### 4.4 AllGather 前后数据排布（基线）
+
+本节记录基线代码中 AllGather 通信前后各 buffer 的数据布局，是理解通信参数和 matmul 偏移计算的基础。
+
+#### 符号约定
+
+| 符号 | 含义 | 示例值（基线） |
+|---|---|---|
+| `rankSize` | rank 数（卡数） | 2 |
+| `M` | 每 rank 矩阵 A 的行数 | 512 |
+| `tileM` | 每 round 通信的行数 | 256 |
+| `commTurn` | data 通信轮数 = M / tileM | 2 |
+| `K` | 矩阵 A 的列数 / B 的行数 | 256 |
+| `N` | 矩阵 B 的列数 / C 的列数 | 256 |
+| `scaleKLen` | 每行 scale 元素数 = ceil(K/64) × 2 | 8 |
+| `dataSliceSize` | 每 round 每 rank data 通信字节 = tileM × K × 1(FP8) | 65536 |
+| `scaleSliceSize` | 全量 scale 通信字节 = M × scaleKLen × 1(E8M0) | 4096 |
+
+#### sendBuf（AllGather 前，每 rank 独立）
+
+**data（FP8 E4M3FN，1 byte/element）**：M 行 × K 列，按 round 切分：
+
+```
+sendBuf (M=512, K=256, FP8 1B)
+├── round 0: rows [0, tileM)       = rows [0, 256)     inputOffset[0] = 0
+├── round 1: rows [tileM, 2*tileM) = rows [256, 512)   inputOffset[1] = 65536
+└── round r: rows [r*tileM, (r+1)*tileM)               inputOffset[r] = r * dataSliceSize
+
+每 round 通信量 = dataSliceSize = tileM * K * 1B = 256 * 256 * 1 = 65536 B
+```
+
+**scaleA（E8M0，1 byte/element）**：M 行 × scaleKLen 列，全量通信（不分 round）：
+
+```
+sendScaleBuf (M=512, scaleKLen=8, E8M0 1B)
+├── 全量: rows [0, M) = rows [0, 512)                   inputOffset = 0
+
+通信量 = scaleSliceSize = M * scaleKLen * 1B = 512 * 8 * 1 = 4096 B
+```
+
+#### recvBuf（AllGather 后，所有 rank 汇聚）
+
+**data（FP8 E4M3FN）**：rankSize × M 行 × K 列，各 rank 数据按 rankId 拼接，每 round 汇聚一组：
+
+```
+recvBuf (rankSize=2, M=512, K=256, FP8 1B)
+├── round 0 汇聚区: [rank0 rows 0-255][rank1 rows 0-255]        outputOffset[0] = 0
+├── round 1 汇聚区: [rank0 rows 256-511][rank1 rows 256-511]    outputOffset[1] = 131072
+└── round r 汇聚区: [rank0 rows r*tileM..(r+1)*tileM]
+                   [rank1 rows r*tileM..(r+1)*tileM]
+                   ...
+                   [rankR rows r*tileM..(r+1)*tileM]
+
+outputOffset[r] = r * rankSize * dataSliceSize + rankId * dataSliceSize
+
+每 round 汇聚后总行数 = rankSize * tileM（所有 rank 的 tileM 行拼接）
+每 round 的 A 字节数 = tileABytes = rankSize * tileM * K * 1B
+```
+
+**scaleA（E8M0）**：rankSize × M 行 × scaleKLen 列，全量汇聚（1 轮完成）：
+
+```
+recvScaleBuf (rankSize=2, M=512, scaleKLen=8, E8M0 1B)
+├── [rank0 scale rows 0-511][rank1 scale rows 0-511]
+
+outputOffset = rankId * scaleSliceSize
+```
+
+#### outputBuf（matmul 输出，BF16，2 bytes/element）
+
+每 round 的 matmul 输出 rankSize × tileM 行 × N 列：
+
+```
+outputBuf (rankSize=2, M=512, N=256, BF16 2B)
+├── round 0: C[0 : 512*256*2B]        = C[0 : 262144 B]       cOffset = 0
+├── round 1: C[262144 : 524288 B]                             cOffset = 262144
+└── round r: C[r * tileCBytes : (r+1) * tileCBytes]
+
+tileCBytes = rankSize * tileM * N * 2B
+```
+
+#### matmul 读取地址（round d）
+
+```
+A      = recvBuf      + d * tileABytes      (= d * rankSize * tileM * K * 1)
+scaleA = recvScaleBuf + d * tileScaleABytes (= d * rankSize * tileM * scaleKLen * 1)
+B      = weightBuf                          （本 rank 权重，不通信）
+scaleB = weightScaleBuf                     （本 rank 权重 scale，不通信）
+C      = outputBuf    + d * tileCBytes      (= d * rankSize * tileM * N * 2)
+```
+
+#### 完整示例（基线：2 rank, M=512, tileM=256, K=256, N=256, commTurn=2）
+
+```
+sendBuf (rank 0, 131072 B):
+  round 0: rows 0-255   (offset 0)
+  round 1: rows 256-511 (offset 65536)
+
+sendScaleBuf (rank 0, 4096 B):
+  全量: rows 0-511 (offset 0)
+
+recvBuf (rank 0, 262144 B):
+  round 0: [r0 rows 0-255][r1 rows 0-255]      (offset 0, 512 行)
+  round 1: [r0 rows 256-511][r1 rows 256-511]  (offset 131072, 512 行)
+
+recvScaleBuf (rank 0, 8192 B):
+  [r0 scale rows 0-511][r1 scale rows 0-511]
+  round 0 取前 512 行 scale, round 1 取后 512 行 scale
+
+outputBuf (rank 0, 524288 B):
+  round 0: C[0 : 262144 B]       (512 行 × 256 × 2B)
+  round 1: C[262144 : 524288 B]
+
+matmul round 0: A=recvBuf[0:131072], scaleA=recvScaleBuf[0:4096], C=outputBuf[0:262144]
+matmul round 1: A=recvBuf[131072:262144], scaleA=recvScaleBuf[4096:8192], C=outputBuf[262144:524288]
+```
+
+> **关键设计点**：
+> - AllGather 后各 rank 数据按 rankId 顺序拼接（rank 0 在前，rank 1 在后），不是交织排列
+> - scale 全量 1 轮通信，但 matmul 按 round 切分读取（每 round 取 rankSize × tileM 行 scale，与 data 的 tile 行数对齐）
+> - B / scaleB 是本 rank 权重，不参与通信，所有 round 共用同一地址
+
 ---
 
 ## 5. 流水编排
