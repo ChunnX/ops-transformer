@@ -36,21 +36,21 @@ extern "C" {
 
 aclnnStatus aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(
     const aclTensor *cuSeqlensQOptional, const aclTensor *cacheSeqlensOptional, const aclTensor *sequsedQOptional,
-    int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
-    int64_t headDimQk, int64_t headDimV, int64_t maskMode, const char *layoutQ, const char *layoutKv, const char *layoutOut,
+    int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
+    int64_t headDimQk, int64_t headDimV, int64_t maskMode, const char *layoutQ,
     const aclTensor *metaData, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnFlashMlaWithKvcacheMetadata,
-                   DFX_IN(cuSeqlensQOptional, cacheSeqlensOptional, sequsedQOptional, batchSize, maxSeqlenQ,
-                          maxSeqlenKv, numHeadsQ, numHeadsKv, headDimQk, headDimV, maskMode, layoutQ, layoutKv, layoutOut),
+                   DFX_IN(cuSeqlensQOptional, cacheSeqlensOptional, sequsedQOptional, maxSeqlenQ,
+                          maxSeqlenKv, numHeadsQ, numHeadsKv, headDimQk, headDimV, maskMode, layoutQ),
                    DFX_OUT(metaData));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
     auto ret = FlashMlaWithKvcacheMetadataCheck::ParamsCheck(cuSeqlensQOptional, cacheSeqlensOptional, sequsedQOptional,
-                                                  batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv,
-                                                  headDimQk, headDimV, maskMode, layoutQ, layoutKv, layoutOut, metaData);
+                                                             maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv,
+                                                             headDimQk, headDimV, maskMode, layoutQ, metaData);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
@@ -62,8 +62,8 @@ aclnnStatus aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(
     //   slot0=cuSeqlensQ, slot1=cacheSeqlens, slot2=sequsedQ
     // 平台参数 socVersion/aicCoreNum/aivCoreNum 由 GetCurrentPlatformInfo 推导后透传。
     auto output = l0op::FlashMlaWithKvcacheMetadata(cuSeqlensQOptional, cacheSeqlensOptional, sequsedQOptional,
-                                                    batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDimQk,
-                                                    headDimV, maskMode, layoutQ, layoutKv, layoutOut, socVersion, aicCoreNum,
+                                                    maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDimQk,
+                                                    headDimV, maskMode, layoutQ, socVersion, aicCoreNum,
                                                     aivCoreNum, metaData, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
@@ -73,7 +73,7 @@ aclnnStatus aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(
 }
 
 aclnnStatus aclnnFlashMlaWithKvcacheMetadata(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                  aclrtStream stream)
+                                             aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnFlashMlaWithKvcacheMetadata);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);

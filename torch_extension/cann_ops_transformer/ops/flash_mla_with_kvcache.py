@@ -16,22 +16,9 @@ from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 MLA_METADATA_OP_NAME = "flash_mla_with_kvcache_metadata"
 
 
-def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
-    if seqused_q is not None:
-        return seqused_q.size(0)
-    elif cu_seqlens_q is not None and cu_seqlens_q.size(0) > 0:
-        return cu_seqlens_q.size(0) - 1
-
-    if batch_size is None:
-        raise ValueError(
-            "When seqused_q and cu_seqlens_q are not provided, batch_size must be provided"
-        )
-    elif batch_size < 0:
-        raise ValueError(
-            f"When seqused_q and cu_seqlens_q are not provided, "
-            f"batch_size must be greater than 0, but got {batch_size}"
-        )
-    return batch_size
+def _calculate_batch_size(cache_seqlens: torch.Tensor):
+    """batch size 由必传的 cache_seqlens 长度推导（每 batch 一项，即 size(0)）。"""
+    return cache_seqlens.size(0)
 
 
 def _calculate_metadata_size(batch_size):
@@ -69,10 +56,11 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
     def schema(self) -> str:
         """PyTorch operator signature (m0070 interface: no v, no q_rope/k_rope)."""
         return [
-            "flash_mla_with_kvcache_metadata(int num_heads_q, int num_heads_kv, int head_dim_qk, int head_dim_v, *, "
-            "Tensor? cu_seqlens_q=None, Tensor? cache_seqlens=None, Tensor? seqused_q=None, "
-            "int? batch_size=None, int? max_seqlen_q=None, int? max_seqlen_kv=None, "
-            "int? mask_mode=None, str? layout_q=None, str? layout_kv=None, str? layout_out=None) -> Tensor",
+            "flash_mla_with_kvcache_metadata(Tensor cache_seqlens, int num_heads_q, int num_heads_kv, "
+            "Tensor? cu_seqlens_q=None, Tensor? seqused_q=None, "
+            "int? max_seqlen_q=None, int? max_seqlen_kv=None, "
+            "int head_dim_qk=576, int head_dim_v=512, "
+            'int? mask_mode=None, str? layout_q="BSND") -> Tensor',
             "flash_mla_with_kvcache(Tensor q, Tensor k_cache, "
             "Tensor? block_table=None, Tensor? cache_seqlens=None, "
             "Tensor? cu_seqlens_q=None, Tensor? seqused_q=None, "
@@ -91,22 +79,19 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
 
         @torch.library.register_fake("cann_ops_transformer::" + MLA_METADATA_OP_NAME)
         def flash_mla_with_kvcache_metadata_meta(
+            cache_seqlens: torch.Tensor,
             num_heads_q: int,
             num_heads_kv: int,
-            head_dim_qk: int,
-            head_dim_v: int,
             cu_seqlens_q: Optional[torch.Tensor] = None,
-            cache_seqlens: Optional[torch.Tensor] = None,
             seqused_q: Optional[torch.Tensor] = None,
-            batch_size: Optional[int] = None,
             max_seqlen_q: Optional[int] = None,
             max_seqlen_kv: Optional[int] = None,
+            head_dim_qk: int = 576,
+            head_dim_v: int = 512,
             mask_mode: Optional[int] = None,
             layout_q: Optional[str] = None,
-            layout_kv: Optional[str] = None,
-            layout_out: Optional[str] = None,
         ):
-            b_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
+            b_size = _calculate_batch_size(cache_seqlens)
             metadata_size = _calculate_metadata_size(b_size)
             return torch.empty((metadata_size,), dtype=torch.int32, device="meta")
 
@@ -177,38 +162,28 @@ flash_mla_with_kvcache_op_builder = FlashMlaWithKvcacheOpBuilder()
 
 @impl(AS_LIBRARY, MLA_METADATA_OP_NAME, "PrivateUse1")
 def flash_mla_with_kvcache_metadata(
+    cache_seqlens: torch.Tensor,
     num_heads_q: int,
     num_heads_kv: int,
-    head_dim_qk: int,
-    head_dim_v: int,
     cu_seqlens_q: Optional[torch.Tensor] = None,
-    cache_seqlens: Optional[torch.Tensor] = None,
     seqused_q: Optional[torch.Tensor] = None,
-    batch_size: Optional[int] = -1,
     max_seqlen_q: Optional[int] = -1,
     max_seqlen_kv: Optional[int] = -1,
+    head_dim_qk: int = 576,
+    head_dim_v: int = 512,
     mask_mode: Optional[int] = 0,
-    layout_q: Optional[str] = "TND",
-    layout_kv: Optional[str] = "NZ",
-    layout_out: Optional[str] = None,
+    layout_q: Optional[str] = "BSND",
 ):
     """
     Dispatcher implementation: NPU.
     'PrivateUse1' is dispatch key for custom NPU backends.
     """
-    b_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
+    b_size = _calculate_batch_size(cache_seqlens)
 
-    # 向 C++ wrapper 传解析后的 batch（未显式传 batch_size 时），使 C++ 侧容量校验（B2/D16）有意义；
-    # 显式传了 batch_size 时保持原值（与 flash_attn.py 行为一致，正确性由用户保证）。
-    effective_batch_size = (
-        batch_size if batch_size is not None and batch_size > 0 else b_size
-    )
     max_seqlen_q = -1 if max_seqlen_q is None else max_seqlen_q
     max_seqlen_kv = -1 if max_seqlen_kv is None else max_seqlen_kv
     mask_mode = 0 if mask_mode is None else mask_mode
-    layout_q = "TND" if layout_q is None else layout_q
-    layout_kv = "NZ" if layout_kv is None else layout_kv
-    layout_out = layout_q if layout_out is None else layout_out
+    layout_q = "BSND" if layout_q is None else layout_q
 
     op_module = flash_mla_with_kvcache_op_builder.load()
     metadata_size = _calculate_metadata_size(b_size)
@@ -218,7 +193,6 @@ def flash_mla_with_kvcache_metadata(
         cu_seqlens_q,
         cache_seqlens,
         seqused_q,
-        effective_batch_size,
         max_seqlen_q,
         max_seqlen_kv,
         num_heads_q,
@@ -227,8 +201,6 @@ def flash_mla_with_kvcache_metadata(
         head_dim_v,
         mask_mode,
         layout_q,
-        layout_kv,
-        layout_out,
         output,
     )
 
@@ -238,20 +210,17 @@ _flash_mla_with_kvcache_metadata = flash_mla_with_kvcache_metadata
 
 @torch.library.register_kernel("cann_ops_transformer::" + MLA_METADATA_OP_NAME, None)
 def flash_mla_with_kvcache_metadata_fallback(
+    cache_seqlens: torch.Tensor,
     num_heads_q: int,
     num_heads_kv: int,
-    head_dim_qk: int,
-    head_dim_v: int,
     cu_seqlens_q: Optional[torch.Tensor] = None,
-    cache_seqlens: Optional[torch.Tensor] = None,
     seqused_q: Optional[torch.Tensor] = None,
-    batch_size: Optional[int] = None,
     max_seqlen_q: Optional[int] = None,
     max_seqlen_kv: Optional[int] = None,
+    head_dim_qk: int = 576,
+    head_dim_v: int = 512,
     mask_mode: Optional[int] = None,
     layout_q: Optional[str] = None,
-    layout_kv: Optional[str] = None,
-    layout_out: Optional[str] = None,
 ):
     # 处理所有 tensor 都为 None 的情况（CPU 兜底路径）
     return _flash_mla_with_kvcache_metadata(
@@ -262,13 +231,10 @@ def flash_mla_with_kvcache_metadata_fallback(
         cu_seqlens_q=cu_seqlens_q,
         cache_seqlens=cache_seqlens,
         seqused_q=seqused_q,
-        batch_size=batch_size,
         max_seqlen_q=max_seqlen_q,
         max_seqlen_kv=max_seqlen_kv,
         mask_mode=mask_mode,
         layout_q=layout_q,
-        layout_kv=layout_kv,
-        layout_out=layout_out,
     )
 
 

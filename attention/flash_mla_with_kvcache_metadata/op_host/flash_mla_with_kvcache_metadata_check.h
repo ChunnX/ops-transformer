@@ -34,36 +34,34 @@ class FlashMlaWithKvcacheMetadataCheck {
 public:
     // m0070 参数序（与 meta.txt 文档一致）：无 cu_seqlens_kv/seqused_kv/win_*
     static inline aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cacheSeqlensOptional,
-                                          const aclTensor *sequsedQOptional, int64_t batchSize, int64_t maxSeqlenQ,
+                                          const aclTensor *sequsedQOptional, int64_t maxSeqlenQ,
                                           int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
                                           int64_t headDimQk, int64_t headDimV, int64_t maskMode, const char *layoutQ,
-                                          const char *layoutKv, const char *layoutOut, const aclTensor *metadata);
+                                          const aclTensor *metadata);
 
 private:
     static constexpr int64_t NONE_VALUE = -1;
     // MLA 硬约束（m0070）：kv head num 恒 1；head_dim_qk = q/k_cache 最后维 576（nope 512 + rope 64）；
-    // head_dim_v = 512（value/输出宽）；mask {0,3}
-    // 布局矩阵：q∈{TND,BNSD,BSND}、kv∈{PA_NZ,NZ,PA_BBND,PA_BNBD}、layoutOut 必须与 layoutQ 一致
+    // head_dim_v = 512（value/输出宽）；mask {0,3}；q 布局 ∈ {TND,BNSD,BSND}
+    // （layout_kv/layout_out 已从 metadata 算子移除：调度器不消费 KV 布局，输出不独立配置）
     static constexpr int64_t MLA_KV_HEADS = 1;
     static constexpr int64_t MLA_HEAD_DIM_QK = 576;
     static constexpr int64_t MLA_HEAD_DIM_V = 512;
 
     static inline bool IsTensorExist(const aclTensor *tensor);
-    static inline bool IsPA(const char *layout);
     static inline aclnnStatus CheckSeqLens(bool isCu, int64_t batchSize, const aclTensor *seqLens);
 
     static inline aclnnStatus CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
                                             int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDimQk,
-                                            int64_t headDimV, const char *layoutQ, const char *layoutKv,
-                                            const char *layoutOut);
+                                            int64_t headDimV, const char *layoutQ);
 
     static inline aclnnStatus CheckMask(int64_t maskMode);
 
     static inline aclnnStatus CheckExistency(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-                                             const char *layoutQ, const char *layoutKv,
+                                             const char *layoutQ,
                                              const aclTensor *cuSeqlensQOptional,
                                              const aclTensor *cacheSeqlensOptional,
-                                             const aclTensor *sequsedQOptional, const aclTensor *metadata);
+                                             const aclTensor *metadata);
 
     static inline aclnnStatus CheckConsistency(int64_t batchSize, int64_t numHeadsQ,
                                                const aclTensor *cuSeqlensQOptional,
@@ -73,18 +71,23 @@ private:
 
 inline aclnnStatus
 FlashMlaWithKvcacheMetadataCheck::ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cacheSeqlensOptional,
-                                              const aclTensor *sequsedQOptional, int64_t batchSize, int64_t maxSeqlenQ,
+                                              const aclTensor *sequsedQOptional, int64_t maxSeqlenQ,
                                               int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
                                               int64_t headDimQk, int64_t headDimV, int64_t maskMode, const char *layoutQ,
-                                              const char *layoutKv, const char *layoutOut, const aclTensor *metadata)
+                                              const aclTensor *metadata)
 {
+    // batch size 由必传的 cacheSeqlens 长度推导（每 batch 一项），与 Python/dispatcher 侧同源（no batch_size attr）
+    int64_t batchSize = NONE_VALUE;
+    if (cacheSeqlensOptional != nullptr && cacheSeqlensOptional->GetViewShape().GetDimNum() > 0) {
+        batchSize = cacheSeqlensOptional->GetViewShape().GetDim(0);
+    }
     auto ret = CheckBaseAttr(batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDimQk, headDimV,
-                             layoutQ, layoutKv, layoutOut);
+                             layoutQ);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     ret = CheckMask(maskMode);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
-    ret = CheckExistency(batchSize, maxSeqlenQ, maxSeqlenKv, layoutQ, layoutKv, cuSeqlensQOptional,
-                         cacheSeqlensOptional, sequsedQOptional, metadata);
+    ret = CheckExistency(batchSize, maxSeqlenQ, maxSeqlenKv, layoutQ, cuSeqlensQOptional,
+                         cacheSeqlensOptional, metadata);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     ret = CheckConsistency(batchSize, numHeadsQ, cuSeqlensQOptional, cacheSeqlensOptional, sequsedQOptional);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
@@ -94,8 +97,7 @@ FlashMlaWithKvcacheMetadataCheck::ParamsCheck(const aclTensor *cuSeqlensQOptiona
 inline aclnnStatus
 FlashMlaWithKvcacheMetadataCheck::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
                                                 int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDimQk,
-                                                int64_t headDimV, const char *layoutQ, const char *layoutKv,
-                                                const char *layoutOut)
+                                                int64_t headDimV, const char *layoutQ)
 {
     int64_t MIN_BATCH = 0;
     int64_t MAX_BATCH = 65536;
@@ -119,14 +121,6 @@ FlashMlaWithKvcacheMetadataCheck::CheckBaseAttr(int64_t batchSize, int64_t maxSe
     CHECK_COND(layoutQSet.count(layoutQ) > 0, ACLNN_ERR_RUNTIME_ERROR,
                "layoutQ only supports TND, BNSD, BSND, but got %s", layoutQ);
 
-    static const std::unordered_set<std::string> layoutKvSet = {"PA_NZ", "NZ", "PA_BBND", "PA_BNBD"};
-    CHECK_COND(layoutKvSet.count(layoutKv) > 0, ACLNN_ERR_RUNTIME_ERROR,
-               "layoutKv only supports PA_NZ, NZ, PA_BBND, PA_BNBD, but got %s", layoutKv);
-
-    // layoutOut 必须与 layoutQ 一致（输出与 query 同布局）
-    CHECK_COND(strcmp(layoutOut, layoutQ) == 0, ACLNN_ERR_RUNTIME_ERROR,
-               "layout_out must be identical to layout_q, but got layoutOut=%s, layoutQ=%s", layoutOut, layoutQ);
-
     return ACLNN_SUCCESS;
 }
 
@@ -143,10 +137,10 @@ inline aclnnStatus FlashMlaWithKvcacheMetadataCheck::CheckMask(int64_t maskMode)
 
 inline aclnnStatus
 FlashMlaWithKvcacheMetadataCheck::CheckExistency(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-                                                 const char *layoutQ, const char *layoutKv,
+                                                 const char *layoutQ,
                                                  const aclTensor *cuSeqlensQOptional,
                                                  const aclTensor *cacheSeqlensOptional,
-                                                 const aclTensor *sequsedQOptional, const aclTensor *metadata)
+                                                 const aclTensor *metadata)
 {
     CHECK_COND(metadata != nullptr, ACLNN_ERR_RUNTIME_ERROR, "metadata should be provided, but got null");
 
@@ -159,14 +153,8 @@ FlashMlaWithKvcacheMetadataCheck::CheckExistency(int64_t batchSize, int64_t maxS
                    "When layoutQ is not TND, cuSeqlensQOptional should not be provided, but got non-null");
     }
 
-    // 分页布局（PA_* 及 NZ 别名）：cacheSeqlens 必传（每 batch KV cache 长度，seqused_kv 语义）
-    if (IsPA(layoutKv)) {
-        CHECK_COND(IsTensorExist(cacheSeqlensOptional), ACLNN_ERR_RUNTIME_ERROR,
-                   "When layoutKv is PA_NZ, cacheSeqlensOptional must be provided");
-    }
-
-    CHECK_COND(((batchSize > 0) || IsTensorExist(sequsedQOptional)), ACLNN_ERR_RUNTIME_ERROR,
-               "At least one of batchSize or sequsedQOptional must be provided");
+    CHECK_COND((batchSize != NONE_VALUE), ACLNN_ERR_RUNTIME_ERROR,
+               "cacheSeqlens must be provided to derive batch_size, but got null");
     CHECK_COND(((maxSeqlenKv > 0) || IsTensorExist(cacheSeqlensOptional)), ACLNN_ERR_RUNTIME_ERROR,
                "At least one of maxSeqlenKv or cacheSeqlensOptional must be provided");
 
@@ -198,12 +186,6 @@ inline bool FlashMlaWithKvcacheMetadataCheck::IsTensorExist(const aclTensor *ten
 {
     return (tensor != nullptr) && (tensor->GetViewShape().GetDimNum() > 0) && (tensor->GetViewShape().GetDim(0) > 0) &&
            (tensor->GetData() != nullptr);
-}
-
-inline bool FlashMlaWithKvcacheMetadataCheck::IsPA(const char *layout)
-{
-    return (strcmp(layout, "PA_BNBD") == 0 || strcmp(layout, "PA_BBND") == 0 || strcmp(layout, "PA_NZ") == 0 ||
-            strcmp(layout, "NZ") == 0);
 }
 
 inline aclnnStatus
