@@ -1742,7 +1742,9 @@ def prepare_npu_inputs(
             )
         # 4: k_descale, 5: v_descale
         deq_k_npu = _make_uncontiguous(deq_k_npu, ud[4])
-        deq_v_npu = _make_uncontiguous(deq_v_npu, ud[5]) if deq_v_npu is not None else None
+        deq_v_npu = (
+            _make_uncontiguous(deq_v_npu, ud[5]) if deq_v_npu is not None else None
+        )
         if ud[4] >= 0 or ud[5] >= 0:
             logger.info(
                 f"[NPU] deq_k_scale is_contiguous={deq_k_npu.is_contiguous()}, deq_v_scale is_contiguous={deq_v_npu.is_contiguous() if deq_v_npu is not None else 'N/A'}"
