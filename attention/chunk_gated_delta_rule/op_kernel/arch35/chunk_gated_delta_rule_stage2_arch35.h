@@ -18,17 +18,10 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "chunk_gated_delta_rule_utils.h"
 #include "../chunk_gated_delta_rule_tiling_data.h"
+#include "chunk_gated_delta_rule_matmul_basic.h"
 
 namespace ChunkGatedDeltaRule {
 using namespace AscendC;
-using namespace matmul;
-
-using aT2 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t, true>;
-using bT2 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t, true>;
-template <typename cType>
-using StageTwoMTT = matmul::MatmulImpl<aT2, bT2, MatmulType<TPosition::GM, CubeFormat::ND, cType>>;
-using StageTwoMT = StageTwoMTT<bfloat16_t>;
-using StageTwoMTFp32C = StageTwoMTT<float>;
 
 template <typename stateType>
 struct StageTwoParams {
@@ -43,8 +36,6 @@ struct StageTwoParams {
     GlobalTensor<bfloat16_t> kg;
     GlobalTensor<bfloat16_t> out;
     GM_ADDR ws;
-    StageTwoMT *mm1Bf16;
-    StageTwoMTFp32C *mm1Fp32;
     TPipe *pipe;
     ChunkGroup *cg;
     int64_t Nv;
@@ -79,6 +70,10 @@ public:
         useInitialState_ = sTP_->useInitialState;
         stateStride1_ = (useInitialState_) ? sTP_->stateStride1 : Dv_ * Dk_;
         isFirstGroup_ = sTP_->isFirstGroup;
+        if ASCEND_IS_AIC {
+            mmBasic_.Init();
+            return;
+        }
         InitLocalBuffers();
     }
 
@@ -143,6 +138,9 @@ public:
                     ProcessAic(nvId, cId, length);
                 }
             }
+        }
+        if ASCEND_IS_AIC {
+            mmBasic_.End();
         }
     }
 
@@ -268,57 +266,28 @@ public:
         inQueue_.FreeTensor(stateIn);
     }
 
-    template <typename MMType, typename AT, typename BT, typename CT>
-    __aicore__ inline void RunMatmul(MMType *mm, GlobalTensor<AT> a, bool transA, GlobalTensor<BT> b, bool transB,
-                                     GlobalTensor<CT> c, int64_t M, int64_t N, int64_t K, int32_t accum)
-    {
-        mm->SetOrgShape(M, N, K);
-        mm->SetSingleShape(M, N, K);
-        mm->SetTensorA(a, transA);
-        mm->SetTensorB(b, transB);
-        mm->IterateAll(c, accum);
-        mm->End();
-    }
-
-    template <typename MMType, typename AT, typename BT, typename CT>
-    __aicore__ inline void RunMatmul(MMType *mm, GlobalTensor<AT> a, bool transA, GlobalTensor<BT> b, bool transB,
-                                     GlobalTensor<CT> c, int64_t M, int64_t N, int64_t K, int64_t Ka, int64_t Kb,
-                                     int32_t accum = 0)
-    {
-        mm->SetOrgShape(M, N, K, Ka, Kb);
-        mm->SetSingleShape(M, N, K);
-        mm->SetTensorA(a, transA);
-        mm->SetTensorB(b, transB);
-        mm->IterateAll(c, accum);
-        mm->End();
-    }
-
     __aicore__ inline void CalAttnInter(GlobalTensor<bfloat16_t> qPrime, GlobalTensor<bfloat16_t> state,
                                         GlobalTensor<bfloat16_t> out)
     {
-        RunMatmul(sTP_->mm1Bf16, qPrime, false, state, true, out, curChunkSize_, Dv_, Dk_, Dk_, Nv_ * Dv_);
+        mmBasic_.Execute<false, true, bfloat16_t>(
+            qPrime, state, out, curChunkSize_, Dv_, Dk_, false,
+            0, 0, Nv_ * Dv_);
     }
 
     template <typename vInnerType>
     __aicore__ inline void CalVPrime(GlobalTensor<bfloat16_t> kCumdecay, GlobalTensor<bfloat16_t> state,
                                      GlobalTensor<vInnerType> vPrime)
     {
-        if constexpr (kIsFp32) {
-            RunMatmul(sTP_->mm1Fp32, kCumdecay, false, state, true, vPrime, curChunkSize_, Dv_, Dk_, 1);
-        } else {
-            RunMatmul(sTP_->mm1Bf16, kCumdecay, false, state, true, vPrime, curChunkSize_, Dv_, Dk_, 1);
-        }
+        mmBasic_.Execute<false, true, vInnerType>(
+            kCumdecay, state, vPrime, curChunkSize_, Dv_, Dk_, true);
     }
 
     template <typename stateOutType>
     __aicore__ inline void CalStateNew(GlobalTensor<bfloat16_t> vInner, GlobalTensor<bfloat16_t> kg,
                                        GlobalTensor<stateOutType> state)
     {
-        if constexpr (kIsFp32) {
-            RunMatmul(sTP_->mm1Fp32, vInner, true, kg, false, state, Dv_, Dk_, curChunkSize_, 1);
-        } else {
-            RunMatmul(sTP_->mm1Bf16, vInner, true, kg, false, state, Dv_, Dk_, curChunkSize_, 1);
-        }
+        mmBasic_.Execute<true, false, stateOutType>(
+            vInner, kg, state, Dv_, Dk_, curChunkSize_, true);
     }
 
     template <typename srcType, typename dstType>
@@ -418,6 +387,7 @@ public:
 private:
     StageTwoParams<stateType> *sTP_;
     TPipe *pipe_;
+    CGDRMatmulBasic mmBasic_;
     TQue<QuePosition::VECIN, BUFFER_NUM_ONE> inQueue_;
     TQue<QuePosition::VECOUT, BUFFER_NUM_ONE> outQueue_;
     TBuf<TPosition::VECCALC> tmpBuff_;
