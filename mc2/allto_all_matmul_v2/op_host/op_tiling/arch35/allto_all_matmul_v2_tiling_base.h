@@ -622,8 +622,8 @@ protected:
             double requiredBuf = static_cast<double>(mTotal) * static_cast<double>(kPerRank) * typeSize * 1.1;
             if (hccBufPtr != nullptr && static_cast<double>(*hccBufPtr) < requiredBuf) {
                 OP_LOGE_WITHOUT_REPORT(opName, "[hcclBufferSize] hcclBufferSize(%ld) is less than "
-                        "M_total(%lu) * Ka(%lu) * sizeof(x1Dtype)(%.1f) * 1.1 = %.1f",
-                        static_cast<long>(*hccBufPtr), mTotal, kPerRank, typeSize, requiredBuf);
+                                               "M_total(%lu) * Ka(%lu) * sizeof(x1Dtype)(%.1f) * 1.1 = %.1f",
+                                       static_cast<long>(*hccBufPtr), mTotal, kPerRank, typeSize, requiredBuf);
                 return ge::GRAPH_FAILED;
             }
         }
@@ -653,6 +653,13 @@ protected:
 
         auto &mm = td->tileQbmmTilingData;
         usedCoreNum_ = mm.usedCoreNum;
+
+        // usedCoreNum 不能小于 rankSize（通信切分依赖每 rank 至少一个 core）
+        if (usedCoreNum_ < worldSize_) {
+            OP_LOGE_WITHOUT_REPORT(opName, "[usedCoreNum] usedCoreNum(%u) is less than rankSize(%lu)",
+                                   usedCoreNum_, worldSize_);
+            return ge::GRAPH_FAILED;
+        }
 
         apace::CommTilingBase::GetCommTilingData(m_, n_, ka, mm, td->commTilingData, td->scaleCommTilingData);
 
