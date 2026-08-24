@@ -32,6 +32,11 @@ EVENT_NAMES = {
     13: "Wait Dispatch MTE3 reuse (aggregate)",
     14: "Wait Dispatch MTE3 drain (aggregate)",
     15: "Wait Dispatch ready sync (aggregate)",
+    16: "Combine metadata copy (aggregate)",
+    17: "Combine row prepare (aggregate)",
+    18: "Combine MTE3 issue (aggregate)",
+    19: "Wait Combine MTE3 reuse (aggregate)",
+    20: "Wait Combine MTE3 drain (aggregate)",
 }
 EVENT_COLORS = {
     1: "#06b6d4",
@@ -49,9 +54,14 @@ EVENT_COLORS = {
     13: "#f59e0b",
     14: "#f97316",
     15: "#ef4444",
+    16: "#8b5cf6",
+    17: "#0ea5e9",
+    18: "#ea580c",
+    19: "#fbbf24",
+    20: "#dc2626",
 }
-WAIT_EVENT_IDS = frozenset((8, 9, 10, 11, 13, 14, 15))
-AGGREGATE_EVENT_IDS = frozenset((12, 13, 14, 15))
+WAIT_EVENT_IDS = frozenset((8, 9, 10, 11, 13, 14, 15, 19, 20))
+AGGREGATE_EVENT_IDS = frozenset((12, 13, 14, 15, 16, 17, 18, 19, 20))
 WAIT_INSTRUMENTED_PARENT_IDS = frozenset((1, 2, 4, 5, 7))
 EVENT_TRACE_POINTS = {
     1: (
@@ -113,6 +123,26 @@ EVENT_TRACE_POINTS = {
     15: (
         "发布 GMM1 ready 前执行 MTE3_S 同步（累计值）",
         "MTE3 数据可见，可发布 ready（累计值）",
+    ),
+    16: (
+        "PreloadWaveCombineMetaInfo：开始搬运当前连续 metadata 段（累计值）",
+        "metadata GM→UB 完成并对 Scalar 可见（累计值）",
+    ),
+    17: (
+        "SendWaveCombineToken：slot 可用后开始搬入 GMM2 行（累计值）",
+        "GMM2 行搬入 UB 且可选量化完成（累计值）",
+    ),
+    18: (
+        "SendCombineTokenRow：开始下发当前行的 MTE3 包（累计值）",
+        "当前行全部 MTE3 指令下发完成，不代表远端写入已完成（累计值）",
+    ),
+    19: (
+        "复用 Combine row-ring slot 前等待上一行 MTE3 完成（累计值）",
+        "对应 slot 可重新用于 GMM2 GM→UB（累计值）",
+    ),
+    20: (
+        "当前 wave 完成发包后进入 DrainWaveCombineRowRing（累计值）",
+        "当前 wave 剩余 row-ring MTE3 全部完成（累计值）",
     ),
 }
 
@@ -521,6 +551,17 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
   </tr></thead><tbody></tbody></table></div>
 </section>
 <section class="panel">
+  <h2>Combine 分项</h2>
+  <div class="muted">分项是每个 wave 内多个短区间的精确 cycle 累计。MTE3 issue 只统计指令下发；
+  后台传输造成的可见阻塞分别计入 slot reuse wait 和 wave drain wait。Other/control 为总 Combine
+  减去全部已归类区间后的剩余值。</div>
+  <div class="table-scroll"><table id="combineTable"><thead><tr>
+    <th>AI Block</th><th>Wave</th><th>Token 数</th><th>Combine 总计</th><th>GMM2 ready wait</th>
+    <th>Metadata GM→UB</th><th>Row prepare</th><th>MTE3 issue</th><th>Slot reuse wait</th>
+    <th>Wave drain wait</th><th>Other/control</th><th>已归类占比</th>
+  </tr></thead><tbody></tbody></table></div>
+</section>
+<section class="panel">
   <h2>打点位置</h2>
   <div class="table-scroll"><table><thead><tr><th>阶段</th><th>Begin 打点</th><th>End 打点/完成边界</th></tr></thead>
   <tbody>{trace_point_rows}</tbody></table></div>
@@ -566,10 +607,11 @@ const relativeCycle=cycle=>signedCycleDelta(cycle)-domainStart;
 const absoluteCycle=offset=>((cycleAnchor+domainStart+offset)%cycleModulo+cycleModulo)%cycleModulo;
 const cycleDelta=(begin,end)=>(end-begin+cycleModulo)%cycleModulo;
 function withLaneMetrics(record) {{
-  const stageEvents=record.events.filter(e=>!e.is_wait_event);
+  const timelineEvents=record.events.filter(e=>!e.is_aggregate_event);
+  const stageEvents=timelineEvents.filter(e=>!e.is_wait_event);
   const waitEvents=record.events.filter(e=>e.is_wait_event);
-  const firstEvent=record.events.reduce((first,e)=>!first||signedCycleDelta(e.begin_cycle)<signedCycleDelta(first.begin_cycle)?e:first,null);
-  const lastEvent=record.events.reduce((last,e)=>!last||signedCycleDelta(e.end_cycle)>signedCycleDelta(last.end_cycle)?e:last,null);
+  const firstEvent=timelineEvents.reduce((first,e)=>!first||signedCycleDelta(e.begin_cycle)<signedCycleDelta(first.begin_cycle)?e:first,null);
+  const lastEvent=timelineEvents.reduce((last,e)=>!last||signedCycleDelta(e.end_cycle)>signedCycleDelta(last.end_cycle)?e:last,null);
   const stageCycles=stageEvents.reduce((sum,e)=>sum+e.duration_cycles,0);
   const waitCycles=waitEvents.length?
     waitEvents.reduce((sum,e)=>sum+e.duration_cycles,0):
@@ -651,7 +693,7 @@ function render() {{
   const events=records.flatMap(r=>r.events.map(e=>({{...e,role:r.role,core:r.core}})));
   document.getElementById('selectionSummary').textContent=`${{blockGroups.length}} 个 Block · ${{records.length}} 条泳道 · ${{events.length}} 个事件`;
   renderTimeline(blockGroups,allBlockGroupsForWave(),events);
-  renderLaneTable(blockGroups); renderWaveTable(events); renderEventTable(events);
+  renderLaneTable(blockGroups); renderWaveTable(events); renderCombineTable(events); renderEventTable(events);
 }}
 function renderTimeline(blockGroups,pinSourceGroups,events) {{
   const root=document.getElementById('timeline');
@@ -792,6 +834,36 @@ function renderWaveTable(events) {{
   document.querySelector('#waveTable tbody').innerHTML=rows.map(g=>{{
     const wait=g.waitKnown?g.wait.toLocaleString():'—', waitPercent=g.waitKnown&&g.cycles?(g.wait/g.cycles*100).toFixed(1)+'%':'—';
     return `<tr><td>${{g.core}}</td><td>${{g.wave}}</td><td>${{g.role}}</td><td>${{g.event}}</td><td>${{g.count}}</td><td>${{g.tokens}}</td><td>${{g.mGroups}}</td><td>${{g.cycles.toLocaleString()}}</td><td>${{g.active.toLocaleString()}}</td><td>${{wait}}</td><td>${{waitPercent}}</td><td>${{g.max.toLocaleString()}}</td></tr>`;
+  }}).join('');
+}}
+function renderCombineTable(events) {{
+  const groups=new Map();
+  for(const e of events) {{
+    if(e.role!=='AIV1') continue;
+    const relevant=e.event_id===7 ||
+      (e.parent_event_id===7 && [11,16,17,18,19,20].includes(e.event_id));
+    if(!relevant) continue;
+    const key=`${{e.core}}|${{e.wave}}`;
+    const g=groups.get(key)||{{core:e.core,wave:e.wave,tokens:0,total:0,gmm2Wait:0,meta:0,row:0,issue:0,reuse:0,drain:0}};
+    if(e.event_id===7) {{ g.total+=e.duration_cycles; g.tokens=Math.max(g.tokens,e.token_count); }}
+    else if(e.event_id===11) g.gmm2Wait+=e.duration_cycles;
+    else if(e.event_id===16) g.meta+=e.duration_cycles;
+    else if(e.event_id===17) g.row+=e.duration_cycles;
+    else if(e.event_id===18) g.issue+=e.duration_cycles;
+    else if(e.event_id===19) g.reuse+=e.duration_cycles;
+    else if(e.event_id===20) g.drain+=e.duration_cycles;
+    groups.set(key,g);
+  }}
+  const rows=[...groups.values()].filter(g=>g.total>0).sort((a,b)=>a.core-b.core||a.wave-b.wave);
+  const fmt=value=>`${{value.toLocaleString()}} (${{(value/1000).toFixed(3)}} μs)`;
+  document.querySelector('#combineTable tbody').innerHTML=rows.map(g=>{{
+    const classified=g.gmm2Wait+g.meta+g.row+g.issue+g.reuse+g.drain;
+    const other=Math.max(0,g.total-classified);
+    const ratio=g.total?(classified/g.total*100).toFixed(1)+'%':'—';
+    return `<tr><td>${{g.core}}</td><td>${{g.wave}}</td><td>${{g.tokens}}</td><td>${{fmt(g.total)}}</td>`
+      +`<td>${{fmt(g.gmm2Wait)}}</td><td>${{fmt(g.meta)}}</td><td>${{fmt(g.row)}}</td>`
+      +`<td>${{fmt(g.issue)}}</td><td>${{fmt(g.reuse)}}</td><td>${{fmt(g.drain)}}</td>`
+      +`<td>${{fmt(other)}}</td><td>${{ratio}}</td></tr>`;
   }}).join('');
 }}
 function renderEventTable(events) {{

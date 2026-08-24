@@ -1207,6 +1207,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineW
     uint32_t ownedWaveRowEnd = ownedWaveRows.start + ownedWaveRows.count;
     uint32_t expertWaveRowBegin = 0U;
     uint32_t rowSequence = 0U;
+    WaveCombineTraceMetrics combineTraceMetrics{};
     while (!IsSameExpertRowCursor(combineCursor, waveEndCursor) &&
            combineCursor.expertIdx < moeExpertPerRank_) {
         uint32_t expertIdx = combineCursor.expertIdx;
@@ -1262,11 +1263,11 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineW
                 PreloadWaveCombineMetaInfo(
                     params_, waveCombineScratch_,
                     static_cast<uint64_t>(combineState.expertBeforeCnt) + groupProcessBegin,
-                    groupProcessCount, 0U);
+                    groupProcessCount, 0U, &combineTraceMetrics);
                 CombineWaveTokenRange<CombineQuantMode>(
                     waveCombineConfig_, bufferConfig, waveCombineScratch_, params_,
                     combineAddrInfo.gmm2OutGlobal, groupProcessBegin, groupProcessCount,
-                    0U, rowSequence);
+                    0U, rowSequence, &combineTraceMetrics);
             }
         }
 
@@ -1277,11 +1278,28 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineW
         }
         expertWaveRowBegin = expertWaveRowEnd;
     }
-    DrainWaveCombineRowRing<CombineQuantMode>(rowSequence);
+    DrainWaveCombineRowRing<CombineQuantMode>(rowSequence, &combineTraceMetrics);
 #if MEGA_MOE_ENABLE_WAVE_TRACE != 0
     combineAddrInfo.traceWaitContext = nullptr;
+    uint32_t traceEnd = MegaMoeWaveTraceDetail::Now();
+    uint32_t traceOffset = 0U;
+    traceOffset = waveTrace_.RecordAggregatedChild(
+        MegaMoeWaveTraceEvent::COMBINE_META_INFO_COPY, MegaMoeWaveTraceEvent::COMBINE,
+        traceScope, traceBegin, traceEnd, combineTraceMetrics.metaInfoCopyCycles, traceOffset);
+    traceOffset = waveTrace_.RecordAggregatedChild(
+        MegaMoeWaveTraceEvent::COMBINE_ROW_PREPARE, MegaMoeWaveTraceEvent::COMBINE,
+        traceScope, traceBegin, traceEnd, combineTraceMetrics.rowPrepareCycles, traceOffset);
+    traceOffset = waveTrace_.RecordAggregatedChild(
+        MegaMoeWaveTraceEvent::COMBINE_MTE3_ISSUE, MegaMoeWaveTraceEvent::COMBINE,
+        traceScope, traceBegin, traceEnd, combineTraceMetrics.mte3IssueCycles, traceOffset);
+    traceOffset = waveTrace_.RecordAggregatedChild(
+        MegaMoeWaveTraceEvent::WAIT_COMBINE_MTE3_REUSE, MegaMoeWaveTraceEvent::COMBINE,
+        traceScope, traceBegin, traceEnd, combineTraceMetrics.mte3ReuseWaitCycles, traceOffset);
+    waveTrace_.RecordAggregatedChild(
+        MegaMoeWaveTraceEvent::WAIT_COMBINE_MTE3_DRAIN, MegaMoeWaveTraceEvent::COMBINE,
+        traceScope, traceBegin, traceEnd, combineTraceMetrics.mte3DrainWaitCycles, traceOffset);
     waveTrace_.Record(MegaMoeWaveTraceEvent::COMBINE, traceScope,
-                      traceBegin, MegaMoeWaveTraceDetail::Now());
+                      traceBegin, traceEnd);
 #endif
 }
 
@@ -1307,9 +1325,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineE
         }
         RunWaveExpertCombineStage<CombineQuantMode>(
             waveCombineConfig_, bufferConfig, waveCombineScratch_, params_,
-            combineAddrInfo, combineState, rowSequence);
+            combineAddrInfo, combineState, rowSequence, nullptr);
     }
-    DrainWaveCombineRowRing<CombineQuantMode>(rowSequence);
+    DrainWaveCombineRowRing<CombineQuantMode>(rowSequence, nullptr);
 }
 
 template <TemplateMegaMoeWaveTypeClass>

@@ -58,6 +58,13 @@ enum class MegaMoeWaveTraceEvent : uint32_t {
     WAIT_DISPATCH_MTE3_REUSE = 13U,
     WAIT_DISPATCH_MTE3_DRAIN = 14U,
     WAIT_DISPATCH_READY_SYNC = 15U,
+    // Aggregated per-wave Combine metrics. Their durations are exact sums;
+    // their synthetic child intervals are not real timeline placement.
+    COMBINE_META_INFO_COPY = 16U,
+    COMBINE_ROW_PREPARE = 17U,
+    COMBINE_MTE3_ISSUE = 18U,
+    WAIT_COMBINE_MTE3_REUSE = 19U,
+    WAIT_COMBINE_MTE3_DRAIN = 20U,
 };
 
 namespace MegaMoeWaveTraceDetail {
