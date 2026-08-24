@@ -34,6 +34,7 @@ private:
                                         int64_t accumS2Len, int32_t actualSeqLensQ, int32_t actualSeqLensK);
     __aicore__ inline int32_t GetActualSeqLens(int64_t bIdx, GlobalTensor<int32_t> &actualSeqLensGm,
                                                 int64_t &accumLen, FagConstInfo constInfo);
+    __aicore__ inline bool HasDeterScatterWork(FagConstInfo &constInfo, FagRunInfo &runInfo);
 public:
     __aicore__ inline FAGBlockVec(){};
     __aicore__ inline void SetVecBlockParams(TPipe *pipe, SFagTilingType tilingData, uint32_t vBlockIdx,
@@ -622,6 +623,11 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
                                                                    const GlobalTensor<CALC_TYPE> &dvWorkSpaceGm,
                                                                    FagConstInfo &constInfo, FagRunInfo &runInfo)
 {
+    // 整轮 sel=0 时所有 Vector 核判定相同。跳过 Alloc/Fetch/flag12，只保留外面的 CV handshake。
+    // 连续 dummy ScatterAddDeter（mode3 因果空前缀）会在约第 18 次卡死 507014。
+    if (!HasDeterScatterWork(constInfo, runInfo)) {
+        return;
+    }
     int64_t UB_ROW_SIZE = 8;
     int64_t usedCoreNum = tilingData->baseParams.usedCoreNum;
     int64_t coreNum = GetBlockNum();
@@ -800,6 +806,42 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
     SetAtomicNone();
     dSOutQue.FreeTensor(dkInTensor);
     pOutQue.FreeTensor(dvInTensor);
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline bool FAGBlockVec<TEMPLATE_ARGS>::HasDeterScatterWork(FagConstInfo &constInfo, FagRunInfo &runInfo)
+{
+    int64_t usedCoreNum = tilingData->baseParams.usedCoreNum;
+    int64_t validT1 = tilingData->baseParams.totalSize;
+    if constexpr (IS_TND) {
+        validT1 = this->actualSeqLengthsQueryGm.GetValue(constInfo.bSize - 1);
+    }
+    int64_t bIdx = 0;
+    int64_t s1Idx = 0;
+    int64_t preBIdx = -1;
+    int64_t accumS1Len = 0;
+    int64_t accumS2Len = 0;
+    int64_t actualSeqLensQ = 0;
+    int64_t actualSeqLensK = 0;
+    for (int64_t idx = 0; idx < usedCoreNum; idx++) {
+        int64_t bS1Index = runInfo.sTaskId * usedCoreNum + idx;
+        if (bS1Index >= tilingData->baseParams.totalSize || bS1Index >= validT1) {
+            break;
+        }
+        if (!GetBS1Index(bS1Index, bIdx, s1Idx, constInfo)) {
+            continue;
+        }
+        if (bIdx != preBIdx) {
+            actualSeqLensQ = GetActualSeqLens(bIdx, this->actualSeqLengthsQueryGm, accumS1Len, constInfo);
+            actualSeqLensK = GetActualSeqLens(bIdx, this->actualSeqLengthsKeyGm, accumS2Len, constInfo);
+            preBIdx = bIdx;
+        }
+        GetRunInfo(bIdx, s1Idx, runInfo, constInfo, accumS2Len, actualSeqLensQ, actualSeqLensK);
+        if (runInfo.actualSelectedBlockCount > 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
 TEMPLATES_DEF_NO_DEFAULT
