@@ -23,9 +23,15 @@
 #include "quant_lightning_indexer_v2_common_arch35.h"
 #include "../arch35/vf/quant_lightning_indexer_v2_vector1.h"
 #include "../arch35/vf/quant_lightning_indexer_v2_topk.h"
+#if __has_include("../../lightning_indexer_v2/arch35/common/li_v2_vector_service_common.h")
+#include "../../lightning_indexer_v2/arch35/common/li_v2_vector_service_common.h"
+#else
+#include "../../../lightning_indexer_v2/op_kernel/arch35/common/li_v2_vector_service_common.h"
+#endif
 
 namespace QLIV2Kernel {
 using namespace QLIV2Common;
+using namespace liVectorServiceCommon;
 constexpr uint32_t TRUNK_LEN_16K = 16384;
 // LD阶段UB目标占用（248KB = 256KB UB - 8KB 系统保留）
 constexpr uint32_t LD_UB_TARGET_BYTES = 248 * 1024;
@@ -176,7 +182,7 @@ private:
     float globalQScale_ = 1.0f;      // quantMode=4时全局query scale
     float globalKScale_ = 1.0f;      // quantMode=4时全局key scale
     uint32_t trunkLen_ = 0;          // ProcessTopK（非LD路径）每次处理的s2长度
-    uint32_t trunkLenLd_ = 0;        // ProcessLD路径每次处理的s2长度，根据sparseCount动态计算以填满UB
+    uint32_t trunkLenLd_ = 0; // ProcessLD路径每次处理的s2长度，根据sparseCount动态计算以填满UB
     bool returnValueFlag = false;
 
     struct QLIV2Common::ConstInfo constInfo_;
@@ -199,8 +205,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(kScaleBuf_, 2 * s2BaseSize_ * 16 * sizeof(SCALE_T));
     kScaleUB_ = kScaleBuf_.Get<SCALE_T>(); // kScale
     // 大小：2(开dB) * 2 * 64 * 4 = 1KB
-    pipe->InitBuffer(qScaleBuf_,
-                     2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
+    pipe->InitBuffer(qScaleBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
     qScaleUB_ = qScaleBuf_.Get<SCALE_T>(); // qScale
     // 大小：2(开dB) * 2 * 128 * 4 = 2KB
     pipe->InitBuffer(outBuf_, 2 * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ * sizeof(SCORE_T));
@@ -383,57 +388,23 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::FreeEventID()
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::CleanInvalidOutput(int64_t invalidS1Offset)
 {
-    // init -1 and copy to output
-    uint64_t dealSize = constInfo_.sparseCount;
-    GlobalTensor<int32_t> indexOutput = indiceOutGm[invalidS1Offset];
-    AscendC::InitGlobalMemory(indexOutput, dealSize, constInfo_.INVALID_IDX);
-
-    if (returnValueFlag) {
-        WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-        Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>(), constInfo_.NEG_INF_BFLOAT,
-                  constInfo_.sparseCount);
-
-        SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-        WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-
-        AscendC::DataCopyParams copyOutValueParams;
-        copyOutValueParams.blockCount = 1;
-        copyOutValueParams.blockLen = constInfo_.sparseCount * sizeof(bfloat16_t);
-        copyOutValueParams.srcStride = 0;
-        copyOutValueParams.dstStride = 0;
-        AscendC::DataCopyPad(valueOutGm[invalidS1Offset], valueOutLocal_, copyOutValueParams);
-        SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-    }
+    liVectorServiceCommon::CleanInvalidOutput<bfloat16_t, false, true>(
+        indiceOutGm, valueOutGm, valueOutLocal_, invalidS1Offset, constInfo_.sparseCount, constInfo_.INVALID_IDX,
+        constInfo_.NEG_INF_BFLOAT, returnValueFlag, TOPK_MTE3_V_EVENT, TOPK_V_MTE3_EVENT);
 }
 
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::DoTndPadding(const QLIV2Common::RunInfo &runInfo)
 {
-    uint32_t paddingLen = runInfo.curCuSeqlensQ - runInfo.curSequsedQ;
-    uint64_t paddingOffset =
-        runInfo.indiceOutOffset + runInfo.curSequsedQ * constInfo_.kHeadNum * constInfo_.sparseCount;
-    uint64_t dealSize = paddingLen * constInfo_.kHeadNum * constInfo_.sparseCount;
-    GlobalTensor<int32_t> indiceOutPaddingStart = indiceOutGm[paddingOffset];
-    AscendC::InitGlobalMemory(indiceOutPaddingStart, dealSize, constInfo_.INVALID_IDX);
-
-    if (constInfo_.returnValue) {
-        SetFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
-        WaitFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
-
-        GlobalTensor<uint16_t> valueOutGmTmp;
-        valueOutGmTmp.SetGlobalBuffer((__gm__ uint16_t *)valueOutGm.GetPhyAddr());
-        GlobalTensor<uint16_t> valueOut = valueOutGmTmp[paddingOffset];
-
-        AscendC::InitGlobalMemory(valueOut, dealSize, constInfo_.NEG_INF_BFLOAT);
-        SetFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
-        WaitFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
-    }
+    liVectorServiceCommon::DoTndPadding<bfloat16_t>(indiceOutGm, valueOutGm, runInfo.curCuSeqlensQ, runInfo.curSequsedQ,
+                                                    runInfo.indiceOutOffset, constInfo_.kHeadNum,
+                                                    constInfo_.sparseCount, constInfo_.returnValue,
+                                                    constInfo_.INVALID_IDX, constInfo_.NEG_INF_BFLOAT, MTE3_V_EVENT);
 }
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::GetKeyScale(const QLIV2Common::RunInfo &runInfo,
-                                                        LocalTensor<SCALE_T> &kScaleUB,
-                                                        int64_t batchId, int64_t startS2,
-                                                        int64_t getLen)
+                                                        LocalTensor<SCALE_T> &kScaleUB, int64_t batchId,
+                                                        int64_t startS2, int64_t getLen)
 {
     // startS2一定能整除kCacheBlockSize_
     AscendC::DataCopyPadExtParams<SCALE_T> padParams{false, 0, 0, 0};
@@ -574,15 +545,13 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
                                               curAivS1ProcNum);
     } else if constexpr (IS_WEIGHT_FP16) {
         auto qScaleBase = qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(WEIGHT_T))];
-        auto kScaleBase = kScaleUB_[kScalepingpong * 16 * s2BaseSize_ +
-                                    ((info.s2Idx - info.s2Start) % 16) * s2BaseSize_];
-        vector1::BatchMulWeightAndReduceSum(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T),
-                                            qkBase, qkVLstride,
-                                            (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
-                                            weightBase, UB_BANK_DEPTH_STRIDE / sizeof(WEIGHT_T), weightTempBase,
-                                            kScaleBase, (uint32_t)0,
-                                            qScaleBase, UB_BANK_DEPTH_STRIDE / sizeof(SCALE_T),
-                                            gSize_, curAivS1ProcNum);
+        auto kScaleBase =
+            kScaleUB_[kScalepingpong * 16 * s2BaseSize_ + ((info.s2Idx - info.s2Start) % 16) * s2BaseSize_];
+        vector1::BatchMulWeightAndReduceSum(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T), qkBase, qkVLstride,
+                                            (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)), weightBase,
+                                            UB_BANK_DEPTH_STRIDE / sizeof(WEIGHT_T), weightTempBase, kScaleBase,
+                                            (uint32_t)0, qScaleBase, UB_BANK_DEPTH_STRIDE / sizeof(SCALE_T), gSize_,
+                                            curAivS1ProcNum);
     } else if (constInfo_.quantMode == 4) { // 4: per_tensor量化
         // quantMode为4时不适用sacle的UB
         float kScaleValue = globalKScale_;
