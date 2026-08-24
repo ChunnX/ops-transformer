@@ -95,6 +95,7 @@ class SparseFlashAttentionGradOpBuilder(OpBuilder):
 
 # Instantiate the builder (registers schema + meta at import time)
 sfag_op_builder = SparseFlashAttentionGradOpBuilder()
+sfag_op_builder._ensure_initialized()
 
 
 @impl(get_as_library(), sfag_op_builder.name, "PrivateUse1")
