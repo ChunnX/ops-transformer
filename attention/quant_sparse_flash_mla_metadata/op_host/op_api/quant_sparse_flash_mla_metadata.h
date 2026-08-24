@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef L0_QUANT_SPARSE_FLASH_MLA_METADATA_H
-#define L0_QUANT_SPARSE_FLASH_MLA_METADATA_H
+#ifndef L0_quant_sparse_flash_mla_metadata_H
+#define L0_quant_sparse_flash_mla_metadata_H
 
 #include "opdev/op_executor.h"
 
@@ -23,8 +23,7 @@ const aclTensor* QuantSparseFlashMlaMetadata(
     int64_t maxSeqlenOriKv, int64_t maxSeqlenCmpKv, int64_t oriTopk, int64_t cmpTopk,
     int64_t cmpRatio, int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight,
     const char *layoutQOptional, const char *layoutKvOptional, bool hasOriKv, bool hasCmpKv, const char *socVersion,
-    int64_t aicCoreNum, int64_t aivCoreNum, bool isBatchConsistency, const aclTensor *metaData,
-    aclOpExecutor *executor);
+    int64_t aicCoreNum, int64_t aivCoreNum, bool isBatchConsistency, const aclTensor *metaData, aclOpExecutor *executor);
 } // namespace l0op
 
 #endif

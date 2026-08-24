@@ -1294,7 +1294,7 @@ def gen_cmp_kv(
     cmp_k_bnsd, cmp_k_bnsd_npu, cmp_kv_descale = _gen_hif8_tensor(
         (B, N2, cmp_max_s2, D), cmp_kv_datarange, scale_datarange
     )
-    print("@@@@        cmp_kv_descale: ", cmp_kv_descale)
+
     if layout_kv == "TND":
         cmp_k_in_pa_shape = trans_kv_bnsd_to_tnd(
             cmp_k_bnsd_npu, cu_seqlens_cmp_kv, seqused_cmp_kv, B, N2, D, cmp_kv_type
@@ -1393,7 +1393,7 @@ def generate_and_save_testdata(
     runNpu: 生成完毕后执行npu计算
     return test_data
     """
-    seed = 0
+    seed = 42
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
@@ -1439,16 +1439,16 @@ def generate_and_save_testdata(
     ori_kv_datarange = params.get("ori_kv_datarange")
     cmp_kv_datarange = params.get("cmp_kv_datarange")
     q_descale_datarange = [
-        1.0,
-        1.0,
+        q_datarange[0] / FP8_DATA_RANGE_LEFT,
+        q_datarange[1] / FP8_DATA_RANGE_RIGHT,
     ]
     ori_kv_descale_datarange = [
-        1.0,
-        1.0,
+        ori_kv_datarange[0] / FP8_DATA_RANGE_LEFT,
+        ori_kv_datarange[1] / FP8_DATA_RANGE_RIGHT,
     ]
     cmp_kv_descale_datarange = [
-        1.0,
-        1.0,
+        cmp_kv_datarange[0] / FP8_DATA_RANGE_LEFT,
+        cmp_kv_datarange[1] / FP8_DATA_RANGE_RIGHT,
     ]
     K1 = params.get("K1")
     ori_kv_topk_mode = params.get("ori_kv_topk_mode", "no")
@@ -1511,6 +1511,7 @@ def generate_and_save_testdata(
             )
     else:
         raise ValueError(f"layout_q is not support {layout_q}")
+
     if len(seqused_ori_kv) != B:
         raise ValueError(
             f"len(seqused_ori_kv) != B, which is {len(seqused_ori_kv)} != {B}"
@@ -1533,11 +1534,10 @@ def generate_and_save_testdata(
 
     # generate sinks tensor (only when isSink=True)
     if isSink:
-        # sinks = (
-        #     torch.rand((N1)) * (q_datarange[1] - q_datarange[0]) / 10
-        #     + q_datarange[0] / 10
-        # ).to(torch.float)
-        sinks = torch.full((N1,), float("-inf"), dtype=torch.float)
+        sinks = (
+            torch.rand((N1)) * (q_datarange[1] - q_datarange[0]) / 10
+            + q_datarange[0] / 10
+        ).to(torch.float)
     else:
         sinks = None
 
@@ -1886,7 +1886,7 @@ def generate_cpu_golden(input_data, batch_consistency=None):
         state["ori_topk_length"],
         state["cmp_topk_length"],
         state["return_softmax_lse"],
-        batch_consistency=batch_consistency,
+        batch_consistency,
     )
     state["cpu_output"] = cpu_output
     state["cpu_lse"] = cpu_lse
