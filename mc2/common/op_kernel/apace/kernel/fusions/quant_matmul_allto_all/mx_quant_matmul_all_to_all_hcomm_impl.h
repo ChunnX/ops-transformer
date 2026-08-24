@@ -188,16 +188,18 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     const QuantMatmulTilingData &mmTile, uint32_t curTileM, Params &params)
 {
     // batchSize=1: 每卡只算自己的x1×x2,不遍历其他rank的B段
-    // x2每卡完整[K, N],不需要按rank切分
+    // ProblemShape.N=完整N(totalN),x2每卡完整[K, totalN]
+    // matmul输出[curTileM, totalN]写mmResult,AllToAll按N轴分发perRankN列
+    uint64_t totalN = axisNPerRank_ * rankDim_;
     params.problemShape = ProblemShape{
         static_cast<int64_t>(curTileM),
-        static_cast<int64_t>(axisNPerRank_),
+        static_cast<int64_t>(totalN),
         static_cast<int64_t>(axisK_),
         1};  // batch=1
 
     params.mmadParams = BlockMmadParams{
         x1_,
-        x2_,  // x2每卡完整,不偏移
+        x2_,  // x2每卡完整[K, totalN],不偏移
         mmResultGM_, nullptr,
         x1Scale_, x2Scale_};
 
@@ -235,10 +237,12 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
         }
         param.mmadParams.aGmAddr = aCur;
         param.mmadParams.scaleAGmAddr = aScaleCur;
+        // mmResult偏移按totalN步进(每tile输出[curTileM, totalN])
+        uint64_t totalN = axisNPerRank_ * rankDim_;
         uint64_t tileOffset = (tid < tileCnt_)
             ? static_cast<uint64_t>(tid) * tileM_
             : static_cast<uint64_t>(tileCnt_) * tileM_ + static_cast<uint64_t>(tid - tileCnt_) * tailM_;
-        param.mmadParams.cGmAddr = mmResultGM_ + tileOffset * axisNPerRank_ * sizeof(YType);
+        param.mmadParams.cGmAddr = mmResultGM_ + tileOffset * totalN * sizeof(YType);
         quantMatmulKernelImpl_(param);
 
         AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(tid);
@@ -271,6 +275,9 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
 
     if ASCEND_IS_AIV {
         // AIV逐tile HCCL通信
+        // mmResult布局[curTileM, totalN],AllToAll按N轴分发perRankN列
+        // 逐行发送: sendCount=perRankN, strideCount=totalN(行stride), batchCnt=curTileM(行数)
+        uint64_t totalN = axisNPerRank_ * rankDim_;
         AscendC::HcclHandle curHandle{0};
         AscendC::HcclHandle prevHandle{0};
         bool hasPrev = false;
@@ -283,12 +290,15 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
             uint64_t tileOffset = (tid < tileCnt_)
                 ? static_cast<uint64_t>(tid) * tileM_
                 : static_cast<uint64_t>(tileCnt_) * tileM_ + static_cast<uint64_t>(tid - tileCnt_) * tailM_;
-            uint64_t sendCount = static_cast<uint64_t>(curTileM) * axisNPerRank_;
+            // sendBuffer从mmResult的tile偏移开始(按totalN步进)
+            // recvBuffer写到y_的tile偏移(按perRankN步进,y布局[rankM, perRankN])
             curHandle = hccl_.template AlltoAll<true>(
-                mmResultGM_ + tileOffset * axisNPerRank_ * sizeof(YType),
+                mmResultGM_ + tileOffset * totalN * sizeof(YType),
                 y_ + tileOffset * axisNPerRank_ * sizeof(YType),
-                sendCount, static_cast<AscendC::HcclDataType>(yHcclDataType_),
-                sendCount, 1);
+                axisNPerRank_,  // sendCount: 每行perRankN个元素
+                static_cast<AscendC::HcclDataType>(yHcclDataType_),
+                totalN,  // strideCount: 行stride(跨行到下一行的同rank数据)
+                static_cast<uint8_t>(curTileM));  // batchCnt: 行数
 
             if (hasPrev) {
                 hccl_.Wait(prevHandle);
