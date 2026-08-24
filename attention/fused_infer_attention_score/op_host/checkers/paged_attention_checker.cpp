@@ -740,7 +740,7 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
     int32_t keyDim = fiaInfo.keyNonContigDim;
     int32_t valueDim = fiaInfo.valueNonContigDim;
     int32_t keyRopeDim = fiaInfo.keyRopeNonContigDim;
-
+    const string inputLayout = fiaInfo.opParamInfo.layOut;
     if (fiaInfo.npuArch == NpuArch::DAV_2201) {
         OP_CHECK_IF(!IsArch22MlaD512Dim0StrideCapable(fiaInfo),
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
@@ -763,7 +763,8 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
                     "Non-contiguous cache is not supported on the current architecture."),
                 return ge::GRAPH_FAILED);
 
-    if (enableAntiQuant_ || fiaInfo.fullQuantMode == FiaFullQuantMode::Q_PER_TOKEN_HEAD_KV_PER_TENSOR_FULL_QUANT) {
+    if (enableAntiQuant_ || !(fiaInfo.fullQuantMode == FiaFullQuantMode::Q_PER_TOKEN_HEAD_KV_PER_TENSOR_FULL_QUANT &&
+        inputLayout == "TND" && fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN)) {
         OP_CHECK_IF(keyDim != -1,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
                         fiaInfo.opName, "key",

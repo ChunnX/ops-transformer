@@ -118,6 +118,13 @@ inline __aicore__ void fia_fullquant_regbase(
                                                            actualSeqLengthsKV, blocktable, dequantScaleQuery,
                                                            key_antiquant_scale, value_antiquant_scale, quant_scale1,
                                                            queryRope, keyRope, attentionOut, softmaxLse, user, tiling);
+        } else if constexpr (quantMode == FULLQUANT_MODE_Q_PER_TOKEN_HEAD_KV_PER_TENSOR) {
+            run_fia_fullquant_mla_kernel<fp8_e4m3fn_t, bfloat16_t, inOutLayoutType, config, pseMode, quantMode,
+                                        hasAttenMask, hasRope, KvLayoutType, isFd, emptyTensor, enableKVPrefix,
+                                        enableS1OutSplit>(query, key, value, pseShift, attenMask, actualSeqLengths,
+                                                          actualSeqLengthsKV, blocktable, dequantScaleQuery,
+                                                          key_antiquant_scale, value_antiquant_scale, quant_scale1,
+                                                          queryRope, keyRope, attentionOut, softmaxLse, user, tiling);
         }
     } else {
         PARSE_PARAMS_FullQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd,

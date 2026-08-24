@@ -942,7 +942,7 @@ ge::graphStatus DequantChecker::CheckDequantScaleBnNBsDShapeMXFP8(const FiaTilin
                         std::to_string(dimIndex) + "th axis of valueAntiquantScale must be contiguous"),
                 return ge::GRAPH_FAILED);
 
-    // BnNBsD pa key --[blocknum, kv_n, blocksize, k_D/64, 2] // [fzj]
+    // BnNBsD pa key --[blocknum, kv_n, blocksize, k_D/64, 2]
     if ((fiaInfo.totalBlockNum != keyAntiquantScaleShape.GetDim(DIM_NUM_0)) ||
         (fiaInfo.n2Size != keyAntiquantScaleShape.GetDim(DIM_NUM_1)) ||
         (fiaInfo.blockSize != keyAntiquantScaleShape.GetDim(DIM_NUM_2)) ||
@@ -1690,10 +1690,18 @@ ge::graphStatus DequantChecker::CheckN1SizeFullquant(const FiaTilingInfo &fiaInf
 {
     if (enableQPerTokenHeadKVPerTensor_) {
         static const std::set<uint32_t> supportNumHeadForMLAFullQuant = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U};
-        OP_CHECK_IF((supportNumHeadForMLAFullQuant.find(fiaInfo.n1Size) == supportNumHeadForMLAFullQuant.end()),
+        static const std::set<uint32_t> supportNumHeadForMLAFullQuantFP8TND = {1U, 2U, 4U, 6U, 8U, 12U, 16U, 24U, 32U, 48U, 64U, 96U, 128U};
+        const string inputLayout = fiaInfo.opParamInfo.layOut;
+        const bool isMLAFullQuantNewTemplate = (inputLayout == "TND" && fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN);
+        OP_CHECK_IF((isMLAFullQuantNewTemplate && supportNumHeadForMLAFullQuantFP8TND.find(fiaInfo.n1Size) == supportNumHeadForMLAFullQuantFP8TND.end()),
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                         fiaInfo.opName, "num_heads", std::to_string(fiaInfo.n1Size).c_str(),
-                        "In MLA fullquant scenario, num_heads must be in {1, 2, 4, 8, 16, 32, 64, 128}"),
+                        "In TND MLA fullquant scenario, num_heads must be in {1, 2, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128}"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF((!isMLAFullQuantNewTemplate && supportNumHeadForMLAFullQuant.find(fiaInfo.n1Size) == supportNumHeadForMLAFullQuant.end()),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        fiaInfo.opName, "num_heads", std::to_string(fiaInfo.n1Size).c_str(),
+                        "In non-ND MLA fullquant scenario, num_heads must be in {1, 2, 4, 8, 16, 32, 64, 128}"),
                     return ge::GRAPH_FAILED);
     } else { // QN <= 256
         OP_CHECK_IF((fiaInfo.n1Size > N1_LIMIT || fiaInfo.n1Size < NUM1),
