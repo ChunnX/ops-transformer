@@ -20,9 +20,15 @@ using namespace std;
 
 class MhcPreTiling : public testing::Test {
 protected:
-    static void SetUpTestCase() { std::cout << "MhcPreTiling SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "MhcPreTiling SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "MhcPreTiling TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "MhcPreTiling TearDown" << std::endl;
+    }
 };
 
 template <typename T>
@@ -79,7 +85,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case01_B1_S1_n4_d1_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
@@ -121,7 +127,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case02_B1_S1_n6_d65535_FP16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
@@ -163,7 +169,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case03_B65535_S1_n8_d1_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
@@ -205,7 +211,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case04_B2_S4096_n4_d1536_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -252,7 +258,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case05_B2_S4096_n6_d2048_FP16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -299,7 +305,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case06_B2_S4096_n8_d6144_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -346,7 +352,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case07_B256_S1024_n4_d2048_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
@@ -393,7 +399,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case08_B20_S4096_n6_d1024_FP16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
@@ -440,7 +446,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case09_B8_S512_n8_d768_FP16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -487,7 +493,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case10_B32_S256_n4_d512_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -534,7 +540,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case11_B1_S8192_n6_d256_FP16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -581,7 +587,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case12_B128_S64_n8_d1024_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -628,7 +634,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case13_B4_S2048_n4_d3072_FP16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -675,7 +681,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case14_B16_S1024_n6_d128_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
@@ -722,7 +728,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case15_B64_S128_n8_d4096_FP16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -769,7 +775,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case16_B2_S32768_n4_d512_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
@@ -816,7 +822,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case17_B48_S512_n6_d2048_FP16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
@@ -863,7 +869,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case18_B12_S1536_n8_d1536_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
@@ -910,7 +916,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case19_B1_S1_n4_d128_FP16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -957,7 +963,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case20_B1024_S32_n6_d768_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
@@ -1003,7 +1009,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case21_T1024_n6_d768_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -1054,7 +1060,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case22_B2_S4096_n4_d1536_NoGamma)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -1102,7 +1108,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case23_OutFlag1_SplitBS_BSND_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -1150,7 +1156,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case24_OutFlag1_SplitND_BSND_FP16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -1197,7 +1203,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case25_OutFlag1_SplitBS_TND_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -1244,7 +1250,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case26_OutFlag1_SplitND_TND_FP16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -1292,7 +1298,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case27_OutFlag1_LongSeq_BSND_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
@@ -1336,7 +1342,7 @@ TEST_F(MhcPreTiling, Ut_Check_BasicApi_N4_SplitBS_HasResi_Gamma)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
@@ -1385,7 +1391,7 @@ TEST_F(MhcPreTiling, Ut_Check_BasicApi_N6_SplitBS)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
@@ -1427,7 +1433,7 @@ TEST_F(MhcPreTiling, Ut_Check_BasicApi_N8_LongM_Workspace)
                                               {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
                                                {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
                                                {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-                                              &compileInfo);
+                                              &compileInfo, "Ascend950", 32);
 
     TilingInfo tilingInfo;
     ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
@@ -1472,7 +1478,7 @@ TEST_F(MhcPreTiling, Ut_Check_MK_N4_M1024_D5120_HasResi)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -1573,7 +1579,7 @@ TEST_F(MhcPreTiling, Ut_Check_InvalidAlphaRank)
                                               {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                                                {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
                                                {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}},
-                                              &compileInfo);
+                                              &compileInfo, "Ascend950", 32);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
@@ -1602,7 +1608,7 @@ TEST_F(MhcPreTiling, Ut_Check_InvalidAlphaShape)
                                               {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                                                {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
                                                {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}},
-                                              &compileInfo);
+                                              &compileInfo, "Ascend950", 32);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
@@ -1631,7 +1637,7 @@ TEST_F(MhcPreTiling, Ut_Check_InvalidXRank)
                                               {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                                                {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
                                                {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}},
-                                              &compileInfo);
+                                              &compileInfo, "Ascend950", 32);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
@@ -1660,7 +1666,7 @@ TEST_F(MhcPreTiling, Ut_Check_InvalidHMixShape)
                                               {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                                                {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
                                                {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}},
-                                              &compileInfo);
+                                              &compileInfo, "Ascend950", 32);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
@@ -1692,7 +1698,7 @@ static void CheckMkGeneralizedTiling(uint32_t totalLength, uint32_t n, uint32_t 
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(0.000001f)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(0.000001f)},
          {"op_impl_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(implMode)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32);
     tilingContextPara.deterministicInfo_ = deterministicLevel;
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectedTilingKey, "", {}, 0, TilingData2Str<int32_t>);
@@ -1792,9 +1798,15 @@ TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_N4_Boundary)
     CheckMkGeneralizedTiling(10241U, 4U, 5120U, 0);
 }
 
-TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_N6_KTail) { CheckMkGeneralizedTiling(1000U, 6U, 2576U, 2); }
+TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_N6_KTail)
+{
+    CheckMkGeneralizedTiling(1000U, 6U, 2576U, 2);
+}
 
-TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_N8_WideFusion) { CheckMkGeneralizedTiling(1024U, 8U, 6144U, 2); }
+TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_N8_WideFusion)
+{
+    CheckMkGeneralizedTiling(1024U, 8U, 6144U, 2);
+}
 
 TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_NoResi)
 {
