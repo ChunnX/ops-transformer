@@ -634,10 +634,9 @@ __aicore__ inline void CompressorVec1SliceIterator<COMP>::IteratorSlice()
 {
     uint32_t cmpRatio = tools_.toolParams_.cmpRatio;
     if constexpr (IS_STATISTIC) {
-        statisticInfo_.actualTcCnt += sliceInfo_.dealTcSize;
         statisticInfo_.compressorScCnt += sliceInfo_.compressTcSize;
     }
-    needDealTcSize_ -= sliceInfo_.dealTcSize;
+    needDealTcSize_ -= sliceInfo_.compressTcSize;
     sliceInfo_.dealedSeqCnt += sliceInfo_.validSeqCnt;
     sliceInfo_.compressoredScCnt += sliceInfo_.compressTcSize;
     sliceInfo_.sIdx += sliceInfo_.validSeqCnt;
@@ -688,29 +687,8 @@ __aicore__ inline void CompressorVec1SliceIterator<COMP>::IteratorSlice()
                         CeilDivT(sliceInfo_.bStartPos + seqLength, static_cast<uint64_t>(cmpRatio)) -
                         CeilDivT(sliceInfo_.bStartPos + sliceInfo_.sIdx, static_cast<uint64_t>(cmpRatio)));
                 }
-
-                if (needDealTcSize_ < tcGap) {
-                    // ── (B) 部分跳过：任务量不足以跳过整个空洞 ──
-                    // 只推进任务量对应的行（needTc 个块 = needTc*cmpRatio 行），clamp 到空洞内。
-                    //
-                    // ★特殊4：needTc == 0 时不推进任何行——行推进必须与任务量消耗严格
-                    //   对应；否则核起点"行已推进、块未消耗"，后续核分到无行的块
-                    //   （读窗口外数据 / 输出丢失）。
-                    //
-                    // ★特殊5：needTc*cmpRatio 可能超过空洞行数（尾部块凑不齐一块），
-                    //   clamp 后停在空洞末尾，不越界（"凑不齐也算一块"的任务量不变）。
-                    uint32_t skip = min(needDealTcSize_ * cmpRatio, gapRows);
-                    sliceInfo_.dealedSeqCnt += skip;
-                    sliceInfo_.sIdx += skip;
-                    needDealTcSize_ = 0;
-                    break;                       // 任务量耗尽：迭代终止
-                }
-                // ── (C) 完整跳过：推进整个空洞，消耗 tcGap 个 Tc ──
-                // 空洞全部行在本 batch 内，推进后 sIdx 到达 seqLength（batch 末尾），
-                // 随后换到下一个 batch。
                 sliceInfo_.dealedSeqCnt += gapRows;
                 sliceInfo_.sIdx += gapRows;
-                needDealTcSize_ -= tcGap;
             }
             sliceInfo_.bIdx++;
             if (sliceInfo_.bIdx == batch_size_) {

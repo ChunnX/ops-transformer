@@ -1046,7 +1046,7 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::DealVec1BaseBlock(
     Vec1SliceInfo originSliceInfo = sliceIterator.GetSlice();
     uint32_t needDealTcSize = sliceIterator.GetNeedDealTcSize();
     StatisticInfo &statisticInfo = sliceIterator.template FullIteratorSlice<true>();
-    if (statisticInfo.actualTcCnt == 0) {
+    if (statisticInfo.compressorScCnt == 0) {
         return;
     }
     LocalTensor<T> scoreLocal = tmpBuf1.Get<T>();
@@ -1123,11 +1123,11 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::UpdateIteratorState(
     uint32_t endB = splitInfo.preDealBatchNum + splitInfo.dealBatchNum;
     for (uint32_t curB = 0; curB < constInfo_.batchSize; curB++) {
         uint32_t startPos = GetStartPos(curB);
-        uint32_t seqLength = GetSeqLength(curB);
+        uint32_t seqUsed = GetSeqUsed(curB);
         if (curB < splitInfo.curBStart) {
-            splitInfo.preCompressedCnt += (startPos + seqLength) / cmpRatio_ - startPos / cmpRatio_;
+            splitInfo.preCompressedCnt += (startPos + seqUsed) / cmpRatio_ - startPos / cmpRatio_;
         } else {
-            totalCompressedCnt_ += (startPos + seqLength) / cmpRatio_ - startPos / cmpRatio_;
+            totalCompressedCnt_ += (startPos + seqUsed) / cmpRatio_ - startPos / cmpRatio_;
         }
     }
     totalCompressedCnt_ += splitInfo.preCompressedCnt;
@@ -1218,9 +1218,9 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ComputeVec1()
         uint32_t curLoopCompressedCnt = 0;
         for (uint32_t curB = splitInfo.curBStart; curB < splitInfo.curBStart + curLoopBatchNum; curB++) {
             uint32_t startPos = GetStartPos(curB);
-            uint32_t seqLength = GetSeqLength(curB);
-            splitInfo.dealTcNum += CeilDivT(startPos + seqLength, cmpRatio_) - (startPos / cmpRatio_);
-            curLoopCompressedCnt += (startPos + seqLength) / cmpRatio_ - startPos / cmpRatio_;
+            uint32_t seqUsed = GetSeqUsed(curB);
+            splitInfo.dealTcNum += (startPos + seqUsed) / cmpRatio_ - startPos / cmpRatio_;
+            curLoopCompressedCnt += (startPos + seqUsed) / cmpRatio_ - startPos / cmpRatio_;
         }
         sliceIterator.Reset(splitInfo.curBStart, splitInfo.curSStart, 0U, 0U);
         sliceIterator.SetNeedDealTcSize(splitInfo.dealTcNum);
