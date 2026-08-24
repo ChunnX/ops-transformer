@@ -15,6 +15,9 @@
 
 #include "sparse_lightning_indexer_kl_loss_grad_tiling_general.h"
 #include "../op_kernel/arch22/sparse_lightning_indexer_kl_loss_grad_metadata_arch22.h"
+#include <cctype>
+#include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 #include <tiling/tiling_api.h>
@@ -26,6 +29,66 @@ namespace optiling {
 
 static const int64_t PING_PONG_VALUE = 2L;
 static constexpr size_t WORK_SPACE_RESERVE_SIZE = 16 * 1024 * 1024;
+static constexpr int64_t PRIVATE_DK_SCATTER_MAX_RATIO = 128;
+static constexpr int64_t PRIVATE_DK_SCATTER_RATIO_K_MAX = 131072;
+static constexpr int64_t WORKSPACE_SIZE_MAX = 64LL * 1024 * 1024 * 1024;
+
+enum class DkScatterMode : int32_t {
+    AUTO = 0,
+    PRIVATE_DK = 1,
+    TWO_BANK = 2,
+};
+
+static bool EnvTokenEq(const char *env, const char *expect)
+{
+    if (env == nullptr || expect == nullptr) {
+        return false;
+    }
+    while (*env != '\0' && *expect != '\0') {
+        const unsigned char a = static_cast<unsigned char>(*env);
+        const unsigned char b = static_cast<unsigned char>(*expect);
+        if (std::tolower(a) != std::tolower(b)) {
+            return false;
+        }
+        ++env;
+        ++expect;
+    }
+    return *env == '\0' && *expect == '\0';
+}
+
+static DkScatterMode GetDkScatterMode()
+{
+    const char *env = std::getenv("SLIKG_DK_SCATTER");
+    if (env == nullptr || env[0] == '\0' || EnvTokenEq(env, "auto") || EnvTokenEq(env, "default")) {
+        return DkScatterMode::AUTO;
+    }
+    if (EnvTokenEq(env, "private") || EnvTokenEq(env, "1")) {
+        return DkScatterMode::PRIVATE_DK;
+    }
+    if (EnvTokenEq(env, "legacy") || EnvTokenEq(env, "two_bank") || EnvTokenEq(env, "2bank") ||
+        EnvTokenEq(env, "2-bank") || EnvTokenEq(env, "0")) {
+        return DkScatterMode::TWO_BANK;
+    }
+    return DkScatterMode::AUTO;
+}
+
+static int64_t CalcWorkspaceSize(int64_t scatterAddOutSize, int64_t scatterBankNum, int64_t multiCoreBase)
+{
+    return multiCoreBase + scatterAddOutSize * scatterBankNum + static_cast<int64_t>(WORK_SPACE_RESERVE_SIZE);
+}
+
+static bool SelectPrivateDkScatter(int64_t scatterElems, int64_t totalS1, int64_t batchSize, int64_t topK)
+{
+    if (scatterElems <= 0 || totalS1 <= 0 || batchSize <= 0 || topK <= 0) {
+        return false;
+    }
+    if (scatterElems > PRIVATE_DK_SCATTER_MAX_RATIO * totalS1) {
+        return false;
+    }
+    const int64_t avgS2 = scatterElems / batchSize;
+    const int64_t kReal = topK < avgS2 ? topK : avgS2;
+    return scatterElems * kReal <= PRIVATE_DK_SCATTER_RATIO_K_MAX * totalS1;
+}
 
 static constexpr uint32_t BUFFER_SIZE_BYTE_1K = 1024;
 static constexpr uint32_t BUFFER_SIZE_BYTE_2K = 2 * 1024;
@@ -359,11 +422,6 @@ ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::InitOutputSplit()
         return ge::GRAPH_FAILED;
     }
     initoutput->set_singleCoreSize(static_cast<uint32_t>(singleCoreSize));
-
-    if (totalSize > INT64_MAX / 2) {
-        OP_LOGE(context_, "totalOutputSize(%ld) exceeds safe limit.", totalSize);
-        return ge::GRAPH_FAILED;
-    }
     initoutput->set_totalOutputSize(totalSize);
     return ge::GRAPH_SUCCESS;
 }
@@ -401,7 +459,8 @@ uint64_t SparseLightningIndexerKLLossGradTilingBase::GetTilingKey() const
     return GET_TPL_TILING_KEY(static_cast<uint8_t>(false), static_cast<uint32_t>(topkSize),
                               static_cast<uint8_t>(qLayout), static_cast<uint8_t>(kLayout),
                               static_cast<uint8_t>(sparseMode), static_cast<uint8_t>(hasSequsedQ),
-                              static_cast<uint8_t>(hasSequsedK), static_cast<uint8_t>(deterministic));
+                              static_cast<uint8_t>(hasSequsedK), static_cast<uint8_t>(deterministic),
+                              static_cast<uint8_t>(privateDkScatter));
 }
 
 ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::GetWorkspaceSize()
@@ -414,22 +473,55 @@ ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::GetWorkspaceSize()
     int64_t reluGradSize = static_cast<int64_t>(gSizeQueryIndex) * kSize * sizeof(float);
     int64_t psySyncSize = (static_cast<int64_t>(kSize) * 2 + 32 / sizeof(float)) * sizeof(float);
     int64_t bmm3Size = static_cast<int64_t>(kSize) * dSizeQueryIndex * sizeof(float);
-    int64_t scatterAddOutSize = (tilingKeyLayout == LayoutType::LAYOUT_TND) ?
-                                    accumS2 * dSizeQueryIndex * sizeof(float) :
-                                    static_cast<int64_t>(bSize) * s2Size * dSizeQueryIndex * sizeof(float);
 
+    int64_t scatterElems =
+        (tilingKeyLayout == LayoutType::LAYOUT_TND) ? accumS2 : static_cast<int64_t>(bSize) * s2Size;
+    int64_t scatterAddOutSize = scatterElems * static_cast<int64_t>(dSizeQueryIndex) * static_cast<int64_t>(sizeof(float));
+
+    int64_t coreNum = static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum());
     int64_t singleCoreTotalSize =
         PING_PONG_VALUE * (pSize + bmm1Size + bmm2Size + reluGradSize + sySize + psySyncSize + bmm3Size);
-    int64_t multiCoreTotalSize = 0;
+    int64_t multiCoreBase = singleCoreTotalSize * coreNum;
+
+    privateDkScatter = false;
+    int64_t scatterBankNum = 1;
+    int64_t totalS1 = 0;
     if (deterministic) {
-        multiCoreTotalSize = singleCoreTotalSize * static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum()) +
-                             scatterAddOutSize * static_cast<int64_t>(SLI_DETER_SCATTER_BANK_NUM);
-    } else {
-        multiCoreTotalSize = singleCoreTotalSize * static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum()) +
-                             scatterAddOutSize;
+        const DkScatterMode dkScatterMode = GetDkScatterMode();
+        if (dkScatterMode == DkScatterMode::TWO_BANK) {
+            scatterBankNum = static_cast<int64_t>(SLI_DETER_SCATTER_BANK_NUM);
+        } else {
+            if (dkScatterMode == DkScatterMode::PRIVATE_DK) {
+                privateDkScatter = (scatterElems > 0 && coreNum > 0);
+            } else {
+                totalS1 = CalcTotalSize();
+                privateDkScatter = SelectPrivateDkScatter(scatterElems, totalS1, static_cast<int64_t>(bSize),
+                                                          static_cast<int64_t>(kSize));
+            }
+            scatterBankNum = privateDkScatter ? coreNum : static_cast<int64_t>(SLI_DETER_SCATTER_BANK_NUM);
+        }
     }
-    workspaces[0] = static_cast<size_t>(multiCoreTotalSize) + WORK_SPACE_RESERVE_SIZE;
-    OP_LOGW(context_, "workspace size:[%zu], multicoreTotalSize:[%ld]", workspaces[0], multiCoreTotalSize);
+
+    int64_t workspaceSize = CalcWorkspaceSize(scatterAddOutSize, scatterBankNum, multiCoreBase);
+    if (workspaceSize >= WORKSPACE_SIZE_MAX && privateDkScatter) {
+        OP_LOGW(context_,
+                "private dk scatter workspace exceed 64GiB, fallback two-bank. scatterElems:[%ld], coreNum:[%ld]",
+                scatterElems, coreNum);
+        privateDkScatter = false;
+        scatterBankNum = static_cast<int64_t>(SLI_DETER_SCATTER_BANK_NUM);
+        workspaceSize = CalcWorkspaceSize(scatterAddOutSize, scatterBankNum, multiCoreBase);
+    }
+    if (workspaceSize >= WORKSPACE_SIZE_MAX) {
+        OP_LOGE(context_, "workspace size exceed 64GiB.");
+        return ge::GRAPH_FAILED;
+    }
+    const int64_t multiCoreTotalSize = multiCoreBase + scatterAddOutSize * scatterBankNum;
+    workspaces[0] = static_cast<size_t>(workspaceSize);
+    OP_LOGW(context_,
+            "workspace size:[%zu], multicoreTotalSize:[%ld], scatterElems:[%ld], totalS1:[%ld], kSize:[%d], "
+            "scatterBankNum:[%ld], privateDkScatter:[%d]",
+            workspaces[0], multiCoreTotalSize, scatterElems, totalS1, kSize, scatterBankNum,
+            static_cast<int>(privateDkScatter));
     return ge::GRAPH_SUCCESS;
 }
 
