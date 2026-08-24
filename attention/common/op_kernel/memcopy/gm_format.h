@@ -9,19 +9,18 @@
  */
 
 /*!
- * \file flash_mla_with_kvcache_gm_format.h
- * \brief GM 格式推导（Q/KV），与 fused_infer_attention_score/op_kernel/arch35/
- *        flash_attention_score_block_cube.h:30-70 逐字一致（只读参考）。
- *        四件套（flash_mla_with_kvcache_block_cube_noquant_mla.h:44-47）直接调用这两个模板；
- *        FIA 的 TU 经由其自家 block_cube_base 链自然携带，flash_mla_with_kvcache 的 kernel 拷贝树
- *        不含跨算子文件，故在本算子内部补一份（编译期实测依赖）。
+ * \file gm_format.h
+ * \brief 公共 GM 格式推导（Q/KV 布局 → GmFormat 编译期映射，arch35 通路）。
+ *        权威定义：fused_infer_attention_score 与 flash_mla_with_kvcache 共用；
+ *        各算子的 arch35 头（如 flash_mla_with_kvcache_gm_format.h、
+ *        fused_infer_attention_score/op_kernel/arch35/flash_attention_score_block_cube.h:30-70）
+ *        应只 include 本头，不再各自复制模板体。
  */
-
-#ifndef FLASH_MLA_WITH_KVCACHE_GM_FORMAT_H_
-#define FLASH_MLA_WITH_KVCACHE_GM_FORMAT_H_
+#ifndef GM_FORMAT_H
+#define GM_FORMAT_H
 
 #include "kernel_operator_list_tensor_intf.h"
-#include "../../../common/op_kernel/memcopy/gm_layout.h"
+#include "gm_layout.h"
 
 namespace BaseApi {
 
@@ -67,4 +66,4 @@ __aicore__ inline constexpr GmFormat GetKVGmFormat()
 
 } // namespace BaseApi
 
-#endif // FLASH_MLA_WITH_KVCACHE_GM_FORMAT_H_
+#endif // GM_FORMAT_H

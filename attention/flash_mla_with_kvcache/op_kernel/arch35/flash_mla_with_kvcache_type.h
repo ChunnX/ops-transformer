@@ -24,7 +24,7 @@
 #include "../../../common/op_kernel/arch35/util_regbase.h"
 #include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
 #include "../../../common/op_kernel/memcopy/parser.h"
-#include "flash_mla_with_kvcache_gm_format.h"
+#include "../../../common/op_kernel/memcopy/gm_format.h"
 
 namespace BaseApi {
 
