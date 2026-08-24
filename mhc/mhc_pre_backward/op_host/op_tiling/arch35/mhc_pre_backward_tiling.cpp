@@ -38,7 +38,7 @@ const constexpr int64_t INDEX_T = 0;
 const constexpr int64_t INDEX_N = 1;
 const constexpr int64_t INDEX_D_TND = 1;
 
-const constexpr int32_t C0_BASE_M = 256;
+const constexpr int32_t C0_BASE_M = 128;
 const constexpr int32_t C0_BASE_N = 128;
 const constexpr int32_t C0_BASE_K = 32;
 const constexpr uint32_t MIN_D_LENGTH = 1;
@@ -58,10 +58,10 @@ const constexpr uint32_t WORKSPACE_ALIGN_SIZE = 32;
 const constexpr uint64_t SYSTEM_WORKSPACE_SIZE = 40 * 1024 * 1024;
 const constexpr int32_t SCHEDULE_MODE = 1;
 
-const constexpr uint32_t C0_SET_SHAPE_M = 1024;
+const constexpr uint32_t C0_SET_SHAPE_M = 128;
 const constexpr uint32_t C0_SET_SHAPE_N = 128;
 const constexpr uint32_t C1_SET_SHAPE_M_BASE = 128;
-const constexpr uint32_t C1_SET_SHAPE_K = 1024;
+const constexpr uint32_t C1_SET_SHAPE_K = C0_SET_SHAPE_M;
 
 REGISTER_OPS_TILING_TEMPLATE(MhcPreBackward, MhcPreBackwardTiling, DEFAULT_TILING_PRIORITY);
 
@@ -315,7 +315,7 @@ void MhcPreBackwardTiling::SetMatmulC0Tiling(matmul_tiling::MatmulApiTiling &mm)
 {
     mm.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT, false);
     mm.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT, false);
-    mm.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT);
+    mm.SetCType(matmul_tiling::TPosition::VECIN, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT);
     mm.SetBias(false);
     mm.SetShape(C0_SET_SHAPE_M, C0_SET_SHAPE_N, N_ * N_ + 2 * N_);
     mm.SetOrgShape(totalLength_, N_ * D_, N_ * N_ + 2 * N_);
