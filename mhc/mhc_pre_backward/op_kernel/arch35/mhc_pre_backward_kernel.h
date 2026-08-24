@@ -210,7 +210,8 @@ private:
     TQue<QuePosition::VECOUT, 1> vecOutQueue1_;
     TQue<QuePosition::VECIN, 1> vecInQueue1_;
     TQue<QuePosition::VECOUT, 1> vecOutQueueSmall_;
-    TQueBind<TPosition::CO2, TPosition::VECIN, DOUBLE_BUFFER> c0OutQueue_;
+    TBuf<TPosition::VECIN> c0OutTBuf_;
+    LocalTensor<P> c0OutUb_[DOUBLE_BUFFER];
 
     TBuf<TPosition::VECCALC> fp32TBuf_;
 
@@ -284,7 +285,10 @@ template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParams initParams)
 {
     pipe_ = initParams.tPipeIn;
-    pipe_->InitBuffer(c0OutQueue_, DOUBLE_BUFFER, C0_UB_BUFFER_SIZE);
+    pipe_->InitBuffer(c0OutTBuf_, DOUBLE_BUFFER * C0_UB_BUFFER_SIZE);
+    constexpr uint32_t c0UbElementCount = C0_UB_BUFFER_SIZE / sizeof(P);
+    c0OutUb_[0] = c0OutTBuf_.GetWithOffset<P>(c0UbElementCount, 0);
+    c0OutUb_[1] = c0OutTBuf_.GetWithOffset<P>(c0UbElementCount, C0_UB_BUFFER_SIZE);
     vecDealChunk_ = N_ > LARGE_N_THRESHOLD ? VEC_DEAL_CHUNK_LARGE_N : VEC_DEAL_CHUNK_SMALL_N;
     hPreMaxBufLen_ = vecDealChunk_ * N_;
     hPostMaxBufLen_ = hPreMaxBufLen_;
@@ -976,12 +980,10 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, 
     mm0.SetTensorA(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)]); // [BS, N^2+2N]
     mm0.SetTensorB(phiGm_[offsetND], false);                                 // [N^2+2N, ND]
     // SplitN策略将C0结果沿N轴一分为二，直接写入两个AIV的UB。
-    LocalTensor<P> c0OutUb = c0OutQueue_.AllocTensor<P>();
     while (mm0.Iterate()) {
-        mm0.GetTensorC(c0OutUb, 0, true);
+        mm0.GetTensorC(c0OutUb_[buffIdx], 0, true);
     }
     mm0.End();
-    c0OutQueue_.EnQue(c0OutUb);
 
     // 两个UB buffer使用独立flag，避免AIC预取下一块时覆盖尚未被AIV消费的通知。
     if (buffIdx == 0) {
@@ -1054,9 +1056,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2Pipeline()
             }
 
             // C0结果已由SplitN策略直接写入当前AIV的UB。
-            LocalTensor<P> c0OutUb = c0OutQueue_.DeQue<P>();
-            ProcessV2(offsetND, copySizeND, offsetBS, offsetBS + currentBSBlock, sumBuf, buffId, c0OutUb);
-            c0OutQueue_.FreeTensor(c0OutUb);
+            ProcessV2(offsetND, copySizeND, offsetBS, offsetBS + currentBSBlock, sumBuf, buffId,
+                      c0OutUb_[currentBuffIdx]);
             // 通知C1计算
             if (currentBuffIdx == 0) {
                 AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_MTE3>(CROSS_CORE_WAIT_FLAG_C1_BUFFER0);
