@@ -387,8 +387,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressT
     ascendc_assert(entriesPerRank > 0U, "combine address-table UB is too small, epWorldSize=%u", epWorldSize_);
     LocalTensor<uint32_t> addressEntries = addressTableBuf_.Get<uint32_t>();
     constexpr uint32_t entryElements = ADDRESS_ENTRY_UB_BYTES / sizeof(uint32_t);
-    DataCopyParams addressCopyParams{0U, static_cast<uint16_t>(ADDRESS_ENTRY_UB_BYTES), 0U,
-                                     static_cast<uint16_t>(ADDRESS_ENTRY_GM_BYTES - ADDRESS_ENTRY_UB_BYTES)};
+    // DataCopyParams uses 32-byte blocks, unlike the byte-based DataCopyPad parameters above.
+    DataCopyParams addressCopyParams{
+        0U, static_cast<uint16_t>(ADDRESS_ENTRY_UB_BYTES / UB_ALIGN), 0U,
+        static_cast<uint16_t>((ADDRESS_ENTRY_GM_BYTES - ADDRESS_ENTRY_UB_BYTES) / UB_ALIGN)};
     for (uint64_t groupStart = scanStart; groupStart < scanEnd; groupStart += entriesPerRank) {
         uint64_t groupEnd = (groupStart + entriesPerRank > scanEnd) ? scanEnd : groupStart + entriesPerRank;
         uint32_t groupTokens = static_cast<uint32_t>(groupEnd - groupStart);
@@ -398,7 +400,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressT
         LocalTensor<uint32_t> weightsLocal;
         if constexpr (HasTopkWeight == 1) {
             weightsLocal = weightsBuf_.Get<uint32_t>();
-            DataCopyExtParams weightCopyParams{1U, groupTokens * sizeof(uint32_t), 0U, 0U, 0U};
+            DataCopyExtParams weightCopyParams{1U, static_cast<uint32_t>(groupTokens * sizeof(uint32_t)), 0U, 0U, 0U};
             const DataCopyPadExtParams<uint32_t> weightPadParams{false, 0U, 0U, 0U};
             DataCopyPad(weightsLocal, topkWeightsGm_[groupStart].template ReinterpretCast<uint32_t>(),
                         weightCopyParams, weightPadParams);

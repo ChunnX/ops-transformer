@@ -266,6 +266,9 @@ entryAddr = GetLocalSendDataWorkspaceAddr(srcRank)
 通过一次 strided MTE3 `DataCopy` 把同一 rank 的多条 32B UB 记录写到间隔 512B 的 GM 表项中，随后
 推进该 rank 的局部 prefix。这里不调用 `WriteGmByPassDCache()`。
 
+普通 `DataCopy` 的 `DataCopyParams` 使用 32B block 为单位，因此参数是 `blockLen=1`、
+`dstStride=(512-32)/32=15`，与 PR 10309 的 `addrInfoCopyOutParams` 一致。
+
 每个 rank 最多允许：
 
 ```text
