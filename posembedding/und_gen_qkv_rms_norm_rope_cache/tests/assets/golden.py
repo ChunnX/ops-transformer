@@ -80,7 +80,9 @@ BLOCK_SIZE = 128
 # 工具
 def make_cos_sin_cache(max_pos, head_dim, device="cpu", base=10000.0):
     """构造 cos_sin_cache [max_pos, head_dim]，前半 cos 后半 sin（与竞品一致）。"""
-    inv_freq = 1.0 / (base ** (torch.arange(0, head_dim, 2, device=device).float() / head_dim))
+    inv_freq = 1.0 / (
+        base ** (torch.arange(0, head_dim, 2, device=device).float() / head_dim)
+    )
     freqs = torch.outer(torch.arange(max_pos, device=device).float(), inv_freq)
     return torch.cat([freqs.cos(), freqs.sin()], dim=-1).contiguous()
 
@@ -117,7 +119,9 @@ def _normalize_qkv(x, num_heads_total, name):
     if x is None:
         return None
     if x.dim() == 2:
-        assert x.shape[1] % num_heads_total == 0, f"{name} 的 hidden 无法被 N={num_heads_total} 整除"
+        assert x.shape[1] % num_heads_total == 0, (
+            f"{name} 的 hidden 无法被 N={num_heads_total} 整除"
+        )
         x = x.reshape(x.shape[0], num_heads_total, x.shape[1] // num_heads_total)
     assert x.dim() == 3, f"{name} 期望 3D [T, N, D]，实得 {tuple(x.shape)}"
     assert x.shape[1] == num_heads_total, (
@@ -130,7 +134,9 @@ def _normalize_positions(positions, total):
     """positions 支持 [3, total] 与 [total]（单序列，三轴广播）。"""
     if positions.dim() == 1:
         positions = positions.unsqueeze(0).expand(3, -1)
-    assert positions.shape == (3, total), f"positions 期望 [3, {total}]，实得 {tuple(positions.shape)}"
+    assert positions.shape == (3, total), (
+        f"positions 期望 [3, {total}]，实得 {tuple(positions.shape)}"
+    )
     return positions.to(torch.int64)
 
 
@@ -187,12 +193,16 @@ def golden_dense(
     else:
         assert cat_indices.dtype in (torch.int64, torch.int32), "cat_indices 应为 int64"
         src = cat_indices.to(torch.int64)
-    assert int(src.min()) >= 0 and int(src.max()) < und_len + gen_len, "cat_indices 越界"
+    assert int(src.min()) >= 0 and int(src.max()) < und_len + gen_len, (
+        "cat_indices 越界"
+    )
 
     is_und = src < und_len
 
     # ---- index：按 src_t 从 und/gen 两段各自 gather，不做 concat ----
-    rows = torch.empty(total, num_heads_total, head_dim, dtype=torch.float32, device=device)
+    rows = torch.empty(
+        total, num_heads_total, head_dim, dtype=torch.float32, device=device
+    )
     if bool(is_und.any()):
         rows[is_und] = und_qkv[src[is_und]].float()
     if bool((~is_und).any()):
@@ -201,8 +211,8 @@ def golden_dense(
 
     # ---- split（N 维切 Q/K/V）----
     q = rows[:, :num_heads_q, :]
-    k = rows[:, num_heads_q:num_heads_q + num_heads_k, :]
-    v = rows[:, num_heads_q + num_heads_k:, :]
+    k = rows[:, num_heads_q : num_heads_q + num_heads_k, :]
+    v = rows[:, num_heads_q + num_heads_k :, :]
 
     # ---- rmsnorm（按 token 选 und/gen 权重）----
     und_wq = und_weights_q.float()
@@ -218,15 +228,15 @@ def golden_dense(
     # ---- MRoPE：三轴 cos/sin 按 axisLut 合并成一份，再做标准 RoPE ----
     half = head_dim // 2
     positions = _normalize_positions(positions, total)
-    axis = mrope_axis_map(head_dim, mrope_section).to(device)          # [half]
-    pos_sel = positions[axis]                                          # [half, total]
-    pos_sel = pos_sel.transpose(0, 1).contiguous()                     # [total, half]
+    axis = mrope_axis_map(head_dim, mrope_section).to(device)  # [half]
+    pos_sel = positions[axis]  # [half, total]
+    pos_sel = pos_sel.transpose(0, 1).contiguous()  # [total, half]
     assert int(pos_sel.min()) >= 0 and int(pos_sel.max()) < cos_sin_cache.shape[0], (
         "positions 超出 cos_sin_cache 的 max_pos 范围"
     )
     col = torch.arange(half, dtype=torch.int64, device=device).unsqueeze(0)  # [1, half]
     cos_sin_f32 = cos_sin_cache.float()
-    cos = cos_sin_f32[pos_sel, col]                                    # [total, half]
+    cos = cos_sin_f32[pos_sel, col]  # [total, half]
     sin = cos_sin_f32[pos_sel, col + half]
     q = _rope(q, cos, sin)
     k = _rope(k, cos, sin)
@@ -238,7 +248,9 @@ def golden_dense(
 # 分页 KV Cache 写入 / 读回
 def _check_cache(cache, name):
     """cache 固定为连续 BBND：[num_blocks, block_size, N, D]。"""
-    assert cache.dim() == 4, f"{name} 期望 4D [num_blocks, block_size, N, D]，实得 {tuple(cache.shape)}"
+    assert cache.dim() == 4, (
+        f"{name} 期望 4D [num_blocks, block_size, N, D]，实得 {tuple(cache.shape)}"
+    )
     assert cache.is_contiguous(), f"{name} 必须内存连续（BBND），本算子不支持非连续布局"
     return cache
 
@@ -246,9 +258,13 @@ def _check_cache(cache, name):
 def _scatter_cache(cache, slot_mapping, data):
     """按 slot_mapping 原地写入；data: [total, N, D]（已是 cache 的 dtype）。"""
     num_blocks, block_size = cache.shape[0], cache.shape[1]
-    assert slot_mapping.dtype in (torch.int64, torch.int32), "slot_mapping 应为 int64（兼容 int32）"
+    assert slot_mapping.dtype in (torch.int64, torch.int32), (
+        "slot_mapping 应为 int64（兼容 int32）"
+    )
     slot = slot_mapping.to(torch.int64)
-    assert int(slot.min()) >= 0 and int(slot.max()) < num_blocks * block_size, "slot_mapping 越界"
+    assert int(slot.min()) >= 0 and int(slot.max()) < num_blocks * block_size, (
+        "slot_mapping 越界"
+    )
     cache[slot // block_size, slot % block_size] = data
     return cache
 
@@ -324,6 +340,7 @@ def golden_und_gen_qkv_rms_norm_rope_cache(
     q_out = q_f32.to(torch.bfloat16)
     return q_out, k_out, v_out
 
+
 # 典型 case 集
 # --------------------------------------------------------------------------- #
 # headDim 固定 128；(Hq,Hk,Hv) 取 (8,1,1) / (16,2,2)。
@@ -335,41 +352,182 @@ def golden_und_gen_qkv_rms_norm_rope_cache(
 #       全部提供的场景，因此所有 case 均 gen_len > 0 且 cat_indices 非 None。
 #       golden 本身仍支持缺省退化路径（见 golden_dense），待算子放开后可直接加用例。
 TYPICAL_CASES = (
-    dict(name="t2_min",            heads=(8, 1, 1),  und_len=1,     gen_len=1,
-         cat="shuffled", slot_mode="contiguous", mrope_section=[16, 16, 16], big=False),
-    dict(name="t8_shuffle",        heads=(8, 1, 1),  und_len=5,     gen_len=3,
-         cat="shuffled", slot_mode="shuffled",   mrope_section=[16, 16, 16], big=False),
-    dict(name="t56_cores",         heads=(16, 2, 2), und_len=40,    gen_len=16,
-         cat="identity", slot_mode="contiguous", mrope_section=[16, 16, 16], big=False),
-    dict(name="t96_mixed",         heads=(16, 2, 2), und_len=80,    gen_len=16,
-         cat="identity", slot_mode="shuffled",   mrope_section=[16, 16, 16], big=False),
-    dict(name="t128_block_edge",   heads=(8, 1, 1),  und_len=127,   gen_len=1,
-         cat="shuffled", slot_mode="contiguous", mrope_section=[16, 16, 16], big=False),
-    dict(name="t1024_decode",      heads=(8, 1, 1),  und_len=1,     gen_len=1023,
-         cat="shuffled", slot_mode="shuffled",   mrope_section=[16, 16, 16], big=False),
-    dict(name="t4096_und_heavy",   heads=(16, 2, 2), und_len=4095,  gen_len=1,
-         cat="shuffled", slot_mode="shuffled",   mrope_section=[16, 16, 16], big=False),
-    dict(name="t4096_plain_rope",  heads=(8, 1, 1),  und_len=4095,  gen_len=1,
-         cat="identity", slot_mode="contiguous", mrope_section=[],           big=False),
-    dict(name="t10752_typical_h8", heads=(8, 1, 1),  und_len=6652,  gen_len=4100,
-         cat="shuffled", slot_mode="shuffled",   mrope_section=[16, 16, 16], big=False),
-    dict(name="t10752_typical_h16", heads=(16, 2, 2), und_len=6652, gen_len=4100,
-         cat="shuffled", slot_mode="shuffled",   mrope_section=[16, 16, 16], big=False),
+    dict(
+        name="t2_min",
+        heads=(8, 1, 1),
+        und_len=1,
+        gen_len=1,
+        cat="shuffled",
+        slot_mode="contiguous",
+        mrope_section=[16, 16, 16],
+        big=False,
+    ),
+    dict(
+        name="t8_shuffle",
+        heads=(8, 1, 1),
+        und_len=5,
+        gen_len=3,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+    ),
+    dict(
+        name="t56_cores",
+        heads=(16, 2, 2),
+        und_len=40,
+        gen_len=16,
+        cat="identity",
+        slot_mode="contiguous",
+        mrope_section=[16, 16, 16],
+        big=False,
+    ),
+    dict(
+        name="t96_mixed",
+        heads=(16, 2, 2),
+        und_len=80,
+        gen_len=16,
+        cat="identity",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+    ),
+    dict(
+        name="t128_block_edge",
+        heads=(8, 1, 1),
+        und_len=127,
+        gen_len=1,
+        cat="shuffled",
+        slot_mode="contiguous",
+        mrope_section=[16, 16, 16],
+        big=False,
+    ),
+    dict(
+        name="t1024_decode",
+        heads=(8, 1, 1),
+        und_len=1,
+        gen_len=1023,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+    ),
+    dict(
+        name="t4096_und_heavy",
+        heads=(16, 2, 2),
+        und_len=4095,
+        gen_len=1,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+    ),
+    dict(
+        name="t4096_plain_rope",
+        heads=(8, 1, 1),
+        und_len=4095,
+        gen_len=1,
+        cat="identity",
+        slot_mode="contiguous",
+        mrope_section=[],
+        big=False,
+    ),
+    dict(
+        name="t10752_typical_h8",
+        heads=(8, 1, 1),
+        und_len=6652,
+        gen_len=4100,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+    ),
+    dict(
+        name="t10752_typical_h16",
+        heads=(16, 2, 2),
+        und_len=6652,
+        gen_len=4100,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+    ),
     # block_size 覆盖：算子对 Bs 无假设，这几条把 2 的幂与非 2 的幂、小块与大块都过一遍
-    dict(name="t64_bs16",          heads=(8, 1, 1),  und_len=40,    gen_len=24,
-         cat="shuffled", slot_mode="shuffled",   mrope_section=[16, 16, 16], big=False, block_size=16),
-    dict(name="t200_bs64",         heads=(16, 2, 2), und_len=150,   gen_len=50,
-         cat="shuffled", slot_mode="shuffled",   mrope_section=[16, 16, 16], big=False, block_size=64),
-    dict(name="t300_bs100",        heads=(8, 1, 1),  und_len=200,   gen_len=100,
-         cat="shuffled", slot_mode="shuffled",   mrope_section=[16, 16, 16], big=False, block_size=100),
-    dict(name="t512_bs256",        heads=(8, 1, 1),  und_len=256,   gen_len=256,
-         cat="identity", slot_mode="contiguous", mrope_section=[16, 16, 16], big=False, block_size=256),
-    dict(name="t1024_bs512",       heads=(16, 2, 2), und_len=512,   gen_len=512,
-         cat="shuffled", slot_mode="shuffled",   mrope_section=[16, 16, 16], big=False, block_size=512),
-    dict(name="t65536_h8",         heads=(8, 1, 1),  und_len=32768, gen_len=32768,
-         cat="shuffled", slot_mode="shuffled",   mrope_section=[16, 16, 16], big=True),
-    dict(name="t65536_h16",        heads=(16, 2, 2), und_len=32768, gen_len=32768,
-         cat="shuffled", slot_mode="shuffled",   mrope_section=[16, 16, 16], big=True),
+    dict(
+        name="t64_bs16",
+        heads=(8, 1, 1),
+        und_len=40,
+        gen_len=24,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+        block_size=16,
+    ),
+    dict(
+        name="t200_bs64",
+        heads=(16, 2, 2),
+        und_len=150,
+        gen_len=50,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+        block_size=64,
+    ),
+    dict(
+        name="t300_bs100",
+        heads=(8, 1, 1),
+        und_len=200,
+        gen_len=100,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+        block_size=100,
+    ),
+    dict(
+        name="t512_bs256",
+        heads=(8, 1, 1),
+        und_len=256,
+        gen_len=256,
+        cat="identity",
+        slot_mode="contiguous",
+        mrope_section=[16, 16, 16],
+        big=False,
+        block_size=256,
+    ),
+    dict(
+        name="t1024_bs512",
+        heads=(16, 2, 2),
+        und_len=512,
+        gen_len=512,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+        block_size=512,
+    ),
+    dict(
+        name="t65536_h8",
+        heads=(8, 1, 1),
+        und_len=32768,
+        gen_len=32768,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=True,
+    ),
+    dict(
+        name="t65536_h16",
+        heads=(16, 2, 2),
+        und_len=32768,
+        gen_len=32768,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=True,
+    ),
 )
 
 
@@ -391,88 +549,317 @@ TYPICAL_CASES = (
 # 只验极小 eps + 小幅度输入下 rsqrt 不出 inf/nan）。
 GENERALIZED_CASES = (
     # ---- mrope_section：轴映射的各种截断形态 ----
-    dict(name="g_mrope_zeros",     heads=(8, 1, 1),  und_len=33,  gen_len=31,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[0, 0, 0],   big=False),
-    dict(name="g_mrope_t_only",    heads=(8, 1, 1),  und_len=33,  gen_len=31,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[64, 0, 0],  big=False),
-    dict(name="g_mrope_no_t",      heads=(16, 2, 2), und_len=33,  gen_len=31,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[0, 21, 21], big=False),
-    dict(name="g_mrope_w_only",    heads=(8, 1, 1),  und_len=33,  gen_len=31,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[0, 0, 21],  big=False),
-    dict(name="g_mrope_sum_full",  heads=(16, 2, 2), und_len=33,  gen_len=31,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[32, 16, 16], big=False),
-    dict(name="g_mrope_tiny_sec",  heads=(8, 1, 1),  und_len=33,  gen_len=31,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[10, 1, 2],  big=False),
+    dict(
+        name="g_mrope_zeros",
+        heads=(8, 1, 1),
+        und_len=33,
+        gen_len=31,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[0, 0, 0],
+        big=False,
+    ),
+    dict(
+        name="g_mrope_t_only",
+        heads=(8, 1, 1),
+        und_len=33,
+        gen_len=31,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[64, 0, 0],
+        big=False,
+    ),
+    dict(
+        name="g_mrope_no_t",
+        heads=(16, 2, 2),
+        und_len=33,
+        gen_len=31,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[0, 21, 21],
+        big=False,
+    ),
+    dict(
+        name="g_mrope_w_only",
+        heads=(8, 1, 1),
+        und_len=33,
+        gen_len=31,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[0, 0, 21],
+        big=False,
+    ),
+    dict(
+        name="g_mrope_sum_full",
+        heads=(16, 2, 2),
+        und_len=33,
+        gen_len=31,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[32, 16, 16],
+        big=False,
+    ),
+    dict(
+        name="g_mrope_tiny_sec",
+        heads=(8, 1, 1),
+        und_len=33,
+        gen_len=31,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[10, 1, 2],
+        big=False,
+    ),
     # sec[1] 大到 3*sec[1] 越过 D/2：所有 l%3==1 都归 H，覆盖「截断点在区间外」
-    dict(name="g_mrope_h_all",     heads=(8, 1, 1),  und_len=33,  gen_len=31,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[0, 44, 20], big=False),
-
+    dict(
+        name="g_mrope_h_all",
+        heads=(8, 1, 1),
+        und_len=33,
+        gen_len=31,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[0, 44, 20],
+        big=False,
+    ),
     # ---- cat_indices 的分布形态：决定 undMask 与 gamma 选择 ----
-    dict(name="g_cat_all_und",     heads=(8, 1, 1),  und_len=50,  gen_len=14,
-         cat="all_und", slot_mode="shuffled", mrope_section=[16, 16, 16], big=False),
-    dict(name="g_cat_all_gen",     heads=(8, 1, 1),  und_len=14,  gen_len=50,
-         cat="all_gen", slot_mode="shuffled", mrope_section=[16, 16, 16], big=False),
-    dict(name="g_cat_reverse",     heads=(16, 2, 2), und_len=40,  gen_len=24,
-         cat="reverse", slot_mode="shuffled", mrope_section=[16, 16, 16], big=False),
-    dict(name="g_cat_dup",         heads=(8, 1, 1),  und_len=30,  gen_len=34,
-         cat="dup",     slot_mode="shuffled", mrope_section=[16, 16, 16], big=False),
-
+    dict(
+        name="g_cat_all_und",
+        heads=(8, 1, 1),
+        und_len=50,
+        gen_len=14,
+        cat="all_und",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+    ),
+    dict(
+        name="g_cat_all_gen",
+        heads=(8, 1, 1),
+        und_len=14,
+        gen_len=50,
+        cat="all_gen",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+    ),
+    dict(
+        name="g_cat_reverse",
+        heads=(16, 2, 2),
+        und_len=40,
+        gen_len=24,
+        cat="reverse",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+    ),
+    dict(
+        name="g_cat_dup",
+        heads=(8, 1, 1),
+        und_len=30,
+        gen_len=34,
+        cat="dup",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+    ),
     # ---- slot_mapping 的分布形态 ----
-    dict(name="g_slot_reverse",    heads=(8, 1, 1),  und_len=33,  gen_len=31,
-         cat="shuffled", slot_mode="reverse", mrope_section=[16, 16, 16], big=False),
-    dict(name="g_slot_high",       heads=(16, 2, 2), und_len=33,  gen_len=31,
-         cat="shuffled", slot_mode="high",    mrope_section=[16, 16, 16], big=False),
-
+    dict(
+        name="g_slot_reverse",
+        heads=(8, 1, 1),
+        und_len=33,
+        gen_len=31,
+        cat="shuffled",
+        slot_mode="reverse",
+        mrope_section=[16, 16, 16],
+        big=False,
+    ),
+    dict(
+        name="g_slot_high",
+        heads=(16, 2, 2),
+        und_len=33,
+        gen_len=31,
+        cat="shuffled",
+        slot_mode="high",
+        mrope_section=[16, 16, 16],
+        big=False,
+    ),
     # ---- tile / 分核边界：ubFactor 上限是 64，尾块与核数边界都过一遍 ----
-    dict(name="g_t55_under_cores", heads=(8, 1, 1),  und_len=30,  gen_len=25,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[16, 16, 16], big=False),
-    dict(name="g_t57_over_cores",  heads=(8, 1, 1),  und_len=30,  gen_len=27,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[16, 16, 16], big=False),
-    dict(name="g_t65_tail1",       heads=(16, 2, 2), und_len=32,  gen_len=33,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[16, 16, 16], big=False),
-    dict(name="g_t113_tail1",      heads=(8, 1, 1),  und_len=56,  gen_len=57,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[16, 16, 16], big=False),
-
+    dict(
+        name="g_t55_under_cores",
+        heads=(8, 1, 1),
+        und_len=30,
+        gen_len=25,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+    ),
+    dict(
+        name="g_t57_over_cores",
+        heads=(8, 1, 1),
+        und_len=30,
+        gen_len=27,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+    ),
+    dict(
+        name="g_t65_tail1",
+        heads=(16, 2, 2),
+        und_len=32,
+        gen_len=33,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+    ),
+    dict(
+        name="g_t113_tail1",
+        heads=(8, 1, 1),
+        und_len=56,
+        gen_len=57,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+    ),
     # ---- 标量参数：eps 与 cos_sin_cache 行数的边界 ----
     # x_scale 压到 1e-2 让 mean(x^2) ~ 1e-4，eps 才成为 rms 的主导项；
     # 用默认幅度这两条对 eps 没有任何区分力（实测扰动 eps->0 时不达标元素为 0）
-    dict(name="g_eps_large",       heads=(8, 1, 1),  und_len=33,  gen_len=31,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[16, 16, 16], big=False,
-         norm_eps=1e-3, x_scale=1e-2),
-    dict(name="g_eps_mid",         heads=(16, 2, 2), und_len=33,  gen_len=31,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[16, 16, 16], big=False,
-         norm_eps=1e-4, x_scale=1e-2),
+    dict(
+        name="g_eps_large",
+        heads=(8, 1, 1),
+        und_len=33,
+        gen_len=31,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+        norm_eps=1e-3,
+        x_scale=1e-2,
+    ),
+    dict(
+        name="g_eps_mid",
+        heads=(16, 2, 2),
+        und_len=33,
+        gen_len=31,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+        norm_eps=1e-4,
+        x_scale=1e-2,
+    ),
     # NOTE: 这条对「实现是否用了 eps」没有区分力，也不可能有——eps=1e-8 相对 mean(x^2)~1e-4
     #       本就可忽略，"忽略 eps" 在数值上就是正确答案。它验的是另一件事：
     #       极小 eps + 小幅度输入下 rsqrt 不出 inf/nan。
-    dict(name="g_eps_tiny",        heads=(8, 1, 1),  und_len=33,  gen_len=31,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[16, 16, 16], big=False,
-         norm_eps=1e-8, x_scale=1e-2),
+    dict(
+        name="g_eps_tiny",
+        heads=(8, 1, 1),
+        und_len=33,
+        gen_len=31,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+        norm_eps=1e-8,
+        x_scale=1e-2,
+    ),
     # max_pos=1 时所有 position 只能取 0，cos/sin 退化成同一行；覆盖 cache 只有一行的边界
-    dict(name="g_maxpos_1",        heads=(8, 1, 1),  und_len=33,  gen_len=31,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[16, 16, 16], big=False,
-         max_pos=1),
-    dict(name="g_maxpos_2",        heads=(16, 2, 2), und_len=33,  gen_len=31,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[16, 16, 16], big=False,
-         max_pos=2),
-
+    dict(
+        name="g_maxpos_1",
+        heads=(8, 1, 1),
+        und_len=33,
+        gen_len=31,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+        max_pos=1,
+    ),
+    dict(
+        name="g_maxpos_2",
+        heads=(16, 2, 2),
+        und_len=33,
+        gen_len=31,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+        max_pos=2,
+    ),
     # ---- 换随机输入：同一 shape 换 4 个种子，覆盖「不同数值分布」而非不同 shape ----
-    dict(name="g_seed_101",        heads=(8, 1, 1),  und_len=33,  gen_len=31,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[16, 16, 16], big=False, seed=101),
-    dict(name="g_seed_202",        heads=(16, 2, 2), und_len=33,  gen_len=31,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[16, 16, 16], big=False, seed=202),
-    dict(name="g_seed_303",        heads=(8, 1, 1),  und_len=200, gen_len=112,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[16, 16, 16], big=False, seed=303),
-    dict(name="g_seed_404",        heads=(16, 2, 2), und_len=200, gen_len=112,
-         cat="shuffled", slot_mode="shuffled", mrope_section=[16, 16, 16], big=False, seed=404),
-
+    dict(
+        name="g_seed_101",
+        heads=(8, 1, 1),
+        und_len=33,
+        gen_len=31,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+        seed=101,
+    ),
+    dict(
+        name="g_seed_202",
+        heads=(16, 2, 2),
+        und_len=33,
+        gen_len=31,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+        seed=202,
+    ),
+    dict(
+        name="g_seed_303",
+        heads=(8, 1, 1),
+        und_len=200,
+        gen_len=112,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+        seed=303,
+    ),
+    dict(
+        name="g_seed_404",
+        heads=(16, 2, 2),
+        und_len=200,
+        gen_len=112,
+        cat="shuffled",
+        slot_mode="shuffled",
+        mrope_section=[16, 16, 16],
+        big=False,
+        seed=404,
+    ),
     # ---- 组合：多个非默认维度同时偏离，防止「单维各自过、组合起来挂」 ----
-    dict(name="g_combo_a",         heads=(16, 2, 2), und_len=61,  gen_len=52,
-         cat="all_gen", slot_mode="high",    mrope_section=[0, 21, 21], big=False,
-         block_size=37, seed=505, norm_eps=1e-4),
-    dict(name="g_combo_b",         heads=(8, 1, 1),  und_len=99,  gen_len=1,
-         cat="dup",     slot_mode="reverse", mrope_section=[10, 1, 2], big=False,
-         block_size=7,  seed=606, max_pos=8),
+    dict(
+        name="g_combo_a",
+        heads=(16, 2, 2),
+        und_len=61,
+        gen_len=52,
+        cat="all_gen",
+        slot_mode="high",
+        mrope_section=[0, 21, 21],
+        big=False,
+        block_size=37,
+        seed=505,
+        norm_eps=1e-4,
+    ),
+    dict(
+        name="g_combo_b",
+        heads=(8, 1, 1),
+        und_len=99,
+        gen_len=1,
+        cat="dup",
+        slot_mode="reverse",
+        mrope_section=[10, 1, 2],
+        big=False,
+        block_size=7,
+        seed=606,
+        max_pos=8,
+    ),
 )
 
 
@@ -525,14 +912,20 @@ def build_case(spec, device="cpu", seed=7, max_pos=4096, init_cache="randn"):
         cat_indices = torch.arange(total - 1, -1, -1, dtype=torch.int64, device=device)
     elif cat_mode == "all_und":
         # 全部指向 und 段：undMask 恒为全 1，只走 und 的 gamma
-        cat_indices = torch.randint(0, und_len, (total,), dtype=torch.int64, device=device)
+        cat_indices = torch.randint(
+            0, und_len, (total,), dtype=torch.int64, device=device
+        )
     elif cat_mode == "all_gen":
         # 全部指向 gen 段：undMask 恒为 0，只走 gen 的 gamma
         assert gen_len > 0, "all_gen 需要 gen_len > 0"
-        cat_indices = torch.randint(und_len, total, (total,), dtype=torch.int64, device=device)
+        cat_indices = torch.randint(
+            und_len, total, (total,), dtype=torch.int64, device=device
+        )
     elif cat_mode == "dup":
         # 允许重复源：同一个源 token 被多个输出位置引用（接口只约束值域，不约束唯一性）
-        cat_indices = torch.randint(0, total, (total,), dtype=torch.int64, device=device)
+        cat_indices = torch.randint(
+            0, total, (total,), dtype=torch.int64, device=device
+        )
     else:  # shuffled：und/gen 交错，模拟真实 cat_indices
         cat_indices = torch.randperm(total, device=device).to(torch.int64)
     assert cat_mode == "none" or gen_len > 0 or und_len == total
@@ -546,23 +939,36 @@ def build_case(spec, device="cpu", seed=7, max_pos=4096, init_cache="randn"):
         slot_mapping = torch.arange(total - 1, -1, -1, dtype=torch.int64, device=device)
     elif slot_mode == "high":
         # 贴着容量上界写，覆盖最大 slot = Bn*Bs-1 这个边界行
-        slot_mapping = torch.arange(capacity - total, capacity, dtype=torch.int64, device=device)
+        slot_mapping = torch.arange(
+            capacity - total, capacity, dtype=torch.int64, device=device
+        )
     else:
         slot_mapping = torch.randperm(capacity, device=device)[:total].to(torch.int64)
 
     case = dict(
-        und_qkv=(torch.randn(und_len, n, d, dtype=torch.bfloat16, device=device) * x_scale),
+        und_qkv=(
+            torch.randn(und_len, n, d, dtype=torch.bfloat16, device=device) * x_scale
+        ),
         und_weights_q=torch.randn(d, dtype=torch.bfloat16, device=device),
         und_weights_k=torch.randn(d, dtype=torch.bfloat16, device=device),
         cos_sin_cache=make_cos_sin_cache(max_pos, d, device=device),
         k_cache=init(k_shape, dtype=torch.bfloat16, device=device),
         v_cache=init(v_shape, dtype=torch.bfloat16, device=device),
         slot_mapping=slot_mapping,
-        positions=torch.randint(0, max_pos, (3, total), dtype=torch.int64, device=device),
-        gen_qkv=((torch.randn(gen_len, n, d, dtype=torch.bfloat16, device=device) * x_scale)
-                 if gen_len > 0 else None),
-        gen_weights_q=(torch.randn(d, dtype=torch.bfloat16, device=device) if gen_len > 0 else None),
-        gen_weights_k=(torch.randn(d, dtype=torch.bfloat16, device=device) if gen_len > 0 else None),
+        positions=torch.randint(
+            0, max_pos, (3, total), dtype=torch.int64, device=device
+        ),
+        gen_qkv=(
+            (torch.randn(gen_len, n, d, dtype=torch.bfloat16, device=device) * x_scale)
+            if gen_len > 0
+            else None
+        ),
+        gen_weights_q=(
+            torch.randn(d, dtype=torch.bfloat16, device=device) if gen_len > 0 else None
+        ),
+        gen_weights_k=(
+            torch.randn(d, dtype=torch.bfloat16, device=device) if gen_len > 0 else None
+        ),
         cat_indices=cat_indices,
         num_heads_q=hq,
         num_heads_k=hk,
@@ -570,11 +976,20 @@ def build_case(spec, device="cpu", seed=7, max_pos=4096, init_cache="randn"):
         norm_eps=norm_eps,
         mrope_section=spec["mrope_section"],
     )
-    case["_meta"] = dict(name=spec["name"], total=total, heads=(hq, hk, hv),
-                         num_blocks=num_blocks, block_size=bs, seed=seed,
-                         max_pos=max_pos, norm_eps=norm_eps, x_scale=x_scale,
-                         cat=cat_mode, slot_mode=slot_mode,
-                         mrope_section=spec["mrope_section"])
+    case["_meta"] = dict(
+        name=spec["name"],
+        total=total,
+        heads=(hq, hk, hv),
+        num_blocks=num_blocks,
+        block_size=bs,
+        seed=seed,
+        max_pos=max_pos,
+        norm_eps=norm_eps,
+        x_scale=x_scale,
+        cat=cat_mode,
+        slot_mode=slot_mode,
+        mrope_section=spec["mrope_section"],
+    )
     return case
 
 
@@ -582,8 +997,10 @@ def build_case(spec, device="cpu", seed=7, max_pos=4096, init_cache="randn"):
 # 自检：仅验证 case 集构造与 golden 可跑通（纯 CPU，不涉及 NPU）
 # --------------------------------------------------------------------------- #
 def _self_check(include_big=False):
-    print(f"golden case set (headDim={HEAD_DIM}, block_size={BLOCK_SIZE}, heads in "
-          f"{{{HEAD_COMBOS[0]}, {HEAD_COMBOS[1]}}})")
+    print(
+        f"golden case set (headDim={HEAD_DIM}, block_size={BLOCK_SIZE}, heads in "
+        f"{{{HEAD_COMBOS[0]}, {HEAD_COMBOS[1]}}})"
+    )
     for spec in TYPICAL_CASES:
         total = spec["und_len"] + spec["gen_len"]
         if spec["big"] and not include_big:
@@ -594,13 +1011,16 @@ def _self_check(include_big=False):
         q, k_cache, v_cache = golden_und_gen_qkv_rms_norm_rope_cache(**case)
         assert q.shape == (total, meta["heads"][0], HEAD_DIM)
         assert q.dtype == torch.bfloat16
-        print(f"  [OK]   {meta['name']:<22} T={total:<6} heads={meta['heads']} "
-              f"q={tuple(q.shape)} k_cache={tuple(k_cache.shape)}")
+        print(
+            f"  [OK]   {meta['name']:<22} T={total:<6} heads={meta['heads']} "
+            f"q={tuple(q.shape)} k_cache={tuple(k_cache.shape)}"
+        )
     print("golden self-check PASS")
 
 
 if __name__ == "__main__":
     import sys
+
     _self_check(include_big="--full" in sys.argv)
 
 
@@ -648,7 +1068,7 @@ def _torch_to_np(tensor, like_dtype):
 def _seed_of(kwargs):
     """按用例名派生种子：同一条用例每次跑拿到同一组索引，便于复现。"""
     name = str(kwargs.get("testcase_name", "und_gen_qkv_rms_norm_rope_cache"))
-    return abs(hash(name)) % (2 ** 31)
+    return abs(hash(name)) % (2**31)
 
 
 def _gen_index_values(arrays, kwargs):
@@ -727,25 +1147,27 @@ def ttk_input(*inputs, **kwargs):
     return arrays
 
 
-def ttk_golden(und_qkv,
-               und_weights_q,
-               und_weights_k,
-               cos_sin_cache,
-               k_cache,
-               v_cache,
-               slot_mapping,
-               positions,
-               gen_qkv=None,
-               gen_weights_q=None,
-               gen_weights_k=None,
-               cat_indices=None,
-               **kwargs):
-    '''Kernel golden for und_gen_qkv_rms_norm_rope_cache.
+def ttk_golden(
+    und_qkv,
+    und_weights_q,
+    und_weights_k,
+    cos_sin_cache,
+    k_cache,
+    v_cache,
+    slot_mapping,
+    positions,
+    gen_qkv=None,
+    gen_weights_q=None,
+    gen_weights_k=None,
+    cat_indices=None,
+    **kwargs,
+):
+    """Kernel golden for und_gen_qkv_rms_norm_rope_cache.
 
     参数序与 @und_gen_qkv_rms_norm_rope_cache_def.cpp 的输入一致（不含输出），
     张量为 numpy.ndarray，bf16 由 ml_dtypes.bfloat16 承载，kwargs 带算子属性。
     返回写入 slot 后的整块 (q, k_cache, v_cache)。
-    '''
+    """
     mrope_section = kwargs.get("mrope_section", None)
     if mrope_section is not None:
         mrope_section = list(mrope_section)
@@ -800,10 +1222,14 @@ def _aclnn_split_args(args):
             % (TTK_INPUT_NUM + ACLNN_ATTR_NUM, len(args))
         )
     tensors = list(args[:TTK_INPUT_NUM])
-    hq, hk, hv, eps, sec = args[TTK_INPUT_NUM:TTK_INPUT_NUM + ACLNN_ATTR_NUM]
-    attrs = dict(num_heads_q=int(hq), num_heads_k=int(hk), num_heads_v=int(hv),
-                 norm_eps=float(eps),
-                 mrope_section=(list(sec) if sec is not None else None))
+    hq, hk, hv, eps, sec = args[TTK_INPUT_NUM : TTK_INPUT_NUM + ACLNN_ATTR_NUM]
+    attrs = dict(
+        num_heads_q=int(hq),
+        num_heads_k=int(hk),
+        num_heads_v=int(hv),
+        norm_eps=float(eps),
+        mrope_section=(list(sec) if sec is not None else None),
+    )
     return tensors, attrs
 
 
@@ -850,25 +1276,19 @@ def aclnn_golden(*args, **kwargs):
     ref = tensors[IDX_K_CACHE]
     if isinstance(ref, torch.Tensor):
         return q_t.to(ref.dtype), k_t.to(ref.dtype), v_t.to(ref.dtype)
-    return (_torch_to_np(q_t, ref.dtype),
-            _torch_to_np(k_t, ref.dtype),
-            _torch_to_np(v_t, ref.dtype))
+    return (
+        _torch_to_np(q_t, ref.dtype),
+        _torch_to_np(k_t, ref.dtype),
+        _torch_to_np(v_t, ref.dtype),
+    )
 
 
 __input__ = {
-    "kernel": {
-        "und_gen_qkv_rms_norm_rope_cache": "ttk_input"
-    },
-    "aclnn": {
-        "aclnnUndGenQkvRmsNormRopeCache": "aclnn_input"
-    }
+    "kernel": {"und_gen_qkv_rms_norm_rope_cache": "ttk_input"},
+    "aclnn": {"aclnnUndGenQkvRmsNormRopeCache": "aclnn_input"},
 }
 
 __golden__ = {
-    "kernel": {
-        "und_gen_qkv_rms_norm_rope_cache": "ttk_golden"
-    },
-    "aclnn": {
-        "aclnnUndGenQkvRmsNormRopeCache": "aclnn_golden"
-    }
+    "kernel": {"und_gen_qkv_rms_norm_rope_cache": "ttk_golden"},
+    "aclnn": {"aclnnUndGenQkvRmsNormRopeCache": "aclnn_golden"},
 }
