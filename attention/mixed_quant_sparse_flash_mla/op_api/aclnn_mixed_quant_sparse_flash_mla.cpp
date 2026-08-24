@@ -31,34 +31,27 @@ extern "C" {
 // 新版本opbase存在TensorV2的新接口，用弱符号判断当前opbase是新版本还是旧版本，旧版本不支持传入非连续tensor
 bool NnopbaseSupportTensorV2() __attribute__((weak));
 
-static aclnnStatus CheckTensorContiguous(
-    const aclTensor *k, const aclTensor *v,
-    const aclTensor *kDescale, const aclTensor *vDescale)
+static aclnnStatus CheckTensorContiguous(const aclTensor *oriKvOptional, const aclTensor *cmpKvOptional)
 {
-    if ((k != nullptr && !IsContiguous(k)) || (v != nullptr && !IsContiguous(v))) {
-        return ACLNN_ERR_INNER;
-    }
-    if ((kDescale != nullptr && !IsContiguous(kDescale)) ||
-        (vDescale != nullptr && !IsContiguous(vDescale))) {
+    if ((oriKvOptional != nullptr && !IsContiguous(oriKvOptional)) ||
+        (cmpKvOptional != nullptr && !IsContiguous(cmpKvOptional))) {
         return ACLNN_ERR_INNER;
     }
     return ACLNN_SUCCESS;
 }
 
 aclnnStatus aclnnMixedQuantSparseFlashMlaGetWorkspaceSize(
-    const aclTensor *q, const aclTensor *k, const aclTensor *v,
-    const aclTensor *qDescale, const aclTensor *kDescale, const aclTensor *vDescale,
-    const aclTensor *blockTableOptional,
-    const aclTensor *pScaleOptional,
-    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
-    const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
-    const aclTensor *sinksOptional, const aclTensor *attnMaskOptional,
-    const aclTensor *metadataOptional,
-    int64_t quantMode,
-    double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight,
-    int64_t maxSeqlenQ, int64_t maxSeqlenKV,
-    const char *layoutQ, const char *layoutQDescale, const char *layoutKv, const char *layoutOut,
-    bool returnSoftmaxLse,
+    const aclTensor *q, const aclTensor *oriKvOptional, const aclTensor *cmpKvOptional,
+    const aclTensor *oriSparseIndicesOptional, const aclTensor *cmpSparseIndicesOptional,
+    const aclTensor *oriBlockTableOptional, const aclTensor *cmpBlockTableOptional,
+    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensOriKvOptional,
+    const aclTensor *cuSeqlensCmpKvOptional, const aclTensor *sequsedQOptional,
+    const aclTensor *sequsedOriKvOptional, const aclTensor *sequsedCmpKvOptional,
+    const aclTensor *cmpResidualKvOptional, const aclTensor *oriTopkLengthOptional,
+    const aclTensor *cmpTopkLengthOptional, const aclTensor *sinksOptional, const aclTensor *metadataOptional,
+    int64_t quantMode, int64_t ropeHeadDim, double softmaxScale, int64_t cmpRatio,
+    int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight,
+    const char *layoutQOptional, const char *layoutKvOptional, int64_t topkValueMode, bool returnSoftmaxLse,
     const aclTensor *attnOut, const aclTensor *softmaxLseOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
@@ -71,17 +64,18 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaGetWorkspaceSize(
 
     MixedQuantSparseFlashMlaProcessSoftmaxLse(returnSoftmaxLse, softmaxLseOptional, tempTensor, placeHolder);
 
-    aclnnStatus ret = CheckTensorContiguous(k, v, kDescale, vDescale);
+    aclnnStatus ret = CheckTensorContiguous(oriKvOptional, cmpKvOptional);
     if (ret != ACLNN_SUCCESS && NnopbaseSupportTensorV2 == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER, "When tensor is not contiguous, opbase package version check failed");
         return ret;
     }
     ret = aclnnInnerMixedQuantSparseFlashMlaGetWorkspaceSize(
-        q, k, v, qDescale, kDescale, vDescale, blockTableOptional, pScaleOptional,
-        cuSeqlensQOptional, cuSeqlensKvOptional,
-        sequsedQOptional, sequsedKvOptional, sinksOptional, attnMaskOptional, metadataOptional,
-        quantMode, softmaxScale, maskMode, winLeft, winRight, maxSeqlenQ, maxSeqlenKV,
-        layoutQ, layoutQDescale, layoutKv, layoutOut, returnSoftmaxLse,
+        q, oriKvOptional, cmpKvOptional, oriSparseIndicesOptional, cmpSparseIndicesOptional,
+        oriBlockTableOptional, cmpBlockTableOptional, cuSeqlensQOptional, cuSeqlensOriKvOptional,
+        cuSeqlensCmpKvOptional, sequsedQOptional, sequsedOriKvOptional, sequsedCmpKvOptional,
+        cmpResidualKvOptional, oriTopkLengthOptional, cmpTopkLengthOptional, sinksOptional, metadataOptional,
+        quantMode, ropeHeadDim, softmaxScale, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
+        layoutQOptional, layoutKvOptional, topkValueMode, returnSoftmaxLse,
         attnOut, placeHolder, workspaceSize, executor);
 
     if (!returnSoftmaxLse) {
