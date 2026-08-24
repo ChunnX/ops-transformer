@@ -559,13 +559,21 @@ __aicore__ inline int32_t GatherDispatchRankOrdinalRange(
         if (selectedOrdinalEnd > selectedOrdinalBegin) {
             int32_t batchLocalBegin = selectedOrdinalBegin - batchOrdinalBegin;
             int32_t selectedCount = selectedOrdinalEnd - selectedOrdinalBegin;
-            Adds<int32_t>(scratch.topkIndexTensor[taskListWriteOffset + gatheredTaskCount],
-                          scratch.validTopkIndexTensor[batchLocalBegin], 0, selectedCount);
+            // Both offsets are compact ordinals and can be arbitrary 4-byte
+            // positions. A VEC copy (for example Adds with scalar zero) would
+            // require both UB addresses to be 32-byte aligned, which is not
+            // guaranteed here. Keep this staging copy on scalar access; the
+            // surrounding GatherMask has already completed through V_S.
+            for (int32_t selectedIdx = 0; selectedIdx < selectedCount; ++selectedIdx) {
+                int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(
+                    batchLocalBegin + selectedIdx);
+                scratch.topkIndexTensor.SetValue(
+                    taskListWriteOffset + gatheredTaskCount + selectedIdx, topkIndex);
+            }
             gatheredTaskCount += selectedCount;
         }
         matchedRouteCount = batchOrdinalEnd;
     }
-    SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
     return gatheredTaskCount;
 }
 
