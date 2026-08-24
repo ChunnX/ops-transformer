@@ -262,43 +262,28 @@ uint64_t AllToAllFpMatmulTilingBase::GetTilingKey() const
 
 /**
  * @brief 非量化+有bias时, 选择 add_bias 节点的分核策略
- *   核利用率优先: MN_SPLIT(跨N-tile最少) > N_SPLIT > M_SPLIT
- *   O(1) 复杂度, 基于 matmul 输出 [rankM, rankN] 的 tile 分块数与核数比较
- *   add_bias 在 AIV 执行, TILE_M/TILE_N 由 mc2_vec_add_bias 节点定义 (half:128/256)
- * @return ADDBIAS_OFF / ADDBIAS_M_SPLIT / ADDBIAS_N_SPLIT / ADDBIAS_MN_SPLIT
+ *   M_SPLIT / N_SPLIT: 数据维度分区, 每核至少 1 行/列, 利用率 = min(核数, M或N)
+ *   MN_SPLIT: tile 索引分区, 利用率 = min(核数, tileMCnt * tileNCnt)
+ *   add_bias 每轮处理一个 matmul tile [tileM, rankN], 用 tileM 估算
+ *   TILE_M=64, TILE_N=256 (与 mc2_vec_add_bias.h 一致)
+ * @return ADDBIAS_M_SPLIT / ADDBIAS_N_SPLIT / ADDBIAS_MN_SPLIT
  */
 uint8_t AllToAllFpMatmulTilingBase::ChooseAddBiasSplitMode() const
 {
-    // add_bias 节点的 tile 大小 (与 mc2_vec_add_bias.h 中 TILE_M/TILE_N 一致)
-    // half/bf16: TILE_M=128, float: TILE_M=64; TILE_N=256
-    constexpr uint32_t ADD_BIAS_TILE_M = 128;
+    constexpr uint32_t ADD_BIAS_TILE_M = 64;
     constexpr uint32_t ADD_BIAS_TILE_N = 256;
-    // AIV 核数 = AIC 核数 × 2 (CV 1:2)
     const uint32_t aivCoreNum = contextInfo_.args_.aicCoreNum * 2;
 
-    const uint32_t M = contextInfo_.args_.orgMValue;
+    const uint32_t M = std::max(inferredInfo_.tileM, inferredInfo_.tailM);
     const uint32_t N = contextInfo_.args_.nValue;
+
+    const uint32_t usedM = std::min(aivCoreNum, M);
+    const uint32_t usedN = std::min(aivCoreNum, N);
     const uint32_t tileMCnt = (M + ADD_BIAS_TILE_M - 1) / ADD_BIAS_TILE_M;
     const uint32_t tileNCnt = (N + ADD_BIAS_TILE_N - 1) / ADD_BIAS_TILE_N;
-    const uint32_t totalTiles = tileMCnt * tileNCnt;
+    const uint64_t totalTiles64 = static_cast<uint64_t>(tileMCnt) * static_cast<uint64_t>(tileNCnt);
+    const uint32_t usedMN = static_cast<uint32_t>(std::min(static_cast<uint64_t>(aivCoreNum), totalTiles64));
 
-    // 边界: 单子块或无法分核
-    if (totalTiles <= 1) {
-        return ADDBIAS_M_SPLIT;
-    }
-    if (tileNCnt == 1) {
-        return ADDBIAS_M_SPLIT;  // N 不够分, 只能 M 分核
-    }
-    if (tileMCnt == 1) {
-        return ADDBIAS_N_SPLIT;  // M 不够分, 只能 N 分核
-    }
-
-    // 三种策略的可用核数
-    const uint32_t usedM = std::min(aivCoreNum, tileMCnt);
-    const uint32_t usedN = std::min(aivCoreNum, tileNCnt);
-    const uint32_t usedMN = std::min(aivCoreNum, totalTiles);
-
-    // 核利用率优先, MN 偏好 (跨 N-tile 最少 → bias 读取最少)
     const uint32_t maxUtil = std::max({usedM, usedN, usedMN});
     if (usedMN == maxUtil) {
         return ADDBIAS_MN_SPLIT;
