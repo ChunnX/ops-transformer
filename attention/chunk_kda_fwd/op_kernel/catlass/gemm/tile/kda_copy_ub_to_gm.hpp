@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_KDA_COPY_UB_TO_GM_HPP
-#define CATLASS_KDA_COPY_UB_TO_GM_HPP
+#ifndef CATLASS_KDA_GEMM_COPY_UB_TO_GM_HPP
+#define CATLASS_KDA_GEMM_COPY_UB_TO_GM_HPP
 
 #if (defined(CATLASS_ARCH) && CATLASS_ARCH == 2201)
 #include "catlass/gemm/tile/atlasa2/kda_atlasa2_copy_ub_to_gm.hpp"
