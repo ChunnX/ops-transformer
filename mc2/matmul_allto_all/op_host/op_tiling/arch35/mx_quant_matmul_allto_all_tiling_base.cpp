@@ -700,13 +700,13 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoHcommMxQuantMMTiling()
     bool transB = contextInfo.args_.isBTrans;
     constexpr uint32_t localMatmulDisabled = 0;
 
-    // 生成头块tiling
+    // 生成头块tiling (batch=rankDim,Blaze kernel内部按batch遍历rank B段)
     if (isMxfp4_) {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingSwat;
-        tilingSwat.GetTilingData(perRankM, nValue, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData);
+        tilingSwat.GetTilingData(perRankM, nValue, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData, contextInfo.args_.rankDim);
     } else {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingSwat;
-        tilingSwat.GetTilingData(perRankM, nValue, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData);
+        tilingSwat.GetTilingData(perRankM, nValue, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData, contextInfo.args_.rankDim);
     }
     // 生成尾块tiling
     hcommTilingData_.tailQbmmTilingData = hcommTilingData_.tileQbmmTilingData;
