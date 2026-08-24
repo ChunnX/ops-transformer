@@ -67,7 +67,7 @@ public:
     // C0/C1 流程 (矩阵计算)
     __aicore__ inline void ProcessC0C1Pipeline();
     __aicore__ inline void ProcessC0(uint32_t offsetND, uint32_t currentNDBlock, uint32_t offsetBS,
-                                     uint32_t currentBSBlock, uint32_t buffId);
+                                     uint32_t currentBSBlock);
     __aicore__ inline void ProcessC1(uint32_t offsetND, uint32_t currentNDBlock, uint32_t offsetBS,
                                      uint32_t currentBSBlock, uint32_t buffId);
 
@@ -214,8 +214,8 @@ private:
     TQue<QuePosition::VECOUT, 1> vecOutQueue1_;
     TQue<QuePosition::VECIN, 1> vecInQueue1_;
     TQue<QuePosition::VECOUT, 1> vecOutQueueSmall_;
-    TBuf<TPosition::VECIN> c0OutTBuf_;
-    LocalTensor<P> c0OutUb_[DOUBLE_BUFFER];
+    TQue<QuePosition::VECIN, 1> c0OutQueue_;
+    LocalTensor<P> c0OutUb_;
 
     TBuf<TPosition::VECCALC> fp32TBuf_;
 
@@ -317,11 +317,9 @@ template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParams initParams)
 {
     pipe_ = initParams.tPipeIn;
-    // 参考 C2V 临时缓冲实现：两个 AIV 通过同一组 VECIN TBuf 读取 C0 的双缓冲结果。
-    pipe_->InitBuffer(c0OutTBuf_, DOUBLE_BUFFER * C0_UB_BUFFER_SIZE);
-    constexpr uint32_t c0UbElementCount = C0_UB_BUFFER_SIZE / sizeof(P);
-    c0OutUb_[0] = c0OutTBuf_.GetWithOffset<P>(c0UbElementCount, 0);
-    c0OutUb_[1] = c0OutTBuf_.GetWithOffset<P>(c0UbElementCount, C0_UB_BUFFER_SIZE);
+    // 对照仓内 QBMM/GQMM：CUBE 和两个 AIV 通过同一个 VECIN queue 共享 C0 结果。
+    pipe_->InitBuffer(c0OutQueue_, 1, C0_UB_BUFFER_SIZE);
+    c0OutUb_ = c0OutQueue_.AllocTensor<P>();
     vecDealChunk_ = N_ > LARGE_N_THRESHOLD ? VEC_DEAL_CHUNK_LARGE_N : VEC_DEAL_CHUNK_SMALL_N;
     hPreMaxBufLen_ = vecDealChunk_ * N_;
     hPostMaxBufLen_ = hPreMaxBufLen_;
@@ -974,16 +972,19 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
     uint32_t prevBSBlock = 0;
     bool hasPrev = false;
 
-    // 参考仓内 GQMM/QBMM 的单 UB 流程：CUBE 写入当前结果前，等待上一次 VECTOR 消费完成；
-    // 随后先完成上一轮 C1，再复用同一个 VECIN buffer。
+    // 对照仓内 GQMM/QBMM 的单 UB 流程：CUBE 覆盖共享 VECIN buffer 前，等待上一轮 VECTOR；
+    // 写完当前 C0 后通知 VECTOR，再计算上一轮 C1，形成 C0/V2/C1 流水。
 
     for (uint32_t offsetND = dealStartND_; offsetND < dealEndND_; offsetND += ND_BLOCK_SIZE) {
         uint32_t currentNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - offsetND);
 
         for (uint32_t offsetBS = 0; offsetBS < totalLength_; offsetBS += SINGLE_M) {
             uint32_t currentBSBlock = Min(SINGLE_M, uint32_t(totalLength_ - offsetBS));
-            // 严格采用 C2V 参考的三段流水：先写当前 C0 buffer，再延迟执行上一轮 C1。
-            ProcessC0(offsetND, currentNDBlock, offsetBS, currentBSBlock, buffId);
+            if (hasPrev) {
+                WaitForVector();
+            }
+            ProcessC0(offsetND, currentNDBlock, offsetBS, currentBSBlock);
+            NotifyVector();
             if (hasPrev) {
                 ProcessC1(prevOffsetND, prevNDBlock, prevOffsetBS, prevBSBlock, buffId - 1);
             }
@@ -997,6 +998,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
     }
 
     if (hasPrev) {
+        WaitForVector();
         ProcessC1(prevOffsetND, prevNDBlock, prevOffsetBS, prevBSBlock, buffId - 1);
     }
 }
@@ -1004,29 +1006,18 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
 
 template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, uint32_t currentNDBlock,
-                                                             uint32_t offsetBS, uint32_t currentBSBlock,
-                                                             uint32_t buffId)
+                                                             uint32_t offsetBS, uint32_t currentBSBlock)
 {
-    uint32_t currentBuffIdx = buffId % DOUBLE_BUFFER;
     // 设置矩阵形状
     mm0.SetOrgShape(totalLength_, nD_, fusionSize_);
     mm0.SetSingleShape(currentBSBlock, currentNDBlock, fusionSize_);
     // h_mix_grad @ phi
     mm0.SetTensorA(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)]); // [BS, N^2+2N]
     mm0.SetTensorB(phiGm_[offsetND], false);                                 // [N^2+2N, ND]
-    // SplitN策略将C0结果沿N轴一分为二，按参考实现的tile步长写入当前VECIN临时缓冲。
-    uint64_t writeOffset = 0;
-    while (mm0.Iterate()) {
-        mm0.GetTensorC(c0OutUb_[currentBuffIdx][writeOffset], 0, true);
-        writeOffset += MATMUL_WRITE_OFFSET_M * MATMUL_WRITE_OFFSET_N;
-    }
+    // SplitN策略将结果直接写入库式 VECIN queue；每个 AIV 读取自己负责的 N 半区。
+    mm0.Iterate();
+    mm0.GetTensorC(c0OutUb_, 0, true);
     mm0.End();
-    // buf[0] -> V2 flag 0x9，buf[1] -> V2 flag 0xA。
-    if (currentBuffIdx == 0) {
-        AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(0x9);
-    } else {
-        AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(0xA);
-    }
 }
 
 template <class T, class P>
@@ -1035,12 +1026,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC1(uint32_t offsetND, 
                                                              uint32_t buffIdx)
 {
     uint32_t currentBuffIdx = buffIdx % DOUBLE_BUFFER;
-    // 等待对应 buffer 的 V2 消费完成：buf[0] -> 0x8，buf[1] -> 0xB。
-    if (currentBuffIdx == 0) {
-        AscendC::CrossCoreWaitFlag<0x2, PIPE_FIX>(0x8);
-    } else {
-        AscendC::CrossCoreWaitFlag<0x2, PIPE_FIX>(0xB);
-    }
+    // ProcessC0C1Pipeline 已在覆盖共享 VECIN buffer 前用库式 WaitForVector 等待 V2，
+    // 因而这里直接使用上一轮 V2 已经写回的 workspace。
     // 1C2V 对应操作两块 workspaceGm_
     buffIdx = currentBuffIdx;
     // 设置矩阵形状
@@ -1081,21 +1068,13 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2Pipeline()
         LocalTensor<P> sumBuf = vecOutQueueSmall_.AllocTensor<P>();
         for (uint32_t offsetBS = 0; offsetBS < totalLength_; offsetBS += SINGLE_M) {
             uint32_t currentBSBlock = Min(SINGLE_M, uint32_t(totalLength_ - offsetBS));
-            // 参考 C2V 的 mode-2 双 buffer 同步：等待当前 C0，再通知延迟的 C1。
-            if (buffId % DOUBLE_BUFFER == 0) {
-                AscendC::CrossCoreWaitFlag<0x2, PIPE_V>(0x9);
-            } else {
-                AscendC::CrossCoreWaitFlag<0x2, PIPE_V>(0xA);
-            }
+            // 库式单队列同步：等待 CUBE 写完共享 VECIN buffer。
+            WaitForCube();
             if (copySizeND > 0) {
                 ProcessV2(offsetND, copySizeND, offsetBS, offsetBS + currentBSBlock, sumBuf, buffId,
-                          c0OutUb_[buffId % DOUBLE_BUFFER]);
+                          c0OutUb_);
             }
-            if (buffId % DOUBLE_BUFFER == 0) {
-                AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x8);
-            } else {
-                AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0xB);
-            }
+            NotifyCube();
             buffId++;
         }
         if (withGamma_ && copySizeND > 0) {
