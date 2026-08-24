@@ -1064,7 +1064,7 @@ __aicore__ inline void CompressorBlockVector<COMP>::DealVec1BaseBlock(const Vec1
     Vec1SliceInfo originSliceInfo = sliceIterator.GetSlice();
     uint32_t needDealTcSize = sliceIterator.GetNeedDealTcSize();
     StatisticInfo &statisticInfo = sliceIterator.template FullIteratorSlice<true>();
-    if (statisticInfo.actualTcCnt == 0) {
+    if (statisticInfo.compressorScCnt == 0) {
         return;
     }
     LocalTensor<T> scoreLocal = tmpBuff1.Get<T>();
