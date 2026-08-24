@@ -224,8 +224,16 @@ perCoreRankCountWorkspace[aivId][rank]
 rankPrefix[c][r] = sum(perCoreRankCount[0 .. c-1][r])
 ```
 
-这就是 AIV `c` 在 `addressTable[r]` 中的起始位置。一次 MTE2 可以搬入多行，避免原实现逐核
-`DataCopy + MTE2_S`。不同核得到的区间首尾相接且不重叠，所以写表时不需要 atomic。
+每组搬入后使用与 PR 10309 相同的RA归约和Vector累加：
+
+```cpp
+ReduceSum<int32_t, Pattern::Reduce::RA, true>(prefixSums, prefixRows, shape, false);
+Add(rankPrefix, rankPrefix, prefixSums, rankCountElements);
+```
+
+这就是 AIV `c` 在 `addressTable[r]` 中的起始位置。一次 MTE2 可以搬入多行，Vector沿前序核维度
+同时计算所有rank，避免原实现逐核 `DataCopy + MTE2_S` 和Scalar双层累加。不同核得到的区间首尾
+相接且不重叠，所以写表时不需要atomic。
 
 最后一个 AIV 的 prefix 已经包含所有前序核计数，因此最终总条目数为：
 
@@ -298,7 +306,7 @@ SyncAll<true>();
 | --- | --- | --- |
 | PR 已有的 per-core count | 第一次 metadata 扫描 | 为新增地址表逻辑准备每核计数 |
 | `scaleupCounter[core][rank]` | `perCoreRankCountWorkspace[core][rank]` | 保存每核计数行，普通 MTE3 写入 |
-| `GetSlotStartNum()` | 分组搬运 + exclusive prefix | 减少逐核 MTE2 流水，为每核分配表区间 |
+| `GetSlotStartNum()` | 分组搬运 + RA `ReduceSum` + Vector `Add` | 同时计算所有rank的exclusive prefix |
 | `SetAddrInfoTable()` 本地分支 | 建表时直接 `SendSlot()` 本地拷贝 | 本地数据不进入地址表 |
 | `SetAddrInfoTable()` 远端分支 | UB 中按 rank 组装 Combine 记录 | 两者记录字段不同 |
 | `WriteAddrInfoTable()` | strided MTE3 `DataCopy` | 32B 有效块写入 512B stride 的 GM |
@@ -554,8 +562,8 @@ actualA_
 4. `PrepareWrite` 和 `BatchCommit` 时间；
 5. 修改前后的端到端 kernel 时间。
 
-当前实现已经采用 PR 10309 的 per-core count、分组搬运、exclusive prefix、本地直接拷贝和远端批量
-MTE3 写表结构。后续若 prefix 阶段仍成为瓶颈，可进一步用 Vector ReduceSum 代替分组后的 Scalar 累加。
+当前实现已经采用 PR 10309 的per-core count、分组搬运、RA `ReduceSum`、Vector `Add`、本地直接
+拷贝和远端批量MTE3写表结构。
 
 ## 12. 正确性检查建议
 
