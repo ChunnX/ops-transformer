@@ -46,7 +46,7 @@
 #if defined(GMM_FR_FULL_MX)
 #include "lib/matmul_intf.h"
 #include "arch35/grouped_matmul_finalize_routing_tiling_key.h"
-#include "arch35/grouped_matmul_finalize_routing.h"
+#include "arch35/grouped_matmul_finalize_routing_arch35.h"
 #endif
 #elif defined(V310_GMM_FR_ANTI_QUANT)
 // Weight Quantization scenario (伪量化场景)
