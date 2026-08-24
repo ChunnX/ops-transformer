@@ -168,7 +168,7 @@ FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::Init(GM_ADDR mc2Context,
     if constexpr (URMA_FLAG_TRACE) {
         PRINTF("[F2A_URMA][INIT] rank=%u aiv=%u actualTokenNum=%lu aivNum=%u workspaceFlagAddr=%lu "
                "infoSize=%lu windowSize=%lu\n",
-               rankId_, aivId_, actualTokenNum_, aivNum_, static_cast<uint64_t>(localFlagAddr_),
+               rankId_, aivId_, actualTokenNum_, aivNum_, reinterpret_cast<uint64_t>(localFlagAddr_),
                winTokenInfoTableSize_, requiredWindowSize_);
     }
 }
@@ -201,7 +201,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     int32_t localFlagValue = localFlagGMTensor.GetValue(0);
     if constexpr (URMA_FLAG_TRACE) {
         PRINTF("[F2A_URMA][FLAG_INIT_GM_AFTER_DCCI] rank=%u aiv=%u addr=%lu value=%d\n", rankId_, aivId_,
-               static_cast<uint64_t>(localFlagAddr_), localFlagValue);
+               reinterpret_cast<uint64_t>(localFlagAddr_), localFlagValue);
     }
     ascendc_assert(localFlagValue == 1, "URMA local flag initialization failed, flag=%d, aivId=%u", localFlagValue,
                    aivId_);
@@ -287,7 +287,8 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
     tokenDataGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ xType *>(remoteDataAddr));
     if constexpr (URMA_FLAG_TRACE) {
         PRINTF("[F2A_URMA][LOCAL_DATA_BEGIN] rank=%u aiv=%u yOffset=%lu dataAddr=%lu flagAddr=%lu\n", rankId_,
-               aivId_, yOffset, static_cast<uint64_t>(remoteDataAddr), static_cast<uint64_t>(remoteFlagAddr));
+               aivId_, yOffset, reinterpret_cast<uint64_t>(remoteDataAddr),
+               reinterpret_cast<uint64_t>(remoteFlagAddr));
     }
     DataCopyPad(tokenDataGMTensor, xTmpTensor_, xCopyParams);
     xQueue_.FreeTensor<xType>(xTmpTensor_);
@@ -306,7 +307,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
     int32_t localRemoteFlagAfterDcci = tokenInfoTableGMTensor.GetValue(0);
     if constexpr (URMA_FLAG_TRACE) {
         PRINTF("[F2A_URMA][LOCAL_FLAG_DONE] rank=%u aiv=%u yOffset=%lu flagAddr=%lu flag=%d\n", rankId_,
-               aivId_, yOffset, static_cast<uint64_t>(remoteFlagAddr), localRemoteFlagAfterDcci);
+               aivId_, yOffset, reinterpret_cast<uint64_t>(remoteFlagAddr), localRemoteFlagAfterDcci);
     }
     ascendc_assert(localRemoteFlagAfterDcci == 1,
                    "local token flag write failed, flag=%d, rankId=%u, aivId=%u, yOffset=%lu",
@@ -322,8 +323,8 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
     if constexpr (URMA_FLAG_TRACE) {
         PRINTF("[F2A_URMA][REMOTE_DATA_BEGIN] rank=%u dstRank=%u aiv=%u yOffset=%lu channel=%lu localAddr=%lu "
                "remoteAddr=%lu bytes=%lu\n",
-               rankId_, dstRank, aivId_, yOffset, channel, static_cast<uint64_t>(localDataAddr),
-               static_cast<uint64_t>(remoteDataAddr), hSize_);
+               rankId_, dstRank, aivId_, yOffset, channel, reinterpret_cast<uint64_t>(localDataAddr),
+               reinterpret_cast<uint64_t>(remoteDataAddr), hSize_);
     }
     int32_t ret = hcomm_.WriteNbi(channel, remoteDataAddr, localDataAddr, hSize_);
     if constexpr (URMA_FLAG_TRACE) {
@@ -348,8 +349,8 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
     if constexpr (URMA_FLAG_TRACE) {
         PRINTF("[F2A_URMA][REMOTE_FLAG_BEGIN] rank=%u dstRank=%u aiv=%u yOffset=%lu channel=%lu "
                "localFlagAddr=%lu localFlag=%d remoteFlagAddr=%lu\n",
-               rankId_, dstRank, aivId_, yOffset, channel, static_cast<uint64_t>(localFlagAddr_), localFlagValue,
-               static_cast<uint64_t>(remoteFlagAddr));
+               rankId_, dstRank, aivId_, yOffset, channel, reinterpret_cast<uint64_t>(localFlagAddr_), localFlagValue,
+               reinterpret_cast<uint64_t>(remoteFlagAddr));
     }
     ascendc_assert(localFlagValue == 1,
                    "URMA flag source changed before send, flag=%d, rankId=%u, dstRank=%u, aivId=%u, yOffset=%lu",
@@ -423,9 +424,9 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                        "flagAddr=%lu\n",
                        rankId_, metaDataStruct.curAttenWorkRank, aivId_, yOffset,
                        metaDataStruct.curMicroBatchIds, metaDataStruct.curTokenBatchOffset,
-                       metaDataStruct.curTokenTopkOffset, tokenSlot, static_cast<uint64_t>(curRankWinAddr),
-                       remoteDataOffset, remoteFlagOffset, static_cast<uint64_t>(remoteDataAddr),
-                       static_cast<uint64_t>(remoteFlagAddr));
+                       metaDataStruct.curTokenTopkOffset, tokenSlot, reinterpret_cast<uint64_t>(curRankWinAddr),
+                       remoteDataOffset, remoteFlagOffset, reinterpret_cast<uint64_t>(remoteDataAddr),
+                       reinterpret_cast<uint64_t>(remoteFlagAddr));
             }
 
             if (metaDataStruct.curAttenWorkRank == rankId_) {
