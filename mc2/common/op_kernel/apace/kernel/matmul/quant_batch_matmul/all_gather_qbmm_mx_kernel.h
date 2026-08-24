@@ -343,7 +343,8 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::P
     if ((sch.GetEndBlockIdx() + 1) * mTailTile * nTailTile <= AscendC::GetBlockNum()) {
         sch.UpdateTailTile(mTailTile, nTailTile);
     }
-    uint32_t waitedMask = 0U;
+    uint32_t readyTileIdx = 0;
+    commPolicy_.WaitTile(0);
     // dependTileIdx=0 为本 rank 数据，无需等待通信。
 
     Te::Coord<int64_t, int64_t, int64_t, int64_t> blockIdx;
@@ -362,10 +363,9 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::P
 
         auto ctx = ResolveTileCtx(mPos, headMainRows, mainRoundRows, mainSectionRows, fp.rankSize, fp.commTurn);
 
-        // 按位记录已等待过的 dependTileIdx，避免重复 wait。
-        if ((waitedMask & (1U << ctx.dependTileIdx)) == 0U) {
-            commPolicy_.WaitTile(ctx.dependTileIdx);
-            waitedMask |= (1U << ctx.dependTileIdx);
+        while (readyTileIdx < ctx.dependTileIdx) {
+            readyTileIdx++;
+            commPolicy_.WaitTile(readyTileIdx);
         }
 
         // Per-tile L2 cache hint
@@ -402,10 +402,9 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType, CommPolicy>::P
     }
 
     // 确保所有 dependTileIdx 均已 wait（收尾清理）。
-    for (uint32_t t = 0; t <= fp.commTurn; ++t) {
-        if ((waitedMask & (1U << t)) == 0U) {
-            commPolicy_.WaitTile(t);
-        }
+    while (readyTileIdx < fp.commTurn) {
+        readyTileIdx++;
+        commPolicy_.WaitTile(readyTileIdx);
     }
 }
 
