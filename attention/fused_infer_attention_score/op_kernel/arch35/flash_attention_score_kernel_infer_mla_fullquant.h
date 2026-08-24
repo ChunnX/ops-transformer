@@ -16,8 +16,13 @@
 #ifndef FLASH_ATTENTION_SCORE_KERNEL_INFER_MLA_FULLQUANT_H_
 #define FLASH_ATTENTION_SCORE_KERNEL_INFER_MLA_FULLQUANT_H_
 #include "flash_attention_score_kernel_base_fullquant.h"
-#include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
-#include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
+#if __has_include("../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h")
+    #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
+    #include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
+#else
+    #include "../../../common/arch35/vf/vf_flash_decode_arch35.h"
+    #include "../../../common/arch35/infer_flash_attention_comm_arch35.h"
+#endif
 #include "infer_flash_attention_kvcache_fused_infer.h"
 #include "infer_flash_attention_sparse_fused_infer.h"
 

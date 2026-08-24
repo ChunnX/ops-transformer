@@ -20,8 +20,13 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
-#include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
-#include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
+#if __has_include("../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h")
+    #include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
+    #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
+#else
+    #include "../../../common/arch35/infer_flash_attention_comm_arch35.h"
+    #include "../../../common/arch35/vf/vf_flash_decode_arch35.h"
+#endif
 #include "fia_public_define_arch35.h"
 #include "memory_copy_arch35_fused_infer.h"
 

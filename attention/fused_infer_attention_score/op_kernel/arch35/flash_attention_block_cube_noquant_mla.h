@@ -17,10 +17,19 @@
 #define FLASH_ATTENTION_BLOCK_CUBE_NOQUANT_MLA_H_
 
 #include "kernel_operator.h"
-#include "../../../common/op_kernel/matmul.h"
+#if __has_include("../../../common/op_kernel/matmul.h")
+    #include "../../../common/op_kernel/matmul.h"
+#else
+    #include "../../../common/matmul.h"
+#endif
 #include "kernel_tiling/kernel_tiling.h"
-#include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
-#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
+#if __has_include("../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h")
+    #include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
+    #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
+#else
+    #include "../../../common/arch35/infer_flash_attention_comm_arch35.h"
+    #include "../../../common/arch35/flash_attention_score_common_regbase_arch35.h"
+#endif
 #include "flash_attention_score_block_cube_fused_infer.h"
 
 using namespace fa_base_matmul;

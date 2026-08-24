@@ -14,9 +14,15 @@
  */
 #ifndef FIA_BLOCK_CUBE_NOQUANT_GQA_H_
 #define FIA_BLOCK_CUBE_NOQUANT_GQA_H_
-#include "../../../common/op_kernel/offset_calculator.h"
-#include "../../../common/op_kernel/matmul.h"
-#include "../../../common/op_kernel/FixpipeOut.h"
+#if __has_include("../../../common/op_kernel/offset_calculator.h")
+    #include "../../../common/op_kernel/offset_calculator.h"
+    #include "../../../common/op_kernel/matmul.h"
+    #include "../../../common/op_kernel/FixpipeOut.h"
+#else
+    #include "../../../common/offset_calculator.h"
+    #include "../../../common/matmul.h"
+    #include "../../../common/FixpipeOut.h"
+#endif
 #include "memory_copy_arch35_fused_infer.h"
 #include "kernel_operator_list_tensor_intf.h"
 using namespace AscendC;

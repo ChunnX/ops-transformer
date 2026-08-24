@@ -16,10 +16,17 @@
 #define FLASH_ATTENTION_SCORE_BLOCK_VEC_INFER_MLA_FULLQUANT_H_
 
 #include "flash_attention_score_block_vec_base_fullquant.h"
-#include "../../../common/op_kernel/arch35/util_regbase.h"
-#include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
-#include "../../../common/op_kernel/arch35/vf/vf_post_quant_arch35.h"
-#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
+#if __has_include("../../../common/op_kernel/arch35/util_regbase.h")
+    #include "../../../common/op_kernel/arch35/util_regbase.h"
+    #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
+    #include "../../../common/op_kernel/arch35/vf/vf_post_quant_arch35.h"
+    #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
+#else
+    #include "../../../common/arch35/util_regbase.h"
+    #include "../../../common/arch35/vf/vf_flash_decode_arch35.h"
+    #include "../../../common/arch35/vf/vf_post_quant_arch35.h"
+    #include "../../../common/arch35/flash_attention_score_common_regbase_arch35.h"
+#endif
 #include "kernel_operator_list_tensor_intf.h"
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
