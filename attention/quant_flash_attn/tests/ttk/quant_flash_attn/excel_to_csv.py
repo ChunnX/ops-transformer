@@ -239,7 +239,8 @@ def _build_col_by_name(header_row: dict) -> dict:
     """从 sheet 表头行构建 dict[COL逻辑key→col_idx], 按列名动态定位。
 
     优先用表头列名查找 (COL_NAME 映射); 若表头缺某列, fallback 到 COL 固定字母
-    (mxfp8 sheet 向后兼容)。
+    (mxfp8 sheet 向后兼容)。fallback 时校验该字母位置的表头是否为空或与预期列名一致,
+    避免误读其他列。
     """
     name_idx = header_to_name_idx(header_row)
     col_by_name = {}
@@ -247,7 +248,10 @@ def _build_col_by_name(header_row: dict) -> dict:
         if col_name in name_idx:
             col_by_name[logical_key] = name_idx[col_name]
         elif logical_key in COL:
-            col_by_name[logical_key] = COL[logical_key]
+            fallback_idx = COL[logical_key]
+            actual_header = header_row.get(fallback_idx, "")
+            if actual_header is None or actual_header.strip() == "" or actual_header.strip() == col_name:
+                col_by_name[logical_key] = fallback_idx
     return col_by_name
 
 ABSOLUTE_PRECISION_DEFAULT = 1e-8
@@ -493,7 +497,7 @@ def _build_attributes(row, col_by_name):
     # -1=连续, 0=0轴非连续, 1=0,1轴非连续, 以此类推
     _set_force(
         "uncontiguous_dim",
-        _str_to_uncontiguous_dim(row.get(COL["CE_uncontiguous_dim"])),
+        _str_to_uncontiguous_dim(row.get(col_by_name.get("CE_uncontiguous_dim"))),
     )
 
     # --- wrapper 接口适配参数 ---
