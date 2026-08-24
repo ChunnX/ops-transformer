@@ -406,56 +406,52 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Init
     uint32_t mm2ResultSize = constInfo.s1BaseSize / CV_RATIO * 512 * sizeof(T);
     uint32_t mm2LeftSize = constInfo.s1BaseSize * constInfo.s2BaseSize * sizeof(Q_T);
     uint32_t mm1RightSize = constInfo.s2BaseSize * 512 * sizeof(Q_T);
-    l1BufferManager.Init(pipe, 416 * 1024); // L1P+L1Right总计416k, 其余96k给L1Q使用
+    l1BufferManager.Init(pipe, 416 * 1024);
     // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
     l1PBuffers.Init(l1BufferManager, mm2LeftSize);
-    l1PBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID); // 0
+    l1PBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
-    l1PBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID); // 1
+    l1PBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
 
     l1RightBuffers.Init(l1BufferManager, mm1RightSize);
-    l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID); // 2
+    l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
-    l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID); // 3
+    l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
-    l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID); // 4
+    l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
 
     ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize);
     bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
-    bmm2Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId); // 5
+    bmm2Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
     crossCoreSyncBufId++;
     if ASCEND_IS_AIV {
         bmm2Buffers.Get().SetCrossCore();
     }
     bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
-    bmm1Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId); // 6
+    bmm1Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
     crossCoreSyncBufId++;
-    bmm1Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId); // 7
+    bmm1Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
     crossCoreSyncBufId++;
     if ASCEND_IS_AIV {
         bmm1Buffers.Get().SetCrossCore();
         bmm1Buffers.Get().SetCrossCore();
     }
     uint32_t v0ResSize = constInfo.s2BaseSize * 512U * sizeof(Q_T);
-    int64_t totalOffset = 0;
-    if constexpr (IS_SPLIT_G) {
-        totalOffset = v0ResSize * 3 * (aicIdx >> 1U);
-    } else {
-        totalOffset = v0ResSize * 3 * aicIdx;
-    }
+    uint64_t totalOffset = IS_SPLIT_G ? static_cast<uint64_t>(v0ResSize) * 3 * (aicIdx >> 1U) :
+                                        static_cast<uint64_t>(v0ResSize) * 3 * aicIdx;
     v0ResGmBufferManager.Init(workspace + totalOffset);
     v0ResGmBuffers.Init(v0ResGmBufferManager, v0ResSize);
-    v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId); // 8
+    v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
     crossCoreSyncBufId++;
-    v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId); // 9
+    v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
     crossCoreSyncBufId++;
-    v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId); // 10
+    v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
     crossCoreSyncBufId++;
 
-    uint64_t v0RegionSize = static_cast<uint64_t>(v0ResSize) * 3U *
-        (IS_SPLIT_G ? (GetBlockNum() >> 1U) : GetBlockNum());
+    uint64_t v0RegionSize = static_cast<uint64_t>(v0ResSize) * 3 *
+                            (IS_SPLIT_G ? (GetBlockNum() >> 1U) : GetBlockNum());
     uint64_t phyAddrRegionSize = 0;
     if constexpr (IS_VEC_S2PHYADDR) {
         uint64_t totalBS1 = LAYOUT_T == QSMLA_LAYOUT::TND ?
@@ -473,20 +469,22 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Init
     fdStagingBufferManager.Init(workspace + v0RegionSize + phyAddrRegionSize);
     constexpr uint32_t FD_MAX_SUM_REGION_NUM = 2U;
     uint32_t gSize = static_cast<uint32_t>(constInfo.gSize);
-    uint32_t combineElemSize = gSize * static_cast<uint32_t>(constInfo.dSize) +
-        FD_MAX_SUM_REGION_NUM * gSize * static_cast<uint32_t>(AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW);
     if constexpr (IS_BATCH_CONSISTENCY) {
+        uint32_t combineElemSize = gSize * constInfo.dSize + FD_MAX_SUM_REGION_NUM * gSize *
+                                                                 static_cast<uint32_t>(AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW);
         uint32_t intraCoreSlotNum = IS_SPLIT_G ? GetBlockNum() : (GetBlockNum() << 1U);
         uint32_t intraCoreCombineSize = intraCoreSlotNum * combineElemSize * sizeof(float);
-        uint32_t crossCoreSlotNum = BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM *
-            (IS_SPLIT_G ? (GetBlockNum() >> 1U) : GetBlockNum());
-        uint32_t crossCoreCombineSize = crossCoreSlotNum * combineElemSize * sizeof(float);
+        uint32_t crossCoreCombineSize = GetBlockNum() * BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM *
+                                        combineElemSize * sizeof(float);
         intraCoreCombineBuffer.Init(fdStagingBufferManager, intraCoreCombineSize);
         crossCoreCombineBuffer.Init(fdStagingBufferManager, crossCoreCombineSize);
     } else {
         uint32_t fdSlotCount = static_cast<uint32_t>(AttentionCommon::FD_MAX_S2_SPLIT_NUM) *
-            (IS_SPLIT_G ? (GetBlockNum() >> 1U) : GetBlockNum());
-        fdStagingBuffer.Init(fdStagingBufferManager, fdSlotCount * combineElemSize * sizeof(float));
+                               (IS_SPLIT_G ? (GetBlockNum() >> 1U) : GetBlockNum());
+        uint32_t fdStagingSize = fdSlotCount * (gSize * constInfo.dSize * sizeof(float) +
+                                                FD_MAX_SUM_REGION_NUM * gSize *
+                                                    static_cast<uint32_t>(AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW) * sizeof(float));
+        fdStagingBuffer.Init(fdStagingBufferManager, fdStagingSize);
     }
 }
 
@@ -648,11 +646,6 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
                 if (s1NoNeedCalc || s2NoNeedCalc) {
                     continue;
                 }
-                if constexpr (!IS_BATCH_CONSISTENCY) {
-                    if (runParam.isCrossCoreSplit) {
-                        runParam.s2SplitIdx = s2SplitIdxCounter++;
-                    }
-                }
                 if constexpr (IS_SPLIT_G) {
                     maxS2LoopCnt -= runParam.s2LoopEndIdx;
                 }
@@ -661,11 +654,11 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
                 s2LoopLimit = 0;
             }
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
-                if constexpr (IS_BATCH_CONSISTENCY) {
-                    if (runParam.isCrossCoreSplit &&
-                        s2LoopCount % runParam.baseBlockNumPerReductionBlock == 0) {
-                        runParam.s2SplitIdx = s2SplitIdxCounter++;
-                    }
+                int64_t safeBaseBlockNum = runParam.baseBlockNumPerReductionBlock > 0 ?
+                                               runParam.baseBlockNumPerReductionBlock :
+                                               1LL;
+                if (runParam.isCrossCoreSplit && (s2LoopCount % safeBaseBlockNum == 0)) {
+                    runParam.s2SplitIdx = s2SplitIdxCounter++;
                 }
                 if (notLastThreeLoop) {
                     RunInfo &runInfo1 = runInfo[taskId % 4];
@@ -865,7 +858,6 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::SetR
     runInfo.s2LoopLimit = s2LoopLimit;
 
     runInfo.actualS1Size = runParam.actualS1Size;
-    runInfo.actualS2OriSize = runParam.actualS2OriSize;
     runInfo.attentionOutOffset = runParam.attentionOutOffset;
     runInfo.sOuterOffset = runParam.sOuterOffset;
     runInfo.firstFdDataWorkspaceIdx = runParam.firstFdDataWorkspaceIdx;

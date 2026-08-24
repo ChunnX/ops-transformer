@@ -1393,7 +1393,7 @@ def generate_and_save_testdata(
     runNpu: 生成完毕后执行npu计算
     return test_data
     """
-    seed = 47
+    seed = 0
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
