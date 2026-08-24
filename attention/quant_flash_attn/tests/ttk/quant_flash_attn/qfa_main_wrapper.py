@@ -312,7 +312,6 @@ def run_main(
             cu_seqlens_kv=cu_seqlens_kv_t if is_tnd_kv else None,
             seqused_q=seqused_q_t,
             seqused_kv=seqused_kv_t,
-            v_descale=inputs["dequant_scale_v"],
             batch_size=batch_size,
             mask_mode=inputs["sparse_mode"],
             layout_q=layout_q,
