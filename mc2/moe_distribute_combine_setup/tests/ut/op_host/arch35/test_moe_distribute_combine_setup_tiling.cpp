@@ -25,6 +25,8 @@
 namespace MoeDistributeCombineSetupUT {
 
 static const std::string OP_NAME = "MoeDistributeCombineSetup";
+static constexpr int64_t CONTEXT_DIM0 = 2052;
+static constexpr int64_t DEFAULT_CCL_BUFFER_SIZE = 12000;
 
 // SetHCCL_BUFFSIZE
 struct HcclBuffSizeSetter {
@@ -1249,7 +1251,7 @@ static MoeDistributeCombineSetupTestParam g_testCases[] = {
      "",
      {16777216},
      0},
-    {"test_aclnn_moe_distribute_combine_setup_invalid_group_ep_empty",
+    {"test_aclnn_moe_distribute_combine_setup_normal_without_group_ep_attr",
      {512, 4096},
      ge::DT_FLOAT16,
      ge::FORMAT_ND,
@@ -1277,7 +1279,7 @@ static MoeDistributeCombineSetupTestParam g_testCases[] = {
      2,
      "",
      "3510",
-     ge::GRAPH_FAILED,
+     ge::GRAPH_SUCCESS,
      0UL,
      "",
      {16777216},
@@ -2073,9 +2075,10 @@ static gert::TilingContextPara BuildTilingContextPara(const MoeDistributeCombine
 {
     std::cout << "[TEST_CASE] " << param.caseName << std::endl;
 
-    // 参数封装
+    // 参数封装：context 为必选第 0 输入
     std::vector<gert::TilingContextPara::TensorDescription> inputTensorDesc_(
-        {{make_shape(param.expandXShape), param.expandXDtype, param.expandXFormat},
+        {{make_shape({CONTEXT_DIM0}), ge::DT_INT32, ge::FORMAT_ND},
+         {make_shape(param.expandXShape), param.expandXDtype, param.expandXFormat},
          {make_shape(param.expertIdsShape), param.expertIdsDtype, param.expertIdsFormat},
          {make_shape(param.assistInfoShape), param.assistInfoDtype, param.assistInfoFormat}});
 
@@ -2084,10 +2087,10 @@ static gert::TilingContextPara BuildTilingContextPara(const MoeDistributeCombine
          {make_shape(param.commCmdInfoShape), param.commCmdInfoDtype, param.commCmdInfoFormat}});
 
     std::vector<gert::TilingContextPara::OpAttr> attrs_(
-        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.groupAttr)},
-         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.epWorldSize)},
+        {{"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.epWorldSize)},
          {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.epRankId)},
          {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.moeExpertNum)},
+         {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(DEFAULT_CCL_BUFFER_SIZE)},
          {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.expertShardType)},
          {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.sharedExpertNum)},
          {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.sharedExpertRankNum)},
@@ -2106,8 +2109,10 @@ static void ThreadFunction(const MoeDistributeCombineSetupTestParam *testCases, 
     for (size_t idx = threadIdx; idx < caseNum; idx += threadNum) {
         auto param = testCases[idx];
         auto tilingContextPara = BuildTilingContextPara(param);
-        ExecuteTestCase(tilingContextPara, param.status, param.expectTilingKey, param.expectTilingData,
-                        param.expectWorkspaces, param.mc2TilingDataReservedLen);
+        Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", param.epWorldSize},
+                                                   {"HCCL_BUFFSIZE", 12000UL * 1024UL * 1024UL}};
+        Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, param.status, param.expectTilingKey,
+                           param.expectTilingData, param.expectWorkspaces, param.mc2TilingDataReservedLen);
     }
 }
 
@@ -2132,7 +2137,8 @@ TEST_P(MoeDistributeCombineSetupArch35TilingTest, GeneralCases)
 {
     auto param = GetParam();
     auto tilingContextPara = BuildTilingContextPara(param);
-    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", param.epWorldSize}};
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", param.epWorldSize},
+                                               {"HCCL_BUFFSIZE", 12000UL * 1024UL * 1024UL}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, param.status, param.expectTilingKey,
                        param.expectTilingData, param.expectWorkspaces, param.mc2TilingDataReservedLen);
 }
