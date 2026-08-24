@@ -207,7 +207,7 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
         mmTile.mBaseTailSplitCnt, mmTile.nBaseTailSplitCnt, mmTile.mTailMain, mmTile.nTailMain};
     params.qbmmParams = QBMMTiling{batchSize, mmTile.baseM, mmTile.baseN, mmTile.baseK,
         isBias_ ? QBMMTiling::BIAS_ENABLED : QBMMTiling::BIAS_DISABLED, mmTile.dbL0c, false};
-    params.localParams = LocalParams{rankId_, rankDim_, origM, rankId_, y_, false};
+    params.localParams = LocalParams{rankId_, rankDim_, origM, rankId_, 0, false};
 }
 
 template <typename X1Type, typename X2Type, typename YType,
@@ -223,7 +223,6 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
 
     GM_ADDR aCur = x1_;
     GM_ADDR aScaleCur = x1Scale_;
-    GM_ADDR cSelfCur = y_;
     uint32_t lastTiling = 0;
     for (uint32_t tid = 0; tid < totalTileCnt_; ++tid) {
         bool isTail = (tid >= tileCnt_);
@@ -238,15 +237,18 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
         }
         param.mmadParams.aGmAddr = aCur;
         param.mmadParams.scaleAGmAddr = aScaleCur;
-        param.mmadParams.cGmAddr = mmResultGM_ + static_cast<uint64_t>(tid) * maxTileM_ * axisNPerRank_ * sizeof(YType);
-        param.localParams.cGmSelfAddr = cSelfCur;
+        // mmResult偏移用实际累计tileM(不是maxTileM),与AIV sendBuffer一致
+        uint64_t tileOffset = (tid < tileCnt_)
+            ? static_cast<uint64_t>(tid) * tileM_
+            : static_cast<uint64_t>(tileCnt_) * tileM_ + static_cast<uint64_t>(tid - tileCnt_) * tailM_;
+        param.mmadParams.cGmAddr = mmResultGM_ + tileOffset * axisNPerRank_ * sizeof(YType);
+        param.localParams.cGmSelfAddr = 0;
         quantMatmulKernelImpl_(param);
 
         AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(tid);
 
         aCur += static_cast<uint64_t>(curTileM) * aByteStrideK_;
         aScaleCur += static_cast<uint64_t>(curTileM) * scaleAByteStride_;
-        cSelfCur += static_cast<uint64_t>(curTileM) * cByteStrideN_;
 
         if (tailCnt_ > 0 && tid < totalTileCnt_ - 1) {
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(MTE1_MTE2_EVENT_FLAG);
@@ -287,7 +289,7 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
                 : static_cast<uint64_t>(tileCnt_) * tileM_ + static_cast<uint64_t>(tid - tileCnt_) * tailM_;
             uint64_t sendCount = static_cast<uint64_t>(curTileM) * axisNPerRank_;
             curHandle = hccl_.template AlltoAll<true>(
-                mmResultGM_ + static_cast<uint64_t>(tid) * maxTileM_ * axisNPerRank_ * sizeof(YType),
+                mmResultGM_ + tileOffset * axisNPerRank_ * sizeof(YType),
                 y_ + tileOffset * axisNPerRank_ * sizeof(YType),
                 sendCount, static_cast<AscendC::HcclDataType>(yHcclDataType_),
                 sendCount, 1);
