@@ -36,8 +36,14 @@ protected:
     static constexpr const char *kSocVersion = "Ascend950";
     optiling::InplacePartialRotaryMulGradCompileInfo compileInfo_ = {};
 
-    static void SetUpTestCase() { cout << "InplacePartialRotaryMulGradTilingTest SetUp" << endl; }
-    static void TearDownTestCase() { cout << "InplacePartialRotaryMulGradTilingTest TearDown" << endl; }
+    static void SetUpTestCase()
+    {
+        cout << "InplacePartialRotaryMulGradTilingTest SetUp" << endl;
+    }
+    static void TearDownTestCase()
+    {
+        cout << "InplacePartialRotaryMulGradTilingTest TearDown" << endl;
+    }
 };
 
 // ==================== BAB (203): BSND, cosb_==1 ====================
