@@ -28,7 +28,7 @@ enum class VselrIndexEnum {
     GT_0_AND_LTE_64_INDEX = 1
 };
 
-#define COMMON_RUN_PARAM \
+#define RUN_PARAM_COMMON_FIELDS \
     int64_t boIdx; \
     int64_t s1oIdx; \
     int64_t n2oIdx; \
@@ -51,40 +51,45 @@ enum class VselrIndexEnum {
     int32_t actualS1Size;       /* Q的actualSeqLength */ \
     int32_t actualS2OriSize;    /* ori_kv的真实使用长度 */ \
     int32_t actualS2CmpSize;    /* cmp_kv的真实使用长度 */ \
-    int32_t cmpResidual         /* cmp的余数，用于mask计算 */
+    int32_t cmpResidual;        /* cmp的余数，用于mask计算 */ \
+    /* BN循环生产的数据 */ \
+    int64_t gs1LoopStartIdx; \
+    int64_t gs1LoopEndIdx; \
+    int64_t preTokensPerBatch = MAX_PRE_NEXT_TOKENS;     /* 左上顶点的pretoken */ \
+    int64_t nextTokensPerBatchOri = MAX_PRE_NEXT_TOKENS; /* ori 左上顶点的nexttoken */ \
+    int64_t nextTokensPerBatchCmp = MAX_PRE_NEXT_TOKENS; /* cmp 左上顶点的nexttoken */ \
+    /* NBS1循环生产的数据 */ \
+    int64_t sOuterOffset;     /* 单个S内 souter的 souterIdx * halfS1RealSize souter层确定 */ \
+    int64_t cubeSOuterOffset; /* 单个S内 souter的 souterIdx * halfS1RealSize souter层确定 */ \
+    int64_t mOuterOffset; \
+    int64_t cubeMOuterOffset; \
+    int64_t qSNumInOneBlock; \
+    int64_t oriKvLoopEndIdx; \
+    int64_t cmpKvLoopEndIdx; \
+    int64_t firstFdDataWorkspaceIdx = 0; \
+    bool isCrossCoreSplit = false; \
+    int64_t s2SplitIdx = 0; \
+    bool isFirstS2SplitCore = true; \
+    int64_t baseBlockNumPerReductionBlock = 1 /* s2方向一个规约块有几个基本块 */
 
+#define RUN_PARAM_TOPK_LSE_FIELDS \
+    /* lse/topk len 相关参数, 仅在非HIGH_PERF模式存在 */ \
+    int64_t softmaxLseOffset; /* lse 输出offset, souter层确定 */ \
+    uint32_t oriSparseBlockCount; \
+    uint32_t cmpSparseBlockCount
+
+template <bool HIGH_PERF = false>
 struct RunParamStr { // 分核与切块需要使用到参数
-    COMMON_RUN_PARAM;
-    /* 推理新增 */
-    int64_t gs1LoopStartIdx;
-    int64_t gs1LoopEndIdx;
-    // BN循环生产的数据
-    int64_t preTokensPerBatch = MAX_PRE_NEXT_TOKENS;     // 左上顶点的pretoken
-    int64_t nextTokensPerBatchOri = MAX_PRE_NEXT_TOKENS; // ori 左上顶点的nexttoken
-    int64_t nextTokensPerBatchCmp = MAX_PRE_NEXT_TOKENS; // cmp 左上顶点的nexttoken
-
-    // NBS1循环生产的数据
-    int64_t sOuterOffset;     // 单个S内 souter的 souterIdx * halfS1RealSize souter层确定
-    int64_t cubeSOuterOffset; // 单个S内 souter的 souterIdx * halfS1RealSize souter层确定
-    int64_t mOuterOffset;
-    int64_t cubeMOuterOffset;
-
-    // lse 输出offset
-    int64_t softmaxLseOffset; // souter层确定
-
-    int64_t qSNumInOneBlock;
-    int64_t oriKvLoopEndIdx;
-    int64_t cmpKvLoopEndIdx;
-    int64_t firstFdDataWorkspaceIdx = 0;
-    bool isCrossCoreSplit = false;
-    int64_t s2SplitIdx = 0;
-    bool isFirstS2SplitCore = true;
-    uint32_t oriSparseBlockCount;
-    uint32_t cmpSparseBlockCount;
-    int64_t baseBlockNumPerReductionBlock = 1; // s2方向一个规约块有几个基本块
+    RUN_PARAM_COMMON_FIELDS;
+    RUN_PARAM_TOPK_LSE_FIELDS;
 };
 
-#define COMMON_RUN_INFO \
+template <>
+struct RunParamStr<true> { // HIGH_PERF: 无topk len且无lse场景, 剔除topk/lse相关字段
+    RUN_PARAM_COMMON_FIELDS;
+};
+
+#define RUN_INFO_COMMON_FIELDS \
     uint64_t s2StartIdx; /* s2的起始位置，sparse场景下可能不是0 */ \
     int64_t s2EndIdx; \
     int64_t s2LoopCount; /* s2循环当前的循环index */ \
@@ -128,27 +133,32 @@ struct RunParamStr { // 分核与切块需要使用到参数
     bool isCmp; \
     bool isCrossCoreSplit = false; \
     int64_t s2SplitIdx = 0; \
-    bool isFirstS2SplitCore = true
+    bool isFirstS2SplitCore = true; \
+    int64_t qSNumInOneBlock; \
+    int64_t oriKvLoopEndIdx; \
+    int64_t cmpKvLoopEndIdx; \
+    int64_t firstFdDataWorkspaceIdx = 0; \
+    bool isFirstBase = true; \
+    bool isLastBase = true; \
+    bool needReduce = false; \
+    int64_t reduceBlockId = 0
 
+#define RUN_INFO_TOPK_LSE_FIELDS \
+    /* lse 输出offset, 仅在非HIGH_PERF模式存在 */ \
+    int64_t softmaxLseOffset
+
+template <bool HIGH_PERF = false>
 struct RunInfo {
-    COMMON_RUN_INFO;
-    // 推理新增
-    // lse 输出offset
-    int64_t softmaxLseOffset;
-
-    int64_t qSNumInOneBlock;
-    int64_t oriKvLoopEndIdx;
-    int64_t cmpKvLoopEndIdx;
-    int64_t firstFdDataWorkspaceIdx = 0;
-    uint32_t oriSparseBlockCount;
-    uint32_t cmpSparseBlockCount;
-    bool isFirstBase = true;
-    bool isLastBase = true;
-    bool needReduce = false;
-    int64_t reduceBlockId = 0;
+    RUN_INFO_COMMON_FIELDS;
+    RUN_INFO_TOPK_LSE_FIELDS;
 };
 
-#define COMMON_CONST_INFO \
+template <>
+struct RunInfo<true> { // HIGH_PERF: 无topk len且无lse场景, 剔除topk/lse相关字段
+    RUN_INFO_COMMON_FIELDS;
+};
+
+#define CONST_INFO_COMMON_FIELDS \
     /* 全局的基本块信息 */ \
     uint32_t bSize; \
     uint32_t needInit; \
@@ -219,13 +229,6 @@ struct RunInfo {
     int64_t attentionOutStride; \
     uint32_t aivIdx; \
     uint8_t subBlockIdx; \
-    bool hasOriTopkLength; \
-    bool hasCmpTopkLength
-
-#define INFER_CONST_INFO \
-    /* 推理 */ \
-    bool isActualLenDimsNull; /* 判断是否有actualseq */ \
-    bool isSoftmaxLseEnable; \
     uint32_t oriSparseBlockCount; \
     uint32_t cmpSparseBlockCount; \
     uint32_t alignedOriSparseBlockCount; \
@@ -234,7 +237,6 @@ struct RunInfo {
     /* service mm1 mm2 pageAttention */ \
     uint32_t oriBlockSize; \
     uint32_t cmpBlockSize; \
-    uint32_t paLayoutType; \
     uint32_t oriMaxBlockNumPerBatch; \
     uint32_t cmpMaxBlockNumPerBatch; \
     int32_t oriWinLeft; \
@@ -247,9 +249,21 @@ struct RunInfo {
     uint32_t oriMaskMode; \
     uint32_t cmpMaskMode
 
+#define CONST_INFO_TOPK_LSE_FIELDS \
+    /* topk len/lse 相关参数, 仅在非HIGH_PERF模式存在 */ \
+    bool hasOriTopkLength; \
+    bool hasCmpTopkLength; \
+    bool isSoftmaxLseEnable
+
+template <bool HIGH_PERF = false>
 struct ConstInfo {
-    COMMON_CONST_INFO;
-    INFER_CONST_INFO;
+    CONST_INFO_COMMON_FIELDS;
+    CONST_INFO_TOPK_LSE_FIELDS;
+};
+
+template <>
+struct ConstInfo<true> { // HIGH_PERF: 无topk len且无lse场景, 剔除topk/lse相关字段
+    CONST_INFO_COMMON_FIELDS;
 };
 } // namespace regbaseutil
 
