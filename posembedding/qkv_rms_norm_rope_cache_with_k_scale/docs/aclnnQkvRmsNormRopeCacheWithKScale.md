@@ -1,5 +1,21 @@
 # aclnnQkvRmsNormRopeCacheWithKScale
 
+## 待逐项确认：ACLNN接口差异和关键合同
+
+> 下表中的“变更前接口”指新增M-RoPE MX场景之前的ACLNN接口。以下项目未逐项确认前，后文均视为设计草案；可按`A01`～`A09`逐项反馈。
+
+| 编号 | 状态 | 变更前接口/实现 | 本次拟定合同及影响 |
+|---|---|---|---|
+| A01 | 待确认 | `GetWorkspaceSize`没有`kQuantMode`参数。 | 在`qQuantMode`后新增`kQuantMode`，以`PerTokenPerHead`/`MxQuant`区分K量化算法；这会造成同名C接口的ABI和源码接口不兼容，必须成套干净重编。 |
+| A02 | 待确认 | 旧M-RoPE必须传`rotationOptional[D,D]`并走矩阵乘；其Q不量化。 | 新M-RoPE MX必须令`rotationOptional=nullptr`；Q/K均在M-RoPE后直接做`DynamicMxQuantV3(scaleAlg=1)`语义的D32 MX量化。 |
+| A03 | 待确认 | `qScaleOptional`仅在旧RoPE承载FP32 rank2 scale；`kScaleCacheRef`固定为FP32 rank4。 | 不增加ACLNN输出参数：新场景要求传有效`qScaleOptional` E8M0 `[T,Nq,ceil(D/32)]`，并将`kScaleCacheRef`改为E8M0 `[BlockNum,Nk,BlockSize,ceil(D/32)]`。 |
+| A04 | 待确认 | 旧M-RoPE的K Cache为INT8；旧RoPE的K Cache为FP8 E4M3FN。 | 新场景Q输出和K Cache均为FP8 E4M3FN；`kQuantMode`不决定dtype，dtype由输出/Cache Tensor与完整场景组合共同约束。 |
+| A05 | 待确认 | M-RoPE位置输入与RoPE位置输入互斥，但两个旧场景都必须传rotation。 | 新场景仍要求`mropePositionOptional[T,3]`和`mropeSectionOptional=[t,h,w]`，仍不得传RoPE位置输入，同时必须不传rotation。 |
+| A06 | 待确认 | 当前kernel固定`D=128`，并要求`0<Nq<=64`、`Nq=8*Nk`、`Nk=Nv`。 | 接口shape写成符号D及`ceil(D/32)`只为表达派生shape；本次不扩展D或head关系。 |
+| A07 | 待确认 | 旧M-RoPE使用`mropePositionOptional[T,3]`和`mropeSectionOptional=[t,h,w]`。 | 新场景完全复用已有M-RoPE选源语义和值域：位置必须落在`cosSin`表内，D128下H/W各不超过21且`t+h+w<=64`。 |
+| A08 | 待确认 | 旧M-RoPE只支持TND，但`layoutQOut`默认是`"NTD"`；旧场景对重复slot仅定义为结果未定义。 | 新场景必须显式令`layoutQkv=layoutQOut="TND"`；三个场景统一要求`1<=T<=262144`，新场景另把同次调用的slot互不重复设为硬合同。 |
+| A09 | 待确认 | 旧RoPE/旧M-RoPE调用方按原函数原型编译。 | 旧场景计算语义不变，但旧二进制不能与新OPP混用；OPP、ACLNN调用方及上层扩展必须使用同一版原型重新编译和安装。 |
+
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
@@ -23,13 +39,17 @@
 
 ## 功能说明
 
-- 接口功能：`aclnnQkvRmsNormRopeCacheWithKScale`在一次调用中完成融合QKV拆分、Q/K RMSNorm、位置编码、共享矩阵乘、Q/K量化以及PagedAttention KV Cache更新。Q分支根据接口约束写入`qOut`和`qScaleOptional`；K、V分支根据`slotMapping`原地更新`kCacheRef`、`vCacheRef`和`kScaleCacheRef`。V分支不执行RMSNorm、位置编码或共享矩阵乘。
+- 接口功能：`aclnnQkvRmsNormRopeCacheWithKScale`在一次调用中完成融合QKV拆分、Q/K RMSNorm与位置编码、按场景执行Q/K矩阵乘或量化，并更新PagedAttention KV Cache。Q分支根据场景写入`qOut`和`qScaleOptional`；K、V分支根据`slotMapping`原地更新`kCacheRef`、`vCacheRef`和`kScaleCacheRef`。当前支持三种完整语义场景：
+  - 旧RoPE：Q/K执行`RMSNorm -> RoPE -> rotation -> PerTokenPerHead量化`，Q/K数据为FP8 E4M3FN、scale为FP32；
+  - 旧M-RoPE：Q/K执行`RMSNorm -> M-RoPE -> rotation`，Q直接输出BF16，K执行PerTokenPerHead INT8量化；
+  - 新M-RoPE MX：Q/K执行`RMSNorm -> M-RoPE -> Dynamic MX Quant`，不执行`rotationOptional`；MX语义对齐`DynamicMxQuantV3(scaleAlg=1)`，Q/K数据为FP8 E4M3FN、scale为FP8 E8M0。
+  V分支不执行RMSNorm、位置编码或矩阵乘；新M-RoPE MX使用`vScaleOptional[Nv,D]`进行per-head-per-channel静态量化并输出FP8 E4M3FN。
 
 - 计算公式：
 
   以下公式统一按逻辑`[T,N,D]`布局描述，`layoutQkv`和`layoutQOut`只决定Tensor中T轴与N轴的物理顺序，不改变逐元素计算。$T$表示token总数，$N_q/N_k/N_v$表示Q/K/V head数，$D=128$表示head维度。
 
-  计算过程按QKV拆分、归一化、位置编码、共享矩阵乘、输出量化和Cache写回六步展开。
+  计算过程按QKV拆分、归一化、位置编码、场景相关矩阵乘/量化和Cache写回展开。
 
   **1. Q/K/V拆分与Q/K RMSNorm**
 
@@ -165,9 +185,9 @@
   \end{aligned}
   $$
 
-  **4. Q/K共享矩阵乘**
+  **4. 旧场景的Q/K共享矩阵乘**
 
-  令$\boldsymbol W$表示`rotationOptional`，位置编码结果转换为BF16后右乘该共享矩阵，得到FP32结果$\boldsymbol H^Q$和$\boldsymbol H^K$：
+  旧RoPE和旧M-RoPE中，令$\boldsymbol W$表示`rotationOptional`，位置编码结果转换为BF16后右乘该共享矩阵，得到FP32结果$\boldsymbol H^Q$和$\boldsymbol H^K$：
 
   $$
   \boldsymbol H^A_{u,n,:}
@@ -177,16 +197,18 @@
   \qquad A\in\{Q,K\}.
   $$
 
+  新M-RoPE MX中`rotationOptional`必须为空，M-RoPE结果$\boldsymbol Z^Q/\boldsymbol Z^K$不经过该矩阵乘，直接进入MX量化。
+
   **5. Q/K输出与动态量化**
 
-  对经过共享矩阵乘得到的$\boldsymbol H^A$，输出类型和是否执行动态量化由“约束说明”确定。未执行动态量化时，直接转换到约束规定的输出类型$\tau_A$：
+  对旧场景经过共享矩阵乘得到的$\boldsymbol H^A$，输出类型和是否执行PerTokenPerHead动态量化由“约束说明”确定。未执行动态量化时，直接转换到约束规定的输出类型$\tau_A$：
 
   $$
   O^A_{u,n,d}=\operatorname{cast}_{\tau_A}\!\left(H^A_{u,n,d}\right),
   \qquad A\in\{Q,K\}.
   $$
 
-  对执行动态量化的分支，令$M_{\tau_A}$表示目标类型对应的正向量化上限。统一的逐token、逐head量化公式为
+  对执行PerTokenPerHead动态量化的分支，令$M_{\tau_A}$表示目标类型对应的正向量化上限。逐token、逐head量化公式为
 
   $$
   M_{\tau_A}=
@@ -208,7 +230,16 @@
   \end{aligned}
   $$
 
-  其中`cast`表示按目标类型完成转换；当目标类型为INT8时，转换包含舍入和$[-127,127]$范围饱和。启用动态量化时，Q分支的$\boldsymbol\alpha^Q$写入`qScaleOptional`、$\widehat{\boldsymbol H}^Q$写入`qOut`，K分支的$\boldsymbol\alpha^K$写入`kScaleCacheRef`、$\widehat{\boldsymbol H}^K$写入`kCacheRef`。未启用动态量化的分支只产生直接转换结果，不产生scale。
+  其中`cast`表示按目标类型完成转换；当目标类型为INT8时，转换包含舍入和$[-127,127]$范围饱和。启用PerTokenPerHead量化时，Q分支的$\boldsymbol\alpha^Q$写入`qScaleOptional`、$\widehat{\boldsymbol H}^Q$写入`qOut`，K分支的$\boldsymbol\alpha^K$写入`kScaleCacheRef`、$\widehat{\boldsymbol H}^K$写入`kCacheRef`。未启用动态量化的分支只产生直接转换结果，不产生scale。
+
+  新M-RoPE MX对$\boldsymbol Z^Q/\boldsymbol Z^K$的每个D32 block独立执行`DynamicMxQuantV3(scaleAlg=1)`语义，输出FP8 E4M3FN数据和FP8 E8M0 scale。令$B=\lceil D/32\rceil$，有效scale按D32 block的线性次序存放在末轴：
+
+  $$
+  \mathrm{scale}[...,b],
+  \qquad 0\leq b<B.
+  $$
+
+  当前实现仍固定$D=128$，所以每个Q/K head产生4个E8M0 scale；这不表示已经支持任意D。
 
   **6. V缩放、量化与Cache写回**
 
@@ -237,8 +268,8 @@
   &=\widehat H^K_{u,n,d},\\
   \mathrm{vCacheRef}'_{b_u,n,o_u,d}
   &=\widehat V_{u,n,d},\\
-  \mathrm{kScaleCacheRef}'_{b_u,n,o_u,0}
-  &=\alpha^K_{u,n}.
+  \mathrm{kScaleCacheRef}'_{b_u,n,o_u,\ldots}
+  &=\mathrm{kScale}_{u,n,\ldots}.
   \end{aligned}
   $$
 
@@ -269,6 +300,7 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
     float              epsilon,
     const aclIntArray *mropeSectionOptional,
     const char        *qQuantMode,
+    const char        *kQuantMode,
     aclTensor         *qOut,
     aclTensor         *qScaleOptional,
     uint64_t          *workspaceSize,
@@ -282,6 +314,8 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
     aclOpExecutor *executor,
     aclrtStream    stream);
 ```
+
+> 兼容性说明：`kQuantMode`是在`qQuantMode`之后新增的C函数参数，因此同名`GetWorkspaceSize`接口发生ABI和源码接口不兼容变更。旧RoPE和旧M-RoPE在整套组件干净重编后保持原有行为，但必须同步重编并成套安装OPP和ACLNN调用方，不能混用新旧二进制。
 
 ## aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize
 
@@ -362,17 +396,17 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
     </tr>
     <tr>
       <td style="white-space: nowrap">kCacheRef（aclTensor*）</td>
-      <td>输出</td>
+      <td>输入/输出</td>
       <td>KCache写回Tensor，对应公式中的<code>kCacheRef</code>。</td>
       <td><ul><li>不支持空指针或空Tensor。</li><li>接口基于传入Tensor原地更新。</li><li>数据类型及其与K量化结果的对应关系见“约束说明”。</li><li>支持非连续Tensor，需满足“约束说明”中的stride限制。</li></ul></td>
-      <td>FLOAT8_E4M3FN、INT8</td>
+      <td>FLOAT8_E4M3FN、INT8<br>旧RoPE/新M-RoPE MX：FLOAT8_E4M3FN<br>旧M-RoPE：INT8</td>
       <td>ND</td>
       <td><code>[BlockNum,Nk,BlockSize,D]</code></td>
       <td>√</td>
     </tr>
     <tr>
       <td style="white-space: nowrap">vCacheRef（aclTensor*）</td>
-      <td>输出</td>
+      <td>输入/输出</td>
       <td>VCache写回Tensor，对应公式中的<code>vCacheRef</code>。</td>
       <td><ul><li>不支持空指针或空Tensor。</li><li>接口基于传入Tensor原地更新。</li><li>支持非连续Tensor，需满足“约束说明”中的stride限制。</li></ul></td>
       <td>FLOAT8_E4M3FN</td>
@@ -382,12 +416,12 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
     </tr>
     <tr>
       <td style="white-space: nowrap">kScaleCacheRef（aclTensor*）</td>
-      <td>输出</td>
+      <td>输入/输出</td>
       <td>K动态量化scale cache写回Tensor，对应公式中的<code>kScaleCacheRef</code>。</td>
       <td><ul><li>不支持空指针或空Tensor。</li><li>接口基于传入Tensor原地更新。</li><li>支持非连续Tensor，需满足“约束说明”中的stride限制。</li></ul></td>
-      <td>FLOAT</td>
+      <td>旧RoPE/旧M-RoPE：FLOAT<br>新M-RoPE MX：FLOAT8_E8M0</td>
       <td>ND</td>
-      <td><code>[BlockNum,Nk,BlockSize,1]</code></td>
+      <td>旧RoPE/旧M-RoPE：<code>[BlockNum,Nk,BlockSize,1]</code><br>新M-RoPE MX：<code>[BlockNum,Nk,BlockSize,ceil(D/32)]</code></td>
       <td>√</td>
     </tr>
     <tr>
@@ -413,8 +447,8 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
     <tr>
       <td style="white-space: nowrap">rotationOptional（const aclTensor*）</td>
       <td>可选输入</td>
-      <td>Q/K共享矩阵乘权重，对应公式中的<code>rotationOptional</code>。</td>
-      <td><ul><li>接口合同要求非空Tensor。</li><li>用于Q/K共享矩阵乘。</li></ul></td>
+      <td>旧RoPE/旧M-RoPE的Q/K共享矩阵乘权重。</td>
+      <td><ul><li>旧RoPE/旧M-RoPE必须传有效Tensor。</li><li>新M-RoPE MX必须传空指针，不执行矩阵乘。</li></ul></td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td><code>[D,D]</code></td>
@@ -424,10 +458,10 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       <td style="white-space: nowrap">vScaleOptional（const aclTensor*）</td>
       <td>可选输入</td>
       <td>V分支量化缩放因子，对应公式中的<code>vScaleOptional</code>。</td>
-      <td><ul><li>接口合同要求非空Tensor。</li><li>用于V分支FP8量化前缩放。</li></ul></td>
+      <td><ul><li>三个场景均必须传有效Tensor。</li><li>新M-RoPE MX按每个head、每个channel静态量化V。</li></ul></td>
       <td>FLOAT</td>
       <td>ND</td>
-      <td>RoPE：<code>[Nv]</code><br>M-RoPE：<code>[Nv,D]</code></td>
+      <td>旧RoPE：<code>[Nv]</code><br>旧M-RoPE/新M-RoPE MX：<code>[Nv,D]</code></td>
       <td>×</td>
     </tr>
     <tr>
@@ -444,7 +478,7 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       <td style="white-space: nowrap">headNums（const aclIntArray*）</td>
       <td>输入</td>
       <td>Q/K/V头数数组，依次映射为公式中的<code>Nq</code>、<code>Nk</code>、<code>Nv</code>。</td>
-      <td><ul><li>不支持空指针。</li><li>必须包含3个正整数。</li><li>RoPE和M-RoPE均要求<code>Nq&lt;=64</code>、<code>Nq=8*Nk</code>、<code>Nk=Nv</code>。</li></ul></td>
+      <td><ul><li>不支持空指针。</li><li>必须包含3个正整数。</li><li>三个场景均要求<code>Nq&lt;=64</code>、<code>Nq=8*Nk</code>、<code>Nk=Nv</code>。</li></ul></td>
       <td>INT64</td>
       <td>-</td>
       <td>长度为3</td>
@@ -494,7 +528,17 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       <td style="white-space: nowrap">qQuantMode（const char*）</td>
       <td>输入</td>
       <td>Q分支量化模式。</td>
-      <td><ul><li>传入空指针或空字符串时按默认值<code>"PerTokenPerHead"</code>处理。</li><li>支持值及其与输出类型、位置输入的组合见“约束说明”。</li></ul></td>
+      <td><ul><li>传入空指针或空字符串时按默认值<code>"PerTokenPerHead"</code>处理。</li><li>旧RoPE使用<code>"PerTokenPerHead"</code>，旧M-RoPE使用<code>"NoQuant"</code>，新M-RoPE MX使用<code>"MxQuant"</code>。</li></ul></td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td style="white-space: nowrap">kQuantMode（const char*）</td>
+      <td>输入</td>
+      <td>K分支量化算法模式。</td>
+      <td><ul><li>该参数由<code>aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize</code>直接接收。</li><li>传入空指针或空字符串时按默认值<code>"PerTokenPerHead"</code>处理。</li><li><code>"PerTokenPerHead"</code>选择旧K量化算法，<code>"MxQuant"</code>选择新M-RoPE MX算法。</li><li>该参数不选择输出dtype；K的存储类型仍由<code>kCacheRef</code> dtype和场景合同决定。</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -503,21 +547,21 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
     <tr>
       <td style="white-space: nowrap">qOut（aclTensor*）</td>
       <td>输出</td>
-      <td>Q分支输出，对应计算公式中的直接转换结果或动态量化结果。</td>
+      <td>Q分支输出。旧RoPE和新M-RoPE MX为FP8 E4M3FN；旧M-RoPE为BF16。</td>
       <td><ul><li>不支持空指针或空Tensor。</li><li>接口直接读取<code>qOut</code>的数据类型，不单独传入dtype属性。</li><li>输出类型及其与量化模式、位置输入的组合见“约束说明”。</li></ul></td>
       <td>FLOAT8_E4M3FN、BFLOAT16</td>
       <td>ND</td>
-      <td><code>[T,Nq,D]</code>或<code>[Nq,T,D]</code></td>
+      <td>旧RoPE：<code>[T,Nq,D]</code>或<code>[Nq,T,D]</code><br>旧M-RoPE/新M-RoPE MX：<code>[T,Nq,D]</code></td>
       <td>×</td>
     </tr>
     <tr>
       <td style="white-space: nowrap">qScaleOptional（aclTensor*）</td>
       <td>可选输出</td>
-      <td>Q分支每个token/head对应的动态量化scale，对应Q分支动态量化公式中的<code>scale</code>。</td>
-      <td><ul><li>是否需要传入及其与Q输出的组合见“约束说明”。</li><li>传入时不支持空Tensor。</li></ul></td>
-      <td>FLOAT</td>
+      <td>Q分支动态量化scale。旧RoPE每个token/head一个FP32 scale；新M-RoPE MX每个D32 block一个E8M0 scale；旧M-RoPE不产生公开scale。</td>
+      <td><ul><li>旧RoPE和新M-RoPE MX必须传有效Tensor。</li><li>旧M-RoPE必须传空指针。</li></ul></td>
+      <td>FLOAT、FLOAT8_E8M0</td>
       <td>ND</td>
-      <td><code>[T,Nq]</code>或<code>[Nq,T]</code></td>
+      <td>旧RoPE：<code>[T,Nq]</code>或<code>[Nq,T]</code><br>新M-RoPE MX：<code>[T,Nq,ceil(D/32)]</code><br>旧M-RoPE：无</td>
       <td>×</td>
     </tr>
     <tr>
@@ -564,7 +608,7 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
     <tr>
       <td style="white-space: nowrap">ACLNN_ERR_PARAM_NULLPTR</td>
       <td style="white-space: nowrap">161001</td>
-      <td><code>qkv</code>、<code>qGamma</code>、<code>kGamma</code>、<code>cosSin</code>、<code>slotMapping</code>、<code>kCacheRef</code>、<code>vCacheRef</code>、<code>kScaleCacheRef</code>、<code>rotationOptional</code>、<code>vScaleOptional</code>、<code>headNums</code>、<code>qOut</code>、<code>workspaceSize</code>或<code>executor</code>为空指针，或支持场景要求非空的<code>queryStartLocOptional</code>、<code>seqLensOptional</code>或<code>qScaleOptional</code>为空指针。</td>
+      <td><code>qkv</code>、<code>qGamma</code>、<code>kGamma</code>、<code>cosSin</code>、<code>slotMapping</code>、<code>kCacheRef</code>、<code>vCacheRef</code>、<code>kScaleCacheRef</code>、<code>vScaleOptional</code>、<code>headNums</code>、<code>qOut</code>、<code>workspaceSize</code>或<code>executor</code>为空指针，或支持场景要求非空的<code>queryStartLocOptional</code>、<code>seqLensOptional</code>、<code>rotationOptional</code>或<code>qScaleOptional</code>为空指针。</td>
     </tr>
     <tr>
       <td rowspan="6" style="white-space: nowrap">ACLNN_ERR_PARAM_INVALID</td>
@@ -584,7 +628,7 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       <td><code>kCacheRef</code>、<code>vCacheRef</code>或<code>kScaleCacheRef</code>非连续Tensor的stride不满足约束。</td>
     </tr>
     <tr>
-      <td><code>mropePositionOptional</code>与非空<code>mropeSectionOptional</code>未同时缺席或同时存在，<code>mropeSectionOptional</code>长度或单项值域不满足约束，或位置参数、<code>qQuantMode</code>、<code>qOut</code> dtype、<code>qScaleOptional</code>的组合与所选场景不匹配。</td>
+      <td><code>mropePositionOptional</code>与非空<code>mropeSectionOptional</code>未同时缺席或同时存在，<code>mropeSectionOptional</code>长度或单项值域不满足约束，或位置参数、<code>rotationOptional</code>、<code>qQuantMode</code>、<code>kQuantMode</code>、输出/cache dtype及scale shape的组合与所选场景不匹配。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap">ACLNN_ERR_INNER_CREATE_EXECUTOR</td>
@@ -645,29 +689,33 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
 
 - 支持场景：
 
-  | 场景 | 位置输入 | Q分支约束 | K分支约束 | 支持的N/T布局 |
-  |:---|:---|:---|:---|:---|
-  | RoPE场景 | 传入`queryStartLocOptional`和`seqLensOptional`；不传`mropePositionOptional`；`mropeSectionOptional`不传或传空数组 | `qQuantMode="PerTokenPerHead"`；`qOut`为FP8 E4M3FN；`qScaleOptional`为FP32 | K量化为FP8 E4M3FN并写入`kCacheRef`；K scale写入FP32 `kScaleCacheRef` | `NTD -> NTD`、`TND -> TND`、`TND -> NTD` |
-  | M-RoPE场景 | 不传`queryStartLocOptional`和`seqLensOptional`；传入`mropePositionOptional[T,3]`和`mropeSectionOptional=[t,h,w]` | `qQuantMode="NoQuant"`；`qOut`为BF16；`qScaleOptional`为`nullptr` | K量化为INT8并写入`kCacheRef`；K scale写入FP32 `kScaleCacheRef` | 仅`TND -> TND` |
+  | 场景 | 位置输入 | rotation | Q分支 | K分支 | V分支 | 支持的N/T布局 |
+  |:---|:---|:---|:---|:---|:---|:---|
+  | 旧RoPE | 传`queryStartLocOptional/seqLensOptional`；不传`mropePositionOptional`；`mropeSectionOptional`不传或为空 | 必须传BF16 `[D,D]` | `qQuantMode="PerTokenPerHead"`；`qOut`为FP8 E4M3FN；`qScaleOptional`为FP32 rank2 | `kQuantMode="PerTokenPerHead"`；K为FP8 E4M3FN；`kScaleCacheRef`为FP32 `[BlockNum,Nk,BlockSize,1]` | `vScaleOptional=[Nv]`，输出FP8 E4M3FN | `NTD -> NTD`、`TND -> TND`、`TND -> NTD` |
+  | 旧M-RoPE | 不传`queryStartLocOptional/seqLensOptional`；传`mropePositionOptional[T,3]`和`mropeSectionOptional=[t,h,w]` | 必须传BF16 `[D,D]` | `qQuantMode="NoQuant"`；`qOut`为BF16；`qScaleOptional=nullptr` | `kQuantMode="PerTokenPerHead"`；K为INT8；`kScaleCacheRef`为FP32 `[BlockNum,Nk,BlockSize,1]` | `vScaleOptional=[Nv,D]`，输出FP8 E4M3FN | 仅`TND -> TND` |
+  | 新M-RoPE MX | 与旧M-RoPE相同 | 必须为`nullptr` | `qQuantMode="MxQuant"`；`qOut`为FP8 E4M3FN `[T,Nq,D]`；`qScaleOptional`为E8M0 `[T,Nq,ceil(D/32)]` | `kQuantMode="MxQuant"`；K为FP8 E4M3FN；`kScaleCacheRef`为E8M0 `[BlockNum,Nk,BlockSize,ceil(D/32)]` | `vScaleOptional=[Nv,D]`，per-head-per-channel静态量化为FP8 E4M3FN | 仅`TND -> TND` |
 
-  本接口不提供独立的场景属性，而是根据两组位置输入的有效presence确定场景。空`mropeSectionOptional`与未传入等价，只有非空数组才表示M-RoPE属性存在。每组位置输入必须同时存在或同时缺席，两组不能同时存在或同时缺席。`qOut`的数据类型由调用方构造的`qOut` Tensor决定，ACLNN接口不单独接收输出dtype参数。
+  本接口根据位置输入和Q/K量化模式共同确定三种场景。空`mropeSectionOptional`与未传入等价；每组位置输入必须同时存在或同时缺席，两组不能同时存在或同时缺席。其他交叉组合均不支持。`qOut`的数据类型由调用方构造的Tensor决定，K的存储类型由`kCacheRef` dtype决定；`kQuantMode`仅区分K的PerTokenPerHead与MxQuant算法，不是dtype选择器。
 
-  两个场景均要求`D=128`、`0<Nq<=64`、`Nq=8*Nk`且`Nk=Nv`。`rotationOptional`和`vScaleOptional`在接口合同中均须传入：Q/K在位置编码后共享右乘`rotationOptional[D,D]`；V在RoPE场景按head乘`vScaleOptional[Nv]`，在M-RoPE场景按head和通道乘`vScaleOptional[Nv,D]`，随后转换为FP8 E4M3FN。三个Cache Tensor均为输入输出别名，只更新`slotMapping`指定的slot，其余位置保持原值。
+  三个场景均要求`D=128`、`0<Nq<=64`、`Nq=8*Nk`且`Nk=Nv`。三个Cache Tensor均为输入输出别名，只更新`slotMapping`指定的slot，其余位置保持原值。
 
 - 确定性说明：aclnnQkvRmsNormRopeCacheWithKScale默认确定性实现。
 - 输入shape限制：
-  - 仅支持`D=128`。
+  - 仅支持`D=128`，三个场景均要求`1<=T<=262144`。
   - `headNums=[Nq,Nk,Nv]`必须满足`0<Nq<=64`、`Nq=8*Nk`、`Nk=Nv`。
-  - `vScaleOptional`在RoPE场景的shape必须为`[Nv]`，在M-RoPE场景的shape必须为`[Nv,D]`。
+  - `vScaleOptional`在旧RoPE场景的shape必须为`[Nv]`，在旧M-RoPE和新M-RoPE MX场景的shape必须为`[Nv,D]`。
   - `layoutQkv`控制`qkv`的N/T轴布局，默认值为`"TND"`；`layoutQOut`控制`qOut`和`qScaleOptional`的N/T轴布局，默认值为`"NTD"`：
-    - `layoutQkv="TND"`，`layoutQOut="TND"`：`qkv=[T, Nq+Nk+Nv, D]`，`qOut=[T, Nq, D]`，`qScaleOptional=[T, Nq]`。
-    - `layoutQkv="TND"`，`layoutQOut="NTD"`：`qkv=[T, Nq+Nk+Nv, D]`，`qOut=[Nq, T, D]`，`qScaleOptional=[Nq, T]`。
-    - `layoutQkv="NTD"`，`layoutQOut="NTD"`：`qkv=[Nq+Nk+Nv, T, D]`，`qOut=[Nq, T, D]`，`qScaleOptional=[Nq, T]`。
+    - 旧RoPE的`layoutQkv="TND"`、`layoutQOut="TND"`：`qkv=[T,Nq+Nk+Nv,D]`，`qOut=[T,Nq,D]`，`qScaleOptional=[T,Nq]`。
+    - 旧RoPE的`layoutQkv="TND"`、`layoutQOut="NTD"`：`qkv=[T,Nq+Nk+Nv,D]`，`qOut=[Nq,T,D]`，`qScaleOptional=[Nq,T]`。
+    - 旧RoPE的`layoutQkv="NTD"`、`layoutQOut="NTD"`：`qkv=[Nq+Nk+Nv,T,D]`，`qOut=[Nq,T,D]`，`qScaleOptional=[Nq,T]`。
+    - 旧M-RoPE和新M-RoPE MX仅支持`TND -> TND`；新M-RoPE MX的`qScaleOptional`固定为`[T,Nq,ceil(D/32)]`。
   - `kCacheRef`、`vCacheRef`和`kScaleCacheRef`的`BlockNum`和`BlockSize`必须一致。
-  - `kCacheRef`和`vCacheRef`均为4维正stride，最后一维stride为1，head维和token维stride均不小于`D=128`；`kScaleCacheRef`为4维正stride且最后一维stride为1；`kCacheRef`和`vCacheRef`前三维stride必须一致。
+  - `kCacheRef`和`vCacheRef`均为4维正stride，最后一维stride为1，head维和token维stride均不小于`D=128`；`kCacheRef`和`vCacheRef`前三维stride必须一致。旧RoPE/旧M-RoPE的`kScaleCacheRef`为4维正stride且最后一维stride为1；新M-RoPE MX同样为4维，末轴`ceil(D/32)`连续且stride为1。
   - M-RoPE的`mropePositionOptional`逻辑shape固定为`[T,3]`，位置索引按`P[u,0]`、`P[u,1]`、`P[u,2]`分别读取token `u`的T/H/W坐标。
 - 输入值域限制：
   - `seqLensOptional[b]`必须满足`seqLensOptional[b] >= queryStartLocOptional[b+1] - queryStartLocOptional[b]`。若`seqLensOptional[b]`小于该batch本次调用的token数，行为未定义。
+  - 两个M-RoPE场景中，`mropePositionOptional`的每个位置索引必须满足`0 <= value < MaxSeqLen`。
+  - 三个场景均要求`1<=T<=262144`；新M-RoPE MX还要求`slotMapping`中的slot在本次调用内互不重复。
   - M-RoPE场景下`mropeSectionOptional=[t,h,w]`的长度必须为3。令$\boldsymbol{s}=(s_{\mathrm T},s_{\mathrm H},s_{\mathrm W})$，其中$i=0,1,2$依次对应T/H/W，则
 
     $$
@@ -935,8 +983,8 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       aclnnStatus status = aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
           qkv.tensor, qGamma.tensor, kGamma.tensor, cosSin.tensor, slotMapping.tensor, kCache.tensor, vCache.tensor,
           kScaleCache.tensor, queryStartLoc.tensor, seqLens.tensor, rotation.tensor, vScale.tensor, nullptr,
-          resource.headNums, layoutQkv, layoutQOut, epsilon, nullptr, "PerTokenPerHead", qOut.tensor, qScale.tensor,
-          &workspaceSize, &resource.executor);
+          resource.headNums, layoutQkv, layoutQOut, epsilon, nullptr, "PerTokenPerHead", "PerTokenPerHead",
+          qOut.tensor, qScale.tensor, &workspaceSize, &resource.executor);
       CHECK_RET(status == ACL_SUCCESS,
                 LOG_PRINT("aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize failed. ERROR: %d\n", status);
                 return ReturnAfterCleanup(static_cast<int>(status), resource));

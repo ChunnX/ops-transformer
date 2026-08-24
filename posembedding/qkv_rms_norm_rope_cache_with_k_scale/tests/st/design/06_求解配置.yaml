@@ -1,0 +1,11 @@
+{
+  "schema_version": 2,
+  "seed": 42,
+  "routes": {
+    "aclnn_l0": {"total": 200, "scenes": {"mrope_mx": 110, "rope": 55, "mrope": 35}, "priorities": {"P0": 22, "P1": 152, "P2": 26}},
+    "aclnn_l1": {"total": 650, "scenes": {"mrope_mx": 400, "rope": 150, "mrope": 100}, "priorities": {"P0": 0, "P1": 596, "P2": 54}},
+    "aclnn_l2": {"total": 50, "scenes": {"mrope_mx": 30, "rope": 10, "mrope": 10}, "priorities": {"P0": 50, "P1": 0, "P2": 0}},
+    "kernel": {"total": 250, "scenes": {"mrope_mx": 180, "rope": 40, "mrope": 30}, "priorities": {"P0": 9, "P1": 223, "P2": 18}},
+    "torch": {"total": 50, "scenes": {"mrope_mx": 34, "rope": 10, "mrope": 6}, "priorities": {"P0": 11, "P1": 36, "P2": 3}}
+  }
+}

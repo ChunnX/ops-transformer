@@ -1,0 +1,22 @@
+{
+  "schema_version": 2,
+  "aiv_num": 64,
+  "anchors": [
+    {"id": "WB-QPAIR-EVEN-H8", "T": 128, "heads": [8, 1, 1], "q_route": "Q_TAIL_PAIR", "k_route": "K_GENERIC", "expected": "two-token Q tail wave"},
+    {"id": "WB-QPAIR-ODD-H8", "T": 129, "heads": [8, 1, 1], "q_route": "Q_TAIL_PAIR", "k_route": "K_GENERIC", "expected": "pair plus odd last token"},
+    {"id": "WB-KB8-FULL-H16", "T": 512, "heads": [16, 2, 2], "q_route": "VECTOR", "k_route": "K_BATCH8", "expected": "eight-token K batch"},
+    {"id": "WB-KB8-RESIDUAL-H16", "T": 513, "heads": [16, 2, 2], "q_route": "VECTOR", "k_route": "K_BATCH8", "expected": "eight-token K batch plus residual"},
+    {"id": "WB-QGLOBAL-EVEN-H24", "T": 128, "heads": [24, 3, 3], "q_route": "Q_TAIL_GLOBAL", "k_route": "K_GENERIC", "expected": "even global tile wave"},
+    {"id": "WB-QGLOBAL-ODD-H24", "T": 129, "heads": [24, 3, 3], "q_route": "Q_TAIL_GLOBAL", "k_route": "K_GENERIC", "expected": "global pair plus odd token"},
+    {"id": "WB-KB4-FULL-H32", "T": 256, "heads": [32, 4, 4], "q_route": "VECTOR", "k_route": "K_BATCH4", "expected": "four-token K batch"},
+    {"id": "WB-KB4-RESIDUAL-H32", "T": 257, "heads": [32, 4, 4], "q_route": "VECTOR", "k_route": "K_BATCH4", "expected": "four-token K batch plus residual"},
+    {"id": "WB-QPAIR-EVEN-H40", "T": 128, "heads": [40, 5, 5], "q_route": "Q_TAIL_PAIR", "k_route": "K_GENERIC", "expected": "prefix plus two-token Q tail wave"},
+    {"id": "WB-QPAIR-ODD-H40", "T": 129, "heads": [40, 5, 5], "q_route": "Q_TAIL_PAIR", "k_route": "K_GENERIC", "expected": "prefix plus pair and odd Q tail"},
+    {"id": "WB-KGEN-SINGLE-H48", "T": 64, "heads": [48, 6, 6], "q_route": "VECTOR", "k_route": "K_GENERIC", "expected": "one token per active AIV"},
+    {"id": "WB-KGEN-MULTI-H48", "T": 128, "heads": [48, 6, 6], "q_route": "VECTOR", "k_route": "K_GENERIC", "expected": "multiple generic K tokens"},
+    {"id": "WB-QGLOBAL-EVEN-H56", "T": 128, "heads": [56, 7, 7], "q_route": "Q_TAIL_GLOBAL", "k_route": "K_GENERIC", "expected": "three full Q batches plus even tail wave"},
+    {"id": "WB-QGLOBAL-ODD-H56", "T": 129, "heads": [56, 7, 7], "q_route": "Q_TAIL_GLOBAL", "k_route": "K_GENERIC", "expected": "three full Q batches plus odd tail"},
+    {"id": "WB-KB2-FULL-H64", "T": 128, "heads": [64, 8, 8], "q_route": "VECTOR", "k_route": "K_BATCH2", "expected": "two-token K batch"},
+    {"id": "WB-KB2-RESIDUAL-H64", "T": 129, "heads": [64, 8, 8], "q_route": "VECTOR", "k_route": "K_BATCH2", "expected": "two-token K batch plus residual"}
+  ]
+}

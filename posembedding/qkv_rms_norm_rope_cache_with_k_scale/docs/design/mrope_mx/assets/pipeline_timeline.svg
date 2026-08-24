@@ -1,0 +1,163 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1480" height="920" viewBox="0 0 1480 920" role="img" aria-labelledby="title desc">
+  <title id="title">M-RoPE MX AIV pipeline timeline</title>
+  <desc id="desc">Time flows left to right. Lanes show MTE2, Vector, MTE3, input slots I0 and I1, position window, and V K Q staging lifetimes for two adjacent tiles.</desc>
+  <defs>
+    <style>
+      .bg { fill:#ffffff; }
+      .title { font:700 24px Arial,"Noto Sans SC",sans-serif; fill:#172033; }
+      .sub { font:14px Arial,"Noto Sans SC",sans-serif; fill:#5c667a; }
+      .lane { font:700 16px Arial,"Noto Sans SC",sans-serif; fill:#253047; }
+      .small { font:13px Arial,"Noto Sans SC",sans-serif; fill:#253047; }
+      .tiny { font:12px Arial,"Noto Sans SC",sans-serif; fill:#5c667a; }
+      .inside { font:13px Arial,"Noto Sans SC",sans-serif; fill:#142037; dominant-baseline:middle; text-anchor:middle; }
+      .insideWhite { font:13px Arial,"Noto Sans SC",sans-serif; fill:#ffffff; dominant-baseline:middle; text-anchor:middle; }
+      .axis { stroke:#d9dee9; stroke-width:1; }
+      .major { stroke:#b9c1d1; stroke-width:1; }
+      .sep { stroke:#aeb7c8; stroke-width:1.5; }
+      .tick { font:12px Arial,sans-serif; fill:#8791a5; text-anchor:middle; }
+      .input { fill:#e8ebf0; stroke:#cfd5df; }
+      .inputWait { fill:#f4f5f7; stroke:#dfe3e9; }
+      .v { fill:#2d7ff9; }
+      .k { fill:#f4c542; }
+      .q { fill:#e778b7; }
+      .wait { fill:#f7d8e9; stroke:#edb9d5; }
+      .window { fill:#eef5ff; stroke:#a8c8f5; }
+      .outline { fill:none; stroke:#8791a5; stroke-width:1; }
+      .arrow { fill:none; stroke:#637086; stroke-width:1.4; marker-end:url(#arrow); }
+      .reuse { fill:#ffffff; stroke:#3c4658; stroke-width:1.4; }
+      .stageV { fill:#cfe1ff; stroke:#8bb9ff; }
+      .stageK { fill:#fae8a6; stroke:#ebca55; }
+      .stageQ { fill:#f5cbe2; stroke:#e494bf; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#637086"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1480" height="920"/>
+  <text class="title" x="28" y="38">M-RoPE MX：V → K → Q 的时间流水</text>
+  <text class="sub" x="28" y="64">横轴为时间；实色为 pipe 正在工作，浅色为结果已产生但对应 UB 仍等待 MTE3 消费。图示两个相邻 tile：Tᵢ 与 Tᵢ₊₁。</text>
+
+  <!-- legend -->
+  <rect class="v" x="28" y="82" width="24" height="12"/><text class="tiny" x="58" y="93">V</text>
+  <rect class="k" x="92" y="82" width="24" height="12"/><text class="tiny" x="122" y="93">K</text>
+  <rect class="q" x="156" y="82" width="24" height="12"/><text class="tiny" x="186" y="93">Q</text>
+  <rect class="input" x="220" y="82" width="24" height="12"/><text class="tiny" x="250" y="93">输入搬运</text>
+  <rect class="wait" x="332" y="82" width="24" height="12"/><text class="tiny" x="362" y="93">staging 等待 MTE3</text>
+  <polygon class="reuse" points="520,82 526,88 520,94 514,88"/><text class="tiny" x="534" y="93">FREE / 可复用</text>
+
+  <!-- chart geometry: x0=210, step=95, x positions t0..t12 -->
+  <text class="sub" x="28" y="128">时间</text>
+  <line class="major" x1="210" y1="140" x2="1350" y2="140"/>
+  <g>
+    <line class="axis" x1="210" y1="140" x2="210" y2="880"/><text class="tick" x="210" y="132">t0</text>
+    <line class="axis" x1="305" y1="140" x2="305" y2="880"/><text class="tick" x="305" y="132">t1</text>
+    <line class="axis" x1="400" y1="140" x2="400" y2="880"/><text class="tick" x="400" y="132">t2</text>
+    <line class="axis" x1="495" y1="140" x2="495" y2="880"/><text class="tick" x="495" y="132">t3</text>
+    <line class="axis" x1="590" y1="140" x2="590" y2="880"/><text class="tick" x="590" y="132">t4</text>
+    <line class="axis" x1="685" y1="140" x2="685" y2="880"/><text class="tick" x="685" y="132">t5</text>
+    <line class="axis" x1="780" y1="140" x2="780" y2="880"/><text class="tick" x="780" y="132">t6</text>
+    <line class="axis" x1="875" y1="140" x2="875" y2="880"/><text class="tick" x="875" y="132">t7</text>
+    <line class="axis" x1="970" y1="140" x2="970" y2="880"/><text class="tick" x="970" y="132">t8</text>
+    <line class="axis" x1="1065" y1="140" x2="1065" y2="880"/><text class="tick" x="1065" y="132">t9</text>
+    <line class="axis" x1="1160" y1="140" x2="1160" y2="880"/><text class="tick" x="1160" y="132">t10</text>
+    <line class="axis" x1="1255" y1="140" x2="1255" y2="880"/><text class="tick" x="1255" y="132">t11</text>
+    <line class="axis" x1="1350" y1="140" x2="1350" y2="880"/><text class="tick" x="1350" y="132">t12</text>
+  </g>
+
+  <!-- lane guides -->
+  <g>
+    <line class="axis" x1="28" y1="205" x2="1350" y2="205"/>
+    <line class="axis" x1="28" y1="275" x2="1350" y2="275"/>
+    <line class="axis" x1="28" y1="345" x2="1350" y2="345"/>
+    <line class="sep" x1="28" y1="380" x2="1350" y2="380"/>
+    <line class="axis" x1="28" y1="455" x2="1350" y2="455"/>
+    <line class="axis" x1="28" y1="525" x2="1350" y2="525"/>
+    <line class="axis" x1="28" y1="595" x2="1350" y2="595"/>
+    <line class="sep" x1="28" y1="630" x2="1350" y2="630"/>
+    <line class="axis" x1="28" y1="705" x2="1350" y2="705"/>
+    <line class="axis" x1="28" y1="775" x2="1350" y2="775"/>
+    <line class="axis" x1="28" y1="845" x2="1350" y2="845"/>
+  </g>
+
+  <!-- lane labels -->
+  <text class="lane" x="28" y="180">MTE2</text>
+  <text class="lane" x="28" y="250">Vector</text>
+  <text class="lane" x="28" y="320">MTE3</text>
+  <text class="sub" x="28" y="372">输入 / position 生命周期</text>
+  <text class="lane" x="28" y="430">IN0</text>
+  <text class="lane" x="28" y="500">IN1</text>
+  <text class="lane" x="28" y="570">Position W</text>
+  <text class="sub" x="28" y="622">分支输出 staging 生命周期</text>
+  <text class="lane" x="28" y="680">V_STAGE</text>
+  <text class="lane" x="28" y="750">K_STAGE</text>
+  <text class="lane" x="28" y="820">Q_STAGE</text>
+
+  <!-- MTE2 -->
+  <rect class="input" x="210" y="158" width="92" height="30" rx="2"/><text class="inside" x="256" y="173">IN0: QKV/slot</text>
+  <rect class="input" x="305" y="158" width="92" height="30" rx="2"/><text class="inside" x="351" y="173">C0: cos/sin</text>
+  <rect class="input" x="400" y="158" width="92" height="30" rx="2"/><text class="inside" x="446" y="173">IN1: QKV/slot</text>
+  <rect class="input" x="495" y="158" width="92" height="30" rx="2"/><text class="inside" x="541" y="173">C1: cos/sin</text>
+  <rect class="input" x="970" y="158" width="92" height="30" rx="2"/><text class="inside" x="1016" y="173">IN0: Tᵢ₊₂</text>
+
+  <!-- Vector -->
+  <rect class="v" x="400" y="218" width="62" height="38" rx="3"/><text class="insideWhite" x="431" y="237">Vᵢ</text>
+  <rect class="k" x="462" y="218" width="78" height="38" rx="3"/><text class="inside" x="501" y="237">Kᵢ</text>
+  <rect class="q" x="540" y="218" width="310" height="38" rx="3"/><text class="inside" x="695" y="237">Qᵢ: RMSNorm + M-RoPE + MX</text>
+  <rect class="v" x="850" y="218" width="62" height="38" rx="3"/><text class="insideWhite" x="881" y="237">Vᵢ₊₁</text>
+  <rect class="k" x="912" y="218" width="78" height="38" rx="3"/><text class="inside" x="951" y="237">Kᵢ₊₁</text>
+  <rect class="q" x="990" y="218" width="300" height="38" rx="3"/><text class="inside" x="1140" y="237">Qᵢ₊₁</text>
+
+  <!-- MTE3 single pipe -->
+  <rect class="v" x="462" y="288" width="55" height="38" rx="3"/><text class="insideWhite" x="489" y="307">Vᵢ</text>
+  <rect class="k" x="540" y="288" width="72" height="38" rx="3"/><text class="inside" x="576" y="307">Kᵢ</text>
+  <rect class="q" x="850" y="288" width="118" height="38" rx="3"/><text class="inside" x="909" y="307">Qᵢ + scale</text>
+  <rect class="v" x="968" y="288" width="55" height="38" rx="3"/><text class="insideWhite" x="995" y="307">Vᵢ₊₁</text>
+  <rect class="k" x="1023" y="288" width="72" height="38" rx="3"/><text class="inside" x="1059" y="307">Kᵢ₊₁</text>
+  <rect class="q" x="1290" y="288" width="60" height="38" rx="3"/><text class="inside" x="1320" y="307">Qᵢ₊₁</text>
+
+  <!-- input lifetimes -->
+  <rect class="input" x="210" y="398" width="190" height="34" rx="2"/><text class="inside" x="305" y="415">Tᵢ 装入 IN0/C0</text>
+  <rect class="inputWait" x="400" y="398" width="450" height="34" rx="2"/><text class="inside" x="625" y="415">Tᵢ: V/K/Q 依次读取</text>
+  <polygon class="reuse" points="850,406 859,415 850,424 841,415"/>
+  <line class="arrow" x1="859" y1="415" x2="963" y2="415"/><text class="tiny" x="873" y="400">Qᵢ 最后读后释放</text>
+  <rect class="input" x="970" y="398" width="92" height="34" rx="2"/><text class="inside" x="1016" y="415">复用 IN0</text>
+
+  <rect class="input" x="400" y="468" width="190" height="34" rx="2"/><text class="inside" x="495" y="485">Tᵢ₊₁ 装入 IN1/C1</text>
+  <rect class="inputWait" x="590" y="468" width="700" height="34" rx="2"/><text class="inside" x="940" y="485">等待轮到 Tᵢ₊₁，再由 V/K/Q 依次读取</text>
+  <polygon class="reuse" points="1290,476 1299,485 1290,494 1281,485"/>
+
+  <rect class="window" x="210" y="538" width="1080" height="34" rx="2"/><text class="inside" x="750" y="555">Wⱼ：单个 1024-token position window，跨多个 tile 保持；最后一次 Scalar 读取后才允许 refill</text>
+  <polygon class="reuse" points="1290,546 1299,555 1290,564 1281,555"/>
+
+  <!-- staging lifetimes -->
+  <rect class="stageV" x="400" y="648" width="62" height="34" rx="2"/><text class="inside" x="431" y="665">Vᵢ</text>
+  <rect class="wait" x="462" y="648" width="55" height="34" rx="2"/><text class="inside" x="489" y="665">等写</text>
+  <polygon class="reuse" points="517,656 526,665 517,674 508,665"/>
+  <rect class="stageV" x="850" y="648" width="62" height="34" rx="2"/><text class="inside" x="881" y="665">Vᵢ₊₁</text>
+  <rect class="wait" x="912" y="648" width="111" height="34" rx="2"/><text class="inside" x="967" y="665">等 MTE3</text>
+  <polygon class="reuse" points="1023,656 1032,665 1023,674 1014,665"/>
+
+  <rect class="stageK" x="462" y="718" width="78" height="34" rx="2"/><text class="inside" x="501" y="735">Kᵢ data+scale</text>
+  <rect class="wait" x="540" y="718" width="72" height="34" rx="2"/><text class="inside" x="576" y="735">等写</text>
+  <polygon class="reuse" points="612,726 621,735 612,744 603,735"/>
+  <rect class="stageK" x="912" y="718" width="78" height="34" rx="2"/><text class="inside" x="951" y="735">Kᵢ₊₁</text>
+  <rect class="wait" x="990" y="718" width="105" height="34" rx="2"/><text class="inside" x="1042" y="735">等 MTE3</text>
+  <polygon class="reuse" points="1095,726 1104,735 1095,744 1086,735"/>
+
+  <rect class="stageQ" x="540" y="788" width="310" height="34" rx="2"/><text class="inside" x="695" y="805">Qᵢ produce：data + scale</text>
+  <rect class="wait" x="850" y="788" width="118" height="34" rx="2"/><text class="inside" x="909" y="805">等待/写回</text>
+  <polygon class="reuse" points="968,796 977,805 968,814 959,805"/>
+  <rect class="stageQ" x="990" y="788" width="300" height="34" rx="2"/><text class="inside" x="1140" y="805">Qᵢ₊₁ produce，写回可继续拖尾</text>
+  <rect class="wait" x="1290" y="788" width="60" height="34" rx="2"/><text class="inside" x="1320" y="805">写回</text>
+
+  <!-- dependency arrows -->
+  <path class="arrow" d="M 302 173 C 340 173, 350 205, 400 225"/>
+  <path class="arrow" d="M 492 173 C 650 173, 720 205, 850 225"/>
+  <path class="arrow" d="M 850 256 C 850 320, 850 350, 850 398"/>
+  <path class="arrow" d="M 517 307 C 517 470, 517 560, 517 648"/>
+  <path class="arrow" d="M 612 307 C 612 500, 612 630, 612 718"/>
+  <path class="arrow" d="M 968 307 C 968 520, 968 700, 968 788"/>
+
+  <text class="small" x="210" y="875">关键：IN0 在 Qᵢ 最后读后即可被 MTE2 复用；不需要等待 Qᵢ 的 MTE3 写回。三套 staging 独立复用，但共享同一条 MTE3 pipe。</text>
+</svg>

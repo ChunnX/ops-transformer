@@ -1,0 +1,61 @@
+{
+  "schema_version": 2,
+  "negative_mutations": {
+    "mrope_mx": [
+      {"constraint_id": "C-SHAPE-001", "field": "qkv.D", "value": "127", "status": "ACLNN_ERR_PARAM_INVALID", "error": "head dimension must be 128"},
+      {"constraint_id": "C-SHAPE-002", "field": "qkv.T", "value": "0", "status": "ACLNN_ERR_PARAM_INVALID", "error": "tensor can not be empty"},
+      {"constraint_id": "C-HEAD-001", "field": "headNums.length", "value": "2", "status": "ACLNN_ERR_PARAM_INVALID", "error": "incorrect element nums 2. It should be 3"},
+      {"constraint_id": "C-HEAD-001", "field": "headNums.Nq", "value": "0", "status": "ACLNN_ERR_PARAM_INVALID", "error": "headNums values must be positive"},
+      {"constraint_id": "C-HEAD-001", "field": "headNums.Nk", "value": "0", "status": "ACLNN_ERR_PARAM_INVALID", "error": "headNums values must be positive"},
+      {"constraint_id": "C-HEAD-001", "field": "headNums.Nv", "value": "0", "status": "ACLNN_ERR_PARAM_INVALID", "error": "headNums values must be positive"},
+      {"constraint_id": "C-HEAD-001", "field": "headNums.Nq", "value": "72", "status": "ACLNN_ERR_PARAM_INVALID", "error": "less than or equal to 64"},
+      {"constraint_id": "C-HEAD-001", "field": "headNums", "value": "[16,1,1]", "status": "ACLNN_ERR_PARAM_INVALID", "error": "nq must be equal to 8 * nk"},
+      {"constraint_id": "C-HEAD-001", "field": "headNums", "value": "[16,2,1]", "status": "ACLNN_ERR_PARAM_INVALID", "error": "nv must be equal to nk"},
+      {"constraint_id": "C-SCENE-001", "field": "layoutQOut", "value": "NTD", "status": "ACLNN_ERR_PARAM_INVALID", "error": "M-RoPE scene only supports TND to TND"},
+      {"constraint_id": "C-SCENE-002", "field": "qQuantMode", "value": "<null>", "status": "ACLNN_ERR_PARAM_INVALID", "error": "unsupported combination"},
+      {"constraint_id": "C-SCENE-002", "field": "qQuantMode", "value": "<empty>", "status": "ACLNN_ERR_PARAM_INVALID", "error": "unsupported combination"},
+      {"constraint_id": "C-SCENE-002", "field": "qQuantMode", "value": "Unknown", "status": "ACLNN_ERR_PARAM_INVALID", "error": "unsupported combination"},
+      {"constraint_id": "C-SCENE-002", "field": "kQuantMode", "value": "<null>", "status": "ACLNN_ERR_PARAM_INVALID", "error": "unsupported combination"},
+      {"constraint_id": "C-SCENE-002", "field": "kQuantMode", "value": "<empty>", "status": "ACLNN_ERR_PARAM_INVALID", "error": "unsupported combination"},
+      {"constraint_id": "C-SCENE-002", "field": "kQuantMode", "value": "Unknown", "status": "ACLNN_ERR_PARAM_INVALID", "error": "unsupported combination"},
+      {"constraint_id": "C-SCENE-002", "field": "qQuantMode", "value": "PerTokenPerHead", "status": "ACLNN_ERR_PARAM_INVALID", "error": "M-RoPE MX(MxQuant,MxQuant)"},
+      {"constraint_id": "C-SCENE-002", "field": "kQuantMode", "value": "PerTokenPerHead", "status": "ACLNN_ERR_PARAM_INVALID", "error": "M-RoPE MX(MxQuant,MxQuant)"},
+      {"constraint_id": "C-SCENE-003", "field": "mropePositionOptional", "value": "None", "status": "ACLNN_ERR_PARAM_INVALID", "error": "both parameters must be provided together"},
+      {"constraint_id": "C-SCENE-003", "field": "mropeSectionOptional", "value": "None", "status": "ACLNN_ERR_PARAM_INVALID", "error": "both parameters must be provided together"},
+      {"constraint_id": "C-SCENE-003", "field": "queryStartLocOptional", "value": "present", "status": "ACLNN_ERR_PARAM_INVALID", "error": "both parameters must be nullptr in the M-RoPE scene"},
+      {"constraint_id": "C-SCENE-003", "field": "seqLensOptional", "value": "present", "status": "ACLNN_ERR_PARAM_INVALID", "error": "both parameters must be nullptr in the M-RoPE scene"},
+      {"constraint_id": "C-SCENE-004", "field": "rotationOptional", "value": "present", "status": "ACLNN_ERR_PARAM_INVALID", "error": "rotationOptional must be nullptr in M-RoPE MX"},
+      {"constraint_id": "C-NULL-001", "field": "vScaleOptional", "value": "None", "status": "ACLNN_ERR_PARAM_NULLPTR", "error": "vScaleOptional can not be nullptr"},
+      {"constraint_id": "C-NULL-001", "field": "qScaleOptional", "value": "None", "status": "ACLNN_ERR_PARAM_NULLPTR", "error": "qScale can not be nullptr"},
+      {"constraint_id": "C-MX-001", "field": "qkv.T", "value": "262145", "status": "ACLNN_ERR_PARAM_INVALID", "error": "M-RoPE MX requires T <= 262144"},
+      {"constraint_id": "C-MROPE-001", "field": "mropeSectionOptional.length", "value": "2", "status": "ACLNN_ERR_PARAM_INVALID", "error": "must contain exactly 3 values"},
+      {"constraint_id": "C-MROPE-001", "field": "mropeSectionOptional.H", "value": "22", "status": "ACLNN_ERR_PARAM_INVALID", "error": "must be in [0, 21]"},
+      {"constraint_id": "C-CACHE-003", "field": "kScaleCacheRef.token_stride", "value": "3", "status": "ACLNN_ERR_PARAM_INVALID", "error": "token stride >= ceil(D/32)"},
+      {"constraint_id": "C-CACHE-003", "field": "qScaleOptional.stride", "value": "non_contiguous", "status": "ACLNN_ERR_PARAM_INVALID", "error": "output tensors must be contiguous"}
+    ],
+    "rope": [
+      {"constraint_id": "C-SHAPE-001", "field": "qkv.D", "value": "129", "status": "ACLNN_ERR_PARAM_INVALID", "error": "head dimension must be 128"},
+      {"constraint_id": "C-HEAD-001", "field": "headNums", "value": "[8,2,2]", "status": "ACLNN_ERR_PARAM_INVALID", "error": "nq must be equal to 8 * nk"},
+      {"constraint_id": "C-SCENE-003", "field": "queryStartLocOptional", "value": "None", "status": "ACLNN_ERR_PARAM_NULLPTR", "error": "queryStartLoc can not be nullptr"},
+      {"constraint_id": "C-SCENE-003", "field": "seqLensOptional", "value": "None", "status": "ACLNN_ERR_PARAM_NULLPTR", "error": "seqLens can not be nullptr"},
+      {"constraint_id": "C-SCENE-003", "field": "mropePositionOptional", "value": "present", "status": "ACLNN_ERR_PARAM_INVALID", "error": "both parameters must be provided together"},
+      {"constraint_id": "C-SCENE-004", "field": "rotationOptional", "value": "None", "status": "ACLNN_ERR_PARAM_NULLPTR", "error": "rotationOptional can not be nullptr in RoPE/M-RoPE scenes"},
+      {"constraint_id": "C-OUT-002", "field": "qScaleOptional.dtype", "value": "float8_e8m0", "status": "ACLNN_ERR_PARAM_INVALID", "error": "dtype of qScale must be one of DT_FLOAT"},
+      {"constraint_id": "C-SCENE-001", "field": "layout_pair", "value": "[NTD,TND]", "status": "ACLNN_ERR_PARAM_INVALID", "error": "layout_qkv=NTD with layout_q_out=TND is not supported"},
+      {"constraint_id": "C-CACHE-001", "field": "vCacheRef.block_size", "value": "mismatched", "status": "ACLNN_ERR_PARAM_INVALID", "error": "vCacheRef BlockNum/BlockSize must match kCacheRef"},
+      {"constraint_id": "C-OUT-001", "field": "qOut.shape", "value": "layout_mismatch", "status": "ACLNN_ERR_PARAM_INVALID", "error": "qOut must match layout_q_out"}
+    ],
+    "mrope": [
+      {"constraint_id": "C-SHAPE-002", "field": "qkv.T", "value": "0", "status": "ACLNN_ERR_PARAM_INVALID", "error": "tensor can not be empty"},
+      {"constraint_id": "C-HEAD-001", "field": "headNums", "value": "[72,9,9]", "status": "ACLNN_ERR_PARAM_INVALID", "error": "less than or equal to 64"},
+      {"constraint_id": "C-SCENE-001", "field": "layoutQkv", "value": "NTD", "status": "ACLNN_ERR_PARAM_INVALID", "error": "layout_qkv=NTD with layout_q_out=TND is not supported"},
+      {"constraint_id": "C-SCENE-002", "field": "qQuantMode", "value": "PerTokenPerHead", "status": "ACLNN_ERR_PARAM_INVALID", "error": "M-RoPE(NoQuant,PerTokenPerHead)"},
+      {"constraint_id": "C-SCENE-002", "field": "kQuantMode", "value": "MxQuant", "status": "ACLNN_ERR_PARAM_INVALID", "error": "M-RoPE(NoQuant,PerTokenPerHead)"},
+      {"constraint_id": "C-MROPE-001", "field": "mropeSectionOptional", "value": "[64,-1,0]", "status": "ACLNN_ERR_PARAM_INVALID", "error": "must be non-negative"},
+      {"constraint_id": "C-SCENE-003", "field": "seqLensOptional", "value": "present", "status": "ACLNN_ERR_PARAM_INVALID", "error": "both parameters must be nullptr in the M-RoPE scene"},
+      {"constraint_id": "C-SCENE-004", "field": "rotationOptional", "value": "None", "status": "ACLNN_ERR_PARAM_NULLPTR", "error": "rotationOptional can not be nullptr in RoPE/M-RoPE scenes"},
+      {"constraint_id": "C-OUT-002", "field": "qScaleOptional", "value": "present", "status": "ACLNN_ERR_PARAM_INVALID", "error": "qScaleOptional must be nullptr in M-RoPE"},
+      {"constraint_id": "C-CACHE-002", "field": "kScaleCacheRef.rank", "value": "5", "status": "ACLNN_ERR_PARAM_INVALID", "error": "must have shape [BlockNum, Nk, BlockSize, 1]"}
+    ]
+  }
+}
