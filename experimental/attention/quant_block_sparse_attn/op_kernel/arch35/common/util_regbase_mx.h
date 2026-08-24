@@ -32,8 +32,6 @@ struct MxRunInfo {
     bool isValid = false;
     bool isFirstS2Loop = false;
     bool isLastS2Loop = false;
-    // bit0/bit1分别表示256-token subLoop 0/1是否需要真实causal mask。
-    uint8_t attenMaskSubLoopBits = 0U;
 
     // Batch/head/query 坐标。
     uint32_t bIdx = 0U;

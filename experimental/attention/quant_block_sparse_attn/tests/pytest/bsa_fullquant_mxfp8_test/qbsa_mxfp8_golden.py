@@ -2188,24 +2188,26 @@ def cpu_mxfp8_golden(
                         l_run = l_run * history_rescale + round_sum
                         m_run = torch.where(round_active, m_new, m_run)
 
-                # Match the master kernel's two output rules independently:
-                # OUT validity follows the max sentinel, while LSE additionally
-                # maps every sum=0 row to -FLT_MAX.
+                # Match the master kernel's final guards. LastDivNewVF writes
+                # zero when sum == 0, RowInvalidUpdateVF writes zero when max
+                # is the -FLT_MAX sentinel, and ComputeLseOutputVF maps either
+                # condition to the same sentinel.
                 row_active = _softmax_row_is_active(m_run)
-                lse_active = row_active & (l_run != 0)
-                safe_l = torch.where(row_active, l_run, torch.ones_like(l_run))
+                sum_nonzero = l_run != 0
+                output_active = row_active & sum_nonzero
+                lse_active = output_active
+                safe_l = torch.where(sum_nonzero, l_run, torch.ones_like(l_run))
                 attn = acc / safe_l.view(nq, 1)
-                zero_sum_nonempty = row_active & (l_run == 0)
                 attn = torch.where(
-                    zero_sum_nonempty.view(nq, 1),
-                    torch.full_like(attn, float("nan")),
+                    output_active.view(nq, 1),
                     attn,
+                    torch.zeros_like(attn),
                 )
                 lse = torch.log(safe_l) + m_run
 
                 for local_idx in range(nq):
                     out_idx = q_base + q_start + local_idx
-                    if bool(row_active[local_idx].item()):
+                    if bool(output_active[local_idx].item()):
                         attention_out[out_idx, head_idx] = attn[local_idx].to(
                             torch.bfloat16
                         )
