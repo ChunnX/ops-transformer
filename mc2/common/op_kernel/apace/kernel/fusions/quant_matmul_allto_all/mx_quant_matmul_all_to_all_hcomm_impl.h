@@ -345,38 +345,35 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     }
 
     if ASCEND_IS_AIV {
-        // AIV侧for循环只做CrossCoreWaitFlag等待AIC, HCCL调用移到循环外
-        // (避免HCCL模板在for循环中内联导致编译卡死)
+        // HCCL已在Init中初始化,逐tile整块AllToAll通信
+        // matmul结果写mmResult[rankM, perRankN], AllToAll整块发送
         for (uint32_t tid = 0; tid < totalTileCnt_; ++tid) {
             AscendC::CrossCoreWaitFlag<0x2, PIPE_S>(tid);
             AscendC::SyncAll<true>();
-        }
 
-        // matmul全部完成后,统一下发AllToAll(头块+尾块,固定2次调用)
-        AscendC::SyncAll();
-        uint32_t headM = tileM_ * headTileCnt_;
-        uint32_t tailM = tailM_ * tailCnt_;
-
-        AscendC::HcclHandle h0{0}, h1{0};
-        if (headM > 0) {
-            uint64_t sendCount = static_cast<uint64_t>(headM) * perRankN;
-            h0 = hccl_.template AlltoAll<true>(
-                mmResultGM_, y_,
+            uint32_t curTileM = CalcTileM(tid);
+            uint64_t tileOffset = CalcTileOffset(tid);
+            // 整块发送: sendCount=curTileM*perRankN, strideCount=curTileM*perRankN, batchCnt=1
+            uint64_t sendCount = static_cast<uint64_t>(curTileM) * perRankN;
+            curHandle_ = hccl_.template AlltoAll<true>(
+                mmResultGM_ + tileOffset * perRankN * sizeof(YType),
+                y_ + tileOffset * perRankN * sizeof(YType),
                 sendCount, static_cast<AscendC::HcclDataType>(yHcclDataType_),
                 sendCount, 1);
-        }
-        if (tailM > 0) {
-            uint64_t headOffset = static_cast<uint64_t>(headM) * perRankN * sizeof(YType);
-            uint64_t sendCount = static_cast<uint64_t>(tailM) * perRankN;
-            h1 = hccl_.template AlltoAll<true>(
-                mmResultGM_ + headOffset, y_ + headOffset,
-                sendCount, static_cast<AscendC::HcclDataType>(yHcclDataType_),
-                sendCount, 1);
+
+            if (hasPrevHandle_) {
+                hccl_.Wait(prevHandle_);
+            }
+            prevHandle_ = curHandle_;
+            hasPrevHandle_ = true;
         }
 
+        // 等待最后一个tile的通信完成
         AscendC::SyncAll();
-        if (headM > 0) { hccl_.Wait(h0); }
-        if (tailM > 0) { hccl_.Wait(h1); }
+        if (hasPrevHandle_) {
+            hccl_.Wait(prevHandle_);
+        }
+        hccl_.Wait(curHandle_);
 
         AscendC::SyncAll();
         hccl_.Finalize();
