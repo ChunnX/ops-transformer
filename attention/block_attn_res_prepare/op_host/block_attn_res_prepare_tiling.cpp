@@ -501,11 +501,12 @@ ge::graphStatus BlockAttnResPrepareCubeTiling::DoOpTiling()
     }
     usedCoreNum_ = distribution.usedCoreNum;
 
-    // MM1 produces [baseS, baseT * N]. AIV and AIC use two E slots to overlap the next token's softmax with the
-    // current token's MM2. MM2 Fixpipe writes O directly and therefore needs no output workspace.
-    const uint64_t dotWorkspaceElems = static_cast<uint64_t>(baseS_) * baseT_ * totalN_;
+    // MM1 writes rows with mm1NAlign pitch, which also reserves capacity for runtime token grouping. AIV and AIC use
+    // two E slots when more than one token exists, even if host tiling selects baseT=1, because the kernel may expand
+    // baseT after reading validN. MM2 Fixpipe writes O directly and therefore needs no output workspace.
+    const uint64_t dotWorkspaceElems = static_cast<uint64_t>(baseS_) * mm1NAlign_;
     const uint64_t eWorkspaceElems = static_cast<uint64_t>(sAlign_) * nAlign_;
-    const uint64_t eWorkspaceBufferNum = baseT_ > 1U ? 2U : 1U;
+    const uint64_t eWorkspaceBufferNum = totalT_ > 1U ? 2U : 1U;
     OP_CHECK_IF(eWorkspaceElems > std::numeric_limits<uint64_t>::max() / eWorkspaceBufferNum ||
                     dotWorkspaceElems > std::numeric_limits<uint64_t>::max() -
                                             eWorkspaceBufferNum * eWorkspaceElems,
