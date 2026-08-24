@@ -222,6 +222,7 @@ public:
         } else {
             protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
         }
+        protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
         GetCommProtocol(hcclHandle, protocol);
 
         CommContext commContextStruct;
