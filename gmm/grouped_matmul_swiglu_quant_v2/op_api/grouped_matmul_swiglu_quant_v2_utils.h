@@ -36,7 +36,10 @@ inline std::string ShapeToString(const op::Shape &shape)
     return oss.str();
 }
 
-inline std::string ViewShapeToString(const aclTensor *tensor) { return ShapeToString(tensor->GetViewShape()); }
+inline std::string ViewShapeToString(const aclTensor *tensor)
+{
+    return ShapeToString(tensor->GetViewShape());
+}
 
 inline std::string SupportListToString(const std::vector<DataType> &supportList)
 {
@@ -397,9 +400,8 @@ protected:
                 apiName_.c_str(), "dequantMode and quantMode",
                 "dequantMode=" + std::to_string(gmmDsqParams_.dequantMode) +
                     ", quantMode=" + std::to_string(gmmDsqParams_.quantMode),
-                "when the format of weight is ND, the values of dequantMode and quantMode must be 0 (pertoken) or "
-                "2 (mx), and they must be equal; when the format of weight is NZ, the values of dequantMode and "
-                "quantMode must be 2 (mx), and they must be equal");
+                "the values of dequantMode and quantMode must be 0 (pertoken) or 2 (mx), and they must be equal; "
+                "FRACTAL_NZ weight supports pertoken mode for INT8, FLOAT8 or HIFLOAT8 x and weight");
             return false;
         }
         ge::DataType dequantDtype = static_cast<ge::DataType>(gmmDsqParams_.dequantDtype);
