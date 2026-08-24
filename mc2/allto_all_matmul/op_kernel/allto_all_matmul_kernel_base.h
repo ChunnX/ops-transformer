@@ -71,8 +71,9 @@ __aicore__ inline void
         if (all2all_out == nullptr) {
         transOutGM_ = (GM_ADDR)((uint64_t)commOutGM_ + mc2Tiling_.commLen);
     }
-    // 初始化运行时信息
+    // 初始化运行时信息并接线给 pipeline，使 pipeline 循环内可写 turn
     runtimeInfo_.Init(workspaceGM, &tilingData->workspaceLayout, mc2Tiling_.aicCoreNum);
+    pipeLine_->SetRuntimeInfo(&runtimeInfo_);
     // 初始化流水线
     pipeLine_->Init();
     pipeLine_->GetContext(&pipeLineContext_);
@@ -85,19 +86,21 @@ AlltoAllMatmulKernelBase<SchedulerType, SchedulerContextType, AlltoAllMatmulTili
     auto &&mc2Tiling_ = tilingData_->alltoAllMatmulTilingInfo;
     // 启动主块流水
     if (mc2Tiling_.tileCnt > 0) {
-        runtimeInfo_.WritePosTagByPassDCache(POS_MAIN_CALC);
-        runtimeInfo_.WritePhaseByPassDCache(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+        // 阶段入口: posTag+phase+turn 一次写入，崩溃时保留当前阶段状态
+        runtimeInfo_.WriteGmByPassDCache(0, POS_MAIN_CALC,
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         ProcessTile(mc2Tiling_.tileCnt);
     }
 
     // 启动尾块流水
     if (mc2Tiling_.tailCnt > 0) {
-        runtimeInfo_.WritePosTagByPassDCache(POS_TAIL_CALC);
-        runtimeInfo_.WritePhaseByPassDCache(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+        // 阶段入口: posTag+phase+turn 一次写入，崩溃时保留当前阶段状态
+        runtimeInfo_.WriteGmByPassDCache(0, POS_TAIL_CALC,
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         ProcessTail(mc2Tiling_.tailCnt);
     }
 
-    // 结束流水线
+    // 结束流水线: 仅切 commPhase，到达 finalize 即表示成功
     runtimeInfo_.WritePhaseByPassDCache(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_FINALIZE));
     pipeLine_->End();
 }

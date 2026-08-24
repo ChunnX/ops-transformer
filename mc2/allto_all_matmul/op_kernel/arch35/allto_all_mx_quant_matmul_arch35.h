@@ -107,8 +107,9 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
         rankForComm_ = tilingData_->alltoAllQuantMatmulTilingInfo.rankK;
     }
 
-    // 初始化运行时信息
+    // 初始化运行时信息并接线给 pipeline，使 pipeline 循环内可写 turn
     runtimeInfo_.Init(workspaceGM, &tilingData->workspaceLayout, mc2Tiling_.aicCoreNum);
+    pipeLine_->SetRuntimeInfo(&runtimeInfo_);
     // 初始化流水线
     pipeLine_->Init();
     // 获取流水线上下文
@@ -130,25 +131,28 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
     }
 
     // 启动scale通信和转置
-    runtimeInfo_.WritePosTagByPassDCache(POS_SCALE_COMM);
-    runtimeInfo_.WritePhaseByPassDCache(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+    // 阶段入口: posTag+phase+turn 一次写入，崩溃时保留当前阶段状态
+    runtimeInfo_.WriteGmByPassDCache(0, POS_SCALE_COMM,
+                                     static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
     ProcessScale();
 
     // 启动主块流水
     if (mc2Tiling_.tileCnt > 0) {
-        runtimeInfo_.WritePosTagByPassDCache(POS_MAIN_CALC);
-        runtimeInfo_.WritePhaseByPassDCache(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+        // 阶段入口: posTag+phase+turn 一次写入，崩溃时保留当前阶段状态
+        runtimeInfo_.WriteGmByPassDCache(0, POS_MAIN_CALC,
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         ProcessTile(mc2Tiling_.tileCnt);
     }
 
     // 启动尾块流水
     if (mc2Tiling_.tailCnt > 0) {
-        runtimeInfo_.WritePosTagByPassDCache(POS_TAIL_CALC);
-        runtimeInfo_.WritePhaseByPassDCache(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+        // 阶段入口: posTag+phase+turn 一次写入，崩溃时保留当前阶段状态
+        runtimeInfo_.WriteGmByPassDCache(0, POS_TAIL_CALC,
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         ProcessTail(mc2Tiling_.tailCnt);
     }
 
-    // 结束流水线
+    // 结束流水线: 仅切 commPhase，到达 finalize 即表示成功
     runtimeInfo_.WritePhaseByPassDCache(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_FINALIZE));
     pipeLine_->End();
 }

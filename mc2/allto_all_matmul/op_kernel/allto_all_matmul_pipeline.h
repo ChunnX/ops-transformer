@@ -19,6 +19,7 @@
 #include "../../common/op_kernel/mc2_templates/communication/comm_stage.h"
 #include "../../common/op_kernel/mc2_templates/computation/math/mc2_vec_transpose.h"
 #include "../../common/op_kernel/mc2_templates/computation/matmul/mc2_fp_matmul.h"
+#include "../../common/op_kernel/mc2_runtime_info.h"
 
 // 流水线模板
 namespace Mc2Kernel {
@@ -48,10 +49,15 @@ public:
 
     __aicore__ inline void End();
 
+    // 注入 runtimeInfo 指针，使 pipeline 循环内可记录 tile 进度
+    __aicore__ inline void SetRuntimeInfo(Mc2Kernel::Mc2RuntimeInfo *rt) { runtimeInfo_ = rt; }
+
 private:
     CommunicationType *commStage_;  // 通信节点
     TransposeType *transStage_;     // 转置计算的计算节点
     ComputationType *computeStage_; // 矩阵乘的计算节点
+    // 运行时信息打点指针，由 kernel_base 通过 SetRuntimeInfo 注入
+    Mc2Kernel::Mc2RuntimeInfo *runtimeInfo_ = nullptr;
 };
 
 template <typename CommunicationType, typename TransposeType, typename ComputationType, typename ContextType>
@@ -77,6 +83,10 @@ AlltoAllMatmulPipeLine<CommunicationType, TransposeType, ComputationType, Contex
     commStage_->PrepareAll(taskCnt);
     uint32_t index;
     for (index = 0; index < taskCnt; index++) {
+        // tile 进度打点: 写在 Process(index) 之前，崩溃时 turn 值即当前卡死的 tile 序号
+        if (runtimeInfo_ != nullptr) {
+            runtimeInfo_->WriteTurnByPassDCache(static_cast<uint8_t>(index));
+        }
         if ASCEND_IS_AIV {
             commStage_->Process(index);
             AscendC::SyncAll<true>();

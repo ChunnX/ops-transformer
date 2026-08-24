@@ -148,6 +148,15 @@ RUNTIME_PHASE_MAP = {
     255: "RESERVED",
 }
 
+# PosTag 映射 (allto_all_matmul 算子, 值由各 kernel 就地定义)
+# 值与各 kernel 文件内 constexpr 一一对应，新增类别时同步更新此处
+POS_TAG_MAP_ALLTO_ALL = {
+    0: "NONE",
+    1: "MAIN_CALC",
+    2: "TAIL_CALC",
+    4: "SCALE_COMM",
+}
+
 
 def safe_str(raw: bytes) -> str:
     """将 C 风格 char[] 转为 Python 字符串，截断于第一个 '\\0'。"""
@@ -421,6 +430,7 @@ def parse_runtime_info_per_core(data: bytes, offset: int) -> dict:
         "coreId": core_id,
         "execTurn": exec_turn,
         "execPosition": exec_position,
+        "execPositionName": POS_TAG_MAP_ALLTO_ALL.get(exec_position, f"UNKNOWN({exec_position})"),
         "commPhase": comm_phase,
         "commPhaseName": RUNTIME_PHASE_MAP.get(comm_phase, f"UNKNOWN({comm_phase})"),
     }
@@ -565,9 +575,9 @@ def print_runtime_info_segment(rt_info: dict):
     logging.info("  " + "-" * 70)
     for slot in rt_info["slots"]:
         if slot.get("magicValid", False):
-            logging.info("  [%-4d] %-8d  %-8s  %-10d  %-10d  %s (%d)",
+            logging.info("  [%-4d] %-8d  %-8s  %-10d  %-4d/%-6s  %s (%d)",
                          slot["slotIdx"], slot["coreId"], "YES",
-                         slot["execTurn"], slot["execPosition"],
+                         slot["execTurn"], slot["execPosition"], slot["execPositionName"],
                          slot["commPhaseName"], slot["commPhase"])
         else:
             # 只在前后有 active slot 的范围内打印 inactive，避免刷屏
@@ -582,9 +592,10 @@ def print_runtime_info_segment(rt_info: dict):
             core_type = "V核" if slot["coreId"] >= 128 else "C核"
             # 尝试从 tiling info 推断 aicCoreNum 来区分 C/V 核
             # execTurn=tile进度(主/尾轮内从0起), execPosition=kernel打点tag(含义见对应算子kernel源文件)
-            logging.info("  Core %-4d (%s):  turn=%d, posTag=%d, phase=%s",
+            logging.info("  Core %-4d (%s):  turn=%d, posTag=%d (%s), phase=%s",
                          slot["coreId"], core_type,
-                         slot["execTurn"], slot["execPosition"], slot["commPhaseName"])
+                         slot["execTurn"], slot["execPosition"], slot["execPositionName"],
+                         slot["commPhaseName"])
 
 
 def print_workspace_segment(result: dict):

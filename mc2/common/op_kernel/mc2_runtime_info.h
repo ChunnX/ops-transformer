@@ -37,10 +37,19 @@ public:
             return;
         }
 
+        // 遍历 workspace 段表，定位 RUNTIME_INFO 段。
+        // 注意: kernel 收到的 workspaceGM 已跳过 LIB_API 段(由框架管理)，
+        // 但段表中的 offset 是从 0 累加的(含 LIB_API)，因此需减去 libApiSize
+        // 得到用户段实际偏移，否则基地址越界导致 GM 写入崩溃。
+        uint64_t libApiSize = 0;
         for (uint32_t i = 0; i < wsLayout->segCount && i < Mc2Tiling::MAX_WORKSPACE_SEGMENTS; i++) {
+            if (wsLayout->segments[i].type == Mc2Tiling::WS_SEG_LIB_API) {
+                libApiSize = wsLayout->segments[i].size;
+            }
             if (wsLayout->segments[i].type == Mc2Tiling::WS_SEG_RUNTIME_INFO) {
+                uint64_t userOffset = wsLayout->segments[i].offset - libApiSize;
                 runtimeInfoBase_ = reinterpret_cast<__gm__ Mc2Tiling::RuntimeInfoPerCore *>(
-                    workspaceGM + wsLayout->segments[i].offset);
+                    workspaceGM + userOffset);
                 break;
             }
         }
@@ -65,7 +74,8 @@ public:
         FlushCache();
     }
 
-    // 组合写入: 更新 execTurn/execPosition/commPhase
+    // 组合写入: 阶段入口用，三字段一次写入+单次FlushCache，
+    // 避免分两次写(WritePosTag+WritePhase)崩溃导致 posTag/phase 状态不一致
     __aicore__ inline void WriteGmByPassDCache(uint8_t turn, uint8_t position, uint8_t phase)
     {
         if (runtimeInfoBase_ == nullptr) {
@@ -78,7 +88,7 @@ public:
         FlushCache();
     }
 
-    // 仅更新 commPhase (通信五态切换用)
+    // 仅更新 commPhase: finalize 或仅切换通信阶段时用
     __aicore__ inline void WritePhaseByPassDCache(uint8_t phase)
     {
         if (runtimeInfoBase_ == nullptr) {
@@ -89,7 +99,8 @@ public:
         FlushCache();
     }
 
-    // 打 tile 进度: 仅更新 execTurn, 其余字段不变
+    // 打 tile 进度: tile 循环内每 tile 写一次，记录当前处理到第几个 tile；
+    // 写在 Process(index) 之前，崩溃时 turn 值即当前卡死的 tile 序号
     __aicore__ inline void WriteTurnByPassDCache(uint8_t tileIdx)
     {
         if (runtimeInfoBase_ == nullptr) {
@@ -100,7 +111,7 @@ public:
         FlushCache();
     }
 
-    // 打类别点: 仅更新 execPosition (position tag), 其余字段不变
+    // 打类别点: 单独更新 execPosition；阶段入口推荐改用 WriteGmByPassDCache 一次写完
     __aicore__ inline void WritePosTagByPassDCache(uint8_t tag)
     {
         if (runtimeInfoBase_ == nullptr) {
