@@ -130,6 +130,58 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
         sinksGm.SetGlobalBuffer((__gm__ T *)sinks);
     }
 
+    // 对padding区域的输出梯度清零
+    if constexpr (LAYOUT_Q == SLILayout::TND) {
+        if ASCEND_IS_AIV {
+            int64_t actualLen = actualSeqLengthsQueryGm.GetValue(constInfo.bSize - 1);
+            int64_t actualKLen = actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1);
+            int64_t t1PadLen = tilingData->baseParams.t1Size - actualLen;
+            int64_t t2PadLen = tilingData->baseParams.t2Size - actualKLen;
+            int64_t actualAivNum = static_cast<int64_t>(tilingData->baseParams.totalAivNum);
+
+            // 将padding行均分到各AIV核并行清零
+            if (t1PadLen > 0) {
+                int64_t split = t1PadLen / actualAivNum;
+                int64_t remain = t1PadLen % actualAivNum;
+                int64_t coreCnt = split + (static_cast<int64_t>(constInfo.aivIdx) < remain ? 1 : 0);
+                int64_t coreOff = static_cast<int64_t>(constInfo.aivIdx) * split +
+                                  Min(static_cast<int64_t>(constInfo.aivIdx), remain);
+                if (coreCnt > 0) { // 跳过无任务的核，避免构造越界GlobalTensor
+                    int64_t rowElms = static_cast<int64_t>(constInfo.gSizeQueryIndex) *
+                                      static_cast<int64_t>(constInfo.dSizeQueryIndex);
+                    // 清零dQueryIndex的padding区域
+                    int64_t dQOff = (coreOff + actualLen) * rowElms;
+                    GlobalTensor<INPUT_T> tmpDQ;
+                    tmpDQ.SetGlobalBuffer(reinterpret_cast<__gm__ INPUT_T *>(dQueryIndex) + dQOff, coreCnt * rowElms);
+                    AscendC::Fill(tmpDQ, coreCnt * rowElms, static_cast<INPUT_T>(0));
+                    // 清零dWeight的padding区域
+                    int64_t dWOff = (coreOff + actualLen) * static_cast<int64_t>(constInfo.gSizeQueryIndex);
+                    GlobalTensor<WEIGHT_T> tmpDW;
+                    tmpDW.SetGlobalBuffer(reinterpret_cast<__gm__ WEIGHT_T *>(dWeight) + dWOff,
+                                          coreCnt * static_cast<int64_t>(constInfo.gSizeQueryIndex));
+                    AscendC::Fill(tmpDW, coreCnt * static_cast<int64_t>(constInfo.gSizeQueryIndex),
+                                  static_cast<WEIGHT_T>(0));
+                }
+            }
+            if (t2PadLen > 0) {
+                int64_t split = t2PadLen / actualAivNum;
+                int64_t remain = t2PadLen % actualAivNum;
+                int64_t coreCnt = split + (static_cast<int64_t>(constInfo.aivIdx) < remain ? 1 : 0);
+                int64_t coreOff = static_cast<int64_t>(constInfo.aivIdx) * split +
+                                  Min(static_cast<int64_t>(constInfo.aivIdx), remain);
+                if (coreCnt > 0) {
+                    // 清零dKeyIndex的padding区域
+                    int64_t dKOff = (coreOff + actualKLen) * static_cast<int64_t>(constInfo.dSizeQueryIndex);
+                    GlobalTensor<INPUT_T> tmpDK;
+                    tmpDK.SetGlobalBuffer(reinterpret_cast<__gm__ INPUT_T *>(dKeyIndex) + dKOff,
+                                          coreCnt * static_cast<int64_t>(constInfo.dSizeQueryIndex));
+                    AscendC::Fill(tmpDK, coreCnt * static_cast<int64_t>(constInfo.dSizeQueryIndex),
+                                  static_cast<INPUT_T>(0));
+                }
+            }
+        }
+    }
+
     InitMMResBuf();
     InitWorkspace(workspace);
 

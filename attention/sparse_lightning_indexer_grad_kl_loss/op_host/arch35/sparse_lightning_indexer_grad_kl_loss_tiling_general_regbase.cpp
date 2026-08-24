@@ -301,7 +301,8 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::AnalyzeDimLayout(
             int64_t actualSeqKLen = 0;
             int64_t t1Size = queryShape.GetDim(0); // TND只有三个数值 T:0 N:1 D:2
             int64_t t2Size = keyShape.GetDim(0);
-            realT1Size = t1Size;
+            this->t1Size = t1Size;
+            this->t2Size = t2Size;
             std::fill(actualSeqLenData.begin(), actualSeqLenData.end(), 0);
             std::fill(actualSeqLenKData.begin(), actualSeqLenKData.end(), 0);
             GetActualSeqLenData(ACTUAL_SEQ_LENGTHS_QUERY_INPUT_INDEX, actualSeqLenData, actualSeqQLen);
@@ -322,22 +323,23 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::AnalyzeDimLayout(
             bSize = actualSeqQLen;
             accumS1 = std::accumulate(actualSeqLenData.begin(), actualSeqLenData.begin() + actualSeqQLen, 0LL);
             accumS2 = std::accumulate(actualSeqLenKData.begin(), actualSeqLenKData.begin() + actualSeqKLen, 0LL);
-            OP_CHECK_IF(t1Size != accumS1 || t2Size != accumS2,
+            OP_CHECK_IF(t1Size < accumS1 || t2Size < accumS2,
                         OP_LOGE(opName,
-                                "Query Tsize(%ld) and key Tsize(%ld) must be equal to sum of seqQLen(%ld) and "
-                                "seqkLen(%ld), respectively.",
+                                "Query Tsize(%ld) and key Tsize(%ld) must be larger than sum of "
+                                "seqQLen(%ld) and seqkLen(%ld), respectively.",
                                 t1Size, t2Size, accumS1, accumS2),
                         return false);
+            realT1Size = accumS1;
+            maxS1Val = *std::max_element(actualSeqLenData.begin(), actualSeqLenData.end());
+            maxS2Val = *std::max_element(actualSeqLenKData.begin(), actualSeqLenKData.end());
+            s1Size = maxS1Val;
+            s2Size = maxS2Val;
             OP_CHECK_IF(s1Size > s2Size || t1Size > t2Size || accumS1 > accumS2,
                         OP_LOGE(opName,
                                 "Query s1Size(%ld), t1Size(%ld) and the sum of seqQLen(%ld) must be small than Key "
                                 "s2Size(%ld), t2Size(%ld) and seqkLen(%ld), respectively.",
                                 s1Size, t1Size, accumS1, s2Size, t2Size, accumS2),
                         return false);
-            maxS1Val = *std::max_element(actualSeqLenData.begin(), actualSeqLenData.end());
-            maxS2Val = *std::max_element(actualSeqLenKData.begin(), actualSeqLenKData.end());
-            s1Size = maxS1Val;
-            s2Size = maxS2Val;
             n2Size = keyShape.GetDim(1);
             OP_CHECK_IF(n2Size == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "N2 is zero."), return false);
             gSizeQuery = queryShape.GetDim(1) / n2Size;
@@ -362,6 +364,10 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::AnalyzeDimLayout(
                 dQueryRopeSize = queryRopeShape.GetDim(2);
                 dKeyRopeSize = keyRopeShape.GetDim(2);
             }
+            sliGradkllossBaseParams_->set_t1Size(t1Size);
+            sliGradkllossBaseParams_->set_t2Size(t2Size);
+            OP_LOGD(context_, "TND dim: T1[%ld] actual[%ld] pad[%ld], T2[%ld] actual[%ld] pad[%ld], aiv cores=%u",
+                    t1Size, accumS1, t1Size - accumS1, t2Size, accumS2, t2Size - accumS2, aivNum);
             tilingData->baseParams.set_layoutType(static_cast<uint8_t>(LayoutTypeRegbase::LAYOUT_TND));
             tilingKeyLayout = LayoutTypeRegbase::LAYOUT_TND;
         }
@@ -1255,6 +1261,11 @@ void SparseLightningIndexerGradKLLossTilingBaseRegbase::InitOutputSplit()
     // 单个核均分元素数量
     singlecoresize = static_cast<uint32_t>(
         CeilDivision(totalsize, static_cast<int64_t>(aivNum))); // 输出k-index总大小TD或者BSD 除以 总的aiv核数 向上取整
+    // 实际使用的AIV核数 = 实际使用的AIC核数 * 单个AIC配对的AIV核数（由平台核数比推导，适配950/950PR等不同型号）
+    int32_t perAicAivNum = aicNum > 0 ? static_cast<int32_t>(aivNum / aicNum) : 1;
+    int32_t actualAivNum = static_cast<int32_t>(sliGradkllossMultiCoreParams_->get_coreNum()) * perAicAivNum;
+    sliGradkllossBaseParams_->set_totalAivNum(actualAivNum);
+    OP_LOGD(context_, "init output split: aiv[%u] outputSize[%ld] perCore[%u]", aivNum, totalsize, singlecoresize);
     initoutput->set_singleCoreSize(singlecoresize);
     initoutput->set_totalOutputSize(totalsize);
 }
@@ -1284,9 +1295,15 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::PostTiling() { return ge::GRAPH_SUCCESS; }
+ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::PostTiling()
+{
+    return ge::GRAPH_SUCCESS;
+}
 
-ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::DoLibApiTiling() { return ge::GRAPH_SUCCESS; }
+ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::DoLibApiTiling()
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 uint64_t SparseLightningIndexerGradKLLossTilingBaseRegbase::GetTilingKey() const
 {
