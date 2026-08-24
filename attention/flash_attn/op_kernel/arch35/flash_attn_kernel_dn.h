@@ -17,7 +17,6 @@
 #define FLASH_ATTN_KERNEL_DN_H_
 
 #include "../utils/flash_attn_common_def.h"
-#include "../utils/flash_attn_utils.h"
 
 #include "flash_attn_block_cube_dn.h"
 #include "flash_attn_block_vec_dn.h"
@@ -501,8 +500,8 @@ public:
         if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
         }
-        info.actSingleLoopS2SizeAlign =
-            AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
+        info.actSingleLoopS2SizeAlign = AttentionCommon::Align(
+            (uint32_t)info.actSingleLoopS2Size, (uint32_t)(AttentionCommon::BYTE_BLOCK / sizeof(INPUT_T)));
 
         GetPreNextTokenLeftUp(actSeqLensQ_, actSeqLensKv_, info.preTokensLeftUp, info.nextTokensLeftUp);
 
@@ -582,12 +581,12 @@ public:
 
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
     {
-        bN2Start_ = faMetaDataGm_.GetValue(
-            GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_BN2_START_INDEX, sectionIdx));
-        gS1OStart_ = faMetaDataGm_.GetValue(
-            GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_M_START_INDEX, sectionIdx));
-        s2OStart_ = faMetaDataGm_.GetValue(
-            GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_S2_START_INDEX, sectionIdx));
+        bN2Start_ =
+            faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_BN2_START_INDEX, sectionIdx));
+        gS1OStart_ =
+            faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_M_START_INDEX, sectionIdx));
+        s2OStart_ =
+            faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_S2_START_INDEX, sectionIdx));
         bN2End_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_BN2_END_INDEX, sectionIdx));
         gS1OEnd_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_M_END_INDEX, sectionIdx));
         s2OEnd_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_S2_END_INDEX, sectionIdx));
@@ -609,8 +608,8 @@ public:
             fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_WORKSPACE_IDX_INDEX, sectionIdx));
         fdParams_.fdS2SplitNum =
             fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_WORKSPACE_NUM_INDEX, sectionIdx));
-        fdParams_.mStart = fdMetaDataGm_.GetValue(
-            GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_M_START_INDEX, sectionIdx));
+        fdParams_.mStart =
+            fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_M_START_INDEX, sectionIdx));
     }
 
     __aicore__ inline void Process()

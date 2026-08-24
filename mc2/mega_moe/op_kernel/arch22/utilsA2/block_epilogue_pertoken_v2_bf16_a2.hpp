@@ -11,12 +11,12 @@
 #ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_V2_BF16_A2_HPP
 #define CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_V2_BF16_A2_HPP
 
-#include "../template_linear_algebra_v2/catlass.hpp"
-#include "../template_linear_algebra_v2/arch/resource.hpp"
-#include "../template_linear_algebra_v2/epilogue/dispatch_policy.hpp"
-#include "../template_linear_algebra_v2/gemm_coord.hpp"
-#include "../template_linear_algebra_v2/matrix_coord.hpp"
-#include "../template_linear_algebra_v2/layout/layout.hpp"
+#include "../template_linear_algebra_v2/mega_moe_catlass.hpp"
+#include "../template_linear_algebra_v2/arch/mega_moe_resource.hpp"
+#include "../template_linear_algebra_v2/epilogue/mega_moe_epilogue_dispatch_policy.hpp"
+#include "../template_linear_algebra_v2/mega_moe_gemm_coord.hpp"
+#include "../template_linear_algebra_v2/mega_moe_matrix_coord.hpp"
+#include "../template_linear_algebra_v2/layout/mega_moe_layout.hpp"
 #include "../template_linear_algebra_v2/detail/tla_v2_callback.hpp"
 
 #include "../utils/hccl_shmem.hpp"
@@ -65,15 +65,24 @@ public:
         Params(int32_t EP_, int32_t expertPerRank_, int32_t rank_, __gm__ int32_t *ptrTokenPerExpert_, LayoutC layoutC_,
                int32_t n2_, int32_t n0_, HcclShmem<true> &shmem_, int64_t offsetD_, int64_t offsetWinOutD_,
                int32_t serverId_, Layout3D tokenPerExpertLayout_)
-            : ptrTokenPerExpert(ptrTokenPerExpert_), EP(EP_), expertPerRank(expertPerRank_), rank(rank_),
-              layoutC(layoutC_), n2(n2_), n0(n0_), shmem(shmem_), offsetD(offsetD_), offsetWinOutD(offsetWinOutD_),
-              serverId(serverId_), tokenPerExpertLayout(tokenPerExpertLayout_)
-        {
-        }
+            : ptrTokenPerExpert(ptrTokenPerExpert_),
+              EP(EP_),
+              expertPerRank(expertPerRank_),
+              rank(rank_),
+              layoutC(layoutC_),
+              n2(n2_),
+              n0(n0_),
+              shmem(shmem_),
+              offsetD(offsetD_),
+              offsetWinOutD(offsetWinOutD_),
+              serverId(serverId_),
+              tokenPerExpertLayout(tokenPerExpertLayout_)
+        {}
     };
 
     CATLASS_DEVICE
-    BlockEpilogue(Arch::Resource<ArchTag> const &resource, Params const &params = Params{}) : params(params)
+    BlockEpilogue(Arch::Resource<ArchTag> const &resource, Params const &params = Params{})
+        : params(params)
     {
         n0 = params.n0;
         size_t ubOffset = 0;
@@ -100,9 +109,7 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
     }
     CATLASS_DEVICE
-    ~BlockEpilogue()
-    {
-    }
+    ~BlockEpilogue() {}
 
     CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementC> const &gmC,

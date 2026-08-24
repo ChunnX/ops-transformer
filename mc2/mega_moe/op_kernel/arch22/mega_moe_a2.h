@@ -31,19 +31,19 @@ using namespace AscendC;
 #include "mega_moe_tiling_a2a3.h"
 #include "moe_init_routing_v2/mc2_mega_moe_moe_init_routing_v2_tiling.h"
 
-#include "template_linear_algebra_v2/catlass.hpp"
-#include "template_linear_algebra_v2/arch/arch.hpp"
-#include "template_linear_algebra_v2/epilogue/dispatch_policy.hpp"
-#include "template_linear_algebra_v2/epilogue/block/block_epilogue.hpp"
-#include "template_linear_algebra_v2/epilogue/tile/tile_copy.hpp"
-#include "template_linear_algebra_v2/epilogue/tile/tile_elemwise_add.hpp"
-#include "template_linear_algebra_v2/epilogue/tile/tile_elemwise_muls.hpp"
-#include "template_linear_algebra_v2/gemm/block/block_mmad.hpp"
-#include "template_linear_algebra_v2/gemm/block/block_swizzle.hpp"
-#include "template_linear_algebra_v2/gemm/dispatch_policy.hpp"
-#include "template_linear_algebra_v2/gemm/kernel/matmul_epilogue.hpp"
-#include "template_linear_algebra_v2/gemm/gemm_type.hpp"
-#include "template_linear_algebra_v2/layout/layout.hpp"
+#include "template_linear_algebra_v2/mega_moe_catlass.hpp"
+#include "template_linear_algebra_v2/arch/mega_moe_arch.hpp"
+#include "template_linear_algebra_v2/epilogue/mega_moe_epilogue_dispatch_policy.hpp"
+#include "template_linear_algebra_v2/epilogue/block/mega_moe_block_epilogue.hpp"
+#include "template_linear_algebra_v2/epilogue/tile/mega_moe_epilogue_tile_copy.hpp"
+#include "template_linear_algebra_v2/epilogue/tile/mega_moe_tile_elemwise_add.hpp"
+#include "template_linear_algebra_v2/epilogue/tile/mega_moe_tile_elemwise_muls.hpp"
+#include "template_linear_algebra_v2/gemm/block/mega_moe_block_mmad.hpp"
+#include "template_linear_algebra_v2/gemm/block/mega_moe_block_swizzle.hpp"
+#include "template_linear_algebra_v2/gemm/mega_moe_gemm_dispatch_policy.hpp"
+#include "template_linear_algebra_v2/gemm/kernel/mega_moe_matmul_epilogue.hpp"
+#include "template_linear_algebra_v2/gemm/mega_moe_gemm_type.hpp"
+#include "template_linear_algebra_v2/layout/mega_moe_layout.hpp"
 
 #include "utils/select_helper.hpp"
 #include "utils/const_args.hpp"
@@ -139,13 +139,13 @@ private:
     uint64_t initRoutingQuantTilingKey;
 };
 
-
 template <MegaMoeClassA2>
-__aicore__ inline void
-MegaMoeA2<MegaMoeFuncA2>::Init(GM_ADDR contextGM, GM_ADDR xGM, GM_ADDR topkIdsGM, GM_ADDR topkWeightsGM,
-                               GM_ADDR weight1GM, GM_ADDR weight2GM, GM_ADDR weightScales1GM, GM_ADDR weightScales2GM,
-                               GM_ADDR bias1GM, GM_ADDR bias2GM, GM_ADDR xActiveMaskGM, GM_ADDR scalesGM, GM_ADDR yGM,
-                               GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+__aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Init(GM_ADDR contextGM, GM_ADDR xGM, GM_ADDR topkIdsGM,
+                                                      GM_ADDR topkWeightsGM, GM_ADDR weight1GM, GM_ADDR weight2GM,
+                                                      GM_ADDR weightScales1GM, GM_ADDR weightScales2GM, GM_ADDR bias1GM,
+                                                      GM_ADDR bias2GM, GM_ADDR xActiveMaskGM, GM_ADDR scalesGM,
+                                                      GM_ADDR yGM, GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM,
+                                                      GM_ADDR tilingGM)
 {
     constexpr bool kRoutingIsQuant = std::is_same_v<BType_, AscendC::int4b_t> || std::is_same_v<BType_, int8_t>;
 
@@ -308,8 +308,7 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
     using ElementGroupList = int64_t;
     // W4A8 reuses this workspace for GMM1 input and SwiGLU/GMM2 input. Pad only
     // the GMM1 token slot; SwiGLU/GMM2 keeps its native packed k2 layout.
-    uint32_t layoutA1RowStride =
-        isW4A8 ? static_cast<uint32_t>(k_ > k2 ? k_ : k2) : static_cast<uint32_t>(k_);
+    uint32_t layoutA1RowStride = isW4A8 ? static_cast<uint32_t>(k_ > k2 ? k_ : k2) : static_cast<uint32_t>(k_);
     LayoutA layoutA1{static_cast<uint32_t>(m_), static_cast<uint32_t>(k_), layoutA1RowStride};
     LayoutA layoutA2{static_cast<uint32_t>(m_), static_cast<uint32_t>(k2)};
     layout::VectorLayout layoutScale1{static_cast<uint32_t>(n_)};
@@ -361,13 +360,13 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
                                                                              gmExpertTokenNums_,
                                                                              xActiveMaskGM_,
                                                                              scalesGM_,
-                                                                              moeInitRoutingQuantV2TilingData,
-                                                                              epilogueGranularity,
-                                                                              activationClamp_,
-                                                                              activationCode_,
-                                                                              activationParams1_,
-                                                                              activationParams2_,
-                                                                              tilingGM_};
+                                                                             moeInitRoutingQuantV2TilingData,
+                                                                             epilogueGranularity,
+                                                                             activationClamp_,
+                                                                             activationCode_,
+                                                                             activationParams1_,
+                                                                             activationParams2_,
+                                                                             tilingGM_};
         MatmulKernel kernel(params);
         kernel(params);
     } else if constexpr (isInt8) {
@@ -410,13 +409,13 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
                                              gmExpertTokenNums_,
                                              xActiveMaskGM_,
                                              scalesGM_,
-                                              moeInitRoutingQuantV2TilingData,
-                                              epilogueGranularity,
-                                              activationClamp_,
-                                              activationCode_,
-                                              activationParams1_,
-                                              activationParams2_,
-                                              tilingGM_};
+                                             moeInitRoutingQuantV2TilingData,
+                                             epilogueGranularity,
+                                             activationClamp_,
+                                             activationCode_,
+                                             activationParams1_,
+                                             activationParams2_,
+                                             tilingGM_};
 
         MatmulKernel kernel(params);
         kernel(params);
@@ -459,13 +458,13 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
                                              gmExpertTokenNums_,
                                              xActiveMaskGM_,
                                              scalesGM_,
-                                              moeInitRoutingV2TilingData,
-                                              epilogueGranularity,
-                                              activationClamp_,
-                                              activationCode_,
-                                              activationParams1_,
-                                              activationParams2_,
-                                              tilingGM_};
+                                             moeInitRoutingV2TilingData,
+                                             epilogueGranularity,
+                                             activationClamp_,
+                                             activationCode_,
+                                             activationParams1_,
+                                             activationParams2_,
+                                             tilingGM_};
 
         MatmulKernel kernel(params);
         kernel(params);

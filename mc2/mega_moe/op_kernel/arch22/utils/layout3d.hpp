@@ -16,15 +16,13 @@
 #ifndef LAYOUT_3D_HPP
 #define LAYOUT_3D_HPP
 #include "kernel_operator.h"
-#include "../template_linear_algebra_v2/catlass.hpp"
+#include "../template_linear_algebra_v2/mega_moe_catlass.hpp"
 class Layout3D {
 public:
     int64_t strides[2];
 
     CATLASS_DEVICE
-    Layout3D()
-    {
-    }
+    Layout3D() {}
 
     CATLASS_DEVICE
     Layout3D(int64_t stride0, int64_t stride1)

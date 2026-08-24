@@ -24,14 +24,14 @@
 
 #include "utils/copy_l0c_to_gm_custom.hpp"
 
-#include "template_linear_algebra_v2/catlass.hpp"
+#include "template_linear_algebra_v2/mega_moe_catlass.hpp"
 #include "template_linear_algebra_v2/arch/tla_v2_cross_core_sync.hpp"
-#include "template_linear_algebra_v2/arch/resource.hpp"
+#include "template_linear_algebra_v2/arch/mega_moe_resource.hpp"
 #include "template_linear_algebra_v2/tla_v2_coord.hpp"
 #include "template_linear_algebra_v2/detail/tla_v2_callback.hpp"
-#include "template_linear_algebra_v2/gemm_coord.hpp"
-#include "template_linear_algebra_v2/matrix_coord.hpp"
-#include "template_linear_algebra_v2/epilogue/tile/tile_copy.hpp"
+#include "template_linear_algebra_v2/mega_moe_gemm_coord.hpp"
+#include "template_linear_algebra_v2/mega_moe_matrix_coord.hpp"
+#include "template_linear_algebra_v2/epilogue/tile/mega_moe_epilogue_tile_copy.hpp"
 
 #include "utils/block_mmad_w4a4.hpp"
 #include "utils/block_mmad_preload_async_fixpipe_quant.hpp"
@@ -166,9 +166,7 @@ public:
 
         // Methods
         CATLASS_HOST_DEVICE
-        Params()
-        {
-        }
+        Params() {}
 
         CATLASS_HOST_DEVICE
         Params(GemmCoord problemShape_, uint32_t EP_, uint32_t listLen_, uint32_t expertPerRank_,
@@ -184,23 +182,46 @@ public:
                float swigluLimit_ = std::numeric_limits<float>::infinity(), uint32_t activationCode_ = 0,
                float activationParams1_ = Epilogue::SwigluOaiActivation::DEFAULT_ALPHA,
                float activationParams2_ = Epilogue::SituActivation::DEFAULT_BETA, GM_ADDR tilingGM_ = nullptr)
-            : problemShape(problemShape_), EP(EP_), listLen(listLen_), expertPerRank(expertPerRank_),
-              maxOutputSize(maxOutputSize_), topK(topK_), initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
-              epilogueCoreNum(epilogueCoreNum_), epilogueGranularity(epilogueGranularity_), swigluLimit(swigluLimit_),
-              activationCode(activationCode_), activationParams1(activationParams1_),
+            : problemShape(problemShape_),
+              EP(EP_),
+              listLen(listLen_),
+              expertPerRank(expertPerRank_),
+              maxOutputSize(maxOutputSize_),
+              topK(topK_),
+              initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
+              epilogueCoreNum(epilogueCoreNum_),
+              epilogueGranularity(epilogueGranularity_),
+              swigluLimit(swigluLimit_),
+              activationCode(activationCode_),
+              activationParams1(activationParams1_),
               activationParams2(activationParams2_),
-              contextGM(contextGM_), tilingGM(tilingGM_), ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)),
-              layoutA(layoutA_), layoutA2(layoutA2_), ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)),
-              layoutB1(layoutB1_), ptrBias1(reinterpret_cast<__gm__ float *>(ptrBias1_)),
-              ptrB2(reinterpret_cast<__gm__ ElementB *>(ptrB2_)), layoutB2(layoutB2_),
+              contextGM(contextGM_),
+              tilingGM(tilingGM_),
+              ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)),
+              layoutA(layoutA_),
+              layoutA2(layoutA2_),
+              ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)),
+              layoutB1(layoutB1_),
+              ptrBias1(reinterpret_cast<__gm__ float *>(ptrBias1_)),
+              ptrB2(reinterpret_cast<__gm__ ElementB *>(ptrB2_)),
+              layoutB2(layoutB2_),
               ptrBias2(reinterpret_cast<__gm__ float *>(ptrBias2_)),
-              ptrScale1(reinterpret_cast<__gm__ ElementScale *>(ptrScale1_)), layoutScale1(layoutScale1_),
-              ptrScale2(reinterpret_cast<__gm__ ElementScale *>(ptrScale2_)), layoutScale2(layoutScale2_),
-              ptrOutput(reinterpret_cast<__gm__ ElementD2 *>(ptrOutput_)), layoutD1(layoutD1_), layoutD2(layoutD2_),
-              expertIdx(expertIdx_), moeInitRoutingQuantV2Scale(moeInitRoutingQuantV2Scale_),
+              ptrScale1(reinterpret_cast<__gm__ ElementScale *>(ptrScale1_)),
+              layoutScale1(layoutScale1_),
+              ptrScale2(reinterpret_cast<__gm__ ElementScale *>(ptrScale2_)),
+              layoutScale2(layoutScale2_),
+              ptrOutput(reinterpret_cast<__gm__ ElementD2 *>(ptrOutput_)),
+              layoutD1(layoutD1_),
+              layoutD2(layoutD2_),
+              expertIdx(expertIdx_),
+              moeInitRoutingQuantV2Scale(moeInitRoutingQuantV2Scale_),
               moeInitRoutingQuantV2Offset(moeInitRoutingQuantV2Offset_),
-              expertTokensBeforeCapacity(expertTokensBeforeCapacity_), probs(probs_), ptrXActiveMask(ptrXActiveMask_),
-              ptrScales(ptrScales_), ptrWorkspace(ptrWorkspace_), ptrExpertTokenNums(gmExpertTokenNums_),
+              expertTokensBeforeCapacity(expertTokensBeforeCapacity_),
+              probs(probs_),
+              ptrXActiveMask(ptrXActiveMask_),
+              ptrScales(ptrScales_),
+              ptrWorkspace(ptrWorkspace_),
+              ptrExpertTokenNums(gmExpertTokenNums_),
               moeInitRoutingQuantV2TilingData(moeInitRoutingQuantV2TilingData_)
         {
             moeInitRoutingQuantV2TilingData.vbsComputeParamsOp = moeInitRoutingQuantV2TilingData_.vbsComputeParamsOp;
@@ -230,26 +251,48 @@ public:
                GM_ADDR expertTokensBeforeCapacity_, GM_ADDR probs_, GM_ADDR ptrWorkspace_, GM_ADDR gmExpertTokenNums_,
                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_, MoeInitRoutingV2TilingData moeInitRoutingV2TilingData_,
                uint32_t epilogueGranularity_ = 0, float swigluLimit_ = std::numeric_limits<float>::infinity(),
-               uint32_t activationCode_ = 0,
-               float activationParams1_ = Epilogue::SwigluOaiActivation::DEFAULT_ALPHA,
+               uint32_t activationCode_ = 0, float activationParams1_ = Epilogue::SwigluOaiActivation::DEFAULT_ALPHA,
                float activationParams2_ = Epilogue::SituActivation::DEFAULT_BETA, GM_ADDR tilingGM_ = nullptr)
-            : problemShape(problemShape_), EP(EP_), listLen(listLen_), expertPerRank(expertPerRank_),
-              maxOutputSize(maxOutputSize_), topK(topK_), initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
-              epilogueCoreNum(epilogueCoreNum_), epilogueGranularity(epilogueGranularity_), swigluLimit(swigluLimit_),
-              activationCode(activationCode_), activationParams1(activationParams1_),
+            : problemShape(problemShape_),
+              EP(EP_),
+              listLen(listLen_),
+              expertPerRank(expertPerRank_),
+              maxOutputSize(maxOutputSize_),
+              topK(topK_),
+              initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
+              epilogueCoreNum(epilogueCoreNum_),
+              epilogueGranularity(epilogueGranularity_),
+              swigluLimit(swigluLimit_),
+              activationCode(activationCode_),
+              activationParams1(activationParams1_),
               activationParams2(activationParams2_),
-              contextGM(contextGM_), tilingGM(tilingGM_), ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)),
-              layoutA(layoutA_), layoutA2(layoutA2_), ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)),
-              layoutB1(layoutB1_), ptrBias1(reinterpret_cast<__gm__ float *>(ptrBias1_)),
-              ptrB2(reinterpret_cast<__gm__ ElementB *>(ptrB2_)), layoutB2(layoutB2_),
+              contextGM(contextGM_),
+              tilingGM(tilingGM_),
+              ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)),
+              layoutA(layoutA_),
+              layoutA2(layoutA2_),
+              ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)),
+              layoutB1(layoutB1_),
+              ptrBias1(reinterpret_cast<__gm__ float *>(ptrBias1_)),
+              ptrB2(reinterpret_cast<__gm__ ElementB *>(ptrB2_)),
+              layoutB2(layoutB2_),
               ptrBias2(reinterpret_cast<__gm__ float *>(ptrBias2_)),
-              ptrScale1(reinterpret_cast<__gm__ ElementScale *>(ptrScale1_)), layoutScale1(layoutScale1_),
-              ptrScale2(reinterpret_cast<__gm__ ElementScale *>(ptrScale2_)), layoutScale2(layoutScale2_),
-              ptrOutput(reinterpret_cast<__gm__ ElementD2 *>(ptrOutput_)), layoutD1(layoutD1_), layoutD2(layoutD2_),
-              expertIdx(expertIdx_), moeInitRoutingQuantV2Scale(moeInitRoutingQuantV2Scale_),
+              ptrScale1(reinterpret_cast<__gm__ ElementScale *>(ptrScale1_)),
+              layoutScale1(layoutScale1_),
+              ptrScale2(reinterpret_cast<__gm__ ElementScale *>(ptrScale2_)),
+              layoutScale2(layoutScale2_),
+              ptrOutput(reinterpret_cast<__gm__ ElementD2 *>(ptrOutput_)),
+              layoutD1(layoutD1_),
+              layoutD2(layoutD2_),
+              expertIdx(expertIdx_),
+              moeInitRoutingQuantV2Scale(moeInitRoutingQuantV2Scale_),
               moeInitRoutingQuantV2Offset(moeInitRoutingQuantV2Offset_),
-              expertTokensBeforeCapacity(expertTokensBeforeCapacity_), probs(probs_), ptrXActiveMask(ptrXActiveMask_),
-              ptrScales(ptrScales_), ptrWorkspace(ptrWorkspace_), ptrExpertTokenNums(gmExpertTokenNums_),
+              expertTokensBeforeCapacity(expertTokensBeforeCapacity_),
+              probs(probs_),
+              ptrXActiveMask(ptrXActiveMask_),
+              ptrScales(ptrScales_),
+              ptrWorkspace(ptrWorkspace_),
+              ptrExpertTokenNums(gmExpertTokenNums_),
               moeInitRoutingV2TilingData(moeInitRoutingV2TilingData_)
         {
             gmmOutPreRowStride = problemShape.n() > problemShape.k() ? problemShape.n() : problemShape.k();
@@ -276,9 +319,7 @@ public:
     }
 
     CATLASS_DEVICE
-    ~MegaMoeKernel()
-    {
-    }
+    ~MegaMoeKernel() {}
 
     template <int32_t CORE_TYPE = g_coreType>
     CATLASS_DEVICE void operator()(Params const &params);
@@ -1301,8 +1342,7 @@ private:
                                    rowStartThisCore, gmPerTokenScale2[rowStartThisCore], params.expertPerRank,
                                    params.EP, runtimeRank, params.listLen, resource, params.epilogueCoreNum,
                                    params.swigluLimit, params.activationCode, params.activationParams1,
-                                   params.activationParams2,
-                                   params.gmmOutPreRowStride);
+                                   params.activationParams2, params.gmmOutPreRowStride);
                 }
                 AscendC::SyncAll<true>();
                 AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNCFLAGV2C);
@@ -1326,8 +1366,7 @@ private:
                 } else {
                     blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], resource, params.epilogueCoreNum,
                                    params.swigluLimit, params.activationCode, params.activationParams1,
-                                   params.activationParams2,
-                                   params.gmmOutPreRowStride);
+                                   params.activationParams2, params.gmmOutPreRowStride);
                 }
             }
             AscendC::SyncAll<true>();
@@ -1353,8 +1392,7 @@ private:
                     } else {
                         blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], resource, coreNum,
                                        params.swigluLimit, params.activationCode, params.activationParams1,
-                                       params.activationParams2,
-                                       params.gmmOutPreRowStride);
+                                       params.activationParams2, params.gmmOutPreRowStride);
                     }
                 }
                 AscendC::SyncAll<true>();
@@ -1589,9 +1627,7 @@ private:
         __gm__ float *ptrSoftFlagBase;
 
         CATLASS_DEVICE
-        WorkspaceInfo()
-        {
-        }
+        WorkspaceInfo() {}
 
         CATLASS_DEVICE
         WorkspaceInfo(const Params &params)
@@ -1654,9 +1690,7 @@ private:
         int64_t offsetD;
 
         CATLASS_DEVICE
-        PeermemInfo()
-        {
-        }
+        PeermemInfo() {}
 
         CATLASS_DEVICE
         PeermemInfo(const Params &params, const HcclShmem<false> &shmem)
@@ -1675,8 +1709,8 @@ private:
 
             // 尾部：CrossRankSync + tokenPerExpert
             int64_t tailSyncSize = static_cast<int64_t>(shmem.TailReservedSize());
-            int64_t tokenPerExpertSize = EP * AlignUp(EP * MAX_EXPERTS_PER_RANK + 1, ALIGN_128) *
-                static_cast<int64_t>(sizeof(int32_t));
+            int64_t tokenPerExpertSize =
+                EP * AlignUp(EP * MAX_EXPERTS_PER_RANK + 1, ALIGN_128) * static_cast<int64_t>(sizeof(int32_t));
 
             // A: dispatch 数据区（量化时含行内 scale）
             int64_t offsetASize = bs * topK * (RoutingIsQuant ? (h + ALIGN_512) : h * sizeof(int16_t));

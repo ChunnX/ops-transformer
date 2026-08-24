@@ -11,7 +11,7 @@
 #ifndef TLA_V2_TENSOR_H
 #define TLA_V2_TENSOR_H
 
-#include "../../template_linear_algebra_v2/catlass.hpp"
+#include "../../template_linear_algebra_v2/mega_moe_catlass.hpp"
 #include "../../template_linear_algebra_v2/detail/tla_v2_alignment.hpp"
 #include "../../template_linear_algebra_v2/tla_v2_conv_coord.hpp"
 
@@ -50,14 +50,15 @@ public:
     CATLASS_HOST_DEVICE
     NC1HWC0(Index batch, Index c1, Index h, Index w, Index c0, LongIndex strideBatch, LongIndex strideC1,
             LongIndex strideH, LongIndex strideW, LongIndex strideC0)
-        : shape_(MakeCoord(batch, c1, h, w, c0)), stride_(MakeCoord(strideBatch, strideC1, strideH, strideW, strideC0))
-    {
-    }
+        : shape_(MakeCoord(batch, c1, h, w, c0)),
+          stride_(MakeCoord(strideBatch, strideC1, strideH, strideW, strideC0))
+    {}
 
     CATLASS_HOST_DEVICE
-    NC1HWC0(Shape shape, Stride stride) : shape_(shape), stride_(stride)
-    {
-    }
+    NC1HWC0(Shape shape, Stride stride)
+        : shape_(shape),
+          stride_(stride)
+    {}
 
     /// Make the layout of a coordinate (batch, c1, h, w, c0)
     template <class Element>
@@ -189,13 +190,13 @@ public:
                  LongIndex strideKw, LongIndex strideCout, LongIndex strideC0)
         : shape_(MakeCoord(cin1, kh, kw, cout, c0)),
           stride_(MakeCoord(strideCin1, strideKh, strideKw, strideCout, strideC0))
-    {
-    }
+    {}
 
     CATLASS_HOST_DEVICE
-    CI1KHKWCOCI0(Shape shape, Stride stride) : shape_(shape), stride_(stride)
-    {
-    }
+    CI1KHKWCOCI0(Shape shape, Stride stride)
+        : shape_(shape),
+          stride_(stride)
+    {}
 
     /// Make the layout of a coordinate (cin1, h, w, c0)
     template <class Element>

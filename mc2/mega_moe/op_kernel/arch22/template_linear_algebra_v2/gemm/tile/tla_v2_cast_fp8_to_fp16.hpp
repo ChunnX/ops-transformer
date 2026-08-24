@@ -11,12 +11,12 @@
 #ifndef TLA_V2_CAST_FP8_TO_FP16_H
 #define TLA_V2_CAST_FP8_TO_FP16_H
 
-#include "../../../template_linear_algebra_v2/catlass.hpp"
-#include "../../../template_linear_algebra_v2/arch/resource.hpp"
+#include "../../../template_linear_algebra_v2/mega_moe_catlass.hpp"
+#include "../../../template_linear_algebra_v2/arch/mega_moe_resource.hpp"
 #include "../../../template_linear_algebra_v2/tla_v2_coord.hpp"
-#include "../../../template_linear_algebra_v2/gemm_coord.hpp"
-#include "../../../template_linear_algebra_v2/gemm/dispatch_policy.hpp"
-#include "../../../template_linear_algebra_v2/gemm/helper.hpp"
+#include "../../../template_linear_algebra_v2/mega_moe_gemm_coord.hpp"
+#include "../../../template_linear_algebra_v2/gemm/mega_moe_gemm_dispatch_policy.hpp"
+#include "../../../template_linear_algebra_v2/gemm/mega_moe_gemm_helper.hpp"
 
 namespace Catlass::Gemm::Tile {
 
@@ -51,12 +51,11 @@ struct TileCastFp8ToFp16Dequant {
     };
 
     CATLASS_DEVICE
-    TileCastFp8ToFp16Dequant()
-    {
-    }
+    TileCastFp8ToFp16Dequant() {}
 
     CATLASS_DEVICE
-    TileCastFp8ToFp16Dequant(Arch::Resource<ArchTag> &resource, Params const &params_) : params(params_)
+    TileCastFp8ToFp16Dequant(Arch::Resource<ArchTag> &resource, Params const &params_)
+        : params(params_)
     {
         int64_t bufferOffset = 0;
         for (uint32_t i = 0; i < BUFFER_NUM; i++) {
