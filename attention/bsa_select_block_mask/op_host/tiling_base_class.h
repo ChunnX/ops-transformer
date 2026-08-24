@@ -38,7 +38,7 @@ static const int64_t GM_ALIGN = 512;
 static constexpr size_t WORK_SPACE_RESERVE_SIZE = 16 * 1024 * 1024;
 
 static constexpr uint32_t D_SIZE_128 = 128;
-static constexpr uint32_t BLOCK_SHAPE_ALIGN = 64;
+static constexpr uint32_t BLOCK_SHAPE_ALIGN = 8;
 static constexpr float SPARSITY_MIN = 0.0f;
 static constexpr float SPARSITY_MAX = 1.0f;
 static constexpr uint32_t HEAD_NUM_MIN = 1;

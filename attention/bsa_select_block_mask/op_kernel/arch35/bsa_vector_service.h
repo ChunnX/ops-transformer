@@ -21,6 +21,7 @@
 #include "bsa_select_block_mask_tiling_data.h"
 #include "bsa_vec_pool_service.h"
 #include "bsa_vec_sm_service.h"
+#include "bsa_vec_post_pool_service.h"
 
 template <typename BSAT>
 class BSAVectorService {
@@ -58,8 +59,13 @@ public:
     __aicore__ inline void OnlineSoftmaxFirstPassChunk(uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
                                                        uint32_t kChunkSize, uint32_t validYBlocks);
     __aicore__ inline void SoftmaxSecondPassAndCast(uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
-                                                    uint32_t kChunkSize, uint32_t batchIdx, uint32_t headIdx,
-                                                    uint32_t validYBlocks);
+                                                     uint32_t kChunkSize, uint32_t batchIdx, uint32_t headIdx,
+                                                     uint32_t validYBlocks);
+    __aicore__ inline void PostPoolRange(uint32_t batchIdx, uint32_t headIdx, uint32_t validXBlocks,
+                                         uint32_t validYBlocks);
+    __aicore__ inline void InitPostPoolBuffers();
+    __aicore__ inline void InitPostPoolGM(GlobalTensor<half> &attnScoreGm, GlobalTensor<half> &pooledScoreGm);
+    __aicore__ inline LocalTensor<half> GetPostPoolScalarScratch();
 
 private:
     BSAConstInfo constInfo;
@@ -70,6 +76,7 @@ private:
     // vector op
     BSAVecPoolService<BSAT> poolOP;
     BSAVecSmService<BSAT> softmaxOP;
+    BSAVecPostPoolService<BSAT> postPoolOP;
 };
 
 template <typename BSAT>
@@ -77,8 +84,11 @@ __aicore__ inline void
 BSAVectorService<BSAT>::InitParams(const BSAConstInfo &constInfo,
                                    const optiling::BSASelectBlockMaskTilingData *__restrict tilingData)
 {
+    this->constInfo = constInfo;
+    this->tilingData = tilingData;
     poolOP.InitParams(constInfo, tilingData);
     softmaxOP.InitParams(constInfo, tilingData);
+    postPoolOP.InitParams(constInfo, tilingData);
 }
 
 template <typename BSAT>
@@ -87,6 +97,9 @@ __aicore__ inline void BSAVectorService<BSAT>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(uBuf_, BSAConstInfo::BUFFER_SIZE_BYTE_192K);
     poolOP.InitBuffers(&uBuf_);
     softmaxOP.InitBuffers(&uBuf_);
+    if (constInfo.usePostBlockShape) {
+        postPoolOP.InitBuffers(&uBuf_);
+    }
 }
 
 template <typename BSAT>
@@ -152,6 +165,32 @@ __aicore__ inline void BSAVectorService<BSAT>::SoftmaxSecondPassAndCast(uint32_t
 {
     softmaxOP.SoftmaxSecondPassAndCast(qChunkStart, qChunkSize, kChunkStart, kChunkSize, batchIdx, headIdx,
                                        validYBlocks);
+}
+
+template <typename BSAT>
+__aicore__ inline void BSAVectorService<BSAT>::InitPostPoolBuffers()
+{
+    postPoolOP.InitBuffers(&uBuf_);
+}
+
+template <typename BSAT>
+__aicore__ inline void
+BSAVectorService<BSAT>::InitPostPoolGM(GlobalTensor<half> &attnScoreGm, GlobalTensor<half> &pooledScoreGm)
+{
+    postPoolOP.InitPostPoolGM(attnScoreGm, pooledScoreGm);
+}
+
+template <typename BSAT>
+__aicore__ inline LocalTensor<half> BSAVectorService<BSAT>::GetPostPoolScalarScratch()
+{
+    return postPoolOP.GetScalarScratch();
+}
+
+template <typename BSAT>
+__aicore__ inline void BSAVectorService<BSAT>::PostPoolRange(uint32_t batchIdx, uint32_t headIdx,
+                                                             uint32_t validXBlocks, uint32_t validYBlocks)
+{
+    postPoolOP.PostPoolRange(batchIdx, headIdx, validXBlocks, validYBlocks);
 }
 
 #endif // BSA_VECTOR_SERVICE_H

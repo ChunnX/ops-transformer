@@ -133,6 +133,13 @@ struct BSAConstInfo {
     uint64_t attnScoreOffset;
     uint64_t softmaxTmpOffset;
     uint64_t topkWorkspaceOffset;
+    uint64_t pooledScoreOffset;
+
+    uint8_t usePostBlockShape;
+    uint16_t postBlockShapeX;
+    uint16_t postBlockShapeY;
+    uint32_t postXBlocks;
+    uint32_t postYBlocks;
 };
 
 struct BSARunInfo {
