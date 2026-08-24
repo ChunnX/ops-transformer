@@ -441,7 +441,8 @@ __aicore__ inline void RunSwiGLUOai(const ActivationContext<DataTypeIn> &ctx, co
         AscendC::MicroAPI::RegTensor<DataTypeIn> vregX2;
         AscendC::MicroAPI::RegTensor<float> vregX1F;
         AscendC::MicroAPI::RegTensor<float> vregX2F;
-        AscendC::MicroAPI::RegTensor<float> negReg;
+        AscendC::MicroAPI::RegTensor<float> minsReg;
+        AscendC::MicroAPI::RegTensor<float> mulsReg;
         AscendC::MicroAPI::RegTensor<float> expReg;
         AscendC::MicroAPI::RegTensor<float> addsReg;
         AscendC::MicroAPI::RegTensor<float> sigmoidReg;
@@ -468,20 +469,16 @@ __aicore__ inline void RunSwiGLUOai(const ActivationContext<DataTypeIn> &ctx, co
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_ZERO>(vregX1F, vregX1, mask);
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_ZERO>(vregX2F, vregX2, mask);
 
-                // 对门控输入作上限裁剪。
-                AscendC::MicroAPI::Mins(vregX1F, vregX1F, swiGluOaiParams.clampLimit, mask);
-                // 对上投影输入作对称裁剪。
+                // 严格对齐 ClippedSwiGLU：先完整计算 gate 分支，再计算 up 分支。
+                AscendC::MicroAPI::Mins(minsReg, vregX1F, swiGluOaiParams.clampLimit, mask);
+                AscendC::MicroAPI::Muls(mulsReg, minsReg, -swiGluOaiParams.alpha, mask); // 计算 -alpha * gate
+                AscendC::MicroAPI::Exp(expReg, mulsReg, mask);                           // 计算 exp(-alpha * gate)
+                AscendC::MicroAPI::Adds(addsReg, expReg, scalarOne, mask);              // 计算 exp(-alpha * gate) + 1
+                AscendC::MicroAPI::Div(sigmoidReg, minsReg, addsReg, mask); // 计算 gate * sigmoid(alpha * gate)
+
                 AscendC::MicroAPI::Mins(vregX2F, vregX2F, swiGluOaiParams.clampLimit, mask);
                 AscendC::MicroAPI::Maxs(vregX2F, vregX2F, -swiGluOaiParams.clampLimit, mask);
-
-                // 对上投影输入加 beta。
                 AscendC::MicroAPI::Adds(vregX2F, vregX2F, swiGluOaiParams.beta, mask);
-
-                // 计算 gate * sigmoid(alpha * gate)。
-                AscendC::MicroAPI::Muls(negReg, vregX1F, -swiGluOaiParams.alpha, mask); // 计算 -alpha * gate
-                AscendC::MicroAPI::Exp(expReg, negReg, mask);                           // 计算 exp(-alpha * gate)
-                AscendC::MicroAPI::Adds(addsReg, expReg, scalarOne, mask);              // 计算 exp(-alpha * gate) + 1
-                AscendC::MicroAPI::Div(sigmoidReg, vregX1F, addsReg, mask); // 计算 gate * sigmoid(alpha * gate)
                 AscendC::MicroAPI::Mul(outFReg, sigmoidReg, vregX2F, mask); // 计算完整激活结果
                 // === 激活结束 ===
 
@@ -507,18 +504,16 @@ __aicore__ inline void RunSwiGLUOai(const ActivationContext<DataTypeIn> &ctx, co
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_ZERO>(vregX1F, vregX1, mask1);
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_ZERO>(vregX2F, vregX2, mask1);
 
-                AscendC::MicroAPI::Mins(vregX1F, vregX1F, swiGluOaiParams.clampLimit, mask1);
+                // 尾块保持与 ClippedSwiGLU 主路径相同的指令顺序。
+                AscendC::MicroAPI::Mins(minsReg, vregX1F, swiGluOaiParams.clampLimit, mask1);
+                AscendC::MicroAPI::Muls(mulsReg, minsReg, -swiGluOaiParams.alpha, mask1);
+                AscendC::MicroAPI::Exp(expReg, mulsReg, mask1);
+                AscendC::MicroAPI::Adds(addsReg, expReg, scalarOne, mask1);
+                AscendC::MicroAPI::Div(sigmoidReg, minsReg, addsReg, mask1);
+
                 AscendC::MicroAPI::Mins(vregX2F, vregX2F, swiGluOaiParams.clampLimit, mask1);
                 AscendC::MicroAPI::Maxs(vregX2F, vregX2F, -swiGluOaiParams.clampLimit, mask1);
-
-                // 对上投影输入加 beta。
                 AscendC::MicroAPI::Adds(vregX2F, vregX2F, swiGluOaiParams.beta, mask1);
-
-                // 计算 SwiGLU-OAI 尾块。
-                AscendC::MicroAPI::Muls(negReg, vregX1F, -swiGluOaiParams.alpha, mask1);
-                AscendC::MicroAPI::Exp(expReg, negReg, mask1);
-                AscendC::MicroAPI::Adds(addsReg, expReg, scalarOne, mask1);
-                AscendC::MicroAPI::Div(sigmoidReg, vregX1F, addsReg, mask1);
                 AscendC::MicroAPI::Mul(outFReg, sigmoidReg, vregX2F, mask1);
                 // === 激活结束 ===
 
