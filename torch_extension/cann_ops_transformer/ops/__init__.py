@@ -67,4 +67,8 @@ from .dense_lightning_indexer_softmax_lse import (
 )
 from .moe_init_routing import moe_init_routing
 from .moe_re_routing import moe_re_routing
+from .minimax_sparse_attention_split_kv import (
+    build_k2q_csr,
+    minimax_sparse_attention_split_kv,
+)
 from . import graph_convert as _graph_convert
