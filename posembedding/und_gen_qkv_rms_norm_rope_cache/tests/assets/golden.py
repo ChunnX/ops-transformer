@@ -60,7 +60,7 @@ import torch
 __spec__ = {
     "und_gen_qkv_rms_norm_rope_cache": "UndGenQkvRmsNormRopeCacheTestSpec",
     "aclnnUndGenQkvRmsNormRopeCache": "AclnnUndGenQkvRmsNormRopeCacheTestSpec",
-    "torch.ops.cann_ops_transformer.und_gen_qkv_rms_norm_rope_cache":
+    "cann_ops_transformer.und_gen_qkv_rms_norm_rope_cache":
         "TorchUndGenQkvRmsNormRopeCacheTestSpec",
 }
 
@@ -978,9 +978,9 @@ class AclnnUndGenQkvRmsNormRopeCacheTestSpec(_SpecBase):
 # 直接继承 aclnn 那套即可，不必另写一份。
 #
 # 另两处与 kernel 通路的差异：
-#   1. api_name 是 torch schema 名 `torch.ops.cann_ops_transformer.<op>`
-#      （op_builder/builder.py 的 Library("cann_ops_transformer","DEF") 注册），
-#      TTK 的 TorchOpsPackageLoader 已把该命名空间列入白名单；
+#   1. api_name 是 python 包里的接口名 `cann_ops_transformer.<op>`，也就是
+#      examples/test_torch_*.py 实际调的那个（ops/__init__.py 导出、包顶层再 re-export）；
+#      它同时是 torch schema 的 PrivateUse1 实现，形参与 schema 逐个对应；
 #   2. 算子只 return q，k_cache / v_cache 是原地写回的入参 —— 靠 CSV 的
 #      `inplace_input_indexes=(4,5)` 让框架把它们按下标升序追加到 return 值之后
 #      （framework_api/profiling.py），于是输出序仍是 (q, k_cache, v_cache)，

@@ -7,6 +7,8 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+from typing import Optional, Tuple
+
 import torch
 import torch_npu
 from torch.library import impl
@@ -64,25 +66,32 @@ und_gen_qkv_rms_norm_rope_cache_op_builder = UndGenQkvRmsNormRopeCacheOpBuilder(
 
 @impl(AS_LIBRARY, "und_gen_qkv_rms_norm_rope_cache", "PrivateUse1")
 def und_gen_qkv_rms_norm_rope_cache(
-    und_qkv,
-    und_weights_q,
-    und_weights_k,
-    cos_sin_cache,
-    k_cache,
-    v_cache,
-    slot_mapping,
-    positions,
-    gen_qkv=None,
-    gen_weights_q=None,
-    gen_weights_k=None,
-    cat_indices=None,
-    num_heads_q=8,
-    num_heads_k=1,
-    num_heads_v=1,
-    norm_eps=1e-6,
-    mrope_section=(),
+    und_qkv: torch.Tensor,
+    und_weights_q: torch.Tensor,
+    und_weights_k: torch.Tensor,
+    cos_sin_cache: torch.Tensor,
+    k_cache: torch.Tensor,
+    v_cache: torch.Tensor,
+    slot_mapping: torch.Tensor,
+    positions: torch.Tensor,
+    gen_qkv: Optional[torch.Tensor] = None,
+    gen_weights_q: Optional[torch.Tensor] = None,
+    gen_weights_k: Optional[torch.Tensor] = None,
+    cat_indices: Optional[torch.Tensor] = None,
+    num_heads_q: int = 8,
+    num_heads_k: int = 1,
+    num_heads_v: int = 1,
+    norm_eps: float = 1e-6,
+    mrope_section: Tuple[int, ...] = (),
 ):
-    """und/gen QKV 融合 RMSNorm + MRoPE，并把 K/V 写入分页 KV Cache（k_cache/v_cache 原地更新）。"""
+    """und/gen QKV 融合 RMSNorm + MRoPE，并把 K/V 写入分页 KV Cache（k_cache/v_cache 原地更新）。
+
+    形参上的类型标注是必需的、不是装饰：TTK 的 e2e 通路按 inspect.signature 推参数类型
+    （simple_param_extractor），本函数没有 torch schema 可查。无标注时——
+      - 12 个张量形参会被整体丢弃，用例下发即 INPUT_COUNT_EXCEEDED；
+      - mrope_section 会按参数名被猜成 Tensor，下发到 pybind 层变成
+        [16.0, 16.0, 16.0] 这样的 float 列表，报 incompatible function arguments。
+    """
     op_module = und_gen_qkv_rms_norm_rope_cache_op_builder.load()
     return op_module.und_gen_qkv_rms_norm_rope_cache(
         und_qkv,

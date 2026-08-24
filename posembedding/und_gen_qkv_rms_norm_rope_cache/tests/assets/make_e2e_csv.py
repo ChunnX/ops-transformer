@@ -32,7 +32,7 @@ import argparse
 import csv
 from pathlib import Path
 
-API_NAME = "torch.ops.cann_ops_transformer.und_gen_qkv_rms_norm_rope_cache"
+API_NAME = "cann_ops_transformer.und_gen_qkv_rms_norm_rope_cache"
 INPLACE_INPUT_INDEXES = "(4, 5)"
 KERNEL_CSV = Path(__file__).resolve().parents[1] / "st" / "arch35" / \
     "ttk_kernel_und_gen_qkv_rms_norm_rope_cache_st.csv"
