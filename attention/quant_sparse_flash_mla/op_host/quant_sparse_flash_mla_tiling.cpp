@@ -95,8 +95,6 @@ ge::graphStatus QSMLAInfoParser::GetNpuInfo()
     }
     int64_t deterministicLevel = context_->GetDeterministicLevel();
     batchConsistency_ = (deterministicLevel == BATCH_CONSISTENCY_LEVEL);
-    OP_LOGI(opName_, "[QSMLA_BC_ROUTE] main level=%lld enabled=%d.", static_cast<long long>(deterministicLevel),
-            static_cast<int32_t>(batchConsistency_));
     return ge::GRAPH_SUCCESS;
 }
 
@@ -752,7 +750,6 @@ ge::graphStatus QuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tilingInf
     uint32_t tilingKey = GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(perfMode_),
                                             static_cast<uint32_t>(tilingInfo->gSize > 64), DTYPE_HIF8, vectorizeFlag,
                                             static_cast<uint32_t>(tilingInfo->batchConsistency));
-    OP_LOGI(tilingInfo->opName, "Tiling key: %u", tilingKey);
     context_->SetTilingKey(tilingKey);
     context_->SetScheduleMode(1);
 
