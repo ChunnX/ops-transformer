@@ -1419,7 +1419,7 @@ TEST_F(AllGatherMatmulV2AclnnAIVTest, TestAIVRequiredTensorsAllNullptr)
         nullptr,                    // x2Scale，可选
         nullptr,                    // quantScale，可选
         0,                          // blockSize
-        "test_all_gather_group",    // 不能是nullptr    
+        "test_all_gather_group",    // 不能是nullptr
         0,                          // gatherIndex
         8,                          // 沿用已有UT合法值
         1,                          // streamMode不能为0

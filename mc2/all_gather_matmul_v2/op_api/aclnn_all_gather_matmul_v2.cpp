@@ -290,20 +290,21 @@ static aclnnStatus CheckParams(const aclTensor *x1, const aclTensor *x2, const a
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus CheckParamsForAIVMode(const aclTensor *x1, const aclTensor *x2, const aclTensor *output, int64_t streamMode)
+static aclnnStatus CheckParamsForAIVMode(const aclTensor *x1, const aclTensor *x2, const aclTensor *output,
+                                         int64_t streamMode)
 {
     CHECK_RET(CheckNotNull(x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
 
     CHECK_RET(CheckAIVModeDtypeValid(x1, x2, output), ACLNN_ERR_PARAM_INVALID);
 
     CHECK_RET(CheckAttr(streamMode), ACLNN_ERR_PARAM_INVALID);
-    
-    return ACLNN_SUCCESS;
 
+    return ACLNN_SUCCESS;
+}
 
 static aclnnStatus CheckShapeForAIVMode(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias,
-                                                 const aclTensor *output, const aclTensor *gatherOut, bool isTransA,
-                                                 bool isViewTransB, int64_t streamMode)
+                                        const aclTensor *output, const aclTensor *gatherOut, bool isTransA,
+                                        bool isViewTransB)
 {
     if (x1->GetViewShape().GetDimNum() != TWO_DIMS) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAllGatherMatmulV2", "x1",
@@ -614,8 +615,8 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeAIVMode(const aclTensor *x1, const 
                                                      aclOpExecutor **executor)
 {
     OP_LOGD("allGatherMatmulV2GetWorkspaceSizeAIVMode start");
-        //先检查形状
-    auto retParam =CheckParamsForAIVMode(x1, x2, output, streamMode);
+    // 先检查参数
+    auto retParam = CheckParamsForAIVMode(x1, x2, output, streamMode);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     // 校验comm_mode取值
     if (std::strncmp(commMode, "aiv", CMP_MAX_LEN) != 0) {
