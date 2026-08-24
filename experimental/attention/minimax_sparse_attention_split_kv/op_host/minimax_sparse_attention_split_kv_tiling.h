@@ -24,15 +24,17 @@ namespace optiling {
 constexpr uint64_t MINIMAX_SA_SPLIT_KV_BASE_TILING = 20000;
 constexpr uint64_t MINIMAX_SA_SPLIT_KV_BF16_D128_TILING = 20001;
 // innerPrecise==1: O_partial written/read as bf16 (Phase1 PV fixpipe F322BF16, Phase2
-// regbase-cast bf16->fp32 before combine). Otherwise (e.g. innerPrecise==4) the fp32
-// O_partial path is used byte-for-byte (MINIMAX_SA_SPLIT_KV_BF16_D128_TILING).
+// regbase-cast bf16->fp32 before combine). Any other innerPrecise (attr default 4)
+// uses the fp32 O_partial path (MINIMAX_SA_SPLIT_KV_BF16_D128_TILING). This flag
+// selects workspace dtype only; softmax is always the same BF16 online template.
 constexpr uint64_t MINIMAX_SA_SPLIT_KV_BF16_D128_INNER_LOW_TILING = 20002;
 constexpr uint64_t MINIMAX_SA_SPLIT_KV_FP8_D128_BF16_TILING = 20003;
 
 // Current kernel templates only implement D=128 / blockSize=128.
 constexpr uint32_t MINIMAX_SA_SPLIT_KV_HEAD_DIM = 128U;
 constexpr uint32_t MINIMAX_SA_SPLIT_KV_BLOCK_SIZE = 128U;
-// innerPrecise==1: BF16 O_partial; innerPrecise==4: FP32 O_partial (required by FP8).
+// innerPrecise==1: BF16 O_partial (BF16 input only). innerPrecise==4 is the attr
+// default for FP32 O_partial; FP8 currently only implements that FP32 path.
 constexpr uint32_t MINIMAX_SA_SPLIT_KV_INNER_PRECISE_LOW = 1U;
 constexpr uint32_t MINIMAX_SA_SPLIT_KV_INNER_PRECISE_HIGH = 4U;
 

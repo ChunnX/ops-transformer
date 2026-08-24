@@ -228,8 +228,9 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::CalculateWorkSpace(gert::Ti
     //   fp32 (compact per slot) regardless.
     accumOutSize_ = taskSlots * slotOElems;
     lseStatSize_ = taskSlots * slotStatElems;
-    // innerPrecise==LOW halves the O_partial buffer (bf16=2B vs fp32=4B); lse stats stay fp32.
-    // fp8 path always uses fp32 O_partial regardless of innerPrecise.
+    // innerPrecise==1 (BF16 input): O_partial is bf16, half the workspace.
+    // FP8 kernel only has the FP32 O_partial template, so workspace is always fp32;
+    // FillTilingData still requires innerPrecise==4 so callers do not pass 1.
     const bool useBf16OPartial =
         (dataType_ != ge::DT_FLOAT8_E4M3FN) &&
         (innerPrecise_ == MINIMAX_SA_SPLIT_KV_INNER_PRECISE_LOW);
@@ -282,7 +283,8 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::FillTilingData(gert::Tiling
         }
         if (innerPrecise_ != MINIMAX_SA_SPLIT_KV_INNER_PRECISE_HIGH) {
             OP_LOGE(context->GetNodeName(),
-                    "MinimaxSparseAttentionSplitKv fp8 path requires innerPrecise=%u.",
+                    "MinimaxSparseAttentionSplitKv fp8 path uses FP32 O_partial only "
+                    "(innerPrecise=%u); innerPrecise=1 BF16 O_partial is not implemented.",
                     MINIMAX_SA_SPLIT_KV_INNER_PRECISE_HIGH);
             return ge::GRAPH_FAILED;
         }

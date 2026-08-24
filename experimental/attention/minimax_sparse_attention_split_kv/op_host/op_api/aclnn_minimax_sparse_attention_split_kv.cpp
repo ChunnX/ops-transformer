@@ -89,7 +89,8 @@ static aclnnStatus ValidateParams(const aclTensor *query,
     constexpr int64_t kFp8InnerPrecise = 4;
     if (qDtype == DataType::DT_FLOAT8_E4M3FN && innerPrecise != kFp8InnerPrecise) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "MinimaxSparseAttentionSplitKv fp8 path requires innerPrecise=%ld, got %ld.",
+                "MinimaxSparseAttentionSplitKv fp8 path uses FP32 O_partial only "
+                "(innerPrecise=%ld); got %ld. innerPrecise=1 BF16 O_partial is not implemented.",
                 kFp8InnerPrecise, innerPrecise);
         return ACLNN_ERR_PARAM_INVALID;
     }
