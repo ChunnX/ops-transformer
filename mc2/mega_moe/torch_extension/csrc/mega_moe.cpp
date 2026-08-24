@@ -146,7 +146,10 @@ constexpr int64_t RESERVED_SPACE_SIZE = 10LL * 1024 * 1024;
 constexpr int64_t MAX_EXPERTS_PER_RANK_A2A3 = 128LL;
 constexpr int64_t SYNC_STATE_RESERVED_SIZE = 512LL * 1024;
 
-int64_t CeilAlign(int64_t val, int64_t align) { return (val + align - 1) / align * align; }
+int64_t CeilAlign(int64_t val, int64_t align)
+{
+    return (val + align - 1) / align * align;
+}
 
 // A2 minimum buffer size (MB).
 // Matches tiling_arch22.cpp CalcLeastCclBufferSize with isA3=false.

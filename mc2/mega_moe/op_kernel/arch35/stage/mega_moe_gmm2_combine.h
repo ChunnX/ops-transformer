@@ -830,8 +830,7 @@ __aicore__ inline void RunGmm2A8W4(const Params &params,
                                    const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &gmTileSequence,
                                    const BlockJobContext &blockJob, uint32_t expertTokenCount,
-                                   uint32_t rowOffsetInExpert,
-                                   CriticalPathWaitTraceContext *waitTraceContext = nullptr)
+                                   uint32_t rowOffsetInExpert, CriticalPathWaitTraceContext *waitTraceContext = nullptr)
 {
     static_assert(std::is_same_v<ElementA, __fp8e4m3>, "Activation must be __fp8e4m3");
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
@@ -856,10 +855,9 @@ __aicore__ inline void RunGmm2A8W4(const Params &params,
     }
 
     GmmKernel::Gmm2ExecA8W4<CombineQuantMode, BlockMmad, BlockPrologue, ElementC, MakeLayoutC, IsShared, IsLayered,
-                            GmmKernel::BlockScheduler, decltype(config)>(scheduler, params, gmmAddrInfo, config,
-                                                                         startLoopIdx, tileNum, gmTileSequence,
-                                                                         expertTokenCount, rowOffsetInExpert,
-                                                                         waitTraceContext);
+                            GmmKernel::BlockScheduler, decltype(config)>(
+        scheduler, params, gmmAddrInfo, config, startLoopIdx, tileNum, gmTileSequence, expertTokenCount,
+        rowOffsetInExpert, waitTraceContext);
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }

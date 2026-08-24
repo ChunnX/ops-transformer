@@ -740,9 +740,8 @@ __aicore__ inline void Gmm1ExecGeneric(Scheduler &scheduler, const Params &param
                 workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, activationQuantOp, expertBeforeCnt,
                 expertIdx, waitTraceContext);
         } else {
-            Gmm1Aiv0EpilogueGeneric<IsGmm1Interleaved, IsWaveFlagGrained>(workSet, gmmAddrInfo, config, startLoopIdx,
-                                                                          tileNum, activationQuantOp, pingpongIdx,
-                                                                          waitTraceContext);
+            Gmm1Aiv0EpilogueGeneric<IsGmm1Interleaved, IsWaveFlagGrained>(
+                workSet, gmmAddrInfo, config, startLoopIdx, tileNum, activationQuantOp, pingpongIdx, waitTraceContext);
         }
     }
 }

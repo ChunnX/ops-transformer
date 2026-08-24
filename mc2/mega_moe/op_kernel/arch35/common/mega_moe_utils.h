@@ -417,8 +417,8 @@ struct CriticalPathTraceEventWriter {
     }
 
     __aicore__ inline void Record(uint32_t eventType, uint32_t iterationIndex, uint32_t logicalUnitIndex,
-                                  uint32_t unitStart, uint32_t unitCount, uint32_t workCount,
-                                  uint32_t parentEventType, uint32_t beginCycle, uint32_t endCycle)
+                                  uint32_t unitStart, uint32_t unitCount, uint32_t workCount, uint32_t parentEventType,
+                                  uint32_t beginCycle, uint32_t endCycle)
     {
         if (!IsEnabled()) {
             return;
@@ -455,9 +455,7 @@ struct CriticalPathWaitTraceContext {
 
 __aicore__ inline uint32_t BeginWaitInterval(CriticalPathWaitTraceContext *context)
 {
-    return context == nullptr || !context->writer.IsEnabled() ?
-               0U :
-               static_cast<uint32_t>(AscendC::GetSystemCycle());
+    return context == nullptr || !context->writer.IsEnabled() ? 0U : static_cast<uint32_t>(AscendC::GetSystemCycle());
 }
 
 __aicore__ inline void EndWaitInterval(CriticalPathWaitTraceContext *context, uint32_t beginCycle)

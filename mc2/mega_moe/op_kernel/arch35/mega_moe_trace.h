@@ -149,7 +149,10 @@ struct A4W4WaveTrace {
         processBegin = Now();
     }
 
-    __aicore__ inline void SetWaveMGroupTarget(uint32_t target) { waveMGroupTarget = target; }
+    __aicore__ inline void SetWaveMGroupTarget(uint32_t target)
+    {
+        waveMGroupTarget = target;
+    }
 
     __aicore__ inline void Record(A4W4WaveTraceEvent event, uint32_t waveIndex, uint32_t expertIndex,
                                   uint32_t tokenStartIndexInExpert, uint32_t tokenCount, uint32_t mGroupCount,

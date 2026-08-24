@@ -95,7 +95,10 @@ EVENT_TRACE_POINTS = {
 def interval_is_within(child: dict, parent: dict) -> bool:
     child_begin_offset = (child["begin_cycle"] - parent["begin_cycle"]) & 0xFFFFFFFF
     child_end_offset = (child["end_cycle"] - parent["begin_cycle"]) & 0xFFFFFFFF
-    return child_begin_offset <= parent["duration_cycles"] and child_end_offset <= parent["duration_cycles"]
+    return (
+        child_begin_offset <= parent["duration_cycles"]
+        and child_end_offset <= parent["duration_cycles"]
+    )
 
 
 def attach_wait_intervals(events: list[dict]) -> None:
@@ -119,7 +122,9 @@ def attach_wait_intervals(events: list[dict]) -> None:
             and interval_is_within(wait_event, event)
         ]
         event["wait_event_count"] = len(matching_waits)
-        event["wait_cycles"] = sum(wait_event["duration_cycles"] for wait_event in matching_waits)
+        event["wait_cycles"] = sum(
+            wait_event["duration_cycles"] for wait_event in matching_waits
+        )
         event["active_cycles"] = max(0, event["duration_cycles"] - event["wait_cycles"])
 
 
@@ -134,7 +139,9 @@ def parse_trace(words: tuple[int, ...]) -> dict:
     if len(words) < HEADER_WORDS:
         raise ValueError("capture is smaller than the trace header")
     if words[0] != MAGIC:
-        raise ValueError(f"trace magic mismatch: got 0x{words[0]:08x}, expected 0x{MAGIC:08x}")
+        raise ValueError(
+            f"trace magic mismatch: got 0x{words[0]:08x}, expected 0x{MAGIC:08x}"
+        )
 
     header = {
         "version": words[1],
@@ -168,23 +175,40 @@ def parse_trace(words: tuple[int, ...]) -> dict:
         raise ValueError(
             f"record count mismatch: got {header['record_count']}, expected {expected_record_count}"
         )
-    required_words = header["header_words"] + header["record_count"] * header["record_words"]
+    required_words = (
+        header["header_words"] + header["record_count"] * header["record_words"]
+    )
     if len(words) < required_words:
-        raise ValueError(f"capture has {len(words)} words, protocol requires {required_words}")
+        raise ValueError(
+            f"capture has {len(words)} words, protocol requires {required_words}"
+        )
 
     records = []
     for record_index in range(header["record_count"]):
         role_index = record_index // header["logical_core_count"]
         core_index = record_index % header["logical_core_count"]
         record_base = header["header_words"] + record_index * header["record_words"]
-        process_begin, process_end, event_count, truncated = words[record_base : record_base + 4]
+        process_begin, process_end, event_count, truncated = words[
+            record_base : record_base + 4
+        ]
         if event_count > header["event_capacity_per_record"]:
-            raise ValueError(f"record {record_index}: event count {event_count} exceeds capacity")
+            raise ValueError(
+                f"record {record_index}: event count {event_count} exceeds capacity"
+            )
         events = []
         for event_index in range(event_count):
-            base = record_base + RECORD_HEADER_WORDS + event_index * header["event_words"]
+            base = (
+                record_base + RECORD_HEADER_WORDS + event_index * header["event_words"]
+            )
             event_words = words[base : base + header["event_words"]]
-            event_type, wave_index, expert_index, token_start, token_count, m_group_count = event_words[:6]
+            (
+                event_type,
+                wave_index,
+                expert_index,
+                token_start,
+                token_count,
+                m_group_count,
+            ) = event_words[:6]
             parent_event_id = 0
             is_wait_event = False
             wait_event_count = None
@@ -194,18 +218,26 @@ def parse_trace(words: tuple[int, ...]) -> dict:
                 wait_cycles = None
             elif header["version"] == 2:
                 wait_cycles, begin, end = event_words[6:9]
-                wait_cycles = None if wait_cycles == WAIT_CYCLES_UNAVAILABLE else wait_cycles
+                wait_cycles = (
+                    None if wait_cycles == WAIT_CYCLES_UNAVAILABLE else wait_cycles
+                )
             else:
                 wait_cycles = None
                 begin, end = event_words[6:8]
             duration_cycles = (end - begin) & 0xFFFFFFFF
-            active_cycles = duration_cycles if wait_cycles is None else max(0, duration_cycles - wait_cycles)
+            active_cycles = (
+                duration_cycles
+                if wait_cycles is None
+                else max(0, duration_cycles - wait_cycles)
+            )
             events.append(
                 {
                     "event": EVENT_NAMES.get(event_type, f"unknown({event_type})"),
                     "event_id": event_type,
                     "is_wait_event": is_wait_event,
-                    "parent_event": EVENT_NAMES.get(parent_event_id) if parent_event_id else None,
+                    "parent_event": EVENT_NAMES.get(parent_event_id)
+                    if parent_event_id
+                    else None,
                     "parent_event_id": parent_event_id,
                     "wave": wave_index,
                     "expert": expert_index,
@@ -218,8 +250,12 @@ def parse_trace(words: tuple[int, ...]) -> dict:
                     "wait_cycles": wait_cycles,
                     "active_cycles": active_cycles,
                     "wait_event_count": wait_event_count,
-                    "begin_trace_point": EVENT_TRACE_POINTS.get(event_type, ("未知", "未知"))[0],
-                    "end_trace_point": EVENT_TRACE_POINTS.get(event_type, ("未知", "未知"))[1],
+                    "begin_trace_point": EVENT_TRACE_POINTS.get(
+                        event_type, ("未知", "未知")
+                    )[0],
+                    "end_trace_point": EVENT_TRACE_POINTS.get(
+                        event_type, ("未知", "未知")
+                    )[1],
                 }
             )
         if header["version"] == 3:
@@ -266,14 +302,19 @@ def write_csv(trace: dict, path: Path) -> None:
         writer.writeheader()
         for record in trace["records"]:
             for event in record["events"]:
-                writer.writerow({"role": record["role"], "core": record["core"], **event})
+                writer.writerow(
+                    {"role": record["role"], "core": record["core"], **event}
+                )
 
 
 def write_svg(trace: dict, path: Path) -> None:
     role_order = {"AIC": 0, "AIV0": 1, "AIV1": 2}
     records = sorted(
         (record for record in trace["records"] if record["events"]),
-        key=lambda record: (record["core"], role_order.get(record["role"], len(role_order))),
+        key=lambda record: (
+            record["core"],
+            role_order.get(record["role"], len(role_order)),
+        ),
     )
     lanes = []
     for record in records:
@@ -283,10 +324,16 @@ def write_svg(trace: dict, path: Path) -> None:
             if wait_events
             else sum(event["wait_cycles"] or 0 for event in record["events"])
         )
-        lane_label = f'B{record["core"]} · {record["role"]}'
-        lane_tip = f'Process={record["process_duration_cycles"]} cycles, Wait={wait_cycles} cycles'
-        lanes.append((record["core"], lane_label, lane_tip,
-                      sorted(record["events"], key=lambda event: event["is_wait_event"])))
+        lane_label = f"B{record['core']} · {record['role']}"
+        lane_tip = f"Process={record['process_duration_cycles']} cycles, Wait={wait_cycles} cycles"
+        lanes.append(
+            (
+                record["core"],
+                lane_label,
+                lane_tip,
+                sorted(record["events"], key=lambda event: event["is_wait_event"]),
+            )
+        )
     width = 1880
     left = 105
     right = 30
@@ -307,20 +354,26 @@ def write_svg(trace: dict, path: Path) -> None:
     if block_ranges:
         block_ranges[-1][2] = current_y
     height = current_y + 45
-    begin_cycles = [event["begin_cycle"] for record in records for event in record["events"]]
+    begin_cycles = [
+        event["begin_cycle"] for record in records for event in record["events"]
+    ]
     if not begin_cycles:
-        path.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="100"/>\n')
+        path.write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="100"/>\n'
+        )
         return
     origin = min(begin_cycles)
     relative_end = max(
-        (event["end_cycle"] - origin) & 0xFFFFFFFF for record in records for event in record["events"]
+        (event["end_cycle"] - origin) & 0xFFFFFFFF
+        for record in records
+        for event in record["events"]
     )
     scale = (width - left - right) / max(1, relative_end)
 
     lines = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
         '<rect width="100%" height="100%" fill="#ffffff"/>',
-        '<style>text{font-family:Arial,sans-serif;font-size:11px}.label{font-weight:600}.event{stroke:#ffffff;stroke-width:.5}</style>',
+        "<style>text{font-family:Arial,sans-serif;font-size:11px}.label{font-weight:600}.event{stroke:#ffffff;stroke-width:.5}</style>",
         f'<text x="12" y="24" font-size="16" font-weight="700">A4W4 wave timeline (origin={origin})</text>',
     ]
     for block_idx, (_, block_begin, block_end) in enumerate(block_ranges):
@@ -330,20 +383,24 @@ def write_svg(trace: dict, path: Path) -> None:
             f'height="{block_end - block_begin + 4}" rx="5" fill="{fill}" stroke="#dbe2ea"/>'
         )
     for y, (_, lane_name, lane_tip, lane_events) in zip(lane_rows, lanes):
-        lines.append(f'<text class="label" x="10" y="{y + 14}">{lane_name}<title>{lane_tip}</title></text>')
-        lines.append(f'<line x1="{left}" y1="{y + 18}" x2="{width - right}" y2="{y + 18}" stroke="#e5e7eb"/>')
+        lines.append(
+            f'<text class="label" x="10" y="{y + 14}">{lane_name}<title>{lane_tip}</title></text>'
+        )
+        lines.append(
+            f'<line x1="{left}" y1="{y + 18}" x2="{width - right}" y2="{y + 18}" stroke="#e5e7eb"/>'
+        )
         for event in lane_events:
             x = left + (((event["begin_cycle"] - origin) & 0xFFFFFFFF) * scale)
             event_width = max(1.0, event["duration_cycles"] * scale)
             color = EVENT_COLORS.get(event["event_id"], "#64748b")
             title = (
-                f'{event["event"]} wave={event["wave"]} expert={event["expert"]} '
-                f'tokens=[{event["token_start_in_expert"]},'
-                f'{event["token_start_in_expert"] + event["token_count"]}) '
-                f'begin={event["begin_cycle"]} end={event["end_cycle"]} '
-                f'duration={event["duration_cycles"]} '
-                f'parent={event["parent_event"] or "none"} '
-                f'begin-point={event["begin_trace_point"]} end-point={event["end_trace_point"]}'
+                f"{event['event']} wave={event['wave']} expert={event['expert']} "
+                f"tokens=[{event['token_start_in_expert']},"
+                f"{event['token_start_in_expert'] + event['token_count']}) "
+                f"begin={event['begin_cycle']} end={event['end_cycle']} "
+                f"duration={event['duration_cycles']} "
+                f"parent={event['parent_event'] or 'none'} "
+                f"begin-point={event['begin_trace_point']} end-point={event['end_trace_point']}"
             )
             lines.append(
                 f'<rect class="event" x="{x:.2f}" y="{y + 3}" width="{event_width:.2f}" '
@@ -436,11 +493,11 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
 <div class="muted">同一份 rank trace 中的所有 lane 共用一个 SYS_CNT cycle 原点和刻度；跨 rank 报告不合并时间轴。
 在当前平台上，1000 cycles = 1 μs。</div>
 <section class="cards">
-  <div class="card"><span class="muted">Shape</span><b>BS {header['bs']} · H {header['h']}</b></div>
-  <div class="card"><span class="muted">Intermediate</span><b>{header['hidden_dim']}</b></div>
-  <div class="card"><span class="muted">TopK / World</span><b>{header['top_k']} / {header['world_size']}</b></div>
-  <div class="card"><span class="muted">MoE experts</span><b>{header['moe_expert_count']}</b></div>
-  <div class="card"><span class="muted">Wave M-group target</span><b>{header['wave_m_group_target']}</b></div>
+  <div class="card"><span class="muted">Shape</span><b>BS {header["bs"]} · H {header["h"]}</b></div>
+  <div class="card"><span class="muted">Intermediate</span><b>{header["hidden_dim"]}</b></div>
+  <div class="card"><span class="muted">TopK / World</span><b>{header["top_k"]} / {header["world_size"]}</b></div>
+  <div class="card"><span class="muted">MoE experts</span><b>{header["moe_expert_count"]}</b></div>
+  <div class="card"><span class="muted">Wave M-group target</span><b>{header["wave_m_group_target"]}</b></div>
   <div class="card"><span class="muted">Events / truncated</span><b>{event_count} / {truncated_count}</b></div>
 </section>
 <section class="panel">
@@ -808,7 +865,9 @@ def collect_captures(inputs: list[Path]) -> list[Path]:
 def write_trace_artifacts(capture: Path, output_dir: Path) -> dict:
     output_dir.mkdir(parents=True, exist_ok=True)
     trace = parse_trace(read_words(capture))
-    (output_dir / "trace.json").write_text(json.dumps(trace, indent=2) + "\n", encoding="utf-8")
+    (output_dir / "trace.json").write_text(
+        json.dumps(trace, indent=2) + "\n", encoding="utf-8"
+    )
     write_csv(trace, output_dir / "events.csv")
     write_svg(trace, output_dir / "timeline.svg")
     write_html(trace, output_dir / "index.html")
@@ -818,7 +877,9 @@ def write_trace_artifacts(capture: Path, output_dir: Path) -> dict:
         "header": trace["header"],
         "record_count": len(trace["records"]),
         "event_count": sum(len(record["events"]) for record in trace["records"]),
-        "truncated_record_count": sum(record["truncated"] for record in trace["records"]),
+        "truncated_record_count": sum(
+            record["truncated"] for record in trace["records"]
+        ),
     }
 
 
@@ -855,10 +916,12 @@ a{{color:#175cd3;text-decoration:none}}a:hover{{text-decoration:underline}}
 <section class="panel"><div class="table-scroll"><table><thead><tr>
 <th>Rank 文件</th><th>BS</th><th>H</th><th>Hidden</th><th>TopK</th><th>World size</th>
 <th>AI Block</th><th>事件数</th><th>截断记录</th><th>产物</th>
-</tr></thead><tbody>{''.join(rows)}</tbody></table></div></section>
+</tr></thead><tbody>{"".join(rows)}</tbody></table></div></section>
 </main></body></html>"""
     (output_dir / "index.html").write_text(page, encoding="utf-8")
-    (output_dir / "run-summary.json").write_text(json.dumps(summaries, indent=2) + "\n", encoding="utf-8")
+    (output_dir / "run-summary.json").write_text(
+        json.dumps(summaries, indent=2) + "\n", encoding="utf-8"
+    )
 
 
 def main() -> None:
@@ -876,13 +939,17 @@ def main() -> None:
     )
     args = parser.parse_args()
     captures = collect_captures(args.inputs)
-    batch_mode = len(captures) > 1 or any(input_path.is_dir() for input_path in args.inputs)
+    batch_mode = len(captures) > 1 or any(
+        input_path.is_dir() for input_path in args.inputs
+    )
 
     if not batch_mode:
         capture = captures[0]
         output_dir = args.output_dir or capture.parent / f"{capture.stem}-trace"
         summary = write_trace_artifacts(capture, output_dir)
-        print(f"parsed {summary['event_count']} events from {summary['record_count']} records")
+        print(
+            f"parsed {summary['event_count']} events from {summary['record_count']} records"
+        )
         print(f"truncated records: {summary['truncated_record_count']}")
         print(f"artifacts: {output_dir}")
         return
