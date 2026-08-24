@@ -88,7 +88,6 @@ public:
   struct LocalParams {
     uint64_t fullN;    // totalN, 用于layoutB
     uint64_t rankDim;  // rank数量
-    uint64_t origM;    // 完整M(axisM), 用于C的rank偏移
   };
 
   struct Params {
@@ -116,7 +115,6 @@ public:
     int64_t K = Te::Get<MNK_K>(params.problemShape);
     int64_t fullN = static_cast<int64_t>(params.localParams.fullN);
     uint64_t rankDim = params.localParams.rankDim;
-    uint64_t origM = params.localParams.origM;
     if (rankDim == 0 || fullN != rankN * static_cast<int64_t>(rankDim)) { return; }
 
     int64_t scaleKLen = Blaze::Gemm::CeilDiv(K, static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
@@ -142,8 +140,8 @@ public:
     auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(biasAddr), layoutBias);
 
     for (uint32_t rankIdx = 0; rankIdx < rankDim; ++rankIdx) {
-      // C输出rank-major: cAddr + rankIdx * origM * rankN
-      __gm__ CType *rankCAddr = cAddr + static_cast<uint64_t>(rankIdx) * origM * static_cast<uint64_t>(rankN);
+      // C输出rank-major: cAddr + rankIdx * M(tileM) * rankN
+      __gm__ CType *rankCAddr = cAddr + static_cast<uint64_t>(rankIdx) * static_cast<uint64_t>(M) * static_cast<uint64_t>(rankN);
       auto gmC = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(rankCAddr), layoutC);
 
       // 本rank在x2中的N偏移

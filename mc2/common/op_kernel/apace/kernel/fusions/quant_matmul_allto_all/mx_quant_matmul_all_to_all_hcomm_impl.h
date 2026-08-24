@@ -194,8 +194,8 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
         mmTile.mBaseTailSplitCnt, mmTile.nBaseTailSplitCnt, mmTile.mTailMain, mmTile.nTailMain};
     params.qbmmParams = QBMMTiling{mmTile.baseM, mmTile.baseN, mmTile.baseK,
         isBias_ ? QBMMTiling::BIAS_ENABLED : QBMMTiling::BIAS_DISABLED, mmTile.dbL0c, false};
-    // fullN=totalN, rankDim=rankDim_, origM=axisM
-    params.localParams = LocalParams{totalN, rankDim_, axisM_};
+    // fullN=totalN, rankDim=rankDim_ (无origM, kernel用ProblemShape.M=tileM计算rank偏移)
+    params.localParams = LocalParams{totalN, rankDim_};
 }
 
 template <typename X1Type, typename X2Type, typename YType,
@@ -234,14 +234,11 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
             param.mmadParams.aGmAddr = aCur;
             param.mmadParams.scaleAGmAddr = aScaleCur;
 
-            // C输出: mmResult基址, kernel内部按rankIdx*axisM*perRankN偏移
-            // 当前tile的C偏移由kernel内部mPos处理(layoutC的M维=curTileM, mPos从0开始)
-            // 但rank偏移需要rankIdx*axisM*perRankN, 而不是rankIdx*curTileM*perRankN
-            // 所以cGmAddr需要加上tileOffset*perRankN(让每个tile的rank0从正确位置开始)
-            uint64_t tileOffset = (tid < tileCnt_)
-                ? static_cast<uint64_t>(tid) * tileM_
-                : static_cast<uint64_t>(tileCnt_) * tileM_ + static_cast<uint64_t>(tid - tileCnt_) * tailM_;
-            param.mmadParams.cGmAddr = mmResultGM_ + tileOffset * axisNPerRank_ * sizeof(YType);
+            // C输出: mmResultGM_基址(不偏移tileOffset)
+            // kernel内部按rankIdx*tileM*perRankN偏移C(mmResult[rankDim, tileM, perRankN])
+            // 每个tile独立写到mmResultGM_起始位置(覆盖上一tile的数据)
+            // 但AllToAll在该tile完成后立即发送,所以覆盖不影响
+            param.mmadParams.cGmAddr = mmResultGM_;
 
             // matmul
             quantMatmulKernelImpl_(param);
@@ -249,12 +246,13 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
             // SyncAll确保所有AIC核完成matmul写入
             AscendC::SyncAll();
 
-            // AllToAll整块发送: sendCount=curTileM*perRankN, batchCnt=1
-            // mmResult rank-major: [rankDim, curTileM, perRankN] (从tileOffset开始)
-            // recvBuffer: y_ + tileOffset * perRankN
+            // AllToAll整块发送: sendCount=curTileM*perRankN, strideCount=rankM*perRankN
+            // mmResult rank-major: [rankDim, tileM, perRankN], 每rank连续
+            // strideCount = rankM * perRankN (相邻rank整块间距, 但这里用curTileM*perRankN
+            // 因为mmResult布局是[rankDim, curTileM, perRankN], 相邻rank间距=curTileM*perRankN)
             uint64_t sendCount = static_cast<uint64_t>(curTileM) * axisNPerRank_;
             AscendC::HcclHandle h = hccl_.template AlltoAll<true>(
-                mmResultGM_ + tileOffset * axisNPerRank_ * sizeof(YType),
+                mmResultGM_,
                 y_ + tileOffset * axisNPerRank_ * sizeof(YType),
                 sendCount, static_cast<AscendC::HcclDataType>(yHcclDataType_),
                 sendCount, 1);
