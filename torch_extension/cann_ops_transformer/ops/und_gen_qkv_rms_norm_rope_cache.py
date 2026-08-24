@@ -7,6 +7,8 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+from typing import Optional, Tuple
+
 import torch
 import torch_npu
 from torch.library import impl
@@ -64,25 +66,28 @@ und_gen_qkv_rms_norm_rope_cache_op_builder = UndGenQkvRmsNormRopeCacheOpBuilder(
 
 @impl(AS_LIBRARY, "und_gen_qkv_rms_norm_rope_cache", "PrivateUse1")
 def und_gen_qkv_rms_norm_rope_cache(
-    und_qkv,
-    und_weights_q,
-    und_weights_k,
-    cos_sin_cache,
-    k_cache,
-    v_cache,
-    slot_mapping,
-    positions,
-    gen_qkv=None,
-    gen_weights_q=None,
-    gen_weights_k=None,
-    cat_indices=None,
-    num_heads_q=8,
-    num_heads_k=1,
-    num_heads_v=1,
-    norm_eps=1e-6,
-    mrope_section=(),
+    und_qkv: torch.Tensor,
+    und_weights_q: torch.Tensor,
+    und_weights_k: torch.Tensor,
+    cos_sin_cache: torch.Tensor,
+    k_cache: torch.Tensor,
+    v_cache: torch.Tensor,
+    slot_mapping: torch.Tensor,
+    positions: torch.Tensor,
+    gen_qkv: Optional[torch.Tensor] = None,
+    gen_weights_q: Optional[torch.Tensor] = None,
+    gen_weights_k: Optional[torch.Tensor] = None,
+    cat_indices: Optional[torch.Tensor] = None,
+    num_heads_q: int = 8,
+    num_heads_k: int = 1,
+    num_heads_v: int = 1,
+    norm_eps: float = 1e-6,
+    mrope_section: Tuple[int, ...] = (),
 ):
-    """und/gen QKV 融合 RMSNorm + MRoPE，并把 K/V 写入分页 KV Cache（k_cache/v_cache 原地更新）。"""
+    """und/gen QKV 融合 RMSNorm + MRoPE，并把 K/V 写入分页 KV Cache（k_cache/v_cache 原地更新）。
+
+    形参标注是 TTK e2e 取参所必需的，不要删，也不要只标一部分。
+    """
     op_module = und_gen_qkv_rms_norm_rope_cache_op_builder.load()
     return op_module.und_gen_qkv_rms_norm_rope_cache(
         und_qkv,
