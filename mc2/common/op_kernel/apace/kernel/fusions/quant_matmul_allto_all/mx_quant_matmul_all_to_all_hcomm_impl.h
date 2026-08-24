@@ -311,12 +311,12 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     auto &&commTiling = tilingData_->commTilingData;
     uint64_t perRankN = commTiling.nonSplitAxisSize / rankDim_;
 
-    // 与urma方案一致: AIC只调用1次matmul(完整M), AIV for循环逐tile HCCL通信
-    // AIC: 1次quantMatmulKernelImpl_(完整M) + CrossCoreSetFlag逐tile通知AIV
-    // AIV: for循环CrossCoreWaitFlag + AlltoAll<true> + Wait(逐tile通信)
+    // 与urma方案流水一致(PUT模式):
+    // AIC: 1次matmul(完整M) → SyncAll → 逐tile SetFlag通知AIV
+    // AIV: for循环 WaitFlag + HCCL AllToAll(PUT发送mmResult到y) + Wait(prev)
+    // matmul结果写mmResult(GM), AIV从mmResult PUT发送
 
     if ASCEND_IS_AIC {
-        // 1次调用,ProblemShape.M=完整M, kernel内部遍历所有tile
         Params params;
         const auto &mmTile = tilingData_->tileQbmmTilingData;
         SetupParams(mmTile, static_cast<uint32_t>(splitAxisSize_), params);
@@ -331,7 +331,6 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
         quantMatmulKernelImpl_.InitMmad(params);
         quantMatmulKernelImpl_(params);
 
-        // 逐tile通知AIV matmul已完成
         AscendC::SyncAll();
         for (uint32_t tid = 0; tid < totalTileCnt_; ++tid) {
             AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(tid);
