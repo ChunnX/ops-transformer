@@ -23,6 +23,17 @@ import torchair
 from torchair.configs.compiler_config import CompilerConfig
 
 
+def prepare_kv_for_operator(kv_tensor, kv_type):
+    """Keep disguised FP8 input byte-identical and present it as uint8."""
+    if (
+        kv_tensor is not None
+        and kv_type == torch.uint8
+        and kv_tensor.dtype != torch.uint8
+    ):
+        return kv_tensor.view(torch.uint8)
+    return kv_tensor
+
+
 class Network(torch.nn.Module):
     def __init__(self):
         super(Network, self).__init__()
@@ -109,6 +120,12 @@ def test_mqsmla_quant_process_graph(test_data, device_id=0):
     op_input = test_data["op_input"]
     cpu_output = test_data["cpu_output"]
     cpu_lse = test_data.get("cpu_lse")
+    ori_kv = prepare_kv_for_operator(
+        op_input["ori_kv"], params.get("ori_kv_type")
+    )
+    cmp_kv = prepare_kv_for_operator(
+        op_input["cmp_kv"], params.get("cmp_kv_type")
+    )
     torch_npu.npu.set_device(device_id)
 
     torch._dynamo.reset()
@@ -191,8 +208,8 @@ def test_mqsmla_quant_process_graph(test_data, device_id=0):
     print("mixed_quant_sparse_flash_mla...")
     npu_result, npu_lse = npu_mode(
         q=op_input["q"].npu() if op_input["q"] is not None else None,
-        ori_kv=op_input["ori_kv"].npu() if op_input["ori_kv"] is not None else None,
-        cmp_kv=op_input["cmp_kv"].npu() if op_input["cmp_kv"] is not None else None,
+        ori_kv=ori_kv.npu() if ori_kv is not None else None,
+        cmp_kv=cmp_kv.npu() if cmp_kv is not None else None,
         ori_sparse_indices=op_input["ori_sparse_indices"].npu()
         if op_input["ori_sparse_indices"] is not None
         else None,
@@ -258,6 +275,12 @@ def test_mqsmla_quant_process_ci(test_data, device_id=0):
     op_input = test_data["op_input"]
     cpu_output = test_data["cpu_output"]
     cpu_lse = test_data.get("cpu_lse")
+    ori_kv = prepare_kv_for_operator(
+        op_input["ori_kv"], params.get("ori_kv_type")
+    )
+    cmp_kv = prepare_kv_for_operator(
+        op_input["cmp_kv"], params.get("cmp_kv_type")
+    )
     torch_npu.npu.set_device(device_id)
 
     print("test_data:", params)
@@ -324,8 +347,8 @@ def test_mqsmla_quant_process_ci(test_data, device_id=0):
     print("mixed_quant_sparse_flash_mla...")
     npu_result, npu_lse = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla(
         q=op_input["q"].npu() if op_input["q"] is not None else None,
-        ori_kv=op_input["ori_kv"].npu() if op_input["ori_kv"] is not None else None,
-        cmp_kv=op_input["cmp_kv"].npu() if op_input["cmp_kv"] is not None else None,
+        ori_kv=ori_kv.npu() if ori_kv is not None else None,
+        cmp_kv=cmp_kv.npu() if cmp_kv is not None else None,
         ori_sparse_indices=op_input["ori_sparse_indices"].npu()
         if op_input.get("ori_sparse_indices") is not None
         else None,

@@ -20,6 +20,15 @@ extern "C" {
 
 namespace {
 
+void MixedQuantSparseFlashMlaKvTensorPreProcess(const aclTensor *&kvTensor, const char *tensorName)
+{
+    if (kvTensor != nullptr && kvTensor->GetDataType() == DataType::DT_UINT8) {
+        auto tensor = const_cast<aclTensor *>(kvTensor);
+        tensor->SetDataType(DataType::DT_FLOAT8_E4M3FN);
+        OP_LOGD("%s dtype is converted from uint8 to float8_e4m3fn.", tensorName);
+    }
+}
+
 void MixedQuantSparseFlashMlaProcessSoftmaxLse(bool returnSoftmaxLse, const aclTensor *softmaxLse,
                                      const aclTensor *&tempTensor, const aclTensor *&placeHolder)
 {

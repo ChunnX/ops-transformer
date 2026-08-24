@@ -57,6 +57,8 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaGetWorkspaceSize(
 {
     OP_LOGD("start aclnnMixedQuantSparseFlashMlaGetWorkspaceSize");
 
+    MixedQuantSparseFlashMlaKvTensorPreProcess(oriKvOptional, "ori_kv");
+    MixedQuantSparseFlashMlaKvTensorPreProcess(cmpKvOptional, "cmp_kv");
     MixedQuantSparseFlashMlaProcessSinks(sinksOptional);
 
     const aclTensor *placeHolder = nullptr;
