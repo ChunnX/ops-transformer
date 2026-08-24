@@ -102,6 +102,7 @@ struct Params {
     GM_ADDR probsGmAddr;
     GM_ADDR y2GmAddr;
     GM_ADDR expertTokenNumsOutGmAddr;
+    GM_ADDR activationDebugOutGmAddr;
     WorkspaceInfo workspaceInfo;
     PeermemInfo peermemInfo;
     MegaMoeTilingData *tilingData;

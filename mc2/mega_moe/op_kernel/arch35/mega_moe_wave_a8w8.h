@@ -76,7 +76,8 @@ public:
                                 GM_ADDR weight2, GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2,
                                 GM_ADDR scales, GM_ADDR sharedWeight1, GM_ADDR sharedWeight2,
                                 GM_ADDR sharedWeightScales1, GM_ADDR sharedWeightScales2, GM_ADDR yOut,
-                                GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData);
+                                GM_ADDR expertTokenNumsOut, GM_ADDR activationDebugOut, GM_ADDR workspaceGM,
+                                MegaMoeTilingData *tilingData);
     __aicore__ inline void Process();
 
 private:
@@ -226,7 +227,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Init(
     GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights, GM_ADDR weight1, GM_ADDR weight2,
     GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR scales, GM_ADDR sharedWeight1,
     GM_ADDR sharedWeight2, GM_ADDR sharedWeightScales1, GM_ADDR sharedWeightScales2, GM_ADDR yOut,
-    GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData)
+    GM_ADDR expertTokenNumsOut, GM_ADDR activationDebugOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData)
 {
     k_ = tilingData->h;
     worldSize_ = tilingData->epWorldSize;
@@ -252,6 +253,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Init(
     }
     params_.y2GmAddr = yOut;
     params_.expertTokenNumsOutGmAddr = expertTokenNumsOut;
+    params_.activationDebugOutGmAddr = activationDebugOut;
     params_.probsGmAddr = topkWeights;
     params_.workspaceInfo = WorkspaceInfo(workspaceGM, tilingData);
     params_.peermemInfo = PeermemInfo(winRankAddr_[rankId_], tilingData, 1U);
@@ -265,7 +267,9 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Init(
                       .actMode = tilingData->actMode,
                       .actSubMode = tilingData->actSubMode,
                       .activationAlpha = tilingData->activationAlpha,
-                      .activationBeta = tilingData->activationBeta});
+                      .activationBeta = tilingData->activationBeta,
+                      .activationDebugGmAddr = activationDebugOut,
+                      .activationDebug = tilingData->activationDebug});
     commonConfig_ = {.rankId = rankId_,
                      .worldSize = worldSize_,
                      .moeExpertPerRank = moeExpertPerRank_,
@@ -529,7 +533,14 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         .actMode = params_.tilingData->actMode,
         .actSubMode = params_.tilingData->actSubMode,
         .activationAlpha = params_.tilingData->activationAlpha,
-        .activationBeta = params_.tilingData->activationBeta};
+        .activationBeta = params_.tilingData->activationBeta,
+        .activationDebugGmAddr = params_.activationDebugOutGmAddr == nullptr
+                                     ? nullptr
+                                     : params_.activationDebugOutGmAddr +
+                                           static_cast<uint64_t>(params_.tilingData->maxOutputSize) *
+                                               (params_.tilingData->hiddenDim / ACTIVATION_N_HALF) *
+                                               sizeof(bfloat16_t),
+        .activationDebug = params_.tilingData->activationDebug};
     sharedEpilogueOp_.Init(epilogueParams);
 
     ProblemShape problemShape;

@@ -97,7 +97,8 @@ public:
                                 GM_ADDR weight2, GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2,
                                 GM_ADDR scales, GM_ADDR sharedWeight1, GM_ADDR sharedWeight2,
                                 GM_ADDR sharedWeightScales1, GM_ADDR sharedWeightScales2, GM_ADDR yOut,
-                                GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData);
+                                GM_ADDR expertTokenNumsOut, GM_ADDR activationDebugOut, GM_ADDR workspaceGM,
+                                MegaMoeTilingData *tilingData);
     __aicore__ inline void Process();
 
 private:
@@ -321,7 +322,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
     GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights, GM_ADDR weight1, GM_ADDR weight2,
     GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR scales, GM_ADDR sharedWeight1,
     GM_ADDR sharedWeight2, GM_ADDR sharedWeightScales1, GM_ADDR sharedWeightScales2, GM_ADDR yOut,
-    GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData)
+    GM_ADDR expertTokenNumsOut, GM_ADDR activationDebugOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData)
 {
     m_ = tilingData->bs;
     k_ = tilingData->h;
@@ -366,6 +367,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
 
     params_.y2GmAddr = yOut;
     params_.expertTokenNumsOutGmAddr = expertTokenNumsOut;
+    params_.activationDebugOutGmAddr = activationDebugOut;
     params_.probsGmAddr = topkWeights;
     params_.workspaceInfo = WorkspaceInfo(workspaceGM, tilingData, serverNum_);
     params_.peermemInfo = PeermemInfo(winRankAddr_[rankId_], tilingData, A_ELEMS_PER_BYTE, serverNum_);
@@ -392,7 +394,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
                       .actMode = static_cast<uint8_t>(ActivationQuantMsg::ActMode::SWIGLU),
                       .actSubMode = static_cast<uint8_t>(ActivationQuantMsg::ActSubMode::DEFAULT),
                       .activationAlpha = 1.0f,
-                      .activationBeta = 1.0f});
+                      .activationBeta = 1.0f,
+                      .activationDebugGmAddr = activationDebugOut,
+                      .activationDebug = tilingData->activationDebug});
     // 各 win 区相对 win 基址(rankSyncInWorldPtr)的偏移; 所有卡 win 布局一致, 跨卡读写用同一偏移。
     maskWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.maskRecvPtr - params_.peermemInfo.rankSyncInWorldPtr);
     dispatchWinOffset_ =
@@ -1736,7 +1740,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::UpdateGlo
                 Get<IDX_FLAG_OFFSET>(state.baseOffset),
                 0L,
                 0L,
-                0L};
+                static_cast<int64_t>(state.expertBeforeCnt) * hiddenDim_ / ACTIVATION_N_HALF};
             epilogueOp_.UpdateGlobalAddr(vecBaseOffset);
         }
     } else if constexpr (Mode == AddrUpdateMode::GMM2) {
@@ -2439,7 +2443,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
             Get<IDX_FLAG_OFFSET>(state.baseOffset),
             0L,
             0L,
-            0L};
+            IsShared ? static_cast<int64_t>(expertIdx) * m_ * hiddenDim_ / ACTIVATION_N_HALF
+                     : static_cast<int64_t>(state.expertBeforeCnt) * hiddenDim_ / ACTIVATION_N_HALF};
         if constexpr (IsShared) {
             sharedEpilogueOp_.UpdateGlobalAddr(vecBaseOffset);
         } else {
@@ -2538,7 +2543,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessSh
                             .actMode = static_cast<uint8_t>(ActivationQuantMsg::ActMode::SWIGLU),
                             .actSubMode = static_cast<uint8_t>(ActivationQuantMsg::ActSubMode::DEFAULT),
                             .activationAlpha = 1.0f,
-                            .activationBeta = 1.0f});
+                            .activationBeta = 1.0f,
+                            .activationDebugGmAddr = params_.activationDebugOutGmAddr == nullptr
+                                                         ? nullptr
+                                                         : params_.activationDebugOutGmAddr +
+                                                               static_cast<uint64_t>(maxOutputSize_) *
+                                                                   (hiddenDim_ / ACTIVATION_N_HALF) * sizeof(bfloat16_t),
+                            .activationDebug = params_.tilingData->activationDebug});
 
     GMMAddrInfo sharedGmm1AddrInfo;
     ExpertLoopState sharedGmm1State{initShape, initOffset, 0};
