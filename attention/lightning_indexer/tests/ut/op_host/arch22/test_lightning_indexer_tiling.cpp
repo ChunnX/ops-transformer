@@ -15,9 +15,15 @@ using namespace std;
 
 class LightningIndexerTiling : public testing::Test {
 protected:
-    static void SetUpTestCase() { std::cout << "LightningIndexerTiling SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "LightningIndexerTiling SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "LightningIndexerTiling TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "LightningIndexerTiling TearDown" << std::endl;
+    }
 };
 
 // when key layout is not PA_BSND, input block_table must be null

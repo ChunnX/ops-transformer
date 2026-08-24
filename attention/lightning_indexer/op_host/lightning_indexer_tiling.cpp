@@ -679,7 +679,10 @@ static ge::graphStatus LiGetHeadDim(const TilingRequiredParaInfo &liQuery, DataL
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::GetHeadDim() { return LiGetHeadDim(opParamInfo_.query, qLayout_, opName_, headDim_); }
+ge::graphStatus LIInfoParser::GetHeadDim()
+{
+    return LiGetHeadDim(opParamInfo_.query, qLayout_, opName_, headDim_);
+}
 
 ge::graphStatus LIInfoParser::GetS1Size()
 {
