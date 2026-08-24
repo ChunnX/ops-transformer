@@ -216,7 +216,7 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     params.mmadParams.aGmAddr = x1_;
     // B: 全局布局, kernel内部按rank*K偏移读取各rank的B段
     params.mmadParams.bGmAddr = x2_;
-    // C: 写入mmResult(workspace)
+    // C: 远端rank结果写mmResult(workspace), 本rank结果写y_(通过cGmSelfAddr)
     params.mmadParams.cGmAddr = mmResultGM_;
     params.mmadParams.biasGmAddr = bias_;
     params.mmadParams.scaleAGmAddr = x1Scale_;
@@ -236,6 +236,7 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     params.qbmmParams.skipSelfBatch = false;
 
     // rankId/rankSize用实际值,与urma方案一致
+    // cGmSelfAddr=0: 所有rank结果累加写mmResult, 然后整块AllToAll发送
     params.localParams.rankId = rankId_;
     params.localParams.rankSize = rankDim_;
     params.localParams.originalM = curTileM;
@@ -344,18 +345,21 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     }
 
     if ASCEND_IS_AIV {
-        // HCCL已在Init中初始化,直接逐tile通信
+        // HCCL已在Init中初始化,逐tile整块AllToAll通信
+        // matmul结果写mmResult[rankM, perRankN], AllToAll整块发送
         for (uint32_t tid = 0; tid < totalTileCnt_; ++tid) {
             AscendC::CrossCoreWaitFlag<0x2, PIPE_S>(tid);
             AscendC::SyncAll<true>();
 
             uint32_t curTileM = CalcTileM(tid);
             uint64_t tileOffset = CalcTileOffset(tid);
+            // 整块发送: sendCount=curTileM*perRankN, strideCount=curTileM*perRankN, batchCnt=1
+            uint64_t sendCount = static_cast<uint64_t>(curTileM) * perRankN;
             curHandle_ = hccl_.template AlltoAll<true>(
                 mmResultGM_ + tileOffset * perRankN * sizeof(YType),
                 y_ + tileOffset * perRankN * sizeof(YType),
-                perRankN, static_cast<AscendC::HcclDataType>(yHcclDataType_),
-                perRankN, static_cast<uint8_t>(curTileM));
+                sendCount, static_cast<AscendC::HcclDataType>(yHcclDataType_),
+                sendCount, 1);
 
             if (hasPrevHandle_) {
                 hccl_.Wait(prevHandle_);
