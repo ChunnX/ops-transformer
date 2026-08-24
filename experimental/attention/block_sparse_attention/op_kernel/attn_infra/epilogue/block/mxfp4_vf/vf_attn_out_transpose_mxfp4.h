@@ -35,6 +35,8 @@ __simd_vf__ void transpose_attn_out_vf(__ubuf__ float *atten_out_md, __ubuf__ fl
     RegTensor<float> vreg_rrsum, vreg_ones;
     Duplicate(vreg_ones, (float)1.0);
     LoadAlign(vreg_rrsum, (__ubuf__ float *)rsum);
+    // rsum==0(整块无有效 key)时 1/0=+inf, O(0)*inf=NaN; 钳到极小正值使 rrsum 有限。
+    Maxs(vreg_rrsum, vreg_rrsum, 1.0e-30f, preg_all32);
     Div(vreg_rrsum, vreg_ones, vreg_rrsum, preg_all32);
 
     for (uint16_t i = 0; i < QsBase / 16; i++) {

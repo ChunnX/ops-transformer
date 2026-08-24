@@ -97,17 +97,25 @@ public:
         const uint32_t groupMaxIdx = GetLocalGroupMaxBufIdx(tileInfo.loop);
         if (actKvsTile == MXFP4::KVS_BASE_SIZE) {
             if (taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE) {
-                // qs=128, kvs=256 softmax
+                // qs=128, kvs=256 softmax，两个 128 行大块的有效行数由 blockEffRows(attenMask) 经
+                // tileInfo.validRowsY1/validRowsY2 传入（无 attenMask 时为 128，与原行为一致）
                 Mxfp4VF::SoftmaxWithGroupMaxQs128Kvs256CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP,
-                                                              MXFP4::KVS_BASE_SIZE, MXFP4::QS_BASE_SIZE>(
-                    pUBTensor[spBuffIdx], sUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
-                    localGlobalMaxUBTensor[tileInfo.tileMaxIdx], indexUBTensor, NEG_LOG2_CX_);
+                    MXFP4::KVS_BASE_SIZE, MXFP4::QS_BASE_SIZE>(
+                    pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
+                    localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
+                    indexUBTensor, NEG_LOG2_CX_,
+                    tileInfo.validRowsY1, tileInfo.validRowsY2,
+                    tileInfo.validRowsY1 == 0, tileInfo.validRowsY2 == 0);
             } else {
-                // qs=64, kvs=256 softmax
+                // qs=64, kvs=256 softmax，两个 128 行大块的有效行数由 blockEffRows(attenMask) 经
+                // tileInfo.validRowsY1/validRowsY2 传入（无 attenMask 时为 128，与原行为一致）
                 Mxfp4VF::SoftmaxWithGroupMaxQs64Kvs256CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP,
-                                                             MXFP4::KVS_BASE_SIZE, MXFP4::QS_BASE_SIZE>(
-                    pUBTensor[spBuffIdx], sUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
-                    localGlobalMaxUBTensor[tileInfo.tileMaxIdx], indexUBTensor, NEG_LOG2_CX_);
+                    MXFP4::KVS_BASE_SIZE, MXFP4::QS_BASE_SIZE>(
+                    pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
+                    localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
+                    indexUBTensor, NEG_LOG2_CX_,
+                    tileInfo.validRowsY1, tileInfo.validRowsY2,
+                    tileInfo.validRowsY1 == 0, tileInfo.validRowsY2 == 0);
             }
 
         } else {
@@ -133,13 +141,15 @@ public:
                     Mxfp4VF::SoftmaxWithGroupMaxAlignQs128Kvs32CallVF<MX_QUANT_MODE, true, ElementInput,
                                                                       ElementDisguiseP>(
                         pUBTensor[spBuffIdx], sUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
-                        localGlobalMaxUBTensor[tileInfo.tileMaxIdx], indexUBTensor, NEG_LOG2_CX_);
+                        localGlobalMaxUBTensor[tileInfo.tileMaxIdx], indexUBTensor, NEG_LOG2_CX_,
+                        tileInfo.validRowsY1);
                 } else {
                     // softmax padding 32, qs=64
                     Mxfp4VF::SoftmaxWithGroupMaxAlignQs64Kvs32CallVF<MX_QUANT_MODE, true, ElementInput,
                                                                      ElementDisguiseP>(
                         pUBTensor[spBuffIdx], sUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
-                        localGlobalMaxUBTensor[tileInfo.tileMaxIdx], indexUBTensor, NEG_LOG2_CX_);
+                        localGlobalMaxUBTensor[tileInfo.tileMaxIdx], indexUBTensor, NEG_LOG2_CX_,
+                        tileInfo.validRowsY1);
                 }
             } else {
                 if (taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE) {
@@ -149,7 +159,8 @@ public:
                         pUBTensor[spBuffIdx], sUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
                         localGlobalMaxUBTensor[tileInfo.tileMaxIdx], indexUBTensor, NEG_LOG2_CX_,
                         static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32),
-                        static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign64));
+                        static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign64), tileInfo.validRowsY1,
+                        tileInfo.validRowsY2, static_cast<uint16_t>(actKvsTile));
                 } else {
                     // softmax padding 32 multi >= 64, qs=64
                     Mxfp4VF::SoftmaxWithGroupMaxAlignQs64Kvs32MultiCallVF<MX_QUANT_MODE, true, ElementInput,
@@ -157,7 +168,8 @@ public:
                         pUBTensor[spBuffIdx], sUBTensor[spBuffIdx], localGroupMaxUBTensor[groupMaxIdx],
                         localGlobalMaxUBTensor[tileInfo.tileMaxIdx], indexUBTensor, NEG_LOG2_CX_,
                         static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32),
-                        static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign64));
+                        static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign64), tileInfo.validRowsY1,
+                        tileInfo.validRowsY2, static_cast<uint16_t>(actKvsTile));
                 }
             }
         }
