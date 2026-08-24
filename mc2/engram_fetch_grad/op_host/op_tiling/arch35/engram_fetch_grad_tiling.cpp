@@ -541,6 +541,27 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchGr
     auto commBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_COMM_BUFFER_SIZE);
     tilingData.commBufferSize = *commBufferSizePtr;
 
+    // 动态计算 gradSubBatch
+    uint32_t permanentUb = 9U * 1024U;   // hcommBuf + statusBuf + tempBuf + indicesBuf
+    uint32_t commBufSize = 2U * 64U * 1024U;  // pingBuf + pongBuf
+    uint32_t availableForPool = static_cast<uint32_t>(tilingData.ubSize) - permanentUb;
+    uint32_t availableForGradSum = (availableForPool > commBufSize) ? (availableForPool - commBufSize) : 0U;
+    uint32_t maxByGradSum = availableForGradSum / (static_cast<uint32_t>(tilingData.hiddenDim) * 4U);
+    uint32_t maxByPong = (64U * 1024U) / static_cast<uint32_t>(tilingData.hiddenBytes);
+    uint32_t gradSubBatch = maxByGradSum;
+    if (maxByPong < gradSubBatch) {
+        gradSubBatch = maxByPong;
+    }
+    if (gradSubBatch < 1U) {
+        gradSubBatch = 1U;
+    }
+    if (gradSubBatch > 64U) {
+        gradSubBatch = 64U;
+    }
+    tilingData.gradSubBatch = gradSubBatch;
+    OP_LOGD(nodeName, "gradSubBatch=%u (hiddenBytes=%ld, hiddenDim=%ld, maxByGradSum=%u, maxByPong=%u, available=%u)",
+            gradSubBatch, tilingData.hiddenBytes, tilingData.hiddenDim, maxByGradSum, maxByPong, availableForGradSum);
+
     OP_LOGD(nodeName,
             "SetTilingData: numTokens=%ld, hiddenDim=%ld, numEntriesPerRank=%d, hiddenBytes=%ld, "
             "ubSize=%lu, rankSize=%u, totalRecv=%ld, commBufferSize=%ld",
