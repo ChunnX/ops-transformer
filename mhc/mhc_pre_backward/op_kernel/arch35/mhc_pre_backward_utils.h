@@ -147,7 +147,10 @@ using aT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using bT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using cT_C0 = MatmulType<TPosition::VECIN, CubeFormat::ND_ALIGN, float>;
 using biasT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
-using MT_C0 = matmul::MatmulImpl<aT_C0, bT_C0, cT_C0, biasT_C0, CFG_NORM,
+// 与仓内 QBMM/GQMM 的 VECIN/ND_ALIGN + Split-M 路径保持一致：关闭 preload 并开启 unit flag。
+constexpr MatmulConfig MHC_MM_CFG_NO_PRELOAD_OPEN_UNIT_FLAG =
+    GetMDLConfig(false, false, 0, false, false, false, true);
+using MT_C0 = matmul::MatmulImpl<aT_C0, bT_C0, cT_C0, biasT_C0, MHC_MM_CFG_NO_PRELOAD_OPEN_UNIT_FLAG,
                                  MatmulCallBackFunc<nullptr, nullptr, nullptr>, MhcPreBackwardMatmulPolicy>;
 
 using aT_C1 = MatmulType<TPosition::GM, CubeFormat::ND, float, true>;
