@@ -636,9 +636,8 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Proc
         xInQueue_.FreeTensor<XInType>(xInTensor_);
         xOutTensor_ = xOutQueue_.DeQue<XOutType>();
         PRINTF("[ProcessToken quant] aivId=%u, tokenIndex=%u, topKIndex=%u, expertIndex=%u, "
-               "dstAddr=%lu, copyBytes=%u\n",
-               aivId_, tokenIndex, topKIndex, expertIndex, (uint64_t)outTokenGT.GetAddr(),
-               (uint32_t)hCommuCopyOutParams_.blockLen);
+               "copyBytes=%u\n",
+               aivId_, tokenIndex, topKIndex, expertIndex, (uint32_t)hCommuCopyOutParams_.blockLen);
         DataCopyPad(outTokenGT, xOutTensor_, hCommuCopyOutParams_);
         xOutQueue_.FreeTensor<XOutType>(xOutTensor_);
     } else {
