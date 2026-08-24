@@ -18,7 +18,7 @@
 #include "tensor_api/tensor.h"
 #include "basic_api/kernel_basic_intf.h"
 
-namespace Blaze {
+namespace Apace {
 namespace Gemm {
 namespace Block {
 
@@ -102,4 +102,4 @@ private:
 
 } // namespace Block
 } // namespace Gemm
-} // namespace Blaze
+} // namespace Apace

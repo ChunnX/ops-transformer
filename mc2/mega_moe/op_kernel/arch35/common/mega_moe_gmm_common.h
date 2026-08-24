@@ -17,9 +17,9 @@
 #include "mega_moe_types.h"
 #include "mega_moe_utils.h"
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"
-#include "../blaze/gemm/block/block_scheduler_swizzle.h"
-#include "../blaze/gemm/block/block_mmad_mx_fp8fp4.h"
-#include "../blaze/prologue/block_prologue_mx_fp8fp4.h"
+#include "apace/block/scheduler/block_scheduler_swizzle.h"
+#include "apace/block/mmad/block_mmad_mx_fp8fp4.h"
+#include "apace/block/prologue/block_prologue_mx_fp8fp4.h"
 
 namespace MegaMoeImpl {
 
@@ -30,7 +30,7 @@ namespace GmmKernel {
 constexpr uint32_t L1_TILE_K = 256U;
 constexpr uint32_t SCALE_K_L1_RATE = 2U;
 
-using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 1>; // 3: SwizzleOffset
+using BlockScheduler = typename Apace::Gemm::Block::BlockSchedulerSwizzle<3, 1>; // 3: SwizzleOffset
 
 // 根据数据类型路径选择对应的 BlockMmad 实现。
 template <bool IsA8W4, typename C>
@@ -84,7 +84,7 @@ struct Config {
 
     using LayoutBias = Te::NDExtLayoutPtn;
     using DispatchPolicy =
-        Std::conditional_t<IsA8W4, Blaze::Gemm::MatmulMxFp8Fp4DynamicKL1TailResplit, Blaze::Gemm::MatmulWithScaleMx<>>;
+        Std::conditional_t<IsA8W4, Apace::Gemm::MatmulMxFp8Fp4DynamicKL1TailResplit, Blaze::Gemm::MatmulWithScaleMx<>>;
     using LayoutB = Std::conditional_t<IsA8W4, Te::ZNLayoutPtn,
                                        Std::conditional_t<IsWeightNZ, Te::ZNLayoutPtn, Te::DNExtLayoutPtn>>;
 
@@ -105,7 +105,7 @@ struct Config {
 
     using BlockMmad = typename BlockMmadSelector<IsA8W4, Config>::type;
     using BlockPrologue =
-        Std::conditional_t<IsA8W4, Blaze::Gemm::Prologue::BlockPrologue<DispatchPolicy, ElementA, ElementB>, void>;
+        Std::conditional_t<IsA8W4, Apace::Gemm::Prologue::BlockPrologue<DispatchPolicy, ElementA, ElementB>, void>;
 
     static __aicore__ inline typename BlockMmad::L1Params MakeL1Params(uint64_t kL1, uint64_t scaleKL1)
     {
@@ -119,7 +119,7 @@ struct Config {
     static __aicore__ inline typename BlockMmad::L1Params DefaultL1Params()
     {
         if constexpr (IsA8W4) {
-            return MakeL1Params(L1_TILE_K, Blaze::Gemm::MX_FP8FP4_SCALE_K_L1_SIZE);
+            return MakeL1Params(L1_TILE_K, Apace::Gemm::MX_FP8FP4_SCALE_K_L1_SIZE);
         } else {
             return MakeL1Params(L1_TILE_K, L1_TILE_K * SCALE_K_L1_RATE);
         }
@@ -242,7 +242,7 @@ struct Config {
                 tileM,
                 L1_TILE_N,
                 typename BlockMmad::L1Params{
-                    .kL1 = 0U, .scaleKL1 = Blaze::Gemm::MX_FP8FP4_SCALE_K_L1_SIZE}};
+                    .kL1 = 0U, .scaleKL1 = Apace::Gemm::MX_FP8FP4_SCALE_K_L1_SIZE}};
         }
 
         if constexpr (g_coreType == AscendC::AIC) {
