@@ -115,7 +115,7 @@ public:
 
     __aicore__ inline void InitMmad(const Params &params)
     {
-        isBias_ = (params.qbmmParams.isBias != Params::QBMMTiling::BIAS_DISABLED);
+        isBias_ = (params.qbmmParams.isBias != QBMMTiling::BIAS_DISABLED);
         isAtomicAdd_ = false;
         mmadOp_.Init(params.problemShape,
                      Te::MakeShape(params.schParams.baseM, params.schParams.baseN,
