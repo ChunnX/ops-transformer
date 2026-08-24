@@ -49,6 +49,7 @@ constexpr uint32_t PKI_ATTR_LAYOUT_K = 3;
 constexpr uint32_t PKI_ATTR_MASK_MODE = 4;
 constexpr uint32_t PKI_ATTR_QUANT_MODE = 5;
 constexpr uint32_t PKI_ATTR_RETURN_VALUE = 6;
+constexpr uint32_t PKI_ATTR_KEY_STRIDE0 = 7;
 
 // ------------------ Limits ------------------
 constexpr uint32_t PKI_HEAD_DIM = 128;

@@ -19,9 +19,19 @@ Coverage:
   - Layout: BSND, TND
   - dtype: fp16, bf16
   - mask_mode: 0 (non-causal), 3 (causal)
-  - pool_size: 1 (degenerate), 8, 16 (expanded)
+  - pool_size: 1 (degenerate), 8, 16 (expanded), 32, 64, 128 (upper limit)
   - return_value: True, False
   - block sizes (PA_BBND optional)
+  - topk: 16..256 base, 512/2048 (recommended), 3072/4096/8192 (special values)
+  - Known defect (arch22): pool_size>=32 with topk>=6144 triggers aicore
+    exception (EE9999/507015) and poisons the process; crash combos are
+    documented in TEST_CASES comments but NOT executed (see NOTE)
+  - pool_tail_k: random, deterministic 0 / pool_size-1 / per-batch mixed
+  - n1: 1 (min), 4..32, 64 (max); S1=1 minimal shape
+  - PA: unequal pool counts per batch (block_table -1 slots + padded tail
+    block), block_size 16/32/64, batch up to 4
+  - PA pool_key 0-axis non-contiguous (key_stride0 attr from torch ext
+    csrc, compressor-style; eager + graph mode)
 """
 
 import os
@@ -69,13 +79,20 @@ def _make_actual_seq(seq_lens):
 
 
 def _build_bsnd_inputs(batch, q_seq, k_seq, n1, pool_size, dtype, seed=42):
-    """Construct BSND-layout inputs on CPU."""
+    """Construct BSND-layout inputs on CPU.
+
+    k_seq 可为 int(每 batch 等长) 或 list(每 batch token 数不等, 仅 PA 场景,
+    pool_key 返回扁平 (sum_pools, N2, D))。"""
     torch.manual_seed(seed)
     np.random.seed(seed)
     dt = dtype
     query = torch.randn(batch, q_seq, n1, HEAD_DIM, dtype=dt)
-    k_seq_pools = k_seq // pool_size
-    pool_key = torch.randn(batch, k_seq_pools, N2, HEAD_DIM, dtype=dt)
+    if isinstance(k_seq, (list, tuple)):
+        k_pool_lens = [kl // pool_size for kl in k_seq]
+        pool_key = torch.randn(sum(k_pool_lens), N2, HEAD_DIM, dtype=dt)
+    else:
+        k_seq_pools = k_seq // pool_size
+        pool_key = torch.randn(batch, k_seq_pools, N2, HEAD_DIM, dtype=dt)
     weights = torch.randn(batch, q_seq, n1, dtype=dt)
     pool_tail_k = torch.randint(0, pool_size, (batch,), dtype=torch.int64)
     return query, pool_key, weights, pool_tail_k
@@ -106,14 +123,14 @@ def _make_actual_seq_noncum(pool_lens):
     return torch.tensor(pool_lens, dtype=torch.int64)
 
 
-def _pack_pa_key(pool_key_bsnd, k_pool_lens, pool_size):
-    """将逻辑 (T2_pool, N2, D) 打包为 PA 物理块布局 (blockNum, blockSize=16, N2, D)。
+def _pack_pa_key(pool_key_bsnd, k_pool_lens, pool_size, block_size=16):
+    """将逻辑 (T2_pool, N2, D) 打包为 PA 物理块布局 (blockNum, blockSize, N2, D)。
 
     与 LIV2 语义一致: PA key 块内每行 = 1 个池(key 不做 token 展开)。
     每 batch 的池独立连续填块(与 _build_block_table 的块数口径一致),
     物理块随机排布, 尾块不足补零。返回 (key_pa, block_size, block_num)。
+    block_size 需为 16 的倍数(算子约束), 尾块 padding 行补零。
     """
-    block_size = 16
     blocks_per_batch = [(pl + block_size - 1) // block_size for pl in k_pool_lens]
     block_num = sum(blocks_per_batch)
     n2, d = pool_key_bsnd.shape[1], pool_key_bsnd.shape[2]
@@ -134,13 +151,14 @@ def _pack_pa_key(pool_key_bsnd, k_pool_lens, pool_size):
     return blocks[perm].contiguous(), block_size, block_num
 
 
-def _build_block_table(batch, k_pool_lens, pool_size):
+def _build_block_table(batch, k_pool_lens, pool_size, block_size=16):
     """构造 (B, maxBlocks) int32 物理块映射, 空槽 -1。
 
-    PA key 块内每行=1池(LIV2 语义): 每块容纳 16 个池, 块数 = ceil(pools/16)。
+    PA key 块内每行=1池(LIV2 语义): 每块容纳 block_size 个池,
+    块数 = ceil(pools/block_size)。各 batch 池数不等时, 短 batch 的
+    尾部槽位保持 -1(算子按 actual_seq_k 只读有效槽位)。
     返回 (block_table, 物理块总数)。
     """
-    block_size = 16
     blocks_per_batch = [(pl + block_size - 1) // block_size for pl in k_pool_lens]
     max_blocks = max(blocks_per_batch)
     total_blocks = sum(blocks_per_batch)
@@ -152,6 +170,26 @@ def _build_block_table(batch, k_pool_lens, pool_size):
             bt[b, i] = perm[cur]
             cur += 1
     return bt, total_blocks
+
+
+def _make_pa_key_non_contig(key_pa, block_size, block_num, dtype):
+    """构造 PA key 0 轴非连续输入(keyStride0 运行时 stride 分支)。
+
+    参考 development_blueprint.md §二·补: 物理块嵌入 2 倍缓冲的偶数行,
+    视图 stride[0] = 2 * block_size * N2 * D (含 padding)。
+    返回 (cpu_view, npu_builder):
+      - cpu_view: 供 golden 直接消费(torch 按 stride 索引);
+      - npu_builder: NPU 侧先搬大缓冲再切片 —— 直接对非稠密视图 .to(npu)
+        会被拍平为连续, 丢失 stride 信息, 无法覆盖 kernel 非连续寻址。
+    """
+    big = torch.zeros(2 * block_num, block_size, N2, HEAD_DIM, dtype=dtype)
+    big[0::2] = key_pa
+    view = big[::2]
+
+    def npu_builder(dev, _big=big):
+        return _big.to(dev)[::2]
+
+    return view, npu_builder
 
 
 def _run_npu(
@@ -171,11 +209,15 @@ def _run_npu(
     quant_mode=-1,
     return_value=False,
     device_id=0,
+    pool_key_npu_fn=None,
 ):
-    """Move inputs to NPU and call the torch extension."""
+    """Move inputs to NPU and call the torch extension.
+
+    pool_key_npu_fn: 可选 callable(dev) -> npu tensor, 用于 0 轴非连续
+    key 的 NPU 侧构造(大缓冲搬运后切片), 绕过 .to(npu) 的连续化。"""
     dev = f"npu:{device_id}"
     q = query.to(dev)
-    k = pool_key.to(dev)
+    k = pool_key_npu_fn(dev) if pool_key_npu_fn is not None else pool_key.to(dev)
     w = weights.to(dev)
     ptk = pool_tail_k.to(dev)
     asq = actual_seq_q.to(dev) if actual_seq_q is not None else None
@@ -264,7 +306,12 @@ def _npu_init():
 
 
 # Test case configurations: (id, layout_q, layout_k, dtype, batch, q_seq, k_seq,
-#                            n1, topk, pool_size, mask_mode, return_value)
+#                            n1, topk, pool_size, mask_mode, return_value,
+#                            tail_spec, pa_block_size, key_non_contig)
+#   tail_spec:      None=随机生成 / int=所有 batch 定值 / list=每 batch 定值
+#                   (取值须在 [0, pool_size-1])
+#   pa_block_size:  PA 场景物理块大小(16 的倍数, 上限 1024), 非 PA 忽略
+#   key_non_contig: PA key 0 轴非连续输入(keyStride0 分支), 仅 PA 支持
 TEST_CASES = [
     # --- Degenerate (pool_size=1) ---
     pytest.param(
@@ -278,6 +325,9 @@ TEST_CASES = [
         128,
         1,
         0,
+        False,
+        None,
+        16,
         False,
         id="bsnd_fp16_ps1_nocausal_noval",
     ),
@@ -293,6 +343,9 @@ TEST_CASES = [
         1,
         3,
         False,
+        None,
+        16,
+        False,
         id="bsnd_fp16_ps1_causal_noval",
     ),
     pytest.param(
@@ -307,6 +360,9 @@ TEST_CASES = [
         1,
         0,
         True,
+        None,
+        16,
+        False,
         id="bsnd_bf16_ps1_nocausal_val",
     ),
     pytest.param(
@@ -321,6 +377,9 @@ TEST_CASES = [
         1,
         3,
         True,
+        None,
+        16,
+        False,
         id="bsnd_fp16_ps1_causal_val",
     ),
     # --- Expanded (pool_size>1) ---
@@ -336,6 +395,9 @@ TEST_CASES = [
         16,
         0,
         False,
+        None,
+        16,
+        False,
         id="bsnd_fp16_ps16_nocausal_noval",
     ),
     pytest.param(
@@ -350,6 +412,9 @@ TEST_CASES = [
         16,
         3,
         True,
+        None,
+        16,
+        False,
         id="bsnd_fp16_ps16_causal_val",
     ),
     pytest.param(
@@ -364,6 +429,9 @@ TEST_CASES = [
         8,
         0,
         True,
+        None,
+        16,
+        False,
         id="bsnd_bf16_ps8_nocausal_val",
     ),
     pytest.param(
@@ -377,6 +445,9 @@ TEST_CASES = [
         256,
         32,
         3,
+        False,
+        None,
+        16,
         False,
         id="bsnd_fp16_ps32_causal_noval",
     ),
@@ -393,6 +464,9 @@ TEST_CASES = [
         1,
         0,
         False,
+        None,
+        16,
+        False,
         id="tnd_fp16_ps1_nocausal_noval",
     ),
     pytest.param(
@@ -407,6 +481,9 @@ TEST_CASES = [
         16,
         3,
         True,
+        None,
+        16,
+        False,
         id="tnd_fp16_ps16_causal_val",
     ),
     pytest.param(
@@ -421,6 +498,9 @@ TEST_CASES = [
         8,
         0,
         True,
+        None,
+        16,
+        False,
         id="tnd_bf16_ps8_nocausal_val",
     ),
     pytest.param(
@@ -434,6 +514,9 @@ TEST_CASES = [
         128,
         16,
         3,
+        False,
+        None,
+        16,
         False,
         id="tnd_fp16_ps16_causal_noval_3batch",
     ),
@@ -450,6 +533,9 @@ TEST_CASES = [
         8,
         0,
         True,
+        None,
+        16,
+        False,
         id="bsnd_pa_fp16_ps8_nocausal_val",
     ),
     pytest.param(
@@ -464,6 +550,9 @@ TEST_CASES = [
         16,
         3,
         True,
+        None,
+        16,
+        False,
         id="bsnd_pa_fp16_ps16_causal_val",
     ),
     pytest.param(
@@ -477,6 +566,9 @@ TEST_CASES = [
         128,
         8,
         0,
+        False,
+        None,
+        16,
         False,
         id="tnd_pa_fp16_ps8_nocausal_noval",
     ),
@@ -492,6 +584,9 @@ TEST_CASES = [
         16,
         3,
         True,
+        None,
+        16,
+        False,
         id="tnd_pa_bf16_ps16_causal_val",
     ),
     # --- sparseCount=1 边界(topk == pool_size): 尾区越写/清理缺陷回归 ---
@@ -507,6 +602,9 @@ TEST_CASES = [
         16,
         3,
         True,
+        None,
+        16,
+        False,
         id="bsnd_fp16_ps16_topk16_causal_sparse1",
     ),
     pytest.param(
@@ -521,6 +619,9 @@ TEST_CASES = [
         16,
         3,
         True,
+        None,
+        16,
+        False,
         id="bsnd_fp16_ps16_topk16_causal_L48",
     ),
     pytest.param(
@@ -535,7 +636,416 @@ TEST_CASES = [
         16,
         3,
         True,
+        None,
+        16,
+        False,
         id="tnd_fp16_ps16_topk16_causal_L48",
+    ),
+    # --- 大 topk(含建议值 2048 与特殊值 3072/4096/8192) ---
+    pytest.param(
+        "BSND",
+        "BSND",
+        torch.float16,
+        1,
+        32,
+        2048,
+        8,
+        512,
+        16,
+        3,
+        True,
+        None,
+        16,
+        False,
+        id="bsnd_fp16_ps16_topk512_causal_val",
+    ),
+    pytest.param(
+        "BSND",
+        "BSND",
+        torch.float16,
+        1,
+        32,
+        8192,
+        8,
+        2048,
+        16,
+        0,
+        True,
+        None,
+        16,
+        False,
+        id="bsnd_fp16_ps16_topk2048_nocausal_val",
+    ),
+    pytest.param(
+        "BSND",
+        "BSND",
+        torch.float16,
+        1,
+        8,
+        4096,
+        8,
+        3072,
+        1,
+        3,
+        False,
+        None,
+        16,
+        False,
+        id="bsnd_fp16_ps1_topk3072_causal_sparse3k",
+    ),
+    pytest.param(
+        "BSND",
+        "BSND",
+        torch.float16,
+        1,
+        16,
+        8192,
+        8,
+        4096,
+        16,
+        3,
+        True,
+        None,
+        16,
+        False,
+        id="bsnd_fp16_ps16_topk4096_causal_val",
+    ),
+    pytest.param(
+        "TND",
+        "TND",
+        torch.float16,
+        [8, 8],
+        [8, 8],
+        [16384, 16384],
+        4,
+        8192,
+        16,
+        3,
+        False,
+        None,
+        16,
+        False,
+        id="tnd_fp16_ps16_topk8192_causal_noval",
+    ),
+    # NOTE 已知缺陷(arch22/910B, 2026-08-24 二分定位): pool_size>=32 且
+    # topk>=6144 的组合(如 TND ps32/topk6144、BSND ps64/topk8192, k=16384)
+    # 触发 aicore exception(EE9999/507015), 且崩溃会污染进程内后续用例,
+    # 因此不作为 xfail 用例纳入(避免 CI 雪崩)。kernel 修复后可补充:
+    #   - tnd_fp16_ps32_topk6144_causal
+    #   - bsnd_fp16_ps64_topk8192_causal
+    # --- pool_size 极值(64 / 上限 128, sparseCount 退化为 1~4) ---
+    pytest.param(
+        "BSND",
+        "BSND",
+        torch.float16,
+        1,
+        32,
+        2048,
+        8,
+        256,
+        64,
+        0,
+        True,
+        None,
+        16,
+        False,
+        id="bsnd_fp16_ps64_topk256_nocausal_val",
+    ),
+    pytest.param(
+        "BSND",
+        "BSND",
+        torch.float16,
+        2,
+        256,
+        2048,
+        8,
+        128,
+        128,
+        3,
+        True,
+        127,
+        16,
+        False,
+        id="bsnd_fp16_ps128_topk128_causal_tail127_val",
+    ),
+    pytest.param(
+        "BSND",
+        "BSND",
+        torch.float16,
+        1,
+        16,
+        8192,
+        8,
+        256,
+        128,
+        0,
+        False,
+        None,
+        16,
+        False,
+        id="bsnd_fp16_ps128_topk256_nocausal_noval",
+    ),
+    pytest.param(
+        "TND",
+        "TND",
+        torch.bfloat16,
+        [16, 32],
+        [16, 32],
+        [1024, 2048],
+        4,
+        256,
+        64,
+        3,
+        True,
+        None,
+        16,
+        False,
+        id="tnd_bf16_ps64_topk256_causal_val",
+    ),
+    # --- pool_tail_k 确定性边界(0 / pool_size-1 / 每 batch 混合) ---
+    pytest.param(
+        "BSND",
+        "BSND",
+        torch.float16,
+        2,
+        48,
+        800,
+        8,
+        128,
+        16,
+        3,
+        True,
+        0,
+        16,
+        False,
+        id="bsnd_fp16_ps16_tail0_causal_val",
+    ),
+    pytest.param(
+        "BSND",
+        "BSND",
+        torch.float16,
+        2,
+        48,
+        800,
+        8,
+        128,
+        16,
+        0,
+        True,
+        15,
+        16,
+        False,
+        id="bsnd_fp16_ps16_tail15_nocausal_val",
+    ),
+    pytest.param(
+        "BSND",
+        "BSND",
+        torch.float16,
+        3,
+        32,
+        512,
+        8,
+        128,
+        8,
+        3,
+        True,
+        [0, 4, 7],
+        16,
+        False,
+        id="bsnd_fp16_ps8_tail_mixed_causal_val",
+    ),
+    pytest.param(
+        "TND",
+        "TND",
+        torch.float16,
+        [32, 32],
+        [32, 32],
+        [512, 512],
+        8,
+        128,
+        16,
+        3,
+        False,
+        15,
+        16,
+        False,
+        id="tnd_fp16_ps16_tail15_causal_noval",
+    ),
+    # --- n1 极值(1 / 上限 64)与 S1=1 最小 shape ---
+    pytest.param(
+        "BSND",
+        "BSND",
+        torch.float16,
+        2,
+        32,
+        256,
+        1,
+        128,
+        16,
+        0,
+        True,
+        None,
+        16,
+        False,
+        id="bsnd_fp16_n1_1_ps16_nocausal_val",
+    ),
+    pytest.param(
+        "BSND",
+        "BSND",
+        torch.float16,
+        1,
+        16,
+        512,
+        64,
+        128,
+        16,
+        3,
+        True,
+        None,
+        16,
+        False,
+        id="bsnd_fp16_n1_64_ps16_causal_val",
+    ),
+    pytest.param(
+        "BSND",
+        "BSND",
+        torch.float16,
+        1,
+        1,
+        256,
+        8,
+        128,
+        16,
+        3,
+        True,
+        None,
+        16,
+        False,
+        id="bsnd_fp16_s1_1_ps16_causal_val",
+    ),
+    pytest.param(
+        "TND",
+        "TND",
+        torch.bfloat16,
+        [32],
+        [32],
+        [512],
+        64,
+        128,
+        8,
+        0,
+        False,
+        None,
+        16,
+        False,
+        id="tnd_bf16_n1_64_ps8_nocausal_noval",
+    ),
+    # --- PA 细节: 不等池数(-1 空槽+尾块 padding)、block_size 32/64、B=4 ---
+    pytest.param(
+        "BSND",
+        "PA_BBND",
+        torch.float16,
+        3,
+        32,
+        [200, 1000, 520],
+        8,
+        128,
+        16,
+        0,
+        True,
+        None,
+        16,
+        False,
+        id="bsnd_pa_fp16_ps16_unequal_pools_val",
+    ),
+    pytest.param(
+        "TND",
+        "PA_BBND",
+        torch.float16,
+        [32, 16],
+        32,
+        [768, 256],
+        8,
+        128,
+        16,
+        3,
+        True,
+        None,
+        16,
+        False,
+        id="tnd_pa_fp16_ps16_unequal_pools_causal_val",
+    ),
+    pytest.param(
+        "BSND",
+        "PA_BBND",
+        torch.float16,
+        2,
+        32,
+        [512, 256],
+        8,
+        128,
+        16,
+        0,
+        True,
+        None,
+        32,
+        False,
+        id="bsnd_pa_fp16_ps16_blocksize32_val",
+    ),
+    pytest.param(
+        "BSND",
+        "PA_BBND",
+        torch.float16,
+        4,
+        16,
+        [1024, 512, 256, 768],
+        8,
+        128,
+        16,
+        3,
+        True,
+        None,
+        64,
+        False,
+        id="bsnd_pa_fp16_ps16_blocksize64_b4_causal_val",
+    ),
+    # --- PA key 0 轴非连续(keyStride0 属性路径, 参考 compressor 方案) ---
+    # 已修复(2026-08-24): torch_extension csrc 层直读 poolKey.stride(0) 作为
+    # key_stride0 属性下传, tiling 属性优先消费; eager/aclnn 路径 0 轴非连续
+    # 寻址正确(strided view 与 contiguous 同数据输出一致)。
+    pytest.param(
+        "BSND",
+        "PA_BBND",
+        torch.float16,
+        2,
+        32,
+        256,
+        8,
+        128,
+        16,
+        0,
+        True,
+        None,
+        16,
+        True,
+        id="bsnd_pa_fp16_ps16_key_noncontig_val",
+    ),
+    pytest.param(
+        "TND",
+        "PA_BBND",
+        torch.bfloat16,
+        [16, 16],
+        16,
+        [256, 256],
+        8,
+        128,
+        16,
+        3,
+        True,
+        None,
+        32,
+        True,
+        id="tnd_pa_bf16_ps16_bs32_key_noncontig_causal_val",
     ),
 ]
 
@@ -546,7 +1056,8 @@ TEST_CASES = [
 
 
 @pytest.mark.parametrize(
-    "layout_q,layout_k,dtype,batch,q_seq,k_seq,n1,topk,pool_size,mask_mode,return_value",
+    "layout_q,layout_k,dtype,batch,q_seq,k_seq,n1,topk,pool_size,mask_mode,"
+    "return_value,tail_spec,pa_block_size,key_non_contig",
     TEST_CASES,
 )
 def test_pool_key_indexer(
@@ -561,25 +1072,37 @@ def test_pool_key_indexer(
     pool_size,
     mask_mode,
     return_value,
+    tail_spec,
+    pa_block_size,
+    key_non_contig,
 ):
     """End-to-end test: golden vs NPU torch extension."""
+    assert not key_non_contig or layout_k == "PA_BBND", (
+        "0-axis non-contiguous pool_key is only supported in PA_BBND layout"
+    )
 
     # ---- Construct inputs ----
     block_table = None
+    pool_key_npu_fn = None
     if layout_q == "BSND" and layout_k == "PA_BBND":
         # PA + BSND: actual_seq_q 必须为 None; actual_seq_k 为每 batch pool 数(非前缀和)
+        # k_seq 支持每 batch 不等长(产生 -1 空槽与尾块 padding)
+        k_lens = k_seq if isinstance(k_seq, (list, tuple)) else [k_seq] * batch
+        k_pool_lens = [kl // pool_size for kl in k_lens]
         query, pool_key, weights, pool_tail_k = _build_bsnd_inputs(
             batch, q_seq, k_seq, n1, pool_size, dtype
         )
         actual_seq_q = None
-        k_pool_lens = [k_seq // pool_size] * batch
         actual_seq_k = _make_actual_seq_noncum(k_pool_lens)
         # pool_key: (B, pools, N2, D) -> (B*pools, N2, D) 再打包为物理块布局
         pool_key = pool_key.reshape(-1, pool_key.shape[-2], pool_key.shape[-1])
         pool_key, pa_block_size, pa_block_num = _pack_pa_key(
-            pool_key, k_pool_lens, pool_size
+            pool_key, k_pool_lens, pool_size, pa_block_size
         )
-        block_table, _ = _build_block_table(batch, k_pool_lens, pool_size)
+        block_table, _ = _build_block_table(
+            batch, k_pool_lens, pool_size, pa_block_size
+        )
+        k_seq = sum(k_lens)
     elif layout_q == "TND" and layout_k == "PA_BBND":
         # PA + TND: actual_seq_q 前缀和; actual_seq_k 为每 batch pool 数(非前缀和)
         q_lens = batch if isinstance(batch, list) else [q_seq] * batch
@@ -593,11 +1116,14 @@ def test_pool_key_indexer(
             torch.randn(sum(k_pool_lens), N2, HEAD_DIM, dtype=dtype),
             k_pool_lens,
             pool_size,
+            pa_block_size,
         )
         q_seq = sum(q_lens)
         k_seq = sum(k_lens)
         batch = len(q_lens)
-        block_table, _ = _build_block_table(batch, k_pool_lens, pool_size)
+        block_table, _ = _build_block_table(
+            batch, k_pool_lens, pool_size, pa_block_size
+        )
     elif layout_q == "BSND":
         assert layout_k == "BSND"
         query, pool_key, weights, pool_tail_k = _build_bsnd_inputs(
@@ -628,10 +1154,27 @@ def test_pool_key_indexer(
     else:
         pytest.skip(f"Unsupported layout_q={layout_q}")
 
+    # ---- PA key 0 轴非连续: 大缓冲偶数行视图(NPU 侧先搬大缓冲再切片) ----
+    if key_non_contig:
+        pool_key, pool_key_npu_fn = _make_pa_key_non_contig(
+            pool_key, pa_block_size, pa_block_num, dtype
+        )
+
+    # ---- pool_tail_k 确定性覆写(默认随机) ----
+    if tail_spec is not None:
+        if isinstance(tail_spec, (list, tuple)):
+            pool_tail_k = torch.tensor(list(tail_spec), dtype=torch.int64)
+        else:
+            pool_tail_k = torch.full((batch,), int(tail_spec), dtype=torch.int64)
+        assert bool((pool_tail_k >= 0).all()) and bool(
+            (pool_tail_k < pool_size).all()
+        ), f"tail_spec {tail_spec} out of [0, pool_size={pool_size})"
+
     print(
-        f"\n=== Test: layout_q={layout_q} dtype={dtype} batch={batch} "
+        f"\n=== Test: layout_q={layout_q} layout_k={layout_k} dtype={dtype} batch={batch} "
         f"q_seq={q_seq} k_seq={k_seq} n1={n1} topk={topk} "
-        f"pool_size={pool_size} mask_mode={mask_mode} return_value={return_value} ==="
+        f"pool_size={pool_size} mask_mode={mask_mode} return_value={return_value} "
+        f"tail_spec={tail_spec} pa_bs={pa_block_size} key_non_contig={key_non_contig} ==="
     )
 
     # ---- Run golden ----
@@ -672,6 +1215,7 @@ def test_pool_key_indexer(
         mask_mode=mask_mode,
         quant_mode=-1,
         return_value=return_value,
+        pool_key_npu_fn=pool_key_npu_fn,
     )
 
     # ---- Canonicalize NPU output via golden normalization ----

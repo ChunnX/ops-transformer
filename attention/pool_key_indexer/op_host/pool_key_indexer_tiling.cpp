@@ -194,11 +194,25 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
                 OP_LOGE(context_, "pool_key must not be empty tensor"),
                 return ge::GRAPH_FAILED);
 
-    // Capture the actual runtime strides of pool_key (for 0-axis non-contiguous support)
-    auto keyStrides = context_->GetDynamicInputStride(PKI_POOL_KEY_INDEX, 0);
+    // Capture the actual runtime strides of pool_key (for 0-axis non-contiguous support).
+    // 优先级: 属性 key_stride0(torch_extension 直读, 见 PA 分支) > tiling context
+    // 运行时 stride(图模式由框架填 TensorV2 view; eager/aclnn 路径不填充,
+    // GetInputStride/GetDynamicInputStride 均返回 nullptr)。
+    auto keyStrides = context_->GetInputStride(PKI_POOL_KEY_INDEX);
+    if (keyStrides == nullptr) {
+        keyStrides = context_->GetDynamicInputStride(PKI_POOL_KEY_INDEX, 0);
+    }
     if (keyStrides != nullptr && keyStrides->GetDimNum() > 0) {
         for (size_t i = 0; i < keyStrides->GetDimNum(); i++) {
             keyStridesVec_.push_back(keyStrides->GetStride(i));
+        }
+        // 图模式下属性与运行时 stride 同时存在, 必须一致(否则以错误来源寻址)
+        const int64_t *keyStride0Attr = attrs->GetAttrPointer<int64_t>(PKI_ATTR_KEY_STRIDE0);
+        if (keyStride0Attr != nullptr && *keyStride0Attr >= 0 &&
+            keyStridesVec_[0] != static_cast<uint32_t>(*keyStride0Attr)) {
+            OP_LOGE(context_, "key_stride0 attr(%ld) conflicts with runtime stride(%u)",
+                    *keyStride0Attr, keyStridesVec_[0]);
+            return ge::GRAPH_FAILED;
         }
     }
     const gert::StorageShape *weightsShape = context_->GetInputShape(PKI_WEIGHTS_INDEX);
@@ -358,10 +372,21 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
         OP_CHECK_IF(static_cast<uint32_t>(keyShape->GetStorageShape().GetDim(3)) != info.headDim,
                     OP_LOGE(context_, "PA key D(%ld) must be %u(128)", keyShape->GetStorageShape().GetDim(3), info.headDim),
                     return ge::GRAPH_FAILED);
-        // keyStride0: use actual runtime stride[0] for 0-axis non-contiguous PA support;
-        // contiguous tensor has no dynamic stride reported, derive from shape:
-        // stride0 = blockSize * N2 * headDim (element units)
-        if (!keyStridesVec_.empty() && keyStridesVec_[0] != 0) {
+        // keyStride0 优先级(参考 compressor/QLI 方案):
+        //   1. 属性 key_stride0: torch_extension 层从 at::Tensor::stride(0) 直读传入,
+        //      eager/aclnn 路径下 tiling context 不上报运行时 stride, 该属性是
+        //      0 轴非连续寻址的唯一可靠来源(-1 表示未指定);
+        //   2. tiling context 运行时 stride(图模式由框架填充 TensorV2 view);
+        //   3. 连续推导: stride0 = blockSize * N2 * headDim (element units)
+        const int64_t *keyStride0Attr = attrs->GetAttrPointer<int64_t>(PKI_ATTR_KEY_STRIDE0);
+        if (keyStride0Attr != nullptr && *keyStride0Attr >= 0) {
+            uint64_t contiguousStride0 = static_cast<uint64_t>(info.blockSize) * info.n2Size * info.headDim;
+            OP_CHECK_IF(static_cast<uint64_t>(*keyStride0Attr) < contiguousStride0,
+                        OP_LOGE(context_, "key_stride0(%ld) must be >= contiguous stride(%lu)",
+                                *keyStride0Attr, contiguousStride0),
+                        return ge::GRAPH_FAILED);
+            info.keyStride0 = static_cast<uint32_t>(*keyStride0Attr);
+        } else if (!keyStridesVec_.empty() && keyStridesVec_[0] != 0) {
             info.keyStride0 = keyStridesVec_[0];
         } else {
             info.keyStride0 = info.blockSize * info.n2Size * info.headDim;

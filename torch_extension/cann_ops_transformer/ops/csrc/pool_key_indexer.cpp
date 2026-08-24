@@ -61,6 +61,27 @@ std::tuple<at::Tensor, at::Tensor> ConstructPoolKeyIndexerOutputTensor(
     return std::tuple<at::Tensor, at::Tensor>(sparseIndicesOut, sparseValuesOut);
 }
 
+std::vector<bool> IsContiguousAxes(const at::Tensor &tensor)
+{
+    auto sizes = tensor.sizes();
+    auto strides = tensor.strides();
+    int64_t ndim = sizes.size();
+    if (ndim == 0) {
+        return {};
+    }
+    std::vector<bool> result(ndim, false);
+
+    std::vector<int64_t> contiguousStride(ndim, 1);
+    for (int64_t i = ndim - 2; i >= 0; i--) {
+        contiguousStride[i] = contiguousStride[i + 1] * sizes[i + 1];
+    }
+
+    for (int64_t i = 0; i < ndim; i++) {
+        result[i] = (strides[i] == contiguousStride[i]);
+    }
+    return result;
+}
+
 std::tuple<at::Tensor, at::Tensor>
 PoolKeyIndexer(const at::Tensor &query, const at::Tensor &poolKey, const at::Tensor &weights,
                const at::Tensor &poolTailK,
@@ -92,6 +113,28 @@ PoolKeyIndexer(const at::Tensor &query, const at::Tensor &poolKey, const at::Ten
     char *queryLayoutPtr = const_cast<char *>(queryLayoutStr.c_str());
     char *keyLayoutPtr = const_cast<char *>(keyLayoutStr.c_str());
 
+    // pool_key 0轴非连续支持(参考 compressor 方案): eager/aclnn 链路的
+    // tiling context 不上报运行时 stride, 故在 torch extension 层直读
+    // at::Tensor::stride(0) 作为 key_stride0 属性下传; 非 0 轴必须连续。
+    // PA_BBND 下 0 轴 stride >= blockSize*N2*D 时按非连续寻址, 否则等价连续。
+    int64_t keyStride0 = -1;
+    if (!poolKey.is_contiguous()) {
+        auto contiguousAxes = IsContiguousAxes(poolKey);
+        bool isPaBbnd = (keyLayoutStr == "PA_BBND");
+        for (int64_t i = 1; i < static_cast<int64_t>(contiguousAxes.size()); i++) {
+            TORCH_CHECK(contiguousAxes[i],
+                        "pool_key only supports non-contiguous tensor on the 0-axis, axis[",
+                        i, "] stride is not contiguous");
+        }
+        keyStride0 = poolKey.stride(0);
+        if (isPaBbnd) {
+            int64_t contiguousStride0 = poolKey.size(1) * poolKey.size(2) * poolKey.size(3);
+            TORCH_CHECK(keyStride0 >= contiguousStride0,
+                        "pool_key stride0(", keyStride0,
+                        ") must be >= contiguous stride(", contiguousStride0, ") in PA_BBND scenarios");
+        }
+    }
+
     // pool_tail_k / actual_seq_q / actual_seq_k are ValueDepend(OPTIONAL) in the op
     // definition, so the auto-generated aclnn API expects aclIntArray* (not aclTensor*).
     // Convert 1-D int64 tensors to at::IntArrayRef so ConvertType produces aclIntArray*.
@@ -117,7 +160,7 @@ PoolKeyIndexer(const at::Tensor &query, const at::Tensor &poolKey, const at::Ten
               actualSeqQArr, actualSeqKArr, blockTable,
               qDescale, kDescale,
               topk, poolSize, queryLayoutPtr, keyLayoutPtr,
-              maskMode, quantMode, returnValue,
+              maskMode, quantMode, returnValue, keyStride0,
               sparseIndicesOut, sparseValuesOut);
 
     return std::tuple<at::Tensor, at::Tensor>(sparseIndicesOut, sparseValuesOut);

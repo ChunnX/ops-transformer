@@ -81,6 +81,10 @@ public:
         this->Attr("mask_mode").AttrType(OPTIONAL).Int(3);
         this->Attr("quant_mode").AttrType(OPTIONAL).Int(-1);
         this->Attr("return_value").AttrType(OPTIONAL).Bool(false);
+        // pool_key 0轴非连续 stride(元素单位), 由 torch_extension 层从
+        // at::Tensor::stride(0) 直读传入(参考 compressor 方案); -1 表示未指定
+        // (连续输入), tiling 回退到 shape 推导。
+        this->Attr("key_stride0").AttrType(OPTIONAL).Int(-1);
 
         OpAICoreConfig aicoreConfig;
         aicoreConfig.DynamicCompileStaticFlag(true)
