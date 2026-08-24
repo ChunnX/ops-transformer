@@ -110,12 +110,37 @@ public:
         Params params;
         SetupMatmulParams(params, &mmTiling, perRankM);
 
-        // Communication keeps first/second group boundaries, while every
-        // slice shares the one full-M QuantMatmul tiling. RunSlices initializes
-        // BlockMmad once, then exposes a completion point after each slice.
-        kernel_.RunSlices(params, tileM, tileCount, tailM, tailCount, *this);
+        // Keep the communication partition details in this fusion policy. The
+        // QBMM kernel sees only one ordered slice sequence and shares one
+        // full-M QuantMatmul tiling across all slices.
+        kernel_.RunSlices(params, *this);
         WaitPendingReduceScatter();
         hccl_.Finalize();
+    }
+
+    __aicore__ inline uint32_t GetSliceCount() const
+    {
+        const auto &commTiling = tilingData_->commTilingData;
+        return static_cast<uint32_t>(commTiling.splitAxisTileCnt + commTiling.splitAxisTailCnt);
+    }
+
+    __aicore__ inline bool GetSliceInfo(uint32_t sliceIdx, uint64_t &sliceStart, uint64_t &sliceM) const
+    {
+        const auto &commTiling = tilingData_->commTilingData;
+        const uint64_t mainCount = commTiling.splitAxisTileCnt;
+        if (sliceIdx < mainCount) {
+            sliceM = commTiling.splitAxisTileSize;
+            sliceStart = static_cast<uint64_t>(sliceIdx) * sliceM;
+            return sliceM > 0;
+        }
+
+        const uint64_t secondIdx = static_cast<uint64_t>(sliceIdx) - mainCount;
+        if (secondIdx >= commTiling.splitAxisTailCnt) {
+            return false;
+        }
+        sliceM = commTiling.splitAxisTailSize;
+        sliceStart = mainCount * commTiling.splitAxisTileSize + secondIdx * sliceM;
+        return sliceM > 0;
     }
 
     __aicore__ inline void IssueSlice(uint64_t sliceStart, uint64_t sliceM)
