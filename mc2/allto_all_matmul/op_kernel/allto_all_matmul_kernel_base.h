@@ -41,6 +41,9 @@ private:
     GM_ADDR transOutGM_;
     Mc2Kernel::Mc2RuntimeInfo runtimeInfo_;
 
+    static constexpr uint8_t POS_MAIN_CALC = 1; // 主轮计算
+    static constexpr uint8_t POS_TAIL_CALC = 2; // 尾轮计算
+
 private:
     __aicore__ inline void ProcessTile(uint32_t taskCnt);
     __aicore__ inline void ProcessTail(uint32_t taskCnt);
@@ -82,18 +85,20 @@ AlltoAllMatmulKernelBase<SchedulerType, SchedulerContextType, AlltoAllMatmulTili
     auto &&mc2Tiling_ = tilingData_->alltoAllMatmulTilingInfo;
     // 启动主块流水
     if (mc2Tiling_.tileCnt > 0) {
-        runtimeInfo_.UpdatePhase(0, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+        runtimeInfo_.WritePosTagByPassDCache(POS_MAIN_CALC);
+        runtimeInfo_.WritePhaseByPassDCache(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         ProcessTile(mc2Tiling_.tileCnt);
     }
 
     // 启动尾块流水
     if (mc2Tiling_.tailCnt > 0) {
-        runtimeInfo_.UpdatePhase(1, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+        runtimeInfo_.WritePosTagByPassDCache(POS_TAIL_CALC);
+        runtimeInfo_.WritePhaseByPassDCache(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         ProcessTail(mc2Tiling_.tailCnt);
     }
 
     // 结束流水线
-    runtimeInfo_.UpdatePhase(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_FINALIZE));
+    runtimeInfo_.WritePhaseByPassDCache(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_FINALIZE));
     pipeLine_->End();
 }
 

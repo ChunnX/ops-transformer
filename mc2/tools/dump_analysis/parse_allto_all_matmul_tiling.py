@@ -138,17 +138,13 @@ WS_SEG_TYPE_MAP = {
     255: "RESERVED",
 }
 
-# RuntimePhase 枚举（与 mc2_tiling_struct.h RuntimePhase 保持一致）
+# RuntimePhase 枚举（与 mc2_tiling_struct.h RuntimePhase 保持一致, 仅 HCCL 五态）
 RUNTIME_PHASE_MAP = {
-    0: "INIT",
+    0: "COMM_INIT",
     1: "COMM_PREPARE",
-    2: "COMM_WAIT",
-    3: "COMM_PROCESS",
-    4: "COMPUTE_LOCAL",
-    5: "COMPUTE_GATHER",
-    6: "TRANSPOSE",
-    7: "REDUCE",
-    8: "FINALIZE",
+    2: "COMM_COMMIT",
+    3: "COMM_WAIT",
+    4: "COMM_FINALIZE",
     255: "RESERVED",
 }
 
@@ -565,7 +561,7 @@ def print_runtime_info_segment(rt_info: dict):
     logging.info("  %-30s: %d / %d", "activeSlots (magic matched)", rt_info["activeSlots"], rt_info["maxSlots"])
     logging.info("")
     logging.info("  %-6s  %-8s  %-8s  %-10s  %-10s  %-16s",
-                 "Slot", "CoreId", "Valid", "ExecTurn", "ExecPos", "CommPhase")
+                 "Slot", "CoreId", "Valid", "TileTurn", "PosTag", "CommPhase")
     logging.info("  " + "-" * 70)
     for slot in rt_info["slots"]:
         if slot.get("magicValid", False):
@@ -585,7 +581,8 @@ def print_runtime_info_segment(rt_info: dict):
         for slot in active_slots:
             core_type = "V核" if slot["coreId"] >= 128 else "C核"
             # 尝试从 tiling info 推断 aicCoreNum 来区分 C/V 核
-            logging.info("  Core %-4d (%s):  turn=%d, position=%d, phase=%s",
+            # execTurn=tile进度(主/尾轮内从0起), execPosition=kernel打点tag(含义见对应算子kernel源文件)
+            logging.info("  Core %-4d (%s):  turn=%d, posTag=%d, phase=%s",
                          slot["coreId"], core_type,
                          slot["execTurn"], slot["execPosition"], slot["commPhaseName"])
 

@@ -60,12 +60,13 @@ public:
         mySlot->coreId = static_cast<uint16_t>(slotIdx_);
         mySlot->execTurn = 0;
         mySlot->execPosition = 0;
-        mySlot->commPhase = static_cast<uint8_t>(Mc2Tiling::RT_PHASE_INIT);
+        mySlot->commPhase = static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_INIT);
 
         FlushCache();
     }
 
-    __aicore__ inline void UpdatePhase(uint8_t turn, uint8_t position, uint8_t phase)
+    // 组合写入: 更新 execTurn/execPosition/commPhase
+    __aicore__ inline void WriteGmByPassDCache(uint8_t turn, uint8_t position, uint8_t phase)
     {
         if (runtimeInfoBase_ == nullptr) {
             return;
@@ -77,13 +78,36 @@ public:
         FlushCache();
     }
 
-    __aicore__ inline void UpdatePhase(uint8_t phase)
+    // 仅更新 commPhase (通信五态切换用)
+    __aicore__ inline void WritePhaseByPassDCache(uint8_t phase)
     {
         if (runtimeInfoBase_ == nullptr) {
             return;
         }
         __gm__ Mc2Tiling::RuntimeInfoPerCore *mySlot = &runtimeInfoBase_[slotIdx_];
         mySlot->commPhase = phase;
+        FlushCache();
+    }
+
+    // 打 tile 进度: 仅更新 execTurn, 其余字段不变
+    __aicore__ inline void WriteTurnByPassDCache(uint8_t tileIdx)
+    {
+        if (runtimeInfoBase_ == nullptr) {
+            return;
+        }
+        __gm__ Mc2Tiling::RuntimeInfoPerCore *mySlot = &runtimeInfoBase_[slotIdx_];
+        mySlot->execTurn = tileIdx;
+        FlushCache();
+    }
+
+    // 打类别点: 仅更新 execPosition (position tag), 其余字段不变
+    __aicore__ inline void WritePosTagByPassDCache(uint8_t tag)
+    {
+        if (runtimeInfoBase_ == nullptr) {
+            return;
+        }
+        __gm__ Mc2Tiling::RuntimeInfoPerCore *mySlot = &runtimeInfoBase_[slotIdx_];
+        mySlot->execPosition = tag;
         FlushCache();
     }
 
