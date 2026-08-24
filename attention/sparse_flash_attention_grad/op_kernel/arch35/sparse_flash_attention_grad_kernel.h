@@ -203,15 +203,19 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessDeter()
 {
     this->AllocEventID();
+    this->bIndex = 0;
+    this->lastT1Index = -1;
     int64_t taskId = 0;
     int64_t sTaskId = 0;
     FagRunInfo runInfos[2]; // for cv ping pong
     FagRunInfo deterRunInfos[2];
-    for (int32_t i = 0; i < this->processBS1ByCore; i++) {
+    // remain / idle 核也必须跑同一轮数，不能再用 processBS1ByCore。
+    const int32_t deterLoop = this->GetDeterProcessNum();
+    for (int32_t i = 0; i < deterLoop; i++) {
         this->t1Index = this->cBlockIdx + this->usedCoreNum * i;
         this->SetDeterRunInfo(deterRunInfos[sTaskId & 1], sTaskId);
-        // TND 尾 padding 只跳过计算，不能 break：后面每轮都有 mode0 全核同步。
-        if (this->IsValidTndT1Index(this->t1Index)) {
+        // 无 token 只跳过计算，不能 break / continue 到循环外：后面每轮都有 mode0。
+        if (this->HasDeterToken(this->t1Index)) {
             this->GetTndSeqLen(this->t1Index, this->bIndex);
             for (this->n2Index = 0; this->n2Index < this->tilingData->baseParams.n2; this->n2Index++) {
                 this->GetActualSelCount(this->t1Index, this->n2Index, this->actualSelectedBlockCount);
@@ -244,17 +248,12 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         sTaskId++;
     }
 
-    if (runInfos[(taskId + 1) & 1].taskStep == TASK_C1C2) {
+    if (taskId > 0 && runInfos[(taskId + 1) & 1].taskStep == TASK_C1C2) {
         ProcessNotFirst(runInfos[(taskId + 1) & 1]);
     }
-    // 所有核都参加收尾 scatter。TASK_C1C2 只决定要不要 ProcessNotFirst，
-    // 不能让部分核少一次 SCATTER_CUBE_SYNC。
-    DeterCubeVecScatter(deterRunInfos[(sTaskId + 1) & 1]);
-
-    // 分核不均匀时 remain 核少一轮主循环，补一次全核同步
-    if (this->NeedDeterExtraSync()) {
-        this->SetDeterRunInfo(deterRunInfos[sTaskId & 1], sTaskId);
-        DeterCubeVecScatter(deterRunInfos[sTaskId & 1]);
+    // 延迟一轮的最后一组 scatter。所有核 sTaskId 相同，要做一起做、要跳一起跳。
+    if (sTaskId > 0) {
+        DeterCubeVecScatter(deterRunInfos[(sTaskId + 1) & 1]);
     }
     this->FreeEventID();
 }

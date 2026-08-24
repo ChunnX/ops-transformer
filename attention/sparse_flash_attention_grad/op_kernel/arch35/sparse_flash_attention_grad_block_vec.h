@@ -29,7 +29,7 @@ constexpr uint32_t BIT_MASK_NUM = 8;
 TEMPLATES_DEF
 class FAGBlockVec {
 private:
-    __aicore__ inline void GetBS1Index(int64_t bS1Index, int64_t &bIdx, int64_t &s1Idx, FagConstInfo &constInfo);
+    __aicore__ inline bool GetBS1Index(int64_t bS1Index, int64_t &bIdx, int64_t &s1Idx, FagConstInfo &constInfo);
     __aicore__ inline void GetRunInfo(int64_t bIdx, int64_t s1Idx, FagRunInfo &runInfo, FagConstInfo &constInfo,
                                         int64_t accumS2Len, int32_t actualSeqLensQ, int32_t actualSeqLensK);
     __aicore__ inline int32_t GetActualSeqLens(int64_t bIdx, GlobalTensor<int32_t> &actualSeqLensGm,
@@ -655,7 +655,11 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
             continue;
         }
 
-        GetBS1Index(bS1Index, bIdx, s1Idx, constInfo);
+        if (!GetBS1Index(bS1Index, bIdx, s1Idx, constInfo)) {
+            CrossCoreSetFlag<0, PIPE_MTE3>(SCATTER_VEC_SYNC_FLAG);
+            CrossCoreWaitFlag<0, PIPE_MTE3>(SCATTER_VEC_SYNC_FLAG);
+            continue;
+        }
         if (bIdx != preBIdx) {
             actualSeqLensQ = GetActualSeqLens(bIdx, this->actualSeqLengthsQueryGm, accumS1Len, constInfo);
             actualSeqLensK = GetActualSeqLens(bIdx, this->actualSeqLengthsKeyGm, accumS2Len, constInfo);
@@ -722,7 +726,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
             }
             for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
                 int32_t s2Idx = s2IdxLocal[row];
-                if (s2Idx >= 0) {
+                if (s2Idx >= 0 && s2Idx < runInfo.commonRunInfo.actualS2Size) {
                     if constexpr (!KV_MERGE) {
                         SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
                         WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
@@ -772,7 +776,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
         }
         for (int64_t row = 0; row < tailRows; row++) {
             int32_t s2Idx = s2IdxTail[row];
-            if (s2Idx >= 0) {
+            if (s2Idx >= 0 && s2Idx < runInfo.commonRunInfo.actualS2Size) {
                 if constexpr (!KV_MERGE) {
                     SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
                     WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
@@ -799,23 +803,30 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GetBS1Index(int64_t bS1Index, int64_t &bIdx,
+__aicore__ inline bool FAGBlockVec<TEMPLATE_ARGS>::GetBS1Index(int64_t bS1Index, int64_t &bIdx,
                                                                int64_t &s1Idx, FagConstInfo &constInfo)
 {
+    bIdx = 0;
+    s1Idx = 0;
     if constexpr (IS_TND) {
         int64_t actualSum = 0;
         for (int index = 0; index < constInfo.bSize; index++) {
             int64_t actualLen = this->actualSeqLengthsQueryGm.GetValue(index);
             if (bS1Index < actualLen) {
                 bIdx = index;
-                break;
+                s1Idx = bS1Index - actualSum;
+                return true;
             }
             actualSum = actualLen;
         }
-        s1Idx = bS1Index - actualSum;
+        return false;
     } else {
+        if (constInfo.commonConstInfo.s1Size <= 0) {
+            return false;
+        }
         bIdx = bS1Index / constInfo.commonConstInfo.s1Size;
         s1Idx = bS1Index - bIdx * constInfo.commonConstInfo.s1Size;
+        return bIdx >= 0 && bIdx < constInfo.bSize;
     }
 }
 
@@ -832,6 +843,8 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GetRunInfo(int64_t bIdx, int6
         accumS2Idx = accumS2Len;
     } else {
         accumS2Idx = bIdx * constInfo.commonConstInfo.s2Size;
+        runInfo.commonRunInfo.actualS1Size = constInfo.commonConstInfo.s1Size;
+        runInfo.commonRunInfo.actualS2Size = constInfo.commonConstInfo.s2Size;
     }
     runInfo.keyOffsetWithRope = accumS2Idx * constInfo.n2Size * constInfo.dTotalSize;
     runInfo.commonRunInfo.valueOffset = accumS2Idx * constInfo.n2Size * constInfo.commonConstInfo.dSizeV;

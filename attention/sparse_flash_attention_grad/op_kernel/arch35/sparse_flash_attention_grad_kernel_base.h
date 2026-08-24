@@ -50,7 +50,8 @@ public:
     __aicore__ inline void GetTndSeqLen(const int64_t t1Idx, int64_t &bIdx);
     __aicore__ inline int64_t GetValidTndT1Size();
     __aicore__ inline bool IsValidTndT1Index(const int64_t t1Idx);
-    __aicore__ inline bool NeedDeterExtraSync();
+    __aicore__ inline bool HasDeterToken(const int64_t t1Idx);
+    __aicore__ inline int32_t GetDeterProcessNum();
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
     __aicore__ inline ChildClass *GetDerived()
@@ -638,11 +639,32 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetV
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline bool
-FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::NeedDeterExtraSync()
+FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::HasDeterToken(const int64_t t1Idx)
 {
-    // Host 按物理 T1 分核，former / remain 只差 1 轮。TND padding 不得再按 packed T1
-    // 另算 maxProcessNum：主循环必须跑完 processBS1ByCore，用这一轮把 remain 核补齐。
-    return processBS1ByCore < tilingData->baseParams.formerCoreProcessNNum;
+    if (cBlockIdx >= usedCoreNum) {
+        return false;
+    }
+    if (t1Idx < 0 || t1Idx >= tilingData->baseParams.totalSize) {
+        return false;
+    }
+    return IsValidTndT1Index(t1Idx);
+}
+
+template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
+__aicore__ inline int32_t
+FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetDeterProcessNum()
+{
+    // 确定性路径每轮都有 mode0 全核同步，所有核必须跑同一轮数。
+    // TND 按 packed T1 切，不要跟 Host 的物理 T1（含尾 padding）走，
+    // 否则有效 token 算完后还会再跑几十轮 dummy ScatterAddDeter。
+    int32_t deterLoop = tilingData->baseParams.formerCoreProcessNNum;
+    if constexpr (IS_TND) {
+        int64_t validT1 = GetValidTndT1Size();
+        int64_t cores = usedCoreNum > 0 ? usedCoreNum : 1;
+        int64_t packedLoop = (validT1 + cores - 1) / cores;
+        deterLoop = static_cast<int32_t>(packedLoop);
+    }
+    return deterLoop > 0 ? deterLoop : 0;
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
