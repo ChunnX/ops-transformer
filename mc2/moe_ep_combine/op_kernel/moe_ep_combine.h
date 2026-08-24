@@ -100,6 +100,10 @@ public:
 
 private:
     __aicore__ inline void SendLocalToken(uint32_t tokenIndex, GM_ADDR dstAddr);
+    __aicore__ inline void SendLocalSlot(uint32_t tokenIndex, int32_t srcTokenIdx,
+                                         int32_t srcTopKIdx, uint32_t weight);
+    __aicore__ inline void SendRemoteSlot(uint32_t tokenIndex, int32_t srcRank, int32_t srcTokenIdx,
+                                          int32_t srcTopKIdx, uint32_t channelIndex);
     __aicore__ inline void SendSlot(uint32_t tokenIndex, int32_t srcRank, int32_t srcTokenIdx,
                                     int32_t srcTopKIdx, uint32_t channelIndex, uint32_t weight);
     __aicore__ inline void SendChannelFlag(uint32_t dstRank, uint32_t channelIndex,
@@ -186,6 +190,7 @@ private:
     uint32_t aivId_{0};
     HcommBatchHandle activeBatchHandle_{};
     uint64_t activeBatchChannel_{0};
+    bool batchHandleInitialized_{false};
     uint32_t preparedWriteCount_{0};
 };
 
@@ -292,8 +297,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushPrepared
     }
     int32_t ret = hcomm_.BatchCommit(activeBatchHandle_);
     ascendc_assert(ret == HCOMM_SUCCESS, "BatchCommit failed, ret=%d", ret);
-    activeBatchHandle_ = {};
-    activeBatchChannel_ = 0;
     preparedWriteCount_ = 0;
 }
 
@@ -302,16 +305,16 @@ template <auto const& config>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWrite(
     uint64_t commHandle, GM_ADDR dstBase, GM_ADDR dst, GM_ADDR src, uint64_t len)
 {
-    if (preparedWriteCount_ != 0 && activeBatchChannel_ != commHandle) {
+    if (!batchHandleInitialized_ || activeBatchChannel_ != commHandle) {
         FlushPreparedWrites();
-    }
-    if (preparedWriteCount_ == HCOMM_BATCH_CAPACITY) {
-        FlushPreparedWrites();
-    }
-    if (preparedWriteCount_ == 0) {
         activeBatchHandle_ = hcomm_.MakeBatchHandle(
             commHandle, hcommBatchTensor_, HCOMM_BATCH_BUFFER_BYTES, dstBase);
         activeBatchChannel_ = commHandle;
+        batchHandleInitialized_ = true;
+    } else if (preparedWriteCount_ == HCOMM_BATCH_CAPACITY) {
+        // BatchCommit resets the batch state. The handle remains bound to the same channel and buffer,
+        // so it can be reused just like moe_ep_dispatch does.
+        FlushPreparedWrites();
     }
     int32_t ret = hcomm_.WriteNbi<config>(activeBatchHandle_, dst, src, len);
     ascendc_assert(ret == HCOMM_SUCCESS, "batch WriteNbi failed, ret=%d", ret);
@@ -319,38 +322,56 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWrite(
 }
 
 template <TemplateMoeEpCombineTypeClass>
-__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendSlot(
-    uint32_t tokenIndex, int32_t srcRank, int32_t srcTokenIdx, int32_t srcTopKIdx, uint32_t channelIndex, uint32_t weight)
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendLocalSlot(
+    uint32_t tokenIndex, int32_t srcTokenIdx, int32_t srcTopKIdx, uint32_t weight)
+{
+    uint64_t sendTokenOffset = (static_cast<uint64_t>(srcTokenIdx) * topK_ + srcTopKIdx) * perSlotBytes_;
+    uint64_t recvStateOffset = (srcTokenIdx * topK_ + srcTopKIdx) * WIN_ADDR_ALIGN;
+    GM_ADDR localRankWinAddr = GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_);
+    GM_ADDR localRankStateAddr = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_);
+
+    SendLocalToken(tokenIndex, localRankWinAddr + sendTokenOffset);
+    if constexpr (HasTopkWeight == 1) {
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
+        statusTensor_(0) = weight;
+        SyncFunc<AscendC::HardEvent::S_MTE3>();
+        GlobalTensor<uint32_t> state;
+        state.SetGlobalBuffer((__gm__ uint32_t *)(localRankStateAddr + recvStateOffset));
+        DataCopyParams weightCopyParams = {1U, static_cast<uint16_t>(sizeof(uint32_t)), 0U, 0U};
+        DataCopyPad(state, statusTensor_, weightCopyParams);
+    }
+}
+
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRemoteSlot(
+    uint32_t tokenIndex, int32_t srcRank, int32_t srcTokenIdx, int32_t srcTopKIdx, uint32_t channelIndex)
 {
     uint64_t sendTokenOffset = (static_cast<uint64_t>(srcTokenIdx) * topK_ + srcTopKIdx) * perSlotBytes_;
     uint64_t recvStateOffset = (srcTokenIdx * topK_ + srcTopKIdx) * WIN_ADDR_ALIGN;
 
     GM_ADDR remoteRankWinAddr = GetUrmaWinAddrByRankId(srcRank, combineDataWinOffset_);
     GM_ADDR remoteRankStateAddr = GetUrmaStateAddrByRankId(srcRank, combineStateWinOffset_);
-
-    if (srcRank != static_cast<int32_t>(rankId_)) {
-        uint64_t commHandle = GetCommHandle(srcRank, channelIndex);
-        GM_ADDR tokenAddr = (GM_ADDR)xGm_.GetPhyAddr(tokenIndex * axisH_);
+    uint64_t commHandle = GetCommHandle(srcRank, channelIndex);
+    GM_ADDR tokenAddr = (GM_ADDR)xGm_.GetPhyAddr(tokenIndex * axisH_);
+    PrepareWrite<DEFAULT_WQE_CONFIG>(
+        commHandle, winRankAddr_[srcRank], remoteRankWinAddr + sendTokenOffset, tokenAddr,
+        axisH_ * sizeof(XType));
+    if constexpr (HasTopkWeight == 1) {
+        GM_ADDR weightAddr = (GM_ADDR)topkWeightsGm_.GetPhyAddr(tokenIndex);
         PrepareWrite<DEFAULT_WQE_CONFIG>(
-            commHandle, winRankAddr_[srcRank], remoteRankWinAddr + sendTokenOffset, tokenAddr,
-            axisH_ * sizeof(XType));
-        if constexpr (HasTopkWeight == 1) {
-            GM_ADDR weightAddr = (GM_ADDR)topkWeightsGm_.GetPhyAddr(tokenIndex);
-            PrepareWrite<DEFAULT_WQE_CONFIG>(
-                commHandle, winRankAddr_[srcRank], remoteRankStateAddr + recvStateOffset, weightAddr,
-                sizeof(uint32_t));
-        }
+            commHandle, winRankAddr_[srcRank], remoteRankStateAddr + recvStateOffset, weightAddr,
+            sizeof(uint32_t));
+    }
+}
+
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendSlot(
+    uint32_t tokenIndex, int32_t srcRank, int32_t srcTokenIdx, int32_t srcTopKIdx, uint32_t channelIndex, uint32_t weight)
+{
+    if (srcRank != static_cast<int32_t>(rankId_)) {
+        SendRemoteSlot(tokenIndex, srcRank, srcTokenIdx, srcTopKIdx, channelIndex);
     } else {
-        SendLocalToken(tokenIndex, remoteRankWinAddr + sendTokenOffset);
-        if constexpr (HasTopkWeight == 1) {
-            SyncFunc<AscendC::HardEvent::MTE3_S>();
-            statusTensor_(0) = weight;
-            SyncFunc<AscendC::HardEvent::S_MTE3>();
-            GlobalTensor<uint32_t> state;
-            state.SetGlobalBuffer((__gm__ uint32_t *)(remoteRankStateAddr + recvStateOffset));
-            DataCopyParams weightCopyParams = {1U, static_cast<uint16_t>(sizeof(uint32_t)), 0U, 0U};
-            DataCopyPad(state, statusTensor_, weightCopyParams);
-        }
+        SendLocalSlot(tokenIndex, srcTokenIdx, srcTopKIdx, weight);
     }
 }
 
@@ -424,6 +445,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
 
     activeBatchHandle_ = {};
     activeBatchChannel_ = 0;
+    batchHandleInitialized_ = false;
     preparedWriteCount_ = 0;
 
     bool splitRankTokens = activeAivNum >= epWorldSize_;
@@ -506,7 +528,18 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
                 if constexpr (HasTopkWeight == 1) {
                     weight = weightsForNotify(i);
                 }
-                SendSlot(tokenIndex, srcRank, srcTokenIdx, srcTopKIdx, channelIndex, weight);
+                if (useRemainingAivForLocal) {
+                    // Dedicated roles: the leading AIVs only send to remote ranks, while all
+                    // remaining AIVs only copy tokens into the local rank window.
+                    if (targetRank == rankId_) {
+                        SendLocalSlot(tokenIndex, srcTokenIdx, srcTopKIdx, weight);
+                    } else {
+                        SendRemoteSlot(tokenIndex, srcRank, srcTokenIdx, srcTopKIdx, channelIndex);
+                    }
+                } else {
+                    // Compatibility path for configurations where one AIV may cover multiple ranks.
+                    SendSlot(tokenIndex, srcRank, srcTokenIdx, srcTopKIdx, channelIndex, weight);
+                }
             }
             SyncFunc<AscendC::HardEvent::S_MTE2>();
         }
