@@ -28,6 +28,8 @@ using namespace ge;
 using namespace gert;
 
 const std::string OP_NAME = "MoeDistributeDispatchTeardown";
+constexpr int64_t CONTEXT_DIM0 = 2052;
+constexpr int64_t DEFAULT_CCL_BUFFER_SIZE = 12000;
 
 template <typename T>
 auto build_from(const T &value)
@@ -1574,7 +1576,7 @@ static MoeDistributeDispatchTeardownTilingTestParam test_cases[] = {
      nullptr,
      nullptr},
 
-    // IC-01: group_ep空字符串
+    // IC-01: group_ep 已从接口移除，空串不再作为非法属性校验
     {4,
      4,
      "invalid_group_ep_empty",
@@ -1606,12 +1608,12 @@ static MoeDistributeDispatchTeardownTilingTestParam test_cases[] = {
      ge::DT_FLOAT,
      ge::DT_INT32,
      ge::DT_INT64,
-     ge::GRAPH_FAILED,
-     0UL,
+     ge::GRAPH_SUCCESS,
+     10000UL,
      "",
      nullptr},
 
-    // IC-02: group_ep长度>=128
+    // IC-02: group_ep 已从接口移除，超长字符串不再作为非法属性校验
     {4,
      4,
      "invalid_group_ep_too_long",
@@ -1643,8 +1645,8 @@ static MoeDistributeDispatchTeardownTilingTestParam test_cases[] = {
      ge::DT_FLOAT,
      ge::DT_INT32,
      ge::DT_INT64,
-     ge::GRAPH_FAILED,
-     0UL,
+     ge::GRAPH_SUCCESS,
+     10000UL,
      "__LONG128__",
      nullptr},
 
@@ -3579,7 +3581,7 @@ struct MoeDistributeDispatchTeardownCompileInfo {
 
 static gert::TilingContextPara BuildTilingContextPara(const MoeDistributeDispatchTeardownTilingTestParam &param)
 {
-    // 存储用例中输入信息
+    // 存储用例中输入信息：context 为必选第 0 输入，其后为 x/y/expert_ids/comm_cmd_info
     std::vector<pair<std::initializer_list<int64_t>, ge::DataType>> inputshapeDtypeList = {
         {param.x, param.x_dtype},
         {param.y, param.y_dtype},
@@ -3587,27 +3589,21 @@ static gert::TilingContextPara BuildTilingContextPara(const MoeDistributeDispatc
         {param.comm_cmd_info, param.comm_cmd_info_dtype}};
     // 构造输入信息
     std::vector<gert::TilingContextPara::TensorDescription> inputTensorDesc;
+    inputTensorDesc.push_back({make_shape({CONTEXT_DIM0}), ge::DT_INT32, ge::FORMAT_ND});
     for (int i = 0; i < param.inputTotalNum; i++) {
         inputTensorDesc.push_back(
             {make_shape(inputshapeDtypeList[i].first), inputshapeDtypeList[i].second, ge::FORMAT_ND});
     }
 
     // 构造输入Attr信息
-    // group_ep：默认 "ep_group"；sentinel "__LONG128__" 展开为 128 个 'a'
-    // comm_alg：默认 ""
-    uint32_t groupLen = 128;
-    std::string groupEpStr =
-        (param.groupEpOverride == nullptr) ? std::string("ep_group") : std::string(param.groupEpOverride);
-    if (groupEpStr == "__LONG128__") {
-        groupEpStr = std::string(groupLen, 'a');
-    }
+    // group_ep 已从算子接口移除；comm_alg：默认 ""
     std::string commAlgStr = (param.commAlgOverride == nullptr) ? std::string("") : std::string(param.commAlgOverride);
 
     std::vector<gert::TilingContextPara::OpAttr> attrs({
-        {"group_ep", build_from<std::string>(groupEpStr)},
         {"ep_world_size", build_from<int64_t>(param.epWorldSize)},
         {"ep_rank_id", build_from<int64_t>(param.epRankId)},
         {"moe_expert_num", build_from<int64_t>(param.moeExpertNum)},
+        {"ccl_buffer_size", build_from<int64_t>(DEFAULT_CCL_BUFFER_SIZE)},
         {"expert_shard_type", build_from<int64_t>(param.expertShardType)},
         {"shared_expert_num", build_from<int64_t>(param.sharedExpertNum)},
         {"shared_expert_rank_num", build_from<int64_t>(param.sharedExpertRankNum)},
@@ -3642,13 +3638,9 @@ static void ThreadFunc(const MoeDistributeDispatchTeardownTilingTestParam *testC
         auto param = testCases[idx];
         auto tilingContextPara = BuildTilingContextPara(param);
         std::cout << "[TEST_CASE] " << param << std::endl;
-        if (param.expectResult == ge::GRAPH_SUCCESS) {
-            // 正常用例分支
-            ExecuteTestCase(tilingContextPara, param.expectResult, param.expectTilingKey);
-        } else {
-            // 异常用例分支
-            ExecuteTestCase(tilingContextPara);
-        }
+        Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", param.rankNum},
+                                                   {"HCCL_BUFFSIZE", 12000UL * 1024UL * 1024UL}};
+        Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, param.expectResult, param.expectTilingKey);
     }
 }
 
@@ -3668,7 +3660,8 @@ TEST_P(TestMoeDistributeTeardownTiling, general_cases)
 {
     auto param = GetParam();
     auto tilingContextPara = BuildTilingContextPara(param);
-    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", param.rankNum}};
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", param.rankNum},
+                                               {"HCCL_BUFFSIZE", 12000UL * 1024UL * 1024UL}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, param.expectResult, param.expectTilingKey);
 }
 
