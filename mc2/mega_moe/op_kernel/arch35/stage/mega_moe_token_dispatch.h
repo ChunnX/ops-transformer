@@ -72,16 +72,6 @@ struct DispatchExpertRankRange {
     int32_t firstRankOffset;
 };
 
-// Minimal state required to keep the Dispatch MTE ring alive across route
-// batches, source-rank changes and GMM1 tiles inside one expert segment. The
-// compact route queue is consumed separately; only the last fetched token is
-// pending in this transfer state.
-struct DispatchTransferStreamState {
-    int32_t issuedTokenCount = 0;
-    int32_t pendingDestinationRow = 0;
-    int32_t pendingTopkIndex = 0;
-};
-
 struct ExpertTokenCountExportScratch {
     LocalTensor<int32_t> stridedTensor;
     LocalTensor<int32_t> compactTensor;
@@ -220,72 +210,6 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(
         context, scratch, (copyNum - 1) % bufferCount, copyNum - 1, tokenRevGlobalTensor, scaleRevGlobalTensor,
         metaInfoGlobalTensor, scratch.validTopkIndexTensor.GetValue(copyStartIdx + copyNum - 1));
 
-    for (int32_t bufferIdx = 0; bufferIdx < firstUseEnd; ++bufferIdx) {
-        TEventID eventId = static_cast<TEventID>(bufferIdx);
-        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
-        WaitFlag<AscendC::HardEvent::MTE3_S>(eventId);
-    }
-}
-
-// Append one already selected wave task directly to the existing MTE ring.
-// sourceRank is a property of this task, so changing rank does not drain the
-// ring. The last fetched token remains pending until the next task or segment end.
-template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
-__aicore__ inline void AppendDispatchTokenToStream(
-    const TokenDispatchConfig &context, TokenDispatchScratch<ActivationType> &scratch,
-    GlobalTensor<ActivationType> &remoteRankGlobalTensor,
-    GlobalTensor<ActivationType> &tokenRevGlobalTensor,
-    GlobalTensor<QuantScaleType> &scaleRevGlobalTensor,
-    GlobalTensor<int32_t> &metaInfoGlobalTensor,
-    int32_t remoteRankIdx, int32_t topkIndex, int32_t destinationRow,
-    DispatchTransferStreamState &stream)
-{
-    int32_t bufferCount = context.bufferConfig.bufferCount;
-
-    int32_t issueBufferIdx = stream.issuedTokenCount % bufferCount;
-    if (stream.issuedTokenCount >= bufferCount) {
-        FetchDispatchTokenAndMetaInfo<true, TopkWeightsPrefetch>(
-            context, scratch, issueBufferIdx, topkIndex, remoteRankIdx,
-            remoteRankGlobalTensor);
-    } else {
-        FetchDispatchTokenAndMetaInfo<false, TopkWeightsPrefetch>(
-            context, scratch, issueBufferIdx, topkIndex, remoteRankIdx,
-            remoteRankGlobalTensor);
-    }
-    if (stream.issuedTokenCount > 0) {
-        int32_t pendingBufferIdx = (stream.issuedTokenCount - 1) % bufferCount;
-        StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-            context, scratch, pendingBufferIdx, stream.pendingDestinationRow,
-            tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
-            stream.pendingTopkIndex);
-    }
-    stream.pendingDestinationRow = destinationRow;
-    stream.pendingTopkIndex = topkIndex;
-    ++stream.issuedTokenCount;
-}
-
-// Store the final pending token and wait only for the slots used by the current
-// stream. The interleaved path invokes this once at the expert-segment boundary.
-template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
-__aicore__ inline void FinishInterleavedDispatchStream(
-    const TokenDispatchConfig &context, TokenDispatchScratch<ActivationType> &scratch,
-    GlobalTensor<ActivationType> &tokenRevGlobalTensor,
-    GlobalTensor<QuantScaleType> &scaleRevGlobalTensor,
-    GlobalTensor<int32_t> &metaInfoGlobalTensor,
-    DispatchTransferStreamState &stream)
-{
-    if (stream.issuedTokenCount <= 0) {
-        return;
-    }
-    int32_t bufferCount = context.bufferConfig.bufferCount;
-
-    int32_t lastBufferIdx = (stream.issuedTokenCount - 1) % bufferCount;
-    StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-        context, scratch, lastBufferIdx, stream.pendingDestinationRow,
-        tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
-        stream.pendingTopkIndex);
-
-    int32_t firstUseEnd = stream.issuedTokenCount < bufferCount ? stream.issuedTokenCount : bufferCount;
     for (int32_t bufferIdx = 0; bufferIdx < firstUseEnd; ++bufferIdx) {
         TEventID eventId = static_cast<TEventID>(bufferIdx);
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
@@ -673,6 +597,125 @@ __aicore__ inline DispatchCoreRouteQueue PlanDispatchCoreRouteQueue(
     return queue;
 }
 
+// Issue one compact route task into the Dispatch MTE2 ring. Changing source
+// rank only redirects the GM view; it does not drain or restart the ring.
+template <bool IsBufferReuse, bool TopkWeightsPrefetch, typename ActivationType>
+__aicore__ inline int32_t FetchInterleavedDispatchRouteTask(
+    const TokenDispatchConfig &context, GM_ADDR *winRankAddr,
+    TokenDispatchScratch<ActivationType> &scratch, int32_t taskIdx,
+    int32_t bufferIdx, GlobalTensor<ActivationType> &remoteRankGlobalTensor,
+    int32_t &currentRankIdx)
+{
+    int32_t routeEntry = scratch.topkIndexTensor.GetValue(taskIdx);
+    int32_t remoteRankIdx = static_cast<int32_t>(GetDispatchRouteRank(routeEntry));
+    int32_t topkIndex = GetDispatchRouteTopkIndex(routeEntry);
+    if (remoteRankIdx != currentRankIdx) {
+        remoteRankGlobalTensor.SetGlobalBuffer(
+            reinterpret_cast<__gm__ ActivationType *>(
+                winRankAddr[remoteRankIdx] + context.quantWinOffset));
+        currentRankIdx = remoteRankIdx;
+    }
+    FetchDispatchTokenAndMetaInfo<IsBufferReuse, TopkWeightsPrefetch>(
+        context, scratch, bufferIdx, topkIndex, remoteRankIdx,
+        remoteRankGlobalTensor);
+    return topkIndex;
+}
+
+// Consume the current core's compact route queue with the same four-phase MTE
+// ring used by the compact baseline: primer, first-fill, steady reuse and
+// epilogue. Route planning and rank changes are outside the synchronization
+// decisions, so the hot loops contain no per-token stream-state branches.
+template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
+__aicore__ inline void CopyInterleavedDispatchRouteQueue(
+    const TokenDispatchConfig &context, GM_ADDR *winRankAddr,
+    TokenDispatchScratch<ActivationType> &scratch, int32_t destinationRowBase,
+    int32_t destinationRowStride, int32_t taskCount,
+    GlobalTensor<ActivationType> &tokenRevGlobalTensor,
+    GlobalTensor<QuantScaleType> &scaleRevGlobalTensor,
+    GlobalTensor<int32_t> &metaInfoGlobalTensor)
+{
+    if (taskCount <= 0) {
+        return;
+    }
+    int32_t bufferCount = context.bufferConfig.bufferCount;
+    if (bufferCount <= 0) {
+        return;
+    }
+
+    GlobalTensor<ActivationType> remoteRankGlobalTensor;
+    int32_t currentRankIdx = -1;
+    int32_t pendingTopkIndex =
+        FetchInterleavedDispatchRouteTask<false, TopkWeightsPrefetch>(
+            context, winRankAddr, scratch, 0, 0, remoteRankGlobalTensor,
+            currentRankIdx);
+
+    // A one-slot ring cannot overlap the next fetch with the current store.
+    // Keep it correct without adding a buffer-count branch to the normal path.
+    if (bufferCount == 1) {
+        StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+            context, scratch, 0, destinationRowBase, tokenRevGlobalTensor,
+            scaleRevGlobalTensor, metaInfoGlobalTensor, pendingTopkIndex);
+        for (int32_t taskIdx = 1; taskIdx < taskCount; ++taskIdx) {
+            pendingTopkIndex =
+                FetchInterleavedDispatchRouteTask<true, TopkWeightsPrefetch>(
+                    context, winRankAddr, scratch, taskIdx, 0,
+                    remoteRankGlobalTensor, currentRankIdx);
+            StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+                context, scratch, 0,
+                destinationRowBase + taskIdx * destinationRowStride,
+                tokenRevGlobalTensor, scaleRevGlobalTensor,
+                metaInfoGlobalTensor, pendingTopkIndex);
+        }
+        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(static_cast<TEventID>(0));
+        WaitFlag<AscendC::HardEvent::MTE3_S>(static_cast<TEventID>(0));
+        return;
+    }
+
+    int32_t firstUseEnd = taskCount < bufferCount ? taskCount : bufferCount;
+    for (int32_t issueIdx = 1; issueIdx < firstUseEnd; ++issueIdx) {
+        int32_t currentTopkIndex =
+            FetchInterleavedDispatchRouteTask<false, TopkWeightsPrefetch>(
+                context, winRankAddr, scratch, issueIdx, issueIdx,
+                remoteRankGlobalTensor, currentRankIdx);
+        int32_t copyIdx = issueIdx - 1;
+        StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+            context, scratch, copyIdx,
+            destinationRowBase + copyIdx * destinationRowStride,
+            tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
+            pendingTopkIndex);
+        pendingTopkIndex = currentTopkIndex;
+    }
+
+    for (int32_t issueIdx = bufferCount; issueIdx < taskCount; ++issueIdx) {
+        int32_t issueBufferIdx = issueIdx % bufferCount;
+        int32_t currentTopkIndex =
+            FetchInterleavedDispatchRouteTask<true, TopkWeightsPrefetch>(
+                context, winRankAddr, scratch, issueIdx, issueBufferIdx,
+                remoteRankGlobalTensor, currentRankIdx);
+        int32_t copyIdx = issueIdx - 1;
+        int32_t copyBufferIdx = copyIdx % bufferCount;
+        StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+            context, scratch, copyBufferIdx,
+            destinationRowBase + copyIdx * destinationRowStride,
+            tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
+            pendingTopkIndex);
+        pendingTopkIndex = currentTopkIndex;
+    }
+
+    int32_t lastTaskIdx = taskCount - 1;
+    StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+        context, scratch, lastTaskIdx % bufferCount,
+        destinationRowBase + lastTaskIdx * destinationRowStride,
+        tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
+        pendingTopkIndex);
+
+    for (int32_t bufferIdx = 0; bufferIdx < firstUseEnd; ++bufferIdx) {
+        TEventID eventId = static_cast<TEventID>(bufferIdx);
+        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
+        WaitFlag<AscendC::HardEvent::MTE3_S>(eventId);
+    }
+}
+
 // The rank-round path keeps one MTE stream alive for the complete expert
 // segment. After that stream is drained once, publish this core's exact row
 // contribution to every GMM1 tile covered by the segment.
@@ -874,7 +917,6 @@ __aicore__ inline void DispatchExpertTokensRankRoundRobin(
         return;
     }
 
-    GlobalTensor<ActivationType> remoteRankGlobalTensor;
     GlobalTensor<ActivationType> tokenRevGlobalTensor;
     GlobalTensor<QuantScaleType> scaleRevGlobalTensor;
     GlobalTensor<int32_t> metaInfoGlobalTensor;
@@ -885,27 +927,10 @@ __aicore__ inline void DispatchExpertTokensRankRoundRobin(
     metaInfoGlobalTensor.SetGlobalBuffer(
         reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.metaInfoPtr));
 
-    DispatchTransferStreamState stream{};
-    int32_t currentRankIdx = -1;
-    for (int32_t taskIdx = 0; taskIdx < expectedTaskCount; ++taskIdx) {
-        int32_t routeEntry = scratch.topkIndexTensor.GetValue(taskIdx);
-        uint32_t rankIdx = GetDispatchRouteRank(routeEntry);
-        int32_t topkIndex = GetDispatchRouteTopkIndex(routeEntry);
-        if (currentRankIdx != static_cast<int32_t>(rankIdx)) {
-            remoteRankGlobalTensor.SetGlobalBuffer(
-                reinterpret_cast<__gm__ ActivationType *>(
-                    winRankAddr[rankIdx] + context.quantWinOffset));
-            currentRankIdx = static_cast<int32_t>(rankIdx);
-        }
-        int32_t destinationRow = expertGlobalRowBegin + firstOwnedRow + taskIdx * coreCount;
-        AppendDispatchTokenToStream<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-            context, scratch, remoteRankGlobalTensor, tokenRevGlobalTensor,
-            scaleRevGlobalTensor, metaInfoGlobalTensor, currentRankIdx,
-            topkIndex, destinationRow, stream);
-    }
-    FinishInterleavedDispatchStream<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-        context, scratch, tokenRevGlobalTensor, scaleRevGlobalTensor,
-        metaInfoGlobalTensor, stream);
+    CopyInterleavedDispatchRouteQueue<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+        context, winRankAddr, scratch, expertGlobalRowBegin + firstOwnedRow,
+        coreCount, expectedTaskCount, tokenRevGlobalTensor,
+        scaleRevGlobalTensor, metaInfoGlobalTensor);
     PublishInterleavedDispatchTilesReady(
         context, params, localExpertId, expertGlobalRowBegin,
         segmentRowBegin, segmentRowEnd, gmm1TileRowCount);
