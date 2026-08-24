@@ -675,6 +675,23 @@ void SMLAInfoParser::SetSMLAShape()
     }
 }
 
+// 根据layout计算期望的连续stride
+std::vector<uint64_t> SMLAInfoParser::GetKvstride(const gert::Shape &shape, const SMLALayout &layout) const
+{
+    std::vector<uint64_t> expectedStrides;
+    if (layout == SMLALayout::BSND || layout == SMLALayout::PA_BBND) {
+        uint64_t dim1 = static_cast<uint64_t>(shape.GetDim(1));
+        uint64_t dim2 = static_cast<uint64_t>(shape.GetDim(2));
+        uint64_t dim3 = static_cast<uint64_t>(shape.GetDim(3));
+        expectedStrides = {dim1 * dim2 * dim3, dim2 * dim3, dim3, 1};
+    } else if (layout == SMLALayout::TND) {
+        uint64_t dim1 = static_cast<uint64_t>(shape.GetDim(1));
+        uint64_t dim2 = static_cast<uint64_t>(shape.GetDim(2));
+        expectedStrides = {dim1 * dim2, dim2, 1};
+    }
+    return expectedStrides;
+}
+
 // 非连续校验：通过shape计算expected stride进行校验
 // PA_BBND时，只允许0轴非连续，其余轴必须连续
 // 非PA_BBND时，所有轴都必须连续
@@ -685,17 +702,7 @@ ge::graphStatus SMLAInfoParser::CheckContiguous() const
     size_t checkStartIdx = (kvLayout_ == SMLALayout::PA_BBND) ? 1 : 0;
     if (opParamInfo_.oriKv.tensor != nullptr && !oriKeyStridesVec_.empty() &&
         opParamInfo_.oriKv.tensor->GetShapeSize() > 0) {
-        std::vector<uint64_t> oriExpectedStrides;
-        if (kvLayout_ == SMLALayout::BSND || kvLayout_ == SMLALayout::PA_BBND) {
-            uint64_t dim1 = static_cast<uint64_t>(oriKvShape_.GetDim(1));
-            uint64_t dim2 = static_cast<uint64_t>(oriKvShape_.GetDim(2));
-            uint64_t dim3 = static_cast<uint64_t>(oriKvShape_.GetDim(3));
-            oriExpectedStrides = {dim1 * dim2 * dim3, dim2 * dim3, dim3, 1};
-        } else if (kvLayout_ == SMLALayout::TND) {
-            uint64_t dim1 = static_cast<uint64_t>(oriKvShape_.GetDim(1));
-            uint64_t dim2 = static_cast<uint64_t>(oriKvShape_.GetDim(2));
-            oriExpectedStrides = {dim1 * dim2, dim2, 1};
-        }
+        std::vector<uint64_t> oriExpectedStrides = GetKvstride(oriKvShape_, kvLayout_);
         OP_CHECK_IF(oriKeyStridesVec_.size() != oriExpectedStrides.size(),
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
                         opName_, "ori_kv",
@@ -707,17 +714,7 @@ ge::graphStatus SMLAInfoParser::CheckContiguous() const
     }
     if (opParamInfo_.cmpKv.tensor != nullptr && !cmpKeyStridesVec_.empty() &&
         opParamInfo_.cmpKv.tensor->GetShapeSize() > 0) {
-        std::vector<uint64_t> cmpExpectedStrides;
-        if (kvLayout_ == SMLALayout::BSND || kvLayout_ == SMLALayout::PA_BBND) {
-            uint64_t dim1 = static_cast<uint64_t>(cmpKvShape_.GetDim(1));
-            uint64_t dim2 = static_cast<uint64_t>(cmpKvShape_.GetDim(2));
-            uint64_t dim3 = static_cast<uint64_t>(cmpKvShape_.GetDim(3));
-            cmpExpectedStrides = {dim1 * dim2 * dim3, dim2 * dim3, dim3, 1};
-        } else if (kvLayout_ == SMLALayout::TND) {
-            uint64_t dim1 = static_cast<uint64_t>(cmpKvShape_.GetDim(1));
-            uint64_t dim2 = static_cast<uint64_t>(cmpKvShape_.GetDim(2));
-            cmpExpectedStrides = {dim1 * dim2, dim2, 1};
-        }
+        std::vector<uint64_t> cmpExpectedStrides = GetKvstride(cmpKvShape_, kvLayout_);
         OP_CHECK_IF(cmpKeyStridesVec_.size() != cmpExpectedStrides.size(),
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
                         opName_, "cmp_kv",
@@ -1126,18 +1123,14 @@ void SMLAInfoParser::GenerateInfo(SMLATilingInfo &smlaInfo)
     } else {
         if (!oriKeyStridesVec_.empty()) {
             smlaInfo.oriKeyStride0 = static_cast<uint32_t>(oriKeyStridesVec_[0]);
-        } else if (kvLayout_ == SMLALayout::PA_BBND) {
-            smlaInfo.oriKeyStride0 = oriBlockSize_ * oriKvHeadDim_;
         } else {
-            smlaInfo.oriKeyStride0 = 0;
+            smlaInfo.oriKeyStride0 = GetKvstride(oriKvShape_, kvLayout_)[0];
         }
 
         if (!cmpKeyStridesVec_.empty()) {
             smlaInfo.cmpKeyStride0 = static_cast<uint32_t>(cmpKeyStridesVec_[0]);
-        } else if (kvLayout_ == SMLALayout::PA_BBND) {
-            smlaInfo.cmpKeyStride0 = cmpBlockSize_ * cmpKvHeadDim_;
         } else {
-            smlaInfo.cmpKeyStride0 = 0;
+            smlaInfo.cmpKeyStride0 = GetKvstride(cmpKvShape_, kvLayout_)[0];
         }
     }
 }
