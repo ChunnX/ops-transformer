@@ -376,9 +376,21 @@ __aicore__ inline void SIVector<SIT>::StoreScoreToWorkspace(const SICommon::RunI
 
     // The VC slot cannot be returned until MTE3 has consumed the in-place uint16 score.
     WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
+    // initial blocks are emitted as a fixed prefix and must not participate in TopK again. Mask them in the
+    // source score tile so every later GM reload/merge observes the same exclusion invariant.
+    if (info.s2Idx == 0U && initialBlocks_ > 0U) {
+        TopkUtils::PadMrgRowsInitBlockVF(scoreLocal, S2_BASIC_BLOCK, info.actMBaseSize, 0U, initialBlocks_);
+        PipeBarrier<PIPE_V>();
+    }
     SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
     WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
     DataCopy(scoreWorkspaceGm[scoreGmOffset], scoreLocal, info.actMBaseSize * S2_BASIC_BLOCK);
+    // The final score tile is consumed through MTE2 immediately after this store. MTE3->V only protects the
+    // source UB and does not order the independent MTE2 pipeline, so establish the GM write/read dependency
+    // directly. Intermediate stores are not reloaded until the final tile and must not occupy the event slot.
+    if (info.isLastS2InnerLoop) {
+        SetFlag<HardEvent::MTE3_MTE2>(TOPK_MTE3_MTE2_EVENT);
+    }
     SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
     WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
     SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
@@ -780,6 +792,10 @@ __aicore__ inline void SIVector<SIT>::RunScoreGmTopKBatch(
 template <typename SIT>
 __aicore__ inline void SIVector<SIT>::ProcessScoreGmTopK(const SICommon::RunInfo &info)
 {
+    // Consume the dependency once for every final score store, including direct-output-only M blocks. When score
+    // rows are reloaded, this wait and the following DataCopy are both on MTE2 and therefore cannot be reordered.
+    WaitFlag<HardEvent::MTE3_MTE2>(TOPK_MTE3_MTE2_EVENT);
+
     LocalTensor<uint16_t> fastBuf = historyValueBuf_.Get<uint16_t>();
     int64_t kbOffset = static_cast<int64_t>(info.actS2Size) - static_cast<int64_t>(info.actS1Size);
     int32_t numPromptK = static_cast<int32_t>(info.promptLen);
