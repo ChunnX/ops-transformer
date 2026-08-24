@@ -621,12 +621,7 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::SetMxDataTypeInfo(const gert::T
  */
 ge::graphStatus MxQuantMatmulAllToAllTilingBase::SetHcclTiling()
 {
-    ge::DataType hcclDtype = ge::DT_UNDEFINED;
-    if (isMxfp4_) {
-        hcclDtype = ge::DT_UINT8;
-    } else {
-        hcclDtype = contextInfo.args_.geAType;
-    }
+    ge::DataType hcclDtype = contextInfo.args_.geCType;  // 用输出类型(YType), 不是输入类型(AType)
     OP_TILING_CHECK(
         mc2tiling::ConvertGeTypeToHcclType(opName_, hcclDtype) == mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
         OP_LOGE(opName_, "Cannot find HcclDataType according to ge datatype = %d.", static_cast<int32_t>(hcclDtype)),
@@ -694,7 +689,6 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoMxQuantMMTiling()
  */
 ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoHcommMxQuantMMTiling()
 {
-    uint64_t perRankM = contextInfo.args_.mValue;
     uint64_t perRankK = contextInfo.args_.kValue;
     uint64_t nValue = contextInfo.args_.nValue;
     bool transB = contextInfo.args_.isBTrans;
@@ -702,13 +696,30 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoHcommMxQuantMMTiling()
 
     // x2每卡完整[K, totalN], Blaze tiling按perRankN计算(kernel内部逐rank切N)
     uint64_t perRankN = nValue / contextInfo.args_.rankDim;
+
+    // 头块: 用inferredInfo.tileM生成tiling
     if (isMxfp4_) {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingSwat;
-        tilingSwat.GetTilingData(perRankM, perRankN, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData);
+        if (inferredInfo.tileCnt > 0) {
+            tilingSwat.GetTilingData(inferredInfo.tileM, perRankN, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData);
+        }
+        if (inferredInfo.tailCnt > 0) {
+            tilingSwat.GetTilingData(inferredInfo.tailM, perRankN, perRankK, false, transB, hcommTilingData_.tailQbmmTilingData);
+        }
     } else {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingSwat;
-        tilingSwat.GetTilingData(perRankM, perRankN, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData);
+        if (inferredInfo.tileCnt > 0) {
+            tilingSwat.GetTilingData(inferredInfo.tileM, perRankN, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData);
+        }
+        if (inferredInfo.tailCnt > 0) {
+            tilingSwat.GetTilingData(inferredInfo.tailM, perRankN, perRankK, false, transB, hcommTilingData_.tailQbmmTilingData);
+        }
     }
+    hcommTilingData_.localMatmul = localMatmulDisabled;
+    OP_LOGD(opName_, "HcommMxQuantMM tiling: tileM=%lu tileCnt=%lu tailM=%lu tailCnt=%lu perRankN=%lu",
+            inferredInfo.tileM, inferredInfo.tileCnt, inferredInfo.tailM, inferredInfo.tailCnt, perRankN);
+    return ge::GRAPH_SUCCESS;
+}
     hcommTilingData_.tailQbmmTilingData = hcommTilingData_.tileQbmmTilingData;
     hcommTilingData_.localMatmul = localMatmulDisabled;
     OP_LOGD(opName_, "HcommMxQuantMM tiling: perRankM=%lu perRankK=%lu perRankN=%lu", perRankM, perRankK, perRankN);
