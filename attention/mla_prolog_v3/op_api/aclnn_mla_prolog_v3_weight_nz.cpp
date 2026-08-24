@@ -31,8 +31,6 @@ using namespace op;
 extern "C" {
 #endif
 
-namespace {
-
 extern aclnnStatus aclnnInnerMlaPrologV3GetWorkspaceSize(
     const aclTensor *tokenX, const aclTensor *weightDq, const aclTensor *weightUqQr, const aclTensor *weightUk,
     const aclTensor *weightDkvKr, const aclTensor *rmsnormGammaCq, const aclTensor *rmsnormGammaCkv,
@@ -50,6 +48,12 @@ extern aclnnStatus aclnnInnerMlaPrologV3GetWorkspaceSize(
 
 extern aclnnStatus aclnnInnerMlaPrologV3(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                          const aclrtStream stream);
+
+#ifdef __cplusplus
+}
+#endif
+
+namespace {
 
 class TensorHolder {
 public:
@@ -118,10 +122,6 @@ bool CheckWeightQuantModeValidity(int64_t weightQuantMode)
             supportedStr += std::to_string(mode);
             idx++;
         }
-        if (!supportedStr.empty()) {
-            supportedStr.pop_back();
-            supportedStr.pop_back();
-        }
         OP_LOGE_FOR_INVALID_VALUE("MlaPrologV3", "weightQuantMode", std::to_string(weightQuantMode), supportedStr);
         return false;
     }
@@ -163,10 +163,6 @@ bool CheckKvCacheQuantModeValidity(int64_t weightQuantMode, int64_t kvCacheQuant
             supportedStr += std::to_string(mode);
             idx++;
         }
-        if (!supportedStr.empty()) {
-            supportedStr.pop_back();
-            supportedStr.pop_back();
-        }
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             "MlaPrologV3", "kvCacheQuantMode", std::to_string(kvCacheQuantMode),
             "When weightQuantMode==" + std::to_string(weightQuantMode) + ", must be within " + supportedStr);
@@ -184,6 +180,12 @@ bool CheckQueryQuantModeValidity(int64_t queryQuantMode)
     }
     return true;
 }
+
+} // namespace
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
     const aclTensor *tokenX, const aclTensor *weightDq, const aclTensor *weightUqQr, const aclTensor *weightUk,
@@ -277,8 +279,6 @@ aclnnStatus aclnnMlaPrologV3WeightNz(void *workspace, uint64_t workspaceSize, ac
 {
     return aclnnInnerMlaPrologV3(workspace, workspaceSize, executor, stream);
 }
-
-} // namespace
 
 #ifdef __cplusplus
 }
