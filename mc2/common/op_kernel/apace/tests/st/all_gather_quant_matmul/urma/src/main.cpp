@@ -39,7 +39,7 @@
 #include "apace/utils/comm_channel_builder.h"
 #include "../../../utils/root_info_exchanger.h"
 
-using namespace AllGatherQuantMatmulImpl;
+using namespace Apace;
 using namespace Apace::AivComm;
 
 using CommContext = Apace::AivComm::CommContext;
