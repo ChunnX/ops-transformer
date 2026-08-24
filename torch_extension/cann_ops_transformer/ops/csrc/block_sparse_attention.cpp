@@ -116,6 +116,25 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 	TORCH_CHECK(q_input_layout == kv_input_layout,
 				"q_input_layout and kv_input_layout must be identical, got q=",
 				std::string(q_input_layout), ", kv=", std::string(kv_input_layout));
+				
+	// Rank is dictated by the layout: TND is [T, N, D]; BNSD is [B, N, S, D];
+	// BSND is [B, S, N, D]. q/k/v all take the layout's rank (kv_input_layout is
+	// identical to q_input_layout, checked above).
+	// This MUST be verified before any of the shape arithmetic further down: the
+	// MXFP4 attentionOut allocation does `query.sizes().vec().back() *= 2`, which
+	// on a 0-dim query dereferences a null data pointer (empty size vector) and
+	// segfaults the process instead of raising. The softmax_lse allocation reads
+	// query.size(0..2) and has the same problem for an under-ranked query.
+	const int64_t expected_rank = (q_input_layout == "TND") ? 3 : 4;
+	TORCH_CHECK(query.dim() == expected_rank,
+				"query must be ", expected_rank, "-D for the ", std::string(q_input_layout),
+				" layout, got ", query.dim(), "-D with shape ", query.sizes());
+	TORCH_CHECK(key.dim() == expected_rank,
+				"key must be ", expected_rank, "-D for the ", std::string(kv_input_layout),
+				" layout, got ", key.dim(), "-D with shape ", key.sizes());
+	TORCH_CHECK(value.dim() == expected_rank,
+				"value must be ", expected_rank, "-D for the ", std::string(kv_input_layout),
+				" layout, got ", value.dim(), "-D with shape ", value.sizes());
 	TORCH_CHECK(block_size == 0,
 				"block_size must be 0 — paged KV cache is not yet supported by the kernel");
 	TORCH_CHECK(mask_type == 0,
