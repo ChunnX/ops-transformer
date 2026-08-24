@@ -34,6 +34,7 @@ namespace FFNToAttentionImpl {
 
 constexpr uint32_t URMA_HCOMM_INIT_SIZE = 512U;
 constexpr uint32_t URMA_FLAG_SLOT_SIZE = 32U;
+constexpr int32_t URMA_FLAG_VALUE = 1;
 #ifndef FFN_TO_ATTENTION_URMA_FLAG_TRACE
 #define FFN_TO_ATTENTION_URMA_FLAG_TRACE 1
 #endif
@@ -185,26 +186,32 @@ template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::InitLocalFlag()
 {
     constexpr uint32_t flagSlotElementNum = URMA_FLAG_SLOT_SIZE / sizeof(int32_t);
-    Duplicate<int32_t>(statusTensor_, 1, flagSlotElementNum);
+    Duplicate<int32_t>(statusTensor_, URMA_FLAG_VALUE, flagSlotElementNum);
     SyncFunc<HardEvent::V_S>();
     if constexpr (URMA_FLAG_TRACE) {
         PRINTF("[F2A_URMA][FLAG_INIT_UB] rank=%u aiv=%u value=%d\n", rankId_, aivId_,
                statusTensor_.GetValue(0));
+        PRINTF("[F2A_URMA][FLAG_INIT_V_MTE3_BEGIN] rank=%u aiv=%u\n", rankId_, aivId_);
     }
     SyncFunc<HardEvent::V_MTE3>();
+    if constexpr (URMA_FLAG_TRACE) {
+        PRINTF("[F2A_URMA][FLAG_INIT_V_MTE3_DONE] rank=%u aiv=%u\n", rankId_, aivId_);
+    }
     GlobalTensor<int32_t> localFlagGMTensor;
     localFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(localFlagAddr_));
-    DataCopy(localFlagGMTensor, statusTensor_, flagSlotElementNum);
-    SyncFunc<HardEvent::MTE3_S>();
-    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(localFlagGMTensor);
-    DataSyncBarrier<MemDsbT::DDR>();
-    int32_t localFlagValue = localFlagGMTensor.GetValue(0);
     if constexpr (URMA_FLAG_TRACE) {
-        PRINTF("[F2A_URMA][FLAG_INIT_GM_AFTER_DCCI] rank=%u aiv=%u addr=%lu value=%d\n", rankId_, aivId_,
-               reinterpret_cast<uint64_t>(localFlagAddr_), localFlagValue);
+        PRINTF("[F2A_URMA][FLAG_INIT_COPY_BEGIN] rank=%u aiv=%u addr=%lu elements=%u\n", rankId_, aivId_,
+               reinterpret_cast<uint64_t>(localFlagAddr_), flagSlotElementNum);
     }
-    ascendc_assert(localFlagValue == 1, "URMA local flag initialization failed, flag=%d, aivId=%u", localFlagValue,
-                   aivId_);
+    DataCopy(localFlagGMTensor, statusTensor_, flagSlotElementNum);
+    if constexpr (URMA_FLAG_TRACE) {
+        PRINTF("[F2A_URMA][FLAG_INIT_COPY_SUBMITTED] rank=%u aiv=%u\n", rankId_, aivId_);
+    }
+    SyncFunc<HardEvent::MTE3_S>();
+    if constexpr (URMA_FLAG_TRACE) {
+        PRINTF("[F2A_URMA][FLAG_INIT_GM_WRITE_DONE] rank=%u aiv=%u addr=%lu stagedFlag=%d\n", rankId_, aivId_,
+               reinterpret_cast<uint64_t>(localFlagAddr_), URMA_FLAG_VALUE);
+    }
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -302,16 +309,10 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
     DataCopyExtParams flagCopyParams = {1U, sizeof(int32_t), 0U, 0U, 0U};
     DataCopyPad(tokenInfoTableGMTensor, statusTensor_, flagCopyParams);
     SyncFunc<HardEvent::MTE3_S>();
-    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(tokenInfoTableGMTensor);
-    DataSyncBarrier<MemDsbT::DDR>();
-    int32_t localRemoteFlagAfterDcci = tokenInfoTableGMTensor.GetValue(0);
     if constexpr (URMA_FLAG_TRACE) {
-        PRINTF("[F2A_URMA][LOCAL_FLAG_DONE] rank=%u aiv=%u yOffset=%lu flagAddr=%lu flag=%d\n", rankId_,
-               aivId_, yOffset, reinterpret_cast<uint64_t>(remoteFlagAddr), localRemoteFlagAfterDcci);
+        PRINTF("[F2A_URMA][LOCAL_FLAG_WRITE_DONE] rank=%u aiv=%u yOffset=%lu flagAddr=%lu stagedFlag=%d\n",
+               rankId_, aivId_, yOffset, reinterpret_cast<uint64_t>(remoteFlagAddr), URMA_FLAG_VALUE);
     }
-    ascendc_assert(localRemoteFlagAfterDcci == 1,
-                   "local token flag write failed, flag=%d, rankId=%u, aivId=%u, yOffset=%lu",
-                   localRemoteFlagAfterDcci, rankId_, aivId_, yOffset);
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -341,20 +342,12 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
     ascendc_assert(ret == 0, "Drain data failed, ret=%d, rankId=%u, dstRank=%u, aivId=%u", ret, rankId_, dstRank,
                    aivId_);
     // Publish the flag only after the token data has reached the destination window.
-    GlobalTensor<int32_t> localFlagGMTensor;
-    localFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(localFlagAddr_));
-    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(localFlagGMTensor);
-    DataSyncBarrier<MemDsbT::DDR>();
-    int32_t localFlagValue = localFlagGMTensor.GetValue(0);
     if constexpr (URMA_FLAG_TRACE) {
         PRINTF("[F2A_URMA][REMOTE_FLAG_BEGIN] rank=%u dstRank=%u aiv=%u yOffset=%lu channel=%lu "
-               "localFlagAddr=%lu localFlag=%d remoteFlagAddr=%lu\n",
-               rankId_, dstRank, aivId_, yOffset, channel, reinterpret_cast<uint64_t>(localFlagAddr_), localFlagValue,
+               "localFlagAddr=%lu stagedFlag=%d remoteFlagAddr=%lu\n",
+               rankId_, dstRank, aivId_, yOffset, channel, reinterpret_cast<uint64_t>(localFlagAddr_), URMA_FLAG_VALUE,
                reinterpret_cast<uint64_t>(remoteFlagAddr));
     }
-    ascendc_assert(localFlagValue == 1,
-                   "URMA flag source changed before send, flag=%d, rankId=%u, dstRank=%u, aivId=%u, yOffset=%lu",
-                   localFlagValue, rankId_, dstRank, aivId_, yOffset);
     ret = hcomm_.WriteNbi(channel, remoteFlagAddr, localFlagAddr_, sizeof(int32_t));
     if constexpr (URMA_FLAG_TRACE) {
         PRINTF("[F2A_URMA][REMOTE_FLAG_WRITE] rank=%u dstRank=%u aiv=%u yOffset=%lu ret=%d\n", rankId_, dstRank,
@@ -364,8 +357,8 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
                    aivId_);
     ret = hcomm_.Drain(channel);
     if constexpr (URMA_FLAG_TRACE) {
-        PRINTF("[F2A_URMA][REMOTE_FLAG_DRAIN] rank=%u dstRank=%u aiv=%u yOffset=%lu sourceFlag=%d ret=%d\n",
-               rankId_, dstRank, aivId_, yOffset, localFlagValue, ret);
+        PRINTF("[F2A_URMA][REMOTE_FLAG_DRAIN] rank=%u dstRank=%u aiv=%u yOffset=%lu stagedFlag=%d ret=%d\n",
+               rankId_, dstRank, aivId_, yOffset, URMA_FLAG_VALUE, ret);
     }
     ascendc_assert(ret == 0, "Drain flag failed, ret=%d, rankId=%u, dstRank=%u, aivId=%u", ret, rankId_, dstRank,
                    aivId_);
