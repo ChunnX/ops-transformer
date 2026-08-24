@@ -70,35 +70,35 @@ public:
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> &l1BufferManager,
                                          __gm__ uint8_t *query);
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
-                                         const ConstInfo &constInfo);
+                                         const ConstInfo<HIGH_PERF> &constInfo);
     __aicore__ inline void IterateLoadQK(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
-                                         RunInfo &runInfo, ConstInfo &constInfo, bool isFirstLoop);
+                                         RunInfo<HIGH_PERF> &runInfo, ConstInfo<HIGH_PERF> &constInfo, bool isFirstLoop);
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
                                        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
-                                       bool notLastTwoLoop, RunInfo &runInfoNext, RunInfo &runInfo,
-                                       ConstInfo &constInfo);
+                                       bool notLastTwoLoop, RunInfo<HIGH_PERF> &runInfoNext, RunInfo<HIGH_PERF> &runInfo,
+                                       ConstInfo<HIGH_PERF> &constInfo);
     __aicore__ inline void FreeEvent();
 
     __aicore__ inline void IterateBmm2(
         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers, RunInfo &runInfo,
-        ConstInfo &constInfo);
+        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers, RunInfo<HIGH_PERF> &runInfo,
+        ConstInfo<HIGH_PERF> &constInfo);
 
 private:
     __aicore__ inline void InitLocalBuffer(BufferManager<BufferType::L1> &l1BufferManager);
     __aicore__ inline void InitGmTensor(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
-                                        const ConstInfo &constInfo);
-    __aicore__ inline void CopyQGmToL1(RunInfo &runInfo, ConstInfo &constInfo);
+                                        const ConstInfo<HIGH_PERF> &constInfo);
+    __aicore__ inline void CopyQGmToL1(RunInfo<HIGH_PERF> &runInfo, ConstInfo<HIGH_PERF> &constInfo);
     __aicore__ inline void IterateBmm1CSA(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
                                           Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
-                                          bool notLastTwoLoop, RunInfo &runInfoNext, RunInfo &runInfo,
-                                          ConstInfo &constInfo);
+                                          bool notLastTwoLoop, RunInfo<HIGH_PERF> &runInfoNext, RunInfo<HIGH_PERF> &runInfo,
+                                          ConstInfo<HIGH_PERF> &constInfo);
 
     // --------------------Bmm2--------------------------
     __aicore__ inline void IterateBmm2CSA(
         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers, RunInfo &runInfo,
-        ConstInfo &constInfo);
+        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers, RunInfo<HIGH_PERF> &runInfo,
+        ConstInfo<HIGH_PERF> &constInfo);
     TPipe *tPipe;
     /* =====================GM变量==================== */
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<LAYOUT_T>();
@@ -149,7 +149,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitCubeBlock(TPipe *pipe,
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
-                                                                  const ConstInfo &constInfo)
+                                                                  const ConstInfo<HIGH_PERF> &constInfo)
 {
     if ASCEND_IS_AIC {
         InitGmTensor(cuSeqlensQ, sequsedQ, constInfo);
@@ -202,7 +202,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::FreeEvent()
 /* 初始化GmTensor,设置shape信息并计算strides */
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
-                                                                 const ConstInfo &constInfo)
+                                                                 const ConstInfo<HIGH_PERF> &constInfo)
 {
     if constexpr (LAYOUT_T == QSMLA_LAYOUT::BSND) {
         this->queryGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
@@ -218,8 +218,8 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, bool notLastTwoLoop, RunInfo &runInfoNext,
-    RunInfo &runInfo, ConstInfo &constInfo)
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, bool notLastTwoLoop, RunInfo<HIGH_PERF> &runInfoNext,
+    RunInfo<HIGH_PERF> &runInfo, ConstInfo<HIGH_PERF> &constInfo)
 {
     IterateBmm1CSA(outputBuf, v0ResGm, notLastTwoLoop, runInfoNext, runInfo, constInfo);
 }
@@ -227,14 +227,14 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm2(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers, RunInfo &runInfo,
-    ConstInfo &constInfo)
+    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers, RunInfo<HIGH_PERF> &runInfo,
+    ConstInfo<HIGH_PERF> &constInfo)
 {
     IterateBmm2CSA(outputBuf, inputLeftBuffers, runInfo, constInfo);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::CopyQGmToL1(RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::CopyQGmToL1(RunInfo<HIGH_PERF> &runInfo, ConstInfo<HIGH_PERF> &constInfo)
 {
     uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx,
                                                                  runInfo.s1oIdx * runInfo.qSNumInOneBlock, 0);
@@ -250,7 +250,7 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::CopyQGmToL1(RunInfo &runInfo
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateLoadQK(
-    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, RunInfo &runInfo, ConstInfo &constInfo,
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, RunInfo<HIGH_PERF> &runInfo, ConstInfo<HIGH_PERF> &constInfo,
     bool isFirstLoop)
 {
     if (unlikely(isFirstLoop)) {
@@ -272,8 +272,8 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateLoadQK(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1CSA(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, bool notLastTwoLoop, RunInfo &runInfoNext,
-    RunInfo &runInfo, ConstInfo &constInfo)
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, bool notLastTwoLoop, RunInfo<HIGH_PERF> &runInfoNext,
+    RunInfo<HIGH_PERF> &runInfo, ConstInfo<HIGH_PERF> &constInfo)
 {
     WaitFlag<HardEvent::MTE2_MTE1>(l1KMte2ToMte1FlagId + l1KMatmul1BufId);
     l1KMatmul1BufId = (l1KMatmul1BufId + 1) % 3U;
@@ -343,8 +343,8 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1CSA(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm2CSA(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers, RunInfo &runInfo,
-    ConstInfo &constInfo)
+    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers, RunInfo<HIGH_PERF> &runInfo,
+    ConstInfo<HIGH_PERF> &constInfo)
 {
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffer = inputLeftBuffers.Get();
     l1PBuffer.WaitCrossCore();
@@ -397,7 +397,7 @@ public:
                                          __gm__ uint8_t *query)
     {}
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
-                                         const ConstInfo &constInfo)
+                                         const ConstInfo<HIGH_PERF> &constInfo)
     {}
 };
 
