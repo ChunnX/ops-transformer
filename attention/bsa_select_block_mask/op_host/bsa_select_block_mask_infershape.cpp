@@ -76,6 +76,22 @@ ge::graphStatus InferShapeBSASelectBlockMask(gert::InferShapeContext *context)
     maskShape->SetDimNum(4);
     maskShape->SetDim(0, batchSize);
     maskShape->SetDim(1, numHeads);
+
+    const gert::Tensor *blockShapeTensor = context->GetOptionalInputTensor(blockShapeEnum);
+    int64_t blockShapeX = 128;
+    int64_t blockShapeY = 128;
+    if (blockShapeTensor != nullptr && blockShapeTensor->GetShapeSize() >= 2) {
+        const int64_t *blockShapeData = blockShapeTensor->GetData<int64_t>();
+        if (blockShapeData != nullptr && blockShapeData[0] > 0 && blockShapeData[1] > 0 && sqLen >= 0 && skvLen >= 0) {
+            blockShapeX = blockShapeData[0];
+            blockShapeY = blockShapeData[1];
+        }
+    }
+    if (sqLen >= 0 && skvLen >= 0) {
+        sqLen = sqLen / blockShapeX + (sqLen % blockShapeX != 0);
+        skvLen = skvLen / blockShapeY + (skvLen % blockShapeY != 0);
+    }
+
     maskShape->SetDim(2, sqLen);
     maskShape->SetDim(3, skvLen);
 

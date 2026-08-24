@@ -27,7 +27,8 @@ protected:
 // ============================================================================
 TEST_F(BSASelectBlockMaskInferShapeTest, infershape_bnsd_layout)
 {
-    int64_t b = 2, n = 8, s = 256, s_kv = 128, d = 128;
+    int64_t b = 2, n = 8, s = 250, s_kv = 129, d = 128;
+    int64_t blockShapeData[2] = {128, 64};
 
     gert::InfershapeContextPara infershapeContextPara(
         "BSASelectBlockMask",
@@ -37,7 +38,7 @@ TEST_F(BSASelectBlockMaskInferShapeTest, infershape_bnsd_layout)
             // 1: key [B, N, S_kv, D]
             {{{b, n, s_kv, d}, {b, n, s_kv, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             // 2: block_shape (OPTIONAL)
-            {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, (void *)blockShapeData},
             // 3: post_block_shape (OPTIONAL)
             {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},
             // 4: actual_seq_lengths (OPTIONAL)
@@ -63,11 +64,9 @@ TEST_F(BSASelectBlockMaskInferShapeTest, infershape_bnsd_layout)
         }
     );
 
-    // 断言期待结果：mask_out = [B, N, S, S_kv]
-    // 注意：infershape 中 maskShape 的 dim2/dim3 设置为 sqLen/skvLen（原始序列长度），
-    //       实际 block 数在 tiling 阶段计算。
+    // 断言期待结果：mask_out = [B, N, Xblocks, Yblocks]
     std::vector<std::vector<int64_t>> expectOutputShape = {
-        {b, n, s, s_kv}  // 0: block_sparse_mask_out
+        {b, n, 2, 3}  // 0: block_sparse_mask_out
     };
 
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
@@ -78,8 +77,9 @@ TEST_F(BSASelectBlockMaskInferShapeTest, infershape_bnsd_layout)
 // ============================================================================
 TEST_F(BSASelectBlockMaskInferShapeTest, infershape_tnd_layout)
 {
-    int64_t total_q = 1024, total_kv = 2048, n = 8, d = 128;
+    int64_t total_q = 1025, total_kv = 2049, n = 8, d = 128;
     int64_t batch = 1;
+    int64_t blockShapeData[2] = {128, 64};
 
     gert::InfershapeContextPara infershapeContextPara(
         "BSASelectBlockMask",
@@ -90,7 +90,7 @@ TEST_F(BSASelectBlockMaskInferShapeTest, infershape_tnd_layout)
             // 1: key [T_kv, N, D]
             {{{total_kv, n, d}, {total_kv, n, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             // 2: block_shape (OPTIONAL)
-            {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, (void *)blockShapeData},
             // 3: post_block_shape (OPTIONAL)
             {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},
             // 4: actual_seq_lengths (OPTIONAL)
@@ -114,9 +114,9 @@ TEST_F(BSASelectBlockMaskInferShapeTest, infershape_tnd_layout)
         }
     );
 
-    // TND 布局下：batchSize=1, numHeads=n, sqLen=total_q, skvLen=total_kv
+    // TND 布局下：batchSize=1, numHeads=n, Xblocks=ceil(total_q/128), Yblocks=ceil(total_kv/64)
     std::vector<std::vector<int64_t>> expectOutputShape = {
-        {1, n, total_q, total_kv}  // 0: block_sparse_mask_out
+        {1, n, 9, 33}  // 0: block_sparse_mask_out
     };
 
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
@@ -127,7 +127,8 @@ TEST_F(BSASelectBlockMaskInferShapeTest, infershape_tnd_layout)
 // ============================================================================
 TEST_F(BSASelectBlockMaskInferShapeTest, infershape_bf16_dtype)
 {
-    int64_t b = 1, n = 4, s = 512, s_kv = 512, d = 128;
+    int64_t b = 1, n = 4, s = 513, s_kv = 514, d = 128;
+    int64_t blockShapeData[2] = {128, 64};
 
     gert::InfershapeContextPara infershapeContextPara(
         "BSASelectBlockMask",
@@ -137,7 +138,7 @@ TEST_F(BSASelectBlockMaskInferShapeTest, infershape_bf16_dtype)
             // 1: key [B, N, S_kv, D] BF16
             {{{b, n, s_kv, d}, {b, n, s_kv, d}}, ge::DT_BF16, ge::FORMAT_ND},
             // 2: block_shape (OPTIONAL)
-            {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, (void *)blockShapeData},
             // 3: post_block_shape (OPTIONAL)
             {{{-1}, {-1}}, ge::DT_UNDEFINED, ge::FORMAT_ND},
             // 4: actual_seq_lengths (OPTIONAL)
@@ -162,7 +163,7 @@ TEST_F(BSASelectBlockMaskInferShapeTest, infershape_bf16_dtype)
     );
 
     std::vector<std::vector<int64_t>> expectOutputShape = {
-        {b, n, s, s_kv}  // 0: block_sparse_mask_out
+        {b, n, 5, 9}  // 0: block_sparse_mask_out
     };
 
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
