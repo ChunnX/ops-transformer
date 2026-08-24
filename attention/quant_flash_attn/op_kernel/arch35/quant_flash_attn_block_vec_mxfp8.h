@@ -128,7 +128,10 @@ public:
                                   ActualSeqLensParser<Q_MODE, int32_t>>::type;
     QSeqParserType *qActSeqLensParser_ = nullptr;
 
-    __aicore__ inline void SetCuSeqLensParser(QSeqParserType &qParser) { this->qActSeqLensParser_ = &qParser; }
+    __aicore__ inline void SetCuSeqLensParser(QSeqParserType &qParser)
+    {
+        this->qActSeqLensParser_ = &qParser;
+    }
 
     attenMaskGmType attenMaskGmInt_;
 
@@ -259,7 +262,10 @@ public:
         }
     }
 
-    __aicore__ inline bool IsInitAttentionOutGm() { return constInfo_.needInitOutput; }
+    __aicore__ inline bool IsInitAttentionOutGm()
+    {
+        return constInfo_.needInitOutput;
+    }
 
     __aicore__ inline void InitOutputSingleCore()
     {
