@@ -12,7 +12,7 @@
 __input__ = {
     "kernel": {
         "scatter_kv_cache_with_k_scale": "scatter_kv_cache_with_k_scale_input"
-    }
+    },
     "aclnn": {
         "aclnnScatterPaKvCacheWithKScale": "aclnnScatterPaKvCacheWithKScaleInput"
     }
@@ -22,23 +22,23 @@ import numpy as np
 import torch
 
 def scatter_kv_cache_with_k_scale_input(
- 	     key,
- 	     value,
- 	     key_cache,
- 	     value_cache,
- 	     slot_mapping,
- 	     key_scale,
- 	     key_scale_cache,
- 	     *,
- 	     cache_layout="BNBD",
- 	     **kwargs
- 	 ):
- 	"""
- 	input for scatter_kv_cache_with_k_scale.
+         key,
+         value,
+         key_cache,
+         value_cache,
+         slot_mapping,
+         key_scale,
+         key_scale_cache,
+         *,
+         cache_layout="BNBD",
+         **kwargs
+     ):
+    """
+    input for scatter_kv_cache_with_k_scale.
 
- 	"""
- 	num_blocks = key_cache.shape[0]
- 	block_size = key_cache.shape[2]
+    """
+    num_blocks = key_cache.shape[0]
+    block_size = key_cache.shape[2]
     gen_num = key.shape[0]
     max_token = num_blocks * block_size
     if gen_num > max_token:
@@ -48,22 +48,22 @@ def scatter_kv_cache_with_k_scale_input(
     return[key, value, key_cache, value_cache, slot_mapping, key_scale, key_scale_cache]
 
 def aclnnScatterPaKvCacheWithKScaleInput(
- 	     key,
- 	     value,
- 	     key_cache,
- 	     value_cache,
- 	     slot_mapping,
- 	     key_scale,
- 	     key_scale_cache,
- 	     cache_layout="BNBD",
- 	     **kwargs
- 	 ):
- 	"""
- 	input for aclnnScatterPaKvCacheWithKScale.
+         key,
+         value,
+         key_cache,
+         value_cache,
+         slot_mapping,
+         key_scale,
+         key_scale_cache,
+         cache_layout="BNBD",
+         **kwargs
+     ):
+    """
+    input for aclnnScatterPaKvCacheWithKScale.
 
- 	"""
- 	num_blocks = key_cache.shape[0]
- 	block_size = key_cache.shape[2]
+    """
+    num_blocks = key_cache.shape[0]
+    block_size = key_cache.shape[2]
     gen_num = key.shape[0]
     max_token = num_blocks * block_size
     if gen_num > max_token:
