@@ -276,7 +276,7 @@ public:
             } else {
                 // 最后一个 tile 完成 update 与归一化。
                 LocalTensor<float> sumUb = softmaxSumBuf_[mLoopIdx].template Get<float>();
-                FlashUpdateLastNew<MM_T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
+                FlashUpdateLastNew<MM_T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, true>(
                     vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, vecMSize, dTemplateAlign64, 1.0f, 1.0f);
             }
         }
@@ -465,11 +465,12 @@ private:
     __aicore__ inline void CopyOutAttentionOut(MxRunInfo &runInfo, const MxConstInfo &constInfo,
                                                LocalTensor<MM_T> &vec2ResUb)
     {
-        // softmax max 保持 -FLT_MAX 表示所有 S2 loop 均未启动；该状态是空行的唯一判据。
-        // sum 只参与最终归一化，max=+Inf/sum=0 等非空异常状态自然传播 NaN。
+        // 使用所有 S2 loop 累计后的 max 与 sum 联合判断空行。该处理也必须覆盖无 mask
+        // 场景，因为有限正极值可能形成 max=+Inf/sum=0，此时 CUDA 传播 NaN 而不是输出 0。
         const uint32_t stateBufIdx = runInfo.mLoop % (PRELOAD_N + 1U);
         LocalTensor<float> maxUb = softmaxMaxBuf_[stateBufIdx].template Get<float>();
-        FaVectorApi::RowInvalidUpdateVF<MM_T>(vec2ResUb, maxUb, runInfo.actVecMSize, constInfo.dSizeV,
+        LocalTensor<float> sumUb = softmaxSumBuf_[stateBufIdx].template Get<float>();
+        FaVectorApi::RowInvalidUpdateVF<MM_T>(vec2ResUb, maxUb, sumUb, runInfo.actVecMSize, constInfo.dSizeV,
                                               static_cast<int64_t>(dTemplateAlign64));
         // 按 TND token/head stride 写回。
         LocalTensor<OUTPUT_T> attenOut;

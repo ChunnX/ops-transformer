@@ -2031,8 +2031,7 @@ def cpu_mxfp8_golden(
                     head_idx,
                 )
 
-                # Kernel softmax max is initialized to the finite -FLT_MAX
-                # sentinel, so golden uses the exact same state representation.
+                # Use the same finite sentinel as the kernel's online max state.
                 m_run = torch.full((nq,), EMPTY_LSE, dtype=torch.float32)
                 l_run = torch.zeros((nq,), dtype=torch.float32)
                 acc = torch.zeros((nq, head_dim), dtype=torch.float32)
@@ -2106,9 +2105,8 @@ def cpu_mxfp8_golden(
                             # VF order: score max -> softmax scale -> ceil to
                             # an ln2 multiple -> merge with the online max.
                             local_max = masked_scores.max(dim=-1).values
-                            # The VF reduction starts from -FLT_MAX. In
-                            # particular, a valid -Inf or exact -FLT_MAX score
-                            # cannot move the max away from the empty sentinel.
+                            # Kernel max reduction starts from -FLT_MAX, so
+                            # valid -Inf and exact -FLT_MAX cannot start a row.
                             local_max = torch.maximum(
                                 local_max,
                                 torch.full_like(local_max, EMPTY_LSE),
@@ -2190,12 +2188,19 @@ def cpu_mxfp8_golden(
                         l_run = l_run * history_rescale + round_sum
                         m_run = torch.where(round_active, m_new, m_run)
 
-                # Kernel 与 golden 都只用最终 max 状态判断空行。sum 仍用于
-                # 归一化和 log(sum)，但不参与有效性判断；因此 +Inf/NaN max
-                # 即使伴随 sum=0 也保持 active，并自然传播非有限结果。
-                row_active = _softmax_row_is_active(m_run)
+                # Match the unchanged kernel output path: only max sentinel
+                # together with sum=0 is empty. A non-empty sum=0 state is an
+                # abnormal active row and RowInvalidUpdateVF writes NaN to OUT.
+                row_empty = ~_softmax_row_is_active(m_run) & (l_run == 0)
+                row_active = ~row_empty
                 safe_l = torch.where(row_active, l_run, torch.ones_like(l_run))
                 attn = acc / safe_l.view(nq, 1)
+                zero_sum_nonempty = row_active & (l_run == 0)
+                attn = torch.where(
+                    zero_sum_nonempty.view(nq, 1),
+                    torch.full_like(attn, float("nan")),
+                    attn,
+                )
                 lse = torch.log(safe_l) + m_run
 
                 for local_idx in range(nq):
