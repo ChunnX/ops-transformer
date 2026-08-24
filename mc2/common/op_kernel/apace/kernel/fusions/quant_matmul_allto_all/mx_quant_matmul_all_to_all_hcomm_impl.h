@@ -308,11 +308,14 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
                               QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::Run()
 {
     auto &&commTiling = tilingData_->commTilingData;
+    uint64_t perRankN = commTiling.nonSplitAxisSize / rankDim_;
 
-    // 逐tile通算掩盖流程:
-    // AIC负责matmul+HCCL通信, AIV不参与(if ASCEND_IS_AIC守卫避免AIV编译Blaze模板)
+    // AIC/AIV分离方案(参考urma):
+    // AIC: for循环逐tile做matmul,每个tile完成后CrossCoreSetFlag通知AIV
+    // AIV: for循环CrossCoreWaitFlag等待AIC,然后HCCL AllToAll通信
+    // 两种模板分别在不同核编译,避免同时内联导致编译卡死
+
     if ASCEND_IS_AIC {
-        // for循环内只做matmul,HCCL调用移到循环外(避免HCCL模板在for循环中内联导致编译卡死)
         Params params;
         const auto &mmTile = tilingData_->tileQbmmTilingData;
         SetupParams(mmTile, CalcTileM(0), params);
@@ -321,7 +324,6 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
         for (uint32_t tid = 0; tid < totalTileCnt_; ++tid) {
             uint32_t curTileM = CalcTileM(tid);
             uint64_t tileOffset = CalcTileOffset(tid);
-            uint64_t perRankN = commTiling.nonSplitAxisSize / rankDim_;
             uint64_t aByteOffset = tileOffset * mmTile.k * sizeof(X1Type) / (IsMxFp4 ? MXFP_DATA_NUM_PER_BYTE : 1);
             uint64_t scaleKLen = Blaze::Gemm::CeilDiv(static_cast<uint64_t>(mmTile.k), MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE;
             uint64_t scaleAByteOffset = tileOffset * scaleKLen * sizeof(AscendC::fp8_e8m0_t);
@@ -337,32 +339,37 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
 
             quantMatmulKernelImpl_(params);
             AscendC::SyncAll();
+            AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(tid);
         }
+    }
 
-        // matmul完成后统一下发AllToAll(头块+尾块)
-        AscendC::SyncAll();
-        uint64_t perRankN = commTiling.nonSplitAxisSize / rankDim_;
-        uint32_t headM = tileM_ * headTileCnt_;
-        uint32_t tailM = tailM_ * tailCnt_;
+    if ASCEND_IS_AIV {
+        // HCCL已在Init中初始化,直接逐tile通信
+        for (uint32_t tid = 0; tid < totalTileCnt_; ++tid) {
+            AscendC::CrossCoreWaitFlag<0x2, PIPE_S>(tid);
+            AscendC::SyncAll<true>();
 
-        AscendC::HcclHandle h0{0}, h1{0};
-        if (headM > 0) {
-            h0 = hccl_.template AlltoAll<true>(
-                mmResultGM_, y_,
+            uint32_t curTileM = CalcTileM(tid);
+            uint64_t tileOffset = CalcTileOffset(tid);
+            curHandle_ = hccl_.template AlltoAll<true>(
+                mmResultGM_ + tileOffset * perRankN * sizeof(YType),
+                y_ + tileOffset * perRankN * sizeof(YType),
                 perRankN, static_cast<AscendC::HcclDataType>(yHcclDataType_),
-                perRankN, static_cast<uint8_t>(headM > 255 ? 255 : headM));
-        }
-        if (tailM > 0) {
-            uint64_t headOffset = static_cast<uint64_t>(headM) * perRankN * sizeof(YType);
-            h1 = hccl_.template AlltoAll<true>(
-                mmResultGM_ + headOffset, y_ + headOffset,
-                perRankN, static_cast<AscendC::HcclDataType>(yHcclDataType_),
-                perRankN, static_cast<uint8_t>(tailM > 255 ? 255 : tailM));
+                perRankN, static_cast<uint8_t>(curTileM));
+
+            if (hasPrevHandle_) {
+                hccl_.Wait(prevHandle_);
+            }
+            prevHandle_ = curHandle_;
+            hasPrevHandle_ = true;
         }
 
+        // 等待最后一个tile的通信完成
         AscendC::SyncAll();
-        if (headM > 0) { hccl_.Wait(h0); }
-        if (tailM > 0) { hccl_.Wait(h1); }
+        if (hasPrevHandle_) {
+            hccl_.Wait(prevHandle_);
+        }
+        hccl_.Wait(curHandle_);
 
         AscendC::SyncAll();
         hccl_.Finalize();
