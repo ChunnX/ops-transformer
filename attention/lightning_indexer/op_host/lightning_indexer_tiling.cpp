@@ -310,7 +310,7 @@ ge::graphStatus LIInfoParser::GetAndCheckAttrParaInfo()
                                                       "Layout_query only supports BSND or TND"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.sparseCount <= 0 || *opParamInfo_.sparseCount > static_cast<int32_t>(TOPK_MAX) ||
-                    (*opParamInfo_.sparseCount > static_cast<int32_t>(SPARSE_LIMIT) &&
+                    (*opParamInfo_.sparseCount > static_cast<int32_t>(SPARSE_2K) &&
                      *opParamInfo_.sparseCount % TOPK_MULTIPLE != 0),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     opName_, "sparse_count", std::to_string(*opParamInfo_.sparseCount).c_str(),
