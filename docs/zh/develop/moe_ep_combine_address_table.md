@@ -163,7 +163,7 @@ for (uint64_t tokenIndex = scanStart; tokenIndex < scanEnd; ++tokenIndex) {
 
 ## 5. 阶段一：BuildAddressTable
 
-### 5.1 UB 计数和总计数清零
+### 5.1 初始化 UB 局部计数
 
 每个 rank 有一个独立的 512B counter slot：
 
@@ -171,16 +171,14 @@ for (uint64_t tokenIndex = scanStart; tokenIndex < scanEnd; ++tokenIndex) {
 rankCountWorkspace[rank][0] = 当前 rank 的地址表条目数
 ```
 
-AIV 0 使用 MTE3 将一组零值写入所有 rank 的总计数，rank 间仍保持 512B stride：
+每个 AIV 只清零自己的 UB per-rank 计数行：
 
 ```cpp
 Duplicate(rankCounts, 0);
-DataCopyPad(rankCountWorkspace, rankCounts, rankStride512Params);
-SyncAll<true>();
 ```
 
-这里不调用 `WriteGmByPassDCache()`。每个 AIV 还在 UB 中维护一行 per-rank 计数，每个 rank 的计数
-占一个 32B block，实际值放在 block 的第一个 `int32_t`。
+每个 rank 的计数占一个 32B block，实际值放在 block 的第一个 `int32_t`。这里不清零 GM 总计数，
+也不调用 `WriteGmByPassDCache()`；最终总数会由最后一个 AIV 根据 prefix 直接覆盖写入。
 
 ### 5.2 所有核切分 actualA
 
@@ -202,7 +200,7 @@ actualA_ / 48
 
 计数阶段所有核合计扫描一次原始 metadata；后面的组表阶段会再扫描一次。
 
-### 5.3 汇总计数并保存 per-core 计数行
+### 5.3 保存 per-core 计数行
 
 每个核第一次扫描自己的区间，只在 UB 中增加对应 rank 的局部计数：
 
@@ -210,13 +208,13 @@ actualA_ / 48
 rankCounts[srcRank * 8]++;
 ```
 
-扫描完成后，每个核执行两类 MTE3 写入：
+扫描完成后，每个核执行一次普通 MTE3 `DataCopy`，把自己的完整 per-rank 计数行写入：
 
-1. 普通 `DataCopy`：把自己的完整 per-rank 计数行写入 `perCoreRankCountWorkspace[aivId]`；
-2. `SetAtomicAdd<int32_t>() + DataCopyPad`：把这一整行累加到 per-rank 总计数。
+```text
+perCoreRankCountWorkspace[aivId][rank]
+```
 
-因此这里确实仍有 atomic，但 atomic 的粒度和用途与 PR 10309 一样：它只汇总每核计数，不再为每条地址
-表记录调用一次 Scalar `AtomicAdd`。
+所有核写完后执行 `SyncAll<true>()`。整个过程没有 `AtomicAdd`、`SetAtomicAdd` 或 `SetAtomicNone`。
 
 ### 5.4 exclusive prefix 分配无冲突区间
 
@@ -228,6 +226,14 @@ rankPrefix[c][r] = sum(perCoreRankCount[0 .. c-1][r])
 
 这就是 AIV `c` 在 `addressTable[r]` 中的起始位置。不同核得到的区间首尾相接且不重叠，所以写表时
 不需要 atomic。地址表顺序按 AIV 编号及各 AIV 扫描顺序稳定排列。
+
+最后一个 AIV 的 prefix 已经包含所有前序核计数，因此最终总条目数为：
+
+```text
+rankCount[r] = rankPrefix[lastAiv][r] + perCoreRankCount[lastAiv][r]
+```
+
+最后一个 AIV 通过普通 strided MTE3 `DataCopyPad` 覆盖写入所有 rank 的总计数，仍不需要 atomic。
 
 ### 5.5 UB 分组和 MTE3 批量写表
 
@@ -283,15 +289,15 @@ SyncAll<true>();
 
 | PR 10309 dispatch | 当前 combine | 说明 |
 | --- | --- | --- |
-| `CalSendCnt()` | 第一次 metadata 扫描 | 在 UB 生成 per-core/per-rank count |
-| `SetAtomicAdd + DataCopyPad` | 同样的 MTE3 atomic 汇总 | 只聚合 rank 总数，不分配单条表项 |
-| `scaleupCounter[core][rank]` | `perCoreRankCountWorkspace[core][rank]` | 保存每核计数行 |
+| PR 已有的 per-core count | 第一次 metadata 扫描 | 为新增地址表逻辑准备每核计数 |
+| `scaleupCounter[core][rank]` | `perCoreRankCountWorkspace[core][rank]` | 保存每核计数行，普通 MTE3 写入 |
 | `GetSlotStartNum()` | exclusive prefix 循环 | 为每核分配不重叠的 per-rank 表区间 |
 | `SetAddrInfoTable()` | UB 中按 rank 组装 Combine 记录 | 两者记录字段不同 |
 | `WriteAddrInfoTable()` | strided MTE3 `DataCopy` | 32B 有效块写入 512B stride 的 GM |
 
-10309 中出现的 `DataCacheCleanAndInvalid` 用于 notify/topkIdx 等其他数据的可见性处理，不属于地址表
-表项构建。当前 Combine 的地址表建表和计数读取均不调用 DCache bypass/clean 接口。
+PR 10309 新增的地址表 diff 没有 atomic。其完整文件中的 `SetAtomicAdd` 属于 PR 之前已经存在的
+`CalSendCnt()`，不算该 PR 的地址表实现。当前 Combine 地址表流程同样不使用任何 atomic；10309 中
+出现的 `DataCacheCleanAndInvalid` 用于 notify/topkIdx 等其他数据的可见性处理，不属于地址表构建。
 
 ## 6. 阶段二：SendAddressTableRange
 
@@ -523,10 +529,11 @@ actualA_
 地址表消除了重复扫描，但不是零成本，新增了：
 
 - metadata 两次分片扫描（第一次计数，第二次组表）；
-- 每个 AIV 一次 per-rank 计数行 atomic MTE3 汇总；
+- 每个 AIV 一次 per-rank 计数行普通 MTE3 写入；
 - 读取前序 AIV 计数行并计算 exclusive prefix；
+- 最后一个 AIV 写入各 rank 最终条目数；
 - 地址表 GM 写入和再次读取；
-- 计数清零、计数发布和建表结束处的全核同步；
+- 计数发布和建表结束处的全核同步；
 - 地址表每条按 512B stride 存放，空间利用率较低。
 
 因此性能收益需要以实测为准，建议分别记录：
@@ -578,7 +585,7 @@ addressTable[srcRank][entry].weight
 地址表正式实现天然具有以下副作用，不会被整体删除：
 
 ```text
-MTE3 atomic-add 汇总 per-rank count
+MTE3 DataCopy 发布 per-core count 和最终 rank count
 MTE3 batch DataCopy addressTable
 PrepareWrite / SendLocalToken
 completion flag
@@ -674,7 +681,7 @@ AIV 1: perCoreRankCount[1] = [0,1,0,0,0,0,0,0]
 AIV 8: perCoreRankCount[8] = [1,0,0,0,0,0,0,0]
 ```
 
-所有核以整行 MTE3 atomic-add 汇总后：
+最后一个 AIV 根据自己的 prefix 加自身计数得到：
 
 ```text
 rankCount = [2, 2, 2, 2, 2, 2, 2, 2]

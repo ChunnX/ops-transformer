@@ -311,15 +311,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressT
     Duplicate<uint32_t>(rankPrefix, 0U, prefixElements);
     SyncFunc<AscendC::HardEvent::V_S>();
 
-    GlobalTensor<int32_t> totalRankCounts;
-    totalRankCounts.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(rankCountWorkspaceAddr_));
     DataCopyParams rankCountCopyParams{static_cast<uint16_t>(epWorldSize_), static_cast<uint16_t>(UB_ALIGN),
                                        0U, static_cast<uint16_t>(WIN_ADDR_ALIGN - UB_ALIGN)};
-    if (aivId_ == 0) {
-        DataCopyPad(totalRankCounts, rankCounts, rankCountCopyParams);
-    }
-    SyncFunc<AscendC::HardEvent::MTE3_S>();
-    SyncAll<true>();
 
     uint64_t tokensPerCore = actualA_ / aivNum_;
     uint64_t remainder = actualA_ % aivNum_;
@@ -349,15 +342,12 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressT
         SyncFunc<AscendC::HardEvent::S_MTE2>();
     }
 
-    // Publish this core's row for prefix calculation and atomically aggregate only the rank totals.
+    // Publish this core's row. Address-table positions and totals are derived from these rows without atomic ops.
     GlobalTensor<int32_t> perCoreRankCounts;
     perCoreRankCounts.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
         perCoreRankCountWorkspaceAddr_ + static_cast<uint64_t>(aivId_) * perCoreRankCountStride_));
     SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopy(perCoreRankCounts, rankCounts, rankCountElements);
-    SetAtomicAdd<int32_t>();
-    DataCopyPad(totalRankCounts, rankCounts, rankCountCopyParams);
-    SetAtomicNone();
     SyncFunc<AscendC::HardEvent::MTE3_S>();
     SyncAll<true>();
 
@@ -374,6 +364,23 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressT
         }
         SyncFunc<AscendC::HardEvent::S_MTE2>();
     }
+
+    // Reload this core's row. The last AIV writes prefix + own count as the final count for every rank.
+    DataCopy(rankCounts, perCoreRankCounts, rankCountElements);
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+    if (aivId_ == aivNum_ - 1U) {
+        for (uint32_t rank = 0; rank < epWorldSize_; ++rank) {
+            uint32_t countOffset = rank * rankCountBlockElements;
+            rankCounts.SetValue(countOffset, static_cast<int32_t>(rankPrefix.GetValue(rank) +
+                static_cast<uint32_t>(rankCounts.GetValue(countOffset))));
+        }
+        GlobalTensor<int32_t> totalRankCounts;
+        totalRankCounts.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(rankCountWorkspaceAddr_));
+        SyncFunc<AscendC::HardEvent::S_MTE3>();
+        DataCopyPad(totalRankCounts, rankCounts, rankCountCopyParams);
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
+    }
+    SyncFunc<AscendC::HardEvent::S_MTE2>();
 
     // Each group fits even if all records target the same rank. Records are grouped by rank in UB.
     uint32_t entriesPerRank = ADDRESS_TABLE_BUFFER_BYTES / epWorldSize_ / ADDRESS_ENTRY_UB_BYTES;
