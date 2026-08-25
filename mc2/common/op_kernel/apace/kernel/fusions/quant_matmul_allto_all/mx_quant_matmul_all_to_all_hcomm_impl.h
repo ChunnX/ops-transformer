@@ -101,7 +101,6 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR x1_scale, GM_ADDR x2_scale,
     GM_ADDR workspaceGM)
 {
-    tilingData_ = tilingData_;
     x1_ = x1;
     x2_ = x2;
     y_ = y;
