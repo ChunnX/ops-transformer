@@ -14,6 +14,7 @@
  *        eAlloc from output shape, workspace for rank+expert prefix sums.
  */
 
+#include <climits>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -61,7 +62,7 @@ constexpr uint32_t ATTR_RANK_NUM_PER_SERVER_INDEX = 7;
 
 constexpr uint32_t ONE_DIM = 1U;
 constexpr uint32_t TWO_DIMS = 2U;
-constexpr int64_t META_INNER_DIM = 4; // recvSrcMetadata dim(1) = 4
+constexpr int64_t META_INNER_DIM = 5; // recvSrcMetadata dim(1) = 5
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
 constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 constexpr int64_t MAX_EP_WORLD_SIZE = 1024;
@@ -239,7 +240,7 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
                     OP_LOGE(nodeName, "dst_buffer_slot_idx dim1(top_k) must be in (0, %ld], but got %ld.", K_MAX, topK),
                     return ge::GRAPH_FAILED);
 
-    // ---- cachedRecvSrcMetadata [*, 4] int32 (OPTIONAL，cached 路径才校验) ----
+    // ---- cachedRecvSrcMetadata [*, 5] int32 (OPTIONAL，cached 路径才校验) ----
     if (cached) {
         const gert::StorageShape *recvSrcMetaShape = context->GetInputShape(CACHED_RECV_SRC_METADATA_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context, recvSrcMetaShape);
@@ -336,7 +337,8 @@ static ge::graphStatus CheckRecvScalesTensor(const gert::TilingContext *context,
 }
 
 static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, const char *nodeName,
-                                          MoeEpDispatchEpilogueInfo &info, int64_t topK, bool hasTopkWeights)
+                                          MoeEpDispatchEpilogueInfo &info, int64_t topK, bool hasTopkWeights,
+                                          bool cached)
 {
     // ---- recvX [A_alloc, hidden] bf16/fp16 ----
     auto recvXShape = context->GetOutputShape(OUT_RECV_X_INDEX);
@@ -355,6 +357,11 @@ static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, co
         OP_LOGE(nodeName, "recv_x dim0(A_alloc) must be in [0, ep*nmt*min(top_k,num_local_experts)=%ld], but got %ld.",
                 aUpper, aAlloc),
         return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(aAlloc > INT32_MAX,
+                    OP_LOGE(nodeName, "recv_x dim0(A_alloc) must not exceed INT32_MAX because metadata stores "
+                                      "recv_x_idx as int32, but got %ld.",
+                            aAlloc),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK((hidden <= 0) || (hidden > H_MAX),
                     OP_LOGE(nodeName, "recv_x dim1(hidden) must be in (0, %ld], but got %ld.", H_MAX, hidden),
                     return ge::GRAPH_FAILED);
@@ -393,7 +400,7 @@ static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, co
                         return ge::GRAPH_FAILED);
     }
 
-    // ---- recvSrcMetadata [A_alloc, 4] int32 ----
+    // ---- recvSrcMetadata [A_alloc, 5] int32 ----
     auto recvSrcMetaShape = context->GetOutputShape(OUT_RECV_SRC_METADATA_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, recvSrcMetaShape);
     OP_TILING_CHECK(recvSrcMetaShape->GetStorageShape().GetDimNum() != TWO_DIMS,
@@ -414,6 +421,17 @@ static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, co
                     OP_LOGE(nodeName, "recv_src_metadata dtype must be DT_INT32, but got %s.",
                             ge::TypeUtils::DataTypeToSerialString(recvSrcMetaDesc->GetDataType()).c_str()),
                     return ge::GRAPH_FAILED);
+
+    if (cached) {
+        auto cachedRecvSrcMetaShape = context->GetInputShape(CACHED_RECV_SRC_METADATA_INDEX);
+        OP_CHECK_NULL_WITH_CONTEXT(context, cachedRecvSrcMetaShape);
+        OP_TILING_CHECK(
+            cachedRecvSrcMetaShape->GetStorageShape().GetDim(0) != aAlloc,
+            OP_LOGE(nodeName,
+                    "cached_recv_src_metadata dim0 must equal recv_x dim0(A_alloc)=%ld, but got %ld.", aAlloc,
+                    cachedRecvSrcMetaShape->GetStorageShape().GetDim(0)),
+            return ge::GRAPH_FAILED);
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -489,7 +507,7 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     info.cfg.topK = static_cast<uint32_t>(dstBufferSlotIdxShape->GetStorageShape().GetDim(1));
     const int64_t topK = static_cast<int64_t>(info.cfg.topK);
 
-    OP_TILING_CHECK(CheckOutputTensors(context, nodeName, info, topK, hasTopkWeights) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(CheckOutputTensors(context, nodeName, info, topK, hasTopkWeights, cached) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check output tensors failed."), return ge::GRAPH_FAILED);
 
     auto recvXShape = context->GetOutputShape(OUT_RECV_X_INDEX);
@@ -529,8 +547,15 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     uint32_t numLocalExpertsAlign8 = (info.cfg.numLocalExperts + 7) / 8 * 8;
     uint64_t hitCountBytes = static_cast<uint64_t>(aivNum) * numLocalExpertsAlign8 * sizeof(int32_t);
     uint64_t hitCountBytesAlign512 = ((hitCountBytes + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    uint32_t epWorldSizeAlign8 = (info.cfg.epWorldSize + 7) / 8 * 8;
+    uint64_t rankHitCountBytes = static_cast<uint64_t>(aivNum) * epWorldSizeAlign8 * sizeof(int32_t);
+    uint64_t rankHitCountBytesAlign512 =
+        ((rankHitCountBytes + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
 
-    workSpaces[0] = SYSTEM_NEED_WORKSPACE + hitCountBytesAlign512;
+    // The first matrix keeps per-core expert counts. The second matrix first stores per-core rank counts and is then
+    // converted in place to each core's compact metadata write offsets.
+    info.rankHitCountOffset = hitCountBytesAlign512;
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE + hitCountBytesAlign512 + rankHitCountBytesAlign512;
 
     uint64_t tilingKey =
         GET_TPL_TILING_KEY(TILINGKEY_TPL_A5, cached ? 1U : 0U, hasTopkWeights ? 1U : 0U, info.isMxQuant ? 1U : 0U);
