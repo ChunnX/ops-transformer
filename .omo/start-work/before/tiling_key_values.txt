@@ -1,0 +1,37 @@
+# Tiling Key 值快照（Todo 2 基线，改动前）
+# 采集时间: 2026-08-22 12:35 UTC
+# 来源:
+#   1) CSV 固化期望值: attention/flash_mla_with_kvcache/tests/ut/op_host/arch35/test_flash_mla_with_kvcache_tiling.csv (expectTilingKey 列)
+#   2) UT 运行实测 host 产出: tests/ut/op_host/arch35/test_flash_mla_with_kvcache_tiling.cpp 的断言输出
+#   3) UT 源码内联期望: EncodeMlaTilingKey(...) 函数 (test_flash_mla_with_kvcache_tiling.cpp:110-190)
+#
+# 位编码观察（供 Todo 14 比对，非权威位图）:
+#   - bit21 (0x200000): decode(FD 路径) 置 1，prefill 期望置 0
+#   - bit18 (0x40000):  mask_mode=3 (CAUSAL) 置 1，mask=0 置 0
+
+## CSV 期望值（= UT 固化常量）#############################################
+# 用例                                            expectTilingKey   hex        二进制位                                        expectWorkspaceSize
+# TND_Prefill (FP16, mask0, lse0)                 1575170           0x180902    bit18=0 bit21=0                             16777216
+# TND_Prefill_MaskCausal (FP16, mask3, lse0)      1837314           0x1C0902    bit18=1 bit21=0                             16777216
+# TND_Prefill_LSE (FP16, mask0, lse1)             1575170           0x180902    bit18=0 bit21=0                             16777216
+# TND_Prefill_BF16 (BF16, mask0, lse0)            1575170           0x180902    bit18=0 bit21=0                             16777216
+# TND_Decode (FP16, mask0, lse0)                  3672322           0x380902    bit18=0 bit21=1                             34078720
+# TND_Decode_LSE (FP16, mask0, lse1)              3672322           0x380902    bit18=0 bit21=1                             34078720
+# TND_Decode_MaskCausal (FP16, mask3, lse0)       3934466           0x3C0902    bit18=1 bit21=1                             34078720
+# MetadataMultiSectionPassthrough                 1575170           0x180902    bit18=0 bit21=0                             16777216
+#
+# 注: UT 源码内联 EncodeMlaTilingKey(false,false)=1575170 (与 CSV prefill 期望一致)
+
+## UT 实测 host 产出（改动前, ascend950, 2026-08-22）######################
+# 用例                                            host 产出 tilingKey    vs CSV 期望
+# MetadataPassthroughConstantFill                 3672322 (=0x380902)    ≠ 1575170 (差 bit21)  → FAIL (tiling.cpp:123)
+# SeqLensDecodeFlagAndWorkspace (prefillInfo)     3672322 (=0x380902)    ≠ 1575170 (差 bit21)  → FAIL (tiling.cpp:167)
+# TND_Prefill 系列 (Prefill/MaskCausal/LSE/BF16)  (断言未打印 key; workspace 断言显示 decode 侧期望值 34078720)
+#                                                 → workspaceSizes=34078720 ≠ csv 期望 16777216 → FAIL (tiling_case_executor.cpp:345)
+# TND_Decode 系列 (Decode/Decode_LSE/Decode_MaskCausal)
+#                                                 → PASS（host key 与 CSV 期望 3672322 一致）
+#
+# 结论: 改动前基线中 host 侧 prefill 路径产出的 tilingKey 恒为 3672322（bit21=1，与 decode 相同），
+#       与 UT/CSV 固化期望 1575170（bit21=0）不一致；decode 路径与期望一致。
+#       7/43 UT 失败全部可归因于此（key 差异 + 由 key 派生的 workspace 差异）。
+#       Todo 14 的 before 基准 key（host 实测）: prefill=3672322, decode=3672322。

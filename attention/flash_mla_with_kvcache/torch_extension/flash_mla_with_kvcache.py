@@ -10,8 +10,8 @@
 from typing import Optional
 import torch
 from torch.library import impl
-from cann_ops_transformer.op_builder.builder import OpBuilder
-from cann_ops_transformer.op_builder.builder import AS_LIBRARY
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
+
 
 MLA_METADATA_OP_NAME = "flash_mla_with_kvcache_metadata"
 
@@ -46,12 +46,12 @@ def _check_metadata_capacity(metadata, batch_size):
 class FlashMlaWithKvcacheOpBuilder(OpBuilder):
     def __init__(self):
         # Builder name == torch 公开接口名（照 flash_attn.py 惯例）；仅用作 JIT 缓存键与
-        # @impl 注册名，sources() 指向同名 cpp（ops/csrc/flash_mla_with_kvcache.cpp）。
-        super(FlashMlaWithKvcacheOpBuilder, self).__init__("flash_mla_with_kvcache")
+        # @impl 注册名，sources() 指向同名 cpp（csrc/attention/flash_mla_with_kvcache.cpp）。
+        super(FlashMlaWithKvcacheOpBuilder, self).__init__("flash_mla_with_kvcache", category="attention")
 
     def sources(self):
         """Path to C++ source code."""
-        return ["ops/csrc/flash_mla_with_kvcache.cpp"]
+        return ["csrc/attention/flash_mla_with_kvcache.cpp"]
 
     def schema(self) -> str:
         """PyTorch operator signature (m0070 interface: no v, no q_rope/k_rope)."""
@@ -160,7 +160,7 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
 flash_mla_with_kvcache_op_builder = FlashMlaWithKvcacheOpBuilder()
 
 
-@impl(AS_LIBRARY, MLA_METADATA_OP_NAME, "PrivateUse1")
+@impl(get_as_library(), MLA_METADATA_OP_NAME, "PrivateUse1")
 def flash_mla_with_kvcache_metadata(
     cache_seqlens: torch.Tensor,
     num_heads_q: int,
@@ -238,7 +238,7 @@ def flash_mla_with_kvcache_metadata_fallback(
     )
 
 
-@impl(AS_LIBRARY, flash_mla_with_kvcache_op_builder.name, "PrivateUse1")
+@impl(get_as_library(), flash_mla_with_kvcache_op_builder.name, "PrivateUse1")
 def flash_mla_with_kvcache(
     q: torch.Tensor,
     k_cache: torch.Tensor,
