@@ -229,8 +229,7 @@ __aicore__ inline void Mc2QuantBatchMatmulASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>:
     mm_.Iterate();
     uint32_t mc2MIdx = block_.params_.mIndex / block_.mSliceCnt_;
     if (ownRedirect_ && (mc2MIdx == block_.cfg_.rankID)) {
-        uint64_t ownOffset = block_.offset_.offsetC - block_.cfg_.rankID * block_.rankMN_;
-        mm_.GetTensorC(cOwnGlobal_[ownOffset]);
+        mm_.GetTensorC(cOwnGlobal_[block_.offset_.offsetC - block_.cfg_.rankID * block_.rankMN_]);
     } else {
         mm_.GetTensorC(cGlobal_[block_.offset_.offsetC]);
     }
