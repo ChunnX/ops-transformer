@@ -22,24 +22,52 @@
 using namespace op;
 
 namespace l0op {
+namespace {
+
+bool CheckNotNull(const void *pointer, const char *parameterName)
+{
+    if (pointer == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "%s must not be nullptr.", parameterName);
+        return false;
+    }
+    return true;
+}
+
+} // namespace
 
 OP_TYPE_REGISTER(BlockAttnResPrepare);
 
-const std::array<const aclTensor *, 3> BlockAttnResPrepare(const aclTensor *blockRes,
-                                                           const aclTensor *validBlocks,
-                                                           const aclTensor *pseudoQuery, float eps,
-                                                           aclOpExecutor *executor)
+const std::array<const aclTensor *, BLOCK_ATTN_RES_PREPARE_OUTPUT_NUM> BlockAttnResPrepare(const aclTensor *blockRes,
+                                                                                           const aclTensor *validBlocks,
+                                                                                           const aclTensor *pseudoQuery,
+                                                                                           float eps,
+                                                                                           aclOpExecutor *executor)
 {
     L0_DFX(BlockAttnResPrepare, blockRes, validBlocks, pseudoQuery, eps);
+    if (!CheckNotNull(blockRes, "blockRes") || !CheckNotNull(validBlocks, "validBlocks") ||
+        !CheckNotNull(pseudoQuery, "pseudoQuery") || !CheckNotNull(executor, "executor")) {
+        return {nullptr, nullptr, nullptr};
+    }
 
     // valid_blocks is a device-side control tensor, so the L0 API must not
     // dereference it.  The kernel normalizes values below zero to the empty
     // online-softmax state and clamps values above N to N at run time.
     auto numerator = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
+    if (numerator == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Failed to allocate the numerator tensor.");
+        return {nullptr, nullptr, nullptr};
+    }
     auto logitMax = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
+    if (logitMax == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Failed to allocate the logitMax tensor.");
+        return {nullptr, nullptr, nullptr};
+    }
     auto expSum = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
-    const aclnnStatus ret = INFER_SHAPE(BlockAttnResPrepare,
-                                        OP_INPUT(blockRes, validBlocks, pseudoQuery),
+    if (expSum == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Failed to allocate the expSum tensor.");
+        return {nullptr, nullptr, nullptr};
+    }
+    const aclnnStatus ret = INFER_SHAPE(BlockAttnResPrepare, OP_INPUT(blockRes, validBlocks, pseudoQuery),
                                         OP_OUTPUT(numerator, logitMax, expSum), OP_ATTR(eps));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockAttnResPrepare infer shape failed.");

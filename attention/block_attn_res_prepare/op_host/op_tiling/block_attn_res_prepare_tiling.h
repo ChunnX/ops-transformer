@@ -19,9 +19,11 @@
 #include "platform/platform_info.h"
 #include "register/op_impl_registry.h"
 #include "util/platform_util.h"
-#include "../op_kernel/arch35/block_attn_res_prepare_tiling_data.h"
+#include "../../op_kernel/arch35/block_attn_res_prepare_tiling_data.h"
 
 namespace optiling {
+
+constexpr float BLOCK_ATTN_RES_PREPARE_DEFAULT_EPS = 1e-6F;
 
 struct BlockAttnResPrepareCompileInfo {
     uint64_t aicCoreNum = 0;
@@ -70,14 +72,14 @@ protected:
 
     ge::graphStatus CheckInputShapes();
     ge::graphStatus CheckInputDtypes() const;
-    ge::graphStatus CalculateWorkDistribution(uint64_t totalWorkUnits, uint64_t maxCoreNum,
-                                              const char *templateName, WorkDistribution &distribution) const;
+    ge::graphStatus CalculateWorkDistribution(uint64_t totalWorkUnits, uint64_t maxCoreNum, const char *templateName,
+                                              WorkDistribution &distribution) const;
 
     uint64_t totalT_ = 0;
     uint64_t totalN_ = 0;
     uint64_t totalS_ = 0;
     uint64_t totalD_ = 0;
-    float eps_ = 1e-6F;
+    float eps_ = BLOCK_ATTN_RES_PREPARE_DEFAULT_EPS;
 
     uint64_t aicCoreNum_ = 0;
     uint64_t aivCoreNum_ = 0;

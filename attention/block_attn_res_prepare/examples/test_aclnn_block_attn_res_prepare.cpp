@@ -15,15 +15,18 @@
 #include "acl/acl.h"
 #include "aclnnop/aclnn_block_attn_res_prepare.h"
 
-#define CHECK_RET(condition, message)           \
-    do {                                        \
-        if (!(condition)) {                     \
-            std::printf("%s\n", (message));    \
-            return 1;                           \
-        }                                       \
+#define CHECK_RET(condition, message) \
+    do { \
+        if (!(condition)) { \
+            std::printf("%s\n", (message)); \
+            return 1; \
+        } \
     } while (0)
 
 namespace {
+
+constexpr int64_t ROW_MAJOR_STRIDE_START_OFFSET = 2;
+constexpr float DEFAULT_EPS = 1.0e-6F;
 
 int64_t GetElementCount(const std::vector<int64_t> &shape)
 {
@@ -49,11 +52,11 @@ int CreateTensor(const std::vector<T> &hostData, const std::vector<int64_t> &sha
     }
 
     std::vector<int64_t> strides(shape.size(), 1);
-    for (int64_t i = static_cast<int64_t>(shape.size()) - 2; i >= 0; --i) {
+    for (int64_t i = static_cast<int64_t>(shape.size()) - ROW_MAJOR_STRIDE_START_OFFSET; i >= 0; --i) {
         strides[i] = shape[i + 1] * strides[i + 1];
     }
-    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, ACL_FORMAT_ND,
-                              shape.data(), shape.size(), *deviceAddress);
+    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, ACL_FORMAT_ND, shape.data(),
+                              shape.size(), *deviceAddress);
     return *tensor == nullptr ? ACL_ERROR_INVALID_PARAM : ACL_SUCCESS;
 }
 
@@ -71,6 +74,7 @@ int main()
     ret = aclrtCreateStream(&stream);
     CHECK_RET(ret == ACL_SUCCESS, "aclrtCreateStream failed");
 
+    // These literals intentionally define a minimal 1-token, 2-block, 2-query, 4-dimension example and its data.
     const std::vector<int64_t> blockResShape = {1, 2, 4};
     const std::vector<int64_t> validBlocksShape = {1};
     const std::vector<int64_t> pseudoQueryShape = {2, 4};
@@ -78,13 +82,11 @@ int main()
     const std::vector<int64_t> statsShape = {2, 1};
 
     const std::vector<float> blockResData = {
-        1.0F, 2.0F, 3.0F, 4.0F,
-        2.0F, 0.0F, -1.0F, 1.0F,
+        1.0F, 2.0F, 3.0F, 4.0F, 2.0F, 0.0F, -1.0F, 1.0F,
     };
     const std::vector<int64_t> validBlocksData = {2};
     const std::vector<float> pseudoQueryData = {
-        1.0F, 0.0F, 0.0F, 0.0F,
-        0.0F, 1.0F, 0.0F, 0.0F,
+        1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F,
     };
     std::vector<float> numeratorData(GetElementCount(numeratorShape), 0.0F);
     std::vector<float> logitMaxData(GetElementCount(statsShape), 0.0F);
@@ -118,8 +120,8 @@ int main()
 
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
-    ret = aclnnBlockAttnResPrepareGetWorkspaceSize(blockRes, validBlocks, pseudoQuery, numerator, logitMax,
-                                                    expSum, 1.0e-6F, &workspaceSize, &executor);
+    ret = aclnnBlockAttnResPrepareGetWorkspaceSize(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum,
+                                                   DEFAULT_EPS, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, "aclnnBlockAttnResPrepareGetWorkspaceSize failed");
 
     void *workspace = nullptr;
@@ -146,8 +148,7 @@ int main()
         std::printf("numerator[%zu] = %.6f\n", i, numeratorData[i]);
     }
     for (size_t i = 0; i < logitMaxData.size(); ++i) {
-        std::printf("logit_max[%zu] = %.6f, exp_sum[%zu] = %.6f\n",
-                    i, logitMaxData[i], i, expSumData[i]);
+        std::printf("logit_max[%zu] = %.6f, exp_sum[%zu] = %.6f\n", i, logitMaxData[i], i, expSumData[i]);
     }
 
     aclDestroyTensor(blockRes);

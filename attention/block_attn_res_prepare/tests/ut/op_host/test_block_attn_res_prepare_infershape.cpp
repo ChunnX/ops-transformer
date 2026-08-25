@@ -25,14 +25,15 @@ namespace {
 
 using TensorDesc = gert::InfershapeContextPara::TensorDescription;
 
+// Shape and index literals below are intentional test vectors for rank, empty-shape, mismatch, and I/O mapping cases.
+
 std::vector<TensorDesc> MakeInputs(const std::initializer_list<int64_t> &blockResShape,
                                    const std::initializer_list<int64_t> &pseudoQueryShape)
 {
     return {
         TensorDesc(gert::StorageShape(blockResShape, blockResShape), ge::DT_FLOAT, ge::FORMAT_ND),
         TensorDesc(gert::StorageShape({1}, {1}), ge::DT_INT64, ge::FORMAT_ND),
-        TensorDesc(gert::StorageShape(pseudoQueryShape, pseudoQueryShape), ge::DT_FLOAT,
-                   ge::FORMAT_ND),
+        TensorDesc(gert::StorageShape(pseudoQueryShape, pseudoQueryShape), ge::DT_FLOAT, ge::FORMAT_ND),
     };
 }
 

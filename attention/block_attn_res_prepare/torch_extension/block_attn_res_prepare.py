@@ -15,6 +15,11 @@ from torch.library import impl
 
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
+DEFAULT_EPS = 1.0e-6
+T_DIM_INDEX = 0
+S_DIM_INDEX = 0
+D_DIM_INDEX = 2
+
 
 class BlockAttnResPrepareOpBuilder(OpBuilder):
     def __init__(self):
@@ -34,11 +39,11 @@ class BlockAttnResPrepareOpBuilder(OpBuilder):
     def register_meta(self):
         @impl(get_as_library(), self.name, "Meta")
         def block_attn_res_prepare_meta(
-            block_res, valid_blocks, pseudo_query, *, eps=1e-6
+            block_res, valid_blocks, pseudo_query, *, eps=DEFAULT_EPS
         ):
-            total_t = block_res.size(0)
-            total_s = pseudo_query.size(0)
-            total_d = block_res.size(2)
+            total_t = block_res.size(T_DIM_INDEX)
+            total_s = pseudo_query.size(S_DIM_INDEX)
+            total_d = block_res.size(D_DIM_INDEX)
             output_options = {"dtype": torch.float32, "device": "meta"}
             numerator = torch.empty((total_s, total_t, total_d), **output_options)
             logit_max = torch.empty((total_s, total_t), **output_options)
@@ -56,7 +61,7 @@ def block_attn_res_prepare(
     valid_blocks: torch.Tensor,
     pseudo_query: torch.Tensor,
     *,
-    eps: float = 1e-6,
+    eps: float = DEFAULT_EPS,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Run the Ascend 950 BlockAttnResPrepare Phase 1 operator.
 
@@ -72,6 +77,4 @@ def block_attn_res_prepare(
         ``[S, T, D]``, ``[S, T]``, and ``[S, T]`` respectively; all outputs are FP32.
     """
     op_module = block_attn_res_prepare_op_builder.load()
-    return op_module.block_attn_res_prepare(
-        block_res, valid_blocks, pseudo_query, eps
-    )
+    return op_module.block_attn_res_prepare(block_res, valid_blocks, pseudo_query, eps)

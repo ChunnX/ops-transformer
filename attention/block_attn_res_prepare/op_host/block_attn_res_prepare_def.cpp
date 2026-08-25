@@ -16,6 +16,11 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
+namespace {
+
+constexpr float DEFAULT_EPS = 1e-6F;
+
+} // namespace
 
 class BlockAttnResPrepare : public OpDef {
 public:
@@ -54,7 +59,7 @@ public:
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
 
-        this->Attr("eps").AttrType(OPTIONAL).Float(1e-6F);
+        this->Attr("eps").AttrType(OPTIONAL).Float(DEFAULT_EPS);
 
         OpAICoreConfig config950;
         config950.DynamicCompileStaticFlag(true)

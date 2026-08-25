@@ -12,15 +12,19 @@
 #define OP_API_INC_LEVEL0_OP_BLOCK_ATTN_RES_PREPARE_H_
 
 #include <array>
+#include <cstddef>
 
 #include "opdev/op_executor.h"
 
 namespace l0op {
 
-const std::array<const aclTensor *, 3> BlockAttnResPrepare(const aclTensor *blockRes,
-                                                           const aclTensor *validBlocks,
-                                                           const aclTensor *pseudoQuery, float eps,
-                                                           aclOpExecutor *executor);
+constexpr std::size_t BLOCK_ATTN_RES_PREPARE_OUTPUT_NUM = 3;
+
+const std::array<const aclTensor *, BLOCK_ATTN_RES_PREPARE_OUTPUT_NUM> BlockAttnResPrepare(const aclTensor *blockRes,
+                                                                                           const aclTensor *validBlocks,
+                                                                                           const aclTensor *pseudoQuery,
+                                                                                           float eps,
+                                                                                           aclOpExecutor *executor);
 
 } // namespace l0op
 

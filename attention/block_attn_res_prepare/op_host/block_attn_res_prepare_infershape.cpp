@@ -16,6 +16,8 @@
 #include "log/log.h"
 #include "register/op_impl_registry.h"
 
+#include <string>
+
 namespace ops {
 namespace {
 
@@ -24,6 +26,12 @@ constexpr size_t PSEUDO_QUERY_INDEX = 2;
 constexpr size_t NUMERATOR_INDEX = 0;
 constexpr size_t LOGIT_MAX_INDEX = 1;
 constexpr size_t EXP_SUM_INDEX = 2;
+constexpr size_t BLOCK_RES_RANK = 3;
+constexpr size_t PSEUDO_QUERY_RANK = 2;
+constexpr size_t T_DIM_INDEX = 0;
+constexpr size_t D_DIM_INDEX = 2;
+constexpr size_t S_DIM_INDEX = 0;
+constexpr size_t PSEUDO_QUERY_D_DIM_INDEX = 1;
 constexpr const char *OP_NAME = "BlockAttnResPrepare";
 
 ge::graphStatus InferShapeBlockAttnResPrepare(gert::InferShapeContext *context)
@@ -33,15 +41,25 @@ ge::graphStatus InferShapeBlockAttnResPrepare(gert::InferShapeContext *context)
     const gert::Shape *pseudoQueryShape = context->GetInputShape(PSEUDO_QUERY_INDEX);
     OP_CHECK_IF(blockResShape == nullptr || pseudoQueryShape == nullptr,
                 OP_LOGE(context->GetNodeName(), "input shape is null"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(blockResShape->GetDimNum() != 3 || pseudoQueryShape->GetDimNum() != 2,
-                OP_LOGE(context->GetNodeName(), "block_res must be 3D and pseudo_query must be 2D"),
+    OP_CHECK_IF(blockResShape->GetDimNum() != BLOCK_RES_RANK || pseudoQueryShape->GetDimNum() != PSEUDO_QUERY_RANK,
+                OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
+                    context->GetNodeName(), "block_res, pseudo_query",
+                    (std::to_string(blockResShape->GetDimNum()) + "D, " +
+                     std::to_string(pseudoQueryShape->GetDimNum()) + "D")
+                        .c_str(),
+                    "block_res must be 3D and pseudo_query must be 2D"),
                 return ge::GRAPH_FAILED);
 
-    const int64_t totalT = blockResShape->GetDim(0);
-    const int64_t totalD = blockResShape->GetDim(2);
-    const int64_t totalS = pseudoQueryShape->GetDim(0);
-    OP_CHECK_IF(pseudoQueryShape->GetDim(1) != totalD,
-                OP_LOGE(context->GetNodeName(), "the last dimensions of block_res and pseudo_query differ"),
+    const int64_t totalT = blockResShape->GetDim(T_DIM_INDEX);
+    const int64_t totalD = blockResShape->GetDim(D_DIM_INDEX);
+    const int64_t totalS = pseudoQueryShape->GetDim(S_DIM_INDEX);
+    OP_CHECK_IF(pseudoQueryShape->GetDim(PSEUDO_QUERY_D_DIM_INDEX) != totalD,
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                    context->GetNodeName(), "block_res.shape[2], pseudo_query.shape[1]",
+                    (std::to_string(totalD) + ", " +
+                     std::to_string(pseudoQueryShape->GetDim(PSEUDO_QUERY_D_DIM_INDEX)))
+                        .c_str(),
+                    "block_res.shape[2] must equal pseudo_query.shape[1]"),
                 return ge::GRAPH_FAILED);
 
     gert::Shape *numeratorShape = context->GetOutputShape(NUMERATOR_INDEX);

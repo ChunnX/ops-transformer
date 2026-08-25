@@ -13,11 +13,9 @@
  * \brief Kernel entry for BlockAttnResPrepare on Ascend 950.
  */
 
+#include "arch35/block_attn_res_prepare_apt_tiling_key.h"
 #include "arch35/block_attn_res_prepare_vector.h"
 #include "blaze/attention/kernel/kernel_block_attn_res_prepare.h"
-
-#define BLOCK_ATTN_RES_PREPARE_VECTOR_TILING_KEY 1000UL
-#define BLOCK_ATTN_RES_PREPARE_MIX_CUBE_TILING_KEY 2000UL
 
 namespace {
 __aicore__ inline Blaze::Attention::BlockAttnResPrepareParams MakeBlockAttnResPrepareParams(
@@ -62,25 +60,25 @@ __aicore__ inline Blaze::Attention::BlockAttnResPrepareParams MakeBlockAttnResPr
 }
 } // namespace
 
-extern "C" __global__ __aicore__ void block_attn_res_prepare(GM_ADDR blockRes, GM_ADDR validBlocks, GM_ADDR pseudoQuery,
-                                                             GM_ADDR numerator, GM_ADDR logitMax, GM_ADDR expSum,
-                                                             GM_ADDR workspace, GM_ADDR tiling)
+template <uint32_t TILING_KEY>
+__global__ __aicore__ void block_attn_res_prepare(
+    GM_ADDR blockRes, GM_ADDR validBlocks, GM_ADDR pseudoQuery, GM_ADDR numerator, GM_ADDR logitMax,
+    GM_ADDR expSum, GM_ADDR workspace, GM_ADDR tiling)
 {
+    AscendC::InitSocState();
     REGISTER_TILING_DEFAULT(optiling::BlockAttnResPrepareCubeTilingData);
-    KERNEL_TASK_TYPE(BLOCK_ATTN_RES_PREPARE_VECTOR_TILING_KEY, KERNEL_TYPE_AIV_ONLY);
-    KERNEL_TASK_TYPE(BLOCK_ATTN_RES_PREPARE_MIX_CUBE_TILING_KEY, KERNEL_TYPE_MIX_AIC_1_2);
     if (blockRes == nullptr || validBlocks == nullptr || pseudoQuery == nullptr || numerator == nullptr ||
         logitMax == nullptr || expSum == nullptr || workspace == nullptr || tiling == nullptr) {
         return;
     }
-    if (TILING_KEY_IS(BLOCK_ATTN_RES_PREPARE_VECTOR_TILING_KEY)) {
+    if constexpr (TILING_KEY == BLOCK_ATTN_RES_PREPARE_VECTOR_TILING_KEY) {
         GET_TILING_DATA_WITH_STRUCT(optiling::BlockAttnResPrepareTilingData, tilingData, tiling);
         BlockAttnResPrepare::BlockAttnResPrepareVector op(&tilingData);
         if (!op.Init(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum)) {
             return;
         }
         op.Process();
-    } else if (TILING_KEY_IS(BLOCK_ATTN_RES_PREPARE_MIX_CUBE_TILING_KEY)) {
+    } else if constexpr (TILING_KEY == BLOCK_ATTN_RES_PREPARE_MIX_CUBE_TILING_KEY) {
         AscendC::SetSysWorkspace(workspace);
         GM_ADDR userWorkspace = AscendC::GetUserWorkspace(workspace);
         GET_TILING_DATA_WITH_STRUCT(optiling::BlockAttnResPrepareCubeTilingData, cubeTilingData, tiling);
