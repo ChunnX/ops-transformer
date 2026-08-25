@@ -8,11 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-/*!
- * \file quant_matmul_allto_all_tiling_data.h
- * \brief Serialized tiling data passed from the host launcher to the kernel.
- */
-
 #pragma once
 
 #include <cstdint>
@@ -20,11 +15,22 @@
 #include "../../../tiling/quant_matmul_tiling_data.h"
 #include "../../../tiling/comm_tiling_data.h"
 
+struct MatmulAllToAllApaceTilingInfo {
+    uint32_t tileM{0};
+    uint32_t tileCnt{0};
+    uint32_t tailM{0};
+    uint32_t tailCnt{0};
+    uint32_t rankM{0};
+    uint32_t rankN{0};
+    uint32_t rankK{0};
+    uint32_t rankDim{0};
+    uint64_t hcclDataType{0};
+};
+
 struct hcommAllToAllMatmulTilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
-    CommTilingData commTilingData;
+    MatmulAllToAllApaceTilingInfo matmulAllToAllTilingInfo;
     QuantMatmulTilingData tileQbmmTilingData;
     QuantMatmulTilingData tailQbmmTilingData;
-    uint32_t localMatmul{0};
 };
