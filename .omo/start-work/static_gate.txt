@@ -1,0 +1,60 @@
+========================================================================
+STATIC GATE — old op name token-boundary audit (Todo 15 + remediation, compliance audit)
+Repository: ops-transformer
+Command: grep -rEn '(^|[^A-Za-z0-9_])(FlashMlaMetadata|flash_mla_metadata)([^A-Za-z0-9_]|$)'
+         --exclude-dir=.git --exclude-dir=build --exclude-dir=build_out
+         --exclude-dir=.omo --exclude-dir=__pycache__
+         --exclude='*.pyc' --exclude='*.run' --exclude='*.o' --exclude='*.so' .
+========================================================================
+
+BASELINE (pre-remediation): 13 hits
+  CLASS2 comments w/ 旧名 marker:             4
+  CLASS2 doc comments noting rename:          4   (examples:15/18/212, aicpu .h:12)
+  UNCLASSIFIED program text:                  5   (static_assert:83, LOG_PRINT:235/562/590, CMake:11)
+  -> STATIC_GATE: FAIL (5 unclassified)
+
+REMEDIATION (this follow-up): normalized 8 lines in flash_mla_with_kvcache_metadata/
+  examples/test_aclnn_flash_mla_with_kvcache_metadata.cpp: 15 / 18 / 212 / 235 / 560 / 588
+  op_kernel_aicpu/flash_mla_with_kvcache_metadata.h:        12 (\file tag)
+  op_host/CMakeLists.txt:                                   11 (CACHE doc string)
+  All rewritten to flash_mla_with_kvcache_metadata; zero code-semantics change
+  (comments + inert string literals only). 4 arch35 annotated comments untouched.
+  NOTE (audit precision): smoke/final LOG_PRINT banners sat at :562/:590 during the
+  original audit; a parallel clang-format pass (uncommitted, not authored by this
+  audit) shifted them to :560/:588 before remediation. Both line sets are the same
+  logical lines; remediation edits matched by content.
+  ATTRIBUTION: the working tree also carries uncommitted formatting-only changes to
+  16 other files (tests/pytests, op_api/l0 headers, aicpu sources, torch_extension)
+  from other plan todos — verified 0 old-name tokens in any of them; not touched here.
+
+FINAL CLASSIFIED HITS (5 total; one line per hit: file:line: classification)
+========================================================================
+attention/flash_mla_with_kvcache/op_kernel/arch35/flash_mla_with_kvcache_kernel_noquant_mla.h:79:  CLASS2-comment-旧名marker  (Part A annotated; historically whitelisted)
+attention/flash_mla_with_kvcache/op_kernel/arch35/flash_mla_with_kvcache_kernel_noquant_mla.h:81:  CLASS2-comment-旧名marker  (Part A annotated; historically whitelisted)
+attention/flash_mla_with_kvcache/op_kernel/arch35/flash_mla_with_kvcache_kernel_noquant_mla.h:83:  WHITELISTED-literal  (static_assert diagnostic string; plan-exempt, references producer layout name)
+attention/flash_mla_with_kvcache/op_kernel/arch35/flash_mla_with_kvcache_tiling_data.h:30:  CLASS2-comment-旧名marker  (Part A annotated; historically whitelisted)
+attention/flash_mla_with_kvcache/op_kernel/arch35/flash_mla_with_kvcache_tiling_data.h:33:  CLASS2-comment-旧名marker  (Part A annotated; historically whitelisted)
+
+========================================================================
+SUMMARY COUNT (final)
+========================================================================
+Total main-grep hits:                      5
+  aclnn exported names (contiguous):       22 code occurrences exist, whitelisted by
+                                           definition; structurally invisible to the
+                                           token-boundary grep (aclnnFlashMlaMetadata,
+                                           aclnnFlashMlaMetadataGetWorkspaceSize in
+                                           op_api headers/defs + example call sites)
+  4 annotated 旧名 comments (arch35):       4
+  static_assert literal (kernel :83):      1   (plan-exempt diagnostic)
+  doc comments / strings mentioning old
+  name (bare token, outside whitelist):    0   (all 8 normalized to new name)
+
+Secondary scoped check (within flash_mla_with_kvcache_metadata/, -i grep):
+  residual after whitelist subtraction = 0  -> PASS
+  (remaining substring-only \file tags like aclnn_flash_mla_metadata.cpp,
+   l0_flash_mla_metadata.cpp, flash_mla_metadata_check.h carry no token
+   boundary per the gate regex and are not gate hits)
+
+========================================================================
+STATIC_GATE: PASS  (5/5 hits whitelisted; 0 unclassified; secondary residual 0)
+========================================================================
