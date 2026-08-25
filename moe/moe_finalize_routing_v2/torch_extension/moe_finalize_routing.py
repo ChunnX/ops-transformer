@@ -9,18 +9,16 @@
 # -----------------------------------------------------------------------------------------------------------
 import os
 import warnings
-from typing import Optional, List
+from typing import List, Optional
 
 import torch
-from torch.library import impl
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
+from torch.library import impl
 
 
 class _MoeFinalizeRoutingOpBuilder(OpBuilder):
     def __init__(self):
-        super(_MoeFinalizeRoutingOpBuilder, self).__init__(
-            "moe_finalize_routing", category="moe"
-        )
+        super(_MoeFinalizeRoutingOpBuilder, self).__init__("moe_finalize_routing", category="moe")
 
     def sources(self):
         return ["csrc/moe/moe_finalize_routing.cpp"]
@@ -89,7 +87,6 @@ class _MoeFinalizeRoutingOpBuilder(OpBuilder):
 
 _moe_finalize_routing_builder = _MoeFinalizeRoutingOpBuilder()
 _moe_finalize_routing_builder._ensure_initialized()
-_op_module = _moe_finalize_routing_builder.load()
 
 
 @impl(get_as_library(), _moe_finalize_routing_builder.name, "PrivateUse1")
@@ -311,19 +308,17 @@ class MoeFinalizeRoutingFn(torch.autograd.Function):
             expanded_x, drop_pad_mode
         )
 
-        grad_expanded_x, grad_scales = (
-            torch.ops.cann_ops_transformer.moe_finalize_routing_grad(
-                grad_out,
-                grad_row_idx,
-                expanded_x,
-                eff_scales,
-                expert_idx,
-                bias,
-                drop_pad_mode,
-                grad_active_num,
-                grad_expert_num,
-                grad_expert_capacity,
-            )
+        grad_expanded_x, grad_scales = torch.ops.cann_ops_transformer.moe_finalize_routing_grad(
+            grad_out,
+            grad_row_idx,
+            expanded_x,
+            eff_scales,
+            expert_idx,
+            bias,
+            drop_pad_mode,
+            grad_active_num,
+            grad_expert_num,
+            grad_expert_capacity,
         )
 
         grad_expanded_x = grad_expanded_x if needs[0] else None
