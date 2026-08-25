@@ -32,6 +32,7 @@ public:
 
 protected:
     __aicore__ inline void CalMultiOutToken(const int64_t out_offset, const int64_t out_tokens_number);
+    __aicore__ inline void ValidateIndices(const int64_t start_token);
     __aicore__ inline void CalSingleOutToken(const int64_t start_token, const int64_t out_token_idx);
     __aicore__ inline void CalPartOutToken(
         const int64_t start_token, const int64_t h_index, const int64_t h_length, const int64_t out_token_index);
@@ -77,6 +78,7 @@ protected:
 
     constexpr static uint32_t BLOCK_SIZE = 32;
     constexpr static uint32_t ALIGN_512 = 512;
+    constexpr static int64_t MAX_SORTED_INDEX = 2134372523;
 
     int64_t hidden_size;
     int64_t permuted_probs_grad_length;
@@ -249,9 +251,26 @@ __aicore__ inline void KernelMoeTokenUnpermuteWithEp<T1, T2, T3, PROBS, ISTOKEN>
 }
 
 template <typename T1, typename T2, typename T3, bool PROBS, bool ISTOKEN>
+__aicore__ inline void KernelMoeTokenUnpermuteWithEp<T1, T2, T3, PROBS, ISTOKEN>::ValidateIndices(
+    const int64_t start_token)
+{
+    for (int64_t token_index = start_token; token_index < start_token + this->top_k; ++token_index) {
+        SetFlag<HardEvent::MTE2_S>(probsMte2ToS);
+        WaitFlag<HardEvent::MTE2_S>(probsMte2ToS);
+        const T2 index = this->indicesLocal.GetValue(token_index);
+        SetFlag<HardEvent::S_MTE2>(probsSToMte2);
+        WaitFlag<HardEvent::S_MTE2>(probsSToMte2);
+        ASSERT_MSG(
+            index >= 0 && static_cast<int64_t>(index) < MAX_SORTED_INDEX,
+            "sortedIndices value %d is outside [0, %ld).", index, MAX_SORTED_INDEX);
+    }
+}
+
+template <typename T1, typename T2, typename T3, bool PROBS, bool ISTOKEN>
 __aicore__ inline void KernelMoeTokenUnpermuteWithEp<T1, T2, T3, PROBS, ISTOKEN>::CalSingleOutToken(
     const int64_t start_token, const int64_t out_token_idx)
 {
+    ValidateIndices(start_token);
     if constexpr (ISTOKEN) {
         for (int64_t h_index = 0; h_index < this->hidden_splited_num; ++h_index) {
             CalPartOutToken(start_token, h_index, this->hidden_splited_length, out_token_idx);
