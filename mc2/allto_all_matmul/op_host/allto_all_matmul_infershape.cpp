@@ -275,16 +275,20 @@ static ge::graphStatus InferDataTypeAlltoAllMatmul(gert::InferDataTypeContext *c
 
     const auto attrs = context->GetAttrs();
     OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    // const int64_t *x1QuantMode = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_X1_QUANT_MODE);
-    // const int64_t *x2QuantMode = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_X2_QUANT_MODE);
-    // OPS_CHECK(!(*x1QuantMode == 0 && *x2QuantMode == 0) &&
-    //               !(*x1QuantMode == X1_DYN_PERTOKEN_QUANT_NUM && *x2QuantMode == X2_PERCHANNEL_QUANT_NUM) &&
-    //               !(*x1QuantMode == X1_MXFP8_QUANT_NUM && *x2QuantMode == X2_MXFP8_QUANT_NUM),
-    //           OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-    //               INNER_DEBUG, "x1QuantMode and x2QuantMode",
-    //               (std::to_string(*x1QuantMode) + " and " + std::to_string(*x2QuantMode)).c_str(),
-    //               "The value of x1QuantMode and x2QuantMode must be within the supported range."),
-    //           return ge::GRAPH_FAILED);
+    const int64_t *x1QuantMode = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_X1_QUANT_MODE);
+    const int64_t *x2QuantMode = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_X2_QUANT_MODE);
+    if (x1QuantMode == nullptr || x2QuantMode == nullptr) {
+        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "x1QuantMode and x2QuantMode", "valid value", "nullptr");
+        return ge::GRAPH_FAILED;
+    }
+    OPS_CHECK(!(*x1QuantMode == 0 && *x2QuantMode == 0) &&
+                  !(*x1QuantMode == X1_DYN_PERTOKEN_QUANT_NUM && *x2QuantMode == X2_PERCHANNEL_QUANT_NUM) &&
+                  !(*x1QuantMode == X1_MXFP8_QUANT_NUM && *x2QuantMode == X2_MXFP8_QUANT_NUM),
+              OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                  INNER_DEBUG, "x1QuantMode and x2QuantMode",
+                  (std::to_string(*x1QuantMode) + " and " + std::to_string(*x2QuantMode)).c_str(),
+                  "The value of x1QuantMode and x2QuantMode must be within the supported range."),
+              return ge::GRAPH_FAILED);
 
     // 初始默认值
     auto yType = ge::DataType::DT_UNDEFINED;

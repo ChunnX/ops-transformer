@@ -221,15 +221,19 @@ static ge::graphStatus InferDataTypeMatmulAlltoAll(gert::InferDataTypeContext *c
 
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    // const int64_t *x1QuantMode = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_X1_QUANT_MODE);
-    // const int64_t *x2QuantMode = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_X2_QUANT_MODE);
-    // OPS_CHECK(!(*x1QuantMode == 0 && *x2QuantMode == 0) &&
-    //               !(*x1QuantMode == X1_PERTOKEN_QUANT_NUM && *x2QuantMode == X2_PERCHANNEL_QUANT_NUM) &&
-    //               !(*x1QuantMode == X1_MXFP8_QUANT_NUM && *x2QuantMode == X2_MXFP8_QUANT_NUM),
-    //           OP_LOGE_WITH_INVALID_ATTR(INNER_DEBUG, "quant_mode",
-    //                                     (std::to_string(*x1QuantMode) + "/" + std::to_string(*x2QuantMode)).c_str(),
-    //                                     "valid quant mode combination"),
-    //           return ge::GRAPH_FAILED);
+    const int64_t *x1QuantMode = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_X1_QUANT_MODE);
+    const int64_t *x2QuantMode = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_X2_QUANT_MODE);
+    if (x1QuantMode == nullptr || x2QuantMode == nullptr) {
+        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "x1QuantMode and x2QuantMode", "valid value", "nullptr");
+        return ge::GRAPH_FAILED;
+    }
+    OPS_CHECK(!(*x1QuantMode == 0 && *x2QuantMode == 0) &&
+                  !(*x1QuantMode == X1_PERTOKEN_QUANT_NUM && *x2QuantMode == X2_PERCHANNEL_QUANT_NUM) &&
+                  !(*x1QuantMode == X1_MXFP8_QUANT_NUM && *x2QuantMode == X2_MXFP8_QUANT_NUM),
+              OP_LOGE_WITH_INVALID_ATTR(INNER_DEBUG, "quant_mode",
+                                        (std::to_string(*x1QuantMode) + "/" + std::to_string(*x2QuantMode)).c_str(),
+                                        "valid quant mode combination"),
+              return ge::GRAPH_FAILED);
 
     auto yType = ge::DataType::DT_UNDEFINED;
     const int64_t *yDtypePtr = attrs->GetInt(INDEX_ATTR_Y_DTYPE);
