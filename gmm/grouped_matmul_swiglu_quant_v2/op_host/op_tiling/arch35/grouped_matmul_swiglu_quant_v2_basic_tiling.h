@@ -29,7 +29,8 @@ namespace optiling {
 using namespace Ops::Transformer::OpTiling;
 class GroupedMatmulSwigluQuantV2Tiling950 : public GroupedQmmTiling {
 public:
-    explicit GroupedMatmulSwigluQuantV2Tiling950(gert::TilingContext *context) : GroupedQmmTiling(context)
+    explicit GroupedMatmulSwigluQuantV2Tiling950(gert::TilingContext *context)
+        : GroupedQmmTiling(context)
     {
         Reset();
     }
