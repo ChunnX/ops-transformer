@@ -4,7 +4,7 @@
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
-# Please refer to the License for details. You may not be this file except in compliance with the License.
+# Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
@@ -13,13 +13,19 @@
 """Generate GQA test cases CSV for qfa_mxfp4.
 
 G = N_q / N_kv, G <= 64, N_q % N_kv == 0.
+Layout: BNSD only. No advanced features (no mask, no lse, no rope).
+
+Size constraint: B * N_q * S1 <= MAX_SIZE and B * N_kv * S2 <= MAX_SIZE.
+When one parameter (B/N/S) is large, the others are automatically kept small
+by the size filter, so total tensor size stays manageable.
+
 Output: qfa_mxfp4_gqa.csv (same format as qfa_mxfp4.csv)
 """
 
 import csv
-import itertools
 import os
 import random
+from collections import defaultdict
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -31,7 +37,44 @@ D_PER_GROUP = D // 64    # 2
 PRECISION = "((0.0078125, 0.005), (0.0078125, 0.005))"
 ABS_PRECISION = "(0.0001, 0.0001)"
 
-DATA_RANGES = ["1.0", "-1,1", "0.01,1", "-100,100", "-10,10"]
+# Size budget: B * N_q * S1 and B * N_kv * S2 must be <= this.
+# B=28, N_q=40, S1=1024 -> 1,146,880 (allowed but near limit)
+MAX_SIZE = 1_200_000
+
+# GQA configs: (G, [N_kv options])
+# G = N_q / N_kv, G <= 64, N_q % N_kv == 0
+GQA_CONFIGS = [
+    (2,  [1, 2, 4, 6, 8, 12, 16, 32]),
+    (3,  [1, 2, 4, 8, 16]),
+    (4,  [1, 2, 3, 4, 8, 10, 16]),
+    (5,  [1, 2, 4, 8]),
+    (6,  [1, 2, 4, 8]),
+    (7,  [1, 2, 4, 8]),
+    (8,  [1, 2, 4, 8, 16]),
+    (10, [1, 2, 4]),
+    (12, [1, 2, 4]),
+    (16, [1, 2, 4]),
+    (20, [1, 2]),
+    (24, [1, 2]),
+    (32, [1, 2]),
+    (48, [1]),
+    (64, [1]),
+]
+
+B_VALUES = [1, 2, 4, 8, 16, 20, 28]
+
+# Diverse S pool: decode (1-2), small, medium, large, non-aligned boundaries
+S_VALUES = [
+    1, 2, 4, 8, 16, 32, 33, 64, 65, 96, 128, 160, 256, 420, 512,
+    768, 1024, 1025, 1280, 1743, 2048, 2185, 2400, 4096, 6000, 7500, 8192,
+]
+
+DATA_RANGES = [
+    "1.0", "-1,1", "0.01,1", "-100,100", "-10,10", "0,1", "-0.5,0.5",
+]
+
+# act_seq variants
+ACT_VARIANTS = ["full", "varlen", "partial", "maxseq", "mixed", "maxseq_pad"]
 
 
 def _v_descale_blocks(s2_effective):
@@ -41,22 +84,31 @@ def _v_descale_blocks(s2_effective):
     return n_blocks // 2
 
 
-def _make_act_seq(B, s_max, variant=0):
-    """Generate act_seq_lens for B batches around s_max."""
-    if variant == 0:
-        return [s_max] * B
-    elif variant == 1:
-        return [max(1, s_max - random.randint(0, min(10, s_max - 1))) for _ in range(B)]
-    elif variant == 2:
-        return [max(1, s_max - i * 2) for i in range(B)]
-    else:
-        return [max(1, s_max // 2 + random.randint(0, s_max // 2)) for _ in range(B)]
+def _gen_act(B, S1, S2, variant, rng):
+    """Generate (act_q, act_kv, max_sq, max_skv) based on variant."""
+    if variant == "full":
+        return [S1] * B, [S2] * B, -1, -1
+    elif variant == "varlen":
+        aq = [max(1, S1 - rng.randint(0, max(1, S1 // 4))) for _ in range(B)]
+        ak = [max(1, S2 - rng.randint(0, max(1, S2 // 4))) for _ in range(B)]
+        return aq, ak, -1, -1
+    elif variant == "partial":
+        return [max(1, S1 * 3 // 4)] * B, [max(1, S2 * 3 // 4)] * B, -1, -1
+    elif variant == "maxseq":
+        return [], [], S1, S2
+    elif variant == "mixed":
+        aq = [S1 if i % 2 == 0 else max(1, S1 // 2) for i in range(B)]
+        ak = [S2 if i % 2 == 0 else max(1, S2 // 2) for i in range(B)]
+        return aq, ak, -1, -1
+    elif variant == "maxseq_pad":
+        return [], [], max(1, S1 // 2), max(1, S2 // 2)
+    return [S1] * B, [S2] * B, -1, -1
 
 
-def _make_row(name, B, N_q, N_kv, S1, S2, act_q, act_kv, max_sq, max_skv, data_range):
+def _make_row(name, B, N_q, N_kv, S1, S2, act_q, act_kv, max_sq, max_skv, dr):
     G = N_q // N_kv
-
     has_act = bool(act_q) and bool(act_kv)
+
     if has_act:
         s2_eff = max(act_kv)
     elif max_skv >= 0:
@@ -117,8 +169,7 @@ def _make_row(name, B, N_q, N_kv, S1, S2, act_q, act_kv, max_sq, max_skv, data_r
         'seqused_kv_dtype': seqused_kv_dtype,
         'cu_seqlens_q_dtype': None, 'cu_seqlens_kv_dtype': None,
         'softmax_lse_dtype': None,
-        'data_range_q': data_range, 'data_range_k': data_range,
-        'data_range_v': data_range,
+        'data_range_q': dr, 'data_range_k': dr, 'data_range_v': dr,
     }
     attributes = repr(attrs)
 
@@ -130,113 +181,67 @@ def _make_row(name, B, N_q, N_kv, S1, S2, act_q, act_kv, max_sq, max_skv, data_r
     ]
 
 
-# GQA configs: (G, [N_kv options])
-# G = N_q / N_kv, G <= 64, N_q % N_kv == 0
-GQA_CONFIGS = [
-    (2,  [1, 2, 4, 6, 8, 12, 16, 32]),
-    (3,  [1, 2, 4, 8, 16]),
-    (4,  [1, 2, 3, 4, 8, 10, 16, 32]),
-    (5,  [1, 2, 4, 8]),
-    (6,  [1, 2, 4, 8, 16]),
-    (7,  [1, 2, 4, 8]),
-    (8,  [1, 2, 4, 8, 16]),
-    (10, [1, 2, 4]),
-    (12, [1, 2, 4]),
-    (16, [1, 2, 4]),
-    (20, [1, 2]),
-    (24, [1, 2]),
-    (32, [1, 2]),
-    (48, [1]),
-    (64, [1]),
-]
-
-# B, S1, S2 combos
-B_VALUES = [1, 2, 4, 8, 16]
-S1_S2_COMBOS = [
-    (128, 128),
-    (128, 256),
-    (128, 512),
-    (128, 1024),
-    (256, 256),
-    (256, 512),
-    (256, 1024),
-    (512, 512),
-    (512, 1024),
-    (512, 2048),
-    (1024, 1024),
-    (1024, 2048),
-    (1024, 4096),
-    (2, 512),
-    (2, 1024),
-    (2, 2048),
-    (2, 2400),
-    (2, 4096),
-    (2, 8192),
-    (1, 128),
-    (1, 512),
-    (1, 1024),
-    (420, 7500),
-    (1743, 2185),
-    (380, 6000),
-    (16, 64),
-    (32, 128),
-    (64, 256),
-    (96, 512),
-    (160, 1024),
-]
-
-
 def generate_cases():
-    random.seed(42)
-    cases = []
-    idx = 0
+    rng = random.Random(42)
     target = 500
 
-    # Round-robin across G configs to ensure all G values are covered
-    # Flatten all (G, N_kv) pairs
+    # Build all (G, N_kv, N_q) pairs
     gqa_pairs = []
     for G, nkv_list in GQA_CONFIGS:
         for N_kv in nkv_list:
             N_q = G * N_kv
-            if N_q <= 128:
-                gqa_pairs.append((G, N_q, N_kv))
+            if N_q <= 64 and G <= 64:
+                gqa_pairs.append((G, N_kv, N_q))
 
-    # Build a flat list of all (B, S1, S2, variant, dr) combos
-    combos = []
-    for B in B_VALUES:
-        for S1, S2 in S1_S2_COMBOS:
-            for variant in range(2):
-                for dr_idx, dr in enumerate(DATA_RANGES):
-                    combos.append((B, S1, S2, variant, dr))
+    # For each pair, pre-compute valid (B, S1, S2) combos under size budget
+    pair_scenarios = []
+    for G, N_kv, N_q in gqa_pairs:
+        valid_bss = []
+        for B in B_VALUES:
+            max_s1 = MAX_SIZE // (B * N_q)
+            max_s2 = MAX_SIZE // (B * N_kv)
+            for S1 in S_VALUES:
+                if S1 > max_s1:
+                    continue
+                for S2 in S_VALUES:
+                    if S2 > max_s2:
+                        continue
+                    valid_bss.append((B, S1, S2))
+        rng.shuffle(valid_bss)
+        pair_scenarios.append(valid_bss)
 
-    # Round-robin: iterate combos, for each combo pick next gqa_pair
-    combo_idx = 0
-    pair_idx = 0
-    while idx < target:
-        B, S1, S2, variant, dr = combos[combo_idx % len(combos)]
-        G, N_q, N_kv = gqa_pairs[pair_idx % len(gqa_pairs)]
+    # Round-robin across all pairs so every G value gets represented
+    selected = []
+    scenario_idx = [0] * len(gqa_pairs)
+    pair_ptr = 0
+    while len(selected) < target:
+        pi = pair_ptr % len(gqa_pairs)
+        si = scenario_idx[pi]
+        scenarios = pair_scenarios[pi]
 
-        idx += 1
+        if si < len(scenarios):
+            B, S1, S2 = scenarios[si]
+            G, N_kv, N_q = gqa_pairs[pi]
+            variant = ACT_VARIANTS[si % len(ACT_VARIANTS)]
+            dr = DATA_RANGES[si % len(DATA_RANGES)]
+            selected.append((G, N_kv, N_q, B, S1, S2, variant, dr))
+            scenario_idx[pi] += 1
+
+        pair_ptr += 1
+        if all(scenario_idx[j] >= len(pair_scenarios[j]) for j in range(len(gqa_pairs))):
+            break
+
+    rng.shuffle(selected)
+    selected = selected[:target]
+
+    # Generate rows
+    cases = []
+    for idx, (G, N_kv, N_q, B, S1, S2, variant, dr) in enumerate(selected, 1):
+        act_q, act_kv, max_sq, max_skv = _gen_act(B, S1, S2, variant, rng)
         name = f"GQA_G{G}_B{B}_Nq{N_q}_Nkv{N_kv}_S1_{S1}_S2_{S2}_{idx:04d}"
-
-        if variant == 0:
-            act_q = _make_act_seq(B, S1, variant)
-            act_kv = _make_act_seq(B, S2, variant)
-            max_sq = -1
-            max_skv = -1
-        else:
-            act_q = []
-            act_kv = []
-            max_sq = S1
-            max_skv = S2
-
         row = _make_row(name, B, N_q, N_kv, S1, S2,
                         act_q, act_kv, max_sq, max_skv, dr)
         cases.append(row)
-
-        pair_idx += 1
-        if pair_idx % len(gqa_pairs) == 0:
-            combo_idx += 1
 
     return cases
 
@@ -259,12 +264,53 @@ def main():
 
     print(f"Wrote {len(cases)} GQA cases to {out_path}")
 
-    G_set = set()
+    # Stats
+    import ast
+    from collections import Counter
+    G_counter = Counter()
+    B_counter = Counter()
+    S1_counter = Counter()
+    S2_counter = Counter()
+    variant_counter = Counter()
+    dr_counter = Counter()
+    max_q_size = 0
+    max_kv_size = 0
     for row in cases:
-        import ast
         attrs = ast.literal_eval(row[5])
-        G_set.add(attrs['G'])
-    print(f"G values covered: {sorted(G_set)}")
+        B = attrs['B']
+        Nq = attrs['N_q']
+        Nkv = attrs['N_kv']
+        G = attrs['G']
+        G_counter[G] += 1
+        B_counter[B] += 1
+
+        # Extract S1/S2 from tensor_view_shapes
+        import re
+        shape_tuples = re.findall(r'\(([\d, ]+)\)', row[2])
+        S1 = int(shape_tuples[0].split(',')[2])
+        S2 = int(shape_tuples[1].split(',')[2])
+        S1_counter[S1] += 1
+        S2_counter[S2] += 1
+
+        q_size = B * Nq * S1
+        kv_size = B * Nkv * S2
+        max_q_size = max(max_q_size, q_size)
+        max_kv_size = max(max_kv_size, kv_size)
+
+        if attrs['act_seq_lens_q']:
+            variant_counter["has_act"] += 1
+        else:
+            variant_counter["maxseq"] += 1
+        dr_counter[attrs['data_range_q']] += 1
+
+    print(f"G distribution:      {dict(sorted(G_counter.items()))}")
+    print(f"B distribution:      {dict(sorted(B_counter.items()))}")
+    print(f"S1 distinct values:  {len(S1_counter)} (top: {S1_counter.most_common(5)})")
+    print(f"S2 distinct values:  {len(S2_counter)} (top: {S2_counter.most_common(5)})")
+    print(f"Act variant:         {dict(variant_counter)}")
+    print(f"Data range dist:     {dict(dr_counter)}")
+    print(f"Max B*Nq*S1:         {max_q_size}")
+    print(f"Max B*Nkv*S2:        {max_kv_size}")
 
 
 if __name__ == "__main__":
