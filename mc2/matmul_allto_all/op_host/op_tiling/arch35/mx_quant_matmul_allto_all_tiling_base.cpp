@@ -126,6 +126,8 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckX2Transpose(const gert::Ti
 {
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
     const bool *isTransX2 = attrs->GetAttrPointer<bool>(indexSchema.x2Transpose);
+    OP_TILING_CHECK(isTransX2 == nullptr, OP_LOGE_WITH_INVALID_ATTR(opName, "transpose_x2", "null", "true"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!(*isTransX2), OP_LOGE_WITH_INVALID_ATTR(opName, "transpose_x2", "false", "true"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -552,12 +554,15 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckQuantGroupSize(const gert:
     uint64_t groupSizeK = static_cast<uint64_t>(*groupSizePtr) & GROUP_MNK_BIT_SIZE;
     uint64_t groupSizeN = (static_cast<uint64_t>(*groupSizePtr) >> GROUP_N_OFFSET) & GROUP_MNK_BIT_SIZE;
     uint64_t groupSizeM = (static_cast<uint64_t>(*groupSizePtr) >> GROUP_M_OFFSET) & GROUP_MNK_BIT_SIZE;
+    const bool *x2TransposePtr = attrs->GetAttrPointer<bool>(MATMUL_ALLTOALL_INDEX_SCHEMA.x2Transpose);
+    OP_TILING_CHECK(x2TransposePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "transpose_x2"),
+                    return ge::GRAPH_FAILED);
     mc2tiling::Mc2MatmulShapeInfo shapeInfo = {context->GetInputShape(INPUT_X1_INDEX),
                                                context->GetInputShape(INPUT_X2_INDEX),
                                                context->GetOptionalInputShape(INPUT_X1_SCALE_INDEX),
                                                context->GetOptionalInputShape(INPUT_X2_SCALE_INDEX),
                                                true,
-                                               *attrs->GetAttrPointer<bool>(MATMUL_ALLTOALL_INDEX_SCHEMA.x2Transpose),
+                                               *x2TransposePtr,
                                                opName};
 
     OP_TILING_CHECK(!mc2tiling::Mc2TilingUtils::InferGroupSize(shapeInfo, groupSizeM, groupSizeN, groupSizeK),
@@ -728,7 +733,11 @@ ge::graphStatus MxQuantMatmulAlltoAllHelper::GetShapeAttrsInfo()
     inputParams_.aDtype = tilingArgs.geAType;
     inputParams_.bDtype = tilingArgs.geBType;
     inputParams_.libApiWorkSpaceSize = tilingProcesser_.libApiWorkSpaceSize_;
-    int64_t yDType = *context_->GetAttrs()->GetAttrPointer<int64_t>(ATTR_Y_DTYPE_INDEX);
+    const int64_t *yDTypePtr = context_->GetAttrs()->GetAttrPointer<int64_t>(ATTR_Y_DTYPE_INDEX);
+    OP_TILING_CHECK(yDTypePtr == nullptr,
+                    OP_LOGE_WITH_INVALID_ATTR(tilingProcesser_.opName_, "y_dtype", "null", "valid dtype"),
+                    return ge::GRAPH_FAILED);
+    int64_t yDType = *yDTypePtr;
     auto scaleTensorDesc = context_->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
     OP_TILING_CHECK((scaleTensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(tilingProcesser_.opName_, "scale tensor"),
                     return ge::GRAPH_FAILED);

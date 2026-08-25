@@ -242,7 +242,11 @@ ge::graphStatus KcQuantMatmulAlltoAllHelper::GetShapeAttrsInfo()
     inputParams_.libApiWorkSpaceSize = tilingProcesser_.libApiWorkSpaceSize_;
     inputParams_.aDtype = tilingArgs.geAType;
     inputParams_.bDtype = tilingArgs.geBType;
-    int64_t yDType = *context_->GetAttrs()->GetAttrPointer<int64_t>(ATTR_Y_DTYPE_INDEX);
+    const int64_t *yDTypePtr = context_->GetAttrs()->GetAttrPointer<int64_t>(ATTR_Y_DTYPE_INDEX);
+    OP_TILING_CHECK(yDTypePtr == nullptr,
+                    OP_LOGE_WITH_INVALID_ATTR(tilingProcesser_.opName_, "y_dtype", "null", "valid dtype"),
+                    return ge::GRAPH_FAILED);
+    int64_t yDType = *yDTypePtr;
     auto scaleTensorDesc = context_->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
     auto perTokenScaleTensorDesc = context_->GetOptionalInputDesc(INPUT_X1_SCALE_INDEX);
     OP_TILING_CHECK((scaleTensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(tilingProcesser_.opName_, "scale tensor"),

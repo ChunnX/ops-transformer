@@ -75,6 +75,11 @@ static bool CheckNotNull(const aclTensor *x1, const aclTensor *x2, const aclTens
 // 检查是否有空tensor
 static bool CheckNotEmptyTensor(const aclTensor *x1, const aclTensor *x2, bool transposeX2)
 {
+    if (x1->GetViewShape().GetDimNum() < TWO_DIMS || x2->GetViewShape().GetDimNum() < TWO_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x1/x2",
+            (std::to_string(x1->GetViewShape().GetDimNum()) + "D").c_str(), "2D");
+        return false;
+    }
     auto mVal = x1->GetViewShape().GetDim(0);
     auto kVal1 = x1->GetViewShape().GetDim(1);
     auto kVal2 = transposeX2 ? x2->GetViewShape().GetDim(1) : x2->GetViewShape().GetDim(0);
@@ -377,8 +382,8 @@ static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTenso
 }
 
 // 兼容性处理，非ND格式转换为ND格式
-static bool ReFormatNotND(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
-                          const aclTensor *x1Scale, const aclTensor *x2Scale, const aclTensor *output)
+static bool ReFormatNotND(const aclTensor *&x1, const aclTensor *&x2, const aclTensor *&biasOptional,
+                          const aclTensor *&x1Scale, const aclTensor *&x2Scale, const aclTensor *&output)
 {
     // 内部只处理ND格式，这里做reformat操作
     if (x1->GetStorageFormat() != op::Format::FORMAT_ND) {
@@ -416,11 +421,11 @@ static bool ReFormatNotND(const aclTensor *x1, const aclTensor *x2, const aclTen
     return true;
 }
 
-static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
-                                        const aclTensor *x1Scale, const aclTensor *x2Scale, const char *group,
+static aclnnStatus CheckAndHandleParams(const aclTensor *&x1, const aclTensor *&x2, const aclTensor *&biasOptional,
+                                        const aclTensor *&x1Scale, const aclTensor *&x2Scale, const char *group,
                                         const char *commMode, const aclIntArray *alltoAllAxesOptional,
                                         int64_t x1QuantMode, int64_t x2QuantMode, bool transposeX1, bool transposeX2,
-                                        const aclTensor *output)
+                                        const aclTensor *&output)
 {
     // 检查参数是否为空指针
     CHECK_RET(CheckNotNull(x1, x2, biasOptional, x1Scale, x2Scale, output), ACLNN_ERR_PARAM_NULLPTR);
