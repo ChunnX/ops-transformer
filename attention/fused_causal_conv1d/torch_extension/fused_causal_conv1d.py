@@ -172,3 +172,4 @@ def fused_causal_conv1d(
         conv_mode=conv_mode,
         max_draft_tokens=max_draft_tokens,
     )
+

@@ -77,3 +77,4 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("fused_causal_conv1d", &FusedCausalConv1d, "fused_causal_conv1d");
 }
 } // namespace op_api
+
