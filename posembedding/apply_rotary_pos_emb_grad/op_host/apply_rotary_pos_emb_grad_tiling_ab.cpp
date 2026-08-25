@@ -77,10 +77,8 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassAB::SplitUb()
     // half 模式按 D/2 搬运，每个半行独立按 32B 对齐；kernel/VF 均使用该 UB 行步长。
     dAlign_ = Ops::Base::CeilAlign(d_ / dSplitCoef_, blockSize_ / typeSize) * dSplitCoef_;
     int64_t bufferSize = dAlign_ * typeSize;  // 一行 dAlign 元素的字节数
-    // D/2 恰好 32B 对齐 (dAlign==d) 时 kernel 走整行连续搬运分支 (BAB 同款):
-    // DMA blockCount = 行数(ubFactorBS) 而非 currXN*dSplitCoef, 不受半行模式 blockCount 上限约束
-    bool dHalfAligned = (dAlign_ == d_);
-    int64_t maxCopyN = dHalfAligned ? MAX_COPY_BLOCK_COUNT : MAX_COPY_BLOCK_COUNT / dSplitCoef_;
+    // kernel 统一按 D/2 拆分搬运，blockCount = currXN * dSplitCoef_。
+    int64_t maxCopyN = MAX_COPY_BLOCK_COUNT / dSplitCoef_;
 
     int64_t divisor = AB_UB_DIVISOR_WITHOUT_DCOS;
     if (dCosFlag_ == 1) {
@@ -96,7 +94,7 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassAB::SplitUb()
 
     // 先定 N: 留 1 行预算给 cos/sin
     ubFactorN_ = std::min(blockFactorN_, baseBlockInUb - 1);
-    ubFactorN_ = std::min(ubFactorN_, maxCopyN);  // DataCopy blockCount 上限 (按搬运模式区分)
+    ubFactorN_ = std::min(ubFactorN_, maxCopyN);  // DataCopy blockCount 上限
     OP_CHECK_IF(ubFactorN_ < 1,
         OP_LOGE(context_->GetNodeName(), "AB SplitUb ubFactorN < 1, baseBlockInUb=%ld", baseBlockInUb),
         return ge::GRAPH_FAILED);

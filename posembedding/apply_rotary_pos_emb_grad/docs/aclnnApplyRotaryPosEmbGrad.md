@@ -19,8 +19,6 @@
 
 - 计算公式：
 
-    - <term>Ascend 950PR/Ascend 950DT</term>：
-
     取旋转位置编码的正向计算中，broadcast的轴列表为`dims`，half模式计算公式如下：
 
     $$
@@ -79,8 +77,8 @@ aclnnStatus aclnnApplyRotaryPosEmbGradGetWorkspaceSize(
     int64_t          layout,
     const aclTensor *gradQueryOut,
     const aclTensor *gradKeyOut,
-    const aclTensor *gradCosOutOptional,
-    const aclTensor *gradSinOutOptional,
+    const aclTensor *gradCosOut,
+    const aclTensor *gradSinOut,
     uint64_t        *workspaceSize,
     aclOpExecutor   **executor)
 ```
@@ -221,7 +219,7 @@ aclnnStatus aclnnApplyRotaryPosEmbGrad(
       <td>×</td>
     </tr>
     <tr>
-      <td>gradCosOutOptional</td>
+      <td>gradCosOut</td>
       <td>可选输出</td>
       <td>正向计算输入cos的导数，queryOptional和keyOptional非空时有效。</td>
       <td>与gradQueryEmbed数据类型一致。</td>
@@ -231,7 +229,7 @@ aclnnStatus aclnnApplyRotaryPosEmbGrad(
       <td>×</td>
     </tr>
     <tr>
-      <td>gradSinOutOptional</td>
+      <td>gradSinOut</td>
       <td>可选输出</td>
       <td>正向计算输入sin的导数，queryOptional和keyOptional非空时有效。</td>
       <td>与gradQueryEmbed数据类型一致。</td>
