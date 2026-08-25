@@ -184,9 +184,7 @@ __aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::InitBaseP
 
     scaleKGroups_ = Blaze::Gemm::CeilDiv(static_cast<uint64_t>(k_), Blaze::Gemm::MXFP_DIVISOR_SIZE);
     // FP4 (fp4x2) 1 字节装 2 个元素：每行字节数 = k/2；FP8 等 = k * sizeof(AType)
-    scaleBytesPerMRow_ =
     dataBytesPerMRow_ = Blaze::Gemm::IsFp4<AType>() ? (static_cast<uint64_t>(k_) >> 1)
-        scaleKGroups_ * static_cast<uint64_t>(Blaze::Gemm::MXFP_MULTI_BASE_SIZE) * sizeof(AscendC::fp8_e8m0_t);
                                                     : static_cast<uint64_t>(k_) * sizeof(AType);
     scaleBytesPerMRow_ = scaleKGroups_ * static_cast<uint64_t>(
       Blaze::Gemm::MXFP_MULTI_BASE_SIZE) * sizeof(AscendC::fp8_e8m0_t);
