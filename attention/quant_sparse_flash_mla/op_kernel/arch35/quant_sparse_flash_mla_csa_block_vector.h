@@ -693,21 +693,21 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyInKvNotSparse(LocalTensor
     padParams.rightPadding = combineDimAlign - combineDim;
     padParams.paddingValue = 0;
     if constexpr (isPa) {
-        int64_t blockTableBaseOffset = static_cast<int64_t>(runInfo.boIdx) * maxBlockNumPerBatch;
-        int64_t dstOffset = 0;
+        uint64_t blockTableBaseOffset = runInfo.boIdx * maxBlockNumPerBatch;
+        uint64_t dstOffset = 0;
         uint32_t copyFinishElmenCnt = 0;
-        int64_t curSequence = s2Idx;
+        uint32_t curSequence = s2Idx;
         int64_t paBlockStride = runInfo.isCmp ? constInfo.cmpKvStride : constInfo.oriKvStride;
         while (copyFinishElmenCnt < v0ProcessSize) {
-            int64_t blockIdOffset = curSequence / blockSize;
-            int64_t remainElmenCnt = curSequence % blockSize;
-            int64_t idInBlockTable = blockTableGm.GetValue(blockTableBaseOffset + blockIdOffset);
-            uint32_t copyElmenCnt = blockSize - static_cast<uint32_t>(remainElmenCnt);
+            uint64_t blockIdOffset = curSequence / blockSize;
+            uint64_t remainElmenCnt = curSequence % blockSize;
+            uint64_t idInBlockTable = blockTableGm.GetValue(blockTableBaseOffset + blockIdOffset);
+            uint32_t copyElmenCnt = blockSize - remainElmenCnt;
             if (copyElmenCnt + copyFinishElmenCnt > v0ProcessSize) {
                 copyElmenCnt = v0ProcessSize - copyFinishElmenCnt;
             }
-            int64_t srcOffset = idInBlockTable * paBlockStride + remainElmenCnt * constInfo.n2Size * combineBytes +
-                                static_cast<int64_t>(runInfo.n2oIdx) * combineBytes; // BlockNum, BlockSize, N, D
+            uint64_t srcOffset = idInBlockTable * paBlockStride + remainElmenCnt * constInfo.n2Size * combineBytes +
+                                 (uint64_t)(runInfo.n2oIdx * combineBytes); // BlockNum, BlockSize, N, D
             intriParams.blockCount = copyElmenCnt;                          // base s2 size
             DataCopyPad(kvMergUb[dstOffset * combineDimAlign], keyGm[srcOffset], intriParams, padParams);
             dstOffset += copyElmenCnt;
@@ -1906,9 +1906,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
     int64_t v0TotalOffset = 0;
     uint32_t v0ResSize = constInfo.s2BaseSize * constInfo.dSize * sizeof(Q_T);
     if constexpr (IS_SPLIT_G) {
-        v0TotalOffset = static_cast<int64_t>(v0ResSize) * 3 * (GetBlockNum() >> 1U);
+        v0TotalOffset = v0ResSize * 3 * (GetBlockNum() >> 1U);
     } else {
-        v0TotalOffset = static_cast<int64_t>(v0ResSize) * 3 * GetBlockNum();
+        v0TotalOffset = v0ResSize * 3 * GetBlockNum();
     }
 
     uint32_t totalBS1 = (LAYOUT_T == QSMLA_LAYOUT::TND) ? constInfo.s1Size : (constInfo.bSize * constInfo.s1Size);
