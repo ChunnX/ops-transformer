@@ -439,8 +439,8 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Init
         bmm1Buffers.Get().SetCrossCore();
     }
     uint32_t v0ResSize = constInfo.s2BaseSize * 512U * sizeof(Q_T);
-    uint64_t totalOffset = IS_SPLIT_G ? static_cast<uint64_t>(v0ResSize) * 3 * (aicIdx >> 1U) :
-                                        static_cast<uint64_t>(v0ResSize) * 3 * aicIdx;
+    int64_t totalOffset = IS_SPLIT_G ? static_cast<int64_t>(v0ResSize) * 3 * (aicIdx >> 1U) :
+                                       static_cast<int64_t>(v0ResSize) * 3 * aicIdx;
     v0ResGmBufferManager.Init(workspace + totalOffset);
     v0ResGmBuffers.Init(v0ResGmBufferManager, v0ResSize);
     v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
