@@ -72,12 +72,10 @@ struct BlockAttnResPrepareCubeTilingData {
     uint32_t totalWorkUnits;
     uint64_t totalD;
 
+    // Tensor Scheduler derives the balanced per-core work range from totalWorkUnits and usedCoreNum.
     uint32_t usedCoreNum;
     uint32_t aicCoreNum;
     uint32_t aivCoreNum;
-    uint32_t bigCoreNum;
-    uint32_t blockFactor;
-    uint32_t tailBlockFactor;
 
     uint32_t baseT;
     uint32_t baseS;

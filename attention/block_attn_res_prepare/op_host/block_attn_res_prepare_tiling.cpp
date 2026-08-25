@@ -50,8 +50,8 @@ constexpr uint32_t STAT_BUFFER_NUM = 2U;
 constexpr uint32_t SCALAR_BLOCK_ELEMS = 8U;
 constexpr uint32_t STAT_UB_ELEMS = STAT_VECTOR_COUNT * FP32_REG_ELEMS + 2U * SCALAR_BLOCK_ELEMS;
 constexpr uint32_t VECTOR_SCHEDULE_MODE = 1U;
-constexpr uint64_t MAX_ALIGNED_D = static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) -
-                                   (FP32_32B_ALIGN_ELEMS - 1U);
+constexpr uint64_t MAX_ALIGNED_D =
+    static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) - (FP32_32B_ALIGN_ELEMS - 1U);
 
 template <typename T>
 constexpr T CeilDiv(T value, T factor)
@@ -89,8 +89,7 @@ ge::graphStatus BlockAttnResPrepareTilingBase::GetPlatformInfo()
 {
     auto *platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
-        const auto *compileInfo =
-            reinterpret_cast<const BlockAttnResPrepareCompileInfo *>(context_->GetCompileInfo());
+        const auto *compileInfo = reinterpret_cast<const BlockAttnResPrepareCompileInfo *>(context_->GetCompileInfo());
         OP_CHECK_IF(compileInfo == nullptr, OP_LOGE(context_->GetNodeName(), "compile info is null"),
                     return ge::GRAPH_FAILED);
         aicCoreNum_ = compileInfo->aicCoreNum;
@@ -112,8 +111,7 @@ ge::graphStatus BlockAttnResPrepareTilingBase::GetPlatformInfo()
         platform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, l0CSize_);
         systemWorkspaceSize_ = platform.GetLibApiWorkSpaceSize();
     }
-    OP_CHECK_IF(aivCoreNum_ == 0, OP_LOGE(context_->GetNodeName(), "AIV core number is zero"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(aivCoreNum_ == 0, OP_LOGE(context_->GetNodeName(), "AIV core number is zero"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(ubSize_ <= UB_RESERVED_BYTES, OP_LOGE(context_->GetNodeName(), "UB size is too small: %lu", ubSize_),
                 return ge::GRAPH_FAILED);
     workspaceSize_ = systemWorkspaceSize_;
@@ -173,8 +171,7 @@ ge::graphStatus BlockAttnResPrepareTilingBase::CheckInputDtypes() const
     OP_CHECK_IF(blockResDesc == nullptr || validDesc == nullptr || pseudoQueryDesc == nullptr,
                 OP_LOGE(context_->GetNodeName(), "input descriptor is null"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(blockResDesc->GetDataType() != ge::DT_FLOAT || pseudoQueryDesc->GetDataType() != ge::DT_FLOAT,
-                OP_LOGE(context_->GetNodeName(), "block_res and pseudo_query must be FP32"),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "block_res and pseudo_query must be FP32"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(validDesc->GetDataType() != ge::DT_INT64,
                 OP_LOGE(context_->GetNodeName(), "valid_blocks must be INT64"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -191,14 +188,14 @@ ge::graphStatus BlockAttnResPrepareTilingBase::GetShapeAttrsInfo()
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "attrs is null"), return ge::GRAPH_FAILED);
     const float *eps = attrs->GetFloat(EPS_ATTR_INDEX);
     OP_CHECK_IF(eps == nullptr || !std::isfinite(*eps) || *eps <= 0.0F,
-                OP_LOGE(context_->GetNodeName(), "eps must be finite and greater than zero"),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "eps must be finite and greater than zero"), return ge::GRAPH_FAILED);
     eps_ = *eps;
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus BlockAttnResPrepareTilingBase::CalculateWorkDistribution(
-    uint64_t totalWorkUnits, uint64_t maxCoreNum, const char *templateName, WorkDistribution &distribution) const
+ge::graphStatus BlockAttnResPrepareTilingBase::CalculateWorkDistribution(uint64_t totalWorkUnits, uint64_t maxCoreNum,
+                                                                         const char *templateName,
+                                                                         WorkDistribution &distribution) const
 {
     OP_CHECK_IF(totalWorkUnits > std::numeric_limits<uint32_t>::max(),
                 OP_LOGE(context_->GetNodeName(), "%s work units exceed uint32 tiling range", templateName),
@@ -215,8 +212,7 @@ ge::graphStatus BlockAttnResPrepareTilingBase::CalculateWorkDistribution(
     distribution.usedCoreNum = static_cast<uint32_t>(usedCoreNum);
     distribution.blockFactor = static_cast<uint32_t>(workUnitsPerCore);
     distribution.bigCoreNum = static_cast<uint32_t>(totalWorkUnits % usedCoreNum);
-    distribution.tailBlockFactor =
-        distribution.blockFactor + ((distribution.bigCoreNum > 0U) ? 1U : 0U);
+    distribution.tailBlockFactor = distribution.blockFactor + ((distribution.bigCoreNum > 0U) ? 1U : 0U);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -226,8 +222,7 @@ bool BlockAttnResPrepareTiling::SelectVectorBaseD(bool hasMultipleWorkRounds)
     const uint64_t dAlign = AlignUp<uint64_t>(totalD_, FP32_32B_ALIGN_ELEMS);
 
     const std::array<uint64_t, 4> candidates = {totalD_, std::min<uint64_t>(totalD_, 1024UL),
-                                                std::min<uint64_t>(totalD_, 512UL),
-                                                std::min<uint64_t>(totalD_, 256UL)};
+                                                std::min<uint64_t>(totalD_, 512UL), std::min<uint64_t>(totalD_, 256UL)};
     uint64_t previous = 0;
     for (const uint64_t candidate : candidates) {
         if (candidate == 0 || candidate == previous) {
@@ -245,9 +240,8 @@ bool BlockAttnResPrepareTiling::SelectVectorBaseD(bool hasMultipleWorkRounds)
                     OP_LOGE(context_->GetNodeName(), "D tile count times N overflows uint64"), return false);
         const uint64_t vLoopNum = dTileNum * totalN_;
         const uint64_t vBufferNum = (vLoopNum > 1) ? 2UL : 1UL;
-        const uint64_t fixedElems =
-            (qBufferNum + vBufferNum + oBufferNum) * baseDAlign +
-            static_cast<uint64_t>(STAT_BUFFER_NUM) * STAT_UB_ELEMS;
+        const uint64_t fixedElems = (qBufferNum + vBufferNum + oBufferNum) * baseDAlign +
+                                    static_cast<uint64_t>(STAT_BUFFER_NUM) * STAT_UB_ELEMS;
         const uint64_t fixedBytes = fixedElems * FP32_BYTES;
         if (fixedBytes > usableUbBytes) {
             continue;
@@ -277,8 +271,7 @@ ge::graphStatus BlockAttnResPrepareTiling::DoOpTiling()
     const bool hasMultipleWorkRounds = distribution.tailBlockFactor > 1U;
 
     OP_CHECK_IF(!SelectVectorBaseD(hasMultipleWorkRounds),
-                OP_LOGE(context_->GetNodeName(), "no Vector baseD satisfies UB capacity"),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "no Vector baseD satisfies UB capacity"), return ge::GRAPH_FAILED);
 
     tilingData_.totalT = static_cast<uint32_t>(totalT_);
     tilingData_.totalN = static_cast<uint32_t>(totalN_);
@@ -341,8 +334,7 @@ ge::graphStatus BlockAttnResPrepareTilingBase::PostTiling()
                 OP_LOGE(context_->GetNodeName(), "raw %s tiling data capacity is insufficient", templateName),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(memcpy_s(rawData, rawTilingData->GetCapacity(), tilingDataView.data, tilingDataView.size) != EOK,
-                OP_LOGE(context_->GetNodeName(), "copy %s tiling data failed", templateName),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "copy %s tiling data failed", templateName), return ge::GRAPH_FAILED);
     rawTilingData->SetDataSize(tilingDataView.size);
     return ge::GRAPH_SUCCESS;
 }
@@ -363,8 +355,8 @@ void BlockAttnResPrepareTiling::DumpTilingInfo()
 
 bool BlockAttnResPrepareCubeTiling::IsCapable()
 {
-    if (totalT_ < CUBE_MIN_T || totalS_ < CUBE_MIN_S || totalD_ < CUBE_MIN_D || aicCoreNum_ == 0U ||
-        aivCoreNum_ < 2U || l1Size_ <= L1_RESERVED_BYTES || l0ASize_ == 0U || l0BSize_ == 0U || l0CSize_ == 0U) {
+    if (totalT_ < CUBE_MIN_T || totalS_ < CUBE_MIN_S || totalD_ < CUBE_MIN_D || aicCoreNum_ == 0U || aivCoreNum_ < 2U ||
+        l1Size_ <= L1_RESERVED_BYTES || l0ASize_ == 0U || l0BSize_ == 0U || l0CSize_ == 0U) {
         return false;
     }
     // MM2 Fixpipe writes a strided [S, D] tile directly into O[S, T, D]. The destination row stride is T * D
@@ -389,8 +381,7 @@ bool BlockAttnResPrepareCubeTiling::SelectCubeTileShape()
         totalS_, std::min<uint64_t>(totalS_, 128UL), std::min<uint64_t>(totalS_, 64UL),
         std::min<uint64_t>(totalS_, CUBE_MAX_BASE_S), std::min<uint64_t>(totalS_, CUBE_BLOCK)};
     const std::array<uint64_t, 4> tCandidates = {8UL, 4UL, 2UL, 1UL};
-    const std::array<uint64_t, 3> dCandidates = {std::min<uint64_t>(totalD_, 512UL),
-                                                 std::min<uint64_t>(totalD_, 256UL),
+    const std::array<uint64_t, 3> dCandidates = {std::min<uint64_t>(totalD_, 512UL), std::min<uint64_t>(totalD_, 256UL),
                                                  std::min<uint64_t>(totalD_, 128UL)};
     uint64_t previousS = 0U;
     for (const uint64_t sCandidate : sCandidates) {
@@ -435,23 +426,21 @@ bool BlockAttnResPrepareCubeTiling::SelectCubeTileShape()
                 const uint64_t reduceUbElems = FP32_REG_ELEMS;
                 const uint64_t softmaxUbElems = static_cast<uint64_t>(2U) * candidateSAlign;
 
-                const uint64_t l1Bytes =
-                    (qL1BufferNum * qL1Elems + vL1BufferNum * vL1Elems + eL1Elems) * FP32_BYTES;
+                const uint64_t l1Bytes = (qL1BufferNum * qL1Elems + vL1BufferNum * vL1Elems + eL1Elems) * FP32_BYTES;
                 const uint64_t ubBytes =
                     (vUbBufferNum * vUbElems + dotUbElems + reduceUbElems + softmaxUbElems) * FP32_BYTES;
                 const uint64_t mm1BaseK = std::min<uint64_t>(baseDAlign, 64U);
                 const uint64_t mm1L0ABytes = static_cast<uint64_t>(candidateSAlign) * mm1BaseK * FP32_BYTES;
                 const uint64_t mm1L0BBytes = candidateMm1NAlign * mm1BaseK * FP32_BYTES;
-                const uint64_t mm1L0CBytes =
-                    static_cast<uint64_t>(candidateSAlign) * candidateMm1NAlign * FP32_BYTES;
+                const uint64_t mm1L0CBytes = static_cast<uint64_t>(candidateSAlign) * candidateMm1NAlign * FP32_BYTES;
                 const uint64_t mm2L0ABytes = static_cast<uint64_t>(candidateSAlign) * nAlign_ * FP32_BYTES;
                 const uint64_t mm2L0BBytes = static_cast<uint64_t>(nAlign_) * baseDAlign * FP32_BYTES;
                 const uint64_t mm2L0CBytes = static_cast<uint64_t>(candidateSAlign) * baseDAlign * FP32_BYTES;
                 const uint64_t mm1L1SlotBytes =
                     (static_cast<uint64_t>(candidateSAlign) + candidateMm1NAlign) * baseDAlign * FP32_BYTES;
-                const uint64_t mm2L1SlotBytes = (static_cast<uint64_t>(candidateSAlign) * nAlign_ +
-                                                 static_cast<uint64_t>(nAlign_) * baseDAlign) *
-                                                FP32_BYTES;
+                const uint64_t mm2L1SlotBytes =
+                    (static_cast<uint64_t>(candidateSAlign) * nAlign_ + static_cast<uint64_t>(nAlign_) * baseDAlign) *
+                    FP32_BYTES;
 
                 if (l1Bytes > usableL1Bytes || ubBytes > usableUbBytes || mm1L1SlotBytes > l1Size_ / 4U ||
                     mm2L1SlotBytes > l1Size_ / 4U || mm1L0ABytes > l0ASize_ || mm2L0ABytes > l0ASize_ ||
@@ -508,8 +497,7 @@ ge::graphStatus BlockAttnResPrepareCubeTiling::DoOpTiling()
     const uint64_t eWorkspaceElems = static_cast<uint64_t>(sAlign_) * nAlign_;
     const uint64_t eWorkspaceBufferNum = totalT_ > 1U ? 2U : 1U;
     OP_CHECK_IF(eWorkspaceElems > std::numeric_limits<uint64_t>::max() / eWorkspaceBufferNum ||
-                    dotWorkspaceElems > std::numeric_limits<uint64_t>::max() -
-                                            eWorkspaceBufferNum * eWorkspaceElems,
+                    dotWorkspaceElems > std::numeric_limits<uint64_t>::max() - eWorkspaceBufferNum * eWorkspaceElems,
                 OP_LOGE(context_->GetNodeName(), "Cube per-core workspace size overflows uint64"),
                 return ge::GRAPH_FAILED);
     workspacePerCoreElems_ = dotWorkspaceElems + eWorkspaceBufferNum * eWorkspaceElems;
@@ -529,9 +517,6 @@ ge::graphStatus BlockAttnResPrepareCubeTiling::DoOpTiling()
     tilingData_.usedCoreNum = usedCoreNum_;
     tilingData_.aicCoreNum = static_cast<uint32_t>(aicCoreNum_);
     tilingData_.aivCoreNum = static_cast<uint32_t>(aivCoreNum_);
-    tilingData_.bigCoreNum = distribution.bigCoreNum;
-    tilingData_.blockFactor = distribution.blockFactor;
-    tilingData_.tailBlockFactor = distribution.tailBlockFactor;
     tilingData_.baseT = baseT_;
     tilingData_.baseS = baseS_;
     tilingData_.baseD = baseD_;

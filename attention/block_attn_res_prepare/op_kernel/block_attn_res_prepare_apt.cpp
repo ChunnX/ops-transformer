@@ -21,9 +21,8 @@
 
 namespace {
 __aicore__ inline Blaze::Attention::BlockAttnResPrepareParams MakeBlockAttnResPrepareParams(
-    GM_ADDR blockRes, GM_ADDR validBlocks, GM_ADDR pseudoQuery, GM_ADDR numerator,
-    GM_ADDR logitMax, GM_ADDR expSum, GM_ADDR workspace,
-    const optiling::BlockAttnResPrepareCubeTilingData &tiling)
+    GM_ADDR blockRes, GM_ADDR validBlocks, GM_ADDR pseudoQuery, GM_ADDR numerator, GM_ADDR logitMax, GM_ADDR expSum,
+    GM_ADDR workspace, const optiling::BlockAttnResPrepareCubeTilingData &tiling)
 {
     Blaze::Attention::BlockAttnResPrepareParams params{};
     params.gmParams.blockResidualGmAddr = blockRes;
@@ -40,8 +39,6 @@ __aicore__ inline Blaze::Attention::BlockAttnResPrepareParams MakeBlockAttnResPr
     params.tilingParams.totalWorkUnits = tiling.totalWorkUnits;
     params.tilingParams.totalD = tiling.totalD;
     params.tilingParams.usedCoreNum = tiling.usedCoreNum;
-    params.tilingParams.bigCoreNum = tiling.bigCoreNum;
-    params.tilingParams.blockFactor = tiling.blockFactor;
     params.tilingParams.baseT = tiling.baseT;
     params.tilingParams.baseS = tiling.baseS;
     params.tilingParams.baseD = tiling.baseD;
@@ -65,9 +62,9 @@ __aicore__ inline Blaze::Attention::BlockAttnResPrepareParams MakeBlockAttnResPr
 }
 } // namespace
 
-extern "C" __global__ __aicore__ void block_attn_res_prepare(
-    GM_ADDR blockRes, GM_ADDR validBlocks, GM_ADDR pseudoQuery, GM_ADDR numerator, GM_ADDR logitMax,
-    GM_ADDR expSum, GM_ADDR workspace, GM_ADDR tiling)
+extern "C" __global__ __aicore__ void block_attn_res_prepare(GM_ADDR blockRes, GM_ADDR validBlocks, GM_ADDR pseudoQuery,
+                                                             GM_ADDR numerator, GM_ADDR logitMax, GM_ADDR expSum,
+                                                             GM_ADDR workspace, GM_ADDR tiling)
 {
     REGISTER_TILING_DEFAULT(optiling::BlockAttnResPrepareCubeTilingData);
     KERNEL_TASK_TYPE(BLOCK_ATTN_RES_PREPARE_VECTOR_TILING_KEY, KERNEL_TYPE_AIV_ONLY);
@@ -87,8 +84,8 @@ extern "C" __global__ __aicore__ void block_attn_res_prepare(
         AscendC::SetSysWorkspace(workspace);
         GM_ADDR userWorkspace = AscendC::GetUserWorkspace(workspace);
         GET_TILING_DATA_WITH_STRUCT(optiling::BlockAttnResPrepareCubeTilingData, cubeTilingData, tiling);
-        const auto params = MakeBlockAttnResPrepareParams(blockRes, validBlocks, pseudoQuery, numerator,
-                                                          logitMax, expSum, userWorkspace, cubeTilingData);
+        const auto params = MakeBlockAttnResPrepareParams(blockRes, validBlocks, pseudoQuery, numerator, logitMax,
+                                                          expSum, userWorkspace, cubeTilingData);
         Blaze::Attention::Kernel::KernelBlockAttnResPrepare kernel;
         kernel(params);
     }
