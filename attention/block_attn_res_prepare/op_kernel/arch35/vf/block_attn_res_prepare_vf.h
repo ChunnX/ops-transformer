@@ -15,14 +15,43 @@
 
 namespace BlockAttnResPrepareVF {
 
-using namespace AscendC::Reg;
+using HighLowPart = AscendC::Reg::HighLowPart;
+using LoadDist = AscendC::Reg::LoadDist;
+using MaskMergeMode = AscendC::Reg::MaskMergeMode;
+using MaskPattern = AscendC::Reg::MaskPattern;
+using MaskReg = AscendC::Reg::MaskReg;
 using MemType = AscendC::Reg::MemType;
+using ReduceType = AscendC::Reg::ReduceType;
+using StoreDist = AscendC::Reg::StoreDist;
+
+template <typename T>
+using RegTensor = AscendC::Reg::RegTensor<T>;
+
+using AscendC::Reg::Add;
+using AscendC::Reg::Adds;
+using AscendC::Reg::CreateMask;
+using AscendC::Reg::Div;
+using AscendC::Reg::Duplicate;
+using AscendC::Reg::Exp;
+using AscendC::Reg::LoadAlign;
+using AscendC::Reg::LocalMemBar;
+using AscendC::Reg::Mul;
+using AscendC::Reg::MulAddDst;
+using AscendC::Reg::Muls;
+using AscendC::Reg::Reduce;
+using AscendC::Reg::RegTraitNumOne;
+using AscendC::Reg::Sqrt;
+using AscendC::Reg::StoreAlign;
+using AscendC::Reg::Sub;
+using AscendC::Reg::UpdateMask;
 
 constexpr uint32_t FP32_REG_ELEMS = 64U;
+constexpr uint32_t STAT_VECTOR_COUNT = 2U;
+constexpr uint32_t SCALAR_BLOCK_ELEMS = 8U;
 constexpr uint32_t SUM_SQUARE_OFFSET = 0U;
 constexpr uint32_t DOT_OFFSET = FP32_REG_ELEMS;
-constexpr uint32_t MAX_OFFSET = 2U * FP32_REG_ELEMS;
-constexpr uint32_t SUM_OFFSET = MAX_OFFSET + 8U;
+constexpr uint32_t MAX_OFFSET = STAT_VECTOR_COUNT * FP32_REG_ELEMS;
+constexpr uint32_t SUM_OFFSET = MAX_OFFSET + SCALAR_BLOCK_ELEMS;
 constexpr float FP32_LOWEST_FINITE = -3.4028234663852886e+38F;
 
 __simd_vf__ inline void InitializeEmptyOnlineSoftmax(__ubuf__ float *statAddr)
@@ -56,8 +85,8 @@ __simd_vf__ inline void FillZero(__ubuf__ float *outputAddr, uint32_t validD)
 
 // These raw UB arguments are internal static byte offsets. UB offset zero is valid and must not be treated as nullptr.
 template <bool FIRST_D_TILE>
-__simd_vf__ inline void AccumulateSquareDot(__ubuf__ float *qAddr, __ubuf__ float *vAddr,
-                                            __ubuf__ float *statAddr, uint32_t validD, uint32_t nIndex)
+__simd_vf__ inline void AccumulateSquareDot(__ubuf__ float *qAddr, __ubuf__ float *vAddr, __ubuf__ float *statAddr,
+                                            uint32_t validD, uint32_t nIndex)
 {
     RegTensor<float> qReg;
     RegTensor<float> vReg;
@@ -86,31 +115,26 @@ __simd_vf__ inline void AccumulateSquareDot(__ubuf__ float *qAddr, __ubuf__ floa
         Add<float, MaskMergeMode::ZEROING>(dotAccReg, dotAccReg, dotReg, allMask);
     }
 
-    Reduce<ReduceType::SUM, float, float, MaskMergeMode::ZEROING>(
-        squareReduceReg, squareAccReg, allMask);
-    Reduce<ReduceType::SUM, float, float, MaskMergeMode::ZEROING>(
-        dotReduceReg, dotAccReg, allMask);
+    Reduce<ReduceType::SUM, float, float, MaskMergeMode::ZEROING>(squareReduceReg, squareAccReg, allMask);
+    Reduce<ReduceType::SUM, float, float, MaskMergeMode::ZEROING>(dotReduceReg, dotAccReg, allMask);
 
     if constexpr (!FIRST_D_TILE) {
         RegTensor<float> oldValueReg;
-        LoadAlign<float, LoadDist::DIST_BRC_B32>(oldValueReg,
-                                                                     statAddr + SUM_SQUARE_OFFSET + nIndex);
-        Add<float, MaskMergeMode::ZEROING>(squareReduceReg, squareReduceReg, oldValueReg,
-                                                               oneMask);
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(oldValueReg, statAddr + SUM_SQUARE_OFFSET + nIndex);
+        Add<float, MaskMergeMode::ZEROING>(squareReduceReg, squareReduceReg, oldValueReg, oneMask);
         LoadAlign<float, LoadDist::DIST_BRC_B32>(oldValueReg, statAddr + DOT_OFFSET + nIndex);
         Add<float, MaskMergeMode::ZEROING>(dotReduceReg, dotReduceReg, oldValueReg, oneMask);
     }
 
-    StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(
-        statAddr + SUM_SQUARE_OFFSET + nIndex, squareReduceReg, oneMask);
-    StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(
-        statAddr + DOT_OFFSET + nIndex, dotReduceReg, oneMask);
+    StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + SUM_SQUARE_OFFSET + nIndex, squareReduceReg,
+                                                         oneMask);
+    StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + DOT_OFFSET + nIndex, dotReduceReg, oneMask);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
 template <bool FIRST_D_TILE>
-__simd_vf__ inline void AccumulateSquare(__ubuf__ float *vAddr, __ubuf__ float *sumSquareAddr,
-                                         uint32_t validD, uint32_t nIndex)
+__simd_vf__ inline void AccumulateSquare(__ubuf__ float *vAddr, __ubuf__ float *sumSquareAddr, uint32_t validD,
+                                         uint32_t nIndex)
 {
     RegTensor<float> vReg;
     RegTensor<float> squareReg;
@@ -129,16 +153,13 @@ __simd_vf__ inline void AccumulateSquare(__ubuf__ float *vAddr, __ubuf__ float *
         Mul<float, MaskMergeMode::ZEROING>(squareReg, vReg, vReg, validMask);
         Add<float, MaskMergeMode::ZEROING>(squareAccReg, squareAccReg, squareReg, allMask);
     }
-    Reduce<ReduceType::SUM, float, float, MaskMergeMode::ZEROING>(
-        squareReduceReg, squareAccReg, allMask);
+    Reduce<ReduceType::SUM, float, float, MaskMergeMode::ZEROING>(squareReduceReg, squareAccReg, allMask);
     if constexpr (!FIRST_D_TILE) {
         RegTensor<float> oldValueReg;
         LoadAlign<float, LoadDist::DIST_BRC_B32>(oldValueReg, sumSquareAddr + nIndex);
-        Add<float, MaskMergeMode::ZEROING>(squareReduceReg, squareReduceReg, oldValueReg,
-                                                               oneMask);
+        Add<float, MaskMergeMode::ZEROING>(squareReduceReg, squareReduceReg, oldValueReg, oneMask);
     }
-    StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(sumSquareAddr + nIndex,
-                                                                             squareReduceReg, oneMask);
+    StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(sumSquareAddr + nIndex, squareReduceReg, oneMask);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
@@ -182,26 +203,21 @@ __simd_vf__ inline void FinalizeSoftmax(__ubuf__ float *statAddr, uint32_t valid
 
     LoadAlign<float, LoadDist::DIST_NORM>(sumSquareReg, statAddr + SUM_SQUARE_OFFSET);
     LoadAlign<float, LoadDist::DIST_NORM>(dotReg, statAddr + DOT_OFFSET);
-    Muls<float, float, MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, reciprocalD,
-                                                                   validMask);
+    Muls<float, float, MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, reciprocalD, validMask);
     Adds<float, float, MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, eps, validMask);
     Sqrt<float, MaskMergeMode::ZEROING>(rmsReg, sumSquareReg, validMask);
     Div<float, MaskMergeMode::ZEROING>(zReg, dotReg, rmsReg, validMask);
 
-    Reduce<ReduceType::MAX, float, float, MaskMergeMode::ZEROING>(maxReg, zReg,
-                                                                                                validMask);
-    Duplicate<float, HighLowPart::LOWEST, MaskMergeMode::ZEROING>(
-        maxBroadcastReg, maxReg, allMask);
+    Reduce<ReduceType::MAX, float, float, MaskMergeMode::ZEROING>(maxReg, zReg, validMask);
+    Duplicate<float, HighLowPart::LOWEST, MaskMergeMode::ZEROING>(maxBroadcastReg, maxReg, allMask);
     Sub<float, MaskMergeMode::ZEROING>(expReg, zReg, maxBroadcastReg, validMask);
     Exp<float, MaskMergeMode::ZEROING>(expReg, expReg, validMask);
-    Reduce<ReduceType::SUM, float, float, MaskMergeMode::ZEROING>(expSumReg, expReg,
-                                                                                                validMask);
+    Reduce<ReduceType::SUM, float, float, MaskMergeMode::ZEROING>(expSumReg, expReg, validMask);
 
     // E reuses the physical dot buffer after Z no longer needs to be retained.
     StoreAlign<float, StoreDist::DIST_NORM>(statAddr + DOT_OFFSET, expReg, validMask);
     StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + MAX_OFFSET, maxReg, oneMask);
-    StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + SUM_OFFSET, expSumReg,
-                                                                             oneMask);
+    StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + SUM_OFFSET, expSumReg, oneMask);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
@@ -228,19 +244,15 @@ __simd_vf__ inline void FinalizeCubeSoftmax(__ubuf__ float *sumSquareAddr, __ubu
 
     LoadAlign<float, LoadDist::DIST_NORM>(sumSquareReg, sumSquareAddr);
     LoadAlign<float, LoadDist::DIST_NORM>(dotReg, dotAddr);
-    Muls<float, float, MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, reciprocalD,
-                                                                   validMask);
+    Muls<float, float, MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, reciprocalD, validMask);
     Adds<float, float, MaskMergeMode::ZEROING>(sumSquareReg, sumSquareReg, eps, validMask);
     Sqrt<float, MaskMergeMode::ZEROING>(rmsReg, sumSquareReg, validMask);
     Div<float, MaskMergeMode::ZEROING>(zReg, dotReg, rmsReg, validMask);
-    Reduce<ReduceType::MAX, float, float, MaskMergeMode::ZEROING>(maxReg, zReg,
-                                                                                                validMask);
-    Duplicate<float, HighLowPart::LOWEST, MaskMergeMode::ZEROING>(
-        maxBroadcastReg, maxReg, allMask);
+    Reduce<ReduceType::MAX, float, float, MaskMergeMode::ZEROING>(maxReg, zReg, validMask);
+    Duplicate<float, HighLowPart::LOWEST, MaskMergeMode::ZEROING>(maxBroadcastReg, maxReg, allMask);
     Sub<float, MaskMergeMode::ZEROING>(expReg, zReg, maxBroadcastReg, validMask);
     Exp<float, MaskMergeMode::ZEROING>(expReg, expReg, validMask);
-    Reduce<ReduceType::SUM, float, float, MaskMergeMode::ZEROING>(expSumReg, expReg,
-                                                                                                validMask);
+    Reduce<ReduceType::SUM, float, float, MaskMergeMode::ZEROING>(expSumReg, expReg, validMask);
 
     Duplicate(zeroReg, 0.0F, allMask);
     StoreAlign<float, StoreDist::DIST_NORM>(dotAddr, zeroReg, alignMask);

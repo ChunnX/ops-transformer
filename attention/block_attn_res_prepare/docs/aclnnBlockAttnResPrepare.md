@@ -121,7 +121,7 @@ $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnBlockAttnResPrepareGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnBlockAttnResPrepare”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnBlockAttnResPrepareGetWorkspaceSize”接口获取计算所需workspace大小，再调用“aclnnBlockAttnResPrepare”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnBlockAttnResPrepareGetWorkspaceSize(
@@ -129,13 +129,13 @@ aclnnStatus aclnnBlockAttnResPrepareGetWorkspaceSize(
     const aclTensor *pseudoQuery, aclTensor *numerator,
     aclTensor *logitMax, aclTensor *expSum, float eps,
     uint64_t *workspaceSize, aclOpExecutor **executor);
-
+```
+```
 aclnnStatus aclnnBlockAttnResPrepare(
     void *workspace, uint64_t workspaceSize,
     aclOpExecutor *executor, aclrtStream stream);
 ```
 
-接口采用两段式调用：先获取 workspace 大小和执行器，再下发执行。
 
 ## 参数说明
 
@@ -146,7 +146,7 @@ aclnnStatus aclnnBlockAttnResPrepare(
 | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
 | $T$                                                   | 扁平 token 数；原始 padded 布局下可理解为$\left(B\times T_{\mathrm{seq}}\right)$。$B$：$\mathrm{batch\_size}$，批次大小，一次送入模型多少条样本；$T_{\mathrm{seq}}$：$\mathrm{sequence\ length}$，序列长度，单条样本 token 数目                                           |                                                |
 | $N$                                                                                                                                                                                                                                                                                                                                         | 历史 block/source 缓冲区的固定容量             |
-| $N_v$                                                                                                                                                                                                                                                                                                                                       | 当前有效历史 block/source 数                   |
+| $N\_v$                                                                                                                                                                                                                                                                                                                                       | 当前有效历史 block/source 数                   |
 | $D$                                                                                                                                                                                                                                                                                                                                         | hidden dimension，隐藏层维度                   |
 | $S$                                                                                                                                                                                                                                                                                                                                         | 当前$\mathrm{AttnRes}$ block 的目标 slot 数  |
 | $t$                                                                                                                                                                                                                                                                                                             | token 下标，$0\le t<T$ |                                                |
@@ -195,7 +195,7 @@ aclnnStatus aclnnBlockAttnResPrepare(
       <td>validBlocks</td>
       <td>输入</td>
       <td>表示当前有效历史块数。</td>
-      <td>shape为[1]，取值裁剪至[0, N]。</td>
+      <td>shape为[1]，tensor中的值为N_v时，计算时blockRes的N维进前N_v参与运算。</td>
       <td>INT64</td>
       <td>ND</td>
       <td>1</td>
@@ -244,7 +244,7 @@ aclnnStatus aclnnBlockAttnResPrepare(
     <tr>
       <td>eps</td>
       <td>输入</td>
-      <td>表示RMS归一化的稳定项。</td>
+      <td>表示RMS归一化的稳定项，通常为1e-6。</td>
       <td>属性，必须为有限正数。</td>
       <td>FLOAT</td>
       <td>-</td>
@@ -316,9 +316,9 @@ aclnnStatus aclnnBlockAttnResPrepare(
 
 ## 约束说明
 
-- `T >= 0`，`S >= 0`，`1 <= N <= 64`，`1 <= D <= 8192`。
+- `T >= 0`，`S >= 0`，`0 <= N <= 64`，`0 <= D <= 8192`。
 - `blockRes` 与 `pseudoQuery` 的最后一维必须相同。
-- 输入输出支持非连续 Tensor，接口内部执行必要的连续化和 ViewCopy。
+- 输入输出不支持非连续 Tensor。
 - `T == 0` 或 `S == 0` 时返回对应形状的空输出。
 - 仅支持 Ascend 950。
 
