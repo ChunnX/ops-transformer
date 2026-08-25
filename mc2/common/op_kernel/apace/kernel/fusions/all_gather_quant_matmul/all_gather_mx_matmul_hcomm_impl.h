@@ -191,6 +191,10 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
     cGM_ = cGM;
     workspaceGM_ = workspaceGM;
 
+    if (AscendC::GetBlockIdx() == 0) {
+        AscendC::PRINTF("all_gather_matmul case test !\n");
+    }
+
     InitBaseParams();
 
     // HCCL initialization
