@@ -108,6 +108,7 @@ private:
 
     TPipe *tpipe_{nullptr};
     __gm__ Mc2Aclnn::MoeCommContext *mc2Context_{nullptr};
+    MoeEpExceptionDump::MoeEpCoreDiagWriter diagWriter_;
     uint32_t epRankId_{0};
     uint32_t aivId_{0};
     GlobalTensor<int32_t> numRecvPerRankGm_;
@@ -225,6 +226,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     constexpr size_t metadataOffset = offsetof(MoeEpDispatchEpilogueTilingData, moeEpDispatchEpilogueInfo) +
                                       offsetof(MoeEpDispatchEpilogueInfo, dumpMetadata);
     MoeEpExceptionDump::WriteMetadata(context, tilingGM + metadataOffset);
+    diagWriter_.Init(context, MOE_EP_CORE_DIAG_DISPATCH_EPILOGUE);
     localSlotStateWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_, slotWinStateOffset_);
     localWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_, winDataOffset_);
     metaOffset_ = Ceil((uint32_t)(axisH_ * sizeof(XType)), UB_ALIGN) * UB_ALIGN;
@@ -325,6 +327,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     ReduceSum<int64_t>(expertSumOut, ubExpertPfx_, expertReduceTmp, static_cast<int32_t>(numLocalExperts_));
     SyncFunc<AscendC::HardEvent::V_S>();
     expertSum_ = static_cast<uint32_t>(expertSumOut.GetValue(0));
+    diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_INIT_DONE);
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
@@ -334,6 +337,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         ComputePrefixSums();
         WaitDispatch();
         SyncAll<true>();
+        diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_WAIT_DONE);
         CountHits();
         SyncAll<true>();
 
@@ -348,6 +352,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     } else {
         WaitDispatch();
         SyncAll<true>();
+        diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_WAIT_DONE);
         CopyFromWindowByCachedMeta();
     }
 }

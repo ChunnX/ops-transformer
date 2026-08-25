@@ -11,6 +11,7 @@
 #ifndef MOE_EP_EXCEPTION_DUMP_DEFS_H
 #define MOE_EP_EXCEPTION_DUMP_DEFS_H
 
+#include <cstddef>
 #include <cstdint>
 
 constexpr uint32_t MOE_EP_DUMP_LAYOUT_VERSION = 1U;
@@ -21,6 +22,48 @@ constexpr uint64_t MOE_EP_PER_CORE_DIAG_SLOT_COUNT = 100UL;
 constexpr uint64_t MOE_EP_PER_CORE_DIAG_BYTES =
     MOE_EP_PER_CORE_DIAG_SLOT_COUNT * MOE_EP_PER_CORE_DIAG_SLOT_BYTES;
 constexpr uint64_t MOE_EP_FIXED_PREFIX_BYTES = MOE_EP_DUMP_METADATA_BYTES + MOE_EP_PER_CORE_DIAG_BYTES;
+constexpr uint64_t MOE_EP_CORE_DIAG_RECORD_BYTES = 64UL;
+
+enum MoeEpCoreDiagOpIndex : uint32_t {
+    MOE_EP_CORE_DIAG_DISPATCH = 0U,
+    MOE_EP_CORE_DIAG_DISPATCH_EPILOGUE,
+    MOE_EP_CORE_DIAG_COMBINE,
+    MOE_EP_CORE_DIAG_COMBINE_EPILOGUE, // Reserved until MoeEpCombineEpilogue exists.
+};
+
+enum MoeEpDispatchRunPosition : uint32_t {
+    MOE_EP_DISPATCH_RUN_POS_INIT_DONE = 1U,
+    MOE_EP_DISPATCH_RUN_POS_COUNT_READY,
+    MOE_EP_DISPATCH_RUN_POS_URMA_REQUESTS_ISSUE_DONE,
+};
+
+enum MoeEpDispatchEpilogueRunPosition : uint32_t {
+    MOE_EP_DISPATCH_EPILOGUE_RUN_POS_INIT_DONE = 1U,
+    MOE_EP_DISPATCH_EPILOGUE_RUN_POS_WAIT_DONE,
+};
+
+enum MoeEpCombineRunPosition : uint32_t {
+    MOE_EP_COMBINE_RUN_POS_INIT_DONE = 1U,
+    MOE_EP_COMBINE_RUN_POS_WAIT_DONE,
+};
+
+struct MoeEpCoreDiagRecord {
+    uint64_t opCnt;
+    uint32_t runPosition;
+    int32_t epRankId;
+    uint32_t aivId;
+    uint8_t reserved[44];
+};
+
+static_assert(sizeof(MoeEpCoreDiagRecord) == MOE_EP_CORE_DIAG_RECORD_BYTES,
+              "MoeEpCoreDiagRecord must occupy 64 bytes");
+static_assert(MOE_EP_CORE_DIAG_RECORD_BYTES * 4UL <= MOE_EP_PER_CORE_DIAG_SLOT_BYTES,
+              "Moe EP diagnostic records must fit in one per-core slot");
+static_assert(offsetof(MoeEpCoreDiagRecord, opCnt) == 0U, "Unexpected opCnt offset");
+static_assert(offsetof(MoeEpCoreDiagRecord, runPosition) == 8U, "Unexpected runPosition offset");
+static_assert(offsetof(MoeEpCoreDiagRecord, epRankId) == 12U, "Unexpected epRankId offset");
+static_assert(offsetof(MoeEpCoreDiagRecord, aivId) == 16U, "Unexpected aivId offset");
+static_assert(offsetof(MoeEpCoreDiagRecord, reserved) == 20U, "Unexpected reserved offset");
 
 enum MoeEpDumpRegionIndex : uint32_t {
     MOE_EP_DUMP_REGION_PER_CORE_DIAG = 0U,

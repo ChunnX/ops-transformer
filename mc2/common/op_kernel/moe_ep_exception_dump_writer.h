@@ -22,6 +22,70 @@
 
 namespace MoeEpExceptionDump {
 
+class MoeEpCoreDiagWriter {
+public:
+    __aicore__ inline void Init(GM_ADDR context, MoeEpCoreDiagOpIndex opIndex)
+    {
+        if ASCEND_IS_NOT_AIV {
+            return;
+        }
+        if (context == nullptr) {
+            return;
+        }
+
+        auto commContext = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
+        uint32_t aivId = AscendC::GetBlockIdx();
+        GM_ADDR localWin = reinterpret_cast<GM_ADDR>(commContext->epHcclBuffer[commContext->epRankId]);
+        recordAddr_ = localWin + MOE_EP_DUMP_METADATA_BYTES +
+                      static_cast<uint64_t>(aivId) * MOE_EP_PER_CORE_DIAG_SLOT_BYTES +
+                      static_cast<uint64_t>(opIndex) * MOE_EP_CORE_DIAG_RECORD_BYTES;
+
+        AscendC::LocalTensor<uint8_t> recordLocal{
+            AscendC::TPosition::LCM, 0, static_cast<uint32_t>(MOE_EP_CORE_DIAG_RECORD_BYTES)};
+        AscendC::GlobalTensor<uint8_t> recordGlobal;
+        recordGlobal.SetGlobalBuffer(recordAddr_, MOE_EP_CORE_DIAG_RECORD_BYTES);
+        AscendC::DataCopyPad(recordLocal, recordGlobal,
+                             {1U, static_cast<uint16_t>(MOE_EP_CORE_DIAG_RECORD_BYTES), 0U, 0U, 0U},
+                             {false, 0U, 0U, 0U});
+        AscendC::SyncFunc<AscendC::HardEvent::MTE2_S>();
+
+        AscendC::LocalTensor<uint64_t> recordLocalU64 = recordLocal.template ReinterpretCast<uint64_t>();
+        AscendC::LocalTensor<uint32_t> recordLocalU32 = recordLocal.template ReinterpretCast<uint32_t>();
+        recordLocalU64.SetValue(0U, recordLocalU64.GetValue(0U) + 1UL);
+        recordLocalU32.SetValue(2U, 0U);
+        recordLocalU32.SetValue(3U, commContext->epRankId);
+        recordLocalU32.SetValue(4U, aivId);
+
+        AscendC::SyncFunc<AscendC::HardEvent::S_MTE3>();
+        AscendC::DataCopyPad(recordGlobal, recordLocal,
+                             {1U, static_cast<uint16_t>(MOE_EP_CORE_DIAG_RECORD_BYTES), 0U, 0U, 0U});
+        AscendC::SyncFunc<AscendC::HardEvent::MTE3_S>();
+    }
+
+    __aicore__ inline void RunPosRecord(uint32_t runPosition)
+    {
+        if ASCEND_IS_NOT_AIV {
+            return;
+        }
+        if (recordAddr_ == nullptr) {
+            return;
+        }
+
+        AscendC::LocalTensor<uint32_t> runPositionLocal{AscendC::TPosition::LCM, 0, 1U};
+        AscendC::GlobalTensor<uint8_t> runPositionGlobal;
+        runPositionGlobal.SetGlobalBuffer(recordAddr_ + offsetof(MoeEpCoreDiagRecord, runPosition),
+                                          sizeof(runPosition));
+        runPositionLocal.SetValue(0U, runPosition);
+        AscendC::SyncFunc<AscendC::HardEvent::S_MTE3>();
+        AscendC::DataCopyPad(runPositionGlobal, runPositionLocal.template ReinterpretCast<uint8_t>(),
+                             {1U, static_cast<uint16_t>(sizeof(runPosition)), 0U, 0U, 0U});
+        AscendC::SyncFunc<AscendC::HardEvent::MTE3_S>();
+    }
+
+private:
+    GM_ADDR recordAddr_{nullptr};
+};
+
 __aicore__ inline void WriteMetadata(GM_ADDR context, GM_ADDR metadataSource)
 {
     if ASCEND_IS_NOT_AIV {
@@ -43,9 +107,7 @@ __aicore__ inline void WriteMetadata(GM_ADDR context, GM_ADDR metadataSource)
     AscendC::DataCopyPad(metadataLocal, metadataSourceGlobal,
                          {1U, static_cast<uint16_t>(sizeof(MoeEpDumpMetadata)), 0U, 0U, 0U},
                          {false, 0U, 0U, 0U});
-    AscendC::SyncFunc<AscendC::HardEvent::MTE2_S>();
-    // Scalar diagnostic fields can be updated in metadataLocal before the GM write.
-    AscendC::SyncFunc<AscendC::HardEvent::S_MTE3>();
+    AscendC::SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
     AscendC::DataCopyPad(metadataWinGlobal, metadataLocal,
                          {1U, static_cast<uint16_t>(sizeof(MoeEpDumpMetadata)), 0U, 0U, 0U});
     AscendC::SyncFunc<AscendC::HardEvent::MTE3_S>();

@@ -120,6 +120,7 @@ private:
     TPipe *tpipe_{nullptr};
     __gm__ Mc2Aclnn::MoeCommContext *mc2Context_{nullptr};
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // 通信上下文
+    MoeEpExceptionDump::MoeEpCoreDiagWriter diagWriter_;
 
     GlobalTensor<XType> xGMTensor_;
     GlobalTensor<int32_t> topkIdxGMTensor_;
@@ -230,6 +231,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     constexpr size_t metadataOffset = offsetof(MoeEpDispatchTilingData, moeEpDispatchInfo) +
                                       offsetof(MoeEpDispatchInfo, dumpMetadata);
     MoeEpExceptionDump::WriteMetadata(context, tilingGM + metadataOffset);
+    diagWriter_.Init(context, MOE_EP_CORE_DIAG_DISPATCH);
 
     const auto &info = tilingData->moeEpDispatchInfo;
     axisBS_ = info.cfg.numTokens;
@@ -300,6 +302,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     sendCntPerRankGMTensor_.SetGlobalBuffer((__gm__ int32_t *)sendCntWorkspaceAddr_);
     sendCntPerExpertGMTensor_.SetGlobalBuffer(
         (__gm__ int32_t *)(sendCntWorkspaceAddr_ + epWorldSize_ * WIN_ADDR_ALIGN));
+    diagWriter_.RunPosRecord(MOE_EP_DISPATCH_RUN_POS_INIT_DONE);
 }
 
 template <TemplateMoeEpDispatchTypeClass>
@@ -582,6 +585,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetRecvCoun
     Duplicate<int32_t>(recvCounterTensor, 0, epWorldSize_ * UB_STRIDE);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy(recvCounterGMTensor_, recvCounterTensor, clearStatusCopyParams_);
+    diagWriter_.RunPosRecord(MOE_EP_DISPATCH_RUN_POS_COUNT_READY);
 }
 
 template <TemplateMoeEpDispatchTypeClass>
@@ -832,6 +836,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Process()
         SendPhase();
         SyncAll<true>();
         WriteToRemoteWindow();
+        diagWriter_.RunPosRecord(MOE_EP_DISPATCH_RUN_POS_URMA_REQUESTS_ISSUE_DONE);
     }
 }
 

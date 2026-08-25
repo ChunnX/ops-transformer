@@ -138,6 +138,7 @@ private:
     TPipe *tpipe_{nullptr};
     const MoeEpCombineInfo *tilingData_{nullptr};
     __gm__ Mc2Aclnn::MoeCommContext *mc2Context_{nullptr};
+    MoeEpExceptionDump::MoeEpCoreDiagWriter diagWriter_;
 
     uint32_t rankId_{0};
     uint32_t epWorldSize_{0};
@@ -249,6 +250,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
     constexpr size_t metadataOffset = offsetof(MoeEpCombineTilingData, moeEpCombineInfo) +
                                       offsetof(MoeEpCombineInfo, dumpMetadata);
     MoeEpExceptionDump::WriteMetadata(context, tilingGM + metadataOffset);
+    diagWriter_.Init(context, MOE_EP_CORE_DIAG_COMBINE);
     channelsPerRank_ = mc2Context_->channelsPerRank;
     if (channelsPerRank_ == 0 || (epWorldSize_ > 0 && channelsPerRank_ > Mc2Aclnn::HCCL_MAX_RANK_SIZE / epWorldSize_)) {
         channelsPerRank_ = 1;
@@ -297,6 +299,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
     tpipe_->InitBuffer(xQueue_, DOUBLE_BUFFER_NUM, XTypeAlign32Size_);
     tpipe_->InitBuffer(readStateBuf_, UB_ALIGN); // 32
     statusTensor_ = readStateBuf_.Get<uint32_t>();
+    diagWriter_.RunPosRecord(MOE_EP_COMBINE_RUN_POS_INIT_DONE);
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -656,6 +659,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process()
     PipeBarrier<PIPE_ALL>(); // MaskCheck中包含reset操作，需确保前面操作完成
     BuffInit();
     RecvPhaseReduce();
+    diagWriter_.RunPosRecord(MOE_EP_COMBINE_RUN_POS_WAIT_DONE);
 }
 
 #endif
