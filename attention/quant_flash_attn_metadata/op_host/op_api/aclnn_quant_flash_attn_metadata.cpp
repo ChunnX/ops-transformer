@@ -54,7 +54,7 @@ aclnnStatus aclnnQuantFlashAttnMetadataGetWorkspaceSize(
                                                         sequsedKvOptional, vDescaleOptional, batchSize,
                                                         maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim,
                                                         quantMode, maskMode, winLeft, winRight, layoutQ,
-                                                        layoutQDescale, layoutKv, layoutOut, isGradEnable metaData);
+                                                        layoutQDescale, layoutKv, layoutOut, isGradEnable, metaData);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
