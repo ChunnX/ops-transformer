@@ -548,11 +548,19 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchGr
     if (maxByPong < 1U) {
         maxByPong = 1U;
     }
-    uint32_t castFp32Need = static_cast<uint32_t>(AlignTo(
-        static_cast<int64_t>(maxByPong) * tilingData.hiddenDim * 4 * 2, static_cast<int64_t>(UB_ALIGN)));
+    uint32_t outDtypeSize = (tilingData.outputDtype == static_cast<int32_t>(ge::DT_BF16) ||
+                             tilingData.outputDtype == static_cast<int32_t>(ge::DT_FLOAT16)) ? 2U : 4U;
+    uint32_t accumNeed = static_cast<uint32_t>(AlignTo(
+        static_cast<int64_t>(tilingData.hiddenDim) * outDtypeSize, static_cast<int64_t>(UB_ALIGN)));
+    bool needCast = (tilingData.inputDtype != tilingData.outputDtype);
+    uint32_t castFp32Need = needCast ? static_cast<uint32_t>(AlignTo(
+        static_cast<int64_t>(maxByPong) * tilingData.hiddenDim * outDtypeSize * 2,
+        static_cast<int64_t>(UB_ALIGN))) : 0U;
     uint32_t availableForPool = static_cast<uint32_t>(tilingData.ubSize) - permanentUb;
-    uint32_t availableForCast = (availableForPool > commBufSize) ? (availableForPool - commBufSize) : 0U;
-    uint32_t maxByCast = (availableForCast / (static_cast<uint32_t>(tilingData.hiddenDim) * 4U * 2U));
+    uint32_t availableForCast = (availableForPool > commBufSize + accumNeed) ?
+        (availableForPool - commBufSize - accumNeed) : 0U;
+    uint32_t maxByCast = needCast ?
+        (availableForCast / (static_cast<uint32_t>(tilingData.hiddenDim) * outDtypeSize * 2U)) : maxByPong;
     uint32_t gradSubBatch = maxByPong;
     if (maxByCast < gradSubBatch) {
         gradSubBatch = maxByCast;
@@ -639,10 +647,8 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
     int64_t wsSortTotal =
         wsSortTempVal + wsSortTempIdx + wsSortCompanion + wsSortHist + wsSortPrefix + wsSortCoreSums + wsSortOffsets;
 
-    int64_t wsGradUniqueFp32 = totalRecv * tilingData.hiddenDim * sizeof(float);
-
     int64_t wsTotal = wsGradSorted + wsRecvGrad + wsSdispls + wsRdispls + wsCounterScratch + wsFlagScratch +
-                      wsSegCount + wsSortTotal + wsGradUniqueFp32;
+                      wsSegCount + wsSortTotal;
     wsTotal = AlignTo(wsTotal, BUFFER_ALIGNMENT);
     wsTotal += SYSTEM_NEED_WORKSPACE;
 

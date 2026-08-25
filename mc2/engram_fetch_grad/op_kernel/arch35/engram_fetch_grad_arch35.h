@@ -164,7 +164,6 @@ private:
     GM_ADDR coreStartGM_{0};
     GM_ADDR sortCompanionGM_{0};
     GM_ADDR sortWorkspaceGm_{0};
-    GM_ADDR gradUniqueFp32GM_{0};
 
     TBuf<> entryBuf_;
     TBuf<> gradBuf_;
@@ -175,6 +174,7 @@ private:
     TBuf<> tempBuf_;
     TBuf<> indicesBuf_;
     TBuf<> castFp32Buf_;
+    TBuf<> accumBuf_;
     TBufPool<TPosition::VECCALC, 16> sortPool_;
 
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
@@ -441,9 +441,11 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     uint32_t maxByPong = (32U * 1024U) / static_cast<uint32_t>(hiddenBytes_);
     if (maxByPong < 1U) { maxByPong = 1U; }
     if (maxByPong > gradSubBatch_) { maxByPong = gradSubBatch_; }
-    uint32_t castFp32BufSize =
-        Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float) * maxByPong * 2U, UB_ALIGN) * UB_ALIGN;
-    uint32_t uniqueBufSize = COMM_BUF_SIZE + castFp32BufSize;
+    uint32_t outDtypeSize = EngramFetchGradUnique::GetDtypeSize(outputDtype_);
+    uint32_t castBufSize = (inputDtype_ != outputDtype_) ?
+        Ceil(static_cast<uint32_t>(hiddenDim_) * outDtypeSize * maxByPong * 2U, UB_ALIGN) * UB_ALIGN : 0U;
+    uint32_t accumBufSize = Ceil(static_cast<uint32_t>(hiddenDim_) * outDtypeSize, UB_ALIGN) * UB_ALIGN;
+    uint32_t uniqueBufSize = COMM_BUF_SIZE + castBufSize + accumBufSize;
     uint32_t poolSize = sortUbSize;
     if (uniqueBufSize > poolSize) {
         poolSize = uniqueBufSize;
@@ -455,12 +457,9 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     sortWorkspaceGm_ = workspaceGM_ + wsOffset;
     wsOffset += sortWorkspaceSize;
 
-    gradUniqueFp32GM_ = workspaceGM_ + wsOffset;
-    wsOffset += static_cast<uint64_t>(totalRecv_) * static_cast<uint64_t>(hiddenDim_) * sizeof(float);
-
     uniqueScatter_.Init(aivId_, totalBlocks_, rankId_, numRanks_, numEntriesPerRank_, hiddenDim_, hiddenBytes_,
                         inputDtype_, outputDtype_, tpipe_, entryBuf_, gradBuf_, indicesBuf_, tempBuf_, statusBuf_,
-                        castFp32Buf_);
+                        castFp32Buf_, accumBuf_);
 }
 
 __aicore__ inline void EngramFetchGradArch35::UnsortGrad()
@@ -732,14 +731,14 @@ __aicore__ inline void EngramFetchGradArch35::UniqueScatterAdd()
     uniqueScatter_.RunCount(numRecv, recvLocalEntryOutGM_, coreStartGM_, segCountGM_);
     // uint64_t tc = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
-    uniqueScatter_.ZeroGradUnique(numRecv, gradUniqueOutGM_, gradUniqueFp32GM_);
+    uniqueScatter_.ZeroGradUnique(numRecv, gradUniqueOutGM_);
 
     FinishExchangeGrad();
     SyncAll<true>();
     // uint64_t t3 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
     uniqueScatter_.RunScatterCast(numRecv, recvLocalEntryOutGM_, uniqueLocalEntryOutGM_, numUniqueOutGM_,
-                                  gradUniqueOutGM_, gradUniqueFp32GM_, recvGradGM_, coreStartGM_, segCountGM_,
+                                  gradUniqueOutGM_, recvGradGM_, coreStartGM_, segCountGM_,
                                   sortCompanionGM_);
 
     // usaInitAndOverlapSendCycle_ = t1 - t0;
@@ -892,17 +891,24 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             uint32_t maxByPong = (32U * 1024U) / static_cast<uint32_t>(hiddenBytes_);
             if (maxByPong < 1U) { maxByPong = 1U; }
             if (maxByPong > gradSubBatch_) { maxByPong = gradSubBatch_; }
-            uint32_t castFp32BufSize =
-                Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float) * maxByPong * 2U, UB_ALIGN) * UB_ALIGN;
-            sortPool_.InitBuffer(castFp32Buf_, castFp32BufSize);
-            uniqueScatter_.SetCastFp32Buf(castFp32Buf_);
+            uint32_t outDtypeSize = EngramFetchGradUnique::GetDtypeSize(outputDtype_);
+            if (inputDtype_ != outputDtype_) {
+                uint32_t castBufSize =
+                    Ceil(static_cast<uint32_t>(hiddenDim_) * outDtypeSize * maxByPong * 2U, UB_ALIGN) * UB_ALIGN;
+                sortPool_.InitBuffer(castFp32Buf_, castBufSize);
+            }
+            uint32_t accumBufSize =
+                Ceil(static_cast<uint32_t>(hiddenDim_) * outDtypeSize, UB_ALIGN) * UB_ALIGN;
+            sortPool_.InitBuffer(accumBuf_, accumBufSize);
+            uniqueScatter_.SetCastBuf(castFp32Buf_);
+            uniqueScatter_.SetAccumBuf(accumBuf_);
             uniqueScatter_.SetGradSubBatch(gradSubBatch_);
             uint64_t t2 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
             uniqueScatter_.RunCount(numRecv, recvLocalEntryOutGM_, coreStartGM_, segCountGM_);
             uint64_t t3 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
-            uniqueScatter_.ZeroGradUnique(numRecv, gradUniqueOutGM_, gradUniqueFp32GM_);
+            uniqueScatter_.ZeroGradUnique(numRecv, gradUniqueOutGM_);
             uint64_t t4 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
             FinishExchangeGrad();
@@ -910,7 +916,7 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             uint64_t t5 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
             uniqueScatter_.RunScatterCast(numRecv, recvLocalEntryOutGM_, uniqueLocalEntryOutGM_, numUniqueOutGM_,
-                                          gradUniqueOutGM_, gradUniqueFp32GM_, recvGradGM_, coreStartGM_, segCountGM_,
+                                          gradUniqueOutGM_, recvGradGM_, coreStartGM_, segCountGM_,
                                           sortCompanionGM_);
             uint64_t t6 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
