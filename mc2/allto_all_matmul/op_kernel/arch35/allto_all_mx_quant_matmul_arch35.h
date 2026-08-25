@@ -63,9 +63,6 @@ private:
     static constexpr uint64_t MXFP_GROUP_SIZE = 64UL;
     static constexpr uint64_t NUM_TWO = 2UL;
     static constexpr uint64_t ALIGN_NUM = 512UL;
-    static constexpr uint8_t POS_MAIN_CALC = 1; // 主轮计算
-    static constexpr uint8_t POS_TAIL_CALC = 2; // 尾轮计算
-    static constexpr uint8_t POS_SCALE_COMM = 4; // scale 通信
     __aicore__ inline void ProcessTile(uint32_t taskCnt);
     __aicore__ inline void ProcessTail(uint32_t taskCnt);
     __aicore__ inline void ProcessScale();
@@ -131,24 +128,15 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
     }
 
     // 启动scale通信和转置
-    // 阶段入口: posTag+phase+turn 一次写入，崩溃时保留当前阶段状态
-    runtimeInfo_.WriteGmByPassDCache(0, POS_SCALE_COMM,
-                                     static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
     ProcessScale();
 
     // 启动主块流水
     if (mc2Tiling_.tileCnt > 0) {
-        // 阶段入口: posTag+phase+turn 一次写入，崩溃时保留当前阶段状态
-        runtimeInfo_.WriteGmByPassDCache(0, POS_MAIN_CALC,
-                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         ProcessTile(mc2Tiling_.tileCnt);
     }
 
     // 启动尾块流水
     if (mc2Tiling_.tailCnt > 0) {
-        // 阶段入口: posTag+phase+turn 一次写入，崩溃时保留当前阶段状态
-        runtimeInfo_.WriteGmByPassDCache(0, POS_TAIL_CALC,
-                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         ProcessTail(mc2Tiling_.tailCnt);
     }
 

@@ -150,11 +150,13 @@ RUNTIME_PHASE_MAP = {
 
 # PosTag 映射 (allto_all_matmul 算子, 值由各 kernel 就地定义)
 # 值与各 kernel 文件内 constexpr 一一对应，新增类别时同步更新此处
+#
+# 来源: arch35/allto_all_mx_quant_matmul_pipeline.h
 POS_TAG_MAP_ALLTO_ALL = {
-    0: "NONE",
-    1: "MAIN_CALC",
-    2: "TAIL_CALC",
-    4: "SCALE_COMM",
+    0: "COMM_BEFORE",
+    1: "SCALE_COMM_BEFORE",
+    2: "COMP_CUBE_MATMUL_BEFORE",
+    3: "COMP_VEC_PERMUTE_BEFORE",
 }
 
 
@@ -423,7 +425,7 @@ def parse_runtime_info_per_core(data: bytes, offset: int) -> dict:
     if offset + RUNTIME_INFO_PER_CORE_SIZE > len(data):
         return {"error": "data too short for RuntimeInfoPerCore"}
     magic_num, core_id = struct.unpack_from("<IH", data, offset)
-    exec_turn, exec_position, comm_phase = struct.unpack_from("<3B", data, offset + 6)
+    exec_turn, exec_position, comm_phase, commit_count, wait_count = struct.unpack_from("<5B", data, offset + 6)
     return {
         "magicNum": magic_num,
         "magicValid": magic_num == RUNTIME_INFO_MAGIC,
@@ -433,11 +435,19 @@ def parse_runtime_info_per_core(data: bytes, offset: int) -> dict:
         "execPositionName": POS_TAG_MAP_ALLTO_ALL.get(exec_position, f"UNKNOWN({exec_position})"),
         "commPhase": comm_phase,
         "commPhaseName": RUNTIME_PHASE_MAP.get(comm_phase, f"UNKNOWN({comm_phase})"),
+        "commCommitCount": commit_count,
+        "commWaitCount": wait_count,
     }
 
 
-def parse_runtime_info_segment(data: bytes) -> dict:
-    """解析 workspace_segN_type12_*.bin（RuntimeInfo 段，64KB = 128 × 512B）。"""
+def parse_runtime_info_segment(data: bytes, aic_core_num=None) -> dict:
+    """解析 workspace_segN_type12_*.bin（RuntimeInfo 段，64KB = 128 × 512B）。
+
+    aic_core_num: tiling data 中的 aicCoreNum，用于区分 C/V 核。
+                  AIC coreId 范围 0 ~ aicCoreNum-1; AIV coreId 范围 aicCoreNum ~ 3*aicCoreNum-1
+                  (MIX_AIC_1_2 模式下 AIV slotIdx = aicCoreNum + GetBlockIdx())。
+                  为 None 时 coreType 标记为 "未知"，需通过 --aic-core-num 传入。
+    """
     max_slots = len(data) // RUNTIME_INFO_PER_CORE_SIZE
     slots = []
     active_count = 0
@@ -447,7 +457,10 @@ def parse_runtime_info_segment(data: bytes) -> dict:
         slot["slotIdx"] = i
         if slot.get("magicValid", False):
             active_count += 1
-            # 判断是 C 核还是 V 核（需要 aicCoreNum，从 tiling info 获取或从 coreId 推断）
+            if aic_core_num is not None:
+                slot["coreType"] = "C核" if slot["coreId"] < aic_core_num else "V核"
+            else:
+                slot["coreType"] = "未知"
             slots.append(slot)
         else:
             # 未写入的 slot 也保留，但标记为 inactive
@@ -456,6 +469,7 @@ def parse_runtime_info_segment(data: bytes) -> dict:
         "segmentSize": len(data),
         "maxSlots": max_slots,
         "activeSlots": active_count,
+        "aicCoreNum": aic_core_num,
         "slots": slots,
     }
 
@@ -470,7 +484,7 @@ def detect_workspace_seg_from_filename(filename: str) -> tuple:
     return None
 
 
-def parse_workspace_segment_file(data: bytes, seg_type: int) -> dict:
+def parse_workspace_segment_file(data: bytes, seg_type: int, aic_core_num=None) -> dict:
     """解析 workspace_seg*_type*_*.bin 文件，根据段类型选择解析方式。"""
     type_name = WS_SEG_TYPE_MAP.get(seg_type, f"UNKNOWN({seg_type})")
     result = {
@@ -479,7 +493,7 @@ def parse_workspace_segment_file(data: bytes, seg_type: int) -> dict:
         "fileSize": len(data),
     }
     if seg_type == 12:  # WS_SEG_RUNTIME_INFO
-        rt_info = parse_runtime_info_segment(data)
+        rt_info = parse_runtime_info_segment(data, aic_core_num)
         result["runtimeInfo"] = rt_info
     else:
         # 非 RuntimeInfo 段：做基础 hex 统计
@@ -569,19 +583,12 @@ def print_runtime_info_segment(rt_info: dict):
     print_section("RuntimeInfo Segment (type=12, 64KB)")
     logging.info("  %-30s: %d bytes", "segmentSize", rt_info["segmentSize"])
     logging.info("  %-30s: %d / %d", "activeSlots (magic matched)", rt_info["activeSlots"], rt_info["maxSlots"])
-    logging.info("")
-    logging.info("  %-6s  %-8s  %-8s  %-10s  %-10s  %-16s",
-                 "Slot", "CoreId", "Valid", "TileTurn", "PosTag", "CommPhase")
-    logging.info("  " + "-" * 70)
-    for slot in rt_info["slots"]:
-        if slot.get("magicValid", False):
-            logging.info("  [%-4d] %-8d  %-8s  %-10d  %-4d/%-6s  %s (%d)",
-                         slot["slotIdx"], slot["coreId"], "YES",
-                         slot["execTurn"], slot["execPosition"], slot["execPositionName"],
-                         slot["commPhaseName"], slot["commPhase"])
-        else:
-            # 只在前后有 active slot 的范围内打印 inactive，避免刷屏
-            pass
+    if rt_info.get("aicCoreNum") is None:
+        logging.warning("  未提供 --aic-core-num，C/V 核分类不可靠（显示为'未知'）。")
+        logging.warning("  请先解析 tiling_data_*.bin 获取 aicCoreNum，再通过 --aic-core-num N 传入。")
+    else:
+        logging.info("  %-30s: %d (coreId < %d 为 C核, 否则为 V核)",
+                     "aicCoreNum", rt_info["aicCoreNum"], rt_info["aicCoreNum"])
     logging.info("")
     logging.info("  --- 仅显示 magicNum 校验通过的 slot (0x%08X) ---", RUNTIME_INFO_MAGIC)
     active_slots = [s for s in rt_info["slots"] if s.get("magicValid", False)]
@@ -589,13 +596,12 @@ def print_runtime_info_segment(rt_info: dict):
         logging.warning("  无有效 slot，可能 runtime info 未被写入（异常发生在 Init 之前）。")
     else:
         for slot in active_slots:
-            core_type = "V核" if slot["coreId"] >= 128 else "C核"
-            # 尝试从 tiling info 推断 aicCoreNum 来区分 C/V 核
-            # execTurn=tile进度(主/尾轮内从0起), execPosition=kernel打点tag(含义见对应算子kernel源文件)
-            logging.info("  Core %-4d (%s):  turn=%d, posTag=%d (%s), phase=%s",
+            core_type = slot.get("coreType", "未知")
+            logging.info("  Core %-4d (%s):  turn=%d, pos=%d (%s), phase=%s, commit=%d, wait=%d",
                          slot["coreId"], core_type,
                          slot["execTurn"], slot["execPosition"], slot["execPositionName"],
-                         slot["commPhaseName"])
+                         slot["commPhaseName"],
+                         slot["commCommitCount"], slot["commWaitCount"])
 
 
 def print_workspace_segment(result: dict):
@@ -734,6 +740,10 @@ def main():
                         help="从 tiling_data_*.bin 尾部解析 WorkspaceLayoutInfo")
     parser.add_argument("--workspace", action="store_true",
                         help="解析 workspace_seg*_type*_*.bin（段文件，type=12 自动解析 RuntimeInfo）")
+    parser.add_argument("--aic-core-num", type=int, metavar="N", default=None,
+                        help="AIC 核数，用于 workspace 段解析时区分 C/V 核。"
+                             " 从 tiling_data 解析结果的 aicCoreNum 字段获取。"
+                             " 未提供时 C/V 核分类不可靠（显示为'未知'）。")
     parser.add_argument("--json", action="store_true", help="以 JSON 格式输出")
     parser.add_argument("--verify", metavar="REF_FILE",
                         help="对比 host 参考文件（由 MC2_TILING_DUMP_REF_PATH 环境变量生成）")
@@ -759,7 +769,9 @@ def main():
         seg_idx, seg_type = seg_info
         logging.info("检测到 workspace 段文件: segIdx=%d, segType=%d (%s)",
                      seg_idx, seg_type, WS_SEG_TYPE_MAP.get(seg_type, "UNKNOWN"))
-        result = parse_workspace_segment_file(data, seg_type)
+        if args.aic_core_num is not None:
+            logging.info("使用 --aic-core-num=%d 区分 C/V 核", args.aic_core_num)
+        result = parse_workspace_segment_file(data, seg_type, args.aic_core_num)
         result["segIdx"] = seg_idx
         if args.json:
             print(json.dumps(result, indent=2, ensure_ascii=False, default=str))

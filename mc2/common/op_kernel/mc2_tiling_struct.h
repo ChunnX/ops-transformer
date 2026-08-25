@@ -222,13 +222,15 @@ enum RuntimePhase : uint8_t {
 
 // 每个 core 的运行时信息 (512 字节)
 struct alignas(512) RuntimeInfoPerCore {
-    uint32_t magicNum;        // 4B  魔数 0x4D433252 ("MC2R")
+    uint32_t magicNum;        // 4B  魔数 0x5A5A5A5A
     uint16_t coreId;          // 2B  core ID (C核: 0~aicCoreNum-1, V核: aicCoreNum~total-1)
-    uint8_t  execTurn;        // 1B  tile 进度: 主轮/尾轮 tile 循环内逐 tile 递增 (每轮从 0 起)
-    uint8_t  execPosition;    // 1B  position tag: 类别打点 (主轮/尾轮/转置/scale 等),
-                              //     值由各 kernel 就地定义并写入
+    uint8_t  execTurn;        // 1B  执行轮次: scale=1轮, 每 tile=1轮, 连续递增 (0=pipeline未启动)
+    uint8_t  execPosition;    // 1B  position tag: 0=COMM_BEFORE, 1=SCALE_COMM_BEFORE,
+                              //     2=COMP_CUBE_MATMUL_BEFORE, 3=COMP_VEC_PERMUTE_BEFORE
     uint8_t  commPhase;       // 1B  当前通信阶段 (RuntimePhase, 仅 HCCL 五态)
-    uint8_t  reserved[503];   // 503B 预留
+    uint8_t  commCommitCount; // 1B  HCCL Commit 次数 (B层 communicator 递增)
+    uint8_t  commWaitCount;   // 1B  HCCL Wait 次数 (B层 communicator 递增)
+    uint8_t  reserved[501];   // 501B 预留
 }; // 512 bytes
 
 } // namespace Mc2Tiling

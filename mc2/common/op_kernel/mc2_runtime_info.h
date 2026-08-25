@@ -70,6 +70,8 @@ public:
         mySlot->execTurn = 0;
         mySlot->execPosition = 0;
         mySlot->commPhase = static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_INIT);
+        mySlot->commCommitCount = 0;
+        mySlot->commWaitCount = 0;
 
         FlushCache();
     }
@@ -99,26 +101,26 @@ public:
         FlushCache();
     }
 
-    // 打 tile 进度: tile 循环内每 tile 写一次，记录当前处理到第几个 tile；
-    // 写在 Process(index) 之前，崩溃时 turn 值即当前卡死的 tile 序号
-    __aicore__ inline void WriteTurnByPassDCache(uint8_t tileIdx)
+    // 递增 HCCL Commit 次数: 在 hccl_.Commit() 返回后调用
+    __aicore__ inline void IncCommitCount()
     {
         if (runtimeInfoBase_ == nullptr) {
             return;
         }
         __gm__ Mc2Tiling::RuntimeInfoPerCore *mySlot = &runtimeInfoBase_[slotIdx_];
-        mySlot->execTurn = tileIdx;
+        mySlot->commCommitCount++;
         FlushCache();
     }
 
-    // 打类别点: 单独更新 execPosition；阶段入口推荐改用 WriteGmByPassDCache 一次写完
-    __aicore__ inline void WritePosTagByPassDCache(uint8_t tag)
+    // 递增 HCCL Wait 次数: 在 hccl_.Wait() 返回后调用
+    // 崩溃时 commit > wait 说明卡在 Wait; commit == wait 说明不在通信中
+    __aicore__ inline void IncWaitCount()
     {
         if (runtimeInfoBase_ == nullptr) {
             return;
         }
         __gm__ Mc2Tiling::RuntimeInfoPerCore *mySlot = &runtimeInfoBase_[slotIdx_];
-        mySlot->execPosition = tag;
+        mySlot->commWaitCount++;
         FlushCache();
     }
 
