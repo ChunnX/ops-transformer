@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""B-I MXFP4 KV 输入构造与冒烟验证示例。
+"""B-I MXFP4 KV 精度 case。
 
 默认仅校验 400B record 的字节布局，不依赖 torch/NPU：
 
     python3 mxfp4_bi_input_example.py
 
-在已安装本分支算子包的 A5 NPU 环境执行一次真算子调用：
+在已安装本分支算子包的 A5 NPU 环境执行精度对比：
 
     python3 mxfp4_bi_input_example.py --run-npu
 
-该例子是 ABI/路由 smoke case，不是端到端数值 golden。它把 FP4 code
-直接写入缓存，避免先引入量化器这个额外变量。
+该 case 把 FP4 code 直接写入缓存，避免先引入量化器这个额外变量。16 条
+KV record 完全相同，所以任意合法 sparse/causal softmax 权重的加权结果都应
+等于同一条反量化后的 NoPE value；CPU reference 仍显式执行 QK、softmax、PV。
 """
 
 from __future__ import annotations
@@ -87,28 +88,26 @@ def decode_nope(record: bytes) -> list[float]:
     return output
 
 
-def make_smoke_records(s2: int = 16) -> list[bytes]:
-    """构造 16 条可被一整个 V0 UB batch 取满的区分性 record。"""
+def make_precision_records(s2: int = 16) -> list[bytes]:
+    """构造 16 条相同 record，覆盖一次完整 V0 UB batch。"""
     if s2 != 16:
         raise ValueError("the smoke case intentionally uses exactly 16 KV records")
-    # Raw BF16 bit patterns are deliberately copied verbatim; this example never interprets them as FP32.
-    rope_raw = struct.pack("<64H", *range(0x3F80, 0x3F80 + ROPE_DIM))
-    records = []
-    for token in range(s2):
-        # low/high nibbles differ, so nibble-order bugs are observable. Token 0 decodes as 1.0, 4.0, ...
-        nope_codes = [0x2 if d % 2 == 0 else 0x6 for d in range(NOPE_DIM)]
-        scales = [127 + ((token + group) % 2) for group in range(SCALE_COUNT)]
-        records.append(pack_bi_record(nope_codes, rope_raw, scales))
-    return records
+    # Raw BF16 RoPE is all-zero. The output drops the RoPE tail, but V0 must still copy these 128 bytes unchanged.
+    rope_raw = bytes(ROPE_DIM * 2)
+    # low/high nibbles differ; scale alternates between 1 and 2 every 32 NoPE elements.
+    nope_codes = [0x2 if d % 2 == 0 else 0x6 for d in range(NOPE_DIM)]
+    scales = [127 + (group % 2) for group in range(SCALE_COUNT)]
+    record = pack_bi_record(nope_codes, rope_raw, scales)
+    return [record] * s2
 
 
-def validate_smoke_records(records: list[bytes]) -> None:
+def validate_precision_records(records: list[bytes]) -> None:
     if len(records) != 16:
         raise AssertionError("smoke case must contain 16 records")
     first = records[0]
     if first[0] != 0x62:
         raise AssertionError(f"wrong nibble order: first packed byte is 0x{first[0]:02x}, expected 0x62")
-    if first[ROPE_OFFSET:SCALE_OFFSET] != struct.pack("<64H", *range(0x3F80, 0x3F80 + ROPE_DIM)):
+    if first[ROPE_OFFSET:SCALE_OFFSET] != bytes(ROPE_DIM * 2):
         raise AssertionError("raw RoPE suffix changed while packing")
     decoded = decode_nope(first)
     if decoded[:2] != [1.0, 4.0]:
@@ -126,8 +125,8 @@ def make_torch_inputs(records: list[bytes]):
     key = torch.tensor(signed_bytes, dtype=torch.int8).reshape(1, len(records), 1, RECORD_BYTES)
     # MLA V0 only reads key, but host schema still requires value with identical int8 BSND shape.
     value = key.clone()
+    # Zero query makes every QK score equal, while PV still checks the dequantized NoPE values.
     query = torch.zeros((1, 1, 1, 576), dtype=torch.bfloat16)
-    query[..., 0] = 1.0
     sparse_indices = torch.arange(len(records), dtype=torch.int32).reshape(1, 1, 1, len(records))
     actual_seq_q = torch.tensor([1], dtype=torch.int32)
     actual_seq_kv = torch.tensor([len(records)], dtype=torch.int32)
@@ -146,11 +145,28 @@ def make_torch_inputs(records: list[bytes]):
     }
 
 
-def run_npu_smoke(records: list[bytes]) -> None:
+def cpu_reference(inputs, records: list[bytes]):
+    """BSND B=1/S1=1/N1=N2=1 的 CPU reference：dequant -> QK -> softmax -> PV。"""
+    import torch
+
+    q = inputs["query"].float().reshape(1, 576)
+    # This case deliberately keeps all RoPE values at zero. V for MLA output is NoPE D[0:512].
+    k_row = torch.tensor(decode_nope(records[0]) + [0.0] * ROPE_DIM, dtype=torch.float32)
+    v_row = k_row[:NOPE_DIM]
+    k = k_row.repeat(len(records), 1)
+    v = v_row.repeat(len(records), 1)
+    scores = q @ k.T * (1.0 / math.sqrt(576.0))
+    # sparse_mode=3 masks positions >= S2-S1+s1+1. For S2=16/S1=1/s1=0, all 0..15 remain valid.
+    probs = torch.softmax(scores, dim=-1)
+    return (probs @ v).reshape(1, 1, 1, NOPE_DIM)
+
+
+def run_npu_precision_case(records: list[bytes]) -> None:
     import torch
     import torch_npu
 
     inputs = {name: tensor.npu() for name, tensor in make_torch_inputs(records).items()}
+    expected = cpu_reference(make_torch_inputs(records), records)
     output = torch_npu.npu_kv_quant_sparse_flash_attention(
         inputs["query"],
         inputs["key"],
@@ -175,22 +191,35 @@ def run_npu_smoke(records: list[bytes]) -> None:
         rope_head_dim=64,
     )
     torch.npu.synchronize()
-    if output.shape != (1, 1, 1, 512):
+    if output.shape != (1, 1, 1, NOPE_DIM):
         raise AssertionError(f"unexpected output shape: {tuple(output.shape)}")
     if not torch.isfinite(output.float()).all():
         raise AssertionError("NPU output contains NaN or Inf")
-    print(f"NPU smoke passed: output shape={tuple(output.shape)}, dtype={output.dtype}")
+    actual = output.cpu().float()
+    # BF16 output and the device softmax/reduction are allowed a small accumulated-rounding error.
+    close = torch.isclose(actual, expected, rtol=2e-2, atol=5e-2)
+    ratio = float(close.float().mean())
+    max_abs_error = float((actual - expected).abs().max())
+    if ratio < 0.99:
+        raise AssertionError(
+            f"precision failed: close_ratio={ratio:.6f}, max_abs_error={max_abs_error:.6f}, "
+            f"actual[:8]={actual.flatten()[:8].tolist()}, expected[:8]={expected.flatten()[:8].tolist()}"
+        )
+    print(
+        f"precision passed: close_ratio={ratio:.6f}, max_abs_error={max_abs_error:.6f}, "
+        f"output shape={tuple(output.shape)}, dtype={output.dtype}"
+    )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run-npu", action="store_true", help="在已部署本分支算子包的 NPU 环境调用真算子")
+    parser.add_argument("--run-npu", action="store_true", help="在已部署本分支算子包的 NPU 环境运行 CPU/NPU 精度对比")
     args = parser.parse_args()
-    records = make_smoke_records()
-    validate_smoke_records(records)
-    print("ABI smoke passed: 16 x 400B records; first NoPE pair=[1.0, 4.0]; group-1 pair=[2.0, 8.0]")
+    records = make_precision_records()
+    validate_precision_records(records)
+    print("case construction passed: 16 x 400B records; first NoPE pair=[1.0, 4.0]; group-1 pair=[2.0, 8.0]")
     if args.run_npu:
-        run_npu_smoke(records)
+        run_npu_precision_case(records)
 
 
 if __name__ == "__main__":
