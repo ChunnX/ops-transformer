@@ -907,16 +907,21 @@ def cpu_qfa_hif8(
     cu_seqlens_q = list(cu_seqlens_q) if cu_seqlens_q is not None else [0]
     cu_seqlens_kv = list(cu_seqlens_kv) if cu_seqlens_kv is not None else [0]
 
-    B = batch_size if batch_size is not None and batch_size > 0 else (
-        max(1, len(cu_seqlens_q) - 1) if cu_seqlens_q and len(cu_seqlens_q) >= 2
-        else len(list(seqused_q)) if seqused_q is not None and len(list(seqused_q)) > 0
-        else 1
+    B = (
+        batch_size
+        if batch_size is not None and batch_size > 0
+        else (
+            max(1, len(cu_seqlens_q) - 1)
+            if cu_seqlens_q and len(cu_seqlens_q) >= 2
+            else len(list(seqused_q))
+            if seqused_q is not None and len(list(seqused_q)) > 0
+            else 1
+        )
     )
 
     if len(cu_seqlens_q) > 1:
         actual_seq_q = [
-            cu_seqlens_q[i + 1] - cu_seqlens_q[i]
-            for i in range(len(cu_seqlens_q) - 1)
+            cu_seqlens_q[i + 1] - cu_seqlens_q[i] for i in range(len(cu_seqlens_q) - 1)
         ]
     elif seqused_q is not None and len(list(seqused_q)) > 0:
         actual_seq_q = list(seqused_q)
@@ -940,7 +945,9 @@ def cpu_qfa_hif8(
     if B is None or B <= 0:
         B = len(actual_seq_q)
 
-    p_scale_value = float(p_scale.item()) if isinstance(p_scale, torch.Tensor) else float(p_scale)
+    p_scale_value = (
+        float(p_scale.item()) if isinstance(p_scale, torch.Tensor) else float(p_scale)
+    )
 
     _apply_hif8_golden_globals(
         {
@@ -964,10 +971,26 @@ def cpu_qfa_hif8(
         }
     )
 
-    deq_q = dequant_scale_q if isinstance(dequant_scale_q, torch.Tensor) else torch.tensor([float(dequant_scale_q)], dtype=torch.float32)
-    deq_k = dequant_scale_k if isinstance(dequant_scale_k, torch.Tensor) else torch.tensor([float(dequant_scale_k)], dtype=torch.float32)
-    deq_v = dequant_scale_v if isinstance(dequant_scale_v, torch.Tensor) else torch.tensor([float(dequant_scale_v)], dtype=torch.float32)
-    p_scale_t = p_scale if isinstance(p_scale, torch.Tensor) else torch.tensor([float(p_scale)], dtype=torch.float32)
+    deq_q = (
+        dequant_scale_q
+        if isinstance(dequant_scale_q, torch.Tensor)
+        else torch.tensor([float(dequant_scale_q)], dtype=torch.float32)
+    )
+    deq_k = (
+        dequant_scale_k
+        if isinstance(dequant_scale_k, torch.Tensor)
+        else torch.tensor([float(dequant_scale_k)], dtype=torch.float32)
+    )
+    deq_v = (
+        dequant_scale_v
+        if isinstance(dequant_scale_v, torch.Tensor)
+        else torch.tensor([float(dequant_scale_v)], dtype=torch.float32)
+    )
+    p_scale_t = (
+        p_scale
+        if isinstance(p_scale, torch.Tensor)
+        else torch.tensor([float(p_scale)], dtype=torch.float32)
+    )
 
     q_cpu = q.detach().cpu() if isinstance(q, torch.Tensor) else torch.as_tensor(q)
     k_cpu = k.detach().cpu() if isinstance(k, torch.Tensor) else torch.as_tensor(k)
@@ -990,19 +1013,25 @@ def cpu_qfa_hif8(
         N = tensor_tnd.shape[1]
         D = tensor_tnd.shape[2]
         max_seq = max(seq_lens) if seq_lens else 0
-        result = torch.zeros((B, N, max_seq, D), dtype=tensor_tnd.dtype, device=tensor_tnd.device)
+        result = torch.zeros(
+            (B, N, max_seq, D), dtype=tensor_tnd.dtype, device=tensor_tnd.device
+        )
         if cu_seqlens is not None:
             for b in range(B):
                 act_s = seq_lens[b]
                 if act_s <= 0:
                     continue
                 offset = cu_seqlens[b]
-                result[b, :, :act_s, :] = tensor_tnd[offset : offset + act_s, :, :].permute(1, 0, 2)
+                result[b, :, :act_s, :] = tensor_tnd[
+                    offset : offset + act_s, :, :
+                ].permute(1, 0, 2)
         else:
             t = 0
             for b in range(B):
                 act_s = seq_lens[b]
-                result[b, :, :act_s, :] = tensor_tnd[t : t + act_s, :, :].permute(1, 0, 2)
+                result[b, :, :act_s, :] = tensor_tnd[t : t + act_s, :, :].permute(
+                    1, 0, 2
+                )
                 t += act_s
         return result.contiguous()
 
@@ -1011,7 +1040,9 @@ def cpu_qfa_hif8(
         N = tensor_bsnd.shape[2]
         D = tensor_bsnd.shape[3]
         max_seq = max(seq_lens) if seq_lens else 0
-        result = torch.zeros((B, N, max_seq, D), dtype=tensor_bsnd.dtype, device=tensor_bsnd.device)
+        result = torch.zeros(
+            (B, N, max_seq, D), dtype=tensor_bsnd.dtype, device=tensor_bsnd.device
+        )
         for b in range(B):
             act_s = seq_lens[b]
             if act_s <= 0:
@@ -1024,7 +1055,9 @@ def cpu_qfa_hif8(
         N = tensor_bnsd.shape[1]
         D = tensor_bnsd.shape[3]
         max_seq = max(seq_lens) if seq_lens else 0
-        result = torch.zeros((B, N, max_seq, D), dtype=tensor_bnsd.dtype, device=tensor_bnsd.device)
+        result = torch.zeros(
+            (B, N, max_seq, D), dtype=tensor_bnsd.dtype, device=tensor_bnsd.device
+        )
         for b in range(B):
             act_s = seq_lens[b]
             if act_s <= 0:
@@ -1041,9 +1074,21 @@ def cpu_qfa_hif8(
         k_bnsd = _bnsd_to_bnsd(k_cpu, actual_seq_kv)
         v_bnsd = _bnsd_to_bnsd(v_cpu, actual_seq_kv)
     else:
-        q_bnsd = _tnd_to_bnsd(q_cpu, actual_seq_q, cu_seqlens_q_list if len(cu_seqlens_q_list) > 1 else None)
-        k_bnsd = _tnd_to_bnsd(k_cpu, actual_seq_kv, cu_seqlens_kv_list if len(cu_seqlens_kv_list) > 1 else None)
-        v_bnsd = _tnd_to_bnsd(v_cpu, actual_seq_kv, cu_seqlens_kv_list if len(cu_seqlens_kv_list) > 1 else None)
+        q_bnsd = _tnd_to_bnsd(
+            q_cpu,
+            actual_seq_q,
+            cu_seqlens_q_list if len(cu_seqlens_q_list) > 1 else None,
+        )
+        k_bnsd = _tnd_to_bnsd(
+            k_cpu,
+            actual_seq_kv,
+            cu_seqlens_kv_list if len(cu_seqlens_kv_list) > 1 else None,
+        )
+        v_bnsd = _tnd_to_bnsd(
+            v_cpu,
+            actual_seq_kv,
+            cu_seqlens_kv_list if len(cu_seqlens_kv_list) > 1 else None,
+        )
 
     cpu_out, cpu_lse = hif8_golden_mod.cpu_hif8_golden(
         q_bnsd,
@@ -1059,7 +1104,11 @@ def cpu_qfa_hif8(
     )
 
     compare_layout = input_layout
-    cu_q_for_convert = cu_seqlens_q if (str(input_layout).upper() == "TND" and len(cu_seqlens_q_list) > 1) else None
+    cu_q_for_convert = (
+        cu_seqlens_q
+        if (str(input_layout).upper() == "TND" and len(cu_seqlens_q_list) > 1)
+        else None
+    )
     cpu_out_aligned = hif8_golden_mod.convert_q_bnsd_to_layout(
         cpu_out,
         actual_seq_q,
@@ -1098,6 +1147,7 @@ def cpu_qfa_hif8(
 def _apply_hif8_golden_globals(attrs):
     """把 case 属性注入 hif8 golden 模块全局变量。"""
     import quant_flash_attn_hif8_golden as hif8_golden_mod
+
     for golden_key, val in attrs.items():
         setattr(hif8_golden_mod, golden_key, val)
 

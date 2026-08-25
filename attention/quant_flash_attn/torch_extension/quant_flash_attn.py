@@ -289,9 +289,10 @@ def quant_flash_attn_metadata(
     'PrivateUse1' is dispatch key for custom NPU backends.
     """
     torch._check(
-        quant_mode in (1, 5),
-        lambda: f"quant_mode of quant_flash_attn_metadata only supports 1 or 5, but got "
-        f"{quant_mode}",
+        quant_mode in (1, 5, 7),
+        lambda: f"The quant_mode of quant_flash_attn_metadata only supports 1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), "
+        f"5 (A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16) "
+        f"or 7 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32), but got {quant_mode}",
     )
     if layout_q == "TND":
         torch._check(
@@ -419,9 +420,10 @@ def quant_flash_attn(
     'PrivateUse1' is the combine key for custom NPU backends.
     """
     torch._check(
-        quant_mode in (1, 5),
-        lambda: f"quant_mode of quant_flash_attn only supports 1 or 5, but got "
-        f"{quant_mode}",
+        quant_mode in (1, 5, 7),
+        lambda: f"The quant_mode of quant_flash_attn only supports 1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), "
+        f"5 (A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16) "
+        f"or 7 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32), but got {quant_mode}",
     )
     quant_mode = _resolve_quant_mode(quant_mode)
     mask_mode = _resolve_mask_mode(mask_mode)

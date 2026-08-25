@@ -543,7 +543,7 @@ cann_ops_transformer.quant_flash_attn(
         <tr>
             <td>quant_mode=7（HIF8）</td>
             <td>TND/BSND/BNSD</td>
-            <td>TND</td>
+            <td>BSND</td>
             <td>TND/BSND/BNSD</td>
             <td>TND/BSND/BNSD</td>
             <td>(Q_N, Q_T)</td>
@@ -551,7 +551,7 @@ cann_ops_transformer.quant_flash_attn(
         <tr>
             <td>quant_mode=7（HIF8）</td>
             <td>TND/BSND/BNSD</td>
-            <td>TND</td>
+            <td>BSND</td>
             <td>TND/BSND/BNSD</td>
             <td>TND/BSND/BNSD</td>
             <td>(Q_N, Q_T)</td>
@@ -652,13 +652,13 @@ cann_ops_transformer.quant_flash_attn(
             <tr>
                 <td>7</td>
                 <td>q_descale</td>
-                <td>TND</td>
+                <td>BSND</td>
                 <td>(1,)<br>per-tensor 量化，1D</td>
             </tr>
             <tr>
                 <td>7</td>
                 <td>q_descale</td>
-                <td>TND</td>
+                <td>BSND</td>
                 <td>(1,)<br>per-tensor 量化，1D</td>
             </tr>
         </tbody>
