@@ -58,7 +58,7 @@ public:
     __aicore__ inline void AIV21Process(LocalTensor<P> &invRmsInBuf, LocalTensor<P> &invRmsUb,
                                         LocalTensor<P> &invRmsGradUb, uint32_t currentChunkSize);
     __aicore__ inline void AIV22Process(LocalTensor<P> &invRmsUb, LocalTensor<P> &xRsFp32Buf,
-                                        LocalTensor<P> &xRsGradInvUb, uint32_t currentChunkSize, uint32_t copySizeND);
+                                        LocalTensor<P> &xGradVec3Buf, uint32_t currentChunkSize, uint32_t copySizeND);
 
     // C0/C1 流程 (矩阵计算)
     __aicore__ inline void ProcessC0C1Pipeline();
@@ -80,8 +80,7 @@ public:
     __aicore__ inline void ProcessV2ChunkLoadXAndGamma(uint32_t offsetND, uint32_t copySizeND, uint32_t bsStart,
                                                        uint32_t bsChunkStart, uint32_t currentChunkSize,
                                                        uint32_t buffId);
-    __aicore__ inline void ProcessV2ChunkComputeXRsGrad(uint32_t copySizeND, uint32_t currentChunkSize,
-                                                        uint32_t chunkNDSize);
+    __aicore__ inline void ProcessV2ChunkComputeXRsGrad(uint32_t copySizeND, uint32_t currentChunkSize);
     __aicore__ inline void ProcessV2ChunkProcessXRsGradMm(uint32_t bsStart, uint32_t bsChunkStart, uint32_t copySizeND,
                                                           uint32_t currentChunkSize, uint32_t chunkNDSize,
                                                           uint32_t buffId, LocalTensor<P> &sumBuf);
@@ -1265,7 +1264,7 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoop(uint32_t offsetND, uint32_t copyS
     ProcessV2ChunkLoadXAndGamma(offsetND, copySizeND, bsStart, bsChunkStart, currentChunkSize, buffId);
 
     // 4. 计算xRsGrad
-    ProcessV2ChunkComputeXRsGrad(copySizeND, currentChunkSize, chunkNDSize);
+    ProcessV2ChunkComputeXRsGrad(copySizeND, currentChunkSize);
 
     // 5. 处理xRsGradMm
     ProcessV2ChunkProcessXRsGradMm(bsStart, bsChunkStart, copySizeND, currentChunkSize, chunkNDSize, buffId, sumBuf);
@@ -1410,12 +1409,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadXAndGamma(u
 // 子函数4: 计算xRsGrad
 template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkComputeXRsGrad(uint32_t copySizeND,
-                                                                                uint32_t currentChunkSize,
-                                                                                uint32_t chunkNDSize)
+                                                                                uint32_t currentChunkSize)
 {
-    auto xRsGradInvUb = xRsGradMmUb_;
-    AIV22Process(invRmsUb_, xRsFp32Buf_, xRsGradInvUb, currentChunkSize, copySizeND);
-    Add(xGradVec3Buf_, xGradVec3Buf_, xRsGradInvUb, chunkNDSize);
+    AIV22Process(invRmsUb_, xRsFp32Buf_, xGradVec3Buf_, currentChunkSize, copySizeND);
     PipeBarrier<PIPE_V>();
 }
 
@@ -1523,17 +1519,17 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkOutputXGrad(uint32_t offsetND, uint32_
 
 template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::AIV22Process(LocalTensor<P> &invRmsUb, LocalTensor<P> &xRsFp32Buf,
-                                                                LocalTensor<P> &xRsGradInvUb, uint32_t currentChunkSize,
+                                                                LocalTensor<P> &xGradVec3Buf, uint32_t currentChunkSize,
                                                                 uint32_t copySizeND)
 {
     __ubuf__ P *invRmsUbAddr = (__ubuf__ P *)invRmsUb.GetPhyAddr();
-    __ubuf__ P *xRsGradInvUbAddr = (__ubuf__ P *)xRsGradInvUb.GetPhyAddr();
+    __ubuf__ P *xGradVec3BufAddr = (__ubuf__ P *)xGradVec3Buf.GetPhyAddr();
     __ubuf__ P *xRsFp32BufAddr = (__ubuf__ P *)xRsFp32Buf.GetPhyAddr();
 
     __VEC_SCOPE__
     {
         MicroAPI::RegTensor<P> invRmsReg;
-        MicroAPI::RegTensor<P> NDReg;
+        MicroAPI::RegTensor<P> NDReg, xGradReg;
         MicroAPI::RegTensor<uint32_t> invRmsIdexReg;
         MicroAPI::MaskReg maskAll, mask;
         for (uint16_t bsIdx = 0; bsIdx < static_cast<uint16_t>(currentChunkSize); bsIdx++) {
@@ -1547,8 +1543,10 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::AIV22Process(LocalTensor<P> &
                 uint32_t srcOffset = bsIdx * copySizeND;
                 mask = MicroAPI::UpdateMask<P>(curLen1);
                 MicroAPI::LoadAlign(NDReg, xRsFp32BufAddr + srcOffset + elemOffset);
+                MicroAPI::LoadAlign(xGradReg, xGradVec3BufAddr + srcOffset + elemOffset);
                 MicroAPI::Mul(NDReg, NDReg, invRmsReg, mask);
-                MicroAPI::StoreAlign(xRsGradInvUbAddr + srcOffset + elemOffset, NDReg, mask);
+                MicroAPI::Add(xGradReg, xGradReg, NDReg, mask);
+                MicroAPI::StoreAlign(xGradVec3BufAddr + srcOffset + elemOffset, xGradReg, mask);
             }
         }
     }
