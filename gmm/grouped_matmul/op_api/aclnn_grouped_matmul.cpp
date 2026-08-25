@@ -3202,7 +3202,7 @@ aclnnStatus aclnnGroupedMatmulWeightNzGetWorkspaceSize(
                    DFX_IN(x, weight, biasOptional, scaleOptional, offsetOptional, antiquantScaleOptional,
                           antiquantOffsetOptional, perTokenScaleOptional, activationInputOptional,
                           activationQuantScaleOptional, activationQuantOffsetOptional, groupListOptional, splitItem,
-                          groupType, groupListType, actType, tuningConfigOptional),
+                          groupType, groupListType, actType, tuningConfigOptional, quantGroupSize),
                    DFX_OUT(out, activationFeatureOutOptional, dynQuantScaleOutOptional));
     if ((*weight)[0]->GetDataType() == DataType::DT_INT32) {
         // convert weight from int32 to int4

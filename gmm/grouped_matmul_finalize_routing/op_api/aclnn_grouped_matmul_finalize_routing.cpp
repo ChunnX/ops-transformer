@@ -1169,8 +1169,9 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     CHECK_RET(out != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     L2_DFX_PHASE_1(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
-                   DFX_IN(x1, x2, scale, bias, pertokenScaleOptional, groupList, sharedInput, logit, rowIndex, dtype,
-                          sharedInputWeight, sharedInputOffset, transposeX1, transposeX2, groupListType),
+                   DFX_IN(x1, x2, scale, bias, offsetOptional, antiquantScaleOptional, antiquantOffsetOptional,
+                          pertokenScaleOptional, groupList, sharedInput, logit, rowIndex, dtype, sharedInputWeight,
+                          sharedInputOffset, transposeX1, transposeX2, groupListType, tuningConfigOptional),
                    DFX_OUT(out));
     auto checkInputRet =
         CheckInputParamsForWeightNzV2(x1, x2, antiquantScaleOptional, antiquantOffsetOptional);
@@ -1506,9 +1507,10 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     CHECK_RET(out != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     L2_DFX_PHASE_1(aclnnGroupedMatmulFinalizeRoutingV3,
-                   DFX_IN(x1, x2, scaleOptional, biasOptional, pertokenScaleOptional, groupListOptional,
-                          sharedInputOptional, logitOptional, rowIndexOptional, dtype, sharedInputWeight,
-                          sharedInputOffset, transposeX1, transposeX2, groupListType),
+                   DFX_IN(x1, x2, scaleOptional, biasOptional, offsetOptional, antiquantScaleOptional,
+                          antiquantOffsetOptional, pertokenScaleOptional, groupListOptional, sharedInputOptional,
+                          logitOptional, rowIndexOptional, dtype, sharedInputWeight, sharedInputOffset, transposeX1,
+                          transposeX2, groupListType, tuningConfigOptional),
                    DFX_OUT(out));
 
     auto ret0 =
