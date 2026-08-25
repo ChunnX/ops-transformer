@@ -25,6 +25,8 @@ static constexpr int64_t ATTR_STEM_BLOCK_SIZE = 0;
 static constexpr int64_t ATTR_STEM_STRIDE = 1;
 static constexpr int64_t UNKNOWN_DIM_VALUE = -1LL;
 static constexpr int64_t UNKNOWN_RANK_DIM_VALUE = -2LL;
+static constexpr int64_t SUPPORTED_STEM_BLOCK_SIZE = 128;
+static constexpr int64_t SUPPORTED_STEM_STRIDE = 16;
 
 static bool IsUnknownRank(const gert::Shape &shape)
 {
@@ -69,6 +71,11 @@ static ge::graphStatus InferShapeForStemOamPrepVarlenQ(gert::InferShapeContext *
                 qShape->GetDimNum());
         return ge::GRAPH_FAILED;
     }
+    int64_t D = qShape->GetDim(2);
+    if (D != UNKNOWN_DIM_VALUE && D != DIM_QK) {
+        OP_LOGE(context, "q last dim must be %ld, but got %ld.", DIM_QK, D);
+        return ge::GRAPH_FAILED;
+    }
     if (qSeqLensShape->GetDimNum() != Q_SEQ_LENS_DIM_NUM) {
         OP_LOGE(context, "qSeqLens shape dim num must be %ld, but got %zu.",
                 Q_SEQ_LENS_DIM_NUM, qSeqLensShape->GetDimNum());
@@ -82,10 +89,18 @@ static ge::graphStatus InferShapeForStemOamPrepVarlenQ(gert::InferShapeContext *
     auto stemBlockSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_STEM_BLOCK_SIZE);
     OP_CHECK_NULL_WITH_CONTEXT(context, stemBlockSizePtr);
     int64_t stemBlockSize = *stemBlockSizePtr;
+    if (stemBlockSize != SUPPORTED_STEM_BLOCK_SIZE) {
+        OP_LOGE(context, "stemBlockSize only supports %ld, but got %ld.", SUPPORTED_STEM_BLOCK_SIZE, stemBlockSize);
+        return ge::GRAPH_FAILED;
+    }
 
     auto stemStridePtr = attrs->GetAttrPointer<int64_t>(ATTR_STEM_STRIDE);
     OP_CHECK_NULL_WITH_CONTEXT(context, stemStridePtr);
     int64_t stemStride = *stemStridePtr;
+    if (stemStride != SUPPORTED_STEM_STRIDE) {
+        OP_LOGE(context, "stemStride only supports %ld, but got %ld.", SUPPORTED_STEM_STRIDE, stemStride);
+        return ge::GRAPH_FAILED;
+    }
     int64_t kflat_dim = stemStride * DIM_QK;
 
     bool hasUnknownDim = IsUnknownShape(*qShape) || IsUnknownShape(*qSeqLensShape);
