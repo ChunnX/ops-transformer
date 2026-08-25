@@ -57,15 +57,7 @@ public:
     using OUT_T = typename VecFaBlockType::OUT_T;
     using ConstInfoX = typename CubeBlockType::ConstInfoX;
 
-    // CV buffers
-    // BufferManager<BufferType::GM> gmBufferManager_;
-    BufferManager<BufferType::UB> ubBufferManager_;
-    BufferManager<BufferType::L1> l1BufferManager_;
-    BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> bmm2ResGmBuffers_;
-    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers_;
-    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers_;
-    // mm1和mm2右矩阵，在L1上复用，其中K_rope内存空间与bmm2的左矩阵p复用
-    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1KvPBuffers_;
+    // ---- CV buffers：已静态化至各 block（cube/vec InitBuffers 内表 1 布局），kernel 不再持有 buffer manager ----
 
     // 多 section AICPU metadata（flash_attn 布局）：
     // 字节布局 = [16-word header][sectionNum*36*16 (FA)][sectionNum*72*16 (FD)]，FA/FD 区分别绑定 GM tensor。
@@ -86,9 +78,8 @@ public:
     FlashMlaSeqLensTool<Q_MODE, KV_MODE> seqLensTool_;
 
     const optiling::FlashMlaWithKvcacheNoQuantTilingArch35 *__restrict tilingData_;
-    // kernel 自持 TPipe（去掉入口外部 tPipe 接线，与 flash_attn Init 15 参风格一致）；
-    // 所有 buffer manager / block 的 TPipe 使用路径统一从本成员获取（&pipe_）
-    AscendC::TPipe pipe_;
+    // 静态 tensor 模型：block 内自持静态 buffer + Mutex/cross-core 显式同步
+    // （与 flash_attn Init 15 参风格一致，入口不进 buffer/pipe 细节）
     CubeBlockType cubeBlock_;
     VecFaBlockType vecFaBlock_;
     VecFdBlockType vecFdBlock_;
@@ -147,15 +138,13 @@ public:
         seqLensTool_.InitQ(cuSeqlensQ, sequsedQ, constInfo_.actualSeqLenSize, constInfo_.s1Size);
         seqLensTool_.InitKv(cacheSeqlens, constInfo_.actualSeqLenKVSize, constInfo_.s2Size);
 
-        InitMMResBuf(workspace);
-
         if ASCEND_IS_AIV {
-            vecFaBlock_.InitVecBlock(&pipe_, attenMask, softmaxLse, attentionOut, workspace);
+            vecFaBlock_.InitVecBlock(attenMask, softmaxLse, attentionOut, workspace);
             vecFaBlock_.ClearOutput();
         }
 
         if ASCEND_IS_AIC {
-            cubeBlock_.InitCubeBlock(&pipe_, &l1BufferManager_, query, key, value, blockTable);
+            cubeBlock_.InitCubeBlock(query, key, value, blockTable);
         }
 
         if constexpr (FLASH_DECODE) {
@@ -170,19 +159,6 @@ public:
                 }
             }
         }
-    }
-
-    __aicore__ inline void InitMMResBuf(__gm__ uint8_t *&workspace)
-    {
-        uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
-        constexpr uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
-        uint32_t mm12RightSize = s2BaseSize * 576 * sizeof(INPUT_T);
-        l1BufferManager_.Init(&pipe_, 524288); // 512 * 1024
-        // 3Buffer
-        l1KvPBuffers_.Init(l1BufferManager_, mm12RightSize); // L1: 144k * 3 = 432k
-        ubBufferManager_.Init(&pipe_, mm1ResultSize * 2 + mm2ResultSize * 2);
-        bmm2Buffers_.Init(ubBufferManager_, mm2ResultSize);
-        bmm1Buffers_.Init(ubBufferManager_, mm1ResultSize);
     }
 
     __aicore__ inline void InitConstInfo()
@@ -337,37 +313,6 @@ public:
             return coreGS1Loops_ * constInfo_.coreNum + constInfo_.aicIdx;
         }
         return (coreGS1Loops_ + 1U) * constInfo_.coreNum - constInfo_.aicIdx - 1U;
-    }
-
-    __aicore__ inline void CrossCoreBufferInit()
-    {
-        if ASCEND_IS_AIV {
-            bmm1Buffers_.Get().SetCrossCore();
-            bmm1Buffers_.Get().SetCrossCore();
-            bmm2Buffers_.Get().SetCrossCore();
-            bmm2Buffers_.Get().SetCrossCore();
-        } else {
-            l1KvPBuffers_.Get().SetEventID();
-            l1KvPBuffers_.Get().SetEventID();
-            l1KvPBuffers_.Get().SetEventID();
-            SetFlag<HardEvent::MTE1_MTE2>(l1KvPBuffers_.Get().GetEventID<HardEvent::MTE1_MTE2>());
-            SetFlag<HardEvent::MTE1_MTE2>(l1KvPBuffers_.Get().GetEventID<HardEvent::MTE1_MTE2>());
-            SetFlag<HardEvent::MTE1_MTE2>(l1KvPBuffers_.Get().GetEventID<HardEvent::MTE1_MTE2>());
-        }
-    }
-
-    __aicore__ inline void CrossCoreBufferUnInit()
-    {
-        if ASCEND_IS_AIC {
-            WaitFlag<HardEvent::MTE1_MTE2>(l1KvPBuffers_.Get().GetEventID<HardEvent::MTE1_MTE2>());
-            WaitFlag<HardEvent::MTE1_MTE2>(l1KvPBuffers_.Get().GetEventID<HardEvent::MTE1_MTE2>());
-            WaitFlag<HardEvent::MTE1_MTE2>(l1KvPBuffers_.Get().GetEventID<HardEvent::MTE1_MTE2>());
-
-            bmm1Buffers_.Get().WaitCrossCore();
-            bmm1Buffers_.Get().WaitCrossCore();
-            bmm2Buffers_.Get().WaitCrossCore();
-            bmm2Buffers_.Get().WaitCrossCore();
-        }
     }
 
     __aicore__ inline void FlashAttention(uint32_t sectionIdx)
@@ -618,23 +563,22 @@ public:
 
     __aicore__ inline void ComputeMm1(FlashMlaWithKvcacheRunInfoX &runInfo)
     {
-        cubeBlock_.IterateBmm1(this->bmm1Buffers_.Get(), this->l1KvPBuffers_.Get(), runInfo);
+        cubeBlock_.IterateBmm1(runInfo);
     }
 
     __aicore__ inline void ComputeMm2(FlashMlaWithKvcacheRunInfoX &runInfo)
     {
-        cubeBlock_.IterateBmm2(this->bmm2Buffers_.Get(), this->l1KvPBuffers_.GetReused(), runInfo);
+        cubeBlock_.IterateBmm2(runInfo);
     }
 
     __aicore__ inline void ComputeVec1(FlashMlaWithKvcacheRunInfoX &runInfo)
     {
-        // c v都会独立get，所以mm1和vec1能一致
-        vecFaBlock_.ProcessVec1(this->l1KvPBuffers_.Get(), this->bmm1Buffers_.Get(), runInfo);
+        vecFaBlock_.ProcessVec1(runInfo);
     }
 
     __aicore__ inline void ComputeVec2(FlashMlaWithKvcacheRunInfoX &runInfo)
     {
-        this->vecFaBlock_.ProcessVec2(this->bmm2Buffers_.Get(), runInfo);
+        this->vecFaBlock_.ProcessVec2(runInfo);
     }
 
     __aicore__ inline void EnableTask(FlashMlaWithKvcacheRunInfoX &runInfo)
@@ -834,7 +778,7 @@ public:
         if (!fdParams_.fdCoreEnable) {
             return;
         }
-        vecFdBlock_.InitBuffers(&this->pipe_);
+        vecFdBlock_.InitBuffers();
         AscendC::ICachePreLoad(2);
         vecFdBlock_.AllocEventID();
         AscendC::SyncAll();
@@ -844,12 +788,15 @@ public:
 
     __aicore__ inline void Process()
     {
+        // 编排镜像 flash_attn_kernel_nd.h:626-652：AIV 先 InitBuffers→InitCrossCoreSync→AllocEventID；
+        // AIC 先 InitCrossCoreSync→InitBuffers→AllocEventID
         if (constInfo_.aicIdx < constInfo_.coreNum) {
-            CrossCoreBufferInit();
             if ASCEND_IS_AIV {
                 vecFaBlock_.InitBuffers();
+                vecFaBlock_.InitCrossCoreSync();
                 vecFaBlock_.AllocEventID();
             } else {
+                cubeBlock_.InitCrossCoreSync();
                 cubeBlock_.InitBuffers();
                 cubeBlock_.AllocEventID();
             }
@@ -871,10 +818,11 @@ public:
         if (constInfo_.aicIdx < constInfo_.coreNum) {
             if ASCEND_IS_AIV {
                 vecFaBlock_.FreeEventID();
+                vecFaBlock_.UnInitCrossCoreSync();
             } else {
                 cubeBlock_.FreeEventID();
+                cubeBlock_.UnInitCrossCoreSync();
             }
-            CrossCoreBufferUnInit();
         }
     }
 }; // FlashAttentionNoQuantMlaKernel

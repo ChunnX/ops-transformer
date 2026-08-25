@@ -217,7 +217,7 @@ inline __aicore__ void run_flash_mla_with_kvcache_noquant_kernel(__gm__ uint8_t 
     // 无独立 queryRope/keyRope；q/k_cache 为 576 宽单张量（nope512+rope64 合并）。
     // value 与 key 同一 GM 指针（k_cache 的 nope 段即 V，k==v 语义）。
     // metadata（GM 输入，AICPU 多 section 布局）直接透传，section 循环在 Process 内。
-    // TPipe 由 kernel 自持（与 flash_attn Init 15 参风格一致，入口不再接线外部 TPipe）
+    // 静态 tensor 模型：block 内自管 buffer（与 flash_attn Init 15 参风格一致，入口仅接地址）
     op.Init(query, key, value, attenMask, cuSeqlensQ, sequsedQ, cacheSeqlens, blockTable, softmaxLse, attentionOut,
             workspace, metadata, tilingData);
     op.Process();
