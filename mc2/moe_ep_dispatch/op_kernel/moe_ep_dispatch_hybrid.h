@@ -360,6 +360,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     constexpr size_t metadataOffset = offsetof(MoeEpDispatchTilingData, moeEpDispatchInfo) +
                                       offsetof(MoeEpDispatchInfo, dumpMetadata);
     MoeEpExceptionDump::WriteMetadata(context, tilingGM + metadataOffset);
+    MoeEpExceptionDump::DebugTrap(); // 临时维测：验证 dump 落盘后回退
 
     InitTilingFields(tilingData);
     InitGlobalTensors(x, topkIdx, topkWeights, scales, cachedSlotIdx, cachedRouteCount, cachedRouteDstScaleout,

@@ -51,6 +51,21 @@ __aicore__ inline void WriteMetadata(GM_ADDR context, GM_ADDR metadataSource)
     AscendC::SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
+// 临时维测：在 AIV0 上触发一次非法 GM 访问（aicore error），用于端到端验证
+// exception dump 回调落盘链路。仅限调试验证，验证完成后应回退。
+__aicore__ inline void DebugTrap()
+{
+    if ASCEND_IS_NOT_AIV {
+        return;
+    }
+    if (AscendC::GetBlockIdx() != 0U) {
+        return;
+    }
+    AscendC::GlobalTensor<int32_t> trapGlobal;
+    trapGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(static_cast<uintptr_t>(0x1)), 1);
+    trapGlobal.SetValue(0, 0);
+}
+
 } // namespace MoeEpExceptionDump
 
 #endif // MOE_EP_EXCEPTION_DUMP_WRITER_H

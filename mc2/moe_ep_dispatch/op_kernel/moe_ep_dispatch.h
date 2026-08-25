@@ -230,6 +230,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     constexpr size_t metadataOffset = offsetof(MoeEpDispatchTilingData, moeEpDispatchInfo) +
                                       offsetof(MoeEpDispatchInfo, dumpMetadata);
     MoeEpExceptionDump::WriteMetadata(context, tilingGM + metadataOffset);
+    MoeEpExceptionDump::DebugTrap(); // 临时维测：验证 dump 落盘后回退
 
     const auto &info = tilingData->moeEpDispatchInfo;
     axisBS_ = info.cfg.numTokens;

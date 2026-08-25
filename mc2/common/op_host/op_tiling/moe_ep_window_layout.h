@@ -13,6 +13,7 @@
 
 #include <cstdint>
 
+#include "graph/error_codes.h"
 #include "graph/types.h"
 #include "../../op_kernel/moe_ep_exception_dump_defs.h"
 
