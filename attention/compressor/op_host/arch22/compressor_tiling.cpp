@@ -199,7 +199,10 @@ ge::graphStatus CompressorTiling::SetWorkSpaceInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorTiling::SetScenarioInfo() { return ge::GRAPH_SUCCESS; }
+ge::graphStatus CompressorTiling::SetScenarioInfo()
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus CompressorTiling::SetTemplateId()
 {
@@ -404,8 +407,7 @@ ge::graphStatus CompressorTiling::CheckSinglePara() const
         ge::GRAPH_SUCCESS != CheckSingleParaCuSeqlens() || ge::GRAPH_SUCCESS != CheckSingleParaSeqused() ||
         ge::GRAPH_SUCCESS != CheckSingleParaStartPos() || ge::GRAPH_SUCCESS != CheckSingleParaCmpKv() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCmpRatio() || ge::GRAPH_SUCCESS != CheckSingleParaCoff() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaCacheMode() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaGradEnabled()) {
+        ge::GRAPH_SUCCESS != CheckSingleParaCacheMode() || ge::GRAPH_SUCCESS != CheckSingleParaGradEnabled()) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -821,7 +823,10 @@ ge::graphStatus CompressorTiling::CheckRequiredAttrExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorTiling::CheckFeature() const { return ge::GRAPH_SUCCESS; }
+ge::graphStatus CompressorTiling::CheckFeature() const
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus CompressorTiling::LogErrorShapeConsistency(const std::string &name, const gert::StorageShape *shape,
                                                            const uint32_t &dimNum, const std::string &subName,

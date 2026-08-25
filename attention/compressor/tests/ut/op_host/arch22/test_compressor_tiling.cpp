@@ -19,26 +19,25 @@
 using namespace std;
 
 // 构造版本
-std::string Compressor_tiling_A3SocInfo =
-    "{\n"
-    "  \"hardware_info\": {\n"
-    "    \"BT_SIZE\": 0,\n"
-    "    \"load3d_constraints\": \"1\",\n"
-    "    \"Intrinsic_fix_pipe_l0c2out\": false,\n"
-    "    \"Intrinsic_data_move_l12ub\": true,\n"
-    "    \"Intrinsic_data_move_l0c2ub\": true,\n"
-    "    \"Intrinsic_data_move_out2l1_nd2nz\": false,\n"
-    "    \"4096\": 196608,\n"
-    "    \"L2_SIZE\": 201326592,\n"
-    "    \"L1_SIZE\": 524288,\n"
-    "    \"L0A_SIZE\": 65536,\n"
-    "    \"L0B_SIZE\": 65536,\n"
-    "    \"L0C_SIZE\": 131072,\n"
-    "    \"vector_core_cnt\": 40,\n"
-    "    \"cube_core_cnt\": 20,\n"
-    "    \"socVersion\": \"Ascend910_93\"\n"
-    "  }\n"
-    "}";
+std::string Compressor_tiling_A3SocInfo = "{\n"
+                                          "  \"hardware_info\": {\n"
+                                          "    \"BT_SIZE\": 0,\n"
+                                          "    \"load3d_constraints\": \"1\",\n"
+                                          "    \"Intrinsic_fix_pipe_l0c2out\": false,\n"
+                                          "    \"Intrinsic_data_move_l12ub\": true,\n"
+                                          "    \"Intrinsic_data_move_l0c2ub\": true,\n"
+                                          "    \"Intrinsic_data_move_out2l1_nd2nz\": false,\n"
+                                          "    \"4096\": 196608,\n"
+                                          "    \"L2_SIZE\": 201326592,\n"
+                                          "    \"L1_SIZE\": 524288,\n"
+                                          "    \"L0A_SIZE\": 65536,\n"
+                                          "    \"L0B_SIZE\": 65536,\n"
+                                          "    \"L0C_SIZE\": 131072,\n"
+                                          "    \"vector_core_cnt\": 40,\n"
+                                          "    \"cube_core_cnt\": 20,\n"
+                                          "    \"socVersion\": \"Ascend910_93\"\n"
+                                          "  }\n"
+                                          "}";
 
 // ====================================================================
 // BSH Layout Tiling Tests
