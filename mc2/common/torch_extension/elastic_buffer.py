@@ -25,6 +25,7 @@ _ENGRAM_DTYPE_TO_INT = {
     torch.bfloat16: 15,
 }
 _ENGRAM_INT_TO_DTYPE = {v: k for k, v in _ENGRAM_DTYPE_TO_INT.items()}
+_MOE_EP_METADATA_FIELDS = 5
 
 
 @dataclass
@@ -419,7 +420,7 @@ class _DispatchArgs:
     num_max_tokens_per_rank: int
     expert_alignment: int
     do_cpu_sync: bool
-    cached_recv_tokens: Optional[int]
+    cached_output_capacity: Optional[int]
 
 
 class ElasticBuffer:
@@ -1143,6 +1144,35 @@ class ElasticBuffer:
                 ((do_cpu_sync is None) or (do_cpu_sync is False)),
                 lambda: ("do_cpu_sync is not supported when cached."),
             )
+            torch._check(
+                handle.recv_src_metadata.dtype == torch.int32,
+                lambda: (
+                    "handle.recv_src_metadata dtype must be torch.int32, "
+                    f"but got {handle.recv_src_metadata.dtype}."
+                ),
+            )
+            torch._check(
+                handle.recv_src_metadata.dim() == 2
+                and handle.recv_src_metadata.shape[1] == _MOE_EP_METADATA_FIELDS,
+                lambda: (
+                    "handle.recv_src_metadata must have shape [A_alloc, "
+                    f"{_MOE_EP_METADATA_FIELDS}], but got {tuple(handle.recv_src_metadata.shape)}."
+                ),
+            )
+            torch._check(
+                handle.recv_src_metadata.device == x.device,
+                lambda: (
+                    "handle.recv_src_metadata and x must be on the same device, "
+                    f"but got {handle.recv_src_metadata.device} and {x.device}."
+                ),
+            )
+            torch._check(
+                x.shape[0] == handle.topk_idx.shape[0],
+                lambda: (
+                    "cached x token count must equal handle.topk_idx token count, "
+                    f"but got {x.shape[0]} and {handle.topk_idx.shape[0]}."
+                ),
+            )
             return _DispatchArgs(
                 x,
                 scales,
@@ -1194,8 +1224,8 @@ class ElasticBuffer:
         return self._host_pinned_counter.device_ptr()
 
     def _get_dispatch_recv_count(self, args: _DispatchArgs) -> int:
-        if args.cached_recv_tokens is not None:
-            return args.cached_recv_tokens
+        if args.cached_output_capacity is not None:
+            return args.cached_output_capacity
         if args.do_cpu_sync:
             return self._host_pinned_counter.spin_wait()
         return (
@@ -1211,7 +1241,9 @@ class ElasticBuffer:
             (actual_a, self._hidden), dtype=args.x.dtype, device=args.x.device
         )
         recv_src_meta = torch.empty(
-            (actual_a, 4), dtype=torch.int32, device=args.x.device
+            (actual_a, _MOE_EP_METADATA_FIELDS),
+            dtype=torch.int32,
+            device=args.x.device,
         )
         recv_topk_weights = (
             None
@@ -1242,7 +1274,7 @@ class ElasticBuffer:
     ) -> EPHandle:
         topk_idx = (
             args.topk_idx
-            if args.cached_recv_tokens is not None
+            if args.cached_output_capacity is not None
             else args.topk_idx.clone()
         )
         return EPHandle(
