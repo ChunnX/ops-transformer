@@ -63,8 +63,7 @@ constexpr int32_t IDX_B_LOW = 6;
 
 constexpr uint32_t X1_INDEX = 0;
 constexpr uint32_t X2_INDEX = 1;
-constexpr uint32_t APACE_DEFAULT_TILE_M = 512;
-constexpr uint32_t APACE_M_TAIL_ALIGN = 16;
+constexpr uint64_t APACE_KERNEL_ALIGN_M = 256;
 } // namespace
 
 static constexpr int64_t CMP_MAX_LEN = 7;
@@ -377,7 +376,10 @@ ge::graphStatus AllGatherQuantBmmTiling::SetQuantScene()
     return ge::GRAPH_FAILED;
 }
 
-mc2tiling::Mc2QuantMode AllGatherQuantBmmTiling::GetQuantScene() { return quantMmMode_; }
+mc2tiling::Mc2QuantMode AllGatherQuantBmmTiling::GetQuantScene()
+{
+    return quantMmMode_;
+}
 
 ge::graphStatus AllGatherQuantBmmTiling::CheckScaleInvShape()
 {
@@ -552,8 +554,7 @@ ge::graphStatus AllGatherQuantBmmTiling::DoOpTiling()
 void AllGatherQuantBmmTiling::SetHcommTilingInfo()
 {
     auto &param = MutableRCSTilingDataA5();
-    uint32_t tileM = std::min(APACE_DEFAULT_TILE_M, static_cast<uint32_t>(args_.mValue));
-    hcommTilingData_.commTile.splitAxisTileSize = tileM;
+    hcommTilingData_.commTile.splitAxisTileSize = tileMValue_;
     hcommTilingData_.commTile.splitAxisTileCnt = param.tileCnt;
     hcommTilingData_.commTile.splitAxisTailSize = param.tailM;
     hcommTilingData_.commTile.splitAxisTailCnt = param.tailCnt;
@@ -563,13 +564,23 @@ void AllGatherQuantBmmTiling::SetHcommTilingInfo()
 ge::graphStatus AllGatherQuantBmmTiling::DoApaceMatmulTiling()
 {
     auto &param = MutableRCSTilingDataA5();
-    uint32_t tileM = std::min(APACE_DEFAULT_TILE_M, static_cast<uint32_t>(args_.mValue));
-    param.tileCnt = static_cast<uint32_t>(args_.mValue) / tileM;
-    param.tailM = static_cast<uint32_t>(args_.mValue) % tileM;
-    param.tailCnt = (param.tailM > 0) ? 1 : 0;
 
-    uint32_t paddedTailM =
-        (param.tailM > 0) ? ((param.tailM + APACE_M_TAIL_ALIGN - 1) / APACE_M_TAIL_ALIGN * APACE_M_TAIL_ALIGN) : 0U;
+    CutResult cutRes{};
+    cutRes.longTileLen = (tileMValue_ > 0) ? tileMValue_ : args_.mValue;
+    cutRes.numLongTile = param.tileCnt;
+    cutRes.shortTileLen = param.tailM;
+    cutRes.numShortTile = param.tailCnt;
+    AlignApaceCutResForKernel(cutRes, args_.mValue);
+
+    param.tileCnt = static_cast<uint32_t>(cutRes.numLongTile);
+    tileMValue_ = cutRes.longTileLen;
+    param.tailM = static_cast<uint32_t>(cutRes.shortTileLen);
+    param.tailCnt = static_cast<uint32_t>(cutRes.numShortTile);
+
+    uint32_t tileM = static_cast<uint32_t>(tileMValue_);
+    uint32_t paddedTailM = (param.tailM > 0) ? static_cast<uint32_t>((param.tailM + APACE_KERNEL_ALIGN_M - 1) /
+                                                                     APACE_KERNEL_ALIGN_M * APACE_KERNEL_ALIGN_M) :
+                                               0U;
     uint32_t totalLogicalM =
         static_cast<uint32_t>(args_.rankDim) * (param.tileCnt * tileM + param.tailCnt * paddedTailM);
 
@@ -587,9 +598,41 @@ ge::graphStatus AllGatherQuantBmmTiling::DoApaceMatmulTiling()
                                    args_.isBTrans, hcommTilingData_.mmTile);
     }
 
-    OP_LOGI(opName_, "DoApaceMatmulTiling: isFp4=%d, totalLogicalM=%u, n=%lu, k=%lu, isBTrans=%d, usedCoreNum=%u",
-            isFp4_, totalLogicalM, args_.nValue, args_.kValue, args_.isBTrans, hcommTilingData_.mmTile.usedCoreNum);
+    OP_LOGI(opName_,
+            "DoApaceMatmulTiling: isFp4=%d, tileM=%u, tileCnt=%u, tailM=%u, tailCnt=%u, totalLogicalM=%u, "
+            "n=%lu, k=%lu, isBTrans=%d, usedCoreNum=%u",
+            isFp4_, tileM, param.tileCnt, param.tailM, param.tailCnt, totalLogicalM, args_.nValue, args_.kValue,
+            args_.isBTrans, hcommTilingData_.mmTile.usedCoreNum);
     return ge::GRAPH_SUCCESS;
+}
+
+void AllGatherQuantBmmTiling::AlignApaceCutResForKernel(CutResult &cutRes, uint64_t mValue) const
+{
+    if (cutRes.longTileLen == 0 || mValue == 0) {
+        OP_LOGD(opName_, "AlignApaceCutResForKernel skip: longTileLen=%lu mValue=%lu", cutRes.longTileLen, mValue);
+        return;
+    }
+    uint64_t longTile = mc2tiling::AlignUp(cutRes.longTileLen, APACE_KERNEL_ALIGN_M);
+    if (longTile >= mValue) {
+        cutRes.longTileLen = mValue;
+        cutRes.numLongTile = 1;
+        cutRes.shortTileLen = 0;
+        cutRes.numShortTile = 0;
+    } else {
+        cutRes.longTileLen = longTile;
+        cutRes.numLongTile = mValue / longTile;
+        uint64_t remainder = mValue % longTile;
+        if (remainder > 0) {
+            cutRes.shortTileLen = remainder;
+            cutRes.numShortTile = 1;
+        } else {
+            cutRes.shortTileLen = 0;
+            cutRes.numShortTile = 0;
+        }
+    }
+    cutRes.shortTileAtBack = true;
+    OP_LOGD(opName_, "AlignApaceCutResForKernel: longTile=%lu numLong=%lu shortTile=%lu numShort=%lu atBack=%d",
+            cutRes.longTileLen, cutRes.numLongTile, cutRes.shortTileLen, cutRes.numShortTile, cutRes.shortTileAtBack);
 }
 
 void AllGatherQuantBmmTiling::SetTilingKeyParams()
@@ -804,7 +847,10 @@ CutResult AllGatherQuantBmmTiling::GetTilingResult()
     return result;
 }
 
-Mc2Tiling::RCSTiling &AllGatherQuantBmmTiling::MutableRCSTilingDataA5() { return allGatherMatmulTilingDataFp8_->param; }
+Mc2Tiling::RCSTiling &AllGatherQuantBmmTiling::MutableRCSTilingDataA5()
+{
+    return allGatherMatmulTilingDataFp8_->param;
+}
 
 ::TCubeTiling &AllGatherQuantBmmTiling::MutableTCubeLocalTilingData()
 {
