@@ -30,7 +30,7 @@
     bash build.sh --torch_extension
 
     # 单算子编译（需指定算子名和 vendor）
-    bash build.sh --torch_extension --ops=flash_attn --vendor_name=custom
+    bash build.sh --torch_extension --ops=kv_quant_sparse_flash_attention_v2 --vendor_name=custom
 
     # 多算子编译（逗号分隔）
     bash build.sh --torch_extension --ops=flash_attn,moe_finalize_routing --vendor_name=custom
