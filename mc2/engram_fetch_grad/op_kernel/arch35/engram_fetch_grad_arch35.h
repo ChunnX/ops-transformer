@@ -444,13 +444,13 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     constexpr uint32_t COMM_BUF_SIZE = 2U * 64U * 1024U;
     uint32_t fp32RowSize = Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float), UB_ALIGN) * UB_ALIGN;
     uint32_t hiddenBytesAlign = Ceil(static_cast<uint32_t>(hiddenBytes_), UB_ALIGN) * UB_ALIGN;
-    uint32_t uniqueBufSize = COMM_BUF_SIZE + fp32RowSize + (fp32RowSize + hiddenBytesAlign);
+    uint32_t uniqueBufSize = 96U * 1024U + COMM_BUF_SIZE + fp32RowSize + (fp32RowSize + hiddenBytesAlign);
     uint32_t poolSize = sortUbSize;
     if (uniqueBufSize > poolSize) {
         poolSize = uniqueBufSize;
     }
     tpipe_->InitBufPool(sortPool_, poolSize);
-    sortPool_.InitBuffer(entryBuf_, 64U * 1024U);
+    sortPool_.InitBuffer(entryBuf_, 96U * 1024U);
     sortPool_.InitBuffer(gradBuf_, 64U * 1024U);
 
     sortWorkspaceGm_ = workspaceGM_ + wsOffset;
@@ -885,7 +885,7 @@ __aicore__ inline void EngramFetchGradArch35::Process()
                          *tpipe_, sortPool_);
             RunSort(numRecv);
             sortPool_.Reset();
-            sortPool_.InitBuffer(entryBuf_, 64U * 1024U);
+            sortPool_.InitBuffer(entryBuf_, 96U * 1024U);
             sortPool_.InitBuffer(gradBuf_, 64U * 1024U);
             uint32_t fp32RowSize = Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float), UB_ALIGN) * UB_ALIGN;
             uint32_t hiddenBytesAlign = Ceil(static_cast<uint32_t>(hiddenBytes_), UB_ALIGN) * UB_ALIGN;
