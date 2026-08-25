@@ -162,7 +162,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
     int32_t &gmm1TileReadySequence)
 {
     DispatchBuffInit();
-    PrepareMoeExpertTokenCountTable(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);
+    PrepareMoeExpertTokenCountTable<true>(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);
     WaveCombineBufferConfig combineBufferConfig =
         InitWaveCombineBuffers<CombineQuantMode>(commonConfig_, waveCombineScratch_);
     uint32_t combineRowSequence = 0U;

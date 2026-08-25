@@ -159,7 +159,7 @@ template <TemplateMegaMoeA4W4WaveTypeClass>
 __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::ProcessMoeExpertStages()
 {
     DispatchBuffInit();
-    PrepareMoeExpertTokenCountTable(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);
+    PrepareMoeExpertTokenCountTable<true>(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);
     WaveCombineBufferConfig combineBufferConfig =
         InitWaveCombineBuffers<CombineQuantMode>(commonConfig_, waveCombineScratch_);
     uint32_t combineRowSequence = 0U;
