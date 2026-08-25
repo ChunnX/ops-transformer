@@ -82,6 +82,12 @@ protected:
 private:
     __aicore__ inline void GetKeyScale(const QLICommon::RunInfo &runInfo, LocalTensor<SCALE_T> &kScaleUB,
                                        int64_t batchId, int64_t startS2, int64_t getLen);
+    __aicore__ inline bool UseStreamingTopK(const QLICommon::RunInfo &info, int64_t curAivS1Idx,
+                                            int64_t curAivS1ProcNum) const;
+    __aicore__ inline bool ProcessStreamingTopK(const QLICommon::RunInfo &info, LocalTensor<SCORE_T> &outBase,
+                                                int64_t curS1Idx, int64_t curAivS1Idx,
+                                                int64_t curS1ProcNum, int64_t curAivS1ProcNum);
+    __aicore__ inline void ZeroPadTopKInput(LocalTensor<SCORE_T> &tensor, uint32_t validLen, uint32_t alignedLen);
     // ================================Local Buffer区====================================
 
     // tmp buff for vector
@@ -271,6 +277,27 @@ __aicore__ inline void QLIVector<QLIT>::CleanInvalidOutput(int64_t invalidS1Offs
 }
 
 template <typename QLIT>
+__aicore__ inline bool QLIVector<QLIT>::UseStreamingTopK(const QLICommon::RunInfo &info,
+                                                        int64_t curAivS1Idx,
+                                                        int64_t curAivS1ProcNum) const
+{
+    if constexpr (std::is_same_v<SCORE_T, uint32_t> || std::is_same_v<SCORE_T, uint16_t>) {
+        if (!info.isValid || info.s2Start != 0 || s1BaseSize_ != 2 || s2BaseSize_ != 128 ||
+            topkCount_ != 2048 || trunkLen_ % s2BaseSize_ != 0 || curAivS1ProcNum != 1) {
+            return false;
+        }
+        int32_t validS2Len = static_cast<int32_t>(info.actS2Size);
+        if (constInfo_.attenMaskFlag) {
+            validS2Len = static_cast<int32_t>(info.actS2SizeOrig) - static_cast<int32_t>(info.actS1Size) +
+                         static_cast<int32_t>(curAivS1Idx) + 1;
+        }
+        return validS2Len >= static_cast<int32_t>(topkCount_);
+    } else {
+        return false;
+    }
+}
+
+template <typename QLIT>
 __aicore__ inline void QLIVector<QLIT>::GetKeyScale(const QLICommon::RunInfo &runInfo, LocalTensor<SCALE_T> &kScaleUB,
                                                     int64_t batchId, int64_t startS2, int64_t getLen)
 {
@@ -323,6 +350,132 @@ __aicore__ inline void QLIVector<QLIT>::GetKeyScale(const QLICommon::RunInfo &ru
                                             kScaleGm[runInfo.tensorKeyScaleOffset],
                                             copyInParams, padParams);
     }
+}
+
+template <typename QLIT>
+__aicore__ inline void QLIVector<QLIT>::ZeroPadTopKInput(LocalTensor<SCORE_T> &tensor, uint32_t validLen,
+                                                        uint32_t alignedLen)
+{
+    if (alignedLen <= validLen) {
+        return;
+    }
+
+    SCORE_T zero = 0;
+    if constexpr (std::is_same_v<SCORE_T, uint16_t>) {
+        uint32_t alignedStart = validLen / 16 * 16;
+        uint32_t startLane = validLen - alignedStart;
+        uint32_t endLane = Min(alignedLen - alignedStart, static_cast<uint32_t>(128));
+        uint32_t startLaneLow = Min(startLane, static_cast<uint32_t>(64));
+        uint32_t endLaneLow = Min(endLane, static_cast<uint32_t>(64));
+        uint64_t startMaskLow = startLaneLow == 64 ? ~0ULL : ((1ULL << startLaneLow) - 1);
+        uint64_t endMaskLow = endLaneLow == 64 ? ~0ULL : ((1ULL << endLaneLow) - 1);
+        uint32_t startLaneHigh = startLane > 64 ? startLane - 64 : 0;
+        uint32_t endLaneHigh = endLane > 64 ? endLane - 64 : 0;
+        uint64_t startMaskHigh = startLaneHigh == 64 ? ~0ULL : ((1ULL << startLaneHigh) - 1);
+        uint64_t endMaskHigh = endLaneHigh == 64 ? ~0ULL : ((1ULL << endLaneHigh) - 1);
+        uint64_t mask[2];
+        mask[0] = endMaskLow & ~startMaskLow;
+        mask[1] = endMaskHigh & ~startMaskHigh;
+        PipeBarrier<PIPE_V>();
+        Duplicate(tensor[alignedStart], zero, mask, 1, 1, 0);
+        uint32_t nextStart = alignedStart + 128;
+        if (nextStart < alignedLen) {
+            PipeBarrier<PIPE_V>();
+            Duplicate(tensor[nextStart], zero, alignedLen - nextStart);
+        }
+    } else if constexpr (std::is_same_v<SCORE_T, uint32_t>) {
+        uint32_t alignedStart = validLen / 8 * 8;
+        uint32_t startLane = validLen - alignedStart;
+        uint32_t endLane = Min(alignedLen - alignedStart, static_cast<uint32_t>(64));
+        uint64_t startMask = startLane == 64 ? ~0ULL : ((1ULL << startLane) - 1);
+        uint64_t endMask = endLane == 64 ? ~0ULL : ((1ULL << endLane) - 1);
+        uint64_t mask[1];
+        mask[0] = endMask & ~startMask;
+        PipeBarrier<PIPE_V>();
+        Duplicate(tensor[alignedStart], zero, mask, 1, 1, 0);
+        uint32_t nextStart = alignedStart + 64;
+        if (nextStart < alignedLen) {
+            PipeBarrier<PIPE_V>();
+            Duplicate(tensor[nextStart], zero, alignedLen - nextStart);
+        }
+    }
+}
+
+template <typename QLIT>
+__aicore__ inline bool QLIVector<QLIT>::ProcessStreamingTopK(const QLICommon::RunInfo &info,
+                                                            LocalTensor<SCORE_T> &outBase,
+                                                            int64_t curS1Idx,
+                                                            int64_t curAivS1Idx,
+                                                            int64_t curS1ProcNum,
+                                                            int64_t curAivS1ProcNum)
+{
+    if (!UseStreamingTopK(info, curAivS1Idx, curAivS1ProcNum)) {
+        return false;
+    }
+
+    uint32_t rowIdx = blockId_ % 2 * CeilDiv(curS1ProcNum, static_cast<int64_t>(2));
+    int32_t validS2Len = static_cast<int32_t>(info.actS2Size);
+    if (constInfo_.attenMaskFlag) {
+        validS2Len = static_cast<int32_t>(info.actS2SizeOrig) - static_cast<int32_t>(info.actS1Size) +
+                     static_cast<int32_t>(curAivS1Idx) + 1;
+    }
+
+    uint32_t s2Offset = (info.s2Idx - info.s2Start) * s2BaseSize_;
+    uint32_t validThisBlock = 0;
+    if (s2Offset < static_cast<uint32_t>(validS2Len)) {
+        validThisBlock = Min(static_cast<uint32_t>(s2BaseSize_), static_cast<uint32_t>(validS2Len) - s2Offset);
+    }
+
+    uint32_t loopIdx = s2Offset / trunkLen_;
+    uint32_t offsetInTrunk = s2Offset - loopIdx * trunkLen_;
+    if (validThisBlock > 0) {
+        SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT2);
+        WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT2);
+        if (loopIdx > 0 && offsetInTrunk == 0) {
+            AscendC::DataCopy(mrgValueLocal_, scoreOutLocal_, topkCountAlign256_);
+        }
+        uint32_t dstOffset = (loopIdx == 0) ? offsetInTrunk : topkCountAlign256_ + offsetInTrunk;
+        AscendC::DataCopy(mrgValueLocal_[dstOffset], outBase, s2BaseSize_);
+    }
+
+    uint32_t s2LoopNum = (static_cast<uint32_t>(validS2Len) + trunkLen_ - 1) / trunkLen_;
+    if (info.isLastS2InnerLoop) {
+        SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
+        WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
+        uint32_t topkInputLen;
+        if (s2LoopNum == 1) {
+            topkInputLen = QLICommon::Align(static_cast<uint32_t>(validS2Len), static_cast<uint32_t>(256));
+            ZeroPadTopKInput(mrgValueLocal_, static_cast<uint32_t>(validS2Len), topkInputLen);
+            topkOp_(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_, topkInputLen, 0, 1);
+        } else {
+            uint32_t lastLoopIdx = s2LoopNum - 1;
+            uint32_t validTrunkLen = static_cast<uint32_t>(validS2Len) - lastLoopIdx * trunkLen_;
+            uint32_t validTrunkLenAlign = QLICommon::Align(validTrunkLen, static_cast<uint32_t>(256));
+            auto tailBase = mrgValueLocal_[topkCountAlign256_];
+            ZeroPadTopKInput(tailBase, validTrunkLen, validTrunkLenAlign);
+            topkInputLen = QLICommon::Align(topkCountAlign256_ + validTrunkLen, static_cast<uint32_t>(256));
+            topkOp_(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_, topkInputLen, lastLoopIdx, s2LoopNum);
+        }
+
+        AscendC::DataCopyParams copyOutParams;
+        copyOutParams.blockCount = 1;
+        copyOutParams.blockLen = topkCount_ * sizeof(uint32_t);
+        copyOutParams.srcStride = 0;
+        copyOutParams.dstStride = 0;
+
+        WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
+        SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+        WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+        AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + (curS1Idx + rowIdx) * topkCount_],
+                             indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
+        SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
+    } else if (offsetInTrunk + validThisBlock >= trunkLen_) {
+        SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
+        WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
+        uint32_t topkInputLen = loopIdx == 0 ? trunkLen_ : topkCountAlign256_ + trunkLen_;
+        topkOp_(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_, topkInputLen, loopIdx, s2LoopNum);
+    }
+    return true;
 }
 
 template <typename QLIT>
@@ -410,6 +563,12 @@ __aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &in
     }
     SetFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);
     WaitFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);
+    if (ProcessStreamingTopK(info, outBase, curS1Idx, curAivS1Idx, curS1ProcNum, curAivS1ProcNum)) {
+        SetFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + pingpong);
+        CrossCoreSetFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(QLICommon::ConstInfo::CROSS_VC_EVENT + pingpong);   //V核处理完，通知C核可以把mm1Res搬运到UB
+        return;
+    }
+
     //outUB_ --->  scoreGm
     int64_t vec1OutGmOffset = blockId_ % 2 == 0 ? curS2Idx :
                             s1BaseSizePerAIV * QLICommon::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + curS2Idx;
@@ -426,14 +585,16 @@ __aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &in
 template <typename QLIT>
 __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &info)
 {
-    SetFlag<HardEvent::MTE3_MTE2>(MTE3_MTE2_EVENT);
-    WaitFlag<HardEvent::MTE3_MTE2>(MTE3_MTE2_EVENT);
-
     int64_t curS1Idx = info.gS1Idx * s1BaseSize_;
-    int64_t curS2Idx = info.s2Idx * s2BaseSize_;	 
-    int64_t curS1ProcNum = curS1Idx + s1BaseSize_ > info.actS1Size ? info.actS1Size % s1BaseSize_ : s1BaseSize_;	 
+    int64_t curS2Idx = info.s2Idx * s2BaseSize_;
+    int64_t curS1ProcNum = curS1Idx + s1BaseSize_ > info.actS1Size ? info.actS1Size % s1BaseSize_ : s1BaseSize_;
     int64_t curAivS1Idx = curS1Idx + (blockId_ % 2) * CeilDiv(curS1ProcNum, 2);
     int64_t curAivS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curS1ProcNum, 2) : curS1ProcNum / 2; 
+    if (UseStreamingTopK(info, curAivS1Idx, curAivS1ProcNum)) {
+        return;
+    }
+    SetFlag<HardEvent::MTE3_MTE2>(MTE3_MTE2_EVENT);
+    WaitFlag<HardEvent::MTE3_MTE2>(MTE3_MTE2_EVENT);
 
     AscendC::DataCopyExtParams copyInParams;
     copyInParams.blockCount = 1;
