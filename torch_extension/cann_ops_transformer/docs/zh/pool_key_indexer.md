@@ -29,7 +29,7 @@
 
   主要计算过程为：
 
-  1. 将某个token对应的输入参数`query`（$Q_{index}\in\R^{g\times d}$）乘以池化后的上下文`pool_key`（$K_{index}^{Pool}\in\R^{S_{k}^{pool}\times d}$），其中$S_{k}^{pool} = \lfloor S_{k} / pool\_size \rfloor$，得到相关性分数。
+  1. 将某个token对应的输入参数`query`（$Q_{index}\in\R^{g\times d}$）乘以池化后的上下文`pool_key`（$K_{index}^{Pool}\in\R^{S_{k}^{pool}\times d}$），其中$S_{k}^{pool} = \lfloor S_{k} / pool\_size \rfloor$，再乘以缩放系数$\frac{1}{\sqrt{d}}$（防止点积过大），得到相关性分数。
   2. 通过激活函数$ReLU$过滤无效负相关信号后，得到当前Token与所有前序Token的pool级相关性分数向量。
   3. 将其与权重系数`weights`（$W$）相乘后，沿g的方向聚合。
   4. 在pool空间选取前$Top\text{-}k / pool\_size$个pool索引，展开为$Top\text{-}k$个token索引。
@@ -38,10 +38,10 @@
 - **计算公式**：
 
   $$
-  Top\text{-}k \leftarrow Expand\left(Top\text{-}\frac{k}{p}\left\{[1]_{1\times g}@\left[\left(W@[1]_{1\times S_{k}^{pool}}\right)\odot ReLU\left(Q_{index}@{K_{index}^{Pool}}^T\right)\right]\right\}\right) + AppendTail
+  Top\text{-}k \leftarrow Expand\left(Top\text{-}\frac{k}{p}\left\{[1]_{1\times g}@\left[\left(W@[1]_{1\times S_{k}^{pool}}\right)\odot ReLU\left(\left(Q_{index}@{K_{index}^{Pool}}^T\right)\odot\frac{1}{\sqrt{d}}\right)\right]\right\}\right) + AppendTail
   $$
 
-  其中$p = pool\_size$，$Expand$将每个pool索引展开为$p$个连续token索引，$AppendTail$追加尾部pool中`pool_tail_k`个有效token。
+  其中$p = pool\_size$，$d$为注意力头维度（headDim），缩放系数$\frac{1}{\sqrt{d}}$防止点积过大；$Expand$将每个pool索引展开为$p$个连续token索引，$AppendTail$追加尾部pool中`pool_tail_k`个有效token。
 
 ## 函数原型
 
