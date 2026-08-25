@@ -384,6 +384,10 @@ template <typename LIT>
 __aicore__ inline void PoolKeyIndexerKernel<LIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Start)
 {
     if ASCEND_IS_AIV {
+        // poolSize>1 时 indices 输出行宽为 outputLen(=sparseCount*poolSize+poolSize-1),
+        // 清理偏移须与主输出路径(ProcessTopK 的 outputLen_ 行距)一致, 否则 0 池/0 长度
+        // batch 的清理写错地址: 目标行残留脏索引, 且 outputLen 长度的写跨入相邻行区域
+        uint32_t idxOutStride = (constInfo.poolSize > 1) ? (constInfo.sparseCount * constInfo.poolSize + constInfo.poolSize - 1) : constInfo.sparseCount;
         if (constInfo.outputLayout == PkiLayout::TND) {
             uint32_t tSize = static_cast<uint32_t>(actualSeqLengthsGmQ.GetValue(constInfo.batchSize - 1));
             uint32_t tBase = bIdx == 0 ? 0 : static_cast<uint32_t>(actualSeqLengthsGmQ.GetValue(bIdx - 1));
@@ -391,17 +395,16 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::DealActSeqLenIsZero(uint32_t b
 
             for (uint32_t s1Idx = s1Start; s1Idx < s1Count; s1Idx++) {
                 uint64_t indiceOutOffset =
-                    (tBase + s1Idx) * constInfo.kHeadNum * constInfo.sparseCount + // T轴、s1轴偏移
-                    n2Idx * constInfo.sparseCount;                                 // N2轴偏移
+                    (tBase + s1Idx) * constInfo.kHeadNum * idxOutStride + // T轴、s1轴偏移
+                    n2Idx * idxOutStride;                                 // N2轴偏移
                 vectorService.CleanInvalidOutput(indiceOutOffset);
             }
         } else if (constInfo.outputLayout == PkiLayout::BSND) {
             for (uint32_t s1Idx = s1Start; s1Idx < constInfo.qSeqSize; s1Idx++) {
                 // B,S1,N2,K
-                uint64_t indiceOutOffset = bIdx * constInfo.qSeqSize * constInfo.kHeadNum *
-                                               constInfo.sparseCount +
-                                           s1Idx * constInfo.kHeadNum * constInfo.sparseCount + // B轴、S1轴偏移
-                                           n2Idx * constInfo.sparseCount;                       // N2轴偏移
+                uint64_t indiceOutOffset = bIdx * constInfo.qSeqSize * constInfo.kHeadNum * idxOutStride +
+                                           s1Idx * constInfo.kHeadNum * idxOutStride + // B轴、S1轴偏移
+                                           n2Idx * idxOutStride;                       // N2轴偏移
                 vectorService.CleanInvalidOutput(indiceOutOffset);
             }
         }
@@ -571,10 +574,14 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::CalcRunInfo(uint32_t loop,
         queryCoreOffset = tndBIdxOffset + runInfo.gS1Idx * constInfo.mBaseSize * constInfo.headDim;
         // B,S1,N1(N2,G)/T,N1(N2,G)
         weightsCoreOffset = actualSeqQPrefixSum * constInfo.qHeadNum + runInfo.n2Idx * constInfo.gSize;
+        // 注意: poolSize>1 时 indices 输出行宽为 outputLen(=sparseCount*poolSize+poolSize-1),
+        // 批次基址须按 outputLen 行距计算(与 ProcessTopK 的 outputLen_ 行距一致), 否则
+        // batch>0 的行基址整体错位, 写入会跨界覆盖相邻 batch 的行, 本 batch 真实位置残留脏数据
+        uint32_t idxOutStride = (constInfo.poolSize > 1) ? (constInfo.sparseCount * constInfo.poolSize + constInfo.poolSize - 1) : constInfo.sparseCount;
         // B,S1,N2,k/T,N2,k
         indiceOutCoreOffset =
-            actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount + runInfo.n2Idx * constInfo.sparseCount;
-        // B,S1,N2,k/T,N2,k
+            actualSeqQPrefixSum * constInfo.kHeadNum * idxOutStride + runInfo.n2Idx * idxOutStride;
+        // values 输出行宽恒为 sparseCount(与 indices 的 outputLen 行宽不同), 基址按自身行距
         valueOutCoreOffset =
             actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount + runInfo.n2Idx * constInfo.sparseCount;
     }
@@ -610,8 +617,10 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::ProcessInvalid()
 {
     if ASCEND_IS_AIV {
         uint32_t aivCoreNum = GetBlockNum() * 2; // 2 means c:v = 1:2
+        // poolSize>1 时 indices 输出行宽为 outputLen(见 CalcRunInfo 中 idxOutStride 说明)
+        uint32_t idxOutStride = (constInfo.poolSize > 1) ? (constInfo.sparseCount * constInfo.poolSize + constInfo.poolSize - 1) : constInfo.sparseCount;
         uint64_t totalOutputSize =
-            constInfo.batchSize * constInfo.qSeqSize * constInfo.kHeadNum * constInfo.sparseCount;
+            constInfo.batchSize * constInfo.qSeqSize * constInfo.kHeadNum * idxOutStride;
         uint64_t singleCoreSize =
             PkiCommon::Align((totalOutputSize + aivCoreNum - 1) / aivCoreNum, GM_ALIGN_BYTES / sizeof(OUT_T));
         uint64_t baseSize = tmpBlockIdx * singleCoreSize;
@@ -620,11 +629,23 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::ProcessInvalid()
                 (baseSize + singleCoreSize <= totalOutputSize) ? singleCoreSize : totalOutputSize - baseSize;
             GlobalTensor<OUT_T> output = indiceOutGm[baseSize];
             AscendC::InitGlobalMemory(output, dealSize, constInfo.INVALID_IDX);
-            if (constInfo.returnValue) {
+        }
+        if (constInfo.returnValue) {
+            // values 输出行宽恒为 sparseCount(与 indices 的 outputLen 行宽不同),
+            // 不可复用 indices 的 baseSize/dealSize(poolSize>1 时二者总大小不同,
+            // 复用会越出 values 张量边界), 需按自身总大小独立切分清理
+            uint64_t totalValueSize =
+                constInfo.batchSize * constInfo.qSeqSize * constInfo.kHeadNum * constInfo.sparseCount;
+            uint64_t singleCoreValueSize =
+                PkiCommon::Align((totalValueSize + aivCoreNum - 1) / aivCoreNum, GM_ALIGN_BYTES / sizeof(uint32_t));
+            uint64_t valueBase = tmpBlockIdx * singleCoreValueSize;
+            if (valueBase < totalValueSize) {
+                uint64_t valueDealSize =
+                    (valueBase + singleCoreValueSize <= totalValueSize) ? singleCoreValueSize : totalValueSize - valueBase;
                 GlobalTensor<uint32_t> valueOutGmTmp;
                 valueOutGmTmp.SetGlobalBuffer((__gm__ uint32_t *)valueOutGm.GetPhyAddr());
-                GlobalTensor<uint32_t> valueOut = valueOutGmTmp[baseSize];
-                AscendC::InitGlobalMemory(valueOut, dealSize, constInfo.INVALID_VAL);
+                GlobalTensor<uint32_t> valueOut = valueOutGmTmp[valueBase];
+                AscendC::InitGlobalMemory(valueOut, valueDealSize, constInfo.INVALID_VAL);
             }
         }
     }

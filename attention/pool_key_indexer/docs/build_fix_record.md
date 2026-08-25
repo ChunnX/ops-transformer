@@ -894,6 +894,12 @@ if (!keyStridesVec_.empty() && keyStridesVec_[0] != 0) {
 - ✅ 确认 `KeyNd2NzForPA`（arch35）与 LIV2 arch35 同构：`bt[blk]×keyStride0 + blkOffset×headDim` 池行连续寻址，无需修改
 - ✅ 确认 `GetS1S2ActualSeqLen`/模板入口与 arch22 同构；模板 SEL 为 soc 无关声明，新增 TND/PA_BBND 组合自动对 950 生效
 - ✅ host 侧 `keyStride0`（运行时 stride / 连续推导）为两 soc 共用，已生效
+- ✅ 移植 arch22 的 4 处 poolSize>1 行宽修复（2026-08-25，arch22 侧 2026-08-24 修复时 arch35 漏改，详见下方"0 池 batch 残留脏索引"与"values 输出 batch>0 错位"两节）：
+  1. `CalcRunInfo`：`indiceOutCoreOffset` 批次基址改按 `idxOutStride`(ps>1 时为 outputLen) 行距——原按 sparseCount，ps>1 且 batch>0 时主输出整体错位、跨界覆盖相邻 batch；
+  2. `DealActSeqLenIsZero`：清理偏移改按 `idxOutStride`——原按 sparseCount，ps>1 时 0 池/0 长度 batch 清理写错地址（目标行残留脏索引 + 跨行踩写）；
+  3. `CleanInvalidOutput`：values 偏移增加行宽换算 `(offset/idxStride)*sparseCount`——原直接复用 indices 偏移；
+  4. `ProcessInvalid`：indices 总量改按 `idxOutStride`，values 按自身 `sparseCount` 总量独立切分清理——原复用 indices 的 baseSize/dealSize，ps>1 时越出 values 张量边界（OOB 写）。
+  注：修改后 950 编译仍被既有 VF fp8 问题阻塞；已做 stash 对照验证（错误签名与未修改前一致、无新增错误、报错均为 backend 阶段即 frontend 解析已通过），待 VF 修复后补编译+运行时验证。
 
 ### 待办（需 arch35 维护者处理）
 

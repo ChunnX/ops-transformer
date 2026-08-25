@@ -294,7 +294,12 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::CleanInvalidOutput(int6
         copyOutValueParams.blockLen = constInfo_.sparseCount * sizeof(float);
         copyOutValueParams.srcStride = 0;
         copyOutValueParams.dstStride = 0;
-        AscendC::DataCopyPad(valueOutGm[invalidS1Offset], valueOutLocal_, copyOutValueParams);
+        // invalidS1Offset 是 indices 行偏移(行宽 poolSize>1 时为 outputLen_);
+        // value 行宽为 sparseCount, 需换算行号后重算偏移, 否则 poolSize>1 时
+        // values 写错行(与 arch22 CleanInvalidOutput 的换算保持一致)
+        uint64_t idxStride = (poolSize_ > 1) ? outputLen_ : constInfo_.sparseCount;
+        uint64_t valueOffset = (invalidS1Offset / idxStride) * constInfo_.sparseCount;
+        AscendC::DataCopyPad(valueOutGm[valueOffset], valueOutLocal_, copyOutValueParams);
     }
 }
 

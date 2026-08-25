@@ -343,8 +343,18 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::CleanInvalidOutput(int6
         Duplicate(expandOutLocal_, constInfo_.INVALID_IDX,
                   PkiCommon::Align(idxOutLen, (uint32_t)8));
         PipeBarrier<PIPE_V>();
+        // V(Duplicate) 写 expandOutLocal_ 后由 MTE3(DataCopyPad) 搬出,
+        // 必须真跨流水同步: SetFlag 排入 V 队尾, WaitFlag 在 MTE3 队列等待;
+        // 仅 PipeBarrier<PIPE_V> 只保证 V 流水线内部有序, MTE3 可能读到
+        // Duplicate 写入前的陈旧内容(上次 ExpandAndAppendIndices 残留的
+        // 有效 token 索引), 导致清理行偶发残留脏索引(与主输出路径
+        // ProcessVec 的 DataCopyPad 前置同步保持一致)
+        event_t evtVMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+        SetFlag<HardEvent::V_MTE3>(evtVMte3);
+        WaitFlag<HardEvent::V_MTE3>(evtVMte3);
         DataCopyPad(indiceOutGm[invalidS1offset], expandOutLocal_,
                     {1, static_cast<uint16_t>(idxOutLen * sizeof(int32_t)), 0, 0});
+        SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
     } else {
         LocalTensor<float> valueULocal = outQueue_.AllocTensor<float>();
         LocalTensor<int32_t> idxULocal1 = valueULocal.template ReinterpretCast<int32_t>();
