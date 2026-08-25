@@ -72,7 +72,16 @@ private:
 
     template <uint8_t BarrierMode>
     __aicore__ inline void DoFinalize()
-    {}
+    {
+        // [dcci 替代方案-研究中] hcomm Lock/Unlock 方案（依赖 CANN hcomm Lock/Unlock 接口，CANN 819 已打 patch，
+        // 见疑问整理.md 问题18/19/20）。效果与 dcci ENTIRE 持平，连跑精度全 PASS。启用时需同步恢复
+        // collective_comm_base.h 中的 jobIndex/totalJobs Finalize 保护。
+        // for (uint32_t i = 0; i < this->targetRankCnt_; i++) {
+        //     uint32_t targetRankId = this->targetRankStart_ + i;
+        //     this->comm_.Lock(this->udmaCtx_->channelHandles[targetRankId]);
+        //     this->comm_.Unlock(this->udmaCtx_->channelHandles[targetRankId]);
+        // }
+    }
 };
 
 } // namespace AivComm

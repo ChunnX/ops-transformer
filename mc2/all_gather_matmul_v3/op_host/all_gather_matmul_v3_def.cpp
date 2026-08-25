@@ -22,7 +22,7 @@ public:
     {
         this->Input("context")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32, ge::DT_UINT8})
+            .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("x1")
@@ -51,7 +51,7 @@ public:
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("x1_scale")
-            .ParamType(OPTIONAL)    // todo: optional?  float?
+            .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
                        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
                        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
@@ -60,7 +60,7 @@ public:
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("x2_scale")
-            .ParamType(OPTIONAL)    // todo: optional?  float?
+            .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
                        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
                        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
@@ -95,7 +95,7 @@ public:
         this->Attr("is_trans_b").AttrType(OPTIONAL).Bool(false);
         this->Attr("rank_size").AttrType(REQUIRED).Int();
         this->Attr("group_size").AttrType(OPTIONAL).Int(0);
-        this->Attr("y_dtype").AttrType(OPTIONAL).Int(static_cast<int64_t>(ge::DT_UNDEFINED)); // not read by tiling, output dtype from tensor desc
+        this->Attr("y_dtype").AttrType(OPTIONAL).Int(static_cast<int64_t>(ge::DT_UNDEFINED));
         this->Attr("comm_mode").AttrType(OPTIONAL).String("ai_cpu");
 
         OpAICoreConfig aicoreConfig_950;
@@ -106,7 +106,7 @@ public:
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true)
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
-            .ExtendCfgInfo("jitCompile.flag", "static_false")
+            .ExtendCfgInfo("jitCompile.flag", "static_false")   // 动态shape,复用二进制,后续图支持后修改
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
             .ExtendCfgInfo("opFile.value", "all_gather_matmul_v3_apt");
         this->AICore().AddConfig("ascend950", aicoreConfig_950);

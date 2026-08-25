@@ -189,7 +189,7 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context)
     const char *nodeName = context->GetNodeName();
 
     auto contextDesc = context->GetInputDesc(IDX_INPUT_CONTEXT);
-    ge::Format contextFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(contextDesc->GetStorageFormat()));
+    ge::Format contextFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(contextDesc->GetStorageFormat()));  // todo: 这里到底需要primaryFormat吗？
     OP_TILING_CHECK(contextFormat != ge::FORMAT_ND,
                     OP_LOGE_FOR_INVALID_FORMAT(nodeName, "context", Ops::Base::ToString(contextFormat).c_str(), "ND"),
                     return ge::GRAPH_FAILED);
@@ -221,16 +221,20 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context)
     }
 
     auto x1ScaleDesc = context->GetOptionalInputDesc(IDX_INPUT_X1_SCALE);
-    ge::Format x1ScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(x1ScaleDesc->GetStorageFormat()));
-    OP_TILING_CHECK(x1ScaleFormat != ge::FORMAT_ND,
-                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "x1_scale", Ops::Base::ToString(x1ScaleFormat).c_str(), "ND"),
-                    return ge::GRAPH_FAILED);
-
+    if (x1ScaleDesc != nullptr) {
+        ge::Format x1ScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(x1ScaleDesc->GetStorageFormat()));
+        OP_TILING_CHECK(x1ScaleFormat != ge::FORMAT_ND,
+                        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "x1_scale", Ops::Base::ToString(x1ScaleFormat).c_str(), "ND"),
+                        return ge::GRAPH_FAILED);
+    }
+    
     auto x2ScaleDesc = context->GetOptionalInputDesc(IDX_INPUT_X2_SCALE);
-    ge::Format x2ScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(x2ScaleDesc->GetStorageFormat()));
-    OP_TILING_CHECK(x2ScaleFormat != ge::FORMAT_ND,
-                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "x2_scale", Ops::Base::ToString(x2ScaleFormat).c_str(), "ND"),
-                    return ge::GRAPH_FAILED);
+    if (x2ScaleDesc != nullptr) {
+        ge::Format x2ScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(x2ScaleDesc->GetStorageFormat()));
+        OP_TILING_CHECK(x2ScaleFormat != ge::FORMAT_ND,
+                        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "x2_scale", Ops::Base::ToString(x2ScaleFormat).c_str(), "ND"),
+                        return ge::GRAPH_FAILED);
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -294,7 +298,7 @@ static ge::graphStatus CheckTensorShape(const gert::TilingContext *context, Shap
                          std::to_string(K_MAX_VAL) + ")").c_str()),
                     return ge::GRAPH_FAILED);
 
-    // fp4 要求 K 为偶数（packed 存储 2 个 fp4/byte）
+    // fp4 要求 K 为偶数
     auto x1Dtype = context->GetInputDesc(IDX_INPUT_X1)->GetDataType();
     if (x1Dtype == ge::DT_FLOAT4_E2M1) {
         OP_TILING_CHECK(kX1 % 2 != 0,
@@ -315,7 +319,7 @@ static ge::graphStatus CheckTensorShape(const gert::TilingContext *context, Shap
     auto rankSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_SIZE_INDEX);
     OP_TILING_CHECK(rankSizePtr == nullptr,
                     OP_LOGE_WITH_INVALID_INPUT(nodeName, "rank_size"), return ge::GRAPH_FAILED);
-    uint64_t rankSize = static_cast<uint64_t>(*rankSizePtr);    // todo: ranksize从group获取，那为torch接口暴露出去还开ranksize吗，为啥我看之前的pta接口有这个
+    uint64_t rankSize = static_cast<uint64_t>(*rankSizePtr);
 
     OP_TILING_CHECK(yM != mPerRank * static_cast<int64_t>(rankSize) || yN != x2N,
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
@@ -342,7 +346,7 @@ static ge::graphStatus CheckTensorShape(const gert::TilingContext *context, Shap
     }
 
     // scale shapes: x1_scale [M, K/64, 2]; x2_scale [N, K/64, 2]
-    int64_t kg = (kX1 + static_cast<int64_t>(MX_SCALE_BLOCK) - 1) / static_cast<int64_t>(MX_SCALE_BLOCK);
+    int64_t scaleKDim = (kX1 + static_cast<int64_t>(MX_SCALE_BLOCK) - 1) / static_cast<int64_t>(MX_SCALE_BLOCK);
     auto x1ScaleShape = context->GetOptionalInputShape(IDX_INPUT_X1_SCALE);
     OP_TILING_CHECK(x1ScaleShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "x1_scale"),
                     return ge::GRAPH_FAILED);
@@ -353,14 +357,14 @@ static ge::graphStatus CheckTensorShape(const gert::TilingContext *context, Shap
                         "The shape dim of x1_scale must be 3D."),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(x1ScaleShape->GetStorageShape().GetDim(0) != mPerRank ||
-                    x1ScaleShape->GetStorageShape().GetDim(1) != kg ||
+                    x1ScaleShape->GetStorageShape().GetDim(1) != scaleKDim ||
                     x1ScaleShape->GetStorageShape().GetDim(2) != static_cast<int64_t>(SCALE_LAST_DIM),
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         nodeName, "x1_scale",
                         (std::string("[") + std::to_string(x1ScaleShape->GetStorageShape().GetDim(0)) + "," +
                          std::to_string(x1ScaleShape->GetStorageShape().GetDim(1)) + "," +
                          std::to_string(x1ScaleShape->GetStorageShape().GetDim(2)) + "]").c_str(),
-                        (std::string("expected [") + std::to_string(mPerRank) + "," + std::to_string(kg) + "," +
+                        (std::string("expected [") + std::to_string(mPerRank) + "," + std::to_string(scaleKDim) + "," +
                          std::to_string(SCALE_LAST_DIM) + "]").c_str()),
                     return ge::GRAPH_FAILED);
 
@@ -374,14 +378,14 @@ static ge::graphStatus CheckTensorShape(const gert::TilingContext *context, Shap
                         "The shape dim of x2_scale must be 3D."),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(x2ScaleShape->GetStorageShape().GetDim(0) != x2N ||
-                    x2ScaleShape->GetStorageShape().GetDim(1) != kg ||
+                    x2ScaleShape->GetStorageShape().GetDim(1) != scaleKDim ||
                     x2ScaleShape->GetStorageShape().GetDim(2) != static_cast<int64_t>(SCALE_LAST_DIM),
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         nodeName, "x2_scale",
                         (std::string("[") + std::to_string(x2ScaleShape->GetStorageShape().GetDim(0)) + "," +
                          std::to_string(x2ScaleShape->GetStorageShape().GetDim(1)) + "," +
                          std::to_string(x2ScaleShape->GetStorageShape().GetDim(2)) + "]").c_str(),
-                        (std::string("expected [") + std::to_string(x2N) + "," + std::to_string(kg) + "," +
+                        (std::string("expected [") + std::to_string(x2N) + "," + std::to_string(scaleKDim) + "," +
                          std::to_string(SCALE_LAST_DIM) + "]").c_str()),
                     return ge::GRAPH_FAILED);
 
@@ -569,7 +573,13 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
     tilingData->commTile.nonSplitAxisSize = k;
 
     // mm tiling via SWAT engine
+    // 从 context PlatformInfo 注入限核值（能感知进程级 set_device_limit），
+    // 使 SWAT 按实际可用核数（短板 1:1）切分，blockDim 与外侧控核设置一致
     QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
+    {
+        auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+        tilingEngine.SetCoreLimit(ascendcPlatform.GetCoreNumAic(), ascendcPlatform.GetCoreNumAiv());
+    }
     tilingEngine.SetOptimizeEnable(false);
     tilingEngine.SetMTailAlignEnable(true);
     tilingEngine.SetAdjustBasicBlockEnable(false);

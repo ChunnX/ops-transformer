@@ -1,0 +1,482 @@
+2026-08-24 14:13:13 [INFO] [2659724] [2659724] [export_manager.cpp:142] Start to load data!
+2026-08-24 14:13:13 [INFO] [2659724] [2659724] [data_processor.cpp:37] HASH_INIT Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [WARN] [2659724] [2659724] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/host/sqlite/ge_logic_stream_info.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659724] [hash_init_processor.cpp:68] Init Hash data, dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659724] [data_processor.cpp:71] Check /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/host/sqlite/ge_hash.db and GeHashInfo success.
+2026-08-24 14:13:13 [INFO] [2659724] [2659724] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659724] [db_runner.h:90] Query data success: SELECT hash_key, hash_value FROM GeHashInfo
+2026-08-24 14:13:13 [INFO] [2659724] [2659725] [data_processor.cpp:37] ACC_PMU Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659730] [data_processor.cpp:37] AICORE_FREQ Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659728] [data_processor.cpp:37] API Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [data_processor.cpp:37] CCU_MISSION Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659726] [data_processor.cpp:37] COMMUNICATION Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [WARN] [2659724] [2659729] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/host/sqlite/ccu_add_info.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659731] [data_processor.cpp:37] COMMUNICATION_STATISTIC Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659727] [data_processor.cpp:37] COMPUTE_TASK_INFO Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [WARN] [2659724] [2659729] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/host/sqlite/ccu_add_info.db.
+2026-08-24 14:13:13 [WARN] [2659724] [2659731] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/hccl_single_device.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659734] [data_processor.cpp:37] CPU_USAGE Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [data_processor.cpp:37] DDR Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659731] [data_processor.h:85] Save COMMUNICATION_STATISTIC data into dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659734] [host_usage_processor.cpp:27] Start process CPU_USAGE.
+2026-08-24 14:13:13 [WARN] [2659724] [2659731] [data_processor.h:88] COMMUNICATION_STATISTIC no data to inject to dataInventory
+2026-08-24 14:13:13 [WARN] [2659724] [2659730] [aicore_freq_processor.cpp:36] This platformVersion: 15 does not support the processing of aicore freq data.
+2026-08-24 14:13:13 [WARN] [2659724] [2659725] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/acc_pmu.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659731] [data_processor.cpp:37] DISK_USAGE Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659733] [data_processor.cpp:37] DEVICE_MSTX Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659730] [data_processor.cpp:37] DPU Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659725] [data_processor.h:85] Save ACC_PMU data into dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659731] [host_usage_processor.cpp:27] Start process DISK_USAGE.
+2026-08-24 14:13:13 [WARN] [2659724] [2659725] [data_processor.h:88] ACC_PMU no data to inject to dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659730] [dpu_processor.cpp:32] Start DPU Processor
+2026-08-24 14:13:13 [INFO] [2659724] [2659725] [data_processor.cpp:37] FUSION_OP Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [WARN] [2659724] [2659725] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/host/sqlite/ge_model_info.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659725] [data_processor.cpp:37] HBM Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [WARN] [2659724] [2659726] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/hccl_single_device.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659728] [data_processor.cpp:71] Check /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/host/sqlite/api_event.db and ApiData success.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [context.cpp:441] HostFreq is empty, it will be set 1000.0 .
+2026-08-24 14:13:13 [INFO] [2659724] [2659728] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [WARN] [2659724] [2659726] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/hccl_single_device.db.
+2026-08-24 14:13:13 [WARN] [2659724] [2659734] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/host/sqlite/host_cpu_usage.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659726] [data_processor.h:73] There are 0 records before COMMUNICATION_TASK_INFO data filtering, filterTime is 1787551980466792000.
+2026-08-24 14:13:13 [INFO] [2659724] [2659734] [data_processor.cpp:37] HCCS Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659726] [data_processor.h:78] There are 0 records after COMMUNICATION_TASK_INFO data filtering.
+2026-08-24 14:13:13 [INFO] [2659724] [2659726] [data_processor.h:73] There are 0 records before COMMUNICATION_TASK_INFO data filtering, filterTime is 1787551980466792000.
+2026-08-24 14:13:13 [INFO] [2659724] [2659726] [data_processor.h:78] There are 0 records after COMMUNICATION_TASK_INFO data filtering.
+2026-08-24 14:13:13 [INFO] [2659724] [2659726] [data_processor.h:85] Save COMMUNICATION_TASK_INFO data into dataInventory
+2026-08-24 14:13:13 [WARN] [2659724] [2659726] [data_processor.h:88] COMMUNICATION_TASK_INFO no data to inject to dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659726] [data_processor.h:85] Save COMMUNICATION_OP data into dataInventory
+2026-08-24 14:13:13 [WARN] [2659724] [2659726] [data_processor.h:88] COMMUNICATION_OP no data to inject to dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659726] [data_processor.cpp:37] HOST_TASK Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [WARN] [2659724] [2659731] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/host/sqlite/host_disk_usage.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659731] [data_processor.cpp:37] KFC_COMM Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [context.cpp:560] HostFreq is empty, it will be set 1000.0 .
+2026-08-24 14:13:13 [WARN] [2659724] [2659725] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/hbm.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659725] [data_processor.h:85] Save HBM data into dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659727] [data_processor.cpp:71] Check /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/host/sqlite/ge_info.db and TaskInfo success.
+2026-08-24 14:13:13 [WARN] [2659724] [2659725] [data_processor.h:88] HBM no data to inject to dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659727] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659725] [data_processor.h:85] Save HBM data into dataInventory
+2026-08-24 14:13:13 [WARN] [2659724] [2659725] [data_processor.h:88] HBM no data to inject to dataInventory
+2026-08-24 14:13:13 [WARN] [2659724] [2659729] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/ccu.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659730] [context.cpp:441] HostFreq is empty, it will be set 1000.0 .
+2026-08-24 14:13:13 [INFO] [2659724] [2659725] [data_processor.cpp:37] KFC_TASK Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [WARN] [2659724] [2659734] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/hccs.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [data_processor.h:73] There are 0 records before CCU_MISSION data filtering, filterTime is 1787551980466792000.
+2026-08-24 14:13:13 [INFO] [2659724] [2659734] [data_processor.h:85] Save HCCS data into dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [data_processor.h:78] There are 0 records after CCU_MISSION data filtering.
+2026-08-24 14:13:13 [WARN] [2659724] [2659734] [data_processor.h:88] HCCS no data to inject to dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [data_processor.h:85] Save CCU_MISSION data into dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659734] [data_processor.h:85] Save HCCS data into dataInventory
+2026-08-24 14:13:13 [WARN] [2659724] [2659729] [data_processor.h:88] CCU_MISSION no data to inject to dataInventory
+2026-08-24 14:13:13 [WARN] [2659724] [2659734] [data_processor.h:88] HCCS no data to inject to dataInventory
+2026-08-24 14:13:13 [WARN] [2659724] [2659730] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/host/sqlite/dpu.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [data_processor.cpp:37] LLC Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659734] [data_processor.cpp:37] LOW_POWER Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [WARN] [2659724] [2659730] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/host/sqlite/dpu.db.
+2026-08-24 14:13:13 [WARN] [2659724] [2659730] [dpu_processor.cpp:51] No dpu data found.
+2026-08-24 14:13:13 [INFO] [2659724] [2659730] [data_processor.cpp:37] MC2_COMM_INFO Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [WARN] [2659724] [2659732] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/ddr.db.
+2026-08-24 14:13:13 [WARN] [2659724] [2659730] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/host/sqlite/mc2_comm_info.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [data_processor.h:85] Save DDR data into dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659730] [data_processor.cpp:37] MEMCPY_INFO Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [WARN] [2659724] [2659732] [data_processor.h:88] DDR no data to inject to dataInventory
+2026-08-24 14:13:13 [WARN] [2659724] [2659731] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/hccl_single_device.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [data_processor.cpp:37] MEM_USAGE Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [WARN] [2659724] [2659731] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/hccl_single_device.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [host_usage_processor.cpp:27] Start process MEM_USAGE.
+2026-08-24 14:13:13 [INFO] [2659724] [2659731] [data_processor.h:85] Save KFC_COMM data into dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659733] [context.cpp:441] HostFreq is empty, it will be set 1000.0 .
+2026-08-24 14:13:13 [WARN] [2659724] [2659731] [data_processor.h:88] KFC_COMM no data to inject to dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659726] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659725] [context.cpp:441] HostFreq is empty, it will be set 1000.0 .
+2026-08-24 14:13:13 [INFO] [2659724] [2659731] [data_processor.h:85] Save KFC_COMM data into dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659727] [db_runner.h:90] Query data success: SELECT hashid, model_id, op_name, stream_id, task_id, block_num, mix_block_num, task_type, op_type, op_flag, batch_id, IFNULL(input_formats, 'NULL'), IFNULL(input_data_types, 'NULL'), IFNULL(input_shapes, 'NULL'), IFNULL(output_formats, 'NULL'), IFNULL(output_data_types, 'NULL'), IFNULL(output_shapes, 'NULL'), device_id, context_id, (case when op_state is 'N/A' then 'N/A' when op_state is '1' then 'dynamic' when op_state is '0' then 'static' end), IFNULL(grid_dim, 'N/A'), IFNULL(block_dim, 'N/A') FROM TaskInfo
+2026-08-24 14:13:13 [WARN] [2659724] [2659731] [data_processor.h:88] KFC_COMM no data to inject to dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659731] [data_processor.cpp:37] MODEL_NAME Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [WARN] [2659724] [2659733] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/step_trace.db.
+2026-08-24 14:13:13 [WARN] [2659724] [2659731] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/host/sqlite/ge_model_info.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659733] [data_processor.h:85] Save TASK data into dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659731] [data_processor.cpp:37] MSTX Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659728] [db_runner.h:90] Query data success: SELECT struct_type, id, level, thread_id, item_id, start, end, connection_id FROM ApiData
+2026-08-24 14:13:13 [WARN] [2659724] [2659733] [data_processor.h:88] TASK no data to inject to dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659733] [data_processor.cpp:37] NETDEV_STATS Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659727] [data_processor.h:85] Save COMPUTE_TASK_INFO data into dataInventory
+2026-08-24 14:13:13 [WARN] [2659724] [2659732] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/host/sqlite/host_mem_usage.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659727] [data_processor.cpp:37] NETWORK_USAGE Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [data_processor.cpp:37] NIC Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659727] [host_usage_processor.cpp:27] Start process NETWORK_USAGE.
+2026-08-24 14:13:13 [WARN] [2659724] [2659725] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/kfc_info.db.
+2026-08-24 14:13:13 [WARN] [2659724] [2659725] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/kfc_info.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659725] [data_processor.h:85] Save KFC_TASK data into dataInventory
+2026-08-24 14:13:13 [WARN] [2659724] [2659725] [data_processor.h:88] KFC_TASK no data to inject to dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659725] [data_processor.cpp:37] NPU_MEM Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659726] [db_runner.h:90] Query data success: SELECT stream_id, request_id, batch_id, task_id, context_ids, model_id, task_type, kernel_name, connection_id, device_id FROM HostTask
+2026-08-24 14:13:13 [WARN] [2659724] [2659729] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/llc.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [data_processor.h:85] Save LLC data into dataInventory
+2026-08-24 14:13:13 [WARN] [2659724] [2659733] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/netdev_stats.db.
+2026-08-24 14:13:13 [WARN] [2659724] [2659729] [data_processor.h:88] LLC no data to inject to dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659733] [data_processor.h:85] Save NETDEV_STATS data into dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [data_processor.h:85] Save LLC data into dataInventory
+2026-08-24 14:13:13 [WARN] [2659724] [2659733] [data_processor.h:88] NETDEV_STATS no data to inject to dataInventory
+2026-08-24 14:13:13 [WARN] [2659724] [2659729] [data_processor.h:88] LLC no data to inject to dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659733] [data_processor.cpp:37] NPU_MODULE_MEM Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [data_processor.cpp:37] NPU_OP_MEM Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659726] [data_processor.h:85] Save HOST_TASK data into dataInventory
+2026-08-24 14:13:13 [WARN] [2659724] [2659729] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/host/sqlite/task_memory.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659726] [data_processor.cpp:37] OP_STATISTIC Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [data_processor.cpp:37] OSRT_API Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659731] [context.cpp:441] HostFreq is empty, it will be set 1000.0 .
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [host_usage_processor.cpp:27] Start process OSRT_API.
+2026-08-24 14:13:13 [WARN] [2659724] [2659730] [data_processor.cpp:67] Check MemcpyInfo not exists
+2026-08-24 14:13:13 [WARN] [2659724] [2659727] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/host/sqlite/host_network_usage.db.
+2026-08-24 14:13:13 [WARN] [2659724] [2659732] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/nic.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659730] [data_processor.cpp:37] PAGE_FAULT Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [WARN] [2659724] [2659732] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/nic.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659727] [data_processor.cpp:37] PCIE Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [WARN] [2659724] [2659731] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/host/sqlite/msproftx.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659727] [pcie_processor.cpp:51] PCIeProcessor Process, dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [data_processor.cpp:37] PMU Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [WARN] [2659724] [2659731] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/host/sqlite/msproftx.db.
+2026-08-24 14:13:13 [WARN] [2659724] [2659725] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/npu_mem.db.
+2026-08-24 14:13:13 [WARN] [2659724] [2659731] [msproftx_host_processor.cpp:83] msprofTx in /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI is not exists, return
+2026-08-24 14:13:13 [INFO] [2659724] [2659725] [data_processor.h:85] Save NPU_MEM data into dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659728] [context.cpp:441] HostFreq is empty, it will be set 1000.0 .
+2026-08-24 14:13:13 [WARN] [2659724] [2659725] [data_processor.h:88] NPU_MEM no data to inject to dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659733] [context.cpp:441] HostFreq is empty, it will be set 1000.0 .
+2026-08-24 14:13:13 [INFO] [2659724] [2659731] [data_processor.cpp:37] QOS Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659725] [data_processor.cpp:37] ROCE Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [WARN] [2659724] [2659729] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/host/sqlite/host_runtime_api.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [data_processor.cpp:37] SIO Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [metric_processor.cpp:106] TaskBasedProcess, dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [WARN] [2659724] [2659733] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/npu_module_mem.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659733] [data_processor.h:85] Save NPU_MODULE_MEM data into dataInventory
+2026-08-24 14:13:13 [WARN] [2659724] [2659733] [data_processor.h:88] NPU_MODULE_MEM no data to inject to dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659734] [data_processor.cpp:71] Check /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/lowpower.db and LowPower success.
+2026-08-24 14:13:13 [INFO] [2659724] [2659733] [data_processor.cpp:37] SOC Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [WARN] [2659724] [2659725] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/roce.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659734] [low_power_processor.cpp:108] LowPowerProcessor GetData, dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/lowpower.db
+2026-08-24 14:13:13 [WARN] [2659724] [2659725] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/roce.db.
+2026-08-24 14:13:13 [WARN] [2659724] [2659731] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/qos.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659730] [data_processor.cpp:71] Check /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/host/sqlite/ge_info.db and TaskInfo success.
+2026-08-24 14:13:13 [INFO] [2659724] [2659734] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659725] [data_processor.cpp:37] STEP_TRACE Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659731] [data_processor.h:85] Save QOS data into dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659730] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [WARN] [2659724] [2659731] [data_processor.h:88] QOS no data to inject to dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659726] [data_processor.cpp:71] Check /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/op_counter.db and op_report success.
+2026-08-24 14:13:13 [INFO] [2659724] [2659731] [data_processor.cpp:37] TASK Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659726] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659727] [context.cpp:560] HostFreq is empty, it will be set 1000.0 .
+2026-08-24 14:13:13 [WARN] [2659724] [2659733] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/soc_profiler.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659733] [data_processor.h:85] Save SOC data into dataInventory
+2026-08-24 14:13:13 [WARN] [2659724] [2659729] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/sio.db.
+2026-08-24 14:13:13 [WARN] [2659724] [2659733] [data_processor.h:88] SOC no data to inject to dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [data_processor.h:85] Save SIO data into dataInventory
+2026-08-24 14:13:13 [WARN] [2659724] [2659729] [data_processor.h:88] SIO no data to inject to dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659733] [data_processor.cpp:37] UB Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [data_processor.cpp:37] UNIFIED_PMU Run. Dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [WARN] [2659724] [2659727] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/pcie.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659727] [data_processor.h:85] Save PCIE data into dataInventory
+2026-08-24 14:13:13 [WARN] [2659724] [2659727] [data_processor.h:88] PCIE no data to inject to dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659725] [context.cpp:441] HostFreq is empty, it will be set 1000.0 .
+2026-08-24 14:13:13 [INFO] [2659724] [2659733] [context.cpp:560] HostFreq is empty, it will be set 1000.0 .
+2026-08-24 14:13:13 [WARN] [2659724] [2659725] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/trace.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659725] [data_processor.h:73] There are 0 records before STEP_TRACE data filtering, filterTime is 1787551980466792000.
+2026-08-24 14:13:13 [INFO] [2659724] [2659725] [data_processor.h:78] There are 0 records after STEP_TRACE data filtering.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:94] TaskBasedProcess, dir is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI
+2026-08-24 14:13:13 [INFO] [2659724] [2659725] [context.cpp:441] HostFreq is empty, it will be set 1000.0 .
+2026-08-24 14:13:13 [INFO] [2659724] [2659730] [db_runner.h:90] Query data success: SELECT op_name, stream_id, task_id, device_id FROM TaskInfo
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [data_processor.cpp:71] Check /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db and MetricSummary success.
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [metric_processor.cpp:163] GetAndCheckTableColumns.
+2026-08-24 14:13:13 [WARN] [2659724] [2659725] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/trace.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.cpp:166] Start get MetricSummary headers
+2026-08-24 14:13:13 [INFO] [2659724] [2659725] [data_processor.h:73] There are 0 records before STEP_TRACE data filtering, filterTime is 1787551980466792000.
+2026-08-24 14:13:13 [INFO] [2659724] [2659725] [data_processor.h:78] There are 0 records after STEP_TRACE data filtering.
+2026-08-24 14:13:13 [INFO] [2659724] [2659726] [db_runner.h:90] Query data success: SELECT op_type, core_type, occurrences,  round(total_time/1000.0, 3), round(min/1000.0, 3), round(avg/1000.0, 3), round(max/1000.0, 3), round(ratio, 3) FROM op_report WHERE op_type != 'N/A' and core_type not in ('WRITE_BACK', 'INVALID')
+2026-08-24 14:13:13 [WARN] [2659724] [2659730] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/soc_pmu.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659734] [db_runner.h:90] Query data success: SELECT timestamp, die_id, data0_soft FROM LowPower
+2026-08-24 14:13:13 [INFO] [2659724] [2659730] [data_processor.h:85] Save PAGE_FAULT data into dataInventory
+2026-08-24 14:13:13 [WARN] [2659724] [2659730] [data_processor.h:88] PAGE_FAULT no data to inject to dataInventory
+2026-08-24 14:13:13 [WARN] [2659724] [2659733] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/ub.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659733] [data_processor.h:85] Save UB data into dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659725] [context.cpp:441] HostFreq is empty, it will be set 1000.0 .
+2026-08-24 14:13:13 [WARN] [2659724] [2659733] [data_processor.h:88] UB no data to inject to dataInventory
+2026-08-24 14:13:13 [WARN] [2659724] [2659725] [data_processor.cpp:50] Can't find the db, the path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/trace.db.
+2026-08-24 14:13:13 [INFO] [2659724] [2659726] [data_processor.h:85] Save OP_STATISTIC data into dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659725] [data_processor.h:73] There are 0 records before STEP_TRACE data filtering, filterTime is 1787551980466792000.
+2026-08-24 14:13:13 [INFO] [2659724] [2659725] [data_processor.h:78] There are 0 records after STEP_TRACE data filtering.
+2026-08-24 14:13:13 [INFO] [2659724] [2659734] [low_power_processor.cpp:128] LowPowerProcessor FormatData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659725] [data_processor.h:85] Save STEP_TRACE data into dataInventory
+2026-08-24 14:13:13 [WARN] [2659724] [2659725] [data_processor.h:88] STEP_TRACE no data to inject to dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659725] [data_processor.h:85] Save STEP_TRACE data into dataInventory
+2026-08-24 14:13:13 [WARN] [2659724] [2659725] [data_processor.h:88] STEP_TRACE no data to inject to dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659725] [data_processor.h:85] Save STEP_TRACE data into dataInventory
+2026-08-24 14:13:13 [WARN] [2659724] [2659725] [data_processor.h:88] STEP_TRACE no data to inject to dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659731] [data_processor.cpp:71] Check /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/ascend_task.db and AscendTask success.
+2026-08-24 14:13:13 [INFO] [2659724] [2659728] [data_processor.h:73] There are 398 records before API data filtering, filterTime is 1787551980464793000.
+2026-08-24 14:13:13 [INFO] [2659724] [2659728] [data_processor.h:78] There are 398 records after API data filtering.
+2026-08-24 14:13:13 [INFO] [2659724] [2659728] [data_processor.h:85] Save API data into dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.cpp:181] Get MetricSummary columns success
+2026-08-24 14:13:13 [INFO] [2659724] [2659731] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [data_processor.cpp:71] Check /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db and MetricSummary success.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:148] GetAndCheckTableColumns.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.cpp:166] Start get MetricSummary headers
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659731] [db_runner.h:90] Query data success: SELECT a.start_time, a.duration, a.model_id, a.index_id, a.stream_id, a.task_id, a.context_id,a.batch_id, a.connection_id, a.host_task_type, a.device_task_type FROM AscendTask a WHERE a.device_task_type != 'UNKNOWN'
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.cpp:181] Get MetricSummary columns success
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aic_total_time.
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT ROUND(aic_total_time, 3) FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT aic_total_cycles FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659731] [data_processor.h:73] There are 24 records before TASK data filtering, filterTime is 1787551980466792000.
+2026-08-24 14:13:13 [INFO] [2659724] [2659731] [data_processor.h:78] There are 24 records after TASK data filtering.
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659731] [data_processor.h:85] Save TASK data into dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aic_total_time FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aic_total_cycles.
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT ROUND(aic_mac_time, 3) FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aic_total_cycles FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT ROUND(aic_mac_ratio, 3) FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aic_vec_time.
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT ROUND(aic_scalar_time, 3) FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659734] [data_processor.h:85] Save LOW_POWER data into dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aic_vec_time FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aic_vec_ratio.
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT ROUND(aic_scalar_ratio, 3) FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT ROUND(aic_mte1_time, 3) FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aic_vec_ratio FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aic_mac_time.
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT ROUND(aic_mte1_ratio, 3) FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aic_mac_time FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aic_mac_ratio.
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT ROUND(aic_mte2_time, 3) FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT ROUND(aic_mte2_ratio, 3) FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aic_mac_ratio FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aic_scalar_time.
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT ROUND(aic_mte3_time, 3) FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aic_scalar_time FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT ROUND(aic_mte3_ratio, 3) FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aic_scalar_ratio.
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT ROUND(aic_fixpipe_time, 3) FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aic_scalar_ratio FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aic_mte1_time.
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT ROUND(aic_fixpipe_ratio, 3) FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT ROUND(aic_icache_miss_rate, 3) FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aic_mte1_time FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aic_mte1_ratio.
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT ROUND(aiv_total_time, 3) FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aic_mte1_ratio FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aic_mte2_time.
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT aiv_total_cycles FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT ROUND(aiv_vec_time, 3) FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aic_mte2_time FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aic_mte2_ratio.
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT ROUND(aiv_vec_ratio, 3) FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aic_mte2_ratio FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT ROUND(aiv_scalar_time, 3) FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aic_mte3_time.
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aic_mte3_time FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT ROUND(aiv_scalar_ratio, 3) FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aic_mte3_ratio.
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aic_mte3_ratio FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aic_fixpipe_time.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT ROUND(aiv_mte2_time, 3) FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aic_fixpipe_time FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aic_fixpipe_ratio.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aic_fixpipe_ratio FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT ROUND(aiv_mte2_ratio, 3) FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aic_icache_miss_rate.
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aic_icache_miss_rate FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aiv_total_time.
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT ROUND(aiv_mte3_time, 3) FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aiv_total_time FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aiv_total_cycles.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT ROUND(aiv_mte3_ratio, 3) FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aiv_total_cycles FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aiv_vec_time.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT ROUND(aiv_icache_miss_rate, 3) FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aiv_vec_time FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aiv_vec_ratio.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT 'N/A' AS subtask_id FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aiv_vec_ratio FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aiv_mac_time.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT stream_id FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aiv_mac_time FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aiv_mac_ratio.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT task_id FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aiv_mac_ratio FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aiv_scalar_time.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aiv_scalar_time FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [db_runner.h:90] Query data success: SELECT batch_id FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aiv_scalar_ratio.
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [metric_processor.cpp:356] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [metric_processor.cpp:427] Calculating memory bound...
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [metric_processor.cpp:431] can't find memory bound needed column, no memory bound data added.
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [metric_processor.cpp:547] Add cube usage
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aiv_scalar_ratio FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aiv_mte1_time.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aiv_mte1_time FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aiv_mte1_ratio.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659732] [metric_processor.cpp:538] Get freq (1650) and coreNum (28), path is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI, deviceId is 1.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aiv_mte1_ratio FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aiv_mte2_time.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aiv_mte2_time FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aiv_mte2_ratio.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aiv_mte2_ratio FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aiv_mte3_time.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aiv_mte3_time FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aiv_mte3_ratio.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aiv_mte3_ratio FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aiv_fixpipe_time.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aiv_fixpipe_time FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aiv_fixpipe_ratio.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aiv_fixpipe_ratio FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:219] GetTaskBasedData, dbPath is /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/device_1/sqlite/metric_summary.db, column name is aiv_icache_miss_rate.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:79] Start query data
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [db_runner.h:90] Query data success: SELECT stream_id, task_id, subtask_id,  batch_id, aiv_icache_miss_rate FROM MetricSummary
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:277] FormatTaskBasedData.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:204] This column[task_id] does not need to be processed.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:204] This column[stream_id] does not need to be processed.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:204] This column[subtask_id] does not need to be processed.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:204] This column[task_type] does not need to be processed.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:204] This column[start_time] does not need to be processed.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:204] This column[end_time] does not need to be processed.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:204] This column[ffts_type] does not need to be processed.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:204] This column[core_type] does not need to be processed.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [unified_pmu_processor.cpp:204] This column[batch_id] does not need to be processed.
+2026-08-24 14:13:13 [INFO] [2659724] [2659729] [data_processor.h:85] Save TASK_PMU_INFO data into dataInventory
+2026-08-24 14:13:13 [INFO] [2659724] [2659737] [summary_manager.cpp:56] Start exporting summary!
+2026-08-24 14:13:13 [INFO] [2659724] [2659735] [db_assembler.cpp:1631] Start exporting db!
+2026-08-24 14:13:13 [INFO] [2659724] [2659739] [summary_assembler.h:42] Begin to Assemble OP_SUMMARY data
+2026-08-24 14:13:13 [INFO] [2659724] [2659740] [summary_assembler.h:42] Begin to Assemble OP_STATISTIC data
+2026-08-24 14:13:13 [INFO] [2659724] [2659741] [summary_assembler.h:42] Begin to Assemble NPU_MEM data
+2026-08-24 14:13:13 [INFO] [2659724] [2659738] [summary_assembler.h:42] Begin to Assemble COMMUNICATION_STATISTIC data
+2026-08-24 14:13:13 [INFO] [2659724] [2659742] [summary_assembler.h:42] Begin to Assemble NPU_MODULE_MEM data
+2026-08-24 14:13:13 [WARN] [2659724] [2659741] [npu_memory_assembler.cpp:40] No data to export npu memory summary
+2026-08-24 14:13:13 [WARN] [2659724] [2659742] [npu_module_mem_assembler.cpp:51] No data to export npu module memory summary
+2026-08-24 14:13:13 [WARN] [2659724] [2659741] [summary_assembler.h:51] No need to Export NPU_MEM data
+2026-08-24 14:13:13 [WARN] [2659724] [2659742] [summary_assembler.h:51] No need to Export NPU_MODULE_MEM data
+2026-08-24 14:13:13 [INFO] [2659724] [2659741] [summary_assembler.h:42] Begin to Assemble API data
+2026-08-24 14:13:13 [INFO] [2659724] [2659742] [summary_assembler.h:42] Begin to Assemble FUSION_OP data
+2026-08-24 14:13:13 [WARN] [2659724] [2659742] [fusion_op_assembler.cpp:87] fusion op data not exist.
+2026-08-24 14:13:13 [WARN] [2659724] [2659742] [summary_assembler.h:51] No need to Export FUSION_OP data
+2026-08-24 14:13:13 [INFO] [2659724] [2659742] [summary_assembler.h:42] Begin to Assemble TASK_TIME_SUMMARY data
+2026-08-24 14:13:13 [INFO] [2659724] [2659742] [csv_writer.cpp:81] Start dump /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/mindstudio_profiler_output/task_time.csv, timestamp is 20260824141313.
+2026-08-24 14:13:13 [WARN] [2659724] [2659738] [comm_statistic_assembler.cpp:64] Communication Statistic data not exist.
+2026-08-24 14:13:13 [INFO] [2659724] [2659742] [file.cpp:454] The file not exists: /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/mindstudio_profiler_output/task_time_20260824141313.csv.
+2026-08-24 14:13:13 [INFO] [2659724] [2659740] [csv_writer.cpp:81] Start dump /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/mindstudio_profiler_output/op_statistic.csv, timestamp is 20260824141313.
+2026-08-24 14:13:13 [WARN] [2659724] [2659738] [summary_assembler.h:51] No need to Export COMMUNICATION_STATISTIC data
+2026-08-24 14:13:13 [INFO] [2659724] [2659738] [summary_assembler.h:42] Begin to Assemble STEP_TRACE data
+2026-08-24 14:13:13 [WARN] [2659724] [2659738] [summary_step_trace_assembler.cpp:70] trainTraceData not exists, can't export step trace data.
+2026-08-24 14:13:13 [WARN] [2659724] [2659738] [summary_assembler.h:51] No need to Export STEP_TRACE data
+2026-08-24 14:13:13 [INFO] [2659724] [2659740] [file.cpp:454] The file not exists: /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/mindstudio_profiler_output/op_statistic_20260824141313.csv.
+2026-08-24 14:13:13 [INFO] [2659724] [2659738] [summary_assembler.h:42] Begin to Assemble PAGE_FAULT data
+2026-08-24 14:13:13 [INFO] [2659724] [2659735] [db_assembler.cpp:1585] Find completed msprof db, /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/msprof_20260824141312.db.
+2026-08-24 14:13:13 [WARN] [2659724] [2659738] [page_fault_assembler.cpp:40] No data to export page fault summary
+2026-08-24 14:13:13 [INFO] [2659724] [2659742] [csv_writer.cpp:88] Generate /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/mindstudio_profiler_output/task_time.csv finished, timestamp is 20260824141313.
+2026-08-24 14:13:13 [WARN] [2659724] [2659738] [summary_assembler.h:51] No need to Export PAGE_FAULT data
+2026-08-24 14:13:13 [INFO] [2659724] [2659742] [summary_assembler.h:46] Assemble and export TASK_TIME_SUMMARY data success
+2026-08-24 14:13:13 [INFO] [2659724] [2659740] [csv_writer.cpp:88] Generate /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/mindstudio_profiler_output/op_statistic.csv finished, timestamp is 20260824141313.
+2026-08-24 14:13:13 [INFO] [2659724] [2659740] [summary_assembler.h:46] Assemble and export OP_STATISTIC data success
+2026-08-24 14:13:13 [INFO] [2659724] [2659739] [csv_writer.cpp:81] Start dump /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/mindstudio_profiler_output/op_summary.csv, timestamp is 20260824141313.
+2026-08-24 14:13:13 [INFO] [2659724] [2659739] [file.cpp:454] The file not exists: /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/mindstudio_profiler_output/op_summary_20260824141313.csv.
+2026-08-24 14:13:13 [INFO] [2659724] [2659741] [csv_writer.cpp:81] Start dump /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/mindstudio_profiler_output/api_statistic.csv, timestamp is 20260824141313.
+2026-08-24 14:13:13 [INFO] [2659724] [2659739] [csv_writer.cpp:88] Generate /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/mindstudio_profiler_output/op_summary.csv finished, timestamp is 20260824141313.
+2026-08-24 14:13:13 [INFO] [2659724] [2659739] [summary_assembler.h:46] Assemble and export OP_SUMMARY data success
+2026-08-24 14:13:13 [INFO] [2659724] [2659741] [file.cpp:454] The file not exists: /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/mindstudio_profiler_output/api_statistic_20260824141313.csv.
+2026-08-24 14:13:13 [INFO] [2659724] [2659741] [csv_writer.cpp:88] Generate /home/w00951940/dista/wlp/trial/shangku/ops-transformer/mc2/common/op_kernel/apace/tests/st/all_gather_quant_matmul/prof/PROF_000001_20260824141238950_02655783DLALROEI/mindstudio_profiler_output/api_statistic.csv finished, timestamp is 20260824141313.
+2026-08-24 14:13:13 [INFO] [2659724] [2659741] [summary_assembler.h:46] Assemble and export API data success

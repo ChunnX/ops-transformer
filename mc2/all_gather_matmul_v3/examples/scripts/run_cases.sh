@@ -13,6 +13,7 @@
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CSV_FILE="${SCRIPT_DIR}/cases.csv"
+# CSV_FILE="${SCRIPT_DIR}/cases_kehu.csv"
 ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in

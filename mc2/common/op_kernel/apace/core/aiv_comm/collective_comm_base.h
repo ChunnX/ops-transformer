@@ -51,6 +51,8 @@ public:
         if (jobIndex >= totalJobs) {
             return;
         }
+        // totalJobs_ = totalJobs;
+        // jobIndex_ = jobIndex;
         udmaCtx_ = udmaCtx;
         barrier_ = barrier;
         localAddr_ = localAddr;
@@ -157,6 +159,11 @@ public:
     template <uint8_t BarrierMode = BARRIER_BOTH>
     __aicore__ inline void Finalize()
     {
+        // [dcci 替代方案-研究中] Lock/Unlock 方案需要此保护（仅参与通信的 block 执行 DoFinalize），
+        // 启用 all_gather_udma_put.h 中注释的 Lock/Unlock 块时同步恢复：
+        // if (jobIndex_ >= totalJobs_) {
+        //     return;
+        // }
         static_cast<Impl *>(this)->template DoFinalize<BarrierMode>();
     }
 
@@ -180,6 +187,8 @@ protected:
 
     uint32_t targetRankStart_;
     uint32_t targetRankCnt_;
+    // uint32_t totalJobs_ = 0;
+    // uint32_t jobIndex_ = 0;
 };
 
 } // namespace AivComm

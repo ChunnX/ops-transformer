@@ -71,13 +71,10 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> NpuAllGatherQuantMatmul(
     at::ScalarType outScalarType = at::kBFloat16;
     if (yDtype.has_value() && yDtype.value() != static_cast<int64_t>(-1)) {
         aclDataType outAclDtype = GetAclDataType(yDtype.value());
-        if (outAclDtype == ACL_FLOAT) {
-            outScalarType = at::kFloat;
-        } else if (outAclDtype == ACL_FLOAT16) {
-            outScalarType = at::kHalf;
-        } else if (outAclDtype == ACL_BF16) {
-            outScalarType = at::kBFloat16;
-        }
+        // V3 仅支持 bf16/fp16 输出，其余枚举前置拦截（之前非三者之一会静默 fallback 到 bf16 放行）
+        TORCH_CHECK(outAclDtype == ACL_FLOAT16 || outAclDtype == ACL_BF16,
+                    "y_dtype only supports fp16(5)/bf16(15), but got invalid enum value ", yDtype.value(), ".");
+        outScalarType = (outAclDtype == ACL_FLOAT16) ? at::kHalf : at::kBFloat16;
     }
 
     at::Tensor y = at::empty({mPerRank * rankSize, n}, x1.options().dtype(outScalarType));

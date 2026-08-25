@@ -139,12 +139,12 @@ def all_gather_quant_matmul(
     x1_scale: Optional[torch.Tensor] = None,
     x2_scale: Optional[torch.Tensor] = None,
     group_sizes: Optional[List[int]] = None,
-    x1_dtype: int = -1,
-    x2_dtype: int = -1,
-    x1_scale_dtype: int = -1,
-    x2_scale_dtype: int = -1,
-    y_dtype: int = -1,
-    comm_mode: Optional[str] = "urma",
+    x1_dtype: Optional[int] = None,
+    x2_dtype: Optional[int] = None,
+    x1_scale_dtype: Optional[int] = None,
+    x2_scale_dtype: Optional[int] = None,
+    y_dtype: Optional[int] = None,
+    comm_mode: Optional[str] = "ai_cpu",
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """AllGather + MX quantized Matmul fused computation (apace UDMA path).
 
@@ -159,20 +159,18 @@ def all_gather_quant_matmul(
             both FP4.
         group (ProcessGroup): torch.distributed process group for AllGather
             communication.
-        bias (Tensor, optional): Not supported yet, must be None.
+        bias (Tensor, optional): Bias added after matmul, shape ``(N,)``, dtype float32.
         x1_scale (Tensor): MX scale for x1, shape ``(M_per_rank, Ceil(K/64), 2)``,
-            dtype float8_e8m0fnu.
+            dtype float8_e8m0fnu. Required in MX scene.
         x2_scale (Tensor): MX scale for x2, shape ``(N, Ceil(K/64), 2)``, dtype
-            float8_e8m0fnu.
-        group_sizes (List[int], optional): Quantization group sizes, MX only
-            supports ``[1, 1, 32]``. Defaults to ``[1, 1, 32]``.
-        x1_dtype (int): x1 dtype enum for bitcast, -1 means use tensor dtype.
-        x2_dtype (int): x2 dtype enum for bitcast, -1 means use tensor dtype.
-        x1_scale_dtype (int): x1_scale dtype enum, -1 means use tensor dtype.
-        x2_scale_dtype (int): x2_scale dtype enum, -1 means use tensor dtype.
-        y_dtype (int): Output dtype enum, -1 means default bfloat16
-            (15=bfloat16, 5=float16).
-        comm_mode (str): Communication engine, only ``"urma"`` is supported.
+            float8_e8m0fnu. Required in MX scene.
+        group_sizes (List[int], optional): Quantization group sizes. None means auto-inferred from scale shapes.
+        x1_dtype (int, optional): x1 dtype enum for bitcast, None means use x1 tensor dtype.
+        x2_dtype (int, optional): x2 dtype enum for bitcast, None means use x2 tensor dtype.
+        x1_scale_dtype (int, optional): x1_scale dtype enum for bitcast, None means use x1_scale tensor dtype.
+        x2_scale_dtype (int, optional): x2_scale dtype enum for bitcast, None means use x2_scale tensor dtype.
+        y_dtype (int, optional): Output dtype enum, None means default bfloat16 enum.
+        comm_mode (str, optional): Communication engine, only ``"urma"`` is supported. None means use ``"ai_cpu"``.
 
     Returns:
         Tuple[Tensor, Tensor, Tensor]: (y, gather_out, amax_out) where y has
@@ -182,7 +180,7 @@ def all_gather_quant_matmul(
             ``y, _, _ = all_gather_quant_matmul(...)`` to ignore the latter two.
     """
     if group_sizes is None:
-        group_sizes = [1, 1, 32]
+        group_sizes = []  # 不传时使用 OpDef 缺省值 0，由 tiling 从 scale shape 自动推导
     torch._check(
         comm_mode == "urma",
         lambda: f"comm_mode only supports 'urma', got '{comm_mode}'.",

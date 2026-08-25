@@ -55,6 +55,16 @@ public:
 
     void SetOptimizeEnable(bool enable) { isOpenOptimize_ = enable; }
     void SetMTailAlignEnable(bool enable) { enableMTailAlign_ = enable; }
+
+    // 允许调用方注入从 tiling context 观测到的设备核数限制（如进程级 set_device_limit）。
+    // 设置后覆盖平台单例查询到的物理核数，使 blockDim 与实际可用核数一致。
+    // 不调用时行为与原来完全一致（用平台单例的物理值）。
+    void SetCoreLimit(uint32_t aicNum, uint32_t aivNum)
+    {
+        coreLimitAicNum_ = aicNum;
+        coreLimitAivNum_ = aivNum;
+        hasCoreLimit_ = true;
+    }
     void SetAdjustBasicBlockEnable(bool enable) { enableAdjustBasicBlock_ = enable; }
 
 protected:
@@ -63,6 +73,9 @@ protected:
     QuantMatmulRunInfo runInfo_{};
 
     bool isOpenOptimize_{true};
+    bool hasCoreLimit_{false};
+    uint32_t coreLimitAicNum_{0};
+    uint32_t coreLimitAivNum_{0};
     bool enableMTailAlign_{false};
     bool enableAdjustBasicBlock_{true};
 
@@ -102,6 +115,15 @@ private:
         auto ascendcPlatform = platform_ascendc::PlatformAscendCManager::GetInstance();
         platformInfo_.aicNum = ascendcPlatform->GetCoreNumAic();
         platformInfo_.aivNum = ascendcPlatform->GetCoreNumAiv();
+        // 1:1 核配比（MIX_AIC_1_1）下实际可用 block 数 = min(aicNum, aivNum)
+        // GetCoreNumAic() 不受 set_device_limit 的 cube_num 控制影响（永远返回物理值），
+        // 而 GetCoreNumAiv() 受 vector_num 控制影响，取 min 才能拿到实际可用 block 数
+        platformInfo_.aicNum = std::min(platformInfo_.aicNum, platformInfo_.aivNum);
+        // 调用方注入了限核值（来自 context->GetPlatformInfo()，能感知进程级 set_device_limit）时，
+        // 用限核值计算实际可用 block 数（1:1 配比取短板）
+        if (hasCoreLimit_) {
+            platformInfo_.aicNum = std::min(coreLimitAicNum_, coreLimitAivNum_);
+        }
         platformInfo_.socVersion = ascendcPlatform->GetSocVersion();
         ascendcPlatform->GetCoreMemSize(platform_ascendc::CoreMemType::UB, platformInfo_.ubSize);
         ascendcPlatform->GetCoreMemSize(platform_ascendc::CoreMemType::L1, platformInfo_.l1Size);
