@@ -1,6 +1,6 @@
 # BSA MXFP8 全量化设计说明（kvs128 修订版）
 
-日期：2026-08-17；板上修订：2026-08-18、**2026-08-19（跨组 CopyPScale / layout+fp16out / D=64 / 对标 MXFP4 pytest 1–3）**、**2026-08-20（性能基线；P0 Q 双槽试过 −2% 后回退；S=118800 keep1 vs FIA/MXFP4）**  
+日期：2026-08-17；板上修订：2026-08-18、**2026-08-19（跨组 CopyPScale / layout+fp16out / D=64 / 对标 MXFP4 pytest 1–3）**、**2026-08-20（性能基线；P0 Q 双槽试过 −2% 后回退；S=118800 keep1 vs FIA/MXFP4）**、**2026-08-25（§17.6–17.7 P1 已上板 −3.5%；§17.8 P2：压 AIV 组尾 gmax / softmax VF / pScale）**  
 基线：`mxfp8_0814` 上已有 MXFP8 脚手架；本文件**取代** `2026-08-14-bsa-mxfp8-design.md` 的几何与内存决策。  
 状态：**官方 qs128 套件 + qs64/kvs128 + 跨 TILE_GROUP（s2>1024）+ BSND/TND 冒烟 + fp16out + D=64（已拷中短例）已过线**；**对标 MXFP4 的 OCP pytest 1–3（TND varlen / act_s pad / BSND·TND×D=64·sparse·非对齐 / gap_sparse / scale-stride-trap）已接线**（分支 `mxfp8_0817`；几何仍为本修订；板上修正见 §15 / §16）  
 画布：Cursor [`S118800-pipe-compare.canvas.tsx`](/home/npu_user5/.cursor/projects/home-npu-user5/canvases/S118800-pipe-compare.canvas.tsx)、`BSA-MXFP8-vs-FP16-analysis.canvas.tsx`、`BSA-MXFP8-design-report.canvas.tsx`；仓库副本 `docs/superpowers/canvases/`
@@ -14,8 +14,8 @@
 
 |              | 0814 稿           | **本修订**                 |
 | ------------ | ---------------- | ----------------------- |
-| 单次 QK → L0C  | 128×128          | **64(kvs)×128(qs)**     |
-| Softmax 基块   | 256×128（两轮拼）     | **128×128**（两轮 64 拼）    |
+| 单次 QK → L0C  | 128×128          | 0817：**64(kvs)×128(qs)**；**P1 起改回一次 128×128**（§17.6） |
+| Softmax 基块   | 256×128（两轮拼）     | **128×128**（P1 起一次 fixpipe，不再两轮 64 拼） |
 | 组 G          | 4（1024×128）      | **8**（仍覆盖 **1024×128**） |
 | `kvBaseTile` | 256              | **128**                 |
 | Dpv / P 环    | 8                | **12**                  |
@@ -37,8 +37,8 @@
 
 | 术语            | 含义                                                                                |
 | ------------- | --------------------------------------------------------------------------------- |
-| QK 半面         | 一次 Cube mmad + fixpipe：`64×128` fp32→fp16                                         |
-| 基块（base tile） | 一次 softmax / 一个 L1 P 槽单位：`128(kvs)×128(qs)`，由两轮 QK 半面拼成                           |
+| QK 半面         | 0817：一次 Cube mmad + fixpipe `64×128`。**P1 起不再切半面**，一次 `128×128` |
+| 基块（base tile） | 一次 softmax / 一个 L1 P 槽单位：`128(kvs)×128(qs)`；P1 起由 **一次** QK+fixpipe 写出 |
 | 组（tile group） | L0C 累加窗口 + group-max / pScale 作用域；**G = 8** 个基块，覆盖 S2 合计 1024（与 0814 的 256×4 同量级） |
 | loop          | 主循环全局基块序号                                                                         |
 | Dpv           | `PV_RE_DELAY_N`，PV 落后 softmax 的基块数                                                |
@@ -47,7 +47,7 @@
 
 数据流：
 
-1. Cube 两次 QK（各 64 列 kvs）→ 同一 AIV 的 UB S（128×128 fp16）
+1. Cube **一次** QK `128×128`（P1；0817 曾拆成两次 64×128）→ 同一 AIV 的 UB S（128×128 fp16）
 2. 该 AIV 整块 softmax → 整块 P（16KB）→ L1 **P 与 P-scale** 槽均为 `loop % 12`
 3. 基块按 `loop % 2` 交替 AIV0/AIV1；一组 8 块中每 AIV 各 4 块；组尾经 L1 交换 localGlobalMax  
    UB `localGroupMax` 是每 AIV 自己的环：`loop/2 % 12`。CopyPScale 写 L1 时必须把该下标映射回 `loop % 12`（见 §15.2），不能直接当 L1 行号。
@@ -118,25 +118,25 @@ G = 8 → 下界 **11**。取 **Dpv = 12**（+1 余量且为偶数，两 AIV 各
 
 | 操作数    | 几何         | 单槽        | 策略                 |
 | ------ | ---------- | --------- | ------------------ |
-| K      | 64×128×1B  | 8 KB      | 双缓冲                         |
-| Q      | 128×128×1B | 16 KB     | **单缓冲**（P0 双槽已回退） |
+| K      | **128×128×1B** | **16 KB** | **单缓冲**（P1；0817 曾 64×128 双缓 8KB） |
+| Q      | 128×128×1B | 16 KB     | **单缓冲**（P0 双槽已回退，不再作为主优化） |
 | Vᵀ     | 144×128×1B | 18 KB     | 双缓冲，**不切 S2**            |
 | Pᵀ     | 128×128×1B | 16 KB     | 双缓冲                         |
-| L0C QK | 64×128×4B  | **32 KB** | 双缓冲                         |
+| L0C QK | **128×128×4B** | **64 KB** | 双缓冲（吃掉原 ~120KB 余量） |
 | L0C PV | 144×128×4B | 72 KB     | 单缓冲                         |
 
 
-推荐布局：
+推荐布局（P1）：
 
 
 |                      | 偏移        | 合计                |
 | -------------------- | --------- | ----------------- |
-| L0A：K 2×8 + Vᵀ 2×18  | 0 / 16 KB | **52 KB**（余 12）   |
+| L0A：K 1×16 + Vᵀ 2×18 | 0 / 16 KB | **52 KB**（余 12；K 从 2×8 合并为 1×16，不挤 Vᵀ） |
 | L0B：Q 16 + Pᵀ 2×16     | 0 / 16 KB | **48 KB**（余 16） |
-| L0C：QK 2×32 + PV 72  | 0 / 64 KB | **136 KB**（余 120） |
+| L0C：QK 2×64 + PV 72  | 0 / 128 KB | **200 KB**（余 56；仍 < 256） |
 
 
-每基块 mmad：**2 QK + 1 PV = 3 条**。默认不切 D：Q 单缓 16KB，P 从 16KB 起。P0 整段 Q 两槽常驻（L0B 打满 64KB）已于 2026-08-20 回退。沿 D 切 2×64 的退路跨组/GQA 掉点，**未合入**。
+每基块 mmad：**1 QK + 1 PV = 2 条**。默认不切 D：Q 单缓 16KB，P 从 16KB 起。P0 整段 Q 两槽常驻（L0B 打满 64KB）已于 2026-08-20 回退，**不要再当主优化**。沿 D 切 2×64 的退路跨组/GQA 掉点，**未合入**。L0A 放不下 K 双缓 16KB×2（32+36>64），故 K 只留 1 槽；跨 tile 的 K ping-pong 走 L1。
 
 角色约束不变：不能把 Q 放 L0A。
 
@@ -182,10 +182,10 @@ C0：`FP8_C0_ELEMS = 32`。
 在 0814 已列 mxfp8 文件上**改几何与循环**，而非再开一套命名：
 
 - 常量表：`KVS_BASE=128`，P 环 12，L0C QK 32KB，去掉默认 `QK_K_SPLIT`/`PV_K_SPLIT`  
-- QK：`n` 方向按 64 出两轮，拼进 128 行 S  
+- QK：P1 起 `n` 方向一次 128（`L0TileShapeQK=<128,128,128>`）；0817 曾按 64 出两轮  
 - PV：单次 k=128；P 槽 `% 12`  
 - Softmax VF：整块 128×128；删除半块 P 双槽语义  
-- Kernel：`PV_RE_DELAY_N=12`，`TILE_GROUP_N=8`  
+- Kernel：`PV_RE_DELAY_N=12`，`TILE_GROUP_N=8`；`V1_C1` wait 在 K gather 之后（P0.5）  
 - Host：`kvBaseTile=128` + 对齐校验
 
 
@@ -205,7 +205,7 @@ C0：`FP8_C0_ELEMS = 32`。
 - L1/L0/UB `static_assert` 通过。  
 - Golden：与 MXFP4 同口径（`rtol=1/128`、`atol=1e-4`、满足率 ≥99.5%、`maxRE<10`）。  
 - **已过线（2026-08-18 / 19，dump-off，**`cann_bsa_0817`**）**：官方 qs128 套件；**qs64 / kvs128**；**跨组** s2=1056 / 1152 / 1280 / 2048 / 3072 / 16384（含 qs64、GQA、sparse、b=2）；套件外 **s2=32/48/96**。  
-- 性能：对比 MXFP4 / FP16 已测（§17）；P0 Q 双槽 −2% **已回退**（§17.4）；S=118800 keep=1.0 vs FIA dense / BSA MXFP4 见 §17.5。
+- 性能：对比 MXFP4 / FP16 已测（§17）；P0 已回退（§17.4）；P1 已上板（§17.7）；**下一阶段压 AIV 见 §17.8**。
 
 
 
@@ -215,7 +215,7 @@ C0：`FP8_C0_ELEMS = 32`。
 | 期   | 内容                                            | 状态             |
 | --- | --------------------------------------------- | -------------- |
 | 1   | 常量 + tiling：`kvBaseTile=128`、G=8、Dpv=12、三张内存表 | **已完成**        |
-| 2   | Cube：QK 64×128×2、PV 单次 k=128、L0 推荐布局          | **已完成**        |
+| 2   | Cube：0817 QK 64×128×2；**P1 改为一次 128×128**（L0C 2×64+PV72=200KB） | **已上板（2026-08-25，−3.5%）** |
 | 3   | Vec + 流水：整块 softmax/P、group-max、delay 12/3    | **已完成**        |
 | 4   | VF e4m3 打包 + pScale 环/分形与 kvs128 对齐           | **已完成（板上已确认）** |
 | 5   | 调用链：aclnn/Torch `quantMode=4`                 | **已完成**        |
@@ -225,6 +225,7 @@ C0：`FP8_C0_ELEMS = 32`。
 | 9   | 套件外 s2=32/48/96 精度；性能 / Q 双槽试探              | 精度 **已完成**；P0 Q 双槽 **已回退（2026-08-20）** |
 | 10  | pytest layout BSND/TND + fp16out；D=64 Vᵀ L0 pad（同 MXFP4） | layout/fp16out **已过线**；D=64 **已过线**（已拷中短例 5/5） |
 | 11  | 对标 MXFP4 OCP pytest 1–3：TND varlen / `act_s` pad / BSND·TND×D=64·sparse·非对齐 / gap_sparse / scale-stride-trap | **已过线**（代表性子集 33/33 PASS，见 §16.5） |
+| 12  | P2 压 AIV：组尾 gmax / softmax VF / pScale 合并搬 | **方案已写入 §17.8**（未开工） |
 
 
 
@@ -527,15 +528,19 @@ P0 前流水（S=243k keep50，PipeUtilization 核均）：
 
 主战场是 **S=243k**：Cube 还有约 2× 头寸。S=1M 流水优化只剩约 13%（HBM 地板 ~785 ms）。
 
-| 轮次 | 内容 | 主看指标 | S=243k keep50 预期 |
+| 轮次 | 内容 | 主看指标 | 说明 |
 | --- | --- | --- | --- |
-| **P0（已回退）** | ① 整段 Q 复制进 L0B 两槽常驻（不切 D）；② QK fixpipe 延后一拍；③ `V1_C1` wait 挪到 K gather 后。D 切 2×64 退路跨组/GQA 掉点未合入。**2026-08-20 源码已回退到 Q 单缓 16KB** | cube ≥0.75 | 预期 28–32 ms；**实测 41.5 ms 后回退** |
-| **P1** | QK 一次 128×128（L0C 200KB&lt;256KB）去掉 n 半面；e8m0/pScale 合并搬运；压 AIV 组分支 | fixpipe ↑ | 接近 vs FP16 的 2× |
-| **P2** | 仅 S≳1M：Q tile 按 L2 112MB 分块复用 KV | 1M Duration | 243k 几乎不变；1M 挑战 ~800 ms |
+| **P0（已回退）** | ① 整段 Q 复制进 L0B 两槽常驻；② QK fixpipe 延后一拍；③ `V1_C1` wait 挪到 K gather 后。三件套绑在一起。D 切 2×64 未合入 | 当时写 cube≥0.75 | S=243k keep50 **42.4→41.5 ms（−2%）** 后回退。Q 装载不是主因 |
+| **P0.5（不改几何）** | 单独做 ② fixpipe 延后一拍 + ③ wait 后移，**不绑 Q 双槽** | Duration / fixpipe_time；气泡 ~18% | 验证排布。n 向两拍串行的治本是 P1 |
+| **P1（已上板）** | QK 一次 128×128 + 延后 fixpipe + `V1_C1` wait 后移。**未**绑 Q 双槽 | Duration / AIC scalar | keep1 20.58→**19.86 ms（−3.5%）**；keep50 12 点均值 **−3.75%**。cube_time 不变。气泡 3.8 ms 只关 ~0.72 ms。见 §17.7 |
+| **P2（下一阶段）** | 压 AIV：组尾 gmax 同步、softmax VF、e8m0/pScale 合并搬。**不**把基块拉回 256 | **aiv_vec_time** 再 Duration | 方案见 **§17.8**。只有 softmax 缩短，cube 占用才可能过 ~0.60 |
+| **P3** | 仅 S≳1M：Q tile 按 L2 112MB 分块复用 KV | 1M Duration | 243k 几乎不变 |
 
-验证：每轮只改一类气泡。精度 qs128 + `--reg`。性能 S∈{8422, 243000}×keep{0.5,0.2}（P0 不跑 1M）。
+验证：每轮只改一类气泡。精度 qs128 + `--reg`。性能主看 **S=118800 keep=1.0**（与 FIA dense 同算量），辅看 S∈{8422, 243000}×keep{0.5,0.2}。
 
-P0 **未达** cube≥0.75 / 28–32 ms（见 §17.4），**源码已回退**。主瓶颈仍是 AIV softmax / AIC scalar。下一轮走 **P1**。
+**目标不要写成 cube≥0.75**，除非 AIV 同步变快。softmax 仍是 16.8 ms 时，cube 占用物理上限约 `10.15/16.8 ≈ 0.60`。要让 cube 到 0.75，需要 `aic_time ≈ 13.5 ms`，即 softmax 从 16.8 ms 砍到 ~13.5 ms。只调 AIC 流水做不到。
+
+P0 **未达**当时的 cube≥0.75 / 28–32 ms（见 §17.4），**源码已回退**。P0.5+P1 已上板（§17.7）。下一阶段按 **§17.8 压 AIV**，不要再调 Q 双槽。
 
 ### 17.3 P0 代码落点
 
@@ -561,7 +566,7 @@ msprof：`--kernel-name=BlockSparseAttention --warm-up=5 --launch-count=10`，�
 
 S=243k keep50 流水（P0 后 vs 前）：mte2 0.76（0.75）、fixpipe 0.43（0.42）、AIV vec 0.85（0.84）、AIV scalar 0.39（0.38）。主导仍是 **AIC scalar 空转 + AIV softmax**，不是 Q 装载。
 
-判定：相对 P0 目标（cube≥0.75，Duration 28–32 ms）**未达标**。整段 Q 双槽常驻省掉 nSub 的 Q MTE1；wait 后移只重叠稀疏 K gather，相对 softmax 可忽略。D 切 2×64 退路精度失败。**上述 P0 改动已于 2026-08-20 回退**（Q 单缓 16KB，wait 仍在 QK 入口）。下一步 **P1**：QK 一次 128×128、scale 合并搬运、压 AIV 组分支。
+判定：相对 P0 目标（cube≥0.75，Duration 28–32 ms）**未达标**。整段 Q 双槽常驻省掉 nSub 的 Q MTE1；wait 后移只重叠稀疏 K gather，相对 softmax 可忽略。D 切 2×64 退路精度失败。**上述 P0 改动已于 2026-08-20 回退**（Q 单缓 16KB，wait 仍在 QK 入口）。**不要再把 Q 双槽当主优化。** 后续见 §17.6：单独复测 wait/fixpipe，再 QK 128×128。
 
 ### 17.5 S=118800 keep=1.0 vs FIA dense / BSA MXFP4（2026-08-20）
 
@@ -588,4 +593,178 @@ S=243k keep50 流水（P0 后 vs 前）：mte2 0.76（0.75）、fixpipe 0.43（0
 3. **MXFP8 fixpipe 占比低于 MXFP4，不是 fixpipe 做得少。** ratio = `fixpipe_time / aic_time`。MXFP8 绝对 fixpipe 时间 **8.54 ms > MXFP4 6.71 ms**；占比 0.43 vs 0.70 是因为 `aic_time` 被拉到 20.05 ms（MXFP4 9.54 ms）。两边 `aic_time ≈ aiv_time`。AIV vec：MXFP8 **16.8 ms** vs MXFP4 **6.7 ms**（基块 128 vs 256，同样 S2 的 softmax 次数约 2×，且 MXFP8 还要 e4m3 打包）。MXFP8 每基块两次 64×128 **即时** fixpipe（P0 延后一拍已回退）；MXFP4 走 `EmitFixpipeMm1` 延后一拍，短时间轴上重叠更好。看占比前应先看 `aic_fixpipe_time`。
 
 数据目录：`tests/mxfp8_pytest/bsa_msprof_perf_mxfp8_keep1/`、`tests/mxfp4_pytest/bsa_msprof_perf_mxfp4_keep1/`、`attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/fia_msprof_perf_mxfp8_sameseq/`。解析：`docs/superpowers/parse_pipe.py`。
+
+### 17.6 流水还能抠什么（2026-08-25）
+
+主结论：**流水上能抠的大约 18%，再往下必须缩短 softmax。** Cube 不是算不满峰值，是在等 AIV；Q 装载已经试过，不是主因。
+
+S=118800 keep=1.0（与 FIA dense 同算量）上，BSA MXFP8 墙钟 **20.58 ms**，FIA **14.60 ms**。有效工作量大约是 Cube **10.15 ms**、AIV vec **16.82 ms**。两边 `aic_time ≈ aiv_time ≈ 20 ms`，互相堵住。理想重叠下界是 `max(10.15, 16.82) = 16.8 ms`，相对现在的 20.6 ms，**排布气泡约 3.8 ms（~18%）**。就算气泡全消，还是慢于 FIA，差在 softmax 本身更长。
+
+```mermaid
+flowchart LR
+  subgraph aic [AIC 每基块]
+    K[gather K]
+    QK1["QK 64x128"]
+    FP1[fixpipe S]
+    QK2["QK 64x128"]
+    FP2[fixpipe S]
+    PV[PV mmad]
+  end
+  subgraph aiv [AIV 每基块]
+    SM["softmax 128x128 + e4m3"]
+    PS[pScale delay3]
+    WP[写 P 到 L1]
+    GM[每 8 块 group-max]
+  end
+  QK1 --> FP1 --> QK2 --> FP2 --> SM
+  SM --> WP
+  WP -.->|Dpv=12| PV
+  SM --> PS
+  GM -.-> AIC等待
+```
+
+当前同拍顺序仍是 **PV → pScale → 写 P**。0817：QK 每个 128 基块拆成 **两次 64×128**，fixpipe **立刻打**（P0 延后一拍已回退）。Q 在 L0B **单缓 16KB**，每个 nSub 重装。MXFP4 是基块 256、`EmitFixpipeMm1` 延后一拍、Q 两槽常驻。P1 把上图 QK1/FP1/QK2/FP2 收成 **一次 128×128 + 一次 fixpipe**。
+
+#### 17.6.1 先收 18% 的排布气泡（不改几何也能做）
+
+| 点 | 现状 | 为何有空间 | 风险 |
+| --- | --- | --- | --- |
+| QK fixpipe 延后一拍 | `mmad → Wait M_FIX → Fixpipe` 同 nSub 串行 | MXFP4 把 fixpipe 插到下一轮 `Wait MTE1_M` 前，短时间轴上 cube/fixpipe 重叠更好（fixpipe 占比 0.70 vs 0.43） | P0 把这件事和 Q 双槽绑在一起只拿到 −2%，**应单独复测** |
+| `CrossCoreWait` 位置 | 仍在 QK 入口等 Vector | P0 曾挪到 K gather 之后，用 gather 盖同步；当时混在三件套里 | 单独挪，精度回归 `--reg` |
+| n 向两拍串行 | 两个 64×128 各等一轮 L0C | 第二次 mmad 被第一次 fixpipe 挡住 | 真正治本是下面的 128×128 |
+| 组尾 group-max | 每 8 基块 L1 交换 | AIC `GetSubBlockIdx()` 恒 0，必须 `asc_copy_l12ub_sync`，Cube/Vec 都停一下 | 加大 G 会拉长精度窗口 |
+
+P0 整段 Q 16KB×2 常驻：**42.4→41.5 ms，cube 0.50→0.52，已回退。** 不要再把 Q 双槽当主优化。D 切 2×64 跨组/GQA 掉点，不要走。
+
+#### 17.6.2 改一拍粒度：QK 一次 128×128（P1）
+
+L0C 0817 为 QK 2×32KB + PV 72KB = 136KB，**还空约 120KB**。一次 128×128 fp32 = 64KB，双缓冲 + PV ≈ 200KB，仍低于 256KB。
+
+L0A：K 从 2×8KB 合并为 **1×16KB**（128×128×1B）。不能 2×16KB，否则与 Vᵀ 2×18 合计 68KB>64KB。跨 tile 的 K 仍走 L1 双/四缓冲。
+
+收益不只是少一次 mmad：
+
+- 每基块 **1 次** fixpipe，而不是 2 次；FIX_M / M_FIX 往返减半
+- Cube 连续计算更长，scalar 空转（0.90）会掉一截
+- Softmax 仍是 128×128，AIV 次数不变，所以 **墙钟下限还是 ~16.8 ms 量级**，但 20.6→17 ms 这一档主要靠少气泡
+
+#### 17.6.3 softmax 不缩短，cube 占用到不了 0.75
+
+`cube_ratio ≈ cube_time / aic_time = 10.15 / 20.05 = 0.51`。AIV vec 16.8 ms 压着总时长。要让 cube 到 0.75，需要 `aic_time ≈ 10.15/0.75 ≈ 13.5 ms`，也就是 **softmax 从 16.8 ms 砍到 ~13.5 ms**。只调 AIC 流水做不到。
+
+AIV 侧更值得动的排布/指令（P1 **未做**，列为 **§17.8 P2**）：
+
+- 组分支、pad、pScale 与 softmax 的缝（「压 AIV 组分支 / e8m0 合并搬运」）
+- 基块 128 vs MXFP4 的 256：同样 S，softmax **次数约 2×**（AIV vec 16.8 vs 6.7 ms）。把基块拉回 256 是几何重做，不是微调流水；L1 P 会从 16KB 变 32KB，环深要重算
+- FIA 同算量 AIV vec **12.2 ms**、cube **0.69**。BSA 多出来的是稀疏 gather、group-max、以及更碎的 64 半面，不是峰值 TFLOPS
+
+#### 17.6.4 开销很小、不必优先的
+
+- **Dpv=12 填泵**：S=118800 约 900+ 基块，头 12 / 尾 drain 占比很小
+- **MTE2 0.77 / 63 GB/s**（FIA 91 GB/s）：稀疏 gather 带宽差是产品形态，不是同拍顺序能抹平的
+- **AIV MTE3 0.095**：P 写 L1 不是主路径；FIA 的 0.25 只说明 FIA epilogue 更饱，不说明 BSA 该多写
+- L1 空 ~140KB、UB 空 ~70KB：可加深 P 环或 S 缓冲，但现在卡在 **等 softmax 算完**，加深环减不了 16.8 ms 的 vec 时间
+
+#### 17.6.5 建议顺序与代码落点
+
+P1 代码落点如下（**已合入** `cann_bsa_0703`）。下一阶段不再改这些 AIC 文件，改 AIV，见 §17.8。
+
+| 文件 | 改动 |
+| --- | --- |
+| `block_mmad_arch35_utils.hpp` | L0A QK **1×16KB**；L0C QK **2×64KB**，PV 偏移 **128KB**；`QK_HALF_KVS` 不再表示切半 |
+| `block_sparse_attention_kernel_interface.cpp` | `L0TileShapeQK = <128,128,128>` |
+| `block_mmad_qk_arch35_mxfp8.hpp` | `EmitFixpipeMm1` 延后一拍；`CrossCoreWaitFlag(sReadyFlag)` 在 K gather 之后、mmad 之前；nSub 一次打满 128 |
+| `block_sparse_attention_kernel_arch35_mxfp8_full_quant.h` | AIC 不再在 QK 前 wait `V1_C1`，flag 传入 QK |
+
+精度：qs128 冒烟 + `./run.sh --reg`。性能：S=118800 keep=1.0 vs §17.5 基线 20.58 ms。
+
+### 17.7 P1 板上结果（2026-08-25，NPU 1，`cann_bsa_0703`）
+
+代码：`V1_C1` wait 后移 + `EmitFixpipeMm1` 延后一拍 + `L0TileShapeQK=<128,128,128>`（L0A K 1×16KB，L0C QK 2×64KB）。**未**绑 Q 双槽。
+
+精度：
+
+- 门禁 qs128/qs64 kvs128、qs63 kvs95、qs64 kvs479、dense kvs256、kvs1280、GQA kvs1152：**100%**
+- `./run.sh --reg`：11 pass / 16 fail，失败例全部 **99.80–99.98%**（与改门槛前 ulp 同类；设计口径 99.5% 全过）。无 50% 级功能回退。
+
+msprof S=118800 keep=1.0（`--warm-up=5 --launch-count=10`，目录 `tests/mxfp8_pytest/bsa_msprof_perf_mxfp8_p1/`）：
+
+| | Duration | cube | AIC scalar | MTE2 | fixpipe | AIV vec |
+| --- | --- | --- | --- | --- | --- | --- |
+| §17.5 基线 | **20.58 ms** | 0.506 | 0.899 | 0.766 | 0.426 | 0.839 |
+| **P1** | **19.86 ms（−3.5%）** | 0.525 | **0.811** | 0.777 | 0.442 | 0.872 |
+
+绝对时间：cube_time 仍 **10.15 ms**（算量不变）；fixpipe_time 仍 **8.54 ms**（写出的 S 像素不变）；aiv_vec **16.86 ms**。`aic_time` 20.05→19.33 ms。
+
+判定：n 向两拍合并 + wait 后移吃掉一部分 scalar 空转（0.90→0.81），墙钟只掉 **0.72 ms**，大约是 3.8 ms 气泡的 **19%**，没有到「20.6→17 ms」。剩余气泡仍在 **等 softmax / 组尾 gmax**，下限还是 ~16.8 ms。下一阶段方案见 **§17.8**，不要再调 Q 双槽或 D 切 2×64。
+
+### 17.8 P2 下一阶段：压 AIV（方案，2026-08-25）
+
+P1 之后 AIC 侧好做的排布已经落地。S=118800 keep=1.0：**19.86 ms**；cube_time **10.15 ms**、aiv_vec **16.86 ms**；`aic_time ≈ aiv_time`。理想重叠下界仍是 `max(10.15, 16.86) ≈ 16.9 ms`，相对现在还剩约 **3.0 ms** 气泡（~15%），几乎全是 **等 AIV**。FIA 同算量墙上 14.60 ms、aiv_vec **12.16 ms**——就算 BSA 气泡全消，仍慢于 FIA，差在 softmax 本身。
+
+```mermaid
+flowchart LR
+  subgraph aic [AIC 每基块 · P1 已收]
+    K[gather K]
+    QK["QK 128x128"]
+    FP[fixpipe 延后一拍]
+    PV[PV mmad]
+  end
+  subgraph aiv [AIV · P2 要动]
+    SM["softmax 128x128 + e4m3"]
+    BR["组首/组尾/pad 分支"]
+    PS[pScale delay3]
+    WP[写 P 到 L1]
+    GM["每 8 块 gmax + L12UB sync"]
+  end
+  K --> QK --> FP --> SM
+  SM --> BR
+  SM --> WP
+  WP -.->|Dpv=12| PV
+  SM --> PS
+  GM -.->|两边停| AIC等待
+```
+
+**目标不要写成 cube≥0.75。** softmax 仍 16.9 ms 时，cube 占用上限约 `10.15/16.9 ≈ 0.60`。要让 cube 到 0.75，需要 vec 砍到 ~13.5 ms。墙上若跟 FIA，需要 vec 靠近 12.2 ms，且核间 wait 不再把 `aic_time` 拉回 20 ms。
+
+主看指标：**`aiv_vec_time`**，再 Duration。标尺 S=118800 keep=1.0（现 19.86 ms）和 S=243k keep=0.5（现 40.65 ms）。精度：qs128 冒烟 + `./run.sh --reg`（失败例须仍 ≥99.5%）。每轮只改一类气泡。
+
+#### 17.8.1 建议顺序
+
+| 子轮 | 改什么 | 为何现在做 | 预期 | 风险 |
+| --- | --- | --- | --- | --- |
+| **P2-A 先做** | 组尾 group-max 同步 + 组首/组尾分支 | 每 8 基块 L1 交换；AIC `GetSubBlockIdx()` 恒 0，`asc_copy_l12ub_sync` 让 Cube 和 Vec 都停。这是 P1 之后最大的核间气泡 | Duration 随 wait 降；`aic_time` 与 `aiv_time` 仍接近，但墙上应掉一截 scalar 空等 | **不要加大 G**（精度窗口从 1024 拉长）。跨组 CopyPScale 下标已踩过雷（§15.3.6） |
+| **P2-B** | softmax VF：减 scalar、收 pad / 组首组尾 / exp→e4m3 缝 | 同算量 FIA vec 12.16 vs BSA 16.86 ms。差在 VF/分支/打包，不是峰值 TFLOPS | **主收益**。vec 16.86→~13.5 ms 时 cube 占用才可能 ~0.60；→~12 ms 墙上才有机会靠近 FIA | 精度窗口、`BSA_MXFP8_FP16_BF16_RT4`、qs64/尾块 pad 回归 |
+| **P2-C** | e8m0 / pScale 与写 P 合并搬 | 同拍仍是 PV → pScale → 写 P，`DELAY_PSCALE_N=3`。缝在 softmax 和下一次 PV 之间 | 少几次 UB/L1 搬，盖一点同步。单独改预计小于 P2-B | L1 P-scale 槽 `loop%12` vs UB `loop/2%12` 映射不可再写错 |
+| **不做** | Q L0B 双槽；D 切 2×64；再单独挪 wait / 延后 fixpipe；kvs 改回 256 | P0/P1 已证或属几何重做 | — | kvs256：softmax 次数可能近 2×，但 L1 P 16→32KB、环深、跨组/GQA 是已知雷区 |
+| **P3 仍仅 S≳1M** | Q tile 按 L2 112MB 分块复用 KV | 当前 S=118800 非 HBM bound | 243k 几乎不变 | 1M 基线 904 ms，HBM 下限 ~785 ms |
+
+P2-A 与 P2-B 不要绑成一个 PR：A 验证核间 wait，B 验证 vec 绝对时间。P2-C 可跟在 B 后，不必单独为加深 P 环开一轮（L1 空 ~140KB / UB 空 ~70KB **减不了** 16.8 ms 的 vec）。
+
+#### 17.8.2 代码落点
+
+| 文件 | P2 动作 |
+| --- | --- |
+| `block_mmad_copy_global_max_l1_to_ub_arch35_mxfp8.hpp` | `asc_copy_l12ub_sync`（VEC0+VEC1）。能异步则异步；不能则把拷贝挪到 AIC 仍在 gather/mmad 的窗口 |
+| `block_epilogue_copy_global_max_ub_to_l1_arch35_mxfp8.hpp` | 组首才写 L1 的分支；与 peer 交换对齐，避免多余 sync |
+| `block_sparse_attention_kernel_arch35_mxfp8_full_quant.h` | `isTileGoupFirstTile` / `isUpdatePScale` 在 delay12/delay3/当前拍上的重复分支；能合并的合并，不要改 `TILE_GROUP_N` |
+| `block_epilogue_online_softmax_arch35_reg_low_prec_fp16_mxfp8.hpp` + `mxfp8_vf/vf_softmax_*` | P2-B：组首/组尾/kvs pad VF；对照 FIA 同精度路径减 scalar |
+| `block_epilogue_compute_pscale_arch35_mxfp8.hpp` | P2-C：`WHOLE_PROCESS_LOOP=8` 与写 P、下一拍 softmax 重叠；**禁止**把 mxfp4 的 `*2+1` 套进 `GetPScaleParams` |
+
+#### 17.8.3 不必优先（P1 结论仍成立）
+
+- Dpv=12 填泵、AIV MTE3、稀疏 MTE2 63 GB/s（相对 FIA 91 GB/s）：不是同拍顺序能抹平的产品形态。
+- L0A K 单缓 16KB：不能 2×16（加 Vᵀ 超 64KB）；跨 tile 已走 L1 四缓冲。
+- 剩余 ~3 ms AIC 空等：一大半会随 AIV 变短一起消失，不要再单独抠 Cube。
+
+#### 17.8.4 验收口径
+
+| 项 | 口径 |
+| --- | --- |
+| 精度 | 门禁 qs128/qs64 + 跨组/GQA/sparse 冒烟 100%；`--reg` 满足率 ≥99.5%（ulp 类 99.8% 可接受，50% 级回退不可接受） |
+| 性能主标尺 | S=118800 keep=1.0：Duration、**aiv_vec_time**（现 16.86 ms）、aic_time。目录沿用 `tests/mxfp8_pytest/bsa_msprof_perf_mxfp8_p1/` 的对比方式新开 `..._p2/` |
+| 辅标尺 | S=243000 keep=0.5（现 40.65 ms）；S=8422 只防头开销回退，不当收益 |
+| 判定 | P2-A 成功：Duration 降且 aiv_vec **几乎不变**（吃的是 wait）。P2-B 成功：aiv_vec 明显下降。vec 不变只 Duration 微降 → 还在抠 AIC，停手 |
+| 回退 | 精度掉点或 vec 上升立刻回退该子轮；不要把 A/B 绑死再测 |
+
 

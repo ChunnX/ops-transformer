@@ -166,9 +166,10 @@ namespace MXFP8 {
     static constexpr bool KV_SHARE_DEBUG = false;
     static constexpr uint32_t KV_TRACE_TILES = 40;
 
-    // L0：默认不切 k；K 双缓 8KB，Q 单缓 16KB，V/P 双缓
-    static constexpr uint32_t L0A_QK_BUF_CNT = 2;
-    static constexpr uint32_t L0A_QK_BUF_SIZE = 8 * KB_BYTE;   // 64×128×1B K
+    // L0 P1：QK 一次 128×128。K 单缓 16KB（2×16 会与 Vᵀ 2×18 合计 68>64）；
+    // L0C QK 2×64KB + PV 72KB = 200KB < 256KB。Q 仍单缓 16KB（不绑双槽）。
+    static constexpr uint32_t L0A_QK_BUF_CNT = 1;
+    static constexpr uint32_t L0A_QK_BUF_SIZE = 16 * KB_BYTE;  // 128×128×1B K
     static constexpr uint32_t L0A_QK_BUF_OFFSET = 0;
 
     static constexpr uint32_t L0A_PV_BUF_CNT = 2;
@@ -184,12 +185,12 @@ namespace MXFP8 {
     static constexpr uint32_t L0B_PV_BUF_OFFSET = 16 * KB_BYTE;
 
     static constexpr uint32_t L0C_QK_BUF_CNT = 2;
-    static constexpr uint32_t L0C_QK_BUF_SIZE = 32 * KB_BYTE;  // 64×128×4B
+    static constexpr uint32_t L0C_QK_BUF_SIZE = 64 * KB_BYTE;  // 128×128×4B
     static constexpr uint32_t L0C_QK_BUF_OFFSET = 0;
 
     static constexpr uint32_t L0C_PV_BUF_CNT = 1;
     static constexpr uint32_t L0C_PV_BUF_SIZE = 72 * KB_BYTE;
-    static constexpr uint32_t L0C_PV_BUF_OFFSET = 64 * KB_BYTE;
+    static constexpr uint32_t L0C_PV_BUF_OFFSET = 128 * KB_BYTE;
 
     static constexpr uint32_t BLOCK_SIZE = 32;
 
@@ -210,7 +211,7 @@ namespace MXFP8 {
 
     static constexpr uint32_t PV_MMAD_M_DIM = ROW_SUM_NUM + ROW_SUM_PAD_NUM; // 144
     static constexpr uint32_t S2_BASE_TILE_SIZE = 128;
-    static constexpr uint32_t QK_HALF_KVS = 64; // 单次 QK 半面 kvs
+    static constexpr uint32_t QK_HALF_KVS = 128; // P1：一次 QK 打满基块 kvs（不再 64 半面）
 
     static constexpr uint16_t SEED_V_DATA_FILL = 0x3838;
     static constexpr uint16_t SEED_V_SCALE_FILL = 0x7F7F;
@@ -221,10 +222,14 @@ namespace MXFP8 {
     static_assert(L1_LOCAL_GLOBAL_MAX_BUF_OFFSET +
                       L1_LOCAL_GLOBAL_MAX_BUF_CNT * L1_LOCAL_GLOBAL_MAX_BUF_SIZE <= 512 * KB_BYTE,
                   "MXFP8 L1 exceeds 512KB");
+    static_assert(L0A_QK_BUF_OFFSET + L0A_QK_BUF_CNT * L0A_QK_BUF_SIZE == L0A_PV_BUF_OFFSET,
+                  "MXFP8 L0A QK must end at Vᵀ offset");
     static_assert(L0A_PV_BUF_OFFSET + L0A_PV_BUF_CNT * L0A_PV_BUF_SIZE <= 64 * KB_BYTE,
                   "MXFP8 L0A exceeds 64KB");
     static_assert(L0B_PV_BUF_OFFSET + L0B_PV_BUF_CNT * L0B_PV_BUF_SIZE <= 64 * KB_BYTE,
                   "MXFP8 L0B exceeds 64KB");
+    static_assert(L0C_QK_BUF_OFFSET + L0C_QK_BUF_CNT * L0C_QK_BUF_SIZE == L0C_PV_BUF_OFFSET,
+                  "MXFP8 L0C QK must end at PV offset");
     static_assert(L0C_PV_BUF_OFFSET + L0C_PV_BUF_CNT * L0C_PV_BUF_SIZE <= 256 * KB_BYTE,
                   "MXFP8 L0C exceeds 256KB");
 }  // namespace MXFP8

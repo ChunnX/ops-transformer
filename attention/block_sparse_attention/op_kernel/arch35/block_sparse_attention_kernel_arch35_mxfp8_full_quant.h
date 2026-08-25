@@ -380,7 +380,6 @@ public:
                 uint32_t subBlockIdx = curTileInfo.loop % 2;
 
                 if ASCEND_IS_AIC {
-                    AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] + subBlockIdx * 16);
                     auto gQLayoutTla = tla::MakeLayout<ElementQ, LayoutQ>(
                         curTaskInfo.qsActBaseTile,   // rows = S1 实际 tile
                         qHeadMul * embed_);          // cols → row-stride（BNSD 时 qHeadMul=1，即 embed_）
@@ -404,7 +403,8 @@ public:
                         embed_,
                         kvBaseTile_, 
                         blockShapeY_,
-                        subBlockIdx, kvHeadMul, qHeadMul);
+                        subBlockIdx, kvHeadMul, qHeadMul,
+                        CROSS_CORE_SYNC_V1_C1[mm1ResBufId] + subBlockIdx * 16);
                     AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] + subBlockIdx * 16);
                 } else {
 #ifdef __DAV_VEC__
@@ -873,7 +873,7 @@ public:
         }
         info.kvsFirstTileStartVecCore = kvsFirstTileStartVecCore_;
 
-        if (info.isTileGoupFirstTile) {
+        if (info.isTileGoupFirstTile && !info.isFirstKvsTile) { // 非第一个 kvs tileGroup，更新 dm id（同 mxfp4）
             updateScaleIdx_ = (updateScaleIdx_ + 1) % 4;
         }
 

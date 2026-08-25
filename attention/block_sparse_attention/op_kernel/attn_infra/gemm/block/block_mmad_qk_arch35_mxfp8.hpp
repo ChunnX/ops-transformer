@@ -348,6 +348,20 @@ public:
         copyL0CToUB(ubSTensorTla, l0CTensorTla, subBlockId);
     }
 
+    // 发一次 nSub 的 fixpipe（含 M_FIX / FIX_M）。同 mxfp4：延后一拍，插在下一轮 Wait MTE1_M 前。
+    template <class TensorUB>
+    __aicore__ inline void EmitFixpipeMm1(uint32_t l0cBufId, uint32_t nSubRowStart, uint32_t nCur,
+                                          uint32_t qsMmadN, TensorUB &ubSTensorTla,
+                                          uint32_t subBlockIdx)
+    {
+        AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(QK_L0C_EVENT0 + l0cBufId);
+        uint32_t nCurEven = (nCur + 1) >> 1 << 1;
+        auto ubSSubTla = GetTile(
+            ubSTensorTla, tla::MakeCoord(nSubRowStart, 0), tla::MakeShape(nCurEven, qsMmadN));
+        FixpipeMm1(qsMmadN, nCur, ubSSubTla, subBlockIdx != 0, l0cBufId);
+        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(QK_L0C_EVENT0 + l0cBufId);
+    }
+
     template <class TensorQ, class TensorK, class TensorUB, class TaskInfoT, class TileInfoT>
     __aicore__ inline
     void operator()(TensorQ &gQTensorTla,
@@ -362,7 +376,8 @@ public:
                     uint32_t kvSBaseTile, uint32_t blockShapeY,
                     uint32_t subBlockIdx,
                     uint32_t kvHeadMul,
-                    uint32_t qHeadMul)
+                    uint32_t qHeadMul,
+                    uint32_t sReadyFlag)
     {
         uint32_t qsActBaseTile = curTaskInfo.qsActBaseTile;
         int64_t kvSeqlen = curTaskInfo.kvSeqlen;
@@ -414,14 +429,22 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1KEventId);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1KEventId);
 
-        // n 方向按 L0_TILE_N(=64) 子切分：两轮拼成 128 行基块；D 方向一次打满（不切 k）
+        // P0.5：V1_C1 wait 挪到 K gather 之后，用 gather 盖核间同步；不绑 Q 双槽。
+        AscendC::CrossCoreWaitFlag<4, PIPE_FIX>(sReadyFlag);
+
+        // P1：L0_TILE_N=128，满块 nLoopNum=1；尾块 kvs<128 仍一次 mmad。
+        // fixpipe 延后一拍（同 mxfp4）：nLoop≥2 时盖 MTE1_M 往返；单拍则循环外 flush。
         uint32_t nLoopNum = CeilDivision(kvsActBaseTile, L0_TILE_N);
+        bool fixPending = false;
+        uint32_t pendL0cBufId = 0;
+        uint32_t pendNSubRowStart = 0;
+        uint32_t pendNCur = 0;
+        constexpr uint32_t L0B_Q_SLOT = 0;
         for (uint32_t nSub = 0; nSub < nLoopNum; ++nSub) {
             uint32_t l0CEventId = QK_L0C_EVENT0 + qkL0cBufId;
             uint32_t nSubRowStart = nSub * L0_TILE_N;
             uint32_t nCur = MinU32(L0_TILE_N, kvsActBaseTile - nSubRowStart);
             uint32_t l0ABEventId = QK_L0AB_EVENT0 + qkL0abBufId;
-            constexpr uint32_t L0B_Q_SLOT = 0;
 
             AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
@@ -430,19 +453,28 @@ public:
             LoadKToL0A(nSubRowStart, nCur, embed, kvsActBaseTileAlign16, scaleK, kBufId,
                        qkL0abBufId, 0);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
+
+            if (fixPending) {
+                EmitFixpipeMm1(pendL0cBufId, pendNSubRowStart, pendNCur,
+                               qsMmadN, ubSTensorTla, subBlockIdx);
+                fixPending = false;
+            }
+
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
             MatmulQK(nCur, qsMmadN, embed, qkL0abBufId, L0B_Q_SLOT, qkL0cBufId, true);
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
             qkL0abBufId = (qkL0abBufId + 1) % MXFP8::L0A_QK_BUF_CNT;
 
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
-            AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
-            uint32_t nCurEven = (nCur + 1) >> 1 << 1;
-            auto ubSSubTla = GetTile(
-                ubSTensorTla, tla::MakeCoord(nSubRowStart, 0), tla::MakeShape(nCurEven, qsMmadN));
-            FixpipeMm1(qsMmadN, nCur, ubSSubTla, subBlockIdx != 0, qkL0cBufId);
-            AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
+            pendL0cBufId = qkL0cBufId;
+            pendNSubRowStart = nSubRowStart;
+            pendNCur = nCur;
+            fixPending = true;
             qkL0cBufId = (qkL0cBufId + 1) % MXFP8::L0C_QK_BUF_CNT;
+        }
+        if (fixPending) {
+            EmitFixpipeMm1(pendL0cBufId, pendNSubRowStart, pendNCur,
+                           qsMmadN, ubSTensorTla, subBlockIdx);
         }
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1KEventId);
         kBufId = (kBufId + 1) % MXFP8::L1_KV_BUF_CNT;

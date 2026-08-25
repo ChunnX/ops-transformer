@@ -15,8 +15,9 @@ TND varlen(s1_list/s2_list) / act_s pad / gap_sparse / ocp_scale_stride_trap 已
     ./run.sh --reg
 
 
-golden: Q/K/V mxfp8 qdq(fp32); 分块 flash + online softmax;
-P 走 kernel 同构 snap_local(m_snap=(K-2)*ln2) 再 round 到 e4m3。
+golden: Q/K/V mxfp8 qdq(fp32)；P 走 kernel 同构 snap_local(m_snap=(K-2)*ln2) 再 e4m3。
+MXFP8 一 Y 块 = 一 kernel tile（kvs128）；TILE_GROUP_N=8 组尾才 pscale / rescale O
+（组内独立 snap，不按 mxfp4 的每 2 个 Y 块 online rescale）。
 判据: qfa check_result (np.isclose rtol=1/128 atol=1e-4, 满足率=100% 且 maxRE<10)。
 """
 import math
@@ -227,9 +228,13 @@ def _to_npu_layout(q, k, v, q_scale, k_scale, v_scale, cpu_out, input_layout):
             cpu_out.contiguous())
 
 
-def _blockwise_snap_local_quantize_p_eff(S, m_running, seqk_dim=0, mx_block_size=32):
-    """与 mxfp4 OCP 同构: m_snap=(K_block-2)*ln2, corr=2^(K_diff-2)。
-    P_local 经 bf16 round-trip 后 round 到 e4m3（对齐 kernel Exp 后 fp16→bf16→fp16，再 float→e4m3 RINT）。"""
+# 与 MXFP8Kernel::TILE_GROUP_N 一致：组尾 isUpdatePScale，组内 L0C 累加、不 rescale O。
+KERNEL_TILE_GROUP_N = 8
+
+
+def _blockwise_snap_local_raw(S, seqk_dim=0, mx_block_size=32):
+    """组内一 tile：只做 per-32 e4m3 量化，corr/pscale 留给组尾。
+    返回 p_q(与 S 同布局)、k_block[..., n_blk]、k_ij(行 max K)。"""
     neg_inf = float("-inf")
     device = S.device
     src_dtype = S.dtype
@@ -258,15 +263,27 @@ def _blockwise_snap_local_quantize_p_eff(S, m_running, seqk_dim=0, mx_block_size
     p_local = torch.exp(s_r - m_block_snap.unsqueeze(-1))
     p_local_bf = p_local.to(torch.bfloat16).to(p_local.dtype)
     p_q = p_local_bf.float().to(torch.float8_e4m3fn).float().to(src_dtype)
-    k_ij = k_block.max(dim=-1).values
-    k_ij_fp32 = k_ij.float()
-    m_new = k_ij_fp32 if m_running is None else torch.maximum(m_running, k_ij_fp32)
-    k_new_s = m_new.to(src_dtype)
+    k_ij = k_block.max(dim=-1).values.float()
+    p_q_moved = p_q.reshape(*other, n_blk * mx_block_size)[..., :seqk_len].movedim(-1, skp)
+    return p_q_moved, k_block, k_ij
+
+
+def _pscale_corr(p_q_moved, k_block, k_g, seqk_dim=0, mx_block_size=32):
+    """pscale = 2^(K_block - K_global - 2)，与 kernel OCP e8m0（NUM_NEG_125）同构。"""
+    skp = seqk_dim if seqk_dim >= 0 else p_q_moved.dim() + seqk_dim
+    seqk_len = p_q_moved.shape[skp]
+    k_new_s = k_g.to(p_q_moved.dtype)
     k_diff = k_block - k_new_s.unsqueeze(-1)
     corr = torch.exp2(k_diff - 2.0)
     corr_broad = corr.repeat_interleave(mx_block_size, dim=-1)[..., :seqk_len].movedim(-1, skp)
-    p_q_moved = p_q.reshape(*other, n_blk * mx_block_size)[..., :seqk_len].movedim(-1, skp)
-    return p_q_moved * corr_broad, m_new
+    return p_q_moved * corr_broad
+
+
+def _blockwise_snap_local_quantize_p_eff(S, m_running, seqk_dim=0, mx_block_size=32):
+    """单段 snap+pscale（HOST_DIAG / 旧路径）。组尾路径用 raw + _pscale_corr。"""
+    p_q, k_block, k_ij = _blockwise_snap_local_raw(S, seqk_dim, mx_block_size)
+    m_new = k_ij if m_running is None else torch.maximum(m_running, k_ij)
+    return _pscale_corr(p_q, k_block, m_new, seqk_dim, mx_block_size), m_new
 
 
 def _build_block_sparse_mask(b, n1, ceil_q, ceil_kv, kind="dense"):
@@ -349,44 +366,57 @@ def cpu_block_sparse_attention_bnsd_mxfp8(query, key, value, block_sparse_mask,
                 sel_j = [j for j in range(ceil_kv) if block_sparse_mask[bi, ni, qb, j] != 0]
                 if not sel_j:
                     continue
-                chunks = [sel_j[i:i + 2] for i in range(0, len(sel_j), 2)]
+                # 一 Y 块 = 一 kernel tile；每 TILE_GROUP_N 个（或最后一组）组尾 pscale。
+                groups = [sel_j[i:i + KERNEL_TILE_GROUP_N]
+                          for i in range(0, len(sel_j), KERNEL_TILE_GROUP_N)]
                 q_blk = q_q[bi, ni, q_lo:q_hi]
                 nq = q_hi - q_lo
                 m_run = None
                 l_run = torch.zeros(nq, dtype=torch.float32)
                 acc = torch.zeros((nq, d), dtype=torch.float32)
-                for chunk in chunks:
-                    positions = []
-                    for j in chunk:
+                for group in groups:
+                    tiles = []
+                    k_g = None
+                    for j in group:
                         st = j * block_y
                         ed = min(st + block_y, s2)
-                        positions.extend(range(st, ed))
-                    if not positions:
-                        continue
-                    pos = torch.as_tensor(positions, dtype=torch.long)
-                    k_blk = k_q[bi, n2i][pos]
-                    v_blk = v_q[bi, n2i][pos]
-                    s_fp32 = (k_blk @ q_blk.t()).to(torch.float32)
-                    s_s = s_fp32.to(s_torch_dtype) * scale_s
-                    if p_quant == "snap_local":
-                        p_eff_s, m_new = _blockwise_snap_local_quantize_p_eff(
-                            s_s, m_running=m_run, seqk_dim=0)
-                        p_eff_s = torch.nan_to_num(p_eff_s, nan=0.0)
-                        p_fp32 = p_eff_s.float()
-                        alpha = (torch.zeros(nq, dtype=torch.float32) if m_run is None
-                                 else torch.exp2(m_run.float() - m_new.float()))
-                    else:
-                        m_s = s_s.max(dim=0).values
-                        m_safe_s = torch.where(torch.isinf(m_s) & (m_s < 0), torch.zeros_like(m_s), m_s)
-                        p_ij = torch.exp(s_s - m_safe_s.unsqueeze(0))
-                        p_fp32 = torch.nan_to_num(p_ij, nan=0.0).float()
-                        m_new = m_safe_s.float()
-                        alpha = (torch.zeros(nq, dtype=torch.float32) if m_run is None
-                                 else torch.exp(m_run - m_new))
-                    reduce_sum = p_fp32.sum(dim=0)
-                    l_run = alpha * l_run + reduce_sum
-                    acc = alpha.unsqueeze(-1) * acc + (p_fp32.t() @ v_blk)
-                    m_run = m_new
+                        if st >= ed:
+                            continue
+                        pos = torch.as_tensor(range(st, ed), dtype=torch.long)
+                        k_blk = k_q[bi, n2i][pos]
+                        v_blk = v_q[bi, n2i][pos]
+                        s_fp32 = (k_blk @ q_blk.t()).to(torch.float32)
+                        s_s = s_fp32.to(s_torch_dtype) * scale_s
+                        if p_quant == "snap_local":
+                            p_q, k_block, k_ij = _blockwise_snap_local_raw(s_s, seqk_dim=0)
+                            tiles.append((p_q, k_block, v_blk))
+                            k_g = k_ij if k_g is None else torch.maximum(k_g, k_ij)
+                        else:
+                            m_s = s_s.max(dim=0).values
+                            m_safe_s = torch.where(torch.isinf(m_s) & (m_s < 0),
+                                                   torch.zeros_like(m_s), m_s)
+                            p_ij = torch.exp(s_s - m_safe_s.unsqueeze(0))
+                            p_fp32 = torch.nan_to_num(p_ij, nan=0.0).float()
+                            m_new = m_safe_s.float()
+                            alpha = (torch.zeros(nq, dtype=torch.float32) if m_run is None
+                                     else torch.exp(m_run - m_new))
+                            l_run = alpha * l_run + p_fp32.sum(dim=0)
+                            acc = alpha.unsqueeze(-1) * acc + (p_fp32.t() @ v_blk)
+                            m_run = m_new
+                    if p_quant == "snap_local" and tiles:
+                        if m_run is not None:
+                            k_g = torch.maximum(k_g, m_run)
+                            alpha = torch.exp2(m_run.float() - k_g.float())
+                        else:
+                            alpha = torch.zeros(nq, dtype=torch.float32)
+                        acc = alpha.unsqueeze(-1) * acc
+                        l_run = alpha * l_run
+                        for p_q, k_block, v_blk in tiles:
+                            p_eff = torch.nan_to_num(
+                                _pscale_corr(p_q, k_block, k_g, seqk_dim=0), nan=0.0).float()
+                            l_run = l_run + p_eff.sum(dim=0)
+                            acc = acc + (p_eff.t() @ v_blk)
+                        m_run = k_g
                 l_safe = torch.where(l_run > 0, l_run, torch.ones_like(l_run))
                 out[bi, ni, q_lo:q_hi] = acc / l_safe.unsqueeze(-1)
     return out.to(_resolve_out_dtype(out_dtype))
