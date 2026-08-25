@@ -222,12 +222,17 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
             // 每tile重新SetupParams(kernel内部mmOp_.Init每次调用)
             SetupParams(isTail ? tailTile : headTile, curTileM, param);
 
+            // 计算tile偏移(在cGmAddr和AllToAll之前定义)
+            uint64_t tileOffset = (tid < tileCnt_)
+                ? static_cast<uint64_t>(tid) * tileM_
+                : static_cast<uint64_t>(tileCnt_) * tileM_ + static_cast<uint64_t>(tid - tileCnt_) * tailM_;
+
             // 更新A和scaleA偏移
             param.mmParams.aGmAddr = aCur;
             param.mmParams.scaleAGmAddr = aScaleCur;
-            // C输出: mmResultGM_ + rowOffset * perRankN (按tile偏移)
+            // C输出: mmResultGM_ + tileOffset * perRankN (按tile偏移)
             // kernel内部按rankIdx * rankStride(=rankM*perRankN)偏移
-            // mmResult布局: [rankDim, rankM, perRankN], 每tile从rowOffset*perRankN开始
+            // mmResult布局: [rankDim, rankM, perRankN], 每tile从tileOffset*perRankN开始
             param.mmParams.cGmAddr = mmResultGM_ + tileOffset * axisNPerRank_ * sizeof(YType);
 
             // matmul (kernel内部调用mmOp_.Init + 逐rank遍历)
@@ -236,9 +241,6 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
             AscendC::SyncAll();
 
             // AllToAll整块发送: sendCount=curTileM*perRankN, batchCnt=1
-            uint64_t tileOffset = (tid < tileCnt_)
-                ? static_cast<uint64_t>(tid) * tileM_
-                : static_cast<uint64_t>(tileCnt_) * tileM_ + static_cast<uint64_t>(tid - tileCnt_) * tailM_;
             uint64_t sendCount = static_cast<uint64_t>(curTileM) * axisNPerRank_;
             AscendC::HcclHandle h = hccl_.template AlltoAll<true>(
                 mmResultGM_,
