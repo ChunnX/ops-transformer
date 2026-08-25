@@ -76,7 +76,7 @@ protected:
                                       TilingContextInfo &contextInfo);
     ge::graphStatus CheckMxQuantScaleDataType(const gert::TilingContext *context, const char *opName);
     void SetTilingInfo(MatmulAlltoAllTilingInfo &tilingInfo) const;
-    void SetHcommTilingInfo(CommTilingData &tilingInfo) const;
+    void SetHcommTilingInfo(MatmulAllToAllApaceTilingInfo &tilingInfo) const;
     void AlignCutResForKernel(CutResult &cutRes, uint64_t mValue) const;
     ge::graphStatus DoHcommMxQuantMMTiling();
     void PrintMxQuantMatmulAlltoAllTilingData(QuantMatmulAlltoAllTilingData &outTilingData);

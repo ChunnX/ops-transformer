@@ -152,13 +152,14 @@ __aicore__ inline void
 QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
                               QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::InitBaseParams()
 {
-    auto &&commTD = tilingData_->commTilingData;
-    axisK_ = tilingData_->tileQbmmTilingData.k;
-    axisNPerRank_ = tilingData_->tileQbmmTilingData.n;
-    tileM_ = static_cast<uint32_t>(commTD.splitAxisTileSize);
-    tailM_ = static_cast<uint32_t>(commTD.splitAxisTailSize);
-    tileCnt_ = static_cast<uint32_t>(commTD.splitAxisTileCnt);
-    tailCnt_ = static_cast<uint32_t>(commTD.splitAxisTailCnt);
+    auto &&ti = tilingData_->matmulAllToAllTilingInfo;
+    axisK_ = ti.rankK;
+    uint64_t rankN = ti.rankN;  // 完整N
+    axisNPerRank_ = rankN / ti.rankDim;  // perRankN
+    tileM_ = ti.tileM;
+    tailM_ = ti.tailM;
+    tileCnt_ = ti.tileCnt;
+    tailCnt_ = ti.tailCnt;
     totalTileCnt_ = tileCnt_ + tailCnt_;
     axisM_ = static_cast<uint64_t>(tileCnt_) * tileM_ + static_cast<uint64_t>(tailCnt_) * tailM_;
     maxTileM_ = (tileM_ > tailM_) ? tileM_ : tailM_;
@@ -176,7 +177,6 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
                               QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::SetupParams(
     const QuantMatmulTilingData &mmTile, uint32_t curTileM, Params &params)
 {
-    uint64_t totalN = axisNPerRank_ * rankDim_;
     // ProblemShape: M=curTileM(tile级), N=perRankN, K, batch=1
     params.problemShape = ProblemShape{
         static_cast<int64_t>(curTileM),
@@ -193,9 +193,8 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
         mmTile.mBaseTailSplitCnt, mmTile.nBaseTailSplitCnt, mmTile.mTailMain, mmTile.nTailMain};
     params.qbmmParams = QBMMTiling{mmTile.baseM, mmTile.baseN, mmTile.baseK, mmTile.dbL0c,
         isBias_ ? 1u : 0u};
-    // rankStride = curTileM * perRankN (每rank的C输出步长,以CType元素为单位)
-    params.fullN = totalN;
-    params.rankStride = static_cast<uint64_t>(curTileM) * axisNPerRank_;
+    // rankStride = rankM * perRankN (完整M, 不是tileM)
+    params.rankStride = axisM_ * axisNPerRank_;
     params.rankDim = rankDim_;
 }
 
@@ -226,8 +225,10 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
             // 更新A和scaleA偏移
             param.mmParams.aGmAddr = aCur;
             param.mmParams.scaleAGmAddr = aScaleCur;
-            // C输出: mmResultGM_基址(kernel内部按rankIdx*rankStride偏移)
-            param.mmParams.cGmAddr = mmResultGM_;
+            // C输出: mmResultGM_ + rowOffset * perRankN (按tile偏移)
+            // kernel内部按rankIdx * rankStride(=rankM*perRankN)偏移
+            // mmResult布局: [rankDim, rankM, perRankN], 每tile从rowOffset*perRankN开始
+            param.mmParams.cGmAddr = mmResultGM_ + tileOffset * axisNPerRank_ * sizeof(YType);
 
             // matmul (kernel内部调用mmOp_.Init + 逐rank遍历)
             quantMatmulKernelImpl_(param);

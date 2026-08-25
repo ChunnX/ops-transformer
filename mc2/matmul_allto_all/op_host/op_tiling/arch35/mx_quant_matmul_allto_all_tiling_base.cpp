@@ -720,11 +720,6 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoHcommMxQuantMMTiling()
             inferredInfo.tileM, inferredInfo.tileCnt, inferredInfo.tailM, inferredInfo.tailCnt, perRankN);
     return ge::GRAPH_SUCCESS;
 }
-    hcommTilingData_.tailQbmmTilingData = hcommTilingData_.tileQbmmTilingData;
-    hcommTilingData_.localMatmul = localMatmulDisabled;
-    OP_LOGD(opName_, "HcommMxQuantMM tiling: perRankM=%lu perRankK=%lu perRankN=%lu", perRankM, perRankK, perRankN);
-    return ge::GRAPH_SUCCESS;
-}
 
 /**
  * @brief 重写获取MM index的信息
@@ -971,7 +966,7 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::PostTiling()
     size_t tilingBufCap = context_->GetRawTilingData()->GetCapacity();
     if (usingApaceImpl_) {
         // hcomm 路径: 输出 hcommAllToAllMatmulTilingData
-        SetHcommTilingInfo(hcommTilingData_.commTilingData);
+        SetHcommTilingInfo(hcommTilingData_.matmulAllToAllTilingInfo);
         hcommAllToAllMatmulTilingData *outTilingData = context_->GetTilingData<hcommAllToAllMatmulTilingData>();
         OP_TILING_CHECK((outTilingData == nullptr), OP_LOGE(opName_, "Fail to get hcomm tiling data from context"),
                         return ge::GRAPH_FAILED);
@@ -1040,13 +1035,18 @@ void MxQuantMatmulAllToAllTilingBase::SetTilingInfo(MatmulAlltoAllTilingInfo &ti
  *
  * @param tilingInfo 目标结构体
  */
-void MxQuantMatmulAllToAllTilingBase::SetHcommTilingInfo(CommTilingData &tilingInfo) const
+void MxQuantMatmulAllToAllTilingBase::SetHcommTilingInfo(MatmulAllToAllApaceTilingInfo &tilingInfo) const
 {
-    tilingInfo.splitAxisTileSize = inferredInfo.tileM;
-    tilingInfo.splitAxisTileCnt = inferredInfo.tileCnt;
-    tilingInfo.splitAxisTailSize = inferredInfo.tailM;
-    tilingInfo.splitAxisTailCnt = inferredInfo.tailCnt;
-    tilingInfo.nonSplitAxisSize = contextInfo.args_.nValue / contextInfo.args_.rankDim;
+    tilingInfo.tileCnt = inferredInfo.tileCnt;
+    tilingInfo.tileM = inferredInfo.tileM;
+    tilingInfo.tailCnt = inferredInfo.tailCnt;
+    tilingInfo.tailM = inferredInfo.tailM;
+    tilingInfo.rankM = contextInfo.args_.mValue;
+    tilingInfo.rankN = contextInfo.args_.nValue;  // 完整N, kernel侧计算perRankN
+    tilingInfo.rankK = contextInfo.args_.kValue;
+    tilingInfo.rankDim = contextInfo.args_.rankDim;
+    tilingInfo.hcclDataType =
+        static_cast<uint64_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo.args_.geCType));
 }
 
 /**

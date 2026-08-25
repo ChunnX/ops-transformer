@@ -82,7 +82,6 @@ public:
         L1Params l1Params;
         BlockSchedulerParams schedulerParams;
         QBMMTiling qbmmParams;
-        uint64_t fullN;
         uint64_t rankStride;
         uint32_t rankDim;
     };
@@ -130,7 +129,7 @@ __aicore__ inline void QuantBatchMatmulMxKernel<ProblemShape, BlockMmad, BlockSc
     const Params &params)
 {
     const int64_t rankN = Te::Get<MNK_N>(params.problemShape);
-    const int64_t fullN = static_cast<int64_t>(params.fullN);
+    const int64_t fullN = rankN * static_cast<int64_t>(params.rankDim);
     if (params.rankDim == 0 || fullN != rankN * static_cast<int64_t>(params.rankDim)) { return; }
 
     BlockShape l0TileShape{params.qbmmParams.baseM, params.qbmmParams.baseN, params.qbmmParams.baseK, 0};
