@@ -512,14 +512,9 @@ ge::graphStatus AllGatherQuantBmmTiling::SetMc2Hcomm()
     OP_LOGD(opName_, "Tiling SetMc2Hcom commMode_: %s", commMode_);
     OP_LOGD(opName_, "Tiling SetMc2Hcom commEngine: %d", commEngine);
     mc2CcTilingConfig.SetCommEngine(commEngine);
-    uint8_t skipBufferWindowCopy = static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT);
-    if (isMxScene_) {
-        skipBufferWindowCopy = static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT);
-    } else {
-        skipBufferWindowCopy = (allGatherMatmulTilingDataFp8_->param.gatherLen == 0) ?
-                                   static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT) :
-                                   static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_OUTPUT);
-    }
+    uint8_t skipBufferWindowCopy = (allGatherMatmulTilingDataFp8_->param.gatherLen == 0) ?
+                                       static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT) :
+                                       static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_OUTPUT);
     mc2CcTilingConfig.SetSkipBufferWindowCopy(skipBufferWindowCopy);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(allGatherMatmulTilingDataFp8_->mc2InitTiling) != 0,
                     OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"),
@@ -609,10 +604,11 @@ void AllGatherQuantBmmTiling::SetTilingKeyParams()
 ge::graphStatus AllGatherQuantBmmTiling::GetWorkspaceSize()
 {
     MC2_CHECK_LOG_RET(opName_, AllGatherMatmulTilingBase::GetWorkspaceSize());
-    // 当N=0时，Helper不执行，myWorkSpaceSize_未被设置，需要手动赋值
     // workspaceSize_包含：libApiWorkSpaceSize_ + storageA_(含gatherLen) + biasLen_
     // scale1kSpaceSize_为scale1通信所需空间
-    if (args_.nValue == 0) {
+    // MX场景不走DoAdaptSlidWindowTiling，myWorkSpaceSize_未被PostTiling设置，
+    // 需用workspaceSize_作为基线（含libApiWS+gatherLen），与非MX的N==0路径一致
+    if (isMxScene_ || args_.nValue == 0) {
         myWorkSpaceSize_ = workspaceSize_ + scale1kSpaceSize_;
     } else {
         myWorkSpaceSize_ = myWorkSpaceSize_ + MutableRCSTilingDataA5().gatherLen + scale1kSpaceSize_;
