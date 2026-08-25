@@ -1,3 +1,13 @@
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#include <fenv.h>
+__attribute__((constructor)) static void DisableFpeEarly()
+{
+#if defined(__linux__)
+    (void)fedisableexcept(FE_ALL_EXCEPT);
+#endif
+}
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
@@ -19,6 +29,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cfenv>
+#include <fenv.h>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -38,6 +50,8 @@ constexpr int64_t SCORE_STRIDE_ALIGN = 16;
 constexpr float kNegInf = -3.4028234663852886e+38F;
 constexpr float kAtol = 1e-3F;
 constexpr float kRtol = 1e-3F;
+constexpr float kAtolFp8 = 2e-2F;
+constexpr float kRtolFp8 = 2e-2F;
 constexpr int64_t kSparseModeRightDown = 3;
 constexpr uint32_t kBf16Shift = 16;
 constexpr uint32_t kPrngMulA = 1664525U;
@@ -92,6 +106,8 @@ struct TestCase {
     bool useInt8Key; // true: key=int8，scale=[NP,N_kv,P] 或 TND [T2,N2]
     int64_t sparseMode = kSparseModeRightDown;
     KeyLayout keyLayout = KeyLayout::BBND;
+    // 0=无；1=float8_e4m3fn；2=float8_e5m2。仅 950，query/key 同型。
+    int fp8Kind = 0;
 };
 
 constexpr float kLocalScoreInit = 1.0e30F;
@@ -134,6 +150,57 @@ float Bf16ToFloat(uint16_t v)
         return 0.0F;
     }
     return out;
+}
+
+// OCP E4M3FN：exp=15 且 mant=7 为 NaN，其余有限；bias=7。
+float Fp8E4M3fnToFloat(uint8_t x)
+{
+    const uint32_t s = (static_cast<uint32_t>(x) >> 7) & 1U;
+    const uint32_t e = (static_cast<uint32_t>(x) >> 3) & 0xFU;
+    const uint32_t m = static_cast<uint32_t>(x) & 7U;
+    if (e == 0xFU && m == 7U) {
+        return std::numeric_limits<float>::quiet_NaN();
+    }
+    const float sign = (s != 0U) ? -1.0F : 1.0F;
+    if (e == 0U) {
+        return sign * std::ldexp(static_cast<float>(m) / 8.0F, 1 - 7);
+    }
+    return sign * std::ldexp(1.0F + static_cast<float>(m) / 8.0F, static_cast<int>(e) - 7);
+}
+
+// IEEE-like E5M2：bias=15，exp=31 为 Inf/NaN。
+float Fp8E5M2ToFloat(uint8_t x)
+{
+    const uint32_t s = (static_cast<uint32_t>(x) >> 7) & 1U;
+    const uint32_t e = (static_cast<uint32_t>(x) >> 2) & 0x1FU;
+    const uint32_t m = static_cast<uint32_t>(x) & 3U;
+    const float sign = (s != 0U) ? -1.0F : 1.0F;
+    if (e == 0x1FU) {
+        return (m == 0U) ? (sign * std::numeric_limits<float>::infinity()) : std::numeric_limits<float>::quiet_NaN();
+    }
+    if (e == 0U) {
+        return sign * std::ldexp(static_cast<float>(m) / 4.0F, 1 - 15);
+    }
+    return sign * std::ldexp(1.0F + static_cast<float>(m) / 4.0F, static_cast<int>(e) - 15);
+}
+
+uint8_t FloatToFp8Nearest(float v, bool e5m2)
+{
+    uint8_t best = 0;
+    float bestDiff = std::numeric_limits<float>::infinity();
+    for (int i = 0; i < 256; ++i) {
+        const uint8_t b = static_cast<uint8_t>(i);
+        const float d = e5m2 ? Fp8E5M2ToFloat(b) : Fp8E4M3fnToFloat(b);
+        if (!std::isfinite(d)) {
+            continue;
+        }
+        const float diff = std::fabs(d - v);
+        if (diff < bestDiff) {
+            bestDiff = diff;
+            best = b;
+        }
+    }
+    return best;
 }
 
 class DeviceBuffer {
@@ -337,7 +404,8 @@ void PrintTracePipeline(const TestCase &tc, const std::vector<int32_t> &actualSe
     (void)maxBlocks;
 }
 
-bool Compare(const std::string &name, const std::vector<float> &actual, const std::vector<float> &golden)
+bool Compare(const std::string &name, const std::vector<float> &actual, const std::vector<float> &golden, float atol,
+             float rtol)
 {
     size_t badCount = 0;
     size_t infBad = 0;
@@ -350,7 +418,7 @@ bool Compare(const std::string &name, const std::vector<float> &actual, const st
         const float g = golden[i];
         const float a = actual[i];
         if (g <= kNegInf * kFillCmpScale) { // 填充位：要求实测同样是极小值
-            if (!(a <= kNegInf * kFillCmpScale)) {
+            if (!(std::isfinite(a) && a <= kNegInf * kFillCmpScale) && !(std::isinf(a) && a < 0)) {
                 if (!hasBad) {
                     firstBad = i;
                     hasBad = true;
@@ -370,9 +438,17 @@ bool Compare(const std::string &name, const std::vector<float> &actual, const st
             continue;
         }
         ++total;
+        if (!std::isfinite(a) || !std::isfinite(g)) {
+            if (!hasBad) {
+                firstBad = i;
+                hasBad = true;
+            }
+            ++badCount;
+            continue;
+        }
         const float diff = std::fabs(a - g);
         maxAbsDiff = diff > maxAbsDiff ? diff : maxAbsDiff;
-        if (diff > kAtol + kRtol * std::fabs(g)) {
+        if (diff > atol + rtol * std::fabs(g)) {
             if (!hasBad) {
                 firstBad = i;
                 hasBad = true;
@@ -408,10 +484,12 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
 
     // block_table 故意打乱，验证 paged 间接寻址。
     std::vector<int32_t> blockTable(static_cast<size_t>(batch * maxBlocks), 0);
-    for (int64_t b = 0; b < batch; ++b) {
-        for (int64_t k = 0; k < maxBlocks; ++k) {
-            blockTable[b * maxBlocks + k] =
-                static_cast<int32_t>((b * kBlockTableMulB + k * kBlockTableMulK + 1) % tc.numPages);
+    if (tc.numPages > 0) {
+        for (int64_t b = 0; b < batch; ++b) {
+            for (int64_t k = 0; k < maxBlocks; ++k) {
+                blockTable[b * maxBlocks + k] =
+                    static_cast<int32_t>((b * kBlockTableMulB + k * kBlockTableMulK + 1) % tc.numPages);
+            }
         }
     }
 
@@ -432,10 +510,17 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
     std::vector<uint16_t> keyBf(keyF.size());
     std::vector<aclFloat16> queryHf(queryF.size());
     std::vector<aclFloat16> keyHf(keyF.size());
+    std::vector<uint8_t> queryFp8(queryF.size());
+    std::vector<uint8_t> keyFp8(keyF.size());
+    const bool isFp8 = (tc.fp8Kind != 0);
+    const bool isE5M2 = (tc.fp8Kind == 2);
 
     for (size_t i = 0; i < queryF.size(); ++i) {
         const float v = PseudoRandom(static_cast<uint32_t>(i) + 1U) * kQueryAmp;
-        if (tc.useBf16) {
+        if (isFp8) {
+            queryFp8[i] = FloatToFp8Nearest(v, isE5M2);
+            queryF[i] = isE5M2 ? Fp8E5M2ToFloat(queryFp8[i]) : Fp8E4M3fnToFloat(queryFp8[i]);
+        } else if (tc.useBf16) {
             queryBf[i] = FloatToBf16(v);
             queryF[i] = Bf16ToFloat(queryBf[i]);
         } else {
@@ -451,7 +536,10 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
             keyF[i] = static_cast<float>(qv);
         } else {
             const float v = PseudoRandom(static_cast<uint32_t>(i) + kKeySeedOff) * kQueryAmp;
-            if (tc.useBf16) {
+            if (isFp8) {
+                keyFp8[i] = FloatToFp8Nearest(v, isE5M2);
+                keyF[i] = isE5M2 ? Fp8E5M2ToFloat(keyFp8[i]) : Fp8E4M3fnToFloat(keyFp8[i]);
+            } else if (tc.useBf16) {
                 keyBf[i] = FloatToBf16(v);
                 keyF[i] = Bf16ToFloat(keyBf[i]);
             } else {
@@ -485,11 +573,19 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
     }
     const std::vector<int64_t> scoreShape = {tc.numQHeads, totalQ, scoreStride};
 
-    aclTensor *queryT =
-        tc.useBf16 ? buf.Create(queryBf, queryShape, ACL_BF16) : buf.Create(queryHf, queryShape, ACL_FLOAT16);
+    aclTensor *queryT = nullptr;
+    if (isFp8) {
+        const aclDataType fp8Dt = isE5M2 ? ACL_FLOAT8_E5M2 : ACL_FLOAT8_E4M3FN;
+        queryT = buf.Create(queryFp8, queryShape, fp8Dt);
+    } else {
+        queryT = tc.useBf16 ? buf.Create(queryBf, queryShape, ACL_BF16) : buf.Create(queryHf, queryShape, ACL_FLOAT16);
+    }
     aclTensor *keyT = nullptr;
     if (tc.useInt8Key) {
         keyT = buf.Create(keyI8, keyShape, ACL_INT8);
+    } else if (isFp8) {
+        const aclDataType fp8Dt = isE5M2 ? ACL_FLOAT8_E5M2 : ACL_FLOAT8_E4M3FN;
+        keyT = buf.Create(keyFp8, keyShape, fp8Dt);
     } else {
         keyT = tc.useBf16 ? buf.Create(keyBf, keyShape, ACL_BF16) : buf.Create(keyHf, keyShape, ACL_FLOAT16);
     }
@@ -554,7 +650,9 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
         (void)aclrtFree(workspaceAddr);
         return false;
     }
+    (void)printf("  [%s] kernel launched, synchronizing...\n", tc.name.c_str());
     (void)aclrtSynchronizeStream(stream);
+    (void)printf("  [%s] synchronized\n", tc.name.c_str());
 
     std::vector<float> actual(scoreInit.size(), 0.0F);
     (void)aclrtMemcpy(actual.data(), actual.size() * sizeof(float), scoreDev, actual.size() * sizeof(float),
@@ -570,13 +668,19 @@ bool RunCase(const TestCase &tc, aclrtStream stream)
         PrintTracePipeline(tc, actualSeqQlen, blockTable, maxBlocks, scoreStride, totalQ, queryF, keyF, deqScale,
                            actual);
     }
-    return Compare(tc.name, actual, golden);
+    return Compare(tc.name, actual, golden, isFp8 ? kAtolFp8 : kAtol, isFp8 ? kRtolFp8 : kRtol);
 }
 
 } // namespace
 
 int main()
 {
+    setvbuf(stdout, nullptr, _IONBF, 0);
+#if defined(__linux__)
+    (void)fedisableexcept(FE_ALL_EXCEPT);
+    fenv_t fenvHold;
+    (void)feholdexcept(&fenvHold);
+#endif
     const int32_t deviceId = 0;
     aclrtStream stream = nullptr;
     if (aclInit(nullptr) != ACL_SUCCESS || aclrtSetDevice(deviceId) != ACL_SUCCESS ||
@@ -624,6 +728,10 @@ int main()
          KeyLayout::TND},
         {"L1-tnd-int8", 8, 128, 0, {32, 17}, {300, 130}, {2, 0}, false, true, kSparseModeRightDown, KeyLayout::TND},
         {"L0-tnd-tiny", 2, 16, 0, {2}, {5}, {16}, false, false, kSparseModeRightDown, KeyLayout::TND},
+        // FP8：C0=32，headDim 用 128 对齐；D=16 半个 C0 数值不可靠。
+        {"L0-fp8-e4m3fn", 2, 128, 2, {2}, {5}, {16}, false, false, kSparseModeRightDown, KeyLayout::BBND, 1},
+        {"L0-fp8-e5m2", 2, 128, 2, {2}, {5}, {16}, false, false, kSparseModeRightDown, KeyLayout::BBND, 2},
+        {"L1-fp8-e4m3fn-prefill", 8, 128, 8, {32}, {256}, {1}, false, false, kSparseModeRightDown, KeyLayout::BBND, 1},
     };
 
     size_t passed = 0;
