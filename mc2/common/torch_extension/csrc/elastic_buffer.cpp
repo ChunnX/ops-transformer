@@ -56,6 +56,7 @@ constexpr int64_t NETWORK_DIRECT = 0;
 constexpr int64_t NETWORK_HYBRID = 1;
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
 constexpr int DIM_TWO = 2;
+constexpr int64_t MOE_EP_METADATA_FIELDS = 5;
 constexpr uint32_t MOE_CHANNEL_NOTIFY_NUM = 3U;
 constexpr int64_t SEND_COUNTS_ALIGN_FACTOR = 8;
 
@@ -94,6 +95,19 @@ static inline int64_t AlignTo(int64_t x, int64_t y)
     TORCH_CHECK(y > 0, "AlignTo divisor must be positive, got ", y);
     TORCH_CHECK(x <= INT64_MAX - y + 1, "AlignTo overflow: x=", x, " y=", y);
     return CeilDiv(x, y) * y;
+}
+
+static inline void CheckMoeEpMetadataTensor(const at::Tensor &metadata, const char *name,
+                                            int64_t expectedCapacity, const at::Device &expectedDevice)
+{
+    TORCH_CHECK(metadata.scalar_type() == at::kInt, name, " dtype must be int32, but got ", metadata.scalar_type());
+    TORCH_CHECK(metadata.dim() == DIM_TWO, name, " dims must be 2, but got ", metadata.dim());
+    TORCH_CHECK(metadata.size(0) == expectedCapacity, name, " dim0 must equal recv_x dim0(A_alloc)=",
+                expectedCapacity, ", but got ", metadata.size(0));
+    TORCH_CHECK(metadata.size(1) == MOE_EP_METADATA_FIELDS, name, " dim1 must be ", MOE_EP_METADATA_FIELDS,
+                ", but got ", metadata.size(1));
+    TORCH_CHECK(metadata.device() == expectedDevice, name, " must be on device ", expectedDevice, ", but got ",
+                metadata.device());
 }
 
 static inline void NpuStreamWait(aclrtStream waitStream, aclrtStream recordStream)
@@ -1474,6 +1488,12 @@ Mc2Api::ElasticBuffer::DispatchEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpDi
     int64_t numMaxTokensPerRank, at::Tensor &recvX, at::Tensor &recvSrcMetadata,
     const c10::optional<at::Tensor> &recvTopkWeightsOpt, const c10::optional<at::Tensor> &recvScalesOpt)
 {
+    TORCH_CHECK(recvX.dim() == DIM_TWO, "recv_x dims must be 2, but got ", recvX.dim());
+    CheckMoeEpMetadataTensor(recvSrcMetadata, "recv_src_metadata", recvX.size(0), recvX.device());
+    if (cachedRecvSrcMetadata.has_value()) {
+        CheckMoeEpMetadataTensor(*cachedRecvSrcMetadata, "cached_recv_src_metadata", recvX.size(0), recvX.device());
+    }
+
     EnsureMoeContext();
     int64_t rankNumPerServer = ResolveRankNumPerServer(epWorldSize);
     int64_t topoType = ResolveTopoType(epWorldSize, rankNumPerServer);
