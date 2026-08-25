@@ -454,7 +454,7 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Ini
         v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
         crossCoreSyncBufId++;
     }
-    int64_t fdStagingOffset = 0U;
+    uint64_t fdStagingOffset = 0ULL;
     if constexpr (IS_SPLIT_G || TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
                   TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
                   TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
@@ -463,6 +463,19 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Ini
         uint32_t v0LogicalSlotCount = IS_SPLIT_G ? (GetBlockNum() >> 1U) : GetBlockNum();
         fdStagingOffset = v0ResSize * TRIPLE_BUFFER_NUM * v0LogicalSlotCount;
         fdStagingOffset += TRIPLE_BUFFER_NUM * constInfo.s2BaseSize * sizeof(int32_t) * GetBlockNum();
+        if constexpr (IS_VEC_S2PHYADDR) {
+            uint64_t totalBS1 = (LAYOUT_T == SMLA_LAYOUT::TND) ?
+                                    static_cast<uint64_t>(constInfo.s1Size) :
+                                    static_cast<uint64_t>(constInfo.bSize) * constInfo.s1Size;
+            if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+                          TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+                fdStagingOffset += totalBS1 * constInfo.alignedOriSparseBlockCount * sizeof(int64_t);
+            }
+            if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+                          TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+                fdStagingOffset += totalBS1 * constInfo.alignedCmpSparseBlockCount * sizeof(int64_t);
+            }
+        }
     }
     fdStagingBufferManager.Init(workspace + fdStagingOffset);
     constexpr uint32_t FD_MAX_SUM_REGION_NUM = 2U;
