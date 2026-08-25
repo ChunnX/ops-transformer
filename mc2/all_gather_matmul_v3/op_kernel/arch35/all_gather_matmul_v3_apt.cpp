@@ -15,8 +15,8 @@
 
 #include <kernel_operator.h>
 #include "all_gather_matmul_v3_tiling_key.h"
-#include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_udma_tiling_data.h"
-#include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_udma_impl.h"
+#include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_urma_tiling_data.h"
+#include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_urma_impl.h"
 
 using namespace AscendC;
 using namespace Apace;
@@ -32,12 +32,12 @@ __global__ __aicore__ void all_gather_matmul_v3(GM_ADDR context, GM_ADDR x1, GM_
     (void)workspaceGM;
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
 
-    REGISTER_TILING_DEFAULT(AllGatherMxMatmulUdmaTilingData);
-    GET_TILING_DATA_WITH_STRUCT(AllGatherMxMatmulUdmaTilingData, tilingData, tilingGM);
+    REGISTER_TILING_DEFAULT(AllGatherMxMatmulUrmaTilingData);
+    GET_TILING_DATA_WITH_STRUCT(AllGatherMxMatmulUrmaTilingData, tilingData, tilingGM);
 
     __gm__ CommContext *hcommCtx = reinterpret_cast<__gm__ CommContext *>(context);
 
-    using Impl = AllGatherMxMatmulUdmaImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y>;
+    using Impl = AllGatherMxMatmulUrmaImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y>;
 
     Impl impl;
     impl.Init(hcommCtx, x1, x1_scale, x2, x2_scale, y, bias, &tilingData);

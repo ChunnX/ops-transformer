@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file all_gather_mx_matmul_udma_impl.h
+ * \file all_gather_mx_matmul_urma_impl.h
  * \brief AllGatherQuantMatmul 算子实现，基于 FragmentTensor + 通算解耦（UDMA 通信）
  */
 
@@ -17,7 +17,7 @@
 
 #include "kernel_basic_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_udma_tiling_data.h"
+#include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_urma_tiling_data.h"
 #include "apace/kernel/matmul/quant_batch_matmul/all_gather_qbmm_mx_kernel.h"
 #include "adv_api/hcomm/hcomm.h"
 #include "apace/core/aiv_comm/collective_comm_context.h"
@@ -37,11 +37,11 @@ using LayoutC = AscendC::Te::NDExtLayoutPtn;
 using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
 
 template <typename AType, typename BType, typename CType>
-class AllGatherMxMatmulUdmaImpl {
+class AllGatherMxMatmulUrmaImpl {
 public:
-    __aicore__ inline AllGatherMxMatmulUdmaImpl() {}
+    __aicore__ inline AllGatherMxMatmulUrmaImpl() {}
     __aicore__ inline void Init(__gm__ CommContext *hcommCtx, GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM,
-                                GM_ADDR bScaleGM, GM_ADDR cGM, GM_ADDR biasGM, const AllGatherMxMatmulUdmaTilingData *tilingData);
+                                GM_ADDR bScaleGM, GM_ADDR cGM, GM_ADDR biasGM, const AllGatherMxMatmulUrmaTilingData *tilingData);
     __aicore__ inline void Process();
 
     using QuantMatmulKernelImpl = AllGatherQbmmMxKernel<AType, BType, CType>;
@@ -52,7 +52,7 @@ public:
     QuantMatmulKernelImpl quantMatmulKernelImpl_;
 
 private:
-    __aicore__ inline void InitBaseParams(const AllGatherMxMatmulUdmaTilingData *td);
+    __aicore__ inline void InitBaseParams(const AllGatherMxMatmulUrmaTilingData *td);
 
     __aicore__ inline void AllGatherProcess();
     __aicore__ inline void MatmulProcess();
@@ -105,13 +105,13 @@ private:
     uint64_t dataRegionBytes_{};
     uint64_t scaleRegionBytes_{};
 
-    const AllGatherMxMatmulUdmaTilingData *tilingData_{};
+    const AllGatherMxMatmulUrmaTilingData *tilingData_{};
 };
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::Init(
+__aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::Init(
     __gm__ CommContext *hcommCtx, GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR cGM,
-    GM_ADDR biasGM,const AllGatherMxMatmulUdmaTilingData *tilingData)
+    GM_ADDR biasGM,const AllGatherMxMatmulUrmaTilingData *tilingData)
 {
     tilingData_ = tilingData;
     hcommCtx_ = hcommCtx;
@@ -167,8 +167,8 @@ __aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::Init(
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::InitBaseParams(
-    const AllGatherMxMatmulUdmaTilingData *td)
+__aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::InitBaseParams(
+    const AllGatherMxMatmulUrmaTilingData *td)
 {
     const auto &ct = td->commTile;
     tileCnt_ = static_cast<uint32_t>(ct.splitAxisTileCnt);
@@ -192,7 +192,7 @@ __aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::InitBaseP
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::Process()
+__aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::Process()
 {
     if ASCEND_IS_AIV {
         AllGatherProcess();
@@ -203,7 +203,7 @@ __aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::Process()
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::MatmulProcess()
+__aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::MatmulProcess()
 {
     KernelParams params;
     params.mmTile = &tilingData_->mmTile;
@@ -238,19 +238,19 @@ __aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::MatmulPro
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline GM_ADDR AllGatherMxMatmulUdmaImpl<AType, BType, CType>::GetWinDataRegionBase()
+__aicore__ inline GM_ADDR AllGatherMxMatmulUrmaImpl<AType, BType, CType>::GetWinDataRegionBase()
 {
     return reinterpret_cast<GM_ADDR>(udmaCtx_->commBufferAddrs[rankId_]);
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline GM_ADDR AllGatherMxMatmulUdmaImpl<AType, BType, CType>::GetWinScaleRegionBase()
+__aicore__ inline GM_ADDR AllGatherMxMatmulUrmaImpl<AType, BType, CType>::GetWinScaleRegionBase()
 {
     return GetWinDataRegionBase() + dataRegionBytes_;
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::AllGatherProcess()
+__aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::AllGatherProcess()
 {
     // 预触发 dependTileIdx=0：自身数据始终就绪，AIC 可直接消费。
     CrossCoreSetFlag<0x2, PIPE_MTE3>(0);
@@ -278,10 +278,10 @@ __aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::AllGather
 
 __global__ __aicore__ void AllGatherQuantMatmulKernel(__gm__ Apace::AivComm::CommContext *hcommCtx, GM_ADDR aGM,
                                                       GM_ADDR aScaleGM, GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR cGM,
-                                                      GM_ADDR biasGM, AllGatherMxMatmulUdmaTilingData tilingData)
+                                                      GM_ADDR biasGM, AllGatherMxMatmulUrmaTilingData tilingData)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
-    Apace::AllGatherMxMatmulUdmaImpl<fp8_e4m3fn_t, fp8_e4m3fn_t, bfloat16_t> impl;
+    Apace::AllGatherMxMatmulUrmaImpl<fp8_e4m3fn_t, fp8_e4m3fn_t, bfloat16_t> impl;
     impl.Init(hcommCtx, aGM, aScaleGM, bGM, bScaleGM, cGM, biasGM, &tilingData);
     impl.Process();
 }
