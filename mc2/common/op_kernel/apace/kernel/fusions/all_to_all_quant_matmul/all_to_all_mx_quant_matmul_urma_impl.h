@@ -25,11 +25,9 @@
 #include "include/tensor_api/tensor.h"
 
 #include "adv_api/hcomm/hcomm.h"
-#include "blaze/gemm/utils/common_utils.h"
-#include "blaze/gemm/block/block_mmad_qbmm_mx.h"
-#include "blaze/gemm/block/block_scheduler_qbmm.h"
-#include "blaze/gemm/policy/dispatch_policy.h"
 #include "../../matmul/quant_batch_matmul/all_to_all_qbmm_mx_kernel.h"
+#include "blaze/gemm/utils/common_utils.h"
+#include "blaze/gemm/policy/dispatch_policy.h"
 #include "all_to_all_matmul_tiling_data.h"
 
 #include "apace/core/aiv_comm/collective_comm_api.h"
