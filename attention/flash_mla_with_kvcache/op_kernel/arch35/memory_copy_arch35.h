@@ -22,7 +22,6 @@
 #include "../../../common/op_kernel/memcopy/copy_gm_to_l1.h"
 #include "../../../common/op_kernel/memcopy/copy_gm_to_ub.h"
 #include "../../../common/op_kernel/memcopy/copy_ub_to_gm.h"
-#include "../../../common/op_kernel/memcopy/mem_format.h"
 
 // post quant 拷贝
 struct PostQuantInfo_V2 {
