@@ -44,9 +44,10 @@ def _resolve_csv_tolerance(idx):
       5-tuple (新):        (rtol, atol, diff_thd, pct_thd, max_diff_hd)
                            如 ((0.0078125, 0.0001, 0.005, 0.005, 10),)
      5-tuple 的后三位 None → check_result 用默认值 (0.005/0.005/10)
-     """
+    """
     try:
         import quant_flash_attn_hif8_golden as hif8_golden_mod
+
         pt = getattr(hif8_golden_mod, "_csv_precision_tolerances", None)
         ap = getattr(hif8_golden_mod, "_csv_absolute_precision", None)
     except Exception:

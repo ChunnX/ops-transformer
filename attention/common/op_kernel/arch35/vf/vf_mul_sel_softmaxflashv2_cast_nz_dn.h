@@ -24,13 +24,14 @@ using namespace MicroAPI;
 #define DROPOUT false
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false>
-__simd_vf__ inline void
-ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32,
-                        __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb,
-                        __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN,
-                        const T scale, float deScaleQK, const T minValue, float keepProb, bool needAtten,
-                        const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
-                        const float pScale = 1.0f, const float sinkValue = 0.0f)
+__simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
+                                                __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
+                                                __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb,
+                                                __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n,
+                                                const uint32_t originN, const T scale, float deScaleQK,
+                                                const T minValue, float keepProb, bool needAtten, const float dScale,
+                                                const uint32_t blockStride, const uint32_t repeatStride,
+                                                const float pScale = 1.0f, const float sinkValue = 0.0f)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -369,13 +370,14 @@ ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false>
-__aicore__ inline void
-ProcessVec1DnNoUpdate(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
-                      const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
-                      const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
-                      const LocalTensor<uint8_t> &maskTensor, const uint32_t m, const uint32_t n,
-                      const uint32_t originN, const T scale, float deScaleQK, const T minValue, float keepProb,
-                      bool needAtten, const float pScale = 1.0f, const float sinkValue = 0.0f)
+__aicore__ inline void ProcessVec1DnNoUpdate(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
+                                             const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
+                                             const LocalTensor<T> &expMaxTensor,
+                                             const LocalTensor<uint8_t> &vselrIndexesBuf,
+                                             const LocalTensor<uint8_t> &maskTensor, const uint32_t m, const uint32_t n,
+                                             const uint32_t originN, const T scale, float deScaleQK, const T minValue,
+                                             float keepProb, bool needAtten, const float pScale = 1.0f,
+                                             const float sinkValue = 0.0f)
 {
     __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
     __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
@@ -405,13 +407,14 @@ ProcessVec1DnNoUpdate(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &ex
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false>
-__simd_vf__ inline void
-ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32,
-                      __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb,
-                      __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN,
-                      const T scale, float deScaleQK, const T minValue, float keepProb, bool needAtten,
-                      const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
-                      const float pScale = 1.0f, const float sinkValue = 0.0f)
+__simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
+                                              __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
+                                              __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb,
+                                              __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n,
+                                              const uint32_t originN, const T scale, float deScaleQK, const T minValue,
+                                              float keepProb, bool needAtten, const float dScale,
+                                              const uint32_t blockStride, const uint32_t repeatStride,
+                                              const float pScale = 1.0f, const float sinkValue = 0.0f)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -757,13 +760,14 @@ ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ub
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false>
-__aicore__ inline void
-ProcessVec1DnUpdate(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
-                    const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
-                    const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
-                    const LocalTensor<uint8_t> &maskTensor, const uint32_t m, const uint32_t n, const uint32_t originN,
-                    const T scale, float deScaleQK, const T minValue, float keepProb, bool needAtten,
-                    const float pScale = 1.0f, const float sinkValue = 0.0f)
+__aicore__ inline void ProcessVec1DnUpdate(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
+                                           const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
+                                           const LocalTensor<T> &expMaxTensor,
+                                           const LocalTensor<uint8_t> &vselrIndexesBuf,
+                                           const LocalTensor<uint8_t> &maskTensor, const uint32_t m, const uint32_t n,
+                                           const uint32_t originN, const T scale, float deScaleQK, const T minValue,
+                                           float keepProb, bool needAtten, const float pScale = 1.0f,
+                                           const float sinkValue = 0.0f)
 {
     __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
     __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
@@ -793,13 +797,14 @@ ProcessVec1DnUpdate(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expS
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
-__simd_vf__ inline void
-ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32,
-                             __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max,
-                             __ubuf__ uint8_t *indexesUb, __ubuf__ fp8_e8m0_t *pScaleSubLoop0, const uint32_t m,
-                             const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, float pScale,
-                             const T minValue, float keepProb, const float dScale, const uint32_t blockStride,
-                             const uint32_t repeatStride, int32_t subLoop, int64_t maskLine)
+__simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
+                                                     __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
+                                                     __ubuf__ float *new_global_max, __ubuf__ uint8_t *indexesUb,
+                                                     __ubuf__ fp8_e8m0_t *pScaleSubLoop0, const uint32_t m,
+                                                     const uint32_t n, const uint32_t originN, const T scale,
+                                                     float deScaleQK, float pScale, const T minValue, float keepProb,
+                                                     const float dScale, const uint32_t blockStride,
+                                                     const uint32_t repeatStride, int32_t subLoop, int64_t maskLine)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -1053,21 +1058,22 @@ ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_U
         Cast<bfloat16_t, T, castTraitRintZero>(vreg_p_scale_bf16_0, vreg_x_max_f32_b, preg_135);
         Cast<bfloat16_t, T, castTraitRintOne>(vreg_p_scale_bf16_1, vreg_x_max_f32_b, preg_135);
         Or((RegTensor<uint16_t> &)vreg_p_scale_bf16_0, (RegTensor<uint16_t> &)vreg_p_scale_bf16_0,
-            (RegTensor<uint16_t> &)vreg_p_scale_bf16_1, preg_108);
+           (RegTensor<uint16_t> &)vreg_p_scale_bf16_1, preg_108);
         Cast<fp8_e8m0_t, bfloat16_t, castTraitNoneZero>(vreg_p_scale_f8e8m0, vreg_p_scale_bf16_0, preg_108);
         StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_PACK_B16>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0),
-                                                                  vreg_p_scale_f8e8m0, preg_108);
+                                                                   vreg_p_scale_f8e8m0, preg_108);
     }
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
-__aicore__ inline void
-ProcessVec1DnNoUpdateMxfp8(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
-                           const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
-                           const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
-                           const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
-                           float deScaleQK, float pScale, const T minValue, float keepProb, int32_t subLoop,
-                           const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor, int64_t maskLine)
+__aicore__ inline void ProcessVec1DnNoUpdateMxfp8(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
+                                                  const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
+                                                  const LocalTensor<T> &expMaxTensor,
+                                                  const LocalTensor<uint8_t> &vselrIndexesBuf, const uint32_t m,
+                                                  const uint32_t n, const uint32_t originN, const T scale,
+                                                  float deScaleQK, float pScale, const T minValue, float keepProb,
+                                                  int32_t subLoop, const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor,
+                                                  int64_t maskLine)
 {
     __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
     __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
@@ -1092,19 +1098,18 @@ ProcessVec1DnNoUpdateMxfp8(const LocalTensor<T2> &dstTensor, const LocalTensor<T
     }
 
     ProcessVec1DnNoUpdateMxfp8VF<T, T2, hasAtten, ubN>(
-        x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, indexesUb, pScaleSubLoop0Ub, m,
-        n, originN, scale, deScaleQK, pScale, minValue, keepProb, dScale, blockStride, repeatStride, subLoop, maskLine);
+        x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, indexesUb, pScaleSubLoop0Ub, m, n,
+        originN, scale, deScaleQK, pScale, minValue, keepProb, dScale, blockStride, repeatStride, subLoop, maskLine);
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
-__simd_vf__ inline void
-ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32,
-                           __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max,
-                           __ubuf__ uint8_t *indexesUb, __ubuf__ fp8_e8m0_t *pScaleSubLoop0, const uint32_t m,
-                           const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, float pScale,
-                           const T minValue, float keepProb, const float dScale, const uint32_t blockStride,
-                           const uint32_t repeatStride, __ubuf__ float *pre_loop_max, __ubuf__ float *pre_loop_sum,
-                           __ubuf__ float *first_loop_sum, int32_t subLoop, int64_t maskLine)
+__simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(
+    __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
+    __ubuf__ float *new_global_max, __ubuf__ uint8_t *indexesUb, __ubuf__ fp8_e8m0_t *pScaleSubLoop0, const uint32_t m,
+    const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, float pScale, const T minValue,
+    float keepProb, const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
+    __ubuf__ float *pre_loop_max, __ubuf__ float *pre_loop_sum, __ubuf__ float *first_loop_sum, int32_t subLoop,
+    int64_t maskLine)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -1371,10 +1376,10 @@ ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
         Cast<bfloat16_t, T, castTraitRintZero>(vreg_p_scale_bf16_0, vreg_subloop_update, preg_135);
         Cast<bfloat16_t, T, castTraitRintOne>(vreg_p_scale_bf16_1, vreg_subloop_update, preg_135);
         Or((RegTensor<uint16_t> &)vreg_p_scale_bf16_0, (RegTensor<uint16_t> &)vreg_p_scale_bf16_0,
-            (RegTensor<uint16_t> &)vreg_p_scale_bf16_1, preg_108);
+           (RegTensor<uint16_t> &)vreg_p_scale_bf16_1, preg_108);
         Cast<fp8_e8m0_t, bfloat16_t, castTraitNoneZero>(vreg_p_scale_f8e8m0, vreg_p_scale_bf16_0, preg_108);
         StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_PACK_B16>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0),
-                                                                  vreg_p_scale_f8e8m0, preg_108);
+                                                                   vreg_p_scale_f8e8m0, preg_108);
     }
 }
 
@@ -1413,11 +1418,10 @@ __aicore__ inline void ProcessVec1DnUpdateMxfp8(
         repeatStride = 1;
     }
 
-    ProcessVec1DnUpdateMxfp8VF<T, T2, hasAtten, ubN>(x_exp, input_x_local_UB, exp_max_fp32, new_global_sum,
-                                                     new_global_max, indexesUb, pScaleSubLoop0Ub, m, n,
-                                                     originN, scale, deScaleQK, pScale, minValue, keepProb,
-                                                     dScale, blockStride, repeatStride, pre_loop_max,
-                                                     pre_loop_sum, first_loop_sum, subLoop, maskLine);
+    ProcessVec1DnUpdateMxfp8VF<T, T2, hasAtten, ubN>(
+        x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, indexesUb, pScaleSubLoop0Ub, m, n,
+        originN, scale, deScaleQK, pScale, minValue, keepProb, dScale, blockStride, repeatStride, pre_loop_max,
+        pre_loop_sum, first_loop_sum, subLoop, maskLine);
 }
 
 /*
@@ -1439,15 +1443,15 @@ __aicore__ inline void ProcessVec1DnUpdateMxfp8(
  */
 
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 256>
-__aicore__ inline void
-ProcessVec1VfDnMxfp8(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
-                     const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
-                     const LocalTensor<T> &expMaxTensor, TBuf<> *vselrIndexesBuf,
-                     const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor,
-                     const uint32_t m, const uint32_t n, const uint32_t originN,
-                     const T scale, float deScaleQK, float pScale, const T minValue, float keepProb,
-                     const LocalTensor<T> &preLoopMaxTensor, const LocalTensor<T> &preLoopSumTensor,
-                     const LocalTensor<T> &firstLoopSumTensor, int32_t subLoop, int64_t maskLine)
+__aicore__ inline void ProcessVec1VfDnMxfp8(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
+                                            const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
+                                            const LocalTensor<T> &expMaxTensor, TBuf<> *vselrIndexesBuf,
+                                            const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor, const uint32_t m,
+                                            const uint32_t n, const uint32_t originN, const T scale, float deScaleQK,
+                                            float pScale, const T minValue, float keepProb,
+                                            const LocalTensor<T> &preLoopMaxTensor,
+                                            const LocalTensor<T> &preLoopSumTensor,
+                                            const LocalTensor<T> &firstLoopSumTensor, int32_t subLoop, int64_t maskLine)
 {
     if constexpr (!isUpdate) {
         LocalTensor<uint8_t> indexesTensor;
@@ -1465,21 +1469,20 @@ ProcessVec1VfDnMxfp8(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &exp
             indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
         }
         ProcessVec1DnUpdateMxfp8<T, T2, hasAtten, ubN>(dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor,
-                                                       indexesTensor, m, n, originN, scale, deScaleQK, pScale,
-                                                       minValue, keepProb, preLoopMaxTensor, preLoopSumTensor,
-                                                       firstLoopSumTensor, subLoop, pScaleSubLoop0Tensor, maskLine);
+                                                       indexesTensor, m, n, originN, scale, deScaleQK, pScale, minValue,
+                                                       keepProb, preLoopMaxTensor, preLoopSumTensor, firstLoopSumTensor,
+                                                       subLoop, pScaleSubLoop0Tensor, maskLine);
     }
 }
 
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 128,
           bool hasSink = false, bool hasInvalidLine = false>
-__simd_vf__ inline void
-ProcessVec1DnCausalVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32,
-                      __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb,
-                      __ubuf__ T *tmpExpSumUb, __ubuf__ T *tmpMaxUb, __ubuf__ uint8_t *indexesUb, const uint32_t m,
-                      const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, const T minValue,
-                      float keepProb, bool needAtten, const float dScale, const uint32_t blockStride,
-                      const uint32_t repeatStride, const float pScale = 1.0f, const float sinkValue = 0.0f)
+__simd_vf__ inline void ProcessVec1DnCausalVF(
+    __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
+    __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ T *tmpExpSumUb, __ubuf__ T *tmpMaxUb,
+    __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
+    float deScaleQK, const T minValue, float keepProb, bool needAtten, const float dScale, const uint32_t blockStride,
+    const uint32_t repeatStride, const float pScale = 1.0f, const float sinkValue = 0.0f)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -1917,12 +1920,13 @@ __aicore__ inline void ProcessVec1DnCausal(
 
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 256,
           bool hasSink = false>
-__aicore__ inline void
-ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
-                const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, TBuf<> *vselrIndexesBuf,
-                const LocalTensor<uint8_t> &maskTensor, const uint32_t m, const uint32_t n, const uint32_t originN,
-                const T scale, float deScaleQK, const T minValue, float keepProb, bool needAtten,
-                const float pScale = 1.0f, const float sinkValue = 0.0f)
+__aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
+                                       const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
+                                       const LocalTensor<T> &expMaxTensor, TBuf<> *vselrIndexesBuf,
+                                       const LocalTensor<uint8_t> &maskTensor, const uint32_t m, const uint32_t n,
+                                       const uint32_t originN, const T scale, float deScaleQK, const T minValue,
+                                       float keepProb, bool needAtten, const float pScale = 1.0f,
+                                       const float sinkValue = 0.0f)
 {
     if constexpr (!isUpdate) {
         // 索引序列，用于在VF代码中量化cast后的gather指令
@@ -3042,13 +3046,12 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadTailVF(
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool isTail = false>
-__aicore__ inline void
-ProcessVec1DnNoUpdatePerTokenHead(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
-                                  const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
-                                  const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
-                                  const LocalTensor<T> &qScaleUbTensor, const LocalTensor<T> &kScaleUbTensor,
-                                  const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
-                                  float deScaleQK, float pScale, const T minValue, float keepProb, int64_t maskLine)
+__aicore__ inline void ProcessVec1DnNoUpdatePerTokenHead(
+    const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
+    const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
+    const LocalTensor<T> &qScaleUbTensor, const LocalTensor<T> &kScaleUbTensor, const uint32_t m, const uint32_t n,
+    const uint32_t originN, const T scale, float deScaleQK, float pScale, const T minValue, float keepProb,
+    int64_t maskLine)
 {
     __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
     __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
@@ -3085,13 +3088,12 @@ ProcessVec1DnNoUpdatePerTokenHead(const LocalTensor<T2> &dstTensor, const LocalT
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool isTail = false>
-__aicore__ inline void
-ProcessVec1DnUpdatePerTokenHead(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
-                                const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
-                                const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
-                                const LocalTensor<T> &qScaleUbTensor, const LocalTensor<T> &kScaleUbTensor,
-                                const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
-                                float deScaleQK, float pScale, const T minValue, float keepProb, int64_t maskLine)
+__aicore__ inline void ProcessVec1DnUpdatePerTokenHead(
+    const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
+    const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
+    const LocalTensor<T> &qScaleUbTensor, const LocalTensor<T> &kScaleUbTensor, const uint32_t m, const uint32_t n,
+    const uint32_t originN, const T scale, float deScaleQK, float pScale, const T minValue, float keepProb,
+    int64_t maskLine)
 {
     __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
     __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
@@ -3129,13 +3131,14 @@ ProcessVec1DnUpdatePerTokenHead(const LocalTensor<T2> &dstTensor, const LocalTen
 
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 256,
           bool isTail = false>
-__aicore__ inline void
-ProcessVec1VfDnPerTokenHead(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
-                            const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
-                            const LocalTensor<T> &expMaxTensor, TBuf<> *vselrIndexesBuf,
-                            const LocalTensor<T> &qScaleUbTensor, const LocalTensor<T> &kScaleUbTensor,
-                            const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK,
-                            float pScale, const T minValue, float keepProb, int64_t maskLine)
+__aicore__ inline void ProcessVec1VfDnPerTokenHead(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
+                                                   const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
+                                                   const LocalTensor<T> &expMaxTensor, TBuf<> *vselrIndexesBuf,
+                                                   const LocalTensor<T> &qScaleUbTensor,
+                                                   const LocalTensor<T> &kScaleUbTensor, const uint32_t m,
+                                                   const uint32_t n, const uint32_t originN, const T scale,
+                                                   float deScaleQK, float pScale, const T minValue, float keepProb,
+                                                   int64_t maskLine)
 {
     if constexpr (!isUpdate) {
         LocalTensor<uint8_t> indexesTensor;
@@ -3183,13 +3186,13 @@ __aicore__ inline void BroadcastMaxSum(const LocalTensor<T> &outTensor, const Lo
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false>
-__simd_vf__ inline void
-ProcessVec1DnNoUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32,
-                        __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max,
-                        __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN,
-                        const T scale, float deScaleQK, float pScale, const T minValue, float keepProb,
-                        const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
-                         int64_t maskLine)
+__simd_vf__ inline void ProcessVec1DnNoUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
+                                                    __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
+                                                    __ubuf__ float *new_global_max, __ubuf__ uint8_t *indexesUb,
+                                                    const uint32_t m, const uint32_t n, const uint32_t originN,
+                                                    const T scale, float deScaleQK, float pScale, const T minValue,
+                                                    float keepProb, const float dScale, const uint32_t blockStride,
+                                                    const uint32_t repeatStride, int64_t maskLine)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -3412,13 +3415,13 @@ ProcessVec1DnNoUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false>
-__simd_vf__ inline void
-ProcessVec1DnUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32,
-                        __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max,
-                        __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN,
-                        const T scale, float deScaleQK, float pScale, const T minValue, float keepProb,
-                        const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
-                        int64_t maskLine)
+__simd_vf__ inline void ProcessVec1DnUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
+                                                  __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
+                                                  __ubuf__ float *new_global_max, __ubuf__ uint8_t *indexesUb,
+                                                  const uint32_t m, const uint32_t n, const uint32_t originN,
+                                                  const T scale, float deScaleQK, float pScale, const T minValue,
+                                                  float keepProb, const float dScale, const uint32_t blockStride,
+                                                  const uint32_t repeatStride, int64_t maskLine)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -3647,16 +3650,16 @@ ProcessVec1DnUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, 
     Mul(vreg_l0, vreg_x_max_f32_b, vreg_l0, preg_134);
     Add(vreg_l0, vreg_l0, vreg_x_sum_0, preg_134);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)new_global_sum, vreg_l0, preg_134);
-    
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false>
-__aicore__ inline void
-ProcessVec1DnNoUpdateHif8(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
-                          const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
-                          const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
-                          const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
-                          float deScaleQK, float pScale, const T minValue, float keepProb, int64_t maskLine)
+__aicore__ inline void ProcessVec1DnNoUpdateHif8(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
+                                                 const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
+                                                 const LocalTensor<T> &expMaxTensor,
+                                                 const LocalTensor<uint8_t> &vselrIndexesBuf, const uint32_t m,
+                                                 const uint32_t n, const uint32_t originN, const T scale,
+                                                 float deScaleQK, float pScale, const T minValue, float keepProb,
+                                                 int64_t maskLine)
 {
     __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
     __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
@@ -3674,12 +3677,12 @@ ProcessVec1DnNoUpdateHif8(const LocalTensor<T2> &dstTensor, const LocalTensor<T>
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false>
-__aicore__ inline void
-ProcessVec1DnUpdateHif8(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
-                        const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
-                        const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
-                        const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
-                        float deScaleQK, float pScale, const T minValue, float keepProb, int64_t maskLine)
+__aicore__ inline void ProcessVec1DnUpdateHif8(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
+                                               const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
+                                               const LocalTensor<T> &expMaxTensor,
+                                               const LocalTensor<uint8_t> &vselrIndexesBuf, const uint32_t m,
+                                               const uint32_t n, const uint32_t originN, const T scale, float deScaleQK,
+                                               float pScale, const T minValue, float keepProb, int64_t maskLine)
 {
     __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
     __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
@@ -3698,24 +3701,23 @@ ProcessVec1DnUpdateHif8(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &
 
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 256,
           bool hasSink = false>
-__aicore__ inline void
-ProcessVec1VfDnHif8(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
-                    const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
-                    const LocalTensor<T> &expMaxTensor, TBuf<> *vselrIndexesBuf,
-                    const uint32_t m, const uint32_t n, const uint32_t originN,
-                    const T scale, float deScaleQK, float pScale, const T minValue, float keepProb,
-                    int64_t maskLine)
+__aicore__ inline void ProcessVec1VfDnHif8(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
+                                           const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
+                                           const LocalTensor<T> &expMaxTensor, TBuf<> *vselrIndexesBuf,
+                                           const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
+                                           float deScaleQK, float pScale, const T minValue, float keepProb,
+                                           int64_t maskLine)
 {
     LocalTensor<uint8_t> indexesTensor;
     indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
     if constexpr (!isUpdate) {
-        ProcessVec1DnNoUpdateHif8<T, T2, hasAtten, ubN, hasSink>(
-            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, m, n, originN, scale,
-            deScaleQK, pScale, minValue, keepProb, maskLine);
+        ProcessVec1DnNoUpdateHif8<T, T2, hasAtten, ubN, hasSink>(dstTensor, expSumTensor, maxTensor, srcTensor,
+                                                                 expMaxTensor, indexesTensor, m, n, originN, scale,
+                                                                 deScaleQK, pScale, minValue, keepProb, maskLine);
     } else {
-        ProcessVec1DnUpdateHif8<T, T2, hasAtten, ubN, hasSink>(
-            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, m, n, originN, scale,
-            deScaleQK, pScale, minValue, keepProb, maskLine);
+        ProcessVec1DnUpdateHif8<T, T2, hasAtten, ubN, hasSink>(dstTensor, expSumTensor, maxTensor, srcTensor,
+                                                               expMaxTensor, indexesTensor, m, n, originN, scale,
+                                                               deScaleQK, pScale, minValue, keepProb, maskLine);
     }
 }
 
