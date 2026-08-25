@@ -52,3 +52,11 @@ third_party/
 # pre-commit log
 log/
 oat_reports/
+
+# Local QKV M-RoPE MX design and ST generation artifacts
+/posembedding/qkv_rms_norm_rope_cache_with_k_scale/docs/design/
+/posembedding/qkv_rms_norm_rope_cache_with_k_scale/docs/review/
+/posembedding/qkv_rms_norm_rope_cache_with_k_scale/docs/srs_stc/
+/posembedding/qkv_rms_norm_rope_cache_with_k_scale/tests/st/design/
+/posembedding/qkv_rms_norm_rope_cache_with_k_scale/tests/st/07_因子值.csv
+/posembedding/qkv_rms_norm_rope_cache_with_k_scale/tests/st/generate_st_cases.py

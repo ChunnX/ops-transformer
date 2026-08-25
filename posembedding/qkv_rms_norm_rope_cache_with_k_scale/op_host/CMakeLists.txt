@@ -29,3 +29,19 @@ endif()
 if(NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources(OPTYPE qkv_rms_norm_rope_cache_with_k_scale ACLNNTYPE aclnn_exclude)
 endif()
+
+# CANN 9.1's composite loader derives this custom operator's first config
+# candidate from the logical OpType, before the custom opFile mapping is
+# available. Keep the generated *_apt.json as the single source and install it
+# under the logical-name compatibility alias as part of the same package.
+if(ENABLE_OPS_KERNEL AND NOT ENABLE_BUILT_IN)
+    foreach(compute_unit ${ASCEND_COMPUTE_UNIT})
+        if(compute_unit STREQUAL "ascend950")
+            install(
+                FILES ${ASCEND_BINARY_OUT_DIR}/${compute_unit}/bin/qkv_rms_norm_rope_cache_with_k_scale_apt.json
+                DESTINATION packages/vendors/${VENDOR_NAME}_transformer/op_impl/ai_core/tbe/kernel/config/${compute_unit}
+                RENAME qkv_rms_norm_rope_cache_with_k_scale.json
+            )
+        endif()
+    endforeach()
+endif()
