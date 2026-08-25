@@ -13,15 +13,16 @@ from typing import Optional
 import torch
 from torch.library import impl
 
-from cann_ops_transformer.op_builder.builder import AS_LIBRARY, OpBuilder
+from cann_ops_transformer.op_builder.builder import OpBuilder, get_as_library
 
 
 class TurboQuantSparseAttnSharedkvOpBuilder(OpBuilder):
     def __init__(self):
-        super().__init__("turbo_quant_sparse_attn_sharedkv")
+        # Match the distributed torch-extension layout used by the base tree.
+        super().__init__("turbo_quant_sparse_attn_sharedkv", category="attention")
 
     def sources(self):
-        return ["ops/csrc/turbo_quant_sparse_attn_sharedkv.cpp"]
+        return ["csrc/attention/turbo_quant_sparse_attn_sharedkv.cpp"]
 
     def schema(self):
         return (
@@ -40,7 +41,7 @@ class TurboQuantSparseAttnSharedkvOpBuilder(OpBuilder):
         )
 
     def register_meta(self):
-        @impl(AS_LIBRARY, self.name, "Meta")
+        @impl(get_as_library(), self.name, "Meta")
         def turbo_quant_sparse_attn_sharedkv_meta(
             q,
             *,
@@ -78,9 +79,10 @@ class TurboQuantSparseAttnSharedkvOpBuilder(OpBuilder):
 
 
 turbo_quant_sparse_attn_sharedkv_op_builder = TurboQuantSparseAttnSharedkvOpBuilder()
+turbo_quant_sparse_attn_sharedkv_op_builder._ensure_initialized()
 
 
-@impl(AS_LIBRARY, turbo_quant_sparse_attn_sharedkv_op_builder.name, "PrivateUse1")
+@impl(get_as_library(), turbo_quant_sparse_attn_sharedkv_op_builder.name, "PrivateUse1")
 def turbo_quant_sparse_attn_sharedkv(
     q: torch.Tensor,
     *,
