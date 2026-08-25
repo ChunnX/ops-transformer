@@ -243,8 +243,8 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const QfaTiling
              (dimIndex != 0)),
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
                 qfaInfo.opName, "key",
-                ("In PA BnBsND scenario, only 0th axis of key can be non-contiguous, the " +
-                 std::to_string(dimIndex) + "th axis of key must be contiguous")
+                ("In PA BnBsND scenario, only 0th axis of key can be non-contiguous, the " + std::to_string(dimIndex) +
+                 "th axis of key must be contiguous")
                     .c_str()),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
