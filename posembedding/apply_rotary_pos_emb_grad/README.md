@@ -19,8 +19,6 @@
 
     取旋转位置编码的正向计算中，broadcast的轴列表为`dims`，则计算公式可表达如下：
 
-    - <term>Ascend 950PR/Ascend 950DT</term>：
-
     （1）half模式：
     $$
     grad\_q_1, grad\_q_2 = chunk(grad\_query\_embed, chunks=2, dim=-1)
@@ -154,14 +152,14 @@
   </tr>
   <tr>
     <td>grad_cos</td>
-    <td>可选输出</td>
+    <td>输出</td>
     <td>正向计算输入cos的导数，仅当query和key非空时有效。</td>
     <td>BFLOAT16、FLOAT16、FLOAT32</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>grad_sin</td>
-    <td>可选输出</td>
+    <td>输出</td>
     <td>正向计算输入sin的导数，仅当query和key非空时有效。</td>
     <td>BFLOAT16、FLOAT16、FLOAT32</td>
     <td>ND</td>
