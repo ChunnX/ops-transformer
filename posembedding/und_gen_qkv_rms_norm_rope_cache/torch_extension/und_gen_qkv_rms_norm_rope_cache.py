@@ -7,6 +7,8 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+from typing import Optional, Tuple
+
 import torch
 import torch_npu
 from torch.library import impl
@@ -28,8 +30,11 @@ class UndGenQkvRmsNormRopeCacheOpBuilder(OpBuilder):
             # 否则 functionalization / torch.compile 会把这个原地写当成无副作用而丢掉 cache 更新
             "und_gen_qkv_rms_norm_rope_cache(Tensor und_qkv, Tensor und_weights_q, Tensor und_weights_k, "
             "Tensor cos_sin_cache, Tensor(a!) k_cache, Tensor(b!) v_cache, Tensor slot_mapping, Tensor positions, "
-            "Tensor? gen_qkv, Tensor? gen_weights_q, Tensor? gen_weights_k, Tensor? cat_indices, "
-            "int num_heads_q, int num_heads_k, int num_heads_v, float norm_eps, int[] mrope_section) -> Tensor"
+            # 默认值必须写在 schema 里：顶层 cann_ops_transformer.<op> 拿到的是 torch.ops
+            # 句柄而非本文件的 wrapper，wrapper 的 def 默认值在那条路径上不生效
+            "Tensor? gen_qkv=None, Tensor? gen_weights_q=None, Tensor? gen_weights_k=None, "
+            "Tensor? cat_indices=None, int num_heads_q=8, int num_heads_k=1, int num_heads_v=1, "
+            "float norm_eps=1e-6, int[] mrope_section=[]) -> Tensor"
         ]
 
     def register_meta(self):
@@ -66,23 +71,23 @@ und_gen_qkv_rms_norm_rope_cache_op_builder._ensure_initialized()
 
 @impl(get_as_library(), "und_gen_qkv_rms_norm_rope_cache", "PrivateUse1")
 def und_gen_qkv_rms_norm_rope_cache(
-    und_qkv,
-    und_weights_q,
-    und_weights_k,
-    cos_sin_cache,
-    k_cache,
-    v_cache,
-    slot_mapping,
-    positions,
-    gen_qkv=None,
-    gen_weights_q=None,
-    gen_weights_k=None,
-    cat_indices=None,
-    num_heads_q=8,
-    num_heads_k=1,
-    num_heads_v=1,
-    norm_eps=1e-6,
-    mrope_section=(),
+    und_qkv: torch.Tensor,
+    und_weights_q: torch.Tensor,
+    und_weights_k: torch.Tensor,
+    cos_sin_cache: torch.Tensor,
+    k_cache: torch.Tensor,
+    v_cache: torch.Tensor,
+    slot_mapping: torch.Tensor,
+    positions: torch.Tensor,
+    gen_qkv: Optional[torch.Tensor] = None,
+    gen_weights_q: Optional[torch.Tensor] = None,
+    gen_weights_k: Optional[torch.Tensor] = None,
+    cat_indices: Optional[torch.Tensor] = None,
+    num_heads_q: int = 8,
+    num_heads_k: int = 1,
+    num_heads_v: int = 1,
+    norm_eps: float = 1e-6,
+    mrope_section: Tuple[int, ...] = (),
 ):
     """und/gen QKV 融合 RMSNorm + MRoPE，并把 K/V 写入分页 KV Cache（k_cache/v_cache 原地更新）。"""
     op_module = und_gen_qkv_rms_norm_rope_cache_op_builder.load()
