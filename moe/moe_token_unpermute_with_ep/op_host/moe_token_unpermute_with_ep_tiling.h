@@ -31,6 +31,7 @@ constexpr int64_t ALIGN_512 = 512;
 constexpr int64_t ALIGN_256 = 256;
 constexpr int64_t QUE_NUM = 2;
 constexpr int64_t CAST_NUM = 2;
+constexpr int64_t STABLE_REDUCTION_BUFFER_NUM = 4;
 constexpr int64_t TILINGKEY_FLOAT = 1;
 constexpr int64_t TILINGKEY_FLOAT16 = 2;
 constexpr int64_t TILINGKEY_BF16 = 3;

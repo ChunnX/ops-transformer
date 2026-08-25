@@ -71,7 +71,8 @@ static inline bool isFloatDtype(const int64_t inputDtypeSize)
 static inline int64_t ComputeUnitHSpace(const int64_t inputDtypeSize, const int64_t bufferNum)
 {
     int64_t castNum = isFloatDtype(inputDtypeSize) ? 0 : CAST_NUM;
-    return inputDtypeSize * (QUE_NUM + bufferNum - 1) + FLOAT_DATA_SIZE * castNum;
+    return inputDtypeSize * (QUE_NUM + bufferNum - 1) +
+           FLOAT_DATA_SIZE * (castNum + STABLE_REDUCTION_BUFFER_NUM);
 }
 
 static inline int64_t ComputeMaxHiddenSize(MoeTokenUnpermuteWithEpParam &param, int64_t bufferNum)

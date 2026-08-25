@@ -36,9 +36,11 @@ protected:
     __aicore__ inline void CalSingleOutToken(const int64_t start_token, const int64_t out_token_idx);
     __aicore__ inline void CalPartOutToken(
         const int64_t start_token, const int64_t h_index, const int64_t h_length, const int64_t out_token_index);
+    __aicore__ inline void AccumulateOneToken(const int64_t token_index, const int64_t h_index,
+                                              const int64_t h_length, const LocalTensor<float> accumulator);
     __aicore__ inline void CopyTokenIn(const T2 in_token_index, const int64_t h_index, const int64_t h_length);
-    __aicore__ inline void CalFirstToken(const float prob_value, const int64_t h_length);
-    __aicore__ inline void CalToken(const float prob_value, const int64_t h_length);
+    __aicore__ inline void CalToken(
+        const float prob_value, const int64_t h_length, const LocalTensor<float> accumulator);
     __aicore__ inline void CopyOut(const int64_t out_token_index, const int64_t h_index, const int64_t h_length);
     __aicore__ inline void CalPartOutProb(
         const int64_t start_token, const int64_t h_index, const int64_t h_length, const int64_t out_token_index);
@@ -52,6 +54,10 @@ protected:
     TBuf<TPosition::VECCALC> temp_buffer0;
     TBuf<TPosition::VECCALC> temp_buffer1;
     TBuf<TPosition::VECCALC> temp_buffer2;
+    TBuf<TPosition::VECCALC> reduction_buffer1;
+    TBuf<TPosition::VECCALC> reduction_buffer2;
+    TBuf<TPosition::VECCALC> reduction_buffer3;
+    TBuf<TPosition::VECCALC> reduction_partial_buffer;
     TQue<QuePosition::VECOUT, 1> outque;
     TQueBind<TPosition::VECIN, TPosition::VECOUT, 1> probs_inoutque;
     GlobalTensor<T1> tokensGM;
@@ -62,6 +68,10 @@ protected:
     LocalTensor<float> token_tensor0;
     LocalTensor<float> token_tensor1;
     LocalTensor<float> probs_tensor;
+    LocalTensor<float> reduction_tensor1;
+    LocalTensor<float> reduction_tensor2;
+    LocalTensor<float> reduction_tensor3;
+    LocalTensor<float> reduction_partial_tensor;
     DataCopyPadExtParams<T1> extParams1{false, 0, 0, 0};
     DataCopyPadExtParams<T2> extParams2{false, 0, 0, 0};
     DataCopyPadExtParams<T3> extParams3{false, 0, 0, 0};
@@ -78,6 +88,8 @@ protected:
 
     constexpr static uint32_t BLOCK_SIZE = 32;
     constexpr static uint32_t ALIGN_512 = 512;
+    constexpr static int64_t REDUCTION_LANES = 4;
+    constexpr static int64_t REDUCTION_CHUNK = 16;
     constexpr static int64_t MAX_SORTED_INDEX = 2134372523;
 
     int64_t hidden_size;
@@ -181,6 +193,14 @@ __aicore__ inline void KernelMoeTokenUnpermuteWithEp<T1, T2, T3, PROBS, ISTOKEN>
         this->token_tensor0 = this->temp_buffer0.template Get<float>();
         this->token_tensor1 = this->temp_buffer1.template Get<float>();
     }
+    this->pipe->InitBuffer(reduction_buffer1, hidden_splited_length_align512 * sizeof(float));
+    this->pipe->InitBuffer(reduction_buffer2, hidden_splited_length_align512 * sizeof(float));
+    this->pipe->InitBuffer(reduction_buffer3, hidden_splited_length_align512 * sizeof(float));
+    this->pipe->InitBuffer(reduction_partial_buffer, hidden_splited_length_align512 * sizeof(float));
+    this->reduction_tensor1 = this->reduction_buffer1.template Get<float>();
+    this->reduction_tensor2 = this->reduction_buffer2.template Get<float>();
+    this->reduction_tensor3 = this->reduction_buffer3.template Get<float>();
+    this->reduction_partial_tensor = this->reduction_partial_buffer.template Get<float>();
 
     if constexpr (PROBS) {
         this->probsGM.SetGlobalBuffer((__gm__ T3*)probs + block_offset, block_length);
@@ -291,60 +311,79 @@ __aicore__ inline void KernelMoeTokenUnpermuteWithEp<T1, T2, T3, PROBS, ISTOKEN>
     if constexpr (IsSameType<T1, float>::value) {
         this->token_tensor0 = this->outque.template AllocTensor<T1>();
     }
-    int64_t end_token = start_token + this->top_k;
-    bool needCopyIn = false;
-    float prob_value = 0;
+    const int64_t grouped_token_count = (this->top_k / REDUCTION_LANES) * REDUCTION_LANES;
+    const int64_t group_count = grouped_token_count / REDUCTION_LANES;
 
+    // Four interleaved lanes with 16-value partials keep the fp32 reduction stable for TopK up to 512.
+    for (int64_t lane = 0; lane < REDUCTION_LANES; ++lane) {
+        LocalTensor<float> accumulator = this->token_tensor0;
+        if (lane == 1) {
+            accumulator = this->reduction_tensor1;
+        } else if (lane == 2) {
+            accumulator = this->reduction_tensor2;
+        } else if (lane == 3) {
+            accumulator = this->reduction_tensor3;
+        }
+        Duplicate(accumulator, static_cast<float>(0), h_length);
+        Duplicate(this->reduction_partial_tensor, static_cast<float>(0), h_length);
+        PipeBarrier<PIPE_V>();
+
+        for (int64_t group = 0; group < group_count; ++group) {
+            const int64_t token_index = start_token + group * REDUCTION_LANES + lane;
+            AccumulateOneToken(token_index, h_index, h_length, accumulator);
+            if ((group + 1) % REDUCTION_CHUNK == 0) {
+                PipeBarrier<PIPE_V>();
+                Add(this->reduction_partial_tensor, this->reduction_partial_tensor, accumulator, h_length);
+                PipeBarrier<PIPE_V>();
+                Duplicate(accumulator, static_cast<float>(0), h_length);
+                PipeBarrier<PIPE_V>();
+            }
+        }
+        Add(accumulator, accumulator, this->reduction_partial_tensor, h_length);
+        PipeBarrier<PIPE_V>();
+    }
+
+    // row_sum-style tail: add the remaining one to three values to lane 0 before combining all lanes.
+    for (int64_t relative_index = grouped_token_count; relative_index < this->top_k; ++relative_index) {
+        AccumulateOneToken(start_token + relative_index, h_index, h_length, this->token_tensor0);
+    }
+    PipeBarrier<PIPE_V>();
+    Add(this->token_tensor0, this->token_tensor0, this->reduction_tensor1, h_length);
+    PipeBarrier<PIPE_V>();
+    Add(this->token_tensor0, this->token_tensor0, this->reduction_tensor2, h_length);
+    PipeBarrier<PIPE_V>();
+    Add(this->token_tensor0, this->token_tensor0, this->reduction_tensor3, h_length);
+    PipeBarrier<PIPE_V>();
+
+    CopyOut(out_token_index, h_index, h_length);
+}
+
+template <typename T1, typename T2, typename T3, bool PROBS, bool ISTOKEN>
+__aicore__ inline void KernelMoeTokenUnpermuteWithEp<T1, T2, T3, PROBS, ISTOKEN>::AccumulateOneToken(
+    const int64_t token_index, const int64_t h_index, const int64_t h_length,
+    const LocalTensor<float> accumulator)
+{
     SetFlag<HardEvent::MTE2_S>(probsMte2ToS);
     WaitFlag<HardEvent::MTE2_S>(probsMte2ToS);
     SetFlag<HardEvent::V_S>(probsVToS);
     WaitFlag<HardEvent::V_S>(probsVToS);
-    T2 acl_token_idx = this->indicesLocal.GetValue(start_token);
+    const T2 acl_token_idx = this->indicesLocal.GetValue(token_index);
     SetFlag<HardEvent::S_MTE2>(probsSToMte2);
     WaitFlag<HardEvent::S_MTE2>(probsSToMte2);
     SetFlag<HardEvent::S_V>(probsSToV);
     WaitFlag<HardEvent::S_V>(probsSToV);
 
+    float prob_value = 0;
+    bool need_copy_in = acl_token_idx >= this->start && acl_token_idx < this->end;
     if constexpr (PROBS) {
-        prob_value = this->probs_tensor.GetValue(start_token);
-        needCopyIn = acl_token_idx >= this->start && acl_token_idx < this->end && prob_value != 0;
-    } else {
-        needCopyIn = acl_token_idx >= this->start && acl_token_idx < this->end;
+        prob_value = this->probs_tensor.GetValue(token_index);
+        need_copy_in = need_copy_in && prob_value != 0;
     }
-    // 处理第一个Token数据
-    if (needCopyIn) {
+    if (need_copy_in) {
         CopyTokenIn(acl_token_idx, h_index, h_length);
         PipeBarrier<PIPE_V>();
-        CalFirstToken(prob_value, h_length);
-    } else {
-        PipeBarrier<PIPE_V>();
-        Duplicate(this->token_tensor0, static_cast<float>(0), h_length);
+        CalToken(prob_value, h_length, accumulator);
     }
-    // 处理剩余的Token数据
-    for (int64_t token_index = start_token + 1; token_index < end_token; ++token_index) {
-        SetFlag<HardEvent::MTE2_S>(probsMte2ToS);
-        WaitFlag<HardEvent::MTE2_S>(probsMte2ToS);
-        SetFlag<HardEvent::V_S>(probsVToS);
-        WaitFlag<HardEvent::V_S>(probsVToS);
-        acl_token_idx = this->indicesLocal.GetValue(token_index);
-        SetFlag<HardEvent::S_MTE2>(probsSToMte2);
-        WaitFlag<HardEvent::S_MTE2>(probsSToMte2);
-        SetFlag<HardEvent::S_V>(probsSToV);
-        WaitFlag<HardEvent::S_V>(probsSToV);
-        if constexpr (PROBS) {
-            prob_value = this->probs_tensor.GetValue(token_index);
-            needCopyIn = acl_token_idx >= this->start && acl_token_idx < this->end && prob_value != 0;
-        } else {
-            needCopyIn = acl_token_idx >= this->start && acl_token_idx < this->end;
-        }
-        if (needCopyIn) {
-            CopyTokenIn(acl_token_idx, h_index, h_length);
-            PipeBarrier<PIPE_V>();
-            CalToken(prob_value, h_length);
-        }
-    }
-    // 输出计算结果
-    CopyOut(out_token_index, h_index, h_length);
 }
 
 template <typename T1, typename T2, typename T3, bool PROBS, bool ISTOKEN>
@@ -365,29 +404,8 @@ __aicore__ inline void KernelMoeTokenUnpermuteWithEp<T1, T2, T3, PROBS, ISTOKEN>
 }
 
 template <typename T1, typename T2, typename T3, bool PROBS, bool ISTOKEN>
-__aicore__ inline void KernelMoeTokenUnpermuteWithEp<T1, T2, T3, PROBS, ISTOKEN>::CalFirstToken(
-    const float prob_value, const int64_t h_length)
-{
-    LocalTensor<T1> tokensLocal = this->tokens_inque.template DeQue<T1>();
-
-    if constexpr (!IsSameType<T1, float>::value) {
-        Cast(this->token_tensor0, tokensLocal, RoundMode::CAST_NONE, h_length);
-    } else {
-        uint64_t byteAlign32 = (h_length * sizeof(float) + BLOCK_SIZE - 1) & ~(BLOCK_SIZE - 1);
-        DataCopy(this->token_tensor0, tokensLocal, byteAlign32 / sizeof(float));
-    }
-
-    this->tokens_inque.FreeTensor(tokensLocal);
-
-    if constexpr (PROBS) {
-        PipeBarrier<PIPE_V>();
-        Muls(this->token_tensor0, this->token_tensor0, prob_value, h_length);
-    }
-}
-
-template <typename T1, typename T2, typename T3, bool PROBS, bool ISTOKEN>
 __aicore__ inline void KernelMoeTokenUnpermuteWithEp<T1, T2, T3, PROBS, ISTOKEN>::CalToken(
-    const float prob_value, const int64_t h_length)
+    const float prob_value, const int64_t h_length, const LocalTensor<float> accumulator)
 {
     LocalTensor<T1> tokensLocal = this->tokens_inque.template DeQue<T1>();
 
@@ -399,13 +417,13 @@ __aicore__ inline void KernelMoeTokenUnpermuteWithEp<T1, T2, T3, PROBS, ISTOKEN>
             Muls(this->token_tensor1, this->token_tensor1, prob_value, h_length);
         }
         PipeBarrier<PIPE_V>();
-        Add(this->token_tensor0, this->token_tensor0, this->token_tensor1, h_length);
+        Add(accumulator, accumulator, this->token_tensor1, h_length);
     } else {
         if constexpr (PROBS) {
             Muls(tokensLocal, tokensLocal, prob_value, h_length);
             PipeBarrier<PIPE_V>();
         }
-        Add(this->token_tensor0, this->token_tensor0, tokensLocal, h_length);
+        Add(accumulator, accumulator, tokensLocal, h_length);
         this->tokens_inque.FreeTensor(tokensLocal);
     }
 }
