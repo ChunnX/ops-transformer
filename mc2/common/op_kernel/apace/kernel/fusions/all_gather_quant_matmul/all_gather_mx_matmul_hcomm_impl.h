@@ -62,9 +62,8 @@ template <AscendC::HcclServerType ServerType>
 struct HcommCommState {
     AscendC::Hccl<ServerType> hccl_;
     AscendC::HcclHandle scaleHandle_{0};
-    static constexpr uint32_t MAX_TILE_CNT = 64;
-    AscendC::HcclHandle dataHeadHandles_[MAX_TILE_CNT]{};
-    AscendC::HcclHandle dataTailHandles_[MAX_TILE_CNT]{};
+    AscendC::HcclHandle dataHeadHandle_{0};
+    AscendC::HcclHandle dataTailHandle_{0};
     uint32_t tileCnt_{0};
 };
 
@@ -82,12 +81,12 @@ struct HcommCommWaitPolicy {
         if (tileIdx == 1) {
             state_->hccl_.Wait(state_->scaleHandle_);
         }
-        // dependTileIdx=1..tileCnt (MAIN): 等 data head（per-tile handle）
+        // dependTileIdx=1..tileCnt (MAIN): 等 data head（repeat=tileCnt，每次 Wait 消费一轮）
         if (tileIdx <= state_->tileCnt_) {
-            state_->hccl_.Wait(state_->dataHeadHandles_[tileIdx - 1]);
+            state_->hccl_.Wait(state_->dataHeadHandle_);
         } else {
             // dependTileIdx>tileCnt (TAIL): 等 data tail
-            state_->hccl_.Wait(state_->dataTailHandles_[tileIdx - state_->tileCnt_ - 1]);
+            state_->hccl_.Wait(state_->dataTailHandle_);
         }
     }
 };
@@ -210,6 +209,12 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
     } else {
         gatherDataAddr_ = workspaceGM_ + scaleRegionBytes_;
     }
+    AscendC::PRINTF("[Init] rank=%u, block=%u, gatherLen=%llu, gatherOut=0x%llx, workspaceGM=0x%llx, "
+                    "gatherScaleAddr=0x%llx, gatherDataAddr=0x%llx, scaleRegionBytes=%llu, dataRegionBytes=%llu\n",
+                    rankId_, AscendC::GetBlockIdx(),
+                    static_cast<uint64_t>(tilingData_->gatherLen),
+                    gatherOut, workspaceGM_, gatherScaleAddr_, gatherDataAddr_,
+                    scaleRegionBytes_, dataRegionBytes_);
 
     // Submit AllGather (non-blocking <true>)
     CommitAllGather();
@@ -225,30 +230,22 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
     // Scale: 全量一次性提交（repeat=1）
     commState_.scaleHandle_ =
         commState_.hccl_.template AllGather<true>(aScaleGM_, gatherScaleAddr_, static_cast<uint64_t>(m_) * scaleKLen_,
-                                                   static_cast<AscendC::HcclDataType>(scaleDataType_),
-                                                   static_cast<uint64_t>(m_) * scaleKLen_, static_cast<uint8_t>(1));
+                                                  static_cast<AscendC::HcclDataType>(scaleDataType_),
+                                                  static_cast<uint64_t>(m_) * scaleKLen_, static_cast<uint8_t>(1));
 
-    // Data Head: per-tile 独立提交（repeat=1），对齐主线 master 的 handle 管理
-    const uint64_t tileDataElems = static_cast<uint64_t>(tileM_) * kForComm_;
-    const uint64_t strideElems = static_cast<uint64_t>(m_) * kForComm_;
-    for (uint32_t i = 0; i < tileCnt_; ++i) {
-        commState_.dataHeadHandles_[i] = commState_.hccl_.template AllGather<true>(
-            aGM_ + i * tileM_ * k_ * sizeof(AType),
-            gatherDataAddr_ + i * tileM_ * k_ * sizeof(AType),
-            tileDataElems, static_cast<AscendC::HcclDataType>(dataDataType_),
-            strideElems, static_cast<uint8_t>(1));
-    }
+    // Data Head: 批量提交所有 head tile（repeat=tileCnt）
+    // count/stride 用 kForComm_（FP4 时 CeilDiv(K,2) 减半），地址偏移用 k_*sizeof(AType)（FP4 打包后字节数）
+    commState_.dataHeadHandle_ = commState_.hccl_.template AllGather<true>(
+        aGM_, gatherDataAddr_, static_cast<uint64_t>(tileM_) * kForComm_,
+        static_cast<AscendC::HcclDataType>(dataDataType_), static_cast<uint64_t>(m_) * kForComm_,
+        static_cast<uint8_t>(tileCnt_));
 
-    // Data Tail: per-tile 独立提交（repeat=1）
+    // Data Tail: 批量提交所有 tail tile（repeat=tailCnt）
     if (tailCnt_ > 0) {
-        const uint64_t tailDataElems = static_cast<uint64_t>(tailM_) * kForComm_;
-        for (uint32_t i = 0; i < tailCnt_; ++i) {
-            commState_.dataTailHandles_[i] = commState_.hccl_.template AllGather<true>(
-                aGM_ + (headRows_ + i * tailM_) * k_ * sizeof(AType),
-                gatherDataAddr_ + (headRows_ + i * tailM_) * k_ * sizeof(AType),
-                tailDataElems, static_cast<AscendC::HcclDataType>(dataDataType_),
-                strideElems, static_cast<uint8_t>(1));
-        }
+        commState_.dataTailHandle_ = commState_.hccl_.template AllGather<true>(
+            aGM_ + headRows_ * k_ * sizeof(AType), gatherDataAddr_ + headRows_ * k_ * sizeof(AType),
+            static_cast<uint64_t>(tailM_) * kForComm_, static_cast<AscendC::HcclDataType>(dataDataType_),
+            static_cast<uint64_t>(m_) * kForComm_, static_cast<uint8_t>(tailCnt_));
     }
 }
 
