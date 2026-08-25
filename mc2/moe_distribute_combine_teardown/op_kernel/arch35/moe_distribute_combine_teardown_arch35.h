@@ -25,10 +25,10 @@
 #include "adv_api/hcomm/hcomm.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "../moe_distribute_combine_teardown_tiling_data.h"
-#if __has_include("../../moe_distribute_combine_setup/moe_distribute_base.h")
-#include "../../moe_distribute_combine_setup/moe_distribute_base.h"
+#if __has_include("../../moe_distribute_combine_setup/moe_distribute_combine_setup_base.h")
+#include "../../moe_distribute_combine_setup/moe_distribute_combine_setup_base.h"
 #else
-#include "../../../moe_distribute_combine_setup/op_kernel/moe_distribute_base.h"
+#include "../../../moe_distribute_combine_setup/op_kernel/moe_distribute_combine_setup_base.h"
 #endif
 #include "../../../common/op_kernel/mc2_moe_context.h"
 

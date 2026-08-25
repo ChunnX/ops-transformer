@@ -29,7 +29,7 @@
 #include "../../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 
-#include "../moe_distribute_base.h"
+#include "../moe_distribute_combine_setup_base.h"
 #include "../moe_distribute_combine_setup_tiling_data.h"
 #include "../../../common/op_kernel/mc2_moe_context.h"
 
