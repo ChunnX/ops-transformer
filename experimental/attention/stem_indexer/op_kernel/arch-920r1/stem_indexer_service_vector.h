@@ -54,14 +54,13 @@ protected:
     GlobalTensor<int32_t> sparseIndicesGm;
     GlobalTensor<int32_t> sparseSeqLenGm;
     GlobalTensor<uint16_t> scoreWorkspaceGm;
+    event_t vec1VMte2Event_[SICommon::MM1_RES_BUFFER_NUM];
+    event_t vec1Mte2VEvent_[SICommon::MM1_RES_BUFFER_NUM];
+    event_t topkMte3Mte2Event_;
+    event_t topkVMte3Event_;
+    event_t topkMte3VEvent_;
+
     // =================================常量区=================================
-    static constexpr uint32_t VEC1_V_MTE2_EVENT = EVENT_ID0;
-    static constexpr uint32_t VEC1_MTE2_V_EVENT = EVENT_ID1;
-
-    static constexpr uint32_t TOPK_MTE3_MTE2_EVENT = EVENT_ID5;
-    static constexpr uint32_t TOPK_V_MTE3_EVENT = EVENT_ID6;
-    static constexpr uint32_t TOPK_MTE3_V_EVENT = EVENT_ID7;
-
     static constexpr uint32_t MAX_TOPK_COUNT = 256;
     static constexpr uint32_t TOPK_ALIGN_SIZE = 256;
     static constexpr uint32_t TOPK_ROW_BATCH = 4;
@@ -287,17 +286,29 @@ __aicore__ inline void SIVector<SIT>::InitVecInputTensor(GlobalTensor<float> vBi
 template <typename SIT>
 __aicore__ inline void SIVector<SIT>::AllocEventID()
 {
-    SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + 0);
-    SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + 1);
-    SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
+    for (uint32_t slot = 0U; slot < SICommon::MM1_RES_BUFFER_NUM; slot++) {
+        vec1VMte2Event_[slot] = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>());
+        vec1Mte2VEvent_[slot] = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
+        SetFlag<HardEvent::V_MTE2>(vec1VMte2Event_[slot]);
+    }
+    topkMte3Mte2Event_ = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>());
+    topkVMte3Event_ = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>());
+    topkMte3VEvent_ = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>());
+    SetFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
 }
 
 template <typename SIT>
 __aicore__ inline void SIVector<SIT>::FreeEventID()
 {
-    WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + 0);
-    WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + 1);
-    WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
+    for (uint32_t slot = 0U; slot < SICommon::MM1_RES_BUFFER_NUM; slot++) {
+        WaitFlag<HardEvent::V_MTE2>(vec1VMte2Event_[slot]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(vec1VMte2Event_[slot]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(vec1Mte2VEvent_[slot]);
+    }
+    WaitFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_MTE2>(topkMte3Mte2Event_);
+    GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(topkVMte3Event_);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(topkMte3VEvent_);
 }
 
 template <typename SIT>
@@ -337,7 +348,7 @@ __aicore__ inline void SIVector<SIT>::ProcessVec1(const SICommon::RunInfo &info)
     auto pingpong = info.loop & 1U;
     int64_t gS1BasePerVecSize_ = info.actMBaseSize;
     int64_t curS2Idx = info.s2Idx * s2BaseSize_;
-    WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + pingpong);
+    WaitFlag<HardEvent::V_MTE2>(vec1VMte2Event_[pingpong]);
     // vBiasGm --> vBiasLocal_ 搬运vBias
     uint64_t vBiasGmOffset = info.tensorVBiasOffset + curS2Idx;
     DataCopyPadExtParams<float> padVBiasParams{false, 0, 0, 0};
@@ -348,8 +359,8 @@ __aicore__ inline void SIVector<SIT>::ProcessVec1(const SICommon::RunInfo &info)
     vBiasDataCopyExtParams.dstStride = 0;
     DataCopyPad(vBiasLocal_[pingpong * s2BaseSize_], vBiasGm[vBiasGmOffset], vBiasDataCopyExtParams, padVBiasParams);
 
-    SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + pingpong);
-    WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + pingpong);
+    SetFlag<HardEvent::MTE2_V>(vec1Mte2VEvent_[pingpong]);
+    WaitFlag<HardEvent::MTE2_V>(vec1Mte2VEvent_[pingpong]);
 
     // CV同步：V核等待C核完成mm1并将结果搬运到UB。
     CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_CV_EVENT + pingpong);
@@ -363,7 +374,7 @@ __aicore__ inline void SIVector<SIT>::ProcessVec1(const SICommon::RunInfo &info)
                                      s2BaseSize_);
     PipeBarrier<PIPE_V>();
 
-    SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + pingpong);
+    SetFlag<HardEvent::V_MTE2>(vec1VMte2Event_[pingpong]);
 }
 
 template <typename SIT>
@@ -375,25 +386,25 @@ __aicore__ inline void SIVector<SIT>::StoreScoreToWorkspace(const SICommon::RunI
     uint64_t scoreGmOffset = static_cast<uint64_t>(info.s2Idx) * M_BASIC_BLOCK * S2_BASIC_BLOCK;
 
     // The VC slot cannot be returned until MTE3 has consumed the in-place uint16 score.
-    WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
+    WaitFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
     // initial blocks are emitted as a fixed prefix and must not participate in TopK again. Mask them in the
     // source score tile so every later GM reload/merge observes the same exclusion invariant.
     if (info.s2Idx == 0U && initialBlocks_ > 0U) {
         TopkUtils::PadMrgRowsInitBlockVF(scoreLocal, S2_BASIC_BLOCK, info.actMBaseSize, 0U, initialBlocks_);
         PipeBarrier<PIPE_V>();
     }
-    SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-    WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+    SetFlag<HardEvent::V_MTE3>(topkVMte3Event_);
+    WaitFlag<HardEvent::V_MTE3>(topkVMte3Event_);
     DataCopy(scoreWorkspaceGm[scoreGmOffset], scoreLocal, info.actMBaseSize * S2_BASIC_BLOCK);
     // The final score tile is consumed through MTE2 immediately after this store. MTE3->V only protects the
     // source UB and does not order the independent MTE2 pipeline, so establish the GM write/read dependency
     // directly. Intermediate stores are not reloaded until the final tile and must not occupy the event slot.
     if (info.isLastS2InnerLoop) {
-        SetFlag<HardEvent::MTE3_MTE2>(TOPK_MTE3_MTE2_EVENT);
+        SetFlag<HardEvent::MTE3_MTE2>(topkMte3Mte2Event_);
     }
-    SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-    WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-    SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
+    SetFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
+    WaitFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
+    SetFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
 }
 
 template <typename SIT>
@@ -412,7 +423,7 @@ __aicore__ inline void SIVector<SIT>::IssueLoadScorePair(const SICommon::RowIdx4
     uint32_t mergeOffset = mergeSlotIdx == 0U ? SCORE_GM_MERGE0_OFFSET_BYTES : SCORE_GM_MERGE1_OFFSET_BYTES;
     LocalTensor<uint16_t> mergeLocal = fastBuf[mergeOffset / sizeof(uint16_t)];
 
-    WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + mergeSlotIdx);
+    WaitFlag<HardEvent::V_MTE2>(vec1VMte2Event_[mergeSlotIdx]);
     uint32_t tile0Idx = pairIdx * 2U;
     for (uint32_t lane = 0U; lane < TOPK_ROW_BATCH; lane++) {
         uint32_t row = SICommon::GetLane(rowIdx4, lane);
@@ -425,7 +436,7 @@ __aicore__ inline void SIVector<SIT>::IssueLoadScorePair(const SICommon::RowIdx4
             DataCopy(mergeLocal[dstOffset + S2_BASIC_BLOCK], scoreWorkspaceGm[tile1Offset], S2_BASIC_BLOCK);
         }
     }
-    SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + mergeSlotIdx);
+    SetFlag<HardEvent::MTE2_V>(vec1Mte2VEvent_[mergeSlotIdx]);
 }
 
 template <typename SIT>
@@ -474,11 +485,11 @@ __aicore__ inline void SIVector<SIT>::WriteDirectIndices(uint32_t outputLen, uin
                                                          LocalTensor<uint32_t> &lengthLocal)
 {
     outputLen = Min(outputLen, PACKED_ROW_STRIDE);
-    WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
+    WaitFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
     Duplicate(lengthLocal, outputLen, 1);
     CreateVecIndex(indicesOutLocal.ReinterpretCast<int32_t>(), 0, outputLen);
-    SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-    WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+    SetFlag<HardEvent::V_MTE3>(topkVMte3Event_);
+    WaitFlag<HardEvent::V_MTE3>(topkVMte3Event_);
 
     AscendC::DataCopyParams indiceLenCp;
     indiceLenCp.blockCount = 1;
@@ -501,7 +512,7 @@ __aicore__ inline void SIVector<SIT>::WriteDirectIndices(uint32_t outputLen, uin
             sparseIndicesGm[baseOutOffset + static_cast<uint64_t>(gIdx) * constInfo_.qSeqSize * constInfo_.kSeqSize],
             indicesOutLocal.ReinterpretCast<int32_t>(), copyOut);
     }
-    SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
+    SetFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
 }
 
 template <typename SIT>
@@ -532,9 +543,9 @@ __aicore__ inline void SIVector<SIT>::CopyOutBatchRows(const SICommon::RunInfo &
     }
     PipeBarrier<PIPE_V>();
     // Packing uses the alternate slot while the previous batch is still in MTE3; serialize only before issuing MTE3.
-    WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-    SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-    WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+    WaitFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
+    SetFlag<HardEvent::V_MTE3>(topkVMte3Event_);
+    WaitFlag<HardEvent::V_MTE3>(topkVMte3Event_);
 
     for (uint32_t lane = 0U; lane < batchRowNum; lane++) {
         uint32_t mInnerIdx = SICommon::GetLane(rowIdx4, lane);
@@ -562,7 +573,7 @@ __aicore__ inline void SIVector<SIT>::CopyOutBatchRows(const SICommon::RunInfo &
         DataCopyPad(sparseSeqLenGm[info.indiceLenOffset + physicalRow],
                     globalIndexLocal_[mInnerIdx * MAX_TOPK_COUNT].ReinterpretCast<int32_t>(), lengthParams);
     }
-    SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
+    SetFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
 }
 
 template <typename SIT>
@@ -654,9 +665,9 @@ __aicore__ inline void SIVector<SIT>::CopyOutScoreGmBatchRows(
     }
     PipeBarrier<PIPE_V>();
 
-    WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-    SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-    WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+    WaitFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
+    SetFlag<HardEvent::V_MTE3>(topkVMte3Event_);
+    WaitFlag<HardEvent::V_MTE3>(topkVMte3Event_);
     for (uint32_t lane = 0U; lane < batchRowNum; lane++) {
         uint32_t mInnerIdx = SICommon::GetLane(rowIdx4, lane);
         uint64_t globalGS1Idx = static_cast<uint64_t>(curGS1Idx) + mInnerIdx;
@@ -675,7 +686,7 @@ __aicore__ inline void SIVector<SIT>::CopyOutScoreGmBatchRows(
         DataCopyPad(sparseSeqLenGm[info.indiceLenOffset + physicalRow],
                     lengthLocal[lane * SCORE_GM_LENGTH_ROW_STRIDE].ReinterpretCast<int32_t>(), lengthParams);
     }
-    SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
+    SetFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
 }
 
 template <typename SIT>
@@ -697,9 +708,9 @@ __aicore__ inline void SIVector<SIT>::CopyOutScoreGmDirectRow(const SICommon::Ru
     uint32_t globalS1Idx = static_cast<uint32_t>(globalGS1Idx % info.actS1Size);
     uint64_t physicalRow = static_cast<uint64_t>(globalGIdx) * constInfo_.qSeqSize + globalS1Idx;
 
-    WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-    SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-    WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+    WaitFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
+    SetFlag<HardEvent::V_MTE3>(topkVMte3Event_);
+    WaitFlag<HardEvent::V_MTE3>(topkVMte3Event_);
     if (outputLen > 0U) {
         AscendC::DataCopyParams outputParams{1U, static_cast<uint16_t>(outputLen * sizeof(int32_t)), 0U, 0U};
         DataCopyPad(sparseIndicesGm[info.indiceOutOffset + physicalRow * constInfo_.kSeqSize],
@@ -708,7 +719,7 @@ __aicore__ inline void SIVector<SIT>::CopyOutScoreGmDirectRow(const SICommon::Ru
     AscendC::DataCopyParams lengthParams{1U, static_cast<uint16_t>(sizeof(uint32_t)), 0U, 0U};
     DataCopyPad(sparseSeqLenGm[info.indiceLenOffset + physicalRow], lengthLocal.ReinterpretCast<int32_t>(),
                 lengthParams);
-    SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
+    SetFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
 }
 
 template <typename SIT>
@@ -735,7 +746,7 @@ __aicore__ inline void SIVector<SIT>::RunScoreGmTopKBatch(
     IssueLoadScorePair(rowIdx4, 0U, activeTileNum, 0U);
     for (uint32_t s2LoopIdx = 0U; s2LoopIdx < s2LoopNum; s2LoopIdx++) {
         uint32_t mergeSlotIdx = s2LoopIdx & 1U;
-        WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + mergeSlotIdx);
+        WaitFlag<HardEvent::MTE2_V>(vec1Mte2VEvent_[mergeSlotIdx]);
         if (s2LoopIdx + 1U < s2LoopNum) {
             IssueLoadScorePair(rowIdx4, s2LoopIdx + 1U, activeTileNum, mergeSlotIdx ^ 1U);
         }
@@ -778,7 +789,7 @@ __aicore__ inline void SIVector<SIT>::RunScoreGmTopKBatch(
                                   compactRowIdx4, topkNum4, batchRowNum, SCORE_GM_MERGE_ROW_STRIDE,
                                   inputOffset, validLen, s2LoopIdx, s2LoopNum);
         PipeBarrier<PIPE_V>();
-        SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + mergeSlotIdx);
+        SetFlag<HardEvent::V_MTE2>(vec1VMte2Event_[mergeSlotIdx]);
     }
 
     uint32_t packedOffset = packedSlotIdx == 0U ? SCORE_GM_PACKED0_OFFSET_BYTES : SCORE_GM_PACKED1_OFFSET_BYTES;
@@ -794,7 +805,7 @@ __aicore__ inline void SIVector<SIT>::ProcessScoreGmTopK(const SICommon::RunInfo
 {
     // Consume the dependency once for every final score store, including direct-output-only M blocks. When score
     // rows are reloaded, this wait and the following DataCopy are both on MTE2 and therefore cannot be reordered.
-    WaitFlag<HardEvent::MTE3_MTE2>(TOPK_MTE3_MTE2_EVENT);
+    WaitFlag<HardEvent::MTE3_MTE2>(topkMte3Mte2Event_);
 
     LocalTensor<uint16_t> fastBuf = historyValueBuf_.Get<uint16_t>();
     int64_t kbOffset = static_cast<int64_t>(info.actS2Size) - static_cast<int64_t>(info.actS1Size);
@@ -858,8 +869,8 @@ __aicore__ inline void SIVector<SIT>::ProcessScoreGmTopK(const SICommon::RunInfo
         RunScoreGmTopKBatch(info, rowIdx4, topkNum4, validEnd4, batchRowNum, packedSlotIdx);
     }
 
-    WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-    SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
+    WaitFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
+    SetFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
 }
 
 template <typename SIT>
@@ -969,8 +980,8 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(const SICommon::RunInfo &info,
     }
     if (isLastS2InnerLoop) {
         // Packed output reuses the current MM1 slot; return it to Cube only after MTE3 completes.
-        WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-        SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
+        WaitFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
+        SetFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
     }
     CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + (info.loop & 1U));
 }

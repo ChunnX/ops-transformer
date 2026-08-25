@@ -45,20 +45,19 @@ public:
     __aicore__ inline void ComputeMm1(const SICommon::RunInfo &runInfo);
 
     static constexpr IsResetLoad3dConfig LOAD3DV2_CONFIG = {true, true}; // isSetFMatrix isSetPadding;
-    static constexpr uint64_t KEY_BUF_NUM = 2;
-    static constexpr uint64_t QUERY_BUF_NUM = 2;
+    static constexpr uint64_t KEY_BUF_NUM = 4;
+    static constexpr uint64_t QUERY_BUF_NUM = 4;
     static constexpr uint64_t L0A_BUF_NUM = 2;
     static constexpr uint64_t L0B_BUF_NUM = 2;
     static constexpr uint64_t L0C_BUF_NUM = 2;
 
-    static constexpr uint32_t KEY_MTE1_MTE2_EVENT = EVENT_ID0;
-    static constexpr uint32_t QUERY_MTE1_MTE2_EVENT = EVENT_ID2; // KEY_MTE1_MTE2_EVENT + KEY_BUF_NUM;
-    static constexpr uint32_t M_MTE1_EVENT = EVENT_ID3;
-
-    static constexpr uint32_t MTE2_MTE1_EVENT = EVENT_ID2;
-    static constexpr uint32_t MTE1_M_EVENT = EVENT_ID2;
-    static constexpr uint32_t FIX_M_EVENT = EVENT_ID2;
-    static constexpr uint32_t M_FIX_EVENT = EVENT_ID3;
+    event_t keyMte1Mte2Event_[KEY_BUF_NUM];
+    event_t queryMte1Mte2Event_[QUERY_BUF_NUM];
+    event_t mMte1Event_[L0A_BUF_NUM];
+    event_t mte2Mte1Event_;
+    event_t mte1MEvent_;
+    event_t fixMEvent_[L0C_BUF_NUM];
+    event_t mFixEvent_[L0C_BUF_NUM];
 
     static constexpr uint64_t M_BASIC_BLOCK = 64;
     static constexpr uint64_t S2_BASIC_BLOCK = 512;
@@ -66,7 +65,7 @@ public:
     static constexpr uint64_t RES_MM1_DOUBLE_BUFFER_BYTES = 2U * RES_MM1_SLOT_BYTES;
 
     static constexpr uint64_t M_BASIC_BLOCK_L1 = 64;
-    static constexpr uint64_t D_BASIC_BLOCK_L1 = 1024;
+    static constexpr uint64_t D_BASIC_BLOCK_L1 = 512;
     static constexpr uint64_t S2_BASIC_BLOCK_L1 = 64;
 
     static constexpr uint64_t M_BASIC_BLOCK_L0 = 64;
@@ -189,7 +188,7 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
     queryLoadParams.ifTranspose = false;
 
     // s2轴循环
-    WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + l0cSlot);
+    WaitFlag<HardEvent::FIX_M>(fixMEvent_[l0cSlot]);
     for (uint64_t s2GmOffset = 0; s2GmOffset < s2ProcessSize; s2GmOffset += S2_BASIC_BLOCK_L1) {
         uint64_t s2L1RealSize =
             s2GmOffset + S2_BASIC_BLOCK_L1 > s2ProcessSize ? s2ProcessSize - s2GmOffset : S2_BASIC_BLOCK_L1;
@@ -218,16 +217,16 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
              kGmOffset += D_BASIC_BLOCK_L1, ++dL1Idx) {
             uint32_t keyL1Slot = keyL1BufIdx_ & (KEY_BUF_NUM - 1U);
             uint32_t queryL1Slot = dL1Idx & (QUERY_BUF_NUM - 1U);
-            WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + keyL1Slot);
+            WaitFlag<HardEvent::MTE1_MTE2>(keyMte1Mte2Event_[keyL1Slot]);
             KeyNd2Nz(s2L1RealSize, s2GmOffset, kGmOffset, keyL1Slot, runInfo);
 
-            SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
-            WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
+            SetFlag<HardEvent::MTE2_MTE1>(mte2Mte1Event_);
+            WaitFlag<HardEvent::MTE2_MTE1>(mte2Mte1Event_);
             if (runInfo.isFirstS2InnerLoop && s2GmOffset == 0U) {
-                WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Slot);
+                WaitFlag<HardEvent::MTE1_MTE2>(queryMte1Mte2Event_[queryL1Slot]);
                 QueryNd2Nz(s1gProcessSize, 0U, kGmOffset, queryL1Slot, runInfo);
-                SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
-                WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
+                SetFlag<HardEvent::MTE2_MTE1>(mte2Mte1Event_);
+                WaitFlag<HardEvent::MTE2_MTE1>(mte2Mte1Event_);
             }
 
             for (uint64_t kL1Offset = 0; kL1Offset < D_BASIC_BLOCK_L1; kL1Offset += D_BASIC_BLOCK_L0) {
@@ -236,27 +235,27 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
                 queryLoadParams.kStartPosition = kStartPosition;
                 keyLoadParams.kStartPosition = kStartPosition;
 
-                WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0Slot);
+                WaitFlag<HardEvent::M_MTE1>(mMte1Event_[l0Slot]);
                 LoadQueryToL0a(queryLoadParams, l0Slot, queryL1Slot);
                 LoadKeyToL0b(keyLoadParams, l0Slot, keyL1Slot);
 
-                SetFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
-                WaitFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
+                SetFlag<HardEvent::MTE1_M>(mte1MEvent_);
+                WaitFlag<HardEvent::MTE1_M>(mte1MEvent_);
 
                 mm1Params.cmatrixInitVal = (kGmOffset + kL1Offset) == 0U;
                 ComuteL0c(l0cOffset, l0Slot, mm1Params, needMBarrier);
-                SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0Slot);
+                SetFlag<HardEvent::M_MTE1>(mMte1Event_[l0Slot]);
                 l0BufIdx_++;
             }
             if (s2GmOffset + S2_BASIC_BLOCK_L1 >= s2ProcessSize && runInfo.isLastS2InnerLoop) {
-                SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Slot);
+                SetFlag<HardEvent::MTE1_MTE2>(queryMte1Mte2Event_[queryL1Slot]);
             }
-            SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + keyL1Slot);
+            SetFlag<HardEvent::MTE1_MTE2>(keyMte1Mte2Event_[keyL1Slot]);
             keyL1BufIdx_++;
         }
     }
     Fixp(s1gProcessSize, s2ProcessSize, mm1BufferIdx, l0cSlot);
-    SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + l0cSlot);
+    SetFlag<HardEvent::FIX_M>(fixMEvent_[l0cSlot]);
     l0cBufIdx_++;
     CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_CV_EVENT + mm1BufferIdx);
 }
@@ -352,8 +351,8 @@ template <typename SIT>
 __aicore__ inline void SIMatmul<SIT>::Fixp(uint64_t s1gRealSize, uint64_t s2RealSize, uint32_t mm1BufferIdx,
                                            uint32_t l0cSlot)
 {
-    SetFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0cSlot);
-    WaitFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0cSlot);
+    SetFlag<HardEvent::M_FIX>(mFixEvent_[l0cSlot]);
+    WaitFlag<HardEvent::M_FIX>(mFixEvent_[l0cSlot]);
 
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
 
@@ -377,34 +376,52 @@ template <typename SIT>
 __aicore__ inline void SIMatmul<SIT>::AllocEventID()
 {
     SetMMLayoutTransform(true);
-    SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 0);
-    SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 1);
-
-    SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 0);
-    SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 1);
-
-    SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 0);
-    SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 1);
-
-    SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + 0);
-    SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + 1);
+    for (uint32_t slot = 0U; slot < KEY_BUF_NUM; slot++) {
+        keyMte1Mte2Event_[slot] =
+            static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>());
+        SetFlag<HardEvent::MTE1_MTE2>(keyMte1Mte2Event_[slot]);
+    }
+    for (uint32_t slot = 0U; slot < QUERY_BUF_NUM; slot++) {
+        queryMte1Mte2Event_[slot] =
+            static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>());
+        SetFlag<HardEvent::MTE1_MTE2>(queryMte1Mte2Event_[slot]);
+    }
+    for (uint32_t slot = 0U; slot < L0A_BUF_NUM; slot++) {
+        mMte1Event_[slot] = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::M_MTE1>());
+        SetFlag<HardEvent::M_MTE1>(mMte1Event_[slot]);
+    }
+    for (uint32_t slot = 0U; slot < L0C_BUF_NUM; slot++) {
+        fixMEvent_[slot] = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::FIX_M>());
+        SetFlag<HardEvent::FIX_M>(fixMEvent_[slot]);
+        mFixEvent_[slot] = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::M_FIX>());
+    }
+    mte2Mte1Event_ = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>());
+    mte1MEvent_ = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE1_M>());
 }
 
 template <typename SIT>
 __aicore__ inline void SIMatmul<SIT>::FreeEventID()
 {
     SetMMLayoutTransform(false);
-    WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 0);
-    WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 1);
-
-    WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 0);
-    WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 1);
-
-    WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 0);
-    WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 1);
-
-    WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + 0);
-    WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + 1);
+    for (uint32_t slot = 0U; slot < KEY_BUF_NUM; slot++) {
+        WaitFlag<HardEvent::MTE1_MTE2>(keyMte1Mte2Event_[slot]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE1_MTE2>(keyMte1Mte2Event_[slot]);
+    }
+    for (uint32_t slot = 0U; slot < QUERY_BUF_NUM; slot++) {
+        WaitFlag<HardEvent::MTE1_MTE2>(queryMte1Mte2Event_[slot]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE1_MTE2>(queryMte1Mte2Event_[slot]);
+    }
+    for (uint32_t slot = 0U; slot < L0A_BUF_NUM; slot++) {
+        WaitFlag<HardEvent::M_MTE1>(mMte1Event_[slot]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::M_MTE1>(mMte1Event_[slot]);
+    }
+    for (uint32_t slot = 0U; slot < L0C_BUF_NUM; slot++) {
+        WaitFlag<HardEvent::FIX_M>(fixMEvent_[slot]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::FIX_M>(fixMEvent_[slot]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::M_FIX>(mFixEvent_[slot]);
+    }
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_MTE1>(mte2Mte1Event_);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE1_M>(mte1MEvent_);
 }
 } // namespace SIKernel
 #endif
