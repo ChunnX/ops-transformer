@@ -55,6 +55,8 @@ def _apply_golden_globals(params, quant_mode=1):
     其他 → mxfp8_golden_mod (MXFP8 路径)
     """
     target = fp8_golden_mod if quant_mode == 6 else mxfp8_golden_mod
+    # 批跑时先重置 golden 状态，防止前一 case 的全局变量/NPU 内存残留污染本 case
+    target.reset_golden_state()
     for k, v in params.items():
         setattr(target, k, v)
 
