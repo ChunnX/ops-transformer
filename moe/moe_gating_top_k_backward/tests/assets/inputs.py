@@ -20,11 +20,15 @@ then derives deterministic Top-K indices.
 """
 
 import numpy as np
+import torch
 
 
 __input__ = {
     "kernel": {
         "moe_gating_top_k_backward": "moe_gating_top_k_backward_inputs",
+    },
+    "aclnn": {
+        "aclnnMoeGatingTopKBackward": "aclnn_moe_gating_top_k_backward_inputs",
     },
 }
 
@@ -46,3 +50,30 @@ def moe_gating_top_k_backward_inputs(x_norm, grad_y, expert_idx, **_unused):
         expert_idx.dtype
     )
     return x_norm, grad_y, expert_idx
+
+
+def aclnn_moe_gating_top_k_backward_inputs(
+    xNorm,
+    gradY,
+    expertIdx,
+    renorm=0,
+    normType=1,
+    routedScalingFactor=1.0,
+    eps=1e-20,
+    out=None,
+    **_unused,
+):
+    """ACLNN 模式 input 插件。
+
+    参数顺序与 aclnnMoeGatingTopKBackwardGetWorkspaceSize 一致（不含 workspaceSize/executor）。
+    注意：aclnn 模式的 _call_custom_input 不消费返回值，必须 in-place 修改传入的
+    torch.Tensor 才能生效。
+    """
+    topk = expertIdx.shape[1]
+    values = xNorm.to(torch.float32)
+    if bool((values < 0).any()) or bool((values > 1).any()):
+        xNorm.copy_(torch.sigmoid(values))
+        values = xNorm.to(torch.float32)
+    _, sorted_idx = torch.sort(values, dim=1, descending=True, stable=True)
+    expertIdx.copy_(sorted_idx[:, :topk].to(expertIdx.dtype))
+    return [xNorm, gradY, expertIdx, out]
