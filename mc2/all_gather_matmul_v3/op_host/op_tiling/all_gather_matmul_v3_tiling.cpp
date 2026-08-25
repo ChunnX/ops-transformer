@@ -25,7 +25,7 @@
 #include "securec.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "ascendc/host_api/tiling/template_argument.h"
-#include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_udma_tiling_data.h"
+#include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_urma_tiling_data.h"
 #include "apace/tiling/quant_matmul_tiling_swat.h"
 #include "../../op_kernel/arch35/all_gather_matmul_v3_tiling_key.h"
 
@@ -631,13 +631,13 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
     auto *rawTilingData = context->GetRawTilingData();
     OP_TILING_CHECK(rawTilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "rawTilingData"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(rawTilingData->GetCapacity() < sizeof(AllGatherMxMatmulUdmaTilingData),
+    OP_TILING_CHECK(rawTilingData->GetCapacity() < sizeof(AllGatherMxMatmulUrmaTilingData),
                     OP_LOGE(nodeName, "rawTilingData capacity %zu < %zu", rawTilingData->GetCapacity(),
-                            sizeof(AllGatherMxMatmulUdmaTilingData)),
+                            sizeof(AllGatherMxMatmulUrmaTilingData)),
                     return ge::GRAPH_FAILED);
 
     memset_s(rawTilingData->GetData(), rawTilingData->GetCapacity(), 0, rawTilingData->GetCapacity());  // 校验非空并tilingdata 缓冲区清零
-    auto *tilingData = reinterpret_cast<AllGatherMxMatmulUdmaTilingData *>(rawTilingData->GetData());
+    auto *tilingData = reinterpret_cast<AllGatherMxMatmulUrmaTilingData *>(rawTilingData->GetData());
 
     uint64_t m = static_cast<uint64_t>(shapeInfo.mPerRank);
     uint64_t k = static_cast<uint64_t>(shapeInfo.k);
