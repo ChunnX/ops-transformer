@@ -1,0 +1,51 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software; you can redistribute it and/or modify it under
+# the terms and conditions of CANN Open Software License Agreement Version 2.0
+# (the "License"). See LICENSE in the root of the software repository for the
+# full text of the License.
+
+"""TestSpec adapter for AlltoAllvQuantGroupedMatMul TTK assets (multi-device ACLNN/E2E)."""
+
+import importlib.util
+from pathlib import Path
+
+ASSET_IMPL_DIR = Path(__file__).with_name("impl")
+
+_impl_cache = {}
+
+
+def _load_impl_module(stem):
+    if stem not in _impl_cache:
+        path = ASSET_IMPL_DIR / f"{stem}.py"
+        spec = importlib.util.spec_from_file_location(
+            f"allto_allv_quant_grouped_mat_mul_assets_impl_{stem}_{abs(hash(path))}", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _impl_cache[stem] = module
+    return _impl_cache[stem]
+
+
+class AclnnAlltoAllvQuantGroupedMatMulSpec:
+    """TestSpec for aclnnAlltoAllvQuantGroupedMatMul (ACLNN multi-device path)."""
+
+    @staticmethod
+    def multi_device_golden(thread_contexts, device_ids, all_precision):
+        return _load_impl_module("golden").allto_allv_quant_grouped_mat_mul_multi_device_golden(
+            thread_contexts, device_ids, all_precision)
+
+
+class AlltoAllvQuantGroupedMatMulE2ESpec:
+    """TestSpec for torch_npu.npu_alltoallv_quant_gmm (E2E multi-device path)."""
+
+    @staticmethod
+    def e2e_multi_device_golden(cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True):
+        return _load_impl_module("golden").allto_allv_quant_grouped_mat_mul_e2e_golden(
+            cpu_inputs_per_rank, attrs, rank, ws, dist_avail)
+
+
+__spec__ = {
+    "aclnnAlltoAllvQuantGroupedMatMul": "AclnnAlltoAllvQuantGroupedMatMulSpec",
+    "torch_npu.npu_alltoallv_quant_gmm": "AlltoAllvQuantGroupedMatMulE2ESpec",
+}
