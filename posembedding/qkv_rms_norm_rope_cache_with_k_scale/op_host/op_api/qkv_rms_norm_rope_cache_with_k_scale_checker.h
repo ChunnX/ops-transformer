@@ -83,6 +83,7 @@ public:
             {"kCacheRef", params.kCache, "kCacheRef can not be nullptr"},
             {"vCacheRef", params.vCache, "vCacheRef can not be nullptr"},
             {"kScaleCacheRef", params.kScaleCache, "kScaleCacheRef can not be nullptr"},
+            {"vScaleOptional", params.vScaleOptional, "vScaleOptional can not be nullptr"},
             {"headNums", params.headNums, "headNums can not be nullptr"},
             {"qOut", params.qOut, "qOut can not be nullptr"},
             {"workspaceSize", params.workspaceSize, "workspaceSize can not be nullptr"},
@@ -93,6 +94,25 @@ public:
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, rule.paramName, "nullptr", rule.reason);
                 return ACLNN_ERR_PARAM_NULLPTR;
             }
+        }
+
+        const bool isRopeScene = params.qQuantMode == QQuantMode::PER_TOKEN_PER_HEAD &&
+                                 params.kQuantMode == KQuantMode::PER_TOKEN_PER_HEAD &&
+                                 params.mropePositionOptional == nullptr;
+        if (isRopeScene && params.queryStartLoc == nullptr) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "queryStartLoc", "nullptr",
+                                                  "queryStartLoc can not be nullptr in RoPE scene");
+            return ACLNN_ERR_PARAM_NULLPTR;
+        }
+        if (isRopeScene && params.seqLens == nullptr) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "seqLens", "nullptr",
+                                                  "seqLens can not be nullptr in RoPE scene");
+            return ACLNN_ERR_PARAM_NULLPTR;
+        }
+        if ((isRopeScene || params.qQuantMode == QQuantMode::NO_QUANT) && params.rotationOptional == nullptr) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "rotationOptional", "nullptr",
+                                                  "rotationOptional can not be nullptr in RoPE/M-RoPE scene");
+            return ACLNN_ERR_PARAM_NULLPTR;
         }
 
         if (params.qQuantMode == QQuantMode::NO_QUANT && params.qScale != nullptr) {

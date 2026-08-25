@@ -28,7 +28,7 @@ const char *GetLayoutOrDefault(const char *layout, const char *defaultLayout)
 
 } // namespace
 
-std::tuple<const aclTensor *, const aclTensor *, const aclTensor *, const aclTensor *, const aclTensor *>
+QkvRmsNormRopeCacheWithKScaleResult
 QkvRmsNormRopeCacheWithKScale(const aclTensor *qkv, const aclTensor *qGamma, const aclTensor *kGamma,
                               const aclTensor *cosSin, const aclTensor *slotMapping, aclTensor *kCache,
                               aclTensor *vCache, aclTensor *kScaleCache, const aclTensor *queryStartLoc,
@@ -54,7 +54,7 @@ QkvRmsNormRopeCacheWithKScale(const aclTensor *qkv, const aclTensor *qGamma, con
         qScaleForKernel = executor->AllocTensor(op::DataType::DT_FLOAT, op::Format::FORMAT_ND, op::Format::FORMAT_ND);
         if (qScaleForKernel == nullptr) {
             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Failed to allocate internal qScale tensor.");
-            return {nullptr, nullptr, nullptr, nullptr, nullptr};
+            return {ACLNN_ERR_INNER_NULLPTR, nullptr, nullptr, nullptr, nullptr, nullptr};
         }
     }
 
@@ -66,8 +66,8 @@ QkvRmsNormRopeCacheWithKScale(const aclTensor *qkv, const aclTensor *qGamma, con
         OP_ATTR(headNums, layoutQkvAttr, layoutQOutAttr, epsilon, mropeSectionOptional, qQuantMode, qOutDtype,
                 kQuantMode));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "InferShape failed.");
-        return {nullptr, nullptr, nullptr, nullptr, nullptr};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "InferShape failed, internal status is %d.", ret);
+        return {ACLNN_ERR_PARAM_INVALID, nullptr, nullptr, nullptr, nullptr, nullptr};
     }
 
     ret = ADD_TO_LAUNCHER_LIST_AICORE(
@@ -78,11 +78,11 @@ QkvRmsNormRopeCacheWithKScale(const aclTensor *qkv, const aclTensor *qGamma, con
         OP_ATTR(headNums, layoutQkvAttr, layoutQOutAttr, epsilon, mropeSectionOptional, qQuantMode, qOutDtype,
                 kQuantMode));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "ADD_TO_LAUNCHER_LIST_AICORE failed.");
-        return {nullptr, nullptr, nullptr, nullptr, nullptr};
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "ADD_TO_LAUNCHER_LIST_AICORE failed, internal status is %d.", ret);
+        return {ACLNN_ERR_PARAM_INVALID, nullptr, nullptr, nullptr, nullptr, nullptr};
     }
 
-    return {qOut, qScaleOptional, kCache, vCache, kScaleCache};
+    return {ACLNN_SUCCESS, qOut, qScaleOptional, kCache, vCache, kScaleCache};
 }
 
 } // namespace l0op
