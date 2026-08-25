@@ -28,8 +28,8 @@ import utils
 
 pt_save_path = "mqsmla_testcase"
 device_id = 0
-save_pt = False
-result_path = Path("result.xlsx")
+save_pt = os.environ.get("SAVE_PT", "0") == "1"
+result_path = Path(os.environ.get("MQSMLA_RESULT_SAVE_PATH", "result.xlsx"))
 
 param_combinations = []
 for params in ENABLED_PARAMS:
@@ -128,14 +128,31 @@ def mqsmla(param_combinations):
                 test_data, device_id=device_id
             )
         )
-        result, fulfill_percent = result_compare_method.check_result(
+        attn_result, attn_percent = result_compare_method.check_result(
             cpu_quant_result, npu_result
         )
+        lse_result, lse_percent = None, None
+        fail_info = []
+        min_fulfill = attn_percent
+
         if test_data["params"].get("return_softmax_lse"):
             print("return_softmax_lse is true!!!")
-            result, fulfill_percent = result_compare_method.check_result(
+            lse_result, lse_percent = result_compare_method.check_result(
                 cpu_lse, npu_lse
             )
+            min_fulfill = min(min_fulfill, lse_percent)
+
+        if attn_result != "Pass":
+            fail_info.append(f"MAIN_FAILED:{attn_result}")
+        if lse_result is not None and lse_result != "Pass":
+            fail_info.append(f"LSE_FAILED:{lse_result}")
+
+        if fail_info:
+            result = "; ".join(fail_info)
+            fulfill_percent = min_fulfill
+        else:
+            result = "Pass"
+            fulfill_percent = min_fulfill
     except Exception as e:
         npu_error_msg = str(e)
         print("NPU ERROR：", npu_error_msg)
@@ -146,13 +163,13 @@ def mqsmla(param_combinations):
 
     utils.save_result(test_data["params"], result, fulfill_percent, result_path)
 
-    if result == "Failed":
-        pytest.fail(
-            f"用例精度失败:{test_data['Testcase_Name']} 精度:{fulfill_percent:.2f}%"
-        )
     if result == "NPU ERROR":
         pytest.fail(
             f"用例执行失败:{test_data['Testcase_Name']} NPU ERROR: {npu_error_msg}"
+        )
+    elif result != "Pass":
+        pytest.fail(
+            f"用例精度失败:{test_data['Testcase_Name']} 精度:{fulfill_percent:.2f}%"
         )
 
 

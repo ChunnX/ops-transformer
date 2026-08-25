@@ -28,10 +28,9 @@ class QuantFlashAttnMetadataCheck {
 public:
     static inline aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
                                           const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
-                                          const aclTensor *vDescaleOptional, int64_t batchSize,
-                                          int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
-                                          int64_t numHeadsKv, int64_t headDim, int64_t quantMode,
-                                          int64_t maskMode, int64_t winLeft, int64_t winRight,
+                                          const aclTensor *vDescaleOptional, int64_t batchSize, int64_t maxSeqlenQ,
+                                          int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
+                                          int64_t quantMode, int64_t maskMode, int64_t winLeft, int64_t winRight,
                                           const char *layoutQ, const char *layoutQDescale, const char *layoutKv,
                                           const char *layoutOut, const aclTensor *metadata);
 
@@ -43,12 +42,20 @@ private:
     // 校验基础属性：batchSize / maxSeqlen / numHeads / headDim / quantMode / layout
     // 文档约束: headDim 仅支持 64/128; quantMode 当前仅支持 1（A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32）
     static inline aclnnStatus CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-                                            int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
-                                            int64_t quantMode, const char *layoutQ, const char *layoutQDescale,
-                                            const char *layoutKv, const char *layoutOut);
+                                            int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t quantMode,
+                                            const char *layoutQ, const char *layoutQDescale, const char *layoutKv,
+                                            const char *layoutOut);
 
     // 校验 mask 参数组: maskMode 支持 0/3/4, winLeft/winRight >= -1
     static inline aclnnStatus CheckMask(int64_t maskMode, int64_t winLeft, int64_t winRight);
+
+    // v_descale 单参数校验
+    static inline aclnnStatus CheckSingleParaVDescale(int64_t quantMode, const aclTensor *vDescaleOptional,
+                                                      const char *layoutKv);
+
+    // v_descale MxFp8 场景校验: quantMode=6 时不应传入, quantMode=1 时必传且维度需与 layoutKv 匹配
+    static inline aclnnStatus CheckSingleParaVDescaleMxFp8(int64_t quantMode, const aclTensor *vDescaleOptional,
+                                                           const char *layoutKv);
 
     // 校验参数存在性: metadata 必须传入; TND 时必须传 cu_seqlens, 非 TND 时不可传 cu_seqlens 且
     // max_seqlen/seqused 至少提供一个
@@ -60,32 +67,29 @@ private:
     // 校验一致性: seqLens 形状与 batchSize 匹配; numHeadsQ 必须能被 numHeadsKv 整除
     static inline aclnnStatus CheckConsistency(int64_t batchSize, int64_t numHeadsQ, int64_t numHeadsKv,
                                                const aclTensor *cuSeqlensQOptional,
-                                               const aclTensor *cuSeqlensKvOptional,
-                                               const aclTensor *sequsedQOptional,
+                                               const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
                                                const aclTensor *sequsedKvOptional);
 };
 
-inline aclnnStatus
-QuantFlashAttnMetadataCheck::ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
-                                         const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
-                                         const aclTensor *vDescaleOptional, int64_t batchSize,
-                                         int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
-                                         int64_t numHeadsKv, int64_t headDim, int64_t quantMode,
-                                         int64_t maskMode, int64_t winLeft, int64_t winRight,
-                                         const char *layoutQ, const char *layoutQDescale, const char *layoutKv,
-                                         const char *layoutOut, const aclTensor *metadata)
+inline aclnnStatus QuantFlashAttnMetadataCheck::ParamsCheck(
+    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
+    const aclTensor *sequsedKvOptional, const aclTensor *vDescaleOptional, int64_t batchSize, int64_t maxSeqlenQ,
+    int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t quantMode, int64_t maskMode,
+    int64_t winLeft, int64_t winRight, const char *layoutQ, const char *layoutQDescale, const char *layoutKv,
+    const char *layoutOut, const aclTensor *metadata)
 {
-    (void)vDescaleOptional; // v_descale 校验下沉至 aicpu kernel
     auto ret = CheckBaseAttr(batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, quantMode, layoutQ,
                              layoutQDescale, layoutKv, layoutOut);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     ret = CheckMask(maskMode, winLeft, winRight);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    ret = CheckSingleParaVDescale(quantMode, vDescaleOptional, layoutKv);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
     ret = CheckExistency(maxSeqlenQ, maxSeqlenKv, layoutQ, layoutKv, cuSeqlensQOptional, cuSeqlensKvOptional,
                          sequsedQOptional, sequsedKvOptional, metadata);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
-    ret = CheckConsistency(batchSize, numHeadsQ, numHeadsKv, cuSeqlensQOptional, cuSeqlensKvOptional,
-                           sequsedQOptional, sequsedKvOptional);
+    ret = CheckConsistency(batchSize, numHeadsQ, numHeadsKv, cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional,
+                           sequsedKvOptional);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     return ACLNN_SUCCESS;
 }
@@ -96,19 +100,18 @@ inline bool QuantFlashAttnMetadataCheck::IsTensorExist(const aclTensor *tensor)
            (tensor->GetData() != nullptr);
 }
 
-inline aclnnStatus
-QuantFlashAttnMetadataCheck::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-                                           int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
-                                           int64_t quantMode, const char *layoutQ, const char *layoutQDescale,
-                                           const char *layoutKv, const char *layoutOut)
+inline aclnnStatus QuantFlashAttnMetadataCheck::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ,
+                                                              int64_t maxSeqlenKv, int64_t numHeadsQ,
+                                                              int64_t numHeadsKv, int64_t headDim, int64_t quantMode,
+                                                              const char *layoutQ, const char *layoutQDescale,
+                                                              const char *layoutKv, const char *layoutOut)
 {
     CHECK_COND((batchSize == -1 || batchSize > 0), ACLNN_ERR_RUNTIME_ERROR,
                "batchSize must be -1 or greater than 0, but got %ld", batchSize);
 
     // quant_compute_mode 枚举值定义，当前仅支持 mode=1
     constexpr int64_t A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 1;
-    static const std::unordered_set<int64_t> quantModeSet = {
-        A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32};
+    static const std::unordered_set<int64_t> quantModeSet = {A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32};
     CHECK_COND(quantModeSet.count(quantMode) > 0, ACLNN_ERR_RUNTIME_ERROR,
                "quantMode only supports 1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), but got %ld", quantMode);
 
@@ -123,18 +126,21 @@ QuantFlashAttnMetadataCheck::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ
     CHECK_COND(numHeadsKv > 0, ACLNN_ERR_RUNTIME_ERROR, "numHeadsKv must be greater than 0, but got %ld", numHeadsKv);
 
     constexpr int64_t HEAD_DIM_64 = 64;
+    constexpr int64_t HEAD_DIM_72 = 72;
     constexpr int64_t HEAD_DIM_128 = 128;
-    static const std::unordered_set<int64_t> headDimSet = {HEAD_DIM_64, HEAD_DIM_128};
+    constexpr int64_t HEAD_DIM_256 = 256;
+    static const std::unordered_set<int64_t> headDimSet = {HEAD_DIM_64, HEAD_DIM_72, HEAD_DIM_128, HEAD_DIM_256};
     CHECK_COND(headDimSet.count(headDim) > 0, ACLNN_ERR_RUNTIME_ERROR,
-               "headDim only supports %ld, %ld, but got %ld", HEAD_DIM_64, HEAD_DIM_128, headDim);
+               "headDim only supports %ld, %ld, %ld, %ld, but got %ld", HEAD_DIM_64, HEAD_DIM_72, HEAD_DIM_128,
+               HEAD_DIM_256, headDim);
 
-    static const std::unordered_set<std::string> layoutQSet = {"BSND", "TND", "BNSD"};
+    static const std::unordered_set<std::string> layoutQSet = {"BSND", "TND", "BNSD", "NTD"};
     CHECK_COND(layoutQSet.count(layoutQ) > 0, ACLNN_ERR_RUNTIME_ERROR,
-               "layoutQ only supports BSND, TND, BNSD, but got %s", layoutQ);
+               "layoutQ only supports BSND, TND, BNSD, NTD, but got %s", layoutQ);
 
-    static const std::unordered_set<std::string> layoutQDescaleSet = {"BSND", "TND", "BNSD", "N2TGD"};
+    static const std::unordered_set<std::string> layoutQDescaleSet = {"BSND", "TND", "BNSD", "N2TGD", "NT"};
     CHECK_COND(layoutQDescaleSet.count(layoutQDescale) > 0, ACLNN_ERR_RUNTIME_ERROR,
-               "layoutQDescale only supports BSND, TND, BNSD, N2TGD, but got %s", layoutQDescale);
+               "layoutQDescale only supports BSND, TND, BNSD, N2TGD, NT, but got %s", layoutQDescale);
 
     static const std::unordered_set<std::string> layoutKvSet = {"BSND", "TND", "BNSD", "PA_BNBD", "PA_BBND", "PA_NZ"};
     CHECK_COND(layoutKvSet.count(layoutKv) > 0, ACLNN_ERR_RUNTIME_ERROR,
@@ -144,44 +150,105 @@ QuantFlashAttnMetadataCheck::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ
     CHECK_COND(layoutOutSet.count(layoutOut) > 0, ACLNN_ERR_RUNTIME_ERROR,
                "layoutOut only supports BSND, TND, BNSD, but got %s", layoutOut);
 
+    // 一致性校验: MxFP8 (quantMode=1) 场景下 layout_out 仅支持 TND
+    CHECK_COND(!(quantMode == A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 && strcmp(layoutOut, "TND") != 0),
+               ACLNN_ERR_RUNTIME_ERROR, "When quantMode is %ld (MxFP8), layoutOut only supports TND, but got %s",
+               quantMode, layoutOut);
+
     return ACLNN_SUCCESS;
 }
 
-inline aclnnStatus
-QuantFlashAttnMetadataCheck::CheckMask(int64_t maskMode, int64_t winLeft, int64_t winRight)
+inline aclnnStatus QuantFlashAttnMetadataCheck::CheckMask(int64_t maskMode, int64_t winLeft, int64_t winRight)
 {
     constexpr int64_t NO_MASK = 0;
     constexpr int64_t CAUSAL_MASK = 3;
-    constexpr int64_t WINDOW_MASK = 4;
+    constexpr int64_t SLIDING_WINDOW = 4;
 
-    static const std::unordered_set<int64_t> maskSet = {NO_MASK, CAUSAL_MASK, WINDOW_MASK};
+    static const std::unordered_set<int64_t> maskSet = {NO_MASK, CAUSAL_MASK, SLIDING_WINDOW};
     CHECK_COND(maskSet.count(maskMode) > 0, ACLNN_ERR_RUNTIME_ERROR,
-               "maskMode only supports %ld, %ld, %ld, but got %ld", NO_MASK, CAUSAL_MASK, WINDOW_MASK, maskMode);
+               "maskMode only supports %ld, %ld, %ld, but got %ld", NO_MASK, CAUSAL_MASK, SLIDING_WINDOW, maskMode);
     CHECK_COND(winLeft >= -1, ACLNN_ERR_RUNTIME_ERROR, "winLeft must be -1 or at least 0, but got %ld", winLeft);
     CHECK_COND(winRight >= -1, ACLNN_ERR_RUNTIME_ERROR, "winRight must be -1 or at least 0, but got %ld", winRight);
+
+    // 非 maskMode = 4 (SLIDING_WINDOW) 场景下 winLeft 和 winRight 必须为 -1
+    if (maskMode != SLIDING_WINDOW) {
+        CHECK_COND(winLeft == -1 && winRight == -1, ACLNN_ERR_RUNTIME_ERROR,
+                   "When maskMode is not 4 (SLIDING_WINDOW), winLeft and winRight must be -1, "
+                   "but got winLeft=%ld, winRight=%ld",
+                   winLeft, winRight);
+    }
 
     return ACLNN_SUCCESS;
 }
 
-inline aclnnStatus
-QuantFlashAttnMetadataCheck::CheckExistency(int64_t maxSeqlenQ, int64_t maxSeqlenKv, const char *layoutQ,
-                                            const char *layoutKv, const aclTensor *cuSeqlensQOptional,
-                                            const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
-                                            const aclTensor *sequsedKvOptional, const aclTensor *metadata)
+inline aclnnStatus QuantFlashAttnMetadataCheck::CheckSingleParaVDescale(int64_t quantMode,
+                                                                        const aclTensor *vDescaleOptional,
+                                                                        const char *layoutKv)
+{
+    auto ret = CheckSingleParaVDescaleMxFp8(quantMode, vDescaleOptional, layoutKv);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    return ACLNN_SUCCESS;
+}
+
+inline aclnnStatus QuantFlashAttnMetadataCheck::CheckSingleParaVDescaleMxFp8(int64_t quantMode,
+                                                                             const aclTensor *vDescaleOptional,
+                                                                             const char *layoutKv)
+{
+    constexpr int64_t A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 1;
+    constexpr int64_t QUANT_MODE_GQA_FP8_FULLQUANT = 6;
+
+    if (quantMode == QUANT_MODE_GQA_FP8_FULLQUANT) {
+        CHECK_COND(!IsTensorExist(vDescaleOptional), ACLNN_ERR_RUNTIME_ERROR,
+                   "When quantMode is 6 (A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_"
+                   "FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), vDescale should not be provided, but got non-null");
+        return ACLNN_SUCCESS;
+    }
+
+    if (quantMode == A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
+        CHECK_COND(IsTensorExist(vDescaleOptional), ACLNN_ERR_RUNTIME_ERROR,
+                   "When quantMode is 1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), "
+                   "vDescale must be provided, but got null");
+        auto dimNum = vDescaleOptional->GetViewShape().GetDimNum();
+        if (strcmp(layoutKv, "TND") == 0) {
+            CHECK_COND(dimNum == 4, ACLNN_ERR_RUNTIME_ERROR,
+                       "When quantMode is 1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) "
+                       "and layoutKv is TND, vDescale must be 4D, but got %ldD",
+                       dimNum);
+        } else if (strcmp(layoutKv, "PA_BNBD") == 0) {
+            CHECK_COND(dimNum == 5, ACLNN_ERR_RUNTIME_ERROR,
+                       "When quantMode is 1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) "
+                       "and layoutKv is PA_BNBD, vDescale must be 5D, but got %ldD",
+                       dimNum);
+        } else if (strcmp(layoutKv, "PA_NZ") == 0) {
+            CHECK_COND(dimNum == 6, ACLNN_ERR_RUNTIME_ERROR,
+                       "When quantMode is 1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) "
+                       "and layoutKv is PA_NZ, vDescale must be 6D, but got %ldD",
+                       dimNum);
+        }
+        return ACLNN_SUCCESS;
+    }
+
+    return ACLNN_SUCCESS;
+}
+
+inline aclnnStatus QuantFlashAttnMetadataCheck::CheckExistency(
+    int64_t maxSeqlenQ, int64_t maxSeqlenKv, const char *layoutQ, const char *layoutKv,
+    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
+    const aclTensor *sequsedKvOptional, const aclTensor *metadata)
 {
     CHECK_COND(metadata != nullptr, ACLNN_ERR_RUNTIME_ERROR, "metadata should be provided, but got null");
 
-    if (strcmp(layoutQ, "TND") == 0) {
-        // 文档约束: layout_q为TND时, cu_seqlens_q必须传入, seqused_q与max_seqlen_q可选
+    if (strcmp(layoutQ, "TND") == 0 || strcmp(layoutQ, "NTD") == 0) {
+        // 文档约束: layout_q为TND或NTD时, cu_seqlens_q必须传入, seqused_q与max_seqlen_q可选
         CHECK_COND(IsTensorExist(cuSeqlensQOptional), ACLNN_ERR_RUNTIME_ERROR,
-                   "When layoutQ is TND, cuSeqlensQOptional should be provided, but got null");
+                   "When layoutQ is TND or NTD, cuSeqlensQOptional should be provided, but got null");
     } else {
-        // 文档约束: layout_q不为TND时, cu_seqlens_q不支持传入
+        // 文档约束: layout_q不为TND/NTD时, cu_seqlens_q不支持传入
         CHECK_COND(!IsTensorExist(cuSeqlensQOptional), ACLNN_ERR_RUNTIME_ERROR,
-                   "When layoutQ is not TND, cuSeqlensQOptional should not be provided, but got non-null");
-        // 文档约束: layout_q不为TND时, seqused_q与max_seqlen_q至少传入其中一个 (-1表示max_seqlen_q未传)
+                   "When layoutQ is not TND or NTD, cuSeqlensQOptional should not be provided, but got non-null");
+        // 文档约束: layout_q不为TND/NTD时, seqused_q与max_seqlen_q至少传入其中一个 (-1表示max_seqlen_q未传)
         CHECK_COND(((maxSeqlenQ >= 0) || IsTensorExist(sequsedQOptional)), ACLNN_ERR_RUNTIME_ERROR,
-                   "When layoutQ is not TND, at least one of maxSeqlenQ or sequsedQOptional must be provided");
+                   "When layoutQ is not TND or NTD, at least one of maxSeqlenQ or sequsedQOptional must be provided");
     }
 
     if (strcmp(layoutKv, "TND") == 0) {
@@ -194,8 +261,8 @@ QuantFlashAttnMetadataCheck::CheckExistency(int64_t maxSeqlenQ, int64_t maxSeqle
                    "When layoutKv is not TND, cuSeqlensKvOptional should not be provided, but got non-null");
 
         // 判断是否为PA场景 (PA_BBND/PA_BNBD/PA_NZ)
-        bool isPaLayout = (strcmp(layoutKv, "PA_BBND") == 0 || strcmp(layoutKv, "PA_BNBD") == 0 ||
-                           strcmp(layoutKv, "PA_NZ") == 0);
+        bool isPaLayout =
+            (strcmp(layoutKv, "PA_BBND") == 0 || strcmp(layoutKv, "PA_BNBD") == 0 || strcmp(layoutKv, "PA_NZ") == 0);
         if (isPaLayout) {
             // 文档约束: layout_kv为PA场景时, seqused_kv必须传入
             CHECK_COND(IsTensorExist(sequsedKvOptional), ACLNN_ERR_RUNTIME_ERROR,
@@ -211,12 +278,9 @@ QuantFlashAttnMetadataCheck::CheckExistency(int64_t maxSeqlenQ, int64_t maxSeqle
     return ACLNN_SUCCESS;
 }
 
-inline aclnnStatus
-QuantFlashAttnMetadataCheck::CheckConsistency(int64_t batchSize, int64_t numHeadsQ, int64_t numHeadsKv,
-                                              const aclTensor *cuSeqlensQOptional,
-                                              const aclTensor *cuSeqlensKvOptional,
-                                              const aclTensor *sequsedQOptional,
-                                              const aclTensor *sequsedKvOptional)
+inline aclnnStatus QuantFlashAttnMetadataCheck::CheckConsistency(
+    int64_t batchSize, int64_t numHeadsQ, int64_t numHeadsKv, const aclTensor *cuSeqlensQOptional,
+    const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional)
 {
     if (batchSize <= 0) {
         return ACLNN_SUCCESS;
@@ -233,14 +297,13 @@ QuantFlashAttnMetadataCheck::CheckConsistency(int64_t batchSize, int64_t numHead
                "sequsedKvOptional is not valid!");
 
     CHECK_COND((numHeadsQ % numHeadsKv == 0), ACLNN_ERR_RUNTIME_ERROR,
-               "numHeadsQ must be divisible by numHeadsKv, but got numHeadsQ=%ld, numHeadsKv=%ld",
-               numHeadsQ, numHeadsKv);
+               "numHeadsQ must be divisible by numHeadsKv, but got numHeadsQ=%ld, numHeadsKv=%ld", numHeadsQ,
+               numHeadsKv);
 
     return ACLNN_SUCCESS;
 }
 
-inline aclnnStatus
-QuantFlashAttnMetadataCheck::CheckSeqLens(bool isCu, int64_t batchSize, const aclTensor *seqLens)
+inline aclnnStatus QuantFlashAttnMetadataCheck::CheckSeqLens(bool isCu, int64_t batchSize, const aclTensor *seqLens)
 {
     if (seqLens == nullptr) {
         return ACLNN_SUCCESS;

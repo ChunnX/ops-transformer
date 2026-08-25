@@ -102,7 +102,7 @@ $$
 | <abbr title="指定分组轴：-1=不分组，0=M轴，2=K轴">groupType</abbr> | 属性 | 代表需要分组的轴 | INT64 | - |
 | <abbr title="代表 groupList输入的分组方式：0=累积和；1=各组大小；2=[组索引, 组大小] 对">groupListType</abbr> | 属性 | 代表 groupList输入的分组方式 | INT64 | - |
 | <abbr title="代表激活函数类型：0=NONE/1=ReLU/2=GELU_TANH/4=FAST_GELU/5=SILU">actType</abbr> | 属性 | 代表激活函数类型 | INT64 | - |
-| tuningConfigOptional | 可选输入 | 第一个数代表各个专家处理的 token数的预期值；第二个数代表 A8W4 可选开启 weight 先转置的 NZ格式；第三个数代表允许额外使用的内存空间 | INT64 | - |
+| tuningConfigOptional | 可选输入 | 第一个数代表各个专家处理的 token数的预期值；第二个数置1时，A8W4可选开启离线按`[E,N,K]`排布并转换为NZ的特殊weight格式（不表示`transposeWeight=true`）；第三个数代表允许额外使用的内存空间 | INT64 | - |
 | out | 输出 | 公式中的输出 $y$ | FLOAT、FLOAT16、INT32、INT8、BFLOAT16 | ND |
 | activationFeatureOutOptional | 输出 | 激活函数的输入数据，当前只支持传入 nullptr | - | - |
 | dynQuantScaleOutOptional | 输出 | 动态量化缩放因子，当前只支持传入 nullptr | - | - |
@@ -111,7 +111,7 @@ $$
   - 上表数据类型列中的角标 <sup>1</sup> 代表该系列不支持的数据类型。
   - 输入参数 x、weight均不支持INT16 类型，且 x 不支持INT4 类型。
   - 输入参数 x、weight，输出参数 out在非量化场景支持最多 1024个Tensor，在伪量化支持最多 128个Tensor，在全量化场景最多支持 1个Tensor。
-- <term>Atlas A3/A2 系列产品</term>：
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
   - 上表数据类型列中的角标 <sup>2</sup> 代表该系列不支持的数据类型。
   - 不支持FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT8_E8M0类型。
   - 输入参数 biasOptional不支持BFLOAT16。

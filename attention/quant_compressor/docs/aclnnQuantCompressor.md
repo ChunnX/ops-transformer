@@ -5,51 +5,22 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-
-<!-- npu="950" id1 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：支持
 <!-- end id1 -->
-
-<!-- end id1 -->
-
-<!-- npu="A3" id2 -->
-
 <!-- npu="A3" id2 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
 <!-- end id2 -->
-
-<!-- end id2 -->
-
-<!-- npu="910b" id3 -->
-
 <!-- npu="910b" id3 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
 <!-- end id3 -->
-
-<!-- end id3 -->
-
-<!-- npu="310b" id4 -->
-
 <!-- npu="310b" id4 -->
 - <term>Atlas 200I/500 A2 推理产品</term>：不支持
 <!-- end id4 -->
-
-<!-- end id4 -->
-
-<!-- npu="310p" id5 -->
-
 <!-- npu="310p" id5 -->
 - <term>Atlas 推理系列产品</term>：不支持
 <!-- end id5 -->
-
-<!-- end id5 -->
-
-<!-- npu="910" id6 -->
-
 <!-- npu="910" id6 -->
 - <term>Atlas 训练系列产品</term>：不支持
-<!-- end id6 -->
-
 <!-- end id6 -->
 
 ## 功能说明
@@ -63,57 +34,57 @@
 
     1. 计算矩阵乘法与反量化（quant_mode=1，A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL）：
 
-      使用HIFLOAT8输入进行Matmul，输出FLOAT32结果后乘以合并缩放因子（x_descale与wkv/wgate_descale的乘积）完成反量化：
+        使用HIFLOAT8输入进行Matmul，输出FLOAT32结果后乘以合并缩放因子（x_descale与wkv/wgate_descale的乘积）完成反量化：
 
-      $$
-      C4A：\left[kv\_state^a, score\_state^a\right] = (X_{hif8} @ \left[W^{aKV}_{hif8}, W^{aGate}_{hif8}\right]) \cdot (x\_descale \cdot [wkv\_descale^a, wgate\_descale^a]), \left[kv\_state^b, score\_state^b\right] = (X_{hif8} @ \left[W^{bKV}_{hif8}, W^{bGate}_{hif8}\right]) \cdot (x\_descale \cdot [wkv\_descale^b, wgate\_descale^b]);
-      $$
+        $$
+        C4A：\left[kv\_state^a, score\_state^a\right] = (X_{hif8} @ \left[W^{aKV}_{hif8}, W^{aGate}_{hif8}\right]) \cdot (x\_descale \cdot [wkv\_descale^a, wgate\_descale^a]), \left[kv\_state^b, score\_state^b\right] = (X_{hif8} @ \left[W^{bKV}_{hif8}, W^{bGate}_{hif8}\right]) \cdot (x\_descale \cdot [wkv\_descale^b, wgate\_descale^b]);
+        $$
 
-      $$
-      C128A：\left[kv\_state, score\_state\right] = (X_{hif8} @ \left[W^{KV}_{hif8}, W^{Gate}_{hif8}\right]) \cdot (x\_descale \cdot [wkv\_descale, wgate\_descale])
-      $$
+        $$
+        C128A：\left[kv\_state, score\_state\right] = (X_{hif8} @ \left[W^{KV}_{hif8}, W^{Gate}_{hif8}\right]) \cdot (x\_descale \cdot [wkv\_descale, wgate\_descale])
+        $$
 
-      其中x_descale为per-tensor标量（shape为[1,]），wkv_descale、wgate_descale为per-channel向量（shape为[coff\*D,]，沿权重输出通道维度缩放），两者相乘后合并为per-channel缩放因子。
+        其中x_descale为per-tensor标量（shape为[1,]），wkv_descale、wgate_descale为per-channel向量（shape为[coff\*D,]，沿权重输出通道维度缩放），两者相乘后合并为per-channel缩放因子。
 
     2. 计算分组加法：
 
-      $$
-      C4A：score\_state_i^\prime = \left[score\_state_{\left[4(i-1)+1:4i,:\right]}^a; score\_state_{\left[4i+1:4(i+1),:\right]}^b\right] + Ape,~i=1,2,\cdots, \frac{s}{4};
-      $$
+        $$
+        C4A：score\_state_i^\prime = \left[score\_state_{\left[4(i-1)+1:4i,:\right]}^a; score\_state_{\left[4i+1:4(i+1),:\right]}^b\right] + Ape,~i=1,2,\cdots, \frac{s}{4};
+        $$
 
-      $$
-      C128A：score\_state_i^\prime = score\_state_{\left[128(i-1)+1:128i,:\right]} + Ape,~i=1,2,\cdots, \frac{s}{128};
-      $$
+        $$
+        C128A：score\_state_i^\prime = score\_state_{\left[128(i-1)+1:128i,:\right]} + Ape,~i=1,2,\cdots, \frac{s}{128};
+        $$
 
     3. 计算分组Softmax：
 
-      $$
-      C4A：S_i^\prime = softmax(score\_state_i^\prime),~i=1,2,\cdots, \frac{s}{4};
-      $$
+        $$
+        C4A：S_i^\prime = softmax(score\_state_i^\prime),~i=1,2,\cdots, \frac{s}{4};
+        $$
 
-      $$
-      C128A：S_i^\prime = softmax(score\_state_i^\prime),~i=1,2,\cdots, \frac{s}{128};
-      $$
+        $$
+        C128A：S_i^\prime = softmax(score\_state_i^\prime),~i=1,2,\cdots, \frac{s}{128};
+        $$
 
     4. 计算Hadamard乘积：
 
-      $$
-      C4A：(S_H)_i = S_i^\prime \odot \left[kv\_state^a_{\left[4(i-1)+1:4i,:\right]} ;kv\_state^b_{\left[4i+1:4(i+1),:\right]}\right],~i=1,2,\cdots, \frac{s}{4};
-      $$
+        $$
+        C4A：(S_H)_i = S_i^\prime \odot \left[kv\_state^a_{\left[4(i-1)+1:4i,:\right]} ;kv\_state^b_{\left[4i+1:4(i+1),:\right]}\right],~i=1,2,\cdots, \frac{s}{4};
+        $$
 
-      $$
-      C128A：S_H = S_i^\prime \odot kv\_state;
-      $$
+        $$
+        C128A：S_H = S_i^\prime \odot kv\_state;
+        $$
 
     5. 沿着压缩轴分组求和：
 
-      $$
-      C4A：C_{i}^{\text{Comp}} = \left[1\right]_{1\times8} @ (S_H)_i, ~i=1,2,\cdots, \frac{s}{4};
-      $$
+        $$
+        C4A：C_{i}^{\text{Comp}} = \left[1\right]_{1\times8} @ (S_H)_i, ~i=1,2,\cdots, \frac{s}{4};
+        $$
 
-      $$
-      C128A：C_{i}^{\text{Comp}} = \left[1\right]_{1\times128} @ (S_H)_i, ~i=1,2,\cdots, \frac{s}{128};
-      $$
+        $$
+        C128A：C_{i}^{\text{Comp}} = \left[1\right]_{1\times128} @ (S_H)_i, ~i=1,2,\cdots, \frac{s}{128};
+        $$
 
 ## 函数原型
 
@@ -465,18 +436,14 @@ aclnnStatus aclnnQuantCompressor(
     aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
-
-- 确定性说明：aclnnQuantCompressor默认确定性实现。
+- 确定性计算：
+  - aclnnQuantCompressor默认确定性实现。
+  <!-- npu="950" id8 -->
+  - <term>Ascend 950PR/Ascend 950DT</term>：batch一致性：通过aclrtSetSysParamOpt()配置ACL_OPT_DETERMINISTIC为3来开启batch一致性，开启后可以满足计算结果和所在批次大小、位置无关。
+  <!-- end id8 -->
 - x参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、D（Head Dim）表示hidden层的最小单元大小、T表示所有Batch输入样本序列长度的累加和。
 - 输入shape限制：
-    - wkv支持输入shape[coff* D,H]
-    - wgate支持输入shape[coff* D,H]
-    - stateCache支持输入shape[block_num,block_size,2*coff* D]，要求blockNum>0，cacheMode=2时，需要满足blockSize >= coff * cmp_ratio + S - 1。
-    - ape支持输入shape[cmp_ratio,coff* D]
-    - xDescale支持输入shape[1,]，per-tensor缩放。
-    - wkvDescale支持输入shape[coff* D,]，per-channel缩放。
-    - wgateDescale支持输入shape[coff* D,]，per-channel缩放。
-    - startPos支持输入shape[B,]
+    - stateCache支持输入shape[block_num,block_size,2* coff* D]，要求blockNum>0，cacheMode=2时，需要满足blockSize >= coff * cmp_ratio + S - 1。
     - 若x的维度采用BS合轴，即x的输入shape为[T,H]
         - cuSeqlens输入shape必须为[B+1,]。该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值，且第一位必须位0。
         - seqused，支持输入shape[B,]，要求每个Batch的有效token数要求小于等于对应Sequence Length长度，即seqused[n] <= cu\_seqlens[n+1] - cu\_seqlens[n]，且不小于0。
@@ -553,49 +520,40 @@ aclnnStatus aclnnQuantCompressor(
 
 /*!
  * \file test_aclnn_quant_compressor.cpp
- * \brief QuantCompressor 算子 aclnn 调用示例
- *        场景：C4A（D=512, coff=2, cmp_ratio=4, cache_mode=1, BSH layout）
+ * \brief QuantCompressor 算子 aclnn 调用示例（A5 / ascend950）
+ *        场景：C4A（D=512, coff=2, cmp_ratio=4, cache_mode=1, BSH layout, HIFLOAT8）
+ *        QuantCompressor 仅支持 ascend950。
  */
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <cstring>
 #include <iostream>
 #include <numeric>
 #include <vector>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_quant_compressor.h"
+#include "opdev/bfloat16.h"
+#include "opdev/hifloat8.h"
 
 #define CHECK_RET(cond, return_expr) \
-  do {                               \
-    if (!(cond)) {                   \
-      return_expr;                   \
-    }                                \
-  } while (0)
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
+    } while (0)
 
-#define LOG_PRINT(message, ...)     \
-  do {                              \
-    printf(message, ##__VA_ARGS__); \
-  } while (0)
+#define LOG_PRINT(message, ...) \
+    do { \
+        printf(message, ##__VA_ARGS__); \
+    } while (0)
 
 namespace {
 
-template <typename To, typename From>
-inline To BitCopy(const From& src)
-{
-    static_assert(sizeof(To) == sizeof(From), "size mismatch");
-    To dst;
-    std::memcpy(&dst, &src, sizeof(To));
-    return dst;
-}
+using op::bfloat16;
+using op::HiFloat8;
 
-inline float Bf16ToFloat(uint16_t h)
-{
-    uint32_t x = static_cast<uint32_t>(h) << 16;
-    return BitCopy<float>(x);
-}
-
-int64_t GetShapeSize(const std::vector<int64_t>& shape)
+int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
     int64_t shapeSize = 1;
     for (auto i : shape) {
@@ -604,7 +562,7 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape)
     return shapeSize;
 }
 
-int Init(int32_t deviceId, aclrtContext* context, aclrtStream* stream)
+int Init(int32_t deviceId, aclrtContext *context, aclrtStream *stream)
 {
     auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
@@ -620,8 +578,8 @@ int Init(int32_t deviceId, aclrtContext* context, aclrtStream* stream)
 }
 
 template <typename T>
-int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
-                    aclDataType dataType, aclTensor** tensor)
+int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
+                    aclDataType dataType, aclTensor **tensor)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     if (size > 0) {
@@ -643,19 +601,19 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
     return 0;
 }
 
-void PrintBf16Result(const std::vector<int64_t>& shape, void** deviceAddr)
+void PrintBf16Result(const std::vector<int64_t> &shape, void **deviceAddr)
 {
     auto size = GetShapeSize(shape);
-    std::vector<uint16_t> resultData(size, 0);
-    auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]),
-                           *deviceAddr, size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
+    std::vector<bfloat16> resultData(size, bfloat16(0.0f));
+    auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), *deviceAddr,
+                           size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
-    for (int64_t i = 0; i < size && i < 10; i++) {
-        LOG_PRINT("cmp_kv[%ld] is: %f\n", i, Bf16ToFloat(resultData[i]));
+    for (int64_t i = 0; i < size && i < 10; i++) { // 10: max print
+        LOG_PRINT("cmp_kv[%ld] is: %f\n", i, static_cast<float>(resultData[i]));
     }
 }
 
-}  // namespace
+} // namespace
 
 int main()
 {
@@ -673,15 +631,15 @@ int main()
     int64_t headDim = 512;
     int64_t coff = 2;
     int64_t cmpRatio = 4;
-    int64_t cacheMode = 1;  // 1: 连续buffer (LINEAR_BUFFER)
-    int64_t quantMode = 1;  // 1: A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL
-    int64_t stateCacheStrideDim0 = 0;
+    int64_t cacheMode = 1; // 1: 连续buffer (LINEAR_BUFFER)
+    int64_t quantMode = 1; // 1: A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL
     int64_t blockSize = 128;
 
     int64_t Smax = S;
     int64_t maxBlockNumPerBatch = (Smax + blockSize - 1) / blockSize;
     int64_t blockNum = B * maxBlockNumPerBatch;
     int64_t coffD = coff * headDim;
+    int64_t stateCacheStrideDim0 = blockSize * 2 * coffD; // state_cache 0轴 stride = dim1 * dim2
 
     // 2. 构造输入与输出 shape
     std::vector<int64_t> xShape = {B, S, hiddenSize};
@@ -705,9 +663,9 @@ int main()
     int64_t apeSize = GetShapeSize(apeShape);
     int64_t cmpKvSize = GetShapeSize(cmpKvShape);
 
-    std::vector<uint8_t> xHostData(xSize, 128);
-    std::vector<uint8_t> wkvHostData(wkvSize, 128);
-    std::vector<uint8_t> wgateHostData(wgateSize, 128);
+    std::vector<HiFloat8> xHostData(xSize, HiFloat8(0.1f));
+    std::vector<HiFloat8> wkvHostData(wkvSize, HiFloat8(0.1f));
+    std::vector<HiFloat8> wgateHostData(wgateSize, HiFloat8(0.1f));
     std::vector<float_t> stateCacheHostData(stateCacheSize, 0.1f);
     std::vector<float_t> apeHostData(apeSize, 0.1f);
     std::vector<float_t> xDescaleHostData = {0.5f};
@@ -718,32 +676,32 @@ int main()
         stateBlockTableHostData.push_back(static_cast<int32_t>(i + 1));
     }
     std::vector<int32_t> startPosHostData(B, 0);
-    std::vector<uint16_t> cmpKvHostData(cmpKvSize, 0);
+    std::vector<bfloat16> cmpKvHostData(cmpKvSize, bfloat16(0.0f));
 
     // 4. 创建 aclTensor
-    void* xDeviceAddr = nullptr;
-    void* wkvDeviceAddr = nullptr;
-    void* wgateDeviceAddr = nullptr;
-    void* stateCacheDeviceAddr = nullptr;
-    void* apeDeviceAddr = nullptr;
-    void* xDescaleDeviceAddr = nullptr;
-    void* wkvDescaleDeviceAddr = nullptr;
-    void* wgateDescaleDeviceAddr = nullptr;
-    void* stateBlockTableDeviceAddr = nullptr;
-    void* startPosDeviceAddr = nullptr;
-    void* cmpKvDeviceAddr = nullptr;
+    void *xDeviceAddr = nullptr;
+    void *wkvDeviceAddr = nullptr;
+    void *wgateDeviceAddr = nullptr;
+    void *stateCacheDeviceAddr = nullptr;
+    void *apeDeviceAddr = nullptr;
+    void *xDescaleDeviceAddr = nullptr;
+    void *wkvDescaleDeviceAddr = nullptr;
+    void *wgateDescaleDeviceAddr = nullptr;
+    void *stateBlockTableDeviceAddr = nullptr;
+    void *startPosDeviceAddr = nullptr;
+    void *cmpKvDeviceAddr = nullptr;
 
-    aclTensor* x = nullptr;
-    aclTensor* wkv = nullptr;
-    aclTensor* wgate = nullptr;
-    aclTensor* stateCacheRef = nullptr;
-    aclTensor* ape = nullptr;
-    aclTensor* xDescale = nullptr;
-    aclTensor* wkvDescale = nullptr;
-    aclTensor* wgateDescale = nullptr;
-    aclTensor* stateBlockTable = nullptr;
-    aclTensor* startPos = nullptr;
-    aclTensor* cmpKvOut = nullptr;
+    aclTensor *x = nullptr;
+    aclTensor *wkv = nullptr;
+    aclTensor *wgate = nullptr;
+    aclTensor *stateCacheRef = nullptr;
+    aclTensor *ape = nullptr;
+    aclTensor *xDescale = nullptr;
+    aclTensor *wkvDescale = nullptr;
+    aclTensor *wgateDescale = nullptr;
+    aclTensor *stateBlockTable = nullptr;
+    aclTensor *startPos = nullptr;
+    aclTensor *cmpKvOut = nullptr;
 
     ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_HIFLOAT8, &x);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -774,19 +732,16 @@ int main()
 
     // 5. 调用 aclnnQuantCompressorGetWorkspaceSize
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
 
-    ret = aclnnQuantCompressorGetWorkspaceSize(
-        x, wkv, wgate, stateCacheRef, ape,
-        xDescale, wkvDescale, wgateDescale,
-        stateBlockTable, nullptr, nullptr, startPos,
-        quantMode, cmpRatio, coff, cacheMode, stateCacheStrideDim0,
-        cmpKvOut, &workspaceSize, &executor);
+    ret = aclnnQuantCompressorGetWorkspaceSize(x, wkv, wgate, stateCacheRef, ape, xDescale, wkvDescale, wgateDescale,
+                                               stateBlockTable, nullptr, nullptr, startPos, quantMode, cmpRatio, coff,
+                                               cacheMode, stateCacheStrideDim0, cmpKvOut, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnQuantCompressorGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
 
     // 6. 申请 workspace
-    void* workspaceAddr = nullptr;
+    void *workspaceAddr = nullptr;
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
@@ -838,4 +793,5 @@ int main()
 
     return 0;
 }
+
 ```

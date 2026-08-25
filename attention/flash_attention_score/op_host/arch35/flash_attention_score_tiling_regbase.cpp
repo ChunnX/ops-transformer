@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "flash_attention_score_tiling_regbase.h"
+#include "flash_attention_score_tiling_regbase_host.h"
 #include "../flash_attention_score_tiling_common.h"
 #include "op_common/log/log.h"
 
@@ -1118,10 +1118,10 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeSinkOptionalInput()
             std::to_string(expectedSinkSize).c_str()),
             return false);
 
-        if (!(inputDtype == ge::DT_FLOAT16 || inputDtype == ge::DT_BF16)) {
+        if (!(inputDtype == ge::DT_FLOAT16 || inputDtype == ge::DT_BF16 || inputDtype == ge::DT_FLOAT)) {
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName, "query, key and value",
                 Ops::Base::ToString(inputDtype).c_str(),
-                "The dtypes of input query, key and value must be FLOAT16 or BF16 when sink is supported");
+                "The dtypes of input query, key and value must be FLOAT, FLOAT16 or BF16 when sink is supported");
             return false;
         }
     }

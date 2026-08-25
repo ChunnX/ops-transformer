@@ -16,18 +16,11 @@
 #ifndef FLASH_ATTN_KERNEL_DN_H_
 #define FLASH_ATTN_KERNEL_DN_H_
 
-#include "adv_api/activation/softmax.h"
-#include "kernel_operator_list_tensor_intf.h" // TensorDesc
 #include "../utils/flash_attn_common_def.h"
-#include "../utils/flash_attn_utils.h"
 
 #include "flash_attn_block_cube_dn.h"
 #include "flash_attn_block_vec_dn.h"
-#if __has_include("../../../common/op_kernel/memory_copy_arch35.h")
-#include "../../../common/op_kernel/memory_copy_arch35.h"
-#else
-#include "../../common/memory_copy_arch35.h"
-#endif
+#include "memory_copy_arch35.h"
 #include "flash_attn_block_vec_flashdecode.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
@@ -176,7 +169,6 @@ public:
         constInfo_.seqUsedQSize = tilingData_->flashAttnBaseParams.seqUsedQSize;
         constInfo_.seqUsedKvSize = tilingData_->flashAttnBaseParams.seqUsedKvSize;
         constInfo_.scaleValue = static_cast<float>(tilingData_->flashAttnBaseParams.scaleValue);
-        constInfo_.isKvContinuous = tilingData_->flashAttnBaseParams.isKvContinuous != 0;
         constInfo_.coreNum = tilingData_->flashAttnBaseParams.coreNum;
         constInfo_.outputLayout = static_cast<FA_LAYOUT>(tilingData_->flashAttnBaseParams.outputLayout);
         constInfo_.needInitOutput = tilingData_->flashAttnBaseParams.needInitOutput;
@@ -453,25 +445,13 @@ public:
         }
     }
 
-    __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
-    {
-        cubeBlock_.IterateBmm1(runInfo);
-    }
+    __aicore__ inline void ComputeMm1(RunInfoX &runInfo) { cubeBlock_.IterateBmm1(runInfo); }
 
-    __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
-    {
-        cubeBlock_.IterateBmm2(runInfo);
-    }
+    __aicore__ inline void ComputeMm2(RunInfoX &runInfo) { cubeBlock_.IterateBmm2(runInfo); }
 
-    __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
-    {
-        vecFaBlock_.ProcessVec1(runInfo);
-    }
+    __aicore__ inline void ComputeVec1(RunInfoX &runInfo) { vecFaBlock_.ProcessVec1(runInfo); }
 
-    __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
-    {
-        vecFaBlock_.ProcessVec2(runInfo);
-    }
+    __aicore__ inline void ComputeVec2(RunInfoX &runInfo) { vecFaBlock_.ProcessVec2(runInfo); }
 
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
                                       RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
@@ -508,18 +488,8 @@ public:
         if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
         }
-        info.actSingleLoopS2SizeAlign =
-            AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
-        if (constInfo_.isKvContinuous) {
-            info.isChangeBatch = false;
-        } else {
-            // for tensor-list
-            if (loop == 0) { // 第一个有效任务才需要重置KV的tensor
-                info.isChangeBatch = true;
-            } else {
-                info.isChangeBatch = (info.n2Idx == 0 && s2Cur == curS2Start_);
-            }
-        }
+        info.actSingleLoopS2SizeAlign = AttentionCommon::Align(
+            (uint32_t)info.actSingleLoopS2Size, (uint32_t)(AttentionCommon::BYTE_BLOCK / sizeof(INPUT_T)));
 
         GetPreNextTokenLeftUp(actSeqLensQ_, actSeqLensKv_, info.preTokensLeftUp, info.nextTokensLeftUp);
 
@@ -599,12 +569,12 @@ public:
 
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
     {
-        bN2Start_ = faMetaDataGm_.GetValue(
-            GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_BN2_START_INDEX, sectionIdx));
-        gS1OStart_ = faMetaDataGm_.GetValue(
-            GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_M_START_INDEX, sectionIdx));
-        s2OStart_ = faMetaDataGm_.GetValue(
-            GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_S2_START_INDEX, sectionIdx));
+        bN2Start_ =
+            faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_BN2_START_INDEX, sectionIdx));
+        gS1OStart_ =
+            faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_M_START_INDEX, sectionIdx));
+        s2OStart_ =
+            faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_S2_START_INDEX, sectionIdx));
         bN2End_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_BN2_END_INDEX, sectionIdx));
         gS1OEnd_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_M_END_INDEX, sectionIdx));
         s2OEnd_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_S2_END_INDEX, sectionIdx));
@@ -626,8 +596,8 @@ public:
             fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_WORKSPACE_IDX_INDEX, sectionIdx));
         fdParams_.fdS2SplitNum =
             fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_WORKSPACE_NUM_INDEX, sectionIdx));
-        fdParams_.mStart = fdMetaDataGm_.GetValue(
-            GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_M_START_INDEX, sectionIdx));
+        fdParams_.mStart =
+            fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_M_START_INDEX, sectionIdx));
     }
 
     __aicore__ inline void Process()

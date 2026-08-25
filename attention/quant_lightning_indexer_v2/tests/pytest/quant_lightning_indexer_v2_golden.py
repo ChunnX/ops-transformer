@@ -25,6 +25,7 @@ import ctypes
 import copy
 import ast
 from qliv2_parameter_normalization import normalize_qliv2_params
+
 try:
     import cann_ops_transformer
 except ImportError:
@@ -173,6 +174,22 @@ def reduce_mxfp4_weighted_qk(weight_matrix, qk_matrix):
         fma_fp64 = acc_bf16.to(torch.float64) + weight_fp64 * qk_fp64
         acc_bf16 = round_fp64_to_bf16_rne(fma_fp64)
     return acc_bf16
+
+
+def reduce_mxfp8_weighted_qk(weight_matrix, qk_matrix):
+    output_shape = (weight_matrix.shape[0], weight_matrix.shape[1], qk_matrix.shape[2])
+    acc_fp32 = torch.zeros(
+        output_shape, dtype=torch.float32, device=weight_matrix.device
+    )
+
+    for g_idx in range(weight_matrix.shape[2]):
+        weight_fp64 = weight_matrix[:, :, g_idx : g_idx + 1].to(torch.float64)
+        qk_fp64 = qk_matrix[:, g_idx : g_idx + 1, :].to(torch.float64)
+        # Model an FP32-destination MulAddDst: compute the fused multiply-add in
+        # FP64, then round once to the FP32 destination after every G.
+        fma_fp64 = acc_fp32.to(torch.float64) + weight_fp64 * qk_fp64
+        acc_fp32 = fma_fp64.to(torch.float32)
+    return acc_fp32
 
 
 def get_qk_physical_head_dim(head_dim, quant_mode):
@@ -843,10 +860,9 @@ class GeneralizedQLIV2:
                 cur_q.squeeze(0), cur_k.permute(0, 1, 3, 2).squeeze(0)
             ).unsqueeze(0)
             qk_relu_out = qk_bmm_res.to(dtype=torch.float32).clamp_min(0.0)
-            brc_vmul = torch.bmm(
-                cur_wt.permute(0, 2, 3, 1).to(dtype=torch.float32).squeeze(0),
-                qk_relu_out.permute(0, 2, 1, 3).to(dtype=torch.float32).squeeze(0),
-            ).unsqueeze(0)
+            weight_matrix = cur_wt.permute(0, 2, 3, 1).squeeze(0)
+            qk_matrix = qk_relu_out.permute(0, 2, 1, 3).squeeze(0)
+            brc_vmul = reduce_mxfp8_weighted_qk(weight_matrix, qk_matrix).unsqueeze(0)
         temp_b, temp_s1, temp_n1, temp_s2 = brc_vmul.shape
         temp_n2 = self.k_head_num
         actual_selected_count = min(temp_s2, sparse_count)
@@ -1432,31 +1448,90 @@ class GeneralizedQLIV2:
         return y, y_value, sparse_value
 
 
-def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1size = DEFAULT_S1SIZE):
+def trans_prefix_actseq(self, list):
+    list_len = len(list)
+    if list_len == 0:
+        raise ValueError("PA场景下 act_seq需要必传")
+    list_new = []
+    list_new.append(list[0])
+    for i in range(list_len - 1):
+        new_item = list[i + 1] - list[i]
+        if new_item >= 0:
+            list_new.append(new_item)
+        else:
+            raise ValueError(f"PA场景下act seq 为非递减数列 act_seq ={list}")
+    return list_new
+
+
+def qliv2_output_single(
+    params,
+    is_batch=False,
+    split_s1=DEFAULT_SPLIT_S1,
+    s1size=DEFAULT_S1SIZE,
+    generate_golden=True,
+):
     if is_batch:
         params = normalize_qliv2_params(params)
-    batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,\
-    block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q,\
-    seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,\
-    sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,\
-    k_scale_datarange, cmp_ratio, return_value, output_idx_offset = params
+    (
+        batch_size,
+        q_seq,
+        k_seq,
+        q_t_size,
+        k_t_size,
+        q_head_num,
+        k_head_num,
+        head_dim,
+        block_size,
+        block_num,
+        qk_dtype,
+        weight_dtype,
+        dequant_dtype,
+        actual_seq_dtype,
+        cu_seqlens_q,
+        cu_seqlens_k,
+        seqused_q,
+        seqused_k,
+        cmp_residual_k,
+        max_seqlen_q,
+        quant_mode,
+        layout_query,
+        layout_key,
+        sparse_count,
+        sparse_mode,
+        query_datarange,
+        key_datarange,
+        weights_datarange,
+        q_scale_datarange,
+        k_scale_datarange,
+        cmp_ratio,
+        return_value,
+        output_idx_offset,
+    ) = params
 
     if is_batch:
-        if qk_dtype == 'INT8':
-            qk_dtype = torch.int8
-        elif qk_dtype == 'FLOAT8_E4M3FN':
-            qk_dtype = torch.float8_e4m3fn
-        elif qk_dtype == 'HIFLOAT8':
-            qk_dtype = torch.uint8
+        dtype_map = {
+            "INT8": torch.int8,
+            "UINT8": torch.uint8,
+            "HIFLOAT8": torch.uint8,
+            "INT32": torch.int32,
+            "INT64": torch.int64,
+            "FP16": torch.float16,
+            "FLOAT16": torch.float16,
+            "FP32": torch.float32,
+            "FLOAT": torch.float32,
+            "FLOAT32": torch.float32,
+            "BF16": torch.bfloat16,
+            "FLOAT8_E4M3FN": torch.float8_e4m3fn,
+            "FLOAT8_E8M0": torch.float8_e8m0fnu,
+            "FLOAT8_E8M0FNU": torch.float8_e8m0fnu,
+            "FLOAT4_E2M1": MXFP4_TORCH_DTYPE,
+            "FLOAT4_E2M1FN_X2": MXFP4_TORCH_DTYPE,
+        }
+        qk_dtype = dtype_map.get(qk_dtype, qk_dtype)
+        weight_dtype = dtype_map.get(weight_dtype, weight_dtype)
+        dequant_dtype = dtype_map.get(dequant_dtype, dequant_dtype)
+        actual_seq_dtype = dtype_map.get(actual_seq_dtype, actual_seq_dtype)
 
-        if dequant_dtype == 'FP16':
-            dequant_dtype = torch.float16
-        elif dequant_dtype == 'FP32':
-            dequant_dtype = torch.float32
-
-        if actual_seq_dtype == 'INT32':
-            actual_seq_dtype = torch.int32
-        
         if cu_seqlens_q is not None and isinstance(cu_seqlens_q, str):
             cu_seqlens_q = ast.literal_eval(cu_seqlens_q)
         if cu_seqlens_k is not None and isinstance(cu_seqlens_k, str):
@@ -1796,19 +1871,22 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
             key_dequant_scale_cpu = key_dequant_scale
 
         block_table = None
-        cpu_result, topk_value, cpu_topk_value = test_qliv2.forward(
-            query_cpu_ref,
-            key_cpu_ref,
-            weights,
-            query_dequant_scale_cpu,
-            key_dequant_scale_cpu,
-            cu_seqlens_q,
-            cu_seqlens_k,
-            seqused_q,
-            seqused_k,
-            block_table,
-            output_idx_offset,
-        )
+        if generate_golden:
+            cpu_result, topk_value, cpu_topk_value = test_qliv2.forward(
+                query_cpu_ref,
+                key_cpu_ref,
+                weights,
+                query_dequant_scale_cpu,
+                key_dequant_scale_cpu,
+                cu_seqlens_q,
+                cu_seqlens_k,
+                seqused_q,
+                seqused_k,
+                block_table,
+                output_idx_offset,
+            )
+        else:
+            cpu_result, topk_value, cpu_topk_value = None, None, None
 
     elif layout_key == "TND":
         k_logical_shape = (k_t_size, k_head_num, head_dim)
@@ -1852,19 +1930,22 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
             key_dequant_scale_cpu = key_dequant_scale
 
         block_table = None
-        cpu_result, topk_value, cpu_topk_value = test_qliv2.forward(
-            query_cpu_ref,
-            key_cpu_ref,
-            weights,
-            query_dequant_scale_cpu,
-            key_dequant_scale_cpu,
-            cu_seqlens_q,
-            cu_seqlens_k,
-            seqused_q,
-            seqused_k,
-            block_table,
-            output_idx_offset,
-        )
+        if generate_golden:
+            cpu_result, topk_value, cpu_topk_value = test_qliv2.forward(
+                query_cpu_ref,
+                key_cpu_ref,
+                weights,
+                query_dequant_scale_cpu,
+                key_dequant_scale_cpu,
+                cu_seqlens_q,
+                cu_seqlens_k,
+                seqused_q,
+                seqused_k,
+                block_table,
+                output_idx_offset,
+            )
+        else:
+            cpu_result, topk_value, cpu_topk_value = None, None, None
 
     elif layout_key == "PA_BBND":
         k_max_s2 = math.floor(max(act_seq_k))
@@ -2045,19 +2126,22 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
             key_dequant_scale = torch.tensor([k_scale]).to(dequant_dtype)
         else:
             key_dequant_scale = key_dequant_scale_block
-        cpu_result, topk_value, cpu_topk_value = test_qliv2.forward(
-            query_cpu_ref,
-            key_bnsd_cpu_ref,
-            weights,
-            query_dequant_scale_cpu,
-            key_dequant_scale_bns,
-            cu_seqlens_q,
-            cu_seqlens_k,
-            seqused_q,
-            seqused_k,
-            block_table,
-            output_idx_offset,
-        )
+        if generate_golden:
+            cpu_result, topk_value, cpu_topk_value = test_qliv2.forward(
+                query_cpu_ref,
+                key_bnsd_cpu_ref,
+                weights,
+                query_dequant_scale_cpu,
+                key_dequant_scale_bns,
+                cu_seqlens_q,
+                cu_seqlens_k,
+                seqused_q,
+                seqused_k,
+                block_table,
+                output_idx_offset,
+            )
+        else:
+            cpu_result, topk_value, cpu_topk_value = None, None, None
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32)
     # ======================== metadata 构造 ========================
     # max_seqlen 从个体长度中取
@@ -2069,7 +2153,66 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
             query = query.to(dtype=torch.float16)
             key = key.to(dtype=torch.float16)
             if blockFusion is not None:
-                blockFusion = blockFusion.to(dtype=torch.float16)
+                blockFusion = blockFusion.view(torch.uint8)
+
+        golden_key = key_bnsd_cpu_ref if layout_key == "PA_BBND" else key_cpu_ref
+        golden_key_scale = (
+            key_dequant_scale_bns if layout_key == "PA_BBND" else key_dequant_scale_cpu
+        )
+        golden_block_table = block_table
+        if torch.is_tensor(golden_block_table):
+            golden_block_table = golden_block_table.detach().cpu().numpy()
+        golden_state = {
+            "model_args": (
+                batch_size,
+                q_seq,
+                k_seq,
+                q_t_size,
+                k_t_size,
+                q_head_num,
+                k_head_num,
+                head_dim,
+                block_size,
+                block_num,
+                qk_dtype,
+                weight_dtype,
+                dequant_dtype,
+                actual_seq_dtype,
+                cu_seqlens_q,
+                cu_seqlens_k,
+                lengths_q_list,
+                lengths_k_list,
+                cmp_residual_k_for_cpu,
+                max_seqlen_q,
+                quant_mode,
+                layout_query,
+                layout_key,
+                sparse_count,
+                sparse_mode,
+                query_datarange,
+                key_datarange,
+                weights_datarange,
+                q_scale_datarange,
+                k_scale_datarange,
+                cmp_ratio,
+                return_value,
+            ),
+            "split_s1": split_s1,
+            "s1size": s1size,
+            "forward_inputs": {
+                "query": query_cpu_ref,
+                "key": golden_key,
+                "weights": weights,
+                "query_dequant_scale": query_dequant_scale_cpu,
+                "key_dequant_scale": golden_key_scale,
+                "cu_seqlens_q": cu_seqlens_q,
+                "cu_seqlens_k": cu_seqlens_k,
+                "seqused_q": seqused_q,
+                "seqused_k": seqused_k,
+                "block_table": golden_block_table,
+                "output_idx_offset": output_idx_offset,
+            },
+        }
 
         output_tensors = {
             "params": params,
@@ -2099,6 +2242,7 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
             "sparse_count": sparse_count,
             "sparse_mode": sparse_mode,
             "cmp_ratio": cmp_ratio,
+            "golden_state": golden_state,
         }
         return output_tensors
     else:
@@ -2198,9 +2342,76 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
         return cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value
 
 
-def generate_qliv2_test_data(params, split_s1=DEFAULT_SPLIT_S1, s1size=DEFAULT_S1SIZE):
-    """Generate QLI_V2 inputs and CPU golden without executing metadata or the main op."""
-    return qliv2_output_single(params, is_batch=True, split_s1=split_s1, s1size=s1size)
+def build_qliv2_metadata_input(params, tensor_dict):
+    """Return the canonical metadata arguments produced by the pytest case."""
+    return {
+        "num_heads_q": int(params[5]),
+        "num_heads_k": int(params[6]),
+        "head_dim": int(params[7]),
+        "topk": int(tensor_dict["sparse_count"]),
+        "quant_mode": int(tensor_dict["quant_mode"]),
+        "cu_seqlens_q": tensor_dict["cu_seqlens_query"],
+        "cu_seqlens_k": tensor_dict["cu_seqlens_key"],
+        "seqused_q": tensor_dict["seqused_q"],
+        "seqused_k": tensor_dict["seqused_k"],
+        "cmp_residual_k": tensor_dict["cmp_residual_k_for_npu"],
+        "batch_size": int(params[0]),
+        "max_seqlen_q": int(tensor_dict["max_seqlen_q_meta"]),
+        "max_seqlen_k": int(tensor_dict["max_seqlen_k_meta"]),
+        "layout_q": tensor_dict["layout_query"],
+        "layout_k": tensor_dict["layout_key"],
+        "mask_mode": int(tensor_dict["sparse_mode"]),
+        "cmp_ratio": int(tensor_dict["cmp_ratio"]),
+    }
+
+
+def generate_qliv2_test_data(
+    params,
+    split_s1=DEFAULT_SPLIT_S1,
+    s1size=DEFAULT_S1SIZE,
+    generate_golden=True,
+):
+    """Generate QLI_V2 inputs and optionally materialize the CPU Golden."""
+    data = qliv2_output_single(
+        params,
+        is_batch=True,
+        split_s1=split_s1,
+        s1size=s1size,
+        generate_golden=generate_golden,
+    )
+    data["metadata_input"] = build_qliv2_metadata_input(data["params"], data)
+    return data
+
+
+def generate_cpu_golden(input_data):
+    """Calculate CPU Golden from input-stage data without rerunning random generation."""
+    state = input_data["golden_state"]
+    test_qliv2 = GeneralizedQLIV2(
+        *state["model_args"],
+        split_s1=state["split_s1"],
+        s1size=state["s1size"],
+    )
+    values = state["forward_inputs"]
+    cpu_result, topk_value, cpu_topk_value = test_qliv2.forward(
+        values["query"],
+        values["key"],
+        values["weights"],
+        values["query_dequant_scale"],
+        values["key_dequant_scale"],
+        values["cu_seqlens_q"],
+        values["cu_seqlens_k"],
+        values["seqused_q"],
+        values["seqused_k"],
+        values["block_table"],
+        values["output_idx_offset"],
+    )
+    state["cpu_result"] = cpu_result
+    state["topk_value"] = topk_value
+    state["cpu_topk_value"] = cpu_topk_value
+    input_data["cpu_result"] = cpu_result
+    input_data["topk_value"] = topk_value
+    input_data["cpu_topk_value"] = cpu_topk_value
+    return cpu_result, topk_value, cpu_topk_value
 
 
 def fp32_ta_round_to_hif8(fraction32_int, hif8_bits_num, exponent):

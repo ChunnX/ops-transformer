@@ -19,7 +19,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include <graph/utils/type_utils.h>
-#include "err/ops_err.h"
+#include "log/log.h"
 #include "register/op_def_registry.h"
 #include "quant_compressor_tiling.h"
 
@@ -76,7 +76,7 @@ ge::graphStatus QuantCompressorTiling::ConvertContext(gert::TilingContext &conte
                                                       QuantCompressorContext &quantCompressorContext)
 {
     if (context.GetNodeName() == nullptr) {
-        OP_LOGE("QuantCompressor", "opName got from TilingContext is nullptr");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("QuantCompressor", "opName", "got from TilingContext is nullptr");
         return ge::GRAPH_FAILED;
     }
 
@@ -89,7 +89,8 @@ ge::graphStatus QuantCompressorTiling::ConvertContext(gert::TilingContext &conte
     ConvertOptionalParams(context, quantCompressorContext);
 
     auto attrs = context.GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OP_LOGE(context.GetNodeName(), "attrs got from ge is nullptr"),
+    OP_CHECK_IF(attrs == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.GetNodeName(), "attrs", "got from ge is nullptr"),
                 return ge::GRAPH_FAILED);
     quantCompressorContext.quantMode = attrs->GetAttrPointer<int>(QUANT_MODE_ATTR_INDEX);
     quantCompressorContext.coff = attrs->GetAttrPointer<int>(COFF_ATTR_INDEX);
@@ -98,9 +99,10 @@ ge::graphStatus QuantCompressorTiling::ConvertContext(gert::TilingContext &conte
     quantCompressorContext.stateCacheStrideDim0 = attrs->GetAttrPointer<int>(STATE_CACHE_STRIDE_DIM0_ATTR_INDEX);
     quantCompressorContext.batchConsistency = context.GetDeterministicLevel();
     OP_LOGD(context.GetNodeName(), "deterministic_level=%d", context.GetDeterministicLevel());
-    OP_CHECK_IF(context.GetWorkspaceSizes(1) == nullptr,
-                OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "workSpaceSize got from ge is nullptr"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        context.GetWorkspaceSizes(1) == nullptr,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.GetNodeName(), "workSpaceSize", "got from ge is nullptr"),
+        return ge::GRAPH_FAILED);
     quantCompressorContext.workSpaces = context.GetWorkspaceSizes(1);
     return ge::GRAPH_SUCCESS;
 }
@@ -108,7 +110,8 @@ ge::graphStatus QuantCompressorTiling::ConvertContext(gert::TilingContext &conte
 ge::graphStatus QuantCompressorTiling::GetNpuInfo()
 {
     OP_CHECK_IF(context_->platformInfo == nullptr,
-                OPS_REPORT_VECTOR_INNER_ERR(context_->opName, "GetPlatformInfo is nullptr."), return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "platformInfo", "is nullptr"),
+                return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->platformInfo);
     socVersion_ = ascendcPlatform.GetSocVersion();
@@ -122,8 +125,10 @@ ge::graphStatus QuantCompressorTiling::GetNpuInfo()
 
     aivNum_ = ascendcPlatform.GetCoreNumAiv();
     aicNum_ = ascendcPlatform.GetCoreNumAic();
-    OP_CHECK_IF(aicNum_ == 0 || aivNum_ == 0,
-                OPS_REPORT_VECTOR_INNER_ERR(context_->opName, "num of core obtained is 0."), return GRAPH_FAILED);
+    OP_CHECK_IF(
+        aicNum_ == 0 || aivNum_ == 0,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "aicNum/aivNum", "num of core obtained is 0"),
+        return GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -210,7 +215,7 @@ ge::graphStatus QuantCompressorTiling::SetInnerSplitInfo()
         if ((dBaseNum * mBaseNum) < baseParams_->usedCoreNum && baseParams_->batchConsistency != BATCH_CONSISTENCY) {
             baseParams_->kBaseNum = baseParams_->usedCoreNum / dBaseNum;
             uint32_t kAlignSize = (baseParams_->hiddenSize + baseParams_->kBaseNum - 1) / baseParams_->kBaseNum;
-            baseParams_->kBaseSize = kAlignSize / 16 * 16; // 切k的size需要16对齐
+            baseParams_->kBaseSize = kAlignSize / 32 * 32; // 切k的size需要32对齐(hifloat8)
         }
         for (uint32_t i = 0; i < baseParams_->usedCoreNum; i++) {
             baseParams_->splitCoreParam[i].nStart = (i % dBaseNum) * innerSplitParams_->dBaseSize;
@@ -234,9 +239,11 @@ ge::graphStatus QuantCompressorTiling::SetInnerSplitInfo()
             } else {
                 baseParams_->splitCoreParam[i].kStart = 0;
                 baseParams_->splitCoreParam[i].kEnd = baseParams_->splitCoreParam[i].kStart + baseParams_->kBaseSize;
-                baseParams_->splitCoreParam[i].mStart = (i / dBaseNum) * innerSplitParams_->mBaseSize;
-                baseParams_->splitCoreParam[i].mEnd =
-                    baseParams_->splitCoreParam[i].mStart + innerSplitParams_->mBaseSize;
+                uint32_t mStart = (i / dBaseNum) * innerSplitParams_->mBaseSize;
+                baseParams_->splitCoreParam[i].mStart =
+                    mStart < baseParams_->tokenSize ? mStart : baseParams_->tokenSize;
+                uint32_t mEnd = baseParams_->splitCoreParam[i].mStart + innerSplitParams_->mBaseSize;
+                baseParams_->splitCoreParam[i].mEnd = mEnd < baseParams_->tokenSize ? mEnd : baseParams_->tokenSize;
                 baseParams_->mLoopNum = mBaseNum / baseParams_->coreGroupNum;
             }
         }
@@ -283,7 +290,8 @@ ge::graphStatus QuantCompressorTiling::CheckEmptyTensor() const
             context_->stateCache.shape->GetStorageShape().GetShapeSize() == 0 ||
             context_->ape.shape->GetStorageShape().GetShapeSize() == 0 ||
             context_->stateBlockTable.shape->GetStorageShape().GetShapeSize() == 0) {
-            OP_LOGE(context_->opName, "Only input tensor x dim B or S or T supports to be 0");
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->opName, "x", "0",
+                                                  "Only input tensor x dim B or S or T supports to be 0");
             return ge::GRAPH_FAILED;
         }
         context_->templateId = TemplateId::NORMAL;
@@ -435,8 +443,8 @@ void QuantCompressorTiling::LogErrorNumberSupport(const std::vector<T> &expectNu
         }
     }
 
-    OP_LOGE(context_->opName, "%s %s only supports %s, but got %s", name.c_str(), subName.c_str(), oss.str().c_str(),
-            to_string(actualValue).c_str());
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, name, to_string(actualValue),
+                                          subName + " only supports " + oss.str());
 }
 
 static std::string LayoutTypeToStr(LayoutType layout)
@@ -456,10 +464,11 @@ ge::graphStatus QuantCompressorTiling::CheckDimNumInLayoutSupport(const std::str
                                                                   const std::string &name) const
 {
     const auto &dimIt = LAYOUT_DIM_MAP.find(layout);
-    OP_CHECK_IF(shape->GetStorageShape().GetDimNum() != dimIt->second,
-                OP_LOGE(context_->opName, "When layout is %s, %s dimension should be %u, but it's %zu", layout.c_str(),
-                        name.c_str(), dimIt->second, shape->GetStorageShape().GetDimNum()),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        shape->GetStorageShape().GetDimNum() != dimIt->second,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->opName, name, std::to_string(shape->GetStorageShape().GetDimNum()),
+                                     std::to_string(dimIt->second)),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -468,10 +477,10 @@ ge::graphStatus QuantCompressorTiling::CheckDtypeSupport(const gert::CompileTime
 {
     if (desc != nullptr) {
         const auto &it = DTYPE_SUPPORT_MAP.find(name);
-        OP_CHECK_IF(
-            it == DTYPE_SUPPORT_MAP.end(),
-            OP_LOGE(context_->opName, "%s datatype support list should be specify in DTYPE_SUPPORT_MAP", name.c_str()),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(it == DTYPE_SUPPORT_MAP.end(),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                        context_->opName, name, "datatype support list should be specify in DTYPE_SUPPORT_MAP"),
+                    return ge::GRAPH_FAILED);
         auto &expectDtypeList = it->second;
         OP_CHECK_IF(
             std::find(expectDtypeList.begin(), expectDtypeList.end(), desc->GetDataType()) == expectDtypeList.end(),
@@ -490,8 +499,7 @@ void QuantCompressorTiling::LogErrorDtypeSupport(const std::vector<ge::DataType>
             oss << ", ";
         }
     }
-    OP_LOGE(context_->opName, "Tensor %s only supports dtype %s, but got %s", name.c_str(), oss.str().c_str(),
-            DataTypeToSerialString(actualDtype).c_str());
+    OP_LOGE_FOR_INVALID_DTYPE(context_->opName, name, DataTypeToSerialString(actualDtype), oss.str());
 }
 
 static std::string DataTypeToSerialString(ge::DataType type)
@@ -500,7 +508,8 @@ static std::string DataTypeToSerialString(ge::DataType type)
     if (it != DATATYPE_TO_STRING_MAP.end()) {
         return it->second;
     } else {
-        OP_LOGE("QuantCompressor", "datatype %d not support", type);
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("QuantCompressor", "datatype", std::to_string(static_cast<int32_t>(type)),
+                                              "not support");
         return "UNDEFINED";
     }
 }
@@ -513,14 +522,26 @@ ge::graphStatus QuantCompressorTiling::CheckDimNumSupport(const gert::StorageSha
     }
     const auto &it = DIM_NUM_MAP.find(name);
     OP_CHECK_IF(it == DIM_NUM_MAP.end(),
-                OP_LOGE(context_->opName, "%s dim number support list should be specify in DIM_NUM_MAP", name.c_str()),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, name,
+                                                         "dim number support list should be specify in DIM_NUM_MAP"),
                 return ge::GRAPH_FAILED);
     auto &expectDimNumList = it->second;
-    OP_CHECK_IF(std::find(expectDimNumList.begin(), expectDimNumList.end(), shape->GetStorageShape().GetDimNum()) ==
-                    expectDimNumList.end(),
-                LogErrorNumberSupport(expectDimNumList, static_cast<uint32_t>(shape->GetStorageShape().GetDimNum()),
-                                      name, "dimension"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        std::find(expectDimNumList.begin(), expectDimNumList.end(), shape->GetStorageShape().GetDimNum()) ==
+            expectDimNumList.end(),
+        [&]() {
+            std::ostringstream oss;
+            for (size_t i = 0; i < expectDimNumList.size(); ++i) {
+                oss << expectDimNumList[i];
+                if (i < expectDimNumList.size() - 1) {
+                    oss << " or ";
+                }
+            }
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->opName, name,
+                                                     std::to_string(shape->GetStorageShape().GetDimNum()),
+                                                     name + " dimension should be " + oss.str());
+        }(),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -531,6 +552,21 @@ ge::graphStatus QuantCompressorTiling::CheckSingleParaX() const
         ge::GRAPH_SUCCESS != CheckDimNumInLayoutSupport(LayoutTypeToStr(context_->layout), context_->x.shape, X_NAME)) {
         return ge::GRAPH_FAILED;
     }
+    OP_CHECK_IF(context_->x.shape->GetStorageShape().GetDim(context_->x.shape->GetStorageShape().GetDimNum() - 1) >
+                        MAX_HIDDEN_SIZE ||
+                    context_->x.shape->GetStorageShape().GetDim(context_->x.shape->GetStorageShape().GetDimNum() - 1) <
+                        MIN_HIDDEN_SIZE ||
+                    context_->x.shape->GetStorageShape().GetDim(context_->x.shape->GetStorageShape().GetDimNum() - 1) %
+                            ALIGN_FACTOR_HIDDEN_SIZE !=
+                        0,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    context_->opName, X_NAME,
+                    "dim " + std::to_string(context_->x.shape->GetStorageShape().GetDimNum() - 1) + "=" +
+                        std::to_string(context_->x.shape->GetStorageShape().GetDim(
+                            context_->x.shape->GetStorageShape().GetDimNum() - 1)),
+                    "x should be within [" + std::to_string(MIN_HIDDEN_SIZE) + ", " + std::to_string(MAX_HIDDEN_SIZE) +
+                        "] and be 512-aligned"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -538,6 +574,11 @@ ge::graphStatus QuantCompressorTiling::CheckSingleParaWkv() const
 {
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->wkv.desc, WKV_NAME) ||
         ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->wkv.shape, WKV_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
+    uint32_t coffVal = static_cast<uint32_t>(static_cast<uint8_t>(*context_->coff));
+    uint32_t headDim = context_->wkv.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) / coffVal;
+    if (ge::GRAPH_SUCCESS != CheckFeatureValueSupport(&headDim, HEAD_DIM, WKV_NAME)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -557,6 +598,38 @@ ge::graphStatus QuantCompressorTiling::CheckSingleParaStateCache() const
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->stateCache.desc, STATE_CACHE_NAME) ||
         ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->stateCache.shape, STATE_CACHE_NAME)) {
         return ge::GRAPH_FAILED;
+    }
+    uint32_t blockSize = context_->stateCache.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
+    OP_CHECK_IF(
+        blockSize > MAX_BLOCK_SIZE || blockSize < MIN_BLOCK_SIZE,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->opName, STATE_CACHE_NAME, "dim 1=" + std::to_string(blockSize),
+                                              "state_cache dim 1 should be within [" + std::to_string(MIN_BLOCK_SIZE) +
+                                                  ", " + std::to_string(MAX_BLOCK_SIZE) + "]"),
+        return ge::GRAPH_FAILED);
+    if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::RING_BUFFER)) {
+        uint32_t blockNum = context_->stateCache.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
+        uint32_t batchSize = context_->x.shape->GetStorageShape().GetDimNum() == COMPRESSOR_DIM_NUM_3 ?
+                                 context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) :
+                                 context_->cuSeqlens.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) - 1;
+        OP_CHECK_IF(blockNum < batchSize,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        context_->opName, STATE_CACHE_NAME, "dim 0=" + std::to_string(blockNum),
+                        "when cacheMode is " + std::to_string(static_cast<uint8_t>(CACHE_MODE::RING_BUFFER)) +
+                            ", state_cache dim 0 should not be less than batchSize(" + std::to_string(batchSize) + ")"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            context_->stateBlockTable.shape->GetStorageShape().GetDimNum() != COMPRESSOR_DIM_NUM_1,
+            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->opName, "state_block_table",
+                                         std::to_string(context_->stateBlockTable.shape->GetStorageShape().GetDimNum()),
+                                         std::to_string(COMPRESSOR_DIM_NUM_1)),
+            return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(
+            context_->stateBlockTable.shape->GetStorageShape().GetDimNum() != COMPRESSOR_DIM_NUM_2,
+            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->opName, "state_block_table",
+                                         std::to_string(context_->stateBlockTable.shape->GetStorageShape().GetDimNum()),
+                                         std::to_string(COMPRESSOR_DIM_NUM_2)),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -633,10 +706,12 @@ ge::graphStatus QuantCompressorTiling::CheckSingleParaCmpKv() const
 ge::graphStatus QuantCompressorTiling::CheckSingleParaCmpRatio() const
 {
     uint32_t cmpRatio = static_cast<uint32_t>(*context_->cmpRatio);
-    OP_CHECK_IF(cmpRatio > MAX_CMPRATIO_SIZE || cmpRatio < MIN_CMPRATIO_SIZE,
-                OP_LOGE(context_->opName, "cmpRatio should be within [%u, %u], but got %u", MIN_CMPRATIO_SIZE,
-                        MAX_CMPRATIO_SIZE, cmpRatio),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        cmpRatio > MAX_CMPRATIO_SIZE || cmpRatio < MIN_CMPRATIO_SIZE,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, "cmp_ratio", std::to_string(cmpRatio),
+                                              "cmp_ratio should be within [" + std::to_string(MIN_CMPRATIO_SIZE) +
+                                                  ", " + std::to_string(MAX_CMPRATIO_SIZE) + "]"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -712,67 +787,92 @@ ge::graphStatus QuantCompressorTiling::CheckRequiredParaExistence() const
 
 ge::graphStatus QuantCompressorTiling::CheckRequiredInOutExistence() const
 {
-    OP_CHECK_IF(context_->x.shape == nullptr, OP_LOGE(context_->opName, "tensor x is nullptr"),
+    OP_CHECK_IF(context_->x.shape == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "x", "shape is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->x.desc == nullptr, OP_LOGE(context_->opName, "tensor x is nullptr"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->wkv.shape == nullptr, OP_LOGE(context_->opName, "tensor wkv is nullptr"),
+    OP_CHECK_IF(context_->x.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "x", "desc is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->wkv.desc == nullptr, OP_LOGE(context_->opName, "tensor wkv is nullptr"),
+    OP_CHECK_IF(context_->wkv.shape == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "wkv", "shape is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->wgate.shape == nullptr, OP_LOGE(context_->opName, "tensor wgate is nullptr"),
+    OP_CHECK_IF(context_->wkv.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "wkv", "desc is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->wgate.desc == nullptr, OP_LOGE(context_->opName, "tensor wgate is nullptr"),
+    OP_CHECK_IF(context_->wgate.shape == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "wgate", "shape is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->stateCache.shape == nullptr, OP_LOGE(context_->opName, "tensor stateCache is nullptr"),
+    OP_CHECK_IF(context_->wgate.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "wgate", "desc is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->stateCache.desc == nullptr, OP_LOGE(context_->opName, "tensor stateCache is nullptr"),
+    OP_CHECK_IF(context_->stateCache.shape == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "state_cache", "shape is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->ape.shape == nullptr, OP_LOGE(context_->opName, "tensor ape is nullptr"),
+    OP_CHECK_IF(context_->stateCache.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "state_cache", "desc is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->ape.desc == nullptr, OP_LOGE(context_->opName, "tensor ape is nullptr"),
+    OP_CHECK_IF(context_->ape.shape == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "ape", "shape is nullptr"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_->ape.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "ape", "desc is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->stateBlockTable.shape == nullptr,
-                OP_LOGE(context_->opName, "tensor stateBlockTable is nullptr"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->stateBlockTable.desc == nullptr,
-                OP_LOGE(context_->opName, "tensor stateBlockTable is nullptr"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->cmpKv.shape == nullptr, OP_LOGE(context_->opName, "tensor cmpKv is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "state_block_table", "shape is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->cmpKv.desc == nullptr, OP_LOGE(context_->opName, "tensor cmpKv is nullptr"),
+    OP_CHECK_IF(context_->stateBlockTable.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "state_block_table", "desc is nullptr"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_->cmpKv.shape == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "cmp_kv", "shape is nullptr"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_->cmpKv.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "cmp_kv", "desc is nullptr"),
                 return ge::GRAPH_FAILED);
     if (static_cast<uint8_t>(*context_->quantMode) ==
         static_cast<uint8_t>(QUANT_MODE::A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL)) {
         OP_CHECK_IF(context_->xDescale.desc == nullptr,
-                    OP_LOGE(context_->opName, "In quant_mode = 1, tensor xDescale should not be nullptr"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "x_descale",
+                                                             "x_descale should not be nullptr in quant_mode = 1"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(context_->xDescale.shape == nullptr,
-                    OP_LOGE(context_->opName, "In quant_mode = 1, tensor xDescale should not be nullptr"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "x_descale",
+                                                             "x_descale should not be nullptr in quant_mode = 1"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(context_->wkvDescale.desc == nullptr,
-                    OP_LOGE(context_->opName, "In quant_mode = 1, tensor wkvDescale should not be nullptr"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "wkv_descale",
+                                                             "wkv_descale should not be nullptr in quant_mode = 1"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(context_->wkvDescale.shape == nullptr,
-                    OP_LOGE(context_->opName, "In quant_mode = 1, tensor wkvDescale should not be nullptr"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "wkv_descale",
+                                                             "wkv_descale should not be nullptr in quant_mode = 1"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(context_->wgateDescale.desc == nullptr,
-                    OP_LOGE(context_->opName, "In quant_mode = 1, tensor wgateDescale should not be nullptr"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "wgate_descale",
+                                                             "wgate_descale should not be nullptr in quant_mode = 1"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(context_->wgateDescale.shape == nullptr,
-                    OP_LOGE(context_->opName, "In quant_mode = 1, tensor wgateDescale should not be nullptr"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "wgate_descale",
+                                                             "wgate_descale should not be nullptr in quant_mode = 1"),
                     return ge::GRAPH_FAILED);
     }
     if (context_->layout == LayoutType::LAYOUT_TH) {
         OP_CHECK_IF(context_->cuSeqlens.desc == nullptr,
-                    OP_LOGE(context_->opName, "In TH layout, tensor cuSeqlens should not be nullptr"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "cu_seqlens",
+                                                             "cu_seqlens should not be nullptr in TH layout"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(context_->cuSeqlens.shape == nullptr,
-                    OP_LOGE(context_->opName, "In TH layout, tensor cuSeqlens should not be nullptr"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "cu_seqlens",
+                                                             "cu_seqlens should not be nullptr in TH layout"),
                     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(context_->cuSeqlens.desc != nullptr,
-                    OP_LOGE(context_->opName, "In BSH layout, tensor cuSeqlens must be nullptr"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "cu_seqlens",
+                                                             "cu_seqlens must be nullptr in BSH layout"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(context_->cuSeqlens.shape != nullptr,
-                    OP_LOGE(context_->opName, "In BSH layout, tensor cuSeqlens must be nullptr"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "cu_seqlens",
+                                                             "cu_seqlens must be nullptr in BSH layout"),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -780,50 +880,16 @@ ge::graphStatus QuantCompressorTiling::CheckRequiredInOutExistence() const
 
 ge::graphStatus QuantCompressorTiling::CheckRequiredAttrExistence() const
 {
-    OP_CHECK_IF(context_->quantMode == nullptr, OP_LOGE(context_->opName, "attr quantMode is nullptr"),
+    OP_CHECK_IF(context_->quantMode == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "quant_mode", "attr is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->cmpRatio == nullptr, OP_LOGE(context_->opName, "attr cmpRatio is nullptr"),
+    OP_CHECK_IF(context_->cmpRatio == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, "cmp_ratio", "attr is nullptr"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantCompressorTiling::CheckFeature() const
-{
-    if (ge::GRAPH_SUCCESS != CheckFeatureValueSupport(&baseParams_->headDim, HEAD_DIM, "headDim")) {
-        return ge::GRAPH_FAILED;
-    }
-    OP_CHECK_IF(baseParams_->hiddenSize > MAX_HIDDEN_SIZE || baseParams_->hiddenSize < MIN_HIDDEN_SIZE ||
-                    baseParams_->hiddenSize % ALIGN_FACTOR_HIDDEN_SIZE != 0,
-                OP_LOGE(context_->opName, "hiddenSize should be within [%u, %u] and be 512-aligned, but got %u",
-                        MIN_HIDDEN_SIZE, MAX_HIDDEN_SIZE, baseParams_->hiddenSize),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(pageAttentionParams_->blockSize > MAX_BLOCK_SIZE || pageAttentionParams_->blockSize < MIN_BLOCK_SIZE,
-                OP_LOGE(context_->opName, "blockSize should be within [%u, %u], but got %u", MIN_BLOCK_SIZE,
-                        MAX_BLOCK_SIZE, pageAttentionParams_->blockSize),
-                return ge::GRAPH_FAILED);
-    if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::RING_BUFFER)) {
-        OP_CHECK_IF(pageAttentionParams_->blockNum < baseParams_->batchSize,
-                    OP_LOGE(context_->opName,
-                            "when cacheMode is %u, blockNum should not be less than batchSize(%u), but got %u",
-                            static_cast<uint8_t>(CACHE_MODE::RING_BUFFER), baseParams_->batchSize,
-                            pageAttentionParams_->blockNum),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(context_->stateBlockTable.shape->GetStorageShape().GetDimNum() != COMPRESSOR_DIM_NUM_1,
-                    OP_LOGE(context_->opName,
-                            "when cacheMode is %u, stateBlockTable dim num should be equal to %u, but got %zu",
-                            static_cast<uint8_t>(CACHE_MODE::RING_BUFFER), COMPRESSOR_DIM_NUM_1,
-                            context_->stateBlockTable.shape->GetStorageShape().GetDimNum()),
-                    return ge::GRAPH_FAILED);
-    } else {
-        OP_CHECK_IF(context_->stateBlockTable.shape->GetStorageShape().GetDimNum() != COMPRESSOR_DIM_NUM_2,
-                    OP_LOGE(context_->opName,
-                            "when cacheMode is %u, stateBlockTable dim num should be equal to %u, but got %zu",
-                            static_cast<uint8_t>(CACHE_MODE::LINEAR_BUFFER), COMPRESSOR_DIM_NUM_2,
-                            context_->stateBlockTable.shape->GetStorageShape().GetDimNum()),
-                    return ge::GRAPH_FAILED);
-    }
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus QuantCompressorTiling::CheckFeature() const { return ge::GRAPH_SUCCESS; }
 
 ge::graphStatus QuantCompressorTiling::LogErrorShapeConsistency(const std::string &name,
                                                                 const gert::StorageShape *shape, const uint32_t &dimNum,
@@ -836,8 +902,9 @@ ge::graphStatus QuantCompressorTiling::LogErrorShapeConsistency(const std::strin
 
     const uint32_t actualNum = shape->GetStorageShape().GetDim(dimNum);
     OP_CHECK_IF(actualNum != expectNum,
-                OP_LOGE(context_->opName, "%s shape dim %u, should be equal to %s: %u, but got %u", name.c_str(),
-                        dimNum, subName.c_str(), expectNum, actualNum),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    context_->opName, name, "dim " + std::to_string(dimNum) + "=" + std::to_string(actualNum),
+                    name + " should be equal to " + subName + ": " + std::to_string(expectNum)),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -861,10 +928,10 @@ ge::graphStatus QuantCompressorTiling::CheckShapeConsistency() const
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("wgateDescale", context_->wgateDescale.shape,
                                                       COMPRESSOR_DIM_INDEX_0, "coff*headDim",
                                                       static_cast<uint32_t>(coffD)) ||
-        ge::GRAPH_SUCCESS != LogErrorShapeConsistency("wkv", context_->wkv.shape, COMPRESSOR_DIM_INDEX_1, "hiddenSize",
+        ge::GRAPH_SUCCESS != LogErrorShapeConsistency("wkv", context_->wkv.shape, COMPRESSOR_DIM_INDEX_1, "x",
                                                       baseParams_->hiddenSize) ||
-        ge::GRAPH_SUCCESS != LogErrorShapeConsistency("wgate", context_->wgate.shape, COMPRESSOR_DIM_INDEX_1,
-                                                      "hiddenSize", baseParams_->hiddenSize) ||
+        ge::GRAPH_SUCCESS != LogErrorShapeConsistency("wgate", context_->wgate.shape, COMPRESSOR_DIM_INDEX_1, "x",
+                                                      baseParams_->hiddenSize) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("wkv", context_->wkv.shape, COMPRESSOR_DIM_INDEX_0,
                                                       "coff*headDim", static_cast<uint32_t>(coffD)) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("wgate", context_->wgate.shape, COMPRESSOR_DIM_INDEX_0,
@@ -891,10 +958,13 @@ ge::graphStatus QuantCompressorTiling::CheckShapeConsistency() const
 ge::graphStatus QuantCompressorTiling::CheckDimNumConsistency() const
 {
     auto xDimNum = context_->x.shape->GetStorageShape().GetDimNum();
-    OP_CHECK_IF(xDimNum != context_->cmpKv.shape->GetStorageShape().GetDimNum(),
-                OP_LOGE(context_->opName, "cmpKv dim num should be equal to x: %lu, but got %zu", xDimNum,
-                        context_->cmpKv.shape->GetStorageShape().GetDimNum()),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        xDimNum != context_->cmpKv.shape->GetStorageShape().GetDimNum(),
+        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
+            context_->opName, "cmp_kv, x",
+            std::to_string(context_->cmpKv.shape->GetStorageShape().GetDimNum()) + ", " + std::to_string(xDimNum),
+            "dim num of cmp_kv should be equal to x"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -902,7 +972,8 @@ ge::graphStatus QuantCompressorTiling::CheckBlockDimConstrain() const
 {
     uint32_t minBlockNum = baseParams_->headDim / 64; // 64 is the largest dBaseSize
     OP_CHECK_IF(aicNum_ < minBlockNum,
-                OP_LOGE(context_->opName, "aicNum is %u, which should not be less than %u", aicNum_, minBlockNum),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, "aicNum", std::to_string(aicNum_),
+                                                      "aicNum should not be less than " + std::to_string(minBlockNum)),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -917,20 +988,23 @@ ge::graphStatus QuantCompressorTiling::CheckMultiParaConsistency() const
 
 CMP_EXTERN_C ge::graphStatus TilingQuantCompressor(gert::TilingContext *context)
 {
-    OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("QuantCompressor", "Context is nullptr."),
+    OP_CHECK_IF(context == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("QuantCompressor", "context", "is nullptr"),
                 return ge::GRAPH_FAILED);
 
     OP_LOGI("Getting Tiling");
 
     QuantCompressorContext quantCompressorContext{};
     if (QuantCompressorTiling::ConvertContext(*context, quantCompressorContext) != ge::GRAPH_SUCCESS) {
-        OP_LOGE(context->GetNodeName(), "Error occurred while converting tilingContext to QuantCompressor context");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+            context->GetNodeName(), "context",
+            "error occurred while converting tilingContext to QuantCompressor context");
         return ge::GRAPH_FAILED;
     }
     QuantCompressorTiling quantCompressorTiling(&quantCompressorContext);
     QuantCompressorTilingData *tilingData = context->GetTilingData<QuantCompressorTilingData>();
     OP_CHECK_IF(tilingData == nullptr,
-                OPS_REPORT_VECTOR_INNER_ERR(quantCompressorContext.opName, "TilingData is nullptr."),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(quantCompressorContext.opName, "tilingData", "is nullptr"),
                 return ge::GRAPH_FAILED);
     // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
     context->SetScheduleMode(BATCH_MODE_SCHEDULE);

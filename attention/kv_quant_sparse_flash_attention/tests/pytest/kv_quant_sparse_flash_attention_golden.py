@@ -407,6 +407,8 @@ def get_param_fus(input_tensor_dict, params):
     )
     fa_param["v_dequant_scale_tensor"] = input_tensor_dict["dequant_scale"]
 
+    fa_param["sinks_tensor"] = input_tensor_dict.get("sinks")
+
     # >> out info
     fa_param["out_shape"] = fa_param["q_shape"]
     fa_param["out_dtype"] = trans_input_dtype(params["dtype_output"][0])
@@ -504,9 +506,9 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params):
     q_torch_dtype = _q_dtype_map.get(q_dtype_str)
     q_torch = q_cat.to(q_torch_dtype) if q_torch_dtype is not None else q_cat
 
-    input_tensor_dict["query_cache"] = q_torch.to("npu")
-    input_tensor_dict["key_cache"] = key_concat.to("npu")
-    input_tensor_dict["value_cache"] = key_concat.to("npu")
+    input_tensor_dict["query_cache"] = q_torch
+    input_tensor_dict["key_cache"] = key_concat
+    input_tensor_dict["value_cache"] = key_concat
 
 
 def generate_input_tensors(params):
@@ -521,7 +523,11 @@ def generate_input_tensors(params):
     ]
     raw = {}
     for key in tensor_keys:
-        raw[key] = generate_tensor_data.gen_tensor_data(params, key).to("npu")
+        raw[key] = generate_tensor_data.gen_tensor_data(params, key)
+
+    sinks = None
+    if params.get("enable_sinks", False):
+        sinks = generate_tensor_data.gen_tensor_data(params, "sinks")
 
     return {
         "query": raw["query"],
@@ -538,6 +544,7 @@ def generate_input_tensors(params):
         "v_dequant_scale": raw["dequant_scale"],
         "key_dequant_scale": raw["dequant_scale"],
         "value_dequant_scale": raw["dequant_scale"],
+        "sinks": sinks,
         "scale_value": params["scalevalue"],
         "key_quant_mode": params["key_quant_mode"],
         "value_quant_mode": params["value_quant_mode"],
@@ -756,13 +763,11 @@ def _generate_sparse_indices(
             layoutQuery,
             fa_param["actualSeqLengths_q"],
         )
-        input_tensor_dict["sparse_indices"] = sparse_indices_tensor_tnd.to(
-            torch.int32
-        ).to("npu")
+        input_tensor_dict["sparse_indices"] = sparse_indices_tensor_tnd.to(torch.int32)
     else:
-        input_tensor_dict["sparse_indices"] = (
-            sparse_indices_tensor.permute(0, 2, 1, 3).contiguous().to("npu")
-        )
+        input_tensor_dict["sparse_indices"] = sparse_indices_tensor.permute(
+            0, 2, 1, 3
+        ).contiguous()
 
     fa_param["sparse_indices_bnsd_tensor"] = sparse_indices_tensor
 
@@ -801,7 +806,7 @@ def _generate_block_table_and_cache(
                 block_idx += 1
             block_table_batch_idx += 1
         fa_param["block_table"] = block_table
-        input_tensor_dict["block_table"] = block_table.to("npu")
+        input_tensor_dict["block_table"] = block_table
         k_dtype = params.get("dtype_input", {}).get("key", "unknown")
         v_dtype = params.get("dtype_input", {}).get("value", "unknown")
         print(f"[PageAtten]Input Kdtype:{k_dtype} Vdtype:{v_dtype}")
@@ -926,6 +931,17 @@ def softmax(x):
     return ans
 
 
+def softmax_sinks(x, sinks):
+    x = x.float()
+    sinks = sinks.unsqueeze(1)
+    x_concat = torch.cat([x, sinks], dim=-1)
+    x_max = x_concat.max(dim=-1, keepdim=True).values
+    y = torch.exp(x - x_max)
+    x_sum = y.sum(dim=-1, keepdim=True) + torch.exp(sinks - x_max)
+    ans = y / x_sum
+    return ans
+
+
 def _t_increattention_bnsd(fa_param):
     batch_size = fa_param["b"]
     numheads = fa_param["numHeads"]
@@ -940,6 +956,9 @@ def _t_increattention_bnsd(fa_param):
     out_shape_bnsd[-1] = fa_param["v_bnsd_shape"][-1]
     sparse_mode = fa_param["sparse_mode"]
     g = numheads // numKeyValueHeads
+    sinks_tensor = fa_param.get("sinks_tensor")
+    if sinks_tensor is not None:
+        sinks_tensor = sinks_tensor.cpu().float()
 
     q_bnsd_tensor = fa_param["q_bnsd_tensor"]
     k_bnsd_tensor = fa_param["k_bnsd_tensor"].float()
@@ -998,7 +1017,11 @@ def _t_increattention_bnsd(fa_param):
                     continue
                 bmm1Res = torch.matmul(q_curr.float(), k_sparse.float().T)
                 scaleRes = bmm1Res * scaleValue
-                softmax_res = softmax(scaleRes)
+                if sinks_tensor is None:
+                    softmax_res = softmax(scaleRes)
+                else:
+                    cur_sinks = sinks_tensor[n2Idx * g : (n2Idx + 1) * g]
+                    softmax_res = softmax_sinks(scaleRes, cur_sinks)
                 if fa_param["q_dtype"] == "float16":
                     bmm2Res = torch.matmul(
                         softmax_res.to(torch.float16).float(), v_sparse.float()
@@ -1042,7 +1065,9 @@ def kv_concat_pa_preprocessing(input_tensor_dict, fa_param, params):
     k_dequant_scale_cache_shape[-1] = 512 // 128
 
     k_cache = torch.zeros(k_cache_shape, dtype=k_torch_dtype)
-    k_rope_cache = torch.zeros(k_rope_cache_shape, dtype=torch.bfloat16)
+    k_rope_cache = torch.zeros(
+        k_rope_cache_shape, dtype=fa_param.get("_raw_key_rope").dtype
+    )
     k_dequant_scale_cache = torch.zeros(
         k_dequant_scale_cache_shape, dtype=torch.float32
     )
@@ -1195,9 +1220,26 @@ def kv_concat_pa_preprocessing(input_tensor_dict, fa_param, params):
     }
     q_torch_dtype = _q_dtype_map.get(q_dtype_str)
     q_torch = q_cat.to(q_torch_dtype) if q_torch_dtype is not None else q_cat
-    input_tensor_dict["query_cache"] = q_torch.to("npu")
-    input_tensor_dict["key_cache"] = k_cache_concat.to("npu")
-    input_tensor_dict["value_cache"] = k_cache_concat.to("npu")
+    input_tensor_dict["query_cache"] = q_torch
+    input_tensor_dict["key_cache"] = k_cache_concat
+    input_tensor_dict["value_cache"] = k_cache_concat
+
+    # kv_cache 0轴非连续
+    key_stride = params.get("key_stride", 0)  # 0轴非连续增加stride
+    if key_stride != 0:
+        block_num = params.get("block_num", blockTableShape[0])
+        kv_dim = k_cache_concat.shape[-1]
+        blocksize_with_stride = blockSize + key_stride
+        blockFusion = torch.zeros(
+            (block_num, blocksize_with_stride * kv_dim), dtype=k_cache_concat.dtype
+        )
+        base_flat = k_cache_concat.reshape(block_num, blockSize * kv_dim)
+        blockFusion[:, : blockSize * kv_dim] = base_flat
+        base_kv_nc = blockFusion[:, : blockSize * kv_dim].view(
+            block_num, blockSize, 1, kv_dim
+        )
+        input_tensor_dict["key_cache"] = base_kv_nc
+        input_tensor_dict["value_cache"] = base_kv_nc
 
 
 def qtensor_seqlength(q_shape, inputLayout):

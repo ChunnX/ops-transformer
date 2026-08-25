@@ -14,9 +14,15 @@
 
 class KvQuantSparseFlashAttentionTilingArch35 : public testing::Test {
 protected:
-    static void SetUpTestCase() { std::cout << "KvQuantSparseFlashAttentionTilingArch35 SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "KvQuantSparseFlashAttentionTilingArch35 SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "KvQuantSparseFlashAttentionTilingArch35 TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "KvQuantSparseFlashAttentionTilingArch35 TearDown" << std::endl;
+    }
 };
 
 // 0
@@ -53,9 +59,9 @@ TEST_F(KvQuantSparseFlashAttentionTilingArch35, KvQuantSparseFlashAttention_950_
          {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}},
         &compileInfo, "Ascend950", 64, 262144, 16384);
 
-    int64_t expectTilingKey = 1154;
+    int64_t expectTilingKey = 33922;
     std::string expectTilingData = "2199023255554 64 16 8589934624 4410436851802832898 8 3 1 128 656 0 "
-                                   "40532396646334464 262144 64 316659348865024 2199023255560 ";
+                                   "10496 40532396646334464 262144 64 316659348865024 2199023255560 ";
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
@@ -95,7 +101,7 @@ TEST_F(KvQuantSparseFlashAttentionTilingArch35, KvQuantSparseFlashAttention_950_
 
     int64_t expectTilingKey = 1092;
     std::string expectTilingData = "1099511627778 96 0 8589934592 4410436851802832898 4294967312 0 1 2048 "
-                                   "656 0 40532396646334464 262144 64 316659348832256 1099511627792 ";
+                                   "656 0 0 40532396646334464 262144 64 316659348832256 1099511627792 ";
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 

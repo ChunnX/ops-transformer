@@ -18,9 +18,9 @@
 
 #include "fia_arch35_common.h"
 #include "fia_arch35_template_tiling_key_enum.h"
-#include "../../../../common/op_kernel/arch35/flash_attention_noquant_kernel_infer.h"
-#include "../../../../common/op_kernel/arch35/flash_attention_kernel_noquant_mla.h"
-#include "../../../../common/op_kernel/arch35/fia_template_dispatcher.h"
+#include "flash_attention_noquant_kernel_infer.h"
+#include "flash_attention_kernel_noquant_mla.h"
+#include "fia_template_dispatcher.h"
 
 using namespace regbaseutil;
 
@@ -86,10 +86,15 @@ inline __aicore__ void fia_noquant_regbase(
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT16 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
     // 解析两个合并字段
     if constexpr (isReconstructTemp == true) {
-        run_fia_noquant_gqa_kernel<half, half, inOutLayoutType, config, hasAttenMask, KvLayoutType, isFd, emptyTensor,
-                                   enableS1OutSplit>(query, key, value, attenMask, actualSeqLengths, actualSeqLengthsKV,
-                                                     blocktable, queryRope, keyRope, attentionOut, softmaxLse, user,
-                                                     tiling);
+        if constexpr (config == Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512 && hasRope) {
+            run_fia_noquant_mla_kernel<half, half, inOutLayoutType, config, hasAttenMask, KvLayoutType,
+                                       isFd, emptyTensor, enableS1OutSplit>(query, key, value, attenMask, actualSeqLengths, actualSeqLengthsKV,
+                                                                            blocktable, queryRope, keyRope, attentionOut, softmaxLse, user, tiling);
+        } else {
+            run_fia_noquant_gqa_kernel<half, half, inOutLayoutType, config, hasAttenMask, KvLayoutType, isFd,
+                                       emptyTensor, enableS1OutSplit>(query, key, value, attenMask, actualSeqLengths,
+                                                                      actualSeqLengthsKV, blocktable, queryRope, keyRope, attentionOut, softmaxLse, user, tiling);
+        }
     } else {
         PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd,
                              emptyTensor, enableKVPrefix, enableS1OutSplit);
@@ -135,10 +140,15 @@ inline __aicore__ void fia_noquant_regbase(
 #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_BF16 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
     // 解析两个合并字段
     if constexpr (isReconstructTemp == true) {
-        run_fia_noquant_gqa_kernel<bfloat16_t, bfloat16_t, inOutLayoutType, config, hasAttenMask, KvLayoutType, isFd,
-                                   emptyTensor, enableS1OutSplit>(query, key, value, attenMask, actualSeqLengths,
-                                                                  actualSeqLengthsKV, blocktable, queryRope, keyRope,
-                                                                  attentionOut, softmaxLse, user, tiling);
+        if constexpr (config == Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512 && hasRope) {
+            run_fia_noquant_mla_kernel<bfloat16_t, bfloat16_t, inOutLayoutType, config, hasAttenMask, KvLayoutType,
+                                       isFd, emptyTensor, enableS1OutSplit>(query, key, value, attenMask, actualSeqLengths, actualSeqLengthsKV,
+                                                                            blocktable, queryRope, keyRope, attentionOut, softmaxLse, user, tiling);
+        } else {
+            run_fia_noquant_gqa_kernel<bfloat16_t, bfloat16_t, inOutLayoutType, config, hasAttenMask, KvLayoutType,
+                                       isFd, emptyTensor, enableS1OutSplit>(query, key, value, attenMask, actualSeqLengths,
+                                                                            actualSeqLengthsKV, blocktable, queryRope, keyRope, attentionOut, softmaxLse, user, tiling);
+        }
     } else {
         PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd,
                              emptyTensor, enableKVPrefix, enableS1OutSplit);

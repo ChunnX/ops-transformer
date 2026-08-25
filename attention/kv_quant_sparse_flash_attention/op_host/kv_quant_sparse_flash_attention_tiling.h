@@ -34,6 +34,7 @@ constexpr uint32_t VALUE_DEQUANT_SCALE_INPUT_INDEX = 3;
 constexpr uint32_t BLOCK_TABLE_INPUT_INDEX = 6;
 constexpr uint32_t ACT_SEQ_LEN_Q_INPUT_INDEX = 7;
 constexpr uint32_t ACT_SEQ_LEN_KV_INPUT_INDEX = 8;
+constexpr uint32_t SINKS_INPUT_INDEX = 9;
 // Outputs Index
 constexpr uint32_t OUTPUT_INDEX = 0;
 // Attributes Index
@@ -51,6 +52,7 @@ constexpr uint32_t QUANT_SCALE_REPO_MODE_ATTR_INDEX = 10;
 constexpr uint32_t TILE_SIZE_ATTR_INDEX = 11;
 constexpr uint32_t ROPE_HEAD_DIM_ATTR_INDEX = 12;
 // Dim Num
+constexpr size_t DIM_NUM_ONE = 1;
 constexpr size_t DIM_NUM_TWO = 2;
 constexpr size_t DIM_NUM_THREE = 3;
 constexpr size_t DIM_NUM_FOUR = 4;
@@ -64,7 +66,11 @@ constexpr uint32_t BYTE_BLOCK = 32;
 const uint32_t QSFA_MAX_AIC_CORE_NUM = 26; // 25 + 1 保证数组8字节对齐
 
 // ------------------公共定义--------------------------
-enum class QSFALayout : uint32_t { BSND = 0, TND = 1, PA_BSND = 2 };
+enum class QSFALayout : uint32_t {
+    BSND = 0,
+    TND = 1,
+    PA_BSND = 2
+};
 
 struct QSFATilingShapeCompareParam {
     int64_t B = 1;
@@ -77,9 +83,15 @@ struct QSFATilingShapeCompareParam {
     int64_t Bn = 1;
 };
 
-enum class KvStorageMode : uint32_t { BATCH_CONTINUOUS = 0, PAGE_ATTENTION = 1 };
+enum class KvStorageMode : uint32_t {
+    BATCH_CONTINUOUS = 0,
+    PAGE_ATTENTION = 1
+};
 
-enum class QSFAPerfMode : uint32_t { C_TEMPLATE_MODE = 0, V_TEMPLATE_MODE };
+enum class QSFAPerfMode : uint32_t {
+    C_TEMPLATE_MODE = 0,
+    V_TEMPLATE_MODE
+};
 
 enum class QSFAAxis : uint32_t {
     B = 0,
@@ -115,6 +127,7 @@ struct QSFAParaInfo {
     QSFAOptionalParaInfo keyRope = {nullptr, nullptr};
     QSFAOptionalParaInfo keyDequantScale = {nullptr, nullptr};
     QSFAOptionalParaInfo valueDequantScale = {nullptr, nullptr};
+    QSFAOptionalParaInfo sinks = {nullptr, nullptr};
     QSFARequiredParaInfo attenOut = {nullptr, nullptr};
 
     const char *layoutQuery = nullptr;
@@ -157,6 +170,7 @@ TILING_DATA_FIELD_DEF(uint32_t, sparseBlockCount)
 TILING_DATA_FIELD_DEF(int64_t, dSizeVInput)
 TILING_DATA_FIELD_DEF(uint32_t, isActualLenDimsNull)
 TILING_DATA_FIELD_DEF(uint32_t, isActualLenDimsKVNull)
+TILING_DATA_FIELD_DEF(uint32_t, keyStride0) // PA mode non-contiguous stride
 END_TILING_DATA_DEF
 
 REGISTER_TILING_DATA_CLASS(KvQuantSparseFlashAttentionBaseParamsMlaOp, KvQuantSparseFlashAttentionBaseParamsMla)
@@ -277,12 +291,16 @@ struct QSFATilingInfo {
 
     uint64_t l2CacheSize = 0;
     int64_t dSizeVInput = 0;
+
+    uint32_t keyStride0 = 0; // PA mode non-contiguous stride on 0-axis
 };
 
 // ---------------算子Tiling类---------------
 class QSFAMlaTiling {
 public:
-    explicit QSFAMlaTiling(gert::TilingContext *context) : context_(context) {}
+    explicit QSFAMlaTiling(gert::TilingContext *context)
+        : context_(context)
+    {}
     ge::graphStatus DoOpTiling(QSFATilingInfo *qsfaInfo);
 
 private:
@@ -292,6 +310,7 @@ private:
     ge::graphStatus SetTilingData(TilingDef &tilingData) const;
     gert::TilingContext *context_ = nullptr;
     ge::graphStatus GetPlatformInfo();
+    void CalcVectorizeFlag();
     void GenTilingKey();
     bool DealSameSeqEachBatch();
 
@@ -325,6 +344,7 @@ private:
 
     bool balanceModeFlag_ = false;
     bool splitKVFlag_ = false;
+    uint32_t vectorizeFlag_ = 0;
 
     uint32_t coreNum_ = 0;
     QSFAPerfMode perfMode_ = QSFAPerfMode::V_TEMPLATE_MODE;
@@ -361,7 +381,8 @@ private:
 // -----------算子Tiling入参信息解析及Check类---------------
 class QSFATilingCheck {
 public:
-    explicit QSFATilingCheck(const QSFATilingInfo &qsfaInfo) : qsfaInfo_(qsfaInfo) {};
+    explicit QSFATilingCheck(const QSFATilingInfo &qsfaInfo)
+        : qsfaInfo_(qsfaInfo) {};
     ~QSFATilingCheck() = default;
     ge::graphStatus Process();
 
@@ -397,6 +418,7 @@ private:
     ge::graphStatus CheckSingleParaSparseMode() const;
     ge::graphStatus CheckSingleParaSparseBlockSize() const;
     ge::graphStatus CheckSingleParaSparseIndices() const;
+    ge::graphStatus CheckSingleParaSinks() const;
     ge::graphStatus CheckSinglePara() const;
     ge::graphStatus CheckMultiParaConsistency() const;
     ge::graphStatus CheckDequantScaleNotExistence();
@@ -495,7 +517,9 @@ private:
 
 class QSFAInfoParser {
 public:
-    explicit QSFAInfoParser(const gert::TilingContext *context) : context_(context) {}
+    explicit QSFAInfoParser(const gert::TilingContext *context)
+        : context_(context)
+    {}
     ~QSFAInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
@@ -543,6 +567,7 @@ public:
     void GenerateInfo(QSFATilingInfo &qsfaInfo);
     void FillTilingInfoAttrsAndLayouts(QSFATilingInfo &qsfaInfo);
     ge::graphStatus Parse(QSFATilingInfo &qsfaInfo);
+    ge::graphStatus CheckContiguous() const;
 
     const gert::TilingContext *context_ = nullptr;
 
@@ -594,6 +619,9 @@ public:
     gert::Shape keyShape_{};
     gert::Shape valueShape_{};
     gert::Shape sparseIndicesShape_{};
+
+    uint32_t keyStride0_ = 0;
+    uint32_t keyStride1_ = 0;
 };
 } // namespace optiling
 #endif // KV_QUANT_SPARSE_FLASH_ATTENTION_TILING_H

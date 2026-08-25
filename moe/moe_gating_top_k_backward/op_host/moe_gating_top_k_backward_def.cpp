@@ -18,7 +18,8 @@ namespace ops {
 
 class MoeGatingTopKBackward : public OpDef {
 public:
-    explicit MoeGatingTopKBackward(const char *name) : OpDef(name)
+    explicit MoeGatingTopKBackward(const char *name)
+        : OpDef(name)
     {
         this->Input("x_norm")
             .ParamType(REQUIRED)
@@ -56,6 +57,16 @@ public:
             .PrecisionReduceFlag(true);
         this->AICore().AddConfig("ascend910b", aicore_config);
         this->AICore().AddConfig("ascend910_93", aicore_config);
+
+        OpAICoreConfig regbaseCfg;
+        regbaseCfg.DynamicCompileStaticFlag(true)
+            .DynamicFormatFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(false)
+            .PrecisionReduceFlag(true)
+            .ExtendCfgInfo("opFile.value", "moe_gating_top_k_backward_apt");
+        this->AICore().AddConfig("ascend950", regbaseCfg);
     }
 };
 
