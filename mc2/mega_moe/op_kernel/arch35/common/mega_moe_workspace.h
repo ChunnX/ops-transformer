@@ -176,11 +176,16 @@ struct WorkspaceInfo {
         // A8W4 / Combine 量化路径的条件 workspace 分配。
         // 以下条件分配与 mega_moe.h 编译期守卫 (ENABLE_A8W4 / ENABLE_A4W4 / CombineQuantMode) 一致，
         // 由 TilingKey 保证同步。
-        // layered A8W4 仍需跨 expert 保存 cumsum；MTE 路径已统一使用紧凑 count 表。
+        // W4 Wave-ahead Dispatch 与 layered A8W4 都会跨 Activation 保留 cumsum；Activation 会覆盖对应 UB，
+        // 因此需要逐物理 block 的 GM 备份。A8W8 在 GMM 前完成全部 Dispatch，不需要该备份。
         cumsumInfoPtr = nullptr;
         gmm1MmadResPtr = nullptr;
         gmm2MmadResPtr = nullptr;
-        if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 && tilingData->topoType == TOPO_TYPE_URMA) {
+        bool usePersistentDispatchCumsum =
+            tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
+            (tilingData->topoType == TOPO_TYPE_MTE && (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
+                                                       tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ));
+        if (usePersistentDispatchCumsum) {
             // cumsumInfo：逐核备份 cumsum 状态，每核 moeExpertPerRank × epWorldSize 个 int32。
             cumsumInfoPtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(SIZE_INT_32 * tilingData->moeExpertPerRank *
@@ -210,8 +215,9 @@ struct WorkspaceInfo {
             int64_t gmm2OutputBytes = static_cast<int64_t>(SIZE_BF_16) *
                                       static_cast<int64_t>(tilingData->maxOutputSize) *
                                       static_cast<int64_t>(tilingData->h);
-            workspaceSize += useMteWaveCombine ? Ops::Base::CeilAlign(gmm2OutputBytes, static_cast<int64_t>(ALIGN_512)) :
-                                              gmm2OutputBytes;
+            workspaceSize += useMteWaveCombine ?
+                                 Ops::Base::CeilAlign(gmm2OutputBytes, static_cast<int64_t>(ALIGN_512)) :
+                                 gmm2OutputBytes;
         }
 
         // GMM1 tile 状态位区（仅 prefetch 路径分配，用于 AIC→AIV 软同步）。
