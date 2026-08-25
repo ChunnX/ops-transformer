@@ -280,7 +280,7 @@ ge::graphStatus QfaInfoParser::GetQuantMode()
                                               "6 (A8C8_QK_FP8_"
                                               "E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_"
                                               "P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) or "
-                                              "7 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32)");
+                                              "0 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32)");
         return ge::GRAPH_FAILED;
     }
     quantMode_ = static_cast<QfaQuantMode>(quantModeVal);

@@ -701,6 +701,8 @@ def generate_qfa_gqa_fp8_inputs(
         tuple(dequant_scale_k.shape),
         tuple(dequant_scale_v.shape),
     )
+
+
 def generate_qfa_hif8_inputs(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -733,7 +735,7 @@ def generate_qfa_hif8_inputs(
     block_size: int,
     mask_mode: int,
     q_scale_layout: str,
-    quant_mode: int = 7,
+    quant_mode: int = 0,
     enable_lse: bool = False,
     graph_path: int = 0,
     input_layout: str = "TND",
@@ -748,7 +750,7 @@ def generate_qfa_hif8_inputs(
     data_range_v: float = 1.0,
     **kwargs,
 ):
-    """HIF8 输入生成 (quant_mode=7, per-tensor, 仅 TND, 无 PA)。
+    """HIF8 输入生成 (quant_mode=0, per-tensor, 仅 TND, 无 PA)。
 
     输出 slot 约定 (in-place 写入 ttk 分配的 numpy slot):
       q slot:    TND [T_q, N_q, D] uint8 (hifloat8 编码)
@@ -761,20 +763,26 @@ def generate_qfa_hif8_inputs(
       block_table: (0,) int32 (无 PA)
     """
     import quant_flash_attn_hif8_golden as hif8_golden_mod
+
     input_layout = layout_q or input_layout
     cu_seqlens_q = list(cu_seqlens_q) if cu_seqlens_q is not None else [0]
     cu_seqlens_kv = list(cu_seqlens_kv) if cu_seqlens_kv is not None else [0]
 
-    B = batch_size if batch_size is not None and batch_size > 0 else (
-        max(1, len(cu_seqlens_q) - 1) if cu_seqlens_q and len(cu_seqlens_q) >= 2
-        else len(list(seqused_q)) if seqused_q is not None and len(list(seqused_q)) > 0
-        else 1
+    B = (
+        batch_size
+        if batch_size is not None and batch_size > 0
+        else (
+            max(1, len(cu_seqlens_q) - 1)
+            if cu_seqlens_q and len(cu_seqlens_q) >= 2
+            else len(list(seqused_q))
+            if seqused_q is not None and len(list(seqused_q)) > 0
+            else 1
+        )
     )
 
     if len(cu_seqlens_q) > 1:
         actual_seq_q = [
-            cu_seqlens_q[i + 1] - cu_seqlens_q[i]
-            for i in range(len(cu_seqlens_q) - 1)
+            cu_seqlens_q[i + 1] - cu_seqlens_q[i] for i in range(len(cu_seqlens_q) - 1)
         ]
     elif seqused_q is not None and len(list(seqused_q)) > 0:
         actual_seq_q = list(seqused_q)
@@ -836,37 +844,85 @@ def generate_qfa_hif8_inputs(
     rk_min, rk_max = _range_of(1, (-1.0, 1.0))
     rv_min, rv_max = _range_of(2, (-1.0, 1.0))
 
-    data_range_q_eff = data_range_q if data_range_q is not None and data_range_q > 0 else 1.0
-    data_range_k_eff = data_range_k if data_range_k is not None and data_range_k > 0 else 1.0
-    data_range_v_eff = data_range_v if data_range_v is not None and data_range_v > 0 else 1.0
+    data_range_q_eff = (
+        data_range_q if data_range_q is not None and data_range_q > 0 else 1.0
+    )
+    data_range_k_eff = (
+        data_range_k if data_range_k is not None and data_range_k > 0 else 1.0
+    )
+    data_range_v_eff = (
+        data_range_v if data_range_v is not None and data_range_v > 0 else 1.0
+    )
 
     torch.manual_seed(_SEED_MAP["q"])
-    q_fp16 = (torch.rand(B, N_q, max_sq, D, dtype=torch.float16) * 2 - 1) * data_range_q_eff
+    q_fp16 = (
+        torch.rand(B, N_q, max_sq, D, dtype=torch.float16) * 2 - 1
+    ) * data_range_q_eff
     torch.manual_seed(_SEED_MAP["k"])
-    k_fp16 = (torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1) * data_range_k_eff
+    k_fp16 = (
+        torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1
+    ) * data_range_k_eff
     torch.manual_seed(_SEED_MAP["v"])
-    v_fp16 = (torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1) * data_range_v_eff
+    v_fp16 = (
+        torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1
+    ) * data_range_v_eff
 
-    quant_scale_q = hif8_golden_mod.get_hif8_per_tensor_quant_scale(q_fp16.to(torch.float32))
-    quant_scale_k = hif8_golden_mod.get_hif8_per_tensor_quant_scale(k_fp16.to(torch.float32))
-    quant_scale_v = hif8_golden_mod.get_hif8_per_tensor_quant_scale(v_fp16.to(torch.float32))
+    quant_scale_q = hif8_golden_mod.get_hif8_per_tensor_quant_scale(
+        q_fp16.to(torch.float32)
+    )
+    quant_scale_k = hif8_golden_mod.get_hif8_per_tensor_quant_scale(
+        k_fp16.to(torch.float32)
+    )
+    quant_scale_v = hif8_golden_mod.get_hif8_per_tensor_quant_scale(
+        v_fp16.to(torch.float32)
+    )
 
-    q_hif8_bnsd = hif8_golden_mod.hif8_per_tensor_quant(q_fp16.to(torch.float32), quant_scale_q)
-    k_hif8_bnsd = hif8_golden_mod.hif8_per_tensor_quant(k_fp16.to(torch.float32), quant_scale_k)
-    v_hif8_bnsd = hif8_golden_mod.hif8_per_tensor_quant(v_fp16.to(torch.float32), quant_scale_v)
+    q_hif8_bnsd = hif8_golden_mod.hif8_per_tensor_quant(
+        q_fp16.to(torch.float32), quant_scale_q
+    )
+    k_hif8_bnsd = hif8_golden_mod.hif8_per_tensor_quant(
+        k_fp16.to(torch.float32), quant_scale_k
+    )
+    v_hif8_bnsd = hif8_golden_mod.hif8_per_tensor_quant(
+        v_fp16.to(torch.float32), quant_scale_v
+    )
 
-    q_final = hif8_golden_mod.convert_q_bnsd_to_layout(
-        q_hif8_bnsd, actual_seq_q, input_layout,
-        cu_seqlens=cu_seqlens_q if (input_layout == "TND" and len(cu_seqlens_q) > 1) else None,
-    ).contiguous().view(torch.float8_e4m3fn)
-    k_final = hif8_golden_mod.convert_kv_bnsd_to_layout(
-        k_hif8_bnsd, actual_seq_kv, input_layout,
-        cu_seqlens=cu_seqlens_kv if (input_layout == "TND" and len(cu_seqlens_kv) > 1) else None,
-    ).contiguous().view(torch.float8_e4m3fn)
-    v_final = hif8_golden_mod.convert_kv_bnsd_to_layout(
-        v_hif8_bnsd, actual_seq_kv, input_layout,
-        cu_seqlens=cu_seqlens_kv if (input_layout == "TND" and len(cu_seqlens_kv) > 1) else None,
-    ).contiguous().view(torch.float8_e4m3fn)
+    q_final = (
+        hif8_golden_mod.convert_q_bnsd_to_layout(
+            q_hif8_bnsd,
+            actual_seq_q,
+            input_layout,
+            cu_seqlens=cu_seqlens_q
+            if (input_layout == "TND" and len(cu_seqlens_q) > 1)
+            else None,
+        )
+        .contiguous()
+        .view(torch.float8_e4m3fn)
+    )
+    k_final = (
+        hif8_golden_mod.convert_kv_bnsd_to_layout(
+            k_hif8_bnsd,
+            actual_seq_kv,
+            input_layout,
+            cu_seqlens=cu_seqlens_kv
+            if (input_layout == "TND" and len(cu_seqlens_kv) > 1)
+            else None,
+        )
+        .contiguous()
+        .view(torch.float8_e4m3fn)
+    )
+    v_final = (
+        hif8_golden_mod.convert_kv_bnsd_to_layout(
+            v_hif8_bnsd,
+            actual_seq_kv,
+            input_layout,
+            cu_seqlens=cu_seqlens_kv
+            if (input_layout == "TND" and len(cu_seqlens_kv) > 1)
+            else None,
+        )
+        .contiguous()
+        .view(torch.float8_e4m3fn)
+    )
 
     def _inplace_write(dst, src_torch, slot_name):
         if tuple(dst.shape) != tuple(src_torch.shape):
@@ -903,4 +959,3 @@ def generate_qfa_hif8_inputs(
         tuple(dequant_scale_k.shape),
         tuple(dequant_scale_v.shape),
     )
-

@@ -109,42 +109,18 @@ public:
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Attr("quant_compute_mode")
-            .AttrType(REQUIRED)
-            .Int();
-        this->Attr("softmax_scale")
-            .AttrType(OPTIONAL)
-            .Float(0.0f);
-        this->Attr("mask_mode")
-            .AttrType(OPTIONAL)
-            .Int(0);
-        this->Attr("win_left")
-            .AttrType(OPTIONAL)
-            .Int(-1);
-        this->Attr("win_right")
-            .AttrType(OPTIONAL)
-            .Int(-1);
-        this->Attr("max_seqlen_q")
-            .AttrType(OPTIONAL)
-            .Int(-1);
-        this->Attr("max_seqlen_kv")
-            .AttrType(OPTIONAL)
-            .Int(-1);
-        this->Attr("layout_q")
-            .AttrType(OPTIONAL)
-            .String("BSND");
-        this->Attr("layout_q_descale")
-            .AttrType(OPTIONAL)
-            .String("BSND");
-        this->Attr("layout_kv")
-            .AttrType(OPTIONAL)
-            .String("BSND");
-        this->Attr("layout_out")
-            .AttrType(OPTIONAL)
-            .String("BSND");
-        this->Attr("return_softmax_lse")
-            .AttrType(OPTIONAL)
-            .Bool(false);
+        this->Attr("quant_compute_mode").AttrType(REQUIRED).Int();
+        this->Attr("softmax_scale").AttrType(OPTIONAL).Float(0.0f);
+        this->Attr("mask_mode").AttrType(OPTIONAL).Int(0);
+        this->Attr("win_left").AttrType(OPTIONAL).Int(-1);
+        this->Attr("win_right").AttrType(OPTIONAL).Int(-1);
+        this->Attr("max_seqlen_q").AttrType(OPTIONAL).Int(-1);
+        this->Attr("max_seqlen_kv").AttrType(OPTIONAL).Int(-1);
+        this->Attr("layout_q").AttrType(OPTIONAL).String("BSND");
+        this->Attr("layout_q_descale").AttrType(OPTIONAL).String("BSND");
+        this->Attr("layout_kv").AttrType(OPTIONAL).String("BSND");
+        this->Attr("layout_out").AttrType(OPTIONAL).String("BSND");
+        this->Attr("return_softmax_lse").AttrType(OPTIONAL).Bool(false);
 
         OpAICoreConfig aicore_config_95;
         aicore_config_95.DynamicCompileStaticFlag(true)

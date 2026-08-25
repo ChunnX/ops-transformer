@@ -1,5 +1,4 @@
 #!/usr/bin/python3
-# -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
@@ -13,9 +12,9 @@
 import concurrent.futures
 
 import pytest
+import quant_flash_attn_paramset_func_rdv as paramset
 
 from common import test_runner
-import quant_flash_attn_paramset_func_rdv as paramset
 
 CASES = paramset.CASES
 SKIP_CASES = getattr(paramset, "SKIP_CASES", set())
