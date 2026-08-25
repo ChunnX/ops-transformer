@@ -23,16 +23,32 @@ def _load_framework():
     """Load golden utils from mc2/common/tests/assets."""
     import importlib.util
     from pathlib import Path
-    utils_path = Path(__file__).resolve().parents[4] / "common" / "tests" / "assets" / "golden_utils.py"
+
+    utils_path = (
+        Path(__file__).resolve().parents[4]
+        / "common"
+        / "tests"
+        / "assets"
+        / "golden_utils.py"
+    )
     spec = importlib.util.spec_from_file_location(
-        f"mc2_common_golden_utils_{abs(hash(utils_path))}", utils_path)
+        f"mc2_common_golden_utils_{abs(hash(utils_path))}", utils_path
+    )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    return mod.to_torch_f32, mod.fmt_compare_result, mod.apply_goldens_and_compare, mod.grouped_matmul_cpu
+    return (
+        mod.to_torch_f32,
+        mod.fmt_compare_result,
+        mod.apply_goldens_and_compare,
+        mod.grouped_matmul_cpu,
+    )
 
 
-def grouped_mat_mul_all_reduce_multi_device_golden(thread_contexts, device_ids, all_precision):
+def grouped_mat_mul_all_reduce_multi_device_golden(
+    thread_contexts, device_ids, all_precision
+):
     import torch
+
     to_torch_f32, fmt_compare, apply_compare, gmm_cpu = _load_framework()
     first_ctx = next(iter(thread_contexts.values()))
     attrs = first_ctx.attributes
@@ -58,8 +74,11 @@ def grouped_mat_mul_all_reduce_multi_device_golden(thread_contexts, device_ids, 
     apply_compare(thread_contexts, device_ids, rank_goldens, all_precision)
 
 
-def grouped_mat_mul_all_reduce_e2e_golden(cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True):
+def grouped_mat_mul_all_reduce_e2e_golden(
+    cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True
+):
     import torch
+
     world_size = len(cpu_inputs_per_rank)
     local_results = []
     for r in range(world_size):
@@ -87,7 +106,9 @@ def grouped_mat_mul_all_reduce_e2e_golden(cpu_inputs_per_rank, attrs, rank=None,
     total = None
     for r in range(world_size):
         if local_results[r] is not None:
-            total = local_results[r].clone() if total is None else total + local_results[r]
+            total = (
+                local_results[r].clone() if total is None else total + local_results[r]
+            )
     if total is None:
         return [None] * world_size
     return [total.contiguous() for _ in range(world_size)]

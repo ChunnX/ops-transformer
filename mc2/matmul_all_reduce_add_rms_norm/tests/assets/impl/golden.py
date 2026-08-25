@@ -23,20 +23,31 @@ def _load_framework():
     """Load golden utils from mc2/common/tests/assets."""
     import importlib.util
     from pathlib import Path
-    utils_path = Path(__file__).resolve().parents[4] / "common" / "tests" / "assets" / "golden_utils.py"
+
+    utils_path = (
+        Path(__file__).resolve().parents[4]
+        / "common"
+        / "tests"
+        / "assets"
+        / "golden_utils.py"
+    )
     spec = importlib.util.spec_from_file_location(
-        f"mc2_common_golden_utils_{abs(hash(utils_path))}", utils_path)
+        f"mc2_common_golden_utils_{abs(hash(utils_path))}", utils_path
+    )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod.to_torch_f32, mod.fmt_compare_result, mod.apply_goldens_and_compare
 
 
-def matmul_all_reduce_add_rms_norm_multi_device_golden(thread_contexts, device_ids, all_precision):
+def matmul_all_reduce_add_rms_norm_multi_device_golden(
+    thread_contexts, device_ids, all_precision
+):
     import torch
+
     to_torch_f32, fmt_compare, apply_compare = _load_framework()
     first_ctx = next(iter(thread_contexts.values()))
     attrs = first_ctx.attributes
-    eps = float(attrs.get('epsilon', 1e-6))
+    eps = float(attrs.get("epsilon", 1e-6))
 
     local_results = {}
     for did in device_ids:
@@ -62,7 +73,11 @@ def matmul_all_reduce_add_rms_norm_multi_device_golden(thread_contexts, device_i
         residual = tc.flatten_tensors[3] if len(tc.flatten_tensors) > 3 else None
         gamma = tc.flatten_tensors[4] if len(tc.flatten_tensors) > 4 else None
         out = total.clone()
-        if residual is not None and isinstance(residual, torch.Tensor) and residual.numel() > 0:
+        if (
+            residual is not None
+            and isinstance(residual, torch.Tensor)
+            and residual.numel() > 0
+        ):
             out = out + to_torch_f32(residual)
         if gamma is not None and isinstance(gamma, torch.Tensor) and gamma.numel() > 0:
             gamma_f = to_torch_f32(gamma)
@@ -72,10 +87,13 @@ def matmul_all_reduce_add_rms_norm_multi_device_golden(thread_contexts, device_i
     apply_compare(thread_contexts, device_ids, rank_goldens, all_precision)
 
 
-def matmul_all_reduce_add_rms_norm_e2e_golden(cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True):
+def matmul_all_reduce_add_rms_norm_e2e_golden(
+    cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True
+):
     import torch
+
     world_size = len(cpu_inputs_per_rank)
-    eps = float(attrs.get('epsilon', 1e-6))
+    eps = float(attrs.get("epsilon", 1e-6))
     local_results = []
     for r in range(world_size):
         inp = cpu_inputs_per_rank[r]
@@ -89,7 +107,9 @@ def matmul_all_reduce_add_rms_norm_e2e_golden(cpu_inputs_per_rank, attrs, rank=N
     total = None
     for r in range(world_size):
         if local_results[r] is not None:
-            total = local_results[r].clone() if total is None else total + local_results[r]
+            total = (
+                local_results[r].clone() if total is None else total + local_results[r]
+            )
     if total is None:
         return [None] * world_size
     goldens = []
@@ -98,9 +118,9 @@ def matmul_all_reduce_add_rms_norm_e2e_golden(cpu_inputs_per_rank, attrs, rank=N
         out = total.clone()
         residual = inp[3] if len(inp) > 3 and inp[3] is not None else None
         gamma = inp[4] if len(inp) > 4 and inp[4] is not None else None
-        if residual is not None and hasattr(residual, 'numel') and residual.numel() > 0:
+        if residual is not None and hasattr(residual, "numel") and residual.numel() > 0:
             out = out + residual.float()
-        if gamma is not None and hasattr(gamma, 'numel') and gamma.numel() > 0:
+        if gamma is not None and hasattr(gamma, "numel") and gamma.numel() > 0:
             gamma_f = gamma.float()
             rms = torch.sqrt(out.pow(2).mean(dim=-1, keepdim=True) + eps)
             out = out / rms * gamma_f

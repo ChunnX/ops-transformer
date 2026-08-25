@@ -21,23 +21,37 @@ from pathlib import Path
 
 
 def _load_shared_utils():
-    utils_path = Path(__file__).resolve().parents[4] / "common" / "tests" / "assets" / "golden_utils.py"
+    utils_path = (
+        Path(__file__).resolve().parents[4]
+        / "common"
+        / "tests"
+        / "assets"
+        / "golden_utils.py"
+    )
     spec = importlib.util.spec_from_file_location(
-        f"mc2_common_golden_utils_{abs(hash(utils_path))}", utils_path)
+        f"mc2_common_golden_utils_{abs(hash(utils_path))}", utils_path
+    )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-def matmul_reduce_scatter_v2_multi_device_golden(thread_contexts, device_ids, all_precision):
+def matmul_reduce_scatter_v2_multi_device_golden(
+    thread_contexts, device_ids, all_precision
+):
     """Use shared golden_reduce_scatter_compare."""
     utils = _load_shared_utils()
     world_size = len(device_ids)
-    utils.golden_reduce_scatter_compare(thread_contexts, device_ids, all_precision, world_size)
+    utils.golden_reduce_scatter_compare(
+        thread_contexts, device_ids, all_precision, world_size
+    )
 
 
-def matmul_reduce_scatter_v2_e2e_golden(cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True):
+def matmul_reduce_scatter_v2_e2e_golden(
+    cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True
+):
     import torch
+
     world_size = len(cpu_inputs_per_rank)
     local_results = []
     for r in range(world_size):
@@ -49,7 +63,7 @@ def matmul_reduce_scatter_v2_e2e_golden(cpu_inputs_per_rank, attrs, rank=None, w
             continue
         mm_out = torch.matmul(x1, x2)
         bias = inp[2] if len(inp) > 2 and inp[2] is not None else None
-        if bias is not None and hasattr(bias, 'numel') and bias.numel() > 0:
+        if bias is not None and hasattr(bias, "numel") and bias.numel() > 0:
             mm_out = mm_out + bias.float()
         local_results.append(mm_out)
     total = None
@@ -65,5 +79,5 @@ def matmul_reduce_scatter_v2_e2e_golden(cpu_inputs_per_rank, attrs, rank=None, w
     chunk_m = M // world_size
     goldens = []
     for idx in range(world_size):
-        goldens.append(total[idx * chunk_m:(idx + 1) * chunk_m, :].contiguous())
+        goldens.append(total[idx * chunk_m : (idx + 1) * chunk_m, :].contiguous())
     return goldens

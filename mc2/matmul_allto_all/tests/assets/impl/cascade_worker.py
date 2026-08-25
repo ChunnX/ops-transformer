@@ -18,6 +18,7 @@ on pickle of dynamically-loaded spec modules. Mirrors TTK's E2E worker pattern.
 Args: rank world_size port input_path result_path error_path
       transpose_x1 transpose_x2 mm_m chunk_n
 """
+
 import os
 import sys
 import datetime
@@ -33,55 +34,81 @@ def _load_inputs_for_rank(input_path, did):
     data = np.load(input_path, allow_pickle=False)
     tensors = {}
     for key in data.files:
-        if key.startswith(f'did{did}_t') and not key.endswith('_dtype'):
-            idx = int(key.split('_t')[1])
+        if key.startswith(f"did{did}_t") and not key.endswith("_dtype"):
+            idx = int(key.split("_t")[1])
             arr = data[key]
-            dtype_key = f'{key}_dtype'
-            dtype_str = str(data[dtype_key]) if dtype_key in data.files else 'float32'
-            if arr.dtype.kind == 'V':
+            dtype_key = f"{key}_dtype"
+            dtype_str = str(data[dtype_key]) if dtype_key in data.files else "float32"
+            if arr.dtype.kind == "V":
                 total_bytes = arr.size * arr.dtype.itemsize
                 arr = np.frombuffer(arr.tobytes(), dtype=np.uint8, count=total_bytes)
                 arr = arr.reshape(arr.shape if arr.ndim > 0 else (1,))
             t = torch.from_numpy(arr.copy())
-            if dtype_str == 'torch.bfloat16':
+            if dtype_str == "torch.bfloat16":
                 t = t.to(torch.bfloat16)
-            elif dtype_str == 'torch.float16':
+            elif dtype_str == "torch.float16":
                 t = t.to(torch.float16)
-            elif 'float8_e4m3' in dtype_str:
-                t = t.view(torch.uint8).to(torch.float8_e4m3fn) if hasattr(torch, 'float8_e4m3fn') else t
-            elif 'float8_e5m2' in dtype_str:
-                t = t.view(torch.uint8).to(torch.float8_e5m2) if hasattr(torch, 'float8_e5m2') else t
-            elif 'hifloat8' in dtype_str:
+            elif "float8_e4m3" in dtype_str:
+                t = (
+                    t.view(torch.uint8).to(torch.float8_e4m3fn)
+                    if hasattr(torch, "float8_e4m3fn")
+                    else t
+                )
+            elif "float8_e5m2" in dtype_str:
+                t = (
+                    t.view(torch.uint8).to(torch.float8_e5m2)
+                    if hasattr(torch, "float8_e5m2")
+                    else t
+                )
+            elif "hifloat8" in dtype_str:
                 t = t.view(torch.uint8)
             tensors[idx] = t
     return tensors
 
 
 def main():
-    (rank, world_size, port, input_path, result_path, error_path,
-     transpose_x1, transpose_x2, mm_m, chunk_n) = sys.argv[1:11]
+    (
+        rank,
+        world_size,
+        port,
+        input_path,
+        result_path,
+        error_path,
+        transpose_x1,
+        transpose_x2,
+        mm_m,
+        chunk_n,
+    ) = sys.argv[1:11]
     rank = int(rank)
     world_size = int(world_size)
     mm_m = int(mm_m)
     chunk_n = int(chunk_n)
-    transpose_x1 = transpose_x1 == 'True'
-    transpose_x2 = transpose_x2 == 'True'
+    transpose_x1 = transpose_x1 == "True"
+    transpose_x2 = transpose_x2 == "True"
     try:
-        os.environ['HCCL_EXEC_TIMEOUT'] = '3600'
-        os.environ['HCCL_LINK_TIMEOUT'] = '3600'
-        os.environ['HCCL_CONNECT_TIMEOUT'] = '3600'
+        os.environ["HCCL_EXEC_TIMEOUT"] = "3600"
+        os.environ["HCCL_LINK_TIMEOUT"] = "3600"
+        os.environ["HCCL_CONNECT_TIMEOUT"] = "3600"
         torch.npu.set_device(rank)
-        dist.init_process_group(backend="hccl", rank=rank, world_size=world_size,
-                                init_method=f"tcp://127.0.0.1:{port}",
-                                timeout=datetime.timedelta(seconds=3600))
+        dist.init_process_group(
+            backend="hccl",
+            rank=rank,
+            world_size=world_size,
+            init_method=f"tcp://127.0.0.1:{port}",
+            timeout=datetime.timedelta(seconds=3600),
+        )
         tensors = _load_inputs_for_rank(input_path, rank)
         x1 = tensors[0].npu()
         x2 = tensors[1].npu()
-        bias = tensors[2].npu() if 2 in tensors and tensors[2] is not None and tensors[2].numel() > 0 else None
+        bias = (
+            tensors[2].npu()
+            if 2 in tensors and tensors[2] is not None and tensors[2].numel() > 0
+            else None
+        )
         input_mat = x1.t().contiguous() if transpose_x1 else x1
         weight_mat = x2.t().contiguous() if transpose_x2 else x2
-        w_dtype_str = str(weight_mat.dtype).replace('torch.', '')
-        if any(d in w_dtype_str for d in ('float8', 'hifloat8', 'hif8', 'fp8', 'int8')):
+        w_dtype_str = str(weight_mat.dtype).replace("torch.", "")
+        if any(d in w_dtype_str for d in ("float8", "hifloat8", "hif8", "fp8", "int8")):
             mm_out = torch.matmul(input_mat.float(), weight_mat.float())
         else:
             mm_out = torch.matmul(input_mat, weight_mat)
@@ -93,11 +120,11 @@ def main():
         torch.npu.synchronize()
         out_cpu = alltoall_out.reshape(mm_m * world_size, chunk_n).contiguous().cpu()
         rank_file = f"{result_path}.did{rank}.npz"
-        np.savez(rank_file, **{f'cascade_did{rank}': out_cpu.numpy()})
+        np.savez(rank_file, **{f"cascade_did{rank}": out_cpu.numpy()})
         dist.destroy_process_group()
     except Exception:
         tb = traceback.format_exc()
-        with open(error_path, 'a') as f:
+        with open(error_path, "a") as f:
             f.write(f"=== rank {rank} traceback ===\n{tb}\n")
         sys.exit(1)
 

@@ -27,7 +27,8 @@ def _load_impl_module(stem):
     if stem not in _impl_cache:
         path = ASSET_IMPL_DIR / f"{stem}.py"
         spec = importlib.util.spec_from_file_location(
-            f"moe_distribute_combine_assets_impl_{stem}_{abs(hash(path))}", path)
+            f"moe_distribute_combine_assets_impl_{stem}_{abs(hash(path))}", path
+        )
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         _impl_cache[stem] = module
@@ -40,26 +41,52 @@ class AclnnMoeDistributeCombineSpec:
     @staticmethod
     def multi_device_golden(thread_contexts, device_ids, all_precision):
         return _load_impl_module("golden").moe_distribute_combine_multi_device_golden(
-            thread_contexts, device_ids, all_precision)
+            thread_contexts, device_ids, all_precision
+        )
 
 
 class MoeDistributeCombineE2ESpec:
     """TestSpec for torch_npu.npu_moe_distribute_combine (E2E multi-device path)."""
 
     @staticmethod
-    def e2e_multi_device_golden(cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True):
+    def e2e_multi_device_golden(
+        cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True
+    ):
         return _load_impl_module("golden").moe_distribute_combine_e2e_golden(
-            cpu_inputs_per_rank, attrs, rank, ws, dist_avail)
+            cpu_inputs_per_rank, attrs, rank, ws, dist_avail
+        )
 
     @staticmethod
-    def input(expand_x, expert_ids, expand_idx, ep_send_counts, expert_scales,
-              group_ep, ep_world_size, ep_rank_id, moe_expert_num,
-              *, tp_send_counts=None, x_active_mask=None, activation_scale=None,
-              weight_scale=None, group_list=None, expand_scales=None,
-              shared_expert_x=None, group_tp="", tp_world_size=0, tp_rank_id=0,
-              expert_shard_type=0, shared_expert_num=1, shared_expert_rank_num=0,
-              global_bs=0, out_dtype=0, comm_quant_mode=0, group_list_type=0,
-              **kwargs):
+    def input(
+        expand_x,
+        expert_ids,
+        expand_idx,
+        ep_send_counts,
+        expert_scales,
+        group_ep,
+        ep_world_size,
+        ep_rank_id,
+        moe_expert_num,
+        *,
+        tp_send_counts=None,
+        x_active_mask=None,
+        activation_scale=None,
+        weight_scale=None,
+        group_list=None,
+        expand_scales=None,
+        shared_expert_x=None,
+        group_tp="",
+        tp_world_size=0,
+        tp_rank_id=0,
+        expert_shard_type=0,
+        shared_expert_num=1,
+        shared_expert_rank_num=0,
+        global_bs=0,
+        out_dtype=0,
+        comm_quant_mode=0,
+        group_list_type=0,
+        **kwargs,
+    ):
         """Generate consistent dispatch-then-combine inputs.
 
         The combine operator needs valid ep_send_counts that come from an actual
@@ -73,11 +100,17 @@ class MoeDistributeCombineE2ESpec:
         import torch
         import numpy as np
 
-        eid_np = expert_ids.numpy() if hasattr(expert_ids, 'numpy') else np.asarray(expert_ids)
+        eid_np = (
+            expert_ids.numpy()
+            if hasattr(expert_ids, "numpy")
+            else np.asarray(expert_ids)
+        )
         bs = eid_np.shape[0]
         k = eid_np.shape[1] if eid_np.ndim > 1 else 1
-        h = expand_x.shape[1] if hasattr(expand_x, 'shape') else 7168
-        local_expert_num = moe_expert_num // ep_world_size if ep_world_size > 0 else moe_expert_num
+        h = expand_x.shape[1] if hasattr(expand_x, "shape") else 7168
+        local_expert_num = (
+            moe_expert_num // ep_world_size if ep_world_size > 0 else moe_expert_num
+        )
 
         # Simulate dispatch: sort tokens by destination rank, compute send_counts
         send_counts = [0] * ep_world_size
@@ -90,7 +123,7 @@ class MoeDistributeCombineE2ESpec:
                     dest = ep_world_size - 1
                 send_counts[dest] += 1
                 # Store the x row for this token
-                if hasattr(expand_x, 'numpy'):
+                if hasattr(expand_x, "numpy"):
                     token_groups[dest].append(expand_x.numpy()[i])
 
         # Build expand_x: sorted by destination rank, then padded to A_moe
@@ -110,7 +143,9 @@ class MoeDistributeCombineE2ESpec:
 
         # Pad to target_len
         if expand_x_data.shape[0] < target_len:
-            pad = np.zeros((target_len - expand_x_data.shape[0], h), dtype=expand_x_data.dtype)
+            pad = np.zeros(
+                (target_len - expand_x_data.shape[0], h), dtype=expand_x_data.dtype
+            )
             expand_x_data = np.concatenate([expand_x_data, pad], axis=0)
         elif expand_x_data.shape[0] > target_len:
             expand_x_data = expand_x_data[:target_len]
@@ -134,7 +169,11 @@ class MoeDistributeCombineE2ESpec:
         expert_scales_np = np.ones((bs, k), dtype=np.float32)
 
         # Write back in-place
-        expand_x[:] = torch.from_numpy(expand_x_data.astype(np.float16 if expand_x.dtype == torch.bfloat16 else expand_x_data.dtype))
+        expand_x[:] = torch.from_numpy(
+            expand_x_data.astype(
+                np.float16 if expand_x.dtype == torch.bfloat16 else expand_x_data.dtype
+            )
+        )
         ep_send_counts[:] = torch.from_numpy(ep_send_counts_np)
         expand_idx[:] = torch.from_numpy(expand_idx_np)
         expert_scales[:] = torch.from_numpy(expert_scales_np)

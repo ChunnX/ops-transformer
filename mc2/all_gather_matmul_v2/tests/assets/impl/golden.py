@@ -22,25 +22,42 @@ from pathlib import Path
 
 def _load_shared_utils():
     """Load golden_utils from mc2/common/tests/assets."""
-    utils_path = Path(__file__).resolve().parents[4] / "common" / "tests" / "assets" / "golden_utils.py"
+    utils_path = (
+        Path(__file__).resolve().parents[4]
+        / "common"
+        / "tests"
+        / "assets"
+        / "golden_utils.py"
+    )
     spec = importlib.util.spec_from_file_location(
-        f"mc2_common_golden_utils_{abs(hash(utils_path))}", utils_path)
+        f"mc2_common_golden_utils_{abs(hash(utils_path))}", utils_path
+    )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-def all_gather_matmul_v2_multi_device_golden(thread_contexts, device_ids, all_precision):
+def all_gather_matmul_v2_multi_device_golden(
+    thread_contexts, device_ids, all_precision
+):
     """Use shared golden_all_gather_compare (handles V1+V2 uniformly)."""
     utils = _load_shared_utils()
     world_size = len(device_ids)
-    utils.golden_all_gather_compare(thread_contexts, device_ids, all_precision, world_size)
+    utils.golden_all_gather_compare(
+        thread_contexts, device_ids, all_precision, world_size
+    )
 
 
-def all_gather_matmul_v2_e2e_golden(cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True):
+def all_gather_matmul_v2_e2e_golden(
+    cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True
+):
     import torch
+
     world_size = len(cpu_inputs_per_rank)
-    all_x1 = [inp[0].float() if len(inp) > 0 and inp[0] is not None else None for inp in cpu_inputs_per_rank]
+    all_x1 = [
+        inp[0].float() if len(inp) > 0 and inp[0] is not None else None
+        for inp in cpu_inputs_per_rank
+    ]
     gathered = torch.cat([x for x in all_x1 if x is not None], dim=0)
     del all_x1
     goldens = []
@@ -52,7 +69,7 @@ def all_gather_matmul_v2_e2e_golden(cpu_inputs_per_rank, attrs, rank=None, ws=No
             continue
         g = torch.matmul(gathered, x2)
         bias = inp[2] if len(inp) > 2 and inp[2] is not None else None
-        if bias is not None and hasattr(bias, 'numel') and bias.numel() > 0:
+        if bias is not None and hasattr(bias, "numel") and bias.numel() > 0:
             g = g + bias.float()
         goldens.append(g.contiguous())
     del gathered

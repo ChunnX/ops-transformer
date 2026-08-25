@@ -28,18 +28,28 @@ def _load_framework():
     """Load golden utils from mc2/common/tests/assets."""
     import importlib.util
     from pathlib import Path
-    utils_path = Path(__file__).resolve().parents[4] / "common" / "tests" / "assets" / "golden_utils.py"
+
+    utils_path = (
+        Path(__file__).resolve().parents[4]
+        / "common"
+        / "tests"
+        / "assets"
+        / "golden_utils.py"
+    )
     spec = importlib.util.spec_from_file_location(
-        f"mc2_common_golden_utils_{abs(hash(utils_path))}", utils_path)
+        f"mc2_common_golden_utils_{abs(hash(utils_path))}", utils_path
+    )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     from ttk.core_modules.npu.op_api.comparison import Comparator
+
     return mod.to_torch_f32, mod.fmt_compare_result, Comparator
 
 
 def _simulate_moe_alltoallv(all_rank_inputs, world_size, send_counts_per_rank):
     """Simulate all_to_allv on CPU: each rank sends chunks to all other ranks."""
     import torch
+
     rank_outputs = {}
     for target_rank in range(world_size):
         received_chunks = []
@@ -50,13 +60,15 @@ def _simulate_moe_alltoallv(all_rank_inputs, world_size, send_counts_per_rank):
             for dst_idx in range(world_size):
                 count = int(src_counts[dst_idx])
                 if dst_idx == target_rank and count > 0:
-                    received_chunks.append(src_data[offset:offset + count])
+                    received_chunks.append(src_data[offset : offset + count])
                 offset += count
         if received_chunks:
             rank_outputs[target_rank] = torch.cat(received_chunks, dim=0)
         else:
             h = all_rank_inputs[0].shape[-1] if all_rank_inputs[0].dim() > 1 else 1
-            rank_outputs[target_rank] = torch.zeros(0, h, dtype=all_rank_inputs[0].dtype)
+            rank_outputs[target_rank] = torch.zeros(
+                0, h, dtype=all_rank_inputs[0].dtype
+            )
     return rank_outputs
 
 
@@ -64,11 +76,15 @@ def _simulate_moe_alltoallv(all_rank_inputs, world_size, send_counts_per_rank):
 # E2E golden: returns list of x_out tensors (one per rank)
 # ---------------------------------------------------------------------------
 
-def moe_distribute_combine_e2e_golden(cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True):
+
+def moe_distribute_combine_e2e_golden(
+    cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True
+):
     import torch
+
     world_size = len(cpu_inputs_per_rank)
-    ep_ws = int(attrs.get('ep_world_size', world_size))
-    moe_expert_num = int(attrs.get('moe_expert_num', 1))
+    ep_ws = int(attrs.get("ep_world_size", world_size))
+    moe_expert_num = int(attrs.get("moe_expert_num", 1))
     local_expert_num = moe_expert_num // ep_ws if ep_ws > 0 else moe_expert_num
 
     # Combine inputs per rank:
@@ -85,11 +101,17 @@ def moe_distribute_combine_e2e_golden(cpu_inputs_per_rank, attrs, rank=None, ws=
 
     for r in range(world_size):
         inputs = cpu_inputs_per_rank[r]
-        expand_x = inputs[0].float() if (len(inputs) > 0 and inputs[0] is not None) else None
+        expand_x = (
+            inputs[0].float() if (len(inputs) > 0 and inputs[0] is not None) else None
+        )
         expert_ids = inputs[1] if (len(inputs) > 1 and inputs[1] is not None) else None
         expand_idx = inputs[2] if (len(inputs) > 2 and inputs[2] is not None) else None
-        ep_send_counts = inputs[3] if (len(inputs) > 3 and inputs[3] is not None) else None
-        expert_scales = inputs[4] if (len(inputs) > 4 and inputs[4] is not None) else None
+        ep_send_counts = (
+            inputs[3] if (len(inputs) > 3 and inputs[3] is not None) else None
+        )
+        expert_scales = (
+            inputs[4] if (len(inputs) > 4 and inputs[4] is not None) else None
+        )
 
         if expand_x is None:
             all_rank_expand_x[r] = torch.zeros(0, 1)
@@ -124,12 +146,22 @@ def moe_distribute_combine_e2e_golden(cpu_inputs_per_rank, attrs, rank=None, ws=
 
         all_rank_expand_x[r] = expand_x
         all_rank_send_counts[r] = send_counts
-        all_rank_expert_ids[r] = expert_ids if expert_ids is not None else torch.zeros(0, 1, dtype=torch.int32)
-        all_rank_expand_idx[r] = expand_idx if expand_idx is not None else torch.zeros(0, dtype=torch.int32)
-        all_rank_expert_scales[r] = expert_scales if expert_scales is not None else torch.zeros(0)
+        all_rank_expert_ids[r] = (
+            expert_ids
+            if expert_ids is not None
+            else torch.zeros(0, 1, dtype=torch.int32)
+        )
+        all_rank_expand_idx[r] = (
+            expand_idx if expand_idx is not None else torch.zeros(0, dtype=torch.int32)
+        )
+        all_rank_expert_scales[r] = (
+            expert_scales if expert_scales is not None else torch.zeros(0)
+        )
 
     # Simulate alltoallv: each rank sends its expand_x to destination ranks
-    alltoallv_out = _simulate_moe_alltoallv(all_rank_expand_x, world_size, all_rank_send_counts)
+    alltoallv_out = _simulate_moe_alltoallv(
+        all_rank_expand_x, world_size, all_rank_send_counts
+    )
 
     # For each rank, scatter the received tokens back to original positions and sum
     goldens = []
@@ -155,11 +187,20 @@ def moe_distribute_combine_e2e_golden(cpu_inputs_per_rank, attrs, rank=None, ws=
                 if orig_token < bs:
                     scale = 1.0
                     if expert_scales.numel() > 0:
-                        if expert_scales.dim() > 1 and orig_token < expert_scales.shape[0] and k_idx < expert_scales.shape[1]:
+                        if (
+                            expert_scales.dim() > 1
+                            and orig_token < expert_scales.shape[0]
+                            and k_idx < expert_scales.shape[1]
+                        ):
                             scale = float(expert_scales[orig_token][k_idx])
-                        elif expert_scales.dim() == 1 and orig_flat_idx < expert_scales.shape[0]:
+                        elif (
+                            expert_scales.dim() == 1
+                            and orig_flat_idx < expert_scales.shape[0]
+                        ):
                             scale = float(expert_scales[orig_flat_idx])
-                    x_out[orig_token] = x_out[orig_token] + a2a_result[idx_pos].float() * scale
+                    x_out[orig_token] = (
+                        x_out[orig_token] + a2a_result[idx_pos].float() * scale
+                    )
 
         goldens.append(x_out.contiguous())
     return goldens
@@ -169,14 +210,18 @@ def moe_distribute_combine_e2e_golden(cpu_inputs_per_rank, attrs, rank=None, ws=
 # ACLNN multi-device golden
 # ---------------------------------------------------------------------------
 
-def moe_distribute_combine_multi_device_golden(thread_contexts, device_ids, all_precision):
+
+def moe_distribute_combine_multi_device_golden(
+    thread_contexts, device_ids, all_precision
+):
     import torch
+
     to_torch_f32, fmt_compare, Comparator = _load_framework()
     first_ctx = next(iter(thread_contexts.values()))
     attrs = first_ctx.attributes
     world_size = len(device_ids)
-    ep_ws = int(attrs.get('epWorldSize', world_size))
-    moe_expert_num = int(attrs.get('moeExpertNum', 1))
+    ep_ws = int(attrs.get("epWorldSize", world_size))
+    moe_expert_num = int(attrs.get("moeExpertNum", 1))
     local_expert_num = moe_expert_num // ep_ws if ep_ws > 0 else moe_expert_num
 
     all_rank_expand_x = {}
@@ -215,11 +260,21 @@ def moe_distribute_combine_multi_device_golden(thread_contexts, device_ids, all_
 
         all_rank_expand_x[did] = expand_x
         all_rank_send_counts[did] = send_counts
-        all_rank_expert_ids[did] = expert_ids if expert_ids is not None else torch.zeros(0, 1, dtype=torch.int32)
-        all_rank_expand_idx[did] = expand_idx if expand_idx is not None else torch.zeros(0, dtype=torch.int32)
-        all_rank_expert_scales[did] = expert_scales if expert_scales is not None else torch.zeros(0)
+        all_rank_expert_ids[did] = (
+            expert_ids
+            if expert_ids is not None
+            else torch.zeros(0, 1, dtype=torch.int32)
+        )
+        all_rank_expand_idx[did] = (
+            expand_idx if expand_idx is not None else torch.zeros(0, dtype=torch.int32)
+        )
+        all_rank_expert_scales[did] = (
+            expert_scales if expert_scales is not None else torch.zeros(0)
+        )
 
-    alltoallv_out = _simulate_moe_alltoallv(all_rank_expand_x, device_ids, all_rank_send_counts)
+    alltoallv_out = _simulate_moe_alltoallv(
+        all_rank_expand_x, device_ids, all_rank_send_counts
+    )
 
     for did in device_ids:
         tc = thread_contexts[did]
@@ -242,11 +297,20 @@ def moe_distribute_combine_multi_device_golden(thread_contexts, device_ids, all_
                 if orig_token < bs:
                     scale = 1.0
                     if expert_scales is not None and expert_scales.numel() > 0:
-                        if expert_scales.dim() > 1 and orig_token < expert_scales.shape[0] and k_idx < expert_scales.shape[1]:
+                        if (
+                            expert_scales.dim() > 1
+                            and orig_token < expert_scales.shape[0]
+                            and k_idx < expert_scales.shape[1]
+                        ):
                             scale = float(expert_scales[orig_token][k_idx])
-                        elif expert_scales.dim() == 1 and orig_flat_idx < expert_scales.shape[0]:
+                        elif (
+                            expert_scales.dim() == 1
+                            and orig_flat_idx < expert_scales.shape[0]
+                        ):
                             scale = float(expert_scales[orig_flat_idx])
-                    x_out[orig_token] = x_out[orig_token] + a2a_result[idx_pos].float() * scale
+                    x_out[orig_token] = (
+                        x_out[orig_token] + a2a_result[idx_pos].float() * scale
+                    )
 
         x_out = x_out.to(expand_x.dtype)
         tc.golden_tensors = [x_out.contiguous()]
@@ -254,7 +318,9 @@ def moe_distribute_combine_multi_device_golden(thread_contexts, device_ids, all_
             cr = Comparator(tc).compare()
             all_precision.append(f"rank{did}:{cr.passed}({fmt_compare(cr)})")
             if cr.passed != "PASS":
-                logging.error(f"MoeDistributeCombine: rank dev={did} FAILED: {cr.precision}")
+                logging.error(
+                    f"MoeDistributeCombine: rank dev={did} FAILED: {cr.precision}"
+                )
             else:
                 logging.info(f"MoeDistributeCombine: rank dev={did} PASSED")
         except Exception:

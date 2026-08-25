@@ -28,27 +28,44 @@ def _load_framework():
     """Load golden utils from mc2/common/tests/assets."""
     import importlib.util
     from pathlib import Path
-    utils_path = Path(__file__).resolve().parents[4] / "common" / "tests" / "assets" / "golden_utils.py"
+
+    utils_path = (
+        Path(__file__).resolve().parents[4]
+        / "common"
+        / "tests"
+        / "assets"
+        / "golden_utils.py"
+    )
     spec = importlib.util.spec_from_file_location(
-        f"mc2_common_golden_utils_{abs(hash(utils_path))}", utils_path)
+        f"mc2_common_golden_utils_{abs(hash(utils_path))}", utils_path
+    )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     from ttk.core_modules.npu.op_api.comparison import Comparator
+
     return mod.to_torch_f32, mod.fmt_compare_result, Comparator
 
 
 _DTYPE_MAP = {
-    'float16': None, 'fp16': None, 'float32': None, 'fp32': None,
-    'bfloat16': None, 'bf16': None,
+    "float16": None,
+    "fp16": None,
+    "float32": None,
+    "fp32": None,
+    "bfloat16": None,
+    "bf16": None,
 }
 
 
 def _dtype_map():
     import torch
+
     return {
-        'float16': torch.float16, 'fp16': torch.float16,
-        'float32': torch.float32, 'fp32': torch.float32,
-        'bfloat16': torch.bfloat16, 'bf16': torch.bfloat16,
+        "float16": torch.float16,
+        "fp16": torch.float16,
+        "float32": torch.float32,
+        "fp32": torch.float32,
+        "bfloat16": torch.bfloat16,
+        "bf16": torch.bfloat16,
     }
 
 
@@ -56,8 +73,10 @@ def _dtype_map():
 # input save / cascade
 # ---------------------------------------------------------------------------
 
+
 def _save_inputs_per_rank(thread_contexts, device_ids, path):
     import torch
+
     arrays = {}
     dtypes = {}
     for did in device_ids:
@@ -66,13 +85,13 @@ def _save_inputs_per_rank(thread_contexts, device_ids, path):
             if t is None:
                 continue
             if isinstance(t, torch.Tensor):
-                dtype_str = str(t.dtype).replace('torch.', '')
+                dtype_str = str(t.dtype).replace("torch.", "")
                 if t.dtype in (torch.bfloat16, torch.float16, torch.float32):
-                    arrays[f'did{did}_t{i}'] = t.float().cpu().numpy()
-                    dtypes[f'did{did}_t{i}_dtype'] = dtype_str
+                    arrays[f"did{did}_t{i}"] = t.float().cpu().numpy()
+                    dtypes[f"did{did}_t{i}_dtype"] = dtype_str
                 else:
-                    arrays[f'did{did}_t{i}'] = t.cpu().numpy()
-                    dtypes[f'did{did}_t{i}_dtype'] = dtype_str
+                    arrays[f"did{did}_t{i}"] = t.cpu().numpy()
+                    dtypes[f"did{did}_t{i}_dtype"] = dtype_str
     arrays.update(dtypes)
     np.savez(path, **arrays)
 
@@ -82,7 +101,8 @@ _next_port_base = [30073]
 
 def _next_port():
     import threading
-    os.environ.setdefault('HCCL_NPU_SOCKET_PORT_RANGE', '50000-50100')
+
+    os.environ.setdefault("HCCL_NPU_SOCKET_PORT_RANGE", "50000-50100")
     with threading.Lock():
         port = _next_port_base[0]
         _next_port_base[0] += 13
@@ -91,34 +111,50 @@ def _next_port():
         return port
 
 
-def run_bmm_rs_a2a_cascade(thread_contexts, device_ids, ep_ws, tp_ws,
-                           shard_type, is_trans=False, is_bias=False):
+def run_bmm_rs_a2a_cascade(
+    thread_contexts, device_ids, ep_ws, tp_ws, shard_type, is_trans=False, is_bias=False
+):
     import subprocess
     import sys
     import torch
+
     n = len(device_ids)
     if n < 2:
         return {}
     if n != ep_ws * tp_ws:
-        raise ValueError(f"BMM_RS_A2A: world_size={n} != ep_ws*tp_ws={ep_ws*tp_ws}")
+        raise ValueError(f"BMM_RS_A2A: world_size={n} != ep_ws*tp_ws={ep_ws * tp_ws}")
     port = _next_port()
     worker_script = str(Path(__file__).with_name("cascade_worker.py"))
-    with tempfile.TemporaryDirectory(prefix='ttk_cascade_bmm_') as tmpdir:
-        input_path = os.path.join(tmpdir, 'inputs.npz')
-        result_path = os.path.join(tmpdir, 'results.npz')
-        error_path = os.path.join(tmpdir, 'errors.log')
+    with tempfile.TemporaryDirectory(prefix="ttk_cascade_bmm_") as tmpdir:
+        input_path = os.path.join(tmpdir, "inputs.npz")
+        result_path = os.path.join(tmpdir, "results.npz")
+        error_path = os.path.join(tmpdir, "errors.log")
         _save_inputs_per_rank(thread_contexts, device_ids, input_path)
-        np.savez(input_path + '.meta.npz',
-                 ep_ws=np.array([ep_ws], dtype=np.int64),
-                 tp_ws=np.array([tp_ws], dtype=np.int64),
-                 shard_type=np.array([shard_type], dtype=np.int64),
-                 is_trans=np.array([int(is_trans)], dtype=np.int64),
-                 is_bias=np.array([int(is_bias)], dtype=np.int64))
+        np.savez(
+            input_path + ".meta.npz",
+            ep_ws=np.array([ep_ws], dtype=np.int64),
+            tp_ws=np.array([tp_ws], dtype=np.int64),
+            shard_type=np.array([shard_type], dtype=np.int64),
+            is_trans=np.array([int(is_trans)], dtype=np.int64),
+            is_bias=np.array([int(is_bias)], dtype=np.int64),
+        )
         procs = []
         for rank in range(n):
-            cmd = [sys.executable, worker_script,
-                   str(rank), str(n), str(port), input_path, result_path, error_path,
-                   str(ep_ws), str(tp_ws), str(shard_type), str(int(is_trans)), str(int(is_bias))]
+            cmd = [
+                sys.executable,
+                worker_script,
+                str(rank),
+                str(n),
+                str(port),
+                input_path,
+                result_path,
+                error_path,
+                str(ep_ws),
+                str(tp_ws),
+                str(shard_type),
+                str(int(is_trans)),
+                str(int(is_bias)),
+            ]
             p = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
             procs.append(p)
         for p in procs:
@@ -129,8 +165,12 @@ def run_bmm_rs_a2a_cascade(thread_contexts, device_ids, ep_ws, tp_ws,
                 error_msg = f.read()
         for p in procs:
             if p.returncode != 0:
-                stderr = p.stderr.read().decode(errors='replace')[-2000:] if p.stderr else ''
-                raise RuntimeError(f"cascade worker exited {p.returncode}\n{error_msg}\n{stderr}")
+                stderr = (
+                    p.stderr.read().decode(errors="replace")[-2000:] if p.stderr else ""
+                )
+                raise RuntimeError(
+                    f"cascade worker exited {p.returncode}\n{error_msg}\n{stderr}"
+                )
         first_ctx = thread_contexts[device_ids[0]]
         out_idx = first_ctx.output_tensor_indexes[0]
         out_shape = first_ctx.tensor_view_shapes[out_idx]
@@ -140,10 +180,10 @@ def run_bmm_rs_a2a_cascade(thread_contexts, device_ids, ep_ws, tp_ws,
             rank_file = f"{result_path}.did{did}.npz"
             if os.path.exists(rank_file):
                 data = np.load(rank_file, allow_pickle=False)
-                key = f'cascade_did{did}'
+                key = f"cascade_did{did}"
                 if key in data.files:
                     main_t = torch.from_numpy(data[key].copy()).reshape(out_shape)
-            result[did] = {'main': main_t}
+            result[did] = {"main": main_t}
         return result
 
 
@@ -151,14 +191,16 @@ def run_bmm_rs_a2a_cascade(thread_contexts, device_ids, ep_ws, tp_ws,
 # CPU golden
 # ---------------------------------------------------------------------------
 
+
 def bmm_rs_a2a_cpu_golden(thread_contexts, device_ids, ep_ws, tp_ws, world_size):
     import torch
+
     to_torch_f32, _, _ = _load_framework()
     first_ctx = next(iter(thread_contexts.values()))
     attrs = first_ctx.attributes
-    shard_type = int(attrs.get('yShardType', 1))
-    is_bias = bool(attrs.get('isBias', False))
-    is_trans = bool(attrs.get('isTrans', False))
+    shard_type = int(attrs.get("yShardType", 1))
+    is_bias = bool(attrs.get("isBias", False))
+    is_trans = bool(attrs.get("isTrans", False))
 
     in_dtype = thread_contexts[device_ids[0]].flatten_tensors[0].dtype
     E_div_ep = thread_contexts[device_ids[0]].flatten_tensors[0].shape[0]
@@ -199,9 +241,15 @@ def bmm_rs_a2a_cpu_golden(thread_contexts, device_ids, ep_ws, tp_ws, world_size)
             # reduce_scatter = all_reduce(SUM) then narrow to my part
             # sum ALL ranks' chunks for this local_idx (matching mc2_test_0416 get_cpu)
             # fp32 accumulation (matching mc2_test_0416 get_cpu: all_reduce in fp32)
-            acc = all_parts[0][local_idx * E_div_ep:(local_idx + 1) * E_div_ep].clone().float()
+            acc = (
+                all_parts[0][local_idx * E_div_ep : (local_idx + 1) * E_div_ep]
+                .clone()
+                .float()
+            )
             for src_idx in range(1, n_tp):
-                src_chunk = all_parts[src_idx][local_idx * E_div_ep:(local_idx + 1) * E_div_ep]
+                src_chunk = all_parts[src_idx][
+                    local_idx * E_div_ep : (local_idx + 1) * E_div_ep
+                ]
                 acc = acc + src_chunk.float()
             chunk = acc.to(in_dtype)
             tc = thread_contexts[did]
@@ -250,31 +298,43 @@ def bmm_rs_a2a_cpu_golden(thread_contexts, device_ids, ep_ws, tp_ws, world_size)
 # entries
 # ---------------------------------------------------------------------------
 
+
 def bmm_rs_a2a_multi_device_golden(thread_contexts, device_ids, all_precision):
     import torch
+
     _, fmt_compare, Comparator = _load_framework()
     first_ctx = next(iter(thread_contexts.values()))
     attrs = first_ctx.attributes
     world_size = len(device_ids)
-    ep_ws = int(attrs.get('epWorldSize', 1))
-    tp_ws = int(attrs.get('tpWorldSize', 1))
-    shard_type = int(attrs.get('yShardType', 1))
-    is_bias = bool(attrs.get('isBias', False))
-    is_trans = bool(attrs.get('isTrans', False))
+    ep_ws = int(attrs.get("epWorldSize", 1))
+    tp_ws = int(attrs.get("tpWorldSize", 1))
+    shard_type = int(attrs.get("yShardType", 1))
+    is_bias = bool(attrs.get("isBias", False))
+    is_trans = bool(attrs.get("isTrans", False))
     dtype_map = _dtype_map()
 
     rank_third_parties = None
     try:
         cascade_outs = run_bmm_rs_a2a_cascade(
-            thread_contexts, device_ids, ep_ws=ep_ws, tp_ws=tp_ws,
-            shard_type=shard_type, is_trans=is_trans, is_bias=is_bias)
-        rank_third_parties = {did: [cascade_outs[did]['main']] for did in device_ids}
+            thread_contexts,
+            device_ids,
+            ep_ws=ep_ws,
+            tp_ws=tp_ws,
+            shard_type=shard_type,
+            is_trans=is_trans,
+            is_bias=is_bias,
+        )
+        rank_third_parties = {did: [cascade_outs[did]["main"]] for did in device_ids}
         logging.info("BatchMatMulReduceScatterAlltoAll: real HCCL cascade succeeded")
     except Exception:
-        logging.exception("BatchMatMulReduceScatterAlltoAll: real HCCL cascade failed, no third_party")
+        logging.exception(
+            "BatchMatMulReduceScatterAlltoAll: real HCCL cascade failed, no third_party"
+        )
         rank_third_parties = None
 
-    rank_goldens = bmm_rs_a2a_cpu_golden(thread_contexts, device_ids, ep_ws, tp_ws, world_size)
+    rank_goldens = bmm_rs_a2a_cpu_golden(
+        thread_contexts, device_ids, ep_ws, tp_ws, world_size
+    )
 
     for did in device_ids:
         tc = thread_contexts[did]
@@ -314,25 +374,30 @@ def bmm_rs_a2a_multi_device_golden(thread_contexts, device_ids, all_precision):
     del rank_goldens
 
 
-def bmm_rs_a2a_e2e_golden(cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True):
+def bmm_rs_a2a_e2e_golden(
+    cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True
+):
     import numpy as _np
-    shard_type = int(attrs.get('shard_type', attrs.get('yShardType', 0)))
-    ep_ws = int(attrs.get('epWorldSize', 0))
-    tp_ws = int(attrs.get('tpWorldSize', 0))
+
+    shard_type = int(attrs.get("shard_type", attrs.get("yShardType", 0)))
+    ep_ws = int(attrs.get("epWorldSize", 0))
+    tp_ws = int(attrs.get("tpWorldSize", 0))
     if not ep_ws or not tp_ws:
         return None
 
     in_dtype = torch.float32
-    if attrs and '_tensor_dtypes' in attrs:
-        dt_str = str(attrs['_tensor_dtypes'][0]) if attrs['_tensor_dtypes'] else 'float32'
-        if 'bfloat16' in dt_str or 'bf16' in dt_str:
+    if attrs and "_tensor_dtypes" in attrs:
+        dt_str = (
+            str(attrs["_tensor_dtypes"][0]) if attrs["_tensor_dtypes"] else "float32"
+        )
+        if "bfloat16" in dt_str or "bf16" in dt_str:
             in_dtype = torch.bfloat16
-        elif 'float16' in dt_str or 'fp16' in dt_str:
+        elif "float16" in dt_str or "fp16" in dt_str:
             in_dtype = torch.float16
     E_div_ep = cpu_inputs_per_rank[0][0].shape[0]
     x_dim1 = cpu_inputs_per_rank[0][0].shape[1]
     H = cpu_inputs_per_rank[0][1].shape[2]
-    is_bias = bool(attrs.get('isBias', False))
+    is_bias = bool(attrs.get("isBias", False))
     if shard_type == 0:
         C = x_dim1 // ep_ws
     else:
@@ -360,9 +425,13 @@ def bmm_rs_a2a_e2e_golden(cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_a
             del bmm_out
         n_tp = len(group_ranks)
         for local_idx, r in enumerate(group_ranks):
-            acc = all_parts[0][local_idx * E_div_ep:(local_idx + 1) * E_div_ep].clone()
+            acc = all_parts[0][
+                local_idx * E_div_ep : (local_idx + 1) * E_div_ep
+            ].clone()
             for src_idx in range(1, n_tp):
-                src_chunk = all_parts[src_idx][local_idx * E_div_ep:(local_idx + 1) * E_div_ep]
+                src_chunk = all_parts[src_idx][
+                    local_idx * E_div_ep : (local_idx + 1) * E_div_ep
+                ]
                 acc = acc + src_chunk
             chunk = acc
             if is_bias and len(cpu_inputs_per_rank[r]) > 2:

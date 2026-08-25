@@ -27,7 +27,8 @@ def _load_impl_module(stem):
     if stem not in _impl_cache:
         path = ASSET_IMPL_DIR / f"{stem}.py"
         spec = importlib.util.spec_from_file_location(
-            f"grouped_mat_mul_allto_allv_assets_impl_{stem}_{abs(hash(path))}", path)
+            f"grouped_mat_mul_allto_allv_assets_impl_{stem}_{abs(hash(path))}", path
+        )
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         _impl_cache[stem] = module
@@ -40,16 +41,20 @@ class AclnnGroupedMatMulAlltoAllvSpec:
     @staticmethod
     def multi_device_golden(thread_contexts, device_ids, all_precision):
         return _load_impl_module("golden").gmm_alltoallv_multi_device_golden(
-            thread_contexts, device_ids, all_precision)
+            thread_contexts, device_ids, all_precision
+        )
 
 
 class GroupedMatMulAlltoAllvE2ESpec:
     """TestSpec for torch_npu.npu_gmm_alltoallv (E2E multi-device path)."""
 
     @staticmethod
-    def e2e_multi_device_golden(cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True):
+    def e2e_multi_device_golden(
+        cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True
+    ):
         return _load_impl_module("golden").gmm_alltoallv_e2e_golden(
-            cpu_inputs_per_rank, attrs, rank, ws, dist_avail)
+            cpu_inputs_per_rank, attrs, rank, ws, dist_avail
+        )
 
 
 __spec__ = {

@@ -25,28 +25,47 @@ def _load_framework():
     """Load golden utils from mc2/common/tests/assets."""
     import importlib.util
     from pathlib import Path
-    utils_path = Path(__file__).resolve().parents[4] / "common" / "tests" / "assets" / "golden_utils.py"
+
+    utils_path = (
+        Path(__file__).resolve().parents[4]
+        / "common"
+        / "tests"
+        / "assets"
+        / "golden_utils.py"
+    )
     spec = importlib.util.spec_from_file_location(
-        f"mc2_common_golden_utils_{abs(hash(utils_path))}", utils_path)
+        f"mc2_common_golden_utils_{abs(hash(utils_path))}", utils_path
+    )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     from ttk.core_modules.npu.op_api.comparison import Comparator
-    return mod.to_torch_f32, mod.fmt_compare_result, mod.apply_goldens_and_compare, mod.get_transpose_flags, Comparator
+
+    return (
+        mod.to_torch_f32,
+        mod.fmt_compare_result,
+        mod.apply_goldens_and_compare,
+        mod.get_transpose_flags,
+        Comparator,
+    )
 
 
 # ---------------------------------------------------------------------------
 # ACLNN multi-device golden
 # ---------------------------------------------------------------------------
 
+
 def matmul_all_reduce_multi_device_golden(thread_contexts, device_ids, all_precision):
     import torch
-    to_torch_f32, fmt_compare, apply_compare, get_transpose_flags, Comparator = _load_framework()
+
+    to_torch_f32, fmt_compare, apply_compare, get_transpose_flags, Comparator = (
+        _load_framework()
+    )
     first_ctx = next(iter(thread_contexts.values()))
     api_name = first_ctx.api_name
     attrs = first_ctx.attributes
 
     is_weight_quant = "WeightQuantMatmulAllReduce" in api_name
-    is_quant_matmul = ("QuantMatmulAllReduce" in api_name and "Weight" not in api_name)
+    is_quant_matmul = "QuantMatmulAllReduce" in api_name and "Weight" not in api_name
     is_v2 = "AllReduceV2" in api_name or "AllReduceV3" in api_name
 
     local_results = {}
@@ -61,9 +80,14 @@ def matmul_all_reduce_multi_device_golden(thread_contexts, device_ids, all_preci
             aq_scale = tc.flatten_tensors[3] if len(tc.flatten_tensors) > 3 else None
             aq_offset = tc.flatten_tensors[4] if len(tc.flatten_tensors) > 4 else None
             aq_scale_f = to_torch_f32(aq_scale) if aq_scale is not None else None
-            aq_offset_f = (to_torch_f32(aq_offset) if aq_offset is not None
-                           and isinstance(aq_offset, torch.Tensor) and aq_offset.numel() > 0 else None)
-            group_size = int(attrs.get('antiquantGroupSize', 0))
+            aq_offset_f = (
+                to_torch_f32(aq_offset)
+                if aq_offset is not None
+                and isinstance(aq_offset, torch.Tensor)
+                and aq_offset.numel() > 0
+                else None
+            )
+            group_size = int(attrs.get("antiquantGroupSize", 0))
             if group_size > 0 and aq_scale_f is not None:
                 aq_scale_f = aq_scale_f.repeat_interleave(group_size, dim=0)
                 if aq_offset_f is not None:
@@ -76,7 +100,10 @@ def matmul_all_reduce_multi_device_golden(thread_contexts, device_ids, all_preci
                 weight_deq = x2_f
             mm_out = torch.matmul(x1_f, weight_deq)
         elif is_quant_matmul:
-            is_v4_v5 = "QuantMatmulAllReduceV4" in api_name or "QuantMatmulAllReduceV5" in api_name
+            is_v4_v5 = (
+                "QuantMatmulAllReduceV4" in api_name
+                or "QuantMatmulAllReduceV5" in api_name
+            )
             if is_v4_v5:
                 x1_f = to_torch_f32(x1)
                 x2_f = to_torch_f32(x2)
@@ -100,7 +127,7 @@ def matmul_all_reduce_multi_device_golden(thread_contexts, device_ids, all_preci
                         ds_f = ds_f.unsqueeze(0)
                     mm_out = mm_out * ds_f
                 x3 = tc.flatten_tensors[3] if len(tc.flatten_tensors) > 3 else None
-                if x3 is not None and hasattr(x3, 'numel') and x3.numel() > 0:
+                if x3 is not None and hasattr(x3, "numel") and x3.numel() > 0:
                     mm_out = mm_out + to_torch_f32(x3)
             else:
                 x1_f = to_torch_f32(x1)
@@ -112,33 +139,55 @@ def matmul_all_reduce_multi_device_golden(thread_contexts, device_ids, all_preci
                     if ds is not None:
                         mm_out = mm_out * to_torch_f32(ds)
                     pt = tc.flatten_tensors[5] if len(tc.flatten_tensors) > 5 else None
-                    if pt is not None and isinstance(pt, torch.Tensor) and pt.numel() > 0:
+                    if (
+                        pt is not None
+                        and isinstance(pt, torch.Tensor)
+                        and pt.numel() > 0
+                    ):
                         pt_f = to_torch_f32(pt)
                         if pt_f.dim() == 1:
                             pt_f = pt_f.unsqueeze(1)
                         mm_out = mm_out * pt_f
                     x3 = tc.flatten_tensors[3] if len(tc.flatten_tensors) > 3 else None
-                    if x3 is not None and isinstance(x3, torch.Tensor) and x3.numel() > 0:
+                    if (
+                        x3 is not None
+                        and isinstance(x3, torch.Tensor)
+                        and x3.numel() > 0
+                    ):
                         mm_out = mm_out + to_torch_f32(x3)
                 else:
                     ds = tc.flatten_tensors[2] if len(tc.flatten_tensors) > 2 else None
                     if ds is not None:
                         mm_out = mm_out * to_torch_f32(ds)
-                    bias = tc.flatten_tensors[4] if len(tc.flatten_tensors) > 4 else None
-                    if bias is not None and isinstance(bias, torch.Tensor) and bias.numel() == 0:
+                    bias = (
+                        tc.flatten_tensors[4] if len(tc.flatten_tensors) > 4 else None
+                    )
+                    if (
+                        bias is not None
+                        and isinstance(bias, torch.Tensor)
+                        and bias.numel() == 0
+                    ):
                         bias = None
                     if bias is not None:
                         mm_out = mm_out + to_torch_f32(bias)
                     if "V3" in api_name and len(tc.flatten_tensors) > 5:
                         pt = tc.flatten_tensors[5]
-                        if pt is not None and isinstance(pt, torch.Tensor) and pt.numel() > 0:
+                        if (
+                            pt is not None
+                            and isinstance(pt, torch.Tensor)
+                            and pt.numel() > 0
+                        ):
                             pt_f = to_torch_f32(pt)
                             if pt_f.dim() == 1:
                                 pt_f = pt_f.unsqueeze(1)
                             mm_out = mm_out * pt_f
         else:
             bias = tc.flatten_tensors[2] if len(tc.flatten_tensors) > 2 else None
-            if bias is not None and isinstance(bias, torch.Tensor) and bias.numel() == 0:
+            if (
+                bias is not None
+                and isinstance(bias, torch.Tensor)
+                and bias.numel() == 0
+            ):
                 bias = None
             x1_f = to_torch_f32(x1)
             x2_f = to_torch_f32(x2)
@@ -150,7 +199,7 @@ def matmul_all_reduce_multi_device_golden(thread_contexts, device_ids, all_preci
                 if x3 is not None and isinstance(x3, torch.Tensor) and x3.numel() > 0:
                     mm_out = mm_out + to_torch_f32(x3)
 
-        x1_dtype = x1.dtype if hasattr(x1, 'dtype') else None
+        x1_dtype = x1.dtype if hasattr(x1, "dtype") else None
         if x1_dtype is not None and x1_dtype in (torch.bfloat16, torch.float16):
             mm_out = mm_out.to(x1_dtype).float()
         local_results[did] = mm_out
@@ -169,11 +218,21 @@ def matmul_all_reduce_multi_device_golden(thread_contexts, device_ids, all_preci
 # E2E golden
 # ---------------------------------------------------------------------------
 
-def matmul_all_reduce_e2e_golden(cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True):
+
+def matmul_all_reduce_e2e_golden(
+    cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True
+):
     import torch
+
     world_size = len(cpu_inputs_per_rank)
-    all_x1 = [inp[0].float() if len(inp) > 0 and inp[0] is not None else None for inp in cpu_inputs_per_rank]
-    all_x2 = [inp[1].float() if len(inp) > 1 and inp[1] is not None else None for inp in cpu_inputs_per_rank]
+    all_x1 = [
+        inp[0].float() if len(inp) > 0 and inp[0] is not None else None
+        for inp in cpu_inputs_per_rank
+    ]
+    all_x2 = [
+        inp[1].float() if len(inp) > 1 and inp[1] is not None else None
+        for inp in cpu_inputs_per_rank
+    ]
 
     local_results = []
     for r in range(world_size):
@@ -185,7 +244,7 @@ def matmul_all_reduce_e2e_golden(cpu_inputs_per_rank, attrs, rank=None, ws=None,
         mm_out = torch.matmul(x1, x2)
         inputs = cpu_inputs_per_rank[r]
         bias = inputs[2] if len(inputs) > 2 and inputs[2] is not None else None
-        if bias is not None and hasattr(bias, 'numel') and bias.numel() > 0:
+        if bias is not None and hasattr(bias, "numel") and bias.numel() > 0:
             mm_out = mm_out + bias.float()
         local_results.append(mm_out)
 

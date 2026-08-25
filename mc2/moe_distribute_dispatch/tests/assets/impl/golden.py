@@ -29,18 +29,28 @@ def _load_framework():
     """Load golden utils from mc2/common/tests/assets."""
     import importlib.util
     from pathlib import Path
-    utils_path = Path(__file__).resolve().parents[4] / "common" / "tests" / "assets" / "golden_utils.py"
+
+    utils_path = (
+        Path(__file__).resolve().parents[4]
+        / "common"
+        / "tests"
+        / "assets"
+        / "golden_utils.py"
+    )
     spec = importlib.util.spec_from_file_location(
-        f"mc2_common_golden_utils_{abs(hash(utils_path))}", utils_path)
+        f"mc2_common_golden_utils_{abs(hash(utils_path))}", utils_path
+    )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     from ttk.core_modules.npu.op_api.comparison import Comparator
+
     return mod.to_torch_f32, mod.fmt_compare_result, Comparator
 
 
 def _simulate_moe_alltoallv(all_rank_inputs, world_size, send_counts_per_rank):
     """Simulate all_to_allv on CPU: each rank sends chunks to all other ranks."""
     import torch
+
     rank_outputs = {}
     for target_rank in range(world_size):
         received_chunks = []
@@ -51,13 +61,15 @@ def _simulate_moe_alltoallv(all_rank_inputs, world_size, send_counts_per_rank):
             for dst_idx in range(world_size):
                 count = int(src_counts[dst_idx])
                 if dst_idx == target_rank and count > 0:
-                    received_chunks.append(src_data[offset:offset + count])
+                    received_chunks.append(src_data[offset : offset + count])
                 offset += count
         if received_chunks:
             rank_outputs[target_rank] = torch.cat(received_chunks, dim=0)
         else:
             h = all_rank_inputs[0].shape[-1] if all_rank_inputs[0].dim() > 1 else 1
-            rank_outputs[target_rank] = torch.zeros(0, h, dtype=all_rank_inputs[0].dtype)
+            rank_outputs[target_rank] = torch.zeros(
+                0, h, dtype=all_rank_inputs[0].dtype
+            )
     return rank_outputs
 
 
@@ -65,11 +77,15 @@ def _simulate_moe_alltoallv(all_rank_inputs, world_size, send_counts_per_rank):
 # E2E golden: returns list of recv_x tensors (one per rank)
 # ---------------------------------------------------------------------------
 
-def moe_distribute_dispatch_e2e_golden(cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True):
+
+def moe_distribute_dispatch_e2e_golden(
+    cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True
+):
     import torch
+
     world_size = len(cpu_inputs_per_rank)
-    ep_ws = int(attrs.get('ep_world_size', world_size))
-    moe_expert_num = int(attrs.get('moe_expert_num', 1))
+    ep_ws = int(attrs.get("ep_world_size", world_size))
+    moe_expert_num = int(attrs.get("moe_expert_num", 1))
     local_expert_num = moe_expert_num // ep_ws if ep_ws > 0 else moe_expert_num
 
     all_rank_expand_x = {}
@@ -93,7 +109,11 @@ def moe_distribute_dispatch_e2e_golden(cpu_inputs_per_rank, attrs, rank=None, ws
         token_groups = [[] for _ in range(ep_ws)]
         for i in range(bs):
             for j in range(k):
-                eid = int(expert_ids[i][j]) if expert_ids.dim() > 1 else int(expert_ids[i])
+                eid = (
+                    int(expert_ids[i][j])
+                    if expert_ids.dim() > 1
+                    else int(expert_ids[i])
+                )
                 dest_rank = eid // local_expert_num if local_expert_num > 0 else 0
                 if dest_rank >= ep_ws:
                     dest_rank = ep_ws - 1
@@ -112,7 +132,9 @@ def moe_distribute_dispatch_e2e_golden(cpu_inputs_per_rank, attrs, rank=None, ws
         all_rank_expand_x[r] = expand_x_local
         all_rank_send_counts[r] = send_counts
 
-    alltoallv_out = _simulate_moe_alltoallv(all_rank_expand_x, world_size, all_rank_send_counts)
+    alltoallv_out = _simulate_moe_alltoallv(
+        all_rank_expand_x, world_size, all_rank_send_counts
+    )
 
     # The NPU expand_x output is padded to tp_ws * A_moe per rank, where
     # A_moe = global_bs * min(local_expert_num, k) = bs * ep_ws * min(local_expert_num, k).
@@ -126,7 +148,7 @@ def moe_distribute_dispatch_e2e_golden(cpu_inputs_per_rank, attrs, rank=None, ws
             eid = inp[1]
             k = eid.shape[1] if eid.dim() > 1 else 1
             break
-    tp_ws = int(attrs.get('tp_world_size', 1))
+    tp_ws = int(attrs.get("tp_world_size", 1))
     a_moe = bs * ep_ws * min(local_expert_num, k)
     target_len = tp_ws * a_moe
 
@@ -147,14 +169,18 @@ def moe_distribute_dispatch_e2e_golden(cpu_inputs_per_rank, attrs, rank=None, ws
 # ACLNN multi-device golden
 # ---------------------------------------------------------------------------
 
-def moe_distribute_dispatch_multi_device_golden(thread_contexts, device_ids, all_precision):
+
+def moe_distribute_dispatch_multi_device_golden(
+    thread_contexts, device_ids, all_precision
+):
     import torch
+
     to_torch_f32, fmt_compare, Comparator = _load_framework()
     first_ctx = next(iter(thread_contexts.values()))
     attrs = first_ctx.attributes
     world_size = len(device_ids)
-    ep_ws = int(attrs.get('epWorldSize', world_size))
-    moe_expert_num = int(attrs.get('moeExpertNum', 1))
+    ep_ws = int(attrs.get("epWorldSize", world_size))
+    moe_expert_num = int(attrs.get("moeExpertNum", 1))
     local_expert_num = moe_expert_num // ep_ws if ep_ws > 0 else moe_expert_num
 
     all_rank_expand_x = {}
@@ -183,7 +209,11 @@ def moe_distribute_dispatch_multi_device_golden(thread_contexts, device_ids, all
 
         for i in range(bs):
             for j in range(k):
-                eid = int(expert_ids[i][j]) if expert_ids.dim() > 1 else int(expert_ids[i])
+                eid = (
+                    int(expert_ids[i][j])
+                    if expert_ids.dim() > 1
+                    else int(expert_ids[i])
+                )
                 dest_rank = eid // local_expert_num if local_expert_num > 0 else 0
                 if dest_rank >= ep_ws:
                     dest_rank = ep_ws - 1
@@ -191,10 +221,18 @@ def moe_distribute_dispatch_multi_device_golden(thread_contexts, device_ids, all
                 expand_idx_list.append(i * k + j)
                 send_counts[dest_rank] += 1
                 if scales_tensor is not None and scales_tensor.numel() > 0:
-                    s = float(scales_tensor[i][j]) if scales_tensor.dim() > 1 else float(scales_tensor[i])
+                    s = (
+                        float(scales_tensor[i][j])
+                        if scales_tensor.dim() > 1
+                        else float(scales_tensor[i])
+                    )
                     dynamic_scales_list.append(s)
                 if expert_scales is not None and expert_scales.numel() > 0:
-                    es = float(expert_scales[i][j]) if expert_scales.dim() > 1 else float(expert_scales[i])
+                    es = (
+                        float(expert_scales[i][j])
+                        if expert_scales.dim() > 1
+                        else float(expert_scales[i])
+                    )
                     expand_scales_list.append(es)
 
         sorted_tokens = []
@@ -209,10 +247,16 @@ def moe_distribute_dispatch_multi_device_golden(thread_contexts, device_ids, all
         all_rank_expand_x[did] = expand_x_local
         all_rank_expand_idx[did] = torch.tensor(expand_idx_list, dtype=torch.int32)
         all_rank_send_counts[did] = send_counts
-        all_rank_dynamic_scales[did] = (torch.tensor(dynamic_scales_list, dtype=torch.float32)
-                                        if dynamic_scales_list else torch.zeros(0, dtype=torch.float32))
-        all_rank_expand_scales[did] = (torch.tensor(expand_scales_list, dtype=torch.float32)
-                                       if expand_scales_list else torch.zeros(0, dtype=torch.float32))
+        all_rank_dynamic_scales[did] = (
+            torch.tensor(dynamic_scales_list, dtype=torch.float32)
+            if dynamic_scales_list
+            else torch.zeros(0, dtype=torch.float32)
+        )
+        all_rank_expand_scales[did] = (
+            torch.tensor(expand_scales_list, dtype=torch.float32)
+            if expand_scales_list
+            else torch.zeros(0, dtype=torch.float32)
+        )
 
     for did in device_ids:
         rank_idx = list(device_ids).index(did)
@@ -224,16 +268,26 @@ def moe_distribute_dispatch_multi_device_golden(thread_contexts, device_ids, all
             src_k = src_expert_ids.shape[1] if src_expert_ids.dim() > 1 else 1
             for i in range(src_bs):
                 for j in range(src_k):
-                    eid = int(src_expert_ids[i][j]) if src_expert_ids.dim() > 1 else int(src_expert_ids[i])
+                    eid = (
+                        int(src_expert_ids[i][j])
+                        if src_expert_ids.dim() > 1
+                        else int(src_expert_ids[i])
+                    )
                     dest_rank = eid // local_expert_num if local_expert_num > 0 else 0
                     if dest_rank >= ep_ws:
                         dest_rank = ep_ws - 1
                     if dest_rank == rank_idx:
-                        local_eid = eid % local_expert_num if local_expert_num > 0 else 0
+                        local_eid = (
+                            eid % local_expert_num if local_expert_num > 0 else 0
+                        )
                         expert_token_nums[local_eid] += 1
-        all_rank_expert_token_nums[did] = torch.tensor(expert_token_nums, dtype=torch.int64)
+        all_rank_expert_token_nums[did] = torch.tensor(
+            expert_token_nums, dtype=torch.int64
+        )
 
-    alltoallv_out = _simulate_moe_alltoallv(all_rank_expand_x, device_ids, all_rank_send_counts)
+    alltoallv_out = _simulate_moe_alltoallv(
+        all_rank_expand_x, device_ids, all_rank_send_counts
+    )
 
     for did in device_ids:
         tc = thread_contexts[did]
@@ -246,7 +300,7 @@ def moe_distribute_dispatch_multi_device_golden(thread_contexts, device_ids, all
             ep_recv_counts.append(src_counts[rank_idx])
         ep_recv_counts_tensor = torch.tensor(ep_recv_counts, dtype=torch.int32)
 
-        tp_ws = int(attrs.get('tpWorldSize', 0))
+        tp_ws = int(attrs.get("tpWorldSize", 0))
         tp_recv_counts_tensor = torch.zeros(max(tp_ws, 1), dtype=torch.int32)
 
         goldens = [
@@ -263,7 +317,9 @@ def moe_distribute_dispatch_multi_device_golden(thread_contexts, device_ids, all
             cr = Comparator(tc).compare()
             all_precision.append(f"rank{did}:{cr.passed}({fmt_compare(cr)})")
             if cr.passed != "PASS":
-                logging.error(f"MoeDistributeDispatch: rank dev={did} FAILED: {cr.precision}")
+                logging.error(
+                    f"MoeDistributeDispatch: rank dev={did} FAILED: {cr.precision}"
+                )
             else:
                 logging.info(f"MoeDistributeDispatch: rank dev={did} PASSED")
         except Exception:
