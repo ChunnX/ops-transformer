@@ -18,6 +18,9 @@ check_result().
 """
 
 import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 import os
 import sys
 
@@ -33,7 +36,7 @@ _DISPLAY_THRESHOLD = 1 << 20
 
 
 def _print_log(data):
-    print(
+    logger.info(
         "[%s] [INFO]-%s:%s - %s"
         % (
             datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S"),

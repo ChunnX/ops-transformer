@@ -20,6 +20,9 @@
 """
 
 import argparse
+import logging
+
+logger = logging.getLogger(__name__)
 import csv
 import importlib.util
 import itertools
@@ -345,7 +348,7 @@ def main():
 
     rdv_path = Path(args.rdv_file).resolve()
     if not rdv_path.exists():
-        print(f"ERROR: rdv file not found: {rdv_path}")
+        logger.info(f"ERROR: rdv file not found: {rdv_path}")
         sys.exit(1)
 
     mod = _load_rdv_module(rdv_path)

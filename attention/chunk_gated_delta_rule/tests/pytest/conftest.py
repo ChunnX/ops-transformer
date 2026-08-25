@@ -9,6 +9,9 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import csv
+import logging
+
+logger = logging.getLogger(__name__)
 import os
 import pytest
 import torch
@@ -29,7 +32,7 @@ def _set_random_seed():
     else:
         _CURRENT_SEED = torch.seed()
         torch.npu.manual_seed(_CURRENT_SEED)
-    print(f"[seed] {_CURRENT_SEED}", flush=True)
+    logger.info(f"[seed] {_CURRENT_SEED}", flush=True)
     yield
 
 
@@ -85,7 +88,7 @@ def pytest_runtest_makereport(item, call):
 
 
 def pytest_runtest_logfinish(nodeid, location):
-    print(flush=True)
+    logger.info(flush=True)
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -120,4 +123,4 @@ def pytest_sessionfinish(session, exitstatus):
     total = len(_RESULT_ROWS)
     passed = sum(1 for r in _RESULT_ROWS if r["status"] == "PASSED")
     failed = sum(1 for r in _RESULT_ROWS if r["status"] in ("FAILED", "ERROR"))
-    print(f"\nCSV 已生成: {csv_file} (共{total}条, 通过{passed}, 失败{failed})")
+    print(f"\nCSV 已生成: {csv_file} (共{total}条, 通过{passed}, fail{failed})")
