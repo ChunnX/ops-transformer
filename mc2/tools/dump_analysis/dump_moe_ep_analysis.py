@@ -16,6 +16,8 @@ import os
 import sys
 import logging
 import numpy as np
+from dataclasses import dataclass, field
+from typing import List
 from openpyxl import Workbook
 
 logging.basicConfig(
@@ -50,6 +52,28 @@ REGION_FILE_SUFFIX = {
     "COMBINE_STATE_TAIL": "combine_state_tail.bin",
     "HYBRID_SCALEOUT_STATUS": "hybrid_scaleout_status.bin",
 }
+
+
+# 单卡分析结果, 封装 analyze_single_card 的返回值
+@dataclass
+class CardAnalysisResult:
+    bs: int = 0
+    core_count: int = 0
+    per_core_data: list = field(default_factory=list)
+    count_notify_data: list = field(default_factory=list)
+    expert_count_data: list = field(default_factory=list)
+    combine_token_state_data: list = field(default_factory=list)
+
+
+# 全卡分析结果, 封装 save_to_excel 的参数
+@dataclass
+class AllAnalysisResult:
+    all_metadata: dict = field(default_factory=dict)
+    all_per_core: list = field(default_factory=list)
+    all_count_notify: list = field(default_factory=list)
+    all_expert_count: list = field(default_factory=list)
+    all_combine_token_state: list = field(default_factory=list)
+    card_count: int = 0
 
 
 # 在卡目录中按后缀查找 Region 对应的 .bin 文件, 读取全部数据返回 uint8 数组
@@ -245,7 +269,7 @@ def analyze_combine_token_state(target_path: str, nmt: int, topk: int):
 
 
 # 单卡分析主函数: 依次获取 context、topk_idx, 解析各 Region .bin 文件
-# 返回 bs, core_count, per_core_data, count_notify_data, expert_count_data, combine_token_state_data
+# 返回 CardAnalysisResult 封装的单卡分析结果
 def analyze_single_card(card_path: str, card_num: int, card_metadata: dict, global_expert_num: int):
     logging.info("开始分析卡%d数据, dump数据路径: %s", card_num, card_path)
     print_card_metadata(card_num, card_metadata)
@@ -269,7 +293,11 @@ def analyze_single_card(card_path: str, card_num: int, card_metadata: dict, glob
     expert_count_data = analyze_expert_count(card_path, ep_world_size, local_expert_num)
     combine_token_state_data = analyze_combine_token_state(card_path, nmt, topk)
 
-    return bs, core_count, per_core_data, count_notify_data, expert_count_data, combine_token_state_data
+    return CardAnalysisResult(
+        bs=bs, core_count=core_count, per_core_data=per_core_data,
+        count_notify_data=count_notify_data, expert_count_data=expert_count_data,
+        combine_token_state_data=combine_token_state_data
+    )
 
 
 # 写 metadata sheet: 每卡一行, 包含 10 个 uint32 字段 + 7 个 Region[offset,size] + bs + core_count
@@ -310,7 +338,8 @@ def write_expert_count_sheet(wb, all_expert_count: list, all_metadata: dict):
     ws = wb.create_sheet("expert_count")
     ws.append(["card_num", "localExpertNum", "rank_id", "expert_id", "count"])
     for card_num, expert_count_data in enumerate(all_expert_count):
-        local_expert_num = all_metadata["localExpertNum"][card_num] if card_num < len(all_metadata["localExpertNum"]) else 0
+        local_expert_num = all_metadata["localExpertNum"][card_num] \
+            if card_num < len(all_metadata["localExpertNum"]) else 0
         for rank_id, per_rank in enumerate(expert_count_data):
             for expert_id, count in enumerate(per_rank):
                 ws.append([card_num, local_expert_num, rank_id, expert_id, count])
@@ -326,13 +355,13 @@ def write_combine_token_state_sheet(wb, all_combine_token_state: list):
 
 
 # 将所有分析结果写入 Excel: 5 个 sheet(metadata/per_card_per_core/count_notify/expert_count/combine_token_state)
-def save_to_excel(all_metadata, all_per_core, all_count_notify, all_expert_count, all_combine_token_state, card_count: int):
+def save_to_excel(result: AllAnalysisResult):
     wb = Workbook()
-    write_metadata_sheet(wb, all_metadata, card_count)
-    write_per_core_sheet(wb, all_per_core)
-    write_count_notify_sheet(wb, all_count_notify, all_metadata)
-    write_expert_count_sheet(wb, all_expert_count, all_metadata)
-    write_combine_token_state_sheet(wb, all_combine_token_state)
+    write_metadata_sheet(wb, result.all_metadata, result.card_count)
+    write_per_core_sheet(wb, result.all_per_core)
+    write_count_notify_sheet(wb, result.all_count_notify, result.all_metadata)
+    write_expert_count_sheet(wb, result.all_expert_count, result.all_metadata)
+    write_combine_token_state_sheet(wb, result.all_combine_token_state)
     wb.save("moe_ep_dump_analysis_result.xlsx")
     logging.info("全卡分析结果已归档至 moe_ep_dump_analysis_result.xlsx")
 
@@ -386,20 +415,24 @@ if __name__ == "__main__":
             continue
         card_metadata = {name: all_metadata[name][card_num] if card_num < len(all_metadata[name]) else None
                          for name in METADATA_FIELD_NAMES + REGION_NAMES}
-        result = analyze_single_card(card_path, card_num, card_metadata, global_expert_num)
-        bs, core_count, per_core_data, count_notify_data, expert_count_data, combine_token_state_data = result
-        all_bs.append(bs)
-        all_core_count.append(core_count)
-        all_per_core.append(per_core_data)
-        all_count_notify.append(count_notify_data)
-        all_expert_count.append(expert_count_data)
-        all_combine_token_state.append(combine_token_state_data)
+        card_result = analyze_single_card(card_path, card_num, card_metadata, global_expert_num)
+        all_bs.append(card_result.bs)
+        all_core_count.append(card_result.core_count)
+        all_per_core.append(card_result.per_core_data)
+        all_count_notify.append(card_result.count_notify_data)
+        all_expert_count.append(card_result.expert_count_data)
+        all_combine_token_state.append(card_result.combine_token_state_data)
 
     all_metadata["bs"] = all_bs
     all_metadata["core_count"] = all_core_count
 
     # 4. 写入 Excel
-    save_to_excel(all_metadata, all_per_core, all_count_notify, all_expert_count, all_combine_token_state, len(card_dirs))
+    all_result = AllAnalysisResult(
+        all_metadata=all_metadata, all_per_core=all_per_core,
+        all_count_notify=all_count_notify, all_expert_count=all_expert_count,
+        all_combine_token_state=all_combine_token_state, card_count=len(card_dirs)
+    )
+    save_to_excel(all_result)
 
     logging.info("--------------------------------------------")
     logging.info("所有卡数据解析完成, 多卡分析待实现")
