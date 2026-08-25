@@ -48,12 +48,11 @@ ge::graphStatus InferShapeBlockAttnResPrepare(gert::InferShapeContext *context)
                                                       "the input shape of pseudo_query must not be nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(blockResShape->GetDimNum() != BLOCK_RES_RANK || pseudoQueryShape->GetDimNum() != PSEUDO_QUERY_RANK,
-                OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
-                    context->GetNodeName(), "block_res, pseudo_query",
-                    (std::to_string(blockResShape->GetDimNum()) + "D, " +
-                     std::to_string(pseudoQueryShape->GetDimNum()) + "D")
-                        .c_str(),
-                    "block_res must be 3D and pseudo_query must be 2D"),
+                OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context->GetNodeName(), "block_res, pseudo_query",
+                                                          (std::to_string(blockResShape->GetDimNum()) + "D, " +
+                                                           std::to_string(pseudoQueryShape->GetDimNum()) + "D")
+                                                              .c_str(),
+                                                          "block_res must be 3D and pseudo_query must be 2D"),
                 return ge::GRAPH_FAILED);
 
     const int64_t totalT = blockResShape->GetDim(T_DIM_INDEX);
@@ -62,8 +61,7 @@ ge::graphStatus InferShapeBlockAttnResPrepare(gert::InferShapeContext *context)
     OP_CHECK_IF(pseudoQueryShape->GetDim(PSEUDO_QUERY_D_DIM_INDEX) != totalD,
                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
                     context->GetNodeName(), "block_res.shape[2], pseudo_query.shape[1]",
-                    (std::to_string(totalD) + ", " +
-                     std::to_string(pseudoQueryShape->GetDim(PSEUDO_QUERY_D_DIM_INDEX)))
+                    (std::to_string(totalD) + ", " + std::to_string(pseudoQueryShape->GetDim(PSEUDO_QUERY_D_DIM_INDEX)))
                         .c_str(),
                     "block_res.shape[2] must equal pseudo_query.shape[1]"),
                 return ge::GRAPH_FAILED);
