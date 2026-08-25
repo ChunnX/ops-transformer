@@ -44,10 +44,9 @@
 using namespace AscendC;
 using namespace FaVectorApi;
 using namespace AscendC::Impl::Detail;
-using namespace regbaseutil;
 using namespace AttentionCommon;
 
-namespace BaseApi {
+namespace FlashAttnKernel {
 
 template <typename FA_T>
 class FANoQuantGqaBlockVecDn {
@@ -65,7 +64,7 @@ public:
     static constexpr bool HAS_MASK = FA_T::hasMask;
 
     using T = float;
-    static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)FA_T::dVBaseSize);
+    static constexpr uint32_t dTemplateAlign64 = BaseApi::Align64Func((uint16_t)FA_T::dVBaseSize);
 
     static constexpr uint32_t DB = 2;
     // 索引使用 loop & (DB - 1) 代替 loop % DB，要求 DB 必须是2的幂，否则位掩码结果错误
@@ -578,5 +577,5 @@ public:
                                                   SeqLensTool<LAYOUT_KV, SEQLEN_T> &kvSeqLensTool){};
 };
 
-} // namespace BaseApi
+} // namespace FlashAttnKernel
 #endif // FLASH_ATTN_BLOCK_VEC_DN_H_

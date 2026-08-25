@@ -163,10 +163,11 @@ static constexpr ConfigParams ConfigValue[] = {
 #define false 0
 #define true 1
 
-#define OFFSET_OF_MEMBER(TYPE, MEMBER) ((uint64_t) & ((TYPE *)0)->MEMBER)
+#define OFFSET_OF_MEMBER(TYPE, MEMBER) ((uint64_t)&((TYPE *)0)->MEMBER)
 #define SIZE_OF_MEMBER(TYPE, MEMBER) sizeof(((TYPE *)0)->MEMBER)
 
-// kernel stream related struct
+namespace FlashAttnKernel {
+
 struct FDparams {
     uint32_t fdCoreEnable;
     uint32_t fdBN2Idx;
@@ -282,5 +283,7 @@ struct SinkConstInfo {
 };
 
 struct ConstInfo_t : CommonConstInfo, PAConstInfo, LseConstInfo, SinkConstInfo {};
+
+} // namespace FlashAttnKernel
 
 #endif // FLASH_ATTN_COMMON_DEF_H_

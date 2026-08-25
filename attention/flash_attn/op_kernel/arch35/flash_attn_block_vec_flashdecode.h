@@ -25,7 +25,7 @@
 
 #include "memory_copy_arch35.h"
 
-namespace BaseApi {
+namespace FlashAttnKernel {
 struct TaskInfo {
     uint32_t bIdx;
     uint32_t n2Idx;
@@ -491,5 +491,5 @@ public:
     }
 };
 
-} // namespace BaseApi
+} // namespace FlashAttnKernel
 #endif

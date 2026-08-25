@@ -34,9 +34,8 @@
 using namespace AscendC;
 using namespace optiling;
 using namespace AscendC::Impl::Detail;
-using namespace regbaseutil;
 
-namespace BaseApi {
+namespace FlashAttnKernel {
 template <typename FA_T, typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
 class FlashAttentionNoQuantGqaKernelDn {
 public:
@@ -197,7 +196,7 @@ public:
         // LSE
         constInfo_.isSoftmaxLseEnable = tilingData_->flashAttnBaseParams.isSoftMaxLseEnable;
 
-        constInfo_.dBasicBlock = Align64Func((uint16_t)constInfo_.dSizeV);
+        constInfo_.dBasicBlock = BaseApi::Align64Func((uint16_t)constInfo_.dSizeV);
     }
 
     __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
@@ -640,6 +639,6 @@ public:
     }
 }; // FlashAttentionNoQuantGqaKernelDn
 
-} // namespace BaseApi
+} // namespace FlashAttnKernel
 
 #endif // FLASH_ATTN_KERNEL_DN_H_

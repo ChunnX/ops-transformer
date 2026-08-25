@@ -24,7 +24,7 @@
 
 using namespace fa_base_matmul;
 
-namespace BaseApi {
+namespace FlashAttnKernel {
 
 template <typename FA_T>
 class FANoQuantGqaBlockCubeDn {
@@ -440,6 +440,6 @@ public:
                                                    SeqLensTool<LAYOUT_KV, SEQLEN_T> &kvSeqLensTool){};
 };
 
-} // namespace BaseApi
+} // namespace FlashAttnKernel
 
 #endif // FLASH_ATTN_BLOCK_CUBE_DN_H_
