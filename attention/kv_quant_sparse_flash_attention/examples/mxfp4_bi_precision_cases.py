@@ -55,6 +55,7 @@ P0_CASES = (
     PrecisionCase("tnd_bf16_tail3_offset32", "bf16", "TND", "TND", 3, (2, 0, 1, -1), 32),
     PrecisionCase("pa_bsnd_bf16_tail3_offset32", "bf16", "BSND", "PA_BSND", 3, (2, 0, 1, -1), 32),
 )
+TND_PREFIX_CASE_NAME = "tnd_bf16_batch2_prefix_offset32"
 
 
 def float_to_bf16_bits(value: float) -> int:
@@ -84,15 +85,16 @@ def decode_rope(raw: bytes, q_dtype: str) -> list[float]:
     raise ValueError(f"unsupported q_dtype={q_dtype}")
 
 
-def make_records(case: PrecisionCase) -> list[bytes]:
+def make_records(case: PrecisionCase, token_offset: int = 0) -> list[bytes]:
     """每 token 使用不同 FP4/scale/RoPE，迫使 softmax/PV 真正区分各条 KV。"""
     fp4_codes = tuple(range(16))
     records = []
     for token in range(case.s2):
+        logical_token = token + token_offset
         # Adjacent D values deliberately differ, so each packed byte exercises low/high nibble ordering.
-        nope_codes = [fp4_codes[(token + d) % len(fp4_codes)] for d in range(NOPE_DIM)]
-        scales = [126 + ((token + group) % 4) for group in range(SCALE_COUNT)]
-        rope_values = [0.03125 * (token + 1) * ((d % 9) - 4) for d in range(ROPE_DIM)]
+        nope_codes = [fp4_codes[(logical_token + d) % len(fp4_codes)] for d in range(NOPE_DIM)]
+        scales = [126 + ((logical_token + group) % 4) for group in range(SCALE_COUNT)]
+        rope_values = [0.03125 * (logical_token + 1) * ((d % 9) - 4) for d in range(ROPE_DIM)]
         records.append(pack_bi_record(nope_codes, pack_rope(rope_values, case.q_dtype), scales))
     return records
 
@@ -269,10 +271,93 @@ def run_npu_case(case: PrecisionCase) -> None:
     )
 
 
+def build_tnd_prefix_inputs():
+    """TND B=2：第二个 batch 的 KV 起点必须使用 actual_seq_lengths_kv 前缀和。"""
+    import torch
+
+    batch0 = PrecisionCase("tnd_batch0", "bf16", "TND", "TND", 3, (2, 0, 1, -1), 32)
+    batch1 = PrecisionCase("tnd_batch1", "bf16", "TND", "TND", 4, (3, 1, 0, -1), 32)
+    records0 = make_records(batch0, token_offset=0)
+    records1 = make_records(batch1, token_offset=23)
+    q0 = torch.tensor([0.015625 * (((d * 3) % 17) - 8) for d in range(576)], dtype=torch.bfloat16)
+    q1 = torch.tensor([0.015625 * (((d * 5) % 19) - 9) for d in range(576)], dtype=torch.bfloat16)
+    inputs = {
+        "query": torch.stack((q0, q1)).reshape(2, 1, 576),
+        "key": records_to_int8(records0 + records1).reshape(7, 1, RECORD_BYTES),
+        "sparse_indices": torch.tensor(((2, 0, 1, -1), (3, 1, 0, -1)), dtype=torch.int32).reshape(2, 1, 4),
+        # TND actual lengths are cumulative: batch0=[0,3), batch1=[3,7).
+        "actual_seq_lengths_query": torch.tensor((1, 2), dtype=torch.int32),
+        "actual_seq_lengths_kv": torch.tensor((3, 7), dtype=torch.int32),
+        "key_dequant_scale": torch.ones((1,), dtype=torch.float32),
+        "value_dequant_scale": torch.ones((1,), dtype=torch.float32),
+        "block_table": None,
+    }
+    inputs["value"] = inputs["key"].clone()
+    return inputs, ((records0, (2, 0, 1, -1)), (records1, (3, 1, 0, -1)))
+
+
+def cpu_reference_tnd_prefix(inputs, batches):
+    import torch
+
+    outputs = []
+    for batch_idx, (records, sparse_ids) in enumerate(batches):
+        q = inputs["query"][batch_idx].float().reshape(1, 576)
+        decoded = torch.tensor([decode_record(record, "bf16") for record in records], dtype=torch.float32)
+        indices = []
+        for sparse_id in sparse_ids:
+            if sparse_id == -1:
+                break
+            indices.append(sparse_id)
+        scores = q @ decoded[indices, :].T * (1.0 / math.sqrt(576.0))
+        outputs.append(torch.softmax(scores, dim=-1) @ decoded[indices, :NOPE_DIM])
+    return torch.cat(outputs, dim=0).reshape(2, 1, NOPE_DIM)
+
+
+def run_tnd_prefix_case(run_npu: bool) -> None:
+    inputs, batches = build_tnd_prefix_inputs()
+    expected = cpu_reference_tnd_prefix(inputs, batches)
+    if not expected.isfinite().all():
+        raise AssertionError("TND prefix CPU reference contains NaN/Inf")
+    print(f"CPU passed: {TND_PREFIX_CASE_NAME}, output_shape={tuple(expected.shape)}")
+    if not run_npu:
+        return
+
+    import torch
+    import torch_npu
+
+    npu_inputs = move_inputs_to_npu(inputs, 32)
+    output = torch_npu.npu_kv_quant_sparse_flash_attention(
+        npu_inputs["query"], npu_inputs["key"], npu_inputs["value"], npu_inputs["sparse_indices"],
+        1.0 / math.sqrt(576.0), 2, 2,
+        key_dequant_scale=npu_inputs["key_dequant_scale"],
+        value_dequant_scale=npu_inputs["value_dequant_scale"],
+        actual_seq_lengths_query=npu_inputs["actual_seq_lengths_query"],
+        actual_seq_lengths_kv=npu_inputs["actual_seq_lengths_kv"],
+        sparse_block_size=1,
+        layout_query="TND",
+        layout_kv="TND",
+        sparse_mode=3,
+        pre_tokens=(1 << 63) - 1,
+        next_tokens=(1 << 63) - 1,
+        attention_mode=2,
+        quant_scale_repo_mode=1,
+        tile_size=128,
+        rope_head_dim=64,
+    )
+    torch.npu.synchronize()
+    actual = output.cpu().float()
+    close = torch.isclose(actual, expected, rtol=2e-2, atol=5e-2)
+    ratio = float(close.float().mean())
+    max_abs_error = float((actual - expected).abs().max())
+    if ratio < 0.99:
+        raise AssertionError(f"{TND_PREFIX_CASE_NAME}: ratio={ratio:.6f}, max_abs_error={max_abs_error:.6f}")
+    print(f"NPU passed: {TND_PREFIX_CASE_NAME}, ratio={ratio:.6f}, max_abs_error={max_abs_error:.6f}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-npu", action="store_true", help="执行真实 NPU 算子并做精度比对")
-    parser.add_argument("--case", choices=["all", *(case.name for case in P0_CASES)], default="all")
+    parser.add_argument("--case", choices=["all", *(case.name for case in P0_CASES), TND_PREFIX_CASE_NAME], default="all")
     args = parser.parse_args()
     validate_encoding_boundaries()
     selected = P0_CASES if args.case == "all" else tuple(case for case in P0_CASES if case.name == args.case)
@@ -280,6 +365,8 @@ def main() -> None:
         run_cpu_case(case)
         if args.run_npu:
             run_npu_case(case)
+    if args.case in {"all", TND_PREFIX_CASE_NAME}:
+        run_tnd_prefix_case(args.run_npu)
 
 
 if __name__ == "__main__":
