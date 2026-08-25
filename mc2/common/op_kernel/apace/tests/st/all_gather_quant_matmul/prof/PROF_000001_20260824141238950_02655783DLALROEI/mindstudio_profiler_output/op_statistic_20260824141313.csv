@@ -1,2 +1,0 @@
-Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)
-1,_Z26AllGatherQuantMatmulKernelPN5Apace7AivComm11CommContextEPhS3_S3_S3_S3_S3_31AllGatherMxMatmulUdmaTilingData,MIX_AIC,20,45038.883,149.448,2251.944,42184.47,100
