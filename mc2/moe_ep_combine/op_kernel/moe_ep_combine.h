@@ -38,6 +38,7 @@
 #include "adv_api/hccl/hccl.h"
 #include "adv_api/reduce/reduce.h"
 #include "adv_api/reduce/sum.h"
+#include "adv_api/index/arithprogression.h"
 #if __has_include("adv_api/hcomm/hcomm.h")
 #include "adv_api/hcomm/hcomm.h"
 #endif
@@ -70,6 +71,8 @@ constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint64_t ALIGNED_LEN_256 = 256UL;
 constexpr uint32_t FLOAT_PER_UB_ALIGN = 8U;
 constexpr uint32_t SEND_DOUBLE_BUFFER_NUM = 2U;
+constexpr uint32_t BITS_PER_BYTE = 8U;
+constexpr uint32_t PATTERN_EVERY_FOURTH = 0x11111111u; // bitmask: bit 0,4,8,... 每 4 个元素取第 1 个
 static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 
 template <TemplateMoeEpCombineTypeClass>
@@ -88,6 +91,7 @@ private:
     __aicore__ inline void SendSlot(uint32_t tokenIndex, int32_t srcRank, int32_t srcTokenIdx, int32_t srcTopKIdx,
                                     uint32_t channelIndex, uint32_t weight);
     __aicore__ inline void SendPhaseExpertToToken();
+    __aicore__ inline void ExtractRankColumn(uint32_t chunkTokens, uint32_t compareCntMax);
     __aicore__ inline void GetCoreAssignment(uint32_t totalBlocks, uint32_t &targetRank, uint32_t &coreIndexInGroup,
                                              uint32_t &groupSize);
 
@@ -147,6 +151,11 @@ private:
     TBuf<> hcommBuf_;
     TBuf<> metadataBuf_;
     TBuf<> weightsBuf_;
+    TBuf<> rankColBuf_;   // 发送阶段向量化过滤：srcRank 列
+    TBuf<> positionsBuf_; // 发送阶段向量化过滤：位置序列
+    TBuf<> tokenPosBuf_;  // 发送阶段向量化过滤：命中位置压缩结果
+    TBuf<> patternBuf_;   // 发送阶段向量化过滤：列提取 bitmask pattern
+    TBuf<> maskBuf_;      // 发送阶段向量化过滤：CompareScalar 输出 bitmask
 
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_;
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
@@ -307,58 +316,47 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     if (actualA_ == 0 || epWorldSize_ == 0 || aivNum_ == 0) {
         return;
     }
-    uint32_t activeAivNum = aivNum_;
-    uint32_t maxChannelAivNum = epWorldSize_ * channelsPerRank_;
-    if (activeAivNum > maxChannelAivNum) {
-        activeAivNum = maxChannelAivNum;
-    }
-    if (aivId_ >= activeAivNum) {
+    if (aivId_ >= aivNum_) {
         return;
     }
 
-    bool splitRankTokens = activeAivNum >= epWorldSize_;
-    uint32_t targetRank = epWorldSize_;
-    uint32_t coreIndexInGroup = 0;
-    uint32_t groupSize = 1;
-    if (splitRankTokens) {
-        GetCoreAssignment(activeAivNum, targetRank, coreIndexInGroup, groupSize);
-        if (targetRank >= epWorldSize_ || groupSize == 0) {
-            return;
-        }
-    }
-    uint32_t channelIndex = splitRankTokens ? coreIndexInGroup : 0;
-
-    uint64_t scanStart = 0;
-    uint64_t scanEnd = actualA_;
-    if (splitRankTokens && groupSize > 1) {
-        uint64_t tokensPerCore = actualA_ / groupSize;
-        uint64_t remainder = actualA_ % groupSize;
-        if (coreIndexInGroup < remainder) {
-            scanStart = coreIndexInGroup * (tokensPerCore + 1);
-            scanEnd = scanStart + tokensPerCore + 1;
-        } else {
-            scanStart = coreIndexInGroup * tokensPerCore + remainder;
-            scanEnd = scanStart + tokensPerCore;
-        }
-    }
-
-    bool statusInitialized = false;
-
     constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
-    constexpr uint32_t metaChunkTokenMax = 8192U;
+    constexpr uint32_t metaChunkTokenMax = 4096U; // 分块上限，平衡UB占用与搬运次数
+    uint32_t metaChunkTokens = (actualA_ < metaChunkTokenMax) ? static_cast<uint32_t>(actualA_) : metaChunkTokenMax;
 
-    uint32_t metaChunkTokens = (actualA_ < metaChunkTokenMax) ? actualA_ : metaChunkTokenMax;
     uint32_t metaChunkBytes = Ceil(metaChunkTokens * metaBytesPerToken, UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(metadataBuf_, metaChunkBytes);
     if constexpr (HasTopkWeight == 1) {
         uint32_t weightChunkBytes = Ceil(metaChunkTokens * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
         tpipe_->InitBuffer(weightsBuf_, weightChunkBytes);
     }
+    // 向量化分配 buffer：CompareScalar 按 256B 对齐元素数执行；patternBuf_ 兼作远程 bitmask（Not 输出）
+    uint32_t compareCntMax =
+        Ceil(metaChunkTokens * sizeof(int32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(int32_t);
+    tpipe_->InitBuffer(rankColBuf_, compareCntMax * sizeof(int32_t));
+    tpipe_->InitBuffer(positionsBuf_, compareCntMax * sizeof(int32_t));
+    tpipe_->InitBuffer(tokenPosBuf_, compareCntMax * sizeof(int32_t));
+    uint32_t maskBufSize = Ceil(Ceil(compareCntMax, BITS_PER_BYTE), UB_ALIGN) * UB_ALIGN;
+    tpipe_->InitBuffer(maskBuf_, maskBufSize);
+    uint32_t patternBufSize = Ceil(compareCntMax / BITS_PER_BYTE * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
+    tpipe_->InitBuffer(patternBuf_, patternBufSize);
+
     LocalTensor<int32_t> metadataLocal = metadataBuf_.Get<int32_t>();
+    LocalTensor<int32_t> rankCol = rankColBuf_.Get<int32_t>();
+    LocalTensor<int32_t> positions = positionsBuf_.Get<int32_t>();
+    LocalTensor<int32_t> tokenPos = tokenPosBuf_.Get<int32_t>();
+    LocalTensor<uint8_t> mask = maskBuf_.Get<uint8_t>();
+    LocalTensor<uint32_t> remoteMask = patternBuf_.Get<uint32_t>();
     const DataCopyPadExtParams<int32_t> metaPadParams{false, 0U, 0U, 0U};
 
-    for (uint64_t chunkStart = scanStart; chunkStart < scanEnd; chunkStart += metaChunkTokens) {
-        uint64_t chunkEnd = (chunkStart + metaChunkTokens > scanEnd) ? scanEnd : (chunkStart + metaChunkTokens);
+    // 全核扫描全量 metadata，向量化计算每个 token 的归属核（各核计算一致，无需跨核同步）：
+    // 本地 token（srcRank==rankId_）按全局序号均分到 aivNum_ 个核；
+    // 远程 token 按 srcRank % aivNum_ 归属（每 (rank, channel0) handle 单写者，覆盖全部 rank）
+    bool statusInitialized = false;
+    uint32_t runningLocal = 0; // 全局本地 token 计数（跨 chunk 累计，实现均分）
+
+    for (uint64_t chunkStart = 0; chunkStart < actualA_; chunkStart += metaChunkTokens) {
+        uint64_t chunkEnd = (chunkStart + metaChunkTokens > actualA_) ? actualA_ : (chunkStart + metaChunkTokens);
         uint32_t curChunkTokens = static_cast<uint32_t>(chunkEnd - chunkStart);
 
         LocalTensor<uint32_t> weightsForNotify;
@@ -375,36 +373,90 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         DataCopyPad(metadataLocal, recvSrcMetadataGm_[chunkStart * RECV_META_FIELDS], metaCopyParams, metaPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_S>();
 
-        for (uint32_t i = 0; i < curChunkTokens; ++i) {
-            uint32_t tokenIndex = static_cast<uint32_t>(chunkStart) + i;
-            int32_t srcRank = metadataLocal.GetValue(i * RECV_META_FIELDS + 0);
-            if (srcRank < 0 || srcRank >= static_cast<int32_t>(epWorldSize_)) {
+        ArithProgression<int32_t>(positions, 0, 1, curChunkTokens);
+        ExtractRankColumn(curChunkTokens, compareCntMax);
+
+        // 本地令牌：srcRank == rankId_
+        CompareScalar(mask, rankCol, static_cast<int32_t>(rankId_), CMPMODE::EQ, compareCntMax);
+        PipeBarrier<PIPE_V>();
+        uint64_t rsvdCnt = 0;
+        GatherMask(tokenPos, positions, mask.ReinterpretCast<uint32_t>(), true, curChunkTokens, {1, 1, 0, 0}, rsvdCnt);
+        PipeBarrier<PIPE_V>();
+        SyncFunc<AscendC::HardEvent::V_S>();
+
+        uint32_t localCnt = static_cast<uint32_t>(rsvdCnt);
+        for (uint32_t j = 0; j < localCnt; ++j) {
+            // 第 (runningLocal + j) 个本地 token 归 (runningLocal + j) % aivNum_ 核（全局均分）
+            if ((runningLocal + j) % aivNum_ != aivId_) {
                 continue;
             }
-            if (splitRankTokens) {
-                if (srcRank != static_cast<int32_t>(targetRank)) {
-                    continue;
-                }
-            } else if (static_cast<uint32_t>(srcRank) % activeAivNum != aivId_) {
-                continue;
-            }
-            int32_t srcTokenIdx = metadataLocal.GetValue(i * RECV_META_FIELDS + 1);
-            int32_t srcTopKIdx = metadataLocal.GetValue(i * RECV_META_FIELDS + 2);
+            uint32_t pos = static_cast<uint32_t>(tokenPos.GetValue(j));
+            uint32_t row = static_cast<uint32_t>(chunkStart) + pos;
+            int32_t srcTokenIdx = metadataLocal.GetValue(pos * RECV_META_FIELDS + 1);
+            int32_t srcTopKIdx = metadataLocal.GetValue(pos * RECV_META_FIELDS + 2);
             uint32_t weight = 0;
             if constexpr (HasTopkWeight == 1) {
-                weight = weightsForNotify(i);
+                weight = weightsForNotify(pos);
             }
-            if (srcRank == static_cast<int32_t>(rankId_) && !statusInitialized) {
+            if (!statusInitialized) {
                 Duplicate<uint32_t>(statusTensor_, (uint32_t)1, FLOAT_PER_UB_ALIGN);
                 SyncFunc<AscendC::HardEvent::V_MTE3>();
                 statusInitialized = true;
             }
-            SendSlot(tokenIndex, srcRank, srcTokenIdx, srcTopKIdx, channelIndex, weight);
+            SendSlot(row, static_cast<int32_t>(rankId_), srcTokenIdx, srcTopKIdx, 0, weight);
         }
-        SyncFunc<AscendC::HardEvent::S_MTE2>();
+        runningLocal += localCnt;
+
+        // 远程令牌：srcRank != rankId_，远程 bitmask = ~本地 bitmask（Not 补集）
+        Not(remoteMask, mask.ReinterpretCast<uint32_t>(), compareCntMax / BITS_PER_BYTE);
+        PipeBarrier<PIPE_V>();
+        rsvdCnt = 0;
+        GatherMask(tokenPos, positions, remoteMask, true, curChunkTokens, {1, 1, 0, 0}, rsvdCnt);
+        PipeBarrier<PIPE_V>();
+        SyncFunc<AscendC::HardEvent::V_S>();
+
+        uint32_t remoteCnt = static_cast<uint32_t>(rsvdCnt);
+        for (uint32_t j = 0; j < remoteCnt; ++j) {
+            uint32_t pos = static_cast<uint32_t>(tokenPos.GetValue(j));
+            int32_t srcRank = rankCol.GetValue(pos);
+            if (srcRank < 0 || srcRank >= static_cast<int32_t>(epWorldSize_) ||
+                static_cast<uint32_t>(srcRank) % aivNum_ != aivId_) {
+                continue;
+            }
+            uint32_t row = static_cast<uint32_t>(chunkStart) + pos;
+            int32_t srcTokenIdx = metadataLocal.GetValue(pos * RECV_META_FIELDS + 1);
+            int32_t srcTopKIdx = metadataLocal.GetValue(pos * RECV_META_FIELDS + 2);
+            uint32_t weight = 0;
+            if constexpr (HasTopkWeight == 1) {
+                weight = weightsForNotify(pos);
+            }
+            SendSlot(row, srcRank, srcTokenIdx, srcTopKIdx, 0, weight);
+        }
+        SyncFunc<AscendC::HardEvent::S_MTE2>(); // 确保本轮 Scalar GetValue 读完，下一块 DataCopyPad 才可覆盖
+                                                // metadataLocal
     }
 
     DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
+}
+
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ExtractRankColumn(uint32_t chunkTokens,
+                                                                                     uint32_t compareCntMax)
+{
+    // metadata 为 [srcRank, srcTokenIdx, srcTopKIdx, pad] x4 int32 交错布局，
+    // 用 bitmask pattern 每 4 个元素取第 1 个，将 srcRank 列压缩到 rankColBuf_（Engram GatherMask 同款语义）
+    LocalTensor<uint32_t> pattern = patternBuf_.Get<uint32_t>();
+    Duplicate<uint32_t>(pattern, PATTERN_EVERY_FOURTH, compareCntMax / BITS_PER_BYTE);
+    PipeBarrier<PIPE_V>();
+
+    LocalTensor<int32_t> metadataLocal = metadataBuf_.Get<int32_t>();
+    LocalTensor<int32_t> rankCol = rankColBuf_.Get<int32_t>();
+    uint64_t rsvdCnt = 0;
+    GatherMask(rankCol, metadataLocal, pattern, true, chunkTokens * RECV_META_FIELDS, {1, 1, 0, 0}, rsvdCnt);
+    PipeBarrier<PIPE_V>();
+    SyncFunc<AscendC::HardEvent::V_S>();
+    ascendc_assert(rsvdCnt == chunkTokens, "ExtractRankColumn count mismatch, expect=%u, got=%llu", chunkTokens,
+                   rsvdCnt);
 }
 
 template <TemplateMoeEpCombineTypeClass>
