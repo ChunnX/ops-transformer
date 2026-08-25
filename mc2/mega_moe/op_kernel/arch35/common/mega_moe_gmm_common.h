@@ -161,15 +161,15 @@ struct Config {
         constexpr uint64_t scaleBytesPerGroup = MXFP_MULTI_BASE_SIZE;
         constexpr uint64_t scaleTransferBytes = 64U * 1024U;
         constexpr uint64_t maxScaleFactor = 127U;
-        constexpr uint64_t maxKL1Units = 2U;
+        constexpr uint64_t maxKL1Units = 4U;
         constexpr uint64_t aElementsPerByte = Blaze::Gemm::IsFp4<ElementA>() ? 2U : 1U;
         constexpr uint64_t bElementsPerByte = Blaze::Gemm::IsFp4<ElementB>() ? 2U : 1U;
 
         const uint64_t blockM64 = blockM;
         const uint64_t blockN64 = blockN;
         /*
-         * 先计算一个 256K 基础窗口的字节数。当前只允许 kL1=256/512，且 256 同时是
-         * FP4 打包和 MX scale group 的整数倍，因此 512K 窗口的占用严格等于两倍基础窗口。
+         * kL1 为 256 的整数倍，A/B 和 scale 占用均随倍数线性增长。先计算单个
+         * 256K 窗口的占用，再由 L1 容量、scale 搬运上限和实际 K 直接求最大合法倍数。
          */
         const uint64_t dataBytesPerUnit = Ops::Base::CeilDiv(blockM64 * L1_TILE_K, aElementsPerByte) +
                                           Ops::Base::CeilDiv(blockN64 * L1_TILE_K, bElementsPerByte);
@@ -179,17 +179,15 @@ struct Config {
         const uint64_t scaleBBytesPerUnit = blockN64 * scaleKBytesPerUnit;
         const uint64_t scaleBytesPerUnit = scaleABytesPerUnit + scaleBBytesPerUnit;
 
-        /*
-         * K>256 时，若两个基础窗口的 A/B 和至少一个 scale 窗口可同时放入半片 L1，
-         * 且单侧 scale 不超过 64 KiB 搬运限制，则直接选择 512K；否则使用 256K。
-         */
-        const uint64_t doubleDataBytes = dataBytesPerUnit * maxKL1Units;
-        const uint64_t doubleScaleABytes = scaleABytesPerUnit * maxKL1Units;
-        const uint64_t doubleScaleBBytes = scaleBBytesPerUnit * maxKL1Units;
-        const uint64_t doubleScaleBytes = scaleBytesPerUnit * maxKL1Units;
-        const bool canUseDoubleKL1 = doubleDataBytes + doubleScaleBytes <= halfL1Size &&
-                                     doubleScaleABytes <= scaleTransferBytes && doubleScaleBBytes <= scaleTransferBytes;
-        const uint64_t kL1Units = canUseDoubleKL1 ? maxKL1Units : 1U;
+        uint64_t kL1Units = maxKL1Units;
+        kL1Units = Blaze::Gemm::Min(kL1Units, static_cast<uint64_t>(k) / L1_TILE_K);
+        kL1Units = Blaze::Gemm::Min(kL1Units, halfL1Size / (dataBytesPerUnit + scaleBytesPerUnit));
+        kL1Units = Blaze::Gemm::Min(kL1Units, scaleTransferBytes / scaleABytesPerUnit);
+        kL1Units = Blaze::Gemm::Min(kL1Units, scaleTransferBytes / scaleBBytesPerUnit);
+        if (kL1Units == 0U) {
+            return DefaultL1Params();
+        }
+
         const uint64_t kL1 = static_cast<uint64_t>(L1_TILE_K) * kL1Units;
         const uint64_t dataBytes = dataBytesPerUnit * kL1Units;
         const uint64_t scaleABytes = scaleABytesPerUnit * kL1Units;
@@ -199,18 +197,14 @@ struct Config {
         /*
          * scaleFactor = min(floor((halfL1Size - dataBytes) / scaleBytes),
          *                   floor(64 KiB / scaleABytes), floor(64 KiB / scaleBBytes),
-         *                   max(1, floor(K / kL1)), 127)
+         *                   floor(K / kL1), 127)
          * K 约束必须使用 floor 而不是 ceil：尾 K 不足一个完整窗口，必须在下一次 scale
          * 搬运中从窗口起点处理，不能挂在前一个 scaleKL1 窗口的末尾复用。
          */
         uint64_t scaleFactor = (halfL1Size - dataBytes) / scaleBytes;
-        const uint64_t scaleFactorByA = scaleTransferBytes / scaleABytes;
-        const uint64_t scaleFactorByB = scaleTransferBytes / scaleBBytes;
-        const uint64_t fullKWindowCount = static_cast<uint64_t>(k) / kL1;
-        const uint64_t scaleFactorByK = fullKWindowCount == 0U ? 1U : fullKWindowCount;
-        scaleFactor = Blaze::Gemm::Min(scaleFactor, scaleFactorByA);
-        scaleFactor = Blaze::Gemm::Min(scaleFactor, scaleFactorByB);
-        scaleFactor = Blaze::Gemm::Min(scaleFactor, scaleFactorByK);
+        scaleFactor = Blaze::Gemm::Min(scaleFactor, scaleTransferBytes / scaleABytes);
+        scaleFactor = Blaze::Gemm::Min(scaleFactor, scaleTransferBytes / scaleBBytes);
+        scaleFactor = Blaze::Gemm::Min(scaleFactor, static_cast<uint64_t>(k) / kL1);
         scaleFactor = Blaze::Gemm::Min(scaleFactor, maxScaleFactor);
         return MakeL1Params(kL1, scaleFactor * kL1);
     }
