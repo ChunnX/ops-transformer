@@ -63,6 +63,8 @@ constexpr int32_t IDX_B_LOW = 6;
 
 constexpr uint32_t X1_INDEX = 0;
 constexpr uint32_t X2_INDEX = 1;
+constexpr uint32_t APACE_DEFAULT_TILE_M = 512;
+constexpr uint32_t APACE_M_TAIL_ALIGN = 16;
 } // namespace
 
 static constexpr int64_t CMP_MAX_LEN = 7;
@@ -82,7 +84,7 @@ bool AllGatherQuantBmmTiling::IsCapable()
     // geAType 和 geBType 为fp8/hif8时做tiling
     if (mc2tiling::CheckDataTypeVaild(args_.geAType, mc2tiling::FP8DTYPE_SUPPORT_LIST) &&
         mc2tiling::CheckDataTypeVaild(args_.geBType, mc2tiling::FP8DTYPE_SUPPORT_LIST)) {
-        OP_LOGI(opName_, "Start with allgather quantbmm tiling.");
+        OP_LOGI(opName_, "Start with allgather quantbmm tiling, apace Hcomm path.");
         return true;
     }
     // geAType 和 geBType 为fp4时做tiling
@@ -262,45 +264,45 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckMXFPScaleInput()
             "scale2FirstDim=%lu, scale2SecondDim=%lu, scale2ThirdDim=%lu, mValue=%lu, ceilKAlign=%lu, nValue=%lu.",
             scale1FirstDim, scale1SecondDim, scale1ThirdDim, scale2FirstDim, scale2SecondDim, scale2ThirdDim,
             args_.mValue, ceilKAlign, args_.nValue);
-    OP_TILING_CHECK((scale1FirstDim != args_.mValue) || (scale1SecondDim != ceilKAlign) ||
-                        (scale1ThirdDim != EVEN_ALIGN),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        opName_, "x1Scale",
-                        (std::string("[") + std::to_string(scale1FirstDim) + ", " + std::to_string(scale1SecondDim) +
-                         ", " + std::to_string(scale1ThirdDim) + "]")
-                            .c_str(),
-                        (std::string("The shape of x1Scale must be [") + std::to_string(args_.mValue) + ", " +
-                         std::to_string(ceilKAlign) + ", " + std::to_string(EVEN_ALIGN) + "]")
-                            .c_str()),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (scale1FirstDim != args_.mValue) || (scale1SecondDim != ceilKAlign) || (scale1ThirdDim != EVEN_ALIGN),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            opName_, "x1Scale",
+            (std::string("[") + std::to_string(scale1FirstDim) + ", " + std::to_string(scale1SecondDim) + ", " +
+             std::to_string(scale1ThirdDim) + "]")
+                .c_str(),
+            (std::string("The shape of x1Scale must be [") + std::to_string(args_.mValue) + ", " +
+             std::to_string(ceilKAlign) + ", " + std::to_string(EVEN_ALIGN) + "]")
+                .c_str()),
+        return ge::GRAPH_FAILED);
 
     bool isTransB = *context_->GetAttrs()->GetAttrPointer<bool>(IS_TRANS_B);
     if (isTransB) {
-        OP_TILING_CHECK((scale2FirstDim != args_.nValue) || (scale2SecondDim != ceilKAlign) ||
-                            (scale2ThirdDim != EVEN_ALIGN),
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                            opName_, "x2Scale",
-                            (std::string("[") + std::to_string(scale2FirstDim) + ", " +
-                             std::to_string(scale2SecondDim) + ", " + std::to_string(scale2ThirdDim) + "]")
-                                .c_str(),
-                            (std::string("The shape of x2Scale must be [") + std::to_string(args_.nValue) + ", " +
-                             std::to_string(ceilKAlign) + ", " + std::to_string(EVEN_ALIGN) + "]")
-                                .c_str()),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            (scale2FirstDim != args_.nValue) || (scale2SecondDim != ceilKAlign) || (scale2ThirdDim != EVEN_ALIGN),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                opName_, "x2Scale",
+                (std::string("[") + std::to_string(scale2FirstDim) + ", " + std::to_string(scale2SecondDim) + ", " +
+                 std::to_string(scale2ThirdDim) + "]")
+                    .c_str(),
+                (std::string("The shape of x2Scale must be [") + std::to_string(args_.nValue) + ", " +
+                 std::to_string(ceilKAlign) + ", " + std::to_string(EVEN_ALIGN) + "]")
+                    .c_str()),
+            return ge::GRAPH_FAILED);
     } else {
-        OP_TILING_CHECK((scale2FirstDim != ceilKAlign) || (scale2SecondDim != args_.nValue) ||
-                            (scale2ThirdDim != EVEN_ALIGN),
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                            opName_, "x2Scale",
-                            (std::string("[") + std::to_string(scale2FirstDim) + ", " +
-                             std::to_string(scale2SecondDim) + ", " + std::to_string(scale2ThirdDim) + "]")
-                                .c_str(),
-                            (std::string("The shape of x2Scale must be [") + std::to_string(ceilKAlign) + ", " +
-                             std::to_string(args_.nValue) + ", " + std::to_string(EVEN_ALIGN) + "]")
-                                .c_str()),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            (scale2FirstDim != ceilKAlign) || (scale2SecondDim != args_.nValue) || (scale2ThirdDim != EVEN_ALIGN),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                opName_, "x2Scale",
+                (std::string("[") + std::to_string(scale2FirstDim) + ", " + std::to_string(scale2SecondDim) + ", " +
+                 std::to_string(scale2ThirdDim) + "]")
+                    .c_str(),
+                (std::string("The shape of x2Scale must be [") + std::to_string(ceilKAlign) + ", " +
+                 std::to_string(args_.nValue) + ", " + std::to_string(EVEN_ALIGN) + "]")
+                    .c_str()),
+            return ge::GRAPH_FAILED);
     }
-    scale1kSpaceSize_ = args_.rankDim * scale1FirstDim * scale1SecondDim * sizeof(ge::DT_FLOAT8_E8M0);
+    scale1kSpaceSize_ = args_.rankDim * scale1FirstDim * scale1SecondDim * scale1ThirdDim * sizeof(ge::DT_FLOAT8_E8M0);
     OP_LOGI(opName_, "scale1kSpaceSize_=%lu.", scale1kSpaceSize_);
     return ge::GRAPH_SUCCESS;
 }
@@ -334,7 +336,7 @@ ge::graphStatus AllGatherQuantBmmTiling::SetQuantScene()
     auto scaleInv1Desc = context_->GetOptionalInputDesc(SCALE_INV1);
     auto scaleInv2Desc = context_->GetOptionalInputDesc(SCALE_INV2);
     OP_TILING_CHECK(isFp4_ && ((scaleInv1Shape->GetStorageShape().GetDimNum() != DIM_NUM_IS_THREE) ||
-                                   (scaleInv2Shape->GetStorageShape().GetDimNum() != DIM_NUM_IS_THREE)),
+                               (scaleInv2Shape->GetStorageShape().GetDimNum() != DIM_NUM_IS_THREE)),
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         opName_, "x1Scale and x2Scale",
                         (std::to_string(scaleInv1Shape->GetStorageShape().GetDimNum()) + "D and " +
@@ -358,6 +360,7 @@ ge::graphStatus AllGatherQuantBmmTiling::SetQuantScene()
                (scaleInv2Shape->GetStorageShape().GetDimNum() == DIM_NUM_IS_THREE) &&
                (scaleInv1Desc->GetDataType() == ge::DataType::DT_FLOAT8_E8M0)) {
         quantMmMode_ = mc2tiling::Mc2QuantMode::PERTENSOR_MODE;
+        isMxScene_ = true;
         return ge::GRAPH_SUCCESS;
     } else if ((scaleInv1Shape->GetStorageShape().GetDimNum() == DIM_NUM_IS_TWO) &&
                (scaleInv2Shape->GetStorageShape().GetDimNum() == DIM_NUM_IS_TWO) &&
@@ -374,10 +377,7 @@ ge::graphStatus AllGatherQuantBmmTiling::SetQuantScene()
     return ge::GRAPH_FAILED;
 }
 
-mc2tiling::Mc2QuantMode AllGatherQuantBmmTiling::GetQuantScene()
-{
-    return quantMmMode_;
-}
+mc2tiling::Mc2QuantMode AllGatherQuantBmmTiling::GetQuantScene() { return quantMmMode_; }
 
 ge::graphStatus AllGatherQuantBmmTiling::CheckScaleInvShape()
 {
@@ -425,12 +425,12 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckInputValid()
                                                                .c_str(),
                                                            "The dtypes of scale1 and scale2 must be the same"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((args_.geAType == ge::DataType::DT_HIFLOAT8) &&
-                        (scaleInv1Desc->GetDataType() != ge::DataType::DT_FLOAT),
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "scale1",
-                                                          Ops::Base::ToString(scaleInv1Desc->GetDataType()).c_str(),
-                                                          "The dtype of scale1 must be float32"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (args_.geAType == ge::DataType::DT_HIFLOAT8) && (scaleInv1Desc->GetDataType() != ge::DataType::DT_FLOAT),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "scale1",
+                                              Ops::Base::ToString(scaleInv1Desc->GetDataType()).c_str(),
+                                              "The dtype of scale1 must be float32"),
+        return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
         (((scaleInv1Desc->GetDataType() != ge::DataType::DT_FLOAT) &&
@@ -530,18 +530,65 @@ ge::graphStatus AllGatherQuantBmmTiling::DoOpTiling()
     MC2_CHECK_LOG_RET(opName_, CheckHCCLSize());
     MC2_CHECK_LOG_RET(opName_, CheckInput());
     SetTilingKeyParams();
-    OP_TILING_CHECK(SetMc2Hcomm() != ge::GRAPH_SUCCESS, OP_LOGE(opName_, "Tiling SetHcommCfg failed."),
-                    return ge::GRAPH_FAILED);
     SetRcsTilingData(MutableRCSTilingDataA5());
     DoSplitMTiling(MutableRCSTilingDataA5());
     if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
         PostDoSplitMTiling(MutableRCSTilingDataA5(), GetQuantScene());
     }
-    if (args_.nValue != 0) {
-        MC2_CHECK_LOG_RET(opName_, DoAdaptSlidWindowTiling());
-    }
     DoAllGatherTiling(MutableRCSTilingDataA5(), MutableTCubeTileTilingData(), MutableTCubeTailTilingData(),
                       allGatherMatmulTilingDataFp8_->debugMode, allGatherMatmulTilingDataFp8_->dataType);
+    OP_TILING_CHECK(SetMc2Hcomm() != ge::GRAPH_SUCCESS, OP_LOGE(opName_, "Tiling SetHcommCfg failed."),
+                    return ge::GRAPH_FAILED);
+    if (isMxScene_) {
+        MC2_CHECK_LOG_RET(opName_, DoApaceMatmulTiling());
+    } else {
+        if (args_.nValue != 0) {
+            MC2_CHECK_LOG_RET(opName_, DoAdaptSlidWindowTiling());
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+void AllGatherQuantBmmTiling::SetHcommTilingInfo()
+{
+    auto &param = MutableRCSTilingDataA5();
+    uint32_t tileM = std::min(APACE_DEFAULT_TILE_M, static_cast<uint32_t>(args_.mValue));
+    hcommTilingData_.commTile.splitAxisTileSize = tileM;
+    hcommTilingData_.commTile.splitAxisTileCnt = param.tileCnt;
+    hcommTilingData_.commTile.splitAxisTailSize = param.tailM;
+    hcommTilingData_.commTile.splitAxisTailCnt = param.tailCnt;
+    hcommTilingData_.commTile.nonSplitAxisSize = args_.kValue;
+}
+
+ge::graphStatus AllGatherQuantBmmTiling::DoApaceMatmulTiling()
+{
+    auto &param = MutableRCSTilingDataA5();
+    uint32_t tileM = std::min(APACE_DEFAULT_TILE_M, static_cast<uint32_t>(args_.mValue));
+    param.tileCnt = static_cast<uint32_t>(args_.mValue) / tileM;
+    param.tailM = static_cast<uint32_t>(args_.mValue) % tileM;
+    param.tailCnt = (param.tailM > 0) ? 1 : 0;
+
+    uint32_t paddedTailM =
+        (param.tailM > 0) ? ((param.tailM + APACE_M_TAIL_ALIGN - 1) / APACE_M_TAIL_ALIGN * APACE_M_TAIL_ALIGN) : 0U;
+    uint32_t totalLogicalM =
+        static_cast<uint32_t>(args_.rankDim) * (param.tileCnt * tileM + param.tailCnt * paddedTailM);
+
+    if (isFp4_) {
+        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingEngine;
+        tilingEngine.SetOptimizeEnable(false);
+        tilingEngine.SetMTailAlignEnable(true);
+        tilingEngine.GetTilingData(static_cast<uint64_t>(totalLogicalM), args_.nValue, args_.kValue, false,
+                                   args_.isBTrans, hcommTilingData_.mmTile);
+    } else {
+        QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
+        tilingEngine.SetOptimizeEnable(false);
+        tilingEngine.SetMTailAlignEnable(true);
+        tilingEngine.GetTilingData(static_cast<uint64_t>(totalLogicalM), args_.nValue, args_.kValue, false,
+                                   args_.isBTrans, hcommTilingData_.mmTile);
+    }
+
+    OP_LOGI(opName_, "DoApaceMatmulTiling: isFp4=%d, totalLogicalM=%u, n=%lu, k=%lu, isBTrans=%d, usedCoreNum=%u",
+            isFp4_, totalLogicalM, args_.nValue, args_.kValue, args_.isBTrans, hcommTilingData_.mmTile.usedCoreNum);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -557,10 +604,11 @@ void AllGatherQuantBmmTiling::SetTilingKeyParams()
 ge::graphStatus AllGatherQuantBmmTiling::GetWorkspaceSize()
 {
     MC2_CHECK_LOG_RET(opName_, AllGatherMatmulTilingBase::GetWorkspaceSize());
-    // 当N=0时，Helper不执行，myWorkSpaceSize_未被设置，需要手动赋值
     // workspaceSize_包含：libApiWorkSpaceSize_ + storageA_(含gatherLen) + biasLen_
     // scale1kSpaceSize_为scale1通信所需空间
-    if (args_.nValue == 0) {
+    // MX场景不走DoAdaptSlidWindowTiling，myWorkSpaceSize_未被PostTiling设置，
+    // 需用workspaceSize_作为基线（含libApiWS+gatherLen），与非MX的N==0路径一致
+    if (isMxScene_ || args_.nValue == 0) {
         myWorkSpaceSize_ = workspaceSize_ + scale1kSpaceSize_;
     } else {
         myWorkSpaceSize_ = myWorkSpaceSize_ + MutableRCSTilingDataA5().gatherLen + scale1kSpaceSize_;
@@ -670,6 +718,31 @@ void Mc2PrintTCubeTilingL2cache(const std::string &opName, DequantBmm::Mc2L2cach
 
 ge::graphStatus AllGatherQuantBmmTiling::PostTiling()
 {
+    if (isMxScene_) {
+        // Hcomm 路径: 填充 hcommAllGatherMatmulTilingData 并输出
+        SetHcommTilingInfo();
+        hcommTilingData_.mc2InitTiling = allGatherMatmulTilingDataFp8_->mc2InitTiling;
+        hcommTilingData_.mc2CcTiling = allGatherMatmulTilingDataFp8_->mc2CcTiling;
+        hcommTilingData_.gatherLen = MutableRCSTilingDataA5().gatherLen;
+        Apace::hcommAllGatherMatmulTilingData *outTilingData =
+            context_->GetTilingData<Apace::hcommAllGatherMatmulTilingData>();
+        OP_TILING_CHECK(outTilingData == nullptr, OP_LOGE(opName_, "Fail to get hcomm tiling data from context"),
+                        return ge::GRAPH_FAILED);
+        size_t tilingBufCap = context_->GetRawTilingData()->GetCapacity();
+        OP_TILING_CHECK(tilingBufCap < sizeof(hcommTilingData_),
+                        OP_LOGE(opName_, "TilingBuffer capacity is too small, capacity = %zu, need = %zu.",
+                                tilingBufCap, sizeof(hcommTilingData_)),
+                        return ge::GRAPH_FAILED);
+        errno_t ret = memcpy_s(outTilingData, tilingBufCap, &hcommTilingData_, sizeof(hcommTilingData_));
+        OP_TILING_CHECK(ret != EOK, OP_LOGE(opName_, "PostTiling: memcpy_s hcomm tiling data failed, ret=%d.", ret),
+                        return ge::GRAPH_FAILED);
+        context_->GetRawTilingData()->SetDataSize(sizeof(Apace::hcommAllGatherMatmulTilingData));
+        context_->SetBlockDim(args_.aicCoreNum);
+        context_->SetScheduleMode(1);
+        OP_LOGI(opName_, "PostTiling: output hcommAllGatherMatmulTilingData, size=%zu.", sizeof(hcommTilingData_));
+        return ge::GRAPH_SUCCESS;
+    }
+
     OP_LOGD(opName_, "The final tiling data size=%zu and context capacity size=%zu ",
             sizeof(AllGatherMatmulTilingDataFp8), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(sizeof(AllGatherMatmulTilingDataFp8));
@@ -731,11 +804,7 @@ CutResult AllGatherQuantBmmTiling::GetTilingResult()
     return result;
 }
 
-
-Mc2Tiling::RCSTiling &AllGatherQuantBmmTiling::MutableRCSTilingDataA5()
-{
-    return allGatherMatmulTilingDataFp8_->param;
-}
+Mc2Tiling::RCSTiling &AllGatherQuantBmmTiling::MutableRCSTilingDataA5() { return allGatherMatmulTilingDataFp8_->param; }
 
 ::TCubeTiling &AllGatherQuantBmmTiling::MutableTCubeLocalTilingData()
 {
@@ -840,7 +909,8 @@ ge::graphStatus AllGatherQuantBmmTiling::DoAdaptSlidWindowTiling()
 }
 
 AllGatherQuantBmmTiling::AllGatherQuantBmmTiling(gert::TilingContext *context)
-    : AllGatherMatmulTilingBase(context), allGatherMatmulTilingDataFp8_(&allGatherMatmulTilingDataFp8Self_)
+    : AllGatherMatmulTilingBase(context),
+      allGatherMatmulTilingDataFp8_(&allGatherMatmulTilingDataFp8Self_)
 {
     allGatherMatmulTilingDataFp8_ = context_->GetTilingData<AllGatherMatmulTilingDataFp8>();
 }
@@ -1031,9 +1101,9 @@ void AllGatherQuantBmmHelper::PrintTilingInputParam(Mc2QuantBatchMatmulInfo &qua
 AllGatherQuantBmmHelper::AllGatherQuantBmmHelper(AllGatherQuantBmmTiling &allGatherQuantBmmTiling,
                                                  DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &data, bool isLocal)
     : Mc2AdaptiveSlidingWindowTiling(allGatherQuantBmmTiling.context_, &data),
-      tilingProcesser_(allGatherQuantBmmTiling), isLocal_(isLocal)
-{
-}
+      tilingProcesser_(allGatherQuantBmmTiling),
+      isLocal_(isLocal)
+{}
 // 注册Tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(AllGatherMatmulV2, AllGatherQuantBmmTiling, static_cast<int32_t>(NpuArch::DAV_3510),
                                    1);
