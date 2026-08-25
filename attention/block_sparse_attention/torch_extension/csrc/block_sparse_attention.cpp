@@ -64,6 +64,26 @@ namespace op_api {
 const int64_t FLOAT4_E2M1 = static_cast<int64_t>(296);
 const int64_t FLOAT8_E8M0 = static_cast<int64_t>(293);
 
+// make_wrapper: wrap an at::Tensor in a TensorWrapper carrying an explicit
+// ACL dtype, so uint8-disguised float4_e2m1fn_x2 (q/k/v) and float8_e8m0fnu
+// (descale) tensors reach the aclnn API as ACL_FLOAT4_E2M1 / ACL_FLOAT8_E8M0
+// instead of ACL_UINT8. Defined per-op (mirrors quant_flash_attn.cpp) rather
+// than in aclnn_common.h.
+TensorWrapper make_wrapper(const at::Tensor &tensor, const int64_t real_dtype)
+{
+	TensorWrapper wrapper = {tensor, ACL_DT_UNDEFINED};
+	if (kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(tensor.scalar_type())] == ACL_UINT8) {
+		if (real_dtype == FLOAT4_E2M1) {
+			wrapper.dtype = ACL_FLOAT4_E2M1;
+		} else if (real_dtype == FLOAT8_E8M0) {
+			wrapper.dtype = ACL_FLOAT8_E8M0;
+		}
+	} else {
+		wrapper.dtype = kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(tensor.scalar_type())];
+	}
+	return wrapper;
+}
+
 // Named constants mirroring the Python _QUANT_MODE + the CANN kernel's
 // QuantMode enum (block_sparse_attention_def.cpp). Plain enum (not enum class)
 // so values implicitly convert to int64_t — the type of the quant_mode parameter.
