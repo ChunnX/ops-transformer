@@ -16,7 +16,7 @@
 - 算子功能：输入Q/K/V融合张量`qkv`，按`head_nums=[Nq, Nk, Nv]`拆分出Q、K、V，并根据`slot_mapping`更新K/V Cache和K scale cache。当前支持三种完整语义场景：
   - RoPE：Q/K执行`RMSNorm -> RoPE -> rotation`，Q/K做PerTokenPerHead动态量化；
   - M-RoPE：Q/K执行`RMSNorm -> M-RoPE -> rotation`，Q不量化，K做PerTokenPerHead INT8动态量化；
-  - M-RoPE MX：Q/K执行`RMSNorm -> M-RoPE -> Dynamic MX Quant`，不执行`rotation`；MX语义对齐`DynamicMxQuantV3(scaleAlg=1)`，Q/K数据为FP8 E4M3FN，scale为FP8 E8M0。
+  - M-RoPE MX：Q/K执行`RMSNorm -> M-RoPE -> Dynamic MX Quant`，不执行`rotation`；每个D32 block使用cuBLAS MXFP8的E8M0二次幂scale量化为FP8 E4M3FN。
   V分支不做RMSNorm、位置编码或`rotation`；RoPE使用`v_scale[Nv]`，M-RoPE和M-RoPE MX使用每个head、每个channel的`v_scale[Nv,D]`量化为FP8 E4M3FN。
 - 使用场景：适用于推理场景下的PagedAttention KV Cache更新，当前仅支持<term>Ascend 950PR/Ascend 950DT</term>。
 - 计算公式：
@@ -51,7 +51,16 @@
   scale = max(abs(x)) / quant\_max,\quad x_{quant} = cast(x / scale)
   $$
 
-  其中`quant_max`为目标数据类型对应的量化上限。M-RoPE MX不执行上述整D量化，而是将每个Q/K head的D维划分为D32 block，按`DynamicMxQuantV3(scaleAlg=1)`分别产生FP8 E4M3FN数据和FP8 E8M0 scale。有效scale按D32 block线性存储，数量为`ceil(D/32)`。
+  其中`quant_max`为目标数据类型对应的量化上限。M-RoPE MX不执行上述整D量化，而是将每个Q/K head的D维划分为D32 block。对有限输入的每个block $x_b$，在FP32中计算：
+
+  $$
+  a_b=\max_i|x_{b,i}|,\qquad
+  e_b=\max\left(-127,\left\lceil\log_2\frac{a_b}{448}\right\rceil\right),\qquad
+  s_b=2^{e_b},\qquad
+  q_{b,i}=\operatorname{cast}^{\mathrm{rint,sat}}_{\mathrm{FP8\ E4M3FN}}\left(\frac{x_{b,i}}{s_b}\right).
+  $$
+
+  当$a_b=0$时取$e_b=-127$。$s_b$以FP8 E8M0存储，有限scale的原始编码为$e_b+127$；block中存在Inf或NaN时scale原始编码为`0xFF`。该规则即cuBLAS MXFP8 scale语义（对应`DynamicMxQuantV3`的`scaleAlg=1`）。有效scale按D32 block线性存储，数量为`ceil(D/32)`。
 
   V分支在FP8 E4M3FN转换前统一乘以`v_scale`；`v_scale`按其输入shape广播到V的逻辑shape：
 

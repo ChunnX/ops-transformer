@@ -28,7 +28,7 @@
   本文档包含`qkv_rms_norm_rope_cache_with_k_scale_`和`qkv_rms_norm_rope_cache_with_k_scale`两个torch_extension接口，均封装`aclnnQkvRmsNormRopeCacheWithKScale`，用于大语言模型推理场景下的Q/K/V预处理与PagedAttention KV Cache更新。接口支持以下三种完整场景：
   - RoPE：使用`query_start_loc/seq_lens`生成普通RoPE位置；Q/K执行`RMSNorm -> RoPE -> rotation -> PerTokenPerHead量化`，数据为FP8 E4M3FN，scale为FP32。
   - M-RoPE：使用`mrope_position/mrope_section`生成T/H/W交织位置；Q/K执行`RMSNorm -> M-RoPE -> rotation`，Q返回BF16且`q_scale=None`，K执行PerTokenPerHead INT8量化。
-  - M-RoPE MX：Q/K执行`RMSNorm -> M-RoPE -> Dynamic MX Quant`，不执行`rotation`；MX语义对齐`DynamicMxQuantV3(scaleAlg=1)`，Q/K数据为FP8 E4M3FN，scale为FP8 E8M0。V按`v_scale[Nv,D]`执行per-head-per-channel静态量化并写入FP8 Cache。
+  - M-RoPE MX：Q/K执行`RMSNorm -> M-RoPE -> Dynamic MX Quant`，不执行`rotation`；每个D32 block使用cuBLAS MXFP8的E8M0二次幂scale量化为FP8 E4M3FN。V按`v_scale[Nv,D]`执行per-head-per-channel静态量化并写入FP8 Cache。
   - `qkv_rms_norm_rope_cache_with_k_scale_`：原地更新调用方传入的`k_cache`、`v_cache`和`k_scale_cache`，返回`q_out`和`q_scale`。
   - `qkv_rms_norm_rope_cache_with_k_scale`：内部先拷贝三个cache，再对副本执行更新，返回`q_out`、`q_scale`和更新后的三个cache；调用方传入的cache保持不变。
 
@@ -59,6 +59,11 @@
   $$
 
   M-RoPE MX要求`rotation=None`，M-RoPE结果直接进入MX量化。
+
+  对有限输入的每个D32 block $x_b$，在FP32中取$a_b=\max_i|x_{b,i}|$，令
+  $e_b=\max(-127,\lceil\log_2(a_b/448)\rceil)$、$s_b=2^{e_b}$，再计算
+  $q_{b,i}=\operatorname{cast}^{\mathrm{rint,sat}}_{\mathrm{FP8\ E4M3FN}}(x_{b,i}/s_b)$。
+  $s_b$以FP8 E8M0存储，有限scale的原始编码为$e_b+127$；$a_b=0$时取$e_b=-127$，block中存在Inf或NaN时scale原始编码为`0xFF`。该规则即cuBLAS MXFP8 scale语义（对应`DynamicMxQuantV3`的`scaleAlg=1`）。
 
 - RoPE场景的位置：
 
@@ -147,7 +152,7 @@
 
 - M-RoPE MX量化：
 
-  对M-RoPE后的Q/K，每个D32 block独立执行`DynamicMxQuantV3(scaleAlg=1)`语义，生成FP8 E4M3FN数据和FP8 E8M0 scale。有效scale按D32 block线性存储在长度为`ceil(D/32)`的末轴。当前实现仍固定`D=128`，因此每个head产生4个scale；公式使用符号D不表示已支持任意D。
+  对M-RoPE后的Q/K，每个D32 block独立执行上述cuBLAS MXFP8二次幂scale量化，生成FP8 E4M3FN数据和FP8 E8M0 scale。有效scale按D32 block线性存储在长度为`ceil(D/32)`的末轴。当前实现仍固定`D=128`，因此每个head产生4个scale；公式使用符号D不表示已支持任意D。
 
   V分支统一在FP8 E4M3FN转换前乘以`v_scale`；`v_scale`按其输入shape广播到V的逻辑shape：
 

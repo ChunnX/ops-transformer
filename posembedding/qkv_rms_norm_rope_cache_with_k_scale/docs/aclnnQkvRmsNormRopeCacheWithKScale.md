@@ -26,7 +26,7 @@
 - 接口功能：`aclnnQkvRmsNormRopeCacheWithKScale`在一次调用中完成融合QKV拆分、Q/K RMSNorm与位置编码、按场景执行Q/K矩阵乘或量化，并更新PagedAttention KV Cache。Q分支根据场景写入`qOut`和`qScaleOptional`；K、V分支根据`slotMapping`原地更新`kCacheRef`、`vCacheRef`和`kScaleCacheRef`。当前支持三种完整语义场景：
   - RoPE：Q/K执行`RMSNorm -> RoPE -> rotation -> PerTokenPerHead量化`，Q/K数据为FP8 E4M3FN、scale为FP32；
   - M-RoPE：Q/K执行`RMSNorm -> M-RoPE -> rotation`，Q直接输出BF16，K执行PerTokenPerHead INT8量化；
-  - M-RoPE MX：Q/K执行`RMSNorm -> M-RoPE -> Dynamic MX Quant`，不执行`rotationOptional`；MX语义对齐`DynamicMxQuantV3(scaleAlg=1)`，Q/K数据为FP8 E4M3FN、scale为FP8 E8M0。
+  - M-RoPE MX：Q/K执行`RMSNorm -> M-RoPE -> Dynamic MX Quant`，不执行`rotationOptional`；每个D32 block使用cuBLAS MXFP8的E8M0二次幂scale量化为FP8 E4M3FN。
   V分支不执行RMSNorm、位置编码或矩阵乘；M-RoPE MX使用`vScaleOptional[Nv,D]`进行per-head-per-channel静态量化并输出FP8 E4M3FN。
 
 - 计算公式：
@@ -216,7 +216,20 @@
 
   其中`cast`表示按目标类型完成转换；当目标类型为INT8时，转换包含舍入和$[-127,127]$范围饱和。启用PerTokenPerHead量化时，Q分支的$\boldsymbol\alpha^Q$写入`qScaleOptional`、$\widehat{\boldsymbol H}^Q$写入`qOut`，K分支的$\boldsymbol\alpha^K$写入`kScaleCacheRef`、$\widehat{\boldsymbol H}^K$写入`kCacheRef`。未启用动态量化的分支只产生直接转换结果，不产生scale。
 
-  M-RoPE MX对$\boldsymbol Z^Q/\boldsymbol Z^K$的每个D32 block独立执行`DynamicMxQuantV3(scaleAlg=1)`语义，输出FP8 E4M3FN数据和FP8 E8M0 scale。令$B=\lceil D/32\rceil$，有效scale按D32 block的线性次序存放在末轴：
+  M-RoPE MX对$\boldsymbol Z^Q/\boldsymbol Z^K$的每个D32 block独立执行cuBLAS MXFP8量化。对有限输入的block $\boldsymbol x_b$，在FP32中计算：
+
+  $$
+  \begin{aligned}
+  a_b&=\max_i|x_{b,i}|,\\
+  e_b&=\max\left(-127,\left\lceil\log_2\frac{a_b}{448}\right\rceil\right),\\
+  s_b&=2^{e_b},\\
+  q_{b,i}&=\operatorname{cast}^{\mathrm{rint,sat}}_{\mathrm{FP8\ E4M3FN}}\left(\frac{x_{b,i}}{s_b}\right).
+  \end{aligned}
+  $$
+
+  当$a_b=0$时取$e_b=-127$。$s_b$以FP8 E8M0存储，有限scale的原始编码为$e_b+127$；block中存在Inf或NaN时scale原始编码为`0xFF`。该定义对应`DynamicMxQuantV3`的`scaleAlg=1`，算子名和数值属性不是本接口语义的唯一说明。
+
+  令$B=\lceil D/32\rceil$，有效scale按D32 block的线性次序存放在末轴：
 
   $$
   \mathrm{scale}[...,b],
