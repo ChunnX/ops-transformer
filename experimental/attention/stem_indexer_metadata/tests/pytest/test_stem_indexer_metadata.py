@@ -14,8 +14,8 @@ METADATA_ALIGN_SIZE = 4096
 
 qSeqLens = torch.tensor([384], dtype=torch.int32).npu()
 kvSeqLens = torch.tensor([32768], dtype=torch.int32).npu()
-qHeads = 1
-kvHeads = 1
+qHeads = 32
+kvHeads = 2
 dimQkflat = 2048
 stemBlockSize = 128
 causal=True
