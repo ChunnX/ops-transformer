@@ -73,16 +73,22 @@ private:
         return position.expertIdx < commonConfig_.moeExpertPerRank && waveMGroupCount < mGroupsPerWave_;
     }
 
+    // 仅提前跳过已经验证不需要进入底层执行入口的无 tile AIC；AIV 仍沿用入口内部的角色分工与游标推进。
+    __aicore__ inline bool ShouldSkipWaveGmmProblem(uint32_t problemTileCount, uint32_t &startBlockIdx) const
+    {
+        return SkipUnownedWaveAicProblem(problemTileCount, gmmExecutionConfig_.blockJob, startBlockIdx);
+    }
+
     __aicore__ inline void RunGmm1ActivationForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
                                                       GmmRuntimeState &runtimeState, uint32_t tokenStartIndexInExpert,
                                                       uint32_t sliceTokenCount, uint32_t gmm1TilesPerMGroup,
                                                       uint32_t waveIndex);
-    __aicore__ inline void RunGmm2CombineForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
-                                                   uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
-                                                   uint32_t sliceTokenCount,
-                                                   WaveCombineBufferConfig &combineBufferConfig,
-                                                   uint32_t &combineRowSequence, bool useAllAivCores,
-                                                   uint32_t waveIndex);
+    __aicore__ inline void RunGmm2ForExpertSlice(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
+                                                 uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
+                                                 uint32_t sliceTokenCount, uint32_t waveIndex);
+    __aicore__ inline void RunCombineForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
+                                               WaveCombineBufferConfig &combineBufferConfig,
+                                               uint32_t &combineRowSequence, bool useAllAivCores, uint32_t waveIndex);
     __aicore__ inline void ProcessMoeExpertStages();
 };
 
@@ -93,7 +99,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm1
     uint32_t sliceTokenCount, uint32_t gmm1TilesPerMGroup, uint32_t waveIndex)
 {
     uint32_t problemTileCount = GetMGroupCountForRows(sliceTokenCount, GMM1_TILE_M) * gmm1TilesPerMGroup;
-    if (SkipUnownedWaveAicProblem(problemTileCount, gmmExecutionConfig_.blockJob, runtimeState.startBlockIdx)) {
+    if (ShouldSkipWaveGmmProblem(problemTileCount, runtimeState.startBlockIdx)) {
         return;
     }
     UpdateMoeExpertGmm1GlobalBuffer<ActivationType, Weight1Type, ActivationQuantOutType, QuantScaleOutType,
@@ -128,23 +134,21 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm1
         nullptr, coversFullExpert, traceContextPtr);
 }
 
-// A4W4 的 GMM2 复用 A8W4 prologue，将 FP4 weight 解包为 FP8 后执行矩阵乘与 Combine。
+// A4W4 的 GMM2 复用 A8W4 prologue，将 FP4 weight 解包为 FP8 后执行矩阵乘。
 template <TemplateMegaMoeA4W4WaveTypeClass>
-__aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm2CombineForExpert(
+__aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm2ForExpertSlice(
     ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
-    uint32_t sliceTokenCount, WaveCombineBufferConfig &combineBufferConfig, uint32_t &combineRowSequence,
-    bool useAllAivCores, uint32_t waveIndex)
+    uint32_t sliceTokenCount, uint32_t waveIndex)
 {
     uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
     uint32_t gmm2NTileCount = Ops::Base::CeilDiv(commonConfig_.tokenHiddenDim, static_cast<uint32_t>(L1_TILE_N));
     uint32_t problemTileCount = GetMGroupCountForRows(sliceTokenCount, GMM1_TILE_M) * gmm2NTileCount;
+    if (ShouldSkipWaveGmmProblem(problemTileCount, startBlockIdx)) {
+        return;
+    }
 #if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
     CriticalPathTileTraceContext gmm2TraceContext{};
-    CriticalPathTileTraceContext combineTraceContext{};
-    CriticalPathTileTraceContext combineMetaTraceContext{};
     CriticalPathTileTraceContext *gmm2TraceContextPtr = nullptr;
-    CriticalPathTileTraceContext *combineTraceContextPtr = nullptr;
-    CriticalPathTileTraceContext *combineMetaTraceContextPtr = nullptr;
     if constexpr (g_coreType == AIC) {
         gmm2TraceContext =
             trace_.CreateTileTraceContext(A4W4WaveTraceEvent::GMM2, A4W4WaveTraceEvent::WAIT_FOR_ACTIVATION, waveIndex,
@@ -157,6 +161,34 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm2
                                               state.expertIdx, tokenStartIndexInExpert);
             gmm2TraceContextPtr = &gmm2TraceContext;
         }
+    }
+#else
+    CriticalPathTileTraceContext *gmm2TraceContextPtr = nullptr;
+#endif
+    UpdateMoeExpertGmm2GlobalBuffer<Weight1Type, ActivationQuantOutType, QuantScaleOutType, true, false>(
+        gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmmAddrInfo, state,
+        tokenStartIndexInExpert);
+    ProblemShape sliceProblemShape = state.problemShape;
+    Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
+    RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
+                TopkWeightsPrefetch, false, false, true>(
+        sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, expertTokenCount,
+        tokenStartIndexInExpert, tokenStartIndexInExpert == 0U && sliceTokenCount == expertTokenCount,
+        gmm2TraceContextPtr);
+}
+
+// 专家最后一个 GMM2 slice 发出就绪通知后，在完整专家输出上执行 Combine。
+template <TemplateMegaMoeA4W4WaveTypeClass>
+__aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunCombineForExpert(
+    ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, WaveCombineBufferConfig &combineBufferConfig,
+    uint32_t &combineRowSequence, bool useAllAivCores, uint32_t waveIndex)
+{
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+    CriticalPathTileTraceContext combineTraceContext{};
+    CriticalPathTileTraceContext combineMetaTraceContext{};
+    CriticalPathTileTraceContext *combineTraceContextPtr = nullptr;
+    CriticalPathTileTraceContext *combineMetaTraceContextPtr = nullptr;
+    if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() == 1U || useAllAivCores) {
             // Combine 在专家完整输出上重新分核，其 owned range 已经是专家内坐标。
             combineTraceContext = trace_.CreateTileTraceContext(
@@ -168,26 +200,9 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm2
         }
     }
 #else
-    CriticalPathTileTraceContext *gmm2TraceContextPtr = nullptr;
     CriticalPathTileTraceContext *combineTraceContextPtr = nullptr;
     CriticalPathTileTraceContext *combineMetaTraceContextPtr = nullptr;
 #endif
-    bool ownsGmm2Tile = !SkipUnownedWaveAicProblem(problemTileCount, gmmExecutionConfig_.blockJob, startBlockIdx);
-    if (ownsGmm2Tile) {
-        UpdateMoeExpertGmm2GlobalBuffer<Weight1Type, ActivationQuantOutType, QuantScaleOutType, true, false>(
-            gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmmAddrInfo,
-            state, tokenStartIndexInExpert);
-        ProblemShape sliceProblemShape = state.problemShape;
-        Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
-        RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
-                    TopkWeightsPrefetch, false, false, true>(
-            sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, expertTokenCount,
-            tokenStartIndexInExpert, tokenStartIndexInExpert == 0U && sliceTokenCount == expertTokenCount,
-            gmm2TraceContextPtr);
-    }
-    if (tokenStartIndexInExpert + sliceTokenCount < expertTokenCount) {
-        return;
-    }
     NotifyWaveGmm2Ready(waveCombineJob_, params_, state.expertIdx);
     UpdateMoeExpertCombineGlobalBuffer(params_.workspaceInfo, gmmAddrInfo, state);
     if (useAllAivCores) {
@@ -343,12 +358,14 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
                 expertIdx == waveEndPosition.expertIdx ? waveEndPosition.tokenIndexInExpert : expertTokenCount;
             uint32_t sliceTokenCount = sliceTokenEndIndexInExpert - sliceTokenStartIndexInExpert;
             if (sliceTokenCount != 0U) {
-                bool useAllAivCores = waveEndPosition.expertIdx >= commonConfig_.moeExpertPerRank &&
-                                      expertIdx == waveLastActiveExpertIdx &&
-                                      sliceTokenEndIndexInExpert >= expertTokenCount;
-                RunGmm2CombineForExpert(gmm2State, gmm2AddrInfo, startBlockIdx, sliceTokenStartIndexInExpert,
-                                        sliceTokenCount, combineBufferConfig, combineRowSequence, useAllAivCores,
-                                        waveIndex);
+                RunGmm2ForExpertSlice(gmm2State, gmm2AddrInfo, startBlockIdx, sliceTokenStartIndexInExpert,
+                                      sliceTokenCount, waveIndex);
+                if (sliceTokenEndIndexInExpert >= expertTokenCount) {
+                    bool useAllAivCores = waveEndPosition.expertIdx >= commonConfig_.moeExpertPerRank &&
+                                          expertIdx == waveLastActiveExpertIdx;
+                    RunCombineForExpert(gmm2State, gmm2AddrInfo, combineBufferConfig, combineRowSequence,
+                                        useAllAivCores, waveIndex);
+                }
             }
         }
         DrainWaveCombineRowRing(combineRowSequence, combineBufferConfig.rowBufferCount);

@@ -460,11 +460,12 @@ struct BlockMmadInitConfig {
     uint32_t tileN = 0U;
     uint64_t kL1 = 0U;
     uint64_t scaleKL1 = 0U;
+    bool enableL0CPingPong = false;
 
     __aicore__ inline bool operator!=(const BlockMmadInitConfig &other) const
     {
         return problemK != other.problemK || tileM != other.tileM || tileN != other.tileN || kL1 != other.kL1 ||
-               scaleKL1 != other.scaleKL1;
+               scaleKL1 != other.scaleKL1 || enableL0CPingPong != other.enableL0CPingPong;
     }
 };
 
@@ -478,22 +479,27 @@ struct BlockMmadContext {
 
 // 仅当 BlockMmad::Init 消费的配置发生变化时刷新，problem 的实际 M/N 由每次 MMAD 调用传入。
 template <typename MmadContext, typename ProblemConfig>
-__aicore__ inline void InitBlockMmad(MmadContext &context, const ProblemConfig &config)
+__aicore__ inline void InitBlockMmad(MmadContext &context, const ProblemConfig &config,
+                                     bool allowGenericL0CPingPong = true)
 {
     using BlockMmad = decltype(context.blockMmad);
     using KernelConfig = typename ProblemConfig::KernelConfig;
     const auto &tilingConfig = config.blockMmadTiling;
-    const BlockMmadInitConfig requestedConfig{config.k, tilingConfig.tileM, tilingConfig.tileN,
-                                              tilingConfig.l1Params.kL1, tilingConfig.l1Params.scaleKL1};
+    bool enableL0CPingPong = false;
+    if constexpr (KernelConfig::ENABLE_GENERIC_L0C_PINGPONG) {
+        constexpr uint64_t halfL0CSize = AscendC::TOTAL_L0C_SIZE / 2U;
+        uint64_t l0CTileBytes = static_cast<uint64_t>(tilingConfig.tileM) * tilingConfig.tileN * sizeof(float);
+        enableL0CPingPong = allowGenericL0CPingPong && l0CTileBytes < halfL0CSize;
+    }
+    const BlockMmadInitConfig requestedConfig{config.k,
+                                              tilingConfig.tileM,
+                                              tilingConfig.tileN,
+                                              tilingConfig.l1Params.kL1,
+                                              tilingConfig.l1Params.scaleKL1,
+                                              enableL0CPingPong};
     if (!context.initialized || context.initConfig != requestedConfig) {
         typename BlockMmad::BlockShape l0TileShape{tilingConfig.tileM, tilingConfig.tileN, L0_TILE_K, 0};
         typename BlockMmad::ProblemShape matmulShape{config.m, config.n, config.k, 0};
-        bool enableL0CPingPong = false;
-        if constexpr (KernelConfig::ENABLE_GENERIC_L0C_PINGPONG) {
-            constexpr uint64_t halfL0CSize = AscendC::TOTAL_L0C_SIZE / 2U;
-            uint64_t l0CTileBytes = static_cast<uint64_t>(tilingConfig.tileM) * tilingConfig.tileN * sizeof(float);
-            enableL0CPingPong = l0CTileBytes < halfL0CSize;
-        }
         context.blockMmad.Init(matmulShape, l0TileShape, tilingConfig.l1Params, false, enableL0CPingPong);
         context.initConfig = requestedConfig;
         context.initialized = true;

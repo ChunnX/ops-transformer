@@ -177,7 +177,9 @@ __aicore__ inline void Gmm1AicMmadToGmGeneric(WorkSet &workSet, const GMMAddrInf
                                               CriticalPathTileTraceContext *traceContext = nullptr)
 {
     using BlockMmad = decltype(blockMmadContext->blockMmad);
-    InitBlockMmad(*blockMmadContext, config);
+    // 顺序 flag 模式是 A4W4 Wave 新增的 L0C->GM 路径，先禁用 L0C ping-pong，避免在复用半区前
+    // 仅依赖外层 FIX_S 收敛两路输出；既有 prefetch tile-status 路径保持原配置。
+    InitBlockMmad(*blockMmadContext, config, UseTileStatus);
     auto &blockMmad = blockMmadContext->blockMmad;
 
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
