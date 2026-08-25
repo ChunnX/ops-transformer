@@ -70,11 +70,11 @@ enum class VselrIndexEnum {
     int64_t s2SplitIdx = 0; \
     int64_t baseBlockNumPerReductionBlock = 1; /* s2方向一个规约块有几个基本块 */ \
     bool isCrossCoreSplit = false; \
-    bool isFirstS2SplitCore = true;
+    bool isFirstS2SplitCore = true
 
 #define RUN_PARAM_TOPK_LSE_FIELDS \
     /* lse/topk len 相关参数, 仅在非HIGH_PERF模式存在 */ \
-    int64_t softmaxLseOffset; /* lse 输出offset, souter层确定 */
+    int64_t softmaxLseOffset /* lse 输出offset, souter层确定 */
 
 template <bool HIGH_PERF = false>
 struct RunParamStr { // 分核与切块需要使用到参数
@@ -139,7 +139,7 @@ struct RunParamStr<true> { // HIGH_PERF: 无topk len且无lse场景, 剔除topk/
     bool isFirstS2SplitCore = true; \
     bool isFirstBase = true; \
     bool isLastBase = true; \
-    bool needReduce = false;
+    bool needReduce = false
 
 #define RUN_INFO_TOPK_LSE_FIELDS \
     /* lse 输出offset, 仅在非HIGH_PERF模式存在 */ \
@@ -245,7 +245,7 @@ struct RunInfo<true> { // HIGH_PERF: 无topk len且无lse场景, 剔除topk/lse�
     uint32_t cmpKvStride; \
     uint32_t oriMaskMode; \
     uint32_t cmpMaskMode; \
-    uint8_t subBlockIdx;
+    uint8_t subBlockIdx
 
 #define CONST_INFO_TOPK_LSE_FIELDS \
     /* topk len/lse 相关参数, 仅在非HIGH_PERF模式存在 */ \
