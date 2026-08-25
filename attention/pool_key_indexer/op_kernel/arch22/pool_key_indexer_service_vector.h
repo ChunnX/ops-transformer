@@ -576,7 +576,12 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec(const PkiCom
                         outQueue_.FreeTensor(outValueUb);
                     }
                     PipeBarrier<PIPE_V>();
-                    uint32_t validS2Len = constInfo_.attenMaskFlag ? static_cast<uint32_t>(cuRealAcSeq) : static_cast<uint32_t>(constInfo_.sparseCount);
+                    // cuRealAcSeq 对非因果为当前 batch 实际池数(actS2Size), 对因果为
+                    // 逐行可见池数; 均为有效池数上界。不可回退 sparseCount: 当实际池数
+                    // < sparseCount 时, TopK 结果尾部为 -1 无效池标记, 若仍按
+                    // sparseCount 轮展开会把 -1*poolSize 的负索引块([-ps,-1])写入
+                    // 输出且 validExpand==topk 使 -1 清理分支不触发(对齐 arch35 语义)
+                    uint32_t validS2Len = static_cast<uint32_t>(cuRealAcSeq);
                     ExpandAndAppendIndices(workLocal_[alignedPoolSize], expandOutLocal_, workLocal_,
                                            constInfo_.sparseCount, poolSize_, validS2Len,
                                            info.poolTailK, static_cast<int32_t>(info.actS2SizeOrig),
@@ -868,7 +873,10 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessLD()
             Extract(outValueUb, outIdxUb, curValueIdxUb, (BASE_TOPK / 32));
             if (poolSize_ > 1) {
                 PipeBarrier<PIPE_V>();
-                uint32_t validS2Len = constInfo_.attenMaskFlag ? static_cast<uint32_t>(s2ActSeq) : static_cast<uint32_t>(constInfo_.sparseCount);
+                // s2ActSeq(=写入侧 cuRealAcSeq)非因果为 batch 实际池数/因果为逐行
+                // 可见池数, 不可回退 sparseCount(实际池数<sparseCount 时会展开 -1
+                // 无效池标记产生 [-ps,-1] 负索引残留, 见 ProcessVec 同位修复)
+                uint32_t validS2Len = static_cast<uint32_t>(s2ActSeq);
                 ExpandAndAppendIndices(outIdxUb.template ReinterpretCast<int32_t>(),
                                        expandOutLocal_, workLocal_,
                                        constInfo_.sparseCount, poolSize_, validS2Len,
@@ -893,7 +901,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessLD()
             Extract(outValueUb, outIdxUb, curValueIdxUb, (BASE_TOPK / 32));
             PipeBarrier<PIPE_V>();
             if (poolSize_ > 1) {
-                uint32_t validS2Len = constInfo_.attenMaskFlag ? static_cast<uint32_t>(s2ActSeq) : static_cast<uint32_t>(constInfo_.sparseCount);
+                uint32_t validS2Len = static_cast<uint32_t>(s2ActSeq);
                 ExpandAndAppendIndices(outIdxUb.template ReinterpretCast<int32_t>(),
                                        expandOutLocal_, workLocal_,
                                        constInfo_.sparseCount, poolSize_, validS2Len,
