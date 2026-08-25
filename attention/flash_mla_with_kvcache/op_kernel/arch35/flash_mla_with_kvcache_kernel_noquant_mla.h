@@ -783,6 +783,8 @@ public:
         vecFdBlock_.AllocEventID();
         AscendC::SyncAll();
         vecFdBlock_.FlashDecode(fdParams_);
+        AscendC::SyncAll();
+        // 尾同步镜像 flash_attn_kernel_nd.h:590：FD 全 pipe 完成再进入下一 section（防跨 section 流水残留）
         vecFdBlock_.FreeEventID();
     }
 
