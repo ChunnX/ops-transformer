@@ -870,7 +870,7 @@ if (!keyStridesVec_.empty() && keyStridesVec_[0] != 0) {
 
 ---
 
-## 遗留问题记录：arch35（Ascend 950）编译失败（存量问题，非本次引入）
+## 遗留问题记录：arch35（Ascend 950）编译失败（存量问题，已于 2026-08-25 修复，见下节）
 
 > 2026-08-21 排查 PA 场景 arch35 分支时发现。已用 `git stash` 验证：**HEAD 原样代码编译 950 同样失败**，与本次 PA/精度修复无关。
 
@@ -903,8 +903,8 @@ if (!keyStridesVec_.empty() && keyStridesVec_[0] != 0) {
 
 ### 待办（需 arch35 维护者处理）
 
-1. 定位并修复 arch35 vector（`vf/` 目录）的 fp8 标量语义问题——可参照报错 `exit code 70` + 二分法屏蔽 VF 段定位
-2. 修好后补 950 的 PA 场景编译验证（本机 910B 无 950 运行环境，只能编译验证）
+1. ~~定位并修复 arch35 vector（`vf/` 目录）的 fp8 标量语义问题~~ → 已修复（见下节，根因不在 vf/ 目录）
+2. ~~修好后补 950 的 PA 场景编译验证~~ → 已通过（3 个 dtype bin 均产出）
 3. `arch35` 的 PA 运行时精度验证需在 950 设备进行（pytest 的 4 个 PA 用例可直接复用）
 
 ### 复现方式
@@ -915,6 +915,62 @@ rm -rf build
 bash build.sh --pkg --soc=ascend950 --vendor_name=custom --ops=pool_key_indexer
 # 观察: grep "error in backend" build 日志 → 214 处 fp8 标量语义错误
 ```
+
+---
+
+# arch35（Ascend 950）编译失败修复记录（fp8 标量语义，两层根因）
+
+> 2026-08-25 修复。此前 214 处 `error in backend: fp8...scalar float type semantics are not supported`（exit code 70）导致 950 编译全量失败。实际根因不在 `vf/` TopK 路径，而是模板分发与 W_T 类型推导两层问题，共 2 处代码修改。
+
+## 根因 1：dtype 分发用普通 `if` 而非 `if constexpr`（影响所有 bin）
+
+**位置**：`op_kernel/pool_key_indexer.cpp` arch35 分支（`__CCE_AICORE__ == 310`）。
+
+**机理**：构建系统按输入 dtype 生成 3 个 bin（bf16/fp16/fp8），通过 `-DORIG_DTYPE_QUERY=<dtype>` 区分（见 `build/binary/ascend950/src/pool_key_indexer/PoolKeyIndexer.py` 的 `get_dtype_fmt_options`）。`ORIG_DTYPE_QUERY` 是编译期常量，但普通 `if` **不阻止模板实例化**——即使条件为假，`INVOKE_PKI_OP_IMPL(PoolKeyIndexerKernel, fp8_e4m3fn_t, ...)` 分支仍会完整实例化。于是每个 bin（含纯 bf16/fp16 bin）都背上 fp8 kernel 实例，其中 vector 侧 weights 路径的 fp8 标量语义触发 bisheng 后端拒绝（参考 CANN 内置 `ascend_anti_quant` arch35 实现的注释：fp8 类型仅支持指针操作，`DataCopyPadExtParams<T>` 等含 T 类型标量成员/参数的结构会实例化 fp8 标量语义）。
+
+**修复**：`if` → `if constexpr`，每个 bin 只实例化自身 dtype 分支。修复后 214 处错误降为 80 处（仅剩 fp8 bin 自身失败）。
+
+**证据**：`kv_quant_sparse_flash_attention.cpp`（含 fp8 量化路径的同类算子）arch35 分发正是 `if constexpr (ORIG_DTYPE_QUERY == ...)` 写法。
+
+## 根因 2：FP8 模式 W_T 误绑 fp8_e4m3fn_t（weights 实为 FP16）
+
+**位置**：`op_kernel/arch35/pool_key_indexer_service_vector.h` / `arch22/..._service_vector.h` 的 `PkiTypeTraits`。
+
+**机理**：`W_T = PkiTypeTraits<Q_T, void>::weightsType = Q_T`。FP8 模式下 Q_T=fp8_e4m3fn_t，W_T 随之变为 fp8_e4m3fn_t。但按 op_host `def.cpp` 的 dtype 约束与 issue.md 接口定义：**quant_mode=0/1 时 q/k=FP8_E4M3FN 而 weights=FP16**。这同时是功能错误（fp16 数据被按 fp8 解释）与编译错误（vector 侧 weights 搬运/加载路径 `DataCopyPadExtParams<W_T>`、`MulWeightAndReduceSum` 的 `LoadAlign<W_T, DIST_UNPACK_B16>`/`Cast<float, W_T>`/`CreateMask<W_T>` 全部以 fp8 类型实例化，触发标量 fp8 后端限制）。
+
+**修复**：为 `PkiTypeTraits` 增加 fp8 特化，FP8 模式下 W_T 绑定 half：
+
+```cpp
+template <>
+struct PkiTypeTraits<fp8_e4m3fn_t> {
+    using weightsType = half;
+};
+```
+
+arch22/arch35 两个头文件同步添加（arch22 虽不实际实例化 fp8，保持同构防误用；`fp8_e4m3fn_t` 在非 fp8 平台是 `uint8_t` 别名，特化始终合法）。Q/K 的 fp8 数据仅经 Cube 侧 matmul 消费（指针操作，950 支持），vector 侧自此无任何 fp8 类型实例。
+
+## 修复文件清单
+
+| 文件 | 修改 |
+|------|------|
+| `op_kernel/pool_key_indexer.cpp` | arch35 dtype 分发 `if` → `if constexpr`（附根因注释） |
+| `op_kernel/arch35/pool_key_indexer_service_vector.h` | `PkiTypeTraits` 增加 `fp8_e4m3fn_t → half` 特化 |
+| `op_kernel/arch22/pool_key_indexer_service_vector.h` | 同上（同构防误用） |
+
+## 验证
+
+| 项目 | 结果 |
+|------|------|
+| `--soc=ascend950 --pkg` | exit=0，0 处后端错误 |
+| 950 产出 bin | bf16（2b73...）/ fp16（403a...）/ fp8（8510...）三个 .o+.json 齐全 |
+| 自解压包 | `cann-ops-transformer-custom_linux-x86_64.run` 生成成功 |
+| `--soc=ascend910b --pkg` 回归 | exit=0，无回归 |
+
+## 遗留
+
+1. arch35 PA 场景**运行时**精度/功能验证仍需 950 设备（本机 910B3 无 950 环境）
+2. FP8 反量化路径（quantMode=0/1）在 kernel 侧是否完整实现（q_descale/k_descale 消费链路）未在本次编译修复中审计，需 950 环境实测
+3. 遗留事项（前文）：arch35 indices 通道 outputLen 行宽同族问题（`indiceOutCoreOffset` 用 sparseCount 行距，service_vector 按 outputLen 寻址）仍未修，建议 950 实测时一并处理
 
 ---
 
@@ -1085,3 +1141,123 @@ tiling 会取到越界/错位值。
 - arch22/910B： pool_size≥32 且 topk≥6144 组合触发 aicore exception（EE9999/507015），
   崩溃污染进程内后续用例，故不作为 xfail 纳入（TEST_CASES 内 NOTE 登记），kernel 修复后
   可补：`tnd_fp16_ps32_topk6144_causal`、`bsnd_fp16_ps64_topk8192_causal`。
+
+---
+
+---
+
+# arch35（Ascend 950）运行时修复记录（2026-08-25，首次 950 上板验证）
+
+> 环境勘误：**本机实为 Ascend950PR**（npu-smi 显示 8×950PR，`torch_npu.get_device_properties` = Ascend950PR_9579，28 cube/56 vector）。此前文档中"本机 910B3 无 950 环境"的记录已过时——arch35 修复首次可在本机做**运行时验证**，torch_extension 亦按 README 流程编译安装（python3.10 + build wheel + pip install，protobuf 依赖经华为镜像补装）。
+
+## 问题总览
+
+arch35 编译修复（见前文）后首次上板：pytest **6/42**（恰为 5 个 ps=1 + 1 个退化场景），
+36 个 ps>1 用例全挂。经探针二分定位**四层独立缺陷**，全部修复后 **42/42**。
+
+## Bug 1：arch35 展开路径 V/S 流水同步缺失（kernel，根因一）
+
+**现象**：pool 集合含重复/越界序号（如 8 池场景选出"pool 9"）、每池第 16 lane 恒为垃圾值、
+首调输出随 UB 残留内容漂移（重复调用趋稳）。
+
+**根因**：arch35（950）上标量访存（`GetValue`/`SetValue`，S pipe）与向量操作（V pipe）、
+MTE3 间**必须显式硬同步**，`PipeBarrier<PIPE_V>` 不保证 S 侧顺序。`ExpandAndAppendIndices` 中：
+1. `poolIndices.GetValue(k)` 读 `indicesOutLocal_`，其最近写入方为向量操作
+   （topkOp_ 结尾 `DataCopy` / `CreateVecIndex` / -1 `Duplicate` 填充）→ **缺 V→S 同步**，
+   标量读到陈旧/垃圾 pool 序号；
+2. `offsetTpl.SetValue(p,p)` 后向量 `Add` 读模板 → **缺 S→V 同步**，部分 lane 读陈旧模板
+   （实测每池末 lane 恒加同一垃圾值）；
+3. 尾块 `SetValue` 后由 MTE3 `DataCopyPad` 搬出 → **缺 S→MTE3 同步**。
+
+同仓 arch35 权威参照：`bsa_select_block_mask/op_kernel/arch35/bsa_radix_topk_service.h` 的
+`VToSSync/SToVSync/SToMTE3Sync`（`FetchEventID(HardEvent::V_S/S_V/S_MTE3)` + Set/WaitFlag）。
+
+**修复**（`arch35/pool_key_indexer_service_vector.h`）：新增三个同步辅助函数并按上述
+三处补齐。
+
+## Bug 2：arch35 展开轮数未截断 + 尾块对齐写越界（kernel，根因二，arch22 同族存量）
+
+与 arch22 已修复的 Bug 1/Bug 3 完全同族（沿抄 LIV2 公式未核对行宽前提）：
+1. 展开循环 `k < validS2Len` 未按 `sparseCount` 截断——可见池多于选中池时越写
+   outputLen 之外污染尾区/相邻行（改为 `Min(validS2Len, sparseCount)`，对齐 arch22）；
+2. 尾块按 `Align(visibleTailK,8)` 对齐写会越出尾区容量（ps-1）——改为"对齐清空尾区 +
+   标量精确写 visibleTailK 个"（对齐 arch22 修复），且清空 `Duplicate` 与标量写之间需
+   V→S 同步（迟到的 V 写会覆盖标量写，实测尾区全 -1）。
+
+## Bug 3：host tiling TND/PA 的 s2Size=0（host，根因三，本 bug 仅 arch35 显形）
+
+**定位**：BSND/TND 同一张量 A/B 对照（BSND 32/32、TND 1/32）+ tiling 调试日志，抓到
+`TND: s2Size=0`。
+
+**根因**：tiling 的 TND/PA key 分支写 `info.s2Size = 0`（注释"determined from
+actual_seq_k"），但**无任何后续赋值**。arch22 不受影响（kSeqSize 仅用作缺省 seq len 与
+BSND 前缀），arch35 却用 `kSeqSize` 作 **scoreGm 行距与每核区域大小**：
+
+```
+kSeqSizeAlign = Align(kSeqSize, s2BaseSize)  →  0
+scoreGm 行距 = 0   →  所有 S1 行的分数互相覆盖（同一 gS1 块 4 行共享同一分数）
+singleCoreScoreSize = 0  →  各核 score 区域重叠
+```
+
+症状：同一 gS1 块内所有行输出同一 pool 集合（TND/PA 全挂、BSND 全过的分水岭）。
+
+**修复**（参照 LIV2 `GetS2Size`/`GetS2SizeForPageAttention` 权威语义）：
+- TND：`s2Size = key.shape.dim(0)`（T2 = 累计 pool 总数）；
+- PA：`s2Size = maxBlockNumPerBatch × blockSize`（block_table.dim(1) × key.blockSize，
+  每 batch 最大 pool 数上界）。
+
+## Bug 4：host workspace 未覆盖 arch35 score 区域（host，随 Bug 3 修复暴露）
+
+arch35 kernel score 区域 = `GetBlockNum()(=aicNum) × s1BaseSize(4|2) × Align(s2Size,128) × 4B`，
+与 arch22 布局公式完全不同（arch35 无 LD 区域）。原 host 公式仅按 arch22 布局计算，
+`CalcWorkspaceSize` 取 `max(arch22 公式, arch35 公式)` 覆盖两代（TND/PA 的 s2Size 为
+累计池数/块槽上界，可能大于 arch22 场景需求）。
+
+## 附带修复：FP8 反量化链路 fail-fast 守卫（host）
+
+审计确认 kernel 侧（arch35）**完全不消费 q_descale/k_descale**（Mmad 直接用 fp8 裸数据，
+缺 dq/dk 缩放），quant_mode=0/1 调用会静默产出错误分数。在 `ParseAndCheckParams` 增加
+显式拒绝（kernel 侧反量化实现并经验证前不放开），避免"返回错误结果"而非报错。
+
+## 修复文件清单
+
+| 文件 | 修改 |
+|------|------|
+| `op_kernel/arch35/pool_key_indexer_kernel.h` | `CalcRunInfo`/`DealActSeqLenIsZero`/`ProcessInvalid` 的 indices 行宽改 outputLen（outputLen 行距）、values 独立行距/切分清理（arch22 同族修复，见前轮记录） |
+| `op_kernel/arch35/pool_key_indexer_service_vector.h` | `CleanInvalidOutput` values 偏移换算；`ExpandAndAppendIndices` 重写：V→S/S→V/S→MTE3/V→S(尾块) 四处同步 + 展开轮数 Min 截断 + 尾块精确写；新增 `VToSSync/SToVSync/SToMTE3Sync` |
+| `op_host/pool_key_indexer_tiling.cpp` | TND/PA `s2Size` 正确赋值（T2 / maxBlockNum×blockSize）；workspace 取两代公式 max；FP8 fail-fast 守卫 |
+| `op_kernel/arch35/pool_key_indexer_service_vector.h` + `arch22/...` | `PkiTypeTraits<fp8_e4m3fn_t>` 特化 → weights 绑 half（编译期修复，见前轮） |
+
+## 验证（Ascend950PR，本机实测）
+
+| 项目 | 结果 |
+|------|------|
+| pytest 42 用例 | **42/42 通过**（修复前 6/42） |
+| 稳定性重复 ×3 | 42/42 ×3 |
+| `boundary_causal_test.py`（2 场景×2 布局×t=0..15 全扫） | ALL PASS |
+| `simple_test.py` | PASSED |
+| 探针矩阵（ps∈{1,8,16} × S2∈{8..300} × topk） | 全部通过 |
+| BSND/TND 同张量 A/B | 双 32/32 |
+| `--soc=ascend910b --pkg` 编译回归 | exit=0 |
+| `--soc=ascend950 --pkg` 编译 | exit=0 |
+
+## 遗留
+
+1. FP8 反量化（quantMode=0/1）kernel 实现仍缺失（host 已 fail-fast 拒绝，不会静默出错）；
+   实现时需在 cube 侧或 Mmad 前挂 dequant，参照 CANN `ascend_anti_quant` arch35 的
+   regbase 指针路径规避 fp8 标量后端限制
+2. PA 0 轴非连续（keyStride0 运行时 stride 分支）运行时验证未覆盖（pytest 无该 dtype 场景组合）
+3. 此前登记的 arch22 ps≥32 且 topk≥6144 崩陷缺陷不变（950 上 42 例不含该组合）
+
+## 经验教训
+
+1. **"本机环境"记录会过时**：文档长期记载"本机 910B3 无 950"，实际机器已换 8×950PR——
+   修复前先用 `npu-smi info`/`get_device_properties` 复核环境，勿信历史记录
+2. **V/S 流水同步是 arch35 与 arch22 的本质差异**：arch22 上 `PipeBarrier<PIPE_V>` 后跟标量
+   读写能工作纯属时序侥幸；跨代移植（arch22→arch35）时所有 `GetValue/SetValue` 与向量/MTE
+   交错点必须逐个补 `HardEvent::V_S/S_V/S_MTE3` 硬同步（仓内权威参照 bsa_select_block_mask）
+3. **"占位 0 待运行时确定"的 tiling 字段=定时炸弹**：s2Size=0 在 arch22 无害（没人用），
+   arch35 新增消费点后爆雷——新增 tiling 字段消费侧时，必须反查所有 layout 分支的该字段
+   赋值路径
+4. A/B 对照（同一物理张量、两种 layout 属性调用）是隔离"数据问题 vs 路径问题"的最快手段；
+   tiling 调试日志（临时 OP_LOGI + ASCEND_SLOG_PRINT_TO_STDOUT=1）一击定位 s2Size=0

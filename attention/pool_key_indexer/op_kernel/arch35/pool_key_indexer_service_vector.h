@@ -37,6 +37,18 @@ template <typename Q_T>
 struct PkiTypeTraits<Q_T, float> {
     using weightsType = float; // W_T=float时，强制weightsType为float
 };
+
+// FP8模式：weights张量为FP16（见op_host def.cpp dtype约束：quant_mode=0/1时 q/k=FP8_E4M3FN,
+// weights=FP16）。W_T必须绑定为half：
+// 1) 功能上weights以half解释才是正确数据
+// 2) 若W_T=fp8_e4m3fn_t，vector侧weights搬运/加载路径（DataCopyPadExtParams<W_T>、
+//    LoadAlign<W_T>等）会实例化fp8标量语义，bisheng后端报错：
+//    "fp8...type only supports pointer operations, scalar float type semantics
+//    are not supported"
+template <>
+struct PkiTypeTraits<fp8_e4m3fn_t> {
+    using weightsType = half;
+};
 template <typename LIT>
 class PoolKeyIndexerServiceVector {
 public:
@@ -72,6 +84,28 @@ private:
                                                   uint32_t validS2Len, int32_t poolTailK,
                                                   int32_t L_orig, uint32_t curS1Idx,
                                                   uint32_t curS1Size);
+
+    // arch35(950) 标量(S pipe)与向量(V pipe)/MTE3 间必须显式硬同步,
+    // PipeBarrier<PIPE_V> 不保证 S 侧读写顺序(参照 bsa_select_block_mask
+    // arch35 的 VToSSync/SToVSync/SToMTE3Sync 模式)
+    __aicore__ inline void VToSSync()
+    {
+        event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+        SetFlag<HardEvent::V_S>(eventID);
+        WaitFlag<HardEvent::V_S>(eventID);
+    }
+    __aicore__ inline void SToVSync()
+    {
+        event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+        SetFlag<HardEvent::S_V>(eventID);
+        WaitFlag<HardEvent::S_V>(eventID);
+    }
+    __aicore__ inline void SToMTE3Sync()
+    {
+        event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
+        SetFlag<HardEvent::S_MTE3>(eventID);
+        WaitFlag<HardEvent::S_MTE3>(eventID);
+    }
 
 protected:
     GlobalTensor<SCORE_T> scoreGm;
@@ -294,11 +328,10 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::CleanInvalidOutput(int6
         copyOutValueParams.blockLen = constInfo_.sparseCount * sizeof(float);
         copyOutValueParams.srcStride = 0;
         copyOutValueParams.dstStride = 0;
-        // invalidS1Offset 是 indices 行偏移(行宽 poolSize>1 时为 outputLen_);
-        // value 行宽为 sparseCount, 需换算行号后重算偏移, 否则 poolSize>1 时
-        // values 写错行(与 arch22 CleanInvalidOutput 的换算保持一致)
+        // invalidS1Offset 是 indices 行偏移(行宽 outputLen_/sparseCount);
+        // value 行宽为 sparseCount, 需换算行号后重算偏移, 否则越界写且本行 value 漏写
         uint64_t idxStride = (poolSize_ > 1) ? outputLen_ : constInfo_.sparseCount;
-        uint64_t valueOffset = (invalidS1Offset / idxStride) * constInfo_.sparseCount;
+        uint64_t valueOffset = (static_cast<uint64_t>(invalidS1Offset) / idxStride) * constInfo_.sparseCount;
         AscendC::DataCopyPad(valueOutGm[valueOffset], valueOutLocal_, copyOutValueParams);
     }
 }
@@ -322,13 +355,23 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ExpandAndAppendIndices(
     PipeBarrier<PIPE_V>();
 
     if (validS2Len > 0) {
+        // V→S: poolIndices(indicesOutLocal_) 的最近写入方为向量操作
+        // (topkOp_ 结尾 DataCopy / CreateVecIndex / -1 Duplicate 填充),
+        // 后续标量 GetValue 必须等其可见, 否则读到陈旧/垃圾 pool 序号
+        VToSSync();
+
         LocalTensor<int32_t> offsetTpl = workBuf;
         for (uint32_t p = 0; p < poolSize; p++) {
             offsetTpl.SetValue(p, static_cast<int32_t>(p));
         }
+        // S→V: 模板标量写需对后续向量 Add 可见, 否则部分 lane 读到陈旧模板
+        SToVSync();
 
         uint32_t outOff = 0;
-        for (uint32_t k = 0; k < validS2Len; k++) {
+        // 展开轮数受 sparseCount(TopK 选池数)截断: validS2Len 为 causal 可见池数,
+        // 可见池多于选中池时, 多余池不应展开(否则越写 outputLen 之外污染尾区/相邻行)
+        uint32_t expandRounds = PkiCommon::Min(validS2Len, sparseCount);
+        for (uint32_t k = 0; k < expandRounds; k++) {
             int32_t base = poolIndices.GetValue(k) * static_cast<int32_t>(poolSize);
             Duplicate<int32_t>(tokenIndices[outOff], base, alignedPoolSize);
             PipeBarrier<PIPE_V>();
@@ -358,18 +401,19 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ExpandAndAppendIndices(
         }
 
         if (visibleTailK > 0) {
-            uint32_t alignedVisibleTailK =
-                PkiCommon::Align(static_cast<uint32_t>(visibleTailK), (uint32_t)8);
-            LocalTensor<int32_t> tailOffsetTpl = workBuf;
+            // 先按 8 对齐清空整个尾区, 再标量精确写 visibleTailK 个尾 token;
+            // 不可按 Align(visibleTailK,8) 对齐写, 否则会越出 tail 容量(ps-1)
+            // 污染行尾/相邻行(与 arch22 修复一致)
+            Duplicate<int32_t>(tokenIndices[tailPos], -1,
+                               PkiCommon::Align(totalOut - tailPos, (uint32_t)8));
+            // V→S: 上述 -1 向量填充必须先于标量 SetValue 落地,
+            // 否则迟到的 V 写会覆盖标量写(实测尾区全 -1)
+            VToSSync();
             for (int32_t t = 0; t < visibleTailK; t++) {
-                tailOffsetTpl.SetValue(t, t);
+                tokenIndices.SetValue(tailPos + t, L_orig - poolTailK + t);
             }
-            PipeBarrier<PIPE_V>();
-            Duplicate<int32_t>(tokenIndices[tailPos],
-                               L_orig - poolTailK, alignedVisibleTailK);
-            PipeBarrier<PIPE_V>();
-            Add<int32_t>(tokenIndices[tailPos], tokenIndices[tailPos],
-                         tailOffsetTpl, alignedVisibleTailK);
+            // SCALAR(SetValue) 写 UB 后由 MTE3(DataCopyPad) 读出, 需硬同步
+            SToMTE3Sync();
         }
     }
 }

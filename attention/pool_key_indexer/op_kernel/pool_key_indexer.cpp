@@ -45,13 +45,20 @@ __global__ __aicore__ void pool_key_indexer(
 
 #if (__CCE_AICORE__ == 310)
     // arch35 (A5/950): radix/histogram TopK, dual-dst Fixpipe, shared UB
-    if (ORIG_DTYPE_QUERY == DT_BF16) {
+    // NOTE: must use `if constexpr`, NOT plain `if`: ORIG_DTYPE_* are -D macros
+    // (per-bin constants), and a plain `if` still instantiates ALL dtype
+    // branches, including fp8_e4m3fn_t. Instantiating the fp8 branch for
+    // bf16/fp16 bins drags scalar-fp8 semantics into codegen, which the
+    // bisheng backend rejects with
+    //   "fp8eXmY/... type only supports pointer operations, scalar float type
+    //    semantics are not supported" (exit code 70).
+    if constexpr (ORIG_DTYPE_QUERY == DT_BF16) {
         INVOKE_PKI_OP_IMPL(PoolKeyIndexerKernel, bfloat16_t, bfloat16_t, int32_t,
                            PKI_LAYOUT(LAYOUT_Q), PKI_LAYOUT(LAYOUT_K));
-    } else if (ORIG_DTYPE_QUERY == DT_FLOAT16) {
+    } else if constexpr (ORIG_DTYPE_QUERY == DT_FLOAT16) {
         INVOKE_PKI_OP_IMPL(PoolKeyIndexerKernel, half, half, int32_t,
                            PKI_LAYOUT(LAYOUT_Q), PKI_LAYOUT(LAYOUT_K));
-    } else if (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN) {
+    } else if constexpr (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN) {
         INVOKE_PKI_OP_IMPL(PoolKeyIndexerKernel, fp8_e4m3fn_t, fp8_e4m3fn_t, int32_t,
                            PKI_LAYOUT(LAYOUT_Q), PKI_LAYOUT(LAYOUT_K));
     }

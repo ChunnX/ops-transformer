@@ -384,10 +384,9 @@ template <typename LIT>
 __aicore__ inline void PoolKeyIndexerKernel<LIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Start)
 {
     if ASCEND_IS_AIV {
-        // poolSize>1 时 indices 输出行宽为 outputLen(=sparseCount*poolSize+poolSize-1),
-        // 清理偏移须与主输出路径(ProcessTopK 的 outputLen_ 行距)一致, 否则 0 池/0 长度
-        // batch 的清理写错地址: 目标行残留脏索引, 且 outputLen 长度的写跨入相邻行区域
-        uint32_t idxOutStride = (constInfo.poolSize > 1) ? (constInfo.sparseCount * constInfo.poolSize + constInfo.poolSize - 1) : constInfo.sparseCount;
+        // poolSize>1 时 indices 输出行宽为 outputLen(见 CalcRunInfo 中 idxOutStride 说明)
+        uint32_t idxOutStride = (constInfo.poolSize > 1) ?
+            (constInfo.sparseCount * constInfo.poolSize + constInfo.poolSize - 1) : constInfo.sparseCount;
         if (constInfo.outputLayout == PkiLayout::TND) {
             uint32_t tSize = static_cast<uint32_t>(actualSeqLengthsGmQ.GetValue(constInfo.batchSize - 1));
             uint32_t tBase = bIdx == 0 ? 0 : static_cast<uint32_t>(actualSeqLengthsGmQ.GetValue(bIdx - 1));
@@ -574,14 +573,17 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::CalcRunInfo(uint32_t loop,
         queryCoreOffset = tndBIdxOffset + runInfo.gS1Idx * constInfo.mBaseSize * constInfo.headDim;
         // B,S1,N1(N2,G)/T,N1(N2,G)
         weightsCoreOffset = actualSeqQPrefixSum * constInfo.qHeadNum + runInfo.n2Idx * constInfo.gSize;
-        // 注意: poolSize>1 时 indices 输出行宽为 outputLen(=sparseCount*poolSize+poolSize-1),
-        // 批次基址须按 outputLen 行距计算(与 ProcessTopK 的 outputLen_ 行距一致), 否则
-        // batch>0 的行基址整体错位, 写入会跨界覆盖相邻 batch 的行, 本 batch 真实位置残留脏数据
-        uint32_t idxOutStride = (constInfo.poolSize > 1) ? (constInfo.sparseCount * constInfo.poolSize + constInfo.poolSize - 1) : constInfo.sparseCount;
         // B,S1,N2,k/T,N2,k
+        // 注意: poolSize>1 时 indices 输出行宽为 outputLen(=sparseCount*poolSize+poolSize-1),
+        // 而非 sparseCount(仅 poolSize==1 时二者相等), 否则 batch>0 的行基址错位,
+        // 写入会跨界覆盖相邻行(ProcessTopK 按 outputLen_ 行宽寻址, 见 service_vector)
+        uint32_t idxOutStride = (constInfo.poolSize > 1) ?
+            (constInfo.sparseCount * constInfo.poolSize + constInfo.poolSize - 1) : constInfo.sparseCount;
         indiceOutCoreOffset =
             actualSeqQPrefixSum * constInfo.kHeadNum * idxOutStride + runInfo.n2Idx * idxOutStride;
-        // values 输出行宽恒为 sparseCount(与 indices 的 outputLen 行宽不同), 基址按自身行距
+        // values 输出行宽恒为 sparseCount(与 indices 的 outputLen 行宽不同),
+        // batch>0 时若复用 indiceOutCoreOffset(poolSize>1) 会按 outputLen 行距
+        // 错位寻址, 导致 valueOutGm 写到相邻 batch 的错误位置
         valueOutCoreOffset =
             actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount + runInfo.n2Idx * constInfo.sparseCount;
     }
@@ -618,7 +620,8 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::ProcessInvalid()
     if ASCEND_IS_AIV {
         uint32_t aivCoreNum = GetBlockNum() * 2; // 2 means c:v = 1:2
         // poolSize>1 时 indices 输出行宽为 outputLen(见 CalcRunInfo 中 idxOutStride 说明)
-        uint32_t idxOutStride = (constInfo.poolSize > 1) ? (constInfo.sparseCount * constInfo.poolSize + constInfo.poolSize - 1) : constInfo.sparseCount;
+        uint32_t idxOutStride = (constInfo.poolSize > 1) ?
+            (constInfo.sparseCount * constInfo.poolSize + constInfo.poolSize - 1) : constInfo.sparseCount;
         uint64_t totalOutputSize =
             constInfo.batchSize * constInfo.qSeqSize * constInfo.kHeadNum * idxOutStride;
         uint64_t singleCoreSize =
@@ -641,7 +644,12 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::ProcessInvalid()
             uint64_t valueBase = tmpBlockIdx * singleCoreValueSize;
             if (valueBase < totalValueSize) {
                 uint64_t valueDealSize =
-                    (valueBase + singleCoreValueSize <= totalValueSize) ? singleCoreValueSize : totalValueSize - valueBase;
+                    (valueBase + singleCoreValueSize <= totalValueSize) ? singleCoreValueSize :
+                                                                          totalValueSize - valueBase;
+                event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+                SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+                WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+
                 GlobalTensor<uint32_t> valueOutGmTmp;
                 valueOutGmTmp.SetGlobalBuffer((__gm__ uint32_t *)valueOutGm.GetPhyAddr());
                 GlobalTensor<uint32_t> valueOut = valueOutGmTmp[valueBase];

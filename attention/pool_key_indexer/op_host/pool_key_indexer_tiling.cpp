@@ -244,6 +244,18 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
     const gert::Tensor *qDescaleTensor = context_->GetOptionalInputTensor(PKI_Q_DESCALE_INDEX);
     const gert::Tensor *kDescaleTensor = context_->GetOptionalInputTensor(PKI_K_DESCALE_INDEX);
 
+    // ---- FP8 dequant kernel path not yet implemented: fail fast ----
+    // kernel 侧(arch35)当前不消费 q_descale/k_descale(Mmad 直接用 fp8 裸数据计算,
+    // 见 op_kernel/arch35/pool_key_indexer_service_cube.h), quant_mode=0/1 调用会
+    // 静默产出错误分数(缺 dq/dk 缩放)。在 kernel 侧反量化实现并经 950 验证前,
+    // 显式拒绝而非返回错误结果(参照 docs/build_fix_record.md FP8 审计记录)
+    if (info.quantMode == PKI_QUANT_FP8_PER_TOKEN || info.quantMode == PKI_QUANT_MXFP8) {
+        OP_LOGE(context_, "quant_mode=%d is not supported yet: kernel dequant path "
+                          "(q_descale/k_descale consumption) is not implemented",
+                info.quantMode);
+        return ge::GRAPH_FAILED;
+    }
+
     if (info.quantMode == PKI_QUANT_NONE) {
         // quantMode=-1: no quantization
         // descale must be null
@@ -391,7 +403,8 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
         } else {
             info.keyStride0 = info.blockSize * info.n2Size * info.headDim;
         }
-        // S2 computed at runtime from actual_seq_k
+        // S2 = maxBlockNumPerBatch * blockSize, 在 block_table 解析处设置
+        // (kernel kSeqSize 用作 scoreGm 行距, 不可为 0)
         info.s2Size = 0;
     } else if (info.layoutK == PkiDataLayout::BSND) {
         OP_CHECK_IF(keyShape->GetStorageShape().GetDimNum() != 4,
@@ -416,13 +429,16 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
                     OP_LOGE(context_, "TND key N2(%ld) must be %u", keyShape->GetStorageShape().GetDim(1), info.n2Size),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(static_cast<uint32_t>(keyShape->GetStorageShape().GetDim(2)) != info.headDim,
-                    OP_LOGE(context_, "TND key D(%ld) must be %u(128)", keyShape->GetStorageShape().GetDim(2), info.headDim),
+                    OP_LOGE(context_, "TND key D(%ld) must be %u(128)", keyShape->GetStorageShape().GetDim(2),
+                            info.headDim),
                     return ge::GRAPH_FAILED);
-        info.s2Size = 0; // determined from actual_seq_k
+        // T2 = 累计 pool 总数。kernel 侧 kSeqSize 用于 scoreGm 行距
+        // (arch35: Align(kSeqSize, s2BaseSize) 为 score 行 stride) 与每核 score
+        // 区域大小, 取 0 会导致所有行的分数互相覆盖(参照 LIV2 GetS2Size 的 TND 分支)
+        info.s2Size = static_cast<uint32_t>(keyShape->GetStorageShape().GetDim(0));
         // TND: kernel KeyNd2Nz uses tensorKeyOffset for contiguous addressing, keyStride0 not used
         info.keyStride0 = 0;
     }
-
     // block_table for PA
     if (info.pageAttention) {
         const gert::Tensor *blockTableTensor = context_->GetOptionalInputTensor(PKI_BLOCK_TABLE_INDEX);
@@ -433,6 +449,10 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
                     OP_LOGE(context_, "block_table must be 2D (B, maxBlockNumPerSeq)"),
                     return ge::GRAPH_FAILED);
         info.maxBlockNumPerBatch = btShape->GetStorageShape().GetDim(1);
+        // S2 = maxBlockNumPerBatch * blockSize(每 batch 最大 pool 数上界, 参照 LIV2
+        // GetS2SizeForPageAttention)。kernel 侧 kSeqSize 用于 scoreGm 行距与每核
+        // score 区域大小, 取 0 会导致所有行的分数互相覆盖
+        info.s2Size = info.maxBlockNumPerBatch * info.blockSize;
     }
 
     // ---- Tensor shape validation ----
@@ -879,6 +899,10 @@ ge::graphStatus PoolKeyIndexerTiling::CalcWorkspaceSize(PoolKeyIndexerTilingInfo
     constexpr uint64_t PKI_BLOCK_CUBE_SIZE = 16;
     constexpr uint64_t PKI_WS_DOUBLE = 2;
     constexpr uint64_t PKI_LD_PARAM_NUM = 16;
+    // arch35(950) kernel 常量(见 op_kernel/arch35/pool_key_indexer_kernel.h)
+    constexpr uint64_t PKI35_S2_BASE_SIZE = 128;
+    constexpr uint64_t PKI35_S1_BASE_SIZE = 4;
+    constexpr uint64_t PKI35_S1_BASE_SIZE_SMALL = 2;
 
     uint64_t offset = 0;
     uint32_t aicNum = info.aicNum;
@@ -891,6 +915,17 @@ ge::graphStatus PoolKeyIndexerTiling::CalcWorkspaceSize(PoolKeyIndexerTilingInfo
     uint64_t scoreGmSize = RoundUp64(
         static_cast<uint64_t>(aicNum) * PKI_WS_DOUBLE * mBaseSizeAlign * PKI_S2_BASE_SIZE * PKI_SCORE_T_SIZE,
         PKI_GM_ALIGN_BYTES);
+    // arch35 kernel score 区域: GetBlockNum()(=aicNum) × s1BaseSize(4|2) ×
+    // Align(s2Size, 128) × sizeof(SCORE_T)(arch35 不用 LD 区域, 仅此一段;
+    // TND/PA 的 s2Size 为累计池数/块槽上界, 可能大于 arch22 场景, 需取 max 覆盖)
+    uint64_t s1BaseSize35 =
+        (info.sparseCount > PKI_BASE_TOPK) ? PKI35_S1_BASE_SIZE_SMALL : PKI35_S1_BASE_SIZE;
+    uint64_t s2Size35Align =
+        (info.s2Size + PKI35_S2_BASE_SIZE - 1) / PKI35_S2_BASE_SIZE * PKI35_S2_BASE_SIZE;
+    uint64_t scoreGmSize35 = RoundUp64(
+        static_cast<uint64_t>(aicNum) * s1BaseSize35 * s2Size35Align * PKI_SCORE_T_SIZE,
+        PKI_GM_ALIGN_BYTES);
+    scoreGmSize = std::max(scoreGmSize, scoreGmSize35);
     tilingData_.set_wsOffScore(offset);
     offset += scoreGmSize;
 

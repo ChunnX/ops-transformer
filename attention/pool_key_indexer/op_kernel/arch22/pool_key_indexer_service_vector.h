@@ -41,6 +41,13 @@ struct PkiTypeTraits<Q_T, float> {
     using weightsType = float; // W_T=float时，强制weightsType为float
 };
 
+// FP8模式（仅arch35实际实例化，此处保持同构以防误用）：weights张量为FP16，
+// W_T绑定half，避免vector侧weights路径实例化fp8标量语义
+template <>
+struct PkiTypeTraits<fp8_e4m3fn_t> {
+    using weightsType = half;
+};
+
 template <typename LIT>
 class PoolKeyIndexerServiceVector {
 public:
