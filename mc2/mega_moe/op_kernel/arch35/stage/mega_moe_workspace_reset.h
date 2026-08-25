@@ -59,6 +59,10 @@ __aicore__ inline int64_t CalcResetFlagElementCount(const MegaMoeTilingData *til
             Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->bs), static_cast<int64_t>(L1_TILE_M_256));
         flagElementCount += tokenGroupCount * static_cast<int64_t>(tilingData->sharedExpertNum) * INT_CACHELINE;
     }
+    if (useMteA8W8Wave) {
+        // 每个 AIV1 RoutePlan producer 一条完成 flag，另加一条全局 ready。
+        flagElementCount += static_cast<int64_t>(tilingData->aicNum + 1U) * INT_CACHELINE;
+    }
     return flagElementCount;
 }
 

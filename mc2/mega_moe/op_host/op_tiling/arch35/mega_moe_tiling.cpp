@@ -203,6 +203,8 @@ void PrintWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
     OP_LOGD(nodeName, "flagGmmToEpiloguePtr: %ld\n", info->flagGmmToEpiloguePtr);
     OP_LOGD(nodeName, "gmm2ReadyPtr:               %ld\n", info->gmm2ReadyPtr);
     OP_LOGD(nodeName, "gmm2CombineSyncCounterPtr:  %ld\n", info->gmm2CombineSyncCounterPtr);
+    OP_LOGD(nodeName, "dispatchRoutePlanFlagPtr:   %ld\n", info->dispatchRoutePlanFlagPtr);
+    OP_LOGD(nodeName, "dispatchRouteIndexPtr:      %ld\n", info->dispatchRouteIndexPtr);
     OP_LOGD(nodeName, "gmm2MmadResPtr:             %ld\n", info->gmm2MmadResPtr);
     OP_LOGD(nodeName, "workspaceSize:              %ld\n", info->workspaceSize);
 }
@@ -956,6 +958,9 @@ static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
     if (tilingData->sharedExpertNum > 0) {
         uint64_t tokenGroupCount = ops::CeilDiv<uint64_t>(tilingData->bs, L1_TILE_M_256);
         flagElementCount += tokenGroupCount * tilingData->sharedExpertNum * INT_CACHELINE;
+    }
+    if (useMteA8W8Wave) {
+        flagElementCount += static_cast<uint64_t>(tilingData->aicNum + 1U) * INT_CACHELINE;
     }
     return flagElementCount;
 }

@@ -112,6 +112,11 @@ struct WorkspaceInfo {
     GM_ADDR flagGmmToEpiloguePtr{nullptr};
     GM_ADDR gmm2ReadyPtr{nullptr};
     GM_ADDR gmm2CombineSyncCounterPtr{nullptr};
+    // Dispatch RoutePlan 的独立核间同步区。每个 AIV1 producer 和最终 ready
+    // 各占一条 cache line，不复用 Dispatch->GMM1 的计数语义。
+    GM_ADDR dispatchRoutePlanFlagPtr{nullptr};
+    // 按 cumsum 全局 row 布局保存各 (expert, rank) 的 compact topkIndex。
+    GM_ADDR dispatchRouteIndexPtr{nullptr};
     GM_ADDR cumsumInfoPtr{nullptr};
     GM_ADDR gmm1MmadResPtr{nullptr};
     GM_ADDR gmm2MmadResPtr{nullptr};
@@ -232,6 +237,20 @@ struct WorkspaceInfo {
                                                          static_cast<int64_t>(L1_TILE_M_256));
             workspaceSize += SIZE_INT_32 * tokenGroupCount *
                              static_cast<int64_t>(tilingData->sharedExpertNum) * INT_CACHELINE;
+        }
+
+        // RoutePlan 只服务 MTE A8W8 wave 路径。同步 flag 仍放在连续 flag
+        // workspace 尾部，由 ResetFlagList 与其他同步量一起清零；Route Table
+        // 本身随后单独 512B 对齐，不需要预清零。
+        if (useMteA8W8Wave) {
+            dispatchRoutePlanFlagPtr = base + workspaceSize;
+            workspaceSize += static_cast<int64_t>(tilingData->aicNum + 1U) *
+                             INT_CACHELINE * SIZE_INT_32;
+            workspaceSize = Ops::Base::CeilAlign(workspaceSize, static_cast<int64_t>(ALIGN_512));
+            dispatchRouteIndexPtr = base + workspaceSize;
+            workspaceSize += Ops::Base::CeilAlign(
+                static_cast<int64_t>(tilingData->maxOutputSize) * SIZE_INT_32,
+                static_cast<int64_t>(ALIGN_512));
         }
 
         // A8W4 / Combine 量化路径的条件 workspace 分配。

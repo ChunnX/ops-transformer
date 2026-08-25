@@ -33,6 +33,7 @@
 #include "stage/mega_moe_workspace_reset.h"
 #include "stage/mega_moe_shared_expert_input.h"
 #include "stage/mega_moe_token_dispatch.h"
+#include "stage/mega_moe_dispatch_route_plan.h"
 #include "stage/mega_moe_gmm1_activation.h"
 #include "stage/mega_moe_gmm2_combine.h"
 #include "stage/mega_moe_unpermute.h"
@@ -1448,6 +1449,10 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() == 1U) {
             PrepareDispatchCounts();
+            // 将所有 (expert, rank) sendMask 只压紧一次。后续提交会把每个
+            // Dispatch wave 的 route queue 切换为消费这张共享 Route Table。
+            BuildDispatchRouteIndexTable(
+                tokenDispatchConfig_, params_, tokenDispatchScratch_);
         }
     }
 
