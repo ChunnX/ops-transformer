@@ -38,6 +38,7 @@ struct TokenDispatchConfig {
 template <typename ActivationType>
 struct TokenDispatchScratch {
     GlobalTensor<int32_t> expertRevNumsGlobalTensor;
+    GlobalTensor<int32_t> cumsumInfoGlobalTensor;
     LocalTensor<int32_t> topkIndexTensor;
     LocalTensor<uint8_t> maskBatchTensor;
     LocalTensor<uint32_t> maskBatchU32Tensor;
@@ -66,9 +67,11 @@ __aicore__ inline bool HasWaveDispatchRows(const WaveDispatchCoreRange &range)
 }
 
 template <typename ActivationType>
-__aicore__ inline WaveDispatchCoreRange PlanWaveExpertDispatch(
-    const TokenDispatchConfig &context, const MoeStageCommonConfig &common, const BlockJobContext &blockJob,
-    TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId)
+__aicore__ inline WaveDispatchCoreRange PlanWaveExpertDispatch(const TokenDispatchConfig &context,
+                                                               const MoeStageCommonConfig &common,
+                                                               const BlockJobContext &blockJob,
+                                                               TokenDispatchScratch<ActivationType> &scratch,
+                                                               uint32_t localExpertId)
 {
     uint32_t expertPrefixIndex = (localExpertId + 1U) * common.worldSize - 1U;
     int32_t expertGlobalRowEndValue = scratch.cumsumInfoTensor.GetValue(expertPrefixIndex);
@@ -392,8 +395,7 @@ __aicore__ inline uint32_t FindDispatchSourceRank(const MoeStageCommonConfig &co
 
 // Wave 专用路径：本核只扫描与连续专家行区间相交的 source rank，未分到行的核直接返回。
 template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
-__aicore__ inline void DispatchWaveExpertRows(const TokenDispatchConfig &context,
-                                              const MoeStageCommonConfig &common,
+__aicore__ inline void DispatchWaveExpertRows(const TokenDispatchConfig &context, const MoeStageCommonConfig &common,
                                               const MoeSyncWorkspaceLayout &syncLayout, const Params &params,
                                               GM_ADDR *winRankAddr, TokenDispatchScratch<ActivationType> &scratch,
                                               uint32_t localExpertId, const WaveDispatchCoreRange &coreRange)
@@ -444,8 +446,7 @@ __aicore__ inline uint32_t RunWaveExpertDispatchStage(
     if (GetSubBlockIdx() != 1U) {
         return 0U;
     }
-    WaveDispatchCoreRange coreRange =
-        PlanWaveExpertDispatch(context, common, blockJob, scratch, localExpertId);
+    WaveDispatchCoreRange coreRange = PlanWaveExpertDispatch(context, common, blockJob, scratch, localExpertId);
     if (HasWaveDispatchRows(coreRange)) {
         DispatchWaveExpertRows<ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch>(
             context, common, syncLayout, params, winRankAddr, scratch, localExpertId, coreRange);
@@ -455,10 +456,12 @@ __aicore__ inline uint32_t RunWaveExpertDispatchStage(
 
 // 非 layered 路径统一在 GMM pipeline 前完成全部专家 Dispatch。
 template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
-__aicore__ inline void RunAllWaveExpertDispatchStages(
-    const TokenDispatchConfig &context, const MoeStageCommonConfig &common, const BlockJobContext &blockJob,
-    const MoeSyncWorkspaceLayout &syncLayout, const Params &params, GM_ADDR *winRankAddr,
-    TokenDispatchScratch<ActivationType> &scratch)
+__aicore__ inline void RunAllWaveExpertDispatchStages(const TokenDispatchConfig &context,
+                                                      const MoeStageCommonConfig &common,
+                                                      const BlockJobContext &blockJob,
+                                                      const MoeSyncWorkspaceLayout &syncLayout, const Params &params,
+                                                      GM_ADDR *winRankAddr,
+                                                      TokenDispatchScratch<ActivationType> &scratch)
 {
     for (uint32_t expertIdx = 0U; expertIdx < common.moeExpertPerRank; ++expertIdx) {
         RunWaveExpertDispatchStage<ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch>(
@@ -567,7 +570,8 @@ __aicore__ inline void ComputeCompactExpertCountTables(LocalTensor<int32_t> coun
 }
 
 // Wave 进入逐专家流水前一次准备完整 count 表；每个物理 block 只发布一次 ready。
-template <typename ActivationType>
+// W4 Wave-ahead 路径同时将 prefix 持久化到 GM，避免后续 Activation 覆盖 UB 后丢失 Dispatch 状态。
+template <bool PersistCumsum = false, typename ActivationType>
 __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfig &common,
                                                        const BlockWorkspaceContext &countWorkspace,
                                                        const Params &params,
@@ -584,18 +588,20 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     GlobalTensor<int32_t> compactCountGlobal;
     compactCountGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.compactCountRecvPtr));
     DataCopyPad(scratch.cumsumInfoTensor, compactCountGlobal,
-                {1U, rawCountElementCount * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U},
-                {true, 0U, 0U, 0U});
+                {1U, rawCountElementCount * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U}, {true, 0U, 0U, 0U});
     SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
 
-    ComputeCompactExpertCountTables(scratch.cumsumInfoTensor, scratch.expertTokenNumsOutTensor,
-                                    common.moeExpertPerRank, common.worldSize);
+    ComputeCompactExpertCountTables(scratch.cumsumInfoTensor, scratch.expertTokenNumsOutTensor, common.moeExpertPerRank,
+                                    common.worldSize);
     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
-    uint64_t countOffset =
-        GetExpertCountWorkspaceOffset(countWorkspace, common.moeExpertPerRank, 0U, true);
+    uint64_t countOffset = GetExpertCountWorkspaceOffset(countWorkspace, common.moeExpertPerRank, 0U, true);
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
     DataCopyPad(scratch.expertRevNumsGlobalTensor[countOffset], scratch.expertTokenNumsOutTensor,
                 {1U, common.moeExpertPerRank * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U});
+    if constexpr (PersistCumsum) {
+        DataCopyPad(scratch.cumsumInfoGlobalTensor, scratch.cumsumInfoTensor,
+                    {1U, rawCountElementCount * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U});
+    }
     SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID2>();
 
     __gm__ int32_t *countTableReady =
@@ -604,10 +610,34 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     WriteGmByPassDCache(countTableReady, static_cast<int32_t>(1));
 }
 
+// W4 的 Activation/SwiGLU 会覆盖从 UB 0 开始的 prefix 表。每次进入新专家 Dispatch 前，
+// 从当前物理 block 的 GM 备份恢复“上一专家尾值 + 当前专家各 source-rank 前缀”。
+// 起点向下对齐 32B，兼顾 MTE 地址约束，并避免重载与当前专家无关的整张表。
+template <typename ActivationType>
+__aicore__ inline void ReloadWaveExpertDispatchCumsum(const MoeStageCommonConfig &common,
+                                                      TokenDispatchScratch<ActivationType> &scratch,
+                                                      uint32_t localExpertId)
+{
+    if constexpr (g_coreType == AIC) {
+        return;
+    }
+    if (GetSubBlockIdx() != 1U) {
+        return;
+    }
+
+    constexpr uint32_t INT32_PER_32B = ALIGN_32 / sizeof(int32_t);
+    uint32_t requiredBeginIndex = localExpertId == 0U ? 0U : localExpertId * common.worldSize - 1U;
+    uint32_t alignedBeginIndex = requiredBeginIndex / INT32_PER_32B * INT32_PER_32B;
+    uint32_t requiredEndIndex = (localExpertId + 1U) * common.worldSize;
+    uint32_t reloadElementCount = requiredEndIndex - alignedBeginIndex;
+    DataCopyPad(scratch.cumsumInfoTensor[alignedBeginIndex], scratch.cumsumInfoGlobalTensor[alignedBeginIndex],
+                {1U, reloadElementCount * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U}, {true, 0U, 0U, 0U});
+    SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
+}
+
 template <typename ActivationType>
 __aicore__ inline void ExportCompactExpertTokenCounts(const MoeStageCommonConfig &common,
-                                                      const BlockWorkspaceContext &countWorkspace,
-                                                      const Params &params,
+                                                      const BlockWorkspaceContext &countWorkspace, const Params &params,
                                                       TokenDispatchScratch<ActivationType> &scratch)
 {
     if constexpr (g_coreType == AIC) {
@@ -621,8 +651,7 @@ __aicore__ inline void ExportCompactExpertTokenCounts(const MoeStageCommonConfig
     GlobalTensor<int32_t> expertRevTokenNums;
     expertRevTokenNums.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.expertRevTokenNumsPtr));
     DataCopyPad(scratch.expertTokenNumsOutTensor, expertRevTokenNums[countOffset],
-                {1U, common.moeExpertPerRank * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U},
-                {true, 0U, 0U, 0U});
+                {1U, common.moeExpertPerRank * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U}, {true, 0U, 0U, 0U});
     SyncFuncStatic<HardEvent::MTE2_MTE3, SYNC_EVENT_ID2>();
 
     GlobalTensor<int32_t> expertTokenNumsOut;
