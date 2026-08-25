@@ -14,7 +14,7 @@
  */
 
 #include <gtest/gtest.h>
-#include "all_gather_matmul_v3_host_ut_param.h"
+#include "test_all_gather_matmul_v3_host_ut_param.h"
 #include "mc2_infer_shape_case_executor.h"
 
 namespace AllGatherMatmulV3UT {
@@ -37,8 +37,19 @@ TEST_P(AllGatherMatmulV3InferShapeTest, param)
     auto param = GetParam();
     std::cout << "[TEST_CASE] " << param.case_name << std::endl;
 
-    std::vector<gert::InfershapeContextPara::TensorDescription> inputTensorDesc(
-        {param.x1, param.x2, param.x1Scale, param.x2Scale});
+    // def 输入顺序: context(0) x1(1) x2(2) bias(3) x1_scale(4) x2_scale(5)，仅放入已实例化的输入
+    std::vector<gert::InfershapeContextPara::TensorDescription> inputTensorDesc;
+    inputTensorDesc.emplace_back(param.context);
+    if (param.inputInstance[1] == 1)
+        inputTensorDesc.emplace_back(param.x1);
+    if (param.inputInstance[2] == 1)
+        inputTensorDesc.emplace_back(param.x2);
+    if (param.inputInstance[3] == 1)
+        inputTensorDesc.emplace_back(param.bias);
+    if (param.inputInstance[4] == 1)
+        inputTensorDesc.emplace_back(param.x1Scale);
+    if (param.inputInstance[5] == 1)
+        inputTensorDesc.emplace_back(param.x2Scale);
     std::vector<gert::InfershapeContextPara::TensorDescription> outputTensorDesc({param.y, param.gatherOut});
 
     gert::InfershapeContextPara infershapeContextPara(
@@ -50,7 +61,8 @@ TEST_P(AllGatherMatmulV3InferShapeTest, param)
          {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.rankSize)},
          {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.groupSize)},
          {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.yDtypeAttr)},
-         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.commMode)}});
+         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.commMode)}},
+        param.inputInstance, param.outputInstance);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", param.rankNum}};
 
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, param.expectResult, param.expectOutputShape);

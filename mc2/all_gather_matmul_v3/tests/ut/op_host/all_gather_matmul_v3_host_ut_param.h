@@ -79,33 +79,6 @@ struct AllGatherMatmulV3TilingUtParam : public AllGatherMatmulV3HostUtParamBase 
     }
 };
 
-struct AllGatherMatmulV3InferShapeUtParam : public AllGatherMatmulV3HostUtParamBase {
-    gert::InfershapeContextPara::TensorDescription x1 = ID_DEFAULT;
-    gert::InfershapeContextPara::TensorDescription x2 = ID_DEFAULT;
-    gert::InfershapeContextPara::TensorDescription x1Scale = ID_DEFAULT;
-    gert::InfershapeContextPara::TensorDescription x2Scale = ID_DEFAULT;
-    gert::InfershapeContextPara::TensorDescription y = ID_DEFAULT;
-    gert::InfershapeContextPara::TensorDescription gatherOut = ID_DEFAULT;
-    std::vector<std::vector<int64_t>> expectOutputShape;
-
-    explicit AllGatherMatmulV3InferShapeUtParam(const csv_map &csvMap)
-        : AllGatherMatmulV3HostUtParamBase(csvMap)
-    {
-        GetTensorGE(csvMap, "x1_shape", "x1_dtype", "x1_format", this->x1);
-        GetTensorGE(csvMap, "x2_shape", "x2_dtype", "x2_format", this->x2);
-        GetTensorGE(csvMap, "x1_scale_shape", "x1_scale_dtype", "x1_scale_format", this->x1Scale);
-        GetTensorGE(csvMap, "x2_scale_shape", "x2_scale_dtype", "x2_scale_format", this->x2Scale);
-        this->y = gert::InfershapeContextPara::TensorDescription(
-            {}, Str2DTypeGE(ReadMap(csvMap, "y_dtype", "BF16")), ge::FORMAT_ND);
-        this->gatherOut = gert::InfershapeContextPara::TensorDescription(
-            {}, Str2DTypeGE(ReadMap(csvMap, "gather_out_dtype", "FLOAT8_E4M3FN")), ge::FORMAT_ND);
-        if (this->expectResult == ge::GRAPH_SUCCESS) {
-            this->expectOutputShape.emplace_back(GetShapeArr(ReadMap(csvMap, "expect_y_shape")));
-            this->expectOutputShape.emplace_back(GetShapeArr(ReadMap(csvMap, "expect_gather_out_shape")));
-        }
-    }
-};
-
 } // namespace AllGatherMatmulV3UT
 
 #endif // ALL_GATHER_MATMUL_V3_HOST_UT_PARAM_H
