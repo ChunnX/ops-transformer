@@ -47,22 +47,25 @@ namespace ge {
 	* @par Restrictions:
 	* Warning: THIS FUNCTION IS EXPERIMENTAL. Please do not use.
 	*/
-	REG_OP (FfnWorkerBatching)
-		.INPUT(schedule_context, TensorType({DT_INT8}))
-		.OUTPUT(y, TensorType({DT_INT8, DT_FLOAT16, DT_BFLOAT16}))
-		.OUTPUT(group_list, TensorType({DT_INT64}))
-		.OUTPUT(session_ids, TensorType({DT_INT32}))
-		.OUTPUT(micro_batch_ids, TensorType({DT_INT32}))
-		.OUTPUT(token_ids, TensorType({DT_INT32}))
-		.OUTPUT(expert_offsets, TensorType({DT_INT32}))
-		.OUTPUT(dynamic_scale, TensorType({DT_FLOAT32}))
-		.OUTPUT(actual_token_num, TensorType({DT_INT64}))
-		.REQUIRED_ATTR(expert_num, Int)
-		.REQUIRED_ATTR(max_out_shape, ListInt)
-		.ATTR(token_dtype, Int, 0)
-		.ATTR(need_schedule, Int, 0)
-		.ATTR(layer_num, Int, 0)
-		.OP_END_FACTORY_REG(FfnWorkerBatching)
+#ifndef OPS_PROTO_DEF_FFNWORKERBATCHING
+#define OPS_PROTO_DEF_FFNWORKERBATCHING
+REG_OP(FfnWorkerBatching)
+    .INPUT(schedule_context, TensorType({DT_INT8}))
+    .OUTPUT(y, TensorType({DT_INT8, DT_FLOAT16, DT_BFLOAT16}))
+    .OUTPUT(group_list, TensorType({DT_INT64}))
+    .OUTPUT(session_ids, TensorType({DT_INT32}))
+    .OUTPUT(micro_batch_ids, TensorType({DT_INT32}))
+    .OUTPUT(token_ids, TensorType({DT_INT32}))
+    .OUTPUT(expert_offsets, TensorType({DT_INT32}))
+    .OUTPUT(dynamic_scale, TensorType({DT_FLOAT32}))
+    .OUTPUT(actual_token_num, TensorType({DT_INT64}))
+    .REQUIRED_ATTR(expert_num, Int)
+    .REQUIRED_ATTR(max_out_shape, ListInt)
+    .ATTR(token_dtype, Int, 0)
+    .ATTR(need_schedule, Int, 0)
+    .ATTR(layer_num, Int, 0)
+    .OP_END_FACTORY_REG(FfnWorkerBatching)
+#endif // OPS_PROTO_DEF_FFNWORKERBATCHING
 
 } // namespace ge
 
