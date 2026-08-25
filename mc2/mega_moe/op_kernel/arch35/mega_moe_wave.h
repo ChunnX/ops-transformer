@@ -1290,7 +1290,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineW
                     params_, waveCombineScratch_,
                     static_cast<uint64_t>(combineState.expertBeforeCnt) + groupProcessBegin,
                     groupProcessCount, 0U, &combineTraceMetrics);
-                CombineWaveTokenRangeStaggered<CombineQuantMode>(
+                CombineWaveTokenRange<CombineQuantMode>(
                     waveCombineConfig_, bufferConfig, waveCombineScratch_, params_,
                     combineAddrInfo.gmm2OutGlobal, groupProcessBegin, groupProcessCount,
                     0U, rowSequence, &combineTraceMetrics);
