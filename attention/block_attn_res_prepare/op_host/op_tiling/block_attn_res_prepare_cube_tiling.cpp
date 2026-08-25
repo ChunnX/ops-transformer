@@ -140,8 +140,7 @@ bool BlockAttnResPrepareCubeTiling::SelectCubeTileShape()
                 const uint64_t reduceUbElems = FP32_REG_ELEMS;
                 const uint64_t softmaxUbElems = static_cast<uint64_t>(STAT_VECTOR_COUNT) * candidateSAlign;
 
-                const uint64_t l1Bytes =
-                    (qL1BufferNum * qL1Elems + vL1BufferNum * vL1Elems + eL1Elems) * FP32_BYTES;
+                const uint64_t l1Bytes = (qL1BufferNum * qL1Elems + vL1BufferNum * vL1Elems + eL1Elems) * FP32_BYTES;
                 const uint64_t ubBytes =
                     (vUbBufferNum * vUbElems + dotUbElems + reduceUbElems + softmaxUbElems) * FP32_BYTES;
                 const uint64_t mm1BaseK = std::min<uint64_t>(baseDAlign, CUBE_MM1_MAX_BASE_K);
@@ -192,8 +191,8 @@ ge::graphStatus BlockAttnResPrepareCubeTiling::DoOpTiling()
 {
     OP_CHECK_IF(baseT_ == 0U || baseD_ == 0U,
                 OP_LOGE(context_->GetNodeName(),
-                        "Cube tile was not selected: T=%lu, N=%lu, S=%lu, D=%lu, baseT=%u, baseS=%u, baseD=%u",
-                        totalT_, totalN_, totalS_, totalD_, baseT_, baseS_, baseD_),
+                        "Cube tile was not selected: T=%lu, N=%lu, S=%lu, D=%lu, baseT=%u, baseS=%u, baseD=%u", totalT_,
+                        totalN_, totalS_, totalD_, baseT_, baseS_, baseD_),
                 return ge::GRAPH_FAILED);
 
     sTileNum_ = static_cast<uint32_t>(CeilDiv<uint64_t>(totalS_, baseS_));
