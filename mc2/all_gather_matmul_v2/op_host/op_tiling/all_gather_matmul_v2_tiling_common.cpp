@@ -49,15 +49,13 @@ inline void AllGatherMatmulV2ExceptionImplWrapper(aclrtExceptionInfo *args, void
     }
     Mc2Exception::Mc2ExceptionImplTmp(args, userdata, "AllGatherMatmulV2");
 
-    // TODO: 待 AllGatherMatmulV2 TilingData 加入 x1QuantMode 后，传入 quantModeOffset 和两个不同 offset
-    // 当前无 x1QuantMode，两个 offset 相同，跳过量化检测
     Mc2Exception::Mc2DumpTilingData(args, "AllGatherMatmulV2",
         11U,   // tilingGmArgIdx
         0U,    // argsOffset
         10U,   // workspaceGmArgIdx
-        0U,    // quantModeOffset (暂无)
+        offsetof(Mc2Tiling::AllGatherMatmulTilingDataV2, quantMode),             // quantModeOffset
         offsetof(Mc2Tiling::AllGatherMatmulTilingDataV2, workspaceLayout),       // wsLayoutOffsetNonQuant
-        offsetof(Mc2Tiling::AllGatherMatmulTilingDataV2, workspaceLayout));      // wsLayoutOffsetQuant (暂同)
+        offsetof(Mc2Tiling::AllGatherMatmulTilingDataFp8, workspaceLayout));     // wsLayoutOffsetQuant
 }
 
 __attribute__((constructor)) void RegisterAllGatherMatmulV2ExceptionFunc()

@@ -814,6 +814,7 @@ void AllToAllMxQuantMatmulTilingBase::SetTilingInfo(AlltoAllMatmulTilingInfo &ti
     tilingInfo.dynamicExtraSpace = 0UL;
     tilingInfo.x1QuantMode = static_cast<uint32_t>(X1_QUANTMODE_VALUES);
     tilingInfo.x2QuantMode = static_cast<uint32_t>(X2_QUANTMODE_VALUES);
+    tilingInfo.tilingKey = GetTilingKey();
 }
 
 /**

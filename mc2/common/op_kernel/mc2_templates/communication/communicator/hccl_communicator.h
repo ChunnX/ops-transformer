@@ -17,7 +17,7 @@
 #define MC2_HCCL_COMMUNICATOR_H
 
 #include "../primitives/hccl_primitives.h"
-#include "../../mc2_runtime_info.h"
+#include "../../../mc2_runtime_info.h"
 
 namespace MC2KernelTemplate {
 /**

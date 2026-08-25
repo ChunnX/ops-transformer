@@ -323,6 +323,7 @@ void AllToAllFpMatmulTilingBase::SetTilingInfo(AlltoAllMatmulTilingInfo &tilingI
     tilingInfo.aicCoreNum = contextInfo_.args_.aicCoreNum;
     tilingInfo.x1QuantMode = 0;
     tilingInfo.x2QuantMode = 0;
+    tilingInfo.tilingKey = GetTilingKey();
 }
 
 /**

@@ -101,6 +101,17 @@ public:
         FlushCache();
     }
 
+    // 仅更新 execTurn: tile 进度打点用，崩溃时 turn 值即当前卡死的 tile 序号
+    __aicore__ inline void WriteTurnByPassDCache(uint8_t turn)
+    {
+        if (runtimeInfoBase_ == nullptr) {
+            return;
+        }
+        __gm__ Mc2Tiling::RuntimeInfoPerCore *mySlot = &runtimeInfoBase_[slotIdx_];
+        mySlot->execTurn = turn;
+        FlushCache();
+    }
+
     // 递增 HCCL Commit 次数: 在 hccl_.Commit() 返回后调用
     __aicore__ inline void IncCommitCount()
     {

@@ -34,13 +34,13 @@ logging.basicConfig(level=logging.NOTSET, format="[%(levelname)s] %(message)s", 
 # ====== 结构体大小常量（与 arch35 C++ 定义保持一致）======
 MC2_INIT_TILING_SIZE = 64
 MC2_CC_TILING_SIZE = 512
-ALLTO_ALL_MATMUL_TILING_INFO_SIZE = 96  # 10*u32(40) + quantMode(4) + reserved(4) + 6*u64(48) = 96
+ALLTO_ALL_MATMUL_TILING_INFO_SIZE = 104  # 12*u32(48) + 7*u64(56) = 104
 TCUBE_TILING_SIZE = 200
 MC2_MM_V3_TILING_DATA_SIZE = 236  # TCubeTiling(200) + 9*uint32(36)
 MC2_QUANT_BMM_TILING_PARAMS_SIZE = 360  # params(128) + TCubeTiling(200) + L2cache(24) + slidingWindow(8)
 
-ALLTO_ALL_MATMUL_TILING_DATA_SIZE = 1144  # 非量化: 64+512+96+236+236
-ALLTO_ALL_QUANT_MATMUL_TILING_DATA_SIZE = 1392  # 量化: 64+512+96+360+360
+ALLTO_ALL_MATMUL_TILING_DATA_SIZE = 1152  # 非量化: 64+512+104+236+236
+ALLTO_ALL_QUANT_MATMUL_TILING_DATA_SIZE = 1400  # 量化: 64+512+104+360+360
 TILING_DUMP_SIZE = 2048  # dump 固定大小
 
 # ====== Workspace 结构体大小常量（与 mc2_tiling_struct.h 保持一致）======
@@ -219,10 +219,10 @@ def parse_mc2_cc_tiling_inner(data: bytes, offset: int) -> dict:
 
 
 def parse_allto_all_matmul_tiling_info(data: bytes, offset: int) -> dict:
-    """解析 AlltoAllMatmulTilingInfo（96B）。"""
+    """解析 AlltoAllMatmulTilingInfo（104B）。"""
     if offset + ALLTO_ALL_MATMUL_TILING_INFO_SIZE > len(data):
         return {"error": "data too short for AlltoAllMatmulTilingInfo"}
-    fields = struct.unpack_from("<12I 6Q", data, offset)
+    fields = struct.unpack_from("<12I 7Q", data, offset)
     x1_qm = fields[10]
     x2_qm = fields[11]
     hccl_dt = fields[14]
@@ -248,6 +248,7 @@ def parse_allto_all_matmul_tiling_info(data: bytes, offset: int) -> dict:
         "x1ScaleOptionalLen": fields[15],
         "dynamicExtraSpace": fields[16],
         "x1QuantDtype": fields[17],
+        "tilingKey": fields[18],
     }
 
 
@@ -532,7 +533,7 @@ def print_tiling_data(result: dict, is_quant: bool):
     print_section("Mc2CcTiling (HCCL CC, 512B)")
     print_kv("mc2CcTilingInner", result["mc2CcTiling"])
 
-    print_section(f"AlltoAllMatmulTilingInfo (88B)  [{'QUANT' if is_quant else 'NON-QUANT'}]")
+    print_section(f"AlltoAllMatmulTilingInfo ({ALLTO_ALL_MATMUL_TILING_INFO_SIZE}B)  [{'QUANT' if is_quant else 'NON-QUANT'}]")
     print_kv(info_key, result[info_key])
 
     print_section("Matmul Tile Tiling (头块)")

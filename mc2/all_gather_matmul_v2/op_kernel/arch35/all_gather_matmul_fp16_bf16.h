@@ -187,15 +187,18 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType, Se
 {
     if ASCEND_IS_AIC {
         // 先发出通信
-        runtimeInfo_.UpdatePhase(0, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+        runtimeInfo_.WriteGmByPassDCache(0, 0,
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         StartNotify();
 
         // 计算本卡、远端数据
-        runtimeInfo_.UpdatePhase(0, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMPUTE_LOCAL));
+        runtimeInfo_.WriteGmByPassDCache(0, 1,
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         InnerProcess();
 
         // 结束通信
-        runtimeInfo_.UpdatePhase(0, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_FINALIZE));
+        runtimeInfo_.WriteGmByPassDCache(0, 3,
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         EndNotify();
     }
 }
@@ -283,10 +286,12 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType, Se
     mmv3.Init(aGM, bGM_, cGM, biasGM_, nullptr, nullptr, &tiling, GetTPipePtr(), cfg, isTail, true);
     for (uint32_t i = 0; i < count; i++) {
         if (debugMode_ != MC2_DEBUG_ONLY_CUBE) {
-            runtimeInfo_.UpdatePhase(isTail ? 1U : 0U, i, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_WAIT));
+            runtimeInfo_.WriteGmByPassDCache(isTail ? 1U : 0U, i,
+                                             static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
             hccl_.Wait(hHandles_[i + shift]);
         }
-        runtimeInfo_.UpdatePhase(isTail ? 1U : 0U, i, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMPUTE_GATHER));
+        runtimeInfo_.WriteGmByPassDCache(isTail ? 1U : 0U, i,
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         mmv3.UpdateSlice(i, isTail);
         mmv3.Process(isLast && (i == (count - 1)));
     }

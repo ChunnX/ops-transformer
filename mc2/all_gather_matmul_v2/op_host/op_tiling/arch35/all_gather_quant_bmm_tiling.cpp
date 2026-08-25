@@ -670,6 +670,9 @@ void Mc2PrintTCubeTilingL2cache(const std::string &opName, DequantBmm::Mc2L2cach
 
 ge::graphStatus AllGatherQuantBmmTiling::PostTiling()
 {
+    allGatherMatmulTilingDataFp8_->workspaceLayout = workspaceLayout_;
+    allGatherMatmulTilingDataFp8_->quantMode = 1;
+    allGatherMatmulTilingDataFp8_->tilingKey = GetTilingKey();
     OP_LOGD(opName_, "The final tiling data size=%zu and context capacity size=%zu ",
             sizeof(AllGatherMatmulTilingDataFp8), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(sizeof(AllGatherMatmulTilingDataFp8));
