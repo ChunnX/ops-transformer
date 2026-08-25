@@ -19,7 +19,14 @@
 #include "../../3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_base.h"
 #include "mc2_quant_batch_matmul_asw_block.h"
 
-#define LOCAL_TEMPLATE_CLASS_PARAMS                                                                                    \
+#ifdef LOCAL_TEMPLATE_CLASS_PARAMS
+#undef LOCAL_TEMPLATE_CLASS_PARAMS
+#endif
+#ifdef LOCAL_TEMPLATE_FUNC_PARAMS
+#undef LOCAL_TEMPLATE_FUNC_PARAMS
+#endif
+
+#define LOCAL_TEMPLATE_CLASS_PARAMS \
     template <class X1Type, class X2Type, class ScaleType, class BiasType, class YType, CubeFormat FormatX1,           \
               CubeFormat FormatX2, CubeFormat FormatY, bool ATrans, bool BTrans>
 #define LOCAL_TEMPLATE_FUNC_PARAMS                                                                                     \
