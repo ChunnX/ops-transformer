@@ -1151,8 +1151,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV2HInMulHPre(__ubuf__ P *
     __VEC_SCOPE__
     {
         Reg::RegTensor<T> hInReg;
-        Reg::RegTensor<P> hInFP32Reg, hPreReg, hPreFullReg;
-        Reg::RegTensor<uint32_t> hPreIndexReg;
+        Reg::RegTensor<P> hInFP32Reg, hPreFullReg;
         Reg::MaskReg mask, maskAll;
         maskAll = Reg::CreateMask<P, Reg::MaskPattern::ALL>();
         uint32_t hPreOffset = static_cast<uint32_t>(bsGlobalOffset * N_ + currentN);
@@ -1161,8 +1160,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV2HInMulHPre(__ubuf__ P *
             uint32_t hInOffset = tIdx * copySizeND;
 
             // Load hPre [1] -> [copySizeND]
-            Reg::Duplicate(hPreIndexReg, hPreOffset, maskAll);
-            Reg::Gather(hPreFullReg, hPreUbAddr, hPreIndexReg, maskAll);
+            P hPreScalar = hPreUbAddr[hPreOffset];
+            Reg::Duplicate<P>(hPreFullReg, hPreScalar, maskAll);
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < vfLoopCnt; vfBlockIdx++) {
                 mask = Reg::UpdateMask<P>(lenND);
                 // hIn B16 -> B32
