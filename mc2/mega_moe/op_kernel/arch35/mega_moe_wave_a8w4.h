@@ -191,11 +191,11 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
         if (GetSubBlockIdx() == 1U) {
             uint32_t dispatchedWaveMGroupCount = 0U;
             while (IsPositionWithinWave(dispatchPosition, dispatchedWaveMGroupCount)) {
-                uint32_t expertTokenCount =
-                    dispatchPosition.tokenIndexInExpert == 0U ?
-                        DispatchMoeExpert(dispatchPosition.expertIdx) :
-                        GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_,
-                                                         dispatchPosition.expertIdx);
+                uint32_t expertTokenCount = dispatchPosition.tokenIndexInExpert == 0U ?
+                                                DispatchMoeExpert(dispatchPosition.expertIdx) :
+                                                GetCompactExpertTokenCountFromWorkspace(
+                                                    params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_,
+                                                    commonConfig_.moeExpertPerRank, dispatchPosition.expertIdx);
                 AdvanceExpertTokenPositionInWave<GMM1_TILE_M>(expertTokenCount, mGroupsPerWave_,
                                                               dispatchedWaveMGroupCount, dispatchPosition);
             }
@@ -222,11 +222,11 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
             // AIV1 交替执行下一 Wave 的 Dispatch 与当前 Wave 的 Activation，避免集中突发 Dispatch。
             if constexpr (g_coreType == AIV) {
                 if (GetSubBlockIdx() == 1U && nextWaveNeedsDispatch) {
-                    uint32_t expertTokenCount =
-                        dispatchPosition.tokenIndexInExpert == 0U ?
-                            DispatchMoeExpert(dispatchPosition.expertIdx) :
-                            GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr,
-                                                             countWorkspace_, dispatchPosition.expertIdx);
+                    uint32_t expertTokenCount = dispatchPosition.tokenIndexInExpert == 0U ?
+                                                    DispatchMoeExpert(dispatchPosition.expertIdx) :
+                                                    GetCompactExpertTokenCountFromWorkspace(
+                                                        params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_,
+                                                        commonConfig_.moeExpertPerRank, dispatchPosition.expertIdx);
                     AdvanceExpertTokenPositionInWave<GMM1_TILE_M>(expertTokenCount, mGroupsPerWave_,
                                                                   nextDispatchWaveMGroupCount, dispatchPosition);
                     nextWaveNeedsDispatch = IsPositionWithinWave(dispatchPosition, nextDispatchWaveMGroupCount);

@@ -534,8 +534,8 @@ __aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::DispatchMoeExpert(u
 {
     ReloadWaveExpertDispatchCumsum(commonConfig_, tokenDispatchScratch_, expertIdx);
     return RunWaveExpertDispatchStage<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
-        tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_, winRankAddr_,
-        tokenDispatchScratch_, expertIdx);
+        tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_,
+        g_winRankAddr_, tokenDispatchScratch_, expertIdx);
 }
 
 // 从 workspace 读取 token 数并准备 GMM 专家状态；GMM1 可按需先等待 token count ready。

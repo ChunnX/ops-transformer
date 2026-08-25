@@ -385,14 +385,14 @@ __aicore__ inline void WaitForMoeExpertTokenCountReady(GM_ADDR tokenCountReadyFl
     WaitUntilGmFlagIsNonZero(tokenCountReadyFlag);
 }
 
-// 从当前 expert/block 对应的稳定 workspace 槽读取专家 token 数。
-__aicore__ inline uint32_t GetExpertTokenCountFromWorkspace(GM_ADDR expertTokenCountWorkspace,
-                                                            const BlockWorkspaceContext &countWorkspace,
-                                                            uint32_t expertIdx)
+// 从当前 block 的紧凑 [block][expert] workspace 行读取专家 token 数。
+__aicore__ inline uint32_t GetCompactExpertTokenCountFromWorkspace(GM_ADDR expertTokenCountWorkspace,
+                                                                   const BlockWorkspaceContext &countWorkspace,
+                                                                   uint32_t expertCount, uint32_t expertIdx)
 {
-    uint64_t countSlotIndex = static_cast<uint64_t>(expertIdx) * countWorkspace.blockNum + countWorkspace.blockIdx;
+    uint64_t countSlotIndex = GetExpertCountWorkspaceOffset(countWorkspace, expertCount, expertIdx, true);
     __gm__ int32_t *expertTokenCountAddr =
-        reinterpret_cast<__gm__ int32_t *>(expertTokenCountWorkspace) + countSlotIndex * INT32_PER_256B;
+        reinterpret_cast<__gm__ int32_t *>(expertTokenCountWorkspace) + countSlotIndex;
     return static_cast<uint32_t>(AscendC::ReadGmByPassDCache(expertTokenCountAddr));
 }
 
