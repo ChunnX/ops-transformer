@@ -67,7 +67,7 @@ def block_attn_res_prepare(
 
     Args:
         block_res: FP32 tensor with shape ``[T, N, D]``.
-        valid_blocks: INT32 device tensor with shape ``[1]``. Values below zero are clipped to zero; zero
+        valid_blocks: INT64 device tensor with shape ``[1]``. Values below zero are clipped to zero; zero
             produces the empty online-softmax state, and values above ``N`` are clipped to ``N``.
         pseudo_query: FP32 tensor with shape ``[S, D]``.
         eps: Positive numerical-stability coefficient. Defaults to ``1e-6``.
