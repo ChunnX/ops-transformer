@@ -67,14 +67,16 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
             GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataQuant, tilingData, tilingGM);
             MegaMoe<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y, TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2, isNz, false> op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, weightScales1, weightScales2, bias1, bias2,
-                    xActiveMask, scales, maskBuffer, yOut, expertTokenNumsOut, workspaceGM, tilingGM);
+                    xActiveMask, scales, sharedWeight1, sharedWeight2, sharedWeightScales1, sharedWeightScales2,
+                    sharedBias1, sharedBias2, maskBuffer, yOut, expertTokenNumsOut, workspaceGM, tilingGM);
             op.Process();
         } else {
             GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataNonQuant, tilingData, tilingGM);
 
             MegaMoe<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y, TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2, isNz, false> op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, weightScales1, weightScales2, bias1, bias2,
-                    xActiveMask, scales, maskBuffer, yOut, expertTokenNumsOut, workspaceGM, tilingGM);
+                    xActiveMask, scales, sharedWeight1, sharedWeight2, sharedWeightScales1, sharedWeightScales2,
+                    sharedBias1, sharedBias2, maskBuffer, yOut, expertTokenNumsOut, workspaceGM, tilingGM);
             op.Process();
         }
     }
