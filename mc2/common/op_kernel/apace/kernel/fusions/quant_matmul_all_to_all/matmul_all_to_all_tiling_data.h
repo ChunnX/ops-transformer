@@ -32,8 +32,6 @@ struct MatmulAllToAllApaceTilingInfo {
     uint32_t rankN{0};
     uint32_t rankK{0};
     uint32_t rankDim{0};
-    uint32_t aicCoreNum{0};
-    uint64_t mmResultLen{0};
     uint64_t hcclDataType{0};
 };
 

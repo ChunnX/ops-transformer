@@ -20,7 +20,6 @@
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
 #include "../../matmul/quant_batch_matmul/matmul_all_to_all_qbmm_mx_kernel.h"
-#include "../../../../mc2_templates/computation/matmul/mc2_mx_quant_matmul.h"
 #include "../../../../mc2_templates/communication/communicator/hccl_communicator.h"
 #include "../../../../mc2_templates/communication/primitives/hccl_primitives.h"
 #include "../../../tiling/quant_matmul_tiling_data.h"
@@ -47,91 +46,6 @@ template <typename T>
 __aicore__ inline GM_ADDR MatmulAllToAllMxGmAddr(GM_ADDR baseAddr, uint64_t elementCount)
 {
     return baseAddr + MatmulAllToAllMxByteOffset<T>(elementCount);
-}
-
-template <typename T1, typename T2>
-__aicore__ inline T1 MatmulAllToAllMxCeilDiv(T1 value, T2 divisor)
-{
-    return divisor == 0 ? 0 : (value + divisor - 1) / divisor;
-}
-
-// Apace writes the matmul result directly in the rank-major layout consumed by
-// Hcomm. These fields describe that output layout; no AIV transpose buffer is
-// involved in this path.
-struct QuantMatmulAllToAllMxAdditionalData {
-    GM_ADDR x1Scale;
-    GM_ADDR x2Scale;
-    uint64_t x1ScaleOffset;
-    uint64_t fullN;
-    uint64_t rankStride;
-    uint32_t rankDim;
-};
-
-/**
- * Blaze computation stage. It writes [rank, M, N/rank] directly so Hcomm can
- * consume the result without an AIV transpose.
- */
-template <typename X1Type, typename X2Type, typename YType>
-class QuantMatmulAllToAllMxComputation {
-public:
-    __aicore__ inline QuantMatmulAllToAllMxComputation() = default;
-
-    using TilingType = QuantMatmulTilingData;
-    using ContextType = MC2KernelTemplate::MC2MMContext<QuantMatmulAllToAllMxAdditionalData, TilingType>;
-
-    __aicore__ inline ContextType *GetContextPtr() { return &context_; }
-    __aicore__ inline void Process(uint32_t taskIndex);
-
-private:
-    using LayoutA = AscendC::Te::NDExtLayoutPtn;
-    using LayoutB = AscendC::Te::DNExtLayoutPtn;
-    using LayoutC = AscendC::Te::NDExtLayoutPtn;
-    using LayoutBias = AscendC::Te::NDExtLayoutPtn;
-    using BiasType = float;
-    using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
-    using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerQuantBatchMatmulV3<
-        ProblemShape, 0, LayoutA, LayoutB, X1Type>;
-    using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<0, false>;
-    using BlockMmad = Blaze::Gemm::Block::BlockMmad<
-        DispatchPolicy, X1Type, LayoutA, X2Type, LayoutB, YType, LayoutC, BiasType, LayoutBias>;
-    using KernelImpl = Blaze::Gemm::Kernel::MatmulAllToAllQbmmMxKernel<ProblemShape, BlockMmad, BlockScheduler>;
-    using Params = typename KernelImpl::Params;
-    using BlockMmadParams = typename KernelImpl::BlockMmadParams;
-    using L1Params = typename KernelImpl::L1Params;
-    using BlockSchedulerParams = typename KernelImpl::BlockSchedulerParams;
-    using QBMMTiling = typename KernelImpl::QBMMTiling;
-
-    ContextType context_{};
-    KernelImpl kernel_{};
-};
-
-template <typename X1Type, typename X2Type, typename YType>
-__aicore__ inline void QuantMatmulAllToAllMxComputation<X1Type, X2Type, YType>::Process(uint32_t taskIndex)
-{
-    const TilingType &mmTile = *context_.tilingDataPtr;
-    GM_ADDR aGM = context_.baseData.aGM + taskIndex * context_.baseData.aOffset;
-    GM_ADDR cGM = context_.baseData.cGM + taskIndex * context_.baseData.cOffset;
-    GM_ADDR x1Scale = context_.additionalData.x1Scale + taskIndex * context_.additionalData.x1ScaleOffset;
-
-    ProblemShape problemShape{mmTile.m, mmTile.n, mmTile.k, 1UL};
-    BlockMmadParams mmParams;
-    mmParams.aGmAddr = aGM;
-    mmParams.scaleAGmAddr = x1Scale;
-    mmParams.bGmAddr = context_.baseData.bGM;
-    mmParams.scaleBGmAddr = context_.additionalData.x2Scale;
-    mmParams.cGmAddr = cGM;
-    mmParams.biasGmAddr = context_.baseData.biasGM;
-
-    L1Params l1Params{static_cast<uint64_t>(mmTile.stepK) * mmTile.baseK, mmTile.scaleKL1, mmTile.nBufferNum};
-    BlockSchedulerParams schedulerParams{
-        mmTile.baseM, mmTile.baseN, mmTile.mTailTile, mmTile.nTailTile,
-        mmTile.mBaseTailSplitCnt, mmTile.nBaseTailSplitCnt, mmTile.mTailMain, mmTile.nTailMain};
-    QBMMTiling qbmmParams{mmTile.baseM, mmTile.baseN, mmTile.baseK, mmTile.dbL0c,
-                          context_.baseData.biasGM != nullptr};
-    Params params{problemShape, mmParams, l1Params, schedulerParams, qbmmParams,
-                  context_.additionalData.fullN, context_.additionalData.rankStride,
-                  context_.additionalData.rankDim};
-    kernel_(params);
 }
 
 /**
@@ -168,16 +82,33 @@ public:
     {
         const auto &tilingInfo = tilingData_->matmulAllToAllTilingInfo;
         if (tilingInfo.tileCnt > 0) {
-            ProcessTile(tilingInfo.tileCnt);
+            ProcessBatch(0, tilingInfo.tileM, tilingInfo.tileCnt, tilingData_->tileQbmmTilingData);
         }
         if (tilingInfo.tailCnt > 0) {
-            ProcessTail(tilingInfo.tailCnt);
+            const uint64_t mainRows = static_cast<uint64_t>(tilingInfo.tileM) * tilingInfo.tileCnt;
+            ProcessBatch(mainRows, tilingInfo.tailM, tilingInfo.tailCnt, tilingData_->tailQbmmTilingData);
         }
         communication_.End();
     }
 
 private:
-    using ComputationType = QuantMatmulAllToAllMxComputation<X1Type, X2Type, YType>;
+    using LayoutA = AscendC::Te::NDExtLayoutPtn;
+    using LayoutB = AscendC::Te::DNExtLayoutPtn;
+    using LayoutC = AscendC::Te::NDExtLayoutPtn;
+    using LayoutBias = AscendC::Te::NDExtLayoutPtn;
+    using BiasType = float;
+    using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
+    using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerQuantBatchMatmulV3<
+        ProblemShape, 0, LayoutA, LayoutB, X1Type>;
+    using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<0, false>;
+    using BlockMmad = Blaze::Gemm::Block::BlockMmad<
+        DispatchPolicy, X1Type, LayoutA, X2Type, LayoutB, YType, LayoutC, BiasType, LayoutBias>;
+    using KernelImpl = Blaze::Gemm::Kernel::MatmulAllToAllQbmmMxKernel<ProblemShape, BlockMmad, BlockScheduler>;
+    using Params = typename KernelImpl::Params;
+    using BlockMmadParams = typename KernelImpl::BlockMmadParams;
+    using L1Params = typename KernelImpl::L1Params;
+    using BlockSchedulerParams = typename KernelImpl::BlockSchedulerParams;
+    using QBMMTiling = typename KernelImpl::QBMMTiling;
     using CommunicationType = MC2KernelTemplate::HcclCommunicator<
         true, ServerType, MC2KernelTemplate::MC2AlltoAllContext, TilingDataType,
         MC2KernelTemplate::MC2AlltoAllPrimitives, 1, 0>;
@@ -185,109 +116,72 @@ private:
     static constexpr uint64_t MXFP_GROUP_SIZE = 64UL;
     static constexpr uint64_t MXFP_SCALE_FACTOR = 2UL;
 
-    __aicore__ inline void ProcessTile(uint32_t taskCnt)
+    __aicore__ inline void SetupParams(Params &params, uint64_t rowOffset,
+                                       const QuantMatmulTilingData &mmTile)
     {
         const auto &tilingInfo = tilingData_->matmulAllToAllTilingInfo;
         const uint64_t rankNPerPeer = static_cast<uint64_t>(tilingInfo.rankN) / tilingInfo.rankDim;
-        auto *computationContext = computation_.GetContextPtr();
-        auto *communicationContext = communication_.GetContextPtr();
+        const uint64_t scaleK = Blaze::Gemm::CeilDiv(
+            static_cast<uint64_t>(tilingInfo.rankK), MXFP_GROUP_SIZE) * MXFP_SCALE_FACTOR;
 
-        computationContext->baseData.aGM = x1_;
-        computationContext->baseData.bGM = x2_;
-        computationContext->baseData.cGM = workspaceGM_;
-        computationContext->baseData.biasGM = bias_;
-        computationContext->baseData.aOffset = MatmulAllToAllMxByteOffset<X1Type>(
-            static_cast<uint64_t>(tilingInfo.tileM) * tilingInfo.rankK);
-        computationContext->baseData.bOffset = 0UL;
-        computationContext->baseData.cOffset = MatmulAllToAllMxByteOffset<YType>(
-            static_cast<uint64_t>(tilingInfo.tileM) * rankNPerPeer);
-        computationContext->additionalData.x1Scale = x1Scale_;
-        computationContext->additionalData.x2Scale = x2Scale_;
-        computationContext->additionalData.x1ScaleOffset = MatmulAllToAllMxByteOffset<AscendC::fp8_e8m0_t>(
-            static_cast<uint64_t>(tilingInfo.tileM) *
-            MatmulAllToAllMxCeilDiv(tilingInfo.rankK, MXFP_GROUP_SIZE) * MXFP_SCALE_FACTOR);
-        computationContext->additionalData.fullN = tilingInfo.rankN;
-        computationContext->additionalData.rankStride =
-            static_cast<uint64_t>(tilingInfo.rankM) * rankNPerPeer;
-        computationContext->additionalData.rankDim = tilingInfo.rankDim;
-        computationContext->tilingDataPtr = &(tilingData_->tileQbmmTilingData);
+        ProblemShape problemShape{mmTile.m, mmTile.n, mmTile.k, 1UL};
+        BlockMmadParams mmParams;
+        mmParams.aGmAddr = MatmulAllToAllMxGmAddr<X1Type>(x1_, rowOffset * tilingInfo.rankK);
+        mmParams.scaleAGmAddr =
+            MatmulAllToAllMxGmAddr<AscendC::fp8_e8m0_t>(x1Scale_, rowOffset * scaleK);
+        mmParams.bGmAddr = x2_;
+        mmParams.scaleBGmAddr = x2Scale_;
+        mmParams.cGmAddr = MatmulAllToAllMxGmAddr<YType>(workspaceGM_, rowOffset * rankNPerPeer);
+        mmParams.biasGmAddr = bias_;
 
-        communicationContext->taskCnt = tilingInfo.tileCnt;
-        communicationContext->sendBuffer = workspaceGM_;
-        communicationContext->recvBuffer = y_;
-        communicationContext->sendOffset =
-            static_cast<uint64_t>(tilingInfo.tileM) * rankNPerPeer * sizeof(YType);
-        communicationContext->recvOffset = communicationContext->sendOffset;
-        communicationContext->sendCount = static_cast<uint64_t>(tilingInfo.tileM) * rankNPerPeer;
-        communicationContext->strideCount = static_cast<uint64_t>(tilingInfo.rankM) * rankNPerPeer;
-        communicationContext->hcclDataType = tilingInfo.hcclDataType;
-
-        ProcessTasks(taskCnt);
+        L1Params l1Params{
+            static_cast<uint64_t>(mmTile.stepK) * mmTile.baseK, mmTile.scaleKL1, mmTile.nBufferNum};
+        BlockSchedulerParams schedulerParams{
+            mmTile.baseM, mmTile.baseN, mmTile.mTailTile, mmTile.nTailTile,
+            mmTile.mBaseTailSplitCnt, mmTile.nBaseTailSplitCnt, mmTile.mTailMain, mmTile.nTailMain};
+        QBMMTiling qbmmParams{
+            mmTile.baseM, mmTile.baseN, mmTile.baseK, mmTile.dbL0c, bias_ != nullptr};
+        params = {problemShape, mmParams, l1Params, schedulerParams, qbmmParams,
+                  static_cast<uint64_t>(tilingInfo.rankM) * rankNPerPeer, tilingInfo.rankDim};
     }
 
-    __aicore__ inline void ProcessTail(uint32_t taskCnt)
+    __aicore__ inline void MatmulProcess(uint64_t rowOffset, const QuantMatmulTilingData &mmTile)
     {
-        const auto &tilingInfo = tilingData_->matmulAllToAllTilingInfo;
-        const uint64_t rankNPerPeer = static_cast<uint64_t>(tilingInfo.rankN) / tilingInfo.rankDim;
-        const uint64_t mainRows = static_cast<uint64_t>(tilingInfo.tileM) * tilingInfo.tileCnt;
-        auto *computationContext = computation_.GetContextPtr();
-        auto *communicationContext = communication_.GetContextPtr();
-
-        computationContext->baseData.aGM =
-            MatmulAllToAllMxGmAddr<X1Type>(x1_, mainRows * tilingInfo.rankK);
-        computationContext->baseData.bGM = x2_;
-        computationContext->baseData.cGM =
-            MatmulAllToAllMxGmAddr<YType>(workspaceGM_, mainRows * rankNPerPeer);
-        computationContext->baseData.biasGM = bias_;
-        computationContext->baseData.aOffset = MatmulAllToAllMxByteOffset<X1Type>(
-            static_cast<uint64_t>(tilingInfo.tailM) * tilingInfo.rankK);
-        computationContext->baseData.bOffset = 0UL;
-        computationContext->baseData.cOffset = MatmulAllToAllMxByteOffset<YType>(
-            static_cast<uint64_t>(tilingInfo.tailM) * rankNPerPeer);
-        computationContext->additionalData.x1Scale = MatmulAllToAllMxGmAddr<AscendC::fp8_e8m0_t>(
-            x1Scale_, mainRows * MatmulAllToAllMxCeilDiv(tilingInfo.rankK, MXFP_GROUP_SIZE) * MXFP_SCALE_FACTOR);
-        computationContext->additionalData.x2Scale = x2Scale_;
-        computationContext->additionalData.x1ScaleOffset = MatmulAllToAllMxByteOffset<AscendC::fp8_e8m0_t>(
-            static_cast<uint64_t>(tilingInfo.tailM) *
-            MatmulAllToAllMxCeilDiv(tilingInfo.rankK, MXFP_GROUP_SIZE) * MXFP_SCALE_FACTOR);
-        computationContext->additionalData.fullN = tilingInfo.rankN;
-        computationContext->additionalData.rankStride =
-            static_cast<uint64_t>(tilingInfo.rankM) * rankNPerPeer;
-        computationContext->additionalData.rankDim = tilingInfo.rankDim;
-        computationContext->tilingDataPtr = &(tilingData_->tailQbmmTilingData);
-
-        communicationContext->taskCnt = tilingInfo.tailCnt;
-        communicationContext->sendBuffer = computationContext->baseData.cGM;
-        communicationContext->recvBuffer = y_ + mainRows * rankNPerPeer * sizeof(YType);
-        communicationContext->sendOffset =
-            static_cast<uint64_t>(tilingInfo.tailM) * rankNPerPeer * sizeof(YType);
-        communicationContext->recvOffset = communicationContext->sendOffset;
-        communicationContext->sendCount = static_cast<uint64_t>(tilingInfo.tailM) * rankNPerPeer;
-        communicationContext->strideCount = static_cast<uint64_t>(tilingInfo.rankM) * rankNPerPeer;
-        communicationContext->hcclDataType = tilingInfo.hcclDataType;
-
-        ProcessTasks(taskCnt);
+        Params params;
+        SetupParams(params, rowOffset, mmTile);
+        kernel_(params);
     }
 
     /**
-     * Prepare Hcomm descriptors first, then produce and submit one tile at a
-     * time. SyncAll() is AIC-only: all cube cores must finish writing GM before
-     * AIC block 0 submits the corresponding AllToAll task.
+     * Blaze writes one M tile in rank-major layout. After every AIC finishes
+     * writing GM, block 0 submits that tile to Hcomm.
      */
-    __aicore__ inline void ProcessTasks(uint32_t taskCnt)
+    __aicore__ inline void ProcessBatch(uint64_t startRow, uint32_t taskM, uint32_t taskCnt,
+                                        const QuantMatmulTilingData &mmTile)
     {
+        const auto &tilingInfo = tilingData_->matmulAllToAllTilingInfo;
+        const uint64_t rankNPerPeer = static_cast<uint64_t>(tilingInfo.rankN) / tilingInfo.rankDim;
+        auto *communicationContext = communication_.GetContextPtr();
+        communicationContext->sendBuffer =
+            MatmulAllToAllMxGmAddr<YType>(workspaceGM_, startRow * rankNPerPeer);
+        communicationContext->recvBuffer = MatmulAllToAllMxGmAddr<YType>(y_, startRow * rankNPerPeer);
+        communicationContext->sendOffset =
+            static_cast<uint64_t>(taskM) * rankNPerPeer * sizeof(YType);
+        communicationContext->recvOffset = communicationContext->sendOffset;
+        communicationContext->sendCount = static_cast<uint64_t>(taskM) * rankNPerPeer;
+        communicationContext->strideCount = static_cast<uint64_t>(tilingInfo.rankM) * rankNPerPeer;
+        communicationContext->hcclDataType = tilingInfo.hcclDataType;
+
         communication_.PrepareAll(taskCnt);
         for (uint32_t index = 0; index < taskCnt; ++index) {
-            if ASCEND_IS_AIC {
-                computation_.Process(index);
-                AscendC::SyncAll();
-                communication_.Process(index);
-            }
+            MatmulProcess(startRow + static_cast<uint64_t>(index) * taskM, mmTile);
+            AscendC::SyncAll();
+            communication_.Process(index);
         }
     }
 
     TilingDataType *tilingData_;
-    ComputationType computation_;
+    KernelImpl kernel_{};
     CommunicationType communication_;
     GM_ADDR x1_{nullptr};
     GM_ADDR x2_{nullptr};

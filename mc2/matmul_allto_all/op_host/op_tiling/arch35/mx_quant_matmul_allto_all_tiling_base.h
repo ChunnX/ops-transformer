@@ -28,7 +28,6 @@
 #include "../../../op_kernel/arch35/matmul_allto_all_tiling_data.h"
 #include "../../../op_kernel/arch35/matmul_allto_all_tiling_key.h"
 #include "apace/kernel/fusions/quant_matmul_all_to_all/matmul_all_to_all_tiling_data.h"
-#include "apace/tiling/quant_matmul_tiling_swat.h"
 
 namespace MC2Tiling {
 using namespace optiling;

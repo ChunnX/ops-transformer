@@ -16,6 +16,7 @@
 #include "mc2_log.h"
 #include "mx_quant_matmul_allto_all_tiling_base.h"
 #include "matmul_allto_all_fit_balance_tiling.h"
+#include "apace/tiling/quant_matmul_tiling_swat.h"
 
 using namespace Mc2Log;
 using namespace AscendC;
@@ -1024,8 +1025,6 @@ void MxQuantMatmulAllToAllTilingBase::SetHcommTilingInfo(MatmulAllToAllApaceTili
     tilingInfo.rankN = contextInfo.args_.nValue;
     tilingInfo.rankK = contextInfo.args_.kValue;
     tilingInfo.rankDim = contextInfo.args_.rankDim;
-    tilingInfo.aicCoreNum = contextInfo.args_.aicCoreNum;
-    tilingInfo.mmResultLen = inferredInfo.mmResultLen;
     tilingInfo.hcclDataType =
         static_cast<uint64_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo.args_.geCType));
 }
@@ -1055,7 +1054,8 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoHcommMxQuantMMTiling()
                                     transB, hcommTilingData_.tailQbmmTilingData);
         }
     }
-    OP_LOGD(opName_, "Apace pure-AIC direct MX tiling: tileM=%lu tileCnt=%lu tailM=%lu tailCnt=%lu K=%lu fullN=%lu rankN=%lu.",
+    OP_LOGD(opName_, "Apace pure-AIC direct MX tiling: tileM=%lu tileCnt=%lu tailM=%lu tailCnt=%lu "
+                     "K=%lu fullN=%lu rankN=%lu.",
             inferredInfo.tileM, inferredInfo.tileCnt, inferredInfo.tailM, inferredInfo.tailCnt,
             contextInfo.args_.kValue, contextInfo.args_.nValue, rankN);
     return ge::GRAPH_SUCCESS;
