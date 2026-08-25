@@ -906,22 +906,41 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDtypePertoken()
                     "the dtypes of x and weight must be within the range FLOAT8, INT8 or HIFLOAT8"),
                 return false);
     if (inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
-        const bool isInt8 = inputParams_.aDtype == ge::DT_INT8 && inputParams_.bDtype == ge::DT_INT8 &&
-                            inputParams_.outDataDtype == ge::DT_INT8;
-        const bool isHifloat8 = inputParams_.aDtype == ge::DT_HIFLOAT8 && inputParams_.bDtype == ge::DT_HIFLOAT8 &&
-                                inputParams_.outDataDtype == ge::DT_HIFLOAT8;
-        const bool isFp8 =
-            (inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN || inputParams_.aDtype == ge::DT_FLOAT8_E5M2) &&
-            (inputParams_.bDtype == ge::DT_FLOAT8_E4M3FN || inputParams_.bDtype == ge::DT_FLOAT8_E5M2) &&
-            (inputParams_.outDataDtype == ge::DT_FLOAT8_E4M3FN || inputParams_.outDataDtype == ge::DT_FLOAT8_E5M2);
-        OP_CHECK_IF(!(isInt8 || isHifloat8 || isFp8),
+        const bool isInt8 = inputParams_.aDtype == ge::DT_INT8;
+        OP_CHECK_IF(isInt8 &&
+                        (inputParams_.bDtype != ge::DT_INT8 || inputParams_.outDataDtype != ge::DT_INT8),
                     OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
                         inputParams_.opType, "x, weight, y",
                         ListToString(ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
                                                   ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
                                      ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype)),
-                        "in per-token mode, FRACTAL_NZ weight requires x, weight and y to use the same "
-                        "INT8/HIFLOAT8 family, or each to be FLOAT8_E4M3FN/FLOAT8_E5M2"),
+                        "in per-token mode, when weight format is FRACTAL_NZ and x dtype is INT8, "
+                        "weight and y dtypes must be INT8"),
+                    return false);
+        const bool isHifloat8 = inputParams_.aDtype == ge::DT_HIFLOAT8;
+        OP_CHECK_IF(isHifloat8 &&
+                        (inputParams_.bDtype != ge::DT_HIFLOAT8 || inputParams_.outDataDtype != ge::DT_HIFLOAT8),
+                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                        inputParams_.opType, "x, weight, y",
+                        ListToString(ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
+                                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
+                                     ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype)),
+                        "in per-token mode, when weight format is FRACTAL_NZ and x dtype is HIFLOAT8, "
+                        "weight and y dtypes must be HIFLOAT8"),
+                    return false);
+        const bool isFp8 =
+            inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN || inputParams_.aDtype == ge::DT_FLOAT8_E5M2;
+        OP_CHECK_IF(isFp8 &&
+                        (inputParams_.bDtype != ge::DT_FLOAT8_E4M3FN ||
+                         (inputParams_.outDataDtype != ge::DT_FLOAT8_E4M3FN &&
+                          inputParams_.outDataDtype != ge::DT_FLOAT8_E5M2)),
+                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                        inputParams_.opType, "x, weight, y",
+                        ListToString(ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
+                                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
+                                     ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype)),
+                        "in per-token mode, when weight format is FRACTAL_NZ and x dtype is FLOAT8, "
+                        "weight dtype must be FLOAT8_E4M3FN and y dtype must be FLOAT8_E4M3FN or FLOAT8_E5M2"),
                     return false);
     }
     OP_CHECK_IF(

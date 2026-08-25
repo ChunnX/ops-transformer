@@ -211,6 +211,7 @@
   - <term>Ascend 950PR/Ascend 950DT</term>：
     <details>
     <summary>A8W8 Pertoken量化场景：</summary>
+
       - **定义**：
 
         * **⋅** 表示矩阵乘法。
@@ -219,7 +220,7 @@
 
         * $X∈\mathbb{Z_8}^{M \times K}$：激活矩阵（左矩阵），M是总token数，K是特征维度。
         * $W∈\mathbb{Z_8}^{E \times K \times N}$：分组权重矩阵（右矩阵），E是专家个数，K是特征维度，N是输出维度。
-        * $w\_scale∈\mathbb{R}^{E \times N}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，K是特征维度， N是输出维度。
+        * $w\_scale∈\mathbb{R}^{E \times N}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，N是输出维度。
         * $x\_scale∈\mathbb{R}^{M}$：激活矩阵（左矩阵）的逐token缩放因子，M是总token数，K是特征维度。
         * $grouplist∈\mathbb{N}^{E}$：cumsum或count的分组索引列表。
       - **输出**：
@@ -812,7 +813,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
         - x、weight和output支持以下数据类型组合；xScale和outputScale的数据类型均为FLOAT：
           - INT8：x、weight和output均为INT8，weightScale支持FLOAT、FLOAT16或BFLOAT16。
           - HIFLOAT8：x、weight和output均为HIFLOAT8，weightScale支持FLOAT或BFLOAT16。
-          - FP8：x、weight和output分别支持FLOAT8_E4M3FN或FLOAT8_E5M2的任意组合，weightScale支持FLOAT或BFLOAT16。
+          - FP8：x、weight支持FLOAT8_E4M3FN，weightScale支持FLOAT或BFLOAT16,output支持FLOAT8_E4M3FN和FLOAT_E5M2。
         - x shape为(M, K)。weight支持非转置和转置，入口view shape统一为(E, K, N)：非转置使用连续stride，FRACTAL_NZ storage shape为(E, ceil(N/32), ceil(K/16), 16, 32)；转置使用stride (K * N, 1, K)，FRACTAL_NZ storage shape为(E, ceil(K/32), ceil(N/16), 16, 32)。
         - x仅支持非转置；weight转置输入时，算子内部`transposeWeight`属性为true，并使用ZN模板处理FRACTAL_NZ数据。
         - weightScale shape为(E, N)，xScale和outputScale shape为(M,)，output shape为(M, N/2)。
