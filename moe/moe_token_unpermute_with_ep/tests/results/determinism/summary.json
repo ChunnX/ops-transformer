@@ -1,0 +1,17 @@
+{
+  "testcase_name": "case00106",
+  "seed": 42,
+  "process_count": 1,
+  "run1_precision_status": "PASS",
+  "run2_precision_status": "PASS",
+  "run1_output_size_bytes": 264,
+  "run2_output_size_bytes": 264,
+  "run1_sha256": "627c22b0946a89b19e4462cce5d10467218b2a5ec1adb5fcb0ad47cab82082ea",
+  "run2_sha256": "627c22b0946a89b19e4462cce5d10467218b2a5ec1adb5fcb0ad47cab82082ea",
+  "bitwise_identical": true,
+  "raw_outputs": [
+    "/home/z50058944/moe_determinism_outputs/isolation_289067d40/run1/case00106_bin_output_0.bin",
+    "/home/z50058944/moe_determinism_outputs/isolation_289067d40/run2/case00106_bin_output_0.bin"
+  ],
+  "passed": true
+}

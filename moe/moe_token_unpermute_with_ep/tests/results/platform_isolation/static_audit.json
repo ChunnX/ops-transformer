@@ -1,0 +1,99 @@
+{
+  "status": "PASS",
+  "baseline_ref": "origin/master",
+  "source_sha256": {
+    "moe/moe_token_unpermute_with_ep/op_kernel/moe_token_unpermute_with_ep.h": "ddbe0ef79169b692e3c62c9244659f52138ac29eea993d2194379f0b369eccdd",
+    "moe/moe_token_unpermute_with_ep/op_host/moe_token_unpermute_with_ep_tiling.cpp": "4358f177949569946091b8cdcb5b002cf2f09a9da5f0007bcfd90798823f213a",
+    "moe/moe_token_unpermute_with_ep/op_host/moe_token_unpermute_with_ep_tiling.h": "b90c5ab6ec603f59663b06c36dbfedce9be3e565168ca5665357417cd4fc6689",
+    "moe/moe_token_unpermute_with_ep/op_host/CMakeLists.txt": "d98a0d6e52f819c4445e982ad5aa8463f0df06023530fc93c91537d6a3a35be9"
+  },
+  "source_branch_comparisons": [
+    {
+      "path": "moe/moe_token_unpermute_with_ep/op_kernel/moe_token_unpermute_with_ep.h",
+      "guard": "defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)",
+      "guard_count": 11,
+      "baseline_nonempty_lines": 430,
+      "non950_nonempty_lines": 430,
+      "non950_exact_baseline": true,
+      "diff": []
+    },
+    {
+      "path": "moe/moe_token_unpermute_with_ep/op_host/moe_token_unpermute_with_ep_tiling.cpp",
+      "guard": "defined(MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950)",
+      "guard_count": 6,
+      "baseline_nonempty_lines": 338,
+      "non950_nonempty_lines": 338,
+      "non950_exact_baseline": true,
+      "diff": []
+    },
+    {
+      "path": "moe/moe_token_unpermute_with_ep/op_host/moe_token_unpermute_with_ep_tiling.h",
+      "guard": "defined(MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950)",
+      "guard_count": 1,
+      "baseline_nonempty_lines": 88,
+      "non950_nonempty_lines": 88,
+      "non950_exact_baseline": true,
+      "diff": []
+    }
+  ],
+  "marker_checks": {
+    "host_does_not_use_npu_arch": true,
+    "kernel_uses_exact_3510_guard": true,
+    "stable_reduction_is_present_for_3510": true,
+    "index_validation_is_present_for_3510": true
+  },
+  "cmake_routing": {
+    "path": "moe/moe_token_unpermute_with_ep/op_host/CMakeLists.txt",
+    "checks": {
+      "ascend950_condition": true,
+      "ascend950_aclnn_exclude": true,
+      "ascend950_manual_api_dir": true,
+      "ascend950_host_macro": true,
+      "non950_auto_aclnn": true,
+      "non950_host_target": true,
+      "ascend950_host_target": true,
+      "baseline_host_target_preserved_once": true,
+      "baseline_compile_options_preserved_once": true,
+      "baseline_aclnn_selection_preserved_once": true,
+      "no_shared_manual_api_sources": true,
+      "ascend950_manual_api_sources": true
+    },
+    "top_level_cpp": [],
+    "ascend950_cpp": [
+      "aclnn_moe_token_unpermute_with_ep.cpp",
+      "moe_token_unpermute_with_ep.cpp"
+    ],
+    "passed": true
+  },
+  "ascend910b_build_routing": {
+    "path": "/home/z50058944/moe_platform_isolation_evidence_289067d40/ascend910b",
+    "missing": [],
+    "checks": {
+      "compute_unit_is_ascend910b": true,
+      "automatic_aclnn_generation_enabled": true,
+      "automatic_aclnn_product_is_ascend910b": true,
+      "legacy_op_host_target_selected": true,
+      "generated_aclnn_source_compiled": true,
+      "legacy_opdef_target_compiled": true,
+      "ascend950_manual_api_not_compiled": true,
+      "ascend950_host_definition_absent": true,
+      "generated_aclnn_files_nonempty": true,
+      "three_legacy_kernel_objects_built": true,
+      "package_nonempty": true
+    },
+    "kernel_object_count": 3,
+    "artifact_sha256": {
+      "cmake/compile_commands.json": "20b1bdf672fa84b17ce68620e180d5bc8e3b414f402aefbed220546880119c60",
+      "cmake/CMakeCache.txt": "157ed32604dd5e584489161235957bb096dab23422939f538179616cc816a6c3",
+      "cmake/opbuild_gen_default.build.make": "f2ca1ca6a44126a07bc3c96adca115601f028265fc3fa3b7a33ce1de338c768d",
+      "cmake/ophost_transformer_tiling.flags.make": "77b7e242a6fc3f6f341ca3a35943438e8bab373f363c334a74b6af0bc8f7257a",
+      "autogen/aclnn_moe_token_unpermute_with_ep.cpp": "6bf278731741f27f3aa5dc906e2c68c4051b0215ca120c64d4fcf65dd9c20e52",
+      "autogen/aclnn_moe_token_unpermute_with_ep.h": "8b9d5a9ecc2ab9d197d0c17920e228540c8c30db37753bf032dbd852ccd02167",
+      "cann-ops-transformer-custom_linux-x86_64.run": "01ed02ca818629112d2e25af9c04e49604611d3cd463e9a509a13b34aa29ec92",
+      "kernel_objects/MoeTokenUnpermuteWithEp_07a82a6f9adc4f870c026d93f15d95bd.o": "98130a1112ba087dcc5e7856bd3a1f5fcb9ec5a4bda09d5a892bbdfa7eb404d0",
+      "kernel_objects/MoeTokenUnpermuteWithEp_083278be2edfe5ef065870166a17808c.o": "e765b21ab587ca38493180ce34bf1dffca6c501bf41d397a2bc8c3fbf8542d86",
+      "kernel_objects/MoeTokenUnpermuteWithEp_cca216df705a94b2276b63de9cffcad7.o": "3a66d23ce2c4c8727a548d5ec9496affeae56a65993ac861e375c662b1a6a4b9"
+    },
+    "passed": true
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "inputs": {
+    "static": "moe/moe_token_unpermute_with_ep/tests/results/geir/static/result.csv",
+    "dynamic": "moe/moe_token_unpermute_with_ep/tests/results/geir/dynamic/result.csv"
+  },
+  "static": {
+    "count": 14,
+    "min_us": 23570100.0,
+    "median_us": 24779150.0,
+    "mean_us": 24735221.42857143,
+    "p95_us": 25559300.0,
+    "max_us": 26005900.0
+  },
+  "dynamic_all": {
+    "count": 6,
+    "min_us": 247.068,
+    "median_us": 284.0155,
+    "mean_us": 8254445.339166666,
+    "p95_us": 24859000.0,
+    "max_us": 24859000.0
+  },
+  "dynamic_first_compile_per_scenario_us": [
+    24666600.0,
+    24859000.0
+  ],
+  "dynamic_steady_state": {
+    "count": 4,
+    "min_us": 247.068,
+    "median_us": 269.514,
+    "mean_us": 268.00875,
+    "p95_us": 285.939,
+    "max_us": 285.939
+  },
+  "expected_counts": {
+    "static": 14,
+    "dynamic": 6
+  },
+  "passed": true,
+  "note": "Static cases and the first case of each dynamic scenario include GE graph compile/load time; dynamic_steady_state reports subsequent RunGraph calls."
+}

@@ -1,0 +1,27 @@
+{
+  "source": "moe/moe_token_unpermute_with_ep/tests/whitebox/design_doc_cases.json",
+  "inputs": [
+    "moe/moe_token_unpermute_with_ep/tests/whitebox/ttk_design_doc_cases.csv",
+    "moe/moe_token_unpermute_with_ep/tests/whitebox/ttk_design_doc_cases_oversized.csv"
+  ],
+  "results": [
+    "moe/moe_token_unpermute_with_ep/tests/results/kernel/regular/result.csv",
+    "moe/moe_token_unpermute_with_ep/tests/results/kernel/oversized/result.csv"
+  ],
+  "generated_count": 106,
+  "manifest_count": 106,
+  "executed_count": 106,
+  "passed_count": 106,
+  "failed_count": 0,
+  "skipped_count": 0,
+  "duplicate_source": [],
+  "duplicate_input": [],
+  "duplicate_result": [],
+  "missing_input": [],
+  "unexpected_input": [],
+  "missing_result": [],
+  "unexpected_result": [],
+  "failed": [],
+  "skipped": [],
+  "passed": true
+}

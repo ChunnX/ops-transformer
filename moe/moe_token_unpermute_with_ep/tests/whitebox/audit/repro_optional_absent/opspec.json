@@ -1,0 +1,19 @@
+{
+  "op_name": "moe_token_unpermute_with_ep",
+  "category": "IndexGather",
+  "interface": {
+    "inputs": [
+      {"name": "permuted_tokens", "param_type": "required", "dtype": ["float16"], "rank_range": [2, 2]},
+      {"name": "sorted_indices", "param_type": "required", "dtype": ["int32"], "rank_range": [1, 1]},
+      {"name": "probs", "param_type": "optional", "dtype": ["float16"], "rank_range": [2, 2]}
+    ],
+    "outputs": [{"name": "unpermuted_tokens", "dtype": ["float16"]}],
+    "attrs": [
+      {"name": "num_topk", "type": "int", "kind": "enum", "values": [2], "default": 2},
+      {"name": "range", "type": "list[int]", "kind": "enum", "values": [[1, 3]], "default": [1, 3]},
+      {"name": "padded_mode", "type": "bool", "kind": "enum", "values": [false], "default": false},
+      {"name": "restore_shape", "type": "list[int]", "kind": "enum", "values": [[]], "default": []}
+    ]
+  },
+  "numerical_tolerance": {"per_dtype": {"float16": {"rtol": 0.001, "atol": 0.001}}}
+}

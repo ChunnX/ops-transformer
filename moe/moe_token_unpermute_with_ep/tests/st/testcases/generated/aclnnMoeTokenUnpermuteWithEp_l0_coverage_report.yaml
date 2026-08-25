@@ -1,0 +1,333 @@
+summary:
+  level: L0
+  strategy: single_factor_coverage
+  total_factors: 33
+  total_factor_values: 79
+  covered_factor_values: 79
+  uncovered_factor_values: 0
+  coverage_rate: 100.00%
+  minimal_case_count: 79
+details:
+  permutedTokens.dimensions:
+    target_values:
+    - '2'
+    covered_values:
+    - '2'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  sortedIndices.exist:
+    target_values:
+    - 'True'
+    covered_values:
+    - 'True'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  numTopk.exist:
+    target_values:
+    - 'False'
+    - 'True'
+    covered_values:
+    - 'False'
+    - 'True'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  probsOptional.dtype:
+    target_values:
+    - bfloat16
+    - float16
+    - float32
+    covered_values:
+    - bfloat16
+    - float16
+    - float32
+    uncovered_values: []
+    coverage_rate: 100.00%
+  rangeOptional.value_range:
+    target_values:
+    - '[0, 0]'
+    - '[0, 1]'
+    - '[1, 512]'
+    covered_values:
+    - '[0, 0]'
+    - '[0, 1]'
+    - '[1, 512]'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  probsOptional.dimensions:
+    target_values:
+    - '2'
+    covered_values:
+    - '2'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  probsOptional.exist:
+    target_values:
+    - 'False'
+    - 'True'
+    covered_values:
+    - 'False'
+    - 'True'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  out.format:
+    target_values:
+    - ND
+    covered_values:
+    - ND
+    uncovered_values: []
+    coverage_rate: 100.00%
+  out.dimensions:
+    target_values:
+    - '2'
+    covered_values:
+    - '2'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  sortedIndices.value_range:
+    target_values:
+    - '[0, 0]'
+    - '[0, 1]'
+    - '[1, 512]'
+    - '[2147483647, 2147483647]'
+    covered_values:
+    - '[0, 0]'
+    - '[0, 1]'
+    - '[1, 512]'
+    - '[2147483647, 2147483647]'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  rangeOptional.dtype:
+    target_values:
+    - int64
+    covered_values:
+    - int64
+    uncovered_values: []
+    coverage_rate: 100.00%
+  restoreShapeOptional.value_range:
+    target_values:
+    - '[0, 0]'
+    covered_values:
+    - '[0, 0]'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  probsOptional.value_range:
+    target_values:
+    - '[''+0'', ''+0'']'
+    - '[''-0'', ''-0'']'
+    - '[''-inf'', ''-inf'']'
+    - '[''inf'', ''inf'']'
+    - '[''nan'', ''nan'']'
+    - '[-1, 1]'
+    - '[-3.3895313892515355e+38, -3.3895313892515355e+38]'
+    - '[-3.4028235e+38, -3.4028235e+38]'
+    - '[-65504.0, -65504.0]'
+    - '[0, 0]'
+    - '[0.1, 1]'
+    - '[3.3895313892515355e+38, 3.3895313892515355e+38]'
+    - '[3.4028235e+38, 3.4028235e+38]'
+    - '[65504.0, 65504.0]'
+    covered_values:
+    - '[''+0'', ''+0'']'
+    - '[''-0'', ''-0'']'
+    - '[''-inf'', ''-inf'']'
+    - '[''inf'', ''inf'']'
+    - '[''nan'', ''nan'']'
+    - '[-1, 1]'
+    - '[-3.3895313892515355e+38, -3.3895313892515355e+38]'
+    - '[-3.4028235e+38, -3.4028235e+38]'
+    - '[-65504.0, -65504.0]'
+    - '[0, 0]'
+    - '[0.1, 1]'
+    - '[3.3895313892515355e+38, 3.3895313892515355e+38]'
+    - '[3.4028235e+38, 3.4028235e+38]'
+    - '[65504.0, 65504.0]'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  permutedTokens.format:
+    target_values:
+    - ND
+    covered_values:
+    - ND
+    uncovered_values: []
+    coverage_rate: 100.00%
+  out.exist:
+    target_values:
+    - 'True'
+    covered_values:
+    - 'True'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  permutedTokens.exist:
+    target_values:
+    - 'True'
+    covered_values:
+    - 'True'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  sortedIndices.dtype:
+    target_values:
+    - int32
+    covered_values:
+    - int32
+    uncovered_values: []
+    coverage_rate: 100.00%
+  paddedMode.dtype:
+    target_values:
+    - bool
+    covered_values:
+    - bool
+    uncovered_values: []
+    coverage_rate: 100.00%
+  paddedMode.value:
+    target_values:
+    - 'False'
+    covered_values:
+    - 'False'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  out.dtype:
+    target_values:
+    - bfloat16
+    - float16
+    - float32
+    covered_values:
+    - bfloat16
+    - float16
+    - float32
+    uncovered_values: []
+    coverage_rate: 100.00%
+  numTopk.dtype:
+    target_values:
+    - int64
+    covered_values:
+    - int64
+    uncovered_values: []
+    coverage_rate: 100.00%
+  permutedTokens.dtype:
+    target_values:
+    - bfloat16
+    - float16
+    - float32
+    covered_values:
+    - bfloat16
+    - float16
+    - float32
+    uncovered_values: []
+    coverage_rate: 100.00%
+  rangeOptional.exist:
+    target_values:
+    - 'False'
+    - 'True'
+    covered_values:
+    - 'False'
+    - 'True'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  rangeOptional.length_ranges:
+    target_values:
+    - '[0, 0]'
+    - '[2, 2]'
+    covered_values:
+    - '[0, 0]'
+    - '[2, 2]'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  restoreShapeOptional.length_ranges:
+    target_values:
+    - '[0, 0]'
+    covered_values:
+    - '[0, 0]'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  sortedIndices.dimensions:
+    target_values:
+    - '1'
+    covered_values:
+    - '1'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  sortedIndices.format:
+    target_values:
+    - ND
+    covered_values:
+    - ND
+    uncovered_values: []
+    coverage_rate: 100.00%
+  restoreShapeOptional.exist:
+    target_values:
+    - 'False'
+    - 'True'
+    covered_values:
+    - 'False'
+    - 'True'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  probsOptional.format:
+    target_values:
+    - ND
+    covered_values:
+    - ND
+    uncovered_values: []
+    coverage_rate: 100.00%
+  numTopk.value:
+    target_values:
+    - '1'
+    - '2'
+    - '511'
+    - '512'
+    - '8'
+    covered_values:
+    - '1'
+    - '2'
+    - '511'
+    - '512'
+    - '8'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  permutedTokens.value_range:
+    target_values:
+    - '[''+0'', ''+0'']'
+    - '[''-0'', ''-0'']'
+    - '[''-inf'', ''-inf'']'
+    - '[''inf'', ''inf'']'
+    - '[''nan'', ''nan'']'
+    - '[-1, 1]'
+    - '[-3.3895313892515355e+38, -3.3895313892515355e+38]'
+    - '[-3.4028235e+38, -3.4028235e+38]'
+    - '[-65504.0, -65504.0]'
+    - '[0, 0]'
+    - '[3.3895313892515355e+38, 3.3895313892515355e+38]'
+    - '[3.4028235e+38, 3.4028235e+38]'
+    - '[65504.0, 65504.0]'
+    covered_values:
+    - '[''+0'', ''+0'']'
+    - '[''-0'', ''-0'']'
+    - '[''-inf'', ''-inf'']'
+    - '[''inf'', ''inf'']'
+    - '[''nan'', ''nan'']'
+    - '[-1, 1]'
+    - '[-3.3895313892515355e+38, -3.3895313892515355e+38]'
+    - '[-3.4028235e+38, -3.4028235e+38]'
+    - '[-65504.0, -65504.0]'
+    - '[0, 0]'
+    - '[3.3895313892515355e+38, 3.3895313892515355e+38]'
+    - '[3.4028235e+38, 3.4028235e+38]'
+    - '[65504.0, 65504.0]'
+    uncovered_values: []
+    coverage_rate: 100.00%
+  restoreShapeOptional.dtype:
+    target_values:
+    - int64
+    covered_values:
+    - int64
+    uncovered_values: []
+    coverage_rate: 100.00%
+  paddedMode.exist:
+    target_values:
+    - 'False'
+    - 'True'
+    covered_values:
+    - 'False'
+    - 'True'
+    uncovered_values: []
+    coverage_rate: 100.00%

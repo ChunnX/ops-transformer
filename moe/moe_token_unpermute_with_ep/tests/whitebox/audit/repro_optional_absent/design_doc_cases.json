@@ -1,0 +1,470 @@
+{
+  "schema_version": 1,
+  "op_name": "moe_token_unpermute_with_ep",
+  "phase": "optional-absence-minimal-repro",
+  "downstream_task": "helper-fix",
+  "semantic_extract": {
+    "extreme_inputs": [
+      {
+        "note": "absent_probs",
+        "shapes": {
+          "permuted_tokens": [
+            2,
+            8
+          ],
+          "sorted_indices": [
+            4
+          ],
+          "probs": null
+        },
+        "ranges": {
+          "permuted_tokens": [
+            -1,
+            1
+          ],
+          "sorted_indices": [
+            0,
+            3
+          ]
+        }
+      }
+    ],
+    "semantic_boundaries": [
+      {
+        "note": "near-zero-float16",
+        "value_range": [
+          -0.01,
+          0.01
+        ],
+        "dtype": "float16"
+      },
+      {
+        "note": "saturate-pos-float16",
+        "value_range": [
+          9.4264,
+          11.0899
+        ],
+        "dtype": "float16"
+      },
+      {
+        "note": "saturate-neg-float16",
+        "value_range": [
+          -11.0899,
+          -9.4264
+        ],
+        "dtype": "float16"
+      }
+    ]
+  },
+  "scenario_dimensions": {
+    "dtype": [
+      "float16",
+      "int32"
+    ],
+    "rank": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "size": [
+      "S",
+      "M",
+      "L"
+    ],
+    "align": [
+      "aligned",
+      "nonaligned",
+      "prime_nonaligned"
+    ],
+    "valclass": [
+      "sym-micro",
+      "sym-small",
+      "sym-mid",
+      "sym-large",
+      "asym-small",
+      "asym-mid",
+      "asym-large",
+      "asym-micro",
+      "zero",
+      "inf",
+      "nan",
+      "dtype_boundary"
+    ],
+    "attr_modes": [
+      "num_topk=2-padded_mode=false-range=[1,3]-restore_shape=[]"
+    ],
+    "input_names": [
+      "permuted_tokens",
+      "sorted_indices",
+      "probs"
+    ],
+    "output_names": [
+      "unpermuted_tokens"
+    ],
+    "paradigm": "index",
+    "allow_empty": false,
+    "empty_only": false,
+    "allow_min_shape": false,
+    "allow_scalar": false
+  },
+  "target_sigs": [
+    {
+      "size": "L",
+      "dtype": "float16",
+      "align": "aligned",
+      "valclass": "asym-large",
+      "rank": 2,
+      "mode": "num_topk=2-padded_mode=false-range=[1,3]-restore_shape=[]"
+    },
+    {
+      "size": "M",
+      "dtype": "int32",
+      "align": "nonaligned",
+      "valclass": "asym-micro",
+      "rank": 2,
+      "mode": "num_topk=2-padded_mode=false-range=[1,3]-restore_shape=[]"
+    },
+    {
+      "size": "S",
+      "dtype": "float16",
+      "align": "prime_nonaligned",
+      "valclass": "asym-mid",
+      "rank": 2,
+      "mode": "num_topk=2-padded_mode=false-range=[1,3]-restore_shape=[]"
+    },
+    {
+      "size": "L",
+      "dtype": "int32",
+      "align": "prime_nonaligned",
+      "valclass": "asym-small",
+      "rank": 2,
+      "mode": "num_topk=2-padded_mode=false-range=[1,3]-restore_shape=[]"
+    },
+    {
+      "size": "S",
+      "dtype": "int32",
+      "align": "aligned",
+      "valclass": "dtype_boundary",
+      "rank": 2,
+      "mode": "num_topk=2-padded_mode=false-range=[1,3]-restore_shape=[]"
+    },
+    {
+      "size": "L",
+      "dtype": "float16",
+      "align": "nonaligned",
+      "valclass": "inf",
+      "rank": 2,
+      "mode": "num_topk=2-padded_mode=false-range=[1,3]-restore_shape=[]"
+    },
+    {
+      "size": "M",
+      "dtype": "float16",
+      "align": "aligned",
+      "valclass": "nan",
+      "rank": 2,
+      "mode": "num_topk=2-padded_mode=false-range=[1,3]-restore_shape=[]"
+    },
+    {
+      "size": "M",
+      "dtype": "float16",
+      "align": "prime_nonaligned",
+      "valclass": "sym-large",
+      "rank": 2,
+      "mode": "num_topk=2-padded_mode=false-range=[1,3]-restore_shape=[]"
+    },
+    {
+      "size": "S",
+      "dtype": "float16",
+      "align": "nonaligned",
+      "valclass": "sym-micro",
+      "rank": 2,
+      "mode": "num_topk=2-padded_mode=false-range=[1,3]-restore_shape=[]"
+    },
+    {
+      "size": "L",
+      "dtype": "float16",
+      "align": "aligned",
+      "valclass": "sym-mid",
+      "rank": 2,
+      "mode": "num_topk=2-padded_mode=false-range=[1,3]-restore_shape=[]"
+    },
+    {
+      "size": "L",
+      "dtype": "float16",
+      "align": "aligned",
+      "valclass": "sym-small",
+      "rank": 2,
+      "mode": "num_topk=2-padded_mode=false-range=[1,3]-restore_shape=[]"
+    },
+    {
+      "size": "L",
+      "dtype": "float16",
+      "align": "aligned",
+      "valclass": "zero",
+      "rank": 2,
+      "mode": "num_topk=2-padded_mode=false-range=[1,3]-restore_shape=[]"
+    },
+    {
+      "size": "L",
+      "dtype": "float16",
+      "align": "aligned",
+      "valclass": "asym-micro",
+      "rank": 2,
+      "mode": "num_topk=2-padded_mode=false-range=[1,3]-restore_shape=[]"
+    },
+    {
+      "size": "L",
+      "dtype": "float16",
+      "align": "nonaligned",
+      "valclass": "dtype_boundary",
+      "rank": 2,
+      "mode": "num_topk=2-padded_mode=false-range=[1,3]-restore_shape=[]"
+    },
+    {
+      "size": "L",
+      "dtype": "int32",
+      "align": "aligned",
+      "valclass": "asym-mid",
+      "rank": 2,
+      "mode": "num_topk=2-padded_mode=false-range=[1,3]-restore_shape=[]"
+    },
+    {
+      "size": "L",
+      "dtype": "int32",
+      "align": "aligned",
+      "valclass": "sym-large",
+      "rank": 2,
+      "mode": "num_topk=2-padded_mode=false-range=[1,3]-restore_shape=[]"
+    },
+    {
+      "size": "L",
+      "dtype": "int32",
+      "align": "aligned",
+      "valclass": "sym-micro",
+      "rank": 2,
+      "mode": "num_topk=2-padded_mode=false-range=[1,3]-restore_shape=[]"
+    },
+    {
+      "size": "L",
+      "dtype": "int32",
+      "align": "nonaligned",
+      "valclass": "nan",
+      "rank": 2,
+      "mode": "num_topk=2-padded_mode=false-range=[1,3]-restore_shape=[]"
+    },
+    {
+      "size": "M",
+      "dtype": "float16",
+      "align": "aligned",
+      "valclass": "asym-small",
+      "rank": 2,
+      "mode": "num_topk=2-padded_mode=false-range=[1,3]-restore_shape=[]"
+    },
+    {
+      "size": "M",
+      "dtype": "int32",
+      "align": "aligned",
+      "valclass": "inf",
+      "rank": 2,
+      "mode": "num_topk=2-padded_mode=false-range=[1,3]-restore_shape=[]"
+    }
+  ],
+  "cases": [
+    {
+      "id": "case00001",
+      "op_name": "moe_token_unpermute_with_ep",
+      "_key": "",
+      "_group": "",
+      "tensors": {
+        "inputs": {
+          "permuted_tokens": {
+            "shape": [
+              2,
+              8
+            ],
+            "dtype": "float16",
+            "_data_range": [
+              -1,
+              1
+            ]
+          },
+          "sorted_indices": {
+            "shape": [
+              4
+            ],
+            "dtype": "int32",
+            "_data_range": [
+              0,
+              3
+            ]
+          },
+          "probs": null
+        },
+        "outputs": {
+          "unpermuted_tokens": {
+            "shape": [
+              2,
+              8
+            ],
+            "dtype": "float16"
+          }
+        }
+      },
+      "params": {},
+      "_note": "absent_probs",
+      "_shape_source": "placeholder",
+      "_scenario": "extreme:absent_probs",
+      "case_id": "WB-01-001",
+      "phase": "optional-absence-minimal-repro",
+      "downstream_task": "helper-fix",
+      "purpose": "覆盖 DESIGN/spec 事实抽取后的目标场景签名",
+      "oracle": "期望输出由下游 developer 在 C++ ST 侧按 spec.yaml 数学写等价参考现算比对；golden(numpy/torch) 仅作 whitebox oracle 与溯源",
+      "tdd_order": [
+        "先写测试",
+        "验证失败",
+        "再实现",
+        "回归通过"
+      ],
+      "test_obligations": [
+        "optional probs absent"
+      ],
+      "inputs": {
+        "permuted_tokens": {
+          "shape": [
+            2,
+            8
+          ],
+          "dtype": "float16",
+          "value_range": [
+            -1,
+            1
+          ]
+        },
+        "sorted_indices": {
+          "shape": [
+            4
+          ],
+          "dtype": "int32",
+          "value_range": [
+            0,
+            3
+          ]
+        },
+        "probs": null
+      },
+      "expected": {
+        "outputs": {
+          "unpermuted_tokens": {
+            "shape": [
+              2,
+              8
+            ],
+            "dtype": "float16"
+          }
+        }
+      }
+    }
+  ],
+  "gaps": [
+    {
+      "kind": "declared_legality_filtered",
+      "case": "case00001",
+      "detail": "rank_range sorted_indices=2 not in [1, 1]"
+    },
+    {
+      "kind": "declared_legality_filtered",
+      "case": "case00002",
+      "detail": "rank_range sorted_indices=2 not in [1, 1]"
+    },
+    {
+      "kind": "declared_legality_filtered",
+      "case": "case00003",
+      "detail": "rank_range sorted_indices=2 not in [1, 1]"
+    },
+    {
+      "kind": "declared_legality_filtered",
+      "case": "case00004",
+      "detail": "rank_range sorted_indices=2 not in [1, 1]"
+    },
+    {
+      "kind": "declared_legality_filtered",
+      "case": "case00005",
+      "detail": "rank_range sorted_indices=2 not in [1, 1]"
+    },
+    {
+      "kind": "declared_legality_filtered",
+      "case": "case00006",
+      "detail": "rank_range sorted_indices=2 not in [1, 1]"
+    },
+    {
+      "kind": "declared_legality_filtered",
+      "case": "case00007",
+      "detail": "rank_range sorted_indices=2 not in [1, 1]"
+    },
+    {
+      "kind": "declared_legality_filtered",
+      "case": "case00008",
+      "detail": "rank_range sorted_indices=2 not in [1, 1]"
+    },
+    {
+      "kind": "declared_legality_filtered",
+      "case": "case00009",
+      "detail": "rank_range sorted_indices=2 not in [1, 1]"
+    },
+    {
+      "kind": "declared_legality_filtered",
+      "case": "case00010",
+      "detail": "rank_range sorted_indices=2 not in [1, 1]"
+    },
+    {
+      "kind": "declared_legality_filtered",
+      "case": "case00011",
+      "detail": "rank_range sorted_indices=2 not in [1, 1]"
+    },
+    {
+      "kind": "declared_legality_filtered",
+      "case": "case00012",
+      "detail": "rank_range sorted_indices=2 not in [1, 1]"
+    },
+    {
+      "kind": "declared_legality_filtered",
+      "case": "case00013",
+      "detail": "rank_range sorted_indices=2 not in [1, 1]"
+    },
+    {
+      "kind": "declared_legality_filtered",
+      "case": "case00014",
+      "detail": "rank_range sorted_indices=2 not in [1, 1]"
+    },
+    {
+      "kind": "declared_legality_filtered",
+      "case": "case00015",
+      "detail": "rank_range sorted_indices=2 not in [1, 1]"
+    },
+    {
+      "kind": "declared_legality_filtered",
+      "case": "case00016",
+      "detail": "rank_range sorted_indices=2 not in [1, 1]"
+    },
+    {
+      "kind": "declared_legality_filtered",
+      "case": "case00017",
+      "detail": "rank_range sorted_indices=2 not in [1, 1]"
+    },
+    {
+      "kind": "declared_legality_filtered",
+      "case": "case00018",
+      "detail": "rank_range sorted_indices=2 not in [1, 1]"
+    },
+    {
+      "kind": "declared_legality_filtered",
+      "case": "case00019",
+      "detail": "rank_range sorted_indices=2 not in [1, 1]"
+    }
+  ]
+}

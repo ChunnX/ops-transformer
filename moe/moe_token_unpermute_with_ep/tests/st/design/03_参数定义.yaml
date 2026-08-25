@@ -1,0 +1,87 @@
+aclnn_name: "aclnnMoeTokenUnpermuteWithEp"
+
+parameters:
+  - name: "permutedTokens"
+    type: "aclTensor"
+    required: true
+    io_type: "input"
+    format: ["ND"]
+    dimensions: [2]
+    dtype_with_ranges:
+      - dtype: "float16"
+        value_range: [[-1, 1], [0, 0], ["+0", "+0"], ["-0", "-0"], [65504.0, 65504.0], [-65504.0, -65504.0], ["inf", "inf"], ["-inf", "-inf"], ["nan", "nan"]]
+      - dtype: "bfloat16"
+        value_range: [[-1, 1], [0, 0], ["+0", "+0"], ["-0", "-0"], [3.3895313892515355e+38, 3.3895313892515355e+38], [-3.3895313892515355e+38, -3.3895313892515355e+38], ["inf", "inf"], ["-inf", "-inf"], ["nan", "nan"]]
+      - dtype: "float32"
+        value_range: [[-1, 1], [0, 0], ["+0", "+0"], ["-0", "-0"], [3.4028235e+38, 3.4028235e+38], [-3.4028235e+38, -3.4028235e+38], ["inf", "inf"], ["-inf", "-inf"], ["nan", "nan"]]
+
+  - name: "sortedIndices"
+    type: "aclTensor"
+    required: true
+    io_type: "input"
+    format: ["ND"]
+    dimensions: [1]
+    dtype_with_ranges:
+      - dtype: "int32"
+        value_range: [[0, 1], [1, 512], [0, 0], [2147483647, 2147483647]]
+
+  - name: "probsOptional"
+    type: "aclTensor"
+    required: false
+    io_type: "input"
+    format: ["ND"]
+    dimensions: [2]
+    dtype_with_ranges:
+      - dtype: "float16"
+        value_range: [[0.1, 1], [-1, 1], [0, 0], ["+0", "+0"], ["-0", "-0"], [65504.0, 65504.0], [-65504.0, -65504.0], ["inf", "inf"], ["-inf", "-inf"], ["nan", "nan"]]
+      - dtype: "bfloat16"
+        value_range: [[0.1, 1], [-1, 1], [0, 0], ["+0", "+0"], ["-0", "-0"], [3.3895313892515355e+38, 3.3895313892515355e+38], [-3.3895313892515355e+38, -3.3895313892515355e+38], ["inf", "inf"], ["-inf", "-inf"], ["nan", "nan"]]
+      - dtype: "float32"
+        value_range: [[0.1, 1], [-1, 1], [0, 0], ["+0", "+0"], ["-0", "-0"], [3.4028235e+38, 3.4028235e+38], [-3.4028235e+38, -3.4028235e+38], ["inf", "inf"], ["-inf", "-inf"], ["nan", "nan"]]
+
+  - name: "numTopk"
+    type: "int64_t"
+    required: false
+    io_type: "input"
+    is_enum: true
+    dtype_with_values:
+      - dtype: "int64"
+        value: [1, 2, 8, 511, 512]
+
+  - name: "rangeOptional"
+    type: "aclIntArray"
+    required: false
+    io_type: "input"
+    length_ranges: [[0, 0], [2, 2]]
+    dtype_with_ranges:
+      - dtype: "int64"
+        value_range: [[0, 0], [0, 1], [1, 512]]
+
+  - name: "paddedMode"
+    type: "bool"
+    required: false
+    io_type: "input"
+    is_enum: true
+    dtype_with_values:
+      - dtype: "bool"
+        value: [false]
+
+  - name: "restoreShapeOptional"
+    type: "aclIntArray"
+    required: false
+    io_type: "input"
+    length_ranges: [[0, 0]]
+    dtype_with_ranges:
+      - dtype: "int64"
+        value_range: [[0, 0]]
+
+  - name: "out"
+    type: "aclTensor"
+    required: true
+    io_type: "output"
+    format: ["ND"]
+    dimensions: [2]
+    dtype_with_ranges:
+      - dtype: "float16"
+      - dtype: "bfloat16"
+      - dtype: "float32"

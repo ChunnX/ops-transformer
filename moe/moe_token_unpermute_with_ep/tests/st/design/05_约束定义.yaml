@@ -1,0 +1,177 @@
+metadata:
+  operator: "aclnnMoeTokenUnpermuteWithEp"
+  version: "1.0"
+  description: "MoeTokenUnpermuteWithEp public ACLNN contract dependencies"
+
+factors:
+  permutedTokens.dtype: {type: dtype, param: permutedTokens, io_type: input}
+  permutedTokens.shape: {type: shape, param: permutedTokens, io_type: input}
+  permutedTokens.format: {type: format, param: permutedTokens, io_type: input}
+  permutedTokens.exist: {type: exist, param: permutedTokens, io_type: input}
+  permutedTokens.dimensions: {type: dimensions, param: permutedTokens, io_type: input}
+  sortedIndices.dtype: {type: dtype, param: sortedIndices, io_type: input}
+  sortedIndices.shape: {type: shape, param: sortedIndices, io_type: input}
+  sortedIndices.format: {type: format, param: sortedIndices, io_type: input}
+  sortedIndices.exist: {type: exist, param: sortedIndices, io_type: input}
+  sortedIndices.dimensions: {type: dimensions, param: sortedIndices, io_type: input}
+  probsOptional.dtype: {type: dtype, param: probsOptional, io_type: input}
+  probsOptional.shape: {type: shape, param: probsOptional, io_type: input}
+  probsOptional.format: {type: format, param: probsOptional, io_type: input}
+  probsOptional.exist: {type: exist, param: probsOptional, io_type: input}
+  probsOptional.dimensions: {type: dimensions, param: probsOptional, io_type: input}
+  numTopk.dtype: {type: dtype, param: numTopk, io_type: input}
+  numTopk.exist: {type: exist, param: numTopk, io_type: input}
+  numTopk.value: {type: value, param: numTopk, io_type: input}
+  rangeOptional.dtype: {type: dtype, param: rangeOptional, io_type: input}
+  rangeOptional.exist: {type: exist, param: rangeOptional, io_type: input}
+  rangeOptional.length_ranges: {type: length_ranges, param: rangeOptional, io_type: input}
+  rangeOptional.length: {type: length, param: rangeOptional, io_type: input}
+  rangeOptional.value_range: {type: value_range, param: rangeOptional, io_type: input}
+  rangeOptional.value: {type: value, param: rangeOptional, io_type: input}
+  paddedMode.dtype: {type: dtype, param: paddedMode, io_type: input}
+  paddedMode.exist: {type: exist, param: paddedMode, io_type: input}
+  paddedMode.value: {type: value, param: paddedMode, io_type: input}
+  restoreShapeOptional.dtype: {type: dtype, param: restoreShapeOptional, io_type: input}
+  restoreShapeOptional.exist: {type: exist, param: restoreShapeOptional, io_type: input}
+  restoreShapeOptional.length_ranges: {type: length_ranges, param: restoreShapeOptional, io_type: input}
+  restoreShapeOptional.length: {type: length, param: restoreShapeOptional, io_type: input}
+  restoreShapeOptional.value_range: {type: value_range, param: restoreShapeOptional, io_type: input}
+  restoreShapeOptional.value: {type: value, param: restoreShapeOptional, io_type: input}
+  out.dtype: {type: dtype, param: out, io_type: output}
+  out.shape: {type: shape, param: out, io_type: output}
+  out.format: {type: format, param: out, io_type: output}
+  out.exist: {type: exist, param: out, io_type: output}
+  out.dimensions: {type: dimensions, param: out, io_type: output}
+
+constraints:
+
+  # ========================================
+  # 隐式约束（自动生成）
+  # ========================================
+
+  - id: "IMPLICIT-SHAPE-permutedTokens"
+    type: calculate
+    sources: [permutedTokens.dimensions]
+    target: "permutedTokens.shape"
+    expression: "derive_shape_from_dimensions(sources[0])"
+    description: "根据dimensions生成permutedTokens.shape"
+    implicit: True
+  - id: "IMPLICIT-RANGE-permutedTokens"
+    type: calculate
+    sources: [permutedTokens.dtype]
+    target: "permutedTokens.value_range"
+    expression: "derive_value_range_from_dtype(sources[0])"
+    description: "根据dtype选择permutedTokens.value_range"
+    implicit: True
+  - id: "IMPLICIT-SHAPE-sortedIndices"
+    type: calculate
+    sources: [sortedIndices.dimensions]
+    target: "sortedIndices.shape"
+    expression: "derive_shape_from_dimensions(sources[0])"
+    description: "根据dimensions生成sortedIndices.shape"
+    implicit: True
+  - id: "IMPLICIT-RANGE-sortedIndices"
+    type: calculate
+    sources: [sortedIndices.dtype]
+    target: "sortedIndices.value_range"
+    expression: "derive_value_range_from_dtype(sources[0])"
+    description: "根据dtype选择sortedIndices.value_range"
+    implicit: True
+  - id: "IMPLICIT-SHAPE-probsOptional"
+    type: calculate
+    sources: [probsOptional.dimensions]
+    target: "probsOptional.shape"
+    expression: "derive_shape_from_dimensions(sources[0])"
+    description: "根据dimensions生成probsOptional.shape"
+    implicit: True
+  - id: "IMPLICIT-RANGE-probsOptional"
+    type: calculate
+    sources: [probsOptional.dtype]
+    target: "probsOptional.value_range"
+    expression: "derive_value_range_from_dtype(sources[0])"
+    description: "根据dtype选择probsOptional.value_range"
+    implicit: True
+  - id: "IMPLICIT-RANGE-rangeOptional"
+    type: calculate
+    sources: [rangeOptional.dtype]
+    target: "rangeOptional.value_range"
+    expression: "derive_value_range_from_dtype(sources[0])"
+    description: "根据dtype选择rangeOptional.value_range"
+    implicit: True
+  - id: "IMPLICIT-LENGTH-rangeOptional"
+    type: calculate
+    sources: [rangeOptional.length_ranges]
+    target: "rangeOptional.length"
+    expression: "derive_length_from_length_ranges(sources[0])"
+    description: "根据length_ranges生成rangeOptional.length"
+    implicit: True
+  - id: "IMPLICIT-VALUE-LIST-rangeOptional"
+    type: calculate
+    sources: [rangeOptional.length, rangeOptional.value_range]
+    target: "rangeOptional.value"
+    expression: "derive_array_value_from_length_and_value_range(sources[0], sources[1])"
+    description: "根据length和value_range生成rangeOptional.value"
+    implicit: True
+  - id: "IMPLICIT-RANGE-restoreShapeOptional"
+    type: calculate
+    sources: [restoreShapeOptional.dtype]
+    target: "restoreShapeOptional.value_range"
+    expression: "derive_value_range_from_dtype(sources[0])"
+    description: "根据dtype选择restoreShapeOptional.value_range"
+    implicit: True
+  - id: "IMPLICIT-LENGTH-restoreShapeOptional"
+    type: calculate
+    sources: [restoreShapeOptional.length_ranges]
+    target: "restoreShapeOptional.length"
+    expression: "derive_length_from_length_ranges(sources[0])"
+    description: "根据length_ranges生成restoreShapeOptional.length"
+    implicit: True
+  - id: "IMPLICIT-VALUE-LIST-restoreShapeOptional"
+    type: calculate
+    sources: [restoreShapeOptional.length, restoreShapeOptional.value_range]
+    target: "restoreShapeOptional.value"
+    expression: "derive_array_value_from_length_and_value_range(sources[0], sources[1])"
+    description: "根据length和value_range生成restoreShapeOptional.value"
+    implicit: True
+  - id: "IMPLICIT-SHAPE-out"
+    type: calculate
+    sources: [out.dimensions]
+    target: "out.shape"
+    expression: "derive_shape_from_dimensions(sources[0])"
+    description: "根据dimensions生成out.shape"
+    implicit: True
+
+  - id: "C-TYPE-001"
+    type: calculate
+    sources: ["permutedTokens.dtype"]
+    target: "out.dtype"
+    expression: "sources[0]"
+    description: "Output dtype equals permutedTokens dtype."
+
+  - id: "C-SHAPE-001"
+    type: calculate
+    sources: ["permutedTokens.shape", "sortedIndices.shape"]
+    target: "out.shape"
+    expression: "[sources[1][0], sources[0][1]]"
+    description: "Fallback/no-probs seed shape; executable derivation later applies the selected EP/probs mode."
+
+  - id: "C-EXIST-001"
+    type: existential
+    trigger: "probsOptional.exist"
+    trigger_value: false
+    effect: {target: "probsOptional.dtype", action: set_na}
+    description: "Optional probs has no dtype when absent."
+
+  - id: "C-EXIST-002"
+    type: existential
+    trigger: "rangeOptional.exist"
+    trigger_value: false
+    effect: {target: "rangeOptional.dtype", action: set_na}
+    description: "Optional range has no dtype when absent."
+
+  - id: "C-EXIST-003"
+    type: existential
+    trigger: "restoreShapeOptional.exist"
+    trigger_value: false
+    effect: {target: "restoreShapeOptional.dtype", action: set_na}
+    description: "Optional restoreShape has no dtype when absent."

@@ -1,0 +1,18 @@
+{
+  "base": "moe/moe_token_unpermute_with_ep/tests/results/aclnn/positive/result_post_golden_fix_full_with_infra_failure.csv",
+  "base_sha256": "02c461bc833ad68c5bb310766c4ebc918fdde09733865fc12f9df6dc141ff6e6",
+  "rerun": "moe/moe_token_unpermute_with_ep/tests/results/aclnn/positive/result_post_golden_fix_dtype_combo_04_rerun.csv",
+  "rerun_sha256": "0b199f5e060deacc23cca75b56a5f3116c1ef766e14105b8e817fb4591f9ee86",
+  "output": "moe/moe_token_unpermute_with_ep/tests/results/aclnn/positive/result_final.csv",
+  "base_count": 648,
+  "rerun_count": 1,
+  "output_count": 648,
+  "replaced_testcases": [
+    "aclnn_moe_token_unpermute_with_ep_l1_dtype_combo_04"
+  ],
+  "base_non_pass_count": 1,
+  "rerun_pass_count": 1,
+  "output_pass_count": 648,
+  "output_non_pass_count": 0,
+  "passed": true
+}

@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "generator": "ascendc-st-design -> normalized TTK",
+  "raw_generated_counts": {
+    "L0": 9,
+    "L1": 596,
+    "L2": 5
+  },
+  "final_counts": {
+    "L0": 48,
+    "L1": 600,
+    "L2": 35
+  },
+  "canndev_seed": {
+    "input_count": 200,
+    "normalized_and_used": 112
+  },
+  "positive": {
+    "token_dtypes": [
+      "bfloat16",
+      "float16",
+      "float32"
+    ],
+    "probs_dtypes": [
+      "None",
+      "bfloat16",
+      "float16",
+      "float32"
+    ],
+    "topk": [
+      1,
+      2,
+      8,
+      511,
+      512
+    ],
+    "hidden": [
+      1,
+      7,
+      15,
+      16,
+      17,
+      31,
+      32,
+      33,
+      41,
+      63,
+      64,
+      65,
+      81,
+      255,
+      256,
+      257,
+      511,
+      512,
+      513,
+      1024,
+      2048,
+      4096,
+      7619,
+      7680
+    ],
+    "token_num": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      17,
+      64,
+      256,
+      520,
+      525,
+      976,
+      1024,
+      1953,
+      2048,
+      16384
+    ],
+    "dtype_combinations": [
+      "bfloat16+None",
+      "bfloat16+bfloat16",
+      "bfloat16+float16",
+      "bfloat16+float32",
+      "float16+None",
+      "float16+bfloat16",
+      "float16+float16",
+      "float16+float32",
+      "float32+None",
+      "float32+bfloat16",
+      "float32+float16",
+      "float32+float32"
+    ],
+    "range_modes": [
+      "baseline",
+      "boundary_high",
+      "boundary_low",
+      "fallback",
+      "full",
+      "nonzero_start",
+      "outside_zero",
+      "partial"
+    ],
+    "special_profiles": [
+      "deterministic",
+      "probs_large",
+      "probs_nan",
+      "probs_neginf",
+      "probs_negzero",
+      "probs_posinf",
+      "probs_poszero",
+      "tokens_large",
+      "tokens_nan",
+      "tokens_neginf",
+      "tokens_negzero",
+      "tokens_posinf",
+      "tokens_poszero"
+    ],
+    "noncontiguous_cases": 3
+  },
+  "negative": {
+    "count": 35,
+    "mutations": [
+      "tensor_dtypes[0]",
+      "tensor_dtypes[1]",
+      "tensor_dtypes[2]",
+      "tensor_dtypes[3]",
+      "tensor_formats[0]",
+      "tensor_formats[1]",
+      "tensor_formats[2]",
+      "tensor_formats[3]",
+      "tensor_view_shapes[0]",
+      "tensor_view_shapes[0]",
+      "tensor_view_shapes[0]",
+      "tensor_view_shapes[1]",
+      "tensor_view_shapes[1]",
+      "tensor_view_shapes[2]",
+      "tensor_view_shapes[2]",
+      "tensor_view_shapes[2]",
+      "tensor_view_shapes[3]",
+      "tensor_view_shapes[1]",
+      "tensor_view_shapes[2]",
+      "tensor_view_shapes[0]",
+      "attributes.numTopk",
+      "attributes.numTopk",
+      "attributes.numTopk/tensor_view_shapes[2]",
+      "attributes.rangeOptional",
+      "attributes.rangeOptional",
+      "attributes.rangeOptional",
+      "attributes.rangeOptional",
+      "attributes.paddedMode",
+      "attributes.restoreShapeOptional",
+      "tensor_view_shapes[0]",
+      "tensor_view_shapes[1]",
+      "tensor_view_shapes[2]",
+      "tensor_view_shapes[3]",
+      "sortedIndices.value",
+      "sortedIndices.value"
+    ],
+    "rank9_cases": 3,
+    "empty_cases": 4
+  }
+}

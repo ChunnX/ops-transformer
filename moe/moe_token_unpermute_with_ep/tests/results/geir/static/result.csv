@@ -1,0 +1,15 @@
+testcase_name,route,scenario,declared_shape,end_to_end_us,status
+static_dtype_combo_0,static,static,concrete,2.55462e+07,PASS
+static_dtype_combo_1,static,static,concrete,2.51086e+07,PASS
+static_dtype_combo_2,static,static,concrete,2.49884e+07,PASS
+static_no_probs_3,static,static,concrete,2.47765e+07,PASS
+static_dtype_combo_4,static,static,concrete,2.47818e+07,PASS
+static_dtype_combo_5,static,static,concrete,2.60059e+07,PASS
+static_dtype_combo_6,static,static,concrete,2.55593e+07,PASS
+static_no_probs_7,static,static,concrete,2.40207e+07,PASS
+static_dtype_combo_8,static,static,concrete,2.41155e+07,PASS
+static_dtype_combo_9,static,static,concrete,2.41574e+07,PASS
+static_dtype_combo_10,static,static,concrete,2.51293e+07,PASS
+static_no_probs_11,static,static,concrete,2.35701e+07,PASS
+static_fallback_probs_12,static,static,concrete,2.41283e+07,PASS
+static_fallback_no_probs_13,static,static,concrete,2.44051e+07,PASS

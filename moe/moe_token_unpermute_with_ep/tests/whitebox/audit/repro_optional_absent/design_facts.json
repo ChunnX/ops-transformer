@@ -1,0 +1,29 @@
+{
+  "phase": "optional-absence-minimal-repro",
+  "downstream_task": "helper-fix",
+  "op_dir": "/home/z50058944/code/ops-transformer_moe/moe/moe_token_unpermute_with_ep/tests/whitebox/audit/repro_optional_absent",
+  "scenario_dimensions": {
+    "rank": [2],
+    "allow_empty": false,
+    "allow_scalar": false,
+    "allow_min_shape": false
+  },
+  "semantic_extract": {
+    "extreme_inputs": [
+      {
+        "note": "absent_probs",
+        "shapes": {
+          "permuted_tokens": [2, 8],
+          "sorted_indices": [4],
+          "probs": null
+        },
+        "ranges": {
+          "permuted_tokens": [-1, 1],
+          "sorted_indices": [0, 3]
+        }
+      }
+    ]
+  },
+  "test_obligations": ["optional probs absent"],
+  "gaps": []
+}
