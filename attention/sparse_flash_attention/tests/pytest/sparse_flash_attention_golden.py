@@ -17,6 +17,11 @@ import copy
 
 import generate_tensor_data
 
+# 0 不切S2；1 切S2（flash-attention online softmax）
+RUN_MODE = 0
+# S2 分块大小（仅 RUN_MODE == 1 生效）
+S2_BASE_SIZE = 128
+
 
 def concat_tensor(tensor1, shape1, tensor2, shape2, n, tnd_flag=False):
     if len(shape1) != len(shape2):
@@ -666,6 +671,51 @@ def softmax(x, sinks=None):
     return ans, x_max, x_sum
 
 
+def _cast_softmax(softmax_res, q_dtype):
+    if q_dtype == "float16":
+        return softmax_res.to(torch.float16).float()
+    elif q_dtype == "bfloat16":
+        return softmax_res.to(torch.bfloat16).float()
+    return softmax_res.float()
+
+
+def tiled_flash_attention(q_curr, k_sparse, v_sparse, scale_value, cur_sinks, q_dtype):
+    g = q_curr.shape[0]
+    out_dim = v_sparse.shape[-1]
+    k_fp32 = k_sparse.float()
+    v_fp32 = v_sparse.float()
+    s2_len = k_fp32.shape[0]
+    s2_loop_time = math.ceil(s2_len / S2_BASE_SIZE)
+
+    if cur_sinks is not None:
+        row_max = cur_sinks.float()
+        row_sum = torch.ones(g, dtype=torch.float32)
+    else:
+        row_max = torch.full((g,), -float("inf"), dtype=torch.float32)
+        row_sum = torch.zeros(g, dtype=torch.float32)
+
+    cur_attn_out = torch.zeros((g, out_dim), dtype=torch.float32)
+
+    for i_s2 in range(s2_loop_time):
+        start = i_s2 * S2_BASE_SIZE
+        end = min(start + S2_BASE_SIZE, s2_len)
+        k_tile = k_fp32[start:end, :]
+        v_tile = v_fp32[start:end, :]
+
+        scale_res = torch.matmul(q_curr, k_tile.T) * scale_value
+        row_max_old = row_max.clone()
+        row_max = torch.max(row_max, scale_res.max(dim=1)[0])
+        update_mul = torch.exp(row_max_old - row_max)
+        cur_softmax = torch.exp(scale_res - row_max.unsqueeze(1))
+        row_sum = update_mul * row_sum + cur_softmax.sum(dim=1)
+
+        cur_softmax = _cast_softmax(cur_softmax, q_dtype)
+        cur_o = torch.matmul(cur_softmax, v_tile)
+        cur_attn_out = cur_attn_out * update_mul.unsqueeze(1) + cur_o
+
+    return cur_attn_out / row_sum.unsqueeze(1), row_max, row_sum
+
+
 def t_increattention_bnsd(fa_param):
     batch_size = fa_param["b"]
     numheads = fa_param["numHeads"]
@@ -746,23 +796,39 @@ def t_increattention_bnsd(fa_param):
                             torch.ones_like(cur_sinks),
                         )
                     continue
-                bmm1Res = torch.matmul(q_curr.float(), k_sparse.float().T)
-                scaleRes = bmm1Res * scaleValue
-                softmax_res, x_max, x_sum = softmax(scaleRes, cur_sinks)
-                if fa_param["q_dtype"] == "float16":
-                    bmm2Res = torch.matmul(
-                        softmax_res.to(torch.float16).float(), v_sparse.float()
+                if RUN_MODE == 0:
+                    bmm1Res = torch.matmul(q_curr.float(), k_sparse.float().T)
+                    scaleRes = bmm1Res * scaleValue
+                    softmax_res, x_max, x_sum = softmax(scaleRes, cur_sinks)
+                    if fa_param["q_dtype"] == "float16":
+                        bmm2Res = torch.matmul(
+                            softmax_res.to(torch.float16).float(), v_sparse.float()
+                        )
+                    elif fa_param["q_dtype"] == "bfloat16":
+                        bmm2Res = torch.matmul(
+                            softmax_res.to(torch.bfloat16).float(), v_sparse.float()
+                        )
+                    else:
+                        bmm2Res = torch.matmul(softmax_res.float(), v_sparse.float())
+                    y[batch, n2Idx * g : (n2Idx + 1) * g, s1Idx, :] = bmm2Res
+                    set_softmax_lse(
+                        batch, n2Idx, s1Idx, qLastPrefill, x_max[:, 0], x_sum[:, 0]
                     )
-                elif fa_param["q_dtype"] == "bfloat16":
-                    bmm2Res = torch.matmul(
-                        softmax_res.to(torch.bfloat16).float(), v_sparse.float()
+                elif RUN_MODE == 1:
+                    attn_out, row_max, row_sum = tiled_flash_attention(
+                        q_curr,
+                        k_sparse,
+                        v_sparse,
+                        scaleValue,
+                        cur_sinks,
+                        fa_param["q_dtype"],
+                    )
+                    y[batch, n2Idx * g : (n2Idx + 1) * g, s1Idx, :] = attn_out
+                    set_softmax_lse(
+                        batch, n2Idx, s1Idx, qLastPrefill, row_max, row_sum
                     )
                 else:
-                    bmm2Res = torch.matmul(softmax_res.float(), v_sparse.float())
-                y[batch, n2Idx * g : (n2Idx + 1) * g, s1Idx, :] = bmm2Res
-                set_softmax_lse(
-                    batch, n2Idx, s1Idx, qLastPrefill, x_max[:, 0], x_sum[:, 0]
-                )
+                    raise ValueError(f"unsupported RUN_MODE: {RUN_MODE}")
     return y, softmax_max, softmax_sum
 
 
