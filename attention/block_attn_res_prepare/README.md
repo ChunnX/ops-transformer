@@ -1,62 +1,157 @@
 # BlockAttnResPrepare
 
-`BlockAttnResPrepare` implements Phase 1 of Attention Residuals on Ascend 950.
+## 产品支持情况
 
-## Interface
+| 产品 | 是否支持 |
+| ---- | :------: |
+| <term>Ascend 950PR/Ascend 950DT</term> | √ |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> | × |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | × |
+| <term>Atlas 200I/500 A2 推理产品</term> | × |
+| <term>Atlas 推理系列产品</term> | × |
+| <term>Atlas 训练系列产品</term> | × |
 
-Inputs:
+## 功能说明
 
-- `block_res`: FP32 ND tensor `[T, N, D]`.
-- `valid_blocks`: INT64 ND tensor `[1]`; values below zero are clipped to zero, zero produces the empty
-  online-softmax state, and values above `N` are clipped to `N`.
-- `pseudo_query`: FP32 ND tensor `[S, D]`.
+- 算子功能：完成 Attention Residuals 历史残差注意力两阶段计算的第一阶段，一次并行计算全部 $S$ 个目标 slot 的块间注意力，并返回 softmax 加权分子及统计量 $(O,M,L)$，供下一阶段融合当前残差。
 
-Outputs:
+- 计算公式：
 
-- `numerator`: FP32 `[S, T, D]`.
-- `logit_max`: FP32 `[S, T]`.
-- `exp_sum`: FP32 `[S, T]`.
+$$
+\operatorname{block\_attn\_res\_prepare}
+\left(V,Q,\operatorname{valid\_blocks};\epsilon\right)
+\longrightarrow (O,M,L)
+$$
 
-Attribute:
+对 token $t$ 的第 $n$ 个有效历史来源计算 RMS 归一化因子：
 
-- `eps`: optional FP32 attribute, default `1e-6`, and must be greater than zero.
+$$
+R_{t,n}=\sqrt{\frac{1}{D}\sum_{d=0}^{D-1}V_{t,n,d}^{2}+\epsilon}
+$$
 
-## ACLNN and PyTorch interfaces
+对每个目标 slot、token 和有效历史来源计算 logit：
 
-The ACLNN two-stage interface is `aclnnBlockAttnResPrepareGetWorkspaceSize` and
-`aclnnBlockAttnResPrepare`; it is available only on Ascend 950 and validates the required tensor ranks, dtypes,
-output shapes, and positive finite `eps` before dispatch.
+$$
+Z_{s,t,n}=R_{t,n}^{-1}\sum_{d=0}^{D-1}Q_{s,d}V_{t,n,d}
+$$
 
-PyTorch users can import `block_attn_res_prepare` from `cann_ops_transformer`.  The wrapper registers
-`cann_ops_transformer::block_attn_res_prepare` and returns
-`(numerator, logit_max, exp_sum)` in the same order as the ACLNN/operator interface.
+设 $N_v$ 为 `valid_blocks` 指定的有效历史来源数，则：
 
-Vector arithmetic is implemented with Ascend 950 VF programming, while tensor creation and GM/UB movement use
-AscendC Tensor APIs. UB is assigned directly from tiling-derived byte offsets; the kernel does not create `TPipe`,
-`TQue`, or `TBuf`. MTE2/V/MTE3 dependencies are protected by explicit paired `set_flag`/`wait_flag` instructions.
-The Vector tiling key keeps an `N=1` arithmetic shortcut that skips max/exp/sum and weighted accumulation, directly
-copying `V[:,0,:]` with `E=1`, `L=1`. The mixed AIC/AIV key uses the same MM1, softmax, and MM2 pipeline for every
-runtime `valid_blocks[0] >= 1`; this preserves parallel AIC/AIV execution for the single-valid-block case.
+$$
+M_{s,t}=\max_{0\le n<N_v}Z_{s,t,n}
+$$
 
-Host tiling expands `(T,S)` into independent AIV work units and selects `baseD` from `D/1024/512/256`. The
-`qBufferNum`, `vBufferNum`, and `oBufferNum` fields are calculated from the actual loop counts: Q/O use one buffer
-when `dTileNum == 1`, and V uses one buffer only when its complete static loop count is one. The released UB is used
-to increase `vCacheRows`; the kernel caches all V rows only when runtime `valid_blocks[0] <= vCacheRows`, otherwise
-it reloads V for the numerator stage.
+$$
+E_{s,t,n}=\exp\left(Z_{s,t,n}-M_{s,t}\right)
+$$
 
-The current single-VReg softmax implementation supports physical `N <= 64`. Network performance coverage is
-`N=8`, `D=7168`, `S in {18,24}`, and `T in {1,2,4,32,254}`.
+$$
+L_{s,t}=\sum_{n=0}^{N_v-1}E_{s,t,n}
+$$
 
-The arch35 kernel also contains the no-`TPipe` mixed AIC/AIV Cube template contract: direct UB/L1 address planning,
-and paired cross-core events for MM1 dot, E, and MM2 output. The mixed template uses the
-hardware 1:2 task ratio; both AIV peers participate and split the S rows of RMS/softmax/MM2-copy work. Host tiling
-evaluates the Cube template first for the supported prefill candidate range and falls
-back to the Vector key when the shape or queried L1/L0/UB resources cannot satisfy the Cube plan. Cube MM1/E
-workspace starts after the platform system-workspace reservation. It keeps compact MM1 dot and aligned E tiles
-separate so the two AIV peers can process disjoint S rows without a read/write overlap; E includes the padded N tail
-consumed by MM2. MM2 Fixpipe first writes a contiguous per-core ND tile, then the AIV peers scatter their row slices
-to the `T*D`-strided `numerator` slice.
-Cube tiling independently searches
-`baseS` (full S first, then smaller M tiles) and `baseD`, and carries separate AIC/AIV counts, L1 buffer depths, and
-aligned element counts. MMAD parameters are built by the kernel from the same
-`baseS`, `baseD`, and aligned dimensions, so no duplicate library tiling record is serialized.
+$$
+O_{s,t,d}=\sum_{n=0}^{N_v-1}E_{s,t,n}V_{t,n,d}
+$$
+
+其中：
+
+- $V\in\mathbb{R}^{T\times N\times D}$ 表示历史残差块，$Q\in\mathbb{R}^{S\times D}$ 表示伪查询。
+- $T$、$N$、$S$、$D$ 分别表示 token 数、历史来源缓冲区容量、目标 slot 数和 hidden dimension。
+- $N_v$ 表示参与计算的有效历史来源数，取值由 `valid_blocks` 经区间 $[0,N]$ 截断后得到。
+- $R$ 表示 RMS 归一化因子，$Z$ 表示归一化注意力 logit，$E$ 表示 max-shift 后的指数值。
+- $O$、$M$、$L$ 分别表示 softmax 加权分子、logit 最大值和指数和，对应输出 `numerator`、`logit_max`、`exp_sum`。
+- $\epsilon$ 表示 RMS 归一化的数值稳定项，对应属性 `eps`。
+
+## 参数说明
+
+<table style="undefined;table-layout: fixed; width: 980px"><colgroup>
+  <col style="width: 120px">
+  <col style="width: 150px">
+  <col style="width: 490px">
+  <col style="width: 120px">
+  <col style="width: 100px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出/属性</th>
+      <th>描述</th>
+      <th>数据类型</th>
+      <th>数据格式</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>block_res</td>
+      <td>输入</td>
+      <td>历史残差块，对应公式中的V，shape为[T, N, D]。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>valid_blocks</td>
+      <td>输入</td>
+      <td>当前有效历史来源数，shape为[1]。其值小于0时按0处理，大于N时按N处理。</td>
+      <td>INT64</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>pseudo_query</td>
+      <td>输入</td>
+      <td>伪查询，对应公式中的Q，shape为[S, D]。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>numerator</td>
+      <td>输出</td>
+      <td>softmax加权分子，对应公式中的O，shape为[S, T, D]。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>logit_max</td>
+      <td>输出</td>
+      <td>有效历史来源logit的最大值，对应公式中的M，shape为[S, T]。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>exp_sum</td>
+      <td>输出</td>
+      <td>max-shift后的指数和，对应公式中的L，shape为[S, T]。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>eps</td>
+      <td>属性</td>
+      <td>RMS归一化的数值稳定项，可选，默认值为1e-6，必须为有限正数。</td>
+      <td>FLOAT</td>
+      <td>-</td>
+    </tr>
+  </tbody>
+</table>
+
+## 约束说明
+
+- 仅支持 Ascend 950PR/Ascend 950DT。
+- `T >= 0`，`S >= 0`，`1 <= N <= 64`，`1 <= D <= 8192`。
+- `block_res.shape[2]` 必须等于 `pseudo_query.shape[1]`。
+- `valid_blocks` 的 shape 必须为 `[1]`；有效历史来源数为0时，三个输出均置为0。
+- `eps` 必须为有限正数。
+- `T == 0` 或 `S == 0` 时，返回对应 shape 的空输出。
+
+## 调用说明
+
+| 调用方式 | 调用样例 | 说明 |
+| --- | --- | --- |
+| aclnn调用 | [test_aclnn_block_attn_res_prepare](./examples/test_aclnn_block_attn_res_prepare.cpp) | 通过[aclnnBlockAttnResPrepare](./docs/aclnnBlockAttnResPrepare.md)接口调用BlockAttnResPrepare算子。 |
+
+快速调用示例如下，仅供参考，详细算子编译运行方法参见[算子调用](../../docs/zh/invocation/quick_op_invocation.md)。
+
+```bash
+# 在ops-transformer仓库根目录执行
+bash build.sh --pkg --soc=ascend950 --ops=block_attn_res_prepare
+bash build.sh --run_example block_attn_res_prepare eager cust --soc=ascend950 --vendor_name=custom
+```
