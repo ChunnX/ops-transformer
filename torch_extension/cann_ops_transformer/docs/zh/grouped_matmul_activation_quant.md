@@ -77,8 +77,8 @@ cann_ops_transformer.grouped_matmul_activation_quant(
 | `quant_mode` | str | 可选 | 量化模式，默认值为`None`。torch层不解析该参数，直接透传到aclnn层；显式传值时当前仅支持`"mx"`。 | string | - |
 | `y_dtype` | torch.dtype | 可选 | 输出`y`的数据类型，默认值为`None`，此时推导为与`x`相同的FP8或FP4逻辑类型。 | `torch.float8_e4m3fn`、`torch.float8_e5m2`、两种FLOAT4 wrapper dtype | - |
 | `round_mode` | str | 可选 | 舍入模式，默认值为`"rint"`，当前仅支持`"rint"`。 | string | - |
-| `scale_alg` | int | 可选 | MX量化scale算法，默认值为0；0表示OCP实现，1表示cuBLAS实现。 | int | - |
-| `dst_type_max` | float | 可选 | 表示maxType的取值，对应公式中的Amax(DType)，默认值为0.0。当前MX场景仅支持0.0，表示Amax(DType)为量化结果数据类型的最大值。 | float | - |
+| `scale_alg` | int | 可选 | MX量化scale算法，默认值为0。支持0、1、2：0表示OCP实现；1表示cuBLAS实现，仅支持FP8输出；2表示FLOAT4动态范围实现，仅支持FLOAT4_E2M1输出。FLOAT4_E1M2输出仅支持0。 | int | - |
+| `dst_type_max` | float | 可选 | 表示maxType的取值，对应公式中的Amax(DType)，默认值为0.0。`scale_alg=2`时支持0.0或`[6.0, 12.0]`；0.0表示使用FLOAT4_E2M1的最大值6.0。其他`scale_alg`仅支持0.0。 | float | - |
 | `x_dtype` | int | MXFP4必选 | `x`的逻辑dtype wrapper。MXFP4必须传`torch_npu.float4_e2m1fn_x2`或`torch_npu.float4_e1m2fn_x2`。 | int | - |
 | `weight_dtype` | int | MXFP4必选 | `weight`的逻辑dtype wrapper。MXFP4必须传`torch_npu.float4_e2m1fn_x2`或`torch_npu.float4_e1m2fn_x2`。 | int | - |
 | `weight_scale_dtype` | int | 可选 | `weight_scale`的dtype wrapper覆盖值，默认值为`None`。当前MX场景需要传入`torch_npu.float8_e8m0fnu`。 | `torch_npu.float8_e8m0fnu` | - |
@@ -99,6 +99,7 @@ cann_ops_transformer.grouped_matmul_activation_quant(
 - MXFP4场景下`x`与`weight`必须同时为FLOAT4，二者可分别选择E2M1或E1M2；`K`必须为偶数且不能为2。
 - MXFP4 Torch输入必须使用`torch.uint8`打包载体，并显式传入`x_dtype`和`weight_dtype`。
 - WeightNZ转置场景必须先对源Weight执行`torch_npu.npu_format_cast(weight_source, 29)`，再执行`transpose(-1, -2)`；`weight_scale`必须对源shape的中间两维同步执行transpose。
+- `scale_alg=1`仅支持FP8输出；`scale_alg=2`仅支持FLOAT4_E2M1输出，且`dst_type_max`只能取0.0或`[6.0, 12.0]`。FLOAT4_E1M2输出仅支持`scale_alg=0`。
 - 支持M为0或N为0的空Tensor场景；该场景下允许K为0。
 
 ## 确定性计算
@@ -107,7 +108,7 @@ cann_ops_transformer.grouped_matmul_activation_quant(
 
 ## 调用说明
 
-- 单算子模式调用：
+- MXFP8单算子模式调用：
 
   ```python
   import math
@@ -140,4 +141,55 @@ cann_ops_transformer.grouped_matmul_activation_quant(
       weight_scale_dtype=torch_npu.float8_e8m0fnu,
       x_scale_dtype=torch_npu.float8_e8m0fnu,
   )
+  ```
+
+- MXFP4打包`uint8`输入、WeightNZ转置、`scale_alg=2`单算子模式调用：
+
+  ```python
+  import math
+  import torch
+  import torch_npu
+  import cann_ops_transformer
+
+  # K为偶数且不等于2；N为64的倍数。
+  E = 3
+  M = 52
+  K = 82
+  N = 128
+  group_list = torch.tensor([1, 31, 20], dtype=torch.int64).npu()
+
+  # MXFP4的两个逻辑元素打包到一个uint8中，因此x的物理末维为K / 2。
+  x = torch.randint(0, 256, (M, K // 2), dtype=torch.uint8).npu()
+  x_scale = torch.randint(120, 127, (M, math.ceil(K / 64), 2), dtype=torch.int8).npu()
+
+  # 转置WeightNZ：源物理shape为(E, N, K / 2)。先转NZ，再转置末两维。
+  weight_source = torch.randint(0, 256, (E, N, K // 2), dtype=torch.uint8).npu()
+  weight = torch_npu.npu_format_cast(weight_source, 29).transpose(-1, -2)
+  weight_scale_source = torch.randint(
+      120, 127, (E, N, math.ceil(K / 64), 2), dtype=torch.int8
+  ).npu()
+  weight_scale = weight_scale_source.transpose(-3, -2)
+
+  y, y_scale = cann_ops_transformer.grouped_matmul_activation_quant(
+      x,
+      group_list,
+      [weight],
+      [weight_scale],
+      "gelu_tanh",
+      bias=None,
+      x_scale=x_scale,
+      group_list_type=1,
+      quant_mode="mx",
+      y_dtype=torch_npu.float4_e2m1fn_x2,
+      round_mode="rint",
+      scale_alg=2,
+      dst_type_max=9.0,
+      x_dtype=torch_npu.float4_e2m1fn_x2,
+      weight_dtype=torch_npu.float4_e2m1fn_x2,
+      weight_scale_dtype=torch_npu.float8_e8m0fnu,
+      x_scale_dtype=torch_npu.float8_e8m0fnu,
+  )
+  torch.npu.synchronize()
+  # y为打包uint8，物理shape为(M, N / 2)；y_scale的shape为(M, ceil(N / 64), 2)。
+  print(y.shape, y.dtype, y_scale.shape, y_scale.dtype)
   ```
