@@ -192,8 +192,8 @@ enum class LayoutType {
 };
 
 enum class TemplateId : uint8_t {
-    EMPTY_X = 0,
-    NORMAL = 1,
+    NORMAL = 0,
+    EMPTY_X = 1,
     FULL_LOAD = 2
 };
 
