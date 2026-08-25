@@ -17,6 +17,10 @@
 #include <type_traits>
 #include "kernel_tiling/kernel_tiling.h"
 
+#ifndef KV_QUANT_SPARSE_FLASH_ATTENTION_VERSION
+#define KV_QUANT_SPARSE_FLASH_ATTENTION_VERSION (-1)
+#endif
+
 #if __has_include("../../sparse_flash_attention/arch35/common/util_regbase.h")
 #include "../../sparse_flash_attention/arch35/common/util_regbase.h"
 #else
