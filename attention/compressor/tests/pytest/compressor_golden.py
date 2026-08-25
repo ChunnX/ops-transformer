@@ -579,7 +579,7 @@ def cpu_compressor_fp64(
                 )
                 sc_score_state = np.full(
                     shape=(coff, cmp_ratio, head_dim),
-                    fill_value=-float("inf"),
+                    fill_value=-2e38,
                     dtype=matmul_dtype,
                 )
 
@@ -909,7 +909,7 @@ def cpu_compressor(
                 )
                 sc_score_state = np.full(
                     shape=(coff, cmp_ratio, head_dim),
-                    fill_value=-float("inf"),
+                    fill_value=-2e38,
                     dtype=matmul_dtype,
                 )
 

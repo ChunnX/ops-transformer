@@ -699,7 +699,10 @@ __aicore__ inline void CompressorVec1SliceIterator<COMP>::IteratorSlice()
                     //
                     // ★特殊5：needTc*cmpRatio 可能超过空洞行数（尾部块凑不齐一块），
                     //   clamp 后停在空洞末尾，不越界（"凑不齐也算一块"的任务量不变）。
-                    uint32_t skip = min(needDealTcSize_ * cmpRatio, gapRows);
+                    uint32_t skip = needDealTcSize_ * cmpRatio;
+                    if (sliceInfo_.sIdx == 0 && needDealTcSize_ > 0) {
+                        skip -= static_cast<uint32_t>(sliceInfo_.bStartPos % cmpRatio);
+                    }
                     sliceInfo_.dealedSeqCnt += skip;
                     sliceInfo_.sIdx += skip;
                     needDealTcSize_ = 0;
