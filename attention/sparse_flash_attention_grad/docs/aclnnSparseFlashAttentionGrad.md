@@ -180,7 +180,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>输入</td>
             <td>attention结构的输入v。</td>
             <td>
-            可选项。传入空指针时启用KV merge，内部按value=key处理；此时dValueOut也必须传入空指针，否则返回ACLNN_ERR_PARAM_INVALID。dKeyOut主头部维度返回dK+dV的合并结果。
+            可选项。传入空指针时启用KV merge，内部按value=key处理；此时dValueOut也必须缺席，即传入空指针或元素数为0的空张量，否则返回ACLNN_ERR_PARAM_INVALID。dKeyOut主头部维度返回dK+dV的合并结果。
             </td>
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
@@ -495,12 +495,12 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <tr>
                 <td>ACLNN_ERR_PARAM_NULLPTR</td>
                 <td>161001</td>
-                <td>必选参数或者输出是空指针。KV merge场景下value和dValueOut允许同时为空指针。</td>
+                <td>必选参数或者输出是空指针。KV merge场景下value和dValueOut允许同时缺席（空指针或元素数为0的空张量）。</td>
             </tr>
             <tr>
                 <td>ACLNN_ERR_PARAM_INVALID</td>
                 <td>161002</td>
-                <td>输入变量，如query、key、value、sparseIndices……的数据类型和数据格式不在支持的范围内。value与dValueOut必须同时为空或同时非空，只空其中一个时返回该错误。</td>
+                <td>输入变量，如query、key、value、sparseIndices……的数据类型和数据格式不在支持的范围内。value与dValueOut必须同时缺席或同时非空，只缺其中一个时返回该错误。dValueOut的“缺席”包含空指针和元素数为0的空张量两种形式，便于框架侧固定返回全部输出。</td>
             </tr>
             <tr>
                 <td>ACLNN_ERR_RUNTIME_ERROR</td>
@@ -566,7 +566,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
     - 入参为空的场景处理：
         - query为空Tensor：直接返回。
     - 当前只支持value和key完全一致的场景。
-    - KV merge场景下，value和dValueOut必须同时传入空指针或同时非空。同时为空时dKeyOut主头部维度返回dK+dV，不再单独返回dValue；若存在keyRope，dKeyRopeOut仍只返回dK的rope梯度。二者一个为空、另一个非空时接口返回ACLNN_ERR_PARAM_INVALID。
+    - KV merge场景下，value和dValueOut必须同时缺席或同时非空。dValueOut的“缺席”包含空指针和元素数为0的空张量两种形式：PyTorch等框架的反向接口需固定返回全部输出，无法把dValue省略掉，此时传入空张量即可。同时缺席时dKeyOut主头部维度返回dK+dV，不再单独返回dValue；若存在keyRope，dKeyRopeOut仍只返回dK的rope梯度。二者一个缺席、另一个非空时接口返回ACLNN_ERR_PARAM_INVALID。
     - TND尾padding：query、key、dOut、out、sparseIndices等T轴为物理长度。actualSeqLengthsQueryOptional、actualSeqLengthsKvOptional为长度为B的INT32前缀和，最后一个值分别为有效T1、有效T2，允许小于物理T1、T2。有效区间之后的padding token不参与反向计算，对应输出内容不保证。
 
 - Mask
