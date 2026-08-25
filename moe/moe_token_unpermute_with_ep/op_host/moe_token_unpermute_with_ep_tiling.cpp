@@ -71,8 +71,12 @@ static inline bool isFloatDtype(const int64_t inputDtypeSize)
 static inline int64_t ComputeUnitHSpace(const int64_t inputDtypeSize, const int64_t bufferNum)
 {
     int64_t castNum = isFloatDtype(inputDtypeSize) ? 0 : CAST_NUM;
+#if defined(MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950)
     return inputDtypeSize * (QUE_NUM + bufferNum - 1) +
            FLOAT_DATA_SIZE * (castNum + STABLE_REDUCTION_BUFFER_NUM);
+#else
+    return inputDtypeSize * (QUE_NUM + bufferNum - 1) + FLOAT_DATA_SIZE * castNum;
+#endif
 }
 
 static inline int64_t ComputeMaxHiddenSize(MoeTokenUnpermuteWithEpParam &param, int64_t bufferNum)
@@ -97,6 +101,7 @@ static inline ge::graphStatus MoeTokenUnpermuteWithEpInputParamCheck(const gert:
     const int64_t *tmpTopK = context->GetAttrs()->GetAttrPointer<int64_t>(0);
     int inputTopK = *tmpTopK;
 
+#if defined(MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950)
     auto rangePtr = context->GetAttrs()->GetAttrPointer<gert::ContinuousVector>(UNPERMUTE_WITH_EP_ARRT_RANGE);
     bool fallbackToUnpermute = rangePtr == nullptr || rangePtr->GetSize() == 0;
     if (rangePtr != nullptr && rangePtr->GetSize() != 0) {
@@ -108,6 +113,9 @@ static inline ge::graphStatus MoeTokenUnpermuteWithEpInputParamCheck(const gert:
 
     OP_CHECK_IF(!fallbackToUnpermute && inputTopK < 1,
                 OP_LOGE(nodeName, "input num TopK cannot less than 1."), return ge::GRAPH_FAILED);
+#else
+    OP_CHECK_IF(inputTopK < 1, OP_LOGE(nodeName, "input num TopK cannot less than 1."), return ge::GRAPH_FAILED);
+#endif
     OP_CHECK_IF(tokensShape == nullptr || indicesShape == nullptr || dataTensor0 == nullptr || dataTensor1 == nullptr,
                 OP_LOGE(nodeName, "permutedTokens or sortedIndices is nullptr."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(tokensShape->GetStorageShape().GetDimNum() != 2, OP_LOGE(nodeName, "permutedTokens's shape is not 2D."),
@@ -123,9 +131,14 @@ static inline ge::graphStatus MoeTokenUnpermuteWithEpInputParamCheck(const gert:
             int64_t topK = probsShape->GetStorageShape().GetDim(1);
             int64_t totalLength = indicesShape->GetStorageShape().GetDim(0);
 
+#if defined(MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950)
             OP_CHECK_IF(!fallbackToUnpermute && topK != inputTopK,
                         OP_LOGE(nodeName, "input topK(%d) can not match probs' dim(1).", inputTopK),
                         return ge::GRAPH_FAILED);
+#else
+            OP_CHECK_IF(topK != inputTopK, OP_LOGE(nodeName, "input topK(%d) can not match probs' dim(1).", inputTopK),
+                        return ge::GRAPH_FAILED);
+#endif
             OP_CHECK_IF(totalLength != tokensNum * topK,
                         OP_LOGE(nodeName, "permutedTokens's dim(0) is not equal to probs's dim(0) * probs's dim(1)."),
                         return ge::GRAPH_FAILED);
@@ -161,6 +174,7 @@ static inline void Init(const gert::TilingContext *context, const int64_t topK, 
     const int64_t *tmpTopK = attrPtr->GetAttrPointer<int64_t>(UNPERMUTE_WITH_EP_ARRT_TOPK);
     int inputTopK = *tmpTopK;
     auto rangePtr = attrPtr->GetAttrPointer<gert::ContinuousVector>(UNPERMUTE_WITH_EP_ARRT_RANGE);
+#if defined(MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950)
     bool fallbackToUnpermute = rangePtr == nullptr || rangePtr->GetSize() == 0;
     if (rangePtr != nullptr && rangePtr->GetSize() != 0) {
         OP_CHECK_IF(rangePtr->GetSize() != RANGE_SIZE,
@@ -173,16 +187,30 @@ static inline void Init(const gert::TilingContext *context, const int64_t topK, 
         param.input.start = 0;
         param.input.end = 0;
     }
+#else
+    if (rangePtr != nullptr) {
+        OP_CHECK_IF(rangePtr->GetSize() != RANGE_SIZE,
+                    OP_LOGE(context->GetNodeName(), "the size of range only support 2"), return);
+        const int64_t *rangeList = reinterpret_cast<const int64_t *>(rangePtr->GetData());
+        param.input.start = rangeList[0];
+        param.input.end = rangeList[1];
+    } else {
+        param.input.start = 0;
+        param.input.end = 0;
+    }
+#endif
 
     param.input.numOutTokens = tokensShape->GetStorageShape().GetDim(0); // numOutTokens根据tokens第0维获取；
     param.input.hiddenSize = tokensShape->GetStorageShape().GetDim(1);
     param.input.totalLength = sortedIndicesShape->GetStorageShape().GetDim(
         0); // tokens可能存在numOutTokens，因此totalLength从sortedIndices获取。
+#if defined(MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950)
     if (fallbackToUnpermute) {
         // ACLNN encodes a missing rangeOptional as the default [0, 0]. In this case the public API contract
         // falls back to MoeTokenUnpermute semantics: gather directly from the full input without EP filtering.
         param.input.end = param.input.totalLength;
     }
+#endif
     if (isUnpermute) {
         if (probsShape != nullptr) {
             auto dataTensor2 = context->GetInputTensor(2);
@@ -192,7 +220,11 @@ static inline void Init(const gert::TilingContext *context, const int64_t topK, 
             param.input.topK = probsShape->GetStorageShape().GetDim(1);
             param.input.PermuteProbGradSize = 0;
         } else {
+#if defined(MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950)
             param.input.topK = fallbackToUnpermute ? 1 : inputTopK;
+#else
+            param.input.topK = inputTopK;
+#endif
             param.input.PermuteProbGradSize = 1;
             param.input.haveProbs = false;
             param.input.tokensNum = safeDiv(param.input.totalLength, param.input.topK);
