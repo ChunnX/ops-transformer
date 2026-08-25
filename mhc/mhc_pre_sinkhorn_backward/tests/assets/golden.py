@@ -166,6 +166,14 @@ def mhc_pre_sinkhorn_backward_golden(
     norm_out_t = _numpy_to_torch(norm_out)
 
     is_3d = x_t.dim() == 3
+    is_empty = x_t.numel() == 0
+    if is_empty:
+        grad_x_np = np.zeros(x.shape, dtype=np.float32)
+        grad_phi_np = np.zeros(phi.shape, dtype=np.float32)
+        grad_alpha_np = np.zeros(alpha.shape, dtype=np.float32)
+        grad_bias_np = np.zeros(bias.shape, dtype=np.float32)
+        return grad_x_np, grad_phi_np, grad_alpha_np, grad_bias_np
+
     if is_3d:
         x_t = x_t.unsqueeze(0)
         grad_hin_t = grad_hin_t.unsqueeze(0)
