@@ -237,12 +237,12 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm2(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::CopyQGmToL1(RunInfo &runInfo, ConstInfo &constInfo)
 {
-    int64_t gmOffset = static_cast<int64_t>(this->queryGm.offsetCalculator.GetOffset(
-        runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx, runInfo.s1oIdx * runInfo.qSNumInOneBlock, 0));
+    uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx,
+                                                                 runInfo.s1oIdx * runInfo.qSNumInOneBlock, 0);
     for (uint32_t i = 0; i < 2; i++) {
         uint32_t curL1QBufId = (l1QBufId + i) % 3;
         WaitFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + curL1QBufId);
-        int64_t curGmOffset = gmOffset + static_cast<int64_t>(i) * (constInfo.dSize >> 1);
+        uint64_t curGmOffset = gmOffset + i * (constInfo.dSize >> 1);
         CopyToL1Nd2Nz<Q_T>(l1QTensor[curL1QBufId * BUFFER_SIZE_16K], this->queryGm.gmTensor[curGmOffset],
                            runInfo.mRealSize, constInfo.dSize >> 1, constInfo.mm1Ka);
         SetFlag<HardEvent::MTE2_MTE1>(l1QMte2ToMte1FlagId + curL1QBufId);
