@@ -9,13 +9,16 @@
  */
 
 /*!
- * \file all_gather_mx_matmul_udma_tiling_data.h
- * \brief Tiling data for AllGather + QuantMatmul fusion kernel (prefill variant)
+ * \file all_gather_mx_matmul_tiling_data.h
+ * \brief Tiling data for AllGather + QuantMatmul fusion kernel (UDMA + Hcomm/CCU variants)
  */
 
 #pragma once
 
+#ifndef __CCE_AICORE__
 #include <cstdint>
+#endif
+#include "kernel_tiling/kernel_tiling.h"
 #include "apace/tiling/quant_matmul_tiling_data.h"
 #include "apace/tiling/comm_tiling_data.h"
 #include "apace/core/aiv_comm/collective_comm_context.h"
@@ -38,3 +41,14 @@ struct alignas(8) AllGatherMxMatmulUdmaTilingData {
     CommTilingData commTile;
 };
 #pragma pack(pop)
+
+// Hcomm/CCU 路径 tiling 结构体（apace 自有，不依赖外部算子 tiling）
+namespace Apace {
+struct hcommAllGatherMatmulTilingData {
+    Mc2InitTiling mc2InitTiling;       // HCCL 初始化参数
+    Mc2CcTiling mc2CcTiling;           // HCCL CC task 配置
+    CommTilingData commTile;           // AllGather 切分参数（splitAxis=M_per_rank, nonSplitAxis=K）
+    QuantMatmulTilingData mmTile;      // Matmul tiling 参数
+    uint64_t gatherLen;                // 0: gather_out 输出可用，通信写入 gatherOut; >0: 用 workspace
+};
+} // namespace Apace
