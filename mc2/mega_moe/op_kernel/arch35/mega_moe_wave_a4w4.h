@@ -47,6 +47,8 @@ private:
     static constexpr uint32_t A_ELEMS_PER_BYTE = MegaMoeBase::A_ELEMS_PER_BYTE;
     static constexpr uint32_t GMM1_TILE_M = MegaMoeBase::GMM1_TILE_M;
     static constexpr uint32_t EPILOGUE_TILE_M = MegaMoeBase::EPILOGUE_TILE_M;
+    static constexpr bool ENABLE_GENERIC_A_FULL_LOAD = true;
+    static constexpr bool GENERIC_EPILOGUE_ON_AIV1 = true;
 
     using MegaMoeBase::DispatchBuffInit;
     using MegaMoeBase::commonConfig_;
@@ -95,7 +97,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm1
         return;
     }
     UpdateMoeExpertGmm1GlobalBuffer<ActivationType, Weight1Type, ActivationQuantOutType, QuantScaleOutType,
-                                    A_ELEMS_PER_BYTE, false, TopkWeightsPrefetch>(
+                                    A_ELEMS_PER_BYTE, false, TopkWeightsPrefetch, GENERIC_EPILOGUE_ON_AIV1>(
         gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_, epilogueOp_,
         gmmAddrInfo, state, tokenStartIndexInExpert, gmm1TilesPerMGroup);
     ProblemShape sliceProblemShape = state.problemShape;
@@ -108,7 +110,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm1
     if constexpr (g_coreType == AIC) {
         stageEvent = A4W4WaveTraceEvent::GMM1;
         waitEvent = A4W4WaveTraceEvent::WAIT_FOR_DISPATCH;
-    } else if (GetSubBlockIdx() == 0U) {
+    } else if (GetSubBlockIdx() == 1U) {
         stageEvent = A4W4WaveTraceEvent::ACTIVATION;
         waitEvent = A4W4WaveTraceEvent::WAIT_FOR_GMM1;
     }
@@ -119,7 +121,8 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm1
     CriticalPathTileTraceContext *traceContextPtr = nullptr;
 #endif
     RunGmm1GenericByWeightFormat<QuantOutType, ActivationQuantOutType, QuantScaleOutType, GMM1_TILE_M, EPILOGUE_TILE_M,
-                                 TopkWeightsPrefetch, false, true, false, true>(
+                                 TopkWeightsPrefetch, false, true, false, ENABLE_GENERIC_A_FULL_LOAD,
+                                 GENERIC_EPILOGUE_ON_AIV1>(
         gmmExecutionConfig_, params_, epilogueOp_, gmmAddrInfo, sliceProblemShape,
         static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert, runtimeState, state.expertIdx,
         nullptr, coversFullExpert, traceContextPtr);
@@ -211,8 +214,8 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm2
  * 按专家顺序将 token 划分为连续 Wave。Wave 以 256 行 M group 为单位，根据 GMM1 的 N tile 数
  * 控制总负载；空间不足时可在专家内部切分，但同一 Wave 的 GMM1 和 GMM2 始终处理相同的 token 范围。
  *
- * 启动阶段先 Dispatch 第一个 Wave；稳态阶段由 AIV1 预取下一 Wave，同时 AIC/AIV0 独立推进当前
- * Wave 的 GMM1/Activation/GMM2。AIV1 完成预取后再处理当前 Wave 的 Combine。
+ * 启动阶段先 Dispatch 第一个 Wave；稳态阶段由 AIV1 预取下一 Wave，再从 GM 消费当前 Wave 的
+ * GMM1 输出并执行 Activation；AIV0 可提前推进当前 Wave 的 GMM2 Prologue。
  */
 template <TemplateMegaMoeA4W4WaveTypeClass>
 __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::ProcessMoeExpertStages()
@@ -259,9 +262,9 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     // 同一 Block 内绑定的 1C2V 各自持有分核游标，必须按相同调用顺序推进并始终保持一致。
     // 某个角色即使不参与当前 GMM 计算，也必须使用该 problem 的 tile 数更新游标。
     uint32_t startBlockIdx = 0U;
-    int32_t vecSetSyncCom = 0;
+    int32_t gmm1TileReadySequence = 0;
     uint16_t gmm1PingPongIdx = 0U;
-    GmmRuntimeState gmm1RuntimeState{startBlockIdx, vecSetSyncCom, gmm1PingPongIdx};
+    GmmRuntimeState gmm1RuntimeState{startBlockIdx, gmm1TileReadySequence, gmm1PingPongIdx};
 
     const uint32_t gmm1TilesPerMGroup =
         Ops::Base::CeilDiv(commonConfig_.gmm1OutputDim / ACTIVATION_N_HALF, static_cast<uint32_t>(L1_TILE_N));
@@ -283,7 +286,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
             }
         }
 
-        // AIV1 先预取下一 Wave 再进入当前 Combine；AIC/AIV0 不等待预取，独立推进当前 Wave。
+        // AIV1 先预取下一 Wave，再消费当前 GMM1 输出；AIV0 跳过 GMM1，提前进入 GMM2 Prologue。
         while (currentWaveNeedsGmm1 || nextWaveNeedsDispatch) {
             if constexpr (g_coreType == AIV) {
                 if (GetSubBlockIdx() == 1U && nextWaveNeedsDispatch) {
@@ -350,10 +353,6 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
         }
         DrainWaveCombineRowRing(combineRowSequence, combineBufferConfig.rowBufferCount);
         ++waveIndex;
-    }
-
-    if constexpr (!TopkWeightsPrefetch) {
-        EndSync(gmm1RuntimeState.vecSetSyncCom);
     }
 }
 

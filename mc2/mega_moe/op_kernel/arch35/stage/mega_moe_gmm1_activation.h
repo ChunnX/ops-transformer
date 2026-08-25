@@ -168,13 +168,13 @@ __aicore__ inline void Gmm1AicMmadTileA8W4(BlockMmad &blockMmad, TensorA &gmA, T
     }
 }
 
-// Prefetch 路径的 AIC 将 GMM1 tile 写入 GM，并通知 AIV 后处理。
-template <typename MmadContext, bool IsShared, bool IsGmm1Interleaved, typename WorkSet, typename Config>
-__aicore__ inline void Gmm1AicPrefetchMmadGeneric(WorkSet &workSet, const Params &params,
-                                                  const GMMAddrInfo &gmmAddrInfo, const Config &config,
-                                                  uint32_t startLoopIdx, uint32_t tileNum, uint32_t expertIdx,
-                                                  MmadContext *blockMmadContext,
-                                                  CriticalPathTileTraceContext *traceContext = nullptr)
+// AIC 将 Generic GMM1 tile 写入 GM，并通知对应 AIV 执行 Activation。
+template <bool UseTileStatus, typename MmadContext, bool IsShared, bool IsGmm1Interleaved, typename WorkSet,
+          typename Config>
+__aicore__ inline void Gmm1AicMmadToGmGeneric(WorkSet &workSet, const GMMAddrInfo &gmmAddrInfo, const Config &config,
+                                              uint32_t startLoopIdx, uint32_t tileNum, int32_t &gmm1TileReadySequence,
+                                              uint32_t expertIdx, MmadContext *blockMmadContext,
+                                              CriticalPathTileTraceContext *traceContext = nullptr)
 {
     using BlockMmad = decltype(blockMmadContext->blockMmad);
     InitBlockMmad(*blockMmadContext, config);
@@ -209,7 +209,11 @@ __aicore__ inline void Gmm1AicPrefetchMmadGeneric(WorkSet &workSet, const Params
         AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
         EndTraceInterval(traceContext, false, mLoc, Get<M_VALUE>(actualShape), 1U, computeBegin);
-        NotifyGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
+        if constexpr (UseTileStatus) {
+            NotifyGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
+        } else {
+            AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag, ++gmm1TileReadySequence);
+        }
     }
 }
 
@@ -685,10 +689,47 @@ __aicore__ inline void Gmm1Aiv0EpilogueGeneric(WorkSet &workSet, const GMMAddrIn
     }
 }
 
+// AIV1 按 AIC 发布的顺序从 GM 消费 Generic GMM1 tile，并执行 Activation。
+template <typename ElementC, typename MakeLayoutC, bool TopkWeightsPrefetch, bool IsGmm1Interleaved,
+          bool IsWaveFlagGrained, typename WorkSet, typename Config, typename ActivationQuantOp>
+__aicore__ inline void Gmm1Aiv1EpilogueGeneric(WorkSet &workSet, const GMMAddrInfo &gmmAddrInfo, const Config &config,
+                                               uint32_t startLoopIdx, uint32_t tileNum, int32_t &gmm1TileReadySequence,
+                                               ActivationQuantOp &activationQuantOp, uint32_t expertBeforeCnt,
+                                               CriticalPathTileTraceContext *traceContext = nullptr)
+{
+    for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
+        auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
+        auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
+        uint32_t mLoc = Get<M_VALUE>(blockCoord);
+        uint32_t nLoc = Get<N_VALUE>(blockCoord);
+        int32_t expectedReadySequence = gmm1TileReadySequence + 1;
+        uint32_t waitBegin = BeginTraceInterval(traceContext);
+        WaitUntilGmFlagAtLeast(gmmAddrInfo.gmmToEpilogueFlag, expectedReadySequence);
+        EndTraceInterval(traceContext, true, mLoc, Get<M_VALUE>(actualShape), 1U, waitBegin);
+        uint32_t computeBegin = BeginTraceInterval(traceContext);
+        if constexpr (TopkWeightsPrefetch) {
+            if constexpr (IsGmm1Interleaved) {
+                Gmm1Aiv0PrefetchInterleavedEpilogueTileGeneric<MakeLayoutC, ElementC, IsWaveFlagGrained>(
+                    config, workSet.gmC, workSet.metaInfoGm, activationQuantOp, gmmAddrInfo, expertBeforeCnt,
+                    actualShape, mLoc, nLoc);
+            } else {
+                Gmm1Aiv0PrefetchEpilogueTileGeneric<MakeLayoutC, ElementC, IsWaveFlagGrained>(
+                    config, workSet.gmC, workSet.metaInfoGm, activationQuantOp, gmmAddrInfo, expertBeforeCnt,
+                    actualShape, mLoc, nLoc);
+            }
+        } else {
+            Gmm1Aiv1EpilogueTileA8W4<ElementC, MakeLayoutC, IsWaveFlagGrained>(
+                activationQuantOp, workSet.gmC, gmmAddrInfo, config, actualShape, mLoc, nLoc);
+        }
+        EndTraceInterval(traceContext, false, mLoc, Get<M_VALUE>(actualShape), 1U, computeBegin);
+        gmm1TileReadySequence = expectedReadySequence;
+    }
+}
+
 // 根据 GM 地址建立执行资源，并执行通用 GMM1/SwiGLU 阶段。
 template <typename BlockMmad, typename ElementC, typename MakeLayoutC, bool TopkWeightsPrefetch, bool IsShared = false,
-          bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false, typename Scheduler, typename Config,
-          typename ActivationQuantOp>
+          bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false, bool EpilogueOnAiv1 = false,
+          typename Scheduler, typename Config, typename ActivationQuantOp>
 __aicore__ inline void Gmm1ExecGeneric(Scheduler &scheduler, const Params &params, const GMMAddrInfo &gmmAddrInfo,
                                        const Config &config, uint32_t startLoopIdx, uint32_t tileNum,
                                        ActivationQuantOp &activationQuantOp, int32_t &vecSetSyncCom,
@@ -722,7 +763,7 @@ __aicore__ inline void Gmm1ExecGeneric(Scheduler &scheduler, const Params &param
     auto gmBias =
         Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType *>(0UL)), layouts.bias);
     GM_ADDR cGlobal = 0UL;
-    if constexpr (TopkWeightsPrefetch) {
+    if constexpr (TopkWeightsPrefetch || EpilogueOnAiv1) {
         cGlobal = gmmAddrInfo.gmm1OutGlobal;
     }
     auto gmC =
@@ -737,9 +778,13 @@ __aicore__ inline void Gmm1ExecGeneric(Scheduler &scheduler, const Params &param
     WorkSetType workSet{scheduler, gmA, gmB, gmScaleA, gmScaleB, gmBias, gmC, metaInfoGm};
     if constexpr (g_coreType == AscendC::AIC) {
         if (blockMmadContext != nullptr) {
-            if constexpr (TopkWeightsPrefetch) {
-                Gmm1AicPrefetchMmadGeneric<BlockMmadContext<BlockMmad>, IsShared, IsGmm1Interleaved>(
-                    workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, expertIdx, blockMmadContext,
+            if constexpr (EpilogueOnAiv1) {
+                Gmm1AicMmadToGmGeneric<false, BlockMmadContext<BlockMmad>, IsShared, IsGmm1Interleaved>(
+                    workSet, gmmAddrInfo, config, startLoopIdx, tileNum, vecSetSyncCom, expertIdx, blockMmadContext,
+                    traceContext);
+            } else if constexpr (TopkWeightsPrefetch) {
+                Gmm1AicMmadToGmGeneric<true, BlockMmadContext<BlockMmad>, IsShared, IsGmm1Interleaved>(
+                    workSet, gmmAddrInfo, config, startLoopIdx, tileNum, vecSetSyncCom, expertIdx, blockMmadContext,
                     traceContext);
             } else {
                 Gmm1AicMmadGeneric<BlockMmadContext<BlockMmad>, IsShared, IsGmm1Interleaved>(
@@ -748,10 +793,14 @@ __aicore__ inline void Gmm1ExecGeneric(Scheduler &scheduler, const Params &param
             }
         } else {
             BlockMmadContext<BlockMmad> localBlockMmadContext;
-            if constexpr (TopkWeightsPrefetch) {
-                Gmm1AicPrefetchMmadGeneric<BlockMmadContext<BlockMmad>, IsShared, IsGmm1Interleaved>(
-                    workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, expertIdx, &localBlockMmadContext,
-                    traceContext);
+            if constexpr (EpilogueOnAiv1) {
+                Gmm1AicMmadToGmGeneric<false, BlockMmadContext<BlockMmad>, IsShared, IsGmm1Interleaved>(
+                    workSet, gmmAddrInfo, config, startLoopIdx, tileNum, vecSetSyncCom, expertIdx,
+                    &localBlockMmadContext, traceContext);
+            } else if constexpr (TopkWeightsPrefetch) {
+                Gmm1AicMmadToGmGeneric<true, BlockMmadContext<BlockMmad>, IsShared, IsGmm1Interleaved>(
+                    workSet, gmmAddrInfo, config, startLoopIdx, tileNum, vecSetSyncCom, expertIdx,
+                    &localBlockMmadContext, traceContext);
             } else {
                 Gmm1AicMmadGeneric<BlockMmadContext<BlockMmad>, IsShared, IsGmm1Interleaved>(
                     workSet, gmmAddrInfo, config, startLoopIdx, tileNum, vecSetSyncCom, pingpongIdx,
@@ -759,8 +808,11 @@ __aicore__ inline void Gmm1ExecGeneric(Scheduler &scheduler, const Params &param
             }
         }
     } else {
-        // AIV1 在入口处提前退出。
-        if constexpr (TopkWeightsPrefetch) {
+        if constexpr (EpilogueOnAiv1) {
+            Gmm1Aiv1EpilogueGeneric<ElementC, MakeLayoutC, TopkWeightsPrefetch, IsGmm1Interleaved, IsWaveFlagGrained>(
+                workSet, gmmAddrInfo, config, startLoopIdx, tileNum, vecSetSyncCom, activationQuantOp, expertBeforeCnt,
+                traceContext);
+        } else if constexpr (TopkWeightsPrefetch) {
             Gmm1Aiv0PrefetchEpilogueGeneric<MakeLayoutC, ElementC, IsGmm1Interleaved, IsWaveFlagGrained>(
                 workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, activationQuantOp, expertBeforeCnt,
                 expertIdx, traceContext);
@@ -878,7 +930,7 @@ __aicore__ inline void Gmm1ExecA8W4(Scheduler &scheduler, const Params &params, 
 template <typename ElementA, typename EpilogueElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, bool IsWeightNZ = false, uint32_t Gmm1TileM = L1_TILE_M_256,
           uint32_t EpilogueTileM = Gmm1TileM, bool TopkWeightsPrefetch = false, bool IsShared = false,
-          bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false,
+          bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false, bool EpilogueOnAiv1 = false,
           uint64_t GenericFullLoadMode = Blaze::Gemm::NONE_FULL_LOAD_MODE>
 __aicore__ inline void RunGmm1Generic(
     BlockEpilogueActivationMxQuant<EpilogueElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true, EpilogueTileM,
@@ -898,11 +950,12 @@ __aicore__ inline void RunGmm1Generic(
                                             static_cast<int64_t>(config.tileM), static_cast<int64_t>(L1_TILE_N))});
     uint32_t tileNum = scheduler.GetTileNum();
 
-    if (GetSubBlockIdx() != 0) {
-        startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
-        return;
-    }
     if constexpr (g_coreType == AIV) {
+        constexpr uint32_t epilogueSubBlockIdx = EpilogueOnAiv1 ? 1U : 0U;
+        if (GetSubBlockIdx() != epilogueSubBlockIdx) {
+            startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
+            return;
+        }
         epilogueOp.UpdateNextProblem({config.m, config.outputN, config.k, 0});
     }
 
@@ -917,9 +970,9 @@ __aicore__ inline void RunGmm1Generic(
     auto *typedBlockMmadContext = reinterpret_cast<MmadContext *>(blockMmadContext);
     using MakeLayoutC = typename GmmConfig::MakeLayoutC;
     GmmKernel::Gmm1ExecGeneric<BlockMmad, ElementC, MakeLayoutC, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved,
-                               IsWaveFlagGrained>(scheduler, params, gmmAddrInfo, config, startLoopIdx, tileNum,
-                                                  epilogueOp, vecSetSyncCom, expertBeforeCnt, expertIdx, pingpongIdx,
-                                                  typedBlockMmadContext, allowWeightL2Bypass, traceContext);
+                               IsWaveFlagGrained, EpilogueOnAiv1>(
+        scheduler, params, gmmAddrInfo, config, startLoopIdx, tileNum, epilogueOp, vecSetSyncCom, expertBeforeCnt,
+        expertIdx, pingpongIdx, typedBlockMmadContext, allowWeightL2Bypass, traceContext);
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
@@ -927,7 +980,7 @@ __aicore__ inline void RunGmm1Generic(
 template <typename ElementA, typename EpilogueElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, bool IsWeightNZ = false, uint32_t Gmm1TileM = L1_TILE_M_256,
           uint32_t EpilogueTileM = Gmm1TileM, bool TopkWeightsPrefetch = false, bool IsShared = false,
-          bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false,
+          bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false, bool EpilogueOnAiv1 = false,
           uint64_t GenericFullLoadMode = Blaze::Gemm::NONE_FULL_LOAD_MODE>
 __aicore__ inline void RunGmm1Generic(
     BlockEpilogueActivationMxQuant<EpilogueElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true, EpilogueTileM,
@@ -940,9 +993,9 @@ __aicore__ inline void RunGmm1Generic(
                              static_cast<uint32_t>(GetBlockNum())};
     RunGmm1Generic<ElementA, EpilogueElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, IsWeightNZ,
                    Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained,
-                   GenericFullLoadMode>(epilogueOp, params, problemShape, gmmAddrInfo, startBlockIdx, vecSetSyncCom,
-                                        blockJob, expertBeforeCnt, expertIdx, pingpongIdx, blockMmadContext,
-                                        allowWeightL2Bypass);
+                   EpilogueOnAiv1, GenericFullLoadMode>(epilogueOp, params, problemShape, gmmAddrInfo, startBlockIdx,
+                                                        vecSetSyncCom, blockJob, expertBeforeCnt, expertIdx,
+                                                        pingpongIdx, blockMmadContext, allowWeightL2Bypass);
 }
 
 // RunGmm1A8W4：执行 A8W4 prologue（W4→W8）、GMM1、SwiGLU 和量化。
@@ -1009,14 +1062,16 @@ __aicore__ inline void RunGmm1A8W4(
 }
 
 template <typename ActivationType, typename WeightType, typename ActivationOutType, typename QuantScaleType,
-          uint32_t ActivationElementsPerByte, bool EnableA8W4, bool TopkWeightsPrefetch, typename BlockEpilogue>
+          uint32_t ActivationElementsPerByte, bool EnableA8W4, bool TopkWeightsPrefetch,
+          bool GenericEpilogueOnAiv1 = false, typename BlockEpilogue>
 __aicore__ inline void UpdateMoeExpertGmm1GlobalBuffer(
     const GmmExecutionConfig &gmmConfig, const MoeSyncWorkspaceLayout &syncLayout, const WorkspaceInfo &workspace,
     const ExpertWeightTensorListAddrs &weights, BlockEpilogue &epilogueOp, GMMAddrInfo &gmmAddrInfo,
     const ExpertLoopState &state, uint32_t rowOffsetInExpert = 0U, uint32_t gmm1TilesPerMGroup = 0U)
 {
     if constexpr (g_coreType == AIV && !EnableA8W4) {
-        if (GetSubBlockIdx() != 0) {
+        constexpr uint32_t epilogueSubBlockIdx = GenericEpilogueOnAiv1 ? 1U : 0U;
+        if (GetSubBlockIdx() != epilogueSubBlockIdx) {
             return;
         }
     }
@@ -1030,7 +1085,7 @@ __aicore__ inline void UpdateMoeExpertGmm1GlobalBuffer(
     uint32_t expertMGroupOffset = rowOffsetInExpert / L1_TILE_M_256;
     int64_t scaleK = Ops::Base::CeilDiv(k, static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
 
-    if constexpr (EnableA8W4 || TopkWeightsPrefetch) {
+    if constexpr (EnableA8W4 || TopkWeightsPrefetch || GenericEpilogueOnAiv1) {
         gmmAddrInfo.gmm1OutGlobal = workspace.gmm1MmadResPtr + globalTokenStartIndex * n * sizeof(bfloat16_t);
     }
     if constexpr (TopkWeightsPrefetch) {
@@ -1075,7 +1130,7 @@ __aicore__ inline void UpdateMoeExpertGmm1GlobalBuffer(
                                          expertOffset * syncLayout.dispatchFlagSlotCountPerExpert +
                                          static_cast<uint64_t>(expertMGroupOffset) * INT_CACHELINE;
     }
-    if constexpr (EnableA8W4) {
+    if constexpr (EnableA8W4 || GenericEpilogueOnAiv1) {
         gmmAddrInfo.gmmToEpilogueFlag = nullptr;
         if (workspace.flagGmmToEpiloguePtr != nullptr) {
             gmmAddrInfo.gmmToEpilogueFlag = reinterpret_cast<__gm__ int32_t *>(workspace.flagGmmToEpiloguePtr) +
@@ -1087,7 +1142,7 @@ __aicore__ inline void UpdateMoeExpertGmm1GlobalBuffer(
 template <typename QuantOutType, typename ActivationOutType, typename QuantScaleType, uint32_t Gmm1TileM,
           uint32_t EpilogueTileM, bool TopkWeightsPrefetch, bool IsGmm1Interleaved = false,
           bool IsWaveFlagGrained = false, bool IsShared = false, bool EnableGenericAFullLoad = false,
-          typename BlockEpilogue>
+          bool GenericEpilogueOnAiv1 = false, typename BlockEpilogue>
 __aicore__ inline void RunGmm1GenericByWeightFormat(const GmmExecutionConfig &gmmConfig, const Params &gmmParams,
                                                     BlockEpilogue &epilogueOp, const GMMAddrInfo &gmmAddrInfo,
                                                     const ProblemShape &problemShape, uint32_t globalTokenStartIndex,
@@ -1110,7 +1165,8 @@ __aicore__ inline void RunGmm1GenericByWeightFormat(const GmmExecutionConfig &gm
             if (useGenericAFullLoad) {
                 RunGmm1Generic<QuantOutType, ActivationOutType, QuantOutType, bfloat16_t, QuantScaleType,
                                QuantScaleType, true, Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, IsShared,
-                               IsGmm1Interleaved, IsWaveFlagGrained, Blaze::Gemm::A_FULL_LOAD_MODE>(
+                               IsGmm1Interleaved, IsWaveFlagGrained, GenericEpilogueOnAiv1,
+                               Blaze::Gemm::A_FULL_LOAD_MODE>(
                     epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
                     runtimeState.vecSetSyncCom, gmmConfig.blockJob, globalTokenStartIndex, expertIdx,
                     runtimeState.pingpongIdx, nullptr, allowWeightL2Bypass, traceContext);
@@ -1118,7 +1174,8 @@ __aicore__ inline void RunGmm1GenericByWeightFormat(const GmmExecutionConfig &gm
             }
         }
         RunGmm1Generic<QuantOutType, ActivationOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType, true,
-                       Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained>(
+                       Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained,
+                       GenericEpilogueOnAiv1>(
             epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx, runtimeState.vecSetSyncCom,
             gmmConfig.blockJob, globalTokenStartIndex, expertIdx, runtimeState.pingpongIdx, persistentBlockMmadContext,
             allowWeightL2Bypass, traceContext);
@@ -1127,7 +1184,8 @@ __aicore__ inline void RunGmm1GenericByWeightFormat(const GmmExecutionConfig &gm
             if (useGenericAFullLoad) {
                 RunGmm1Generic<QuantOutType, ActivationOutType, QuantOutType, bfloat16_t, QuantScaleType,
                                QuantScaleType, false, Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, IsShared,
-                               IsGmm1Interleaved, IsWaveFlagGrained, Blaze::Gemm::A_FULL_LOAD_MODE>(
+                               IsGmm1Interleaved, IsWaveFlagGrained, GenericEpilogueOnAiv1,
+                               Blaze::Gemm::A_FULL_LOAD_MODE>(
                     epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
                     runtimeState.vecSetSyncCom, gmmConfig.blockJob, globalTokenStartIndex, expertIdx,
                     runtimeState.pingpongIdx, nullptr, allowWeightL2Bypass, traceContext);
@@ -1135,7 +1193,8 @@ __aicore__ inline void RunGmm1GenericByWeightFormat(const GmmExecutionConfig &gm
             }
         }
         RunGmm1Generic<QuantOutType, ActivationOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType, false,
-                       Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained>(
+                       Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained,
+                       GenericEpilogueOnAiv1>(
             epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx, runtimeState.vecSetSyncCom,
             gmmConfig.blockJob, globalTokenStartIndex, expertIdx, runtimeState.pingpongIdx, persistentBlockMmadContext,
             allowWeightL2Bypass, traceContext);

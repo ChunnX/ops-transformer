@@ -187,7 +187,10 @@ struct WorkspaceInfo {
                                                   ALIGN_32) *
                              tilingData->aicNum;
         }
-        if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 || tilingData->topkWeightsPrefetch == 1) {
+        bool useA4W4Gmm1Out = useMteWaveCombine && (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
+                                                    tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ);
+        if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 || useA4W4Gmm1Out ||
+            tilingData->topkWeightsPrefetch == 1) {
             // gmm1MmadRes：GMM1 matmul 输出，布局为 maxOutputSize × hiddenDim 个 BF16。
             gmm1MmadResPtr = base + workspaceSize;
             workspaceSize += SIZE_BF_16 * tilingData->maxOutputSize * tilingData->hiddenDim;
@@ -209,8 +212,9 @@ struct WorkspaceInfo {
             int64_t gmm2OutputBytes = static_cast<int64_t>(SIZE_BF_16) *
                                       static_cast<int64_t>(tilingData->maxOutputSize) *
                                       static_cast<int64_t>(tilingData->h);
-            workspaceSize += useMteWaveCombine ? Ops::Base::CeilAlign(gmm2OutputBytes, static_cast<int64_t>(ALIGN_512)) :
-                                              gmm2OutputBytes;
+            workspaceSize += useMteWaveCombine ?
+                                 Ops::Base::CeilAlign(gmm2OutputBytes, static_cast<int64_t>(ALIGN_512)) :
+                                 gmm2OutputBytes;
         }
 
         // GMM1 tile 状态位区（仅 prefetch 路径分配，用于 AIC→AIV 软同步）。
