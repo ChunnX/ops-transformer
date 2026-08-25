@@ -110,6 +110,24 @@ __aicore__ inline uint32_t GetMGroupCountForRows(uint64_t rowCount, uint32_t row
     return static_cast<uint32_t>((rowCount - 1U) / rowsPerMGroup + 1U);
 }
 
+// AIC 未拥有当前冷专家切片的任何 tile 时，只推进 rolling 游标，跳过地址和 scheduler 构造。
+__aicore__ inline bool SkipUnownedWaveAicProblem(uint32_t problemTileCount, const BlockJobContext &blockJob,
+                                                 uint32_t &startBlockIdx)
+{
+    if constexpr (g_coreType == AIC) {
+        if (problemTileCount < blockJob.totalJobs) {
+            uint32_t firstOwnedTile =
+                (blockJob.jobIndex < startBlockIdx ? blockJob.jobIndex + blockJob.totalJobs : blockJob.jobIndex) -
+                startBlockIdx;
+            if (firstOwnedTile >= problemTileCount) {
+                startBlockIdx = (startBlockIdx + problemTileCount) % blockJob.totalJobs;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 // 计算剩余分组预算允许当前 Wave 在本专家内推进到的结束行偏移。
 __aicore__ inline uint32_t GetWaveEndRowOffsetInExpert(uint64_t expertRowCount, uint32_t currentRowOffsetInExpert,
                                                        uint32_t remainingMGroupCount, uint32_t rowsPerMGroup)
@@ -226,6 +244,19 @@ __aicore__ inline void TilingByCore(int32_t totalLen, int32_t &coreLen, int32_t 
     }
 }
 
+// 普通路径沿用 [expert][block] 的 32B 槽；Wave 一次发布完整表后使用
+// [block][expert] 连续布局，减少逐专家元数据同步。
+__aicore__ inline uint64_t GetExpertCountWorkspaceOffset(const BlockWorkspaceContext &workspace, uint32_t expertCount,
+                                                         uint32_t expertIdx, bool useCompactLayout)
+{
+    if (useCompactLayout) {
+        uint32_t compactStride = Ops::Base::CeilAlign(expertCount, static_cast<uint32_t>(INT_CACHELINE));
+        return static_cast<uint64_t>(workspace.blockIdx) * compactStride + expertIdx;
+    }
+    return static_cast<uint64_t>(expertIdx) * INT32_PER_256B * workspace.blockNum +
+           static_cast<uint64_t>(INT32_PER_256B) * workspace.blockIdx;
+}
+
 __aicore__ inline void GmSignalWaitBarrier(__gm__ int32_t *sigAddr, int32_t compareValue)
 {
     do {
@@ -296,6 +327,20 @@ __aicore__ inline void UpdateExpertLoopState(ExpertLoopState &state, uint32_t ex
     }
     state.expertIdx = expertIdx;
     Get<M_VALUE>(state.problemShape) = static_cast<int64_t>(expertTokenCount);
+}
+
+// 从当前 expert/block 的 count 槽读取 token 数后更新专家遍历状态。
+__aicore__ inline bool UpdateExpertLoopStateFromWorkspace(const WorkspaceInfo &workspace,
+                                                          const BlockWorkspaceContext &countWorkspace,
+                                                          ExpertLoopState &state, uint32_t expertIdx,
+                                                          bool useCompactLayout = false, uint32_t expertCount = 0U)
+{
+    uint64_t countOffset = GetExpertCountWorkspaceOffset(countWorkspace, expertCount, expertIdx, useCompactLayout);
+    __gm__ int32_t *expertTokenCountAddr =
+        reinterpret_cast<__gm__ int32_t *>(workspace.expertRevTokenNumsPtr) + countOffset;
+    uint32_t expertTokenCount = static_cast<uint32_t>(AscendC::ReadGmByPassDCache(expertTokenCountAddr));
+    UpdateExpertLoopState(state, expertIdx, expertTokenCount);
+    return expertTokenCount != 0U;
 }
 
 // 按当前 Wave 的剩余容量推进专家 token 位置，返回本次推进覆盖的 token 数。

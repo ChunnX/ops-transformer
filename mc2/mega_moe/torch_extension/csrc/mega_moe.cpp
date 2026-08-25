@@ -9,8 +9,12 @@
 // -----------------------------------------------------------------------------------------------------------
 
 #include <torch/extension.h>
+#include <algorithm>
 #include <cstring>
 #include "aclnn_common.h"
+
+// Torch C++ Extension 独立编译：诊断时手动改为 1。
+#define MEGA_MOE_ENABLE_A4W4_WAVE_TRACE 0
 
 namespace op_api {
 using npu_utils = at_npu::native::NpuUtils;
@@ -83,6 +87,13 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     int64_t bs = xSize[0];
     int64_t h = xSize[1];
     int64_t k = topkIdsSize[1];
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+    constexpr int64_t TRACE_OUTPUT_ELEMENT_COUNT = 512 * 1024;
+    int64_t traceOutputBs = (TRACE_OUTPUT_ELEMENT_COUNT + h - 1) / h;
+    int64_t outputBs = std::max(bs, traceOutputBs);
+#else
+    int64_t outputBs = bs;
+#endif
 
     if ((dispatchQuantOutDtype.has_value()) &&
         (dispatchQuantOutDtype.value() == static_cast<int64_t>(DType::FLOAT4_E2M1))) {
@@ -109,7 +120,7 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
         dispatchQuantOutDtype.has_value() ? static_cast<int64_t>(GetAclDataType(dispatchQuantOutDtype.value())) : 28;
 
     at::Tensor y;
-    y = at::empty({bs, h}, topkIds.options().dtype(x.scalar_type()));
+    y = at::empty({outputBs, h}, topkIds.options().dtype(x.scalar_type()));
 
     TensorListWrapper weight1Wrapper = {weight1Ref, weight1RefDtype};
     TensorListWrapper weight2Wrapper = {weight2Ref, weight2RefDtype};
@@ -228,6 +239,9 @@ int64_t CalcHalfBufferSizeMBA5(int64_t epWorldSize, int64_t moeExpertNum, int64_
     int64_t maskSlotSize = maskAlignSize + 32;
     int64_t maskRecvSize = CeilAlign(expertPerRank * epWorldSize * maskSlotSize, 512);
 
+    // Expert-major raw count table: [localExpert][sourceRank].
+    int64_t compactCountRecvSize = CeilAlign(expertPerRank * epWorldSize * static_cast<int64_t>(sizeof(int32_t)), 512);
+
     // quant_token_scale_size
     int64_t mxScaleNum = (hidden + 31) / 32;
     int64_t dataBytes = CeilAlign(hidden, 256);
@@ -241,7 +255,7 @@ int64_t CalcHalfBufferSizeMBA5(int64_t epWorldSize, int64_t moeExpertNum, int64_
     // combine_send_size
     int64_t combineOut = CeilAlign(numMaxTokensPerRank * hidden * numTopk * 2, 512);
 
-    int64_t totalBytes = peermemDataOffset + maskRecvSize + quantTokenScaleSize + combineOut;
+    int64_t totalBytes = peermemDataOffset + maskRecvSize + compactCountRecvSize + quantTokenScaleSize + combineOut;
 
     return totalBytes;
 }

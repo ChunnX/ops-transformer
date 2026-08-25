@@ -57,9 +57,8 @@ struct BlockMmadSelector<true, C> {
 
 // 汇总 GMM1/GMM2 在不同量化路径下共用的类型、shape 和 layout 配置。
 template <bool IsA8W4, uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
-          typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false,
-          bool TopkWeightsPrefetch = false, bool IsShared = false,
-          bool IsLayered = false, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
+          typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false, bool TopkWeightsPrefetch = false,
+          bool IsShared = false, bool IsLayered = false, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
 struct Config {
     static constexpr bool IS_SHARED = IsShared;
     static constexpr bool IS_WEIGHT_NZ = IsWeightNZ;
@@ -162,15 +161,15 @@ struct Config {
         constexpr uint64_t scaleBytesPerGroup = MXFP_MULTI_BASE_SIZE;
         constexpr uint64_t scaleTransferBytes = 64U * 1024U;
         constexpr uint64_t maxScaleFactor = 127U;
-        constexpr uint64_t maxKL1Units = 2U;
+        constexpr uint64_t maxKL1Units = 4U;
         constexpr uint64_t aElementsPerByte = Blaze::Gemm::IsFp4<ElementA>() ? 2U : 1U;
         constexpr uint64_t bElementsPerByte = Blaze::Gemm::IsFp4<ElementB>() ? 2U : 1U;
 
         const uint64_t blockM64 = blockM;
         const uint64_t blockN64 = blockN;
         /*
-         * 先计算一个 256K 基础窗口的字节数。当前只允许 kL1=256/512，且 256 同时是
-         * FP4 打包和 MX scale group 的整数倍，因此 512K 窗口的占用严格等于两倍基础窗口。
+         * kL1 为 256 的整数倍，A/B 和 scale 占用均随倍数线性增长。先计算单个
+         * 256K 窗口的占用，再由 L1 容量、scale 搬运上限和实际 K 直接求最大合法倍数。
          */
         const uint64_t dataBytesPerUnit = Ops::Base::CeilDiv(blockM64 * L1_TILE_K, aElementsPerByte) +
                                           Ops::Base::CeilDiv(blockN64 * L1_TILE_K, bElementsPerByte);
@@ -180,18 +179,15 @@ struct Config {
         const uint64_t scaleBBytesPerUnit = blockN64 * scaleKBytesPerUnit;
         const uint64_t scaleBytesPerUnit = scaleABytesPerUnit + scaleBBytesPerUnit;
 
-        /*
-         * K>256 时，若两个基础窗口的 A/B 和至少一个 scale 窗口可同时放入半片 L1，
-         * 且单侧 scale 不超过 64 KiB 搬运限制，则直接选择 512K；否则使用 256K。
-         */
-        const uint64_t doubleDataBytes = dataBytesPerUnit * maxKL1Units;
-        const uint64_t doubleScaleABytes = scaleABytesPerUnit * maxKL1Units;
-        const uint64_t doubleScaleBBytes = scaleBBytesPerUnit * maxKL1Units;
-        const uint64_t doubleScaleBytes = scaleBytesPerUnit * maxKL1Units;
-        const bool canUseDoubleKL1 = doubleDataBytes + doubleScaleBytes <= halfL1Size &&
-                                     doubleScaleABytes <= scaleTransferBytes &&
-                                     doubleScaleBBytes <= scaleTransferBytes;
-        const uint64_t kL1Units = canUseDoubleKL1 ? maxKL1Units : 1U;
+        uint64_t kL1Units = maxKL1Units;
+        kL1Units = Blaze::Gemm::Min(kL1Units, static_cast<uint64_t>(k) / L1_TILE_K);
+        kL1Units = Blaze::Gemm::Min(kL1Units, halfL1Size / (dataBytesPerUnit + scaleBytesPerUnit));
+        kL1Units = Blaze::Gemm::Min(kL1Units, scaleTransferBytes / scaleABytesPerUnit);
+        kL1Units = Blaze::Gemm::Min(kL1Units, scaleTransferBytes / scaleBBytesPerUnit);
+        if (kL1Units == 0U) {
+            return DefaultL1Params();
+        }
+
         const uint64_t kL1 = static_cast<uint64_t>(L1_TILE_K) * kL1Units;
         const uint64_t dataBytes = dataBytesPerUnit * kL1Units;
         const uint64_t scaleABytes = scaleABytesPerUnit * kL1Units;
@@ -201,18 +197,14 @@ struct Config {
         /*
          * scaleFactor = min(floor((halfL1Size - dataBytes) / scaleBytes),
          *                   floor(64 KiB / scaleABytes), floor(64 KiB / scaleBBytes),
-         *                   max(1, floor(K / kL1)), 127)
+         *                   floor(K / kL1), 127)
          * K 约束必须使用 floor 而不是 ceil：尾 K 不足一个完整窗口，必须在下一次 scale
          * 搬运中从窗口起点处理，不能挂在前一个 scaleKL1 窗口的末尾复用。
          */
         uint64_t scaleFactor = (halfL1Size - dataBytes) / scaleBytes;
-        const uint64_t scaleFactorByA = scaleTransferBytes / scaleABytes;
-        const uint64_t scaleFactorByB = scaleTransferBytes / scaleBBytes;
-        const uint64_t fullKWindowCount = static_cast<uint64_t>(k) / kL1;
-        const uint64_t scaleFactorByK = fullKWindowCount == 0U ? 1U : fullKWindowCount;
-        scaleFactor = Blaze::Gemm::Min(scaleFactor, scaleFactorByA);
-        scaleFactor = Blaze::Gemm::Min(scaleFactor, scaleFactorByB);
-        scaleFactor = Blaze::Gemm::Min(scaleFactor, scaleFactorByK);
+        scaleFactor = Blaze::Gemm::Min(scaleFactor, scaleTransferBytes / scaleABytes);
+        scaleFactor = Blaze::Gemm::Min(scaleFactor, scaleTransferBytes / scaleBBytes);
+        scaleFactor = Blaze::Gemm::Min(scaleFactor, static_cast<uint64_t>(k) / kL1);
         scaleFactor = Blaze::Gemm::Min(scaleFactor, maxScaleFactor);
         return MakeL1Params(kL1, scaleFactor * kL1);
     }
@@ -225,8 +217,7 @@ struct Config {
         return BlockMmadTilingConfig{blockM, L1_TILE_N, CalcAdaptiveL1Params(blockM, L1_TILE_N, k)};
     }
 
-    static __aicore__ inline BlockMmadTilingConfig SelectBlockMmadTilingConfig(uint32_t m, uint32_t k,
-                                                                               uint32_t tileM)
+    static __aicore__ inline BlockMmadTilingConfig SelectBlockMmadTilingConfig(uint32_t m, uint32_t k, uint32_t tileM)
     {
         BlockMmadTilingConfig baselineConfig = MakeBaselineBlockMmadTilingConfig(tileM);
         if (m == 0U || m >= tileM) {
@@ -239,10 +230,8 @@ struct Config {
              * BlockMmad 还会独立按实际 M/N 选择 kaL1。scale 使用专用实现固定的 4096K 窗口。
              */
             return BlockMmadTilingConfig{
-                tileM,
-                L1_TILE_N,
-                typename BlockMmad::L1Params{
-                    .kL1 = 0U, .scaleKL1 = Blaze::Gemm::MX_FP8FP4_SCALE_K_L1_SIZE}};
+                tileM, L1_TILE_N,
+                typename BlockMmad::L1Params{.kL1 = 0U, .scaleKL1 = Blaze::Gemm::MX_FP8FP4_SCALE_K_L1_SIZE}};
         }
 
         if constexpr (g_coreType == AscendC::AIC) {
@@ -305,8 +294,7 @@ struct Config {
     }
 
     __aicore__ static inline ProblemConfig BuildGmm1ProblemConfig(const ProblemShape &problemShape,
-                                                                  const BlockJobContext &blockJob,
-                                                                  uint32_t gmm1TileM)
+                                                                  const BlockJobContext &blockJob, uint32_t gmm1TileM)
     {
         ProblemConfig config;
         config.m = Get<M_VALUE>(problemShape);
@@ -320,8 +308,7 @@ struct Config {
     }
 
     __aicore__ static inline ProblemConfig BuildGmm2ProblemConfig(const ProblemShape &problemShape,
-                                                                  const BlockJobContext &blockJob,
-                                                                  uint32_t gmm1TileM)
+                                                                  const BlockJobContext &blockJob, uint32_t gmm1TileM)
     {
         ProblemConfig config;
         config.m = Get<M_VALUE>(problemShape);
@@ -377,12 +364,8 @@ __aicore__ inline void InitBlockMmad(MmadContext &context, const ProblemConfig &
 {
     using BlockMmad = decltype(context.blockMmad);
     const auto &tilingConfig = config.blockMmadTiling;
-    const BlockMmadInitConfig requestedConfig{
-        config.k,
-        tilingConfig.tileM,
-        tilingConfig.tileN,
-        tilingConfig.l1Params.kL1,
-        tilingConfig.l1Params.scaleKL1};
+    const BlockMmadInitConfig requestedConfig{config.k, tilingConfig.tileM, tilingConfig.tileN,
+                                              tilingConfig.l1Params.kL1, tilingConfig.l1Params.scaleKL1};
     if (!context.initialized || context.initConfig != requestedConfig) {
         typename BlockMmad::BlockShape l0TileShape{tilingConfig.tileM, tilingConfig.tileN, L0_TILE_K, 0};
         typename BlockMmad::ProblemShape matmulShape{config.m, config.n, config.k, 0};
@@ -399,13 +382,17 @@ __aicore__ inline void InitBlockMmad(MmadContext &context, const ProblemConfig &
  * 热点专家被切到多个 Wave 时必须保留正常 L2 cache。
  * B 与 scaleB 的物理行跨度不同，二者必须独立判定 128B cache-line 对齐，不能共用一个结果。
  */
-template <bool IsWeightNz, typename MatmulConfig, typename TensorB, typename TensorScaleB>
-__aicore__ inline void SetWaveWeightL2CacheHint(const typename MatmulConfig::ProblemConfig &config,
-                                                bool coversWholeExpert, TensorB &gmB, TensorScaleB &gmScaleB)
+struct WaveWeightL2CacheMode {
+    Te::CacheMode weight;
+    Te::CacheMode scale;
+};
+
+template <bool IsWeightNz, typename MatmulConfig>
+__aicore__ inline WaveWeightL2CacheMode GetWaveWeightL2CacheMode(const typename MatmulConfig::ProblemConfig &config)
 {
     constexpr uint64_t cacheLineBytes = 128U;
-    // coversWholeExpert 防止跨 Wave 复用；m <= tileM 防止同一 problem 内跨 M tile 复用。
-    bool hasNoLaterWeightReuse = coversWholeExpert && config.m <= config.tileM;
+    // 调用方已保证 problem 覆盖完整专家；m <= tileM 继续排除同一 problem 内的跨 M tile 复用。
+    bool hasNoLaterWeightReuse = config.m <= config.tileM;
 
     /*
      * NZ 已由分形布局保证物理块对齐。ND/DN(transB) 的连续维是 K，每一行的起点只有在
@@ -416,8 +403,6 @@ __aicore__ inline void SetWaveWeightL2CacheHint(const typename MatmulConfig::Pro
     if constexpr (!IsWeightNz) {
         bypassWeightL2 = bypassWeightL2 && config.k % 256U == 0U;
     }
-    gmB.SetL2CacheHint(
-        bypassWeightL2 ? Te::CacheMode::CACHE_MODE_DISABLE : Te::CacheMode::CACHE_MODE_NORMAL);
 
     /*
      * ScaleBDN 的连续维是 N，每个 logical N 含 C0_SIZE_SCALE 个 scale。这里检查完整 N 行跨度；
@@ -429,8 +414,8 @@ __aicore__ inline void SetWaveWeightL2CacheHint(const typename MatmulConfig::Pro
     uint64_t scaleNStrideBytes = static_cast<uint64_t>(config.n) * MatmulConfig::C0_SIZE_SCALE *
                                  sizeof(typename MatmulConfig::ElementMxScaleBType);
     bool bypassScaleL2 = hasNoLaterWeightReuse && scaleNStrideBytes % cacheLineBytes == 0U;
-    gmScaleB.SetL2CacheHint(
-        bypassScaleL2 ? Te::CacheMode::CACHE_MODE_DISABLE : Te::CacheMode::CACHE_MODE_NORMAL);
+    return {bypassWeightL2 ? Te::CacheMode::CACHE_MODE_DISABLE : Te::CacheMode::CACHE_MODE_NORMAL,
+            bypassScaleL2 ? Te::CacheMode::CACHE_MODE_DISABLE : Te::CacheMode::CACHE_MODE_NORMAL};
 }
 
 // 保存 GMM 执行所需的全部 tensor；当 bias 或 C 无实际存储时，调用方传入零地址占位 tensor。
