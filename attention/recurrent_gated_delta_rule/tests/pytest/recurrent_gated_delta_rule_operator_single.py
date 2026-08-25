@@ -73,7 +73,7 @@ def output_operator(params):
         state_non_contiguous,
     ) = params
 
-    print(f"params = {params}")
+    logger.info(f"params = {params}")
 
     run_recurrent_gated_delta_rule_eager(
         batch_size,
