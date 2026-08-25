@@ -16,8 +16,6 @@
 #ifndef ALLTO_ALL_MATMUL_KERNEL_BASE_H
 #define ALLTO_ALL_MATMUL_KERNEL_BASE_H
 
-#include "../../../common/op_kernel/mc2_runtime_info.h"
-
 namespace Mc2Kernel {
 template <typename SchedulerType, typename SchedulerContextType, typename AlltoAllMatmulTilingDataType>
 class AlltoAllMatmulKernelBase {
@@ -39,10 +37,6 @@ private:
     GM_ADDR workspaceGM_;
     GM_ADDR commOutGM_;
     GM_ADDR transOutGM_;
-    Mc2Kernel::Mc2RuntimeInfo runtimeInfo_;
-
-    static constexpr uint8_t POS_MAIN_CALC = 1; // 主轮计算
-    static constexpr uint8_t POS_TAIL_CALC = 2; // 尾轮计算
 
 private:
     __aicore__ inline void ProcessTile(uint32_t taskCnt);
@@ -68,12 +62,9 @@ __aicore__ inline void
     workspaceGM_ = workspaceGM;
     commOutGM_ = workspaceGM;
     transOutGM_ = all2all_out;
-        if (all2all_out == nullptr) {
+    if (all2all_out == nullptr) {
         transOutGM_ = (GM_ADDR)((uint64_t)commOutGM_ + mc2Tiling_.commLen);
     }
-    // 初始化运行时信息并接线给 pipeline，使 pipeline 循环内可写 turn
-    runtimeInfo_.Init(workspaceGM, &tilingData->workspaceLayout, mc2Tiling_.aicCoreNum);
-    pipeLine_->SetRuntimeInfo(&runtimeInfo_);
     // 初始化流水线
     pipeLine_->Init();
     pipeLine_->GetContext(&pipeLineContext_);
@@ -86,22 +77,14 @@ AlltoAllMatmulKernelBase<SchedulerType, SchedulerContextType, AlltoAllMatmulTili
     auto &&mc2Tiling_ = tilingData_->alltoAllMatmulTilingInfo;
     // 启动主块流水
     if (mc2Tiling_.tileCnt > 0) {
-        // 阶段入口: posTag+phase+turn 一次写入，崩溃时保留当前阶段状态
-        runtimeInfo_.WriteGmByPassDCache(0, POS_MAIN_CALC,
-                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         ProcessTile(mc2Tiling_.tileCnt);
     }
 
     // 启动尾块流水
     if (mc2Tiling_.tailCnt > 0) {
-        // 阶段入口: posTag+phase+turn 一次写入，崩溃时保留当前阶段状态
-        runtimeInfo_.WriteGmByPassDCache(0, POS_TAIL_CALC,
-                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         ProcessTail(mc2Tiling_.tailCnt);
     }
 
-    // 结束流水线: 仅切 commPhase，到达 finalize 即表示成功
-    runtimeInfo_.WritePhaseByPassDCache(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_FINALIZE));
     pipeLine_->End();
 }
 

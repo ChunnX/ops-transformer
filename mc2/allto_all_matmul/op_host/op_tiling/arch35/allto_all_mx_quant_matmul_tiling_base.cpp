@@ -760,7 +760,7 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::PostTiling()
     size_t tilingBufCap = context_->GetRawTilingData()->GetCapacity();
     OP_TILING_CHECK((outTilingData == nullptr), OP_LOGE(opName_, "Fail to get tiling data from context"),
                     return ge::GRAPH_FAILED);
-        OP_TILING_CHECK((tilingBufCap < sizeof(localTilingData_)),
+    OP_TILING_CHECK((tilingBufCap < sizeof(localTilingData_)),
                     OP_LOGE(opName_, "TilingBuffer capacity is too small, capacity = %zu, need = %zu.", tilingBufCap,
                             sizeof(localTilingData_)),
                     return ge::GRAPH_FAILED);
@@ -776,17 +776,6 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::PostTiling()
     context_->SetBlockDim(contextInfo_.args_.aicCoreNum);
     PrintAlltoAllMxQuantMatmulTilingData(*outTilingData);
 
-    const char *dumpRefPath = std::getenv("MC2_TILING_DUMP_REF_PATH");
-    if (dumpRefPath != nullptr) {
-        FILE *fp = std::fopen(dumpRefPath, "wb");
-        if (fp != nullptr) {
-            std::fwrite(outTilingData, sizeof(AlltoAllQuantMatmulTilingData), 1, fp);
-            std::fclose(fp);
-            OP_LOGI(opName_, "Tiling reference dumped to %s (%zu bytes).", dumpRefPath, sizeof(AlltoAllQuantMatmulTilingData));
-        } else {
-            OP_LOGW(opName_, "Failed to open %s for tiling reference dump.", dumpRefPath);
-        }
-    }
     return ge::GRAPH_SUCCESS;
 }
 

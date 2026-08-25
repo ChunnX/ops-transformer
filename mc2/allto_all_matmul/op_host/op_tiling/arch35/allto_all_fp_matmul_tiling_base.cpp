@@ -14,10 +14,6 @@
  */
 #include "allto_all_fp_matmul_tiling_base.h"
 
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-
 #include "common/utils/mc2_comm_utils.h"
 #include "common/utils/op_mc2.h"
 #include "mc2_log.h"
@@ -286,17 +282,6 @@ ge::graphStatus AllToAllFpMatmulTilingBase::PostTiling()
     context_->SetBlockDim(contextInfo_.args_.aicCoreNum);
     PrintAlltoAllMatmulTilingData(*outTilingData);
 
-    const char *dumpRefPath = std::getenv("MC2_TILING_DUMP_REF_PATH");
-    if (dumpRefPath != nullptr) {
-        FILE *fp = std::fopen(dumpRefPath, "wb");
-        if (fp != nullptr) {
-            std::fwrite(outTilingData, sizeof(AlltoAllMatmulTilingData), 1, fp);
-            std::fclose(fp);
-            OP_LOGI(opName_, "Tiling reference dumped to %s (%zu bytes).", dumpRefPath, sizeof(AlltoAllMatmulTilingData));
-        } else {
-            OP_LOGW(opName_, "Failed to open %s for tiling reference dump.", dumpRefPath);
-        }
-    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -320,10 +305,6 @@ void AllToAllFpMatmulTilingBase::SetTilingInfo(AlltoAllMatmulTilingInfo &tilingI
     tilingInfo.rankDim = contextInfo_.args_.rankDim;
     tilingInfo.hcclDataType = (static_cast<uint64_t>(
         mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo_.args_.geAType))); // hccl数据类型
-    tilingInfo.aicCoreNum = contextInfo_.args_.aicCoreNum;
-    tilingInfo.x1QuantMode = 0;
-    tilingInfo.x2QuantMode = 0;
-    tilingInfo.tilingKey = GetTilingKey();
 }
 
 /**

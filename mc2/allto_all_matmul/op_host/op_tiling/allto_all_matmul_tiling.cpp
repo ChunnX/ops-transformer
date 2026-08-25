@@ -18,7 +18,6 @@
 #include "allto_all_matmul_tiling_base.h"
 #include "mc2_exception_dump.h"
 #include "../../op_kernel/arch35/allto_all_matmul_tiling_data.h"
-#include <cstddef>
 
 using namespace ge;
 using Ops::Transformer::OpTiling::TilingRegistryArch;
