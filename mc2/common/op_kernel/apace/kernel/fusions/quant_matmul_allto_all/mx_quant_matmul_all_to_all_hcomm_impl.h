@@ -92,6 +92,7 @@ private:
     GM_ADDR mmResultGM_;
 
     AscendC::Hccl<ServerType> hccl_;
+    AscendC::HcclHandle prevHandle_{0};
     uint32_t rankId_{0};
     uint32_t rankDim_{0};
     uint32_t tileM_{0};
@@ -243,30 +244,38 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     auto &&ti = tilingData_->matmulAllToAllTilingInfo;
     uint64_t rankNPerPeer = static_cast<uint64_t>(ti.rankN) / ti.rankDim;
 
-    // AllToAll参数(与PR#10391一致)
-    // sendBuffer = workspace + startRow * rankNPerPeer (绝对偏移)
-    // recvBuffer = y_ + startRow * rankNPerPeer
-    // sendOffset = taskM * rankNPerPeer * sizeof(YType) (tile间步长)
-    // sendCount = taskM * rankNPerPeer (每tile发送量)
-    // strideCount = rankM * rankNPerPeer (相邻rank间距, 完整M)
     GM_ADDR sendBuf = GmAddr<YType>(workspaceGM_, startRow * rankNPerPeer);
     GM_ADDR recvBuf = GmAddr<YType>(y_, startRow * rankNPerPeer);
     uint64_t sendOffset = static_cast<uint64_t>(taskM) * rankNPerPeer * sizeof(YType);
     uint64_t sendCount = static_cast<uint64_t>(taskM) * rankNPerPeer;
     uint64_t strideCount = static_cast<uint64_t>(ti.rankM) * rankNPerPeer;
 
+    // pipeline深度2: AIC下发AllToAll<true>后不阻塞,继续下一tile matmul
+    // HCCL通信在AICPU执行,不占用AIC计算资源
+    bool hasPrev = false;
+
     for (uint32_t index = 0; index < taskCnt; ++index) {
+        // Wait上一个tile的通信(不阻塞当前tile计算,AICPU已完成大部分)
+        if (hasPrev) {
+            hccl_.Wait(prevHandle_);
+        }
+
         // matmul: rowOffset = startRow + index * taskM
         MatmulProcess(startRow + static_cast<uint64_t>(index) * taskM, mmTile);
         AscendC::SyncAll();
 
-        // AllToAll整块发送
-        AscendC::HcclHandle h = hccl_.template AlltoAll<true>(
+        // AllToAll异步下发(不阻塞AIC, AICPU执行通信)
+        prevHandle_ = hccl_.template AlltoAll<true>(
             sendBuf + static_cast<uint64_t>(index) * sendOffset,
             recvBuf + static_cast<uint64_t>(index) * sendOffset,
             sendCount, static_cast<AscendC::HcclDataType>(ti.hcclDataType),
             strideCount, 1);
-        hccl_.Wait(h);
+        hasPrev = true;
+    }
+
+    // 等待最后一个tile的通信完成
+    if (hasPrev) {
+        hccl_.Wait(prevHandle_);
     }
 }
 
