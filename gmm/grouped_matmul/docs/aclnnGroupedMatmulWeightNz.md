@@ -752,6 +752,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 
     - scaleOptional FRACTAL_NZ format约束：
       - 仅动态量化（mx量化）场景支持，scaleOptional数据类型必须为FLOAT8_E8M0。
+      - x和weight数据类型仅支持FLOAT8_E4M3FN。
       - 本版本scaleOptional FRACTAL_NZ format暂不支持x或weight为FLOAT4_E2M1/FLOAT4_E1M2的场景。
       - 仅支持transpose_weight为false的场景。
       - 仅支持groupType为0，即M轴分组场景；不支持groupType为2的K轴分组场景。
