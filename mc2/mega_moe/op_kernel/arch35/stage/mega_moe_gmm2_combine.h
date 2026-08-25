@@ -37,7 +37,7 @@
 namespace MegaMoeImpl {
 
 using namespace AscendC;
-using HcommBatchHandle = typename AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP>::BatchHandleType;
+using HcommBatchHandle = UbcCtpBatchHandle;
 
 namespace CombineImpl {
 
@@ -193,8 +193,8 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
         if (dstRankId != rankId){
             LocalTensor<uint8_t> hcommBatchTensor(TPosition::VECIN, 512, 64 * tokenCount);
             ChannelHandle channelHandle = GetUrmaCommHandle(params.combineCommParams.mc2Context, dstRankId, rankId);
-            activeBatchHandle = params.combineCommParams.hcomm->MakeBatchHandle(channelHandle, GetRankWinAddrWithOffset(dstRankId, 0),
-                nullptr, hcommBatchTensor, 64 * tokenCount);
+            activeBatchHandle = params.combineCommParams.hcomm->MakeBatchHandle(channelHandle, hcommBatchTensor,
+                64 * tokenCount, GetRankWinAddrWithOffset(dstRankId, 0), nullptr);
         }
     }
     LocalTensor<T> combineUbTensor(TPosition::VECIN, offset, ubTensorSize);
