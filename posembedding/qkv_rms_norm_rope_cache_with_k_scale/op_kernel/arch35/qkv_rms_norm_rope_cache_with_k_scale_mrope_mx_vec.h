@@ -114,9 +114,13 @@ public:
         const uint16_t tokenCount = static_cast<uint16_t>(tile.tokenCount);
         const uint16_t kHeadCount = static_cast<uint16_t>(kvHeadNum_);
         const uint32_t inputHeadStride = static_cast<uint32_t>(headDim_);
-        // Pack complete tokens into a 16-row VF only when an even K-head count divides the row batch exactly.
-        // Any incomplete token group, or an unsupported head count, stays on the generic schedule.
-        if ((kHeadCount & 1U) == 0U && (MROPE_MX_ROW_BATCH_ROWS % kHeadCount) == 0U) {
+        // Pack complete tokens into a 16-row VF. Nk=8 keeps all token pairs and a possible final
+        // tail8 in one tile-wide pipeline; the other supported even divisors keep their existing schedule.
+        if (kHeadCount == 8U) {
+            AscendC::VF_CALL<QRmsNormMropeMxD128GlobalTileWaveVfImpl<true>>(
+                kInput, kGamma, rawCosSin, gatherIndex, kData, kScale, mxScratch, tokenCount,
+                inputTokenStride, kHeadCount, inputHeadStride, scaleTokenStrideWords, epsilon_);
+        } else if ((kHeadCount & 1U) == 0U && (MROPE_MX_ROW_BATCH_ROWS % kHeadCount) == 0U) {
             const uint16_t tokensPerBatch = static_cast<uint16_t>(MROPE_MX_ROW_BATCH_ROWS / kHeadCount);
             const uint16_t batchTokenCount = static_cast<uint16_t>(tokenCount / tokensPerBatch * tokensPerBatch);
             if (batchTokenCount != 0U) {

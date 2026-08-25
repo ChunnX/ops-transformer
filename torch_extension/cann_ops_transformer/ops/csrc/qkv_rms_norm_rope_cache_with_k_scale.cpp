@@ -28,8 +28,9 @@ constexpr const char *DEFAULT_QKV_LAYOUT = QKV_LAYOUT_TND;
 constexpr const char *DEFAULT_Q_OUT_LAYOUT = QKV_LAYOUT_NTD;
 constexpr const char *Q_QUANT_PER_TOKEN_PER_HEAD = "PerTokenPerHead";
 constexpr const char *Q_QUANT_NO_QUANT = "NoQuant";
-constexpr const char *QUANT_MX = "MxQuant";
+constexpr const char *Q_QUANT_MX = "MxQuant";
 constexpr const char *K_QUANT_PER_TOKEN_PER_HEAD = "PerTokenPerHead";
+constexpr const char *K_QUANT_MX = "MxQuant";
 constexpr int64_t MX_SCALE_GROUP_SIZE = 32;
 
 enum class QScaleKind {
@@ -85,19 +86,19 @@ QScaleKind ResolveSceneForOutput(
     }
 
     const bool is_mrope_layout = layout_qkv == QKV_LAYOUT_TND && layout_q_out == QKV_LAYOUT_TND;
-    const bool is_legacy_mrope = has_mrope_position && !query_start_loc.has_value() && !seq_lens.has_value() &&
-                                 rotation.has_value() && is_mrope_layout && q_quant_mode == Q_QUANT_NO_QUANT &&
-                                 k_quant_mode == K_QUANT_PER_TOKEN_PER_HEAD;
-    if (is_legacy_mrope) {
+    const bool is_mrope = has_mrope_position && !query_start_loc.has_value() && !seq_lens.has_value() &&
+                          rotation.has_value() && is_mrope_layout && q_quant_mode == Q_QUANT_NO_QUANT &&
+                          k_quant_mode == K_QUANT_PER_TOKEN_PER_HEAD;
+    if (is_mrope) {
         return QScaleKind::NONE;
     }
 
     const bool is_mrope_mx = has_mrope_position && !query_start_loc.has_value() && !seq_lens.has_value() &&
-                             !rotation.has_value() && is_mrope_layout && q_quant_mode == QUANT_MX &&
-                             k_quant_mode == QUANT_MX;
+                             !rotation.has_value() && is_mrope_layout && q_quant_mode == Q_QUANT_MX &&
+                             k_quant_mode == K_QUANT_MX;
     TORCH_CHECK(is_mrope_mx,
                 "qkv_rms_norm_rope_cache_with_k_scale: unsupported scene before output allocation; expected "
-                "RoPE(positions present, rotation present, PerTokenPerHead/PerTokenPerHead), legacy "
+                "RoPE(positions present, rotation present, PerTokenPerHead/PerTokenPerHead), "
                 "M-RoPE(TND/TND, M-RoPE position+section present, rotation present, "
                 "NoQuant/PerTokenPerHead), or M-RoPE MX(TND/TND, M-RoPE position+section present, "
                 "rotation absent, MxQuant/MxQuant).");

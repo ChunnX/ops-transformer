@@ -241,7 +241,7 @@ def _resolve_scene_for_meta(
         return q_quant_mode
 
     is_mrope_layout = layout_qkv == QKV_LAYOUT_TND and layout_q_out == QKV_LAYOUT_TND
-    is_legacy_mrope = (
+    is_mrope = (
         has_mrope_position
         and query_start_loc is None
         and seq_lens is None
@@ -250,7 +250,7 @@ def _resolve_scene_for_meta(
         and q_quant_mode == Q_QUANT_NO_QUANT
         and k_quant_mode == K_QUANT_PER_TOKEN_PER_HEAD
     )
-    if is_legacy_mrope:
+    if is_mrope:
         return q_quant_mode
 
     is_mrope_mx = (
@@ -268,7 +268,7 @@ def _resolve_scene_for_meta(
     raise RuntimeError(
         "qkv_rms_norm_rope_cache_with_k_scale: unsupported scene; expected "
         "RoPE(positions present, rotation present, PerTokenPerHead/PerTokenPerHead), "
-        "legacy M-RoPE(TND/TND, M-RoPE position+section present, rotation present, "
+        "M-RoPE(TND/TND, M-RoPE position+section present, rotation present, "
         "NoQuant/PerTokenPerHead), or M-RoPE MX(TND/TND, M-RoPE position+section "
         "present, rotation absent, MxQuant/MxQuant)"
     )
