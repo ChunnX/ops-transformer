@@ -343,7 +343,6 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Process(const
     __gm__ float *biasPtr = params.isBias ? biasGmAddr_ : biasNull;
     auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(biasPtr),
                                  Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, Ni));
-                                 Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, Ni));
 
     const auto &mTailTile = mmT.mTailTile;
     const auto &nTailTile = mmT.nTailTile;
