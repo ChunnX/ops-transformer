@@ -624,6 +624,13 @@ protected:
                 OP_LOGE_WITHOUT_REPORT(opName, "[hcclBufferSize] hcclBufferSize(%ld) is less than "
                                                "M_total(%lu) * Ka(%lu) * sizeof(x1Dtype)(%.1f) * 1.1 = %.1f",
                                        static_cast<long>(*hccBufPtr), mTotal, kPerRank, typeSize, requiredBuf);
+                // HCCL_BUFFSIZE 单位为 MB，向上取整保证不小于 requiredBuf（字节）。
+                constexpr uint64_t BYTES_PER_MB = 1024UL * 1024UL;
+                uint64_t requiredMb = static_cast<uint64_t>(requiredBuf) / BYTES_PER_MB;
+                if (static_cast<uint64_t>(requiredBuf) % BYTES_PER_MB != 0) {
+                    requiredMb += 1;
+                }
+                OP_LOGE_WITHOUT_REPORT(opName, "Try export HCCL_BUFFSIZE=%lu", requiredMb);
                 return ge::GRAPH_FAILED;
             }
         }

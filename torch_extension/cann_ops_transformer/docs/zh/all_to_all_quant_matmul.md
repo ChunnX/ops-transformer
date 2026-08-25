@@ -98,6 +98,7 @@ cann_ops_transformer.all_to_all_quant_matmul(
 - `H`需能被64整除。
 - `x1`、`x2`需为2D Tensor。
 - `x1`与`x2`需同为FP8或同为FP4。
+- 通信buffer大小约束：本算子使用HCCL内置通信buffer完成All-to-All通信，该buffer大小由环境变量`HCCL_BUFFSIZE`（单位MB，不配置时默认200MB）控制。要求满足`HCCL_BUFFSIZE` >= `BS * H * sizeof(x1_dtype) * 1.1`，其中`sizeof(x1_dtype)`在FP8场景为1字节、FP4场景为0.5字节。若不满足，算子执行时会在tiling阶段报错并提示建议的`HCCL_BUFFSIZE`取值，此时可通过`export HCCL_BUFFSIZE=<建议值>`调大buffer后重试。
 
 ## 确定性计算
 
