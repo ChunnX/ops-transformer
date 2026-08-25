@@ -891,7 +891,10 @@ public:
         ReleaseVectorEvents();
     }
 
-    __aicore__ inline void ProcessAic() { ProcessPreAic(); }
+    __aicore__ inline void ProcessAic()
+    {
+        ProcessPreAic();
+    }
 
     template <typename PostWuOp>
     __aicore__ inline void ProcessAicFused(PostWuOp &postWu)
@@ -960,7 +963,10 @@ private:
         return ((b * HV_ + hv) * T_ + t) * dim + d;
     }
 
-    __aicore__ inline uint64_t BetaOffset(uint64_t b, uint64_t hv, uint64_t t) const { return (b * HV_ + hv) * T_ + t; }
+    __aicore__ inline uint64_t BetaOffset(uint64_t b, uint64_t hv, uint64_t t) const
+    {
+        return (b * HV_ + hv) * T_ + t;
+    }
 
     __aicore__ inline uint64_t AOffset(uint64_t b, uint64_t hv, uint64_t t, uint64_t j) const
     {
@@ -1134,7 +1140,10 @@ private:
         return vecBuf_.Get<float>()[slot * EXP2_UB_ELEMENTS];
     }
 
-    __aicore__ inline uint64_t GateStageElems() const { return GatePipelineRows() * K_; }
+    __aicore__ inline uint64_t GateStageElems() const
+    {
+        return GatePipelineRows() * K_;
+    }
 
     __aicore__ inline uint64_t GatePipelineRows() const
     {
@@ -1359,9 +1368,15 @@ private:
         return vecBuf_.Get<T>()[slot * 3 * GateStageElems()];
     }
 
-    __aicore__ inline LocalTensor<T> GateDirectW(uint64_t slot) { return GateDirectQ(slot)[GateStageElems()]; }
+    __aicore__ inline LocalTensor<T> GateDirectW(uint64_t slot)
+    {
+        return GateDirectQ(slot)[GateStageElems()];
+    }
 
-    __aicore__ inline LocalTensor<T> GateDirectV(uint64_t slot) { return GateDirectQ(slot)[2 * GateStageElems()]; }
+    __aicore__ inline LocalTensor<T> GateDirectV(uint64_t slot)
+    {
+        return GateDirectQ(slot)[2 * GateStageElems()];
+    }
 
     __aicore__ inline LocalTensor<float> GateBetaFloat(uint64_t slot)
     {
@@ -1396,14 +1411,20 @@ private:
         SetFlag<HardEvent::MTE2_V>(mte2ToVEvent_);
     }
 
-    __aicore__ inline void WaitGateInputReady() { WaitFlag<HardEvent::MTE2_V>(mte2ToVEvent_); }
+    __aicore__ inline void WaitGateInputReady()
+    {
+        WaitFlag<HardEvent::MTE2_V>(mte2ToVEvent_);
+    }
 
     __aicore__ inline void WaitGateOutputForMte2(uint64_t slot = 0)
     {
         WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2Events_[slot]);
     }
 
-    __aicore__ inline void WaitGateOutputForVector() { WaitFlag<HardEvent::MTE3_V>(mte3ToVEvent_); }
+    __aicore__ inline void WaitGateOutputForVector()
+    {
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVEvent_);
+    }
 
     __aicore__ inline void SignalGateOutputDone()
     {
