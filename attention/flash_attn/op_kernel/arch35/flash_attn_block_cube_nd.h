@@ -213,9 +213,7 @@ public:
         }
     }
 
-    __aicore__ inline void InitCrossCoreSync()
-    {
-    }
+    __aicore__ inline void InitCrossCoreSync() {}
 
     __aicore__ inline void UnInitCrossCoreSync()
     {
@@ -462,7 +460,8 @@ public:
     static constexpr FA_LAYOUT LAYOUT_KV = FA_T::kvLayout;
     using SEQLEN_T = uint32_t;
 
-    __aicore__ inline FANoQuantGqaBlockCubeDummyNd(ConstInfo_t &constInfo, SeqLensTool<LAYOUT_T, SEQLEN_T> &qSeqLensTool,
+    __aicore__ inline FANoQuantGqaBlockCubeDummyNd(ConstInfo_t &constInfo,
+                                                   SeqLensTool<LAYOUT_T, SEQLEN_T> &qSeqLensTool,
                                                    SeqLensTool<LAYOUT_KV, SEQLEN_T> &kvSeqLensTool){};
 };
 

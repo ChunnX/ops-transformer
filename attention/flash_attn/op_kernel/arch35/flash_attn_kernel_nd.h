@@ -444,13 +444,25 @@ public:
         }
     }
 
-    __aicore__ inline void ComputeMm1(RunInfo &runInfo) { cubeBlock_.IterateBmm1(runInfo); }
+    __aicore__ inline void ComputeMm1(RunInfo &runInfo)
+    {
+        cubeBlock_.IterateBmm1(runInfo);
+    }
 
-    __aicore__ inline void ComputeMm2(RunInfo &runInfo) { cubeBlock_.IterateBmm2(runInfo); }
+    __aicore__ inline void ComputeMm2(RunInfo &runInfo)
+    {
+        cubeBlock_.IterateBmm2(runInfo);
+    }
 
-    __aicore__ inline void ComputeVec1(RunInfo &runInfo) { vecFaBlock_.ProcessVec1(runInfo); }
+    __aicore__ inline void ComputeVec1(RunInfo &runInfo)
+    {
+        vecFaBlock_.ProcessVec1(runInfo);
+    }
 
-    __aicore__ inline void ComputeVec2(RunInfo &runInfo) { vecFaBlock_.ProcessVec2(runInfo); }
+    __aicore__ inline void ComputeVec2(RunInfo &runInfo)
+    {
+        vecFaBlock_.ProcessVec2(runInfo);
+    }
 
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
                                       RunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
