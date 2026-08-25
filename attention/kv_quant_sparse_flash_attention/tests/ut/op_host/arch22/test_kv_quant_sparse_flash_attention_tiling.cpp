@@ -14,9 +14,15 @@
 
 class KvQuantSparseFlashAttentionTiling : public testing::Test {
 protected:
-    static void SetUpTestCase() { std::cout << "KvQuantSparseFlashAttentionTiling SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "KvQuantSparseFlashAttentionTiling SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "KvQuantSparseFlashAttentionTiling TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "KvQuantSparseFlashAttentionTiling TearDown" << std::endl;
+    }
 };
 
 TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_0)
@@ -36,7 +42,9 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_0)
          {{{2, 32}, {2, 32}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQuery},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKv}},
-        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND}},
         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
          {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"value_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -49,7 +57,8 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_0)
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}},
+         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     int64_t expectTilingKey = 1154;
@@ -76,7 +85,9 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_1)
          {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQuery},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKv}},
-        {{{{96, 16, 512}, {96, 16, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{{96, 16, 512}, {96, 16, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND}},
         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
          {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"value_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -89,7 +100,8 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_1)
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}},
+         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     int64_t expectTilingKey = 1092;
@@ -119,7 +131,9 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_2)
             {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQuery},    // actual_seq_lengths_query
             {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKv}        // actual_seq_lengths_kv
         },
-        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND}},
         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
          {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"value_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -132,7 +146,8 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_2)
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}},
+         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
@@ -156,7 +171,9 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_3)
          {{{2, 32}, {2, 32}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQuery},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKv}},
-        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND}},
         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
          {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"value_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -169,7 +186,8 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_3)
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}},
+         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
@@ -193,7 +211,9 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_4)
          {{{2, 32}, {2, 32}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQuery},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKv}},
-        {{{{2, 64, 8, 576}, {2, 64, 8, 576}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {{{{2, 64, 8, 576}, {2, 64, 8, 576}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND}},
         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
          {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"value_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -206,7 +226,8 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_4)
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}},
+         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
@@ -230,7 +251,9 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_5)
          {{{2, 32}, {2, 32}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQuery},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKv}},
-        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND}},
         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
          {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"value_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -243,7 +266,8 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_5)
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}},
+         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
@@ -267,7 +291,9 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_6)
          {{{2, 32}, {2, 32}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQuery},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKv}},
-        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND}},
         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
          {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"value_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -280,7 +306,8 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_6)
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}},
+         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
@@ -304,7 +331,9 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_7)
          {{{2, 32}, {2, 32}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQuery},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKv}},
-        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND}},
         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
          {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"value_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -317,7 +346,8 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_7)
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(32)}},
+         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(32)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
@@ -340,7 +370,9 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_8)
          {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQuery},
          {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}},
-        {{{{96, 16, 512}, {96, 16, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{{96, 16, 512}, {96, 16, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND}},
         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
          {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"value_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -353,7 +385,8 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_8)
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}},
+         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
@@ -376,7 +409,9 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_9)
          {{{2, 32}, {2, 32}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQuery},
          {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}},
-        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND}},
         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
          {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"value_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -389,7 +424,8 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_9)
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}},
+         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
@@ -413,7 +449,9 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_10)
          {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQuery},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKv}},
-        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND}},
         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
          {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"value_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -426,7 +464,8 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_10)
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}},
+         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
@@ -450,7 +489,9 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_11)
          {{{2, 32}, {2, 32}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQuery},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKv}},
-        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND}},
         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
          {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"value_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -463,7 +504,8 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_11)
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}},
+         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
@@ -487,7 +529,9 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_12)
          {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQuery},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKv}},
-        {{{{96, 16, 512}, {96, 16, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{{96, 16, 512}, {96, 16, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND}},
         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
          {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"value_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -500,7 +544,8 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_12)
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}},
+         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
@@ -524,7 +569,9 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_13)
          {{{2, 32}, {2, 32}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQuery},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKv}},
-        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND}},
         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
          {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"value_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -537,7 +584,8 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_13)
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}},
+         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
@@ -563,7 +611,9 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_14)
             {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQuery},    // actual_seq_lengths_query
             {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKv}        // actual_seq_lengths_kv
         },
-        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND}},
         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
          {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"value_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -576,7 +626,8 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_14)
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}},
+         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
@@ -602,7 +653,9 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_15)
             {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQuery},    // actual_seq_lengths_query
             {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKv}        // actual_seq_lengths_kv
         },
-        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND}},
         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
          {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"value_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -615,7 +668,8 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_15)
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}},
+         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
@@ -641,7 +695,9 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_16)
             {{{2}, {2}}, ge::DT_FLOAT, ge::FORMAT_ND, true, actualSeqQuery},    // actual_seq_lengths_query
             {{{2}, {2}}, ge::DT_FLOAT, ge::FORMAT_ND, true, actualSeqKv}        // actual_seq_lengths_kv
         },
-        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND}},
         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
          {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"value_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -654,7 +710,8 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_16)
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}},
+         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
@@ -678,7 +735,9 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_17)
          {{{2, 32}, {2, 32}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQuery},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKv}},
-        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND}},
         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
          {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"value_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -691,7 +750,8 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_17)
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}},
+         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
@@ -715,7 +775,9 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_18)
          {{{2, 32}, {2, 32}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQuery},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKv}},
-        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND}},
         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
          {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"value_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -728,7 +790,8 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_18)
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}},
+         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
