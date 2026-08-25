@@ -84,6 +84,7 @@ private:
     HcclResult (*HcclRankGraphGetLayers)(HcclComm, uint32_t **, uint32_t *) = nullptr;
     HcclResult (*HcclRankGraphGetRankSizeByLayer)(HcclComm, uint32_t, uint32_t *) = nullptr;
     HcclResult (*HcclChannelAcquire)(HcclComm, CommEngine, HcclChannelDesc *, uint32_t, ChannelHandle *) = nullptr;
+    HcclResult (*HcclGetHcclBufferCleared)(HcclComm, void **, uint64_t *) = nullptr;
     HcclResult (*HcclGetHcclBuffer)(HcclComm, void **, uint64_t *) = nullptr;
     HcclResult (*HcclChannelGetHcclBuffer)(HcclComm, ChannelHandle, void **, uint64_t *) = nullptr;
     HcclResult (*HcclEngineCtxCreate)(HcclComm, const char *, CommEngine, uint64_t, void **) = nullptr;
