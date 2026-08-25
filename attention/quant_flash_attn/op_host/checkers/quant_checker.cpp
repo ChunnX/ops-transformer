@@ -41,8 +41,7 @@ const std::map<QfaQuantMode, std::pair<ge::DataType, std::string>> DESCALE_DTYPE
     {QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32, {ge::DT_FLOAT8_E8M0, "FLOAT8_E8M0"}},
     {QfaQuantMode::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
      {ge::DT_FLOAT, "FLOAT32"}},
-    {QfaQuantMode::A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32,
-     {ge::DT_FLOAT, "FLOAT32"}},
+    {QfaQuantMode::A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32, {ge::DT_FLOAT, "FLOAT32"}},
 };
 } // namespace
 
@@ -689,16 +688,12 @@ const std::map<QfaQuantMode, QfaLayoutConstraintConfig> QFA_LAYOUT_CONSTRAINT_TA
       {QfaLayout::TND, QfaLayout::N2TGD},
       false}},
     {QfaQuantMode::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
-     {{QfaLayout::TND},
-      {QfaLayout::PA_BNBD},
-      {QfaLayout::TND},
-      {QfaLayout::NT},
-      false}},
+     {{QfaLayout::TND}, {QfaLayout::PA_BNBD}, {QfaLayout::TND}, {QfaLayout::NT}, false}},
     {QfaQuantMode::A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32,
      {{QfaLayout::TND, QfaLayout::BSND, QfaLayout::BNSD},
       {QfaLayout::TND, QfaLayout::BSND, QfaLayout::BNSD},
       {QfaLayout::TND, QfaLayout::BSND, QfaLayout::BNSD},
-      {QfaLayout::TND},
+      {QfaLayout::BSND},
       true}},
 };
 } // namespace
@@ -717,10 +712,9 @@ ge::graphStatus QuantChecker::CheckLayoutConstraint(const QfaTilingInfo &qfaInfo
     const std::string quantModeStr = std::to_string(static_cast<uint32_t>(qfaInfo.quantMode)) + " (" +
                                      QfaQuantModeToSerialString(qfaInfo.quantMode) + ")";
 
-    OP_CHECK_IF(std::find(config.supportedQLayouts.begin(), config.supportedQLayouts.end(),
-                          qfaInfo.qLayout) == config.supportedQLayouts.end(),
-                OP_LOGE(qfaInfo.opName,
-                        "When quant_mode is %s, layout_q must be in supported list, but got %s",
+    OP_CHECK_IF(std::find(config.supportedQLayouts.begin(), config.supportedQLayouts.end(), qfaInfo.qLayout) ==
+                    config.supportedQLayouts.end(),
+                OP_LOGE(qfaInfo.opName, "When quant_mode is %s, layout_q must be in supported list, but got %s",
                         quantModeStr.c_str(), qLayoutStr.c_str()),
                 return ge::GRAPH_FAILED);
 
@@ -756,8 +750,7 @@ ge::graphStatus QuantChecker::CheckLayoutConstraint(const QfaTilingInfo &qfaInfo
                     OP_LOGE(qfaInfo.opName,
                             "When quant_mode is %s, layout_q, layout_kv and layout_out must be the same, "
                             "but got layout_q=%s, layout_kv=%s, layout_out=%s",
-                            quantModeStr.c_str(), qLayoutStr.c_str(),
-                            QfaLayoutToSerialString(qfaInfo.kvLayout).c_str(),
+                            quantModeStr.c_str(), qLayoutStr.c_str(), QfaLayoutToSerialString(qfaInfo.kvLayout).c_str(),
                             QfaLayoutToSerialString(qfaInfo.outLayout).c_str()),
                     return ge::GRAPH_FAILED);
     }
@@ -879,15 +872,15 @@ ge::graphStatus QuantChecker::CheckFeature(const QfaTilingInfo &qfaInfo)
     }
     if (qfaInfo.quantMode == QfaQuantMode::A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32) {
         constexpr int64_t HIF8_HEAD_DIM = 128;
-        OP_CHECK_IF(qfaInfo.qkHeadDim != HIF8_HEAD_DIM,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        qfaInfo.opName, "head_dim", std::to_string(qfaInfo.qkHeadDim).c_str(),
-                        "HIF8 only supports head_dim = 128"),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            qfaInfo.qkHeadDim != HIF8_HEAD_DIM,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "head_dim", std::to_string(qfaInfo.qkHeadDim).c_str(),
+                                                  "HIF8 only supports head_dim = 128"),
+            return ge::GRAPH_FAILED);
         OP_CHECK_IF(qfaInfo.vHeadDim != HIF8_HEAD_DIM,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        qfaInfo.opName, "head_dim_v", std::to_string(qfaInfo.vHeadDim).c_str(),
-                        "HIF8 only supports head_dim_v = 128"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "head_dim_v",
+                                                          std::to_string(qfaInfo.vHeadDim).c_str(),
+                                                          "HIF8 only supports head_dim_v = 128"),
                     return ge::GRAPH_FAILED);
     }
     if (CheckShapeMatch(qfaInfo) != ge::GRAPH_SUCCESS) {
@@ -956,8 +949,7 @@ ge::graphStatus QuantChecker::CheckQkvDtype(const QfaTilingInfo &qfaInfo) const
         expectedDtypeStr = "FLOAT8_E4M3FN";
     }
 
-    const auto checkDtype = [&](const gert::CompileTimeTensorDesc *desc,
-                                const std::string &name) -> ge::graphStatus {
+    const auto checkDtype = [&](const gert::CompileTimeTensorDesc *desc, const std::string &name) -> ge::graphStatus {
         if (desc == nullptr) {
             return ge::GRAPH_SUCCESS;
         }
@@ -998,8 +990,7 @@ ge::graphStatus QuantChecker::CheckQkvShapeDim(const QfaTilingInfo &qfaInfo) con
         dimStr = "3D";
     }
 
-    const auto checkDim = [&](const gert::StorageShape *shape,
-                              const std::string &name) -> ge::graphStatus {
+    const auto checkDim = [&](const gert::StorageShape *shape, const std::string &name) -> ge::graphStatus {
         if (shape == nullptr) {
             return ge::GRAPH_SUCCESS;
         }
