@@ -47,12 +47,12 @@ def _apply_golden_globals(params, quant_mode=1):
     """把 case 参数注入 golden 模块全局变量 (按 quant_mode 选择目标模块).
 
     quant_mode=6 → fp8_golden_mod (GQA FP8 全量化路径)
-    quant_mode=7 → hif8_golden_mod (HIF8 per-tensor 量化路径)
+    quant_mode=0 → hif8_golden_mod (HIF8 per-tensor 量化路径)
     其他 → mxfp8_golden_mod (MXFP8 路径)
     """
     if quant_mode == 6:
         target = fp8_golden_mod
-    elif quant_mode == 7:
+    elif quant_mode == 0:
         target = hif8_golden_mod
     else:
         target = mxfp8_golden_mod
@@ -206,7 +206,7 @@ def run_main(
         q_fp8 = fp8_golden_mod.quant_fp16_to_fp8(q_cpu, quant_scale_q)
         k_fp8 = fp8_golden_mod.quant_fp16_to_fp8(k_cpu, quant_scale_k)
         v_fp8 = fp8_golden_mod.quant_fp16_to_fp8(v_cpu, quant_scale_v)
-    elif quant_mode == 7:
+    elif quant_mode == 0:
         # HIF8 per-tensor (Q/K/V per-tensor quant, descale=FP32 scalar)
         quant_scale_q = hif8_golden_mod.get_hif8_per_tensor_quant_scale(q_cpu)
         quant_scale_k = hif8_golden_mod.get_hif8_per_tensor_quant_scale(k_cpu)
@@ -273,7 +273,7 @@ def run_main(
             if isinstance(block_table_cpu, torch.Tensor) and enable_pa
             else None,
         )
-    elif quant_mode == 7:
+    elif quant_mode == 0:
         inputs = hif8_golden_mod.prepare_npu_inputs(
             q_fp8,
             k_fp8,
@@ -385,7 +385,7 @@ def run_main(
         fp8_golden_mod._actual_seq_q()
         if quant_mode == 6
         else hif8_golden_mod._actual_seq_q()
-        if quant_mode == 7
+        if quant_mode == 0
         else mxfp8_golden_mod._actual_seq_q()
     )
     # T_actual: 以 actual_seq_q (seqused_q 优先, 否则从 cu_seqlens_q 差分) 为准,

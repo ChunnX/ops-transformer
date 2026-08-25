@@ -28,7 +28,7 @@
   `quant_flash_attn`是基于`torch_npu`的`cann_ops_transformer`扩展接口，用于调用`QuantFlashAttn`算子完成量化场景下的全量化注意力计算，训练推理归一化。当前支持两类量化场景：
 
   - **MxFP8场景**（`quant_mode=1`）：Q/K/V 均采用 MXFP8（per-block group 量化），P 采用 FP8_E4M3 per-tensor，Softmax 在 FP32 下计算；
-  - **HIF8场景**（`quant_mode=7`）：Q/K/V 均采用 HIFLOAT8 per-tensor 量化，P 采用 per-tensor 量化，Softmax 在 FP32 下计算。
+  - **HIF8场景**（`quant_mode=0`）：Q/K/V 均采用 HIFLOAT8 per-tensor 量化，P 采用 per-tensor 量化，Softmax 在 FP32 下计算。
 
   `quant_flash_attn_metadata`是`quant_flash_attn`的元数据生成接口，用于在主算子执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果，主算子可选择传入该metadata以优化调度。典型调用流程如下：
 
@@ -147,7 +147,7 @@ cann_ops_transformer.quant_flash_attn(
 | 枚举名 | 值 | 含义 |
 | :--- | :---: | :--- |
 | `A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32` | 1 | A8C8 Q/KV MXFP8，P FP8_E4M3 per-tensor，Softmax FP32 |
-| `A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32` | 7 | A8C8 Q/K/V HIFLOAT8 per-tensor，P per-tensor，Softmax FP32 |
+| `A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32` | 0 | A8C8 Q/K/V HIFLOAT8 per-tensor，P per-tensor，Softmax FP32 |
 
 ### mask_mode 枚举
 
@@ -412,7 +412,7 @@ cann_ops_transformer.quant_flash_attn(
 
     <ul>
         <li>quant_mode=1，A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32（MxFP8场景）</li>
-        <li>quant_mode=7，A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32（HIF8场景）</li>
+        <li>quant_mode=0，A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32（HIF8场景）</li>
     </ul>
 
     <table style="undefined;table-layout: fixed; width:1625px">
@@ -541,17 +541,17 @@ cann_ops_transformer.quant_flash_attn(
             <td>(Q_N, Q_T)</td>
         </tr>
         <tr>
-            <td>quant_mode=7（HIF8）</td>
+            <td>quant_mode=0（HIF8）</td>
             <td>TND/BSND/BNSD</td>
-            <td>TND</td>
+            <td>BSND</td>
             <td>TND/BSND/BNSD</td>
             <td>TND/BSND/BNSD</td>
             <td>(Q_N, Q_T)</td>
         </tr>
         <tr>
-            <td>quant_mode=7（HIF8）</td>
+            <td>quant_mode=0（HIF8）</td>
             <td>TND/BSND/BNSD</td>
-            <td>TND</td>
+            <td>BSND</td>
             <td>TND/BSND/BNSD</td>
             <td>TND/BSND/BNSD</td>
             <td>(Q_N, Q_T)</td>
@@ -561,7 +561,7 @@ cann_ops_transformer.quant_flash_attn(
 
     > [!NOTE]
     >
-    > HIF8场景（`quant_mode=7`）下，layout_q、layout_kv、layout_out三者必须相同。
+    > HIF8场景（`quant_mode=0`）下，layout_q、layout_kv、layout_out三者必须相同。
 
 - q/k/v descale dtype匹配关系表: <a name="descale_dtype匹配关系表"></a>
 
@@ -652,13 +652,13 @@ cann_ops_transformer.quant_flash_attn(
             <tr>
                 <td>7</td>
                 <td>q_descale</td>
-                <td>TND</td>
+                <td>BSND</td>
                 <td>(1,)<br>per-tensor 量化，1D</td>
             </tr>
             <tr>
                 <td>7</td>
                 <td>q_descale</td>
-                <td>TND</td>
+                <td>BSND</td>
                 <td>(1,)<br>per-tensor 量化，1D</td>
             </tr>
         </tbody>
@@ -1078,7 +1078,7 @@ mask_mode参数解释
                     <li>Paged Attention开启情况下，block_table必须不为空</li>
                     <li>Paged Attention开启情况下，当layout_kv=PA_BNBD/PA_NZ时，k/v/k_descale/v_descale仅支持0轴或0轴1轴非连续；当layout_kv=PA_BBND时，k/v/k_descale/v_descale仅支持0轴非连续</li>
                     <li>MxFP8仅支持Bs为64、128、256、512或1024；当D=72时，Bs仅支持512或1024</li>
-                    <li>HIF8（quant_mode=7）不支持Paged Attention，不支持传入block_table</li>
+                    <li>HIF8（quant_mode=0）不支持Paged Attention，不支持传入block_table</li>
                 </ul>
             </td>
         </tr>
