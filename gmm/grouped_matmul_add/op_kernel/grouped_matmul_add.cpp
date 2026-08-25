@@ -31,13 +31,13 @@
 #endif
 
 using namespace AscendC;
-using namespace matmul;
 
 /* pour changement co */
 
 namespace AscendC {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #else
+using namespace matmul;
 constexpr uint32_t thresholdBlockNum = 8;
 constexpr uint32_t thresholdDimM = 5;
 
