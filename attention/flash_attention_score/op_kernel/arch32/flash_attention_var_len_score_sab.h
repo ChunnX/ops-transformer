@@ -434,17 +434,6 @@ template <LayOutTypeEnum layOutType, bool hasPse, bool hasAtten, bool hasDrop, t
 __aicore__ inline void FlashAttentionVarLenScoreSameAB<layOutType, hasPse, hasAtten, hasDrop, INPUT_T, T,
                                                        bmm1Format, mmPolicyType, implMode, hasRope>::Process()
 {
-    // 确定核内切分起点
-    int64_t multiCoreInnerOffset = this->cubeBlockIdx * this->tilingData->multiCoreParams.splitFactorSize;
-    int64_t multiCoreInnerLimit = multiCoreInnerOffset + this->tilingData->multiCoreParams.splitFactorSize;
-    if (this->tilingData->multiCoreParams.totalSize < multiCoreInnerLimit) {
-        multiCoreInnerLimit = this->tilingData->multiCoreParams.totalSize;
-    }
-    // 计算sparse场景下s1的循环范围
-    this->GetS1LoopRange(multiCoreInnerOffset, multiCoreInnerLimit);
-    // 初始化AxisIdx
-    this->CalS1OuterSize(multiCoreInnerOffset);
-
     SplitSameABExtraInfo extraInfo[3];
     int64_t taskId = 0;
     event_t eventIdMte3ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
@@ -457,79 +446,122 @@ __aicore__ inline void FlashAttentionVarLenScoreSameAB<layOutType, hasPse, hasAt
             SetFlag<HardEvent::MTE1_MTE2>(P_EVENT0 + 1);
         }
     }
-    for (int64_t multiCoreInnerIdx = multiCoreInnerOffset; multiCoreInnerIdx < multiCoreInnerLimit;
-         ++multiCoreInnerIdx) {
-        this->softMaxCheckRes = SOFTMAX_CHECK_RES_DEFAULT_VALUE;
-        this->ComputeAxisIdx(multiCoreInnerIdx);
-        // s2轴循环计数, 支持sparse和非sparse场景
-        this->GetS2LoopRange();
-        int64_t s2LoopLimit = CeilDiv(this->s2EndIdx - this->s2StartIdx, this->s2BaseNratioSize) - 1;
-        for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; s2LoopCount++) {
-            if (s2LoopCount == 0) {
-                this->softmaxPingPongCnt++;
-            }
-            if (taskId > 0) {
-                if ASCEND_IS_AIV {
-                    CrossCoreWaitFlag(SYNC_C1_V1_FLAG[(taskId + 2) % 3]);
-                }
-            }
-            this->SetExtraInfo(extraInfo[taskId % 3], taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
+    // 获取所有act len && SetMultiCoreParams
+    int64_t actualS1Len;
+    int64_t actualS2Len;
+    int64_t accumS1BlockNum = 0;
+    for (int i = 0; i < this->tilingData->inputParams.bSize; ++i) {
+        GetSeqQlenKvlenByBoidx(i, actualS1Len, actualS2Len);
+        accumS1BlockNum += CeilDiv(actualS1Len, this->cubeS1BaseSize);
+    }
+    int64_t totalSize = this->tilingData->inputParams.n2Size * this->tilingData->inputParams.gSize * accumS1BlockNum;
+    int64_t totalAicNum = AscendC::GetBlockNum();
+    int64_t splitFactorSize = CeilDiv(totalSize, totalAicNum);
 
-            if (extraInfo[taskId % 3].needNz2Nd == 1) {
-                if ASCEND_IS_AIC { 
-                    if (this->needL1Carry) {
-                        this->ComputeMm1(extraInfo[taskId % 3], this->bmm1NzL1Carry);
-                    } else {
-                        this->IterateBmm1(extraInfo[taskId % 3], this->bmm1Nz);
+    // 获取avgVal
+    int64_t totalS1RealS2Size = 0;
+    for (int32_t i = 0; i < this->tilingData->inputParams.bSize; i++) {
+        int64_t n2G = this->tilingData->inputParams.n2Size * this->tilingData->inputParams.gSize;
+        GetSeqQlenKvlenByBoidx(i, actualS1Len, actualS2Len);
+        int64_t s1BlockNum = CeilDiv(actualS1Len, this->cubeS1BaseSize);
+        for (int64_t k = 0; k < n2G; ++k) {
+            for (int64_t j = 0; j < s1BlockNum; ++j) {
+                int64_t s2RemainSize = actualS2Len % 1024;
+                int64_t s2RealSize = (actualS2Len / 1024) * 1024;
+                s2RealSize += ((s2RemainSize > 0) ? COF[CeilDiv(s2RemainSize, 128L) - 1] : 0);
+                totalS1RealS2Size += s2RealSize;
+            }
+        }
+    }
+    int64_t avgVal = totalS1RealS2Size / 20; // 填实际aic核数
+
+    int32_t j = 0;
+    int64_t localVal[20] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; // 填实际aic核数
+    this->CalS1OuterSize(j);
+    while (j < totalSize) {
+        for (int i = 0; i < 20; ++i) { // 填实际aic核数
+            this->ComputeAxisIdx(j);
+            if (j >= totalSize) break;
+            if (localVal[i] < avgVal) {
+                int64_t s2RemainSize = this->s2Size % 1024;
+                int64_t s2RealSize = (this->s2Size / 1024) * 1024;
+                s2RealSize += ((s2RemainSize > 0) ? COF[CeilDiv(s2RemainSize, 128L) - 1] : 0);
+                localVal[i] += s2RealSize;
+                if (i == this->cubeBlockIdx) {
+                    // s2轴循环计数, 支持sparse和非sparse场景
+                    this->GetS2LoopRange();
+                    int64_t s2LoopLimit = CeilDiv(this->s2EndIdx - this->s2StartIdx, this->s2BaseNratioSize) - 1;
+                    for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; s2LoopCount++) {
+                        if (s2LoopCount == 0) {
+                            this->softmaxPingPongCnt++;
+                        }
+                        if (taskId > 0) {
+                            if ASCEND_IS_AIV {
+                                CrossCoreWaitFlag(SYNC_C1_V1_FLAG[(taskId + 2) % 3]);
+                            }
+                        }
+                        this->SetExtraInfo(extraInfo[taskId % 3], taskId, s2LoopCount, s2LoopLimit, j);
+
+                        if (extraInfo[taskId % 3].needNz2Nd == 1) {
+                            if ASCEND_IS_AIC { 
+                                if (this->needL1Carry) {
+                                    this->ComputeMm1(extraInfo[taskId % 3], this->bmm1NzL1Carry);
+                                } else {
+                                    this->IterateBmm1(extraInfo[taskId % 3], this->bmm1Nz);
+                                }
+                                CrossCoreSetFlag<2, PIPE_FIX>(SYNC_C1_V1_FLAG[taskId % 3]);
+                            }  
+                        } else {    
+                            if ASCEND_IS_AIC {  
+                                if (this->needL1Carry) {
+                                    this->ComputeMm1(extraInfo[taskId % 3], this->bmm1L1Carry);
+                                } else {
+                                    this->IterateBmm1(extraInfo[taskId % 3], this->bmm1);
+                                }                    
+                                CrossCoreSetFlag<2, PIPE_FIX>(SYNC_C1_V1_FLAG[taskId % 3]);
+                            }  
+                        }
+
+                        if (taskId > 0) {
+                            if ASCEND_IS_AIV {
+                                pipe_barrier(PIPE_ALL);
+                                this->ProcessVec1(extraInfo[(taskId + 2) % 3]);
+                                SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);                
+                                CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V1_C2_FLAG[(taskId + 2) % 3]);
+                            }       
+                        }
+                        if (taskId > 1) {
+                            if ASCEND_IS_AIV {
+                                CrossCoreWaitFlag(SYNC_C2_V2_FLAG[(taskId + 1) % 3]);
+                            }
+                        }
+
+                        if (taskId > 0) {
+                            if ASCEND_IS_AIV {
+                                WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
+                            }
+                            
+                            if ASCEND_IS_AIC {
+                                CrossCoreWaitFlag(SYNC_V1_C2_FLAG[(taskId + 2) % 3]);
+                                if (this->needL1Carry) {
+                                    this->ComputeMm2(extraInfo[(taskId + 2) % 3], this->bmm2L1Carry);
+                                } else {
+                                    this->IterateBmm2(extraInfo[(taskId + 2) % 3], this->bmm2);
+                                }
+                                CrossCoreSetFlag<2, PIPE_FIX>(SYNC_C2_V2_FLAG[(taskId + 2) % 3]);
+                            }      
+                        }
+                        
+                        if (taskId > 1) {
+                            if ASCEND_IS_AIV {
+                                this->ProcessVec2(extraInfo[(taskId + 1) % 3]);
+                            }
+                        }
+                        taskId++;
                     }
-                    CrossCoreSetFlag<2, PIPE_FIX>(SYNC_C1_V1_FLAG[taskId % 3]);
-                }  
-            } else {    
-                if ASCEND_IS_AIC {  
-                    if (this->needL1Carry) {
-                        this->ComputeMm1(extraInfo[taskId % 3], this->bmm1L1Carry);
-                    } else {
-                        this->IterateBmm1(extraInfo[taskId % 3], this->bmm1);
-                    }                    
-                    CrossCoreSetFlag<2, PIPE_FIX>(SYNC_C1_V1_FLAG[taskId % 3]);
-                }  
-            }
-
-            if (taskId > 0) {
-                if ASCEND_IS_AIV {
-                    this->ProcessVec1(extraInfo[(taskId + 2) % 3]);
-                    SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);                
-                    CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V1_C2_FLAG[(taskId + 2) % 3]);
-                }       
-            }
-            if (taskId > 1) {
-                if ASCEND_IS_AIV {
-                    CrossCoreWaitFlag(SYNC_C2_V2_FLAG[(taskId + 1) % 3]);
                 }
+                j += 1;
             }
-
-            if (taskId > 0) {
-                if ASCEND_IS_AIV {
-                    WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
-                }
-                
-                if ASCEND_IS_AIC {
-                    CrossCoreWaitFlag(SYNC_V1_C2_FLAG[(taskId + 2) % 3]);
-                    if (this->needL1Carry) {
-                        this->ComputeMm2(extraInfo[(taskId + 2) % 3], this->bmm2L1Carry);
-                    } else {
-                        this->IterateBmm2(extraInfo[(taskId + 2) % 3], this->bmm2);
-                    }
-                    CrossCoreSetFlag<2, PIPE_FIX>(SYNC_C2_V2_FLAG[(taskId + 2) % 3]);
-                }      
-            }
-            
-            if (taskId > 1) {
-                if ASCEND_IS_AIV {
-                    this->ProcessVec2(extraInfo[(taskId + 1) % 3]);
-                }
-            }
-            taskId++;
         }
     }
     if (taskId >= 1) {
