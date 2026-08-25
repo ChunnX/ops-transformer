@@ -10,7 +10,7 @@
 
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if (BUILD_OPEN_PROJECT)
-    target_sources(op_host_aclnn PRIVATE
+    target_sources(op_host_aclnnExc PRIVATE
         moe_token_unpermute_with_ep_def.cpp
     )
 
@@ -34,5 +34,5 @@ if (BUILD_OPEN_PROJECT)
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(OPTYPE moe_token_unpermute_with_ep ACLNNTYPE aclnn)
+    add_modules_sources(OPTYPE moe_token_unpermute_with_ep ACLNNTYPE aclnn_exclude)
 endif()

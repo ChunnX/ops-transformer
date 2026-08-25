@@ -97,8 +97,10 @@ static inline ge::graphStatus MoeTokenUnpermuteWithEpInputParamCheck(const gert:
     int inputTopK = *tmpTopK;
 
     auto rangePtr = context->GetAttrs()->GetAttrPointer<gert::ContinuousVector>(UNPERMUTE_WITH_EP_ARRT_RANGE);
-    bool fallbackToUnpermute = rangePtr == nullptr;
-    if (rangePtr != nullptr && rangePtr->GetSize() == RANGE_SIZE) {
+    bool fallbackToUnpermute = rangePtr == nullptr || rangePtr->GetSize() == 0;
+    if (rangePtr != nullptr && rangePtr->GetSize() != 0) {
+        OP_CHECK_IF(rangePtr->GetSize() != RANGE_SIZE,
+                    OP_LOGE(nodeName, "the size of range only support 2"), return ge::GRAPH_FAILED);
         const int64_t *rangeList = reinterpret_cast<const int64_t *>(rangePtr->GetData());
         fallbackToUnpermute = rangeList[0] == 0 && rangeList[1] == 0;
     }
@@ -158,8 +160,8 @@ static inline void Init(const gert::TilingContext *context, const int64_t topK, 
     const int64_t *tmpTopK = attrPtr->GetAttrPointer<int64_t>(UNPERMUTE_WITH_EP_ARRT_TOPK);
     int inputTopK = *tmpTopK;
     auto rangePtr = attrPtr->GetAttrPointer<gert::ContinuousVector>(UNPERMUTE_WITH_EP_ARRT_RANGE);
-    bool fallbackToUnpermute = rangePtr == nullptr;
-    if (rangePtr != nullptr) {
+    bool fallbackToUnpermute = rangePtr == nullptr || rangePtr->GetSize() == 0;
+    if (rangePtr != nullptr && rangePtr->GetSize() != 0) {
         OP_CHECK_IF(rangePtr->GetSize() != RANGE_SIZE,
                     OP_LOGE(context->GetNodeName(), "the size of range only support 2"), return);
         const int64_t *rangeList = reinterpret_cast<const int64_t *>(rangePtr->GetData());
