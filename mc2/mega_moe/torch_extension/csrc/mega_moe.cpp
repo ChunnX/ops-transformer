@@ -259,8 +259,9 @@ int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum, int64
     bool isA3 = (socName != nullptr && std::strstr(socName, "Ascend910_93") != nullptr);
     if (isA2 || isA3) {
         TORCH_CHECK(epWorldSize == 2 || epWorldSize == 4 || epWorldSize == 8 || epWorldSize == 16 ||
-                        epWorldSize == 32 || epWorldSize == 64 || epWorldSize == 128,
-                    "ep_world_size only support {2, 4, 8, 16, 32, 64, 128} on A2/A3, but got ", epWorldSize);
+                        epWorldSize == 32 || epWorldSize == 48 || epWorldSize == 64 || epWorldSize == 96 ||
+                        epWorldSize == 128,
+                    "ep_world_size only support {2, 4, 8, 16, 32, 48, 64, 96, 128} on A2/A3, but got ", epWorldSize);
         TORCH_CHECK(hidden >= 1024 && hidden <= 8192 && hidden % 512 == 0,
                     "hidden only support [1024, 8192] and hidden % 512 == 0 on A2/A3, but got ", hidden);
         TORCH_CHECK(numMaxTokensPerRank >= 1 && numMaxTokensPerRank <= 4096,
