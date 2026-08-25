@@ -631,22 +631,23 @@ private:
     bool CheckCrossUbDomainProtocols(const HcclComm &commHandle, const uint32_t *layerList, uint32_t layerNum,
                                      uint32_t srcRankId, uint32_t rankSize)
     {
+        bool hasCrossDomainUb = false;
         for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
             LayerRanks layer = GetLayerRanks(commHandle, layerList[layerIndex], srcRankId, rankSize);
             for (uint32_t dstRank : layer.ranks) {
                 if (dstRank == srcRankId || rankLinkMap_.count(dstRank) > 0) {
                     continue;
                 }
-                if (!SupportsProtocol(commHandle, layer.layer, srcRankId, dstRank,
+                if (SupportsProtocol(commHandle, layer.layer, srcRankId, dstRank,
                                       CommProtocol::COMM_PROTOCOL_UBG)) {
-                    ASCEND_LOGW("Rank %u does not support UBG with cross-domain rank %u in layer %u", srcRankId,
-                                dstRank, layer.layer);
-                    return false;
+                    // ASCEND_LOGW("Rank %u does not support UBG with cross-domain rank %u in layer %u", srcRankId,
+                    //            dstRank, layer.layer);
+                    rankLinkMap_[dstRank] = {CommProtocol::COMM_PROTOCOL_UBG, layer.layer};
+                    hasCrossDomainUb = true;
                 }
-                rankLinkMap_[dstRank] = {CommProtocol::COMM_PROTOCOL_UBG, layer.layer};
             }
         }
-        return true;
+        return hasCrossDomainUb;
     }
 
     bool SupportsDomainProtocolWithAllRanks(const HcclComm &commHandle, const LayerRanks &layer,
