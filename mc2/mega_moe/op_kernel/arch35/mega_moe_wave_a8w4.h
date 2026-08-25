@@ -93,11 +93,13 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm1
         gmmAddrInfo, state, tokenStartIndexInExpert, gmm1TilesPerMGroup);
     ProblemShape sliceProblemShape = state.problemShape;
     Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
+    uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
+    bool coversWholeExpert = tokenStartIndexInExpert == 0U && sliceTokenCount == expertTokenCount;
     RunGmm1A8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
                 EPILOGUE_TILE_M, TopkWeightsPrefetch, false, true>(
         epilogueOp_, params_, sliceProblemShape, gmmAddrInfo, startBlockIdx, gmm1TileReadySequence,
         gmmExecutionConfig_.blockJob, static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert,
-        state.expertIdx);
+        state.expertIdx, coversWholeExpert);
 }
 
 // 对已完成 Wave 中的一个专家执行 GMM2 及后续 Combine 调度。
@@ -118,9 +120,9 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm2
         ProblemShape sliceProblemShape = state.problemShape;
         Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
         RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
-                    TopkWeightsPrefetch, false, false, true>(sliceProblemShape, gmmAddrInfo, startBlockIdx,
-                                                             gmmExecutionConfig_.blockJob, expertTokenCount,
-                                                             tokenStartIndexInExpert);
+                    TopkWeightsPrefetch, false, false, true>(
+            sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, expertTokenCount,
+            tokenStartIndexInExpert, tokenStartIndexInExpert == 0U && sliceTokenCount == expertTokenCount);
     }
     if (tokenStartIndexInExpert + sliceTokenCount < expertTokenCount) {
         return;
