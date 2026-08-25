@@ -329,7 +329,7 @@ ge::graphStatus ApplyRotaryPosEmbTiling::ComputeAB(gert::TilingContext *context,
                       static_cast<int64_t>(params.isCast) * (params.sin1UbSize * 2);
     OP_LOGD(context->GetNodeName(), "oneLoop ub size %ld", oneLoop);
     OP_CHECK_IF(oneLoop > params.totalUbSize || oneLoop <= 0,
-                OP_LOGE(context->GetNodeName(), "oneLoop is too large or small than 0"), return ge::GRAPH_FAILED);
+                OP_LOGE(context->GetNodeName(), "oneLoop is too large or less than 0"), return ge::GRAPH_FAILED);
     int64_t times = params.totalUbSize / oneLoop; // ub一次可以计算的batch数量
     int64_t shengUb = params.totalUbSize % oneLoop;
     // shengMte：如果有剩余ub空间，再计算几个单batch后一起搬出，减少mte3次数
@@ -344,7 +344,7 @@ ge::graphStatus ApplyRotaryPosEmbTiling::ComputeAB(gert::TilingContext *context,
     } else { // 存在多次mte2搬入，计算，一次mte3搬出的场景
         params.tilingKey = static_cast<int64_t>(ApplyRotaryPosEmbTilingKey::TILINGKEY_AB);
     }
-    OP_LOGD(context->GetNodeName(), "times is %ld, shengMte %ld", times, shengMte);
+    OP_LOGD(context->GetNodeName(), "times is %ld, remainingMte %ld", times, shengMte);
 
     // ub外循环次数计算
     params.preCBatchB = times + shengMte;                                               // 大核内ub一次计算的batch数

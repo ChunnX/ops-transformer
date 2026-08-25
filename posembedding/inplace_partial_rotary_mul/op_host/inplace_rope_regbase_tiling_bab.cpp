@@ -41,7 +41,7 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClassBAB::DoOpTiling()
     }
     if (blockNumB_ * blockNumS_ > coreNum_) {
         OP_LOGE(
-            context_->GetNodeName(), "split coreNum [%ld] large than coreNum[%ld]", blockNumB_ * blockNumS_, coreNum_);
+            context_->GetNodeName(), "split coreNum [%ld] larger than coreNum[%ld]", blockNumB_ * blockNumS_, coreNum_);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -53,7 +53,7 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClassBAB::SplitCore()
     auto blockFactorB1 = CeilDiv(b_, coreNum_);
     auto blockNumB1 = CeilDiv(b_, blockFactorB1);
     if (blockNumB1 == 0) {
-        OP_LOGI("InplacePartialRopeRegBaseTilingClassBAB SplitCore error, blockNumB1 == 0");
+        OP_LOGE("InplacePartialRopeRegBaseTilingClassBAB SplitCore error, blockNumB1 == 0");
         return ge::GRAPH_FAILED;
     }
     auto blockNumS1 = std::min(coreNum_ / blockNumB1, s_);
@@ -64,7 +64,7 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClassBAB::SplitCore()
     auto blockFactorS2 = CeilDiv(s_, coreNum_);
     auto blockNumS2 = CeilDiv(s_, blockFactorS2);
     if (blockNumS2 == 0) {
-        OP_LOGI("InplacePartialRopeRegBaseTilingClassBAB SplitCore error, blockNumS2 == 0");
+        OP_LOGE("InplacePartialRopeRegBaseTilingClassBAB SplitCore error, blockNumS2 == 0");
         return ge::GRAPH_FAILED;
     }
     auto blockNumB2 = std::min(coreNum_ / blockNumS2, b_);
@@ -119,7 +119,7 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClassBAB::SplitUb()
     ubFactorN_ = std::min(CeilDiv(n_, ubLoopNum), MAX_COPY_BLOCK_COUNT / dSplitCoef_);
     ubLoopNumN_ = CeilDiv(n_, ubFactorN_);
     if (ubFactorN_ == 0) {
-        OP_LOGI("InplacePartialRopeRegBaseTilingClassBAB SplitUb error, ubFactorN_ == 0");
+        OP_LOGE("InplacePartialRopeRegBaseTilingClassBAB SplitUb error, ubFactorN_ == 0");
         return ge::GRAPH_FAILED;
     }
     ubTailFactorN_ = (n_ % ubFactorN_ == 0) ? ubFactorN_ : n_ % ubFactorN_;
