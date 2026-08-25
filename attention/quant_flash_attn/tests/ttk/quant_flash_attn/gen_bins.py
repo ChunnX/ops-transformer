@@ -1,5 +1,4 @@
 #!/usr/bin/python3
-# -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
@@ -31,9 +30,7 @@ import logging
 import os
 import sys
 import types
-from typing import List, Tuple
 
-import numpy
 import torch
 
 # ----- 纯 CPU 环境兼容：在 import golden 模块之前 stub 掉 torch_npu / cann_ops_transformer -----
@@ -72,8 +69,6 @@ if _TEST_DIR not in sys.path:
 for _p in (_ASSETS_DIR, _ASSETS_IMPL_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
-
-from common import quant_flash_attn_golden as golden_mod  # noqa: E402
 
 
 def _load_impl_module(stem):
@@ -188,34 +183,34 @@ def _build_kwargs(attrs):
     if attrs.get("B") is not None:
         B = int(attrs["B"])
 
-    return dict(
-        B=B,
-        N_q=attrs["N_q"],
-        N_kv=attrs["N_kv"],
-        D=attrs["D"],
-        cu_seqlens_q=attrs.get("cu_seqlens_q"),
-        cu_seqlens_kv=attrs.get("cu_seqlens_kv"),
-        seqused_q=attrs.get("seqused_q"),
-        seqused_kv=attrs.get("seqused_kv"),
-        max_seqlen_q=attrs.get("max_seqlen_q", -1),
-        max_seqlen_kv=attrs.get("max_seqlen_kv", -1),
-        enable_pa=enable_pa,
-        kv_cache_layout=layout_kv,
-        block_size=block_size,
-        mask_mode=attrs.get("mask_mode", 0),
-        q_scale_layout=attrs.get("layout_q_descale", "TND"),
-        quant_mode=attrs.get("quant_mode", 1),
-        enable_lse=attrs.get("enable_lse", 0),
-        graph_path=attrs.get("graph_path", 0),
-        input_layout=attrs.get("layout_q", "TND"),
-        uncontiguous_dim=attrs.get("uncontiguous_dim", [-1] * 8),
-        device_id=0,
-        softmax_scale=attrs.get("softmax_scale"),
-        p_scale_value=attrs.get("p_scale_value", 1.0),
-        data_range_q=1.0,
-        data_range_k=1.0,
-        data_range_v=1.0,
-    )
+    return {
+        "B": B,
+        "N_q": attrs["N_q"],
+        "N_kv": attrs["N_kv"],
+        "D": attrs["D"],
+        "cu_seqlens_q": attrs.get("cu_seqlens_q"),
+        "cu_seqlens_kv": attrs.get("cu_seqlens_kv"),
+        "seqused_q": attrs.get("seqused_q"),
+        "seqused_kv": attrs.get("seqused_kv"),
+        "max_seqlen_q": attrs.get("max_seqlen_q", -1),
+        "max_seqlen_kv": attrs.get("max_seqlen_kv", -1),
+        "enable_pa": enable_pa,
+        "kv_cache_layout": layout_kv,
+        "block_size": block_size,
+        "mask_mode": attrs.get("mask_mode", 0),
+        "q_scale_layout": attrs.get("layout_q_descale", "TND"),
+        "quant_mode": attrs.get("quant_mode", 1),
+        "enable_lse": attrs.get("enable_lse", 0),
+        "graph_path": attrs.get("graph_path", 0),
+        "input_layout": attrs.get("layout_q", "TND"),
+        "uncontiguous_dim": attrs.get("uncontiguous_dim", [-1] * 8),
+        "device_id": 0,
+        "softmax_scale": attrs.get("softmax_scale"),
+        "p_scale_value": attrs.get("p_scale_value", 1.0),
+        "data_range_q": 1.0,
+        "data_range_k": 1.0,
+        "data_range_v": 1.0,
+    }
 
 
 def _make_dummy_tensors(shapes, dtypes):
@@ -257,6 +252,7 @@ def generate_for_case(case_name, shapes, dtypes, attrs, output_dir):
 
     if quant_mode == 7:
         from common import quant_flash_attn_hif8_golden as hif8_golden_mod
+
         inputs_module.generate_qfa_hif8_inputs(
             *placeholder_tensors[:8],
             **kwargs,
@@ -267,6 +263,9 @@ def generate_for_case(case_name, shapes, dtypes, attrs, output_dir):
                 f"case {case_name}: hif8 inputs 生成后 _cached_mxfp8_inputs 仍为空"
             )
     else:
+        from common import quant_flash_attn_fp8_golden as fp8_golden_mod
+        from common import quant_flash_attn_golden as mxfp8_golden_mod
+
         inputs_module.generate_qfa_mxfp8_inputs(
             *placeholder_tensors[:8],
             **kwargs,

@@ -140,7 +140,9 @@ public:
 
     // ==============================fuction=======================================================
     __aicore__ inline QuantFlashAttnKernelHif8()
-        : cubeBlock_(constInfo_), vecFaBlock_(constInfo_), vecFdBlock_(constInfo_){};
+        : cubeBlock_(constInfo_),
+          vecFaBlock_(constInfo_),
+          vecFdBlock_(constInfo_){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                 __gm__ uint8_t *sinks, __gm__ uint8_t *attnMask, __gm__ uint8_t *cuSeqLensQ,
                                 __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *blockTable,
@@ -173,7 +175,7 @@ public:
         sectionNum_ = ((__gm__ uint32_t *)metadata)[0];
 
         faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)(metadata + FA_METADATA_HEADER_OFFSET),
-                                     QFA_AIC_CORE_NUM * 16U * sectionNum_);
+                                      QFA_AIC_CORE_NUM * 16U * sectionNum_);
 
         InitQCuSeqLensParser(cuSeqLensQ, sequsedQ);
         InitKvCuSeqLensParser(cuSeqLensKv, sequsedKv);
@@ -183,11 +185,11 @@ public:
         if ASCEND_IS_AIV {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
                 vecFaBlock_.InitVecBlock(tPipe, cuSeqLensQ, cuSeqLensKv, dequantScaleQuery, dequantScaleKey,
-                                        dequantScaleValue, pScale, attnMask, softmaxLse, attnOut, workspace);
+                                         dequantScaleValue, pScale, attnMask, softmaxLse, attnOut, workspace);
                 vecFaBlock_.SetCuSeqLensParser(qCuSeqLensParser_);
             } else {
                 vecFaBlock_.InitVecBlock(tPipe, sequsedQ, sequsedKv, dequantScaleQuery, dequantScaleKey,
-                                        dequantScaleValue, pScale, attnMask, softmaxLse, attnOut, workspace);
+                                         dequantScaleValue, pScale, attnMask, softmaxLse, attnOut, workspace);
                 vecFaBlock_.SetCuSeqLensParser(qSeqUsedParser_);
             }
             vecFaBlock_.ClearOutput();
@@ -196,10 +198,10 @@ public:
         if ASCEND_IS_AIC {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
                 cubeBlock_.InitCubeBlock(tPipe, &l1BufferManager_, query, key, value, blockTable, dequantScaleQuery,
-                                        dequantScaleKey, dequantScaleValue, qCuSeqLensParser_, kvCuSeqLensParser_);
+                                         dequantScaleKey, dequantScaleValue, qCuSeqLensParser_, kvCuSeqLensParser_);
             } else {
                 cubeBlock_.InitCubeBlock(tPipe, &l1BufferManager_, query, key, value, blockTable, dequantScaleQuery,
-                                        dequantScaleKey, dequantScaleValue, qSeqUsedParser_, kvSeqUsedParser_);
+                                         dequantScaleKey, dequantScaleValue, qSeqUsedParser_, kvSeqUsedParser_);
             }
         }
         if constexpr (FLASH_DECODE) {
@@ -210,7 +212,7 @@ public:
                     QFA_AIV_CORE_NUM * 16U * sectionNum_);
                 vecFdBlock_.InitParams();
                 vecFdBlock_.InitGlobalTensor(this->vecFaBlock_.softmaxFDMaxGm_, this->vecFaBlock_.softmaxFDSumGm_,
-                                            this->vecFaBlock_.accumOutGm_, this->vecFaBlock_.attentionOutGm_, keyPtr_);
+                                             this->vecFaBlock_.accumOutGm_, this->vecFaBlock_.attentionOutGm_, keyPtr_);
                 if (constInfo_.isSoftmaxLseEnable) {
                     softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
                     vecFdBlock_.InitSoftmaxLseGm(softmaxLseGm_);
@@ -314,7 +316,7 @@ public:
     {
         if constexpr (!PAGE_ATTENTION && LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
             kvCuSeqLensParser_.Init(cuSeqLensKvPtr, constInfo_.cuSeqLensKVSize + 1, sequsedKvPtr,
-                                   constInfo_.seqUsedKvSize);
+                                    constInfo_.seqUsedKvSize);
         } else if constexpr (PAGE_ATTENTION && LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
             kvCuSeqLensParser_.Init(sequsedKvPtr, constInfo_.seqUsedKvSize, constInfo_.s2Size);
         } else {
