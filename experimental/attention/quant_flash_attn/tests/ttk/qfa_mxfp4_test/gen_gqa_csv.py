@@ -37,9 +37,10 @@ D_PER_GROUP = D // 64    # 2
 PRECISION = "((0.0078125, 0.005), (0.0078125, 0.005))"
 ABS_PRECISION = "(0.0001, 0.0001)"
 
-# Size budget: B * N_q * S1 and B * N_kv * S2 must be <= this.
-# B=28, N_q=40, S1=1024 -> 1,146,880 (allowed but near limit)
-MAX_SIZE = 1_200_000
+# Size budget: B * N_q * S1 (Q side) and B * N_kv * S2 (KV side) must be <= this.
+# KV side allows larger S2 because N_kv is small; Q side stays smaller.
+MAX_Q_SIZE = 1_200_000
+MAX_KV_SIZE = 1_200_000
 
 # GQA configs: (G, [N_kv options])
 # G = N_q / N_kv, G <= 64, N_q % N_kv == 0
@@ -63,10 +64,18 @@ GQA_CONFIGS = [
 
 B_VALUES = [1, 2, 4, 8, 16, 20, 28]
 
-# Diverse S pool: decode (1-2), small, medium, large, non-aligned boundaries
-S_VALUES = [
+# S1 pool: decode (1-2), small, medium, non-aligned boundaries
+# S1 stays relatively small; large S1 only with small B*N_q
+S1_VALUES = [
     1, 2, 4, 8, 16, 32, 33, 64, 65, 96, 128, 160, 256, 420, 512,
-    768, 1024, 1025, 1280, 1743, 2048, 2185, 2400, 4096, 6000, 7500, 8192,
+    768, 1024, 1025, 1280, 1743, 2048, 2185,
+]
+
+# S2 pool: bias toward large values (operator performs best at S2 >= 8192)
+# Includes very large S2 for small B*N_kv cases
+S2_VALUES = [
+    128, 256, 512, 1024, 2048, 4096, 6000, 7500,
+    8192, 8193, 12288, 16384, 16385, 24576, 32768, 49152, 65536,
 ]
 
 DATA_RANGES = [
@@ -194,21 +203,40 @@ def generate_cases():
                 gqa_pairs.append((G, N_kv, N_q))
 
     # For each pair, pre-compute valid (B, S1, S2) combos under size budget
+    # S1 from S1_VALUES (small), S2 from S2_VALUES (large, biased toward >=8192)
+    # Bias: prefer S2 >= 8192 by sorting valid combos so large S2 comes first
     pair_scenarios = []
     for G, N_kv, N_q in gqa_pairs:
         valid_bss = []
         for B in B_VALUES:
-            max_s1 = MAX_SIZE // (B * N_q)
-            max_s2 = MAX_SIZE // (B * N_kv)
-            for S1 in S_VALUES:
+            max_s1 = MAX_Q_SIZE // (B * N_q)
+            max_s2 = MAX_KV_SIZE // (B * N_kv)
+            for S1 in S1_VALUES:
                 if S1 > max_s1:
                     continue
-                for S2 in S_VALUES:
+                for S2 in S2_VALUES:
                     if S2 > max_s2:
                         continue
                     valid_bss.append((B, S1, S2))
-        rng.shuffle(valid_bss)
-        pair_scenarios.append(valid_bss)
+        # Weighted shuffle: S2 >= 8192 gets higher priority (2x weight),
+        # but still interleave with smaller S2 for diversity.
+        # Assign each combo a priority bucket: 0 = S2>=8192, 1 = S2<8192
+        # Within each bucket, shuffle randomly. Then interleave 2:1 (large:small).
+        large = [e for e in valid_bss if e[2] >= 8192]
+        small = [e for e in valid_bss if e[2] < 8192]
+        rng.shuffle(large)
+        rng.shuffle(small)
+        interleaved = []
+        li, si = 0, 0
+        while li < len(large) or si < len(small):
+            for _ in range(2):
+                if li < len(large):
+                    interleaved.append(large[li])
+                    li += 1
+            if si < len(small):
+                interleaved.append(small[si])
+                si += 1
+        pair_scenarios.append(interleaved)
 
     # Round-robin across all pairs so every G value gets represented
     selected = []
@@ -303,10 +331,12 @@ def main():
             variant_counter["maxseq"] += 1
         dr_counter[attrs['data_range_q']] += 1
 
+    s2_ge_8192 = sum(1 for s in S2_counter if s >= 8192 for _ in range(S2_counter[s]))
     print(f"G distribution:      {dict(sorted(G_counter.items()))}")
     print(f"B distribution:      {dict(sorted(B_counter.items()))}")
     print(f"S1 distinct values:  {len(S1_counter)} (top: {S1_counter.most_common(5)})")
     print(f"S2 distinct values:  {len(S2_counter)} (top: {S2_counter.most_common(5)})")
+    print(f"S2 >= 8192 count:    {s2_ge_8192} / {len(cases)}")
     print(f"Act variant:         {dict(variant_counter)}")
     print(f"Data range dist:     {dict(dr_counter)}")
     print(f"Max B*Nq*S1:         {max_q_size}")
