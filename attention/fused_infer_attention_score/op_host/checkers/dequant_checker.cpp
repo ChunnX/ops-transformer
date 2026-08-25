@@ -2397,8 +2397,8 @@ ge::graphStatus DequantChecker::CheckFeatureD032ForAntiquant(const FiaTilingInfo
 
     OP_CHECK_IF(fiaInfo.kvStorageMode != KvStorageMode::PAGE_ATTENTION,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-                    fiaInfo.opName, "block_table",
-                    "block_table requires PagedAttention to be enabled when PA_NZ D0=32 antiquant is enabled"),
+                    fiaInfo.opName, "kv_storage_mode",
+                    "kv_storage_mode must be PAGE_ATTENTION when PA_NZ D0=32 antiquant is enabled"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.inputKvType != ge::DT_INT8,
