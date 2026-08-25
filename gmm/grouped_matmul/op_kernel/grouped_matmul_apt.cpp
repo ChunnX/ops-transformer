@@ -102,6 +102,12 @@ constexpr CubeFormat wFormat = CubeFormat::NZ;
 #else
 constexpr CubeFormat wFormat = CubeFormat::ND;
 #endif
+#if defined(FORMAT_SCALE) && defined(FORMAT_WEIGHT) && defined(ORIG_DTYPE_SCALE) && defined(DT_FLOAT8_E8M0) && \
+    FORMAT_SCALE == FORMAT_FRACTAL_NZ && FORMAT_WEIGHT == FORMAT_FRACTAL_NZ && ORIG_DTYPE_SCALE == DT_FLOAT8_E8M0
+constexpr bool scaleNz = true;
+#else
+constexpr bool scaleNz = false;
+#endif
 
 } // namespace
 
@@ -225,7 +231,7 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);                   \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);                       \
         GmmTensorApiMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, wLayout,         \
-                             yLayout, DTYPE_L0C_LOCAL, (SCALE_FORMAT == GMM_SCALE_NZ)>                                 \
+                             yLayout, DTYPE_L0C_LOCAL, scaleNz>                                                       \
             (x, weight, bias, scale, groupList, perTokenScale, y, user1, &gmmQuantParams_, &mmTilingData_, &tPipe);    \
     } while (0)
 #else
@@ -251,7 +257,7 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
 #endif
 
 #if defined(V310_GMM_QUANT)
-template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS, int8_t KERNEL_TYPE, int8_t SCALE_FORMAT>
+template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS, int8_t KERNEL_TYPE>
 #elif defined(V310_GMM_ANTI_QUANT)
 template <int8_t W_TYPE, int8_t OFFSET_OR_BIAS_EXIT, int8_t C_QUANT_TYPE, int8_t W_QUANT_TYPE, int8_t WQ_B_TRANS,
           int8_t WQ_A_TRANS, int8_t TEMPLATE_CUSTOM_SC, bool IS_SINGLE_MULTI_SINGLE, int8_t ALGORITHM_SUB_CATEGORY,

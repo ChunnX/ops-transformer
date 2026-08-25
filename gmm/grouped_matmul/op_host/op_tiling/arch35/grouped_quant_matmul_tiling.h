@@ -59,7 +59,14 @@ constexpr uint64_t MXFP_MULTI_BASE_SIZE = 2UL;
 constexpr uint64_t MXFP_BASEK_FACTOR = 64UL;
 constexpr size_t MXFP_TYPE_K_SCALE_DIM_NUM = 3;
 constexpr size_t MXFP_TYPE_M_SCALE_DIM_NUM = 4;
-constexpr size_t MXFP_SCALE_NN_DIM_NUM = 5;
+// Scale FRACTAL_NZ single-tensor storage shape is (group, n1, kScale, n0, c0).
+constexpr size_t MXFP_SCALE_NZ_DIM_NUM = 5;
+// Scale origin shape ends with (kScale, n, 2); this offset points to the trailing scale-pair dim.
+constexpr size_t MXFP_SCALE_ORIGIN_PAIR_DIM_OFFSET = 2;
+// Scale FRACTAL_NZ storage shape ends with (n1, kScale, 16, 2); this offset points to n0.
+constexpr size_t MXFP_SCALE_NZ_N0_DIM_OFFSET = 2;
+// Scale FRACTAL_NZ storage shape ends with (n1, kScale, 16, 2); this offset points to c0.
+constexpr size_t MXFP_SCALE_NZ_C0_DIM_OFFSET = 3;
 constexpr size_t MXFP_PER_TOKEN_SCALE_DIM_NUM = 3;
 constexpr uint32_t RESERVED_LENGTH = 1024U;
 constexpr uint16_t FIRST_TENSOR_INDEX = 0U;
@@ -268,6 +275,8 @@ protected:
     bool IsMicroScaling() const;
     bool CheckQuantParamsForMXTypeM(const gert::Shape &xScaleShape, const gert::StorageShape *wScaleStorageShape,
                                     uint64_t expectedNSize = 0UL) const;
+    bool CheckQuantParamsForMXTypeM(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape,
+                                    uint64_t expectedNSize = 0UL) const;
     bool CheckShapeForWeightNz(const gert::Shape &wShape, uint64_t expectedNSize = 0UL) const;
     uint64_t GetSizeWithDataType(uint64_t shapeSize, ge::DataType dtype) const;
     uint64_t GetShapeWithDataType(uint64_t shapeSize, ge::DataType dtype) const;
@@ -312,7 +321,9 @@ private:
                                         uint64_t expectedNSize = 0UL) const;
     bool CheckQuantParams(const gert::StorageShape *xScaleStorageShape, const gert::StorageShape *wScaleStorageShape,
                           uint64_t expectedNSize = 0UL) const;
-    bool CheckScaleNnShape(const gert::StorageShape *wScaleStorageShape, uint64_t expectedNSize = 0UL) const;
+    bool CheckScaleNzShape(const gert::StorageShape *wScaleStorageShape, uint64_t expectedNSize = 0UL) const;
+    bool CheckQuantParamsForMXTypeMImpl(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape,
+                                        bool isScaleNzStorage, uint64_t expectedNSize = 0UL) const;
     bool CheckQuantParamsForNonKGroupQuantMode(const gert::Shape &wScaleShape, uint64_t expectedNSize = 0UL) const;
     bool SetMKNList();
     bool CheckDtypeForWeightNz(bool isPertokenScaleNull) const;
