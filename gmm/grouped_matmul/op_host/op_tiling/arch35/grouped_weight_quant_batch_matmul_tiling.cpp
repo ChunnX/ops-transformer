@@ -13,7 +13,9 @@
  * \brief
  */
 #include "grouped_weight_quant_batch_matmul_tiling.h"
+#include <cstdlib>
 #include <limits>
+#include "platform/platform_infos_def.h"
 #include "op_host/tiling_templates_registry.h"
 #include "../../../op_kernel/arch35/weight_quant_basic_block/weight_quant_tiling_key.h"
 
@@ -23,6 +25,36 @@ constexpr size_t LAST_DIM = 1;             // 倒数第1维
 constexpr size_t FOURTH_FROM_LAST_DIM = 4; // 倒数第4维
 constexpr uint32_t ND_WEIGHT_DIM_NUM = 2;  // ND weight形如(K, N)
 constexpr uint32_t NZ_WEIGHT_DIM_NUM = 4;  // NZ weight为4维，具体轴顺序由transB_决定
+constexpr uint32_t MX_A8W4_BASE_N_STEP = 32;
+constexpr uint32_t MX_A8W4_TAIL_USAGE_NUMERATOR = 8;
+constexpr uint32_t MX_A8W4_TAIL_USAGE_DENOMINATOR = 10;
+constexpr double MX_A8W4_COMPUTE_PER_AIC_TFLOPS = 27.36;
+constexpr double MX_A8W4_A_BYTES_IN_SCALE_GROUP = 33.0;
+constexpr double MX_A8W4_B_BYTES_IN_SCALE_GROUP = 17.0;
+constexpr double DEFAULT_AICORE_FREQ_MHZ = 1650.0;
+constexpr double DEFAULT_AICORE_COUNT = 32.0;
+constexpr double DEFAULT_DDR_RATE = 31.0;
+constexpr double DEFAULT_L2_RATE = 100.0;
+constexpr double MHZ_PER_GHZ = 1000.0;
+constexpr double KB_SIZE = 1024.0;
+
+double StrToDoubleWithDefault(const std::string& value, double defaultValue)
+{
+    try {
+        std::size_t parsedLength = 0;
+        const double result = std::stod(value, &parsedLength);
+
+        if (parsedLength != value.size() || result <= 0.0) {
+            return defaultValue;
+        }
+
+        return result;
+    } catch (const std::invalid_argument&) {
+        return defaultValue;
+    } catch (const std::out_of_range&) {
+        return defaultValue;
+    }
+}
 } // namespace
 
 enum class GmmTrans {
@@ -848,6 +880,115 @@ bool GroupedWeightQuantBatchMatmulTiling::EnableTailResplit() const
     return true;
 }
 
+double GroupedWeightQuantBatchMatmulTiling::GetCoreFreq(fe::PlatFormInfos *platformInfo) const
+{
+    std::string freqStr = "1650";
+    platformInfo->GetPlatformRes("AICoreSpec", "cube_freq", freqStr);
+    // The platform reports cube_freq in MHz.
+    return StrToDoubleWithDefault(freqStr, DEFAULT_AICORE_FREQ_MHZ);
+}
+
+double GroupedWeightQuantBatchMatmulTiling::GetHbmBW(fe::PlatFormInfos *platformInfo) const
+{
+    std::string coreCntStr = "32";
+    std::string ddrRateStr = "31";
+    platformInfo->GetPlatformRes("SoCInfo", "ai_core_cnt", coreCntStr);
+    platformInfo->GetPlatformRes("AICoreMemoryRates", "ddr_rate", ddrRateStr);
+    return GetCoreFreq(platformInfo) * StrToDoubleWithDefault(coreCntStr, DEFAULT_AICORE_COUNT) *
+           StrToDoubleWithDefault(ddrRateStr, DEFAULT_DDR_RATE) / MHZ_PER_GHZ / KB_SIZE;
+}
+
+double GroupedWeightQuantBatchMatmulTiling::GetL2BW(fe::PlatFormInfos *platformInfo) const
+{
+    std::string coreCntStr = "32";
+    std::string l2RateStr = "100";
+    platformInfo->GetPlatformRes("SoCInfo", "ai_core_cnt", coreCntStr);
+    platformInfo->GetPlatformRes("AICoreMemoryRates", "l2_rate", l2RateStr);
+    return GetCoreFreq(platformInfo) * StrToDoubleWithDefault(coreCntStr, DEFAULT_AICORE_COUNT) *
+           StrToDoubleWithDefault(l2RateStr, DEFAULT_L2_RATE) / MHZ_PER_GHZ / KB_SIZE;
+}
+
+bool GroupedWeightQuantBatchMatmulTiling::CalcMxA8W4BandwidthResplit(
+    const gert::TilingContext *context, uint64_t c0Size, uint64_t &selectedNBlockCount,
+    uint64_t &selectedNBlockSize) const
+{
+    if (!IsMxA8W4() || groupType_ != static_cast<int64_t>(GroupType::SPLIT_M) || groupNum_ == 0) {
+        return false;
+    }
+
+    fe::PlatFormInfos *platformInfo = context->GetPlatformInfo();
+    if (platformInfo == nullptr) {
+        OP_LOGI(context->GetNodeName(), "platformInfo is null");
+        return false;
+    }
+    const double hbmBW = GetHbmBW(platformInfo);
+    const double l2BW = GetL2BW(platformInfo);
+    const uint64_t coreNum = static_cast<uint64_t>(coreNum_);
+    const double computeTflops = MX_A8W4_COMPUTE_PER_AIC_TFLOPS * static_cast<double>(coreNum);
+    const uint64_t expectedGroupM = GroupedMatmul::CeilDiv(mSize_, static_cast<uint64_t>(groupNum_));
+    const uint64_t configuredBaseM = hasBias_ ? static_cast<uint64_t>(BASIC_BLOCK_BASE_M_WITH_BIAS) :
+                                                static_cast<uint64_t>(BASIC_BLOCK_BASE_M);
+    const uint64_t mBlockCount =
+        expectedGroupM == 0UL ? 1UL : GroupedMatmul::CeilDiv(expectedGroupM, configuredBaseM);
+    const uint64_t effectiveBaseM =
+        expectedGroupM == 0UL ? 0UL : GroupedMatmul::CeilDiv(expectedGroupM, mBlockCount);
+    if (effectiveBaseM < static_cast<uint64_t>(BASIC_BLOCK_BASE_N_MIN)) {
+        return false;
+    }
+
+    const uint64_t taskNumPerNBlock = static_cast<uint64_t>(groupNum_) * mBlockCount;
+    const double requestedB = static_cast<double>(mBlockCount) * static_cast<double>(nSize_) *
+                              MX_A8W4_B_BYTES_IN_SCALE_GROUP;
+    const double uniqueBytes = static_cast<double>(mSize_) * MX_A8W4_A_BYTES_IN_SCALE_GROUP +
+                               static_cast<double>(nSize_) * MX_A8W4_B_BYTES_IN_SCALE_GROUP;
+    // 算力/2 * (1/baseN + 1/(2*baseM))中的 m 部分，不依赖循环，所以提前计算
+    const double baseMBandwidthTerm = 1.0 / (2.0 * static_cast<double>(effectiveBaseM));
+
+    for (uint64_t candidateBaseN = BASIC_BLOCK_BASE_N;
+         candidateBaseN >= static_cast<uint64_t>(BASIC_BLOCK_BASE_N_MIN);
+         candidateBaseN -= MX_A8W4_BASE_N_STEP) {
+        const uint64_t candidateNBlockCount = GroupedMatmul::CeilDiv(nSize_, candidateBaseN);
+        const uint64_t taskNum = taskNumPerNBlock * candidateNBlockCount;
+        const uint64_t tailCoreNum = taskNum % coreNum;
+        const bool fullyBalanced = tailCoreNum == 0UL;
+        const bool tailUsageHigh =
+            tailCoreNum * MX_A8W4_TAIL_USAGE_DENOMINATOR >
+            coreNum * MX_A8W4_TAIL_USAGE_NUMERATOR;
+        if (taskNum < coreNum || (!fullyBalanced && !tailUsageHigh)) {
+            continue;
+        }
+
+        const double requestedA = static_cast<double>(candidateNBlockCount) * static_cast<double>(mSize_) *
+                                  MX_A8W4_A_BYTES_IN_SCALE_GROUP;
+        const double l2CacheHitRate = 1.0 - uniqueBytes / (requestedA + requestedB);
+        // 综合带宽估算：bw = 1/(l2CacheHitRate/L2Bw + (1-l2CacheHitRate)/hbmBW)
+        const double estimatedBandwidth =
+            1.0 / (l2CacheHitRate / l2BW + (1.0 - l2CacheHitRate) / hbmBW);
+        // 对于A8W4场景，达到cube bound所需的最低带宽：算力 / 2 *（1/baseN + 1 / (2*baseM)）
+        const double cubeBoundMinBandwidth =
+            computeTflops / 2.0 * (1.0 / static_cast<double>(candidateBaseN) + baseMBandwidthTerm);
+        if (estimatedBandwidth <= cubeBoundMinBandwidth) {
+            continue;
+        }
+
+        selectedNBlockCount = candidateNBlockCount;
+        selectedNBlockSize = GroupedMatmul::CeilAlign(
+            GroupedMatmul::CeilDiv(nSize_, candidateNBlockCount), c0Size);
+        bool selected = selectedNBlockSize >= static_cast<uint64_t>(BASIC_BLOCK_BASE_N_MIN) &&
+                        selectedNBlockSize <= static_cast<uint64_t>(BASIC_BLOCK_BASE_N);
+        if (selected) {
+            OP_LOGI(context->GetNodeName(),
+                    "Select MX A8W4 baseN[%lu], effectiveBaseM[%lu], taskNum[%lu], tailCoreNum[%lu], "
+                    "l2CacheHitRate[%f], estimatedBandwidth[%f], cubeBoundMinBandwidth[%f], "
+                    "l2BW[%f], hbmBW[%f], computeTflops[%f].",
+                    selectedNBlockSize, effectiveBaseM, taskNum, tailCoreNum, l2CacheHitRate,
+                    estimatedBandwidth, cubeBoundMinBandwidth, l2BW, hbmBW, computeTflops);
+            return true;
+        }
+    }
+    return false;
+}
+
 bool GroupedWeightQuantBatchMatmulTiling::CalcResplitTiling(const gert::TilingContext *context)
 {
     if (!EnableTailResplit()) {
@@ -867,7 +1008,34 @@ bool GroupedWeightQuantBatchMatmulTiling::CalcResplitTiling(const gert::TilingCo
                 return false);
 
     cubeNumBlocksN_ = static_cast<uint8_t>(coreNum_);
-    if (nSize_ % (coreNum_ * static_cast<uint64_t>(BASIC_BLOCK_BASE_N)) == 0UL) {
+    uint64_t selectedNBlockCount = 0UL;
+    uint64_t selectedNBlockSize = 0UL;
+    bool bandwidthModelSelected = CalcMxA8W4BandwidthResplit(context, c0Size, selectedNBlockCount,
+                                                             selectedNBlockSize);
+
+    uint64_t nBlockCount = GroupedMatmul::CeilDiv(nSize_, static_cast<uint64_t>(BASIC_BLOCK_BASE_N));
+    uint64_t groupDistributedTaskNum = static_cast<uint64_t>(groupNum_) * nBlockCount;
+    uint64_t groupDistributedTailCoreNum = groupDistributedTaskNum % static_cast<uint64_t>(coreNum_);
+    bool groupDistributedLoadBalanced =
+        groupDistributedTailCoreNum == 0UL ||
+        groupDistributedTailCoreNum >= GroupedMatmul::CeilDiv(static_cast<uint64_t>(coreNum_), 2UL);
+    bool preferGroupDistributedNBlock =
+        IsMxA8W4() && groupType_ == static_cast<int64_t>(GroupType::SPLIT_M) && groupNum_ > 1 &&
+        nSize_ >= static_cast<uint64_t>(MX_A8W4_GROUP_DISTRIBUTED_N_MIN) &&
+        nSize_ % static_cast<uint64_t>(BASIC_BLOCK_BASE_N) == 0UL &&
+        nBlockCount >= GroupedMatmul::CeilDiv(static_cast<uint64_t>(coreNum_), static_cast<uint64_t>(groupNum_)) &&
+        groupDistributedLoadBalanced;
+    if (bandwidthModelSelected) {
+        resplitParam_.mainBlockSize = BASIC_BLOCK_BASE_N;
+        resplitParam_.mainBlockCount = 0UL;
+        resplitParam_.firstTailBlockSize = static_cast<uint16_t>(selectedNBlockSize);
+        resplitParam_.firstTailBlockCount = static_cast<uint16_t>(selectedNBlockCount);
+        resplitParam_.secondTailBlockSize = 0U;
+        resplitParam_.secondTailBlockCount = 0U;
+    } else if (preferGroupDistributedNBlock) {
+        // Prefer 256x256 blocks only when the group-distributed tail wave keeps at least half of the Cubes active.
+        CalcNoFullNumBlocksResplitTiling(c0Size);
+    } else if (nSize_ % (coreNum_ * static_cast<uint64_t>(BASIC_BLOCK_BASE_N)) == 0UL) {
         resplitParam_.mainBlockSize = BASIC_BLOCK_BASE_N;
         resplitParam_.mainBlockCount = nSize_ / (coreNum_ * static_cast<uint64_t>(BASIC_BLOCK_BASE_N));
     } else if (nSize_ > coreNum_ * static_cast<uint64_t>(BASIC_BLOCK_BASE_N_MIN)) {
