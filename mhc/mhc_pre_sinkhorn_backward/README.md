@@ -175,7 +175,7 @@
   | :--- | :--- | :--- |
   | gradHin | (B,S,C) | (T,C) |
   | gradHPost | (B,S,N) | (T,N) |
-  | gradHRes | (B,S,N*N) | (T,N*N) |
+  | gradHRes | (B,S,N*N)或(B,S,N,N) | (T,N*N)或(T,N,N) |
   | x | (B,S,N,C) | (T,N,C) |
   | hPre | (B,S,N) | (T,N) |
   | hcBeforeNorm | (B,S,N*N+2*N) | (T,N*N+2*N) |

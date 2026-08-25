@@ -345,7 +345,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
-        <td>(B,S,N*N)或(T,N*N)</td>
+        <td>(B,S,N*N)或(B,S,N,N)或(T,N*N)或(T,N,N)</td>
         <td>√</td>
     </tr>
     <tr>
