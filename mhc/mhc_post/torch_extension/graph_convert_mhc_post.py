@@ -43,10 +43,10 @@ except ImportError:
 
 if _TORCHAIR_AVAILABLE:
 
-    @auto_convert_to_tensor([False, False, False, False], [False, False, False, False])
+    @auto_convert_to_tensor([False, False, False, False], [False, True, False, False])
     def MhcPost(
         x: Tensor,
-        h_res: Tensor,
+        h_res: Optional[Tensor],
         h_out: Tensor,
         h_post: Tensor,
         *,
@@ -55,7 +55,7 @@ if _TORCHAIR_AVAILABLE:
     ):
         """REG_OP(MhcPost)\n
         .INPUT(x, TensorType({DT_BF16, DT_FLOAT16}))\n
-        .INPUT(h_res, TensorType({DT_FLOAT}))\n
+        .OPTIONAL_INPUT(h_res, TensorType({DT_FLOAT}))\n
         .INPUT(h_out, TensorType({DT_BF16, DT_FLOAT16}))\n
         .INPUT(h_post, TensorType({DT_FLOAT}))\n
         .OUTPUT(y, TensorType({DT_BF16, DT_FLOAT16}))\n
@@ -81,7 +81,7 @@ if _TORCHAIR_AVAILABLE:
             dependencies=dependencies,
             ir=IrDef("MhcPost")
             .input("x", "DT_BF16, DT_FLOAT16")
-            .input("h_res", "DT_FLOAT")
+            .optional_input("h_res", "DT_FLOAT")
             .input("h_out", "DT_BF16, DT_FLOAT16")
             .input("h_post", "DT_FLOAT")
             .output("y", "DT_BF16, DT_FLOAT16"),
@@ -90,7 +90,7 @@ if _TORCHAIR_AVAILABLE:
     @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.mhc_post.default)
     def convert_mhc_post(
         x: Tensor,
-        hRes: Tensor,
+        hRes: Optional[Tensor],
         hOut: Tensor,
         hPost: Tensor,
         meta_outputs: TensorSpec = None,

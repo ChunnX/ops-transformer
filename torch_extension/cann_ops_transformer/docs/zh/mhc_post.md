@@ -3,7 +3,7 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
@@ -53,6 +53,10 @@
 
     其中，$x_{l}$表示参数`x`，$H_{l}^{res}$表示参数`h_res`，$h_{l}^{out}$表示参数`h_out`，$H_{t}^{post}$表示参数`h_post`，$x_{l+1}$表示输出`y`。
 
+  - 当`h_res`传入None时，跳过Res Mapping，计算公式退化为直接残差连接：
+
+    $$x_{l+1} = x_{l} + h_{l}^{out} \cdot H_{t}^{post}$$
+
   >**说明：**
   >
   > 输入支持两种维度格式：BSND（4维）和TND（3维）。其中B（Batch）表示批量大小，S（Seq-Length）表示序列长度，T表示所有Batch序列长度的累加和（$T = B \times S$），n表示头数（head数量），D表示每个头的隐藏维度大小（headdim）。
@@ -62,6 +66,8 @@
 ```python
 cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
 ```
+
+其中`h_res`为可选输入，可传入None（仅Ascend 950PR/Ascend 950DT支持传入None）。
 
 ## 参数说明
 
@@ -100,8 +106,8 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
     <tr>
         <td>h_res</td>
         <td>Tensor</td>
-        <td>必选</td>
-        <td>残差连接矩阵，对应公式中的H<sub>l</sub><sup>res</sup>。</td>
+        <td>可选</td>
+        <td>残差连接矩阵，对应公式中的H<sub>l</sub><sup>res</sup>。传入None时跳过Res Mapping，计算公式退化为直接残差连接，仅Ascend 950PR/Ascend 950DT支持传入None，其他产品形态传入None会报错。</td>
         <td>float32</td>
         <td>
             <ul>
@@ -184,6 +190,9 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
   - `x`和`h_out`的数据类型必须相同。
   - 输出`y`的数据类型与`x`保持一致。
 
+- `h_res`可选约束：
+  - `h_res`传入None时跳过Res Mapping，仅Ascend 950PR/Ascend 950DT支持；Atlas A2/A3系列产品`h_res`为必传参数，传入None会报错。
+
 - 维度约束：
   - `h_res`的维度需与`x`维度格式匹配：4维时为(B, S, n, n)，3维时为(T, n, n)。
 
@@ -223,6 +232,10 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
   h_post = torch.randn(B, S, n, dtype=torch.float32).npu()
 
   y = mhc_post(x, h_res, h_out, h_post)
+  print(f"output shape: {y.shape}")
+
+  # h_res缺省时（仅Ascend 950PR/Ascend 950DT支持）
+  y = mhc_post(x, None, h_out, h_post)
   print(f"output shape: {y.shape}")
   ```
 
