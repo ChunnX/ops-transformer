@@ -529,6 +529,12 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckShapeConsistency() const
                                                   "Must be <= " + std::to_string(QBSA_MAX_N2_SIZE));
             return ge::GRAPH_FAILED;
         }
+        if (tilingInfo_.gSize > QBSA_MXFP8_MAX_G_SIZE) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                kOpName, "gSize", std::to_string(tilingInfo_.gSize),
+                "Must be <= " + std::to_string(QBSA_MXFP8_MAX_G_SIZE) + " in quant_mode=2 MXFP8 full-quant scenario");
+            return ge::GRAPH_FAILED;
+        }
     }
     if (tilingInfo_.n1Size % tilingInfo_.n2Size != 0U) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
