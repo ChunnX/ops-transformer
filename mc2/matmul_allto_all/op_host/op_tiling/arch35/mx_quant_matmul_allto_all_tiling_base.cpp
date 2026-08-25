@@ -720,11 +720,6 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoHcommMxQuantMMTiling()
             inferredInfo.tileM, inferredInfo.tileCnt, inferredInfo.tailM, inferredInfo.tailCnt, perRankN);
     return ge::GRAPH_SUCCESS;
 }
-    hcommTilingData_.tailQbmmTilingData = hcommTilingData_.tileQbmmTilingData;
-    hcommTilingData_.localMatmul = localMatmulDisabled;
-    OP_LOGD(opName_, "HcommMxQuantMM tiling: perRankM=%lu perRankK=%lu perRankN=%lu", perRankM, perRankK, perRankN);
-    return ge::GRAPH_SUCCESS;
-}
 
 /**
  * @brief 重写获取MM index的信息
