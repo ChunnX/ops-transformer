@@ -84,20 +84,19 @@ private:
     AscendC::GlobalTensor<DataTypeIn> residualGm_;
     AscendC::GlobalTensor<DataTypeOut> yGmAddr_;
     // local tensor
-    AscendC::LocalTensor<DataTypeOut> initWithZeroPing_;
-    AscendC::LocalTensor<DataTypeOut> initWithZeroPong_;
+    AscendC::LocalTensor<DataTypeOut> initWithZero_;
     AscendC::LocalTensor<DataTypeIn> shareInputUbPing_;
     AscendC::LocalTensor<DataTypeIn> shareInputUbPong_;
     AscendC::LocalTensor<DataTypeOut> UbOutPing_;
     AscendC::LocalTensor<DataTypeOut> UbOutPong_;
 
     uint32_t vectorCoreNum_ = 0;
-    bool isDataBlockInitialized_ = false; // zero ping/pong buffers only need to be initialized once
+    bool isDataBlockInitialized_ = false; // initWithZero_ only needs to be initialized once
 };
 
 BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS
-__aicore__ inline void BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::Init(
-    Params const &params)
+__aicore__ inline void
+BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::Init(Params const &params)
 {
     if ASCEND_IS_AIC {
         return;
@@ -131,11 +130,8 @@ BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS
 __aicore__ inline void
 BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::InitAllLocalTensor()
 {
-    initWithZeroPing_ = AscendC::LocalTensor<DataTypeOut>(AscendC::TPosition::VECCALC, 0, UB_INIT_REZO_LEN);
-    uint32_t initWithZeroPongOffset = UB_INIT_REZO_LEN * sizeof(DataTypeOut);
-    initWithZeroPong_ =
-        AscendC::LocalTensor<DataTypeOut>(AscendC::TPosition::VECCALC, initWithZeroPongOffset, UB_INIT_REZO_LEN);
-    uint32_t shareInputUbPingOffset = initWithZeroPongOffset + UB_INIT_REZO_LEN * sizeof(DataTypeOut);
+    initWithZero_ = AscendC::LocalTensor<DataTypeOut>(AscendC::TPosition::VECCALC, 0, UB_INIT_REZO_LEN);
+    uint32_t shareInputUbPingOffset = UB_INIT_REZO_LEN * sizeof(DataTypeOut);
     shareInputUbPing_ =
         AscendC::LocalTensor<DataTypeIn>(AscendC::TPosition::VECIN, shareInputUbPingOffset, UB_DOUBLE_BUFFER_LEN);
     uint32_t shareInputUbPongOffset = shareInputUbPingOffset + UB_DOUBLE_BUFFER_LEN * sizeof(DataTypeIn);
@@ -148,8 +144,9 @@ BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PA
 }
 
 BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS
-__aicore__ inline void BlockPrologueFinalizeRouting<
-    BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::InitOutputWithZeros(uint64_t outOffset, uint64_t totalLen)
+__aicore__ inline void
+BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::InitOutputWithZeros(
+    uint64_t outOffset, uint64_t totalLen)
 {
     // may be sharedInput Offset = 0 or tail = batch
     if (totalLen == 0) {
@@ -169,8 +166,7 @@ __aicore__ inline void BlockPrologueFinalizeRouting<
     }
 
     if (!isDataBlockInitialized_) {
-        Duplicate<DataTypeOut>(initWithZeroPing_, 0, UB_INIT_REZO_LEN);
-        Duplicate<DataTypeOut>(initWithZeroPong_, 0, UB_INIT_REZO_LEN);
+        Duplicate<DataTypeOut>(initWithZero_, 0, UB_INIT_REZO_LEN);
         isDataBlockInitialized_ = true;
         AscendC::PipeBarrier<PIPE_ALL>();
     }
@@ -178,19 +174,16 @@ __aicore__ inline void BlockPrologueFinalizeRouting<
     baseOffset += outOffset;
     // singleCount smaller than UB_INIT_REZO_LEN, just copy one time
     if (singleCount <= UB_INIT_REZO_LEN) {
-        CopyOutShareInput(initWithZeroPing_, baseOffset, singleCount);
+        CopyOutShareInput(initWithZero_, baseOffset, singleCount);
         return;
     }
     // once copy size
     uint32_t ubOnceCopyLen = UB_INIT_REZO_LEN;
-    uint32_t pingPongId = 0;
     for (uint32_t offset = 0; offset < singleCount; offset += ubOnceCopyLen) {
         if (unlikely(offset + ubOnceCopyLen > singleCount)) {
             ubOnceCopyLen = singleCount - offset;
         }
-        AscendC::LocalTensor<DataTypeOut> *zeroLocal = pingPongId == 0 ? &initWithZeroPing_ : &initWithZeroPong_;
-        CopyOutShareInput(*zeroLocal, baseOffset + offset, ubOnceCopyLen);
-        pingPongId ^= 1;
+        CopyOutShareInput(initWithZero_, baseOffset + offset, ubOnceCopyLen);
     }
 }
 
