@@ -76,9 +76,15 @@ static vector<gert::TilingContextPara::OpAttr> DefaultTopkAttrs(int64_t groupNum
 } // namespace
 class MoeFusedTopkTiling : public testing::Test {
 protected:
-    static void SetUpTestCase() { std::cout << "MoeFusedTopkTiling SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "MoeFusedTopkTiling SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "MoeFusedTopkTiling TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "MoeFusedTopkTiling TearDown" << std::endl;
+    }
 };
 
 static string TilingData2Str(const gert::TilingData *tiling_data)

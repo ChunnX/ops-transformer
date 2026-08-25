@@ -38,9 +38,15 @@ struct MoeFusedTopkTestParam {
 
 class MoeFusedTopkTest : public testing::TestWithParam<MoeFusedTopkTestParam> {
 protected:
-    static void SetUpTestCase() { std::cout << "MoeFusedTopkTest SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "MoeFusedTopkTest SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "MoeFusedTopkTest TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "MoeFusedTopkTest TearDown" << std::endl;
+    }
 };
 
 TEST_P(MoeFusedTopkTest, test_case_moe_fused_topk)

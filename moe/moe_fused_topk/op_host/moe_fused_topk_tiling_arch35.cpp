@@ -164,7 +164,10 @@ ge::graphStatus MoeFusedTopkTilingArch35::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-void MoeFusedTopkTilingArch35::GetTilingKey() { tilingKey_ = enableExpertMapping_ ? 1U : 0U; }
+void MoeFusedTopkTilingArch35::GetTilingKey()
+{
+    tilingKey_ = enableExpertMapping_ ? 1U : 0U;
+}
 
 void MoeFusedTopkTilingArch35::GetUsedCore()
 {
@@ -359,19 +362,40 @@ protected:
         return context_ != nullptr && Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_);
     }
 
-    ge::graphStatus GetPlatformInfo() override { return context_ == nullptr ? ge::GRAPH_FAILED : ge::GRAPH_SUCCESS; }
+    ge::graphStatus GetPlatformInfo() override
+    {
+        return context_ == nullptr ? ge::GRAPH_FAILED : ge::GRAPH_SUCCESS;
+    }
 
-    ge::graphStatus GetShapeAttrsInfo() override { return context_ == nullptr ? ge::GRAPH_FAILED : ge::GRAPH_SUCCESS; }
+    ge::graphStatus GetShapeAttrsInfo() override
+    {
+        return context_ == nullptr ? ge::GRAPH_FAILED : ge::GRAPH_SUCCESS;
+    }
 
-    ge::graphStatus DoOpTiling() override { return TilingMoeFusedTopkArch35(context_); }
+    ge::graphStatus DoOpTiling() override
+    {
+        return TilingMoeFusedTopkArch35(context_);
+    }
 
-    ge::graphStatus DoLibApiTiling() override { return ge::GRAPH_SUCCESS; }
+    ge::graphStatus DoLibApiTiling() override
+    {
+        return ge::GRAPH_SUCCESS;
+    }
 
-    uint64_t GetTilingKey() const override { return context_ == nullptr ? 0U : context_->GetTilingKey(); }
+    uint64_t GetTilingKey() const override
+    {
+        return context_ == nullptr ? 0U : context_->GetTilingKey();
+    }
 
-    ge::graphStatus GetWorkspaceSize() override { return ge::GRAPH_SUCCESS; }
+    ge::graphStatus GetWorkspaceSize() override
+    {
+        return ge::GRAPH_SUCCESS;
+    }
 
-    ge::graphStatus PostTiling() override { return ge::GRAPH_SUCCESS; }
+    ge::graphStatus PostTiling() override
+    {
+        return ge::GRAPH_SUCCESS;
+    }
 };
 
 REGISTER_OPS_TILING_TEMPLATE(MoeFusedTopk, MoeFusedTopkTilingArch35Base, 1000);

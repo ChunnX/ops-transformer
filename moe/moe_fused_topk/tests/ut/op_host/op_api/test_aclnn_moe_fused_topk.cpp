@@ -28,7 +28,10 @@ protected:
         std::cout << "moe_fused_topk_test Setup" << std::endl;
         op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
     }
-    static void TearDownTestCase() { std::cout << "moe_fused_topk_test TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "moe_fused_topk_test TearDown" << std::endl;
+    }
 };
 
 class l2_moe_fused_topk_ascend950_test : public testing::Test {
@@ -38,7 +41,10 @@ protected:
         std::cout << "moe_fused_topk_ascend950_test Setup" << std::endl;
         op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
     }
-    static void TearDownTestCase() { std::cout << "moe_fused_topk_ascend950_test TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "moe_fused_topk_ascend950_test TearDown" << std::endl;
+    }
 };
 
 TEST_F(l2_moe_fused_topk_ascend950_test, Ascend950_moe_fused_topk_fp16_with_mapping)
