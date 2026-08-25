@@ -46,6 +46,11 @@ public:
     __aicore__ inline void Process();
 
 private:
+    // position 枚举 (MatmulReduceScatter 专用)
+    static constexpr uint8_t POS_COMM_BEFORE        = 0U;  // ReduceScatter 前
+    static constexpr uint8_t POS_COMP_MATMUL_BEFORE = 1U;  // matmul 计算前
+    static constexpr uint8_t POS_FINALIZE_BEFORE    = 3U;  // PostProcess 前 (Wait + Finalize)
+
     __aicore__ inline void InnerProcess();
     __aicore__ inline void MatMulReduceScatterSerial();
     __aicore__ inline void MatMulComputReduceScatter(GM_ADDR aGM, GM_ADDR cGM, GM_ADDR x1ScaleGM,
@@ -81,6 +86,7 @@ private:
         uint64_t preCoreNum_ = 0;
     uint32_t batchWeight_[MAX_HANDLE] = {0};
     Mc2Kernel::Mc2RuntimeInfo runtimeInfo_;
+    uint8_t execTurn_ = 0;
 };
 
 TEMPLATE_CLASS_PARAMS
@@ -123,6 +129,7 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::PostProcess(
     if ((GetBlockIdx() == 0) && (g_coreType == AIC)) {
         for (uint32_t i = 0; i < cfg.tileCnt + cfg.tailCnt; i++) {
             hccl_.Wait(handles_[i]);
+            runtimeInfo_.IncWaitCount();
         }
         // 终止hcclserver
         hccl_.Finalize();
@@ -133,7 +140,9 @@ TEMPLATE_CLASS_PARAMS
 __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::Process()
 {
     InnerProcess();
-    runtimeInfo_.UpdatePhase(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_FINALIZE));
+    execTurn_++;
+    runtimeInfo_.WriteGmByPassDCache(execTurn_, POS_FINALIZE_BEFORE,
+                                     static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
     PostProcess();
 }
 
@@ -160,8 +169,12 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulReduce
     uint8_t repeat = 1;
     if ASCEND_IS_AIC {
         recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
+        execTurn_++;
+        runtimeInfo_.WriteGmByPassDCache(execTurn_, POS_COMM_BEFORE,
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         handles_[0] = hccl_.template ReduceScatter<true>(cWork, recvBuffer, recvCount, dataType_,
                                                          HcclReduceOp::HCCL_REDUCE_SUM, stride, repeat);
+        runtimeInfo_.IncCommitCount();
     }
 }
 
@@ -251,6 +264,9 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComput
     mmv3.Init(aGM_, bGM_, biasGM_, x2ScaleGM_, x1ScaleGM_, tempGM, workspaceGM_, &qBMmtiling, GetTPipePtr(), cfg,
               isTail, false, preCoreNum_);
     for (uint32_t i = 0; i < tileCnt; i++) {
+        execTurn_++;
+        runtimeInfo_.WriteGmByPassDCache(execTurn_, POS_COMP_MATMUL_BEFORE,
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         mmv3.UpdateSlice(i, isTail);
         mmv3.Process(isLast && (i == (tileCnt - 1)));
         AscendC::CrossCoreSetFlag<0, PIPE_FIX>(3);
@@ -258,6 +274,7 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComput
         recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
         handles_[i + shift] = hccl_.template ReduceScatter<true>(cWork, recvBuffer, recvCount, dataType_,
                                                                  HcclReduceOp::HCCL_REDUCE_SUM, stride, repeat);
+        runtimeInfo_.IncCommitCount();
         cWork += cOffset;
         recvBuffer += cOffset;
     }
@@ -292,6 +309,9 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComput
     for (uint32_t i = 0; i < tileCnt; i++) {
         this->tPipe_->Destroy();
         this->tPipe_->Init();
+        execTurn_++;
+        runtimeInfo_.WriteGmByPassDCache(execTurn_, POS_COMP_MATMUL_BEFORE,
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         MMClass op;
         op.Init(aAddr, bGM_, biasGM_, x2ScaleGM_, x1ScaleAddr, cWork, workspaceGM_, &qBMmtiling, tPipe_, batchWeight_,
                 strideCount, false);
@@ -302,6 +322,7 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComput
             recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
             handles_[i + shift] = hccl_.template ReduceScatter<true>(cWork, recvBuffer, recvCount, dataType_,
                                                                      HcclReduceOp::HCCL_REDUCE_SUM, stride, repeat);
+            runtimeInfo_.IncCommitCount();
         }
         aAddr += aOffset;
         cWork += cfg.rankDim * cOffset;

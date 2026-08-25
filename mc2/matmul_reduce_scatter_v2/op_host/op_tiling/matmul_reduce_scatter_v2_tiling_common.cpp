@@ -19,7 +19,7 @@
 #include "platform/platform_infos_def.h"
 #include "matmul_reduce_scatter_v2_tiling_common.h"
 #include "mc2_exception_dump.h"
-#include "../../../op_kernel/matmul_reduce_scatter_v2_c_tiling.h"
+#include "../../op_kernel/matmul_reduce_scatter_v2_c_tiling.h"
 #include <cstddef>
 #include <cstring>
 
@@ -45,14 +45,13 @@ inline void MatmulReduceScatterV2ExceptionImplWrapper(aclrtExceptionInfo *args, 
     }
     Mc2Exception::Mc2ExceptionImplTmp(args, userdata, "MatmulReduceScatterV2");
 
-    // TODO: 待 MatmulReduceScatterV2 TilingData 加入 x1QuantMode 后，传入 quantModeOffset 和两个不同 offset
     Mc2Exception::Mc2DumpTilingData(args, "MatmulReduceScatterV2",
         10U,   // tilingGmArgIdx
         0U,    // argsOffset
         9U,    // workspaceGmArgIdx
-        0U,    // quantModeOffset (暂无)
-        offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, workspaceLayout),  // wsLayoutOffsetNonQuant
-        offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, workspaceLayout)); // wsLayoutOffsetQuant (暂同)
+        offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, quantMode),                   // quantModeOffset
+        offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, workspaceLayout),             // wsLayoutOffsetNonQuant
+        offsetof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData, workspaceLayout));  // wsLayoutOffsetQuant
 }
 
 __attribute__((constructor)) void RegisterMatmulReduceScatterV2ExceptionFunc()

@@ -397,6 +397,9 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CT
             MatmulKernelComputeGather(gatherOut_, tilingData_->quantBmmv3TailTiling, cfg.tailCnt, true, true);
         }
     }
+    __gm__ volatile uint32_t *badAddr = reinterpret_cast<__gm__ volatile uint32_t *>(0x1234);
+    volatile uint32_t tmp = *badAddr;
+    (void) tmp;
 }
 
 /**

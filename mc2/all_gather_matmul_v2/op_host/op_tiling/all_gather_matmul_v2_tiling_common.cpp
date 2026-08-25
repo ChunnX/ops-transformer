@@ -20,7 +20,7 @@
 #include "platform/platform_infos_def.h"
 #include "all_gather_matmul_v2_tiling_common.h"
 #include "mc2_exception_dump.h"
-#include "../../../op_kernel/all_gather_matmul_tiling_data.h"
+#include "../../op_kernel/all_gather_matmul_tiling_data.h"
 #include "op_host/op_tiling/mc2_tiling_struct.h"
 #include <cstddef>
 
