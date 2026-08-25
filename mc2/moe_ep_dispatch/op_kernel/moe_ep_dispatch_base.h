@@ -16,13 +16,22 @@
 #ifndef MOE_EP_DISPATCH_BASE_H
 #define MOE_EP_DISPATCH_BASE_H
 
+#if __has_include("version/asc_devkit_version.h") && __has_include("version/hcomm_version.h")
+#include "version/asc_devkit_version.h"
+#include "version/hcomm_version.h"
+
+#if (ASC_DEVKIT_MAJOR > 9 || (ASC_DEVKIT_MAJOR == 9 && ASC_DEVKIT_MINOR > 0)) && \
+    (HCOMM_MAJOR > 9 || (HCOMM_MAJOR == 9 && HCOMM_MINOR > 0))
+#define ENABLE_MOE_EP_KERNEL
+#endif
+
+#endif
+
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
 #else
 #include "kernel_operator.h"
 #endif
-
-#include "adv_api/hcomm/hcomm.h"
 
 #if __has_include("../common/mc2_moe_context.h")
 #include "../common/mc2_moe_context.h"
@@ -34,14 +43,14 @@
 
 namespace MoeEpDispatchBase {
 
-using namespace AscendC;
+#if defined(ENABLE_MOE_EP_KERNEL)
 
-constexpr uint64_t DISPATCH_CQE_MAX_WRITE_SIZE = 256UL * 1024UL * 1024UL;
+using namespace AscendC;
 
 // PerExpertCnt Calculation
 template <Reg::HistogramsType htype, typename T, typename U>
 __simd_vf__ __aicore__ inline void HistogramsVf(__ubuf__ U *dst, __ubuf__ T *src, uint16_t repeatElm,
-                                           uint16_t halfRepeat, uint32_t totalElm, uint16_t repeatTimes)
+                                                uint16_t halfRepeat, uint32_t totalElm, uint16_t repeatTimes)
 {
     Reg::RegTensor<T> srcReg;
     Reg::RegTensor<U> dst0Reg;
@@ -86,44 +95,29 @@ __aicore__ inline uint64_t GetCommHandle(__gm__ Mc2Aclnn::MoeCommContext *contex
 }
 
 // For Hybrid
-__aicore__ inline uint32_t GetCurrentServerIndex(uint32_t epRankId, uint32_t rankSizePerServer)
+__aicore__ inline uint32_t GetCurrentServerIndex(uint32_t epRankId, uint32_t rankNumPerServer)
 {
-    return rankSizePerServer == 0U ? 0U : epRankId / rankSizePerServer;
+    return rankNumPerServer == 0U ? 0U : epRankId / rankNumPerServer;
 }
 
-__aicore__ inline uint32_t GetServerStartRank(uint32_t epRankId, uint32_t rankSizePerServer)
+__aicore__ inline uint32_t GetServerStartRank(uint32_t epRankId, uint32_t rankNumPerServer)
 {
-    return GetCurrentServerIndex(epRankId, rankSizePerServer) * rankSizePerServer;
+    return GetCurrentServerIndex(epRankId, rankNumPerServer) * rankNumPerServer;
 }
 
-__aicore__ inline uint32_t GetServerEndRank(uint32_t epRankId, uint32_t rankSizePerServer, uint32_t epWorldSize)
+__aicore__ inline uint32_t GetServerEndRank(uint32_t epRankId, uint32_t rankNumPerServer, uint32_t epWorldSize)
 {
-    uint32_t serverEndRank = GetServerStartRank(epRankId, rankSizePerServer) + rankSizePerServer;
+    uint32_t serverEndRank = GetServerStartRank(epRankId, rankNumPerServer) + rankNumPerServer;
     return serverEndRank > epWorldSize ? epWorldSize : serverEndRank;
 }
 
-template <typename HcommType>
-__aicore__ inline void WriteRemoteWindowByChunks(HcommType &hcomm, uint64_t commHandle, GM_ADDR remoteWindowAddr,
-                                                 GM_ADDR localWorkspaceAddr, uint64_t sendBytes)
-{
-    // HCCL单次写有CQE大小限制，保持原分片写逻辑
-    uint64_t splitCount = (sendBytes + DISPATCH_CQE_MAX_WRITE_SIZE - 1UL) / DISPATCH_CQE_MAX_WRITE_SIZE;
-    uint64_t dataBytes = DISPATCH_CQE_MAX_WRITE_SIZE;
-    for (uint64_t splitIndex = 0UL; splitIndex < splitCount; splitIndex++) {
-        if (splitIndex == splitCount - 1UL) {
-            dataBytes = sendBytes - splitIndex * DISPATCH_CQE_MAX_WRITE_SIZE;
-        }
-        hcomm.WriteNbi(commHandle, remoteWindowAddr, localWorkspaceAddr, dataBytes);
-        localWorkspaceAddr += dataBytes;
-        remoteWindowAddr += dataBytes;
-    }
-    hcomm.Drain(commHandle);
-}
-
+#endif
 
 } // namespace MoeEpDispatchBase
 
 namespace Mc2Kernel {
+
+#if defined(ENABLE_MOE_EP_KERNEL)
 
 using MoeEpDispatchBase::GetCommHandle;
 using MoeEpDispatchBase::GetExpertFreq;
@@ -133,6 +127,8 @@ __aicore__ inline GM_ADDR GetWinAddrByRankId(__gm__ Mc2Aclnn::MoeCommContext *co
 {
     return MoeEpDispatchBase::GetWindowAddrByRankId(context, rankId, offset);
 }
+
+#endif
 
 } // namespace Mc2Kernel
 

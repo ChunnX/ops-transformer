@@ -47,6 +47,121 @@ def _torch_dtype(value):
     return value
 
 
+def _fp8_normalize_data_range(data_range):
+    """Normalize a TTK range while retaining pytest's None/default semantics."""
+    if data_range is None:
+        return None
+    if isinstance(data_range, (list, tuple)):
+        if len(data_range) == 0:
+            return None
+        if len(data_range) != 2:
+            raise ValueError(
+                f"data_range must be empty, a scalar, or [min, max], got {data_range}"
+            )
+        low, high = data_range
+        if low is None and high is None:
+            return None
+        return (float(low), float(high))
+    return float(data_range)
+
+
+def _fp8_assemble_case(
+    query,
+    key,
+    sparse_indices,
+    block_table,
+    *,
+    softmax_scale,
+    sparse_q_block_size,
+    sparse_kv_block_size,
+    layout_q,
+    layout_kv,
+    layout_sparse_indices,
+    layout_out,
+    mask_mode,
+    return_softmax_lse,
+    sparse_mode,
+    cu_seqlens_q_value,
+    cu_seqlens_kv_value,
+    seqused_q_value,
+    seqused_kv_value,
+    p_scale_value,
+    seed,
+    blocksize,
+    data_range_q,
+    data_range_k,
+    data_range_v,
+    testcase_name,
+    sparse_pattern="sequential",
+    block_table_pattern="sequential",
+    **kwargs,
+):
+    """Translate the shared 16-tensor TTK case into the pytest FP8 schema."""
+    del kwargs
+    cu_q = [int(value) for value in cu_seqlens_q_value]
+    cu_kv = [int(value) for value in cu_seqlens_kv_value]
+    seq_q = [int(value) for value in seqused_q_value]
+    seq_kv = [int(value) for value in seqused_kv_value]
+    if len(cu_q) < 2 or cu_q[0] != 0:
+        raise ValueError("cu_seqlens_q_value must start with 0 and contain B+1 values")
+
+    q_lengths = [end - start for start, end in zip(cu_q, cu_q[1:])]
+    batch = int(sparse_indices.shape[0])
+    if len(q_lengths) != batch or len(seq_kv) != batch:
+        raise ValueError(
+            "cu_seqlens_q_value and seqused_kv_value must match the sparse batch size"
+        )
+    if cu_kv:
+        raise ValueError("cu_seqlens_kv_value must be empty for FP8 TTK cases")
+    if seq_q:
+        raise ValueError("seqused_q_value must be empty for FP8 TTK cases")
+
+    if layout_q == "NTD":
+        num_heads_q = int(query.shape[0])
+    elif layout_q == "TND":
+        num_heads_q = int(query.shape[1])
+    else:
+        raise ValueError(f"unsupported FP8 layout_q: {layout_q!r}")
+
+    return {
+        "Testcase_Name": testcase_name,
+        "B": batch,
+        "S1": max(q_lengths),
+        "S2": max(seq_kv),
+        "N1": num_heads_q,
+        "N2": int(key.shape[1]),
+        "D": int(query.shape[-1]),
+        "layout_q": layout_q,
+        "layout_kv": layout_kv,
+        "layout_sparse_indices": layout_sparse_indices,
+        "layout_out": layout_out,
+        "output_dtype": torch.bfloat16,
+        "quant_mode": 1,
+        "mask_mode": int(mask_mode),
+        "return_softmax_lse": bool(return_softmax_lse),
+        "softmax_scale": float(softmax_scale),
+        "sparse_q_block_size": int(sparse_q_block_size),
+        "sparse_kv_block_size": int(sparse_kv_block_size),
+        "sparse_mode": sparse_mode,
+        "sparse_pattern": sparse_pattern,
+        "block_table_pattern": block_table_pattern,
+        "block_size": int(blocksize) if int(blocksize) > 0 else int(key.shape[2]),
+        "block_num": int(key.shape[0]),
+        "max_block_per_batch": int(block_table.shape[1]),
+        "cu_seqlens_q_value": cu_q,
+        "cu_seqlens_kv_value": cu_kv,
+        "seqused_q_value": seq_q,
+        "seqused_kv_value": seq_kv,
+        "q_datarange": _fp8_normalize_data_range(data_range_q),
+        "k_datarange": _fp8_normalize_data_range(data_range_k),
+        "v_datarange": _fp8_normalize_data_range(data_range_v),
+        "p_scale_value": (None if p_scale_value is None else float(p_scale_value)),
+        "pa_block_padding_bytes": 0,
+        "seed": int(seed),
+        "S1EQS2": False,
+    }
+
+
 def _normalize_params(params):
     if not isinstance(params, dict):
         raise ValueError("quant_block_sparse_attn params should be a dict")
@@ -54,7 +169,7 @@ def _normalize_params(params):
     normalized = dict(params)
     normalized.setdefault("Testcase_Name", None)
     normalized.setdefault("layout_q", "TND")
-    normalized.setdefault("layout_kv", "PA_BNSD")
+    normalized.setdefault("layout_kv", "PA_BNBD")
     normalized.setdefault("output_dtype", torch.bfloat16)
     normalized.setdefault("sparse_q_block_size", 128)
     normalized.setdefault("sparse_kv_block_size", 128)
@@ -63,11 +178,16 @@ def _normalize_params(params):
     normalized.setdefault("quant_mode", 1)
     normalized.setdefault("mask_mode", 3)
     normalized.setdefault("return_softmax_lse", False)
-    normalized.setdefault("actlen_mode", "full")
     normalized.setdefault("S1EQS2", False)
     normalized.setdefault("seed", 0)
+    if normalized.get("sparse_mode") is None:
+        normalized["sparse_mode"] = "random"
     normalized.setdefault("sparse_pattern", "sequential")
     normalized.setdefault("block_table_pattern", "sequential")
+    normalized.setdefault("block_num", None)
+    normalized.setdefault("q_datarange", None)
+    normalized.setdefault("k_datarange", None)
+    normalized.setdefault("v_datarange", None)
     normalized.setdefault("pa_block_padding_bytes", 0)
     normalized.setdefault("p_scale_value", 1.0)
     normalized["output_dtype"] = _torch_dtype(normalized["output_dtype"])
@@ -80,40 +200,105 @@ def _normalize_params(params):
         "D",
         "sparse_q_block_size",
         "sparse_kv_block_size",
-        "sparse_count",
         "seed",
+        "block_num",
+        "max_block_per_batch",
         "pa_block_padding_bytes",
     ):
         if isinstance(normalized.get(key), float) and normalized[key].is_integer():
             normalized[key] = int(normalized[key])
-    normalized["sparse_count"] = normalized.get("sparse_count") or math.ceil(
-        normalized["S2"] / normalized["sparse_kv_block_size"]
-    )
+    sparse_mode = normalized["sparse_mode"]
+    if isinstance(sparse_mode, str):
+        sparse_mode = sparse_mode.strip().lower()
+        normalized["sparse_mode"] = sparse_mode
     normalized["softmax_scale"] = normalized.get("softmax_scale") or (
         1.0 / math.sqrt(normalized["D"])
     )
     return normalized
 
 
-def _make_lengths(batch, max_len, mode, rng):
-    if mode == "full":
-        return [max_len] * batch, max_len
-    if mode != "random":
-        raise ValueError(f"unsupported actlen_mode: {mode}")
-    low = max(1, max_len // 2)
-    res_lens = [rng.randint(low, max_len) for _ in range(batch)]
-    return res_lens, max(res_lens)
+def _make_lengths(case):
+    batch = case["B"]
+    cu_seqlens_q_value = case.get("cu_seqlens_q_value")
+    seqused_kv_value = case.get("seqused_kv_value")
+    if not isinstance(cu_seqlens_q_value, list):
+        raise ValueError("cu_seqlens_q_value should be an integer list")
+    if not isinstance(seqused_kv_value, list):
+        raise ValueError("seqused_kv_value should be an integer list")
+    if len(cu_seqlens_q_value) != batch + 1:
+        raise ValueError(
+            f"cu_seqlens_q_value length should be B + 1, got {len(cu_seqlens_q_value)}"
+        )
+    if len(seqused_kv_value) != batch:
+        raise ValueError(
+            f"seqused_kv_value length should be B, got {len(seqused_kv_value)}"
+        )
+    if any(
+        isinstance(value, bool) or not isinstance(value, int)
+        for value in cu_seqlens_q_value + seqused_kv_value
+    ):
+        raise ValueError("sequence length values should all be integers")
+    if cu_seqlens_q_value[0] != 0:
+        raise ValueError("cu_seqlens_q_value should start at 0")
 
-
-def _prefix(lengths):
-    values = [0]
-    for length in lengths:
-        values.append(values[-1] + int(length))
-    return torch.tensor(values, dtype=torch.int32)
+    q_lengths = [
+        cu_seqlens_q_value[index + 1] - cu_seqlens_q_value[index]
+        for index in range(batch)
+    ]
+    if any(length < 0 or length > case["S1"] for length in q_lengths):
+        raise ValueError(f"query lengths should be in [0, S1], got {q_lengths}")
+    kv_lengths = list(seqused_kv_value)
+    if any(length < 0 or length > case["S2"] for length in kv_lengths):
+        raise ValueError(f"KV lengths should be in [0, S2], got {kv_lengths}")
+    return q_lengths, max(q_lengths), kv_lengths, max(kv_lengths)
 
 
 def _source_absmax():
     return max(max(abs(DATA_RANGE_LEFT), abs(DATA_RANGE_RIGHT)), 1.0)
+
+
+def _parse_value_range(value):
+    if isinstance(value, str):
+        s = value.strip()
+        if s.startswith("[") and s.endswith("]"):
+            s = s[1:-1]
+        try:
+            r = float(s)
+            return -r, r
+        except ValueError:
+            pass
+        parts = s.split(",")
+        if len(parts) != 2:
+            raise ValueError(f"datarange should be like [-100,100], got {value!r}")
+        return float(parts[0].strip()), float(parts[1].strip())
+    if isinstance(value, (int, float)):
+        r = float(value)
+        return -r, r
+    return float(value[0]), float(value[1])
+
+
+def _rand_value_range(shape, low, high, generator):
+    return torch.empty(shape, dtype=torch.float32).uniform_(
+        low, high, generator=generator
+    )
+
+
+def _make_source(
+    case, key, shape, default_low, default_high, generator, amp_shape=None
+):
+    value = case.get(key)
+    if value is None:
+        source = _rand_fullquant_source(
+            shape, default_low, default_high, generator, amp_shape=amp_shape
+        )
+        return source, FP8_E4M3_MAX
+    low, high = _parse_value_range(value)
+    if low > high:
+        raise ValueError(
+            f"{key} datarange should satisfy low <= high, got ({low}, {high})"
+        )
+    source = _rand_value_range(shape, low, high, generator)
+    return source, max(abs(low), abs(high))
 
 
 def _log_uniform_amplitude(shape, low, high, generator):
@@ -121,12 +306,16 @@ def _log_uniform_amplitude(shape, low, high, generator):
     low = max(min(float(low), high), SCALE_EPSILON)
     log_low = math.log10(low)
     log_high = math.log10(high)
-    exponent = torch.empty(shape, dtype=torch.float32).uniform_(log_low, log_high, generator=generator)
+    exponent = torch.empty(shape, dtype=torch.float32).uniform_(
+        log_low, log_high, generator=generator
+    )
     return torch.pow(torch.tensor(10.0, dtype=torch.float32), exponent)
 
 
 def _rand_fullquant_source(shape, amp_low, amp_high, generator, amp_shape=None):
-    base = torch.empty(shape, dtype=torch.float32).uniform_(-1.0, 1.0, generator=generator)
+    base = torch.empty(shape, dtype=torch.float32).uniform_(
+        -1.0, 1.0, generator=generator
+    )
     if amp_shape is None:
         amp_shape = shape[:-1] + (1,)
     amps = _log_uniform_amplitude(amp_shape, amp_low, amp_high, generator)
@@ -139,42 +328,61 @@ def _quant_fp32_to_fp8(tensor, quant_scale):
     return quantized.to(_fp8_dtype()).contiguous()
 
 
-def _quantize_per_token_head(tensor):
+def _quantize_per_token_head(tensor, max_abs=FP8_E4M3_MAX):
+    max_abs = min(float(max_abs), FP8_E4M3_MAX)
     row_max = torch.abs(tensor).amax(dim=-1, keepdim=True)
-    row_max = torch.maximum(row_max, torch.tensor(SCALE_EPSILON, dtype=torch.float32, device=tensor.device))
-    quant_scale = FP8_E4M3_MAX / row_max
-    return _quant_fp32_to_fp8(tensor, quant_scale), (1.0 / quant_scale).squeeze(-1).contiguous()
+    row_max = torch.maximum(
+        row_max, torch.tensor(SCALE_EPSILON, dtype=torch.float32, device=tensor.device)
+    )
+    quant_scale = max_abs / row_max
+    return _quant_fp32_to_fp8(tensor, quant_scale), (1.0 / quant_scale).squeeze(
+        -1
+    ).contiguous()
 
 
-def _quantize_value_per_head(tensor):
+def _quantize_value_per_head(tensor, max_abs=FP8_E4M3_MAX):
+    max_abs = min(float(max_abs), FP8_E4M3_MAX)
     head_max = torch.abs(tensor).amax(dim=(0, 1, 3), keepdim=True)
-    head_max = torch.maximum(head_max, torch.tensor(SCALE_EPSILON, dtype=torch.float32, device=tensor.device))
-    quant_scale = FP8_E4M3_MAX / head_max
+    head_max = torch.maximum(
+        head_max, torch.tensor(SCALE_EPSILON, dtype=torch.float32, device=tensor.device)
+    )
+    quant_scale = max_abs / head_max
     value = _quant_fp32_to_fp8(tensor, quant_scale)
     return value, (1.0 / quant_scale).reshape(tensor.shape[2]).contiguous()
 
 
-def _physical_ids(start, count, pattern, rng):
-    ids = list(range(start, start + count))
-    if pattern == "reverse":
-        ids.reverse()
-    elif pattern == "random":
-        rng.shuffle(ids)
-    elif pattern != "sequential":
-        raise ValueError(f"unsupported block_table_pattern: {pattern}")
-    return ids
-
-
-def _make_block_table(batch, seq_len, block_size, pattern, rng):
-    block_num_per_batch = math.ceil(seq_len / block_size)
-    block_table = torch.empty((batch, block_num_per_batch), dtype=torch.int32)
-    for batch_idx in range(batch):
-        physical_ids = _physical_ids(
-            batch_idx * block_num_per_batch, block_num_per_batch, pattern, rng
+def _make_block_table(
+    batch,
+    seqused_kv,
+    block_size,
+    pattern,
+    rng,
+    blocknum=None,
+    max_block_per_batch=None,
+):
+    if not isinstance(batch, int) or batch <= 0:
+        raise ValueError(f"batch should be a positive int, got {batch}")
+    if not isinstance(block_size, int) or block_size <= 0:
+        raise ValueError(f"block_size should be a positive int, got {block_size}")
+    if not isinstance(max_block_per_batch, int) or max_block_per_batch <= 0:
+        raise ValueError(
+            f"max_block_per_batch should be a positive int, got {max_block_per_batch}"
         )
-        for block_idx, physical_block in enumerate(physical_ids):
-            block_table[batch_idx, block_idx] = int(physical_block)
-    return block_table
+    if not isinstance(blocknum, int) or blocknum <= 0:
+        raise ValueError(f"blocknum should be a positive int, got {blocknum}")
+
+    if pattern not in ("random", "sequential"):
+        raise ValueError(f"unsupported block_table_pattern: {pattern}")
+
+    total_slots = batch * max_block_per_batch
+    if pattern == "random":
+        physical_ids = [rng.randrange(blocknum) for _ in range(total_slots)]
+    else:
+        physical_ids = [index % blocknum for index in range(total_slots)]
+
+    return torch.tensor(physical_ids, dtype=torch.int32).reshape(
+        batch, max_block_per_batch
+    )
 
 
 def _allowed_blocks(
@@ -224,13 +432,23 @@ def _make_sparse_indices(case, q_lengths, kv_lengths, rng):
     group = n1 // n2
     qb_max = math.ceil(case["S1"] / case["sparse_q_block_size"])
     kv_max = math.ceil(case["S2"] / case["sparse_kv_block_size"])
-    sparse_count = case["sparse_count"]
+    sparse_mode = case["sparse_mode"]
+    if sparse_mode not in ("dense", "random"):
+        raise ValueError(f"unsupported sparse_mode: {sparse_mode}")
+    sparse_counts = []
+    for batch_idx in range(batch):
+        batch_kv_max = math.ceil(kv_lengths[batch_idx] / case["sparse_kv_block_size"])
+        sparse_count = (
+            batch_kv_max if sparse_mode == "dense" else rng.randint(0, batch_kv_max)
+        )
+        sparse_counts.append(sparse_count)
     sparse_indices = torch.full(
         (batch, n1, qb_max, kv_max), fill_value=-1, dtype=torch.int32
     )
     sparse_seq_len = torch.zeros((batch, n1, qb_max), dtype=torch.int32)
 
     for batch_idx in range(batch):
+        sparse_count = sparse_counts[batch_idx]
         qb_batch = math.ceil(q_lengths[batch_idx] / case["sparse_q_block_size"])
         for qb_idx in range(qb_max):
             allowed = _allowed_blocks(
@@ -273,10 +491,10 @@ def _set_lse(softmax_lse, cu_seqlens_q, batch_idx, q_idx, head_idx, value):
     token_idx = _query_index(cu_seqlens_q, batch_idx, q_idx)
     softmax_lse[head_idx, token_idx] = value
 
-def _make_fullquant_tensors(case, cu_seqlens_q, cu_seqlens_kv, kv_lengths, generator):
+
+def _make_fullquant_tensors(case, cu_seqlens_q, seqused_kv, generator):
     layout_q = case["layout_q"]
     total_q = int(cu_seqlens_q[-1].item())
-    total_kv = int(cu_seqlens_kv[-1].item())
     batch = case["B"]
     n1 = case["N1"]
     n2 = case["N2"]
@@ -284,30 +502,43 @@ def _make_fullquant_tensors(case, cu_seqlens_q, cu_seqlens_kv, kv_lengths, gener
     amp_high = _source_absmax()
 
     if layout_q == "NTD":
-        query_source = _rand_fullquant_source((n1, total_q, head_dim), amp_high * 0.01, amp_high, generator)
+        query_shape = (n1, total_q, head_dim)
     else:
-        query_source = _rand_fullquant_source((total_q, n1, head_dim), amp_high * 0.01, amp_high, generator)
-    query, q_scale = _quantize_per_token_head(query_source)
+        query_shape = (total_q, n1, head_dim)
+    query_source, q_max = _make_source(
+        case, "q_datarange", query_shape, amp_high * 0.01, amp_high, generator
+    )
+    query, q_scale = _quantize_per_token_head(query_source, q_max)
 
-    dense_key_source = _rand_fullquant_source((batch, case["S2"], n2, head_dim), 1.0, amp_high, generator)
-    dense_key, dense_k_scale_base = _quantize_per_token_head(dense_key_source)
-    k_scale = torch.zeros((total_kv, n2), dtype=torch.float32)
-    for batch_idx, kv_len in enumerate(kv_lengths):
-        start = int(cu_seqlens_kv[batch_idx].item())
-        k_scale[start:start + kv_len] = dense_k_scale_base[batch_idx, :kv_len]
-
+    # KV 实际长度以 seqused_kv 为准（与 kernel 读取一致），不再依赖 cu_seqlens_kv 构造扁平化 k_scale
+    kv_shape = (batch, case["S2"], n2, head_dim)
+    dense_key_source, k_max = _make_source(
+        case, "k_datarange", kv_shape, 1.0, amp_high, generator
+    )
+    dense_key, dense_k_scale_base = _quantize_per_token_head(dense_key_source, k_max)
     dense_k_scale = torch.zeros((batch, case["S2"], n2), dtype=torch.float32)
-    for batch_idx, kv_len in enumerate(kv_lengths):
-        start = int(cu_seqlens_kv[batch_idx].item())
-        dense_k_scale[batch_idx, :kv_len] = k_scale[start:start + kv_len]
+    for batch_idx in range(batch):
+        kv_len = int(seqused_kv[batch_idx].item())
+        dense_k_scale[batch_idx, :kv_len] = dense_k_scale_base[batch_idx, :kv_len]
 
-    dense_value_source = _rand_fullquant_source(
-        (batch, case["S2"], n2, head_dim), 1.0, amp_high, generator, amp_shape=(batch, 1, n2, 1))
-    dense_value, v_scale = _quantize_value_per_head(dense_value_source)
+    dense_value_source, v_max = _make_source(
+        case,
+        "v_datarange",
+        kv_shape,
+        1.0,
+        amp_high,
+        generator,
+        amp_shape=(batch, 1, n2, 1),
+    )
+    dense_value, v_scale = _quantize_value_per_head(dense_value_source, v_max)
     v_scale = v_scale.contiguous()
 
-    p_scale = torch.tensor([float(case["p_scale_value"])], dtype=torch.float32)
-    return query, dense_key, dense_value, q_scale, k_scale, dense_k_scale, v_scale, p_scale
+    p_scale = (
+        None
+        if case["p_scale_value"] is None
+        else torch.tensor([float(case["p_scale_value"])], dtype=torch.float32)
+    )
+    return query, dense_key, dense_value, q_scale, dense_k_scale, v_scale, p_scale
 
 
 def _mask_positions(case, q_idx, positions, q_len, kv_len):
@@ -535,16 +766,15 @@ def _log_cube_compute_amount(
 def _reference_attention(
     case,
     query,
-    dense_key,
-    dense_value,
+    kv_cache_storage,
+    kv_cache_meta,
+    block_table,
     q_scale,
-    k_scale,
     v_scale,
     p_scale,
     sparse_indices,
     sparse_seq_len,
     cu_seqlens_q,
-    cu_seqlens_kv,
     q_lengths,
     kv_lengths,
 ):
@@ -556,8 +786,13 @@ def _reference_attention(
     #  - 实际长度掩码（q>=q_len、kv>=kv_len 无效；causal 对角线为 kv_len - q_len）；
     #  - 全掩码空行：输出 0、lse = EMPTY_LSE。
     query = query.to(torch.float32)
-    dense_key = dense_key.to(torch.float32)
-    dense_value = dense_value.to(torch.float32)
+    kv_key, kv_value, kv_k_scale = combined_kv_cache.make_combined_kv_views(
+        kv_cache_storage, kv_cache_meta
+    )
+    # fp8 视图不支持张量索引（"index_cpu" not implemented for float8_e4m3），
+    # 先在循环外整体转成 float32（fp8->fp32 无损）再按索引取值
+    kv_key = kv_key.to(torch.float32)
+    kv_value = kv_value.to(torch.float32)
 
     layout_q = case["layout_q"]
     batch = case["B"]
@@ -568,13 +803,14 @@ def _reference_attention(
     output_dtype = case["output_dtype"]
     fp8_dtype = _fp8_dtype()
     softmax_scale = float(case["softmax_scale"])
-    p_scale_value = float(p_scale[0].item())
+    p_scale_value = 1.0 if p_scale is None else float(p_scale[0].item())
     ln_p_scale = (
         torch.log(torch.tensor(p_scale_value, dtype=torch.float32)).item()
         if p_scale_value > 0
         else 0.0
     )
     sparse_q_block_size = case["sparse_q_block_size"]
+    sparse_kv_block_size = case["sparse_kv_block_size"]
     neg_inf = float("-inf")
 
     total_q = int(cu_seqlens_q[-1].item())
@@ -626,17 +862,19 @@ def _reference_attention(
                     )
                 nq = q_block.shape[0]
 
-                # gather k/v/k_scale（按 positions 顺序），与参考一致使用 dense（padded S2）矩阵
+                # gather k/v/k_scale（按 positions 顺序）：
+                # 通过 block_table 把逻辑块映射到 kv_cache 物理块，与 kernel 读取路径一致
                 pos_tensor = torch.as_tensor(positions, dtype=torch.long)
-                k_mat = dense_key[batch_idx, pos_tensor, n2_idx].to(
+                logical_block = pos_tensor // sparse_kv_block_size
+                token_in_block = pos_tensor % sparse_kv_block_size
+                physical_block = block_table[batch_idx, logical_block]
+                k_mat = kv_key[physical_block, n2_idx, token_in_block].to(
                     torch.float32
                 )  # (npos, D)
-                v_mat = dense_value[batch_idx, pos_tensor, n2_idx].to(
+                v_mat = kv_value[physical_block, n2_idx, token_in_block].to(
                     torch.float32
                 )  # (npos, D)
-                # k_scale 使用 cu_seqlens 偏移；长度与 KV 矩阵一致
-                kbase = int(cu_seqlens_kv[batch_idx].item())
-                k_scale_vec = k_scale[kbase + pos_tensor, n2_idx].to(
+                k_scale_vec = kv_k_scale[physical_block, n2_idx, token_in_block, 0].to(
                     torch.float32
                 )  # (npos,)
 
@@ -706,7 +944,9 @@ def _reference_attention(
                     # exp 结果落在 FP8 量化边界的错误一侧。
                     rescale = torch.where(
                         run_started,
-                        torch.exp(m_run_offset.double() - m_new_offset.double()).float(),
+                        torch.exp(
+                            m_run_offset.double() - m_new_offset.double()
+                        ).float(),
                         torch.zeros_like(m_run),
                     )
                     rescale = torch.where(
@@ -718,18 +958,25 @@ def _reference_attention(
                     ).float()
                     p_scaled = torch.where(vm_c, p_scaled, torch.zeros_like(p_scaled))
                     # 仅对本轮有有效位置的行参与量化累加；其余行贡献 0
-                    p_scaled = torch.where(chunk_has.view(nq, 1), p_scaled, torch.zeros_like(p_scaled))
+                    p_scaled = torch.where(
+                        chunk_has.view(nq, 1), p_scaled, torch.zeros_like(p_scaled)
+                    )
                     # FP8 量化：p_scaled 已含 pScale 因子，直接 cast（与 kernel 一致）
                     p_quant = p_scaled.to(fp8_dtype).to(torch.float32)
                     # BMM2：不除 pScale（与 kernel 一致，pScale 在分子分母中同时出现，数学上约掉）
-                    pv_raw = torch.matmul(p_quant, v_mat[c0:c1])  # (nq, D)，不含 v_scale
+                    pv_raw = torch.matmul(
+                        p_quant, v_mat[c0:c1]
+                    )  # (nq, D)，不含 v_scale
                     # 与 kernel FlashUpdate/FlashUpdateLast 的 isUpdatePre 逻辑对齐 v_scale 乘入时机
                     if chunk_idx == 0:
                         # 第一个 chunk：acc = pv_raw（与 kernel DataCopy 一致，不含 v_scale）
                         acc = pv_raw
                     elif chunk_idx == 1:
                         # 第二个 chunk（isUpdatePre=true）：acc * rescale * v_scale + pv_raw * v_scale
-                        acc = acc * rescale.view(nq, 1) * v_scale_value + pv_raw * v_scale_value
+                        acc = (
+                            acc * rescale.view(nq, 1) * v_scale_value
+                            + pv_raw * v_scale_value
+                        )
                     else:
                         # 后续 chunk（isUpdatePre=false）：acc * rescale + pv_raw * v_scale
                         acc = acc * rescale.view(nq, 1) + pv_raw * v_scale_value
@@ -755,8 +1002,9 @@ def _reference_attention(
                 # golden 中 l_run 含 pScale 因子，m_run_offset = actual_max - ln(pScale)，
                 # 故 lse = log(l_run) + m_run_offset 与 kernel 的 log(sum)+max 浮点路径一致，
                 # 避免与 torch.logsumexp 的不同浮点路径产生 1-2 ULP 差异导致量化边界问题。
-                safe_l_lse = torch.where(l_run > 0, l_run, torch.ones_like(l_run))
-                lse = torch.log(safe_l_lse) + m_run_offset  # (nq,)
+                # 注意：l_run 不做非有限掩码，使全 inf 分数时 log(NaN)+inf = NaN，
+                # 与 kernel 的 log(sum)+max 一致（掩码会把 NaN 换成 1 导致 inf 不一致）。
+                lse = torch.log(l_run) + m_run_offset  # (nq,)
 
                 for li, q_idx in enumerate(q_indices):
                     if not bool(any_valid[li].item()):
@@ -801,37 +1049,42 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     sparse_q_block_size = case["sparse_q_block_size"]
     sparse_kv_block_size = case["sparse_kv_block_size"]
 
-    q_lengths, q_max_len = _make_lengths(batch, s1, case["actlen_mode"], rng)
-    kv_lengths, kv_max_len = _make_lengths(batch, s2, case["actlen_mode"], rng)
+    q_lengths, q_max_len, kv_lengths, kv_max_len = _make_lengths(case)
     s1, case["S1"] = q_max_len, q_max_len
     s2, case["S2"] = kv_max_len, kv_max_len
-    if case["S1EQS2"]:
-        kv_lengths = [min(length, s2) for length in q_lengths]
 
-    cu_seqlens_q = _prefix(q_lengths)
-    cu_seqlens_kv = _prefix(kv_lengths)
-    seqused_q = torch.tensor(q_lengths, dtype=torch.int32)
+    cu_seqlens_q = torch.tensor(case["cu_seqlens_q_value"], dtype=torch.int32)
     seqused_kv = torch.tensor(kv_lengths, dtype=torch.int32)
 
     cu_seqlens_q_input = cu_seqlens_q
-    cu_seqlens_kv_input = cu_seqlens_kv
 
-    block_table = _make_block_table(batch, s2, sparse_kv_block_size, case["block_table_pattern"], rng)
+    block_table = _make_block_table(
+        batch,
+        seqused_kv,
+        sparse_kv_block_size,
+        case["block_table_pattern"],
+        rng,
+        blocknum=case.get("block_num"),
+        max_block_per_batch=case["max_block_per_batch"],
+    )
     case["data_generation_mode"] = "fia_style_fullquant"
     case["data_range_left"] = DATA_RANGE_LEFT
     case["data_range_right"] = DATA_RANGE_RIGHT
     case["source_absmax"] = _source_absmax()
     case["raw_fp8_absmax"] = FP8_E4M3_MAX
-    query, dense_key, dense_value, q_scale, k_scale, dense_k_scale, v_scale, p_scale = _make_fullquant_tensors(
-        case, cu_seqlens_q, cu_seqlens_kv, kv_lengths, generator)
+    query, dense_key, dense_value, q_scale, dense_k_scale, v_scale, p_scale = (
+        _make_fullquant_tensors(case, cu_seqlens_q, seqused_kv, generator)
+    )
     kv_cache_storage, kv_cache_meta = combined_kv_cache.pack_combined_kv_cache(
         dense_key,
         dense_value,
         dense_k_scale,
+        seqused_kv,
         block_table,
         sparse_kv_block_size,
         case["pa_block_padding_bytes"],
         case["layout_kv"],
+        physical_block_num=case["block_num"],
     )
     combined_kv_cache.assert_combined_kv_views(kv_cache_storage, kv_cache_meta)
     atten_mask = torch.tril(torch.ones((2048, 2048), dtype=torch.uint8)).T.contiguous()
@@ -857,16 +1110,15 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     attention_out, softmax_lse = _reference_attention(
         case,
         query,
-        dense_key,
-        dense_value,
+        kv_cache_storage,
+        kv_cache_meta,
+        block_table,
         q_scale,
-        k_scale,
         v_scale,
         p_scale,
         sparse_indices,
         sparse_seq_len,
         cu_seqlens_q,
-        cu_seqlens_kv,
         q_lengths,
         kv_lengths,
     )
@@ -894,8 +1146,8 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "v_descale": v_scale,
             "p_scale": p_scale,
             "cu_seqlens_q": cu_seqlens_q_input,
-            "cu_seqlens_kv": cu_seqlens_kv_input,
-            "seqused_q": seqused_q,
+            "cu_seqlens_kv": None,
+            "seqused_q": None,
             "seqused_kv": seqused_kv,
             "sparse_indices": sparse_indices,
             "sparse_seq_len": sparse_seq_len,

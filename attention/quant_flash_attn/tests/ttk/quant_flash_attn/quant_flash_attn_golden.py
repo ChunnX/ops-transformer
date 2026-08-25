@@ -63,6 +63,7 @@ GRAPH_PATH = int(_os.environ.get("GRAPH_PATH", "0"))
 # 零内部推导：不在此处硬编码任何 op 参数，不从其他参数推导缺失参数
 # ==============================================================================
 B = None
+BATCH_SIZE = None
 N_q = None
 N_kv = None
 D = None
@@ -114,7 +115,17 @@ INPUT_LAYOUT = None
 Q_SCALE_LAYOUT = None
 P_SCALE = None
 
+# 算子 layout 透传 (由 qfa_wrapper / inputs.py 从 CSV 注入)
+# layout_q/layout_q_descale/layout_kv/layout_out 直接透传给 aclnn 算子,
+# 与数据生成使用的 INPUT_LAYOUT/Q_SCALE_LAYOUT/KV_CACHE_LAYOUT 相互独立。
+LAYOUT_Q = "TND"
+LAYOUT_Q_DESCALE = "TND"
+LAYOUT_KV = "TND"
+LAYOUT_OUT = "TND"
+
 SOFTMAX_SCALE = None
+WIN_LEFT = None
+WIN_RIGHT = None
 
 # PA KV Cache Layout
 # BnNBsD: [BlockNum, N, BlockSize, D]
@@ -122,6 +133,9 @@ SOFTMAX_SCALE = None
 KV_CACHE_LAYOUT = None
 
 IS_CONTIGUOUS = None
+# 8 维列表，分别对应 q, k, v, q_descale, k_descale, v_descale, block_table, attn_mask
+# -1=连续, 0=0轴非连续, 1=0,1轴非连续, 以此类推（仅在 PA 场景生效）
+UNCONTIGUOUS_DIMS = [-1, -1, -1, -1, -1, -1, -1, -1]
 
 ENABLE_LSE = None
 
@@ -176,7 +190,8 @@ def get_mxfp8_per_token_group_quant_scale(tensor, fp8_dtype, group_size=32):
     emax_elem = _EMAX_MAP[fp8_dtype]
 
     dim1, dim2, dim3, dim4 = tensor.shape
-    num_groups = math.ceil(dim4 / group_size)
+    dim4_align = (dim4 + 63) // 64 * 64
+    num_groups = math.ceil(dim4_align / group_size)
     pad_size = num_groups * group_size - dim4
     if pad_size > 0:
         tensor = torch.nn.functional.pad(tensor, (0, pad_size))
@@ -1225,9 +1240,9 @@ def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale):
     m_block_j, _ = torch.max(S_ij, dim=-1, keepdims=True)
     m_block_j = torch.ceil(m_block_j * INV_LN2) * LN2
     m_block_j = torch.max(mi, m_block_j)
-    m_block_j_cpoy = m_block_j - ln_p_scale
+    m_block_j_copy = m_block_j - ln_p_scale
 
-    P_ij_raw = torch.exp(S_ij - m_block_j_cpoy)
+    P_ij_raw = torch.exp(S_ij - m_block_j_copy)
     s_block_j = torch.sum(P_ij_raw, dim=-1, keepdims=True)
     P_ij_drop = P_ij_raw.to(FP8_DTYPE).to(torch.float32)
 
@@ -1249,8 +1264,12 @@ def cpu_mxfp8_golden(
     """CPU Flash Attention golden with MXFP8, C1V1C1V1C2V2 流水"""
     EPSILON = 1e-20
     Q_BLOCK_SIZE = 128
-    K_BLOCK_SIZE = 256
-    V_BLOCK_SIZE = 512
+    if D == 256:
+        K_BLOCK_SIZE = 128
+        V_BLOCK_SIZE = 256
+    else:
+        K_BLOCK_SIZE = 256
+        V_BLOCK_SIZE = 512
 
     if actual_seq_q is None:
         actual_seq_q = _actual_seq_q()
@@ -1303,13 +1322,13 @@ def cpu_mxfp8_golden(
     # dequant_scale 按 group_size 扩展，用于逐元素反量化
     dequant_scale_q_expanded = dequant_scale_q.repeat_interleave(
         QUANT_GROUP_SIZE, dim=-1
-    )
+    )[:, :, :, :D]
     dequant_scale_k_expanded = dequant_scale_k.repeat_interleave(
         QUANT_GROUP_SIZE, dim=-1
-    )
+    )[:, :, :, :D]
     dequant_scale_v_expanded = dequant_scale_v.repeat_interleave(
         QUANT_GROUP_SIZE, dim=2
-    )
+    )[:, :, :, :D]
 
     logger.info(
         "[CPU Golden] TILES_Q=%d, TILES_KV=%d, Sq=%d, Skv=%d",
@@ -1479,14 +1498,17 @@ def _call_npu_fa_op(
     metadata = quant_flash_attn_metadata(
         num_heads_q=q_n,
         num_heads_kv=kv_n,
-        head_dim=q.shape[-1],
+        head_dim=D,
         quant_mode=1,
         cu_seqlens_q=cu_seqlens_q_t if is_tnd_q else None,
         cu_seqlens_kv=cu_seqlens_kv_t if is_tnd_kv else None,
         seqused_q=seqused_q_t,
         seqused_kv=seqused_kv_t,
         v_descale=dequant_scale_v,
+        batch_size=BATCH_SIZE,
         mask_mode=sparse_mode,
+        win_left=WIN_LEFT if WIN_LEFT is not None else -1,
+        win_right=WIN_RIGHT if WIN_RIGHT is not None else -1,
         layout_q=layout_q,
         layout_q_descale=layout_q_descale,
         layout_kv=layout_kv,
@@ -1569,14 +1591,17 @@ class Network(nn.Module):
         metadata = quant_flash_attn_metadata(
             num_heads_q=q_n,
             num_heads_kv=kv_n,
-            head_dim=q.shape[-1],
+            head_dim=D,
             quant_mode=1,
             cu_seqlens_q=cu_seqlens_q,
             cu_seqlens_kv=cu_seqlens_kv,
             seqused_q=seqused_q,
             seqused_kv=seqused_kv,
             v_descale=dequant_scale_v,
+            batch_size=BATCH_SIZE,
             mask_mode=sparse_mode,
+            win_left=WIN_LEFT if WIN_LEFT is not None else -1,
+            win_right=WIN_RIGHT if WIN_RIGHT is not None else -1,
             layout_q=layout_q,
             layout_q_descale=layout_q_descale,
             layout_kv=layout_kv,
@@ -1621,6 +1646,25 @@ def _build_causal_mask():
     return torch.triu(torch.ones(2048, 2048, dtype=torch.int8), diagonal=1).npu()
 
 
+def _make_uncontiguous(tensor, dim):
+    """沿指定 dim 用 stack([real, fake], dim) + 切片构造非连续 view。
+    dim=-1 表示保持连续（直接返回原 tensor，已 .npu()）。
+    dim 为要做成非连续的最高轴号，例如 dim=1 表示 0,1 两轴区域非连续。
+    实际实现：沿 dim 轴 stack 一个 fake tensor，再切片取 [:,...,0,...]，
+    切片结果在该 dim 上 stride 与 stack tensor 一致 → 非连续。"""
+    if dim is None or dim < 0:
+        return tensor
+    tensor = tensor.cpu()
+    stack_dim = dim + 1
+    # dim 不能超过 tensor 维度（在 dim 处插入新轴做 stack，切片取第 0 份）
+    fake = torch.ones_like(tensor)
+    stacked = torch.stack([tensor, fake], dim=stack_dim).npu()
+    # 构造切片：在 dim 位置取 0
+    idx = [slice(None)] * stacked.dim()
+    idx[stack_dim] = 0
+    return stacked[tuple(idx)].npu()
+
+
 def prepare_npu_inputs(
     q_fp8,
     k_fp8,
@@ -1654,51 +1698,83 @@ def prepare_npu_inputs(
 
     q_runtime_layout, _ = resolve_q_scale_layout()
 
-    q_npu = q_fp8.contiguous().view(FP8_DTYPE).npu()
-    deq_q_npu = dequant_scale_q.npu()
-    p_scale_npu = p_scale.npu()
+    Q_DTYPE = q_fp8.dtype
+    DQ_DTYPE = dequant_scale_q.dtype
+    P_SCALE_DTYPE = p_scale.dtype
+    q_npu = q_fp8.contiguous().view(Q_DTYPE).npu()
+    deq_q_npu = dequant_scale_q.view(DQ_DTYPE).npu()
+    p_scale_npu = p_scale.view(P_SCALE_DTYPE).npu()
 
     out_dtype = torch.float16
     mask_arg = _build_causal_mask()
 
     if ENABLE_PA:
-        k_npu = k_fp8.contiguous().view(FP8_DTYPE).npu()
-        v_npu = v_fp8.contiguous().view(FP8_DTYPE).npu()
-        deq_k_npu = dequant_scale_k.npu()
-        deq_v_npu = dequant_scale_v.npu()
+        # PA 场景下按 UNCONTIGUOUS_DIMS 列表分别构造 8 个 tensor 的非连续 view
+        # 顺序: [q, k, v, q_descale, k_descale, v_descale, block_table, attn_mask]
+        ud = UNCONTIGUOUS_DIMS if UNCONTIGUOUS_DIMS is not None else [-1] * 8
+        # 0: q
+        q_npu = _make_uncontiguous(q_npu, ud[0])
+        # 3: q_descale
+        deq_q_npu = _make_uncontiguous(deq_q_npu, ud[3])
+        # 7: attn_mask (可能为 None)
+        if mask_arg is not None:
+            mask_arg = _make_uncontiguous(mask_arg, ud[7])
 
-        if not IS_CONTIGUOUS:
-            kv_cache = torch.stack([k_fp8, v_fp8], dim=2)
-            kv_cache = kv_cache.npu()
-            k_npu = kv_cache[:, :, 0]
-            v_npu = kv_cache[:, :, 1]
+        K_DTYPE = k_fp8.dtype
+        V_DTYPE = v_fp8.dtype if v_fp8 is not None else None
+        DK_DTYPE = dequant_scale_k.dtype
+        DV_DTYPE = dequant_scale_v.dtype if dequant_scale_v is not None else None
+        k_npu = k_fp8.contiguous().view(K_DTYPE).npu()
+        v_npu = v_fp8.contiguous().view(V_DTYPE).npu() if v_fp8 is not None else None
+        deq_k_npu = dequant_scale_k.view(DK_DTYPE).npu()
+        deq_v_npu = (
+            dequant_scale_v.view(DV_DTYPE).npu()
+            if dequant_scale_v is not None
+            else None
+        )
+
+        # 1: k, 2: v —— 按 UNCONTIGUOUS_DIMS 指定 dim 构造非连续
+        k_npu = _make_uncontiguous(k_npu, ud[1])
+        v_npu = _make_uncontiguous(v_npu, ud[2]) if v_npu is not None else None
+        if ud[1] >= 0 or ud[2] >= 0:
             logger.info(
-                f"[NPU] key is_contiguous={k_npu.is_contiguous()}, value is_contiguous={v_npu.is_contiguous()}"
+                f"[NPU] key is_contiguous={k_npu.is_contiguous()}, value is_contiguous={v_npu.is_contiguous() if v_npu is not None else 'N/A'}"
             )
-            fake_kscale_tensor = torch.ones_like(dequant_scale_k)
-            fake_vscale_tensor = torch.ones_like(dequant_scale_v)
-            double_kscale = torch.stack([dequant_scale_k, fake_kscale_tensor], dim=2)
-            double_vscale = torch.stack([dequant_scale_v, fake_vscale_tensor], dim=2)
-            double_kscale = double_kscale.npu()
-            double_vscale = double_vscale.npu()
-            deq_k_npu = double_kscale[:, :, 0]
-            deq_v_npu = double_vscale[:, :, 0]
+        # 4: k_descale, 5: v_descale
+        deq_k_npu = _make_uncontiguous(deq_k_npu, ud[4])
+        deq_v_npu = (
+            _make_uncontiguous(deq_v_npu, ud[5]) if deq_v_npu is not None else None
+        )
+        if ud[4] >= 0 or ud[5] >= 0:
             logger.info(
-                f"[NPU] deq_k_scale is_contiguous={deq_k_npu.is_contiguous()}, deq_v_scale is_contiguous={deq_v_npu.is_contiguous()}"
+                f"[NPU] deq_k_scale is_contiguous={deq_k_npu.is_contiguous()}, deq_v_scale is_contiguous={deq_v_npu.is_contiguous() if deq_v_npu is not None else 'N/A'}"
             )
 
         logger.info("[NPU PA] kv_layout=%s", KV_CACHE_LAYOUT)
-        logger.info("[NPU PA] k=%s, v=%s", k_npu.shape, v_npu.shape)
-        logger.info("[NPU PA] deq_k=%s, deq_v=%s", deq_k_npu.shape, deq_v_npu.shape)
+        logger.info(
+            "[NPU PA] k=%s, v=%s",
+            k_npu.shape,
+            v_npu.shape if v_npu is not None else None,
+        )
+        logger.info(
+            "[NPU PA] deq_k=%s, deq_v=%s",
+            deq_k_npu.shape,
+            deq_v_npu.shape if deq_v_npu is not None else None,
+        )
 
         block_table_npu = (
             block_table_torch.npu()
             if isinstance(block_table_torch, torch.Tensor)
             else torch.as_tensor(block_table_torch, dtype=torch.int32).npu()
         )
+        # 6: block_table
+        block_table_npu = _make_uncontiguous(block_table_npu, ud[6])
 
-        _pa_layout_kv_map = {"BnNBsD": "PA_BNBD", "PA_NZ": "PA_NZ"}
+        _pa_layout_kv_map = {"BnNBsD": "PA_BNBD", "BnBsND": "PA_BBND", "PA_NZ": "PA_NZ"}
         pa_layout_kv = _pa_layout_kv_map.get(KV_CACHE_LAYOUT, "PA_BNBD")
+
+        # layout_kv 优先用 CSV 透传值 (LAYOUT_KV); 若未注入则回退到 kv_cache_layout 推导
+        op_layout_kv = LAYOUT_KV if LAYOUT_KV else pa_layout_kv
 
         logger.info("[NPU] prepare PA inputs done.")
         return dict(
@@ -1720,22 +1796,34 @@ def prepare_npu_inputs(
             q_n=N_q,
             kv_n=N_kv,
             softmax_scale=softmax_scale,
-            layout_q="TND",
-            layout_q_descale=q_runtime_layout,
-            layout_kv=pa_layout_kv,
-            layout_out="TND",
+            layout_q=LAYOUT_Q,
+            layout_q_descale=LAYOUT_Q_DESCALE,
+            layout_kv=op_layout_kv,
+            layout_out=LAYOUT_OUT,
             block_size=BLOCK_SIZE,
             sparse_mode=SPARSE_MODE,
             out_dtype=out_dtype,
         )
 
     # 非 PA 模式
-    k_npu = k_fp8.contiguous().view(FP8_DTYPE).npu()
-    v_npu = v_fp8.contiguous().view(FP8_DTYPE).npu()
-    deq_k_npu = dequant_scale_k.npu()
-    deq_v_npu = dequant_scale_v.npu()
-    logger.info("[NPU TND] k=%s, v=%s", k_npu.shape, v_npu.shape)
-    logger.info("[NPU TND] deq_k=%s, deq_v=%s", deq_k_npu.shape, deq_v_npu.shape)
+    K_DTYPE = k_fp8.dtype
+    V_DTYPE = v_fp8.dtype if v_fp8 is not None else None
+    DK_DTYPE = dequant_scale_k.dtype
+    DV_DTYPE = dequant_scale_v.dtype if dequant_scale_v is not None else None
+    k_npu = k_fp8.contiguous().view(K_DTYPE).npu()
+    v_npu = v_fp8.contiguous().view(V_DTYPE).npu() if v_fp8 is not None else None
+    deq_k_npu = dequant_scale_k.view(DK_DTYPE).npu()
+    deq_v_npu = (
+        dequant_scale_v.view(DV_DTYPE).npu() if dequant_scale_v is not None else None
+    )
+    logger.info(
+        "[NPU TND] k=%s, v=%s", k_npu.shape, v_npu.shape if v_npu is not None else None
+    )
+    logger.info(
+        "[NPU TND] deq_k=%s, deq_v=%s",
+        deq_k_npu.shape,
+        deq_v_npu.shape if deq_v_npu is not None else None,
+    )
 
     logger.info("[NPU] prepare non-PA inputs done.")
     return dict(
@@ -1757,10 +1845,10 @@ def prepare_npu_inputs(
         q_n=N_q,
         kv_n=N_kv,
         softmax_scale=softmax_scale,
-        layout_q="TND",
-        layout_q_descale=q_runtime_layout,
-        layout_kv="TND",
-        layout_out="TND",
+        layout_q=LAYOUT_Q,
+        layout_q_descale=LAYOUT_Q_DESCALE,
+        layout_kv=LAYOUT_KV,
+        layout_out=LAYOUT_OUT,
         block_size=0,
         sparse_mode=SPARSE_MODE,
         out_dtype=out_dtype,
@@ -1941,8 +2029,13 @@ def mxfp8_fa_torch_npu(
         # aclgraph: 直接使用 npugraph_ex backend
         logger.info("[NPU] 调用 aclgraph (npugraph_ex)...")
         npu_backend = "npugraph_ex"
+        options = {"clone_input": False}
         npu_mode = torch.compile(
-            npu_mode, fullgraph=False, backend=npu_backend, dynamic=False
+            npu_mode,
+            fullgraph=False,
+            options=options,
+            backend=npu_backend,
+            dynamic=False,
         )
         # mark_static 标记所有 tensor 输入
         for t in (
@@ -2122,5 +2215,8 @@ if __name__ == "__main__":
         cpu_lse_tnd_torch = convert_q_bnsd_to_layout(
             cpu_lse, _actual_seq_q(), "TND", cu_seqlens=CU_SEQLENS_Q
         )
+        # NPU LSE 输出已改为 N-major 排布 (N, T): N 在外, T 在内
+        # CPU golden 经 convert 后是 [T, N, 1] (T-major), 需转成 [N, T] 对齐
+        cpu_lse_nt_torch = cpu_lse_tnd_torch.squeeze(-1).permute(1, 0).contiguous()
 
-        result_compare_method.check_result(cpu_lse_tnd_torch, lse_out)
+        result_compare_method.check_result(cpu_lse_nt_torch, lse_out)

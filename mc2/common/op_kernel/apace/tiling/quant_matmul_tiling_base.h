@@ -18,10 +18,10 @@
 #include <cstdint>
 #include <cstdio>
 
-#include "../utils/common_utils.h"
+#include "../utils/apace_common_utils.h"
 #include "quant_matmul_tiling_common.h"
 #include "quant_matmul_tiling_data.h"
-#include "../utils/constant.h"
+#include "../utils/apace_constant.h"
 
 template <mm::DataType aDataType, mm::DataType bDataType>
 class QuantMatmulTilingBase {
@@ -54,6 +54,7 @@ public:
     }
 
     void SetOptimizeEnable(bool enable) { isOpenOptimize_ = enable; }
+    void SetMTailAlignEnable(bool enable) { enableMTailAlign_ = enable; }
 
 protected:
     QuantMatmulArgs args_{};
@@ -61,6 +62,7 @@ protected:
     QuantMatmulRunInfo runInfo_{};
 
     bool isOpenOptimize_{true};
+    bool enableMTailAlign_{false};
 
     virtual const char* TilingName() const = 0;
 

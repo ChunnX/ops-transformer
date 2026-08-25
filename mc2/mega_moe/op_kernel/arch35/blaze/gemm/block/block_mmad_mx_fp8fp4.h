@@ -44,12 +44,12 @@ using Blaze::Gemm::NON_FINAL_ACCUMULATION;
 using Blaze::Gemm::SYNC_MODE4;
 
 // Macro aliases keep the specialization declaration compact for this dispatch-policy binding.
-#define BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS                                                                           \
-    template <class ATypeTuple_, class LayoutATuple_, class BTypeTuple_, class LayoutBTuple_, class CType_,            \
+#define BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS \
+    template <class ATypeTuple_, class LayoutATuple_, class BTypeTuple_, class LayoutBTuple_, class CType_, \
               class LayoutC_, class BiasType_, class LayoutBias_>
 
-#define BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION                                                                            \
-    BlockMmad<MatmulMxFp8Fp4DynamicKL1TailResplit, ATypeTuple_, LayoutATuple_, BTypeTuple_, LayoutBTuple_, CType_,     \
+#define BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION \
+    BlockMmad<MatmulMxFp8Fp4DynamicKL1TailResplit, ATypeTuple_, LayoutATuple_, BTypeTuple_, LayoutBTuple_, CType_, \
               LayoutC_, BiasType_, LayoutBias_>
 
 /*!
@@ -425,7 +425,7 @@ __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::CopyCL0c2GmOrUb(cons
     auto layoutL0C =
         AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Std::Int<L0C_C0>>(param.mL1Size, param.nL1Size);
     auto tensorL0C = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L0C, float>(0), layoutL0C);
-    if constexpr (Std::is_same_v<Te::GetMemLocation<TensorC>, Te::Location::UB>) {
+    if constexpr (AscendC::Std::is_same_v<AscendC::Te::GetMemLocation<TensorC>, AscendC::Te::Location::UB>) {
         // C L0C->UB
         auto CopyL0C2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2UB{});
         AscendC::Te::Copy(CopyL0C2UB.with(AscendC::Te::FixpipeParams(3, copyUbToV1)), tensorC, tensorL0C,
@@ -491,7 +491,14 @@ __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::CalcDynamicKBlock(ui
                                               MX_FP8FP4_L1_K_CONFIG_256);
     if (mL1Size < nL1Size) {
         uint64_t mL1Align = CeilAlign(mL1Size, static_cast<uint64_t>(BLOCK_CUBE));
-        kaL1Size = (A_L1_SINGLE_BUF_SIZE / sizeof(AType)) / (mL1Align * kbL1Size) * kbL1Size;
+        /*
+         * 小 M 时若直接填满 128 KiB A 槽位，首个 MMAD 会等待一个过深的 A 搬运窗口。
+         * 按 N / (2M) 选择 ka 深度，使 A 搬运更细地与连续的 B/prologue 窗口重叠；物理容量仅作为上限。
+         */
+        uint64_t balancedKaDepth = CeilDiv(nL1Size, mL1Align * DOUBLE_BUFFER);
+        uint64_t maxKaDepth = (A_L1_SINGLE_BUF_SIZE / sizeof(AType)) / (mL1Align * kbL1Size);
+        uint64_t kaDepth = balancedKaDepth < maxKaDepth ? balancedKaDepth : maxKaDepth;
+        kaL1Size = kaDepth * kbL1Size;
     } else {
         kaL1Size = kbL1Size;
     }

@@ -55,8 +55,8 @@ public:
     static constexpr uint32_t VEC_M_BASE = M_BASE >> 1U;
     static constexpr uint32_t D_BASE = static_cast<uint32_t>(dTemplateType);
     static constexpr uint32_t DV_BASE = static_cast<uint32_t>(dVTemplateType);
-    static_assert(LAYOUT == QBSALayout::TND && KV_LAYOUT == QBSALayout::PA_BNSD && IS_PA,
-                  "MX vector currently only supports TND query and PA_BNSD KV");
+    static_assert(LAYOUT == QBSALayout::TND && KV_LAYOUT == QBSALayout::PA_BNBD && IS_PA,
+                  "MX vector currently only supports TND query and PA_BNBD KV");
     static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == 128U && DV_BASE == 128U,
                   "MX vector currently only supports S1=128, S2=512, D=128 and DV=128");
     static constexpr uint32_t DB = 2U;
@@ -84,15 +84,16 @@ public:
             if constexpr (HAS_LSE) {
                 softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
             }
-            GlobalTensor<uint8_t> pScaleGm;
-            pScaleGm.SetGlobalBuffer((__gm__ uint8_t *)pScale);
+            if (pScale != nullptr) {
+                GlobalTensor<uint8_t> pScaleGm;
+                pScaleGm.SetGlobalBuffer((__gm__ uint8_t *)pScale);
+                pScaleValue_ = DecodeE8M0Scale(pScaleGm.GetValue(0));
+            }
             if constexpr (HAS_ATTEN) {
                 attenMaskGm_.SetGlobalBuffer((__gm__ uint8_t *)attenMask);
                 attenMaskS2Size_ = attenMaskS2Size;
             }
             negativeFloatScalar_ = *((const MM_T *)&NEGATIVE_MIN_VALUE_FP32);
-            // 输入 quantScale1 为 [1] e8m0；VF 另行生成 C2 使用的 PScale。
-            pScaleValue_ = DecodeE8M0Scale(pScaleGm.GetValue(0));
         }
     }
 
@@ -181,7 +182,7 @@ public:
 
         const uint32_t softmaxBufIdx = runInfo.mLoop % (PRELOAD_N + 1U);
         const uint32_t expBufIdx = runInfo.loop % (PRELOAD_N + 1U);
-        const uint32_t stage1Offset = runInfo.loop % DB;
+        const uint32_t stage1Offset = (runInfo.loop * 2 + subLoop) % DB;
         LocalTensor<float> sumUb = softmaxSumBuf_[softmaxBufIdx].template Get<float>()[0];
         LocalTensor<float> maxUb = softmaxMaxBuf_[softmaxBufIdx].template Get<float>()[0];
         LocalTensor<float> preLoopMaxUb = preLoopMaxBuf_.template Get<float>()[0];

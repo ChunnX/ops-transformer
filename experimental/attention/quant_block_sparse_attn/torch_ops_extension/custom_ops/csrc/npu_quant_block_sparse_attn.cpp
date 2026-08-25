@@ -68,7 +68,7 @@ std::tuple<at::Tensor, at::Tensor> construct_bsa_output_tensors(const at::Tensor
 // step2, 为NPU设备实现前向接口（函数形参顺序 = schema 顺序）
 std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
     const at::Tensor &query, const at::Tensor &key, const at::Tensor &value, const at::Tensor &q_descale,
-    const at::Tensor &k_descale, const at::Tensor &v_descale, const at::Tensor &p_scale,
+    const at::Tensor &k_descale, const at::Tensor &v_descale, const c10::optional<at::Tensor> &p_scale,
     const at::Tensor &sparse_indices, const at::Tensor &sparse_seq_len, const c10::optional<at::Tensor> &atten_mask,
     double softmax_scale, int64_t sparse_q_block_size, int64_t sparse_kv_block_size,
     const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_kv,
@@ -79,7 +79,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
 {
     TORCH_CHECK(query.numel() > 0, "Tensor query is empty.");
     TORCH_CHECK(key.dim() == DIM_FOUR && value.dim() == DIM_FOUR,
-                "key/value should be 4D PA_BNSD [blockNum, Nkv, blockSize, headDim], but got dims ",
+                "key/value should be 4D PA_BNBD [blockNum, Nkv, blockSize, headDim], but got dims ",
                 key.dim(), "/", value.dim());
     int64_t paBlockStride = key.stride(0);
     TORCH_CHECK(paBlockStride > 0, "key.stride(0) (paBlockStride) should be greater than 0, but got ",
@@ -89,12 +89,12 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
                 " and key.stride(0)=", paBlockStride);
     TORCH_CHECK(
         key.stride(1) == key.size(2) * key.size(3) && key.stride(2) == key.size(3) && key.stride(3) == 1,
-        "key should use segmented PA_BNSD stride [paBlockStride, blockSize * headDim, headDim, 1], but got ",
+        "key should use segmented PA_BNBD stride [paBlockStride, blockSize * headDim, headDim, 1], but got ",
         key.strides());
     TORCH_CHECK(
         value.stride(1) == value.size(2) * value.size(3) && value.stride(2) == value.size(3) &&
             value.stride(3) == 1,
-        "value should use segmented PA_BNSD stride [paBlockStride, blockSize * headDim, headDim, 1], but got ",
+        "value should use segmented PA_BNBD stride [paBlockStride, blockSize * headDim, headDim, 1], but got ",
         value.strides());
     if (quant_mode == QBSA_MXFP8_FULL_QUANT_MODE) {
         const int64_t keyScaleDSize = (key.size(3) + QBSA_MXFP8_SCALE_GROUP_SIZE - 1) / QBSA_MXFP8_SCALE_GROUP_SIZE;
@@ -107,7 +107,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
         TORCH_CHECK(k_descale.size(0) == key.size(0) && k_descale.size(1) == key.size(1) &&
                         k_descale.size(2) == key.size(2) && k_descale.size(3) == keyScaleDSize &&
                         k_descale.size(4) == QBSA_MXFP8_SCALE_LAST_DIM,
-                    "k_descale should be [blockNum, Nkv, blockSize, D / 64, 2] and match key PA_BNSD "
+                    "k_descale should be [blockNum, Nkv, blockSize, D / 64, 2] and match key PA_BNBD "
                     "shape, but got k_descale sizes ",
                     k_descale.sizes(), " and key sizes ", key.sizes());
         TORCH_CHECK(k_descale.stride(4) == 1 && k_descale.stride(3) == k_descale.size(4) &&
@@ -124,7 +124,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
         TORCH_CHECK(v_descale.size(0) == value.size(0) && v_descale.size(1) == value.size(1) &&
                         v_descale.size(2) == valueScaleBlockSize && v_descale.size(3) == value.size(3) &&
                         v_descale.size(4) == QBSA_MXFP8_SCALE_LAST_DIM,
-                    "v_descale should be [blockNum, Nkv, blockSize / 64, DV, 2] and match value PA_BNSD "
+                    "v_descale should be [blockNum, Nkv, blockSize / 64, DV, 2] and match value PA_BNBD "
                     "shape, but got v_descale sizes ",
                     v_descale.sizes(), " and value sizes ", value.sizes());
         TORCH_CHECK(v_descale.stride(4) == 1 && v_descale.stride(3) == v_descale.size(4) &&
@@ -141,7 +141,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
                     k_descale.dim());
         TORCH_CHECK(k_descale.size(0) == key.size(0) && k_descale.size(1) == key.size(1) &&
                         k_descale.size(2) == key.size(2) && k_descale.size(3) == 1,
-                    "k_descale should be [blockNum, Nkv, blockSize, 1] and match key PA_BNSD shape, "
+                    "k_descale should be [blockNum, Nkv, blockSize, 1] and match key PA_BNBD shape, "
                     "but got k_descale sizes ",
                     k_descale.sizes(), " and key sizes ", key.sizes());
         const int64_t expectedPaBlockStride = key.size(1) * key.size(2) * key.size(3) +
@@ -155,7 +155,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
                     " and key.stride(0)=", paBlockStride);
         TORCH_CHECK(k_descale.stride(1) == k_descale.size(2) && k_descale.stride(2) == 1 &&
                         k_descale.stride(3) == 1,
-                    "k_descale should use segmented PA_BNSD stride [paBlockStride / 4, blockSize, 1, 1], "
+                    "k_descale should use segmented PA_BNBD stride [paBlockStride / 4, blockSize, 1, 1], "
                     "but got ",
                     k_descale.strides());
     }
@@ -176,8 +176,20 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
     char *layout_sparse_indices_ptr = const_cast<char *>(layout_sparse_indices_str.c_str());
     char *layout_out_ptr = const_cast<char *>(layout_out_str.c_str());
 
+    // aclnn 框架不接受 nullptr aclTensor*：将未提供的 optional p_scale 归一化为 numel=0 空 tensor。
+    // dtype 须匹配 CheckScaleDtype：FP8->FLOAT, MXFP8->FLOAT8_E8M0
+    at::Tensor p_scale_placeholder;
+    const at::Tensor *p_scale_arg;
+    if (p_scale.has_value() && p_scale.value().defined()) {
+        p_scale_arg = &p_scale.value();
+    } else {
+        const at::ScalarType empty_dtype = (quant_mode == QBSA_MXFP8_FULL_QUANT_MODE) ? at::kFloat8_e8m0fnu : at::kFloat;
+        p_scale_placeholder = at::empty({0}, query.options().dtype(empty_dtype));
+        p_scale_arg = &p_scale_placeholder;
+    }
+
     // EXEC_NPU_CMD_V1 实参顺序 = 算子 IR 声明顺序（输入 -> 属性 -> 输出），与 schema 形参顺序不同
-    EXEC_NPU_CMD_V1(aclnnQuantBlockSparseAttn, query, key, value, q_descale, k_descale, v_descale, p_scale,
+    EXEC_NPU_CMD_V1(aclnnQuantBlockSparseAttn, query, key, value, q_descale, k_descale, v_descale, *p_scale_arg,
                     cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sparse_indices, sparse_seq_len, block_table,
                     atten_mask, metadata, softmax_scale, sparse_q_block_size, sparse_kv_block_size, layout_kv_ptr,
                     layout_q_ptr, layout_sparse_indices_ptr, layout_out_ptr, quant_mode, mask_mode,
@@ -189,7 +201,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
 // step3, 为META设备实现前向接口
 std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_meta(
     const at::Tensor &query, const at::Tensor &key, const at::Tensor &value, const at::Tensor &q_descale,
-    const at::Tensor &k_descale, const at::Tensor &v_descale, const at::Tensor &p_scale,
+    const at::Tensor &k_descale, const at::Tensor &v_descale, const c10::optional<at::Tensor> &p_scale,
     const at::Tensor &sparse_indices, const at::Tensor &sparse_seq_len, const c10::optional<at::Tensor> &atten_mask,
     double softmax_scale, int64_t sparse_q_block_size, int64_t sparse_kv_block_size,
     const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_kv,

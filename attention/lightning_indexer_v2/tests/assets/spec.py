@@ -41,15 +41,17 @@ def load_impl_module(stem):
     return module
 
 
+npu_preprocess_module = load_impl_module("npu_preprocess")
 golden_module = load_impl_module("golden")
 inputs_module = load_impl_module("inputs")
+metadata_inputs_module = load_impl_module("metadata_inputs")
 compare_module = load_impl_module("compare")
-graph_module = load_impl_module("graph")
 
 
 class LightningIndexerV2Spec:
     golden = golden_module.cpu_lightning_indexer_v2
     customize_inputs = inputs_module.generate_li_v2_inputs
+    npu_preprocess = npu_preprocess_module.run
     tolerance = {
         "float16": {"standard": "stat_rel_err"},
         "bfloat16": {"standard": "stat_rel_err"},
@@ -57,18 +59,37 @@ class LightningIndexerV2Spec:
 
     def compare(*outputs, compare_context=None, **kwargs):
         del kwargs
-        testcase_name = None if compare_context is None else compare_context.testcase_name
+        testcase_name = (
+            None if compare_context is None else compare_context.testcase_name
+        )
         data = golden_module.get_compare_data(testcase_name)
         if data is None:
             if compare_context is None:
-                raise RuntimeError("LightningIndexerV2 pytest compare requires compare_context")
+                raise RuntimeError(
+                    "LightningIndexerV2 pytest compare requires compare_context"
+                )
             data = inputs_module.rebuild_li_v2_compare_data(compare_context)
             golden_module.set_compare_data(compare_context.testcase_name, data)
-        return compare_module.compare(*outputs, compare_data=data)
+        try:
+            return compare_module.compare(*outputs, compare_data=data)
+        finally:
+            golden_module.discard_compare_data(data)
 
-    torch_graph = graph_module.LightningIndexerV2AclGraph
+
+class AclnnLightningIndexerV2Spec(LightningIndexerV2Spec):
+    golden = golden_module.cpu_aclnn_li_v2
+    customize_inputs = inputs_module.generate_aclnn_li_v2_inputs
+    npu_preprocess = None
+
+
+class LightningIndexerMetadataSpec:
+    customize_inputs = metadata_inputs_module.generate_lightning_indexer_metadata_inputs
 
 
 __spec__ = {
-    "li_v2_ttk_ops.lightning_indexer_v2": "LightningIndexerV2Spec",
+    "torch.ops.cann_ops_transformer.lightning_indexer": "LightningIndexerV2Spec",
+    "torch.ops.cann_ops_transformer.lightning_indexer_metadata": (
+        "LightningIndexerMetadataSpec"
+    ),
+    "aclnnLightningIndexerV2": "AclnnLightningIndexerV2Spec",
 }

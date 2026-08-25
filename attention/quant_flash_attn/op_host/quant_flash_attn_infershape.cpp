@@ -123,9 +123,20 @@ ge::graphStatus InferShapeQuantFlashAttn(gert::InferShapeContext *context)
         numHeadsQ = qShape->GetDim(1);
         headDim = qShape->GetDim(2);
         isTND = true;
+    } else if (layoutQStr == "NTD") {
+        if (qShape->GetDimNum() != 3) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "q",
+                std::to_string(qShape->GetDimNum()).c_str(),
+                "The shape dim of q must be 3 when layout_q is NTD");
+            return ge::GRAPH_FAILED;
+        }
+        numHeadsQ = qShape->GetDim(0);
+        seqLenQ   = qShape->GetDim(1);
+        headDim   = qShape->GetDim(2);
+        isTND     = true;
     } else {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "layout_q", layoutQStr.c_str(),
-                                              "The value of layout_q must be in BSND/BNSD/TND");
+                                              "The value of layout_q must be in BSND/BNSD/TND/NTD");
         return ge::GRAPH_FAILED;
     }
 
@@ -174,9 +185,11 @@ ge::graphStatus InferShapeQuantFlashAttn(gert::InferShapeContext *context)
     if (lseShape != nullptr) {
         if (returnSoftmaxLse) {
             if (isTND) {
+                // LSE 输出改为 N-major 排布: (N, T), N 在外, T 在内
+                // 与 kernel 的 DataCopySoftmaxLseTNDtoNTArch35* 写入顺序对齐
                 lseShape->SetDimNum(2);
-                lseShape->SetDim(0, seqLenQ);
-                lseShape->SetDim(1, numHeadsQ);
+                lseShape->SetDim(0, numHeadsQ);
+                lseShape->SetDim(1, seqLenQ);
             } else {
                 lseShape->SetDimNum(3);
                 lseShape->SetDim(0, batchSize);
