@@ -57,9 +57,6 @@ struct CubeTilingDataView {
     uint32_t usedCoreNum;
     uint32_t aicCoreNum;
     uint32_t aivCoreNum;
-    uint32_t bigCoreNum;
-    uint32_t blockFactor;
-    uint32_t tailBlockFactor;
     uint32_t baseT;
     uint32_t baseS;
     uint32_t baseD;
@@ -87,12 +84,11 @@ struct CubeTilingDataView {
 };
 
 static_assert(sizeof(VectorTilingDataView) == 64U);
-static_assert(sizeof(CubeTilingDataView) == 176U);
+static_assert(sizeof(CubeTilingDataView) == 160U);
 
 gert::TilingContextPara BuildCase(optiling::BlockAttnResPrepareCompileInfo &compileInfo,
                                   const gert::StorageShape &blockResShape, const gert::StorageShape &pseudoQueryShape,
-                                  ge::DataType blockResType = ge::DT_FLOAT,
-                                  ge::DataType validBlocksType = ge::DT_INT64,
+                                  ge::DataType blockResType = ge::DT_FLOAT, ge::DataType validBlocksType = ge::DT_INT64,
                                   ge::DataType pseudoQueryType = ge::DT_FLOAT, float eps = 1e-6F,
                                   uint64_t coreNum = ASCEND_950_AIV_CORE_NUM)
 {
@@ -111,14 +107,14 @@ gert::TilingContextPara BuildCase(optiling::BlockAttnResPrepareCompileInfo &comp
             {{{totalS, totalT}, {totalS, totalT}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{totalS, totalT}, {totalS, totalT}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
-        {{"eps", Ops::Transformer::AnyValue::CreateFrom<float>(eps)}}, &compileInfo, "Ascend950",
-        coreNum, ASCEND_950_UB_SIZE, 4096);
+        {{"eps", Ops::Transformer::AnyValue::CreateFrom<float>(eps)}}, &compileInfo, "Ascend950", coreNum,
+        ASCEND_950_UB_SIZE, 4096);
 }
 
 optiling::BlockAttnResPrepareCompileInfo Ascend950CompileInfo()
 {
-    return {ASCEND_950_AIC_CORE_NUM, ASCEND_950_AIV_CORE_NUM, ASCEND_950_UB_SIZE, ASCEND_950_L1_SIZE,
-            ASCEND_950_L0A_SIZE, ASCEND_950_L0B_SIZE, ASCEND_950_L0C_SIZE, SYSTEM_WORKSPACE_SIZE};
+    return {ASCEND_950_AIC_CORE_NUM, ASCEND_950_AIV_CORE_NUM, ASCEND_950_UB_SIZE,  ASCEND_950_L1_SIZE,
+            ASCEND_950_L0A_SIZE,     ASCEND_950_L0B_SIZE,     ASCEND_950_L0C_SIZE, SYSTEM_WORKSPACE_SIZE};
 }
 
 } // namespace
@@ -193,9 +189,8 @@ TEST_F(BlockAttnResPrepareTilingTest, CubeTilingAllocatesMm1AndDoubleBufferedEWo
     EXPECT_EQ(tilingData->baseS, 24U);
     EXPECT_EQ(tilingData->nAlign, 16U);
     EXPECT_EQ(tilingData->mm1NAlign, 16U);
-    const uint64_t expectedWorkspaceElems =
-        static_cast<uint64_t>(tilingData->baseS) * tilingData->mm1NAlign +
-        2U * static_cast<uint64_t>(tilingData->sAlign) * tilingData->nAlign;
+    const uint64_t expectedWorkspaceElems = static_cast<uint64_t>(tilingData->baseS) * tilingData->mm1NAlign +
+                                            2U * static_cast<uint64_t>(tilingData->sAlign) * tilingData->nAlign;
     EXPECT_EQ(tilingData->workspacePerCoreElems, expectedWorkspaceElems);
     EXPECT_EQ(tilingData->reduceUbElems, 64U);
 }
@@ -210,9 +205,8 @@ TEST_F(BlockAttnResPrepareTilingTest, CubeTGroupingPreservesPerCoreTokenLoad)
     ASSERT_NE(tilingData, nullptr);
     EXPECT_EQ(tilingData->baseT, 1U);
     EXPECT_EQ(tilingData->totalWorkUnits, 32U);
-    const uint64_t expectedWorkspaceElems =
-        static_cast<uint64_t>(tilingData->baseS) * tilingData->mm1NAlign +
-        2U * static_cast<uint64_t>(tilingData->sAlign) * tilingData->nAlign;
+    const uint64_t expectedWorkspaceElems = static_cast<uint64_t>(tilingData->baseS) * tilingData->mm1NAlign +
+                                            2U * static_cast<uint64_t>(tilingData->sAlign) * tilingData->nAlign;
     EXPECT_EQ(tilingData->workspacePerCoreElems, expectedWorkspaceElems);
 }
 
@@ -220,8 +214,8 @@ TEST_F(BlockAttnResPrepareTilingTest, CubeTilingFallsBackWhenTwoAivPeersAreUnava
 {
     auto compileInfo = Ascend950CompileInfo();
     compileInfo.aivCoreNum = 1U;
-    auto context = BuildCase(compileInfo, {{32, 8, 7168}, {32, 8, 7168}}, {{24, 7168}, {24, 7168}},
-                             ge::DT_FLOAT, ge::DT_INT64, ge::DT_FLOAT, 1e-6F, 1U);
+    auto context = BuildCase(compileInfo, {{32, 8, 7168}, {32, 8, 7168}}, {{24, 7168}, {24, 7168}}, ge::DT_FLOAT,
+                             ge::DT_INT64, ge::DT_FLOAT, 1e-6F, 1U);
     ExecuteTestCase(context, ge::GRAPH_SUCCESS, optiling::BLOCK_ATTN_RES_PREPARE_VECTOR_KEY);
 }
 
@@ -242,15 +236,14 @@ TEST_F(BlockAttnResPrepareTilingTest, MismatchedDIsRejected)
 TEST_F(BlockAttnResPrepareTilingTest, NonPositiveEpsIsRejected)
 {
     auto compileInfo = Ascend950CompileInfo();
-    auto context = BuildCase(compileInfo, {{1, 8, 7168}, {1, 8, 7168}}, {{18, 7168}, {18, 7168}},
-                             ge::DT_FLOAT, ge::DT_INT64, ge::DT_FLOAT, 0.0F);
+    auto context = BuildCase(compileInfo, {{1, 8, 7168}, {1, 8, 7168}}, {{18, 7168}, {18, 7168}}, ge::DT_FLOAT,
+                             ge::DT_INT64, ge::DT_FLOAT, 0.0F);
     ExecuteTestCase(context, ge::GRAPH_FAILED);
 }
 
 TEST_F(BlockAttnResPrepareTilingTest, InvalidDtypeIsRejected)
 {
     auto compileInfo = Ascend950CompileInfo();
-    auto context = BuildCase(compileInfo, {{1, 8, 7168}, {1, 8, 7168}}, {{18, 7168}, {18, 7168}},
-                             ge::DT_FLOAT16);
+    auto context = BuildCase(compileInfo, {{1, 8, 7168}, {1, 8, 7168}}, {{18, 7168}, {18, 7168}}, ge::DT_FLOAT16);
     ExecuteTestCase(context, ge::GRAPH_FAILED);
 }
