@@ -17,9 +17,8 @@
 
 #include "lib/hccl/hccl.h"
 #include "blaze/gemm/utils/common_utils.h"
-#include "blaze/gemm/policy/dispatch_policy.h"
-#include "blaze/gemm/block/block_mmad_qbmm_mx.h"
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
+#include "apace/block/mmad/qmm_mx_block_mmad_fragment.h"
 #include "../../matmul/quant_batch_matmul/matmul_reduce_scatter_v2_qbmm_mx_kernel.h"
 #include "include/tensor_api/tensor.h"
 #include "matmul_reduce_scatter_v2_tiling_data.h"
@@ -48,9 +47,8 @@ public:
     using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerQuantBatchMatmulV3<
         ProblemShape, 0, LayoutA, LayoutB, AType>;
-    using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<0, false>;
-    using BlockMmad = Blaze::Gemm::Block::BlockMmad<
-        DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC, BiasType, LayoutBias>;
+    using BlockMmad = Blaze::Gemm::Block::QmmMxBlockMmadFragment<
+        0, false, AType, LayoutA, BType, LayoutB, CType, LayoutC, BiasType, LayoutBias>;
     using Kernel = Blaze::Gemm::Kernel::MatmulReduceScatterV2QbmmMxKernel<
         ProblemShape, BlockMmad, BlockScheduler>;
     using Params = typename Kernel::Params;
