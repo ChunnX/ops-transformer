@@ -130,7 +130,6 @@ struct V0V1Buffers {
     LocalTensor<P> hPreBufS2;
     LocalTensor<P> hPostBufS1;
     LocalTensor<P> hPostBufS2;
-    LocalTensor<P> hResBufS1;
     LocalTensor<P> hFusionBuf;
     LocalTensor<P> gatherFusionOutBuf;
     LocalTensor<P> invRmsBuf;

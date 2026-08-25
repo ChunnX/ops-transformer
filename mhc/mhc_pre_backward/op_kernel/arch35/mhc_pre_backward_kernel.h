@@ -53,8 +53,9 @@ public:
                                      float alphaPost, float alphaComb);
     __aicore__ inline void ProcessV1(uint32_t runBSStart, uint32_t runBSEnd, V0V1Buffers<P> &buffers,
                                      uint32_t vecRuntimesId, LocalTensor<P> &sumBuf);
-    __aicore__ inline void AIV02Process(V0V1Buffers<P> &buffers, LocalTensor<P> &hMixGradBuf, uint64_t currentDealBsNum,
-                                        float alphaPre, float alphaPost, float alphaComb);
+    __aicore__ inline void AIV02Process(V0V1Buffers<P> &buffers, LocalTensor<P> &hResBuf,
+                                        LocalTensor<P> &hMixGradBuf, uint64_t currentDealBsNum, float alphaPre,
+                                        float alphaPost, float alphaComb);
     __aicore__ inline void AIV21Process(LocalTensor<P> &invRmsInBuf, LocalTensor<P> &invRmsUb,
                                         LocalTensor<P> &invRmsGradUb, uint32_t currentChunkSize);
     __aicore__ inline void AIV22Process(LocalTensor<P> &invRmsUb, LocalTensor<P> &xRsFp32Buf,
@@ -216,7 +217,6 @@ private:
     uint32_t hPostMaxBufLen_;
     uint32_t gradHResBufLen_;
     uint32_t gradHPostOffset_;
-    uint32_t hMixOffset_;
     uint32_t hFusionBufLen_;
     uint32_t hFusionOffset_;
     uint32_t globalUbOffset_;
@@ -284,7 +284,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParam
     vecDealChunk_ = N_ > LARGE_N_THRESHOLD ? VEC_DEAL_CHUNK_LARGE_N : VEC_DEAL_CHUNK_SMALL_N;
     hPreMaxBufLen_ = vecDealChunk_ * N_;
     hPostMaxBufLen_ = hPreMaxBufLen_;
-    hMixOffset_ = (hPreMaxBufLen_ + hPostMaxBufLen_) * sizeof(P);
     gradHPostOffset_ = hPreMaxBufLen_ * sizeof(P);
     gradHResBufLen_ = vecDealChunk_ * N_ * N_;
     hFusionBufLen_ = hPreMaxBufLen_ + hPostMaxBufLen_ + gradHResBufLen_;
@@ -546,7 +545,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::AllocV0V1Buffers(uint32_t run
     // V0 buffers
     buffers.hPreBufS1 = fp32TBuf_.GetWithOffset<P>(hPreMaxBufLen_, ubOffset);
     buffers.hPostBufS1 = fp32TBuf_.GetWithOffset<P>(hPostMaxBufLen_, ubOffset + gradHPostOffset_);
-    buffers.hResBufS1 = fp32TBuf_.GetWithOffset<P>(gradHResBufLen_, ubOffset + hMixOffset_);
     buffers.hFusionBuf = fp32TBuf_.GetWithOffset<P>(hFusionBufLen_, fusionOffset);
 
     ubOffset += hFusionBufLen_ * sizeof(P);
@@ -641,12 +639,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0(uint32_t runBSStart
     vecInQueue1_.EnQue(fp32InputBuf);
     LocalTensor<P> gradHResBuf = vecInQueue1_.DeQue<P>();
 
-    Muls(buffers.hResBufS1, gradHResBuf, ONE, buffers.stepLength * N_);
-    PipeBarrier<PIPE_V>();
-    vecInQueue1_.FreeTensor(gradHResBuf);
-
     uint32_t currentDealBsNum = runBSEnd - runBSStart;
-    AIV02Process(buffers, hMixGradBuf, currentDealBsNum, alphaPre, alphaPost, alphaComb);
+    AIV02Process(buffers, gradHResBuf, hMixGradBuf, currentDealBsNum, alphaPre, alphaPost, alphaComb);
+    vecInQueue1_.FreeTensor(gradHResBuf);
 }
 
 template <class T, class P>
@@ -673,13 +668,13 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV0ProcessGradHPost(__ubuf
 }
 
 template <class T, class P>
-__aicore__ inline void MhcPreBackwardKernel<T, P>::AIV02Process(V0V1Buffers<P> &buffers, LocalTensor<P> &hMixGradBuf,
-                                                                uint64_t currentDealBsNum, float alphaPre,
-                                                                float alphaPost, float alphaComb)
+__aicore__ inline void MhcPreBackwardKernel<T, P>::AIV02Process(V0V1Buffers<P> &buffers, LocalTensor<P> &hResBuf,
+                                                                LocalTensor<P> &hMixGradBuf, uint64_t currentDealBsNum,
+                                                                float alphaPre, float alphaPost, float alphaComb)
 {
     __ubuf__ P *hPreBufAddr = (__ubuf__ P *)buffers.hPreBufS1.GetPhyAddr();
     __ubuf__ P *hPostBufAddr = (__ubuf__ P *)buffers.hPostBufS1.GetPhyAddr();
-    __ubuf__ P *hResBufAddr = (__ubuf__ P *)buffers.hResBufS1.GetPhyAddr();
+    __ubuf__ P *hResBufAddr = (__ubuf__ P *)hResBuf.GetPhyAddr();
     __ubuf__ P *gatherFusionOutBufAddr = (__ubuf__ P *)buffers.gatherFusionOutBuf.GetPhyAddr();
     __ubuf__ P *hMixGradBufAddr = (__ubuf__ P *)hMixGradBuf.GetPhyAddr();
 
