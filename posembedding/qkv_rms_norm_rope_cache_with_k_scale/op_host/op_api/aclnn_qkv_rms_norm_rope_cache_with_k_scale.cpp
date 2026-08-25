@@ -227,12 +227,14 @@ static aclnnStatus AddQkvRmsNormRopeCacheWithKScaleTask(Params &params, aclOpExe
     CHECK_RET(CreateCacheViews(params, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
 
     const int64_t qOutDtype = static_cast<int64_t>(params.qOut->GetDataType());
-    auto l0Outs = l0op::QkvRmsNormRopeCacheWithKScale(
+    auto [l0Status, qOut, qScale, kCache, vCache, kScaleCache] = l0op::QkvRmsNormRopeCacheWithKScale(
         params.qkv, params.qGamma, params.kGamma, params.cosSin, params.slotMapping, params.kCache, params.vCache,
         params.kScaleCache, params.queryStartLoc, params.seqLens, params.rotationOptional, params.vScaleOptional,
         params.mropePositionOptional, params.headNums, params.layoutQkv, params.layoutQOut, params.epsilon,
         params.mropeSectionOptional, QQuantModeToString(params.qQuantMode), KQuantModeToString(params.kQuantMode),
         qOutDtype, params.qOut, params.qScale, executor);
+    CHECK_RET(l0Status == ACLNN_SUCCESS, l0Status);
+    const L0Outputs l0Outs = {qOut, qScale, kCache, vCache, kScaleCache};
     return CheckL0Outputs(l0Outs, IsQScaleRequired(params.qQuantMode));
 }
 
@@ -245,8 +247,8 @@ static aclnnStatus GetWorkspaceSize(Params &params)
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
-    CHECK_RET(AddQkvRmsNormRopeCacheWithKScaleTask(params, l0Executor) == ACLNN_SUCCESS,
-              ACLNN_ERR_INNER_NULLPTR);
+    aclnnStatus addTaskRet = AddQkvRmsNormRopeCacheWithKScaleTask(params, l0Executor);
+    CHECK_RET(addTaskRet == ACLNN_SUCCESS, addTaskRet);
 
     *params.workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(params.executor);
