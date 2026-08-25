@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file moe_distribute_base.h
+ * \file moe_distribute_dispatch_setup_base.h
  * \brief
  */
 
-#ifndef MOE_DISTRIBUTE_BASE_H
-#define MOE_DISTRIBUTE_BASE_H
+#ifndef MOE_DISTRIBUTE_DISPATCH_SETUP_BASE_H
+#define MOE_DISTRIBUTE_DISPATCH_SETUP_BASE_H
 
 #if __has_include("../common/mc2_kernel_utils.h")
 #include "../common/mc2_kernel_utils.h"
@@ -618,4 +618,4 @@ __aicore__ inline void UpdateIsFirstInComm(GM_ADDR hcclContext, uint32_t curRank
         piCiGlobalTensor);
 }
 
-#endif // MOE_DISTRIBUTE_BASE_H
+#endif // MOE_DISTRIBUTE_DISPATCH_SETUP_BASE_H
