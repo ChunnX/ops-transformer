@@ -1450,7 +1450,7 @@ def quant_flash_attn_grad(
         tensor_softmax_lse = pl.make_tensor(
             softmax_lse,
             [tiling.b, tiling.n1, tiling.s1],
-            [tiling.s1 * tiling.n1, tiling.n1, 1],
+            [tiling.s1 * tiling.n1, tiling.s1, 1],
             dtype=pl.DT_FP32,
         )
         tensor_workspace_dq = pl.make_tensor(
