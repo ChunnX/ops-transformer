@@ -142,7 +142,6 @@ class KvQuantSparseFlashAttentionInputAdapter:
         key_dequant_scale=None,
         value_dequant_scale=None,
         block_table=None,
-        sinks=None,
         actual_seq_lengths_query=None,
         actual_seq_lengths_kv=None,
         sparse_block_size=1,
@@ -206,7 +205,6 @@ class KvQuantSparseFlashAttentionInputAdapter:
         self.copy_sequence(
             actual_seq_lengths_kv, params["actualseqlengthskv"], "actual_seq_lengths_kv"
         )
-        self.copy_tensor(sinks, generated.get("sinks"), "sinks")
 
         golden_module.CASE_DATA.put(
             testcase_name,
@@ -226,7 +224,6 @@ def generate_qsfa_inputs(
     key_dequant_scale=None,
     value_dequant_scale=None,
     block_table=None,
-    sinks=None,
     actual_seq_lengths_query=None,
     actual_seq_lengths_kv=None,
     sparse_block_size=1,
@@ -253,7 +250,6 @@ def generate_qsfa_inputs(
         block_table=block_table,
         actual_seq_lengths_query=actual_seq_lengths_query,
         actual_seq_lengths_kv=actual_seq_lengths_kv,
-        sinks=sinks,
         sparse_block_size=sparse_block_size,
         layout_query=layout_query,
         layout_kv=layout_kv,
