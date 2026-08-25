@@ -94,8 +94,10 @@ public:
 
 private:
     __aicore__ inline void SendLocalToken(uint32_t tokenIndex, GM_ADDR dstAddr);
-    __aicore__ inline void SendSlot(uint32_t tokenIndex, int32_t srcRank, int32_t srcTokenIdx, int32_t srcTopKIdx,
-                                    uint32_t weight);
+    __aicore__ inline void SendLocalSlot(uint32_t tokenIndex, int32_t srcTokenIdx, int32_t srcTopKIdx, uint32_t weight,
+                                         GM_ADDR localDataBase, GM_ADDR localStateBase);
+    __aicore__ inline void SendRemoteSlot(uint32_t tokenIndex, int32_t srcTokenIdx, int32_t srcTopKIdx, uint32_t weight,
+                                          GM_ADDR remoteDataBase, GM_ADDR remoteStateBase, uint64_t tokenBytes);
     __aicore__ inline void SendChannelFlag(uint32_t dstRank, uint32_t channelIndex, uint32_t completionChannelCount);
     __aicore__ inline void BeginPreparedWrites(uint32_t dstRank, uint32_t channelIndex);
     template <auto const &config>
@@ -386,6 +388,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressT
     DataCopyParams addressCopyParams{
         0U, static_cast<uint16_t>(ADDRESS_ENTRY_UB_BYTES / UB_ALIGN), 0U,
         static_cast<uint16_t>((ADDRESS_ENTRY_GM_BYTES - ADDRESS_ENTRY_UB_BYTES) / UB_ALIGN)};
+    GM_ADDR localDataBase = GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_);
+    GM_ADDR localStateBase = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_);
     for (uint64_t groupStart = scanStart; groupStart < scanEnd; groupStart += entriesPerRank) {
         uint64_t groupEnd = (groupStart + entriesPerRank > scanEnd) ? scanEnd : groupStart + entriesPerRank;
         uint32_t groupTokens = static_cast<uint32_t>(groupEnd - groupStart);
@@ -417,7 +421,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressT
                 weight = weightsLocal.GetValue(i);
             }
             if (srcRank == static_cast<int32_t>(rankId_)) {
-                SendSlot(tokenIndex, srcRank, srcTokenIdx, srcTopKIdx, weight);
+                SendLocalSlot(tokenIndex, srcTokenIdx, srcTopKIdx, weight, localDataBase, localStateBase);
                 continue;
             }
             uint32_t countOffset = static_cast<uint32_t>(srcRank) * rankCountBlockElements;
@@ -490,6 +494,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendAddressTa
     const DataCopyPadExtParams<uint32_t> padParams{false, 0U, 0U, 0U};
     constexpr uint32_t localEntryStride = ADDRESS_ENTRY_UB_BYTES / sizeof(uint32_t);
     constexpr uint32_t globalEntryStride = ADDRESS_ENTRY_GM_BYTES / sizeof(uint32_t);
+    GM_ADDR remoteDataBase = GetUrmaWinAddrByRankId(targetRank, combineDataWinOffset_);
+    GM_ADDR remoteStateBase = GetUrmaStateAddrByRankId(targetRank, combineStateWinOffset_);
+    uint64_t tokenBytes = static_cast<uint64_t>(axisH_) * sizeof(XType);
 
     for (uint32_t chunkStart = entryStart; chunkStart < entryEnd; chunkStart += entryChunkMax) {
         uint32_t chunkEnd = (chunkStart + entryChunkMax > entryEnd) ? entryEnd : chunkStart + entryChunkMax;
@@ -505,7 +512,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendAddressTa
             int32_t srcTokenIdx = static_cast<int32_t>(entriesLocal.GetValue(offset + 1));
             int32_t srcTopKIdx = static_cast<int32_t>(entriesLocal.GetValue(offset + 2));
             uint32_t weight = entriesLocal.GetValue(offset + 3);
-            SendSlot(tokenIndex, static_cast<int32_t>(targetRank), srcTokenIdx, srcTopKIdx, weight);
+            SendRemoteSlot(tokenIndex, srcTokenIdx, srcTopKIdx, weight, remoteDataBase, remoteStateBase, tokenBytes);
         }
         SyncFunc<AscendC::HardEvent::S_MTE2>();
     }
@@ -573,34 +580,39 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWrite(
 }
 
 template <TemplateMoeEpCombineTypeClass>
-__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendSlot(uint32_t tokenIndex, int32_t srcRank,
-                                                                            int32_t srcTokenIdx, int32_t srcTopKIdx,
-                                                                            uint32_t weight)
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendLocalSlot(uint32_t tokenIndex,
+                                                                                 int32_t srcTokenIdx,
+                                                                                 int32_t srcTopKIdx, uint32_t weight,
+                                                                                 GM_ADDR localDataBase,
+                                                                                 GM_ADDR localStateBase)
 {
     uint64_t sendTokenOffset = (static_cast<uint64_t>(srcTokenIdx) * topK_ + srcTopKIdx) * perSlotBytes_;
     uint64_t recvStateOffset = (srcTokenIdx * topK_ + srcTopKIdx) * WIN_ADDR_ALIGN;
 
-    GM_ADDR remoteRankWinAddr = GetUrmaWinAddrByRankId(srcRank, combineDataWinOffset_);
-    GM_ADDR remoteRankStateAddr = GetUrmaStateAddrByRankId(srcRank, combineStateWinOffset_);
+    SendLocalToken(tokenIndex, localDataBase + sendTokenOffset);
+    if constexpr (HasTopkWeight == 1) {
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
+        statusTensor_(0) = weight;
+        SyncFunc<AscendC::HardEvent::S_MTE3>();
+        GlobalTensor<uint32_t> state;
+        state.SetGlobalBuffer((__gm__ uint32_t *)(localStateBase + recvStateOffset));
+        DataCopyParams weightCopyParams = {1U, static_cast<uint16_t>(sizeof(uint32_t)), 0U, 0U};
+        DataCopyPad(state, statusTensor_, weightCopyParams);
+    }
+}
 
-    if (srcRank != static_cast<int32_t>(rankId_)) {
-        GM_ADDR tokenAddr = (GM_ADDR)xGm_.GetPhyAddr(tokenIndex * axisH_);
-        PrepareWrite<DEFAULT_WQE_CONFIG>(remoteRankWinAddr + sendTokenOffset, tokenAddr, axisH_ * sizeof(XType));
-        if constexpr (HasTopkWeight == 1) {
-            GM_ADDR weightAddr = (GM_ADDR)topkWeightsGm_.GetPhyAddr(tokenIndex);
-            PrepareWrite<DEFAULT_WQE_CONFIG>(remoteRankStateAddr + recvStateOffset, weightAddr, sizeof(uint32_t));
-        }
-    } else {
-        SendLocalToken(tokenIndex, remoteRankWinAddr + sendTokenOffset);
-        if constexpr (HasTopkWeight == 1) {
-            SyncFunc<AscendC::HardEvent::MTE3_S>();
-            statusTensor_(0) = weight;
-            SyncFunc<AscendC::HardEvent::S_MTE3>();
-            GlobalTensor<uint32_t> state;
-            state.SetGlobalBuffer((__gm__ uint32_t *)(remoteRankStateAddr + recvStateOffset));
-            DataCopyParams weightCopyParams = {1U, static_cast<uint16_t>(sizeof(uint32_t)), 0U, 0U};
-            DataCopyPad(state, statusTensor_, weightCopyParams);
-        }
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRemoteSlot(
+    uint32_t tokenIndex, int32_t srcTokenIdx, int32_t srcTopKIdx, uint32_t weight, GM_ADDR remoteDataBase,
+    GM_ADDR remoteStateBase, uint64_t tokenBytes)
+{
+    uint64_t sendTokenOffset = (static_cast<uint64_t>(srcTokenIdx) * topK_ + srcTopKIdx) * perSlotBytes_;
+    uint64_t recvStateOffset = (srcTokenIdx * topK_ + srcTopKIdx) * WIN_ADDR_ALIGN;
+    GM_ADDR tokenAddr = (GM_ADDR)xGm_.GetPhyAddr(tokenIndex * axisH_);
+    PrepareWrite<DEFAULT_WQE_CONFIG>(remoteDataBase + sendTokenOffset, tokenAddr, tokenBytes);
+    if constexpr (HasTopkWeight == 1) {
+        GM_ADDR weightAddr = (GM_ADDR)topkWeightsGm_.GetPhyAddr(tokenIndex);
+        PrepareWrite<DEFAULT_WQE_CONFIG>(remoteStateBase + recvStateOffset, weightAddr, sizeof(uint32_t));
     }
 }
 
