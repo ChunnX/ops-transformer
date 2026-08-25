@@ -1,5 +1,4 @@
 #!/usr/bin/python3
-# -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
@@ -31,9 +30,7 @@ import logging
 import os
 import sys
 import types
-from typing import List, Tuple
 
-import numpy
 import torch
 
 # ----- 纯 CPU 环境兼容：在 import golden 模块之前 stub 掉 torch_npu / cann_ops_transformer -----
@@ -72,8 +69,6 @@ if _TEST_DIR not in sys.path:
 for _p in (_ASSETS_DIR, _ASSETS_IMPL_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
-
-from common import quant_flash_attn_golden as golden_mod  # noqa: E402
 
 
 def _load_impl_module(stem):
@@ -257,6 +252,7 @@ def generate_for_case(case_name, shapes, dtypes, attrs, output_dir):
 
     if quant_mode == 7:
         from common import quant_flash_attn_hif8_golden as hif8_golden_mod
+
         inputs_module.generate_qfa_hif8_inputs(
             *placeholder_tensors[:8],
             **kwargs,

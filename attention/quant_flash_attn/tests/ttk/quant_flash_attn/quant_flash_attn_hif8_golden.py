@@ -1,5 +1,4 @@
 #!/usr/bin/python3
-# -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
@@ -9,6 +8,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+
 """
 HIF8 Flash Attention Golden
 
@@ -24,7 +24,7 @@ import logging
 import math
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 try:
     import torch_npu
@@ -35,7 +35,7 @@ logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)
 logger = logging.getLogger(__name__)
 
 try:
-    from cann_ops_transformer.ops import quant_flash_attn_metadata, quant_flash_attn
+    from cann_ops_transformer.ops import quant_flash_attn, quant_flash_attn_metadata
 
     _HAS_NPU = True
 except ImportError as e:
@@ -45,8 +45,8 @@ except ImportError as e:
 try:
     from . import result_compare_method
 except ImportError:
-    import sys
     import os
+    import sys
 
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import result_compare_method
@@ -148,7 +148,9 @@ def get_hif8_per_tensor_quant_scale(tensor, hif8_max=HIF8_MAX):
 def hif8_per_tensor_quant(tensor, scale):
     """FP32 → HIF8 uint8: 先除 scale, 再用 HIF8 编码"""
     scaled = (tensor / scale).contiguous()
-    return hif8_codec.trans_float_tensor_to_hifuint8(scaled, round_mode="round", over_mode=True)
+    return hif8_codec.trans_float_tensor_to_hifuint8(
+        scaled, round_mode="round", over_mode=True
+    )
 
 
 def hif8_per_tensor_dequant(tensor_uint8):
@@ -159,7 +161,9 @@ def hif8_per_tensor_dequant(tensor_uint8):
 def hif8_cast_p(p_tensor):
     """模拟 NPU 的 P→HIF8 量化损失"""
     return hif8_codec.trans_hifuint8_tensor_to_float(
-        hif8_codec.trans_float_tensor_to_hifuint8(p_tensor.contiguous(), round_mode="round", over_mode=True)
+        hif8_codec.trans_float_tensor_to_hifuint8(
+            p_tensor.contiguous(), round_mode="round", over_mode=True
+        )
     )
 
 
@@ -175,6 +179,7 @@ def broadcast_kv(num_heads, num_kv_heads, kv_tensor):
 # ==============================================================================
 # Layout 转换函数 - Q/K/V
 # ==============================================================================
+
 
 def convert_q_bnsd_to_layout(tensor_bnsd, seq_lens, layout, cu_seqlens=None):
     tensor = (
@@ -257,6 +262,7 @@ def make_accum_seq(seq_lens):
 # 数据生成
 # ==============================================================================
 
+
 def generate_data():
     """生成 BNSD FP16 Q/K/V 并做 HIF8 per-tensor 量化"""
     max_sq = MAX_SEQLEN_Q
@@ -274,10 +280,14 @@ def generate_data():
     q_fp16 = (torch.rand(B, N_q, max_sq, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_Q
 
     torch.manual_seed(SEED_K)
-    k_fp16 = (torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_K
+    k_fp16 = (
+        torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1
+    ) * DATA_RANGE_K
 
     torch.manual_seed(SEED_V)
-    v_fp16 = (torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_V
+    v_fp16 = (
+        torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1
+    ) * DATA_RANGE_V
 
     qr_bf16 = None
     kr_bf16 = None
@@ -333,6 +343,7 @@ def generate_data():
 # CPU Golden
 # ==============================================================================
 
+
 def _build_attention_mask(b, Sq, Skv, actual_seq_q, actual_seq_kv, sparse_mode):
     q_lens_t = torch.tensor(actual_seq_q, dtype=torch.int32)
     k_lens_t = torch.tensor(actual_seq_kv, dtype=torch.int32)
@@ -352,7 +363,9 @@ def _build_attention_mask(b, Sq, Skv, actual_seq_q, actual_seq_kv, sparse_mode):
         return q_padding_mask | k_padding_mask
 
 
-def _compute_s_block(Qi, Kj, deq_scale_q, deq_scale_k, softmax_scale, Qri=None, Krj=None):
+def _compute_s_block(
+    Qi, Kj, deq_scale_q, deq_scale_k, softmax_scale, Qri=None, Krj=None
+):
     """HIF8: descale 是 per-tensor 标量，直接标量乘法"""
     S_ij = torch.matmul(Qi * deq_scale_q, (Kj * deq_scale_k).permute(0, 1, 3, 2))
     if Qri is not None and Krj is not None:
@@ -629,7 +642,7 @@ class Network(nn.Module):
     """
 
     def __init__(self):
-        super(Network, self).__init__()
+        super().__init__()
 
     def forward(
         self,
@@ -891,7 +904,10 @@ def npu_hif8_fa(
         inferred_layout = "BSND"
     if INPUT_LAYOUT in (None, "TND") and inferred_layout != "TND":
         INPUT_LAYOUT = inferred_layout
-        logger.info("[NPU] npu_hif8_fa: 从q维度推断layout=%s, 已更新INPUT_LAYOUT", inferred_layout)
+        logger.info(
+            "[NPU] npu_hif8_fa: 从q维度推断layout=%s, 已更新INPUT_LAYOUT",
+            inferred_layout,
+        )
     inputs = prepare_npu_inputs(
         q_fp8,
         k_fp8,
@@ -921,8 +937,13 @@ def npu_hif8_fa(
     act_seqused_q = _get_seqused_q()
     npu_output = atten_out
     if npu_output.dim() == 3:
-        T_actual = cu_seqlens_q[-1] if cu_seqlens_q is not None else (
-            sum(act_seqused_q) if act_seqused_q is not None else npu_output.shape[0])
+        T_actual = (
+            cu_seqlens_q[-1]
+            if cu_seqlens_q is not None
+            else (
+                sum(act_seqused_q) if act_seqused_q is not None else npu_output.shape[0]
+            )
+        )
         if npu_output.shape[0] > T_actual:
             npu_output = npu_output[:T_actual]
     logger.info("[NPU] output=%s", npu_output.shape)
@@ -1121,7 +1142,9 @@ if __name__ == "__main__":
     logger.info("INPUT_LAYOUT=%s, Q_SCALE_LAYOUT=%s", INPUT_LAYOUT, Q_SCALE_LAYOUT)
     logger.info("KV_CACHE_LAYOUT=%s", KV_CACHE_LAYOUT)
     logger.info("B=%d, N_q=%d, N_kv=%d, D=%d", B, N_q, N_kv, D)
-    logger.info("ACTUAL_SEQ_Q=%s, ACTUAL_SEQ_KV=%s", _get_seqused_q(), _get_seqused_kv())
+    logger.info(
+        "ACTUAL_SEQ_Q=%s, ACTUAL_SEQ_KV=%s", _get_seqused_q(), _get_seqused_kv()
+    )
 
     if "gen" in mode:
         logger.info("\n[Step 1] 数据生成")

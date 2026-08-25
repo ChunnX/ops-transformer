@@ -1,5 +1,4 @@
 #!/usr/bin/python3
-# -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
@@ -9,6 +8,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+
 """
 HIF8 Flash Attention Golden
 
@@ -24,7 +24,7 @@ import logging
 import math
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 try:
     import torch_npu
@@ -35,7 +35,7 @@ logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)
 logger = logging.getLogger(__name__)
 
 try:
-    from cann_ops_transformer.ops import quant_flash_attn_metadata, quant_flash_attn
+    from cann_ops_transformer.ops import quant_flash_attn, quant_flash_attn_metadata
 
     _HAS_NPU = True
 except ImportError as e:
@@ -45,8 +45,8 @@ except ImportError as e:
 try:
     from . import result_compare_method
 except ImportError:
-    import sys
     import os
+    import sys
 
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import result_compare_method
@@ -142,7 +142,9 @@ def get_hif8_per_tensor_quant_scale(tensor, hif8_max=HIF8_MAX):
 def hif8_per_tensor_quant(tensor, scale):
     """FP32 → HIF8 uint8: 先除 scale, 再用 HIF8 编码"""
     scaled = (tensor / scale).contiguous()
-    return hif8_codec.trans_float_tensor_to_hifuint8(scaled, round_mode="round", over_mode=True)
+    return hif8_codec.trans_float_tensor_to_hifuint8(
+        scaled, round_mode="round", over_mode=True
+    )
 
 
 def hif8_per_tensor_dequant(tensor_uint8):
@@ -153,7 +155,9 @@ def hif8_per_tensor_dequant(tensor_uint8):
 def hif8_cast_p(p_tensor):
     """模拟 NPU 的 P→HIF8 量化损失"""
     return hif8_codec.trans_hifuint8_tensor_to_float(
-        hif8_codec.trans_float_tensor_to_hifuint8(p_tensor.contiguous(), round_mode="round", over_mode=True)
+        hif8_codec.trans_float_tensor_to_hifuint8(
+            p_tensor.contiguous(), round_mode="round", over_mode=True
+        )
     )
 
 
@@ -169,6 +173,7 @@ def broadcast_kv(num_heads, num_kv_heads, kv_tensor):
 # ==============================================================================
 # Layout 转换函数 - Q/K/V
 # ==============================================================================
+
 
 def convert_q_bnsd_to_layout(tensor_bnsd, seq_lens, layout, cu_seqlens=None):
     tensor = (
@@ -251,6 +256,7 @@ def make_accum_seq(seq_lens):
 # 数据生成
 # ==============================================================================
 
+
 def generate_data():
     """生成 BNSD FP16 Q/K/V 并做 HIF8 per-tensor 量化"""
     max_sq = MAX_SEQLEN_Q
@@ -268,10 +274,14 @@ def generate_data():
     q_fp16 = (torch.rand(B, N_q, max_sq, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_Q
 
     torch.manual_seed(SEED_K)
-    k_fp16 = (torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_K
+    k_fp16 = (
+        torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1
+    ) * DATA_RANGE_K
 
     torch.manual_seed(SEED_V)
-    v_fp16 = (torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_V
+    v_fp16 = (
+        torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1
+    ) * DATA_RANGE_V
 
     qr_bf16 = None
     kr_bf16 = None
@@ -327,6 +337,7 @@ def generate_data():
 # CPU Golden
 # ==============================================================================
 
+
 def _build_attention_mask(b, Sq, Skv, actual_seq_q, actual_seq_kv, sparse_mode):
     q_lens_t = torch.tensor(actual_seq_q, dtype=torch.int32)
     k_lens_t = torch.tensor(actual_seq_kv, dtype=torch.int32)
@@ -346,7 +357,9 @@ def _build_attention_mask(b, Sq, Skv, actual_seq_q, actual_seq_kv, sparse_mode):
         return q_padding_mask | k_padding_mask
 
 
-def _compute_s_block(Qi, Kj, deq_scale_q, deq_scale_k, softmax_scale, Qri=None, Krj=None):
+def _compute_s_block(
+    Qi, Kj, deq_scale_q, deq_scale_k, softmax_scale, Qri=None, Krj=None
+):
     """HIF8: descale 是 per-tensor 标量，直接标量乘法"""
     S_ij = torch.matmul(Qi * deq_scale_q, (Kj * deq_scale_k).permute(0, 1, 3, 2))
     if Qri is not None and Krj is not None:
@@ -506,6 +519,7 @@ def cpu_hif8_golden(
 # NPU 调用
 # ==============================================================================
 
+
 def _call_npu_fa_op(
     q,
     k,
@@ -539,9 +553,7 @@ def _call_npu_fa_op(
     HIF8: quant_mode=7, descale 为 FP32 标量 (1,)
     """
     if not _HAS_NPU:
-        raise ImportError(
-            "cann_ops_transformer.ops.quant_flash_attn is not available."
-        )
+        raise ImportError("cann_ops_transformer.ops.quant_flash_attn is not available.")
 
     cu_seqlens_q_t = (
         torch.tensor(cu_seqlens_q, dtype=torch.int32).npu()
@@ -623,7 +635,7 @@ class Network(nn.Module):
     """aclgraph 编译目标"""
 
     def __init__(self):
-        super(Network, self).__init__()
+        super().__init__()
 
     def forward(
         self,
