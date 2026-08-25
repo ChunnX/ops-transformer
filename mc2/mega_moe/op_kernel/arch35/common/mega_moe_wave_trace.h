@@ -77,6 +77,10 @@ enum class MegaMoeWaveTraceEvent : uint32_t {
     DISPATCH_GATHER_MASK_ISSUE = 28U,
     WAIT_DISPATCH_GATHER_MASK_READY = 29U,
     DISPATCH_GATHER_MASK_CALL_COUNT = 30U,
+    // 共享 Route Table 的一次性生产阶段，以及每个 Dispatch wave 的 GM->UB 消费。
+    DISPATCH_ROUTE_PLAN = 31U,
+    DISPATCH_ROUTE_PLAN_GATHER_CALL_COUNT = 32U,
+    DISPATCH_ROUTE_TABLE_LOAD = 33U,
 };
 
 namespace MegaMoeWaveTraceDetail {

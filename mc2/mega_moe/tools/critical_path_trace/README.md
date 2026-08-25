@@ -45,22 +45,28 @@ python3 mc2/mega_moe/tools/critical_path_trace/trace_tool.py <raw-directory>
 
 当前报告按已验证环境的 `1000 cycles = 1 us` 展示。不同平台需先确认 SYS_CNT 频率。
 
-## Dispatch 分项
+## RoutePlan 与 Dispatch 分项
 
-rank-interleave trace 按 AIV1 core/wave 累计以下五个互不重叠的指标：
+`RoutePlan` 是 wave 循环前的真实时间线事件。所有 AIV1 按 `(expert, source-rank)` pair
+均分工作，把 sendMask 一次性压紧到共享 Route Table；事件终点包含独立 producer-ready 汇总。
+`RoutePlan GatherMask calls` 是本核在该一次性阶段的调用数，不是 cycles。正常消费路径的
+每 wave `GatherMask calls` 应为 0。
+
+rank-interleave trace 按 AIV1 core/wave 累计以下互不重叠的指标：
 
 - `PrepareDispatchCounts (aggregate)`：从 cumsum 准备当前专家各 source rank 的 token 计数；
 - `RankRoundPlan (aggregate)`：规划本 core 的 compact `{rank, topkIndex}` 队列，不含嵌套的 mask 处理；
-- `MaskLoadAndGather (aggregate)`：mask GM→UB、`CreateVecIndex`、`GatherMask` 及结果对 Scalar 可见；
+- `RouteTable GM->UB (aggregate)`：按 source rank 批量搬入当前专家段的连续 compact ordinal 区间；
+- `MaskLoadAndGather (aggregate)`：仅旧容量/编码回退路径的 mask compact 开销；
 - `TransferPipeline (aggregate)`：token/scale/meta 的 MTE2/MTE3 ring 搬运完整流程；
 - `ReadyPublish (aggregate)`：数据可见同步以及 GMM1 tile-ready counter 发布。
 
-`MaskLoadAndGather` 还会细分为五个二级累计项：`Mask DataCopy issue`、
+回退路径的 `MaskLoadAndGather` 还会细分为五个二级累计项：`Mask DataCopy issue`、
 `CreateVecIndex issue`、`Wait mask/index ready`、`GatherMask issue` 和
 `Wait GatherMask ready`。三个 `issue` 只表示异步指令下发区间；实际完成延迟分别由既有
 `MTE2_V`、`V_S` 同步等待承接。该细分没有增加新的同步屏障。
 
-`GatherMask call count` 另行记录每个 AIV1 core/wave 实际调用 `GatherMask` 的总次数。
+`GatherMask call count` 另行记录每个 AIV1 core/wave 实际调用 `GatherMask` 的总次数；正常值为 0。
 它只用于判断重复扫描规模，不是 cycle 数据，也不会参与 Dispatch 分项的耗时归类。
 可用 `GatherMask issue cycles / GatherMask call count` 估算平均单次 API 下发成本。
 

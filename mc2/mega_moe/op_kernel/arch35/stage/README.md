@@ -39,7 +39,8 @@ topkIndex = tokenId * topK + topKSlot
 每个 source rank 分别贡献多少 token。
 ```
 
-但具体的 `topkIndex` 仍需读取对应 bitmap，再通过 `CreateVecIndex + GatherMask` 压紧得到。
+具体 `topkIndex` 在 wave 循环前由共享 RoutePlan 读取 bitmap，并通过
+`CreateVecIndex + GatherMask` 一次性压紧到 Route Table。
 
 ## 2. wave 和 expert segment
 
@@ -59,9 +60,19 @@ waveEnd   = (expertIdx, rowOffsetInExpert)
 随后 Dispatch 按 expert 顺序处理 wave 内各 segment。大 expert 跨 wave 时，`rowOffsetInExpert`
 就是该 segment 在完整 rank-round-robin 序列中的绝对 row，因此不需要额外保存或推进 Dispatch 游标。
 
-## 3. compact 索引生成
+## 3. 共享 compact 索引生成
 
-对当前 expert，本核先从 `cumsumInfo` 取得每个 rank 的 token 数，再按本核的轮转 row
+`PrepareDispatchCounts` 完成后，全部 AIV1 将 `(expert, rank)` pair 按核号 stride 均分。
+每个 pair 只扫描一次完整 sendMask，并将 compact topkIndex 写到：
+
+```text
+routeTable[rankGlobalRowBegin + compactOrdinal] = topkIndex
+```
+
+每核完成自己的 pair 后写独立 cache-line done；core0 汇总所有 done，再发布一条独立
+Route Table ready。该同步不复用 Dispatch→GMM1 或 GMM2→Combine 的 flag。
+
+进入当前 expert segment 后，本核从 `cumsumInfo` 取得每个 rank 的 token 数，再按本核的轮转 row
 游标生成任务。逻辑 row 到 source 的 rank-round-robin 映射保持不变，描述符为：
 
 ```text
@@ -71,23 +82,21 @@ waveEnd   = (expertIdx, rowOffsetInExpert)
 随后只对本核确实用到的 rank 执行：
 
 ```text
-读取 mask slice
-  -> CreateVecIndex 生成连续 topkIndex
-  -> GatherMask 得到该 rank 的 compact topkIndex
+批量搬入 Route Table 中该专家段的连续 ordinal 区间
   -> 用 compactOrdinal 直接回填本核描述符中的 topkIndex
 ```
 
 这里不构造全 expert Layer，也不生成、复制或回放全 wave 的 compact list。规划和回填的
 逐 row 工作量都是本核任务数，约为 `segmentRows / coreCount`。
 
-`topkIndexTensor` 分成三个不重叠且对齐的区域：
+正常路径的 `topkIndexTensor` 分成两个不重叠且对齐的区域：
 
 ```text
-[最终 {rankId, topkIndex} queue][{rankId, ordinal} descriptor][CreateVecIndex 临时区]
+[最终 {rankId, topkIndex} queue][{rankId, ordinal} descriptor]
 ```
 
-两个本核任务表分别按 32B 对齐，临时区按 256 个 int32 对齐。这样复用已有 UB，不新增
-GM descriptor workspace，也不再使用任意 4B 偏移的 VEC 搬运。
+两个本核任务表分别按 32B 对齐；`validTopkIndexTensor` 暂存每个 rank 的连续 Route Table
+切片。旧 per-core mask 扫描仍作为编译期/容量保护回退，不参与正常性能路径。
 
 ## 4. 正向 rank-round-robin 任务顺序
 
@@ -170,14 +179,13 @@ rankId + topkIndex + destinationRow
 
 trace 仅通过既有 `MEGA_MOE_ENABLE_WAVE_TRACE` 宏控制，没有新增打印。
 
-## 8. 当前仍需通过实测判断的开销
+## 8. 当前需通过实测判断的开销
 
 当前版本仍有两项需要通过 trace 量化的成本：
 
-1. 每个 AIV1 core 独立 compact 自己用到的 source rank，以避免新增跨核 descriptor 和同步；
-2. `CreateVecIndex + GatherMask` 的异步指令下发及既有 `MTE2_V/V_S` 同步等待分别占多少周期。
+1. 一次性 RoutePlan 在 28/32/36 核上的临界 producer 与汇总等待；
+2. 每 wave `RouteTable GM->UB` 相比原重复 GatherMask 减少的净耗时；
+3. Route queue 的 Scalar descriptor 回填是否成为新的 RankRoundPlan 主项。
 
-跨 wave 专家续段已经用每 rank 的 mask scan cursor 恢复扫描位置；同 rank descriptor 也按
-compact ordinal 用单调 cursor 跨 mask batch 推进，每项最多解析一次。后续应先依据细分 trace
-判断瓶颈属于指令下发还是同步等待，再决定是否值得引入共享索引。当前版本已删除全 wave 的
-Plan/Gather/Replay、跨 wave rank-round cursor、旧 Layer 和 rank-major transfer stream。
+正常路径不再使用跨-wave mask scan cursor；专家续段由统一 wave cursor 给出的
+`rowOffsetInExpert` 和 Route Table compact ordinal 直接恢复。旧 cursor 仅留在隔离回退路径。

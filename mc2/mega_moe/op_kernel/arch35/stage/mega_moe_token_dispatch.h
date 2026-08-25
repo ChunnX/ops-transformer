@@ -99,6 +99,7 @@ struct WaveDispatchTraceMetrics {
     uint32_t gatherMaskIssueCycles = 0U;
     uint32_t gatherMaskReadyWaitCycles = 0U;
     uint32_t gatherMaskCallCount = 0U;
+    uint32_t routeTableLoadCycles = 0U;
     uint32_t transferPipelineCycles = 0U;
     uint32_t readyPublishCycles = 0U;
 };
@@ -1049,6 +1050,8 @@ __aicore__ inline DispatchCoreRouteQueue PlanDispatchCoreRouteQueueFromTable(
 
 #if MEGA_MOE_ENABLE_WAVE_TRACE != 0
     uint32_t planTraceBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+    uint32_t routeTableLoadCyclesBefore =
+        traceMetrics == nullptr ? 0U : traceMetrics->routeTableLoadCycles;
 #endif
     PrepareDispatchSegmentRankPlans(
         context, scratch, segmentRowBegin, segmentRowEnd);
@@ -1141,12 +1144,22 @@ __aicore__ inline DispatchCoreRouteQueue PlanDispatchCoreRouteQueueFromTable(
         const uint32_t pairIndex = expertRankBase + rankIdx;
         const int32_t rankGlobalRowBegin = pairIndex == 0U ? 0 :
             scratch.cumsumInfoTensor.GetValue(pairIndex - 1U);
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+        uint32_t routeTableLoadBegin =
+            traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+#endif
         DataCopyPad(
             scratch.validTopkIndexTensor,
             routeIndexGlobal[rankGlobalRowBegin + rankPlan.segmentOrdinalBegin],
             {1U, static_cast<uint32_t>(routeSliceCount * sizeof(int32_t)), 0U, 0U, 0U},
             {true, 0U, 0U, 0U});
         SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+        if (traceMetrics != nullptr) {
+            traceMetrics->routeTableLoadCycles +=
+                MegaMoeWaveTraceDetail::Now() - routeTableLoadBegin;
+        }
+#endif
 
         const int32_t descriptorEnd =
             rankPlan.descriptorBegin + rankPlan.taskCount;
@@ -1173,8 +1186,13 @@ __aicore__ inline DispatchCoreRouteQueue PlanDispatchCoreRouteQueueFromTable(
         plannedTaskCount : 0;
 #if MEGA_MOE_ENABLE_WAVE_TRACE != 0
     if (traceMetrics != nullptr) {
-        traceMetrics->rankRoundPlanCycles +=
+        const uint32_t totalPlanCycles =
             MegaMoeWaveTraceDetail::Now() - planTraceBegin;
+        const uint32_t routeTableLoadCycles =
+            traceMetrics->routeTableLoadCycles - routeTableLoadCyclesBefore;
+        traceMetrics->rankRoundPlanCycles +=
+            totalPlanCycles > routeTableLoadCycles ?
+                totalPlanCycles - routeTableLoadCycles : 0U;
     }
 #endif
     return queue;

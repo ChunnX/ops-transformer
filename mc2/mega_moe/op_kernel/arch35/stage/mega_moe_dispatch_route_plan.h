@@ -29,7 +29,7 @@ template <typename ActivationType>
 __aicore__ inline void BuildDispatchExpertRankRouteIndex(
     const TokenDispatchConfig &context, const Params &params,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
-    uint32_t remoteRankIdx)
+    uint32_t remoteRankIdx, uint32_t *gatherMaskCallCount)
 {
     const uint32_t pairIndex = localExpertId * context.common.worldSize + remoteRankIdx;
     int32_t globalRowBegin = pairIndex == 0U ? 0 :
@@ -96,6 +96,11 @@ __aicore__ inline void BuildDispatchExpertRankRouteIndex(
         SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
 
         uint64_t batchMatchedRouteCount = 0U;
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+        if (gatherMaskCallCount != nullptr) {
+            ++(*gatherMaskCallCount);
+        }
+#endif
         GatherMask(scratch.validTopkIndexTensor, scratch.topkIndexTensor,
                    scratch.maskBatchU32Tensor, true,
                    static_cast<uint32_t>(validRouteCount), {1, 1, 0, 0},
@@ -131,7 +136,8 @@ __aicore__ inline void BuildDispatchExpertRankRouteIndex(
 template <typename ActivationType>
 __aicore__ inline void BuildDispatchRouteIndexTable(
     const TokenDispatchConfig &context, const Params &params,
-    TokenDispatchScratch<ActivationType> &scratch)
+    TokenDispatchScratch<ActivationType> &scratch,
+    uint32_t *gatherMaskCallCount = nullptr)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -148,7 +154,8 @@ __aicore__ inline void BuildDispatchRouteIndexTable(
         BuildDispatchExpertRankRouteIndex(
             context, params, scratch,
             pairIndex / context.common.worldSize,
-            pairIndex % context.common.worldSize);
+            pairIndex % context.common.worldSize,
+            gatherMaskCallCount);
     }
 
     // 确保本核 Route Table 的所有 MTE3 写入完成后才发布 producer done。

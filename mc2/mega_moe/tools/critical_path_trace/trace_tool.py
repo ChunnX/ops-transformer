@@ -47,6 +47,9 @@ EVENT_NAMES = {
     28: "GatherMask issue (aggregate)",
     29: "Wait GatherMask ready (aggregate)",
     30: "GatherMask call count (counter)",
+    31: "RoutePlan",
+    32: "RoutePlan GatherMask calls (counter)",
+    33: "RouteTable GM->UB (aggregate)",
 }
 EVENT_COLORS = {
     1: "#06b6d4",
@@ -79,11 +82,14 @@ EVENT_COLORS = {
     28: "#d946ef",
     29: "#f97316",
     30: "#64748b",
+    31: "#0f766e",
+    32: "#475569",
+    33: "#0284c7",
 }
 WAIT_EVENT_IDS = frozenset((8, 9, 10, 11, 13, 14, 15, 19, 20, 27, 29))
 AGGREGATE_EVENT_IDS = frozenset((12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-                                 25, 26, 27, 28, 29, 30))
-COUNTER_EVENT_IDS = frozenset((30,))
+                                 25, 26, 27, 28, 29, 30, 32, 33))
+COUNTER_EVENT_IDS = frozenset((30, 32))
 WAIT_INSTRUMENTED_PARENT_IDS = frozenset((1, 2, 4, 5, 7))
 EVENT_TRACE_POINTS = {
     1: (
@@ -205,6 +211,18 @@ EVENT_TRACE_POINTS = {
     30: (
         "当前 wave 的 GatherMask 调用计数器开始累计",
         "duration word 保存当前 AIV1 core/wave 的 GatherMask 调用总次数，不代表 cycles",
+    ),
+    31: (
+        "PrepareDispatchCounts 完成后，各 AIV1 开始处理自己负责的 (expert, rank) pair",
+        "全部 producer 完成 Route Table 写出并通过独立 ready 同步",
+    ),
+    32: (
+        "当前 AIV1 RoutePlan 的 GatherMask 调用计数器开始累计",
+        "duration word 保存本核一次性 RoutePlan 的 GatherMask 调用总数，不代表 cycles",
+    ),
+    33: (
+        "PlanDispatchCoreRouteQueueFromTable 开始搬入当前 rank 的连续 compact ordinal 区间",
+        "Route Table GM->UB 完成并对 Scalar 可见（wave 内各专家/rank 累计）",
     ),
 }
 
@@ -619,14 +637,15 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
 </section>
 <section class="panel">
   <h2>Dispatch 分项</h2>
-  <div class="muted">五个一级分项是每个 AIV1 core 在当前 wave 内所有专家段的精确 cycle 累计；
-  RankRoundPlan 已扣除其内部嵌套的 MaskLoadAndGather，因而各列互不重叠。Other/control 为 Dispatch
-  父阶段减去五项后的 wave 游标规划、地址设置、检查等剩余时间。Mask 子项进一步拆分现有异步流水：
+  <div class="muted">一级分项是每个 AIV1 core 在当前 wave 内所有专家段的精确 cycle 累计；
+  RankRoundPlan 已扣除 RouteTable GM→UB 与旧回退路径的 MaskLoadAndGather，因而各列互不重叠。
+  RoutePlan 是 wave 循环前的一次性顶层事件，单独出现在时间线和 Wave 汇总中。Other/control 为 Dispatch
+  父阶段减去各项后的 wave 游标规划、地址设置、检查等剩余时间。旧 Mask 子项进一步拆分异步流水：
   DataCopy/CreateVecIndex/GatherMask 标为 issue，仅表示 API 指令下发；真实完成延迟落在原有 MTE2_V/V_S 等待中。
   GatherMask calls 是当前 core/wave 的调用次数，不是 cycles，也不参与已归类耗时求和。</div>
   <div class="table-scroll"><table id="dispatchTable"><thead><tr>
     <th>AI Block</th><th>Wave</th><th>Token 数</th><th>Dispatch 总计</th><th>PrepareDispatchCounts</th>
-    <th>RankRoundPlan</th><th>MaskLoadAndGather</th><th>TransferPipeline</th><th>ReadyPublish</th>
+    <th>RankRoundPlan</th><th>RouteTable GM→UB</th><th>MaskLoadAndGather (fallback)</th><th>TransferPipeline</th><th>ReadyPublish</th>
     <th>Mask DataCopy issue</th><th>CreateVecIndex issue</th><th>Wait mask/index ready</th>
     <th>GatherMask issue</th><th>Wait GatherMask ready</th><th>GatherMask calls</th>
     <th>Other/control</th><th>已归类占比</th>
@@ -659,8 +678,8 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
 <script id="traceData" type="application/json">{payload}</script>
 <script>
 const trace = JSON.parse(document.getElementById('traceData').textContent);
-const colors = {{Dispatch:'#06b6d4',GMM1:'#2563eb','GMM1 prologue':'#a855f7',Activation:'#22c55e',GMM2:'#ef4444','GMM2 prologue':'#c084fc',Combine:'#f97316','Wait Dispatch':'#cbd5e1','Wait GMM1':'#cbd5e1','Wait Activation':'#cbd5e1','Wait GMM2':'#cbd5e1'}};
-const legendColors = {{Dispatch:'#06b6d4',GMM1:'#2563eb','GMM1 prologue':'#a855f7',Activation:'#22c55e',GMM2:'#ef4444','GMM2 prologue':'#c084fc',Combine:'#f97316',Wait:'#cbd5e1'}};
+const colors = {{Dispatch:'#06b6d4',RoutePlan:'#0f766e',GMM1:'#2563eb','GMM1 prologue':'#a855f7',Activation:'#22c55e',GMM2:'#ef4444','GMM2 prologue':'#c084fc',Combine:'#f97316','Wait Dispatch':'#cbd5e1','Wait GMM1':'#cbd5e1','Wait Activation':'#cbd5e1','Wait GMM2':'#cbd5e1'}};
+const legendColors = {{Dispatch:'#06b6d4',RoutePlan:'#0f766e',GMM1:'#2563eb','GMM1 prologue':'#a855f7',Activation:'#22c55e',GMM2:'#ef4444','GMM2 prologue':'#c084fc',Combine:'#f97316',Wait:'#cbd5e1'}};
 const roles = ['AIC','AIV0','AIV1'];
 const coreSelect = document.getElementById('coreSelect');
 const waveSelect = document.getElementById('waveSelect');
@@ -924,15 +943,16 @@ function renderDispatchTable(events) {{
   for(const e of events) {{
     if(e.role!=='AIV1') continue;
     const relevant=e.event_id===1 ||
-      (e.parent_event_id===1 && [12,21,22,23,24].includes(e.event_id)) ||
+      (e.parent_event_id===1 && [12,21,22,23,24,33].includes(e.event_id)) ||
       (e.parent_event_id===23 && [25,26,27,28,29,30].includes(e.event_id));
     if(!relevant) continue;
     const key=`${{e.core}}|${{e.wave}}`;
-    const g=groups.get(key)||{{core:e.core,wave:e.wave,tokens:0,total:0,counts:0,plan:0,mask:0,transfer:0,ready:0,
+    const g=groups.get(key)||{{core:e.core,wave:e.wave,tokens:0,total:0,counts:0,plan:0,routeLoad:0,mask:0,transfer:0,ready:0,
       maskCopyIssue:0,indexIssue:0,maskIndexWait:0,gatherIssue:0,gatherWait:0,gatherCalls:0}};
     if(e.event_id===1) {{ g.total+=e.duration_cycles; g.tokens=Math.max(g.tokens,e.token_count); }}
     else if(e.event_id===21) g.counts+=e.duration_cycles;
     else if(e.event_id===22) g.plan+=e.duration_cycles;
+    else if(e.event_id===33) g.routeLoad+=e.duration_cycles;
     else if(e.event_id===23) g.mask+=e.duration_cycles;
     else if(e.event_id===12) g.transfer+=e.duration_cycles;
     else if(e.event_id===24) g.ready+=e.duration_cycles;
@@ -947,11 +967,11 @@ function renderDispatchTable(events) {{
   const rows=[...groups.values()].filter(g=>g.total>0).sort((a,b)=>a.core-b.core||a.wave-b.wave);
   const fmt=value=>`${{value.toLocaleString()}} (${{(value/1000).toFixed(3)}} μs)`;
   document.querySelector('#dispatchTable tbody').innerHTML=rows.map(g=>{{
-    const classified=g.counts+g.plan+g.mask+g.transfer+g.ready;
+    const classified=g.counts+g.plan+g.routeLoad+g.mask+g.transfer+g.ready;
     const other=Math.max(0,g.total-classified);
     const ratio=g.total?(classified/g.total*100).toFixed(1)+'%':'—';
     return `<tr><td>${{g.core}}</td><td>${{g.wave}}</td><td>${{g.tokens}}</td><td>${{fmt(g.total)}}</td>`
-      +`<td>${{fmt(g.counts)}}</td><td>${{fmt(g.plan)}}</td><td>${{fmt(g.mask)}}</td>`
+      +`<td>${{fmt(g.counts)}}</td><td>${{fmt(g.plan)}}</td><td>${{fmt(g.routeLoad)}}</td><td>${{fmt(g.mask)}}</td>`
       +`<td>${{fmt(g.transfer)}}</td><td>${{fmt(g.ready)}}</td>`
       +`<td>${{fmt(g.maskCopyIssue)}}</td><td>${{fmt(g.indexIssue)}}</td><td>${{fmt(g.maskIndexWait)}}</td>`
       +`<td>${{fmt(g.gatherIssue)}}</td><td>${{fmt(g.gatherWait)}}</td><td>${{g.gatherCalls.toLocaleString()}}</td>`

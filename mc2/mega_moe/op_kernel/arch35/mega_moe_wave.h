@@ -979,6 +979,9 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetInfo(
         traceOffset = waveTrace_.RecordAggregatedChild(
             MegaMoeWaveTraceEvent::DISPATCH_RANK_ROUND_PLAN, MegaMoeWaveTraceEvent::DISPATCH,
             traceScope, traceBegin, traceEnd, dispatchTraceMetrics.rankRoundPlanCycles, traceOffset);
+        traceOffset = waveTrace_.RecordAggregatedChild(
+            MegaMoeWaveTraceEvent::DISPATCH_ROUTE_TABLE_LOAD, MegaMoeWaveTraceEvent::DISPATCH,
+            traceScope, traceBegin, traceEnd, dispatchTraceMetrics.routeTableLoadCycles, traceOffset);
         uint32_t maskTraceOffset = traceOffset;
         traceOffset = waveTrace_.RecordAggregatedChild(
             MegaMoeWaveTraceEvent::DISPATCH_MASK_LOAD_AND_GATHER, MegaMoeWaveTraceEvent::DISPATCH,
@@ -1449,10 +1452,33 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() == 1U) {
             PrepareDispatchCounts();
-            // 将所有 (expert, rank) sendMask 只压紧一次。后续提交会把每个
-            // Dispatch wave 的 route queue 切换为消费这张共享 Route Table。
+            // 将所有 (expert, rank) sendMask 只压紧一次；后续每个 Dispatch
+            // wave 只批量读取共享 Route Table，不再重复 GatherMask。
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+            uint32_t routePlanGatherMaskCallCount = 0U;
+            const uint32_t routePlanBegin = MegaMoeWaveTraceDetail::Now();
+            BuildDispatchRouteIndexTable(
+                tokenDispatchConfig_, params_, tokenDispatchScratch_,
+                &routePlanGatherMaskCallCount);
+            const uint32_t routePlanEnd = MegaMoeWaveTraceDetail::Now();
+            uint32_t routePlanRowCount = tokenDispatchScratch_.cumsumInfoTensor.GetValue(
+                moeExpertPerRank_ * worldSize_ - 1U);
+            if (static_cast<uint64_t>(routePlanRowCount) > tokenDispatchConfig_.maxOutputSize) {
+                routePlanRowCount = static_cast<uint32_t>(tokenDispatchConfig_.maxOutputSize);
+            }
+            MegaMoeWaveTraceDetail::EventScope routePlanScope{
+                0U, 0U, 0U, routePlanRowCount, 0U};
+            waveTrace_.Record(MegaMoeWaveTraceEvent::DISPATCH_ROUTE_PLAN,
+                              routePlanScope, routePlanBegin, routePlanEnd);
+            waveTrace_.RecordAggregatedChild(
+                MegaMoeWaveTraceEvent::DISPATCH_ROUTE_PLAN_GATHER_CALL_COUNT,
+                MegaMoeWaveTraceEvent::DISPATCH_ROUTE_PLAN,
+                routePlanScope, routePlanBegin, routePlanEnd,
+                routePlanGatherMaskCallCount, 0U);
+#else
             BuildDispatchRouteIndexTable(
                 tokenDispatchConfig_, params_, tokenDispatchScratch_);
+#endif
         }
     }
 
