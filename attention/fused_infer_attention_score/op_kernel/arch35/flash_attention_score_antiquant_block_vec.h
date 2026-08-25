@@ -619,12 +619,12 @@ FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SetAntiqParamCommon(const RunInfo<
                                                                   ConstInfo<isInfer, hasRope> &constInfo)
 {
     if (isBeforeHalf) {
-        taskParam.copyTotalS = GetRealDealSize(runInfo.s2RealSize); // 2 is Vec num
+        taskParam.copyTotalS = GetRealDealSizeWrapper(runInfo.s2RealSize); // 2 is Vec num
     } else {
-        taskParam.copyTotalS = runInfo.s2RealSize - (GetRealDealSize(runInfo.s2RealSize)); // 2 is Vec num
+        taskParam.copyTotalS = runInfo.s2RealSize - (GetRealDealSizeWrapper(runInfo.s2RealSize)); // 2 is Vec num
     }
     uint32_t curSequence = constInfo.s2BaseSize * runInfo.s2LoopCount + runInfo.kvLeftPaddingSize +
-                           constInfo.subBlockIdx * GetRealDealSize(runInfo.s2RealSize);
+                           constInfo.subBlockIdx * GetRealDealSizeWrapper(runInfo.s2RealSize);
     if constexpr (isInfer) {
         curSequence += runInfo.s2StartIdx;
     }
@@ -632,7 +632,7 @@ FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SetAntiqParamCommon(const RunInfo<
     if constexpr (isFd) {
         curSequence += taskParam.flashDecodeS2Idx * taskParam.sInnerLoopSize;
     }
-    taskParam.kvGmOffset = kvOffset + constInfo.subBlockIdx * GetRealDealSize(runInfo.s2RealSize) * taskParam.kvStep;
+    taskParam.kvGmOffset = kvOffset + constInfo.subBlockIdx * GetRealDealSizeWrapper(runInfo.s2RealSize) * taskParam.kvStep;
     taskParam.s2BatchOffset = curSequence;
     taskParam.kvPaddingBeginOffset = runInfo.kvLeftPaddingSize;
     taskParam.antiqParamOffset = runInfo.n2oIdx * taskParam.headDim;
@@ -646,10 +646,10 @@ FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SetAntiqParamCommon(const RunInfo<
                                       constInfo.prefixLoopCount); // 判断当前s2LoopCount是否处于prefixLoopCount
             if (taskParam.isPrefixLoop) {
                 taskParam.kvGmOffset = runInfo.prefixOffset +
-                                       constInfo.subBlockIdx * GetRealDealSize(runInfo.s2RealSize) * taskParam.kvStep;
+                                       constInfo.subBlockIdx * GetRealDealSizeWrapper(runInfo.s2RealSize) * taskParam.kvStep;
             } else {
                 taskParam.kvGmOffset =
-                    kvOffset + constInfo.subBlockIdx * GetRealDealSize(runInfo.s2RealSize) * taskParam.kvStep;
+                    kvOffset + constInfo.subBlockIdx * GetRealDealSizeWrapper(runInfo.s2RealSize) * taskParam.kvStep;
                 taskParam.s2Idx -= constInfo.prefixLoopCount;
             }
         }
