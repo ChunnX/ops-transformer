@@ -56,6 +56,9 @@ __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
     const int64_t n = static_cast<int64_t>(gmmBaseParams->nSize);
     const int64_t k = static_cast<int64_t>(gmmBaseParams->kSize);
     const uint64_t kAL1 = static_cast<uint64_t>(mmTilingData->stepKb * mmTilingData->baseK);
+    // The fourth l1TileShape field controls the MX scale-K reuse window.
+    // Keep it aligned with the legacy GMM MX controller; it is not tiling data.
+    static constexpr uint64_t kScaleKL1 = 4096U;
 
     GM_ADDR aDataAddr = reinterpret_cast<GM_ADDR>(GetTensorAddr<AType>(0, x));
     GM_ADDR yDataAddr = reinterpret_cast<GM_ADDR>(GetTensorAddr<CType>(0, y));
@@ -78,7 +81,7 @@ __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
         static_cast<int64_t>(mmTilingData->baseM),
         static_cast<int64_t>(mmTilingData->baseN),
         static_cast<int64_t>(kAL1),
-        static_cast<int64_t>(kAL1));
+        static_cast<int64_t>(kScaleKL1));
     params.mmadParams.l0TileShape = AscendC::Te::MakeShape(
         static_cast<int64_t>(mmTilingData->baseM),
         static_cast<int64_t>(mmTilingData->baseN),
