@@ -275,8 +275,10 @@ __aicore__ inline void MoeV3GatherOutMxfp8<T>::GatherCopyExpandedXandMXQuant(int
         int64_t currentLoopLastRow = (globalSortIdx + currentLoopRows_ - 1) / k_;
 
         for (int64_t row = currentLoopStartRow; row <= currentLoopLastRow; row++) {
+            // 源行row对应的索引区间为[row*k_, (row+1)*k_)，用乘法上界替代循环内每索引一次的除法
+            int64_t rowEndIdx = (row + 1) * k_;
             bool hasValidOut = false;
-            while (curLoopRow < currentLoopRows_ && globalSortIdx / k_ == row) {
+            while (curLoopRow < currentLoopRows_ && globalSortIdx < rowEndIdx) {
                 if (indicesLocal.GetValue(curLoopRow) >= 0) {
                     hasValidOut = true;
                     break;
@@ -302,7 +304,7 @@ __aicore__ inline void MoeV3GatherOutMxfp8<T>::GatherCopyExpandedXandMXQuant(int
 
             DataCopyExtParams copyOutParams = {1, static_cast<uint32_t>(loopCols * sizeof(uint8_t)), 0, 0, 0};
             DataCopyExtParams copyScaleParams = {1, static_cast<uint32_t>(loopScaleCols * sizeof(uint8_t)), 0, 0, 0};
-            while (curLoopRow < currentLoopRows_ && globalSortIdx / k_ == row) {
+            while (curLoopRow < currentLoopRows_ && globalSortIdx < rowEndIdx) {
                 int32_t outIndex = indicesLocal.GetValue(curLoopRow);
                 curLoopRow++;
                 globalSortIdx++;
