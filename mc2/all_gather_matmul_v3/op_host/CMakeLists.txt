@@ -14,7 +14,6 @@ if (BUILD_OPEN_PROJECT)
         all_gather_matmul_v3_def.cpp
     )
 
-    # Main module: discovers src in op_host/, op_tiling/; also discovers proto/gen_task if under op_graph/
     add_modules_sources_with_soc(
         OP_API_INDEPENDENT ON
         OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
@@ -39,10 +38,6 @@ if (BUILD_OPEN_PROJECT)
                     -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel/apace/tests/st/.third_party/ops-tensor/include
         )
     endif()
-
-    # Include apace headers for tiling code
-    # Use op_kernel (parent of apace/) so that "apace/..." includes resolve correctly.
-    # Also add mc2/ as a root so that "common/utils/mc2_log.h" resolves.
     target_include_directories(op_host_aclnnInner PRIVATE
         ${CMAKE_SOURCE_DIR}/mc2/common/op_kernel
         ${CMAKE_SOURCE_DIR}/mc2
