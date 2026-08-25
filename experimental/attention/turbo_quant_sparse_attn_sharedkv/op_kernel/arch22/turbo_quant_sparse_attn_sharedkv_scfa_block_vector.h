@@ -91,8 +91,10 @@ public:
                                                  uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
                                                  uint32_t actualColumnCount);
 
-    __aicore__ inline void ElewiseCompute(const RunInfo &info, const LocalTensor<T> &mmResUb, uint32_t dealRowCount,
-                                          uint32_t columnCount);
+    __aicore__ inline void ElewiseCompute(const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow,
+                                          const LocalTensor<T> &mmResUb, uint32_t dealRowCount, uint32_t columnCount);
+    __aicore__ inline void SetInfInBlk(const LocalTensor<T> &mmResUb, uint32_t dealRowCount,
+                                       uint32_t columnCount, int64_t startId, int64_t endId);
     __aicore__ inline void ProcessLse(const RunInfo &info, const MSplitInfo &mSplitInfo);
     // ================================Vecotr2==========================================
     __aicore__ inline void ProcessVec2SingleBuf(const RunInfo &info, const MSplitInfo &mSplitInfo);
@@ -431,10 +433,68 @@ __aicore__ inline void SASVectorBlock<SAST>::InitSoftmaxDefaultBuffer()
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::ElewiseCompute(const RunInfo &info, const LocalTensor<T> &mmResUb,
+__aicore__ inline void SASVectorBlock<SAST>::ElewiseCompute(const RunInfo &info, const MSplitInfo &mSplitInfo,
+                                                            uint32_t startRow, const LocalTensor<T> &mmResUb,
                                                             uint32_t dealRowCount, uint32_t columnCount)
 {
     Muls(mmResUb, mmResUb, static_cast<T>(tilingData->baseParams.softmaxScale), dealRowCount * columnCount);
+
+    // cmp_sparse_indices is capacity-sized and may be padded with -1.  The Cube
+    // path still computes the capacity-sized tile, so mask the padded columns
+    // before softmax instead of allowing stale merge-cache rows to contribute.
+    if (!info.isOriOnly && constInfo.sparseBlockCount > 0 && info.cmpS2IdLimit > 0) {
+        uint32_t rowBase = mSplitInfo.nBufferStartM + mSplitInfo.vecStartM + startRow;
+        for (uint32_t row = 0; row < dealRowCount; ++row) {
+            uint32_t mPos = rowBase + row;
+            uint32_t qRel = mPos / constInfo.gSize;
+            uint64_t topkRow = info.topKBaseOffset + static_cast<uint64_t>(qRel) * constInfo.sparseBlockCount;
+            int32_t probeCount = static_cast<int32_t>(constInfo.sparseBlockCount);
+            if (info.cmpS2IdLimit < probeCount) {
+                probeCount = info.cmpS2IdLimit;
+            }
+            int32_t validCount = probeCount;
+            int32_t probeTopk = probeCount > 0 ? topkGm_.GetValue(topkRow + probeCount - 1) : -1;
+            if (probeTopk < 0) {
+                validCount = 0;
+                while (validCount < probeCount &&
+                       topkGm_.GetValue(topkRow + static_cast<uint32_t>(validCount)) >= 0) {
+                    ++validCount;
+                }
+            }
+            int32_t tileStart = static_cast<int32_t>(info.relativeS2Idx * constInfo.s2BaseSize);
+            int32_t maskStart = validCount - tileStart;
+            if (maskStart < 0) {
+                maskStart = 0;
+            }
+            if (maskStart < static_cast<int32_t>(info.actualSingleProcessSInnerSize)) {
+                SetInfInBlk(mmResUb[row * columnCount], 1, columnCount, maskStart,
+                            static_cast<int64_t>(columnCount) - 1);
+            }
+        }
+    }
+}
+
+template <typename SAST>
+__aicore__ inline void SASVectorBlock<SAST>::SetInfInBlk(const LocalTensor<T> &mmResUb,
+                                                         uint32_t dealRowCount, uint32_t columnCount,
+                                                         int64_t startId, int64_t endId)
+{
+    if (startId > endId) {
+        return;
+    }
+    int64_t firstBlock = startId / BLOCK_ELEMENT_NUM;
+    int64_t lastBlock = endId / BLOCK_ELEMENT_NUM;
+    for (int64_t block = firstBlock; block <= lastBlock; ++block) {
+        int64_t blockStart = block * BLOCK_ELEMENT_NUM;
+        int64_t begin = startId > blockStart ? startId - blockStart : 0;
+        int64_t finish = endId < blockStart + BLOCK_ELEMENT_NUM - 1 ? endId - blockStart : BLOCK_ELEMENT_NUM - 1;
+        uint64_t maskValue = 0;
+        for (int64_t bit = begin; bit <= finish; ++bit) {
+            maskValue |= (1ULL << static_cast<uint64_t>(bit));
+        }
+        uint64_t mask[1] = {maskValue};
+        Duplicate(mmResUb[blockStart], SOFTMAX_MIN_NUM, mask, dealRowCount, 1, columnCount / BLOCK_ELEMENT_NUM);
+    }
 }
 
 template <typename SAST>
@@ -528,7 +588,7 @@ __aicore__ inline void SASVectorBlock<SAST>::DealBmm1ResBaseBlock(const RunInfo 
     SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF1_FLAG);
 
-    ElewiseCompute(info, mmResUb, dealRowCount, columnCount);
+    ElewiseCompute(info, mSplitInfo, startRow, mmResUb, dealRowCount, columnCount);
 
     PipeBarrier<PIPE_V>();
     LocalTensor<T> tmpAFloorUb = tmpBuff1.Get<T>();

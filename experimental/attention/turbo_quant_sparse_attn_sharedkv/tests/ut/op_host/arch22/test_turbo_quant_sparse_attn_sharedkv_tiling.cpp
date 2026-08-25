@@ -68,7 +68,7 @@ std::vector<OpAttr> AttrsWith(const std::string &name, const AnyValue &value)
     return attrs;
 }
 
-bool RunWithOutputs(const std::vector<TensorDesc> &inputs, const std::vector<TensorDesc> &outputs,
+bool RunTilingCaseWithOutputs(const std::vector<TensorDesc> &inputs, const std::vector<TensorDesc> &outputs,
                     const std::vector<OpAttr> &attrs, TilingInfo &info)
 {
     CompileInfo compileInfo;
@@ -77,9 +77,9 @@ bool RunWithOutputs(const std::vector<TensorDesc> &inputs, const std::vector<Ten
     return ExecuteTiling(para, info);
 }
 
-bool Run(const std::vector<TensorDesc> &inputs, const std::vector<OpAttr> &attrs, TilingInfo &info)
+bool RunTilingCase(const std::vector<TensorDesc> &inputs, const std::vector<OpAttr> &attrs, TilingInfo &info)
 {
-    return RunWithOutputs(inputs, Outputs(inputs[0].dtype_), attrs, info);
+    return RunTilingCaseWithOutputs(inputs, Outputs(inputs[0].dtype_), attrs, info);
 }
 } // namespace
 
@@ -87,7 +87,7 @@ TEST(TurboQuantSparseAttnSharedkvTiling, AcceptsBf16AndFp16Scfa)
 {
     for (ge::DataType dtype : {ge::DT_BF16, ge::DT_FLOAT16}) {
         TilingInfo info;
-        EXPECT_TRUE(Run(Inputs(dtype), Attrs(), info));
+        EXPECT_TRUE(RunTilingCase(Inputs(dtype), Attrs(), info));
         EXPECT_GT(info.blockNum, 0U);
         EXPECT_GT(info.tilingDataSize, 0U);
     }
@@ -97,7 +97,7 @@ TEST(TurboQuantSparseAttnSharedkvTiling, AcceptsModelConfiguredSlidingWindow)
 {
     for (int64_t oriWinLeft : {0, 127, 255}) {
         TilingInfo info;
-        EXPECT_TRUE(Run(Inputs(), AttrsWith("ori_win_left", AnyValue::CreateFrom<int64_t>(oriWinLeft)), info))
+        EXPECT_TRUE(RunTilingCase(Inputs(), AttrsWith("ori_win_left", AnyValue::CreateFrom<int64_t>(oriWinLeft)), info))
             << oriWinLeft;
     }
 }
@@ -106,7 +106,7 @@ TEST(TurboQuantSparseAttnSharedkvTiling, AcceptsSupportedCompressionRatios)
 {
     for (int64_t cmpRatio : {4, 128}) {
         TilingInfo info;
-        EXPECT_TRUE(Run(Inputs(), AttrsWith("cmp_ratio", AnyValue::CreateFrom<int64_t>(cmpRatio)), info))
+        EXPECT_TRUE(RunTilingCase(Inputs(), AttrsWith("cmp_ratio", AnyValue::CreateFrom<int64_t>(cmpRatio)), info))
             << cmpRatio;
     }
 }
@@ -125,7 +125,7 @@ TEST(TurboQuantSparseAttnSharedkvTiling, RejectsWrongTurboQuantContract)
              {"layout_q", AnyValue::CreateFrom<std::string>("BSND")},
              {"layout_kv", AnyValue::CreateFrom<std::string>("BSND")}}) {
         TilingInfo info;
-        EXPECT_FALSE(Run(Inputs(), AttrsWith(entry.first, entry.second), info)) << entry.first;
+        EXPECT_FALSE(RunTilingCase(Inputs(), AttrsWith(entry.first, entry.second), info)) << entry.first;
     }
 }
 
@@ -134,17 +134,17 @@ TEST(TurboQuantSparseAttnSharedkvTiling, RejectsWrongDtype)
     auto floatQuery = Inputs();
     floatQuery[0] = {{{1, 64, 512}, {1, 64, 512}}, ge::DT_FLOAT, ge::FORMAT_ND};
     TilingInfo floatQueryInfo;
-    EXPECT_FALSE(Run(floatQuery, Attrs(), floatQueryInfo));
+    EXPECT_FALSE(RunTilingCase(floatQuery, Attrs(), floatQueryInfo));
 
     auto int8CmpKv = Inputs();
     int8CmpKv[2] = {{{17, 128, 1, 258}, {17, 128, 1, 258}}, ge::DT_INT8, ge::FORMAT_ND};
     TilingInfo int8CmpKvInfo;
-    EXPECT_FALSE(Run(int8CmpKv, Attrs(), int8CmpKvInfo));
+    EXPECT_FALSE(RunTilingCase(int8CmpKv, Attrs(), int8CmpKvInfo));
 
     auto mismatchedOriKv = Inputs();
     mismatchedOriKv[1] = {{{65, 128, 1, 512}, {65, 128, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND};
     TilingInfo mismatchedOriKvInfo;
-    EXPECT_FALSE(Run(mismatchedOriKv, Attrs(), mismatchedOriKvInfo));
+    EXPECT_FALSE(RunTilingCase(mismatchedOriKv, Attrs(), mismatchedOriKvInfo));
 }
 
 TEST(TurboQuantSparseAttnSharedkvTiling, RejectsWrongHeadShape)
@@ -152,17 +152,17 @@ TEST(TurboQuantSparseAttnSharedkvTiling, RejectsWrongHeadShape)
     auto wrongHeadDim = Inputs();
     wrongHeadDim[0] = {{{1, 64, 256}, {1, 64, 256}}, ge::DT_BF16, ge::FORMAT_ND};
     TilingInfo wrongHeadDimInfo;
-    EXPECT_FALSE(Run(wrongHeadDim, Attrs(), wrongHeadDimInfo));
+    EXPECT_FALSE(RunTilingCase(wrongHeadDim, Attrs(), wrongHeadDimInfo));
 
     auto wrongHeadCount = Inputs();
     wrongHeadCount[0] = {{{1, 6, 512}, {1, 6, 512}}, ge::DT_BF16, ge::FORMAT_ND};
     TilingInfo wrongHeadCountInfo;
-    EXPECT_FALSE(Run(wrongHeadCount, Attrs(), wrongHeadCountInfo));
+    EXPECT_FALSE(RunTilingCase(wrongHeadCount, Attrs(), wrongHeadCountInfo));
 
     auto wrongKvHeads = Inputs();
     wrongKvHeads[1] = {{{65, 128, 2, 512}, {65, 128, 2, 512}}, ge::DT_BF16, ge::FORMAT_ND};
     TilingInfo wrongKvHeadsInfo;
-    EXPECT_FALSE(Run(wrongKvHeads, Attrs(), wrongKvHeadsInfo));
+    EXPECT_FALSE(RunTilingCase(wrongKvHeads, Attrs(), wrongKvHeadsInfo));
 }
 
 TEST(TurboQuantSparseAttnSharedkvTiling, RejectsWrongAuxiliaryInput)
@@ -170,27 +170,27 @@ TEST(TurboQuantSparseAttnSharedkvTiling, RejectsWrongAuxiliaryInput)
     auto oriSparseIndices = Inputs();
     oriSparseIndices[3] = {{{1, 1, 512}, {1, 1, 512}}, ge::DT_INT32, ge::FORMAT_ND};
     TilingInfo oriSparseIndicesInfo;
-    EXPECT_FALSE(Run(oriSparseIndices, Attrs(), oriSparseIndicesInfo));
+    EXPECT_FALSE(RunTilingCase(oriSparseIndices, Attrs(), oriSparseIndicesInfo));
 
     auto sequsedQ = Inputs();
     sequsedQ[10] = {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND};
     TilingInfo sequsedQInfo;
-    EXPECT_FALSE(Run(sequsedQ, Attrs(), sequsedQInfo));
+    EXPECT_FALSE(RunTilingCase(sequsedQ, Attrs(), sequsedQInfo));
 
     auto wrongSinks = Inputs();
     wrongSinks[12] = {{{63}, {63}}, ge::DT_FLOAT, ge::FORMAT_ND};
     TilingInfo wrongSinksInfo;
-    EXPECT_FALSE(Run(wrongSinks, Attrs(), wrongSinksInfo));
+    EXPECT_FALSE(RunTilingCase(wrongSinks, Attrs(), wrongSinksInfo));
 
     auto wrongMetadata = Inputs();
     wrongMetadata[13] = {{{512}, {512}}, ge::DT_INT32, ge::FORMAT_ND};
     TilingInfo wrongMetadataInfo;
-    EXPECT_FALSE(Run(wrongMetadata, Attrs(), wrongMetadataInfo));
+    EXPECT_FALSE(RunTilingCase(wrongMetadata, Attrs(), wrongMetadataInfo));
 
     auto emptyOriBlockTable = Inputs();
     emptyOriBlockTable[5] = {{{1, 0}, {1, 0}}, ge::DT_INT32, ge::FORMAT_ND};
     TilingInfo emptyOriBlockTableInfo;
-    EXPECT_FALSE(Run(emptyOriBlockTable, Attrs(), emptyOriBlockTableInfo));
+    EXPECT_FALSE(RunTilingCase(emptyOriBlockTable, Attrs(), emptyOriBlockTableInfo));
 
 }
 
@@ -199,15 +199,15 @@ TEST(TurboQuantSparseAttnSharedkvTiling, ChecksSlotAndTopkShape)
     auto wrongSlot = Inputs();
     wrongSlot[2] = {{{17, 128, 1, 320}, {17, 128, 1, 320}}, ge::DT_UINT8, ge::FORMAT_ND};
     TilingInfo slotInfo;
-    EXPECT_FALSE(Run(wrongSlot, Attrs(), slotInfo));
+    EXPECT_FALSE(RunTilingCase(wrongSlot, Attrs(), slotInfo));
 
     auto wrongTopk = Inputs();
     wrongTopk[4] = {{{1, 1, 256}, {1, 1, 256}}, ge::DT_INT32, ge::FORMAT_ND};
     TilingInfo topkInfo;
-    EXPECT_FALSE(Run(wrongTopk, Attrs(), topkInfo));
+    EXPECT_FALSE(RunTilingCase(wrongTopk, Attrs(), topkInfo));
 
     auto proTopk = Inputs();
     proTopk[4] = {{{1, 1, 1024}, {1, 1, 1024}}, ge::DT_INT32, ge::FORMAT_ND};
     TilingInfo proTopkInfo;
-    EXPECT_TRUE(Run(proTopk, Attrs(), proTopkInfo));
+    EXPECT_TRUE(RunTilingCase(proTopk, Attrs(), proTopkInfo));
 }
