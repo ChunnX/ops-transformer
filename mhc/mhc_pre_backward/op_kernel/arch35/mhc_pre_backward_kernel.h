@@ -930,6 +930,10 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
     if (GetBlockIdx() >= v1UsedCubeCoreNum_) {
         return;
     }
+    if ASCEND_IS_AIC {
+        AscendC::SetHF32Mode(1);
+        AscendC::SetHF32TransMode(1);
+    }
 
     uint32_t currentNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - dealStartND_);
     uint32_t currentBSBlock = Min(SINGLE_M, uint32_t(totalLength_));
@@ -961,6 +965,10 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
             buffId++;
         }
     }
+
+    if ASCEND_IS_AIC {
+        AscendC::SetHF32Mode(0);
+    }
 }
 
 
@@ -976,7 +984,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, 
     // h_mix_grad @ phi
     mm0.SetTensorA(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)]); // [BS, N^2+2N]
     mm0.SetTensorB(phiGm_[offsetND], false);                                 // [N^2+2N, ND]
-    mm0.SetHF32(true, 1);
     // 计算
     uint64_t writeOffset = workspaceBuf_.GetXRsGradOffset(GetBlockIdx(), buffIdx);
     while (mm0.Iterate()) {
