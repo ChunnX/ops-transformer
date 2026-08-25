@@ -161,7 +161,9 @@ def mhc_pre_sinkhorn_backward_input(
 
     gzp4 = _sigmoid_grad(zp4, g_hpre, is_pre=True, hc_eps=hc_eps_val)
     gzpost4 = 2 * _sigmoid_grad(zpost4, gp4, is_pre=False, hc_eps=hc_eps_val)
-    skg4 = _sinkhorn_grad(ghres4, suma, norm4)
+    # ghres4可能为(B,S,N*N)或(B,S,N,N), 统一reshape为(B,S,N,N)供_sinkhorn_grad处理
+    ghres4_4d = ghres4.reshape(B4, S4, n4, n4) if ghres4.dim() == 3 else ghres4
+    skg4 = _sinkhorn_grad(ghres4_4d, suma, norm4)
     gzres4 = _exp_grad(zres4, skg4).flatten(2)
 
     gold_bias = torch.cat([gzp4.sum((0, 1)), gzpost4.sum((0, 1)), gzres4.sum((0, 1))])
