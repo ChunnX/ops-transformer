@@ -67,9 +67,15 @@ optiling::DecodeUpdateCompileInfo AscendCCompileInfo()
 
 class AttentionUpdateTilingTest : public testing::Test {
 protected:
-    static void SetUpTestCase() { std::cout << "AttentionUpdateTiling SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "AttentionUpdateTiling SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "AttentionUpdateTiling TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "AttentionUpdateTiling TearDown" << std::endl;
+    }
 };
 
 TEST_F(AttentionUpdateTilingTest, LegacyFloatUpdateType0Sp1)
