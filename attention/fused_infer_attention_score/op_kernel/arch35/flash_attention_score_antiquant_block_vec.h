@@ -15,15 +15,28 @@
 
 #ifndef FLASH_ATTENTION_SCORE_ANTIQUANT_BLOCK_VEC_BASE_H_
 #define FLASH_ATTENTION_SCORE_ANTIQUANT_BLOCK_VEC_BASE_H_
-#include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
-#include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
-#include "../../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
-#include "../../../common/op_kernel/arch35/vf/vf_div_cast_arch35.h"
-#include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
-#include "../../../common/op_kernel/arch35/vf/vf_post_quant_arch35.h"
+
 #include "flash_attention_score_antiquant_processor.h"
-#include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase_arch35.h"
-#include "../../../common/op_kernel/arch35/util_regbase.h"
+#if __has_include("../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h")
+    #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
+    #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
+    #include "../../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
+    #include "../../../common/op_kernel/arch35/vf/vf_div_cast_arch35.h"
+    #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
+    #include "../../../common/op_kernel/arch35/vf/vf_post_quant_arch35.h"
+    #include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase_arch35.h"
+    #include "../../../common/op_kernel/arch35/util_regbase.h"
+#else
+    #include "../../../common/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
+    #include "../../../common/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
+    #include "../../../common/arch35/vf/vf_flashupdate_new.h"
+    #include "../../../common/arch35/vf/vf_div_cast_arch35.h"
+    #include "../../../common/arch35/vf/vf_flash_decode_arch35.h"
+    #include "../../../common/arch35/vf/vf_post_quant_arch35.h"
+    #include "../../../common/arch35/flash_attention_score_tiling_regbase_arch35.h"
+    #include "../../../common/arch35/util_regbase.h"
+#endif
+
 using namespace optiling;
 using namespace FaVectorApi;
 namespace BaseApi {

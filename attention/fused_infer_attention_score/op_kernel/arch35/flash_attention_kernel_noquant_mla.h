@@ -16,8 +16,13 @@
 #ifndef FLASH_ATTENTION_KERNEL_NOQUANT_MLA_H_
 #define FLASH_ATTENTION_KERNEL_NOQUANT_MLA_H_
 
-#include "../../../common/op_kernel/arch35/attenmask_arch35.h"
-#include "../../../common/op_kernel/arch35/pse_arch35.h"
+#if __has_include("../../../common/op_kernel/arch35/attenmask_arch35.h")
+    #include "../../../common/op_kernel/arch35/attenmask_arch35.h"
+    #include "../../../common/op_kernel/arch35/pse_arch35.h"
+#else
+    #include "../../../common/arch35/attenmask_arch35.h"
+    #include "../../../common/arch35/pse_arch35.h"
+#endif
 #include "flash_attention_block_cube_noquant_mla.h"
 #include "flash_attention_noquant_block_vec_infer.h"
 

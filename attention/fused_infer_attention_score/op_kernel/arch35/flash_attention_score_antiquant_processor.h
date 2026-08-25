@@ -15,8 +15,13 @@
 #ifndef FLASH_ATTENTION_SCORE_ANTIQUANT_PROCESSOR_H
 #define FLASH_ATTENTION_SCORE_ANTIQUANT_PROCESSOR_H
 
-#include "../../../common/op_kernel/arch35/vf/vf_antiquant_w4.h"
-#include "../../../common/op_kernel/arch35/vf/vf_antiquant_w8.h"
+#if __has_include("../../../common/op_kernel/arch35/vf/vf_antiquant_w4.h")
+    #include "../../../common/op_kernel/arch35/vf/vf_antiquant_w4.h"
+    #include "../../../common/op_kernel/arch35/vf/vf_antiquant_w8.h"
+#else
+    #include "../../../common/arch35/vf/vf_antiquant_w4.h"
+    #include "../../../common/arch35/vf/vf_antiquant_w8.h"
+#endif
 
 using namespace AscendC;
 using namespace fa_base_matmul;
