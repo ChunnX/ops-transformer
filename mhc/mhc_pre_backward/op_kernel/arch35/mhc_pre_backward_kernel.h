@@ -1149,7 +1149,8 @@ MhcPreBackwardKernel<T, P>::VFDoV2HInMulHPre(__ubuf__ P *xGradVec3BufAddr, __ubu
     __VEC_SCOPE__
     {
         MicroAPI::RegTensor<T> hInReg;
-        MicroAPI::RegTensor<P> hInFP32Reg, hPreFullReg;
+        MicroAPI::RegTensor<P> hInFP32Reg, hPreReg, hPreFullReg;
+        MicroAPI::RegTensor<uint32_t> hPreIndexReg;
         MicroAPI::MaskReg mask, maskAll;
         maskAll = MicroAPI::CreateMask<P, MicroAPI::MaskPattern::ALL>();
         uint32_t hPreOffset = static_cast<uint32_t>(bsGlobalOffset * N_ + currentN);
@@ -1158,8 +1159,8 @@ MhcPreBackwardKernel<T, P>::VFDoV2HInMulHPre(__ubuf__ P *xGradVec3BufAddr, __ubu
             uint32_t hInOffset = tIdx * copySizeND;
 
             // Load hPre [1] -> [copySizeND]
-            P hPreScalar = hPreUbAddr[hPreOffset];
-            MicroAPI::Duplicate<P>(hPreFullReg, hPreScalar, maskAll);
+            MicroAPI::Duplicate(hPreIndexReg, hPreOffset, maskAll);
+            MicroAPI::Gather(hPreFullReg, hPreUbAddr, hPreIndexReg, maskAll);
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < vfLoopCnt; vfBlockIdx++) {
                 mask = MicroAPI::UpdateMask<P>(lenND);
                 // hIn B16 -> B32
