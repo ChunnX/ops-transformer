@@ -28,6 +28,7 @@ else()
     GIT_REPOSITORY https://gitcode.com/cann/catlass.git
     GIT_TAG ${CATLASS_TAG_ID}
     GIT_PROGRESS TRUE
+    GIT_SUBMODULES ""
     SOURCE_DIR ${CANN_3RD_LIB_PATH}/catlass)
 
   FetchContent_Populate(catlass)
