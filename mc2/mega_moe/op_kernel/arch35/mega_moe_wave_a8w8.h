@@ -12,7 +12,7 @@
  * \file mega_moe_wave_a8w8.h
  * \brief MegaMoe A8W8 wave 流水实现
  */
-
+ 
 #ifndef MEGA_MOE_WAVE_A8W8_H
 #define MEGA_MOE_WAVE_A8W8_H
 
