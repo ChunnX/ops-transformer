@@ -61,6 +61,7 @@ constexpr MicroAPI::CastTrait QKV_K_SCALE_CAST_FP16_TO_INT8 = {
     RoundMode::CAST_RINT,
 };
 
+template <bool APPLY_GAMMA = true>
 __simd_callee__ inline void RmsNormBf16ToFp32D128(
     MicroAPI::RegTensor<float> &outLow, MicroAPI::RegTensor<float> &outHigh, MicroAPI::RegTensor<bfloat16_t> &inLowBf16,
     MicroAPI::RegTensor<bfloat16_t> &inHighBf16, MicroAPI::RegTensor<float> &gammaLow,
@@ -88,8 +89,10 @@ __simd_callee__ inline void RmsNormBf16ToFp32D128(
 
     MicroAPI::Div(outLow, outLow, divisor, mask64);
     MicroAPI::Div(outHigh, outHigh, divisor, mask64);
-    MicroAPI::Mul(outLow, outLow, gammaLow, mask64);
-    MicroAPI::Mul(outHigh, outHigh, gammaHigh, mask64);
+    if constexpr (APPLY_GAMMA) {
+        MicroAPI::Mul(outLow, outLow, gammaLow, mask64);
+        MicroAPI::Mul(outHigh, outHigh, gammaHigh, mask64);
+    }
 }
 
 __simd_callee__ inline void RopeCastBf16D128(MicroAPI::RegTensor<bfloat16_t> &outLowBf16,
