@@ -542,6 +542,52 @@ __aicore__ inline void CombineWaveTokenRange(const WaveCombineConfig &context,
     }
 }
 
+// Keep the continuous per-core row ownership and the single metadata preload,
+// but stagger the first destination-rank phase across AIV1 cores.  Splitting
+// the already-ready local slice into at most two logical ranges changes only
+// issue order: rowSequence and the MTE ring continue across the split without
+// an intermediate drain.
+template <uint8_t CombineMode>
+__aicore__ inline void CombineWaveTokenRangeStaggered(
+    const WaveCombineConfig &context,
+    const WaveCombineBufferConfig &bufferConfig,
+    WaveCombineScratch &scratch, const Params &params,
+    GM_ADDR gmm2OutGlobal, uint32_t tokenStart, uint32_t tokenCount,
+    uint32_t metaInfoUbTokenOffset, uint32_t &rowSequence,
+    WaveCombineTraceMetrics *traceMetrics)
+{
+    uint32_t rankPhaseCount = context.common.worldSize;
+    if (tokenCount <= 1U || rankPhaseCount <= 1U) {
+        CombineWaveTokenRange<CombineMode>(
+            context, bufferConfig, scratch, params, gmm2OutGlobal,
+            tokenStart, tokenCount, metaInfoUbTokenOffset,
+            rowSequence, traceMetrics);
+        return;
+    }
+    uint32_t targetPhase = context.job.jobIndex % rankPhaseCount;
+    uint32_t currentPhase = tokenStart % rankPhaseCount;
+    uint32_t phaseOffset =
+        (targetPhase + rankPhaseCount - currentPhase) % rankPhaseCount;
+    if (phaseOffset >= tokenCount) {
+        phaseOffset %= tokenCount;
+    }
+    if (phaseOffset == 0U) {
+        CombineWaveTokenRange<CombineMode>(
+            context, bufferConfig, scratch, params, gmm2OutGlobal,
+            tokenStart, tokenCount, metaInfoUbTokenOffset,
+            rowSequence, traceMetrics);
+        return;
+    }
+    CombineWaveTokenRange<CombineMode>(
+        context, bufferConfig, scratch, params, gmm2OutGlobal,
+        tokenStart + phaseOffset, tokenCount - phaseOffset,
+        metaInfoUbTokenOffset + phaseOffset, rowSequence, traceMetrics);
+    CombineWaveTokenRange<CombineMode>(
+        context, bufferConfig, scratch, params, gmm2OutGlobal,
+        tokenStart, phaseOffset, metaInfoUbTokenOffset,
+        rowSequence, traceMetrics);
+}
+
 // 等待当前 GMM2 tile 对应的 SwiGLU 输入就绪。
 template <bool IsShared, typename Config>
 __aicore__ inline void WaitForGmm2InputReady(const GMMAddrInfo &gmmAddrInfo, const Config &config, uint32_t mLoc)
@@ -1465,7 +1511,7 @@ __aicore__ inline void RunWaveExpertCombineStage(
             params, scratch,
             static_cast<uint64_t>(state.expertBeforeCnt) + processBegin,
             processCount, 0U, traceMetrics);
-        CombineWaveTokenRange<CombineMode>(
+        CombineWaveTokenRangeStaggered<CombineMode>(
             context, bufferConfig, scratch, params, gmmAddrInfo.gmm2OutGlobal,
             processBegin, processCount, 0U, rowSequence, traceMetrics);
     }

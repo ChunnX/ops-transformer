@@ -482,6 +482,87 @@ __aicore__ inline int32_t DispatchPositiveGcd(int32_t lhs, int32_t rhs)
     return lhs;
 }
 
+// Choose the smallest lane rotation that makes one core's logical-row stride
+// coprime with the number of active source ranks.  This avoids merely moving
+// the phase-lock problem from (28 cores, 4 ranks) to cases such as 3 active
+// ranks.  A zero step intentionally keeps the cheaper fixed stride whenever it
+// already walks every active-rank phase.
+template <typename ActivationType>
+__aicore__ inline int32_t GetDispatchRowRotationStep(
+    const TokenDispatchConfig &context,
+    const TokenDispatchScratch<ActivationType> &scratch)
+{
+    int32_t activeRankCount = 0;
+    for (uint32_t rankIdx = 0U; rankIdx < context.common.worldSize; ++rankIdx) {
+        int32_t rankScratchBase =
+            static_cast<int32_t>(rankIdx) * DISPATCH_RANK_SCRATCH_STRIDE;
+        if (scratch.sendCntTensor.GetValue(
+                rankScratchBase + DISPATCH_RANK_COUNT_LANE) > 0) {
+            ++activeRankCount;
+        }
+    }
+    if (activeRankCount <= 1) {
+        return 0;
+    }
+    int32_t coreCount = static_cast<int32_t>(
+        context.blockJob.totalJobs == 0U ? 1U : context.blockJob.totalJobs);
+    for (int32_t rotationStep = 0; rotationStep < coreCount; ++rotationStep) {
+        if (DispatchPositiveGcd(coreCount - rotationStep, activeRankCount) == 1) {
+            return rotationStep;
+        }
+    }
+    return 0;
+}
+
+// Assign one row from every full core-sized round to every AIV1 and rotate
+// lane ownership between rounds.  The mapping remains bijective within every
+// round, preserving exact row coverage and balanced task counts.
+__aicore__ inline int32_t GetRotatingDispatchCoreTaskCount(
+    const TokenDispatchConfig &context, int32_t segmentRowBegin,
+    int32_t segmentRowEnd, int32_t rotationStep)
+{
+    int32_t rowCount = segmentRowEnd - segmentRowBegin;
+    if (rowCount <= 0) {
+        return 0;
+    }
+    int32_t coreCount = static_cast<int32_t>(
+        context.blockJob.totalJobs == 0U ? 1U : context.blockJob.totalJobs);
+    int32_t coreIdx = static_cast<int32_t>(context.blockJob.jobIndex);
+    if (coreIdx < 0 || coreIdx >= coreCount) {
+        return 0;
+    }
+    int32_t fullRoundCount = rowCount / coreCount;
+    int32_t tailRowCount = rowCount - fullRoundCount * coreCount;
+    int32_t tailRotation =
+        fullRoundCount * rotationStep % coreCount;
+    int32_t tailLane = coreIdx - tailRotation;
+    if (tailLane < 0) {
+        tailLane += coreCount;
+    }
+    return fullRoundCount + (tailLane < tailRowCount ? 1 : 0);
+}
+
+template <bool RotateDestinationRows>
+__aicore__ inline void AdvanceDispatchDestinationRow(
+    int32_t &destinationRow, int32_t &destinationLane,
+    int32_t destinationRowStride, int32_t destinationRowRotationStep)
+{
+    if constexpr (RotateDestinationRows) {
+        if (destinationLane >= destinationRowRotationStep) {
+            destinationRow +=
+                destinationRowStride - destinationRowRotationStep;
+            destinationLane -= destinationRowRotationStep;
+        } else {
+            destinationRow +=
+                destinationRowStride * 2 - destinationRowRotationStep;
+            destinationLane +=
+                destinationRowStride - destinationRowRotationStep;
+        }
+    } else {
+        destinationRow += destinationRowStride;
+    }
+}
+
 template <typename ActivationType>
 __aicore__ inline bool GetDispatchRankRoundInterval(
     const TokenDispatchConfig &context, const TokenDispatchScratch<ActivationType> &scratch,
@@ -989,14 +1070,17 @@ __aicore__ inline int32_t FetchInterleavedDispatchRouteTask(
 // ring used by the compact baseline: primer, first-fill, steady reuse and
 // epilogue. Route planning and rank changes are outside the synchronization
 // decisions, so the hot loops contain no per-token stream-state branches.
-template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
+template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch,
+          bool RotateDestinationRows = false>
 __aicore__ inline void CopyInterleavedDispatchRouteQueue(
     const TokenDispatchConfig &context, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, int32_t destinationRowBase,
     int32_t destinationRowStride, int32_t taskCount,
     GlobalTensor<ActivationType> &tokenRevGlobalTensor,
     GlobalTensor<QuantScaleType> &scaleRevGlobalTensor,
-    GlobalTensor<int32_t> &metaInfoGlobalTensor)
+    GlobalTensor<int32_t> &metaInfoGlobalTensor,
+    int32_t destinationRowLane = 0,
+    int32_t destinationRowRotationStep = 0)
 {
     if (taskCount <= 0) {
         return;
@@ -1008,6 +1092,8 @@ __aicore__ inline void CopyInterleavedDispatchRouteQueue(
 
     GlobalTensor<ActivationType> remoteRankGlobalTensor;
     int32_t currentRankIdx = -1;
+    int32_t pendingDestinationRow = destinationRowBase;
+    int32_t pendingDestinationLane = destinationRowLane;
     int32_t pendingTopkIndex =
         FetchInterleavedDispatchRouteTask<false, TopkWeightsPrefetch>(
             context, winRankAddr, scratch, 0, 0, remoteRankGlobalTensor,
@@ -1017,18 +1103,23 @@ __aicore__ inline void CopyInterleavedDispatchRouteQueue(
     // Keep it correct without adding a buffer-count branch to the normal path.
     if (bufferCount == 1) {
         StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-            context, scratch, 0, destinationRowBase, tokenRevGlobalTensor,
+            context, scratch, 0, pendingDestinationRow, tokenRevGlobalTensor,
             scaleRevGlobalTensor, metaInfoGlobalTensor, pendingTopkIndex);
+        AdvanceDispatchDestinationRow<RotateDestinationRows>(
+            pendingDestinationRow, pendingDestinationLane,
+            destinationRowStride, destinationRowRotationStep);
         for (int32_t taskIdx = 1; taskIdx < taskCount; ++taskIdx) {
             pendingTopkIndex =
                 FetchInterleavedDispatchRouteTask<true, TopkWeightsPrefetch>(
                     context, winRankAddr, scratch, taskIdx, 0,
                     remoteRankGlobalTensor, currentRankIdx);
             StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-                context, scratch, 0,
-                destinationRowBase + taskIdx * destinationRowStride,
+                context, scratch, 0, pendingDestinationRow,
                 tokenRevGlobalTensor, scaleRevGlobalTensor,
                 metaInfoGlobalTensor, pendingTopkIndex);
+            AdvanceDispatchDestinationRow<RotateDestinationRows>(
+                pendingDestinationRow, pendingDestinationLane,
+                destinationRowStride, destinationRowRotationStep);
         }
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(static_cast<TEventID>(0));
         WaitFlag<AscendC::HardEvent::MTE3_S>(static_cast<TEventID>(0));
@@ -1043,10 +1134,12 @@ __aicore__ inline void CopyInterleavedDispatchRouteQueue(
                 remoteRankGlobalTensor, currentRankIdx);
         int32_t copyIdx = issueIdx - 1;
         StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-            context, scratch, copyIdx,
-            destinationRowBase + copyIdx * destinationRowStride,
+            context, scratch, copyIdx, pendingDestinationRow,
             tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
             pendingTopkIndex);
+        AdvanceDispatchDestinationRow<RotateDestinationRows>(
+            pendingDestinationRow, pendingDestinationLane,
+            destinationRowStride, destinationRowRotationStep);
         pendingTopkIndex = currentTopkIndex;
     }
 
@@ -1059,17 +1152,19 @@ __aicore__ inline void CopyInterleavedDispatchRouteQueue(
         int32_t copyIdx = issueIdx - 1;
         int32_t copyBufferIdx = copyIdx % bufferCount;
         StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-            context, scratch, copyBufferIdx,
-            destinationRowBase + copyIdx * destinationRowStride,
+            context, scratch, copyBufferIdx, pendingDestinationRow,
             tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
             pendingTopkIndex);
+        AdvanceDispatchDestinationRow<RotateDestinationRows>(
+            pendingDestinationRow, pendingDestinationLane,
+            destinationRowStride, destinationRowRotationStep);
         pendingTopkIndex = currentTopkIndex;
     }
 
     int32_t lastTaskIdx = taskCount - 1;
     StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
         context, scratch, lastTaskIdx % bufferCount,
-        destinationRowBase + lastTaskIdx * destinationRowStride,
+        pendingDestinationRow,
         tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
         pendingTopkIndex);
 
@@ -1116,6 +1211,24 @@ __aicore__ inline void PublishInterleavedDispatchTilesReady(
         AtomicAdd(gmm1TileReadyCount + static_cast<int64_t>(tileIdx) * INT_CACHELINE,
                   readyRowCount);
     }
+}
+
+// The rotating consumer is invoked for exactly one GMM1 tile.  Once its MTE
+// ring is drained, publishing the local task count is the exact contribution
+// of this core to that tile; the sum across cores equals the tile row count.
+__aicore__ inline void PublishRotatingDispatchTileReady(
+    const TokenDispatchConfig &context, const Params &params,
+    uint32_t localExpertId, int32_t tileIdx, int32_t readyRowCount)
+{
+    if (tileIdx < 0 || readyRowCount <= 0) {
+        return;
+    }
+    SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
+    __gm__ int32_t *gmm1TileReadyCount =
+        reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagDispatchToGmm1Ptr) +
+        static_cast<uint64_t>(localExpertId) * context.dispatchFlagSlotsPerExpert;
+    AtomicAdd(gmm1TileReadyCount + static_cast<int64_t>(tileIdx) * INT_CACHELINE,
+              readyRowCount);
 }
 
 // 发布一个 source-rank 段覆盖到的 GMM1 tile ready 计数。
@@ -1570,27 +1683,30 @@ __aicore__ inline void DispatchExpertTokensFromPreparedRouteMeta(
         static_cast<int32_t>(dispatchRowCount);
     int32_t coreCount = static_cast<int32_t>(
         context.blockJob.totalJobs == 0U ? 1U : context.blockJob.totalJobs);
-    int32_t firstOwnedRow = GetFirstDispatchRowOwnedByCore(
-        context, expertGlobalRowBegin, segmentRowBegin, segmentRowEnd);
-    if (firstOwnedRow >= segmentRowEnd) {
+    int32_t coreIdx = static_cast<int32_t>(context.blockJob.jobIndex);
+    int32_t rotationStep = GetDispatchRowRotationStep(context, scratch);
+    int32_t taskCount = GetRotatingDispatchCoreTaskCount(
+        context, segmentRowBegin, segmentRowEnd, rotationStep);
+    if (taskCount <= 0) {
         return;
     }
+    int32_t firstOwnedRow = segmentRowBegin + coreIdx;
 #if MEGA_MOE_ENABLE_WAVE_TRACE != 0
     uint32_t planTraceBegin =
         traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
 #endif
     __gm__ int32_t *metaInfoBase =
         reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.metaInfoPtr);
-    int32_t taskCount = 0;
     int32_t tileIdx =
         segmentRowBegin / static_cast<int32_t>(PipelineTileM);
     WaitDispatchRouteMetaTileReady(
         context, params, localExpertId, static_cast<int32_t>(expertRowCount),
         tileIdx, static_cast<int32_t>(PipelineTileM));
-    for (int32_t expertRow = firstOwnedRow;
-         expertRow < segmentRowEnd; expertRow += coreCount) {
+    int32_t routeRow = expertGlobalRowBegin + firstOwnedRow;
+    int32_t routeLane = coreIdx;
+    for (int32_t taskIdx = 0; taskIdx < taskCount; ++taskIdx) {
         __gm__ int32_t *routeRecord = metaInfoBase +
-            static_cast<uint64_t>(expertGlobalRowBegin + expertRow) *
+            static_cast<uint64_t>(routeRow) *
                 INT32_PER_256B;
         uint32_t remoteRankIdx = static_cast<uint32_t>(
             ReadGmByPassDCache(routeRecord + RANK_ID));
@@ -1599,7 +1715,9 @@ __aicore__ inline void DispatchExpertTokensFromPreparedRouteMeta(
         int32_t topkIndex = tokenIndex *
             static_cast<int32_t>(context.common.topK) + topkSlot;
         scratch.topkIndexTensor.SetValue(
-            taskCount++, PackDispatchRouteEntry(remoteRankIdx, topkIndex));
+            taskIdx, PackDispatchRouteEntry(remoteRankIdx, topkIndex));
+        AdvanceDispatchDestinationRow<true>(
+            routeRow, routeLane, coreCount, rotationStep);
     }
 #if MEGA_MOE_ENABLE_WAVE_TRACE != 0
     if (traceMetrics != nullptr) {
@@ -1624,10 +1742,11 @@ __aicore__ inline void DispatchExpertTokensFromPreparedRouteMeta(
         traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
 #endif
     CopyInterleavedDispatchRouteQueue<ActivationType, QuantScaleType,
-                                      TopkWeightsPrefetch>(
+                                      TopkWeightsPrefetch, true>(
         context, winRankAddr, scratch,
         expertGlobalRowBegin + firstOwnedRow, coreCount, taskCount,
-        tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor);
+        tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
+        coreIdx, rotationStep);
 #if MEGA_MOE_ENABLE_WAVE_TRACE != 0
     if (traceMetrics != nullptr) {
         traceMetrics->transferPipelineCycles +=
@@ -1636,10 +1755,8 @@ __aicore__ inline void DispatchExpertTokensFromPreparedRouteMeta(
     uint32_t readyTraceBegin =
         traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
 #endif
-    PublishInterleavedDispatchTilesReady(
-        context, params, localExpertId, expertGlobalRowBegin,
-        segmentRowBegin, segmentRowEnd,
-        static_cast<int32_t>(PipelineTileM));
+    PublishRotatingDispatchTileReady(
+        context, params, localExpertId, tileIdx, taskCount);
 #if MEGA_MOE_ENABLE_WAVE_TRACE != 0
     if (traceMetrics != nullptr) {
         traceMetrics->readyPublishCycles +=
