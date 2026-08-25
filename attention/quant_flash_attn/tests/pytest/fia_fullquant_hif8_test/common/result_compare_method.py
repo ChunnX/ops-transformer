@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
@@ -11,6 +10,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import logging
+
 import torch
 
 logging.basicConfig(
@@ -196,8 +196,7 @@ def check_result(expect, npu_result):
 
     start = 0
     end = real_data.numel() - 1
-    if end < start:
-        end = start
+    end = max(end, start)
     split_count = end - start + 1 if end != start else 1
     max_error = 0.0
 
