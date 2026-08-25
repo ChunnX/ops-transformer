@@ -18,8 +18,25 @@
 
 namespace QkvRmsNormRopeCacheWithKScale {
 
-// AIV-side M-RoPE MX pipeline. Persistent parameters and the gather index live for the whole core range.
-// Tile inputs use two UB slots; READY publishes produced data, while FREE returns a buffer to its producer.
+/*
+ * AIV-side M-RoPE MX pipeline. Persistent parameters and the gather index live
+ * for the whole core range. Tile inputs use two UB slots. READY publishes
+ * current contents to a consumer; FREE returns the same physical region to its
+ * producer for overwrite. These are hardware-pipeline dependencies, not CPU
+ * thread synchronization.
+ *
+ *   Resource/domain       Producer -> READY -> consumer       Last consumer -> FREE -> next producer
+ *   qkv/rawCosSin slot n  MTE2 -> MTE2_V -> Vector V/K/Q      Vector Q -> V_MTE2 -> MTE2
+ *   slotMapping slot n    MTE2 -> MTE2_S -> Scalar addressing released with the containing input slot
+ *   position window       MTE2 -> MTE2_S -> Scalar gather     Scalar last tile -> S_MTE2 -> MTE2 refill
+ *   V/K/Q staging         Vector -> V_MTE3 -> MTE3 store      MTE3 -> MTE3_V -> Vector
+ *   MX scratch            Vector Store -> LocalMemBar -> Load final Load -> LocalMemBar -> next Store
+ *
+ * The input READY tokens cover the current tile only. V/K/Q staging READY and
+ * FREE pairs are independent because each protects a different physical UB
+ * region. Position uses a separate window lifetime and must not be folded into
+ * the per-tile input-slot protocol.
+ */
 class QkvRmsNormRopeCacheWithKScaleMropeMxVec {
 public:
     __aicore__ inline QkvRmsNormRopeCacheWithKScaleMropeMxVec(

@@ -44,6 +44,36 @@ constexpr uint64_t MROPE_MX_ROW_BATCH_SCRATCH_BYTES = MROPE_MX_ROW_BATCH_DATA_BY
 constexpr uint64_t MROPE_MX_UINT32_MAX = 0xffffffffULL;
 constexpr uint64_t MROPE_MX_UINT64_MAX = 0xffffffffffffffffULL;
 
+/*
+ * Current per-AIV UB allocation, in increasing byte-offset order:
+ *
+ *   persistent parameters
+ *     qGamma | kGamma | vScale | M-RoPE gather index | position window
+ *   double-buffered tile inputs
+ *     slot 0: qkv | rawCosSin | slotMapping
+ *     slot 1: qkv | rawCosSin | slotMapping
+ *   single-buffered Vector-to-MTE3 staging
+ *     V data | K data | K scale | Q data | Q scale
+ *   Vector-only MX scratch
+ *     RowBatch16 record 0 | ... | RowBatch16 record R-1
+ *
+ * Every region starts on a 32-byte boundary and regions do not alias. The
+ * persistent regions occupy one physical allocation for the AIV token range;
+ * only position contents are refreshed in 1024-token windows. Input slots are
+ * alternated by tile ordinal and remain owned until Q, the last input consumer,
+ * returns the slot. V/K/Q staging regions are distinct single buffers whose
+ * reuse is protected by their MTE3_V FREE events. MX scratch is private to the
+ * active VF call and its internal reuse is ordered by LocalMemBar.
+ *
+ * One RowBatch16 record contains, in order, 16xD128 FP32 staged data,
+ * 16x4 FP32/uint32 maxima, 16x4 FP32 combined reciprocals, and eight aligned
+ * head-pair rms-squared records. The base layout reserves
+ * max(1, floor(Nq/16)) records. The Q GlobalTileWave layout expands this to
+ * floor(Nq/16)*tokenTile records plus ceil(tokenTile/2) records when Nq has an
+ * eight-head tail. Host capacity checking and device address materialization
+ * both use the allocation schema in this header; changing a region size or
+ * order must update both builders together.
+ */
 struct MropeMxUbLayout {
     uint32_t qGammaOffsetBytes;
     uint32_t kGammaOffsetBytes;

@@ -47,6 +47,26 @@ namespace QkvRmsNormRopeCacheWithKScale {
  * 各 helper 只通过上述固定布局交接数据；输出 scale 仍是每行连续四个 E8M0 byte。
  *
  * LocalMemBar 只约束同一 UB scratch 的 Vector load/store 生命周期，不是 CPU 线程同步。
+ *
+ * 上层入口路由如下：
+ *
+ *   V
+ *     在共享 vf.h 中调用 VScaleFp8D128ToNtdVfImpl，只做 vScale 缩放、
+ *     E4M3 Cast 和 staging 布局，不需要 M-RoPE/MX scratch。
+ *
+ *   Q
+ *     统一进入 QRmsNormMropeMxD128GlobalTileWaveVfImpl<HAS_Q_TAIL>。每个 token
+ *     的完整 16-head batch 各占一个 scratch record；若 Nq%16==8，每两个
+ *     token 的 tail 共用一个 record，奇数末 token 只使用低八行。整个 tile
+ *     按 Stage-all -> Scale-all -> Quant-all 排布，以常数次屏障换取更大的
+ *     Vector 指令窗口。
+ *
+ *   K
+ *     Nk==8 时复用 GlobalTileWave<true>，每两个 token 填满 16 行；
+ *     Nk 为 2/4 时进入 KRmsNormMropeMxD128RowBatch16EvenVfImpl，循环复用一个
+ *     RowBatch16 record；不足一批或其他 Nk 由 KRmsNormMropeMxD128VfImpl 逐行处理。
+ *     这些分支只改变 SIMD lane 利用率和 scratch 生命周期，不改变每行四个
+ *     D32 scale、E8M0/E4M3 公式和输出顺序。
  */
 
 constexpr uint32_t MROPE_MX_FP32_ABS_MASK = 0x7fffffffU;
