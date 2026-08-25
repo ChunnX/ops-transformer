@@ -511,7 +511,8 @@ static ge::graphStatus CheckOptionalTensorList(gert::InferShapeContext* context,
     // tensorList size should equals with weight's size
     OP_CHECK_IF(tensorSize != weightGroupedSize, OP_LOGE(context->GetNodeName(),
               "%s size[%lu] must be equal with weight size[%lu].", tensorType.c_str(), tensorSize, weightGroupedSize), return GRAPH_FAILED);
-    bool isSingleWeight = (weightGroupedSize == 1 && groupType != GMM_NO_SPLIT);
+    bool isSingleWeight = (weightGroupedSize == 1 && groupType != GMM_NO_SPLIT &&
+                            (groupType == GMM_SPLIT_K || shape->GetDimNum() != GMM_SEPARATED_WEIGHT_DIM));
     auto w0Desc = context->GetDynamicInputDesc(GMM_INDEX_IN_WEIGHT, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, w0Desc);
     bool isAntiquantInt4 = (w0Desc->GetDataType() == DT_INT4 && tensorType.find("antiquant") != std::string::npos);
@@ -697,7 +698,10 @@ static ge::graphStatus CheckGroupedMatmulAntiQuantGroupSize(const gert::InferSha
 {
     auto antiquantScale0Shape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_SCALE, 0);
     auto dimNum = antiquantScale0Shape->GetDimNum();
-    bool isSingleWeight = ((paramsInfo.numWeight == 1UL) && (gmmAttrs.groupType != GMM_NO_SPLIT));
+    bool isSingleWeight = ((paramsInfo.numWeight == 1UL) && (gmmAttrs.groupType != GMM_NO_SPLIT) &&
+                            (gmmAttrs.groupType == GMM_SPLIT_K ||
+                             context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, 0)->GetDimNum() !=
+                                 GMM_SEPARATED_WEIGHT_DIM));
     int64_t pergroupSize = GetPergroupSize(gmmAttrs, isSingleWeight,
                                            context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, 0), antiquantScale0Shape);
     OP_CHECK_IF(gmmAttrs.transposeWeight && pergroupSize % 2 != 0,  // 2: a factor
@@ -1263,6 +1267,13 @@ static ge::graphStatus CheckCaseSplitM(gert::InferShapeContext* context, bool tr
     const size_t& xSize = paramsInfo.numX;
     const size_t& weightSize = paramsInfo.numWeight;
     const size_t& ySize = paramsInfo.numY;
+    if ((xSize == 1UL) && (weightSize == 1UL) && (ySize == 1UL) &&
+        context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, 0)->GetDimNum() == GMM_SEPARATED_WEIGHT_DIM) {
+        OP_CHECK_IF(SplitMSingleXSeparatedWeightSingleY(context, transposeWeight, paramsInfo) != GRAPH_SUCCESS,
+                  OP_LOGE(context->GetNodeName(), "Split m, one-element separated weight case failed."),
+                  return GRAPH_FAILED);
+        return GRAPH_SUCCESS;
+    }
     if ((xSize == 1UL) && (weightSize == 1UL) && (ySize == 1UL)) {
         OP_CHECK_IF(SplitMSingleXSingleWeightSingleY(context, transposeWeight, paramsInfo) != GRAPH_SUCCESS,
                   OP_LOGE(context->GetNodeName(), "Split m, single x, single weight, single y case failed."),
