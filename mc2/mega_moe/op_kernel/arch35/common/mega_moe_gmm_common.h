@@ -32,6 +32,42 @@ constexpr uint32_t SCALE_K_L1_RATE = 2U;
 
 using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 1>; // 3: SwizzleOffset
 
+// FullLoad 至少需要两份覆盖 512 个 K 元素的 B/ScaleB 窗口，剩余 L1 用于完整驻留 A/ScaleA。
+__aicore__ inline uint32_t CalcMaxGenericA4W4FullLoadM(uint32_t k)
+{
+    constexpr uint64_t blockMAlign = 16U;
+    constexpr uint64_t minFullLoadKL1Units = 2U;
+    constexpr uint64_t scaleGroupK = 64U;
+    constexpr uint64_t scaleBytesPerGroup = MXFP_MULTI_BASE_SIZE;
+    constexpr uint64_t scaleTransferBytes = 64U * 1024U;
+    constexpr uint64_t fp4ElementsPerByte = 2U;
+
+    if (k < minFullLoadKL1Units * L1_TILE_K) {
+        return 0U;
+    }
+
+    uint64_t alignedK = Ops::Base::CeilAlign(static_cast<uint64_t>(k), scaleGroupK);
+    uint64_t aBytesPerRow = alignedK / fp4ElementsPerByte;
+    uint64_t scaleABytesPerRow = alignedK / scaleGroupK * scaleBytesPerGroup;
+    constexpr uint64_t bBytesPerUnit = static_cast<uint64_t>(L1_TILE_N) * L1_TILE_K / fp4ElementsPerByte;
+    constexpr uint64_t scaleBBytesPerUnit =
+        static_cast<uint64_t>(L1_TILE_N) * L1_TILE_K / scaleGroupK * scaleBytesPerGroup;
+    constexpr uint64_t residentABudget =
+        AscendC::TOTAL_L1_SIZE - 2U * minFullLoadKL1Units * (bBytesPerUnit + scaleBBytesPerUnit);
+    uint64_t maxMByL1 = residentABudget / (aBytesPerRow + scaleABytesPerRow);
+    uint64_t maxMByScaleTransfer = scaleTransferBytes / scaleABytesPerRow;
+    uint64_t maxM = Blaze::Gemm::Min(maxMByL1, maxMByScaleTransfer);
+    return static_cast<uint32_t>(maxM / blockMAlign * blockMAlign);
+}
+
+__aicore__ inline bool CanUseGenericA4W4FullLoad(uint32_t m, uint32_t k, uint32_t tileM)
+{
+    if (m == 0U || m >= tileM) {
+        return false;
+    }
+    return Ops::Base::CeilAlign(m, 16U) <= CalcMaxGenericA4W4FullLoadM(k);
+}
+
 // 根据数据类型路径选择对应的 BlockMmad 实现。
 template <bool IsA8W4, typename C>
 struct BlockMmadSelector;
@@ -280,20 +316,6 @@ struct Config {
 
         uint64_t scaleKL1 = scaleFactor * kL1;
         return GenericAFullLoadL1Config{true, MakeL1Params(kL1, scaleKL1)};
-    }
-
-    static __aicore__ inline bool CanUseGenericAFullLoad(uint32_t m, uint32_t k, uint32_t tileM)
-    {
-        if constexpr (IsA8W4 || GenericFullLoadMode != Blaze::Gemm::A_FULL_LOAD_MODE ||
-                      !Blaze::Gemm::IsFp4<ElementA>() || !Blaze::Gemm::IsFp4<ElementB>()) {
-            return false;
-        }
-        if (m == 0U || m >= tileM) {
-            return false;
-        }
-        constexpr uint32_t blockMAlign = 16U;
-        uint32_t blockM = Ops::Base::CeilAlign(m, blockMAlign);
-        return CalcGenericAFullLoadL1Config(blockM, L1_TILE_N, k).fits;
     }
 
     static __aicore__ inline BlockMmadTilingConfig MakeAdaptiveBlockMmadTilingConfig(uint32_t m, uint32_t k)

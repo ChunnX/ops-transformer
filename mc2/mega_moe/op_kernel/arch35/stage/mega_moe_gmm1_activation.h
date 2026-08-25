@@ -1096,16 +1096,12 @@ __aicore__ inline void RunGmm1GenericByWeightFormat(const GmmExecutionConfig &gm
                                                     bool allowWeightL2Bypass = false,
                                                     CriticalPathTileTraceContext *traceContext = nullptr)
 {
-    using GenericAFullLoadConfig =
-        GmmKernel::Config<false, COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t, QuantScaleType,
-                          QuantScaleType, false, TopkWeightsPrefetch, IsShared, false, IsGmm1Interleaved,
-                          IsWaveFlagGrained, Blaze::Gemm::A_FULL_LOAD_MODE>;
     bool useGenericAFullLoad = false;
     if constexpr (EnableGenericAFullLoad) {
         useGenericAFullLoad =
-            persistentBlockMmadContext == nullptr && GenericAFullLoadConfig::CanUseGenericAFullLoad(
-                                                         static_cast<uint32_t>(Get<M_VALUE>(problemShape)),
-                                                         static_cast<uint32_t>(Get<K_VALUE>(problemShape)), Gmm1TileM);
+            persistentBlockMmadContext == nullptr &&
+            GmmKernel::CanUseGenericA4W4FullLoad(static_cast<uint32_t>(Get<M_VALUE>(problemShape)),
+                                                 static_cast<uint32_t>(Get<K_VALUE>(problemShape)), Gmm1TileM);
     }
 
     if (gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
