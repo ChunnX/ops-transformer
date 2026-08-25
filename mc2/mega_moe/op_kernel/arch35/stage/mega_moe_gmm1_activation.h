@@ -73,25 +73,11 @@ __aicore__ inline void WaitForGmm1InputReady(const GMMAddrInfo &gmmAddrInfo, con
     uint32_t targetValue = (mLoc + config.tileM > config.m) ? (config.m - mLoc) : config.tileM;
     uint64_t flagOffset = static_cast<uint64_t>(waveIdx) * INT_CACHELINE;
     __gm__ int32_t *flagValueAddr = gmmAddrInfo.dispatchToGmm1Flag + flagOffset;
-#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
-    int32_t currentValue = AscendC::ReadGmByPassDCache(flagValueAddr);
-    if (targetValue != static_cast<uint32_t>(currentValue)) {
-        uint32_t waitBegin = MegaMoeWaveTraceDetail::BeginWaitInterval(gmmAddrInfo.traceWaitContext);
-        do {
-            int64_t st = AscendC::GetSystemCycle();
-            while (AscendC::GetSystemCycle() - st < 100) {
-            }
-            currentValue = AscendC::ReadGmByPassDCache(flagValueAddr);
-        } while (targetValue != static_cast<uint32_t>(currentValue));
-        MegaMoeWaveTraceDetail::EndWaitInterval(gmmAddrInfo.traceWaitContext, waitBegin);
-    }
-#else
     while (targetValue != AscendC::ReadGmByPassDCache(flagValueAddr)) {
         int64_t st = AscendC::GetSystemCycle();
         while (AscendC::GetSystemCycle() - st < 100) {
         }
     }
-#endif
 }
 
 namespace GmmKernel {
@@ -661,25 +647,11 @@ __aicore__ inline void WaitGmm1TileStatus(const GMMAddrInfo &gmmAddrInfo,
     __gm__ int32_t *statusAddr =
         gmmAddrInfo.gmm1TileStatus + static_cast<uint64_t>(loopIdx) * INT_CACHELINE;
     int32_t roundTag = static_cast<int32_t>(expertIdx + 1);
-#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
-    int32_t currentTag = AscendC::ReadGmByPassDCache(statusAddr);
-    if (currentTag != roundTag) {
-        uint32_t waitBegin = MegaMoeWaveTraceDetail::BeginWaitInterval(gmmAddrInfo.traceWaitContext);
-        do {
-            int64_t startCycle = AscendC::GetSystemCycle();
-            while (AscendC::GetSystemCycle() - startCycle < 100) {
-            }
-            currentTag = AscendC::ReadGmByPassDCache(statusAddr);
-        } while (currentTag != roundTag);
-        MegaMoeWaveTraceDetail::EndWaitInterval(gmmAddrInfo.traceWaitContext, waitBegin);
-    }
-#else
     while (AscendC::ReadGmByPassDCache(statusAddr) != roundTag) {
         int64_t startCycle = AscendC::GetSystemCycle();
         while (AscendC::GetSystemCycle() - startCycle < 100) {
         }
     }
-#endif
 }
 
 // Prefetch 路径的 AIV0 等待 GM tile 就绪，再执行 SwiGLU/量化。

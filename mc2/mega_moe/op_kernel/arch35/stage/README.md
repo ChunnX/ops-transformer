@@ -156,25 +156,17 @@ rankId + topkIndex + destinationRow
 
 每个 destination row 只归属一个 core。core 完成某 tile 中自己负责的 row 后，通过 AtomicAdd 累加实际 ready row 数。所有 core 的计数达到该 tile 的目标 row 数后，GMM1 才会启动。
 
-## 7. 保留的 trace
+## 7. 性能分支约束
 
-本次改造保留原 wave trace 结构，并继续统计：
-
-- Dispatch 总区间；
-- transfer pipeline；
-- MTE3 reuse wait；
-- stream drain wait；
-- ready 发布前同步等待。
-
-trace 仅通过既有 `MEGA_MOE_ENABLE_WAVE_TRACE` 宏控制，没有新增打印。
+性能分支不包含设备侧周期读取、事件记录、聚合计数或结果写回。阶段耗时应在独立打点分支中分析，避免测量逻辑进入正式性能路径。
 
 ## 8. 当前仍需通过实测判断的开销
 
-当前版本仍有两项需要通过 trace 量化的成本：
+当前版本仍有两项需要在独立打点分支中量化的成本：
 
 1. 每个 AIV1 core 独立 compact 自己用到的 source rank，以避免新增跨核 descriptor 和同步；
 2. 大 expert 跨多个 wave 时，Gather 仍可能从前序 mask batch 开始扫描，再跳到本 wave 所需 ordinal。
 
-这两项应先结合保留的 trace 判断实际占比，再决定是否引入 mask cursor 或共享索引。当前
+这两项应先结合实测判断实际占比，再决定是否引入 mask cursor 或共享索引。当前
 版本已删除全 wave 的 Plan/Gather/Replay、跨 wave rank-round cursor、旧 Layer 和
 rank-major transfer stream。

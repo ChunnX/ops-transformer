@@ -1,12 +1,14 @@
 # MegaMoe A8W8 Wave 关键路径打点
 
+> 当前性能分支已移除设备侧打点实现。本目录仅保留离线解析工具，用于读取由对应 trace 分支生成的 raw 文件；在本分支定义打点宏不会启用 kernel 记录。
+
 该诊断构建记录 AIC、AIV0、AIV1 在各个 wave 上的 Dispatch、GMM1、Activation、GMM2、Combine，
 并把显式轮询等待保存为父阶段内部的独立时间区间。
 
 协议和报告结构参考 `ascendc-agent-toolkit` 的 `instrument-ascendc-critical-path` skill，
 基准版本为 `b14f3bd`；解析器基于其中已验证的 MegaMoe v3 工具适配。
 
-## 注意
+## Trace 分支注意事项
 
 - `MEGA_MOE_ENABLE_WAVE_TRACE=1` 时，算子正常计算完成后会用 trace 覆盖输出 `y`，不能检查精度。
 - 事件先写入业务 workspace 末尾已有的 50 MiB 保留区；只有 kernel 结束时才复制到 `y`。

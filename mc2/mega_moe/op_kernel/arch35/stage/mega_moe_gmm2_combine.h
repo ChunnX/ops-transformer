@@ -316,16 +316,6 @@ struct WaveCombineScratch {
     LocalTensor<float> quantTempTensor;
 };
 
-// Accumulated wall-clock intervals for one Combine wave. The trace writer emits
-// these counters once per wave, avoiding per-token trace records.
-struct WaveCombineTraceMetrics {
-    uint32_t metaInfoCopyCycles = 0U;
-    uint32_t rowPrepareCycles = 0U;
-    uint32_t mte3IssueCycles = 0U;
-    uint32_t mte3ReuseWaitCycles = 0U;
-    uint32_t mte3DrainWaitCycles = 0U;
-};
-
 constexpr uint32_t WAVE_COMBINE_NO_QUANT_ROW_BUFFER_NUM = 6U;
 constexpr uint32_t WAVE_COMBINE_QUANT_ROW_BUFFER_NUM = 2U;
 constexpr uint32_t WAVE_COMBINE_UB_BASE = 64U * 1024U;
@@ -355,16 +345,12 @@ __aicore__ inline WorkRange GetWaveCombineOwnedRange(const WaveCombineConfig &co
 
 // 回收当前 wave 的 Combine 发送在行环形 buffer 上产生的事件。
 template <uint8_t CombineMode>
-__aicore__ inline void DrainWaveCombineRowRing(uint32_t issuedRowCount,
-                                               WaveCombineTraceMetrics *traceMetrics)
+__aicore__ inline void DrainWaveCombineRowRing(uint32_t issuedRowCount)
 {
     constexpr uint32_t rowBufferCount =
         CombineMode == COMBINE_NO_QUANT ? WAVE_COMBINE_NO_QUANT_ROW_BUFFER_NUM :
                                           WAVE_COMBINE_QUANT_ROW_BUFFER_NUM;
     uint32_t activeSlotCount = issuedRowCount < rowBufferCount ? issuedRowCount : rowBufferCount;
-#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
-    uint32_t traceBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
-#endif
     if (activeSlotCount > 0U) {
         WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
     }
@@ -385,36 +371,22 @@ __aicore__ inline void DrainWaveCombineRowRing(uint32_t issuedRowCount,
             WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID5);
         }
     }
-#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
-    if (traceMetrics != nullptr && activeSlotCount != 0U) {
-        traceMetrics->mte3DrainWaitCycles += MegaMoeWaveTraceDetail::Now() - traceBegin;
-    }
-#endif
 }
 
 // 加载一段连续 wave Combine token 的 metadata。
 __aicore__ inline void PreloadWaveCombineMetaInfo(const Params &params, WaveCombineScratch &scratch,
                                                    uint64_t gmTokenOffset, uint32_t tokenCount,
-                                                   uint32_t ubTokenOffset,
-                                                   WaveCombineTraceMetrics *traceMetrics)
+                                                   uint32_t ubTokenOffset)
 {
     if (tokenCount == 0U) {
         return;
     }
-#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
-    uint32_t traceBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
-#endif
     LocalTensor<int32_t> metaInfoUb = scratch.metaInfoTensor[ubTokenOffset * META_INFO_SIZE];
     GlobalTensor<int32_t> metaInfoGm;
     metaInfoGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.metaInfoPtr));
     DataCopy(metaInfoUb, metaInfoGm[gmTokenOffset * META_INFO_SIZE], tokenCount * META_INFO_SIZE);
     SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
     WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
-#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
-    if (traceMetrics != nullptr) {
-        traceMetrics->metaInfoCopyCycles += MegaMoeWaveTraceDetail::Now() - traceBegin;
-    }
-#endif
 }
 
 // 搬运并按需量化一个 wave Combine token 后发送；函数内部不包含 GMM2-ready 依赖。
@@ -423,27 +395,13 @@ __aicore__ inline void SendWaveCombineToken(const WaveCombineConfig &context,
                                             const WaveCombineBufferConfig &bufferConfig,
                                             WaveCombineScratch &scratch, const Params &params,
                                             GlobalTensor<bfloat16_t> &gmm2OutGm, uint64_t gmRemoteBaseOffset,
-                                            uint32_t tokenLocal, LocalTensor<int32_t> &tokenMetaInfo, uint32_t slot,
-                                            WaveCombineTraceMetrics *traceMetrics)
+                                            uint32_t tokenLocal, LocalTensor<int32_t> &tokenMetaInfo, uint32_t slot)
 {
     TEventID eventId =
         static_cast<TEventID>(static_cast<int32_t>(EVENT_ID0) + static_cast<int32_t>(slot));
-#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
-    uint32_t traceReuseBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
-#endif
     if constexpr (IsBufferReuse) {
         WaitFlag<HardEvent::MTE3_MTE2>(eventId);
     }
-#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
-    uint32_t tracePrepareBegin = 0U;
-    if (traceMetrics != nullptr) {
-        uint32_t traceAfterReuse = MegaMoeWaveTraceDetail::Now();
-        if constexpr (IsBufferReuse) {
-            traceMetrics->mte3ReuseWaitCycles += traceAfterReuse - traceReuseBegin;
-        }
-        tracePrepareBegin = traceAfterReuse;
-    }
-#endif
     uint32_t slotElementOffset = slot * bufferConfig.slotStrideBytes / sizeof(bfloat16_t);
     LocalTensor<bfloat16_t> rowUb = scratch.rowBufferTensor[slotElementOffset];
     DataCopyExtParams gm2UbParams{1U, bufferConfig.rowBytes, 0U, 0U, 0U};
@@ -453,20 +411,8 @@ __aicore__ inline void SendWaveCombineToken(const WaveCombineConfig &context,
     if constexpr (CombineMode == COMBINE_NO_QUANT) {
         SetFlag<HardEvent::MTE2_MTE3>(eventId);
         WaitFlag<HardEvent::MTE2_MTE3>(eventId);
-#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
-        uint32_t traceIssueBegin = 0U;
-        if (traceMetrics != nullptr) {
-            traceIssueBegin = MegaMoeWaveTraceDetail::Now();
-            traceMetrics->rowPrepareCycles += traceIssueBegin - tracePrepareBegin;
-        }
-#endif
         CombineImpl::SendCombineTokenRow<bfloat16_t>(
             context.common.tokenHiddenDim, gmRemoteBaseOffset, tokenMetaInfo, rowUb, params);
-#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
-        if (traceMetrics != nullptr) {
-            traceMetrics->mte3IssueCycles += MegaMoeWaveTraceDetail::Now() - traceIssueBegin;
-        }
-#endif
     } else {
         LocalTensor<bfloat16_t> quantUb =
             scratch.rowBufferTensor[slotElementOffset + bufferConfig.rowStrideBytes / sizeof(bfloat16_t)];
@@ -476,23 +422,11 @@ __aicore__ inline void SendWaveCombineToken(const WaveCombineConfig &context,
             quantUb, rowUb, scratch.quantTempTensor, context.common.tokenHiddenDim);
         SetFlag<HardEvent::V_MTE3>(eventId);
         WaitFlag<HardEvent::V_MTE3>(eventId);
-#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
-        uint32_t traceIssueBegin = 0U;
-        if (traceMetrics != nullptr) {
-            traceIssueBegin = MegaMoeWaveTraceDetail::Now();
-            traceMetrics->rowPrepareCycles += traceIssueBegin - tracePrepareBegin;
-        }
-#endif
         using Fp8Type = typename std::conditional<CombineMode == MXFP8_E4M3_COMM_QUANT,
                                                   fp8_e4m3fn_t, fp8_e5m2_t>::type;
         LocalTensor<Fp8Type> quantSendUb = quantUb.template ReinterpretCast<Fp8Type>();
         CombineImpl::SendCombineTokenRow<Fp8Type>(
             bufferConfig.quantRowElements, gmRemoteBaseOffset, tokenMetaInfo, quantSendUb, params);
-#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
-        if (traceMetrics != nullptr) {
-            traceMetrics->mte3IssueCycles += MegaMoeWaveTraceDetail::Now() - traceIssueBegin;
-        }
-#endif
     }
     SetFlag<HardEvent::MTE3_MTE2>(eventId);
 }
@@ -503,8 +437,7 @@ __aicore__ inline void CombineWaveTokenRange(const WaveCombineConfig &context,
                                              const WaveCombineBufferConfig &bufferConfig,
                                              WaveCombineScratch &scratch, const Params &params,
                                              GM_ADDR gmm2OutGlobal, uint32_t tokenStart, uint32_t tokenCount,
-                                             uint32_t metaInfoUbTokenOffset, uint32_t &rowSequence,
-                                             WaveCombineTraceMetrics *traceMetrics)
+                                             uint32_t metaInfoUbTokenOffset, uint32_t &rowSequence)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -530,7 +463,7 @@ __aicore__ inline void CombineWaveTokenRange(const WaveCombineConfig &context,
             scratch.metaInfoTensor[(metaInfoUbTokenOffset + tokenIdxInSlice) * META_INFO_SIZE];
         SendWaveCombineToken<CombineMode, false>(context, bufferConfig, scratch, params, gmm2OutGm,
                                                  gmRemoteBaseOffset, tokenStart + tokenIdxInSlice,
-                                                 tokenMetaInfo, slot, traceMetrics);
+                                                 tokenMetaInfo, slot);
     }
     for (; tokenIdxInSlice < tokenCount; ++tokenIdxInSlice, ++rowSequence) {
         uint32_t slot = rowSequence % rowBufferCount;
@@ -538,7 +471,7 @@ __aicore__ inline void CombineWaveTokenRange(const WaveCombineConfig &context,
             scratch.metaInfoTensor[(metaInfoUbTokenOffset + tokenIdxInSlice) * META_INFO_SIZE];
         SendWaveCombineToken<CombineMode, true>(context, bufferConfig, scratch, params, gmm2OutGm,
                                                 gmRemoteBaseOffset, tokenStart + tokenIdxInSlice,
-                                                tokenMetaInfo, slot, traceMetrics);
+                                                tokenMetaInfo, slot);
     }
 }
 
@@ -558,50 +491,22 @@ __aicore__ inline void WaitForGmm2InputReady(const GMMAddrInfo &gmmAddrInfo, con
                                Ops::Base::CeilDiv(config.k * sourceNFactor, L1_TILE_N);
         uint64_t flagOffset = static_cast<uint64_t>(waveIdx) * INT_CACHELINE;
         __gm__ int32_t *flagValueAddr = gmmAddrInfo.activationToGmm2Flag + flagOffset;
-#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
-        int32_t currentValue = AscendC::ReadGmByPassDCache(flagValueAddr);
-        if (targetLoops != static_cast<uint32_t>(currentValue)) {
-            uint32_t waitBegin = MegaMoeWaveTraceDetail::BeginWaitInterval(gmmAddrInfo.traceWaitContext);
-            do {
-                int64_t st = AscendC::GetSystemCycle();
-                while (AscendC::GetSystemCycle() - st < 100) {
-                }
-                currentValue = AscendC::ReadGmByPassDCache(flagValueAddr);
-            } while (targetLoops != static_cast<uint32_t>(currentValue));
-            MegaMoeWaveTraceDetail::EndWaitInterval(gmmAddrInfo.traceWaitContext, waitBegin);
-        }
-#else
         while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
             int64_t st = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - st < 100) {
             }
         }
-#endif
     } else {
         GmmKernel::BlockScheduler gmmBlockScheduler(
             {config.m, config.k, config.n},
             GmmKernel::BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(config.activationTileM),
                                                             static_cast<int64_t>(L1_TILE_N))});
         uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
-#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
-        int32_t currentValue = AscendC::ReadGmByPassDCache(gmmAddrInfo.activationToGmm2Flag);
-        if (targetLoops != static_cast<uint32_t>(currentValue)) {
-            uint32_t waitBegin = MegaMoeWaveTraceDetail::BeginWaitInterval(gmmAddrInfo.traceWaitContext);
-            do {
-                int64_t st = AscendC::GetSystemCycle();
-                while (AscendC::GetSystemCycle() - st < 100) {
-                }
-                currentValue = AscendC::ReadGmByPassDCache(gmmAddrInfo.activationToGmm2Flag);
-            } while (targetLoops != static_cast<uint32_t>(currentValue));
-            MegaMoeWaveTraceDetail::EndWaitInterval(gmmAddrInfo.traceWaitContext, waitBegin);
-        }
-#else
         while (targetLoops != AscendC::ReadGmByPassDCache(gmmAddrInfo.activationToGmm2Flag)) {
             int64_t st = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - st < 100) {
             }
         }
-#endif
     }
 }
 
@@ -1409,33 +1314,18 @@ __aicore__ inline void WaitWaveGmm2GroupReady(
 {
     __gm__ int32_t *counterAddr =
         GetCombineSyncCounterAddress(gmmAddrInfo.gmm2CombineSyncCounter, groupIndex);
-#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
-    int32_t currentValue = AscendC::ReadGmByPassDCache(counterAddr);
-    if (currentValue < static_cast<int32_t>(expectedTiles)) {
-        uint32_t waitBegin = MegaMoeWaveTraceDetail::BeginWaitInterval(gmmAddrInfo.traceWaitContext);
-        do {
-            int64_t waitStart = AscendC::GetSystemCycle();
-            while (AscendC::GetSystemCycle() - waitStart < 100) {
-            }
-            currentValue = AscendC::ReadGmByPassDCache(counterAddr);
-        } while (currentValue < static_cast<int32_t>(expectedTiles));
-        MegaMoeWaveTraceDetail::EndWaitInterval(gmmAddrInfo.traceWaitContext, waitBegin);
-    }
-#else
     while (AscendC::ReadGmByPassDCache(counterAddr) < static_cast<int32_t>(expectedTiles)) {
         int64_t waitStart = AscendC::GetSystemCycle();
         while (AscendC::GetSystemCycle() - waitStart < 100) {
         }
     }
-#endif
 }
 
 template <uint8_t CombineMode>
 __aicore__ inline void RunWaveExpertCombineStage(
     const WaveCombineConfig &context, const WaveCombineBufferConfig &bufferConfig,
     WaveCombineScratch &scratch, const Params &params, const GMMAddrInfo &gmmAddrInfo,
-    const Gmm2ExpertLoopState &state, uint32_t &rowSequence,
-    WaveCombineTraceMetrics *traceMetrics)
+    const Gmm2ExpertLoopState &state, uint32_t &rowSequence)
 {
     uint32_t currentExpertTokenNum = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
     WorkRange currentCoreTokenRange = GetWaveCombineOwnedRange(context, currentExpertTokenNum);
@@ -1464,10 +1354,10 @@ __aicore__ inline void RunWaveExpertCombineStage(
         PreloadWaveCombineMetaInfo(
             params, scratch,
             static_cast<uint64_t>(state.expertBeforeCnt) + processBegin,
-            processCount, 0U, traceMetrics);
+            processCount, 0U);
         CombineWaveTokenRange<CombineMode>(
             context, bufferConfig, scratch, params, gmmAddrInfo.gmm2OutGlobal,
-            processBegin, processCount, 0U, rowSequence, traceMetrics);
+            processBegin, processCount, 0U, rowSequence);
     }
 }
 
