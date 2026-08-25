@@ -285,7 +285,9 @@ ge::graphStatus GMMTiling::PrepareTilingData(const gert::TilingContext *context)
                         return ge::GRAPH_FAILED);
         }
     }
-    isSingleWeight_ = (context->GetDynamicInputTensor(WEIGHT_INDEX, 1) == nullptr);
+    isSingleWeight_ = (groupType_ == SPLIT_K) ?
+        (context->GetDynamicInputTensor(WEIGHT_INDEX, 1) == nullptr) :
+        (wDimNum != 2U); // split-M 2-D weight is separated/multi-weight, even when list length is 1.
     isSingleX_ = (context->GetDynamicInputTensor(X_INDEX, 1) == nullptr);
     isSingleY_ =
         (splitItem_ == 2 ||
