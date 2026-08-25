@@ -158,6 +158,10 @@ public:
 
         this->Output("y").ParamType(REQUIRED).DataTypeList({ge::DT_BF16}).FormatList({ge::FORMAT_ND});
         this->Output("expert_token_nums").ParamType(REQUIRED).DataTypeList({ge::DT_INT32}).FormatList({ge::FORMAT_ND});
+        this->Output("activation_debug_out")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_BF16})
+            .FormatList({ge::FORMAT_ND});
 
         this->Attr("moe_expert_num").AttrType(REQUIRED).Int();
         this->Attr("ep_world_size").AttrType(REQUIRED).Int();
@@ -177,6 +181,8 @@ public:
         this->Attr("topo_type").AttrType(OPTIONAL).Int(0);
         this->Attr("rank_num_per_server").AttrType(OPTIONAL).Int(2); // 最少2个rank
         this->Attr("topk_weights_type").AttrType(OPTIONAL).Int(0);
+        this->Attr("activation_debug").AttrType(OPTIONAL).Bool(false);
+        this->Attr("activation_debug_size").AttrType(OPTIONAL).Int(0);
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
@@ -318,6 +324,10 @@ public:
         aicore_config_arch22.Output("expert_token_nums")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND});
+        aicore_config_arch22.Output("activation_debug_out")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
 
         aicore_config_arch22.DynamicCompileStaticFlag(true)
