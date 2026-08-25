@@ -667,8 +667,10 @@ __aicore__ inline void MoeV3CountingSortFullLoadBase<T>::WaitXLoadCommon()
 }
 
 // 分桶：扫描 filteredPairsLocal，按 expertOffset 分桶，每桶存 localFlatIdx。
-// FullLoad 模板仅 dropless：expertCountLocal[eo] 即每专家有效行数，无需再统计，第一遍计数扫描消除。
-// bucketCountTbl 直接复用 expertCountLocal；bucketOffsetTbl 为其前缀和；单遍扫描按偏移填入 localFlatIdx。
+// 注意：Phase B ComputeGlobalOffset 已把 expertCountLocal[eo] 改写为本核在专家 e 的全局起始 newPos
+// （dropless 下 = cumulativeSum + prefixForExpert），不再是每专家 count。若直接派生 bucketCountTbl
+// 会用 seed 当 count，前缀和溢出 maxFilteredCount_，bucketBase 写越界。故重新扫 filteredPairsLocal
+// 统计每专家 count；expertCountLocal 保持 seed 语义供 GatherAndWriteByExpert 用。
 template <typename T>
 __aicore__ inline void MoeV3CountingSortFullLoadBase<T>::BucketByExpert()
 {
@@ -676,22 +678,30 @@ __aicore__ inline void MoeV3CountingSortFullLoadBase<T>::BucketByExpert()
     LocalTensor<int32_t> bucketBase = buf_.Get<int32_t>()[bucketBaseOffset_ / sizeof(int32_t)];
     LocalTensor<int32_t> bucketOffsetTbl = buf_.Get<int32_t>()[bucketOffsetTblOffset_ / sizeof(int32_t)];
     LocalTensor<int32_t> bucketCountTbl = buf_.Get<int32_t>()[bucketCountTblOffset_ / sizeof(int32_t)];
-    LocalTensor<int32_t> expertCountLocal = buf_.Get<int32_t>()[expertCountLocalOffset_ / sizeof(int32_t)];
 
-    // bucketCountTbl 直接从 expertCountLocal 派生（dropless 下即每专家有效行数）；前缀和得 bucketOffsetTbl
+    // 第一遍：扫描 filteredPairsLocal 统计每专家 count
+    for (int64_t e = 0; e < actualExpertNum_; e++) {
+        bucketCountTbl.SetValue(e, static_cast<int32_t>(0));
+    }
+    for (int64_t i = 0; i < filteredCount_; i++) {
+        int32_t expertOffset = filteredPairsLocal.GetValue(i * 2 + 1);
+        int32_t cnt = bucketCountTbl.GetValue(expertOffset);
+        bucketCountTbl.SetValue(expertOffset, cnt + 1);
+    }
+
+    // 第二遍：前缀和得 bucketOffsetTbl（sum=filteredCount_，保证 bucketBase 不越界）
     int32_t prefix = 0;
     for (int64_t e = 0; e < actualExpertNum_; e++) {
-        int32_t cnt = expertCountLocal.GetValue(e);
-        bucketCountTbl.SetValue(e, cnt);
         bucketOffsetTbl.SetValue(e, prefix);
-        prefix += cnt;
+        prefix += bucketCountTbl.GetValue(e);
     }
 
-    // 单遍扫描：按 bucketOffsetTbl[eo] + 游标填入 localFlatIdx（游标复用 prefixSumLocalOffset 区）
+    // 第三遍：按 expertOffset 扫填桶；cursorTbl 独立保留（bucketOffsetTbl 须原样供
+    // GatherAndWriteByExpert 读起始偏移，不能当游标递增）。向量化清零替代标量初始化。
     LocalTensor<int32_t> cursorTbl = buf_.Get<int32_t>()[prefixSumLocalOffset_ / sizeof(int32_t)];
-    for (int64_t e = 0; e < actualExpertNum_; e++) {
-        cursorTbl.SetValue(e, static_cast<int32_t>(0));
-    }
+    Duplicate(cursorTbl, static_cast<int32_t>(0), static_cast<int32_t>(expertCountStride_));
+    PipeBarrier<PIPE_V>();
+    SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
     for (int64_t i = 0; i < filteredCount_; i++) {
         int32_t localFlatIdx = filteredPairsLocal.GetValue(i * 2);
         int32_t expertOffset = filteredPairsLocal.GetValue(i * 2 + 1);
