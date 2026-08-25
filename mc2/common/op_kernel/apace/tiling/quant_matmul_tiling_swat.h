@@ -272,6 +272,14 @@ private:
         if (blockNum < platformInfo_.aicNum) {
             AdjustBasicBlock();
         }
+        // 当 M/N 方向 base 块总数小于 2 倍核数时，部分核只算一轮 base 块即结束，
+        // 通信与计算无法充分流水。此时将 baseM 减半使 M 方向块数翻倍，
+        // 让每个核至少能分到两轮 base 块。减半后仍需保持 CUBE_BLOCK 对齐。
+        uint64_t baseMAlignNum = args_.transA ? GetShapeWithDataType<aDataType>(L1_ALIGN_SIZE) : CUBE_BLOCK;
+        uint64_t blockNumAfterAdjust = CeilDiv(args_.m, runInfo_.baseM) * CeilDiv(args_.n, runInfo_.baseN);
+        if (blockNumAfterAdjust < NUM_TWO * platformInfo_.aicNum && runInfo_.baseM >= NUM_TWO * baseMAlignNum) {
+            runInfo_.baseM = runInfo_.baseM / NUM_TWO;
+        }
         CHECK_COND(
             runInfo_.baseM != 0UL && runInfo_.baseN != 0UL && runInfo_.baseK != 0UL,
             "Failed to derive a valid tiling base shape: baseM, baseN, and baseK must all be non-zero.");
