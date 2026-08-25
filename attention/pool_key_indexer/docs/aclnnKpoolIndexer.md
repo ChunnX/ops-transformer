@@ -122,26 +122,27 @@
 
 ```Cpp
 aclnnStatus aclnnPoolKeyIndexerGetWorkspaceSize(
-    const aclTensor *query,
-    const aclTensor *poolKey,
-    const aclTensor *weights,
-    const aclTensor *poolTailK,
-    const aclTensor *actualSeqLengthsQueryOptional,
-    const aclTensor *actualSeqLengthsKeyOptional,
-    const aclTensor *blockTableOptional,
-    const aclTensor *qDescaleOptional,
-    const aclTensor *kDescaleOptional,
-    char            *layoutQueryOptional,
-    char            *layoutKeyOptional,
-    int64_t          topk,
-    int64_t          poolSize,
-    int64_t          maskMode,
-    int64_t          quantMode,
-    bool             returnValue,
-    const aclTensor *sparseIndicesOut,
-    const aclTensor *sparseValuesOut,
-    uint64_t        *workspaceSize,
-    aclOpExecutor  **executor)
+    const aclTensor   *query,
+    const aclTensor   *poolKey,
+    const aclTensor   *weights,
+    const aclIntArray *poolTailK,
+    const aclIntArray *actualSeqLengthsQueryOptional,
+    const aclIntArray *actualSeqLengthsKeyOptional,
+    const aclTensor   *blockTableOptional,
+    const aclTensor   *qDescaleOptional,
+    const aclTensor   *kDescaleOptional,
+    int64_t            topk,
+    int64_t            poolSize,
+    char              *layoutQueryOptional,
+    char              *layoutKeyOptional,
+    int64_t            maskMode,
+    int64_t            quantMode,
+    bool               returnValue,
+    int64_t            keyStride0,
+    const aclTensor   *sparseIndicesOut,
+    const aclTensor   *sparseValuesOut,
+    uint64_t          *workspaceSize,
+    aclOpExecutor    **executor)
 ```
 
 ```Cpp
@@ -161,6 +162,7 @@ aclnnStatus aclnnPoolKeyIndexer(
   > - query、poolKey、weights参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、N（Head Num）表示多头数、D（Head Dim）表示每个头的维度、T表示所有Batch输入样本序列长度的累加和。
   > - S1表示query shape中的S，S2表示poolKey shape中的S，T1表示query shape中的T，T2表示poolKey shape中的T，N1表示query shape中的N，N2表示poolKey shape中的N。
   > - block_num为PageAttention时block总数，block_size为一个block的token数。
+  > - poolTailK、actualSeqLengthsQueryOptional、actualSeqLengthsKeyOptional为Host侧取值输入（ValueDepend），接口层以aclIntArray类型传入（元素类型INT64），非aclTensor。
 
   <table style="undefined;table-layout: fixed; width: 1601px"><colgroup>
   <col style="width: 264px">
@@ -341,6 +343,31 @@ aclnnStatus aclnnPoolKeyIndexer(
       <td>√</td>
     </tr>
     <tr>
+      <td>topk</td>
+      <td>输入</td>
+      <td>展开后需要保留的token数量，对应公式中的topk。可选属性，建议值为2048。</td>
+      <td>
+          <ul>
+                <li>支持[1, 2048]以及3072、4096、5120、6144、7168、8192。</li>
+                <li>需满足topk % pool_size == 0。</li>
+          </ul>
+      </td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>poolSize</td>
+      <td>输入</td>
+      <td>每个pool包含的token数量，对应公式中的pool_size。可选属性，建议值为16。</td>
+      <td>支持[1, 128]。</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
       <td>layoutQueryOptional</td>
       <td>输入</td>
       <td>用于标识输入Query的数据排布格式。</td>
@@ -366,31 +393,6 @@ aclnnStatus aclnnPoolKeyIndexer(
           </ul>
       </td>
       <td>STRING</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>topk</td>
-      <td>输入</td>
-      <td>展开后需要保留的token数量，对应公式中的topk。可选属性，建议值为2048。</td>
-      <td>
-          <ul>
-                <li>支持[1, 2048]以及3072、4096、5120、6144、7168、8192。</li>
-                <li>需满足topk % pool_size == 0。</li>
-          </ul>
-      </td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>poolSize</td>
-      <td>输入</td>
-      <td>每个pool包含的token数量，对应公式中的pool_size。可选属性，建议值为16。</td>
-      <td>支持[1, 128]。</td>
-      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -437,6 +439,22 @@ aclnnStatus aclnnPoolKeyIndexer(
           </ul>
       </td>
       <td>BOOL</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>keyStride0</td>
+      <td>输入</td>
+      <td>poolKey第0轴的stride（元素单位），用于layoutKeyOptional为PA_BBND场景下0轴非连续poolKey的寻址。可选属性，建议值为-1。</td>
+      <td>
+          <ul>
+                <li>-1表示未指定，按连续输入由shape推导stride。</li>
+                <li>指定时取值必须不小于block_size * N2 * D（连续stride）。</li>
+                <li>指定值与poolKey运行时实际stride冲突时报错。</li>
+          </ul>
+      </td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -597,6 +615,7 @@ aclnnStatus aclnnPoolKeyIndexer(
 - 输入属性限制：
   - topk需满足topk % pool_size == 0，pool_size支持[1, 128]，topk支持[1, 2048]以及3072、4096、5120、6144、7168、8192。
   - block_size取值为16的倍数，最大支持1024。
+  - 当layoutKeyOptional为PA_BBND且poolKey为0轴非连续输入时，keyStride0应传入poolKey的实际stride(0)（元素单位，且不小于block_size * N2 * D）；keyStride0为-1时表示未指定，按连续输入推导；keyStride0指定值与poolKey运行时实际stride冲突时报错。
 - 输入数据类型限制：
   - 参数query、poolKey的数据类型应保持一致。
   - 非量化场景（quantMode为-1）下，参数weights的数据类型应与query、poolKey保持一致；量化场景（quantMode为0或1）下，参数weights为FLOAT16或BFLOAT16。
@@ -703,14 +722,12 @@ struct TensorResources {
     void* queryDeviceAddr = nullptr;
     void* poolKeyDeviceAddr = nullptr;
     void* weightsDeviceAddr = nullptr;
-    void* poolTailKDeviceAddr = nullptr;
     void* sparseIndicesDeviceAddr = nullptr;
     void* sparseValuesDeviceAddr = nullptr;
 
     aclTensor* queryTensor = nullptr;
     aclTensor* poolKeyTensor = nullptr;
     aclTensor* weightsTensor = nullptr;
-    aclTensor* poolTailKTensor = nullptr;
     aclTensor* sparseIndicesTensor = nullptr;
     aclTensor* sparseValuesTensor = nullptr;
 };
@@ -722,21 +739,18 @@ int InitializeTensors(TensorResources& resources) {
     std::vector<int64_t> queryShape = {1, 2, 1, 128};
     std::vector<int64_t> poolKeyShape = {1, 2, 1, 128};
     std::vector<int64_t> weightsShape = {1, 2, 1};
-    std::vector<int64_t> poolTailKShape = {1};
     std::vector<int64_t> sparseIndicesShape = {1, 2, 2063};
     std::vector<int64_t> sparseValuesShape = {1, 2, 128};
 
     int64_t queryShapeSize = GetShapeSize(queryShape);
     int64_t poolKeyShapeSize = GetShapeSize(poolKeyShape);
     int64_t weightsShapeSize = GetShapeSize(weightsShape);
-    int64_t poolTailKShapeSize = GetShapeSize(poolTailKShape);
     int64_t sparseIndicesShapeSize = GetShapeSize(sparseIndicesShape);
     int64_t sparseValuesShapeSize = GetShapeSize(sparseValuesShape);
 
     std::vector<float> queryHostData(queryShapeSize, 1);
     std::vector<float> poolKeyHostData(poolKeyShapeSize, 1);
     std::vector<float> weightsHostData(weightsShapeSize, 1);
-    std::vector<int64_t> poolTailKHostData(poolTailKShapeSize, 0);
     std::vector<int32_t> sparseIndicesHostData(sparseIndicesShapeSize, 1);
     std::vector<float> sparseValuesHostData(sparseValuesShapeSize, 1);
 
@@ -754,12 +768,6 @@ int InitializeTensors(TensorResources& resources) {
 
     ret = CreateAclTensor(weightsHostData, weightsShape, &resources.weightsDeviceAddr,
                           aclDataType::ACL_FLOAT16, &resources.weightsTensor);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-      return ret;
-    }
-
-    ret = CreateAclTensor(poolTailKHostData, poolTailKShape, &resources.poolTailKDeviceAddr,
-                          aclDataType::ACL_INT64, &resources.poolTailKTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }
@@ -785,6 +793,7 @@ int ExecutePoolKeyIndexer(TensorResources& resources, aclrtStream stream,
     int64_t maskMode = 3;
     int64_t quantMode = -1;
     bool returnValue = true;
+    int64_t keyStride0 = -1;  // -1表示未指定，按连续输入推导stride
     constexpr const char layerOutStr[] = "BSND";
     constexpr size_t layerOutLen = sizeof(layerOutStr);
     char layoutQuery[layerOutLen];
@@ -799,13 +808,16 @@ int ExecutePoolKeyIndexer(TensorResources& resources, aclrtStream stream,
         LOG_PRINT("memcpy_s layoutKey failed. ERROR: %d\n", memcpyRet);
         return -1;
     }
+    // poolTailK为Host侧取值输入（ValueDepend），以aclIntArray类型传入
+    std::vector<int64_t> poolTailKHostData = {0};
+    aclIntArray* poolTailK = aclCreateIntArray(poolTailKHostData.data(), poolTailKHostData.size());
     aclOpExecutor* executor;
 
     int ret = aclnnPoolKeyIndexerGetWorkspaceSize(resources.queryTensor, resources.poolKeyTensor,
-                                                 resources.weightsTensor, resources.poolTailKTensor,
+                                                 resources.weightsTensor, poolTailK,
                                                  nullptr, nullptr, nullptr, nullptr, nullptr,
-                                                 layoutQuery, layoutKey, topk, poolSize,
-                                                 maskMode, quantMode, returnValue,
+                                                 topk, poolSize, layoutQuery, layoutKey,
+                                                 maskMode, quantMode, returnValue, keyStride0,
                                                  resources.sparseIndicesTensor, resources.sparseValuesTensor,
                                                  workspaceSize, &executor);
 
@@ -827,6 +839,7 @@ int ExecutePoolKeyIndexer(TensorResources& resources, aclrtStream stream,
         LOG_PRINT("aclnnPoolKeyIndexer failed. ERROR: %d\n", ret);
         return ret;
     }
+    aclDestroyIntArray(poolTailK);
 
     return ACL_SUCCESS;
 }
@@ -872,9 +885,6 @@ void CleanupResources(TensorResources& resources, void* workspaceAddr,
     if (resources.weightsTensor) {
       aclDestroyTensor(resources.weightsTensor);
     }
-    if (resources.poolTailKTensor) {
-      aclDestroyTensor(resources.poolTailKTensor);
-    }
     if (resources.sparseIndicesTensor) {
       aclDestroyTensor(resources.sparseIndicesTensor);
     }
@@ -890,9 +900,6 @@ void CleanupResources(TensorResources& resources, void* workspaceAddr,
     }
     if (resources.weightsDeviceAddr) {
       aclrtFree(resources.weightsDeviceAddr);
-    }
-    if (resources.poolTailKDeviceAddr) {
-      aclrtFree(resources.poolTailKDeviceAddr);
     }
     if (resources.sparseIndicesDeviceAddr) {
       aclrtFree(resources.sparseIndicesDeviceAddr);
@@ -1000,6 +1007,7 @@ int main() {
 │  │  maskMode   │      │      │                      │───▶ NPU 执行       │
 │  │  quantMode  │      │      │  workspace + executor│                   │
 │  │  returnValue│      │      │  + stream            │                   │
+│  │  keyStride0 │      │      └──────────────────────┘                   │
 │  └─────────────┘      │      └──────────────────────┘                   │
 │                       │                        │                         │
 │  ┌─────────────┐      │                        ▼                         │
@@ -1014,13 +1022,13 @@ int main() {
 
 | 阶段 | 接口 | 输入 | 输出 |
 |------|------|------|------|
-| 第一段（Host） | `aclnnPoolKeyIndexerGetWorkspaceSize` | 9 个 aclTensor 输入 + 7 个属性 | `workspaceSize` + `aclOpExecutor*` |
+| 第一段（Host） | `aclnnPoolKeyIndexerGetWorkspaceSize` | 9 个输入（poolTailK/actualSeqQ/actualSeqK 为 aclIntArray*，其余为 aclTensor*）+ 8 个属性 | `workspaceSize` + `aclOpExecutor*` |
 | 第二段（Device） | `aclnnPoolKeyIndexer` | `workspace` + `executor` + `stream` | 2 个 aclTensor 输出（sparseIndicesOut + sparseValuesOut） |
 
 #### 接口层输入输出关系
 
 ```
-输入 Tensor (aclTensor*):
+输入 Tensor (aclTensor* / aclIntArray*，poolTailK/actualSeqQ/actualSeqK 为 aclIntArray*):
   [0] query              ─┐
   [1] poolKey             │
   [2] weights             │
@@ -1032,7 +1040,7 @@ int main() {
   [8] kDescale (opt)     ─┘
 
 属性 (Attr):
-  topk, poolSize, layoutQ, layoutK, maskMode, quantMode, returnValue
+  topk, poolSize, layoutQ, layoutK, maskMode, quantMode, returnValue, keyStride0
 ```
 
 #### 可选输入处理（接口层）
@@ -1043,6 +1051,7 @@ int main() {
 | actualSeqK | BSND 时为 null，使用 poolKey shape 的 S2 作为序列长度 |
 | blockTable | 非 PA 布局时为 null |
 | qDescale / kDescale | quantMode=-1 时为 null |
+| keyStride0（属性） | -1（未指定）时按连续输入推导 stride；PA 0 轴非连续时须与实际 stride 一致 |
 
 #### 输出 shape 推导（接口层）
 

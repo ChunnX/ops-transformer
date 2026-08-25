@@ -34,16 +34,18 @@ namespace ge {
  *   - format: ND
  * @li pool_tail_k: The number of valid tokens in the tail (incomplete) pool of each batch.
  *   Value range is [0, pool_size - 1]. \n
- *   - Data types: int32.
+ *   - Data types: int64.
  *   - format: ND
- * @li actual_seq_q: Optional. The valid token count of Query per batch. \n
- *   - Data types: int32.
+ * @li actual_seq_q: Optional. The valid token count of Query per batch.
+ *   In TND scenario, each element represents a prefix sum of token counts. \n
+ *   - Data types: int64.
  *   - format: ND
- * @li actual_seq_k: Optional. The valid token count of Key per batch.
- *   In PageAttention (PA_BSND) scenario, each element represents the token count
+ * @li actual_seq_k: Optional. The valid pool count of pool_key per batch
+ *   (pool count = floor(valid token count / pool_size)).
+ *   In PageAttention (PA_BBND) scenario, each element represents the pool count
  *   of the current batch (not a prefix sum). In TND scenario, each element
- *   represents a prefix sum of token counts. \n
- *   - Data types: int32.
+ *   represents a prefix sum of pool counts. \n
+ *   - Data types: int64.
  *   - format: ND
  * @li block_table: Optional. The block mapping table used in PageAttention KV storage. \n
  *   - Data types: int32.
@@ -63,7 +65,7 @@ namespace ge {
  *   Defaults to 16.
  * @li layout_q: An optional string attribute. The layout of Query, "BSND" or "TND".
  *   Defaults to "BSND".
- * @li layout_k: An optional string attribute. The layout of Key, "BSND", "TND" or "PA_BSND".
+ * @li layout_k: An optional string attribute. The layout of Key, "BSND", "TND" or "PA_BBND".
  *   Defaults to "BSND".
  * @li mask_mode: An optional int attribute. The mask mode.
  *   - 0: defaultMask
@@ -76,6 +78,12 @@ namespace ge {
  * @li return_value: An optional bool attribute. Whether to output sparse_values.
  *   - false: do not output (default)
  *   - true: output sparse_values
+ * @li key_stride0: An optional int attribute. The stride (in element unit) of
+ *   pool_key on axis 0, used for block address calculation when pool_key is
+ *   non-contiguous on axis 0 in the PA_BBND scenario. It must be provided by the
+ *   caller (e.g. read from at::Tensor::stride(0)) because the eager/aclnn path
+ *   does not report the runtime stride. -1 means not specified (contiguous
+ *   input, stride derived from shape). Defaults to -1.
 
  * @par Outputs:
  * @li sparse_indices: The expanded sparse token indices.
@@ -91,7 +99,9 @@ namespace ge {
  *  - head_dim supports 128; query head num (N1) supports [1, 64]; pool_key head num (N2) supports 1.
  *  - block_size must be a multiple of 16 and no greater than 1024.
  *  - Padding invalid data on S1/S2 of query/pool_key is not supported.
- *  - All inputs do not support non-contiguous tensors.
+ *  - pool_key supports non-contiguous input on axis 0 in the PA_BBND scenario
+ *    (the actual stride must be passed via the key_stride0 attribute); all other
+ *    axes must be contiguous. Other inputs do not support non-contiguous tensors.
  *  - Ascend950PR/Ascend950DT supports FP8 (float8_e4m3fn) and MX-FP8 (float8_e8m0 scale)
  *    data types and quantization.
  *  - Atlas A3 training/inference products and Atlas A2 training/inference products
@@ -118,6 +128,7 @@ REG_OP(PoolKeyIndexer)
     .ATTR(mask_mode, Int, 3)
     .ATTR(quant_mode, Int, -1)
     .ATTR(return_value, Bool, false)
+    .ATTR(key_stride0, Int, -1)
     .OP_END_FACTORY_REG(PoolKeyIndexer)
 } // namespace ge
 

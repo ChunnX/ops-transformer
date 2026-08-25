@@ -22,9 +22,15 @@ PoolKeyIndexer ATK PyAclnn 适配器 (AclnnBaseApi)。
 注册名: "aclnn_pool_key_indexer" (对应 YAML aclnn_api_type)
 
 职责:
-  1. init_by_input_data: 构造 aclnn C 接口入参 (aclTensor/ctypes/输出 tensor)
+  1. init_by_input_data: 构造 aclnn C 接口入参 (aclTensor/aclIntArray/ctypes/输出 tensor)
   2. __call__: 调用父类执行 aclnn, 随后用 golden 做归一化
   3. get_cpp_func_signature_type: 返回 C 签名供 -cp 签名校验
+
+aclnn 接口签名(与 op_def 声明顺序一致):
+  - poolTailK / actualSeqQ / actualSeqK 为 ValueDepend(OPTIONAL) 输入,
+    aclnn API 期望 aclIntArray*(Host 侧 int64 值), 非 aclTensor*;
+  - 属性顺序: topk, poolSize, layoutQuery, layoutKey, maskMode,
+    quantMode, returnValue, keyStride0(新增, PA 0轴非连续 stride)。
 """
 
 import ctypes
@@ -34,7 +40,7 @@ import torch
 from atk.configs.dataset_config import InputDataset
 from atk.tasks.api_execute import register
 from atk.tasks.api_execute.aclnn_base_api import AclnnBaseApi
-from atk.tasks.backends.lib_interface.acl_wrapper import TensorPtr
+from atk.tasks.backends.lib_interface.acl_wrapper import TensorPtr, AclIntArray
 
 import pool_key_indexer_api  # noqa: F401  注册 CPU BaseApi
 from pool_key_indexer_api import PKIApi, _construct_block_table  # noqa: F401
@@ -47,6 +53,9 @@ from pool_key_indexer_golden import (
 )
 
 LAYOUT_MAP = {0: "BSND", 1: "TND", 2: "PA_BBND"}
+
+# ValueDepend 可选输入的空指针类型(与 aclIntArray* 签名校验匹配)
+IntAryPtr = ctypes.POINTER(AclIntArray)
 
 
 def _recover_device(device_id):
@@ -119,19 +128,20 @@ class PKIAclnnApi(AclnnBaseApi):
             "const aclTensor* query, "
             "const aclTensor* poolKey, "
             "const aclTensor* weights, "
-            "const aclTensor* poolTailK, "
-            "const aclTensor* actualSeqLengthsQueryOptional, "
-            "const aclTensor* actualSeqLengthsKeyOptional, "
+            "const aclIntArray* poolTailK, "
+            "const aclIntArray* actualSeqLengthsQueryOptional, "
+            "const aclIntArray* actualSeqLengthsKeyOptional, "
             "const aclTensor* blockTableOptional, "
             "const aclTensor* qDescaleOptional, "
             "const aclTensor* kDescaleOptional, "
-            "char* layoutQueryOptional, "
-            "char* layoutKeyOptional, "
             "int64_t topk, "
             "int64_t poolSize, "
+            "char* layoutQueryOptional, "
+            "char* layoutKeyOptional, "
             "int64_t maskMode, "
             "int64_t quantMode, "
             "bool returnValue, "
+            "int64_t keyStride0, "
             "const aclTensor* sparseIndicesOut, "
             "const aclTensor* sparseValuesOut, "
             "uint64_t* workspaceSize, "
@@ -245,37 +255,33 @@ class PKIAclnnApi(AclnnBaseApi):
                 result = result[0]
             return result
 
-        # 9 个 tensor 入参
+        def _convert_int_ary(tensor):
+            # ValueDepend 输入: aclnn 期望 aclIntArray*(Host 侧 int64 值)。
+            # 通过 backend.convert_input_data(list[int64]) -> aclCreateIntArray。
+            if tensor is None:
+                return IntAryPtr()  # 空 aclIntArray 指针(可选输入)
+            if isinstance(tensor, (list, tuple)):
+                if len(tensor) == 0:
+                    return IntAryPtr()
+                values = [ctypes.c_int64(int(v)) for v in tensor]
+            else:
+                if not hasattr(tensor, "shape") or tensor.shape[0] == 0:
+                    return IntAryPtr()
+                values = [
+                    ctypes.c_int64(int(v))
+                    for v in tensor.detach().cpu().reshape(-1).tolist()
+                ]
+            return self.backend.convert_input_data(values)[0]
+
+        # 9 个输入: query/poolKey/weights/blockTable 为 aclTensor,
+        # poolTailK/actualSeqQ/actualSeqK 为 aclIntArray(Host 侧取值)
         input_args.append(_convert(query, "query"))
         input_args.append(_convert(key, "poolKey"))
         input_args.append(_convert(weights, "weights"))
 
-        if (
-            pool_tail_k is not None
-            and hasattr(pool_tail_k, "shape")
-            and pool_tail_k.shape[0] > 0
-        ):
-            input_args.append(_convert(pool_tail_k, "poolTailK"))
-        else:
-            input_args.append(TensorPtr())
-
-        if (
-            act_seq_q is not None
-            and hasattr(act_seq_q, "shape")
-            and act_seq_q.shape[0] > 0
-        ):
-            input_args.append(_convert(act_seq_q, "actualSeqQ"))
-        else:
-            input_args.append(TensorPtr())
-
-        if (
-            act_seq_k is not None
-            and hasattr(act_seq_k, "shape")
-            and act_seq_k.shape[0] > 0
-        ):
-            input_args.append(_convert(act_seq_k, "actualSeqK"))
-        else:
-            input_args.append(TensorPtr())
+        input_args.append(_convert_int_ary(pool_tail_k))
+        input_args.append(_convert_int_ary(act_seq_q))
+        input_args.append(_convert_int_ary(act_seq_k))
 
         if (
             block_table is not None
@@ -290,14 +296,23 @@ class PKIAclnnApi(AclnnBaseApi):
         input_args.append(TensorPtr())  # qDescale
         input_args.append(TensorPtr())  # kDescale
 
-        # 7 个 attr 入参
-        input_args.append(ctypes.c_char_p(layout_query.encode("utf-8")))
-        input_args.append(ctypes.c_char_p(layout_key.encode("utf-8")))
+        # keyStride0: poolKey 0轴非连续时下传实际 stride(0)(元素单位),
+        # 与 torch_extension csrc 行为一致; 连续输入传 -1
+        key_stride0 = -1
+        if hasattr(key, "is_contiguous") and not key.is_contiguous():
+            key_stride0 = int(key.stride(0))
+
+        # 8 个 attr 入参(与 op_def 声明顺序一致):
+        # topk, poolSize, layoutQuery, layoutKey, maskMode, quantMode,
+        # returnValue, keyStride0
         input_args.append(ctypes.c_int64(topk))
         input_args.append(ctypes.c_int64(pool_size))
+        input_args.append(ctypes.c_char_p(layout_query.encode("utf-8")))
+        input_args.append(ctypes.c_char_p(layout_key.encode("utf-8")))
         input_args.append(ctypes.c_int64(mask_mode))
         input_args.append(ctypes.c_int64(quant_mode))
         input_args.append(ctypes.c_bool(return_value))
+        input_args.append(ctypes.c_int64(key_stride0))
 
         # 输出 tensor: indices INT32, values FLOAT
         self._saved_output_structs = []
