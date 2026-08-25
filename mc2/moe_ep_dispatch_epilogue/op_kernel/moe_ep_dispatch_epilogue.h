@@ -43,11 +43,13 @@
 #include "../common/mc2_kernel_utils.h"
 #include "../common/mc2_moe_context.h"
 #include "../common/moe_ep_exception_dump_writer.h"
+#include "../common/moe_ep_profiler.h"
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../common/op_kernel/mc2_moe_context.h"
 #include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
+#include "../../common/op_kernel/moe_ep_profiler.h"
 #endif
 
 namespace MoeEpDispatchEpilogueImpl {
@@ -58,7 +60,9 @@ using namespace AscendC;
 
 static constexpr uint32_t UB_ALIGN = 32U;
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
-static constexpr uint32_t RECV_META_FIELDS = 4;
+// recv_src_metadata is compact in GM: [srcRank, srcToken, srcTopk, srcSlot, recvXIdx].
+// UB staging still uses an aligned stride so that every non-aligned 20-byte copy starts from a 32-byte boundary.
+static constexpr uint32_t RECV_META_FIELDS = 5;
 static constexpr uint8_t BUFFER_NUM = 2;
 static constexpr uint32_t ELEM_ALIGN = 8U;
 static constexpr uint32_t META_TOPK_SECTION = 2U;
@@ -67,29 +71,47 @@ static constexpr uint32_t META_SRC_RANK_OFFSET = 0U;
 static constexpr uint32_t META_TOKEN_IDX_OFFSET = 1U;
 static constexpr uint32_t META_TOPK_IDX_OFFSET = 2U;
 static constexpr uint32_t META_SLOT_IDX_OFFSET = 3U;
+static constexpr uint32_t META_RECV_X_IDX_OFFSET = 4U;
 static constexpr uint32_t HIT_ROW_OFFSET = 0U;
 static constexpr uint32_t HIT_TOPK_OFFSET = 1U;
 static constexpr uint32_t HIT_ENTRY_SIZE = 2U;
-static constexpr uint32_t CACHED_META_TILE = 8192U;
+// Five-field metadata needs 20 bytes per row. A 4096-row tile keeps this cached staging buffer at 80 KiB.
+static constexpr uint32_t CACHED_META_TILE = 4096U;
 static constexpr uint32_t ALIGNED_LEN_256 = 256U;
 static constexpr uint32_t SLOTS_TILE = 128U;
+
+enum class MoeEpDispatchEpilogueProfileStage : uint32_t {
+    KERNEL = 0,
+    PREFIX = 1,
+    PAYLOAD_WAIT = 2,
+    WAIT_BARRIER = 3,
+    COUNT_HITS = 4,
+    WINDOW_OUTPUT = 5,
+    COUNT_BARRIER = 6,
+    RANK_ROW_STARTS = 7,
+    CACHED_RANK_OFFSETS = 8,
+    OUTPUT_SYNC = 9,
+};
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 class MoeEpDispatchEpilogue {
 public:
     __aicore__ inline MoeEpDispatchEpilogue(){};
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR dstBufferSlotIdx, GM_ADDR numRecvPerRank,
-                                GM_ADDR numRecvPerExpert, GM_ADDR cachedRecvSrcMetadata, GM_ADDR recvX,
-                                GM_ADDR recvSrcMetadata, GM_ADDR recvTopkWeights, GM_ADDR recvScales, GM_ADDR workspace,
-                                GM_ADDR tilingGM, TPipe *pipe, const MoeEpDispatchEpilogueInfo *tilingData);
+                                GM_ADDR numRecvPerExpert, GM_ADDR cachedRecvSrcMetadata, GM_ADDR cachedRecvRankOffsets,
+                                GM_ADDR recvX, GM_ADDR recvSrcMetadata, GM_ADDR recvTopkWeights, GM_ADDR recvScales,
+                                GM_ADDR recvRankOffsets, GM_ADDR workspace, GM_ADDR tilingGM, TPipe *pipe,
+                                const MoeEpDispatchEpilogueInfo *tilingData);
     __aicore__ inline void Process();
 
 private:
     __aicore__ inline void ComputePrefixSums();
     __aicore__ inline void CountHits();
+    __aicore__ inline void BuildRankRowStarts();
     __aicore__ inline void WaitDispatch();
     __aicore__ inline void CopyFromWindowByExpert();
     __aicore__ inline void CopyFromWindowByCachedMeta();
+    __aicore__ inline void CopyCachedRankOffsets();
 
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startId, uint32_t &endId,
                                        uint32_t &sendNum);
@@ -109,6 +131,7 @@ private:
     TPipe *tpipe_{nullptr};
     __gm__ Mc2Aclnn::MoeCommContext *mc2Context_{nullptr};
     MoeEpExceptionDump::MoeEpCoreDiagWriter diagWriter_;
+    MOE_EP_PROFILE_DECLARE();
     uint32_t epRankId_{0};
     uint32_t aivId_{0};
     GlobalTensor<int32_t> numRecvPerRankGm_;
@@ -117,12 +140,18 @@ private:
     GlobalTensor<XType> recvXGm_;
     GlobalTensor<float> recvTopkWeightsGm_;
     GlobalTensor<int32_t> recvSrcMetadataGm_;
+    GlobalTensor<int32_t> recvRankOffsetsGm_;
     GlobalTensor<ScalesType> recvScalesGm_;
     GlobalTensor<int32_t> cachedRecvSrcMetadataGm_; // cached 路径专用：来自上一轮 dispatch 的 recv_src_metadata
+    GlobalTensor<int32_t> cachedRecvRankOffsetsGm_; // cached 路径专用：来自上一轮 dispatch 的 rank offsets
 
     GlobalTensor<int32_t> hitCountGm_;
+    GlobalTensor<int32_t> rankHitCountGm_;
 
     LocalTensor<int32_t> ubHitCount_;
+    LocalTensor<int32_t> ubRankHitCount_;
+    LocalTensor<int32_t> ubRankRowStart_;
+    LocalTensor<int32_t> ubRankOffsets_;
     LocalTensor<int64_t> ubRowStart_;
     LocalTensor<int32_t> ubMeta_;
     LocalTensor<int32_t> ubTopkIds_;
@@ -138,6 +167,9 @@ private:
     LocalTensor<int32_t> ubWaitSum_;
 
     TBuf<QuePosition::VECIN> ubHitCountBuf_;
+    TBuf<QuePosition::VECIN> ubRankHitCountBuf_;
+    TBuf<QuePosition::VECIN> ubRankRowStartBuf_;
+    TBuf<QuePosition::VECIN> ubRankOffsetsBuf_;
     TBuf<QuePosition::VECIN> ubRowStartBuf_;
     TBuf<QuePosition::VECIN> ubMetaBuf_;
     TBuf<QuePosition::VECIN> ubTopkIdsBuf_;
@@ -169,7 +201,8 @@ private:
     uint32_t axisKAlign_{0};
     uint32_t paddedTopkElems_{0};
     uint32_t numLocalExperts_{0};
-    uint32_t hitCountStride_{0}; // 对齐到 32B 的 hitCount 存储步长 (int32 元素数)
+    uint32_t hitCountStride_{0};     // 对齐到 32B 的 hitCount 存储步长 (int32 元素数)
+    uint32_t rankHitCountStride_{0}; // per-core rank count/start stride, aligned to 32 bytes
     uint32_t aivNum_{0};
     uint32_t axisK_{0};
     uint32_t axisH_{0};
@@ -204,8 +237,9 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::Init(
     GM_ADDR context, GM_ADDR dstBufferSlotIdx, GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert,
-    GM_ADDR cachedRecvSrcMetadata, GM_ADDR recvX, GM_ADDR recvSrcMetadata, GM_ADDR recvTopkWeights, GM_ADDR recvScales,
-    GM_ADDR workspace, GM_ADDR tilingGM, TPipe *pipe, const MoeEpDispatchEpilogueInfo *tilingData)
+    GM_ADDR cachedRecvSrcMetadata, GM_ADDR cachedRecvRankOffsets, GM_ADDR recvX, GM_ADDR recvSrcMetadata,
+    GM_ADDR recvTopkWeights, GM_ADDR recvScales, GM_ADDR recvRankOffsets, GM_ADDR workspace, GM_ADDR tilingGM,
+    TPipe *pipe, const MoeEpDispatchEpilogueInfo *tilingData)
 {
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
@@ -223,6 +257,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
     mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
     epRankId_ = mc2Context_->epRankId;
+    MOE_EP_PROFILE_INIT(mc2Context_, MoeEpProfileOp::DISPATCH_EPILOGUE, aivNum_);
     constexpr size_t metadataOffset = offsetof(MoeEpDispatchEpilogueTilingData, moeEpDispatchEpilogueInfo) +
                                       offsetof(MoeEpDispatchEpilogueInfo, dumpMetadata);
     MoeEpExceptionDump::WriteMetadata(context, tilingGM + metadataOffset);
@@ -234,13 +269,16 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     numRecvPerRankGm_.SetGlobalBuffer((__gm__ int32_t *)numRecvPerRank);
     numRecvPerExpertGm_.SetGlobalBuffer((__gm__ int64_t *)numRecvPerExpert);
     cachedRecvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t *)cachedRecvSrcMetadata);
+    cachedRecvRankOffsetsGm_.SetGlobalBuffer((__gm__ int32_t *)cachedRecvRankOffsets);
     recvXGm_.SetGlobalBuffer((__gm__ XType *)recvX);
     recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t *)recvSrcMetadata);
+    recvRankOffsetsGm_.SetGlobalBuffer((__gm__ int32_t *)recvRankOffsets);
     if constexpr (HasTopkWeights) {
         recvTopkWeightsGm_.SetGlobalBuffer((__gm__ float *)recvTopkWeights);
     }
 
     hitCountGm_.SetGlobalBuffer((__gm__ int32_t *)(workspace));
+    rankHitCountGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspace + tilingData->rankHitCountOffset));
 
     axisKAlign_ = Ceil(axisK_, ELEM_ALIGN) * ELEM_ALIGN;
     metaBytes_ = (META_TOPK_SECTION * axisKAlign_) * (uint32_t)sizeof(int32_t) + UB_ALIGN;
@@ -258,12 +296,17 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     ubExpertPfx_ = ubExpertPfxBuf_.Get<int64_t>();
     ubWaitStatus_ = waitStatusBuf_.Get<int32_t>();
     ubWaitSum_ = waitSumBuf_.Get<int32_t>();
+    uint32_t ubRankOffsetsBytes = Ceil((epWorldSize_ + 1U) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    tpipe_->InitBuffer(ubRankOffsetsBuf_, ubRankOffsetsBytes);
+    ubRankOffsets_ = ubRankOffsetsBuf_.Get<int32_t>();
 
     if constexpr (!IsCached) {
         hitCountStride_ = Ceil(numLocalExperts_, ELEM_ALIGN) * ELEM_ALIGN;
+        rankHitCountStride_ = Ceil(epWorldSize_, ELEM_ALIGN) * ELEM_ALIGN;
         paddedMetaElems_ = Ceil(META_TOPK_SECTION * axisKAlign_ + META_EXTRA_FIELDS, ELEM_ALIGN) * ELEM_ALIGN;
         paddedTopkElems_ = axisKAlign_;
         uint32_t ubHitCountBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+        uint32_t ubRankCountBytes = Ceil((uint32_t)(epWorldSize_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
         uint32_t ubRowStartBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
         uint32_t ubMetaBytes = Ceil((uint32_t)(SLOTS_TILE * paddedMetaElems_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
         uint32_t ubTopkIdsBytes =
@@ -277,6 +320,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
         tpipe_->InitBuffer(ubRecvCntBuf_, ubRecvCntBytes);
         tpipe_->InitBuffer(ubHitCountBuf_, ubHitCountBytes);
+        tpipe_->InitBuffer(ubRankHitCountBuf_, ubRankCountBytes);
+        tpipe_->InitBuffer(ubRankRowStartBuf_, ubRankCountBytes);
         tpipe_->InitBuffer(ubRowStartBuf_, ubRowStartBytes);
         tpipe_->InitBuffer(ubMetaBuf_, ubMetaBytes);
         tpipe_->InitBuffer(ubTopkIdsBuf_, ubTopkIdsBytes);
@@ -288,6 +333,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         tpipe_->InitBuffer(ubLocalCursorBuf_, ubLocalCursorBytes);
         ubRecvCnt_ = ubRecvCntBuf_.Get<int32_t>();
         ubHitCount_ = ubHitCountBuf_.Get<int32_t>();
+        ubRankHitCount_ = ubRankHitCountBuf_.Get<int32_t>();
+        ubRankRowStart_ = ubRankRowStartBuf_.Get<int32_t>();
         ubRowStart_ = ubRowStartBuf_.Get<int64_t>();
         ubMeta_ = ubMetaBuf_.Get<int32_t>();
         ubTopkIds_ = ubTopkIdsBuf_.Get<int32_t>();
@@ -332,13 +379,48 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::Process()
 {
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                                             MoeEpDispatchEpilogueProfileStage::KERNEL, MoeEpProfileBoundary::BEGIN));
     if constexpr (!IsCached) {
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                                                 MoeEpDispatchEpilogueProfileStage::PREFIX,
+                                                 MoeEpProfileBoundary::BEGIN));
         ComputePrefixSums();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                                                 MoeEpDispatchEpilogueProfileStage::PREFIX, MoeEpProfileBoundary::END));
         WaitDispatch();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchEpilogueProfileStage::WAIT_BARRIER,
+                                                 MoeEpProfileBoundary::BEGIN));
         SyncAll<true>();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchEpilogueProfileStage::WAIT_BARRIER,
+                                                 MoeEpProfileBoundary::END));
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_WAIT_DONE);
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::VECTOR,
+                                                 MoeEpDispatchEpilogueProfileStage::COUNT_HITS,
+                                                 MoeEpProfileBoundary::BEGIN));
         CountHits();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::VECTOR,
+                                                 MoeEpDispatchEpilogueProfileStage::COUNT_HITS,
+                                                 MoeEpProfileBoundary::END));
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchEpilogueProfileStage::COUNT_BARRIER,
+                                                 MoeEpProfileBoundary::BEGIN));
         SyncAll<true>();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchEpilogueProfileStage::COUNT_BARRIER,
+                                                 MoeEpProfileBoundary::END));
+
+        // Every core builds its own compact metadata row starts from the shared per-core rank-count matrix.
+        // The starts stay in local UB, so no post-build cross-core synchronization is needed.
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                                                 MoeEpDispatchEpilogueProfileStage::RANK_ROW_STARTS,
+                                                 MoeEpProfileBoundary::BEGIN));
+        BuildRankRowStarts();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                                                 MoeEpDispatchEpilogueProfileStage::RANK_ROW_STARTS,
+                                                 MoeEpProfileBoundary::END));
 
         uint32_t totalHits = 0;
         for (uint32_t localExpertIdx = 0; localExpertIdx < numLocalExperts_; ++localExpertIdx) {
@@ -346,16 +428,62 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         }
 
         if (totalHits != 0) {
+            MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::MTE2,
+                                                     MoeEpDispatchEpilogueProfileStage::WINDOW_OUTPUT,
+                                                     MoeEpProfileBoundary::BEGIN));
             CopyFromWindowByExpert();
+            MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::MTE2,
+                                                     MoeEpDispatchEpilogueProfileStage::WINDOW_OUTPUT,
+                                                     MoeEpProfileBoundary::END));
         }
+        // recv_x/metadata/weights are consumed immediately by MoeEpCombine in continue mode.  Do not rely on the
+        // diagnostic write below (or on kernel-tail draining) to complete preceding MTE3 writes.
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchEpilogueProfileStage::OUTPUT_SYNC,
+                                                 MoeEpProfileBoundary::BEGIN));
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchEpilogueProfileStage::OUTPUT_SYNC,
+                                                 MoeEpProfileBoundary::END));
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_OUTPUT_DONE);
     } else {
         WaitDispatch();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchEpilogueProfileStage::WAIT_BARRIER,
+                                                 MoeEpProfileBoundary::BEGIN));
         SyncAll<true>();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchEpilogueProfileStage::WAIT_BARRIER,
+                                                 MoeEpProfileBoundary::END));
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_WAIT_DONE);
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::MTE2,
+                                                 MoeEpDispatchEpilogueProfileStage::CACHED_RANK_OFFSETS,
+                                                 MoeEpProfileBoundary::BEGIN));
+        CopyCachedRankOffsets();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::MTE2,
+                                                 MoeEpDispatchEpilogueProfileStage::CACHED_RANK_OFFSETS,
+                                                 MoeEpProfileBoundary::END));
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::MTE2,
+                                                 MoeEpDispatchEpilogueProfileStage::WINDOW_OUTPUT,
+                                                 MoeEpProfileBoundary::BEGIN));
         CopyFromWindowByCachedMeta();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::MTE2,
+                                                 MoeEpDispatchEpilogueProfileStage::WINDOW_OUTPUT,
+                                                 MoeEpProfileBoundary::END));
+        // The cached metadata path ends with MTE3_MTE2 for UB reuse.  Add an explicit producer-completion edge for
+        // the following combine kernel, which consumes all five metadata fields and recv_rank_offsets.
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchEpilogueProfileStage::OUTPUT_SYNC,
+                                                 MoeEpProfileBoundary::BEGIN));
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchEpilogueProfileStage::OUTPUT_SYNC,
+                                                 MoeEpProfileBoundary::END));
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_OUTPUT_DONE);
     }
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                                             MoeEpDispatchEpilogueProfileStage::KERNEL, MoeEpProfileBoundary::END));
+    MOE_EP_PROFILE_FLUSH();
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
@@ -365,6 +493,9 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         return;
     }
 
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                             MoeEpDispatchEpilogueProfileStage::PAYLOAD_WAIT,
+                                             MoeEpProfileBoundary::BEGIN));
     uint32_t mask = 1;
     int32_t sumOfFlag = 0;
     int32_t commpareFlag = static_cast<int32_t>(totalNotifyCnt_);
@@ -389,6 +520,12 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     Duplicate<int32_t>(ubWaitStatus_, 0, totalNotifyCnt_ * UB_ALIGN / sizeof(int32_t));
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy(statusGMTensor, ubWaitStatus_, clearStatusCopyParams);
+    // Dispatch reuses these notification slots in the next continue round.  SyncAll only synchronizes AIVs; it does
+    // not replace the MTE3 completion required before a later kernel can publish the next round's notifications.
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                             MoeEpDispatchEpilogueProfileStage::PAYLOAD_WAIT,
+                                             MoeEpProfileBoundary::END));
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
@@ -411,12 +548,15 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     DataCopyPad(ubRecvCnt_, numRecvPerRankGm_, recvCntCopyParams, recvCntPadParams);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     Duplicate(ubHitCount_, (int32_t)0, numLocalExperts_);
+    Duplicate(ubRankHitCount_, (int32_t)0, epWorldSize_);
 
     for (uint32_t rankId = 0; rankId < epWorldSize_; ++rankId) {
         int32_t slotCnt = ubRecvCnt_.GetValue(rankId);
         if (slotCnt == 0) {
             continue;
         }
+
+        int32_t rankHitCount = 0;
 
         uint32_t slotStart, slotEnd, slotCntPerAiv;
         SplitToCore(static_cast<uint32_t>(slotCnt), aivNum_, slotStart, slotEnd, slotCntPerAiv);
@@ -456,14 +596,100 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                 int32_t curExpertCnt = rsvdCnt;
                 int32_t currentHits = ubHitCount_.GetValue(localExpertId);
                 ubHitCount_.SetValue(localExpertId, currentHits + curExpertCnt);
+                rankHitCount += curExpertCnt;
             }
             SyncFunc<AscendC::HardEvent::V_MTE2>();
         }
+        ubRankHitCount_.SetValue(rankId, rankHitCount);
     }
 
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
     SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopyExtParams hitCountCopyParams{1U, static_cast<uint32_t>(numLocalExperts_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPad(hitCountGm_[(int64_t)aivId_ * hitCountStride_], ubHitCount_, hitCountCopyParams);
+    DataCopyExtParams rankHitCountCopyParams{1U, static_cast<uint32_t>(epWorldSize_ * sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyPad(rankHitCountGm_[(int64_t)aivId_ * rankHitCountStride_], ubRankHitCount_, rankHitCountCopyParams);
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
+}
+
+template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
+__aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::BuildRankRowStarts()
+{
+    // CountHits used ubRankHitCount_ as an MTE3 source. Finish that read before reusing the buffer as the
+    // per-rank prefix contributed by cores preceding this core.
+    SyncFunc<AscendC::HardEvent::MTE3_V>();
+
+    // rankTotal[r] = sum(count[core][r]) for all cores.
+    // corePrefix[r] = sum(count[core][r]) for core < aivId_.
+    Duplicate(ubRankRowStart_, (int32_t)0, epWorldSize_);
+    Duplicate(ubRankHitCount_, (int32_t)0, epWorldSize_);
+
+    // Reuse the metadata staging buffer to batch contiguous core rows. The loop processes the complete matrix in
+    // one tile when it fits, and otherwise splits it by complete core rows.
+    uint32_t ubMetaBytes = Ceil((uint32_t)(SLOTS_TILE * paddedMetaElems_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+    uint32_t rankRowBytes = rankHitCountStride_ * sizeof(int32_t);
+    uint32_t coreRowsPerTile = ubMetaBytes / rankRowBytes;
+    coreRowsPerTile = coreRowsPerTile > aivNum_ ? aivNum_ : coreRowsPerTile;
+
+    DataCopyPadExtParams<int32_t> rankMatrixPadParams{false, 0U, 0U, 0};
+    for (uint32_t coreBase = 0; coreBase < aivNum_; coreBase += coreRowsPerTile) {
+        uint32_t rowsThisTile = (aivNum_ - coreBase > coreRowsPerTile) ? coreRowsPerTile : (aivNum_ - coreBase);
+        uint32_t copyBytes = rowsThisTile * rankRowBytes;
+        DataCopyExtParams rankMatrixCopyParams{1U, copyBytes, 0U, 0U, 0U};
+        DataCopyPad(ubMeta_, rankHitCountGm_[(int64_t)coreBase * rankHitCountStride_], rankMatrixCopyParams,
+                    rankMatrixPadParams);
+        SyncFunc<AscendC::HardEvent::MTE2_V>();
+
+        for (uint32_t localCoreId = 0; localCoreId < rowsThisTile; ++localCoreId) {
+            uint32_t coreId = coreBase + localCoreId;
+            LocalTensor<int32_t> rankCountRow = ubMeta_[localCoreId * rankHitCountStride_];
+            Add(ubRankRowStart_, ubRankRowStart_, rankCountRow, epWorldSize_);
+            if (coreId < aivId_) {
+                Add(ubRankHitCount_, ubRankHitCount_, rankCountRow, epWorldSize_);
+            }
+        }
+
+        // The next tile, or CopyFromWindowByExpert after the last tile, reuses ubMeta_ through MTE2. Wait until all
+        // vector reads of this tile have completed before allowing that overwrite.
+        SyncFunc<AscendC::HardEvent::V_MTE2>();
+    }
+
+    // Convert rank totals and this core's within-rank prefix to the final exclusive row starts. The total number of
+    // rows is bounded by INT32_MAX in tiling. Both the producer and the following consumer use the scalar pipeline,
+    // so no extra synchronization is needed after these SetValue calls.
+    SyncFunc<AscendC::HardEvent::V_S>();
+    int32_t rankPrefix = 0;
+    for (uint32_t rankId = 0; rankId < epWorldSize_; ++rankId) {
+        int32_t rankCount = ubRankRowStart_.GetValue(rankId);
+        int32_t corePrefix = ubRankHitCount_.GetValue(rankId);
+        if (aivId_ == 0U) {
+            ubRankOffsets_.SetValue(rankId, rankPrefix);
+        }
+        ubRankRowStart_.SetValue(rankId, rankPrefix + corePrefix);
+        rankPrefix += rankCount;
+    }
+    if (aivId_ == 0U) {
+        ubRankOffsets_.SetValue(epWorldSize_, rankPrefix);
+        SyncFunc<AscendC::HardEvent::S_MTE3>();
+        DataCopyExtParams offsetsCopyParams{1U, static_cast<uint32_t>((epWorldSize_ + 1U) * sizeof(int32_t)), 0U, 0U,
+                                            0U};
+        DataCopyPad(recvRankOffsetsGm_, ubRankOffsets_, offsetsCopyParams);
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
+    }
+}
+
+template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
+__aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::CopyCachedRankOffsets()
+{
+    if (aivId_ != 0U) {
+        return;
+    }
+
+    DataCopyExtParams offsetsCopyParams{1U, static_cast<uint32_t>((epWorldSize_ + 1U) * sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<int32_t> offsetsPadParams{false, 0U, 0U, 0};
+    DataCopyPad(ubRankOffsets_, cachedRecvRankOffsetsGm_, offsetsCopyParams, offsetsPadParams);
+    SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
+    DataCopyPad(recvRankOffsetsGm_, ubRankOffsets_, offsetsCopyParams);
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
@@ -482,6 +708,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         Add(ubRowStart_, ubRowStart_, ubHitCountRowI64_, numLocalExperts_);
         SyncFunc<AscendC::HardEvent::V_MTE2>();
     }
+
     Duplicate(ubLocalCursor_, (int32_t)0, numLocalExperts_);
     SyncFunc<AscendC::HardEvent::V_S>();
     DataCopyPadExtParams<int32_t> metaPadParams{false, 0, 0, 0};
@@ -497,6 +724,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         if (slotCnt == 0) {
             continue;
         }
+
+        int32_t metadataRow = ubRankRowStart_.GetValue(rankId);
 
         uint32_t slotStart, slotEnd, slotCntPerAiv;
         SplitToCore(static_cast<uint32_t>(slotCnt), aivNum_, slotStart, slotEnd, slotCntPerAiv);
@@ -535,8 +764,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                     int64_t expertRowStart = ubRowStart_.GetValue(localExpertId);
                     int32_t cursor = ubLocalCursor_.GetValue(localExpertId);
                     ubLocalCursor_.SetValue(localExpertId, cursor + 1);
-                    int64_t globalRow = expertRowStart + cursor;
-                    ubHitList_.SetValue(hitCnt * HIT_ENTRY_SIZE + HIT_ROW_OFFSET, globalRow);
+                    int64_t recvXRow = expertRowStart + cursor;
+                    ubHitList_.SetValue(hitCnt * HIT_ENTRY_SIZE + HIT_ROW_OFFSET, recvXRow);
                     ubHitList_.SetValue(hitCnt * HIT_ENTRY_SIZE + HIT_TOPK_OFFSET, static_cast<int64_t>(topkIdx));
                     hitCnt++;
                 }
@@ -571,14 +800,14 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                 LocalTensor<XType> tokenOut = tokenQueue_.DeQue<XType>();
 
                 for (uint32_t i = 0; i < hitCnt; i++) {
-                    int64_t globalRow = ubHitList_.GetValue(i * HIT_ENTRY_SIZE + HIT_ROW_OFFSET);
+                    int64_t recvXRow = ubHitList_.GetValue(i * HIT_ENTRY_SIZE + HIT_ROW_OFFSET);
                     uint32_t topkIdx = static_cast<uint32_t>(ubHitList_.GetValue(i * HIT_ENTRY_SIZE + HIT_TOPK_OFFSET));
 
-                    DataCopyPad(recvXGm_[globalRow * axisH_], tokenOut, tokenCopyParams);
+                    DataCopyPad(recvXGm_[recvXRow * axisH_], tokenOut, tokenCopyParams);
                     if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
                         DataCopyParams scalesCopyParams{1U, static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)),
                                                         0U, 0U};
-                        DataCopyPad(recvScalesGm_[globalRow * scalesElems_],
+                        DataCopyPad(recvScalesGm_[recvXRow * scalesElems_],
                                     tokenOut[scalesOffset_ / sizeof(XType)].template ReinterpretCast<ScalesType>(),
                                     scalesCopyParams);
                     }
@@ -593,19 +822,22 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                                           static_cast<int32_t>(topkIdx));
                     ubStageMeta_.SetValue(stageOff + i * ELEM_ALIGN + META_SLOT_IDX_OFFSET,
                                           static_cast<int32_t>(slotStart + tileStart + localSlot));
+                    ubStageMeta_.SetValue(stageOff + i * ELEM_ALIGN + META_RECV_X_IDX_OFFSET,
+                                          static_cast<int32_t>(recvXRow));
                 }
                 tokenQueue_.FreeTensor(tokenOut);
 
                 SetFlag<AscendC::HardEvent::S_MTE3>(ppEvtSToMte3_[slotBufId]);
                 WaitFlag<AscendC::HardEvent::S_MTE3>(ppEvtSToMte3_[slotBufId]);
                 for (uint32_t i = 0; i < hitCnt; i++) {
-                    int64_t globalRow = ubHitList_.GetValue(i * HIT_ENTRY_SIZE + HIT_ROW_OFFSET);
+                    int64_t recvXRow = ubHitList_.GetValue(i * HIT_ENTRY_SIZE + HIT_ROW_OFFSET);
                     if constexpr (HasTopkWeights) {
-                        DataCopyPad(recvTopkWeightsGm_[globalRow], ubStageWeights_[stageOff + i * ELEM_ALIGN],
+                        DataCopyPad(recvTopkWeightsGm_[recvXRow], ubStageWeights_[stageOff + i * ELEM_ALIGN],
                                     weightOutParams);
                     }
-                    DataCopyPad(recvSrcMetadataGm_[globalRow * RECV_META_FIELDS],
+                    DataCopyPad(recvSrcMetadataGm_[(int64_t)metadataRow * RECV_META_FIELDS],
                                 ubStageMeta_[stageOff + i * ELEM_ALIGN], metaOutParams);
+                    metadataRow++;
                 }
                 SetFlag<AscendC::HardEvent::MTE3_S>(ppEvtMte3ToS_[slotBufId]);
             }
@@ -634,7 +866,9 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     }
 
     uint32_t ubMetaBytes = Ceil(metaBytes_, UB_ALIGN) * UB_ALIGN;
-    uint32_t ubStageWeightsBytes = Ceil((uint32_t)(CACHED_META_TILE * sizeof(float)), UB_ALIGN) * UB_ALIGN;
+    // Cached metadata is rank ordered, while weights remain recv_x ordered. A single aligned staging block is enough
+    // for the optional per-row scatter and avoids reserving one padded block per metadata row.
+    uint32_t ubStageWeightsBytes = UB_ALIGN;
     uint32_t ubStageMetaBytes =
         Ceil((uint32_t)(CACHED_META_TILE * RECV_META_FIELDS * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(ubMetaBuf_, ubMetaBytes);
@@ -664,6 +898,13 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
             int32_t srcRankId = ubStageMeta_.GetValue(metaBase + META_SRC_RANK_OFFSET);
             int32_t srcTopkIdx = ubStageMeta_.GetValue(metaBase + META_TOPK_IDX_OFFSET);
             int32_t slotIdx = ubStageMeta_.GetValue(metaBase + META_SLOT_IDX_OFFSET);
+            int32_t recvXIdx = ubStageMeta_.GetValue(metaBase + META_RECV_X_IDX_OFFSET);
+
+            // recvXIdx is produced by the first non-cached Epilogue. Guard it before using a user-visible cached
+            // handle so malformed metadata cannot turn into an out-of-bounds GM write.
+            if (recvXIdx < 0 || recvXIdx >= static_cast<int32_t>(expertSum_)) {
+                continue;
+            }
 
             GM_ADDR slotAddr = localWinAddr_ + (int64_t)srcRankId * numMaxTokensPerRank_ * perSlotBytes_ +
                                (int64_t)slotIdx * perSlotBytes_;
@@ -690,27 +931,29 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                 DataCopyPad(ubMeta_, srcMetaGm, slotMetaParams, metaPadParams);
                 SyncFunc<AscendC::HardEvent::MTE2_S>();
                 float weight = ubMeta_.ReinterpretCast<float>().GetValue(axisKAlign_ + srcTopkIdx);
-                ubStageWeights_.SetValue(i, weight);
+                ubStageWeights_.SetValue(0, weight);
                 SyncFunc<AscendC::HardEvent::S_MTE2>();
             }
 
             tokenQueue_.EnQue(tokenTensor);
             LocalTensor<XType> tokenOut = tokenQueue_.DeQue<XType>();
-            uint32_t globalRow = tileStartGlobal + i;
-            DataCopyPad(recvXGm_[(int64_t)globalRow * axisH_], tokenOut, tokenCopyParams);
+            uint32_t recvXRow = static_cast<uint32_t>(recvXIdx);
+            DataCopyPad(recvXGm_[(int64_t)recvXRow * axisH_], tokenOut, tokenCopyParams);
             if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
                 DataCopyParams scalesCopyParams{1U, static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U, 0U};
-                DataCopyPad(recvScalesGm_[(int64_t)globalRow * scalesElems_],
+                DataCopyPad(recvScalesGm_[(int64_t)recvXRow * scalesElems_],
                             tokenOut[scalesOffset_ / sizeof(XType)].template ReinterpretCast<ScalesType>(),
                             scalesCopyParams);
             }
             tokenQueue_.FreeTensor(tokenOut);
-        }
 
-        if constexpr (HasTopkWeights) {
-            SyncFunc<AscendC::HardEvent::S_MTE3>();
-            DataCopyExtParams weightOutParams{1U, static_cast<uint32_t>(tileCnt * sizeof(float)), 0U, 0U, 0U};
-            DataCopyPad(recvTopkWeightsGm_[tileStartGlobal], ubStageWeights_, weightOutParams);
+            if constexpr (HasTopkWeights) {
+                SyncFunc<AscendC::HardEvent::S_MTE3>();
+                DataCopyExtParams weightOutParams{1U, static_cast<uint32_t>(sizeof(float)), 0U, 0U, 0U};
+                DataCopyPad(recvTopkWeightsGm_[recvXRow], ubStageWeights_, weightOutParams);
+                // Wait before reusing the single aligned staging block for the next metadata row.
+                SyncFunc<AscendC::HardEvent::MTE3_S>();
+            }
         }
         SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
         DataCopyExtParams metaOutParams{1U, static_cast<uint32_t>(tileCnt * RECV_META_FIELDS * sizeof(int32_t)), 0U, 0U,
