@@ -319,8 +319,7 @@ private:
         // E8M0 code 0 is 2^-127 (an FP32 subnormal), not FP32 zero.
         // Code 255 is the format's NaN encoding; all other codes map directly
         // to the FP32 exponent field.
-        uint32_t bits = scale == 0U ? 0x00400000U :
-                                      (scale == 0xFFU ? 0x7FC00000U : static_cast<uint32_t>(scale) << 23);
+        uint32_t bits = scale == 0U ? 0x00400000U : (scale == 0xFFU ? 0x7FC00000U : static_cast<uint32_t>(scale) << 23);
         return *((float *)&bits);
     }
 
