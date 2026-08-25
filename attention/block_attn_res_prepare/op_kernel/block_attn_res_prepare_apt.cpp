@@ -71,14 +71,14 @@ __global__ __aicore__ void block_attn_res_prepare(
         logitMax == nullptr || expSum == nullptr || workspace == nullptr || tiling == nullptr) {
         return;
     }
-    if constexpr (TILING_KEY == TPL_ONLY_VECTOR) {
+    if constexpr (TILING_KEY == BLOCK_ATTN_RES_PREPARE_VECTOR_TILING_KEY) {
         GET_TILING_DATA_WITH_STRUCT(optiling::BlockAttnResPrepareTilingData, tilingData, tiling);
         BlockAttnResPrepare::BlockAttnResPrepareVector op(&tilingData);
         if (!op.Init(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum)) {
             return;
         }
         op.Process();
-    } else if constexpr (TILING_KEY == TPL_MIX_CUBE) {
+    } else if constexpr (TILING_KEY == BLOCK_ATTN_RES_PREPARE_MIX_CUBE_TILING_KEY) {
         AscendC::SetSysWorkspace(workspace);
         GM_ADDR userWorkspace = AscendC::GetUserWorkspace(workspace);
         GET_TILING_DATA_WITH_STRUCT(optiling::BlockAttnResPrepareCubeTilingData, cubeTilingData, tiling);
