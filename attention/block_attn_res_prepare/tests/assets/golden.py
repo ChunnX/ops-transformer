@@ -16,22 +16,39 @@ __golden__ = {
     "kernel": {"block_attn_res_prepare": "block_attn_res_prepare_golden"},
 }
 
+DEFAULT_EPS = 1.0e-6
+T_DIM_INDEX = 0
+S_DIM_INDEX = 0
+N_DIM_INDEX = 1
+D_DIM_INDEX = 2
+LAST_DIM_INDEX = -1
+FLATTENED_SIZE = -1
+
 
 def block_attn_res_prepare_golden(
-    block_res, valid_blocks, pseudo_query, eps=1.0e-6, **kwargs
+    block_res, valid_blocks, pseudo_query, eps=DEFAULT_EPS, **kwargs
 ):
     """FP32 Phase 1 reference for BlockAttnResPrepare."""
     inputs_are_numpy = not hasattr(block_res, "detach")
     residual = torch.as_tensor(block_res, dtype=torch.float32)
-    valid = int(torch.as_tensor(valid_blocks, dtype=torch.int64).reshape(-1)[0].item())
+    valid = int(
+        torch.as_tensor(valid_blocks, dtype=torch.int64)
+        .reshape(FLATTENED_SIZE)[0]
+        .item()
+    )
     query = torch.as_tensor(pseudo_query, dtype=torch.float32)
-    valid = max(0, min(valid, residual.shape[1]))
+    valid = max(0, min(valid, residual.shape[N_DIM_INDEX]))
     if valid == 0:
         numerator = torch.zeros(
-            (query.shape[0], residual.shape[0], residual.shape[2]), dtype=torch.float32
+            (
+                query.shape[S_DIM_INDEX],
+                residual.shape[T_DIM_INDEX],
+                residual.shape[D_DIM_INDEX],
+            ),
+            dtype=torch.float32,
         )
         logit_max = torch.zeros(
-            (query.shape[0], residual.shape[0]), dtype=torch.float32
+            (query.shape[S_DIM_INDEX], residual.shape[T_DIM_INDEX]), dtype=torch.float32
         )
         exp_sum = torch.zeros_like(logit_max)
         outputs = (numerator, logit_max, exp_sum)
@@ -39,11 +56,13 @@ def block_attn_res_prepare_golden(
             return tuple(output.cpu().numpy().astype(np.float32) for output in outputs)
         return outputs
     history = residual[:, :valid, :]
-    inv_rms = torch.rsqrt(torch.mean(history * history, dim=-1) + float(eps))
+    inv_rms = torch.rsqrt(
+        torch.mean(history * history, dim=LAST_DIM_INDEX) + float(eps)
+    )
     logits = torch.einsum("sd,tnd->stn", query, history) * inv_rms.unsqueeze(0)
-    logit_max = torch.max(logits, dim=-1).values
-    weights = torch.exp(logits - logit_max.unsqueeze(-1))
-    exp_sum = torch.sum(weights, dim=-1)
+    logit_max = torch.max(logits, dim=LAST_DIM_INDEX).values
+    weights = torch.exp(logits - logit_max.unsqueeze(LAST_DIM_INDEX))
+    exp_sum = torch.sum(weights, dim=LAST_DIM_INDEX)
     numerator = torch.einsum("stn,tnd->std", weights, history)
     outputs = (
         numerator.to(torch.float32),

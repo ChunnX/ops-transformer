@@ -30,6 +30,7 @@ constexpr int64_t TOTAL_T = 2;
 constexpr int64_t TOTAL_N = 8;
 constexpr int64_t TOTAL_S = 3;
 constexpr int64_t TOTAL_D = 128;
+constexpr float DEFAULT_EPS = 1.0e-6F;
 
 class BlockAttnResPrepareAclnnTest : public testing::Test {
 protected:
@@ -38,6 +39,8 @@ protected:
         SetPlatformSocVersion(SocVersion::ASCEND950);
     }
 };
+
+// Shape, value-range, and invalid-parameter literals below intentionally define the input and boundary test vectors.
 
 TEST_F(BlockAttnResPrepareAclnnTest, Basic)
 {
@@ -48,9 +51,8 @@ TEST_F(BlockAttnResPrepareAclnnTest, Basic)
     auto logitMax = TensorDesc({TOTAL_S, TOTAL_T}, ACL_FLOAT, ACL_FORMAT_ND);
     auto expSum = TensorDesc({TOTAL_S, TOTAL_T}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnBlockAttnResPrepare,
-                        INPUT(blockRes, validBlocks, pseudoQuery),
-                        OUTPUT(numerator, logitMax, expSum), 1.0e-6F);
+    auto ut = OP_API_UT(aclnnBlockAttnResPrepare, INPUT(blockRes, validBlocks, pseudoQuery),
+                        OUTPUT(numerator, logitMax, expSum), DEFAULT_EPS);
     uint64_t workspaceSize = 0;
     EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_SUCCESS);
 }
@@ -64,9 +66,8 @@ TEST_F(BlockAttnResPrepareAclnnTest, RejectsInvalidBlockResDtype)
     auto logitMax = TensorDesc({TOTAL_S, TOTAL_T}, ACL_FLOAT, ACL_FORMAT_ND);
     auto expSum = TensorDesc({TOTAL_S, TOTAL_T}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnBlockAttnResPrepare,
-                        INPUT(blockRes, validBlocks, pseudoQuery),
-                        OUTPUT(numerator, logitMax, expSum), 1.0e-6F);
+    auto ut = OP_API_UT(aclnnBlockAttnResPrepare, INPUT(blockRes, validBlocks, pseudoQuery),
+                        OUTPUT(numerator, logitMax, expSum), DEFAULT_EPS);
     uint64_t workspaceSize = 0;
     EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_ERR_PARAM_INVALID);
 }
@@ -80,9 +81,8 @@ TEST_F(BlockAttnResPrepareAclnnTest, RejectsMismatchedOutputShape)
     auto logitMax = TensorDesc({TOTAL_S, TOTAL_T}, ACL_FLOAT, ACL_FORMAT_ND);
     auto expSum = TensorDesc({TOTAL_S, TOTAL_T}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnBlockAttnResPrepare,
-                        INPUT(blockRes, validBlocks, pseudoQuery),
-                        OUTPUT(numerator, logitMax, expSum), 1.0e-6F);
+    auto ut = OP_API_UT(aclnnBlockAttnResPrepare, INPUT(blockRes, validBlocks, pseudoQuery),
+                        OUTPUT(numerator, logitMax, expSum), DEFAULT_EPS);
     uint64_t workspaceSize = 0;
     EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_ERR_PARAM_INVALID);
 }
@@ -96,8 +96,7 @@ TEST_F(BlockAttnResPrepareAclnnTest, RejectsNonPositiveEps)
     auto logitMax = TensorDesc({TOTAL_S, TOTAL_T}, ACL_FLOAT, ACL_FORMAT_ND);
     auto expSum = TensorDesc({TOTAL_S, TOTAL_T}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnBlockAttnResPrepare,
-                        INPUT(blockRes, validBlocks, pseudoQuery),
+    auto ut = OP_API_UT(aclnnBlockAttnResPrepare, INPUT(blockRes, validBlocks, pseudoQuery),
                         OUTPUT(numerator, logitMax, expSum), 0.0F);
     uint64_t workspaceSize = 0;
     EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_ERR_PARAM_INVALID);
@@ -112,8 +111,7 @@ TEST_F(BlockAttnResPrepareAclnnTest, RejectsNonFiniteEps)
     auto logitMax = TensorDesc({TOTAL_S, TOTAL_T}, ACL_FLOAT, ACL_FORMAT_ND);
     auto expSum = TensorDesc({TOTAL_S, TOTAL_T}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnBlockAttnResPrepare,
-                        INPUT(blockRes, validBlocks, pseudoQuery),
+    auto ut = OP_API_UT(aclnnBlockAttnResPrepare, INPUT(blockRes, validBlocks, pseudoQuery),
                         OUTPUT(numerator, logitMax, expSum), std::numeric_limits<float>::infinity());
     uint64_t workspaceSize = 0;
     EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_ERR_PARAM_INVALID);
