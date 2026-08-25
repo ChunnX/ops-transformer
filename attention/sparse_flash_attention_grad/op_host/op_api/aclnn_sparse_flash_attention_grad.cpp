@@ -9,7 +9,8 @@
  */
 
 #include "aclnn_sparse_flash_attention_grad.h"
-// ACLNN_ERR_PARAM_INVALID 定义在 opdev/op_errno.h，aclnn/aclnn_base.h 里没有。
+#include "aclnn/aclnn_base.h"
+#include "opdev/common_types.h"
 #include "opdev/op_errno.h"
 
 #ifdef __cplusplus
@@ -59,8 +60,9 @@ aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
     uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
-    // KV merge 契约：value 与 dValueOut 必须同时为空或同时非空。
-    if ((value == nullptr) != (dValueOut == nullptr)) {
+    const bool kvMerge = (value == nullptr);
+    const bool dValueAbsent = (dValueOut == nullptr) || dValueOut->IsEmpty();
+    if (kvMerge != dValueAbsent) {
         return ACLNN_ERR_PARAM_INVALID;
     }
     return aclnnInnerSparseFlashAttentionGradGetWorkspaceSize(

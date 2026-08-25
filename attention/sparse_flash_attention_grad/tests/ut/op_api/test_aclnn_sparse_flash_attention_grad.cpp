@@ -212,6 +212,34 @@ TEST_F(SparseFlashAttentionGradArch35OpapiUt, E1_kvmerge_value_null_dvalue_prese
     EXPECT_EQ(executor, nullptr);
 }
 
+// PTA 的 npu_sparse_flash_attention_grad 固定返回 5 个输出，kvMerge 时 d_value 传下来的是
+// at::empty({0}) 而不是 nullptr。空 dValueOut 必须和 nullptr 等价，否则合法调用会被挡在
+// ACLNN_ERR_PARAM_INVALID（曾经因为纯指针判等导致 kvMerge 全档 161002）。
+TEST_F(SparseFlashAttentionGradArch35OpapiUt, E3_kvmerge_value_null_dvalue_empty)
+{
+    auto query = MakeTensor({1, 16, 8, 512}, ACL_BF16);
+    auto key = MakeTensor({1, 128, 1, 512}, ACL_BF16);
+    auto sparseIndices = MakeTensor({1, 16, 1, 1024}, ACL_INT32);
+    auto dOut = MakeTensor({1, 16, 8, 512}, ACL_BF16);
+    auto out = MakeTensor({1, 16, 8, 512}, ACL_BF16);
+    auto softmaxMax = MakeTensor({1, 8, 16}, ACL_FLOAT);
+    auto softmaxSum = MakeTensor({1, 8, 16}, ACL_FLOAT);
+    auto dQueryOut = MakeTensor({1, 16, 8, 512}, ACL_BF16);
+    auto dKeyOut = MakeTensor({1, 128, 1, 512}, ACL_BF16);
+    auto dValueOut = MakeTensor({0}, ACL_BF16);
+
+    char layout[] = "BSND";
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = aclnnSparseFlashAttentionGradGetWorkspaceSize(
+        query.get(), key.get(), nullptr, sparseIndices.get(), dOut.get(), out.get(), softmaxMax.get(), softmaxSum.get(),
+        nullptr, nullptr, nullptr, nullptr, 0.0441941738, 1, layout, 3, INT64_MAX, INT64_MAX, false,
+        dQueryOut.get(), dKeyOut.get(), dValueOut.get(), nullptr, nullptr, &workspaceSize, &executor);
+
+    EXPECT_EQ(aclRet, ACL_SUCCESS);
+    EXPECT_NE(executor, nullptr);
+}
+
 TEST_F(SparseFlashAttentionGradArch35OpapiUt, E2_value_present_dvalue_null)
 {
     auto query = MakeTensor({1, 16, 8, 512}, ACL_BF16);
