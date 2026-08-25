@@ -12,6 +12,7 @@
 
 ## 功能说明
 
+
 - 算子功能：训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算：
 
     - pseType=1时，需要先add再mul。
