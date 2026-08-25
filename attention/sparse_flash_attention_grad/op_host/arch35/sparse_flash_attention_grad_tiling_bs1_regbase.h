@@ -42,7 +42,6 @@ struct TempParams {
     int64_t dvWorkspaceLen;
     uint32_t layout;
     uint32_t selected_block_count;
-    uint32_t selected_block_size;
     bool attenEnable = false;
     uint32_t singleM;
     uint32_t singleN;

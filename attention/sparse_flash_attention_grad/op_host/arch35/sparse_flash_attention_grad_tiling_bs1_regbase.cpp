@@ -129,8 +129,6 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetWorkspaceSize()
 {
     int64_t coreNum = aicoreParams_.aicNum;
     int64_t launchBlockDims = aicoreParams_.numBlocks;
-    int64_t inputDtypeSize = B16;
-    int64_t selectedS2 = tmpData.singleN;
 
     // Tiling传递的内存大小、起始地址，统一为字节数，单位为B
     auto blockdim = CalcTschBlockDim(launchBlockDims, aicoreParams_.aicNum, aicoreParams_.numBlocks);
@@ -258,10 +256,7 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::DoCastTiling()
 
     uint32_t typeSize = B16;
     uint32_t usedCoreNum = aicoreParams_.numBlocks;
-    uint32_t coreNum = aicoreParams_.aicNum;
     constexpr uint32_t postNzCoexNode = 12;
-    constexpr uint32_t blockSize = 32;
-    constexpr uint32_t postNzReservedN = 1;
 
     uint32_t postUbBaseSize = 0;
     uint32_t qPostBaseNum = 0;
@@ -567,7 +562,6 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     tmpData.queryType =
         static_cast<uint32_t>(context_->GetInputDesc(static_cast<size_t>(InputIndex::QUERY))->GetDataType());
     tmpData.selected_block_count = selected_block_count;
-    tmpData.selected_block_size = selected_block_size;
     
     auto ret = CheckDtypeValid(context_);
     if (ret != ge::GRAPH_SUCCESS) {
