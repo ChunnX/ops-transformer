@@ -100,12 +100,16 @@ def _resolve_sheet_xml(z: zipfile.ZipFile, sheet) -> str:
     for s in wb_doc.getElementsByTagName("sheet"):
         name = s.getAttribute("name")
         if name == sheet:
-            rid = s.getAttribute("r:id") or s.getAttribute("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")
+            rid = s.getAttribute("r:id") or s.getAttribute(
+                "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
+            )
             break
     if rid is None:
         # 列出所有可用 sheet 名便于排错
         names = [s.getAttribute("name") for s in wb_doc.getElementsByTagName("sheet")]
-        raise ValueError(f"sheet name {sheet!r} not found in workbook. available: {names}")
+        raise ValueError(
+            f"sheet name {sheet!r} not found in workbook. available: {names}"
+        )
 
     rels_xml = z.read("xl/_rels/workbook.xml.rels").decode("utf-8")
     rels_doc = minidom.parseString(rels_xml)
@@ -197,6 +201,7 @@ def list_sheet_names(xlsx_path: str) -> list:
             wb_xml = z.read("xl/workbook.xml").decode("utf-8")
     except (KeyError, FileNotFoundError):
         import openpyxl
+
         wb = openpyxl.load_workbook(xlsx_path, read_only=True)
         return wb.sheetnames
     wb_doc = minidom.parseString(wb_xml)

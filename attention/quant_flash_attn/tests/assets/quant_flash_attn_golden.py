@@ -1578,14 +1578,14 @@ class Network(nn.Module):
         block_size,
         sparse_mode,
         out_dtype,
-    max_seqlen_q,
-    max_seqlen_kv,
-    block_table_torch=None,
-    cu_seqlens_q_t=None,
-    cu_seqlens_kv_t=None,
-    seqused_q_t=None,
-    seqused_kv_t=None,
-):
+        max_seqlen_q,
+        max_seqlen_kv,
+        block_table_torch=None,
+        cu_seqlens_q_t=None,
+        cu_seqlens_kv_t=None,
+        seqused_q_t=None,
+        seqused_kv_t=None,
+    ):
         metadata = quant_flash_attn_metadata(
             num_heads_q=q_n,
             num_heads_kv=kv_n,
@@ -1679,8 +1679,6 @@ def prepare_npu_inputs(
     torch_npu.npu.set_device(int(DEVICE_ID))
 
     softmax_scale = SOFTMAX_SCALE
-
-    q_runtime_layout, _ = resolve_q_scale_layout()
 
     Q_DTYPE = q_fp8.dtype
     DQ_DTYPE = dequant_scale_q.dtype

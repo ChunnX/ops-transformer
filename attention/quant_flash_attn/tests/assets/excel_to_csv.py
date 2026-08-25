@@ -139,11 +139,29 @@ _TENSOR_SPECS = [
     ("v_descale_shape", "v_descale_dtype", "v_descale_datarange", "float8_e8m0", False),
     ("p_scale_shape", "p_scale_dtype", "p_scale_datarange", "float32", False),
     ("block_table_shape", "block_table_dtype", "block_table_datarange", "int32", False),
-    ("cu_seqlens_q_shape", "cu_seqlens_q_dtype", "cu_seqlens_q_datarange", "int32", False),
-    ("cu_seqlens_kv_shape", "cu_seqlens_kv_dtype", "cu_seqlens_kv_datarange", "int32", False),
+    (
+        "cu_seqlens_q_shape",
+        "cu_seqlens_q_dtype",
+        "cu_seqlens_q_datarange",
+        "int32",
+        False,
+    ),
+    (
+        "cu_seqlens_kv_shape",
+        "cu_seqlens_kv_dtype",
+        "cu_seqlens_kv_datarange",
+        "int32",
+        False,
+    ),
     ("seqused_q_shape", "seqused_q_dtype", "seqused_q_datarange", "int32", False),
     ("seqused_kv_shape", "seqused_kv_dtype", "seqused_kv_datarange", "int32", False),
-    ("learnable_sink_shape", "learnable_sink_dtype", "learnable_sink_datarange", "float32", False),
+    (
+        "learnable_sink_shape",
+        "learnable_sink_dtype",
+        "learnable_sink_datarange",
+        "float32",
+        False,
+    ),
     ("attn_mask_shape", "attn_mask_dtype", "attn_mask_datarange", "int8", False),
     ("metadata_shape", "metadata_dtype", "metadata_datarange", "float32", False),
 ]
@@ -332,7 +350,13 @@ def _build_tensor_lists(row, cols, quant_mode):
 
     descale_default = "float32" if quant_mode == 6 else "float8_e8m0"
 
-    for shape_col, dtype_col, drange_col, default_dtype, use_real_drange in _TENSOR_SPECS:
+    for (
+        shape_col,
+        dtype_col,
+        drange_col,
+        default_dtype,
+        use_real_drange,
+    ) in _TENSOR_SPECS:
         # descale dtype 缺省按 quant_mode 分支
         if shape_col in ("q_descale_shape", "k_descale_shape", "v_descale_shape"):
             default_dtype = descale_default
@@ -398,8 +422,12 @@ def _build_attributes(row, cols):
     _set("p_scale_value", _str_to_float(row.get(cols.get("p_scale_value"))))
     # cu_seqlens value → list，shape/dtype 不传（由 tensor_view_shapes 表达）
     # shape 已抽出为 tensor；value 保留供 wrapper 覆盖随机生成。
-    _set_force("cu_seqlens_q", _str_to_int_list(row.get(cols.get("cu_seqlens_q_value"))))
-    _set_force("cu_seqlens_kv", _str_to_int_list(row.get(cols.get("cu_seqlens_kv_value"))))
+    _set_force(
+        "cu_seqlens_q", _str_to_int_list(row.get(cols.get("cu_seqlens_q_value")))
+    )
+    _set_force(
+        "cu_seqlens_kv", _str_to_int_list(row.get(cols.get("cu_seqlens_kv_value")))
+    )
     # seqused_q/kv：空则写 None（wrapper 无默认值，需要 key 存在，golden 透传 None 给 NPU）
     _set_force("seqused_q", _str_to_int_list(row.get(cols.get("seqused_q_value"))))
     _set_force("seqused_kv", _str_to_int_list(row.get(cols.get("seqused_kv_value"))))
@@ -595,9 +623,7 @@ def main():
                 written += 1
         print(f"wrote {out_path} ({written} case rows)")
 
-    print(
-        f"\n3 csv files written ({mode_label}), each with {written} case rows."
-    )
+    print(f"\n3 csv files written ({mode_label}), each with {written} case rows.")
 
 
 if __name__ == "__main__":
