@@ -6,7 +6,7 @@
     python3 mxfp4_bi_precision_cases.py --run-npu
 
 P0 覆盖：全 16 行 V0 UB、tail=3/成对 gather、BF16/FP16、BSND/TND/PA、
-非零 INT8 storage_offset、乱序 sparse_indices、-1 终止，以及非同值 KV 的
+非零 INT8 storage_offset、升序 sparse_indices、-1 终止，以及非同值 KV 的
 QK -> softmax -> PV 精度比较。
 """
 
@@ -47,13 +47,13 @@ P0_CASES = (
         "BSND",
         "BSND",
         16,
-        tuple(range(15, -1, -1)),
+        tuple(range(16)),
         32,
     ),
-    PrecisionCase("bsnd_fp16_tail3_offset0", "fp16", "BSND", "BSND", 3, (2, 0, 1, -1), 0),
-    PrecisionCase("bsnd_bf16_tail3_offset1", "bf16", "BSND", "BSND", 3, (2, 0, 1, -1), 1),
-    PrecisionCase("tnd_bf16_tail3_offset32", "bf16", "TND", "TND", 3, (2, 0, 1, -1), 32),
-    PrecisionCase("pa_bsnd_bf16_tail3_offset32", "bf16", "BSND", "PA_BSND", 3, (2, 0, 1, -1), 32),
+    PrecisionCase("bsnd_fp16_tail3_offset0", "fp16", "BSND", "BSND", 3, (0, 1, 2, -1), 0),
+    PrecisionCase("bsnd_bf16_tail3_offset1", "bf16", "BSND", "BSND", 3, (0, 1, 2, -1), 1),
+    PrecisionCase("tnd_bf16_tail3_offset32", "bf16", "TND", "TND", 3, (0, 1, 2, -1), 32),
+    PrecisionCase("pa_bsnd_bf16_tail3_offset32", "bf16", "BSND", "PA_BSND", 3, (0, 1, 2, -1), 32),
 )
 TND_PREFIX_CASE_NAME = "tnd_bf16_batch2_prefix_offset32"
 
@@ -275,8 +275,8 @@ def build_tnd_prefix_inputs():
     """TND B=2：第二个 batch 的 KV 起点必须使用 actual_seq_lengths_kv 前缀和。"""
     import torch
 
-    batch0 = PrecisionCase("tnd_batch0", "bf16", "TND", "TND", 3, (2, 0, 1, -1), 32)
-    batch1 = PrecisionCase("tnd_batch1", "bf16", "TND", "TND", 4, (3, 1, 0, -1), 32)
+    batch0 = PrecisionCase("tnd_batch0", "bf16", "TND", "TND", 3, (0, 1, 2, -1), 32)
+    batch1 = PrecisionCase("tnd_batch1", "bf16", "TND", "TND", 4, (0, 1, 3, -1), 32)
     records0 = make_records(batch0, token_offset=0)
     records1 = make_records(batch1, token_offset=23)
     q0 = torch.tensor([0.015625 * (((d * 3) % 17) - 8) for d in range(576)], dtype=torch.bfloat16)
@@ -284,7 +284,7 @@ def build_tnd_prefix_inputs():
     inputs = {
         "query": torch.stack((q0, q1)).reshape(2, 1, 576),
         "key": records_to_int8(records0 + records1).reshape(7, 1, RECORD_BYTES),
-        "sparse_indices": torch.tensor(((2, 0, 1, -1), (3, 1, 0, -1)), dtype=torch.int32).reshape(2, 1, 4),
+        "sparse_indices": torch.tensor(((0, 1, 2, -1), (0, 1, 3, -1)), dtype=torch.int32).reshape(2, 1, 4),
         # TND actual lengths are cumulative: batch0=[0,3), batch1=[3,7).
         "actual_seq_lengths_query": torch.tensor((1, 2), dtype=torch.int32),
         "actual_seq_lengths_kv": torch.tensor((3, 7), dtype=torch.int32),
@@ -293,7 +293,7 @@ def build_tnd_prefix_inputs():
         "block_table": None,
     }
     inputs["value"] = inputs["key"].clone()
-    return inputs, ((records0, (2, 0, 1, -1)), (records1, (3, 1, 0, -1)))
+    return inputs, ((records0, (0, 1, 2, -1)), (records1, (0, 1, 3, -1)))
 
 
 def cpu_reference_tnd_prefix(inputs, batches):

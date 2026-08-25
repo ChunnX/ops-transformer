@@ -251,21 +251,12 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline uint32_t QSFAVectorService<TEMPLATE_A
         return 0;
     }
     uint32_t combineBytes = constInfo.dSizeVInput * sizeof(KV_T);
-    if (keyOffset0 < 0 || keyOffset1 < 0) {
-        // Keep a sole valid token contiguous with dealRow: token1 may be the only
-        // valid entry after a sparse tail/invalid-index filter.
-        CopyInSingleKv(kvInUb, startRow, keyOffset0 >= 0 ? keyOffset0 : keyOffset1, combineBytes);
-        return 1;
-    }
-    // The fused 2-row DMA can only move forward in GM. Do not sort the requested
-    // sparse pair by address: token0/token1 order is the V0 logical row order.
-    // Descending/duplicate/invalid pairs therefore use two single-row copies.
-    bool canFuseInRequestedOrder = keyOffset1 > keyOffset0 && constInfo.sparseBlockSize == 1;
-    int64_t keySrcStride = canFuseInRequestedOrder ?
-        (keyOffset1 - keyOffset0) * sizeof(KV_T) - combineBytes : -1;
-    if (keySrcStride >= INT32_MAX || keySrcStride < 0) {
-        // Preserve sparse_indices order for descending pairs and use the established
-        // single-copy fallback for invalid/duplicate/overflow cases.
+    int64_t keySrcStride =
+        (keyOffset0 > keyOffset1 ? (keyOffset0 - keyOffset1) * sizeof(KV_T) : (keyOffset1 - keyOffset0)) *
+            sizeof(KV_T) -
+        combineBytes;
+    if (keySrcStride >= INT32_MAX || keySrcStride < 0 || constInfo.sparseBlockSize > 1) {
+        // stride溢出、stride为负数、s2超长等异常场景，还原成2条搬运指令
         CopyInSingleKv(kvInUb, startRow, keyOffset0, combineBytes);
         CopyInSingleKv(kvInUb, startRow + 1, keyOffset1, combineBytes);
     } else {
@@ -276,6 +267,11 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline uint32_t QSFAVectorService<TEMPLATE_A
         intriParams.srcStride = keySrcStride;
         DataCopyPadExtParams<KV_T> padParams;
 
+        int64_t keyOffset = keyOffset0 > -1 ? keyOffset0 : keyOffset1;
+        if (keyOffset1 > -1 && keyOffset1 < keyOffset0) {
+            keyOffset = keyOffset1;
+        }
+
         // 当前仅支持COMBINE模式
         uint32_t combineDim = combineBytes / sizeof(KV_T);
         uint32_t combineDimAlign = CeilAlign(combineBytes, BUFFER_SIZE_BYTE_32B) / sizeof(KV_T);
@@ -283,7 +279,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline uint32_t QSFAVectorService<TEMPLATE_A
         padParams.leftPadding = 0;
         padParams.rightPadding = combineDimAlign - combineDim;
         padParams.paddingValue = 0;
-        DataCopyPad(kvInUb[startRow * combineDimAlign], keyGm[keyOffset0], intriParams, padParams);
+        DataCopyPad(kvInUb[startRow * combineDimAlign], keyGm[keyOffset], intriParams, padParams);
     }
     return (keyOffset0 > -1) + (keyOffset1 > -1);
 }
