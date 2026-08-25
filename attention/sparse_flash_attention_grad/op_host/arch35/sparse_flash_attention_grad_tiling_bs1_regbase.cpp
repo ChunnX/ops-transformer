@@ -164,13 +164,11 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetWorkspaceSize()
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = sysLen;
     workspaces[0] += selectedKWorkspaceLen * coreNum;
-    constexpr int64_t DETER_SYNC_BYTES = 1024;
-    workspaces[0] += DETER_SYNC_BYTES;
     workspaces[0] += (mm4WorkspaceLen + mm5WorkspaceLen) * coreNum;
     workspaces[0] += dqWorkspaceLen + dkWorkspaceLen + dvWorkspaceLen;
 
     baseParams_->set_selectedKWorkSpaceOffset(0);
-    int64_t workspaceOffsets = selectedKWorkspaceLen * coreNum + DETER_SYNC_BYTES;
+    int64_t workspaceOffsets = selectedKWorkspaceLen * coreNum;
     baseParams_->set_mm4ResWorkSpaceOffset(workspaceOffsets);
     workspaceOffsets += mm4WorkspaceLen * coreNum;
     baseParams_->set_mm5ResWorkSpaceOffset(workspaceOffsets);

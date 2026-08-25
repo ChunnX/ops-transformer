@@ -50,14 +50,7 @@ public:
     __aicore__ inline void GetTndSeqLen(const int64_t t1Idx, int64_t &bIdx);
     __aicore__ inline int64_t GetValidTndT1Size();
     __aicore__ inline bool IsValidTndT1Index(const int64_t t1Idx);
-    __aicore__ inline bool HasDeterToken(const int64_t t1Idx);
-    __aicore__ inline void DeterSyncInit();
-    __aicore__ inline void DeterPostProd(const int64_t wave);
-    __aicore__ inline void DeterPostRed(const int64_t wave);
-    __aicore__ inline void DeterWaitEpoch(GlobalTensor<int32_t> &readyGm, const int32_t n, const int32_t epoch);
-    __aicore__ inline void DeterWaitProd(const int64_t wave);
-    __aicore__ inline void DeterWaitRed(const int64_t wave);
-    __aicore__ inline int32_t GetDeterProcessNum();
+    __aicore__ inline bool NeedDeterExtraSync(const int64_t processNum);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
     __aicore__ inline ChildClass *GetDerived()
@@ -108,7 +101,6 @@ protected:
     GlobalTensor<OUTDTYPE> dqGm, dkGm, dvGm;
  
     GlobalTensor<float> dqWorkSpaceGm, dkWorkSpaceGm, dvWorkSpaceGm, mm4ResWorkSpaceGm, mm5ResWorkSpaceGm;
-    GlobalTensor<int32_t> deterProdReadyGm, deterRedReadyGm;
     GlobalTensor<INPUT_TYPE> selectedKWorkSpaceGm;
     // CV核间共享Buffer
     TBuf<> mm1ResBuf[2];
@@ -173,6 +165,10 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     if ASCEND_IS_AIV {
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE2>(SYNC_V5_TO_C4_FLAG[0]);
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE2>(SYNC_V5_TO_C4_FLAG[1]);
+        if constexpr (IS_DETER) {
+            // 第一轮 AIC Wait(flag14) 的 initial credit。每个 AIV 各 Set 一次，对应 AIC 的 14 / 16+14。
+            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SCATTER_TO_FIX_SYNC_FLAG);
+        }
     }
 }
 
@@ -190,6 +186,11 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
         CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SYNC_V5_TO_C4_FLAG[1]);
         CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_V5_TO_C4_FLAG[0]);
         CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_V5_TO_C4_FLAG[1]);
+        if constexpr (IS_DETER) {
+            // 消费最后一轮 AIV Set(flag14)，或从未 scatter 时消费 AllocEventID 的 initial credit。
+            CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SCATTER_TO_FIX_SYNC_FLAG);
+            CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_TO_FIX_SYNC_FLAG);
+        }
     } 
 }
 
@@ -276,10 +277,6 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::Init
                                                 tilingData->baseParams.mm4ResWorkSpaceOffset / sizeof(float));
         mm5ResWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
                                                 tilingData->baseParams.mm5ResWorkSpaceOffset / sizeof(float));
-        int64_t syncOff = (tilingData->baseParams.mm4ResWorkSpaceOffset - DETER_SYNC_BYTES) /
-                          static_cast<int64_t>(sizeof(int32_t));
-        deterProdReadyGm.SetGlobalBuffer((__gm__ int32_t *)workspace + syncOff);
-        deterRedReadyGm.SetGlobalBuffer((__gm__ int32_t *)workspace + syncOff + DETER_PROD_SLOT_NUM);
     } else {
         int64_t mm4ResWorkSpaceOffset = tilingData->baseParams.mm4ResWorkSpaceOffset / sizeof(float) +
                                         cBlockIdx * constInfo.selectedBlockCount * constInfo.selectedBlockSize *
@@ -650,96 +647,18 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetV
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline bool
-FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::HasDeterToken(const int64_t t1Idx)
+FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::NeedDeterExtraSync(
+    const int64_t processNum)
 {
-    if (cBlockIdx >= usedCoreNum) {
-        return false;
-    }
-    if (t1Idx < 0 || t1Idx >= tilingData->baseParams.totalSize) {
-        return false;
-    }
-    return IsValidTndT1Index(t1Idx);
-}
-
-template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline int32_t
-FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetDeterProcessNum()
-{
-    // 确定性路径按 packed T1 切分轮数，不要跟 Host 物理 T1（含尾 padding）走。
-    int32_t deterLoop = tilingData->baseParams.formerCoreProcessNNum;
+    int64_t maxProcessNum = tilingData->baseParams.formerCoreProcessNNum;
     if constexpr (IS_TND) {
         int64_t validT1 = GetValidTndT1Size();
-        int64_t cores = usedCoreNum > 0 ? usedCoreNum : 1;
-        int64_t packedLoop = (validT1 + cores - 1) / cores;
-        deterLoop = static_cast<int32_t>(packedLoop);
-    }
-    return deterLoop > 0 ? deterLoop : 0;
-}
-
-template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::DeterSyncInit()
-{
-    if constexpr (!IS_DETER) {
-        return;
-    }
-    if (cBlockIdx >= static_cast<uint32_t>(usedCoreNum)) {
-        return;
-    }
-    if ASCEND_IS_AIC {
-        SfagDeterPostSlot(deterProdReadyGm, static_cast<int32_t>(cBlockIdx), 0);
-    } else {
-        SfagDeterPostSlot(deterRedReadyGm, static_cast<int32_t>(vBlockIdx), 0);
-    }
-}
-
-template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::DeterWaitEpoch(
-    GlobalTensor<int32_t> &readyGm, const int32_t n, const int32_t epoch)
-{
-    for (int32_t i = 0; i < n; i++) {
-        SfagDeterWaitSlot(readyGm, i, epoch);
-    }
-}
-
-template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::DeterPostProd(const int64_t wave)
-{
-    if ASCEND_IS_AIC {
-        if (cBlockIdx < static_cast<uint32_t>(usedCoreNum)) {
-            SfagDeterPostSlot(deterProdReadyGm, static_cast<int32_t>(cBlockIdx),
-                              static_cast<int32_t>(wave + 1));
+        if (validT1 <= 0 || usedCoreNum <= 0) {
+            return false;
         }
+        maxProcessNum = (validT1 + usedCoreNum - 1) / usedCoreNum;
     }
-}
-
-template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::DeterPostRed(const int64_t wave)
-{
-    if ASCEND_IS_AIV {
-        if (cBlockIdx < static_cast<uint32_t>(usedCoreNum)) {
-            SfagDeterPostSlot(deterRedReadyGm, static_cast<int32_t>(vBlockIdx),
-                              static_cast<int32_t>(wave + 1));
-        }
-    }
-}
-
-template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::DeterWaitProd(const int64_t wave)
-{
-    DeterWaitEpoch(deterProdReadyGm, static_cast<int32_t>(usedCoreNum), static_cast<int32_t>(wave + 1));
-}
-
-template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::DeterWaitRed(const int64_t wave)
-{
-    DeterWaitEpoch(deterRedReadyGm, static_cast<int32_t>(usedCoreNum * CV_CORE_RATIO),
-                   static_cast<int32_t>(wave + 1));
+    return processNum < maxProcessNum;
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>

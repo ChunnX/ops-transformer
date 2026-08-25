@@ -187,51 +187,52 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::DeterCubeVecScatter(
     FagRunInfo &scatterRunInfo)
 {
-    // 只让 usedCoreNum 个 AIC / 对应 AIV 参加 produce/reduce。
-    // tiny 的 usedCoreNum=4 时，另外 24 个核如果也去等 28 个 slot，会永远等不到。
-    if (this->cBlockIdx >= static_cast<uint32_t>(this->usedCoreNum)) {
-        return;
-    }
-    this->DeterPostProd(scatterRunInfo.sTaskId);
-    if ASCEND_IS_AIV {
+    // SMLAG 同款：scatter epoch 入口先收 AIV completion（flag14），再开 flag11/13。
+    // Wait 放在这里而不是 compute 刚结束处，compute(N+1) 仍可与 scatter(N) overlap。
+    if ASCEND_IS_AIC {
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SCATTER_TO_FIX_SYNC_FLAG);
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_TO_FIX_SYNC_FLAG);
+        CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+        CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
+        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
+    } else {
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
         this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dkWorkSpaceGm,
-                        this->dvWorkSpaceGm, this->constInfo, scatterRunInfo, this->deterProdReadyGm,
-                        static_cast<int32_t>(scatterRunInfo.sTaskId + 1));
-        this->DeterPostRed(scatterRunInfo.sTaskId);
+                        this->dvWorkSpaceGm, this->constInfo, scatterRunInfo);
+        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SCATTER_TO_FIX_SYNC_FLAG);
     }
-    this->DeterWaitRed(scatterRunInfo.sTaskId);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessDeter()
 {
     this->AllocEventID();
-    this->DeterSyncInit();
-    this->bIndex = 0;
-    this->lastT1Index = -1;
     int64_t taskId = 0;
     int64_t sTaskId = 0;
+    int64_t processNum = 0;
     FagRunInfo runInfos[2]; // for cv ping pong
     FagRunInfo deterRunInfos[2];
-    const int32_t deterLoop = this->GetDeterProcessNum();
-    for (int32_t i = 0; i < deterLoop; i++) {
+    for (int32_t i = 0; i < this->processBS1ByCore; i++) {
         this->t1Index = this->cBlockIdx + this->usedCoreNum * i;
+        if (!this->IsValidTndT1Index(this->t1Index)) {
+            break;
+        }
+        processNum++;
+        this->GetTndSeqLen(this->t1Index, this->bIndex);
         this->SetDeterRunInfo(deterRunInfos[sTaskId & 1], sTaskId);
-        if (this->HasDeterToken(this->t1Index)) {
-            this->GetTndSeqLen(this->t1Index, this->bIndex);
-            for (this->n2Index = 0; this->n2Index < this->tilingData->baseParams.n2; this->n2Index++) {
-                this->GetActualSelCount(this->t1Index, this->n2Index, this->actualSelectedBlockCount);
-                for (this->blkCntOffset = 0; this->blkCntOffset < this->actualSelectedBlockCount; this->blkCntOffset += this->constInfo.selectedCountOffset) {
-                    if (taskId >= 0) {
-                        this->SetRunInfo(runInfos[taskId & 1], taskId, sTaskId);
-                        ProcessPreload(runInfos[taskId & 1], taskId);
-                    }
-
-                    if (taskId > 0) {
-                        ProcessNotFirst(runInfos[(taskId + 1) & 1]);
-                    }
-                    taskId++;
+        for (this->n2Index = 0; this->n2Index < this->tilingData->baseParams.n2; this->n2Index++) {
+            this->GetActualSelCount(this->t1Index, this->n2Index, this->actualSelectedBlockCount);
+            for (this->blkCntOffset = 0; this->blkCntOffset < this->actualSelectedBlockCount; this->blkCntOffset += this->constInfo.selectedCountOffset) {
+                if (taskId >= 0) {
+                    this->SetRunInfo(runInfos[taskId & 1], taskId, sTaskId);
+                    ProcessPreload(runInfos[taskId & 1], taskId);
+                } 
+                
+                if (taskId > 0) {
+                    ProcessNotFirst(runInfos[(taskId + 1) & 1]);
                 }
+                taskId++;
             }
         }
 
@@ -250,11 +251,15 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         sTaskId++;
     }
 
-    if (taskId > 0 && runInfos[(taskId + 1) & 1].taskStep == TASK_C1C2) {
+    if (runInfos[(taskId + 1) & 1].taskStep == TASK_C1C2) {
         ProcessNotFirst(runInfos[(taskId + 1) & 1]);
-    }
-    if (sTaskId > 0) {
         DeterCubeVecScatter(deterRunInfos[(sTaskId + 1) & 1]);
+    }
+
+    // 分核不均匀时部分核会少一个C核的全核同步
+    if (this->NeedDeterExtraSync(processNum)) {
+        this->SetDeterRunInfo(deterRunInfos[sTaskId & 1], sTaskId);
+        DeterCubeVecScatter(deterRunInfos[sTaskId & 1]);
     }
     this->FreeEventID();
 }

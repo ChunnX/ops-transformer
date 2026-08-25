@@ -33,35 +33,7 @@ constexpr uint8_t SYNC_C5_TO_V4_FLAG = 10;
 constexpr uint8_t SCATTER_CUBE_SYNC_FLAG = 11;
 constexpr uint8_t SCATTER_VEC_SYNC_FLAG = 12;
 constexpr uint8_t SCATTER_SYNC_FLAG = 13;
-// Produce/Reduce 就绪位：mm4 之前 1024B。prod[0..127] / red[0..127]，不用 mode0 flag。
-constexpr uint32_t DETER_PROD_SLOT_NUM = 128;
-constexpr uint32_t DETER_RED_SLOT_NUM = 128;
-constexpr uint32_t DETER_SYNC_BYTES = 1024;
-
-__aicore__ inline void SfagDeterDcci(const GlobalTensor<int32_t> &gm, int32_t idx)
-{
-    AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_ALL>(
-        gm[idx]);
-}
-
-__aicore__ inline void SfagDeterWaitSlot(GlobalTensor<int32_t> &gm, int32_t slot, int32_t epoch)
-{
-    while (true) {
-        SfagDeterDcci(gm, slot);
-        PipeBarrier<PIPE_ALL>();
-        if (gm.GetValue(slot) == epoch) {
-            break;
-        }
-    }
-}
-
-__aicore__ inline void SfagDeterPostSlot(GlobalTensor<int32_t> &gm, int32_t slot, int32_t epoch)
-{
-    PipeBarrier<PIPE_ALL>();
-    gm.SetValue(slot, epoch);
-    SfagDeterDcci(gm, slot);
-    PipeBarrier<PIPE_ALL>();
-}
+constexpr uint8_t SCATTER_TO_FIX_SYNC_FLAG = 14; // AIV scatter completion → AIC next epoch
  
 // MM_IDX
 constexpr uint8_t DQ_IDX = 0;
