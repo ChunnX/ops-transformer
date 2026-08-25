@@ -220,13 +220,15 @@ public:
                     Add(zLocal, xLocal, biasLocal, calcCnt);
                     PipeBarrier<PIPE_V>(); // 确保 zLocal 写入完成后再读（RAW 依赖）
                     Add(zLocal, zLocal, yLocal, calcCnt);
-                    inQueueY_.FreeTensor(addLocal);
                 } else {
                     // result = mmOut + bias
                     Add(zLocal, xLocal, biasLocal, calcCnt);
                 }
                 PipeBarrier<PIPE_V>();
                 inQueueX_.FreeTensor(mmOutLocal);
+                if (hasAdd_) {
+                    inQueueY_.FreeTensor(addLocal);
+                }
 
                 // 4. 搬出 result → cGM[row, nOff:nOff+calcCnt]
                 outQueueZ_.EnQue<T>(zLocal);
