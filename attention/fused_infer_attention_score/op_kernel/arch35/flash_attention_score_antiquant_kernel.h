@@ -353,10 +353,10 @@ FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType, AntiquantVecBlockType
         this->constInfo.splitKVNum = inputParamsRegbase.kvSplitPart;
         this->constInfo.sInnerLoopSize = CeilDiv(this->constInfo.s2Size, this->constInfo.splitKVNum);
         if (inputParamsRegbase.antiquantPerTensorFlag) {
-            this->constInfo.sInnerLoopSize = AlignUp32(static_cast<uint64_t>(this->constInfo.sInnerLoopSize));
+            this->constInfo.sInnerLoopSize = AlignUp32Wrapper(static_cast<uint64_t>(this->constInfo.sInnerLoopSize));
         }
         if constexpr (isPa) {
-            this->constInfo.sInnerLoopSize = AlignUp32(static_cast<uint64_t>(this->constInfo.sInnerLoopSize));
+            this->constInfo.sInnerLoopSize = AlignUp32Wrapper(static_cast<uint64_t>(this->constInfo.sInnerLoopSize));
         }
     }
     this->constInfo.isRowInvalid = inputParamsRegbase.isRowInvalid;

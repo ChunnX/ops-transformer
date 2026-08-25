@@ -107,6 +107,10 @@ static constexpr uint32_t FA_BYTE_BLOCK = 32;
 __aicore__ constexpr uint16_t Align64Func(uint16_t data) {
     return (data + ADD_NUM_63) >> SHIFT_NUM_6 << SHIFT_NUM_6;
 }
+template <typename T = void>
+__attribute__((cce_aicore)) uint16_t Align64FuncWrapper(uint16_t data) {
+    return Align64Func(data);
+}
 
 template <typename INPUT_T>
 __aicore__ constexpr bool IsFp8WithRope(bool hasRope) {
