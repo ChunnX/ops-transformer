@@ -238,6 +238,24 @@ inline void CollectB4ShapeInfo(const at::Tensor &at_tensor, c10::SmallVector<int
     }
 }
 
+TensorWrapper make_wrapper(const at::Tensor &tensor, const int64_t real_dtype)
+{
+    TensorWrapper wrapper = {tensor, ACL_DT_UNDEFINED};
+    int64_t temp = static_cast<int64_t>(tensor.scalar_type());
+    if (kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(tensor.scalar_type())] == ACL_UINT8) {
+        if (real_dtype == 296) {
+            wrapper.dtype = ACL_FLOAT4_E2M1;
+        } else if (real_dtype == 293) {
+            wrapper.dtype = ACL_FLOAT8_E8M0;
+        } else if (real_dtype == 290) {
+            wrapper.dtype = ACL_HIFLOAT8;
+        }
+    } else {
+        wrapper.dtype = kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(tensor.scalar_type())];
+    }
+    return wrapper;
+}
+
 enum QuantMode {
     QUANT_MODE_NO_QUANT = 0,
     QUANT_MODE_STATIC = 1,
