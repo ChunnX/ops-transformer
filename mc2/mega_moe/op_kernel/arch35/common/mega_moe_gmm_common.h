@@ -100,6 +100,8 @@ struct Config {
     static constexpr bool IS_SHARED = IsShared;
     static constexpr bool IS_WEIGHT_NZ = IsWeightNZ;
     static constexpr bool TOPK_WEIGHTS_PREFETCH = TopkWeightsPrefetch;
+    static constexpr bool ENABLE_GENERIC_L0C_PINGPONG =
+        !IsA8W4 && Blaze::Gemm::IsFp4<ElementA>() && Blaze::Gemm::IsFp4<ElementB>();
     using ElementAType = ElementA;
     using ElementBType = ElementB;
     using ElementCType = ElementC;
@@ -479,13 +481,19 @@ template <typename MmadContext, typename ProblemConfig>
 __aicore__ inline void InitBlockMmad(MmadContext &context, const ProblemConfig &config)
 {
     using BlockMmad = decltype(context.blockMmad);
+    using KernelConfig = typename ProblemConfig::KernelConfig;
     const auto &tilingConfig = config.blockMmadTiling;
     const BlockMmadInitConfig requestedConfig{config.k, tilingConfig.tileM, tilingConfig.tileN,
                                               tilingConfig.l1Params.kL1, tilingConfig.l1Params.scaleKL1};
     if (!context.initialized || context.initConfig != requestedConfig) {
         typename BlockMmad::BlockShape l0TileShape{tilingConfig.tileM, tilingConfig.tileN, L0_TILE_K, 0};
         typename BlockMmad::ProblemShape matmulShape{config.m, config.n, config.k, 0};
-        constexpr bool enableL0CPingPong = false;
+        bool enableL0CPingPong = false;
+        if constexpr (KernelConfig::ENABLE_GENERIC_L0C_PINGPONG) {
+            constexpr uint64_t halfL0CSize = AscendC::TOTAL_L0C_SIZE / 2U;
+            uint64_t l0CTileBytes = static_cast<uint64_t>(tilingConfig.tileM) * tilingConfig.tileN * sizeof(float);
+            enableL0CPingPong = l0CTileBytes < halfL0CSize;
+        }
         context.blockMmad.Init(matmulShape, l0TileShape, tilingConfig.l1Params, false, enableL0CPingPong);
         context.initConfig = requestedConfig;
         context.initialized = true;
