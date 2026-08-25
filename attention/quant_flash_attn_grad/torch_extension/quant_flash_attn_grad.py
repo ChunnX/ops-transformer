@@ -13,7 +13,8 @@ import torch
 import torch_npu
 from enum import IntEnum
 from torch.library import impl
-from cann_ops_transformer.op_builder import OpBuilder, get_as_library
+from cann_ops_transformer.op_builder.builder import OpBuilder
+from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 
 
 class MaskMode(IntEnum):
@@ -30,11 +31,11 @@ class QuantMode(IntEnum):
 
 class QuantFlashAttnGradOpBuilder(OpBuilder):
     def __init__(self):
-        super(QuantFlashAttnGradOpBuilder, self).__init__("quant_flash_attn_grad", category="attention")
+        super(QuantFlashAttnGradOpBuilder, self).__init__("quant_flash_attn_grad")
 
     def sources(self):
         """Path to C++ source code."""
-        return ['csrc/attention/quant_flash_attn_grad.cpp']
+        return ['ops/csrc/quant_flash_attn_grad.cpp']
     
     def schema(self) -> str:
         """PyTorch operator signature.
@@ -70,7 +71,7 @@ class QuantFlashAttnGradOpBuilder(OpBuilder):
           dsink: (nheads_q,)
         All outputs are BF16.
         """
-        @impl(get_as_library(), self.name, "Meta")
+        @impl(AS_LIBRARY, self.name, "Meta")
         def quant_flash_attn_grad_meta(
             q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, dout: torch.Tensor, attn_out: torch.Tensor,
             q_descale: torch.Tensor, k_descale: torch.Tensor, v_descale: torch.Tensor,
@@ -126,7 +127,7 @@ class QuantFlashAttnGradOpBuilder(OpBuilder):
 quant_flash_attn_grad_op_builder = QuantFlashAttnGradOpBuilder()
 
 
-@impl(get_as_library(), quant_flash_attn_grad_op_builder.name, "PrivateUse1")
+@impl(AS_LIBRARY, quant_flash_attn_grad_op_builder.name, "PrivateUse1")
 def quant_flash_attn_grad(
     q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, dout: torch.Tensor, attn_out: torch.Tensor,
     q_descale: torch.Tensor, k_descale: torch.Tensor, v_descale: torch.Tensor,
