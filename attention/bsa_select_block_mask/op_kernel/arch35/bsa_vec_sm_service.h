@@ -326,8 +326,8 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(
     // t5 = torch.exp(t4)
     // t6 = t5.sum(dim=1)
     // global_sum = t3 + t6
-#if !BSA_ENABLE_SOFTMAX_FIRST_PASS_VF
     uint8_t repeatimes = BSACeilDiv(actualQExcuteRow, BROC_BASE_NUM);
+#if !BSA_ENABLE_SOFTMAX_FIRST_PASS_VF
     Brcb(globalMaxBroc, tmpMax, repeatimes, {1, 8});
     AscendC::PipeBarrier<PIPE_V>();
 
@@ -350,7 +350,6 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(
 
     // 最后一次k循环第二轮循环存储sumbroc
 #if !BSA_ENABLE_SOFTMAX_SECOND_PASS_VF
-    uint8_t repeatimes = BSACeilDiv(actualQExcuteRow, BROC_BASE_NUM);
     if (kChunkStart + kChunkSize >= validYBlocks) {
         Brcb(globalSumBroc, globalSum, repeatimes, {1, 8});
         AscendC::PipeBarrier<PIPE_V>();
