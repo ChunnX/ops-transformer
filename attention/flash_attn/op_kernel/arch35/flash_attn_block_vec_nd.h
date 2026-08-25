@@ -202,11 +202,11 @@ public:
 
         /*--------------------------------------------UB--------------------------------------------*/
         struct UbLayout {
-            uint8_t mm2ResBuffers[UB_MM2_RES_BUFCNT][UB_MM2_RES_BUF_BYTES];          // 2 * 32K = 64K, CV通信BUF
-            uint8_t mm1ResBuffers[UB_MM1_RES_BUFCNT][UB_MM1_RES_BUF_BYTES];          // 2 * 32K = 64K, CV通信BUF
-            uint8_t maskBuffers[UB_MASK_BUFCNT][UB_MASK_BUF_BYTES];                  // 2 * 8K = 16K, 输入BUF: MASK拷入
-            uint8_t vec2Res[32768U];                                                 // 32K, 输出BUF: attn_out拷出
-            uint8_t vec1ResBuffers[UB_VEC1_RES_BUFCNT][UB_VEC1_RES_BUF_BYTES];       // 2 * 32.25K, softmax结果拷至L1
+            uint8_t mm2ResBuffers[UB_MM2_RES_BUFCNT][UB_MM2_RES_BUF_BYTES];    // 2 * 32K = 64K, CV通信BUF
+            uint8_t mm1ResBuffers[UB_MM1_RES_BUFCNT][UB_MM1_RES_BUF_BYTES];    // 2 * 32K = 64K, CV通信BUF
+            uint8_t maskBuffers[UB_MASK_BUFCNT][UB_MASK_BUF_BYTES];            // 2 * 8K = 16K, 输入BUF: MASK拷入
+            uint8_t vec2Res[32768U];                                           // 32K, 输出BUF: attn_out拷出
+            uint8_t vec1ResBuffers[UB_VEC1_RES_BUFCNT][UB_VEC1_RES_BUF_BYTES]; // 2 * 32.25K, softmax结果拷至L1
             uint8_t softmaxSumBuf_[UB_SOFTMAX_SUM_BUFCNT][UB_SOFTMAX_SUM_BUF_BYTES]; // 3 * 0.25K = 0.75K, sum常驻BUF
             uint8_t softmaxMaxBuf_[UB_SOFTMAX_MAX_BUFCNT][UB_SOFTMAX_MAX_BUF_BYTES]; // 3 * 0.25K = 0.75K, max常驻BUF
             uint8_t softmaxExpBuf_[UB_SOFTMAX_EXP_BUFCNT][UB_SOFTMAX_EXP_BUF_BYTES]; // 3 * 0.25K = 0.75K, exp常驻BUF

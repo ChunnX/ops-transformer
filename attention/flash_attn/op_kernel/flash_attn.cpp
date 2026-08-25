@@ -139,7 +139,7 @@ __global__ __aicore__ void flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key
     InitSocState();
 
     using FA_T = FlashAttnKernel::FAType<INPUT_T, OUT_T, pageAttention, qLayout, kvLayout, outLayout, s1TemplateType,
-                                 s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask>;
+                                         s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask>;
 
     if constexpr (useDn) {
         using CubeBlock = FlashAttnKernel::FANoQuantGqaBlockCubeDn<FA_T>;
