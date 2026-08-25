@@ -548,22 +548,15 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchGr
     if (maxByPong < 1U) {
         maxByPong = 1U;
     }
-    uint32_t outDtypeSize = (tilingData.outputDtype == static_cast<int32_t>(ge::DT_BF16) ||
-                             tilingData.outputDtype == static_cast<int32_t>(ge::DT_FLOAT16)) ? 2U : 4U;
-    uint32_t accumNeed = static_cast<uint32_t>(AlignTo(
-        static_cast<int64_t>(tilingData.hiddenDim) * outDtypeSize, static_cast<int64_t>(UB_ALIGN)));
-    bool needCast = (tilingData.inputDtype != tilingData.outputDtype);
-    uint32_t castFp32Need = needCast ? static_cast<uint32_t>(AlignTo(
-        static_cast<int64_t>(maxByPong) * tilingData.hiddenDim * outDtypeSize * 2,
-        static_cast<int64_t>(UB_ALIGN))) : 0U;
+    uint32_t fp32RowSize = static_cast<uint32_t>(AlignTo(
+        static_cast<int64_t>(tilingData.hiddenDim) * 4, static_cast<int64_t>(UB_ALIGN)));
+    uint32_t hiddenBytesAlign = static_cast<uint32_t>(AlignTo(
+        static_cast<int64_t>(tilingData.hiddenBytes), static_cast<int64_t>(UB_ALIGN)));
+    uint32_t poolBufNeed = fp32RowSize + (fp32RowSize + hiddenBytesAlign);  // accumBuf + castBuf
     uint32_t availableForPool = static_cast<uint32_t>(tilingData.ubSize) - permanentUb;
-    uint32_t availableForCast = (availableForPool > commBufSize + accumNeed) ?
-        (availableForPool - commBufSize - accumNeed) : 0U;
-    uint32_t maxByCast = needCast ?
-        (availableForCast / (static_cast<uint32_t>(tilingData.hiddenDim) * outDtypeSize * 2U)) : maxByPong;
     uint32_t gradSubBatch = maxByPong;
-    if (maxByCast < gradSubBatch) {
-        gradSubBatch = maxByCast;
+    if (availableForPool < commBufSize + poolBufNeed) {
+        gradSubBatch = 1U;
     }
     if (gradSubBatch < 1U) {
         gradSubBatch = 1U;
@@ -572,8 +565,8 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchGr
         gradSubBatch = 64U;
     }
     tilingData.gradSubBatch = gradSubBatch;
-    OP_LOGD(nodeName, "gradSubBatch=%u (hiddenBytes=%ld, hiddenDim=%ld, maxByPong=%u, maxByCast=%u, available=%u)",
-            gradSubBatch, tilingData.hiddenBytes, tilingData.hiddenDim, maxByPong, maxByCast, availableForCast);
+    OP_LOGD(nodeName, "gradSubBatch=%u (hiddenBytes=%ld, hiddenDim=%ld, maxByPong=%u, poolBufNeed=%u)",
+            gradSubBatch, tilingData.hiddenBytes, tilingData.hiddenDim, maxByPong, poolBufNeed);
 
     OP_LOGD(nodeName,
             "SetTilingData: numTokens=%ld, hiddenDim=%ld, numEntriesPerRank=%d, hiddenBytes=%ld, "
