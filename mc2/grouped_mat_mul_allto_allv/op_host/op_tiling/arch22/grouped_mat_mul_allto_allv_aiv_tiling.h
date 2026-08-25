@@ -9,17 +9,19 @@
  */
 
 /*!
- * \file grouped_mat_mul_allto_allv_v2_tiling.h
+ * \file grouped_mat_mul_allto_allv_aiv_tiling.h
  */
-#ifndef MC2_GROUPED_MATMUL_ALLTO_ALLV_V2_TILING_STRUCT_H
-#define MC2_GROUPED_MATMUL_ALLTO_ALLV_V2_TILING_STRUCT_H
+#ifndef MC2_GROUPED_MATMUL_ALLTO_ALLV_AIV_TILING_STRUCT_H
+#define MC2_GROUPED_MATMUL_ALLTO_ALLV_AIV_TILING_STRUCT_H
 
-#include "../../../quant_grouped_mat_mul_allto_allv/op_host/op_tiling/quant_grouped_mat_mul_allto_allv_tiling_common.h"
+#include <array>
+
+#include "../../../../quant_grouped_mat_mul_allto_allv/op_host/op_tiling/quant_grouped_mat_mul_allto_allv_tiling_common.h"
 
 namespace optiling {
-class GroupedMatmulAllToAllvV2Tiling : public Mc2Tiling::Mc2GroupedMatmul::QuantGroupedMatmulAllToAllvTilingCommon {
+class GroupedMatmulAllToAllvAivTiling : public Mc2Tiling::Mc2GroupedMatmul::QuantGroupedMatmulAllToAllvTilingCommon {
 public:
-    explicit GroupedMatmulAllToAllvV2Tiling(gert::TilingContext *context)
+    explicit GroupedMatmulAllToAllvAivTiling(gert::TilingContext *context)
         : Mc2Tiling::Mc2GroupedMatmul::QuantGroupedMatmulAllToAllvTilingCommon(context) {};
 
 protected:
@@ -33,11 +35,16 @@ protected:
     ge::graphStatus CheckAndSetLocalParamsMm() override;
     ge::graphStatus CheckAndSetLocalParamsAttr() override;
     ge::graphStatus CheckAndSetLocalParams() override;
+    ge::graphStatus CheckFormat() override;
     ge::graphStatus CheckParamsRelationGmm() override;
     ge::graphStatus CheckParamsRelationMm() override;
     ge::graphStatus CheckParamsAttrEpAndSetLocalParams() override;
+    ge::graphStatus CheckAndSetSendRecvCountsAttr() override;
+    ge::graphStatus CheckLocalParams() override;
     ge::graphStatus GetPlatformInfo() override;
     ge::graphStatus PostTiling() override;
+    ge::graphStatus GetWorkspaceSize() override;
+    ge::graphStatus SetAivWorkspaceInfo();
     uint64_t GetTilingKey() const override;
     uint32_t GetCommModeIndex() const override;
     ge::graphStatus GetAndConvertCommMode(gert::TilingContext *context, uint8_t &commMode) const;
@@ -58,12 +65,17 @@ protected:
     static constexpr uint32_t ATTR_TRANS_MM_WEIGHT_INDEX = 5;
     static constexpr uint32_t ATTR_COMM_MODE = 6;
     static constexpr int64_t RANK_DIM_BOUNDARY = 8;
+    static constexpr uint64_t MAX_GLOBAL_EXPERT_NUM = 1024UL;
+    static constexpr uint64_t MAX_TOKEN_NUM = 5000000UL;
 
     static const std::vector<uint32_t> GMM_X_DTYPE_LIST;
     static const std::vector<uint32_t> GMM_WEIGHT_DTYPE_LIST;
     static const std::vector<uint32_t> GMM_Y_DTYPE_LIST;
     static const std::set<int64_t> A5_SUPPORT_RANK_SIZE;
     static const std::set<int64_t> A3_SUPPORT_RANK_SIZE;
+
+    uint64_t aivWorkspaceSize_{0UL};
+    std::array<int32_t, MAX_GLOBAL_EXPERT_NUM> sendCounts_{};
 };
 } // namespace optiling
 #endif

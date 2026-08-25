@@ -367,7 +367,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2(
 - 通信引擎约束：
 
   <!-- npu="A3" id8 -->
-  - Atlas A3 训练系列产品/Atlas A3 推理系列产品：支持AI_CPU通信和AIV内存语义通信。AIV模式要求CCL window大小不小于`BSK * N1 * sizeof(dtype) + epWorldSize * e * sizeof(int32_t) + 16MB`。AIV模式占用CCL window尾部的固定控制区，同一通信域内不支持并发调用。
+  - Atlas A3 训练系列产品/Atlas A3 推理系列产品：支持AI_CPU通信和AIV内存语义通信。AIV模式要求CCL window大小不小于`BSK * N1 * sizeof(dtype) + epWorldSize * e * sizeof(int32_t) + 16MB`。16MB固定尾部区包含同步标记和本卡sendCounts暂存；计数/CumSum矩阵位于输出区与固定尾部区之间。同一通信域内不支持并发调用。
   <!-- end id8 -->
   <!-- npu="950" id9 -->
   - Ascend 950DT：支持CCU通信和AI_CPU通信，CCU仅支持单机UB域内互联，AI_CPU可支持跨机UB域内互联。

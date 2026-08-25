@@ -9,12 +9,13 @@
  */
 
 /*!
- * \file grouped_mat_mul_allto_allv_v2_tiling_a3.cpp
+ * \file grouped_mat_mul_allto_allv_aiv_tiling_a3.cpp
  */
 
-#include "../grouped_mat_mul_allto_allv_v2_tiling.h"
+#include "grouped_mat_mul_allto_allv_aiv_tiling.h"
 #include "op_host/tiling_templates_registry.h"
 
 namespace optiling {
-REGISTER_OPS_TILING_TEMPLATE(GroupedMatMulAlltoAllv, GroupedMatmulAllToAllvV2Tiling, 0);
+    // 先尝试走aiv模板，如果不是aiv则回退
+REGISTER_OPS_TILING_TEMPLATE(GroupedMatMulAlltoAllv, GroupedMatmulAllToAllvAivTiling, 0);
 } // namespace optiling

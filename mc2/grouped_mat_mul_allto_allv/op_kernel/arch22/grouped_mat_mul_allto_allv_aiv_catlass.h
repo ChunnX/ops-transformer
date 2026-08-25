@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file grouped_mat_mul_allto_allv_v2_catlass.h
+ * \file grouped_mat_mul_allto_allv_aiv_catlass.h
  * \brief CATLASS GroupedMatmulSliceM adapter used by the AIV memory-semantics path.
  */
-#ifndef GROUPED_MAT_MUL_ALLTO_ALLV_V2_CATLASS_H
-#define GROUPED_MAT_MUL_ALLTO_ALLV_V2_CATLASS_H
+#ifndef GROUPED_MAT_MUL_ALLTO_ALLV_AIV_CATLASS_H
+#define GROUPED_MAT_MUL_ALLTO_ALLV_AIV_CATLASS_H
 
 #include <type_traits>
 
@@ -24,7 +24,7 @@
 #include "catlass/gemm/dispatch_policy.hpp"
 #include "catlass/gemm/gemm_type.hpp"
 #include "catlass/layout/layout.hpp"
-#include "grouped_mat_mul_allto_allv_v2_tiling.h"
+#include "grouped_mat_mul_allto_allv_aiv_tiling.h"
 
 namespace MC2KernelTemplate {
 
@@ -33,37 +33,21 @@ class CatlassGroupedMatmulOp {
 public:
     __aicore__ inline CatlassGroupedMatmulOp() = default;
 
-    template <typename TilingDataType, typename GmmTilingDataType, typename GmmArrayType>
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR xScale, GM_ADDR weightScale, GM_ADDR output,
-                                GM_ADDR workspace, const TilingDataType *tilingData,
-                                const GmmTilingDataType *gmmTilingData, GmmArrayType *gmmArray,
-                                AscendC::TPipe *pipe, bool isA2avGmm = false)
+    __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR output,
+                                const GroupedMatMulAlltoAllvAivTaskTilingInfo *taskTilingInfo)
     {
-        (void)xScale;
-        (void)weightScale;
-        (void)gmmTilingData;
-        (void)gmmArray;
-        (void)pipe;
-        (void)isA2avGmm;
         if ASCEND_IS_AIV {
             return;
         }
         x_ = x;
         weight_ = weight;
         output_ = output;
-        (void)workspace;
-        taskTilingInfo_ = &tilingData->taskTilingInfo;
+        taskTilingInfo_ = taskTilingInfo;
     }
 
     __aicore__ inline void Process(uint32_t startExpertIdx, uint32_t expertNum)
     {
         if ASCEND_IS_AIV {
-            return;
-        }
-        // Correctness-first AIV path: a single AIC owns the CATLASS resource
-        // and executes all group tiles. This avoids event-resource aliasing
-        // between multiple AIC instances in the MIX_AIC_1_2 kernel.
-        if (AscendC::GetBlockIdx() != 0U) {
             return;
         }
         if constexpr (IsSharedExpert) {
@@ -105,17 +89,17 @@ private:
                                uint32_t expertNum, bool isSharedExpert)
     {
         using namespace Catlass;
-        // Match CATLASS' validated Pingpong configuration. Only AIC0 owns this
-        // resource, so its unit-flag lifecycle cannot race another CATLASS block.
+        // Every AIC owns an independent CATLASS resource and processes its
+        // strided subset of L1 tiles.
         constexpr bool enableUnitFlag = true;
 
         using ArchTag = Arch::AtlasA2;
         using DispatchPolicy = Gemm::MmadAtlasA2Pingpong<enableUnitFlag>;
         // Correctness-first fixed tiles; host-side tuning is intentionally deferred.
-        using L1TileShape = GemmShape<Gmma2avV2Tiling::L1_TILE_M, Gmma2avV2Tiling::L1_TILE_N,
-                                      Gmma2avV2Tiling::L1_TILE_K>;
-        using L0TileShape = GemmShape<Gmma2avV2Tiling::L0_TILE_M, Gmma2avV2Tiling::L0_TILE_N,
-                                      Gmma2avV2Tiling::L0_TILE_K>;
+        using L1TileShape = GemmShape<Gmma2avAivTiling::L1_TILE_M, Gmma2avAivTiling::L1_TILE_N,
+                                      Gmma2avAivTiling::L1_TILE_K>;
+        using L0TileShape = GemmShape<Gmma2avAivTiling::L0_TILE_M, Gmma2avAivTiling::L0_TILE_N,
+                                      Gmma2avAivTiling::L0_TILE_K>;
         using LayoutA = layout::RowMajor;
         using LayoutB = std::conditional_t<WeightTrans, layout::ColumnMajor, layout::RowMajor>;
         using LayoutC = layout::RowMajor;
@@ -161,7 +145,9 @@ private:
             gmB.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(weight_) + groupOffsetB);
             gmC.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(output_) + groupOffsetC);
 
-            for (uint32_t loopIdx = 0U; loopIdx < coreLoops; ++loopIdx) {
+            const uint32_t coreIdx = AscendC::GetBlockIdx();
+            const uint32_t aicCoreNum = static_cast<uint32_t>(taskTilingInfo_->aicCoreNum);
+            for (uint32_t loopIdx = coreIdx; loopIdx < coreLoops; loopIdx += aicCoreNum) {
                 GemmCoord blockCoord = blockScheduler.GetBlockCoord(loopIdx);
                 GemmCoord actualBlockShape = blockScheduler.GetActualBlockShape(blockCoord);
                 MatrixCoord offsetA{blockCoord.m() * L1TileShape::M, 0};
@@ -183,9 +169,9 @@ private:
     GM_ADDR x_{nullptr};
     GM_ADDR weight_{nullptr};
     GM_ADDR output_{nullptr};
-    const TaskTilingInfo *taskTilingInfo_{nullptr};
+    const GroupedMatMulAlltoAllvAivTaskTilingInfo *taskTilingInfo_{nullptr};
 };
 
 } // namespace MC2KernelTemplate
 
-#endif // GROUPED_MAT_MUL_ALLTO_ALLV_V2_CATLASS_H
+#endif // GROUPED_MAT_MUL_ALLTO_ALLV_AIV_CATLASS_H

@@ -151,7 +151,7 @@
 ## 约束说明
 
 - 通信引擎约束：
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：V2接口支持AI_CPU通信和AIV内存语义通信（`commMode="aiv"`）。AIV初版支持2、4、8、16、32、64、128卡。AIV模式占用CCL window尾部的固定控制区，同一通信域内不支持并发调用。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：V2接口支持AI_CPU通信和AIV内存语义通信（`commMode="aiv"`）。AIV模式支持2、4、8、16、32、64、128、256、512、768卡，全局专家数不超过1024。AIV模式占用CCL window中的计数矩阵和尾部固定控制区，同一通信域内不支持并发调用。
   - <term>Ascend 950DT</term>：支持CCU通信和AI_CPU通信，CCCU仅支持单机UB域内互联，AI_CPU可支持跨机UB域内互联。
 
 - 参数说明里shape使用的变量：

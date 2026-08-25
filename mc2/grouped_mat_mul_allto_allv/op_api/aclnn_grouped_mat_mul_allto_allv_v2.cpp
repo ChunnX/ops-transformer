@@ -38,15 +38,6 @@ extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, 
 extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 extern "C" void *NnopbaseGetUserHandle(void *executor);
 
-extern "C" aclnnStatus aclnnGroupedMatMulAlltoAllvV2AivGetWorkspaceSize(
-    const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *sendCountsTensorOptional,
-    const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional, const aclTensor *mmWeightOptional,
-    const char *group, const char *commMode, int64_t epWorldSize, const aclIntArray *sendCounts,
-    const aclIntArray *recvCounts, bool transGmmWeight, bool transMmWeight, aclTensor *y, aclTensor *mmYOptional,
-    uint64_t *workspaceSize, aclOpExecutor **executor);
-extern "C" aclnnStatus aclnnGroupedMatMulAlltoAllvV2Aiv(
-    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
-
 static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, uint8_t &commModeEnum)
 {
     const size_t maxLength = 7UL;
@@ -176,20 +167,11 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize(
     uint8_t commModeEnum = 0;
     aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum);
     CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
-    aclnnStatus ret;
-    if (commModeEnum == COMM_MODE_AIV) {
-        ret = aclnnGroupedMatMulAlltoAllvV2AivGetWorkspaceSize(
-            gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
-            group, commMode, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight, y, mmYOptional,
-            workspaceSize, executor);
-        OP_LOGD("GroupedMatMulAlltoAllvV2, AIV inner GetWorkspaceSize ret %d.", ret);
-    } else {
-        ret = aclnnInnerGroupedMatMulAlltoAllvGetWorkspaceSize(
-            gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
-            const_cast<char *>(group), epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
-            const_cast<char *>(commMode), y, mmYOptional, workspaceSize, executor);
-        OP_LOGD("GroupedMatMulAlltoAllv, legacy inner GetWorkspaceSize ret %d.", ret);
-    }
+    aclnnStatus ret = aclnnInnerGroupedMatMulAlltoAllvGetWorkspaceSize(
+        gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
+        const_cast<char *>(group), epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
+        const_cast<char *>(commMode), y, mmYOptional, workspaceSize, executor);
+    OP_LOGD("GroupedMatMulAlltoAllvV2, inner GetWorkspaceSize ret %d, comm mode %u.", ret, commModeEnum);
     if (*executor != nullptr) {
         void *args = reinterpret_cast<void *>(static_cast<uint8_t>(commModeEnum));
         NnopbaseSetUserHandle(*executor, args);
@@ -222,14 +204,8 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2(void *workspace, uint64_t workspaceSiz
             }
         }
     }
-    aclnnStatus ret;
-    if (commMode == COMM_MODE_AIV) {
-        ret = aclnnGroupedMatMulAlltoAllvV2Aiv(workspace, workspaceSize, executor, stream);
-        OP_LOGD("GroupedMatMulAlltoAllvV2, AIV inner execute ret %d.", ret);
-    } else {
-        ret = aclnnInnerGroupedMatMulAlltoAllv(workspace, workspaceSize, executor, stream);
-        OP_LOGD("GroupedMatMulAlltoAllv, legacy inner execute ret %d.", ret);
-    }
+    aclnnStatus ret = aclnnInnerGroupedMatMulAlltoAllv(workspace, workspaceSize, executor, stream);
+    OP_LOGD("GroupedMatMulAlltoAllvV2, inner execute ret %d, comm mode %u.", ret, commMode);
     return ret;
 }
 
