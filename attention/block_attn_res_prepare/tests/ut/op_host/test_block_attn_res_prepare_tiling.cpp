@@ -10,7 +10,7 @@
 
 #include <gtest/gtest.h>
 
-#include "../../../op_host/block_attn_res_prepare_tiling.h"
+#include "../../../op_host/op_tiling/block_attn_res_prepare_tiling.h"
 #include "tiling_case_executor.h"
 #include "tiling_context_faker.h"
 
@@ -24,6 +24,12 @@ constexpr uint64_t ASCEND_950_L0B_SIZE = 64UL * 1024UL;
 constexpr uint64_t ASCEND_950_L0C_SIZE = 256UL * 1024UL;
 constexpr uint64_t ASCEND_950_AIC_CORE_NUM = 32UL;
 constexpr uint64_t ASCEND_950_AIV_CORE_NUM = 64UL;
+constexpr uint64_t FAKE_L2_SIZE = 4096UL;
+constexpr uint32_t VECTOR_TILING_DATA_SIZE = 64U;
+constexpr uint32_t CUBE_TILING_DATA_SIZE = 160U;
+constexpr uint32_t DOUBLE_BUFFER_NUM = 2U;
+constexpr size_t D_DIM_INDEX = 2;
+constexpr float DEFAULT_EPS = 1.0e-6F;
 
 // TilingInfo stores the serialized kernel ABI, not the host tiling class. The
 // host class derives from TilingDataBase and therefore cannot be reinterpreted
@@ -83,17 +89,17 @@ struct CubeTilingDataView {
     float eps;
 };
 
-static_assert(sizeof(VectorTilingDataView) == 64U);
-static_assert(sizeof(CubeTilingDataView) == 160U);
+static_assert(sizeof(VectorTilingDataView) == VECTOR_TILING_DATA_SIZE);
+static_assert(sizeof(CubeTilingDataView) == CUBE_TILING_DATA_SIZE);
 
 gert::TilingContextPara BuildCase(optiling::BlockAttnResPrepareCompileInfo &compileInfo,
                                   const gert::StorageShape &blockResShape, const gert::StorageShape &pseudoQueryShape,
                                   ge::DataType blockResType = ge::DT_FLOAT, ge::DataType validBlocksType = ge::DT_INT64,
-                                  ge::DataType pseudoQueryType = ge::DT_FLOAT, float eps = 1e-6F,
+                                  ge::DataType pseudoQueryType = ge::DT_FLOAT, float eps = DEFAULT_EPS,
                                   uint64_t coreNum = ASCEND_950_AIV_CORE_NUM)
 {
     const int64_t totalT = blockResShape.GetOriginShape().GetDim(0);
-    const int64_t totalD = blockResShape.GetOriginShape().GetDim(2);
+    const int64_t totalD = blockResShape.GetOriginShape().GetDim(D_DIM_INDEX);
     const int64_t totalS = pseudoQueryShape.GetOriginShape().GetDim(0);
     return gert::TilingContextPara(
         "BlockAttnResPrepare",
@@ -108,7 +114,7 @@ gert::TilingContextPara BuildCase(optiling::BlockAttnResPrepareCompileInfo &comp
             {{{totalS, totalT}, {totalS, totalT}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {{"eps", Ops::Transformer::AnyValue::CreateFrom<float>(eps)}}, &compileInfo, "Ascend950", coreNum,
-        ASCEND_950_UB_SIZE, 4096);
+        ASCEND_950_UB_SIZE, FAKE_L2_SIZE);
 }
 
 optiling::BlockAttnResPrepareCompileInfo Ascend950CompileInfo()
@@ -120,6 +126,9 @@ optiling::BlockAttnResPrepareCompileInfo Ascend950CompileInfo()
 } // namespace
 
 class BlockAttnResPrepareTilingTest : public testing::Test {};
+
+// Shape literals and expected tiling values below are intentional test vectors. Each test name documents the
+// boundary, scheduling path, or resource condition represented by those values.
 
 TEST_F(BlockAttnResPrepareTilingTest, NetworkDecodeShapeSucceeds)
 {
@@ -133,7 +142,7 @@ TEST_F(BlockAttnResPrepareTilingTest, NetworkDecodeShapeSucceeds)
     ASSERT_NE(tilingData, nullptr);
     EXPECT_EQ(tilingData->baseD, 7168U);
     EXPECT_EQ(tilingData->qBufferNum, 1U);
-    EXPECT_EQ(tilingData->vBufferNum, 2U);
+    EXPECT_EQ(tilingData->vBufferNum, DOUBLE_BUFFER_NUM);
     EXPECT_EQ(tilingData->oBufferNum, 1U);
     EXPECT_EQ(tilingData->vCacheRows, 4U);
 }
@@ -163,7 +172,7 @@ TEST_F(BlockAttnResPrepareTilingTest, QUsesDoubleBufferWhenEachCoreHasMultipleWo
     ASSERT_GE(tilingInfo.tilingDataSize, sizeof(VectorTilingDataView));
     const auto *tilingData = reinterpret_cast<const VectorTilingDataView *>(tilingInfo.tilingData.get());
     ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(tilingData->qBufferNum, 2U);
+    EXPECT_EQ(tilingData->qBufferNum, DOUBLE_BUFFER_NUM);
     EXPECT_EQ(tilingData->vBufferNum, 1U);
     EXPECT_EQ(tilingData->oBufferNum, 1U);
 }
@@ -189,8 +198,9 @@ TEST_F(BlockAttnResPrepareTilingTest, CubeTilingAllocatesMm1AndDoubleBufferedEWo
     EXPECT_EQ(tilingData->baseS, 24U);
     EXPECT_EQ(tilingData->nAlign, 16U);
     EXPECT_EQ(tilingData->mm1NAlign, 16U);
-    const uint64_t expectedWorkspaceElems = static_cast<uint64_t>(tilingData->baseS) * tilingData->mm1NAlign +
-                                            2U * static_cast<uint64_t>(tilingData->sAlign) * tilingData->nAlign;
+    const uint64_t expectedWorkspaceElems =
+        static_cast<uint64_t>(tilingData->baseS) * tilingData->mm1NAlign +
+        DOUBLE_BUFFER_NUM * static_cast<uint64_t>(tilingData->sAlign) * tilingData->nAlign;
     EXPECT_EQ(tilingData->workspacePerCoreElems, expectedWorkspaceElems);
     EXPECT_EQ(tilingData->reduceUbElems, 64U);
 }
@@ -205,8 +215,9 @@ TEST_F(BlockAttnResPrepareTilingTest, CubeTGroupingPreservesPerCoreTokenLoad)
     ASSERT_NE(tilingData, nullptr);
     EXPECT_EQ(tilingData->baseT, 1U);
     EXPECT_EQ(tilingData->totalWorkUnits, 32U);
-    const uint64_t expectedWorkspaceElems = static_cast<uint64_t>(tilingData->baseS) * tilingData->mm1NAlign +
-                                            2U * static_cast<uint64_t>(tilingData->sAlign) * tilingData->nAlign;
+    const uint64_t expectedWorkspaceElems =
+        static_cast<uint64_t>(tilingData->baseS) * tilingData->mm1NAlign +
+        DOUBLE_BUFFER_NUM * static_cast<uint64_t>(tilingData->sAlign) * tilingData->nAlign;
     EXPECT_EQ(tilingData->workspacePerCoreElems, expectedWorkspaceElems);
 }
 
@@ -215,7 +226,7 @@ TEST_F(BlockAttnResPrepareTilingTest, CubeTilingFallsBackWhenTwoAivPeersAreUnava
     auto compileInfo = Ascend950CompileInfo();
     compileInfo.aivCoreNum = 1U;
     auto context = BuildCase(compileInfo, {{32, 8, 7168}, {32, 8, 7168}}, {{24, 7168}, {24, 7168}}, ge::DT_FLOAT,
-                             ge::DT_INT64, ge::DT_FLOAT, 1e-6F, 1U);
+                             ge::DT_INT64, ge::DT_FLOAT, DEFAULT_EPS, 1U);
     ExecuteTestCase(context, ge::GRAPH_SUCCESS, optiling::BLOCK_ATTN_RES_PREPARE_VECTOR_KEY);
 }
 
