@@ -209,12 +209,6 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
     } else {
         gatherDataAddr_ = workspaceGM_ + scaleRegionBytes_;
     }
-    AscendC::PRINTF("[Init] rank=%u, block=%u, gatherLen=%llu, gatherOut=0x%llx, workspaceGM=0x%llx, "
-                    "gatherScaleAddr=0x%llx, gatherDataAddr=0x%llx, scaleRegionBytes=%llu, dataRegionBytes=%llu\n",
-                    rankId_, AscendC::GetBlockIdx(),
-                    static_cast<uint64_t>(tilingData_->gatherLen),
-                    gatherOut, workspaceGM_, gatherScaleAddr_, gatherDataAddr_,
-                    scaleRegionBytes_, dataRegionBytes_);
 
     // Submit AllGather (non-blocking <true>)
     CommitAllGather();
