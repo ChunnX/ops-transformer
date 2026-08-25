@@ -904,6 +904,7 @@
       | A16W16 | BF16 | BF16 | BF16 | – | – | – | – | BF16 | 0 | – |
       | A8W8-INT | BF16 | INT8 | INT8 | UINT64 | UINT64 | – | – | BF16 | 2 | 1（INT8） |
       | A8W4-INT | BF16 | INT4(INT32) | INT4(INT32) | UINT64 | UINT64 | FP32 | FP32 | BF16 | 2 | 1（INT8） |
+    - `epWorldSize`支持 {2, 4, 8, 16, 32, 48, 64, 96, 128}，且所有卡取值需保持一致。
 
   - **<term>Ascend 950PR/Ascend 950DT</term>**：
     - `activation`支持"swiglu"、"swiglustep"、"swigluoai"和"situglu"，各激活的参数配套关系见参数说明。
