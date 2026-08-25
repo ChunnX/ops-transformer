@@ -58,7 +58,8 @@ aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
     aclOpExecutor **executor)
 {
     if ((value == nullptr) != (dValueOut == nullptr)) {
-        return ACLNN_ERR_PARAM_INVALID;
+        // 本 TU 只包含 aclnn_base.h，未暴露 ACLNN_ERR_PARAM_INVALID 枚举；161002 即该错误码。
+        return static_cast<aclnnStatus>(161002);
     }
     return aclnnInnerSparseFlashAttentionGradGetWorkspaceSize(
         query, key, sparseIndices, dOut, out, softmaxMax, softmaxSum, value,
