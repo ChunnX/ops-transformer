@@ -68,13 +68,15 @@ def reshape_and_cache_cpu(key, key_rope, key_cache_in, key_cache_rope_in, slot_m
     key_rope_valid = key_rope[valid_indicies]
     block_idx = valid_slots // BLOCK_SIZE
     block_offset = valid_slots % BLOCK_SIZE
+    cache_dtype = key_cache_in.dtype
+    rope_cache_dtype = key_cache_rope_in.dtype
     if cache_mode == 0:
         key_cache_in[block_idx, block_offset] = torch.unsqueeze(
             torch.cat((key_nope_valid, key_rope_valid), dim=-1), dim=1
-        )
+        ).to(cache_dtype)
         return key_cache_in, torch.zeros_like(key_cache_in)
-    key_cache_in[block_idx, block_offset] = torch.unsqueeze(key_nope_valid, dim=1)
-    key_cache_rope_in[block_idx, block_offset] = torch.unsqueeze(key_rope_valid, dim=1)
+    key_cache_in[block_idx, block_offset] = torch.unsqueeze(key_nope_valid, dim=1).to(cache_dtype)
+    key_cache_rope_in[block_idx, block_offset] = torch.unsqueeze(key_rope_valid, dim=1).to(rope_cache_dtype)
     return key_cache_in, key_cache_rope_in
 
 
@@ -409,6 +411,7 @@ def cpu_mla_preprocess(input, gamma0, beta0, quantScale0, quantOffset0,
 
     参数签名与 aclnnMlaPreprocessGetWorkspaceSize 一致 (含输出 tensor 占位)。
     返回 [qOut, kvCacheOut, qRopeOut, krCacheOut]。
+    ATK 高精度路径中所有浮点输入实际是 fp32 (ATK 数据生成时把 fp16 转成了 fp32)。
     """
     _to_cpu = lambda t: t.detach().cpu() if isinstance(t, torch.Tensor) else t
     input1 = _to_cpu(input)
@@ -436,7 +439,32 @@ def cpu_mla_preprocess(input, gamma0, beta0, quantScale0, quantOffset0,
     ctkvScale = _to_cpu(ctkvScale)
     qNopeScale = _to_cpu(qNopeScale)
 
+    # ATK 代码: self.data_type = self.input1.dtype (行 689)
+    # 但 ATK .so 内部把 fp16 input 转成了 fp32 (运行时观察 golden 输出 fp32)
+    # ATK .so 不可见, 无法从代码推断, 但运行时 golden=fp32, lowprec 有 fp16 和 fp32 两份
+    # TTK 高精度 golden 需输出 fp32 (与 ATK result_cpu.bin 一致)
+    # TTK 低精度 benchmark 保持 input1.dtype (与 ATK result_cpu_lowprec_float16.bin 一致)
     data_type = input1.dtype
+    if data_type == torch.float16:
+        _hp = torch.float32
+        input1 = input1.to(_hp)
+        gamma0 = gamma0.to(_hp)
+        beta0 = beta0.to(_hp)
+        quantScale0 = quantScale0.to(_hp)
+        gamma1 = gamma1.to(_hp)
+        beta1 = beta1.to(_hp)
+        quantScale1 = quantScale1.to(_hp)
+        gamma2 = gamma2.to(_hp)
+        cos = cos.to(_hp)
+        sin = sin.to(_hp)
+        wuk = wuk.to(_hp)
+        kvCache = kvCache.to(_hp)
+        kvCacheRope = kvCacheRope.to(_hp)
+        ctkvScale = ctkvScale.to(_hp)
+        qNopeScale = qNopeScale.to(_hp)
+        data_type = _hp
+    # bf16: 保持原 dtype, 高精度路径中 .to(data_type) 截断为 bf16 (与 ATK 一致)
+    # fp16: data_type=fp32, .to(fp32) 不截断 (与 ATK 一致)
     cacheMode = _to_int(cacheMode, 3)
     doRmsNorm = _to_bool(doRmsNorm, True)
 
@@ -491,6 +519,9 @@ def cpu_mla_preprocess_lowprec(input, gamma0, beta0, quantScale0, quantOffset0,
     ctkvScale = _to_cpu(ctkvScale)
     qNopeScale = _to_cpu(qNopeScale)
 
+    # ATK 低精度路径: _lp_dtype = self.data_type
+    # 高精度和低精度用同一个 data_type, 区别在于低精度函数内部有 .to(data_type).float() 截断
+    # TTK 低精度路径: data_type = input1.dtype (与高精度路径一致)
     data_type = input1.dtype
     cacheMode = _to_int(cacheMode, 3)
     doRmsNorm = _to_bool(doRmsNorm, True)

@@ -52,3 +52,6 @@ third_party/
 # pre-commit log
 log/
 oat_reports/
+
+# ATK large test dump (>10M, exceeds remote hook limit)
+attention/mla_preprocess/tests/atk/all_aclnnMlaPreprocess.json

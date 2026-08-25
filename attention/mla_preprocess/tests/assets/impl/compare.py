@@ -321,8 +321,6 @@ def compare(*outputs, compare_context=None, **kwargs):
         golden_cpu = golden.detach().cpu()
         benchmark_cpu = benchmark.detach().cpu()
 
-        print(f"[COMPARE-MLA] output[{i}] actual={tuple(actual_cpu.shape)} golden={tuple(golden_cpu.shape)} benchmark={tuple(benchmark_cpu.shape)}", flush=True)
-
         # cacheMode 分支判定
         if cacheMode == 0:
             # 只判 out[0] 和 out[1]

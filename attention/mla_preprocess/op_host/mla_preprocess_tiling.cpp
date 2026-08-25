@@ -261,6 +261,9 @@ void PpMatmulTilingApi::GetTileSize()
             if (newN0 > CONST_256 && enDequant_) {
                 continue;
             }
+            if (enDequant_ && newM0 * newM0 > 48128) {
+                continue;
+            }
             float cost = GetCost(newM0, newN0);
             if (cost < minCost) {
                 minCost = cost;

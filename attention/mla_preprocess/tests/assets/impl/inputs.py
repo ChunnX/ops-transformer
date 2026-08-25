@@ -37,16 +37,15 @@ def _process_deq_scale(deq_scale):
 
 
 def _to_nz_inplace(tensor):
-    """将 tensor 转为 NZ 格式 (in-place) — 仅在 NPU 设备上有效
+    """将 tensor 转为 NZ 格式 (in-place)
 
     TTK ACLNN 模式下 customize_inputs 接收 CPU tensor,
-    NZ 格式转换通过 CSV tensor_formats 字段由框架处理。
-    此函数仅在 tensor 已在 NPU 上时执行转换。
+    NZ 数据转换由 NPU 框架在读取 HBM 时自动处理。
+    此函数仅在 tensor 已在 NPU 上时执行显式转换。
     """
     if tensor is None:
         return
     if tensor.device.type != 'npu':
-        # CPU tensor: skip NZ conversion, framework handles via tensor_formats
         return
     cpu_data = tensor.detach().cpu()
     nz_data = transdata_nd2nz(cpu_data).contiguous()
@@ -100,12 +99,6 @@ def customize_inputs(input, gamma0, beta0, quantScale0, quantOffset0,
         print(f"[DESCALE-MLA] deScale0 dtype after data=: {descale0.dtype}", flush=True)
         print(f"[DESCALE-MLA] deScale1 dtype after data=: {descale1.dtype}", flush=True)
 
-    # 3. wdqkv/wuq NZ 格式转换
-    _to_nz_inplace(wdqkv)
-    _to_nz_inplace(wuq)
-
-    # 4. kvCache/kvCacheRope NZ 格式转换 (cacheMode > 1)
-    if cacheMode_val > 1:
-        _to_nz_inplace(kvCache)
-        _to_nz_inplace(kvCacheRope)
-        print(f"[NZ-MLA] kvCache/kvCacheRope NZ conversion requested (cacheMode={cacheMode_val})", flush=True)
+    # 3. wdqkv/wuq 的 NZ 数据转换由 acl_interface.py 在 _create_acl_tensor_from_torch 中处理
+    # (CSV tensor_formats=NZ 的 tensor 会自动做 ND→NZ 数据排布转换)
+    # customize_inputs 中不需要手动做 NZ 转换
