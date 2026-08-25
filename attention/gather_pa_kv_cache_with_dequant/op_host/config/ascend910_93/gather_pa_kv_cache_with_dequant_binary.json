@@ -1,0 +1,24 @@
+{
+    "op_type": "GatherPaKvCacheWithDequant",
+    "op_list": [
+      {
+        "bin_filename": "GatherPaKvCacheWithDequant_v1",
+        "inputs": [
+          {"name": "key_cache",      "index": 0, "dtype": "int8",     "format": "ND", "paramType": "required", "shape": [-2]},
+          {"name": "value_cache",    "index": 1, "dtype": "int8",     "format": "ND", "paramType": "required", "shape": [-2]},
+          {"name": "key_scale_cache","index": 2, "dtype": "float",    "format": "ND", "paramType": "required", "shape": [-2]},
+          {"name": "value_scale",    "index": 3, "dtype": "float",    "format": "ND", "paramType": "required", "shape": [-2]},
+          {"name": "block_tables",   "index": 4, "dtype": "int32",    "format": "ND", "paramType": "required", "shape": [-2]},
+          {"name": "seq_lens",       "index": 5, "dtype": "int32",    "format": "ND", "paramType": "required", "shape": [-2]},
+          {"name": "key",            "index": 6, "dtype": "bfloat16", "format": "ND", "paramType": "required", "shape": [-2]},
+          {"name": "value",          "index": 7, "dtype": "bfloat16", "format": "ND", "paramType": "required", "shape": [-2]},
+          {"name": "seq_offset",     "index": 8, "dtype": "int32",    "format": "ND", "paramType": "optional", "shape": [-2]}
+        ],
+        "outputs": [
+          {"name": "key",   "index": 0, "dtype": "bfloat16", "format": "ND", "paramType": "required", "shape": [-2]},
+          {"name": "value", "index": 1, "dtype": "bfloat16", "format": "ND", "paramType": "required", "shape": [-2]}
+        ],
+        "attrs": [{"name": "is_seq_lens_cumsum", "dtype": "bool", "value": true}]
+      }
+    ]
+}
