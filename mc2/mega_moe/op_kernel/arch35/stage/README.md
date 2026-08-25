@@ -61,12 +61,11 @@ waveEnd   = (expertIdx, rowOffsetInExpert)
 
 ## 3. compact 索引生成
 
-对当前 expert，本核先从 `cumsumInfo` 取得每个 rank 的 token 数，再按“活跃 rank 集合不变”的
-round 区间规划本核任务。每个区间只扫描一次 rank count，本核仅生成满足
-`destinationRow % coreCount == coreIdx` 的描述符：
+对当前 expert，本核先从 `cumsumInfo` 取得每个 rank 的 token 数，再按本核的轮转 row
+游标生成任务。逻辑 row 到 source 的 rank-round-robin 映射保持不变，描述符为：
 
 ```text
-{rankId, compactOrdinal, destinationRow}
+{rankId, compactOrdinal}
 ```
 
 随后只对本核确实用到的 rank 执行：
@@ -84,7 +83,7 @@ round 区间规划本核任务。每个区间只扫描一次 rank count，本核
 `topkIndexTensor` 分成三个不重叠且对齐的区域：
 
 ```text
-[本核 rankId 表][本核 topkIndex/ordinal 表][CreateVecIndex 临时区]
+[最终 {rankId, topkIndex} queue][{rankId, ordinal} descriptor][CreateVecIndex 临时区]
 ```
 
 两个本核任务表分别按 32B 对齐，临时区按 256 个 int32 对齐。这样复用已有 UB，不新增
@@ -120,30 +119,33 @@ task7 = E1 r2 d1
 
 ## 5. 分核和 workspace row
 
-正向任务序号直接成为该 expert 内的 workspace row。core 归属为：
+正向任务序号仍直接成为该 expert 内的 workspace row，逻辑顺序完全不变。只在
+`coreCount` 行构成的分核 round 内轮转 lane。对 expert 内 row `r`：
 
 ```text
-destinationRow % coreCount == coreIdx
+round = r / coreCount
+lane  = r % coreCount
+owner = (expertGlobalRowBegin + lane - round) mod coreCount
 ```
 
-`destinationRow` 使用所有 expert 的全局连续 row，因此 core phase 不会在 expert 或 wave 边界重置。
+`round` 使用 expert 内绝对 row，因此 expert 跨 wave 时不会重置；`expertGlobalRowBegin`
+保留不同 expert 之间的起始 phase。
 
 以上例、4 个 core 为例：
 
 ```text
-core0: task0, task4
-core1: task1, task5
-core2: task2, task6
-core3: task3, task7
+round0: core0->row0, core1->row1, core2->row2, core3->row3
+round1: core0->row5, core1->row6, core2->row7, core3->row4
 ```
 
-这保证同一轮优先覆盖不同 source rank；当前 expert 的尾部不足以占满一轮时，后续 expert 会自然接续剩余 core phase。
+因此逻辑 row 顺序和来源卡均未改变，但同一 core 每轮领取的 lane 改变。28 核、4 个
+均衡 rank 时，core0 依次领取 row 0、29、58、87，对应来源 rank 0、1、2、3。
 
 GMM 只要求同一 expert 的 row 连续，并不要求 expert 内维持原 rank-major 顺序。Combine 使用 `metaInfo` 中的 `{rankId, tokenId, topkSlot}` 恢复原路由，因此这种 expert 内重排不改变语义。
 
 ## 6. MTE 搬运和 ready
 
-`AppendDispatchTokenToStream` 接收已经确定的：
+MTE ring 消费 route queue 时已经确定：
 
 ```text
 rankId + topkIndex + destinationRow
