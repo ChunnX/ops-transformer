@@ -85,6 +85,9 @@ MhcPreSinkhorn(const at::Tensor &x, const at::Tensor &phi, const at::Tensor &alp
         hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut);
 }
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) { m.def("mhc_pre_sinkhorn", &MhcPreSinkhorn, "mhc_pre_sinkhorn"); }
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
+{
+    m.def("mhc_pre_sinkhorn", &MhcPreSinkhorn, "mhc_pre_sinkhorn");
+}
 
 } // namespace op_api

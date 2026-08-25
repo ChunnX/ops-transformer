@@ -42,7 +42,10 @@ static const std::initializer_list<op::DataType> DTYPE_OTHER_SUPPORT_LIST = {op:
 static constexpr int64_t HCMULT_DEFAULT_VALUE = 4;
 static constexpr int64_t NUM_ITERS_DEFAULT_VALUE = 20;
 
-static bool IsAscend950() { return GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510; }
+static bool IsAscend950()
+{
+    return GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
+}
 
 static bool CheckNotNull(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias,
                          const aclTensor *hin, const aclTensor *hPost, const aclTensor *hRes)
