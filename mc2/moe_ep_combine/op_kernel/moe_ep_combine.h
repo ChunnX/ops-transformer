@@ -249,6 +249,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
     constexpr size_t metadataOffset = offsetof(MoeEpCombineTilingData, moeEpCombineInfo) +
                                       offsetof(MoeEpCombineInfo, dumpMetadata);
     MoeEpExceptionDump::WriteMetadata(context, tilingGM + metadataOffset);
+    MoeEpExceptionDump::DebugTrap(); // 临时维测：验证 dump 落盘后回退
     channelsPerRank_ = mc2Context_->channelsPerRank;
     if (channelsPerRank_ == 0 || (epWorldSize_ > 0 && channelsPerRank_ > Mc2Aclnn::HCCL_MAX_RANK_SIZE / epWorldSize_)) {
         channelsPerRank_ = 1;
