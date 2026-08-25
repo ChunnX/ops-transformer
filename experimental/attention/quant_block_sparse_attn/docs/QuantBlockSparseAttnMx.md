@@ -19,7 +19,7 @@
 
 QuantBlockSparseAttnMx 是 QuantBlockSparseAttn 的 MXFP8 全量化路径（`quant_mode=2`），用于 FP8 量化场景下的分块稀疏注意力计算。算子根据 `sparse_indices` 和 `sparse_seq_len` 指定的稀疏块索引，只对每个 Query block 选中的 KV block 执行注意力计算，并支持 PagedAttention 形式的 KV Cache 存储。
 
-与 `quant_mode=1`（FP8）路径相比，MXFP8 全量化路径 Query/Key 采用 **per-token-group** 的量化模式，Value 采用 **per-channel-group** 的量化模式：Q/K 按 D 轴每 32 个元素共享一个 e8m0 scale，V 按 S 轴每 32 个元素共享一个 e8m0 scale。Q/K/V 的反量化/再量化缩放因子统一使用 e8m0 数据类型，在 Cube/Vector 计算过程中随路完成反量化和再量化，无需额外 FP32 scale 传输。P scale 支持 `FLOAT8_E8M0` 和 `FLOAT32` 两种数据类型，kernel 侧根据 tiling data 中的 `pScaleDtype` 字段自动选择读取路径。
+与 `quant_mode=1`（FP8）路径相比，MXFP8 全量化路径 Query/Key 采用 **per-token-group** 的量化模式，Value 采用 **per-channel-group** 的量化模式：Q/K 按 D 轴每 32 个元素共享一个 `FLOAT8_E8M0` scale，V 按 S 轴每 32 个元素共享一个 `FLOAT8_E8M0` scale。P scale 支持 `FLOAT8_E8M0` 和 `FLOAT32` 两种数据类型。
 
 计算语义如下：
 
@@ -31,7 +31,7 @@ $$
 O = (quant(P \times p\_scale)\times (V \times v\_descale)) / p\_scale
 $$
 
-其中 `K`、`V` 由 `block_table` 和 `sparse_indices` 从 PageAttention KV Cache 中按块寻址获得。`q_descale`、`k_descale`、`v_descale` 均为 `FLOAT8_E8M0` 格式，每 32 个数据元素对应一个 scale 值（Q/K 沿 D 轴分组，V 沿 S 轴分组）。`p_scale` 为 per-tensor 标量，支持 `FLOAT8_E8M0` 或 `FLOAT32` 数据类型。`mask_mode=0` 表示不加 mask，`mask_mode=3` 表示 causal mask。
+其中 `K`、`V` 由 `block_table` 和 `sparse_indices` 从 PageAttention KV Cache 中按块寻址获得。`q_descale`、`k_descale`、`v_descale` 均为 `FLOAT8_E8M0` 格式，每 32 个数据元素对应一个 scale 值（Q/K 沿 D 轴分组，V 沿 S 轴分组）。`p_scale` 为 per-tensor，支持 `FLOAT8_E8M0` 或 `FLOAT32` 数据类型。`mask_mode=0` 表示不加 mask，`mask_mode=3` 表示 causal mask。
 
 ## 接口说明
 
