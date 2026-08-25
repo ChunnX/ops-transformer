@@ -34,7 +34,7 @@
 ## 函数原型
 
 ```python
-cann_ops_transformer.und_gen_qkv_rms_norm_rope_cache(
+cann_ops_transformer.ops.und_gen_qkv_rms_norm_rope_cache(
     und_qkv,
     und_weights_q,
     und_weights_k,
@@ -127,7 +127,7 @@ cann_ops_transformer.und_gen_qkv_rms_norm_rope_cache(
   positions = torch.randint(0, 32, (3, total), dtype=torch.int64).npu()
   cat_indices = torch.tensor([0, 5, 1, 6, 2, 7, 3, 4], dtype=torch.int64).npu()
 
-  q = cann_ops_transformer.und_gen_qkv_rms_norm_rope_cache(
+  q = cann_ops_transformer.ops.und_gen_qkv_rms_norm_rope_cache(
       und_qkv, w[0], w[1], cos_sin_cache, k_cache, v_cache, slot_mapping, positions,
       gen_qkv, w[2], w[3], cat_indices,
       num_heads_q=Hq, num_heads_k=Hk, num_heads_v=Hv,
