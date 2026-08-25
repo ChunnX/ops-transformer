@@ -571,7 +571,8 @@ template <typename SMLAT>
 __aicore__ inline void SparseFlashMlaCsa<SMLAT>::CalcParams(uint32_t loop, uint32_t cmpLoop, uint64_t s2Start,
                                                             uint32_t s2LoopIdx, RunInfo &info)
 {
-    info.isValid = s2LoopIdx < tempLoopInfo.s2LoopTimes;
+    info.isValid = (tempLoopInfo.actOriS2Size > 0 || tempLoopInfo.actCmpS2Size > 0) &&
+                   (s2LoopIdx < tempLoopInfo.s2LoopTimes);
     info.loop = loop;
     info.cmpLoop = cmpLoop;
     info.bIdx = tempLoopInfo.bIdx;
