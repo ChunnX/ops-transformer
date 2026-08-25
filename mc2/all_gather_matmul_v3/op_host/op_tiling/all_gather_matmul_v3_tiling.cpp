@@ -461,25 +461,23 @@ static ge::graphStatus CheckTensor(const gert::TilingContext *context, ShapeInfo
 }
 
 /**
- * @brief 校验属性
+ * @brief 校验 rank_size: 合法取值且不超过 1:1 核配比下实际可用 block 数
  */
-static ge::graphStatus CheckAttrs(const gert::TilingContext *context)
+static ge::graphStatus CheckRankSizeAttr(const gert::TilingContext *context)
 {
     const char *nodeName = context->GetNodeName();
     auto attrs = context->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "attrs"), return ge::GRAPH_FAILED);
 
-    // rank_size
     auto rankSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_SIZE_INDEX);
     OP_TILING_CHECK(rankSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "rank_size"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(*rankSizePtr != 2 && *rankSizePtr != 4 && *rankSizePtr != 8 && *rankSizePtr != 16 &&
                     *rankSizePtr != 32 && *rankSizePtr != 64,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "rank_size", std::to_string(*rankSizePtr).c_str(),
-                                              "2/4/8/16"),
+                                              "2/4/8/16/32/64"),
                     return ge::GRAPH_FAILED);
     // 拦截：1:1 核配比下实际可用 block 数 = min(aicNum, aivNum)
-    // rankSize 不能超过实际可用 block 数，否则通信挂死或 matmul tile 丢失
+    // rankSize 不能超过实际可用 block 数，否则通信挂死
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
@@ -491,7 +489,17 @@ static ge::graphStatus CheckAttrs(const gert::TilingContext *context)
                         "<= min(aicNum, aivNum)"),
                     return ge::GRAPH_FAILED);
 
-    // is_trans_b
+    return ge::GRAPH_SUCCESS;
+}
+
+/**
+ * @brief 校验 is_trans_b: V3 仅支持 x2 [N,K] 布局（is_trans_b=true）
+ */
+static ge::graphStatus CheckIsTransBAttr(const gert::TilingContext *context)
+{
+    const char *nodeName = context->GetNodeName();
+    auto attrs = context->GetAttrs();
+
     auto isTransBPtr = attrs->GetAttrPointer<bool>(ATTR_IS_TRANS_B_INDEX);
     OP_TILING_CHECK(isTransBPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "is_trans_b"),  // todo: 还要讨论下这个到底是通过推导后自己构造的is transb传入aclnninner,还是通过用户透传下来的
                     return ge::GRAPH_FAILED);
@@ -499,7 +507,17 @@ static ge::graphStatus CheckAttrs(const gert::TilingContext *context)
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "is_trans_b", "false", "true (x2 must be [N,K] layout)"),
                     return ge::GRAPH_FAILED);
 
-    // comm_mode
+    return ge::GRAPH_SUCCESS;
+}
+
+/**
+ * @brief 校验 comm_mode: V3 仅支持 urma
+ */
+static ge::graphStatus CheckCommModeAttr(const gert::TilingContext *context)
+{
+    const char *nodeName = context->GetNodeName();
+    auto attrs = context->GetAttrs();
+
     auto commModePtr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
     OP_TILING_CHECK(commModePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "comm_mode"),
                     return ge::GRAPH_FAILED);
@@ -507,8 +525,18 @@ static ge::graphStatus CheckAttrs(const gert::TilingContext *context)
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "comm_mode", commModePtr, "urma"),
                     return ge::GRAPH_FAILED);
 
-    // group_size (MX quant: [1,1,32])，V3 仅支持 MX 量化
-    // 与 V2 对齐：值为 0 的维度自动从 scale shape 推导，推导后校验是否为 [1,1,32]
+    return ge::GRAPH_SUCCESS;
+}
+
+/**
+ * @brief 校验 group_size (MX quant: [1,1,32])，V3 仅支持 MX 量化，
+ *        值为 0 的维度自动从 scale shape 推导，推导后校验是否为 [1,1,32]
+ */
+static ge::graphStatus CheckGroupSizeAttr(const gert::TilingContext *context)
+{
+    const char *nodeName = context->GetNodeName();
+    auto attrs = context->GetAttrs();
+
     auto groupSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_GROUP_SIZE_INDEX);
     OP_TILING_CHECK(groupSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "group_size"),
                     return ge::GRAPH_FAILED);
@@ -573,6 +601,27 @@ static ge::graphStatus CheckAttrs(const gert::TilingContext *context)
 }
 
 /**
+ * @brief 校验算子属性
+ */
+static ge::graphStatus CheckAttrs(const gert::TilingContext *context)
+{
+    const char *nodeName = context->GetNodeName();
+    auto attrs = context->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "attrs"), return ge::GRAPH_FAILED);
+
+    OP_TILING_CHECK(CheckRankSizeAttr(context) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "check rank_size attr failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckIsTransBAttr(context) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "check is_trans_b attr failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckCommModeAttr(context) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "check comm_mode attr failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckGroupSizeAttr(context) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "check group_size attr failed."), return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+/**
  * @brief 设置tiling数据
  */
 static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeInfo &shapeInfo)
@@ -587,7 +636,7 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
                             sizeof(AllGatherMxMatmulUdmaTilingData)),
                     return ge::GRAPH_FAILED);
 
-    memset_s(rawTilingData->GetData(), rawTilingData->GetCapacity(), 0, rawTilingData->GetCapacity());
+    memset_s(rawTilingData->GetData(), rawTilingData->GetCapacity(), 0, rawTilingData->GetCapacity());  // 校验非空并tilingdata 缓冲区清零
     auto *tilingData = reinterpret_cast<AllGatherMxMatmulUdmaTilingData *>(rawTilingData->GetData());
 
     uint64_t m = static_cast<uint64_t>(shapeInfo.mPerRank);
@@ -606,7 +655,7 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
     uint64_t tileCnt = m / tileM;
     uint64_t tailM = m % tileM;
     uint64_t tailCnt = (tailM > 0) ? 1 : 0;
-    uint64_t paddedTailM = (tailM > 0) ? ((tailM + 15U) / 16U * 16U) : 0U;  // m方向16对齐，从而确保l0C拷出时首地址1024对齐
+    uint64_t paddedTailM = (tailM > 0) ? ((tailM + 15U) / 16U * 16U) : 0U;  // m方向16对齐，从而确保L0C拷出时首地址1024对齐
     uint64_t totalLogicalM = rankSize * (tileCnt * tileM + tailCnt * paddedTailM);
 
     tilingData->commTile.splitAxisTileSize = tileM;
@@ -616,13 +665,9 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
     tilingData->commTile.nonSplitAxisSize = k;
 
     // mm tiling via SWAT engine
-    // 从 context PlatformInfo 注入限核值（能感知进程级 set_device_limit），
-    // 使 SWAT 按实际可用核数（短板 1:1）切分，blockDim 与外侧控核设置一致
     QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
-    {
-        auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-        tilingEngine.SetCoreLimit(ascendcPlatform.GetCoreNumAic(), ascendcPlatform.GetCoreNumAiv());
-    }
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    tilingEngine.SetCoreLimit(ascendcPlatform.GetCoreNumAic(), ascendcPlatform.GetCoreNumAiv());
     tilingEngine.SetOptimizeEnable(false);
     tilingEngine.SetMTailAlignEnable(true);
     tilingEngine.SetAdjustBasicBlockEnable(false);
@@ -632,7 +677,7 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
             static_cast<uint32_t>(tilingData->mmTile.baseK), static_cast<uint32_t>(tilingData->mmTile.dbL0c),
             static_cast<uint32_t>(tilingData->mmTile.usedCoreNum));
 
-    // AIV comm loop requires rankSize <= launched cores
+    // 存在可用block数大于ranksize但是经过swat tiling后usedCoreNum可能小于rankSize的情况，需调整否则通信卡死
     uint32_t usedCoreNum = tilingData->mmTile.usedCoreNum < static_cast<uint32_t>(rankSize)
                                ? static_cast<uint32_t>(rankSize)
                                : tilingData->mmTile.usedCoreNum;
