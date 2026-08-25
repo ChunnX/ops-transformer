@@ -119,10 +119,15 @@ private:
     __aicore__ inline void MatmulProcess(uint64_t rowOffset, const QuantMatmulTilingData &mmTile);
     __aicore__ inline void ProcessBatch(uint64_t startRow, uint32_t taskM, uint32_t taskCnt,
                                         const QuantMatmulTilingData &mmTile);
-    // FP4打包因子
-    static constexpr uint64_t PackFactor = IsMxFp4 ? 2UL : 1UL;
-    __aicore__ inline GM_ADDR GmAddr(GM_ADDR base, uint64_t elemCount, uint64_t typeSize) {
-        return base + elemCount * typeSize / PackFactor;
+    // 类型级PackFactor: X1Type(FP4时=2), YType/scale(=1), 与PR#10391一致
+    template <typename T>
+    static constexpr uint64_t TypePackFactor() {
+        if constexpr (AscendC::IsSameType<T, fp4x2_e2m1_t>::value) { return 2UL; }
+        else { return 1UL; }
+    }
+    template <typename T>
+    __aicore__ inline GM_ADDR GmAddr(GM_ADDR base, uint64_t elemCount) {
+        return base + elemCount * sizeof(T) / TypePackFactor<T>();
     }
 };
 
@@ -196,13 +201,13 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
         static_cast<int64_t>(mmTile.k),
         1};
 
-    // A偏移: rowOffset * rankK (用PackFactor处理FP4打包)
+    // A偏移: rowOffset * rankK (用类型级PackFactor处理FP4打包)
     params.mmParams = BlockMmadParams{
-        GmAddr(x1_, rowOffset * ti.rankK, sizeof(X1Type)),
+        GmAddr<X1Type>(x1_, rowOffset * ti.rankK),
         x2_,  // B不偏移
-        GmAddr(workspaceGM_, rowOffset * rankNPerPeer, sizeof(YType)),
+        GmAddr<YType>(workspaceGM_, rowOffset * rankNPerPeer),
         bias_,
-        GmAddr(x1Scale_, rowOffset * scaleK, sizeof(AscendC::fp8_e8m0_t)),
+        GmAddr<AscendC::fp8_e8m0_t>(x1Scale_, rowOffset * scaleK),
         x2Scale_};
 
     params.l1Params = L1Params{static_cast<uint64_t>(mmTile.stepK) * mmTile.baseK, mmTile.scaleKL1, mmTile.nBufferNum};
@@ -245,8 +250,8 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     // sendOffset = taskM * rankNPerPeer * sizeof(YType) (tile间步长)
     // sendCount = taskM * rankNPerPeer (每tile发送量)
     // strideCount = rankM * rankNPerPeer (相邻rank间距, 完整M)
-    GM_ADDR sendBuf = GmAddr(workspaceGM_, startRow * rankNPerPeer, sizeof(YType));
-    GM_ADDR recvBuf = GmAddr(y_, startRow * rankNPerPeer, sizeof(YType));
+    GM_ADDR sendBuf = GmAddr<YType>(workspaceGM_, startRow * rankNPerPeer);
+    GM_ADDR recvBuf = GmAddr<YType>(y_, startRow * rankNPerPeer);
     uint64_t sendOffset = static_cast<uint64_t>(taskM) * rankNPerPeer * sizeof(YType);
     uint64_t sendCount = static_cast<uint64_t>(taskM) * rankNPerPeer;
     uint64_t strideCount = static_cast<uint64_t>(ti.rankM) * rankNPerPeer;
