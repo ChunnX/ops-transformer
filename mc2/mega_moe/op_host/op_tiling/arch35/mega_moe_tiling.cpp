@@ -28,9 +28,10 @@
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
 #include "mc2_hcom_topo_info.h"
-#include "../mega_moe.h"
+#include "../mega_moe_tiling_host.h"
 #include "../../../op_kernel/arch35/mega_moe_tiling.h"
 #include "../../../op_kernel/arch35/mega_moe_tiling_key.h"
+#include "../../../op_kernel/arch35/common/mega_moe_constants.h"
 #include "../../../op_kernel/arch35/common/mega_moe_workspace.h"
 
 using namespace Mc2Tiling;
@@ -58,45 +59,40 @@ const static int64_t H_ALIGN = 32LL;
 const static int64_t W4_K_ALIGN = 64LL;
 const static int64_t HIDDEN_DIM_BASE = 1024LL;
 const static int64_t MAX_HIDDEN_DIM = 8LL * 1024LL; // 8K
+// MTE 路径 N 泛化：hiddenDim(=GMM1 输出维，含 gate/up 两半) 按 GMM_TILE_N(256) 粒度放宽，
+// 下限 512 保证非交织模式 gate/up 半宽至少覆盖 1 个完整 256 tile；URMA 路径维持 1K 约束不变。
+const static int64_t MTE_MIN_HIDDEN_DIM = 512LL;
+const static int64_t MTE_HIDDEN_DIM_ALIGN = 256LL;
 const static int64_t MIN_EP_WORLD_SIZE = 2LL;
 const static int64_t MAX_EP_WORLD_SIZE = 1024LL;
 const static int64_t MAX_MOE_EXPERT_NUM = 2048LL;
 const static int64_t INPUT_WEIGHT_SCALES_CEIL_ALIGN = 64LL;
 const static int64_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 50LL;
 constexpr float DEFAULT_ACTIVATION_CLAMP = std::numeric_limits<float>::max();
+constexpr float DEFAULT_SWIGLU_OAI_ALPHA = 1.702f;
+constexpr float DEFAULT_SWIGLU_OAI_BETA = 1.0f;
 
-constexpr uint32_t GMM1_TILE_M = 256U;
-constexpr uint32_t GMM2_GM_TILE_M = 256U;
 constexpr uint32_t GMM_TILE_N = 256U;
+constexpr uint32_t GMM1_MIN_LOGICAL_TILES_PER_CORE = 4U;
 
-uint32_t CalcExpertsPerBatch(const MegaMoeTilingData *tilingData, uint32_t aicNum)
+uint32_t CalcMGroupsPerWave(const MegaMoeTilingData *tilingData, uint32_t aicNum)
 {
-    uint32_t moeExpertPerRank = tilingData->moeExpertPerRank;
-    if (moeExpertPerRank == 0U || tilingData->h == 0U || aicNum == 0U) {
+    if (tilingData->hiddenDim == 0U || tilingData->h == 0U || aicNum == 0U) {
         return 1U;
     }
 
-    uint64_t expectedTokens =
-        ops::CeilDiv<uint64_t>(
-            static_cast<uint64_t>(tilingData->bs) * static_cast<uint64_t>(tilingData->topK), moeExpertPerRank);
-    uint64_t expectedMWaves =
-        std::max<uint64_t>(1U, ops::CeilDiv<uint64_t>(expectedTokens, GMM1_TILE_M));
-    // One GMM1 scheduler N step covers gate+up, hence 2 * GMM_TILE_N output columns.
-    uint64_t gmm1TilesPerExpert =
-        expectedMWaves *
-        ops::CeilDiv<uint64_t>(tilingData->hiddenDim, static_cast<uint64_t>(GMM_TILE_N) * 2U);
-    uint64_t gmm2TilesPerExpert =
-        ops::CeilDiv<uint64_t>(expectedTokens, GMM2_GM_TILE_M) *
-        ops::CeilDiv<uint64_t>(tilingData->h, GMM_TILE_N);
-    uint64_t limitingTilesPerExpert =
-        std::max<uint64_t>(1U, std::min(gmm1TilesPerExpert, gmm2TilesPerExpert));
-    uint64_t expertsToFillAic = ops::CeilDiv<uint64_t>(aicNum, limitingTilesPerExpert);
-    uint64_t expertsPerBatch =
-        std::max<uint64_t>(1U, std::min<uint64_t>(moeExpertPerRank, expertsToFillAic));
-    // Deepen the wave when GMM1's gate+up width exceeds GMM2's output width.
-    expertsPerBatch *= ops::CeilDiv<uint64_t>(tilingData->hiddenDim, tilingData->h);
-    return static_cast<uint32_t>(
-        std::max<uint64_t>(1U, std::min<uint64_t>(moeExpertPerRank, expertsPerBatch)));
+    /*
+     * hiddenDim 包含 gate/up 两部分。交织模式每核至少调度 4 个独立 N tile；非交织模式
+     * 每个物理任务成对处理 gate/up，原先每核 2 个物理任务同样等价于 4 个逻辑 N tile。
+     * hiddenDim 已校验为 GMM_TILE_N(256) 的倍数（MTE；URMA 仍为 1024），CeilDiv 对
+     * 非交织半宽产生的尾 tile 只影响 wave 粒度估算，不影响正确性，两种编译模式共用本公式。
+     */
+    uint64_t gmm1LogicalTilesPerMGroup = ops::CeilDiv<uint64_t>(tilingData->hiddenDim, GMM_TILE_N);
+    uint64_t gmm2TilesPerMGroup = ops::CeilDiv<uint64_t>(tilingData->h, GMM_TILE_N);
+    uint64_t gmm1RequiredMGroups = ops::CeilDiv<uint64_t>(
+        static_cast<uint64_t>(aicNum) * GMM1_MIN_LOGICAL_TILES_PER_CORE, gmm1LogicalTilesPerMGroup);
+    uint64_t gmm2RequiredMGroups = ops::CeilDiv<uint64_t>(static_cast<uint64_t>(aicNum), gmm2TilesPerMGroup);
+    return static_cast<uint32_t>(std::max(gmm1RequiredMGroups, gmm2RequiredMGroups));
 }
 
 const static uint32_t WEIGHT_MATRIX_ROW_DIM_INDEX = 0U;
@@ -151,9 +147,11 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
     OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"), return);
 
     OP_LOGD(nodeName, "========== MegaMoeTilingData ==========");
-    OP_LOGD(nodeName, "shape: bs=%u, h=%u, hiddenDim=%u, topK=%u, maxOutputSize=%u, isPerExpertWeightTensor=%d",
-            tilingData->bs, tilingData->h, tilingData->hiddenDim, tilingData->topK, tilingData->maxOutputSize,
-            tilingData->isPerExpertWeightTensor);
+    OP_LOGD(nodeName,
+            "shape: bs=%u, numMaxTokensPerRank=%u, h=%u, hiddenDim=%u, topK=%u, maxOutputSize=%u, "
+            "isPerExpertWeightTensor=%d",
+            tilingData->bs, tilingData->numMaxTokensPerRank, tilingData->h, tilingData->hiddenDim, tilingData->topK,
+            tilingData->maxOutputSize, tilingData->isPerExpertWeightTensor);
     OP_LOGD(nodeName,
             "topology: moeExpertPerRank=%u, sharedExpertNum=%u, epWorldSize=%u, aicNum=%u, blockAivNum=%u, "
             "blockNumPerEP=%u, topoType=%ld",
@@ -196,18 +194,18 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
             unpermuteTailChunkConfig.bf16SlotElementCount, unpermuteTailChunkConfig.fp32SlotElementCount,
             unpermuteTailChunkConfig.topKWeightsBufferBytes, unpermuteTailChunkConfig.topKWeightsConversionBufferBytes);
     OP_LOGD(nodeName, "topkWeightsPrefetch is %d", tilingData->topkWeightsPrefetch);
-    OP_LOGD(nodeName, "expertsPerBatch is %u", tilingData->expertsPerBatch);
+    OP_LOGD(nodeName, "mGroupsPerWave is %u", tilingData->mGroupsPerWave);
 }
 
 void PrintWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
 {
     OP_LOGD(nodeName, "dispatchRevDataPtr:         %ld\n", info->dispatchRevDataPtr);
     OP_LOGD(nodeName, "dispatchRevScalePtr:        %ld\n", info->dispatchRevScalePtr);
-    OP_LOGD(nodeName, "swigluQuantDataPtr:         %ld\n", info->swigluQuantDataPtr);
-    OP_LOGD(nodeName, "swigluQuantScalePtr:        %ld\n", info->swigluQuantScalePtr);
+    OP_LOGD(nodeName, "activationQuantDataPtr:         %ld\n", info->activationQuantDataPtr);
+    OP_LOGD(nodeName, "activationQuantScalePtr:        %ld\n", info->activationQuantScalePtr);
     OP_LOGD(nodeName, "expertRevTokenNumsPtr:      %ld\n", info->expertRevTokenNumsPtr);
     OP_LOGD(nodeName, "metaInfoPtr:                %ld\n", info->metaInfoPtr);
-    OP_LOGD(nodeName, "flagSwiGluToGmm2Ptr:        %ld\n", info->flagSwiGluToGmm2Ptr);
+    OP_LOGD(nodeName, "flagActivationToGmm2Ptr:        %ld\n", info->flagActivationToGmm2Ptr);
     OP_LOGD(nodeName, "flagDispatchToGmm1Ptr:      %ld\n", info->flagDispatchToGmm1Ptr);
     OP_LOGD(nodeName, "flagSendCntCalToUpdParamsPtr:      %ld\n", info->flagSendCntCalToUpdParamsPtr);
     OP_LOGD(nodeName, "flagGmmToEpiloguePtr: %ld\n", info->flagGmmToEpiloguePtr);
@@ -220,43 +218,26 @@ void PrintWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
 void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
 {
     OP_LOGD(nodeName, "========== PeermemInfo ==========");
-    int64_t rankSyncInWorldSize = PEERMEM_DATA_OFFSET;
-    OP_LOGD(nodeName, "rankSyncInWorldSize: {%ld}\n", rankSyncInWorldSize);
-    int64_t sendTotalNum = static_cast<int64_t>(tilingData->bs) * tilingData->topK;
-    int64_t compareCount =
-        ops::CeilAlign(sendTotalNum * (int64_t)sizeof(int32_t), (int64_t)ALIGN_256) / (int64_t)sizeof(int32_t);
-    int64_t maskAlignSize = ops::CeilAlign(compareCount / 8, (int64_t)ALIGN_32);
-    int64_t maskSlotSize = maskAlignSize + (int64_t)ALIGN_32; // mask + 32B count
-    int64_t maskRecvSize = ops::CeilAlign(
-        (int64_t)tilingData->moeExpertPerRank * tilingData->epWorldSize * maskSlotSize, (int64_t)ALIGN_512);
-    OP_LOGD(nodeName, "maskRecvSize: {%ld}\n", maskRecvSize);
-    uint32_t mxScaleNum = ops::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
-    uint32_t dataBytes = ops::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
-    uint32_t scaleAlignBytes =
-        ops::CeilAlign(mxScaleNum * static_cast<uint32_t>(sizeof(int8_t)), static_cast<uint32_t>(ALIGN_32));
-    uint32_t tokenBytes = dataBytes + scaleAlignBytes;
-    if (tilingData->topkWeightsPrefetch == 1) {
-        uint32_t weightBytes =
-            ops::CeilAlign(tilingData->topK * static_cast<uint32_t>(sizeof(float)), static_cast<uint32_t>(ALIGN_32));
-        tokenBytes += weightBytes;
-    }
-    int64_t quantTokenScaleSize =
-        ops::CeilAlign((int64_t)((int64_t)(tilingData->bs) * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
-    OP_LOGD(nodeName, "quantTokenScaleSize: {%ld}\n", quantTokenScaleSize);
-    // Non-quantized Combine stores one BF16 value (2 bytes) for each hidden-dimension element.
-    int64_t combineTokenBytes = static_cast<int64_t>(tilingData->h) * 2;
-    if (tilingData->combineQuantMode != COMBINE_NO_QUANT) {
-        int64_t tokenStorageBytes =
-            ops::CeilAlign(static_cast<int64_t>(tilingData->h), static_cast<int64_t>(ALIGN_256));
-        int64_t scaleCount =
-            ops::CeilDiv(static_cast<int64_t>(tilingData->h), static_cast<int64_t>(MXFP_SCALE_GROUP_NUM));
-        int64_t storedScaleBytes = ops::CeilAlign(scaleCount, static_cast<int64_t>(MXFP_MULTI_BASE_SIZE));
-        combineTokenBytes = ops::CeilAlign(tokenStorageBytes + storedScaleBytes, static_cast<int64_t>(ALIGN_32));
-    }
+    // 各区尺寸取自 kernel 侧同一份布局公式（common/mega_moe_peermem.h）。
+    int64_t maskAlignSize = CalcDispatchMaskAlignSize(tilingData);
+    int64_t maskRecvSize = CalcMaskRecvSize(maskAlignSize, static_cast<int64_t>(tilingData->moeExpertPerRank),
+                                            static_cast<int64_t>(tilingData->epWorldSize));
+    int64_t tokenScaleBytes =
+        CalcQuantTokenScaleBytes(static_cast<int64_t>(tilingData->h), 1U, static_cast<int64_t>(tilingData->topK),
+                                 tilingData->topkWeightsPrefetch == 1);
+    int64_t quantTokenScaleSize = ops::CeilAlign(
+        static_cast<int64_t>(tilingData->numMaxTokensPerRank) * tokenScaleBytes, static_cast<int64_t>(ALIGN_512));
+    // 非量化 combine 每个 hidden 元素存一个 BF16（2 字节）。
+    int64_t combineTokenBytes =
+        CalcCombineTokenBytes(static_cast<int64_t>(tilingData->h), 2, tilingData->combineQuantMode != COMBINE_NO_QUANT);
+    int64_t sendTotalNum = static_cast<int64_t>(tilingData->numMaxTokensPerRank) * tilingData->topK;
     int64_t combineSendSize = ops::CeilAlign(sendTotalNum * combineTokenBytes, static_cast<int64_t>(ALIGN_512));
+    OP_LOGD(nodeName, "rankSyncInWorldSize: {%ld}\n", PEERMEM_DATA_OFFSET);
+    OP_LOGD(nodeName, "maskRecvSize: {%ld}\n", maskRecvSize);
+    OP_LOGD(nodeName, "quantTokenScaleSize: {%ld}\n", quantTokenScaleSize);
     OP_LOGD(nodeName, "combineSendSize: {%ld}\n", combineSendSize);
     OP_LOGD(nodeName, "total PeermemInfo Size: {%ld}\n",
-            rankSyncInWorldSize + maskRecvSize + quantTokenScaleSize + combineSendSize);
+            PEERMEM_DATA_OFFSET + maskRecvSize + quantTokenScaleSize + combineSendSize);
 }
 
 static ge::DataType GetDataTypeByOpQuantMode(const int64_t opQuantMode)
@@ -353,54 +334,93 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context, M
     OP_TILING_CHECK(commAlgPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "commAlg"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(numMaxTokensPerRankPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "numMaxTokensPerRank"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(activationPtr == nullptr,
-                    OP_LOGE_WITH_INVALID_INPUT(nodeName, "activation"), return ge::GRAPH_FAILED);
-    const bool isSwiglu = std::strcmp(activationPtr, "swiglu") == 0;
-    const bool isSituGlu = std::strcmp(activationPtr, "situglu") == 0;
-    OP_TILING_CHECK(!isSwiglu && !isSituGlu,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "activation", activationPtr,
-                                              "A5 supports 'swiglu' and 'situglu'"),
+    OP_TILING_CHECK(activationPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "activation"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(activationParamsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "activationParams"),
                     return ge::GRAPH_FAILED);
     const size_t paramCount = activationParamsPtr->GetSize();
-    const float *activationParams = activationParamsPtr->GetData();
-    OP_TILING_CHECK(activationParams == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "activationParamsData"),
+    const float *activationParams = paramCount == 0U ? nullptr : activationParamsPtr->GetData();
+    OP_TILING_CHECK(paramCount != 0U && activationParams == nullptr,
+                    OP_LOGE_WITH_INVALID_INPUT(nodeName, "activationParamsData"), return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckActivationParams(const gert::TilingContext *context, MegaMoeConfig &config,
+                                             const char *nodeName)
+{
+    auto attrs = context->GetAttrs();
+    auto activationPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrActivationIndex));
+    auto activationParamsPtr = attrs->GetListFloat(config.attrActivationParamsIndex);
+    const size_t paramCount = activationParamsPtr->GetSize();
+    const float *activationParams = paramCount == 0U ? nullptr : activationParamsPtr->GetData();
+
+    const bool isSwiGlu = std::strcmp(activationPtr, "swiglu") == 0;
+    const bool isSwiGluStep = std::strcmp(activationPtr, "swiglustep") == 0;
+    const bool isSwiGluOai = std::strcmp(activationPtr, "swigluoai") == 0;
+    const bool isSituGlu = std::strcmp(activationPtr, "situglu") == 0;
+    OP_TILING_CHECK(!isSwiGlu && !isSwiGluStep && !isSwiGluOai && !isSituGlu,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "activation", activationPtr,
+                                              "one of 'swiglu', 'swiglustep', 'swigluoai' or 'situglu'"),
                     return ge::GRAPH_FAILED);
-    if (isSwiglu) {
+    if (isSwiGlu || isSwiGluStep) {
         OP_TILING_CHECK(paramCount > 1U,
-                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationParamsSize",
-                                                  std::to_string(paramCount).c_str(),
-                                                  "should be 0 or 1 for swiglu"),
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationParamsSize", std::to_string(paramCount).c_str(),
+                                                  "0 or 1 for swiglu/swiglustep"),
                         return ge::GRAPH_FAILED);
         if (paramCount == 1U) {
             const float activationClamp = activationParams[0];
-            OP_TILING_CHECK(activationClamp < 0 || std::isnan(activationClamp),
+            OP_TILING_CHECK(
+                activationClamp < 0.0f || std::isnan(activationClamp),
+                OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationClamp", std::to_string(activationClamp).c_str(),
+                                          "should be >= 0 and not NAN"),
+                return ge::GRAPH_FAILED);
+        }
+    } else if (isSwiGluOai) {
+        OP_TILING_CHECK(paramCount != 0U && paramCount != 3U,
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationParamsSize", std::to_string(paramCount).c_str(),
+                                                  "0 or 3 for swigluoai [clamp, alpha, beta]"),
+                        return ge::GRAPH_FAILED);
+        if (paramCount == 3U) {
+            const float activationClamp = activationParams[0];
+            OP_TILING_CHECK(activationClamp < 0.0f || std::isnan(activationClamp),
                             OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationClamp",
-                                                      std::to_string(activationClamp).c_str(),
-                                                      "should be >= 0 and not NAN"),
+                                                      std::to_string(activationClamp).c_str(), ">= 0 and not NAN"),
+                            return ge::GRAPH_FAILED);
+            OP_TILING_CHECK(!std::isfinite(activationParams[1]),
+                            OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationAlpha",
+                                                      std::to_string(activationParams[1]).c_str(), "finite"),
+                            return ge::GRAPH_FAILED);
+            OP_TILING_CHECK(!std::isfinite(activationParams[2]),
+                            OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationBeta",
+                                                      std::to_string(activationParams[2]).c_str(), "finite"),
                             return ge::GRAPH_FAILED);
         }
     } else {
         OP_TILING_CHECK(paramCount < 1U || paramCount > 2U,
-                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationParamsSize",
-                                                  std::to_string(paramCount).c_str(),
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationParamsSize", std::to_string(paramCount).c_str(),
                                                   "should be 1 or 2 for situglu"),
                         return ge::GRAPH_FAILED);
         const float beta = activationParams[0];
         OP_TILING_CHECK(!std::isfinite(beta) || beta == 0.0f,
                         OP_LOGE_FOR_INVALID_VALUE(nodeName, "situglu_beta", std::to_string(beta).c_str(),
-                                                   "should be finite and non-zero"),
+                                                  "should be finite and non-zero"),
                         return ge::GRAPH_FAILED);
         if (paramCount == 2U) {
             const float linearBeta = activationParams[1];
-            OP_TILING_CHECK(!std::isfinite(linearBeta) || linearBeta == 0.0f,
-                            OP_LOGE_FOR_INVALID_VALUE(nodeName, "situglu_linear_beta",
-                                                      std::to_string(linearBeta).c_str(),
-                                                       "should be finite and non-zero"),
-                            return ge::GRAPH_FAILED);
+            OP_TILING_CHECK(
+                !std::isfinite(linearBeta) || linearBeta == 0.0f,
+                OP_LOGE_FOR_INVALID_VALUE(nodeName, "situglu_linear_beta", std::to_string(linearBeta).c_str(),
+                                          "should be finite and non-zero"),
+                return ge::GRAPH_FAILED);
         }
     }
+
+    auto topoTypePtr = attrs->GetAttrPointer<int64_t>(config.attrTopoTypeIndex);
+    OP_TILING_CHECK(
+        topoTypePtr != nullptr && *topoTypePtr == TOPO_TYPE_URMA && std::strcmp(activationPtr, "swiglu") != 0,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "activation", activationPtr, "'swiglu' for URMA topology"),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -428,6 +448,22 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
     ge::DataType yDtype = yDesc->GetDataType();
     int64_t yDtypeSize = ge::GetSizeByDataType(yDtype);
 
+    // numMaxTokensPerRank: 全卡一致的单卡 token 数上界, 跨卡窗口/容量公式统一用它; 为 0 时取本卡 bs
+    auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
+    OP_TILING_CHECK(numMaxTokensPerRankPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "numMaxTokensPerRank"),
+                    return ge::GRAPH_FAILED);
+    int64_t numMaxTokensPerRank = static_cast<int64_t>(*numMaxTokensPerRankPtr);
+    // 上界后续按 uint32 落库, 越界值不拦会被截断成错误上界, 故校验含 UINT32_MAX 上限
+    OP_TILING_CHECK(
+        numMaxTokensPerRank < 0 || numMaxTokensPerRank > 0xFFFFFFFFLL ||
+            (numMaxTokensPerRank != 0 && bs > numMaxTokensPerRank),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "numMaxTokensPerRank", std::to_string(numMaxTokensPerRank).c_str(),
+                                  (std::string("0 or in [bs, UINT32_MAX], bs is ") + std::to_string(bs).c_str())),
+        return ge::GRAPH_FAILED);
+    if (numMaxTokensPerRank == 0) {
+        numMaxTokensPerRank = bs;
+    }
+
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>((config.attrEpWorldSizeIndex));
     int64_t epWorldSize = static_cast<int64_t>(*epWorldSizePtr);
     OP_TILING_CHECK(epWorldSize < MIN_EP_WORLD_SIZE || epWorldSize > MAX_EP_WORLD_SIZE,
@@ -448,43 +484,26 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
                     return ge::GRAPH_FAILED);
 
     int64_t moeExpertPerRank = moeExpertNum / epWorldSize;
-    OP_TILING_CHECK(
-        weightMoeExpertCount != moeExpertPerRank,
-        OP_LOGE_FOR_INVALID_VALUE(
-            nodeName, "weight1 expert count", std::to_string(weightMoeExpertCount).c_str(),
-            (std::string("should equal the local MoE expert count (moeExpertNum / epWorldSize) = ") +
-             std::to_string(moeExpertPerRank))
-                .c_str()),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(weightMoeExpertCount != moeExpertPerRank,
+                    OP_LOGE_FOR_INVALID_VALUE(
+                        nodeName, "weight1 expert count", std::to_string(weightMoeExpertCount).c_str(),
+                        (std::string("should equal the local MoE expert count (moeExpertNum / epWorldSize) = ") +
+                         std::to_string(moeExpertPerRank))
+                            .c_str()),
+                    return ge::GRAPH_FAILED);
 
-    // maskRecv Size
-    int64_t compareCount =
-        ops::CeilAlign((int64_t)(bs * topK * sizeof(int32_t)), (int64_t)(ALIGN_256)) / (int64_t)sizeof(int32_t);
-    int64_t maskAlignSize = ops::CeilAlign(compareCount / 8, (int64_t)ALIGN_32); // 8 = block_32 / sizeof(int32_t)
-    int64_t maskSlotSize = maskAlignSize + ALIGN_32;                             // mask + 32B count
-    int64_t maskRecvSize = ops::CeilAlign(moeExpertPerRank * epWorldSize * maskSlotSize, ALIGN_512);
-    // quantTokenScale Size
-    uint32_t mxScaleNum = ops::CeilDiv(h, static_cast<int64_t>(ALIGN_32));
-    uint32_t dataBytes = ops::CeilAlign(h, static_cast<int64_t>(ALIGN_256)) * sizeof(int8_t);
-    uint32_t scaleAlignBytes =
-        ops::CeilAlign(mxScaleNum * static_cast<uint32_t>(sizeof(int8_t)), static_cast<uint32_t>(ALIGN_32));
-    uint32_t tokenBytes = dataBytes + scaleAlignBytes;
-    if (*attrs->GetAttrPointer<int64_t>((config.attrTopkWeightsTypeIndex)) == 1) {
-        uint32_t weightBytes =
-            ops::CeilAlign(static_cast<uint32_t>(topK * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
-        tokenBytes = ops::CeilAlign(tokenBytes + weightBytes, static_cast<uint32_t>(ALIGN_32));
-    }
-    int64_t quantTokenScaleSize = ops::CeilAlign((int64_t)(bs * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
-    // 必须与 kernel InitCombineBuffers 的 combine record 布局一致。
-    int64_t combineTokenBytes = h * yDtypeSize;
-    if (GetCombineQuantModeByAttr(context, config) != COMBINE_NO_QUANT) {
-        int64_t tokenStorageBytes = ops::CeilAlign(h, static_cast<int64_t>(ALIGN_256));
-        int64_t scaleCount = ops::CeilDiv(h, static_cast<int64_t>(MXFP_SCALE_GROUP_NUM));
-        int64_t storedScaleBytes = ops::CeilAlign(scaleCount, static_cast<int64_t>(MXFP_MULTI_BASE_SIZE));
-        combineTokenBytes = ops::CeilAlign(tokenStorageBytes + storedScaleBytes, static_cast<int64_t>(ALIGN_32));
-    }
-    int64_t combineSendSize = ops::CeilAlign(bs * topK * combineTokenBytes, static_cast<int64_t>(ALIGN_512));
-    int64_t leastCclBufferSize = PEERMEM_DATA_OFFSET + maskRecvSize + quantTokenScaleSize + combineSendSize;
+    // peermem 窗口尺寸与 kernel 侧布局同源（common/mega_moe_peermem.h），host / device 不再各写一份公式。
+    // 校验期尚未确定激活 dtype，elemsPerByte 取 1（保守上界，与既有校验口径一致）。
+    PeermemSizeParams peermemSizeParams{static_cast<int64_t>(numMaxTokensPerRank),
+                                        static_cast<int64_t>(topK),
+                                        static_cast<int64_t>(h),
+                                        static_cast<int64_t>(moeExpertPerRank),
+                                        static_cast<int64_t>(epWorldSize),
+                                        static_cast<int64_t>(yDtypeSize),
+                                        1U,
+                                        *attrs->GetAttrPointer<int64_t>((config.attrTopkWeightsTypeIndex)) == 1,
+                                        GetCombineQuantModeByAttr(context, config) != COMBINE_NO_QUANT};
+    int64_t leastCclBufferSize = CalcPeermemLeastSize(peermemSizeParams);
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>((config.attrCclBufferSizeIndex));
     int64_t cclBufferSize = static_cast<int64_t>(*cclBufferSizePtr);
     OP_TILING_CHECK(cclBufferSize < leastCclBufferSize,
@@ -495,13 +514,14 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
 
     auto maxRecvTokenNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMaxRecvTokenNumIndex));
     int64_t maxRecvTokenNum = static_cast<int64_t>(*maxRecvTokenNumPtr);
-    OP_TILING_CHECK(maxRecvTokenNum < 0 || maxRecvTokenNum > bs * epWorldSize * std::min(topK, moeExpertPerRank),
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "maxRecvTokenNum", std::to_string(maxRecvTokenNum).c_str(),
-                                              (std::string("should in [0, ") +
-                                               std::to_string(bs * epWorldSize * std::min(topK, moeExpertPerRank)) +
-                                               "]")
-                                                  .c_str()),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        maxRecvTokenNum < 0 || maxRecvTokenNum > numMaxTokensPerRank * epWorldSize * std::min(topK, moeExpertPerRank),
+        OP_LOGE_FOR_INVALID_VALUE(
+            nodeName, "maxRecvTokenNum", std::to_string(maxRecvTokenNum).c_str(),
+            (std::string("should in [0, ") +
+             std::to_string(numMaxTokensPerRank * epWorldSize * std::min(topK, moeExpertPerRank)) + "]")
+                .c_str()),
+        return ge::GRAPH_FAILED);
 
     auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantModeIndex));
     int64_t dispatchQuantMode = static_cast<int64_t>(*dispatchQuantModePtr);
@@ -557,16 +577,6 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "commAlg", commAlgPtr, "not support, need empty string"),
                     return ge::GRAPH_FAILED);
 
-    auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
-    int64_t numMaxTokensPerRank = static_cast<int64_t>(*numMaxTokensPerRankPtr);
-    if (numMaxTokensPerRank != 0) {
-        OP_TILING_CHECK(
-            bs != numMaxTokensPerRank,
-            OP_LOGE_FOR_INVALID_VALUE(nodeName, "numMaxTokensPerRank", std::to_string(numMaxTokensPerRank).c_str(),
-                                      (std::string("should be 0 or Bs, Bs is ") + std::to_string(bs).c_str())),
-            return ge::GRAPH_FAILED);
-    }
-
     int64_t sharedExpertNum = GetWeightExpertCount(context, config.sharedWeight1Index, isPerExpertWeightTensor);
     OP_TILING_CHECK(sharedExpertNum > NUM_FOUR,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "sharedExpertNum", std::to_string(sharedExpertNum).c_str(),
@@ -593,35 +603,47 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
     auto activationParamsPtr = attrs->GetListFloat(config.attrActivationParamsIndex);
 
     tilingData->epWorldSize = *epWorldSizePtr;
+    // attr 为 0 时上界取本卡 bs, 与原逻辑取值一致
+    auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
+    OP_TILING_CHECK(numMaxTokensPerRankPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "numMaxTokensPerRank"),
+                    return ge::GRAPH_FAILED);
+    tilingData->numMaxTokensPerRank =
+        *numMaxTokensPerRankPtr != 0 ? static_cast<uint32_t>(*numMaxTokensPerRankPtr) : tilingData->bs;
     auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMoeExpertNumIndex));
     int64_t moeExpertNum = static_cast<int64_t>(*moeExpertNumPtr);
     int64_t moeExpertPerRank = moeExpertNum / static_cast<int64_t>(tilingData->epWorldSize);
     tilingData->moeExpertPerRank = static_cast<uint32_t>(moeExpertPerRank);
+    // 接收容量要覆盖所有源卡的最大发送量, 用全卡一致的 numMaxTokensPerRank, 不能用本卡 bs
     tilingData->maxOutputSize = *maxRecvTokenNumPtr != 0 ? *maxRecvTokenNumPtr :
-                                                           tilingData->bs * tilingData->epWorldSize *
-                                                               std::min(tilingData->topK,
-                                                                        tilingData->moeExpertPerRank);
+                                                           tilingData->numMaxTokensPerRank * tilingData->epWorldSize *
+                                                               std::min(tilingData->topK, tilingData->moeExpertPerRank);
     tilingData->blockNumPerEP = std::max(static_cast<uint32_t>(1), aicNum / tilingData->epWorldSize);
     tilingData->combineQuantMode = GetCombineQuantModeByAttr(context, config);
-    const float *activationParams = activationParamsPtr->GetData();
+    const size_t paramCount = activationParamsPtr->GetSize();
+    const float *activationParams = paramCount == 0U ? nullptr : activationParamsPtr->GetData();
+    tilingData->clampLimit = paramCount == 0U ? DEFAULT_ACTIVATION_CLAMP : activationParams[0];
+    tilingData->actMode = static_cast<uint8_t>(MegaMoeImpl::MegaMoeActMode::SWIGLU);
+    tilingData->actSubMode = static_cast<uint8_t>(MegaMoeImpl::MegaMoeActSubMode::DEFAULT);
+    tilingData->activationAlpha = 1.0f;
+    tilingData->activationBeta = 1.0f;
+
     if (std::strcmp(activationPtr, "situglu") == 0) {
         tilingData->clampLimit = std::numeric_limits<float>::max();
-        tilingData->actMode = 1U;    // ACT_MODE_SITU
+        tilingData->actMode = static_cast<uint8_t>(MegaMoeImpl::MegaMoeActMode::SITU);
         tilingData->activationBeta = activationParams[0];
         if (activationParamsPtr->GetSize() == 2U) {
-            tilingData->actSubMode = 1U; // ACT_SUB_MODE_LINEAR
+            tilingData->actSubMode = static_cast<uint8_t>(MegaMoeImpl::MegaMoeActSubMode::LINEAR);
             tilingData->activationAlpha = activationParams[1];
         } else {
-            tilingData->actSubMode = 0U; // ACT_SUB_MODE_DEFAULT
+            tilingData->actSubMode = static_cast<uint8_t>(MegaMoeImpl::MegaMoeActSubMode::DEFAULT);
             tilingData->activationAlpha = 0.0f;
         }
-    } else {
-        tilingData->clampLimit = activationParamsPtr->GetSize() == 0U ? DEFAULT_ACTIVATION_CLAMP :
-                                                                        activationParams[0];
-        tilingData->actMode = 0U;    // ACT_MODE_SWIGLU
-        tilingData->actSubMode = 0U; // ACT_SUB_MODE_DEFAULT
-        tilingData->activationAlpha = 1.0f;
-        tilingData->activationBeta = 1.0f;
+    } else if (std::strcmp(activationPtr, "swiglustep") == 0) {
+        tilingData->actMode = static_cast<uint8_t>(MegaMoeImpl::MegaMoeActMode::SWIGLU_STEP);
+    } else if (std::strcmp(activationPtr, "swigluoai") == 0) {
+        tilingData->actMode = static_cast<uint8_t>(MegaMoeImpl::MegaMoeActMode::SWIGLU_OAI);
+        tilingData->activationAlpha = paramCount == 0U ? DEFAULT_SWIGLU_OAI_ALPHA : activationParams[1];
+        tilingData->activationBeta = paramCount == 0U ? DEFAULT_SWIGLU_OAI_BETA : activationParams[2];
     }
 
     tilingData->sharedExpertNum = static_cast<uint32_t>(
@@ -663,7 +685,7 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
             static_cast<uint32_t>(ops::CeilAlign(maxTilesM * maxTilesN, static_cast<int64_t>(16)));
     }
 
-    tilingData->expertsPerBatch = CalcExpertsPerBatch(tilingData, aicNum);
+    tilingData->mGroupsPerWave = CalcMGroupsPerWave(tilingData, aicNum);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -673,7 +695,9 @@ static MegaMoeDispatchBufferConfig CalcDispatchBufferConfig(const MegaMoeTilingD
                                                             uint32_t availableUbBytes)
 {
     MegaMoeDispatchBufferConfig bufferConfig{};
-    uint64_t sendTotalNum = static_cast<uint64_t>(tilingData->bs) * tilingData->topK;
+    // 发送批网格按上界 numMaxTokensPerRank*topK 划分, 保证每张卡的批数和 mask 推送字节数一致,
+    // 对端 mask 槽才能被完整覆盖; 本卡真实路由数 bs*topK 可能小于网格, 装载长度在 kernel 内逐批夹紧
+    uint64_t sendTotalNum = static_cast<uint64_t>(tilingData->numMaxTokensPerRank) * tilingData->topK;
     uint64_t alignedTotalRouteItems =
         (sendTotalNum + static_cast<uint64_t>(ALIGN_256) - 1U) / static_cast<uint64_t>(ALIGN_256) * ALIGN_256;
 
@@ -700,10 +724,9 @@ static MegaMoeDispatchBufferConfig CalcDispatchBufferConfig(const MegaMoeTilingD
     // fixedBufferBytes 包含 expertTokenCntTensor_、cumsumInfoTensor_、sendCntTensor_ 和 expertTokenNumsOutTensor_。
     uint32_t fixedBufferBytes =
         static_cast<uint32_t>(ALIGN_32) +
-        static_cast<uint32_t>(
-            ops::CeilAlign(static_cast<uint64_t>(tilingData->epWorldSize) * tilingData->moeExpertPerRank *
-                               sizeof(int32_t),
-                           static_cast<uint64_t>(ALIGN_32))) +
+        static_cast<uint32_t>(ops::CeilAlign(
+            static_cast<uint64_t>(tilingData->epWorldSize) * tilingData->moeExpertPerRank * sizeof(int32_t),
+            static_cast<uint64_t>(ALIGN_32))) +
         tilingData->epWorldSize * static_cast<uint32_t>(ALIGN_32) +
         static_cast<uint32_t>(ops::CeilAlign(static_cast<uint64_t>(tilingData->moeExpertPerRank) * sizeof(int32_t),
                                              static_cast<uint64_t>(ALIGN_32)));
@@ -751,7 +774,9 @@ static MegaMoeSendMaskBufferConfig CalcSendMaskBufferConfig(const MegaMoeTilingD
                                                             uint32_t availableUbBytes)
 {
     MegaMoeSendMaskBufferConfig bufferConfig{};
-    uint64_t sendTotalNum = static_cast<uint64_t>(tilingData->bs) * tilingData->topK;
+    // 发送批网格按上界 numMaxTokensPerRank*topK 划分, 保证每张卡的批数和 mask 推送字节数一致,
+    // 对端 mask 槽才能被完整覆盖; 本卡真实路由数 bs*topK 可能小于网格, 装载长度在 kernel 内逐批夹紧
+    uint64_t sendTotalNum = static_cast<uint64_t>(tilingData->numMaxTokensPerRank) * tilingData->topK;
     uint64_t alignedTotalRouteItems =
         (sendTotalNum + static_cast<uint64_t>(ALIGN_256) - 1U) / static_cast<uint64_t>(ALIGN_256) * ALIGN_256;
 
@@ -895,9 +920,8 @@ static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilin
 
     uint64_t logicalCoreCount = tilingData->blockAivNum;
     bool useAiv1OnlyWaveCombine =
-        tilingData->topoType == TOPO_TYPE_MTE &&
-        (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
-         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
+        tilingData->topoType == TOPO_TYPE_MTE && (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
+                                                  tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
     if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ || useAiv1OnlyWaveCombine) {
@@ -905,7 +929,8 @@ static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilin
         logicalCoreCount /= 2U;
     }
     // 同一 token 的 topK expert id 不重复，因此单 expert 从每张卡最多接收 bs 个 token。
-    uint64_t maxTokenCountForOneExpert = static_cast<uint64_t>(tilingData->bs) * tilingData->epWorldSize;
+    uint64_t maxTokenCountForOneExpert =
+        static_cast<uint64_t>(tilingData->numMaxTokensPerRank) * tilingData->epWorldSize;
     uint64_t maxTokenGroupCountForOneExpert =
         ops::CeilDiv(maxTokenCountForOneExpert, static_cast<uint64_t>(COMBINE_TOKEN_GROUP_SIZE));
     // Workspace 在路由结果产生前分配，因此每个本卡 MoE expert 都按独立最坏情况预留 slot。
@@ -914,20 +939,19 @@ static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilin
 
 static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
 {
-    bool isA8W8 = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
-                  tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
-    bool useMteA8W8Wave = tilingData->topoType == TOPO_TYPE_MTE && isA8W8;
+    bool useMteA8W8Wave =
+        tilingData->topoType == TOPO_TYPE_MTE && (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
+                                                  tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
+    bool useGroupGrainedActivationFlag = tilingData->topoType == TOPO_TYPE_MTE;
     bool useGroupSyncCounters =
-        tilingData->topoType == TOPO_TYPE_URMA ||
-        (tilingData->combineQuantMode != COMBINE_NO_QUANT && !useMteA8W8Wave);
+        tilingData->topoType == TOPO_TYPE_URMA || (tilingData->combineQuantMode != COMBINE_NO_QUANT && !useMteA8W8Wave);
     uint64_t maxWavesPerExpert = ops::CeilDiv<uint64_t>(tilingData->maxOutputSize, L1_TILE_M_256);
     uint64_t waveFlagSlotsPerExpert = maxWavesPerExpert * INT_CACHELINE;
-    uint64_t swigluFlagSlotsPerExpert = useMteA8W8Wave ? waveFlagSlotsPerExpert : INT_CACHELINE;
+    uint64_t activationFlagSlotsPerExpert = useGroupGrainedActivationFlag ? waveFlagSlotsPerExpert : INT_CACHELINE;
     uint64_t moeExpertCount = tilingData->moeExpertPerRank;
 
-    uint64_t flagElementCount =
-        moeExpertCount * (swigluFlagSlotsPerExpert + waveFlagSlotsPerExpert +
-                          static_cast<uint64_t>(INT_CACHELINE) * tilingData->aicNum);
+    uint64_t flagElementCount = moeExpertCount * (activationFlagSlotsPerExpert + waveFlagSlotsPerExpert +
+                                                  static_cast<uint64_t>(INT_CACHELINE) * tilingData->aicNum);
     if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
@@ -1043,7 +1067,10 @@ static ge::graphStatus CheckAttrAndSetTilingData(const gert::TilingContext *cont
     const char *nodeName = context->GetNodeName();
 
     OP_TILING_CHECK(CheckAttrPtrNullptr(context, config, nodeName) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "params check nulld failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "check attr pointers failed."), return ge::GRAPH_FAILED);
+
+    OP_TILING_CHECK(CheckActivationParams(context, config, nodeName) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "check activation params failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(CheckAttrParams(context, config, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "check attr params failed."), return ge::GRAPH_FAILED);
@@ -1131,9 +1158,8 @@ struct ExpertWeightTensorGroupInputs {
  * 校验同一 TensorList 内所有 tensor 均为预期维数，且 shape、dtype 和 format 一致。
  * 以第 0 项为基准，从第 1 项开始逐项比较。
  */
-static ge::graphStatus CheckTensorPropertiesWithinList(const gert::TilingContext *context,
-                                                       const NamedIndex &input, uint32_t expectedDimNum,
-                                                       const char *nodeName)
+static ge::graphStatus CheckTensorPropertiesWithinList(const gert::TilingContext *context, const NamedIndex &input,
+                                                       uint32_t expectedDimNum, const char *nodeName)
 {
     uint32_t tensorCount = GetDynamicInputTensorCount(context, input.index);
     OP_TILING_CHECK(tensorCount == 0U, OP_LOGE_WITH_INVALID_INPUT(nodeName, input.name), return ge::GRAPH_FAILED);
@@ -1144,8 +1170,7 @@ static ge::graphStatus CheckTensorPropertiesWithinList(const gert::TilingContext
     OP_CHECK_NULL_WITH_CONTEXT(context, referenceDesc);
     uint32_t referenceDimNum = referenceShape->GetStorageShape().GetDimNum();
     OP_TILING_CHECK(referenceDimNum != expectedDimNum,
-                    OP_LOGE(nodeName, "%s[0] must be %uD.", input.name, expectedDimNum),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "%s[0] must be %uD.", input.name, expectedDimNum), return ge::GRAPH_FAILED);
 
     for (uint32_t tensorIdx = 1; tensorIdx < tensorCount; ++tensorIdx) {
         auto currentShape = context->GetDynamicInputShape(input.index, tensorIdx);
@@ -1159,13 +1184,13 @@ static ge::graphStatus CheckTensorPropertiesWithinList(const gert::TilingContext
                         return ge::GRAPH_FAILED);
         bool shapeMismatch = false;
         for (uint32_t dimIdx = 0; dimIdx < referenceDimNum && !shapeMismatch; ++dimIdx) {
-            shapeMismatch = currentShape->GetStorageShape().GetDim(dimIdx) !=
-                            referenceShape->GetStorageShape().GetDim(dimIdx);
+            shapeMismatch =
+                currentShape->GetStorageShape().GetDim(dimIdx) != referenceShape->GetStorageShape().GetDim(dimIdx);
         }
-        OP_TILING_CHECK(shapeMismatch,
-                        OP_LOGE(nodeName, "%s[%u] must have the same shape as %s[0].", input.name, tensorIdx,
-                                input.name),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            shapeMismatch,
+            OP_LOGE(nodeName, "%s[%u] must have the same shape as %s[0].", input.name, tensorIdx, input.name),
+            return ge::GRAPH_FAILED);
         OP_TILING_CHECK(currentDesc->GetDataType() != referenceDesc->GetDataType(),
                         OP_LOGE(nodeName, "The dtype of %s[%u] must match %s[0].", input.name, tensorIdx, input.name),
                         return ge::GRAPH_FAILED);
@@ -1205,8 +1230,9 @@ static ge::graphStatus CheckExpertWeightInputGroupLayout(const gert::TilingConte
                                 weightScalesTwoTensorCount != weightOneTensorCount;
     OP_TILING_CHECK(
         tensorCountsMismatch || (weightDimNum == THREE_DIMS && weightOneTensorCount != 1U),
-        OP_LOGE(nodeName, "%s, %s, %s and %s must contain the same number of tensors; stacked layout requires "
-                          "exactly one tensor.",
+        OP_LOGE(nodeName,
+                "%s, %s, %s and %s must contain the same number of tensors; stacked layout requires "
+                "exactly one tensor.",
                 inputs.weightOne.name, inputs.weightTwo.name, inputs.weightScalesOne.name, inputs.weightScalesTwo.name),
         return ge::GRAPH_FAILED);
 
@@ -1221,14 +1247,13 @@ static ge::graphStatus CheckExpertWeightInputGroupLayout(const gert::TilingConte
         OP_CHECK_NULL_WITH_CONTEXT(context, weightScalesOneShape);
         OP_CHECK_NULL_WITH_CONTEXT(context, weightScalesTwoShape);
         int64_t expertCount = weightOneShape->GetStorageShape().GetDim(0);
-        OP_TILING_CHECK(
-            weightTwoShape->GetStorageShape().GetDim(0) != expertCount ||
-                weightScalesOneShape->GetStorageShape().GetDim(0) != expertCount ||
-                weightScalesTwoShape->GetStorageShape().GetDim(0) != expertCount,
-            OP_LOGE(nodeName, "Dim0 of %s, %s, %s and %s must have matching expert counts for %s inputs.",
-                    inputs.weightOne.name, inputs.weightTwo.name, inputs.weightScalesOne.name,
-                    inputs.weightScalesTwo.name, inputs.expertTypeName),
-            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(weightTwoShape->GetStorageShape().GetDim(0) != expertCount ||
+                            weightScalesOneShape->GetStorageShape().GetDim(0) != expertCount ||
+                            weightScalesTwoShape->GetStorageShape().GetDim(0) != expertCount,
+                        OP_LOGE(nodeName, "Dim0 of %s, %s, %s and %s must have matching expert counts for %s inputs.",
+                                inputs.weightOne.name, inputs.weightTwo.name, inputs.weightScalesOne.name,
+                                inputs.weightScalesTwo.name, inputs.expertTypeName),
+                        return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -1248,9 +1273,8 @@ static ge::graphStatus CheckMoeAndSharedWeightInputLayouts(const gert::TilingCon
     bool isPerExpertWeightTensor = weightDimNum == TWO_DIMS;
     OP_TILING_CHECK(
         weightDimNum != TWO_DIMS && weightDimNum != THREE_DIMS,
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-            nodeName, "weight1", (std::to_string(weightDimNum) + "D").c_str(),
-            "weight1 must be one stacked 3D tensor or a list of 2D tensors."),
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "weight1", (std::to_string(weightDimNum) + "D").c_str(),
+                                                 "weight1 must be one stacked 3D tensor or a list of 2D tensors."),
         return ge::GRAPH_FAILED);
 
     const ExpertWeightTensorGroupInputs moeInputs{{config.weight1Index, "weight1"},
@@ -1267,19 +1291,16 @@ static ge::graphStatus CheckMoeAndSharedWeightInputLayouts(const gert::TilingCon
                     OP_LOGE(nodeName, "MoE expert weight layout is invalid."), return ge::GRAPH_FAILED);
 
     // 检查共享专家的四个 weight/scale 输入是否同时存在或同时缺省。
-    bool hasSharedWeightOne =
-        GetWeightExpertCount(context, config.sharedWeight1Index, isPerExpertWeightTensor) > 0;
-    bool hasSharedWeightTwo =
-        GetWeightExpertCount(context, config.sharedWeight2Index, isPerExpertWeightTensor) > 0;
+    bool hasSharedWeightOne = GetWeightExpertCount(context, config.sharedWeight1Index, isPerExpertWeightTensor) > 0;
+    bool hasSharedWeightTwo = GetWeightExpertCount(context, config.sharedWeight2Index, isPerExpertWeightTensor) > 0;
     bool hasSharedWeightScalesOne =
         GetWeightExpertCount(context, config.sharedWeightScales1Index, isPerExpertWeightTensor) > 0;
     bool hasSharedWeightScalesTwo =
         GetWeightExpertCount(context, config.sharedWeightScales2Index, isPerExpertWeightTensor) > 0;
-    OP_TILING_CHECK(
-        hasSharedWeightOne != hasSharedWeightTwo || hasSharedWeightOne != hasSharedWeightScalesOne ||
-            hasSharedWeightOne != hasSharedWeightScalesTwo,
-        OP_LOGE(nodeName, "Shared expert weights and weight scales must be provided together."),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(hasSharedWeightOne != hasSharedWeightTwo || hasSharedWeightOne != hasSharedWeightScalesOne ||
+                        hasSharedWeightOne != hasSharedWeightScalesTwo,
+                    OP_LOGE(nodeName, "Shared expert weights and weight scales must be provided together."),
+                    return ge::GRAPH_FAILED);
     if (hasSharedWeightOne) {
         OP_TILING_CHECK(
             CheckExpertWeightInputGroupLayout(context, sharedInputs, weightDimNum, nodeName) != ge::GRAPH_SUCCESS,
@@ -1315,21 +1336,19 @@ static ge::graphStatus CheckWeightTensorDim(const gert::TilingContext *context, 
     const std::string commonMatrixDimensionsString = "[" + std::to_string(weightOneColumnCount) + ", " +
                                                      std::to_string(weightTwoRowCount) + ", " +
                                                      std::to_string(xColumnCount) + "]";
-    OP_TILING_CHECK(
-        weightOneColumnCount != weightTwoRowCount || weightOneColumnCount != xColumnCount,
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-            nodeName, "weight1, weight2 and x", commonMatrixDimensionsString.c_str(),
-            "The column count of weight1 and the row count of weight2 must equal the column count of x."),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(weightOneColumnCount != weightTwoRowCount || weightOneColumnCount != xColumnCount,
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                        nodeName, "weight1, weight2 and x", commonMatrixDimensionsString.c_str(),
+                        "The column count of weight1 and the row count of weight2 must equal the column count of x."),
+                    return ge::GRAPH_FAILED);
 
     const std::string weightRowColumnDimensionsString =
         "[" + std::to_string(weightOneRowCount) + ", " + std::to_string(weightTwoColumnCount) + "]";
-    OP_TILING_CHECK(
-        weightOneRowCount != weightTwoColumnCount * NUM_TWO,
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-            nodeName, "weight1 and weight2", weightRowColumnDimensionsString.c_str(),
-            "The row count of weight1 must equal the column count of weight2 multiplied by 2."),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(weightOneRowCount != weightTwoColumnCount * NUM_TWO,
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                        nodeName, "weight1 and weight2", weightRowColumnDimensionsString.c_str(),
+                        "The row count of weight1 must equal the column count of weight2 multiplied by 2."),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -1338,9 +1357,10 @@ static ge::graphStatus CheckWeightTensorDim(const gert::TilingContext *context, 
  * 校验共享专家 TensorList 与对应 MoE TensorList 的 dtype 一致，并按 dimensions 逐项校验单专家 shape。
  * 两个 TensorList 的内部一致性已在前序校验，因此只需校验第 0 项。
  */
-static ge::graphStatus CheckSharedTensorMatchesMoeTensor(
-    const gert::TilingContext *context, const NamedIndex &sharedInput, const NamedIndex &moeInput,
-    bool isPerExpertWeightTensor, const NamedIndex *dimensions, uint32_t dimensionCount, const char *nodeName)
+static ge::graphStatus CheckSharedTensorMatchesMoeTensor(const gert::TilingContext *context,
+                                                         const NamedIndex &sharedInput, const NamedIndex &moeInput,
+                                                         bool isPerExpertWeightTensor, const NamedIndex *dimensions,
+                                                         uint32_t dimensionCount, const char *nodeName)
 {
     auto sharedDesc = context->GetDynamicInputDesc(sharedInput.index, 0);
     auto sharedShape = context->GetDynamicInputShape(sharedInput.index, 0);
@@ -1352,10 +1372,9 @@ static ge::graphStatus CheckSharedTensorMatchesMoeTensor(
     OP_CHECK_NULL_WITH_CONTEXT(context, moeShape);
 
     OP_TILING_CHECK(sharedDesc->GetDataType() != moeDesc->GetDataType(),
-                    OP_LOGE_FOR_INVALID_VALUE(
-                        nodeName, (std::string(sharedInput.name) + " dtype").c_str(),
-                        std::to_string(sharedDesc->GetDataType()).c_str(),
-                        (std::string("must be same as ") + moeInput.name).c_str()),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, (std::string(sharedInput.name) + " dtype").c_str(),
+                                              std::to_string(sharedDesc->GetDataType()).c_str(),
+                                              (std::string("must be same as ") + moeInput.name).c_str()),
                     return ge::GRAPH_FAILED);
 
     for (uint32_t dimensionIdx = 0; dimensionIdx < dimensionCount; ++dimensionIdx) {
@@ -1364,13 +1383,12 @@ static ge::graphStatus CheckSharedTensorMatchesMoeTensor(
             GetSingleExpertTensorDimSize(sharedShape, dimension.index, isPerExpertWeightTensor);
         const int64_t moeDimensionSize =
             GetSingleExpertTensorDimSize(moeShape, dimension.index, isPerExpertWeightTensor);
-        OP_TILING_CHECK(
-            sharedDimensionSize != moeDimensionSize,
-            OP_LOGE_FOR_INVALID_VALUE(
-                nodeName, (std::string(sharedInput.name) + " " + dimension.name).c_str(),
-                std::to_string(sharedDimensionSize).c_str(),
-                (std::string("must be equal to ") + moeInput.name + " " + dimension.name).c_str()),
-            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(sharedDimensionSize != moeDimensionSize,
+                        OP_LOGE_FOR_INVALID_VALUE(
+                            nodeName, (std::string(sharedInput.name) + " " + dimension.name).c_str(),
+                            std::to_string(sharedDimensionSize).c_str(),
+                            (std::string("must be equal to ") + moeInput.name + " " + dimension.name).c_str()),
+                        return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1399,28 +1417,28 @@ static ge::graphStatus CheckSharedExpertInputs(const gert::TilingContext *contex
         {WEIGHT_MATRIX_ROW_DIM_INDEX, "row count"},
         {WEIGHT_MATRIX_COLUMN_DIM_INDEX, "column count"},
     };
-    OP_TILING_CHECK(CheckSharedTensorMatchesMoeTensor(context, sharedWeightOneInput, moeWeightOneInput,
-                                                      isPerExpertWeightTensor, weightDimensions, TWO_DIMS,
-                                                      nodeName) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "check shared_weight1 failed."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(CheckSharedTensorMatchesMoeTensor(context, sharedWeightTwoInput, moeWeightTwoInput,
-                                                      isPerExpertWeightTensor, weightDimensions, TWO_DIMS,
-                                                      nodeName) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "check shared_weight2 failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        CheckSharedTensorMatchesMoeTensor(context, sharedWeightOneInput, moeWeightOneInput, isPerExpertWeightTensor,
+                                          weightDimensions, TWO_DIMS, nodeName) != ge::GRAPH_SUCCESS,
+        OP_LOGE(nodeName, "check shared_weight1 failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        CheckSharedTensorMatchesMoeTensor(context, sharedWeightTwoInput, moeWeightTwoInput, isPerExpertWeightTensor,
+                                          weightDimensions, TWO_DIMS, nodeName) != ge::GRAPH_SUCCESS,
+        OP_LOGE(nodeName, "check shared_weight2 failed."), return ge::GRAPH_FAILED);
 
     const NamedIndex scaleDimensions[] = {
         {WEIGHT_SCALE_MATRIX_DIM_INDEX, "matrix dimension"},
         {WEIGHT_SCALE_GROUP_DIM_INDEX, "group dimension"},
         {WEIGHT_SCALE_MULTI_BASE_DIM_INDEX, "multi-base dimension"},
     };
-    OP_TILING_CHECK(CheckSharedTensorMatchesMoeTensor(context, sharedScaleOneInput, moeScaleOneInput,
-                                                      isPerExpertWeightTensor, scaleDimensions, THREE_DIMS,
-                                                      nodeName) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "check shared_weight_scales1 failed."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(CheckSharedTensorMatchesMoeTensor(context, sharedScaleTwoInput, moeScaleTwoInput,
-                                                      isPerExpertWeightTensor, scaleDimensions, THREE_DIMS,
-                                                      nodeName) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "check shared_weight_scales2 failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        CheckSharedTensorMatchesMoeTensor(context, sharedScaleOneInput, moeScaleOneInput, isPerExpertWeightTensor,
+                                          scaleDimensions, THREE_DIMS, nodeName) != ge::GRAPH_SUCCESS,
+        OP_LOGE(nodeName, "check shared_weight_scales1 failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        CheckSharedTensorMatchesMoeTensor(context, sharedScaleTwoInput, moeScaleTwoInput, isPerExpertWeightTensor,
+                                          scaleDimensions, THREE_DIMS, nodeName) != ge::GRAPH_SUCCESS,
+        OP_LOGE(nodeName, "check shared_weight_scales2 failed."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -1498,24 +1516,18 @@ static ge::graphStatus CheckWeightScalesTensorDim(const gert::TilingContext *con
     OP_CHECK_NULL_WITH_CONTEXT(context, weightTwoStorageShape);
     bool isPerExpertWeightTensor = weightOneStorageShape->GetStorageShape().GetDimNum() == TWO_DIMS;
 
-    const int64_t weightScalesOneMatrixDimSize =
-        GetSingleExpertTensorDimSize(weightScalesOneStorageShape, WEIGHT_SCALE_MATRIX_DIM_INDEX,
-                                     isPerExpertWeightTensor);
-    const int64_t weightScalesOneGroupDimSize =
-        GetSingleExpertTensorDimSize(weightScalesOneStorageShape, WEIGHT_SCALE_GROUP_DIM_INDEX,
-                                     isPerExpertWeightTensor);
-    const int64_t weightScalesOneMultiBaseDimSize =
-        GetSingleExpertTensorDimSize(weightScalesOneStorageShape, WEIGHT_SCALE_MULTI_BASE_DIM_INDEX,
-                                     isPerExpertWeightTensor);
-    const int64_t weightScalesTwoMatrixDimSize =
-        GetSingleExpertTensorDimSize(weightScalesTwoStorageShape, WEIGHT_SCALE_MATRIX_DIM_INDEX,
-                                     isPerExpertWeightTensor);
-    const int64_t weightScalesTwoGroupDimSize =
-        GetSingleExpertTensorDimSize(weightScalesTwoStorageShape, WEIGHT_SCALE_GROUP_DIM_INDEX,
-                                     isPerExpertWeightTensor);
-    const int64_t weightScalesTwoMultiBaseDimSize =
-        GetSingleExpertTensorDimSize(weightScalesTwoStorageShape, WEIGHT_SCALE_MULTI_BASE_DIM_INDEX,
-                                     isPerExpertWeightTensor);
+    const int64_t weightScalesOneMatrixDimSize = GetSingleExpertTensorDimSize(
+        weightScalesOneStorageShape, WEIGHT_SCALE_MATRIX_DIM_INDEX, isPerExpertWeightTensor);
+    const int64_t weightScalesOneGroupDimSize = GetSingleExpertTensorDimSize(
+        weightScalesOneStorageShape, WEIGHT_SCALE_GROUP_DIM_INDEX, isPerExpertWeightTensor);
+    const int64_t weightScalesOneMultiBaseDimSize = GetSingleExpertTensorDimSize(
+        weightScalesOneStorageShape, WEIGHT_SCALE_MULTI_BASE_DIM_INDEX, isPerExpertWeightTensor);
+    const int64_t weightScalesTwoMatrixDimSize = GetSingleExpertTensorDimSize(
+        weightScalesTwoStorageShape, WEIGHT_SCALE_MATRIX_DIM_INDEX, isPerExpertWeightTensor);
+    const int64_t weightScalesTwoGroupDimSize = GetSingleExpertTensorDimSize(
+        weightScalesTwoStorageShape, WEIGHT_SCALE_GROUP_DIM_INDEX, isPerExpertWeightTensor);
+    const int64_t weightScalesTwoMultiBaseDimSize = GetSingleExpertTensorDimSize(
+        weightScalesTwoStorageShape, WEIGHT_SCALE_MULTI_BASE_DIM_INDEX, isPerExpertWeightTensor);
 
     const int64_t weightOneRowCount =
         GetSingleExpertTensorDimSize(weightOneStorageShape, WEIGHT_MATRIX_ROW_DIM_INDEX, isPerExpertWeightTensor);
@@ -1526,54 +1538,48 @@ static ge::graphStatus CheckWeightScalesTensorDim(const gert::TilingContext *con
     const int64_t weightTwoColumnCount =
         GetSingleExpertTensorDimSize(weightTwoStorageShape, WEIGHT_MATRIX_COLUMN_DIM_INDEX, isPerExpertWeightTensor);
 
-    OP_TILING_CHECK(
-        weightScalesOneMatrixDimSize != weightOneRowCount,
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            nodeName, "weightScales1",
-            (std::string("matrix dimension=") + std::to_string(weightScalesOneMatrixDimSize)).c_str(),
-            (std::string("The matrix dimension of weightScales1 must equal the row count of weight1(") +
-             std::to_string(weightOneRowCount) + ").")
-                .c_str()),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        weightScalesOneGroupDimSize != ops::CeilDiv(weightOneColumnCount, INPUT_WEIGHT_SCALES_CEIL_ALIGN),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            nodeName, "weightScales1",
-            (std::string("group dimension=") + std::to_string(weightScalesOneGroupDimSize)).c_str(),
-            (std::string("The group dimension of weightScales1 must equal CeilDiv(weight1 column count, "
-                         "INPUT_WEIGHT_SCALES_CEIL_ALIGN) = ") +
-             std::to_string(ops::CeilDiv(weightOneColumnCount, INPUT_WEIGHT_SCALES_CEIL_ALIGN)) + ".")
-                .c_str()),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(weightScalesOneMatrixDimSize != weightOneRowCount,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName, "weightScales1",
+                        (std::string("matrix dimension=") + std::to_string(weightScalesOneMatrixDimSize)).c_str(),
+                        (std::string("The matrix dimension of weightScales1 must equal the row count of weight1(") +
+                         std::to_string(weightOneRowCount) + ").")
+                            .c_str()),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(weightScalesOneGroupDimSize != ops::CeilDiv(weightOneColumnCount, INPUT_WEIGHT_SCALES_CEIL_ALIGN),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName, "weightScales1",
+                        (std::string("group dimension=") + std::to_string(weightScalesOneGroupDimSize)).c_str(),
+                        (std::string("The group dimension of weightScales1 must equal CeilDiv(weight1 column count, "
+                                     "INPUT_WEIGHT_SCALES_CEIL_ALIGN) = ") +
+                         std::to_string(ops::CeilDiv(weightOneColumnCount, INPUT_WEIGHT_SCALES_CEIL_ALIGN)) + ".")
+                            .c_str()),
+                    return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(
-        weightScalesTwoMatrixDimSize != weightTwoRowCount,
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            nodeName, "weightScales2",
-            (std::string("matrix dimension=") + std::to_string(weightScalesTwoMatrixDimSize)).c_str(),
-            (std::string("The matrix dimension of weightScales2 must equal the row count of weight2(") +
-             std::to_string(weightTwoRowCount) + ").")
-                .c_str()),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        weightScalesTwoGroupDimSize != ops::CeilDiv(weightTwoColumnCount, INPUT_WEIGHT_SCALES_CEIL_ALIGN),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            nodeName, "weightScales2",
-            (std::string("group dimension=") + std::to_string(weightScalesTwoGroupDimSize)).c_str(),
-            (std::string("The group dimension of weightScales2 must equal CeilDiv(weight2 column count, "
-                         "INPUT_WEIGHT_SCALES_CEIL_ALIGN) = ") +
-             std::to_string(ops::CeilDiv(weightTwoColumnCount, INPUT_WEIGHT_SCALES_CEIL_ALIGN)) + ".")
-                .c_str()),
-        return ge::GRAPH_FAILED);
-    const std::string scaleMultiBaseDimensionsString =
-        "[" + std::to_string(weightScalesOneMultiBaseDimSize) + ", " +
-        std::to_string(weightScalesTwoMultiBaseDimSize) + "]";
-    OP_TILING_CHECK(
-        weightScalesOneMultiBaseDimSize != NUM_TWO || weightScalesTwoMultiBaseDimSize != NUM_TWO,
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-            nodeName, "weightScales1, weightScales2", scaleMultiBaseDimensionsString.c_str(),
-            "The per-expert trailing dimension of weightScales1 and weightScales2 must be 2."),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(weightScalesTwoMatrixDimSize != weightTwoRowCount,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName, "weightScales2",
+                        (std::string("matrix dimension=") + std::to_string(weightScalesTwoMatrixDimSize)).c_str(),
+                        (std::string("The matrix dimension of weightScales2 must equal the row count of weight2(") +
+                         std::to_string(weightTwoRowCount) + ").")
+                            .c_str()),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(weightScalesTwoGroupDimSize != ops::CeilDiv(weightTwoColumnCount, INPUT_WEIGHT_SCALES_CEIL_ALIGN),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName, "weightScales2",
+                        (std::string("group dimension=") + std::to_string(weightScalesTwoGroupDimSize)).c_str(),
+                        (std::string("The group dimension of weightScales2 must equal CeilDiv(weight2 column count, "
+                                     "INPUT_WEIGHT_SCALES_CEIL_ALIGN) = ") +
+                         std::to_string(ops::CeilDiv(weightTwoColumnCount, INPUT_WEIGHT_SCALES_CEIL_ALIGN)) + ".")
+                            .c_str()),
+                    return ge::GRAPH_FAILED);
+    const std::string scaleMultiBaseDimensionsString = "[" + std::to_string(weightScalesOneMultiBaseDimSize) + ", " +
+                                                       std::to_string(weightScalesTwoMultiBaseDimSize) + "]";
+    OP_TILING_CHECK(weightScalesOneMultiBaseDimSize != NUM_TWO || weightScalesTwoMultiBaseDimSize != NUM_TWO,
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                        nodeName, "weightScales1, weightScales2", scaleMultiBaseDimensionsString.c_str(),
+                        "The per-expert trailing dimension of weightScales1 and weightScales2 must be 2."),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -1820,7 +1826,7 @@ static ge::graphStatus TilingCheckMegaMoe(const gert::TilingContext *context, Me
                                           const char *nodeName)
 {
     OP_TILING_CHECK(CheckTensorPtrNullptr(context, config, nodeName) == ge::GRAPH_FAILED,
-                    OP_LOGE(nodeName, "params check nulld failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "params check nullptr failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(CheckTensorDim(context, config, nodeName) == ge::GRAPH_FAILED,
                     OP_LOGE(nodeName, "params shape is invalid."), return ge::GRAPH_FAILED);
@@ -1882,16 +1888,18 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
 
     int64_t hiddenDim =
         GetSingleExpertTensorDimSize(weightOneStorageShape, WEIGHT_MATRIX_ROW_DIM_INDEX, isPerExpertWeightTensor);
-    OP_TILING_CHECK(hiddenDim < HIDDEN_DIM_BASE || hiddenDim > MAX_HIDDEN_DIM,
-                    OP_LOGE_FOR_INVALID_VALUE(
-                        nodeName, "hiddenDim", std::to_string(hiddenDim).c_str(),
-                        (std::string("should in [") + std::to_string(HIDDEN_DIM_BASE) + ", " +
-                         std::to_string(MAX_HIDDEN_DIM) + "]")
-                            .c_str()),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(hiddenDim % HIDDEN_DIM_BASE != 0,
+    // URMA 保持 1K 下限/1K 对齐；MTE 泛化到 [512, 8K] 且 256 对齐（gate/up 半宽按 128 对齐）。
+    const int64_t minHiddenDim = *topoTypePtr == TOPO_TYPE_URMA ? HIDDEN_DIM_BASE : MTE_MIN_HIDDEN_DIM;
+    const int64_t hiddenDimAlign = *topoTypePtr == TOPO_TYPE_URMA ? HIDDEN_DIM_BASE : MTE_HIDDEN_DIM_ALIGN;
+    OP_TILING_CHECK(hiddenDim < minHiddenDim || hiddenDim > MAX_HIDDEN_DIM,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "hiddenDim", std::to_string(hiddenDim).c_str(),
-                                              (std::string("multiple of ") + std::to_string(HIDDEN_DIM_BASE)).c_str()),
+                                              (std::string("should in [") + std::to_string(minHiddenDim) + ", " +
+                                               std::to_string(MAX_HIDDEN_DIM) + "]")
+                                                  .c_str()),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(hiddenDim % hiddenDimAlign != 0,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "hiddenDim", std::to_string(hiddenDim).c_str(),
+                                              (std::string("multiple of ") + std::to_string(hiddenDimAlign)).c_str()),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

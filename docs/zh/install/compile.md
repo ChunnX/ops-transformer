@@ -18,7 +18,7 @@
 | protobuf | 25.1.0 | [protobuf-25.1.tar.gz](https://gitcode.com/cann-src-third-party/protobuf/releases/download/v25.1/protobuf-25.1.tar.gz) |
 | abseil-cpp | 20230802.1 | [abseil-cpp-20230802.1.tar.gz](https://gitcode.com/cann-src-third-party/abseil-cpp/releases/download/20230802.1/abseil-cpp-20230802.1.tar.gz) |
 | opbase(自CANN 9.0.0及以后版本需要下载) | master | [opbase](https://gitcode.com/cann/opbase) |
-| cann-cmake | master-026 | [cmake-master-026.tar.gz](https://cann-3rd.obs.cn-north-4.myhuaweicloud.com/cmake/cmake-master-026.tar.gz) |
+| cann-cmake | master-046 | [cmake-master-046.tar.gz](https://cann-3rd.obs.cn-north-4.myhuaweicloud.com/cmake/cmake-master-046.tar.gz) |
 | ops-tensor(自CANN 9.1.0及以后版本需要下载) | master | [ops-tensor](https://gitcode.com/cann/ops-tensor) |
 
 若您的编译环境可以访问网络，请参考[联网编译](#联网编译)，编译脚本会自动联网下载第三方软件。否则，请参考[未联网编译](#未联网编译)手动下载第三方软件。
@@ -81,6 +81,8 @@
 
     自定义算子包安装路径为```${ASCEND_HOME_PATH}/opp/vendors```，\$\{ASCEND\_HOME\_PATH\}已通过环境变量配置，表示CANN toolkit包安装路径，一般为\$\{install\_path\}/cann。
 
+    > 安装后执行 `grep load_priority ${ASCEND_HOME_PATH}/opp/vendors/config.ini` 校验，预期输出含本 vendor。若无输出，通常是 `${ASCEND_HOME_PATH}/opp/vendors` 属主或权限不对，请排查后重新安装。
+
     如果部署算子包时通过配置--install-path参数指定了算子包的安装目录，则在使用自定义算子前，需要执行```source ${install_path}/vendors/${vendor_name}/bin/set_env.bash```命令，set_env.bash脚本中将自定义算子包的安装路径追加到环境变量ASCEND_CUSTOM_OPP_PATH中，使自定义算子在当前环境中生效。
 
 3. **（可选）删除自定义算子包**
@@ -96,11 +98,14 @@
     ```bash
     # 编译除experimental贡献目录外的所有算子
     bash build.sh --pkg --soc=${soc_version}
+    # 指定打包类型（run/rpm/deb/all），默认 run
+    # bash build.sh --pkg --pkg-type=deb --soc=${soc_version}
     # 编译experimental贡献目录下的所有算子
     # bash build.sh --pkg --experimental --soc=${soc_version}
     ```
 
     - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2系列产品使用"ascend910b"（默认），Atlas A3系列产品使用"ascend910_93"，Ascend 950PR/Ascend 950DT产品使用"ascend950"。
+    - --pkg-type（可选）：指定打包类型，取值 run/rpm/deb/all，默认为 run，仅可与 --pkg 同时使用。
     - --experimental（可选）：表示编译experimental贡献目录下的算子。
 
     若提示如下信息，说明编译成功。
@@ -306,3 +311,6 @@ make: *** [Makefile:462: prepare_build] Error 2
 bash build.sh --pkg --soc=${soc_version} --ops=${op_list} --opkernel_aicpu
 ```
 
+### 编译失败或中断后恢复
+
+编译失败或强制中断可能导致 build 缓存损坏，再次编译异常时，执行 `bash build.sh --make_clean` 清理后重新编译。

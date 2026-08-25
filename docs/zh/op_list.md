@@ -248,6 +248,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/lightning_indexer_kl_loss/README.md">lightning_indexer_kl_loss</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>计算Lightning Indexer中teacher分布与student分布之间的KL散度损失。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/lightning_indexer_v2/README.md">lightning_indexer_v2</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -625,6 +635,16 @@
     <td>✗</td>
     <td>AI Core</td>
     <td>推理场景下SMLA和QLI的前处理算子，用于将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/compressor_grad/README.md">compressor_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>Compressor的反向算子，用于计算输入X、权重W^KV/W^Gate与位置编码Ape的梯度，前向在gradEnabled为true时导出softmax_score与kv中间结果作为本算子输入。</td>
   </tr>
   <tr>
     <td>attention</td>

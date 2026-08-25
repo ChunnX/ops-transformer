@@ -24,7 +24,13 @@
 
 ## 接口列表
 
-> **确定性简介**：因CANN或NPU型号不同等原因，可能无法保证同一个API运行结果一致。在相同条件下（平台、设备、版本号和其他随机性参数等），部分接口可通过PyTorch中控制算法确定性的全局开关[torch.use_deterministic_algorithms](https://github.com/pytorch/pytorch/blob/main/torch/__init__.py)开启确定性算法，使多次运行结果一致。
+> **确定性简介**：
+>
+> - 配置说明：因CANN或NPU型号不同等原因，可能无法保证同一个API运行结果一致。在相同条件下（平台、设备、版本号和其他随机性参数等），部分接口可通过PyTorch中控制算法确定性的全局开关[torch.use_deterministic_algorithms](https://github.com/pytorch/pytorch/blob/main/torch/__init__.py)开启确定性算法，使多次运行结果一致。
+> - 性能说明：同一个算子采用确定性计算通常比非确定性慢，因此模型单次运行性能可能会下降。但在实验、调试调测等需要保证多次运行结果相同来定位问题的场景，确定性计算可以提升效率。
+> - 线程说明：同一线程中只能设置一次确定性状态，多次设置以最后一次有效设置为准。有效设置是指设置确定性状态后，真正执行了一次算子任务下发。如果仅设置，没有算子下发，只能是确定性变量开启但未下发给算子，因此不执行算子。
+>   解决方案：暂不推荐一个线程多次设置确定性。该问题在二进制开启和关闭情况下均存在，在后续版本中会解决该问题。
+> - 符号说明：表中"-"符号表示该接口暂不支持当前列产品。
 
 |    接口名   |   说明     |  确定性说明（A2/A3）  | 确定性说明（Ascend 950） |
 | ----------- | ------------------- | ------------------- | ------------------- |
@@ -42,6 +48,7 @@
 |[kv_compress_epilog](../../torch_extension/cann_ops_transformer/docs/zh/kv_compress_epilog.md)| 在KV Cache的Epilog阶段对cache进行原地量化压缩更新，封装aclnnKvCompressEpilog。|默认确定性实现|-|
 |[lightning_indexer](../../torch_extension/cann_ops_transformer/docs/zh/lightning_indexer.md)| 基于一系列操作得到每一个token对应的Top-k个位置。支持KV压缩场景。|默认确定性实现|-|
 |[lightning_indexer_metadata](../../torch_extension/cann_ops_transformer/docs/zh/lightning_indexer.md)| lightning_indexer接口的前置接口，用于计算lightning_indexer的负载均衡。|默认确定性实现|默认确定性实现|
+|[lightning_indexer_kl_loss](../../torch_extension/cann_ops_transformer/docs/zh/lightning_indexer_kl_loss.md)|计算Lightning Indexer中teacher分布与student分布之间的KL散度损失。|默认非确定性，支持通过`torch.use_deterministic_algorithms`开启确定性计算。|-|
 |[low_latency_dispatch](../../torch_extension/cann_ops_transformer/docs/zh/low_latency_dispatch.md)|完成MoE并行部署下token的低时延dispatch分发，支持动态量化与EP域alltoallv通信，需与low_latency_combine配套使用。|默认支持确定性计算|默认支持确定性计算|
 |[low_latency_combine](../../torch_extension/cann_ops_transformer/docs/zh/low_latency_combine.md)|与low_latency_dispatch配套，按dispatch原路返回完成token的低时延combine反向聚合；topk_weights非空时乘路由权重再相加，为None时直接相加。|默认支持确定性计算|默认支持确定性计算|
 |[mega_moe](../../torch_extension/cann_ops_transformer/docs/zh/mega_moe.md)|MoE端到端通算融合算子，将Dispatch+GroupMatmul1+SwiGLUQuant+GroupMatmul2+Combine融合为单算子；配套get_mega_moe_ccl_buffer_size、get_symm_buffer_for_mega_moe使用。|-|默认支持确定性计算|

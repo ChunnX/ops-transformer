@@ -36,8 +36,8 @@ struct WorkRange {
     uint32_t count = 0;
 };
 
-__aicore__ inline WorkRange TilingByJobContext(uint32_t totalLen, uint32_t jobIndex,
-                                               uint32_t totalJobs, uint32_t align = ALIGN_32)
+__aicore__ inline WorkRange TilingByJobContext(uint32_t totalLen, uint32_t jobIndex, uint32_t totalJobs,
+                                               uint32_t align = ALIGN_32)
 {
     if (totalJobs == 0U || jobIndex >= totalJobs) {
         return {};
@@ -98,19 +98,28 @@ __aicore__ inline void ComputeCombineGroupsForCore(uint32_t logicalCoreId, uint3
     groupStride = groupCount < logicalCoreCount ? groupCount : logicalCoreCount;
 }
 
-// 返回当前 wave 的专家数；不足正常 wave 一半的尾块合并到前一个 wave。
-__aicore__ inline uint32_t GetWaveExpertCount(uint32_t waveBegin, uint32_t expertCount, uint32_t expertsPerWave)
+/*
+ * 计算单个专家贡献的独立 M 分组数。不同专家使用不同权重，因此各专家不足
+ * rowsPerMGroup 的尾块也必须分别占用一个分组。
+ */
+__aicore__ inline uint32_t GetMGroupCountForRows(uint64_t rowCount, uint32_t rowsPerMGroup)
 {
-    if (waveBegin >= expertCount) {
+    if (rowCount == 0U || rowsPerMGroup == 0U) {
         return 0U;
     }
-    uint32_t remainingExperts = expertCount - waveBegin;
-    if (expertsPerWave == 0U || remainingExperts <= expertsPerWave) {
-        return remainingExperts;
+    return static_cast<uint32_t>((rowCount - 1U) / rowsPerMGroup + 1U);
+}
+
+// 计算剩余分组预算允许当前 Wave 在本专家内推进到的结束行偏移。
+__aicore__ inline uint32_t GetWaveEndRowOffsetInExpert(uint64_t expertRowCount, uint32_t currentRowOffsetInExpert,
+                                                       uint32_t remainingMGroupCount, uint32_t rowsPerMGroup)
+{
+    if (remainingMGroupCount == 0U || rowsPerMGroup == 0U || currentRowOffsetInExpert >= expertRowCount) {
+        return currentRowOffsetInExpert;
     }
-    uint32_t tailExperts = remainingExperts - expertsPerWave;
-    bool mergeSmallTail = tailExperts < expertsPerWave && 2U * tailExperts < expertsPerWave;
-    return mergeSmallTail ? remainingExperts : expertsPerWave;
+    uint64_t maxWaveEndRowOffset =
+        static_cast<uint64_t>(currentRowOffsetInExpert) + static_cast<uint64_t>(remainingMGroupCount) * rowsPerMGroup;
+    return static_cast<uint32_t>(expertRowCount < maxWaveEndRowOffset ? expertRowCount : maxWaveEndRowOffset);
 }
 
 // 连续均衡分配 token，前 totalTokens % workerCount 个任务各多处理一个 token。
@@ -131,8 +140,8 @@ template <int32_t JobAlignment>
 __aicore__ inline void ResetWorkspaceRegion(const AivJobContext &job, GM_ADDR regionPtr, int32_t elementCount,
                                             int32_t batchElementCount, LocalTensor<int32_t> &resetTensor)
 {
-    WorkRange range = TilingByJobContext(static_cast<uint32_t>(elementCount), job.jobIndex,
-                                         job.totalJobs, static_cast<uint32_t>(JobAlignment));
+    WorkRange range = TilingByJobContext(static_cast<uint32_t>(elementCount), job.jobIndex, job.totalJobs,
+                                         static_cast<uint32_t>(JobAlignment));
     GlobalTensor<int32_t> regionGm;
     regionGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(regionPtr));
     for (uint32_t offset = 0; offset < range.count; offset += static_cast<uint32_t>(batchElementCount)) {
@@ -248,8 +257,8 @@ __aicore__ inline GM_ADDR GetTensorAddr(uint16_t index, GM_ADDR tensorPtr)
 }
 
 template <typename ElementType>
-__aicore__ inline GM_ADDR GetExpertWeightAddr(GM_ADDR tensorListAddr, bool isPerExpertWeightTensor,
-                                              uint32_t expertIdx, uint64_t elementOffset)
+__aicore__ inline GM_ADDR GetExpertWeightAddr(GM_ADDR tensorListAddr, bool isPerExpertWeightTensor, uint32_t expertIdx,
+                                              uint64_t elementOffset)
 {
     uint16_t tensorIdx = isPerExpertWeightTensor ? static_cast<uint16_t>(expertIdx) : 0U;
     GM_ADDR tensorAddr = GetTensorAddr(tensorIdx, tensorListAddr);
@@ -269,6 +278,121 @@ template <size_t First, size_t Second, size_t... Rest, typename T>
 __aicore__ constexpr inline decltype(auto) Get(T &&value)
 {
     return Get<Second, Rest...>(AscendC::Std::get<First>(AscendC::Std::forward<T>(value)));
+}
+
+__aicore__ inline ExpertLoopState CreateExpertLoopState(const MoeStageCommonConfig &context)
+{
+    ExpertLoopState state;
+    Get<N_VALUE>(state.problemShape) = context.gmm1OutputDim;
+    Get<K_VALUE>(state.problemShape) = context.tokenHiddenDim;
+    return state;
+}
+
+// 按专家顺序推进紧凑 token 行偏移，并用当前专家的 token 数更新 M 维度。
+__aicore__ inline void UpdateExpertLoopState(ExpertLoopState &state, uint32_t expertIdx, uint64_t expertTokenCount)
+{
+    if (expertIdx != state.expertIdx) {
+        state.globalTokenStartIndex += Get<M_VALUE>(state.problemShape);
+    }
+    state.expertIdx = expertIdx;
+    Get<M_VALUE>(state.problemShape) = static_cast<int64_t>(expertTokenCount);
+}
+
+// 按当前 Wave 的剩余容量推进专家 token 位置，返回本次推进覆盖的 token 数。
+template <uint32_t TileM>
+__aicore__ inline uint32_t AdvanceExpertTokenPositionInWave(uint32_t expertTokenCount, uint32_t waveMGroupTarget,
+                                                            uint32_t &waveMGroupCount, ExpertTokenPosition &position)
+{
+    uint32_t expertRemainingTokenCount = expertTokenCount - position.tokenIndexInExpert;
+    uint32_t waveRemainingTokenCapacity = (waveMGroupTarget - waveMGroupCount) * TileM;
+    uint32_t sliceTokenCount =
+        expertRemainingTokenCount < waveRemainingTokenCapacity ? expertRemainingTokenCount : waveRemainingTokenCapacity;
+    waveMGroupCount += Ops::Base::CeilDiv(sliceTokenCount, TileM);
+    position.tokenIndexInExpert += sliceTokenCount;
+    if (position.tokenIndexInExpert >= expertTokenCount) {
+        ++position.expertIdx;
+        position.tokenIndexInExpert = 0U;
+    }
+    return sliceTokenCount;
+}
+
+// 轮询 GM 中的 int32 ready flag，并在两次读取之间加入短暂退避。
+__aicore__ inline void WaitUntilGmFlagIsNonZero(__gm__ int32_t *flagAddr)
+{
+    constexpr int64_t pollBackoffCycles = 100;
+    while (AscendC::ReadGmByPassDCache(flagAddr) == 0) {
+        int64_t startCycle = AscendC::GetSystemCycle();
+        while (AscendC::GetSystemCycle() - startCycle < pollBackoffCycles) {
+        }
+    }
+}
+
+/*
+ * 等待 Dispatch 发布当前 expert/block 的 token 总数。这里只同步专家级元数据；每个 256-row group
+ * 的 Dispatch 数据就绪依赖由 WaitForGmm1InputReady 处理。
+ */
+__aicore__ inline void WaitForMoeExpertTokenCountReady(GM_ADDR tokenCountReadyFlagWorkspace,
+                                                       const BlockWorkspaceContext &countWorkspace, uint32_t expertIdx)
+{
+    __gm__ int32_t *tokenCountReadyFlag = reinterpret_cast<__gm__ int32_t *>(tokenCountReadyFlagWorkspace) +
+                                          static_cast<uint64_t>(expertIdx) * countWorkspace.blockNum * INT_CACHELINE +
+                                          static_cast<uint64_t>(countWorkspace.blockIdx) * INT_CACHELINE;
+    WaitUntilGmFlagIsNonZero(tokenCountReadyFlag);
+}
+
+// 从当前 expert/block 对应的稳定 workspace 槽读取专家 token 数。
+__aicore__ inline uint32_t GetExpertTokenCountFromWorkspace(GM_ADDR expertTokenCountWorkspace,
+                                                            const BlockWorkspaceContext &countWorkspace,
+                                                            uint32_t expertIdx)
+{
+    uint64_t countSlotIndex = static_cast<uint64_t>(expertIdx) * countWorkspace.blockNum + countWorkspace.blockIdx;
+    __gm__ int32_t *expertTokenCountAddr =
+        reinterpret_cast<__gm__ int32_t *>(expertTokenCountWorkspace) + countSlotIndex * INT32_PER_256B;
+    return static_cast<uint32_t>(AscendC::ReadGmByPassDCache(expertTokenCountAddr));
+}
+
+// 轮询 GM 中的 int32 flag 直至等于期望值，并在两次读取之间加入短暂退避。
+__aicore__ inline void WaitUntilGmFlagEquals(__gm__ int32_t *flagAddr, int32_t expectedValue)
+{
+    constexpr int64_t pollBackoffCycles = 100;
+    while (AscendC::ReadGmByPassDCache(flagAddr) != expectedValue) {
+        int64_t startCycle = AscendC::GetSystemCycle();
+        while (AscendC::GetSystemCycle() - startCycle < pollBackoffCycles) {
+        }
+    }
+}
+
+// 轮询 GM 中的 int32 计数直至不小于目标值，并在两次读取之间加入短暂退避。
+__aicore__ inline void WaitUntilGmFlagAtLeast(__gm__ int32_t *flagAddr, int32_t targetValue)
+{
+    constexpr int64_t pollBackoffCycles = 100;
+    while (AscendC::ReadGmByPassDCache(flagAddr) < targetValue) {
+        int64_t startCycle = AscendC::GetSystemCycle();
+        while (AscendC::GetSystemCycle() - startCycle < pollBackoffCycles) {
+        }
+    }
+}
+
+// 全卡同步：各 AIV 按任务分工分摊 rank 握手，末尾执行本卡 AIV 同步。
+__aicore__ inline void CrossRankSyncInWorldSize(GM_ADDR rankSyncInWorldPtr, uint32_t rankId, uint32_t worldSize,
+                                                const AivJobContext &aivJob)
+{
+    if constexpr (g_coreType == AIC) {
+        return;
+    }
+    __gm__ int32_t *syncRank = reinterpret_cast<__gm__ int32_t *>(rankSyncInWorldPtr);
+    __gm__ int32_t *syncCount = reinterpret_cast<__gm__ int32_t *>(rankSyncInWorldPtr + 48U * 1024U +
+                                                                   static_cast<uint64_t>(aivJob.jobIndex) * 64U);
+    int32_t count = ReadGmByPassDCache(syncCount) + 1;
+    for (uint32_t rankIdx = aivJob.jobIndex; rankIdx < worldSize; rankIdx += aivJob.totalJobs) {
+        __gm__ int32_t *remoteSyncAddr =
+            reinterpret_cast<__gm__ int32_t *>(winRankAddr_[rankIdx]) + rankId * INT_CACHELINE;
+        WriteGmByPassDCache(remoteSyncAddr, count);
+        GmSignalWaitBarrier(syncRank + rankIdx * INT_CACHELINE, count);
+    }
+    WriteGmByPassDCache(syncCount, count);
+    PipeBarrier<PIPE_ALL>();
+    SyncAll<true>();
 }
 
 template <AscendC::HardEvent event, int32_t eventId>
