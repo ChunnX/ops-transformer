@@ -1,0 +1,240 @@
+{
+    "op_type": "GatherPaKvCacheWithDequant",
+    "optional_input_mode": "gen_placeholder",
+    "op_list": [
+        {
+            "bin_filename": "GatherPaKvCacheWithDequant_ND_int8_fp8e4m3fn_int32",
+            "inputs": [
+                {
+                    "name": "key_cache",
+                    "index": 0,
+                    "dtype": "int8",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                },
+                {
+                    "name": "key_scale_cache",
+                    "index": 1,
+                    "dtype": "float32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                },
+                {
+                    "name": "value_cache",
+                    "index": 2,
+                    "dtype": "float8_e4m3fn",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                },
+                {
+                    "name": "value_scale",
+                    "index": 3,
+                    "dtype": "float32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                },
+                {
+                    "name": "block_tables",
+                    "index": 4,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                },
+                {
+                    "name": "seq_lens",
+                    "index": 5,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                },
+                {
+                    "name": "key",
+                    "index": 6,
+                    "dtype": "bfloat16",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                },
+                {
+                    "name": "value",
+                    "index": 7,
+                    "dtype": "bfloat16",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                },
+                {
+                    "name": "seq_offset",
+                    "index": 8,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                }
+            ],
+            "attrs": [
+                {
+                    "name": "cache_mode",
+                    "dtype": "string",
+                    "value": "Norm"
+                },
+                {
+                    "name": "is_seq_lens_cumsum",
+                    "dtype": "bool",
+                    "value": true
+                },
+                {
+                    "name": "key_dst_type",
+                    "dtype": "int",
+                    "value": 28
+                },
+                {
+                    "name": "value_dst_type",
+                    "dtype": "int",
+                    "value": 28
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "key",
+                    "index": 0,
+                    "dtype": "bfloat16",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                },
+                {
+                    "name": "value",
+                    "index": 0,
+                    "dtype": "bfloat16",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                }
+            ]
+        },
+        {
+            "bin_filename": "GatherPaKvCacheWithDequant_ND_int8_fp8e4m3fn_int64",
+            "inputs": [
+                {
+                    "name": "key_cache",
+                    "index": 0,
+                    "dtype": "int8",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                },
+                {
+                    "name": "key_scale_cache",
+                    "index": 1,
+                    "dtype": "float32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                },
+                {
+                    "name": "value_cache",
+                    "index": 2,
+                    "dtype": "float8_e4m3fn",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                },
+                {
+                    "name": "value_scale",
+                    "index": 3,
+                    "dtype": "float32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                },
+                {
+                    "name": "block_tables",
+                    "index": 4,
+                    "dtype": "int64",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                },
+                {
+                    "name": "seq_lens",
+                    "index": 5,
+                    "dtype": "int64",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                },
+                {
+                    "name": "key",
+                    "index": 6,
+                    "dtype": "bfloat16",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                },
+                {
+                    "name": "value",
+                    "index": 7,
+                    "dtype": "bfloat16",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                },
+                {
+                    "name": "seq_offset",
+                    "index": 8,
+                    "dtype": "int64",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                }
+            ],
+            "attrs": [
+                {
+                    "name": "cache_mode",
+                    "dtype": "string",
+                    "value": "Norm"
+                },
+                {
+                    "name": "is_seq_lens_cumsum",
+                    "dtype": "bool",
+                    "value": true
+                },
+                {
+                    "name": "key_dst_type",
+                    "dtype": "int",
+                    "value": 28
+                },
+                {
+                    "name": "value_dst_type",
+                    "dtype": "int",
+                    "value": 28
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "key",
+                    "index": 0,
+                    "dtype": "bfloat16",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                },
+                {
+                    "name": "value",
+                    "index": 0,
+                    "dtype": "bfloat16",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                }
+            ]
+        }
+    ]
+}
