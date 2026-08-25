@@ -100,6 +100,8 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm1
         gmmAddrInfo, state, tokenStartIndexInExpert, gmm1TilesPerMGroup);
     ProblemShape sliceProblemShape = state.problemShape;
     Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
+    bool coversFullExpert =
+        tokenStartIndexInExpert == 0U && sliceTokenCount == static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
 #if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
     A4W4WaveTraceEvent stageEvent = A4W4WaveTraceEvent::INVALID;
     A4W4WaveTraceEvent waitEvent = A4W4WaveTraceEvent::INVALID;
@@ -120,7 +122,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm1
                                  TopkWeightsPrefetch, false, true>(
         gmmExecutionConfig_, params_, epilogueOp_, gmmAddrInfo, sliceProblemShape,
         static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert, runtimeState, state.expertIdx,
-        nullptr, false, traceContextPtr);
+        nullptr, coversFullExpert, traceContextPtr);
 }
 
 // A4W4 的 GMM2 复用 A8W4 prologue，将 FP4 weight 解包为 FP8 后执行矩阵乘与 Combine。
