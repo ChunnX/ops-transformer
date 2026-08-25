@@ -161,12 +161,36 @@ def cpu_reference(inputs, records: list[bytes]):
     return (probs @ v).reshape(1, 1, 1, NOPE_DIM)
 
 
-def run_npu_precision_case(records: list[bytes]) -> None:
+def move_inputs_to_npu(inputs, storage_offset_bytes: int):
+    """在 NPU 上从大 INT8 storage 切出 key/value view，保留非零 byte storage_offset。"""
+    import torch
+
+    if storage_offset_bytes < 0:
+        raise ValueError("storage_offset_bytes must be non-negative")
+    npu_inputs = {}
+    for name, tensor in inputs.items():
+        if name not in {"key", "value"}:
+            npu_inputs[name] = tensor.npu()
+            continue
+        # B-I record is ACL_INT8: offset unit is one byte. Do not multiply it by two.
+        storage = torch.zeros(tensor.numel() + storage_offset_bytes, dtype=torch.int8).npu()
+        storage[storage_offset_bytes:].copy_(tensor.reshape(-1).npu())
+        view = storage[storage_offset_bytes:].reshape(tensor.shape)
+        if view.storage_offset() != storage_offset_bytes:
+            raise AssertionError(
+                f"{name} view storage_offset={view.storage_offset()}, expected {storage_offset_bytes}"
+            )
+        npu_inputs[name] = view
+    return npu_inputs
+
+
+def run_npu_precision_case(records: list[bytes], storage_offset_bytes: int) -> None:
     import torch
     import torch_npu
 
-    inputs = {name: tensor.npu() for name, tensor in make_torch_inputs(records).items()}
-    expected = cpu_reference(make_torch_inputs(records), records)
+    cpu_inputs = make_torch_inputs(records)
+    inputs = move_inputs_to_npu(cpu_inputs, storage_offset_bytes)
+    expected = cpu_reference(cpu_inputs, records)
     output = torch_npu.npu_kv_quant_sparse_flash_attention(
         inputs["query"],
         inputs["key"],
@@ -207,19 +231,26 @@ def run_npu_precision_case(records: list[bytes]) -> None:
         )
     print(
         f"precision passed: close_ratio={ratio:.6f}, max_abs_error={max_abs_error:.6f}, "
-        f"output shape={tuple(output.shape)}, dtype={output.dtype}"
+        f"output shape={tuple(output.shape)}, dtype={output.dtype}, "
+        f"key_storage_offset_bytes={inputs['key'].storage_offset()}"
     )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-npu", action="store_true", help="在已部署本分支算子包的 NPU 环境运行 CPU/NPU 精度对比")
+    parser.add_argument(
+        "--storage-offset-bytes",
+        type=int,
+        default=32,
+        help="从 NPU INT8 大 cache 切出 key/value view 的 byte offset；默认 32，用于验证非零 offset 路径",
+    )
     args = parser.parse_args()
     records = make_precision_records()
     validate_precision_records(records)
     print("case construction passed: 16 x 400B records; first NoPE pair=[1.0, 4.0]; group-1 pair=[2.0, 8.0]")
     if args.run_npu:
-        run_npu_precision_case(records)
+        run_npu_precision_case(records, args.storage_offset_bytes)
 
 
 if __name__ == "__main__":
