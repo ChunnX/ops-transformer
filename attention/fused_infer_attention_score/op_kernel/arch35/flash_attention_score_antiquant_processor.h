@@ -48,11 +48,12 @@ __aicore__ constexpr uint64_t AlignUp32(uint64_t size)
 {
     return (size + 31) >> 5 << 5; // 31 & 5 is Alignup 32
 }
-
+template <typename T = void>
 __aicore__ uint16_t GetRealDealSizeWrapper(uint16_t realSize) {
     return GetRealDealSize(realSize);
 }
 
+template <typename T = void>
 __aicore__ uint64_t AlignUp32Wrapper(uint64_t size) {
     return AlignUp32(size);
 }
