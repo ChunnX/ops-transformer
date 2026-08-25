@@ -147,8 +147,8 @@ const std::vector<DataType> X_DTYPE_SUPPORT_LIST_MXFP4_ND = {DataType::DT_FLOAT4
 const std::vector<DataType> X_DTYPE_SUPPORT_LIST_MXFP4_NZ = {DataType::DT_FLOAT4_E2M1, DataType::DT_FLOAT4_E1M2};
 const std::vector<DataType> XW_DTYPE_SUPPORT_LIST_PERTOKEN = {DataType::DT_INT8, DataType::DT_FLOAT8_E4M3FN,
                                                               DataType::DT_FLOAT8_E5M2, DataType::DT_HIFLOAT8};
-const std::vector<DataType> WEIGHT_DTYPE_SUPPORT_LIST_PERTOKEN_NZ = {
-    DataType::DT_INT8, DataType::DT_FLOAT8_E4M3FN, DataType::DT_HIFLOAT8};
+const std::vector<DataType> WEIGHT_DTYPE_SUPPORT_LIST_PERTOKEN_NZ = {DataType::DT_INT8, DataType::DT_FLOAT8_E4M3FN,
+                                                                     DataType::DT_HIFLOAT8};
 const std::vector<DataType> WEIGHT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2};
 const std::vector<DataType> WEIGHT_DTYPE_SUPPORT_LIST_MXFP4_ND = {DataType::DT_FLOAT4_E2M1};
 const std::vector<DataType> WEIGHT_DTYPE_SUPPORT_LIST_MXFP4_NZ = {DataType::DT_FLOAT4_E2M1, DataType::DT_FLOAT4_E1M2};
@@ -845,8 +845,8 @@ protected:
         GMM_SWIGLU_CHECK_SHAPE(outputScale, "outputScale", outputScaleExpectShape, return false);
         if (weight->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) {
             const op::Shape &storageShape = weight->GetStorageShape();
-            GMM_SWIGLU_CHECK_DIM(storageShape.GetDimNum(), PERTOKEN_WEIGHT_NZ_STORAGE_DIM,
-                                 "weight storage shape", return false);
+            GMM_SWIGLU_CHECK_DIM(storageShape.GetDimNum(), PERTOKEN_WEIGHT_NZ_STORAGE_DIM, "weight storage shape",
+                                 return false);
             if (n <= 0 || n % MXFP8_NZ_N_ALIGN != 0) {
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     apiName_.c_str(), "weight", ViewShapeToString(weight),

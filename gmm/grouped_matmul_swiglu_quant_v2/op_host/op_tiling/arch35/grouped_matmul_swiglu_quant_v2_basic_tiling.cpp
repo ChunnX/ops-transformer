@@ -907,8 +907,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDtypePertoken()
                 return false);
     if (inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
         const bool isInt8 = inputParams_.aDtype == ge::DT_INT8;
-        OP_CHECK_IF(isInt8 &&
-                        (inputParams_.bDtype != ge::DT_INT8 || inputParams_.outDataDtype != ge::DT_INT8),
+        OP_CHECK_IF(isInt8 && (inputParams_.bDtype != ge::DT_INT8 || inputParams_.outDataDtype != ge::DT_INT8),
                     OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
                         inputParams_.opType, "x, weight, y",
                         ListToString(ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
@@ -918,22 +917,20 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDtypePertoken()
                         "weight and y dtypes must be INT8"),
                     return false);
         const bool isHifloat8 = inputParams_.aDtype == ge::DT_HIFLOAT8;
-        OP_CHECK_IF(isHifloat8 &&
-                        (inputParams_.bDtype != ge::DT_HIFLOAT8 || inputParams_.outDataDtype != ge::DT_HIFLOAT8),
-                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
-                        inputParams_.opType, "x, weight, y",
-                        ListToString(ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
-                                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
-                                     ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype)),
-                        "in per-token mode, when weight format is FRACTAL_NZ and x dtype is HIFLOAT8, "
-                        "weight and y dtypes must be HIFLOAT8"),
-                    return false);
-        const bool isFp8 =
-            inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN || inputParams_.aDtype == ge::DT_FLOAT8_E5M2;
-        OP_CHECK_IF(isFp8 &&
-                        (inputParams_.bDtype != ge::DT_FLOAT8_E4M3FN ||
-                         (inputParams_.outDataDtype != ge::DT_FLOAT8_E4M3FN &&
-                          inputParams_.outDataDtype != ge::DT_FLOAT8_E5M2)),
+        OP_CHECK_IF(
+            isHifloat8 && (inputParams_.bDtype != ge::DT_HIFLOAT8 || inputParams_.outDataDtype != ge::DT_HIFLOAT8),
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                inputParams_.opType, "x, weight, y",
+                ListToString(ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
+                                          ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
+                             ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype)),
+                "in per-token mode, when weight format is FRACTAL_NZ and x dtype is HIFLOAT8, "
+                "weight and y dtypes must be HIFLOAT8"),
+            return false);
+        const bool isFp8 = inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN || inputParams_.aDtype == ge::DT_FLOAT8_E5M2;
+        OP_CHECK_IF(isFp8 && (inputParams_.bDtype != ge::DT_FLOAT8_E4M3FN ||
+                              (inputParams_.outDataDtype != ge::DT_FLOAT8_E4M3FN &&
+                               inputParams_.outDataDtype != ge::DT_FLOAT8_E5M2)),
                     OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
                         inputParams_.opType, "x, weight, y",
                         ListToString(ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
