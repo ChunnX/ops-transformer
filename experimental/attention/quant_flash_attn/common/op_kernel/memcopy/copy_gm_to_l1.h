@@ -131,7 +131,7 @@ public:
             ProcessS1G(dstTensor, srcTensor, gmCoord);
         } else if constexpr (GM_FORMAT == GmFormat::BNGSD) {
             auto &offsetCalculator = srcTensor.offsetCalculator;
-            if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
+            if (offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx) != offsetCalculator.GetDimS1()) {
                 ProcessGS1(dstTensor, srcTensor, gmCoord);
             } else {
                 ProcessContinuous(dstTensor, srcTensor, gmCoord);
@@ -216,16 +216,7 @@ private:
     {
         // N2*G*T(BS1)*D
         auto &offsetCalculator = srcTensor.offsetCalculator;
-        uint64_t s1Size = 0;
-        if constexpr (GmLayoutParams<GM_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
-            s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
-        } else {
-            if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
-                s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
-            } else {
-                s1Size = offsetCalculator.GetDimS1();
-            }
-        }
+        uint64_t s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
 
         uint32_t gIdxStart = gmCoord.gS1Idx / s1Size;
         uint32_t s1IdxStart = gmCoord.gS1Idx % s1Size;
@@ -521,7 +512,7 @@ public:
             ProcessS1(dstTensor, srcTensor, gmCoord);
         } else if constexpr (GM_FORMAT == GmFormat::BNGSD) {
             auto &offsetCalculator = srcTensor.offsetCalculator;
-            if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
+            if (offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx) != offsetCalculator.GetDimS1()) {
                 ProcessGS1(dstTensor, srcTensor, gmCoord);
             } else {
                 ProcessContinuous(dstTensor, srcTensor, gmCoord);
@@ -599,16 +590,7 @@ private:
     {
         // N2*G*T(BS1)*D
         auto &offsetCalculator = srcTensor.offsetCalculator;
-        uint64_t s1Size = 0;
-        if constexpr (GmLayoutParams<GM_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
-            s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
-        } else {
-            if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
-                s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
-            } else {
-                s1Size = offsetCalculator.GetDimS1();
-            }
-        }
+        uint64_t s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
 
         uint32_t gIdxStart = gmCoord.gS1Idx / s1Size;
         uint32_t s1IdxStart = gmCoord.gS1Idx % s1Size;
@@ -657,16 +639,7 @@ private:
     {
         // BN2GS1D2 连续搬运合轴块
         auto &offsetCalculator = srcTensor.offsetCalculator;
-        uint64_t s1Size = 0;
-        if constexpr (GmLayoutParams<GM_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
-            s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
-        } else {
-            if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
-                s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
-            } else {
-                s1Size = offsetCalculator.GetDimS1();
-            }
-        }
+        uint64_t s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
 
         uint32_t gIdxStart = gmCoord.gS1Idx / s1Size;
         uint32_t s1IdxStart = gmCoord.gS1Idx % s1Size;

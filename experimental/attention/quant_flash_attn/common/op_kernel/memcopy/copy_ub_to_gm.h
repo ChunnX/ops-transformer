@@ -58,16 +58,7 @@ public:
 
         if constexpr (UB_FORMAT == UbFormat::GS1) {
             auto &offsetCalculator = dstTensor.offsetCalculator;
-            uint32_t s1Size = 0;
-            if constexpr (GmLayoutParams<GM_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
-                s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
-            } else {
-                if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
-                    s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
-                } else {
-                    s1Size = offsetCalculator.GetDimS1();
-                }
-            }
+            uint32_t s1Size = static_cast<uint32_t>(offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx));
             uint32_t gIdxStart = gmCoord.gS1Idx / s1Size;
             uint32_t s1IdxStart = gmCoord.gS1Idx % s1Size;
             uint32_t gIdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) / s1Size;

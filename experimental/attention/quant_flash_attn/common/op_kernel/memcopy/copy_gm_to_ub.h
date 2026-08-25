@@ -293,7 +293,7 @@ public:
             ProcessS1G(dstTensor, srcTensor, gmCoord);
         } else if constexpr (GM_FORMAT == GmFormat::BNGSD) {
             auto &offsetCalculator = srcTensor.offsetCalculator;
-            if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
+            if (offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx) != offsetCalculator.GetDimS1()) {
                 ProcessGS1(dstTensor, srcTensor, gmCoord);
             } else {
                 ProcessContinuous(dstTensor, srcTensor, gmCoord);
@@ -308,16 +308,7 @@ private:
     __aicore__ inline void ProcessGS1(FaUbTensor<T> &dstTensor, GmTensorType &srcTensor, GmCoord &gmCoord)
     {
         auto &offsetCalculator = srcTensor.offsetCalculator;
-        uint64_t s1Size = 0;
-        if constexpr (GmLayoutParams<GM_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
-            s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
-        } else {
-            if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
-                s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
-            } else {
-                s1Size = offsetCalculator.GetDimS1();
-            }
-        }
+        uint64_t s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
         uint32_t gIdxStart = gmCoord.gS1Idx / s1Size;
         uint32_t s1IdxStart = gmCoord.gS1Idx % s1Size;
         uint32_t gIdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) / s1Size;
@@ -533,13 +524,9 @@ public:
         if constexpr (UB_FORMAT == UbFormat::GS1) {
             // 连续，单次拷贝
             auto &offsetCalculator = srcTensor.offsetCalculator;
-            uint64_t s1Size = 0;
-            if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
-                s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmPseCoord.actualBIdx);
-            } else if (qsEqualOne) {
+            uint64_t s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmPseCoord.actualBIdx);
+            if (qsEqualOne) {
                 s1Size = 1U;
-            } else {
-                s1Size = offsetCalculator.GetDimS1();
             }
             uint32_t gIdxStart = gmPseCoord.gS1Idx / s1Size;
             uint32_t s1IdxStart = gmPseCoord.gS1Idx % s1Size;
