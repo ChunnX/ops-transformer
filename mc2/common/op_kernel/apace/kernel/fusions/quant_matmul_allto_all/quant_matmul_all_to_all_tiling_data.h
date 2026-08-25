@@ -19,9 +19,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "../../../tiling/quant_matmul_tiling_data.h"
 #include "../../../tiling/comm_tiling_data.h"
-#include "../../../core/aiv_comm/collective_comm_context.h"
 
-// Hcomm通信MX量化tiling结构体（apace hcomm纯C通信路径使用）
 struct hcommAllToAllMatmulTilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
