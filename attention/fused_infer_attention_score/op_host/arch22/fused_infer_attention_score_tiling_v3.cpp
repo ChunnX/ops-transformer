@@ -1398,6 +1398,15 @@ bool RouteToFia(gert::TilingContext *context)
         return false;
     }
 
+    // BNBD (4D KV) page attention scenarios are handled by the original route (FAI/IFA/PFA), not FIA V3.
+    if (isPageAttention) {
+        uint32_t kDimNum = context->GetInputShape(KEY_INDEX)->GetStorageShape().GetDimNum();
+        uint32_t vDimNum = context->GetInputShape(VALUE_INDEX)->GetStorageShape().GetDimNum();
+        if (kDimNum == 4U && vDimNum == 4U) {
+            return false;
+        }
+    }
+
     const std::string inputLayoutStr = std::string(context->GetAttrs()->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
     if (IsLegacyTemplatePreferred(queryD, valueD, queryRopeD, queryS, inputLayoutStr, isPrefix, isMha,
                                   isPageAttention)) {
