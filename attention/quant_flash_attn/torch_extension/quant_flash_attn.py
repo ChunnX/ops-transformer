@@ -259,7 +259,6 @@ class QuantFlashAttnOpBuilder(OpBuilder):
 # Instantiate the builder
 quant_flash_attn_op_builder = QuantFlashAttnOpBuilder()
 quant_flash_attn_op_builder._ensure_initialized()
-op_module = quant_flash_attn_op_builder.load()
 
 
 @impl(get_as_library(), QFA_METADATA_OP_NAME, "PrivateUse1")
