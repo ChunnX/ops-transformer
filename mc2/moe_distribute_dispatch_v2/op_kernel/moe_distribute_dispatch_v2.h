@@ -331,14 +331,6 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     ctx_.InitAndCheck(mc2Context, tilingData->moeDistributeDispatchV2Info.epWorldSize, totalWinSizeEp_, tpipe_,
                       expandXOut);
 
-    if (aivId_ == 0) {
-        for (int32_t r = 0; r < 8; r++) {
-            GM_ADDR raw = ctx_.GetWindAddrByRankId(r, epRankIdOriginal_);
-            PRINTF("[Init] epHcclBuffer[%d]=%lu (0x%016lX), exceeds48=%d\n",
-                   r, (uint64_t)raw, (uint64_t)raw, (int32_t)((uint64_t)raw > 281474976710656ULL));
-        }
-    }
-
     totalUbSize_ = static_cast<uint32_t>(tilingData->moeDistributeDispatchV2Info.totalUbSize);
 
     axisBS_ = tilingData->moeDistributeDispatchV2Info.bs;
@@ -383,7 +375,6 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
         (__gm__ uint32_t *)(statusDataSpaceGm_ + DISPATCH_STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
     dataState_ = InitWinState(selfDataStatusGMTensor_, epRankIdHccl, epWorldSizeHccl, epRankIdOriginal_, moeExpertNum_,
                               epWorldSizeOriginal_, globalBS_, dataStateBuf);
-    PRINTF("dispatch dataState_ is: %u\n, dataState_");
     elasticInfoGMTensor_.SetGlobalBuffer((__gm__ int32_t *)(elasticInfo));
     performanceInfoGMTensor_.SetGlobalBuffer((__gm__ int32_t *)(performanceInfo));
     elasticInst_.SetElasticInitParams(tpipe_, elasticInfoGMTensor_);
