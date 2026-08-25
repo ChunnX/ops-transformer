@@ -154,61 +154,6 @@ DATA_RANGE_V = None
 DEVICE_ID = None
 
 
-# ==============================================================================
-# 状态重置：批跑时前一 case 的全局变量/NPU 内存残留会污染后续 case
-# 在每个 case 开始前调用，清空残留
-# ==============================================================================
-# 需要重置为 None 的全局变量（排除常量与导入）
-_RESET_NONE_VARS = [
-    "B", "BATCH_SIZE", "N_q", "N_kv", "D",
-    "CU_SEQLENS_Q", "CU_SEQLENS_KV", "SEQUSED_Q", "SEQUSED_KV",
-    "MAX_SEQLEN_Q", "MAX_SEQLEN_KV",
-    "ENABLE_PA", "BLOCK_SIZE",
-    "INPUT_LAYOUT", "Q_SCALE_LAYOUT", "P_SCALE",
-    "SOFTMAX_SCALE", "WIN_LEFT", "WIN_RIGHT",
-    "KV_CACHE_LAYOUT", "IS_CONTIGUOUS",
-    "ENABLE_LSE",
-    "SEED_Q", "SEED_K", "SEED_V",
-    "DATA_RANGE_Q", "DATA_RANGE_K", "DATA_RANGE_V",
-    "DEVICE_ID",
-]
-
-
-def reset_golden_state():
-    """批跑时重置 golden 模块状态，防止 case 间污染。
-
-    1. 重置所有配置类全局变量为 None（与模块初始默认值一致）
-    2. 重置随机种子（消除 torch RNG 状态残留）
-    3. 清空 NPU 缓存（释放 device memory pool，避免输出 tensor 复用前一 case 残留数据）
-
-    注：根因为 NPU 设备内存池在 case 间复用，输出 tensor 可能命中上一 case 的物理页，
-    导致 KV=0 batch 等“应清零”区域出现 inf/大值残留。empty_cache 可缓解但不能彻底消除，
-    因此还需配合 _zero_out_invalid_kv_rows 在输出侧兜底清零。
-    """
-    import torch as _torch
-    for name in _RESET_NONE_VARS:
-        globals()[name] = None
-    # 重置 layout 为默认 TND（与模块初始值一致）
-    global LAYOUT_Q, LAYOUT_Q_DESCALE, LAYOUT_KV, LAYOUT_OUT
-    LAYOUT_Q = "TND"
-    LAYOUT_Q_DESCALE = "TND"
-    LAYOUT_KV = "TND"
-    LAYOUT_OUT = "TND"
-    # 重置 SPARSE_MODE 与初始值一致
-    global SPARSE_MODE
-    SPARSE_MODE = 0
-    # 重置 UNCONTIGUOUS_DIMS 与初始值一致
-    global UNCONTIGUOUS_DIMS
-    UNCONTIGUOUS_DIMS = [-1, -1, -1, -1, -1, -1, -1, -1]
-    # 随机种子复位（消除 RNG 状态残留）
-    _torch.manual_seed(0)
-    if _torch.cuda.is_available() or hasattr(_torch, "npu"):
-        try:
-            _torch.npu.empty_cache()
-        except Exception:
-            pass
-
-
 def _get_npu_fa_kwargs():
     # 每次调用时读取最新全局变量，确保 pytest 修改配置后生效
     return dict(
@@ -1910,59 +1855,6 @@ def prepare_npu_inputs(
     )
 
 
-def _zero_out_invalid_kv_rows(npu_output, cu_seqlens_q, seqused_q, cu_seqlens_kv, seqused_kv):
-    """对 KV 序列长度为 0 的 batch，将其对应的 Q 行在输出中清零。
-
-    根因（NPU 设备内存复用）：批跑时 KV=0 batch 的输出区域可能复用前一 case 的物理页，
-    残留 inf/大值。算子理论上应清零这些位置，但内存复用导致覆盖不完全。
-    此处在输出侧兜底清零，使批跑精度对比通过。
-
-    Args:
-        npu_output: NPU 输出 tensor，shape (T, N, D) (TND) 或 (B, S, N, D) (BSND)
-        cu_seqlens_q / seqused_q: Q 的累积/实际序列长度
-        cu_seqlens_kv / seqused_kv: KV 的累积/实际序列长度
-
-    Returns:
-        npu_output (原地修改)
-    """
-    # 计算 per-batch KV 长度
-    if cu_seqlens_kv is not None:
-        cu_kv = list(cu_seqlens_kv) if not isinstance(cu_seqlens_kv, torch.Tensor) else cu_seqlens_kv.tolist()
-        kv_lens = [cu_kv[b + 1] - cu_kv[b] for b in range(len(cu_kv) - 1)]
-    elif seqused_kv is not None:
-        kv_lens = list(seqused_kv) if not isinstance(seqused_kv, torch.Tensor) else seqused_kv.tolist()
-    else:
-        # 无 KV 序列信息，无法判定，直接返回
-        return npu_output
-
-    if not any(kl == 0 for kl in kv_lens):
-        return npu_output  # 无 KV=0 batch，无需处理
-
-    # 计算 per-batch Q 起止行
-    if cu_seqlens_q is not None:
-        cu_q = list(cu_seqlens_q) if not isinstance(cu_seqlens_q, torch.Tensor) else cu_seqlens_q.tolist()
-        q_starts = [cu_q[b] for b in range(len(cu_q) - 1)]
-        q_ends = [cu_q[b + 1] for b in range(len(cu_q) - 1)]
-    elif seqused_q is not None:
-        su_q = list(seqused_q) if not isinstance(seqused_q, torch.Tensor) else seqused_q.tolist()
-        q_starts = []
-        acc = 0
-        for s in su_q:
-            q_starts.append(acc)
-            acc += s
-        q_ends = [q_starts[b] + su_q[b] for b in range(len(su_q))]
-    else:
-        return npu_output  # 无 Q 序列信息，无法定位
-
-    logger.info("[ZERO_OUT] KV=0 batches: %s", [b for b, kl in enumerate(kv_lens) if kl == 0])
-    for b, kl in enumerate(kv_lens):
-        if kl == 0:
-            s, e = q_starts[b], q_ends[b]
-            if e > s and e <= npu_output.shape[0]:
-                npu_output[s:e].zero_()
-    return npu_output
-
-
 def npu_mxfp8_fa(
     q_fp8,
     k_fp8,
@@ -2013,10 +1905,6 @@ def npu_mxfp8_fa(
     T_actual = cu_seqlens_q[-1] if cu_seqlens_q is not None else sum(act_seqused_q)
     if npu_output.shape[0] > T_actual:
         npu_output = npu_output[:T_actual]
-    # KV=0 batch 输出清零（批跑时 NPU 内存复用残留兜底）
-    npu_output = _zero_out_invalid_kv_rows(
-        npu_output, cu_seqlens_q, seqused_q, cu_seqlens_kv, seqused_kv
-    )
     logger.info("[NPU] output=%s", npu_output.shape)
     return npu_output, lse_out
 

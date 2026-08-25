@@ -58,8 +58,6 @@ def _apply_golden_globals(params, quant_mode=1):
     其他 → mxfp8_golden_mod (MXFP8 路径)
     """
     target = fp8_golden_mod if quant_mode == 6 else mxfp8_golden_mod
-    # 批跑时先重置 golden 状态，防止前一 case 的全局变量/NPU 内存残留污染本 case
-    target.reset_golden_state()
     for k, v in params.items():
         setattr(target, k, v)
 
@@ -382,15 +380,6 @@ def run_main(
     )
     if atten_out.shape[0] > T_actual:
         atten_out = atten_out[:T_actual]
-    # KV=0 batch 输出清零（批跑时 NPU 内存复用残留兜底）
-    target_golden = fp8_golden_mod if quant_mode == 6 else mxfp8_golden_mod
-    atten_out = target_golden._zero_out_invalid_kv_rows(
-        atten_out,
-        cu_seqlens_q_list,
-        list(seqused_q) if seqused_q is not None else None,
-        cu_seqlens_kv_list,
-        list(seqused_kv) if seqused_kv is not None else None,
-    )
     logger.info("[MAIN_WRAPPER] output=%s", atten_out.shape)
 
     #   enable_lse=False → lse_out=None (与 golden slot 1 None 双向匹配, replay load_goldens 通过)
