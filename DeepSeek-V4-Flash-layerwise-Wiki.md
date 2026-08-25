@@ -533,3 +533,569 @@ Request throughput (req/s)
    - 容器通过 `docker exec` 启动时，环境变量可能不继承，需在脚本中 `source` 所有 set_env.sh
    - `setsid` 用于后台运行，避免 SSH 断开导致进程退出
    - 清理旧进程时需通过 `pgrep -f "VLLM::"` 精确匹配，避免误杀其他用户的进程
+
+---
+# 附录A：npu2 服务器复现手册（2026-08-25 实测复现）
+
+> 本附录是在另一台服务器 npu2（121.37.53.41:10007，8×910B3，driver 26.0.rc1）上从零复现本文档全流程的完整手册，
+> 含环境迁移/容器创建/依赖修复/MetaService/三场景压测/踩坑记录，并附 npu2 实测结果（与本文档结果一致，偏差 <4%）。
+> 原始手册位于 npu2:/home/lsy/npu2_pd_setup_guide.md。
+
+
+> 服务器：npu2（121.37.53.41:10007，内网 172.28.1.220，openEuler 24.03 LTS-SP3, aarch64, 8×910B3）
+> 容器：`lsy_pd`（基于 `quay.io/ascend/vllm-ascend:v0.20.2rc1`）
+> 撰写日期：2026-08-25
+>
+> 对应 Wiki：https://gitcode.com/cann/ops-transformer/pull/10470 （DeepSeek-V4-Flash-layerwise-Wiki.md）
+
+---
+
+## 目录
+
+1. [环境总览](#1-环境总览)
+2. [环境迁移（一次性，已完成）](#2-环境迁移一次性已完成)
+    - [2.0 从零获取四个仓库（全新机器搭建时用）](#20-从零获取四个仓库全新机器搭建时用)
+3. [容器创建](#3-容器创建)
+4. [容器内依赖修复](#4-容器内依赖修复)
+5. [启动 MetaService（每次复跑前必做）](#5-启动-metaservice每次复跑前必做)
+6. [三场景启动与压测（日常复跑核心）](#6-三场景启动与压测日常复跑核心)
+7. [启动脚本与配置文件详解](#7-启动脚本与配置文件详解)
+8. [性能结果](#8-性能结果)
+9. [device_rdma 尝试记录（硬件不具备）](#9-device_rdma-尝试记录硬件不具备)
+10. [踩坑记录与注意事项](#10-踩坑记录与注意事项)
+11. [常用排查命令速查](#11-常用排查命令速查)
+
+---
+
+## 1. 环境总览
+
+| 组件 | 版本 | 位置 |
+|---|---|---|
+| vllm | v0.27.1 (commit 6e448d0) | `/home/vllm`（PYTHONPATH 加载，含 pyc/cp_utils 补丁） |
+| vllm-ascend | main (commit 1aad874) | `/home/vllm-ascend`（PYTHONPATH 加载，含 layerwise 多 cache spec 补丁） |
+| memcache | 1.2.0 (release/1.2) | 容器内 pip 包 + 宿主机 `/usr/local/memcache_hybrid` |
+| memfabric | 1.2.0 (release/1.2) | 容器内 pip 包 + 宿主机 `/usr/local/memfabric_hybrid` |
+| transformers | 5.14.1 | 容器内 |
+| torch / torch_npu | 2.10.0+cpu / 2.10.0 | 容器内 |
+| CANN | 9.0.0 | 容器内 |
+| Python | 3.11.15 | `/usr/local/python3.11.15/bin/python3`（容器内） |
+| 模型 | DeepSeek-V4-Flash-w8a8-mtp（280GB） | `/mnt/weights/DeepSeek-V4-Flash-w8a8-mtp` |
+| NPU 驱动 | 26.0.rc1 | 宿主机 |
+
+关键目录：
+
+```
+/home/vllm                    # vllm v0.27.1 源码（已打补丁）
+/home/vllm-ascend             # vllm-ascend main 源码（已打补丁）
+/home/lsy/                    # 工作目录
+├── start_pd_npu2.sh          # 启动脚本（off / on / on_prefetch 三模式）
+├── bench_pd.py               # 压测脚本
+├── layerwise/mmc-local.conf  # memcache 本地服务配置（host_shm 协议）
+├── npu2_log_layerwise_*.log  # 三场景服务日志
+└── bench_result_*.json       # 压测结果
+/home/wheels/                 # memcache/memfabric 1.2.0 的 wheel 与 run 包备份
+```
+
+---
+
+## 2. 环境迁移（一次性，已完成）
+
+以下命令仅作记录，日常复跑**不需要**再执行。
+
+### 2.0 从零获取四个仓库（全新机器搭建时用）
+
+> 本手册部署所用代码的准确来源与版本。若不迁移而是全新 clone，按本节操作；
+> 注意 vllm / vllm-ascend 的两个补丁（Wiki 2.6/2.7/2.8 节）需要自行重打。
+
+```bash
+# ① vllm v0.27.1（官方仓库，commit 6e448d0ea，tag v0.27.1）
+cd /home
+git clone https://github.com/vllm-project/vllm.git
+cd vllm && git checkout v0.27.1
+git describe --tags        # 确认输出 v0.27.1
+
+# ② vllm-ascend main（commit 1aad874，verified vllm commit=58d3918e3）
+#    注意：本环境用的是 npu 服务器上已有的 fork（ader47/vllm-ascend），HEAD=1aad874
+cd /home
+git clone https://github.com/vader47/vllm-ascend.git    # 或官方仓：https://gitee.com/ascend/vllm-ascend.git
+cd vllm-ascend && git checkout 1aad8745e4a3e02644c76d8a44bcbbd0a4113f59
+
+# ③ memcache release/1.2（VERSION=1.2.0，commit ca5f69cf）
+cd /home
+git clone -b release/1.2 https://gitcode.com/yrewzjsx/memcache.git
+cd memcache && git rev-parse HEAD    # ca5f69cf4ba3ae936d9318bf9daa1c34c6916582
+git submodule update --recursive --init
+
+# ④ memfabric_hybrid release/1.2（VERSION=1.2.0，commit 999034e9）
+cd /home
+git clone -b release/1.2 https://gitcode.com/Ascend/memfabric_hybrid.git
+cd memfabric_hybrid && git rev-parse HEAD   # 999034e9320abf27bbde7be83a32d3bf4d0f7940
+git submodule update --recursive --init
+```
+
+克隆后需编译 memcache / memfabric（Wiki 2.2/2.3 节，需要 CANN 环境）：
+
+```bash
+# memfabric 编译
+cd /home/memfabric_hybrid
+source /usr/local/Ascend/ascend-toolkit/latest/set_env.sh
+rm -rf build
+bash script/build_and_pack_run.sh --build_mode RELEASE --build_python ON --xpu_type NPU --build_test OFF
+# 产物: output/memfabric_hybrid-1.2.0_linux_aarch64.run + wheel/
+
+# memcache 编译（依赖 memfabric 的 set_env）
+cd /home/memcache
+source /usr/local/Ascend/ascend-toolkit/latest/set_env.sh
+source /usr/local/memfabric_hybrid/set_env.sh
+rm -rf build
+bash script/build_and_pack_run.sh --build_mode RELEASE
+# 产物: output/memcache_hybrid-1.2.0_linux_aarch64.run + wheel/
+```
+
+> 提示：在**容器内**编译的 wheel 是 manylinux 兼容版（GLIBC_2.25），
+> 在宿主机编译的 wheel 依赖 GLIBC_2.38，装进容器会报错（详见 4.2 节）。
+> 全新搭建建议直接把编译放在容器内进行，或参照 4.2 节做替换。
+
+### 2.1 配置 npu2 → npu 免密
+
+```bash
+# npu2 上生成密钥（已有则跳过）
+ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed25519 -q
+cat /root/.ssh/id_ed25519.pub
+# 将公钥追加到 npu:/root/.ssh/authorized_keys
+
+# 验证
+ssh -p 10001 root@172.28.1.10 "echo OK"   # 应免密输出 OK
+```
+
+### 2.2 迁移代码目录
+
+```bash
+# npu(172.28.1.10:10001) → npu2，内网直连约 110MB/s
+rsync -a -e "ssh -p 10001 -o StrictHostKeyChecking=no" \
+  root@172.28.1.10:/home/vllm \
+  root@172.28.1.10:/home/vllm-ascend \
+  root@172.28.1.10:/home/lsy /home/
+
+# 迁移 memcache/memfabric 1.2.0 构建产物（wheel + run 安装包）
+rsync -a -e "ssh -p 10001" \
+  root@172.28.1.10:/home/memcache/output/memcache/wheel/memcache_hybrid-1.2.0-cp311-cp311-linux_aarch64.whl \
+  root@172.28.1.10:/home/memfabric_hybrid/output/memfabric_hybrid/wheel/memfabric_hybrid-1.2.0-cp311-cp311-linux_aarch64.whl \
+  root@172.28.1.10:/home/memcache/output/memcache_hybrid-1.2.0_linux_aarch64.run \
+  root@172.28.1.10:/home/memfabric_hybrid/output/memfabric_hybrid-1.2.0_linux_aarch64.run \
+  /home/wheels/
+```
+
+> **注意**：`/home/vllm` 与 `/home/vllm-ascend` 里已包含 Wiki 2.6/2.7/2.8 节的全部补丁
+> （pyc 复制、`cp_utils.py` 补 `get_total_cp_world_size`、`layerwise_cache_layout.py` 多 cache spec 支持），
+> 迁移即继承，无需重打。
+
+### 2.3 迁移 Docker 镜像（17.9GB）
+
+```bash
+# npu2 上流式传输（docker save | docker load，约 5 分钟）
+nohup bash -c 'ssh -p 10001 -o StrictHostKeyChecking=no root@172.28.1.10 \
+  "docker save quay.io/ascend/vllm-ascend:v0.20.2rc1" | docker load' \
+  > /root/docker_image_transfer.log 2>&1 &
+
+# 验证
+docker images quay.io/ascend/vllm-ascend   # 应看到 v0.20.2rc1
+```
+
+### 2.4 宿主机安装 memfabric + memcache（顺序不能反）
+
+```bash
+source /usr/local/Ascend/ascend-toolkit/latest/set_env.sh
+
+# 先 memfabric
+bash /home/wheels/memfabric_hybrid-1.2.0_linux_aarch64.run --quiet
+# 再 memcache（依赖 memfabric 的 set_env）
+source /usr/local/memfabric_hybrid/set_env.sh
+bash /home/wheels/memcache_hybrid-1.2.0_linux_aarch64.run --quiet
+
+# 验证
+cat /usr/local/memcache_hybrid/latest/version.info    # Version:1.2.0
+cat /usr/local/memfabric_hybrid/latest/version.info   # Version:1.2.0
+pip show memcache-hybrid | grep Version               # 1.2.0
+```
+
+> 宿主机安装的 run 包主要用于提供 `mmc_meta_service` 二进制和库文件；
+> **容器内 python 用的 wheel 另行处理**（见第 4 节）。
+
+### 2.5 模型迁移（已完成，280GB）
+
+```bash
+# 当时命令（已执行完毕，结果已校验 md5 一致）
+rsync -a --partial --info=progress2 -e "ssh -p 10001" \
+  root@172.28.1.10:/mnt/sfs_turbo/weights/DeepSeek-V4-Flash-w8a8-mtp /mnt/weights/
+```
+
+---
+
+## 3. 容器创建
+
+### 3.1 第一次创建（失败教训：--ipc=shareable 导致 /dev/shm 只有 64MB）
+
+```bash
+docker run -d --name lsy_pd --privileged --network host --ipc=shareable ...   # ✗ 不可用
+```
+
+容器内 vllm 报 `Insufficient space in /dev/shm: 160 MiB required, 64 MiB free`，
+且容器内 remount 扩容对 vllm 子进程不生效。
+
+### 3.2 正确做法：commit 后用 --ipc=host 重建
+
+```bash
+# 1) 提交容器当前状态（保留所有 pip 安装）为镜像
+docker commit lsy_pd lsy_pd:ready
+
+# 2) 删旧容器，用 --ipc=host 重建（共享宿主机 945G /dev/shm）
+docker rm -f lsy_pd
+docker run -d --name lsy_pd --privileged --network host --ipc=host --restart no \
+  -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
+  -v /usr/local/sbin:/usr/local/sbin \
+  -v /dev:/dev \
+  -v /usr/share/zoneinfo/Asia/Shanghai:/etc/localtime \
+  -v /home:/home \
+  -v /tmp:/tmp \
+  -v /usr/local/Ascend/driver:/usr/local/Ascend/driver \
+  -v /etc/hccn.conf:/etc/hccn.conf \
+  -v /mnt:/mnt \
+  -v /usr/local/dcmi:/usr/local/dcmi \
+  lsy_pd:ready sleep infinity
+```
+
+挂载说明（复刻 npu 上 tyy_b120 容器）：
+
+| 挂载 | 用途 |
+|---|---|
+| `/dev:/dev` | 全量设备（davinci0-7、infiniband uverbs 等） |
+| `/usr/local/Ascend/driver` | NPU 驱动（宿主机 26.0.rc1） |
+| `/home:/home` | vllm/vllm-ascend 源码与脚本（宿主机直接可改） |
+| `/mnt:/mnt` | 模型权重 |
+| `/etc/hccn.conf` | RoCE 网络配置 |
+| `--network host` | 直用宿主机网络（HCCL、MetaService 127.0.0.1 直达） |
+| `--ipc=host` | 共享内存（vllm 多进程 + memcache host_shm 必需） |
+| `--privileged` | NPU 设备完全访问 |
+
+---
+
+## 4. 容器内依赖修复
+
+```bash
+docker exec -it lsy_pd bash
+PIP=/usr/local/python3.11.15/bin/pip
+```
+
+### 4.1 transformers 升级 + vllm 0.27.1 依赖
+
+```bash
+$PIP install transformers==5.14.1          # 镜像自带 5.5.3 不够
+$PIP install -r /home/vllm/requirements/common.txt   # xgrammar>=0.2.1, fastapi>=0.133, starlette>=1.0.1 等
+```
+
+> 不装 requirements 会报：`ImportError: cannot import name 'normalize_tool_choice' from 'xgrammar'`
+
+### 4.2 memcache/memfabric wheel 的 GLIBC 坑（重要）
+
+宿主机编译的 wheel（`/home/wheels/*.whl`）链接 GLIBC_2.38，而容器系统是 Ubuntu glibc 2.35，
+直接安装后 `import memcache_hybrid` 报：
+`OSError: libc.so.6: version 'GLIBC_2.38' not found (required by libmf_hybm_core.so)`
+
+**解决**：从 npu 的 tyy_b120 容器里打包 manylinux 版（GLIBC_2.25 兼容）直接覆盖：
+
+```bash
+# 在 npu 上打包（已执行，产物在 npu2:/tmp/mf_pkgs.tar.gz）
+docker exec tyy_b120 bash -c 'cd /usr/local/python3.11.15/lib/python3.11/site-packages && \
+  tar czf /tmp/mf_pkgs.tar.gz \
+  memfabric_hybrid memfabric_hybrid-1.2.0.dist-info memfabric_hybrid.libs \
+  memcache_hybrid memcache_hybrid-1.2.0.dist-info memcache_hybrid.libs'
+
+# 在 npu2 容器内解压替换
+SP=/usr/local/python3.11.15/lib/python3.11/site-packages
+rm -rf $SP/memfabric_hybrid* $SP/memcache_hybrid*
+tar xzf /tmp/mf_pkgs.tar.gz -C $SP/
+
+# 验证
+python3 -c "import memcache_hybrid, memfabric_hybrid; print('OK')"
+```
+
+### 4.3 环境自检（容器内）
+
+```bash
+source /usr/local/Ascend/ascend-toolkit/latest/set_env.sh
+export PYTHONPATH=/home/vllm:/home/vllm-ascend
+python3 -c "import vllm; print(vllm.__version__)"              # 0.27.1
+python3 -c "import memcache_hybrid; print('OK')"               # OK
+python3 -c "import torch, torch_npu; print(torch.__version__)" # 2.10.0+cpu
+```
+
+---
+
+## 5. 启动 MetaService（每次复跑前必做）
+
+memcache backend 需要独立的 MetaService 进程（监听 127.0.0.1:5000/6000/8000），
+**在宿主机运行**（容器 host 网络可直接访问 127.0.0.1）：
+
+```bash
+# 宿主机执行
+source /usr/local/memcache_hybrid/set_env.sh
+source /usr/local/memfabric_hybrid/set_env.sh
+export MMC_META_CONFIG_PATH=/usr/local/memcache_hybrid/latest/config/mmc-meta.conf
+nohup /usr/local/memcache_hybrid/latest/aarch64-linux/bin/mmc_meta_service \
+  > /root/mmc_meta_service.log 2>&1 &
+
+# 验证端口
+netstat -tlnp | grep -E ':5000 |:6000 '   # 两个端口都在 LISTEN 即 OK
+```
+
+**卡死/重启方法**（进程有锁文件）：
+
+```bash
+pkill -9 -f mmc_meta_service
+rm -f /tmp/mmc_meta_service.lock /var/log/memcache_hybrid/*.lock
+# 然后重新 nohup 启动
+```
+
+> MetaService 保存了 rank 配置一致性状态（maxDRAMSize 等）。如果改过
+> `dram.size`/`max.dram.size` 后初始化报 `CheckRankConfigConsistency` 不一致，
+> 重启 MetaService 即可清掉旧状态。
+
+---
+
+## 6. 三场景启动与压测（日常复跑核心）
+
+### 6.1 场景定义
+
+| 场景 | start_pd_npu2.sh 参数 | use_layerwise | prefetch_layers |
+|---|---|---|---|
+| 场景1：OFF | `off` | false | - |
+| 场景2：ON | `on` | true | - |
+| 场景3：ON+prefetch:3 | `on_prefetch` | true | 3 |
+
+### 6.2 启动流程（容器内执行）
+
+```bash
+# ① 清理旧进程（每次必做，否则端口/设备占用）
+for pid in $(pgrep -f "vllm.entrypoints"); do kill -9 $pid; done
+for pid in $(pgrep -f "start_pd_npu2");    do kill -9 $pid; done
+for pid in $(pgrep -f "VLLM::");           do kill -9 $pid; done
+sleep 10
+# 确认 HBM 释放（每卡回到 ~3400MB 基线）
+npu-smi info | grep "HBM-Usage"
+
+# ② 后台启动（三选一：off / on / on_prefetch）
+setsid bash /home/lsy/start_pd_npu2.sh off > /home/lsy/launcher.log 2>&1 &
+
+# ③ 等待就绪（模型加载约 15~18 分钟）
+watch -n 60 "tail -3 /home/lsy/npu2_log_layerwise_off.log; netstat -tln | grep 8004"
+# 看到 "Application startup complete" 且 8004 端口 LISTEN 即就绪
+```
+
+### 6.3 压测（容器内执行）
+
+```bash
+docker exec lsy_pd /usr/local/python3.11.15/bin/python3 /home/lsy/bench_pd.py
+```
+
+压测参数（bench_pd.py 内置，与 Wiki 一致）：50 请求、并发 20、输入 512 tokens、输出 128 tokens、temperature=0。
+
+结果 JSON 自动保存到 `/home/lsy/bench_result_<时间戳>.json`。
+
+### 6.4 三场景串行完整流程
+
+```bash
+for MODE in off on on_prefetch; do
+    # 清理
+    for pid in $(pgrep -f "vllm.entrypoints"); do kill -9 $pid; done; sleep 10
+    # 启动
+    setsid bash /home/lsy/start_pd_npu2.sh $MODE > /home/lsy/launcher.log 2>&1 &
+    # 等就绪（轮询 8004）
+    while ! netstat -tln | grep -q ':8004 '; do sleep 60; done; sleep 30
+    # 压测
+    /usr/local/python3.11.15/bin/python3 /home/lsy/bench_pd.py | tee /home/lsy/bench_${MODE}.txt
+done
+```
+
+---
+
+## 7. 启动脚本与配置文件详解
+
+### 7.1 `/home/lsy/start_pd_npu2.sh`（核心启动脚本）
+
+关键内容（完整脚本见服务器）：
+
+```bash
+#!/bin/bash
+MODE=${1:-on}   # off / on / on_prefetch
+
+# ---- 环境 ----
+source /usr/local/Ascend/ascend-toolkit/latest/set_env.sh
+source /usr/local/Ascend/nnal/atb/set_env.sh
+export PYTHONPATH=/home/vllm:/home/vllm-ascend:${PYTHONPATH}
+export MMC_LOCAL_CONFIG_PATH=/home/lsy/layerwise/mmc-local.conf   # memcache 配置
+
+# ---- 网络（npu2 专属 IP）----
+export HCCL_IF_IP=172.28.1.220
+export GLOO_SOCKET_IFNAME=enp189s0f0
+export TP_SOCKET_IFNAME=enp189s0f0
+export HCCL_SOCKET_IFNAME=enp189s0f0
+
+export PYTHONHASHSEED=0
+export HCCL_BUFFSIZE=200
+export HCCL_NPU_SOCKET_PORT_RANGE=20000-25000
+export OMP_PROC_BIND=false
+export OMP_NUM_THREADS=10
+export PYTORCH_NPU_ALLOC_CONF="expandable_segments:True"
+export LD_LIBRARY_PATH=/usr/local/Ascend/ascend-toolkit/latest/python/site-packages/mooncake:$LD_LIBRARY_PATH
+
+# ---- 三场景 KV_CONFIG ----
+# off:         {"kv_connector":"AscendStoreConnector","kv_role":"kv_both",
+#               "kv_connector_extra_config":{"backend":"memcache","use_layerwise":false,"mooncake_rpc_port":"0"}}
+# on:          同上，use_layerwise=true
+# on_prefetch: 同上，use_layerwise=true，另加 "layerwise_prefetch_layers":3
+
+/usr/local/python3.11.15/bin/python3 -m vllm.entrypoints.openai.api_server \
+    --model /mnt/weights/DeepSeek-V4-Flash-w8a8-mtp \
+    --port 8004 --tensor-parallel-size 8 --seed 1024 \
+    --served-model-name deepseek_v4 \
+    --enable-expert-parallel \
+    --max-num-seqs 40 --max-model-len 16384 \
+    --max-num-batched-tokens 4096 \
+    --trust-remote-code \
+    --no-enable-prefix-caching \
+    --no-disable-hybrid-kv-cache-manager \
+    --gpu-memory-utilization 0.85 \
+    --quantization ascend \
+    --additional-config '{"ascend_scheduler_config":{"enabled":false},"torchair_graph_config":{"enabled":true}}' \
+    --kv-transfer-config "$KV_CONFIG" > ${LOG_FILE} 2>&1
+```
+
+### 7.2 `/home/lsy/layerwise/mmc-local.conf`（memcache 本地服务配置）
+
+```ini
+ock.mmc.meta_service_url = tcp://127.0.0.1:5000
+ock.mmc.local_service.config_store_url = tcp://127.0.0.1:6000
+ock.mmc.log_level = info
+ock.mmc.local_service.world_size = 256
+ock.mmc.local_service.protocol = host_shm      # ← 当前使用协议
+ock.mmc.local_service.dram.size = 1GB
+```
+
+### 7.3 `/home/lsy/bench_pd.py`
+
+50 并发 20 的 aiohttp 压测脚本，POST `http://localhost:8004/v1/completions`，
+prompt 为 "Hello "×512，max_tokens=128，greedy。输出吞吐/延迟统计与 JSON 落盘。
+
+---
+
+## 8. 性能结果
+
+压测参数：50 请求、并发 20、输入 512 / 输出 128 tokens、greedy。
+
+| 指标 | 场景1: OFF | 场景2: ON | 场景3: ON+prefetch:3 |
+|---|---|---|---|
+| 总耗时 | 43.63s | 119.04s | 115.58s |
+| 成功率 | 50/50 | 50/50 | 50/50 |
+| Request throughput | 1.15 req/s | 0.42 req/s | 0.43 req/s |
+| Output token throughput | **146.70 tok/s** | **53.76 tok/s** | **55.37 tok/s** |
+| Avg latency | 16.23s | 39.94s | 38.64s |
+| P50 latency | 12.66s | 38.59s | 38.57s |
+| P99 latency | 29.69s | 42.97s | 39.62s |
+
+结果文件：
+
+- 场景1：`/home/lsy/bench_result_1787571782.json`
+- 场景2：`/home/lsy/bench_result_1787573055.json`
+- 场景3：`/home/lsy/bench_result_1787574395.json`
+- 服务日志：`/home/lsy/npu2_log_layerwise_{off,on,on_prefetch}.log`
+
+与 Wiki（npu 原机）对比：OFF 146.70 vs 143.01（+2.6%）、ON+prefetch 55.37 vs 53.46（+3.6%），基本复现。
+
+---
+
+## 9. device_rdma 尝试记录（硬件不具备）
+
+结论：**npu2（以及 npu）的 8 卡 RoCE 物理链路全部 DOWN，无法使用 device_rdma 协议。**
+
+尝试过程（记录备查）：
+
+```bash
+# ① 为 8 张 NPU 配置 RoCE IP（已写入 /etc/hccn.conf，重启保留）
+for i in 0 1 2 3 4 5 6 7; do
+    hccn_tool -i $i -ip -s address 192.168.100.$((11+i)) netmask 255.255.255.0
+done
+
+# ② 新建 device_rdma 配置 /home/lsy/layerwise/mmc-local-device-rdma.conf
+#    ock.mmc.local_service.protocol = device_rdma
+#    ock.mmc.local_service.dram.size = 8GB（device 协议自动对齐 1GB）
+
+# ③ 单进程初始化验证
+#    SMEM/hybm/smem_bm_init 全部成功，但最终 RaRdevInit failed：
+#    [HYBM device_rdma_transport_manager.cpp:564] RaRdevInit failed.
+#    根因：HCCP RoCE 设备初始化需要物理链路
+
+# ④ 链路状态证据
+hccn_tool -i <N> -link -g    # 8 张卡全部 "link status: DOWN"
+rdma link show               # hns_0/1/3 DOWN，hns_2 ACTIVE 但走的是业务网线(1Gbps)
+hccn_tool -i 0 -ping -g address 192.168.100.12   # 100% 丢包
+```
+
+如后续机房接好 RoCE 线（100G 口入交换机），复跑步骤：
+1. 确认 `hccn_tool -i N -link -g` 为 UP、卡间 ping 通
+2. 启动 MetaService（同第 5 节）
+3. `export MMC_LOCAL_CONFIG_PATH=/home/lsy/layerwise/mmc-local-device-rdma.conf` 后按第 6 节流程启动压测
+
+其他备选协议：`host_rdma` / `host_tcp`（需 hcom 库）、`device_sdma`（HCCS 域内 SDMA，不依赖外部网络）。
+
+---
+
+## 10. 踩坑记录与注意事项
+
+| # | 坑 | 现象 | 解决 |
+|---|---|---|---|
+| 1 | 容器 `--ipc=shareable` | `Insufficient space in /dev/shm: 160 MiB required, 64 MiB free` | `docker commit` 后用 `--ipc=host` 重建 |
+| 2 | 宿主机编译的 wheel GLIBC 过高 | `GLIBC_2.38 not found (libmf_hybm_core.so)` | 用 npu 容器内 manylinux 版打包替换 |
+| 3 | vllm 0.27.1 依赖缺失 | `ImportError: normalize_tool_choice from xgrammar` | `pip install -r /home/vllm/requirements/common.txt` |
+| 4 | MetaService 未启动 | SMEM `Initialize attempt 5/5 failed`（connect 127.0.0.1:6000 失败） | 宿主机启动 `mmc_meta_service`（第 5 节） |
+| 5 | MetaService 锁文件 | 重启报 `process lock file is locked` | `pkill -9` + 删 `/tmp/mmc_meta_service.lock` |
+| 6 | rank 配置一致性 | `CheckRankConfigConsistency: maxDRAMSize 1G != 8G` | 配置文件与代码里 dram/max_dram 保持一致，或重启 MetaService |
+| 7 | PowerShell→ssh 引号破坏 | 命令里字母 `r` 被吃掉、`|` 变管道 | 复杂命令写入脚本文件，`cat xx.sh \| ssh "tr -d '\r' \| bash"` 执行 |
+| 8 | 场景切换残留 | 上一场景 vllm 进程占 HBM/端口 | 每次启动前 kill + 等 10s + 核对 npu-smi |
+| 9 | layerwise 强制降级 cudagraph | 日志 WARNING `Overriding cudagraph_mode from FULL_AND_PIECEWISE to PIECEWISE` | 正常现象，非错误 |
+| 10 | sshd 禁用 TcpForwarding | VS Code Remote 报 `administratively prohibited` | 修改 `/etc/ssh/sshd_config` 的 `AllowTcpForwarding yes` 后 `systemctl reload sshd` |
+
+---
+
+## 11. 常用排查命令速查
+
+```bash
+# NPU 状态 / HBM 占用
+npu-smi info | grep -E "HBM-Usage|Process"
+
+# vllm 进程
+pgrep -f "vllm.entrypoints" | wc -l
+
+# 服务日志（实时）
+tail -f /home/lsy/npu2_log_layerwise_on.log
+
+# 端口就绪
+netstat -tlnp | grep 8004
+
+# MetaService 状态
+ps -ef | grep mmc_meta | grep -v grep
+netstat -tlnp | grep -E ':5000 |:6000 '
+
+# 手动发一条请求验证
+curl -s http://127.0.0.1:8004/v1/models | head -c 300
+
+# 容器内快速自检
+docker exec lsy_pd bash -c '
+source /usr/local/Ascend/ascend-toolkit/latest/set_env.sh;
+export PYTHONPATH=/home/vllm:/home/vllm-ascend;
+/usr/local/python3.11.15/bin/python3 -c "import vllm, memcache_hybrid; print(\"ENV OK\")"'
+
+# 全部停止（释放 NPU）
+docker exec lsy_pd bash -c '
+for pid in $(pgrep -f "vllm.entrypoints"); do kill -9 $pid; done'
+```
