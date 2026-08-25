@@ -185,3 +185,53 @@ TEST_F(SparseFlashAttentionGradArch35OpapiUt, A2_bsnd_bf16_kvmerge_rope)
     EXPECT_EQ(aclRet, ACL_SUCCESS);
     EXPECT_NE(executor, nullptr);
 }
+
+TEST_F(SparseFlashAttentionGradArch35OpapiUt, E1_kvmerge_value_null_dvalue_present)
+{
+    auto query = MakeTensor({1, 16, 8, 512}, ACL_BF16);
+    auto key = MakeTensor({1, 128, 1, 512}, ACL_BF16);
+    auto sparseIndices = MakeTensor({1, 16, 1, 1024}, ACL_INT32);
+    auto dOut = MakeTensor({1, 16, 8, 512}, ACL_BF16);
+    auto out = MakeTensor({1, 16, 8, 512}, ACL_BF16);
+    auto softmaxMax = MakeTensor({1, 8, 16}, ACL_FLOAT);
+    auto softmaxSum = MakeTensor({1, 8, 16}, ACL_FLOAT);
+    auto dQueryOut = MakeTensor({1, 16, 8, 512}, ACL_BF16);
+    auto dKeyOut = MakeTensor({1, 128, 1, 512}, ACL_BF16);
+    auto dValueOut = MakeTensor({1, 128, 1, 512}, ACL_BF16);
+
+    char layout[] = "BSND";
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = aclnnSparseFlashAttentionGradGetWorkspaceSize(
+        query.get(), key.get(), nullptr, sparseIndices.get(), dOut.get(), out.get(), softmaxMax.get(), softmaxSum.get(),
+        nullptr, nullptr, nullptr, nullptr, 0.0441941738, 1, layout, 3, INT64_MAX, INT64_MAX, false,
+        dQueryOut.get(), dKeyOut.get(), dValueOut.get(), nullptr, nullptr, &workspaceSize, &executor);
+
+    EXPECT_NE(aclRet, ACL_SUCCESS);
+    EXPECT_EQ(executor, nullptr);
+}
+
+TEST_F(SparseFlashAttentionGradArch35OpapiUt, E2_value_present_dvalue_null)
+{
+    auto query = MakeTensor({1, 16, 8, 512}, ACL_BF16);
+    auto key = MakeTensor({1, 128, 1, 512}, ACL_BF16);
+    auto value = MakeTensor({1, 128, 1, 512}, ACL_BF16);
+    auto sparseIndices = MakeTensor({1, 16, 1, 1024}, ACL_INT32);
+    auto dOut = MakeTensor({1, 16, 8, 512}, ACL_BF16);
+    auto out = MakeTensor({1, 16, 8, 512}, ACL_BF16);
+    auto softmaxMax = MakeTensor({1, 8, 16}, ACL_FLOAT);
+    auto softmaxSum = MakeTensor({1, 8, 16}, ACL_FLOAT);
+    auto dQueryOut = MakeTensor({1, 16, 8, 512}, ACL_BF16);
+    auto dKeyOut = MakeTensor({1, 128, 1, 512}, ACL_BF16);
+
+    char layout[] = "BSND";
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = aclnnSparseFlashAttentionGradGetWorkspaceSize(
+        query.get(), key.get(), value.get(), sparseIndices.get(), dOut.get(), out.get(), softmaxMax.get(), softmaxSum.get(),
+        nullptr, nullptr, nullptr, nullptr, 0.0441941738, 1, layout, 3, INT64_MAX, INT64_MAX, false,
+        dQueryOut.get(), dKeyOut.get(), nullptr, nullptr, nullptr, &workspaceSize, &executor);
+
+    EXPECT_NE(aclRet, ACL_SUCCESS);
+    EXPECT_EQ(executor, nullptr);
+}

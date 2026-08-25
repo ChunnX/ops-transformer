@@ -45,12 +45,12 @@ public:
     __aicore__ inline int64_t GetKeyRopeOffset(FagRunInfo &runInfo);
     __aicore__ inline int64_t GetValueOffset(FagRunInfo &runInfo);
     __aicore__ inline void SyncALLCores();
-    __aicore__ inline void GetSeqQlenKvlenByBidx(int64_t bIdx, int64_t &actualSeqQlen, int64_t &actualSeqKvlen);
     __aicore__ inline void GetActualSelCount(const int64_t t1Idx, const int64_t n2Idx, int64_t &actSelBlkCount);
     __aicore__ inline void GetTndSeqLen(const int64_t t1Idx, int64_t &bIdx);
     __aicore__ inline int64_t GetValidTndT1Size();
     __aicore__ inline bool IsValidTndT1Index(const int64_t t1Idx);
     __aicore__ inline bool NeedDeterExtraSync(const int64_t processNum);
+    __aicore__ inline bool HasDeterRoundWork(const int64_t sTaskId);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
     __aicore__ inline ChildClass *GetDerived()
@@ -421,22 +421,6 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
 }
  
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void 
-FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetSeqQlenKvlenByBidx(int64_t bIdx, int64_t &actualSeqQlen, int64_t &actualSeqKvlen) 
-{
-    if (unlikely(bIdx == 0)) {
-        actualSeqQlen = ((__gm__ int64_t *)actualSeqQlenAddr)[0];
-        actualSeqKvlen = ((__gm__ int64_t *)actualSeqKvlenAddr)[0];
-    } else {
-        actualSeqQlen = 
-            ((__gm__ int64_t *)actualSeqQlenAddr)[bIdx] - ((__gm__ int64_t *)actualSeqQlenAddr)[bIdx - 1];
-        actualSeqKvlen = 
-            ((__gm__ int64_t *)actualSeqKvlenAddr)[bIdx] - ((__gm__ int64_t *)actualSeqKvlenAddr)[bIdx - 1];
-    }
-    return;
-}
-
-template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetRunInfo(
     FagRunInfo &runInfo, int64_t taskId, int64_t sTaskId)
 {
@@ -659,6 +643,45 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::Need
         maxProcessNum = (validT1 + usedCoreNum - 1) / usedCoreNum;
     }
     return processNum < maxProcessNum;
+}
+
+template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
+__aicore__ inline bool
+FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::HasDeterRoundWork(const int64_t sTaskId)
+{
+    // 所有核扫同一轮 usedCoreNum 个 token，判定必须一致，才能一起跳过 handshake / flag14。
+    const int64_t savedBIndex = bIndex;
+    const int64_t savedT1Index = t1Index;
+    const int64_t savedN2Index = n2Index;
+    const int64_t savedS1Index = s1Index;
+    const int64_t savedCurS1 = curS1;
+    const int64_t savedCurS2 = curS2;
+    const int64_t savedSel = actualSelectedBlockCount;
+
+    bool hasWork = false;
+    const int64_t validT1 = GetValidTndT1Size();
+    for (int64_t idx = 0; idx < usedCoreNum; ++idx) {
+        const int64_t t1Idx = sTaskId * usedCoreNum + idx;
+        if (t1Idx < 0 || t1Idx >= tilingData->baseParams.totalSize || t1Idx >= validT1) {
+            continue;
+        }
+        bIndex = 0;
+        GetTndSeqLen(t1Idx, bIndex);
+        GetActualSelCount(t1Idx, 0, actualSelectedBlockCount);
+        if (actualSelectedBlockCount > 0) {
+            hasWork = true;
+            break;
+        }
+    }
+
+    bIndex = savedBIndex;
+    t1Index = savedT1Index;
+    n2Index = savedN2Index;
+    s1Index = savedS1Index;
+    curS1 = savedCurS1;
+    curS2 = savedCurS2;
+    actualSelectedBlockCount = savedSel;
+    return hasWork;
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>

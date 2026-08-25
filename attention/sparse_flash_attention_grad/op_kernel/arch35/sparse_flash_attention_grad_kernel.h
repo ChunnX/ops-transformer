@@ -187,6 +187,11 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::DeterCubeVecScatter(
     FagRunInfo &scatterRunInfo)
 {
+    // 整轮 sel=0：AIC/AIV 必须得到同一结果，整 epoch 跳过 flag11/12/13，也不消费 flag14 credit。
+    // 只复用 6d0a 的「全空 epoch 一致跳过」，不恢复 AIC chain barrier。
+    if (!this->HasDeterRoundWork(scatterRunInfo.sTaskId)) {
+        return;
+    }
     // SMLAG 同款：scatter epoch 入口先收 AIV completion（flag14），再开 flag11/13。
     // Wait 放在这里而不是 compute 刚结束处，compute(N+1) 仍可与 scatter(N) overlap。
     if ASCEND_IS_AIC {

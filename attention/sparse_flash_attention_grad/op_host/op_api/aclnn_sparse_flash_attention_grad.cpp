@@ -57,6 +57,9 @@ aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
     uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
+    if ((value == nullptr) != (dValueOut == nullptr)) {
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     return aclnnInnerSparseFlashAttentionGradGetWorkspaceSize(
         query, key, sparseIndices, dOut, out, softmaxMax, softmaxSum, value,
         actualSeqLengthsQueryOptional, actualSeqLengthsKvOptional, queryRopeOptional, keyRopeOptional,

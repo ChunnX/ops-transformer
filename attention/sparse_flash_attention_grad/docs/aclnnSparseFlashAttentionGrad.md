@@ -493,7 +493,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <tr>
                 <td>ACLNN_ERR_PARAM_NULLPTR</td>
                 <td>161001</td>
-                <td>必选参数或者输出是空指针。KV merge场景下value和dValueOut允许为空指针。</td>
+                <td>必选参数或者输出是空指针。KV merge场景下value和dValueOut必须同时为空指针；只空其中一个返回ACLNN_ERR_PARAM_INVALID。</td>
             </tr>
             <tr>
                 <td>ACLNN_ERR_PARAM_INVALID</td>
@@ -564,7 +564,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
     - 入参为空的场景处理：
         - query为空Tensor：直接返回。
     - 当前只支持value和key完全一致的场景。
-    - KV merge场景下，value和dValueOut需传入空指针，dKeyOut返回dK+dV，不再单独返回dValue。
+    - KV merge场景下，value和dValueOut必须同时传入空指针，dKeyOut返回dK+dV，不再单独返回dValue。二者一个为空、另一个非空时接口返回ACLNN_ERR_PARAM_INVALID。
 
 - Mask
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
