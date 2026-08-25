@@ -81,7 +81,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
 #endif
 
 #ifndef MATMUL_ALLTO_ALL_APT_MX_QUANT_IMPL
-#define MATMUL_ALLTO_ALL_APT_MX_QUANT_IMPL(tilingData, pipe, ServerType, hcclDataType)                                  \
+#define MATMUL_ALLTO_ALL_APT_MX_QUANT_IMPL(tilingData, pipe, ServerType)                                               \
     do {                                                                                                               \
         DEFINE_MC2_MATMUL_CONTEXT_FOR_MATMUL_COMPUTATION_MX_QUANT(MxComputationContextType);                           \
         DEFINE_MC2_MATMUL_FOR_MATMUL_COMPUTATION_MX_QUANT(MxComputationType);                                          \
@@ -96,7 +96,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
             MatmulAlltoAllPipeLine<MxComputationType, TransposeType, CommunicationType, SchedulerContextType>;         \
         SchedulerType SchedulerImpl(&matmulImplName, &transposeImplName, &commImplName);                               \
         Mc2Kernel::MxQuantMatmulAlltoAllArch35<SchedulerType, SchedulerContextType, QuantMatmulAlltoAllTilingData> op( \
-            &SchedulerImpl, hcclDataType);                                                                             \
+            &SchedulerImpl);                                                                                           \
         op.Init(x1, x2, bias, y, x1Scale, x2Scale, workspaceGM, &tilingData, &pipe);                                   \
         op.Process();                                                                                                  \
     } while (0)
@@ -136,7 +136,7 @@ __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
         op.Run();
     } else {
         GET_TILING_DATA_WITH_STRUCT(QuantMatmulAlltoAllTilingData, tilingData, tilingGM);
-        MATMUL_ALLTO_ALL_APT_MX_QUANT_IMPL(tilingData, pipe, commServerType, AscendC::HCCL_DATA_TYPE_UINT8);
+        MATMUL_ALLTO_ALL_APT_MX_QUANT_IMPL(tilingData, pipe, commServerType);
     }
 #else
     REGISTER_TILING_DEFAULT(QuantMatmulAlltoAllTilingData); // 按当前最大的结构体申请内存
@@ -145,10 +145,6 @@ __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     if constexpr (QUANTMODE == KC_QUANT_MODE) {
         MATMUL_ALLTO_ALL_APT_KC_QUANT_IMPL(tilingData, pipe, commServerType);
     } else if constexpr (QUANTMODE == MX_QUANT_MODE) {
-        AscendC::HcclDataType hcclDataType = AscendC::HCCL_DATA_TYPE_FP8E4M3;
-        if constexpr (AscendC::IsSameType<DTYPE_X1, float8_e5m2_t>::value) {
-            hcclDataType = AscendC::HCCL_DATA_TYPE_FP8E5M2;
-        }
         if constexpr (USING_APACE_IMPL) {
             GET_TILING_DATA_WITH_STRUCT(hcommAllToAllMatmulTilingData, tilingData, tilingGM);
             Apace::QuantMatmulAllToAllHcommImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y,
@@ -157,7 +153,7 @@ __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
             op.Init(x1, x2, bias, y, x1Scale, x2Scale, workspaceGM);
             op.Run();
         } else {
-            MATMUL_ALLTO_ALL_APT_MX_QUANT_IMPL(tilingData, pipe, commServerType, hcclDataType);
+            MATMUL_ALLTO_ALL_APT_MX_QUANT_IMPL(tilingData, pipe, commServerType);
         }
     }
 #endif
