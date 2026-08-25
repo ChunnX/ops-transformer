@@ -36,7 +36,7 @@ __aicore__ inline void GmmAddTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR groupL
     using LayoutBias = AscendC::Te::NDExtLayoutPtn;
     using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
     using DispatchPolicy = Blaze::Gemm::MatmulMultiBlockBasic<
-        0, 0, Blaze::Gemm::KernelGroupedMmadNoQuant, 0, Blaze::Gemm::GroupedMatmulOutputMode::INPLACE_ADD>;
+        0, 0, Blaze::Gemm::KernelGroupedMmadNoQuant, 0, Blaze::Gemm::MatmulOutputMode::INPLACE_ADD>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC,
                                                     BiasType, LayoutBias>;
     using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueEmpty;
@@ -73,7 +73,13 @@ __aicore__ inline void GmmAddTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR groupL
                                          nTailAlign,
                                          groupTypeSplitK,
                                          static_cast<uint32_t>(gmmAddParams.groupNum),
-                                         static_cast<int64_t>(mmTilingData.M)};
+                                         static_cast<int64_t>(mmTilingData.M),
+                                         true, // singleX
+                                         true, // singleWeight
+                                         true, // singleY
+                                         BlockMmad::TRANS_B,
+                                         BlockMmad::WEIGHT_NZ_FORMAT,
+                                         static_cast<uint32_t>(sizeof(BType))};
 
     typename BlockMmad::Params mmParams{x,
                                         weight,
