@@ -87,7 +87,6 @@ struct AntiquantTaskParamBaseAPI {
     bool isPrefixLoop = 0;
 };
 
-
 template <ANTIQUANT_PROCESSOR_TEMPLATE_DEF, const bool ANTIQUANT_PER_TOKEN>
 class AntiquantProcessorBaseAPI {
 public:
@@ -100,13 +99,15 @@ public:
 
     __aicore__ inline AntiquantProcessorBaseAPI(){};
 
-    __aicore__ inline void
-    ProcessBaseAPI(Buffer<BufferType::L1> &outBufAntiRes, GlobalTensor<KV_T> &kvGm,
-                   GlobalTensor<ANTIQ_PARAMS_T> &antiqScaleGm, GlobalTensor<ANTIQ_PARAMS_T> &antiqOffsetGm,
-                   GlobalTensor<int32_t> &blockTableGm, TQue<QuePosition::VECIN, 1> &kvInputQue,
-                   TQue<QuePosition::VECOUT, 1> &kvOutputQue, TQue<QuePosition::VECIN, 1> &antiqScaleInputQue,
-                   TQue<QuePosition::VECIN, 1> &antiqOffsetInputQue, TBuf<> kvAntiqMxScaleRes,
-                   const AntiquantTaskParamBaseAPI &taskParam, int32_t taskId, bool isBeforeHalf, int32_t s2RealSize);
+    __aicore__ inline void ProcessBaseAPI(Buffer<BufferType::L1> &outBufAntiRes, GlobalTensor<KV_T> &kvGm,
+                                          GlobalTensor<ANTIQ_PARAMS_T> &antiqScaleGm,
+                                          GlobalTensor<ANTIQ_PARAMS_T> &antiqOffsetGm,
+                                          GlobalTensor<int32_t> &blockTableGm, TQue<QuePosition::VECIN, 1> &kvInputQue,
+                                          TQue<QuePosition::VECOUT, 1> &kvOutputQue,
+                                          TQue<QuePosition::VECIN, 1> &antiqScaleInputQue,
+                                          TQue<QuePosition::VECIN, 1> &antiqOffsetInputQue, TBuf<> kvAntiqMxScaleRes,
+                                          const AntiquantTaskParamBaseAPI &taskParam, int32_t taskId, bool isBeforeHalf,
+                                          int32_t s2RealSize);
 
     __aicore__ inline void CopyAntiqScaleE8M0(LocalTensor<Q_T> dstLocal, GlobalTensor<Q_T> &srcGm, uint64_t offset,
                                               uint32_t rowCnt, uint32_t grpNum);
@@ -117,11 +118,13 @@ public:
                                                             TBuf<> kvAntiqMxScaleRes,
                                                             const AntiquantTaskParamBaseAPI &taskParam,
                                                             bool isBeforeHalf, int32_t s2RealSize);
-    __aicore__ inline void
-    LoadAntiquantParamsPerToken(GlobalTensor<ANTIQ_PARAMS_T> &antiqScaleGm, GlobalTensor<ANTIQ_PARAMS_T> &antiqOffsetGm,
-                                GlobalTensor<int32_t> &blockTableGm, TQue<QuePosition::VECIN, 1> &antiqScaleInputQue,
-                                TQue<QuePosition::VECIN, 1> &antiqOffsetInputQue,
-                                const AntiquantTaskParamBaseAPI &taskParam, bool isBeforeHalf, int32_t s2RealSize);
+    __aicore__ inline void LoadAntiquantParamsPerToken(GlobalTensor<ANTIQ_PARAMS_T> &antiqScaleGm,
+                                                       GlobalTensor<ANTIQ_PARAMS_T> &antiqOffsetGm,
+                                                       GlobalTensor<int32_t> &blockTableGm,
+                                                       TQue<QuePosition::VECIN, 1> &antiqScaleInputQue,
+                                                       TQue<QuePosition::VECIN, 1> &antiqOffsetInputQue,
+                                                       const AntiquantTaskParamBaseAPI &taskParam, bool isBeforeHalf,
+                                                       int32_t s2RealSize);
 
     __aicore__ inline void CopyAntiqParam(LocalTensor<ANTIQ_PARAMS_T> dstLocal, GlobalTensor<ANTIQ_PARAMS_T> &srcGm,
                                           uint32_t rowCnt, const AntiquantTaskParamBaseAPI &taskParam);
@@ -672,8 +675,8 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
         if constexpr (IsSameType<KV_T, int8_t>::value) {
             if (taskParam.kvCacheNzD0 == 32) {
                 if constexpr (!IS_PER_TOKEN) {
-                    FaVectorApi::AntiquantVFW8NzD032<Q_T, KV_T, ANTIQ_PARAMS_T, dBaseSize>(
-                        antiqInUb, antiqResUb, scaleTensor, dealRowCount);
+                    FaVectorApi::AntiquantVFW8NzD032<Q_T, KV_T, ANTIQ_PARAMS_T, dBaseSize>(antiqInUb, antiqResUb,
+                                                                                           scaleTensor, dealRowCount);
                 } else {
                     FaVectorApi::AntiquantVFW8PerTokenNzD032<Q_T, KV_T, ANTIQ_PARAMS_T, dBaseSize>(
                         antiqInUb, antiqResUb, scaleTensor, dealRowCount);
@@ -685,7 +688,8 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
             }
         } else {
             FaVectorApi::AntiquantVF<Q_T, KV_T, ANTIQ_PARAMS_T, dBaseSize, HAS_OFFSET, IS_PER_TOKEN, true>(
-                antiqInUb, antiqResUb, offsetTensor, scaleTensor, dealRowCount, taskParam.headDim, taskParam.copyTotalS);
+                antiqInUb, antiqResUb, offsetTensor, scaleTensor, dealRowCount, taskParam.headDim,
+                taskParam.copyTotalS);
         }
     } else {
         FaVectorApi::AntiquantVF<Q_T, KV_T, ANTIQ_PARAMS_T, dBaseSize, HAS_OFFSET, IS_PER_TOKEN, false>(

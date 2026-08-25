@@ -73,7 +73,6 @@ constexpr int32_t SPARSE_MODE_RIGHT_DOWN = 3;
 constexpr int32_t SPARSE_MODE_BAND = 4;
 constexpr int32_t SPARSE_MODE_TREE = 9;
 
-
 enum class FiaQuantMode : uint32_t {
     NO_QUANT = 0,
     ANTI_QUANT,
