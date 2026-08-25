@@ -36,7 +36,10 @@ int64_t DownAlign(int64_t x, int64_t y)
     }
     return (x / y) * y;
 }
-int64_t RoundUp(int64_t x, int64_t y) { return CeilDiv(x, y) * y; }
+int64_t RoundUp(int64_t x, int64_t y)
+{
+    return CeilDiv(x, y) * y;
+}
 int64_t Factorial(int64_t n)
 {
     int64_t r = 1;

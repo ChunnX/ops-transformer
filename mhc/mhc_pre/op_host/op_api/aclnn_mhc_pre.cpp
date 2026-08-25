@@ -205,7 +205,10 @@ public:
         return *this;
     }
 
-    MhcParamsBase Build() const { return obj_; }
+    MhcParamsBase Build() const
+    {
+        return obj_;
+    }
 
 private:
     MhcParamsBase obj_;
