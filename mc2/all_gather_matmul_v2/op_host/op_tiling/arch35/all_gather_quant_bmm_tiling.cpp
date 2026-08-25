@@ -609,12 +609,10 @@ void AllGatherQuantBmmTiling::SetTilingKeyParams()
 ge::graphStatus AllGatherQuantBmmTiling::GetWorkspaceSize()
 {
     MC2_CHECK_LOG_RET(opName_, AllGatherMatmulTilingBase::GetWorkspaceSize());
+    // 当N=0时，Helper不执行，myWorkSpaceSize_未被设置，需要手动赋值
     // workspaceSize_包含：libApiWorkSpaceSize_ + storageA_(含gatherLen) + biasLen_
-    // MX场景不走DoAdaptSlidWindowTiling，myWorkSpaceSize_未被PostTiling设置，
-    // 需用workspaceSize_作为基线，scale1kSpaceSize_为scale1通信所需空间
-    if (isMxScene_) {
-        myWorkSpaceSize_ = workspaceSize_ + scale1kSpaceSize_;
-    } else if (args_.nValue == 0) {
+    // scale1kSpaceSize_为scale1通信所需空间
+    if (args_.nValue == 0) {
         myWorkSpaceSize_ = workspaceSize_ + scale1kSpaceSize_;
     } else {
         myWorkSpaceSize_ = myWorkSpaceSize_ + MutableRCSTilingDataA5().gatherLen + scale1kSpaceSize_;
