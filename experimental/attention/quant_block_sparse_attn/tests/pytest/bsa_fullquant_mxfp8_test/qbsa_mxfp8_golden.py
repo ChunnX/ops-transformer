@@ -1500,17 +1500,21 @@ def _qk_matmul_cpu(q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax
     k_dequant = k_mat * _expand_d_group_scale(k_scale_mat, head_dim)
     scores = torch.matmul(q_dequant, k_dequant.transpose(0, 1)) * softmax_scale
 
-    # Applying the descales before matmul can introduce a NaN that does not
-    # exist in MXFP8 cube arithmetic.  For example, a finite FP8 value paired
-    # with a large E8M0 descale may dequantize to Inf; multiplying that Inf by
-    # a zero FP8 K element then evaluates as Inf * 0 = NaN on CPU.  Cube first
-    # accumulates the finite FP8 payloads in each 32-element group and applies
-    # the group descales afterwards, so a zero group contribution stays zero.
+    # Applying the descales before matmul can introduce a non-finite score that
+    # does not exist in MXFP8 cube arithmetic.  For example, a finite E4M3
+    # payload paired with a large E8M0 descale may overflow while materializing
+    # Q as FP32.  The subsequent CPU matmul then produces +/-Inf (or Inf * 0 =
+    # NaN), even when applying the Q/K group scales after the payload dot would
+    # produce a finite score.  Cube follows the latter order: it accumulates
+    # finite FP8 payloads in each 32-element group and applies the group
+    # descales afterwards.
     #
     # Keep the established dequant + torch.matmul path for normal values and
-    # repair only its artificial NaNs.  NaNs present in either FP8 payload are
-    # deliberately excluded from repair and therefore continue to propagate.
-    repair_mask = torch.isnan(scores)
+    # repair only its artificial non-finite results.  NaNs present in either
+    # FP8 payload are deliberately excluded from repair and therefore continue
+    # to propagate.  A genuine Cube overflow remains non-finite after the
+    # grouped recomputation, so replacing it is also semantics-preserving.
+    repair_mask = ~torch.isfinite(scores)
     if not bool(repair_mask.any()):
         return scores
 
