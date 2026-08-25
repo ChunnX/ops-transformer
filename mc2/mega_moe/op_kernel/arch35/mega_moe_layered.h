@@ -101,7 +101,7 @@ public:
     __aicore__ inline void Process();
 
 private:
-    using HcommBatchHandle = typename AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP>::BatchHandleType;
+    using HcommBatchHandle = UbcCtpBatchHandle;
 
     __aicore__ inline void DispatchBuffInit();
     __aicore__ inline void SendAndQuantBuffInit();
