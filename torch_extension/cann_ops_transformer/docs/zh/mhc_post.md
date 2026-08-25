@@ -67,7 +67,7 @@
 cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
 ```
 
-其中`h_res`为可选输入，可传入None（仅Ascend 950PR/Ascend 950DT支持传入None）。
+其中`h_res`为可选输入，可传入None（仅Ascend 950PR/Ascend 950DT的单算子模式支持传入None，图模式不支持）。
 
 ## 参数说明
 
@@ -192,6 +192,7 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
 
 - `h_res`可选约束：
   - `h_res`传入None时跳过Res Mapping，仅Ascend 950PR/Ascend 950DT支持；Atlas A2/A3系列产品`h_res`为必传参数，传入None会报错。
+  - `h_res`传入None仅支持单算子模式调用；图模式（torch.compile）下`h_res`必须传入，传入None会在GE编译阶段报错。
 
 - 维度约束：
   - `h_res`的维度需与`x`维度格式匹配：4维时为(B, S, n, n)，3维时为(T, n, n)。
@@ -234,7 +235,7 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
   y = mhc_post(x, h_res, h_out, h_post)
   print(f"output shape: {y.shape}")
 
-  # h_res缺省时（仅Ascend 950PR/Ascend 950DT支持）
+  # h_res缺省时（仅Ascend 950PR/Ascend 950DT支持，且仅支持单算子模式）
   y = mhc_post(x, None, h_out, h_post)
   print(f"output shape: {y.shape}")
   ```
