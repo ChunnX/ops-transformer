@@ -77,7 +77,7 @@ __aicore__ inline void CastFromF16ToI8(const AscendC::LocalTensor<int8_t> &out, 
     AscendC::PipeBarrier<PIPE_V>();
     Mins(in, in, (half)127, count); // 127: limit
     AscendC::PipeBarrier<PIPE_V>();
-#if defined(__CCE_KT_TEST__) || (__CCE_AICORE__ == 220)
+#if defined(__CCE_KT_TEST__) || (__CCE_AICORE__ == 220) || (__CCE_AICORE__ == 310)
     Cast(out, in, AscendC::RoundMode::CAST_RINT, count);
 #else
     Cast(out, in, AscendC::RoundMode::CAST_NONE, count);

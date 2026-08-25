@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /////////////////////////////////////////////////////
 // l0c_to_l1
@@ -25,6 +25,17 @@ struct l0c_to_l1<ArchTag, DataFormat::ZN, half, int32_t> {
                          uint32_t mTileCeil,
                          uint32_t nActual)
     {
+#if defined(__DAV_C310_CUBE__)
+        auto intriParams = AscendC::FixpipeParamsV220(
+            static_cast<uint16_t>(nTileActual),
+            static_cast<uint16_t>(mTileActual),
+            0,
+            mTileCeil - mTileActual,
+            false);
+        intriParams.quantPre = QuantMode_t::VDEQF16;
+        AscendC::Fixpipe<ElementOut, ElementIn, AscendC::CFG_NZ>(l1Tensor, l0cTensor, deqTensor, intriParams);
+#elif defined(__DAV_C310_VEC__)
+#else
         constexpr uint32_t BLOCK_NUM = 16;
         constexpr uint32_t BLOCK_SIZE = 32;
         AscendC::FixpipeParams<ElementIn> intriParams(
@@ -36,5 +47,6 @@ struct l0c_to_l1<ArchTag, DataFormat::ZN, half, int32_t> {
         intriParams.nz2ndParams = {false, 1, 0, 0, static_cast<uint16_t>(nTileActual)};
         intriParams.quantParams = {QuantMode_t::VDEQF16};
         AscendC::Fixpipe(l1Tensor, l0cTensor, deqTensor, intriParams);
+#endif
     };
 };

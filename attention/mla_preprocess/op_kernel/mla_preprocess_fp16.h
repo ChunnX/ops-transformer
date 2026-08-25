@@ -516,7 +516,7 @@ __aicore__ inline void ReduceSumCustom(const AscendC::LocalTensor<float> &dst_lo
                                        const AscendC::LocalTensor<float> &src_local,
                                        const AscendC::LocalTensor<float> &work_local, int32_t count)
 {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C220_VEC__) || defined(__DAV_C310_VEC__) || defined(__DAV_C310_VEC__)
     uint64_t mask = NUM_PER_REP_FP32;
     int32_t repeatTimes = count / NUM_PER_REP_FP32;
     int32_t tailCount = count % NUM_PER_REP_FP32;
@@ -1034,7 +1034,7 @@ private:
     uint32_t padLen;
 };
 
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__)
 
 struct MatCoord {
     uint64_t m{0};
@@ -1050,7 +1050,7 @@ class PpMatmulEinSum {
 
     template <DataFormat srcFormat, DataFormat dstFormat>
     using CopyGmToCbuf = gm_to_l1<ArchType::ASCEND_V220, InDtype, srcFormat, dstFormat>;
-    using LoadCbufToCa = l1_to_l0_a<ArchType::ASCEND_V220, InDtype, false, DataFormat::ZN, DataFormat::ZZ>;
+    using LoadCbufToCa = l1_to_l0_a<ArchType::ASCEND_V220, InDtype, false, DataFormat::ZN, L0A_DATA_FORMAT>;
     using LoadCbufToCb = l1_to_l0_b<ArchType::ASCEND_V220, InDtype, transB, DataFormat::ZN, DataFormat::NZ>;
     using Mad = mmad<ArchType::ASCEND_V220, InDtype, InDtype, float, false>;
     using CopyCcToGm = l0c_to_gm<ArchType::ASCEND_V220, DataFormat::ND, OutDtype, float>;
@@ -1110,7 +1110,7 @@ __aicore__ inline void
 PpMatmulEinSum<formatB, transB, swizzleDirect, splitGapA, splitGapC>::Init(GM_ADDR gmA, GM_ADDR gmB, GM_ADDR gmC,
                                                                            const MlaTilingData &mlaParams)
 {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__)
     batch_size = mlaParams.mm3.numBatch;
     m = mlaParams.mm3.m;
     k = mlaParams.mm3.k;
@@ -1180,7 +1180,7 @@ PpMatmulEinSum<formatB, transB, swizzleDirect, splitGapA, splitGapC>::GetBaseBlo
 template <DataFormat formatB, bool transB, uint32_t swizzleDirect, uint64_t splitGapA, uint64_t splitGapC>
 __aicore__ inline void PpMatmulEinSum<formatB, transB, swizzleDirect, splitGapA, splitGapC>::PreloadB()
 {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__)
     if (core_idx < num_core) {
         uint64_t batch_idx = core_idx / tdim.n / tdim.m;
         uint64_t shuffle_k = en_shuffle_k ? (core_idx % tdim.k) : 0;
@@ -1296,7 +1296,7 @@ __aicore__ inline void PpMatmulEinSum<formatB, transB, swizzleDirect, splitGapA,
 template <DataFormat formatB, bool transB, uint32_t swizzleDirect, uint64_t splitGapA, uint64_t splitGapC>
 __aicore__ inline void PpMatmulEinSum<formatB, transB, swizzleDirect, splitGapA, splitGapC>::Process()
 {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__)
     if (core_idx >= num_core) {
         WaitFlagDev(MM2OUT);
         AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(BMM3SPLIT);
@@ -1533,7 +1533,7 @@ class PpMatmulW8a8 {
 
     template <DataFormat srcFormat, DataFormat dstFormat>
     using CopyGmToCbuf = gm_to_l1<ArchType::ASCEND_V220, InDtype, srcFormat, dstFormat>;
-    using LoadCbufToCa = l1_to_l0_a<ArchType::ASCEND_V220, InDtype, transA, DataFormat::ZN, DataFormat::ZZ>;
+    using LoadCbufToCa = l1_to_l0_a<ArchType::ASCEND_V220, InDtype, transA, DataFormat::ZN, L0A_DATA_FORMAT>;
     using LoadCbufToCb = l1_to_l0_b<ArchType::ASCEND_V220, InDtype, transB, DataFormat::ZN, DataFormat::NZ>;
     using Mmad = mmad<ArchType::ASCEND_V220, InDtype, InDtype, AccumDtype, false>;
     using CopyCcToGm = l0c_to_gm<ArchType::ASCEND_V220, DataFormat::ND, OutDtype, AccumDtype>;
@@ -1845,7 +1845,7 @@ PpMatmulW8a8<transA, transB, withBias, swizzleDir, formatA, formatB>::GetBaseBlo
 template <bool transA, bool transB, bool withBias, uint32_t swizzleDir, DataFormat formatA, DataFormat formatB>
 __aicore__ inline void PpMatmulW8a8<transA, transB, withBias, swizzleDir, formatA, formatB>::PreloadDoubleWeight()
 {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__)
     if (core_idx < core_num) {
         uint64_t m_idx = 0;
         uint64_t n_idx = 0;
@@ -2108,8 +2108,6 @@ __aicore__ inline void PpMatmulW8a8<transA, transB, withBias, swizzleDir, format
                 bool sp_flag = (m != 1 && m_actual == 1 && transA);
                 if (init_c) {
                     WAIT_FLAG(FIX, M, EVENT_ID0);
-                }
-                if (init_c) {
                     if constexpr (withBias) {
                         WAIT_FLAG(MTE2, MTE1, EVENT_ID6);
                         l1_to_bt<ArchType::ASCEND_V220, BiasDtype>(
@@ -2117,7 +2115,11 @@ __aicore__ inline void PpMatmulW8a8<transA, transB, withBias, swizzleDir, format
                             bias_l1,                                         // src
                             0,                                               // convControl
                             1,                                               // nBurst
-                            CeilDiv<CONST_64>(n_actual * sizeof(BiasDtype)), // lenBurst
+#if defined(__DAV_C310_CUBE__)
+                            CeilDiv<CONST_32>(n_actual * sizeof(BiasDtype)), // lenBurst (A5: 32B对齐)
+#else
+                            CeilDiv<CONST_64>(n_actual * sizeof(BiasDtype)), // lenBurst (A3: 64B对齐)
+#endif
                             0,                                               // srcGap
                             0);                                              // dstGap
                         SET_FLAG(MTE1, MTE2, EVENT_ID7); // bias ready, mte2 can begin move A/B or scale
@@ -2183,7 +2185,7 @@ public:
     __aicore__ inline MLAOperation(const MlaTilingData &mlaParams_)
     {
         blockIdx = AscendC::GetBlockIdx();
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C220_VEC__) || defined(__DAV_C310_VEC__) || defined(__DAV_C310_VEC__)
         sub_block_idx = static_cast<uint64_t>(GetSubBlockidx());
 #endif
         vectorBlockIdx = (blockIdx / 2) * 2 + sub_block_idx;
@@ -2225,7 +2227,7 @@ public:
             reinterpret_cast<__gm__ half *>(s3Gm)); // 元素个数的偏移，而非大小偏移，s1GM、s3GM偏移的数据类型不一样
         this->q_down_out_flag &= (qDownGm != nullptr);
 
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__)
         mm_w8a8_1.Init(s1GmTensor, wdqkvGmTensor, bias1gmTensor, descale1gmTensor, s3GmTensor, mlaParams, 0);
         mm_w8a8_1.PreloadDoubleWeight();
 #endif
@@ -2259,7 +2261,7 @@ public:
 
         beta1GmTensor.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(beta1Gm));
         beta2GmTensor.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(beta2Gm));
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__)
         mm_w8a8_2.Init(s1GmTensor, wuqGmTensor, bias2gmTensor, descale2gmTensor, s2GmTensor, mlaParams, 1);
         if constexpr (cacheMode == CACHE_MODE_INT8_NZCACHE) {
             mm_ein_sum.Init(s2Gm, wukGm, s1Gm, mlaParams);
@@ -2268,7 +2270,7 @@ public:
         }
 #endif
 
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C220_VEC__) || defined(__DAV_C310_VEC__) || defined(__DAV_C310_VEC__)
         // rmsnormQuant
         row_work = (num_row + num_core_ - 1) / num_core_;
         row_work_ = 0;
@@ -2569,14 +2571,14 @@ private:
 
     AscendC::GlobalTensor<half> qDownGmTensor;
 
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__)
     PpMatmulW8a8<false, true, true, 0, DataFormat::ND, weightFormat1> mm_w8a8_1;
     PpMatmulW8a8<false, true, true, 1, DataFormat::ND, weightFormat2> mm_w8a8_2;
     static constexpr uint64_t splitGapC = cacheMode == CACHE_MODE_KVCACHE ? CONST_64 : CONST_0;
     PpMatmulEinSum<weightFormat3, false, 0, CONST_64, splitGapC> mm_ein_sum;
 #endif
 
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C220_VEC__) || defined(__DAV_C310_VEC__)
     Quant<half, true, false> quant;    
     RmsNormQuant<half, true, false, false> rmsNormQuant1;
     RmsNormQuant<half, true, false, false> rmsNormQuant2;
@@ -2589,7 +2591,7 @@ private:
 template <int8_t cacheMode, DataFormat weightFormat1, DataFormat weightFormat2, DataFormat weightFormat3>
 __aicore__ inline void MLAOperation<cacheMode, weightFormat1, weightFormat2, weightFormat3>::ProcessCube()
 {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__)
     mm_w8a8_1.Process();
     FftsCrossCoreSync<PIPE_FIX, 0>(RMSNORMQUANT2);
     WaitFlagDev(RMSNORMQUANT2);
@@ -2611,7 +2613,7 @@ __aicore__ inline void MLAOperation<cacheMode, weightFormat1, weightFormat2, wei
 template <int8_t cacheMode, DataFormat weightFormat1, DataFormat weightFormat2, DataFormat weightFormat3>
 __aicore__ inline void MLAOperation<cacheMode, weightFormat1, weightFormat2, weightFormat3>::ProcessVector()
 {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C220_VEC__) || defined(__DAV_C310_VEC__)
     if (row_work_ != 0) {
         uint32_t num_col_align_int8 = (num_col_1 + REPEAT_TIME_256 - 1) / REPEAT_TIME_256 * REPEAT_TIME_256;
         uint32_t num_col_align_f16 = (num_col_1 + REPEAT_TIME_128 - 1) / REPEAT_TIME_128 * REPEAT_TIME_128;

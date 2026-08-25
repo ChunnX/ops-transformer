@@ -637,7 +637,7 @@ __aicore__ inline void ReduceSumCustom(const AscendC::LocalTensor<float> &dst_lo
                                        const AscendC::LocalTensor<float> &src_local,
                                        const AscendC::LocalTensor<float> &work_local, int32_t count)
 {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C220_VEC__) || defined(__DAV_C310_VEC__)
     uint64_t mask = NUM_PER_REP_FP32;
     int32_t repeatTimes = count / NUM_PER_REP_FP32;
     int32_t tailCount = count % NUM_PER_REP_FP32;
@@ -1263,7 +1263,7 @@ private:
     uint8_t calcRepeatStride;
 };
 
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__)
 struct MatCoord {
     uint64_t m{0};
     uint64_t k{0};
@@ -1277,7 +1277,7 @@ class PpMatmulEinSum {
 
     template <DataFormat srcFormat, DataFormat dstFormat>
     using CopyGmToCbuf = gm_to_l1<ArchType::ASCEND_V220, InDtype, srcFormat, dstFormat>;
-    using LoadCbufToCa = l1_to_l0_a<ArchType::ASCEND_V220, InDtype, false, DataFormat::ZN, DataFormat::ZZ>;
+    using LoadCbufToCa = l1_to_l0_a<ArchType::ASCEND_V220, InDtype, false, DataFormat::ZN, L0A_DATA_FORMAT>;
     using LoadCbufToCb = l1_to_l0_b<ArchType::ASCEND_V220, InDtype, transB, DataFormat::ZN, DataFormat::NZ>;
     using Mad = mmad<ArchType::ASCEND_V220, InDtype, InDtype, AccumDtype, false>;
     using CopyCcToGm = l0c_to_gm<ArchType::ASCEND_V220, DataFormat::ND, OutDtype, AccumDtype>;
@@ -1292,7 +1292,7 @@ public:
 
     __aicore__ inline void Init(GM_ADDR gmA, GM_ADDR gmB, GM_ADDR gmC, const MlaTilingData &mlaParams)
     {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__)
         batch_size = mlaParams.mm3.numBatch;
         m = mlaParams.mm3.m;
         k = mlaParams.mm3.k;
@@ -1324,7 +1324,7 @@ public:
 
     __aicore__ inline void Process()
     {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__)
         if (core_idx >= num_core) {
             WaitFlagDev(AIC_MM3_START);
             return;
@@ -1719,7 +1719,7 @@ class PpMatmulW8a8Aic {
 
     template <DataFormat srcFormat, DataFormat dstFormat>
     using CopyGmToCbuf = gm_to_l1<ArchType::ASCEND_V220, InDtype, srcFormat, dstFormat>;
-    using LoadCbufToCa = l1_to_l0_a<ArchType::ASCEND_V220, InDtype, false, DataFormat::ZN, DataFormat::ZZ>;
+    using LoadCbufToCa = l1_to_l0_a<ArchType::ASCEND_V220, InDtype, false, DataFormat::ZN, L0A_DATA_FORMAT>;
     using LoadCbufToCb = l1_to_l0_b<ArchType::ASCEND_V220, InDtype, true, DataFormat::ZN, DataFormat::NZ>;
     using Mmad = mmad<ArchType::ASCEND_V220, InDtype, InDtype, AccumDtype, false>;
     using CopyCcToGm = l0c_to_gm<ArchType::ASCEND_V220, DataFormat::ND, OutDtype, AccumDtype>;
@@ -2172,7 +2172,7 @@ __aicore__ inline void PpMatmulW8a8Aic<withSyncAll, swizzleDir, formatA, formatB
 
 #endif
 
-#if defined(__DAV_C220_VEC__)
+#if defined(__DAV_C220_VEC__) || defined(__DAV_C310_VEC__)
 
 template <typename OutDtype, bool withSyncAll, QuantMode quantMode> class PpMatmulW8a8Aiv {
     using InDtype = int32_t;
@@ -2556,7 +2556,7 @@ public:
     __aicore__ inline MLAOperation(const MlaTilingData &mlaParams_)
     {
         blockIdx = AscendC::GetBlockIdx();
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C220_VEC__) || defined(__DAV_C310_VEC__)
         sub_block_idx = static_cast<uint64_t>(GetSubBlockidx());
 #endif
         vectorBlockIdx = (blockIdx / 2) * 2 + sub_block_idx;
@@ -2603,7 +2603,7 @@ public:
         s5GmTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(s5Gm));
         this->q_down_out_flag &= (qDownGm != nullptr);
 
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__)
         mm_w8a8_aic_1.Init(s1Gm, wdqkvGm, s2Gm, mlaParams.mm1, 0);
         mm_w8a8_aic_1.PreloadWeight();
         if constexpr (quantMode == QuantMode::PER_TENSOR_ASYMM_QUANT) {
@@ -2644,7 +2644,7 @@ public:
             qDownGmTensor.SetGlobalBuffer(reinterpret_cast<__gm__ InDtype *>(qDownGm));
         }
             
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C220_VEC__) || defined(__DAV_C310_VEC__)
         if constexpr (quantMode == QuantMode::PER_TENSOR_ASYMM_QUANT) {
             mm_w8a8_aiv_1.Init(s2Gm, s3Gm, descale1Gm, bias1Gm, s5Gm, mlaParams.mm1);
             mm_w8a8_aiv_2.Init(s2Gm, s4Gm, descale2Gm, bias2Gm, s5Gm, mlaParams.mm2);
@@ -3012,13 +3012,13 @@ private:
     AscendC::GlobalTensor<int32_t> bias1gmTensor;
     AscendC::GlobalTensor<int32_t> bias2gmTensor;
 
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__)
     PpMatmulW8a8Aic<mm1WithSyncAll, 0, DataFormat::ND, weightFormat1> mm_w8a8_aic_1;
     PpMatmulW8a8Aic<false, 0, DataFormat::ND, weightFormat2> mm_w8a8_aic_2;
     PpMatmulEinSum<InDtype, InDtype, weightFormat3, false, 0, CONST_64, splitGapC> mm_ein_sum;
 #endif
 
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C220_VEC__) || defined(__DAV_C310_VEC__)
     PpMatmulW8a8Aiv<InDtype, mm1WithSyncAll, quantMode> mm_w8a8_aiv_1;
     PpMatmulW8a8Aiv<InDtype, false, quantMode> mm_w8a8_aiv_2;
     Quant<InDtype, true, false, quantMode, false> quant;
@@ -3035,7 +3035,7 @@ template <typename InDtype, int8_t CACHE_MODE, DataFormat weightFormat1, DataFor
 __aicore__ inline void
 MLAOperation<InDtype, CACHE_MODE, weightFormat1, weightFormat2, weightFormat3, quantMode>::ProcessCube()
 {
-#ifdef __DAV_C220_CUBE__
+#if defined(__DAV_C220_CUBE__) || defined(__DAV_C310_CUBE__)
     mm_w8a8_aic_1.Process();
     if constexpr (quantMode == QuantMode::PER_TOKEN_SYMM_QUANT) {
         FftsCrossCoreSync<PIPE_FIX, 0>(MMAIC);
@@ -3059,7 +3059,7 @@ template <typename InDtype, int8_t CACHE_MODE, DataFormat weightFormat1, DataFor
 __aicore__ inline void
 MLAOperation<InDtype, CACHE_MODE, weightFormat1, weightFormat2, weightFormat3, quantMode>::ProcessVector()
 {
-#ifdef __DAV_C220_VEC__
+#if defined(__DAV_C220_VEC__) || defined(__DAV_C310_VEC__)
     if (row_work_ != 0) {
         uint32_t num_col_align_int8 = (num_col_1 + REPEAT_TIME_256 - 1) / REPEAT_TIME_256 * REPEAT_TIME_256;
         uint32_t num_col_align_f16 = (num_col_1 + REPEAT_TIME_128 - 1) / REPEAT_TIME_128 * REPEAT_TIME_128;
