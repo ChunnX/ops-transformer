@@ -169,7 +169,7 @@ def _normalize_params(params):
     normalized = dict(params)
     normalized.setdefault("Testcase_Name", None)
     normalized.setdefault("layout_q", "TND")
-    normalized.setdefault("layout_kv", "PA_BNSD")
+    normalized.setdefault("layout_kv", "PA_BNBD")
     normalized.setdefault("output_dtype", torch.bfloat16)
     normalized.setdefault("sparse_q_block_size", 128)
     normalized.setdefault("sparse_kv_block_size", 128)
@@ -374,44 +374,11 @@ def _make_block_table(
     if pattern not in ("random", "sequential"):
         raise ValueError(f"unsupported block_table_pattern: {pattern}")
 
-    kv_lengths = []
-    for batch_idx in range(batch):
-        seq_len = seqused_kv[batch_idx]
-        if hasattr(seq_len, "item"):
-            seq_len = seq_len.item()
-        kv_lengths.append(seq_len)
-
-    logical_block_counts = [
-        (seq_len + block_size - 1) // block_size for seq_len in kv_lengths
-    ]
-
-    if blocknum < batch:
-        raise ValueError(
-            f"blocknum should be at least batch={batch} so each batch tail block "
-            f"has a dedicated physical block, got {blocknum}"
-        )
-    has_non_tail_block = any(block_count > 1 for block_count in logical_block_counts)
-    if has_non_tail_block and blocknum < batch + 1:
-        raise ValueError(
-            f"blocknum should be at least batch + 1={batch + 1} when non-tail "
-            f"blocks exist, got {blocknum}"
-        )
-
     total_slots = batch * max_block_per_batch
-    non_tail_block_num = blocknum - batch
-    if non_tail_block_num == 0:
-        physical_ids = [
-            batch_idx for batch_idx in range(batch) for _ in range(max_block_per_batch)
-        ]
-    elif pattern == "random":
-        physical_ids = [rng.randrange(non_tail_block_num) for _ in range(total_slots)]
+    if pattern == "random":
+        physical_ids = [rng.randrange(blocknum) for _ in range(total_slots)]
     else:
-        physical_ids = [index % non_tail_block_num for index in range(total_slots)]
-
-    for batch_idx, block_count in enumerate(logical_block_counts):
-        tail_logical_block = block_count - 1
-        tail_slot = batch_idx * max_block_per_batch + tail_logical_block
-        physical_ids[tail_slot] = non_tail_block_num + batch_idx
+        physical_ids = [index % blocknum for index in range(total_slots)]
 
     return torch.tensor(physical_ids, dtype=torch.int32).reshape(
         batch, max_block_per_batch

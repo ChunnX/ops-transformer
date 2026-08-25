@@ -2,10 +2,10 @@
 # -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
-# This program is free software; you can redistribute it and/or modify it under the terms and conditions of
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
@@ -52,6 +52,7 @@ torch.set_printoptions(threshold=float("inf"), linewidth=300, precision=4)
 GRAPH_PATH = int(os.environ.get("GRAPH_PATH", "0"))
 
 B = None
+BATCH_SIZE = None
 N_q = None
 N_kv = None
 D = None
@@ -85,6 +86,9 @@ P_SCALE = None
 
 SOFTMAX_SCALE = None
 IS_CONTIGUOUS = None
+# 8 维列表，分别对应 q, k, v, q_descale, k_descale, v_descale, block_table, attn_mask
+# -1=连续, 0=0轴非连续, 1=0,1轴非连续, 以此类推（仅在 PA 场景生效）
+UNCONTIGUOUS_DIMS = [-1, -1, -1, -1, -1, -1, -1, -1]
 
 ENABLE_LSE = None
 
@@ -260,9 +264,7 @@ def bnsd_to_k_cache_gqa(
     )
 
 
-def bnsd_to_v_cache_gqa(
-    tensor_bnsd, seq_lens, block_size, block_table, num_blocks=0
-):
+def bnsd_to_v_cache_gqa(tensor_bnsd, seq_lens, block_size, block_table, num_blocks=0):
     """BNSD → PA V cache [Bn,N,block_size+K_SCALE_ROWS,D] FP8 (末 4 行占位无 scale)."""
     tensor_bnsd = tensor_bnsd.contiguous()
     device = tensor_bnsd.device
@@ -484,9 +486,7 @@ def ntd_to_bnsd_q_gqa(tensor_ntd, seq_lens):
 def nt_to_bnsd_q_scale_gqa(tensor_nt, seq_lens):
     """NT [N,T] FP32 → BNSD [B,N,max_sq,1] FP32."""
     tensor = (
-        tensor_nt
-        if isinstance(tensor_nt, torch.Tensor)
-        else torch.as_tensor(tensor_nt)
+        tensor_nt if isinstance(tensor_nt, torch.Tensor) else torch.as_tensor(tensor_nt)
     )
     tensor = tensor.cpu().contiguous().float()
     n, T = tensor.shape
@@ -513,11 +513,7 @@ def fill_tnd_padding(tensor_tnd, seq_lens, cu_seqlens, fill_value=float("inf")):
             act_s = seq_lens[b_idx]
             offset = cu_seqlens[b_idx]
             pad_start = offset + act_s
-            pad_end = (
-                cu_seqlens[b_idx + 1]
-                if b_idx + 1 < len(cu_seqlens)
-                else T
-            )
+            pad_end = cu_seqlens[b_idx + 1] if b_idx + 1 < len(cu_seqlens) else T
             if pad_end > pad_start:
                 result[pad_start:pad_end, :, :] = fill_value
     else:
@@ -563,7 +559,9 @@ def cpu_fp8_fullquant_golden(
       p_scale: [1] FP32
     返回 (result_bnsd, lse_bnsd)
     """
-    ss = get_softmax_scale(softmax_scale if softmax_scale is not None else SOFTMAX_SCALE, D)
+    ss = get_softmax_scale(
+        softmax_scale if softmax_scale is not None else SOFTMAX_SCALE, D
+    )
     q_tensor = q_fp8.cpu().to(torch.float32).contiguous()
     batch, heads, q_seq, d_dim = q_tensor.shape
 
@@ -704,6 +702,25 @@ def _build_mask():
     return torch.triu(torch.ones(2048, 2048, dtype=torch.int8), diagonal=1).npu()
 
 
+def _make_uncontiguous(tensor, dim):
+    """沿指定 dim 用 stack([real, fake], dim) + 切片构造非连续 view。
+    dim=-1 表示保持连续（直接返回原 tensor，已 .npu()）。
+    dim 为要做成非连续的最高轴号，例如 dim=1 表示 0,1 两轴区域非连续。
+    实际实现：沿 dim 轴 stack 一个 fake tensor，再切片取 [:,...,0,...]，
+    切片结果在该 dim 上 stride 与 stack tensor 一致 → 非连续。"""
+    if dim is None or dim < 0:
+        return tensor
+    tensor = tensor.cpu()
+    stack_dim = dim + 1
+    # dim 不能超过 tensor 维度（在 dim 处插入新轴做 stack，切片取第 0 份）
+    fake = torch.ones_like(tensor)
+    stacked = torch.stack([tensor, fake], dim=stack_dim).npu()
+    # 构造切片：在 dim 位置取 0
+    idx = [slice(None)] * stacked.dim()
+    idx[stack_dim] = 0
+    return stacked[tuple(idx)].npu()
+
+
 class Network(nn.Module):
     """aclgraph 编译目标: forward 只包含两个 torch.library op 调用."""
 
@@ -740,6 +757,7 @@ class Network(nn.Module):
             seqused_q=seqused_q_t,
             seqused_kv=seqused_kv_t,
             v_descale=dequant_scale_v,
+            batch_size=BATCH_SIZE,
             mask_mode=SPARSE_MODE,
             layout_q=LAYOUT_Q,
             layout_q_descale=LAYOUT_Q_DESCALE,
@@ -825,7 +843,7 @@ def _call_npu_qfa_op(
     metadata = quant_flash_attn_metadata(
         num_heads_q=q_n,
         num_heads_kv=kv_n,
-        head_dim=q.shape[-1],
+        head_dim=D,
         quant_mode=QUANT_MODE,
         cu_seqlens_q=cu_seqlens_q_t,
         cu_seqlens_kv=None,
@@ -833,6 +851,7 @@ def _call_npu_qfa_op(
         seqused_kv=seqused_kv_t,
         v_descale=dequant_scale_v,
         mask_mode=SPARSE_MODE,
+        batch_size=BATCH_SIZE,
         layout_q=LAYOUT_Q,
         layout_q_descale=LAYOUT_Q_DESCALE,
         layout_kv=LAYOUT_KV,
@@ -1025,9 +1044,14 @@ def fa_run_npu(
         double_kscale = torch.stack([dequant_scale_k, fake_kscale_tensor], dim=2)
         double_kscale = double_kscale.npu()
         dequant_scale_k = double_kscale[:, :, 0]
+    ud = UNCONTIGUOUS_DIMS if UNCONTIGUOUS_DIMS is not None else [-1] * 8
+    # 4: k_descale, 5: v_descale
+    dequant_scale_k = _make_uncontiguous(dequant_scale_k, ud[4])
+    dequant_scale_v = _make_uncontiguous(dequant_scale_v, ud[5])
 
     block_table = block_table.int().npu() if ENABLE_PA else None
-
+    # 6: block_table
+    block_table = _make_uncontiguous(block_table, ud[6])
     if mask is not None:
         mask = mask.npu()
 
@@ -1046,19 +1070,24 @@ def fa_run_npu(
     )
     logger.info(
         "[NPU GQA FP8] layout_q=%s, layout_kv=%s, mask_mode=%s",
-        LAYOUT_Q, LAYOUT_KV, SPARSE_MODE,
+        LAYOUT_Q,
+        LAYOUT_KV,
+        SPARSE_MODE,
     )
     logger.info(
         "[NPU GQA FP8] k is_contiguous: %s, stride: %s",
-        k.is_contiguous(), k.stride(),
+        k.is_contiguous(),
+        k.stride(),
     )
     logger.info(
         "[NPU GQA FP8] v is_contiguous: %s, stride: %s",
-        v.is_contiguous(), v.stride(),
+        v.is_contiguous(),
+        v.stride(),
     )
     logger.info(
         "[NPU GQA FP8] dequant_scale_k is_contiguous: %s, stride: %s",
-        dequant_scale_k.is_contiguous(), dequant_scale_k.stride(),
+        dequant_scale_k.is_contiguous(),
+        dequant_scale_k.stride(),
     )
 
     atten_out, lse_out = qfa_fp8_torch_npu(
@@ -1129,11 +1158,19 @@ def prepare_npu_inputs_gqa_fp8(
     v_npu = v_fp8.contiguous().view(FP8_DTYPE).npu()
     deq_v_npu = dequant_scale_v.npu()
 
-    if not IS_CONTIGUOUS:
-        kv_cache = torch.stack([k_fp8, v_fp8], dim=2)
-        kv_cache = kv_cache.npu()
-        k_npu = kv_cache[:, :, 0]
-        v_npu = kv_cache[:, :, 1]
+    # PA 场景下按 UNCONTIGUOUS_DIMS 列表分别构造 8 个 tensor 的非连续 view
+    # 顺序: [q, k, v, q_descale, k_descale, v_descale, block_table, attn_mask]
+    ud = UNCONTIGUOUS_DIMS if UNCONTIGUOUS_DIMS is not None else [-1] * 8
+    # 0: q
+    q_npu = _make_uncontiguous(q_npu, ud[0])
+    # 3: q_descale
+    deq_q_npu = _make_uncontiguous(deq_q_npu, ud[3])
+    # 7: attn_mask (可能为 None)
+    if mask_arg is not None:
+        mask_arg = _make_uncontiguous(mask_arg, ud[7])
+    # 1: k, 2: v —— 按 UNCONTIGUOUS_DIMS 指定 dim 构造非连续
+    k_npu = _make_uncontiguous(k_npu, ud[1])
+    v_npu = _make_uncontiguous(v_npu, ud[2])
 
     block_table_npu = (
         block_table_torch.npu()
@@ -1144,7 +1181,10 @@ def prepare_npu_inputs_gqa_fp8(
     logger.info("[NPU GQA FP8 PA] kv_layout=%s", KV_CACHE_LAYOUT)
     logger.info(
         "[NPU GQA FP8 PA] k=%s, v=%s, deq_q=%s, deq_v=%s",
-        k_npu.shape, v_npu.shape, deq_q_npu.shape, deq_v_npu.shape,
+        k_npu.shape,
+        v_npu.shape,
+        deq_q_npu.shape,
+        deq_v_npu.shape,
     )
 
     return dict(
@@ -1282,7 +1322,8 @@ def npu_gqa_fp8_fa(
 
     logger.info(
         "[NPU GQA FP8] 调用 %s 模式 (GRAPH_PATH=%d)...",
-        "PA", GRAPH_PATH,
+        "PA",
+        GRAPH_PATH,
     )
 
     atten_out, lse_out = fa_run_npu(
@@ -1308,10 +1349,14 @@ def npu_gqa_fp8_fa(
 
     # T_actual: 以 actual_seq_q (seqused_q 优先, 否则从 cu_seqlens_q 差分) 为准,
     # 与 golden (assets/impl/golden.py cpu_qfa_gqa_fp8) 的截断逻辑保持一致.
-    T_actual = sum(actual_seq_q) if actual_seq_q else (
-        cu_seqlens_q[-1]
-        if cu_seqlens_q is not None and len(cu_seqlens_q) > 1
-        else 0
+    T_actual = (
+        sum(actual_seq_q)
+        if actual_seq_q
+        else (
+            cu_seqlens_q[-1]
+            if cu_seqlens_q is not None and len(cu_seqlens_q) > 1
+            else 0
+        )
     )
     if atten_out.shape[0] > T_actual:
         atten_out = atten_out[:T_actual]

@@ -15,7 +15,12 @@
 #ifndef MIXED_QUANT_SPARSE_FLASH_MLA_KVCACHE_H
 #define MIXED_QUANT_SPARSE_FLASH_MLA_KVCACHE_H
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "kernel_operator_list_tensor_intf.h"
 #include "mixed_quant_sparse_flash_mla_common_arch35.h"
 #include "util_regbase.h"
@@ -56,15 +61,14 @@ __aicore__ inline void GetSingleCoreParam(
 
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE &&
                   TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
-        if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
+        if constexpr (KV_LAYOUT_T == QSMLA_LAYOUT::TND) {
             if (hasActualSeqCmpKvlen) {
                 actualS2CmpSize = actualSeqCmpKvlenGm.GetValue(bIdx);
             } else if (hasCuSeqlensCmpKv) {
                 actualS2CmpSize = cuSeqlensCmpKvGm.GetValue(bIdx + 1) - cuSeqlensCmpKvGm.GetValue(bIdx);
             }
         } else {
-            actualS2CmpSize =
-                (!hasActualSeqCmpKvlen) ? constInfo.cmpS2Size : actualSeqCmpKvlenGm.GetValue(bIdx);
+            actualS2CmpSize = (!hasActualSeqCmpKvlen) ? constInfo.cmpS2Size : actualSeqCmpKvlenGm.GetValue(bIdx);
         }
     }
 
@@ -82,10 +86,10 @@ __aicore__ inline void GetSingleCoreParam(
         }
     }
     const int64_t casualOffset = runParam.actualS2OriSize - runParam.actualS1Size;
-    if (constInfo.oriMaskMode == 3) {
+    if (constInfo.oriMaskMode == 3U) {
         runParam.nextTokensPerBatchOri = casualOffset;
         runParam.preTokensPerBatch = runParam.actualS1Size;
-    } else if (constInfo.oriMaskMode == 4) {
+    } else if (constInfo.oriMaskMode == 4U) {
         runParam.preTokensPerBatch =
             (constInfo.oriWinLeft == -1) ? runParam.actualS1Size : constInfo.oriWinLeft - casualOffset;
         runParam.nextTokensPerBatchOri =
@@ -127,8 +131,7 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr &runParam, const ConstInfo 
                 skipThreshold = Min(-runParam.nextTokensPerBatchOri, -runParam.nextTokensPerBatchCmp);
             }
             if (skipThreshold > 0) {
-                int64_t gs1LoopStartIdx =
-                    skipThreshold / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock;
+                int64_t gs1LoopStartIdx = skipThreshold / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock;
                 if (gs1LoopStartIdx > gS1StartIdx) {
                     runParam.gs1LoopStartIdx = gs1LoopStartIdx;
                 }
@@ -258,8 +261,7 @@ __aicore__ inline bool ComputeParamS1(RunParamStr &runParam, const ConstInfo &co
                 skipThreshold = Min(-runParam.nextTokensPerBatchOri, -runParam.nextTokensPerBatchCmp);
             }
             if (skipThreshold > 0) {
-                if (runParam.s1oIdx <
-                    skipThreshold / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock) {
+                if (runParam.s1oIdx < skipThreshold / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock) {
                     return true;
                 }
             }

@@ -44,10 +44,12 @@ ENABLE_BUILT_CUSTOM=FALSE
 ENABLE_STATIC=FALSE
 ENABLE_EXPERIMENTAL=FALSE
 ENABLE_TORCH_EXTENSION_ONLY=FALSE
+PACKAGE_TYPE="run"
+PACKAGE_TYPE_SET=FALSE
 KERNEL_TEMPLATE_INPUT=""
 ASCEND_SOC_UNITS="ascend910b"
 # 支持的 SoC 列表(校验用, 单一数据源): 取自 cmake/scripts/util/const_var.py 的 SOC_MAP_EXT keys(出包遍历的 kernel 编译 soc 集合)
-# + CMakeLists.txt SOC_VERSION_LIST 中的 mc62。不在此列表的 soc 会走 CMake 空包流程(cpack_empty_package), 属预期设计
+# + CMakeLists.txt SOC_VERSION_LIST 中的 mc62。不在 CMakeLists.txt SOC_VERSION_LIST 的 soc 会走空包(cpack_empty_package)
 SUPPORT_COMPUTE_UNIT_SHORT=("ascend910b" "ascend910_93" "ascend950" "ascend310p" "ascend310b" "ascend910" "ascend610lite" "kirinx90" "kirin9030" "mc62")
 CMAKE_BUILD_MODE=""
 BUILD_TYPE=""
@@ -103,6 +105,7 @@ function help_info() {
                 echo "Package Build Options:"
                 echo $dotted_line
                 echo "    --pkg                  Build run package with kernel bin"
+                echo "    --pkg-type=<TYPE>      Specify package type(TYPE options: run/rpm/deb/all), Default: run"
                 echo "    --jit                  Build run package without kernel bin"
                 echo "    --soc=soc_version      Compile for specified Ascend SoC (comma-separated for multiple)"
                 echo "    --vendor_name=name     Specify custom operator package vendor name"
@@ -124,6 +127,9 @@ function help_info() {
                 echo $dotted_line
                 echo "Examples:"
                 echo "    bash build.sh --pkg --soc=ascend910b --vendor_name=customize -j16 -O3"
+                echo "    bash build.sh --pkg --pkg-type=deb --soc=ascend910b"
+                echo "    bash build.sh --pkg --pkg-type=rpm --soc=ascend910b"
+                echo "    bash build.sh --pkg --pkg-type=all --soc=ascend910b"
                 echo "    bash build.sh --pkg --ops=add,sub"
                 echo "    bash build.sh --pkg --experimental --soc=ascend910b"
                 echo "    bash build.sh --pkg --experimental --soc=ascend910b --ops=abs --oom"
@@ -363,6 +369,8 @@ function help_info() {
     echo "    --opkernel build binary kernel"
     echo "    --jit build run package without kernel bin"
     echo "    --pkg build run package with kernel bin"
+    echo "    --pkg-type=<TYPE> Specify package type(TYPE options: run/rpm/deb/all), Default: run"
+    echo "    --torch_extension           Build torch_extension whl only, support --ops for single op packaging"
     echo "    --torch_extension_only       Build torch_extension whl package only"
     echo "    --experimental build experimental version"
     echo "    --opkernel_aicpu build aicpu kernel"
@@ -396,6 +404,14 @@ SUPPORTED_SOC_LIST=("${SUPPORT_COMPUTE_UNIT_SHORT[@]}")
 function log() {
     local current_time=`date +"%Y-%m-%d %H:%M:%S"`
     echo "[$current_time] "$1
+}
+
+check_pkg_type() {
+  local pkg_type="$1"
+  if [[ "$pkg_type" != "run" && "$pkg_type" != "rpm" && "$pkg_type" != "deb" && "$pkg_type" != "all" ]]; then
+    echo "[ERROR] --pkg-type only supports run/rpm/deb/all, got: $pkg_type"
+    exit 1
+  fi
 }
 
 function set_env()
@@ -730,8 +746,85 @@ function build_example()
     return 0
 }
 
+function find_rpm_deb_package() {
+    if [[ "$PACKAGE_TYPE" == "run" ]]; then
+        return 0
+    fi
+
+    find "${BUILD_PATH}" -type f -name "cann-*-ops-transformer*.${PACKAGE_TYPE}" | sort
+}
+
+function clean_rpm_deb_package() {
+    if [[ "$PACKAGE_TYPE" == "run" ]]; then
+        return 0
+    fi
+
+    local package_files=()
+    while IFS= read -r package_file; do
+        package_files+=("${package_file}")
+    done < <(find_rpm_deb_package)
+
+    if [[ ${#package_files[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    for package_file in "${package_files[@]}"; do
+        rm -f "${package_file}"
+        echo "[INFO] Removed stale package artifact: ${package_file}"
+    done
+}
+
+function collect_rpm_deb_package() {
+    if [[ "$PACKAGE_TYPE" == "run" ]]; then
+        return 0
+    fi
+
+    local package_files=()
+    while IFS= read -r package_file; do
+        package_files+=("${package_file}")
+    done < <(find_rpm_deb_package)
+
+    if [[ ${#package_files[@]} -eq 0 ]]; then
+        echo "[ERROR] No .${PACKAGE_TYPE} package found in ${BUILD_PATH}"
+        exit 1
+    fi
+
+    if [ ! -d "${BUILD_OUT_DIR}" ]; then
+        mkdir -p "${BUILD_OUT_DIR}"
+    fi
+    for package_file in "${package_files[@]}"; do
+        cp -f "${package_file}" "${BUILD_OUT_DIR}/"
+        echo "[INFO] Package artifact copied to ${BUILD_OUT_DIR}/$(basename "${package_file}")"
+    done
+}
+
 function build_package(){
-    build package
+    if [ -f "${BUILD_PATH}/no_ops.flag" ]; then
+        echo "[INFO] No operator can be compiled (all requested ops skipped by CANN version check), skip package generation."
+        return 0
+    fi
+    if [[ "${PACKAGE_TYPE}" == "all" ]]; then
+        local saved_pkg_type="${PACKAGE_TYPE}"
+        local option=""
+        if [ "${VERBOSE}" == "true" ]; then
+            option="--verbose"
+        fi
+        for PACKAGE_TYPE in run rpm deb; do
+            clean_rpm_deb_package
+            cmake -DPACKAGE_TYPE="${PACKAGE_TYPE}" "${BUILD_PATH}" > /dev/null 2>&1
+            cmake --build . --target package ${JOB_NUM} ${option}
+            if [ $? -ne 0 ]; then
+                echo "[ERROR] target:package (${PACKAGE_TYPE}) build failed!"
+                exit 1
+            fi
+            collect_rpm_deb_package
+        done
+        PACKAGE_TYPE="${saved_pkg_type}"
+    else
+        clean_rpm_deb_package
+        build package
+        collect_rpm_deb_package
+    fi
 }
 
 function build_host(){
@@ -739,6 +832,10 @@ function build_host(){
 }
 
 function build_kernel(){
+    if [ -f "${BUILD_PATH}/no_ops.flag" ]; then
+        echo "[INFO] No operator can be compiled (all requested ops skipped by CANN version check), skip kernel build."
+        return 0
+    fi
     build ops_transformer_kernel
 }
 
@@ -754,6 +851,19 @@ function build_torch_extension_whl() {
             log "[WARNING] Python build module not found, skipping whl build"
             cd "${original_dir}"
             return 0
+        fi
+
+        if [[ -n "${ascend_op_name}" ]]; then
+            export TORCH_EXTENSION_OPS="${ascend_op_name}"
+            if [[ -n "${vendor_name}" ]]; then
+                export TORCH_EXTENSION_VENDOR="${vendor_name}"
+            else
+                export TORCH_EXTENSION_VENDOR="custom"
+            fi
+            log "[INFO] Building torch_extension whl with ops: ${ascend_op_name}, vendor: ${TORCH_EXTENSION_VENDOR}"
+        else
+            unset TORCH_EXTENSION_OPS
+            unset TORCH_EXTENSION_VENDOR
         fi
 
         python3 -m build --wheel -n 2>&1 || {
@@ -804,7 +914,9 @@ build_static_lib() {
     if echo "${all_targets}" | grep -wq "ophost_transformer_static"; then
         cmake --build . --target ophost_transformer_static ${JOB_NUM} ${option}
     fi
-    cmake --build . --target opapi_transformer_static ${JOB_NUM} ${option}
+    if echo "${all_targets}" | grep -wq "opapi_transformer_static"; then
+        cmake --build . --target opapi_transformer_static ${JOB_NUM} ${option}
+    fi
     local jit_command=""
     if [[ "$ENABLE_BUILT_JIT" == "TRUE" ]]; then
         jit_command="-j"
@@ -815,7 +927,9 @@ build_static_lib() {
     python3 "${BASE_PATH}/scripts/util/build_opp_kernel_static.py" StaticCompile -s ${unit} -b ${BUILD_PATH} -n=0 -a=${ARCH_INFO} ${jit_command}
 
     cd "${BUILD_PATH}" && cmake ${CUSTOM_OPTION} .. -DENABLE_STATIC=ON -DASCEND_COMPUTE_UNIT=${unit}
-    cmake --build . --target cann_transformer_static ${JOB_NUM} ${option}
+    if echo "${all_targets}" | grep -wq "cann_transformer_static"; then
+        cmake --build . --target cann_transformer_static ${JOB_NUM} ${option}
+    fi
     echo "Build static lib success!"
 }
 
@@ -852,7 +966,6 @@ package_static() {
     fi
     # Get filename of *.run file and set new directory name
     local run_file=$(basename "${run_files[0]}")
-    echo "Found .run file: $run_file"
     if [[ "$run_file" != *"ops-transformer"* ]]; then
         echo "Error: Filename '$run_file' does not contain 'ops-transformer'."
         return 1
@@ -863,8 +976,7 @@ package_static() {
     # Check weather $BUILD_PATH/static_library_files directory exists and not empty
     local static_files_dir="$BUILD_PATH/static_library_files"
     if [ ! -d "$static_files_dir" ]; then
-        echo "Error: Directory $static_files_dir does not exist."
-        return 1
+        return 0
     fi
     if [ -z "$(ls -A "$static_files_dir")" ]; then
         echo "Error: Directory $static_files_dir is empty."
@@ -1144,8 +1256,8 @@ set_example_opt() {
 
 # 所有支持的长选项（不含值），用于参数合法性校验
 SUPPORTED_LONG_OPTS=(
-  "help" "list_soc" "pkg" "static" "jit" "noaicpu" "opkernel_aicpu" "opkernel"
-  "experimental" "noexec" "torch_extension_only" "oom" "make_clean"
+  "help" "list_soc" "pkg" "pkg-type=" "static" "jit" "noaicpu" "opkernel_aicpu" "opkernel"
+  "experimental" "noexec" "torch_extension" "torch_extension_only" "oom" "make_clean"
   "mssanitizer" "dump_cce"
   "ophost" "opapi" "opgraph" "onnxplugin"
   "ophost_test" "opapi_test" "opgraph_test" "opkernel_test"
@@ -1445,6 +1557,12 @@ assemble_cmake_args() {
 
   if [[ "$ENABLE_STATIC" == "TRUE" ]]; then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_STATIC=${ENABLE_STATIC}"
+  fi
+
+  if [[ "$ENABLE_BUILD_PKG" == "TRUE" ]]; then
+    cmake_pkg_type="${PACKAGE_TYPE}"
+    [[ "${PACKAGE_TYPE}" == "all" ]] && cmake_pkg_type="run"
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DPACKAGE_TYPE=${cmake_pkg_type}"
   fi
 
   if [[ "$ENABLE_AICPU" == "FALSE" ]]; then
@@ -1799,6 +1917,10 @@ while [[ $# -gt 0 ]]; do
         ENABLE_UT_EXEC=FALSE
         shift
         ;;
+    --torch_extension)
+        ENABLE_TORCH_EXTENSION_ONLY=TRUE
+        shift
+        ;;
     --torch_extension_only)
         ENABLE_TORCH_EXTENSION_ONLY=TRUE
         shift
@@ -1822,6 +1944,17 @@ while [[ $# -gt 0 ]]; do
     --build-type=*)
         OPTARG=$1
         BUILD_TYPE=${OPTARG#*=}
+        shift
+        ;;
+    --pkg-type)
+        echo "[ERROR] --pkg-type requires a value: run/rpm/deb/all"
+        exit 1
+        ;;
+    --pkg-type=*)
+        OPTARG=$1
+        PACKAGE_TYPE=${OPTARG#*=}
+        check_pkg_type "${PACKAGE_TYPE}"
+        PACKAGE_TYPE_SET=TRUE
         shift
         ;;
     --version=*)
@@ -1883,6 +2016,26 @@ done
 set_ut_mode
 
 check_param
+
+if [[ "$PACKAGE_TYPE_SET" == "TRUE" && "$ENABLE_BUILD_PKG" != "TRUE" ]]; then
+    echo "[ERROR] --pkg-type can only be used with --pkg"
+    exit 1
+fi
+
+if [[ "$PACKAGE_TYPE" != "run" && "$PACKAGE_TYPE" != "all" ]]; then
+    if [[ "$ENABLE_STATIC" == "TRUE" ]]; then
+        echo "[ERROR] --pkg-type=${PACKAGE_TYPE} cannot be used with --static"
+        exit 1
+    fi
+    if [[ "$ENABLE_BUILT_JIT" == "TRUE" ]]; then
+        echo "[ERROR] --pkg-type=${PACKAGE_TYPE} cannot be used with --jit"
+        exit 1
+    fi
+    if [[ "$ENABLE_BUILT_CUSTOM" == "TRUE" || "$ENABLE_EXPERIMENTAL" == "TRUE" ]]; then
+        echo "[ERROR] --pkg-type=${PACKAGE_TYPE} only supports built-in ops-transformer packages; do not use --ops, --vendor_name, or --experimental"
+        exit 1
+    fi
+fi
 
 assemble_cmake_args
 

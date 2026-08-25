@@ -115,7 +115,6 @@ _CASE_REQUIRED_RUNTIME_FIELDS = {
     "layout_sparse_indices",
     "layout_out",
     "kv_cache_layout",
-    "is_contiguous",
     "return_softmax_lse",
     "seed",
     "data_range_q",
@@ -333,17 +332,11 @@ def validate_mxfp8_case(case):
 
     _get_sequence_inputs(case)
 
-    p_scale_mode = case.get(
-        "p_scale_mode",
-        "none" if case.get("p_scale_value") is None else "value",
-    )
-    if p_scale_mode not in ("none", "empty", "value"):
-        raise ValueError(f"p_scale_mode must be none/empty/value, got {p_scale_mode!r}")
-    if p_scale_mode == "value":
-        if case.get("p_scale_value") is None or float(case["p_scale_value"]) <= 0:
-            raise ValueError("value p_scale must carry a positive p_scale_value")
-    elif case.get("p_scale_value") is not None:
-        raise ValueError(f"p_scale_mode={p_scale_mode!r} requires p_scale_value=None")
+    p_scale_value = case.get("p_scale_value")
+    if p_scale_value is not None:
+        p_scale_value = float(p_scale_value)
+        if not math.isfinite(p_scale_value) or p_scale_value <= 0:
+            raise ValueError("p_scale_value must be positive and finite")
 
 
 def _case_list(case, name):
@@ -403,6 +396,11 @@ def _normalize_case(case):
     case["scale_dtype"] = _resolve_dtype(case["scale_dtype"], "scale_dtype")
     if case.get("enable") is None:
         case["enable"] = True
+    if case.get("is_contiguous") is None:
+        # TTK has no continuity switch.  New CSVs therefore omit this field
+        # and use the normal contiguous path.  Keep the optional field only
+        # for backward-compatible/manual coverage of the non-contiguous path.
+        case["is_contiguous"] = True
     case["softmax_scale"] = case.get("softmax_scale") or (
         1.0 / math.sqrt(float(case["D"]))
     )
@@ -495,7 +493,7 @@ def set_active_case(case):
     QUANT_GROUP_SIZE = CASE["quant_group_size"]
     Q_INPUT_LAYOUT = CASE["layout_q"]
     KV_CACHE_LAYOUT = CASE["kv_cache_layout"]
-    IS_CONTIGUOUS = CASE["is_contiguous"]
+    IS_CONTIGUOUS = CASE.get("is_contiguous", True)
     ENABLE_LSE = CASE["return_softmax_lse"]
     DATA_RANGE_Q = CASE["data_range_q"]
     DATA_RANGE_K = CASE["data_range_k"]
@@ -528,8 +526,8 @@ set_active_case(CASE)
 # 固定运行常量
 # ==============================================================================
 # Q/K/V 使用 fp8_e4m3fn；Q/K/V descale 与 P scale 使用 fp8_e8m0。
-# e8m0fnu 最小正数: 2^(-127)，用于替换 descale 中的 0 和非有限值
-# e8m0fnu 没有 0 值语义，0 的 biased exponent 会被 NPU 解释为 NaN
+# e8m0fnu 最小正数: 2^(-127)，用于替换 descale 中的数值 0 和非有限值。
+# e8m0fnu 没有数值 0；字节 0x00 表示 2^(-127)，0xFF 才表示 NaN。
 E8M0_MIN_POSITIVE = 2 ** (-127)
 _EMAX_MAP = {
     torch.float8_e4m3fn: 8,
@@ -962,6 +960,14 @@ def sanitize_e8m0_scale(scale, name="scale"):
 
 
 def fp32_to_e8m0fnu_safe(scale, name="scale"):
+    scale_tensor = torch.as_tensor(scale)
+    if scale_tensor.dtype == SCALE_DTYPE:
+        packed = scale_tensor.contiguous()
+        nan_byte_count = int((packed.view(torch.uint8) == 0xFF).sum().item())
+        if nan_byte_count:
+            raise ValueError(f"{name}: {nan_byte_count} e8m0fnu NaN values (0xFF)")
+        return packed.clone()
+
     scale_safe = sanitize_e8m0_scale(scale, name)
     packed = fp32_to_e8m0fnu(scale_safe)
     nan_byte_count = int((packed == 0xFF).sum().item())
@@ -970,6 +976,26 @@ def fp32_to_e8m0fnu_safe(scale, name="scale"):
             f"{name}: {nan_byte_count} values would become e8m0fnu NaN (0xFF)"
         )
     return packed.view(SCALE_DTYPE)
+
+
+def e8m0fnu_to_fp32(scale_e8m0, name="scale"):
+    """Decode E8M0 bytes to the exact FP32 powers of two used by the NPU."""
+    scale_tensor = torch.as_tensor(scale_e8m0)
+    if scale_tensor.dtype == SCALE_DTYPE:
+        packed = scale_tensor.contiguous().view(torch.uint8)
+    elif scale_tensor.dtype == torch.uint8:
+        packed = scale_tensor.contiguous()
+    else:
+        raise TypeError(
+            f"{name}: expected {SCALE_DTYPE} or torch.uint8, got {scale_tensor.dtype}"
+        )
+
+    nan_byte_count = int((packed == 0xFF).sum().item())
+    if nan_byte_count:
+        raise ValueError(f"{name}: {nan_byte_count} e8m0fnu NaN values (0xFF)")
+
+    exponent = packed.to(torch.int32) - 127
+    return torch.ldexp(torch.ones(packed.shape, dtype=torch.float32), exponent)
 
 
 def pack_qk_scale_for_npu(scale_flat):
@@ -1166,12 +1192,12 @@ def _validate_direct_pa_kv_shapes(key, value, k_descale, v_descale):
     ]
     if stride_mismatches:
         raise ValueError(
-            "direct PA_BNSD input stride mismatch; " + "; ".join(stride_mismatches)
+            "direct PA_BNBD input stride mismatch; " + "; ".join(stride_mismatches)
         )
 
 
 def _materialize_pa_bnsd(tensor):
-    """Copy a rank-4 PA tensor into the exact segmented PA_BNSD strides.
+    """Copy a rank-4 PA tensor into the exact segmented PA_BNBD strides.
 
     PyTorch may preserve a non-canonical stride on singleton dimensions after
     ``permute(...).contiguous()`` because such a tensor is already considered
@@ -1180,7 +1206,7 @@ def _materialize_pa_bnsd(tensor):
     """
     if tensor.dim() != 4:
         raise ValueError(
-            f"PA_BNSD tensor must be rank 4, got shape {tuple(tensor.shape)}"
+            f"PA_BNBD tensor must be rank 4, got shape {tuple(tensor.shape)}"
         )
     _, num_heads, block_size, head_dim = tensor.shape
     expected_stride = (
@@ -1204,7 +1230,7 @@ def _materialize_pa_bnsd(tensor):
 # ==============================================================================
 
 
-def generate_mxfp8_inputs(case=None, max_block_per_batch=None):
+def generate_mxfp8_inputs(case=None, max_block_per_batch=None, atten_mask_shape=None):
     """Generate test inputs with paired fp8 + descale.
 
     流程: fp32 随机 → 从 fp32 算 descale → fp8 = clamp(fp32/descale)
@@ -1289,16 +1315,24 @@ def generate_mxfp8_inputs(case=None, max_block_per_batch=None):
         sparse_block_size=case["sparse_kv_block_size"],
         max_block_per_batch=case.get("max_block_per_batch"),
     )
-    p_scale_mode = case.get(
-        "p_scale_mode",
-        "none" if case.get("p_scale_value") is None else "value",
-    )
     p_scale_value = case.get("p_scale_value")
-    p_scale = (
-        None
-        if p_scale_mode != "value"
-        else torch.tensor([float(p_scale_value)], dtype=torch.float32)
-    )
+    p_scale = None
+    if p_scale_value is not None:
+        # P scale has the same single source of truth as Q/K/V descale: encode
+        # once to E8M0 here.  CPU golden decodes these exact bytes to FP32;
+        # NPU consumes the bytes directly, so arbitrary inputs cannot diverge.
+        p_scale_fp32 = torch.tensor([float(p_scale_value)], dtype=torch.float32)
+        if not bool(torch.isfinite(p_scale_fp32).all()) or bool(
+            (p_scale_fp32 <= 0).any()
+        ):
+            raise ValueError(
+                "P scale input must be positive and finite after FP32 conversion"
+            )
+        p_scale = fp32_to_e8m0fnu_safe(
+            p_scale_fp32,
+            "P scale input",
+        )
+    atten_mask = _build_causal_mask(atten_mask_shape)
 
     return {
         "case": case,
@@ -1309,6 +1343,7 @@ def generate_mxfp8_inputs(case=None, max_block_per_batch=None):
         "k_descale": k_descale,
         "v_descale": v_descale,
         "p_scale": p_scale,
+        "atten_mask": atten_mask,
         "block_table": block_table,
         "sparse_indices": sparse_indices,
         "sparse_seq_len": sparse_seq_len,
@@ -1323,7 +1358,8 @@ def generate_mxfp8_inputs(case=None, max_block_per_batch=None):
 
 def generate_data():
     """Generate inputs through the reference-style data-generation wrapper."""
-    data = generate_mxfp8_inputs()
+    atten_mask_shape = (2048, 2048) if MASK_MODE == 3 else None
+    data = generate_mxfp8_inputs(atten_mask_shape=atten_mask_shape)
     logger.info(
         "[INFO] reference-style data: q=%s, k=%s, v=%s, q_descale=%s, k_descale=%s, v_descale=%s",
         data["query"].shape,
@@ -1347,6 +1383,7 @@ def generate_data():
         data["k_descale"],
         data["v_descale"],
         data["p_scale"],
+        data["atten_mask"],
         data["block_table"],
         data["sparse_indices"],
         data["sparse_seq_len"],
@@ -1362,7 +1399,7 @@ def generate_data():
 # ==============================================================================
 # CPU Golden
 # 参考 quant_block_sparse_attn_golden.py 的 sparse block 计算流：
-#   - Q/QDescale 公共输入为 TND；K/V 与 K/V descale 使用 PA_BNSD
+#   - Q/QDescale 公共输入为 TND；K/V 与 K/V descale 使用 PA_BNBD
 #   - 按 sparse_indices 中记录的 KV block 顺序收集 positions，并按 256-token C1 粒度做 online 累加
 #   - Q/K 使用 per-token D-group descale；V 使用 per-channel S-group descale
 #   - 输出 OUT 固定 TND，MXFP8 TND LSE 固定 TN
@@ -1377,9 +1414,12 @@ LN2 = 0.6931471806
 INV_LN2 = 1.4426950409
 
 
-def _align_up_to_ln2(value):
-    value_npu = value.to(torch.float32).contiguous().npu()
-    return (torch.ceil(value_npu * INV_LN2) * LN2).cpu()
+def _align_up_to_ln2(value, use_quant_matmul):
+    value_fp32 = value.to(torch.float32).contiguous()
+    if use_quant_matmul:
+        value_fp32 = value_fp32.npu()
+    result = torch.ceil(value_fp32 * INV_LN2) * LN2
+    return result.cpu() if use_quant_matmul else result
 
 
 def _qk_matmul_cpu(q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax_scale):
@@ -1472,6 +1512,15 @@ def _npu_exp_sub(lhs, rhs):
     lhs_npu = lhs.to(torch.float32).contiguous().npu()
     rhs_npu = rhs.to(torch.float32).contiguous().npu()
     return torch.exp(lhs_npu - rhs_npu).cpu()
+
+
+def _exp_sub(lhs, rhs, use_quant_matmul):
+    """Evaluate exp(lhs - rhs) on the selected golden backend."""
+    if use_quant_matmul:
+        return _npu_exp_sub(lhs, rhs)
+    lhs_fp32 = lhs.to(torch.float32)
+    rhs_fp32 = rhs.to(torch.float32)
+    return torch.exp(lhs_fp32 - rhs_fp32)
 
 
 def _npu_mxfp8_pv_matmul_impl(p_fp8, v_fp8, p_scale, v_scale):
@@ -1797,11 +1846,10 @@ def cpu_mxfp8_golden(
     group = n1 // n2
     head_dim = D
     softmax_scale = float(CASE["softmax_scale"])
-    p_scale_value = (
-        1.0
-        if p_scale is None
-        else float(torch.as_tensor(p_scale).reshape(-1)[0].item())
-    )
+    p_scale_value = 1.0
+    if p_scale is not None and p_scale.numel() > 0:
+        p_scale_fp32 = e8m0fnu_to_fp32(p_scale, "CPU P scale")
+        p_scale_value = float(p_scale_fp32.reshape(-1)[0].item())
     ln_p_scale = 0.0 if p_scale_value == 1.0 else math.log(p_scale_value)
 
     attention_out = torch.zeros((total_q, n1, head_dim), dtype=torch.float32)
@@ -1933,7 +1981,7 @@ def cpu_mxfp8_golden(
                             # VF order: score max -> softmax scale -> ceil to
                             # an ln2 multiple -> merge with the online max.
                             local_max = masked_scores.max(dim=-1).values
-                            local_max = _align_up_to_ln2(local_max)
+                            local_max = _align_up_to_ln2(local_max, use_quant_matmul)
                             subloop_started = m_subloop != neg_inf
                             m_candidate = torch.where(
                                 subloop_started,
@@ -1946,8 +1994,10 @@ def cpu_mxfp8_golden(
                             # immediately before FusedExpSub. Therefore the
                             # generated probability is
                             # exp(score - aligned_max + ln(pScale)).
-                            p_subloop = _npu_exp_sub(
-                                s_subloop, m_subloop.view(nq, 1) - ln_p_scale
+                            p_subloop = _exp_sub(
+                                s_subloop,
+                                m_subloop.view(nq, 1) - ln_p_scale,
+                                use_quant_matmul,
                             )
                             p_subloop = torch.where(
                                 vm_subloop & subloop_has.view(nq, 1),
@@ -1967,7 +2017,9 @@ def cpu_mxfp8_golden(
 
                         m_new = m_subloop
                         run_started = m_before_round != neg_inf
-                        history_rescale = _npu_exp_sub(m_before_round, m_new)
+                        history_rescale = _exp_sub(
+                            m_before_round, m_new, use_quant_matmul
+                        )
                         history_rescale = torch.where(
                             run_started & torch.isfinite(m_new),
                             history_rescale,
@@ -2354,10 +2406,11 @@ def _call_npu_fa_op_graph(
     return atten_out.detach().cpu(), lse_out.detach().cpu()
 
 
-def _build_causal_mask():
-    if MASK_MODE == 0:
-        return torch.empty((0, 0), dtype=torch.uint8).npu()
-    return torch.tril(torch.ones(2048, 2048, dtype=torch.uint8)).T.contiguous().npu()
+def _build_causal_mask(shape=None):
+    if shape is None or len(shape) != 2:
+        return None
+    shape = tuple(int(dim) for dim in shape)
+    return torch.tril(torch.ones(shape, dtype=torch.uint8)).T.contiguous()
 
 
 def _calc_cube_compute_amount(q_lengths, kv_lengths, sparse_indices, sparse_seq_len):
@@ -2535,6 +2588,7 @@ def npu_mxfp8_fa(
     dequant_scale_k,
     dequant_scale_v,
     p_scale,
+    atten_mask,
     q_lengths,
     kv_lengths,
     cu_seqlens_q,
@@ -2567,25 +2621,21 @@ def npu_mxfp8_fa(
     deq_q_npu = q_scale_e8m0.npu()
     logger.info("[NPU] Q descale layout=TND, shape=%s", q_scale_e8m0.shape)
 
-    p_scale_mode = CASE.get(
-        "p_scale_mode",
-        "none" if p_scale is None else "value",
-    )
-    if p_scale_mode == "value":
-        if p_scale is None:
-            raise ValueError("p_scale_mode='value' requires a p_scale tensor")
+    if p_scale is None:
+        p_scale_npu = None
+        logger.info("[NPU] P scale=None (optional input omitted, default 1.0)")
+    elif p_scale.numel() == 0:
+        # Build the empty optional input from raw bytes.  This avoids dispatching
+        # any cast/fill kernel for E8M0, which is not supported by aclnnFill.
+        p_scale_npu = torch.empty((0,), dtype=torch.uint8).view(SCALE_DTYPE).npu()
+        logger.info("[NPU] P scale=empty tensor (shape size 0, default 1.0)")
+    else:
         p_scale_e8m0 = fp32_to_e8m0fnu_safe(p_scale, "P scale")
         p_scale_npu = p_scale_e8m0.npu()
         logger.info(
             "[NPU] P scale dtype=%s, shape=%s", p_scale_e8m0.dtype, p_scale_e8m0.shape
         )
-    elif p_scale_mode == "none":
-        p_scale_npu = None
-        logger.info("[NPU] P scale=None (optional input omitted, default 1.0)")
-    else:
-        p_scale_npu = torch.tensor([], dtype=torch.float8_e8m0fnu).npu()
-        logger.info("[NPU] P scale=empty tensor (shape size 0, default 1.0)")
-    mask_arg = _build_causal_mask()
+    mask_arg = None if atten_mask is None else atten_mask.npu()
 
     if block_table_torch is None:
         raise ValueError("PA KV cache requires block_table_torch")
@@ -2598,9 +2648,11 @@ def npu_mxfp8_fa(
     k_npu = k_input.npu()
     v_npu = v_input.npu()
     if not IS_CONTIGUOUS:
-        kv_cache = torch.stack([k_pa, v_pa], dim=2).npu()
-        k_npu = kv_cache[:, :, 0]
-        v_npu = kv_cache[:, :, 1]
+        # PA_BNBD permits padding only in paBlockStride.  Put the segment axis
+        # directly after the PA block axis so N/BS/D retain dense inner strides.
+        kv_cache = torch.stack([k_pa, v_pa], dim=1).npu()
+        k_npu = kv_cache[:, 0]
+        v_npu = kv_cache[:, 1]
         logger.info(
             "[NPU] key is_contiguous=%s, value is_contiguous=%s",
             k_npu.is_contiguous(),
@@ -2624,12 +2676,10 @@ def npu_mxfp8_fa(
     deq_k_npu = k_scale_e8m0.npu()
     deq_v_npu = v_scale_e8m0.npu()
     if not IS_CONTIGUOUS:
-        fake_kscale_tensor = torch.ones_like(deq_k_npu)
-        fake_vscale_tensor = torch.ones_like(deq_v_npu)
-        deq_k_npu = torch.stack([deq_k_npu, fake_kscale_tensor], dim=2)[:, :, 0]
-        deq_v_npu = torch.stack([deq_v_npu, fake_vscale_tensor], dim=2)[:, :, 0]
+        # In MXFP8 quant_mode=2 only K/V may use segmented PA block strides.
+        # K/V descale tensors must retain their standard contiguous layouts.
         logger.info(
-            "[NPU] deq_k_descale is_contiguous=%s, deq_v_descale is_contiguous=%s",
+            "[NPU] segmented K/V keep descales contiguous: k=%s, v=%s",
             deq_k_npu.is_contiguous(),
             deq_v_npu.is_contiguous(),
         )
@@ -2718,6 +2768,21 @@ def _cache_case_name(case_id, case_name_arg, total_case_num):
     if total_case_num == 1:
         return case_name_arg
     return f"{case_name_arg}_{safe_case_id}"
+
+
+def _cpu_golden_cache_name(case_name, p_scale):
+    """Key CPU golden by the effective E8M0 P-scale byte.
+
+    This intentionally avoids pre-fix CPU cache files whose golden may have
+    consumed the original FP32 P scale.
+    """
+    if p_scale is None or p_scale.numel() == 0:
+        return f"{case_name}__pse8_default"
+    p_scale_e8m0 = fp32_to_e8m0fnu_safe(p_scale, "CPU cache P scale")
+    raw = p_scale_e8m0.contiguous().view(torch.uint8).reshape(-1)
+    if raw.numel() != 1:
+        raise ValueError(f"P scale must contain one E8M0 value, got {raw.numel()}")
+    return f"{case_name}__pse8_{int(raw.item()):02x}"
 
 
 def _safe_debug_case_name(case_name):
@@ -2904,6 +2969,7 @@ def run_one_case(
             dequant_scale_k,
             dequant_scale_v,
             p_scale,
+            atten_mask,
             block_table_torch,
             sparse_indices,
             sparse_seq_len,
@@ -2924,6 +2990,7 @@ def run_one_case(
                 "dequant_scale_k": dequant_scale_k,
                 "dequant_scale_v": dequant_scale_v,
                 "p_scale": p_scale,
+                "atten_mask": atten_mask,
                 "block_table_torch": block_table_torch,
                 "sparse_indices": sparse_indices,
                 "sparse_seq_len": sparse_seq_len,
@@ -2947,6 +3014,7 @@ def run_one_case(
         dequant_scale_k = data["dequant_scale_k"]
         dequant_scale_v = data["dequant_scale_v"]
         p_scale = data["p_scale"]
+        atten_mask = data["atten_mask"]
         block_table_torch = data.get("block_table_torch")
         sparse_indices = data.get("sparse_indices")
         sparse_seq_len = data.get("sparse_seq_len")
@@ -2970,6 +3038,13 @@ def run_one_case(
                 q_lengths, kv_lengths
             )
 
+    # Normalize legacy FP32 input caches as well. From this point onward CPU
+    # and NPU receive the exact same E8M0 P-scale tensor.
+    if p_scale is not None and p_scale.numel() > 0:
+        p_scale = fp32_to_e8m0fnu_safe(p_scale, "Shared P scale")
+    cpu_cache_name = _cpu_golden_cache_name(case_name, p_scale)
+    logger.info("[CACHE] CPU golden key=%s", cpu_cache_name)
+
     _, mfu_time = _log_attention_compute_stats(
         case_id, q_lengths, kv_lengths, sparse_indices, sparse_seq_len
     )
@@ -2980,16 +3055,22 @@ def run_one_case(
             case_id, "Generated", time.time() - start_time, mfu_time=mfu_time
         )
 
-    if rdv and golden_cache.has_cpu_output(case_name, cache_dir=rdv_cache_dir):
+    if rdv and golden_cache.has_cpu_output(cpu_cache_name, cache_dir=rdv_cache_dir):
         logger.info("\n[Step 2] 复用 CPU Golden")
-        logger.info("[RDV] 已找到 case=%s 的 CPU golden，跳过 CPU 生成", case_name)
+        logger.info(
+            "[RDV] 已找到 case=%s 的 CPU golden，跳过 CPU 生成",
+            cpu_cache_name,
+        )
         cpu_out, cpu_lse = golden_cache.load_cpu_output(
-            case_name, cache_dir=rdv_cache_dir
+            cpu_cache_name, cache_dir=rdv_cache_dir
         )
     elif "cpu" in mode:
         logger.info("\n[Step 2] CPU Golden")
         if rdv:
-            logger.info("[RDV] 未找到 case=%s 的 CPU golden，按原流程生成", case_name)
+            logger.info(
+                "[RDV] 未找到 case=%s 的 CPU golden，按原流程生成",
+                cpu_cache_name,
+            )
         cpu_out, cpu_lse = cpu_mxfp8_golden(
             q_fp8,
             k_fp8,
@@ -3006,9 +3087,13 @@ def run_one_case(
             block_table_torch,
             use_quant_matmul=use_quant_matmul,
         )
-        golden_cache.save_cpu_output(case_name, cpu_out, cpu_lse, cache_dir=cache_dir)
+        golden_cache.save_cpu_output(
+            cpu_cache_name, cpu_out, cpu_lse, cache_dir=cache_dir
+        )
     elif "compare" in mode:
-        cpu_out, cpu_lse = golden_cache.load_cpu_output(case_name, cache_dir=cache_dir)
+        cpu_out, cpu_lse = golden_cache.load_cpu_output(
+            cpu_cache_name, cache_dir=cache_dir
+        )
 
     if "cpu" in mode and not (mode & {"npu", "compare"}):
         logger.info("\n[Done] CPU 输出已保存，退出")
@@ -3026,6 +3111,7 @@ def run_one_case(
             dequant_scale_k,
             dequant_scale_v,
             p_scale,
+            atten_mask,
             q_lengths,
             kv_lengths,
             cu_seqlens_q,

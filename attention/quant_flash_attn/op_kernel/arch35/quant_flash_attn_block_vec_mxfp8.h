@@ -16,27 +16,29 @@
 #define QUANT_FLASH_ATTN_BLOCK_VEC_MXFP8_H_
 
 #include "kernel_operator.h"
-#include "memory_copy_arch35.h"
+#include "memory_copy_arch35_quant_flash_attn.h"
 #include "adv_api/activation/softmax.h"
 #include "quant_flash_attn_common_def.h"
-#if __has_include("../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h")
-#include "../../../common/op_kernel/arch35/attenmask_gs1.h"
-#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#if __has_include("../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h")
+#include "../../../common/op_kernel/arch35/attenmask_gs1_arch35.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
-#include "../../../common/op_kernel/arch35/vf/vf_div_cast.h"
-#include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
+#include "../../../common/op_kernel/arch35/vf/vf_div_cast_arch35.h"
+#include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
 #include "../../../common/op_kernel/vector_common.h"
+#include "../../../common/op_kernel/arch35/util_regbase.h"
 #else
-#include "../../common/op_kernel/arch35/attenmask_gs1.h"
-#include "../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#include "../../common/op_kernel/arch35/attenmask_gs1_arch35.h"
+#include "../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
 #include "../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
 #include "../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
-#include "../../common/op_kernel/arch35/vf/vf_div_cast.h"
-#include "../../common/op_kernel/arch35/vf/vf_flash_decode.h"
+#include "../../common/op_kernel/arch35/vf/vf_div_cast_arch35.h"
+#include "../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
 #include "../../common/op_kernel/vector_common.h"
+#include "../../common/op_kernel/arch35/util_regbase.h"
 #endif
 
 using namespace AscendC;
@@ -59,8 +61,8 @@ template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout
           LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128,
-          bool hasAtten = false, uint8_t KvLayoutType = 0, bool isFd = false, bool useDn = false>
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, uint8_t KvLayoutType = 0,
+          bool isFd = false, bool useDn = false, bool isDAligned = true>
 class QuantFlashAttnBlockVecMxfp8 {
 public:
     /* =================编译期常量的基本块信息================= */
@@ -80,7 +82,8 @@ public:
                                   IsSameType<INPUT_T, hifloat8_t>::value;
     static constexpr uint32_t DB = 2;
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
-    static constexpr uint32_t s2SplitSize = (dTemplateAlign64 == 256) ? 128U : 256U;
+    static constexpr uint32_t s2SplitSize =
+        (dTemplateAlign64 == static_cast<uint32_t>(DTemplateType::Aligned256)) ? 128U : 256U;
     static constexpr uint32_t MXFP_GROUP_SIZE = 32U;
     static constexpr bool HAS_MASK = hasAtten;
     static constexpr bool FLASH_DECODE = isFd;
@@ -186,7 +189,6 @@ public:
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32_LN2;
         this->negativeFloatScalar_ = *((T *)&tmp1);
         if constexpr (USE_DN) {
-            minValue_ = NEGATIVE_MIN_VALUE_FP32;
             UpdateMinCheckValue();
         }
 
@@ -281,8 +283,8 @@ public:
             if constexpr (IsSameType<OUT_T, int8_t>::value) {
                 GlobalTensor<half> attentionOutTmpGm;
                 attentionOutTmpGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(attentionOutGm_.GetPhyAddr(0)));
-                matmul::InitOutput<half>(attentionOutTmpGm[constInfo_.aivIdx * singleCoreSize],
-                                         singleInitOutputSize, 0);
+                matmul::InitOutput<half>(attentionOutTmpGm[constInfo_.aivIdx * singleCoreSize], singleInitOutputSize,
+                                         0);
             } else {
                 matmul::InitOutput<OUT_T>(attentionOutGm_[constInfo_.aivIdx * singleCoreSize], singleInitOutputSize, 0);
             }
@@ -327,7 +329,7 @@ public:
 
         uint32_t softmaxBufIdx = runInfo.mloop % (PRELOAD_N + 1);
         uint32_t expBufIdx = runInfo.loop % (PRELOAD_N + 1);
-        int64_t stage1Offset = runInfo.loop % DB;
+        int64_t stage1Offset = subLoop % DB;
 
         LocalTensor<float> sumUb = this->softmaxSumBuf_[softmaxBufIdx].template Get<float>()[0];
         LocalTensor<float> maxUb = this->softmaxMaxBuf_[softmaxBufIdx].template Get<float>()[0];
@@ -351,29 +353,29 @@ public:
             if (unlikely(!isSkipMask_)) {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, false, hasAtten, s2BaseSizeCur>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf_, pScaleSubLoop0Tensor,
-                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2,
-                    s2CalcSize, static_cast<T>(constInfo_.scaleValue), descaleQK, pScaleValue_, negativeFloatScalar_,
-                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
+                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2, s2CalcSize,
+                    static_cast<T>(constInfo_.scaleValue), descaleQK, pScaleValue_, negativeFloatScalar_, 0.0F,
+                    preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
             } else {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, false, false, s2BaseSizeCur>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf_, pScaleSubLoop0Tensor,
-                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2,
-                    s2CalcSize, static_cast<T>(constInfo_.scaleValue), descaleQK, pScaleValue_, negativeFloatScalar_,
-                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
+                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2, s2CalcSize,
+                    static_cast<T>(constInfo_.scaleValue), descaleQK, pScaleValue_, negativeFloatScalar_, 0.0F,
+                    preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
             }
         } else {
             if (unlikely(!isSkipMask_)) {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, true, hasAtten, s2BaseSizeCur>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf_, pScaleSubLoop0Tensor,
-                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2,
-                    s2CalcSize, static_cast<T>(constInfo_.scaleValue), descaleQK, pScaleValue_, negativeFloatScalar_,
-                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
+                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2, s2CalcSize,
+                    static_cast<T>(constInfo_.scaleValue), descaleQK, pScaleValue_, negativeFloatScalar_, 0.0F,
+                    preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
             } else {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, true, false, s2BaseSizeCur>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf_, pScaleSubLoop0Tensor,
-                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2,
-                    s2CalcSize, static_cast<T>(constInfo_.scaleValue), descaleQK, pScaleValue_, negativeFloatScalar_,
-                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
+                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2, s2CalcSize,
+                    static_cast<T>(constInfo_.scaleValue), descaleQK, pScaleValue_, negativeFloatScalar_, 0.0F,
+                    preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
             }
         }
         bmm1ResBuf.SetCrossCore();
@@ -496,8 +498,7 @@ public:
             // LSE 输出改为 N-major 排布 [N2*G, T]: N 在外, T 在内
             // bN2Offset = n2Idx * G * T_total + prefixBS1, 内部按 gIdx * T_total + s1Idx 步进
             uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(runInfo.bIdx);
-            uint64_t bN2Offset =
-                runInfo.realN2Idx * constInfo_.realGSize * constInfo_.t1Size + prefixBS1;
+            uint64_t bN2Offset = runInfo.realN2Idx * constInfo_.realGSize * constInfo_.t1Size + prefixBS1;
             DataCopySoftmaxLseTNDtoNTArch35NoGS1Merge<T, ConstInfoX>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx,
                                                                      gmDealRowCount, constInfo_);
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
@@ -875,7 +876,7 @@ public:
                                                 uint32_t vecMIdx, uint32_t dealRowCount, uint32_t gmDealRowCount)
     {
         // mxfp8 colCount 只能为64或者128，与dDealSize相等
-        FaUbTensor<OUTPUT_T, false> ubTensor{
+        FaUbTensor<OUTPUT_T, !isDAligned> ubTensor{
             .tensor = attenOutUb, .rowCount = dealRowCount, .colCount = dTemplateAlign64};
         GmCoord gmCoord{.bIdx = info.bIdx,
                         .n2Idx = info.realN2Idx,
@@ -886,7 +887,7 @@ public:
         CopyAttentionOut(ubTensor, gmCoord);
     }
 
-    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T, false> &ubTensor, GmCoord &gmCoord)
+    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T, !isDAligned> &ubTensor, GmCoord &gmCoord)
     {
         if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
@@ -1144,8 +1145,8 @@ template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout
           LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128,
-          bool hasAtten = false, uint8_t KvLayoutType = 0, bool isFd = false, bool useDn = false>
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, uint8_t KvLayoutType = 0,
+          bool isFd = false, bool useDn = false>
 class QuantFlashAttnBlockVecMxfp8Dummy {
 public:
     static constexpr bool HAS_MASK = hasAtten;

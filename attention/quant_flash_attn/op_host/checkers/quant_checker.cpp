@@ -38,10 +38,9 @@ namespace {
 // descale dtype 期望值表: 各量化场景下 q/k/v descale 的 tensor_type 要求
 //   MxFP8: FLOAT8_E8M0; GQA_FP8_FULLQUANT: FLOAT32
 const std::map<QfaQuantMode, std::pair<ge::DataType, std::string>> DESCALE_DTYPE_TABLE = {
-    {QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
-        {ge::DT_FLOAT8_E8M0, "FLOAT8_E8M0"}},
+    {QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32, {ge::DT_FLOAT8_E8M0, "FLOAT8_E8M0"}},
     {QfaQuantMode::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
-        {ge::DT_FLOAT, "FLOAT32"}},
+     {ge::DT_FLOAT, "FLOAT32"}},
 };
 } // namespace
 
@@ -57,8 +56,7 @@ ge::graphStatus QuantChecker::CheckSingleParaQuantMode(const QfaTilingInfo &qfaI
     uint32_t quantModeVal = static_cast<uint32_t>(qfaInfo.quantMode);
     OP_CHECK_IF(
         std::find(supportedQuantModes.begin(), supportedQuantModes.end(), quantModeVal) == supportedQuantModes.end(),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "quant_mode",
-                                              std::to_string(quantModeVal).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "quant_mode", std::to_string(quantModeVal).c_str(),
                                               "The value of quant_mode must be 1 or 6"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -73,8 +71,9 @@ ge::graphStatus QuantChecker::CheckQDescaleDimMxFp8(const QfaTilingInfo &qfaInfo
     uint32_t dimNum = shape->GetStorageShape().GetDimNum();
     const std::vector<uint32_t> supportedDims = {DIM_NUM_4, DIM_NUM_5};
     OP_CHECK_IF(std::find(supportedDims.begin(), supportedDims.end(), dimNum) == supportedDims.end(),
-                OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, Q_DESCALE_NAME.c_str(),
-                                             (std::to_string(dimNum) + "D").c_str(), "4D/5D"),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                    qfaInfo.opName, Q_DESCALE_NAME.c_str(), (std::to_string(dimNum) + "D").c_str(),
+                    "In MxFP8 scenario, the shape dim of q_descale must be 4D or 5D"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -89,8 +88,9 @@ ge::graphStatus QuantChecker::CheckQDescaleDimGqaFp8(const QfaTilingInfo &qfaInf
     uint32_t dimNum = shape->GetStorageShape().GetDimNum();
     // GQA: q_descale 为 2D [N1, T]
     OP_CHECK_IF(dimNum != DIM_NUM_2,
-                OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, Q_DESCALE_NAME.c_str(),
-                    (std::to_string(dimNum) + "D").c_str(), "2D"),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                    qfaInfo.opName, Q_DESCALE_NAME.c_str(), (std::to_string(dimNum) + "D").c_str(),
+                    "In GQA_FP8_FULLQUANT scenario, the shape dim of q_descale must be 2D"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -115,8 +115,7 @@ ge::graphStatus QuantChecker::CheckSingleParaQDescale(const QfaTilingInfo &qfaIn
     }
 
     // 场景: shape dim 校验
-    if (CheckQDescaleDimMxFp8(qfaInfo) != ge::GRAPH_SUCCESS ||
-        CheckQDescaleDimGqaFp8(qfaInfo) != ge::GRAPH_SUCCESS) {
+    if (CheckQDescaleDimMxFp8(qfaInfo) != ge::GRAPH_SUCCESS || CheckQDescaleDimGqaFp8(qfaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -131,8 +130,9 @@ ge::graphStatus QuantChecker::CheckKDescaleDimMxFp8(const QfaTilingInfo &qfaInfo
     uint32_t dimNum = shape->GetStorageShape().GetDimNum();
     const std::vector<uint32_t> supportedDims = {DIM_NUM_4, DIM_NUM_5, DIM_NUM_6};
     OP_CHECK_IF(std::find(supportedDims.begin(), supportedDims.end(), dimNum) == supportedDims.end(),
-                OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, K_DESCALE_NAME.c_str(),
-                                             (std::to_string(dimNum) + "D").c_str(), "4D/5D/6D"),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                    qfaInfo.opName, K_DESCALE_NAME.c_str(), (std::to_string(dimNum) + "D").c_str(),
+                    "In MxFP8 scenario, the shape dim of k_descale must be 4D/5D/6D"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -147,8 +147,9 @@ ge::graphStatus QuantChecker::CheckKDescaleDimGqaFp8(const QfaTilingInfo &qfaInf
     uint32_t dimNum = shape->GetStorageShape().GetDimNum();
     // GQA: k_descale 为 3D [Bn, N2, Bs]
     OP_CHECK_IF(dimNum != DIM_NUM_3,
-                OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, K_DESCALE_NAME.c_str(),
-                    (std::to_string(dimNum) + "D").c_str(), "3D"),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                    qfaInfo.opName, K_DESCALE_NAME.c_str(), (std::to_string(dimNum) + "D").c_str(),
+                    "In GQA_FP8_FULLQUANT scenario, the shape dim of k_descale must be 3D"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -173,8 +174,7 @@ ge::graphStatus QuantChecker::CheckSingleParaKDescale(const QfaTilingInfo &qfaIn
     }
 
     // 场景: shape dim 校验
-    if (CheckKDescaleDimMxFp8(qfaInfo) != ge::GRAPH_SUCCESS ||
-        CheckKDescaleDimGqaFp8(qfaInfo) != ge::GRAPH_SUCCESS) {
+    if (CheckKDescaleDimMxFp8(qfaInfo) != ge::GRAPH_SUCCESS || CheckKDescaleDimGqaFp8(qfaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -189,8 +189,9 @@ ge::graphStatus QuantChecker::CheckVDescaleDimMxFp8(const QfaTilingInfo &qfaInfo
     uint32_t dimNum = shape->GetStorageShape().GetDimNum();
     const std::vector<uint32_t> supportedDims = {DIM_NUM_4, DIM_NUM_5, DIM_NUM_6};
     OP_CHECK_IF(std::find(supportedDims.begin(), supportedDims.end(), dimNum) == supportedDims.end(),
-                OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, V_DESCALE_NAME.c_str(),
-                                             (std::to_string(dimNum) + "D").c_str(), "4D/5D/6D"),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                    qfaInfo.opName, V_DESCALE_NAME.c_str(), (std::to_string(dimNum) + "D").c_str(),
+                    "In MxFP8 scenario, the shape dim of v_descale must be 4D/5D/6D"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -205,8 +206,9 @@ ge::graphStatus QuantChecker::CheckVDescaleDimGqaFp8(const QfaTilingInfo &qfaInf
     uint32_t dimNum = shape->GetStorageShape().GetDimNum();
     // GQA: v_descale 为 1D [N2]
     OP_CHECK_IF(dimNum != DIM_NUM_1,
-                OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, V_DESCALE_NAME.c_str(),
-                    (std::to_string(dimNum) + "D").c_str(), "1D"),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                    qfaInfo.opName, V_DESCALE_NAME.c_str(), (std::to_string(dimNum) + "D").c_str(),
+                    "In GQA_FP8_FULLQUANT scenario, the shape dim of v_descale must be 1D"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -231,8 +233,7 @@ ge::graphStatus QuantChecker::CheckSingleParaVDescale(const QfaTilingInfo &qfaIn
     }
 
     // 场景: shape dim 校验
-    if (CheckVDescaleDimMxFp8(qfaInfo) != ge::GRAPH_SUCCESS ||
-        CheckVDescaleDimGqaFp8(qfaInfo) != ge::GRAPH_SUCCESS) {
+    if (CheckVDescaleDimMxFp8(qfaInfo) != ge::GRAPH_SUCCESS || CheckVDescaleDimGqaFp8(qfaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -263,7 +264,9 @@ ge::graphStatus QuantChecker::CheckSingleParaPScale(const QfaTilingInfo &qfaInfo
                 return ge::GRAPH_FAILED);
 
     int64_t dim0 = tensor->GetStorageShape().GetDim(0);
-    OP_CHECK_IF(dim0 != 1, OP_LOGE(qfaInfo.opName, "p_scale shape must be (1,), but got dim0=%ld", dim0),
+    OP_CHECK_IF(dim0 != 1,
+                OP_LOGE_FOR_INVALID_SHAPE(qfaInfo.opName, P_SCALE_NAME.c_str(),
+                                          ("[" + std::to_string(dim0) + "]").c_str(), "[1]"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -291,16 +294,15 @@ ge::graphStatus QuantChecker::CheckParaExistenceGqaFp8(const QfaTilingInfo &qfaI
     }
     // GQA_FP8_FULLQUANT: block_table 必选（GQA 强制 PA 场景）
     OP_CHECK_IF(qfaInfo.opParamInfo.blockTable.tensor == nullptr,
-                OP_LOGE_WITH_INVALID_INPUT(qfaInfo.opName, BLOCK_TABLE_NAME.c_str()),
-                return ge::GRAPH_FAILED);
+                OP_LOGE_WITH_INVALID_INPUT(qfaInfo.opName, BLOCK_TABLE_NAME.c_str()), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QuantChecker::CheckParaExistence(const QfaTilingInfo &qfaInfo)
 {
     // 公共: quant_mode 必选属性
-    OP_CHECK_IF(qfaInfo.opParamInfo.quantMode == nullptr,
-                OP_LOGE_WITH_INVALID_INPUT(qfaInfo.opName, "quant_mode"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(qfaInfo.opParamInfo.quantMode == nullptr, OP_LOGE_WITH_INVALID_INPUT(qfaInfo.opName, "quant_mode"),
+                return ge::GRAPH_FAILED);
 
     // 公共: q_descale / k_descale / v_descale 必须存在
     OP_CHECK_IF(qfaInfo.opParamInfo.qDescale.desc == nullptr || qfaInfo.opParamInfo.qDescale.shape == nullptr,
@@ -336,7 +338,11 @@ ge::graphStatus QuantChecker::CheckShapeEqual(const gert::StorageShape &actual, 
         int64_t actDim = actual.GetStorageShape().GetDim(i);
         // expected[i] < 0 表示该维度不做数值校验(通配), 用于依赖 device 数据的维度
         if (expected[i] >= 0 && actDim != expected[i]) {
-            OP_LOGE(opName, "%s shape dim[%zu] is %ld, expected %ld.", paraName.c_str(), i, actDim, expected[i]);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, paraName.c_str(),
+                                                  ("[" + std::to_string(actDim) + "]").c_str(),
+                                                  ("The value of dim[" + std::to_string(i) + "] of " + paraName +
+                                                   " shape must be " + std::to_string(expected[i]))
+                                                      .c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -354,16 +360,18 @@ ge::graphStatus QuantChecker::CheckQDescaleShapeMxFp8(const QfaTilingInfo &qfaIn
     //   其中 G = Q_N / KV_N
     const gert::StorageShape *shape = qfaInfo.opParamInfo.qDescale.shape;
     int64_t D = qfaInfo.qkHeadDim;
-    int64_t DPerGroup = D / 64; // MxFP8 block size = 64
+    int64_t dPerGroup = (D + 63) / 64; // MxFP8 block size = 64
     uint32_t dimNum = shape->GetStorageShape().GetDimNum();
 
     std::vector<int64_t> expected;
     if (dimNum == DIM_NUM_4) {
-        expected = {qfaInfo.qTSize, qfaInfo.n1Size, DPerGroup, 2};
+        expected = {qfaInfo.qTSize, qfaInfo.n1Size, dPerGroup, 2};
     } else if (dimNum == DIM_NUM_5) {
-        expected = {qfaInfo.n2Size, qfaInfo.qTSize, qfaInfo.gSize, DPerGroup, 2};
+        expected = {qfaInfo.n2Size, qfaInfo.qTSize, qfaInfo.gSize, dPerGroup, 2};
     } else {
-        OP_LOGE(qfaInfo.opName, "q_descale shape dim %u is unsupported, expected 4D or 5D.", dimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(qfaInfo.opName, Q_DESCALE_NAME.c_str(),
+                                                 (std::to_string(dimNum) + "D").c_str(),
+                                                 "In MxFP8 scenario, the shape dim of q_descale must be 4D or 5D");
         return ge::GRAPH_FAILED;
     }
 
@@ -430,29 +438,36 @@ ge::graphStatus QuantChecker::CheckKDescaleShapeMxFp8(const QfaTilingInfo &qfaIn
     }
     // 文档(k_descale/v_descale shape匹配关系表): MxFP8
     //   TND:      (KV_T, KV_N, D/64, 2)              - 4D
+    //   PA_BBND:  (Bn, Bs, KV_N, D/64, 2)            - 5D
     //   PA_BNBD:  (Bn, KV_N, Bs, D/64, 2)            - 5D
     //   PA_NZ:    (Bn, KV_N, Bs/16, D/64, 16, 2)     - 6D
     const gert::StorageShape *shape = qfaInfo.opParamInfo.kDescale.shape;
     int64_t D = qfaInfo.qkHeadDim;
-    int64_t DPerGroup = D / 64;
+    int64_t dPerGroup = (D + 63) / 64;
     uint32_t dimNum = shape->GetStorageShape().GetDimNum();
 
     std::vector<int64_t> expected;
     if (qfaInfo.kvLayout == QfaLayout::TND) {
-        expected = {qfaInfo.kTSize, qfaInfo.n2Size, DPerGroup, 2};
+        expected = {qfaInfo.kTSize, qfaInfo.n2Size, dPerGroup, 2};
+    } else if (qfaInfo.kvLayout == QfaLayout::PA_BBND) {
+        expected = {qfaInfo.totalBlockNum, qfaInfo.blockSize, qfaInfo.n2Size, dPerGroup, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_BNBD) {
-        expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, qfaInfo.blockSize, DPerGroup, 2};
+        expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, qfaInfo.blockSize, dPerGroup, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_NZ) {
-        expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, qfaInfo.blockSize / 16, DPerGroup, 16, 2};
+        expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, qfaInfo.blockSize / 16, dPerGroup, 16, 2};
     } else {
-        OP_LOGE(qfaInfo.opName, "k_descale shape check: kv_layout %s is unsupported.",
-                QfaLayoutToSerialString(qfaInfo.kvLayout).c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            qfaInfo.opName, "layout_kv", QfaLayoutToSerialString(qfaInfo.kvLayout).c_str(),
+            "In MxFP8 scenario, the kv_layout for k_descale shape check is unsupported");
         return ge::GRAPH_FAILED;
     }
 
     if (expected.size() != dimNum) {
-        OP_LOGE(qfaInfo.opName, "k_descale shape dim %u does not match layout %s, expected %zuD.", dimNum,
-                QfaLayoutToSerialString(qfaInfo.kvLayout).c_str(), expected.size());
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            qfaInfo.opName, K_DESCALE_NAME.c_str(), (std::to_string(dimNum) + "D").c_str(),
+            ("In MxFP8 scenario, the shape dim of k_descale must be " + std::to_string(expected.size()) +
+             "D when layout_kv is " + QfaLayoutToSerialString(qfaInfo.kvLayout))
+                .c_str());
         return ge::GRAPH_FAILED;
     }
     return CheckShapeEqual(*shape, expected, K_DESCALE_NAME, qfaInfo.opName);
@@ -467,8 +482,9 @@ ge::graphStatus QuantChecker::CheckKDescaleShapeGqaFp8(const QfaTilingInfo &qfaI
     // GQA_FP8_FULLQUANT (PA_BNBD 强制): 3D (Bn, N2, Bs)
     const gert::StorageShape *shape = qfaInfo.opParamInfo.kDescale.shape;
     OP_CHECK_IF(qfaInfo.kvLayout != QfaLayout::PA_BNBD,
-                OP_LOGE(qfaInfo.opName, "GQA_FP8_FULLQUANT only supports PA_BNBD, but got %s.",
-                        QfaLayoutToSerialString(qfaInfo.kvLayout).c_str()),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "layout_kv",
+                                                      QfaLayoutToSerialString(qfaInfo.kvLayout).c_str(),
+                                                      "In GQA_FP8_FULLQUANT scenario, layout_kv must be PA_BNBD"),
                 return ge::GRAPH_FAILED);
     std::vector<int64_t> expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, qfaInfo.blockSize};
     return CheckShapeEqual(*shape, expected, K_DESCALE_NAME, qfaInfo.opName);
@@ -497,9 +513,11 @@ ge::graphStatus QuantChecker::CheckVDescaleShapeMxFp8(const QfaTilingInfo &qfaIn
     }
     // 文档(k_descale/v_descale shape匹配关系表): MxFP8
     //   TND:      (KV_T/64, KV_N, D, 2)              - 4D
+    //   PA_BBND:  (Bn, Bs/64, KV_N, D, 2)            - 5D
     //   PA_BNBD:  (Bn, KV_N, Bs/64, D, 2)            - 5D
     //   PA_NZ:    (Bn, KV_N, D/16, Bs/64, 16, 2)     - 6D
     const gert::StorageShape *shape = qfaInfo.opParamInfo.vDescale.shape;
+    const int64_t mxfp8BlockSize = 64;
     int64_t D = qfaInfo.vHeadDim; // v_descale 的 D 用 vHeadDim
     uint32_t dimNum = shape->GetStorageShape().GetDimNum();
 
@@ -509,19 +527,26 @@ ge::graphStatus QuantChecker::CheckVDescaleShapeMxFp8(const QfaTilingInfo &qfaIn
         // tiling 阶段 cu_seqlens_kv 为 device tensor, host 侧无法安全读取,
         // 因此 dim0 不做数值校验(用 -1 占位), 仅校验维度数为 4D 及 dim[1..3]。
         expected = {-1, qfaInfo.n2Size, D, 2};
+    } else if (qfaInfo.kvLayout == QfaLayout::PA_BBND) {
+        expected = {qfaInfo.totalBlockNum, CeilDivision(qfaInfo.blockSize, mxfp8BlockSize), qfaInfo.n2Size, D, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_BNBD) {
-        expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, qfaInfo.blockSize / 64, D, 2};
+        expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, CeilDivision(qfaInfo.blockSize, mxfp8BlockSize), D, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_NZ) {
-        expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, D / 16, qfaInfo.blockSize / 64, 16, 2};
+        expected = {
+            qfaInfo.totalBlockNum, qfaInfo.n2Size, D / 16, CeilDivision(qfaInfo.blockSize, mxfp8BlockSize), 16, 2};
     } else {
-        OP_LOGE(qfaInfo.opName, "v_descale shape check: kv_layout %s is unsupported.",
-                QfaLayoutToSerialString(qfaInfo.kvLayout).c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            qfaInfo.opName, "layout_kv", QfaLayoutToSerialString(qfaInfo.kvLayout).c_str(),
+            "In MxFP8 scenario, the kv_layout for v_descale shape check is unsupported");
         return ge::GRAPH_FAILED;
     }
 
     if (expected.size() != dimNum) {
-        OP_LOGE(qfaInfo.opName, "v_descale shape dim %u does not match layout %s, expected %zuD.", dimNum,
-                QfaLayoutToSerialString(qfaInfo.kvLayout).c_str(), expected.size());
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            qfaInfo.opName, V_DESCALE_NAME.c_str(), (std::to_string(dimNum) + "D").c_str(),
+            ("In MxFP8 scenario, the shape dim of v_descale must be " + std::to_string(expected.size()) +
+             "D when layout_kv is " + QfaLayoutToSerialString(qfaInfo.kvLayout))
+                .c_str());
         return ge::GRAPH_FAILED;
     }
     return CheckShapeEqual(*shape, expected, V_DESCALE_NAME, qfaInfo.opName);
@@ -590,7 +615,7 @@ ge::graphStatus QuantChecker::CheckDescaleDtype(const QfaTilingInfo &qfaInfo) co
     //   GQA_FP8_FULLQUANT 场景下, q/k/v descale 的 tensor_type 仅支持 FLOAT32
     if (qfaInfo.quantMode != QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 &&
         qfaInfo.quantMode !=
-        QfaQuantMode::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
+            QfaQuantMode::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
         return ge::GRAPH_SUCCESS;
     }
 
@@ -598,16 +623,20 @@ ge::graphStatus QuantChecker::CheckDescaleDtype(const QfaTilingInfo &qfaInfo) co
     const ge::DataType expectedDtype = it->second.first;
     const std::string expectedDtypeStr = it->second.second;
 
-    const auto CheckDescaleDtype = [&qfaInfo, this, expectedDtype, &expectedDtypeStr](const QfaRequiredParaInfo &slot,
-                                                    const std::string &paraName) -> ge::graphStatus {
+    const auto CheckDescaleDtype = [&qfaInfo, this, expectedDtype, &expectedDtypeStr](
+                                       const QfaRequiredParaInfo &slot,
+                                       const std::string &paraName) -> ge::graphStatus {
         const gert::CompileTimeTensorDesc *desc = slot.desc;
         if (desc == nullptr) {
             return ge::GRAPH_SUCCESS; // 存在性校验负责
         }
         OP_CHECK_IF(desc->GetDataType() != expectedDtype,
-                    OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, paraName.c_str(),
-                                              DataTypeToSerialString(desc->GetDataType()).c_str(),
-                                              expectedDtypeStr.c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                        qfaInfo.opName, paraName.c_str(), DataTypeToSerialString(desc->GetDataType()).c_str(),
+                        ("The dtype of " + paraName + " must be " + expectedDtypeStr + " when quant_mode is " +
+                         std::to_string(static_cast<uint32_t>(qfaInfo.quantMode)) + " (" +
+                         QfaQuantModeToSerialString(qfaInfo.quantMode) + ")")
+                            .c_str()),
                     return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     };
@@ -625,92 +654,6 @@ ge::graphStatus QuantChecker::CheckDescaleDtype(const QfaTilingInfo &qfaInfo) co
 }
 
 // ============================================================================
-// Feature — 非连续 Tensor 支持校验 (文档"特性交叉校验"列)
-// 规则: 仅 PA 场景(layout_kv ∈ {PA_BNBD, PA_NZ})时，k/v/k_descale/v_descale
-//       仅支持 0 轴和 1 轴非连续，其余轴必须连续；非 PA 场景均不支持非连续。
-// ============================================================================
-
-ge::graphStatus QuantChecker::CheckNonContiguousSupport(const QfaTilingInfo &qfaInfo) const
-{
-    bool isPaLayout = (qfaInfo.kvLayout == QfaLayout::PA_BNBD || qfaInfo.kvLayout == QfaLayout::PA_NZ);
-    if (!isPaLayout) {
-        // 非 PA 场景: k/v/k_descale/v_descale 均不支持非连续
-        int32_t dimIndex = 0;
-        OP_CHECK_IF((CheckTensorContiguous(qfaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum(),
-                                           qfaInfo.opParamInfo.key.shape->GetStorageShape(), qfaInfo.keyStrides,
-                                           dimIndex) != ge::GRAPH_SUCCESS),
-                    OP_LOGE(qfaInfo.opName,
-                            "In non-PA scenarios, key must be contiguous, but dim %d is non-contiguous.", dimIndex),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF((CheckTensorContiguous(qfaInfo.opParamInfo.value.shape->GetStorageShape().GetDimNum(),
-                                           qfaInfo.opParamInfo.value.shape->GetStorageShape(), qfaInfo.valueStrides,
-                                           dimIndex) != ge::GRAPH_SUCCESS),
-                    OP_LOGE(qfaInfo.opName,
-                            "In non-PA scenarios, value must be contiguous, but dim %d is non-contiguous.", dimIndex),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-            (CheckTensorContiguous(qfaInfo.opParamInfo.kDescale.shape->GetStorageShape().GetDimNum(),
-                                   qfaInfo.opParamInfo.kDescale.shape->GetStorageShape(), qfaInfo.kDescaleStrides,
-                                   dimIndex) != ge::GRAPH_SUCCESS),
-            OP_LOGE(qfaInfo.opName, "In non-PA scenarios, k_descale must be contiguous, but dim %d is non-contiguous.",
-                    dimIndex),
-            return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-            (CheckTensorContiguous(qfaInfo.opParamInfo.vDescale.shape->GetStorageShape().GetDimNum(),
-                                   qfaInfo.opParamInfo.vDescale.shape->GetStorageShape(), qfaInfo.vDescaleStrides,
-                                   dimIndex) != ge::GRAPH_SUCCESS),
-            OP_LOGE(qfaInfo.opName, "In non-PA scenarios, v_descale must be contiguous, but dim %d is non-contiguous.",
-                    dimIndex),
-            return ge::GRAPH_FAILED);
-        return ge::GRAPH_SUCCESS;
-    }
-
-    // PA 场景(layout_kv ∈ {PA_BNBD, PA_NZ}): k/v/k_descale/v_descale 仅支持 0/1 轴非连续
-    int32_t dimIndex = 0;
-    OP_CHECK_IF(
-        ((ge::GRAPH_SUCCESS != CheckTensorContiguous(qfaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum(),
-                                                     qfaInfo.opParamInfo.key.shape->GetStorageShape(),
-                                                     qfaInfo.keyStrides, dimIndex)) &&
-         (dimIndex != 0 && dimIndex != 1)),
-        OP_LOGE(qfaInfo.opName,
-                "In PA BnNBsD/NZ scenarios, key only supports non-contiguous tensors in dimensions 0 or 1, "
-                "but the first non-contiguous dimension is index %d.",
-                dimIndex),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        ((ge::GRAPH_SUCCESS != CheckTensorContiguous(qfaInfo.opParamInfo.value.shape->GetStorageShape().GetDimNum(),
-                                                     qfaInfo.opParamInfo.value.shape->GetStorageShape(),
-                                                     qfaInfo.valueStrides, dimIndex)) &&
-         (dimIndex != 0 && dimIndex != 1)),
-        OP_LOGE(qfaInfo.opName,
-                "In PA BnNBsD/NZ scenarios, value only supports non-contiguous tensors in dimensions 0 or 1, "
-                "but the first non-contiguous dimension is index %d.",
-                dimIndex),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        ((ge::GRAPH_SUCCESS != CheckTensorContiguous(qfaInfo.opParamInfo.kDescale.shape->GetStorageShape().GetDimNum(),
-                                                     qfaInfo.opParamInfo.kDescale.shape->GetStorageShape(),
-                                                     qfaInfo.kDescaleStrides, dimIndex)) &&
-         (dimIndex != 0 && dimIndex != 1)),
-        OP_LOGE(qfaInfo.opName,
-                "In PA BnNBsD/NZ scenarios, k_descale only supports non-contiguous tensors in dimensions 0 or "
-                "1, but the first non-contiguous dimension is index %d.",
-                dimIndex),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        ((ge::GRAPH_SUCCESS != CheckTensorContiguous(qfaInfo.opParamInfo.vDescale.shape->GetStorageShape().GetDimNum(),
-                                                     qfaInfo.opParamInfo.vDescale.shape->GetStorageShape(),
-                                                     qfaInfo.vDescaleStrides, dimIndex)) &&
-         (dimIndex != 0 && dimIndex != 1)),
-        OP_LOGE(qfaInfo.opName,
-                "In PA BnNBsD/NZ scenarios, v_descale only supports non-contiguous tensors in dimensions 0 or "
-                "1, but the first non-contiguous dimension is index %d.",
-                dimIndex),
-        return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
-
-// ============================================================================
 // Feature — Layout 匹配关系校验 (文档: layout匹配关系表)
 // MxFP8: layout_q=TND, layout_kv∈{TND,PA_BNBD,PA_NZ}, layout_out=TND
 // ============================================================================
@@ -724,7 +667,9 @@ struct QfaLayoutConstraintConfig {
 
 const std::map<QfaQuantMode, QfaLayoutConstraintConfig> QFA_LAYOUT_CONSTRAINT_TABLE = {
     {QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
-     {{QfaLayout::TND, QfaLayout::PA_BNBD, QfaLayout::PA_NZ}, {QfaLayout::TND}, {QfaLayout::TND, QfaLayout::N2TGD}}},
+     {{QfaLayout::TND, QfaLayout::PA_BBND, QfaLayout::PA_BNBD, QfaLayout::PA_NZ},
+      {QfaLayout::TND},
+      {QfaLayout::TND, QfaLayout::N2TGD}}},
     {QfaQuantMode::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
      {{QfaLayout::PA_BNBD}, {QfaLayout::TND}, {QfaLayout::NT}}},
 };
@@ -736,35 +681,40 @@ ge::graphStatus QuantChecker::CheckLayoutConstraint(const QfaTilingInfo &qfaInfo
     OP_CHECK_IF(it == QFA_LAYOUT_CONSTRAINT_TABLE.end(),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "quant_mode",
                                                       std::to_string(static_cast<uint32_t>(qfaInfo.quantMode)).c_str(),
-                                                      "quant_mode is not supported in layout constraint table"),
+                                                      "The value of quant_mode must be 1 or 6"),
                 return ge::GRAPH_FAILED);
 
     const auto &config = it->second;
     const std::string qLayoutStr = QfaLayoutToSerialString(qfaInfo.qLayout);
-    const std::string quantModeStr = QfaQuantModeToSerialString(qfaInfo.quantMode);
+    const std::string quantModeStr = std::to_string(static_cast<uint32_t>(qfaInfo.quantMode)) + " (" +
+                                     QfaQuantModeToSerialString(qfaInfo.quantMode) + ")";
 
     OP_CHECK_IF(std::find(config.supportedKvLayouts.begin(), config.supportedKvLayouts.end(), qfaInfo.kvLayout) ==
                     config.supportedKvLayouts.end(),
-                OP_LOGE(qfaInfo.opName,
-                        "When quant_mode is MxFP8 and layout_q is %s, "
-                        "layout_kv must be in {TND, PA_BNBD, PA_NZ}, but got %s",
-                        qLayoutStr.c_str(), QfaLayoutToSerialString(qfaInfo.kvLayout).c_str()),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    qfaInfo.opName, "layout_kv", QfaLayoutToSerialString(qfaInfo.kvLayout).c_str(),
+                    ("When quant_mode is " + quantModeStr + " and layout_q is " + qLayoutStr +
+                     ", layout_kv must be in {TND, PA_BBND, PA_BNBD, PA_NZ}")
+                        .c_str()),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(
         std::find(config.supportedOutLayouts.begin(), config.supportedOutLayouts.end(), qfaInfo.outLayout) ==
             config.supportedOutLayouts.end(),
-        OP_LOGE(qfaInfo.opName, "When quant_mode is MxFP8 and layout_q is %s, layout_out must be TND, but got %s",
-                qLayoutStr.c_str(), QfaLayoutToSerialString(qfaInfo.outLayout).c_str()),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            qfaInfo.opName, "layout_out", QfaLayoutToSerialString(qfaInfo.outLayout).c_str(),
+            ("When quant_mode is " + quantModeStr + " and layout_q is " + qLayoutStr + ", layout_out must be TND")
+                .c_str()),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(
-        std::find(config.supportedQDescaleLayouts.begin(), config.supportedQDescaleLayouts.end(),
-                  qfaInfo.layoutQDescale) == config.supportedQDescaleLayouts.end(),
-        OP_LOGE(qfaInfo.opName,
-                "When quant_mode is MxFP8 and layout_q is %s, layout_q_descale must be in {TND, N2TGD}, but got %s",
-                qLayoutStr.c_str(), QfaLayoutToSerialString(qfaInfo.layoutQDescale).c_str()),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(std::find(config.supportedQDescaleLayouts.begin(), config.supportedQDescaleLayouts.end(),
+                          qfaInfo.layoutQDescale) == config.supportedQDescaleLayouts.end(),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "layout_q_descale",
+                                                      QfaLayoutToSerialString(qfaInfo.layoutQDescale).c_str(),
+                                                      ("When quant_mode is " + quantModeStr + " and layout_q is " +
+                                                       qLayoutStr + ", layout_q_descale must be in {TND, N2TGD}")
+                                                          .c_str()),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -797,15 +747,16 @@ ge::graphStatus QuantChecker::CheckQueryShape(const QfaTilingInfo &qfaInfo) cons
 
 ge::graphStatus QuantChecker::CheckKVShape(const QfaTilingInfo &qfaInfo) const
 {
-    // k/v: TND -> (KV_T, KV_N, D)；PA_BNBD -> (Bn, KV_N, Bs, D)；
-    //      PA_NZ -> (Bn, KV_N, D/32, Bs, 32)
+    // k/v: TND -> (KV_T, KV_N, D)；PA_BBND -> (Bn, Bs, KV_N, D)；
+    //      PA_BNBD -> (Bn, KV_N, Bs, D)；PA_NZ -> (Bn, KV_N, D/32, Bs, 32)
     QfaTilingShapeCompareParam shapeParams;
     shapeParams.N = qfaInfo.n2Size;
     shapeParams.D = qfaInfo.qkHeadDim;
 
     if (qfaInfo.kvLayout == QfaLayout::TND) {
         shapeParams.T = qfaInfo.kTSize;
-    } else if (qfaInfo.kvLayout == QfaLayout::PA_BNBD || qfaInfo.kvLayout == QfaLayout::PA_NZ) {
+    } else if (qfaInfo.kvLayout == QfaLayout::PA_BBND || qfaInfo.kvLayout == QfaLayout::PA_BNBD ||
+               qfaInfo.kvLayout == QfaLayout::PA_NZ) {
         shapeParams.Bn = qfaInfo.totalBlockNum;
         shapeParams.Bs = qfaInfo.blockSize;
     }
@@ -849,16 +800,54 @@ ge::graphStatus QuantChecker::CheckShapeMatch(const QfaTilingInfo &qfaInfo)
 ge::graphStatus QuantChecker::CheckFeature(const QfaTilingInfo &qfaInfo)
 {
     // 文档"特性交叉校验"列(rowspan=5)包含三项:
-    //   1. 非连续 Tensor 支持
-    //   2. Layout 校验(layout 匹配关系表, 含 layout_q_descale)
-    //   3. q/k/v/attn_out shape 校验(shape 匹配关系表)
-    if (CheckNonContiguousSupport(qfaInfo) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
+    //   1. Layout 校验(layout 匹配关系表, 含 layout_q_descale)
+    //   2. q/k/v/attn_out shape 校验(shape 匹配关系表)
     if (CheckLayoutConstraint(qfaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (CheckShapeMatch(qfaInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckInputAxisFullquant(qfaInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QuantChecker::CheckN1SizeFullquant(const QfaTilingInfo &qfaInfo) const
+{
+    OP_CHECK_IF(
+        (qfaInfo.n1Size > N1_LIMIT || qfaInfo.n1Size < 1),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "num_heads", std::to_string(qfaInfo.n1Size).c_str(),
+                                              "The value of num_heads must be within the range [1, 256]"),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QuantChecker::CheckN2SizeFullquant(const QfaTilingInfo &qfaInfo) const
+{
+    OP_CHECK_IF((qfaInfo.n2Size > N2_LIMIT || qfaInfo.n2Size < 1),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    qfaInfo.opName, "num_key_value_heads", std::to_string(qfaInfo.n2Size).c_str(),
+                    "The value of num_key_value_heads must be within the range [1, 256]"),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QuantChecker::CheckGSizeFullquant(const QfaTilingInfo &qfaInfo) const
+{
+    if (qfaInfo.gSize < 1 || qfaInfo.gSize > G_LIMIT) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "axis G", std::to_string(qfaInfo.gSize).c_str(),
+                                              "The value of axis G must be within the range [1, 64]");
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QuantChecker::CheckInputAxisFullquant(const QfaTilingInfo &qfaInfo) const
+{
+    if (CheckN1SizeFullquant(qfaInfo) != ge::GRAPH_SUCCESS || CheckN2SizeFullquant(qfaInfo) != ge::GRAPH_SUCCESS ||
+        CheckGSizeFullquant(qfaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

@@ -20,7 +20,7 @@
 #include <memory>
 #include <numeric>
 #include "tiling/tiling_api.h"
-#include "base_checker.h"
+#include "base_checker_quant_flash_attn.h"
 #include "../qfa_tiling_shape.h"
 
 namespace optiling {
@@ -74,13 +74,8 @@ private:
     // 各 batch 实际 KV 序列长度按 64 向上取整后累加，即 Σ ceil(cu_seqlens_kv[b+1]-cu_seqlens_kv[b], 64)
     int64_t CalcVDescaleTndDim0(const QfaTilingInfo &qfaInfo) const;
 
-    // --- Feature: 非连续 Tensor 支持校验 ---
-    // 仅 PA 场景(layout_kv 为 PA_BNBD 或 PA_NZ)时，k/v/k_descale/v_descale
-    // 仅支持 0 轴和 1 轴非连续，其余轴必须连续；非 PA 场景均不支持非连续。
-    ge::graphStatus CheckNonContiguousSupport(const QfaTilingInfo &qfaInfo) const;
-
     // --- Feature: layout 匹配关系校验 (文档: layout匹配关系表) ---
-    // MxFP8: layout_q=TND, layout_kv∈{TND,PA_BNBD,PA_NZ}, layout_out=TND, layout_q_descale∈{TND,N2TGD}
+    // MxFP8: layout_q=TND, layout_kv∈{TND,PA_BBND,PA_BNBD,PA_NZ}, layout_out=TND, layout_q_descale∈{TND,N2TGD}
     ge::graphStatus CheckLayoutConstraint(const QfaTilingInfo &qfaInfo) const;
 
     // --- Feature: q/k/v/attn_out shape 校验 (文档: q/k/v/attn_out shape匹配关系表) ---
@@ -93,6 +88,12 @@ private:
     // 校验实际 shape 与期望 shape 的每个维度是否相等
     ge::graphStatus CheckShapeEqual(const gert::StorageShape &actual, const std::vector<int64_t> &expected,
                                     const std::string &paraName, const char *opName) const;
+
+    // --- Feature: N1/N2/G 上限校验 (全量化场景) ---
+    ge::graphStatus CheckN1SizeFullquant(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckN2SizeFullquant(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckGSizeFullquant(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckInputAxisFullquant(const QfaTilingInfo &qfaInfo) const;
 
 private:
     std::shared_ptr<QfaTilingShapeCompare> queryShapeCmp_ = nullptr;

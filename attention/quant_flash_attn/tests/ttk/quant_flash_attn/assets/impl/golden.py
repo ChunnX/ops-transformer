@@ -273,7 +273,7 @@ def _apply_golden_globals(attrs, quant_mode=1):
         "q_scale_layout": "Q_SCALE_LAYOUT",
         "enable_lse": "ENABLE_LSE",
         "input_layout": "INPUT_LAYOUT",
-        "is_contiguous": "IS_CONTIGUOUS",
+        "uncontiguous_dim": "UNCONTIGUOUS_DIMS",
         "device_id": "DEVICE_ID",
         "graph_path": "GRAPH_PATH",
         "cu_seqlens_q": "CU_SEQLENS_Q",
@@ -283,6 +283,8 @@ def _apply_golden_globals(attrs, quant_mode=1):
         "max_seqlen_q": "MAX_SEQLEN_Q",
         "max_seqlen_kv": "MAX_SEQLEN_KV",
         "softmax_scale": "SOFTMAX_SCALE",
+        "win_left": "WIN_LEFT",
+        "win_right": "WIN_RIGHT",
     }
     for attr_key, golden_key in mapping.items():
         if attr_key in attrs:
@@ -317,7 +319,7 @@ def cpu_qfa_mxfp8(
     p_scale: torch.Tensor,
     block_table: torch.Tensor,
     *,
-    B: int,
+    batch_size: int,
     N_q: int,
     N_kv: int,
     D: int,
@@ -336,9 +338,11 @@ def cpu_qfa_mxfp8(
     enable_lse: bool = False,
     graph_path: int = 0,
     input_layout: str = "TND",
-    is_contiguous: bool = True,
+    uncontiguous_dim: List[int] = None,
     device_id: int = 0,
     softmax_scale: float = None,
+    win_left: int = -1,
+    win_right: int = -1,
     data_range_q: float = 1.0,
     data_range_k: float = 1.0,
     data_range_v: float = 1.0,
@@ -368,6 +372,14 @@ def cpu_qfa_mxfp8(
     cu_seqlens_q_list = list(cu_seqlens_q) if cu_seqlens_q is not None else [0]
     cu_seqlens_kv_list = list(cu_seqlens_kv) if cu_seqlens_kv is not None else [0]
 
+    # batch_size: CSV 原始值 (可为 -1), 透传给 metadata;
+    # B: 从 cu_seqlens_q 推导的正整数, 供 shape assert 与 BNSD 逆转换。
+    B = (
+        max(1, len(cu_seqlens_q_list) - 1)
+        if cu_seqlens_q_list and len(cu_seqlens_q_list) >= 2
+        else 1
+    )
+
     # p_scale_value 从 CSV attributes 经 kwargs 传入
     p_scale_value = kwargs.get("p_scale_value", 1.0)
     if isinstance(p_scale_value, torch.Tensor):
@@ -394,11 +406,15 @@ def cpu_qfa_mxfp8(
             "q_scale_layout": q_scale_layout,
             "enable_lse": enable_lse,
             "input_layout": input_layout,
-            "is_contiguous": is_contiguous,
+            "uncontiguous_dim": uncontiguous_dim
+            if uncontiguous_dim is not None
+            else [-1] * 8,
             "device_id": device_id,
             "graph_path": graph_path,
             "softmax_scale": softmax_scale,
             "p_scale_value": p_scale_value,
+            "win_left": win_left,
+            "win_right": win_right,
         },
         quant_mode=1,
     )
@@ -408,7 +424,9 @@ def cpu_qfa_mxfp8(
     # actual_seq 推导 max_seq (用于 assertion 和 PA 逆转换的 scatter 范围)
     max_sq = max(actual_seq_q) if actual_seq_q else D
     max_skv = max(actual_seq_kv) if actual_seq_kv else D
-    Dg = math.ceil(D / group_size)
+    # D=64→2, D=72→4 D=128→4.
+    _num_groups = math.ceil(D / group_size)
+    Dg = _num_groups + (_num_groups % 2)
 
     # Q: TND -> BNSD
     q_fp8_tnd = _to_torch_fp8(q)
@@ -448,7 +466,11 @@ def cpu_qfa_mxfp8(
         k_fp8_bnsd = mxfp8_golden_mod.pa_to_bnsd_data(
             k_cache, actual_seq_kv, block_size, bt, kv_layout=kv_cache_layout
         )
-
+        # PA_NZ 等布局会对 D 维做对齐 padding (如 D=72→96, 32 对齐),
+        # 裁剪到 logical D, 排除 padding 列 (fill_value=0), 与 NPU 算子
+        # 按 head_dim=logical D 计算的行为一致. 对 D∈{64,96,128} 等整除值是 no-op.
+        if k_fp8_bnsd.shape[-1] > D:
+            k_fp8_bnsd = k_fp8_bnsd[:, :, :, :D].contiguous()
         # V data: 同 K
         v_pa = _to_torch_fp8(v)
         v_cache = _reverse_layout_to_cache(
@@ -457,6 +479,8 @@ def cpu_qfa_mxfp8(
         v_fp8_bnsd = mxfp8_golden_mod.pa_to_bnsd_data(
             v_cache, actual_seq_kv, block_size, bt, kv_layout=kv_cache_layout
         )
+        if v_fp8_bnsd.shape[-1] > D:
+            v_fp8_bnsd = v_fp8_bnsd[:, :, :, :D].contiguous()
 
         # K scale: e8m0 -> fp32 -> reverse layout -> out_cache (Bn,N,Bs,Dg//2,2) -> grouped BNSD
         dk_e8m0 = _to_torch_e8m0(dequant_scale_k)
@@ -474,31 +498,49 @@ def cpu_qfa_mxfp8(
         )
 
         # V scale: e8m0 -> fp32 -> reverse layout -> out_cache (Bn,N,pack_bs,D,2) -> grouped BNSD
-        dv_e8m0 = _to_torch_e8m0(dequant_scale_v)
-        _assert_no_e8m0_nan(dv_e8m0, "descale_v")
-        dv_fp32 = mxfp8_golden_mod.e8m0_to_fp32(dv_e8m0)
-        dv_cache = _reverse_layout_to_cache(
-            dv_fp32, kv_cache_layout, is_scale=True, is_vscale=True
-        )
-        dv_bnsd_grouped = _pa_v_scale_to_bnsd_grouped(
-            dv_cache, actual_seq_kv, block_size, bt, group_size=group_size
-        )
+        if dequant_scale_v is not None:
+            dv_e8m0 = _to_torch_e8m0(dequant_scale_v)
+            _assert_no_e8m0_nan(dv_e8m0, "descale_v")
+            dv_fp32 = mxfp8_golden_mod.e8m0_to_fp32(dv_e8m0)
+            dv_cache = _reverse_layout_to_cache(
+                dv_fp32, kv_cache_layout, is_scale=True, is_vscale=True
+            )
+            dv_bnsd_grouped = _pa_v_scale_to_bnsd_grouped(
+                dv_cache, actual_seq_kv, block_size, bt, group_size=group_size
+            )
+        else:
+            Sg_max_tmp = math.ceil(max_skv / group_size) if max_skv > 0 else 0
+            dv_bnsd_grouped = torch.ones((B, N_kv, Sg_max_tmp, D), dtype=torch.float32)
+            logger.info(
+                "[GOLDEN] dequant_scale_v is None, CPU golden uses ones V scale"
+            )
         # V scale grouped: (B, N_kv, Sg_max, D), Sg_max = ceil(max_skv/32)
+        # PA_NZ 布局 V scale 的 D 维会 16 对齐 padding (如 D=72→80),
+        # 物理 D >= logical D, 裁剪到 logical D 排除 padding (fill_value=E8M0_MIN_POSITIVE).
         Sg_max = math.ceil(max_skv / group_size) if max_skv > 0 else 0
-        assert dv_bnsd_grouped.shape == (B, N_kv, Sg_max, D), (
-            f"V scale grouped shape mismatch: got {tuple(dv_bnsd_grouped.shape)}, "
-            f"expected {(B, N_kv, Sg_max, D)}"
+        assert dv_bnsd_grouped.shape[:3] == (B, N_kv, Sg_max), (
+            f"V scale grouped first 3 dims mismatch: got {tuple(dv_bnsd_grouped.shape[:3])}, "
+            f"expected {(B, N_kv, Sg_max)}"
         )
+        assert dv_bnsd_grouped.shape[3] >= D, (
+            f"V scale grouped D={dv_bnsd_grouped.shape[3]} < logical D={D}"
+        )
+        if dv_bnsd_grouped.shape[3] > D:
+            dv_bnsd_grouped = dv_bnsd_grouped[:, :, :, :D].contiguous()
     else:
         # 非 PA: K/V 都是 TND -> BNSD
         k_fp8_tnd = _to_torch_fp8(k)
         k_fp8_bnsd = _tnd_to_bnsd_fixed(
             k_fp8_tnd, actual_seq_kv, cu_seqlens=cu_seqlens_kv_list
         )
+        if k_fp8_bnsd.shape[-1] > D:
+            k_fp8_bnsd = k_fp8_bnsd[:, :, :, :D].contiguous()
         v_fp8_tnd = _to_torch_fp8(v)
         v_fp8_bnsd = _tnd_to_bnsd_fixed(
             v_fp8_tnd, actual_seq_kv, cu_seqlens=cu_seqlens_kv_list
         )
+        if v_fp8_bnsd.shape[-1] > D:
+            v_fp8_bnsd = v_fp8_bnsd[:, :, :, :D].contiguous()
 
         # K scale: e8m0 -> fp32 -> TND grouped -> BNSD grouped
         dk_e8m0 = _to_torch_e8m0(dequant_scale_k)
@@ -517,17 +559,33 @@ def cpu_qfa_mxfp8(
         )
 
         # V scale: e8m0 -> fp32 -> TND v-scale grouped -> BNSD grouped
-        dv_e8m0 = _to_torch_e8m0(dequant_scale_v)
-        _assert_no_e8m0_nan(dv_e8m0, "descale_v")
-        dv_fp32 = mxfp8_golden_mod.e8m0_to_fp32(dv_e8m0)
-        dv_bnsd_grouped = _tnd_v_scale_to_bnsd_grouped(
-            dv_fp32, actual_seq_kv, cu_seqlens=cu_seqlens_kv_list, group_size=group_size
-        )
+        if dequant_scale_v is not None:
+            dv_e8m0 = _to_torch_e8m0(dequant_scale_v)
+            _assert_no_e8m0_nan(dv_e8m0, "descale_v")
+            dv_fp32 = mxfp8_golden_mod.e8m0_to_fp32(dv_e8m0)
+            dv_bnsd_grouped = _tnd_v_scale_to_bnsd_grouped(
+                dv_fp32,
+                actual_seq_kv,
+                cu_seqlens=cu_seqlens_kv_list,
+                group_size=group_size,
+            )
+        else:
+            Sg_max_tmp = math.ceil(max_skv / group_size) if max_skv > 0 else 0
+            dv_bnsd_grouped = torch.ones((B, N_kv, Sg_max_tmp, D), dtype=torch.float32)
+            logger.info(
+                "[GOLDEN] dequant_scale_v is None, CPU golden uses ones V scale"
+            )
         Sg_max = math.ceil(max_skv / group_size) if max_skv > 0 else 0
-        assert dv_bnsd_grouped.shape == (B, N_kv, Sg_max, D), (
-            f"V scale grouped shape mismatch: got {tuple(dv_bnsd_grouped.shape)}, "
-            f"expected {(B, N_kv, Sg_max, D)}"
+        # TND V scale D 维可能因对齐 padding 而大于 logical D, 同 PA 分支处理.
+        assert dv_bnsd_grouped.shape[:3] == (B, N_kv, Sg_max), (
+            f"V scale grouped first 3 dims mismatch: got {tuple(dv_bnsd_grouped.shape[:3])}, "
+            f"expected {(B, N_kv, Sg_max)}"
         )
+        assert dv_bnsd_grouped.shape[3] >= D, (
+            f"V scale grouped D={dv_bnsd_grouped.shape[3]} < logical D={D}"
+        )
+        if dv_bnsd_grouped.shape[3] > D:
+            dv_bnsd_grouped = dv_bnsd_grouped[:, :, :, :D].contiguous()
 
     # ----- 调 cpu_mxfp8_golden (BNSD fp8 + group 维 fp32 scale) -----
     cpu_out, cpu_lse = mxfp8_golden_mod.cpu_mxfp8_golden(
@@ -588,6 +646,7 @@ def cpu_qfa_mxfp8(
 # layout_out=TND, 仅 PA 模式
 # ==============================================================================
 
+
 def cpu_qfa_gqa_fp8(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -598,7 +657,7 @@ def cpu_qfa_gqa_fp8(
     p_scale: torch.Tensor,
     block_table: torch.Tensor,
     *,
-    B: int,
+    batch_size: int,
     N_q: int,
     N_kv: int,
     D: int,
@@ -617,9 +676,11 @@ def cpu_qfa_gqa_fp8(
     enable_lse: bool = False,
     graph_path: int = 0,
     input_layout: str = "NTD",
-    is_contiguous: bool = True,
+    uncontiguous_dim: List[int] = None,
     device_id: int = 0,
     softmax_scale: float = None,
+    win_left: int = -1,
+    win_right: int = -1,
     data_range_q: float = 1.0,
     data_range_k: float = 1.0,
     data_range_v: float = 1.0,
@@ -658,6 +719,14 @@ def cpu_qfa_gqa_fp8(
     cu_seqlens_q_list = list(cu_seqlens_q) if cu_seqlens_q is not None else [0]
     cu_seqlens_kv_list = list(cu_seqlens_kv) if cu_seqlens_kv is not None else [0]
 
+    # batch_size: CSV 原始值 (可为 -1), 透传给 metadata;
+    # B: 从 cu_seqlens_q 推导的正整数, 供 shape assert 与 BNSD 逆转换。
+    B = (
+        max(1, len(cu_seqlens_q_list) - 1)
+        if cu_seqlens_q_list and len(cu_seqlens_q_list) >= 2
+        else 1
+    )
+
     p_scale_value = kwargs.get("p_scale_value", 1.0)
     if isinstance(p_scale_value, torch.Tensor):
         p_scale_value = float(p_scale_value.item())
@@ -684,11 +753,15 @@ def cpu_qfa_gqa_fp8(
             "q_scale_layout": q_scale_layout,
             "enable_lse": enable_lse,
             "input_layout": input_layout,
-            "is_contiguous": is_contiguous,
+            "uncontiguous_dim": uncontiguous_dim
+            if uncontiguous_dim is not None
+            else [-1] * 8,
             "device_id": device_id,
             "graph_path": graph_path,
             "softmax_scale": softmax_scale,
             "p_scale_value": p_scale_value,
+            "win_left": win_left,
+            "win_right": win_right,
             "QUANT_MODE": 6,
             "SPARSE_MODE": mask_mode,
             "BLOCK_SIZE": block_size,
@@ -760,6 +833,8 @@ def cpu_qfa_gqa_fp8(
             )
         if cpu_lse_aligned.ndim == 3 and cpu_lse_aligned.shape[-1] == 1:
             cpu_lse_aligned = cpu_lse_aligned.squeeze(-1).contiguous()
+        if cpu_lse_aligned.ndim == 2:
+            cpu_lse_aligned = cpu_lse_aligned.permute(1, 0).contiguous()
         result = [cpu_out_aligned, cpu_lse_aligned]
     else:
         result = [cpu_out_aligned, None]

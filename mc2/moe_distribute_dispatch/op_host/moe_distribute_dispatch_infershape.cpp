@@ -185,10 +185,10 @@ static ge::graphStatus InferShapeMoeDistributeDispatch(gert::InferShapeContext *
     int64_t localExpertNum;
     int64_t globalBsReal;
     OP_CHECK_IF(InferExpertIdsShape(context, k, h, globalBsReal, *epWorldSize) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context->GetNodeName(), "InferExpertIdsShape failed."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(InferExpandXAndScalesShape(context, k, h, localExpertNum, globalBsReal, *epWorldSize) !=
-                    ge::GRAPH_SUCCESS,
-                OP_LOGE(context->GetNodeName(), "InferExpandXAndScalesShape failed."), return ge::GRAPH_FAILED);
+                OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "InferExpertIdsShape failed."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        InferExpandXAndScalesShape(context, k, h, localExpertNum, globalBsReal, *epWorldSize) != ge::GRAPH_SUCCESS,
+        OP_LOGE_WITHOUT_REPORT(context->GetNodeName(), "InferExpandXAndScalesShape failed."), return ge::GRAPH_FAILED);
     expertTokenNumsShape->SetDimNum(DIM_ONE);
     expertTokenNumsShape->SetDim(0U, localExpertNum);
     OP_LOGD(context->GetNodeName(), "expertTokenNumsShape shape is :%s after infershape.",
@@ -221,7 +221,7 @@ static ge::graphStatus InferDataTypeMoeDistributeDispatch(gert::InferDataTypeCon
     OPS_CHECK_NULL_WITH_CONTEXT(context, quantMode);
     const auto scalesType = context->GetOptionalInputDataType(DISPATCH_INPUT_SCALES_IDX_INDEX);
     bool quantFlag = (scalesType != ge::DT_UNDEFINED) ? true : false;
-    OP_LOGD(context->GetNodeName(), "quantFlag id %d.", quantFlag);
+    OP_LOGD(context->GetNodeName(), "quantFlag is %d.", quantFlag);
     if (quantFlag || (*quantMode != 0)) {
         context->SetOutputDataType(DISPATCH_OUTPUT_EXPAND_X_INDEX, ge::DT_INT8);
     } else {
@@ -235,7 +235,6 @@ static ge::graphStatus InferDataTypeMoeDistributeDispatch(gert::InferDataTypeCon
     OP_LOGD(context->GetNodeName(), "End to do InferDataTypeMoeDistributeDispatch.");
     return ge::GRAPH_SUCCESS;
 }
-
 
 IMPL_OP_INFERSHAPE(MoeDistributeDispatch)
     .InferShape(InferShapeMoeDistributeDispatch)

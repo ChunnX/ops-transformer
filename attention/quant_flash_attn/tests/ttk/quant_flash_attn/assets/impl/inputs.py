@@ -44,7 +44,7 @@ def generate_qfa_mxfp8_inputs(
     p_scale: torch.Tensor,
     block_table: torch.Tensor,
     *,
-    B: int,
+    batch_size: int,
     N_q: int,
     N_kv: int,
     D: int,
@@ -63,12 +63,16 @@ def generate_qfa_mxfp8_inputs(
     enable_lse: bool = False,
     graph_path: int = 0,
     input_layout: str = "TND",
-    is_contiguous: bool = True,
+    uncontiguous_dim: List[int] = None,
     device_id: int = 0,
     softmax_scale: float = None,
     data_range_q: float = 1.0,
     data_range_k: float = 1.0,
     data_range_v: float = 1.0,
+    layout_q: str = "TND",
+    layout_q_descale: str = "TND",
+    layout_kv: str = "TND",
+    layout_out: str = "TND",
     **kwargs,
 ):
     # cu_seqlens -> actual_seq (差分还原)
@@ -88,6 +92,10 @@ def generate_qfa_mxfp8_inputs(
         actual_seq_kv = list(seqused_kv)
     else:
         actual_seq_kv = [0]
+
+    # batch_size: CSV 原始值 (可为 -1), 透传给 metadata;
+    # B: 从 cu_seqlens_q 推导的正整数, 供 BNSD 张量生成。
+    B = max(1, len(cu_seqlens_q) - 1) if cu_seqlens_q and len(cu_seqlens_q) >= 2 else 1
 
     max_sq = max(actual_seq_q) if actual_seq_q else D
     max_skv = max(actual_seq_kv) if actual_seq_kv else D
@@ -110,6 +118,10 @@ def generate_qfa_mxfp8_inputs(
         ("BLOCK_SIZE", block_size),
         ("Q_SCALE_LAYOUT", q_scale_layout),
         ("INPUT_LAYOUT", input_layout),
+        ("LAYOUT_Q", layout_q),
+        ("LAYOUT_Q_DESCALE", layout_q_descale),
+        ("LAYOUT_KV", layout_kv),
+        ("LAYOUT_OUT", layout_out),
     ]:
         setattr(mxfp8_golden_mod, gkey, gval)
 
@@ -160,17 +172,23 @@ def generate_qfa_mxfp8_inputs(
     )
 
     q_fp8_bnsd_f32 = (
-        mxfp8_golden_mod.mxfp8_per_token_group_quant(q_bf16, quant_scale_q_bnsd, group_size)
+        mxfp8_golden_mod.mxfp8_per_token_group_quant(
+            q_bf16, quant_scale_q_bnsd, group_size
+        )
         .clamp(-fp8_max, fp8_max)
         .to(fp8_dtype)
     )
     k_fp8_bnsd_f32 = (
-        mxfp8_golden_mod.mxfp8_per_token_group_quant(k_bf16, quant_scale_k_bnsd, group_size)
+        mxfp8_golden_mod.mxfp8_per_token_group_quant(
+            k_bf16, quant_scale_k_bnsd, group_size
+        )
         .clamp(-fp8_max, fp8_max)
         .to(fp8_dtype)
     )
     v_fp8_bnsd_f32 = (
-        mxfp8_golden_mod.mxfp8_per_channel_group_quant(v_bf16, quant_scale_v_bnsd, group_size)
+        mxfp8_golden_mod.mxfp8_per_channel_group_quant(
+            v_bf16, quant_scale_v_bnsd, group_size
+        )
         .clamp(-fp8_max, fp8_max)
         .to(fp8_dtype)
     )
@@ -185,7 +203,11 @@ def generate_qfa_mxfp8_inputs(
 
     if enable_pa:
         total_blocks_k = int(dequant_scale_k.shape[0])
-        total_blocks_v = int(dequant_scale_v.shape[0])
+        total_blocks_v = (
+            int(dequant_scale_v.shape[0])
+            if dequant_scale_v is not None
+            else total_blocks_k
+        )
         total_blocks = min(total_blocks_k, total_blocks_v)
 
         if block_table.size == 0:
@@ -275,9 +297,18 @@ def generate_qfa_mxfp8_inputs(
 
     # ----- Step 4: fp32 scale -> e8m0 -----
 
-    q_scale_e8m0 = mxfp8_golden_mod.fp32_to_e8m0fnu_safe(q_scale_final_layout, "Q scale")
-    k_scale_e8m0 = mxfp8_golden_mod.fp32_to_e8m0fnu_safe(k_scale_final_layout, "K scale")
-    v_scale_e8m0 = mxfp8_golden_mod.fp32_to_e8m0fnu_safe(v_scale_final_layout, "V scale")
+    q_scale_e8m0 = mxfp8_golden_mod.fp32_to_e8m0fnu_safe(
+        q_scale_final_layout, "Q scale"
+    )
+    k_scale_e8m0 = mxfp8_golden_mod.fp32_to_e8m0fnu_safe(
+        k_scale_final_layout, "K scale"
+    )
+    if dequant_scale_v is not None:
+        v_scale_e8m0 = mxfp8_golden_mod.fp32_to_e8m0fnu_safe(
+            v_scale_final_layout, "V scale"
+        )
+    else:
+        v_scale_e8m0 = None
 
     def _inplace_write(dst_np, src_torch, slot_name):
         if tuple(dst_np.shape) != tuple(src_torch.shape):
@@ -306,7 +337,8 @@ def generate_qfa_mxfp8_inputs(
     _inplace_write(v, v_fp8_final, "v (slot 2)")
     _inplace_write(dequant_scale_q, q_scale_e8m0, "descale_q (slot 3)")
     _inplace_write(dequant_scale_k, k_scale_e8m0, "descale_k (slot 4)")
-    _inplace_write(dequant_scale_v, v_scale_e8m0, "descale_v (slot 5)")
+    if dequant_scale_v is not None and v_scale_e8m0 is not None:
+        _inplace_write(dequant_scale_v, v_scale_e8m0, "descale_v (slot 5)")
 
     # ----- p_scale: in-place 写 fp32 -----
     p_scale_value = kwargs.get("p_scale_value", 1.0)
@@ -325,7 +357,7 @@ def generate_qfa_mxfp8_inputs(
         tuple(q.shape),
         tuple(dequant_scale_q.shape),
         tuple(dequant_scale_k.shape),
-        tuple(dequant_scale_v.shape),
+        tuple(dequant_scale_v.shape) if dequant_scale_v is not None else None,
         enable_pa,
     )
 
@@ -337,6 +369,7 @@ def generate_qfa_mxfp8_inputs(
 # layout_out=TND, 仅 PA 模式
 # ==============================================================================
 
+
 def generate_qfa_gqa_fp8_inputs(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -347,7 +380,7 @@ def generate_qfa_gqa_fp8_inputs(
     p_scale: torch.Tensor,
     block_table: torch.Tensor,
     *,
-    B: int,
+    batch_size: int,
     N_q: int,
     N_kv: int,
     D: int,
@@ -366,7 +399,7 @@ def generate_qfa_gqa_fp8_inputs(
     enable_lse: bool = False,
     graph_path: int = 0,
     input_layout: str = "NTD",
-    is_contiguous: bool = True,
+    uncontiguous_dim: List[int] = None,
     device_id: int = 0,
     softmax_scale: float = None,
     data_range_q: float = 1.0,
@@ -407,6 +440,10 @@ def generate_qfa_gqa_fp8_inputs(
         actual_seq_kv = list(seqused_kv)
     else:
         actual_seq_kv = [0]
+
+    # batch_size: CSV 原始值 (可为 -1), 透传给 metadata;
+    # B: 从 cu_seqlens_q 推导的正整数, 供 BNSD 张量生成。
+    B = max(1, len(cu_seqlens_q) - 1) if cu_seqlens_q and len(cu_seqlens_q) >= 2 else 1
 
     max_sq = max(actual_seq_q) if actual_seq_q else D
     max_skv = max(actual_seq_kv) if actual_seq_kv else D
@@ -499,7 +536,9 @@ def generate_qfa_gqa_fp8_inputs(
     # CSV 分配的 k/v slot 形状决定物理 block 数 (slot 第一维)
     k_slot_blocks = int(k.shape[0]) if k.ndim >= 4 else 0
     v_slot_blocks = int(v.shape[0]) if v.ndim >= 4 else 0
-    total_blocks = min(k_slot_blocks, v_slot_blocks) if (k_slot_blocks and v_slot_blocks) else 0
+    total_blocks = (
+        min(k_slot_blocks, v_slot_blocks) if (k_slot_blocks and v_slot_blocks) else 0
+    )
 
     if block_table.size == 0:
         raise ValueError(
@@ -512,7 +551,11 @@ def generate_qfa_gqa_fp8_inputs(
             f"[INPUTS GQA FP8] PA mode block_table max_blocks={max_blocks} invalid"
         )
     torch.manual_seed(42)
-    blockid_pool = torch.randperm(total_blocks, dtype=torch.int32) if total_blocks > 0 else torch.zeros(0, dtype=torch.int32)
+    blockid_pool = (
+        torch.randperm(total_blocks, dtype=torch.int32)
+        if total_blocks > 0
+        else torch.zeros(0, dtype=torch.int32)
+    )
     bt_real = torch.full((B, max_blocks), -1, dtype=torch.int32)
     idx = 0
     for b in range(B):

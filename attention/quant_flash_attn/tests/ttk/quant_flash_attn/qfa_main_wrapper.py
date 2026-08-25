@@ -22,7 +22,7 @@ TTK test case 是隔离进程, 不能跨 case 内存传 metadata; run_main 接�
 import logging
 import os
 import sys
-from typing import List
+from typing import List, Optional
 
 import torch
 import torch_npu
@@ -68,11 +68,11 @@ def run_main(
     v: torch.Tensor,
     dequant_scale_q: torch.Tensor,
     dequant_scale_k: torch.Tensor,
-    dequant_scale_v: torch.Tensor,
-    p_scale: torch.Tensor,
-    block_table: torch.Tensor,
+    dequant_scale_v: Optional[torch.Tensor] = None,
+    p_scale: Optional[torch.Tensor] = None,
+    block_table: Optional[torch.Tensor] = None,
     *,
-    B: int,
+    batch_size: int,
     N_q: int,
     N_kv: int,
     D: int,
@@ -91,9 +91,11 @@ def run_main(
     enable_lse: bool = False,
     graph_path: int = 0,
     input_layout: str = "TND",
-    is_contiguous: bool = True,
+    uncontiguous_dim: List[int] = None,
     device_id: int = 0,
     softmax_scale: float = None,
+    win_left: int = -1,
+    win_right: int = -1,
     data_range_q: float = 1.0,
     data_range_k: float = 1.0,
     data_range_v: float = 1.0,
@@ -117,9 +119,18 @@ def run_main(
     cu_seqlens_q_list = list(cu_seqlens_q) if cu_seqlens_q is not None else [0]
     cu_seqlens_kv_list = list(cu_seqlens_kv) if cu_seqlens_kv is not None else [0]
 
+    # batch_size: CSV 原始值 (可为 -1), 透传给 metadata 的 batch_size;
+    # B: 从 cu_seqlens_q 推导的正整数, 供 inputs/golden 生成 BNSD 张量。
+    B = (
+        max(1, len(cu_seqlens_q_list) - 1)
+        if cu_seqlens_q_list and len(cu_seqlens_q_list) >= 2
+        else 1
+    )
+
     _apply_golden_globals(
         {
             "B": B,
+            "BATCH_SIZE": batch_size,
             "N_q": N_q,
             "N_kv": N_kv,
             "D": D,
@@ -139,10 +150,14 @@ def run_main(
             "FP8_DTYPE": torch.float8_e4m3fn,
             "QUANT_GROUP_SIZE": 32,
             "INPUT_LAYOUT": input_layout,
-            "IS_CONTIGUOUS": is_contiguous,
+            "UNCONTIGUOUS_DIMS": uncontiguous_dim
+            if uncontiguous_dim is not None
+            else [-1] * 8,
             "DEVICE_ID": device_id,
             "GRAPH_PATH": graph_path,
             "SOFTMAX_SCALE": softmax_scale,
+            "WIN_LEFT": win_left,
+            "WIN_RIGHT": win_right,
             "SEED_Q": kwargs.get("seed_q"),
             "SEED_K": kwargs.get("seed_k"),
             "SEED_V": kwargs.get("seed_v"),
@@ -195,19 +210,25 @@ def run_main(
         )
         deq_q = quant_scale_q
         deq_k = quant_scale_k
-        deq_v = quant_scale_v
+        deq_v = quant_scale_v if dequant_scale_v is not None else None
         q_fp8 = (
-            mxfp8_golden_mod.mxfp8_per_token_group_quant(q_cpu, quant_scale_q, group_size)
+            mxfp8_golden_mod.mxfp8_per_token_group_quant(
+                q_cpu, quant_scale_q, group_size
+            )
             .clamp(-fp8_max, fp8_max)
             .to(fp8_dtype)
         )
         k_fp8 = (
-            mxfp8_golden_mod.mxfp8_per_token_group_quant(k_cpu, quant_scale_k, group_size)
+            mxfp8_golden_mod.mxfp8_per_token_group_quant(
+                k_cpu, quant_scale_k, group_size
+            )
             .clamp(-fp8_max, fp8_max)
             .to(fp8_dtype)
         )
         v_fp8 = (
-            mxfp8_golden_mod.mxfp8_per_channel_group_quant(v_cpu, quant_scale_v, group_size)
+            mxfp8_golden_mod.mxfp8_per_channel_group_quant(
+                v_cpu, quant_scale_v, group_size
+            )
             .clamp(-fp8_max, fp8_max)
             .to(fp8_dtype)
         )
@@ -285,13 +306,14 @@ def run_main(
         metadata = quant_flash_attn_metadata(
             num_heads_q=inputs["q_n"],
             num_heads_kv=inputs["kv_n"],
-            head_dim=inputs["q"].shape[-1],
+            head_dim=D,
             quant_mode=quant_mode,
             cu_seqlens_q=cu_seqlens_q_t if is_tnd_q else None,
             cu_seqlens_kv=cu_seqlens_kv_t if is_tnd_kv else None,
             seqused_q=seqused_q_t,
             seqused_kv=seqused_kv_t,
-            dequant_scale_v=inputs["dequant_scale_v"],
+            v_descale=inputs["dequant_scale_v"],
+            batch_size=batch_size,
             mask_mode=inputs["sparse_mode"],
             layout_q=layout_q,
             layout_q_descale=inputs["layout_q_descale"],
@@ -341,14 +363,20 @@ def run_main(
     torch.npu.synchronize()
 
     act_seqused_q = (
-        fp8_golden_mod._actual_seq_q() if quant_mode == 6 else mxfp8_golden_mod._actual_seq_q()
+        fp8_golden_mod._actual_seq_q()
+        if quant_mode == 6
+        else mxfp8_golden_mod._actual_seq_q()
     )
     # T_actual: 以 actual_seq_q (seqused_q 优先, 否则从 cu_seqlens_q 差分) 为准,
     # 与 golden (assets/impl/golden.py) 截断逻辑保持一致.
-    T_actual = sum(act_seqused_q) if act_seqused_q else (
-        cu_seqlens_q_list[-1]
-        if cu_seqlens_q_list is not None and len(cu_seqlens_q_list) > 1
-        else 0
+    T_actual = (
+        sum(act_seqused_q)
+        if act_seqused_q
+        else (
+            cu_seqlens_q_list[-1]
+            if cu_seqlens_q_list is not None and len(cu_seqlens_q_list) > 1
+            else 0
+        )
     )
     if atten_out.shape[0] > T_actual:
         atten_out = atten_out[:T_actual]

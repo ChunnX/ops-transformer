@@ -13,7 +13,7 @@
 import logging
 import os
 import sys
-from typing import List
+from typing import List, Optional
 
 import torch
 import torch_npu
@@ -53,11 +53,11 @@ def npu_qfa(
     v: torch.Tensor,
     dequant_scale_q: torch.Tensor,
     dequant_scale_k: torch.Tensor,
-    dequant_scale_v: torch.Tensor,
-    p_scale: torch.Tensor,
-    block_table: torch.Tensor,
+    dequant_scale_v: Optional[torch.Tensor] = None,
+    p_scale: Optional[torch.Tensor] = None,
+    block_table: Optional[torch.Tensor] = None,
     *,
-    B: int,
+    batch_size: int,
     N_q: int,
     N_kv: int,
     D: int,
@@ -76,12 +76,18 @@ def npu_qfa(
     enable_lse: bool = False,
     graph_path: int = 0,
     input_layout: str = "TND",
-    is_contiguous: bool = True,
+    uncontiguous_dim: List[int] = None,
     device_id: int = 0,
     softmax_scale: float = None,
+    win_left: int = -1,
+    win_right: int = -1,
     data_range_q: float = 1.0,
     data_range_k: float = 1.0,
     data_range_v: float = 1.0,
+    layout_q: str = "TND",
+    layout_q_descale: str = "TND",
+    layout_kv: str = "TND",
+    layout_out: str = "TND",
     **kwargs,
 ):
     torch_npu.npu.set_device(int(device_id))
@@ -95,9 +101,18 @@ def npu_qfa(
     cu_seqlens_q_list = list(cu_seqlens_q) if cu_seqlens_q is not None else None
     cu_seqlens_kv_list = list(cu_seqlens_kv) if cu_seqlens_kv is not None else None
 
+    # batch_size: CSV 原始值 (可为 -1), 透传给 metadata 的 batch_size;
+    # B: 从 cu_seqlens_q 推导的正整数, 供 inputs/golden 生成 BNSD 张量。
+    B = (
+        max(1, len(cu_seqlens_q_list) - 1)
+        if cu_seqlens_q_list and len(cu_seqlens_q_list) >= 2
+        else 1
+    )
+
     _apply_golden_globals(
         {
             "B": B,
+            "BATCH_SIZE": batch_size,
             "N_q": N_q,
             "N_kv": N_kv,
             "D": D,
@@ -120,10 +135,18 @@ def npu_qfa(
             "QUANT_MODE": quant_mode,
             "QUANT_GROUP_SIZE": 32,
             "INPUT_LAYOUT": input_layout,
-            "IS_CONTIGUOUS": is_contiguous,
+            "UNCONTIGUOUS_DIMS": uncontiguous_dim
+            if uncontiguous_dim is not None
+            else [-1] * 8,
             "DEVICE_ID": device_id,
             "GRAPH_PATH": graph_path,
             "SOFTMAX_SCALE": softmax_scale,
+            "WIN_LEFT": win_left,
+            "WIN_RIGHT": win_right,
+            "LAYOUT_Q": layout_q,
+            "LAYOUT_Q_DESCALE": layout_q_descale,
+            "LAYOUT_KV": layout_kv,
+            "LAYOUT_OUT": layout_out,
         },
         quant_mode=quant_mode,
     )
@@ -182,4 +205,6 @@ def npu_qfa(
 
     if not enable_lse:
         lse_out = None
+    else:
+        lse_out = lse_out[:, : atten_out.shape[0]].contiguous()
     return atten_out, lse_out

@@ -70,7 +70,8 @@ REGISTER_TILING_DATA_CLASS(MixedQuantSparseFlashMla, MixedQuantSparseFlashMlaTil
 // ---------------算子Tiling类---------------
 class MixedQuantSparseFlashMlaTiling {
 public:
-    explicit MixedQuantSparseFlashMlaTiling(gert::TilingContext *context) : context_(context) {};
+    explicit MixedQuantSparseFlashMlaTiling(gert::TilingContext *context)
+        : context_(context) {};
     ge::graphStatus DoOpTiling(MQSMLATilingInfo *tilingInfo);
 
 private:
@@ -84,5 +85,5 @@ private:
     MQSMLATilingInfo *qsmlaInfo_ = nullptr;
 };
 
-}
+} // namespace optiling
 #endif
