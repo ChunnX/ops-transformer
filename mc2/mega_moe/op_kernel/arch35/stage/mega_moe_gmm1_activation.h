@@ -878,7 +878,8 @@ __aicore__ inline void Gmm1ExecA8W4(Scheduler &scheduler, const Params &params, 
 template <typename ElementA, typename EpilogueElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, bool IsWeightNZ = false, uint32_t Gmm1TileM = L1_TILE_M_256,
           uint32_t EpilogueTileM = Gmm1TileM, bool TopkWeightsPrefetch = false, bool IsShared = false,
-          bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
+          bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false,
+          uint64_t GenericFullLoadMode = Blaze::Gemm::NONE_FULL_LOAD_MODE>
 __aicore__ inline void RunGmm1Generic(
     BlockEpilogueActivationMxQuant<EpilogueElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true, EpilogueTileM,
                                    L1_TILE_N, TopkWeightsPrefetch, IsGmm1Interleaved> &epilogueOp,
@@ -887,9 +888,9 @@ __aicore__ inline void RunGmm1Generic(
     uint32_t expertBeforeCnt, uint32_t expertIdx, uint16_t &pingpongIdx, void *blockMmadContext = nullptr,
     bool allowWeightL2Bypass = false, CriticalPathTileTraceContext *traceContext = nullptr)
 {
-    using GmmConfig =
-        GmmKernel::Config<false, COMBINE_NO_QUANT, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB,
-                          IsWeightNZ, TopkWeightsPrefetch, IsShared, false, IsGmm1Interleaved, IsWaveFlagGrained>;
+    using GmmConfig = GmmKernel::Config<false, COMBINE_NO_QUANT, ElementA, ElementB, ElementC, ElementMxScaleA,
+                                        ElementMxScaleB, IsWeightNZ, TopkWeightsPrefetch, IsShared, false,
+                                        IsGmm1Interleaved, IsWaveFlagGrained, GenericFullLoadMode>;
     auto config = GmmConfig::BuildGmm1ProblemConfig(problemShape, blockJob, Gmm1TileM);
 
     GmmKernel::BlockScheduler scheduler({config.m, config.schedulerN, config.k},
@@ -926,7 +927,8 @@ __aicore__ inline void RunGmm1Generic(
 template <typename ElementA, typename EpilogueElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, bool IsWeightNZ = false, uint32_t Gmm1TileM = L1_TILE_M_256,
           uint32_t EpilogueTileM = Gmm1TileM, bool TopkWeightsPrefetch = false, bool IsShared = false,
-          bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
+          bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false,
+          uint64_t GenericFullLoadMode = Blaze::Gemm::NONE_FULL_LOAD_MODE>
 __aicore__ inline void RunGmm1Generic(
     BlockEpilogueActivationMxQuant<EpilogueElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true, EpilogueTileM,
                                    L1_TILE_N, TopkWeightsPrefetch, IsGmm1Interleaved> &epilogueOp,
@@ -937,9 +939,10 @@ __aicore__ inline void RunGmm1Generic(
     BlockJobContext blockJob{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
                              static_cast<uint32_t>(GetBlockNum())};
     RunGmm1Generic<ElementA, EpilogueElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, IsWeightNZ,
-                   Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained>(
-        epilogueOp, params, problemShape, gmmAddrInfo, startBlockIdx, vecSetSyncCom, blockJob, expertBeforeCnt,
-        expertIdx, pingpongIdx, blockMmadContext, allowWeightL2Bypass);
+                   Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained,
+                   GenericFullLoadMode>(epilogueOp, params, problemShape, gmmAddrInfo, startBlockIdx, vecSetSyncCom,
+                                        blockJob, expertBeforeCnt, expertIdx, pingpongIdx, blockMmadContext,
+                                        allowWeightL2Bypass);
 }
 
 // RunGmm1A8W4：执行 A8W4 prologue（W4→W8）、GMM1、SwiGLU 和量化。
@@ -1083,7 +1086,8 @@ __aicore__ inline void UpdateMoeExpertGmm1GlobalBuffer(
 
 template <typename QuantOutType, typename ActivationOutType, typename QuantScaleType, uint32_t Gmm1TileM,
           uint32_t EpilogueTileM, bool TopkWeightsPrefetch, bool IsGmm1Interleaved = false,
-          bool IsWaveFlagGrained = false, bool IsShared = false, typename BlockEpilogue>
+          bool IsWaveFlagGrained = false, bool IsShared = false, bool EnableGenericAFullLoad = false,
+          typename BlockEpilogue>
 __aicore__ inline void RunGmm1GenericByWeightFormat(const GmmExecutionConfig &gmmConfig, const Params &gmmParams,
                                                     BlockEpilogue &epilogueOp, const GMMAddrInfo &gmmAddrInfo,
                                                     const ProblemShape &problemShape, uint32_t globalTokenStartIndex,
@@ -1092,14 +1096,48 @@ __aicore__ inline void RunGmm1GenericByWeightFormat(const GmmExecutionConfig &gm
                                                     bool allowWeightL2Bypass = false,
                                                     CriticalPathTileTraceContext *traceContext = nullptr)
 {
+    using GenericAFullLoadConfig =
+        GmmKernel::Config<false, COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t, QuantScaleType,
+                          QuantScaleType, false, TopkWeightsPrefetch, IsShared, false, IsGmm1Interleaved,
+                          IsWaveFlagGrained, Blaze::Gemm::A_FULL_LOAD_MODE>;
+    bool useGenericAFullLoad = false;
+    if constexpr (EnableGenericAFullLoad) {
+        useGenericAFullLoad =
+            persistentBlockMmadContext == nullptr && GenericAFullLoadConfig::CanUseGenericAFullLoad(
+                                                         static_cast<uint32_t>(Get<M_VALUE>(problemShape)),
+                                                         static_cast<uint32_t>(Get<K_VALUE>(problemShape)), Gmm1TileM);
+    }
+
     if (gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
         gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
+        if constexpr (EnableGenericAFullLoad) {
+            if (useGenericAFullLoad) {
+                RunGmm1Generic<QuantOutType, ActivationOutType, QuantOutType, bfloat16_t, QuantScaleType,
+                               QuantScaleType, true, Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, IsShared,
+                               IsGmm1Interleaved, IsWaveFlagGrained, Blaze::Gemm::A_FULL_LOAD_MODE>(
+                    epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
+                    runtimeState.vecSetSyncCom, gmmConfig.blockJob, globalTokenStartIndex, expertIdx,
+                    runtimeState.pingpongIdx, nullptr, allowWeightL2Bypass, traceContext);
+                return;
+            }
+        }
         RunGmm1Generic<QuantOutType, ActivationOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType, true,
                        Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained>(
             epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx, runtimeState.vecSetSyncCom,
             gmmConfig.blockJob, globalTokenStartIndex, expertIdx, runtimeState.pingpongIdx, persistentBlockMmadContext,
             allowWeightL2Bypass, traceContext);
     } else {
+        if constexpr (EnableGenericAFullLoad) {
+            if (useGenericAFullLoad) {
+                RunGmm1Generic<QuantOutType, ActivationOutType, QuantOutType, bfloat16_t, QuantScaleType,
+                               QuantScaleType, false, Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, IsShared,
+                               IsGmm1Interleaved, IsWaveFlagGrained, Blaze::Gemm::A_FULL_LOAD_MODE>(
+                    epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
+                    runtimeState.vecSetSyncCom, gmmConfig.blockJob, globalTokenStartIndex, expertIdx,
+                    runtimeState.pingpongIdx, nullptr, allowWeightL2Bypass, traceContext);
+                return;
+            }
+        }
         RunGmm1Generic<QuantOutType, ActivationOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType, false,
                        Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained>(
             epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx, runtimeState.vecSetSyncCom,

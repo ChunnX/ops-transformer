@@ -58,7 +58,8 @@ struct BlockMmadSelector<true, C> {
 // 汇总 GMM1/GMM2 在不同量化路径下共用的类型、shape 和 layout 配置。
 template <bool IsA8W4, uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false, bool TopkWeightsPrefetch = false,
-          bool IsShared = false, bool IsLayered = false, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
+          bool IsShared = false, bool IsLayered = false, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false,
+          uint64_t GenericFullLoadMode = Blaze::Gemm::NONE_FULL_LOAD_MODE>
 struct Config {
     static constexpr bool IS_SHARED = IsShared;
     static constexpr bool IS_WEIGHT_NZ = IsWeightNZ;
@@ -82,8 +83,9 @@ struct Config {
     using LayoutScaleB = Te::ScaleBDNLayoutPtn;
 
     using LayoutBias = Te::NDExtLayoutPtn;
+    using GenericDispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<GenericFullLoadMode>;
     using DispatchPolicy =
-        Std::conditional_t<IsA8W4, Blaze::Gemm::MatmulMxFp8Fp4DynamicKL1TailResplit, Blaze::Gemm::MatmulWithScaleMx<>>;
+        Std::conditional_t<IsA8W4, Blaze::Gemm::MatmulMxFp8Fp4DynamicKL1TailResplit, GenericDispatchPolicy>;
     using LayoutB = Std::conditional_t<IsA8W4, Te::ZNLayoutPtn,
                                        Std::conditional_t<IsWeightNZ, Te::ZNLayoutPtn, Te::DNExtLayoutPtn>>;
 
@@ -161,7 +163,10 @@ struct Config {
         constexpr uint64_t scaleBytesPerGroup = MXFP_MULTI_BASE_SIZE;
         constexpr uint64_t scaleTransferBytes = 64U * 1024U;
         constexpr uint64_t maxScaleFactor = 127U;
-        constexpr uint64_t maxKL1Units = 4U;
+        // 一个 K unit 含 256 个 logical element。FP4 需要 4 个 unit 才达到 512B 连续数据，
+        // FP8 使用 2 个 unit 即可达到相同字节数，不能共享 A4W4 的放大上限。
+        constexpr bool isGenericA4W4 = Blaze::Gemm::IsFp4<ElementA>() && Blaze::Gemm::IsFp4<ElementB>();
+        constexpr uint64_t maxGenericKL1Units = isGenericA4W4 ? 4U : 2U;
         constexpr uint64_t aElementsPerByte = Blaze::Gemm::IsFp4<ElementA>() ? 2U : 1U;
         constexpr uint64_t bElementsPerByte = Blaze::Gemm::IsFp4<ElementB>() ? 2U : 1U;
 
@@ -179,7 +184,7 @@ struct Config {
         const uint64_t scaleBBytesPerUnit = blockN64 * scaleKBytesPerUnit;
         const uint64_t scaleBytesPerUnit = scaleABytesPerUnit + scaleBBytesPerUnit;
 
-        uint64_t kL1Units = maxKL1Units;
+        uint64_t kL1Units = maxGenericKL1Units;
         kL1Units = Blaze::Gemm::Min(kL1Units, static_cast<uint64_t>(k) / L1_TILE_K);
         kL1Units = Blaze::Gemm::Min(kL1Units, halfL1Size / (dataBytesPerUnit + scaleBytesPerUnit));
         kL1Units = Blaze::Gemm::Min(kL1Units, scaleTransferBytes / scaleABytesPerUnit);
@@ -209,6 +214,88 @@ struct Config {
         return MakeL1Params(kL1, scaleFactor * kL1);
     }
 
+    struct GenericAFullLoadL1Config {
+        bool fits;
+        typename BlockMmad::L1Params l1Params;
+    };
+
+    // 按 BlockMmad::InitAFullLoadL1BufferOffsets 的缓冲组成计算 FullLoad 配置。
+    static __aicore__ inline GenericAFullLoadL1Config CalcGenericAFullLoadL1Config(uint32_t blockM, uint32_t blockN,
+                                                                                   uint32_t k)
+    {
+        constexpr uint64_t totalL1Size = AscendC::TOTAL_L1_SIZE;
+        constexpr uint64_t scaleGroupK = 64U;
+        constexpr uint64_t scaleBytesPerGroup = MXFP_MULTI_BASE_SIZE;
+        constexpr uint64_t scaleTransferBytes = 64U * 1024U;
+        constexpr uint64_t maxScaleFactor = 127U;
+        constexpr uint64_t minFullLoadKL1Units = 2U;
+        constexpr uint64_t maxFullLoadKL1Units = 4U;
+        constexpr uint64_t aElementsPerByte = Blaze::Gemm::IsFp4<ElementA>() ? 2U : 1U;
+        constexpr uint64_t bElementsPerByte = Blaze::Gemm::IsFp4<ElementB>() ? 2U : 1U;
+
+        auto invalidConfig = GenericAFullLoadL1Config{
+            false, MakeL1Params(minFullLoadKL1Units * L1_TILE_K, minFullLoadKL1Units * L1_TILE_K)};
+        if (k < minFullLoadKL1Units * L1_TILE_K) {
+            return invalidConfig;
+        }
+
+        uint64_t alignedM = Ops::Base::CeilAlign(static_cast<uint64_t>(blockM), 16UL);
+        uint64_t alignedK = Ops::Base::CeilAlign(static_cast<uint64_t>(k), scaleGroupK);
+        uint64_t aFullBytes = Ops::Base::CeilDiv(alignedM * alignedK, aElementsPerByte);
+        uint64_t scaleAFullBytes = static_cast<uint64_t>(blockM) * alignedK / scaleGroupK * scaleBytesPerGroup;
+        if (scaleAFullBytes > scaleTransferBytes) {
+            return invalidConfig;
+        }
+
+        uint64_t residentABytes = aFullBytes + scaleAFullBytes;
+        if (residentABytes >= totalL1Size) {
+            return invalidConfig;
+        }
+
+        // FullLoad 仅保留一份 A/ScaleA，并为 B/ScaleB 分配双缓冲：
+        // residentA + 2 * (B window + ScaleB window) <= totalL1。
+        uint64_t bytesPerBUnit = Ops::Base::CeilDiv(static_cast<uint64_t>(blockN) * L1_TILE_K, bElementsPerByte);
+        uint64_t scaleBBytesPerUnit = static_cast<uint64_t>(blockN) * L1_TILE_K / scaleGroupK * scaleBytesPerGroup;
+        uint64_t bytesPerBBuffer = (totalL1Size - residentABytes) / 2U;
+        uint64_t kL1Units = maxFullLoadKL1Units;
+        kL1Units = Blaze::Gemm::Min(kL1Units, static_cast<uint64_t>(k) / L1_TILE_K);
+        kL1Units = Blaze::Gemm::Min(kL1Units, bytesPerBBuffer / (bytesPerBUnit + scaleBBytesPerUnit));
+        kL1Units = Blaze::Gemm::Min(kL1Units, scaleTransferBytes / scaleBBytesPerUnit);
+        if (kL1Units < minFullLoadKL1Units) {
+            return invalidConfig;
+        }
+
+        uint64_t kL1 = kL1Units * L1_TILE_K;
+        uint64_t bWindowBytes = kL1Units * bytesPerBUnit;
+        uint64_t scaleBBytesPerFactor = kL1Units * scaleBBytesPerUnit;
+        uint64_t maxScaleBBytesByCapacity = bytesPerBBuffer - bWindowBytes;
+        uint64_t maxScaleFactorByCapacity = maxScaleBBytesByCapacity / scaleBBytesPerFactor;
+        uint64_t maxScaleFactorByTransfer = scaleTransferBytes / scaleBBytesPerFactor;
+        uint64_t scaleFactor = Blaze::Gemm::Min(maxScaleFactorByCapacity, maxScaleFactorByTransfer);
+        scaleFactor = Blaze::Gemm::Min(scaleFactor, static_cast<uint64_t>(k) / kL1);
+        scaleFactor = Blaze::Gemm::Min(scaleFactor, maxScaleFactor);
+        if (scaleFactor == 0U) {
+            return invalidConfig;
+        }
+
+        uint64_t scaleKL1 = scaleFactor * kL1;
+        return GenericAFullLoadL1Config{true, MakeL1Params(kL1, scaleKL1)};
+    }
+
+    static __aicore__ inline bool CanUseGenericAFullLoad(uint32_t m, uint32_t k, uint32_t tileM)
+    {
+        if constexpr (IsA8W4 || GenericFullLoadMode != Blaze::Gemm::A_FULL_LOAD_MODE ||
+                      !Blaze::Gemm::IsFp4<ElementA>() || !Blaze::Gemm::IsFp4<ElementB>()) {
+            return false;
+        }
+        if (m == 0U || m >= tileM) {
+            return false;
+        }
+        constexpr uint32_t blockMAlign = 16U;
+        uint32_t blockM = Ops::Base::CeilAlign(m, blockMAlign);
+        return CalcGenericAFullLoadL1Config(blockM, L1_TILE_N, k).fits;
+    }
+
     static __aicore__ inline BlockMmadTilingConfig MakeAdaptiveBlockMmadTilingConfig(uint32_t m, uint32_t k)
     {
         constexpr uint32_t blockMAlign = 16U;
@@ -232,6 +319,13 @@ struct Config {
             return BlockMmadTilingConfig{
                 tileM, L1_TILE_N,
                 typename BlockMmad::L1Params{.kL1 = 0U, .scaleKL1 = Blaze::Gemm::MX_FP8FP4_SCALE_K_L1_SIZE}};
+        }
+
+        if constexpr (GenericFullLoadMode == Blaze::Gemm::A_FULL_LOAD_MODE) {
+            constexpr uint32_t blockMAlign = 16U;
+            uint32_t blockM = Ops::Base::CeilAlign(m, blockMAlign);
+            auto fullLoadConfig = CalcGenericAFullLoadL1Config(blockM, L1_TILE_N, k);
+            return BlockMmadTilingConfig{blockM, L1_TILE_N, fullLoadConfig.l1Params};
         }
 
         if constexpr (g_coreType == AscendC::AIC) {
