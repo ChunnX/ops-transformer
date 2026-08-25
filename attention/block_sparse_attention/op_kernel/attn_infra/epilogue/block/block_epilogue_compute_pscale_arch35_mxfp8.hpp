@@ -226,7 +226,8 @@ public:
         // }
 
         // copy pscale1 ub to l1
-        bool isQsAlign128 = taskInfo.qsActBaseTileAlign64 == MXFP8::QS_BASE_SIZE;
+        // 与 softmax/pscale VF 一致：pad-to-128 后按 128 宽写 L1，不要用 mxfp4 的 align64。
+        bool isQsAlign128 = taskInfo.qsActBaseTileAlign128 == MXFP8::QS_BASE_SIZE;
         CopyPScaleUbToL1(l1PScaleTensor, pscale1, pscale2, subBlockIdx, firstLoopStart, firstLoop, secondLoopStart, secondLoop, isQsAlign128);
 
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP8::SYNC_VEC1_RES_BUF0_FLAG);

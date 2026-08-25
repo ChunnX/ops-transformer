@@ -17,7 +17,7 @@ TND varlen(s1_list/s2_list) / act_s pad / gap_sparse / ocp_scale_stride_trap 已
 
 golden: Q/K/V mxfp8 qdq(fp32); 分块 flash + online softmax;
 P 走 kernel 同构 snap_local(m_snap=(K-2)*ln2) 再 round 到 e4m3。
-判据: qfa check_result (np.isclose rtol=1/128 atol=1e-4, 满足率>=99.5% 且 maxRE<10)。
+判据: qfa check_result (np.isclose rtol=1/128 atol=1e-4, 满足率=100% 且 maxRE<10)。
 """
 import math
 import os
@@ -32,11 +32,15 @@ try:
     if _FORCE_CPU:
         raise ImportError("BSA_CPU_ONLY=1")
     import torch_npu  # noqa: F401
-    from torch_npu.testing.testcase import TestCase, run_tests
-    from torch_npu.testing.common_utils import SkipIfNotGteCANNVersion
 except Exception:
     torch_npu = None
 
+try:
+    if torch_npu is None:
+        raise ImportError("torch_npu unavailable")
+    from torch_npu.testing.testcase import TestCase, run_tests
+    from torch_npu.testing.common_utils import SkipIfNotGteCANNVersion
+except Exception:
     class TestCase(unittest.TestCase):
         pass
 
@@ -388,7 +392,7 @@ def cpu_block_sparse_attention_bnsd_mxfp8(query, key, value, block_sparse_mask,
     return out.to(_resolve_out_dtype(out_dtype))
 
 
-def check_result(expect, result, data_type, pct_thd=0.005):
+def check_result(expect, result, data_type, pct_thd=0.0):
     real_data = result.cpu().numpy().flatten()
     data_compe = expect.cpu().numpy().flatten()
     if real_data.size == 0 and real_data.size == data_compe.size:
@@ -735,7 +739,7 @@ class TestBSAMxfp8Golden(TestCase):
             self.skipTest(f"block_sparse_attention_v3 不可用: {_BSA_V3_IMPORT_ERROR}")
         assert res == "Pass", (
             f"BSA mxfp8 case 失败: {cfg_merged}\n  fulfill={pct}% result={res}\n"
-            f"  若同挂可先 --p_quant none 冒烟, 再查 e8m0 配对/P e4m3 snap")
+            f"  要求 fulfill=100% (rtol=1/128 atol=1e-4, maxRE<10)")
         print(f"[PASS][NPU vs golden] {cfg_merged.get('mask_kind', 'dense')} "
               f"layout={cfg_merged.get('input_layout', 'BNSD')} "
               f"b={cfg_merged['b']} n1={cfg_merged['n1']} n2={cfg_merged['n2']} "

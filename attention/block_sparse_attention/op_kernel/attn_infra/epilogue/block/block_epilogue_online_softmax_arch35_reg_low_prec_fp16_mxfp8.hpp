@@ -319,10 +319,12 @@ public:
         uint32_t pUBTlaMSize = tla::get<0>(ubPTensorTla.shape());
         uint32_t pUBTlaNSize = tla::get<1>(ubPTensorTla.shape());
 
-        if (taskInfo.qsActBaseTileAlign64 == MXFP8::QS_BASE_SIZE ||
+        // MXFP8 QK 把 Q(M) pad 到 128 并走 qs128 VF（even/odd），P UB 始终是 128 宽。
+        // 必须用 align128 判断，不能照搬 mxfp4 的 align64：否则 qs63/64 + 短 kvs
+        // 会掉进 else 且不搬高半面，odd qs 丢失（~50% fulfill）。
+        if (taskInfo.qsActBaseTileAlign128 == MXFP8::QS_BASE_SIZE ||
             tileInfo.kvsActBaseTileAlign32 == MXFP8::KVS_BASE_SIZE) {
-            // qs128：整基块/尾块都搬满 64 个 TLA 行（LoadP srcStride=8 只读前 kvs）。
-            // qs64 + kvs128：与 mxfp4 相同，blockCount 减半。
+            // qs128 或 qs64-pad-to-128：整基块/尾块都搬满 64 个 TLA 行（LoadP srcStride=8 只读前 kvs）。
             AscendC::DataCopyParams repeatParams;
             // qs128 / qs64 都走 K-outer：C0 高平面在 +8064，搬满 64 个 TLA 行（16KB）
             repeatParams.blockCount = static_cast<uint16_t>(pUBTlaMSize);
@@ -353,8 +355,8 @@ public:
             auto srcOffset1 = pUBTensorTlaTile1.layout()(pUBTensorTlaTile1.coord());
             AscendC::DataCopy(l1PTensorTla.data(), ubPTensorTla.data()[srcOffset1], repeatParams1);
 
-            if (taskInfo.qsActBaseTileAlign64 == MXFP8::QS_BASE_SIZE) {
-                // 高位搬运
+            if (taskInfo.qsActBaseTileAlign128 == MXFP8::QS_BASE_SIZE) {
+                // 高位搬运（qs pad 到 128 后 even/odd 高半面有有效 token）
                 AscendC::DataCopyParams repeatParams2;
                 repeatParams2.blockCount = static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32 / (pUBTlaNSize / 2 / MXFP8::DATA_BLOCK_BYTE));// UB的物理P一整行256B, 包含P的逻辑视图高位(低位)地址8行
                 repeatParams2.blockLen = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP8::DATA_BLOCK_BYTE);
