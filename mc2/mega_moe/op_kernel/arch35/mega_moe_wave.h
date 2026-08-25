@@ -92,9 +92,13 @@ private:
     };
 
     struct WaveInfo {
+        // 同一份 [beginCursor, endCursor) 同时交给 Dispatch、GMM1、GMM2 和
+        // Combine，保证各阶段看到完全一致的专家段边界。
         ExpertRowCursor beginCursor{};
         ExpertRowCursor endCursor{};
+        // 当前 wave 跨专家展平后的实际 row 数。
         uint32_t logicalRowCount = 0U;
+        // 当前 wave 消耗的 GMM1 M-group 数；一个 M-group 最多 GMM1_TILE_M 行。
         uint32_t mGroupCount = 0U;
     };
 
@@ -852,14 +856,18 @@ template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline uint32_t MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GetExpertDispatchRowCount(
     uint32_t expertIdx)
 {
+    // cumsumInfoTensor 按 [expert][rank] 保存累计接收行数。前一专家的末值
+    // 就是当前专家在 Dispatch 输出上的全局 row 起点。
     int32_t expertGlobalRowBegin = expertIdx == 0U ? 0 :
         tokenDispatchScratch_.cumsumInfoTensor.GetValue(expertIdx * worldSize_ - 1U);
     if (static_cast<uint64_t>(expertGlobalRowBegin) >= tokenDispatchConfig_.maxOutputSize) {
         return 0U;
     }
+    // 当前专家最后一个 rank 的累计值是专家全局 row 终点，两者之差即专家行数。
     int32_t expertGlobalRowEnd = tokenDispatchScratch_.cumsumInfoTensor.GetValue(
         expertIdx * worldSize_ + worldSize_ - 1U);
     uint32_t expertRows = static_cast<uint32_t>(expertGlobalRowEnd - expertGlobalRowBegin);
+    // maxOutputSize 可能截断尾部专家；wave 规划必须使用截断后的真实可写行数。
     uint64_t remainingRows = tokenDispatchConfig_.maxOutputSize -
         static_cast<uint64_t>(expertGlobalRowBegin);
     return expertRows < remainingRows ? expertRows : static_cast<uint32_t>(remainingRows);
@@ -872,8 +880,11 @@ __aicore__ inline uint32_t MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::AdvanceWave
     if (remainingMGroupCount == 0U || cursor.rowOffsetInExpert >= expertRowCount) {
         return 0U;
     }
+    // 在剩余 M-group 预算内计算本专家最多能推进到的 tile 对齐终点；
+    // 大专家因此可以跨 wave，下一 wave 从 rowOffsetInExpert 继续。
     uint32_t endRow = GetWaveEndRowOffsetInExpert(
         expertRowCount, cursor.rowOffsetInExpert, remainingMGroupCount, GMM1_TILE_M);
+    // segmentRows 是当前 wave 从该专家实际取得的行数，不是完整专家行数。
     uint32_t segmentRows = endRow - cursor.rowOffsetInExpert;
     cursor.rowOffsetInExpert = endRow;
     if (cursor.rowOffsetInExpert >= expertRowCount) {
@@ -894,6 +905,8 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetInfo(
             return waveInfo;
         }
 
+        // 阶段一：只移动临时 waveEnd 计算边界；dispatchCursor 在数据搬运
+        // 完成前保持不变，避免规划失败时提前推进全局状态。
         ExpertRowCursor waveBegin = dispatchCursor;
         ExpertRowCursor waveEnd = dispatchCursor;
         uint32_t waveMGroupCount = 0U;
@@ -909,34 +922,46 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetInfo(
                 waveEnd.rowOffsetInExpert = 0U;
                 continue;
             }
+            // 当前专家只领取 wave 剩余的 M-group 预算；返回值可能是完整专家，
+            // 也可能只是大专家在本 wave 中的一个 [rowBegin, rowEnd) 分段。
             uint32_t segmentRows = AdvanceWaveCursor(
                 waveEnd, expertRowCount, mGroupsPerWave_ - waveMGroupCount);
+            // 专家分段不足一个 tile 也占一个 M-group，与 GMM1 的预算语义一致。
             waveMGroupCount += GetMGroupCountForRows(segmentRows, GMM1_TILE_M);
+            // Combine 使用该展平行数在整个 wave 上连续均分 AIV1 任务。
             waveLogicalRowCount += segmentRows;
         }
 
+        // 阶段二：按专家顺序处理刚刚规划出的 [waveBegin, waveEnd)。
+        // wave 内保留专家边界，因为每个专家使用独立权重和独立 GMM1 ready flag。
         for (uint32_t expertIdx = waveBegin.expertIdx; expertIdx < moeExpertPerRank_; ++expertIdx) {
             if (expertIdx > waveEnd.expertIdx ||
                 (expertIdx == waveEnd.expertIdx && waveEnd.rowOffsetInExpert == 0U)) {
                 break;
             }
             uint32_t expertRowCount = GetExpertDispatchRowCount(expertIdx);
+            // wave 从专家中部开始时继承 begin cursor，否则从该专家 row 0 开始。
             uint32_t segmentBegin = expertIdx == waveBegin.expertIdx ?
                 waveBegin.rowOffsetInExpert : 0U;
+            // wave 在专家中部结束时使用 end cursor，否则处理到完整专家末尾。
             uint32_t segmentEnd = expertIdx == waveEnd.expertIdx ?
                 waveEnd.rowOffsetInExpert : expertRowCount;
             if (segmentEnd <= segmentBegin) {
                 continue;
             }
+            // Dispatch 输出按所有专家连续排布；该值把专家内 row 转成 workspace 全局 row。
             int32_t expertGlobalRowBegin = expertIdx == 0U ? 0 :
                 tokenDispatchScratch_.cumsumInfoTensor.GetValue(expertIdx * worldSize_ - 1U);
 
+            // 对当前专家分段生成本核 route queue，搬运 token/metaInfo，并按
+            // GMM1 tile 发布精确 ready 行数。
             DispatchExpertTokensRankRoundRobin<ActivationType, QuantScaleOutType, GMM1_TILE_M,
                                                TopkWeightsPrefetch>(
                 tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_, expertIdx,
                 expertGlobalRowBegin,
                 segmentEnd - segmentBegin, segmentBegin, &dispatchTraceMetrics);
         }
+        // 阶段三：当前 wave 的所有专家分段均已下发后，统一提交 Dispatch 游标。
         dispatchCursor = waveEnd;
         waveInfo.endCursor = waveEnd;
         waveInfo.logicalRowCount = waveLogicalRowCount;
@@ -1371,11 +1396,12 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
     Gmm1ActivationState gmm1RuntimeState{
         startBlockIdx_, vecSetSyncCom, gmm1TileSequence, gmm1PingPongIdx_};
 
-    ExpertRowCursor waveBeginCursor{};
-    ExpertRowCursor dispatchCursor{};
-    ExpertRowCursor gmm1WaveCursor{};
-    ExpertRowCursor gmm2WaveCursor{};
-    ExpertRowCursor combineCursor{};
+    // 四个阶段各自维护消费游标，但每次推进都复用 Dispatch 生成的 WaveInfo 边界。
+    ExpertRowCursor waveBeginCursor{};  // 当前流水正在完成的 wave 起点。
+    ExpertRowCursor dispatchCursor{};   // 下一段尚未 Dispatch 的位置，通常领先一 wave。
+    ExpertRowCursor gmm1WaveCursor{};   // GMM1 下一段尚未计算的位置。
+    ExpertRowCursor gmm2WaveCursor{};   // GMM2 下一段尚未计算的位置。
+    ExpertRowCursor combineCursor{};    // Combine 下一段尚未回传的位置。
     WaveInfo preparedWaveInfo{};
     bool hasPreparedWave = false;
     uint32_t waveIndex = 0U;
@@ -1388,6 +1414,12 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
     }
 
     while (waveBeginCursor.expertIdx < moeExpertPerRank_) {
+        // 每轮流水的目标关系：
+        //   AIV1: Dispatch W(n+1) -> Combine W(n)
+        //   AIC : GMM1 W(n) -> GMM2 W(n)
+        //   AIV0: 在对应 GMM 阶段完成 activation 协作。
+        // 因此首轮 AIV1 是 Dispatch W0 -> Dispatch W1 -> Combine W0；
+        // 稳态则每轮只新增一次下一 wave 的预取。
         ExpertRowCursor waveEndCursor = waveBeginCursor;
         WaveInfo currentWaveInfo{waveBeginCursor, waveBeginCursor, 0U, 0U};
         const uint32_t waveStartBlockIndex = startBlockIdx_;
@@ -1459,7 +1491,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmmPipel
     // 等待所有 rank 完成本轮输入准备，再读取远端 dispatch 数据。
     CrossRankSyncInWorldSize();
 
-    // Dispatch 的全部专家先完成，随后按 GMM wave 执行 GMM1、SwiGLU、GMM2 与 Combine。
+    // 按统一 WaveInfo 驱动 Dispatch/GMM1/SwiGLU/GMM2/Combine；AIV1 使用一波
+    // lookahead，让下一 wave 的 Dispatch 与当前 wave 的矩阵计算重叠。
     ProcessMoeExpertStages();
 
     if constexpr (g_coreType == AIV) {

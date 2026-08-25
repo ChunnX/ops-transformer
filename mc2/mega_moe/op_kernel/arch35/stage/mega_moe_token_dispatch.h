@@ -280,12 +280,16 @@ constexpr uint32_t DISPATCH_ROUTE_RANK_SHIFT = 24U;
 constexpr uint32_t DISPATCH_ROUTE_TOPK_MASK = (1U << DISPATCH_ROUTE_RANK_SHIFT) - 1U;
 constexpr uint32_t DISPATCH_ROUTE_RANK_CAPACITY = 1U << (32U - DISPATCH_ROUTE_RANK_SHIFT);
 
-// One compact route word is staged per local task. Queue position determines
-// destination row; the word keeps only source rank and source topkIndex.
+// 每个本核任务保存一个紧凑 route word。queue 下标决定目的 row，word 中只保存
+// source rank 和 source topkIndex，避免额外保存目的 row。
 struct DispatchCoreRouteQueue {
+    // 本核在当前专家分段中最终需要搬运的 token 数。
     int32_t taskCount = 0;
+    // topkIndexTensor 前部为最终 route queue 预留的容量。
     int32_t taskCapacity = 0;
+    // 临时 CreateVecIndex 区紧跟 route queue，二者复用同一块 UB。
     int32_t routeIndexOffset = 0;
+    // 每批最多扫描的 sendMask bit 数，按 ALIGN_256 向下对齐。
     int32_t routeCapacity = 0;
 };
 
@@ -308,10 +312,14 @@ __aicore__ inline int32_t GetDispatchRouteTopkIndex(int32_t routeEntry)
 }
 
 struct DispatchRankRoundInterval {
+    // 当前仍然存活的 source rank 的 token ordinal 区间 [roundBegin, roundEnd)。
     int32_t roundBegin = 0;
     int32_t roundEnd = 0;
+    // roundBegin 对应的第一个逻辑专家 row。
     int32_t intervalRowBegin = 0;
+    // 该 ordinal 区间仍有 token 的 rank 数。
     int32_t activeRankCount = 0;
+    // 当前 remoteRank 在轮次偏移后的活跃 rank 顺序中的位置。
     int32_t rankPosition = -1;
 };
 
@@ -321,17 +329,18 @@ struct DispatchOwnedOrdinalRange {
     int32_t stride = 1;
 };
 
-// Physical mask position corresponding to a logical per-rank token ordinal.
-// routeBegin is always ALIGN_256 route-item aligned; matchedCount is the
-// number of set mask bits strictly before routeBegin. Keeping both values lets
-// a later segment resume GatherMask without rescanning the expert prefix.
+// 保存“rank 内逻辑 token ordinal”对应的物理 mask 扫描位置。routeBegin 始终按
+// ALIGN_256 个 route item 对齐；matchedCount 表示 routeBegin 之前有效 bit 的数量。
+// 两者共同保存后，跨 wave 的专家分段可以继续 GatherMask，而不必重扫专家前缀。
 struct DispatchRankScanCursor {
     int32_t routeBegin = 0;
     int32_t matchedCount = 0;
 };
 
 struct DispatchCoreRankPlan {
+    // 当前 core 从该 source rank 实际取得的 token 数。
     int32_t taskCount = 0;
+    // 当前专家分段边界映射到该 rank compact 序列后的 ordinal 范围。
     int32_t segmentOrdinalBegin = 0;
     int32_t segmentOrdinalEnd = 0;
 };
@@ -396,8 +405,11 @@ __aicore__ inline int32_t GetFirstDispatchRowOwnedByCore(
     int32_t coreCount = static_cast<int32_t>(
         context.blockJob.totalJobs == 0U ? 1U : context.blockJob.totalJobs);
     int32_t coreIdx = static_cast<int32_t>(context.blockJob.jobIndex);
+    // 目的 workspace row 仍按 globalRow % coreCount 分核。轮次偏移只改变
+    // 每个目的 row 对应哪个 source rank，不改变目的 row 的所有权。
     int32_t firstDestinationRow = expertGlobalRowBegin + segmentRowBegin;
     int32_t owner = firstDestinationRow % coreCount;
+    // ownerDelta 把 segment 首行推进到本核拥有的第一行，后续固定跨 coreCount 行。
     int32_t ownerDelta = coreIdx - owner;
     if (ownerDelta < 0) {
         ownerDelta += coreCount;
@@ -421,8 +433,10 @@ __aicore__ inline bool GetDispatchRankRoundInterval(
     uint32_t remoteRankIdx, int32_t roundBegin, int32_t intervalRowBegin,
     DispatchRankRoundInterval &interval)
 {
+    // 对同一 ordinal round，只有 token 数大于 roundBegin 的 rank 仍参与交织。
     int32_t activeRankCount = 0;
     int32_t rankPosition = -1;
+    // 最短 rank 的 token 数决定这一组活跃 rank 能共同维持到哪个 ordinal。
     int32_t roundEnd = 0x7fffffff;
     for (uint32_t rankIdx = 0U; rankIdx < context.common.worldSize; ++rankIdx) {
         int32_t rankScratchBase = static_cast<int32_t>(rankIdx) * DISPATCH_RANK_SCRATCH_STRIDE;
@@ -443,16 +457,15 @@ __aicore__ inline bool GetDispatchRankRoundInterval(
         return false;
     }
 
-    // A fixed destination-row stride aliases with the rank-interleave period
-    // when coreCount and activeRankCount share a divisor (28 cores / 4 ranks is
-    // the common case).  Split the rank-round interval whenever the original
-    // core/rank ownership phase would repeat, then rotate the active-rank order
-    // by one lane.
-    // Destination-row ownership stays unchanged; only the source-rank assigned
-    // to that row changes, so the existing local route queue, MTE ring and
-    // Dispatch -> GMM1 ready accounting remain valid.
+    // 当 coreCount 与 activeRankCount 存在公因子时，固定目的 row 步长会与 rank
+    // 交织周期发生共振，典型情况是 28 核/4 rank。每当原 core/rank 映射即将重复，
+    // 就切分一次 rank-round interval，并将活跃 rank 顺序左移一位。
+    // 目的 row 所有权保持不变，只改变该 row 对应的 source rank，因此原有本核
+    // route queue、MTE 环形流水和 Dispatch -> GMM1 ready 计数均可保持不变。
     int32_t coreCount = static_cast<int32_t>(
         context.blockJob.totalJobs == 0U ? 1U : context.blockJob.totalJobs);
+    // 原映射每经过 coreCount/gcd(coreCount, activeRankCount) 个 rank round，
+    // 同一 core 又会命中同一 rank；在这个重复点把 rank 顺序左移一位。
     int32_t roundsPerRotation =
         coreCount / DispatchPositiveGcd(coreCount, activeRankCount);
     int32_t rotationEpoch = roundBegin / roundsPerRotation;
@@ -475,6 +488,8 @@ __aicore__ inline bool GetDispatchOwnedOrdinalRange(
     int32_t ordinalWindowBegin, int32_t ordinalWindowEnd,
     const DispatchRankRoundInterval &interval, DispatchOwnedOrdinalRange &ownedRange)
 {
+    // 当前 rank 在该 interval 中的第 delta 个 token 位于：
+    // intervalRowBegin + rankPosition + delta * activeRankCount。
     int32_t intervalRoundCount = interval.roundEnd - interval.roundBegin;
     int32_t rankRowBase = interval.intervalRowBegin + interval.rankPosition;
     if (intervalRoundCount <= 0 || rankRowBase >= segmentRowEnd ||
@@ -482,6 +497,7 @@ __aicore__ inline bool GetDispatchOwnedOrdinalRange(
         return false;
     }
 
+    // 先把完整 interval 裁剪到当前 wave 中该专家的 [segmentRowBegin, segmentRowEnd)。
     int32_t firstDelta = 0;
     if (rankRowBase < segmentRowBegin) {
         firstDelta = Ops::Base::CeilDiv(
@@ -498,6 +514,7 @@ __aicore__ inline bool GetDispatchOwnedOrdinalRange(
         }
     }
 
+    // 再与当前 GatherMask batch 覆盖的 compact ordinal window 求交。
     int32_t windowFirstDelta = ordinalWindowBegin > interval.roundBegin ?
         ordinalWindowBegin - interval.roundBegin : 0;
     int32_t windowEndDelta = ordinalWindowEnd - interval.roundBegin;
@@ -517,12 +534,15 @@ __aicore__ inline bool GetDispatchOwnedOrdinalRange(
     int32_t coreCount = static_cast<int32_t>(
         context.blockJob.totalJobs == 0U ? 1U : context.blockJob.totalJobs);
     int32_t coreIdx = static_cast<int32_t>(context.blockJob.jobIndex);
+    // 在 rankPosition 固定的 interval 内，目的 row 每次增加 activeRankCount；
+    // stride 是再次命中同一 core 所需跨过的 rank ordinal 数。
     int32_t stride = coreCount / DispatchPositiveGcd(coreCount, interval.activeRankCount);
     int32_t baseDestinationRow = expertGlobalRowBegin + rankRowBase;
     int32_t searchEnd = firstDelta + stride;
     if (searchEnd > endDelta) {
         searchEnd = endDelta;
     }
+    // 最多检查一个周期，找到该 core 在此 interval 中拥有的第一个 ordinal。
     while (firstDelta < searchEnd &&
            (baseDestinationRow + firstDelta * interval.activeRankCount) % coreCount != coreIdx) {
         ++firstDelta;
@@ -561,6 +581,7 @@ __aicore__ inline DispatchCoreRankPlan GetDispatchCoreRankPlan(
     uint32_t remoteRankIdx, int32_t expertGlobalRowBegin,
     int32_t segmentRowBegin, int32_t segmentRowEnd)
 {
+    // rankTokenCount 是该专家从 remoteRank 接收的 compact token 总数。
     int32_t rankScratchBase = static_cast<int32_t>(remoteRankIdx) * DISPATCH_RANK_SCRATCH_STRIDE;
     int32_t rankTokenCount = scratch.sendCntTensor.GetValue(
         rankScratchBase + DISPATCH_RANK_COUNT_LANE);
@@ -569,6 +590,8 @@ __aicore__ inline DispatchCoreRankPlan GetDispatchCoreRankPlan(
     bool ordinalEndResolved = false;
     int32_t roundBegin = 0;
     int32_t intervalRowBegin = 0;
+    // 同时受“某些 rank 提前耗尽”和“轮次偏移边界”影响，一个专家会被拆成
+    // 若干 rank-round interval；逐段累计本核任务并解析分段 ordinal 边界。
     while (roundBegin < rankTokenCount && intervalRowBegin < segmentRowEnd) {
         DispatchRankRoundInterval interval{};
         if (!GetDispatchRankRoundInterval(
@@ -597,8 +620,8 @@ __aicore__ inline DispatchCoreRankPlan GetDispatchCoreRankPlan(
         intervalRowBegin = intervalRowEnd;
         roundBegin = interval.roundEnd;
     }
-    // A rank that exhausted its tokens before either segment boundary
-    // contributes its complete ordinal range to all later logical rows.
+    // 如果该 rank 在专家分段边界前已经耗尽，则后续逻辑 row 对应的 ordinal
+    // 边界固定为该 rank 的完整 token 数。
     if (!ordinalBeginResolved) {
         plan.segmentOrdinalBegin = rankTokenCount;
     }
@@ -639,21 +662,30 @@ __aicore__ inline int32_t PlanDispatchCoreRankRoutes(
         return 0;
     }
 
+    // 该函数只处理“当前专家、当前 source rank、当前 core”这一条规划支路：
+    // 读取该 rank 的 sendMask，压紧得到 topkIndex，再把属于本核的条目写到
+    // 最终本地 route queue 位置。这里不搬 token，也不发布 GMM1 ready。
+    // rankTokenCount 决定 compact ordinal 上界；sendTotalNum 决定物理 mask 上界。
     int32_t rankScratchBase = static_cast<int32_t>(remoteRankIdx) * DISPATCH_RANK_SCRATCH_STRIDE;
     int32_t rankTokenCount = scratch.sendCntTensor.GetValue(
         rankScratchBase + DISPATCH_RANK_COUNT_LANE);
     uint64_t sendTotalNum = static_cast<uint64_t>(context.common.tokenNum) * context.common.topK;
+    // 每个 [expert][rank] mask 槽尾部还包含一个 32B 的 count 区域。
     uint32_t maskSlotSize = context.maskAlignSize + static_cast<uint32_t>(ALIGN_32);
+    // topkIndexTensor 前部保存最终 task，后部临时生成当前 mask batch 的物理索引。
     LocalTensor<int32_t> routeIndexTensor = scratch.topkIndexTensor[queue.routeIndexOffset];
     GlobalTensor<uint8_t> remoteRankMaskGlobal;
     int32_t coreCount = static_cast<int32_t>(
         context.blockJob.totalJobs == 0U ? 1U : context.blockJob.totalJobs);
     int32_t alignedSendTotalNum = Ops::Base::CeilAlign(
         static_cast<int32_t>(sendTotalNum), static_cast<int32_t>(ALIGN_256));
+    // 专家续段优先从上一 wave 保存的位置继续；专家首段必须从 mask 0 开始。
     DispatchRankScanCursor scanCursor{};
     if (segmentRowBegin > 0) {
         scanCursor = LoadDispatchRankScanCursor(scratch, remoteRankIdx);
     }
+    // cursor 必须满足物理对齐、compact 计数范围及“不越过本段起点”三个条件；
+    // 任一条件不满足都安全回退为从头扫描，只影响性能，不影响结果。
     bool validScanCursor =
         scanCursor.routeBegin >= 0 && scanCursor.routeBegin <= alignedSendTotalNum &&
         scanCursor.routeBegin % static_cast<int32_t>(ALIGN_256) == 0 &&
@@ -662,14 +694,14 @@ __aicore__ inline int32_t PlanDispatchCoreRankRoutes(
     if (!validScanCursor) {
         scanCursor = {};
     }
+    // matchedRouteCount 是当前物理 mask 位置之前已有多少个有效 bit，即下一个
+    // GatherMask batch 在 rank compact 序列中的起始 ordinal。
     int32_t matchedRouteCount = scanCursor.matchedCount;
     int32_t plannedTaskCount = 0;
     bool nextCursorStored = false;
 
-    // GatherMask returns this rank's routes in monotonically increasing ordinal
-    // order. Keep one interval cursor for the whole rank scan instead of
-    // rebuilding the rank-round decomposition from round zero for every mask
-    // batch.
+    // GatherMask 按 ordinal 单调递增地返回该 rank 的有效 route。整个 rank 扫描
+    // 共用一个 interval 游标，避免每个 mask batch 都从 round 0 重建交织区间。
     int32_t planRoundBegin = 0;
     int32_t planIntervalRowBegin = 0;
     DispatchRankRoundInterval planInterval{};
@@ -682,11 +714,13 @@ __aicore__ inline int32_t PlanDispatchCoreRankRoutes(
          matchedRouteCount < rankTokenCount &&
          (plannedTaskCount < rankPlan.taskCount || !nextCursorStored);
          routeBegin += queue.routeCapacity) {
+        // 当前 batch 的物理 route 范围为 [routeBegin, routeBegin + validRouteCount)。
         int32_t validRouteCount = static_cast<int32_t>(
             sendTotalNum - static_cast<uint64_t>(routeBegin));
         if (validRouteCount > queue.routeCapacity) {
             validRouteCount = queue.routeCapacity;
         }
+        // sendMask 每个 route 占 1 bit，因此 byte 数为对齐后的 route 数除以 8。
         int32_t maskSliceBytes = Ops::Base::CeilAlign(
             validRouteCount, static_cast<int32_t>(ALIGN_256)) / 8;
         int32_t maskByteBegin = routeBegin / 8;
@@ -702,8 +736,8 @@ __aicore__ inline int32_t PlanDispatchCoreRankRoutes(
             (static_cast<uint64_t>(localExpertId) * context.common.worldSize + remoteRankIdx) * maskSlotSize +
             static_cast<uint64_t>(maskByteBegin)));
         DataCopy(scratch.maskBatchTensor, remoteRankMaskGlobal, static_cast<uint32_t>(maskSliceBytes));
-        // routeIndexTensor does not depend on the mask payload. Generate it
-        // while MTE2 is loading the mask, then fence only before GatherMask.
+        // routeIndexTensor 与 mask 内容无关，因此可在 MTE2 搬 mask 时并行生成；
+        // 只在 GatherMask 真正消费 mask 前等待 MTE2 完成。
         CreateVecIndex(routeIndexTensor, routeBegin, queue.routeCapacity);
         SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
         uint64_t batchMatchedRouteCount = 0U;
@@ -716,12 +750,13 @@ __aicore__ inline int32_t PlanDispatchCoreRankRoutes(
         }
 #endif
 
+        // GatherMask 返回本 batch 的有效项数量，由此得到该批在 rank compact
+        // 序列中的 ordinal 范围 [batchOrdinalBegin, batchOrdinalEnd)。
         int32_t batchOrdinalBegin = matchedRouteCount;
         int32_t batchOrdinalEnd = matchedRouteCount + static_cast<int32_t>(batchMatchedRouteCount);
 
-        // Skip intervals that end before this mask batch. This cursor only
-        // moves forward across batches, so each rank-round interval is derived
-        // at most once for the complete rank scan.
+        // 跳过完全位于当前 mask batch 之前的 interval。游标只向前移动，因此一次
+        // 完整 rank 扫描中，每个 rank-round interval 最多推导一次。
         while (hasPlanInterval && planInterval.roundEnd <= batchOrdinalBegin) {
             planIntervalRowBegin = planInterval.intervalRowBegin +
                 (planInterval.roundEnd - planInterval.roundBegin) *
@@ -740,11 +775,19 @@ __aicore__ inline int32_t PlanDispatchCoreRankRoutes(
                     batchOrdinalBegin, batchOrdinalEnd, planInterval, ownedRange)) {
                 for (int32_t delta = ownedRange.firstDelta;
                      delta < ownedRange.endDelta; delta += ownedRange.stride) {
+                    // delta 是当前 interval 内的 rank ordinal 偏移；加上 interval
+                    // 起点后得到 GatherMask compact 结果中的绝对 ordinal。
                     int32_t rankOrdinal = planInterval.roundBegin + delta;
+                    // validTopkIndexTensor 保存真正的物理 topkIndex，可直接反推出
+                    // source tokenId 与 topk slot。
                     int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(
                         rankOrdinal - batchOrdinalBegin);
+                    // 轮次偏移已经体现在 planInterval.rankPosition 中；该公式把
+                    // rank ordinal 映射回当前专家的逻辑 row。
                     int32_t expertRow = planInterval.intervalRowBegin +
                         delta * planInterval.activeRankCount + planInterval.rankPosition;
+                    // 本核目的 row 仍按 coreCount 等步长递增，因此可直接算出最终
+                    // queue 下标，来自不同 rank 的任务会在此按目的 row 自动归并。
                     int32_t taskIdx = (expertRow - firstOwnedRow) / coreCount;
                     scratch.topkIndexTensor.SetValue(
                         taskIdx, PackDispatchRouteEntry(remoteRankIdx, topkIndex));
@@ -752,8 +795,8 @@ __aicore__ inline int32_t PlanDispatchCoreRankRoutes(
                 }
             }
 
-            // The next mask batch can still lie in the current round interval.
-            // Preserve it in that case; otherwise advance exactly once.
+            // 下一 mask batch 可能仍落在当前 interval 内；这种情况下保留当前
+            // interval，否则只向下一个 interval 推进一步。
             if (batchOrdinalEnd < planInterval.roundEnd) {
                 break;
             }
@@ -765,6 +808,8 @@ __aicore__ inline int32_t PlanDispatchCoreRankRoutes(
                 context, scratch, remoteRankIdx, planRoundBegin,
                 planIntervalRowBegin, planInterval);
         }
+        // 一旦扫描覆盖本专家分段终点，就保存下一 wave 可恢复的物理 mask 位置与
+        // compact ordinal。终点落在 batch 中部时回退到其所在 ALIGN_256 块起点。
         if (!nextCursorStored && batchOrdinalEnd >= rankPlan.segmentOrdinalEnd) {
             DispatchRankScanCursor nextCursor{};
             if (rankPlan.segmentOrdinalEnd >= rankTokenCount) {
@@ -801,6 +846,8 @@ __aicore__ inline DispatchCoreRouteQueue PlanDispatchCoreRouteQueue(
     WaveDispatchTraceMetrics *traceMetrics)
 {
     DispatchCoreRouteQueue queue{};
+    // 同一 topkIndexTensor 分成两段：前 taskCapacity 个 int32 保存最终 queue，
+    // 剩余空间作为 CreateVecIndex 的 mask 扫描临时区。
     queue.taskCapacity = taskCapacity;
     queue.routeIndexOffset = queue.taskCapacity;
     queue.routeCapacity = context.bufferConfig.routeItemsPerBatch - queue.routeIndexOffset;
@@ -815,6 +862,7 @@ __aicore__ inline DispatchCoreRouteQueue PlanDispatchCoreRouteQueue(
     uint32_t planTraceBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
     uint32_t maskCyclesBefore = traceMetrics == nullptr ? 0U : traceMetrics->maskLoadAndGatherCycles;
 #endif
+    // 分别扫描各 source rank 的 mask，但都写入同一个按目的 row 排序的本核 queue。
     int32_t plannedTotalTaskCount = 0;
     for (uint32_t rankIdx = 0U; rankIdx < context.common.worldSize; ++rankIdx) {
         DispatchCoreRankPlan rankPlan = GetDispatchCoreRankPlan(
@@ -822,6 +870,8 @@ __aicore__ inline DispatchCoreRouteQueue PlanDispatchCoreRouteQueue(
         int32_t plannedTaskCount = PlanDispatchCoreRankRoutes(
             context, params, scratch, localExpertId, rankIdx, expertGlobalRowBegin,
             segmentRowBegin, segmentRowEnd, firstOwnedRow, queue, rankPlan, traceMetrics);
+        // 规划数量不一致时不能继续搬运，否则 GMM1 ready 计数会宣告未写入的 row
+        // 已就绪；统一返回空 queue 进入保护路径。
         if (plannedTaskCount != rankPlan.taskCount) {
             queue.taskCount = 0;
 #if MEGA_MOE_ENABLE_WAVE_TRACE != 0
@@ -835,6 +885,7 @@ __aicore__ inline DispatchCoreRouteQueue PlanDispatchCoreRouteQueue(
         }
         plannedTotalTaskCount += plannedTaskCount;
     }
+    // 所有 rank 的任务总和必须等于由目的 row 分核公式计算出的本核任务数。
     queue.taskCount = plannedTotalTaskCount == expectedTaskCount ? plannedTotalTaskCount : 0;
 #if MEGA_MOE_ENABLE_WAVE_TRACE != 0
     if (traceMetrics != nullptr) {
@@ -846,8 +897,8 @@ __aicore__ inline DispatchCoreRouteQueue PlanDispatchCoreRouteQueue(
     return queue;
 }
 
-// Issue one compact route task into the Dispatch MTE2 ring. Changing source
-// rank only redirects the GM view; it does not drain or restart the ring.
+// 将一个紧凑 route 任务下发到 Dispatch MTE2 环形流水。source rank 改变时只
+// 重定向 GM 视图，不清空也不重启环形流水。
 template <bool IsBufferReuse, bool TopkWeightsPrefetch, typename ActivationType>
 __aicore__ inline int32_t FetchInterleavedDispatchRouteTask(
     const TokenDispatchConfig &context, GM_ADDR *winRankAddr,
@@ -870,10 +921,9 @@ __aicore__ inline int32_t FetchInterleavedDispatchRouteTask(
     return topkIndex;
 }
 
-// Consume the current core's compact route queue with the same four-phase MTE
-// ring used by the compact baseline: primer, first-fill, steady reuse and
-// epilogue. Route planning and rank changes are outside the synchronization
-// decisions, so the hot loops contain no per-token stream-state branches.
+// 使用与紧凑基线一致的四阶段 MTE 环形流水消费本核 route queue：首任务预取、
+// 首轮填充、稳态复用和尾部回收。route 规划与 rank 切换不参与事件同步决策，
+// 因此热循环中没有逐 token 的流水状态分支。
 template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
 __aicore__ inline void CopyInterleavedDispatchRouteQueue(
     const TokenDispatchConfig &context, GM_ADDR *winRankAddr,
@@ -898,8 +948,8 @@ __aicore__ inline void CopyInterleavedDispatchRouteQueue(
             context, winRankAddr, scratch, 0, 0, remoteRankGlobalTensor,
             currentRankIdx);
 
-    // A one-slot ring cannot overlap the next fetch with the current store.
-    // Keep it correct without adding a buffer-count branch to the normal path.
+    // 单槽环形缓冲区无法重叠下一次读取与当前写出，单独走正确性路径，避免在
+    // 正常多槽热路径中增加 bufferCount 判断。
     if (bufferCount == 1) {
         StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
             context, scratch, 0, destinationRowBase, tokenRevGlobalTensor,
@@ -965,9 +1015,8 @@ __aicore__ inline void CopyInterleavedDispatchRouteQueue(
     }
 }
 
-// The rank-round path keeps one MTE stream alive for the complete expert
-// segment. After that stream is drained once, publish this core's exact row
-// contribution to every GMM1 tile covered by the segment.
+// rank-round 路径在完整专家分段内维持同一条 MTE 流水。尾部统一回收后，再向
+// 分段覆盖的每个 GMM1 tile 发布本核实际完成的 row 数。
 __aicore__ inline void PublishInterleavedDispatchTilesReady(
     const TokenDispatchConfig &context, const Params &params,
     uint32_t localExpertId, int32_t expertGlobalRowBegin,
@@ -1100,9 +1149,8 @@ __aicore__ inline void DispatchRankTokens(
     }
 }
 
-// Small-route fallback is defined below the rank-round path. Declaring it here
-// lets every core make one uniform capacity decision before reserving the
-// compact route queue; no core can silently skip ready publication.
+// 小容量回退路径定义在 rank-round 路径之后，先在此声明，使所有核在预留紧凑
+// route queue 前基于相同条件选择路径，避免个别核跳过 ready 发布。
 template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
 __aicore__ inline void DispatchExpertTokensByRows(
     const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
@@ -1110,10 +1158,27 @@ __aicore__ inline void DispatchExpertTokensByRows(
     int32_t expertGlobalRowBegin, uint32_t dispatchRowCount,
     uint32_t expertRowOffset = 0U);
 
-// Dispatch one expert segment with the rank-round destination layout. Planning
-// writes one compact {rank, topkIndex} word directly to its final local task
-// position. Execution then walks monotonically increasing destination rows;
-// no ordinal/destination descriptor or inverse layer mapping is needed.
+/**
+ * 按 rank-round 逻辑布局处理一个专家在当前 wave 中的分段。
+ *
+ * 数据索引的转换关系：
+ *   sendMask 物理 bit/topkIndex
+ *       -> GatherMask 后的 rank 内 compact ordinal
+ *       -> rank-round 交织后的专家内 expertRow
+ *       -> expertGlobalRowBegin + expertRow 对应的 workspace 全局 row
+ *       -> globalRow % coreCount 对应的目的 core。
+ *
+ * 本函数只为当前 core 完成以下六个阶段：
+ *   1. 确定当前专家分段及截断后的专家总行数；
+ *   2. 为跨 wave 的专家维护每个 rank 的 mask 扫描 cursor；
+ *   3. 按目的 row 均分计算本核 firstOwnedRow 和 expectedTaskCount；
+ *   4. 扫描各 rank 的 sendMask，把 {rank, topkIndex} 直接写到最终本核 queue；
+ *   5. 复用同一 MTE 环形流水，按 queue 顺序读取远端 token/metaInfo 并写目的 row；
+ *   6. MTE3 全部完成后，按 GMM1 tile 发布本核实际完成的 row 数。
+ *
+ * 轮次偏移发生在第4阶段的 rank-round 映射中。它只改变 source rank 到
+ * expertRow 的排列，不改变目的 row 分核、queue 大小、MTE 写地址或 ready 语义。
+ */
 template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
 __aicore__ inline void DispatchExpertTokensRankRoundRobin(
     const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
@@ -1125,34 +1190,44 @@ __aicore__ inline void DispatchExpertTokensRankRoundRobin(
         return;
     }
 
+    // 阶段1：确定当前调用覆盖的专家分段和真实专家边界。
+    // 当前调用只处理该专家落入本 wave 的 [segmentRowBegin, segmentRowEnd)。
     int32_t segmentRowBegin = static_cast<int32_t>(expertRowOffset);
     int32_t segmentRowEnd = segmentRowBegin + static_cast<int32_t>(dispatchRowCount);
+    // cumsum 的专家末值减去专家全局起点，得到未考虑 maxOutputSize 前的专家总行数。
     int32_t expertGlobalRowEnd = scratch.cumsumInfoTensor.GetValue(
         localExpertId * context.common.worldSize + context.common.worldSize - 1U);
     int32_t expertRowCount = expertGlobalRowEnd - expertGlobalRowBegin;
+    // 尾部专家可能被 workspace 容量截断，cursor 的合法范围必须使用截断值。
     uint64_t remainingOutputRows = static_cast<uint64_t>(expertGlobalRowBegin) < context.maxOutputSize ?
         context.maxOutputSize - static_cast<uint64_t>(expertGlobalRowBegin) : 0U;
     if (static_cast<uint64_t>(expertRowCount) > remainingOutputRows) {
         expertRowCount = static_cast<int32_t>(remainingOutputRows);
     }
-    // The first segment never consumes a stale cursor. Only a genuinely split
-    // expert needs every core (including a core with no first-segment task) to
-    // clear its private state for a later continuation.
+    // 阶段2：维护跨 wave 的 mask 扫描起点。
+    // 专家首段不能读取旧 cursor。只有确实跨 wave 的专家才需要所有核清空私有
+    // cursor；即使某核在首段没有任务，也必须为后续专家续段建立一致初始状态。
     if (segmentRowBegin == 0 && segmentRowEnd < expertRowCount) {
         ResetDispatchRankScanCursors(context, scratch);
     }
+    // 阶段3：划分本核目的 row，并为本地 route queue 预留 UB。
     constexpr int32_t gmm1TileRowCount = static_cast<int32_t>(PipelineTileM);
     int32_t coreCount = static_cast<int32_t>(
         context.blockJob.totalJobs == 0U ? 1U : context.blockJob.totalJobs);
+    // 目的 row 均分后，单核任务上界为 ceil(dispatchRowCount/coreCount)，按32B
+    // 对齐后作为最终 route queue 的保留容量。
     int32_t maxCoreTaskCount = Ops::Base::CeilDiv(
         static_cast<int32_t>(dispatchRowCount), coreCount);
     int32_t maxTaskCapacity = Ops::Base::CeilAlign(
         maxCoreTaskCount, DISPATCH_ROUTE_QUEUE_ALIGN_ITEMS);
+    // 剩余 UB 可用于每批 mask 扫描；GatherMask 要求按 ALIGN_256 route 对齐。
     int32_t routeCapacity = context.bufferConfig.routeItemsPerBatch - maxTaskCapacity;
     routeCapacity = routeCapacity / static_cast<int32_t>(ALIGN_256) *
         static_cast<int32_t>(ALIGN_256);
     uint64_t sendTotalNum =
         static_cast<uint64_t>(context.common.tokenNum) * context.common.topK;
+    // 紧凑 route word 高8位保存 rank、低24位保存 topkIndex；超过编码范围时
+    // 回退到直接按 row/rank 处理的兼容路径。
     bool canPackRouteEntry =
         context.common.worldSize <= DISPATCH_ROUTE_RANK_CAPACITY &&
         sendTotalNum <= static_cast<uint64_t>(DISPATCH_ROUTE_TOPK_MASK) + 1U;
@@ -1164,23 +1239,29 @@ __aicore__ inline void DispatchExpertTokensRankRoundRobin(
         return;
     }
 
+    // 计算本核在该专家分段拥有的第一条目的 row；之后每隔 coreCount 行一条。
     int32_t firstOwnedRow = GetFirstDispatchRowOwnedByCore(
         context, expertGlobalRowBegin, segmentRowBegin, segmentRowEnd);
     if (firstOwnedRow >= segmentRowEnd) {
         return;
     }
+    // 首行和末行确定后，可精确算出本核应有任务数，用于校验 route 规划无遗漏。
     int32_t expectedTaskCount =
         (segmentRowEnd - 1 - firstOwnedRow) / coreCount + 1;
 
 #if MEGA_MOE_ENABLE_WAVE_TRACE != 0
     uint32_t countTraceBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
 #endif
+    // 阶段4：把各 source rank 的 mask 解析为按本核目的 row 排序的 route queue。
+    // 从专家 cumsum 计算每个 source rank 的独立 token 数，供活跃 rank 轮次
+    // 切分、轮次偏移和 ordinal 边界计算共同使用。
     LoadDispatchExpertRankCounts(context, scratch, localExpertId, expertGlobalRowBegin);
 #if MEGA_MOE_ENABLE_WAVE_TRACE != 0
     if (traceMetrics != nullptr) {
         traceMetrics->prepareDispatchCountsCycles += MegaMoeWaveTraceDetail::Now() - countTraceBegin;
     }
 #endif
+    // 规划结果按本核目的 row 顺序存放，每项仅包含 {sourceRank, topkIndex}。
     DispatchCoreRouteQueue queue = PlanDispatchCoreRouteQueue(
         context, params, scratch, localExpertId, expertGlobalRowBegin,
         segmentRowBegin, segmentRowEnd, firstOwnedRow,
@@ -1189,6 +1270,7 @@ __aicore__ inline void DispatchExpertTokensRankRoundRobin(
         return;
     }
 
+    // 阶段5：绑定目的 workspace，并让 MTE 环形流水消费本核 route queue。
     GlobalTensor<ActivationType> tokenRevGlobalTensor;
     GlobalTensor<QuantScaleType> scaleRevGlobalTensor;
     GlobalTensor<int32_t> metaInfoGlobalTensor;
@@ -1202,6 +1284,8 @@ __aicore__ inline void DispatchExpertTokensRankRoundRobin(
 #if MEGA_MOE_ENABLE_WAVE_TRACE != 0
     uint32_t transferTraceBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
 #endif
+    // queue 已按目的 row 排序。MTE 环形流水逐项从对应 rank 取 token/metaInfo，
+    // 并写入 expertGlobalRowBegin + firstOwnedRow + taskIdx * coreCount。
     CopyInterleavedDispatchRouteQueue<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
         context, winRankAddr, scratch, expertGlobalRowBegin + firstOwnedRow,
         coreCount, expectedTaskCount, tokenRevGlobalTensor,
@@ -1212,6 +1296,9 @@ __aicore__ inline void DispatchExpertTokensRankRoundRobin(
     }
     uint32_t readyTraceBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
 #endif
+    // 阶段6：发布 Dispatch -> GMM1 的 tile 级 ready 行数。
+    // 只有在本核全部 MTE3 写出回收后，才按 tile 原子累加本核完成的精确 row 数；
+    // GMM1 等待该计数达到 tile 实际行数后启动。
     PublishInterleavedDispatchTilesReady(
         context, params, localExpertId, expertGlobalRowBegin,
         segmentRowBegin, segmentRowEnd, gmm1TileRowCount);
