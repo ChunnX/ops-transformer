@@ -7,8 +7,8 @@
 #   bash run_head_overhead.sh
 #
 # 原理:
-#   通过 sed 修改源码中的核数参数，分别构建 1核 和 满核 两个 wheel，
-#   各自安装后用 msprof 采集 101 次循环的头开销数据，最后汇总输出。
+#   通过 sed 修改源码中的核数参数，构建满核 wheel，
+#   用 msprof capture 模式采集 101 次循环的头开销数据，最后汇总输出。
 #
 # 可选环境变量:
 #   NPU_SOC_VERSION  编译目标 SoC (默认: ascend910_93)
@@ -186,20 +186,6 @@ collect_gmm() {
 }
 
 # ============================================================
-# 1核: 构建 + 采集
-# ============================================================
-echo "========== 1核 =========="
-build_wheel 1 1
-if [ "$RUN_ADD" = "1" ]; then
-    collect_add "1核" "$OUTPUT_DIR/add_1core"
-    echo ""
-fi
-if [ "$RUN_GMM" = "1" ]; then
-    collect_gmm "1核" "$OUTPUT_DIR/gmm_1core"
-    echo ""
-fi
-
-# ============================================================
 # 满核: 构建 + 采集
 # add 用 Vector 核数, gmm 用 Cube 核数
 # ============================================================
@@ -236,16 +222,11 @@ def analyze_add(prof_dir, label):
         print(f"  {label}: [未找到 add_kernel 数据]")
         return None
     durs = [float(r['Task Duration(us)'].strip().rstrip('\t')) for r in kr[2:]]
-    cold = float(kr[0]['Task Duration(us)'].strip().rstrip('\t'))
-    blk = kr[0].get('Block Num', '?').strip()
-    result = {'label': label, 'cold': cold, 'mean': statistics.mean(durs),
-              'median': statistics.median(durs), 'min': min(durs), 'max': max(durs),
-              'n': len(durs), 'block': blk}
-    print(f"  {label:12s} (Block={blk}): cold={cold:.3f}us  steady mean={result['mean']:.3f}us  median={result['median']:.3f}us  min={min(durs):.3f}us  max={max(durs):.3f}us  n={len(durs)}")
+    result = {'label': label, 'mean': statistics.mean(durs)}
+    print(f"  {label:12s} steady mean={result['mean']:.3f}us  n={len(durs)}")
     return result
 
 def analyze_gmm(prof_dir, label):
-    # 优先从 op_summary (msprof 采集) 读取，其次从 OpBasicInfo (msprof op 采集) 读取
     csvs = glob.glob(os.path.join(prof_dir, "**", "op_summary_*.csv"), recursive=True)
     if csvs:
         with open(csvs[0]) as f:
@@ -255,30 +236,24 @@ def analyze_gmm(prof_dir, label):
             print(f"  {label}: [op_summary 中未找到 groupedmatmul 数据]")
             return None
         all_durs = [float(r['Task Duration(us)'].strip().rstrip('\t')) for r in kr]
-        blk = kr[0].get('Block Num', '?').strip()
     else:
         csvs = glob.glob(os.path.join(prof_dir, "**", "OpBasicInfo_*.csv"), recursive=True)
         if not csvs:
             print(f"  {label}: [未找到 op_summary 或 OpBasicInfo CSV]")
             return None
         all_durs = []
-        blk = "?"
         for csv_path in sorted(csvs):
             with open(csv_path) as f:
                 for r in csv.DictReader(f):
                     try:
                         all_durs.append(float(r.get('Task Duration(us)', '0').strip()))
-                        if blk == "?": blk = r.get('Block Dim', '?').strip()
                     except: pass
     if not all_durs:
         print(f"  {label}: [无有效数据]")
         return None
-    cold = all_durs[0]
     steady = all_durs[2:]
-    result = {'label': label, 'cold': cold, 'mean': statistics.mean(steady),
-              'median': statistics.median(steady), 'min': min(steady), 'max': max(steady),
-              'n': len(steady), 'block': blk}
-    print(f"  {label:12s} (Block={blk}): cold={cold:.3f}us  steady mean={result['mean']:.3f}us  median={result['median']:.3f}us  min={min(steady):.3f}us  max={max(steady):.3f}us  n={len(steady)}")
+    result = {'label': label, 'mean': statistics.mean(steady)}
+    print(f"  {label:12s} steady mean={result['mean']:.3f}us  n={len(steady)}")
     return result
 
 print()
@@ -288,25 +263,24 @@ print("============================================")
 print()
 
 results = []
-if os.path.isdir(os.path.join(output_dir, 'add_1core')):
+if os.path.isdir(os.path.join(output_dir, 'add_full')):
     print("add (Vector):")
-    results.append(('add', 'Vector', '1核', analyze_add(os.path.join(output_dir, 'add_1core'), 'add 1核')))
-    results.append(('add', 'Vector', '满核', analyze_add(os.path.join(output_dir, 'add_full'), 'add 满核')))
+    r = analyze_add(os.path.join(output_dir, 'add_full'), 'add 满核')
+    if r: results.append(('add', 'Vector', add_cores, r['mean']))
     print()
-if os.path.isdir(os.path.join(output_dir, 'gmm_1core')):
+if os.path.isdir(os.path.join(output_dir, 'gmm_full')):
     print("grouped_matmul (Cube):")
-    results.append(('gmm', 'Cube', '1核', analyze_gmm(os.path.join(output_dir, 'gmm_1core'), 'gmm 1核')))
-    results.append(('gmm', 'Cube', '满核', analyze_gmm(os.path.join(output_dir, 'gmm_full'), 'gmm 满核')))
+    r = analyze_gmm(os.path.join(output_dir, 'gmm_full'), 'gmm 满核')
+    if r: results.append(('grouped_matmul', 'Cube', gmm_cores, r['mean']))
     print()
 
 # 生成汇总表
 summary_path = os.path.join(output_dir, 'summary.csv')
 with open(summary_path, 'w') as f:
     w = csv.writer(f)
-    w.writerow(['算子', '类型', '核数', '冷启动(us)', '稳态mean(us)', '稳态median(us)', '稳态min(us)', '稳态max(us)', 'Block', 'n'])
-    for op, typ, cores, r in results:
-        if r:
-            w.writerow([op, typ, cores, f"{r['cold']:.3f}", f"{r['mean']:.3f}", f"{r['median']:.3f}", f"{r['min']:.3f}", f"{r['max']:.3f}", r['block'], r['n']])
+    w.writerow(['算子', '类型', '核数', '稳态mean(us)'])
+    for op, typ, cores, mean in results:
+        w.writerow([op, typ, cores, f"{mean:.3f}"])
 
 print(f"汇总 CSV: {summary_path}")
 print()
