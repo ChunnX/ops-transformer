@@ -88,12 +88,12 @@ ge::graphStatus CommonChecker::CheckSingleParaDtype(const QfaTilingInfo &qfaInfo
         if (desc == nullptr) {
             return ge::GRAPH_SUCCESS;
         }
-        OP_CHECK_IF(std::find(supportedQuantDtypes.begin(), supportedQuantDtypes.end(), desc->GetDataType()) ==
-                        supportedQuantDtypes.end(),
-                    OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, name.c_str(),
-                                              DataTypeToSerialString(desc->GetDataType()).c_str(),
-                                              "FLOAT8_E4M3FN/HIFLOAT8"),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            std::find(supportedQuantDtypes.begin(), supportedQuantDtypes.end(), desc->GetDataType()) ==
+                supportedQuantDtypes.end(),
+            OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, name.c_str(), DataTypeToSerialString(desc->GetDataType()).c_str(),
+                                      "FLOAT8_E4M3FN/HIFLOAT8"),
+            return ge::GRAPH_FAILED);
         if (CheckFormatSupport(desc, name) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
@@ -134,10 +134,11 @@ ge::graphStatus CommonChecker::CheckSingleParaShapeDim(const QfaTilingInfo &qfaI
     const gert::StorageShape *queryShape = qfaInfo.opParamInfo.query.shape;
     if (queryShape != nullptr) {
         uint32_t queryDimNum = queryShape->GetStorageShape().GetDimNum();
-        OP_CHECK_IF(std::find(supportedQOutDims.begin(), supportedQOutDims.end(), queryDimNum) == supportedQOutDims.end(),
-                    OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, QUERY_NAME.c_str(),
-                                                 (std::to_string(queryDimNum) + "D").c_str(), "3D/4D"),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            std::find(supportedQOutDims.begin(), supportedQOutDims.end(), queryDimNum) == supportedQOutDims.end(),
+            OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, QUERY_NAME.c_str(),
+                                         (std::to_string(queryDimNum) + "D").c_str(), "3D/4D"),
+            return ge::GRAPH_FAILED);
     }
 
     // k: shape dim 支持 3、4、5
@@ -164,10 +165,11 @@ ge::graphStatus CommonChecker::CheckSingleParaShapeDim(const QfaTilingInfo &qfaI
     const gert::StorageShape *attnOutShape = qfaInfo.opParamInfo.attnOut.shape;
     if (attnOutShape != nullptr) {
         uint32_t attnOutDimNum = attnOutShape->GetStorageShape().GetDimNum();
-        OP_CHECK_IF(std::find(supportedQOutDims.begin(), supportedQOutDims.end(), attnOutDimNum) == supportedQOutDims.end(),
-                    OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, ATTN_OUT_NAME.c_str(),
-                                                 (std::to_string(attnOutDimNum) + "D").c_str(), "3D/4D"),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            std::find(supportedQOutDims.begin(), supportedQOutDims.end(), attnOutDimNum) == supportedQOutDims.end(),
+            OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, ATTN_OUT_NAME.c_str(),
+                                         (std::to_string(attnOutDimNum) + "D").c_str(), "3D/4D"),
+            return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -215,19 +217,19 @@ ge::graphStatus CommonChecker::CheckDtypeConsistency(const QfaTilingInfo &qfaInf
     ge::DataType queryDtype = queryDesc->GetDataType();
 
     OP_CHECK_IF(keyDesc != nullptr && keyDesc->GetDataType() != queryDtype,
-                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                    qfaInfo.opName, KEY_NAME.c_str(), DataTypeToSerialString(keyDesc->GetDataType()).c_str(),
-                    ("The dtype of key must be the same as dtype(" +
-                     std::string(DataTypeToSerialString(queryDtype)) + ") of query")
-                        .c_str()),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(qfaInfo.opName, KEY_NAME.c_str(),
+                                                      DataTypeToSerialString(keyDesc->GetDataType()).c_str(),
+                                                      ("The dtype of key must be the same as dtype(" +
+                                                       std::string(DataTypeToSerialString(queryDtype)) + ") of query")
+                                                          .c_str()),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(valueDesc != nullptr && valueDesc->GetDataType() != queryDtype,
-                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                    qfaInfo.opName, VALUE_NAME.c_str(), DataTypeToSerialString(valueDesc->GetDataType()).c_str(),
-                    ("The dtype of value must be the same as dtype(" +
-                     std::string(DataTypeToSerialString(queryDtype)) + ") of query")
-                        .c_str()),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(qfaInfo.opName, VALUE_NAME.c_str(),
+                                                      DataTypeToSerialString(valueDesc->GetDataType()).c_str(),
+                                                      ("The dtype of value must be the same as dtype(" +
+                                                       std::string(DataTypeToSerialString(queryDtype)) + ") of query")
+                                                          .c_str()),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
