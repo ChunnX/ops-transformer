@@ -13,9 +13,8 @@
 import pytest
 import torch
 
+from common import golden_cache, result_compare_method
 from common import quant_flash_attn_golden as golden
-from common import golden_cache
-from common import result_compare_method
 
 PARAM_MAP = {
     "B": "B",

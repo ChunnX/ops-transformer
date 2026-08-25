@@ -9,6 +9,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+
 """
 把 redline.xlsx 的 sheet 转成符合 ttk e2e 标准的 csv。
 
@@ -36,7 +37,12 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
-from _xlsx_minireader import col_to_idx, load_sheet, load_sheet1, list_sheet_names, header_to_name_idx
+from _xlsx_minireader import (
+    col_to_idx,
+    header_to_name_idx,
+    list_sheet_names,
+    load_sheet,
+)
 
 _XLSX = os.path.join(_HERE, "redline.xlsx")
 
@@ -65,7 +71,11 @@ CSV_PROFILES_MXFP8 = [
 # 3 个 csv 的 api_name 和 testcase_name 后缀 (HIF8 per-tensor, quant_mode=7)
 CSV_PROFILES_HIF8 = [
     ("qfa_hif8_excel.csv", "qfa_wrapper.npu_qfa", "_hif8"),
-    ("qfa_hif8_excel_metadata.csv", "qfa_metadata_wrapper.run_metadata", "_hif8_metadata"),
+    (
+        "qfa_hif8_excel_metadata.csv",
+        "qfa_metadata_wrapper.run_metadata",
+        "_hif8_metadata",
+    ),
     ("qfa_hif8_excel_main.csv", "qfa_main_wrapper.run_main", "_hif8_main"),
 ]
 
@@ -250,9 +260,14 @@ def _build_col_by_name(header_row: dict) -> dict:
         elif logical_key in COL:
             fallback_idx = COL[logical_key]
             actual_header = header_row.get(fallback_idx, "")
-            if actual_header is None or actual_header.strip() == "" or actual_header.strip() == col_name:
+            if (
+                actual_header is None
+                or actual_header.strip() == ""
+                or actual_header.strip() == col_name
+            ):
                 col_by_name[logical_key] = fallback_idx
     return col_by_name
+
 
 ABSOLUTE_PRECISION_DEFAULT = 1e-8
 
@@ -418,17 +433,20 @@ def _build_tensor_lists(row, col_by_name):
     descale_default_shape = (1,) if quant_mode == 7 else None
 
     _push(
-        _str_to_shape(row.get(col_by_name["Z_qdescale_shape"])) or descale_default_shape,
+        _str_to_shape(row.get(col_by_name["Z_qdescale_shape"]))
+        or descale_default_shape,
         _map_dtype(row.get(col_by_name["AA_qdescale_dtype"])) or descale_default_dtype,
         _DRANGE_PLACEHOLDER,
     )
     _push(
-        _str_to_shape(row.get(col_by_name["AC_kdescale_shape"])) or descale_default_shape,
+        _str_to_shape(row.get(col_by_name["AC_kdescale_shape"]))
+        or descale_default_shape,
         _map_dtype(row.get(col_by_name["AD_kdescale_dtype"])) or descale_default_dtype,
         _DRANGE_PLACEHOLDER,
     )
     _push(
-        _str_to_shape(row.get(col_by_name["AF_vdescale_shape"])) or descale_default_shape,
+        _str_to_shape(row.get(col_by_name["AF_vdescale_shape"]))
+        or descale_default_shape,
         _map_dtype(row.get(col_by_name["AG_vdescale_dtype"])) or descale_default_dtype,
         _DRANGE_PLACEHOLDER,
     )
@@ -470,12 +488,19 @@ def _build_attributes(row, col_by_name):
     _set("precision_tolerances", _precision_tolerances(row, col_by_name))
     _set("absolute_precision", ABSOLUTE_PRECISION_DEFAULT)
     _set("p_scale_value", _str_to_float(row.get(col_by_name["AL_p_scale_value"])))
-    _set_force("cu_seqlens_q", _str_to_int_list(row.get(col_by_name["AP_cu_seqlens_q_value"])))
     _set_force(
-        "cu_seqlens_kv", _str_to_int_list(row.get(col_by_name["AT_cu_seqlens_kv_value"]))
+        "cu_seqlens_q", _str_to_int_list(row.get(col_by_name["AP_cu_seqlens_q_value"]))
     )
-    _set_force("seqused_q", _str_to_int_list(row.get(col_by_name["AX_seqused_q_value"])))
-    _set_force("seqused_kv", _str_to_int_list(row.get(col_by_name["BB_seqused_kv_value"])))
+    _set_force(
+        "cu_seqlens_kv",
+        _str_to_int_list(row.get(col_by_name["AT_cu_seqlens_kv_value"])),
+    )
+    _set_force(
+        "seqused_q", _str_to_int_list(row.get(col_by_name["AX_seqused_q_value"]))
+    )
+    _set_force(
+        "seqused_kv", _str_to_int_list(row.get(col_by_name["BB_seqused_kv_value"]))
+    )
     _set("quant_mode", _str_to_int(row.get(col_by_name["BO_quant_mode"])))
     _set("softmax_scale", _str_to_float(row.get(col_by_name["BP_softmax_scale"])))
     _set("mask_mode", _str_to_int(row.get(col_by_name["BQ_mask_mode"])))
@@ -485,7 +510,9 @@ def _build_attributes(row, col_by_name):
     _set_force("max_seqlen_kv", _str_to_int(row.get(col_by_name["BU_max_seqlen_kv"])))
     layout_q_val = _strip_or_none(row.get(col_by_name["BV_layout_q"]))
     _set("layout_q", layout_q_val)
-    _set("layout_q_descale", _strip_or_none(row.get(col_by_name["BW_layout_q_descale"])))
+    _set(
+        "layout_q_descale", _strip_or_none(row.get(col_by_name["BW_layout_q_descale"]))
+    )
     _set("layout_kv", _strip_or_none(row.get(col_by_name["BX_layout_kv"])))
     _set("layout_out", _strip_or_none(row.get(col_by_name["BY_layout_out"])))
     _set("enable_lse", _bool_to_int(row.get(col_by_name["BZ_return_softmax_lse"])))
@@ -628,7 +655,7 @@ def main():
     a_col = col_by_name_pre.get("A_testcase_name", 0)
     data_rows = [r for r in data_rows if _strip_or_none(r.get(a_col)) is not None]
     if len(data_rows) < 1:
-        raise RuntimeError(f"expected >=1 non-empty data rows in sheet, got 0")
+        raise RuntimeError("expected >=1 non-empty data rows in sheet, got 0")
 
     # 按表头列名动态构建列索引表 (避免不同 sheet 列顺序偏移导致错位)
     col_by_name = col_by_name_pre
@@ -658,7 +685,9 @@ def main():
                 writer.writerow(_row_to_csv(row, api_name, suffix, col_by_name))
         print(f"wrote {out_path}")
 
-    print(f"\n3 csv files written ({mode_label}), each with {len(data_rows)} case rows.")
+    print(
+        f"\n3 csv files written ({mode_label}), each with {len(data_rows)} case rows."
+    )
 
 
 if __name__ == "__main__":
