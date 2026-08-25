@@ -115,7 +115,15 @@ private:
     static constexpr uint64_t MXFP_DATA_NUM_PER_BYTE = 2UL;
 
     __aicore__ inline void InitBaseParams();
-    __aicore__ inline void SetupParams(const QuantMatmulTilingData &mmTile, uint32_t curTileM, Params &params);
+    __aicore__ inline void SetupParams(Params &params, uint64_t rowOffset, const QuantMatmulTilingData &mmTile);
+    __aicore__ inline void MatmulProcess(uint64_t rowOffset, const QuantMatmulTilingData &mmTile);
+    __aicore__ inline void ProcessBatch(uint64_t startRow, uint32_t taskM, uint32_t taskCnt,
+                                        const QuantMatmulTilingData &mmTile);
+    // FP4打包因子
+    static constexpr uint64_t PackFactor = IsMxFp4 ? 2UL : 1UL;
+    __aicore__ inline GM_ADDR GmAddr(GM_ADDR base, uint64_t elemCount, uint64_t typeSize) {
+        return base + elemCount * typeSize / PackFactor;
+    }
 };
 
 template <typename X1Type, typename X2Type, typename YType,
@@ -175,27 +183,87 @@ template <typename X1Type, typename X2Type, typename YType,
 __aicore__ inline void
 QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
                               QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::SetupParams(
-    const QuantMatmulTilingData &mmTile, uint32_t curTileM, Params &params)
+    Params &params, uint64_t rowOffset, const QuantMatmulTilingData &mmTile)
 {
-    // ProblemShape: M=curTileM(tile级), N=perRankN, K, batch=1
+    auto &&ti = tilingData_->matmulAllToAllTilingInfo;
+    uint64_t rankNPerPeer = static_cast<uint64_t>(ti.rankN) / ti.rankDim;
+    uint64_t scaleK = Blaze::Gemm::CeilDiv(static_cast<uint64_t>(ti.rankK), MXFP_GROUP_SIZE) * MXFP_MULTI_BASE_SIZE;
+
+    // ProblemShape: M=mmTile.m, N=mmTile.n(perRankN), K=mmTile.k
     params.problemShape = ProblemShape{
-        static_cast<int64_t>(curTileM),
-        static_cast<int64_t>(axisNPerRank_),
-        static_cast<int64_t>(axisK_),
+        static_cast<int64_t>(mmTile.m),
+        static_cast<int64_t>(mmTile.n),
+        static_cast<int64_t>(mmTile.k),
         1};
 
+    // A偏移: rowOffset * rankK (用PackFactor处理FP4打包)
     params.mmParams = BlockMmadParams{
-        x1_, x2_, mmResultGM_, bias_,
-        x1Scale_, x2Scale_};
+        GmAddr(x1_, rowOffset * ti.rankK, sizeof(X1Type)),
+        x2_,  // B不偏移
+        GmAddr(workspaceGM_, rowOffset * rankNPerPeer, sizeof(YType)),
+        bias_,
+        GmAddr(x1Scale_, rowOffset * scaleK, sizeof(AscendC::fp8_e8m0_t)),
+        x2Scale_};
 
     params.l1Params = L1Params{static_cast<uint64_t>(mmTile.stepK) * mmTile.baseK, mmTile.scaleKL1, mmTile.nBufferNum};
     params.schedulerParams = BlockSchedulerParams{mmTile.baseM, mmTile.baseN, mmTile.mTailTile, mmTile.nTailTile,
         mmTile.mBaseTailSplitCnt, mmTile.nBaseTailSplitCnt, mmTile.mTailMain, mmTile.nTailMain};
     params.qbmmParams = QBMMTiling{mmTile.baseM, mmTile.baseN, mmTile.baseK, mmTile.dbL0c,
         isBias_ ? 1u : 0u};
-    // rankStride = rankM * perRankN (完整M, 不是tileM)
-    params.rankStride = axisM_ * axisNPerRank_;
-    params.rankDim = rankDim_;
+    // rankStride = rankM * rankNPerPeer (完整M, 与PR#10391一致)
+    params.rankStride = static_cast<uint64_t>(ti.rankM) * rankNPerPeer;
+    params.rankDim = ti.rankDim;
+}
+
+template <typename X1Type, typename X2Type, typename YType,
+          typename QuantMatmulAllToAllTilingDataType,
+          AscendC::HcclServerType ServerType, bool IsMxFp4>
+__aicore__ inline void
+QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
+                              QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::MatmulProcess(
+    uint64_t rowOffset, const QuantMatmulTilingData &mmTile)
+{
+    Params params;
+    SetupParams(params, rowOffset, mmTile);
+    quantMatmulKernelImpl_(params);
+}
+
+template <typename X1Type, typename X2Type, typename YType,
+          typename QuantMatmulAllToAllTilingDataType,
+          AscendC::HcclServerType ServerType, bool IsMxFp4>
+__aicore__ inline void
+QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
+                              QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::ProcessBatch(
+    uint64_t startRow, uint32_t taskM, uint32_t taskCnt, const QuantMatmulTilingData &mmTile)
+{
+    auto &&ti = tilingData_->matmulAllToAllTilingInfo;
+    uint64_t rankNPerPeer = static_cast<uint64_t>(ti.rankN) / ti.rankDim;
+
+    // AllToAll参数(与PR#10391一致)
+    // sendBuffer = workspace + startRow * rankNPerPeer (绝对偏移)
+    // recvBuffer = y_ + startRow * rankNPerPeer
+    // sendOffset = taskM * rankNPerPeer * sizeof(YType) (tile间步长)
+    // sendCount = taskM * rankNPerPeer (每tile发送量)
+    // strideCount = rankM * rankNPerPeer (相邻rank间距, 完整M)
+    GM_ADDR sendBuf = GmAddr(workspaceGM_, startRow * rankNPerPeer, sizeof(YType));
+    GM_ADDR recvBuf = GmAddr(y_, startRow * rankNPerPeer, sizeof(YType));
+    uint64_t sendOffset = static_cast<uint64_t>(taskM) * rankNPerPeer * sizeof(YType);
+    uint64_t sendCount = static_cast<uint64_t>(taskM) * rankNPerPeer;
+    uint64_t strideCount = static_cast<uint64_t>(ti.rankM) * rankNPerPeer;
+
+    for (uint32_t index = 0; index < taskCnt; ++index) {
+        // matmul: rowOffset = startRow + index * taskM
+        MatmulProcess(startRow + static_cast<uint64_t>(index) * taskM, mmTile);
+        AscendC::SyncAll();
+
+        // AllToAll整块发送
+        AscendC::HcclHandle h = hccl_.template AlltoAll<true>(
+            sendBuf + static_cast<uint64_t>(index) * sendOffset,
+            recvBuf + static_cast<uint64_t>(index) * sendOffset,
+            sendCount, static_cast<AscendC::HcclDataType>(ti.hcclDataType),
+            strideCount, 1);
+        hccl_.Wait(h);
+    }
 }
 
 template <typename X1Type, typename X2Type, typename YType,
@@ -205,52 +273,17 @@ __aicore__ inline void
 QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
                               QuantMatmulAllToAllTilingDataType, ServerType, IsMxFp4>::Run()
 {
-    // PR#10391方案: AIC_ONLY, 逐tile compute+SyncAll+comm
-    // for循环逐tile: kernel(tileM, perRankN) → SyncAll → AllToAll(tileM*perRankN)
     if ASCEND_IS_AIC {
-        GM_ADDR aCur = x1_;
-        GM_ADDR aScaleCur = x1Scale_;
-        uint32_t lastTiling = 0;
-        const auto &headTile = tilingData_->tileQbmmTilingData;
-        const auto &tailTile = tilingData_->tailQbmmTilingData;
-
-        Params param;
-        for (uint32_t tid = 0; tid < totalTileCnt_; ++tid) {
-            bool isTail = (tid >= tileCnt_);
-            uint32_t curTileM = isTail ? tailM_ : tileM_;
-
-            // 每tile重新SetupParams(kernel内部mmOp_.Init每次调用)
-            SetupParams(isTail ? tailTile : headTile, curTileM, param);
-
-            // 更新A和scaleA偏移
-            param.mmParams.aGmAddr = aCur;
-            param.mmParams.scaleAGmAddr = aScaleCur;
-            // C输出: mmResultGM_ + rowOffset * perRankN (按tile偏移)
-            // kernel内部按rankIdx * rankStride(=rankM*perRankN)偏移
-            // mmResult布局: [rankDim, rankM, perRankN], 每tile从rowOffset*perRankN开始
-            param.mmParams.cGmAddr = mmResultGM_ + tileOffset * axisNPerRank_ * sizeof(YType);
-
-            // matmul (kernel内部调用mmOp_.Init + 逐rank遍历)
-            quantMatmulKernelImpl_(param);
-
-            AscendC::SyncAll();
-
-            // AllToAll整块发送: sendCount=curTileM*perRankN, batchCnt=1
-            uint64_t tileOffset = (tid < tileCnt_)
-                ? static_cast<uint64_t>(tid) * tileM_
-                : static_cast<uint64_t>(tileCnt_) * tileM_ + static_cast<uint64_t>(tid - tileCnt_) * tailM_;
-            uint64_t sendCount = static_cast<uint64_t>(curTileM) * axisNPerRank_;
-            AscendC::HcclHandle h = hccl_.template AlltoAll<true>(
-                mmResultGM_,
-                y_ + tileOffset * axisNPerRank_ * sizeof(YType),
-                sendCount, static_cast<AscendC::HcclDataType>(yHcclDataType_),
-                sendCount, 1);
-            hccl_.Wait(h);
-
-            aCur += static_cast<uint64_t>(curTileM) * aByteStrideK_;
-            aScaleCur += static_cast<uint64_t>(curTileM) * scaleAByteStride_;
+        auto &&ti = tilingData_->matmulAllToAllTilingInfo;
+        // 头块: ProcessBatch(0, tileM, tileCnt, tileQbmmTilingData)
+        if (ti.tileCnt > 0) {
+            ProcessBatch(0, ti.tileM, ti.tileCnt, tilingData_->tileQbmmTilingData);
         }
-
+        // 尾块: ProcessBatch(mainRows, tailM, tailCnt, tailQbmmTilingData)
+        if (ti.tailCnt > 0) {
+            uint64_t mainRows = static_cast<uint64_t>(ti.tileM) * ti.tileCnt;
+            ProcessBatch(mainRows, ti.tailM, ti.tailCnt, tilingData_->tailQbmmTilingData);
+        }
         AscendC::SyncAll();
         hccl_.Finalize();
     }
