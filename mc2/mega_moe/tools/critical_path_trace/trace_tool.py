@@ -46,6 +46,7 @@ EVENT_NAMES = {
     27: "Wait mask/index ready (aggregate)",
     28: "GatherMask issue (aggregate)",
     29: "Wait GatherMask ready (aggregate)",
+    30: "GatherMask call count (counter)",
 }
 EVENT_COLORS = {
     1: "#06b6d4",
@@ -77,10 +78,12 @@ EVENT_COLORS = {
     27: "#f59e0b",
     28: "#d946ef",
     29: "#f97316",
+    30: "#64748b",
 }
 WAIT_EVENT_IDS = frozenset((8, 9, 10, 11, 13, 14, 15, 19, 20, 27, 29))
 AGGREGATE_EVENT_IDS = frozenset((12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-                                 25, 26, 27, 28, 29))
+                                 25, 26, 27, 28, 29, 30))
+COUNTER_EVENT_IDS = frozenset((30,))
 WAIT_INSTRUMENTED_PARENT_IDS = frozenset((1, 2, 4, 5, 7))
 EVENT_TRACE_POINTS = {
     1: (
@@ -199,6 +202,10 @@ EVENT_TRACE_POINTS = {
         "进入既有 V_S 同步，等待 compact topkIndex 对 Scalar 可见",
         "V_S 同步完成（累计值）",
     ),
+    30: (
+        "当前 wave 的 GatherMask 调用计数器开始累计",
+        "duration word 保存当前 AIV1 core/wave 的 GatherMask 调用总次数，不代表 cycles",
+    ),
 }
 
 
@@ -310,6 +317,7 @@ def parse_trace(words: tuple[int, ...]) -> dict:
                 wait_cycles = None
                 begin, end = event_words[6:8]
             duration_cycles = (end - begin) & 0xFFFFFFFF
+            is_counter_event = event_type in COUNTER_EVENT_IDS
             active_cycles = duration_cycles if wait_cycles is None else max(0, duration_cycles - wait_cycles)
             events.append(
                 {
@@ -317,6 +325,8 @@ def parse_trace(words: tuple[int, ...]) -> dict:
                     "event_id": event_type,
                     "is_wait_event": is_wait_event,
                     "is_aggregate_event": is_aggregate_event if header["version"] == 3 else False,
+                    "is_counter_event": is_counter_event if header["version"] == 3 else False,
+                    "counter_value": duration_cycles if is_counter_event else None,
                     "parent_event": EVENT_NAMES.get(parent_event_id) if parent_event_id else None,
                     "parent_event_id": parent_event_id,
                     "wave": wave_index,
@@ -358,6 +368,8 @@ def write_csv(trace: dict, path: Path) -> None:
         "event_id",
         "is_wait_event",
         "is_aggregate_event",
+        "is_counter_event",
+        "counter_value",
         "parent_event",
         "parent_event_id",
         "wave",
@@ -610,12 +622,14 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
   <div class="muted">五个一级分项是每个 AIV1 core 在当前 wave 内所有专家段的精确 cycle 累计；
   RankRoundPlan 已扣除其内部嵌套的 MaskLoadAndGather，因而各列互不重叠。Other/control 为 Dispatch
   父阶段减去五项后的 wave 游标规划、地址设置、检查等剩余时间。Mask 子项进一步拆分现有异步流水：
-  DataCopy/CreateVecIndex/GatherMask 标为 issue，仅表示 API 指令下发；真实完成延迟落在原有 MTE2_V/V_S 等待中。</div>
+  DataCopy/CreateVecIndex/GatherMask 标为 issue，仅表示 API 指令下发；真实完成延迟落在原有 MTE2_V/V_S 等待中。
+  GatherMask calls 是当前 core/wave 的调用次数，不是 cycles，也不参与已归类耗时求和。</div>
   <div class="table-scroll"><table id="dispatchTable"><thead><tr>
     <th>AI Block</th><th>Wave</th><th>Token 数</th><th>Dispatch 总计</th><th>PrepareDispatchCounts</th>
     <th>RankRoundPlan</th><th>MaskLoadAndGather</th><th>TransferPipeline</th><th>ReadyPublish</th>
     <th>Mask DataCopy issue</th><th>CreateVecIndex issue</th><th>Wait mask/index ready</th>
-    <th>GatherMask issue</th><th>Wait GatherMask ready</th><th>Other/control</th><th>已归类占比</th>
+    <th>GatherMask issue</th><th>Wait GatherMask ready</th><th>GatherMask calls</th>
+    <th>Other/control</th><th>已归类占比</th>
   </tr></thead><tbody></tbody></table></div>
 </section>
 <section class="panel">
@@ -889,6 +903,7 @@ function renderLaneTable(blockGroups) {{
 function renderWaveTable(events) {{
   const groups=new Map();
   for(const e of events) {{
+    if(e.is_counter_event) continue;
     const key=`${{e.core}}|${{e.wave}}|${{e.role}}|${{e.event}}`;
     const g=groups.get(key)||{{core:e.core,wave:e.wave,role:e.role,event:e.event,count:0,tokens:0,mGroups:0,cycles:0,active:0,wait:0,waitKnown:true,max:0}};
     g.count++;
@@ -910,11 +925,11 @@ function renderDispatchTable(events) {{
     if(e.role!=='AIV1') continue;
     const relevant=e.event_id===1 ||
       (e.parent_event_id===1 && [12,21,22,23,24].includes(e.event_id)) ||
-      (e.parent_event_id===23 && [25,26,27,28,29].includes(e.event_id));
+      (e.parent_event_id===23 && [25,26,27,28,29,30].includes(e.event_id));
     if(!relevant) continue;
     const key=`${{e.core}}|${{e.wave}}`;
     const g=groups.get(key)||{{core:e.core,wave:e.wave,tokens:0,total:0,counts:0,plan:0,mask:0,transfer:0,ready:0,
-      maskCopyIssue:0,indexIssue:0,maskIndexWait:0,gatherIssue:0,gatherWait:0}};
+      maskCopyIssue:0,indexIssue:0,maskIndexWait:0,gatherIssue:0,gatherWait:0,gatherCalls:0}};
     if(e.event_id===1) {{ g.total+=e.duration_cycles; g.tokens=Math.max(g.tokens,e.token_count); }}
     else if(e.event_id===21) g.counts+=e.duration_cycles;
     else if(e.event_id===22) g.plan+=e.duration_cycles;
@@ -926,6 +941,7 @@ function renderDispatchTable(events) {{
     else if(e.event_id===27) g.maskIndexWait+=e.duration_cycles;
     else if(e.event_id===28) g.gatherIssue+=e.duration_cycles;
     else if(e.event_id===29) g.gatherWait+=e.duration_cycles;
+    else if(e.event_id===30) g.gatherCalls+=e.counter_value||0;
     groups.set(key,g);
   }}
   const rows=[...groups.values()].filter(g=>g.total>0).sort((a,b)=>a.core-b.core||a.wave-b.wave);
@@ -938,7 +954,7 @@ function renderDispatchTable(events) {{
       +`<td>${{fmt(g.counts)}}</td><td>${{fmt(g.plan)}}</td><td>${{fmt(g.mask)}}</td>`
       +`<td>${{fmt(g.transfer)}}</td><td>${{fmt(g.ready)}}</td>`
       +`<td>${{fmt(g.maskCopyIssue)}}</td><td>${{fmt(g.indexIssue)}}</td><td>${{fmt(g.maskIndexWait)}}</td>`
-      +`<td>${{fmt(g.gatherIssue)}}</td><td>${{fmt(g.gatherWait)}}</td>`
+      +`<td>${{fmt(g.gatherIssue)}}</td><td>${{fmt(g.gatherWait)}}</td><td>${{g.gatherCalls.toLocaleString()}}</td>`
       +`<td>${{fmt(other)}}</td><td>${{ratio}}</td></tr>`;
   }}).join('');
 }}
@@ -975,6 +991,9 @@ function renderCombineTable(events) {{
 function renderEventTable(events) {{
   const rows=[...events].sort((a,b)=>a.core-b.core||a.wave-b.wave||roles.indexOf(a.role)-roles.indexOf(b.role)||signedCycleDelta(a.begin_cycle)-signedCycleDelta(b.begin_cycle));
   document.querySelector('#eventTable tbody').innerHTML=rows.map(e=>{{
+    if(e.is_counter_event) {{
+      return `<tr><td>${{e.core}}</td><td>${{e.role}}</td><td>${{e.event}}</td><td>${{e.parent_event||'—'}}</td><td>${{e.wave}}</td><td>${{e.expert}}</td><td>[${{e.token_start_in_expert}}, ${{e.token_start_in_expert+e.token_count}})</td><td>${{e.m_group_count}}</td><td>—</td><td>—</td><td>${{e.counter_value.toLocaleString()}} calls</td><td>—</td><td>—</td><td>—</td><td>—</td><td>${{esc(e.begin_trace_point)}}</td><td>${{esc(e.end_trace_point)}}</td></tr>`;
+    }}
     const wait=e.wait_cycles===null?'—':e.wait_cycles.toLocaleString();
     const waitPercent=e.wait_cycles!==null&&e.duration_cycles?(e.wait_cycles/e.duration_cycles*100).toFixed(1)+'%':'—';
     return `<tr><td>${{e.core}}</td><td>${{e.role}}</td><td>${{e.event}}</td><td>${{e.parent_event||'—'}}</td><td>${{e.wave}}</td><td>${{e.expert}}</td><td>[${{e.token_start_in_expert}}, ${{e.token_start_in_expert+e.token_count}})</td><td>${{e.m_group_count}}</td><td>${{e.begin_cycle}}</td><td>${{e.end_cycle}}</td><td>${{e.duration_cycles.toLocaleString()}}</td><td>${{e.active_cycles.toLocaleString()}}</td><td>${{wait}}</td><td>${{waitPercent}}</td><td>${{(e.duration_cycles/1000).toFixed(3)}}</td><td>${{esc(e.begin_trace_point)}}</td><td>${{esc(e.end_trace_point)}}</td></tr>`;

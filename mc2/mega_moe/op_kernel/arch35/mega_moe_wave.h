@@ -1012,6 +1012,13 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetInfo(
             MegaMoeWaveTraceEvent::DISPATCH_MASK_LOAD_AND_GATHER,
             traceScope, maskTraceBegin, maskTraceEnd,
             dispatchTraceMetrics.gatherMaskReadyWaitCycles, maskChildOffset);
+        // Counter 复用 aggregate event 的 duration word 携带数值；从 offset 0
+        // 独立记录，不能接在五个时间分项之后，否则父区间已被完全占满。
+        waveTrace_.RecordAggregatedChild(
+            MegaMoeWaveTraceEvent::DISPATCH_GATHER_MASK_CALL_COUNT,
+            MegaMoeWaveTraceEvent::DISPATCH_MASK_LOAD_AND_GATHER,
+            traceScope, maskTraceBegin, maskTraceEnd,
+            dispatchTraceMetrics.gatherMaskCallCount, 0U);
         traceOffset = waveTrace_.RecordAggregatedChild(
             MegaMoeWaveTraceEvent::DISPATCH_TRANSFER_PIPELINE, MegaMoeWaveTraceEvent::DISPATCH,
             traceScope, traceBegin, traceEnd, dispatchTraceMetrics.transferPipelineCycles, traceOffset);

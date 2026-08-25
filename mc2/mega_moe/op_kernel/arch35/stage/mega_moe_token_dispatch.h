@@ -92,6 +92,7 @@ struct WaveDispatchTraceMetrics {
     uint32_t maskIndexReadyWaitCycles = 0U;
     uint32_t gatherMaskIssueCycles = 0U;
     uint32_t gatherMaskReadyWaitCycles = 0U;
+    uint32_t gatherMaskCallCount = 0U;
     uint32_t transferPipelineCycles = 0U;
     uint32_t readyPublishCycles = 0U;
 };
@@ -807,6 +808,11 @@ __aicore__ inline int32_t PlanDispatchCoreRankRoutes(
         }
 #endif
         uint64_t batchMatchedRouteCount = 0U;
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+        if (traceMetrics != nullptr) {
+            ++traceMetrics->gatherMaskCallCount;
+        }
+#endif
         GatherMask(scratch.validTopkIndexTensor, routeIndexTensor, scratch.maskBatchU32Tensor, true,
                    static_cast<uint32_t>(validRouteCount), {1, 1, 0, 0}, batchMatchedRouteCount);
 #if MEGA_MOE_ENABLE_WAVE_TRACE != 0

@@ -60,6 +60,10 @@ rank-interleave trace 按 AIV1 core/wave 累计以下五个互不重叠的指标
 `Wait GatherMask ready`。三个 `issue` 只表示异步指令下发区间；实际完成延迟分别由既有
 `MTE2_V`、`V_S` 同步等待承接。该细分没有增加新的同步屏障。
 
+`GatherMask call count` 另行记录每个 AIV1 core/wave 实际调用 `GatherMask` 的总次数。
+它只用于判断重复扫描规模，不是 cycle 数据，也不会参与 Dispatch 分项的耗时归类。
+可用 `GatherMask issue cycles / GatherMask call count` 估算平均单次 API 下发成本。
+
 这些事件是一个 wave 内多个短区间的累计值，不对应一段连续时间轴位置，因此不会绘制为时间线色块；
 它们会出现在 HTML 的 Dispatch 分项、wave/event 表格、CSV 和 JSON 中。`Other/control` 是 Dispatch
 父事件减去五个分项后的剩余周期，主要包含 wave 游标规划、地址设置、条件检查及计时本身的固定开销。

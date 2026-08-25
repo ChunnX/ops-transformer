@@ -76,6 +76,7 @@ enum class MegaMoeWaveTraceEvent : uint32_t {
     WAIT_DISPATCH_MASK_INDEX_READY = 27U,
     DISPATCH_GATHER_MASK_ISSUE = 28U,
     WAIT_DISPATCH_GATHER_MASK_READY = 29U,
+    DISPATCH_GATHER_MASK_CALL_COUNT = 30U,
 };
 
 namespace MegaMoeWaveTraceDetail {
