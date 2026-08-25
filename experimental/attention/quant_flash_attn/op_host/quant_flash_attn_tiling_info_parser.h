@@ -68,6 +68,7 @@ private:
     void GetSoftmaxScale();
     ge::graphStatus ParseAxisInfo();
     ge::graphStatus ParseFeatureInfo();
+    ge::graphStatus GetEmptyTensorFlag();
 
 private:
     const gert::TilingContext *context_ = nullptr;
@@ -75,6 +76,8 @@ private:
 
     // NPU信息
     NpuArch npuArch_ = NpuArch::DAV_3510;
+
+    bool emptyTensorFlag_ = false;
 
     // shape信息
     std::shared_ptr<FiaTilingShape> queryShape_ = nullptr;
