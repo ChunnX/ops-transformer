@@ -22,11 +22,94 @@
 #define FLASH_MLA_WITH_KVCACHE_TYPE_H_
 
 #include "../../../common/op_kernel/arch35/util_regbase.h"
-#include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
+#include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
 #include "../../../common/op_kernel/memcopy/parser.h"
-#include "../../../common/op_kernel/memcopy/gm_format.h"
+#include "../../../common/op_kernel/memcopy/gm_layout.h"
+#include "../../../common/op_kernel/memcopy/fa_ub_tensor.h"
 
 namespace BaseApi {
+
+// ---------------------------------------------------------------------------
+// 布局/格式推导 helper（源自 fork common/op_kernel/memcopy/{gm_format,mem_format}.h，
+// 上游已删除上述共享头并改为"每算子族本地携带"惯例——参考 flash_attn_type.h:33/49/101、
+// fused_infer_attention_score arch35 memory_copy_arch35_fused_infer.h:28/38/134）
+// ---------------------------------------------------------------------------
+template <LayOutTypeEnum LAYOUT>
+__aicore__ inline constexpr GmFormat GetQueryGmFormat()
+{
+    if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH) {
+        return GmFormat::BSNGD;
+    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_SBH) {
+        return GmFormat::SBNGD;
+    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
+        return GmFormat::BNGSD;
+    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
+        return GmFormat::TNGD;
+    } else {
+        return GmFormat::NGTD;
+    }
+}
+
+template <LayOutTypeEnum LAYOUT, uint8_t KvLayoutType = 0, bool isPa = false>
+__aicore__ inline constexpr GmFormat GetKVGmFormat()
+{
+    if constexpr (KvLayoutType == 0) { // KvLayoutType_NO_PA
+        if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH) {
+            return GmFormat::BSND;
+        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_SBH) {
+            return GmFormat::SBND;
+        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
+            return GmFormat::BNSD;
+        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
+            return GmFormat::TND;
+        } else {
+            return GmFormat::NTD;
+        }
+    } else if constexpr (KvLayoutType == 1) { // KvLayoutType_PA_BBH
+        return GmFormat::PA_BnBsND;
+    } else if constexpr (KvLayoutType == 2) { // KvLayoutType_PA_BNBD
+        return GmFormat::PA_BnNBsD;
+    } else { // KvLayoutType_PA_NZ
+        return GmFormat::PA_NZ;
+    }
+}
+
+template <LayOutTypeEnum LAYOUT>
+__aicore__ inline constexpr ActualSeqLensMode GetQActSeqMode()
+{
+    if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND || LAYOUT == LayOutTypeEnum::LAYOUT_NTD) {
+        return ActualSeqLensMode::ACCUM;
+    } else {
+        return ActualSeqLensMode::BY_BATCH;
+    }
+}
+
+template <LayOutTypeEnum LAYOUT, const bool PAGE_ATTENTION>
+__aicore__ inline constexpr ActualSeqLensMode GetKvActSeqMode()
+{
+    if constexpr (PAGE_ATTENTION) {
+        return ActualSeqLensMode::BY_BATCH;
+    }
+    if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND || LAYOUT == LayOutTypeEnum::LAYOUT_NTD) {
+        return ActualSeqLensMode::ACCUM;
+    } else {
+        return ActualSeqLensMode::BY_BATCH;
+    }
+}
+
+template <LayOutTypeEnum LAYOUT>
+__aicore__ inline constexpr UbFormat GetOutUbFormat()
+{
+    static_assert((LAYOUT == LayOutTypeEnum::LAYOUT_BSH) || (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) ||
+                      (LAYOUT == LayOutTypeEnum::LAYOUT_TND) || (LAYOUT == LayOutTypeEnum::LAYOUT_NTD),
+                  "Get OutAttention UB GmFormat fail, LAYOUT is incorrect");
+    if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH || LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
+        return UbFormat::S1G;
+    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD || LAYOUT == LayOutTypeEnum::LAYOUT_NTD) {
+        return UbFormat::GS1;
+    }
+}
+
 
 // Cube block 参数聚合（8 参：INPUT_T、T、layout、s1、s2、d、dv、KvLayoutType）。
 // PAGE_ATTENTION 派生规则与 block 内 (KvLayoutType > 0) 一致（四件套 KV_FORMAT 同源）。

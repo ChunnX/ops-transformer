@@ -29,9 +29,17 @@
 // S1/S2/DTemplateType、LayOutTypeEnum 等）、软名前缀头（vf_* / attenmask_gs1.h）与
 // memory_copy_arch35.h（CopyQueryGmToL1 等）均由实际消费它们的 block/type 头随用随含；
 // 与 flash_attn.cpp 同构——FA 亦只直接 include template_tiling_key + 共享 common，其余经 block 头传递。
-#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#if __has_include("../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h")
+#include "../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
+#else
+#include "../common/arch35/flash_attention_score_common_regbase_arch35.h"
+#endif
 #include "adv_api/activation/softmax.h"
-#include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
+#if __has_include("../../common/op_kernel/arch35/flash_attention_score_tiling_regbase_arch35.h")
+#include "../../common/op_kernel/arch35/flash_attention_score_tiling_regbase_arch35.h"
+#else
+#include "../common/arch35/flash_attention_score_tiling_regbase_arch35.h"
+#endif
 #include "arch35/flash_mla_with_kvcache_type.h"
 using namespace optiling; // tiling_regbase 提供；kernel 头 static_assert 需在解析期可见 optiling 域（与 FA 入口同款）
 #include "arch35/flash_mla_with_kvcache_kernel_noquant_mla.h"
