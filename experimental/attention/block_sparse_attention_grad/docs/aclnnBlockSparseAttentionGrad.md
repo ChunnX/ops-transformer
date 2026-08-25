@@ -4,14 +4,17 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
+
 |<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品</term>|      √     |
+|<term>Atlas A3 训练系列产品</term>|      ×     |
 |<term>Atlas A3 推理系列产品</term>|      ×     |
-|<term>Atlas A2 训练系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品</term>|      ×     |
 |<term>Atlas A2 推理系列产品</term>|      ×     |
 |<term> Atlas 200I/500 A2 推理产品</term>                                         |    ×    |
 |<term> Atlas 推理系列产品</term>                                                 |    ×    |
 |<term> Atlas 训练系列产品</term>                                                 |    ×    |
+
+> **当前版本仅支持 <term>Ascend 950PR/Ascend 950DT</term>（arch35）**，其他平台不支持。
 
 ## 功能说明
 
@@ -83,9 +86,6 @@ BlockSparseAttentionGrad输入dout、query、key、value, attentionOut的数据�
 
 * qInputLayout: "TND" "BNSD" "BSND"
 * kvInputLayout: "TND" "BNSD" "BSND"
-
-- <term>Atlas A2 训练产品</term>、<term>Atlas A3 训练产品</term>:
-不支持"BSND"。
 </ul>
 
 
@@ -228,11 +228,11 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
     <tr>
     <td>attenMaskOptional（aclTensor*）</td>
     <td>输入</td>
-    <td>注意力掩码，即公式中的atten_mask。用于屏蔽不应参与计算的特定token。</td>
-    <td>支持空Tensor。<br>当前不支持，应传入nullptr。</td>
-    <td>BOOL</td>
+    <td>PerBlockSizeMask 块级变长掩码（maskType=1 时使用）。按稀疏块粒度描述每个块 Q/KV 方向的实际计算长度，用于块内变长（actualSize 小于 blockShape）场景，与 blockSparseMaskOptional 共同决定参与计算的 token。</td>
+    <td>支持空Tensor。<br>maskType=1 时必选，shape 必须严格为 [batch, headNum, maxBlockNum, 2]，dtype 为 INT32：<ul><li>maxBlockNum = max(ceilDiv(maxQSeqLength, blockShapeX), ceilDiv(maxKvSeqLength, blockShapeY))。</li><li>[..., 0] 为 Q 方向 actualSizeX，[..., 1] 为 KV 方向 actualSizeY，需满足 0 ≤ actualSize ≤ 对应 blockShape。</li><li>块内 [0, actualSize) 有效参与计算，[actualSize, blockShape) 视为 padding，actualSize=0 表示该块不参与计算。</li></ul>maskType=0 时忽略此输入，应传入nullptr。</td>
+    <td>INT32</td>
     <td>ND</td>
-    <td>2</td>
+    <td>4</td>
     <td>×</td>
     </tr>
     <tr>
@@ -305,7 +305,7 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
     <td>maskType（int64_t）</td>
     <td>输入</td>
     <td>注意力计算中的掩码类型。指定采用何种预设规则的掩码逻辑。</td>
-    <td>当前只支持传 0：代表不加mask场景。</td>
+    <td>当前支持传 0 和 1：<ul><li>0：不加mask场景，忽略 attenMaskOptional。</li><li>1：PerBlockSizeMask 场景，按块级变长掩码计算，需配置 attenMaskOptional。</li></ul></td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -484,13 +484,16 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
 * softmaxLse的layout需要与query的layout保持一致。如果query的layout为"BSND"时，softmaxLse的layout应传入"BNS1"。
 * HeadDim必须等于128。
 * 根据算子支持的输入 Layout，query 张量 Shape 中对应的 head 维度大小记为 N1，key 和 value 张量 Shape 中对应的 head 维度大小记为 N2。必须满足N1 % N2 == 0。
-  - <term>Atlas A2 训练产品</term>、<term>Atlas A3 训练产品</term>：当前只支持MHA，即N1等于N2。
-  - <term>Ascend 950PR/Ascend 950DT</term>：支持MQA、MHA、GQA场景。
+  - 支持MQA、MHA、GQA场景。
 * actualSeqLengthsOptional与actualSeqLengthsKvOptional相关约束：
 
-  - <term>Atlas A2 训练产品</term>、<term>Atlas A3 训练产品</term>：当 qInputLayout或kvInputLayout 为 "BNSD" 时，如配置该项，算子会按指定的有效长度处理，忽略 Padding 部分的数据，提升性能；如不配置（传 nullptr），算子将默认把 query shape 中的 S 维度作为有效长度进行全量处理。
-
-  - <term>Ascend 950PR/Ascend 950DT</term>：当qInputLayout或kvInputLayout 为 非"TND"时，会忽略这两个入参。
+  - 当qInputLayout或kvInputLayout 为 非"TND"时，会忽略这两个入参。
+* PerBlockSizeMask（maskType=1）相关约束：
+  - attenMaskOptional 的 shape 必须严格为 [batch, headNum, maxBlockNum, 2]，dtype 必须为 INT32（kernel 按固定 stride 索引，shape/dtype 不一致会导致错误结果）。
+  - maxBlockNum = max(ceilDiv(maxQSeqLength, blockShapeX), ceilDiv(maxKvSeqLength, blockShapeY))，maxQSeqLength/maxKvSeqLength 为各 batch 序列长度最大值（非"TND"时即 shape 的 S 维度）。
+  - actualSizeX ∈ [0, blockShapeX]，actualSizeY ∈ [0, blockShapeY]；块内 [actualSize, blockShape) 视为 padding，actualSize=0 表示该块不参与计算。
+  - PerBlockSizeMask 仅在 blockSparseMaskOptional 对应块为 1 时生效（与块稀疏 mask 求 AND）。
+  - 仅支持 ascend950 平台。
 </ul>
 
 * 不支持确定性计算场景。
