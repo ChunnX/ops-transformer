@@ -17,7 +17,7 @@ from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 class InplaceFusedCausalConv1dOpBuilder(OpBuilder):
     def __init__(self):
         super(InplaceFusedCausalConv1dOpBuilder, self).__init__(
-            "fused_causal_conv1d_", category="attention"
+            "inplace_fused_causal_conv1d", category="attention"
             )
 
     def sources(self):
