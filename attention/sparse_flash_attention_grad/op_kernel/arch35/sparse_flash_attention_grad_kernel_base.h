@@ -51,6 +51,8 @@ public:
     __aicore__ inline int64_t GetValidTndT1Size();
     __aicore__ inline bool IsValidTndT1Index(const int64_t t1Idx);
     __aicore__ inline bool HasDeterToken(const int64_t t1Idx);
+    __aicore__ inline bool HasDeterRoundWork(const int64_t sTaskId);
+    __aicore__ inline void DeterAicArriveBarrier();
     __aicore__ inline int32_t GetDeterProcessNum();
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
@@ -665,6 +667,70 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetD
         deterLoop = static_cast<int32_t>(packedLoop);
     }
     return deterLoop > 0 ? deterLoop : 0;
+}
+
+template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
+__aicore__ inline bool
+FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::HasDeterRoundWork(const int64_t sTaskId)
+{
+    // 所有核扫同一轮 28 个 token，判定必须一致，才能一起跳过 handshake。
+    const int64_t savedBIndex = bIndex;
+    const int64_t savedT1Index = t1Index;
+    const int64_t savedN2Index = n2Index;
+    const int64_t savedS1Index = s1Index;
+    const int64_t savedCurS1 = curS1;
+    const int64_t savedCurS2 = curS2;
+    const int64_t savedSel = actualSelectedBlockCount;
+
+    bool hasWork = false;
+    const int64_t validT1 = GetValidTndT1Size();
+    for (int64_t idx = 0; idx < usedCoreNum; ++idx) {
+        const int64_t t1Idx = sTaskId * usedCoreNum + idx;
+        if (t1Idx < 0 || t1Idx >= tilingData->baseParams.totalSize || t1Idx >= validT1) {
+            continue;
+        }
+        bIndex = 0;
+        GetTndSeqLen(t1Idx, bIndex);
+        GetActualSelCount(t1Idx, 0, actualSelectedBlockCount);
+        if (actualSelectedBlockCount > 0) {
+            hasWork = true;
+            break;
+        }
+    }
+
+    bIndex = savedBIndex;
+    t1Index = savedT1Index;
+    n2Index = savedN2Index;
+    s1Index = savedS1Index;
+    curS1 = savedCurS1;
+    curS2 = savedCurS2;
+    actualSelectedBlockCount = savedSel;
+    return hasWork;
+}
+
+template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void
+FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::DeterAicArriveBarrier()
+{
+    // mode0 全核 Set+Wait 在空核先到时会把计数器打满（上限约 16）。
+    // 链会合：任意时刻同一 flag 上未匹配 Set 最多 1。不走 SyncAll。
+    const int32_t n = static_cast<int32_t>(coreNum);
+    const int32_t me = static_cast<int32_t>(cBlockIdx);
+    if (n <= 1) {
+        return;
+    }
+    if (me < n - 1) {
+        CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+    }
+    if (me > 0) {
+        CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+    }
+    if (me > 0) {
+        CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+    }
+    if (me < n - 1) {
+        CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+    }
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>

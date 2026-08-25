@@ -187,9 +187,12 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::DeterCubeVecScatter(
     FagRunInfo &scatterRunInfo)
 {
+    // 整轮 sel=0：AIC/AIV 判定相同，跳过 mode0 和 scatter，空前缀不再交握手税。
+    if (!this->HasDeterRoundWork(scatterRunInfo.sTaskId)) {
+        return;
+    }
     if ASCEND_IS_AIC {
-        CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
-        CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+        this->DeterAicArriveBarrier();
         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
     } else {
@@ -243,9 +246,6 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         }
 
         if (sTaskId > 0) {
-            // 有的核还在 ProcessPreload、有的核已经空转时，不能先冲进 DeterCubeVecScatter。
-            // mode0 flag 计数器最多 16，空核先 Set 会把计数器打满，e18d（1 活核 + 27 空核）会 507014。
-            this->SyncALLCores();
             DeterCubeVecScatter(deterRunInfos[(sTaskId + 1) & 1]);
         }
         sTaskId++;
@@ -256,7 +256,6 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     }
     // 延迟一轮的最后一组 scatter。所有核 sTaskId 相同，要做一起做、要跳一起跳。
     if (sTaskId > 0) {
-        this->SyncALLCores();
         DeterCubeVecScatter(deterRunInfos[(sTaskId + 1) & 1]);
     }
     this->FreeEventID();
