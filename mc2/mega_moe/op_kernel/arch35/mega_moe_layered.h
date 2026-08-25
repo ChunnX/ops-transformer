@@ -1313,8 +1313,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchS
         uint32_t peerRank = targetServerForSender * rankPerServer_ + rankIdInServer_;
         ChannelHandle channel = GetUrmaCommHandle(mc2Context_, peerRank, rankId_);
         HcommBatchHandle activeBatchHandle = hcomm_.MakeBatchHandle(
-            channel, GetRankWinAddrWithOffset(peerRank, 0), nullptr, hcommBatchTensor_,
-            HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES);
+            channel, hcommBatchTensor_, HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES,
+            GetRankWinAddrWithOffset(peerRank, 0), nullptr);
         __gm__ int32_t *countPtr = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchL1CommPtr +
                                                                       SendWorkspaceServerOffset(targetServerForSender));
         int32_t cursor = ReadGmByPassDCache(cursorPtr + targetServerForSender);
@@ -1566,8 +1566,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyToken
     GM_ADDR remoteFlagAddr =
         GetRankWinAddrWithOffset(relayRank, dispatchFlagWinOffset_) + RelayFlagOffset(srcServer, 0);
     ChannelHandle channel = GetUrmaCommHandle(mc2Context_, relayRank, rankId_);
-    HcommBatchHandle activeBatchHandle = hcomm_.MakeBatchHandle(channel, GetRankWinAddrWithOffset(relayRank, 0),
-        nullptr, hcommBatchTensor_, HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES);
+    HcommBatchHandle activeBatchHandle = hcomm_.MakeBatchHandle(channel, hcommBatchTensor_,
+        HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES, GetRankWinAddrWithOffset(relayRank, 0),
+        nullptr);
     DataCopyExtParams flagCopyParams{1U, static_cast<uint32_t>(flagSnapshotBytes), 0U, 0U, 0U};
     DataCopyPadExtParams<uint64_t> flagCopyPadParams{true, 0U, 0U, 0U};
 
@@ -2245,8 +2246,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DrainComb
         if (dr == rankId_) {
             continue;
         }
-        HcommBatchHandle activeBatchHandle = hcomm_.MakeBatchHandle(GetUrmaCommHandle(mc2Context_, dr, rankId_), GetRankWinAddrWithOffset(dr, 0),
-            nullptr, hcommBatchTensor_, HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES);
+        HcommBatchHandle activeBatchHandle = hcomm_.MakeBatchHandle(GetUrmaCommHandle(mc2Context_, dr, rankId_), hcommBatchTensor_,
+            HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES, GetRankWinAddrWithOffset(dr, 0), nullptr);
         hcomm_.Drain(activeBatchHandle);
         hcomm_.FlushChannel(GetUrmaCommHandle(mc2Context_, dr, rankId_));
     }
