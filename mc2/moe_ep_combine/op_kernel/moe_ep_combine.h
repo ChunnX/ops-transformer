@@ -69,7 +69,7 @@ using namespace AscendC;
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 static constexpr uint32_t RECV_META_FIELDS = 4;
 // PR 111 requires each committed batch to contain fewer WQEBBs than the SQ depth.
-static constexpr uint32_t HCOMM_BATCH_CAPACITY = 127;
+static constexpr uint32_t HCOMM_BATCH_CAPACITY = 256;
 static constexpr uint32_t HCOMM_PLAIN_WRITE_WQE_BYTES = 64;
 static constexpr uint32_t HCOMM_BATCH_BUFFER_BYTES = HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES;
 constexpr uint64_t UB_ALIGN = 32UL;
