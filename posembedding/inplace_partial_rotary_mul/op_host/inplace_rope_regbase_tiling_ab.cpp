@@ -35,7 +35,7 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClassAB::DoOpTiling()
     }
     int64_t typeSize = ge::GetSizeByDataType(dtype_);
     if (typeSize == 0) {
-        OP_LOGI("InplacePartialRopeRegBaseTilingClassAB DoOpTiling error, typeSize == 0");
+        OP_LOGE("InplacePartialRopeRegBaseTilingClassAB DoOpTiling error, typeSize == 0");
         return ge::GRAPH_FAILED;
     }
     dAlign_ = CeilAlign(sliceLength_ / dSplitCoef_, blockSize_ / typeSize) * dSplitCoef_;
@@ -44,7 +44,7 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClassAB::DoOpTiling()
     bool isMixedPrecision = (dtype_ == ge::DT_BF16 || dtype_ == ge::DT_FLOAT16) && cosDtype == ge::DT_FLOAT;
     int64_t cosTypeSize = ge::GetSizeByDataType(cosDtype);
     if (cosTypeSize == 0) {
-        OP_LOGI("InplacePartialRopeRegBaseTilingClassAB DoOpTiling error, cosTypeSize == 0");
+        OP_LOGE("InplacePartialRopeRegBaseTilingClassAB DoOpTiling error, cosTypeSize == 0");
         return ge::GRAPH_FAILED;
     }
     int64_t dAlignCosSin = CeilAlign(sliceLength_ / dSplitCoef_, blockSize_ / cosTypeSize) * dSplitCoef_;
@@ -55,7 +55,7 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClassAB::DoOpTiling()
 
     if (bs <= int64_t(aicoreParams_.blockDim) / CONST_TWO) {
         if (blockNumBS_ == 0) {
-            OP_LOGI("InplacePartialRopeRegBaseTilingClassAB ComputeUbFactor error, blockNumBS_ == 0");
+            OP_LOGE("InplacePartialRopeRegBaseTilingClassAB ComputeUbFactor error, blockNumBS_ == 0");
             return ge::GRAPH_FAILED;
         }
         blockNumN_ = aicoreParams_.blockDim / blockNumBS_;

@@ -122,7 +122,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingV2GetWorkspaceSize(const aclTensor *x, c
 
     if (rotate != nullptr) {
         CHECK_COND(op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201,
-                   ACLNN_ERR_PARAM_INVALID, "the soc verison is not support");
+                   ACLNN_ERR_PARAM_INVALID, "the soc version is not supported");
     }
 
     auto uniqueExecutor = CREATE_EXECUTOR();

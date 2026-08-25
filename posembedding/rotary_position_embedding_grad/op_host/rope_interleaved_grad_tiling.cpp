@@ -400,7 +400,7 @@ ge::graphStatus TilingLayoutSplit(
         return ge::GRAPH_FAILED;
     }
     if (tiling.ropeInterleavedGradParams.get_batchSize() * tiling.ropeInterleavedGradParams.get_numHeads() >= MAX_BN) {
-        OP_LOGE(context->GetNodeName(), "B * N should smaller than 1000.");
+        OP_LOGE(context->GetNodeName(), "B * N should be smaller than 1000.");
         return ge::GRAPH_FAILED;
     }
     if (context->GetInputShape(INPUT_X_IDX) != nullptr) {
