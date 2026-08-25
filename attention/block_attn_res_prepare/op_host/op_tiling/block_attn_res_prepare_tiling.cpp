@@ -58,6 +58,7 @@ constexpr uint64_t VECTOR_BASE_D_LARGE = 1024UL;
 constexpr uint64_t VECTOR_BASE_D_MEDIUM = 512UL;
 constexpr uint64_t VECTOR_BASE_D_SMALL = 256UL;
 constexpr size_t VECTOR_BASE_D_CANDIDATE_NUM = 4;
+constexpr float EPS_DEFAULT_VALUE = 1E-6;
 constexpr uint64_t MAX_ALIGNED_D =
     static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) - (FP32_32B_ALIGN_ELEMS - 1U);
 
@@ -131,8 +132,18 @@ ge::graphStatus BlockAttnResPrepareTilingBase::CheckInputShapes()
     const auto *blockResStorageShape = context_->GetInputShape(BLOCK_RES_INDEX);
     const auto *validStorageShape = context_->GetInputShape(VALID_BLOCKS_INDEX);
     const auto *pseudoQueryStorageShape = context_->GetInputShape(PSEUDO_QUERY_INDEX);
-    OP_CHECK_IF(blockResStorageShape == nullptr || validStorageShape == nullptr || pseudoQueryStorageShape == nullptr,
-                OP_LOGE(context_->GetNodeName(), "input shape is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(blockResStorageShape == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "block_res", "nullptr",
+                                                      "the input shape of block_res must not be nullptr"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(validStorageShape == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "valid_blocks", "nullptr",
+                                                      "the input shape of valid_blocks must not be nullptr"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(pseudoQueryStorageShape == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "pseudo_query", "nullptr",
+                                                      "the input shape of pseudo_query must not be nullptr"),
+                return ge::GRAPH_FAILED);
 
     const gert::Shape &blockResShape = blockResStorageShape->GetOriginShape();
     const gert::Shape &validShape = validStorageShape->GetOriginShape();
@@ -204,8 +215,18 @@ ge::graphStatus BlockAttnResPrepareTilingBase::CheckInputDtypes() const
     const auto *blockResDesc = context_->GetInputDesc(BLOCK_RES_INDEX);
     const auto *validDesc = context_->GetInputDesc(VALID_BLOCKS_INDEX);
     const auto *pseudoQueryDesc = context_->GetInputDesc(PSEUDO_QUERY_INDEX);
-    OP_CHECK_IF(blockResDesc == nullptr || validDesc == nullptr || pseudoQueryDesc == nullptr,
-                OP_LOGE(context_->GetNodeName(), "input descriptor is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(blockResDesc == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "block_res", "nullptr",
+                                                      "the input descriptor of block_res must not be nullptr"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(validDesc == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "valid_blocks", "nullptr",
+                                                      "the input descriptor of valid_blocks must not be nullptr"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(pseudoQueryDesc == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "pseudo_query", "nullptr",
+                                                      "the input descriptor of pseudo_query must not be nullptr"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(blockResDesc->GetDataType() != ge::DT_FLOAT || pseudoQueryDesc->GetDataType() != ge::DT_FLOAT,
                 OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
                     context_->GetNodeName(), "block_res, pseudo_query",
@@ -232,12 +253,12 @@ ge::graphStatus BlockAttnResPrepareTilingBase::GetShapeAttrsInfo()
     const auto *attrs = context_->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "attrs is null"), return ge::GRAPH_FAILED);
     const float *eps = attrs->GetFloat(EPS_ATTR_INDEX);
-    OP_CHECK_IF(eps == nullptr || !std::isfinite(*eps) || *eps <= 0.0F,
+    float eps_ = eps == nullptr ? *eps : EPS_DEFAULT_VALUE;
+    OP_CHECK_IF(!std::isfinite(eps_) || eps_ <= 0.0F,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    context_->GetNodeName(), "eps", eps == nullptr ? "nullptr" : std::to_string(*eps).c_str(),
-                    "eps must exist, be finite and be greater than zero"),
+                    context_->GetNodeName(), "eps",
+                    "eps must be finite and be greater than zero"),
                 return ge::GRAPH_FAILED);
-    eps_ = *eps;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -246,15 +267,20 @@ ge::graphStatus BlockAttnResPrepareTilingBase::CalculateWorkDistribution(uint64_
                                                                          WorkDistribution &distribution) const
 {
     OP_CHECK_IF(totalWorkUnits > std::numeric_limits<uint32_t>::max(),
-                OP_LOGE(context_->GetNodeName(), "%s work units exceed uint32 tiling range", templateName),
+                OP_LOGE(context_->GetNodeName(), "%s totalWorkUnits=%lu exceeds uint32 maximum=%u", templateName,
+                        totalWorkUnits, std::numeric_limits<uint32_t>::max()),
                 return ge::GRAPH_FAILED);
 
     const uint64_t usedCoreNum = std::min(maxCoreNum, totalWorkUnits);
-    OP_CHECK_IF(usedCoreNum == 0U, OP_LOGE(context_->GetNodeName(), "%s used core number is zero", templateName),
+    OP_CHECK_IF(usedCoreNum == 0U,
+                OP_LOGE(context_->GetNodeName(),
+                        "%s usedCoreNum is zero: totalWorkUnits=%lu, availableCoreNum=%lu", templateName,
+                        totalWorkUnits, maxCoreNum),
                 return ge::GRAPH_FAILED);
     const uint64_t workUnitsPerCore = totalWorkUnits / usedCoreNum;
     OP_CHECK_IF(workUnitsPerCore > std::numeric_limits<uint32_t>::max(),
-                OP_LOGE(context_->GetNodeName(), "%s work units per core exceed uint32 range", templateName),
+                OP_LOGE(context_->GetNodeName(), "%s workUnitsPerCore=%lu exceeds uint32 maximum=%u", templateName,
+                        workUnitsPerCore, std::numeric_limits<uint32_t>::max()),
                 return ge::GRAPH_FAILED);
 
     distribution.usedCoreNum = static_cast<uint32_t>(usedCoreNum);
@@ -286,7 +312,10 @@ bool BlockAttnResPrepareTiling::SelectVectorBaseD(bool hasMultipleWorkRounds)
         const uint64_t qBufferNum = (dTileNum > 1 || hasMultipleWorkRounds) ? DOUBLE_BUFFER_NUM : 1UL;
         const uint64_t oBufferNum = (dTileNum > 1) ? DOUBLE_BUFFER_NUM : 1UL;
         OP_CHECK_IF(dTileNum > std::numeric_limits<uint64_t>::max() / totalN_,
-                    OP_LOGE(context_->GetNodeName(), "D tile count times N overflows uint64"), return false);
+                    OP_LOGE(context_->GetNodeName(),
+                            "Vector D tile count times N overflows uint64: dTileNum=%lu, N=%lu, baseD=%lu", dTileNum,
+                            totalN_, candidate),
+                    return false);
         const uint64_t vLoopNum = dTileNum * totalN_;
         const uint64_t vBufferNum = (vLoopNum > 1) ? DOUBLE_BUFFER_NUM : 1UL;
         const uint64_t fixedElems = (qBufferNum + vBufferNum + oBufferNum) * baseDAlign +
@@ -320,7 +349,10 @@ ge::graphStatus BlockAttnResPrepareTiling::DoOpTiling()
     const bool hasMultipleWorkRounds = distribution.tailBlockFactor > 1U;
 
     OP_CHECK_IF(!SelectVectorBaseD(hasMultipleWorkRounds),
-                OP_LOGE(context_->GetNodeName(), "no Vector baseD satisfies UB capacity"), return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(),
+                        "no Vector baseD satisfies UB capacity: T=%lu, N=%lu, S=%lu, D=%lu, usableUbBytes=%lu",
+                        totalT_, totalN_, totalS_, totalD_, ubSize_ - UB_RESERVED_BYTES),
+                return ge::GRAPH_FAILED);
 
     tilingData_.totalT = static_cast<uint32_t>(totalT_);
     tilingData_.totalN = static_cast<uint32_t>(totalN_);
@@ -358,7 +390,9 @@ ge::graphStatus BlockAttnResPrepareTilingBase::GetWorkspaceSize()
     OP_CHECK_IF(workspaceSizes == nullptr, OP_LOGE(context_->GetNodeName(), "workspace size address is null"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(workspaceSize_ > std::numeric_limits<size_t>::max(),
-                OP_LOGE(context_->GetNodeName(), "workspace exceeds size_t range"), return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "workspaceSize=%lu exceeds size_t maximum=%lu", workspaceSize_,
+                        static_cast<uint64_t>(std::numeric_limits<size_t>::max())),
+                return ge::GRAPH_FAILED);
     workspaceSizes[0] = static_cast<size_t>(workspaceSize_);
     return ge::GRAPH_SUCCESS;
 }

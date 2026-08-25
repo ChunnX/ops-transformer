@@ -44,23 +44,17 @@ public:
         }
     }
 
-    __aicore__ inline bool Init(GM_ADDR blockRes, GM_ADDR validBlocks, GM_ADDR pseudoQuery,
+    __aicore__ inline void Init(GM_ADDR blockRes, GM_ADDR validBlocks, GM_ADDR pseudoQuery,
                                 GM_ADDR numerator, GM_ADDR logitMax, GM_ADDR expSum)
     {
         initialized_ = false;
         validBlocksAddr_ = reinterpret_cast<__gm__ int64_t *>(validBlocks);
         validN_ = ReadValidBlocks();
-        if (tilingData_->totalD == 0U || tilingData_->baseD == 0U) {
-            return false;
-        }
         const uint64_t dAlign =
             ((static_cast<uint64_t>(tilingData_->totalD) + FP32_32B_ALIGN_ELEMS - 1U) /
              FP32_32B_ALIGN_ELEMS) * FP32_32B_ALIGN_ELEMS;
         const uint64_t dTileNum =
             (static_cast<uint64_t>(tilingData_->totalD) + tilingData_->baseD - 1U) / tilingData_->baseD;
-        if (dAlign > MAX_UINT32_VALUE || dTileNum == 0U || dTileNum > MAX_UINT32_VALUE) {
-            return false;
-        }
         dAlign_ = static_cast<uint32_t>(dAlign);
         dTileNum_ = static_cast<uint32_t>(dTileNum);
         // Q/V/O are UB rows; 32B (8 FP32 elements) is the required address
@@ -68,17 +62,10 @@ public:
         // masks tail elements during arithmetic.
         const uint64_t baseDAlign =
             ((static_cast<uint64_t>(tilingData_->baseD) + FP32_32B_ALIGN_ELEMS - 1U) /
-             FP32_32B_ALIGN_ELEMS) *
-            FP32_32B_ALIGN_ELEMS;
-        if (baseDAlign > MAX_UINT32_VALUE) {
-            return false;
-        }
+             FP32_32B_ALIGN_ELEMS) * FP32_32B_ALIGN_ELEMS;
         baseDAlign_ = static_cast<uint32_t>(baseDAlign);
         qBufferNum_ = tilingData_->qBufferNum;
         vBufferNum_ = tilingData_->vBufferNum;
-        if (tilingData_->oBufferNum + STAT_BUFFER_NUM > MTE3_MAX_PIPE_ID) {
-            return false;
-        }
 
         blockResAddr_ = reinterpret_cast<__gm__ float *>(blockRes);
         pseudoQueryAddr_ = reinterpret_cast<__gm__ float *>(pseudoQuery);
@@ -88,7 +75,6 @@ public:
 
         InitUbOffset();
         initialized_ = true;
-        return true;
     }
 
     __aicore__ inline void Process()
