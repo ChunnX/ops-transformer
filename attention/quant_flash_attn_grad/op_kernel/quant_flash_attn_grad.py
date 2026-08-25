@@ -455,9 +455,6 @@ def set_run_info(run_info, last_run_info, task_id, coordinate_info, next_coordin
         run_info.deq_scale_v_value = pl.getval(tensor_info.tensor_v_descale, 0)
         run_info.deq_scale_do_value = pl.getval(tensor_info.tensor_do_descale, 0)
 
-        run_info.maxsum_offset = ((run_info.bo_idx * const_info.n2_size + run_info.n2o_idx)
-                                  * const_info.g_size + run_info.go_idx) \
-                                 * const_info.s1_size + run_info.s1o_idx * CUBE_BASEM
         run_info.kv_need_atomic = (
             (const_info.s2_outer != 1 and run_info.is_value_reuse) or
             (const_info.s2_outer == 1 and
@@ -701,11 +698,10 @@ def compute_p_ds_vf(sp_tile, dpds_tile, sp_tile_bit8, dpds_tile_bit8, perm_tile,
         vf.scatter(dpds_tile_bit8 + ((i + 1) * 512 + 128), vf.bit_cast(vreg_ds_res2, dtype=pl.DT_INT8), vreg_perm, preg_all_8)
 
 
-def compute_p_ds(sp_tile, dpds_tile, sp_tile_bit8, dpds_tile_bit8, perm_tile, lse_tile, d_tile, src_m, src_n, ss, dps, deq_p_scale, ds_scale):
+def compute_p_ds(sp_tile, dpds_tile, sp_tile_bit8, dpds_tile_bit8, perm_tile, lse_tile, d_tile, zero_tile, src_m, src_n, ss, dps, deq_p_scale, ds_scale):
     for i in pl.range(src_m, ceil(src_m, 8) * 8):
-        for j in pl.range(64):
-            sp_tile[i, j] = 0
-            dpds_tile[i, j] = 0
+        pl.insert(sp_tile, zero_tile, offset=[i, 0])
+        pl.move(dpds_tile, zero_tile, offset=[i, 0])
     compute_p_ds_vf(sp_tile, dpds_tile, sp_tile_bit8, dpds_tile_bit8, perm_tile, lse_tile, d_tile, src_m, src_n, ss, dps, deq_p_scale, ds_scale)
 
 def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_info):
@@ -718,11 +714,11 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
     lse_vec = tensor_info.lse_vec.next()
     d_vec = tensor_info.d_vec.next()
 
-    perm_vec_tmp = tensor_info.perm_vec
-    perm_vec = perm_vec_tmp.current()
     if current_real_s1 <= 0:
         return
-
+    
+    perm_vec = tensor_info.perm_vec.current()
+    zero_vec = tensor_info.zero_vec.current()
     pl.set_validshape(lse_vec, [1, current_real_s1])
     pl.set_validshape(d_vec, [1, current_real_s1])
     if layout == 0 or layout == 1:
@@ -733,7 +729,7 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
     sp_vec_bit8 = tensor_info.sp_vec_bit8[sdp_id]
     dpds_vec = tensor_info.dpds_vec[sdp_id]
     dpds_vec_bit8 = tensor_info.dpds_vec_bit8[sdp_id]
-    compute_p_ds(sp_vec, dpds_vec, sp_vec_bit8, dpds_vec_bit8, perm_vec, lse_vec, d_vec, current_real_s2, current_real_s1,
+    compute_p_ds(sp_vec, dpds_vec, sp_vec_bit8, dpds_vec_bit8, perm_vec, lse_vec, d_vec, zero_vec, current_real_s2, current_real_s1,
                 run_info.deq_scale_q_value * run_info.deq_scale_k_value * const_info.softmax_scale,
                 run_info.deq_scale_v_value * run_info.deq_scale_do_value,
                 const_info.deq_scale_p_value, const_info.deq_scale_p_value * const_info.scale_ds)
@@ -834,8 +830,8 @@ def iterate_mm_p_dy(p_l1_tensor0, p_l1_tensor1, const_info, run_info, tensor_inf
     right = tensor_info.right_db.next()
 
     acc = tensor_info.acc_db[tmp_info.l0c_buffer_id]
-    pl.set_validshape(left_first, [128, 128]) #
-    pl.set_validshape(left_second, [128, 128]) #
+    pl.set_validshape(left_first, [128, 128]) # 
+    pl.set_validshape(left_second, [128, 128]) # 
     pl.move(left_first, p_l1_tensor0, [0, 0])
     pl.move(left_second, p_l1_tensor1, [0, 0])
     pl.set_validshape(do_l1, [real_k, D_SIZE])
@@ -899,7 +895,7 @@ def iterate_mm_ds_q(ds_l1_tensor0, ds_l1_tensor1, const_info, run_info, tensor_i
             [run_info.batch_id, run_info.n1o_idx, run_info.s1o_idx * CUBE_BASEN + run_info.s1_idx * TS, 0],
             order=[2,3]
         )
-
+    
     pl.set_validshape(right, [real_k, D_SIZE])
     pl.move(right, q_l1, [0, 0])
 
@@ -1240,7 +1236,7 @@ def process_post_dqkv(const_info, tensor_info):
             factor = const_info.q_post_block_factor
             total = const_info.q_post_block_total
             tail = const_info.q_post_tail_num
-
+            
             if qkv == 1:
                 factor = const_info.k_post_block_factor
                 total = const_info.k_post_block_total
@@ -1294,7 +1290,7 @@ def process_post_dqkv(const_info, tensor_info):
                             pl.load(in_pong, tensor_info.tensor_workspace_dk_flat, [0, pong_off])
                         else:
                             pl.load(in_pong, tensor_info.tensor_workspace_dv_flat, [0, pong_off])
-
+                        
                         pl.set_validshape(out_pong, [1, pong_size])
                         if qkv < 2:
                             pl.mul(in_pong, in_pong, const_info.softmax_scale)
@@ -1786,7 +1782,15 @@ def quant_flash_attn_grad(
         addrs=[VA4 + 512 * 8],
         mutex_ids=[17],
     )
+    zero_vec = pl.make_tile_group(
+        type=pl.TileType(
+            shape=[1, 64], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec
+        ),
+        addrs=[VA4 + 512 * 9],
+        mutex_ids=[18],
+    )
     with pl.section_vector():
+        pl.expands(zero_vec.current(), 0)
         perm_tile = perm_vec.current()
         for i in pl.range(0, BLOCK_SIZE):
             perm_tile[0, 4 * i + 0] = 0 * BLOCK_SIZE + i
@@ -1988,6 +1992,7 @@ def quant_flash_attn_grad(
         lse_vec = lse_vec,
         d_vec = d_vec,
         perm_vec = perm_vec,
+        zero_vec = zero_vec,
         ds_l1 = ds_l1,
         ds_l1_t = ds_l1_t,
         ds_l1_bit8 = ds_l1_bit8,
