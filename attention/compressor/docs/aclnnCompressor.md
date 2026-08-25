@@ -339,7 +339,7 @@ aclnnStatus aclnnCompressor(
 
   - D（Head Dim）表示hidden层的最小单元大小，D取值由wkv的第一维大小除以coff得到。
 
-<!-- npu="A3" id7 -->
+<!-- npu="A3,910b" id7 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：
   - cacheMode不支持输入2，且stateCacheRef不支持0轴非连续。
   - cmpRatio仅支持2/4/8/16/32/64/128。
