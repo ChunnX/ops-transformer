@@ -18,6 +18,7 @@
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_log.h"
+#include "opdev/tensor_view_utils.h"
 
 using namespace op;
 
@@ -70,7 +71,12 @@ const std::array<const aclTensor *, BLOCK_ATTN_RES_PREPARE_OUTPUT_NUM> BlockAttn
     const aclnnStatus ret = INFER_SHAPE(BlockAttnResPrepare, OP_INPUT(blockRes, validBlocks, pseudoQuery),
                                         OP_OUTPUT(numerator, logitMax, expSum), OP_ATTR(eps));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockAttnResPrepare infer shape failed.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "BlockAttnResPrepare infer shape failed: ret=%d, blockRes.shape=%s, validBlocks.shape=%s, "
+                "pseudoQuery.shape=%s, eps=%f.",
+                ret, op::ToString(blockRes->GetViewShape()).GetString(),
+                op::ToString(validBlocks->GetViewShape()).GetString(),
+                op::ToString(pseudoQuery->GetViewShape()).GetString(), eps);
         return {nullptr, nullptr, nullptr};
     }
 

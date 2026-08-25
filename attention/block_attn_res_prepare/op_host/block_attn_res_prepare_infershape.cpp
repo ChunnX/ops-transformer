@@ -39,8 +39,14 @@ ge::graphStatus InferShapeBlockAttnResPrepare(gert::InferShapeContext *context)
     OP_CHECK_IF(context == nullptr, OP_LOGE(OP_NAME, "infer shape context is null"), return ge::GRAPH_FAILED);
     const gert::Shape *blockResShape = context->GetInputShape(BLOCK_RES_INDEX);
     const gert::Shape *pseudoQueryShape = context->GetInputShape(PSEUDO_QUERY_INDEX);
-    OP_CHECK_IF(blockResShape == nullptr || pseudoQueryShape == nullptr,
-                OP_LOGE(context->GetNodeName(), "input shape is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(blockResShape == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "block_res", "nullptr",
+                                                      "the input shape of block_res must not be nullptr"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(pseudoQueryShape == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "pseudo_query", "nullptr",
+                                                      "the input shape of pseudo_query must not be nullptr"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(blockResShape->GetDimNum() != BLOCK_RES_RANK || pseudoQueryShape->GetDimNum() != PSEUDO_QUERY_RANK,
                 OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
                     context->GetNodeName(), "block_res, pseudo_query",
@@ -65,8 +71,18 @@ ge::graphStatus InferShapeBlockAttnResPrepare(gert::InferShapeContext *context)
     gert::Shape *numeratorShape = context->GetOutputShape(NUMERATOR_INDEX);
     gert::Shape *logitMaxShape = context->GetOutputShape(LOGIT_MAX_INDEX);
     gert::Shape *expSumShape = context->GetOutputShape(EXP_SUM_INDEX);
-    OP_CHECK_IF(numeratorShape == nullptr || logitMaxShape == nullptr || expSumShape == nullptr,
-                OP_LOGE(context->GetNodeName(), "output shape is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(numeratorShape == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "numerator", "nullptr",
+                                                      "the output shape of numerator must not be nullptr"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(logitMaxShape == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "logit_max", "nullptr",
+                                                      "the output shape of logit_max must not be nullptr"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(expSumShape == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "exp_sum", "nullptr",
+                                                      "the output shape of exp_sum must not be nullptr"),
+                return ge::GRAPH_FAILED);
 
     *numeratorShape = gert::Shape({totalS, totalT, totalD});
     *logitMaxShape = gert::Shape({totalS, totalT});

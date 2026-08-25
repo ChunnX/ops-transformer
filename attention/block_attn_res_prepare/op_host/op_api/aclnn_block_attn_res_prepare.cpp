@@ -52,19 +52,32 @@ constexpr size_t VALID_BLOCKS_VALUE_DIM_INDEX = 0;
 constexpr size_t NUMERATOR_OUTPUT_INDEX = 0;
 constexpr size_t LOGIT_MAX_OUTPUT_INDEX = 1;
 constexpr size_t EXP_SUM_OUTPUT_INDEX = 2;
+constexpr const char *API_NAME = "aclnnBlockAttnResPrepareGetWorkspaceSize";
+
+aclnnStatus CheckRequiredParameter(const void *parameter, const char *parameterName)
+{
+    if (parameter == nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, parameterName, "nullptr",
+                                              "required parameter must not be nullptr");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+    return ACLNN_SUCCESS;
+}
 
 aclnnStatus CheckNotNull(const aclTensor *blockRes, const aclTensor *validBlocks, const aclTensor *pseudoQuery,
                          const aclTensor *numerator, const aclTensor *logitMax, const aclTensor *expSum,
                          uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    CHECK_RET(blockRes != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(validBlocks != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(pseudoQuery != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(numerator != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(logitMax != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(expSum != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(workspaceSize != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    if (CheckRequiredParameter(blockRes, "blockRes") != ACLNN_SUCCESS ||
+        CheckRequiredParameter(validBlocks, "validBlocks") != ACLNN_SUCCESS ||
+        CheckRequiredParameter(pseudoQuery, "pseudoQuery") != ACLNN_SUCCESS ||
+        CheckRequiredParameter(numerator, "numerator") != ACLNN_SUCCESS ||
+        CheckRequiredParameter(logitMax, "logitMax") != ACLNN_SUCCESS ||
+        CheckRequiredParameter(expSum, "expSum") != ACLNN_SUCCESS ||
+        CheckRequiredParameter(workspaceSize, "workspaceSize") != ACLNN_SUCCESS ||
+        CheckRequiredParameter(executor, "executor") != ACLNN_SUCCESS) {
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
     return ACLNN_SUCCESS;
 }
 

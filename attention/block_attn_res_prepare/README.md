@@ -53,10 +53,21 @@ $$
 O_{s,t,d}=\sum_{n=0}^{N_v-1}E_{s,t,n}V_{t,n,d}
 $$
 
+当 `valid_blocks[0] == 0` 时，不执行上述 softmax 计算，直接返回：
+
+$$
+O=\mathbf{0}_{S\times T\times D},\qquad
+M=m_{\min}\mathbf{1}_{S\times T},\qquad
+L=\mathbf{1}_{S\times T},\qquad
+m_{\min}=-3.4028234663852886\times10^{38}
+$$
+
+即 `numerator` 为 shape `[S, T, D]` 的全 0 Tensor，`logit_max` 为 shape `[S, T]` 且所有元素均为 FLOAT32 最小有限值 $m_{\min}$ 的 Tensor，`exp_sum` 为 shape `[S, T]` 的全 1 Tensor。该结果表示 online softmax 的空状态；`valid_blocks[0] < 0` 时按 0 处理，返回结果相同。
+
 其中：
 
 - $V\in\mathbb{R}^{T\times N\times D}$ 表示历史残差块，$Q\in\mathbb{R}^{S\times D}$ 表示伪查询。
-- $T$、$N$、$S$、$D$ 分别表示 token 数、历史来源缓冲区容量、目标 slot 数和 hidden dimension。
+- $T$、$N$、$S$、$D$ 分别表示 token 数、历史来源缓冲区容量、目标 slot 数和 hidden size。
 - $N_v$ 表示参与计算的有效历史来源数，取值由 `valid_blocks` 经区间 $[0,N]$ 截断后得到。
 - $R$ 表示 RMS 归一化因子，$Z$ 表示归一化注意力 logit，$E$ 表示 max-shift 后的指数值。
 - $O$、$M$、$L$ 分别表示 softmax 加权分子、logit 最大值和指数和，对应输出 `numerator`、`logit_max`、`exp_sum`。
@@ -91,7 +102,7 @@ $$
     <tr>
       <td>valid_blocks</td>
       <td>输入</td>
-      <td>当前有效历史来源数，shape为[1]。其值小于0时按0处理，大于N时按N处理。</td>
+      <td>当前有效历史来源数，shape为[1]。值为0时，numerator返回全0 Tensor、logit_max返回所有元素均为FLOAT32最小有限值的Tensor、exp_sum返回全1 Tensor；值小于0时按0处理，大于N时按N处理。</td>
       <td>INT64</td>
       <td>ND</td>
     </tr>
@@ -138,7 +149,7 @@ $$
 - 仅支持 Ascend 950PR/Ascend 950DT。
 - `T >= 0`，`S >= 0`，`1 <= N <= 64`，`1 <= D <= 8192`。
 - `block_res.shape[2]` 必须等于 `pseudo_query.shape[1]`。
-- `valid_blocks` 的 shape 必须为 `[1]`；有效历史来源数为0时，三个输出均置为0。
+- `valid_blocks` 的 shape 必须为 `[1]`；`valid_blocks[0] == 0` 时，`numerator` 返回全 0 Tensor、`logit_max` 返回所有元素均为 FLOAT32 最小有限值的 Tensor、`exp_sum` 返回全 1 Tensor；`valid_blocks[0] < 0` 时返回结果相同。
 - `eps` 必须为有限正数。
 - `T == 0` 或 `S == 0` 时，返回对应 shape 的空输出。
 
@@ -146,9 +157,7 @@ $$
 
 | 调用方式 | 调用样例 | 说明 |
 | --- | --- | --- |
-| aclnn调用 | [test_aclnn_block_attn_res_prepare](./examples/test_aclnn_block_attn_res_prepare.cpp) | 通过[aclnnBlockAttnResPrepare](./docs/aclnnBlockAttnResPrepare.md)接口调用BlockAttnResPrepare算子。 |
-
-快速调用示例如下，仅供参考，详细算子编译运行方法参见[算子调用](../../docs/zh/invocation/quick_op_invocation.md)。
+| aclnn调用 | [test_aclnn_block_attn_res_prepare](./examples/test_aclnn_block_attn_res_prepare.cpp) | 快速调用示例如下，仅供参考，详细算子编译运行方法参见[算子调用](../../docs/zh/invocation/quick_op_invocation.md)。
 
 ```bash
 # 在ops-transformer仓库根目录执行
