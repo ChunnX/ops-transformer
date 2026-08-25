@@ -44,6 +44,7 @@ constexpr int64_t TWO_DIMS = 2;
 constexpr int64_t SCALE_DIMS = 3;
 constexpr int64_t MX_SCALE_BLOCK = 64;
 constexpr int64_t SCALE_LAST_DIM = 2;
+constexpr size_t HCCL_GROUP_NAME_LENGTH_MAX = 128U;  // HCCL group 名长度上限
 
 const std::initializer_list<op::DataType> X_DTYPE_SUPPORT_LIST = {
     op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_FLOAT4_E2M1};
@@ -248,6 +249,14 @@ aclnnStatus CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor
 aclnnStatus CheckAttrs(const char *group, int64_t hcclBufferSize)
 {
     OP_CHECK_NULL(group, return ACLNN_ERR_PARAM_NULLPTR);
+    // group 名长度须在 [1, 128)：空串与超长（含未 \0 结尾）均拦截
+    size_t groupLen = strnlen(group, HCCL_GROUP_NAME_LENGTH_MAX);  // 长度 >= 128 时返回 128
+    if (groupLen == 0 || groupLen >= HCCL_GROUP_NAME_LENGTH_MAX) {
+        OP_LOGE_FOR_INVALID_VALUE("aclnnAllGatherQuantMatmulV3", "group length",
+                                  std::to_string(groupLen).c_str(),
+                                  ("in range [1, " + std::to_string(HCCL_GROUP_NAME_LENGTH_MAX) + ")").c_str());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     if (hcclBufferSize <= 0) {
         OP_LOGE_WITH_INVALID_ATTR("aclnnAllGatherQuantMatmulV3", "hccl_buffer_size",
                                   std::to_string(hcclBufferSize).c_str(), "positive integer");

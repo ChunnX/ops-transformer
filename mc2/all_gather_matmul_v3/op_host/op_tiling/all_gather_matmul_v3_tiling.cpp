@@ -677,6 +677,7 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
             static_cast<uint32_t>(tilingData->mmTile.baseK), static_cast<uint32_t>(tilingData->mmTile.dbL0c),
             static_cast<uint32_t>(tilingData->mmTile.usedCoreNum));
 
+    // AIV comm loop requires rankSize <= launched cores
     // 存在可用block数大于ranksize但是经过swat tiling后usedCoreNum可能小于rankSize的情况，需调整否则通信卡死
     uint32_t usedCoreNum = tilingData->mmTile.usedCoreNum < static_cast<uint32_t>(rankSize)
                                ? static_cast<uint32_t>(rankSize)
