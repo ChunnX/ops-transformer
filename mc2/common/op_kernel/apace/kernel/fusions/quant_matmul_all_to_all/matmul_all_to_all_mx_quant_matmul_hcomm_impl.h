@@ -67,84 +67,20 @@ struct QuantMatmulAllToAllMxAdditionalData {
     uint32_t rankDim;
 };
 
-template <typename ComputationContextType>
-struct QuantMatmulAllToAllPipelineContext {
-    ComputationContextType *computationContext;
-    MC2KernelTemplate::MC2AlltoAllContext *communicationContext;
-};
-
 /**
- * Apace-specific pure-AIC pipeline: Blaze matmul -> Hcomm AllToAll.
- *
- * The legacy pipeline contains an AIV transpose stage between computation and
- * communication. The Apace matmul writes rank-major data directly, so this
- * pipeline executes both stages on AIC. SyncAll() follows the cube-only APACE
- * implementation and waits for every AIC core to finish writing GM before
- * AIC block 0 submits the Hcomm task. Do not use SyncAll<false>() here: that
- * mode also synchronizes with AIV cores, which are not launched by this path.
- */
-template <typename ComputationType, typename CommunicationType, typename ContextType>
-class QuantMatmulAllToAllPipeline {
-public:
-    __aicore__ inline QuantMatmulAllToAllPipeline(ComputationType *computeStage, CommunicationType *commStage)
-        : computeStage_(computeStage), commStage_(commStage)
-    {}
-
-    __aicore__ inline void Init()
-    {
-        computeStage_->Init();
-        commStage_->Init();
-    }
-
-    __aicore__ inline void GetContext(ContextType *context)
-    {
-        context->computationContext = computeStage_->GetContextPtr();
-        context->communicationContext = commStage_->GetContextPtr();
-    }
-
-    __aicore__ inline void Process(uint32_t taskCnt)
-    {
-        commStage_->PrepareAll(taskCnt);
-        for (uint32_t index = 0; index < taskCnt; ++index) {
-            if ASCEND_IS_AIC {
-                computeStage_->Process(index);
-                AscendC::SyncAll();
-                commStage_->Process(index);
-            }
-        }
-    }
-
-    __aicore__ inline void End()
-    {
-        computeStage_->End();
-        commStage_->End();
-    }
-
-private:
-    ComputationType *computeStage_;
-    CommunicationType *commStage_;
-};
-
-/**
- * This class intentionally implements the same Init/GetContextPtr/Process/End
- * contract as the legacy MC2 computation component. Its Blaze kernel writes
- * [rank, M, N/rank] directly so Hcomm can consume the result without transpose.
+ * Blaze computation stage. It writes [rank, M, N/rank] directly so Hcomm can
+ * consume the result without an AIV transpose.
  */
 template <typename X1Type, typename X2Type, typename YType>
 class QuantMatmulAllToAllMxComputation {
 public:
+    __aicore__ inline QuantMatmulAllToAllMxComputation() = default;
+
     using TilingType = QuantMatmulTilingData;
     using ContextType = MC2KernelTemplate::MC2MMContext<QuantMatmulAllToAllMxAdditionalData, TilingType>;
 
-    explicit __aicore__ inline QuantMatmulAllToAllMxComputation(AscendC::TPipe *pipe)
-    {
-        (void)pipe;
-    }
-
-    __aicore__ inline void Init() {}
     __aicore__ inline ContextType *GetContextPtr() { return &context_; }
     __aicore__ inline void Process(uint32_t taskIndex);
-    __aicore__ inline void End() {}
 
 private:
     using LayoutA = AscendC::Te::NDExtLayoutPtn;
@@ -211,8 +147,7 @@ template <typename X1Type, typename X2Type, typename YType, typename TilingDataT
 class MatmulAllToAllMxQuantMatmulHcommImpl {
 public:
     explicit __aicore__ inline MatmulAllToAllMxQuantMatmulHcommImpl(TilingDataType *tilingData)
-        : tilingData_(tilingData), computation_(nullptr), communication_(tilingData),
-          pipeline_(&computation_, &communication_)
+        : tilingData_(tilingData), communication_(tilingData)
     {}
 
     __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR x1Scale,
@@ -226,8 +161,7 @@ public:
         x2Scale_ = x2Scale;
         workspaceGM_ = workspaceGM;
 
-        pipeline_.Init();
-        pipeline_.GetContext(&pipelineContext_);
+        communication_.Init();
     }
 
     __aicore__ inline void Run()
@@ -239,17 +173,14 @@ public:
         if (tilingInfo.tailCnt > 0) {
             ProcessTail(tilingInfo.tailCnt);
         }
-        pipeline_.End();
+        communication_.End();
     }
 
 private:
     using ComputationType = QuantMatmulAllToAllMxComputation<X1Type, X2Type, YType>;
-    using ComputationContextType = typename ComputationType::ContextType;
     using CommunicationType = MC2KernelTemplate::HcclCommunicator<
         true, ServerType, MC2KernelTemplate::MC2AlltoAllContext, TilingDataType,
         MC2KernelTemplate::MC2AlltoAllPrimitives, 1, 0>;
-    using PipelineContextType = QuantMatmulAllToAllPipelineContext<ComputationContextType>;
-    using PipelineType = QuantMatmulAllToAllPipeline<ComputationType, CommunicationType, PipelineContextType>;
 
     static constexpr uint64_t MXFP_GROUP_SIZE = 64UL;
     static constexpr uint64_t MXFP_SCALE_FACTOR = 2UL;
@@ -258,8 +189,8 @@ private:
     {
         const auto &tilingInfo = tilingData_->matmulAllToAllTilingInfo;
         const uint64_t rankNPerPeer = static_cast<uint64_t>(tilingInfo.rankN) / tilingInfo.rankDim;
-        auto *computationContext = pipelineContext_.computationContext;
-        auto *communicationContext = pipelineContext_.communicationContext;
+        auto *computationContext = computation_.GetContextPtr();
+        auto *communicationContext = communication_.GetContextPtr();
 
         computationContext->baseData.aGM = x1_;
         computationContext->baseData.bGM = x2_;
@@ -291,7 +222,7 @@ private:
         communicationContext->strideCount = static_cast<uint64_t>(tilingInfo.rankM) * rankNPerPeer;
         communicationContext->hcclDataType = tilingInfo.hcclDataType;
 
-        pipeline_.Process(taskCnt);
+        ProcessTasks(taskCnt);
     }
 
     __aicore__ inline void ProcessTail(uint32_t taskCnt)
@@ -299,8 +230,8 @@ private:
         const auto &tilingInfo = tilingData_->matmulAllToAllTilingInfo;
         const uint64_t rankNPerPeer = static_cast<uint64_t>(tilingInfo.rankN) / tilingInfo.rankDim;
         const uint64_t mainRows = static_cast<uint64_t>(tilingInfo.tileM) * tilingInfo.tileCnt;
-        auto *computationContext = pipelineContext_.computationContext;
-        auto *communicationContext = pipelineContext_.communicationContext;
+        auto *computationContext = computation_.GetContextPtr();
+        auto *communicationContext = communication_.GetContextPtr();
 
         computationContext->baseData.aGM =
             MatmulAllToAllMxGmAddr<X1Type>(x1_, mainRows * tilingInfo.rankK);
@@ -335,14 +266,29 @@ private:
         communicationContext->strideCount = static_cast<uint64_t>(tilingInfo.rankM) * rankNPerPeer;
         communicationContext->hcclDataType = tilingInfo.hcclDataType;
 
-        pipeline_.Process(taskCnt);
+        ProcessTasks(taskCnt);
+    }
+
+    /**
+     * Prepare Hcomm descriptors first, then produce and submit one tile at a
+     * time. SyncAll() is AIC-only: all cube cores must finish writing GM before
+     * AIC block 0 submits the corresponding AllToAll task.
+     */
+    __aicore__ inline void ProcessTasks(uint32_t taskCnt)
+    {
+        communication_.PrepareAll(taskCnt);
+        for (uint32_t index = 0; index < taskCnt; ++index) {
+            if ASCEND_IS_AIC {
+                computation_.Process(index);
+                AscendC::SyncAll();
+                communication_.Process(index);
+            }
+        }
     }
 
     TilingDataType *tilingData_;
     ComputationType computation_;
     CommunicationType communication_;
-    PipelineType pipeline_;
-    PipelineContextType pipelineContext_{};
     GM_ADDR x1_{nullptr};
     GM_ADDR x2_{nullptr};
     GM_ADDR bias_{nullptr};
