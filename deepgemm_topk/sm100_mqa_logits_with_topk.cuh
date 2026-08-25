@@ -724,9 +724,10 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
 
     // ========================================================================
     // PHASE 2: TopK selection
-    // Math warps do TopK, one warp per Q token, round-robin
+    // All warps (math + specialized) participate
     // ========================================================================
-    if (warp_idx < kSpecWarpStart) {
+    {
+        const uint32_t total_warps = kSpecWarpStart + 4;  // math warps + 4 specialized warps
         const uint32_t topk_scratch_per_warp = kSparseCount * 8;
         struct TopKScratch {
             float vals[kSparseCount];
@@ -742,13 +743,10 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
             else return scheduler.num_q_tokens;
         }();
 
-        // SM-strided: each SM only processes its share of Q tokens
-        // sm 0: q_token 0,1,...,7,  then +148*8=1184, ... 
-        // sm 1: q_token 8,9,...,15, then +148*8=1192, ...
         const uint32_t num_sms = gridDim.x;
-        for (uint32_t q_token = sm_idx * kSpecWarpStart + warp_idx;
+        for (uint32_t q_token = sm_idx * total_warps + warp_idx;
              q_token < num_q_tokens;
-             q_token += num_sms * kSpecWarpStart) {
+             q_token += num_sms * total_warps) {
             uint32_t k_start, k_end;
 
             if constexpr (decltype(scheduler)::kIsPaged) {
