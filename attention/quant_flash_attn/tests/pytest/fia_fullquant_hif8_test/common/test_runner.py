@@ -1,5 +1,4 @@
 #!/usr/bin/python3
-# -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
@@ -13,9 +12,8 @@
 import pytest
 import torch
 
+from common import golden_cache, result_compare_method
 from common import quant_flash_attn_golden as golden
-from common import golden_cache
-from common import result_compare_method
 
 PARAM_MAP = {
     "B": "B",
