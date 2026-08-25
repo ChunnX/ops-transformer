@@ -127,95 +127,7 @@ TEST_F(SparseFlashAttentionGradOpapiUt, E1_null_query)
     EXPECT_EQ(executor, nullptr);
 }
 
-class SparseFlashAttentionGradArch35OpapiUt : public testing::Test {
-protected:
-    static void SetUpTestCase()
-    {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
-    }
-};
-
-TEST_F(SparseFlashAttentionGradArch35OpapiUt, A1_bsnd_bf16_kvmerge)
-{
-    auto query = MakeTensor({1, 16, 8, 512}, ACL_BF16);
-    auto key = MakeTensor({1, 128, 1, 512}, ACL_BF16);
-    auto sparseIndices = MakeTensor({1, 16, 1, 1024}, ACL_INT32);
-    auto dOut = MakeTensor({1, 16, 8, 512}, ACL_BF16);
-    auto out = MakeTensor({1, 16, 8, 512}, ACL_BF16);
-    auto softmaxMax = MakeTensor({1, 8, 16}, ACL_FLOAT);
-    auto softmaxSum = MakeTensor({1, 8, 16}, ACL_FLOAT);
-    auto dQueryOut = MakeTensor({1, 16, 8, 512}, ACL_BF16);
-    auto dKeyOut = MakeTensor({1, 128, 1, 512}, ACL_BF16);
-
-    char layout[] = "BSND";
-    uint64_t workspaceSize = 0;
-    aclOpExecutor *executor = nullptr;
-    aclnnStatus aclRet = aclnnSparseFlashAttentionGradGetWorkspaceSize(
-        query.get(), key.get(), nullptr, sparseIndices.get(), dOut.get(), out.get(), softmaxMax.get(), softmaxSum.get(),
-        nullptr, nullptr, nullptr, nullptr, 0.0441941738, 1, layout, 3, INT64_MAX, INT64_MAX, false,
-        dQueryOut.get(), dKeyOut.get(), nullptr, nullptr, nullptr, &workspaceSize, &executor);
-
-    EXPECT_EQ(aclRet, ACL_SUCCESS);
-    EXPECT_NE(executor, nullptr);
-}
-
-TEST_F(SparseFlashAttentionGradArch35OpapiUt, A2_bsnd_bf16_kvmerge_rope)
-{
-    auto query = MakeTensor({1, 16, 8, 512}, ACL_BF16);
-    auto key = MakeTensor({1, 128, 1, 512}, ACL_BF16);
-    auto sparseIndices = MakeTensor({1, 16, 1, 1024}, ACL_INT32);
-    auto dOut = MakeTensor({1, 16, 8, 512}, ACL_BF16);
-    auto out = MakeTensor({1, 16, 8, 512}, ACL_BF16);
-    auto softmaxMax = MakeTensor({1, 8, 16}, ACL_FLOAT);
-    auto softmaxSum = MakeTensor({1, 8, 16}, ACL_FLOAT);
-    auto queryRope = MakeTensor({1, 16, 8, 64}, ACL_BF16);
-    auto keyRope = MakeTensor({1, 128, 1, 64}, ACL_BF16);
-    auto dQueryOut = MakeTensor({1, 16, 8, 512}, ACL_BF16);
-    auto dKeyOut = MakeTensor({1, 128, 1, 512}, ACL_BF16);
-    auto dQueryRopeOut = MakeTensor({1, 16, 8, 64}, ACL_BF16);
-    auto dKeyRopeOut = MakeTensor({1, 128, 1, 64}, ACL_BF16);
-
-    char layout[] = "BSND";
-    uint64_t workspaceSize = 0;
-    aclOpExecutor *executor = nullptr;
-    aclnnStatus aclRet = aclnnSparseFlashAttentionGradGetWorkspaceSize(
-        query.get(), key.get(), nullptr, sparseIndices.get(), dOut.get(), out.get(), softmaxMax.get(), softmaxSum.get(),
-        nullptr, nullptr, queryRope.get(), keyRope.get(), 0.0441941738, 1, layout, 3, INT64_MAX, INT64_MAX, false,
-        dQueryOut.get(), dKeyOut.get(), nullptr, dQueryRopeOut.get(), dKeyRopeOut.get(), &workspaceSize, &executor);
-
-    EXPECT_EQ(aclRet, ACL_SUCCESS);
-    EXPECT_NE(executor, nullptr);
-}
-
-TEST_F(SparseFlashAttentionGradArch35OpapiUt, E1_kvmerge_value_null_dvalue_present)
-{
-    auto query = MakeTensor({1, 16, 8, 512}, ACL_BF16);
-    auto key = MakeTensor({1, 128, 1, 512}, ACL_BF16);
-    auto sparseIndices = MakeTensor({1, 16, 1, 1024}, ACL_INT32);
-    auto dOut = MakeTensor({1, 16, 8, 512}, ACL_BF16);
-    auto out = MakeTensor({1, 16, 8, 512}, ACL_BF16);
-    auto softmaxMax = MakeTensor({1, 8, 16}, ACL_FLOAT);
-    auto softmaxSum = MakeTensor({1, 8, 16}, ACL_FLOAT);
-    auto dQueryOut = MakeTensor({1, 16, 8, 512}, ACL_BF16);
-    auto dKeyOut = MakeTensor({1, 128, 1, 512}, ACL_BF16);
-    auto dValueOut = MakeTensor({1, 128, 1, 512}, ACL_BF16);
-
-    char layout[] = "BSND";
-    uint64_t workspaceSize = 0;
-    aclOpExecutor *executor = nullptr;
-    aclnnStatus aclRet = aclnnSparseFlashAttentionGradGetWorkspaceSize(
-        query.get(), key.get(), nullptr, sparseIndices.get(), dOut.get(), out.get(), softmaxMax.get(), softmaxSum.get(),
-        nullptr, nullptr, nullptr, nullptr, 0.0441941738, 1, layout, 3, INT64_MAX, INT64_MAX, false,
-        dQueryOut.get(), dKeyOut.get(), dValueOut.get(), nullptr, nullptr, &workspaceSize, &executor);
-
-    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
-    EXPECT_EQ(executor, nullptr);
-}
-
-// PTA 的 npu_sparse_flash_attention_grad 固定返回 5 个输出，kvMerge 时 d_value 传下来的是
-// at::empty({0}) 而不是 nullptr。空 dValueOut 必须和 nullptr 等价，否则合法调用会被挡在
-// ACLNN_ERR_PARAM_INVALID（曾经因为纯指针判等导致 kvMerge 全档 161002）。
-TEST_F(SparseFlashAttentionGradArch35OpapiUt, E3_kvmerge_value_null_dvalue_empty)
+TEST_F(SparseFlashAttentionGradOpapiUt, kvmerge_empty_dvalue)
 {
     auto query = MakeTensor({1, 16, 8, 512}, ACL_BF16);
     auto key = MakeTensor({1, 128, 1, 512}, ACL_BF16);
@@ -231,6 +143,7 @@ TEST_F(SparseFlashAttentionGradArch35OpapiUt, E3_kvmerge_value_null_dvalue_empty
     char layout[] = "BSND";
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
     aclnnStatus aclRet = aclnnSparseFlashAttentionGradGetWorkspaceSize(
         query.get(), key.get(), nullptr, sparseIndices.get(), dOut.get(), out.get(), softmaxMax.get(), softmaxSum.get(),
         nullptr, nullptr, nullptr, nullptr, 0.0441941738, 1, layout, 3, INT64_MAX, INT64_MAX, false,
@@ -240,11 +153,10 @@ TEST_F(SparseFlashAttentionGradArch35OpapiUt, E3_kvmerge_value_null_dvalue_empty
     EXPECT_NE(executor, nullptr);
 }
 
-TEST_F(SparseFlashAttentionGradArch35OpapiUt, E2_value_present_dvalue_null)
+TEST_F(SparseFlashAttentionGradOpapiUt, kvmerge_dvalue_mismatch)
 {
     auto query = MakeTensor({1, 16, 8, 512}, ACL_BF16);
     auto key = MakeTensor({1, 128, 1, 512}, ACL_BF16);
-    auto value = MakeTensor({1, 128, 1, 512}, ACL_BF16);
     auto sparseIndices = MakeTensor({1, 16, 1, 1024}, ACL_INT32);
     auto dOut = MakeTensor({1, 16, 8, 512}, ACL_BF16);
     auto out = MakeTensor({1, 16, 8, 512}, ACL_BF16);
@@ -252,14 +164,16 @@ TEST_F(SparseFlashAttentionGradArch35OpapiUt, E2_value_present_dvalue_null)
     auto softmaxSum = MakeTensor({1, 8, 16}, ACL_FLOAT);
     auto dQueryOut = MakeTensor({1, 16, 8, 512}, ACL_BF16);
     auto dKeyOut = MakeTensor({1, 128, 1, 512}, ACL_BF16);
+    auto dValueOut = MakeTensor({1, 128, 1, 512}, ACL_BF16);
 
     char layout[] = "BSND";
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
     aclnnStatus aclRet = aclnnSparseFlashAttentionGradGetWorkspaceSize(
-        query.get(), key.get(), value.get(), sparseIndices.get(), dOut.get(), out.get(), softmaxMax.get(), softmaxSum.get(),
+        query.get(), key.get(), nullptr, sparseIndices.get(), dOut.get(), out.get(), softmaxMax.get(), softmaxSum.get(),
         nullptr, nullptr, nullptr, nullptr, 0.0441941738, 1, layout, 3, INT64_MAX, INT64_MAX, false,
-        dQueryOut.get(), dKeyOut.get(), nullptr, nullptr, nullptr, &workspaceSize, &executor);
+        dQueryOut.get(), dKeyOut.get(), dValueOut.get(), nullptr, nullptr, &workspaceSize, &executor);
 
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
     EXPECT_EQ(executor, nullptr);

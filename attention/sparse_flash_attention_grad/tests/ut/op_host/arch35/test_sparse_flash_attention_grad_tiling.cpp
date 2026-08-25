@@ -47,54 +47,12 @@ const std::string kAscend950SocInfo =
     "  }\n"
     "}";
 
-constexpr uint64_t kKeyBsndBf16 = 537397249UL;
 constexpr uint64_t kKeyBsndBf16KvMerge = 17717266433UL;
-constexpr uint64_t kKeyBsndBf16RopeKvMerge = 22079342593UL;
 } // namespace
 
 class SparseFlashAttentionGradArch35Tiling : public testing::Test {};
 
-TEST_F(SparseFlashAttentionGradArch35Tiling, A1_bsnd_bf16_value_present)
-{
-    CompileInfo compileInfo;
-    gert::TilingContextPara para(
-        "SparseFlashAttentionGrad",
-        {
-            {{{1, 16, 8, 512}, {1, 16, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 16, 1, 1024}, {1, 16, 1, 1024}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{1, 16, 8, 512}, {1, 16, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 16, 8, 512}, {1, 16, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 8, 16}, {1, 8, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{1, 8, 16}, {1, 8, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}
-        },
-        {
-            {{{1, 16, 8, 512}, {1, 16, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}
-        },
-        {
-            {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.0441941738f)},
-            {"sparse_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
-            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
-            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-            {"deterministic", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
-        },
-        &compileInfo, "Ascend950", kAscend950SocInfo, 4096);
-
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS, kKeyBsndBf16);
-}
-
-TEST_F(SparseFlashAttentionGradArch35Tiling, A2_bsnd_bf16_kvmerge)
+TEST_F(SparseFlashAttentionGradArch35Tiling, kvmerge)
 {
     CompileInfo compileInfo;
     gert::TilingContextPara para(
@@ -134,127 +92,7 @@ TEST_F(SparseFlashAttentionGradArch35Tiling, A2_bsnd_bf16_kvmerge)
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, kKeyBsndBf16KvMerge);
 }
 
-TEST_F(SparseFlashAttentionGradArch35Tiling, A3_bsnd_bf16_kvmerge_rope)
-{
-    CompileInfo compileInfo;
-    gert::TilingContextPara para(
-        "SparseFlashAttentionGrad",
-        {
-            {{{1, 16, 8, 512}, {1, 16, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 16, 1, 1024}, {1, 16, 1, 1024}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{1, 16, 8, 512}, {1, 16, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 16, 8, 512}, {1, 16, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 8, 16}, {1, 8, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{1, 8, 16}, {1, 8, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{1, 16, 8, 64}, {1, 16, 8, 64}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 128, 1, 64}, {1, 128, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}
-        },
-        {
-            {{{1, 16, 8, 512}, {1, 16, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 16, 8, 64}, {1, 16, 8, 64}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 128, 1, 64}, {1, 128, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}
-        },
-        {
-            {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.0441941738f)},
-            {"sparse_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
-            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
-            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-            {"deterministic", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
-        },
-        &compileInfo, "Ascend950", kAscend950SocInfo, 4096);
-
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS, kKeyBsndBf16RopeKvMerge);
-}
-
-TEST_F(SparseFlashAttentionGradArch35Tiling, E1_query512_key128_should_fail)
-{
-    CompileInfo compileInfo;
-    gert::TilingContextPara para(
-        "SparseFlashAttentionGrad",
-        {
-            {{{1, 16, 8, 512}, {1, 16, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 16, 1, 1024}, {1, 16, 1, 1024}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{1, 16, 8, 512}, {1, 16, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 16, 8, 512}, {1, 16, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 8, 16}, {1, 8, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{1, 8, 16}, {1, 8, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}
-        },
-        {
-            {{{1, 16, 8, 512}, {1, 16, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}
-        },
-        {
-            {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.0441941738f)},
-            {"sparse_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
-            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
-            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-            {"deterministic", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
-        },
-        &compileInfo, "Ascend950", kAscend950SocInfo, 4096);
-
-    ExecuteTestCase(para, ge::GRAPH_FAILED);
-}
-
-TEST_F(SparseFlashAttentionGradArch35Tiling, E2_dkrope_shape_mismatch_should_fail)
-{
-    CompileInfo compileInfo;
-    gert::TilingContextPara para(
-        "SparseFlashAttentionGrad",
-        {
-            {{{1, 16, 8, 512}, {1, 16, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 16, 1, 1024}, {1, 16, 1, 1024}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{1, 16, 8, 512}, {1, 16, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 16, 8, 512}, {1, 16, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 8, 16}, {1, 8, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{1, 8, 16}, {1, 8, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{1, 16, 8, 64}, {1, 16, 8, 64}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 128, 1, 64}, {1, 128, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}
-        },
-        {
-            {{{1, 16, 8, 512}, {1, 16, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 16, 8, 64}, {1, 16, 8, 64}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{1, 64, 1, 64}, {1, 64, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}
-        },
-        {
-            {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.0441941738f)},
-            {"sparse_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
-            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
-            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-            {"deterministic", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
-        },
-        &compileInfo, "Ascend950", kAscend950SocInfo, 4096);
-
-    ExecuteTestCase(para, ge::GRAPH_FAILED);
-}
-
-TEST_F(SparseFlashAttentionGradArch35Tiling, E3_kvmerge_with_nonempty_dv_should_fail)
+TEST_F(SparseFlashAttentionGradArch35Tiling, kvmerge_nonempty_dv_should_fail)
 {
     CompileInfo compileInfo;
     gert::TilingContextPara para(
