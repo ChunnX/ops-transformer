@@ -1,0 +1,26 @@
+{
+  "schema_version": 2,
+  "common": {
+    "heads": [[8, 1, 1], [16, 2, 2], [24, 3, 3], [32, 4, 4], [40, 5, 5], [48, 6, 6], [56, 7, 7], [64, 8, 8]],
+    "block_sizes": [1, 7, 8, 15, 16, 31, 32],
+    "cache_layouts": ["dense", "padded_token", "padded_head", "nonzero_offset", "kscale_padded_token", "kscale_padded_head", "mixed_stride"],
+    "slot_profiles": ["shuffled", "slot_block_begin", "slot_block_end", "slot_cross_block"],
+    "epsilons": [0.0, 0.000001, 0.00001, 0.0001]
+  },
+  "mrope_mx": {
+    "T": [1, 2, 3, 7, 8, 9, 15, 16, 17, 31, 32, 33, 37, 63, 64, 65, 127, 128, 129, 255, 256, 257, 511, 512, 513, 767, 768, 769, 1023, 1024, 1025, 2047, 2048, 2049, 3073, 262144],
+    "sections": [[64, 0, 0], [22, 21, 21], [22, 12, 10], [0, 21, 21], [63, 1, 0], [62, 1, 1]],
+    "numeric_profiles": ["normal", "zero_qk", "scale_order", "tiny_qk", "saturation_qk", "nan_qk", "inf_qk", "scale_edge_qk", "max_finite_qk", "position_1024"]
+  },
+  "rope": {
+    "T": [1, 2, 3, 7, 8, 9, 31, 32, 33, 63, 64, 65, 127, 128, 129, 511, 512, 513, 1023, 1024, 1025, 2047, 2048, 2049, 3073],
+    "layouts": [["NTD", "NTD"], ["TND", "NTD"], ["TND", "TND"]],
+    "numeric_profiles": ["normal", "zero_qk", "scale_order", "nan_qk", "inf_qk"],
+    "batch_profiles": ["batch1", "batch2", "batch_many"]
+  },
+  "mrope": {
+    "T": [1, 2, 3, 7, 8, 9, 31, 32, 33, 63, 64, 65, 127, 128, 129, 511, 512, 513, 1023, 1024, 1025, 2047, 2048, 2049, 3073],
+    "sections": [[64, 0, 0], [22, 21, 21], [22, 12, 10], [0, 21, 21], [63, 1, 0], [62, 1, 1]],
+    "numeric_profiles": ["normal", "zero_qk", "scale_order", "nan_qk", "inf_qk"]
+  }
+}

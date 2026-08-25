@@ -1,0 +1,18 @@
+{
+  "schema_version": 2,
+  "operator": "QkvRmsNormRopeCacheWithKScale",
+  "public_api": "aclnnQkvRmsNormRopeCacheWithKScale",
+  "dimensions": {"D": 128, "mx_group": 32, "mx_scale_shape": [4]},
+  "inputs": [
+    "qkv", "qGamma", "kGamma", "cosSin", "slotMapping",
+    "kCacheRef", "vCacheRef", "kScaleCacheRef",
+    "queryStartLocOptional", "seqLensOptional", "rotationOptional",
+    "vScaleOptional", "mropePositionOptional"
+  ],
+  "attributes": [
+    "headNums", "layoutQkv", "layoutQOut", "epsilon",
+    "mropeSectionOptional", "qQuantMode", "kQuantMode"
+  ],
+  "outputs": ["qOut", "qScaleOptional", "kCacheRef", "vCacheRef", "kScaleCacheRef"],
+  "note": "V1 owns kQuantMode directly; no V2 test API exists."
+}
