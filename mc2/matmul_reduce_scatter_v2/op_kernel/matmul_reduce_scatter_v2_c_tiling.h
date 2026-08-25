@@ -45,6 +45,5 @@ struct QuantBatchMatmulV3ReduceScatterTilingData {
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmV3TileTiling;
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmV3TailTiling;
 };
-
 } // namespace Mc2Tiling
 #endif
