@@ -153,12 +153,12 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>输入</td>
             <td>attention结构的输入Q。</td>
             <td>
-            query、key、value、sparseIndices、dOut、out、softmaxMax、softmaxSum的Shape维度保持一致。
+            query、key、sparseIndices、dOut、out、softmaxMax、softmaxSum的Shape维度保持一致。value非空时与key的Shape保持一致。
             </td>
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
             <td>(B,S1,N1,D)、(T1,N1,D)<br>
-            B：支持泛化；S1：支持泛化；N1：支持128、64、32、16、8、4、2、1；D：512；T1：B × S1<br>
+            B：支持泛化；S1：支持泛化；N1：支持128、64、32、16、8、4、2、1；D：512；T1：TND下为物理token数，需大于等于actualSeqLengthsQueryOptional的最后一个值<br>
             <term>Ascend 950PR/Ascend 950DT</term>的N1额外还支持48、24、12、6、3
             </td>
             <td>√</td>
@@ -171,7 +171,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
             <td>(B,S2,N2,D)、(T2,N2,D)<br>
-            N2：1；T2：B × S2
+            N2：1；T2：TND下为物理token数，需大于等于actualSeqLengthsKvOptional的最后一个值
             </td>
             <td>√</td>
         </tr>
@@ -180,7 +180,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>输入</td>
             <td>attention结构的输入v。</td>
             <td>
-            可选项。传入空指针时启用KV merge，内部按value=key处理；此时要求dValueOut也传入空指针，dKeyOut返回dK+dV的合并结果。
+            可选项。传入空指针时启用KV merge，内部按value=key处理；此时dValueOut也必须缺席，即传入空指针或元素数为0的空张量，否则返回ACLNN_ERR_PARAM_INVALID。dKeyOut主头部维度返回dK+dV的合并结果。
             </td>
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
@@ -259,7 +259,8 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <ul>
                 <li>可选项：当layout为TND，该变量存在。</li>
                 <li>长度与B保持一致。</li>
-                <li>累加和与T1保持一致(EOD场景下累加和可以小于T1)。</li>
+                <li>数据类型为INT32前缀和。最后一个值为有效T1，须满足0 ≤ 有效T1 ≤ 物理T1。</li>
+                <li>EOD/尾padding场景下有效T1可以小于物理T1，区间[有效T1, 物理T1)不参与反向计算，对应输出不保证。</li>
                 <li>取值须为非负数，传入负值可能触发芯片告警（alarm）。</li>
             </ul>
             </td>
@@ -276,7 +277,8 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <ul>
                 <li>可选项：当layout为TND，该变量存在。</li>
                 <li>长度与B保持一致。</li>
-                <li>累加和与T2保持一致(EOD场景下累加和可以小于T2)。</li>
+                <li>数据类型为INT32前缀和。最后一个值为有效T2，须满足0 ≤ 有效T2 ≤ 物理T2。</li>
+                <li>EOD/尾padding场景下有效T2可以小于物理T2，区间[有效T2, 物理T2)不参与反向计算，对应输出不保证。</li>
             </ul>
             </td>
             <td>INT32</td>
@@ -421,7 +423,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>输出</td>
             <td>表示key的梯度。</td>
             <td>
-            KV merge场景下表示key和value的合并梯度，即dK+dV。
+            KV merge场景下表示key和value的合并梯度，即主头部维度dK+dV。若存在keyRope，rope维不与dV相加，见dKeyRopeOptional。
             </td>
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
@@ -434,7 +436,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>输出</td>
             <td>表示value的梯度。</td>
             <td>
-            可选项。普通场景下与输入value的Shape维度保持一致；KV merge场景下需传入空指针，dValue不单独输出，其梯度合入dKey。
+            可选项。普通场景下与输入value的Shape维度保持一致；KV merge场景下必须传入空指针，与value同时为空，否则返回ACLNN_ERR_PARAM_INVALID。dValue不单独输出，其梯度合入dKey。
             </td>
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
@@ -462,7 +464,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>输出</td>
             <td>表示keyRope的梯度。</td>
             <td>
-            当输入keyRope存在，此变量才会输出。
+            当输入keyRope存在，此变量才会输出。KV merge场景下该输出仍为dK的rope梯度，不与dV相加。
             </td>
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
@@ -493,12 +495,12 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <tr>
                 <td>ACLNN_ERR_PARAM_NULLPTR</td>
                 <td>161001</td>
-                <td>必选参数或者输出是空指针。KV merge场景下value和dValueOut允许为空指针。</td>
+                <td>必选参数或者输出是空指针。KV merge场景下value和dValueOut允许同时缺席（空指针或元素数为0的空张量）。</td>
             </tr>
             <tr>
                 <td>ACLNN_ERR_PARAM_INVALID</td>
                 <td>161002</td>
-                <td>输入变量，如query、key、value、sparseIndices……的数据类型和数据格式不在支持的范围内。</td>
+                <td>输入变量，如query、key、value、sparseIndices……的数据类型和数据格式不在支持的范围内。value与dValueOut必须同时缺席或同时非空，只缺其中一个时返回该错误。dValueOut的“缺席”包含空指针和元素数为0的空张量两种形式，便于框架侧固定返回全部输出。</td>
             </tr>
             <tr>
                 <td>ACLNN_ERR_RUNTIME_ERROR</td>
@@ -564,7 +566,8 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
     - 入参为空的场景处理：
         - query为空Tensor：直接返回。
     - 当前只支持value和key完全一致的场景。
-    - KV merge场景下，value和dValueOut需传入空指针，dKeyOut返回dK+dV，不再单独返回dValue。
+    - KV merge场景下，value和dValueOut必须同时缺席或同时非空。dValueOut的“缺席”包含空指针和元素数为0的空张量两种形式：PyTorch等框架的反向接口需固定返回全部输出，无法把dValue省略掉，此时传入空张量即可。同时缺席时dKeyOut主头部维度返回dK+dV，不再单独返回dValue；若存在keyRope，dKeyRopeOut仍只返回dK的rope梯度。二者一个缺席、另一个非空时接口返回ACLNN_ERR_PARAM_INVALID。
+    - TND尾padding：query、key、dOut、out、sparseIndices等T轴为物理长度。actualSeqLengthsQueryOptional、actualSeqLengthsKvOptional为长度为B的INT32前缀和，最后一个值分别为有效T1、有效T2，允许小于物理T1、T2。有效区间之后的padding token不参与反向计算，对应输出内容不保证。
 
 - Mask
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
@@ -656,7 +659,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         </tr>
         <tr>
             <td>S1、S2</td>
-            <td>S1支持1~128K，S2支持1~1M</td>
+            <td>1~128K</td>
             <td>S1、S2支持不等长</td>
         </tr>
         <tr>
@@ -689,7 +692,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         <tr>
             <td>layout</td>
             <td>BSND/TND</td>
-            <td>-</td>
+            <td>TND下T1/T2为物理长度，有效长度由actualSeqLengths*前缀和的末值给出，允许尾padding</td>
         </tr>
         </tbody>
     </table>
@@ -727,12 +730,12 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape) {
 
 void PrintOutResult(std::vector<int64_t> &shape, void** deviceAddr) {
   auto size = GetShapeSize(shape);
-  std::vector<aclFloat16> resultData(size, 0);
+  std::vector<short> resultData(size, 0);
   auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]),
                          *deviceAddr, size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
   for (int64_t i = 0; i < size; i++) {
-    LOG_PRINT("mean result[%ld] is: %f\n", i, aclFloat16ToFloat(resultData[i]));
+    LOG_PRINT("mean result[%ld] is: %e\n", i, resultData[i]);
   }
 }
 
@@ -900,6 +903,7 @@ int main() {
   aclOpExecutor* executor;
 
   // 调用aclnnSparseFlashAttentionGrad第一段接口
+  // KV merge：value与dValueOut同时传nullptr；本示例为普通场景，value/dValue均非空。
   ret = aclnnSparseFlashAttentionGradGetWorkspaceSize(q, k, v, sparseIndices, dOut, out, softmaxMax, softmaxSum, actSeqQLen, actSeqKvLen,
             qRope, kRope, scaleValue, sparseBlockSize, layout, sparseMode, preTokens, nextTokens, deterministic, dq, dk, dv, dqRope, dkRope,
             &workspaceSize, &executor);
