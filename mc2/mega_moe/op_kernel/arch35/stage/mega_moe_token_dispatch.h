@@ -442,6 +442,29 @@ __aicore__ inline bool GetDispatchRankRoundInterval(
     if (activeRankCount == 0 || rankPosition < 0) {
         return false;
     }
+
+    // A fixed destination-row stride aliases with the rank-interleave period
+    // when coreCount and activeRankCount share a divisor (28 cores / 4 ranks is
+    // the common case).  Split the rank-round interval whenever the original
+    // core/rank ownership phase would repeat, then rotate the active-rank order
+    // by one lane.
+    // Destination-row ownership stays unchanged; only the source-rank assigned
+    // to that row changes, so the existing local route queue, MTE ring and
+    // Dispatch -> GMM1 ready accounting remain valid.
+    int32_t coreCount = static_cast<int32_t>(
+        context.blockJob.totalJobs == 0U ? 1U : context.blockJob.totalJobs);
+    int32_t roundsPerRotation =
+        coreCount / DispatchPositiveGcd(coreCount, activeRankCount);
+    int32_t rotationEpoch = roundBegin / roundsPerRotation;
+    int32_t nextRotationRound = (rotationEpoch + 1) * roundsPerRotation;
+    if (nextRotationRound < roundEnd) {
+        roundEnd = nextRotationRound;
+    }
+    int32_t rankRotation = rotationEpoch % activeRankCount;
+    rankPosition -= rankRotation;
+    if (rankPosition < 0) {
+        rankPosition += activeRankCount;
+    }
     interval = {roundBegin, roundEnd, intervalRowBegin, activeRankCount, rankPosition};
     return true;
 }
