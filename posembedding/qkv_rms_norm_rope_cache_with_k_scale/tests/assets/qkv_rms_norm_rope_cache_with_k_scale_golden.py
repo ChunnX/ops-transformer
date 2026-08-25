@@ -338,7 +338,7 @@ def _rms_rope(x, gamma, cos_sin, positions, section, epsilon):
 
 
 def _mx_quant_cublas(x):
-    """DynamicMxQuantV3: scaleAlg=1, dstTypeMax=0, maxLowBound=0."""
+    """cuBLAS MXFP8 semantics: D32 blocks with E4M3FN data and E8M0 power-of-two scales."""
     shape = x.shape
     blocks = x.astype(np.float32).reshape(*shape[:-1], shape[-1] // _MX_BLOCK, _MX_BLOCK)
     amax = np.max(np.abs(blocks), axis=-1)
@@ -354,7 +354,7 @@ def _mx_quant_cublas(x):
     exponent = np.maximum(exponent, -127)
     exponent = np.where(exponent > 127, 128, exponent).astype(np.int16)
     scale = np.exp2(np.minimum(exponent, 127).astype(np.float32))[..., None]
-    # DynamicMxQuant scaleAlg=1 maps a non-finite D32 amax to E8M0 raw
+    # The cuBLAS MXFP8 scale rule maps a non-finite D32 amax to E8M0 raw
     # 0xFF and uses a NaN reciprocal.  Consequently every E4M3 value in that
     # D32 block is NaN, including lanes whose original input was finite.
     scale = np.where(nonfinite_amax[..., None], np.float32(np.nan), scale)
