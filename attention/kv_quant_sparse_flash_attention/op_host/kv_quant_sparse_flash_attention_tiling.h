@@ -326,6 +326,7 @@ private:
     ge::graphStatus SetTilingData(TilingDef &tilingData) const;
     gert::TilingContext *context_ = nullptr;
     ge::graphStatus GetPlatformInfo();
+    void CalcVectorizeFlag();
     void GenTilingKey();
     bool DealSameSeqEachBatch();
 
@@ -359,6 +360,7 @@ private:
 
     bool balanceModeFlag_ = false;
     bool splitKVFlag_ = false;
+    uint32_t vectorizeFlag_ = 0;
 
     uint32_t coreNum_ = 0;
     QSFAPerfMode perfMode_ = QSFAPerfMode::V_TEMPLATE_MODE;
