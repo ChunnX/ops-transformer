@@ -175,6 +175,8 @@ __aicore__ inline void MatmulAllToAllQbmmMxKernel<ProblemShape, BlockMmad, Block
 
     const int64_t scaleKLen = Blaze::Gemm::CeilDiv(
         Te::Get<MNK_K>(params.problemShape), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+    SetL2Cache(params.problemShape, params.qbmmParams.baseM,
+               params.l1Params.scaleKL1, gmB, gmScaleB);
     for (uint32_t rankIdx = 0; rankIdx < params.rankDim; ++rankIdx) {
         BlockScheduler scheduler(params.problemShape, params.schedulerParams);
         if ((scheduler.GetEndBlockIdx() + 1) * params.schedulerParams.mTailTile *
@@ -197,9 +199,6 @@ __aicore__ inline void MatmulAllToAllQbmmMxKernel<ProblemShape, BlockMmad, Block
             }
             scheduler.GetTileCoord(blockIdx, mPos, nPos);
             const int64_t fullNPos = static_cast<int64_t>(rankIdx) * rankN + nPos;
-            SetL2Cache(params.problemShape, params.qbmmParams.baseM,
-                       params.l1Params.scaleKL1, gmB, gmScaleB);
-
             auto gmBlockA = gmA.Slice(Te::MakeCoord(mPos, 0L),
                                       Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_K>(params.problemShape)));
             auto gmBlockScaleA = gmScaleA.Slice(Te::MakeCoord(mPos, 0L),
