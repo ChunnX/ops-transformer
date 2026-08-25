@@ -13,11 +13,12 @@ import torch
 from torch.library import impl
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
+
 class FusedCausalConv1dOpBuilder(OpBuilder):
     def __init__(self):
         super(FusedCausalConv1dOpBuilder, self).__init__(
             "fused_causal_conv1d", category="attention"
-            )
+        )
 
     def sources(self):
         """Path to C++ source code."""
@@ -81,6 +82,7 @@ class FusedCausalConv1dOpBuilder(OpBuilder):
 
 _fused_causal_conv1d_op_builder = FusedCausalConv1dOpBuilder()
 _fused_causal_conv1d_op_builder._ensure_initialized()
+
 
 @impl(get_as_library(), _fused_causal_conv1d_op_builder.name, "PrivateUse1")
 def _fused_causal_conv1d(
@@ -172,4 +174,3 @@ def fused_causal_conv1d(
         conv_mode=conv_mode,
         max_draft_tokens=max_draft_tokens,
     )
-

@@ -18,7 +18,7 @@ class InplaceFusedCausalConv1dOpBuilder(OpBuilder):
     def __init__(self):
         super(InplaceFusedCausalConv1dOpBuilder, self).__init__(
             "inplace_fused_causal_conv1d", category="attention"
-            )
+        )
 
     def sources(self):
         """Path to C++ source code."""
@@ -81,6 +81,7 @@ class InplaceFusedCausalConv1dOpBuilder(OpBuilder):
 
 _inplace_fused_causal_conv1d_op_builder = InplaceFusedCausalConv1dOpBuilder()
 _inplace_fused_causal_conv1d_op_builder._ensure_initialized()
+
 
 @impl(get_as_library(), _inplace_fused_causal_conv1d_op_builder.name, "PrivateUse1")
 def _inplace_fused_causal_conv1d(
@@ -172,4 +173,3 @@ def inplace_fused_causal_conv1d(
         conv_mode=conv_mode,
         max_draft_tokens=max_draft_tokens,
     )
-

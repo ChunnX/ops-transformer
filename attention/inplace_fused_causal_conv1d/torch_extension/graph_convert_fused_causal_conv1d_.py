@@ -218,9 +218,10 @@ if _TORCHAIR_AVAILABLE:
         )
         return x_out
 
+
 else:
+
     def convert_inplace_fused_causal_conv1d(*args, **kwargs):
         raise RuntimeError(
             "GE converter requires torchair, but torchair is not available."
         )
-
