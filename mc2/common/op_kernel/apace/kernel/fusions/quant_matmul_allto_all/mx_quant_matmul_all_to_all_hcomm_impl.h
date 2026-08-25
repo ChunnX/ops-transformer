@@ -121,13 +121,12 @@ private:
                                         const QuantMatmulTilingData &mmTile);
     // 类型级PackFactor: X1Type(FP4时=2), YType/scale(=1), 与PR#10391一致
     template <typename T>
-    static constexpr uint64_t TypePackFactor() {
-        if constexpr (AscendC::IsSameType<T, fp4x2_e2m1_t>::value) { return 2UL; }
-        else { return 1UL; }
-    }
-    template <typename T>
     __aicore__ inline GM_ADDR GmAddr(GM_ADDR base, uint64_t elemCount) {
-        return base + elemCount * sizeof(T) / TypePackFactor<T>();
+        if constexpr (AscendC::IsSameType<T, fp4x2_e2m1_t>::value) {
+            return base + elemCount * sizeof(T) / 2UL;
+        } else {
+            return base + elemCount * sizeof(T);
+        }
     }
 };
 
