@@ -96,7 +96,15 @@ static inline ge::graphStatus MoeTokenUnpermuteWithEpInputParamCheck(const gert:
     const int64_t *tmpTopK = context->GetAttrs()->GetAttrPointer<int64_t>(0);
     int inputTopK = *tmpTopK;
 
-    OP_CHECK_IF(inputTopK < 1, OP_LOGE(nodeName, "input num TopK cannot less than 1."), return ge::GRAPH_FAILED);
+    auto rangePtr = context->GetAttrs()->GetAttrPointer<gert::ContinuousVector>(UNPERMUTE_WITH_EP_ARRT_RANGE);
+    bool fallbackToUnpermute = rangePtr == nullptr;
+    if (rangePtr != nullptr && rangePtr->GetSize() == RANGE_SIZE) {
+        const int64_t *rangeList = reinterpret_cast<const int64_t *>(rangePtr->GetData());
+        fallbackToUnpermute = rangeList[0] == 0 && rangeList[1] == 0;
+    }
+
+    OP_CHECK_IF(!fallbackToUnpermute && inputTopK < 1,
+                OP_LOGE(nodeName, "input num TopK cannot less than 1."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(tokensShape == nullptr || indicesShape == nullptr || dataTensor0 == nullptr || dataTensor1 == nullptr,
                 OP_LOGE(nodeName, "permutedTokens or sortedIndices is nullptr."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(tokensShape->GetStorageShape().GetDimNum() != 2, OP_LOGE(nodeName, "permutedTokens's shape is not 2D."),
@@ -112,7 +120,8 @@ static inline ge::graphStatus MoeTokenUnpermuteWithEpInputParamCheck(const gert:
             int64_t topK = probsShape->GetStorageShape().GetDim(1);
             int64_t totalLength = indicesShape->GetStorageShape().GetDim(0);
 
-            OP_CHECK_IF(topK != inputTopK, OP_LOGE(nodeName, "input topK(%d) can not match probs' dim(1).", inputTopK),
+            OP_CHECK_IF(!fallbackToUnpermute && topK != inputTopK,
+                        OP_LOGE(nodeName, "input topK(%d) can not match probs' dim(1).", inputTopK),
                         return ge::GRAPH_FAILED);
             OP_CHECK_IF(totalLength != tokensNum * topK,
                         OP_LOGE(nodeName, "permutedTokens's dim(0) is not equal to probs's dim(0) * probs's dim(1)."),
@@ -149,12 +158,14 @@ static inline void Init(const gert::TilingContext *context, const int64_t topK, 
     const int64_t *tmpTopK = attrPtr->GetAttrPointer<int64_t>(UNPERMUTE_WITH_EP_ARRT_TOPK);
     int inputTopK = *tmpTopK;
     auto rangePtr = attrPtr->GetAttrPointer<gert::ContinuousVector>(UNPERMUTE_WITH_EP_ARRT_RANGE);
+    bool fallbackToUnpermute = rangePtr == nullptr;
     if (rangePtr != nullptr) {
         OP_CHECK_IF(rangePtr->GetSize() != RANGE_SIZE,
                     OP_LOGE(context->GetNodeName(), "the size of range only support 2"), return);
         const int64_t *rangeList = reinterpret_cast<const int64_t *>(rangePtr->GetData());
         param.input.start = rangeList[0];
         param.input.end = rangeList[1];
+        fallbackToUnpermute = param.input.start == 0 && param.input.end == 0;
     } else {
         param.input.start = 0;
         param.input.end = 0;
@@ -164,6 +175,11 @@ static inline void Init(const gert::TilingContext *context, const int64_t topK, 
     param.input.hiddenSize = tokensShape->GetStorageShape().GetDim(1);
     param.input.totalLength = sortedIndicesShape->GetStorageShape().GetDim(
         0); // tokens可能存在numOutTokens，因此totalLength从sortedIndices获取。
+    if (fallbackToUnpermute) {
+        // ACLNN encodes a missing rangeOptional as the default [0, 0]. In this case the public API contract
+        // falls back to MoeTokenUnpermute semantics: gather directly from the full input without EP filtering.
+        param.input.end = param.input.totalLength;
+    }
     if (isUnpermute) {
         if (probsShape != nullptr) {
             auto dataTensor2 = context->GetInputTensor(2);
@@ -173,7 +189,7 @@ static inline void Init(const gert::TilingContext *context, const int64_t topK, 
             param.input.topK = probsShape->GetStorageShape().GetDim(1);
             param.input.PermuteProbGradSize = 0;
         } else {
-            param.input.topK = inputTopK;
+            param.input.topK = fallbackToUnpermute ? 1 : inputTopK;
             param.input.PermuteProbGradSize = 1;
             param.input.haveProbs = false;
             param.input.tokensNum = safeDiv(param.input.totalLength, param.input.topK);

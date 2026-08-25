@@ -299,6 +299,27 @@ TEST_F(MoeTokenUnpermuteWithEpTiling, test_tiling_without_range_attr)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 0);
 }
 
+TEST_F(MoeTokenUnpermuteWithEpTiling, test_tiling_default_range_ignores_num_topk)
+{
+    MoeTokenUnpermuteWithEpCompileInfo compileInfo;
+    gert::TilingContextPara tilingContextPara("MoeTokenUnpermuteWithEp",
+                                              {
+                                                  {{{64, 128}, {64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{64}, {64}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{64, 128}, {64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {"num_topk", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                  {"range", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
+                                                  {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                                                  {"restore_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({})}
+                                              },
+                                              &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 0);
+}
+
 TEST_F(MoeTokenUnpermuteWithEpTiling, test_tiling_prob_small_ub_token_split)
 {
     MoeTokenUnpermuteWithEpCompileInfo compileInfo;
