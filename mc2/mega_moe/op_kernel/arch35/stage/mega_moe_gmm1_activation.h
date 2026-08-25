@@ -20,6 +20,7 @@
 #include "tensor_api/tensor.h"
 #include "../blaze/epilogue/block_epilogue_activation_mx_quant.h"
 #include "../common/mega_moe_gmm_common.h"
+#include "../common/mega_moe_trace_utils.h"
 
 namespace MegaMoeImpl {
 
@@ -172,7 +173,8 @@ template <typename MmadContext, bool IsShared, bool IsGmm1Interleaved, typename 
 __aicore__ inline void Gmm1AicPrefetchMmadGeneric(WorkSet &workSet, const Params &params,
                                                   const GMMAddrInfo &gmmAddrInfo, const Config &config,
                                                   uint32_t startLoopIdx, uint32_t tileNum, uint32_t expertIdx,
-                                                  MmadContext *blockMmadContext)
+                                                  MmadContext *blockMmadContext,
+                                                  CriticalPathTileTraceContext *traceContext = nullptr)
 {
     using BlockMmad = decltype(blockMmadContext->blockMmad);
     InitBlockMmad(*blockMmadContext, config);
@@ -195,14 +197,18 @@ __aicore__ inline void Gmm1AicPrefetchMmadGeneric(WorkSet &workSet, const Params
             workSet.gmScaleA.Slice(Te::MakeCoord(mLoc, 0), Te::MakeShape(Get<M_VALUE>(actualShape), config.scaleK));
         uint32_t waveIdx = mLoc / config.tileM;
         if (waveIdx != lastWaveWaited) {
+            uint32_t waitBegin = BeginTraceInterval(traceContext);
             WaitForGmm1InputReady<IsShared>(gmmAddrInfo, config, mLoc);
+            EndTraceInterval(traceContext, true, mLoc, Get<M_VALUE>(actualShape), 1U, waitBegin);
             lastWaveWaited = waveIdx;
         }
+        uint32_t computeBegin = BeginTraceInterval(traceContext);
         Gmm1AicMmadTileToGmGeneric<BlockMmad, IsGmm1Interleaved>(blockMmad, config, workSet.gmB, workSet.gmScaleB,
                                                                  workSet.gmBias, workSet.gmC, actualShape, mLoc, nLoc,
                                                                  kLoc, gmBlockA, gmBlockScaleA);
         AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+        EndTraceInterval(traceContext, false, mLoc, Get<M_VALUE>(actualShape), 1U, computeBegin);
         NotifyGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
     }
 }
@@ -211,7 +217,8 @@ __aicore__ inline void Gmm1AicPrefetchMmadGeneric(WorkSet &workSet, const Params
 template <typename MmadContext, bool IsShared, bool IsGmm1Interleaved, typename WorkSet, typename Config>
 __aicore__ inline void Gmm1AicMmadGeneric(WorkSet &workSet, const GMMAddrInfo &gmmAddrInfo, const Config &config,
                                           uint32_t startLoopIdx, uint32_t tileNum, int32_t &vecSetSyncCom,
-                                          uint16_t &pingpongIdx, MmadContext *blockMmadContext)
+                                          uint16_t &pingpongIdx, MmadContext *blockMmadContext,
+                                          CriticalPathTileTraceContext *traceContext = nullptr)
 {
     using BlockMmad = decltype(blockMmadContext->blockMmad);
     InitBlockMmad(*blockMmadContext, config);
@@ -240,7 +247,9 @@ __aicore__ inline void Gmm1AicMmadGeneric(WorkSet &workSet, const GMMAddrInfo &g
             workSet.gmScaleA.Slice(Te::MakeCoord(mLoc, 0), Te::MakeShape(Get<M_VALUE>(actualShape), config.scaleK));
         uint32_t waveIdx = mLoc / config.tileM;
         if (waveIdx != lastWaveWaited) {
+            uint32_t waitBegin = BeginTraceInterval(traceContext);
             WaitForGmm1InputReady<IsShared>(gmmAddrInfo, config, mLoc);
+            EndTraceInterval(traceContext, true, mLoc, Get<M_VALUE>(actualShape), 1U, waitBegin);
             lastWaveWaited = waveIdx;
         }
         if constexpr (IsGmm1Interleaved) {
@@ -251,9 +260,14 @@ __aicore__ inline void Gmm1AicMmadGeneric(WorkSet &workSet, const GMMAddrInfo &g
             WaitForVector();
         }
 
+        uint32_t computeBegin = BeginTraceInterval(traceContext);
         Gmm1AicMmadTileToUbGeneric<BlockMmad, IsGmm1Interleaved>(
             blockMmad, config, workSet.gmB, workSet.gmScaleB, workSet.gmBias, actualShape, nLoc, kLoc, gmBlockA,
             gmBlockScaleA, l0cOutUbFirst, l0cOutUbSecond, pingpongIdx);
+        if (traceContext != nullptr && traceContext->writer.IsEnabled()) {
+            SyncFuncStatic<AscendC::HardEvent::FIX_S, EVENT_ID0>();
+        }
+        EndTraceInterval(traceContext, false, mLoc, Get<M_VALUE>(actualShape), 1U, computeBegin);
 
         if constexpr (IsGmm1Interleaved) {
             NotifyVector(pingpongIdx);
@@ -603,14 +617,18 @@ __aicore__ inline void Gmm1Aiv0PrefetchEpilogueGeneric(WorkSet &workSet, const P
                                                        const GMMAddrInfo &gmmAddrInfo, const Config &config,
                                                        uint32_t startLoopIdx, uint32_t tileNum,
                                                        ActivationQuantOp &activationQuantOp, uint32_t expertBeforeCnt,
-                                                       uint32_t expertIdx)
+                                                       uint32_t expertIdx,
+                                                       CriticalPathTileTraceContext *traceContext = nullptr)
 {
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
         auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
+        uint32_t waitBegin = BeginTraceInterval(traceContext);
         WaitGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
+        EndTraceInterval(traceContext, true, mLoc, Get<M_VALUE>(actualShape), 1U, waitBegin);
+        uint32_t computeBegin = BeginTraceInterval(traceContext);
         if constexpr (IsGmm1Interleaved) {
             Gmm1Aiv0PrefetchInterleavedEpilogueTileGeneric<MakeLayoutC, ElementC, IsWaveFlagGrained>(
                 config, workSet.gmC, workSet.metaInfoGm, activationQuantOp, gmmAddrInfo, expertBeforeCnt, actualShape,
@@ -620,6 +638,7 @@ __aicore__ inline void Gmm1Aiv0PrefetchEpilogueGeneric(WorkSet &workSet, const P
                 config, workSet.gmC, workSet.metaInfoGm, activationQuantOp, gmmAddrInfo, expertBeforeCnt, actualShape,
                 mLoc, nLoc);
         }
+        EndTraceInterval(traceContext, false, mLoc, Get<M_VALUE>(actualShape), 1U, computeBegin);
     }
 }
 
@@ -627,23 +646,40 @@ __aicore__ inline void Gmm1Aiv0PrefetchEpilogueGeneric(WorkSet &workSet, const P
 template <bool IsGmm1Interleaved, bool IsWaveFlagGrained, typename WorkSet, typename Config, typename ActivationQuantOp>
 __aicore__ inline void Gmm1Aiv0EpilogueGeneric(WorkSet &workSet, const GMMAddrInfo &gmmAddrInfo, const Config &config,
                                                uint32_t startLoopIdx, uint32_t tileNum,
-                                               ActivationQuantOp &activationQuantOp, uint16_t &pingpongIdx)
+                                               ActivationQuantOp &activationQuantOp, uint16_t &pingpongIdx,
+                                               CriticalPathTileTraceContext *traceContext = nullptr)
 {
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
         auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
+        if (traceContext != nullptr && traceContext->writer.IsEnabled()) {
+            SyncFuncStatic<AscendC::HardEvent::V_S, EVENT_ID0>();
+        }
+        uint32_t waitBegin = BeginTraceInterval(traceContext);
         if constexpr (IsGmm1Interleaved) {
             WaitForCube(pingpongIdx);
+            if (traceContext != nullptr && traceContext->writer.IsEnabled()) {
+                SyncFuncStatic<AscendC::HardEvent::V_S, EVENT_ID0>();
+            }
+            EndTraceInterval(traceContext, true, mLoc, Get<M_VALUE>(actualShape), 1U, waitBegin);
+            uint32_t computeBegin = BeginTraceInterval(traceContext);
             Gmm1Aiv0InterleavedEpilogueTileGeneric<IsWaveFlagGrained>(config, activationQuantOp, gmmAddrInfo,
                                                                       actualShape, mLoc, nLoc, pingpongIdx);
+            EndTraceInterval(traceContext, false, mLoc, Get<M_VALUE>(actualShape), 1U, computeBegin);
             NotifyCube(pingpongIdx);
             pingpongIdx = 1U - pingpongIdx;
         } else {
             WaitForCube();
+            if (traceContext != nullptr && traceContext->writer.IsEnabled()) {
+                SyncFuncStatic<AscendC::HardEvent::V_S, EVENT_ID0>();
+            }
+            EndTraceInterval(traceContext, true, mLoc, Get<M_VALUE>(actualShape), 1U, waitBegin);
+            uint32_t computeBegin = BeginTraceInterval(traceContext);
             Gmm1Aiv0EpilogueTileGeneric<IsWaveFlagGrained>(config, activationQuantOp, gmmAddrInfo, actualShape, mLoc,
                                                            nLoc);
+            EndTraceInterval(traceContext, false, mLoc, Get<M_VALUE>(actualShape), 1U, computeBegin);
             NotifyCube();
         }
     }
@@ -657,7 +693,8 @@ __aicore__ inline void Gmm1ExecGeneric(Scheduler &scheduler, const Params &param
                                        const Config &config, uint32_t startLoopIdx, uint32_t tileNum,
                                        ActivationQuantOp &activationQuantOp, int32_t &vecSetSyncCom,
                                        uint32_t expertBeforeCnt, uint32_t expertIdx, uint16_t &pingpongIdx,
-                                       BlockMmadContext<BlockMmad> *blockMmadContext, bool allowWeightL2Bypass)
+                                       BlockMmadContext<BlockMmad> *blockMmadContext, bool allowWeightL2Bypass,
+                                       CriticalPathTileTraceContext *traceContext = nullptr)
 {
     using KernelConfig = typename Config::KernelConfig;
     using ElementA = typename KernelConfig::ElementAType;
@@ -702,20 +739,23 @@ __aicore__ inline void Gmm1ExecGeneric(Scheduler &scheduler, const Params &param
         if (blockMmadContext != nullptr) {
             if constexpr (TopkWeightsPrefetch) {
                 Gmm1AicPrefetchMmadGeneric<BlockMmadContext<BlockMmad>, IsShared, IsGmm1Interleaved>(
-                    workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, expertIdx, blockMmadContext);
+                    workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, expertIdx, blockMmadContext,
+                    traceContext);
             } else {
                 Gmm1AicMmadGeneric<BlockMmadContext<BlockMmad>, IsShared, IsGmm1Interleaved>(
-                    workSet, gmmAddrInfo, config, startLoopIdx, tileNum, vecSetSyncCom, pingpongIdx, blockMmadContext);
+                    workSet, gmmAddrInfo, config, startLoopIdx, tileNum, vecSetSyncCom, pingpongIdx, blockMmadContext,
+                    traceContext);
             }
         } else {
             BlockMmadContext<BlockMmad> localBlockMmadContext;
             if constexpr (TopkWeightsPrefetch) {
                 Gmm1AicPrefetchMmadGeneric<BlockMmadContext<BlockMmad>, IsShared, IsGmm1Interleaved>(
-                    workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, expertIdx, &localBlockMmadContext);
+                    workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, expertIdx, &localBlockMmadContext,
+                    traceContext);
             } else {
                 Gmm1AicMmadGeneric<BlockMmadContext<BlockMmad>, IsShared, IsGmm1Interleaved>(
                     workSet, gmmAddrInfo, config, startLoopIdx, tileNum, vecSetSyncCom, pingpongIdx,
-                    &localBlockMmadContext);
+                    &localBlockMmadContext, traceContext);
             }
         }
     } else {
@@ -723,10 +763,10 @@ __aicore__ inline void Gmm1ExecGeneric(Scheduler &scheduler, const Params &param
         if constexpr (TopkWeightsPrefetch) {
             Gmm1Aiv0PrefetchEpilogueGeneric<MakeLayoutC, ElementC, IsGmm1Interleaved, IsWaveFlagGrained>(
                 workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, activationQuantOp, expertBeforeCnt,
-                expertIdx);
+                expertIdx, traceContext);
         } else {
-            Gmm1Aiv0EpilogueGeneric<IsGmm1Interleaved, IsWaveFlagGrained>(workSet, gmmAddrInfo, config, startLoopIdx,
-                                                                          tileNum, activationQuantOp, pingpongIdx);
+            Gmm1Aiv0EpilogueGeneric<IsGmm1Interleaved, IsWaveFlagGrained>(
+                workSet, gmmAddrInfo, config, startLoopIdx, tileNum, activationQuantOp, pingpongIdx, traceContext);
         }
     }
 }
@@ -845,7 +885,7 @@ __aicore__ inline void RunGmm1Generic(
     const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom, const BlockJobContext &blockJob,
     uint32_t expertBeforeCnt, uint32_t expertIdx, uint16_t &pingpongIdx, void *blockMmadContext = nullptr,
-    bool allowWeightL2Bypass = false)
+    bool allowWeightL2Bypass = false, CriticalPathTileTraceContext *traceContext = nullptr)
 {
     using GmmConfig =
         GmmKernel::Config<false, COMBINE_NO_QUANT, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB,
@@ -878,7 +918,7 @@ __aicore__ inline void RunGmm1Generic(
     GmmKernel::Gmm1ExecGeneric<BlockMmad, ElementC, MakeLayoutC, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved,
                                IsWaveFlagGrained>(scheduler, params, gmmAddrInfo, config, startLoopIdx, tileNum,
                                                   epilogueOp, vecSetSyncCom, expertBeforeCnt, expertIdx, pingpongIdx,
-                                                  typedBlockMmadContext, allowWeightL2Bypass);
+                                                  typedBlockMmadContext, allowWeightL2Bypass, traceContext);
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
@@ -1049,7 +1089,8 @@ __aicore__ inline void RunGmm1GenericByWeightFormat(const GmmExecutionConfig &gm
                                                     const ProblemShape &problemShape, uint32_t globalTokenStartIndex,
                                                     GmmRuntimeState &runtimeState, uint32_t expertIdx,
                                                     void *persistentBlockMmadContext = nullptr,
-                                                    bool allowWeightL2Bypass = false)
+                                                    bool allowWeightL2Bypass = false,
+                                                    CriticalPathTileTraceContext *traceContext = nullptr)
 {
     if (gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
         gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
@@ -1057,13 +1098,13 @@ __aicore__ inline void RunGmm1GenericByWeightFormat(const GmmExecutionConfig &gm
                        Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained>(
             epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx, runtimeState.vecSetSyncCom,
             gmmConfig.blockJob, globalTokenStartIndex, expertIdx, runtimeState.pingpongIdx, persistentBlockMmadContext,
-            allowWeightL2Bypass);
+            allowWeightL2Bypass, traceContext);
     } else {
         RunGmm1Generic<QuantOutType, ActivationOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType, false,
                        Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained>(
             epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx, runtimeState.vecSetSyncCom,
             gmmConfig.blockJob, globalTokenStartIndex, expertIdx, runtimeState.pingpongIdx, persistentBlockMmadContext,
-            allowWeightL2Bypass);
+            allowWeightL2Bypass, traceContext);
     }
 }
 

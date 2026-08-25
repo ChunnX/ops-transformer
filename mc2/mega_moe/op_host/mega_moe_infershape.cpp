@@ -17,6 +17,9 @@
 #include "platform/platform_info.h"
 #include "runtime/rt_external_base.h"
 #include "platform/soc_spec.h"
+#include "../op_kernel/arch35/common/mega_moe_trace_config.h"
+
+#include <algorithm>
 
 using namespace ge;
 namespace ops {
@@ -24,6 +27,10 @@ namespace ops {
 static constexpr size_t DIM_ONE = 1UL;
 static constexpr size_t DIM_TWO = 2UL;
 static constexpr int64_t NEG_ONE = -1;
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+// 诊断构建将 1 MiB trace 覆盖到 y；保持 h 不变，仅扩展首维。
+static constexpr int64_t TRACE_OUTPUT_ELEMENT_COUNT = 512 * 1024;
+#endif
 
 static constexpr size_t DISPATCH_FFN_COMBINE_INPUT_CONTEXT_INDEX = 0;
 static constexpr size_t DISPATCH_FFN_COMBINE_INPUT_X_INDEX = 1;
@@ -75,15 +82,21 @@ static ge::graphStatus InferShapeMegaMoe(gert::InferShapeContext *context)
 
     int64_t bs = xShape->GetDim(0);
     int64_t h = xShape->GetDim(1);
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+    int64_t traceOutputBs = (TRACE_OUTPUT_ELEMENT_COUNT + h - 1) / h;
+    int64_t outputBs = std::max(bs, traceOutputBs);
+#else
+    int64_t outputBs = bs;
+#endif
 
     yShape->SetDimNum(DIM_TWO);
-    yShape->SetDim(0U, bs);
+    yShape->SetDim(0U, outputBs);
     yShape->SetDim(1U, h);
 
     expertTokenNumsShape->SetDimNum(DIM_ONE);
     expertTokenNumsShape->SetDim(0U, *moeExpertNum / *epWorldSize);
 
-    OP_LOGD(context->GetNodeName(), "y shape is [%ld, %ld] after infershape.", bs, h);
+    OP_LOGD(context->GetNodeName(), "y shape is [%ld, %ld] after infershape.", outputBs, h);
     OP_LOGD(context->GetNodeName(), "End to do InferShapeMegaMoe.");
     return ge::GRAPH_SUCCESS;
 }

@@ -24,8 +24,9 @@
 #include "tensor_api/tensor.h"
 #include "adv_api/reduce/reduce.h"
 #include "../common/mega_moe_gmm_common.h"
-#include "../common/mega_moe_utils.h"
 #include "../common/mega_moe_mxfp8_utils.h"
+#include "../common/mega_moe_trace_utils.h"
+#include "../common/mega_moe_utils.h"
 #if __has_include("../../../common/mc2_kernel_utils.h")
 #include "../../../common/mc2_kernel_utils.h"
 #include "../../../moe_distribute_dispatch_v2/quantize_functions.h"
@@ -600,7 +601,8 @@ template <bool IsShared, bool IsLayered, typename BlockMmad, typename Scheduler,
 __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &scheduler, TensorA &gmA, TensorScaleA &gmScaleA,
                                        TensorScaleB &gmScaleB, TensorC &l0cOutGm, const GMMAddrInfo &gmmAddrInfo,
                                        const Config &config, uint32_t startLoopIdx, uint32_t tileNum,
-                                       uint32_t expertTokenCount, uint32_t rowOffsetInExpert)
+                                       uint32_t expertTokenCount, uint32_t rowOffsetInExpert,
+                                       CriticalPathTileTraceContext *traceContext = nullptr)
 {
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
     GroupSyncSlotLayout groupSyncSlotLayout{};
@@ -618,11 +620,15 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
         if constexpr (Config::IS_WAVE_FLAG_GRAINED) {
             uint32_t waveIdx = mLoc / L1_TILE_M_256;
             if (waveIdx != lastWaveWaited) {
+                uint32_t waitBegin = BeginTraceInterval(traceContext);
                 WaitForGmm2InputReady<IsShared>(gmmAddrInfo, config, mLoc);
+                EndTraceInterval(traceContext, true, mLoc, Get<M_VALUE>(actualShape), 1U, waitBegin);
                 lastWaveWaited = waveIdx;
             }
         } else if (loopIdx == startLoopIdx) {
+            uint32_t waitBegin = BeginTraceInterval(traceContext);
             WaitForGmm2InputReady<IsShared>(gmmAddrInfo, config, mLoc);
+            EndTraceInterval(traceContext, true, mLoc, Get<M_VALUE>(actualShape), 1U, waitBegin);
         }
 
         auto gmBlockA = gmA.Slice(Te::MakeCoord(mLoc, 0), Te::MakeShape(Get<M_VALUE>(actualShape), config.k));
@@ -633,7 +639,12 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
             gmScaleB.Slice(Te::MakeCoord(0, nLoc), Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
         auto tensorBlockGm = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc),
                                             Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+        uint32_t computeBegin = BeginTraceInterval(traceContext);
         blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
+        if (traceContext != nullptr && traceContext->writer.IsEnabled()) {
+            SyncFuncStatic<AscendC::HardEvent::FIX_S, EVENT_ID0>();
+        }
+        EndTraceInterval(traceContext, false, mLoc, Get<M_VALUE>(actualShape), 1U, computeBegin);
         if constexpr (IsLayered && !IsShared) {
             NotifyCombineConsumersOfTileCompletion(rowOffsetInExpert + mLoc, groupSyncSlotLayout,
                                                    gmmAddrInfo.gmm2CombineSyncCounter);
@@ -646,7 +657,8 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
 // 为一个 GMM2 逻辑 block 的 AIV0 路径展开一段 A8W4 权重。
 template <typename BlockPrologue, typename Scheduler, typename TensorB, typename Config>
 __aicore__ inline void Gmm2Aiv0PrologueA8W4(BlockPrologue &blockPrologue, Scheduler &scheduler, TensorB &gmB,
-                                            const Config &config, uint32_t startLoopIdx, uint32_t tileNum)
+                                            const Config &config, uint32_t startLoopIdx, uint32_t tileNum,
+                                            CriticalPathTileTraceContext *traceContext = nullptr)
 {
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
@@ -654,7 +666,12 @@ __aicore__ inline void Gmm2Aiv0PrologueA8W4(BlockPrologue &blockPrologue, Schedu
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
         auto mL1Size = Get<M_VALUE>(actualShape);
         auto nL1Size = Get<N_VALUE>(actualShape);
+        uint32_t computeBegin = BeginTraceInterval(traceContext);
         blockPrologue(gmB, mL1Size, config.k, nL1Size, nLoc, config.n, config.blockMmadTiling.l1Params.kL1);
+        if (traceContext != nullptr && traceContext->writer.IsEnabled()) {
+            SyncFuncStatic<AscendC::HardEvent::MTE3_S, EVENT_ID0>();
+        }
+        EndTraceInterval(traceContext, false, Get<M_VALUE>(blockCoord), mL1Size, 1U, computeBegin);
     }
 }
 
@@ -716,7 +733,8 @@ template <typename BlockMmad, typename BlockPrologue, typename ElementC, bool Is
           typename Scheduler, typename Config>
 __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const GMMAddrInfo &gmmAddrInfo, const Config &config,
                                     uint32_t startLoopIdx, uint32_t tileNum, uint32_t expertTokenCount,
-                                    uint32_t rowOffsetInExpert, bool allowWeightL2Bypass)
+                                    uint32_t rowOffsetInExpert, bool allowWeightL2Bypass,
+                                    CriticalPathTileTraceContext *traceContext = nullptr)
 {
     using KernelConfig = typename Config::KernelConfig;
     using ElementA = typename KernelConfig::ElementAType;
@@ -760,10 +778,11 @@ __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const GMMAddrInfo &gmm
                         decltype(workSet.gmScaleA), decltype(workSet.gmScaleB),
                         std::remove_reference_t<decltype(workSet.gmC)>, Config>(
             blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB, workSet.gmC, gmmAddrInfo,
-            config, startLoopIdx, tileNum, expertTokenCount, rowOffsetInExpert);
+            config, startLoopIdx, tileNum, expertTokenCount, rowOffsetInExpert, traceContext);
     } else if (GetSubBlockIdx() == 0) {
         BlockPrologue blockPrologue;
-        Gmm2Aiv0PrologueA8W4(blockPrologue, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
+        Gmm2Aiv0PrologueA8W4(blockPrologue, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum,
+                             traceContext);
     }
 }
 
@@ -828,7 +847,8 @@ template <typename ElementA, typename ElementB, typename ElementC, typename Elem
 __aicore__ inline void RunGmm2A8W4(const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
                                    const BlockJobContext &blockJob, uint32_t expertTokenCount,
-                                   uint32_t rowOffsetInExpert, bool allowWeightL2Bypass = false)
+                                   uint32_t rowOffsetInExpert, bool allowWeightL2Bypass = false,
+                                   CriticalPathTileTraceContext *traceContext = nullptr)
 {
     static_assert(std::is_same_v<ElementA, __fp8e4m3>, "Activation must be __fp8e4m3");
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
@@ -852,7 +872,7 @@ __aicore__ inline void RunGmm2A8W4(const AscendC::Shape<int64_t, int64_t, int64_
 
     GmmKernel::Gmm2ExecA8W4<BlockMmad, BlockPrologue, ElementC, IsShared, IsLayered, GmmKernel::BlockScheduler,
                             decltype(config)>(scheduler, gmmAddrInfo, config, startLoopIdx, tileNum, expertTokenCount,
-                                              rowOffsetInExpert, allowWeightL2Bypass);
+                                              rowOffsetInExpert, allowWeightL2Bypass, traceContext);
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
@@ -1059,13 +1079,16 @@ __aicore__ inline void RunWaveExpertCombineStage(const MoeStageCommonConfig &com
                                                  const WaveCombineBufferConfig &bufferConfig,
                                                  WaveCombineScratch &scratch, const Params &params,
                                                  const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
-                                                 uint32_t expertIdx, uint32_t &rowSequence)
+                                                 uint32_t expertIdx, uint32_t &rowSequence,
+                                                 CriticalPathTileTraceContext *traceContext = nullptr)
 {
     uint32_t currentExpertTokenNum = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
     WorkRange currentCoreTokenRange = GetWaveCombineOwnedRange<UseAllAivCores>(
         job, currentExpertTokenNum, static_cast<uint64_t>(state.globalTokenStartIndex));
     if (currentCoreTokenRange.count != 0U) {
+        uint32_t waitBegin = BeginTraceInterval(traceContext);
         WaitWaveGmm2Ready<UseAllAivCores>(job, params, expertIdx);
+        EndTraceInterval(traceContext, true, currentCoreTokenRange.start, currentCoreTokenRange.count, 1U, waitBegin);
     }
     for (uint32_t processedTokenNum = 0U; processedTokenNum < currentCoreTokenRange.count;) {
         uint32_t remainingTokenNum = currentCoreTokenRange.count - processedTokenNum;
@@ -1076,9 +1099,19 @@ __aicore__ inline void RunWaveExpertCombineStage(const MoeStageCommonConfig &com
             params, scratch,
             static_cast<uint64_t>(state.globalTokenStartIndex) + currentCoreTokenRange.start + processedTokenNum,
             chunkTokenNum, 0U);
+        if (traceContext != nullptr && traceContext->writer.IsEnabled()) {
+            // 元数据预取不属于 Combine 计算；先排空 MTE2，再开始计时。
+            SyncFuncStatic<AscendC::HardEvent::MTE2_S, EVENT_ID0>();
+        }
+        uint32_t computeBegin = BeginTraceInterval(traceContext);
         CombineWaveTokenRange<CombineMode, UseAllAivCores>(
             common, bufferConfig, scratch, params, gmmAddrInfo.gmm2OutGlobal,
             currentCoreTokenRange.start + processedTokenNum, chunkTokenNum, 0U, rowSequence);
+        if (traceContext != nullptr && traceContext->writer.IsEnabled()) {
+            SyncFuncStatic<AscendC::HardEvent::MTE3_S, EVENT_ID0>();
+        }
+        EndTraceInterval(traceContext, false, currentCoreTokenRange.start + processedTokenNum, chunkTokenNum, 1U,
+                         computeBegin);
         processedTokenNum += chunkTokenNum;
     }
 }

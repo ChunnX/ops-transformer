@@ -19,6 +19,9 @@ from ..common import CommContextManager
 _CLAMP_DEFAULT = 3.4028234663852886e38
 _ALPHA_DEFAULT = 1.702
 _BETA_DEFAULT = 1.0
+# Torch Extension 独立编译：诊断时手动改为 True。
+MEGA_MOE_ENABLE_A4W4_WAVE_TRACE = False
+_TRACE_OUTPUT_ELEMENT_COUNT = 512 * 1024
 _ALLOWED_ACTIVATION_KEYS = {
     "swiglu": frozenset(),
     "swiglustep": frozenset(),
@@ -137,8 +140,13 @@ class _MegaMoeOpBuilder(OpBuilder):
             )
             bs = x.size(0)
             h = x.size(1)
+            output_bs = bs
+            if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE:
+                # 诊断构建将 1 MiB trace 覆盖到 y；保持 h 不变，仅扩展首维。
+                trace_output_bs = (_TRACE_OUTPUT_ELEMENT_COUNT + h - 1) // h
+                output_bs = max(bs, trace_output_bs)
             local_moe_expert_num = moe_expert_num // ep_world_size
-            y = x.new_empty(tuple([bs, h]), dtype=x.dtype)
+            y = x.new_empty(tuple([output_bs, h]), dtype=x.dtype)
             expert_token_nums = x.new_empty((local_moe_expert_num), dtype=torch.int32)
             return (y, expert_token_nums)
 

@@ -18,6 +18,7 @@
 
 #include "common/mega_moe_utils.h"
 #include "mega_moe_arch35.h"
+#include "mega_moe_trace.h"
 
 namespace MegaMoeImpl {
 
@@ -61,6 +62,10 @@ private:
     using MegaMoeBase::waveCombineScratch_;
     using MegaMoeBase::syncWorkspaceLayout_;
 
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+    A4W4WaveTrace trace_{};
+#endif
+
     __aicore__ inline bool IsPositionWithinWave(const ExpertTokenPosition &position, uint32_t waveMGroupCount) const
     {
         return position.expertIdx < commonConfig_.moeExpertPerRank && waveMGroupCount < mGroupsPerWave_;
@@ -68,12 +73,14 @@ private:
 
     __aicore__ inline void RunGmm1ActivationForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
                                                       GmmRuntimeState &runtimeState, uint32_t tokenStartIndexInExpert,
-                                                      uint32_t sliceTokenCount, uint32_t gmm1TilesPerMGroup);
+                                                      uint32_t sliceTokenCount, uint32_t gmm1TilesPerMGroup,
+                                                      uint32_t waveIndex);
     __aicore__ inline void RunGmm2CombineForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
                                                    uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
                                                    uint32_t sliceTokenCount,
                                                    WaveCombineBufferConfig &combineBufferConfig,
-                                                   uint32_t &combineRowSequence, bool useAllAivCores);
+                                                   uint32_t &combineRowSequence, bool useAllAivCores,
+                                                   uint32_t waveIndex);
     __aicore__ inline void ProcessMoeExpertStages();
 };
 
@@ -81,7 +88,7 @@ private:
 template <TemplateMegaMoeA4W4WaveTypeClass>
 __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm1ActivationForExpert(
     ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, GmmRuntimeState &runtimeState, uint32_t tokenStartIndexInExpert,
-    uint32_t sliceTokenCount, uint32_t gmm1TilesPerMGroup)
+    uint32_t sliceTokenCount, uint32_t gmm1TilesPerMGroup, uint32_t waveIndex)
 {
     uint32_t problemTileCount = GetMGroupCountForRows(sliceTokenCount, GMM1_TILE_M) * gmm1TilesPerMGroup;
     if (SkipUnownedWaveAicProblem(problemTileCount, gmmExecutionConfig_.blockJob, runtimeState.startBlockIdx)) {
@@ -93,10 +100,27 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm1
         gmmAddrInfo, state, tokenStartIndexInExpert, gmm1TilesPerMGroup);
     ProblemShape sliceProblemShape = state.problemShape;
     Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+    A4W4WaveTraceEvent stageEvent = A4W4WaveTraceEvent::INVALID;
+    A4W4WaveTraceEvent waitEvent = A4W4WaveTraceEvent::INVALID;
+    if constexpr (g_coreType == AIC) {
+        stageEvent = A4W4WaveTraceEvent::GMM1;
+        waitEvent = A4W4WaveTraceEvent::WAIT_FOR_DISPATCH;
+    } else if (GetSubBlockIdx() == 0U) {
+        stageEvent = A4W4WaveTraceEvent::ACTIVATION;
+        waitEvent = A4W4WaveTraceEvent::WAIT_FOR_GMM1;
+    }
+    CriticalPathTileTraceContext traceContext =
+        trace_.CreateTileTraceContext(stageEvent, waitEvent, waveIndex, state.expertIdx, tokenStartIndexInExpert);
+    CriticalPathTileTraceContext *traceContextPtr = stageEvent == A4W4WaveTraceEvent::INVALID ? nullptr : &traceContext;
+#else
+    CriticalPathTileTraceContext *traceContextPtr = nullptr;
+#endif
     RunGmm1GenericByWeightFormat<QuantOutType, ActivationQuantOutType, QuantScaleOutType, GMM1_TILE_M, EPILOGUE_TILE_M,
                                  TopkWeightsPrefetch, false, true>(
         gmmExecutionConfig_, params_, epilogueOp_, gmmAddrInfo, sliceProblemShape,
-        static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert, runtimeState, state.expertIdx);
+        static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert, runtimeState, state.expertIdx,
+        nullptr, false, traceContextPtr);
 }
 
 // A4W4 的 GMM2 复用 A8W4 prologue，将 FP4 weight 解包为 FP8 后执行矩阵乘与 Combine。
@@ -104,11 +128,32 @@ template <TemplateMegaMoeA4W4WaveTypeClass>
 __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm2CombineForExpert(
     ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
     uint32_t sliceTokenCount, WaveCombineBufferConfig &combineBufferConfig, uint32_t &combineRowSequence,
-    bool useAllAivCores)
+    bool useAllAivCores, uint32_t waveIndex)
 {
     uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
     uint32_t gmm2NTileCount = Ops::Base::CeilDiv(commonConfig_.tokenHiddenDim, static_cast<uint32_t>(L1_TILE_N));
     uint32_t problemTileCount = GetMGroupCountForRows(sliceTokenCount, GMM1_TILE_M) * gmm2NTileCount;
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+    A4W4WaveTraceEvent stageEvent = A4W4WaveTraceEvent::INVALID;
+    A4W4WaveTraceEvent waitEvent = A4W4WaveTraceEvent::INVALID;
+    uint32_t traceUnitBase = tokenStartIndexInExpert;
+    if constexpr (g_coreType == AIC) {
+        stageEvent = A4W4WaveTraceEvent::GMM2;
+        waitEvent = A4W4WaveTraceEvent::WAIT_FOR_ACTIVATION;
+    } else if (GetSubBlockIdx() == 0U) {
+        stageEvent = A4W4WaveTraceEvent::GMM2_PROLOGUE;
+    } else {
+        stageEvent = A4W4WaveTraceEvent::COMBINE;
+        waitEvent = A4W4WaveTraceEvent::WAIT_FOR_GMM2;
+        // Combine 在专家完整输出上重新分核，其 owned range 已经是专家内坐标。
+        traceUnitBase = 0U;
+    }
+    CriticalPathTileTraceContext traceContext =
+        trace_.CreateTileTraceContext(stageEvent, waitEvent, waveIndex, state.expertIdx, traceUnitBase);
+    CriticalPathTileTraceContext *traceContextPtr = &traceContext;
+#else
+    CriticalPathTileTraceContext *traceContextPtr = nullptr;
+#endif
     bool ownsGmm2Tile = !SkipUnownedWaveAicProblem(problemTileCount, gmmExecutionConfig_.blockJob, startBlockIdx);
     if (ownsGmm2Tile) {
         UpdateMoeExpertGmm2GlobalBuffer<Weight1Type, ActivationQuantOutType, QuantScaleOutType, true, false>(
@@ -119,7 +164,8 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm2
         RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
                     TopkWeightsPrefetch, false, false, true>(
             sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, expertTokenCount,
-            tokenStartIndexInExpert, tokenStartIndexInExpert == 0U && sliceTokenCount == expertTokenCount);
+            tokenStartIndexInExpert, tokenStartIndexInExpert == 0U && sliceTokenCount == expertTokenCount,
+            traceContextPtr);
     }
     if (tokenStartIndexInExpert + sliceTokenCount < expertTokenCount) {
         return;
@@ -138,11 +184,11 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm2
             PrepareFinalWaveCombineBuffers<CombineQuantMode>(commonConfig_, combineBufferConfig, waveCombineScratch_);
         RunWaveExpertCombineStage<CombineQuantMode, true>(commonConfig_, waveCombineJob_, combineBufferConfig,
                                                           waveCombineScratch_, params_, gmmAddrInfo, state,
-                                                          state.expertIdx, combineRowSequence);
+                                                          state.expertIdx, combineRowSequence, traceContextPtr);
     } else {
         RunWaveExpertCombineStage<CombineQuantMode>(commonConfig_, waveCombineJob_, combineBufferConfig,
                                                     waveCombineScratch_, params_, gmmAddrInfo, state, state.expertIdx,
-                                                    combineRowSequence);
+                                                    combineRowSequence, traceContextPtr);
     }
 }
 
@@ -171,10 +217,18 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
             uint32_t dispatchedWaveMGroupCount = 0U;
             while (IsPositionWithinWave(dispatchPosition, dispatchedWaveMGroupCount)) {
                 if (dispatchPosition.tokenIndexInExpert == 0U) {
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+                    CriticalPathTileTraceContext dispatchTraceContext = trace_.CreateTileTraceContext(
+                        A4W4WaveTraceEvent::DISPATCH, A4W4WaveTraceEvent::INVALID, 0U, dispatchPosition.expertIdx, 0U);
+                    CriticalPathTileTraceContext *dispatchTraceContextPtr = &dispatchTraceContext;
+#else
+                    CriticalPathTileTraceContext *dispatchTraceContextPtr = nullptr;
+#endif
                     dispatchExpertTokenCount =
                         RunWaveExpertDispatchStage<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
                             tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_,
-                            params_, winRankAddr_, tokenDispatchScratch_, dispatchPosition.expertIdx);
+                            params_, winRankAddr_, tokenDispatchScratch_, dispatchPosition.expertIdx,
+                            dispatchTraceContextPtr);
                 }
                 AdvanceExpertTokenPositionInWave<GMM1_TILE_M>(dispatchExpertTokenCount, mGroupsPerWave_,
                                                               dispatchedWaveMGroupCount, dispatchPosition);
@@ -198,6 +252,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
         Ops::Base::CeilDiv(commonConfig_.gmm1OutputDim / ACTIVATION_N_HALF, static_cast<uint32_t>(L1_TILE_N));
 
     ExpertTokenPosition gmm1Position{};
+    uint32_t waveIndex = 0U;
     while (gmm1Position.expertIdx < commonConfig_.moeExpertPerRank) {
         ExpertTokenPosition waveBeginPosition = gmm1Position;
         ExpertTokenPosition waveEndPosition = gmm1Position;
@@ -218,10 +273,19 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
             if constexpr (g_coreType == AIV) {
                 if (GetSubBlockIdx() == 1U && nextWaveNeedsDispatch) {
                     if (dispatchPosition.tokenIndexInExpert == 0U) {
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+                        CriticalPathTileTraceContext dispatchTraceContext =
+                            trace_.CreateTileTraceContext(A4W4WaveTraceEvent::DISPATCH, A4W4WaveTraceEvent::INVALID,
+                                                          waveIndex + 1U, dispatchPosition.expertIdx, 0U);
+                        CriticalPathTileTraceContext *dispatchTraceContextPtr = &dispatchTraceContext;
+#else
+                        CriticalPathTileTraceContext *dispatchTraceContextPtr = nullptr;
+#endif
                         dispatchExpertTokenCount = RunWaveExpertDispatchStage<ActivationType, QuantScaleOutType,
                                                                               GMM1_TILE_M, TopkWeightsPrefetch>(
                             tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_,
-                            params_, winRankAddr_, tokenDispatchScratch_, dispatchPosition.expertIdx);
+                            params_, winRankAddr_, tokenDispatchScratch_, dispatchPosition.expertIdx,
+                            dispatchTraceContextPtr);
                     }
                     AdvanceExpertTokenPositionInWave<GMM1_TILE_M>(dispatchExpertTokenCount, mGroupsPerWave_,
                                                                   nextDispatchWaveMGroupCount, dispatchPosition);
@@ -240,7 +304,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
                 if (sliceTokenCount != 0U) {
                     waveLastActiveExpertIdx = gmm1State.expertIdx;
                     RunGmm1ActivationForExpert(gmm1State, gmm1AddrInfo, gmm1RuntimeState, sliceTokenStartIndexInExpert,
-                                               sliceTokenCount, gmm1TilesPerMGroup);
+                                               sliceTokenCount, gmm1TilesPerMGroup, waveIndex);
                 }
                 waveEndPosition = gmm1Position;
                 currentWaveNeedsGmm1 = IsPositionWithinWave(gmm1Position, currentWaveMGroupCount);
@@ -265,10 +329,12 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
                                       expertIdx == waveLastActiveExpertIdx &&
                                       sliceTokenEndIndexInExpert >= expertTokenCount;
                 RunGmm2CombineForExpert(gmm2State, gmm2AddrInfo, startBlockIdx, sliceTokenStartIndexInExpert,
-                                        sliceTokenCount, combineBufferConfig, combineRowSequence, useAllAivCores);
+                                        sliceTokenCount, combineBufferConfig, combineRowSequence, useAllAivCores,
+                                        waveIndex);
             }
         }
         DrainWaveCombineRowRing(combineRowSequence, combineBufferConfig.rowBufferCount);
+        ++waveIndex;
     }
 
     if constexpr (!TopkWeightsPrefetch) {
@@ -279,7 +345,22 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
 template <TemplateMegaMoeA4W4WaveTypeClass>
 __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process()
 {
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+    A4W4WaveTraceRole traceRole = A4W4WaveTraceRole::AIC;
+    if constexpr (g_coreType == AIV) {
+        traceRole = GetSubBlockIdx() == 0U ? A4W4WaveTraceRole::AIV0 : A4W4WaveTraceRole::AIV1;
+    }
+    trace_.Init(params_.workspaceInfo.dispatchRevDataPtr, params_.workspaceInfo.workspaceSize, params_.y2GmAddr,
+                A4W4_WAVE_TRACE_OUTPUT_BYTES, gmmExecutionConfig_.blockJob.totalJobs, traceRole,
+                gmmExecutionConfig_.blockJob.jobIndex, commonConfig_.tokenNum, commonConfig_.tokenHiddenDim,
+                commonConfig_.gmm1OutputDim, commonConfig_.topK, commonConfig_.moeExpertPerRank,
+                commonConfig_.worldSize);
+    trace_.SetWaveMGroupTarget(mGroupsPerWave_);
+#endif
     this->ProcessWave(*this);
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+    trace_.Finish();
+#endif
 }
 
 } // namespace MegaMoeImpl
