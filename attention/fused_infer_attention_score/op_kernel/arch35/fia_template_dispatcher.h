@@ -283,12 +283,12 @@ inline __aicore__ void run_fia_fullquant_mla_kernel(
 {
     PARSE_PARAMS_FullQuant(inOutLayoutType, config, pseMode, ...);
     fa_base_matmul::idCounterNum = 0;
- 
+
     // MLA 全量化: 不合轴, bmm2 写 UB
     constexpr bool useDn = false;
     constexpr bool bmm2Write2Ub = true;
     constexpr bool splitD = false;
- 
+
     // CubBlockType
     using CubBlockNormal = BaseApi::FAFullQuantMlaBlockCube<INPUT_T, float, inputLayoutType, s1TemplateType,
                                                             s2TemplateType, dTemplateType, dVTemplateType, hasRope,
@@ -298,7 +298,7 @@ inline __aicore__ void run_fia_fullquant_mla_kernel(
                                               dTemplateType, dVTemplateType, hasRope, KvLayoutType, enableKVPrefix,
                                               useDn, bmm2Write2Ub, splitD>;
     using CubBlock = typename std::conditional<g_coreType == AscendC::AIC, CubBlockNormal, CubBlockDummy>::type;
- 
+
     // VecFaBlockType - MLA decode场景开启FD
     using VecFaBlockNormal =
         BaseApi::FAFullQuantMlaBlockVec<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
@@ -311,7 +311,7 @@ inline __aicore__ void run_fia_fullquant_mla_kernel(
                                              static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope,
                                              KvLayoutType, isFd, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
     using VecFaBlock = typename std::conditional<g_coreType == AscendC::AIV, VecFaBlockNormal, VecFaBlockDummy>::type;
- 
+
     // VecFdBlockType - MLA 复用 MXFP8/GQA 的 FiaBlockVecFlashDecodeFullQuant
     using VecFdBlockNormal =
         BaseApi::FiaBlockVecFlashDecodeFullQuant<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
@@ -324,7 +324,7 @@ inline __aicore__ void run_fia_fullquant_mla_kernel(
                                                       static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope,
                                                       KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
     using VecFdBlock = typename std::conditional<g_coreType == AscendC::AIV, VecFdBlockNormal, VecFdBlockDummy>::type;
- 
+
     // KernelType - MLA decode场景开启FD
     using Kernel = FlashAttentionFullQuantMlaKernel<CubBlock, VecFaBlock, VecFdBlock>;
     GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tiling);

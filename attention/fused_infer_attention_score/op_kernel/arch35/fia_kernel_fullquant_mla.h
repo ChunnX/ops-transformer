@@ -106,7 +106,9 @@ public:
     ActualSeqLensParser<KV_MODE> kvActSeqLensParser;
 
     __aicore__ inline FlashAttentionFullQuantMlaKernel()
-        : cubeBlock(constInfo), vecFaBlock(constInfo), vecFdBlock(constInfo){};
+        : cubeBlock(constInfo),
+          vecFaBlock(constInfo),
+          vecFdBlock(constInfo){};
 
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                 __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths,

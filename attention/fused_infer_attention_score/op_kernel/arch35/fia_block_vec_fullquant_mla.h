@@ -35,15 +35,13 @@ using namespace AttentionCommon;
 
 namespace BaseApi {
 
-template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-          LayOutTypeEnum outLayout = LayOutTypeEnum::None,
-          S1TemplateType s1TemplateType = S1TemplateType::Aligned64,
-          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
-          DTemplateType dTemplateType = DTemplateType::Aligned576,
-          DTemplateType dVTemplateType = DTemplateType::Aligned512,
-          PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasAtten = false, bool hasDrop = false,
-          bool hasRope = false, uint8_t KvLayoutType = 0, bool isFd = false, bool enableKVPrefix = false,
-          bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
+template <
+    typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
+    LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned64,
+    S2TemplateType s2TemplateType = S2TemplateType::Aligned128, DTemplateType dTemplateType = DTemplateType::Aligned576,
+    DTemplateType dVTemplateType = DTemplateType::Aligned512, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE,
+    bool hasAtten = false, bool hasDrop = false, bool hasRope = false, uint8_t KvLayoutType = 0, bool isFd = false,
+    bool enableKVPrefix = false, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
 class FAFullQuantMlaBlockVec {
 public:
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
@@ -72,7 +70,8 @@ public:
     static constexpr bool HAS_MASK = hasAtten;
     static constexpr bool FLASH_DECODE = isFd;
     static constexpr bool IS_PER_TOKEN_HEAD = true;
-    static constexpr GmFormat Q_SCALE_FORMAT = GetQueryScaleGmFormat<layout, USE_DN, IS_PER_TOKEN_HEAD, isMlaFullQuant>();
+    static constexpr GmFormat Q_SCALE_FORMAT =
+        GetQueryScaleGmFormat<layout, USE_DN, IS_PER_TOKEN_HEAD, isMlaFullQuant>();
 
     static constexpr bool POST_QUANT = !IsSameType<OUTPUT_T, half>::value && !IsSameType<OUTPUT_T, bfloat16_t>::value &&
                                        !IsSameType<OUTPUT_T, float>::value;
@@ -283,8 +282,7 @@ public:
             tSize = qActSeqLensParser.GetTSize();
         }
         int64_t totalOutputSize = tSize * constInfo.realN2Size * constInfo.realGSize * constInfo.dSizeV;
-        int64_t singleCoreSize =
-            (totalOutputSize + (2 * constInfo.coreNum) - 1) / (2 * constInfo.coreNum);
+        int64_t singleCoreSize = (totalOutputSize + (2 * constInfo.coreNum) - 1) / (2 * constInfo.coreNum);
         int64_t tailSize = totalOutputSize - constInfo.aivIdx * singleCoreSize;
         int64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
 
@@ -366,9 +364,9 @@ public:
         }
         // ND
         tPipe->InitBuffer(vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)],
-                            128); // s2realsize (64, 128]
+                          128); // s2realsize (64, 128]
         tPipe->InitBuffer(vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_0_AND_LTE_64_INDEX)],
-                            64); // s2realsize (0, 64]
+                          64); // s2realsize (0, 64]
 
         LocalTensor<uint8_t> vselrIndexesTensor =
             vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)].template Get<uint8_t>();
@@ -381,7 +379,6 @@ public:
         for (int i = 0; i < 64; i++) {
             vselrIndexesTensor.SetValue(i, i << 2);
         }
-
     }
 
     __aicore__ inline void AllocEventID()
@@ -536,7 +533,8 @@ public:
             }
         } else {
             // 非首 loop: isUpdate=true
-            bool isMlaSgdRuntime = (layout != LayOutTypeEnum::LAYOUT_BNSD) && (constInfo.gSize >= 32) && (constInfo.gSize % 32 == 0);
+            bool isMlaSgdRuntime =
+                (layout != LayOutTypeEnum::LAYOUT_BNSD) && (constInfo.gSize >= 32) && (constInfo.gSize % 32 == 0);
             if (likely(s2CalcSize == s2BaseSize)) {
                 if (isMlaSgdRuntime) {
                     FaVectorApi::ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSize, EQ_128, HAS_MASK,
@@ -740,24 +738,27 @@ public:
             if (likely(!runInfo.isLastS2Loop)) {
                 if (unlikely(runInfo.s2LocalIdx == s2BaseSize)) {
                     FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, true, true>(
-                        vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, vecMSize, dTemplateAlign64, deScaleVValue, deSCalePreVValue);
+                        vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, vecMSize, dTemplateAlign64, deScaleVValue,
+                        deSCalePreVValue);
                 } else {
                     FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, true>(
-                        vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, vecMSize, dTemplateAlign64, deScaleVValue, deSCalePreVValue);
+                        vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, vecMSize, dTemplateAlign64, deScaleVValue,
+                        deSCalePreVValue);
                 }
             } else {
                 if (unlikely(runInfo.s2LocalIdx == s2BaseSize)) {
-                    LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
+                    LocalTensor<float> sumUb =
+                        this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
                     FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, true, true>(
                         vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, vecMSize, dTemplateAlign64, deScaleVValue,
                         deSCalePreVValue);
                 } else {
-                    LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
+                    LocalTensor<float> sumUb =
+                        this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
                     FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, true>(
                         vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, vecMSize, dTemplateAlign64, deScaleVValue,
                         deSCalePreVValue);
                 }
-
             }
         }
         bmm2ResBuf.SetCrossCore();
@@ -765,7 +766,7 @@ public:
             if (unlikely(runInfo.isFirstS2Loop)) {
                 LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
                 LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, true>(vec2ResUb, vec2ResUb, sumUb, vecMSize,
-                                                                          (uint16_t)dTemplateAlign64, deScaleVValue);
+                                                                         (uint16_t)dTemplateAlign64, deScaleVValue);
             }
             CopyOutAttentionOut(runInfo, vec2ResUb, 0, vecMSize);
         }
@@ -823,8 +824,8 @@ public:
                 AttentionCommon::Max(runInfo.preTokensLeftUp + runInfo.actS2Size, 0), runInfo.actS1Size);
             s1LastValidToken = AttentionCommon::Max(s1LastValidToken - 1, 0);
             bool hasValidRow = (s1FirstValidToken > 0) || (s1LastValidToken < runInfo.actS1Size);
-            bool batchNeedRowInvalid = constInfo.isRowInvalidOpen ||
-                                       ((constInfo.sparseMode != SparseMode::LEFT_UP_CAUSAL) && hasValidRow);
+            bool batchNeedRowInvalid =
+                constInfo.isRowInvalidOpen || ((constInfo.sparseMode != SparseMode::LEFT_UP_CAUSAL) && hasValidRow);
             if (!batchNeedRowInvalid) {
                 return;
             }
@@ -904,31 +905,32 @@ public:
 };
 
 // Dummy 类
-template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-          LayOutTypeEnum outLayout = LayOutTypeEnum::None,
-          S1TemplateType s1TemplateType = S1TemplateType::Aligned64,
-          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
-          DTemplateType dTemplateType = DTemplateType::Aligned576,
-          DTemplateType dVTemplateType = DTemplateType::Aligned512,
-          PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasAtten = false, bool hasDrop = false,
-          bool hasRope = false, uint8_t KvLayoutType = 0, bool isFd = false, bool enableKVPrefix = false,
-          bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
+template <
+    typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
+    LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned64,
+    S2TemplateType s2TemplateType = S2TemplateType::Aligned128, DTemplateType dTemplateType = DTemplateType::Aligned576,
+    DTemplateType dVTemplateType = DTemplateType::Aligned512, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE,
+    bool hasAtten = false, bool hasDrop = false, bool hasRope = false, uint8_t KvLayoutType = 0, bool isFd = false,
+    bool enableKVPrefix = false, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
 class FAFullQuantMlaBlockVecDummy {
 public:
     static constexpr bool HAS_MASK = hasAtten;
     static constexpr bool FLASH_DECODE = isFd;
     using ConstInfoX = ConstInfo_t<FiaKernelType::FULL_QUANT>;
     using OUT_T = OUTPUT_T;
-    __aicore__ inline FAFullQuantMlaBlockVecDummy(ConstInfoX &constInfo) : constInfo(constInfo){};
+    __aicore__ inline FAFullQuantMlaBlockVecDummy(ConstInfoX &constInfo)
+        : constInfo(constInfo){};
     __aicore__ inline void InitVecBlock(TPipe *, __gm__ uint8_t *, __gm__ uint8_t *, __gm__ uint8_t *, __gm__ uint8_t *,
                                         __gm__ uint8_t *, __gm__ uint8_t *, __gm__ uint8_t *, __gm__ uint8_t *,
-                                        __gm__ uint8_t *) {}
+                                        __gm__ uint8_t *)
+    {}
     __aicore__ inline void InitBuffers() {}
     __aicore__ inline void AllocEventID() {}
     __aicore__ inline void FreeEventID() {}
     __aicore__ inline void ClearOutput() {}
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &,
-                                       Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &, RunInfoX) {}
+                                       Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &, RunInfoX)
+    {}
     __aicore__ inline void ProcessVec2(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &, RunInfoX) {}
     __aicore__ inline void ProcessVec2(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> &, RunInfoX) {}
     const ConstInfoX &constInfo;

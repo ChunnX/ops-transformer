@@ -238,8 +238,10 @@ void FiaTilingFullQuantMlaArch35::GetPreNextTokensLeftUp(int64_t actualSeqLength
         }
     } else if (fiaInfo_->sparseMode == SPARSE_MODE_BAND) {
         if (isRopeSplit512) {
-            preTokensLeftUp = fiaInfo_->preToken * fiaInfo_->gSize - actualSeqLengthKV * fiaInfo_->gSize + actualSeqLength;
-            nextTokensLeftUp = fiaInfo_->nextToken * fiaInfo_->gSize + actualSeqLengthKV * fiaInfo_->gSize - actualSeqLength;
+            preTokensLeftUp =
+                fiaInfo_->preToken * fiaInfo_->gSize - actualSeqLengthKV * fiaInfo_->gSize + actualSeqLength;
+            nextTokensLeftUp =
+                fiaInfo_->nextToken * fiaInfo_->gSize + actualSeqLengthKV * fiaInfo_->gSize - actualSeqLength;
         } else {
             preTokensLeftUp = fiaInfo_->preToken - actualSeqLengthKV + actualSeqLength;
             nextTokensLeftUp = fiaInfo_->nextToken + actualSeqLengthKV - actualSeqLength;
@@ -499,8 +501,7 @@ bool FiaTilingFullQuantMlaArch35::IsExistRowInvalid(const split_core_v2::BaseInf
 }
 
 void FiaTilingFullQuantMlaArch35::GetSafeActToken(split_core_v2::SparseMode mode, int64_t actSeqLensQ,
-                                                  int64_t actSeqLensKv, int64_t &safePreToken,
-                                                  int64_t &safeNextToken)
+                                                  int64_t actSeqLensKv, int64_t &safePreToken, int64_t &safeNextToken)
 {
     if (mode == split_core_v2::SparseMode::DEFAULT_MASK) {
         safePreToken = std::max(-actSeqLensKv, safePreToken);

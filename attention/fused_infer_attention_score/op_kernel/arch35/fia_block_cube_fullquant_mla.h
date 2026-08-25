@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
-*/
+ */
 
 /*!
  * \file fia_block_cube_fullquant_mla.h
@@ -209,10 +209,10 @@ public:
     }
 
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                         __gm__ uint8_t *blockTable, __gm__ uint8_t *queryRope,
-                                         __gm__ uint8_t *keyRope, __gm__ uint8_t *actualSeqQlenAddr,
-                                         __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *dequantScaleQuery,
-                                         __gm__ uint8_t *dequantScaleKey, __gm__ uint8_t *dequantScaleValue)
+                                         __gm__ uint8_t *blockTable, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
+                                         __gm__ uint8_t *actualSeqQlenAddr, __gm__ uint8_t *actualSeqKvlenAddr,
+                                         __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
+                                         __gm__ uint8_t *dequantScaleValue)
     {
         if (constInfo.actualSeqLenSize != 0) {
             actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqQlenAddr, constInfo.actualSeqLenSize);
@@ -239,8 +239,8 @@ public:
         ListTensorDesc valueListTensorDesc((__gm__ void *)(this->valuePtr));
         __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
         InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.actualSeqLenKVSize,
-                     constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, keyGm, key_, constInfo.keyStrides.bnStride,
-                     constInfo.keyStrides.n2Stride);
+                     constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, keyGm, key_,
+                     constInfo.keyStrides.bnStride, constInfo.keyStrides.n2Stride);
         InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.actualSeqLenKVSize,
                      constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, valueGm, value_,
                      constInfo.valueStrides.bnStride, constInfo.valueStrides.n2Stride);
@@ -461,8 +461,8 @@ public:
         MMParam param =
             MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)s2CurSize, (uint32_t)constInfo.dSizeV, false, true);
         MatmulK<INPUT_T, INPUT_T, T, 64, 128, 256, ABLayout::MK, ABLayout::KN>(
-            mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers, mmL0BBuffers,
-            mm1ResL0C.GetTensor<T>(), param);
+            mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
+            param);
 
         // Rope MatMul: Q_rope @ K_rope^T (累加 Nope L0C)
         if constexpr (HAS_ROPE) {
@@ -577,16 +577,15 @@ public:
     static constexpr bool BMM2_TOUB = bmm2Write2Ub;
     static constexpr bool USE_DN = useDn;
     static constexpr bool SPLITD = splitD;
-    static constexpr bool isFp8 = FAFullQuantMlaBlockCube<INPUT_T, T, layout, s1TemplateType, s2TemplateType,
-                                                          dTemplateType, dVTemplateType, hasRope, KvLayoutType,
-                                                          enableKVPrefix, useDn, bmm2Write2Ub, splitD>::isFp8;
-    static constexpr bool isInt8 = FAFullQuantMlaBlockCube<INPUT_T, T, layout, s1TemplateType, s2TemplateType,
-                                                           dTemplateType, dVTemplateType, hasRope, KvLayoutType,
-                                                           enableKVPrefix, useDn, bmm2Write2Ub, splitD>::isInt8;
-    static constexpr bool isMlaFullQuant = FAFullQuantMlaBlockCube<INPUT_T, T, layout, s1TemplateType, s2TemplateType,
-                                                                   dTemplateType, dVTemplateType, hasRope, KvLayoutType,
-                                                                   enableKVPrefix, useDn, bmm2Write2Ub,
-                                                                   splitD>::isMlaFullQuant;
+    static constexpr bool isFp8 =
+        FAFullQuantMlaBlockCube<INPUT_T, T, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                                hasRope, KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>::isFp8;
+    static constexpr bool isInt8 =
+        FAFullQuantMlaBlockCube<INPUT_T, T, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                                hasRope, KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>::isInt8;
+    static constexpr bool isMlaFullQuant =
+        FAFullQuantMlaBlockCube<INPUT_T, T, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                                hasRope, KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>::isMlaFullQuant;
     static constexpr bool useDnDummy = false;
     static constexpr bool useNz = false;
     static constexpr TPosition bmm2OutPos =
@@ -604,23 +603,28 @@ public:
     using MM2_ABUF_POLICY_T = BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
     using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
     using ConstInfoX = ConstInfo_t<FiaKernelType::FULL_QUANT>;
-    __aicore__ inline FAFullQuantMlaBlockCubeDummy(ConstInfoX &constInfo) : constInfo(constInfo){};
+    __aicore__ inline FAFullQuantMlaBlockCubeDummy(ConstInfoX &constInfo)
+        : constInfo(constInfo){};
     __aicore__ inline void InitCubeBlock(TPipe *, BufferManager<BufferType::L1> *, __gm__ uint8_t *, __gm__ uint8_t *,
                                          __gm__ uint8_t *, __gm__ uint8_t *, __gm__ uint8_t *, __gm__ uint8_t *,
                                          __gm__ uint8_t *, __gm__ uint8_t *, __gm__ uint8_t *, __gm__ uint8_t *,
-                                         __gm__ uint8_t *) {}
+                                         __gm__ uint8_t *)
+    {}
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *, __gm__ uint8_t *, __gm__ uint8_t *, __gm__ uint8_t *,
                                          __gm__ uint8_t *, __gm__ uint8_t *, __gm__ uint8_t *, __gm__ uint8_t *,
-                                         __gm__ uint8_t *, __gm__ uint8_t *, __gm__ uint8_t *) {}
+                                         __gm__ uint8_t *, __gm__ uint8_t *, __gm__ uint8_t *)
+    {}
     __aicore__ inline void InitBuffers() {}
     __aicore__ inline void InitDequantParams(__gm__ uint8_t *, __gm__ uint8_t *, __gm__ uint8_t *) {}
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &, RunInfoX &) {}
-    __aicore__ inline void
-    IterateBmm2(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &,
-                BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &, RunInfoX &) {}
-    __aicore__ inline void
-    IterateBmm2(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> &,
-                BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &, RunInfoX &) {}
+    __aicore__ inline void IterateBmm2(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &,
+                                       BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &,
+                                       RunInfoX &)
+    {}
+    __aicore__ inline void IterateBmm2(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> &,
+                                       BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &,
+                                       RunInfoX &)
+    {}
     __aicore__ inline void AllocEventID() {}
     __aicore__ inline void FreeEventID() {}
     const ConstInfoX &constInfo;

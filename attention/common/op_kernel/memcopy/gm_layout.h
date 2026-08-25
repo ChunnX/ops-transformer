@@ -457,7 +457,7 @@ template <>
 struct GmLayout<GmFormat::TNG> {
     AscendC::Shape<uint32_t, uint32_t, uint32_t> shape;
     AscendC::Stride<uint64_t, uint64_t, uint64_t> stride;
- 
+
     __aicore__ inline GmLayout() = default;
     __aicore__ inline void MakeLayout(uint32_t t, uint32_t n, uint32_t g)
     {

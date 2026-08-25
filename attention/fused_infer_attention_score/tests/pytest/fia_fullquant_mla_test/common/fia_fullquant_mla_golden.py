@@ -5,7 +5,7 @@
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS PROGRAM IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
@@ -54,9 +54,9 @@ N_q = 10
 N_kv = 1
 
 # MLA dims: D_nope + D_rope = qkHeadDim
-D = 512          # nope head dim (Q/K)
-D_V = 512        # V head dim
-D_rope = 64      # rope head dim
+D = 512  # nope head dim (Q/K)
+D_V = 512  # V head dim
+D_rope = 64  # rope head dim
 
 ACTUAL_SEQ_Q = [11]
 ACTUAL_SEQ_KV = [570]
@@ -198,7 +198,9 @@ def _pa_layout_transform(out_cache, kv_layout, d_dim):
         raise ValueError(f"Unsupported kv_layout: {kv_layout}")
 
 
-def bnsd_to_k_cache(k_fp8_bnsd, seq_lens, block_size, block_table, num_blocks=0, kv_layout="BnNBsD"):
+def bnsd_to_k_cache(
+    k_fp8_bnsd, seq_lens, block_size, block_table, num_blocks=0, kv_layout="BnNBsD"
+):
     """BNSD to PA K cache - 纯数据 block (MLA K per-tensor, scale 不与 key 共享内存)"""
     k_fp8_bnsd = k_fp8_bnsd.contiguous()
     B_dim, N_dim, S_dim, D_dim = k_fp8_bnsd.shape
@@ -207,7 +209,9 @@ def bnsd_to_k_cache(k_fp8_bnsd, seq_lens, block_size, block_table, num_blocks=0,
     cache_blocks = num_blocks if num_blocks != 0 else total_blocks
 
     out_cache = torch.zeros(
-        (cache_blocks, N_dim, block_size, D_dim), dtype=FP8_DTYPE, device=k_fp8_bnsd.device
+        (cache_blocks, N_dim, block_size, D_dim),
+        dtype=FP8_DTYPE,
+        device=k_fp8_bnsd.device,
     ).contiguous()
 
     for b in range(B_dim):
@@ -219,12 +223,16 @@ def bnsd_to_k_cache(k_fp8_bnsd, seq_lens, block_size, block_table, num_blocks=0,
             valid = end_s - start_s
             if valid <= 0:
                 continue
-            out_cache[blockid, :, :valid, :] = k_fp8_bnsd[b, :, start_s:end_s, :].contiguous()
+            out_cache[blockid, :, :valid, :] = k_fp8_bnsd[
+                b, :, start_s:end_s, :
+            ].contiguous()
 
     return _pa_layout_transform(out_cache, kv_layout, D_dim)
 
 
-def bnsd_to_v_cache(tensor_bnsd, seq_lens, block_size, block_table, num_blocks=0, kv_layout="BnNBsD"):
+def bnsd_to_v_cache(
+    tensor_bnsd, seq_lens, block_size, block_table, num_blocks=0, kv_layout="BnNBsD"
+):
     """BNSD to V cache - 纯数据 block (MLA V per-tensor, scale 不共享内存)"""
     tensor_bnsd = tensor_bnsd.contiguous()
     device = tensor_bnsd.device
@@ -296,7 +304,9 @@ def generate_data():
     ).to(torch.bfloat16)
     np.random.seed(SEED_KR)
     kr_bf16 = torch.from_numpy(
-        (np.random.uniform(-1.0, 1.0, size=(B, N_kv, max_skv, D_rope))).astype(np.float32)
+        (np.random.uniform(-1.0, 1.0, size=(B, N_kv, max_skv, D_rope))).astype(
+            np.float32
+        )
     ).to(torch.bfloat16)
 
     q_fp16 = q_fp16.cpu().contiguous()
@@ -329,8 +339,16 @@ def generate_data():
     logger.info("[INFO] v_fp8 shape: %s, dtype: %s", v_fp8.shape, v_fp8.dtype)
     logger.info("[INFO] qr_bf16 shape: %s, dtype: %s", qr_bf16.shape, qr_bf16.dtype)
     logger.info("[INFO] kr_bf16 shape: %s, dtype: %s", kr_bf16.shape, kr_bf16.dtype)
-    logger.info("[INFO] deq_k (per-tensor) shape: %s, val: %s", dequant_scale_k.shape, dequant_scale_k)
-    logger.info("[INFO] deq_v (per-tensor) shape: %s, val: %s", dequant_scale_v.shape, dequant_scale_v)
+    logger.info(
+        "[INFO] deq_k (per-tensor) shape: %s, val: %s",
+        dequant_scale_k.shape,
+        dequant_scale_k,
+    )
+    logger.info(
+        "[INFO] deq_v (per-tensor) shape: %s, val: %s",
+        dequant_scale_v.shape,
+        dequant_scale_v,
+    )
 
     p_scale = torch.tensor([P_SCALE], dtype=torch.float32).cpu().contiguous()
 
@@ -446,7 +464,9 @@ def _pa_layout_to_bnbd(kv_pa, kv_layout, n_kv=None):
         raise ValueError(f"Unsupported kv_layout: {kv_layout}")
 
 
-def pa_cache_to_bnsd(k_pa, v_pa, block_table, actual_seq_kv, block_size, kv_layout="BnNBsD", n_kv=None):
+def pa_cache_to_bnsd(
+    k_pa, v_pa, block_table, actual_seq_kv, block_size, kv_layout="BnNBsD", n_kv=None
+):
     """从 PA cache 还原 BNSD 格式的 K/V (纯数据 block), 用于 NUM_BLOCKS 非默认时做 CPU Golden 对比
 
     MLA K/V per-tensor: deq_k/deq_v 是独立标量, 不在 cache 中
@@ -483,8 +503,17 @@ def torch_broadcast_kv(num_heads, num_kv_heads, tensor):
 
 
 def cpu_fp8_fullquant_mla_golden(
-    q_fp8, k_fp8, v_fp8, deq_q, deq_k, deq_v, p_scale,
-    actual_seq_q, actual_seq_kv, qr_bf16=None, kr_bf16=None,
+    q_fp8,
+    k_fp8,
+    v_fp8,
+    deq_q,
+    deq_k,
+    deq_v,
+    p_scale,
+    actual_seq_q,
+    actual_seq_kv,
+    qr_bf16=None,
+    kr_bf16=None,
 ):
     """CPU golden reference - MLA flash attention with FP8 quantization
 
@@ -763,9 +792,9 @@ def make_accum_seq(seq_lens):
 # ==============================================================================
 def get_npu_fa_kwargs():
     return dict(
-        query_quant_mode=3,    # per-token-head
-        key_quant_mode=0,      # per-tensor
-        value_quant_mode=0,    # per-tensor
+        query_quant_mode=3,  # per-token-head
+        key_quant_mode=0,  # per-tensor
+        value_quant_mode=0,  # per-tensor
         query_dtype=FP8_DTYPE,
         key_dtype=FP8_DTYPE,
         value_dtype=FP8_DTYPE,
@@ -963,9 +992,17 @@ def fia_mla_torch_npu(
                 npu_mode, fullgraph=True, backend=npu_backend, dynamic=True
             )
             for t in (
-                q, k, v, q_rope, k_rope, mask,
-                dequant_scale_q, dequant_scale_k, dequant_scale_v,
-                p_scale, block_table,
+                q,
+                k,
+                v,
+                q_rope,
+                k_rope,
+                mask,
+                dequant_scale_q,
+                dequant_scale_k,
+                dequant_scale_v,
+                p_scale,
+                block_table,
             ):
                 if t is not None:
                     torch._dynamo.mark_static(t)
@@ -1048,12 +1085,16 @@ def fa_run_npu(
     logger.info("[NPU] q dtype: %s, shape: %s", q.dtype, q.shape)
     logger.info("[NPU] k dtype: %s, shape: %s", k.dtype, k.shape)
     logger.info("[NPU] v dtype: %s, shape: %s", v.dtype, v.shape)
-    logger.info("[NPU] q_rope dtype: %s, shape: %s",
-                q_rope.dtype if q_rope is not None else None,
-                q_rope.shape if q_rope is not None else None)
-    logger.info("[NPU] k_rope dtype: %s, shape: %s",
-                k_rope.dtype if k_rope is not None else None,
-                k_rope.shape if k_rope is not None else None)
+    logger.info(
+        "[NPU] q_rope dtype: %s, shape: %s",
+        q_rope.dtype if q_rope is not None else None,
+        q_rope.shape if q_rope is not None else None,
+    )
+    logger.info(
+        "[NPU] k_rope dtype: %s, shape: %s",
+        k_rope.dtype if k_rope is not None else None,
+        k_rope.shape if k_rope is not None else None,
+    )
     logger.info(
         "[NPU] dequant_scale_q dtype: %s, shape: %s",
         dequant_scale_q.dtype,
@@ -1180,16 +1221,24 @@ def npu_fp8_full_quant_mla(
         )
         # V cache: 纯数据 block
         v_pa = bnsd_to_v_cache(
-            v_fp8, ACTUAL_SEQ_KV, BLOCK_SIZE, block_table, num_blocks=NUM_BLOCKS,
-            kv_layout=KV_CACHE_LAYOUT
+            v_fp8,
+            ACTUAL_SEQ_KV,
+            BLOCK_SIZE,
+            block_table,
+            num_blocks=NUM_BLOCKS,
+            kv_layout=KV_CACHE_LAYOUT,
         )
 
         # K_rope 走 PA cache (bf16, 纯数据 block 分片)
         k_rope_pa = None
         if kr_bf16 is not None:
             k_rope_pa = _bnsd_to_pa_bf16(
-                kr_bf16, ACTUAL_SEQ_KV, BLOCK_SIZE, block_table, num_blocks=NUM_BLOCKS,
-                kv_layout=KV_CACHE_LAYOUT
+                kr_bf16,
+                ACTUAL_SEQ_KV,
+                BLOCK_SIZE,
+                block_table,
+                num_blocks=NUM_BLOCKS,
+                kv_layout=KV_CACHE_LAYOUT,
             )
         if not IS_CONTIGUOUS:
             # ---- 构造krope不连续 ----
@@ -1214,8 +1263,12 @@ def npu_fp8_full_quant_mla(
             kv_cache = kv_cache.npu()
             k_pa = kv_cache[:, 0]
             v_pa = kv_cache[:, 1]
-            logger.info(f"[NPU] k_pa is_contiguous={k_pa.is_contiguous()}, v_pa is_contiguous={v_pa.is_contiguous()}")
-            logger.info(f"[NPU] k_pa strides={k_pa.stride()}, v_pa strides={v_pa.stride()}")
+            logger.info(
+                f"[NPU] k_pa is_contiguous={k_pa.is_contiguous()}, v_pa is_contiguous={v_pa.is_contiguous()}"
+            )
+            logger.info(
+                f"[NPU] k_pa strides={k_pa.stride()}, v_pa strides={v_pa.stride()}"
+            )
 
         output = fa_run_npu(
             q_npu,
@@ -1245,7 +1298,11 @@ def npu_fp8_full_quant_mla(
         # deq_k per-tensor: 标量, 与 deq_v 相同处理
         deq_k_npu = convert_scale_to_layout(dequant_scale_k, ACTUAL_SEQ_KV, "deq_v")
 
-        accum_seq_kv = make_accum_seq(actual_seq_kv) if npu_input_layout in ("TND", "NTD_TND") else actual_seq_kv
+        accum_seq_kv = (
+            make_accum_seq(actual_seq_kv)
+            if npu_input_layout in ("TND", "NTD_TND")
+            else actual_seq_kv
+        )
 
         output = fa_run_npu(
             q_npu,
@@ -1277,7 +1334,9 @@ def npu_fp8_full_quant_mla(
     return output, cache_info
 
 
-def _bnsd_to_pa_bf16(tensor_bnsd, seq_lens, block_size, block_table, num_blocks=0, kv_layout="BnNBsD"):
+def _bnsd_to_pa_bf16(
+    tensor_bnsd, seq_lens, block_size, block_table, num_blocks=0, kv_layout="BnNBsD"
+):
     """BNSD bf16 (rope) → PA cache (无 scale rows, 纯数据 block 分片)
 
     输出: (cache_blocks, N, block_size, D_rope) bf16, 并按 kv_layout 转换
@@ -1350,7 +1409,9 @@ if __name__ == "__main__":
         INPUT_LAYOUT,
         OUTPUT_LAYOUT,
     )
-    logger.info("B=%d, N_q=%d, N_kv=%d, D=%d, D_rope=%d, D_V=%d", B, N_q, N_kv, D, D_rope, D_V)
+    logger.info(
+        "B=%d, N_q=%d, N_kv=%d, D=%d, D_rope=%d, D_V=%d", B, N_q, N_kv, D, D_rope, D_V
+    )
     logger.info("ACTUAL_SEQ_Q=%s, ACTUAL_SEQ_KV=%s", ACTUAL_SEQ_Q, ACTUAL_SEQ_KV)
 
     block_table_torch = None
@@ -1461,8 +1522,13 @@ if __name__ == "__main__":
     if cache_info is not None and ("cpu" in mode or "compare" in mode):
         k_pa_cache, v_pa_cache, bt_cache = cache_info
         k_bnsd_recon, v_bnsd_recon = pa_cache_to_bnsd(
-            k_pa_cache, v_pa_cache, bt_cache, ACTUAL_SEQ_KV, BLOCK_SIZE,
-            kv_layout=KV_CACHE_LAYOUT, n_kv=N_kv
+            k_pa_cache,
+            v_pa_cache,
+            bt_cache,
+            ACTUAL_SEQ_KV,
+            BLOCK_SIZE,
+            kv_layout=KV_CACHE_LAYOUT,
+            n_kv=N_kv,
         )
         cpu_out, cpu_lse = cpu_fp8_fullquant_mla_golden(
             q_fp8,
@@ -1487,5 +1553,7 @@ if __name__ == "__main__":
 
     if ENABLE_LSE:
         logger.info("\n[Step 5] LSE 精度对比")
-        cpu_lse_tnd_torch = convert_q_bnsd_to_layout(cpu_lse, ACTUAL_SEQ_Q, compare_layout)
+        cpu_lse_tnd_torch = convert_q_bnsd_to_layout(
+            cpu_lse, ACTUAL_SEQ_Q, compare_layout
+        )
         result_compare_method.check_result(cpu_lse_tnd_torch, lse_out)

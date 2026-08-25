@@ -1146,61 +1146,61 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_TN, ACTLEN_T, WITH_
     GmLayout<FORMAT> gmLayout;
     using SeqLensQParserType = ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T, WITH_ZERO_HEAD>;
     SeqLensQParserType actualSeqLensQParser;
- 
+
     __aicore__ inline OffsetCalculatorImpl() = default;
- 
+
     __aicore__ inline void Init(uint32_t n2, uint32_t g, GlobalTensor<ACTLEN_T> actualSeqLengthsGmQ,
                                 uint32_t actualLenQDims)
     {
         actualSeqLensQParser.Init(actualSeqLengthsGmQ, actualLenQDims);
         gmLayout.MakeLayout(actualSeqLensQParser.GetTSize(), n2, g);
     }
- 
+
     __aicore__ inline void Init(uint32_t n2, uint32_t g, const SeqLensQParserType &parser)
     {
         actualSeqLensQParser = parser;
         gmLayout.MakeLayout(actualSeqLensQParser.GetTSize(), n2, g);
     }
- 
+
     __aicore__ inline uint64_t GetOffset(uint32_t bIdx, uint32_t n2Idx, uint32_t gIdx, uint32_t s1Idx)
     {
         uint64_t tIdx = actualSeqLensQParser.GetTBase(bIdx) + s1Idx;
         uint64_t offset = tIdx * GetStrideT() + n2Idx * GetStrideN2() + gIdx * GetStrideG();
         return offset;
     }
- 
+
     // Get Stride
     __aicore__ inline uint64_t GetStrideT()
     {
         return AscendC::Std::get<0>(gmLayout.stride);
     }
- 
+
     __aicore__ inline uint64_t GetStrideN2()
     {
         return AscendC::Std::get<1>(gmLayout.stride);
     }
- 
+
     __aicore__ inline uint64_t GetStrideG()
     {
         return AscendC::Std::get<2>(gmLayout.stride); // 2:代表第3个维度，索引从0开始
     }
- 
+
     __aicore__ inline uint64_t GetStrideS1()
     {
         return GetStrideT();
     }
- 
+
     // Get Dim
     __aicore__ inline uint64_t GetDimT()
     {
         return AscendC::Std::get<0>(gmLayout.shape);
     }
- 
+
     __aicore__ inline uint64_t GetDimN2()
     {
         return AscendC::Std::get<1>(gmLayout.shape);
     }
- 
+
     __aicore__ inline uint64_t GetDimG()
     {
         return AscendC::Std::get<2>(gmLayout.shape); // 2:代表第3个维度，索引从0开始
