@@ -58,6 +58,25 @@ class CompressorSpec:
         },
     }
 
+    @staticmethod
+    def pre_execute(testcase, raw_inputs, switches):
+        golden_module.rebuild_golden_context_from_testcase(testcase)
+        ctx = golden_module.get_golden_context()
+        from ttk.core_modules.tbe_multiprocessing import get_process_context
+        process_ctx = get_process_context()
+        process_ctx.storage["pre_execute_data"] = {
+            "cmp_kv_mask": ctx.get("cmp_kv_mask"),
+            "update_kv": ctx.get("update_kv"),
+            "update_score": ctx.get("update_score"),
+            "start_pos_list": ctx.get("start_pos_list"),
+            "seqused_list": ctx.get("seqused_list"),
+            "cu_seqlens_list": ctx.get("cu_seqlens_list"),
+            "cmp_ratio": ctx.get("cmp_ratio"),
+            "is_th": ctx.get("is_th"),
+            "data_type": ctx.get("data_type"),
+            "bench_outputs": ctx.get("bench_outputs"),
+        }
+
     def compare(*outputs, compare_context=None, **kwargs):
         compare_method = compare_module._get_compare_method()
         golden_module.rebuild_golden_context_from_compare_context(
