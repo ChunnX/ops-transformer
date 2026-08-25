@@ -42,6 +42,7 @@ graph_module = load_impl_module("graph")
 # Spec 类的 golden/customize_inputs 绑定 dispatcher, 运行时按 kwargs 派发。
 # ==============================================================================
 
+
 def _golden_dispatch(*args, **kwargs):
     qm = kwargs.get("quant_mode", 1)
     if qm == 6:
