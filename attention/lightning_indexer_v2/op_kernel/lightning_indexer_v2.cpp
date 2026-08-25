@@ -16,7 +16,7 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "lightning_indexer_v2_template_tiling_key.h"
-#if (__CCE_AICORE__ == 310)
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202)) || (__CCE_AICORE__ == 310)
     #include "arch35/lightning_indexer_v2_kernel_arch35.h"
 #else
     #include "arch22/lightning_indexer_v2_kernel_arch22.h"
