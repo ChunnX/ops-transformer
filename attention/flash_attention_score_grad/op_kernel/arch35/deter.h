@@ -29,7 +29,10 @@ constexpr int64_t DETER_PREFIX_THRESHOLD = 128;
 constexpr int64_t M_BASE_64 = 64;
 constexpr int64_t N_BASE_128 = 128;
 
-__aicore__ inline int64_t Square(int64_t num) { return num * num; }
+__aicore__ inline int64_t Square(int64_t num)
+{
+    return num * num;
+}
 
 __aicore__ inline int64_t Gcd(int64_t a, int64_t b)
 {
@@ -1850,8 +1853,8 @@ __aicore__ inline int64_t BinarySearch(const __gm__ int64_t *prefix, int64_t b, 
     return w;
 }
 
-__aicore__ inline bool CalTNDDenseLine(int64_t k, int64_t m, int64_t n, int64_t copies, int64_t j, int64_t r, int64_t &w,
-                                       int64_t &x, int64_t &y)
+__aicore__ inline bool CalTNDDenseLine(int64_t k, int64_t m, int64_t n, int64_t copies, int64_t j, int64_t r,
+                                       int64_t &w, int64_t &x, int64_t &y)
 {
     if (j < 1 || j > k || r < 1 || copies <= 0 || m <= 0 || n <= 0) {
         return false;
@@ -2057,7 +2060,8 @@ __aicore__ inline void ExpandTNDCausalRun(const __gm__ uint8_t *actualSeqQlenAdd
         int64_t prevM = 0;
         int64_t prevN = 0;
         CoordinateInfo prevInfo;
-        LoadTNDOuterMN<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, runHead - 1, prevM, prevN, prevInfo);
+        LoadTNDOuterMN<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, runHead - 1, prevM, prevN,
+                                               prevInfo);
         TrimTNDCausalMN(prevM, prevN, leftUp);
         if (prevM != m || prevN != n) {
             break;
@@ -2069,7 +2073,8 @@ __aicore__ inline void ExpandTNDCausalRun(const __gm__ uint8_t *actualSeqQlenAdd
         int64_t nextM = 0;
         int64_t nextN = 0;
         CoordinateInfo nextInfo;
-        LoadTNDOuterMN<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, runEnd + 1, nextM, nextN, nextInfo);
+        LoadTNDOuterMN<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, runEnd + 1, nextM, nextN,
+                                               nextInfo);
         TrimTNDCausalMN(nextM, nextN, leftUp);
         if (nextM != m || nextN != n) {
             break;
@@ -2116,7 +2121,7 @@ __aicore__ inline void ExpandTNDBandRun(const __gm__ uint8_t *actualSeqQlenAddr,
         prevInfo.p = rawP;
         prevInfo.q = rawQ;
         LoadTNDBandMN<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, runHead - 1, prevM, prevN, prevP,
-                                             prevQ, prevInfo);
+                                              prevQ, prevInfo);
         if (prevM != m || prevN != n || prevP != p || prevQ != q) {
             break;
         }
@@ -2133,7 +2138,7 @@ __aicore__ inline void ExpandTNDBandRun(const __gm__ uint8_t *actualSeqQlenAddr,
         nextInfo.p = rawP;
         nextInfo.q = rawQ;
         LoadTNDBandMN<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, runEnd + 1, nextM, nextN, nextP,
-                                             nextQ, nextInfo);
+                                              nextQ, nextInfo);
         if (nextM != m || nextN != n || nextP != p || nextQ != q) {
             break;
         }
@@ -2373,8 +2378,8 @@ __aicore__ inline bool CalTNDDenseByAreaPrefix(const __gm__ uint8_t *actualSeqQl
     return copyId >= 1 && copyId <= copies;
 }
 
-__aicore__ inline bool MapTNDLeftUp(int64_t m, int64_t n, int64_t pairId, int64_t pairBatchCount, int64_t &x, int64_t &y,
-                                    int64_t &n1Id)
+__aicore__ inline bool MapTNDLeftUp(int64_t m, int64_t n, int64_t pairId, int64_t pairBatchCount, int64_t &x,
+                                    int64_t &y, int64_t &n1Id)
 {
     if (x > m) {
         y = n + 1 - y;
@@ -2477,8 +2482,8 @@ __aicore__ inline void CalTNDCausalRunIndex(const __gm__ uint8_t *actualSeqQlenA
             bIdx = runEnd + 1;
             continue;
         }
-        const int64_t singleRounds = (total % NUM_TWO == 1) ?
-            (LEFT_UP ? CalTNDSingleCausalRounds(k, m, n) : (Ceil<int64_t>(n, k) * m)) : 0;
+        const int64_t singleRounds =
+            (total % NUM_TWO == 1) ? (LEFT_UP ? CalTNDSingleCausalRounds(k, m, n) : (Ceil<int64_t>(n, k) * m)) : 0;
         const int64_t runRounds = pairRounds + singleRounds;
         if (a <= runRounds) {
             if (a <= pairRounds && runPairs > 0) {
@@ -2534,8 +2539,8 @@ __aicore__ inline void CalTNDLeftUpIndex(const __gm__ uint8_t *actualSeqQlenAddr
     const int64_t pairBatchCount = GetTNDPairBatchCount(n1);
     const int64_t pairCount = pairBatchCount / NUM_TWO;
     if (r <= rLine) {
-        CalTNDCausalRunIndex<CUBE_BASEM, CUBE_BASEN, true>(actualSeqQlenAddr, actualSeqKvlenAddr, prefix0, b, n1, k, j, r,
-                                                          step, coordinateInfo);
+        CalTNDCausalRunIndex<CUBE_BASEM, CUBE_BASEN, true>(actualSeqQlenAddr, actualSeqKvlenAddr, prefix0, b, n1, k, j,
+                                                           r, step, coordinateInfo);
         return;
     }
     if (r <= rLine + rPool && pairCount > 0) {
@@ -2545,8 +2550,8 @@ __aicore__ inline void CalTNDLeftUpIndex(const __gm__ uint8_t *actualSeqQlenAddr
         int64_t m = 0;
         int64_t n = 0;
         if (!CalTNDDenseByAreaPrefix<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, prefix1, rPool, b,
-                                                            pairCount, k, j, r - rLine, step, 2, coordinateInfo,
-                                                            pairId, x, y, m, n)) {
+                                                             pairCount, k, j, r - rLine, step, 2, coordinateInfo,
+                                                             pairId, x, y, m, n)) {
             return;
         }
         int64_t n1Id = 0;
@@ -2566,8 +2571,8 @@ __aicore__ inline void CalTNDLeftUpIndex(const __gm__ uint8_t *actualSeqQlenAddr
         int64_t m = 0;
         int64_t n = 0;
         if (!CalTNDDenseByAreaPrefix<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, prefix2, rSingle, b,
-                                                            1, k, j, r - rLine - rPool, step, 0, coordinateInfo,
-                                                            copyId, x, y, m, n)) {
+                                                             1, k, j, r - rLine - rPool, step, 0, coordinateInfo,
+                                                             copyId, x, y, m, n)) {
             return;
         }
         if (m < n) {
@@ -2599,7 +2604,7 @@ __aicore__ inline void CalTNDRightDownIndex(const __gm__ uint8_t *actualSeqQlenA
     const int64_t pairCount = pairBatchCount / NUM_TWO;
     if (r <= rLine) {
         CalTNDCausalRunIndex<CUBE_BASEM, CUBE_BASEN, false>(actualSeqQlenAddr, actualSeqKvlenAddr, prefix0, b, n1, k, j,
-                                                           r, step, coordinateInfo);
+                                                            r, step, coordinateInfo);
         return;
     }
     if (r <= rLine + rPool && pairCount > 0) {
@@ -2609,8 +2614,8 @@ __aicore__ inline void CalTNDRightDownIndex(const __gm__ uint8_t *actualSeqQlenA
         int64_t m = 0;
         int64_t n = 0;
         if (!CalTNDDenseByAreaPrefix<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, prefix1, rPool, b,
-                                                            pairCount, k, j, r - rLine, step, 3, coordinateInfo,
-                                                            pairId, x, y, m, n)) {
+                                                             pairCount, k, j, r - rLine, step, 3, coordinateInfo,
+                                                             pairId, x, y, m, n)) {
             return;
         }
         int64_t n1Id = 0;
@@ -2630,8 +2635,8 @@ __aicore__ inline void CalTNDRightDownIndex(const __gm__ uint8_t *actualSeqQlenA
         int64_t m = 0;
         int64_t n = 0;
         if (!CalTNDDenseByAreaPrefix<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, prefix2, rSingle, b,
-                                                            1, k, j, r - rLine - rPool, step, 1, coordinateInfo,
-                                                            copyId, x, y, m, n)) {
+                                                             1, k, j, r - rLine - rPool, step, 1, coordinateInfo,
+                                                             copyId, x, y, m, n)) {
             return;
         }
         if (IsTNDRightDownValid(m, n, x, y)) {
@@ -2795,15 +2800,15 @@ template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
 __aicore__ inline void CalTNDCausalIndex(const __gm__ uint8_t *actualSeqQlenAddr,
                                          const __gm__ uint8_t *actualSeqKvlenAddr, const __gm__ int64_t *prefix0,
                                          const __gm__ int64_t *prefix1, const __gm__ int64_t *prefix2, int64_t b,
-                                         int64_t N1, int64_t k, int64_t j, int64_t r, int64_t step,
-                                         int64_t sparseMode, CoordinateInfo &coordinateInfo)
+                                         int64_t N1, int64_t k, int64_t j, int64_t r, int64_t step, int64_t sparseMode,
+                                         CoordinateInfo &coordinateInfo)
 {
     if (sparseMode == RIGHT_DOWN_CAUSAL) {
-        CalTNDRightDownIndex<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, prefix0, prefix1, prefix2, b,
-                                                     N1, k, j, r, step, coordinateInfo);
+        CalTNDRightDownIndex<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, prefix0, prefix1, prefix2,
+                                                     b, N1, k, j, r, step, coordinateInfo);
     } else {
         CalTNDLeftUpIndex<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, prefix0, prefix1, prefix2, b,
-                                                 N1, k, j, r, step, coordinateInfo);
+                                                  N1, k, j, r, step, coordinateInfo);
     }
 }
 
@@ -3034,8 +3039,8 @@ __aicore__ inline void CalTNDBandIndex(const __gm__ uint8_t *actualSeqQlenAddr,
     const int64_t rLine = prefix0[maxRoundIndex];
     const int64_t rPool = prefix1[maxRoundIndex];
     if (r <= rLine) {
-        CalTNDBandSoloIndex<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, prefix0, b, N1, k, j, r, step,
-                                                    coordinateInfo);
+        CalTNDBandSoloIndex<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, prefix0, b, N1, k, j, r,
+                                                    step, coordinateInfo);
         return;
     }
     if (r <= rLine + rPool) {
@@ -3044,9 +3049,9 @@ __aicore__ inline void CalTNDBandIndex(const __gm__ uint8_t *actualSeqQlenAddr,
         int64_t y = 0;
         int64_t m = 0;
         int64_t n = 0;
-        if (!CalTNDDenseByAreaPrefix<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, prefix1, rPool, b, N1,
-                                                            k, j, r - rLine, step, 4, coordinateInfo, copyId, x, y, m,
-                                                            n)) {
+        if (!CalTNDDenseByAreaPrefix<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, prefix1, rPool, b,
+                                                             N1, k, j, r - rLine, step, 4, coordinateInfo, copyId, x, y,
+                                                             m, n)) {
             return;
         }
         const int64_t p = coordinateInfo.p;

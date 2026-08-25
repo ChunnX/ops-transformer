@@ -1081,8 +1081,7 @@ uint32_t FlashAttentionScoreGradTilingNormalRegbase::GetDeterSparseTilingKey()
                 fBaseParams.s1Token >= fBaseParams.s1 &&
                 (fBaseParams.s2Token > NEGATIVE_128 && fBaseParams.s2Token <= 0)) ||
                (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) &&
-                (fBaseParams.isS1S2Same ||
-                 (fBaseParams.layoutType == INPUT_FORMAT_TND && fBaseParams.g == 1)))) {
+                (fBaseParams.isS1S2Same || (fBaseParams.layoutType == INPUT_FORMAT_TND && fBaseParams.g == 1)))) {
         return static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL);
     } else if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::BAND) ||
                fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) ||
@@ -1588,7 +1587,10 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoPostTiling()
     postTilingData_->set_vPostTailNum(vPostTailNum);
 }
 
-ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoLibApiTiling() { return ge::GRAPH_SUCCESS; }
+ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoLibApiTiling()
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSize()
 {
