@@ -73,11 +73,6 @@ public:
 protected:
     bool IsCapable() override
     {
-        if (context_->GetDeterministic() == 1) {
-            OP_LOGE(context_->GetNodeName(), "BlockSparseAttentionGrad not support Deterministic.");
-            return false;
-        }
-
         if (dataType_ != ge::DT_FLOAT16 && dataType_ != ge::DT_BF16) {
             OP_LOGE(context_->GetNodeName(), "BlockSparseAttentionGrad only support DT_FLOAT16 and DT_BF16.");
             return false;
@@ -99,6 +94,7 @@ protected:
 
     ge::graphStatus GetShapeAttrsInfo() override
     {
+        deterministic_ = (context_->GetDeterministic() == 1);
         int32_t q_batch_num, q_group, q_head_num, q_seq_len, q_head_dim;
         int32_t k_batch_num, k_head_num, k_seq_len, k_head_dim;
         int32_t v_batch_num, v_head_num, v_seq_len, v_head_dim;
@@ -247,21 +243,22 @@ protected:
     ge::graphStatus DoOpTiling() override
     {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
-        auto cubeCoreNum = ascendcPlatform.GetCoreNumAic();
+        auto cubeCoreNum_ = ascendcPlatform.GetCoreNumAic();
 
-        uint32_t baseM = blockShapeX_ <= 128 ? blockShapeX_ : 128;
+        baseM_ = blockShapeX_ <= 128 ? blockShapeX_ : 128;
         uint32_t baseN = blockShapeY_ <= 128 ? blockShapeY_ : 128;
-        uint32_t singleM = AlignTo(2048, baseM);
+        uint32_t singleM = AlignTo(2048, baseM_);
         // Keep all Q tiles for the current KV block/head on one cube core when
         // possible so DK/DV can accumulate in L0 and K/V stays cached in L1.
 
         tilingData_.set_BlockX(blockShapeX_);
         tilingData_.set_BlockY(blockShapeY_);
-        tilingData_.set_cubeCoreNum(cubeCoreNum);
-        tilingData_.set_baseM(baseM);
+        tilingData_.set_cubeCoreNum(cubeCoreNum_);
+        tilingData_.set_baseM(baseM_);
         tilingData_.set_baseN(baseN);
         tilingData_.set_singleM(singleM);
-        context_->SetBlockDim(cubeCoreNum);
+        tilingData_.set_deterministic(deterministic_ ? 1 : 0);
+        context_->SetBlockDim(cubeCoreNum_);
         context_->SetScheduleMode(1);
         return ge::GRAPH_SUCCESS;
     }
@@ -311,6 +308,15 @@ protected:
         tilingData_.set_dvWorkspaceOffset(usr_workspace_offset);
         usr_workspace_offset += dv_size * sizeof(float);
 
+        // 确定性计算时，Host 侧额外申请一片连续内存，用于各 Cube 核保存 mm345 的局部累加结果。
+        // temp_size = cube_core_num * base_block_size * head_dim * sizeof(float)
+        uint64_t det_size = 0;
+        if (deterministic_) {
+            det_size = static_cast<uint64_t>(cubeCoreNum_) * baseM_ * head_dim_ * sizeof(float);
+        }
+        tilingData_.set_detWorkspaceOffset(usr_workspace_offset);
+        usr_workspace_offset += det_size;
+
         context_->GetWorkspaceSizes(1)[0] = sys_workspace_size + usr_workspace_offset;
         return ge::GRAPH_SUCCESS;
     }
@@ -326,12 +332,18 @@ protected:
     {
         uint64_t default_key = 1000;
         /*
-         *  000: BF16 BSND
-         *  001: FP16 BSND
-         *  010: BF16 BNSD
-         *  011: FP16 BNSD
-         *  100: BF16 TND
-         *  101: FP16 TND
+         *  0000: BF16 BSND
+         *  0001: FP16 BSND
+         *  0010: BF16 BNSD
+         *  0011: FP16 BNSD
+         *  0100: BF16 TND
+         *  0101: FP16 TND
+         *  1000: BF16 BSND DET
+         *  1001: FP16 BSND DET
+         *  1010: BF16 BNSD DET
+         *  1011: FP16 BNSD DET
+         *  1100: BF16 TND  DET
+         *  1101: FP16 TND  DET
          */
         default_key = (dataType_ == ge::DT_BF16) ? default_key : default_key + 0b001;
 
@@ -341,6 +353,10 @@ protected:
             default_key += 0b010;
         } else if (strcmp(layout_, TND_STR) == 0) {
             default_key += 0b100;
+        }
+
+        if (deterministic_) {
+            default_key += 0b1000;
         }
 
         return default_key;
@@ -365,6 +381,9 @@ private:
     int32_t blockShapeY_ = 0;
     int32_t max_q_seq_len_ = 0;
     int32_t max_kv_seq_len_ = 0;
+    bool deterministic_ = false;
+    uint32_t cubeCoreNum_ = 0;
+    uint32_t baseM_ = 0;
 };
 
 
