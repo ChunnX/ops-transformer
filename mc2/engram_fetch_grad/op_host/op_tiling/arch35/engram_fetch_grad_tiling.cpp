@@ -543,7 +543,7 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchGr
 
     // 动态计算 gradSubBatch
     uint32_t permanentUb = 9U * 1024U;   // hcommBuf + statusBuf + tempBuf + indicesBuf
-    uint32_t commBufSize = 2U * 64U * 1024U;  // entryBuf + gradBuf
+    uint32_t commBufSize = 96U * 1024U + 64U * 1024U;  // entryBuf + gradBuf
     uint32_t maxByPong = (32U * 1024U) / static_cast<uint32_t>(tilingData.hiddenBytes);
     if (maxByPong < 1U) {
         maxByPong = 1U;
