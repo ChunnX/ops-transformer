@@ -12,17 +12,16 @@ from typing import Optional, Tuple
 import torch
 from torch.library import impl
 
-from cann_ops_transformer.op_builder.builder import AS_LIBRARY
-from cann_ops_transformer.op_builder.builder import OpBuilder
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 
 class RecurrentKdaOpBuilder(OpBuilder):
     def __init__(self):
-        super(RecurrentKdaOpBuilder, self).__init__("recurrent_kda")
+        super(RecurrentKdaOpBuilder, self).__init__("recurrent_kda", category="attention")
 
     def sources(self):
         """Path to C++ source code."""
-        return ["ops/csrc/recurrent_kda.cpp"]
+        return ["csrc/attention/recurrent_kda.cpp"]
 
     def schema(self) -> str:
         """PyTorch operator schema."""
@@ -52,7 +51,7 @@ class RecurrentKdaOpBuilder(OpBuilder):
     def register_meta(self):
         """Register Meta implementation for shape and dtype inference."""
 
-        @impl(AS_LIBRARY, self.name, "Meta")
+        @impl(get_as_library(), self.name, "Meta")
         def recurrent_kda_meta(
             q: torch.Tensor,
             k: torch.Tensor,
@@ -107,9 +106,10 @@ class RecurrentKdaOpBuilder(OpBuilder):
 
 
 _recurrent_kda_op_builder = RecurrentKdaOpBuilder()
+_recurrent_kda_op_builder._ensure_initialized()
 
 
-@impl(AS_LIBRARY, _recurrent_kda_op_builder.name, "PrivateUse1")
+@impl(get_as_library(), _recurrent_kda_op_builder.name, "PrivateUse1")
 def _recurrent_kda(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -192,7 +192,7 @@ def recurrent_kda(
     The initial_state input is mutable when inplace_final_state is true.
     The second return value is None when output_final_state is false.
     """
-    return _recurrent_kda(
+    return torch.ops.cann_ops_transformer.recurrent_kda(
         q,
         k,
         v,
