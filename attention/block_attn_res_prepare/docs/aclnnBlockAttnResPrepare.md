@@ -41,83 +41,47 @@
 * 接口功能：Attention Residuals的历史残差注意力两段式计算的阶段一：一次性并行完成全部 S 层的块间注意力计算；同时返回输出结果与 softmax 统计量(O, M, L)，供阶段二融合当前残差并形成下一子层输入。
 * 计算公式：
 
+    $$
+    \operatorname{block\_attn\_res\_prepare}
+    \left(V,Q,\operatorname{valid\_blocks};\epsilon\right)
+    \longrightarrow (O,M,L).
+    $$
 
+    对 token $t$ 的第 $n$ 个历史来源，首先计算 RMS 归一化因子：
 
-$$
-\operatorname{block\_attn\_res\_prepare}
-\left(
-V,Q,\operatorname{valid\_blocks};\epsilon
-\right)
-\longrightarrow
-(O,M, L).
-$$
+    $$
+    R_{t,n}=\sqrt{\frac{1}{D}\sum_{d=0}^{D-1}V_{t,n,d}^{2}+\epsilon}.
+    $$
 
-其中：
+    对每个 slot、token 和有效历史来源计算 logits：
 
-$$
-V_{t,n,:}\in\mathbb R^D
-$$
+    $$
+    Z_{s,t,n}=R_{t,n}^{-1}\sum_{d=0}^{D-1}Q_{s,d}V_{t,n,d}.
+    $$
 
-表示 token \(t\) 的第 \(n\) 个有效历史来源。
+    设 $N_v$ 为 `valid_blocks` 指定的有效历史来源数，则：
 
-RMS 归一化因子，每个 token、每个历史来源独立计算：
+    $$
+    M_{s,t}=\max_{0\le n<N_v}Z_{s,t,n},
+    $$
 
-$$
-R_{t,n}
-=
-\sqrt{
-\frac1D
-\sum_{d=0}^{D-1}V_{t,n,d}^2
-+\epsilon
-},
-$$
+    $$
+    E_{s,t,n}=\exp\left(Z_{s,t,n}-M_{s,t}\right),
+    $$
 
-$$
-I_{t,n}=R_{t,n}^{-1}.
-$$
+    $$
+    L_{s,t}=\sum_{n=0}^{N_v-1}E_{s,t,n},
+    $$
 
-历史来源 logits， 对每个 slot、token 和历史来源：
+    $$
+    O_{s,t,d}=\sum_{n=0}^{N_v-1}E_{s,t,n}V_{t,n,d}.
+    $$
 
-$$
-Z_{s,t,n}
-=
-I_{t,n}
-\sum_{d=0}^{D-1}
-Q_{s,d}V_{t,n,d}.
-$$
+    其中：
+    - $\epsilon$ 表示输入 `eps`，是计算 RMS 归一化因子时使用的数值稳定项。
+    - $T$ 表示 token 数，$N$ 表示历史来源缓冲区容量，$S$ 表示目标 slot 数，$D$ 表示 hidden dimension。
+    - $t\in[0,T)$、$n\in[0,N_v)$、$s\in[0,S)$、$d\in[0,D)$ 分别表示 token、有效历史来源、目标 slot 和 hidden dimension 的索引。
 
-历史 softmax 统计量，对当前有效历史 source 范围 (N_v) 取最大值：
-
-$$
-m_{s,t}
-=
-\max_{0\le n<N_v}Z_{s,t,n}.
-$$
-
-计算 max-shift 后的指数：
-
-$$
-E_{s,t,n}
-=
-\exp\left(Z_{s,t,n}-m_{s,t}\right).
-$$
-
-历史指数和：
-
-$$
-L_{s,t}
-=
-\sum_{n=0}^{N_v-1}E_{s,t,n}.
-$$
-
-历史加权输出：
-
-$$
-O_{s,t,d}
-=
-\sum_{n=0}^{N_v-1}
-E_{s,t,n}V_{t,n,d}.
-$$
 
 ## 函数原型
 
@@ -138,21 +102,6 @@ aclnnStatus aclnnBlockAttnResPrepare(
 
 
 ## 参数说明
-
-
-统一符号：
-
-| 符号                                                                                                                                                                                                                                                                                                                                          | 含义                                           |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| $T$                                                   | 扁平 token 数；原始 padded 布局下可理解为$\left(B\times T_{\mathrm{seq}}\right)$。$B$：$\mathrm{batch\_size}$，批次大小，一次送入模型多少条样本；$T_{\mathrm{seq}}$：$\mathrm{sequence\ length}$，序列长度，单条样本 token 数目                                           |                                                |
-| $N$                                                                                                                                                                                                                                                                                                                                         | 历史 block/source 缓冲区的固定容量             |
-| $N\_v$                                                                                                                                                                                                                                                                                                                                       | 当前有效历史 block/source 数                   |
-| $D$                                                                                                                                                                                                                                                                                                                                         | hidden dimension，隐藏层维度                   |
-| $S$                                                                                                                                                                                                                                                                                                                                         | 当前$\mathrm{AttnRes}$ block 的目标 slot 数  |
-| $t$                                                                                                                                                                                                                                                                                                             | token 下标，$0\le t<T$ |                                                |
-| $n$     | 有效历史 source 下标，$0\le n<N_v\le N$                                                                                                                                                                                                                                                                                         |                                                |
-| $d$     | hidden channel 下标，$0\le d<D$                                                                                                                                                                                                                                                                                                 |                                                |
-| $s$     | slot 下标，$0\le s<S$                                                                                                                                                                                                                                                                                                           |                                                |
 
 ### aclnnBlockAttnResPrepareGetWorkspaceSize
 
