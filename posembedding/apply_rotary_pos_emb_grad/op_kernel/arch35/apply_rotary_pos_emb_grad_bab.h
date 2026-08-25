@@ -32,7 +32,7 @@ public:
     __aicore__ inline ApplyRotaryPosEmbGradBAB(TPipe* pipe, const ApplyRopeGradRegbaseParams* tiling)
         : pipe_(pipe), tilingData_(tiling) {}
     __aicore__ inline void Init(GM_ADDR gradQueryEmbed, GM_ADDR gradKeyEmbed, GM_ADDR cos, GM_ADDR sin,
-        GM_ADDR query, GM_ADDR key,GM_ADDR gradQueryOut, GM_ADDR gradKeyOut, GM_ADDR cosWs, GM_ADDR sinWs);
+        GM_ADDR query, GM_ADDR key, GM_ADDR gradQueryOut, GM_ADDR gradKeyOut, GM_ADDR cosWs, GM_ADDR sinWs);
     __aicore__ inline void Process();
 
 private:
@@ -68,7 +68,6 @@ private:
     int64_t dAlign_ = 0;
     int64_t partialDAlign_ = 0;
     int64_t dHalfSize_ = 0;       // D/2 (元素个数)
-    bool dHalfAligned_ = false;   // D/2 是否 32 字节对齐
     int64_t bIdx_ = 0;
     int64_t sIdx_ = 0;
     int64_t bNum_ = 0;
@@ -103,7 +102,6 @@ __aicore__ inline void ApplyRotaryPosEmbGradBAB<T>::Init(GM_ADDR gradQueryEmbed,
     }
     this->blockIdx_ = GetBlockIdx();
     this->dHalfSize_ = tilingData_->d / HALF_COEF;
-    this->dHalfAligned_ = (dHalfSize_ % (BLOCK_TYPE_SIZE / sizeof(T))) == 0;
     this->dAlign_ = Ops::Base::CeilAlign<int64_t>(dHalfSize_, BLOCK_TYPE_SIZE / sizeof(T)) * HALF_COEF;
     this->partialDAlign_ = Ops::Base::CeilAlign<int64_t>(dHalfSize_, BLOCK_TYPE_SIZE / sizeof(float)) * HALF_COEF;
     ubFactorN_ = tilingData_->ubFactorN;
@@ -182,20 +180,14 @@ __aicore__ inline void ApplyRotaryPosEmbGradBAB<T>::Process()
 template <typename T>
 __aicore__ inline void ApplyRotaryPosEmbGradBAB<T>::ProcessNLoop(uint32_t bIdx, uint32_t sIdx, uint32_t currSNum)
 {
-    int64_t partialDByteSize = tilingData_->d * sizeof(float);
     int64_t bSStride = bIdx * tilingData_->s + sIdx;
     int64_t maxN = max(tilingData_->nQ, tilingData_->nK);
     int64_t cosWsBase = bSStride * maxN * tilingData_->d;
 
     LocalTensor<T> sinTensor = sinInQue_.AllocTensor<T>();
     LocalTensor<T> cosTensor = cosInQue_.AllocTensor<T>();
-    DataCopyExtParams copyCosParams;
-    if (dHalfAligned_) {
-        copyCosParams = {1, currSNum * static_cast<uint32_t>(tilingData_->d * sizeof(T)), 0, 0, 0};
-    } else {
-        copyCosParams = {static_cast<uint16_t>(currSNum * HALF_COEF),
-                         static_cast<uint32_t>(dHalfSize_ * sizeof(T)), 0, 0, 0};
-    }
+    DataCopyExtParams copyCosParams = {static_cast<uint16_t>(currSNum * HALF_COEF),
+        static_cast<uint32_t>(dHalfSize_ * sizeof(T)), 0, 0, 0};
     DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
     DataCopyPad(sinTensor, sinGm_[sIdx * tilingData_->d], copyCosParams, padParams);
     DataCopyPad(cosTensor, cosGm_[sIdx * tilingData_->d], copyCosParams, padParams);
@@ -253,26 +245,11 @@ __aicore__ inline void ApplyRotaryPosEmbGradBAB<T>::ProcessNLoop(uint32_t bIdx, 
             sinPartial = gradSinOutQue_.DeQue<float>();
             int64_t wsOffset = cosWsBase + idxN * ubFactorN_ * tilingData_->d;
             uint32_t wsCurrN = static_cast<uint32_t>(max(currQN, currKN));
-            if (dHalfAligned_) {
-                DataCopyExtParams copyWsParams = {static_cast<uint16_t>(currSNum),
-                                                  static_cast<uint32_t>(wsCurrN * partialDByteSize),
-                                                  static_cast<uint32_t>((ubFactorN_ - wsCurrN) * partialDByteSize),
-                                                  static_cast<uint32_t>((maxN - wsCurrN) * partialDByteSize), 0};
-                DataCopyPad(cosWsGm_[wsOffset], cosPartial, copyWsParams);
-                DataCopyPad(sinWsGm_[wsOffset], sinPartial, copyWsParams);
-            } else {
-                // D/2 非 32B 对齐: per-head 字节数 UB(dAlign_) != GM(d), 必须拆半搬运(blockLen=D/2);
-                // 跨 S 行 UB 行距(ubFactorN_*dAlign_) != GM 行距(maxN*d), DMA stride 无法统一,
-                // 只能按 S 逐行写回
-                DataCopyExtParams copyWsParams = {static_cast<uint16_t>(wsCurrN * HALF_COEF),
-                                                  static_cast<uint32_t>(dHalfSize_ * sizeof(float)), 0, 0, 0};
-                for (uint32_t s = 0; s < currSNum; s++) {
-                    DataCopyPad(cosWsGm_[wsOffset + s * maxN * tilingData_->d],
-                                cosPartial[static_cast<int64_t>(s * ubFactorN_ * partialDAlign_)], copyWsParams);
-                    DataCopyPad(sinWsGm_[wsOffset + s * maxN * tilingData_->d],
-                                sinPartial[static_cast<int64_t>(s * ubFactorN_ * partialDAlign_)], copyWsParams);
-                }
-            }
+
+            DataCopyExtParams copyWsParams = {static_cast<uint16_t>(currSNum * wsCurrN * HALF_COEF),
+                static_cast<uint32_t>(dHalfSize_ * sizeof(float)), 0, 0, 0};
+            DataCopyPad(cosWsGm_[wsOffset], cosPartial, copyWsParams);
+            DataCopyPad(sinWsGm_[wsOffset], sinPartial, copyWsParams);
             gradCosOutQue_.FreeTensor(cosPartial);
             gradSinOutQue_.FreeTensor(sinPartial);
         }
@@ -307,13 +284,8 @@ __aicore__ inline void ApplyRotaryPosEmbGradBAB<T>::ProcessN(
 
     // CopyIn: gradX
     LocalTensor<T> gradXIn = gradXInQue.AllocTensor<T>();
-    DataCopyExtParams copyParams;
-    if (dHalfAligned_) {
-        copyParams = {static_cast<uint16_t>(currSNum), blockLen, stride, 0, 0};
-    } else {
-        copyParams = {static_cast<uint16_t>(currSNum * currXN * HALF_COEF),
-                      static_cast<uint32_t>(dHalfSize_ * sizeof(T)), 0, 0, 0};
-    }
+    DataCopyExtParams copyParams = {static_cast<uint16_t>(currSNum * currXN * HALF_COEF),
+        static_cast<uint32_t>(dHalfSize_ * sizeof(T)), 0, 0, 0};
     DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
     DataCopyPad(gradXIn, gradXGm[gmOffset], copyParams, padParams);
     gradXInQue.EnQue(gradXIn);
@@ -324,13 +296,8 @@ __aicore__ inline void ApplyRotaryPosEmbGradBAB<T>::ProcessN(
     LocalTensor<T> xIn;
     if (tilingData_->dCosFlag) {
         xIn = xInQue.AllocTensor<T>();
-        DataCopyExtParams copyXParams;
-        if (dHalfAligned_) {
-            copyXParams = {static_cast<uint16_t>(currSNum), blockLen, stride, 0, 0};
-        } else {
-            copyXParams = {static_cast<uint16_t>(currSNum * currXN * HALF_COEF),
-                           static_cast<uint32_t>(dHalfSize_ * sizeof(T)), 0, 0, 0};
-        }
+        DataCopyExtParams copyXParams = {static_cast<uint16_t>(currSNum * currXN * HALF_COEF),
+            static_cast<uint32_t>(dHalfSize_ * sizeof(T)), 0, 0, 0};
         DataCopyPad(xIn, xGm[gmOffset], copyXParams, padParams);
         xInQue.EnQue(xIn);
         xIn = xInQue.DeQue<T>();
@@ -343,13 +310,8 @@ __aicore__ inline void ApplyRotaryPosEmbGradBAB<T>::ProcessN(
     // CopyOut gradX
     gradXOutQue.EnQue(gradXOut);
     gradXOut = gradXOutQue.DeQue<T>();
-    DataCopyExtParams copyOutParams;
-    if (dHalfAligned_) {
-        copyOutParams = {static_cast<uint16_t>(currSNum), blockLen, 0, stride, 0};
-    } else {
-        copyOutParams = {static_cast<uint16_t>(currSNum * currXN * HALF_COEF),
-                         static_cast<uint32_t>(dHalfSize_ * sizeof(T)), 0, 0, 0};
-    }
+    DataCopyExtParams copyOutParams = {static_cast<uint16_t>(currSNum * currXN * HALF_COEF),
+        static_cast<uint32_t>(dHalfSize_ * sizeof(T)), 0, 0, 0};
     DataCopyPad(gradXOutGm[gmOffset], gradXOut, copyOutParams);
     gradXOutQue.FreeTensor(gradXOut);
 
