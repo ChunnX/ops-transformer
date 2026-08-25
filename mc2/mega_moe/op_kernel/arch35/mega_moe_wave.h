@@ -463,12 +463,10 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchBuffIni
         static_cast<int64_t>(worldSize_ * moeExpertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     // sendCntTensor：每 src rank 一个 burst(32B)，共 worldSize*32B。
     uint32_t sendCntTensorSize = worldSize_ * static_cast<uint32_t>(ALIGN_32);
-    // rankScanCursorTensor：独立保存每个 src rank 的三个 int32 cursor/cache 字段；
+    // rankScanCursorTensor：独立保存每个 src rank 的两个 int32 scan-cursor 字段；
     // 整个 tensor 按 32B 对齐，不与 send count 的 lane 复用。
     uint32_t rankScanCursorTensorSize = Ops::Base::CeilAlign(
-        worldSize_ * 3U * static_cast<uint32_t>(sizeof(int32_t)), static_cast<uint32_t>(ALIGN_32));
-    uint32_t rankBoundaryCacheTensorSize =
-        static_cast<uint32_t>(DISPATCH_RANK_BOUNDARY_CACHE_ITEMS) * sizeof(int32_t);
+        worldSize_ * 2U * static_cast<uint32_t>(sizeof(int32_t)), static_cast<uint32_t>(ALIGN_32));
     // Dispatch 的 UB 布局与 AIV 分核无关；对应 host CalcDispatchBufferConfig 的唯一配置。
     bufferConfig = params_.tilingData->dispatchBufferConfig;
     int32_t routeItemsPerBatch = bufferConfig.routeItemsPerBatch;
@@ -489,22 +487,16 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchBuffIni
     uint32_t sendCntTensorAddr = cumsumInfoTensorAddr + cumsumInfoTensorSize;
     tokenDispatchScratch_.sendCntTensor =
         LocalTensor<int32_t>(TPosition::VECCALC, sendCntTensorAddr, sendCntTensorSize / sizeof(int32_t));
-    // Tensor 用途：保存当前专家各 source-rank 的 nextRouteBegin 和最后一个
-    // compact batch 的 ordinal begin/end；
-    // Tensor 大小：worldSize * 3 * int32，整体按 32B 对齐；
+    // Tensor 用途：保存当前专家各 source-rank 的 nextRouteBegin 和该位置前
+    // 已匹配的 compact ordinal；
+    // Tensor 大小：worldSize * 2 * int32，整体按 32B 对齐；
     // 生命周期跨越该专家的多个 Dispatch wave。
     uint32_t rankScanCursorTensorAddr = sendCntTensorAddr + sendCntTensorSize;
     tokenDispatchScratch_.rankScanCursorTensor = LocalTensor<int32_t>(
         TPosition::VECCALC, rankScanCursorTensorAddr, rankScanCursorTensorSize / sizeof(int32_t));
-    // Tensor 用途：保留跨 wave 专家的最后一个 compact mask batch；该区域位于
-    // Dispatch 常驻状态的 64KiB 边界内，不会被中间的 Combine 覆盖。
-    uint32_t rankBoundaryCacheTensorAddr = rankScanCursorTensorAddr + rankScanCursorTensorSize;
-    tokenDispatchScratch_.rankBoundaryCacheTensor = LocalTensor<int32_t>(
-        TPosition::VECCALC, rankBoundaryCacheTensorAddr,
-        rankBoundaryCacheTensorSize / sizeof(int32_t));
     // Tensor 用途：DispatchExpertTokens 接收当前 batch 的 mask 切片；
     // Tensor 大小：routeItemsPerBatch / 8 字节，每个 bit 对应一个路由项；
-    uint32_t maskBatchAddr = rankBoundaryCacheTensorAddr + rankBoundaryCacheTensorSize;
+    uint32_t maskBatchAddr = rankScanCursorTensorAddr + rankScanCursorTensorSize;
     uint32_t maskBatchSize =
         static_cast<uint32_t>(routeItemsPerBatch / 8) * static_cast<uint32_t>(sizeof(uint8_t));
     tokenDispatchScratch_.maskBatchTensor =
@@ -924,6 +916,11 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetInfo(
             waveLogicalRowCount += segmentRows;
         }
 
+        // Process experts in Wave order and publish one M-group at a time.
+        // Rank-group producers prepare only the current tile's route metadata;
+        // the same AIV1 cores immediately consume that tile before advancing.
+        // This preserves the outer one-Wave lookahead without letting a
+        // DispatchWave call prepare rows owned by a later Wave.
         for (uint32_t expertIdx = waveBegin.expertIdx; expertIdx < moeExpertPerRank_; ++expertIdx) {
             if (expertIdx > waveEnd.expertIdx ||
                 (expertIdx == waveEnd.expertIdx && waveEnd.rowOffsetInExpert == 0U)) {
@@ -939,12 +936,41 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetInfo(
             }
             int32_t expertGlobalRowBegin = expertIdx == 0U ? 0 :
                 tokenDispatchScratch_.cumsumInfoTensor.GetValue(expertIdx * worldSize_ - 1U);
+            DispatchRankGroupAssignment rankGroupAssignment{};
+            bool useRankGroupedRoute = BeginDispatchExpertRankGrouped(
+                tokenDispatchConfig_, params_, tokenDispatchScratch_, expertIdx,
+                expertGlobalRowBegin, expertRowCount, segmentBegin, segmentEnd,
+                rankGroupAssignment, &dispatchTraceMetrics);
 
-            DispatchExpertTokensRankRoundRobin<ActivationType, QuantScaleOutType, GMM1_TILE_M,
-                                               TopkWeightsPrefetch>(
-                tokenDispatchConfig_, params_, winRankAddr_, tokenDispatchScratch_, expertIdx,
-                expertGlobalRowBegin,
-                segmentEnd - segmentBegin, segmentBegin, &dispatchTraceMetrics);
+            for (uint32_t tileBegin = segmentBegin; tileBegin < segmentEnd;) {
+                uint32_t tileEnd = (tileBegin / GMM1_TILE_M + 1U) * GMM1_TILE_M;
+                if (tileEnd > segmentEnd) {
+                    tileEnd = segmentEnd;
+                }
+                if (useRankGroupedRoute) {
+                    PrepareDispatchExpertRouteMetaRankGrouped<
+                        ActivationType, GMM1_TILE_M>(
+                        tokenDispatchConfig_, params_, tokenDispatchScratch_,
+                        expertIdx, expertGlobalRowBegin, tileBegin,
+                        tileEnd - tileBegin, rankGroupAssignment,
+                        &dispatchTraceMetrics);
+                    DispatchExpertTokensFromPreparedRouteMeta<
+                        ActivationType, QuantScaleOutType, GMM1_TILE_M,
+                        TopkWeightsPrefetch>(
+                        tokenDispatchConfig_, params_, winRankAddr_,
+                        tokenDispatchScratch_, expertIdx, expertGlobalRowBegin,
+                        expertRowCount, tileEnd - tileBegin, tileBegin,
+                        &dispatchTraceMetrics);
+                } else {
+                    DispatchExpertTokensRankRoundRobin<
+                        ActivationType, QuantScaleOutType, GMM1_TILE_M,
+                        TopkWeightsPrefetch>(
+                        tokenDispatchConfig_, params_, winRankAddr_,
+                        tokenDispatchScratch_, expertIdx, expertGlobalRowBegin,
+                        tileEnd - tileBegin, tileBegin, &dispatchTraceMetrics);
+                }
+                tileBegin = tileEnd;
+            }
         }
         dispatchCursor = waveEnd;
         waveInfo.endCursor = waveEnd;

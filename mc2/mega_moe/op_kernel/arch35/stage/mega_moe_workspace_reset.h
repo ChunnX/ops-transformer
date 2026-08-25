@@ -48,6 +48,7 @@ __aicore__ inline int64_t CalcResetFlagElementCount(const MegaMoeTilingData *til
         flagElementCount += static_cast<int64_t>(tilingData->aicNum) * INT_CACHELINE;
     }
     if (useMteA8W8Wave) {
+        flagElementCount += maxWavesPerExpert * moeExpertCount * INT_CACHELINE;
         flagElementCount += maxWavesPerExpert * moeExpertCount * tilingData->aicNum * INT_CACHELINE;
     }
     if (useGroupSyncCounters) {

@@ -108,6 +108,7 @@ struct WorkspaceInfo {
     GM_ADDR metaInfoPtr;
     GM_ADDR flagActivationToGmm2Ptr;
     GM_ADDR flagDispatchToGmm1Ptr;
+    GM_ADDR dispatchRouteMetaReadyPtr{nullptr};
     GM_ADDR flagSendCntCalToUpdParamsPtr;
     GM_ADDR flagGmmToEpiloguePtr{nullptr};
     GM_ADDR gmm2ReadyPtr{nullptr};
@@ -193,6 +194,14 @@ struct WorkspaceInfo {
         workspaceSize += SIZE_INT_32 * moeExpertCount * activationFlagSlotsPerExpert;
         flagDispatchToGmm1Ptr = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * moeExpertCount * waveFlagSlotsPerExpert;
+
+        // Dedicated per-M-group row counters for rank-group Dispatch route
+        // metadata.  They deliberately do not share a cache line with any
+        // pre-existing Dispatch/GMM flag.
+        if (useMteA8W8Wave) {
+            dispatchRouteMetaReadyPtr = base + workspaceSize;
+            workspaceSize += SIZE_INT_32 * moeExpertCount * waveFlagSlotsPerExpert;
+        }
 
         // 每(expert, aiCore)单独占一个cache_line
         flagSendCntCalToUpdParamsPtr = base + workspaceSize;
