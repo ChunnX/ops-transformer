@@ -12,10 +12,10 @@
  * \file moe_token_permute.cpp
  * \brief
  */
-#include "moe_mrgsort_out.h"
-#include "moe_mrgsort.h"
-#include "moe_sort_multi_core.h"
-#include "moe_sort_one_core.h"
+#include "moe_mrgsort_out_token_permute.h"
+#include "moe_mrgsort_token_permute.h"
+#include "moe_sort_multi_core_token_permute.h"
+#include "moe_sort_one_core_token_permute.h"
 #include "moe_index_copy.h"
 #include "moe_index_copy_spilt_d.h"
 #if !defined(DTYPE_TOKENS)
@@ -33,9 +33,11 @@ using namespace MoeTokenPermute;
         op.Process();                                                                 \
         sortPipe.Destroy();                                                           \
         sortClass2<int32_t> op2;                                                      \
+        TPipe sortPipe2;                                                              \
         op2.Init(sortedIndices, sortedIndices, userWS, t, &sortPipe2);                \
         op2.Process();                                                                \
         sortPipe2.Destroy();                                                          \
+        TPipe MoeindexCopyPipe;                                                       \
         indexCopyClass<__VA_ARGS__> indexCopyOp;                                      \
         indexCopyOp.Init(tokens, sortedIndices, permuteTokens, t, &MoeindexCopyPipe); \
         indexCopyOp.Process();                                                        \
@@ -60,8 +62,6 @@ extern "C" __global__ __aicore__ void moe_token_permute(
 
     auto t = &tilingData;
     TPipe sortPipe;
-    TPipe sortPipe2;
-    TPipe MoeindexCopyPipe;
     if (TILING_KEY_IS(1)) {
         GENERAL_OP_IMPL(MoeSortOneCore, MoeSortOneCore, MoeindexCopyOp, DTYPE_TOKENS, false);
     } else if (TILING_KEY_IS(3)) {

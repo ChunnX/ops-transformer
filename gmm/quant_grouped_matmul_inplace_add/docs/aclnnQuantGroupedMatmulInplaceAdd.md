@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      ×     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -20,7 +30,7 @@
     相较于[aclnnGroupedMatmulV4](../../grouped_matmul/docs/aclnnGroupedMatmulV4.md)接口，**此接口变化：**
     - 输入输出参数类型均为aclTensor。
     - 在GroupedMatMul计算结束后增加了InplaceAdd计算。
-    - 仅支持量化场景（1.mx量化；2.T-C量化；3.T-T量化）。量化方式请参见[量化介绍](../../../docs/zh/context/量化介绍.md)。
+    - 仅支持量化场景（1.mx量化；2.T-C量化；3.T-T量化）。量化方式请参见[量化介绍](../../../docs/zh/context/quant_mode_introduction.md)。
     - 仅支持x1、x2是FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8的输入。
 
 - 计算公式：
@@ -39,7 +49,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnQuantGroupedMatmulInplaceAdd”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnQuantGroupedMatmulInplaceAdd”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSize(
@@ -83,9 +93,9 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
       <th>描述</th>
       <th>使用说明</th>
       <th>数据类型</th>
-      <th><a href="../../../docs/zh/context/数据格式.md" target="_blank">数据格式</a></th>
+      <th><a href="../../../docs/zh/context/data_format.md" target="_blank">数据格式</a></th>
       <th style="white-space: nowrap">维度(shape)</th>
-      <th><a href="../../../docs/zh/context/非连续的Tensor.md" target="_blank">非连续的Tensor</a></th>
+      <th><a href="../../../docs/zh/context/non_contiguous_tensor.md" target="_blank">非连续的Tensor</a></th>
     </tr>
   </thead>
   <tbody>
@@ -143,8 +153,8 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
       <td>表示输入和输出分组轴方向的matmul大小分布，Device侧的aclTensor。</td>
       <td>
         <ul>
-          <li>当groupListType为0时，groupList必须为非负单调非递减数列，当groupListType为1时，groupList必须为非负数列。</li>
-          <li>groupList中的最后一个值约束了输出数据的有效部分，groupList中未指定的部分将不会参与更新。</li>
+          <li>当groupListType为0时，groupList必须为非负单调非递减数列，并且最后一个值不大于x中tensor的第一维；当groupListType为1时，groupList必须为非负数列，并且数值的总和不大于x中tensor的第一维。</li>
+          <li>groupList中的值约束了输出数据的有效部分，groupList中未指定的部分将不会参与更新。</li>
         </ul>
       </td>
       <td>INT64</td>
@@ -183,7 +193,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
       <td>整数型参数，用于输入m、n、k方向上的量化分组大小。</td>
       <td>
         <ul>
-          <li>groupSize输入由3个方向的groupSizeM，groupSizeN，groupSizeK三个值拼接组成，每个值占16位，共占用int64_t类型groupSize的低48位（groupSize     中的高16位的数值无效），计算公式为：groupSize = groupSizeK | groupSizeN << 16 | groupSizeM << 32。</li>
+          <li>groupSize输入由3个方向的groupSizeM，groupSizeN，groupSizeK三个值拼接组成，每个值占16位，共占用int64_t类型groupSize的低48位（groupSize中的高16位的数值无效），计算公式为：groupSize = groupSizeK | groupSizeN << 16 | groupSizeM << 32。</li>
           <li>当前只支持传0。</li>
         </ul>
       </td>
@@ -216,7 +226,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
   <table style="undefined;table-layout: fixed;width: 1030px"><colgroup>
@@ -261,7 +271,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -292,14 +302,14 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
 
         | 参数 | shape限制 |
         |:---------:| :------ |
-        |scale1Optional| 3维tensor，shape为((K / 64) + g, M, 2)，scale\_i起始地址偏移为((K\_0 + K\_1 + ...+ K\_{i-1})/ 64 + g\_i) \* M \* 2，即scale_0的起始地址偏移为0，scale_1的起始地址偏移为(K\_0 / 64 + 1) \* M \* 2， scale_2的起始地址偏移为((K\_0 + K\_1) / 64 + 2) \* M \* 2, 依此类推|
-        |scale2| 3维tensor，shape为((K / 64) + g, N, 2), 起始地址偏移与scale1Optional同理|
+        |scale1Optional| 3维tensor，shape为((K / 64) + g, M, 2)，scale\_i起始地址偏移为((K\_0 + K\_1 + ...+ K\_{i-1})/ 64 + g\_i) \* M \* 2，即scale_0的起始地址偏移为0，scale_1的起始地址偏移为(K\_0 / 64 + 1) \* M \* 2， scale_2的起始地址偏移为((K\_0 + K\_1) / 64 + 2) \* M \* 2,依此类推|
+        |scale2| 3维tensor，shape为((K / 64) + g, N, 2),起始地址偏移与scale1Optional同理|
 
   - groupList第1维最大支持1024，即最多支持1024个group。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
@@ -359,7 +369,7 @@ int CreateTransposeAclTensor(const std::vector<T>& hostData, const std::vector<i
     for (int64_t i = shape.size() - 2; i >= 0; i--) {
         strides[i] = shape[i + 1] * strides[i + 1];
     }
-    // 交换 stride
+    // 交换stride
     std::swap(strides[0], strides[1]);
     // 调用aclCreateTensor接口创建aclTensor
     *tensor = aclCreateTensor(view_shape.data(), view_shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
@@ -418,7 +428,7 @@ int aclnnQuantGroupedMatmulInplaceAddTest(int32_t deviceId, aclrtStream &stream)
     aclTensor* out = nullptr;
     int64_t groupListType = 0;
     int64_t groupSize = 0;
-    std::vector<uint8_t> xData(GetShapeSize(x1Shape), 0X10); // hifloat8 2.0 转16进制 0X10
+    std::vector<uint8_t> xData(GetShapeSize(x1Shape), 0X10); // hifloat8 2.0转16进制0X10
     std::vector<int64_t> groupListData = {1, 3};
     std::vector<float> scale2Data(GetShapeSize(scale2Shape), 1);
     std::vector<float> yData(GetShapeSize(yShape), 1);
@@ -470,7 +480,7 @@ int aclnnQuantGroupedMatmulInplaceAddTest(int32_t deviceId, aclrtStream &stream)
     // 调用aclnnQuantGroupedMatmulInplaceAdd第二段接口
     ret = aclnnQuantGroupedMatmulInplaceAdd(workspaceAddr, workspaceSize, executor, stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnQuantGroupedMatmulInplaceAdd failed. ERROR: %d\n", ret); return ret);
-    // 4. （固定写法）同步等待任务执行结束
+    // 4.（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
     // 5. 获取输出的值，将Device侧内存上的结果拷贝至Host侧，需要根据具体API的接口定义修改
@@ -486,7 +496,7 @@ int aclnnQuantGroupedMatmulInplaceAddTest(int32_t deviceId, aclrtStream &stream)
 }
 int main()
 {
-    // 1. （固定写法）device/stream初始化，参考AscendCL对外接口列表
+    // 1.（固定写法）device/stream初始化，参考AscendCL对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;

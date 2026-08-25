@@ -21,16 +21,8 @@
 
 namespace Catlass::Epilogue::Block {
 
-template <
-    class OutputType_,
-    class InputType_,
-    class MaskType_>
-class BlockEpilogue<
-    EpilogueAtlasA2MLATP1Softmax,
-    OutputType_,
-    InputType_,
-    MaskType_>
-{
+template <class OutputType_, class InputType_, class MaskType_>
+class BlockEpilogue<EpilogueAtlasA2MLATP1Softmax, OutputType_, InputType_, MaskType_> {
 public:
     // Type aliases
     using DispatchPolicy = EpilogueAtlasA2MLATP1Softmax;
@@ -91,7 +83,9 @@ public:
     }
 
     CATLASS_DEVICE
-    ~BlockEpilogue() {}
+    ~BlockEpilogue()
+    {
+    }
 
     CATLASS_DEVICE
     void SetVecMask(int32_t len)

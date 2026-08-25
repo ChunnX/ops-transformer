@@ -75,7 +75,6 @@ struct ConstInfo {
     static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192;
     static constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384;
     static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
-    static constexpr uint32_t MAX_KEY_SEQ_LENGTH = 128 * 1024;
 
     // CUBE和VEC的核间同步EventID
     uint32_t syncC1V1 = 0U;
@@ -93,6 +92,8 @@ struct ConstInfo {
     uint64_t headDim;
     uint64_t kSeqSize = 0ULL;         // kv最大S长度
     uint64_t qSeqSize = 1ULL;         // q最大S长度
+    uint64_t storageS1Size = 1ULL;    // TND下query的dim0，BSND下batchSize*qSeqSize
+    uint64_t storageS2Size = 1ULL;    // TND下key的dim0，BSND下batchSize*kSeqSize
     LAYOUT outputLayout;              // 输出的格式
     bool attenMaskFlag = false;
     int64_t preTokens = INT64_MAX;

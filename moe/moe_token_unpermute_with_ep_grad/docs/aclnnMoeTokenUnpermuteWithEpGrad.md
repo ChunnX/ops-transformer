@@ -4,50 +4,59 @@
 
 ## 产品支持情况
 
-| 产品                                                         |  是否支持   |
-| :----------------------------------------------------------- |:-------:|
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    ×    |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
-| <term>Atlas 推理系列产品</term>                             |    ×    |
-| <term>Atlas 训练系列产品</term>                              |    ×    |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
 - 接口功能：aclnnMoeTokenUnpermuteWithEp的反向传播。
 - 计算公式：
-
   - probs非None计算公式如下，其中$i \in {0, 1, 2, ..., num\_tokens - 1}$：
     - 首先计算unpermutedTokens：
       - 当rangeOptional[0] <= sortedIndices[i] < rangeOptional[1]时：
-      
+
         $$
         unpermutedTokens[i] = permutedTokensOptional[sortedIndices[i]-rangeOptional[0]]
         $$
 
       - 否则：
-        
+
         $$
         unpermutedTokens[i] = 0
         $$
-    
+
     - 接着计算：
 
       $$
       unpermutedTokens = unpermutedTokens.reshape(-1, topkNum, hiddenSize)
       $$
-      
+
       $$
       unpermutedTokens = unpermutedTokensGrad.unsqueeze(1) * unpermutedTokens
       $$
-      
+
       $$
       probsGrad = \sum_{k=0}^{topkNum}(unpermutedTokens_{i,j,k})
       $$
-    
+
     - 最后，当rangeOptional[0] <= sortedIndices[i] < rangeOptional[1]时：
-      
+
       $$
       permutedTokensGradOut[sortedIndices[i]] = ((unpermutedTokensGrad.unsqueeze(1) * probs.unsqueeze(-1)).reshape(-1, hiddenSize))[i]
       $$
@@ -55,14 +64,14 @@
   - probs为None计算公式如下，其中$i \in {0, 1, 2, ..., num\_tokens - 1}$：
 
     - 当rangeOptional[0] <= sortedIndices[i] < rangeOptional[1]时：
-    
+
     $$
     permutedTokensGradOut[sortedIndices[i]-rangeOptional[0]] = unpermutedTokensGrad[i]
     $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeTokenUnpermuteWithEpGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenUnpermuteWithEpGrad”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeTokenUnpermuteWithEpGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenUnpermuteWithEpGrad”接口执行计算。
 
 ```c++
 aclnnStatus aclnnMoeTokenUnpermuteWithEpGradGetWorkspaceSize(
@@ -239,10 +248,10 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGrad(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
   第一段接口完成入参校验，出现以下场景时报错：
-  
+
   <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
   <col style="width: 320px">
   <col style="width: 140px">
@@ -319,8 +328,8 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGrad(
   </table>
 
 - **返回值**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -329,7 +338,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGrad(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>
@@ -420,7 +429,7 @@ int CreateAclTensor(const std::vector<T> &hostData,
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化，参考acl API手册
+  // 1.（固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -504,7 +513,7 @@ int main() {
             LOG_PRINT("aclnnMoeTokenUnpermuteWithEpGrad failed. ERROR: %d\n", ret);
             return ret);
 
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret);

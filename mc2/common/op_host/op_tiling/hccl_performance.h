@@ -33,15 +33,15 @@ class HCCLPerformanceModel {
 public:
     HCCLFittingParameters commEstimatePar_;
     HCCLInfo commTypeInfo_;
-    double commTimeFactor_ = 1.0;  // allreduce time is 2.0x allgather or reducescatter
-    uint64_t lookUpTileNum_ = 1; // 数据拟合查表参数
+    double commTimeFactor_ = 1.0; // allreduce time is 2.0x allgather or reducescatter
+    uint64_t lookUpTileNum_ = 1;  // 数据拟合查表参数
     std::string keyToFittingMap_ = DEFAULT_KEY_FOR_FITTING_MAP;
     SocVersion socVersion_ = SocVersion::SOC910_B;
 
     void SetCommParametersBaseSocType(SocVersion inputSocVersion)
     {
         if (inputSocVersion == SocVersion::SOC310_P) {
-            SetCommMethodVersion310P();  // 310P只支持MatmulAllreduce算子
+            SetCommMethodVersion310P(); // 310P只支持MatmulAllreduce算子
             socVersion_ = SocVersion::SOC310_P;
         } else if (inputSocVersion == SocVersion::SOC910_93) {
             InitSOC91093();
@@ -53,9 +53,9 @@ public:
             InitParametersForFullMesh();
         }
     }
-// Constructor
-explicit HCCLPerformanceModel(uint32_t inputRankDim, KernelType inputKernelType,
-                              SocVersion inputSocVersion = SocVersion::SOC910_B)
+    // Constructor
+    explicit HCCLPerformanceModel(uint32_t inputRankDim, KernelType inputKernelType,
+                                  SocVersion inputSocVersion = SocVersion::SOC910_B)
     {
         commTypeInfo_.kernelType = inputKernelType; // 区分哪个MC2算子
         commTypeInfo_.rankDim = std::max(static_cast<uint64_t>(inputRankDim), MIN_COMM_RANKDIM); // 并行维度最小为2
@@ -65,9 +65,10 @@ explicit HCCLPerformanceModel(uint32_t inputRankDim, KernelType inputKernelType,
         keyToFittingMap_ = GetCommMethodString(inputSocVersion);
         GetCommEstimateParameters();
     };
-    std::string GetCommMethodString(SocVersion socType) {
+    std::string GetCommMethodString(SocVersion socType)
+    {
         return std::to_string(static_cast<int>(socType)) + "_" +
-            std::to_string(static_cast<int>(commTypeInfo_.commMethod));
+               std::to_string(static_cast<int>(commTypeInfo_.commMethod));
     }
 
     void SetCommMethodVersion310P();
@@ -84,7 +85,8 @@ explicit HCCLPerformanceModel(uint32_t inputRankDim, KernelType inputKernelType,
     {
         commTypeInfo_.commDtypeSizeExpansionFraction = number;
     }
-    double GetRealDtypeSizes() const {
+    double GetRealDtypeSizes() const
+    {
         return static_cast<double>(commTypeInfo_.commDtypeSize) / commTypeInfo_.commDtypeSizeExpansionFraction;
     }
     uint64_t GetCommDTypeSize()

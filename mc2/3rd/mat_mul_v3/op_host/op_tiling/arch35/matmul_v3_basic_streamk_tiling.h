@@ -26,6 +26,7 @@ public:
         : Mc2MatMulV3BaseTiling(context, cfg) {};
 
     ~Mc2MatMulV3BasicStreamKTiling() override {};
+
 protected:
     bool IsCapable() override;
 
@@ -42,11 +43,11 @@ private:
 
     Mc2MatMulV3L0C2Out GetL0C2OutFlag() const;
 
-    uint64_t mCnt_{ 1 };
-    uint64_t nCnt_{ 1 };
-    uint64_t totalMNCnt_{ 1 };
+    uint64_t mCnt_{1};
+    uint64_t nCnt_{1};
+    uint64_t totalMNCnt_{1};
     Mc2MatMulV3L0C2Out l0C2Out_{Mc2MatMulV3L0C2Out::ON_THE_FLY};
 };
-} // namespace mc2_matmul_v3
+} // namespace mc2_matmul_v3_advanced
 } // namespace optiling
 #endif // __OP_HOST_MATMUL_V3_BASIC_STREAM_K_H__

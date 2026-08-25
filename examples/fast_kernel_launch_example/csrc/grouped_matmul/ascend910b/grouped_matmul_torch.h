@@ -82,8 +82,7 @@ public:
             }
         }
         // 获取实际的值或引用
-        auto get_value = [&]() -> auto &
-        {
+        auto get_value = [&]() -> auto & {
             if constexpr (std::is_same_v<TensorContainer, c10::optional<torch::TensorList>>) {
                 return container.value();
             } else if constexpr (std::is_same_v<TensorContainer, c10::optional<torch::Tensor>>) {
@@ -173,8 +172,7 @@ void checkTensorOnNPU(const TensorContainer &container, const std::string &name 
         }
     }
     // 获取实际的值或引用
-    auto get_value = [&]() -> auto &
-    {
+    auto get_value = [&]() -> auto & {
         if constexpr (std::is_same_v<TensorContainer, c10::optional<torch::TensorList>>) {
             return container.value();
         } else if constexpr (std::is_same_v<TensorContainer, c10::optional<torch::Tensor>>) {

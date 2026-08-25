@@ -51,12 +51,12 @@ private:
     bool ABL1FullLoadExtraCond(uint64_t al1SingleCoreSize, uint64_t bl1SingleCoreSize) const;
     uint64_t GetStepSmallK(bool isBL1FullLoad) const;
 
-    Mc2MatMulV3FullLoad fullLoad_ {Mc2MatMulV3FullLoad::NONE_FULL_LOAD};
-    Mc2MatMulV3L0C2Out l0C2Out_ {Mc2MatMulV3L0C2Out::ON_THE_FLY};
-    Mc2MatMulV3ApiLevel apiLevel_ {Mc2MatMulV3ApiLevel::HIGH_LEVEL};
-    uint64_t biasSize_ {0};
-    bool isSingleRound_ {false};
+    Mc2MatMulV3FullLoad fullLoad_{Mc2MatMulV3FullLoad::NONE_FULL_LOAD};
+    Mc2MatMulV3L0C2Out l0C2Out_{Mc2MatMulV3L0C2Out::ON_THE_FLY};
+    Mc2MatMulV3ApiLevel apiLevel_{Mc2MatMulV3ApiLevel::HIGH_LEVEL};
+    uint64_t biasSize_{0};
+    bool isSingleRound_{false};
 };
-} // namespace mc2_matmul_v3
+} // namespace mc2_matmul_v3_advanced
 } // namespace optiling
 #endif // __OP_HOST_MATMUL_V3_FULL_LOAD_TILING_H__

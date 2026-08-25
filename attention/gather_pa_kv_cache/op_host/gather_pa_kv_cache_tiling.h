@@ -66,6 +66,7 @@ TILING_DATA_FIELD_DEF(uint64_t, maxUbHiddenSize);
 // bit2: key输出非连续, bit3: value输出非连续
 // bit4: kCache blockSize轴非连续, bit5: kCache N轴非连续
 // bit6: vCache blockSize轴非连续, bit7: vCache N轴非连续
+// bit8: keyOut head(dim1)轴非连续, bit9: valueOut head(dim1)轴非连续
 TILING_DATA_FIELD_DEF(uint32_t, nonContiguousFlag);
 TILING_DATA_FIELD_DEF(int64_t, kCacheStride0);  // blockNum轴stride (元素粒度)
 TILING_DATA_FIELD_DEF(int64_t, kCacheStride1);  // blockSize轴stride
@@ -197,6 +198,8 @@ private:
     bool isVCacheContiguous_ = true;
     bool isKeyOutContiguous_ = true;
     bool isValueOutContiguous_ = true;
+    bool isKeyOutHeadNonContig_ = false;   // keyOut head(dim1)轴非连续 (ND, ref dim1散写)
+    bool isValueOutHeadNonContig_ = false;  // valueOut head(dim1)轴非连续
 
     bool isKCacheSlotNonContig_ = false;  // blockSize轴非连续
     bool isKCacheHeadNonContig_ = false;  // N轴非连续

@@ -2,57 +2,67 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    √     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
-- 接口功能：Swin Transformer网络模型完成 Q、K、V 的计算。  
-- 计算公式：  
+- 接口功能：Swin Transformer网络模型完成Q、K、V的计算。
+- 计算公式：
 
   q/k/v = (Quant(Layernorm(x).transpose)  * weight).dequant.transpose.split
-  其中，weight 是 Q、K、V 三个矩阵权重的拼接。
+  其中，weight是Q、K、V三个矩阵权重的拼接。
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnSwinTransformerLnQkvQuantGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSwinTransformerLnQkvQuant”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnSwinTransformerLnQkvQuantGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSwinTransformerLnQkvQuant”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnSwinTransformerLnQkvQuantGetWorkspaceSize(
-  const aclTensor *x, 
-  const aclTensor *gamma, 
-  const aclTensor *beta, 
-  const aclTensor *weight, 
-  const aclTensor *bias, 
-  const aclTensor *quantScale, 
-  const aclTensor *quantOffset, 
-  const aclTensor *dequantScale, 
-  int64_t          headNum, 
-  int64_t          seqLength, 
-  double           epsilon, 
-  int64_t          oriHeight, 
-  int64_t          oriWeight, 
-  int64_t          hWinSize, 
-  int64_t          wWinSize, 
-  bool             weightTranspose, 
-  const aclTensor *queryOutputOut, 
-  const aclTensor *keyOutputOut, 
-  const aclTensor *valueOutputOut, 
-  uint64_t        *workspaceSize, 
+  const aclTensor *x,
+  const aclTensor *gamma,
+  const aclTensor *beta,
+  const aclTensor *weight,
+  const aclTensor *bias,
+  const aclTensor *quantScale,
+  const aclTensor *quantOffset,
+  const aclTensor *dequantScale,
+  int64_t          headNum,
+  int64_t          seqLength,
+  double           epsilon,
+  int64_t          oriHeight,
+  int64_t          oriWeight,
+  int64_t          hWinSize,
+  int64_t          wWinSize,
+  bool             weightTranspose,
+  const aclTensor *queryOutputOut,
+  const aclTensor *keyOutputOut,
+  const aclTensor *valueOutputOut,
+  uint64_t        *workspaceSize,
   aclOpExecutor   **executor)
 ```
 
 ```cpp
 aclnnStatus aclnnSwinTransformerLnQkvQuant(
-  void          *workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor *executor, 
+  void          *workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor *executor,
   aclrtStream    stream)
 ```
 
@@ -185,7 +195,7 @@ aclnnStatus aclnnSwinTransformerLnQkvQuant(
     <tr>
       <td>epsilon（double）</td>
       <td>输入</td>
-      <td>layernorm 计算除0保护值。</td>
+      <td>layernorm计算除0保护值。</td>
       <td>为了保证精度，取值建议小于等于1e-4。</td>
       <td>double</td>
       <td>-</td>
@@ -195,7 +205,7 @@ aclnnStatus aclnnSwinTransformerLnQkvQuant(
     <tr>
       <td>oriHeight（int64_t）</td>
       <td>输入</td>
-      <td>layernorm 中S轴transpose的维度；oriHeight*oriWeight需等于输入x的第二维S的大小，且为hWinSize的整数倍。</td>
+      <td>layernorm中S轴transpose的维度；oriHeight*oriWeight需等于输入x的第二维S的大小，且为hWinSize的整数倍。</td>
       <td>-</td>
       <td>int</td>
       <td>-</td>
@@ -205,7 +215,7 @@ aclnnStatus aclnnSwinTransformerLnQkvQuant(
     <tr>
       <td>oriWeight（int64_t）</td>
       <td>输入</td>
-      <td>layernorm 中S轴transpose的维度；oriHeight*oriWeight需等于输入x的第二维S的大小，且为wWinSize的整数倍。</td>
+      <td>layernorm中S轴transpose的维度；oriHeight*oriWeight需等于输入x的第二维S的大小，且为wWinSize的整数倍。</td>
       <td>-</td>
       <td>int</td>
       <td>-</td>
@@ -292,11 +302,11 @@ aclnnStatus aclnnSwinTransformerLnQkvQuant(
       <td>-</td>
       <td>-</td>
     </tr>
-  </tbody></table>  
+  </tbody></table>
 
 - **返回值**：
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
   <table style="undefined;table-layout: fixed; width: 1149px"><colgroup>
@@ -365,7 +375,7 @@ aclnnStatus aclnnSwinTransformerLnQkvQuant(
 
 - **返回值**：
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -379,7 +389,7 @@ aclnnStatus aclnnSwinTransformerLnQkvQuant(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>
@@ -442,7 +452,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化，参考acl API手册
+  // 1.（固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -549,7 +559,7 @@ int main() {
   ret = aclnnSwinTransformerLnQkvQuant(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSwinTransformerLnQkvQuant failed. ERROR: %d\n", ret); return ret);
 
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

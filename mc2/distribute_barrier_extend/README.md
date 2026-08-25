@@ -5,10 +5,10 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    ×     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
@@ -18,6 +18,7 @@
     相较于DistributeBarrier算子，该算子变更如下：
     - 新增`context`入参，存入通信域相关信息；
     详细说明请参考以下参数说明。
+
 ## 参数说明
 
 <table style="undefined;table-layout: fixed; width: 1392px"> <colgroup>
@@ -81,6 +82,7 @@
  </tbody></table>
 
   - <term>Ascend 950PR/Ascend 950DT</term>：timeOutOptional参数里的超时时间单位为us，建议配置5000000us，根据实际环境不同超时时间下限可能不同。
+
 ## 约束说明
 
 - 通信域使用约束：
@@ -89,7 +91,7 @@
 - 使用场景说明：
     - 在需要进行全卡同步的网络模型中调用该算子，可以屏蔽快慢卡引入的性能波动问题，协助分析性能。
     - 可以连续调用，入图时，需将上个算子的输入、下个算子的输出作为入参传入接口。
-    - 当使能elasticInfo时，要确保Dispatch/Combine也传入了此参数，并且此elasticInfo与Dispatch/Combine中的elasticInfo保持一致。
+    - 当开启elasticInfo时，要确保Dispatch/Combine也传入了此参数，并且此elasticInfo与Dispatch/Combine中的elasticInfo保持一致。
 
 ## 调用说明
 

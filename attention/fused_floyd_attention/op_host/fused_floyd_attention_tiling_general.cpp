@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -385,6 +385,7 @@ protected:
     bool hasPse = false;
     bool hasAttenMask = false;
     bool hasDropOut = false;
+    bool isSpecial = false;
     FusedFloydAttentionGeneralTilingData tilingData;
 };
 
@@ -1298,49 +1299,43 @@ protected:
         // dSize小于64的场景，无需切D， workspace占用较小
         if (dSize <= D_SPECIFIC_SIZE) {
             // stage1占用2倍的空间，stage2占用2倍空间
-            workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_2 + SPACE_NUM_2 * coreParams.get_n2BaseSize() *
-                                                                               coreParams.get_s1BaseSize() * alignedD *
-                                                                               calcTypeSize) *
-                                                aivNum) +
-                            WORK_SPACE_RESERVE_SIZE;
+            workspaces[0] = static_cast<size_t>((
+                                bmm1Bytes * SPACE_NUM_2 + SPACE_NUM_2 * coreParams.get_n2BaseSize() *
+                                coreParams.get_s1BaseSize() * alignedD * calcTypeSize
+                            ) * aivNum) + WORK_SPACE_RESERVE_SIZE;
             // NZND场景，stage1占用3倍的空间，stage2占用2倍空间
             if (s2Size % S2_NZTOND_SIZE_64 != 0) {
-                workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_3 +
-                                                     SPACE_NUM_2 * coreParams.get_n2BaseSize() *
-                                                         coreParams.get_s1BaseSize() * alignedD * calcTypeSize) *
-                                                    aivNum) +
-                                WORK_SPACE_RESERVE_SIZE;
+                workspaces[0] = static_cast<size_t>((
+                                    bmm1Bytes * SPACE_NUM_3 + SPACE_NUM_2 * coreParams.get_n2BaseSize() *
+                                    coreParams.get_s1BaseSize() * alignedD * calcTypeSize
+                                ) * aivNum) + WORK_SPACE_RESERVE_SIZE;
             }
             // FP32场景，stage1占用4倍的空间，stage2占用2倍空间
             if (inputDtypeBytes == DATA_TYPE_FP32) {
-                workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_4 +
-                                                     SPACE_NUM_2 * coreParams.get_n2BaseSize() *
-                                                         coreParams.get_s1BaseSize() * alignedD * calcTypeSize) *
-                                                    aivNum) +
-                                WORK_SPACE_RESERVE_SIZE;
+                workspaces[0] = static_cast<size_t>((
+                                    bmm1Bytes * SPACE_NUM_4 + SPACE_NUM_2 * coreParams.get_n2BaseSize() *
+                                    coreParams.get_s1BaseSize() * alignedD * calcTypeSize
+                                ) * aivNum) + WORK_SPACE_RESERVE_SIZE;
             }
         } else {
             // 切D场景，stage1占用2倍的空间，stage2占用4倍空间
-            workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_2 + SPACE_NUM_4 * coreParams.get_n2BaseSize() *
-                                                                               coreParams.get_s1BaseSize() * alignedD *
-                                                                               calcTypeSize) *
-                                                aivNum) +
-                            WORK_SPACE_RESERVE_SIZE;
+            workspaces[0] = static_cast<size_t>((
+                                bmm1Bytes * SPACE_NUM_2 + SPACE_NUM_4 * coreParams.get_n2BaseSize() *
+                                coreParams.get_s1BaseSize() * alignedD * calcTypeSize
+                            ) * aivNum) + WORK_SPACE_RESERVE_SIZE;
             // NZND场景，stage1占用3倍的空间，stage2占用4倍空间
             if (s2Size % S2_NZTOND_SIZE_64 != 0) {
-                workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_3 +
-                                                     SPACE_NUM_4 * coreParams.get_n2BaseSize() *
-                                                         coreParams.get_s1BaseSize() * alignedD * calcTypeSize) *
-                                                    aivNum) +
-                                WORK_SPACE_RESERVE_SIZE;
+                workspaces[0] = static_cast<size_t>((
+                                    bmm1Bytes * SPACE_NUM_3 + SPACE_NUM_4 * coreParams.get_n2BaseSize() *
+                                    coreParams.get_s1BaseSize() * alignedD * calcTypeSize
+                                ) * aivNum) + WORK_SPACE_RESERVE_SIZE;
             }
             // FP32场景，stage1占用4倍的空间，stage2占用4倍空间
             if (inputDtypeBytes == DATA_TYPE_FP32) {
-                workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_4 +
-                                                     SPACE_NUM_4 * coreParams.get_n2BaseSize() *
-                                                         coreParams.get_s1BaseSize() * alignedD * calcTypeSize) *
-                                                    aivNum) +
-                                WORK_SPACE_RESERVE_SIZE;
+                workspaces[0] = static_cast<size_t>((
+                                    bmm1Bytes * SPACE_NUM_4 + SPACE_NUM_4 * coreParams.get_n2BaseSize() *
+                                    coreParams.get_s1BaseSize() * alignedD * calcTypeSize
+                                ) * aivNum) + WORK_SPACE_RESERVE_SIZE;
             }
         }
 
@@ -1357,7 +1352,293 @@ protected:
 };
 
 
+class FusedFloydAttentionTilingS1s2Bn2gs1Special : public FusedFloydAttentionTilingBase {
+public:
+    explicit FusedFloydAttentionTilingS1s2Bn2gs1Special(gert::TilingContext *context) : FusedFloydAttentionTilingBase(context)
+    {
+        expectTemplate.splitS1 = 1;
+        expectTemplate.splitS2 = 1;
+        isSpecial = true;
+        templateName = "FusedFloydAttentionS1s2Bn2gs1Special";
+    }
+    ~FusedFloydAttentionTilingS1s2Bn2gs1Special() override = default;
+
+protected:
+    int64_t s2sizeLimitMin = 128;
+    int64_t s2sizeSpecial = 2048;
+    int64_t dAlignSize = 16;
+    bool enableL1Reuse = false;
+
+    int64_t GetNRatio() override
+    {
+        if (alignedS2 > 2048) {
+            return alignedS2 / 4L / 32L;
+        } else if (alignedS2 > 1024) {
+            return alignedS2 / 2L / 32L;
+        } else {
+            return 32L;
+        }
+    }
+
+    void GetBufferNum(BufferNum &bufferNum) const override
+    {
+        bufferNum.bufferS1S2Num = HIGH_PERF_BUFFER_NUM;
+    }
+
+    void CalcS1S2BasicBlock() override
+    {
+        s1BasicBlock = std::min(32L, alignedS1);
+        // d轴为64
+        if (bSize * n1Size * gSize * CeilDiv(s1Size, s1BasicBlock) > aivNum) {
+            s1BasicBlock = std::min(32L, alignedS1);
+        }
+        s2BasicBlock = std::min(32L, alignedS2);
+        if (s2Size % S2_NZTOND_SIZE_64 != 0) {
+            tilingKeyBmm1Format = CubeFormatEnum::NZ;
+        }
+
+        n2BasicBlock = 32LL;
+    }
+
+    void CalcDBasicBlock() override
+    {
+        dBasicBlock = std::min(128L, alignedD);
+    }
+
+    bool IsSpecialShape()
+    {
+        return bSize == 8 && n1Size == 32 && n2Size == 32 && s1Size == 2048 && s2Size == 2048 && dSize == 128 &&
+               preTokens == 2048 && nextTokens == 0 && inputLayout[0] == 'S' && inputLayout[1] == 'B' &&
+               inputLayout[2] == 'H' && pseExistFlag == 0 && attenMaskExistFlag == 1 &&
+               tilingData.inputParams.get_attenMaskShapeType() == ATTEN_1_1_1_S1_S2;
+    }
+
+    void SetEnableL1Reuse()
+    {
+        // FP32场景，不开启L1reuse
+        if (inputDtypeBytes == DATA_TYPE_FP32) {
+            enableL1Reuse = false;
+            return;
+        }
+        if (dSize > L1REUSE_D_Limit) {
+            OP_LOGD(context_, "Current condition [dSize(%ld) > L1REUSE_D_Limit(%ld)] does not enable L1Reuse", dSize,
+                      L1REUSE_D_Limit);
+            return;
+        }
+        if (dSize == D_SPECIFIC_SIZE && tilingData.inputParams.get_layoutType() == LAYOUT_BNSD &&
+            !(s2Size % L1REUSE_S2_LIMIT_256 == 0 || s2Size == L1REUSE_S2_LIMIT_4032)) {
+            OP_LOGD(context_, "Current condition [dSize(%ld) && layout(BNSD)] does not enable L1Reuse", dSize);
+            return;
+        }
+        if (tilingData.inputParams.get_sparseType() == static_cast<uint8_t>(SparseEnum::ALL)) {
+            enableL1Reuse = true;
+            return;
+        }
+
+        if ((tilingData.inputParams.get_layoutType() == LAYOUT_BSND || tilingData.inputParams.get_layoutType() ==
+            LAYOUT_BSH) && s2Size <= L1REUSE_S2_Limit_2048 && dSize <= D_SPECIFIC_SIZE &&
+            bSize * n1Size <= L1REUSE_BNG_Limit) {
+            OP_LOGD(context_, "Current condition [dSize(%ld) && layout(BSH/BSND) && BN(%ld)] does not enable L1Reuse",
+                      dSize, bSize * n1Size);
+            return;
+        }
+
+    }
+
+
+    bool SetBmm1TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock,
+                            matmul_tiling::MatmulApiTiling &bmm1) override
+    {
+        bmm1.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmmDtype, false);
+        bmm1.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmmDtype, true);
+        bmm1.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmm1OutDtype);
+        int64_t s2BaseSize = tmpS2BasicBlock * tilingData.coreParams.get_nRatio();
+        int32_t batchNum = tilingData.coreParams.get_bmm1Num();
+        
+        bmm1.SetShape(tmpS1BasicBlock, s2BaseSize, dSize); 
+        bmm1.SetOrgShape(tmpS1BasicBlock, s2BaseSize, dSize);
+        bmm1.SetBias(false);
+        bmm1.SetBufferSpace(-1, -1, -1);
+        bmm1.SetBatchNum(batchNum);
+        bmm1.SetBatchInfoForNormal(batchNum, batchNum, tmpS1BasicBlock, s2BaseSize, dSize);
+
+        return true;
+    }
+
+
+    bool SetBmm1k1TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock, 
+                            matmul_tiling::MatmulApiTiling &bmm1) override
+    {
+        bmm1.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmmDtype, false);
+        bmm1.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmmDtype, true);
+        bmm1.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmm1OutDtype);
+        int64_t s2BaseSize = tmpS2BasicBlock * tilingData.coreParams.get_nRatio();
+
+        bmm1.SetShape(n2BasicBlock, s2BaseSize, dSize); 
+        bmm1.SetOrgShape(n2BasicBlock, s2BaseSize, dSize);
+        bmm1.SetBias(false);
+        bmm1.SetBufferSpace(-1, -1, -1);
+        bmm1.SetALayout(1, n2BasicBlock, 1, s1Size, dSize); 
+        bmm1.SetBLayout(1, s2BaseSize, 1, s1Size, dSize); 
+        bmm1.SetCLayout(1, n2BasicBlock, 1, tmpS1BasicBlock, s2BaseSize); 
+        int32_t batch = tilingData.coreParams.get_bmmv2Num();
+        bmm1.SetBatchNum(batch);
+
+        return true;
+    }
+
+
+    bool SetBmm2v2TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock,
+                            matmul_tiling::MatmulApiTiling &bmm2v2) override
+    {
+        bmm2v2.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmmDtype, false);
+        bmm2v2.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmmDtype, false);
+        bmm2v2.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmm1OutDtype);
+        int64_t s2BaseSize = tmpS2BasicBlock * tilingData.coreParams.get_nRatio();
+
+        bmm2v2.SetShape(n2BasicBlock, dSize, s2BaseSize); 
+        bmm2v2.SetOrgShape(n2BasicBlock, dSize, s2BaseSize);
+        bmm2v2.SetBias(false);
+        bmm2v2.SetBufferSpace(-1, -1, -1);
+
+        bmm2v2.SetALayout(1, n2BasicBlock, 1, tmpS1BasicBlock, s2BaseSize);
+        bmm2v2.SetBLayout(1, s2BaseSize, 1, s1Size, dSize);
+        bmm2v2.SetCLayout(1, n2BasicBlock, 1, tmpS1BasicBlock, dSize);
+        int32_t batch = tilingData.coreParams.get_bmmv2Num();
+        bmm2v2.SetBatchNum(batch);
+
+        return true;
+    }
+
+
+    bool SetBmm2TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock, 
+                            matmul_tiling::MatmulApiTiling &bmm2v2) override
+    {
+        bmm2v2.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmmDtype, false);
+        bmm2v2.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmmDtype, true);
+        bmm2v2.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmm1OutDtype);
+        int64_t s2BaseSize = tmpS2BasicBlock * tilingData.coreParams.get_nRatio();
+        // NMD, NKD
+        bmm2v2.SetShape(tmpS1BasicBlock, dSize, s2BaseSize); // N, K, D
+        bmm2v2.SetOrgShape(tmpS1BasicBlock, dSize, s2BaseSize);
+        bmm2v2.SetBias(false);
+        bmm2v2.SetBufferSpace(-1, -1, -1);
+
+        bmm2v2.SetBatchInfoForNormal(n2BasicBlock, n2BasicBlock, tmpS1BasicBlock, dSize, s2BaseSize);
+
+        return true;
+    }
+
+
+    uint64_t GetTilingKey() const override
+    {
+        // not care about layout in tiling key, pass BSND(enum value is 0)
+        return GET_TILINGKEY(AxisEnum::S1, SparseMode::PREFIX, AxisEnum::NONE, implMode, tilingKeyLayout,
+                             tilingKeyBmm1Format, SparseEnum::ANY, PerformanceOrientedEnum::BIG_DOUBLE_BUFFER,
+                             false, hasAttenMask, false, false);
+    }
+
+    bool IsCapable() override
+    {
+        if (s2Size > s2sizeSpecial) {
+            return true;
+        }
+        return false;
+    }
+
+    bool IsTemplateMatched() const override
+    {
+        return true;
+    }
+
+    bool CalcUBSize(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock) override
+    {
+        apiMaxUBSize = HIGH_PERF_API_BUFFER_MULTIPLE * tmpS1BasicBlock * tmpS2BasicBlock * sizeof(float);
+        return true;
+    }
+
+    void RefreshSplitFactor()
+    {
+        SetEnableL1Reuse();
+        if (enableL1Reuse) {
+            auto &multiCoreParams = tilingData.multiCoreParams;
+            int64_t totalSize = multiCoreParams.get_totalSize();
+            multiCoreParams.set_splitFactorSize(
+                CeilDivision(totalSize, static_cast<int64_t>(multiCoreParams.get_coreNum())) * AICAIV_RATIO_2);
+            multiCoreParams.set_splitFactorTailSize(CalcTailSize(totalSize, multiCoreParams.get_splitFactorSize()));
+        }
+    }
+
+    ge::graphStatus GetWorkspaceSize() override
+    {
+        RefreshSplitFactor();
+
+        auto &tensorSizeParams = tilingData.tensorSizeParams;
+        auto &coreParams = tilingData.coreParams;
+
+        size_t *workspaces = context_->GetWorkspaceSizes(1);
+        int64_t bmm1Bytes = coreParams.get_nRatio() * tensorSizeParams.get_bmm1ResUbSize() * calcTypeSize;
+
+        int64_t softmaxExpBytes = 2 * n2BasicBlock * s1BasicBlock * 32;
+        int64_t bmm2stage2BufBytes = 4 * n2BasicBlock * s1BasicBlock * alignedD;
+        // dSize小于64的场景，无需切D， workspace占用较小
+        if (dSize <= D_SPECIFIC_SIZE) {
+            // stage1占用2倍的空间，stage2占用2倍空间
+            workspaces[0] = static_cast<size_t>((
+                                bmm1Bytes * SPACE_NUM_2 + softmaxExpBytes + bmm2stage2BufBytes + 
+                                SPACE_NUM_2 * coreParams.get_n2BaseSize() * coreParams.get_s1BaseSize() * 
+                                alignedD * calcTypeSize) * aivNum) + WORK_SPACE_RESERVE_SIZE;
+            // NZND场景，stage1占用3倍的空间，stage2占用2倍空间
+            if (s2Size % S2_NZTOND_SIZE_64 != 0) {
+                workspaces[0] = static_cast<size_t>((
+                                    bmm1Bytes * SPACE_NUM_3 + SPACE_NUM_2 * coreParams.get_n2BaseSize() *
+                                    coreParams.get_s1BaseSize() * alignedD * calcTypeSize) * aivNum) + 
+                                    WORK_SPACE_RESERVE_SIZE;
+            }
+            // FP32场景，stage1占用4倍的空间，stage2占用2倍空间
+            if (inputDtypeBytes == DATA_TYPE_FP32) {
+                workspaces[0] = static_cast<size_t>((
+                                    bmm1Bytes * SPACE_NUM_4 + SPACE_NUM_2 * coreParams.get_n2BaseSize() *
+                                    coreParams.get_s1BaseSize() * alignedD * calcTypeSize) * aivNum) +
+                                    WORK_SPACE_RESERVE_SIZE;
+            }
+        } else {
+            // 切D场景，stage1占用2倍的空间，stage2占用4倍空间
+            workspaces[0] = static_cast<size_t>((
+                                bmm1Bytes * SPACE_NUM_2 + softmaxExpBytes + bmm2stage2BufBytes +
+                                SPACE_NUM_4 * coreParams.get_n2BaseSize() * coreParams.get_s1BaseSize() * 
+                                alignedD * calcTypeSize) * aivNum) + WORK_SPACE_RESERVE_SIZE;
+            // NZND场景，stage1占用3倍的空间，stage2占用4倍空间
+            if (s2Size % S2_NZTOND_SIZE_64 != 0) {
+                workspaces[0] = static_cast<size_t>((
+                                    bmm1Bytes * SPACE_NUM_3 + SPACE_NUM_4 * coreParams.get_n2BaseSize() *
+                                    coreParams.get_s1BaseSize() * alignedD * calcTypeSize) * aivNum) +
+                                    WORK_SPACE_RESERVE_SIZE;
+            }
+            // FP32场景，stage1占用4倍的空间，stage2占用4倍空间
+            if (inputDtypeBytes == DATA_TYPE_FP32) {
+                workspaces[0] = static_cast<size_t>((
+                                    bmm1Bytes * SPACE_NUM_4 + SPACE_NUM_4 * coreParams.get_n2BaseSize() *
+                                    coreParams.get_s1BaseSize() * alignedD * calcTypeSize) * aivNum) +
+                                    WORK_SPACE_RESERVE_SIZE;
+            }
+        }
+
+        return ge::GRAPH_SUCCESS;
+    }
+
+    void SetSoftMaxTiling() override
+    {
+        auto softmaxShape = ge::Shape({8, s2BasicBlock * GetNRatio()});
+
+        AscendC::SoftMaxFlashV2TilingFunc(softmaxShape, calcTypeSize, sizeof(float), apiMaxUBSize,
+                                          tilingData.softmaxFlashTilingData, true, IsBasicBlockInSoftMax(softmaxShape));
+    }
+};
+
+
 // NOTE manually initialize tiling data in hostapi scenario in highest priority template
+REGISTER_OPS_TILING_TEMPLATE(FusedFloydAttention, FusedFloydAttentionTilingS1s2Bn2gs1Special, 95);
 REGISTER_OPS_TILING_TEMPLATE(FusedFloydAttention, FusedFloydAttentionTilingS1s2Bn2gs1, 96);
 } // namespace FFA
 } // namespace optiling

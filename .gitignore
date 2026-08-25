@@ -35,6 +35,10 @@ output/
 __pycache__
 MANIFEST.in
 
+# python package build artifacts
+*.egg-info/
+dist/
+
 # third_party
 third_party/
 !cmake/third_party/

@@ -23,25 +23,10 @@
 namespace Catlass::Gemm::Block {
 ////////////////////////////////////////////////////////////////////
 
-template <
-    class L1TileShape_,
-    class L0TileShape_,
-    class AType_,
-    class BType_,
-    class CType_,
-    class BiasType_,
-    class TileCopy_,
-    class TileMmad_>
-struct BlockMmad<
-    MmadAtlasA2MLAQKTp1Spec,
-    L1TileShape_,
-    L0TileShape_,
-    AType_,
-    BType_,
-    CType_,
-    BiasType_,
-    TileCopy_,
-    TileMmad_> {
+template <class L1TileShape_, class L0TileShape_, class AType_, class BType_, class CType_, class BiasType_,
+          class TileCopy_, class TileMmad_>
+struct BlockMmad<MmadAtlasA2MLAQKTp1Spec, L1TileShape_, L0TileShape_, AType_, BType_, CType_, BiasType_, TileCopy_,
+                 TileMmad_> {
 public:
     // Type Aliases
     using DispatchPolicy = MmadAtlasA2MLAQKTp1Spec;
@@ -107,7 +92,9 @@ public:
 
     /// Destructor
     CATLASS_DEVICE
-    ~BlockMmad() {}
+    ~BlockMmad()
+    {
+    }
 
     /// Perform a block-scoped matrix multiply-accumulate
     CATLASS_DEVICE
@@ -169,7 +156,7 @@ public:
                 copyL1ToL0A(l0ATensor[L0ABPingPongFlag], l1ATensor[embedSplitIdx * rowNumRound * EMBED_SPLIT_SIZE],
                             layoutACatSplitKInL0, layoutACatSplitKInL1);
                 AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(L0ABPingPongFlag);
-                
+
                 if (embedSplitIdx == 0 || embedSplitIdx == 2) {
                     // copy K to l1b
                     AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(L1BPingPongFlag);

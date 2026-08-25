@@ -19,6 +19,7 @@
 #include "lib/matmul_intf.h"
 #include "mhc_pre_sinkhorn_backward_simd_vf.h"
 #include "mhc_pre_sinkhorn_backward_simt_vf.h"
+#include "mhc_pre_sinkhorn_backward_data_arch35.h"
 
 using namespace AscendC;
 using namespace MicroAPI;
@@ -51,7 +52,7 @@ public:
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR phi, GM_ADDR hPre, GM_ADDR gradHin, GM_ADDR gradHPost,
         GM_ADDR gradHRes, GM_ADDR alpha, GM_ADDR bias, GM_ADDR hcBeforeNorm, GM_ADDR invRms, GM_ADDR sumOut,
         GM_ADDR normOut, GM_ADDR gradX, GM_ADDR gradPhi, GM_ADDR gradAlpha, GM_ADDR gradBias,
-        GM_ADDR workspace, const MhcPreSinkhornBackwardTilingData* tilingData, TPipe* pipe)
+        GM_ADDR workspace, const MhcPreSinkhornBackwardArch35TilingData* tilingData, TPipe* pipe)
     {
         pipe_ = pipe;
         blkIdx_ = GetBlockIdx();
@@ -121,7 +122,7 @@ protected:
     GlobalTensor<T> phiGlobal_;
 
 private:
-    __aicore__ inline void InitTiling(const MhcPreSinkhornBackwardTilingData* tilingData)
+    __aicore__ inline void InitTiling(const MhcPreSinkhornBackwardArch35TilingData* tilingData)
     {
         batchSize_ = tilingData->batchSize;
         seqLength_ = tilingData->seqLength;
@@ -397,6 +398,15 @@ __aicore__ inline void MhcPreSinkhornBackwardOneStage<T, U>::ComputeGradXVector(
 template<typename T, typename U>
 __aicore__ inline void MhcPreSinkhornBackwardOneStage<T, U>::Process()
 {
+    if ASCEND_IS_AIV {
+        if (blkIdx_ == 0) {
+            InitOutput<T>(gradPhiGlobal_, (n_ * n_ + 2 * n_) * n_ * c_, 0);
+            InitOutput<T>(gradAlphaGlobal_, 3, 0);
+            InitOutput<T>(gradBiasGlobal_, n_ * n_ + 2 * n_, 0);
+        }
+    }
+    SyncAll<false>();
+
     if ASCEND_IS_AIV {
         int8_t ping = 0;
         GetAlphaAndBias();

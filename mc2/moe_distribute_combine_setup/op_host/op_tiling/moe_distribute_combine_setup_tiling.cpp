@@ -38,9 +38,8 @@ ge::graphStatus TilingParseForMoeDistributeCombineSetup(gert::TilingParseContext
     return ge::GRAPH_SUCCESS;
 }
 
-struct MoeDistributeCombineSetupCompileInfo {
-};
+struct MoeDistributeCombineSetupCompileInfo {};
 IMPL_OP_OPTILING(MoeDistributeCombineSetup)
     .Tiling(MoeDistributeCombineSetupTilingFunc)
     .TilingParse<MoeDistributeCombineSetupCompileInfo>(TilingParseForMoeDistributeCombineSetup);
-} // namespace optiling
+} // namespace MC2Tiling

@@ -21,12 +21,12 @@
 #include "kernel_operator.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "../common.h"
+#include "../matmul_all_reduce_common.h"
 #if (FORMAT_X2 == FORMAT_FRACTAL_NZ)
-#include "../../3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_custom_weight_nz.h"
+#include "../../../3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_custom_weight_nz.h"
 #define WEIGH_QUANT_MATMUL_CLASS_NAME Mc2WeightQuantBatchMatmulV2::Mc2WeightQuantBatchMatmulV2CustomWeightNzKernel
 #else
-#include "../../3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_custom.h"
+#include "../../../3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_custom.h"
 #define WEIGH_QUANT_MATMUL_CLASS_NAME Mc2WeightQuantBatchMatmulV2::Mc2WeightQuantBatchMatmulV2CustomKernel
 #endif
 #include "matmul_all_reduce_base.h"

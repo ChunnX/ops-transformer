@@ -13,28 +13,55 @@ gen tiling head file for dynamic shape
 """
 
 import ctypes
-import json
 import os
-import stat
-import struct
-import math
 import sys
 import subprocess
 import re
 from pathlib import Path
 from collections import namedtuple
 import tbe
-from tbe.common.platform.platform_info import get_soc_spec
-from tbe.common.utils.op_tiling import do_op_tiling, _ASCEND_OPP_PATH_ENV, _ASCEND_OPP_PATH_DEFAULT, \
-    _BUILTIN_TILING_PATH, _CUSTOM_TILING_PATH_DEFAULT, so_arch_path2
-from tbe.tvm.error_mgr import raise_tbe_python_err, TBE_DEFAULT_PYTHON_ERROR_CODE
+from tbe.common.utils.op_tiling import (
+    _ASCEND_OPP_PATH_ENV,
+    _ASCEND_OPP_PATH_DEFAULT,
+    _BUILTIN_TILING_PATH,
+    so_arch_path2,
+)
 import tbe.tikcpp.get_op_tiling as tiling_help
 
-OpInfo = namedtuple('OpInfo', ['kernel_name', 'op_type', 'inputs', 'outputs', 'attrs', 'impl_mode', 'origin_inputs',\
-                    'origin_outputs', 'param_type_dynamic', 'mc2_ctx', 'param_type_list', 'init_value_list',\
-                    'output_shape_depend_on_compute'])
+OpInfo = namedtuple(
+    "OpInfo",
+    [
+        "kernel_name",
+        "op_type",
+        "inputs",
+        "outputs",
+        "attrs",
+        "impl_mode",
+        "origin_inputs",
+        "origin_outputs",
+        "param_type_dynamic",
+        "mc2_ctx",
+        "param_type_list",
+        "init_value_list",
+        "output_shape_depend_on_compute",
+    ],
+)
 
-OpInfo.__new__.__defaults__ = (None, None, None, None, None, None, None, None, None, None, None, None, None)
+OpInfo.__new__.__defaults__ = (
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+)
 
 DEFAULT_TILING_KEY_VALUE = 0
 _ASCEND_CUSTOM_OPP_PATH_ENV = "ASCEND_CUSTOM_OPP_PATH"
@@ -72,7 +99,7 @@ def get_custom_opp_pathlist():
     return vendor_list
 
 
-def load_lib_v2(hight_priority_path:str = None):
+def load_lib_v2(hight_priority_path: str = None):
     opp_path = Path(os.environ.get(_ASCEND_OPP_PATH_ENV, _ASCEND_OPP_PATH_DEFAULT))
     builtin_optiling_lib_path = opp_path.joinpath(_BUILTIN_TILING_PATH)
     libregister = ctypes.CDLL("libregister.so")
@@ -86,7 +113,9 @@ def load_lib_v2(hight_priority_path:str = None):
             custom_opp_so_path = hight_priority_path
             lib_optiling = ctypes.CDLL(custom_opp_so_path)
             custom_opp_so_path_str = str(custom_opp_so_path)
-            lib_optiling.TbeLoadSoAndSaveToRegistry(custom_opp_so_path_str.encode('utf_8'))
+            lib_optiling.TbeLoadSoAndSaveToRegistry(
+                custom_opp_so_path_str.encode("utf_8")
+            )
         except OSError as e:
             # Custom op tiling lib may not exists
             raise e
@@ -99,7 +128,9 @@ def load_lib_v2(hight_priority_path:str = None):
             custom_opp_so_path = os.path.join(_path, _TILING_SO_PATH)
             lib_optiling = ctypes.CDLL(custom_opp_so_path)
             custom_opp_so_path_str = str(custom_opp_so_path)
-            lib_optiling.TbeLoadSoAndSaveToRegistry(custom_opp_so_path_str.encode('utf_8'))
+            lib_optiling.TbeLoadSoAndSaveToRegistry(
+                custom_opp_so_path_str.encode("utf_8")
+            )
         except OSError:
             # Custom op tiling lib may not exists
             pass
@@ -109,7 +140,9 @@ def load_lib_v2(hight_priority_path:str = None):
         if os.path.exists(builtin_optiling_lib_path2):
             lib_optiling_builtin = ctypes.CDLL(builtin_optiling_lib_path2)
             builtin_optiling_lib_path2_str = str(builtin_optiling_lib_path2)
-            lib_optiling_builtin.TbeLoadSoAndSaveToRegistry(builtin_optiling_lib_path2_str.encode('utf_8'))
+            lib_optiling_builtin.TbeLoadSoAndSaveToRegistry(
+                builtin_optiling_lib_path2_str.encode("utf_8")
+            )
     except AttributeError:
         # ascend c static load builtin opmaster 2.0 so fail, undefined symbol, then use 1.0 way
         pass
@@ -118,13 +151,17 @@ def load_lib_v2(hight_priority_path:str = None):
 
 def get_asc_file_path(opname: str):
     asc_file_path = ""
-    project_path = os.path.abspath(os.path.dirname(os.path.abspath(__file__)) + "/../../../../../")
+    project_path = os.path.abspath(
+        os.path.dirname(os.path.abspath(__file__)) + "/../../../../../"
+    )
     for repo_dir in os.listdir(project_path):
         repo_dir_path = os.path.join(project_path, repo_dir)
         if os.path.isdir(repo_dir_path):
             for op_dir in os.listdir(repo_dir_path):
                 if op_dir == opname:
-                    asc_file_path = os.path.join(repo_dir_path, op_dir) + f"/op_kernel/{opname}.cpp"
+                    asc_file_path = (
+                        os.path.join(repo_dir_path, op_dir) + f"/op_kernel/{opname}.cpp"
+                    )
                     return asc_file_path
     return asc_file_path
 
@@ -141,8 +178,10 @@ def get_default_tiling_struct(opname: str):
         result = subprocess.run(command, text=True, capture_output=True, check=True)
         default_tiling_struct = result.stdout
         default_tiling_struct = default_tiling_struct.split(";")[0]
-        default_tiling_struct = re.sub(r".*REGISTER_TILING_DEFAULT\(", '', default_tiling_struct)
-        default_tiling_struct = default_tiling_struct.replace(')', '')
+        default_tiling_struct = re.sub(
+            r".*REGISTER_TILING_DEFAULT\(", "", default_tiling_struct
+        )
+        default_tiling_struct = default_tiling_struct.replace(")", "")
         default_tiling_struct = default_tiling_struct.strip()
         print("default_tiling_struct:", default_tiling_struct)
         if result.returncode != 0:
@@ -180,7 +219,9 @@ if __name__ == "__main__":
     with tbe.common.context.op_context.OpContext("dynamic"):
         tiling_struct = get_default_tiling_struct(op_name)
         if tiling_struct:
-            tiling_info.file_content = tiling_help.gen_dynamic_shape_v2(op_name, tiling_struct)
+            tiling_info.file_content = tiling_help.gen_dynamic_shape_v2(
+                op_name, tiling_struct
+            )
         else:
             tiling_info = tiling_help.get_tiling_info(op_info2, tiling_key_list)
 

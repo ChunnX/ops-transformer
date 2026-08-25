@@ -8,24 +8,24 @@
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      ×     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列加速卡产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
 
-- API功能：Compressor是推理场景下SAS和QLI的前处理算子，用于将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。在长序列的情况下，Compressor可以有效地减少计算开销。
+- API功能：Compressor是推理场景下SMLA和QLI的前处理算子，用于将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。在长序列的情况下，Compressor可以有效地减少计算开销。
 
 - 计算公式：
-  
+
     压缩阶段：
     1. 计算矩阵乘法：
-        - C4A: $\left[kv\_state^a, score\_state^a\right] = X @ \left[W^{aKV}, W^{aGate}\right], \left[kv\_state^b, score\_state^b\right] = X @ \left[W^{bKV}, W^{bGate}\right];$ 
+        - C4A: $\left[kv\_state^a, score\_state^a\right] = X @ \left[W^{aKV}, W^{aGate}\right], \left[kv\_state^b, score\_state^b\right] = X @ \left[W^{bKV}, W^{bGate}\right];$
         - C128A: $\left[kv\_state, score\_state\right] = X @ \left[W^{KV}, W^{Gate}\right]$
     2. 计算分组加法：
-        - C4A: $score\_state_i^\prime = \left[score\_state_{\left[4(i-1)+1:4i,:\right]}^a; score\_state_{\left[4i+1:4(i+1),:\right]}^b\right] + Ape,~i=1,2,\cdots, \frac{s}{4};$ 
+        - C4A: $score\_state_i^\prime = \left[score\_state_{\left[4(i-1)+1:4i,:\right]}^a; score\_state_{\left[4i+1:4(i+1),:\right]}^b\right] + Ape,~i=1,2,\cdots, \frac{s}{4};$
         - C128A: $score\_state_i^\prime = score\_state_{\left[128(i-1)+1:128i,:\right]} + Ape,~i=1,2,\cdots, \frac{s}{128};$
     3. 计算分组Softmax：
-        - C4A: $S_i^\prime = softmax(score\_state_i^\prime),~i=1,2,\cdots, \frac{s}{4};$ 
+        - C4A: $S_i^\prime = softmax(score\_state_i^\prime),~i=1,2,\cdots, \frac{s}{4};$
         - C128A: $S_i^\prime = softmax(score\_state_i^\prime),~i=1,2,\cdots, \frac{s}{128};$
     4. 计算Hadamard乘积：
         - C4A: $(S_H)_i = S_i^\prime \odot \left[kv\_state^a_{\left[4(i-1)+1:4i,:\right]} ; kv\_state^b_{\left[4i+1:4(i+1),:\right]}\right],~i=1,2,\cdots, \frac{s}{4};$
@@ -40,7 +40,7 @@
         - $\text{RMS}(C^{\text{Comp}}) = \sqrt{\frac{1}{N} \sum_{i=j* N}^{(j+1)* N} {(C_{i}^{\text{Comp}})}^{\text{2}} + norm\_eps} ,N=head\_dim, ~j=1,2,\cdots, \frac{s}{cmp\_ratio}$
         - $\text{RmsNorm}(C^{\text{Comp}}) = norm\_weight \cdot \frac{C_{i}^{\text{Comp}}}{\text{RMS}(C^{\text{Comp}})}$
     7. 计算Rope；
-   
+
 - 主要计算过程为：
     1. 将输入$X$与$W^{KV}$做Matmul运算得到$kv\_state$，将输入$X$与$W^{Gate}$做Matmul运算后再与$Ape$做Add运算得到$score\_state$，$kv\_state$与$score\_state$根据输入的start_pos及cu_seqlens完成更新。
     2. 在coff为2的情况下对$kv\_state$和$score\_state$进行数据重排。
@@ -54,7 +54,7 @@
 | x | 输入 | 公式中的$X$，表示原始不经压缩的数据。 | FLOAT16、BFLOAT16 | ND         |
 | wkv | 输入 | 公式中的$W^{KV}$，表示kv压缩权重。  | FLOAT16、BFLOAT16 | ND |
 | wgate | 输入 | 公式中的$W^{Gate}$，表示gate压缩权重。 | FLOAT16、BFLOAT16 | ND |
-| state_cache | 输入 | 公式中的$\left[kv\_state, score\_state\right]$, 表示kv\_state和score\_state的历史数据。 | FLOAT32     | ND         |
+| state_cache | 输入 | 公式中的$\left[kv\_state, score\_state\right]$,表示kv\_state和score\_state的历史数据。 | FLOAT32     | ND         |
 | ape | 输入 | 公式中的$Ape$，表示positional biases。 | FLOAT32       | ND         |
 | norm\_weight | 输入 | 表示计算RmsNorm时的权重系数。 | FLOAT32       | ND         |
 | rope\_sin | 输入 | 表示Rope计算时sin的权重系数。 | FLOAT32       | ND         |
@@ -68,7 +68,7 @@
 | coff | 可选属性 | 默认值1，支持1/2。当coff=1时，无需进行overlap数据重排。当coff=2时，需要进行overlap数据重排。  | INT32          | -         |
 | norm\_eps | 可选属性 | 表示RmsNorm计算的权重系数。默认值1e-6。 | FLOAT32          | -         |
 | rotary\_mode | 可选属性 | 表示Rope计算的模式。默认值1，支持1/2。rotary\_mode为1时，代表half模式。rotary\_mode为2时，代表interleave模式。 | INT32          | -         |
-| cache\_mode | 可选属性 | 表示state_cache的存储模式，1表示连续buffer，2表示循环buffer。默认值1。**目前A3暂不支持输入2**。 | INT32          | -         |
+| cache\_mode | 可选属性 | 表示state_cache的存储模式，1表示连续buffer，2表示循环buffer。默认值1。**目前A3暂不支持输入2，且不支持0轴非连续**。 | INT32          | -         |
 | cmp\_kv | 输出 | 表示压缩后的数据。 | FLOAT16、BFLOAT16         | ND          |
 
 ## 约束说明
@@ -77,7 +77,7 @@
 - 输入shape限制：
     - wkv支持输入shape[coff* D,H]
     - wgate支持输入shape[coff* D,H]
-    - state\_cache支持输入shape[block_num,block_size,2* coff* D]，要求block_num>0。
+    - state\_cache支持输入shape[block_num,block_size,2* coff* D]，要求block_num>0，cache_mode=2时，需要满足block_size >= coff * cmp_ratio + S - 1。
     - ape支持输入shape[cmp_ratio,coff* D]
     - norm\_weight支持输入shape[D,]
     - start\_pos支持输入shape[B,]
@@ -85,13 +85,13 @@
         - rope_sin、rope_cos要求输入shape为[min(T,T//cmp_ratio+B),rope_head_dim]。
         - cu\_seqlens输入shape必须为[B+1,]。该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值，且第一位必须位0。
         - seqused，支持输入shape[B,]，要求每个Batch的有效token数要求小于等于对应Sequence Length长度，即seqused[n] <= cu\_seqlens[n+1] - cu\_seqlens[n]，且不小于0。
-        - state\_block\_table支持输入shape[B,ceil(Smax/block_size)]。Smax为每个Batch中最大的Sequence Length，即Smax=max(start\_pos)+max(cu\_seqlens[n+1] - cu\_seqlens[n])。
+        - cache_mode=1时，state\_block\_table支持输入shape[B,ceil(Smax/block_size)]。Smax为每个Batch中最大的Sequence Length，即Smax=max(start\_pos)+max(cu\_seqlens[n+1] - cu\_seqlens[n])。cache_mode=2时，state\_block\_table支持输入shape[B]。
         - cmp\_kv，输出shape为[min(T,T//cmp_ratio+B),D]：<batch0>compressed_tokens + <batch1>compressed_tokens + ... + <batchN>compressed_tokens + pad。
     - 若x的维度不采用BS合轴，即x的输入shape为[B,S,H]
         - rope_sin、rope_cos要求输入shape为[B,ceil(S/cmp_ratio),rope_head_dim]。
         - cu\_seqlens，参数必须为空。
         - seqused，支持输入shape[B,]，要求每个Batch的有效token数要求小于等于对应Sequence Length长度，即要求seqused[n] <= S，且不小于0。
-        - state\_block\_table支持输入shape[B,ceil(Smax/block_size)]。Smax为每个Batch中最大的Sequence Length，即Smax=max(start\_pos)+S。
+        - cache_mode=1时，state\_block\_table支持输入shape[B,ceil(Smax/block_size)]。Smax为每个Batch中最大的Sequence Length，即Smax=max(start\_pos)+S。cache_mode=2时，state\_block\_table支持输入shape[B]。
         - cmp\_kv，输出shape为[B,ceil(S/cmp_ratio),D]：(<batch0>compressed_tokens+pad0) + (<batch1>compressed_tokens+pad1) + ...  + (<batchN>compressed_tokens+padN)。
 - 输入值域限制：
   - 该接口支持B、S泛化，且存在如下场景限制：
@@ -130,10 +130,12 @@
       </tbody>
       </table>
       </div>
+  - 该接口支持B、S、T取0，即shape与B、S、T值相关的入参允许传入空tensor，其余入参不支持传入空tensor。该场景下state_cache不做更新，输出cmp_kv为空tensor。
 - 输入属性限制：
   - 支持D为128/512。
   - 支持H为1K~10K，512对齐。
-  - 支持cmp_ratio为4/128。支持如下三种情况：
+  - 支持block_size为1~1024。
+  - 支持cmp_ratio为2/4/8/16/32/64/128。支持如下三种典型组合场景：
       - C4A: D=512, coff=2, cmp_ratio=4；
       - C4Li: D=128, coff=2, cmp_ratio=4；
       - C128A: D=512, coff=1, cmp_ratio=128。
@@ -171,7 +173,7 @@
     cache_mode = 1
     head_dim = 512
     cu_seqlens = [0, 1]
-    # ------------- 
+    # -------------
     B = 1
     S = 1
     S_max = 0
@@ -202,7 +204,7 @@
             cu_seqlens = torch.tensor(cu_seqlens).to(torch.int32)
         for i in range(B):
             if start_pos[i] + cu_seqlens[i + 1] - cu_seqlens[i] > S_max:
-                S_max = start_pos[i] + cu_seqlens[i + 1] - cu_seqlens[i] 
+                S_max = start_pos[i] + cu_seqlens[i + 1] - cu_seqlens[i]
     else:
         cu_seqlens = None
         S_max = max(start_pos) + S
@@ -310,7 +312,7 @@
             wgate,
             state_cache,
             ape,
-            norm_weight, 
+            norm_weight,
             rope_sin,
             rope_cos,
             rope_head_dim = rope_head_dim,
@@ -356,7 +358,7 @@
     cache_mode = 1
     head_dim = 512
     cu_seqlens = [0, 1]
-    # ------------- 
+    # -------------
     B = 1
     S = 1
     S_max = 0
@@ -387,7 +389,7 @@
             cu_seqlens = torch.tensor(cu_seqlens).to(torch.int32)
         for i in range(B):
             if start_pos[i] + cu_seqlens[i + 1] - cu_seqlens[i] > S_max:
-                S_max = start_pos[i] + cu_seqlens[i + 1] - cu_seqlens[i] 
+                S_max = start_pos[i] + cu_seqlens[i + 1] - cu_seqlens[i]
     else:
         cu_seqlens = None
         S_max = max(start_pos) + S
@@ -492,8 +494,8 @@
         def __init__(self):
             super(CompressorNetwork, self).__init__()
 
-        def forward(self, x, wkv, wgate, state_cache, ape, norm_weight, rope_sin,         
-                    rope_cos, rope_head_dim, cmp_ratio, state_block_table = None, cu_seqlens = None, 
+        def forward(self, x, wkv, wgate, state_cache, ape, norm_weight, rope_sin,
+                    rope_cos, rope_head_dim, cmp_ratio, state_block_table = None, cu_seqlens = None,
                     seqused = None, start_pos = None, coff = 1, norm_eps = 1e-6, rotary_mode = 1, cache_mode = 1):
             cmp_kv = (
                 torch.ops.custom.compressor(
@@ -502,7 +504,7 @@
                     wgate,
                     state_cache,
                     ape,
-                    norm_weight, 
+                    norm_weight,
                     rope_sin,
                     rope_cos,
                     rope_head_dim = rope_head_dim,
@@ -531,7 +533,7 @@
                     wgate,
                     state_cache,
                     ape,
-                    norm_weight, 
+                    norm_weight,
                     rope_sin,
                     rope_cos,
                     rope_head_dim = rope_head_dim,

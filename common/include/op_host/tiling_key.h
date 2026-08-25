@@ -26,7 +26,8 @@ constexpr uint64_t RecursiveSum()
 }
 
 constexpr uint64_t kBase = 10; // 10进制进位基数
-template <typename T, typename... Args> constexpr uint64_t RecursiveSum(T templateId, Args... templateIds)
+template <typename T, typename... Args>
+constexpr uint64_t RecursiveSum(T templateId, Args... templateIds)
 {
     return static_cast<uint64_t>(templateId) + kBase * RecursiveSum(templateIds...);
 }
@@ -46,7 +47,8 @@ template <typename T, typename... Args> constexpr uint64_t RecursiveSum(T templa
 //                                     SupportedDtype::FLOAT32, InputLayout::BSH, SparseCapability::SUPPORT_ALL)
 
 constexpr uint64_t TILINGKEYOFFSET = uint64_t(10000000000000000000UL); // 10^19
-template <typename... Args> constexpr uint64_t GET_TILINGKEY(Args... templateIds)
+template <typename... Args>
+constexpr uint64_t GET_TILINGKEY(Args... templateIds)
 {
     return TILINGKEYOFFSET + RecursiveSum(templateIds...);
 }
@@ -58,6 +60,6 @@ template <typename... Args> constexpr uint64_t GET_TILINGKEY(Args... templateIds
     (GET_TILINGKEY(AxisEnum::ub2, AxisEnum::ub1, AxisEnum::block, DtypeEnum::dtype, LayoutEnum::layout,                \
                    SparseEnum::sparse))
 
-} // namespace Optiling
+} // namespace OpTiling
 } // namespace Transformer
 } // namespace Ops

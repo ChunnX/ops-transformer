@@ -18,10 +18,10 @@
 #include "quant_lightning_indexer_template_tiling_key.h"
 
 #if (__CCE_AICORE__ == 310)
-    #include "arch35/quant_lightning_indexer_kernel.h"
+    #include "arch35/quant_lightning_indexer_kernel_arch35.h"
 
 #else
-    #include "arch22/quant_lightning_indexer_kernel.h"
+    #include "arch22/quant_lightning_indexer_kernel_arch22.h"
 #endif
 
 using namespace QLIKernel;
@@ -50,22 +50,22 @@ __global__ __aicore__ void quant_lightning_indexer(__gm__ uint8_t *query, __gm__
 #if (__CCE_AICORE__ == 310)
     if (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN) {
         if (ORIG_DTYPE_WEIGHTS == DT_FLOAT16) {
-            INVOKE_LI_NO_KFC_OP_IMPL(QLIPreload, fp8_e4m3fn_t, fp8_e4m3fn_t, int32_t,
+            INVOKE_LI_NO_KFC_OP_IMPL(QuantLightningIndexerKernel, fp8_e4m3fn_t, fp8_e4m3fn_t, int32_t,
                 PAGE_ATTENTION, LI_LAYOUT(Q_LAYOUT_T), LI_LAYOUT(K_LAYOUT_T),
-                half, half, float32_t);
+                half, half, float32_t, uint16_t);
         } else {
-            INVOKE_LI_NO_KFC_OP_IMPL(QLIPreload, fp8_e4m3fn_t, fp8_e4m3fn_t, int32_t,
+            INVOKE_LI_NO_KFC_OP_IMPL(QuantLightningIndexerKernel, fp8_e4m3fn_t, fp8_e4m3fn_t, int32_t,
                 PAGE_ATTENTION, LI_LAYOUT(Q_LAYOUT_T), LI_LAYOUT(K_LAYOUT_T),
-                bfloat16_t, float32_t, float32_t);
+                bfloat16_t, float32_t, float32_t, uint16_t);
         }
     } else if (ORIG_DTYPE_QUERY == DT_HIFLOAT8) {
-        INVOKE_LI_NO_KFC_OP_IMPL(QLIPreload, hifloat8, hifloat8, int32_t,
+        INVOKE_LI_NO_KFC_OP_IMPL(QuantLightningIndexerKernel, hifloat8, hifloat8, int32_t,
                                 PAGE_ATTENTION, LI_LAYOUT(Q_LAYOUT_T), LI_LAYOUT(K_LAYOUT_T),
-                                bfloat16_t, float32_t, float32_t);
+                                bfloat16_t, float32_t, float32_t, uint16_t);
     } else {
-        INVOKE_LI_NO_KFC_OP_IMPL(QLIPreload, int8_t, int8_t, int32_t,
+        INVOKE_LI_NO_KFC_OP_IMPL(QuantLightningIndexerKernel, int8_t, int8_t, int32_t,
                                 PAGE_ATTENTION, LI_LAYOUT(Q_LAYOUT_T), LI_LAYOUT(K_LAYOUT_T),
-                                half, half, int32_t);
+                                half, half, int32_t, uint32_t);
     }
 #else
     INVOKE_LI_NO_KFC_OP_IMPL(QLIPreload, int8_t, int8_t, int32_t,

@@ -11,9 +11,7 @@
 #ifndef MATMUL_ALLTO_ALL_UTIL_TILING_H
 #define MATMUL_ALLTO_ALL_UTIL_TILING_H
 
-#include "mc2_comm_utils.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
-#include "../../../../../tests/ut/framework_normal/common/hccl_stub.h"
 
 namespace MC2Tiling {
 
@@ -74,8 +72,8 @@ constexpr size_t ALLTOALLMATMUL_ATTR_COMMON_QUANTDTYPE_INDEX = 8;
 constexpr size_t ALLTOALLMATMUL_ATTR_X1_TRANSPOSE_INDEX = 9;
 constexpr size_t ALLTOALLMATMUL_ATTR_X2_TRANSPOSE_INDEX = 10;
 constexpr size_t ALLTOALLMATMUL_ATTR_GROUP_SIZE_INDEX = 11;
-constexpr size_t ALLTOALLMATMUL_ATTR_ALLTO_ALL_OUT_FLAG_INDEX = 12;
-constexpr size_t ALLTOALLMATMUL_ATTR_COMM_MODE_INDEX = 0; // AlltoAllMatmul原型修改时再更改该值
+constexpr size_t ALLTOALLMATMUL_ATTR_COMM_MODE_INDEX = 12;
+constexpr size_t ALLTOALLMATMUL_ATTR_ALLTO_ALL_OUT_FLAG_INDEX = 13;
 
 // 用来存放MatmulAlltoAll和AllToAllMatmul错位的属性信息的处理，
 // 比如说MatmulAllToAll存放x1转置(ATTR_X1_TRANSPOSE_INDEX)的位置是8，
@@ -133,7 +131,7 @@ struct TilingInferredInfo {
         0UL;                // 存储计算MM的地址大小，仅对于MatmulAlltoAll，因为先执行完Matmul之后需要有空间存放计算地址
     uint64_t commLen = 0UL; // 存储通信结果的临时空间，仅对于AlltoAllMatmul，需要有空间存放重排的地址（和kernel侧约定）
     uint64_t permuteLen =
-        0UL; // 重排空间大小,对于AlltoAllMatmul来说，当alltoAllout存在时，就有一个额外的alltoall地址传递给kernel侧，不需要额外分配
+        0UL;                           // 重排空间大小,对于AlltoAllMatmul来说，当alltoAllout存在时，就有一个额外的alltoall地址传递给kernel侧，不需要额外分配
     uint64_t x1ScaleOptionalLen = 0UL; // 存储x1ScaleOptional的地址大小
     uint64_t quantOutLen = 0UL;        // 存储quantOut的空间
     uint64_t commScaleLen = 0UL;       // 存储Scale通信的空间
@@ -144,7 +142,6 @@ struct TilingInferredInfo {
     uint32_t tailM = 0UL;              // 尾块大小
     uint32_t tailCnt = 0UL;            // 尾块数量
 };
-
 
 class MatmulAlltoAllTilingUtil {
 public:
@@ -236,7 +233,7 @@ public:
     Mc2CcTilingConfigBuilder(const std::string &groupName, uint32_t opType, const std::string &algConfig);
 
     // 链式配置方法（声明),通过change和with方法来修改hccl中的对应属性
-    Mc2CcTilingConfigBuilder &withReduceType(const char *opName, AscendC::HcclReduceOp reduceType,
+    Mc2CcTilingConfigBuilder &withReduceType(const char *opName, mc2tiling::HcclReduceOp reduceType,
                                              ge::DataType dstDataType, ge::DataType srcDataType);
     Mc2CcTilingConfigBuilder &withStepSize(uint8_t stepSize);
     Mc2CcTilingConfigBuilder &isLocalRankDataToLocalDst(bool flag);

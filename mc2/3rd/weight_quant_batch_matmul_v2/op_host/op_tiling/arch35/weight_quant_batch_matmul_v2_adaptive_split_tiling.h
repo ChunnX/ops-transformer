@@ -23,10 +23,10 @@
 namespace optiling {
 namespace Mc2weight_quant_batch_matmul_v2 {
 
-class Mc2WeightQuantBatchMatmulV2TilingAS : public Mc2WeightQuantBatchMatmulV2Tiling
-{
+class Mc2WeightQuantBatchMatmulV2TilingAS : public Mc2WeightQuantBatchMatmulV2Tiling {
 public:
-    explicit Mc2WeightQuantBatchMatmulV2TilingAS(gert::TilingContext* context) : Mc2WeightQuantBatchMatmulV2Tiling(context)
+    explicit Mc2WeightQuantBatchMatmulV2TilingAS(gert::TilingContext *context)
+        : Mc2WeightQuantBatchMatmulV2Tiling(context)
     {
         if (context->GetCompileInfo() == nullptr) {
             InitCompileInfo();
@@ -35,7 +35,8 @@ public:
     ~Mc2WeightQuantBatchMatmulV2TilingAS() override = default;
 
 protected:
-    Mc2OptimizationAlgorithmSubCategory algorithmSubCategory_ = Mc2OptimizationAlgorithmSubCategory::N_FIRST_TAIL_RESPLIT;
+    Mc2OptimizationAlgorithmSubCategory algorithmSubCategory_ =
+        Mc2OptimizationAlgorithmSubCategory::N_FIRST_TAIL_RESPLIT;
     Mc2Mte2Configuration mte2Config_ = Mc2Mte2Configuration::MTE2_INNER_SIZE_512_BUF_NUM_2;
 
     std::unique_ptr<Mc2WeightQuantBatchMatmulV2ASTilingData> tilingData_;
@@ -85,16 +86,14 @@ private:
     void SetDefaultMatmulTiling();
     void SetPreLoad();
     void EnlargeBaseK(uint64_t l0aMaxBaseK);
-    void EnlargeBaseKInFullloadA(
-        uint64_t maxBaseK, uint64_t minKL1, uint64_t maxL1, const std::vector<uint64_t>& l0BaseKList,
-        const std::vector<uint64_t>& l1KList);
-    void EnlargeBaseKNotFullloadA(
-        uint64_t maxBaseK, uint64_t maxKL1, const std::vector<uint64_t>& l0BaseKList,
-        const std::vector<uint64_t>& l1KList);
+    void EnlargeBaseKInFullloadA(uint64_t maxBaseK, uint64_t minKL1, uint64_t maxL1,
+                                 const std::vector<uint64_t> &l0BaseKList, const std::vector<uint64_t> &l1KList);
+    void EnlargeBaseKNotFullloadA(uint64_t maxBaseK, uint64_t maxKL1, const std::vector<uint64_t> &l0BaseKList,
+                                  const std::vector<uint64_t> &l1KList);
     bool IsWeight4Nz() const;
-    void ReSetTilingAfterExtendedBaseN(
-        uint64_t extendedBaseN, uint64_t firstTailBlockL1Size, uint64_t firstTailBlockCount,
-        uint64_t secondTailBlockL1Size, uint64_t secondTailBlockCount) const;
+    void ReSetTilingAfterExtendedBaseN(uint64_t extendedBaseN, uint64_t firstTailBlockL1Size,
+                                       uint64_t firstTailBlockCount, uint64_t secondTailBlockL1Size,
+                                       uint64_t secondTailBlockCount) const;
 };
 } // namespace Mc2weight_quant_batch_matmul_v2
 } // namespace optiling

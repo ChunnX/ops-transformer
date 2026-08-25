@@ -30,19 +30,14 @@ struct AllGatherMatmulApiUtParam {
     op::SocVersion soc;
     aclnnStatus expectResult;
 
-    AllGatherMatmulApiUtParam(const csv_map& csvMap)
+    AllGatherMatmulApiUtParam(const csv_map &csvMap)
     {
         this->case_name = ReadMap(csvMap, "case_name");
-        this->x1 = GetTensorACL(csvMap, 
-            "x1_shape", "x1_dtype", "x1_format");
-        this->x2 = GetTensorACL(csvMap, 
-            "x2_shape", "x2_dtype", "x2_format");
-        this->bias = GetTensorACL(csvMap, 
-            "bias_shape", "bias_dtype", "bias_format");
-        this->out = GetTensorACL(csvMap, 
-            "out_shape", "out_dtype", "out_format");
-        this->gatherOut = GetTensorACL(csvMap, 
-            "gather_out_shape", "gather_out_dtype", "gather_out_format");
+        this->x1 = GetTensorACL(csvMap, "x1_shape", "x1_dtype", "x1_format");
+        this->x2 = GetTensorACL(csvMap, "x2_shape", "x2_dtype", "x2_format");
+        this->bias = GetTensorACL(csvMap, "bias_shape", "bias_dtype", "bias_format");
+        this->out = GetTensorACL(csvMap, "out_shape", "out_dtype", "out_format");
+        this->gatherOut = GetTensorACL(csvMap, "gather_out_shape", "gather_out_dtype", "gather_out_format");
         this->group = ReadMap(csvMap, "group");
         this->gatherIndex = stoll(ReadMap(csvMap, "gather_index", "0"));
         this->commTurn = stoll(ReadMap(csvMap, "comm_turn", "0"));
@@ -52,7 +47,7 @@ struct AllGatherMatmulApiUtParam {
     }
 };
 
-inline std::ostream& operator<<(std::ostream& os, const AllGatherMatmulApiUtParam& param)
+inline std::ostream &operator<<(std::ostream &os, const AllGatherMatmulApiUtParam &param)
 {
     return os << param.case_name;
 }

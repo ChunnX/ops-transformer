@@ -154,7 +154,7 @@ for OP_REPO in $OP_REPO_LIST; do
                     run_mc2_ut_case "api" ""
                 else
                     echo "host cannot be executed temporarily" &>> $LOG_PATH/op_test/$OP.log
-                fi  
+                fi
             done
             if [ "$OP" = "moe_distribute_combine_teardown" ] || [ "$OP" = "moe_distribute_combine_setup" ]; then
                 export ASCEND_GLOBAL_LOG_LEVEL=3
@@ -177,7 +177,7 @@ for OP_REPO in $OP_REPO_LIST; do
                 echo "$OP ut do not generate!" >> $LOG_PATH/ut.log
             fi
         fi
-        
+
         echo ""
         echo "" &>> $LOG_PATH/results.csv
     done

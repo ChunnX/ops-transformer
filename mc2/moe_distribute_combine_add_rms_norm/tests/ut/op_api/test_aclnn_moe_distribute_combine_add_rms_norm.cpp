@@ -24,8 +24,7 @@ using namespace op;
 using namespace std;
 
 namespace MoeDistributeCombineAddRmsNorm {
-class L2MoeDistributeCombineAddRmsNormTest : public testing::Test
-{
+class L2MoeDistributeCombineAddRmsNormTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -757,8 +756,7 @@ TEST_F(L2MoeDistributeCombineAddRmsNormTest, TestMoeDistributeCombineAddRmsNorm_
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 // 测试执行函数覆盖和 is910B 分支
-class L2MoeDistributeCombineAddRmsNorm910BTest : public testing::Test
-{
+class L2MoeDistributeCombineAddRmsNorm910BTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -795,9 +793,10 @@ TEST_F(L2MoeDistributeCombineAddRmsNorm910BTest, TestCombineArnCheckParams_910B)
     char groupTp[] = "test_moe_distribute_combine_add_rms_norm_tp";
     TensorDesc xOut = TensorDesc({32, 1, 7168}, ACL_BF16, ACL_FORMAT_ND);
 
-    aclnnStatus aclRet = CombineArnCheckParams(DescToAclContainer(expandX), DescToAclContainer(expertIds),
-        DescToAclContainer(expandIdx), DescToAclContainer(epSendCounts), nullptr,
-        DescToAclContainer(expertScales), groupEp, groupTp, DescToAclContainer(xOut), true);
+    aclnnStatus aclRet =
+        CombineArnCheckParams(DescToAclContainer(expandX), DescToAclContainer(expertIds), DescToAclContainer(expandIdx),
+                              DescToAclContainer(epSendCounts), nullptr, DescToAclContainer(expertScales), groupEp,
+                              groupTp, DescToAclContainer(xOut), true);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 

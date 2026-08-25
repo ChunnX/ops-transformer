@@ -22,9 +22,11 @@ namespace Mc2BatchMatMulV3Advanced {
 using namespace AscendC;
 using namespace matmul;
 
-class Mc2BatchMatMulDaswBlock: public Mc2BatchMatMulAswBlock {
+class Mc2BatchMatMulDaswBlock : public Mc2BatchMatMulAswBlock {
 public:
-    __aicore__ inline Mc2BatchMatMulDaswBlock() {}
+    __aicore__ inline Mc2BatchMatMulDaswBlock()
+    {
+    }
     template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE>
     __aicore__ inline void Init(const void *tilingData);
     __aicore__ inline void UpdateBasicIndex(uint64_t roundIdx, uint64_t newBlockIdx);

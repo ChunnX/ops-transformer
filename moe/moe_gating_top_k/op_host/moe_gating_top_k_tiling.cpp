@@ -38,6 +38,8 @@ const static int64_t MAX_EXPERT_COUNT = 2048;
 
 const static int64_t X_INPUT_INDEX = 0;
 const static int64_t BIAS_INPUT_INDEX = 1;
+const static int64_t INPUT_IDS_INPUT_INDEX = 2;
+const static int64_t TID_TO_EID_INPUT_INDEX = 3;
 const static int64_t Y_OUTPUT_INDEX = 0;
 const static int64_t EXPERT_IDX_OUTPUT_INDEX = 1;
 const static int64_t OUT_OUTPUT_INDEX = 2;
@@ -63,6 +65,10 @@ constexpr int32_t ROW_COUNT_PER_TASK = 1;
 const static uint64_t TILING_KEY_EXPERTNUM_GROUPNUM_ALIGN_HIGH_PERF = 0;
 const static uint64_t TILING_KEY_WITHOUT_GROUP = 1;
 const static uint64_t TILING_KEY_GENERALIZED = 2;
+const static uint64_t TILING_KEY_HASH_WITHOUT_GROUP_INT32_INT64 = 3;
+const static uint64_t TILING_KEY_HASH_WITHOUT_GROUP_INT32_INT32 = 4;
+const static uint64_t TILING_KEY_HASH_WITHOUT_GROUP_INT64_INT64 = 5;
+const static uint64_t TILING_KEY_HASH_WITHOUT_GROUP_INT64_INT32 = 6;
 
 inline static int64_t CeilLog4(int64_t x)
 {
@@ -113,13 +119,18 @@ private:
 
     const gert::Shape *xShape_ = nullptr;
     const gert::Shape *biasShape_ = nullptr;
+    const gert::Shape *inputIdsShape_ = nullptr;
+    const gert::Shape *tid2eidShape_ = nullptr;
     const gert::Shape *yShape_ = nullptr;
     const gert::Shape *expertIdxShape_ = nullptr;
     const gert::Shape *outShape_ = nullptr;
+    ge::DataType inputIdsDtype_;
+    ge::DataType tid2eidDtype_;
 
     int64_t rows_ = 0;
     int64_t expertCount_ = 0;
     int64_t addBias_ = 0;
+    int64_t hashFlag_ = 0;
 
     int64_t k_ = 0;
     int64_t kGroup_ = 0;
@@ -164,6 +175,30 @@ ge::graphStatus MoeGatingTopKTilingBase::CheckInputShape()
             return ge::GRAPH_FAILED);
     }
     moeGatingTopKTilingData_.set_addBias(addBias_);
+
+    if (inputIdsShape_ != nullptr && tid2eidShape_ != nullptr) {
+        hashFlag_ = 1;
+    }
+    moeGatingTopKTilingData_.set_hashFlag(hashFlag_);
+
+    if (hashFlag_ == 1) {
+        if (tid2eidShape_->GetDim(1) != k_) {
+            std::string reasonMsg =
+                "The 1st axis of input tid2eid must be equal to the value of attribute k, "
+                "which is " + std::to_string(k_);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "tid2eid",
+                Ops::Base::ToString(*tid2eidShape_), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
+        if (inputIdsShape_->GetDim(0) != rows_) {
+            std::string reasonMsg =
+                "The 0th axis of input input_ids must be equal to the 0th axis of input x " +
+                Ops::Base::ToString(*xShape_);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "input_ids",
+                Ops::Base::ToString(*inputIdsShape_), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
+    }
 
     OP_CHECK_IF(k_ > expertCount_,
                 OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "k", std::to_string(k_),
@@ -260,6 +295,11 @@ ge::graphStatus MoeGatingTopKTilingBase::GetShapeAttrsInfo()
     auto biasShapePtr = context_->GetOptionalInputShape(BIAS_INPUT_INDEX);
     biasShape_ = biasShapePtr == nullptr ? nullptr : &biasShapePtr->GetStorageShape();
 
+    auto inputIdsShapePtr = context_->GetOptionalInputShape(INPUT_IDS_INPUT_INDEX);
+    inputIdsShape_ = inputIdsShapePtr == nullptr ? nullptr : &inputIdsShapePtr->GetStorageShape();
+    auto tid2eidShapePtr = context_->GetOptionalInputShape(TID_TO_EID_INPUT_INDEX);
+    tid2eidShape_ = tid2eidShapePtr == nullptr ? nullptr : &tid2eidShapePtr->GetStorageShape();
+
     // 获取输出shape
     auto yShapePtr = context_->GetOutputShape(Y_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, yShapePtr);
@@ -286,6 +326,21 @@ ge::graphStatus MoeGatingTopKTilingBase::GetShapeAttrsInfo()
                     OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "bias",
                                               Ops::Base::ToString(biasDtype).c_str(),
                                               Ops::Base::ToString(xDtype).c_str()),
+                    return ge::GRAPH_FAILED);
+    }
+
+    if (inputIdsShapePtr != nullptr) {
+        inputIdsDtype_ = context_->GetOptionalInputDesc(INPUT_IDS_INPUT_INDEX)->GetDataType();
+        OP_CHECK_IF((inputIdsDtype_ != ge::DataType::DT_INT32 && inputIdsDtype_ != ge::DataType::DT_INT64),
+                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "input_ids",
+                                              Ops::Base::ToString(inputIdsDtype_).c_str(), "int32 or int64"),
+                    return ge::GRAPH_FAILED);
+    }
+    if (tid2eidShapePtr != nullptr) {
+        tid2eidDtype_ = context_->GetOptionalInputDesc(TID_TO_EID_INPUT_INDEX)->GetDataType();
+        OP_CHECK_IF((tid2eidDtype_ != ge::DataType::DT_INT32 && tid2eidDtype_ != ge::DataType::DT_INT64),
+                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "tid2eid",
+                                              Ops::Base::ToString(tid2eidDtype_).c_str(), "int32 or int64"),
                     return ge::GRAPH_FAILED);
     }
 
@@ -537,7 +592,17 @@ uint64_t MoeGatingTopKTilingBase::GetTilingKey() const
          * 2. 分组数等于专家数（每个组只有一个专家）
          * 3. 选择所有组
          */
-        return TILING_KEY_WITHOUT_GROUP;
+        if (hashFlag_ == 0) {
+            return TILING_KEY_WITHOUT_GROUP;
+        } else if (inputIdsDtype_ == ge::DataType::DT_INT32 && tid2eidDtype_ == ge::DataType::DT_INT64) {
+            return TILING_KEY_HASH_WITHOUT_GROUP_INT32_INT64;
+        } else if (inputIdsDtype_ == ge::DataType::DT_INT32 && tid2eidDtype_ == ge::DataType::DT_INT32) {
+            return TILING_KEY_HASH_WITHOUT_GROUP_INT32_INT32;
+        } else if (inputIdsDtype_ == ge::DataType::DT_INT64 && tid2eidDtype_ == ge::DataType::DT_INT64) {
+            return TILING_KEY_HASH_WITHOUT_GROUP_INT64_INT64;
+        } else {
+            return TILING_KEY_HASH_WITHOUT_GROUP_INT64_INT32;
+        }
     } else {
         return TILING_KEY_GENERALIZED;
     }

@@ -22,13 +22,7 @@
 
 namespace Catlass::Gemm::Kernel {
 
-template<
-    class ArchTag_,
-    class Element_,
-    class LayoutIn_,
-    class LayoutOut_,
-    uint32_t COMPUTE_LENGTH
->
+template <class ArchTag_, class Element_, class LayoutIn_, class LayoutOut_, uint32_t COMPUTE_LENGTH>
 struct PaddingMatrixBlockND {
 public:
     using ArchTag = ArchTag_;
@@ -37,10 +31,8 @@ public:
     using LayoutOut = LayoutOut_;
     using ComputeLayout = Catlass::layout::RowMajor;
     using ComputeLayoutDst = Catlass::layout::PaddingRowMajor;
-    using CopyGm2Ub = Catlass::Epilogue::Tile::CopyGm2Ub<
-        ArchTag, Gemm::GemmType<Element, ComputeLayout>>;
-    using CopyUb2Gm = Catlass::Epilogue::Tile::CopyUb2Gm<
-        ArchTag, Gemm::GemmType<Element, ComputeLayout>>;
+    using CopyGm2Ub = Catlass::Epilogue::Tile::CopyGm2Ub<ArchTag, Gemm::GemmType<Element, ComputeLayout>>;
+    using CopyUb2Gm = Catlass::Epilogue::Tile::CopyUb2Gm<ArchTag, Gemm::GemmType<Element, ComputeLayout>>;
 
     CopyGm2Ub copyGm2Ub;
     CopyUb2Gm copyUb2Gm;
@@ -70,28 +62,19 @@ public:
     CATLASS_DEVICE
     ComputeLayoutDst GetPaddingComputeLayout(layout::PaddingRowMajor const &layout)
     {
-        return ComputeLayoutDst(
-            layout.shape(0) * layout.shape(1),
-            layout.shape(2) * layout.shape(3),
-            layout.shape(0),
-            layout.shape(2)
-        );
+        return ComputeLayoutDst(layout.shape(0) * layout.shape(1), layout.shape(2) * layout.shape(3), layout.shape(0),
+                                layout.shape(2));
     }
 
     CATLASS_DEVICE
     ComputeLayoutDst GetPaddingComputeLayout(layout::PaddingColumnMajor const &layout)
     {
-        return ComputeLayoutDst(
-            layout.shape(2) * layout.shape(3),
-            layout.shape(0) * layout.shape(1),
-            layout.shape(2),
-            layout.shape(0)
-        );
+        return ComputeLayoutDst(layout.shape(2) * layout.shape(3), layout.shape(0) * layout.shape(1), layout.shape(2),
+                                layout.shape(0));
     }
 
     CATLASS_DEVICE
-    void operator()(AscendC::GlobalTensor<Element> const &dst,
-                    AscendC::GlobalTensor<Element> const &src,
+    void operator()(AscendC::GlobalTensor<Element> const &dst, AscendC::GlobalTensor<Element> const &src,
                     LayoutOut layoutDst, LayoutIn layoutSrc)
     {
         auto computeLayoutSrc = GetPaddingComputeLayout(layoutSrc);
@@ -118,7 +101,7 @@ public:
 
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventIds[0]);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventIds[1]);
-        uint32_t coreLoops{ 0 };
+        uint32_t coreLoops{0};
         if (roundTileLen > COMPUTE_LENGTH) {
             // Handle the same tile on multiple loops.
             uint32_t loopsPerTile = (tileLen + COMPUTE_LENGTH - 1) / COMPUTE_LENGTH;
@@ -137,7 +120,7 @@ public:
                 ComputeLayout srcLayout = computeLayoutSrc.GetTileLayout(MatrixCoord(1, actualDataNum));
                 ComputeLayout ubLayout = ComputeLayout{1, actualDataNum};
                 ComputeLayout dstLayout = ComputeLayout(CeilDiv(actualDataNum, computeLayoutDst.shape(2)),
-                    computeLayoutDst.shape(2), computeLayoutDst.stride(3));
+                                                        computeLayoutDst.shape(2), computeLayoutDst.stride(3));
 
                 copyGm2Ub(inputBuffer[bufferIndex], src[gmSrcOffset], ubLayout, srcLayout);
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventIds[bufferIndex]);
@@ -166,7 +149,7 @@ public:
                 ComputeLayout srcLayout = computeLayoutSrc.GetTileLayout(MatrixCoord(actualTilesNum, tileLen));
                 ComputeLayout ubLayout = ComputeLayout{actualTilesNum, tileLen, roundTileLen};
                 ComputeLayout dstLayout = ComputeLayout{CeilDiv(tileLen, computeLayoutDst.shape(2)),
-                    computeLayoutDst.shape(2), computeLayoutDst.stride(3)};
+                                                        computeLayoutDst.shape(2), computeLayoutDst.stride(3)};
 
                 copyGm2Ub(inputBuffer[bufferIndex], src[gmSrcOffset], ubLayout, srcLayout);
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventIds[bufferIndex]);
@@ -187,30 +170,26 @@ public:
     }
 
     CATLASS_DEVICE
-    ~PaddingMatrixBlockND() {}
+    ~PaddingMatrixBlockND()
+    {
+    }
+
 private:
     static const uint32_t BUFFER_NUM = 2;
     AscendC::LocalTensor<Element> inputBuffer[BUFFER_NUM];
     AscendC::TEventID eventIds[BUFFER_NUM] = {EVENT_ID0, EVENT_ID1};
-    uint32_t bufferIndex{ 0 };
+    uint32_t bufferIndex{0};
     static_assert(BUFFER_NUM * COMPUTE_LENGTH * sizeof(Element) <= ArchTag::UB_SIZE, "Excedding the UB space!");
 };
 
-template<
-    class ArchTag_,
-    class Element_,
-    class Layout_,
-    uint32_t COMPUTE_LENGTH
->
+template <class ArchTag_, class Element_, class Layout_, uint32_t COMPUTE_LENGTH>
 struct PaddingMatrix {
 public:
     using ArchTag = ArchTag_;
     using Element = Element_;
     using Layout = Layout_;
-    using CopyGm2Ub = Catlass::Epilogue::Tile::CopyGm2Ub<
-        ArchTag, Gemm::GemmType<Element, Catlass::layout::RowMajor>>;
-    using CopyUb2Gm = Catlass::Epilogue::Tile::CopyUb2Gm<
-        ArchTag, Gemm::GemmType<Element, Catlass::layout::RowMajor>>;
+    using CopyGm2Ub = Catlass::Epilogue::Tile::CopyGm2Ub<ArchTag, Gemm::GemmType<Element, Catlass::layout::RowMajor>>;
+    using CopyUb2Gm = Catlass::Epilogue::Tile::CopyUb2Gm<ArchTag, Gemm::GemmType<Element, Catlass::layout::RowMajor>>;
     using ComputeLayout = Catlass::layout::RowMajor;
 
     CopyGm2Ub copyGm2Ub;
@@ -239,8 +218,7 @@ public:
     }
 
     CATLASS_DEVICE
-    void operator()(AscendC::GlobalTensor<Element> const &dst,
-                    AscendC::GlobalTensor<Element> const &src,
+    void operator()(AscendC::GlobalTensor<Element> const &dst, AscendC::GlobalTensor<Element> const &src,
                     Layout layoutDst, Layout layoutSrc)
     {
         ComputeLayout computeLayoutSrc = GetPaddingComputeLayout(layoutSrc);
@@ -267,7 +245,7 @@ public:
 
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventIds[0]);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventIds[1]);
-        uint32_t coreLoops{ 0 };
+        uint32_t coreLoops{0};
         if (paddingStride > COMPUTE_LENGTH) {
             // Handle the same tile on multiple loops.
             uint32_t loopsPerTile = (tileLen + COMPUTE_LENGTH - 1) / COMPUTE_LENGTH;
@@ -331,20 +309,19 @@ public:
     }
 
     CATLASS_DEVICE
-    ~PaddingMatrix() {}
+    ~PaddingMatrix()
+    {
+    }
+
 private:
     static const uint32_t BUFFER_NUM = 2;
     AscendC::LocalTensor<Element> inputBuffer[BUFFER_NUM];
     AscendC::TEventID eventIds[BUFFER_NUM] = {EVENT_ID0, EVENT_ID1};
-    uint32_t bufferIndex{ 0 };
+    uint32_t bufferIndex{0};
     static_assert(BUFFER_NUM * COMPUTE_LENGTH * sizeof(Element) <= ArchTag::UB_SIZE, "Excedding the UB space!");
 };
 
-template <
-    class BlockMmad_,
-    class BlockEpilogue_,
-    class BlockScheduler_
->
+template <class BlockMmad_, class BlockEpilogue_, class BlockScheduler_>
 class PaddingMatmul {
 public:
     using BlockMmad = BlockMmad_;
@@ -382,27 +359,30 @@ public:
 
         // Methods
         CATLASS_DEVICE
-        Params() {}
+        Params()
+        {
+        }
 
         CATLASS_DEVICE
-        Params(GemmCoord const &problemShape_,
-               GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_, GM_ADDR ptrC_, LayoutC layoutC_,
-               GM_ADDR ptrWA_, LayoutA layoutWA_, GM_ADDR ptrWB_, LayoutB layoutWB_)
-            : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_),
-              ptrC(ptrC_), layoutC(layoutC_), ptrWA(ptrWA_), layoutWA(layoutWA_), ptrWB(ptrWB_), layoutWB(layoutWB_) {}
+        Params(GemmCoord const &problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_,
+               GM_ADDR ptrC_, LayoutC layoutC_, GM_ADDR ptrWA_, LayoutA layoutWA_, GM_ADDR ptrWB_, LayoutB layoutWB_)
+            : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_), ptrC(ptrC_),
+              layoutC(layoutC_), ptrWA(ptrWA_), layoutWA(layoutWA_), ptrWB(ptrWB_), layoutWB(layoutWB_)
+        {
+        }
     };
 
     // Methods
     CATLASS_DEVICE
-    PaddingMatmul() {}
+    PaddingMatmul()
+    {
+    }
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE
-    void operator()(Params const &params);
+    CATLASS_DEVICE void operator()(Params const &params);
 
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIV>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
     {
         AscendC::GlobalTensor<ElementA> gmA;
         AscendC::GlobalTensor<ElementA> gmWA;
@@ -425,8 +405,7 @@ public:
 
     /// Executes matmul
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIC>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
     {
         Catlass::Arch::CrossCoreWaitFlag(flagAivFinishPadding);
 
@@ -457,11 +436,8 @@ public:
             int64_t gmOffsetC = params.layoutC.GetOffset(offsetC);
 
             // Compute block-scoped matrix multiply-add
-            blockMmad(
-                gmA[gmOffsetA], params.layoutWA,
-                gmB[gmOffsetB], params.layoutWB,
-                gmC[gmOffsetC], params.layoutC,
-                actualBlockShape);
+            blockMmad(gmA[gmOffsetA], params.layoutWA, gmB[gmOffsetB], params.layoutWB, gmC[gmOffsetC], params.layoutC,
+                      actualBlockShape);
         }
     }
 

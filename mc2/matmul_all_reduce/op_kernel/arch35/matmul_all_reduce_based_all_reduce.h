@@ -17,11 +17,10 @@
 #include "matmul_all_reduce_base.h"
 namespace MatmulAllReduceImpl {
 template <typename XType, typename YType, Mc2CoreType CoreType, int commMode>
-class MatmulAllReduceBase<XType, YType, CoreType, false, commMode>
-{
+class MatmulAllReduceBase<XType, YType, CoreType, false, commMode> {
 public:
-    __aicore__ inline MatmulAllReduceBase(
-        MC2GmAddrs* addrs, QuantGmAddrs* quantAddrs, ArnGmAddrs* arnAddrs, MC2TilingHeader* tilingData, TPipe* tPipe)
+    __aicore__ inline MatmulAllReduceBase(MC2GmAddrs *addrs, QuantGmAddrs *quantAddrs, ArnGmAddrs *arnAddrs,
+                                          MC2TilingHeader *tilingData, TPipe *tPipe)
         : addrs_(addrs), quantAddrs_(quantAddrs), arnAddrs_(arnAddrs), tilingData_(tilingData), tPipe_(tPipe)
     {
         if constexpr (CoreType == Mc2CoreType::ON_CUBE) {
@@ -36,7 +35,7 @@ public:
     {
         hccl_.InitV2(GetHcclContext<0>(), tilingData_);
         hccl_.SetCcTilingV2(offsetof(MC2TilingHeader, mc2CcTiling));
-        __gm__ HcclCombinOpParam* context = (__gm__ HcclCombinOpParam*)(GetHcclContext<0>());
+        __gm__ HcclCombinOpParam *context = (__gm__ HcclCombinOpParam *)(GetHcclContext<0>());
         OOMInit(context);
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         addrs_->cGM = addrs_->workspaceGM + paramInTiling_->nd2NzWorkLen + paramInTiling_->biasLen;
@@ -73,14 +72,14 @@ public:
         }
 
         if (notifyFlag_) {
-            tileInfo_.hcclHandleId = hccl_.template AllReduce(
-                addrs_->cGM, addrs_->outputGM, tileInfo_.cOffset, HCCL_DATA_TYPE, AscendC::HCCL_REDUCE_SUM,
-                paramInTiling_->tileCnt);
+            tileInfo_.hcclHandleId =
+                hccl_.template AllReduce(addrs_->cGM, addrs_->outputGM, tileInfo_.cOffset, HCCL_DATA_TYPE,
+                                         AscendC::HCCL_REDUCE_SUM, paramInTiling_->tileCnt);
             if (tailFlag_) {
                 const uint64_t offset = tileInfo_.cAddrOffset * paramInTiling_->tileCnt;
-                tailInfo_.hcclHandleId = hccl_.template AllReduce(
-                    addrs_->cGM + offset, addrs_->outputGM + offset, tailInfo_.cOffset, HCCL_DATA_TYPE,
-                    AscendC::HCCL_REDUCE_SUM, paramInTiling_->tailCnt);
+                tailInfo_.hcclHandleId =
+                    hccl_.template AllReduce(addrs_->cGM + offset, addrs_->outputGM + offset, tailInfo_.cOffset,
+                                             HCCL_DATA_TYPE, AscendC::HCCL_REDUCE_SUM, paramInTiling_->tailCnt);
             }
         }
     }
@@ -102,12 +101,13 @@ protected:
     }
 #endif
 
-    __aicore__ inline void PostProcEachTurn(AscendC::HcclHandle handleId, uint64_t aOffset, uint64_t cOffset, uint64_t index = 0)
+    __aicore__ inline void PostProcEachTurn(AscendC::HcclHandle handleId, uint64_t aOffset, uint64_t cOffset,
+                                            uint64_t index = 0)
     {
         if (addFlag_ && addrs_->cGM != addrs_->addGM) {
             Mc2SyncAll<CoreType>();
-            MatmulAllReduceAddX3Kernel<YType>(
-                addrs_->cGM, addrs_->addGM, cOffset / sizeof(YType), paramInTiling_->addX3UbCnt, tPipe_);
+            MatmulAllReduceAddX3Kernel<YType>(addrs_->cGM, addrs_->addGM, cOffset / sizeof(YType),
+                                              paramInTiling_->addX3UbCnt, tPipe_);
             addrs_->addGM += cOffset;
         }
 
@@ -140,14 +140,14 @@ protected:
         }
     }
 
-    MC2GmAddrs* addrs_;
-    QuantGmAddrs* quantAddrs_;
-    ArnGmAddrs* arnAddrs_;
-    Mc2Tiling::Mc2Msg* msgInTiling_;
-    Mc2Tiling::RCSTiling* paramInTiling_;
+    MC2GmAddrs *addrs_;
+    QuantGmAddrs *quantAddrs_;
+    ArnGmAddrs *arnAddrs_;
+    Mc2Tiling::Mc2Msg *msgInTiling_;
+    Mc2Tiling::RCSTiling *paramInTiling_;
     MC2TileInfo tileInfo_, tailInfo_;
-    MC2TilingHeader* tilingData_;
-    TPipe* tPipe_;
+    MC2TilingHeader *tilingData_;
+    TPipe *tPipe_;
     typename HcclTypeSelector<commMode>::type hccl_;
     bool notifyFlag_;
     bool addFlag_;

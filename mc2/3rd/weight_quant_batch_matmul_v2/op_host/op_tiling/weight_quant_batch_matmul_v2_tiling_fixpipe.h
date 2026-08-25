@@ -21,15 +21,14 @@
 
 namespace optiling {
 
-class Mc2WeightQuantBatchMatmulV2TilingFixpipe : public Mc2WeightQuantBatchMatmulV2Tiling
-{
+class Mc2WeightQuantBatchMatmulV2TilingFixpipe : public Mc2WeightQuantBatchMatmulV2Tiling {
 public:
-    explicit Mc2WeightQuantBatchMatmulV2TilingFixpipe(gert::TilingContext* context)
+    explicit Mc2WeightQuantBatchMatmulV2TilingFixpipe(gert::TilingContext *context)
         : Mc2WeightQuantBatchMatmulV2Tiling(context)
     {
         Reset();
     };
-    void Reset(gert::TilingContext* context) override
+    void Reset(gert::TilingContext *context) override
     {
         TilingBaseClass::Reset(context);
         Reset();
@@ -45,9 +44,8 @@ protected:
         TilingBaseClass::Reset(context_);
         aFullLoad_ = 0;
 
-        OP_TILING_CHECK(memset_s(
-                            context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(), 0,
-                            context_->GetRawTilingData()->GetCapacity()) != EOK,
+        OP_TILING_CHECK(memset_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
+                                 0, context_->GetRawTilingData()->GetCapacity()) != EOK,
                         OP_LOGE(opName_, "fail to memset tiling data"), return;);
     }
 

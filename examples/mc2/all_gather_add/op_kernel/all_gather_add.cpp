@@ -17,8 +17,8 @@
 
 using namespace AscendC;
 
-extern "C" __global__ __aicore__ void all_gather_add(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM,
-    GM_ADDR gatherGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+extern "C" __global__ __aicore__ void all_gather_add(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR gatherGM,
+                                                     GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     // 设置kernel类型，AIC、AIV混合场景下，控制算子执行时仅启动AI Core上的Vector核
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIV_1_0);

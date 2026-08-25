@@ -1,18 +1,18 @@
 /**
-* Copyright (c) 2025 Huawei Technologies Co., Ltd.
-* This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-* CANN Open Software License Agreement Version 2.0 (the "License").
-* Please refer to the License for details. You may not use this file except in compliance with the License.
-* THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-* INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-* See LICENSE in the root of the software repository for the full text of the License.
-*/
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 
 /*!
-* \file abs.cpp
-* \brief
-*/
+ * \file abs.cpp
+ * \brief
+ */
 
 #include "update_context_torch.h"
 
@@ -35,7 +35,7 @@ TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
 
 static int32_t CreatMc2Context(HcclComm &comm, int64_t worldSize, int64_t &cclBufferSize, Mc2ContextStru *mc2Context)
 {
-    uint32_t ctxIndex =  0;
+    uint32_t ctxIndex = 0;
 
     uint32_t rankId;
     (void)HcclGetRankId(comm, &rankId);
@@ -59,10 +59,10 @@ static int32_t CreatMc2Context(HcclComm &comm, int64_t worldSize, int64_t &cclBu
 }
 
 
-static int32_t CreateHcclContext(HcclComm &commHandle, void *opArgs, int64_t worldSize,
-                                    const char* groupName, std::string algConfig, uint32_t opType)
+static int32_t CreateHcclContext(HcclComm &commHandle, void *opArgs, int64_t worldSize, const char *groupName,
+                                 std::string algConfig, uint32_t opType)
 {
-    HcclResult ret = static_cast<HcclResult>(HcclKfcOpArgsSetAlgConfig(opArgs, const_cast<char*>(algConfig.c_str())));
+    HcclResult ret = static_cast<HcclResult>(HcclKfcOpArgsSetAlgConfig(opArgs, const_cast<char *>(algConfig.c_str())));
     TORCH_CHECK(ret == 0, "HcclKfcOpArgsSetAlgConfig failed, ret:", ret);
 
     ret = static_cast<HcclResult>(HcclCommGetHandleWithName(groupName, &commHandle));
@@ -88,19 +88,20 @@ static int32_t CreateHcclContext(HcclComm &commHandle, void *opArgs, int64_t wor
     return 0;
 }
 
-static int32_t GetMc2Context(Mc2ContextStru* mc2ContextHost, int64_t epWorldSize, int64_t &cclBufferSize, const char* groupEpStr)
+static int32_t GetMc2Context(Mc2ContextStru *mc2ContextHost, int64_t epWorldSize, int64_t &cclBufferSize,
+                             const char *groupEpStr)
 {
-    void* opArgs = nullptr;
+    void *opArgs = nullptr;
     HcclResult ret = static_cast<HcclResult>(HcclKfcAllocOpArgs(&opArgs));
     TORCH_CHECK(ret == 0, "HcclKfcAllocOpArgs failed, ret:", ret);
 
-    uint8_t commEngine = COMM_ENGINE_AIV; //默认AIV引擎，应该是4
+    uint8_t commEngine = COMM_ENGINE_AIV; // 默认AIV引擎，应该是4
     ret = static_cast<HcclResult>(HcclKfcOpArgsSetCommEngine(opArgs, (uint8_t)commEngine));
     TORCH_CHECK(ret == 0, "HcclKfcOpArgsSetCommEngine failed, ret:", ret);
 
     HcclComm epCommHandle;
     int32_t contextRet = CreateHcclContext(epCommHandle, opArgs, epWorldSize, groupEpStr, EP_ALG_CONFIG, EP_OP_TYPE);
-    TORCH_CHECK(contextRet == 0, "CreateHcclContext failed, ret:", contextRet);\
+    TORCH_CHECK(contextRet == 0, "CreateHcclContext failed, ret:", contextRet);
 
     contextRet = CreatMc2Context(epCommHandle, epWorldSize, cclBufferSize, mc2ContextHost);
     TORCH_CHECK(contextRet == 0, "CreatMc2Context failed, ret:", contextRet);
@@ -113,9 +114,9 @@ static int32_t GetMc2Context(Mc2ContextStru* mc2ContextHost, int64_t epWorldSize
 }
 
 /**
-* @param x Input Tensor (on NPU)
-* @return Result Tensor
-*/
+ * @param x Input Tensor (on NPU)
+ * @return Result Tensor
+ */
 std::tuple<at::Tensor, int64_t> update_context(const at::Tensor &x, c10::string_view group_ep, int64_t ep_world_size)
 {
     bool isSameGroup = false;
@@ -125,14 +126,17 @@ std::tuple<at::Tensor, int64_t> update_context(const at::Tensor &x, c10::string_
         return std::make_tuple(output, bufferSize);
     }
 
-    
+
     Mc2ContextStru mc2ContextHost[2];
     int32_t ret = GetMc2Context(mc2ContextHost, ep_world_size, bufferSize, new_group_ep_str.c_str());
     TORCH_CHECK(ret == 0, "GetMc2Context failed, ret", ret);
     at::Tensor hostContext = at::from_blob(&mc2ContextHost, {sizeof(Mc2ContextStru) * 2 / sizeof(int32_t)}, at::kInt);
 
-    output = at::empty({sizeof(Mc2ContextStru) * 2 / sizeof(int32_t)}, at::TensorOptions().dtype(at::kInt)
-        .device(c10::DeviceType::PrivateUse1).memory_format(c10::MemoryFormat::Contiguous));
+    output =
+        at::empty({sizeof(Mc2ContextStru) * 2 / sizeof(int32_t)}, at::TensorOptions()
+                                                                      .dtype(at::kInt)
+                                                                      .device(c10::DeviceType::PrivateUse1)
+                                                                      .memory_format(c10::MemoryFormat::Contiguous));
     output.copy_(hostContext);
     last_group_ep_str = new_group_ep_str;
     isInit = true;
@@ -143,5 +147,5 @@ TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m)
 {
     m.impl("updateContext", update_context);
 }
-}
-}
+} // namespace Update_Context
+} // namespace ascend_ops

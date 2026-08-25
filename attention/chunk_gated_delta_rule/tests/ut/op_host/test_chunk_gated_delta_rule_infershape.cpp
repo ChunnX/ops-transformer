@@ -20,8 +20,7 @@
 #include "infer_shape_case_executor.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
-class ChunkGatedDeltaRuleTest : public testing::Test
-{
+class ChunkGatedDeltaRuleTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -54,7 +53,8 @@ TEST_F(ChunkGatedDeltaRuleTest, Test0)
     gert::StorageShape seqLengthsShape = {{bs}, {bs}};
     gert::StorageShape gShape = {{t, nv}, {t, nv}};
 
-    gert::InfershapeContextPara infershapeContextPara("ChunkGatedDeltaRule",
+    gert::InfershapeContextPara infershapeContextPara(
+        "ChunkGatedDeltaRule",
         {
             // 输入：query/key/value/beta/initial_state/actual_seq_lengths/g
             {queryShape, ge::DT_BF16, ge::FORMAT_ND},
@@ -73,8 +73,7 @@ TEST_F(ChunkGatedDeltaRuleTest, Test0)
         {
             // 常量输入：scale_value
             {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
-        }
-    );
+        });
 
     // 预期输出 shape：out 与 final_state
     std::vector<std::vector<int64_t>> expectOutputShape = {{t, nv, dv}, {bs, nv, dv, dk}};

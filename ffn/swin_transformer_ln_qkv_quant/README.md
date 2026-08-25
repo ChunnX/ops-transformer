@@ -15,14 +15,14 @@
 
 ## 功能说明
 
-- 算子功能：Swin Transformer 网络模型 完成 Q、K、V 的计算。  
+- 算子功能：Swin Transformer网络模型完成Q、K、V的计算。  
 - 计算公式：  
 
     $$
     (Q,K,V)=(Quant(Layernorm(x).transpose()) * weight).dequant().transpose().split()
     $$  
 
-  其中，weight 是 Q、K、V 三个矩阵权重的拼接。
+  其中，weight是Q、K、V三个矩阵权重的拼接。
 
 ## 参数说明
 
@@ -115,21 +115,21 @@
   <tr>
     <td>epsilon</td>
     <td>输入</td>
-    <td>layernorm 计算除0保护值；为了保证精度，建议小于等于1e-4。</td>
+    <td>layernorm计算除0保护值；为了保证精度，建议小于等于1e-4。</td>
     <td>float</td>
     <td>-</td>
   </tr>
   <tr>
     <td>oriHeight</td>
     <td>输入</td>
-    <td>layernorm 中S轴transpose的维度；oriHeight*oriWeight需等于输入x的第二维S的大小，且为hWinSize的整数倍。</td>
+    <td>layernorm中S轴transpose的维度；oriHeight*oriWeight需等于输入x的第二维S的大小，且为hWinSize的整数倍。</td>
     <td>int</td>
     <td>-</td>
   </tr>
   <tr>
     <td>oriWeight</td>
     <td>输入</td>
-    <td>layernorm 中S轴transpose的维度；oriHeight*oriWeight需等于输入x的第二维S的大小，且为wWinSize的整数倍。</td>
+    <td>layernorm中S轴transpose的维度；oriHeight*oriWeight需等于输入x的第二维S的大小，且为wWinSize的整数倍。</td>
     <td>int</td>
     <td>-</td>
   </tr>

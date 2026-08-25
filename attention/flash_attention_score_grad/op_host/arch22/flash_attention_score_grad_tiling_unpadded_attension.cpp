@@ -44,6 +44,9 @@ public:
         bool isTND = actualSeqQLenTensor != nullptr && actualSeqQLenTensor->GetShapeSize() > 0 &&
                      actualSeqKVLenTensor != nullptr && actualSeqKVLenTensor->GetShapeSize() > 0;
         if (isTND) {
+            if (isMaxWorkspace_) {
+                return false;
+            }
             if (!isTndSABHit(context_)) {
                 OP_LOGI(context_, "TND layout FlashAttentionScoreGradTilingUnpaddedAttension hit.");
                 return true;

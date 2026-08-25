@@ -58,7 +58,7 @@ macro(add_modules_sources)
   if((AclnnExtraVersionLen GREATER 1) AND (OpTypeLen GREATER 1))
     message(FATAL_ERROR "There should be only 1 optype if there are more than 1 aclnn extra versions!")
   endif()
-  
+
   # opapi 默认全部编译
   file(GLOB OPAPI_SRCS ${OP_API_SRC_DIR}/*.cpp)
   if (OPAPI_SRCS)
@@ -106,7 +106,7 @@ macro(add_modules_sources)
   endif()
 
   file(GLOB_RECURSE SUB_OPTILING_SRC ${SOURCE_DIR}/op_tiling/*.cpp)
-  file(GLOB OPTILING_SRCS 
+  file(GLOB OPTILING_SRCS
       ${SOURCE_DIR}/*_tiling*.cpp
       ${SOURCE_DIR}/op_tiling/arch35/*.cpp)
   if (OPTILING_SRCS OR SUB_OPTILING_SRC)
@@ -114,6 +114,21 @@ macro(add_modules_sources)
     add_tiling_modules()
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${OPTILING_SRCS} ${SUB_OPTILING_SRC})
     # target_include_directories(${OPHOST_NAME}_tiling_obj PRIVATE ${SOURCE_DIR}/../../ ${SOURCE_DIR})
+    # 本 op 标记了 pypto kernel（enable_pypto_kernel 设置了 PYPTO_GEN_DIR）：对本 op 的 tiling cpp
+    # force-include 生成头，源码里无需显式 include。按文件列表 scope（只命中本 op 的 tiling 源，
+    # 不波及共享 ${OPHOST_NAME}_tiling_obj 上其它算子）。顺序：*_tilingkey.h 在前（其
+    # template_argument.h 带 <cstdint>），*_tiling.h 在后（用 int64_t）。
+    if (DEFINED PYPTO_GEN_DIR)
+        file(GLOB _pypto_key_h  ${PYPTO_GEN_DIR}/*_tilingkey.h)
+        file(GLOB _pypto_data_h ${PYPTO_GEN_DIR}/*_tiling.h)
+        set(_pypto_force_opts "")
+        foreach (_h ${_pypto_key_h} ${_pypto_data_h})
+            list(APPEND _pypto_force_opts -include ${_h})
+        endforeach ()
+        set_source_files_properties(${OPTILING_SRCS} ${SUB_OPTILING_SRC}
+            TARGET_DIRECTORY ${OPHOST_NAME}_tiling_obj
+            PROPERTIES COMPILE_OPTIONS "${_pypto_force_opts}")
+    endif()
   endif()
 
   file(GLOB FALLBACK_SRCS ${SOURCE_DIR}/../op_graph/*fallback*.cpp)
@@ -201,6 +216,8 @@ macro(add_modules_sources_with_soc)
     set(COMPILED_OP_DIRS ${COMPILED_OP_DIRS} ${PARENT_DIR} CACHE STRING "Compiled Ops Dirs" FORCE)
   endif()
 
+  add_opbase_modules()
+
   # opapi 默认全部编译
   file(GLOB OPAPI_SRCS ${OP_API_SRC_DIR}/*.cpp)
   if (OPAPI_SRCS)
@@ -243,7 +260,7 @@ macro(add_modules_sources_with_soc)
   endforeach()
   # deduplicate
  	list(REMOVE_DUPLICATES OP_ARCH_DIRECTORY)
-  
+
   file(GLOB OPINFER_SRCS ${SOURCE_DIR}/*_infershape*.cpp)
   foreach(ARCH ${OP_ARCH_DIRECTORY})
     file(GLOB_RECURSE files ${SOURCE_DIR}/${ARCH}/*_infershape*.cpp)
@@ -286,6 +303,21 @@ macro(add_modules_sources_with_soc)
     add_tiling_modules()
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${OPTILING_SRCS} ${SUB_OPTILING_SRC})
     # target_include_directories(${OPHOST_NAME}_tiling_obj PRIVATE ${SOURCE_DIR}/../../ ${SOURCE_DIR})
+    # 本 op 标记了 pypto kernel（enable_pypto_kernel 设置了 PYPTO_GEN_DIR）：对本 op 的 tiling cpp
+    # force-include 生成头，源码里无需显式 include。按文件列表 scope（只命中本 op 的 tiling 源，
+    # 不波及共享 ${OPHOST_NAME}_tiling_obj 上其它算子）。顺序：*_tilingkey.h 在前（其
+    # template_argument.h 带 <cstdint>），*_tiling.h 在后（用 int64_t）。
+    if (DEFINED PYPTO_GEN_DIR)
+        file(GLOB _pypto_key_h  ${PYPTO_GEN_DIR}/*_tilingkey.h)
+        file(GLOB _pypto_data_h ${PYPTO_GEN_DIR}/*_tiling.h)
+        set(_pypto_force_opts "")
+        foreach (_h ${_pypto_key_h} ${_pypto_data_h})
+            list(APPEND _pypto_force_opts -include ${_h})
+        endforeach ()
+        set_source_files_properties(${OPTILING_SRCS} ${SUB_OPTILING_SRC}
+            TARGET_DIRECTORY ${OPHOST_NAME}_tiling_obj
+            PROPERTIES COMPILE_OPTIONS "${_pypto_force_opts}")
+    endif()
   endif()
 
   file(GLOB FALLBACK_SRCS ${SOURCE_DIR}/../op_graph/*fallback*.cpp)
@@ -356,15 +388,15 @@ function(add_opapi_modules)
     target_include_directories(${OPHOST_NAME}_opapi_obj
       PRIVATE
       ${OPAPI_INCLUDE}
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common/op_host>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/pkg_inc/op_common>>
       ${OPAPI_UT_DEPEND_INC}
       $<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include>
       $<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/aclnn>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef/common/util>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common/op_host>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/pkg_inc/op_common>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/hccl/external>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/profiling>>
       ${OPS_TRANSFORMER_DIR}/mc2/common/utils
@@ -397,16 +429,17 @@ function(add_opapi_modules)
       ascend_dump
       ascendalog
       dl
+      PRIVATE $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
       )
   endif()
 endfunction()
 
 set(INFER_OBJ_INCLUDE
   ${OP_PROTO_INCLUDE}
+  $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common>>
   $<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include>
   $<BUILD_INTERFACE:${OPS_TRANSFORMER_DIR}/common/include>
   $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment>>
-  $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common>>
   $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/hccl/external>>
   $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef/common/util>>
   $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/external>>
@@ -472,7 +505,7 @@ function(add_opbase_modules)
 
   if(OPS_BASE_UTIL_SRC)
     add_library(opbase_util_objs OBJECT ${OPS_BASE_UTIL_SRC})
-    target_include_directories(opbase_util_objs PRIVATE ${OP_TILING_INCLUDE})
+    target_include_directories(opbase_util_objs PRIVATE ${OP_TILING_INCLUDE} ${ASCEND_DIR}/pkg_inc)
     target_compile_options(opbase_util_objs
         PRIVATE
         $<$<NOT:$<BOOL:${ENABLE_TEST}>>:-DDISABLE_COMPILE_V1> -Dgoogle=ascend_private
@@ -536,12 +569,12 @@ function(add_tiling_modules)
     add_dependencies(${OPHOST_NAME}_tiling_obj json)
     target_include_directories(${OPHOST_NAME}_tiling_obj
       PRIVATE ${OP_TILING_INCLUDE}
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common/op_host>>
       $<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include>
       $<BUILD_INTERFACE:${OPS_TRANSFORMER_DIR}/common/include>
-      
+
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/version>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common/op_host>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef/common/util>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/profiling>>
@@ -589,12 +622,16 @@ function(add_tiling_modules)
       c_sec
     )
   endif()
+  # Supplement the existing tiling_obj with built-in package macros for C++ conditional compilation.
+  if(ENABLE_BUILT_IN AND TARGET ${OPHOST_NAME}_tiling_obj)
+    target_compile_definitions(${OPHOST_NAME}_tiling_obj PRIVATE ENABLE_BUILT_IN=1)
+  endif()
 endfunction()
 
 function(add_graph_plugin_modules)
   if(NOT TARGET ${GRAPH_PLUGIN_NAME}_obj)
     add_library(${GRAPH_PLUGIN_NAME}_obj OBJECT)
-    target_include_directories(${GRAPH_PLUGIN_NAME}_obj PRIVATE 
+    target_include_directories(${GRAPH_PLUGIN_NAME}_obj PRIVATE
       ${OP_PROTO_INCLUDE}
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include>>
     )
@@ -660,10 +697,10 @@ function(add_fallback_modules)
 
     target_include_directories(${OPGRAPH_NAME}_fallback_obj
       PRIVATE
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/pkg_inc/op_common>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/runtime>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/msprof>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime>>
@@ -713,7 +750,7 @@ macro(add_graph_plugin_sources)
     endif()
   endif()
 
-  file(GLOB GRAPH_PLUGIN_SRCS 
+  file(GLOB GRAPH_PLUGIN_SRCS
       ${SOURCE_DIR}/*_graph_plugin*.cpp
       ${SOURCE_DIR}/fusion_pass/*fusion_pass*.cpp
   )
@@ -781,7 +818,7 @@ function(protobuf_generate_external comp c_var h_var)
 
     if (_add_target)
       add_custom_target(
-        ${comp} DEPENDS ${${c_var}} ${${h_var}}) 
+        ${comp} DEPENDS ${${c_var}} ${${h_var}})
     endif()
 
     set_source_files_properties(${${c_var}} ${${h_var}} PROPERTIES GENERATED TRUE)
@@ -794,7 +831,7 @@ function(add_onnx_plugin_modules)
   if (NOT TARGET ${ONNX_PLUGIN_NAME}_obj)
     set(ge_onnx_proto_srcs
       ${ASCEND_DIR}/include/proto/ge_onnx.proto)
-    
+
     protobuf_generate_external(onnx ge_onnx_proto_cc ge_onnx_proto_h ${ge_onnx_proto_srcs})
 
     add_library(${ONNX_PLUGIN_NAME}_obj OBJECT ${ge_onnx_proto_h})

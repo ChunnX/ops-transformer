@@ -27,11 +27,9 @@ static ge::graphStatus InferShapeDistributeBarrierExtend(gert::InferShapeContext
 {
     OPS_LOG_D(context->GetNodeName(), "Begin to do InferShapeDistributeBarrierExtend.");
     // 获取输入shape
-    const gert::Shape *xRefInputShape =
-        context->GetInputShape(BARRIER_INPUT_X_REF_INDEX);
+    const gert::Shape *xRefInputShape = context->GetInputShape(BARRIER_INPUT_X_REF_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, xRefInputShape);
-    gert::Shape *xRefOutputShape =
-        context->GetOutputShape(BARRIER_OUTPUT_X_REF_INDEX);
+    gert::Shape *xRefOutputShape = context->GetOutputShape(BARRIER_OUTPUT_X_REF_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, xRefOutputShape);
 
     // 这里要获取输入的dim，然后循环给输出赋值
@@ -45,16 +43,14 @@ static ge::graphStatus InferShapeDistributeBarrierExtend(gert::InferShapeContext
 
 static ge::graphStatus InferDataTypeDistributeBarrierExtend(gert::InferDataTypeContext *context)
 {
-    OPS_LOG_D(context->GetNodeName(),
-              "Begin to do InferDataTypeDistributeBarrierExtend.");
+    OPS_LOG_D(context->GetNodeName(), "Begin to do InferDataTypeDistributeBarrierExtend.");
     auto xRefDtype = context->GetInputDataType(BARRIER_INPUT_X_REF_INDEX);
     context->SetOutputDataType(BARRIER_OUTPUT_X_REF_INDEX, xRefDtype);
-    OPS_LOG_D(context->GetNodeName(),
-              "End to do InferDataTypeDistributeBarrierExtend.");
+    OPS_LOG_D(context->GetNodeName(), "End to do InferDataTypeDistributeBarrierExtend.");
     return ge::GRAPH_SUCCESS;
 }
 
 IMPL_OP_INFERSHAPE(DistributeBarrierExtend)
     .InferShape(InferShapeDistributeBarrierExtend)
     .InferDataType(InferDataTypeDistributeBarrierExtend);
-}  // namespace ops
+} // namespace ops

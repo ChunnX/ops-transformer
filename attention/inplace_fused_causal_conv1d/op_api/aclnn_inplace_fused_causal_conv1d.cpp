@@ -33,6 +33,11 @@ aclnnStatus InplaceFusedCausalConv1dCommonProcess(
     const aclTensor *initialStateIdx, int64_t activationMode, int64_t padSlotId, int64_t runMode, int64_t maxQueryLen,
     int64_t residualConnection, int64_t blockSize, int64_t convMode, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    // Mandatory tensors must be checked before any dereference (CreateView / Contiguous).
+    OP_CHECK_NULL(x, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(weight, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(convStates, return ACLNN_ERR_PARAM_NULLPTR);
+
     auto uniqueExecutor = CREATE_EXECUTOR();
 
     // Handle non-contiguous x input via CreateView (dual shape descriptor, zero-copy).
@@ -49,8 +54,11 @@ aclnnStatus InplaceFusedCausalConv1dCommonProcess(
     const aclTensor *weightFinal = l0op::Contiguous(weight, uniqueExecutor.get());
     CHECK_COND(weightFinal != nullptr, ACLNN_ERR_PARAM_NULLPTR, "Contiguous weight failed.");
 
-    // Optional tensors: contiguous if non-null
-    auto ensureContiguous = [&](const aclTensor *t) -> const aclTensor* {
+    // Optional tensors: contiguous if non-null.
+    // CHECK_COND at each call site distinguishes "not provided" (t == nullptr, legal) from
+    // "provided but Contiguous failed" (final == nullptr), so a genuine conversion failure is
+    // never silently degraded into "input not provided".
+    auto ensureContiguous = [&](const aclTensor *t) -> const aclTensor * {
         if (t == nullptr) {
             return nullptr;
         }
@@ -58,21 +66,44 @@ aclnnStatus InplaceFusedCausalConv1dCommonProcess(
     };
 
     const aclTensor *queryStartLocFinal = ensureContiguous(queryStartLoc);
-    const aclTensor *cacheIndicesFinal = ensureContiguous(cacheIndices);
-    const aclTensor *initialStateModeFinal = ensureContiguous(initialStateMode);
-    const aclTensor *biasFinal = ensureContiguous(bias);
-    const aclTensor *numAcceptedTokensFinal = ensureContiguous(numAcceptedTokens);
-    const aclTensor *numComputedTokensFinal = ensureContiguous(numComputedTokens);
-    const aclTensor *blockIdxFirstFinal = ensureContiguous(blockIdxFirstScheduledToken);
-    const aclTensor *blockIdxLastFinal = ensureContiguous(blockIdxLastScheduledToken);
-    const aclTensor *initialStateIdxFinal = ensureContiguous(initialStateIdx);
+    CHECK_COND(queryStartLoc == nullptr || queryStartLocFinal != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+               "Contiguous queryStartLoc failed.");
 
-    bool ok = l0op::InplaceFusedCausalConv1d(xFinal, weightFinal, convStatesFinal, queryStartLocFinal,
-                                             cacheIndicesFinal, initialStateModeFinal, biasFinal,
-                                             numAcceptedTokensFinal, numComputedTokensFinal, blockIdxFirstFinal,
-                                             blockIdxLastFinal, initialStateIdxFinal, activationMode, padSlotId,
-                                             runMode, maxQueryLen, residualConnection, blockSize, convMode,
-                                             uniqueExecutor.get());
+    const aclTensor *cacheIndicesFinal = ensureContiguous(cacheIndices);
+    CHECK_COND(cacheIndices == nullptr || cacheIndicesFinal != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+               "Contiguous cacheIndices failed.");
+
+    const aclTensor *initialStateModeFinal = ensureContiguous(initialStateMode);
+    CHECK_COND(initialStateMode == nullptr || initialStateModeFinal != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+               "Contiguous initialStateMode failed.");
+
+    const aclTensor *biasFinal = ensureContiguous(bias);
+    CHECK_COND(bias == nullptr || biasFinal != nullptr, ACLNN_ERR_PARAM_NULLPTR, "Contiguous bias failed.");
+
+    const aclTensor *numAcceptedTokensFinal = ensureContiguous(numAcceptedTokens);
+    CHECK_COND(numAcceptedTokens == nullptr || numAcceptedTokensFinal != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+               "Contiguous numAcceptedTokens failed.");
+
+    const aclTensor *numComputedTokensFinal = ensureContiguous(numComputedTokens);
+    CHECK_COND(numComputedTokens == nullptr || numComputedTokensFinal != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+               "Contiguous numComputedTokens failed.");
+
+    const aclTensor *blockIdxFirstFinal = ensureContiguous(blockIdxFirstScheduledToken);
+    CHECK_COND(blockIdxFirstScheduledToken == nullptr || blockIdxFirstFinal != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+               "Contiguous blockIdxFirstScheduledToken failed.");
+
+    const aclTensor *blockIdxLastFinal = ensureContiguous(blockIdxLastScheduledToken);
+    CHECK_COND(blockIdxLastScheduledToken == nullptr || blockIdxLastFinal != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+               "Contiguous blockIdxLastScheduledToken failed.");
+
+    const aclTensor *initialStateIdxFinal = ensureContiguous(initialStateIdx);
+    CHECK_COND(initialStateIdx == nullptr || initialStateIdxFinal != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+               "Contiguous initialStateIdx failed.");
+
+    bool ok = l0op::InplaceFusedCausalConv1d(
+        xFinal, weightFinal, convStatesFinal, queryStartLocFinal, cacheIndicesFinal, initialStateModeFinal, biasFinal,
+        numAcceptedTokensFinal, numComputedTokensFinal, blockIdxFirstFinal, blockIdxLastFinal, initialStateIdxFinal,
+        activationMode, padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode, uniqueExecutor.get());
     CHECK_RET(ok, ACLNN_ERR_INNER_TILING_ERROR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();

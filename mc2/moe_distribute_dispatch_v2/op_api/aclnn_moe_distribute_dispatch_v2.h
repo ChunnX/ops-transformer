@@ -42,45 +42,48 @@ extern "C" {
  * @param [in] globalBs: 计算可选输入，int。EP域全局的batch size大小。
  * @param [in] expertTokenNumsType: 计算可选输入，int。输出expertTokenNums中的值语义类型。
  * @param [in] commAlg: 计算可选输入，str。 通信算法类型。预留参数，暂未使用。
- * @param [out] expandXOut: 计算输出，Tensor，必选输出，数据类型支持float16, bfloat16, int8，仅支持2维，数据格式支持ND。根据
-    expertIdx进行扩展过的token特征。
- * @param [out] dynamicScalesOut: 计算输出，Tensor，必选输出，数据类型float32，仅支持1维，数据格式支持ND。quantMode为0时输出为空。
- * @param [out] assistInfoForCombineOut: 计算输出，Tensor，必选输出，数据类型int32，仅支持1维，数据格式支持ND,传输给combine算子的辅助信息。
- * @param [out] expertTokenNumsOut: 计算输出，Tensor，必选输出，数据类型int64，仅支持1维，数据格式支持ND。每个专家收到的token个数。
- * @param [out] epRecvCountsOut: 计算输出，Tensor，必选输出，数据类型int32，仅支持1维，数据格式支持ND。表示从各卡接收的token数。
- * @param [out] tpRecvCountsOut: 计算输出，Tensor，必选输出，数据类型int32，仅支持1维，数据格式支持ND。无tp通信域时输出为空。
+ * @param [out] expandXOut: 计算输出，Tensor，必选输出，数据类型支持float16, bfloat16,
+ int8，仅支持2维，数据格式支持ND。根据 expertIdx进行扩展过的token特征。
+ * @param [out] dynamicScalesOut:
+ 计算输出，Tensor，必选输出，数据类型float32，仅支持1维，数据格式支持ND。quantMode为0时输出为空。
+ * @param [out] assistInfoForCombineOut:
+ 计算输出，Tensor，必选输出，数据类型int32，仅支持1维，数据格式支持ND,传输给combine算子的辅助信息。
+ * @param [out] expertTokenNumsOut:
+ 计算输出，Tensor，必选输出，数据类型int64，仅支持1维，数据格式支持ND。每个专家收到的token个数。
+ * @param [out] epRecvCountsOut:
+ 计算输出，Tensor，必选输出，数据类型int32，仅支持1维，数据格式支持ND。表示从各卡接收的token数。
+ * @param [out] tpRecvCountsOut:
+ 计算输出，Tensor，必选输出，数据类型int32，仅支持1维，数据格式支持ND。无tp通信域时输出为空。
  * @param [out] expandScalesOut: 计算输出，Tensor，必选输出，数据类型float32，仅支持1维，数据格式支持ND。
  * @param [out] workspaceSize: 出参，返回需要在npu device侧申请的workspace大小。
  * @param [out] executor: 出参，返回op执行器，包含了算子计算流程。
  * @return aclnnStatus: 返回值，返回状态码
  *
  */
-ACLNN_API aclnnStatus aclnnMoeDistributeDispatchV2GetWorkspaceSize(const aclTensor* x, const aclTensor* expertIds,
-    const aclTensor* scalesOptional, const aclTensor* xActiveMaskOptional,
-    const aclTensor* expertScalesOptional,
-    const char* groupEp, int64_t epWorldSize, int64_t epRankId,
-    int64_t moeExpertNum, const char* groupTp, int64_t tpWorldSize,
-    int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum, 
-    int64_t sharedExpertRankNum, int64_t quantMode, int64_t globalBs,
-    int64_t expertTokenNumsType, const char* commAlg,
-    aclTensor* expandXOut, aclTensor* dynamicScalesOut,
-    aclTensor* assistInfoForCombineOut, aclTensor* expertTokenNumsOut,
-    aclTensor* epRecvCountsOut, aclTensor* tpRecvCountsOut, aclTensor* expandScalesOut,
-    uint64_t* workspaceSize, aclOpExecutor** executor);
+ACLNN_API aclnnStatus aclnnMoeDistributeDispatchV2GetWorkspaceSize(
+    const aclTensor *x, const aclTensor *expertIds, const aclTensor *scalesOptional,
+    const aclTensor *xActiveMaskOptional, const aclTensor *expertScalesOptional, const char *groupEp,
+    int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum, const char *groupTp, int64_t tpWorldSize,
+    int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum, int64_t sharedExpertRankNum, int64_t quantMode,
+    int64_t globalBs, int64_t expertTokenNumsType, const char *commAlg, aclTensor *expandXOut,
+    aclTensor *dynamicScalesOut, aclTensor *assistInfoForCombineOut, aclTensor *expertTokenNumsOut,
+    aclTensor *epRecvCountsOut, aclTensor *tpRecvCountsOut, aclTensor *expandScalesOut, uint64_t *workspaceSize,
+    aclOpExecutor **executor);
 
 /**
  * @brief aclnnMoeDistributeDispatch的第二段接口，用于执行计算。
  * @param [in] workspace: 在npu device侧申请的workspace内存起址。
- * @param [in] workspace_size: 在npu device侧申请的workspace大小，由第一段接口aclnnMoeDistributeDispatchGetWorkspaceSize获取。
+ * @param [in] workspace_size: 在npu
+ * device侧申请的workspace大小，由第一段接口aclnnMoeDistributeDispatchGetWorkspaceSize获取。
  * @param [in] executor: op执行器，包含了算子计算流程。
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */
-ACLNN_API aclnnStatus aclnnMoeDistributeDispatchV2(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                                 aclrtStream stream);
+ACLNN_API aclnnStatus aclnnMoeDistributeDispatchV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                                   aclrtStream stream);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // OP_API_INC_MOE_DISTRIBUTE_DISPATCH_
+#endif // OP_API_INC_MOE_DISTRIBUTE_DISPATCH_

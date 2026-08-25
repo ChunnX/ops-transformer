@@ -139,8 +139,7 @@ __aicore__ inline void DenseLISoftmaxLseVector<T>::InitParams(
 
     blockId_ = GetBlockIdx();
 
-    kSeqSizeAlignS2BaseSize_ = DenseLISoftmaxLseCommon::Align(constInfo.kSeqSize > constInfo.MAX_KEY_SEQ_LENGTH ?
-        constInfo.MAX_KEY_SEQ_LENGTH : constInfo.kSeqSize, (uint64_t)s2BaseSize_);
+    kSeqSizeAlignS2BaseSize_ = DenseLISoftmaxLseCommon::Align(constInfo.kSeqSize, (uint64_t)s2BaseSize_);
 }
 
 template <typename T>

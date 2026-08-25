@@ -69,6 +69,7 @@ struct MoeV3Arch35GatherOutComputeTilingData {
     int64_t lastLoopCols{0};
     int64_t activeNum{0};
     int64_t xCopyInQueueBufferNum{2};
+    int64_t useCompactGatherOutDropPad{0};
 };
 
 // DropPad模式下的SrcToDst阶段TilingData
@@ -87,23 +88,6 @@ struct MoeV3Arch35SrcToDstCapacityComputeTilingData {
     int64_t colLoops{0};
 };
 
-// DropPad模式下的GatherOut阶段TilingData
-struct MoeV3Arch35GatherOutDropPadComputeTilingData {
-    int64_t needCoreNum{0};
-    int64_t perCoreIndicesElements{0};
-    int64_t lastCoreIndicesElements{0};
-    int64_t perCoreIndicesLoops{0};
-    int64_t perCorePerLoopIndicesElements{0};
-    int64_t perCoreLastLoopIndicesElements{0};
-    int64_t lastCoreIndicesLoops{0};
-    int64_t lastCorePerLoopIndicesElements{0};
-    int64_t lastCoreLastLoopIndicesElements{0};
-    int64_t colsLoops{0};
-    int64_t perLoopCols{0};
-    int64_t lastLoopCols{0};
-    int64_t xCopyInQueueBufferNum{2};
-};
-
 // Arch35用的TilingData
 struct MoeInitRoutingV3Arch35TilingData {
     int64_t coreNum{0};
@@ -115,6 +99,7 @@ struct MoeInitRoutingV3Arch35TilingData {
     int64_t actualExpertNum{0};
     int64_t quantMode{0};
     int64_t rowIdxType{0};
+    int64_t useGatherCopy{0};
     int64_t isInputScale{0};
     int64_t isInputOffset{0};
     int64_t expertNum{0};
@@ -124,15 +109,16 @@ struct MoeInitRoutingV3Arch35TilingData {
     int64_t epFullload{0}; // 未使用
     int64_t activeNum{0};
     int64_t dropPadMode{0};
-    int64_t smoothType{0}; // 未使用
+    int64_t smoothType{0};     // 未使用
     int64_t expertCapacity{0}; // 新增：DropPad模式下的expert capacity
+    int64_t isInputTopkWeight{0}; // 新增：topk_weight输入是否提供
+    int64_t topkWeightOutPerCorePerLoopElements{0}; // 新增：TopkWeightOut每轮处理的索引元素数
     MoeV3Arch35VBSComputeTilingData vbsComputeParamsOp;
     MoeV3Arch35VMSMiddleComputeTilingData vmsMiddleComputeParamsOp;
     MoeV3Arch35SortOutComputeTilingData sortOutComputeParamsOp;
     MoeV3Arch35ExpertTokensCountTilingData expertTokensCountTilingDataOp;
     MoeV3Arch35GatherOutComputeTilingData gatherOutComputeParamsOp;
     MoeV3Arch35SrcToDstCapacityComputeTilingData srcToDstDropPadParamsOp; // 新增：DropPad SrcToDst TilingData
-    MoeV3Arch35GatherOutDropPadComputeTilingData gatherOutDropPadParamsOp; // 新增：DropPad GatherOut TilingData
 };
 
 #endif // __MOE_INIT_ROUTING_V3_ARCH35_TILING_DEF_H__

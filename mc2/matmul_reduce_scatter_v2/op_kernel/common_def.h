@@ -13,8 +13,8 @@
  * \brief
  */
 
- #ifndef COMMON_DEF_H
- #define COMMON_DEF_H
+#ifndef COMMON_DEF_H
+#define COMMON_DEF_H
 
 #include "lib/hccl/hccl.h"
 
@@ -53,8 +53,8 @@ struct BiasType<bfloat16_t> {
 };
 __aicore__ inline uint64_t CeilDiv(uint64_t x, uint64_t y)
 {
-    return y == 0 ? x : (x + y -1) / y;
+    return y == 0 ? x : (x + y - 1) / y;
 }
 
-}
+} // namespace MatmulReduceScatterV2Impl
 #endif // COMMON_DEF_H

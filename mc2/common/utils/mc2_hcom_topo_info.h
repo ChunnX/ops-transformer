@@ -35,7 +35,7 @@ public:
     static HcclResult CommGetInstSizeByGroup(const char *group, uint32_t *rankNum);
     static HcclResult TryGetGroupTopoType(const char *group, uint32_t *topoType);
     static HcclResult CommGetCclBufferSizeByGroup(const char *group, uint64_t *cclBufferSize, HcclComm *hcclComm);
-    static HcclResult CommGetGroupLocalWindowSize(const char *group, uint64_t* cclBufferSize);
+    static HcclResult CommGetGroupLocalWindowSize(const char *group, uint64_t *cclBufferSize);
     static HcclResult CommGetHcclBufferByGroup(const char *group, void **buffer, uint64_t *size);
 
 private:
@@ -78,5 +78,5 @@ private:
 #endif
     FuncGetHcclBuffer getHcclBuffer_ = nullptr;
 };
-}  // namespace Mc2Hcom
+} // namespace Mc2Hcom
 #endif

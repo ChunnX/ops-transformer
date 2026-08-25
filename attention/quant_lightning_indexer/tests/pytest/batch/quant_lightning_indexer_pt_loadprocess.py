@@ -53,7 +53,7 @@ def test_qli_process(filepath, device_id=0):
     sparse_count = test_data['sparse_count']
     sparse_mode = test_data['sparse_mode']
 
-    #调用SFA算子
+    # 调用QLI算子
     npu_result = torch_npu.npu_quant_lightning_indexer(query, key, weights, 
                                                     query_dequant_scale,
                                                     key_dequant_scale,

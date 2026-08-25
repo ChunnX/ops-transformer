@@ -39,6 +39,6 @@ protected:
 protected:
     bool isBl1MulCoreLoad_{false};
 };
-}
-}
+} // namespace Mc2batch_matmul_v3_advanced
+} // namespace optiling
 #endif // __OP_HOST_BATCH_MATMUL_V3_ASW_BL1_FULL_LOAD_TILING_H__

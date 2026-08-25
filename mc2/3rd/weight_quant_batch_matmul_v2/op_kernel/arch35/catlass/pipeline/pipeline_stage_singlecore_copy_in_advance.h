@@ -13,7 +13,7 @@
 #include "../utils/math_utils.h"
 #include "pipeline_stage_singlecore_base.h"
 #include "pipeline_state.h"
-#include "utils.h"
+#include "wq_pipeline_utils.h"
 
 using AscendC::HardEvent;
 using AscendC::Hardware;
@@ -42,11 +42,11 @@ struct PipelineStageSingleCoreCopyInAdvance
     DEVICE
     PipelineStageSingleCoreCopyInAdvance()
     {
-        #pragma unroll
+#pragma unroll
         for (uint8_t i = 0; i < Stages; ++i) {
             forwardEventId[i] = GetTPipePtr()->AllocEventID<Base::ForwardHardEvent>();
         }
-        #pragma unroll
+#pragma unroll
         for (uint8_t i = 0; i < Stages; ++i) {
             Base::backwardEventId[i] = GetTPipePtr()->AllocEventID<Base::BackwardHardEvent>();
             Base::ConsumerRelease(i);
@@ -68,7 +68,7 @@ struct PipelineStageSingleCoreCopyInAdvance
     DEVICE
     void Clear(PipelineState<Stages> &state) const
     {
-        #pragma unroll
+#pragma unroll
         for (uint8_t i = 0; i < Stages - 1; ++i) {
             Base::ProducerWait(state.index());
             ++state;

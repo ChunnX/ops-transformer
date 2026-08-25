@@ -4,21 +4,31 @@
 
 ## 产品支持情况
 
-|产品             |  是否支持  |
-|:-------------------------|:----------:|
-|  <term>Ascend 950PR/Ascend 950DT</term>   |     √    |
-|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
-|  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
-|  <term>Atlas 推理系列产品</term>    |     ×    |
-|  <term>Atlas 训练系列产品</term>    |     ×    |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
 - **接口功能**：MoE的routing计算，根据[aclnnMoeGatingTopKSoftmax](../../moe_gating_top_k_softmax/docs/aclnnMoeGatingTopKSoftmax.md)的计算结果做routing处理。
 - **计算公式**：
   将输入shape为[NUM_ROWS, K]的expertIdx展平为一行做排序，其中NUM_ROWS为输入token个数，K为token选择的专家个数。sortedRowIdx为rowIdx经过排序后的结果
-  
+
   $$
   expandedExpertIdxOut,sortedRowIdx=keyValueSort(expertIdx,rowIdx)
   $$
@@ -33,26 +43,26 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnMoeInitRoutingGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeInitRouting”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeInitRoutingGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeInitRouting”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMoeInitRoutingGetWorkspaceSize(
-    const aclTensor  *x, 
-    const aclTensor  *rowIdx, 
-    const aclTensor  *expertIdx, 
-    int64_t           activeNum, 
-    const aclTensor  *expandedXOut, 
-    const aclTensor  *expandedRowIdxOut, 
-    const aclTensor  *expandedExpertIdxOut, 
-    uint64_t         *workspaceSize, 
+    const aclTensor  *x,
+    const aclTensor  *rowIdx,
+    const aclTensor  *expertIdx,
+    int64_t           activeNum,
+    const aclTensor  *expandedXOut,
+    const aclTensor  *expandedRowIdxOut,
+    const aclTensor  *expandedExpertIdxOut,
+    uint64_t         *workspaceSize,
     aclOpExecutor   **executor)
 ```
 
 ```cpp
 aclnnStatus aclnnMoeInitRouting(
-    void             *workspace, 
-    uint64_t          workspaceSize, 
-    aclOpExecutor    *executor, 
+    void             *workspace,
+    uint64_t          workspaceSize,
+    aclOpExecutor    *executor,
     aclrtStream       stream)
 ```
 
@@ -99,7 +109,7 @@ aclnnStatus aclnnMoeInitRouting(
       <td>rowIdx的数值从0开始，沿着1维递增。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>shape要求与expertIdx 一致</td>
+      <td>shape要求与expertIdx一致</td>
       <td>√</td>
     </tr>
     <tr>
@@ -117,7 +127,7 @@ aclnnStatus aclnnMoeInitRouting(
       <td>输入</td>
       <td>表示总的最大处理row数且大于等于0，expandedXOut只有这么多行是有效的。</td>
       <td>-</td>
-      <td>-</td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -129,7 +139,7 @@ aclnnStatus aclnnMoeInitRouting(
       <td>-</td>
       <td>与x一致</td>
       <td>ND</td>
-      <td>shape为(min(NUM_ROWS, activeNum) * k, H)</td>
+      <td>shape为(min(NUM_ROWS, activeNum) * K, H)</td>
       <td>x</td>
     </tr>
     <tr>
@@ -177,11 +187,11 @@ aclnnStatus aclnnMoeInitRouting(
 
 - **返回值**
 
-  `aclnnStatus`：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  `aclnnStatus`：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   一段接口完成入参校验，出现以下场景时报错：
 
-  <table style="undefined;table-layout: fixed; width: 1180px"> 
+  <table style="undefined;table-layout: fixed; width: 1180px">
     <colgroup>
       <col style="width: 250px">
       <col style="width: 130px">
@@ -217,10 +227,10 @@ aclnnStatus aclnnMoeInitRouting(
         <td>activeNum的值小于0。</td>
       </tr>
       <tr>
-        <td>expandedXOut的shape不等于(min(num_rows, activeNum) * k, H)。</td>
+        <td>expandedXOut的shape不等于(min(num_rows, activeNum) * K, H)。</td>
       </tr>
       <tr>
-        <td>expandedRowIdxOut和expandedExpertIdxOut的shape不相等，且不等于(num_rows * k, )。</td>
+        <td>expandedRowIdxOut和expandedExpertIdxOut的shape不相等，且不等于(num_rows * K, )。</td>
       </tr>
     </tbody>
   </table>
@@ -268,8 +278,8 @@ aclnnStatus aclnnMoeInitRouting(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-    
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
 ## 约束说明
 
 - 确定性计算：
@@ -278,7 +288,7 @@ aclnnStatus aclnnMoeInitRouting(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include "acl/acl.h"
@@ -334,7 +344,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
     return 0;
 }
 int main() {
-    // 1. 固定写法，device/stream初始化, 参考acl对外接口列表
+    // 1. 固定写法，device/stream初始化，参考acl对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;

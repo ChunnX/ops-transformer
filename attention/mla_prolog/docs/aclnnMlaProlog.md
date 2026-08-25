@@ -4,11 +4,15 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
 
 ## 功能说明
 
@@ -63,43 +67,43 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMlaPrologGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnMlaProlog”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMlaPrologGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnMlaProlog”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMlaPrologGetWorkspaceSize(
-  const aclTensor *tokenX, 
-  const aclTensor *weightDq, 
-  const aclTensor *weightUqQr, 
-  const aclTensor *weightUk, 
-  const aclTensor *weightDkvKr, 
-  const aclTensor *rmsnormGammaCq, 
-  const aclTensor *rmsnormGammaCkv, 
-  const aclTensor *ropeSin, 
-  const aclTensor *ropeCos, 
-  const aclTensor *cacheIndex, 
-  aclTensor       *kvCacheRef, 
-  aclTensor       *krCacheRef, 
-  const aclTensor *dequantScaleXOptional, 
-  const aclTensor *dequantScaleWDqOptional, 
-  const aclTensor *dequantScaleWUqQrOptional, 
-  const aclTensor *dequantScaleWDkvKrOptional, 
-  const aclTensor *quantScaleCkvOptional, 
-  const aclTensor *quantScaleCkrOptional, 
-  const aclTensor *smoothScalesCqOptional, 
-  double           rmsnormEpsilonCq, 
-  double           rmsnormEpsilonCkv, 
-  char            *cacheModeOptional, 
-  const aclTensor *queryOut, 
-  const aclTensor *queryRopeOut, 
-  uint64_t        *workspaceSize, 
+  const aclTensor *tokenX,
+  const aclTensor *weightDq,
+  const aclTensor *weightUqQr,
+  const aclTensor *weightUk,
+  const aclTensor *weightDkvKr,
+  const aclTensor *rmsnormGammaCq,
+  const aclTensor *rmsnormGammaCkv,
+  const aclTensor *ropeSin,
+  const aclTensor *ropeCos,
+  const aclTensor *cacheIndex,
+  aclTensor       *kvCacheRef,
+  aclTensor       *krCacheRef,
+  const aclTensor *dequantScaleXOptional,
+  const aclTensor *dequantScaleWDqOptional,
+  const aclTensor *dequantScaleWUqQrOptional,
+  const aclTensor *dequantScaleWDkvKrOptional,
+  const aclTensor *quantScaleCkvOptional,
+  const aclTensor *quantScaleCkrOptional,
+  const aclTensor *smoothScalesCqOptional,
+  double           rmsnormEpsilonCq,
+  double           rmsnormEpsilonCkv,
+  char            *cacheModeOptional,
+  const aclTensor *queryOut,
+  const aclTensor *queryRopeOut,
+  uint64_t        *workspaceSize,
   aclOpExecutor  **executor)
 ```
 
 ``` cpp
 aclnnStatus aclnnMlaProlog(
-  void          *workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor *executor, 
+  void          *workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor *executor,
   aclrtStream    stream)
 ```
 
@@ -518,8 +522,8 @@ aclnnStatus aclnnMlaProlog(
 
 - **返回值**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-    
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
     第一段接口完成入参校验，出现以下场景时报错：
 
     <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
@@ -543,12 +547,12 @@ aclnnStatus aclnnMlaProlog(
         <tr>
           <td>ACLNN_ERR_PARAM_INVALID</td>
           <td>161002</td>
-          <td>输入参数的 shape（维度/尺寸）、dtype（数据类型）不在接口支持的范围内。</td>
+          <td>输入参数的shape（维度/尺寸）、dtype（数据类型）不在接口支持的范围内。</td>
         </tr>
         <tr>
           <td>ACLNN_ERR_RUNTIME_ERROR</td>
           <td>361001</td>
-          <td>API 内存调用 NPU Runtime 接口时发生异常（如 Runtime 服务未启动、内存申请失败等）。</td>
+          <td>API内存调用NPU Runtime接口时发生异常（如Runtime服务未启动、内存申请失败等）。</td>
         </tr>
         <tr>
           <td>ACLNN_ERR_INNER_TILING_ERROR</td>
@@ -600,7 +604,7 @@ aclnnStatus aclnnMlaProlog(
 
 - **返回值**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -608,13 +612,12 @@ aclnnStatus aclnnMlaProlog(
   - aclnnMlaProlog默认确定性实现。
 
 <details>
-  <summary><a id="shapeDesc"></a>shape 格式字段含义说明</summary>
+  <summary><a id="shapeDesc"></a>shape格式字段含义说明</summary>
     &nbsp;&nbsp;<table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
         <col style="width: 165px">
         <col style="width: 625px">
         <col style="width: 360px">
         </colgroup>
-<table>
   <thead>
     <tr>
       <th>字段名</th>
@@ -644,7 +647,7 @@ aclnnStatus aclnnMlaProlog(
     </tr>
     <tr>
       <td>Hcq</td>
-      <td>q 低秩矩阵维度</td>
+      <td>q低秩矩阵维度</td>
       <td>取值固定为：1536</td>
     </tr>
     <tr>
@@ -654,41 +657,41 @@ aclnnStatus aclnnMlaProlog(
     </tr>
     <tr>
       <td>Hckv</td>
-      <td>kv 低秩矩阵维度</td>
+      <td>kv低秩矩阵维度</td>
       <td>取值固定为：512</td>
     </tr>
     <tr>
       <td>D</td>
-      <td>qk 不含位置编码维度</td>
+      <td>qk不含位置编码维度</td>
       <td>取值固定为：128</td>
     </tr>
     <tr>
       <td>Dr</td>
-      <td>qk 位置编码维度</td>
+      <td>qk位置编码维度</td>
       <td>取值固定为：64</td>
     </tr>
     <tr>
       <td>Nkv</td>
-      <td>kv 的 head 数</td>
+      <td>kv的head数</td>
       <td>取值固定为：1</td>
     </tr>
     <tr>
       <td>BlockNum</td>
-      <td>PagedAttention 场景下的块数</td>
-      <td>取值为计算 B*Skv/BlockSize 的结果后向上取整 ⌈B*Skv/BlockSize⌉（Skv 表示 kv 的序列长度，允许取 0）</td>
+      <td>PagedAttention场景下的块数</td>
+      <td>取值为计算B*Skv/BlockSize的结果后向上取整 ⌈B*Skv/BlockSize⌉（Skv表示kv的序列长度，允许取0）</td>
     </tr>
     <tr>
       <td>BlockSize</td>
-      <td>PagedAttention 场景下的块大小</td>
+      <td>PagedAttention场景下的块大小</td>
       <td>取值范围：16~1024，且为16的倍数</td>
     </tr>
     <tr>
       <td>T</td>
-      <td>BS 合轴后的大小</td>
+      <td>BS合轴后的大小</td>
       <td>
         <ul>
           <li>取值范围：0~1048576</li>
-          <li>注：若采用 BS 合轴，此时 tokenX、ropeSin、ropeCos 均为 2 维，cacheIndex 为 1 维，queryOut、queryRopeOut 为 3 维</li>
+          <li>注：若采用BS合轴，此时tokenX、ropeSin、ropeCos均为2维，cacheIndex为1维，queryOut、queryRopeOut为3维</li>
         </ul>
       </td>
     </tr>
@@ -700,6 +703,7 @@ aclnnStatus aclnnMlaProlog(
   <summary><a id="specialConstraint"></a>特殊约束</summary>
 
   - weight_dq，weight_uq_qr，weight_dkv_kr在不转置的情况下各个维度的表示：（k, n）。
+
   </details>
 
   <details>
@@ -713,7 +717,7 @@ aclnnStatus aclnnMlaProlog(
     <tr>
       <td colspan="2">非量化</td>
       <td>
-          入参：所有入参皆为非量化数据 <br> 
+          入参：所有入参皆为非量化数据 <br>
           出参：所有出参皆为非量化数据
       </td>
     </tr>
@@ -721,21 +725,20 @@ aclnnStatus aclnnMlaProlog(
       <td rowspan="2">部分量化</td>
       <td>kv_cache非量化 </td>
       <td>
-          入参：weightUqQr传入pertoken量化数据，其余入参皆为非量化数据 <br> 
-          出参：所有出参返回非量化数据 
+          入参：weightUqQr传入pertoken量化数据，其余入参皆为非量化数据 <br>
+          出参：所有出参返回非量化数据
       </td>
     </tr>
     <tr>
       <td>kv_cache量化 </td>
-      <td> 
-          入参：weightUqQr传入pertoken量化数据，kvCacheRef、krCacheRef传入perchannel量化数据，其余入参皆为非量化数据 <br> 
-          出参：kvCacheRef、krCacheRef返回perchannel量化数据，其余出参返回非量化数据 
+      <td>
+          入参：weightUqQr传入pertoken量化数据，kvCacheRef、krCacheRef传入perchannel量化数据，其余入参皆为非量化数据 <br>
+          出参：kvCacheRef、krCacheRef返回perchannel量化数据，其余出参返回非量化数据
       </td>
     </tr>
   </table>
   </details>
 
-  <details>
   <summary><a id="SupportScenes"></a>不同量化场景参数的dtype与shape约束</summary>
 
 - 在不同量化场景下，参数的dtype和shape组合需要满足如下条件：
@@ -958,32 +961,31 @@ aclnnStatus aclnnMlaProlog(
     </tr>
   </table>
   </div>
-  </details>
 
-  <!-- 参数解释请参见**算子执行接口**。 -->
+  <!-- 参数解释请参见**算子执行接口**。-->
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
   ```Cpp
   #include <iostream>
   #include <vector>
   #include "acl/acl.h"
   #include "aclnnop/aclnn_mla_prolog.h"
-  
+
   #define CHECK_RET(cond, return_expr) \
     do {                               \
       if (!(cond)) {                   \
         return_expr;                   \
       }                                \
     } while (0)
-  
+
   #define LOG_PRINT(message, ...)     \
     do {                              \
       printf(message, ##__VA_ARGS__); \
     } while (0)
-  
+
   int64_t GetShapeSize(const std::vector<int64_t>& shape) {
       int64_t shape_size = 1;
       for (auto i : shape) {
@@ -991,7 +993,7 @@ aclnnStatus aclnnMlaProlog(
       }
       return shape_size;
   }
-  
+
   int Init(int32_t deviceId, aclrtStream* stream) {
       // 固定写法，资源初始化
       auto ret = aclInit(nullptr);
@@ -1002,7 +1004,7 @@ aclnnStatus aclnnMlaProlog(
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); return ret);
       return 0;
   }
-  
+
   template <typename T>
   int CreateAclTensorND(const std::vector<T>& shape, void** deviceAddr, void** hostAddr,
                       aclDataType dataType, aclTensor** tensor) {
@@ -1021,7 +1023,7 @@ aclnnStatus aclnnMlaProlog(
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
       return 0;
   }
-  
+
   template <typename T>
   int CreateAclTensorNZ(const std::vector<T>& shape, void** deviceAddr, void** hostAddr,
                       aclDataType dataType, aclTensor** tensor) {
@@ -1040,7 +1042,7 @@ aclnnStatus aclnnMlaProlog(
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
       return 0;
   }
-  
+
   int TransToNZShape(std::vector<int64_t> &shapeND) {
       int64_t inputParam1 = shapeND[0];
       int64_t inputParam2 = shapeND[1];
@@ -1053,9 +1055,9 @@ aclnnStatus aclnnMlaProlog(
       shapeND.emplace_back(h0);
       return 0;
   }
-  
+
   int main() {
-      // 1. 固定写法，device/stream初始化, 参考AscendCL对外接口列表
+      // 1. 固定写法，device/stream初始化，参考AscendCL对外接口列表
       // 根据实际device填写deviceId
       int32_t deviceId = 0;
       aclrtStream stream;
@@ -1080,7 +1082,7 @@ aclnnStatus aclnnMlaProlog(
       double rmsnormEpsilonCq = 1e-5;
       double rmsnormEpsilonCkv = 1e-5;
       char cacheMode[] = "PA_BSND";
-  
+
       void* tokenXDeviceAddr = nullptr;
       void* weightDqDeviceAddr = nullptr;
       void* weightUqQrDeviceAddr = nullptr;
@@ -1095,7 +1097,7 @@ aclnnStatus aclnnMlaProlog(
       void* krCacheDeviceAddr = nullptr;
       void* queryDeviceAddr = nullptr;
       void* queryRopeDeviceAddr = nullptr;
-  
+
       void* tokenXHostAddr = nullptr;
       void* weightDqHostAddr = nullptr;
       void* weightUqQrHostAddr = nullptr;
@@ -1110,7 +1112,7 @@ aclnnStatus aclnnMlaProlog(
       void* krCacheHostAddr = nullptr;
       void* queryHostAddr = nullptr;
       void* queryRopeHostAddr = nullptr;
-  
+
       aclTensor* tokenX = nullptr;
       aclTensor* weightDq = nullptr;
       aclTensor* weightUqQr = nullptr;
@@ -1125,7 +1127,7 @@ aclnnStatus aclnnMlaProlog(
       aclTensor* krCache = nullptr;
       aclTensor* query = nullptr;
       aclTensor* queryRope = nullptr;
-  
+
       // 转换三个NZ格式变量的shape
       ret = TransToNZShape(weightDqShape);
       CHECK_RET(ret == 0, LOG_PRINT("trans NZ shape failed.\n"); return ret);
@@ -1133,7 +1135,7 @@ aclnnStatus aclnnMlaProlog(
       CHECK_RET(ret == 0, LOG_PRINT("trans NZ shape failed.\n"); return ret);
       ret = TransToNZShape(weightDkvKrShape);
       CHECK_RET(ret == 0, LOG_PRINT("trans NZ shape failed.\n"); return ret);
-  
+
       // 创建tokenX aclTensor
       ret = CreateAclTensorND(tokenXShape, &tokenXDeviceAddr, &tokenXHostAddr, aclDataType::ACL_BF16, &tokenX);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -1176,7 +1178,7 @@ aclnnStatus aclnnMlaProlog(
       // 创建queryRope aclTensor
       ret = CreateAclTensorND(queryRopeShape, &queryRopeDeviceAddr, &queryRopeHostAddr, aclDataType::ACL_BF16, &queryRope);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
-  
+
       // 3. 调用CANN算子库API，需要修改为具体的API
       uint64_t workspaceSize = 0;
       aclOpExecutor* executor = nullptr;
@@ -1192,18 +1194,18 @@ aclnnStatus aclnnMlaProlog(
       // 调用aclnnMlaProlog第二段接口
       ret = aclnnMlaProlog(workspaceAddr, workspaceSize, executor, stream);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMlaProlog failed. ERROR: %d\n", ret); return ret);
-  
+
       // 4. 固定写法，同步等待任务执行结束
       ret = aclrtSynchronizeStream(stream);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
-  
+
       // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
       auto size = GetShapeSize(queryShape);
       std::vector<float> resultData(size, 0);
       ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), queryDeviceAddr, size * sizeof(float),
                         ACL_MEMCPY_DEVICE_TO_HOST);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
-  
+
       // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
       aclDestroyTensor(tokenX);
       aclDestroyTensor(weightDq);
@@ -1219,8 +1221,8 @@ aclnnStatus aclnnMlaProlog(
       aclDestroyTensor(krCache);
       aclDestroyTensor(query);
       aclDestroyTensor(queryRope);
-  
-      // 7. 释放device 资源
+
+      // 7. 释放device资源
       aclrtFree(tokenXDeviceAddr);
       aclrtFree(weightDqDeviceAddr);
       aclrtFree(weightUqQrDeviceAddr);
@@ -1235,8 +1237,8 @@ aclnnStatus aclnnMlaProlog(
       aclrtFree(krCacheDeviceAddr);
       aclrtFree(queryDeviceAddr);
       aclrtFree(queryRopeDeviceAddr);
-  
-      // 8. 释放host 资源
+
+      // 8. 释放host资源
       aclrtFree(tokenXHostAddr);
       aclrtFree(weightDqHostAddr);
       aclrtFree(weightUqQrHostAddr);
@@ -1251,14 +1253,14 @@ aclnnStatus aclnnMlaProlog(
       aclrtFree(krCacheHostAddr);
       aclrtFree(queryHostAddr);
       aclrtFree(queryRopeHostAddr);
-  
+
       if (workspaceSize > 0) {
         aclrtFree(workspaceAddr);
       }
       aclrtDestroyStream(stream);
       aclrtResetDevice(deviceId);
       aclFinalize();
-  
+
       return 0;
   }
   ```

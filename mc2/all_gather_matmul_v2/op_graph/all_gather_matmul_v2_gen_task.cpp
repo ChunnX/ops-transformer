@@ -36,17 +36,9 @@ static ge::Status GetCommModeFromAttrs(const gert::ExeResGenerationContext *cont
         commMode = Mc2Comm::COMM_MODE_CCU;
     } else if (commModeStr == ge::AscendString("ai_cpu")) {
         commMode = Mc2Comm::COMM_MODE_AICPU;
-    } else if (commModeStr == ge::AscendString("")) {
-        int64_t worldSize = 0;
-        if (!context->GetIntAttrVal("rank_size", worldSize) || worldSize <= 0) {
-            OPS_LOG_E(context->GetNodeName(), "Failed to get valid rank_size for default comm_mode.");
-            return ge::GRAPH_FAILED;
-        }
-        commMode = (worldSize <= COMM_MODE_RANKSIZE) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
     } else {
-        OPS_LOG_E(context->GetNodeName(),
-            "comm_mode only support empty string, 'ccu' or 'ai_cpu', unsupported comm_mode: %s.",
-            commModeStr.GetString());
+        OPS_LOG_E(context->GetNodeName(), "comm_mode only support 'ccu' or 'ai_cpu', unsupported comm_mode: %s.",
+                  commModeStr.GetString());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -73,7 +65,7 @@ static ge::Status AllGatherMatmulV2CalcOpParam(gert::ExeResGenerationContext *co
 }
 
 static ge::Status AllGatherMatmulV2GenTask(const gert::ExeResGenerationContext *context,
-    std::vector<std::vector<uint8_t>> &tasks)
+                                           std::vector<std::vector<uint8_t>> &tasks)
 {
     if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
         uint8_t commMode = Mc2Comm::COMM_MODE_CCU;

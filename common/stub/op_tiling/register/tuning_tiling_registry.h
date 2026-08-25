@@ -22,11 +22,10 @@ struct TilingItem {
     ge::AscendString name_;
 };
 
-class TuningTilingDef
-{
+class TuningTilingDef {
 public:
-    virtual void FromJson(const nlohmann::json& j) = 0;
-    virtual void ToJson(nlohmann::json& j) = 0;
+    virtual void FromJson(const nlohmann::json &j) = 0;
+    virtual void ToJson(nlohmann::json &j) = 0;
     ge::AscendString GetClassName() const;
     virtual std::vector<TilingItem> GetItemInfo() const = 0;
 
@@ -38,72 +37,68 @@ protected:
     ge::AscendString class_name_;
 };
 
-#define BEGIN_TUNING_TILING_DEF(class_name)                                                                  \
-    class class_name : public TuningTilingDef                                                                \
-    {                                                                                                        \
-    public:                                                                                                  \
-        virtual void FromJson(const nlohmann::json& j)                                                       \
-        {                                                                                                    \
-            FromJsonImpl(*this, "", j);                                                                      \
-        }                                                                                                    \
-                                                                                                             \
-        virtual void ToJson(nlohmann::json& j)                                                               \
-        {                                                                                                    \
-            DumpObj(*this, "", j);                                                                           \
-        }                                                                                                    \
-                                                                                                             \
-        std::vector<TilingItem> GetItemInfo() const                                                          \
-        {                                                                                                    \
-            return field_info_;                                                                              \
-        }                                                                                                    \
-                                                                                                             \
-        class FieldHandler                                                                                   \
-        {                                                                                                    \
-        public:                                                                                              \
-            FieldHandler(class_name* pinstance, const ge::AscendString& dtype, const ge::AscendString& name) \
-            {                                                                                                \
-                pinstance->field_info_.push_back({dtype, name});                                             \
-            }                                                                                                \
-        };                                                                                                   \
-        friend class FieldHandler;                                                                           \
-                                                                                                             \
-    public:                                                                                                  \
-        class_name()                                                                                         \
-        {                                                                                                    \
-            class_name_ = #class_name;                                                                       \
+#define BEGIN_TUNING_TILING_DEF(class_name)                                                                            \
+    class class_name : public TuningTilingDef {                                                                        \
+    public:                                                                                                            \
+        virtual void FromJson(const nlohmann::json &j)                                                                 \
+        {                                                                                                              \
+            FromJsonImpl(*this, "", j);                                                                                \
+        }                                                                                                              \
+                                                                                                                       \
+        virtual void ToJson(nlohmann::json &j)                                                                         \
+        {                                                                                                              \
+            DumpObj(*this, "", j);                                                                                     \
+        }                                                                                                              \
+                                                                                                                       \
+        std::vector<TilingItem> GetItemInfo() const                                                                    \
+        {                                                                                                              \
+            return field_info_;                                                                                        \
+        }                                                                                                              \
+                                                                                                                       \
+        class FieldHandler {                                                                                           \
+        public:                                                                                                        \
+            FieldHandler(class_name *pinstance, const ge::AscendString &dtype, const ge::AscendString &name)           \
+            {                                                                                                          \
+                pinstance->field_info_.push_back({dtype, name});                                                       \
+            }                                                                                                          \
+        };                                                                                                             \
+        friend class FieldHandler;                                                                                     \
+                                                                                                                       \
+    public:                                                                                                            \
+        class_name()                                                                                                   \
+        {                                                                                                              \
+            class_name_ = #class_name;                                                                                 \
         };
 
-#define TUNING_TILING_DATA_FIELD_DEF(data_type, field_name) \
-public:                                                     \
-    data_type field_name;                                   \
+#define TUNING_TILING_DATA_FIELD_DEF(data_type, field_name)                                                            \
+public:                                                                                                                \
+    data_type field_name;                                                                                              \
     FieldHandler field_name##_handler_ = FieldHandler(this, #data_type, #field_name);
 
-#define END_TUNING_TILING_DEF \
-    }                         \
+#define END_TUNING_TILING_DEF                                                                                          \
+    }                                                                                                                  \
     ;
 
 using TuningTilingDefConstructor = std::shared_ptr<TuningTilingDef> (*)();
-class TuningTilingClassFactory
-{
+class TuningTilingClassFactory {
 public:
-    static std::map<ge::AscendString, TuningTilingDefConstructor>& RegisterInfo();
-    static void RegisterTilingData(const ge::AscendString& optype, TuningTilingDefConstructor const constructor);
-    static std::shared_ptr<TuningTilingDef> CreateTilingDataInstance(const ge::AscendString& optype);
+    static std::map<ge::AscendString, TuningTilingDefConstructor> &RegisterInfo();
+    static void RegisterTilingData(const ge::AscendString &optype, TuningTilingDefConstructor const constructor);
+    static std::shared_ptr<TuningTilingDef> CreateTilingDataInstance(const ge::AscendString &optype);
 };
 
-#define REGISTER_TUNING_TILING_CLASS(optype, class_name)                                                     \
-    class optype##Helper                                                                                     \
-    {                                                                                                        \
-    public:                                                                                                  \
-        optype##Helper()                                                                                     \
-        {                                                                                                    \
-            TuningTilingClassFactory::RegisterTilingData(#optype, optype##Helper::CreateTilingDataInstance); \
-        }                                                                                                    \
-        static std::shared_ptr<TuningTilingDef> CreateTilingDataInstance()                                   \
-        {                                                                                                    \
-            return std::make_shared<class_name>();                                                           \
-        }                                                                                                    \
-    };                                                                                                       \
+#define REGISTER_TUNING_TILING_CLASS(optype, class_name)                                                               \
+    class optype##Helper {                                                                                             \
+    public:                                                                                                            \
+        optype##Helper()                                                                                               \
+        {                                                                                                              \
+            TuningTilingClassFactory::RegisterTilingData(#optype, optype##Helper::CreateTilingDataInstance);           \
+        }                                                                                                              \
+        static std::shared_ptr<TuningTilingDef> CreateTilingDataInstance()                                             \
+        {                                                                                                              \
+            return std::make_shared<class_name>();                                                                     \
+        }                                                                                                              \
+    };                                                                                                                 \
     optype##Helper g_tuning_tiling_##optype##Helper;
 using TuningTilingDefPtr = std::shared_ptr<TuningTilingDef>;
 } // namespace tuningtiling

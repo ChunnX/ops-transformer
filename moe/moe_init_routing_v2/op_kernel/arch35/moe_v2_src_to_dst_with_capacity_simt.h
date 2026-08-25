@@ -15,7 +15,7 @@
 #ifndef MOE_V2_SRC_TO_DST_WITH_CAPACITY_SIMT_H
 #define MOE_V2_SRC_TO_DST_WITH_CAPACITY_SIMT_H
 
-#include "moe_v2_common.h"
+#include "moe_init_routing_v2_arch35_common.h"
 #include "simt_api/asc_simt.h"
 
 namespace MoeInitRoutingV2 {
@@ -28,6 +28,7 @@ public:
     __aicore__ inline void Init(GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR workspace,
                                 const TilingData *tilingData);
     __aicore__ inline void Process();
+    __aicore__ inline void ProcessWithoutSync();
 
 private:
     __aicore__ inline void SyncAll();
@@ -117,13 +118,19 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(THREAD_NUM) inline void ComputeCapacitySimt(
 template <typename T, typename TilingData>
 __aicore__ inline void MoeV2SrcToDstWithCapacitySimt<T, TilingData>::Process()
 {
-    if (this->blockIdx_ < this->srcToDstTilingData_->needCoreNum) {
-        asc_vf_call<ComputeCapacitySimt<T, TilingData>>(
-            dim3{static_cast<uint32_t>(this->threadNum_), 1, 1}, this->coreRows_, this->startIndex_,
-            this->expertCapacity_, sortedExpertIdGm_, sortedExpertIdIndexGm_, expertFirstIndexGm_, expandedRowIdxGm_,
-            expandedRowIdxIndexGm_);
-    }
+    this->ProcessWithoutSync();
     this->SyncAll();
+}
+
+template <typename T, typename TilingData>
+__aicore__ inline void MoeV2SrcToDstWithCapacitySimt<T, TilingData>::ProcessWithoutSync()
+{
+    if (this->blockIdx_ < this->srcToDstTilingData_->needCoreNum) {
+        asc_vf_call<ComputeCapacitySimt<T, TilingData>>(dim3{static_cast<uint32_t>(this->threadNum_), 1, 1},
+                                                        this->coreRows_, this->startIndex_, this->expertCapacity_,
+                                                        sortedExpertIdGm_, sortedExpertIdIndexGm_, expertFirstIndexGm_,
+                                                        expandedRowIdxGm_, expandedRowIdxIndexGm_);
+    }
 }
 } // namespace MoeInitRoutingV2
 #endif // MOE_V2_SRC_TO_DST_WITH_CAPACITY_SIMT_H

@@ -55,39 +55,73 @@ TEST_P(FusedInferAttentionScoreArch35TilingTest, param)
                                   "  }\n"
                                   "}";
 
+    if (!param.isTensorList) {
+        gert::TilingContextPara tilingContextPara(
+            "FusedInferAttentionScore",
+            {param.query, param.key, param.value, param.pse_shift, param.atten_mask,
+             param.actual_seq_lengths, param.actual_seq_lengths_kv, param.dequant_scale1,
+             param.quant_scale1, param.dequant_scale2, param.quant_scale2, param.quant_offset2,
+             param.antiquant_scale, param.antiquant_offset, param.block_table,
+             param.query_padding_size, param.kv_padding_size, param.key_antiquant_scale,
+             param.key_antiquant_offset, param.value_antiquant_scale, param.value_antiquant_offset,
+             param.key_shared_prefix, param.value_shared_prefix, param.actual_shared_prefix_len,
+             param.query_rope, param.key_rope, param.key_rope_antiquant_scale,
+             param.dequant_scale_query, param.learnable_sink, param.q_start_idx, param.kv_start_idx},
+            {param.attention_out, param.softmax_lse},
+            {
+                {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.num_heads)},
+                {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(param.scale)},
+                {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.pre_tokens)},
+                {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.next_tokens)},
+                {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.input_layout)},
+                {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.num_key_value_heads)},
+                {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.sparse_mode)},
+                {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.inner_precise)},
+                {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.block_size)},
+                {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.antiquant_mode)},
+                {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(param.softmax_lse_flag)},
+                {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.key_antiquant_mode)},
+                {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.value_antiquant_mode)},
+                {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.query_quant_mode)},
+                {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.pse_type)},
+                {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.out_dtype)},
+            },
+            &compileInfo, "Ascend950", 64, 196608, 16384, A5SocInfo);
+        ExecuteTestCase(tilingContextPara, param.expectResult, param.expectTilingKey, param.expectTilingDataHash,
+            {}, 0, true);
+        return;
+    }
+
+    std::vector<gert::TilingContextPara::TensorDescription> allInputs = {
+        param.query, param.key, param.value, param.pse_shift, param.atten_mask,
+        param.actual_seq_lengths, param.actual_seq_lengths_kv, param.dequant_scale1,
+        param.quant_scale1, param.dequant_scale2, param.quant_scale2, param.quant_offset2,
+        param.antiquant_scale, param.antiquant_offset, param.block_table,
+        param.query_padding_size, param.kv_padding_size, param.key_antiquant_scale,
+        param.key_antiquant_offset, param.value_antiquant_scale, param.value_antiquant_offset,
+        param.key_shared_prefix, param.value_shared_prefix, param.actual_shared_prefix_len,
+        param.query_rope, param.key_rope, param.key_rope_antiquant_scale,
+        param.dequant_scale_query, param.learnable_sink, param.q_start_idx, param.kv_start_idx};
+
+    std::vector<gert::TilingContextPara::TensorDescription> inputTensors;
+    std::vector<uint32_t> inputInstanceNum;
+    inputTensors.emplace_back(allInputs[0]);
+    inputInstanceNum.emplace_back(1);
+    for (auto& t : param.keyList) inputTensors.emplace_back(t);
+    inputInstanceNum.emplace_back(static_cast<uint32_t>(param.keyList.size()));
+    for (auto& t : param.valueList) inputTensors.emplace_back(t);
+    inputInstanceNum.emplace_back(static_cast<uint32_t>(param.valueList.size()));
+    for (size_t i = 3; i < allInputs.size(); i++) {
+        if (param.inputInstance[i] != 0) {
+            inputTensors.emplace_back(allInputs[i]);
+        }
+        inputInstanceNum.emplace_back(param.inputInstance[i]);
+    }
+    std::vector<uint32_t> outputInstanceNum = param.outputInstance;
+
     gert::TilingContextPara tilingContextPara(
         "FusedInferAttentionScore",
-        {param.query,
-         param.key,
-         param.value,
-         param.pse_shift,
-         param.atten_mask,
-         param.actual_seq_lengths,
-         param.actual_seq_lengths_kv,
-         param.dequant_scale1,
-         param.quant_scale1,
-         param.dequant_scale2,
-         param.quant_scale2,
-         param.quant_offset2,
-         param.antiquant_scale,
-         param.antiquant_offset,
-         param.block_table,
-         param.query_padding_size,
-         param.kv_padding_size,
-         param.key_antiquant_scale,
-         param.key_antiquant_offset,
-         param.value_antiquant_scale,
-         param.value_antiquant_offset,
-         param.key_shared_prefix,
-         param.value_shared_prefix,
-         param.actual_shared_prefix_len,
-         param.query_rope,
-         param.key_rope,
-         param.key_rope_antiquant_scale,
-         param.dequant_scale_query,
-         param.learnable_sink,
-         param.q_start_idx,
-         param.kv_start_idx},
+        inputTensors,
         {param.attention_out, param.softmax_lse},
         {
             {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.num_heads)},
@@ -107,6 +141,7 @@ TEST_P(FusedInferAttentionScoreArch35TilingTest, param)
             {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.pse_type)},
             {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.out_dtype)},
         },
+        inputInstanceNum, outputInstanceNum,
         &compileInfo, "Ascend950", 64, 196608, 16384, A5SocInfo);
 
     ExecuteTestCase(tilingContextPara, param.expectResult, param.expectTilingKey, param.expectTilingDataHash, {}, 0,

@@ -17,8 +17,9 @@
 #include "../../../../moe_distribute_dispatch_v2/op_host/op_tiling/arch35/moe_distribute_dispatch_v2_tiling_arch35.h"
 
 namespace optiling {
-ge::graphStatus MoeDistributeDispatchV3TilingFuncA5::MoeDistributeDispatchA3TilingFuncImplPublic(
-    gert::TilingContext *context, DispatchV2Config &config)
+ge::graphStatus
+MoeDistributeDispatchV3TilingFuncA5::MoeDistributeDispatchA3TilingFuncImplPublic(gert::TilingContext *context,
+                                                                                 DispatchV2Config &config)
 {
     MoeDistributeDispatchV2TilingFuncA5 impl;
     return impl.MoeDistributeDispatchA3TilingFuncImplPublic(context, config);
@@ -31,7 +32,7 @@ static ge::graphStatus TilingParseForMoeDistributeDispatchV3(gert::TilingParseCo
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus MoeDistributeDispatchV3TilingFuncImplA5(gert::TilingContext* context)
+static ge::graphStatus MoeDistributeDispatchV3TilingFuncImplA5(gert::TilingContext *context)
 {
     MoeDistributeDispatchV3TilingFuncA5 impl;
     return impl.MoeDistributeDispatchV3TilingFunc(context);
@@ -39,4 +40,4 @@ static ge::graphStatus MoeDistributeDispatchV3TilingFuncImplA5(gert::TilingConte
 IMPL_OP_OPTILING(MoeDistributeDispatchV3)
     .Tiling(MoeDistributeDispatchV3TilingFuncImplA5)
     .TilingParse<MoeDistributeDispatchCompileInfo>(TilingParseForMoeDistributeDispatchV3);
-}
+} // namespace optiling

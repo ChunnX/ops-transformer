@@ -52,7 +52,7 @@ public:
                                 int32_t curCol, int32_t baseHeight, int32_t baseWidth, int32_t baseBlockHeight,
                                 int32_t baseBlockWidth, const ScheduleContext &context = 0)
     {
-        baseHeight = (baseHeight + 1) / 2 * 2;  // 2含义：指令要求m必须是偶数，向上对齐到偶数
+        baseHeight = (baseHeight + 1) / 2 * 2; // 2含义：指令要求m必须是偶数，向上对齐到偶数
         CopyOutImpl<enSequentialWrite, const LocalTensor<DstT>>(co2Local, co1Local, curRow, curCol, baseHeight,
                                                                 baseWidth, baseBlockHeight, baseBlockWidth);
     }
@@ -94,5 +94,5 @@ private:
     }
 };
 
-}  // namespace WeightQuantBatchMatmulV2::Arch35
-#endif  // WQBMM_COPY_CUBE_OUT_H
+} // namespace WeightQuantBatchMatmulV2::Arch35
+#endif // WQBMM_COPY_CUBE_OUT_H

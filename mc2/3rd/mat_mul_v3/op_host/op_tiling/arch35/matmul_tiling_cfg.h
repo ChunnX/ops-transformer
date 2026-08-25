@@ -32,11 +32,13 @@ class Mc2MatMulTilingCfg {
 public:
     Mc2MatMulTilingCfg(bool needUpdateIn, const void *compileInfoIn, const void *argsIn)
         : needUpdate(needUpdateIn), compileInfo(compileInfoIn), args(argsIn)
-    {}
+    {
+    }
 
     virtual ~Mc2MatMulTilingCfg() {};
 
-    virtual void Update(const Mc2TilingResult &result) {
+    virtual void Update(const Mc2TilingResult &result)
+    {
         (void)result;
     };
 

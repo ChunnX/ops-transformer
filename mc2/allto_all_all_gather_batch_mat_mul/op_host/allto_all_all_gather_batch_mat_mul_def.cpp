@@ -16,67 +16,68 @@
 
 namespace ops {
 class AlltoAllAllGatherBatchMatMul : public OpDef {
- public:
-  explicit AlltoAllAllGatherBatchMatMul(const char *name) : OpDef(name) {
-    this->Input("x")
-        .ParamType(REQUIRED)
-        .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16})
-        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-        .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-        .AutoContiguous();
-    this->Input("weight")
-        .ParamType(REQUIRED)
-        .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16})
-        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-        .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-        .AutoContiguous();
-    this->Input("bias")
-        .ParamType(OPTIONAL)
-        .DataType({ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16})
-        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-        .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-        .AutoContiguous();
+public:
+    explicit AlltoAllAllGatherBatchMatMul(const char *name) : OpDef(name)
+    {
+        this->Input("x")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("weight")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("bias")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
 
-    this->Output("y1")
-        .ParamType(REQUIRED)
-        .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16})
-        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-        .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
-    this->Output("y2")
-        .ParamType(OPTIONAL)
-        .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16})
-        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-        .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
-    this->Output("y3")
-        .ParamType(OPTIONAL)
-        .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16})
-        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-        .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Output("y1")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Output("y2")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Output("y3")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
 
-    this->Attr("group_ep").AttrType(REQUIRED).String();
-    this->Attr("group_tp").AttrType(REQUIRED).String();
-    this->Attr("ep_world_size").AttrType(REQUIRED).Int();
-    this->Attr("tp_world_size").AttrType(REQUIRED).Int();
-    this->Attr("x_shard_type").AttrType(OPTIONAL).Int(0);
-    this->Attr("act_type").AttrType(OPTIONAL).Int(0);
-    this->Attr("transpose_weight").AttrType(OPTIONAL).Bool(false);
-    this->Attr("output_y2_flag").AttrType(OPTIONAL).Bool(false);
-    this->Attr("output_y3_flag").AttrType(OPTIONAL).Bool(false);
+        this->Attr("group_ep").AttrType(REQUIRED).String();
+        this->Attr("group_tp").AttrType(REQUIRED).String();
+        this->Attr("ep_world_size").AttrType(REQUIRED).Int();
+        this->Attr("tp_world_size").AttrType(REQUIRED).Int();
+        this->Attr("x_shard_type").AttrType(OPTIONAL).Int(0);
+        this->Attr("act_type").AttrType(OPTIONAL).Int(0);
+        this->Attr("transpose_weight").AttrType(OPTIONAL).Bool(false);
+        this->Attr("output_y2_flag").AttrType(OPTIONAL).Bool(false);
+        this->Attr("output_y3_flag").AttrType(OPTIONAL).Bool(false);
 
-    OpAICoreConfig aicore_config;
-    aicore_config.DynamicCompileStaticFlag(true)
-        .DynamicFormatFlag(true)
-        .DynamicRankSupportFlag(true)
-        .DynamicShapeSupportFlag(true)
-        .NeedCheckSupportFlag(false)
-        .PrecisionReduceFlag(true)
-        .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
-        .ExtendCfgInfo("jitCompile.flag", "static_false")  // 动态shape,复用二进制,后续图支持后修改
-        .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
-    this->AICore().AddConfig("ascend910_93", aicore_config);
-    this->MC2().HcclGroup({"group_ep", "group_tp"});
-  }
+        OpAICoreConfig aicore_config;
+        aicore_config.DynamicCompileStaticFlag(true)
+            .DynamicFormatFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(false)
+            .PrecisionReduceFlag(true)
+            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
+            .ExtendCfgInfo("jitCompile.flag", "static_false") // 动态shape,复用二进制,后续图支持后修改
+            .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
+        this->AICore().AddConfig("ascend910_93", aicore_config);
+        this->MC2().HcclGroup({"group_ep", "group_tp"});
+    }
 };
 
 OP_ADD(AlltoAllAllGatherBatchMatMul);
-}  // namespace ops
+} // namespace ops

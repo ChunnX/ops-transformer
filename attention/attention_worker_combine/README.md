@@ -96,3 +96,4 @@
 | 调用方式 | 样例代码 | 说明 |
 | ---- | ---- | ---- |
 | 图模式调用 | [test_geir_attention_worker_combine.cpp](examples/test_geir_attention_worker_combine.cpp) | 通过[算子IR](op_graph/attention_worker_combine_proto.h)构图方式调用AttentionWorkerCombine算子。 |
+| aclnn接口 | [test_aclnn_attention_worker_combine.cpp](examples/test_aclnn_attention_worker_combine.cpp) | 通过[aclnnAttentionWorkerCombine](docs/aclnnAttentionWorkerCombine.md)接口方式调用AttentionWorkerCombine算子。 |

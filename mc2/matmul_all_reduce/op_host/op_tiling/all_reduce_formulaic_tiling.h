@@ -28,13 +28,11 @@ constexpr double LARGE_BACKTILE_CALC_COMM_RATIO_BAR = 1.75;
 constexpr double SMALL_BACKTILE_RATIO = 0.25;
 constexpr double SHORT_TILE_GROW_RATIO = 1.25;
 
-class MMPlusAllReduce : public OneCalcOneCommBase
-{
+class MMPlusAllReduce : public OneCalcOneCommBase {
 public:
     // Constructor
-    explicit MMPlusAllReduce(
-        const mc2tiling::TilingArgs& args, uint32_t inputRankDim, KernelType inputKernelType,
-        SocVersion inputSocVersion = SocVersion::SOC910_B, bool isPerBlock = false)
+    explicit MMPlusAllReduce(const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
+                             SocVersion inputSocVersion = SocVersion::SOC910_B, bool isPerBlock = false)
         : OneCalcOneCommBase(args, inputRankDim, inputKernelType, inputSocVersion)
     {
         isPerBlock_ = isPerBlock;
@@ -58,13 +56,11 @@ private:
     void SetCommTimeFactor();
 };
 
-class MMPlusQuantAllReduce : public OneCalcOneCommBase
-{
+class MMPlusQuantAllReduce : public OneCalcOneCommBase {
 public:
     // Constructor
-    explicit MMPlusQuantAllReduce(
-        const mc2tiling::TilingArgs& args, uint32_t inputRankDim, KernelType inputKernelType,
-        SocVersion inputSocVersion = SocVersion::SOC910_B)
+    explicit MMPlusQuantAllReduce(const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
+                                  SocVersion inputSocVersion = SocVersion::SOC910_B)
         : OneCalcOneCommBase(args, inputRankDim, inputKernelType, inputSocVersion)
     {
         inferFlag_ = true;
@@ -77,9 +73,9 @@ public:
     }
 
     void EstimateKernelTime() override;
-    void SmallShortCheck(const uint64_t totalLen, uint64_t& longTileLen, const uint64_t& shortTileLen) const;
-    void UniformCutSetShort(const uint64_t totalLen, const uint64_t minAlign, uint64_t& shortTileLen) const;
+    void SmallShortCheck(const uint64_t totalLen, uint64_t &longTileLen, const uint64_t &shortTileLen) const;
+    void UniformCutSetShort(const uint64_t totalLen, const uint64_t minAlign, uint64_t &shortTileLen) const;
     void SelectTilingMethod() override;
-    void SelectTilingScene(bool& longTileAlignUpFlag);
+    void SelectTilingScene(bool &longTileAlignUpFlag);
 };
 #endif //__ALL_REDUCE_FORMULAIC_TILING_H__

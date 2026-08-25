@@ -22,37 +22,37 @@
 
 #pragma pack(push, 8)
 // 8 means 8 bytes aligned
-struct alignas(8) Mc2MultiBatchInfo{
-  uint32_t batchUsedCoreNum;
-  uint32_t aBatchDimAll;
-  uint32_t bBatchDimAll;
-  uint32_t cBatchDimAll;
-  uint32_t aBatchDim0;
-  uint32_t bBatchDim0;
-  uint32_t cBatchDim0;
-  uint32_t aBatchDim1;
-  uint32_t bBatchDim1;
-  uint32_t cBatchDim1;
-  uint32_t aBatchDim2;
-  uint32_t bBatchDim2;
-  uint32_t cBatchDim2;
-  uint32_t aBatchDim3;
-  uint32_t bBatchDim3;
-  uint32_t cBatchDim3;
-  uint32_t iterBatch;
-  uint32_t biasWithBatch;
-  uint32_t mOri;
-  uint32_t batchTileBlock;
-  uint32_t aBatch;
-  uint32_t bBatch;
+struct alignas(8) Mc2MultiBatchInfo {
+    uint32_t batchUsedCoreNum;
+    uint32_t aBatchDimAll;
+    uint32_t bBatchDimAll;
+    uint32_t cBatchDimAll;
+    uint32_t aBatchDim0;
+    uint32_t bBatchDim0;
+    uint32_t cBatchDim0;
+    uint32_t aBatchDim1;
+    uint32_t bBatchDim1;
+    uint32_t cBatchDim1;
+    uint32_t aBatchDim2;
+    uint32_t bBatchDim2;
+    uint32_t cBatchDim2;
+    uint32_t aBatchDim3;
+    uint32_t bBatchDim3;
+    uint32_t cBatchDim3;
+    uint32_t iterBatch;
+    uint32_t biasWithBatch;
+    uint32_t mOri;
+    uint32_t batchTileBlock;
+    uint32_t aBatch;
+    uint32_t bBatch;
 };
 #pragma pack(pop)
 
 #pragma pack(push, 8)
 // 8 means 8 bytes aligned
-struct alignas(8) Mc2BatchMatmulTilingData{
-  Mc2MatmulV3TilingData matmulTiling;
-  Mc2MultiBatchInfo Mc2multiBatchInfo;
+struct alignas(8) Mc2BatchMatmulTilingData {
+    Mc2MatmulV3TilingData matmulTiling;
+    Mc2MultiBatchInfo Mc2multiBatchInfo;
 };
 #pragma pack(pop)
 

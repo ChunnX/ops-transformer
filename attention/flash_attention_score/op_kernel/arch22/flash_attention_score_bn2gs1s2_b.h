@@ -751,6 +751,7 @@ __aicore__ inline void FlashAttentionScoreBn2gs1s2B<FA_BN2GS1S2B_FUNCTION_PARAMS
             // 8对齐场景，内部vector需要16对齐，我们在data copy的时候需要手动补0
             dataCopyPadParams.rightPadding -= blockSize;
             dataCopyParams.dstStride = 1;
+            AscendC::PipeBarrier<PIPE_V>();
             Duplicate<T>(bmm1ResUb[s2Align8], 0, blockSize, extraInfo.vecS1BaseSize, 0,
                          extraInfo.s2AlignSize * sizeof(T) / blockBytes);
         }

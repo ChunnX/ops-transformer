@@ -46,7 +46,8 @@ bool QGMMInplaceAddBasicApiTiling::IsCapable()
     auto scaleDimNum = wScaleShape.GetDimNum();
 
     return inputParams_.aDtype == ge::DT_HIFLOAT8 &&
-           (scaleDimNum == 1 || (scaleDimNum == 2 && static_cast<uint64_t>(wScaleShape.GetDim(1)) == 1));
+           (scaleDimNum == 1 || (scaleDimNum == QuantGroupedMatmulInplaceAdd::DIM_NUM_2D &&
+                                  static_cast<uint64_t>(wScaleShape.GetDim(1)) == 1));
 }
 
 bool QGMMInplaceAddBasicApiTiling::AnalyzeAttrs() { return AnalyzeAttrsForInplaceAdd(context_, inputParams_); }
@@ -121,22 +122,19 @@ ge::graphStatus QGMMInplaceAddBasicApiTiling::DoOpTiling()
     tilingData_.gmmQuantParams.aQuantMode = static_cast<uint32_t>(inputParams_.aQuantMode);
     tilingData_.gmmQuantParams.bQuantMode = static_cast<uint32_t>(inputParams_.bQuantMode);
     tilingData_.gmmQuantParams.groupListType = static_cast<uint8_t>(inputParams_.groupListType);
-    PrintQuantParams();
+    OP_LOGD(inputParams_.opName, "%ld", LogQuantParams());
     return ge::GRAPH_SUCCESS;
 }
 
-void QGMMInplaceAddBasicApiTiling::PrintQuantParams()
+int64_t QGMMInplaceAddBasicApiTiling::LogQuantParams() const
 {
-    int32_t enable = CheckLogLevel(static_cast<int32_t>(OP), DLOG_DEBUG);
-    if (enable != 1) {
-        return;
-    }
     std::ostringstream oss;
     oss << "QGmmInplaceAddBasicApiParams: groupNum = " << tilingData_.gmmQuantParams.groupNum
         << ", aQuantMode = " << tilingData_.gmmQuantParams.aQuantMode
         << ", bQuantMode = " << tilingData_.gmmQuantParams.bQuantMode
         << ", groupListType = " << static_cast<uint32_t>(tilingData_.gmmQuantParams.groupListType);
     OP_LOGD(inputParams_.opName, "%s", oss.str().c_str());
+    return 0;
 }
 
 ge::graphStatus QGMMInplaceAddBasicApiTiling::DoLibApiTiling()

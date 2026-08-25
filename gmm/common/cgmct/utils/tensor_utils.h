@@ -60,7 +60,7 @@ namespace Cgmct {
 namespace Gemm {
 
 template <class Layout_, class AGlobalTensor_, class ATensorTrait_, class AType_>
-__aicore__ inline void InitGlobalTensorA(AGlobalTensor_& aGlobal, GM_ADDR aGmAddr, bool transA, int64_t m, int64_t k)
+__aicore__ inline void InitGlobalTensorA(AGlobalTensor_ &aGlobal, GM_ADDR aGmAddr, bool transA, int64_t m, int64_t k)
 {
     Layout_ aLayout;
     if (!transA) {
@@ -71,15 +71,15 @@ __aicore__ inline void InitGlobalTensorA(AGlobalTensor_& aGlobal, GM_ADDR aGmAdd
     aGlobal.SetTensorTrait(ATensorTrait_(aLayout));
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     AscendC::GlobalTensor<AType_> aTmp;
-    aTmp.SetGlobalBuffer(reinterpret_cast<__gm__ AType_*>(aGmAddr), m * k);
+    aTmp.SetGlobalBuffer(reinterpret_cast<__gm__ AType_ *>(aGmAddr), m * k);
     aGlobal.address_ = aTmp.address_;
 #else
-    aGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ AType_*>(aGmAddr), m * k);
+    aGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ AType_ *>(aGmAddr), m * k);
 #endif
 }
 
 template <class Layout_, class BGlobalTensor_, class BTensorTrait_, class BType_>
-__aicore__ inline void InitGlobalTensorB(BGlobalTensor_& bGlobal, GM_ADDR bGmAddr, bool transB, int64_t n, int64_t k)
+__aicore__ inline void InitGlobalTensorB(BGlobalTensor_ &bGlobal, GM_ADDR bGmAddr, bool transB, int64_t n, int64_t k)
 {
     Layout_ bLayout;
     if (!transB) {
@@ -90,24 +90,24 @@ __aicore__ inline void InitGlobalTensorB(BGlobalTensor_& bGlobal, GM_ADDR bGmAdd
     bGlobal.SetTensorTrait(BTensorTrait_(bLayout));
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     AscendC::GlobalTensor<BType_> bTmp;
-    bTmp.SetGlobalBuffer(reinterpret_cast<__gm__ BType_*>(bGmAddr), k * n);
+    bTmp.SetGlobalBuffer(reinterpret_cast<__gm__ BType_ *>(bGmAddr), k * n);
     bGlobal.address_ = bTmp.address_;
 #else
-    bGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ BType_*>(bGmAddr), k * n);
+    bGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ BType_ *>(bGmAddr), k * n);
 #endif
 }
 
 template <class Layout_, class CGlobalTensor_, class CTensorTrait_, class CType_>
-__aicore__ inline void InitGlobalTensorC(CGlobalTensor_& cGlobal, GM_ADDR cGmAddr, int64_t m, int64_t n)
+__aicore__ inline void InitGlobalTensorC(CGlobalTensor_ &cGlobal, GM_ADDR cGmAddr, int64_t m, int64_t n)
 {
     Layout_ cLayout = AscendC::MakeLayout(AscendC::MakeShape(m, n), AscendC::MakeStride(n, static_cast<int64_t>(1)));
     cGlobal.SetTensorTrait(CTensorTrait_(cLayout));
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     AscendC::GlobalTensor<CType_> cTmp;
-    cTmp.SetGlobalBuffer(reinterpret_cast<__gm__ CType_*>(cGmAddr), m * n);
+    cTmp.SetGlobalBuffer(reinterpret_cast<__gm__ CType_ *>(cGmAddr), m * n);
     cGlobal.address_ = cTmp.address_;
 #else
-    cGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ CType_*>(cGmAddr), m * n);
+    cGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ CType_ *>(cGmAddr), m * n);
 #endif
 }
 
@@ -117,28 +117,28 @@ __aicore__ inline AscendC::GlobalTensor<CTensorTrait_> GetWorkSpaceGlobal(BlockS
     int64_t blockShapeM = Get<0>(blockShape);
     int64_t blockShapeN = Get<1>(blockShape);
     Layout_ cLayout = AscendC::MakeLayout(AscendC::MakeShape(blockShapeM, blockShapeN),
-                        AscendC::MakeStride(blockShapeN, static_cast<int64_t>(1)));
+                                          AscendC::MakeStride(blockShapeN, static_cast<int64_t>(1)));
     CTensorTrait_ cTensorTrait = AscendC::MakeTensorTrait<CType_, AscendC::TPosition::GM>(cLayout);
     AscendC::GlobalTensor<CTensorTrait_> workspaceGlobal;
     workspaceGlobal.SetTensorTrait(cTensorTrait);
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     AscendC::GlobalTensor<CType_> cTmp;
-    cTmp.SetGlobalBuffer(reinterpret_cast<__gm__ CType_*>(cGmAddr));
+    cTmp.SetGlobalBuffer(reinterpret_cast<__gm__ CType_ *>(cGmAddr));
     workspaceGlobal.address_ = cTmp.address_;
 #else
-    workspaceGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ CType_*>(cGmAddr));
+    workspaceGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ CType_ *>(cGmAddr));
 #endif
     return workspaceGlobal;
 }
 
 template <typename T>
-__aicore__ inline __gm__ T* GetTensorAddr(uint16_t index, GM_ADDR tensorPtr)
+__aicore__ inline __gm__ T *GetTensorAddr(uint16_t index, GM_ADDR tensorPtr)
 {
-    __gm__ uint64_t* dataAddr = reinterpret_cast<__gm__ uint64_t*>(tensorPtr);
+    __gm__ uint64_t *dataAddr = reinterpret_cast<__gm__ uint64_t *>(tensorPtr);
     uint64_t tensorPtrOffset = *dataAddr;
 
-    __gm__ uint64_t* retPtr = dataAddr + (tensorPtrOffset >> 3);
-    return reinterpret_cast<__gm__ T*>(*(retPtr + index));
+    __gm__ uint64_t *retPtr = dataAddr + (tensorPtrOffset >> 3);
+    return reinterpret_cast<__gm__ T *>(*(retPtr + index));
 }
 
 template <class T, AscendC::TPosition Pos, class Layout, class Coord, class Shape>
@@ -183,7 +183,7 @@ __aicore__ inline constexpr auto MakeTensor(__gm__ T *addr, Layout const &layout
  * @return Return the converted standard tensor
  */
 template <class DataType, class Tensor>
-__aicore__ inline auto ConvertToTensorWithoutLayout(const Tensor& tensor)
+__aicore__ inline auto ConvertToTensorWithoutLayout(const Tensor &tensor)
 {
     typename AscendC::Std::conditional_t<AscendC::is_global_tensor_v<Tensor>, AscendC::GlobalTensor<DataType>,
                                          AscendC::LocalTensor<DataType>>
@@ -202,7 +202,7 @@ __aicore__ inline auto ConvertToTensorWithoutLayout(const Tensor& tensor)
  * @return Return true if the matrix type is ND format, otherwise false
  */
 
-template<size_t N, typename T>
+template <size_t N, typename T>
 struct ShapeTrait {
     using value = typename AscendC::Std::tuple_element<N, typename AscendC::GetTypeFromTrait<T>::ShapeType>::type;
 };
@@ -210,10 +210,10 @@ struct ShapeTrait {
 template <class MatmulType>
 __aicore__ inline constexpr bool IsNDOrAlign()
 {
-    if constexpr(!AscendC::is_tensorTrait_v<MatmulType>) {
-        if constexpr(Cgmct::Gemm::IsMatmulLayoutTypeV<MatmulType>) {
+    if constexpr (!AscendC::is_tensorTrait_v<MatmulType>) {
+        if constexpr (Cgmct::Gemm::IsMatmulLayoutTypeV<MatmulType>) {
             return (Cgmct::Gemm::ToMatmulTypeT<MatmulType>::format == CubeFormat::ND ||
-            Cgmct::Gemm::ToMatmulTypeT<MatmulType>::format == CubeFormat::ND_ALIGN);
+                    Cgmct::Gemm::ToMatmulTypeT<MatmulType>::format == CubeFormat::ND_ALIGN);
         } else {
             return (MatmulType::format == CubeFormat::ND || MatmulType::format == CubeFormat::ND_ALIGN);
         }
@@ -231,12 +231,12 @@ __aicore__ inline constexpr bool IsNDOrAlign()
  * @return Return true if the matrix type is NZ format, otherwise false
  */
 
-template<typename T>
+template <typename T>
 struct typeTrait {
     using type = T;
 };
 
-template<size_t N0, size_t N1, typename T>
+template <size_t N0, size_t N1, typename T>
 struct GetTuple {
     using ShapeTraitType = typename ShapeTrait<N0, T>::value;
     using type = typename AscendC::Std::tuple_element<N1, ShapeTraitType>::type;
@@ -245,15 +245,15 @@ struct GetTuple {
 template <class MatmulType>
 __aicore__ inline constexpr bool IsNz()
 {
-    if constexpr(!AscendC::is_tensorTrait_v<MatmulType>) {
-        if constexpr(Cgmct::Gemm::IsMatmulLayoutTypeV<MatmulType>) {
+    if constexpr (!AscendC::is_tensorTrait_v<MatmulType>) {
+        if constexpr (Cgmct::Gemm::IsMatmulLayoutTypeV<MatmulType>) {
             return (Cgmct::Gemm::ToMatmulTypeT<MatmulType>::format == CubeFormat::NZ);
         } else {
             return (MatmulType::format == CubeFormat::NZ);
         }
     } else {
         if constexpr (AscendC::Std::is_tuple_v<typename ShapeTrait<0, MatmulType>::value>) {
-            if constexpr(AscendC::Std::is_same_v<typename GetTuple<0, 0, MatmulType>::type, typeTrait<_16>::type>) {
+            if constexpr (AscendC::Std::is_same_v<typename GetTuple<0, 0, MatmulType>::type, typeTrait<_16>::type>) {
                 return true;
             }
         }

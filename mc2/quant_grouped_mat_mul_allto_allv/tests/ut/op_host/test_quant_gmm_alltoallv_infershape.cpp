@@ -161,9 +161,7 @@ TEST_F(QuantGroupedMatMulAlltoAllvInfershapeTest, InferShapeTest_NormalWithMm)
             {{}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{}, ge::DT_INT64, ge::FORMAT_ND},
             {{}, ge::DT_INT64, ge::FORMAT_ND},
-            {{{tilingParams.BS, tilingParams.H2}, {tilingParams.BS, tilingParams.H2}},
-             ge::DT_HIFLOAT8,
-             ge::FORMAT_ND},
+            {{{tilingParams.BS, tilingParams.H2}, {tilingParams.BS, tilingParams.H2}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
             {{{tilingParams.mmWeightDim0, tilingParams.mmWeightDim1},
               {tilingParams.mmWeightDim0, tilingParams.mmWeightDim1}},
              ge::DT_HIFLOAT8,
@@ -192,7 +190,7 @@ TEST_F(QuantGroupedMatMulAlltoAllvInfershapeTest, InferShapeTest_NormalWithMm)
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     std::vector<std::vector<int64_t>> expectOutputShape = {{tilingParams.BSK, tilingParams.N1},
-                                                             {tilingParams.BS, tilingParams.N2}};
+                                                           {tilingParams.BS, tilingParams.N2}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
@@ -257,9 +255,7 @@ TEST_F(QuantGroupedMatMulAlltoAllvInfershapeTest, InferShapeTest_TransGmmWeight)
             {{}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{}, ge::DT_INT64, ge::FORMAT_ND},
             {{}, ge::DT_INT64, ge::FORMAT_ND},
-            {{{tilingParams.BS, tilingParams.H2}, {tilingParams.BS, tilingParams.H2}},
-             ge::DT_HIFLOAT8,
-             ge::FORMAT_ND},
+            {{{tilingParams.BS, tilingParams.H2}, {tilingParams.BS, tilingParams.H2}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
             {{{tilingParams.mmWeightDim0, tilingParams.mmWeightDim1},
               {tilingParams.mmWeightDim0, tilingParams.mmWeightDim1}},
              ge::DT_HIFLOAT8,
@@ -288,7 +284,7 @@ TEST_F(QuantGroupedMatMulAlltoAllvInfershapeTest, InferShapeTest_TransGmmWeight)
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     std::vector<std::vector<int64_t>> expectOutputShape = {{tilingParams.BSK, tilingParams.gmmWeightDim2},
-                                                             {tilingParams.BS, tilingParams.N2}};
+                                                           {tilingParams.BS, tilingParams.N2}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
@@ -309,9 +305,7 @@ TEST_F(QuantGroupedMatMulAlltoAllvInfershapeTest, InferShapeTest_TransMmWeight)
             {{}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{}, ge::DT_INT64, ge::FORMAT_ND},
             {{}, ge::DT_INT64, ge::FORMAT_ND},
-            {{{tilingParams.BS, tilingParams.H2}, {tilingParams.BS, tilingParams.H2}},
-             ge::DT_HIFLOAT8,
-             ge::FORMAT_ND},
+            {{{tilingParams.BS, tilingParams.H2}, {tilingParams.BS, tilingParams.H2}}, ge::DT_HIFLOAT8, ge::FORMAT_ND},
             {{{tilingParams.mmWeightDim1, tilingParams.mmWeightDim0},
               {tilingParams.mmWeightDim1, tilingParams.mmWeightDim0}},
              ge::DT_HIFLOAT8,
@@ -340,7 +334,7 @@ TEST_F(QuantGroupedMatMulAlltoAllvInfershapeTest, InferShapeTest_TransMmWeight)
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     std::vector<std::vector<int64_t>> expectOutputShape = {{tilingParams.BSK, tilingParams.N1},
-                                                             {tilingParams.BS, tilingParams.mmWeightDim1}};
+                                                           {tilingParams.BS, tilingParams.mmWeightDim1}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 } // namespace QuantGroupedMatMulAlltoAllvUT

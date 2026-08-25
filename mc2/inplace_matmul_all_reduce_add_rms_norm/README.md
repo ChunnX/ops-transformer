@@ -4,12 +4,12 @@
 
 | 产品 | 是否支持 |
 | ---- | :----: |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> | x |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   | x |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | √ |
 
 ## 功能说明
 
-- 算子功能：完成mm + all_reduce + add + rms_norm计算。
+- 算子功能：完成原地的mm + all_reduce + add + rms_norm计算。
 - 计算公式：
   - 情景一：
 
@@ -73,8 +73,8 @@
   <tbody>
     <tr>
       <td>x1</td>
-      <td>输入</td>
-      <td>MatMul左矩阵，即公式中的输入x1。</td>
+      <td>输入/输出</td>
+      <td>MatMul左矩阵，即公式中的输入x1，同时也是输出，公式中的y。</td>
       <td>FLOAT16、BFLOAT16、INT8</td>
       <td>ND</td>
     </tr>
@@ -125,13 +125,6 @@
       <td>可选输入</td>
       <td>mm计算后的全量化系数，公式中的输入dequantScale。</td>
       <td>FLOAT16、BFLOAT16、UINT64、INT64</td>
-      <td>ND</td>
-    </tr>
-    <tr>
-      <td>y</td>
-      <td>输出</td>
-      <td><ul><li>mm + all_reduce + add的结果。</li></ul></td>
-      <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -194,7 +187,7 @@
 
 ## 约束说明
 
-* 使用场景同融合算子aclnnWeightQuantMatmulAllReduce一致：增量场景不使能MC2，全量场景使能MC2
+* 使用场景同融合算子aclnnWeightQuantMatmulAllReduce一致：增量场景不开启MC2，全量场景开启MC2
 * 输入x1可为二维或者三维，其shape为(b, s, k)或者(s, k)。x2必须是二维，其shape为(k, n)，轴满足mm算子入参要求，k轴相等，m的范围为[1, 2147483647]，k、n的范围为[1, 65535]。bias若非空，bias为一维，其shape为(n)。bias可选，可为空，非空时当前版本仅支持一维输入。
 * 输入residual必须是三维，其shape为(b, s, n)，当x1为二维时，residual的(b*s)等于x1的s，不支持非连续的tensor。输入gamma必须是一维，其shape为(n)，不支持非连续的tensor。
 * antiquantScale满足pertensor场景shape为(1)，perchannel场景shape为(1,n)/(n)，pergroup场景shape为(ceil(k,antiquantGroupSize),n)。antiquantOffset可选，可为空，非空时shape与antiquantScale一致。

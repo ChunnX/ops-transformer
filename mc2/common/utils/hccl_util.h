@@ -18,15 +18,15 @@ extern "C" {
 #endif
 
 namespace op {
-#define OP_API_CHECK(cond, exec_expr) \
-    do {                              \
-        if (cond) {                   \
-            exec_expr;                \
-        }                             \
+#define OP_API_CHECK(cond, exec_expr)                                                                                  \
+    do {                                                                                                               \
+        if (cond) {                                                                                                    \
+            exec_expr;                                                                                                 \
+        }                                                                                                              \
     } while (0)
-}  // namespace op
+} // namespace op
 
 #ifdef __cplusplus
 }
 #endif
-#endif  // OP_API_INC_HCCL_UTIL_H_
+#endif // OP_API_INC_HCCL_UTIL_H_

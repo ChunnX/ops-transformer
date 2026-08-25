@@ -52,39 +52,28 @@ $$
 
 ## 参数说明
 
-- **参数说明**
-
-  <table style="undefined;table-layout: fixed; width: 1565px"><colgroup>
-  <col style="width: 146px">
-  <col style="width: 135px">
-  <col style="width: 326px">
-  <col style="width: 246px">
-  <col style="width: 275px">
-  <col style="width: 101px">
-  <col style="width: 190px">
-  <col style="width: 146px">
+<table style="undefined;table-layout: fixed; width: 1005px"><colgroup>
+  <col style="width: 170px">
+  <col style="width: 170px">
+  <col style="width: 352px">
+  <col style="width: 213px">
+  <col style="width: 100px">
   </colgroup>
   <thead>
     <tr>
       <th>参数名</th>
-      <th>输入/输出</th>
+      <th>输入/输出/属性</th>
       <th>描述</th>
-      <th>使用说明</th>
       <th>数据类型</th>
       <th>数据格式</th>
-      <th>维度(shape)</th>
-      <th>非连续Tensor</th>
     </tr></thead>
   <tbody>
     <tr>
       <td>scheduleContextRef</td>
       <td>输入/输出</td>
-      <td>Attention侧接收的待处理数据，表示输入scheduleContext信息，详细结构见调用示例。</td>
-      <td>不支持空Tensor。</td>
+      <td>Attention侧接收的待处理数据，表示输入scheduleContext信息，详细结构见调用示例。不支持空Tensor，shape固定为(1024)。</td>
       <td>INT8</td>
       <td>ND</td>
-      <td>1维，shape固定为(1024)</td>
-      <td>×</td>
     </tr>
     <tr>
       <td>workspaceSize</td>
@@ -92,17 +81,11 @@ $$
       <td>返回需要在Device侧申请的workspace大小。</td>
       <td>-</td>
       <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
     </tr>
     <tr>
       <td>executor</td>
       <td rowspan="1">输出</td>
       <td>返回op执行器，包含了算子计算流程。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
@@ -117,4 +100,4 @@ $$
 
 | 调用方式  | 样例代码                                                                | 说明                                                                                          |
 | ----------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| aclnn接口 | [test_aclnn_inplace_attention_worker_scheduler](./examples/test_aclnn_inplace_attention_worker_scheduler.cpp) | 通过[`aclnnInplaceAttentionWorkerScheduler`](./docs/aclnnInplaceAttentionWorkerScheduler.md)接口方式调用AttentionWorkScheduler算子。 |
+| aclnn接口 | [test_aclnn_inplace_attention_worker_scheduler](./examples/test_aclnn_inplace_attention_worker_scheduler.cpp) | 通过[aclnnInplaceAttentionWorkerScheduler](./docs/aclnnInplaceAttentionWorkerScheduler.md)接口方式调用AttentionWorkScheduler算子。 |

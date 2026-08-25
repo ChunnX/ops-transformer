@@ -16,7 +16,6 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
-#include <cstring>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_mhc_post.h"
 #include "securec.h"

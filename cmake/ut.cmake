@@ -61,7 +61,7 @@ if(UT_TEST_ALL OR OP_HOST_UT)
     target_compile_definitions(${OP_TILING_MODULE_NAME}_cases_obj PRIVATE
             LOG_CPP
       )
-    target_link_libraries(${OP_TILING_MODULE_NAME}_cases_obj 
+    target_link_libraries(${OP_TILING_MODULE_NAME}_cases_obj
       PRIVATE $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
       $<$<BOOL:${dlog_FOUND}>:$<BUILD_INTERFACE:dlog_headers>>
       gtest)
@@ -76,7 +76,7 @@ if(UT_TEST_ALL OR OP_HOST_UT)
   function(add_infershape_ut_modules OP_INFERSHAPE_MODULE_NAME)
     # add opinfershape ut common object: transformer_op_infershape_ut_common_obj
     add_library(${OP_INFERSHAPE_MODULE_NAME}_common_obj OBJECT)
-    file(GLOB OP_INFERSHAPE_UT_COMMON_SRC 
+    file(GLOB OP_INFERSHAPE_UT_COMMON_SRC
       ${UT_COMMON_INC}/infer_shape_context_faker.cpp
       ${UT_COMMON_INC}/infer_shape_case_executor.cpp
       ${UT_COMMON_INC}/infer_datatype_context_faker.cpp
@@ -103,7 +103,7 @@ if(UT_TEST_ALL OR OP_HOST_UT)
                                                      ${ASCEND_DIR}/include/ascendc/basic_api
       )
     target_link_libraries(
-      ${OP_INFERSHAPE_MODULE_NAME}_cases_obj 
+      ${OP_INFERSHAPE_MODULE_NAME}_cases_obj
         PRIVATE $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
         $<$<BOOL:${dlog_FOUND}>:$<BUILD_INTERFACE:dlog_headers>>
         gtest
@@ -136,15 +136,50 @@ if(UT_TEST_ALL OR OP_API_UT)
       PRIVATE ${JSON_INCLUDE_DIR} ${HI_PYTHON_INC_TEMP} ${UT_PATH}/op_api/stub ${OP_API_UT_COMMON_INC}
               ${ASCEND_DIR}/include ${ASCEND_DIR}/include/aclnn ${ASCEND_DIR}/include/aclnnop
               ${OPAPI_INCLUDE}
-              ${ASCEND_DIR}/pkg_inc 
-              ${ASCEND_DIR}/include/ascendc/basic_api 
+              ${ASCEND_DIR}/pkg_inc
+              ${ASCEND_DIR}/include/ascendc/basic_api
               ${ASCEND_CANN_PACKAGE_PATH}/runtime/pkg_inc
               ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/common
       )
-    target_link_libraries(${OP_API_MODULE_NAME}_cases_obj 
+    target_link_libraries(${OP_API_MODULE_NAME}_cases_obj
       PRIVATE $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
       $<$<BOOL:${dlog_FOUND}>:$<BUILD_INTERFACE:dlog_headers>>
       gtest)
+  endfunction()
+endif()
+
+if(UT_TEST_ALL OR OP_GRAPH_UT)
+  set(OP_GRAPH_MODULE_NAME
+      ${PKG_NAME}_op_graph_ut
+      CACHE STRING "op_graph ut module name" FORCE
+    )
+  function(add_opgraph_ut_modules OP_GRAPH_MODULE_NAME)
+    if(NOT TARGET ${OP_GRAPH_MODULE_NAME}_cases_obj)
+      add_library(${OP_GRAPH_MODULE_NAME}_cases_obj OBJECT ${UT_PATH}/op_api/stub/opdev/platform.cpp)
+    endif()
+    target_include_directories(
+      ${OP_GRAPH_MODULE_NAME}_cases_obj
+      PRIVATE ${UT_PATH}/op_api/stub ${UT_COMMON_INC} ${GTEST_INCLUDE} ${ASCEND_DIR}/include
+              ${ASCEND_DIR}/include/external ${ASCEND_DIR}/include/exe_graph
+              ${ASCEND_DIR}/include/base/context_builder ${ASCEND_DIR}/include/ge
+              ${OPBASE_INC_DIRS} ${PROJECT_SOURCE_DIR}/common/include
+      )
+    target_compile_definitions(${OP_GRAPH_MODULE_NAME}_cases_obj PRIVATE LOG_CPP)
+    target_compile_options(${OP_GRAPH_MODULE_NAME}_cases_obj PRIVATE -fno-access-control)
+    target_link_libraries(
+      ${OP_GRAPH_MODULE_NAME}_cases_obj
+      PRIVATE $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
+              $<$<BOOL:${dlog_FOUND}>:$<BUILD_INTERFACE:dlog_headers>>
+              graph gtest register platform metadef ge_common exe_graph graph_base ascendalog unified_dlog
+      )
+
+    if(NOT TARGET ${OP_GRAPH_MODULE_NAME}_cases)
+      add_library(${OP_GRAPH_MODULE_NAME}_cases STATIC)
+    endif()
+    target_link_libraries(
+      ${OP_GRAPH_MODULE_NAME}_cases
+      PRIVATE ${OP_GRAPH_MODULE_NAME}_cases_obj
+      )
   endfunction()
 endif()
 
@@ -196,12 +231,16 @@ endif()
 if(UT_TEST_ALL
    OR OP_HOST_UT
    OR OP_API_UT
+   OR OP_GRAPH_UT
   )
   function(add_modules_ut_sources)
     set(options OPTION_RESERVED)
-    set(oneValueArgs UT_NAME MODE DIR)
+    set(oneValueArgs UT_NAME HOSTNAME MODE DIR)
     set(multiValueArgs MULIT_RESERVED)
     cmake_parse_arguments(MODULE "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+    if(NOT MODULE_UT_NAME AND MODULE_HOSTNAME)
+      set(MODULE_UT_NAME ${MODULE_HOSTNAME})
+    endif()
 
     get_filename_component(ARCH_NAME ${MODULE_DIR} NAME)
     if(${ARCH_NAME} STREQUAL "op_host")
@@ -321,6 +360,25 @@ if(UT_TEST_ALL
       file(GLOB OPAPI_CASES_SRC ${MODULE_DIR}/test_aclnn_*.cpp)
       target_sources(${MODULE_UT_NAME}_cases_obj ${MODULE_MODE} ${OPAPI_CASES_SRC})
     endif()
+
+    # op_graph ut
+    if("${MODULE_UT_NAME}" STREQUAL "${OP_GRAPH_MODULE_NAME}")
+      get_filename_component(UT_DIR ${MODULE_DIR} DIRECTORY)
+      get_filename_component(TESTS_DIR ${UT_DIR} DIRECTORY)
+      get_filename_component(OP_NAME_DIR ${TESTS_DIR} DIRECTORY)
+      get_filename_component(OP_NAME ${OP_NAME_DIR} NAME)
+      list(FIND ASCEND_OP_NAME ${OP_NAME} INDEX)
+      # if "--ops" is not NULL, opName not include, jump over. if "--ops" is NULL, include all.
+      if(NOT "${ASCEND_OP_NAME}" STREQUAL "ALL" AND INDEX EQUAL -1)
+        return()
+      endif()
+
+      if(NOT TARGET ${MODULE_UT_NAME}_cases_obj)
+        add_opgraph_ut_modules(${OP_GRAPH_MODULE_NAME})
+      endif()
+      file(GLOB OPGRAPH_CASES_SRC ${MODULE_DIR}/test_*_pass.cpp)
+      target_sources(${MODULE_UT_NAME}_cases_obj ${MODULE_MODE} ${OPGRAPH_CASES_SRC})
+    endif()
   endfunction()
 endif()
 
@@ -352,7 +410,7 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
     else()
       file(GLOB KernelFile "${PROJECT_SOURCE_DIR}/*/${opName}/op_kernel/${opName}.cpp")
     endif()
-    
+
     # find case file
     get_filename_component(ARCH_NAME ${CMAKE_CURRENT_SOURCE_DIR} NAME)
     # arch35
@@ -362,7 +420,7 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
         file(GLOB OPKERNEL_CASES_SRC ${CMAKE_CURRENT_SOURCE_DIR}/test_${opName}*.cpp)
       else()
         return()
-      endif()    
+      endif()
     # op_kernel/arch20/arch22/arch38
     else()
       list(FIND ARCH_DIRECTORY "arch35" INDEX)
@@ -395,9 +453,9 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
       add_library(${opName}_${socVersion}_tiling_tmp SHARED ${tilingSrc} $<TARGET_OBJECTS:${COMMON_NAME}_obj>)
       target_include_directories(
         ${opName}_${socVersion}_tiling_tmp
-        PRIVATE ${OPBASE_INC_DIRS} ${ASCEND_DIR}/include/base 
+        PRIVATE ${OPBASE_INC_DIRS} ${ASCEND_DIR}/include/base
                 ${PROJECT_SOURCE_DIR}/common/include
-                ${ASCEND_DIR}/include/experiment 
+                ${ASCEND_DIR}/include/experiment
                 ${ASCEND_DIR}/include/experiment/metadef/common/util
                 ${ASCEND_DIR}/include
         )
@@ -464,7 +522,7 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
         )
       target_include_directories(
         ${opName}_${socVersion}_cases_obj
-        PRIVATE ${ASCEND_DIR}/include/base/context_builder 
+        PRIVATE ${ASCEND_DIR}/include/base/context_builder
                 ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/op_kernel
                 ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/common
                 ${PROJECT_SOURCE_DIR}/common/include/op_kernel
@@ -513,7 +571,7 @@ endif()
 
 if(UT_TEST_ALL OR OP_KERNEL_AICPU_UT)
   add_cann_third_party(gtest)
-  if (TARGET GTest::gtest)
+  if (TARGET GTest::gtest AND NOT TARGET gtest)
     add_library(gtest ALIAS GTest::gtest)
   endif()
 
@@ -531,14 +589,14 @@ if(UT_TEST_ALL OR OP_KERNEL_AICPU_UT)
 
     ## add object: ${opName}_cases_obj
     file(GLOB OPKERNEL_CASES_SRC ${UT_DIR}/tests/ut/op_kernel_aicpu/test_${opName}*.cpp)
-    
+
     message(STATUS "aicpu kernel info: ${opName}, ${KernelFile}, ${OPKERNEL_CASES_SRC}")
 
     add_library(${opName}_cases_obj OBJECT
             ${KernelFile}
             ${OPKERNEL_CASES_SRC}
             )
-    target_compile_options(${opName}_cases_obj PRIVATE 
+    target_compile_options(${opName}_cases_obj PRIVATE
             -g
             )
 

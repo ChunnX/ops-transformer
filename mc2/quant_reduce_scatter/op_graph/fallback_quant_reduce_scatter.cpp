@@ -6,24 +6,25 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
-*/
+ */
 
 /*!
  * \file fallback_quant_reduce_scatter.cpp
  * \brief 动态shape图回调aclnn
-*/
+ */
 #include "fallback/fallback.h"
 #include "common/utils/op_mc2.h"
 #include "mc2_common_log.h"
- 
+
 namespace fallback {
 
-const char* QuantReduceScatterInfo = "QuantReduceScatterFallback";
+const char *QuantReduceScatterInfo = "QuantReduceScatterFallback";
 
-static ge::graphStatus QuantReduceScatterExecuteFunc(gert::OpExecuteContext* host_api_ctx)
+static ge::graphStatus QuantReduceScatterExecuteFunc(gert::OpExecuteContext *host_api_ctx)
 {
     OPS_LOG_D(QuantReduceScatterInfo, "Start to fallback for quant_reduce_scatter.");
-    OPS_ERR_IF(host_api_ctx == nullptr, OPS_LOG_E(QuantReduceScatterInfo, "host_api_ctx is null"), return ge::GRAPH_FAILED);
+    OPS_ERR_IF(host_api_ctx == nullptr, OPS_LOG_E(QuantReduceScatterInfo, "host_api_ctx is null"),
+               return ge::GRAPH_FAILED);
 
     // 校验tensor
     const auto x = host_api_ctx->GetInputTensor(static_cast<size_t>(0));
@@ -43,8 +44,7 @@ static ge::graphStatus QuantReduceScatterExecuteFunc(gert::OpExecuteContext* hos
 
     // 执行回调
     const auto ret = EXEC_OPAPI_CMD(aclnnQuantReduceScatter, x, scales, group, reduce_op, output);
-    OPS_ERR_IF(ret != ge::GRAPH_SUCCESS,
-               OPS_LOG_E(QuantReduceScatterInfo, "Aclnn api error code %d", ret),
+    OPS_ERR_IF(ret != ge::GRAPH_SUCCESS, OPS_LOG_E(QuantReduceScatterInfo, "Aclnn api error code %d", ret),
                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

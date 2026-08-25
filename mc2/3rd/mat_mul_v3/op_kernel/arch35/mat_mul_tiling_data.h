@@ -47,7 +47,7 @@ struct Mc2MatMulV3TilingData {
 #pragma pack(push, 8)
 struct Mc2MatMulV3TilingDataCopy {
     Mc2MatMulV3TilingData matMulTilingData;
-    uint8_t reserved[TILINGDATA_OFFSET] = {};  // 申请一个空的512B大小的空间，用于tiling分块
+    uint8_t reserved[TILINGDATA_OFFSET] = {}; // 申请一个空的512B大小的空间，用于tiling分块
 };
 #pragma pack(pop)
 
@@ -97,7 +97,7 @@ struct Mc2MatMulV3BasicTilingData {
     uint8_t isHf32 = 0;
     uint8_t l1BufferNum = 0;
     uint8_t l0cDB = 1; // 默认不开db为1
-    uint8_t ubDB = 1; //ub默认不开db为1
+    uint8_t ubDB = 1;  // ub默认不开db为1
 };
 #pragma pack(pop)
 

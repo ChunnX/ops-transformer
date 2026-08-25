@@ -7,7 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
+
 #ifndef RUNTIME_KB_RUNTIME_KB_API_H
 #define RUNTIME_KB_RUNTIME_KB_API_H
 
@@ -17,7 +17,7 @@
 
 namespace RuntimeKb {
 uint32_t QueryBank(const void *src, size_t src_len, const std::string &op_type, const std::string &soc_version,
-    uint32_t core_num, tuningtiling::TuningTilingDefPtr &tiling);
+                   uint32_t core_num, tuningtiling::TuningTilingDefPtr &tiling);
 }
 
 #endif

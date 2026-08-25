@@ -35,6 +35,6 @@ constexpr uint32_t BYTE_PER_VECTOR_FRCATLASSAL = BYTE_PER_BLK * BLK_NUM_PER_VECT
 constexpr uint64_t L2_OFFSET = 0;
 constexpr uint32_t STRIDE_LIMIT = 65536;
 
-}  // namespace Catlass
+} // namespace Catlass
 
-#endif  // CATLASS_CATLASS_HPP
+#endif // CATLASS_CATLASS_HPP

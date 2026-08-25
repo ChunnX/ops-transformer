@@ -10,12 +10,11 @@
 #ifndef ARCH35_CATLASS_KERNEL_DAVID_WQBMM_LOAD_IN_ADVANCE_H
 #define ARCH35_CATLASS_KERNEL_DAVID_WQBMM_LOAD_IN_ADVANCE_H
 
-#include "../utils/device_utils.h"
+#include "../utils/wq_device_utils.h"
 
 namespace Mc2WeightQuantBatchMatmulV2::Arch35::Catlass {
 template <typename ProblemShape, typename BlockMainloop, typename TileScheduler>
-class wqbmmv2
-{
+class wqbmmv2 {
 public:
     struct Params {
         ProblemShape problemShape;
@@ -24,7 +23,7 @@ public:
     };
 
 public:
-    DEVICE void operator()(Params const& params)
+    DEVICE void operator()(Params const &params)
     {
         BlockMainloop blockMainloop;
         blockMainloop.Init(params.problemShape, params.mainloop);

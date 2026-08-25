@@ -19,7 +19,7 @@
 #include <map>
 #include <numeric>
 #include "tiling/tiling_api.h"
-#include "base_checker.h"
+#include "base_checker_fused_infer.h"
 
 namespace optiling {
 
@@ -47,6 +47,10 @@ private:
     // feature
     ge::graphStatus CheckUnSupportFeature(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckFeatureAntiquant(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckFeatureAntiquantS1Gt1(const FiaTilingInfo &fiaInfo,
+        int64_t keyAntiquantMode, int64_t valueAntiquantMode);
+    ge::graphStatus CheckFeatureAntiquantS1Eq1(const FiaTilingInfo &fiaInfo,
+        int64_t keyAntiquantMode, int64_t valueAntiquantMode);
 
     // multipara
 private:

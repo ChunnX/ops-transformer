@@ -17,7 +17,7 @@
 #include <dlfcn.h>
 #include <limits.h>
 #include <unistd.h>
-#include "log/log.h"
+#include "mc2_log_compat.h"
 
 namespace Ops {
 namespace MC2 {
@@ -50,7 +50,7 @@ LegacyCommonMgr::~LegacyCommonMgr()
     if (handle_ != nullptr) {
         int ret = dlclose(handle_);
         if (ret != 0) {
-            const char* err = dlerror();
+            const char *err = dlerror();
             OP_LOGE("LegacyCommonMgr", "Fail to dlclose handle, reason: %s.", err ? err : "unknown error");
         }
         handle_ = nullptr;

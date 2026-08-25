@@ -47,6 +47,8 @@ namespace ge {
 REG_OP(MoeGatingTopK)
     .INPUT(x, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))
     .OPTIONAL_INPUT(bias, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))
+    .OPTIONAL_INPUT(input_ids, TensorType({DT_INT32, DT_INT64}))
+    .OPTIONAL_INPUT(tid2eid, TensorType({DT_INT32, DT_INT64}))
     .OUTPUT(y, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))
     .OUTPUT(expert_idx, TensorType({DT_INT32}))
     .OUTPUT(out, TensorType({DT_FLOAT}))

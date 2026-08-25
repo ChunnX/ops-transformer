@@ -1,6 +1,6 @@
-# NPU Ops Transformer
+# CANN Ops Transformer
 
-`npu_ops_transformer` is a high-performance operator extension library designed for Ascend NPU. It leverages Just-In-Time(JIT) compilation to bridge PyTorch functional interfaces with ACLNN library.
+`cann_ops_transformer` is a high-performance operator extension library designed for Ascend NPU. It leverages Just-In-Time(JIT) compilation to bridge PyTorch functional interfaces with ACLNN library.
 
 ## Build & Installation
 
@@ -25,9 +25,20 @@
 2. Build the Wheel:
 
     ```sh
-    # -n: non-isolated build (uses existing environment)
-    python3 -m build --wheel -n
+    cd <repo_root>
+    # 整包编译（含所有算子）
+    bash build.sh --torch_extension
+
+    # 单算子编译（需指定算子名和 vendor）
+    bash build.sh --torch_extension --ops=flash_attn --vendor_name=custom
+
+    # 多算子编译（逗号分隔）
+    bash build.sh --torch_extension --ops=flash_attn,moe_finalize_routing --vendor_name=custom
     ```
+
+    编译产物位于 `build_out/` 目录下：
+    - 整包：`cann_ops_transformer-1.0.0-*.whl`
+    - 单/多算子包：`cann_ops_transformer_custom-1.0.0-*.whl`
 
 3. Install Package:
 
@@ -37,19 +48,19 @@
 
 ## Quick Start
 
-Using `npu_ops_transformer` is seamless. You can invoke NPU-accelerated operators directly through the library's opset.
+Using `cann_ops_transformer` is seamless. You can invoke NPU-accelerated operators directly through the library's opset.
 
 ```python
 import torch
 import torch_npu
-import npu_ops_transformer
+import cann_ops_transformer
 
 # Initialize data on NPU
 x = torch.randn(10, 32, dtype=torch.float32).npu()
 
 # Call the custom NPU operator
 # This triggers JIT compilation on the first call
-npu_result = npu_ops_transformer.ops.abs(x)
+npu_result = cann_ops_transformer.ops.abs(x)
 
 # Verify against CPU ATen implementation
 cpu_x = x.cpu()
@@ -61,9 +72,27 @@ print("Verification successful!")
 
 ## Developer Guide: Adding a New Operator
 
-To implement a new operator (e.g. `abs`), you need to provide two components: a C++ kernel wrapper and a Python JIT builder.
+> For the full operator development specification — directory layout, naming, per-layer implementation (C++ / Python / torchair graph mode), docstring and DeviceGuard requirements — see [torch\_extension 开发规范](cann_ops_transformer/docs/torch_extension_guidelines.md).
 
-### 1. C++ Backend(`ops/csrc/<OP_NAME>.cpp`)
+To implement a new operator (e.g. `abs`), you need to provide two components: a C++ kernel wrapper and a Python JIT builder, placed in `<category>/<op>/torch_extension/`.
+
+### Directory Structure
+
+```
+ops-transformer/
+├── activation/abs/                      # 算子所属 category
+│   ├── op_host/                         # 原有代码（不动）
+│   ├── op_kernel/                       # 原有代码（不动）
+│   ├── tests/                           # 原有测试（不动）
+│   └── torch_extension/                 # 新增：torch_extension 文件
+│       ├── __init__.py                  # 导出 abs 和 convert_abs
+│       ├── abs.py                       # Python 前端
+│       ├── graph_convert_abs.py         # torchair 图模式 Converter（可选）
+│       └── csrc/
+│           └── abs.cpp                  # C++ 后端
+```
+
+### 1. C++ Backend(`<category>/<op>/torch_extension/csrc/<OP_NAME>.cpp`)
 
 This file bridges PyTorch tensors to the ACLNN C-API.
 
@@ -72,13 +101,13 @@ This file bridges PyTorch tensors to the ACLNN C-API.
 #include "aclnn_common.h"
 
 /**
- * @brief ACLNN Warpper for aclnnAbs
+ * @brief ACLNN Wrapper for aclnnAbs
  * @param x Input Tensor (on NPU)
  * @return Result Tensor
  */
 at::Tensor npu_abs(const at::Tensor &x)
 {
-    // 1. Manually allocate output tensor (standrad PyTorch practice)
+    // 1. Manually allocate output tensor (standard PyTorch practice)
     at::Tensor y = at::empty_like(x);
 
     // 2. Launch ACLNN kernel using the helper macro
@@ -94,7 +123,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 }
 ```
 
-### 2. Python Frontend(`ops/<OP_NAME>.py`)
+### 2. Python Frontend(`<category>/<op>/torch_extension/<OP_NAME>.py`)
 
 This file manages the JIT compilation logic and registers the operator into the PyTorch Dispatcher.
 
@@ -102,16 +131,15 @@ This file manages the JIT compilation logic and registers the operator into the 
 import torch
 import torch_npu
 from torch.library import impl
-from npu_ops_transformer.op_builder.builder import OpBuilder
-from npu_ops_transformer.op_builder.builder import AS_LIBRARY
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 class AbsOpBuilder(OpBuilder):
     def __init__(self):
-        super(AbsOpBuilder, self).__init__("abs")
+        super(AbsOpBuilder, self).__init__("abs", category="activation")
 
     def sources(self):
         """Path to C++ source code."""
-        return ['ops/csrc/abs.cpp']
+        return ['csrc/activation/abs.cpp']
 
     def schema(self) -> str:
         """PyTorch operator signature."""
@@ -122,14 +150,15 @@ class AbsOpBuilder(OpBuilder):
         Registers the Meta implementation (Shape/Dtype inference).
         Essential for Autograd and FakeTensor support.
         """
-        @impl(AS_LIBRARY, self.name, "Meta")
+        @impl(get_as_library(), self.name, "Meta")
         def abs_meta(x):
             return torch.empty_like(x)
 
 # Instantiate the builder
 abs_op_builder = AbsOpBuilder()
+abs_op_builder._ensure_initialized()
 
-@impl(AS_LIBRARY, abs_op_builder.name, "PrivateUse1")
+@impl(get_as_library(), abs_op_builder.name, "PrivateUse1")
 def abs(x):
     """
     Dispatcher implementation for NPU.
@@ -137,6 +166,15 @@ def abs(x):
     """
     op_module = abs_op_builder.load()  # Compiles/loads the .so file
     return op_module.npu_abs(x)
+```
+
+### 3. Operator init (`<category>/<op>/torch_extension/__init__.py`)
+
+```python
+__all__ = ["abs", "convert_abs"]
+
+from .abs import abs
+from .graph_convert_abs import convert_abs
 ```
 
 ### Technical Notes

@@ -25,7 +25,7 @@ using namespace optiling::GmmConstant;
 
 namespace QuantGroupedMatmulInplaceAdd {
 
-bool AnalyzeAttrsForInplaceAdd(gert::TilingContext *context, GQmmInputInfo &inputParams)
+bool AnalyzeAttrsForInplaceAdd(const gert::TilingContext *context, GQmmInputInfo &inputParams)
 {
     auto attrs = context->GetAttrs();
     if (attrs != nullptr) {
@@ -49,7 +49,7 @@ bool AnalyzeAttrsForInplaceAdd(gert::TilingContext *context, GQmmInputInfo &inpu
     return true;
 }
 
-bool AnalyzeDtypeForInplaceAdd(gert::TilingContext *context, GQmmInputInfo &inputParams)
+bool AnalyzeDtypeForInplaceAdd(const gert::TilingContext *context, GQmmInputInfo &inputParams)
 {
     auto xDesc = context->GetInputDesc(X_INDEX);
     OP_CHECK_IF(xDesc == nullptr,
@@ -129,10 +129,12 @@ bool CheckDtypeForInplaceAdd(const GQmmInputInfo &inputParams)
     return false;
 }
 
-bool CheckCoreNumForInplaceAdd(gert::TilingContext *context, const GQmmInputInfo &inputParams)
+bool CheckCoreNumForInplaceAdd(const gert::TilingContext *context, const GQmmInputInfo &inputParams)
 {
-    auto aicNum = context->GetCompileInfo<GMMCompileInfo>()->aicNum;
-    auto aivNum = context->GetCompileInfo<GMMCompileInfo>()->aivNum;
+    auto compileInfo = context->GetCompileInfo<GMMCompileInfo>();
+    OP_CHECK_IF(compileInfo == nullptr, OP_LOGE(inputParams.opName, "compileInfo is nullptr."), return false);
+    auto aicNum = compileInfo->aicNum;
+    auto aivNum = compileInfo->aivNum;
     OP_CHECK_IF(aicNum == 0, OP_LOGE(inputParams.opName, "aicNum should be positive integer, actual is %u.", aicNum),
                 return false);
     OP_CHECK_IF(
@@ -157,10 +159,10 @@ bool CheckShapeForHif8Quant(const gert::Shape &x1ScaleShape, const gert::Shape &
     OP_CHECK_IF(x1FirstDim != inputParams.groupNum,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     inputParams.opType, "scale1", ShapeToString(x1ScaleShape),
-                    StrCat("in T-T/T-C mode, first dim of scale1 must be equal to groupNum[",
+                    BuildErrorMsgStr("in T-T/T-C mode, first dim of scale1 must be equal to groupNum[",
                            inputParams.groupNum, "]")),
                 return false);
-    if (x1ScaleDimNum == 2) {
+    if (x1ScaleDimNum == QuantGroupedMatmulInplaceAdd::DIM_NUM_2D) {
         auto x1LastDim = static_cast<uint64_t>(x1ScaleShape.GetDim(1));
         OP_CHECK_IF(x1LastDim != 1,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams.opType, "scale1",
@@ -179,17 +181,17 @@ bool CheckShapeForHif8Quant(const gert::Shape &x1ScaleShape, const gert::Shape &
     OP_CHECK_IF(x2FirstDim != inputParams.groupNum,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams.opType, "scale2",
                                                       ShapeToString(x2ScaleShape),
-                                                      StrCat("in T-T/T-C mode, first dim of scale2 must be equal to "
-                                                             "groupNum[",
-                                                             inputParams.groupNum, "]")),
+                                                      BuildErrorMsgStr("in T-T/T-C mode, first dim of scale2 must "
+                                                                       "be equal to groupNum[",
+                                                                       inputParams.groupNum, "]")),
                 return false);
-    if (x2ScaleDimNum == 2) {
+    if (x2ScaleDimNum == QuantGroupedMatmulInplaceAdd::DIM_NUM_2D) {
         auto x2LastDim = static_cast<uint64_t>(x2ScaleShape.GetDim(1));
         OP_CHECK_IF(x2LastDim != 1 && x2LastDim != inputParams.nSize,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         inputParams.opType, "scale2", ShapeToString(x2ScaleShape),
-                        StrCat("in T-T/T-C mode, last dim of scale2 must be equal to 1 or n[", inputParams.nSize,
-                               "]")),
+                        BuildErrorMsgStr("in T-T/T-C mode, last dim of scale2 must be "
+                                         "equal to 1 or n[", inputParams.nSize, "]")),
                     return false);
     }
     return true;

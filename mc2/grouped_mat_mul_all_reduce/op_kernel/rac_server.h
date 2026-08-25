@@ -23,8 +23,7 @@
 
 namespace AscendC {
 
-enum RANK_MSG_TYPE
-{
+enum RANK_MSG_TYPE {
     RANK_ADDR = 1,
     RANK_WORK = 2,
     RANK_ADD_WORK = 3,
@@ -38,8 +37,7 @@ constexpr uint32_t AC_MSG_VALID_MASK = 0x5CDF123A;
 constexpr uint32_t HARD_SYNC_EVENT_ID = 3;
 constexpr uint32_t HCCL_COMM_DOMAIN_KEY_MAX_LEN = 128;
 
-enum class DebugMode
-{
+enum class DebugMode {
     MC2_DEBUG_ONLY_CUBE = 1,
     MC2_DEBUG_ONLY_VECTOR = 2,
     MC2_DEBUG_ONLY_AICPU = 4,
@@ -47,8 +45,7 @@ enum class DebugMode
     MC2_DEBUG_TIME_TAKEN = 16,
 };
 
-enum AicpuComType
-{
+enum AicpuComType {
     HCCL_CMD_INVALID = 0,
     HCCL_CMD_BROADCAST = 1,
     HCCL_CMD_ALLREDUCE,
@@ -63,8 +60,7 @@ enum AicpuComType
     HCCL_CMD_MAX
 };
 
-enum MC2_BUFFER_TYPE
-{
+enum MC2_BUFFER_TYPE {
     MC2_BUFFER_TYPE_DEFAULT = 0,
     MC2_BUFFER_TYPE_OUTPUT,
     MC2_BUFFER_TYPE_WINDOW_IN,
@@ -128,19 +124,18 @@ constexpr uint32_t HCCL_PARAM_SIZE = sizeof(AivAicpuOpParam); // must aligned by
 #ifdef __CCE_AICORE__
 #if __CCE_AICORE__ == 220
 // Rich Communications Services
-class HcclServer
-{
+class HcclServer {
 public:
-    __gm__ AivAicpuOpParam* msgSndWorkArea;
-    __gm__ AivAicpuOpParam* msgRcvRspArea;
+    __gm__ AivAicpuOpParam *msgSndWorkArea;
+    __gm__ AivAicpuOpParam *msgRcvRspArea;
     GlobalTensor<int64_t> msgRcvRspAreaTensor;
     GlobalTensor<int64_t> msgAddrTensor;
     uint8_t debugMode_;
 
-    __aicore__ inline void SetMsg(__gm__ AivAicpuOpParam* msgAddr, uint32_t validValue)
+    __aicore__ inline void SetMsg(__gm__ AivAicpuOpParam *msgAddr, uint32_t validValue)
     {
         msgAddr->valid = validValue;
-        msgAddrTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>((msgAddr)));
+        msgAddrTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>((msgAddr)));
         AscendC::Barrier();
         DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
             msgAddrTensor);
@@ -148,8 +143,8 @@ public:
 
     __aicore__ inline void Init(GM_ADDR win, uint8_t debugMode)
     {
-        msgSndWorkArea = reinterpret_cast<__gm__ AivAicpuOpParam*>(win);
-        msgRcvRspArea = reinterpret_cast<__gm__ AivAicpuOpParam*>(win + HCCL_PARAM_SIZE);
+        msgSndWorkArea = reinterpret_cast<__gm__ AivAicpuOpParam *>(win);
+        msgRcvRspArea = reinterpret_cast<__gm__ AivAicpuOpParam *>(win + HCCL_PARAM_SIZE);
         debugMode_ = debugMode;
     }
 
@@ -193,7 +188,7 @@ public:
         if (debugMode_ == static_cast<uint8_t>(DebugMode::MC2_DEBUG_ONLY_CUBE)) {
             return;
         }
-        msgRcvRspAreaTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>((msgRcvRspArea)));
+        msgRcvRspAreaTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>((msgRcvRspArea)));
         while (true) {
             AscendC::Barrier();
             DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
@@ -207,7 +202,7 @@ public:
             msgRcvRspArea->rcvCnt = 0;
             msgRcvRspArea->valid = ~AC_MSG_VALID_MASK;
             AscendC::Barrier();
-            msgRcvRspAreaTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>((msgRcvRspArea)));
+            msgRcvRspAreaTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>((msgRcvRspArea)));
             DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
                 msgRcvRspAreaTensor);
         }
@@ -217,12 +212,11 @@ public:
 
 #if __CCE_AICORE__ < 220 // we can test this code in 220
 // Rich Communications Services
-class HcclServer
-{
+class HcclServer {
 public:
     __aicore__ inline HcclServer() = default;
-    __ubuf__ AivAicpuOpParam* msgSndWorkArea;
-    __ubuf__ AivAicpuOpParam* msgRcvRspArea;
+    __ubuf__ AivAicpuOpParam *msgSndWorkArea;
+    __ubuf__ AivAicpuOpParam *msgRcvRspArea;
     GlobalTensor<uint8_t> msgSndGlobalTensor;
     LocalTensor<uint8_t> msgSndLocalTensor;
     GlobalTensor<uint8_t> msgRcvGlobalTensor;
@@ -236,8 +230,8 @@ public:
     // 16:KFC统计各阶段耗时
     uint8_t debugMode_;
 
-    __aicore__ inline void ReadMsgFromGlobal(
-        LocalTensor<uint8_t> local, GlobalTensor<uint8_t> global, uint32_t sizeInBytes)
+    __aicore__ inline void ReadMsgFromGlobal(LocalTensor<uint8_t> local, GlobalTensor<uint8_t> global,
+                                             uint32_t sizeInBytes)
     {
         DataCopy(local, global, sizeInBytes);
         event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE2_S));
@@ -245,8 +239,8 @@ public:
         WaitFlag<HardEvent::MTE2_S>(eventID);
     }
 
-    __aicore__ inline void WriteMsgToGlobal(
-        GlobalTensor<uint8_t> global, LocalTensor<uint8_t> local, uint32_t sizeInBytes)
+    __aicore__ inline void WriteMsgToGlobal(GlobalTensor<uint8_t> global, LocalTensor<uint8_t> local,
+                                            uint32_t sizeInBytes)
     {
         event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::S_MTE3));
         SetFlag<HardEvent::S_MTE3>(eventID);
@@ -254,7 +248,7 @@ public:
         DataCopy(global, local, sizeInBytes);
     }
 
-    __aicore__ inline void Init(GM_ADDR win, uint8_t debugMode, TBuf<TPosition::VECCALC>& tmpBuf)
+    __aicore__ inline void Init(GM_ADDR win, uint8_t debugMode, TBuf<TPosition::VECCALC> &tmpBuf)
     {
         debugMode_ = debugMode;
         uint32_t offset = 0;
@@ -264,14 +258,14 @@ public:
         // use ubuf hold the result
         msgSndLocalTensor = tmpBuf.Get<uint8_t>();
         msgRcvLocalTensor = tmpBuf.Get<uint8_t>();
-        msgSndWorkArea = reinterpret_cast<__ubuf__ AivAicpuOpParam*>(msgSndLocalTensor.GetPhyAddr());
-        msgRcvRspArea = reinterpret_cast<__ubuf__ AivAicpuOpParam*>(msgRcvLocalTensor.GetPhyAddr());
+        msgSndWorkArea = reinterpret_cast<__ubuf__ AivAicpuOpParam *>(msgSndLocalTensor.GetPhyAddr());
+        msgRcvRspArea = reinterpret_cast<__ubuf__ AivAicpuOpParam *>(msgRcvLocalTensor.GetPhyAddr());
     }
 
-    __aicore__ inline void InitSoftSync(GM_ADDR softSyncOffset, uint32_t usedCoreNum, TBuf<TPosition::VECCALC>& tmpBuf)
+    __aicore__ inline void InitSoftSync(GM_ADDR softSyncOffset, uint32_t usedCoreNum, TBuf<TPosition::VECCALC> &tmpBuf)
     {
         const int32_t ELEMENT_CNT = DEFAULT_C0_SIZE / sizeof(int32_t);
-        syncGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(softSyncOffset), usedCoreNum * ELEMENT_CNT);
+        syncGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(softSyncOffset), usedCoreNum * ELEMENT_CNT);
         syncLocalTensor = tmpBuf.Get<int32_t>();
         // clear soft sync global tensor
         Duplicate(syncLocalTensor, 0, usedCoreNum * ELEMENT_CNT);
