@@ -13,7 +13,9 @@
  * \brief
  */
 #include "grouped_weight_quant_batch_matmul_tiling.h"
+#include <cstdlib>
 #include <limits>
+#include "platform/platform_infos_def.h"
 #include "op_host/tiling_templates_registry.h"
 #include "../../../op_kernel/arch35/weight_quant_basic_block/weight_quant_tiling_key.h"
 
@@ -23,6 +25,35 @@ constexpr size_t LAST_DIM = 1;             // 倒数第1维
 constexpr size_t FOURTH_FROM_LAST_DIM = 4; // 倒数第4维
 constexpr uint32_t ND_WEIGHT_DIM_NUM = 2;  // ND weight形如(K, N)
 constexpr uint32_t NZ_WEIGHT_DIM_NUM = 4;  // NZ weight为4维，具体轴顺序由transB_决定
+constexpr uint32_t MX_A8W4_BASE_N_STEP = 32;
+constexpr uint32_t MX_A8W4_TAIL_USAGE_NUMERATOR = 8;
+constexpr uint32_t MX_A8W4_TAIL_USAGE_DENOMINATOR = 10;
+constexpr double MX_A8W4_COMPUTE_PER_AIC_TFLOPS = 27.36;
+constexpr double MX_A8W4_A_BYTES_IN_SCALE_GROUP = 33.0;
+constexpr double MX_A8W4_B_BYTES_IN_SCALE_GROUP = 17.0;
+constexpr double DEFAULT_AICORE_FREQ_MHZ = 1650.0;
+constexpr double DEFAULT_AICORE_COUNT = 32.0;
+constexpr double DEFAULT_DDR_RATE = 31.0;
+constexpr double DEFAULT_L2_RATE = 100.0;
+constexpr double MHZ_PER_GHZ = 1000.0;
+constexpr double KB_SIZE = 1024.0;
+constexpr float CORE_USE_RATIO = 0.8f;
+
+double StrToDoubleWithDefault(const std::string &value, double defaultValue)
+{
+    try {
+        std::size_t parsedLength = 0;
+        const double result = std::stod(value, &parsedLength);
+        if (parsedLength != value.size() || result <= 0.0) {
+            return defaultValue;
+        }
+        return result;
+    } catch (const std::invalid_argument &) {
+        return defaultValue;
+    } catch (const std::out_of_range &) {
+        return defaultValue;
+    }
+}
 } // namespace
 
 enum class GmmTrans {
@@ -36,12 +67,11 @@ namespace optiling {
 static const std::map<ge::DataType, std::unordered_set<ge::DataType>> BIAS_TYPE_SUPPORT_MAP = {
     {ge::DT_FLOAT16, {ge::DT_FLOAT16}}, {ge::DT_BF16, {ge::DT_BF16, ge::DT_FLOAT}}};
 
-bool GroupedWeightQuantBatchMatmulTiling::GetDimFromEnd(
-    const gert::Shape &shape, size_t posFromEnd, uint64_t &out) const
+bool GroupedWeightQuantBatchMatmulTiling::GetDimFromEnd(const gert::Shape &shape, size_t posFromEnd,
+                                                        uint64_t &out) const
 {
     OP_CHECK_IF(posFromEnd == 0 || posFromEnd > shape.GetDimNum(),
-                OP_LOGE(OP_NAME, "posFromEnd[%zu] invalid, dimNum[%zu].", posFromEnd, shape.GetDimNum()),
-                return false);
+                OP_LOGE(OP_NAME, "posFromEnd[%zu] invalid, dimNum[%zu].", posFromEnd, shape.GetDimNum()), return false);
     int64_t v = shape.GetDim(static_cast<int64_t>(shape.GetDimNum() - posFromEnd));
     OP_CHECK_IF(v < 0, OP_LOGE(OP_NAME, "dim value[%ld] is negative."), return false);
     out = static_cast<uint64_t>(v);
@@ -848,6 +878,109 @@ bool GroupedWeightQuantBatchMatmulTiling::EnableTailResplit() const
     return true;
 }
 
+double GroupedWeightQuantBatchMatmulTiling::GetCoreFreq(fe::PlatFormInfos *platformInfo) const
+{
+    std::string freqStr = "1650";
+    platformInfo->GetPlatformRes("AICoreSpec", "cube_freq", freqStr);
+    // The platform reports cube_freq in MHz.
+    return StrToDoubleWithDefault(freqStr, DEFAULT_AICORE_FREQ_MHZ);
+}
+
+double GroupedWeightQuantBatchMatmulTiling::GetHbmBW(fe::PlatFormInfos *platformInfo) const
+{
+    std::string coreCntStr = "32";
+    std::string ddrRateStr = "31";
+    platformInfo->GetPlatformRes("SoCInfo", "ai_core_cnt", coreCntStr);
+    platformInfo->GetPlatformRes("AICoreMemoryRates", "ddr_rate", ddrRateStr);
+    return GetCoreFreq(platformInfo) * StrToDoubleWithDefault(coreCntStr, DEFAULT_AICORE_COUNT) *
+           StrToDoubleWithDefault(ddrRateStr, DEFAULT_DDR_RATE) / MHZ_PER_GHZ / KB_SIZE;
+}
+
+double GroupedWeightQuantBatchMatmulTiling::GetL2BW(fe::PlatFormInfos *platformInfo) const
+{
+    std::string coreCntStr = "32";
+    std::string l2RateStr = "100";
+    platformInfo->GetPlatformRes("SoCInfo", "ai_core_cnt", coreCntStr);
+    platformInfo->GetPlatformRes("AICoreMemoryRates", "l2_rate", l2RateStr);
+    return GetCoreFreq(platformInfo) * StrToDoubleWithDefault(coreCntStr, DEFAULT_AICORE_COUNT) *
+           StrToDoubleWithDefault(l2RateStr, DEFAULT_L2_RATE) / MHZ_PER_GHZ / KB_SIZE;
+}
+
+bool GroupedWeightQuantBatchMatmulTiling::CalcMxA8W4BandwidthResplit(const gert::TilingContext *context,
+                                                                     uint64_t c0Size, uint64_t &selectedNBlockCount,
+                                                                     uint64_t &selectedNBlockSize) const
+{
+    if (!IsMxA8W4() || groupType_ != static_cast<int64_t>(GroupType::SPLIT_M) || groupNum_ == 0) {
+        return false;
+    }
+
+    fe::PlatFormInfos *platformInfo = context->GetPlatformInfo();
+    if (platformInfo == nullptr) {
+        OP_LOGI(context->GetNodeName(), "platformInfo is null");
+        return false;
+    }
+    const double hbmBW = GetHbmBW(platformInfo);
+    const double l2BW = GetL2BW(platformInfo);
+    const uint64_t coreNum = static_cast<uint64_t>(coreNum_);
+    const double computeTflops = MX_A8W4_COMPUTE_PER_AIC_TFLOPS * static_cast<double>(coreNum);
+    const uint64_t expectedGroupM = GroupedMatmul::CeilDiv(mSize_, static_cast<uint64_t>(groupNum_));
+    const uint64_t configuredBaseM =
+        hasBias_ ? static_cast<uint64_t>(BASIC_BLOCK_BASE_M_WITH_BIAS) : static_cast<uint64_t>(BASIC_BLOCK_BASE_M);
+    const uint64_t mBlockCount = expectedGroupM == 0UL ? 1UL : GroupedMatmul::CeilDiv(expectedGroupM, configuredBaseM);
+    const uint64_t effectiveBaseM = expectedGroupM == 0UL ? 0UL : GroupedMatmul::CeilDiv(expectedGroupM, mBlockCount);
+    if (effectiveBaseM < static_cast<uint64_t>(BASIC_BLOCK_BASE_N_MIN)) {
+        return false;
+    }
+
+    const uint64_t taskNumPerNBlock = static_cast<uint64_t>(groupNum_) * mBlockCount;
+    const double requestedB =
+        static_cast<double>(mBlockCount) * static_cast<double>(nSize_) * MX_A8W4_B_BYTES_IN_SCALE_GROUP;
+    const double uniqueBytes = static_cast<double>(mSize_) * MX_A8W4_A_BYTES_IN_SCALE_GROUP +
+                               static_cast<double>(nSize_) * MX_A8W4_B_BYTES_IN_SCALE_GROUP;
+    // 算力/2 * (1/baseN + 1/(2*baseM))中的 m 部分，不依赖循环，所以提前计算
+    const double baseMBandwidthTerm = 1.0 / (2.0 * static_cast<double>(effectiveBaseM));
+
+    for (uint64_t candidateBaseN = BASIC_BLOCK_BASE_N; candidateBaseN >= static_cast<uint64_t>(BASIC_BLOCK_BASE_N_MIN);
+         candidateBaseN -= MX_A8W4_BASE_N_STEP) {
+        const uint64_t candidateNBlockCount = GroupedMatmul::CeilDiv(nSize_, candidateBaseN);
+        const uint64_t taskNum = taskNumPerNBlock * candidateNBlockCount;
+        const uint64_t tailCoreNum = taskNum % coreNum;
+        const bool fullyBalanced = tailCoreNum == 0UL;
+        const bool tailUsageHigh =
+            tailCoreNum * MX_A8W4_TAIL_USAGE_DENOMINATOR > coreNum * MX_A8W4_TAIL_USAGE_NUMERATOR;
+        if (taskNum < coreNum || (!fullyBalanced && !tailUsageHigh)) {
+            continue;
+        }
+
+        const double requestedA =
+            static_cast<double>(candidateNBlockCount) * static_cast<double>(mSize_) * MX_A8W4_A_BYTES_IN_SCALE_GROUP;
+        const double l2CacheHitRate = 1.0 - uniqueBytes / (requestedA + requestedB);
+        // 综合带宽估算：bw = 1/(l2CacheHitRate/L2Bw + (1-l2CacheHitRate)/hbmBW)
+        const double estimatedBandwidth = 1.0 / (l2CacheHitRate / l2BW + (1.0 - l2CacheHitRate) / hbmBW);
+        // 对于A8W4场景，达到cube bound所需的最低带宽：算力 / 2 *（1/baseN + 1 / (2*baseM)）
+        const double cubeBoundMinBandwidth =
+            computeTflops / 2.0 * (1.0 / static_cast<double>(candidateBaseN) + baseMBandwidthTerm);
+        if (estimatedBandwidth <= cubeBoundMinBandwidth) {
+            continue;
+        }
+
+        selectedNBlockCount = candidateNBlockCount;
+        selectedNBlockSize = GroupedMatmul::CeilAlign(GroupedMatmul::CeilDiv(nSize_, candidateNBlockCount), c0Size);
+        bool selected = selectedNBlockSize >= static_cast<uint64_t>(BASIC_BLOCK_BASE_N_MIN) &&
+                        selectedNBlockSize <= static_cast<uint64_t>(BASIC_BLOCK_BASE_N);
+        if (selected) {
+            OP_LOGI(context->GetNodeName(),
+                    "Select MX A8W4 baseN[%lu], effectiveBaseM[%lu], taskNum[%lu], tailCoreNum[%lu], "
+                    "l2CacheHitRate[%f], estimatedBandwidth[%f], cubeBoundMinBandwidth[%f], "
+                    "l2BW[%f], hbmBW[%f], computeTflops[%f].",
+                    selectedNBlockSize, effectiveBaseM, taskNum, tailCoreNum, l2CacheHitRate, estimatedBandwidth,
+                    cubeBoundMinBandwidth, l2BW, hbmBW, computeTflops);
+            return true;
+        }
+    }
+    return false;
+}
+
 bool GroupedWeightQuantBatchMatmulTiling::CalcResplitTiling(const gert::TilingContext *context)
 {
     if (!EnableTailResplit()) {
@@ -867,7 +1000,35 @@ bool GroupedWeightQuantBatchMatmulTiling::CalcResplitTiling(const gert::TilingCo
                 return false);
 
     cubeNumBlocksN_ = static_cast<uint8_t>(coreNum_);
-    if (nSize_ % (coreNum_ * static_cast<uint64_t>(BASIC_BLOCK_BASE_N)) == 0UL) {
+    uint64_t selectedNBlockCount = 0UL;
+    uint64_t selectedNBlockSize = 0UL;
+    bool bandwidthModelSelected = CalcMxA8W4BandwidthResplit(context, c0Size, selectedNBlockCount, selectedNBlockSize);
+
+    uint64_t nBlockCount = GroupedMatmul::CeilDiv(nSize_, static_cast<uint64_t>(BASIC_BLOCK_BASE_N));
+    uint64_t groupDistributedTaskNum = static_cast<uint64_t>(groupNum_) * nBlockCount;
+    uint64_t groupDistributedTailCoreNum = groupDistributedTaskNum % static_cast<uint64_t>(coreNum_);
+    bool groupDistributedLoadBalanced =
+        groupDistributedTailCoreNum == 0UL ||
+        groupDistributedTailCoreNum >=
+            GroupedMatmul::CeilDiv(static_cast<uint64_t>(coreNum_),
+                                   3UL); // 把尾轮基本块个数放宽到核数1/3，便于向下遍历寻找更合适的基本块
+    bool preferGroupDistributedNBlock =
+        IsMxA8W4() && groupType_ == static_cast<int64_t>(GroupType::SPLIT_M) && groupNum_ > 1 &&
+        nSize_ >= static_cast<uint64_t>(MX_A8W4_GROUP_DISTRIBUTED_N_MIN) &&
+        nSize_ % static_cast<uint64_t>(BASIC_BLOCK_BASE_N) == 0UL &&
+        nBlockCount >= GroupedMatmul::CeilDiv(static_cast<uint64_t>(coreNum_), static_cast<uint64_t>(groupNum_)) &&
+        groupDistributedLoadBalanced;
+    if (bandwidthModelSelected) {
+        resplitParam_.mainBlockSize = BASIC_BLOCK_BASE_N;
+        resplitParam_.mainBlockCount = 0UL;
+        resplitParam_.firstTailBlockSize = static_cast<uint16_t>(selectedNBlockSize);
+        resplitParam_.firstTailBlockCount = static_cast<uint16_t>(selectedNBlockCount);
+        resplitParam_.secondTailBlockSize = 0U;
+        resplitParam_.secondTailBlockCount = 0U;
+    } else if (preferGroupDistributedNBlock) {
+        // Prefer 256x256 blocks only when the group-distributed tail wave keeps at least half of the Cubes active.
+        CalcNoFullNumBlocksResplitTiling(c0Size);
+    } else if (nSize_ % (coreNum_ * static_cast<uint64_t>(BASIC_BLOCK_BASE_N)) == 0UL) {
         resplitParam_.mainBlockSize = BASIC_BLOCK_BASE_N;
         resplitParam_.mainBlockCount = nSize_ / (coreNum_ * static_cast<uint64_t>(BASIC_BLOCK_BASE_N));
     } else if (nSize_ > coreNum_ * static_cast<uint64_t>(BASIC_BLOCK_BASE_N_MIN)) {
@@ -1786,6 +1947,28 @@ void GroupedWeightQuantBatchMatmulTiling::CalcFullNumBlocksResplitTiling(uint64_
     }
 }
 
+void GroupedWeightQuantBatchMatmulTiling::TraverseForBalanceBaseN(uint64_t c0Size)
+{
+    uint64_t loopNum = GroupedMatmul::CeilDiv(groupNum_ * GroupedMatmul::CeilDiv(nSize_, BASIC_BLOCK_BASE_N), coreNum_);
+    for (uint64_t baseN = BASIC_BLOCK_BASE_N; baseN >= BASIC_BLOCK_BASE_N_MIN; baseN -= MX_A8W4_BASE_N_STEP) {
+        uint64_t blockCount = GroupedMatmul::CeilDiv(nSize_, baseN);
+        uint64_t tailBlockCount = (blockCount * groupNum_) % coreNum_;
+        uint64_t curLoopNum = GroupedMatmul::CeilDiv(blockCount * groupNum_, coreNum_);
+        if ((tailBlockCount == 0 || static_cast<float>(tailBlockCount) >= CORE_USE_RATIO * coreNum_) &&
+            curLoopNum ==
+                loopNum) { // 从256向下遍历，fixp写出数据变为非128B对齐，要求核数利用率达到0.8以上并且总任务轮数不增加，才选中
+            resplitParam_.firstTailBlockSize =
+                GroupedMatmul::CeilAlign(GroupedMatmul::CeilDiv(nSize_, blockCount), c0Size);
+            resplitParam_.firstTailBlockCount = blockCount;
+            resplitParam_.secondTailBlockSize = 0;
+            resplitParam_.secondTailBlockCount = 0;
+            cubeNumBlocksN_ = static_cast<uint8_t>(blockCount);
+            return;
+        }
+    }
+    return false;
+}
+
 void GroupedWeightQuantBatchMatmulTiling::CalcNoFullNumBlocksResplitTiling(uint64_t c0Size)
 {
     resplitParam_.mainBlockSize = BASIC_BLOCK_BASE_N;
@@ -1794,6 +1977,9 @@ void GroupedWeightQuantBatchMatmulTiling::CalcNoFullNumBlocksResplitTiling(uint6
 
     uint64_t mainBlkCount = GroupedMatmul::CeilDiv(nSize_, BASIC_BLOCK_BASE_N);
     if (groupNum_ * mainBlkCount >= coreNum_) {
+        if (TraverseForBalanceBaseN(c0Size)) {
+            return;
+        }
         // 按照BASIC_BLOCK_BASE_N分核，但是可以在group方向凑多个基本块，则按照mainBlkCount做均匀分核
         resplitParam_.firstTailBlockSize =
             GroupedMatmul::CeilAlign(GroupedMatmul::CeilDiv(nSize_, mainBlkCount), c0Size);
@@ -1946,11 +2132,10 @@ bool GroupedS8S4BasicApiTiling::AnalyzeDtype()
     inputParams_.perTokenScaleDtype = perTokenScaleDesc->GetDataType();
     inputParams_.aFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat()));
     const auto weightFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(weightDesc->GetStorageFormat()));
-    const bool weightIsNdCompatible = weightFormat == ge::FORMAT_ND || weightFormat == ge::FORMAT_NCL ||
-                                      weightFormat == ge::FORMAT_NCHW;
+    const bool weightIsNdCompatible =
+        weightFormat == ge::FORMAT_ND || weightFormat == ge::FORMAT_NCL || weightFormat == ge::FORMAT_NCHW;
     OP_CHECK_IF(!weightIsNdCompatible && weightFormat != ge::FORMAT_FRACTAL_NZ,
-                OP_LOGE(context_->GetNodeName(),
-                        "S8S4 BasicApi expects weight format ND, NCL, NCHW or FRACTAL_NZ."),
+                OP_LOGE(context_->GetNodeName(), "S8S4 BasicApi expects weight format ND, NCL, NCHW or FRACTAL_NZ."),
                 return false);
     inputParams_.bFormat = weightFormat == ge::FORMAT_FRACTAL_NZ ? ge::FORMAT_FRACTAL_NZ : ge::FORMAT_ND;
 
@@ -1971,8 +2156,7 @@ bool GroupedS8S4BasicApiTiling::AnalyzeDtype()
     inputParams_.hasBias = biasShape != nullptr && biasShape->GetStorageShape().GetShapeSize() != 0;
     auto biasDesc = context_->GetDynamicInputDesc(BIAS_INDEX, 0);
     OP_CHECK_IF(!inputParams_.hasBias || biasDesc == nullptr || biasDesc->GetDataType() != ge::DT_FLOAT,
-                OP_LOGE(context_->GetNodeName(), "S8S4 BasicApi requires bias FLOAT with shape [E,N]."),
-                return false);
+                OP_LOGE(context_->GetNodeName(), "S8S4 BasicApi requires bias FLOAT with shape [E,N]."), return false);
     inputParams_.biasDtype = biasDesc->GetDataType();
 
     auto offsetShape = context_->GetDynamicInputShape(OFFSET_INDEX, 0);
@@ -1982,8 +2166,7 @@ bool GroupedS8S4BasicApiTiling::AnalyzeDtype()
         OP_CHECK_IF(offsetDesc == nullptr || offsetDesc->GetDataType() != ge::DT_FLOAT,
                     OP_LOGE(context_->GetNodeName(), "Asymmetric S8S4 BasicApi expects offset FLOAT."), return false);
     }
-    dequantMode_ =
-        hasOffset_ ? DequantMode::ASYMMETRIC_PER_CHANNEL : DequantMode::SYMMETRIC_PER_GROUP;
+    dequantMode_ = hasOffset_ ? DequantMode::ASYMMETRIC_PER_CHANNEL : DequantMode::SYMMETRIC_PER_GROUP;
     OP_CHECK_IF(hasOffset_ && inputParams_.cDtype == ge::DT_BF16,
                 OP_LOGE(context_->GetNodeName(), "BF16 S8S4 BasicApi does not support a non-null offset."),
                 return false);
@@ -2005,8 +2188,7 @@ bool GroupedS8S4BasicApiTiling::AnalyzeAttrs()
     inputParams_.splitItem = splitItemPtr != nullptr ? static_cast<int8_t>(*splitItemPtr) : inputParams_.splitItem;
     inputParams_.transB = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
     inputParams_.transA = transposeXPtr != nullptr ? *transposeXPtr : false;
-    inputParams_.groupType =
-        groupTypePtr != nullptr ? static_cast<int8_t>(*groupTypePtr) : inputParams_.groupType;
+    inputParams_.groupType = groupTypePtr != nullptr ? static_cast<int8_t>(*groupTypePtr) : inputParams_.groupType;
     inputParams_.actType = actTypePtr != nullptr ? static_cast<int8_t>(*actTypePtr) : inputParams_.actType;
     inputParams_.groupListType =
         groupListTypePtr != nullptr ? static_cast<int8_t>(*groupListTypePtr) : GROUP_LIST_COUNT;
@@ -2032,19 +2214,17 @@ bool GroupedS8S4BasicApiTiling::AnalyzeAttrs()
     inputParams_.isSingleW = context_->GetDynamicInputDesc(WEIGHT_INDEX, 1) == nullptr;
     inputParams_.isSingleY = inputParams_.splitItem == X_SEPARATED || inputParams_.splitItem == NO_SEPARATED;
 
-    OP_CHECK_IF(inputParams_.groupType != SPLIT_M || inputParams_.actType != 0 || inputParams_.transA ||
-                    inputParams_.transB,
-                OP_LOGE(context_->GetNodeName(),
-                        "S8S4 BasicApi expects groupType=0, actType=0 and no transpose."),
-                return false);
+    OP_CHECK_IF(
+        inputParams_.groupType != SPLIT_M || inputParams_.actType != 0 || inputParams_.transA || inputParams_.transB,
+        OP_LOGE(context_->GetNodeName(), "S8S4 BasicApi expects groupType=0, actType=0 and no transpose."),
+        return false);
     OP_CHECK_IF(specialWeightFormat_ && inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ,
-                OP_LOGE(context_->GetNodeName(),
-                        "tuningConfig[1]=1 expects [E,N,K] weight converted to FRACTAL_NZ."),
+                OP_LOGE(context_->GetNodeName(), "tuningConfig[1]=1 expects [E,N,K] weight converted to FRACTAL_NZ."),
                 return false);
-    OP_CHECK_IF(specialWeightFormat_ && !hasOffset_,
-                OP_LOGE(context_->GetNodeName(),
-                        "tuningConfig[1]=1 is supported only by non-null offset per-channel mode."),
-                return false);
+    OP_CHECK_IF(
+        specialWeightFormat_ && !hasOffset_,
+        OP_LOGE(context_->GetNodeName(), "tuningConfig[1]=1 is supported only by non-null offset per-channel mode."),
+        return false);
     return true;
 }
 
@@ -2087,9 +2267,9 @@ bool GroupedS8S4BasicApiTiling::CheckCommonShapes(const gert::Shape &xShape, con
 bool GroupedS8S4BasicApiTiling::SetLogicalMKN(const gert::Shape &xShape, const gert::Shape &wShape)
 {
     auto outStorageShape = context_->GetOutputShape(Y_INDEX);
-    OP_CHECK_IF(outStorageShape == nullptr || xShape.GetDimNum() != SPLIT_K_W_DIMS ||
-                    wShape.GetDimNum() != SPLIT_M_W_DIMS,
-                OP_LOGE(context_->GetNodeName(), "Invalid x/weight/out shape."), return false);
+    OP_CHECK_IF(
+        outStorageShape == nullptr || xShape.GetDimNum() != SPLIT_K_W_DIMS || wShape.GetDimNum() != SPLIT_M_W_DIMS,
+        OP_LOGE(context_->GetNodeName(), "Invalid x/weight/out shape."), return false);
     const gert::Shape &outShape = outStorageShape->GetOriginShape();
     OP_CHECK_IF(outShape.GetDimNum() != SPLIT_K_W_DIMS,
                 OP_LOGE(context_->GetNodeName(), "S8S4 BasicApi expects out [M,N]."), return false);
@@ -2114,8 +2294,8 @@ bool GroupedS8S4BasicApiTiling::SetLogicalMKN(const gert::Shape &xShape, const g
 bool GroupedS8S4BasicApiTiling::CheckBiasShape() const
 {
     auto biasShape = context_->GetDynamicInputShape(BIAS_INDEX, 0);
-    OP_CHECK_IF(!inputParams_.hasBias || biasShape == nullptr,
-                OP_LOGE(context_->GetNodeName(), "bias is required."), return false);
+    OP_CHECK_IF(!inputParams_.hasBias || biasShape == nullptr, OP_LOGE(context_->GetNodeName(), "bias is required."),
+                return false);
     const gert::Shape &shape = biasShape->GetOriginShape();
     OP_CHECK_IF(shape.GetDimNum() != SPLIT_K_W_DIMS ||
                     static_cast<uint64_t>(shape.GetDim(0)) != inputParams_.groupNum ||
@@ -2143,10 +2323,10 @@ bool GroupedS8S4BasicApiTiling::CheckAntiquantInputsEmpty() const
         antiquantScaleShape != nullptr && antiquantScaleShape->GetStorageShape().GetShapeSize() != 0;
     const bool hasAntiquantOffset =
         antiquantOffsetShape != nullptr && antiquantOffsetShape->GetStorageShape().GetShapeSize() != 0;
-    OP_CHECK_IF(hasAntiquantScale || hasAntiquantOffset,
-                OP_LOGE(context_->GetNodeName(),
-                        "S8S4 BasicApi requires antiquantScale and antiquantOffset to be empty."),
-                return false);
+    OP_CHECK_IF(
+        hasAntiquantScale || hasAntiquantOffset,
+        OP_LOGE(context_->GetNodeName(), "S8S4 BasicApi requires antiquantScale and antiquantOffset to be empty."),
+        return false);
     return true;
 }
 
@@ -2164,18 +2344,16 @@ bool GroupedS8S4BasicApiTiling::CheckWeightStorageShape(const gert::StorageShape
         // a direct INT32 Host invocation as well, but reject all other physical
         // layouts instead of accepting a same-sized, differently blocked NZ.
         const uint64_t expectedC0 = weightPackedInt32_ ? 4UL : 32UL;
-        const uint64_t expectedOuter0 = specialWeightFormat_ ?
-                                            CeilDiv(inputParams_.kSize, NZ_SPECIAL_K_ALIGN) :
-                                            CeilDiv(inputParams_.nSize, NZ_BASE_N_ALIGN);
-        const uint64_t expectedOuter1 = specialWeightFormat_ ?
-                                            CeilDiv(inputParams_.nSize, NZ_SPECIAL_N_ALIGN) :
-                                            CeilDiv(inputParams_.kSize, NZ_BASE_K_ALIGN);
+        const uint64_t expectedOuter0 = specialWeightFormat_ ? CeilDiv(inputParams_.kSize, NZ_SPECIAL_K_ALIGN) :
+                                                               CeilDiv(inputParams_.nSize, NZ_BASE_N_ALIGN);
+        const uint64_t expectedOuter1 = specialWeightFormat_ ? CeilDiv(inputParams_.nSize, NZ_SPECIAL_N_ALIGN) :
+                                                               CeilDiv(inputParams_.kSize, NZ_BASE_K_ALIGN);
         const bool shapeMatches = storageShape.GetDimNum() == 5 &&
-            static_cast<uint64_t>(storageShape.GetDim(0)) == inputParams_.groupNum &&
-            static_cast<uint64_t>(storageShape.GetDim(1)) == expectedOuter0 &&
-            static_cast<uint64_t>(storageShape.GetDim(2)) == expectedOuter1 &&
-            static_cast<uint64_t>(storageShape.GetDim(3)) == NZ_BASE_K_ALIGN &&
-            static_cast<uint64_t>(storageShape.GetDim(4)) == expectedC0;
+                                  static_cast<uint64_t>(storageShape.GetDim(0)) == inputParams_.groupNum &&
+                                  static_cast<uint64_t>(storageShape.GetDim(1)) == expectedOuter0 &&
+                                  static_cast<uint64_t>(storageShape.GetDim(2)) == expectedOuter1 &&
+                                  static_cast<uint64_t>(storageShape.GetDim(3)) == NZ_BASE_K_ALIGN &&
+                                  static_cast<uint64_t>(storageShape.GetDim(4)) == expectedC0;
         OP_CHECK_IF(!shapeMatches,
                     OP_LOGE(context_->GetNodeName(),
                             "A5 INT4 %s weight storage shape must be "
@@ -2189,29 +2367,25 @@ bool GroupedS8S4BasicApiTiling::CheckWeightStorageShape(const gert::StorageShape
 
     uint64_t scalarSlotNum = inputParams_.groupNum * inputParams_.kSize * inputParams_.nSize;
     if (inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
-        const uint64_t alignedK = specialWeightFormat_ ?
-                                      CeilAlign(inputParams_.kSize, NZ_SPECIAL_K_ALIGN) :
-                                      CeilAlign(inputParams_.kSize, NZ_BASE_K_ALIGN);
-        const uint64_t alignedN = specialWeightFormat_ ?
-                                      CeilAlign(inputParams_.nSize, NZ_SPECIAL_N_ALIGN) :
-                                      CeilAlign(inputParams_.nSize, NZ_BASE_N_ALIGN);
+        const uint64_t alignedK = specialWeightFormat_ ? CeilAlign(inputParams_.kSize, NZ_SPECIAL_K_ALIGN) :
+                                                         CeilAlign(inputParams_.kSize, NZ_BASE_K_ALIGN);
+        const uint64_t alignedN = specialWeightFormat_ ? CeilAlign(inputParams_.nSize, NZ_SPECIAL_N_ALIGN) :
+                                                         CeilAlign(inputParams_.nSize, NZ_BASE_N_ALIGN);
         scalarSlotNum = inputParams_.groupNum * alignedK * alignedN;
     }
     const uint64_t actualStorageElements = static_cast<uint64_t>(storageShape.GetShapeSize());
     // aclnnGroupedMatmulV5 normalizes a packed INT32 carrier to logical INT4 before Host tiling.
     // For ND weights the 8:1 physical storage shape is intentionally retained, so dtype alone is
     // insufficient to recover the carrier representation at this point.
-    if (!weightPackedInt32_ && inputParams_.bDtype == ge::DT_INT4 &&
-        scalarSlotNum % PACKED_INT32_RATIO == 0 &&
+    if (!weightPackedInt32_ && inputParams_.bDtype == ge::DT_INT4 && scalarSlotNum % PACKED_INT32_RATIO == 0 &&
         actualStorageElements == scalarSlotNum / PACKED_INT32_RATIO) {
         weightPackedInt32_ = true;
     }
     OP_CHECK_IF(weightPackedInt32_ && scalarSlotNum % PACKED_INT32_RATIO != 0,
                 OP_LOGE(context_->GetNodeName(), "Packed INT32 weight requires the physical INT4 slot count "
-                                                     "to be divisible by 8."),
+                                                 "to be divisible by 8."),
                 return false);
-    const uint64_t expectedStorageElements =
-        weightPackedInt32_ ? scalarSlotNum / PACKED_INT32_RATIO : scalarSlotNum;
+    const uint64_t expectedStorageElements = weightPackedInt32_ ? scalarSlotNum / PACKED_INT32_RATIO : scalarSlotNum;
     OP_CHECK_IF(actualStorageElements != expectedStorageElements,
                 OP_LOGE(context_->GetNodeName(),
                         "Weight storage shape mismatch: expected %lu physical elements for logical INT4, got %lu.",
@@ -2254,8 +2428,7 @@ bool GroupedS8S4BasicApiTiling::AnalyzeInputs()
     const gert::Shape &xShape = xStorageShape->GetOriginShape();
     const gert::Shape &weightShape = weightStorageShape->GetOriginShape();
 
-    OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(context_->GetNodeName(), "SetGroupNum failed."),
-                return false);
+    OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(context_->GetNodeName(), "SetGroupNum failed."), return false);
     OP_CHECK_IF(!SetLogicalMKN(xShape, weightShape), OP_LOGE(context_->GetNodeName(), "SetLogicalMKN failed."),
                 return false);
     OP_CHECK_IF(expectedTokenNum_ > inputParams_.mSize,
@@ -2266,9 +2439,8 @@ bool GroupedS8S4BasicApiTiling::AnalyzeInputs()
                 OP_LOGE(context_->GetNodeName(), "S8S4 BasicApi shape validation failed."), return false);
 
     inputParams_.aQuantMode = QuantMode::PERTOKEN_MODE;
-    inputParams_.bQuantMode = dequantMode_ == DequantMode::SYMMETRIC_PER_GROUP ?
-                                  QuantMode::PERGROUP_MODE :
-                                  QuantMode::PERCHANNEL_MODE;
+    inputParams_.bQuantMode =
+        dequantMode_ == DequantMode::SYMMETRIC_PER_GROUP ? QuantMode::PERGROUP_MODE : QuantMode::PERCHANNEL_MODE;
     inputParams_.kernelType = 0UL;
     return true;
 }
@@ -2287,10 +2459,9 @@ ge::graphStatus GroupedS8S4BasicApiTiling::DoOpTiling()
     tilingData_.gmmQuantParams.hasBias = static_cast<uint8_t>(inputParams_.hasBias);
     tilingData_.s8s4Params.quantGroupSize =
         dequantMode_ == DequantMode::SYMMETRIC_PER_GROUP ? QUANT_GROUP_SIZE : static_cast<uint32_t>(inputParams_.kSize);
-    tilingData_.s8s4Params.quantGroupNum =
-        dequantMode_ == DequantMode::SYMMETRIC_PER_GROUP ?
-            static_cast<uint32_t>(inputParams_.kSize / QUANT_GROUP_SIZE) :
-            1U;
+    tilingData_.s8s4Params.quantGroupNum = dequantMode_ == DequantMode::SYMMETRIC_PER_GROUP ?
+                                               static_cast<uint32_t>(inputParams_.kSize / QUANT_GROUP_SIZE) :
+                                               1U;
     tilingData_.s8s4Params.expectedTokenNum = expectedTokenNum_;
     tilingData_.s8s4Params.coreNum = static_cast<uint32_t>(aicoreParams_.aicNum);
     tilingData_.s8s4Params.dequantMode = static_cast<uint8_t>(dequantMode_);
@@ -2305,21 +2476,11 @@ ge::graphStatus GroupedS8S4BasicApiTiling::DoOpTiling()
 
 uint64_t GroupedS8S4BasicApiTiling::GetTilingKey() const
 {
-    const uint64_t weightFormat =
-        inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ ? WQGMM_FRACTAL_NZ : WQGMM_ND;
-    const uint64_t cQuantType =
-        dequantMode_ == DequantMode::SYMMETRIC_PER_GROUP ? WQGMM_PER_GROUP : WQGMM_PER_CHANNEL;
-    return GET_TPL_TILING_KEY(
-        weightFormat,
-        WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_NOT_EXIST,
-        cQuantType,
-        WQGMM_NONE,
-        WQGMM_NO_TRANS,
-        WQGMM_NO_TRANS,
-        WQGMM_S8S4_FIXED_TEMPLATE,
-        WQGMM_NOT_SINGLE_MULTI_SINGLE,
-        WQGMM_VDEFAULT,
-        WQGMM_MULTI_SCALE_DEQUANT);
+    const uint64_t weightFormat = inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ ? WQGMM_FRACTAL_NZ : WQGMM_ND;
+    const uint64_t cQuantType = dequantMode_ == DequantMode::SYMMETRIC_PER_GROUP ? WQGMM_PER_GROUP : WQGMM_PER_CHANNEL;
+    return GET_TPL_TILING_KEY(weightFormat, WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_NOT_EXIST, cQuantType, WQGMM_NONE,
+                              WQGMM_NO_TRANS, WQGMM_NO_TRANS, WQGMM_S8S4_FIXED_TEMPLATE, WQGMM_NOT_SINGLE_MULTI_SINGLE,
+                              WQGMM_VDEFAULT, WQGMM_MULTI_SCALE_DEQUANT);
 }
 
 ge::graphStatus GroupedS8S4BasicApiTiling::ValidateFixedTileResources(uint64_t kL1) const
@@ -2330,10 +2491,8 @@ ge::graphStatus GroupedS8S4BasicApiTiling::ValidateFixedTileResources(uint64_t k
     const uint64_t baseNInt8Aligned = CeilAlign(basicTiling_.baseN, int8C0);
     const uint64_t kL1CubeAligned = CeilAlign(kL1, GmmConstant::CUBE_BLOCK);
     const uint64_t kL1Int8Aligned = CeilAlign(kL1, int8C0);
-    const uint64_t scaleL1Bytes = CeilAlign(
-        basicTiling_.baseN * sizeof(uint64_t), GmmConstant::L1_ALIGN_SIZE);
-    const uint64_t l1StageBytes =
-        baseMAligned * kL1Int8Aligned + kL1CubeAligned * baseNInt8Aligned + scaleL1Bytes;
+    const uint64_t scaleL1Bytes = CeilAlign(basicTiling_.baseN * sizeof(uint64_t), GmmConstant::L1_ALIGN_SIZE);
+    const uint64_t l1StageBytes = baseMAligned * kL1Int8Aligned + kL1CubeAligned * baseNInt8Aligned + scaleL1Bytes;
     const uint64_t l1HalfBytes = aicoreParams_.l1Size / GmmConstant::DB_SIZE;
 
     const uint64_t baseKInt8Aligned = CeilAlign(basicTiling_.baseK, int8C0);
@@ -2342,54 +2501,44 @@ ge::graphStatus GroupedS8S4BasicApiTiling::ValidateFixedTileResources(uint64_t k
     const uint64_t l0cBytes = baseMAligned * baseNCubeAligned * GmmConstant::DATA_SIZE_L0C;
 
     const uint64_t vectorBaseM = CeilDiv(basicTiling_.baseM, GmmConstant::CORE_RATIO);
-    const uint64_t dataTileBytes = CeilAlign(
-        vectorBaseM * CeilAlign(basicTiling_.baseN * sizeof(uint16_t), GmmConstant::UB_ALIGN_SIZE),
-        GmmConstant::UB_ALIGN_SIZE);
-    const uint64_t rowSumBytes = CeilAlign(
-        vectorBaseM * sizeof(float), GmmConstant::UB_ALIGN_SIZE);
-    const uint64_t offsetBytes = CeilAlign(
-        basicTiling_.baseN * sizeof(float), GmmConstant::UB_ALIGN_SIZE);
+    const uint64_t dataTileBytes =
+        CeilAlign(vectorBaseM * CeilAlign(basicTiling_.baseN * sizeof(uint16_t), GmmConstant::UB_ALIGN_SIZE),
+                  GmmConstant::UB_ALIGN_SIZE);
+    const uint64_t rowSumBytes = CeilAlign(vectorBaseM * sizeof(float), GmmConstant::UB_ALIGN_SIZE);
+    const uint64_t offsetBytes = CeilAlign(basicTiling_.baseN * sizeof(float), GmmConstant::UB_ALIGN_SIZE);
     const uint64_t ubBytes = GmmConstant::NUM_HALF * (dataTileBytes + rowSumBytes) + offsetBytes;
 
-    OP_CHECK_IF(l1StageBytes > l1HalfBytes || l0aBytes > aicoreParams_.l0aSize ||
-                    l0bBytes > aicoreParams_.l0bSize || l0cBytes > aicoreParams_.l0cSize ||
-                    ubBytes > aicoreParams_.ubSize,
+    OP_CHECK_IF(l1StageBytes > l1HalfBytes || l0aBytes > aicoreParams_.l0aSize || l0bBytes > aicoreParams_.l0bSize ||
+                    l0cBytes > aicoreParams_.l0cSize || ubBytes > aicoreParams_.ubSize,
                 OP_LOGE(context_->GetNodeName(),
                         "S8S4 fixed tile resource overflow: baseM=%lu, baseN=%lu, baseK=%lu, kL1=%lu, "
                         "L1 stage=%lu/%lu, L0A=%lu/%lu, L0B=%lu/%lu, L0C=%lu/%lu, UB=%lu/%lu.",
-                        basicTiling_.baseM, basicTiling_.baseN, basicTiling_.baseK, kL1,
-                        l1StageBytes, l1HalfBytes, l0aBytes, aicoreParams_.l0aSize,
-                        l0bBytes, aicoreParams_.l0bSize, l0cBytes, aicoreParams_.l0cSize,
-                        ubBytes, aicoreParams_.ubSize),
+                        basicTiling_.baseM, basicTiling_.baseN, basicTiling_.baseK, kL1, l1StageBytes, l1HalfBytes,
+                        l0aBytes, aicoreParams_.l0aSize, l0bBytes, aicoreParams_.l0bSize, l0cBytes,
+                        aicoreParams_.l0cSize, ubBytes, aicoreParams_.ubSize),
                 return ge::GRAPH_FAILED);
     OP_LOGD(context_->GetNodeName(),
             "S8S4 fixed tile resources: baseM=%lu, baseN=%lu, baseK=%lu, kL1=%lu, "
             "L1 stage=%lu/%lu, L0A=%lu/%lu, L0B=%lu/%lu, L0C=%lu/%lu, UB=%lu/%lu.",
-            basicTiling_.baseM, basicTiling_.baseN, basicTiling_.baseK, kL1,
-            l1StageBytes, l1HalfBytes, l0aBytes, aicoreParams_.l0aSize,
-            l0bBytes, aicoreParams_.l0bSize, l0cBytes, aicoreParams_.l0cSize,
-            ubBytes, aicoreParams_.ubSize);
+            basicTiling_.baseM, basicTiling_.baseN, basicTiling_.baseK, kL1, l1StageBytes, l1HalfBytes, l0aBytes,
+            aicoreParams_.l0aSize, l0bBytes, aicoreParams_.l0bSize, l0cBytes, aicoreParams_.l0cSize, ubBytes,
+            aicoreParams_.ubSize);
     return ge::GRAPH_SUCCESS;
 }
 
 void GroupedS8S4BasicApiTiling::SetBasicBlock()
 {
-    const uint64_t preferredBaseM =
-        dequantMode_ == DequantMode::SYMMETRIC_PER_GROUP ? S8S4_BASE_M : S8S4_ASYM_BASE_M;
-    basicTiling_.baseM =
-        CeilAlign(std::min(inputParams_.mSize, preferredBaseM), static_cast<uint64_t>(CUBE_BLOCK));
+    const uint64_t preferredBaseM = dequantMode_ == DequantMode::SYMMETRIC_PER_GROUP ? S8S4_BASE_M : S8S4_ASYM_BASE_M;
+    basicTiling_.baseM = CeilAlign(std::min(inputParams_.mSize, preferredBaseM), static_cast<uint64_t>(CUBE_BLOCK));
     basicTiling_.baseN =
-        CeilAlign(std::min(inputParams_.nSize, static_cast<uint64_t>(S8S4_BASE_N)),
-                  static_cast<uint64_t>(CUBE_BLOCK));
+        CeilAlign(std::min(inputParams_.nSize, static_cast<uint64_t>(S8S4_BASE_N)), static_cast<uint64_t>(CUBE_BLOCK));
     basicTiling_.baseK = S8S4_BASE_K;
 }
 
 ge::graphStatus GroupedS8S4BasicApiTiling::DoLibApiTiling()
 {
     SetBasicBlock();
-    uint64_t kL1 = dequantMode_ == DequantMode::SYMMETRIC_PER_GROUP ?
-                       S8S4_PER_GROUP_K_L1 :
-                       S8S4_PER_CHANNEL_K_L1;
+    uint64_t kL1 = dequantMode_ == DequantMode::SYMMETRIC_PER_GROUP ? S8S4_PER_GROUP_K_L1 : S8S4_PER_CHANNEL_K_L1;
     const uint64_t alignedK = CeilAlign(inputParams_.kSize, static_cast<uint64_t>(QUANT_GROUP_SIZE));
     kL1 = std::min(kL1, alignedK);
     OP_CHECK_IF(ValidateFixedTileResources(kL1) != ge::GRAPH_SUCCESS,
@@ -2410,8 +2559,7 @@ ge::graphStatus GroupedS8S4BasicApiTiling::DoLibApiTiling()
     // sign-extends W4 directly, so it must not be injected into Cube.
     tilingData_.mmTilingData.isBias = 0U;
     const uint64_t l0cTileBytes = basicTiling_.baseM * basicTiling_.baseN * sizeof(int32_t);
-    tilingData_.mmTilingData.dbL0C =
-        l0cTileBytes * 2UL <= aicoreParams_.l0cSize ? 2U : 1U;
+    tilingData_.mmTilingData.dbL0C = l0cTileBytes * 2UL <= aicoreParams_.l0cSize ? 2U : 1U;
 
     {
         constexpr uint64_t WORKSPACE_ALIGN = 512UL;
@@ -2442,10 +2590,9 @@ ge::graphStatus GroupedS8S4BasicApiTiling::DoLibApiTiling()
         uint64_t expandedK = inputParams_.kSize;
         uint64_t expandedN = inputParams_.nSize;
         if (inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
-            OP_CHECK_IF(expandedK > UINT64_MAX_VALUE - (NZ_K_ALIGN - 1UL) ||
-                            expandedN > UINT64_MAX_VALUE - (NZ_N_ALIGN - 1UL),
-                        OP_LOGE(context_->GetNodeName(), "S8S4 expanded NZ alignment overflow."),
-                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(
+                expandedK > UINT64_MAX_VALUE - (NZ_K_ALIGN - 1UL) || expandedN > UINT64_MAX_VALUE - (NZ_N_ALIGN - 1UL),
+                OP_LOGE(context_->GetNodeName(), "S8S4 expanded NZ alignment overflow."), return ge::GRAPH_FAILED);
             expandedK = CeilAlign(expandedK, NZ_K_ALIGN);
             expandedN = CeilAlign(expandedN, NZ_N_ALIGN);
         }
@@ -2468,18 +2615,14 @@ ge::graphStatus GroupedS8S4BasicApiTiling::DoLibApiTiling()
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(!checkedMul(basicTiling_.baseM, basicTiling_.baseN, tileElements) ||
                         !checkedMul(tileElements, sizeof(uint16_t), tileBytes) ||
-                        !checkedAlign(tileBytes, tileStride) ||
-                        !checkedMul(tileStride, aicoreParams_.aicNum, tileSize),
+                        !checkedAlign(tileBytes, tileStride) || !checkedMul(tileStride, aicoreParams_.aicNum, tileSize),
                     OP_LOGE(context_->GetNodeName(), "S8S4 per-core tile workspace overflow."),
                     return ge::GRAPH_FAILED);
-        const uint64_t rowSumElements =
-            dequantMode_ == DequantMode::ASYMMETRIC_PER_CHANNEL ? inputParams_.mSize : 0UL;
-        OP_CHECK_IF(!checkedMul(rowSumElements, sizeof(float), rowSumBytes) ||
-                        !checkedAlign(rowSumBytes, rowSumSize) ||
+        const uint64_t rowSumElements = dequantMode_ == DequantMode::ASYMMETRIC_PER_CHANNEL ? inputParams_.mSize : 0UL;
+        OP_CHECK_IF(!checkedMul(rowSumElements, sizeof(float), rowSumBytes) || !checkedAlign(rowSumBytes, rowSumSize) ||
                         !checkedAdd(expandedSize, tileSize, rowSumOffset) ||
                         !checkedAdd(rowSumOffset, rowSumSize, totalSize),
-                    OP_LOGE(context_->GetNodeName(), "S8S4 row-sum workspace overflow."),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->GetNodeName(), "S8S4 row-sum workspace overflow."), return ge::GRAPH_FAILED);
         tileOffset = expandedSize;
         userWorkspaceSize_ = totalSize;
         tilingData_.s8s4Params.expandedWeightOffsetBytes = 0UL;
@@ -2508,18 +2651,15 @@ ge::graphStatus GroupedS8S4BasicApiTiling::GetWorkspaceSize()
     OP_CHECK_IF(workspaces == nullptr, OP_LOGE(context_->GetNodeName(), "workspaces is nullptr."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(userWorkspaceSize_ > std::numeric_limits<uint64_t>::max() - SYS_WORKSPACE_SIZES,
-                OP_LOGE(context_->GetNodeName(), "S8S4 total workspace size overflow."),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "S8S4 total workspace size overflow."), return ge::GRAPH_FAILED);
     // GetUserWorkspace() skips the first 16 MiB reserved by the runtime. The
     // complete expanded W8 weight is placed after that system area.
     uint64_t workspaceSize = SYS_WORKSPACE_SIZES + userWorkspaceSize_;
     OP_CHECK_IF(workspaceSize > static_cast<uint64_t>(std::numeric_limits<size_t>::max()),
-                OP_LOGE(context_->GetNodeName(), "S8S4 workspace does not fit size_t."),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "S8S4 workspace does not fit size_t."), return ge::GRAPH_FAILED);
     workspaces[0] = static_cast<size_t>(workspaceSize);
     return ge::GRAPH_SUCCESS;
 }
-
 
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmul, GroupedS8S4BasicApiTiling, 2);
 
