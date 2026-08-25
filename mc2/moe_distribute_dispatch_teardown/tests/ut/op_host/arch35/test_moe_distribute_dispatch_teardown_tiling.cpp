@@ -12,13 +12,13 @@
  * \file test_moe_distribute_dispatch_teardown_tiling.cpp
  * \brief tiling ut
  */
+#include <cstdlib>
 #include <iostream>
 #include <fstream>
 #include <thread>
 #include <vector>
 #include <string>
 #include <gtest/gtest.h>
-#include "csv_case_load_utils.h"
 #include "mc2_tiling_case_executor.h"
 
 namespace {
@@ -111,7 +111,7 @@ class TestMoeDistributeTeardownTiling : public testing::TestWithParam<MoeDistrib
 protected:
     static void SetUpTestCase()
     {
-        setenv("HCCL_BUFFSIZE", "6000", 1);
+        setenv("HCCL_BUFFSIZE", "12000", 1);
         std::cout << "TestMoeDistributeTeardownTiling SetUp" << std::endl;
     }
 
@@ -157,7 +157,9 @@ static MoeDistributeDispatchTeardownTilingTestParam test_cases[] = {
      ge::DT_INT32,
      ge::DT_INT64,
      ge::GRAPH_SUCCESS,
-     10000UL},
+     10000UL,
+     nullptr,
+     nullptr},
 
     //===============================================quantMode边界值校验====================================================
     // quantMode = -1 (下边界外，无效值，应返回失败)
@@ -193,7 +195,9 @@ static MoeDistributeDispatchTeardownTilingTestParam test_cases[] = {
      ge::DT_INT32,
      ge::DT_INT64,
      ge::GRAPH_FAILED,
-     0UL},
+     0UL,
+     nullptr,
+     nullptr},
 
     // quantMode = 0 (下边界，UNQUANT模式，应成功)
     {4,
@@ -228,7 +232,9 @@ static MoeDistributeDispatchTeardownTilingTestParam test_cases[] = {
      ge::DT_INT32,
      ge::DT_INT64,
      ge::GRAPH_SUCCESS,
-     10000UL},
+     10000UL,
+     nullptr,
+     nullptr},
 
     // quantMode = 4 (上边界，MX_QUANT模式，应成功)
     {4,
@@ -263,7 +269,9 @@ static MoeDistributeDispatchTeardownTilingTestParam test_cases[] = {
      ge::DT_INT32,
      ge::DT_INT64,
      ge::GRAPH_SUCCESS,
-     10004UL},
+     10004UL,
+     nullptr,
+     nullptr},
 
     // quantMode = 5 (上边界外，无效值，应返回失败)
     {4,
@@ -298,7 +306,9 @@ static MoeDistributeDispatchTeardownTilingTestParam test_cases[] = {
      ge::DT_INT32,
      ge::DT_INT64,
      ge::GRAPH_FAILED,
-     0UL},
+     0UL,
+     nullptr,
+     nullptr},
 
     //================================================================================================
     // 以下为根据 moe_distribute_dispatch_teardown_tiling_cases.csv 追加的 88 条用例（严格只新增）
