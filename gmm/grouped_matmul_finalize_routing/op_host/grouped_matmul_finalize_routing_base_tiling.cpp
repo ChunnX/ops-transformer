@@ -152,7 +152,8 @@ ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::ParseAttr()
     if (context_->GetOptionalInputDesc(SHARE_INPUT_INDEX) != nullptr && sharedInputOffsetAttr != nullptr) {
         OP_CHECK_IF(*sharedInputOffsetAttr < 0 ||
                         *sharedInputOffsetAttr > static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
-                    OP_LOGE(context_->GetNodeName(), "Attr SHARED_INPUT_OFFSET is out of uint32 range."),
+                    OP_LOGE(context_->GetNodeName(), "Attr SHARED_INPUT_OFFSET %ld is out of uint32 range.",
+                            *sharedInputOffsetAttr),
                     return ge::GRAPH_FAILED);
         sharedInputOffset_ = static_cast<uint32_t>(*sharedInputOffsetAttr);
     } else {
@@ -169,7 +170,8 @@ ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::ParseAttr()
     const auto batchAttr = attrs->GetAttrPointer<int64_t>(BATCH_INDEX);
     if (batchAttr != nullptr) {
         OP_CHECK_IF(*batchAttr < 0 || *batchAttr > static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
-                    OP_LOGE(context_->GetNodeName(), "Attr BATCH is out of uint32 range."), return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->GetNodeName(), "Attr BATCH %ld is out of uint32 range.", *batchAttr),
+                    return ge::GRAPH_FAILED);
         batch_ = static_cast<uint32_t>(*batchAttr);
     } else {
         OP_LOGE(context_->GetNodeName(), "Attr BATCH is None.");
@@ -281,7 +283,7 @@ ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::W4A8BaseTilingProcess()
     mm_.SetFixSplit(baseM, baseN, A8W4_MSD_BASE_K);
     if (mm_.GetTiling(tilingData_.matmulTiling) == -1) {
         OP_LOGE(context_->GetNodeName(),
-                "GroupedMatmulFinalizeRoutingBaseTiling Get Tiling Failed!"
+                "GroupedMatmulFinalizeRoutingBaseTiling Get Tiling Failed! "
                 "m, n, k: %lu, %lu, %lu",
                 m_, n_, k_);
         return ge::GRAPH_FAILED;
@@ -349,7 +351,7 @@ ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::W4A8L1OptTilingProcess()
     mm_.SetFixSplit(baseM, baseN, A8W4_L1OPT_BASE_K);
     if (mm_.GetTiling(tilingData_.matmulTiling) == -1) {
         OP_LOGE(context_->GetNodeName(),
-                "GroupedMatmulFinalizeRoutingBaseTiling Get Tiling Failed!"
+                "GroupedMatmulFinalizeRoutingBaseTiling Get Tiling Failed! "
                 "m, n, k: %lu, %lu, %lu",
                 m_, n_, k_);
         return ge::GRAPH_FAILED;

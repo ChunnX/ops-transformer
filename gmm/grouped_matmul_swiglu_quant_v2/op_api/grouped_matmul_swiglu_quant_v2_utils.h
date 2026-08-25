@@ -36,7 +36,10 @@ inline std::string ShapeToString(const op::Shape &shape)
     return oss.str();
 }
 
-inline std::string ViewShapeToString(const aclTensor *tensor) { return ShapeToString(tensor->GetViewShape()); }
+inline std::string ViewShapeToString(const aclTensor *tensor)
+{
+    return ShapeToString(tensor->GetViewShape());
+}
 
 inline std::string SupportListToString(const std::vector<DataType> &supportList)
 {
@@ -1268,7 +1271,7 @@ protected:
             return false;
         }
         if (!CheckPertokenShape()) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], when %s, CheckPerTokenShape failed.", opName_.c_str(),
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], when %s, CheckPertokenShape failed.", opName_.c_str(),
                     GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_));
             return false;
         }

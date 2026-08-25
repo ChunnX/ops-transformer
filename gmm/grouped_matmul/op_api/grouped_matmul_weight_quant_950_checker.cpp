@@ -803,7 +803,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimValueAllOne(con
     if (dimValueAllOne) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             GetAclnnName(), paramName, "true",
-            "When xDtype-weightDtype is fp16/bf16-int4, The dim value of " + paramName + " not support all be 1");
+            "When xDtype-weightDtype is fp16/bf16-int4, the dim values of " + paramName + " must not all be 1");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -828,7 +828,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckAntiQuantTranspose
         if (antiquant_scale_trans) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 GetAclnnName(), "antiquantScale", "true",
-                "When xDtype-weightDtype is fp16/bf16-int4, The transpose of antiquantScale only support false");
+                "When xDtype-weightDtype is fp16/bf16-int4, the transpose of antiquantScale must be false");
             return ACLNN_ERR_PARAM_INVALID;
         }
 
@@ -838,8 +838,8 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckAntiQuantTranspose
             bool antiquant_offset_trans = IsTransposeLastTwoDims((*gmmParams_.antiquantOffsetOptional)[idx]);
             if (antiquant_offset_trans) {
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    GetAclnnName(), "antiquantScale", "true",
-                    "When xDtype-weightDtype is fp16/bf16-int4, The transpose of antiquantOffset only support false");
+                    GetAclnnName(), "antiquantOffset", "true",
+                    "When xDtype-weightDtype is fp16/bf16-int4, the transpose of antiquantOffset must be false");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
@@ -1126,8 +1126,8 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupTypeScenario(
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else {
-        errorMessage = gmmParams_.apiVersion == gmm::GMMApiVersion::V1 ? "When splited axis is M" :
-                                                                         "When groupType is 0 (split M)";
+        errorMessage =
+            gmmParams_.apiVersion == gmm::GMMApiVersion::V1 ? "When split axis is M" : "When groupType is 0 (split M)";
         if (IsMxA8W4NZ()) {
             if (unlikely(!(gmmParams_.x->Size() == 1 && gmmParams_.y->Size() == 1 && gmmParams_.weight->Size() >= 1))) {
                 std::string incorrectSizes = "x size: " + std::to_string(gmmParams_.x->Size()) +
@@ -1171,7 +1171,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupListAndSplitI
     } else {
         if (gmmParams_.apiVersion == gmm::GMMApiVersion::V1 || gmmParams_.apiVersion == gmm::GMMApiVersion::V2) {
             CHECK_COND(gmmParams_.groupListOptional != nullptr, ACLNN_ERR_PARAM_INVALID,
-                       "GroupListOptional should not be nullptr when splited axis is M."); // V1 没有groupType参数
+                       "GroupListOptional should not be nullptr when split axis is M."); // V1 没有groupType参数
         } else {
             CHECK_COND(gmmParams_.groupTensorOptional != nullptr, ACLNN_ERR_PARAM_INVALID,
                        "GroupListOptional should not be nullptr when groupType is 0.");
