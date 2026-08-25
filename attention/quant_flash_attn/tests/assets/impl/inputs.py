@@ -362,7 +362,7 @@ def generate_qfa_mxfp8_inputs(
         dst_dtype_np = dst_np.dtype
         ts = str(src_torch.dtype)
         if "float8" in ts:
-            src_np = src_torch.view(torch.uint8).numpy().view(dst_dtype_np)
+            src_np = src_torch.view(dst_dtype_np)
         else:
             src_np = src_torch.numpy()
         if src_np.dtype != dst_dtype_np:
@@ -374,21 +374,21 @@ def generate_qfa_mxfp8_inputs(
         # numpy in-place 拷贝 (同 dtype 同 shape, bit-exact 内存拷贝)
         dst_np[...] = src_np
 
-    _inplace_write(q, q_fp8_final, "q (slot 0)")
-    _inplace_write(k, k_fp8_final, "k (slot 1)")
-    _inplace_write(v, v_fp8_final, "v (slot 2)")
-    _inplace_write(dequant_scale_q, q_scale_e8m0, "descale_q (slot 3)")
-    _inplace_write(dequant_scale_k, k_scale_e8m0, "descale_k (slot 4)")
-    _inplace_write(dequant_scale_v, v_scale_e8m0, "descale_v (slot 5)")
+    q.copy_(q_fp8_final)
+    k.copy_(k_fp8_final)
+    v.copy_(v_fp8_final)
+    dequant_scale_q.copy_(q_scale_e8m0)
+    dequant_scale_k.copy_(k_scale_e8m0)
+    dequant_scale_v.copy_(v_scale_e8m0)
 
     # ----- p_scale: in-place 写 fp32 -----
     p_scale_value = kwargs.get("p_scale_value", 1.0)
     if isinstance(p_scale_value, torch.Tensor):
         p_scale_value = float(p_scale_value.item())
-    p_scale[...] = numpy.array([float(p_scale_value)], dtype=numpy.float32)
+    p_scale[...] = p_scale_value
 
     if enable_pa:
-        block_table[...] = bt_real.numpy()
+        block_table[...] = bt_real
     else:
         block_table[...] = 0
 

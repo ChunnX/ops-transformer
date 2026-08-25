@@ -80,6 +80,7 @@ def npu_qfa(
     layout_q_descale: str = "TND",
     layout_kv: str = "TND",
     layout_out: str = "TND",
+    attn_mask_shape: tuple = None,
     **kwargs,
 ):
     """qfa_wrapper.npu_qfa — 15 个位置 tensor 与 CSV tensor_view_shapes 顺序一致:
@@ -119,6 +120,8 @@ def npu_qfa(
         else 1
     )
 
+    attn_mask_shape = tuple(attn_mask_t.shape)
+
     _apply_golden_globals(
         {
             "B": B,
@@ -136,7 +139,7 @@ def npu_qfa(
             "KV_CACHE_LAYOUT": kv_cache_layout,
             "BLOCK_SIZE": block_size,
             "SPARSE_MODE": mask_mode,
-            "ATTN_MASK_SHAPE": kwargs.get("attn_mask_shape") or (2048, 2048),
+            "ATTN_MASK_SHAPE": attn_mask_shape or (2048, 2048),
             "Q_SCALE_LAYOUT": q_scale_layout,
             "P_SCALE": (float(p_scale.item()) if p_scale.numel() > 0 else None)
             if isinstance(p_scale, torch.Tensor)

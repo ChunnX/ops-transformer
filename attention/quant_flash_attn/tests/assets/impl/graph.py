@@ -141,6 +141,8 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
             else 1
         )
 
+        attn_mask_shape = tuple(attn_mask_t.shape)
+
         # ---- 2. 注入 golden 全局变量 (prepare_npu_inputs 依赖) ----
         _apply_golden_globals(
             {
@@ -159,7 +161,7 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
                 "KV_CACHE_LAYOUT": kv_cache_layout,
                 "BLOCK_SIZE": block_size,
                 "SPARSE_MODE": mask_mode,
-                "ATTN_MASK_SHAPE": kwargs.get("attn_mask_shape") or (2048, 2048),
+                "ATTN_MASK_SHAPE": attn_mask_shape or (2048, 2048),
                 "Q_SCALE_LAYOUT": q_scale_layout,
                 "P_SCALE": p_scale_val,
                 "ENABLE_LSE": enable_lse,
