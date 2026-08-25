@@ -569,18 +569,21 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessBatchIndex(uint32_t cur
     compactIdxBuf.SetValue(0, runningCompactIdx + inclusiveSum - 1);
 
     int32_t bias = static_cast<int32_t>(rankId_) * numEntriesPerRank_;
-    AscendC::Adds<int32_t>(entryUb, entryUb, -bias, batchLenAlign);
-    AscendC::PipeBarrier<PIPE_V>();
-
-    AscendC::GatherMaskParams gatherParams{1U, 1U, 8U, 8U};
-    uint64_t rsvdCnt = 0;
-    AscendC::GatherMask<int32_t>(uniqueEntryUb, entryUb, static_cast<uint8_t>(0), true, batchLenAlign, gatherParams, rsvdCnt);
-    AscendC::PipeBarrier<PIPE_V>();
-
-    uint32_t batchUniqueCnt = static_cast<uint32_t>(rsvdCnt);
-    inclusiveSum += static_cast<int32_t>(batchUniqueCnt) - 1;
-    SyncFunc<AscendC::HardEvent::V_S>(*pipe_);
-    prevEntry = entryUb.GetValue(batchLen - 1U) + bias;
+    SyncFunc<AscendC::HardEvent::MTE2_S>(*pipe_);
+    uint32_t batchUniqueCnt = 0;
+    int32_t localPrevEntry = prevEntry;
+    if (isFirstElement) {
+        localPrevEntry = entryUb.GetValue(0) - 1;
+    }
+    for (uint32_t i = 0; i < batchLen; i++) {
+        int32_t entry = entryUb.GetValue(i);
+        if (entry != localPrevEntry) {
+            uniqueEntryUb.SetValue(batchUniqueCnt, entry - bias);
+            batchUniqueCnt++;
+        }
+        localPrevEntry = entry;
+    }
+    prevEntry = localPrevEntry;
     isFirstElement = false;
 
     return batchUniqueCnt;
