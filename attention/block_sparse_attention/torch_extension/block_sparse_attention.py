@@ -40,8 +40,7 @@ Prerequisite:
 import torch
 import torch_npu  # noqa: F401  (registers the NPU backend)
 from torch.library import impl
-from cann_ops_transformer.op_builder.builder import OpBuilder
-from cann_ops_transformer.op_builder.builder import AS_LIBRARY
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 # Supported layouts and dtypes (single source of truth, mirrors the kernel:
 # block_sparse_attention_tiling.cpp / block_sparse_attention.cpp).
@@ -313,7 +312,7 @@ class BlockSparseAttentionOpBuilder(OpBuilder):
 		super().__init__("block_sparse_attention")
 
 	def sources(self):
-		return ['ops/csrc/block_sparse_attention.cpp']
+		return ['csrc/attention/block_sparse_attention.cpp']
 
 	def schema(self) -> str:
 		return (
@@ -343,7 +342,7 @@ class BlockSparseAttentionOpBuilder(OpBuilder):
 		)
 
 	def register_meta(self):
-		@impl(AS_LIBRARY, self.name, "Meta")
+		@impl(get_as_library(), self.name, "Meta")
 		def _meta(query, key, value, block_sparse_mask, block_shape,
 				actual_seq_lengths, actual_seq_lengths_kv,
 				num_heads, num_key_value_heads,
@@ -430,7 +429,7 @@ _op_builder = BlockSparseAttentionOpBuilder()
 _op_module = _op_builder.load()      # JIT-compiles + loads block_sparse_attention.so
 
 
-@impl(AS_LIBRARY, _op_builder.name, "PrivateUse1")
+@impl(get_as_library(), _op_builder.name, "PrivateUse1")
 def block_sparse_attention(query,
 						key,
 						value,
