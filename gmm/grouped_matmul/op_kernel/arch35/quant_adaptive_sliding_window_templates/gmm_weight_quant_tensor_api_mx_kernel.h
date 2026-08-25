@@ -13,7 +13,7 @@
 
 #include "../grouped_matmul_tiling_data_apt.h"
 #include "blaze/gemm/block/block_mmad_weight_prologue_mx.h"
-#include "blaze/gemm/kernel/kernel_grouped_matmul_mix_weight_prologue.h"
+#include "blaze/gemm/kernel/kernel_gmm_mix_weight_prologue.h"
 #include "blaze/gemm/policy/dispatch_policy.h"
 #include "blaze/gemm/utils/common_utils.h"
 #include "../../grouped_matmul_utils.h"

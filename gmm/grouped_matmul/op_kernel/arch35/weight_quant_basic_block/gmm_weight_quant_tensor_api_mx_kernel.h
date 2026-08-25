@@ -4,7 +4,7 @@
  */
 #pragma once
 
-#include "blaze/gemm/kernel/kernel_grouped_matmul_mix_weight_prologue.h"
+#include "blaze/gemm/kernel/kernel_gmm_mix_weight_prologue.h"
 #include "../grouped_matmul_tiling_data_apt.h"
 #include "../../grouped_matmul_utils.h"
 
