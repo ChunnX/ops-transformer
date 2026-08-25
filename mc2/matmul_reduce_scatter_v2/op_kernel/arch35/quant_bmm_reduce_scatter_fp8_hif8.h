@@ -25,19 +25,19 @@
 #include "../../../common/op_kernel/qbmm_mix_perblock_noncontiguous.h"
 #include "../matmul_reduce_scatter_v2_c_tiling.h"
 
-#define TEMPLATE_CLASS_PARAMS                                                                                          \
+#define QUANT_RS_TEMPLATE_CLASS_PARAMS                                                                                 \
     template <typename AType, typename BType, typename CType, typename ScaleType, class MMClass, bool IsPerBlock,      \
               bool ATrans, bool BTrans, int TPL_COMM_MODE, bool PeerOnly = false>
-#define TEMPLATE_IMPL_PARAMS                                                                                           \
+#define QUANT_RS_TEMPLATE_IMPL_PARAMS                                                                                  \
     template <typename AType, typename BType, typename CType, typename ScaleType, class MMClass, bool IsPerBlock,      \
               bool ATrans, bool BTrans, int TPL_COMM_MODE, bool PeerOnly>
-#define TEMPLATE_FUNC_PARAMS                                                                                           \
+#define QUANT_RS_TEMPLATE_FUNC_PARAMS                                                                                  \
     AType, BType, CType, ScaleType, MMClass, IsPerBlock, ATrans, BTrans, TPL_COMM_MODE, PeerOnly
 
 namespace MatmulReduceScatterV2Impl {
 using namespace AscendC;
 
-TEMPLATE_CLASS_PARAMS
+QUANT_RS_TEMPLATE_CLASS_PARAMS
 class QuantBMMReduceScatter {
 public:
     __aicore__ inline QuantBMMReduceScatter()
@@ -89,8 +89,8 @@ template <typename AType, typename BType, typename CType, typename ScaleType, cl
 using QuantBMMReduceScatterPeerOnly =
     QuantBMMReduceScatter<AType, BType, CType, ScaleType, MMClass, IsPerBlock, ATrans, BTrans, TPL_COMM_MODE, true>;
 
-TEMPLATE_IMPL_PARAMS
-__aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::Init(
+QUANT_RS_TEMPLATE_IMPL_PARAMS
+__aicore__ inline void QuantBMMReduceScatter<QUANT_RS_TEMPLATE_FUNC_PARAMS>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR x1ScaleGM, GM_ADDR x2ScaleGM, GM_ADDR cGM, GM_ADDR contextGM,
     GM_ADDR workspaceGM, Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData *tilingData, TPipe *tPipe)
 {
@@ -118,8 +118,8 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::Init(
     workspaceGM_ = gmToFloat_ + cfg.cToFloatLen;
 }
 
-TEMPLATE_IMPL_PARAMS
-__aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::PostProcess()
+QUANT_RS_TEMPLATE_IMPL_PARAMS
+__aicore__ inline void QuantBMMReduceScatter<QUANT_RS_TEMPLATE_FUNC_PARAMS>::PostProcess()
 {
     auto &&cfg = tilingData_->param;
     // 等待reducescatter执行完成
@@ -132,16 +132,16 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::PostProcess(
     }
 }
 
-TEMPLATE_IMPL_PARAMS
-__aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::Process()
+QUANT_RS_TEMPLATE_IMPL_PARAMS
+__aicore__ inline void QuantBMMReduceScatter<QUANT_RS_TEMPLATE_FUNC_PARAMS>::Process()
 {
     InnerProcess();
     PostProcess();
 }
 
 // perblock量化场景当rankM不满足128*ranksize，走计算通信串行
-TEMPLATE_IMPL_PARAMS
-__aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulReduceScatterSerial()
+QUANT_RS_TEMPLATE_IMPL_PARAMS
+__aicore__ inline void QuantBMMReduceScatter<QUANT_RS_TEMPLATE_FUNC_PARAMS>::MatMulReduceScatterSerial()
 {
     auto &&qBMmtiling = tilingData_->quantBmmV3TileTiling;
     auto &&tiling = qBMmtiling.matmulTiling;
@@ -167,8 +167,8 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulReduce
     }
 }
 
-TEMPLATE_IMPL_PARAMS
-__aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::InnerProcess()
+QUANT_RS_TEMPLATE_IMPL_PARAMS
+__aicore__ inline void QuantBMMReduceScatter<QUANT_RS_TEMPLATE_FUNC_PARAMS>::InnerProcess()
 {
     auto &&tiling = tilingData_->quantBmmV3TileTiling.matmulTiling;
     auto &&cfg = tilingData_->param;
@@ -212,8 +212,8 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::InnerProcess
     }
 }
 
-TEMPLATE_IMPL_PARAMS
-__aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComputReduceScatterPertensor(
+QUANT_RS_TEMPLATE_IMPL_PARAMS
+__aicore__ inline void QuantBMMReduceScatter<QUANT_RS_TEMPLATE_FUNC_PARAMS>::MatMulComputReduceScatterPertensor(
     GM_ADDR aGM, GM_ADDR cGM, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &qBMmtiling, uint32_t tileCnt,
     GM_ADDR gmToFloat, bool isLast, bool isTail)
 {
@@ -267,8 +267,8 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComput
     preCoreNum_ = mmv3.GetPreCoreNum();
 }
 
-TEMPLATE_IMPL_PARAMS
-__aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComputReduceScatterPerblock(
+QUANT_RS_TEMPLATE_IMPL_PARAMS
+__aicore__ inline void QuantBMMReduceScatter<QUANT_RS_TEMPLATE_FUNC_PARAMS>::MatMulComputReduceScatterPerblock(
     GM_ADDR aGM, GM_ADDR cGM, GM_ADDR x1ScaleGM, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &qBMmtiling,
     uint32_t tileCnt, GM_ADDR gmToFloat, bool isTail)
 {
@@ -313,8 +313,8 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComput
     }
 }
 
-TEMPLATE_IMPL_PARAMS
-__aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComputReduceScatter(
+QUANT_RS_TEMPLATE_IMPL_PARAMS
+__aicore__ inline void QuantBMMReduceScatter<QUANT_RS_TEMPLATE_FUNC_PARAMS>::MatMulComputReduceScatter(
     GM_ADDR aGM, GM_ADDR cGM, GM_ADDR x1ScaleGM, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &qBMmtiling,
     uint32_t tileCnt, GM_ADDR gmToFloat, bool isLast, bool isTail)
 {
