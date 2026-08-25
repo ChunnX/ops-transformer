@@ -45,7 +45,7 @@ template <typename lowType, typename highType, typename stateType = lowType, boo
 class CGDR {
 public:
     static constexpr bool kStateIsFp32 = std::is_same_v<stateType, float>;
-    using vInnerType = std::conditional_t<kStateIsFp32, float, lowType>;
+    using vInnerType = lowType;
     using StageOneMmVInner = StageOneMTT<vInnerType>;
     __aicore__ inline CGDR(TPipe *pipe, const ChunkGatedDeltaRuleTilingData *tilingData)
         : stageOneOp_(stage1MmBf16_, stage1MmVInner_)
@@ -58,11 +58,9 @@ public:
     {
         if ASCEND_IS_AIC {
             stage1MmBf16_.Init(&tiling_->matmulTilingFp32, pipe_);
-            if constexpr (kStateIsFp32) {
-                stage1MmVInner_.Init(&tiling_->matmulTilingFp32C, pipe_);
-            } else {
-                stage1MmVInner_.Init(&tiling_->matmulTilingFp32, pipe_);
-            }
+            // Vinner is BF16 for both state precisions.  FP32 is retained
+            // only for the recurrent state/output path.
+            stage1MmVInner_.Init(&tiling_->matmulTilingFp32, pipe_);
             stage2MmBf16_.Init(&tiling_->matmulTilingFp32, pipe_);
             if constexpr (kStateIsFp32) {
                 stage2MmFp32_.Init(&tiling_->matmulTilingFp32C, pipe_);
@@ -136,11 +134,12 @@ public:
 
         vInner_.SetGlobalBuffer(reinterpret_cast<__gm__ vInnerType *>(user + offset));
         offset += sizeof(vInnerType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dv;
-
         if constexpr (kStateIsFp32) {
-            vInnerBf16_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
-            offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dv;
+            dataSize = tiling_->nv * tiling_->dv * tiling_->dk;
+            curStateBf16_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset), dataSize);
+            offset += sizeof(lowType) * dataSize;
         }
+        vInnerBf16_ = vInner_;
 
         qPrime_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
         offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
@@ -153,12 +152,6 @@ public:
 
         qkt_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
         offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->chunkSize;
-
-        if constexpr (kStateIsFp32) {
-            uint64_t stateWkElemCnt = tiling_->nv * tiling_->dv * tiling_->dk;
-            curStateBf16_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset), stateWkElemCnt);
-            offset += sizeof(lowType) * stateWkElemCnt;
-        }
 
         stageOneMask_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
         offset += sizeof(highType) * tiling_->chunkSize * tiling_->chunkSize * tiling_->aiCoreNum * TASK_RATIO;
@@ -226,6 +219,7 @@ private:
         StageTwoParams<sType> initStageTwoParams;
         initStageTwoParams.qPrime = qPrime_;
         initStageTwoParams.vInner = vInner_;
+        initStageTwoParams.yRes = attnInter_;
         if constexpr (std::is_same_v<sType, float>) {
             initStageTwoParams.vInnerBf16 = vInnerBf16_;
         }
@@ -296,8 +290,8 @@ private:
     GlobalTensor<stateType> initState_;
     GlobalTensor<int32_t> actualSeqLens_;
 
-    GlobalTensor<lowType> curStateBf16_;
-    GlobalTensor<lowType> vInnerBf16_; // (Nv, maxGroupLength, Dv) BF16 vInner for stage3 (FP32 path only)
+    GlobalTensor<lowType> curStateBf16_; // compact unscaled state copy consumed by C1/C2
+    GlobalTensor<lowType> vInnerBf16_; // alias of vInner_, consumed by Stage2/Stage3
 
     GlobalTensor<highType> gCum_;     // (Nv, maxGroupLength)
     GlobalTensor<lowType> kCumDecay_; // (Nv, maxGroupLength, Dk)
