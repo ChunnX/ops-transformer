@@ -439,14 +439,11 @@ private:
     {
         // Copy g
         GCopyInWithStride(src, validLen);
-        // CumSum计算
-        uint32_t outer = 1;
-        uint32_t inner = chunkSize_;
-        CumSumInfo cumSumInfo{outer, inner};
-        CumSum<float>(gCumSumUbFloat, gCumUbFloat_, gCumUbFloat_, cumSumInfo);
-        PipeBarrier<PIPE_V>();
-        // Exp计算
-        Exp<float, 0, true>(gCumExpUbFloat, gCumSumUbFloat, chunkSize_);
+        // RegBase 实现与原 CumSum + Exp 相同的两步计算，有效长度由 chunkSize_ 传入。
+        auto gAddr = reinterpret_cast<__ubuf__ float *>(gCumUbFloat_.GetPhyAddr());
+        auto gCumAddr = reinterpret_cast<__ubuf__ float *>(gCumSumUbFloat.GetPhyAddr());
+        auto gCumExpAddr = reinterpret_cast<__ubuf__ float *>(gCumExpUbFloat.GetPhyAddr());
+        AscendC::VF_CALL<CumSumExpVF>(gAddr, gCumAddr, gCumExpAddr, static_cast<uint32_t>(chunkSize_));
         PipeBarrier<PIPE_V>();
 
         if (subBlockIdx_ == 0) {
