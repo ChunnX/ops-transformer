@@ -37,12 +37,12 @@ def _apply_golden_globals(params, quant_mode=1):
     必须在调 prepare_npu_inputs 前把 csv attributes 全部注入.
 
     quant_mode=6 → fp8_golden_mod (GQA FP8 全量化路径)
-    quant_mode=7 → hif8_golden_mod (HIF8 per-tensor 量化路径)
+    quant_mode=0 → hif8_golden_mod (HIF8 per-tensor 量化路径)
     其他 → mxfp8_golden_mod (MXFP8 路径)
     """
     if quant_mode == 6:
         target = fp8_golden_mod
-    elif quant_mode == 7:
+    elif quant_mode == 0:
         target = hif8_golden_mod
     else:
         target = mxfp8_golden_mod
@@ -239,7 +239,7 @@ class QuantFlashAttnAclGraph(torch.nn.Module):
                 if isinstance(block_table_cpu, torch.Tensor) and enable_pa
                 else None,
             )
-        elif quant_mode == 7:
+        elif quant_mode == 0:
             inputs = hif8_golden_mod.prepare_npu_inputs(
                 q_fp8,
                 k_fp8,

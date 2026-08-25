@@ -32,12 +32,12 @@ def _apply_golden_globals(params, quant_mode=1):
     """把 case 参数注入 golden 模块全局变量 (按 quant_mode 选择目标模块).
 
     quant_mode=6 → fp8_golden_mod (GQA FP8 全量化路径)
-    quant_mode=7 → hif8_golden_mod (HIF8 per-tensor 量化路径)
+    quant_mode=0 → hif8_golden_mod (HIF8 per-tensor 量化路径)
     其他 → mxfp8_golden_mod (MXFP8 路径)
     """
     if quant_mode == 6:
         target = fp8_golden_mod
-    elif quant_mode == 7:
+    elif quant_mode == 0:
         target = hif8_golden_mod
     else:
         target = mxfp8_golden_mod
@@ -201,7 +201,7 @@ def npu_qfa(
                 seqused_q_t=seqused_q_t,
                 seqused_kv_t=seqused_kv_t,
             )
-        elif quant_mode == 7:
+        elif quant_mode == 0:
             atten_out, lse_out = hif8_golden_mod.npu_hif8_fa(
                 q,
                 k,

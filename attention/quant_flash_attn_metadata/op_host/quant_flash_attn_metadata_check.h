@@ -110,13 +110,12 @@ inline aclnnStatus QuantFlashAttnMetadataCheck::CheckBaseAttr(int64_t batchSize,
                "batchSize must be -1 or greater than 0, but got %ld", batchSize);
 
     constexpr int64_t A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 1;
-    constexpr int64_t A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32 = 7;
-    static const std::unordered_set<int64_t> quantModeSet = {
-        A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
-        A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32};
+    constexpr int64_t A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32 = 0;
+    static const std::unordered_set<int64_t> quantModeSet = {A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
+                                                             A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32};
     CHECK_COND(quantModeSet.count(quantMode) > 0, ACLNN_ERR_RUNTIME_ERROR,
                "quantMode only supports 1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) "
-               "and 7(A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32) "
+               "and 0(A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32) "
                "but got %ld",
                quantMode);
 
