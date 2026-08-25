@@ -41,6 +41,11 @@ EVENT_NAMES = {
     22: "RankRoundPlan (aggregate)",
     23: "MaskLoadAndGather (aggregate)",
     24: "ReadyPublish (aggregate)",
+    25: "Mask DataCopy issue (aggregate)",
+    26: "CreateVecIndex issue (aggregate)",
+    27: "Wait mask/index ready (aggregate)",
+    28: "GatherMask issue (aggregate)",
+    29: "Wait GatherMask ready (aggregate)",
 }
 EVENT_COLORS = {
     1: "#06b6d4",
@@ -67,9 +72,15 @@ EVENT_COLORS = {
     22: "#6366f1",
     23: "#a855f7",
     24: "#e11d48",
+    25: "#0ea5e9",
+    26: "#8b5cf6",
+    27: "#f59e0b",
+    28: "#d946ef",
+    29: "#f97316",
 }
-WAIT_EVENT_IDS = frozenset((8, 9, 10, 11, 13, 14, 15, 19, 20))
-AGGREGATE_EVENT_IDS = frozenset((12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24))
+WAIT_EVENT_IDS = frozenset((8, 9, 10, 11, 13, 14, 15, 19, 20, 27, 29))
+AGGREGATE_EVENT_IDS = frozenset((12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+                                 25, 26, 27, 28, 29))
 WAIT_INSTRUMENTED_PARENT_IDS = frozenset((1, 2, 4, 5, 7))
 EVENT_TRACE_POINTS = {
     1: (
@@ -167,6 +178,26 @@ EVENT_TRACE_POINTS = {
     24: (
         "PublishInterleavedDispatchTilesReady：开始等待数据可见并统计 tile 完成量",
         "当前专家段负责的 GMM1 ready counter 发布完成（累计值）",
+    ),
+    25: (
+        "DataCopy：开始下发当前 sendMask 的 GM→UB 搬运指令",
+        "DataCopy API 返回；仅代表指令完成下发，不代表 mask 已到达 UB（累计值）",
+    ),
+    26: (
+        "CreateVecIndex：开始下发当前 batch 的递增 route index 生成指令",
+        "CreateVecIndex API 返回；仅代表指令完成下发（累计值）",
+    ),
+    27: (
+        "进入既有 MTE2_V 同步，等待 mask 搬运和 route index 生成可供 GatherMask 使用",
+        "MTE2_V 同步完成（累计值）",
+    ),
+    28: (
+        "GatherMask：开始下发运行时 sendMask 的 compact index 提取指令",
+        "GatherMask API 返回；仅代表向量指令完成下发（累计值）",
+    ),
+    29: (
+        "进入既有 V_S 同步，等待 compact topkIndex 对 Scalar 可见",
+        "V_S 同步完成（累计值）",
     ),
 }
 
@@ -576,13 +607,15 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
 </section>
 <section class="panel">
   <h2>Dispatch 分项</h2>
-  <div class="muted">五个分项是每个 AIV1 core 在当前 wave 内所有专家段的精确 cycle 累计；
+  <div class="muted">五个一级分项是每个 AIV1 core 在当前 wave 内所有专家段的精确 cycle 累计；
   RankRoundPlan 已扣除其内部嵌套的 MaskLoadAndGather，因而各列互不重叠。Other/control 为 Dispatch
-  父阶段减去五项后的 wave 游标规划、地址设置、检查等剩余时间。</div>
+  父阶段减去五项后的 wave 游标规划、地址设置、检查等剩余时间。Mask 子项进一步拆分现有异步流水：
+  DataCopy/CreateVecIndex/GatherMask 标为 issue，仅表示 API 指令下发；真实完成延迟落在原有 MTE2_V/V_S 等待中。</div>
   <div class="table-scroll"><table id="dispatchTable"><thead><tr>
     <th>AI Block</th><th>Wave</th><th>Token 数</th><th>Dispatch 总计</th><th>PrepareDispatchCounts</th>
     <th>RankRoundPlan</th><th>MaskLoadAndGather</th><th>TransferPipeline</th><th>ReadyPublish</th>
-    <th>Other/control</th><th>已归类占比</th>
+    <th>Mask DataCopy issue</th><th>CreateVecIndex issue</th><th>Wait mask/index ready</th>
+    <th>GatherMask issue</th><th>Wait GatherMask ready</th><th>Other/control</th><th>已归类占比</th>
   </tr></thead><tbody></tbody></table></div>
 </section>
 <section class="panel">
@@ -876,16 +909,23 @@ function renderDispatchTable(events) {{
   for(const e of events) {{
     if(e.role!=='AIV1') continue;
     const relevant=e.event_id===1 ||
-      (e.parent_event_id===1 && [12,21,22,23,24].includes(e.event_id));
+      (e.parent_event_id===1 && [12,21,22,23,24].includes(e.event_id)) ||
+      (e.parent_event_id===23 && [25,26,27,28,29].includes(e.event_id));
     if(!relevant) continue;
     const key=`${{e.core}}|${{e.wave}}`;
-    const g=groups.get(key)||{{core:e.core,wave:e.wave,tokens:0,total:0,counts:0,plan:0,mask:0,transfer:0,ready:0}};
+    const g=groups.get(key)||{{core:e.core,wave:e.wave,tokens:0,total:0,counts:0,plan:0,mask:0,transfer:0,ready:0,
+      maskCopyIssue:0,indexIssue:0,maskIndexWait:0,gatherIssue:0,gatherWait:0}};
     if(e.event_id===1) {{ g.total+=e.duration_cycles; g.tokens=Math.max(g.tokens,e.token_count); }}
     else if(e.event_id===21) g.counts+=e.duration_cycles;
     else if(e.event_id===22) g.plan+=e.duration_cycles;
     else if(e.event_id===23) g.mask+=e.duration_cycles;
     else if(e.event_id===12) g.transfer+=e.duration_cycles;
     else if(e.event_id===24) g.ready+=e.duration_cycles;
+    else if(e.event_id===25) g.maskCopyIssue+=e.duration_cycles;
+    else if(e.event_id===26) g.indexIssue+=e.duration_cycles;
+    else if(e.event_id===27) g.maskIndexWait+=e.duration_cycles;
+    else if(e.event_id===28) g.gatherIssue+=e.duration_cycles;
+    else if(e.event_id===29) g.gatherWait+=e.duration_cycles;
     groups.set(key,g);
   }}
   const rows=[...groups.values()].filter(g=>g.total>0).sort((a,b)=>a.core-b.core||a.wave-b.wave);
@@ -896,7 +936,10 @@ function renderDispatchTable(events) {{
     const ratio=g.total?(classified/g.total*100).toFixed(1)+'%':'—';
     return `<tr><td>${{g.core}}</td><td>${{g.wave}}</td><td>${{g.tokens}}</td><td>${{fmt(g.total)}}</td>`
       +`<td>${{fmt(g.counts)}}</td><td>${{fmt(g.plan)}}</td><td>${{fmt(g.mask)}}</td>`
-      +`<td>${{fmt(g.transfer)}}</td><td>${{fmt(g.ready)}}</td><td>${{fmt(other)}}</td><td>${{ratio}}</td></tr>`;
+      +`<td>${{fmt(g.transfer)}}</td><td>${{fmt(g.ready)}}</td>`
+      +`<td>${{fmt(g.maskCopyIssue)}}</td><td>${{fmt(g.indexIssue)}}</td><td>${{fmt(g.maskIndexWait)}}</td>`
+      +`<td>${{fmt(g.gatherIssue)}}</td><td>${{fmt(g.gatherWait)}}</td>`
+      +`<td>${{fmt(other)}}</td><td>${{ratio}}</td></tr>`;
   }}).join('');
 }}
 function renderCombineTable(events) {{

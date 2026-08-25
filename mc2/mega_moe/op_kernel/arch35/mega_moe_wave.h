@@ -978,9 +978,40 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetInfo(
         traceOffset = waveTrace_.RecordAggregatedChild(
             MegaMoeWaveTraceEvent::DISPATCH_RANK_ROUND_PLAN, MegaMoeWaveTraceEvent::DISPATCH,
             traceScope, traceBegin, traceEnd, dispatchTraceMetrics.rankRoundPlanCycles, traceOffset);
+        uint32_t maskTraceOffset = traceOffset;
         traceOffset = waveTrace_.RecordAggregatedChild(
             MegaMoeWaveTraceEvent::DISPATCH_MASK_LOAD_AND_GATHER, MegaMoeWaveTraceEvent::DISPATCH,
             traceScope, traceBegin, traceEnd, dispatchTraceMetrics.maskLoadAndGatherCycles, traceOffset);
+        // MaskLoadAndGather 内部仍只使用原有 MTE2_V、V_S 两处同步。以下五项
+        // 只是把连续区间细分后聚合记录，不会向 kernel 增加新的流水屏障。
+        uint32_t maskTraceBegin = traceBegin + maskTraceOffset;
+        uint32_t maskTraceEnd = traceBegin + traceOffset;
+        uint32_t maskChildOffset = 0U;
+        maskChildOffset = waveTrace_.RecordAggregatedChild(
+            MegaMoeWaveTraceEvent::DISPATCH_MASK_COPY_ISSUE,
+            MegaMoeWaveTraceEvent::DISPATCH_MASK_LOAD_AND_GATHER,
+            traceScope, maskTraceBegin, maskTraceEnd,
+            dispatchTraceMetrics.maskCopyIssueCycles, maskChildOffset);
+        maskChildOffset = waveTrace_.RecordAggregatedChild(
+            MegaMoeWaveTraceEvent::DISPATCH_ROUTE_INDEX_ISSUE,
+            MegaMoeWaveTraceEvent::DISPATCH_MASK_LOAD_AND_GATHER,
+            traceScope, maskTraceBegin, maskTraceEnd,
+            dispatchTraceMetrics.routeIndexIssueCycles, maskChildOffset);
+        maskChildOffset = waveTrace_.RecordAggregatedChild(
+            MegaMoeWaveTraceEvent::WAIT_DISPATCH_MASK_INDEX_READY,
+            MegaMoeWaveTraceEvent::DISPATCH_MASK_LOAD_AND_GATHER,
+            traceScope, maskTraceBegin, maskTraceEnd,
+            dispatchTraceMetrics.maskIndexReadyWaitCycles, maskChildOffset);
+        maskChildOffset = waveTrace_.RecordAggregatedChild(
+            MegaMoeWaveTraceEvent::DISPATCH_GATHER_MASK_ISSUE,
+            MegaMoeWaveTraceEvent::DISPATCH_MASK_LOAD_AND_GATHER,
+            traceScope, maskTraceBegin, maskTraceEnd,
+            dispatchTraceMetrics.gatherMaskIssueCycles, maskChildOffset);
+        waveTrace_.RecordAggregatedChild(
+            MegaMoeWaveTraceEvent::WAIT_DISPATCH_GATHER_MASK_READY,
+            MegaMoeWaveTraceEvent::DISPATCH_MASK_LOAD_AND_GATHER,
+            traceScope, maskTraceBegin, maskTraceEnd,
+            dispatchTraceMetrics.gatherMaskReadyWaitCycles, maskChildOffset);
         traceOffset = waveTrace_.RecordAggregatedChild(
             MegaMoeWaveTraceEvent::DISPATCH_TRANSFER_PIPELINE, MegaMoeWaveTraceEvent::DISPATCH,
             traceScope, traceBegin, traceEnd, dispatchTraceMetrics.transferPipelineCycles, traceOffset);

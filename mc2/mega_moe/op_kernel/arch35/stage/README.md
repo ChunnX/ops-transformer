@@ -175,8 +175,9 @@ trace 仅通过既有 `MEGA_MOE_ENABLE_WAVE_TRACE` 宏控制，没有新增打�
 当前版本仍有两项需要通过 trace 量化的成本：
 
 1. 每个 AIV1 core 独立 compact 自己用到的 source rank，以避免新增跨核 descriptor 和同步；
-2. 大 expert 跨多个 wave 时，Gather 仍可能从前序 mask batch 开始扫描，再跳到本 wave 所需 ordinal。
+2. `CreateVecIndex + GatherMask` 的异步指令下发及既有 `MTE2_V/V_S` 同步等待分别占多少周期。
 
-这两项应先结合保留的 trace 判断实际占比，再决定是否引入 mask cursor 或共享索引。当前
-版本已删除全 wave 的 Plan/Gather/Replay、跨 wave rank-round cursor、旧 Layer 和
-rank-major transfer stream。
+跨 wave 专家续段已经用每 rank 的 mask scan cursor 恢复扫描位置；同 rank descriptor 也按
+compact ordinal 用单调 cursor 跨 mask batch 推进，每项最多解析一次。后续应先依据细分 trace
+判断瓶颈属于指令下发还是同步等待，再决定是否值得引入共享索引。当前版本已删除全 wave 的
+Plan/Gather/Replay、跨 wave rank-round cursor、旧 Layer 和 rank-major transfer stream。

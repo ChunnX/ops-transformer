@@ -87,6 +87,11 @@ struct WaveDispatchTraceMetrics {
     uint32_t prepareDispatchCountsCycles = 0U;
     uint32_t rankRoundPlanCycles = 0U;
     uint32_t maskLoadAndGatherCycles = 0U;
+    uint32_t maskCopyIssueCycles = 0U;
+    uint32_t routeIndexIssueCycles = 0U;
+    uint32_t maskIndexReadyWaitCycles = 0U;
+    uint32_t gatherMaskIssueCycles = 0U;
+    uint32_t gatherMaskReadyWaitCycles = 0U;
     uint32_t transferPipelineCycles = 0U;
     uint32_t readyPublishCycles = 0U;
 };
@@ -744,6 +749,11 @@ __aicore__ inline int32_t PlanDispatchCoreRankRoutes(
     int32_t matchedRouteCount = scanCursor.matchedCount;
     int32_t plannedTaskCount = 0;
     bool nextCursorStored = false;
+    // 同一 rank 分组内的 descriptor 按 compact ordinal 单调递增。cursor 跨
+    // mask batch 持续推进，避免每个 batch 都从 descriptorBegin 重扫本 rank
+    // 的全部任务；每个 descriptor 最多解析一次。
+    int32_t descriptorCursor = rankPlan.descriptorBegin;
+    int32_t descriptorEnd = rankPlan.descriptorBegin + rankPlan.taskCount;
 
     for (int32_t routeBegin = scanCursor.routeBegin;
          static_cast<uint64_t>(routeBegin) < sendTotalNum &&
@@ -772,17 +782,45 @@ __aicore__ inline int32_t PlanDispatchCoreRankRoutes(
             (static_cast<uint64_t>(localExpertId) * context.common.worldSize + remoteRankIdx) * maskSlotSize +
             static_cast<uint64_t>(maskByteBegin)));
         DataCopy(scratch.maskBatchTensor, remoteRankMaskGlobal, static_cast<uint32_t>(maskSliceBytes));
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+        uint32_t routeIndexTraceBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+        if (traceMetrics != nullptr) {
+            // DataCopy 为异步下发；这里只统计 API 下发区间，完成时间归入后面的 MTE2_V 等待。
+            traceMetrics->maskCopyIssueCycles += routeIndexTraceBegin - maskTraceBegin;
+        }
+#endif
         // routeIndexTensor 与 mask 内容无关，因此可在 MTE2 搬 mask 时并行生成；
         // 只在 GatherMask 真正消费 mask 前等待 MTE2 完成。
         CreateVecIndex(routeIndexTensor, routeBegin, queue.routeCapacity);
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+        uint32_t maskIndexWaitTraceBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+        if (traceMetrics != nullptr) {
+            // CreateVecIndex 同样是异步下发；实际向量完成延迟由 MTE2_V 同步区间共同承接。
+            traceMetrics->routeIndexIssueCycles += maskIndexWaitTraceBegin - routeIndexTraceBegin;
+        }
+#endif
         SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+        uint32_t gatherMaskTraceBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+        if (traceMetrics != nullptr) {
+            traceMetrics->maskIndexReadyWaitCycles += gatherMaskTraceBegin - maskIndexWaitTraceBegin;
+        }
+#endif
         uint64_t batchMatchedRouteCount = 0U;
         GatherMask(scratch.validTopkIndexTensor, routeIndexTensor, scratch.maskBatchU32Tensor, true,
                    static_cast<uint32_t>(validRouteCount), {1, 1, 0, 0}, batchMatchedRouteCount);
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+        uint32_t gatherMaskWaitTraceBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+        if (traceMetrics != nullptr) {
+            traceMetrics->gatherMaskIssueCycles += gatherMaskWaitTraceBegin - gatherMaskTraceBegin;
+        }
+#endif
         SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
 #if MEGA_MOE_ENABLE_WAVE_TRACE != 0
         if (traceMetrics != nullptr) {
-            traceMetrics->maskLoadAndGatherCycles += MegaMoeWaveTraceDetail::Now() - maskTraceBegin;
+            uint32_t maskTraceEnd = MegaMoeWaveTraceDetail::Now();
+            traceMetrics->gatherMaskReadyWaitCycles += maskTraceEnd - gatherMaskWaitTraceBegin;
+            traceMetrics->maskLoadAndGatherCycles += maskTraceEnd - maskTraceBegin;
         }
 #endif
 
@@ -791,16 +829,19 @@ __aicore__ inline int32_t PlanDispatchCoreRankRoutes(
         int32_t batchOrdinalBegin = matchedRouteCount;
         int32_t batchOrdinalEnd = matchedRouteCount + static_cast<int32_t>(batchMatchedRouteCount);
 
-        // 只检查当前 rank 的连续 descriptor 子区间，不再让每个 mask batch 重扫
-        // 其他 rank 的 descriptor。
-        int32_t descriptorEnd = rankPlan.descriptorBegin + rankPlan.taskCount;
-        for (int32_t descriptorIdx = rankPlan.descriptorBegin;
-             descriptorIdx < descriptorEnd; ++descriptorIdx) {
+        // descriptor 已按 ordinal 排序。先跳过恢复 cursor 之前已经覆盖的项，
+        // 再只消费落入当前 batch 的连续子区间；遇到下一个 batch 的 ordinal
+        // 立即停止，本 batch 不再扫描后续 descriptor。
+        while (descriptorCursor < descriptorEnd) {
             int32_t descriptor = scratch.topkIndexTensor.GetValue(
-                queue.descriptorOffset + descriptorIdx);
+                queue.descriptorOffset + descriptorCursor);
             int32_t rankOrdinal = GetDispatchGroupedRankOrdinal(descriptor);
-            if (rankOrdinal < batchOrdinalBegin || rankOrdinal >= batchOrdinalEnd) {
+            if (rankOrdinal < batchOrdinalBegin) {
+                ++descriptorCursor;
                 continue;
+            }
+            if (rankOrdinal >= batchOrdinalEnd) {
+                break;
             }
             int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(
                 rankOrdinal - batchOrdinalBegin);
@@ -808,6 +849,7 @@ __aicore__ inline int32_t PlanDispatchCoreRankRoutes(
             scratch.topkIndexTensor.SetValue(
                 taskIdx, PackDispatchRouteEntry(remoteRankIdx, topkIndex));
             ++plannedTaskCount;
+            ++descriptorCursor;
         }
         // 一旦扫描覆盖本专家分段终点，就保存下一 wave 可恢复的物理 mask 位置与
         // compact ordinal。终点落在 batch 中部时回退到其所在 ALIGN_256 块起点。
