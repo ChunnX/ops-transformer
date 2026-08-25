@@ -74,7 +74,7 @@ __global__ __aicore__ void block_attn_res_prepare(
     if constexpr (TEMPLATE_MODE == BLOCK_ATTN_RES_PREPARE_TPL_ONLY_VECTOR) {
         GET_TILING_DATA_WITH_STRUCT(optiling::BlockAttnResPrepareTilingData, tilingData, tiling);
         BlockAttnResPrepare::BlockAttnResPrepareVector op(&tilingData);
-        op.Init(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum)
+        op.Init(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum);
         op.Process();
     } else if constexpr (TEMPLATE_MODE == BLOCK_ATTN_RES_PREPARE_TPL_MIX_CUBE) {
         AscendC::SetSysWorkspace(workspace);

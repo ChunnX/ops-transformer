@@ -58,7 +58,6 @@ constexpr uint64_t VECTOR_BASE_D_LARGE = 1024UL;
 constexpr uint64_t VECTOR_BASE_D_MEDIUM = 512UL;
 constexpr uint64_t VECTOR_BASE_D_SMALL = 256UL;
 constexpr size_t VECTOR_BASE_D_CANDIDATE_NUM = 4;
-constexpr float EPS_DEFAULT_VALUE = 1E-6;
 constexpr uint64_t MAX_ALIGNED_D =
     static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) - (FP32_32B_ALIGN_ELEMS - 1U);
 
@@ -150,11 +149,11 @@ ge::graphStatus BlockAttnResPrepareTilingBase::CheckInputShapes()
     const gert::Shape &pseudoQueryShape = pseudoQueryStorageShape->GetOriginShape();
     OP_CHECK_IF(blockResShape.GetDimNum() != BLOCK_RES_RANK,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "block_res",
-                                              (std::to_string(blockResShape.GetDimNum()) + "D").c_str(), "3D"),
+                                             (std::to_string(blockResShape.GetDimNum()) + "D").c_str(), "3D"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(pseudoQueryShape.GetDimNum() != PSEUDO_QUERY_RANK,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "pseudo_query",
-                                              (std::to_string(pseudoQueryShape.GetDimNum()) + "D").c_str(), "2D"),
+                                             (std::to_string(pseudoQueryShape.GetDimNum()) + "D").c_str(), "2D"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(validShape.GetDimNum() != 1 || validShape.GetDim(0) != 1,
                 OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "valid_blocks",
@@ -166,14 +165,14 @@ ge::graphStatus BlockAttnResPrepareTilingBase::CheckInputShapes()
                     (Ops::Base::ToString(blockResShape) + ", " + Ops::Base::ToString(pseudoQueryShape)).c_str(),
                     "all dimensions of block_res and pseudo_query must be positive"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(blockResShape.GetDim(D_DIM_INDEX) != pseudoQueryShape.GetDim(PSEUDO_QUERY_D_DIM_INDEX),
-                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
-                    context_->GetNodeName(), "block_res.shape[2], pseudo_query.shape[1]",
-                    (std::to_string(blockResShape.GetDim(D_DIM_INDEX)) + ", " +
-                     std::to_string(pseudoQueryShape.GetDim(PSEUDO_QUERY_D_DIM_INDEX)))
-                        .c_str(),
-                    "block_res.shape[2] must equal pseudo_query.shape[1]"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        blockResShape.GetDim(D_DIM_INDEX) != pseudoQueryShape.GetDim(PSEUDO_QUERY_D_DIM_INDEX),
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_->GetNodeName(), "block_res.shape[2], pseudo_query.shape[1]",
+                                               (std::to_string(blockResShape.GetDim(D_DIM_INDEX)) + ", " +
+                                                std::to_string(pseudoQueryShape.GetDim(PSEUDO_QUERY_D_DIM_INDEX)))
+                                                   .c_str(),
+                                               "block_res.shape[2] must equal pseudo_query.shape[1]"),
+        return ge::GRAPH_FAILED);
 
     totalT_ = static_cast<uint64_t>(blockResShape.GetDim(T_DIM_INDEX));
     totalN_ = static_cast<uint64_t>(blockResShape.GetDim(N_DIM_INDEX));
@@ -188,13 +187,13 @@ ge::graphStatus BlockAttnResPrepareTilingBase::CheckInputShapes()
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(totalN_ > MAX_BLOCK_NUM,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "block_res.shape[1]",
-                                                       std::to_string(totalN_).c_str(),
-                                                       "block_res.shape[1] must be less than or equal to 64"),
+                                                      std::to_string(totalN_).c_str(),
+                                                      "block_res.shape[1] must be less than or equal to 64"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(totalD_ > MAX_HEAD_DIM,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "block_res.shape[2]",
-                                                       std::to_string(totalD_).c_str(),
-                                                       "block_res.shape[2] must be less than or equal to 8192"),
+                                                      std::to_string(totalD_).c_str(),
+                                                      "block_res.shape[2] must be less than or equal to 8192"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(totalD_ > MAX_ALIGNED_D,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
@@ -235,11 +234,11 @@ ge::graphStatus BlockAttnResPrepareTilingBase::CheckInputDtypes() const
                         .c_str(),
                     "the dtypes of block_res and pseudo_query must both be FLOAT"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(validDesc->GetDataType() != ge::DT_INT64,
-                OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "valid_blocks",
-                                          ge::TypeUtils::DataTypeToSerialString(validDesc->GetDataType()).c_str(),
-                                          "INT64"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        validDesc->GetDataType() != ge::DT_INT64,
+        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "valid_blocks",
+                                  ge::TypeUtils::DataTypeToSerialString(validDesc->GetDataType()).c_str(), "INT64"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -253,12 +252,12 @@ ge::graphStatus BlockAttnResPrepareTilingBase::GetShapeAttrsInfo()
     const auto *attrs = context_->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "attrs is null"), return ge::GRAPH_FAILED);
     const float *eps = attrs->GetFloat(EPS_ATTR_INDEX);
-    float eps_ = eps == nullptr ? *eps : EPS_DEFAULT_VALUE;
-    OP_CHECK_IF(!std::isfinite(eps_) || eps_ <= 0.0F,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    context_->GetNodeName(), "eps",
-                    "eps must be finite and be greater than zero"),
+    const float epsValue = eps == nullptr ? BLOCK_ATTN_RES_PREPARE_DEFAULT_EPS : *eps;
+    OP_CHECK_IF(!std::isfinite(epsValue) || epsValue <= 0.0F,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "eps", std::to_string(epsValue).c_str(),
+                                                      "eps must be finite and be greater than zero"),
                 return ge::GRAPH_FAILED);
+    eps_ = epsValue;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -273,9 +272,8 @@ ge::graphStatus BlockAttnResPrepareTilingBase::CalculateWorkDistribution(uint64_
 
     const uint64_t usedCoreNum = std::min(maxCoreNum, totalWorkUnits);
     OP_CHECK_IF(usedCoreNum == 0U,
-                OP_LOGE(context_->GetNodeName(),
-                        "%s usedCoreNum is zero: totalWorkUnits=%lu, availableCoreNum=%lu", templateName,
-                        totalWorkUnits, maxCoreNum),
+                OP_LOGE(context_->GetNodeName(), "%s usedCoreNum is zero: totalWorkUnits=%lu, availableCoreNum=%lu",
+                        templateName, totalWorkUnits, maxCoreNum),
                 return ge::GRAPH_FAILED);
     const uint64_t workUnitsPerCore = totalWorkUnits / usedCoreNum;
     OP_CHECK_IF(workUnitsPerCore > std::numeric_limits<uint32_t>::max(),
@@ -350,8 +348,8 @@ ge::graphStatus BlockAttnResPrepareTiling::DoOpTiling()
 
     OP_CHECK_IF(!SelectVectorBaseD(hasMultipleWorkRounds),
                 OP_LOGE(context_->GetNodeName(),
-                        "no Vector baseD satisfies UB capacity: T=%lu, N=%lu, S=%lu, D=%lu, usableUbBytes=%lu",
-                        totalT_, totalN_, totalS_, totalD_, ubSize_ - UB_RESERVED_BYTES),
+                        "no Vector baseD satisfies UB capacity: T=%lu, N=%lu, S=%lu, D=%lu, usableUbBytes=%lu", totalT_,
+                        totalN_, totalS_, totalD_, ubSize_ - UB_RESERVED_BYTES),
                 return ge::GRAPH_FAILED);
 
     tilingData_.totalT = static_cast<uint32_t>(totalT_);

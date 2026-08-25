@@ -53,8 +53,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> block_attn_res_prepare(const at::
                 "block_res.size(2) must be in [1, 8192], but got ", blockRes.size(D_DIM_INDEX));
     TORCH_CHECK(blockRes.size(D_DIM_INDEX) == pseudoQuery.size(PSEUDO_QUERY_D_DIM_INDEX),
                 "block_res.size(2) must equal pseudo_query.size(1), but got block_res.size(2)=",
-                blockRes.size(D_DIM_INDEX), " and pseudo_query.size(1)=",
-                pseudoQuery.size(PSEUDO_QUERY_D_DIM_INDEX));
+                blockRes.size(D_DIM_INDEX), " and pseudo_query.size(1)=", pseudoQuery.size(PSEUDO_QUERY_D_DIM_INDEX));
 
     const int64_t totalT = blockRes.size(T_DIM_INDEX);
     const int64_t totalS = pseudoQuery.size(S_DIM_INDEX);

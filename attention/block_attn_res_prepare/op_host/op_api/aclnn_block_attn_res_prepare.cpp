@@ -150,30 +150,30 @@ aclnnStatus CheckInputShapes(const aclTensor *blockRes, const aclTensor *validBl
     const int64_t totalS = pseudoQueryShape.GetDim(S_DIM_INDEX);
 
     OP_CHECK(totalT >= 0,
-             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                 "aclnnBlockAttnResPrepareGetWorkspaceSize", "blockRes.shape[0]", std::to_string(totalT).c_str(),
-                 "blockRes.shape[0] must be greater than or equal to 0"),
+             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnBlockAttnResPrepareGetWorkspaceSize", "blockRes.shape[0]",
+                                                   std::to_string(totalT).c_str(),
+                                                   "blockRes.shape[0] must be greater than or equal to 0"),
              return ACLNN_ERR_PARAM_INVALID);
-    OP_CHECK(totalN >= MIN_BLOCK_NUM && totalN <= MAX_BLOCK_NUM,
-             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                 "aclnnBlockAttnResPrepareGetWorkspaceSize", "blockRes.shape[1]", std::to_string(totalN).c_str(),
-                 "blockRes.shape[1] must be in [1, 64]"),
-             return ACLNN_ERR_PARAM_INVALID);
-    OP_CHECK(totalD >= MIN_HEAD_DIM && totalD <= MAX_HEAD_DIM,
-             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                 "aclnnBlockAttnResPrepareGetWorkspaceSize", "blockRes.shape[2]", std::to_string(totalD).c_str(),
-                 "blockRes.shape[2] must be in [1, 8192]"),
-             return ACLNN_ERR_PARAM_INVALID);
+    OP_CHECK(
+        totalN >= MIN_BLOCK_NUM && totalN <= MAX_BLOCK_NUM,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnBlockAttnResPrepareGetWorkspaceSize", "blockRes.shape[1]",
+                                              std::to_string(totalN).c_str(), "blockRes.shape[1] must be in [1, 64]"),
+        return ACLNN_ERR_PARAM_INVALID);
+    OP_CHECK(
+        totalD >= MIN_HEAD_DIM && totalD <= MAX_HEAD_DIM,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnBlockAttnResPrepareGetWorkspaceSize", "blockRes.shape[2]",
+                                              std::to_string(totalD).c_str(), "blockRes.shape[2] must be in [1, 8192]"),
+        return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK(totalS >= 0,
-             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                 "aclnnBlockAttnResPrepareGetWorkspaceSize", "pseudoQuery.shape[0]", std::to_string(totalS).c_str(),
-                 "pseudoQuery.shape[0] must be greater than or equal to 0"),
+             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnBlockAttnResPrepareGetWorkspaceSize", "pseudoQuery.shape[0]",
+                                                   std::to_string(totalS).c_str(),
+                                                   "pseudoQuery.shape[0] must be greater than or equal to 0"),
              return ACLNN_ERR_PARAM_INVALID);
-    OP_CHECK(validBlocksShape.GetDim(VALID_BLOCKS_VALUE_DIM_INDEX) == 1,
-             OP_LOGE_FOR_INVALID_VALUE("aclnnBlockAttnResPrepareGetWorkspaceSize", "validBlocks.shape[0]",
-                                       std::to_string(validBlocksShape.GetDim(VALID_BLOCKS_VALUE_DIM_INDEX)).c_str(),
-                                       "1"),
-             return ACLNN_ERR_PARAM_INVALID);
+    OP_CHECK(
+        validBlocksShape.GetDim(VALID_BLOCKS_VALUE_DIM_INDEX) == 1,
+        OP_LOGE_FOR_INVALID_VALUE("aclnnBlockAttnResPrepareGetWorkspaceSize", "validBlocks.shape[0]",
+                                  std::to_string(validBlocksShape.GetDim(VALID_BLOCKS_VALUE_DIM_INDEX)).c_str(), "1"),
+        return ACLNN_ERR_PARAM_INVALID);
     const int64_t pseudoQueryD = pseudoQueryShape.GetDim(PSEUDO_QUERY_D_DIM_INDEX);
     OP_CHECK(pseudoQueryD == totalD,
              OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
@@ -250,8 +250,7 @@ aclnnStatus CheckParams(const aclTensor *blockRes, const aclTensor *validBlocks,
               ACLNN_ERR_PARAM_NULLPTR);
     if (!std::isfinite(eps) || eps <= 0.0F) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnBlockAttnResPrepareGetWorkspaceSize", "eps",
-                                              std::to_string(eps).c_str(),
-                                              "eps must be finite and greater than zero");
+                                              std::to_string(eps).c_str(), "eps must be finite and greater than zero");
         return ACLNN_ERR_PARAM_INVALID;
     }
     CHECK_RET(CheckDtype(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum) == ACLNN_SUCCESS,

@@ -1,0 +1,67 @@
+{
+    "op_type": "BlockAttnResPrepare",
+    "op_list": [
+        {
+            "bin_filename": "BlockAttnResPrepare_fp32",
+            "inputs": [
+                {
+                    "name": "block_res",
+                    "index": 0,
+                    "dtype": "float32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                },
+                {
+                    "name": "valid_blocks",
+                    "index": 1,
+                    "dtype": "int64",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                },
+                {
+                    "name": "pseudo_query",
+                    "index": 2,
+                    "dtype": "float32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "numerator",
+                    "index": 0,
+                    "dtype": "float32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                },
+                {
+                    "name": "logit_max",
+                    "index": 1,
+                    "dtype": "float32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                },
+                {
+                    "name": "exp_sum",
+                    "index": 2,
+                    "dtype": "float32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2]
+                }
+            ],
+            "attrs": [
+                {
+                    "name": "eps",
+                    "dtype": "float",
+                    "value": 0.000001
+                }
+            ]
+        }
+    ]
+}
