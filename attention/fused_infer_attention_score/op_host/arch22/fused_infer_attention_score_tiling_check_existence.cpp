@@ -40,13 +40,13 @@ ge::graphStatus FiaTilingCheck::CheckRopeExistence() const
 
     if (ropeMode_ == RopeMode::ROPE_SPLIT) {
         OP_CHECK_IF(opParamInfo_.keyRope.desc == nullptr || opParamInfo_.queryRope.desc == nullptr,
-            OP_LOGE(opName_, "In %s situation and rope exsists, desc of %s and %s should not be null",
+            OP_LOGE(opName_, "In %s situation and rope exists, desc of %s and %s should not be null",
                 QuantModeToSerialString(quantMode_).c_str(),
                 KEY_ROPE_NAME.c_str(), QUERY_ROPE_NAME.c_str()),
             return ge::GRAPH_FAILED);
     } else if (ropeMode_ == RopeMode::ROPE_COMBINE) {
         OP_CHECK_IF(opParamInfo_.keyRope.desc != nullptr || opParamInfo_.queryRope.desc != nullptr,
-            OP_LOGE(opName_, "In %s situation and rope exsists, desc of %s and %s should be null",
+            OP_LOGE(opName_, "In %s situation and rope exists, desc of %s and %s should be null",
                 QuantModeToSerialString(quantMode_).c_str(),
                 KEY_ROPE_NAME.c_str(), QUERY_ROPE_NAME.c_str()),
             return ge::GRAPH_FAILED);
@@ -110,7 +110,7 @@ ge::graphStatus FiaTilingCheck::CheckDtypeAndSetQuantFlagMla()
     } else if (VecContains(mlaFullquantDtypeList, actualDtypeList)) {
         quantMode_ = FiaQuantMode::FULL_QUANT;
     } else {
-        OP_LOGE(opName_, "In %s situation and rope exsists, only supports [query_dtype, kv_dtype, query_rope_dtype, key_rope_dtype] as %s, %s, %s, but got %s",
+        OP_LOGE(opName_, "In %s situation and rope exists, only supports [query_dtype, kv_dtype, query_rope_dtype, key_rope_dtype] as %s, %s, %s, but got %s",
             QuantModeToSerialString(quantMode_).c_str(),
             DtypeDoubleListToStr(mlaNoquantDtypeList).c_str(),
             DtypeDoubleListToStr(mlaAntiquantDtypeList).c_str(),
@@ -119,7 +119,7 @@ ge::graphStatus FiaTilingCheck::CheckDtypeAndSetQuantFlagMla()
         return ge::GRAPH_FAILED;
     }
 
-    OP_LOGI(opName_, "quant mode is %s", QuantModeToSerialString(quantMode_).c_str());
+    OP_LOGI(opName_, "quant mode is %s in MLA scenario", QuantModeToSerialString(quantMode_).c_str());
     return ge::GRAPH_SUCCESS;
 }
 
@@ -159,7 +159,7 @@ ge::graphStatus FiaTilingCheck::CheckDtypeAndSetQuantFlagGqa()
         return ge::GRAPH_FAILED;
     }
 
-    OP_LOGI(opName_, "quant mode is %s", QuantModeToSerialString(quantMode_).c_str());
+    OP_LOGI(opName_, "quant mode is %s in GQA scenario", QuantModeToSerialString(quantMode_).c_str());
     return ge::GRAPH_SUCCESS;
 }
 
