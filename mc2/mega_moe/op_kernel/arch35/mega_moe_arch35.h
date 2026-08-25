@@ -95,6 +95,7 @@ protected:
     __aicore__ inline void InitQuantTokenBufferConfig();
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
     __aicore__ inline void ProcessInputPreparationStage();
+    __aicore__ inline uint32_t DispatchMoeExpert(uint32_t expertIdx);
     template <bool WaitForTokenCountReady>
     __aicore__ inline void PrepareGmmExpertState(ExpertLoopState &state, uint32_t expertIdx);
     __aicore__ inline void ProcessSharedExpertGmm1(int32_t &gmm1TileReadySequence);
@@ -510,6 +511,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
                       ENABLE_A8W4, ENABLE_A4W4, GMM1_TILE_M, false, true, false, false>(
             gmmExecutionConfig_, gmmAddrInfo, problemShape, runtimeState);
     }
+}
+
+// 使用统一 compact-count Dispatch stage 增量发送一个专家，供 W4 的 Wave-ahead 调度调用。
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::DispatchMoeExpert(uint32_t expertIdx)
+{
+    return RunWaveExpertDispatchStage<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
+        tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_, winRankAddr_,
+        tokenDispatchScratch_, expertIdx);
 }
 
 // 从 workspace 读取 token 数并准备 GMM 专家状态；GMM1 可按需先等待 token count ready。
