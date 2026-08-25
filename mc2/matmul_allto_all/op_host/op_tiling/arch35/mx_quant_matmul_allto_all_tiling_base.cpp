@@ -687,12 +687,11 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoMxQuantMMTiling()
  *
  * @return ge::graphStatus
  */
-ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoHcommMxQuantMMTiling()
+    ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoHcommMxQuantMMTiling()
 {
     uint64_t perRankK = contextInfo.args_.kValue;
     uint64_t nValue = contextInfo.args_.nValue;
     bool transB = contextInfo.args_.isBTrans;
-    constexpr uint32_t localMatmulDisabled = 0;
 
     // x2每卡完整[K, totalN], Blaze tiling按perRankN计算(kernel内部逐rank切N)
     uint64_t perRankN = nValue / contextInfo.args_.rankDim;
@@ -715,7 +714,6 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoHcommMxQuantMMTiling()
             tilingSwat.GetTilingData(inferredInfo.tailM, perRankN, perRankK, false, transB, hcommTilingData_.tailQbmmTilingData);
         }
     }
-    hcommTilingData_.localMatmul = localMatmulDisabled;
     OP_LOGD(opName_, "HcommMxQuantMM tiling: tileM=%lu tileCnt=%lu tailM=%lu tailCnt=%lu perRankN=%lu",
             inferredInfo.tileM, inferredInfo.tileCnt, inferredInfo.tailM, inferredInfo.tailCnt, perRankN);
     return ge::GRAPH_SUCCESS;
