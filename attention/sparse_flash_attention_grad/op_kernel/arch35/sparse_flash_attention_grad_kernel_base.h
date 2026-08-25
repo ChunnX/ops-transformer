@@ -51,8 +51,12 @@ public:
     __aicore__ inline int64_t GetValidTndT1Size();
     __aicore__ inline bool IsValidTndT1Index(const int64_t t1Idx);
     __aicore__ inline bool HasDeterToken(const int64_t t1Idx);
-    __aicore__ inline bool HasDeterRoundWork(const int64_t sTaskId);
-    __aicore__ inline void DeterAicArriveBarrier();
+    __aicore__ inline void DeterSyncInit();
+    __aicore__ inline void DeterPostProd(const int64_t wave);
+    __aicore__ inline void DeterPostRed(const int64_t wave);
+    __aicore__ inline void DeterWaitEpoch(GlobalTensor<int32_t> &readyGm, const int32_t n, const int32_t epoch);
+    __aicore__ inline void DeterWaitProd(const int64_t wave);
+    __aicore__ inline void DeterWaitRed(const int64_t wave);
     __aicore__ inline int32_t GetDeterProcessNum();
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
@@ -104,6 +108,7 @@ protected:
     GlobalTensor<OUTDTYPE> dqGm, dkGm, dvGm;
  
     GlobalTensor<float> dqWorkSpaceGm, dkWorkSpaceGm, dvWorkSpaceGm, mm4ResWorkSpaceGm, mm5ResWorkSpaceGm;
+    GlobalTensor<int32_t> deterProdReadyGm, deterRedReadyGm;
     GlobalTensor<INPUT_TYPE> selectedKWorkSpaceGm;
     // CV核间共享Buffer
     TBuf<> mm1ResBuf[2];
@@ -271,6 +276,10 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::Init
                                                 tilingData->baseParams.mm4ResWorkSpaceOffset / sizeof(float));
         mm5ResWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
                                                 tilingData->baseParams.mm5ResWorkSpaceOffset / sizeof(float));
+        int64_t syncOff = (tilingData->baseParams.mm4ResWorkSpaceOffset - DETER_SYNC_BYTES) /
+                          static_cast<int64_t>(sizeof(int32_t));
+        deterProdReadyGm.SetGlobalBuffer((__gm__ int32_t *)workspace + syncOff);
+        deterRedReadyGm.SetGlobalBuffer((__gm__ int32_t *)workspace + syncOff + DETER_PROD_SLOT_NUM);
     } else {
         int64_t mm4ResWorkSpaceOffset = tilingData->baseParams.mm4ResWorkSpaceOffset / sizeof(float) +
                                         cBlockIdx * constInfo.selectedBlockCount * constInfo.selectedBlockSize *
@@ -656,9 +665,7 @@ template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline int32_t
 FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetDeterProcessNum()
 {
-    // 确定性路径每轮都有 mode0 全核同步，所有核必须跑同一轮数。
-    // TND 按 packed T1 切，不要跟 Host 的物理 T1（含尾 padding）走，
-    // 否则有效 token 算完后还会再跑几十轮 dummy ScatterAddDeter。
+    // 确定性路径按 packed T1 切分轮数，不要跟 Host 物理 T1（含尾 padding）走。
     int32_t deterLoop = tilingData->baseParams.formerCoreProcessNNum;
     if constexpr (IS_TND) {
         int64_t validT1 = GetValidTndT1Size();
@@ -670,67 +677,69 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetD
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline bool
-FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::HasDeterRoundWork(const int64_t sTaskId)
+__aicore__ inline void
+FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::DeterSyncInit()
 {
-    // 所有核扫同一轮 28 个 token，判定必须一致，才能一起跳过 handshake。
-    const int64_t savedBIndex = bIndex;
-    const int64_t savedT1Index = t1Index;
-    const int64_t savedN2Index = n2Index;
-    const int64_t savedS1Index = s1Index;
-    const int64_t savedCurS1 = curS1;
-    const int64_t savedCurS2 = curS2;
-    const int64_t savedSel = actualSelectedBlockCount;
-
-    bool hasWork = false;
-    const int64_t validT1 = GetValidTndT1Size();
-    for (int64_t idx = 0; idx < usedCoreNum; ++idx) {
-        const int64_t t1Idx = sTaskId * usedCoreNum + idx;
-        if (t1Idx < 0 || t1Idx >= tilingData->baseParams.totalSize || t1Idx >= validT1) {
-            continue;
-        }
-        bIndex = 0;
-        GetTndSeqLen(t1Idx, bIndex);
-        GetActualSelCount(t1Idx, 0, actualSelectedBlockCount);
-        if (actualSelectedBlockCount > 0) {
-            hasWork = true;
-            break;
-        }
+    if constexpr (!IS_DETER) {
+        return;
     }
-
-    bIndex = savedBIndex;
-    t1Index = savedT1Index;
-    n2Index = savedN2Index;
-    s1Index = savedS1Index;
-    curS1 = savedCurS1;
-    curS2 = savedCurS2;
-    actualSelectedBlockCount = savedSel;
-    return hasWork;
+    if (cBlockIdx >= static_cast<uint32_t>(usedCoreNum)) {
+        return;
+    }
+    if ASCEND_IS_AIC {
+        SfagDeterPostSlot(deterProdReadyGm, static_cast<int32_t>(cBlockIdx), 0);
+    } else {
+        SfagDeterPostSlot(deterRedReadyGm, static_cast<int32_t>(vBlockIdx), 0);
+    }
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void
-FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::DeterAicArriveBarrier()
+FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::DeterWaitEpoch(
+    GlobalTensor<int32_t> &readyGm, const int32_t n, const int32_t epoch)
 {
-    // mode0 全核 Set+Wait 在空核先到时会把计数器打满（上限约 16）。
-    // 链会合：任意时刻同一 flag 上未匹配 Set 最多 1。不走 SyncAll。
-    const int32_t n = static_cast<int32_t>(coreNum);
-    const int32_t me = static_cast<int32_t>(cBlockIdx);
-    if (n <= 1) {
-        return;
+    for (int32_t i = 0; i < n; i++) {
+        SfagDeterWaitSlot(readyGm, i, epoch);
     }
-    if (me < n - 1) {
-        CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+}
+
+template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void
+FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::DeterPostProd(const int64_t wave)
+{
+    if ASCEND_IS_AIC {
+        if (cBlockIdx < static_cast<uint32_t>(usedCoreNum)) {
+            SfagDeterPostSlot(deterProdReadyGm, static_cast<int32_t>(cBlockIdx),
+                              static_cast<int32_t>(wave + 1));
+        }
     }
-    if (me > 0) {
-        CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+}
+
+template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void
+FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::DeterPostRed(const int64_t wave)
+{
+    if ASCEND_IS_AIV {
+        if (cBlockIdx < static_cast<uint32_t>(usedCoreNum)) {
+            SfagDeterPostSlot(deterRedReadyGm, static_cast<int32_t>(vBlockIdx),
+                              static_cast<int32_t>(wave + 1));
+        }
     }
-    if (me > 0) {
-        CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
-    }
-    if (me < n - 1) {
-        CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
-    }
+}
+
+template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void
+FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::DeterWaitProd(const int64_t wave)
+{
+    DeterWaitEpoch(deterProdReadyGm, static_cast<int32_t>(usedCoreNum), static_cast<int32_t>(wave + 1));
+}
+
+template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void
+FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::DeterWaitRed(const int64_t wave)
+{
+    DeterWaitEpoch(deterRedReadyGm, static_cast<int32_t>(usedCoreNum * CV_CORE_RATIO),
+                   static_cast<int32_t>(wave + 1));
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>

@@ -34,7 +34,6 @@ private:
                                         int64_t accumS2Len, int32_t actualSeqLensQ, int32_t actualSeqLensK);
     __aicore__ inline int32_t GetActualSeqLens(int64_t bIdx, GlobalTensor<int32_t> &actualSeqLensGm,
                                                 int64_t &accumLen, FagConstInfo constInfo);
-    __aicore__ inline bool HasDeterScatterWork(FagConstInfo &constInfo, FagRunInfo &runInfo);
 public:
     __aicore__ inline FAGBlockVec(){};
     __aicore__ inline void SetVecBlockParams(TPipe *pipe, SFagTilingType tilingData, uint32_t vBlockIdx,
@@ -64,7 +63,8 @@ public:
                                            const GlobalTensor<CALC_TYPE> &mm5ResWorkSpaceGm,
                                            const GlobalTensor<CALC_TYPE> &dkWorkSpaceGm,
                                            const GlobalTensor<CALC_TYPE> &dvWorkSpaceGm,
-                                           FagConstInfo &constInfo, FagRunInfo &runInfo);
+                                           FagConstInfo &constInfo, FagRunInfo &runInfo,
+                                           GlobalTensor<int32_t> &prodReadyGm, int32_t epoch);
     __aicore__ inline void CopyMaxSum(FagConstInfo &constInfo, FagRunInfo &runInfo, int64_t taskId);
     template <const bool IS_DQ = false>
     __aicore__ inline void CopyUB2L1(FagConstInfo &constInfo, FagRunInfo &runInfo, LocalTensor<INPUT_TYPE> &dstTensor,
@@ -621,17 +621,14 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
                                                                    const GlobalTensor<CALC_TYPE> &mm5ResWorkSpaceGm,
                                                                    const GlobalTensor<CALC_TYPE> &dkWorkSpaceGm,
                                                                    const GlobalTensor<CALC_TYPE> &dvWorkSpaceGm,
-                                                                   FagConstInfo &constInfo, FagRunInfo &runInfo)
+                                                                   FagConstInfo &constInfo, FagRunInfo &runInfo,
+                                                                   GlobalTensor<int32_t> &prodReadyGm, int32_t epoch)
 {
-    // 整轮 sel=0 时所有 Vector 核判定相同。跳过 Alloc/Fetch/flag12，只保留外面的 CV handshake。
-    // 连续 dummy ScatterAddDeter（mode3 因果空前缀）会在约第 18 次卡死 507014。
-    if (!HasDeterScatterWork(constInfo, runInfo)) {
-        return;
-    }
+    // Unique-writer reduce：按 t1=idx 固定顺序消费独占 mm4/mm5。每个 s2 只有一个 Vector owner。
     int64_t UB_ROW_SIZE = 8;
     int64_t usedCoreNum = tilingData->baseParams.usedCoreNum;
-    int64_t coreNum = GetBlockNum();
-    int64_t totalVec = coreNum * 2;
+    int64_t mm4CoreNum = GetBlockNum();
+    int64_t totalVec = usedCoreNum * 2;
     int64_t bS1Index = -1;
     int64_t bIdx;
     int64_t s1Idx;
@@ -646,7 +643,10 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
     event_t eventIDMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
     event_t eventIDVToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
 
+    SetAtomicAdd<CALC_TYPE>();
+    SetFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
     for (int64_t idx = 0; idx < usedCoreNum; idx++) {
+        SfagDeterWaitSlot(prodReadyGm, static_cast<int32_t>(idx), epoch);
         bS1Index = runInfo.sTaskId * usedCoreNum + idx;
         bool invalidIdx = (bS1Index >= tilingData->baseParams.totalSize);
         if constexpr (IS_TND) {
@@ -654,16 +654,9 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
             invalidIdx = invalidIdx || (bS1Index >= validT1);
         }
         if (invalidIdx) {
-            // 不能 break：确定性 scatter 的 SCATTER_VEC_SYNC 是全 Vector barrier，
-            // 提前退出的核会让还在循环里的核 WaitFlag 死等。
-            CrossCoreSetFlag<0, PIPE_MTE3>(SCATTER_VEC_SYNC_FLAG);
-            CrossCoreWaitFlag<0, PIPE_MTE3>(SCATTER_VEC_SYNC_FLAG);
             continue;
         }
-
         if (!GetBS1Index(bS1Index, bIdx, s1Idx, constInfo)) {
-            CrossCoreSetFlag<0, PIPE_MTE3>(SCATTER_VEC_SYNC_FLAG);
-            CrossCoreWaitFlag<0, PIPE_MTE3>(SCATTER_VEC_SYNC_FLAG);
             continue;
         }
         if (bIdx != preBIdx) {
@@ -672,35 +665,20 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
             preBIdx = bIdx;
         }
         GetRunInfo(bIdx, s1Idx, runInfo, constInfo, accumS2Len, actualSeqLensQ, actualSeqLensK);
-
-        // 对应s2real的平均和取模值，做均分操作
-        int64_t remainder = runInfo.actualSelectedBlockCount % totalVec;
-        int64_t avgSize = runInfo.actualSelectedBlockCount / totalVec;
-        // 前remainder 个块分配 avgSize + 1， 其余分配avgSize
-        int64_t currentCoreKSize = avgSize + (this->vBlockIdx < remainder ? 1 : 0);
-        if (currentCoreKSize == 0) {
-            // V核同步等待所有V核完成某一个C核上S2的计算
-            CrossCoreSetFlag<0, PIPE_MTE3>(SCATTER_VEC_SYNC_FLAG);
-            CrossCoreWaitFlag<0, PIPE_MTE3>(SCATTER_VEC_SYNC_FLAG);
+        int64_t selRows = runInfo.actualSelectedBlockCount;
+        if (selRows <= 0) {
             continue;
         }
-        int64_t s2SrcOffset = this->vBlockIdx < remainder ? (this->vBlockIdx * (avgSize + 1)) :
-                                (remainder * (avgSize + 1) + (this->vBlockIdx - remainder) * avgSize);
-        
-        SetAtomicAdd<CALC_TYPE>();
-        int64_t maxLoops = CeilDiv(currentCoreKSize, UB_ROW_SIZE);
-        int64_t tailRows = currentCoreKSize - (maxLoops - 1) * UB_ROW_SIZE;
 
-        int64_t currentMm4SrcOffset = runInfo.sTaskIdMod2 * constInfo.selectedBlockCount * HEAD_DIM_ALIGN * coreNum +
-                                      idx * constInfo.selectedBlockCount * HEAD_DIM_ALIGN +
-                                      s2SrcOffset * constInfo.selectedBlockSize * HEAD_DIM_ALIGN;
+        int64_t currentMm4SrcOffset = runInfo.sTaskIdMod2 * constInfo.selectedBlockCount * HEAD_DIM_ALIGN * mm4CoreNum +
+                                      idx * constInfo.selectedBlockCount * HEAD_DIM_ALIGN;
         int64_t currentMm5SrcOffset = runInfo.sTaskIdMod2 * constInfo.selectedBlockCount *
-                                      constInfo.commonConstInfo.dSizeV * coreNum +
-                                      idx * constInfo.selectedBlockCount * constInfo.commonConstInfo.dSizeV +
-                                      s2SrcOffset * constInfo.selectedBlockSize * constInfo.commonConstInfo.dSizeV;
-        // 1 - main loop
-        SetFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
-        uint64_t gmOffset = bS1Index * (constInfo.n2Size * constInfo.selectedBlockCount) + s2SrcOffset;
+                                      constInfo.commonConstInfo.dSizeV * mm4CoreNum +
+                                      idx * constInfo.selectedBlockCount * constInfo.commonConstInfo.dSizeV;
+        int64_t maxLoops = CeilDiv(selRows, UB_ROW_SIZE);
+        int64_t tailRows = selRows - (maxLoops - 1) * UB_ROW_SIZE;
+        uint64_t gmOffset = bS1Index * (constInfo.n2Size * constInfo.selectedBlockCount);
+
         for (int64_t loop = 0; loop < maxLoops - 1; loop++) {
             WaitFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
             DataCopy(dkInTensor,
@@ -723,35 +701,34 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
                         constInfo.commonConstInfo.dSizeV);
                 }
                 PipeBarrier<PIPE_V>();
+            }
+            int32_t s2Local[8];
+            for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
+                s2Local[row] = topkIndicesGm[gmOffset + loop * UB_ROW_SIZE].GetValue(row);
+            }
+            for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
+                int32_t s2Idx = s2Local[row];
+                if (s2Idx < 0 || s2Idx >= runInfo.commonRunInfo.actualS2Size) {
+                    continue;
+                }
+                if ((s2Idx % totalVec) != this->vBlockIdx) {
+                    continue;
+                }
                 SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
                 WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
-            }
-            int32_t s2IdxLocal[8];
-            for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
-                s2IdxLocal[row] = topkIndicesGm[gmOffset + loop * UB_ROW_SIZE].GetValue(row);
-            }
-            for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
-                int32_t s2Idx = s2IdxLocal[row];
-                if (s2Idx >= 0 && s2Idx < runInfo.commonRunInfo.actualS2Size) {
-                    if constexpr (!KV_MERGE) {
-                        SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
-                        WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
-                    }
-                    DataCopy(dkWorkSpaceGm[runInfo.keyOffsetWithRope + s2Idx * HEAD_DIM_ALIGN],
-                             dkInTensor[row * HEAD_DIM_ALIGN], HEAD_DIM_ALIGN);
-                    if constexpr (!KV_MERGE) {
-                        int64_t dvOffset = runInfo.commonRunInfo.valueOffset + s2Idx * constInfo.commonConstInfo.dSizeV;
-                        DataCopy(dvWorkSpaceGm[dvOffset],
-                                 dvInTensor[row * constInfo.commonConstInfo.dSizeV],
-                                 constInfo.commonConstInfo.dSizeV);
-                    }
+                DataCopy(dkWorkSpaceGm[runInfo.keyOffsetWithRope + s2Idx * HEAD_DIM_ALIGN],
+                         dkInTensor[row * HEAD_DIM_ALIGN], HEAD_DIM_ALIGN);
+                if constexpr (!KV_MERGE) {
+                    DataCopy(dvWorkSpaceGm[runInfo.commonRunInfo.valueOffset +
+                                           s2Idx * constInfo.commonConstInfo.dSizeV],
+                             dvInTensor[row * constInfo.commonConstInfo.dSizeV],
+                             constInfo.commonConstInfo.dSizeV);
                 }
             }
             SetFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
         }
 
         WaitFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
-        // 2 - tail loop
         DataCopy(dkInTensor,
                  mm4ResWorkSpaceGm[currentMm4SrcOffset + (maxLoops - 1) * UB_ROW_SIZE * HEAD_DIM_ALIGN],
                  tailRows * HEAD_DIM_ALIGN);
@@ -773,75 +750,36 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
                     constInfo.commonConstInfo.dSizeV);
             }
             PipeBarrier<PIPE_V>();
+        }
+        int32_t s2Tail[8];
+        for (int64_t row = 0; row < tailRows; row++) {
+            s2Tail[row] = topkIndicesGm[gmOffset + (maxLoops - 1) * UB_ROW_SIZE].GetValue(row);
+        }
+        for (int64_t row = 0; row < tailRows; row++) {
+            int32_t s2Idx = s2Tail[row];
+            if (s2Idx < 0 || s2Idx >= runInfo.commonRunInfo.actualS2Size) {
+                continue;
+            }
+            if ((s2Idx % totalVec) != this->vBlockIdx) {
+                continue;
+            }
             SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
             WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
-        }
-        int32_t s2IdxTail[8];
-        for (int64_t row = 0; row < tailRows; row++) {
-            s2IdxTail[row] = topkIndicesGm[gmOffset + (maxLoops - 1) * UB_ROW_SIZE].GetValue(row);
-        }
-        for (int64_t row = 0; row < tailRows; row++) {
-            int32_t s2Idx = s2IdxTail[row];
-            if (s2Idx >= 0 && s2Idx < runInfo.commonRunInfo.actualS2Size) {
-                if constexpr (!KV_MERGE) {
-                    SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
-                    WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
-                }
-                DataCopy(dkWorkSpaceGm[runInfo.keyOffsetWithRope + s2Idx * HEAD_DIM_ALIGN],
-                         dkInTensor[row * HEAD_DIM_ALIGN], HEAD_DIM_ALIGN);
-                if constexpr (!KV_MERGE) {
-                    DataCopy(dvWorkSpaceGm[runInfo.commonRunInfo.valueOffset +
-                                           s2Idx * constInfo.commonConstInfo.dSizeV],
-                             dvInTensor[row * constInfo.commonConstInfo.dSizeV],
-                             constInfo.commonConstInfo.dSizeV);
-                }
+            DataCopy(dkWorkSpaceGm[runInfo.keyOffsetWithRope + s2Idx * HEAD_DIM_ALIGN],
+                     dkInTensor[row * HEAD_DIM_ALIGN], HEAD_DIM_ALIGN);
+            if constexpr (!KV_MERGE) {
+                DataCopy(dvWorkSpaceGm[runInfo.commonRunInfo.valueOffset +
+                                       s2Idx * constInfo.commonConstInfo.dSizeV],
+                         dvInTensor[row * constInfo.commonConstInfo.dSizeV],
+                         constInfo.commonConstInfo.dSizeV);
             }
         }
         SetFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
-        WaitFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
-        // V核同步等待所有V核完成某一个C核上S2的计算
-        CrossCoreSetFlag<0, PIPE_MTE3>(SCATTER_VEC_SYNC_FLAG);
-        CrossCoreWaitFlag<0, PIPE_MTE3>(SCATTER_VEC_SYNC_FLAG);
     }
+    WaitFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
     SetAtomicNone();
     dSOutQue.FreeTensor(dkInTensor);
     pOutQue.FreeTensor(dvInTensor);
-}
-
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline bool FAGBlockVec<TEMPLATE_ARGS>::HasDeterScatterWork(FagConstInfo &constInfo, FagRunInfo &runInfo)
-{
-    int64_t usedCoreNum = tilingData->baseParams.usedCoreNum;
-    int64_t validT1 = tilingData->baseParams.totalSize;
-    if constexpr (IS_TND) {
-        validT1 = this->actualSeqLengthsQueryGm.GetValue(constInfo.bSize - 1);
-    }
-    int64_t bIdx = 0;
-    int64_t s1Idx = 0;
-    int64_t preBIdx = -1;
-    int64_t accumS1Len = 0;
-    int64_t accumS2Len = 0;
-    int64_t actualSeqLensQ = 0;
-    int64_t actualSeqLensK = 0;
-    for (int64_t idx = 0; idx < usedCoreNum; idx++) {
-        int64_t bS1Index = runInfo.sTaskId * usedCoreNum + idx;
-        if (bS1Index >= tilingData->baseParams.totalSize || bS1Index >= validT1) {
-            break;
-        }
-        if (!GetBS1Index(bS1Index, bIdx, s1Idx, constInfo)) {
-            continue;
-        }
-        if (bIdx != preBIdx) {
-            actualSeqLensQ = GetActualSeqLens(bIdx, this->actualSeqLengthsQueryGm, accumS1Len, constInfo);
-            actualSeqLensK = GetActualSeqLens(bIdx, this->actualSeqLengthsKeyGm, accumS2Len, constInfo);
-            preBIdx = bIdx;
-        }
-        GetRunInfo(bIdx, s1Idx, runInfo, constInfo, accumS2Len, actualSeqLensQ, actualSeqLensK);
-        if (runInfo.actualSelectedBlockCount > 0) {
-            return true;
-        }
-    }
-    return false;
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -946,7 +884,8 @@ public:
                                            const GlobalTensor<CALC_TYPE> &mm5ResWorkSpaceGm,
                                            const GlobalTensor<CALC_TYPE> &dkWorkSpaceGm,
                                            const GlobalTensor<CALC_TYPE> &dvWorkSpaceGm,
-                                           FagConstInfo &constInfo, FagRunInfo &runInfo){};
+                                           FagConstInfo &constInfo, FagRunInfo &runInfo,
+                                           GlobalTensor<int32_t> &prodReadyGm, int32_t epoch){};
     __aicore__ inline void CopyMaxSum(FagConstInfo &constInfo, FagRunInfo &runInfo, int64_t taskId){};
     __aicore__ inline void InitCubeVecSharedParams(FagCVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, float qScaleDs){};
 };

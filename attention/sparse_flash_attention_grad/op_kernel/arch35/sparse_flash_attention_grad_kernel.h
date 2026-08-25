@@ -187,37 +187,36 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::DeterCubeVecScatter(
     FagRunInfo &scatterRunInfo)
 {
-    // 整轮 sel=0：AIC/AIV 判定相同，跳过 mode0 和 scatter，空前缀不再交握手税。
-    if (!this->HasDeterRoundWork(scatterRunInfo.sTaskId)) {
+    // 只让 usedCoreNum 个 AIC / 对应 AIV 参加 produce/reduce。
+    // tiny 的 usedCoreNum=4 时，另外 24 个核如果也去等 28 个 slot，会永远等不到。
+    if (this->cBlockIdx >= static_cast<uint32_t>(this->usedCoreNum)) {
         return;
     }
-    if ASCEND_IS_AIC {
-        this->DeterAicArriveBarrier();
-        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
-        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
-    } else {
-        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
+    this->DeterPostProd(scatterRunInfo.sTaskId);
+    if ASCEND_IS_AIV {
         this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dkWorkSpaceGm,
-                        this->dvWorkSpaceGm, this->constInfo, scatterRunInfo);
+                        this->dvWorkSpaceGm, this->constInfo, scatterRunInfo, this->deterProdReadyGm,
+                        static_cast<int32_t>(scatterRunInfo.sTaskId + 1));
+        this->DeterPostRed(scatterRunInfo.sTaskId);
     }
+    this->DeterWaitRed(scatterRunInfo.sTaskId);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessDeter()
 {
     this->AllocEventID();
+    this->DeterSyncInit();
     this->bIndex = 0;
     this->lastT1Index = -1;
     int64_t taskId = 0;
     int64_t sTaskId = 0;
     FagRunInfo runInfos[2]; // for cv ping pong
     FagRunInfo deterRunInfos[2];
-    // remain / idle 核也必须跑同一轮数，不能再用 processBS1ByCore。
     const int32_t deterLoop = this->GetDeterProcessNum();
     for (int32_t i = 0; i < deterLoop; i++) {
         this->t1Index = this->cBlockIdx + this->usedCoreNum * i;
         this->SetDeterRunInfo(deterRunInfos[sTaskId & 1], sTaskId);
-        // 无 token 只跳过计算，不能 break / continue 到循环外：后面每轮都有 mode0。
         if (this->HasDeterToken(this->t1Index)) {
             this->GetTndSeqLen(this->t1Index, this->bIndex);
             for (this->n2Index = 0; this->n2Index < this->tilingData->baseParams.n2; this->n2Index++) {
@@ -254,7 +253,6 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     if (taskId > 0 && runInfos[(taskId + 1) & 1].taskStep == TASK_C1C2) {
         ProcessNotFirst(runInfos[(taskId + 1) & 1]);
     }
-    // 延迟一轮的最后一组 scatter。所有核 sTaskId 相同，要做一起做、要跳一起跳。
     if (sTaskId > 0) {
         DeterCubeVecScatter(deterRunInfos[(sTaskId + 1) & 1]);
     }
