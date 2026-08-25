@@ -80,7 +80,7 @@ bool MhcPreSinkhornBackwardArch35DeterminiticTiling::IsCapable() { return true; 
 
 ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::GetShapeAttrsInfo()
 {
-    OP_LOGD(opName, "MhcPreSinkhornBackwardArch35DeterminiticTiling GetShapeAttrsInfo");
+    OP_LOGD(opName, "MhcPreSinkhornBackwardArch35DeterministicTiling GetShapeAttrsInfo");
     const auto xShapePtr = context_->GetInputShape(INPUT_X_IDX);
     if (xShapePtr == nullptr) {
         OP_LOGE(context_, "input x shape is nullptr");
