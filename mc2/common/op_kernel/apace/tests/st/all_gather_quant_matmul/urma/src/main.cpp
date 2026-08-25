@@ -96,7 +96,7 @@ int LaunchKernel(uint32_t usedCoreNum, aclrtStream stream, CommContext *devConte
                  AllGatherMxMatmulUdmaTilingData &tilingData)
 {
     AllGatherQuantMatmulKernel<<<usedCoreNum, nullptr, stream>>>(devContext, deviceA, deviceScaleA, deviceB,
-                                                                 deviceScaleB, deviceOutput, tilingData);
+                                                                 deviceScaleB, deviceOutput, nullptr, tilingData);
     return 0;
 }
 
