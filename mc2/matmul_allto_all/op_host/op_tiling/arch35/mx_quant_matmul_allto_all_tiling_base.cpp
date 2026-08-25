@@ -143,7 +143,6 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::InitTilingContextParameters()
     MC2_CHECK_LOG_RET(opName_, SetMxDataTypeInfo(context_, opName_, contextInfo));
     MC2_CHECK_LOG_RET(opName_, MatmulAlltoAllTilingUtil::SetShapeInfo(context_, contextInfo));
     contextInfo.quantMode = QuantMode::MX_QUANT;
-    // 判断是否使用apace实现: 卡数<=8
     constexpr uint64_t APACE_IMPL_MAX_RANK_DIM = 8;
     usingApaceImpl_ = (contextInfo.args_.rankDim <= APACE_IMPL_MAX_RANK_DIM);
     return ge::GRAPH_SUCCESS;
@@ -665,7 +664,6 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::SetHcclTiling()
 ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoMxQuantMMTiling()
 {
     if (usingApaceImpl_) {
-        // hcomm 路径: 卡数<=8，使用 Blaze tiling
         return DoHcommMxQuantMMTiling();
     }
     // arch35 主线路径: 使用 DequantBmm tiling
@@ -693,10 +691,8 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::DoMxQuantMMTiling()
     uint64_t nValue = contextInfo.args_.nValue;
     bool transB = contextInfo.args_.isBTrans;
 
-    // x2每卡完整[K, totalN], Blaze tiling按perRankN计算(kernel内部逐rank切N)
     uint64_t perRankN = nValue / contextInfo.args_.rankDim;
 
-    // 头块: 用inferredInfo.tileM生成tiling
     if (isMxfp4_) {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingSwat;
         if (inferredInfo.tileCnt > 0) {
@@ -963,7 +959,6 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::PostTiling()
     context_->SetScheduleMode(1);
     size_t tilingBufCap = context_->GetRawTilingData()->GetCapacity();
     if (usingApaceImpl_) {
-        // hcomm 路径: 输出 hcommAllToAllMatmulTilingData
         SetHcommTilingInfo(hcommTilingData_.matmulAllToAllTilingInfo);
         hcommAllToAllMatmulTilingData *outTilingData = context_->GetTilingData<hcommAllToAllMatmulTilingData>();
         OP_TILING_CHECK((outTilingData == nullptr), OP_LOGE(opName_, "Fail to get hcomm tiling data from context"),
@@ -1040,7 +1035,7 @@ void MxQuantMatmulAllToAllTilingBase::SetHcommTilingInfo(MatmulAllToAllApaceTili
     tilingInfo.tailCnt = inferredInfo.tailCnt;
     tilingInfo.tailM = inferredInfo.tailM;
     tilingInfo.rankM = contextInfo.args_.mValue;
-    tilingInfo.rankN = contextInfo.args_.nValue;  // 完整N, kernel侧计算perRankN
+    tilingInfo.rankN = contextInfo.args_.nValue;
     tilingInfo.rankK = contextInfo.args_.kValue;
     tilingInfo.rankDim = contextInfo.args_.rankDim;
     tilingInfo.hcclDataType =
@@ -1062,7 +1057,6 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::GetWorkspaceSize()
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "Get workspace failed"), return ge::GRAPH_FAILED);
     SetUserWorkSpace();
-    // Blaze writes rank-major Hcomm input directly, only one M*N result buffer required
     inferredInfo.permuteLen = 0;
     workspaces[0] = libApiWorkSpaceSize_ + inferredInfo.mmResultLen;
     OP_LOGD(opName_, "Apace workspace size=%lu, mmResultLen=%lu, permuteLen=0.",
