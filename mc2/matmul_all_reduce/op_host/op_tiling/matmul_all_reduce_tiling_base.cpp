@@ -212,7 +212,7 @@ uint8_t MatmulAllReduceTilingBase::CalcBufferTypeByWindowSize()
             std::string envStr(getenv(HCCL_BUFFSIZE));
             defaultWindowSize = std::stoi(envStr);
         } catch (...) {
-            OP_LOGE(opName_, "Unknown Exception encountered when parser env HCCL_BUFFERSIZE.");
+            OP_LOGE(opName_, "Unknown Exception encountered when parsing env HCCL_BUFFSIZE.");
         }
     }
     // 1024 * 1024表示1M
@@ -472,7 +472,10 @@ ge::graphStatus MatmulAllReduceTilingBase::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MatmulAllReduceTilingBase::DoLibApiTiling() { return ge::GRAPH_SUCCESS; }
+ge::graphStatus MatmulAllReduceTilingBase::DoLibApiTiling()
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus MatmulAllReduceTilingBase::GetWorkspaceSize()
 {
@@ -1119,7 +1122,10 @@ bool MatmulAllReduceTilingBase::CalL2TilePara(L2TilePara &tileL2, uint64_t mValu
     return false;
 }
 
-bool MatmulAllReduceTilingBase::HasAntiQuantOffset() const { return mmrCtxInfo_.antiquant_offset != nullptr; }
+bool MatmulAllReduceTilingBase::HasAntiQuantOffset() const
+{
+    return mmrCtxInfo_.antiquant_offset != nullptr;
+}
 void MatmulAllReduceTilingBase::GetScaleMNAndKIdx(const gert::StorageShape *scaleShape, bool isPertoken,
                                                   uint64_t scaleDimNum, uint64_t &MN, uint64_t &K) const
 {

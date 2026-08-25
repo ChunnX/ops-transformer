@@ -235,7 +235,7 @@ ge::graphStatus MatmulAllReduceTilingA5::PostTiling()
 
 ge::graphStatus MatmulAllReduceTilingA5::Do910Tiling()
 {
-    OP_LOGD(opName_, "Start to excute DoMatmulV3Tiling!");
+    OP_LOGD(opName_, "Start to execute DoMatmulV3Tiling!");
     // 获取芯片平台信息
     auto platformInfo = context_->GetPlatformInfo();
     OP_TILING_CHECK(platformInfo == nullptr, OP_LOGE(opName_, "Get platform info failed."), return ge::GRAPH_FAILED);
@@ -281,7 +281,10 @@ ge::graphStatus MatmulAllReduceTilingA5::DoMatmulV3Tiling(Mc2MatmulHelper::Mc2Ma
     return ge::GRAPH_SUCCESS;
 }
 
-Mc2Tiling::RCSTiling &MatmulAllReduceTilingA5::MutableRCSTilingData() { return matmulAllReduce910TilingData_.param; }
+Mc2Tiling::RCSTiling &MatmulAllReduceTilingA5::MutableRCSTilingData()
+{
+    return matmulAllReduce910TilingData_.param;
+}
 
 ge::graphStatus MatmulAllReduceTilingA5::CheckAxisSize()
 {
