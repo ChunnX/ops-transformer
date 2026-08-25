@@ -119,7 +119,8 @@ _legacy_map = {
     "dense_lightning_indexer_softmax_lse": "attention.dense_lightning_indexer_softmax_lse_v2",
     "elastic_buffer": "mc2.common",
     "flash_attn": "attention.flash_attn",
-    "ffn_to_attention": "mc2.ffn_to_attention_v2",
+"ffn_to_attention": "mc2.ffn_to_attention_v2",
+    "flash_mla_with_kvcache": "attention.flash_mla_with_kvcache",
     "grouped_matmul_activation_quant": "gmm.grouped_matmul_activation_quant",
     "indexer_quant_cache": "attention.indexer_quant_cache",
     "inplace_partial_rotary_mul": "posembedding.inplace_partial_rotary_mul",
@@ -170,14 +171,3 @@ if __name__ == "cann_ops_transformer.ops":
             logger.warning("Failed to register legacy module '%s': %s", _old_name, _e)
 
 
-# Centralized operators not yet migrated to distributed structure
-
-# ------------------------------------------------------------------ #
-# flash_mla_with_kvcache（PerrySkywalker 特性）显式注册：
-# 上游新发现机制(entry-point/子目录__init__)不覆盖本算子，沿用 C4 的单行 import，
-# 与 discovery 共存；保持 cann_ops_transformer.ops.flash_mla_with_kvcache 运行时契约。
-# ------------------------------------------------------------------ #
-from .flash_mla_with_kvcache import (
-    flash_mla_with_kvcache,
-    flash_mla_with_kvcache_metadata,
-)
