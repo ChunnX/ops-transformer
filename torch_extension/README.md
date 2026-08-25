@@ -43,7 +43,7 @@
 3. Install Package:
 
     ```sh
-    python3 -m pip install dist/*.whl --force-reinstall --no-deps
+    python3 -m pip install build_out/*.whl --force-reinstall --no-deps
     ```
 
 ## Quick Start
