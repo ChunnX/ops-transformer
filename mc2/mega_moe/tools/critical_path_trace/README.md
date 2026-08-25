@@ -1,7 +1,7 @@
 # MegaMoe A4W4 Wave 关键路径打点
 
-这是一套用于 A4W4 Wave 性能分析的轻量诊断工具。协议 v4 将打点下沉到真正的 tile/chunk 计算调用，记录
-Dispatch、GMM1、Activation、GMM2 prologue、GMM2 和 Combine 的精确计算区间。
+这是一套用于 A4W4 Wave 性能分析的轻量诊断工具。协议 v5 将打点下沉到真正的 tile/chunk 计算调用，记录
+Dispatch、GMM1、Activation、GMM2 prologue、GMM2、Combine metadata 预取和 Combine 的精确区间。
 
 本轮打点主要用于分析小 BS 下的三类问题：Wave 是否欠载、AIC/AIV0/AIV1 的阶段是否失衡，以及后级阶段是否因
 等待 Dispatch、GMM1、Activation 或 GMM2 出现空泡。等待事件与计算事件分离，因此计算块不再包含地址更新、
@@ -181,28 +181,30 @@ python3 mc2/mega_moe/tools/critical_path_trace/trace_tool.py rank0.raw rank1.raw
 stage, wave, expert, tokenStartInExpert, tokenCount, mGroupCount, parentStage, beginCycle, endCycle
 ```
 
-协议 v4 将每次依赖等待记录为独立事件：
+协议 v4 起将每次依赖等待记录为独立事件：
 
 ```text
 Wait Dispatch：GMM1 AIC 等待 Dispatch 输入
 Wait GMM1：Activation AIV0 通过 PIPE_V 等待 GMM1 tile 或 Cube ping-pong 数据
 Wait Activation：GMM2 AIC 等待 Activation 输出
-Wait GMM2：Combine AIV1 等待 GMM2 completion counter
+Wait GMM2：AIV Combine worker 等待 GMM2 completion counter
 ```
 
-wait 事件通过 `parentStage` 表示所阻塞的计算类型，但在时间轴上是计算开始前的相邻独立区间。协议 v4 的
-`activeCycles` 就是 tile/chunk 计算事件本身的时长，不再从外层阶段时长中扣除等待。工具仍兼容协议 v1-v3。
+wait 事件通过 `parentStage` 表示所阻塞的计算类型，但在时间轴上是计算开始前的相邻独立区间。协议 v4 起，
+`activeCycles` 就是 tile/chunk 计算事件本身的时长，不再从外层阶段时长中扣除等待。协议 v5 进一步将
+Combine metadata 的 GM→UB 预取记录为独立事件。工具仍兼容协议 v1-v4。
 
-GMM/Activation 事件按本核拥有的 tile 记录，Combine 按本核拥有的 chunk 记录；坐标仍映射为 Wave 内专家 token
-范围。Dispatch 只记录本核实际发送的行，因此没有任务的核不会产生伪计算块。
+GMM/Activation 事件按本核拥有的 tile 记录，Combine metadata 预取和 Combine 按本核拥有的 chunk 记录；
+坐标仍映射为 Wave 内专家 token 范围。Dispatch 只记录本核实际发送的行，因此没有任务的核不会产生伪计算块。
 
 结束时间需要表示异步流水的真实完成：
 
 - AIC GMM1/GMM2 复用实现内部的计算完成或同步发布边界；
-- AIV1 Dispatch/Combine 和 AIV0 Activation 复用各阶段已有的完成发布边界；
+- AIV1 Dispatch 和 AIV0 Activation 复用各阶段已有的完成发布边界；
 - generic AIV0 的 C/V 等待在 begin 前和 wait 后各增加一次 trace-only `V_S`，使 Scalar 时间戳对应
   PIPE_V 真正进入并退出等待的边界；
-- AIV0 GMM2 prologue 与 AIV1 Combine 在外层额外执行一次 `MTE3_S`，再读取 Scalar 时间戳。
+- Combine metadata 预取复用 `PreloadWaveCombineMetaInfo` 内已有的 `MTE2_S` 完成边界；
+- AIV0 GMM2 prologue 与 AIV Combine worker 在外层额外执行一次 `MTE3_S`，再读取 Scalar 时间戳。
 
 ## 4. 当前有意保留的限制
 

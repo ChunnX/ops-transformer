@@ -38,6 +38,7 @@ EVENT_NAMES = {
     9: "Wait GMM1",
     10: "Wait Activation",
     11: "Wait GMM2",
+    12: "Combine metadata prefetch",
 }
 EVENT_COLORS = {
     1: "#06b6d4",
@@ -51,6 +52,7 @@ EVENT_COLORS = {
     9: "#cbd5e1",
     10: "#cbd5e1",
     11: "#cbd5e1",
+    12: "#fbbf24",
 }
 WAIT_EVENT_IDS = frozenset((8, 9, 10, 11))
 WAIT_INSTRUMENTED_PARENT_IDS = frozenset((2, 4, 5, 7))
@@ -80,7 +82,7 @@ EVENT_TRACE_POINTS = {
         "该 prologue tile 的 trace-only MTE3_S 完成边界",
     ),
     7: (
-        "AIV1：元数据预取完成后、调用 Combine chunk 前",
+        "AIV Combine worker：元数据预取完成后、调用 Combine chunk 前",
         "该 Combine chunk 的 trace-only MTE3_S 完成边界",
     ),
     8: (
@@ -96,8 +98,12 @@ EVENT_TRACE_POINTS = {
         "Activation 输入 ready 后",
     ),
     11: (
-        "Combine AIV1：开始轮询 GMM2 completion 前",
+        "AIV Combine worker：开始轮询 GMM2 completion 前",
         "GMM2 输出 ready 后",
+    ),
+    12: (
+        "AIV Combine worker：开始将当前 chunk 的 metadata 从 GM 搬入 UB 前",
+        "PreloadWaveCombineMetaInfo 的 MTE2_S 完成边界",
     ),
 }
 
@@ -172,7 +178,7 @@ def parse_trace(words: tuple[int, ...]) -> dict:
     }
     if header["header_words"] != HEADER_WORDS:
         raise ValueError(f"unsupported header size: {header['header_words']}")
-    expected_event_words = {1: 8, 2: 9, 3: 9, 4: 9}
+    expected_event_words = {1: 8, 2: 9, 3: 9, 4: 9, 5: 9}
     if header["version"] not in expected_event_words:
         raise ValueError(f"unsupported trace version: {header['version']}")
     if header["event_words"] != expected_event_words[header["version"]]:
@@ -222,7 +228,7 @@ def parse_trace(words: tuple[int, ...]) -> dict:
             parent_event_id = 0
             is_wait_event = False
             wait_event_count = None
-            if header["version"] in (3, 4):
+            if header["version"] in (3, 4, 5):
                 parent_event_id, begin, end = event_words[6:9]
                 is_wait_event = event_type in WAIT_EVENT_IDS
                 wait_cycles = None
@@ -535,7 +541,7 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
     <span id="selectionSummary" class="muted"></span>
   </div>
   <div class="legend" id="legend"></div>
-  <div class="muted">每个 role/core 只使用一条泳道。协议 v4 的计算块只覆盖真实 tile/chunk 计算，等待按真实
+  <div class="muted">每个 role/core 只使用一条泳道。协议 v5 将 metadata 预取与真实 tile/chunk 计算分开，等待按真实
   begin/end cycle 独立显示；1000 cycles = 1 μs。可固定整个 Block 或单条泳道到顶部对比区。</div>
   <div id="timeline"></div>
   <div id="eventDetail" class="event-detail">点击时间线中的事件块查看完整起止 cycle 与打点位置。</div>
@@ -573,8 +579,8 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
 <script id="traceData" type="application/json">{payload}</script>
 <script>
 const trace = JSON.parse(document.getElementById('traceData').textContent);
-const colors = {{Dispatch:'#06b6d4',GMM1:'#2563eb','GMM1 prologue':'#a855f7',Activation:'#22c55e',GMM2:'#ef4444','GMM2 prologue':'#c084fc',Combine:'#f97316','Wait Dispatch':'#cbd5e1','Wait GMM1':'#cbd5e1','Wait Activation':'#cbd5e1','Wait GMM2':'#cbd5e1'}};
-const legendColors = {{Dispatch:'#06b6d4',GMM1:'#2563eb','GMM1 prologue':'#a855f7',Activation:'#22c55e',GMM2:'#ef4444','GMM2 prologue':'#c084fc',Combine:'#f97316',Wait:'#cbd5e1'}};
+const colors = {{Dispatch:'#06b6d4',GMM1:'#2563eb','GMM1 prologue':'#a855f7',Activation:'#22c55e',GMM2:'#ef4444','GMM2 prologue':'#c084fc',Combine:'#f97316','Combine metadata prefetch':'#fbbf24','Wait Dispatch':'#cbd5e1','Wait GMM1':'#cbd5e1','Wait Activation':'#cbd5e1','Wait GMM2':'#cbd5e1'}};
+const legendColors = {{Dispatch:'#06b6d4',GMM1:'#2563eb','GMM1 prologue':'#a855f7',Activation:'#22c55e',GMM2:'#ef4444','GMM2 prologue':'#c084fc',Combine:'#f97316','Combine metadata prefetch':'#fbbf24',Wait:'#cbd5e1'}};
 const roles = ['AIC','AIV0','AIV1'];
 const coreSelect = document.getElementById('coreSelect');
 const waveSelect = document.getElementById('waveSelect');

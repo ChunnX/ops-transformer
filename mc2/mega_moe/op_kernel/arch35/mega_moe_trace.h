@@ -25,7 +25,7 @@ namespace MegaMoeImpl {
 #if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
 
 constexpr uint32_t A4W4_WAVE_TRACE_MAGIC = 0x41345452U; // "A4TR"
-constexpr uint32_t A4W4_WAVE_TRACE_VERSION = 4U;
+constexpr uint32_t A4W4_WAVE_TRACE_VERSION = 5U;
 constexpr uint32_t A4W4_WAVE_TRACE_ROLE_COUNT = 3U;
 constexpr uint32_t A4W4_WAVE_TRACE_HEADER_WORDS = 24U;
 constexpr uint32_t A4W4_WAVE_TRACE_RECORD_HEADER_WORDS = 4U;
@@ -53,6 +53,7 @@ enum class A4W4WaveTraceEvent : uint32_t {
     WAIT_FOR_GMM1 = 9U,
     WAIT_FOR_ACTIVATION = 10U,
     WAIT_FOR_GMM2 = 11U,
+    COMBINE_META_PREFETCH = 12U,
 };
 
 /*

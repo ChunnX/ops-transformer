@@ -136,25 +136,38 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm2
     uint32_t gmm2NTileCount = Ops::Base::CeilDiv(commonConfig_.tokenHiddenDim, static_cast<uint32_t>(L1_TILE_N));
     uint32_t problemTileCount = GetMGroupCountForRows(sliceTokenCount, GMM1_TILE_M) * gmm2NTileCount;
 #if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
-    A4W4WaveTraceEvent stageEvent = A4W4WaveTraceEvent::INVALID;
-    A4W4WaveTraceEvent waitEvent = A4W4WaveTraceEvent::INVALID;
-    uint32_t traceUnitBase = tokenStartIndexInExpert;
+    CriticalPathTileTraceContext gmm2TraceContext{};
+    CriticalPathTileTraceContext combineTraceContext{};
+    CriticalPathTileTraceContext combineMetaTraceContext{};
+    CriticalPathTileTraceContext *gmm2TraceContextPtr = nullptr;
+    CriticalPathTileTraceContext *combineTraceContextPtr = nullptr;
+    CriticalPathTileTraceContext *combineMetaTraceContextPtr = nullptr;
     if constexpr (g_coreType == AIC) {
-        stageEvent = A4W4WaveTraceEvent::GMM2;
-        waitEvent = A4W4WaveTraceEvent::WAIT_FOR_ACTIVATION;
-    } else if (GetSubBlockIdx() == 0U) {
-        stageEvent = A4W4WaveTraceEvent::GMM2_PROLOGUE;
+        gmm2TraceContext =
+            trace_.CreateTileTraceContext(A4W4WaveTraceEvent::GMM2, A4W4WaveTraceEvent::WAIT_FOR_ACTIVATION, waveIndex,
+                                          state.expertIdx, tokenStartIndexInExpert);
+        gmm2TraceContextPtr = &gmm2TraceContext;
     } else {
-        stageEvent = A4W4WaveTraceEvent::COMBINE;
-        waitEvent = A4W4WaveTraceEvent::WAIT_FOR_GMM2;
-        // Combine 在专家完整输出上重新分核，其 owned range 已经是专家内坐标。
-        traceUnitBase = 0U;
+        if (GetSubBlockIdx() == 0U) {
+            gmm2TraceContext =
+                trace_.CreateTileTraceContext(A4W4WaveTraceEvent::GMM2_PROLOGUE, A4W4WaveTraceEvent::INVALID, waveIndex,
+                                              state.expertIdx, tokenStartIndexInExpert);
+            gmm2TraceContextPtr = &gmm2TraceContext;
+        }
+        if (GetSubBlockIdx() == 1U || useAllAivCores) {
+            // Combine 在专家完整输出上重新分核，其 owned range 已经是专家内坐标。
+            combineTraceContext = trace_.CreateTileTraceContext(
+                A4W4WaveTraceEvent::COMBINE, A4W4WaveTraceEvent::WAIT_FOR_GMM2, waveIndex, state.expertIdx, 0U);
+            combineTraceContextPtr = &combineTraceContext;
+            combineMetaTraceContext = trace_.CreateTileTraceContext(
+                A4W4WaveTraceEvent::COMBINE_META_PREFETCH, A4W4WaveTraceEvent::INVALID, waveIndex, state.expertIdx, 0U);
+            combineMetaTraceContextPtr = &combineMetaTraceContext;
+        }
     }
-    CriticalPathTileTraceContext traceContext =
-        trace_.CreateTileTraceContext(stageEvent, waitEvent, waveIndex, state.expertIdx, traceUnitBase);
-    CriticalPathTileTraceContext *traceContextPtr = &traceContext;
 #else
-    CriticalPathTileTraceContext *traceContextPtr = nullptr;
+    CriticalPathTileTraceContext *gmm2TraceContextPtr = nullptr;
+    CriticalPathTileTraceContext *combineTraceContextPtr = nullptr;
+    CriticalPathTileTraceContext *combineMetaTraceContextPtr = nullptr;
 #endif
     bool ownsGmm2Tile = !SkipUnownedWaveAicProblem(problemTileCount, gmmExecutionConfig_.blockJob, startBlockIdx);
     if (ownsGmm2Tile) {
@@ -167,7 +180,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm2
                     TopkWeightsPrefetch, false, false, true>(
             sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, expertTokenCount,
             tokenStartIndexInExpert, tokenStartIndexInExpert == 0U && sliceTokenCount == expertTokenCount,
-            traceContextPtr);
+            gmm2TraceContextPtr);
     }
     if (tokenStartIndexInExpert + sliceTokenCount < expertTokenCount) {
         return;
@@ -184,13 +197,13 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm2
         }
         combineBufferConfig =
             PrepareFinalWaveCombineBuffers<CombineQuantMode>(commonConfig_, combineBufferConfig, waveCombineScratch_);
-        RunWaveExpertCombineStage<CombineQuantMode, true>(commonConfig_, waveCombineJob_, combineBufferConfig,
-                                                          waveCombineScratch_, params_, gmmAddrInfo, state,
-                                                          state.expertIdx, combineRowSequence, traceContextPtr);
+        RunWaveExpertCombineStage<CombineQuantMode, true>(
+            commonConfig_, waveCombineJob_, combineBufferConfig, waveCombineScratch_, params_, gmmAddrInfo, state,
+            state.expertIdx, combineRowSequence, combineTraceContextPtr, combineMetaTraceContextPtr);
     } else {
-        RunWaveExpertCombineStage<CombineQuantMode>(commonConfig_, waveCombineJob_, combineBufferConfig,
-                                                    waveCombineScratch_, params_, gmmAddrInfo, state, state.expertIdx,
-                                                    combineRowSequence, traceContextPtr);
+        RunWaveExpertCombineStage<CombineQuantMode>(
+            commonConfig_, waveCombineJob_, combineBufferConfig, waveCombineScratch_, params_, gmmAddrInfo, state,
+            state.expertIdx, combineRowSequence, combineTraceContextPtr, combineMetaTraceContextPtr);
     }
 }
 

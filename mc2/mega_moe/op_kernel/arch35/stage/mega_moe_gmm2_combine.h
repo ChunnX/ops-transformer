@@ -1080,7 +1080,8 @@ __aicore__ inline void RunWaveExpertCombineStage(const MoeStageCommonConfig &com
                                                  WaveCombineScratch &scratch, const Params &params,
                                                  const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
                                                  uint32_t expertIdx, uint32_t &rowSequence,
-                                                 CriticalPathTileTraceContext *traceContext = nullptr)
+                                                 CriticalPathTileTraceContext *traceContext = nullptr,
+                                                 CriticalPathTileTraceContext *metaTraceContext = nullptr)
 {
     uint32_t currentExpertTokenNum = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
     WorkRange currentCoreTokenRange = GetWaveCombineOwnedRange<UseAllAivCores>(
@@ -1095,14 +1096,13 @@ __aicore__ inline void RunWaveExpertCombineStage(const MoeStageCommonConfig &com
         uint32_t chunkTokenNum = remainingTokenNum < WAVE_COMBINE_META_INFO_TOKEN_CAPACITY ?
                                      remainingTokenNum :
                                      WAVE_COMBINE_META_INFO_TOKEN_CAPACITY;
+        uint32_t metaPrefetchBegin = BeginTraceInterval(metaTraceContext);
         PreloadWaveCombineMetaInfo(
             params, scratch,
             static_cast<uint64_t>(state.globalTokenStartIndex) + currentCoreTokenRange.start + processedTokenNum,
             chunkTokenNum, 0U);
-        if (traceContext != nullptr && traceContext->writer.IsEnabled()) {
-            // 元数据预取不属于 Combine 计算；先排空 MTE2，再开始计时。
-            SyncFuncStatic<AscendC::HardEvent::MTE2_S, EVENT_ID0>();
-        }
+        EndTraceInterval(metaTraceContext, false, currentCoreTokenRange.start + processedTokenNum, chunkTokenNum, 1U,
+                         metaPrefetchBegin);
         uint32_t computeBegin = BeginTraceInterval(traceContext);
         CombineWaveTokenRange<CombineMode, UseAllAivCores>(
             common, bufferConfig, scratch, params, gmmAddrInfo.gmm2OutGlobal,
