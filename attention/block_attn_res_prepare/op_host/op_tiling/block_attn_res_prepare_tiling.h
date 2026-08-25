@@ -19,9 +19,10 @@
 #include "platform/platform_info.h"
 #include "register/op_impl_registry.h"
 #include "util/platform_util.h"
-#include "../../op_kernel/arch35/block_attn_res_prepare_tiling_data.h"
+#include "../../op_kernel/arch35/block_attn_res_prepare_apt_tiling_key.h"
 
 namespace optiling {
+using namespace BlockAttnResPrepareTilingKey;
 
 constexpr float BLOCK_ATTN_RES_PREPARE_DEFAULT_EPS = 1e-6F;
 

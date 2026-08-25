@@ -15,8 +15,8 @@
 
 namespace optiling {
 
-constexpr uint64_t BLOCK_ATTN_RES_PREPARE_VECTOR_KEY = 1000UL;
-constexpr uint64_t BLOCK_ATTN_RES_PREPARE_MIX_CUBE_KEY = 2000UL;
+constexpr uint64_t BLOCK_ATTN_RES_PREPARE_VECTOR_KEY = 0UL;
+constexpr uint64_t BLOCK_ATTN_RES_PREPARE_MIX_CUBE_KEY = 1UL;
 
 enum class BlockAttnResPrepareVCacheMode : uint32_t {
     RELOAD = 0,
