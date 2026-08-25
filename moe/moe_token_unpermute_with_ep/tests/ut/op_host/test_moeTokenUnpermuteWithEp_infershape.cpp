@@ -22,9 +22,15 @@
 
 class MoeTokenUnpermuteWithEp : public testing::Test {
 protected:
-    static void SetUpTestCase() { std::cout << "MoeTokenUnpermuteWithEp Proto Test SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "MoeTokenUnpermuteWithEp Proto Test SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "MoeTokenUnpermuteWithEp Proto Test TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "MoeTokenUnpermuteWithEp Proto Test TearDown" << std::endl;
+    }
 };
 
 static std::vector<int64_t> ToVector(const gert::Shape &shape)
