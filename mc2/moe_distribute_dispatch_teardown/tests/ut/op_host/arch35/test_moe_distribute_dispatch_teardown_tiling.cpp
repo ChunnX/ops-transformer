@@ -15,7 +15,6 @@
 #include <cstdlib>
 #include <iostream>
 #include <fstream>
-#include <thread>
 #include <vector>
 #include <string>
 #include <gtest/gtest.h>
@@ -3591,6 +3590,7 @@ struct MoeDistributeDispatchTeardownCompileInfo {
 
 static gert::TilingContextPara BuildTilingContextPara(const MoeDistributeDispatchTeardownTilingTestParam &param)
 {
+    std::cout << "[TEST_CASE] " << param << std::endl;
     // 存储用例中输入信息：context 为必选第 0 输入，其后为 x/y/expert_ids/comm_cmd_info
     std::vector<pair<std::initializer_list<int64_t>, ge::DataType>> inputshapeDtypeList = {
         {param.x, param.x_dtype},
@@ -3640,32 +3640,6 @@ static gert::TilingContextPara BuildTilingContextPara(const MoeDistributeDispatc
     return gert::TilingContextPara(OP_NAME, inputTensorDesc, outputTensorDesc, attrs, &compileInfo, param.socVersion);
 }
 
-// 多线程执行用例集
-static void ThreadFunc(const MoeDistributeDispatchTeardownTilingTestParam *testCases, size_t testcase_num,
-                       size_t thread_idx, size_t thread_num)
-{
-    for (size_t idx = thread_idx; idx < testcase_num; idx += thread_num) {
-        auto param = testCases[idx];
-        auto tilingContextPara = BuildTilingContextPara(param);
-        std::cout << "[TEST_CASE] " << param << std::endl;
-        Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", param.rankNum},
-                                                   {"HCCL_BUFFSIZE", 12000UL * 1024UL * 1024UL}};
-        Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, param.expectResult, param.expectTilingKey);
-    }
-}
-
-static void TestMultiThread(const MoeDistributeDispatchTeardownTilingTestParam *testCases, size_t testcase_num,
-                            size_t thread_num)
-{
-    std::thread threads[thread_num];
-    for (size_t idx = 0; idx < thread_num; ++idx) {
-        threads[idx] = std::thread(ThreadFunc, testCases, testcase_num, idx, thread_num);
-    }
-    for (size_t idx = 0; idx < thread_num; ++idx) {
-        threads[idx].join();
-    }
-}
-
 TEST_P(TestMoeDistributeTeardownTiling, general_cases)
 {
     auto param = GetParam();
@@ -3673,12 +3647,6 @@ TEST_P(TestMoeDistributeTeardownTiling, general_cases)
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", param.rankNum},
                                                {"HCCL_BUFFSIZE", 12000UL * 1024UL * 1024UL}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, param.expectResult, param.expectTilingKey);
-}
-
-TEST_F(TestMoeDistributeTeardownTiling, general_cases_multi_thread)
-{
-    size_t thread_num = 3;
-    TestMultiThread(test_cases, sizeof(test_cases) / sizeof(MoeDistributeDispatchTeardownTilingTestParam), thread_num);
 }
 
 INSTANTIATE_TEST_CASE_P(MoeDistributeDispatchTeardownTilingUT, TestMoeDistributeTeardownTiling,
