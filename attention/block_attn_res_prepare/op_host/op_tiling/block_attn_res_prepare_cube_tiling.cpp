@@ -190,13 +190,18 @@ bool BlockAttnResPrepareCubeTiling::SelectCubeTileShape()
 
 ge::graphStatus BlockAttnResPrepareCubeTiling::DoOpTiling()
 {
-    OP_CHECK_IF(baseT_ == 0U || baseD_ == 0U, OP_LOGE(context_->GetNodeName(), "Cube tile was not selected"),
+    OP_CHECK_IF(baseT_ == 0U || baseD_ == 0U,
+                OP_LOGE(context_->GetNodeName(),
+                        "Cube tile was not selected: T=%lu, N=%lu, S=%lu, D=%lu, baseT=%u, baseS=%u, baseD=%u",
+                        totalT_, totalN_, totalS_, totalD_, baseT_, baseS_, baseD_),
                 return ge::GRAPH_FAILED);
 
     sTileNum_ = static_cast<uint32_t>(CeilDiv<uint64_t>(totalS_, baseS_));
     const uint64_t tTileNum = CeilDiv<uint64_t>(totalT_, baseT_);
     OP_CHECK_IF(tTileNum > std::numeric_limits<uint64_t>::max() / sTileNum_,
-                OP_LOGE(context_->GetNodeName(), "Cube work count overflows uint64"), return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "Cube work count overflows uint64: tTileNum=%lu, sTileNum=%u",
+                        tTileNum, sTileNum_),
+                return ge::GRAPH_FAILED);
     const uint64_t totalWorkUnits = tTileNum * sTileNum_;
     const uint64_t mixedCoreNum = std::min<uint64_t>(aicCoreNum_, aivCoreNum_ / AIV_CORE_NUM_PER_AIC);
     WorkDistribution distribution;
@@ -213,14 +218,23 @@ ge::graphStatus BlockAttnResPrepareCubeTiling::DoOpTiling()
     const uint64_t eWorkspaceBufferNum = totalT_ > 1U ? DOUBLE_BUFFER_NUM : 1U;
     OP_CHECK_IF(eWorkspaceElems > std::numeric_limits<uint64_t>::max() / eWorkspaceBufferNum ||
                     dotWorkspaceElems > std::numeric_limits<uint64_t>::max() - eWorkspaceBufferNum * eWorkspaceElems,
-                OP_LOGE(context_->GetNodeName(), "Cube per-core workspace size overflows uint64"),
+                OP_LOGE(context_->GetNodeName(),
+                        "Cube per-core workspace size overflows uint64: dotWorkspaceElems=%lu, "
+                        "eWorkspaceElems=%lu, eWorkspaceBufferNum=%lu",
+                        dotWorkspaceElems, eWorkspaceElems, eWorkspaceBufferNum),
                 return ge::GRAPH_FAILED);
     workspacePerCoreElems_ = dotWorkspaceElems + eWorkspaceBufferNum * eWorkspaceElems;
     OP_CHECK_IF(workspacePerCoreElems_ > std::numeric_limits<uint64_t>::max() / usedCoreNum_ / FP32_BYTES,
-                OP_LOGE(context_->GetNodeName(), "Cube workspace size overflows uint64"), return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(),
+                        "Cube workspace size overflows uint64: workspacePerCoreElems=%lu, usedCoreNum=%u, "
+                        "elementBytes=%lu",
+                        workspacePerCoreElems_, usedCoreNum_, FP32_BYTES),
+                return ge::GRAPH_FAILED);
     const uint64_t cubeWorkspaceSize = workspacePerCoreElems_ * usedCoreNum_ * FP32_BYTES;
     OP_CHECK_IF(systemWorkspaceSize_ > std::numeric_limits<uint64_t>::max() - cubeWorkspaceSize,
-                OP_LOGE(context_->GetNodeName(), "Cube total workspace size overflows uint64"),
+                OP_LOGE(context_->GetNodeName(),
+                        "Cube total workspace size overflows uint64: systemWorkspaceSize=%lu, cubeWorkspaceSize=%lu",
+                        systemWorkspaceSize_, cubeWorkspaceSize),
                 return ge::GRAPH_FAILED);
     workspaceSize_ = systemWorkspaceSize_ + cubeWorkspaceSize;
 
