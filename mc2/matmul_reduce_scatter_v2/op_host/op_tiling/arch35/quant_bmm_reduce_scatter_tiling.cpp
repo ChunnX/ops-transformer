@@ -445,9 +445,12 @@ ge::graphStatus QuantBmmReduceScatterTiling::SetMc2Hcomm()
         mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_CCU_ENGINE);
         OP_LOGD(opName_, "[SetCommEngine] Set CommEngine to CCU for quant_bmm_reduce_scatter_tiling.");
     }
+    const bool isFp8Pertensor =
+        quantMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE &&
+        (args_.geAType == ge::DataType::DT_FLOAT8_E4M3FN || args_.geAType == ge::DataType::DT_FLOAT8_E5M2) &&
+        (args_.geBType == ge::DataType::DT_FLOAT8_E4M3FN || args_.geBType == ge::DataType::DT_FLOAT8_E5M2);
     isPeerOnly_ = !isA2APath_ && commMode_ == TPL_CCU_COMM_MODE &&
-                  args_.rankDim == PEER_ONLY_RANK_SIZE &&
-                  quantMode_ != mc2tiling::Mc2QuantMode::PERBLOCK_MODE &&
+                  args_.rankDim == PEER_ONLY_RANK_SIZE && isFp8Pertensor &&
                   mc2tiling::Mc2TilingUtils::GetDebugMode() == 0;
     if (isPeerOnly_) {
         mc2CcTilingConfig.SetAlgConfig(PEER_ONLY_ALGORITHM);

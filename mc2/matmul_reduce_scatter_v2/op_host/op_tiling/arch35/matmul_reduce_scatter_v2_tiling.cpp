@@ -116,7 +116,8 @@ ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
         OP_LOGD(opName_, "[SetCommEngine] Set CommEngine to CCU for matmul_reduce_scatter_v2_tiling.");
     }
     isPeerOnly_ = !isA2APath_ && commMode_ == TPL_CCU_COMM_MODE &&
-                  args_.rankDim == PEER_ONLY_RANK_SIZE && mc2tiling::Mc2TilingUtils::GetDebugMode() == 0;
+                  args_.rankDim == PEER_ONLY_RANK_SIZE && args_.geAType == ge::DataType::DT_BF16 &&
+                  mc2tiling::Mc2TilingUtils::GetDebugMode() == 0;
     if (isPeerOnly_) {
         mc2CcTilingConfig.SetAlgConfig(PEER_ONLY_ALGORITHM);
     }
