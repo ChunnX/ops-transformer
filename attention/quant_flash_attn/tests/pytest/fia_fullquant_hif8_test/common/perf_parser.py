@@ -1,5 +1,4 @@
 #!/usr/bin/python3
-# -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
@@ -15,12 +14,11 @@ import re
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 
 def parse_op_summary(
     csv_path: str, operator_name: str = "FusedInferAttentionScore"
-) -> List[Dict]:
+) -> list[dict]:
     with open(csv_path) as f:
         rows = list(csv.DictReader(f))
     entries = []
@@ -43,7 +41,7 @@ def parse_op_summary(
     return entries
 
 
-def _parse_shapes_str(shapes_str: str) -> List[List[int]]:
+def _parse_shapes_str(shapes_str: str) -> list[list[int]]:
     s = shapes_str.strip().strip('"')
     if not s:
         return []
@@ -55,7 +53,7 @@ def _parse_shapes_str(shapes_str: str) -> List[List[int]]:
     return result
 
 
-def extract_shapes_from_entry(entry: Dict) -> str:
+def extract_shapes_from_entry(entry: dict) -> str:
     input_shapes = _parse_shapes_str(entry.get("input_shapes", ""))
     labels = ["Q", "K", "V"]
     parts = []
@@ -65,7 +63,7 @@ def extract_shapes_from_entry(entry: Dict) -> str:
     return "  ".join(parts)
 
 
-def find_op_summary_csv(prof_dir: str) -> Optional[Path]:
+def find_op_summary_csv(prof_dir: str) -> Path | None:
     prof_path = Path(prof_dir)
     csv_files = sorted(prof_path.glob("mindstudio_profiler_output/op_summary_*.csv"))
     if csv_files:
@@ -75,7 +73,7 @@ def find_op_summary_csv(prof_dir: str) -> Optional[Path]:
 
 def parse_prof_directory(
     prof_dir: str, operator_name: str = "FusedInferAttentionScore"
-) -> Tuple[List[Dict], Optional[Path]]:
+) -> tuple[list[dict], Path | None]:
     csv_path = find_op_summary_csv(prof_dir)
     if csv_path is None:
         print(f"[perf] No op_summary CSV found in {prof_dir}")
@@ -97,7 +95,7 @@ def parse_prof_directory(
     return results, csv_path
 
 
-def print_report(results: List[Dict]):
+def print_report(results: list[dict]):
     print()
     print("=" * 120)
     print(f"{'#':>3}  {'Duration':>10} {'AI Core':>10} {'Cube%':>7}  {'Input Shapes'}")
@@ -111,7 +109,7 @@ def print_report(results: List[Dict]):
 
 
 def save_report(
-    results: List[Dict], csv_path: Optional[Path], output_dir: str = "."
+    results: list[dict], csv_path: Path | None, output_dir: str = "."
 ) -> Path:
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -119,7 +117,7 @@ def save_report(
     if csv_path:
         timestamp = csv_path.stem.replace("op_summary_", "")
     else:
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")  # noqa: DTZ005
     log_file = output_dir / f"perf_report_{timestamp}.log"
 
     lines = []
@@ -144,7 +142,7 @@ def save_report(
     return log_file
 
 
-def parse_baseline_log(log_path: str) -> List[Dict]:
+def parse_baseline_log(log_path: str) -> list[dict]:
     path = Path(log_path)
     if not path.exists():
         return []
@@ -155,10 +153,7 @@ def parse_baseline_log(log_path: str) -> List[Dict]:
             line = line.strip()
             if (
                 not line
-                or line.startswith("=")
-                or line.startswith("-")
-                or line.startswith("#")
-                or line.startswith("Total")
+                or line.startswith(("=", "-", "#", "Total"))
             ):
                 continue
             m = re.match(r"\s*(\d+)\s+([\d.]+)us\s+([\d.]+)us\s+([\d.]+)%\s+(.*)", line)
@@ -175,8 +170,8 @@ def parse_baseline_log(log_path: str) -> List[Dict]:
 
 
 def compare_with_baseline(
-    current: List[Dict], baseline: List[Dict], threshold: float = 8.0
-) -> List[Dict]:
+    current: list[dict], baseline: list[dict], threshold: float = 8.0
+) -> list[dict]:
     baseline_by_shapes = {e["shapes"]: e for e in baseline}
     results = []
     for cur in current:
@@ -215,7 +210,7 @@ def compare_with_baseline(
     return results
 
 
-def print_comparison_report(results: List[Dict], threshold: float = 8.0):
+def print_comparison_report(results: list[dict], threshold: float = 8.0):
     print()
     print("=" * 140)
     print(
