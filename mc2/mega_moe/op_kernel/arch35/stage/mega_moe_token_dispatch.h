@@ -643,6 +643,17 @@ __aicore__ inline int32_t PlanDispatchCoreRankRoutes(
     int32_t plannedTaskCount = 0;
     bool nextCursorStored = false;
 
+    // GatherMask returns this rank's routes in monotonically increasing ordinal
+    // order. Keep one interval cursor for the whole rank scan instead of
+    // rebuilding the rank-round decomposition from round zero for every mask
+    // batch.
+    int32_t planRoundBegin = 0;
+    int32_t planIntervalRowBegin = 0;
+    DispatchRankRoundInterval planInterval{};
+    bool hasPlanInterval = GetDispatchRankRoundInterval(
+        context, scratch, remoteRankIdx, planRoundBegin,
+        planIntervalRowBegin, planInterval);
+
     for (int32_t routeBegin = scanCursor.routeBegin;
          static_cast<uint64_t>(routeBegin) < sendTotalNum &&
          matchedRouteCount < rankTokenCount &&
@@ -668,8 +679,10 @@ __aicore__ inline int32_t PlanDispatchCoreRankRoutes(
             (static_cast<uint64_t>(localExpertId) * context.common.worldSize + remoteRankIdx) * maskSlotSize +
             static_cast<uint64_t>(maskByteBegin)));
         DataCopy(scratch.maskBatchTensor, remoteRankMaskGlobal, static_cast<uint32_t>(maskSliceBytes));
-        SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
+        // routeIndexTensor does not depend on the mask payload. Generate it
+        // while MTE2 is loading the mask, then fence only before GatherMask.
         CreateVecIndex(routeIndexTensor, routeBegin, queue.routeCapacity);
+        SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
         uint64_t batchMatchedRouteCount = 0U;
         GatherMask(scratch.validTopkIndexTensor, routeIndexTensor, scratch.maskBatchU32Tensor, true,
                    static_cast<uint32_t>(validRouteCount), {1, 1, 0, 0}, batchMatchedRouteCount);
@@ -682,34 +695,52 @@ __aicore__ inline int32_t PlanDispatchCoreRankRoutes(
 
         int32_t batchOrdinalBegin = matchedRouteCount;
         int32_t batchOrdinalEnd = matchedRouteCount + static_cast<int32_t>(batchMatchedRouteCount);
-        int32_t roundBegin = 0;
-        int32_t intervalRowBegin = 0;
-        while (roundBegin < rankTokenCount && intervalRowBegin < segmentRowEnd) {
-            DispatchRankRoundInterval interval{};
-            if (!GetDispatchRankRoundInterval(
-                    context, scratch, remoteRankIdx, roundBegin, intervalRowBegin, interval)) {
-                break;
-            }
+
+        // Skip intervals that end before this mask batch. This cursor only
+        // moves forward across batches, so each rank-round interval is derived
+        // at most once for the complete rank scan.
+        while (hasPlanInterval && planInterval.roundEnd <= batchOrdinalBegin) {
+            planIntervalRowBegin = planInterval.intervalRowBegin +
+                (planInterval.roundEnd - planInterval.roundBegin) *
+                    planInterval.activeRankCount;
+            planRoundBegin = planInterval.roundEnd;
+            hasPlanInterval = GetDispatchRankRoundInterval(
+                context, scratch, remoteRankIdx, planRoundBegin,
+                planIntervalRowBegin, planInterval);
+        }
+
+        while (hasPlanInterval && planInterval.roundBegin < batchOrdinalEnd &&
+               planInterval.intervalRowBegin < segmentRowEnd) {
             DispatchOwnedOrdinalRange ownedRange{};
             if (GetDispatchOwnedOrdinalRange(
                     context, expertGlobalRowBegin, segmentRowBegin, segmentRowEnd,
-                    batchOrdinalBegin, batchOrdinalEnd, interval, ownedRange)) {
+                    batchOrdinalBegin, batchOrdinalEnd, planInterval, ownedRange)) {
                 for (int32_t delta = ownedRange.firstDelta;
                      delta < ownedRange.endDelta; delta += ownedRange.stride) {
-                    int32_t rankOrdinal = interval.roundBegin + delta;
+                    int32_t rankOrdinal = planInterval.roundBegin + delta;
                     int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(
                         rankOrdinal - batchOrdinalBegin);
-                    int32_t expertRow = interval.intervalRowBegin +
-                        delta * interval.activeRankCount + interval.rankPosition;
+                    int32_t expertRow = planInterval.intervalRowBegin +
+                        delta * planInterval.activeRankCount + planInterval.rankPosition;
                     int32_t taskIdx = (expertRow - firstOwnedRow) / coreCount;
                     scratch.topkIndexTensor.SetValue(
                         taskIdx, PackDispatchRouteEntry(remoteRankIdx, topkIndex));
                     ++plannedTaskCount;
                 }
             }
-            intervalRowBegin +=
-                (interval.roundEnd - interval.roundBegin) * interval.activeRankCount;
-            roundBegin = interval.roundEnd;
+
+            // The next mask batch can still lie in the current round interval.
+            // Preserve it in that case; otherwise advance exactly once.
+            if (batchOrdinalEnd < planInterval.roundEnd) {
+                break;
+            }
+            planIntervalRowBegin = planInterval.intervalRowBegin +
+                (planInterval.roundEnd - planInterval.roundBegin) *
+                    planInterval.activeRankCount;
+            planRoundBegin = planInterval.roundEnd;
+            hasPlanInterval = GetDispatchRankRoundInterval(
+                context, scratch, remoteRankIdx, planRoundBegin,
+                planIntervalRowBegin, planInterval);
         }
         if (!nextCursorStored && batchOrdinalEnd >= rankPlan.segmentOrdinalEnd) {
             DispatchRankScanCursor nextCursor{};
