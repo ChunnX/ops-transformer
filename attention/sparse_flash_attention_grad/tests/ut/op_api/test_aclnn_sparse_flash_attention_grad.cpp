@@ -15,6 +15,7 @@
 #include "gtest/gtest.h"
 #include "../../../op_host/op_api/aclnn_sparse_flash_attention_grad.h"
 #include "op_api_ut_common/tensor_desc.h"
+#include "opdev/op_errno.h"
 #include "opdev/platform.h"
 
 using namespace std;
@@ -207,7 +208,7 @@ TEST_F(SparseFlashAttentionGradArch35OpapiUt, E1_kvmerge_value_null_dvalue_prese
         nullptr, nullptr, nullptr, nullptr, 0.0441941738, 1, layout, 3, INT64_MAX, INT64_MAX, false,
         dQueryOut.get(), dKeyOut.get(), dValueOut.get(), nullptr, nullptr, &workspaceSize, &executor);
 
-    EXPECT_NE(aclRet, ACL_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
     EXPECT_EQ(executor, nullptr);
 }
 
@@ -232,6 +233,6 @@ TEST_F(SparseFlashAttentionGradArch35OpapiUt, E2_value_present_dvalue_null)
         nullptr, nullptr, nullptr, nullptr, 0.0441941738, 1, layout, 3, INT64_MAX, INT64_MAX, false,
         dQueryOut.get(), dKeyOut.get(), nullptr, nullptr, nullptr, &workspaceSize, &executor);
 
-    EXPECT_NE(aclRet, ACL_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
     EXPECT_EQ(executor, nullptr);
 }

@@ -485,6 +485,9 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
         runInfo.sTaskIdMod2 = sTaskId & 1;
         runInfo.deterTaskId = deterTaskId;
         runInfo.deterTaskIdMod2 = deterTaskId & 1;
+        // deter workspace 布局是 [parity][core][block][d]：每个 epoch 每核只放一个 token 的贡献，
+        // 没有 n2 维度。消费侧 ScatterAddDeter 的 topkIndices 寻址同样按 n2 == 1 展开。
+        // host tiling 已经硬性拒绝 n2 != 1，这里依赖该前提。
         runInfo.mm4ResWsAddr = runInfo.deterTaskIdMod2 * constInfo.selectedBlockCount * constInfo.dTotalSize * coreNum +
                                cBlockIdx * constInfo.selectedBlockCount * constInfo.dTotalSize +
                                runInfo.blkCntOffset * constInfo.dTotalSize;
@@ -567,12 +570,16 @@ template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void
 FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetActualSelCount(const int64_t t1Idx, const int64_t n2Idx, int64_t &actSelBlkCount)
 {
-    int64_t maxS2Blk = Ceil<int64_t>(curS2, constInfo.selectedBlockSize);
+    // t1Idx / n2Idx 不直接参与计算：因果上界由 GetTndSeqLen 先行写入的 curS1 / curS2 / s1Index 给出，
+    // n2 方向不影响 sel 数（deter 路径也只支持 n2 == 1，见 host tiling 校验）。
+    (void)t1Idx;
+    (void)n2Idx;
+    int64_t maxS2 = curS2;
     if (constInfo.sparseMode == RIGHT_DOWN_CAUSAL) {
-        int64_t newMaxS2 = Max(curS2 - curS1 + s1Index + 1, 0);
-        maxS2Blk = Ceil<int64_t>(newMaxS2, constInfo.selectedBlockSize);
+        maxS2 = Max(curS2 - curS1 + s1Index + 1, 0);
     }
-    actualSelectedBlockCount = Min(constInfo.selectedBlockCount, maxS2Blk);
+    // 与 FAGBlockVec::GetRunInfo 的消费侧公式必须逐字一致，否则 Scatter 会遍历到生产侧没写过的 block。
+    actSelBlkCount = Min(constInfo.selectedBlockCount, Ceil<int64_t>(maxS2, constInfo.selectedBlockSize));
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
@@ -630,6 +637,9 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetV
     if constexpr (!IS_TND) {
         return tilingData->baseParams.totalSize;
     }
+    // 未校验前提（actual_seq_lengths_query 是 device 张量，tiling 期读不到，无法在 host 侧校验）：
+    // 前缀和非负、单调不降，且末值 <= 物理 T1。契约见 docs/aclnnSparseFlashAttentionGrad.md。
+    // 违反时尾 padding 的有效区间判断会失效。
     return ((__gm__ int32_t *)actualSeqQlenAddr)[constInfo.bSize - 1];
 }
 

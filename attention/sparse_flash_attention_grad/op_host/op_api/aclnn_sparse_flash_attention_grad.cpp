@@ -9,13 +9,15 @@
  */
 
 #include "aclnn_sparse_flash_attention_grad.h"
+// ACLNN_ERR_PARAM_INVALID 定义在 opdev/op_errno.h，aclnn/aclnn_base.h 里没有。
+#include "opdev/op_errno.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-namespace {
-
+// 注意：不要把下面的定义放进匿名 namespace。匿名 namespace 会给它们内部链接，
+// 与 extern "C" 要求的对外可见性冲突，aclnnSparseFlashAttentionGrad* 就不会被导出。
 extern aclnnStatus aclnnInnerSparseFlashAttentionGradGetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *sparseIndices,
     const aclTensor *dOut, const aclTensor *out, const aclTensor *softmaxMax, const aclTensor *softmaxSum,
@@ -57,9 +59,9 @@ aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
     uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
+    // KV merge 契约：value 与 dValueOut 必须同时为空或同时非空。
     if ((value == nullptr) != (dValueOut == nullptr)) {
-        // 本 TU 只包含 aclnn_base.h，未暴露 ACLNN_ERR_PARAM_INVALID 枚举；161002 即该错误码。
-        return static_cast<aclnnStatus>(161002);
+        return ACLNN_ERR_PARAM_INVALID;
     }
     return aclnnInnerSparseFlashAttentionGradGetWorkspaceSize(
         query, key, sparseIndices, dOut, out, softmaxMax, softmaxSum, value,
@@ -73,8 +75,6 @@ aclnnStatus aclnnSparseFlashAttentionGrad(void *workspace, uint64_t workspaceSiz
 {
     return aclnnInnerSparseFlashAttentionGrad(workspace, workspaceSize, executor, stream);
 }
-
-} // namespace
 
 #ifdef __cplusplus
 }

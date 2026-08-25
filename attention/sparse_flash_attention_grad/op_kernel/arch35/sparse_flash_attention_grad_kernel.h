@@ -90,6 +90,12 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessNotFirst(FagRunInfo &runInfo) {
+    // 幂等：只有停在 TASK_C1C2 的 task 才需要补 C3/C4/C5。deter 空 epoch 会提前 flush，
+    // 下一个非空 epoch 的 ProcessNotFirst 必须在这里短路，否则 dQ 会被 atomic add 两次、
+    // SYNC_C3_TO_V0_FLAG 也会多 Set 一次。
+    if (runInfo.taskStep != TASK_C1C2) {
+        return;
+    }
     this->vecBlock.ProcessVec1(this->constInfo, runInfo);
     if ASCEND_IS_AIV {
         CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(SYNC_C1_TO_V2_FLAG[runInfo.commonRunInfo.taskIdMod2]); // dqk must wait ds copy completely
@@ -230,6 +236,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 
     // 所有核走同一条 deter epoch 序列。没有 token / sel=0 / TND padding 只跳过 compute，不删除 epoch。
     for (int32_t i = 0; i < maxEpochs; i++) {
+        const int64_t taskIdBeforeEpoch = taskId;
         this->t1Index = this->cBlockIdx + this->usedCoreNum * i;
         const bool hasCompute =
             (this->cBlockIdx < this->usedCoreNum) && (this->t1Index < this->GetValidTndT1Size());
@@ -247,6 +254,13 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                     taskId++;
                 }
             }
+        }
+
+        // 本 epoch 没有产生新 task（无 token / TND padding / causal sel=0）时，pipeline 不会靠
+        // 下一次 ProcessPreload 自然推进。而下面的 scatter 消费的正是 parity (deterTaskId-1)&1，
+        // 即上一 epoch 的 mm4/mm5，所以必须在消费前把 pending 的 C3/C4/C5 补齐。
+        if (taskId == taskIdBeforeEpoch) {
+            ProcessNotFirst(runInfos[(taskId + 1) & 1]);
         }
 
         this->SetDeterRunInfo(deterRunInfos[deterTaskId & 1], sTaskId, deterTaskId);

@@ -138,7 +138,8 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetWorkspaceSize()
                return ge::GRAPH_FAILED);
     context_->SetBlockDim(blockdim);
 
-    // 使用SyncAll，需要设置为batch mode模式，所有核同时启动，否则在多流方式下执行可能会卡死
+    // kernel 使用 CrossCoreSetFlag/CrossCoreWaitFlag 做全核 rendezvous（deterministic scatter 的
+    // flag11/flag12），必须 batch mode 让所有核同时启动，否则多流下会卡死
     context_->SetScheduleMode(1);
 
     // 系统预留

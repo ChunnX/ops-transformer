@@ -29,7 +29,8 @@ constexpr uint32_t BIT_MASK_NUM = 8;
 TEMPLATES_DEF
 class FAGBlockVec {
 private:
-    __aicore__ inline void GetBS1Index(int64_t bS1Index, int64_t &bIdx, int64_t &s1Idx, FagConstInfo &constInfo);
+    __aicore__ inline void GetBS1Index(int64_t bS1Index, int64_t &bIdx, int64_t &s1Idx, FagConstInfo &constInfo,
+                                       int64_t startBIdx);
     __aicore__ inline void GetRunInfo(int64_t bIdx, int64_t s1Idx, FagRunInfo &runInfo, FagConstInfo &constInfo,
                                         int64_t accumS2Len, int32_t actualSeqLensQ, int32_t actualSeqLensK);
     __aicore__ inline int32_t GetActualSeqLens(int64_t bIdx, GlobalTensor<int32_t> &actualSeqLensGm,
@@ -627,8 +628,8 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
     int64_t coreNum = GetBlockNum();
     int64_t totalVec = coreNum * 2;
     int64_t bS1Index = -1;
-    int64_t bIdx;
-    int64_t s1Idx;
+    int64_t bIdx = 0;
+    int64_t s1Idx = 0;
     int64_t preBIdx = -1;
     int64_t accumS1Len = 0;
     int64_t accumS2Len = 0;
@@ -640,19 +641,20 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
     event_t eventIDMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
     event_t eventIDVToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
 
+    // 全核一致的 token 上界：TND 下物理 T1 之外还要去掉尾 padding。提到循环外避免每个 idx 重复读 GM。
+    int64_t tokenLimit = tilingData->baseParams.totalSize;
+    if constexpr (IS_TND) {
+        int64_t validT1 = this->actualSeqLengthsQueryGm.GetValue(constInfo.bSize - 1);
+        tokenLimit = Min(tokenLimit, validT1);
+    }
+
     for (int64_t idx = 0; idx < usedCoreNum; idx++) {
         bS1Index = runInfo.sTaskId * usedCoreNum + idx;
-        if (bS1Index >= tilingData->baseParams.totalSize) {
+        if (bS1Index >= tokenLimit) {
             break;
         }
-        if constexpr (IS_TND) {
-            int64_t validT1 = this->actualSeqLengthsQueryGm.GetValue(constInfo.bSize - 1);
-            if (bS1Index >= validT1) {
-                break;
-            }
-        }
 
-        GetBS1Index(bS1Index, bIdx, s1Idx, constInfo);
+        GetBS1Index(bS1Index, bIdx, s1Idx, constInfo, preBIdx);
         if (bIdx != preBIdx) {
             actualSeqLensQ = GetActualSeqLens(bIdx, this->actualSeqLengthsQueryGm, accumS1Len, constInfo);
             actualSeqLensK = GetActualSeqLens(bIdx, this->actualSeqLengthsKeyGm, accumS2Len, constInfo);
@@ -797,11 +799,15 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GetBS1Index(int64_t bS1Index, int64_t &bIdx,
-                                                               int64_t &s1Idx, FagConstInfo &constInfo)
+                                                               int64_t &s1Idx, FagConstInfo &constInfo,
+                                                               int64_t startBIdx)
 {
     if constexpr (IS_TND) {
-        int64_t actualSum = 0;
-        for (int index = 0; index < constInfo.bSize; index++) {
+        // 调用序列内 bS1Index 单调不降，从上一次命中的 batch 续扫，避免每个 token 都做 O(B) 的 GM 标量扫描。
+        int64_t start = startBIdx > 0 ? startBIdx : 0;
+        int64_t actualSum = start > 0 ? this->actualSeqLengthsQueryGm.GetValue(start - 1) : 0;
+        bIdx = constInfo.bSize - 1;
+        for (int64_t index = start; index < constInfo.bSize; index++) {
             int64_t actualLen = this->actualSeqLengthsQueryGm.GetValue(index);
             if (bS1Index < actualLen) {
                 bIdx = index;
@@ -832,13 +838,16 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GetRunInfo(int64_t bIdx, int6
     }
     runInfo.keyOffsetWithRope = accumS2Idx * constInfo.n2Size * constInfo.dTotalSize;
     runInfo.commonRunInfo.valueOffset = accumS2Idx * constInfo.n2Size * constInfo.commonConstInfo.dSizeV;
+    // 必须与生产侧 FlashAttentionScoreGradKernelBase::GetActualSelCount 得到同一个值：
+    // 少一个 Ceil(/selectedBlockSize) 就会让 Scatter 读到生产侧从未写过的 mm4/mm5 区域。
+    int64_t maxS2 = static_cast<int64_t>(runInfo.commonRunInfo.actualS2Size);
     if (constInfo.sparseMode == RIGHT_DOWN_CAUSAL) {
-        runInfo.actualSelectedBlockCount = Min(Max(runInfo.commonRunInfo.actualS2Size -
-                                                   runInfo.commonRunInfo.actualS1Size + s1Idx + 1, 0),
-                                               constInfo.selectedBlockCount);
-    } else {
-        runInfo.actualSelectedBlockCount = Min(constInfo.selectedBlockCount, runInfo.commonRunInfo.actualS2Size);
+        maxS2 = Max(static_cast<int64_t>(runInfo.commonRunInfo.actualS2Size) -
+                        static_cast<int64_t>(runInfo.commonRunInfo.actualS1Size) + s1Idx + 1,
+                    static_cast<int64_t>(0));
     }
+    runInfo.actualSelectedBlockCount =
+        Min(static_cast<int64_t>(constInfo.selectedBlockCount), CeilDiv(maxS2, static_cast<int64_t>(constInfo.selectedBlockSize)));
 }
 
 TEMPLATES_DEF_NO_DEFAULT
