@@ -424,6 +424,17 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::PreProcessV0(LocalTensor<P> &
 
     for (uint32_t i = runBSStart; i < runBSEnd; i++) {
         uint64_t inputOffset = static_cast<uint64_t>(i) * N_ * copySizeD;
+        // grad_h_in[t, :] is shared by every N chunk of this row. Keep one UB copy
+        // alive across the chunks instead of reloading the same D elements from GM.
+        dataCopyParams.blockLen = copySizeD * sizeof(T);
+        dataCopyParams.blockCount = 1;
+        dataCopyParams.srcStride = 0;
+        dataCopyParams.dstStride = 0;
+        AscendC::LocalTensor<T> gradHInInput = vecInQueue1_.AllocTensor<T>();
+        DataCopyPad(gradHInInput, gradHInGm_[i * copySizeD], dataCopyParams, dataCopyPadParams);
+        vecInQueue1_.EnQue(gradHInInput);
+        LocalTensor<T> gradHInInputBuf = vecInQueue1_.DeQue<T>();
+
         for (uint32_t j = 0; j < N_; j += lenN) {
             uint32_t curLenN = static_cast<uint32_t>(j + lenN > N_ ? N_ - j : lenN);
             dataCopyParams.blockLen = copySizeD * sizeof(T);
@@ -436,13 +447,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::PreProcessV0(LocalTensor<P> &
             vecInQueue0_.EnQue(bf16InputBuf);
             vecInQueue0_.DeQue<T>(bf16InputBuf);
 
-            dataCopyParams.blockCount = 1;
-            AscendC::LocalTensor<T> gradHInInput = vecInQueue1_.AllocTensor<T>();
-            DataCopyPad(gradHInInput, gradHInGm_[i * copySizeD], dataCopyParams, dataCopyPadParams);
-            vecInQueue1_.EnQue(gradHInInput);
-
-            LocalTensor<T> gradHInInputBuf = vecInQueue1_.DeQue<T>();
-
             __ubuf__ T *xB16InAddr = (__ubuf__ T *)bf16InputBuf.GetPhyAddr();
             __ubuf__ T *gradHInB16InAddr = (__ubuf__ T *)gradHInInputBuf.GetPhyAddr();
             __ubuf__ P *hPreGradAddr = (__ubuf__ P *)hPreGradBuf.GetPhyAddr();
@@ -450,8 +454,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::PreProcessV0(LocalTensor<P> &
 
             inputOffset += copySizeD * curLenN;
             vecInQueue0_.FreeTensor(bf16InputBuf);
-            vecInQueue1_.FreeTensor(gradHInInputBuf);
         }
+        vecInQueue1_.FreeTensor(gradHInInputBuf);
     }
 }
 
