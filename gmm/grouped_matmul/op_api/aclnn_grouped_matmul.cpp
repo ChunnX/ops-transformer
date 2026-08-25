@@ -1968,6 +1968,11 @@ static aclnnStatus CheckCaseSplitM(const gmm::GroupedMatmulParams &gmmParams, co
                    opName);
         return ACLNN_SUCCESS;
     }
+    if (xSize == 1UL && weightSize == 1UL && ySize == 1UL && (*gmmParams.weight)[0]->GetViewShape().GetDimNum() == MULTI_WEIGHT_DIM) {
+        CHECK_COND(SplitMSingleXSeparatedWeightSingleY(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], one-element separated weight list parameter check failed.", opName);
+        return ACLNN_SUCCESS;
+    }
     if (xSize == 1UL && weightSize == 1UL && ySize == 1UL) {
         CHECK_COND(SplitMSingleXSingleWeightSingleY(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when groupType == 0(split-M) with single x, single weight and single y, parameter "
@@ -3089,7 +3094,9 @@ static aclnnStatus aclnnGroupedMatmulGetWorkspaceSizeCommon(
             break;
         }
     }
-    bool isSingleWeight = (weight->Size() == 1 && groupType != gmm::NO_SPLIT);
+    bool isSingleWeight = (weight->Size() == 1 && groupType != gmm::NO_SPLIT &&
+                                  (groupType == gmm::SPLIT_K ||
+                                   (*weight)[0]->GetViewShape().GetDimNum() != MULTI_WEIGHT_DIM));
     bool transposeX = false;
     bool transposeWeight = false;
     if (groupType != gmm::SPLIT_K) {
