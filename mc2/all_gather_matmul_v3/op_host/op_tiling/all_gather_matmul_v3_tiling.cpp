@@ -240,9 +240,38 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context)
 }
 
 /**
- * @brief 校验tensor维度和shape
+ * @brief 校验单个 MX scale shape: [dim0, Ceil(K/64), 2]
  */
-static ge::graphStatus CheckTensorShape(const gert::TilingContext *context, ShapeInfo &shapeInfo)
+static ge::graphStatus CheckOneScaleShape(const gert::StorageShape *scaleShape, const char *nodeName,
+                                          const char *paramName, int64_t dim0, int64_t scaleKDim)
+{
+    OP_TILING_CHECK(scaleShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, paramName),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(scaleShape->GetStorageShape().GetDimNum() != SCALE_DIM_NUM,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                        nodeName, paramName,
+                        (std::to_string(scaleShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+                        "The shape dim of scale must be 3D."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(scaleShape->GetStorageShape().GetDim(0) != dim0 ||
+                    scaleShape->GetStorageShape().GetDim(1) != scaleKDim ||
+                    scaleShape->GetStorageShape().GetDim(2) != static_cast<int64_t>(SCALE_LAST_DIM),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName, paramName,
+                        (std::string("[") + std::to_string(scaleShape->GetStorageShape().GetDim(0)) + "," +
+                         std::to_string(scaleShape->GetStorageShape().GetDim(1)) + "," +
+                         std::to_string(scaleShape->GetStorageShape().GetDim(2)) + "]").c_str(),
+                        (std::string("expected [") + std::to_string(dim0) + "," + std::to_string(scaleKDim) + "," +
+                         std::to_string(SCALE_LAST_DIM) + "]").c_str()),
+                    return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+/**
+ * @brief 校验 x1/x2 维度与取值，并提取基础 shape 信息（m/k/n/rankSize）
+ */
+static ge::graphStatus CheckInputShape(const gert::TilingContext *context, ShapeInfo &shapeInfo)
 {
     const char *nodeName = context->GetNodeName();
 
@@ -262,20 +291,10 @@ static ge::graphStatus CheckTensorShape(const gert::TilingContext *context, Shap
                         "The shape dim of x2 must be 2D."),
                     return ge::GRAPH_FAILED);
 
-    const gert::StorageShape *yShape = context->GetOutputShape(IDX_OUTPUT_Y);
-    OP_TILING_CHECK(yShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "y"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(yShape->GetStorageShape().GetDimNum() != DIM_TWO,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        nodeName, "y", (std::to_string(yShape->GetStorageShape().GetDimNum()) + "D").c_str(),
-                        "The shape dim of y must be 2D."),
-                    return ge::GRAPH_FAILED);
-
     int64_t mPerRank = x1Shape->GetStorageShape().GetDim(0);
     int64_t kX1 = x1Shape->GetStorageShape().GetDim(1);
     int64_t x2N = x2Shape->GetStorageShape().GetDim(0);
     int64_t kX2 = x2Shape->GetStorageShape().GetDim(1);
-    int64_t yM = yShape->GetStorageShape().GetDim(0);
-    int64_t yN = yShape->GetStorageShape().GetDim(1);
 
     OP_TILING_CHECK(mPerRank == 0 || kX1 == 0 || x2N == 0 || kX2 == 0,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "x1/x2",
@@ -319,17 +338,51 @@ static ge::graphStatus CheckTensorShape(const gert::TilingContext *context, Shap
     auto rankSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_SIZE_INDEX);
     OP_TILING_CHECK(rankSizePtr == nullptr,
                     OP_LOGE_WITH_INVALID_INPUT(nodeName, "rank_size"), return ge::GRAPH_FAILED);
-    uint64_t rankSize = static_cast<uint64_t>(*rankSizePtr);
 
-    OP_TILING_CHECK(yM != mPerRank * static_cast<int64_t>(rankSize) || yN != x2N,
+    shapeInfo.mPerRank = mPerRank;
+    shapeInfo.k = kX1;
+    shapeInfo.n = x2N;
+    shapeInfo.rankSize = static_cast<uint64_t>(*rankSizePtr);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+/**
+ * @brief 校验 y shape: [M * rankSize, N]
+ */
+static ge::graphStatus CheckOutputShape(const gert::TilingContext *context, const ShapeInfo &shapeInfo)
+{
+    const char *nodeName = context->GetNodeName();
+
+    const gert::StorageShape *yShape = context->GetOutputShape(IDX_OUTPUT_Y);
+    OP_TILING_CHECK(yShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "y"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(yShape->GetStorageShape().GetDimNum() != DIM_TWO,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                        nodeName, "y", (std::to_string(yShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+                        "The shape dim of y must be 2D."),
+                    return ge::GRAPH_FAILED);
+
+    int64_t yM = yShape->GetStorageShape().GetDim(0);
+    int64_t yN = yShape->GetStorageShape().GetDim(1);
+    OP_TILING_CHECK(yM != shapeInfo.mPerRank * static_cast<int64_t>(shapeInfo.rankSize) || yN != shapeInfo.n,
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                         nodeName, "y",
                         (std::string("[") + std::to_string(yM) + "," + std::to_string(yN) + "]").c_str(),
-                        (std::string("expected [") + std::to_string(mPerRank * static_cast<int64_t>(rankSize)) +
-                         "," + std::to_string(x2N) + "]").c_str()),
+                        (std::string("expected [") +
+                         std::to_string(shapeInfo.mPerRank * static_cast<int64_t>(shapeInfo.rankSize)) +
+                         "," + std::to_string(shapeInfo.n) + "]").c_str()),
                     return ge::GRAPH_FAILED);
 
-    // bias shape: [N]，非空时校验
+    return ge::GRAPH_SUCCESS;
+}
+
+/**
+ * @brief 校验 bias shape: [N]，非空时校验
+ */
+static ge::graphStatus CheckBiasShape(const gert::TilingContext *context, const ShapeInfo &shapeInfo)
+{
+    const char *nodeName = context->GetNodeName();
+
     auto biasShape = context->GetOptionalInputShape(IDX_INPUT_BIAS);
     if (biasShape != nullptr) {
         OP_TILING_CHECK(biasShape->GetStorageShape().GetDimNum() != 1,
@@ -338,62 +391,52 @@ static ge::graphStatus CheckTensorShape(const gert::TilingContext *context, Shap
                             (std::to_string(biasShape->GetStorageShape().GetDimNum()) + "D").c_str(),
                             "The shape dim of bias must be 1D."),
                         return ge::GRAPH_FAILED);
-        OP_TILING_CHECK(biasShape->GetStorageShape().GetDim(0) != x2N,
+        OP_TILING_CHECK(biasShape->GetStorageShape().GetDim(0) != shapeInfo.n,
                         OP_LOGE_FOR_INVALID_VALUE(nodeName, "bias",
                             std::to_string(biasShape->GetStorageShape().GetDim(0)).c_str(),
-                            (std::string("equal to N=") + std::to_string(x2N)).c_str()),
+                            (std::string("equal to N=") + std::to_string(shapeInfo.n)).c_str()),
                         return ge::GRAPH_FAILED);
     }
 
-    // scale shapes: x1_scale [M, K/64, 2]; x2_scale [N, K/64, 2]
-    int64_t scaleKDim = (kX1 + static_cast<int64_t>(MX_SCALE_BLOCK) - 1) / static_cast<int64_t>(MX_SCALE_BLOCK);
-    auto x1ScaleShape = context->GetOptionalInputShape(IDX_INPUT_X1_SCALE);
-    OP_TILING_CHECK(x1ScaleShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "x1_scale"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(x1ScaleShape->GetStorageShape().GetDimNum() != SCALE_DIM_NUM,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        nodeName, "x1_scale",
-                        (std::to_string(x1ScaleShape->GetStorageShape().GetDimNum()) + "D").c_str(),
-                        "The shape dim of x1_scale must be 3D."),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(x1ScaleShape->GetStorageShape().GetDim(0) != mPerRank ||
-                    x1ScaleShape->GetStorageShape().GetDim(1) != scaleKDim ||
-                    x1ScaleShape->GetStorageShape().GetDim(2) != static_cast<int64_t>(SCALE_LAST_DIM),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        nodeName, "x1_scale",
-                        (std::string("[") + std::to_string(x1ScaleShape->GetStorageShape().GetDim(0)) + "," +
-                         std::to_string(x1ScaleShape->GetStorageShape().GetDim(1)) + "," +
-                         std::to_string(x1ScaleShape->GetStorageShape().GetDim(2)) + "]").c_str(),
-                        (std::string("expected [") + std::to_string(mPerRank) + "," + std::to_string(scaleKDim) + "," +
-                         std::to_string(SCALE_LAST_DIM) + "]").c_str()),
-                    return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
 
-    auto x2ScaleShape = context->GetOptionalInputShape(IDX_INPUT_X2_SCALE);
-    OP_TILING_CHECK(x2ScaleShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "x2_scale"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(x2ScaleShape->GetStorageShape().GetDimNum() != SCALE_DIM_NUM,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        nodeName, "x2_scale",
-                        (std::to_string(x2ScaleShape->GetStorageShape().GetDimNum()) + "D").c_str(),
-                        "The shape dim of x2_scale must be 3D."),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(x2ScaleShape->GetStorageShape().GetDim(0) != x2N ||
-                    x2ScaleShape->GetStorageShape().GetDim(1) != scaleKDim ||
-                    x2ScaleShape->GetStorageShape().GetDim(2) != static_cast<int64_t>(SCALE_LAST_DIM),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        nodeName, "x2_scale",
-                        (std::string("[") + std::to_string(x2ScaleShape->GetStorageShape().GetDim(0)) + "," +
-                         std::to_string(x2ScaleShape->GetStorageShape().GetDim(1)) + "," +
-                         std::to_string(x2ScaleShape->GetStorageShape().GetDim(2)) + "]").c_str(),
-                        (std::string("expected [") + std::to_string(x2N) + "," + std::to_string(scaleKDim) + "," +
-                         std::to_string(SCALE_LAST_DIM) + "]").c_str()),
-                    return ge::GRAPH_FAILED);
+/**
+ * @brief 校验 scale shapes: x1_scale [M, K/64, 2]; x2_scale [N, K/64, 2]
+ */
+static ge::graphStatus CheckScaleShapes(const gert::TilingContext *context, const ShapeInfo &shapeInfo)
+{
+    const char *nodeName = context->GetNodeName();
 
-    // output shape info
-    shapeInfo.mPerRank = mPerRank;
-    shapeInfo.k = kX1;
-    shapeInfo.n = x2N;
-    shapeInfo.rankSize = rankSize;
+    int64_t scaleKDim = (shapeInfo.k + static_cast<int64_t>(MX_SCALE_BLOCK) - 1) /
+                        static_cast<int64_t>(MX_SCALE_BLOCK);
+    OP_TILING_CHECK(
+        CheckOneScaleShape(context->GetOptionalInputShape(IDX_INPUT_X1_SCALE), nodeName, "x1_scale",
+                           shapeInfo.mPerRank, scaleKDim) != ge::GRAPH_SUCCESS,
+        OP_LOGE(nodeName, "check x1_scale shape failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        CheckOneScaleShape(context->GetOptionalInputShape(IDX_INPUT_X2_SCALE), nodeName, "x2_scale",
+                           shapeInfo.n, scaleKDim) != ge::GRAPH_SUCCESS,
+        OP_LOGE(nodeName, "check x2_scale shape failed."), return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+/**
+ * @brief 校验tensor维度和shape
+ */
+static ge::graphStatus CheckTensorShape(const gert::TilingContext *context, ShapeInfo &shapeInfo)
+{
+    const char *nodeName = context->GetNodeName();
+
+    OP_TILING_CHECK(CheckInputShape(context, shapeInfo) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "check input shape failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckOutputShape(context, shapeInfo) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "check output shape failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckBiasShape(context, shapeInfo) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "check bias shape failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckScaleShapes(context, shapeInfo) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "check scale shape failed."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }

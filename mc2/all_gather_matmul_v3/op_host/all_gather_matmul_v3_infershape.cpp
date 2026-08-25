@@ -11,13 +11,6 @@
 /*!
  * \file all_gather_matmul_v3_infershape.cpp
  * \brief InferShape for AllGatherMatmulV3
- *
- * Semantics (AllGather + MX FP8 matmul):
- *   x1: [M_per_rank, K]            FP8, ND
- *   x2: [N, K]                     FP8, ND (DN layout, transpose_x2=true)
- *   x1_scale: [M_per_rank, Ceil(K/64), 2]  FP8_E8M0
- *   x2_scale: [N, Ceil(K/64), 2]           FP8_E8M0
- *   y:  [world_size * M_per_rank, N]       BF16/FP16
  */
 
 #include <register/op_impl_registry.h>
