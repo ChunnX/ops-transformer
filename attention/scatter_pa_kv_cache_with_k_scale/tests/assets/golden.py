@@ -14,7 +14,7 @@ import numpy as np
 __golden__ = {
     "kernel": {
         "scatter_kv_cache_with_k_scale": "scatter_kv_cache_with_k_scale_golden"
-    }
+    },
     "aclnn": {
         "aclnnScatterPaKvCacheWithKScale": "aclnnScatterPaKvCacheWithKScaleGolden"
     }

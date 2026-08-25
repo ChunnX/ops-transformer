@@ -12,7 +12,7 @@
 __input__ = {
     "kernel": {
         "scatter_kv_cache_with_k_scale": "scatter_kv_cache_with_k_scale_input"
-    }
+    },
     "aclnn": {
         "aclnnScatterPaKvCacheWithKScale": "aclnnScatterPaKvCacheWithKScaleInput"
     }
