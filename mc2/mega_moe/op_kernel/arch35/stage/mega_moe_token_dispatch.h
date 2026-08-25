@@ -13,6 +13,12 @@
 
 #include "../common/mega_moe_utils.h"
 
+// 保留旧的 per-core sendMask 扫描路径作为编译期隔离回退。正常 MTE wave
+// 路径使用共享 Route Table，避免每个 wave、每个 core 重复 GatherMask。
+#ifndef MEGA_MOE_USE_SHARED_DISPATCH_ROUTE_TABLE
+#define MEGA_MOE_USE_SHARED_DISPATCH_ROUTE_TABLE 1
+#endif
+
 namespace MegaMoeImpl {
 
 using namespace AscendC;
@@ -1017,6 +1023,163 @@ __aicore__ inline DispatchCoreRouteQueue PlanDispatchCoreRouteQueue(
     return queue;
 }
 
+/**
+ * 从共享 Route Table 构造本核 route queue。
+ *
+ * 逻辑 row 的 rank-round 映射、跨核轮转和目的 row 顺序与旧路径完全一致；
+ * 区别仅在于 topkIndex 的来源。每个 source rank 先把当前专家分段对应的
+ * compact ordinal 连续区间从 GM 批量搬入 UB，再按 descriptor 回填最终 queue。
+ */
+template <typename ActivationType>
+__aicore__ inline DispatchCoreRouteQueue PlanDispatchCoreRouteQueueFromTable(
+    const TokenDispatchConfig &context, const Params &params,
+    TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
+    int32_t expertGlobalRowBegin, int32_t segmentRowBegin, int32_t segmentRowEnd,
+    int32_t expectedTaskCount, int32_t taskCapacity,
+    WaveDispatchTraceMetrics *traceMetrics)
+{
+    DispatchCoreRouteQueue queue{};
+    queue.taskCapacity = taskCapacity;
+    queue.descriptorOffset = queue.taskCapacity;
+    if (queue.taskCapacity <= 0 || queue.descriptorOffset + queue.taskCapacity >
+            context.bufferConfig.routeItemsPerBatch) {
+        queue.taskCapacity = 0;
+        return queue;
+    }
+
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    uint32_t planTraceBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+#endif
+    PrepareDispatchSegmentRankPlans(
+        context, scratch, segmentRowBegin, segmentRowEnd);
+
+    // 先按最终目的 row 顺序生成 {rank, ordinal}，同时统计每个 rank 的任务数。
+    DispatchCoreRowCursor rowCursor = GetFirstDispatchRowOwnedByCore(
+        context, expertGlobalRowBegin, segmentRowBegin, segmentRowEnd);
+    DispatchSourceCursor sourceCursor{};
+    int32_t descriptorCount = 0;
+    while (rowCursor.expertRow < segmentRowEnd && descriptorCount < expectedTaskCount) {
+        uint32_t rankIdx = 0U;
+        int32_t rankOrdinal = 0;
+        if (!GetDispatchSourceForExpertRow(
+                context, scratch, rowCursor.expertRow, sourceCursor,
+                rankIdx, rankOrdinal)) {
+            queue.taskCount = 0;
+            return queue;
+        }
+        scratch.topkIndexTensor.SetValue(
+            descriptorCount, PackDispatchRouteEntry(rankIdx, rankOrdinal));
+        const int32_t rankScratchBase =
+            static_cast<int32_t>(rankIdx) * DISPATCH_RANK_SCRATCH_STRIDE;
+        const int32_t rankTaskCount = scratch.sendCntTensor.GetValue(
+            rankScratchBase + DISPATCH_RANK_TASK_COUNT_LANE);
+        scratch.sendCntTensor.SetValue(
+            rankScratchBase + DISPATCH_RANK_TASK_COUNT_LANE,
+            rankTaskCount + 1);
+        ++descriptorCount;
+        AdvanceDispatchCoreRowCursor(context, expertGlobalRowBegin, rowCursor);
+    }
+    if (descriptorCount != expectedTaskCount) {
+        queue.taskCount = 0;
+        return queue;
+    }
+
+    // 将 descriptor 按 source rank 连续分组；每项保留最终 taskIdx，便于
+    // 从该 rank 的连续 Route Table 切片回填到原目的 row 顺序。
+    int32_t descriptorGroupBegin = 0;
+    for (uint32_t rankIdx = 0U; rankIdx < context.common.worldSize; ++rankIdx) {
+        const int32_t rankScratchBase =
+            static_cast<int32_t>(rankIdx) * DISPATCH_RANK_SCRATCH_STRIDE;
+        const int32_t rankTaskCount = scratch.sendCntTensor.GetValue(
+            rankScratchBase + DISPATCH_RANK_TASK_COUNT_LANE);
+        scratch.sendCntTensor.SetValue(
+            rankScratchBase + DISPATCH_RANK_DESCRIPTOR_BEGIN_LANE,
+            descriptorGroupBegin);
+        scratch.sendCntTensor.SetValue(
+            rankScratchBase + DISPATCH_RANK_DESCRIPTOR_CURSOR_LANE,
+            descriptorGroupBegin);
+        descriptorGroupBegin += rankTaskCount;
+    }
+    if (descriptorGroupBegin != descriptorCount) {
+        queue.taskCount = 0;
+        return queue;
+    }
+    for (int32_t taskIdx = 0; taskIdx < descriptorCount; ++taskIdx) {
+        const int32_t descriptor = scratch.topkIndexTensor.GetValue(taskIdx);
+        const uint32_t rankIdx = GetDispatchRouteRank(descriptor);
+        const int32_t rankScratchBase =
+            static_cast<int32_t>(rankIdx) * DISPATCH_RANK_SCRATCH_STRIDE;
+        const int32_t descriptorCursor = scratch.sendCntTensor.GetValue(
+            rankScratchBase + DISPATCH_RANK_DESCRIPTOR_CURSOR_LANE);
+        scratch.topkIndexTensor.SetValue(
+            queue.descriptorOffset + descriptorCursor,
+            PackDispatchGroupedDescriptor(
+                taskIdx, GetDispatchRouteTopkIndex(descriptor)));
+        scratch.sendCntTensor.SetValue(
+            rankScratchBase + DISPATCH_RANK_DESCRIPTOR_CURSOR_LANE,
+            descriptorCursor + 1);
+    }
+
+    GlobalTensor<int32_t> routeIndexGlobal;
+    routeIndexGlobal.SetGlobalBuffer(
+        reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.dispatchRouteIndexPtr));
+    int32_t plannedTaskCount = 0;
+    const uint32_t expertRankBase = localExpertId * context.common.worldSize;
+    for (uint32_t rankIdx = 0U; rankIdx < context.common.worldSize; ++rankIdx) {
+        const DispatchCoreRankPlan rankPlan = LoadDispatchCoreRankPlan(scratch, rankIdx);
+        if (rankPlan.taskCount <= 0) {
+            continue;
+        }
+        const int32_t routeSliceCount =
+            rankPlan.segmentOrdinalEnd - rankPlan.segmentOrdinalBegin;
+        if (routeSliceCount <= 0 || routeSliceCount >
+                context.bufferConfig.routeItemsPerBatch) {
+            queue.taskCount = 0;
+            return queue;
+        }
+
+        const uint32_t pairIndex = expertRankBase + rankIdx;
+        const int32_t rankGlobalRowBegin = pairIndex == 0U ? 0 :
+            scratch.cumsumInfoTensor.GetValue(pairIndex - 1U);
+        DataCopyPad(
+            scratch.validTopkIndexTensor,
+            routeIndexGlobal[rankGlobalRowBegin + rankPlan.segmentOrdinalBegin],
+            {1U, static_cast<uint32_t>(routeSliceCount * sizeof(int32_t)), 0U, 0U, 0U},
+            {true, 0U, 0U, 0U});
+        SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
+
+        const int32_t descriptorEnd =
+            rankPlan.descriptorBegin + rankPlan.taskCount;
+        for (int32_t descriptorIdx = rankPlan.descriptorBegin;
+             descriptorIdx < descriptorEnd; ++descriptorIdx) {
+            const int32_t descriptor = scratch.topkIndexTensor.GetValue(
+                queue.descriptorOffset + descriptorIdx);
+            const int32_t rankOrdinal =
+                GetDispatchGroupedRankOrdinal(descriptor);
+            if (rankOrdinal < rankPlan.segmentOrdinalBegin ||
+                rankOrdinal >= rankPlan.segmentOrdinalEnd) {
+                queue.taskCount = 0;
+                return queue;
+            }
+            const int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(
+                rankOrdinal - rankPlan.segmentOrdinalBegin);
+            const int32_t taskIdx = GetDispatchGroupedTaskIndex(descriptor);
+            scratch.topkIndexTensor.SetValue(
+                taskIdx, PackDispatchRouteEntry(rankIdx, topkIndex));
+            ++plannedTaskCount;
+        }
+    }
+    queue.taskCount = plannedTaskCount == expectedTaskCount ?
+        plannedTaskCount : 0;
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    if (traceMetrics != nullptr) {
+        traceMetrics->rankRoundPlanCycles +=
+            MegaMoeWaveTraceDetail::Now() - planTraceBegin;
+    }
+#endif
+    return queue;
+}
+
 // 将一个紧凑 route 任务下发到 Dispatch MTE2 环形流水。source rank 改变时只
 // 重定向 GM 视图，不清空也不重启环形流水。
 template <bool IsBufferReuse, bool TopkWeightsPrefetch, typename ActivationType>
@@ -1337,10 +1500,12 @@ __aicore__ inline void DispatchExpertTokensRankRoundRobin(
     if (static_cast<uint64_t>(expertRowCount) > remainingOutputRows) {
         expertRowCount = static_cast<int32_t>(remainingOutputRows);
     }
-    // 阶段2：维护跨 wave 的 mask 扫描起点。
+    // 阶段2：旧 mask 回退路径维护跨 wave 扫描起点。共享 Route Table 路径
+    // 直接按 compact ordinal 定位，不读取该 cursor。
     // 专家首段不能读取旧 cursor。只有确实跨 wave 的专家才需要所有核清空私有
     // cursor；即使某核在首段没有任务，也必须为后续专家续段建立一致初始状态。
-    if (segmentRowBegin == 0 && segmentRowEnd < expertRowCount) {
+    if (MEGA_MOE_USE_SHARED_DISPATCH_ROUTE_TABLE == 0 &&
+        segmentRowBegin == 0 && segmentRowEnd < expertRowCount) {
         ResetDispatchRankScanCursors(context, scratch);
     }
     // 阶段3：划分本核目的 row，并为本地 route queue 预留 UB。
@@ -1353,9 +1518,10 @@ __aicore__ inline void DispatchExpertTokensRankRoundRobin(
         (segmentRowEnd - 1) / coreCount - segmentRowBegin / coreCount + 1;
     int32_t maxTaskCapacity = Ops::Base::CeilAlign(
         maxCoreTaskCount, DISPATCH_ROUTE_QUEUE_ALIGN_ITEMS);
-    // 剩余 UB 可用于每批 mask 扫描；GatherMask 要求按 ALIGN_256 route 对齐。
-    int32_t routeCapacity = context.bufferConfig.routeItemsPerBatch - maxTaskCapacity * 2;
-    routeCapacity = routeCapacity / static_cast<int32_t>(ALIGN_256) *
+    // 旧路径还要在 queue/descriptor 之后留出 CreateVecIndex 区；共享表路径
+    // 只需要 queue+descriptor，并用另一块 validTopkIndexTensor 批量搬入切片。
+    int32_t legacyRouteCapacity = context.bufferConfig.routeItemsPerBatch - maxTaskCapacity * 2;
+    legacyRouteCapacity = legacyRouteCapacity / static_cast<int32_t>(ALIGN_256) *
         static_cast<int32_t>(ALIGN_256);
     uint64_t sendTotalNum =
         static_cast<uint64_t>(context.common.tokenNum) * context.common.topK;
@@ -1365,7 +1531,12 @@ __aicore__ inline void DispatchExpertTokensRankRoundRobin(
         context.common.worldSize <= DISPATCH_ROUTE_RANK_CAPACITY &&
         sendTotalNum <= static_cast<uint64_t>(DISPATCH_ROUTE_TOPK_MASK) + 1U &&
         maxTaskCapacity <= DISPATCH_GROUPED_TASK_INDEX_CAPACITY;
-    if (routeCapacity <= 0 || !canPackRouteEntry) {
+    const bool canUseSharedRouteTable =
+        MEGA_MOE_USE_SHARED_DISPATCH_ROUTE_TABLE != 0 &&
+        params.workspaceInfo.dispatchRouteIndexPtr != nullptr &&
+        maxTaskCapacity * 2 <= context.bufferConfig.routeItemsPerBatch &&
+        segmentRowEnd - segmentRowBegin <= context.bufferConfig.routeItemsPerBatch;
+    if ((!canUseSharedRouteTable && legacyRouteCapacity <= 0) || !canPackRouteEntry) {
         DispatchExpertTokensByRows<ActivationType, QuantScaleType, PipelineTileM,
                                    TopkWeightsPrefetch>(
             context, params, winRankAddr, scratch, localExpertId,
@@ -1393,10 +1564,15 @@ __aicore__ inline void DispatchExpertTokensRankRoundRobin(
     }
 #endif
     // 规划结果按本核目的 row 顺序存放，每项仅包含 {sourceRank, topkIndex}。
-    DispatchCoreRouteQueue queue = PlanDispatchCoreRouteQueue(
-        context, params, scratch, localExpertId, expertGlobalRowBegin,
-        segmentRowBegin, segmentRowEnd, expectedTaskCount,
-        maxTaskCapacity, traceMetrics);
+    DispatchCoreRouteQueue queue = canUseSharedRouteTable ?
+        PlanDispatchCoreRouteQueueFromTable(
+            context, params, scratch, localExpertId, expertGlobalRowBegin,
+            segmentRowBegin, segmentRowEnd, expectedTaskCount,
+            maxTaskCapacity, traceMetrics) :
+        PlanDispatchCoreRouteQueue(
+            context, params, scratch, localExpertId, expertGlobalRowBegin,
+            segmentRowBegin, segmentRowEnd, expectedTaskCount,
+            maxTaskCapacity, traceMetrics);
     if (queue.taskCount != expectedTaskCount) {
         return;
     }
