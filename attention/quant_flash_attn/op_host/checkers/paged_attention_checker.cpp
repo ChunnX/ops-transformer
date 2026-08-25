@@ -243,7 +243,7 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const QfaTiling
              (dimIndex != 0)),
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
                 qfaInfo.opName, "key",
-                ("In PA BnBsND scenario, only 0th and 1st axis of key can be non-contiguous, the " +
+                ("In PA BnBsND scenario, only 0th axis of key can be non-contiguous, the " +
                  std::to_string(dimIndex) + "th axis of key must be contiguous")
                     .c_str()),
             return ge::GRAPH_FAILED);
@@ -254,7 +254,7 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const QfaTiling
              (dimIndex != 0)),
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
                 qfaInfo.opName, "value",
-                ("In PA BnBsND scenario, only 0th and 1st axis of value can be non-contiguous, the " +
+                ("In PA BnBsND scenario, only 0th axis of value can be non-contiguous, the " +
                  std::to_string(dimIndex) + "th axis of value must be contiguous")
                     .c_str()),
             return ge::GRAPH_FAILED);
@@ -265,7 +265,7 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const QfaTiling
                      (dimIndex != 0)),
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
                         qfaInfo.opName, "k_descale",
-                        ("In PA BnBsND scenario, only 0th and 1st axis of k_descale can be non-contiguous, the " +
+                        ("In PA BnBsND scenario, only 0th axis of k_descale can be non-contiguous, the " +
                          std::to_string(dimIndex) + "th axis of k_descale must be contiguous")
                             .c_str()),
                     return ge::GRAPH_FAILED);
@@ -276,7 +276,7 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const QfaTiling
                      (dimIndex != 0)),
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
                         qfaInfo.opName, "v_descale",
-                        ("In PA BnBsND scenario, only 0th and 1st axis of v_descale can be non-contiguous, the " +
+                        ("In PA BnBsND scenario, only 0th axis of v_descale can be non-contiguous, the " +
                          std::to_string(dimIndex) + "th axis of v_descale must be contiguous")
                             .c_str()),
                     return ge::GRAPH_FAILED);
