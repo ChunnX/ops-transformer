@@ -228,7 +228,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>一般情况下，长度与weight相同。在mx量化场景，scaleOptional支持FRACTAL_NZ format。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
     <td>UINT64、INT64、BFLOAT16、FLOAT32、FLOAT8_E8M0<sup>2</sup></td>
     <td>ND/FRACTAL_NZ</td>
-    <td>1~5</td>
+    <td>-</td>
     <td>-</td>
     </tr>
     <tr>
@@ -757,7 +757,6 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       - 仅支持transpose_weight为false的场景。
       - 仅支持groupType为0，即M轴分组场景；不支持groupType为2的K轴分组场景。
       - 仅支持x为单tensor、out为单tensor的场景，weight支持单tensor和多tensor两种场景。
-      - 不支持图模式，仅支持单算子模式和aclnn直调场景。
       - weight单tensor场景下，scaleOptional为单tensor，storage shape为(g, ceil(N / 16), ceil(K / 64), 16, 2)。
       - weight多tensor场景下，scaleOptional为多tensor且长度与weight相同，每个tensor的storage shape为(ceil(N / 16), ceil(K / 64), 16, 2)。
       - 非FRACTAL_NZ format下，scaleOptional继续使用上表中的原ND shape约束。
