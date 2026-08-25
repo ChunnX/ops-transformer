@@ -60,7 +60,11 @@ static void ShowInputShapeInfo(gert::InferShapeContext *context, const gert::Sha
                                const gert::Shape *hPostShape)
 {
     OP_LOGD(context, "xShape is: %s.", Ops::Base::ToString(*xShape).c_str());
-    OP_LOGD(context, "hResShape is: %s.", Ops::Base::ToString(*hResShape).c_str());
+    if (hResShape != nullptr) {
+        OP_LOGD(context, "hResShape is: %s.", Ops::Base::ToString(*hResShape).c_str());
+    } else {
+        OP_LOGD(context, "hResShape is: null (nohres).");
+    }
     OP_LOGD(context, "hOutShape is: %s.", Ops::Base::ToString(*hOutShape).c_str());
     OP_LOGD(context, "hPostShape is: %s.", Ops::Base::ToString(*hPostShape).c_str());
 }
@@ -75,11 +79,12 @@ static ge::graphStatus InferShapeForMhcPost(gert::InferShapeContext *context)
     OP_LOGD(context, "Begin to do MhcPostInfershape.");
     const gert::Shape *xShape = context->GetInputShape(INDEX_X);
     OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
-    const gert::Shape *hResShape = context->GetInputShape(INDEX_HRES);
-    OP_CHECK_NULL_WITH_CONTEXT(context, hResShape);
-    const gert::Shape *hOutShape = context->GetInputShape(INDEX_HOUT);
+    // h_res缺省（nohres）时输入紧凑为3个：x, h_out, h_post，此时INDEX_HPOST(3)取不到shape
+    const bool hasHres = context->GetInputShape(INDEX_HPOST) != nullptr;
+    const gert::Shape *hResShape = hasHres ? context->GetInputShape(INDEX_HRES) : nullptr;
+    const gert::Shape *hOutShape = context->GetInputShape(hasHres ? INDEX_HOUT : INDEX_HRES);
     OP_CHECK_NULL_WITH_CONTEXT(context, hOutShape);
-    const gert::Shape *hPostShape = context->GetInputShape(INDEX_HPOST);
+    const gert::Shape *hPostShape = hasHres ? context->GetInputShape(INDEX_HPOST) : context->GetInputShape(INDEX_HOUT);
     OP_CHECK_NULL_WITH_CONTEXT(context, hPostShape);
     gert::Shape *yShape = context->GetOutputShape(INDEX_Y);
     OP_CHECK_NULL_WITH_CONTEXT(context, yShape);
@@ -100,7 +105,8 @@ static ge::graphStatus InferShapeForMhcPost(gert::InferShapeContext *context)
     }
 
     OP_CHECK_IF((xDims != DIMS_THREE) && (xDims != DIMS_FOUR),
-                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "x", std::to_string(xDims).c_str(), "dimNum must be 3 or 4"),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "x", std::to_string(xDims).c_str(),
+                                                         "dimNum must be 3 or 4"),
                 return ge::GRAPH_FAILED);
 
     // Output shape is same as input x
@@ -130,8 +136,6 @@ static ge::graphStatus InferDataTypeForMhcPost(gert::InferDataTypeContext *conte
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(MhcPost)
-    .InferShape(InferShapeForMhcPost)
-    .InferDataType(InferDataTypeForMhcPost);
+IMPL_OP_INFERSHAPE(MhcPost).InferShape(InferShapeForMhcPost).InferDataType(InferDataTypeForMhcPost);
 
-}  // namespace ops
+} // namespace ops
