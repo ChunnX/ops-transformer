@@ -190,7 +190,7 @@ struct OptionalParaInfo {
 
 enum class LayoutType { LAYOUT_BSH, LAYOUT_TH };
 
-enum class TemplateId : uint8_t { NORMAL = 0, EMPTY_X = 1, FULL_LOAD = 2 };
+enum class TemplateId : uint8_t { EMPTY_X = 0, NORMAL = 1, FULL_LOAD = 2 };
 
 struct CompressorBaseShapeInfo {
     uint32_t bSize = 0;    // B
