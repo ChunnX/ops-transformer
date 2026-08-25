@@ -649,7 +649,7 @@ ge::graphStatus FiaTilingCheck::CheckTokens()
     preTokens_ = fiaInfo_.preToken;
     nextTokens_ = fiaInfo_.nextToken;
     OP_CHECK_IF(preTokens_ < 0 && nextTokens_ < 0, 
-        OP_LOGE(opName_, "preTokens(%ld) and nextTokens(%ld) cannot neither be negative number.",
+        OP_LOGE(opName_, "preTokens(%ld) and nextTokens(%ld) cannot be negative numbers.",
             preTokens_, nextTokens_),
         return ge::GRAPH_FAILED);
 
@@ -668,7 +668,7 @@ ge::graphStatus FiaTilingCheck::CheckSoftmaxLse()
     }
 
     if (fiaInfo_.softmaxLseFlag && opParamInfo_.lseOut.desc == nullptr) {
-        OP_LOGE(opName_, "when %s is enabled, softmaxlse should not be NULL.",
+        OP_LOGE(opName_, "when %s is enabled, softmaxLse should not be NULL.",
             SOFTMAX_LSE_NAME.c_str()); 
         return ge::GRAPH_FAILED;
     }

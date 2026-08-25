@@ -137,7 +137,7 @@ static bool GetKeyRopeSeqLenAndCheckBatch(gert::TilingContext *context,
         keyRopeS = contextKeyParams.keyRopeInputShape->GetStorageShape().GetDim(keyRopeSDimIdx);
         OP_CHECK_IF(contextKeyParams.keyRopeInputShape->GetStorageShape().GetDim(0) != validBatchOfK,
             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-            "Batch of Key(%ld) do NOT equal to Batch of KeyRope(%ld) under tensorlist mode!", validBatchOfK,
+            "Batch of Key(%ld) does NOT equal to Batch of KeyRope(%ld) under tensorlist mode!", validBatchOfK,
             contextKeyParams.keyRopeInputShape->GetStorageShape().GetDim(0)),
             return false);
     }
@@ -354,13 +354,13 @@ static bool CheckTensorList(gert::TilingContext *context, ContextParamsForPFATil
 
     OP_CHECK_IF((batchOfQ != validBatchOfK) || (validBatchOfK != validBatchOfV),
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-        "Batch of Query(%ld) do NOT equal to Batch of Key(%ld) and Value(%ld) under tensorlist mode!", batchOfQ,
+        "Batch of Query(%ld) does NOT equal to Batch of Key(%ld) and Value(%ld) under tensorlist mode!", batchOfQ,
         validBatchOfK, validBatchOfV),
         return false);
 
     OP_CHECK_IF((batchOfQ > BLIMIT),
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-        "Batch of Query(%ld) do NOT larger than 65535 under tensorlist mode!", batchOfQ),
+        "Batch of Query(%ld) must NOT be larger than 65535 under tensorlist mode!", batchOfQ),
         return false);
 
     if (CheckEmptyTensorList(contextKeyParams, validBatchOfK)) {
@@ -544,7 +544,7 @@ static ge::graphStatus ConvertContextToParamsPFA(gert::TilingContext *context,
 
     auto convertQuantRet = ConvertQuantOptionalInputs(context, contextKeyParams);
     if (convertQuantRet != ge::GRAPH_SUCCESS) {
-        OP_LOGE(context->GetNodeName(), "Error occured while convert quant related tilingContext to PFA context!");
+        OP_LOGE(context->GetNodeName(), "Error occurred while converting quant related tilingContext to PFA context!");
         return convertQuantRet;
     }
 
@@ -658,7 +658,7 @@ static ge::graphStatus ConvertContextToParamsIFA(gert::TilingContext &context, I
     ifaContext.key.desc = context.GetInputDesc(KEY_INDEX);
     ifaContext.key.shape = context.GetInputShape(KEY_INDEX);
     OP_CHECK_IF((ifaContext.query.shape == nullptr) || (ifaContext.key.shape == nullptr),
-        OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "shape of query of shape of key is null."),
+        OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "shape of query or shape of key is null."),
         return ge::GRAPH_FAILED);
 
     ifaContext.value.desc = context.GetInputDesc(VALUE_INDEX);
@@ -1156,7 +1156,7 @@ ge::graphStatus FusedInferAttentionScoreTilingArch38::DoOpTiling()
         IncreFlashAttentionContext ifaContext{};
         auto ret = ConvertContextToParamsIFA(*context_, ifaContext, isMaxWorkspace);
         if (ret != ge::GRAPH_SUCCESS) {
-            OP_LOGE(context_->GetNodeName(), "Error occored while convert tilingContext to ifa context!");
+            OP_LOGE(context_->GetNodeName(), "Error occurred while converting tilingContext to ifa context!");
             return ret;
         }
         IFATilingArch38 ifaTilingArch38(context_);
@@ -1197,7 +1197,7 @@ ge::graphStatus FusedInferAttentionScoreTilingArch38::DoOpTiling()
         contextParamsForPFATiling.compileInfoPtr = &tempCompileInfoPtr;
         auto ret = ConvertContextToParamsPFA(context_, contextParamsForPFATiling, isMaxWorkspace);
         if (ret != ge::GRAPH_SUCCESS) {
-            OP_LOGE(context_->GetNodeName(), "Error occored while convert tilingContext to PFA context!");
+            OP_LOGE(context_->GetNodeName(), "Error occurred while converting tilingContext to PFA context!");
             return ret;
         }
         if (lseFlag != false) {
