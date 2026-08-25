@@ -94,7 +94,7 @@ void FusedInferAttentionScoreTilingImpl::SetIsIFA(const FiaTilingInfo &fiaInfo)
     bool isTransposeLayout = layoutStr == "BNSD_BSND" || layoutStr == "BSND_BNSD" || layoutStr == "BSH_BNSD" ||
             layoutStr == "NTD" || layoutStr == "NTD_TND";
     if (fiaInfo.s1Size == 1 && !fiaInfo.enableAlibiPse && !isTransposeLayout &&
-        fiaInfo.fullQuantMode != FiaFullQuantMode::PER_BLOCK_FULL_QUANT ) {
+        fiaInfo.fullQuantMode != FiaFullQuantMode::QKV_PER_BLOCK_FULL_QUANT) {
         isIFAFlag_ =true;
         return;
     }
@@ -285,7 +285,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::AdjustSinnerAndSouter(gert::
         }
         bool checkSparseMode = (sparseMode != 2 && preTokens + nextTokens > 128);
         if (checkDtype && checkQueryAndValueS && checkSparseMode && fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D128 &&
-            fiaInfo.fullQuantMode != FiaFullQuantMode::PER_BLOCK_FULL_QUANT ) {
+            fiaInfo.fullQuantMode != FiaFullQuantMode::QKV_PER_BLOCK_FULL_QUANT) {
             sOuterFactor_ = SOUTER_32;
             sInnerFactor_ = SINNER_256;
             softmaxSOuterFactor = SOUTER_32;
@@ -296,7 +296,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::AdjustSinnerAndSouter(gert::
             sInnerFactor_ = SINNER_256;
         }
     } else if (fiaInfo.vHeadDim > DSIZE_128 && fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D512 && fiaInfo.s1Size != 1) {
-        if (fiaInfo.fullQuantMode == FiaFullQuantMode::PER_TENSOR_FULL_QUANT) {
+        if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_PER_TENSOR_FULL_QUANT) {
             sOuterFactor_ = SOUTER_32;
             sInnerFactor_ = SINNER_64;
         } else if (((fiaInfo.qLayout == FiaLayout::BSH) || (fiaInfo.qLayout == FiaLayout::BSND) ||
@@ -311,13 +311,15 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::AdjustSinnerAndSouter(gert::
         softmaxSOuterFactor = SOUTER_32;
     } else if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512 ||
                (fiaInfo.s1Size == 1 && fiaInfo.vHeadDim > DSIZE_128)) {  // IFA VD > 128
-        if (fiaInfo.fullQuantMode == FiaFullQuantMode::PER_TENSOR_FULL_QUANT || fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
+        if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_PER_TENSOR_FULL_QUANT ||
+            fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
             sOuterFactor_ = SOUTER_32;
         } else {
             sOuterFactor_ = SOUTER_64;
         }
-        sInnerFactor_ = fiaInfo.fullQuantMode == FiaFullQuantMode::PER_TENSOR_FULL_QUANT && fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D512 &&
-                                fiaInfo.pseShiftFlag ?
+        sInnerFactor_ = fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_PER_TENSOR_FULL_QUANT &&
+                        fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D512 &&
+                        fiaInfo.pseShiftFlag ?
                             SINNER_64 :
                             SINNER_128;
         softmaxSOuterFactor = SOUTER_64;
@@ -565,7 +567,7 @@ bool FusedInferAttentionScoreTilingImpl::CheckGQAPerblockNz(const FiaTilingInfo 
     constexpr uint32_t optFp8VBlockSize = 512U; // 512 is V SInnerSize
     auto &valueAntiquantScaleTensor = fiaInfo.opParamInfo.valueAntiquantScale.tensor;
     gert::Shape valueAntiquantScaleTensorShape = valueAntiquantScaleTensor->GetStorageShape();
-    if ((fiaInfo.qLayout == FiaLayout::BNSD && fiaInfo.fullQuantMode == FiaFullQuantMode::PER_BLOCK_FULL_QUANT &&
+    if ((fiaInfo.qLayout == FiaLayout::BNSD && fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_PER_BLOCK_FULL_QUANT &&
         valueAntiquantScaleTensorShape.GetDim(2) == CeilDivision(fiaInfo.s2Size, static_cast<int64_t>(optFp8VBlockSize)))) {
         return true;
     }
@@ -687,7 +689,7 @@ void FusedInferAttentionScoreTilingImpl::SplitNBSeq(const FiaTilingInfo &fiaInfo
 
 bool FusedInferAttentionScoreTilingImpl::CheckFlashDecode(const FiaTilingInfo &fiaInfo)
 {
-    if (fiaInfo.s1Size == 1 && fiaInfo.fullQuantMode == FiaFullQuantMode::PER_BLOCK_FULL_QUANT) {
+    if (fiaInfo.s1Size == 1 && fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_PER_BLOCK_FULL_QUANT) {
         return false;
     }
     float flashDecodeBNRatio = 0.4F;  // 0.4, 经验值
@@ -1064,7 +1066,9 @@ bool FusedInferAttentionScoreTilingImpl::CheckEnableDN(const FiaTilingInfo &fiaI
     bool res = !fiaInfo.attenMaskFlag && !fiaInfo.pseShiftFlag && !fiaInfo.enableAlibiPse &&
                fiaInfo.kvStorageMode != KvStorageMode::PAGE_ATTENTION && fiaInfo.ropeMode == RopeMode::NO_ROPE && fiaInfo.qkHeadDim <= dLimitDN &&
                fiaInfo.vHeadDim <= dLimitDN && !fiaInfo.sysPrefixFlag &&
-               (fiaInfo.quantMode == FiaQuantMode::NO_QUANT || fiaInfo.fullQuantMode == FiaFullQuantMode::PER_BLOCK_FULL_QUANT ) && sOuterFactor_ * CV_RATIO > sOuterLimitDN;
+               (fiaInfo.quantMode == FiaQuantMode::NO_QUANT ||
+               fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_PER_BLOCK_FULL_QUANT) &&
+               sOuterFactor_ * CV_RATIO > sOuterLimitDN;
     return res;
 }
 
@@ -1094,7 +1098,8 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SplitPolicy(gert::TilingCont
             fiaInfo.qkHeadDim == DSIZE_64) {
             sInnerFactor_ = SINNER_256;
         }
-        if (dnFlag_ && fiaInfo.fullQuantMode == FiaFullQuantMode::PER_BLOCK_FULL_QUANT  && fiaInfo.qkHeadDim == fiaInfo.vHeadDim && fiaInfo.qkHeadDim <= 128) {
+        if (dnFlag_ && fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_PER_BLOCK_FULL_QUANT &&
+            fiaInfo.qkHeadDim == fiaInfo.vHeadDim && fiaInfo.qkHeadDim <= 128) {
             sInnerFactor_ = SINNER_256;
         }
 
@@ -1311,7 +1316,7 @@ void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyHasRope(const FiaTilingI
 
 void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyMaskMode(const FiaTilingInfo &fiaInfo)
 {
-    if (fiaInfo.fullQuantMode == FiaFullQuantMode::PER_TENSOR_FULL_QUANT) {
+    if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_PER_TENSOR_FULL_QUANT) {
         if (!fiaInfo.attenMaskFlag) {
             tilingKeyInfo_.maskMode = PFAMask_DISABLE_MASK;
         } else if (fiaInfo.sparseMode == 4) {
@@ -1362,7 +1367,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::UpdateTilingKeyInfo(const Fi
             tilingKeyInfo_.isFd = false;
         }
         tilingKeyInfo_.hasAttenMask = fiaInfo.attenMaskFlag;
-        if (fiaInfo.fullQuantMode == FiaFullQuantMode::PER_TENSOR_FULL_QUANT) {
+        if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_PER_TENSOR_FULL_QUANT) {
             tilingKeyInfo_.hasAttenMask = false;
         }
         UpdateTilingKeyHasRope(fiaInfo);
@@ -1518,7 +1523,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::GetWorkspace(gert::TilingCon
         OP_CHECK_IF(SetWorkspaceAntiQuant(fiaInfo, workspace) != ge::GRAPH_SUCCESS,
                     OP_LOGE(fiaInfo.opName, "Get workspace failed ."), return ge::GRAPH_FAILED);
 
-    } else if (fiaInfo.fullQuantMode == FiaFullQuantMode::PER_TENSOR_FULL_QUANT) {
+    } else if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_PER_TENSOR_FULL_QUANT) {
         OP_CHECK_IF(SetWorkspacePTQuant(fiaInfo, workspace) != ge::GRAPH_SUCCESS,
                     OP_LOGE(fiaInfo.opName, "Get workspace failed ."), return ge::GRAPH_FAILED);
     } else {
@@ -1875,7 +1880,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::ComputeTilingData(const FiaT
     }
 
     if ((fiaInfo.quantMode == FiaQuantMode::ANTI_QUANT && !isPFAFlag_) ||
-        fiaInfo.fullQuantMode == FiaFullQuantMode::PER_TENSOR_FULL_QUANT) {
+        fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_PER_TENSOR_FULL_QUANT) {
         uint8_t sparseType = 0;
         inputParams.set_sparseType(sparseType);
     } else {
@@ -2128,7 +2133,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
 ge::graphStatus FusedInferAttentionScoreTilingImpl::SetTilingData(gert::TilingContext *context,
                                                                   const FiaTilingInfo &fiaInfo)
 {
-    if (fiaInfo.fullQuantMode == FiaFullQuantMode::PER_TENSOR_FULL_QUANT) {
+    if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_PER_TENSOR_FULL_QUANT) {
         SetFullQuantTilingData(fiaInfo);
     } else if (!fiaInfo.emptyTensorFlag) {
         if (fiaInfo.quantMode == FiaQuantMode::ANTI_QUANT) {
@@ -2139,7 +2144,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetTilingData(gert::TilingCo
 
     int64_t cap = context->GetRawTilingData()->GetCapacity();
     OP_LOGI(fiaInfo.opName, "Tiling Data context GetCapacity: %lu.", cap);
-    if (fiaInfo.fullQuantMode == FiaFullQuantMode::PER_TENSOR_FULL_QUANT) {
+    if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_PER_TENSOR_FULL_QUANT) {
         PFAFullQuantTilingData *tiling = context_->GetTilingData<PFAFullQuantTilingData>();
         OP_CHECK_IF(tiling == nullptr, OP_LOGE(fiaInfo.opName, "The tiling data is nullptr"), return ge::GRAPH_FAILED);
         tiling->MigrateFromLegacyFormat(pfaTilingData_);

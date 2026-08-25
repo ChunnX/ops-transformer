@@ -103,7 +103,7 @@
       <tr>
         <td colspan="2">非量化</td>
         <td>
-            入参：所有入参皆为非量化数据 <br> 
+            入参：所有入参皆为非量化数据 <br>
             出参：所有出参皆为非量化数据
         </td>
       </tr>
@@ -111,15 +111,15 @@
         <td rowspan="2">部分量化</td>
         <td>kv_cache非量化 </td>
         <td>
-            入参：weight_uq_qr传入pertoken量化数据，其余入参皆为非量化数据 <br> 
-            出参：所有出参返回非量化数据 
+            入参：weight_uq_qr传入pertoken量化数据，其余入参皆为非量化数据 <br>
+            出参：所有出参返回非量化数据
         </td>
       </tr>
       <tr>
         <td>kv_cache量化 </td>
-        <td> 
-            入参：weight_uq_qr传入pertoken量化数据，kv_cache、kr_cache传入perchannel量化数据，其余入参皆为非量化数据 <br> 
-            出参：kv_cache、kr_cache返回perchannel量化数据，其余出参返回非量化数据 
+        <td>
+            入参：weight_uq_qr传入pertoken量化数据，kv_cache、kr_cache传入perchannel量化数据，其余入参皆为非量化数据 <br>
+            出参：kv_cache、kr_cache返回perchannel量化数据，其余出参返回非量化数据
         </td>
       </tr>
     </table>
@@ -360,31 +360,7 @@
   </tr>
   <tr>
     <td class="tg-0pky">
-    <a href="./examples/test_aclnn_mla_prolog_nq_tnd.cpp">MlaProlog非量化（TND）接口测试用例代码
-    </a>
-  </td>
-  </tr>
-  <tr>
-    <td class="tg-0pky">
-    <a href="./examples/test_aclnn_mla_prolog_pqkvnq_bsh.cpp">MlaProlog半量化KV非量化（BSH）接口测试用例代码
-    </a>
-</td>
-  </tr>
-  <tr>
-    <td class="tg-0pky">
-    <a href="./examples/test_aclnn_mla_prolog_pqkvnq_tnd.cpp">MlaProlog半量化KV非量化（TND）接口测试用例代码
-    </a>
-  </td>
-  </tr>
-  <tr>
-    <td class="tg-0pky">
-    <a href="./examples/test_aclnn_mla_prolog_pqkvq_bsh.cpp">MlaProlog半量化KV量化（BSH）接口测试用例代码
-    </a>
-  </td>
-  </tr>
-  <tr>
-    <td class="tg-0pky">
-    <a href="./examples/test_aclnn_mla_prolog_pqkvq_tnd.cpp">MlaProlog半量化KV量化（TND）接口测试用例代码
+    <a href="./examples/test_aclnn_mla_prolog_nq_bsh.cpp">MlaProlog半量化KV量化（BSH）接口测试用例代码
     </a>
   </td>
   </tr>

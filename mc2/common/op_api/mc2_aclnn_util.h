@@ -21,4 +21,4 @@ bool IsTensorContiguous(const aclTensor *tensor);
 
 } // namespace MC2Aclnn
 
-#endif  // MC2_ACLNN_UTIL_H_
+#endif // MC2_ACLNN_UTIL_H_

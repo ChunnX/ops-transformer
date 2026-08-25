@@ -1,4 +1,4 @@
-# RainFusionAttention 测试套件
+# RainFusionAttention测试套件
 
 ## 概述
 
@@ -13,9 +13,9 @@
 
 ### 2. 不同blockShape配置测试
 
-- **小块测试 (32x32)**: 验证小块稀疏模式
-- **大块测试 (128x128)**: 验证大块稀疏模式  
-- **非对称块测试 (64x128)**: 验证非对称块配置
+- **小块测试(32x32)**: 验证小块稀疏模式
+- **大块测试(128x128)**: 验证大块稀疏模式  
+- **非对称块测试(64x128)**: 验证非对称块配置
 
 ### 3. 边界条件测试
 
@@ -34,7 +34,7 @@
 ```bash
 # 编译测试
 cd /path/to/ops-transformer-dev
-bash build.sh --soc=Ascend910B3
+bash build.sh --soc=ascend910b
 
 # 运行测试
 ./test_rain_fusion_attention

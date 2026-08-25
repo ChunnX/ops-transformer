@@ -23,11 +23,7 @@ def parse_str_to_shape_list(shape_str):
 
 
 def gen_data_and_golden(mListStr: str, kListStr: str, nListStr: str, d_type="float16"):
-    d_type_dict = {
-        "float32": np.float32,
-        "float16": np.float16,
-        "int32": np.int32
-    }
+    d_type_dict = {"float32": np.float32, "float16": np.float16, "int32": np.int32}
     np_type = d_type_dict[d_type]
     mList = parse_str_to_shape_list(mListStr)
     kList = parse_str_to_shape_list(kListStr)

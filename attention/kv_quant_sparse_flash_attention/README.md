@@ -8,7 +8,7 @@
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列加速卡产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
@@ -55,14 +55,14 @@
       <tr>
           <td>key</td>
           <td>输入</td>
-          <td>attention结构的K输入，不支持非连续。k_nope、query相同数据类型的k_rope和float32的量化参数按D维度拼接得到。layout_kv为"BSND"时shape为[B, KV_S, KV_N, KV_D]。layout_kv为"TND"时shape为[KV_T, KV_N, KV_D]。layout_kv为"PA_BSND"时shape为[block_num, block_size, KV_N, KV_D]，其中block_num为PageAttention时block总数，block_size为一个block的token数，block_size取值为16的整数倍，最大支持到1024。KV_N仅支持1；KV_D值仅支持656，即nope+rope*2+dequant_scale*4=512+64*2+4*4。</td>
+          <td>attention结构的K输入。k_nope、query相同数据类型的k_rope和float32的量化参数按D维度拼接得到。layout_kv为"BSND"时shape为[B, KV_S, KV_N, KV_D]。layout_kv为"TND"时shape为[KV_T, KV_N, KV_D]。layout_kv为"PA_BSND"时shape为[block_num, block_size, KV_N, KV_D]，其中block_num为PageAttention时block总数，block_size为一个block的token数，block_size取值为16的整数倍，最大支持到1024。KV_N仅支持1；KV_D值仅支持656，即nope+rope*2+dequant_scale*4=512+64*2+4*4。</td>
           <td>FLOAT8_E4M3、INT8、HIFLOAT8</td>
           <td>ND</td>
       </tr>
       <tr>
           <td>value</td>
           <td>输入</td>
-          <td>attention结构的V输入，不支持非连续。</td>
+          <td>attention结构的V输入。</td>
           <td>FLOAT8_E4M3、INT8、HIFLOAT8</td>
           <td>ND</td>
       </tr>
@@ -78,7 +78,7 @@
           <td>属性</td>
           <td>公式中d<sub>k</sub>开根号的倒数，代表缩放系数，作为query和key矩阵乘后Muls的scalar值。</td>
           <td>FLOAT</td>
-          <td>-</td> 
+          <td>-</td>
       </tr>
       <tr>
           <td>key_quant_mode</td>
@@ -130,6 +130,13 @@
           <td>ND</td>
       </tr>
       <tr>
+          <td>sinks</td>
+          <td>输入</td>
+          <td>表示attention结构中的可学习的sinks信息。不支持非连续，shape为[Q_N,]。</td>
+          <td>FLOAT</td>
+          <td>ND</td>
+      </tr>
+      <tr>
           <td>sparse_block_size</td>
           <td>属性</td>
           <td>代表sparse阶段的block大小。sparse_block_size为1时，为Token-wise稀疏化场景；sparse_block_size大于1且小于等于128时，为Block-wise稀疏化场景，块内token共享相同的稀疏化决策。</td>
@@ -146,7 +153,7 @@
       <tr>
           <td>layout_kv</td>
           <td>属性</td>
-          <td>用于标识输入key的数据排布格式，默认值"BSND"，支持传入BSND、TND和PA_BSND，PA_BSND在使能PageAttention时使用。</td>
+          <td>用于标识输入key的数据排布格式，默认值"BSND"，支持传入BSND、TND和PA_BSND，PA_BSND在开启PageAttention时使用。</td>
           <td>STRING</td>
           <td>-</td>
       </tr>
@@ -212,11 +219,15 @@
 ## 约束说明
 
 - 该接口支持图模式。
-- 参数query shape中：<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：Q_N不支持48。
-- 参数key、value数据类型要求：
-  - <term>Ascend 950PR/Ascend 950DT</term>：仅支持float8_e4m3、int8、hifloat8数据类型。
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持int8数据类型。
-- 参数sparse\_block\_size：
-  - <term>Ascend 950PR/Ascend 950DT</term>：只支持sparse\_block\_size为1。
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持[1,16]，且要求是2的幂次方，在PageAttention场景下要求sparse\_block\_size整除block\_size
 - 非PageAttention场景layout\_query和layout\_kv取值需要保持一致。
+- <term>Ascend 950PR/Ascend 950DT</term>：
+  - 参数key、value数据类型仅支持float8_e4m3、int8、hifloat8数据类型。
+  - 参数sparse\_block\_size仅支持1。
+  - 仅在layout_key为PA_BSND时，key支持0轴非连续。
+  - 支持可选入参sinks。
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+  - query Q_N不支持48。
+  - 参数key、value数据类型仅支持int8数据类型。
+  - 参数sparse\_block\_size支持[1,16]，且要求是2的幂次方，在PageAttention场景下要求sparse\_block\_size整除block\_size。
+  - key不支持非连续。
+  - 不支持sinks。

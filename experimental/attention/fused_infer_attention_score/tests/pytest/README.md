@@ -19,14 +19,14 @@ pytest框架作为一个轻量化精度对比的测试框架，提供了简单�
 - 支持自定义生成的custom包适配，可通过直接调用custom包验证，无需交付件
 - 脚本内各功能分离，易于特性验证及自定义修改
 - Golden生成逻辑完善，为先构建输入，后进行运算
-- 环境配置较简单，无依赖冲突，仅需python环境及torch&torch_npu安装
+- 环境配置较简单，无依赖冲突，仅需python环境及torch&TorchNPU安装
 
 ## 功能说明
 
 基于pytest测试框架，实现fa算子的功能验证：
 
 - **CPU侧**：复现算子功能用以生成Golden数据
-- **NPU侧**：通过torch_npu进行算子直调获取实际数据， 通过torchair组件入图
+- **NPU侧**：通过TorchNPU进行算子直调获取实际数据，通过torchair组件入图
 - **精度对比**：进行CPU与NPU结果的精度对比验证算子功能
 
 ### 主要特性
@@ -45,7 +45,7 @@ pytest框架作为一个轻量化精度对比的测试框架，提供了简单�
 
 ### 前置要求
 
-1. torch_npu安装包下载路径（需及时更换为最新版本）：[torch_npu安装教程](https://gitcode.com/Ascend/pytorch)
+1. TorchNPU安装包下载路径（需及时更换为最新版本）：[TorchNPU安装教程](https://gitcode.com/Ascend/pytorch)
 2. 完成环境安装和环境变量配置，具体操作请参考：[ops-transformer](../../../../../README.md)
 
 ### Custom包调用

@@ -57,6 +57,8 @@
     k^R = Cache(ROPE(RmsNormQuant(x)))
     $$
 
+    ACLNN接口的`cos`和`sin`同时传入空指针时跳过Q-RoPE和K-RoPE数学运算，$q^R$和$k^R$分别保存未经旋转的原始Q-rope和K-rope分量；二者均为非空Tensor时保持原RoPE行为，禁止仅传入一个空指针。其他计算、输出形状、`qDownOut`语义和Cache布局不变。
+
 ## 参数说明
 
 <table style="undefined;table-layout: fixed; width: 1427px"><colgroup>
@@ -190,14 +192,14 @@
   <tr>
     <td>cos</td>
     <td>输入</td>
-    <td>Device侧的aclTensor，表示用于计算旋转位置编码的正弦参数矩阵，shape为[tokenNum,64]</td>
+    <td>Device侧的aclTensor，表示用于计算旋转位置编码的余弦参数矩阵，启用RoPE时shape为[tokenNum,64]，其中tokenNum等于input的第0维；与sin同时传入空指针时关闭RoPE。</td>
     <td>FLOAT16, BFLOAT16</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>sin</td>
     <td>输入</td>
-    <td>Device侧的aclTensor，表示用于计算旋转位置编码的余弦参数矩阵，shape为[tokenNum,64]</td>
+    <td>Device侧的aclTensor，表示用于计算旋转位置编码的正弦参数矩阵，启用RoPE时shape为[tokenNum,64]，其中tokenNum等于input的第0维；与cos同时传入空指针时关闭RoPE。</td>
     <td>FLOAT16, BFLOAT16</td>
     <td>ND</td>
   </tr>
@@ -367,8 +369,8 @@
 ## 约束说明
 
 - shape格式字段含义及约束
-    - tokenNum：tokenNum 表示输入样本批量大小，取值范围：0~256
-    - hiddenSize：hiddenSize 表示隐藏层的大小，取值固定为：2048~10240，为256的倍数
+    - tokenNum：tokenNum表示输入样本批量大小，取值范围：0~256
+    - hiddenSize：hiddenSize表示隐藏层的大小，取值固定为：2048~10240，为256的倍数
     - headNum：表示多头数，取值范围：1~128
     - blockNum：PagedAttention场景下的块数，取值范围：192
     - blockSize：PagedAttention场景下的块大小，取值范围：128
@@ -377,4 +379,28 @@
     - qRopeDim：表示Q矩阵中旋转编码部分的维度，取值固定为：64
     - qNoRopeDim：表示Q矩阵中无旋转编码部分的维度，取值范围：16~256，为16的倍数
 - rope模式约束
-    - mla_preprocess 算子中的 Rotary Embedding（RoPE）操作采用 half 模式，暂不支持 interleave 模式
+    - mla_preprocess算子中的Rotary Embedding（RoPE）操作采用half模式，暂不支持interleave模式
+
+## 调用说明
+
+<table class="tg"><thead>
+  <tr>
+    <th class="tg-0pky">调用方式</th>
+    <th class="tg-0pky">样例代码</th>
+    <th class="tg-0pky">说明</th>
+  </tr></thead>
+<tbody>
+  <tr>
+    <td class="tg-9wq8">aclnn接口</td>
+    <td class="tg-0pky">
+    <a href="./examples/test_aclnn_mla_preprocess_v2.cpp">test_aclnn_mla_preprocess_v2
+    </a>
+    </td>
+    <td class="tg-lboi">
+    通过
+    <a href="./docs/aclnnMlaPreprocessV2.md">aclnnMlaPreprocessV2
+    </a>
+    接口方式调用MlaPreprocessV2算子
+    </td>
+  </tr>
+</tbody></table>

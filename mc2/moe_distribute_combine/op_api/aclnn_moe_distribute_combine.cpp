@@ -13,7 +13,7 @@
 #include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 #include "opdev/common_types.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "aclnnInner_moe_distribute_combine.h"
@@ -62,20 +62,24 @@ static aclnnStatus CheckParams(const aclTensor *expandX, const aclTensor *expert
     OP_LOGD("aclnn_moe_distribute_combine checkparams start");
     CHECK_RET(CheckNotNull(expandX, expertIds, expandIdx, epSendCounts, expertScales, groupEp, x),
               ACLNN_ERR_PARAM_NULLPTR);
+    // groupTp为预留参数(当前版本不支持TP域通信)，nullptr视同空串，避免后续strnlen空指针解引用
+    if (groupTp == nullptr) {
+        groupTp = "";
+    }
     const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
     if (is910B) {
         OP_LOGD("A2 platform, groupTp should be empty");
         CHECK_RET(strnlen(groupTp, HCCL_GROUP_NAME_MAX) == 0, ACL_ERROR_INVALID_PARAM);
     }
     if (strnlen(groupEp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeCombine", "groupEp",
-            std::to_string(strnlen(groupEp, HCCL_GROUP_NAME_MAX)).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnMoeDistributeCombine", "groupEp", std::to_string(strnlen(groupEp, HCCL_GROUP_NAME_MAX)).c_str(),
             std::string("groupEp name exceeds ").append(std::to_string(HCCL_GROUP_NAME_MAX)).c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (strnlen(groupTp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeCombine", "groupTp",
-            std::to_string(strnlen(groupTp, HCCL_GROUP_NAME_MAX)).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnMoeDistributeCombine", "groupTp", std::to_string(strnlen(groupTp, HCCL_GROUP_NAME_MAX)).c_str(),
             std::string("groupTp name exceeds ").append(std::to_string(HCCL_GROUP_NAME_MAX)).c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }

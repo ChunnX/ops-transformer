@@ -241,14 +241,14 @@
     <tr>
       <td>ropeType</td>
       <td>属性</td>
-      <td>表示RoPE的模式,int64类型，0: 不做RoPE，1: Interleave, 2: Half</td>
+      <td>表示RoPE的模式，int64类型，0: 不做RoPE，1: Interleave, 2: Half</td>
       <td>int64</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>concatOrder</td>
       <td>属性</td>
-      <td>表示拼接的顺序,int64类型，0: query在前，1: query在后</td>
+      <td>表示拼接的顺序，int64类型，0: query在前，1: query在后</td>
       <td>int64</td>
       <td>ND</td>
     </tr>

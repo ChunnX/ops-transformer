@@ -21,7 +21,7 @@ echo $ASCEND_HOME_PATH
 
 # 检查CMake版本
 cmake --version | head -1
-# CMake版本 >= 3.16
+# CMake版本 >= 3.18.4
 
 # 检查编译器
 which bisheng
@@ -71,8 +71,8 @@ python test.py
 > 💡 **提示**：如果遇到环境配置问题，请确保：
 > 1. `ASCEND_HOME_PATH`环境变量已正确设置
 > 2. Bisheng编译器已安装并可用
-> 3. CMake版本为3.16或更高
-> 4. torch及torch_npu已安装并可用
+> 3. CMake版本为3.18.4或更高
+> 4. torch及TorchNPU已安装并可用
 
 ## 💻 实战示例：AllGatherMatmul优化
 
@@ -95,7 +95,7 @@ MC<sup>2</sup>通算融合算子的性能收益主要来自于通信、计算的
 ### 传统实现分析
 
 ```cpp
-// all_gather_matmul_fp16_bf16.h 关键代码
+// all_gather_matmul_fp16_bf16.h关键代码
 __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::Process()
 {
     if ASCEND_IS_AIC {
@@ -133,7 +133,7 @@ AllGather通信会将其他卡数据全部收取到本卡上，然后启动计�
 ![all_gather_matmul_demo_2](./docs/images/image-2.jpg)
 
 ```cpp
-// all_gather_matmul_fp16_bf16.h 关键代码
+// all_gather_matmul_fp16_bf16.h关键代码
 template <typename AType, typename BType, typename BiasType, typename CType>
 __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::InnerProcess()
 {
@@ -185,7 +185,7 @@ AllGatherMatmul算子通过将通信输入的矩阵切分为多块，主块数�
 ![all_gather_matmul_demo_3](./docs/images/image-3.jpg)
 
 ```cpp
-// all_gather_matmul_fp16_bf16.h 关键代码
+// all_gather_matmul_fp16_bf16.h关键代码
 template <typename AType, typename BType, typename BiasType, typename CType>
 __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::MatmulKernelComputeGather(
     GM_ADDR aGM, GM_ADDR cGM, Mc2MatMulV3TilingData& tiling, uint32_t count, bool isLast, bool isTail)

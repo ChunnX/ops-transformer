@@ -16,7 +16,7 @@
 #define SCATTER_PA_KV_CACHE_ROPE_FULLY_LOAD_H_
 
 #include "kernel_operator.h"
-#include "common.h"
+#include "scatter_pa_kv_cache_arch35_common.h"
 
 namespace ScatterPaKvCache {
 using namespace AscendC;
@@ -33,12 +33,32 @@ __aicore__ inline constexpr uint32_t GetVRegSize()
 constexpr uint32_t VECTOR_LENGTH = GetVRegSize();
 constexpr uint32_t VL_B32 = VECTOR_LENGTH / sizeof(uint32_t);
 
+template <typename T, typename U>
+__simd_vf__ inline void CastToOriginFullyVf(__ubuf__ U *srcAddr, __ubuf__ T *dstAddr,
+                                            uint32_t dataLen, uint16_t loopNum)
+{
+    MicroAPI::RegTensor<U> valueSrc;
+    MicroAPI::MaskReg curpreg;
+    uint32_t sregMask = dataLen;
+    for (uint16_t j = 0; j < loopNum; j++) {
+        curpreg = MicroAPI::UpdateMask<uint32_t>(sregMask);
+        MicroAPI::LoadAlign<U, MicroAPI::LoadDist::DIST_NORM>(valueSrc, srcAddr + VL_B32 * j);
+        if constexpr (IsSameType<T, int16_t>::value || IsSameType<T, uint16_t>::value) {
+            MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK_B32>(dstAddr + VL_B32 * j,
+                                                                        (MicroAPI::RegTensor<T> &)valueSrc, curpreg);
+        } else {
+            MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK4_B32>(dstAddr + VL_B32 * j,
+                                                                         (MicroAPI::RegTensor<T> &)valueSrc, curpreg);
+        }
+    }
+}
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
 class ScatterPaKvCacheRopeFullyLoad {
 public:
     __aicore__ inline ScatterPaKvCacheRopeFullyLoad(TPipe *pipe, const ScatterPaKvCacheTilingData *__restrict tiling)
-        : pipe_(pipe), tilingData_(tiling){};
+        : pipe_(pipe),
+          tilingData_(tiling){};
     __aicore__ inline void Init(GM_ADDR key, GM_ADDR key_cache_in, GM_ADDR slot_mapping, GM_ADDR value,
                                 GM_ADDR value_cache_in, GM_ADDR compress_lens, GM_ADDR compress_seq_offset,
                                 GM_ADDR seq_lens, GM_ADDR key_cache_out, GM_ADDR value_cache_out);
@@ -237,28 +257,12 @@ __aicore__ inline void ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::
                                                                                              LocalTensor<U> &srcLocal,
                                                                                              uint32_t dataLen)
 {
-    __local_mem__ U *srcPhyAddr = (__local_mem__ U *)srcLocal.GetPhyAddr();
-    __local_mem__ T *dstPhyAddr = (__local_mem__ T *)dstLocal.GetPhyAddr();
+    __ubuf__ U *srcPhyAddr = (__ubuf__ U *)srcLocal.GetPhyAddr();
+    __ubuf__ T *dstPhyAddr = (__ubuf__ T *)dstLocal.GetPhyAddr();
 
     uint16_t loopNum = CeilDivFully(dataLen, VL_B32);
 
-    __VEC_SCOPE__
-    {
-        MicroAPI::RegTensor<U> valueSrc;
-        MicroAPI::MaskReg curpreg;
-        uint32_t sregMask = dataLen;
-        for (uint16_t j = 0; j < loopNum; j++) {
-            curpreg = MicroAPI::UpdateMask<uint32_t>(sregMask);
-            MicroAPI::DataCopy<U, MicroAPI::LoadDist::DIST_NORM>(valueSrc, srcPhyAddr + VL_B32 * j);
-            if constexpr (IsSameType<T, int16_t>::value || IsSameType<T, uint16_t>::value) {
-                MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_PACK_B32>(dstPhyAddr + VL_B32 * j,
-                                                                          (MicroAPI::RegTensor<T> &)valueSrc, curpreg);
-            } else {
-                MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_PACK4_B32>(dstPhyAddr + VL_B32 * j,
-                                                                           (MicroAPI::RegTensor<T> &)valueSrc, curpreg);
-            }
-        }
-    }
+    CastToOriginFullyVf<T, U>((__ubuf__ U *)srcPhyAddr, (__ubuf__ T *)dstPhyAddr, dataLen, loopNum);
 }
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
@@ -375,7 +379,7 @@ ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::CopyInKey(int64_t iter,
             break;
         }
         DataCopyPad(inputKeyLocal[(k - startIdx) * RoundUp(tilingData_->kHeadSize)],
-                 inputKeyGm_[offset + k * tilingData_->keyStride1], inKeyParams, padParams);
+                    inputKeyGm_[offset + k * tilingData_->keyStride1], inKeyParams, padParams);
     }
     inputKeyQueue_.EnQue(inputKeyLocal);
 }
@@ -402,7 +406,7 @@ ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::CopyInValue(int64_t ite
             break;
         }
         DataCopyPad(inputValueLocal[(k - startIdx) * RoundUp(tilingData_->vHeadSize)],
-                 inputValueGm_[offset + k * tilingData_->valueStride1], inValueParams, padParams);
+                    inputValueGm_[offset + k * tilingData_->valueStride1], inValueParams, padParams);
     }
     inputValueQueue_.EnQue(inputValueLocal);
 }

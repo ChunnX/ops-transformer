@@ -17,34 +17,33 @@
 
 namespace optiling {
 
-ge::graphStatus AllGatherMatmulTilingA5::CheckValidRank(Mc2Tiling::AllGatherMatmulTilingData* tilingData,
-    const std::map<uint32_t, std::vector<uint32_t>> VALID_RANK, gert::TilingContext *context,
-    uint32_t rankSize)
+ge::graphStatus AllGatherMatmulTilingA5::CheckValidRank(Mc2Tiling::AllGatherMatmulTilingData *tilingData,
+                                                        const std::map<uint32_t, std::vector<uint32_t>> VALID_RANK,
+                                                        gert::TilingContext *context, uint32_t rankSize)
 {
-    auto it = std::find(VALID_RANK.at(0).begin(),
-    VALID_RANK.at(0).end(), rankSize);
+    auto it = std::find(VALID_RANK.at(0).begin(), VALID_RANK.at(0).end(), rankSize);
     OP_TILING_CHECK(it == VALID_RANK.at(0).end(),
-    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "world_size",
-        std::to_string(rankSize).c_str(), "valid rank value"),
-    return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "world_size", std::to_string(rankSize).c_str(),
+                                              "valid rank value"),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
-void AllGatherMatmulTilingA5::SetSocParam(Mc2Tiling::AllGatherMatmulTilingData* tilingData, const char* group)
+void AllGatherMatmulTilingA5::SetSocParam(Mc2Tiling::AllGatherMatmulTilingData *tilingData, const char *group)
 {
     tilingData->socParam.isA3 = 0U;
     tilingData->socParam.isStep = 0U;
     tilingData->socParam.isND2NZ = 1U;
 }
 
-std::string AllGatherMatmulTilingA5::GetAlgConfig(Mc2Tiling::AllGatherMatmulTilingData* tilingData)
+std::string AllGatherMatmulTilingA5::GetAlgConfig(Mc2Tiling::AllGatherMatmulTilingData *tilingData)
 {
     return "AllGather=level0:fullmesh";
 }
 
-CutResult AllGatherMatmulTilingA5::GetCutResult(Mc2Tiling::AllGatherMatmulTilingData& tilingData,
-    mc2tiling::TilingArgs& args)
+CutResult AllGatherMatmulTilingA5::GetCutResult(Mc2Tiling::AllGatherMatmulTilingData &tilingData,
+                                                mc2tiling::TilingArgs &args)
 {
     AllGatherPlusMMA5 tileFormulate(args, args.rankDim, KernelType::ALL_GATHER, SocVersion::SOC950);
     tileFormulate.GetTiling();
@@ -67,4 +66,4 @@ IMPL_OP_OPTILING(AllGatherMatmul)
     .Tiling(AllGatherMatmulTilingFuncA5)
     .TilingParse<AllGatherMatmulCompileInfo>(TilingParseForAllGatherMatmul);
 
-}
+} // namespace optiling

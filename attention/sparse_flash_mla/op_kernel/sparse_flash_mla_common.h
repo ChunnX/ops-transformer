@@ -25,16 +25,16 @@ using namespace AscendC;
 
 enum class SMLATemplateMode {
     SWA_TEMPLATE_MODE = 0,
-    CFA_TEMPLATE_MODE = 1,
-    SCFA_TEMPLATE_MODE = 2,
-    ORI_SCFA_TEMPLATE_MODE = 3,
-    ORI_CMP_SCFA_TEMPLATE_MODE = 4
+    HCA_TEMPLATE_MODE = 1,
+    CSA_TEMPLATE_MODE = 2,
+    ORI_SPARSE_TEMPLATE_MODE = 3,
+    ORI_CMP_SPARSE_TEMPLATE_MODE = 4
 };
 
 enum class SMLA_LAYOUT {
     BSND = 0,
     TND = 1,
-    PA_BNBD = 2
+    PA_BBND = 2
 };
 
 #if (__CCE_AICORE__ != 310)
@@ -42,8 +42,8 @@ enum class SMLA_LAYOUT {
 constexpr SoftmaxConfig SMLA_SOFTMAX_FLASHV2_CFG_WITHOUT_BRC = {false, 0, 0, SoftmaxMode::SOFTMAX_OUTPUT_WITHOUT_BRC};
 
 template <typename Q_T, typename KV_T, typename OUT_T, const bool FLASH_DECODE = false,
-          SMLA_LAYOUT LAYOUT_T = SMLA_LAYOUT::BSND, SMLA_LAYOUT KV_LAYOUT_T = SMLA_LAYOUT::PA_BNBD,
-          int TEMPLATE_MODE = 0, typename... Args>
+          SMLA_LAYOUT LAYOUT_T = SMLA_LAYOUT::BSND, SMLA_LAYOUT KV_LAYOUT_T = SMLA_LAYOUT::PA_BBND,
+          int TEMPLATE_MODE = 0, const bool HEAD_RATIO_ONE = false, typename... Args>
 struct SMLAType {
     using queryType = Q_T;
     using kvType = KV_T;
@@ -51,8 +51,9 @@ struct SMLAType {
     static constexpr bool flashDecode = FLASH_DECODE;
     static constexpr SMLA_LAYOUT layout = LAYOUT_T;
     static constexpr SMLA_LAYOUT kvLayout = KV_LAYOUT_T;
-    static constexpr bool pageAttention = (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD);
+    static constexpr bool pageAttention = (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND);
     static constexpr int templateMode = TEMPLATE_MODE;
+    static constexpr bool headRatioOne = HEAD_RATIO_ONE;
 };
 
 // ================================Util functions==================================
@@ -132,7 +133,7 @@ __aicore__ inline void DataCopyGmNDToL1(LocalTensor<T> &l1Tensor, GlobalTensor<T
 
 /*
     适用PA数据从GM拷贝到L1，支持ND、NZ数据；
-    PA的layout分 BNBD（blockNum,N,blockSize,D） BBH（blockNum,blockSize,N*D
+    PA的layout分 BBND（blockNum,N,blockSize,D） BBH（blockNum,blockSize,N*D
     BSH\BSND\TND 为BBH
     shape.copyRowNumAlign 需要16字节对齐，如拷贝k矩阵，一次拷贝128*512，遇到尾块 10*512 需对齐到16*512
 */
@@ -275,7 +276,7 @@ struct ConstInfo {
     uint32_t oriMaxBlockNumPerBatch = 0; // PA场景的最大单batch block number
     uint32_t cmpMaxBlockNumPerBatch = 0;
     uint32_t splitKVNum = 0U; // S2核间切分的切分份数
-    SMLA_LAYOUT outputLayout;  // 输出的Transpose格式
+    SMLA_LAYOUT outputLayout; // 输出的Transpose格式
     uint32_t oriMaskMode = 0;
     uint32_t cmpMaskMode = 0;
     bool needInit = false;
@@ -304,9 +305,16 @@ struct ConstInfo {
     uint32_t mBaseSize = 1ULL;
     uint32_t s2BaseSize = 1ULL;
 
+    uint32_t subBlockIdx = 0;
+    uint32_t aivIdx = 0;
+
     // sparse attr
     int64_t sparseBlockSize = 0;
     uint32_t sparseBlockCount = 0;
+    uint32_t oriSparseBlockCount = 0;
+    uint32_t cmpSparseBlockCount = 0;
+    bool hasOriTopkLength = false;
+    bool hasCmpTopkLength = false;
 
     // cmp attr
     int64_t cmpRatio = 0;

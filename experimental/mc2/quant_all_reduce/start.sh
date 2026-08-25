@@ -56,11 +56,11 @@ while :; do
     -n | --case-name):
         CASE_NAME="$2"
         shift 2
-        ;;   
+        ;;
     -d | --rank-size):
         RANK_SIZE="$2"
         shift 2
-        ;;     
+        ;;
     --)
         shift
         break

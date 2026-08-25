@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -42,7 +52,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnLightningIndexerGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnLightningIndexerGrad”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnLightningIndexerGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnLightningIndexerGrad”接口执行计算。
 
 ```c++
 aclnnStatus aclnnLightningIndexerGradGetWorkspaceSize(
@@ -53,7 +63,7 @@ aclnnStatus aclnnLightningIndexerGradGetWorkspaceSize(
   const aclTensor   *weights,
   const aclTensor   *actualSeqLengthsQuery,
   const aclTensor   *actualSeqLengthsKey,
-  int64_t            headNum,  
+  int64_t            headNum,
   char              *layout,
   int64_t            sparseMode,
   int64_t            preTokens,
@@ -68,9 +78,9 @@ aclnnStatus aclnnLightningIndexerGradGetWorkspaceSize(
 
 ```c++
 aclnnStatus aclnnLightningIndexerGrad(
-  void             *workspace, 
-  uint64_t          workspaceSize, 
-  aclOpExecutor    *executor, 
+  void             *workspace,
+  uint64_t          workspaceSize,
+  aclOpExecutor    *executor,
   aclrtStream       stream)
 ```
 
@@ -205,7 +215,7 @@ aclnnStatus aclnnLightningIndexerGrad(
     <tr>
       <td>preTokens</td>
       <td>输入</td>
-      <td>用于稀疏计算 ，表示slides window的左边界。</td>
+      <td>用于稀疏计算，表示slides window的左边界。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -215,7 +225,7 @@ aclnnStatus aclnnLightningIndexerGrad(
     <tr>
       <td>nextTokens</td>
       <td>输入</td>
-      <td>用于稀疏计算 ，表示slides window的右边界。</td>
+      <td>用于稀疏计算，表示slides window的右边界。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -287,7 +297,7 @@ aclnnStatus aclnnLightningIndexerGrad(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -361,7 +371,7 @@ aclnnStatus aclnnLightningIndexerGrad(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -370,7 +380,7 @@ aclnnStatus aclnnLightningIndexerGrad(
 - 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
 - inputLayout支持TND/BSND。
 - 关于数据shape的约束，以Layout的BSND举例。其中：
-  
+
   - B（Batchsize）：取值范围为1\~1024。
   - N（Head-Num）：取值为1\~64。
   - G（Group）：取值为N。
@@ -381,7 +391,7 @@ aclnnStatus aclnnLightningIndexerGrad(
 
 ## 调用示例
 
-通过aclnn单算子调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+通过aclnn单算子调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
@@ -414,7 +424,7 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
     return shapeSize;
 }
 
-template <typename T> 
+template <typename T>
 void PrintOutResult(std::vector<int64_t> &shape, void** deviceAddr) {
     auto size = GetShapeSize(shape);
     std::vector<float> resultData(size, 0);
@@ -471,10 +481,10 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 }
 
 
-void FreeResource(aclTensor *q, aclTensor *k, aclTensor *dy, aclTensor *sparseIndices, aclTensor *weights, 
-                  aclTensor *dQuery, aclTensor *dKey, aclTensor *dWeights, void *qDeviceAddr, void *kDeviceAddr, 
-                  void *dyDeviceAddr, void *sparseIndicesDeviceAddr, void *weightsDeviceAddr, void *dQueryAddr, 
-                  void *dKeyAddr, void *dWeightsAddr, uint64_t workspaceSize, void *workspaceAddr, int32_t deviceId, 
+void FreeResource(aclTensor *q, aclTensor *k, aclTensor *dy, aclTensor *sparseIndices, aclTensor *weights,
+                  aclTensor *dQuery, aclTensor *dKey, aclTensor *dWeights, void *qDeviceAddr, void *kDeviceAddr,
+                  void *dyDeviceAddr, void *sparseIndicesDeviceAddr, void *weightsDeviceAddr, void *dQueryAddr,
+                  void *dKeyAddr, void *dWeightsAddr, uint64_t workspaceSize, void *workspaceAddr, int32_t deviceId,
                   aclrtContext *context, aclrtStream *stream)
 {
     // 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
@@ -543,7 +553,7 @@ void FreeResource(aclTensor *q, aclTensor *k, aclTensor *dy, aclTensor *sparseIn
 
 int main()
 {
-    // 1. （固定写法）device/context/stream初始化，参考AscendCL对外接口列表
+    // 1.（固定写法）device/context/stream初始化，参考AscendCL对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtContext context;
@@ -638,7 +648,7 @@ int main()
                 sparseIndicesDeviceAddr, weightsDeviceAddr, dQueryAddr, dKeyAddr, dWeightsAddr, workspaceSize, workspaceAddr,
                   deviceId, &context, &stream);
               return ret);
-    
+
     ret = CreateAclTensor(dQueryHostData, dQueryShape, &dQueryAddr, aclDataType::ACL_FLOAT16, &dQuery);
     CHECK_RET(ret == ACL_SUCCESS,
               FreeResource(q, k, dy, sparseIndices, weights, dQuery, dKey, dWeights, qDeviceAddr, kDeviceAddr, dyDeviceAddr,
@@ -689,7 +699,7 @@ int main()
                   deviceId, &context, &stream);
               return ret);
 
-    // 4. （固定写法）同步等待任务执行结束
+    // 4.（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret);
               FreeResource(q, k, dy, sparseIndices, weights, dQuery, dKey, dWeights, qDeviceAddr, kDeviceAddr, dyDeviceAddr,
@@ -702,7 +712,7 @@ int main()
     PrintOutResult<aclFloat16>(dKeyShape, &dKeyAddr);
     PrintOutResult<aclFloat16>(dWeightsShape, &dWeightsAddr);
 
-    // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改; 释放device资源
+    // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改;释放device资源
     FreeResource(q, k, dy, sparseIndices, weights, dQuery, dKey, dWeights, qDeviceAddr, kDeviceAddr, dyDeviceAddr,
                   sparseIndicesDeviceAddr, weightsDeviceAddr, dQueryAddr, dKeyAddr, dWeightsAddr, workspaceSize, workspaceAddr,
                   deviceId, &context, &stream);

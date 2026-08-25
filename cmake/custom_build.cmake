@@ -268,6 +268,7 @@ if (BUILD_OPEN_PROJECT)
 endif ()
 
 
+set_property(GLOBAL PROPERTY _OP_HOST_COMPILE_PHASE "DIRECT")
 foreach (OP_DIR ${OP_DIR_LIST})
     if (EXISTS "${OP_DIR}/op_host")
         add_subdirectory(${OP_DIR}/op_host)
@@ -283,14 +284,23 @@ foreach (OP_DIR ${OP_DIR_LIST})
 endforeach ()
 
 if(ENABLE_EXPERIMENTAL)
-    # genop新增experimental算子分类
-    # add_subdirectory(${op_class})
-    add_subdirectory(experimental/attention)
+    should_add_module("attention" ADD_EXPERIMENTAL_ATTENTION)
+    if(ADD_EXPERIMENTAL_ATTENTION)
+        add_subdirectory(experimental/attention)
+    endif()
 else()
-    # genop新增非experimental算子分类
-    # add_subdirectory(${op_class})
-    add_subdirectory(attention)
-    add_subdirectory(mhc)
+    should_add_module("attention" ADD_ATTENTION)
+    if(ADD_ATTENTION)
+        add_subdirectory(attention)
+    endif()
+    should_add_module("mhc" ADD_MHC)
+    if(ADD_MHC)
+        add_subdirectory(mhc)
+    endif()
+    should_add_module("mamba" ADD_MAMBA)
+    if(ADD_MAMBA)
+        add_subdirectory(mamba)
+    endif()
 endif()
 
 # 编译examples目录下算子
@@ -331,7 +341,6 @@ if(ENABLE_TEST)
     endif()
 endif()
 
-
 if (DEFINED MC2_OPT AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/mc2/common/CMakeLists.txt AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/mc2/3rd/CMakeLists.txt)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/mc2/common)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/mc2/3rd)
@@ -343,6 +352,7 @@ op_add_depend_directory(
         OP_DIR_LIST OP_DEPEND_DIR_LIST
 )
 # 仅针对被依赖的算子重新add_subdirectory
+set_property(GLOBAL PROPERTY _OP_HOST_COMPILE_PHASE "DEPENDENCY")
 foreach (OP_DEPEND_DIR ${OP_DEPEND_DIR_LIST})
     get_filename_component(SUB_DIR ${OP_DEPEND_DIR} NAME)
     if ("${ASCEND_OP_NAME}" STREQUAL "all" OR "${ASCEND_OP_NAME}" STREQUAL "ALL")
@@ -368,6 +378,7 @@ foreach (OP_DEPEND_DIR ${OP_DEPEND_DIR_LIST})
        list(APPEND OP_DIR_LIST ${OPS_TRANSFORMER_DIR}/moe/3rd/moe_masked_scatter)
     endif()
 endforeach ()
+set_property(GLOBAL PROPERTY _OP_HOST_COMPILE_PHASE "DIRECT")
 
 # ------------------------------------------------ aclnn ------------------------------------------------
 get_target_property(base_aclnn_srcs op_host_aclnn SOURCES)
@@ -507,6 +518,22 @@ else()
             ${CMAKE_CURRENT_BINARY_DIR}/op_host_aclnn_exc_stub.cpp
     )
 endif ()
+
+# 零算子（所有请求算子均被 CANN 版本检查跳过）：打印被跳过算子，写标志文件供 build.sh 跳过打包
+if (NOT generate_aclnn_srcs AND NOT generate_aclnn_inner_srcs AND NOT generate_exclude_proto_srcs)
+    get_property(_cann_skipped_ops GLOBAL PROPERTY CANN_VERSION_SKIPPED_OPS)
+    if (_cann_skipped_ops)
+        list(REMOVE_DUPLICATES _cann_skipped_ops)
+        get_cann_package_version(_cann_cur_ver)
+        message(STATUS "当前 CANN 版本为 ${_cann_cur_ver}（soc=${ASCEND_COMPUTE_UNIT}），以下算子要求的最低版本不满足，不符合编译要求，已跳过编译：")
+        foreach(_cann_skipped_op IN LISTS _cann_skipped_ops)
+            message(STATUS "  - ${_cann_skipped_op}")
+        endforeach()
+    endif()
+    file(WRITE "${CMAKE_BINARY_DIR}/no_ops.flag" "all requested ops skipped by CANN version check\n")
+else()
+    file(REMOVE "${CMAKE_BINARY_DIR}/no_ops.flag")
+endif()
 
 if (BUILD_OPEN_PROJECT)
     if (generate_aclnn_srcs OR generate_aclnn_inner_srcs)
@@ -709,7 +736,6 @@ endif()
 target_link_libraries(
     cust_proto
     PUBLIC ${OPHOST_NAME}_infer_obj
-    PUBLIC $<$<TARGET_EXISTS:${OPHOST_NAME}_tiling_obj>:${OPHOST_NAME}_tiling_obj>
     PUBLIC $<$<TARGET_EXISTS:${OPGRAPH_NAME}_gentask_obj>:${OPGRAPH_NAME}_gentask_obj>
 )
 
@@ -954,6 +980,16 @@ if (NOT ENABLE_AICPU_KERNEL)
     # and add matching install(DIRECTORY ...) if they need the same dedup treatment.
     set(OPS_TRANSFORMER_SHARED_KERNEL_INSTALL_DEPS mc2/common)
 
+    # pypto-pro ops (marked by enable_pypto_kernel, global property PYPTO_ENABLED_OPS keyed by op_file):
+    # forward so ascendc_impl_build.py emits the pypto wrapper variant (calls pypto_compile_op).
+    # Comma-joined so it stays a single argv token.
+    get_property(_pypto_adapt_ops GLOBAL PROPERTY PYPTO_ENABLED_OPS)
+    set(PYPTO_ADAPT_OPS_OPTION "")
+    if (_pypto_adapt_ops)
+        list(JOIN _pypto_adapt_ops "," _pypto_adapt_ops_str)
+        set(PYPTO_ADAPT_OPS_OPTION --pypto-ops ${_pypto_adapt_ops_str})
+    endif ()
+
     add_custom_target(generate_transformer_adapt_py
             COMMAND ${HI_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/scripts/util/ascendc_impl_build.py
             \"\"
@@ -965,12 +1001,26 @@ if (NOT ENABLE_AICPU_KERNEL)
             --opsinfo-dir ${base_aclnn_binary_dir} ${base_aclnn_binary_dir}/inner ${base_aclnn_binary_dir}/exc
             --compute-unit ${ASCEND_COMPUTE_UNIT}
             --enable-experimental ${ENABLE_EXPERIMENTAL}
+            ${PYPTO_ADAPT_OPS_OPTION}
     )
 
     add_dependencies(generate_transformer_adapt_py opbuild_gen_default opbuild_gen_inner opbuild_gen_exc)
 
     foreach (_op_name ${OP_LIST})
+        get_property(_op_version_skipped GLOBAL PROPERTY ${_op_name}_CANN_VERSION_SKIPPED)
+        if(_op_version_skipped)
+            message(STATUS "Skip install adapt py for ${_op_name}: CANN version check failed")
+            continue()
+        endif()
         install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}.py
+                DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
+                OPTIONAL
+        )
+        install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_a2.py
+                DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
+                OPTIONAL
+        )
+        install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_a3.py
                 DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
                 OPTIONAL
         )
@@ -990,12 +1040,21 @@ if (NOT ENABLE_AICPU_KERNEL)
     install(DIRECTORY ${BLAZE}
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
-    install(DIRECTORY ${TENSOR_API}
-            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+    install(DIRECTORY ${TENSOR_API}/impl/tensor_api
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/tensor_api/impl
     )
-    # Shared kernel headers for whitelist deps (contents -> ascendc/common/op_kernel).
+    install(DIRECTORY ${TENSOR_API}/include/tensor_api
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/tensor_api/include
+    )
+    install(DIRECTORY ${TENSOR_API}/impl/c_api
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/tensor_api/impl
+    )
+    install(DIRECTORY ${TENSOR_API}/include/c_api
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/tensor_api/include
+    )
+    # Shared kernel headers for whitelist deps (contents -> ascendc/common).
     install(DIRECTORY ${OPS_ADV_DIR}/mc2/common/op_kernel/
-            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/op_kernel
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
 
     file(GLOB _3rd_op_dirs "${OPS_ADV_DIR}/mc2/3rd/*")
@@ -1003,7 +1062,7 @@ foreach(_3rd_op_dir ${_3rd_op_dirs})
     if(IS_DIRECTORY "${_3rd_op_dir}")
         if(EXISTS "${_3rd_op_dir}/op_kernel" AND IS_DIRECTORY "${_3rd_op_dir}/op_kernel")
             get_filename_component(_3rd_op_name "${_3rd_op_dir}" NAME)
-            install(DIRECTORY ${_3rd_op_dir}/op_kernel
+            install(DIRECTORY ${_3rd_op_dir}/op_kernel/
                         DESTINATION ${IMPL_INSTALL_DIR}/ascendc/3rd/${_3rd_op_name}
             )
         endif()
@@ -1026,6 +1085,11 @@ endforeach(    )
 
     foreach (op_dir ${OP_DIR_LIST})
         get_filename_component(_op_name "${op_dir}" NAME)
+        get_property(_op_version_skipped GLOBAL PROPERTY ${_op_name}_CANN_VERSION_SKIPPED)
+        if(_op_version_skipped)
+            message(STATUS "Skip install kernel files for ${_op_name}: CANN version check failed")
+            continue()
+        endif()
         set(CURRENT_KERNEL_DIR "${op_dir}/op_kernel")
         file(GLOB KERNEL_SUB_DIRS RELATIVE "${CURRENT_KERNEL_DIR}" "${CURRENT_KERNEL_DIR}/*")
         filter_copy_files(SELECTED_FILES SELECTED_DIRS)
@@ -1054,6 +1118,32 @@ endforeach(    )
                         OPTIONAL
                 )
             endif ()
+            if (ENABLE_OPS_KERNEL AND ${_op_depened_name} STREQUAL "common")
+                set(COMMON_SRC_DIR "")
+                if (ENABLE_EXPERIMENTAL)
+                    get_filename_component(COMMON_SRC_DIR "${OPS_TRANSFORMER_DIR}/experimental/${op_depend_dir}" REALPATH)
+                else()
+                    get_filename_component(COMMON_SRC_DIR "${OPS_TRANSFORMER_DIR}/${op_depend_dir}" REALPATH)
+                endif()
+                list(APPEND ALL_COMMON_SRC_DIRS "${COMMON_SRC_DIR}")
+            endif()
+        endforeach ()
+        foreach (op_depend_dir ${${_op_name}_a2_depends})
+            get_filename_component(_op_depened_name "${op_depend_dir}" NAME)
+            get_filename_component(_op_parent_name "${op_depend_dir}" DIRECTORY)
+            if (ENABLE_OPS_KERNEL AND ${_op_depened_name} STREQUAL "common")
+                set(COMMON_SRC_DIR "")
+                if (ENABLE_EXPERIMENTAL)
+                    get_filename_component(COMMON_SRC_DIR "${OPS_TRANSFORMER_DIR}/experimental/${op_depend_dir}" REALPATH)
+                else()
+                    get_filename_component(COMMON_SRC_DIR "${OPS_TRANSFORMER_DIR}/${op_depend_dir}" REALPATH)
+                endif()
+                list(APPEND ALL_COMMON_SRC_DIRS "${COMMON_SRC_DIR}")
+            endif()
+        endforeach ()
+        foreach (op_depend_dir ${${_op_name}_a3_depends})
+            get_filename_component(_op_depened_name "${op_depend_dir}" NAME)
+            get_filename_component(_op_parent_name "${op_depend_dir}" DIRECTORY)
             if (ENABLE_OPS_KERNEL AND ${_op_depened_name} STREQUAL "common")
                 set(COMMON_SRC_DIR "")
                 if (ENABLE_EXPERIMENTAL)
@@ -1094,11 +1184,7 @@ if (ALL_COMMON_SRC_DIRS)
         list(APPEND COMMON_COPY_COMMANDS
             COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_DIR} ${_COMMON_OUT_SRC_DIR}
         )
-        if (SRC_DIR MATCHES "mc2/common$" AND NOT ENABLE_EXPERIMENTAL)
-            list(APPEND COMMON_COPY_COMMANDS
-                COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_DIR}/op_kernel ${_COMMON_OUT_SRC_DIR}
-            )
-        endif()
+
     endforeach()
 
     if(NOT TARGET common_src_copy)
@@ -1214,7 +1300,7 @@ if (NOT ENABLE_BUILT_IN AND BUILD_OPEN_PROJECT)
     set(CPACK_GENERATOR External)
     set(CPACK_CMAKE_GENERATOR "Unix Makefiles")
     set(CPACK_EXTERNAL_ENABLE_STAGING TRUE)
-    
+
     if (ENABLE_BUILD_PKG)
         set(CPACK_MAKESELF_PATH ${OPS_TRANSFORMER_DIR}/third_party/makeself)
         set(CPACK_EXTERNAL_PACKAGE_SCRIPT ${ASCEND_PROJECT_DIR}/fwk_modules/makeself.cmake)

@@ -28,7 +28,7 @@ using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
 namespace FFA {
-static uint32_t Ceil(uint32_t num1, uint32_t num2)
+static uint64_t Ceil(uint64_t num1, uint64_t num2)
 {
     if (num2 == 0) {
         return 0;
@@ -143,10 +143,14 @@ static bool IsEmptyInput(gert::TilingContext *context)
         uint64_t attentionOutBlockSize = 0;
         uint64_t softmaxSumBlockSize = 0;
 
-        // 计算 MIN_COPY_UINT_SIZE 块数
-        attentionOutBlockSize = Ceil(attentionOutShapeSize * ge::GetSizeByDataType(kernelType), MIN_COPY_UINT_SIZE);
+        // 计算 MIN_COPY_UINT_SIZE 块数（按 64 位域计算，避免收窄）
+        attentionOutBlockSize = Ceil(static_cast<uint64_t>(attentionOutShapeSize) *
+                                         static_cast<uint64_t>(ge::GetSizeByDataType(kernelType)),
+                                     static_cast<uint64_t>(MIN_COPY_UINT_SIZE));
         // softmaxSum 和 softmaxMax 输出为 fp32
-        softmaxSumBlockSize = Ceil(softmaxSumShapeSize * ge::GetSizeByDataType(ge::DT_FLOAT), MIN_COPY_UINT_SIZE);
+        softmaxSumBlockSize = Ceil(static_cast<uint64_t>(softmaxSumShapeSize) *
+                                       static_cast<uint64_t>(ge::GetSizeByDataType(ge::DT_FLOAT)),
+                                   static_cast<uint64_t>(MIN_COPY_UINT_SIZE));
 
         if (attentionOutShapeSize != 0) {
             if (attentionOutBlockSize % coreNum == 0) {

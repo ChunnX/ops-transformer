@@ -37,7 +37,7 @@ class Fp8DynamicQuantPertoken {
 public:
     __aicore__ inline Fp8DynamicQuantPertoken(TPipe *tPipe) : tPipe_(tPipe){};
     __aicore__ inline MC2PertokenDQuantContext *GetContextPtr();
-    __aicore__ inline void Init(){};
+    __aicore__ inline void Init() {};
     __aicore__ inline void Process(uint32_t taskIndex);
 
 protected:

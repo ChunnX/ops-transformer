@@ -38,7 +38,7 @@ struct MatmulReduceScatterV2HostUtParamBase {
     std::string comm_mode;
     ge::graphStatus expectResult;
 
-    MatmulReduceScatterV2HostUtParamBase(const csv_map& csvMap)
+    MatmulReduceScatterV2HostUtParamBase(const csv_map &csvMap)
     {
         this->case_name = ReadMap(csvMap, "case_name");
         this->group = ReadMap(csvMap, "group");
@@ -56,19 +56,19 @@ struct MatmulReduceScatterV2HostUtParamBase {
     }
 };
 
-inline std::ostream& operator<<(std::ostream& os, const MatmulReduceScatterV2HostUtParamBase& param)
+inline std::ostream &operator<<(std::ostream &os, const MatmulReduceScatterV2HostUtParamBase &param)
 {
     return os << param.case_name;
 }
 
-template<typename T>
-inline std::string GetCaseInfoString(const testing::TestParamInfo<T>& info)
+template <typename T>
+inline std::string GetCaseInfoString(const testing::TestParamInfo<T> &info)
 {
     return info.param.case_name;
 }
 
 const gert::TilingContextPara::TensorDescription TD_DEFAULT = {{}, ge::DT_UNDEFINED, ge::FORMAT_NULL};
-struct MatmulReduceScatterV2TilingUtParam: public MatmulReduceScatterV2HostUtParamBase {
+struct MatmulReduceScatterV2TilingUtParam : public MatmulReduceScatterV2HostUtParamBase {
     gert::TilingContextPara::TensorDescription x1 = TD_DEFAULT;
     gert::TilingContextPara::TensorDescription x2 = TD_DEFAULT;
     gert::TilingContextPara::TensorDescription bias = TD_DEFAULT;
@@ -83,42 +83,30 @@ struct MatmulReduceScatterV2TilingUtParam: public MatmulReduceScatterV2HostUtPar
     uint64_t expectTilingKey;
     std::string expectTilingDataHash;
 
-    MatmulReduceScatterV2TilingUtParam(const csv_map& csvMap):
-        MatmulReduceScatterV2HostUtParamBase(csvMap)
+    MatmulReduceScatterV2TilingUtParam(const csv_map &csvMap) : MatmulReduceScatterV2HostUtParamBase(csvMap)
     {
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "x1_shape", "x1_dtype", "x1_format", x1));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "x2_shape", "x2_dtype", "x2_format", x2));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "bias_shape", "bias_dtype", "bias_format", bias));
         this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "x1_shape", "x1_dtype", "x1_format",
-                x1));
+            GetTensorGE(csvMap, "x1_scale_shape", "x1_scale_dtype", "x1_scale_format", x1_scale));
         this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "x2_shape", "x2_dtype", "x2_format",
-                x2));
+            GetTensorGE(csvMap, "x2_scale_shape", "x2_scale_dtype", "x2_scale_format", x2_scale));
         this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "bias_shape", "bias_dtype", "bias_format",
-                bias));
-        this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "x1_scale_shape", "x1_scale_dtype", "x1_scale_format",
-                x1_scale));
-        this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "x2_scale_shape", "x2_scale_dtype", "x2_scale_format",
-                x2_scale));
-        this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "quant_scale_shape", "quant_scale_dtype", "quant_scale_format",
-                quant_scale));
+            GetTensorGE(csvMap, "quant_scale_shape", "quant_scale_dtype", "quant_scale_format", quant_scale));
         this->outputInstance.emplace_back(
-            GetTensorGE(csvMap, "output_y_shape", "output_y_dtype", "output_y_format",
-                y));
+            GetTensorGE(csvMap, "output_y_shape", "output_y_dtype", "output_y_format", y));
         this->outputInstance.emplace_back(
-            GetTensorGE(csvMap, "amax_out_shape", "amax_out_dtype", "amax_out_format",
-                amax_out));
+            GetTensorGE(csvMap, "amax_out_shape", "amax_out_dtype", "amax_out_format", amax_out));
         this->soc = ReadMap(csvMap, "soc");
         this->coreNum = stoull(ReadMap(csvMap, "core_num"));
         this->ubsize = stoull(ReadMap(csvMap, "ubsize"));
-        if(this->expectResult == ge::GRAPH_SUCCESS) {
+        if (this->expectResult == ge::GRAPH_SUCCESS) {
             this->expectTilingKey = stoull(ReadMap(csvMap, "expectTilingKey"));
             this->expectTilingDataHash = ReadMap(csvMap, "expectTilingDataHash");
         }
     }
 };
-} // namespace matmul_reducescatter_v2_ut
+} // namespace matmul_reduce_scatter_v2_ut
 
 #endif // MATMUL_REDUCESCATTER_V2_HOST_UT_PARAM_H

@@ -7,7 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
+
 #include <iostream>
 #include <map>
 #include <vector>
@@ -19,7 +19,7 @@
 using namespace std;
 
 namespace AlltoAllAllGatherBmmUT {
-    
+
 class AlltoAllAllGatherBmmArch22TilingTest : public testing::Test {
 protected:
     static void SetUpTestCase()
@@ -35,15 +35,19 @@ protected:
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Test1)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{16, 128, 64}, {16, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 64, 128}, {4, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -53,11 +57,7 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Test1)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 1UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -65,15 +65,19 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Test1)
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Xshard0)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{16, 256, 32}, {16, 256, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 64, 128}, {4, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -83,11 +87,7 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Xshard0)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 0UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -95,16 +95,20 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Xshard0)
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Shard0InvalidH)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{16, 256, 65536}, {16, 256, 65536}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 64, 128}, {4, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 1, 128}, {4, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -114,27 +118,27 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Shard0InvalidH)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Shard0UnequalH)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{16, 256, 64}, {16, 256, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 64, 128}, {4, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 1, 128}, {4, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -144,26 +148,26 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Shard0UnequalH)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Test1WeightTrans)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{16, 128, 64}, {16, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 128, 64}, {4, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -173,11 +177,7 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Test1WeightTrans)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 5UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -185,15 +185,19 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Test1WeightTrans)
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16XShard1ActType1)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{16, 128, 64}, {16, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 64, 128}, {4, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -203,11 +207,7 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16XShard1ActType1)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 1UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -215,15 +215,19 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16XShard1ActType1)
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16XShard1ActType4)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{16, 128, 64}, {16, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 64, 128}, {4, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -233,11 +237,7 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16XShard1ActType4)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 1UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -245,15 +245,19 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16XShard1ActType4)
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16InvalidE)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{32, 128, 64}, {32, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 64, 128}, {4, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -263,26 +267,26 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16InvalidE)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Shard)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{16, 128, 64}, {16, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 64, 128}, {4, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -292,11 +296,7 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Shard)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 1UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -304,15 +304,19 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Shard)
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, InvalidEOverepIntercept)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{160, 128, 64}, {160, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{40, 128, 64}, {40, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{40, 512, 64}, {40, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{40, 512, 64}, {40, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -322,27 +326,27 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, InvalidEOverepIntercept)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBias)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{16, 128, 64}, {16, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 64, 128}, {4, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 1, 128}, {4, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -352,11 +356,7 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBias)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 9UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -364,16 +364,20 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBias)
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasBf16)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{16, 128, 64}, {16, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 64, 128}, {4, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 1, 128}, {4, 1, 128}}, ge::DT_FLOAT, ge::FORMAT_ND}},
-        {{{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -383,11 +387,7 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasBf16)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 9UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -395,15 +395,19 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasBf16)
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Shard0)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{16, 256, 32}, {16, 256, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 64, 128}, {4, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -413,26 +417,26 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Shard0)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Shard1)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{16, 128, 64}, {16, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 64, 128}, {4, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -442,26 +446,26 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Shard1)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Shard1Test1)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{16, 128, 64}, {16, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 64, 128}, {4, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -471,27 +475,27 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Shard1Test1)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasTest1)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{16, 128, 64}, {16, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 64, 128}, {4, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 1, 128}, {4, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -501,27 +505,27 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasTest1)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>((true))},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasTest2)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{16, 128, 64}, {16, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 64, 128}, {4, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 1, 128}, {4, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -531,27 +535,27 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasTest2)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasTest3)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{16, 128, 64}, {16, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 64, 128}, {4, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 1, 128}, {4, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
@@ -561,27 +565,27 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasTest3)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasTest4)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{16, 128, 64}, {16, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 64, 128}, {4, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 1, 128}, {4, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -591,27 +595,27 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasTest4)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasTest5)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{16, 128, 64}, {16, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 64, 128}, {4, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 1, 128}, {4, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -621,27 +625,27 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasTest5)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasTest6)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{1, 128, 64}, {1, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 64, 128}, {4, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 1, 128}, {4, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -651,27 +655,27 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasTest6)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasTest7)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{16, 128, 65536}, {16, 128, 65536}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 64, 128}, {4, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 1, 128}, {4, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -681,27 +685,27 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasTest7)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasTest8)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 64, 128}, {4, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 1, 128}, {4, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -711,27 +715,27 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasTest8)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasTest9)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{16, 128, 64}, {16, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 64, 128}, {4, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 1, 128, 1}, {4, 1, 128, 1}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -741,27 +745,27 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasTest9)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasTest10)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{16, 128, 64}, {16, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 64, 128}, {4, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{5, 1, 128}, {5, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -771,27 +775,27 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasTest10)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasTest11)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{16, 128, 0}, {16, 128, 0}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 64, 128}, {4, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 1, 128}, {4, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -801,27 +805,27 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasTest11)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasTest12)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{128, 64}, {128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 64, 128}, {4, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 1, 128}, {4, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 512, 64}, {4, 512, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -831,26 +835,26 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16ShardWithBiasTest12)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Xshard0Ep2)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{16, 256, 32}, {16, 256, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{8, 128, 128}, {8, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{8, 512, 128}, {8, 512, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{8, 512, 128}, {8, 512, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -860,11 +864,7 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Xshard0Ep2)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 0UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -872,15 +872,19 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Xshard0Ep2)
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Xshard0CutE)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{16, 2254, 2048}, {16, 2254, 2048}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{4, 4096, 1024}, {4, 4096, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{4, 9016, 1024}, {4, 9016, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{4, 9016, 1024}, {4, 9016, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -890,11 +894,7 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Xshard0CutE)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 0UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -902,15 +902,19 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Xshard0CutE)
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Xshard0CutC)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{8, 2254, 2048}, {8, 2254, 2048}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{2, 4096, 1024}, {2, 4096, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{2, 9016, 1024}, {2, 9016, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{2, 9016, 1024}, {2, 9016, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -920,11 +924,7 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Xshard0CutC)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 0UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -932,15 +932,19 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Xshard0CutC)
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Xshard0TileShort)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{8, 2254, 6144}, {8, 2254, 6144}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{2, 12288, 6144}, {2, 12288, 6144}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{2, 9016, 6144}, {2, 9016, 6144}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{2, 9016, 6144}, {2, 9016, 6144}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -950,11 +954,7 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Xshard0TileShort)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 0UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -962,15 +962,19 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Xshard0TileShort)
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Xshard0MultiE)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{40, 2254, 6144}, {40, 2254, 6144}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{10, 12288, 1024}, {10, 12288, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{10, 9016, 1024}, {10, 9016, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{10, 9016, 1024}, {10, 9016, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -980,11 +984,7 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Xshard0MultiE)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 0UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -992,15 +992,19 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Xshard0MultiE)
 
 TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Xshard0LocalTailE)
 {
-    struct DistributeBarrierCompileInfo {} compileInfo;
+    struct DistributeBarrierCompileInfo {
+    } compileInfo;
     const std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingDataSize = 4096;
-    gert::TilingContextPara tilingContextPara("AlltoAllAllGatherBatchMatMul",
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllAllGatherBatchMatMul",
         {{{{10, 2254, 1024}, {10, 2254, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{5, 8192, 8192}, {5, 8192, 8192}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{5, 4508, 8192}, {5, 4508, 8192}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {
+            {{{5, 4508, 8192}, {5, 4508, 8192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -1010,14 +1014,10 @@ TEST_F(AlltoAllAllGatherBmmArch22TilingTest, Float16Xshard0LocalTailE)
          {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y2_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"output_y3_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo,
-        socVersion,
-        coreNum,
-        ubSize,
-        tilingDataSize);
+        &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 0UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
-} // namespace
+} // namespace AlltoAllAllGatherBmmUT

@@ -97,16 +97,6 @@ private:
     MoeInitRoutingQuantV2TilingData quantTilingData;
 };
 
-#define CHECK_NULL(context, ptr, ...)                                                                    \
-    do {                                                                                                 \
-        if ((ptr) == nullptr) {                                                                          \
-            const char* name = ((context)->GetNodeName() == nullptr) ? "nil" : (context)->GetNodeName(); \
-            OP_LOGE_WITHOUT_REPORT(name, "%s is nullptr!", ##__VA_ARGS__);                               \
-            REPORT_INNER_ERR_MSG("EZ9999", "op[%s], %s is nullptr!", name, ##__VA_ARGS__);               \
-            return ge::GRAPH_FAILED;                                                                     \
-        }                                                                                                \
-    } while (0)
-
 #define CHECK_FAIL(context, cond, log_func) \
     do {                                    \
         if (cond) {                         \
@@ -141,10 +131,10 @@ ge::graphStatus MoeInitRoutingQuantV2TilingBase::CheckOutShape()
 
     if (quantMode != 0) {
         auto dynamicShapePtr = context_->GetOutputShape(OUTOUT_DYNAMIC_QUANT_SCALE);
-        CHECK_NULL(context_, dynamicShapePtr, "DynamicQuantScale");
+        OP_CHECK_NULL_WITH_CONTEXT(context_, dynamicShapePtr);
 
         auto dynamicQuantScaleDesc = context_->GetOutputDesc(OUTOUT_DYNAMIC_QUANT_SCALE);
-        CHECK_NULL(context_, dynamicQuantScaleDesc, "DynamicQuantScale");
+        OP_CHECK_NULL_WITH_CONTEXT(context_, dynamicQuantScaleDesc);
         auto dt = dynamicQuantScaleDesc->GetDataType();
         CHECK_FAIL(context_, dt != ge::DT_FLOAT,
             OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "dynamicQuantScale",
@@ -178,7 +168,7 @@ ge::graphStatus MoeInitRoutingQuantV2TilingBase::CheckOutShape()
 ge::graphStatus MoeInitRoutingQuantV2TilingBase::CheckInt4Info()
 {
     auto expandedXDesc = context_->GetOutputDesc(OUTOUT_EXPANDED_X);
-    CHECK_NULL(context_, expandedXDesc, "expandedXDesc");
+    OP_CHECK_NULL_WITH_CONTEXT(context_, expandedXDesc);
     auto expandedXType = expandedXDesc->GetDataType();
     isInt4 = expandedXType == ge::DT_INT4;
     if (isInt4) {
@@ -196,7 +186,7 @@ ge::graphStatus MoeInitRoutingQuantV2TilingBase::CheckInt4Info()
         auto scaleShapePtr = context_->GetOptionalInputShape(INDEX_SCALE);
         if (scaleShapePtr != nullptr) {
             auto scaleDesc = context_->GetOptionalInputDesc(INDEX_SCALE);
-            CHECK_NULL(context_, scaleDesc, "scale");
+            OP_CHECK_NULL_WITH_CONTEXT(context_, scaleDesc);
             auto smoothShape = scaleShapePtr->GetStorageShape();
             size_t smoothDimNum = smoothShape.GetDimNum();
             std::string smoothDimStr = std::to_string(smoothDimNum) + "D";
@@ -224,18 +214,18 @@ ge::graphStatus MoeInitRoutingQuantV2TilingBase::GetShapeAttrsInfo()
     }
     auto scaleShapePtr = context_->GetOptionalInputShape(INDEX_SCALE);
     if (quantMode == 0) {
-        CHECK_NULL(context_, scaleShapePtr, "scale");
+        OP_CHECK_NULL_WITH_CONTEXT(context_, scaleShapePtr);
         auto scaleDesc = context_->GetOptionalInputDesc(INDEX_SCALE);
-        CHECK_NULL(context_, scaleDesc, "scale");
+        OP_CHECK_NULL_WITH_CONTEXT(context_, scaleDesc);
         auto dt_scale = scaleDesc->GetDataType();
         CHECK_FAIL(context_, dt_scale != ge::DT_FLOAT,
             OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "scale",
             Ops::Base::ToString(dt_scale).c_str(), "FLOAT"));
 
         auto offsetShapePtr = context_->GetOptionalInputShape(INDEX_OFFSET);
-        CHECK_NULL(context_, offsetShapePtr, "offset");
+        OP_CHECK_NULL_WITH_CONTEXT(context_, offsetShapePtr);
         auto offsetDesc = context_->GetOptionalInputDesc(INDEX_OFFSET);
-        CHECK_NULL(context_, offsetDesc, "offset");
+        OP_CHECK_NULL_WITH_CONTEXT(context_, offsetDesc);
         auto dt_offset = offsetDesc->GetDataType();
         CHECK_FAIL(context_, dt_offset != ge::DT_FLOAT,
             OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "offset",
@@ -258,7 +248,7 @@ ge::graphStatus MoeInitRoutingQuantV2TilingBase::GetShapeAttrsInfo()
     } else {
         if (scaleShapePtr != nullptr) {
             auto scaleDesc = context_->GetOptionalInputDesc(INDEX_SCALE);
-            CHECK_NULL(context_, scaleDesc, "scale");
+            OP_CHECK_NULL_WITH_CONTEXT(context_, scaleDesc);
             auto dt = scaleDesc->GetDataType();
             CHECK_FAIL(context_, dt != ge::DT_FLOAT,
                 OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "scale", Ops::Base::ToString(dt).c_str(), "FLOAT"));

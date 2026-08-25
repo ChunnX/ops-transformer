@@ -17,7 +17,7 @@
 #include "moe_distribute_dispatch_teardown_tiling_arch22.h"
 
 namespace optiling {
-    
+
 bool MoeDistributeDispatchTeardownTilingA3::IsCapable()
 {
     OP_LOGD(nodeName_, "Do MoeDistributeDispatchTeardownTilingA3 tiling.");

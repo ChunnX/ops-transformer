@@ -36,8 +36,7 @@ namespace Tile {
 template <class ArchTag, class InputType, class DstTrait, class SrcTrait>
 struct Copy<
     ArchTag, CopyWithLayout, InputType, DstTrait, SrcTrait,
-    AscendC::Std::enable_if_t<PosIsGM<SrcTrait::tPos>() && PosIsL1<DstTrait::tPos>() && IsNDOrAlign<SrcTrait>()>
-> {
+    AscendC::Std::enable_if_t<PosIsGM<SrcTrait::tPos>() && PosIsL1<DstTrait::tPos>() && IsNDOrAlign<SrcTrait>()>> {
     using DstTensor = AscendC::LocalTensor<DstTrait>;
     using SrcTensor = AscendC::GlobalTensor<SrcTrait>;
 
@@ -48,7 +47,7 @@ struct Copy<
      * @param [in] coord: coordinate
      */
     template <class Coord>
-    __aicore__ inline void operator()(DstTensor& dst, SrcTensor& src, const Coord& coord)
+    __aicore__ inline void operator()(DstTensor &dst, SrcTensor &src, const Coord &coord)
     {
         auto srcShape = src.GetTensorTrait().GetLayout().GetShape();
         auto srcStride = src.GetTensorTrait().GetLayout().GetStride();
@@ -86,15 +85,13 @@ struct Copy<
  * @param [in] SrcTrait: source tensor traits
  */
 template <class ArchTag, class InputType, class DstTrait, class SrcTrait>
-struct Copy<
-    ArchTag, CopyWithLayout, InputType, DstTrait, SrcTrait,
-    AscendC::Std::enable_if_t<PosIsGM<SrcTrait::tPos>() && PosIsL1<DstTrait::tPos>() && IsNz<SrcTrait>()>
-> {
+struct Copy<ArchTag, CopyWithLayout, InputType, DstTrait, SrcTrait,
+            AscendC::Std::enable_if_t<PosIsGM<SrcTrait::tPos>() && PosIsL1<DstTrait::tPos>() && IsNz<SrcTrait>()>> {
     using DstTensor = AscendC::LocalTensor<DstTrait>;
     using SrcTensor = AscendC::GlobalTensor<SrcTrait>;
 
     template <class Coord>
-    __aicore__ inline void operator()(DstTensor& dst, SrcTensor& src, const Coord& coord)
+    __aicore__ inline void operator()(DstTensor &dst, SrcTensor &src, const Coord &coord)
     {
         using TransT = typename InputType::T;
 
@@ -126,12 +123,9 @@ struct Copy<
  * @param [in] SrcTrait: source tensor traits
  */
 template <class ArchTag, class InputType, class DstTrait, class SrcTrait>
-struct Copy<
-    ArchTag, CopyWithLayout, InputType, DstTrait, SrcTrait,
-    AscendC::Std::enable_if_t<
-        PosIsGM<SrcTrait::tPos>() && PosIsL1<DstTrait::tPos>() && InputType::format == CubeFormat::VECTOR
-    >
-> {
+struct Copy<ArchTag, CopyWithLayout, InputType, DstTrait, SrcTrait,
+            AscendC::Std::enable_if_t<PosIsGM<SrcTrait::tPos>() && PosIsL1<DstTrait::tPos>() &&
+                                      InputType::format == CubeFormat::VECTOR>> {
     using DstTensor = AscendC::LocalTensor<DstTrait>;
     using SrcTensor = AscendC::GlobalTensor<SrcTrait>;
 
@@ -142,7 +136,7 @@ struct Copy<
      * @param [in] coord: coordinate
      */
     template <class Coord>
-    __aicore__ inline void operator()(DstTensor& dst, SrcTensor& src, const Coord& coord)
+    __aicore__ inline void operator()(DstTensor &dst, SrcTensor &src, const Coord &coord)
     {
         auto dstShape = dst.GetTensorTrait().GetLayout().GetShape();
         AscendC::DataCopyParams dataCopyInfo;

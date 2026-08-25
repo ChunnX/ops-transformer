@@ -49,9 +49,8 @@ void Mc2WeightQuantBatchMatmulV2CustomNzSplitK::Reset()
     cubeSingleN_ = 128UL;
     al1FullLoad_ = false;
 
-    OP_TILING_CHECK(memset_s(
-                        context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(), 0,
-                        context_->GetRawTilingData()->GetCapacity()) != EOK,
+    OP_TILING_CHECK(memset_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(), 0,
+                             context_->GetRawTilingData()->GetCapacity()) != EOK,
                     OP_LOGE(opName_, "fail to memset tiling data"), return;);
 }
 
@@ -60,17 +59,18 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2CustomNzSplitK::PostTiling()
     size_t tilingDataSize = sizeof(Mc2WeightQuantBatchMatmulV2CustomNzSplitKTilingData);
     OP_LOGD(opName_, "final tiling data size: %zu", tilingDataSize);
 
-    OP_TILING_CHECK(
-        tilingDataSize % sizeof(uint64_t) != 0,
-        OP_LOGE(opName_, "tiling data size[%zu] not aligned to 8", tilingDataSize),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(tilingDataSize % sizeof(uint64_t) != 0,
+                    OP_LOGE(opName_, "tiling data size[%zu] not aligned to 8", tilingDataSize),
+                    return ge::GRAPH_FAILED);
 
     context_->GetRawTilingData()->SetDataSize(tilingDataSize);
 
     uint32_t usedAivNum = compileInfoPtr_->aicNum * 2;
     context_->SetBlockDim(CalcTschBlockDim(usedAivNum, compileInfoPtr_->aicNum, compileInfoPtr_->aivNum));
-    errno_t ret = memcpy_s(context_->GetTilingData<Mc2WeightQuantBatchMatmulV2CustomNzSplitKTilingData>(), context_->GetRawTilingData()->GetCapacity(), reinterpret_cast<void *>(&tilingData_), tilingDataSize);
-    if (ret != EOK){
+    errno_t ret =
+        memcpy_s(context_->GetTilingData<Mc2WeightQuantBatchMatmulV2CustomNzSplitKTilingData>(),
+                 context_->GetRawTilingData()->GetCapacity(), reinterpret_cast<void *>(&tilingData_), tilingDataSize);
+    if (ret != EOK) {
         OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
         return ge::GRAPH_FAILED;
     }
@@ -85,30 +85,25 @@ bool Mc2WeightQuantBatchMatmulV2CustomNzSplitK::IsCapable()
         OP_LOGI(opName_, "NZ splitk do not support deterministic");
         return false;
     }
-    OP_TILING_CHECK(
-        matmulInfoPtr_->cDtype == ge::DT_INT8 || matmulInfoPtr_->antiQuantScaleDtype == ge::DT_UINT64 ||
-            matmulInfoPtr_->antiQuantScaleDtype == ge::DT_INT64,
-        OP_LOGI(opName_, "Custom splitK not support quant or antiquant uint64"), return false);
-    OP_TILING_CHECK(
-        matmulInfoPtr_->antiQuantType != Mc2QuantType::PER_CHANNEL,
-        OP_LOGI(opName_, "Custom SplitK only support per-channel"), return false);
-    OP_TILING_CHECK(
-        matmulInfoPtr_->transA || !matmulInfoPtr_->transB,
-        OP_LOGI(opName_, "Custom SplitK only support not trans_a and trans_b"), return false);
-    OP_TILING_CHECK(
-        matmulInfoPtr_->mSize < M_MIN_LIMIT || matmulInfoPtr_->mSize > M_MAX_LIMIT ||
-            matmulInfoPtr_->kSize > MAX_SHAPE_DIM || matmulInfoPtr_->nSize > MAX_SHAPE_DIM,
-        OP_LOGI(opName_, "Custom SplitK only support 64 < m <= 256 and n < 65536 and k < 65536"), return false);
-    Mc2WhiteListShape shape(
-        {1, matmulInfoPtr_->kSize, matmulInfoPtr_->nSize, matmulInfoPtr_->hasBias, matmulInfoPtr_->transA,
-         matmulInfoPtr_->transB, 1});
+    OP_TILING_CHECK(matmulInfoPtr_->cDtype == ge::DT_INT8 || matmulInfoPtr_->antiQuantScaleDtype == ge::DT_UINT64 ||
+                        matmulInfoPtr_->antiQuantScaleDtype == ge::DT_INT64,
+                    OP_LOGI(opName_, "Custom splitK not support quant or antiquant uint64"), return false);
+    OP_TILING_CHECK(matmulInfoPtr_->antiQuantType != Mc2QuantType::PER_CHANNEL,
+                    OP_LOGI(opName_, "Custom SplitK only support per-channel"), return false);
+    OP_TILING_CHECK(matmulInfoPtr_->transA || !matmulInfoPtr_->transB,
+                    OP_LOGI(opName_, "Custom SplitK only support not trans_a and trans_b"), return false);
+    OP_TILING_CHECK(matmulInfoPtr_->mSize < M_MIN_LIMIT || matmulInfoPtr_->mSize > M_MAX_LIMIT ||
+                        matmulInfoPtr_->kSize > MAX_SHAPE_DIM || matmulInfoPtr_->nSize > MAX_SHAPE_DIM,
+                    OP_LOGI(opName_, "Custom SplitK only support 64 < m <= 256 and n < 65536 and k < 65536"),
+                    return false);
+    Mc2WhiteListShape shape({1, matmulInfoPtr_->kSize, matmulInfoPtr_->nSize, matmulInfoPtr_->hasBias,
+                             matmulInfoPtr_->transA, matmulInfoPtr_->transB, 1});
     OP_TILING_CHECK(
         NETWORK_UNALIGN_WHITE_LIST.find(shape) == NETWORK_UNALIGN_WHITE_LIST.end() &&
             (matmulInfoPtr_->nSize % SHAPE_ALIGNED_FACTOR != 0 || matmulInfoPtr_->kSize % SHAPE_ALIGNED_FACTOR != 0),
         OP_LOGI(opName_, "Custom SplitK only support n aligned to 64 and k aligned to 64"), return false);
-    OP_TILING_CHECK(
-        matmulInfoPtr_->bFormat != ge::FORMAT_FRACTAL_NZ,
-        OP_LOGI(opName_, "Custom SplitK only support weightNz format"), return false);
+    OP_TILING_CHECK(matmulInfoPtr_->bFormat != ge::FORMAT_FRACTAL_NZ,
+                    OP_LOGI(opName_, "Custom SplitK only support weightNz format"), return false);
     OP_LOGI(opName_, "Custom SplitK check success");
     return true;
 }
@@ -120,23 +115,19 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2CustomNzSplitK::InstantiateTilingData
         tilingData_ = std::unique_ptr<Mc2WeightQuantBatchMatmulV2CustomNzSplitKTilingData>(
             new (std::nothrow) Mc2WeightQuantBatchMatmulV2CustomNzSplitKTilingData());
     }
-    OP_TILING_CHECK(
-        tilingData_ == nullptr, OP_LOGE(opName_, "failed to instantiate tilingData"),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        context_->GetRawTilingData()->GetCapacity() < tilingDataSize,
-        OP_LOGE(
-            opName_, "tiling data capacity %zu < actual tiling data size %zu",
-            context_->GetRawTilingData()->GetCapacity(), tilingDataSize),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(tilingData_ == nullptr, OP_LOGE(opName_, "failed to instantiate tilingData"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(context_->GetRawTilingData()->GetCapacity() < tilingDataSize,
+                    OP_LOGE(opName_, "tiling data capacity %zu < actual tiling data size %zu",
+                            context_->GetRawTilingData()->GetCapacity(), tilingDataSize),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus Mc2WeightQuantBatchMatmulV2CustomNzSplitK::DoOpTiling()
 {
-    OP_TILING_CHECK(
-        InstantiateTilingData() == ge::GRAPH_FAILED,
-        OP_LOGE(opName_, "unable to get pointer of tiling data"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(InstantiateTilingData() == ge::GRAPH_FAILED,
+                    OP_LOGE(opName_, "unable to get pointer of tiling data"), return ge::GRAPH_FAILED);
     tilingData_->kSize = matmulInfoPtr_->kSize;
     tilingData_->nSize = matmulInfoPtr_->nSize;
     tilingData_->mSize = matmulInfoPtr_->mSize;
@@ -149,8 +140,7 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2CustomNzSplitK::DoOpTiling()
     tilingData_->vecBlockDimK = tilingData_->cubeBlockDimK;
     tilingData_->singleK = SINGLE_K;
     tilingData_->vecSingleN = VECTOR_SINGLE_N;
-    tilingData_->singleCoreKLoop =
-        ops::CeilDiv(tilingData_->singleCoreK, static_cast<uint64_t>(tilingData_->singleK));
+    tilingData_->singleCoreKLoop = ops::CeilDiv(tilingData_->singleCoreK, static_cast<uint64_t>(tilingData_->singleK));
     tilingData_->vectorSingleCoreN = tilingData_->cubeSingleCoreN / VEC_CUBE_RATIO;
     tilingData_->vectorSingleCoreNTail = tilingData_->cubeSingleCoreNTail / VEC_CUBE_RATIO;
     tilingData_->vecSingleCoreNLoop =
@@ -186,7 +176,8 @@ uint64_t Mc2WeightQuantBatchMatmulV2CustomNzSplitK::GetTilingKey() const
     uint64_t subAlgorithm = static_cast<uint64_t>(Mc2OptimizationAlgorithmSubCategory::SPLIT_K);
     uint64_t subAlgorithmCustom = 0UL;
     uint64_t innerPrecise = 0UL;
-    uint64_t templateCustom = al1FullLoad_ ? static_cast<uint64_t>(Mc2CustomSplitKConfiguration::A_MK_FULL_LOAD) : static_cast<uint64_t>(Mc2CustomSplitKConfiguration::A_NORMAL_LOAD);
+    uint64_t templateCustom = al1FullLoad_ ? static_cast<uint64_t>(Mc2CustomSplitKConfiguration::A_MK_FULL_LOAD) :
+                                             static_cast<uint64_t>(Mc2CustomSplitKConfiguration::A_NORMAL_LOAD);
     uint64_t apiConstexpr = 0UL;
     bool transA = matmulInfoPtr_->transA;
     bool transB = matmulInfoPtr_->transB;
@@ -195,24 +186,22 @@ uint64_t Mc2WeightQuantBatchMatmulV2CustomNzSplitK::GetTilingKey() const
     bool hasAntiquantOffset = matmulInfoPtr_->hasAntiQuantOffset;
     bool hasBias = false;
     bool isBiasFp32 = false;
-    bool isWeightNz = true; // Mc2WeightFormat::FRACTAL_NZ
+    bool isWeightNz = true;       // Mc2WeightFormat::FRACTAL_NZ
     uint64_t templateExtra = 3UL; // 3 means TEMPLATE_EXTRA_NOT_USED
-    uint64_t fullLoadMode = 5UL; // 5 means FULL_LOAD_MODE_NOT_USED
+    uint64_t fullLoadMode = 5UL;  // 5 means FULL_LOAD_MODE_NOT_USED
     uint64_t batch = 0UL;
-    uint64_t tilingKey_ = GET_TPL_TILING_KEY(
-        socVersionType, subSocVersionType, antiquantScenario, algorithm, subAlgorithm, subAlgorithmCustom,
-        innerPrecise, templateCustom, apiConstexpr, transA, transB, antiquantType, quantType, hasAntiquantOffset,
-        hasBias, isBiasFp32, isWeightNz, templateExtra, fullLoadMode, batch);
+    uint64_t tilingKey_ = GET_TPL_TILING_KEY(socVersionType, subSocVersionType, antiquantScenario, algorithm,
+                                             subAlgorithm, subAlgorithmCustom, innerPrecise, templateCustom,
+                                             apiConstexpr, transA, transB, antiquantType, quantType, hasAntiquantOffset,
+                                             hasBias, isBiasFp32, isWeightNz, templateExtra, fullLoadMode, batch);
     return tilingKey_;
 }
 
 // 6、计算Workspace 大小
 ge::graphStatus Mc2WeightQuantBatchMatmulV2CustomNzSplitK::GetWorkspaceSize()
 {
-    size_t* workspaces = context_->GetWorkspaceSizes(1);
-    OP_TILING_CHECK(
-        workspaces == nullptr, OP_LOGE(opName_, "failed to get workspace size"),
-        return ge::GRAPH_FAILED);
+    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "failed to get workspace size"), return ge::GRAPH_FAILED);
     uint64_t workspaceSize =
         CACHE_NUM * CUBE_BASE_N * SINGLE_K * compileInfoPtr_->aicNum * GetSizeByDataType(matmulInfoPtr_->aDtype) +
         sizeof(float) * matmulInfoPtr_->mSize * matmulInfoPtr_->nSize + compileInfoPtr_->workspaceNum;
@@ -224,8 +213,8 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2CustomNzSplitK::GetWorkspaceSize()
 void Mc2WeightQuantBatchMatmulV2CustomNzSplitK::GetMatMulTiling()
 {
     uint64_t singleCoreK = DEFAULT_SINGLE_CORE_SIZE;
-    uint64_t cubeBlockDimK = std::min(
-        ops::CeilDiv(tilingData_->kSizeAlign, singleCoreK), static_cast<uint64_t>(compileInfoPtr_->aicNum));
+    uint64_t cubeBlockDimK =
+        std::min(ops::CeilDiv(tilingData_->kSizeAlign, singleCoreK), static_cast<uint64_t>(compileInfoPtr_->aicNum));
     singleCoreK = ops::CeilAlign(ops::CeilDiv(tilingData_->kSizeAlign, cubeBlockDimK), DEFAULT_SINGLE_CORE_SIZE);
     cubeBlockDimK = ops::CeilDiv(tilingData_->kSizeAlign, singleCoreK);
     // L1的一半空间256K用来载入A矩阵

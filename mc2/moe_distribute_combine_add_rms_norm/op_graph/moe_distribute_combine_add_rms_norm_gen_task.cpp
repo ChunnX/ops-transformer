@@ -55,7 +55,7 @@ ge::Status MoeDistributeCombineAddRmsNormCalcParamFunc(gert::ExeResGenerationCon
 }
 
 ge::Status MoeDistributeCombineAddRmsNormGenTaskFunc(const gert::ExeResGenerationContext *context,
-                                            std::vector<std::vector<uint8_t>> &tasks)
+                                                     std::vector<std::vector<uint8_t>> &tasks)
 {
     const char *nodeName = context->GetNodeName();
     OPS_LOG_I(nodeName, "MC2 Generate task start.");

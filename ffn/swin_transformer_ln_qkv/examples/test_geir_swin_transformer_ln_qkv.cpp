@@ -37,7 +37,8 @@ using std::vector;
 
 #define ADD_INPUT(intputIndex, intputName, intputDtype, inputShape)                          \
     vector<int64_t> placeholder##intputIndex##_shape = inputShape;                           \
-    auto placeholder##intputIndex = op::Data("placeholder" + intputIndex).set_attr_index(0); \
+    auto placeholder##intputIndex =                                                          \
+        op::Data("placeholder" #intputIndex).set_attr_index((intputIndex) - 1);              \
     TensorDesc placeholder##intputIndex##_desc =                                             \
         TensorDesc(ge::Shape(placeholder##intputIndex##_shape), FORMAT_ND, intputDtype);     \
     placeholder##intputIndex##_desc.SetPlacement(ge::kPlacementHost);                        \
@@ -53,9 +54,10 @@ using std::vector;
         return FAILED;                                                                       \
     }                                                                                        \
     placeholder##intputIndex.update_input_desc_x(placeholder##intputIndex##_desc);           \
+    placeholder##intputIndex.update_output_desc_y(placeholder##intputIndex##_desc);          \
     input.push_back(tensor_placeholder##intputIndex);                                        \
     graph.AddOp(placeholder##intputIndex);                                                   \
-    swin_transformer_ln_qkv_op.set_input_##intputName(placeholder##intputIndex);                                   \
+    swin_transformer_ln_qkv_op.set_input_##intputName(placeholder##intputIndex);             \
     inputs.push_back(placeholder##intputIndex);
 
 #define ADD_INPUT_ATTR(attrName, attrValue)                                                  \
@@ -63,7 +65,7 @@ using std::vector;
 
 #define ADD_CONST_INPUT(intputIndex, intputName, intputDtype, inputShape)                    \
     vector<int64_t> placeholder##intputIndex##_shape = inputShape;                           \
-    auto placeholder##intputIndex = op::Const("placeholder" + intputIndex);                  \
+    auto placeholder##intputIndex = op::Const("placeholder" #intputIndex);                   \
     TensorDesc placeholder##intputIndex##_desc =                                             \
         TensorDesc(ge::Shape(placeholder##intputIndex##_shape), FORMAT_ND, intputDtype);     \
     placeholder##intputIndex##_desc.SetPlacement(ge::kPlacementHost);                        \
@@ -187,14 +189,14 @@ int CreateOppInGraph(DataType inDtype, std::vector<ge::Tensor> &input, std::vect
     auto swin_transformer_ln_qkv_op = op::SwinTransformerLnQKV("test_geir_swin_transformer_ln_qkv");
 
     // shape定义
-    std::vector<int64_t> x_shape = {1, 64, 128};
+    std::vector<int64_t> x_shape = {8, 256, 128};
     std::vector<int64_t> gamma_shape = {128};
     std::vector<int64_t> beta_shape = {128};
     std::vector<int64_t> weight_shape = {128, 384};
     std::vector<int64_t> bias_shape = {384};
+    std::vector<int64_t> output_shape = {32, 4, 64, 32};
+    std::vector<int64_t> shifts_val = {0};
 
-    std::vector<int64_t> output_shape = {1, 4, 64, 32};
-    
     // 添加输入（顺序严格匹配 proto.h）
     ADD_INPUT(1, x, DT_FLOAT16, x_shape);
     ADD_INPUT(2, gamma, DT_FLOAT16, gamma_shape);
@@ -211,7 +213,7 @@ int CreateOppInGraph(DataType inDtype, std::vector<ge::Tensor> &input, std::vect
     ADD_INPUT_ATTR(head_num, 4);
     ADD_INPUT_ATTR(head_dim, 4);
     ADD_INPUT_ATTR(seq_length, 8);
-    ADD_INPUT_ATTR(shifts, 0);
+    ADD_INPUT_ATTR(shifts, shifts_val);
     ADD_INPUT_ATTR(epsilon, float(0.001));
 
     outputs.push_back(swin_transformer_ln_qkv_op);
@@ -237,12 +239,7 @@ int main(int argc, char *argv[])
     std::vector<Operator> inputs{};
     std::vector<Operator> outputs{};
 
-    std::cout << argv[1] << std::endl;
-    char *endptr;
-
     DataType inDtype = DT_FLOAT16;
-    std::cout << inDtype << std::endl;
-
     ret = CreateOppInGraph(inDtype, input, inputs, outputs, graph);
     if (ret != SUCCESS) {
         printf("%s - ERROR - [XIR]: Create ir session using build options failed\n", GetTime().c_str());
@@ -289,34 +286,24 @@ int main(int argc, char *argv[])
 
     int input_num = input.size();
     for (int i = 0; i < input_num; i++) {
-        std::cout << "input " << i << " dtype :  " << input[i].GetTensorDesc().GetDataType() << std::endl;
         string input_file = "./tc_ge_irrun_test_0008_npu_input_" + std::to_string(i) + ".bin";
         uint8_t *input_data_i = input[i].GetData();
         int64_t input_shape = input[i].GetTensorDesc().GetShape().GetShapeSize();
-        std::cout << "this is " << i << "th input, input shape size =" << input_shape << std::endl;
         uint32_t data_size = input_shape * GetDataTypeSize(input[i].GetTensorDesc().GetDataType());
         WriteDataToFile((const char *)input_file.c_str(), data_size, input_data_i);
     }
 
     int output_num = output.size();
     for (int i = 0; i < output_num; i++) {
-        std::cout << "output " << i << " dtype :  " << output[i].GetTensorDesc().GetDataType() << std::endl;
         string output_file = "./tc_ge_irrun_test_0008_npu_output_" + std::to_string(i) + ".bin";
         uint8_t *output_data_i = output[i].GetData();
         int64_t output_shape = output[i].GetTensorDesc().GetShape().GetShapeSize();
-        std::cout << "this is " << i << "th output, output shape size =" << output_shape << std::endl;
         uint32_t data_size = output_shape * GetDataTypeSize(output[i].GetTensorDesc().GetDataType());
         WriteDataToFile((const char *)output_file.c_str(), data_size, output_data_i);
-        int32_t *result = (int32_t*)output_data_i;
     }
 
-    ge::AscendString error_msg = ge::GEGetErrorMsgV2();
-    std::string error_str(error_msg.GetString());
-    std::cout << "Error message: " << error_str << std::endl;
-    ge::AscendString warning_msg = ge::GEGetWarningMsgV2();
-    std::string warning_str(warning_msg.GetString());
-    std::cout << "Warning message: " << warning_str << std::endl;
     printf("%s - INFO - [XIR]: Start to finalize ir graph session\n", GetTime().c_str());
+    delete session;
     ret = ge::GEFinalize();
     if (ret != SUCCESS) {
         printf("%s - INFO - [XIR]: Finalize ir graph session failed\n", GetTime().c_str());

@@ -34,7 +34,7 @@ ge::Status BatchMatMulReduceScatterAlltoAllCalcParamFunc(gert::ExeResGenerationC
 }
 
 ge::Status BatchMatMulReduceScatterAlltoAllGenTaskFunc(const gert::ExeResGenerationContext *context,
-                                            std::vector<std::vector<uint8_t>> &tasks)
+                                                       std::vector<std::vector<uint8_t>> &tasks)
 {
     return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(context, tasks);
 }

@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                      |     √    |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>      |    √    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>      |    √    |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    √     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -25,7 +35,7 @@ $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeFinalizeRoutingV3GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeFinalizeRoutingV3”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeFinalizeRoutingV3GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeFinalizeRoutingV3”接口执行计算。
 
 ```c++
 aclnnStatus aclnnMoeFinalizeRoutingV3GetWorkspaceSize(
@@ -36,14 +46,14 @@ aclnnStatus aclnnMoeFinalizeRoutingV3GetWorkspaceSize(
     const aclTensor *biasOptional,
     const aclTensor *scalesOptional,
     const aclTensor *expertIdxOptional,
-    const aclTensor* xOptional,
-    const aclTensor* alpha1Optional,
-    const aclTensor* alpha2Optional,
-    const aclTensor* vOptional,
+    const aclTensor *xOptional,
+    const aclTensor *alpha1Optional,
+    const aclTensor *alpha2Optional,
+    const aclTensor *vOptional,
     int64_t           dropPadMode,
-    const aclIntArray* zeroExpertRange,
-    const aclIntArray* copyExpertRange,
-    const aclIntArray* constantExpertRange, 
+    const aclIntArray *zeroExpertRange,
+    const aclIntArray *copyExpertRange,
+    const aclIntArray *constantExpertRange,
     const aclTensor *out,
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
@@ -84,7 +94,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
   </tr></thead>
   <tbody>
   <tr>
-    <td>expandedX</td>
+    <td>expandedX(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的expandedX ，MoE的FFN输出。</td>
     <td>-</td>
@@ -94,7 +104,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
     <td>√</td>
   </tr>
   <tr>
-    <td>expandedRowIdx</td>
+    <td>expandedRowIdx(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的expandedRowIdx。</td>
     <td>-</td>
@@ -104,7 +114,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
     <td>√</td>
   </tr>
   <tr>
-    <td>x1Optional</td>
+    <td>x1Optional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的x1，表示第一个共享专家。</td>
     <td>-</td>
@@ -114,7 +124,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
     <td>√</td>
   </tr>
   <tr>
-    <td>x2Optional</td>
+    <td>x2Optional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的x2，表示第二个共享专家。</td>
     <td>-</td>
@@ -124,7 +134,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
     <td>√</td>
   </tr>
   <tr>
-    <td>biasOptional</td>
+    <td>biasOptional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的bias，表示偏置量。</td>
     <td>-</td>
@@ -134,7 +144,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
     <td>√</td>
   </tr>
   <tr>
-    <td>scalesOptional</td>
+    <td>scalesOptional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的scales。</td>
     <td>-</td>
@@ -144,7 +154,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
     <td>√</td>
   </tr>
   <tr>
-    <td>expertIdxOptional</td>
+    <td>expertIdxOptional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的expertIdx。</td>
     <td>Tensor中的值取值范围是[0, E-1]。</td>
@@ -154,7 +164,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
     <td>√</td>
   </tr>
   <tr>
-    <td>xOptional</td>
+    <td>xOptional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的x。</td>
     <td>-</td>
@@ -164,39 +174,39 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
     <td>√</td>
   </tr>
   <tr>
-    <td>alpha1Optional</td>
+    <td>alpha1Optional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的a1。</td>
     <td>-</td>
     <td>与expandedX一致。</td>
     <td>ND</td>
-    <td>(Constant_Expert_Range_Num, H)</td>
+    <td>(constantExpertEnd - constantExpertStart, H)</td>
     <td>√</td>
   </tr>
   <tr>
-    <td>alpha2Optional</td>
+    <td>alpha2Optional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的a2。</td>
     <td>-</td>
     <td>与expandedX一致。</td>
     <td>ND</td>
-    <td>(Constant_Expert_Range_Num, H)</td>
+    <td>(constantExpertEnd - constantExpertStart, H)</td>
     <td>√</td>
   </tr>
   <tr>
-    <td>vOptional</td>
+    <td>vOptional(aclTensor*)</td>
     <td>输入</td>
     <td>公式中的v。</td>
     <td>-</td>
     <td>与expandedX一致。</td>
     <td>ND</td>
-    <td>(Constant_Expert_Range_Num, H)</td>
+    <td>(constantExpertEnd - constantExpertStart, H)</td>
     <td>√</td>
   </tr>
   <tr>
-    <td>dropPadMode</td>
+    <td>dropPadMode(int64_t)</td>
     <td>输入</td>
-    <td>表示是否支持丢弃模式,expandedRowIdx的排列方式。</td>
+    <td>可选参数，默认值为0。表示是否支持丢弃模式，expandedRowIdx的排列方式。</td>
     <td>取值范围为[0, 3]。</td>
     <td>-</td>
     <td>-</td>
@@ -204,34 +214,34 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
     <td>-</td>
   </tr>
   <tr>
-    <td>zeroExpertRange</td>
+    <td>zeroExpertRange(aclIntArray*)</td>
     <td>输入</td>
-    <td>表示zero expert的范围，数组内的值为[zeroExpertStart, zeroExpertEnd], 左闭右开，要求值大于0，并且zeroExpertEnd大于zeroExpertStart，zeroExpertEnd不大于expertIdxOptional的最大值。</td>
+    <td>可选参数。表示zero expert的范围，数组内的值为[zeroExpertStart, zeroExpertEnd]，左闭右开，要求值大于0，并且zeroExpertEnd大于zeroExpertStart，zeroExpertEnd不大于expertIdxOptional的最大值。</td>
     <td>取值范围与expertIdxOptional一致</td>
     <td>-</td>
     <td>2</td>
     <td>-</td>
   </tr>
   <tr>
-    <td>copyExpertRange</td>
+    <td>copyExpertRange(aclIntArray*)</td>
     <td>输入</td>
-    <td>表示copy expert的范围。数组内的值为[copyExpertStart, copyExpertEnd], 左闭右开，要求值大于0，并且copyExpertEnd大于copyExpertStart，copyExpertEnd不大于expertIdxOptional的最大值。</td>
+    <td>可选参数。表示copy expert的范围。数组内的值为[copyExpertStart, copyExpertEnd]，左闭右开，要求值大于0，并且copyExpertEnd大于copyExpertStart，copyExpertEnd不大于expertIdxOptional的最大值。</td>
     <td>取值范围与expertIdxOptional一致</td>
     <td>-</td>
     <td>2</td>
     <td>-</td>
   </tr>
     <tr>
-    <td>constantExpertRange</td>
+    <td>constantExpertRange(aclIntArray*)</td>
     <td>输入</td>
-    <td>表示costant expert的范围。数组内的值为[constantExpertStart, constantExpertEnd], 左闭右开，要求值大于0，并且constantExpertEnd大于constantExpertStart，constantExpertEnd不大于expertIdxOptional的最大值。</td>
+    <td>可选参数。表示constant expert的范围。数组内的值为[constantExpertStart, constantExpertEnd]，左闭右开，要求值大于0，并且constantExpertEnd大于constantExpertStart，constantExpertEnd不大于expertIdxOptional的最大值。</td>
     <td>取值范围与expertIdxOptional一致</td>
     <td>-</td>
     <td>2</td>
     <td>-</td>
   </tr>
   <tr>
-    <td>out</td>
+    <td>out(aclTensor*)</td>
     <td>输出</td>
     <td>公式中的输出。</td>
     <td>-</td>
@@ -241,7 +251,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
     <td>×</td>
   </tr>
   <tr>
-    <td>workspaceSize</td>
+    <td>workspaceSize(uint64_t)</td>
     <td>输出</td>
     <td>返回需要在Device侧申请的workspace大小。</td>
     <td>-</td>
@@ -251,7 +261,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
     <td>-</td>
   </tr>
   <tr>
-    <td>executor</td>
+    <td>executor(aclOpExecutor**)</td>
     <td>输出</td>
     <td>返回op执行器，包含了算子计算流程。</td>
     <td>-</td>
@@ -262,21 +272,28 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
   </tr>
   </tbody></table>
 
+  <!-- npu="A3,910b" id7 -->
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     - expandedX要求是一个2D/3D的Tensor，支持的数据类型为FLOAT16、BFLOAT16、FLOAT32，支持drop less和drop pad场景。
-    - scalesOptional：混合精度模式下，支持 expandedX 为 BFLOAT16 时 scalesOptional 为 FLOAT32；非混合精度模式下，数据类型要求与expandedX一致。
+    - scalesOptional：混合精度模式下，支持expandedX为BFLOAT16 时scalesOptional为FLOAT32；非混合精度模式下，数据类型要求与expandedX一致。
+  <!-- end id7 -->
+  <!-- npu="950" id8 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：
     - expandedX要求是一个2D/3D的Tensor，支持的数据类型为FLOAT16、BFLOAT16、FLOAT32，支持drop less和drop pad场景。
     - scalesOptional数据类型可以与expandedX不一致。
+  <!-- end id8 -->
+  <!-- npu="310p" id9 -->
   - <term>Atlas 推理系列产品</term>：
     - expandedX要求是一个2D的Tensor，数据类型支持FLOAT16、FLOAT32，shape要求尾轴H为32对齐。
     - x1Optional、x2Optional、biasOptional、expertIdxOptional仅支持传入nullptr
     - 仅支持dropPadMode传入2。
     - scalesOptional数据类型支持FLOAT16、FLOAT32，且需要与expandedX一致。
 
+  <!-- end id9 -->
+
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -294,18 +311,18 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
   </thead>
   <tbody>
     <tr>
-    <td> ACLNN_ERR_PARAM_NULLPTR </td>
-    <td> 161001 </td>
+    <td>ACLNN_ERR_PARAM_NULLPTR</td>
+    <td>161001</td>
     <td>传入的必选输入、必选输出或者必选属性，是空指针。</td>
     </tr>
     <tr>
-    <td> ACLNN_ERR_PARAM_INVALID </td>
-    <td> 161002 </td>
-    <td>输入和输出的数据类型和数据格式不在支持的范围之内。</td>
+    <td>ACLNN_ERR_PARAM_INVALID</td>
+    <td>161002</td>
+    <td>输入和输出的数据类型、数据格式或维度不在支持的范围之内。</td>
     </tr>
     <tr>
-    <td rowspan="2"> ACLNN_ERR_INNER_TILING_ERROR </td>
-    <td rowspan="2"> 561002 </td>
+    <td rowspan="2">ACLNN_ERR_INNER_TILING_ERROR</td>
+    <td rowspan="2">561002</td>
     <td>多个输入tensor之间的shape信息不匹配。</td>
     </tr>
     <tr>
@@ -353,19 +370,19 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
   </table>
 
 - **返回值**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 1. 确定性计算：
     - aclnnMoeFinalizeRoutingV3默认确定性实现。
 
-2. NUM\_ROWS：表示行数；  
-    - K：表示从总的专家E中选出K个专家；  
-    - H：表示hidden size，即每个token序列长度，为列数；  
-    - E：表示expert num，即专家数，E需要大于等于K；  
-    - C：表示expert capacity，即专家处理token数量的能力阈值。  
+2. NUM\_ROWS：表示行数；
+    - K：表示从总的专家E中选出K个专家；
+    - H：表示hidden size，即每个token序列长度，为列数；
+    - E：表示expert num，即专家数，E需要大于等于K；
+    - C：表示expert capacity，即专家处理token数量的能力阈值。
 
 3. expandedRowIdx：当dropPadMode参数值为0、2时，Tensor中的值取值范围是[0,NUM_ROWS * K-1]；当dropPadMode参数值为1、3时，Tensor中的值取值范围是[-1, E \* C - 1]。
 
@@ -376,22 +393,24 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
 6. biasOptional存在时，expertIdxOptional必须同时存在。
 
 7. dropPadMode的取值与含义对应如下：
-    - 0：drop less 场景，expandedRowIdx按**列**排列（与[aclnnMoeInitRouting](../../moe_init_routing/docs/aclnnMoeInitRouting.md)输出格式对应）。
-    - 1：drop pad 场景，expandedRowIdx按**列**排列（与[aclnnMoeInitRouting](../../moe_init_routing/docs/aclnnMoeInitRouting.md)输出格式对应）。
-    - 2：drop less 场景，expandedRowIdx按**行**排列（与[aclnnMoeInitRoutingV2](../../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)输出格式对应）。
-    - 3：drop pad 场景，expandedRowIdx按**行**排列（与[aclnnMoeInitRoutingV2](../../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)输出格式对应）。
+    - 0：drop less场景，expandedRowIdx按**列**排列（与[aclnnMoeInitRouting](../../moe_init_routing/docs/aclnnMoeInitRouting.md)输出格式对应）。
+    - 1：drop pad场景，expandedRowIdx按**列**排列（与[aclnnMoeInitRouting](../../moe_init_routing/docs/aclnnMoeInitRouting.md)输出格式对应）。
+    - 2：drop less场景，expandedRowIdx按**行**排列（与[aclnnMoeInitRoutingV2](../../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)输出格式对应）。
+    - 3：drop pad场景，expandedRowIdx按**行**排列（与[aclnnMoeInitRoutingV2](../../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)输出格式对应）。
 
 8. zeroExpertRange、copyExpertRange、constantExpertRange专家范围不能重叠。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```cpp
 #include "acl/acl.h"
 #include "aclnnop/aclnn_moe_finalize_routing_v3.h"
 #include <iostream>
 #include <vector>
+#include <cstdio>
+
 
 #define CHECK_RET(cond, return_expr) \
   do {                               \
@@ -445,7 +464,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化, 参考acl API手册
+  // 1.（固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -470,7 +489,7 @@ int main() {
   void* expandedExpertIdxAddr = nullptr;
   void* expandedRowIdxAddr = nullptr;
   void* outDeviceAddr = nullptr;
-  
+
   aclTensor* expandedX = nullptr;
   aclTensor* x1 = nullptr;
   aclTensor* x2Optional = nullptr;
@@ -505,7 +524,7 @@ int main() {
   // 创建totalWeightOut aclTensor
   ret = CreateAclTensor(scalesHostData, scalesShape, &scalesDeviceAddr, aclDataType::ACL_FLOAT, &scales);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  
+
   // 创建expandedExpertIdx aclTensor
   ret = CreateAclTensor(expandedExpertIdxHostData, expandedExpertIdxShape, &expandedExpertIdxAddr,
                         aclDataType::ACL_INT32, &expandedExpertIdx);
@@ -537,7 +556,7 @@ int main() {
   ret = aclnnMoeFinalizeRoutingV3(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeFinalizeRoutingV3 failed. ERROR: %d\n", ret); return ret);
 
-  // 4.（ 固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

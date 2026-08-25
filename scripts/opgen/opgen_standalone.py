@@ -27,11 +27,17 @@ class OpGenerator:
 
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
         if template_variant == "aicpu":
-            self.template_dir = os.path.abspath(os.path.join(self.script_dir, 'template', 'add_example_aicpu'))
+            self.template_dir = os.path.abspath(
+                os.path.join(self.script_dir, "template", "add_example_aicpu")
+            )
         else:
-            self.template_dir = os.path.abspath(os.path.join(self.script_dir, 'template', 'add_example'))
+            self.template_dir = os.path.abspath(
+                os.path.join(self.script_dir, "template", "add_example")
+            )
 
-        self.dest_dir = os.path.abspath(os.path.join(self.output_path, self.op_type, self.op_name))
+        self.dest_dir = os.path.abspath(
+            os.path.join(self.output_path, self.op_type, self.op_name)
+        )
 
     def run(self):
         """执行生成流程"""
@@ -48,11 +54,15 @@ class OpGenerator:
             raise ValueError("算子类型和算子名称均不能为空。")
 
         if not re.match(r"^[a-zA-Z0-9_]+$", self.op_type):
-            raise ValueError(f"算子类型 '{self.op_type}' 包含无效字符。只允许字母、数字和下划线。")
+            raise ValueError(
+                f"算子类型 '{self.op_type}' 包含无效字符。只允许字母、数字和下划线。"
+            )
 
         if not re.match(r"^[a-zA-Z0-9_]+$", self.op_name):
-            raise ValueError(f"算子名称 '{self.op_name}' 包含无效字符。只允许字母、数字和下划线。")
-        
+            raise ValueError(
+                f"算子名称 '{self.op_name}' 包含无效字符。只允许字母、数字和下划线。"
+            )
+
         if os.path.exists(self.dest_dir):
             raise FileExistsError(f"目标目录 '{self.dest_dir}' 已存在。")
 
@@ -60,8 +70,10 @@ class OpGenerator:
         """复制模板文件到目标目录"""
         logging.info(f"使用模板在 '{self.dest_dir}' 创建算子工程...")
         if not os.path.exists(self.template_dir):
-            raise FileNotFoundError(f"找不到模板目录 '{self.template_dir}'。请确保模板目录存在。")
-        
+            raise FileNotFoundError(
+                f"找不到模板目录 '{self.template_dir}'。请确保模板目录存在。"
+            )
+
         try:
             shutil.copytree(self.template_dir, self.dest_dir)
         except OSError as e:
@@ -80,12 +92,14 @@ class OpGenerator:
                 try:
                     os.rename(old_path, new_path)
                 except OSError as e:
-                    raise OSError(f"重命名 '{old_path}' 到 '{new_path}' 失败: {e}") from e
+                    raise OSError(
+                        f"重命名 '{old_path}' 到 '{new_path}' 失败: {e}"
+                    ) from e
 
     def _replace_content_in_file(self, file_path, replacements):
         """Helper to replace content in a single file."""
         try:
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
         except (IOError, OSError) as e:
             logging.warning(f"读取文件 '{file_path}' 失败: {e}")
@@ -99,15 +113,19 @@ class OpGenerator:
             return
 
         try:
-            with open(file_path, 'w', encoding='utf-8') as f:
+            with open(file_path, "w", encoding="utf-8") as f:
                 f.write(content)
         except (IOError, OSError) as e:
             logging.warning(f"写入文件 '{file_path}' 失败: {e}")
 
     def _replace_content(self):
         """替换文件内容中的占位符"""
-        op_name_capitalized = ''.join(word.capitalize() for word in self.op_name.split('_'))
-        template_name_capitalized = ''.join(word.capitalize() for word in self.template_name.split('_'))
+        op_name_capitalized = "".join(
+            word.capitalize() for word in self.op_name.split("_")
+        )
+        template_name_capitalized = "".join(
+            word.capitalize() for word in self.template_name.split("_")
+        )
 
         replacements = {
             self.template_name: self.op_name,
@@ -117,9 +135,9 @@ class OpGenerator:
         }
         for root, _, files in os.walk(self.dest_dir):
             for file in files:
-                if file.endswith(('.pyc', '.pyo')):
+                if file.endswith((".pyc", ".pyo")):
                     continue
-                
+
                 file_path = os.path.join(root, file)
                 self._replace_content_in_file(file_path, replacements)
 
@@ -130,34 +148,53 @@ def execute(args):
         op_type=args.op_type,
         op_name=args.op_name,
         output_path=args.output_path,
-        template_variant=args.template_variant
+        template_variant=args.template_variant,
     )
     generator.run()
 
 
 def register_parser(subparsers):
     """为 opgen 命令注册解析器。"""
-    parser_opgen = subparsers.add_parser('opgen', help='生成项目骨架')
-    parser_opgen.add_argument('--op_type', '-t', required=True, help='算子分类，例如 math')
-    parser_opgen.add_argument('--op_name', '-n', required=True, help='新算子的名称，例如 asinh')
-    parser_opgen.add_argument('--output_path', '-p', default='.', help='生成工程的根路径')
+    parser_opgen = subparsers.add_parser("opgen", help="生成项目骨架")
     parser_opgen.add_argument(
-        '--template_variant', '-v',
-        choices=['default', 'aicpu'], default='default', help='选择模板变种'
+        "--op_type", "-t", required=True, help="算子分类，例如 math"
+    )
+    parser_opgen.add_argument(
+        "--op_name", "-n", required=True, help="新算子的名称，例如 asinh"
+    )
+    parser_opgen.add_argument(
+        "--output_path", "-p", default=".", help="生成工程的根路径"
+    )
+    parser_opgen.add_argument(
+        "--template_variant",
+        "-v",
+        choices=["default", "aicpu"],
+        default="default",
+        help="选择模板变种",
     )
     parser_opgen.set_defaults(func=execute)
 
 
 def main():
     """主函数，用于独立执行"""
-    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s', stream=sys.stdout)
+    logging.basicConfig(
+        level=logging.INFO, format="%(levelname)s: %(message)s", stream=sys.stdout
+    )
     parser = argparse.ArgumentParser(description="生成项目骨架")
-    
-    parser.add_argument('--op_type', '-t', required=True, help='算子分类，例如 math')
-    parser.add_argument('--op_name', '-n', required=True, help='新算子的名称，例如 asinh')
-    parser.add_argument('--output_path', '-p', default='.', help='生成工程的根路径')
-    parser.add_argument('--template_variant', '-v', choices=['default', 'aicpu'], default='default', help='选择模板变种')
-    
+
+    parser.add_argument("--op_type", "-t", required=True, help="算子分类，例如 math")
+    parser.add_argument(
+        "--op_name", "-n", required=True, help="新算子的名称，例如 asinh"
+    )
+    parser.add_argument("--output_path", "-p", default=".", help="生成工程的根路径")
+    parser.add_argument(
+        "--template_variant",
+        "-v",
+        choices=["default", "aicpu"],
+        default="default",
+        help="选择模板变种",
+    )
+
     args = parser.parse_args()
 
     try:
@@ -165,6 +202,7 @@ def main():
     except Exception as e:
         logging.error(f"发生非预期的错误，退出。错误信息: {e}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

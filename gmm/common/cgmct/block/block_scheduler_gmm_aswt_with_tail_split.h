@@ -18,6 +18,7 @@
 #include "./block_scheduler_utils.h"
 #include "./block_scheduler_policy.h"
 #include "../utils/status_utils.h"
+#include "../utils/tuple_utils.h"
 
 namespace Cgmct {
 namespace Gemm {

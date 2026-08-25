@@ -1,6 +1,6 @@
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -26,8 +26,8 @@ def test_multiprocess(input_list):
     mp.set_start_method("forkserver", force=True)
     for i in range(world_size):
         proc = Process(
-            target=gen_npu,
-            args=(x1_list[i], x2_list[i], world_size, i, result_queue))
+            target=gen_npu, args=(x1_list[i], x2_list[i], world_size, i, result_queue)
+        )
         proc.start()
         proc_list.append(proc)
     for proc in proc_list:
@@ -45,23 +45,32 @@ def gen_golden_data(x1_list, x2_list):
     golden_gather_out = np.concatenate(x1_list, axis=0)
     out_list = []
     for i in range(world_size):
-        out = np.matmul(golden_gather_out.astype(np.float32), x2_list[i].numpy().astype(np.float32)).astype(np.float16)
+        out = np.matmul(
+            golden_gather_out.astype(np.float32), x2_list[i].numpy().astype(np.float32)
+        ).astype(np.float16)
         out_list.append(out)
-    
+
     return golden_gather_out, out_list
 
 
 def gen_npu(x1, x2, world_size, rank, queue):
     torch_npu.npu.set_device(rank)
-    master_ip = '127.0.0.1'
-    print(f'[INFO] device_{rank} 创建HCCL通信链路')
-    dist.init_process_group(backend="hccl", rank=rank, world_size=world_size, init_method=f'tcp://{master_ip}:50001')
+    master_ip = "127.0.0.1"
+    print(f"[INFO] device_{rank} 创建HCCL通信链路")
+    dist.init_process_group(
+        backend="hccl",
+        rank=rank,
+        world_size=world_size,
+        init_method=f"tcp://{master_ip}:50001",
+    )
     print(f"[INFO] device_{rank} init_process_group success")
     group = dist.distributed_c10d._get_default_group()
-    hcom_name = group._get_backend(torch.device('npu')).get_hccl_comm_name(rank)
+    hcom_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
     x1 = x1.npu()
     x2 = x2.npu()
-    output_npu, gather_output_npu = torch_npu.npu_all_gather_base_mm(x1, x2, hcom_name, world_size, gather_output=True)
+    output_npu, gather_output_npu = torch_npu.npu_all_gather_base_mm(
+        x1, x2, hcom_name, world_size, gather_output=True
+    )
     queue.put((rank, output_npu.cpu().numpy(), gather_output_npu.cpu().numpy()))
 
 
@@ -87,10 +96,14 @@ def data_compare(data_check, data_exepect, diff_thd=0.005, pct_thd=0.005):
     diff = cal_relativediff_numpy(data_check, data_exepect, diff_thd)
     split_count = int(end - start + 1) if end != start else 1
     lt_num = diff[diff < diff_thd].size
-    lt_num = lt_num + data_exepect[np.isinf(data_exepect)].size + data_exepect[np.isnan(data_exepect)].size
+    lt_num = (
+        lt_num
+        + data_exepect[np.isinf(data_exepect)].size
+        + data_exepect[np.isnan(data_exepect)].size
+    )
     lt_pct = float(lt_num) / float(split_count) * 100
     pct_thd = (1 - pct_thd) * 100.0
-    return (lt_pct >= pct_thd)
+    return lt_pct >= pct_thd
 
 
 def verify_result(gather_out, out, golden_gather_out, golden_out):
@@ -108,9 +121,10 @@ def verify_result(gather_out, out, golden_gather_out, golden_out):
 
     return True
 
+
 if __name__ == "__main__":
     # 生成输入数据
-    world_size = 4 
+    world_size = 4
     m, k, n = 1024, 10240, 5120
     x1_list = []
     x2_list = []
@@ -125,7 +139,7 @@ if __name__ == "__main__":
     golden_gather_out, golden_out = gen_golden_data(x1_list, x2_list)
     # 执行Npu任务
     output_npu, gather_output_npu = test_multiprocess([x1_list, x2_list, world_size])
-        
+
     # 结果比对
     if verify_result(gather_output_npu, output_npu, golden_gather_out, golden_out):
         print("[INFO] Precision PASS")

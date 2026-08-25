@@ -54,7 +54,8 @@ static ge::graphStatus InferShapeLightningIndexer(gert::InferShapeContext *conte
     std::string inputLayoutKeyPtrStr = std::string(inputLayoutKeyPtr);
     OP_CHECK_IF(
         inputLayoutQueryPtrStr != "TND" && inputLayoutQueryPtrStr != "BSND",
-        OP_LOGE(context, "The attr layout_query should be TND or BSND, but got %s.", inputLayoutQueryPtrStr.c_str()),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("LightningIndexer", "layout_query",
+            inputLayoutQueryPtrStr.c_str(), "The layout_query should be TND or BSND"),
         return ge::GRAPH_FAILED);
 
     sparseIndicesShape->SetDimNum(queryShape->GetDimNum());

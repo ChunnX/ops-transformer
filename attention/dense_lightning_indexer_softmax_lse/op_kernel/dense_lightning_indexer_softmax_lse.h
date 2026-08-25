@@ -149,6 +149,8 @@ __aicore__ inline void DenseLISoftmaxLse<T>::InitTilingData(const DenseLISoftmax
     constInfo.qHeadNum = constInfo.gSize = tilingData->gSize;
     constInfo.kSeqSize = tilingData->s2Size;
     constInfo.qSeqSize = tilingData->s1Size;
+    constInfo.storageS1Size = tilingData->storageS1Size;
+    constInfo.storageS2Size = tilingData->storageS2Size;
     constInfo.attenMaskFlag = (tilingData->sparseMode == 3);
     constInfo.preTokens = tilingData->preTokens;
     constInfo.nextTokens = tilingData->nextTokens;
@@ -204,10 +206,8 @@ __aicore__ inline void DenseLISoftmaxLse<T>::InitWorkSpace(__gm__ uint8_t *works
     mm1ResGm.SetGlobalBuffer((__gm__ MM1_OUT_T *)(workspace + offset + aiCoreIdx * singleCoreMm1ResSize));
     offset += GetBlockNum() * singleCoreMm1ResSize;
 
-    uint64_t maxS2Size = constInfo.kSeqSize > constInfo.MAX_KEY_SEQ_LENGTH ?
-                         constInfo.MAX_KEY_SEQ_LENGTH : constInfo.kSeqSize;
     uint64_t reduceSumResSize = constInfo.s1BaseSize *
-        DenseLISoftmaxLseCommon::Align(maxS2Size, (uint64_t)constInfo.s2BaseSize) * sizeof(float);
+        DenseLISoftmaxLseCommon::Align(constInfo.kSeqSize, (uint64_t)constInfo.s2BaseSize) * sizeof(float);
     vec1ResGm.SetGlobalBuffer((__gm__ float *)(workspace + offset + aiCoreIdx * reduceSumResSize));
     offset += GetBlockNum() * reduceSumResSize;
 }
@@ -322,24 +322,22 @@ __aicore__ inline void DenseLISoftmaxLse<T>::Init(__gm__ uint8_t *query, __gm__ 
     if ASCEND_IS_AIV {
         vectorService.InitParams(constInfo, tiling);
         softmaxMaxGm.SetGlobalBuffer((__gm__ OUT_T *)softmaxMax,
-            constInfo.isAccumSeqS1 ? constInfo.qSeqSize :
+            constInfo.isAccumSeqS1 ? constInfo.storageS1Size :
             constInfo.batchSize * constInfo.qSeqSize);
         softmaxSumGm.SetGlobalBuffer((__gm__ OUT_T *)softmaxSum,
-            constInfo.isAccumSeqS1 ? constInfo.qSeqSize :
+            constInfo.isAccumSeqS1 ? constInfo.storageS1Size :
             constInfo.batchSize * constInfo.qSeqSize);
         weightsGm.SetGlobalBuffer((__gm__ W_T *)weights,
-            constInfo.isAccumSeqS1 ? actualSeqLengthsGmQ.GetValue(constInfo.batchSize - 1) * constInfo.qHeadNum :
+            constInfo.isAccumSeqS1 ? constInfo.storageS1Size * constInfo.qHeadNum :
             constInfo.batchSize * constInfo.qSeqSize * constInfo.qHeadNum);
         vectorService.InitVec1GlobalTensor(mm1ResGm, vec1ResGm, weightsGm, softmaxMaxGm, softmaxSumGm);
     } else {
         matmulService.InitParams(constInfo);
         queryGm.SetGlobalBuffer((__gm__ Q_T *)query,
-            constInfo.isAccumSeqS1 ? actualSeqLengthsGmQ.GetValue(constInfo.batchSize - 1) *
-            constInfo.qHeadNum * constInfo.headDim :
+            constInfo.isAccumSeqS1 ? constInfo.storageS1Size * constInfo.qHeadNum * constInfo.headDim :
             constInfo.batchSize * constInfo.qSeqSize * constInfo.qHeadNum * constInfo.headDim);
         keyGm.SetGlobalBuffer((__gm__ K_T *)key,
-            constInfo.isAccumSeqS2 ? actualSeqLengthsGm.GetValue(constInfo.batchSize - 1) *
-            constInfo.kHeadNum * constInfo.headDim :
+            constInfo.isAccumSeqS2 ? constInfo.storageS2Size * constInfo.kHeadNum * constInfo.headDim :
             constInfo.batchSize * constInfo.kSeqSize * constInfo.kHeadNum * constInfo.headDim);
         matmulService.InitMm1GlobalTensor(keyGm, queryGm, mm1ResGm);
     }
@@ -550,7 +548,7 @@ __aicore__ inline void DenseLISoftmaxLse<T>::ResetInvalidOutputZero()
     if ASCEND_IS_AIV {
         if (constInfo.isAccumSeqS1 && constInfo.isAccumSeqS2) {
             uint64_t lastAccumSeqS1 = actualSeqLengthsGmQ.GetValue(constInfo.batchSize - 1);
-            uint64_t totalDealSize = constInfo.qSeqSize - lastAccumSeqS1;
+            uint64_t totalDealSize = constInfo.storageS1Size - lastAccumSeqS1;
             if (totalDealSize <= 0) {
                 return;
             }

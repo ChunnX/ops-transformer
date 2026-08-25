@@ -98,10 +98,11 @@ static ge::graphStatus InferDataTypeChunkGatedDeltaRule(gert::InferDataTypeConte
         OP_LOGE("ChunkGatedDeltaRule", "inference context is null");
         return ge::GRAPH_FAILED;
     }
-    // 根据 query 的输入 dtype 推导两个输出的 dtype
+    // 根据 query 的输入 dtype 推导 out 的 dtype, finalState 跟随 initialState
     auto queryDtype = context->GetInputDataType(QUERY_INDEX);
+    auto stateDtype = context->GetInputDataType(STATE_INDEX);
     context->SetOutputDataType(OUTPUT_OUT_IDX, queryDtype);
-    context->SetOutputDataType(OUTPUT_FINAL_STATE_IDX, queryDtype);
+    context->SetOutputDataType(OUTPUT_FINAL_STATE_IDX, stateDtype);
     return ge::GRAPH_SUCCESS;
 }
 

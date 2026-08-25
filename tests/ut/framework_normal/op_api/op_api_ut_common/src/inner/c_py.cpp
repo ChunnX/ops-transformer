@@ -7,7 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
+
 #include <dlfcn.h>
 #include <iostream>
 #include <memory>
@@ -21,17 +21,15 @@ using namespace std;
 
 void PyHolder::Clean()
 {
-    if (Ut_Py_IsInitialized())
-    {
+    if (Ut_Py_IsInitialized()) {
         // if (PyThreadState_) {
         //     Ut_PyEval_RestoreThread(PyThreadState_);
         // }
         Ut_Py_Finalize();
     }
 
-    if (py_hdl != nullptr)
-    {
-        (void) dlclose(py_hdl);
+    if (py_hdl != nullptr) {
+        (void)dlclose(py_hdl);
     }
 }
 
@@ -67,7 +65,8 @@ int PyHolder::Initialize()
     return 0;
 }
 
-int PyHolder::LoadDynamicLib() {
+int PyHolder::LoadDynamicLib()
+{
     constexpr uint32_t CMD_MAX_SIZE = 1024;
     char line[CMD_MAX_SIZE] = {0};
     int x, y, z;
@@ -114,7 +113,7 @@ int PyHolder::LoadDynamicLib() {
     }
 
     char buffer[CMD_MAX_SIZE] = {0};
-    (void) sscanf(line, "%s %d.%d.%d", buffer, &x, &y, &z);
+    (void)sscanf(line, "%s %d.%d.%d", buffer, &x, &y, &z);
     if (strcmp(PY.c_str(), buffer) != 0 || x != X_STD || y < Y_STD) {
         cout << "Python version must be at least 3.7. But got " << line << endl;
         return 1;
@@ -146,8 +145,8 @@ int PyHolder::LoadDynamicLib() {
             pythonLibUpdate = line_path_temp + "/lib/" + pythonLib;
             handle = dlopen(pythonLibUpdate.c_str(), RTLD_NOW | RTLD_GLOBAL);
             if (handle == nullptr) {
-                cout << "Failed to load python library [" << pythonLib
-                     << "]. Please add its path to LD_LIBRARY_PATH." << endl;
+                cout << "Failed to load python library [" << pythonLib << "]. Please add its path to LD_LIBRARY_PATH."
+                     << endl;
                 return 1;
             }
             pythonLib = pythonLibUpdate;
@@ -164,127 +163,127 @@ int PyHolder::LoadDynamicLib() {
 
 int PyHolder::LoadFuncs()
 {
-    Ut_PyRun_SimpleString = (UtPyRunSimpleString) dlsym(py_hdl, "PyRun_SimpleString");
+    Ut_PyRun_SimpleString = (UtPyRunSimpleString)dlsym(py_hdl, "PyRun_SimpleString");
     if (Ut_PyRun_SimpleString == nullptr) {
         cout << "Failed to dlsym function PyRun_SimpleString. Error: " << dlerror() << endl;
         return 1;
     }
 
-    Ut_Py_Initialize = (UtPyInitialize) dlsym(py_hdl, "Py_Initialize");
+    Ut_Py_Initialize = (UtPyInitialize)dlsym(py_hdl, "Py_Initialize");
     if (Ut_Py_Initialize == nullptr) {
         cout << "Failed to dlsym function Py_Initialize. Error: " << dlerror() << endl;
         return 1;
     }
 
-    Ut_Py_IsInitialized = (UtPyIsInitialized) dlsym(py_hdl, "Py_IsInitialized");
+    Ut_Py_IsInitialized = (UtPyIsInitialized)dlsym(py_hdl, "Py_IsInitialized");
     if (Ut_Py_IsInitialized == nullptr) {
         cout << "Failed to dlsym function Py_IsInitialized. Error: " << dlerror() << endl;
         return 1;
     }
 
-    Ut_Py_Finalize = (UtPyFinalize) dlsym(py_hdl, "Py_Finalize");
+    Ut_Py_Finalize = (UtPyFinalize)dlsym(py_hdl, "Py_Finalize");
     if (Ut_Py_Finalize == nullptr) {
         cout << "Failed to dlsym function Py_Finalize. Error: " << dlerror() << endl;
         return 1;
     }
 
-    Ut_PyImport_ImportModule = (UtPyImportImportModule) dlsym(py_hdl, "PyImport_ImportModule");
+    Ut_PyImport_ImportModule = (UtPyImportImportModule)dlsym(py_hdl, "PyImport_ImportModule");
     if (Ut_PyImport_ImportModule == nullptr) {
         cout << "Failed to dlsym function PyImport_ImportModule. Error: " << dlerror() << endl;
         return 1;
     }
 
-    Ut_PyObject_CallObject = (UtPyObjectCallObject) dlsym(py_hdl, "PyObject_CallObject");
+    Ut_PyObject_CallObject = (UtPyObjectCallObject)dlsym(py_hdl, "PyObject_CallObject");
     if (Ut_PyObject_CallObject == nullptr) {
         cout << "Failed to dlsym function PyObject_CallObject. Error: " << dlerror() << endl;
         return 1;
     }
 
-    Ut_PyTuple_New = (UtPyTupleNew) dlsym(py_hdl, "PyTuple_New");
+    Ut_PyTuple_New = (UtPyTupleNew)dlsym(py_hdl, "PyTuple_New");
     if (Ut_PyTuple_New == nullptr) {
         cout << "Failed to dlsym function PyTuple_New. Error: " << dlerror() << endl;
         return 1;
     }
 
-    Ut_PyTuple_SetItem = (UtPyTupleSetItem) dlsym(py_hdl, "PyTuple_SetItem");
+    Ut_PyTuple_SetItem = (UtPyTupleSetItem)dlsym(py_hdl, "PyTuple_SetItem");
     if (Ut_PyTuple_SetItem == nullptr) {
         cout << "Failed to dlsym function PyTuple_SetItem. Error: " << dlerror() << endl;
         return 1;
     }
 
-    Ut_PyObject_GetAttrString = (UtPyObjectGetAttrString) dlsym(py_hdl, "PyObject_GetAttrString");
+    Ut_PyObject_GetAttrString = (UtPyObjectGetAttrString)dlsym(py_hdl, "PyObject_GetAttrString");
     if (Ut_PyObject_GetAttrString == nullptr) {
         cout << "Failed to dlsym function PyObject_GetAttrString. Error: " << dlerror() << endl;
         return 1;
     }
 
-    Ut_PyErr_Print = (UtPyErrPrint) dlsym(py_hdl, "PyErr_Print");
+    Ut_PyErr_Print = (UtPyErrPrint)dlsym(py_hdl, "PyErr_Print");
     if (Ut_PyErr_Print == nullptr) {
         cout << "Failed to dlsym function PyErr_Print. Error: " << dlerror() << endl;
         return 1;
     }
 
-    Ut_Py_Dealloc = (UtPyDealloc) dlsym(py_hdl, "_Py_Dealloc");
+    Ut_Py_Dealloc = (UtPyDealloc)dlsym(py_hdl, "_Py_Dealloc");
     if (Ut_Py_Dealloc == nullptr) {
         cout << "Failed to dlsym function _Py_Dealloc. Error: " << dlerror() << endl;
         return 1;
     }
 
-    Ut_PyCallable_Check = (UtPyCallableCheck) dlsym(py_hdl, "PyCallable_Check");
+    Ut_PyCallable_Check = (UtPyCallableCheck)dlsym(py_hdl, "PyCallable_Check");
     if (Ut_PyCallable_Check == nullptr) {
         cout << "Failed to dlsym function PyCallable_Check. Error: " << dlerror() << endl;
         return 1;
     }
 
-    Ut_PyLong_AsLong = (UtPyLongAsLong) dlsym(py_hdl, "PyLong_AsLong");
+    Ut_PyLong_AsLong = (UtPyLongAsLong)dlsym(py_hdl, "PyLong_AsLong");
     if (Ut_PyLong_AsLong == nullptr) {
         cout << "Failed to dlsym function PyLong_AsLong. Error: " << dlerror() << endl;
         return 1;
     }
 
-    Ut_PyErr_Fetch = (UtPyErrFetch) dlsym(py_hdl, "PyErr_Fetch");
+    Ut_PyErr_Fetch = (UtPyErrFetch)dlsym(py_hdl, "PyErr_Fetch");
     if (Ut_PyErr_Fetch == nullptr) {
         cout << "Failed to dlsym function PyErr_Fetch. Error: " << dlerror() << endl;
         return 1;
     }
 
-    Ut_PyErr_NormalizeException = (UtPyErrNormalizeException) dlsym(py_hdl, "PyErr_NormalizeException");
+    Ut_PyErr_NormalizeException = (UtPyErrNormalizeException)dlsym(py_hdl, "PyErr_NormalizeException");
     if (Ut_PyErr_NormalizeException == nullptr) {
         cout << "Failed to dlsym function PyErr_NormalizeException. Error: " << dlerror() << endl;
         return 1;
     }
 
-    Ut_PyBuildValue = (UtPyBuildValue) dlsym(py_hdl, "Py_BuildValue");
+    Ut_PyBuildValue = (UtPyBuildValue)dlsym(py_hdl, "Py_BuildValue");
     if (Ut_PyBuildValue == nullptr) {
         cout << "Failed to dlsym function Py_BuildValue. Error: " << dlerror() << endl;
         return 1;
     }
 
-    Ut_PyGIL_StateCheck = (UtPyGILStateCheck) dlsym(py_hdl, "PyGILState_Check");
+    Ut_PyGIL_StateCheck = (UtPyGILStateCheck)dlsym(py_hdl, "PyGILState_Check");
     if (Ut_PyGIL_StateCheck == nullptr) {
         cout << "Failed to dlsym function PyGILState_Check. Error: " << dlerror() << endl;
         return 1;
     }
 
-    Ut_PyEval_SaveThread = (UtPyEvalSaveThread) dlsym(py_hdl, "PyEval_SaveThread");
+    Ut_PyEval_SaveThread = (UtPyEvalSaveThread)dlsym(py_hdl, "PyEval_SaveThread");
     if (Ut_PyEval_SaveThread == nullptr) {
         cout << "Failed to dlsym function PyEval_SaveThread. Error: " << dlerror() << endl;
         return 1;
     }
 
-    Ut_PyEval_RestoreThread = (UtPyEvalRestoreThread) dlsym(py_hdl, "PyEval_RestoreThread");
+    Ut_PyEval_RestoreThread = (UtPyEvalRestoreThread)dlsym(py_hdl, "PyEval_RestoreThread");
     if (Ut_PyEval_RestoreThread == nullptr) {
         cout << "Failed to dlsym function PyEval_RestoreThread. Error: " << dlerror() << endl;
         return 1;
     }
 
-    Ut_Py_DECREF = (UtPyDECREF) dlsym(py_hdl, "Py_DecRef");
+    Ut_Py_DECREF = (UtPyDECREF)dlsym(py_hdl, "Py_DecRef");
     if (Ut_Py_DECREF == nullptr) {
         cout << "Failed to dlsym function Py_DecRef. Error: " << dlerror() << endl;
         return 1;
     }
 
-    Ut_PyImport_Cleanup = (UtPyImportCleanup) dlsym(py_hdl, "PyImport_Cleanup");
+    Ut_PyImport_Cleanup = (UtPyImportCleanup)dlsym(py_hdl, "PyImport_Cleanup");
     if (Ut_PyImport_Cleanup == nullptr) {
         cout << "Failed to dlsym function PyImport_Cleanup. Error: " << dlerror() << endl;
         return 1;
@@ -294,7 +293,7 @@ int PyHolder::LoadFuncs()
     return 0;
 }
 
-PyObject* PyHolder::ImportModule(const string &moduleName) const
+PyObject *PyHolder::ImportModule(const string &moduleName) const
 {
     if (moduleName.empty()) {
         return nullptr;
@@ -310,7 +309,7 @@ PyObject* PyHolder::ImportModule(const string &moduleName) const
     return pyModule;
 }
 
-PyObject* PyHolder::ImportFunction(PyObject *module, const string &funcName) const
+PyObject *PyHolder::ImportFunction(PyObject *module, const string &funcName) const
 {
     if (module == nullptr || funcName.empty()) {
         return nullptr;
@@ -333,7 +332,8 @@ static void PyObjectDecRef(PyObject *pyObj)
     }
 }
 
-int PyScripts::Initialize(const string &full_path) {
+int PyScripts::Initialize(const string &full_path)
+{
     string full_path_ = RealPath(full_path);
     string sys_append_cmd = "sys.path.append('" + full_path_ + "') \n";
     string input_module = "generate_input";
@@ -401,7 +401,8 @@ PyScripts::~PyScripts()
 {
 }
 
-int PyScripts::CallFunction(PyObject *pyFunc, PyObject *pyArgs) const {
+int PyScripts::CallFunction(PyObject *pyFunc, PyObject *pyArgs) const
+{
     int ret;
     PyObject *pyRes = PyHolder::GetInstance().Ut_PyObject_CallObject(pyFunc, pyArgs);
     if (!pyRes) {

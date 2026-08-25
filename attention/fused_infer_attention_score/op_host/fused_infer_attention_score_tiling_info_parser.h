@@ -15,14 +15,21 @@
 
 #pragma once
 
-#include "../../common/op_host/fia_tiling_info.h"
+#include "fia_tiling_info.h"
 #include "../../common/op_host/fia_tiling_shape.h"
 
 namespace optiling {
+#if defined(ASCEND_OPTILING_UT)
+#define FIA_PARSER_UT_VISIBLE __attribute__((visibility("default")))
+#else
+#define FIA_PARSER_UT_VISIBLE
+#endif
+
 constexpr int64_t SPARSE_MODE_INT_MAX = 2147483647;
 class FiaInfoParser {
 public:
-    explicit FiaInfoParser(const gert::TilingContext *context) : context_(context)
+    explicit FiaInfoParser(const gert::TilingContext *context)
+        : context_(context)
     {
     }
     ~FiaInfoParser() = default;
@@ -33,6 +40,7 @@ public:
     ge::graphStatus GetActualSeqLenQSize(uint32_t &size);
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
+    ge::graphStatus GetStrides();
     void GetOptionalInputParaMaskInfo();
     void GetOptionalInputParaActualSeqLengthInfo();
     void GetOptionalInputParaPageAttentionInfo();
@@ -49,7 +57,8 @@ public:
     ge::graphStatus GetAttrParaInfo();
     ge::graphStatus GetKvCache();
     ge::graphStatus GetTensorListCache(uint32_t index, const std::string &name,
-                                       std::vector<gert::StorageShape *> &cache);
+                                       std::vector<gert::StorageShape *> &cache,
+                                       std::vector<gert::Stride *> &strides);
     ge::graphStatus GetOpParaInfo();
 
     ge::graphStatus GetEmptyTensorFlag();
@@ -66,6 +75,8 @@ public:
     void GetKvStorageMode();
     void GetQuantMode();
     ge::graphStatus GetKvLayout();
+    FIA_PARSER_UT_VISIBLE void GetKvIsContiguous();
+    FIA_PARSER_UT_VISIBLE ge::graphStatus GetKvStrideValues();
     void SetFiaShape();
     ge::graphStatus GetMaxActualSeq(const gert::Tensor *actualSeqLensTensor, FiaLayout layout,
                                     int64_t &maxActualSeqLen);
@@ -91,7 +102,11 @@ public:
     ge::graphStatus GetAttenMaskInfo();
     void GetPaddingSizeFlag();
     ge::graphStatus GetActualSeqInfo();
+    void ProcessKVActualSeqLoop(const int64_t *actualLenData, uint32_t loop);
+    void ProcessQActualSeqLoop(const int64_t *actualLenQData, uint32_t loop);
     void GetPreNextToken();
+    void UpdatePreNextTokenBySparseMode();
+    void ClampPreNextToken();
     ge::graphStatus GetSystemPrefix();
     ge::graphStatus GetPseShiftFlag();
     ge::graphStatus GetPostQuantInfo();
@@ -132,6 +147,27 @@ public:
     uint32_t ropeHeadDim_ = 0;
     uint32_t queryTSize_ = 0; // 仅TND/NTD时生效
     uint32_t keyTSize_ = 0;
+    // 增加strides参数，预计5个，k/v/krope/kscale/vscale
+    const gert::Stride *keyStrides_ = nullptr;
+    const gert::Stride *valueStrides_ = nullptr;
+    gert::Stride keyContiguousStrides_;
+    gert::Stride valueContiguousStrides_;
+    gert::Stride keyRopeContiguousStrides_;
+    const gert::Stride *kRopeStrides_ = nullptr;
+    gert::Stride keyScaleContiguousStrides_;
+    gert::Stride valueScaleContiguousStrides_;
+    const gert::Stride *kScaleStrides_ = nullptr;
+    const gert::Stride *vScaleStrides_ = nullptr;
+    bool hasViewStride_ = true;
+    uint64_t keyBnStride_ = 0;
+    uint64_t keyN2Stride_ = 0;
+    uint64_t valueBnStride_ = 0;
+    uint64_t valueN2Stride_ = 0;
+    uint64_t kRopeBnStride_ = 0;
+    uint64_t kRopeN2Stride_ = 0;
+    int32_t keyNonContigDim_ = -1;
+    int32_t valueNonContigDim_ = -1;
+    int32_t keyRopeNonContigDim_ = -1;
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
     RopeMode ropeMode_ = RopeMode::NO_ROPE;
     MlaMode mlaMode_ = MlaMode::NO_MLA;
@@ -161,6 +197,9 @@ public:
     uint64_t l2CacheSize_ = 0;
     std::vector<gert::StorageShape *> kCache_ = {};
     std::vector<gert::StorageShape *> vCache_ = {};
+    std::vector<gert::Stride *> kStrideCache_ = {};
+    std::vector<gert::Stride *> vStrideCache_ = {};
+
     std::vector<int32_t> qSize_ = {};
     std::vector<int32_t> kvSize_ = {};
 
@@ -208,4 +247,5 @@ public:
     std::shared_ptr<FiaTilingShape> keyRopeShape_ = nullptr;
     std::shared_ptr<FiaTilingShape> keyPrefixShape_ = nullptr;
 };
+#undef FIA_PARSER_UT_VISIBLE
 } // namespace optiling

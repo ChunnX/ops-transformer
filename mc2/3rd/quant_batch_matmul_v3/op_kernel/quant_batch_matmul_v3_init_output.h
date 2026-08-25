@@ -21,7 +21,9 @@ namespace AscendC {
 template <typename yType>
 class BmmDequantInitOutput {
 public:
-    __aicore__ inline BmmDequantInitOutput() {}
+    __aicore__ inline BmmDequantInitOutput()
+    {
+    }
     __aicore__ inline void Init(GM_ADDR y, GM_ADDR workSpace, const Mc2QuantBatchMatmulV3TilingData *tilingData,
                                 TPipe *tPipe)
     {
@@ -166,6 +168,6 @@ private:
         outputSize_ = static_cast<uint64_t>(batch) * mSize * nSize;
     }
 };
-}  // namespace AscendC
+} // namespace AscendC
 
-#endif  // QUANT_BATCH_MATMUL_V3_INIT_OUTPUT_H
+#endif // QUANT_BATCH_MATMUL_V3_INIT_OUTPUT_H

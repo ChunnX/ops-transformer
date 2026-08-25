@@ -16,7 +16,7 @@
 #ifndef ALLTO_ALL_KC_QUANT_MATMUL_H
 #define ALLTO_ALL_KC_QUANT_MATMUL_H
 
-#include "../../common/op_kernel/mc2_templates/scheduler/pipeline_builder.h"
+#include "../../../common/op_kernel/mc2_templates/scheduler/pipeline_builder.h"
 
 // 流水线模板
 namespace Mc2Kernel {

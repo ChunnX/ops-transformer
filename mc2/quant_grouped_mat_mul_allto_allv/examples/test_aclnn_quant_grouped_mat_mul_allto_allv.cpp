@@ -21,16 +21,16 @@
 #include "hccl/hccl.h"
 #include "aclnnop/aclnn_quant_grouped_mat_mul_allto_allv.h"
 
-#define CHECK_RET(cond, return_expr) \
-    do {                             \
-        if (!(cond)) {               \
-            return_expr;             \
-        }                            \
+#define CHECK_RET(cond, return_expr)                                                                                   \
+    do {                                                                                                               \
+        if (!(cond)) {                                                                                                 \
+            return_expr;                                                                                               \
+        }                                                                                                              \
     } while (0)
 
-#define LOG_PRINT(message, ...)          \
-    do {                                 \
-        printf(message, ##__VA_ARGS__);  \
+#define LOG_PRINT(message, ...)                                                                                        \
+    do {                                                                                                               \
+        printf(message, ##__VA_ARGS__);                                                                                \
     } while (0)
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
@@ -44,7 +44,7 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
 
 template <typename T>
 int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-    aclDataType dataType, aclTensor **tensor)
+                    aclDataType dataType, aclTensor **tensor)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -55,15 +55,8 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     for (int64_t i = shape.size() - 2; i >= 0; i--) {
         strides[i] = shape[i + 1] * strides[i + 1];
     }
-    *tensor = aclCreateTensor(shape.data(),
-        shape.size(),
-        dataType,
-        strides.data(),
-        0,
-        aclFormat::ACL_FORMAT_ND,
-        shape.data(),
-        shape.size(),
-        *deviceAddr);
+    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
+                              shape.data(), shape.size(), *deviceAddr);
     return 0;
 }
 
@@ -163,13 +156,13 @@ int LaunchOneThreadAlltoAllvGmm(Args &args)
     long long mmWScaleShapeSize = GetShapeSize(mmWScaleShape);
     long long mmYShapeSize = GetShapeSize(mmYShape);
 
-    std::vector<uint8_t> gmmXHostData(gmmXShapeSize, (args.rankId + 1) * 1024);  // HIFLOAT8
+    std::vector<uint8_t> gmmXHostData(gmmXShapeSize, (args.rankId + 1) * 1024); // HIFLOAT8
     std::vector<uint8_t> gmmWHostData(gmmWShapeSize, (args.rankId + 1) * 512);
     std::vector<float> gmmXScaleHostData(gmmXScaleShapeSize, 1);
     std::vector<float> gmmWScaleHostData(gmmWScaleShapeSize, 1);
     std::vector<int16_t> yHostData(yShapeSize, 65535);
 
-    std::vector<uint8_t> mmXHostData(mmXShapeSize, (args.rankId + 1) * 1024);  // HIFLOAT8
+    std::vector<uint8_t> mmXHostData(mmXShapeSize, (args.rankId + 1) * 1024); // HIFLOAT8
     std::vector<uint8_t> mmWHostData(mmWShapeSize, (args.rankId + 1) * 512);
     std::vector<float> mmXScaleHostData(mmXScaleShapeSize, 1);
     std::vector<float> mmWScaleHostData(mmWScaleShapeSize, 1);
@@ -201,37 +194,13 @@ int LaunchOneThreadAlltoAllvGmm(Args &args)
 
     // 调用第一阶段接口
     ret = aclnnQuantGroupedMatMulAlltoAllvGetWorkspaceSize(
-        gmmX,
-        gmmW,
-        gmmXScale,
-        gmmWScale,
-        sendCountsTensor,
-        recvCountsTensor,
-        mmX,
-        mmW,
-        mmXScale,
-        mmWScale,
-        commQuantScaleOptional,
-        gmmXQuantMode,
-        gmmWQuantMode, 
-        mmXQuantMode,
-        mmWQuantMode, 
-        commQuantMode,
-        commQuantDtypeOptional,
-        groupSize,
-        hcomName,
-        EP_WORLD_SIZE,
-        sendCounts,
-        recvCounts,
-        false,
-        false,
-        y,
-        mmY,
-        &workspaceSize,
-        &executor);
-    CHECK_RET(
-        ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnQuantGroupedMatMulAlltoAllvGetWorkspaceSize failed. ret = %d \n", ret);
-        return ret);
+        gmmX, gmmW, gmmXScale, gmmWScale, sendCountsTensor, recvCountsTensor, mmX, mmW, mmXScale, mmWScale,
+        commQuantScaleOptional, gmmXQuantMode, gmmWQuantMode, mmXQuantMode, mmWQuantMode, commQuantMode,
+        commQuantDtypeOptional, groupSize, hcomName, EP_WORLD_SIZE, sendCounts, recvCounts, false, false, y, mmY,
+        &workspaceSize, &executor);
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("[ERROR] aclnnQuantGroupedMatMulAlltoAllvGetWorkspaceSize failed. ret = %d \n", ret);
+              return ret);
 
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -240,11 +209,11 @@ int LaunchOneThreadAlltoAllvGmm(Args &args)
     // 调用第二阶段接口
     ret = aclnnQuantGroupedMatMulAlltoAllv(workspaceAddr, workspaceSize, executor, args.stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnQuantGroupedMatMulAlltoAllv failed. ret = %d \n", ret);
-            return ret);
+              return ret);
     // （固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000000);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret); 
-            return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
+              return ret);
     LOG_PRINT("[INFO] device_%d aclnnQuantGroupedMatMulAlltoAllv execute successfully.\n", args.rankId);
     // 释放device资源，需要根据具体API的接口定义修改
     if (args.rankId == 0) {
@@ -321,7 +290,7 @@ int LaunchOneThreadAlltoAllvGmm(Args &args)
     return 0;
 }
 
-int main(int argc, char *argv[]) 
+int main(int argc, char *argv[])
 {
     int ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
@@ -340,7 +309,7 @@ int main(int argc, char *argv[])
     for (int i = 0; i < EP_WORLD_SIZE; i++) {
         devices[i] = i;
     }
-    //初始化集合通信域
+    // 初始化集合通信域
     HcclComm comms[EP_WORLD_SIZE];
     ret = HcclCommInitAll(EP_WORLD_SIZE, devices, comms);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommInitAll failed. ret = %d \n", ret); return ret);

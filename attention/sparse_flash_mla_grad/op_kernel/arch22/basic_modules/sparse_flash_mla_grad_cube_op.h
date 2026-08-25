@@ -144,6 +144,7 @@ private:
     int64_t dqWorkspaceLen;
     int64_t dkWorkspaceLen;
     int64_t dvWorkspaceLen;
+    int64_t additionalWorkspaceLen;
     int64_t selectedKWorkspaceLen;
     int64_t selectedVWorkspaceLen;
     int64_t mm4ResAddr;
@@ -209,7 +210,12 @@ private:
     uint32_t singleN;
     int64_t s1BasicSize;
     int64_t dOriKvSize;
-    int64_t dSL1TotalSize{0};                                                  
+    int64_t dSL1TotalSize{0};
+    int64_t usedWorkspaceLen;
+    int64_t dqAddr;
+    int64_t dkAddr;
+
+    GM_ADDR workspace;                                          
 };
 
 template <typename SMLAGT>
@@ -230,6 +236,7 @@ __aicore__ inline void CubeOp<SMLAGT>::Init(GM_ADDR query, GM_ADDR ori_kv, GM_AD
     mm12WorkspaceLen = tilingData->opInfo.mm12WorkspaceLen;
     dqWorkspaceLen = tilingData->opInfo.dqWorkspaceLen;
     dkWorkspaceLen = tilingData->opInfo.dkWorkspaceLen;
+    additionalWorkspaceLen = tilingData->opInfo.additionalWorkspaceLen;
     selectedKWorkspaceLen = tilingData->opInfo.selectedKWorkspaceLen;
     oriWinLen = tilingData->opInfo.oriWinLeft + tilingData->opInfo.oriWinRight + 1;
     singleN = tilingData->splitCoreParams.singleN;
@@ -287,12 +294,12 @@ __aicore__ inline void CubeOp<SMLAGT>::InitGMBuffer(GM_ADDR query, GM_ADDR ori_k
 
     if constexpr (MODE == SMLAG_SWA_MODE) {
         oriKvGm.SetGlobalBuffer((__gm__ T1 *)ori_kv);
-    } else if (MODE == SMLAG_CFA_MODE) {
+    } else if (MODE == SMLAG_CFA_MODE || MODE == SMLAG_SCFA_MODE) {
         oriKvGm.SetGlobalBuffer((__gm__ T1 *)ori_kv);
         cmpKvGm.SetGlobalBuffer((__gm__ T1 *)cmp_kv);
     }
 
-    int64_t usedWorkspaceLen = 0;
+    usedWorkspaceLen = 0;
     cBlockIdx = GetBlockIdx();
     // select
     int64_t selectedKAddr = usedWorkspaceLen / sizeof(T1) + cBlockIdx * selectedKWorkspaceLen / sizeof(T1);
@@ -301,25 +308,26 @@ __aicore__ inline void CubeOp<SMLAGT>::InitGMBuffer(GM_ADDR query, GM_ADDR ori_k
      * mm1 与 p 复用workspace
      */
     int64_t mm1Addr = usedWorkspaceLen / sizeof(float) + cBlockIdx * mm12WorkspaceLen / sizeof(float);
+    usedWorkspaceLen += mm12WorkspaceLen * usedCoreNum;
     int64_t pAddr = usedWorkspaceLen / sizeof(T1) + cBlockIdx * mm12WorkspaceLen / sizeof(T1);
     usedWorkspaceLen += mm12WorkspaceLen * usedCoreNum;
     /*
      * mm2 与 ds 复用workspace
      */
     int64_t mm2Addr = usedWorkspaceLen / sizeof(float) + cBlockIdx * mm12WorkspaceLen / sizeof(float);
+    usedWorkspaceLen += mm12WorkspaceLen * usedCoreNum;
     int64_t dsAddr = usedWorkspaceLen / sizeof(T1) + cBlockIdx * mm12WorkspaceLen / sizeof(T1);
     usedWorkspaceLen += mm12WorkspaceLen * usedCoreNum;
 
     // post
-    int64_t dqAddr = usedWorkspaceLen / sizeof(float);
-    int64_t dkAddr = dqAddr + dqWorkspaceLen / sizeof(float);
+    dqAddr = usedWorkspaceLen / sizeof(float);
+    dkAddr = dqAddr + dqWorkspaceLen / sizeof(float);
     usedWorkspaceLen += dqWorkspaceLen + dkWorkspaceLen;
 
     if constexpr (MODE == SMLAG_SCFA_MODE) {
         // scatter add
-        mm4ResAddr = usedWorkspaceLen / sizeof(float);
-        mm5ResAddr = mm4ResAddr + MAX_CORE_NUM * (selectedBlockCount + oriWinLen) * dimDTotal * 2;
-        usedWorkspaceLen += MAX_CORE_NUM * (selectedBlockCount + oriWinLen) * (dimDTotal + dimDTotal) * 2 * sizeof(float);
+        mm4ResAddr = (usedWorkspaceLen + additionalWorkspaceLen) / sizeof(float);
+        mm5ResAddr = mm4ResAddr + MAX_CORE_NUM * selectedBlockCount * dimDTotal * 2;
     } else {
         mm5ResAddr = dkAddr;
         mm4ResAddr = usedWorkspaceLen / sizeof(float);
@@ -334,6 +342,8 @@ __aicore__ inline void CubeOp<SMLAGT>::InitGMBuffer(GM_ADDR query, GM_ADDR ori_k
     selectedKWorkspaceGm.SetGlobalBuffer((__gm__ T1 *)workspace + selectedKAddr);
     mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm4ResAddr);
     mm5ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm5ResAddr);
+
+    this->workspace = workspace;
 }
 
 template <typename SMLAGT>
@@ -375,9 +385,9 @@ __aicore__ inline void CubeOp<SMLAGT>::InitLocalTensor()
     cL0TensorPingPong[1] = asdopsBuf.GetBuffer<BufferType::ASCEND_L0C, float>(128 * 128 * sizeof(float));
 }
 
-#include "./cube_modules/cube1.h"
-#include "./cube_modules/cube2.h"
-#include "./cube_modules/cube3.h"
-#include "./cube_modules/cube4.h"
-#include "./cube_modules/cube5.h"
+#include "./cube_modules/cube1_sfmg_arch22.h"
+#include "./cube_modules/cube2_sfmg_arch22.h"
+#include "./cube_modules/cube3_sfmg_arch22.h"
+#include "./cube_modules/cube4_sfmg_arch22.h"
+#include "./cube_modules/cube5_sfmg_arch22.h"
 } // namespace SMLAG_BASIC

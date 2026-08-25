@@ -17,4 +17,4 @@ const aclTensor *Div(const aclTensor *self, const aclTensor *other, aclOpExecuto
 
 }
 
-#endif  // PTA_NPU_OP_API_INC_LEVEL0_OP_ADD_OP_H_
+#endif // PTA_NPU_OP_API_INC_LEVEL0_OP_ADD_OP_H_

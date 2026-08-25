@@ -26,7 +26,7 @@ public:
     Mc2QuantBatchMatmulInfoFactory() = default;
     ~Mc2QuantBatchMatmulInfoFactory() = default;
 
-    Mc2QuantBatchMatmulInfo* Get()
+    Mc2QuantBatchMatmulInfo *Get()
     {
         Mc2QuantBatchMatmulInfo *ptr = nullptr;
         auto threadId = pthread_self();
@@ -49,5 +49,5 @@ private:
     Ops::Transformer::Optiling::RWLock lock_;
 };
 
-}  // namespace optiling
-#endif  // QUANT_BATCH_MATMUL_INFO_FACTORY_H
+} // namespace optiling
+#endif // QUANT_BATCH_MATMUL_INFO_FACTORY_H

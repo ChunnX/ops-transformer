@@ -52,7 +52,7 @@ public:
         pipe->InitBuffer(inQueueX, DOUBLE_BUFFER_MATMUL_ALLREDUCE_INT8, quantUbSize * sizeof(int8_t));
         pipe->InitBuffer(outQueueZ, DOUBLE_BUFFER_MATMUL_ALLREDUCE_INT8, quantUbSize * sizeof(T));
         pipe->InitBuffer(allgatherOutTtypeLocalTmp, quantUbSize * sizeof(T)); // 先将int8转化为T类型再进行dequant
-        if constexpr (AscendC::IsSameType<T, bfloat16_t>::value) {            // bf16场景下需要转换成fp32类型再做乘法
+        if constexpr (AscendC::IsSameType<T, bfloat16_t>::value) { // bf16场景下需要转换成fp32类型再做乘法
             pipe->InitBuffer(dequantScaleFloatLocalTmp, quantUbSize * sizeof(float));
             pipe->InitBuffer(allgatherOutFloatLocalTmp, quantUbSize * sizeof(float));
         }

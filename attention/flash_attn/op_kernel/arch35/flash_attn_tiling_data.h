@@ -16,16 +16,14 @@
 #ifndef FLASH_ATTN_TILING_DATA_H_
 #define FLASH_ATTN_TILING_DATA_H_
 
-
 namespace optiling {
-
-// #if defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 3510) || (__NPU_ARCH__ == 5102))
 constexpr uint32_t FA_AIC_CORE_NUM = 36;
 constexpr uint32_t FA_AIV_CORE_NUM = 72;
 
 // AICPU metadata format: 16 fields per core (FA and FD both)
 constexpr uint32_t FLASH_ATTN_METADATA_SIZE = 16;
 constexpr uint32_t FA_FD_METADATA_SIZE = 16;
+static constexpr uint32_t FA_METADATA_HEADER_OFFSET = 16U * sizeof(uint32_t);
 
 // FA Metadata Index Definitions (0-based, matching AICPU flash_attn_metadata.h)
 // No CORE_ENABLE field in AICPU format; inactive cores have all-zero data.
@@ -64,11 +62,15 @@ struct FlashAttnBaseParams {
     float scaleValue;
     uint8_t iscuSeqLengthsNull;
     uint8_t iscuSeqLengthsKVNull;
-    uint8_t isKvContinuous;
     uint8_t isSoftMaxLseEnable;
     uint32_t coreNum;
     uint32_t outputLayout;
     bool needInitOutput;
+    // kvcache non-contiguous strides (valid only for tensor v2 view inputs)
+    uint64_t keyBnStride = 0;
+    uint64_t keyN2Stride = 0;
+    uint64_t valueBnStride = 0;
+    uint64_t valueN2Stride = 0;
 };
 
 struct FlashAttnAttenMaskParams {

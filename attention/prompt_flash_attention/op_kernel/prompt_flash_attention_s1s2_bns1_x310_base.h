@@ -171,20 +171,20 @@ protected:
     uint32_t maskOffset;
     uint32_t maskCoreOffset;
     uint64_t attenMaskCoreOffset;
-    uint32_t valueOffset;
-    uint32_t valueCoreOffset;
+    uint64_t valueOffset;
+    uint64_t valueCoreOffset;
     uint64_t attenMaskOffset;
-    uint32_t tensorAOffset;
-    uint32_t tensorBOffset;
-    uint32_t tensorACoreOffset;
-    uint32_t tensorBCoreOffset;
-    uint32_t attentionOutOffset;
-    uint32_t offsetSS;
-    uint32_t offsetSH;
+    uint64_t tensorAOffset;
+    uint64_t tensorBOffset;
+    uint64_t tensorACoreOffset;
+    uint64_t tensorBCoreOffset;
+    uint64_t attentionOutOffset;
+    uint64_t offsetSS;
+    uint64_t offsetSH;
     uint32_t offsetSTypeNum;
     uint32_t offsetNSTypeNum;
-    uint32_t offsetNSS;
-    uint32_t offsetNSH;
+    uint64_t offsetNSS;
+    uint64_t offsetNSH;
     uint32_t maskDataType;
     uint32_t attenMaskBatch;
     uint32_t maskCopyInCol;
@@ -293,11 +293,11 @@ protected:
 
     __aicore__ inline void ComputeOffset(uint32_t sInnerLoopIdx, bool isLast);
 
-    __aicore__ inline void LoopSOuterOffsetInitWithBSH(uint32_t seqListOffsetSize, int sIdx);
+    __aicore__ inline void LoopSOuterOffsetInitWithBSH(uint64_t seqListOffsetSize, int sIdx);
 
-    __aicore__ inline void LoopSOuterOffsetInitWithBNSD(uint32_t seqListOffsetSize, int sIdx);
+    __aicore__ inline void LoopSOuterOffsetInitWithBNSD(uint64_t seqListOffsetSize, int sIdx);
 
-    __aicore__ inline void LoopSOuterOffsetInit(uint32_t seqListOffsetSize, int sIdx);
+    __aicore__ inline void LoopSOuterOffsetInit(uint64_t seqListOffsetSize, int sIdx);
 
     __aicore__ inline void initOffset();
 
@@ -352,9 +352,10 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::Init(__gm__ u
     }
 
     uint32_t preAccumSOuter = 0;
-    uint32_t h = tilingData->promptAttentionBaseParams.headNumSize * tilingData->promptAttentionBaseParams.headSize;
-    uint32_t s = tilingData->promptAttentionBaseParams.seqSize;
-    uint32_t middle_actualSeqLengths = 0;
+    uint64_t h = static_cast<uint64_t>(tilingData->promptAttentionBaseParams.headNumSize) *
+        tilingData->promptAttentionBaseParams.headSize;
+    uint64_t s = tilingData->promptAttentionBaseParams.seqSize;
+    uint64_t middle_actualSeqLengths = 0;
     uint32_t actualSeqLengthsIdx = 0;
 
     if constexpr (IsSameType<T, half>::value) {
@@ -364,13 +365,13 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::Init(__gm__ u
     for (int i = 0; i < tilingData->promptAttentionBaseParams.batchSize; i++) {
         actualSeqLengthsIdx = isActualLenDimsNull ? tilingData->promptAttentionBaseParams.seqSize : actualSeqLengthsGm.GetValue(i);
         if (tilingData->promptAttentionBaseParams.isActualSeqLengthsNull) {
-            actualSeqOffsets[i] = i * s * h;
+            actualSeqOffsets[i] = static_cast<uint64_t>(i) * s * h;
         } else {
             if (tilingData->promptAttentionBaseParams.isLayoutSH) {
                 actualSeqOffsets[i] = middle_actualSeqLengths * h;
                 middle_actualSeqLengths += actualSeqLengthsIdx;
             } else {
-                actualSeqOffsets[i] = i * s * h;
+                actualSeqOffsets[i] = static_cast<uint64_t>(i) * s * h;
             }
         }
 
@@ -468,12 +469,14 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFATypeNZ<PFALayoutN
 
 template<typename PFAT>
 __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::initOffset() {
-    offsetSS = tilingData->promptAttentionBaseParams.seqSize * tilingData->promptAttentionBaseParams.seqSize;
-    offsetSH = tilingData->promptAttentionBaseParams.seqSize * tilingData->promptAttentionBaseParams.headSize;
-    offsetSTypeNum = tilingData->promptAttentionBaseParams.seqSize * typeByteNum;
-    offsetNSTypeNum = tilingData->promptAttentionBaseParams.headNumSize * offsetSTypeNum;
-    offsetNSS = tilingData->promptAttentionBaseParams.headNumSize * offsetSS;
-    offsetNSH = tilingData->promptAttentionBaseParams.headNumSize * offsetSH;
+    offsetSS = static_cast<uint64_t>(tilingData->promptAttentionBaseParams.seqSize) *
+        tilingData->promptAttentionBaseParams.seqSize;
+    offsetSH = static_cast<uint64_t>(tilingData->promptAttentionBaseParams.seqSize) *
+        tilingData->promptAttentionBaseParams.headSize;
+    offsetSTypeNum = static_cast<uint64_t>(tilingData->promptAttentionBaseParams.seqSize) * typeByteNum;
+    offsetNSTypeNum = static_cast<uint64_t>(tilingData->promptAttentionBaseParams.headNumSize) * offsetSTypeNum;
+    offsetNSS = static_cast<uint64_t>(tilingData->promptAttentionBaseParams.headNumSize) * offsetSS;
+    offsetNSH = static_cast<uint64_t>(tilingData->promptAttentionBaseParams.headNumSize) * offsetSH;
 }
 
 template<typename PFAT>
@@ -540,7 +543,7 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::AttenMaskTran
 template<typename PFAT>
 __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::ElewiseCompute310P(LocalTensor<mm1OutputType>& mmResUb, uint32_t SInnerSize, uint32_t SOuterSize) {
     uint32_t computeSize = SInnerSize * SOuterSize;
-    
+
     Muls(mmResUb, mmResUb, static_cast<mm1OutputType>(tilingData->promptAttentionBaseParams.scaleValue), computeSize);
     PipeBarrier<PIPE_V>();
     if (needCalMask_) {
@@ -550,13 +553,13 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::ElewiseComput
             Cast(tmpUb, attenMaskUb, RoundMode::CAST_NONE, tmpUb.GetSize());
             PipeBarrier<PIPE_V>();
             Add(mmResUb, mmResUb, tmpUb, computeSize);
-            PipeBarrier<PIPE_V>();     
+            PipeBarrier<PIPE_V>();
         }
         else{
             LocalTensor<mmOutputType> tmpUb = this->attenMaskUb_.template Get<mmOutputType>(this->attenMaskUbSize);
             Add(mmResUb, mmResUb, tmpUb, computeSize);
             PipeBarrier<PIPE_V>();
-        }   
+        }
     }
 }
 
@@ -658,12 +661,12 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::Bmm2UpdateDiv
     int32_t loop = tilingData->promptAttentionBaseParams.headSize / BLOCK_CUBE;
     int32_t outerSize = isOuterTail_ ? singleProcessSOuterSizeTailAlign : singleProcessSOuterSize;
     int32_t repeat = 16 * outerSize * sizeof(mmOutputType) / 256;
-	
+
 	constexpr int32_t FP32_BLOCK_NUM = 8;
     int32_t calcSize = outerSize * FP32_BLOCK_NUM;
     LocalTensor<float> tmpBuffer = tmpmm2Ub_.template Get<float>();
 	DataCopy(tmpBuffer, softmaxSumUb, {static_cast<uint16_t>(outerSize), 1, 0, 1});
-    DataCopy(tmpBuffer[FP32_BLOCK_NUM], softmaxSumUb, {static_cast<uint16_t>(outerSize), 1, 0, 1});    
+    DataCopy(tmpBuffer[FP32_BLOCK_NUM], softmaxSumUb, {static_cast<uint16_t>(outerSize), 1, 0, 1});
     PipeBarrier<PIPE_V>();
 	if constexpr (IsSameType<softmaxType, half>::value) {
         Cast(softmaxExpUb, tmpBuffer, RoundMode::CAST_ODD, calcSize * 2);
@@ -677,7 +680,7 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::Bmm2UpdateDiv
         }
 
     } else if constexpr (IsSameType<softmaxType, float>::value){
-        LocalTensor<half> tmpSoftmaxSum = tmpmm2Ub_.template Get<half>(); 
+        LocalTensor<half> tmpSoftmaxSum = tmpmm2Ub_.template Get<half>();
         Cast(tmpSoftmaxSum, tmpBuffer, RoundMode::CAST_NONE, calcSize * 2);
         PipeBarrier<PIPE_V>();
         for (int i = 0; i < loop; i++) {
@@ -698,7 +701,7 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::Bmm2UpdateDiv
     repeatParams.src0BlkStride = 1;
     repeatParams.src1BlkStride = 1;
     repeatParams.dstBlkStride = 1;
-    
+
     repeatParams.src0RepStride = 8;
     repeatParams.src1RepStride = 8;
     repeatParams.dstRepStride = 8;
@@ -749,14 +752,14 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::UpdateVmul(Lo
         constexpr int32_t FP32_BLOCK_NUM = 8;
         int32_t calcSize = outerSize * FP32_BLOCK_NUM;
         LocalTensor<float> tmpBuffer = tmpmm2Ub_.template Get<float>();
-        LocalTensor<half> tmpSoftmaxExp = tmpmm2Ub_.template Get<half>(); 
+        LocalTensor<half> tmpSoftmaxExp = tmpmm2Ub_.template Get<half>();
         DataCopy(tmpBuffer, softmaxExpUb, {static_cast<uint16_t>(outerSize), 1, 0, 1});
         DataCopy(tmpBuffer[FP32_BLOCK_NUM], softmaxExpUb, {static_cast<uint16_t>(outerSize), 1, 0, 1});
         PipeBarrier<PIPE_V>();
         Cast(tmpSoftmaxExp, tmpBuffer, RoundMode::CAST_ODD, calcSize * 2);
         PipeBarrier<PIPE_V>();
-       
- 
+
+
         for (int i = 0; i < loop; i++) {
             PipeBarrier<PIPE_V>();
             Mul(bmm2ResPreUb[i * BLOCK_CUBE * outerSize], tmpSoftmaxExp, bmm2ResPreUb[i * BLOCK_CUBE * outerSize], BLOCK_CUBE * outerSize);
@@ -774,25 +777,30 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::UpdateVmul(Lo
 
 template<typename PFAT>
 __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::ComputeAttenMaskOffset(uint32_t sInnerLoopIdx, bool isLast) {
-    int32_t attenMaskOffsetDateSize = 0;
+    uint64_t attenMaskOffsetDateSize = 0;
     if (!isLast) {
-        attenMaskOffsetDateSize = (sInnerLoopIdx + 1) * singleProcessSInnerSize;
-        attenMaskOffset = attenMaskCoreOffset + (uint64_t)attenMaskOffsetDateSize;
+        attenMaskOffsetDateSize =
+            static_cast<uint64_t>(sInnerLoopIdx + 1) * singleProcessSInnerSize;
+        attenMaskOffset = attenMaskCoreOffset + attenMaskOffsetDateSize;
     } else {
-        attenMaskOffset = attenMaskCoreOffset + this->singleProcessSOuterSize * (uint64_t)tilingData->promptAttentionBaseParams.maskKVsSize;
+        attenMaskOffset = attenMaskCoreOffset +
+            this->singleProcessSOuterSize *
+            (uint64_t)tilingData->promptAttentionBaseParams.maskKVsSize;
     }
 }
 
 template<typename PFAT>
 __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::ComputeOffset(uint32_t sInnerLoopIdx, bool isLast) {
     if constexpr (PFAT::layout == PFALayoutNZ::BSH) {
-        int sInnerOffsetDataSize = sInnerLoopIdx * singleProcessSInnerSize;
+        uint64_t sInnerOffsetDataSize =
+            static_cast<uint64_t>(sInnerLoopIdx) * singleProcessSInnerSize;
         ComputeAttenMaskOffset(sInnerLoopIdx, isLast);
         // tensorBOffset cannot be updated here, as it will erase the previously set values
         valueOffset = valueCoreOffset + sInnerOffsetDataSize * MultiHeadKV;
         tensorAOffset = tensorACoreOffset;
     } else { // BNSD
-        int sInnerOffsetDataSize = sInnerLoopIdx * singleProcessSInnerSize;
+        uint64_t sInnerOffsetDataSize =
+            static_cast<uint64_t>(sInnerLoopIdx) * singleProcessSInnerSize;
         valueOffset = valueCoreOffset + sInnerOffsetDataSize * tilingData->promptAttentionBaseParams.headSize;
         ComputeAttenMaskOffset(sInnerLoopIdx, isLast);
     }
@@ -813,8 +821,9 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::DataCopyTrans
         event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
         SetFlag<HardEvent::V_MTE3>(enQueEvtID);
         WaitFlag<HardEvent::V_MTE3>(enQueEvtID);
-        int64_t startAddr = this->multiSeqOffset + batchNOffset * tilingData->promptAttentionBaseParams.headSize +
-            sOuterOffset * MultiHeadQ;
+        int64_t startAddr = this->multiSeqOffset +
+            static_cast<uint64_t>(batchNOffset) * tilingData->promptAttentionBaseParams.headSize +
+            static_cast<uint64_t>(sOuterOffset) * MultiHeadQ;
         for(int i = 0; i < loop; i++) {
             DataCopy(attentionOutGm[startAddr + i * BLOCK_CUBE], bmm2ResUb[i * BLOCK_CUBE * outerSize], dataCopyParams);
         }
@@ -849,7 +858,8 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::Bmm1Compute(L
 }
 
 template<typename PFAT>
-__aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::LoopSOuterOffsetInitWithBSH(uint32_t seqListOffsetSize, int sIdx) {
+__aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::LoopSOuterOffsetInitWithBSH(
+    uint64_t seqListOffsetSize, int sIdx) {
     uint64_t attenMaskBatchOffset = 0;
     if (attenMaskBatch != 1) {
         attenMaskBatchOffset = (uint64_t)sIdx * (uint64_t)tilingData->promptAttentionBaseParams.maskKVsSize *
@@ -860,51 +870,64 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::LoopSOuterOff
     attenMaskCoreOffset = (uint64_t)sOuterOffset * (uint64_t)tilingData->promptAttentionBaseParams.maskKVsSize + attenMaskBatchOffset;
 
     tensorACoreOffset = seqListOffsetSize +
-                        sOuterOffset * MultiHeadQ +
-                        batchNOffset * tilingData->promptAttentionBaseParams.headSize;
+                        static_cast<uint64_t>(sOuterOffset) * MultiHeadQ +
+                        static_cast<uint64_t>(batchNOffset) *
+                        tilingData->promptAttentionBaseParams.headSize;
 
-    uint32_t seqInnerOffsetSize =
+    uint64_t seqInnerOffsetSize =
         tilingData->promptAttentionBaseParams.seqSize == tilingData->promptAttentionBaseParams.seqInnerSize ?
-        seqListOffsetSize / headNumRatio : sIdx * tilingData->promptAttentionBaseParams.seqInnerSize * MultiHeadKV;
+        seqListOffsetSize / headNumRatio :
+        static_cast<uint64_t>(sIdx) * tilingData->promptAttentionBaseParams.seqInnerSize * MultiHeadKV;
     // calculate the offset for tensor B (key or value tensor).
     tensorBCoreOffset = seqInnerOffsetSize +
-                        batchNOffset / headNumRatio * tilingData->promptAttentionBaseParams.headSize;
+                        static_cast<uint64_t>(batchNOffset) / headNumRatio *
+                        tilingData->promptAttentionBaseParams.headSize;
 
     valueCoreOffset = tensorBCoreOffset;
 }
 
 template<typename PFAT>
-__aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::LoopSOuterOffsetInitWithBNSD(uint32_t seqListOffsetSize,
-                                                                                    int sIdx) {
-    uint32_t head_stride_q = tilingData->promptAttentionBaseParams.headSize *
+__aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::LoopSOuterOffsetInitWithBNSD(
+    uint64_t seqListOffsetSize, int sIdx) {
+    uint64_t head_stride_q = static_cast<uint64_t>(tilingData->promptAttentionBaseParams.headSize) *
                              tilingData->promptAttentionBaseParams.seqSize;
-    uint32_t head_stride_kv = tilingData->promptAttentionBaseParams.headSize *
+    uint64_t head_stride_kv = static_cast<uint64_t>(tilingData->promptAttentionBaseParams.headSize) *
                               tilingData->promptAttentionBaseParams.seqInnerSize;
-    uint32_t seq_stride = tilingData->promptAttentionBaseParams.headSize;
+    uint64_t seq_stride = tilingData->promptAttentionBaseParams.headSize;
 
     uint64_t attenMaskBatchOffset = 0;
     if (attenMaskBatch != 1) {
-        attenMaskBatchOffset = (uint64_t)sIdx * (uint64_t)tilingData->promptAttentionBaseParams.maskKVsSize *
-                               (uint64_t)tilingData->promptAttentionBaseParams.maskQsSize;
+        attenMaskBatchOffset =
+            (uint64_t)sIdx * (uint64_t)tilingData->promptAttentionBaseParams.maskKVsSize *
+            (uint64_t)tilingData->promptAttentionBaseParams.maskQsSize;
     }
-    attenMaskCoreOffset = (uint64_t)sOuterOffset * (uint64_t)tilingData->promptAttentionBaseParams.maskKVsSize + attenMaskBatchOffset;
+    attenMaskCoreOffset =
+        (uint64_t)sOuterOffset * (uint64_t)tilingData->promptAttentionBaseParams.maskKVsSize +
+        attenMaskBatchOffset;
 
-    tensorACoreOffset = seqListOffsetSize + batchNOffset * head_stride_q + sOuterOffset*seq_stride;
+    tensorACoreOffset = seqListOffsetSize +
+        static_cast<uint64_t>(batchNOffset) * head_stride_q +
+        static_cast<uint64_t>(sOuterOffset) * seq_stride;
 
-    uint32_t seqInnerOffsetSize =
+    uint64_t seqInnerOffsetSize =
         tilingData->promptAttentionBaseParams.seqSize == tilingData->promptAttentionBaseParams.seqInnerSize ?
-        seqListOffsetSize / headNumRatio : sIdx * head_stride_kv *
+        seqListOffsetSize / headNumRatio :
+        static_cast<uint64_t>(sIdx) * head_stride_kv *
         tilingData->promptAttentionBaseParams.headNumSize / headNumRatio;
 
-    tensorBCoreOffset = seqInnerOffsetSize + batchNOffset / headNumRatio * head_stride_kv;
+    tensorBCoreOffset = seqInnerOffsetSize +
+        static_cast<uint64_t>(batchNOffset) / headNumRatio * head_stride_kv;
 
     valueCoreOffset = tensorBCoreOffset;
 
-    attentionOutOffset = seqListOffsetSize + batchNOffset * head_stride_q + sOuterOffset * seq_stride;
+    attentionOutOffset = seqListOffsetSize +
+        static_cast<uint64_t>(batchNOffset) * head_stride_q +
+        static_cast<uint64_t>(sOuterOffset) * seq_stride;
 }
 
 template<typename PFAT>
-__aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::LoopSOuterOffsetInit(uint32_t seqListOffsetSize, int sIdx) {
+__aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::LoopSOuterOffsetInit(
+    uint64_t seqListOffsetSize, int sIdx) {
     if constexpr (PFAT::layout == PFALayoutNZ::BSH) {
         LoopSOuterOffsetInitWithBSH(seqListOffsetSize, sIdx);
     } else { // BNSD

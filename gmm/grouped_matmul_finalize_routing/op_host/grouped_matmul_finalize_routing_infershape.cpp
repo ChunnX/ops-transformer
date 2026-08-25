@@ -133,6 +133,8 @@ static ge::graphStatus SetXAndWShapesForMX(const InferShapeContext *context, Che
     params.k = params.shape_x1->GetDim(wIndex);
 
     auto shape_scale = context->GetOptionalInputShape(scaleOptionIndex);
+    OP_CHECK_IF(shape_scale == nullptr, OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(), "scale is not given."),
+        return ge::GRAPH_FAILED);
 
     params.n = params.weightTrans ? shape_scale->GetDim(DIM_ONE) : shape_scale->GetDim(DIM_TWO);
     params.e = params.shape_x2->GetDim(xIndex);
@@ -161,7 +163,7 @@ static ge::graphStatus ValidateScaleAndBias(const InferShapeContext *context, co
                         OPS_REPORT_CUBE_INNER_ERR(op_name, "bias is not supported."), return ge::GRAPH_FAILED);
         }
     } else {
-        OP_LOGE(op_name, "scale shape is not support");
+        OP_LOGE(op_name, "scale shape is not supported");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -191,7 +193,7 @@ static ge::graphStatus ValidateSharedInputAndLogit(const InferShapeContext *cont
             context->GetOptionalInputShape(sharedInputOptionIndex)->GetDim(1) != xAndWParams.n,
             OPS_REPORT_CUBE_INNER_ERR(op_name, "shared_input's shape is wrong."), return ge::GRAPH_FAILED);
         bsdp = context->GetOptionalInputShape(sharedInputOptionIndex)->GetDim(0);
-        OP_CHECK_IF(bsdp <= 0, OPS_REPORT_CUBE_INNER_ERR(op_name, "shared_input first dim must bigger than 0 ."),
+        OP_CHECK_IF(bsdp <= 0, OPS_REPORT_CUBE_INNER_ERR(op_name, "shared_input first dim must be greater than 0."),
             return ge::GRAPH_FAILED);
     }
     
@@ -219,8 +221,10 @@ static ge::graphStatus SetupOutputAndCheckAttrs(InferShapeContext *context, cons
 {
     auto attrs = context->GetAttrs();
     auto shape_out = context->GetOutputShape(0);
+    OP_CHECK_IF(attrs == nullptr || shape_out == nullptr,
+        OPS_REPORT_CUBE_INNER_ERR(op_name, "attrs or output shape is null."), return ge::GRAPH_FAILED);
     shape_out->SetDimNum(twoDimNum);
-    const int *output_bs = attrs->GetAttrPointer<int>(outputBSAttrIndex);
+    const int64_t *output_bs = attrs->GetAttrPointer<int64_t>(outputBSAttrIndex);
     OP_CHECK_IF(output_bs == nullptr,
         OPS_REPORT_CUBE_INNER_ERR(op_name, "output_bs is not given."), return ge::GRAPH_FAILED);
     if (output_bs != nullptr) {
@@ -235,15 +239,19 @@ static ge::graphStatus SetupOutputForMX(InferShapeContext *context, const char* 
 {
     auto attrs = context->GetAttrs();
     auto shape_out = context->GetOutputShape(0);
+    OP_CHECK_IF(attrs == nullptr || shape_out == nullptr,
+        OPS_REPORT_CUBE_INNER_ERR(op_name, "attrs or output shape is null."), return ge::GRAPH_FAILED);
     
     shape_out->SetDimNum(twoDimNum);
-    const int *output_bs = attrs->GetAttrPointer<int>(outputBSAttrIndex);
+    const int64_t *output_bs = attrs->GetAttrPointer<int64_t>(outputBSAttrIndex);
     
     if (output_bs != nullptr) {
         shape_out->SetDim(0, *output_bs);
     }
     auto x2_dim = xAndWParams.shape_x2->GetDimNum();
     auto shape_scale = context->GetOptionalInputShape(scaleOptionIndex);
+    OP_CHECK_IF(shape_scale == nullptr, OPS_REPORT_CUBE_INNER_ERR(op_name, "scale is not given."),
+        return ge::GRAPH_FAILED);
 
     shape_out->SetDim(DIM_ONE, xAndWParams.weightTrans ?
                              shape_scale->GetDim(DIM_ONE) :
@@ -257,7 +265,7 @@ static ge::graphStatus ValidateOffsetShape(const InferShapeContext *context, con
     auto shape_offset = context->GetOptionalInputShape(offsetOptionIndex);
     if (shape_offset != nullptr) {
         if (shape_offset->GetDimNum() != threeDimNum) {
-            OP_LOGE(op_name, "offset shape is not support");
+            OP_LOGE(op_name, "offset shape is not supported");
             return ge::GRAPH_FAILED;
         }
         OP_CHECK_IF(shape_offset->GetDim(0) != xAndWParams.e || shape_offset->GetDim(1) != 1 || shape_offset->GetDim(2) != xAndWParams.n,
@@ -268,6 +276,8 @@ static ge::graphStatus ValidateOffsetShape(const InferShapeContext *context, con
 
 static ge::graphStatus InferShapeGroupedMatmulFinalizeRouting(InferShapeContext *context)
 {
+    OP_CHECK_IF(context == nullptr, OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulFinalizeRouting", "context is null"),
+        return ge::GRAPH_FAILED);
     auto op_name = context->GetNodeName();
     auto shape_x1 = context->GetInputShape(xIndex);
     auto shape_x2 = context->GetInputShape(wIndex);
@@ -366,7 +376,7 @@ static ge::graphStatus ValidateFailedDataType(const gert::InferDataTypeContext *
         OP_CHECK_IF(
             (context->GetOptionalInputDataType(scaleOptionIndex) != ge::DT_FLOAT8_E8M0),
             OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(),
-                                      "The MXFP4/MXFP8 InputDataType of scale is wrong.Supported type:FlOAT8_E8M0"),
+                                      "The MXFP4/MXFP8 InputDataType of scale is wrong.Supported type:FLOAT8_E8M0"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             (context->GetOptionalInputDataType(groupListOptionIndex) != ge::DT_INT64),
@@ -386,7 +396,7 @@ static ge::graphStatus ValidateFailedDataType(const gert::InferDataTypeContext *
         OP_CHECK_IF((context->GetOptionalInputDataType(pertokenScaleOptionIndex) != ge::DT_FLOAT8_E8M0),
                     OPS_REPORT_CUBE_INNER_ERR(
                         context->GetNodeName(),
-                        "The MXFP4/MXFP8 InputDataType of pertokenscale is wrong.Supported type:FlOAT8_E8M0"),
+                        "The MXFP4/MXFP8 InputDataType of pertokenscale is wrong.Supported type:FLOAT8_E8M0"),
                     return ge::GRAPH_FAILED);
     }
 
@@ -421,6 +431,8 @@ static bool IsSupportMX(const gert::InferDataTypeContext *context)
 
 static ge::graphStatus InferDataTypeGroupedMatmulFinalizeRouting(gert::InferDataTypeContext *context)
 {
+    OP_CHECK_IF(context == nullptr, OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulFinalizeRouting", "context is null"),
+        return ge::GRAPH_FAILED);
     bool supportDataTypeMX = IsSupportMX(context);
 
     bool supportDataTypeW8A8 = (context->GetInputDataType(xIndex) == ge::DT_INT8 ||

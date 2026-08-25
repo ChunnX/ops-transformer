@@ -16,11 +16,11 @@
 #define MATMUL_ALL_REDUCE_TILING_310_GENERAL_H
 #include "../matmul_all_reduce_tiling_base.h"
 namespace optiling {
-class MatmulAllReduceTiling310General : public MatmulAllReduceTilingBase
-{
+class MatmulAllReduceTiling310General : public MatmulAllReduceTilingBase {
 public:
-    explicit MatmulAllReduceTiling310General(gert::TilingContext* context) : MatmulAllReduceTilingBase(context)
-    {}
+    explicit MatmulAllReduceTiling310General(gert::TilingContext *context) : MatmulAllReduceTilingBase(context)
+    {
+    }
     ~MatmulAllReduceTiling310General() override = default;
 
 protected:
@@ -32,16 +32,15 @@ protected:
 
     CutResult GetTilingResult() override;
 
-    void DoMatmulTiling310(matmul_tiling::MultiCoreMatmulTiling& mm1,
-        AscendC::tiling::TCubeTiling& cubeTiling, Mc2Tiling::Mc2L2cacheTilePara& l2cacheTiling);
+    void DoMatmulTiling310(matmul_tiling::MultiCoreMatmulTiling &mm1, AscendC::tiling::TCubeTiling &cubeTiling,
+                           Mc2Tiling::Mc2L2cacheTilePara &l2cacheTiling);
 
     void DoWeightAntiQuantTiling();
 
-    void GetL2CacheParm(
-        uint64_t& l2CacheSize, uint64_t& singleMatrixSize,
-        uint32_t& tileSize, uint32_t& tileLimit, bool useNewPara) override;
+    void GetL2CacheParm(uint64_t &l2CacheSize, uint64_t &singleMatrixSize, uint32_t &tileSize, uint32_t &tileLimit,
+                        bool useNewPara) override;
 
-    void SetTransLength(matmul_tiling::MultiCoreMatmulTiling& mm1, AscendC::tiling::TCubeTiling& cubeTiling);
+    void SetTransLength(matmul_tiling::MultiCoreMatmulTiling &mm1, AscendC::tiling::TCubeTiling &cubeTiling);
 
 private:
     bool isTransB_ = false;

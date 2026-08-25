@@ -15,6 +15,7 @@
 
 #include <sstream>
 #include "mhc_pre_sinkhorn_tiling.h"
+#include "op_host/tiling_util.h"
 
 using namespace ge;
 namespace optiling {
@@ -52,6 +53,7 @@ constexpr int64_t ITER_TIMES_ATTR_IDX = 1;
 constexpr int64_t HC_EPS_ATTR_IDX = 2;
 constexpr int64_t NORM_EPS_ATTR_IDX = 3;
 constexpr int64_t NEED_BACKWARD_ATTR_IDX = 4;
+constexpr int64_t HCMULT_VALUE = 4;
 constexpr int64_t DEFAULT_ITER_TIMES = 20;
 constexpr int64_t BS_SPLIT_THRESHOLD = 128;
 constexpr int64_t MAX_BS_PER_LOOP = 32;
@@ -66,19 +68,22 @@ ge::graphStatus MhcPreSinkhornTiling::GetPlatformInfo()
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"),
                       return ge::GRAPH_FAILED);
         aivCoreNum_ = compileInfoPtr->coreNum;
+        aicCoreNum_ = compileInfoPtr->aicCoreNum;
         ubSize_ = compileInfoPtr->ubSize;
     } else {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
         aivCoreNum_ = ascendcPlatform.GetCoreNumAiv();
         aicCoreNum_ = ascendcPlatform.GetCoreNumAic();
-        aivCoreNum_ = 40;
-        aicCoreNum_ = 20;
 
         uint64_t ubSizePlatForm;
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
         ubSize_ = ubSizePlatForm;
         socVersion_ = ascendcPlatform.GetSocVersion();
     }
+    OP_CHECK_IF(aicCoreNum_ == 0, OP_LOGE(context_, "aicCoreNum is 0, cannot do tiling"),
+                  return ge::GRAPH_FAILED);
+    OP_CHECK_IF(aivCoreNum_ == 0, OP_LOGE(context_, "aivCoreNum_ is 0, cannot do tiling"),
+                  return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -145,6 +150,10 @@ ge::graphStatus MhcPreSinkhornTiling::GetShapeAttrsInfoInner()
     OP_CHECK_IF(GetAttr() != ge::GRAPH_SUCCESS,
                   OP_LOGE(context_->GetNodeName(), "get attr failed."),
                   return ge::GRAPH_FAILED);
+    // hcMult only support 4
+    OP_CHECK_IF(hcMult_ != HCMULT_VALUE,
+                OP_LOGE(context_->GetNodeName(), "hcMult should be %ld, but is %ld", HCMULT_VALUE, hcMult_),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -610,11 +619,8 @@ ge::graphStatus TilingForMhcPreSinkhorn(gert::TilingContext *context)
     auto platformInfo = context->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE("TilingForMhcPreSinkhorn", "Tiling platformInfo is null"),
                return ge::GRAPH_FAILED);
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-
-    auto socVersion = ascendcPlatform.GetSocVersion();
-    if (socVersion == platform_ascendc::SocVersion::ASCEND950) {
-        OP_LOGD(context->GetNodeName(), "Using arch35 tiling for ASCEND950");
+    if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context)) {
+        OP_LOGD(context->GetNodeName(), "Using arch35 tiling for regbase soc");
         MhcPreSinkhornTilingRegbase mhcPreSinkhornTiling(context);
         return mhcPreSinkhornTiling.DoOpTiling();
     }

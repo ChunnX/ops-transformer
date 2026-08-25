@@ -13,7 +13,7 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 #include "opdev/common_types.h"
 #include "aclnnInner_allto_allv_grouped_mat_mul.h"
 #include "mc2_comm_utils.h"
@@ -32,50 +32,60 @@ enum class NnopbaseHcclServerType : uint32_t {
 };
 
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
+extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
+extern "C" void *NnopbaseGetUserHandle(void *executor);
 
 // check nullptr
-static bool CheckNullStatus(const aclTensor* gmmX, const aclTensor* gmmWeight, const aclTensor* sendCountsTensorOptional,
-                            const aclTensor* recvCountsTensorOptional, const aclTensor* mmXOptional, const aclTensor* mmWeightOptional, 
-                            const char* group, bool permuteOutFlag, aclTensor* gmmY, const aclTensor* mmYOptional, const aclTensor* permuteOutOptional)
+static bool CheckNullStatus(const aclTensor *gmmX, const aclTensor *gmmWeight,
+                            const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional,
+                            const aclTensor *mmXOptional, const aclTensor *mmWeightOptional, const char *group,
+                            bool permuteOutFlag, aclTensor *gmmY, const aclTensor *mmYOptional,
+                            const aclTensor *permuteOutOptional)
 {
     // 检查必选入参出参为非空
     OP_CHECK_NULL(gmmX, return false);
     OP_CHECK_NULL(gmmWeight, return false);
     OP_CHECK_NULL(gmmY, return false);
     if ((sendCountsTensorOptional != nullptr) || (recvCountsTensorOptional != nullptr)) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllvGroupedMatMulGetWorkspaceSize",
-            "sendCountsTensorOptional/recvCountsTensorOptional", "non-null", "The value of sendCountsTensorOptional/recvCountsTensorOptional must be nullptr.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnAlltoAllvGroupedMatMulGetWorkspaceSize", "sendCountsTensorOptional/recvCountsTensorOptional",
+            "non-null", "The value of sendCountsTensorOptional/recvCountsTensorOptional must be nullptr.");
         return false;
     }
     if ((group == nullptr) || (strnlen(group, HCCL_GROUP_NAME_MAX) == 0)) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllvGroupedMatMulGetWorkspaceSize", "group");
         return false;
     }
-    if ((!((mmXOptional != nullptr) && (mmWeightOptional != nullptr) && (mmYOptional != nullptr))) && (!((mmXOptional == nullptr) && (mmWeightOptional == nullptr) && (mmYOptional == nullptr)))){
+    if ((!((mmXOptional != nullptr) && (mmWeightOptional != nullptr) && (mmYOptional != nullptr))) &&
+        (!((mmXOptional == nullptr) && (mmWeightOptional == nullptr) && (mmYOptional == nullptr)))) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllvGroupedMatMulGetWorkspaceSize",
-            "mmXOptional/mmWeightOptional/mmYOptional", "mixed null/non-null", "should all be null or all not be null");
+                                              "mmXOptional/mmWeightOptional/mmYOptional", "mixed null/non-null",
+                                              "should all be null or all not be null");
         return false;
     }
     if (permuteOutFlag == (permuteOutOptional == nullptr)) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllvGroupedMatMulGetWorkspaceSize",
-            "permuteOutFlag", "mismatched", "Optional output flag does not match optional output ptr");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllvGroupedMatMulGetWorkspaceSize", "permuteOutFlag",
+                                              "mismatched", "Optional output flag does not match optional output ptr");
         return false;
     }
     return true;
 }
 
 // 入参校验
-static aclnnStatus CheckParams(const aclTensor* gmmX, const aclTensor* gmmWeight, const aclTensor* sendCountsTensorOptional,
-                               const aclTensor* recvCountsTensorOptional, const aclTensor* mmXOptional, const aclTensor* mmWeightOptional, 
-                               const char* group, int64_t epWorldSize, bool permuteOutFlag, aclTensor* gmmY, aclTensor* mmYOptional, 
-                               aclTensor* permuteOutOptional)
+static aclnnStatus CheckParams(const aclTensor *gmmX, const aclTensor *gmmWeight,
+                               const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional,
+                               const aclTensor *mmXOptional, const aclTensor *mmWeightOptional, const char *group,
+                               int64_t epWorldSize, bool permuteOutFlag, aclTensor *gmmY, aclTensor *mmYOptional,
+                               aclTensor *permuteOutOptional)
 {
-    (void)epWorldSize;      // Unused
-    CHECK_RET(CheckNullStatus(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional, group,
-              permuteOutFlag, gmmY, mmYOptional, permuteOutOptional), ACLNN_ERR_PARAM_NULLPTR);
+    (void)epWorldSize; // Unused
+    CHECK_RET(CheckNullStatus(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional,
+                              mmWeightOptional, group, permuteOutFlag, gmmY, mmYOptional, permuteOutOptional),
+              ACLNN_ERR_PARAM_NULLPTR);
 
     if (strnlen(group, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAlltoAllvGroupedMatMulGetWorkspaceSize", "group", "too long",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnAlltoAllvGroupedMatMulGetWorkspaceSize", "group", "too long",
             ("group name length must be less than " + std::to_string(HCCL_GROUP_NAME_MAX)).c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -83,7 +93,7 @@ static aclnnStatus CheckParams(const aclTensor* gmmX, const aclTensor* gmmWeight
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus CheckSendAndRecv(const aclIntArray* sendCounts, const aclIntArray* recvCounts)
+static aclnnStatus CheckSendAndRecv(const aclIntArray *sendCounts, const aclIntArray *recvCounts)
 {
     if (sendCounts == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllvGroupedMatMulGetWorkspaceSize", "sendCounts");
@@ -93,8 +103,8 @@ static aclnnStatus CheckSendAndRecv(const aclIntArray* sendCounts, const aclIntA
         OP_LOGE_WITH_INVALID_INPUT("aclnnAlltoAllvGroupedMatMulGetWorkspaceSize", "recvCounts");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    uint64_t recvSize = 0U;  // recvCounts的大小
-    uint64_t sendSize = 0U;  // recvCounts的大小
+    uint64_t recvSize = 0U; // recvCounts的大小
+    uint64_t sendSize = 0U; // recvCounts的大小
     aclGetIntArraySize(recvCounts, &recvSize);
     aclGetIntArraySize(sendCounts, &sendSize);
     if (recvSize == 0U) {
@@ -108,26 +118,31 @@ static aclnnStatus CheckSendAndRecv(const aclIntArray* sendCounts, const aclIntA
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnAlltoAllvGroupedMatMulGetWorkspaceSize(const aclTensor* gmmX, const aclTensor* gmmWeight,
-                                                        const aclTensor* sendCountsTensorOptional, 
-                                                        const aclTensor* recvCountsTensorOptional, 
-                                                        const aclTensor* mmXOptional, const aclTensor* mmWeightOptional, 
-                                                        const char* group, int64_t epWorldSize, 
-                                                        const aclIntArray* sendCounts, const aclIntArray* recvCounts, 
-                                                        bool transGmmWeight, bool transMmWeight, bool permuteOutFlag, 
-                                                        aclTensor* gmmY, aclTensor* mmYOptional, aclTensor* permuteOutOptional,
-                                                        uint64_t* workspaceSize, aclOpExecutor** executor)
+aclnnStatus aclnnAlltoAllvGroupedMatMulGetWorkspaceSize(
+    const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *sendCountsTensorOptional,
+    const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional, const aclTensor *mmWeightOptional,
+    const char *group, int64_t epWorldSize, const aclIntArray *sendCounts, const aclIntArray *recvCounts,
+    bool transGmmWeight, bool transMmWeight, bool permuteOutFlag, aclTensor *gmmY, aclTensor *mmYOptional,
+    aclTensor *permuteOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    auto ret_param = CheckParams(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, 
-        mmXOptional, mmWeightOptional, group, epWorldSize, permuteOutFlag, gmmY, mmYOptional, permuteOutOptional);
+    auto ret_param =
+        CheckParams(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
+                    group, epWorldSize, permuteOutFlag, gmmY, mmYOptional, permuteOutOptional);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
     auto ret_send_and_recv = CheckSendAndRecv(sendCounts, recvCounts);
     CHECK_RET(ret_send_and_recv == ACLNN_SUCCESS, ret_send_and_recv);
-
-    aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMulGetWorkspaceSize(gmmX, gmmWeight, sendCountsTensorOptional,
-        recvCountsTensorOptional, mmXOptional, mmWeightOptional, const_cast<char *>(group), epWorldSize, sendCounts,
-        recvCounts, transGmmWeight, transMmWeight, permuteOutFlag, gmmY, mmYOptional, permuteOutOptional, workspaceSize,
-        executor);
+    const char *commMode = "ai_cpu";
+    char *str_commMode = const_cast<char *>(commMode);
+    aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMulGetWorkspaceSize(
+        gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
+        const_cast<char *>(group), epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight, permuteOutFlag,
+        str_commMode, gmmY, mmYOptional, permuteOutOptional, workspaceSize, executor);
+    OP_LOGD("AlltoAllvGroupedMatmul, aclnnInnerAlltoAllvGroupedMatMulGetWorkspaceSize ret %d.", ret);
+    if (*executor != nullptr) {
+        uint8_t commModeType = Mc2Comm::COMM_MODE_AICPU;
+        void *args = reinterpret_cast<void *>(static_cast<uint8_t>(commModeType));
+        NnopbaseSetUserHandle(*executor, args);
+    }
     return ret;
 }
 
@@ -136,17 +151,23 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(void *workspace, uint64_t workspaceSize,
 {
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+            void *arg = NnopbaseGetUserHandle(executor);
+            uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
+            uint8_t commMode = static_cast<uint8_t>(handleVal);
             if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-                OP_LOGD("arch35 with ENV_MC2_COMM_MODE_AICPU, use AICPU mode");
+                OP_LOGD("arch35, use AICPU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
             } else {
                 OP_LOGD("arch35, use CCU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
             }
+        } else {
+            OP_LOGD("Arch22 platform, use AICPU mode");
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
         }
     }
     aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMul(workspace, workspaceSize, executor, stream);
+    OP_LOGD("AlltoAllvGroupedMatmul, aclnnInnerAlltoAllvGroupedMatMul ret %d.", ret);
     return ret;
 }
 

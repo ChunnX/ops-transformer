@@ -40,27 +40,26 @@ struct Int4NzParams {
     uint64_t groupDstStride;
     uint64_t loopN1DstStride;
     uint64_t antiQuantGroupSize;
-    __local_mem__ antiQuantScaleType* antiQuantScaleBasePhyAddr;
-    __local_mem__ xType* antiQuantOffsetBasePhyAddr;
-    __local_mem__ wType* weightLowBitPhyAddr;
-    __local_mem__ xType* weightHighBitPhyAddr;
-    __local_mem__ uint8_t* antiQuantScaleMaskPhyAddr;
+    __local_mem__ antiQuantScaleType *antiQuantScaleBasePhyAddr;
+    __local_mem__ xType *antiQuantOffsetBasePhyAddr;
+    __local_mem__ wType *weightLowBitPhyAddr;
+    __local_mem__ xType *weightHighBitPhyAddr;
+    __local_mem__ uint8_t *antiQuantScaleMaskPhyAddr;
 };
 
-static constexpr MicroAPI::CastTrait CAST_S4_TO_F16_TRAIT = {
-    MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN, MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::UNKNOWN};
+static constexpr MicroAPI::CastTrait CAST_S4_TO_F16_TRAIT = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
+                                                             MicroAPI::MaskMergeMode::ZEROING,
+                                                             AscendC::RoundMode::UNKNOWN};
 
-static constexpr MicroAPI::CastTrait CAST_F16_TO_S8_TRAIT = {
-    MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT, MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_RINT};
+static constexpr MicroAPI::CastTrait CAST_F16_TO_S8_TRAIT = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
+                                                             MicroAPI::MaskMergeMode::ZEROING,
+                                                             AscendC::RoundMode::CAST_RINT};
 
 static constexpr int64_t ONE_BLK_ELEM_B16 = ONE_BLK_SIZE / sizeof(half);
 
-template <
-    typename xType, typename wType, typename antiQuantScaleType, bool hasAntiQuantOffset, uint64_t ubMte2InnerSize,
-    bool useVag>
-__aicore__ inline void AntiQuantInt4NzKnVf(Int4NzParams<xType, wType, antiQuantScaleType>& int4NzParams)
+template <typename xType, typename wType, typename antiQuantScaleType, bool hasAntiQuantOffset,
+          uint64_t ubMte2InnerSize, bool useVag>
+__aicore__ inline void AntiQuantInt4NzKnVf(Int4NzParams<xType, wType, antiQuantScaleType> &int4NzParams)
 {
     RegTensor<antiQuantScaleType> antiQuantScaleVreg;
     RegTensor<xType> antiQuantOffsetVreg;
@@ -82,9 +81,9 @@ __aicore__ inline void AntiQuantInt4NzKnVf(Int4NzParams<xType, wType, antiQuantS
             // Vn 0 1 2 3 4 5 6 7 8 9 a b c d e f
             // Vd 0 1 x x x x x x 2 3 x x x x x x
             MicroAPI::DataCopy<int4x2_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
-                weightS4Vreg, (__local_mem__ int4x2_t*)(int4NzParams.weightLowBitPhyAddr +
-                                                        LoopN1Idx * (BLOCK_CUBE >> 1) * ubMte2InnerSize +
-                                                        LoopInnerNumIdx * (VECTOR_REG_WIDTH >> 2)));
+                weightS4Vreg, (__local_mem__ int4x2_t *)(int4NzParams.weightLowBitPhyAddr +
+                                                         LoopN1Idx * (BLOCK_CUBE >> 1) * ubMte2InnerSize +
+                                                         LoopInnerNumIdx * (VECTOR_REG_WIDTH >> 2)));
             // PART_P0 表示按照如下形式处理做cast：
             // Vn 0 1 x x x x x x 2 3 x x x x x x
             // Vd 0 0 0 0 1 1 1 1 2 2 2 2 3 3 3 3
@@ -109,9 +108,9 @@ __aicore__ inline void AntiQuantInt4NzKnVf(Int4NzParams<xType, wType, antiQuantS
     }
 }
 
-template <
-    typename xType, typename wType, typename antiQuantScaleType, bool hasAntiQuantOffset, uint64_t ubMte2InnerSize>
-__aicore__ inline void AntiQuantS8S4NzKnGroupVf(Int4NzParams<xType, wType, antiQuantScaleType>& int4NzParams)
+template <typename xType, typename wType, typename antiQuantScaleType, bool hasAntiQuantOffset,
+          uint64_t ubMte2InnerSize>
+__aicore__ inline void AntiQuantS8S4NzKnGroupVf(Int4NzParams<xType, wType, antiQuantScaleType> &int4NzParams)
 {
     RegTensor<antiQuantScaleType> antiQuantScaleVreg;
     RegTensor<antiQuantScaleType> antiQuantScaleVreg1;
@@ -121,15 +120,15 @@ __aicore__ inline void AntiQuantS8S4NzKnGroupVf(Int4NzParams<xType, wType, antiQ
     MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<uint8_t, AscendC::MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg maskSelect = MicroAPI::CreateMask<uint8_t>();
     MicroAPI::DataCopy(maskSelect, int4NzParams.antiQuantScaleMaskPhyAddr);
-    __local_mem__ antiQuantScaleType* antiQuantScaleBasePhyAddr;
+    __local_mem__ antiQuantScaleType *antiQuantScaleBasePhyAddr;
 
     for (uint16_t loopN1Idx = 0; loopN1Idx < int4NzParams.loopN1; loopN1Idx++) {
         for (uint16_t loopGroupIdx = 0; loopGroupIdx < int4NzParams.loopGroupNum; loopGroupIdx++) {
             // DIST_BLK 的含义为读取一个32B(即16个数)的数据，广播到256B(即128个数)
             antiQuantScaleBasePhyAddr =
                 int4NzParams.antiQuantScaleBasePhyAddr + loopN1Idx * C0_SIZE_B8 + loopGroupIdx * VEC_MAX_ELEM_B16;
-            MicroAPI::DataCopy<antiQuantScaleType, MicroAPI::LoadDist::DIST_BLK>(
-                antiQuantScaleVreg, antiQuantScaleBasePhyAddr);
+            MicroAPI::DataCopy<antiQuantScaleType, MicroAPI::LoadDist::DIST_BLK>(antiQuantScaleVreg,
+                                                                                 antiQuantScaleBasePhyAddr);
             MicroAPI::DataCopy<antiQuantScaleType, MicroAPI::LoadDist::DIST_BLK>(
                 antiQuantScaleVreg1, antiQuantScaleBasePhyAddr + ONE_BLK_ELEM_B16);
             MicroAPI::Select(antiQuantScaleVreg, antiQuantScaleVreg, antiQuantScaleVreg1, maskSelect);
@@ -140,10 +139,10 @@ __aicore__ inline void AntiQuantS8S4NzKnGroupVf(Int4NzParams<xType, wType, antiQ
                 // 地址偏移以B记，对C0_SIZE_B8和VEC_MAX_ELEM_B16除以2实现正确偏移
                 MicroAPI::DataCopy<int4x2_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
                     weightS4Vreg,
-                    (__local_mem__ int4x2_t*)(int4NzParams.weightLowBitPhyAddr +
-                                              loopN1Idx * (C0_SIZE_B8 >> 1) * ubMte2InnerSize +
-                                              loopGroupIdx * int4NzParams.antiQuantGroupSize * (C0_SIZE_B8 >> 1) +
-                                              loopGroupInnerIdx * (VEC_MAX_ELEM_B16 >> 1)));
+                    (__local_mem__ int4x2_t *)(int4NzParams.weightLowBitPhyAddr +
+                                               loopN1Idx * (C0_SIZE_B8 >> 1) * ubMte2InnerSize +
+                                               loopGroupIdx * int4NzParams.antiQuantGroupSize * (C0_SIZE_B8 >> 1) +
+                                               loopGroupInnerIdx * (VEC_MAX_ELEM_B16 >> 1)));
                 // S4_TO_F16按如下模式cast
                 // Vn 00000012 00000034
                 // Vd 3c004000 42004400

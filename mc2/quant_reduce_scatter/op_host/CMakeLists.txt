@@ -13,21 +13,21 @@ if (BUILD_OPEN_PROJECT)  # custom
         quant_reduce_scatter_def.cpp
     )
     add_modules_sources_with_soc(
-        OP_API_INDEPENDENT ON 
-        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api 
-        OP_MC2_ENABLE ON 
+        OP_API_INDEPENDENT ON
+        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
+        OP_MC2_ENABLE ON
         OPTYPE quant_reduce_scatter quant_reduce_scatter ACLNNTYPE aclnn aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
     set(quant_reduce_scatter_depends mc2/common mc2/3rd PARENT_SCOPE)
 
-    # --cce-auto-sync=off：指定CCE编译器是否自动执行线程间或模块间的同步操作 
-    set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT}) 
-    if("${CONDITION_UNIT}" STREQUAL "ascend950") 
-        add_ops_compile_options( 
-            OP_NAME QuantReduceScatter 
-            OPTIONS --cce-auto-sync=off 
-        ) 
+    # --cce-auto-sync=off：指定CCE编译器是否自动执行线程间或模块间的同步操作
+    set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
+    if("${CONDITION_UNIT}" STREQUAL "ascend950")
+        add_ops_compile_options(
+            OP_NAME QuantReduceScatter
+            OPTIONS --cce-auto-sync=off
+        )
     endif()
 else() # 回黄host
     add_mc2_modules_sources(OPTYPE quant_reduce_scatter quant_reduce_scatter ACLNNTYPE aclnn aclnn_inner)

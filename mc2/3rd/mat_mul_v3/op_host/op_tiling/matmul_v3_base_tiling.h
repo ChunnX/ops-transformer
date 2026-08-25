@@ -25,22 +25,25 @@ namespace optiling {
 namespace mc2_matmul_v3 {
 class Mc2MatmulV3BaseTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
- public:
-    explicit Mc2MatmulV3BaseTiling(gert::TilingContext* context)
-        : TilingBaseClass(context), tilingData_(tilingDataSelf_) {
+public:
+    explicit Mc2MatmulV3BaseTiling(gert::TilingContext *context)
+        : TilingBaseClass(context), tilingData_(tilingDataSelf_)
+    {
     }
-    Mc2MatmulV3BaseTiling(gert::TilingContext* context,
-                       Mc2MatmulV3TilingData* tilingData,
-                       Mc2TilingCalcSelect tilingSelect = Mc2TilingCalcSelect::BASE)
-        : TilingBaseClass(context), tilingData_(*tilingData) {
+    Mc2MatmulV3BaseTiling(gert::TilingContext *context, Mc2MatmulV3TilingData *tilingData,
+                          Mc2TilingCalcSelect tilingSelect = Mc2TilingCalcSelect::BASE)
+        : TilingBaseClass(context), tilingData_(*tilingData)
+    {
         InitCompileInfo();
         tilingSelect_ = tilingSelect;
     }
-    ~Mc2MatmulV3BaseTiling() override {
+    ~Mc2MatmulV3BaseTiling() override
+    {
     }
 
 protected:
-    bool IsCapable() override {
+    bool IsCapable() override
+    {
         return true;
     };
     // 1、获取平台信息比如CoreNum、UB/L1/L0C资源大小
@@ -59,6 +62,7 @@ protected:
     ge::graphStatus PostTiling() override;
 
     void InitCompileInfo();
+
 protected:
     virtual ge::graphStatus CheckArgs();
     virtual ge::graphStatus GetArgs();
@@ -79,7 +83,7 @@ protected:
     void FormulaicTilingNoTrans();
     void CalL1TilingV200();
     void CalL1Tiling();
-    void UpdateL1TilingStepK(uint64_t& stepK);
+    void UpdateL1TilingStepK(uint64_t &stepK);
     bool IsPowerOfTwo(uint64_t x) const;
     void OptimizeBasicKernelStepK();
     void OptimizeLoadBalanceBasicKernel();
@@ -88,15 +92,15 @@ protected:
     virtual void UpdateNd2nzFlag() {};
     void DoNd2NzVectorTiling();
     bool DoBL1FullloadWithFixpipeTiling();
-    void CalcNd2NzTiling(uint64_t dtypeSize, uint64_t nValue, uint64_t dValue, uint64_t& baseN, uint64_t& baseD);
-    bool CheckUbOverFlow(uint64_t nAligned16, uint64_t nValue, const uint64_t& baseN,
-                         const uint64_t& baseD, uint64_t dtypeSize);
+    void CalcNd2NzTiling(uint64_t dtypeSize, uint64_t nValue, uint64_t dValue, uint64_t &baseN, uint64_t &baseD);
+    bool CheckUbOverFlow(uint64_t nAligned16, uint64_t nValue, const uint64_t &baseN, const uint64_t &baseD,
+                         uint64_t dtypeSize);
     bool CheckBTSize(uint64_t baseN);
-    template<Mc2CalcType T>
-    void CalcBase(const std::vector<std::vector<uint64_t>>& baseMNK);
+    template <Mc2CalcType T>
+    void CalcBase(const std::vector<std::vector<uint64_t>> &baseMNK);
     void BalanceBaseBlockTiling();
-    void CalBaseMBaseN(uint64_t& baseM, uint64_t& baseN,
-                       uint64_t maxBaseM = BASIC_BLOCK_SIZE_128, uint64_t maxBaseN = BASIC_BLOCK_SIZE_256);
+    void CalBaseMBaseN(uint64_t &baseM, uint64_t &baseN, uint64_t maxBaseM = BASIC_BLOCK_SIZE_128,
+                       uint64_t maxBaseN = BASIC_BLOCK_SIZE_256);
     void SetBaseBlockTiling();
     void DoSmallShapeTiling();
     void DoSelectTiling();
@@ -113,7 +117,7 @@ protected:
     bool DoDeterministicMultiCoreSplitKTiling();
     void OptCoreNumsDeterministicMultiCoreSplitK();
     bool IsNkOrder();
-    void CalTileFactor(uint64_t& nTile);
+    void CalTileFactor(uint64_t &nTile);
     void SetBasicBlockOfMK33(Mc2MatmulV3RunInfo &runInfo);
     void SetBasicBlockOfNK33(Mc2MatmulV3RunInfo &runInfo);
     bool NeedSolveFixBound();
@@ -133,15 +137,16 @@ protected:
     void FormulateBasicBlockDavid();
     void CalcTailBasicBlock();
     bool CheckSingleTilingOk(Mc2MatmulV3RunInfo &tmpRunInfo);
-    bool CheckSingleCoreSplitKEdgeCases(const Mc2MatmulV3RunInfo &tmpRunInfo,
-                                        bool isNKM, bool isMKNsmallK, bool isNKMsmallK);
+    bool CheckSingleCoreSplitKEdgeCases(const Mc2MatmulV3RunInfo &tmpRunInfo, bool isNKM, bool isMKNsmallK,
+                                        bool isNKMsmallK);
     bool IsOnTheWay(ge::Format matFormat, uint64_t innerSize, uint64_t dtypeSize,
                     const std::vector<uint64_t> supportNd2nzList) const;
-    bool NeedNd2NzVnchw(uint64_t outerSize, uint64_t innerSize, bool supportNd2NzOnTheWay,
-                        uint64_t dtypeSize, ge::Format matFormat) const;
+    bool NeedNd2NzVnchw(uint64_t outerSize, uint64_t innerSize, bool supportNd2NzOnTheWay, uint64_t dtypeSize,
+                        ge::Format matFormat) const;
 
 private:
     Mc2MatmulV3TilingData tilingDataSelf_{};
+
 protected:
     Mc2MatmulV3CompileInfo compileInfo_;
     Mc2MatmulV3Args args_;
@@ -166,6 +171,6 @@ protected:
     bool compileInfoInit_{false};
     Mc2TilingCalcSelect tilingSelect_ = Mc2TilingCalcSelect::ALL;
 };
-}
-}
+} // namespace mc2_matmul_v3
+} // namespace optiling
 #endif // __OP_HOST_MATMUL_V3_BASE_TILING_H__

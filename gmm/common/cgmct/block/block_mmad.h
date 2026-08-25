@@ -25,9 +25,9 @@ namespace Cgmct {
 namespace Gemm {
 namespace Block {
 /**
-* @class BlockMmad
-* @brief Block matrix multiplication class for performing block matrix multiplication operations
-*/
+ * @class BlockMmad
+ * @brief Block matrix multiplication class for performing block matrix multiplication operations
+ */
 template <
     /// The dispatch policy type, which determines the computational pipeline
     class DispatchPolicy,
@@ -46,16 +46,15 @@ template <
     /// The tile copy strategy type
     class TileCopy = void,
     /// Support specialization via the DispatchPolicy type
-    typename = void
->
+    typename = void>
 class BlockMmad {
     static_assert(AscendC::Std::always_false_v<DispatchPolicy>, "BlockMmad is not implemented for this DispatchPolicy");
 };
 
 /**
-* @class BlockMmadBase
-* @brief Base class of Block matrix multiplication class, serving as the base class for the CRTP pattern
-*/
+ * @class BlockMmadBase
+ * @brief Base class of Block matrix multiplication class, serving as the base class for the CRTP pattern
+ */
 template <
     /// AsDerived class in CRTP
     class Derived,
@@ -74,8 +73,7 @@ template <
     /// Type of the bias term
     class BiasType_,
     /// The tile copy strategy type
-    class TileCopy_
->
+    class TileCopy_>
 class BlockMmadBase {
 public:
     using DispatchPolicy = DispatchPolicy_;
@@ -89,11 +87,11 @@ public:
 
 protected:
     /**
-    * @brief Obtain a reference to the derived class
-    */
-    __aicore__ inline Derived& AsDerived()
+     * @brief Obtain a reference to the derived class
+     */
+    __aicore__ inline Derived &AsDerived()
     {
-        return static_cast<Derived&>(*this);
+        return static_cast<Derived &>(*this);
     }
 
 public:

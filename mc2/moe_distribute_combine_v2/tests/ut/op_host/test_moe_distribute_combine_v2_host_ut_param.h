@@ -40,7 +40,7 @@ struct MoeDistributeCombineV2HostUtParamBase {
     int64_t const_expert_num;
     ge::graphStatus expectResult;
 
-    MoeDistributeCombineV2HostUtParamBase(const csv_map& csvMap)
+    MoeDistributeCombineV2HostUtParamBase(const csv_map &csvMap)
     {
         this->case_name = ReadMap(csvMap, "case_name");
         this->group_ep = ReadMap(csvMap, "group_ep");
@@ -65,12 +65,12 @@ struct MoeDistributeCombineV2HostUtParamBase {
     }
 };
 
-inline std::ostream& operator<<(std::ostream& os, const MoeDistributeCombineV2HostUtParamBase& param)
+inline std::ostream &operator<<(std::ostream &os, const MoeDistributeCombineV2HostUtParamBase &param)
 {
     return os << param.case_name;
 }
 
-struct MoeDistributeCombineV2TilingUtParam: public MoeDistributeCombineV2HostUtParamBase {
+struct MoeDistributeCombineV2TilingUtParam : public MoeDistributeCombineV2HostUtParamBase {
     gert::TilingContextPara::TensorDescription expand_x = TD_DEFAULT;
     gert::TilingContextPara::TensorDescription expert_ids = TD_DEFAULT;
     gert::TilingContextPara::TensorDescription assist_info_for_combine = TD_DEFAULT;
@@ -96,74 +96,53 @@ struct MoeDistributeCombineV2TilingUtParam: public MoeDistributeCombineV2HostUtP
     uint64_t ranksize;
     uint64_t expectTilingKey;
 
-    MoeDistributeCombineV2TilingUtParam(const csv_map& csvMap):
-        MoeDistributeCombineV2HostUtParamBase(csvMap)
+    MoeDistributeCombineV2TilingUtParam(const csv_map &csvMap) : MoeDistributeCombineV2HostUtParamBase(csvMap)
     {
         this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "expand_x_shape", "expand_x_dtype", "expand_x_format",
-                expand_x));
+            GetTensorGE(csvMap, "expand_x_shape", "expand_x_dtype", "expand_x_format", expand_x));
         this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "expert_ids_shape", "expert_ids_dtype", "expert_ids_format",
-                expert_ids));
+            GetTensorGE(csvMap, "expert_ids_shape", "expert_ids_dtype", "expert_ids_format", expert_ids));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "assist_info_for_combine_shape",
+                                                     "assist_info_for_combine_dtype", "assist_info_for_combine_format",
+                                                     assist_info_for_combine));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "ep_send_counts_shape", "ep_send_counts_dtype",
+                                                     "ep_send_counts_format", ep_send_counts));
         this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "assist_info_for_combine_shape", "assist_info_for_combine_dtype", "assist_info_for_combine_format",
-                assist_info_for_combine));
+            GetTensorGE(csvMap, "expert_scales_shape", "expert_scales_dtype", "expert_scales_format", expert_scales));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "tp_send_counts_shape", "tp_send_counts_dtype",
+                                                     "tp_send_counts_format", tp_send_counts));
         this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "ep_send_counts_shape", "ep_send_counts_dtype", "ep_send_counts_format",
-                ep_send_counts));
+            GetTensorGE(csvMap, "x_active_mask_shape", "x_active_mask_dtype", "x_active_mask_format", x_active_mask));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "activation_scale_shape", "activation_scale_dtype",
+                                                     "activation_scale_format", activation_scale));
         this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "expert_scales_shape", "expert_scales_dtype", "expert_scales_format",
-                expert_scales));
+            GetTensorGE(csvMap, "weight_scale_shape", "weight_scale_dtype", "weight_scale_format", weight_scale));
         this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "tp_send_counts_shape", "tp_send_counts_dtype", "tp_send_counts_format",
-                tp_send_counts));
+            GetTensorGE(csvMap, "group_list_shape", "group_list_dtype", "group_list_format", group_list));
         this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "x_active_mask_shape", "x_active_mask_dtype", "x_active_mask_format",
-                x_active_mask));
+            GetTensorGE(csvMap, "expand_scales_shape", "expand_scales_dtype", "expand_scales_format", expand_scales));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "shared_expert_x_shape", "shared_expert_x_dtype",
+                                                     "shared_expert_x_format", shared_expert_x));
         this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "activation_scale_shape", "activation_scale_dtype", "activation_scale_format",
-                activation_scale));
-        this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "weight_scale_shape", "weight_scale_dtype", "weight_scale_format",
-                weight_scale));
-        this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "group_list_shape", "group_list_dtype", "group_list_format",
-                group_list));
-        this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "expand_scales_shape", "expand_scales_dtype", "expand_scales_format",
-                expand_scales));
-        this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "shared_expert_x_shape", "shared_expert_x_dtype", "shared_expert_x_format",
-                shared_expert_x));
-        this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "elastic_info_shape", "elastic_info_dtype", "elastic_info_format",
-                elastic_info));
-        this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "ori_x_shape", "ori_x_dtype", "ori_x_format",
-                ori_x));
-        this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "const_expert_alpha_1_shape", "const_expert_alpha_1_dtype", "const_expert_alpha_1_format",
-                const_expert_alpha_1));
-        this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "const_expert_alpha_2_shape", "const_expert_alpha_2_dtype", "const_expert_alpha_2_format",
-                const_expert_alpha_2));
-        this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "const_expert_v_shape", "const_expert_v_dtype", "const_expert_v_format",
-                const_expert_v));
-        this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "performance_info_shape", "performance_info_dtype", "performance_info_format",
-                performance_info));
+            GetTensorGE(csvMap, "elastic_info_shape", "elastic_info_dtype", "elastic_info_format", elastic_info));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "ori_x_shape", "ori_x_dtype", "ori_x_format", ori_x));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "const_expert_alpha_1_shape", "const_expert_alpha_1_dtype",
+                                                     "const_expert_alpha_1_format", const_expert_alpha_1));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "const_expert_alpha_2_shape", "const_expert_alpha_2_dtype",
+                                                     "const_expert_alpha_2_format", const_expert_alpha_2));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "const_expert_v_shape", "const_expert_v_dtype",
+                                                     "const_expert_v_format", const_expert_v));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "performance_info_shape", "performance_info_dtype",
+                                                     "performance_info_format", performance_info));
 
-        this->outputInstance.emplace_back(
-            GetTensorGE(csvMap, "x_shape", "x_dtype", "x_format",
-                x));
+        this->outputInstance.emplace_back(GetTensorGE(csvMap, "x_shape", "x_dtype", "x_format", x));
 
         this->soc = ReadMap(csvMap, "soc");
         this->coreNum = stoull(ReadMap(csvMap, "core_num"));
         this->ubsize = stoull(ReadMap(csvMap, "ubsize"));
         this->ranksize = stoull(ReadMap(csvMap, "ranksize"));
 
-        if(this->expectResult == ge::GRAPH_SUCCESS) {
+        if (this->expectResult == ge::GRAPH_SUCCESS) {
             this->expectTilingKey = stoull(ReadMap(csvMap, "expectTilingKey"));
         }
     }

@@ -25,7 +25,7 @@ namespace AscendC {
 class AllGatherAdd {
 public:
     __aicore__ inline AllGatherAdd(){};
-    __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR gatherGM, 
+    __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR gatherGM,
                                 AllGatherAddTilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
 
@@ -38,7 +38,6 @@ private:
     __aicore__ inline void HcclFinalize();
 
 private:
-
     AllGatherAddTilingData *tilingData_;
 
     Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
@@ -62,10 +61,10 @@ private:
     int64_t blockIdx_ = 0;
     uint64_t elemNumPerRank_ = 0;
 
-    HcclHandle handleId_{ INVALID_HANDLE_ID };
+    HcclHandle handleId_{INVALID_HANDLE_ID};
 };
 
-__aicore__ inline void AllGatherAdd::Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR gatherGM, 
+__aicore__ inline void AllGatherAdd::Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR gatherGM,
                                           AllGatherAddTilingData *tilingData, TPipe *tPipe)
 {
     aGM_ = aGM;
@@ -83,7 +82,7 @@ __aicore__ inline void AllGatherAdd::Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM,
     GM_ADDR contextGM = GetHcclContext<HCCL_GROUP_ID_0>();
     hccl_.InitV2(contextGM, tilingData);
     hccl_.SetCcTilingV2(offsetof(AllGatherAddTilingData, mc2CcTiling));
-    
+
     tPipe->InitBuffer(inputQueueGather, ADD_BUFFER_NUM, addTileElemNum_ * sizeof(half));
     tPipe->InitBuffer(inputQueueB, ADD_BUFFER_NUM, addTileElemNum_ * sizeof(half));
     tPipe->InitBuffer(outputQueueC, ADD_BUFFER_NUM, addTileElemNum_ * sizeof(half));
@@ -91,7 +90,8 @@ __aicore__ inline void AllGatherAdd::Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM,
 
 __aicore__ inline void AllGatherAdd::HcclPrepare()
 {
-    elemNumPerRank_ = tilingData_->gatherTileElemNum * tilingData_->commTurn; // 通信多轮切分，多张卡的数据拼接到gatherOutGM时，相邻数据块的起始地址偏移
+    elemNumPerRank_ = tilingData_->gatherTileElemNum *
+                      tilingData_->commTurn; // 通信多轮切分，多张卡的数据拼接到gatherOutGM时，相邻数据块的起始地址偏移
     // 下发通信任务
     handleId_ = hccl_.AllGather<true>(aGM_, gatherGM_, tilingData_->gatherTileElemNum,
                                       HcclDataType::HCCL_DATA_TYPE_FP16, elemNumPerRank_, tilingData_->commTurn);
@@ -134,11 +134,14 @@ __aicore__ inline void AllGatherAdd::HcclFinalize()
 __aicore__ inline void AllGatherAdd::CalcAddGmAddr(int32_t commTurn)
 {
     uint32_t commOffset = commTurn * tilingData_->gatherTileElemNum; // 1.根据通信轮次偏移单个通信数据大小
-    uint32_t blockOffset = blockIdx_ / tilingData_->addCoresPerRank * elemNumPerRank_; // 2.根据rank数和aivId判断当前核被分到处理哪个rank的通信数据
-    uint32_t totalOffset = commOffset + blockOffset + (blockIdx_ % tilingData_->addCoresPerRank) * blockElemNum_; // 3.最终偏移需要再加上当前核在所处理rank数据上的偏移
-    gatherOutGM.SetGlobalBuffer((__gm__ half*)gatherGM_ + totalOffset, blockElemNum_);
-    inputBGM.SetGlobalBuffer((__gm__ half*)bGM_ + totalOffset, blockElemNum_);
-    outputCGM.SetGlobalBuffer((__gm__ half*)cGM_ + totalOffset, blockElemNum_);
+    uint32_t blockOffset = blockIdx_ / tilingData_->addCoresPerRank *
+                           elemNumPerRank_; // 2.根据rank数和aivId判断当前核被分到处理哪个rank的通信数据
+    uint32_t totalOffset = commOffset + blockOffset +
+                           (blockIdx_ % tilingData_->addCoresPerRank) *
+                               blockElemNum_; // 3.最终偏移需要再加上当前核在所处理rank数据上的偏移
+    gatherOutGM.SetGlobalBuffer((__gm__ half *)gatherGM_ + totalOffset, blockElemNum_);
+    inputBGM.SetGlobalBuffer((__gm__ half *)bGM_ + totalOffset, blockElemNum_);
+    outputCGM.SetGlobalBuffer((__gm__ half *)cGM_ + totalOffset, blockElemNum_);
 }
 
 __aicore__ inline void AllGatherAdd::Process()
@@ -146,7 +149,7 @@ __aicore__ inline void AllGatherAdd::Process()
     HcclPrepare();
     int addLoop = tileNum_ * ADD_BUFFER_NUM;
     for (int i = 0; i < tilingData_->commTurn; i++) {
-        hccl_.Wait(handleId_); 
+        hccl_.Wait(handleId_);
         // 根据通信轮次和rankSize计算本核需要处理数据的起始地址
         CalcAddGmAddr(i);
         // 对前一轮的通信结果进行Add计算
@@ -158,5 +161,5 @@ __aicore__ inline void AllGatherAdd::Process()
     }
     HcclFinalize();
 }
-}
+} // namespace AscendC
 #endif

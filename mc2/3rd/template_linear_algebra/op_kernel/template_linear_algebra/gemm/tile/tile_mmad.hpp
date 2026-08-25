@@ -25,8 +25,7 @@ template <
     /// GemmType type for B matrix operand
     class BType_,
     /// GemmType type for Bias operand
-    class BiasType_
->
+    class BiasType_>
 struct TileMmad {
     using ElementA = typename AType_::Element;
     using ElementB = typename BType_::Element;
@@ -36,14 +35,14 @@ struct TileMmad {
     // Methods
 
     CATLASS_DEVICE
-    TileMmad() {}
+    TileMmad()
+    {
+    }
 
     CATLASS_DEVICE
     void operator()(AscendC::LocalTensor<ElementAccumulator> const &l0CTensor,
-         AscendC::LocalTensor<ElementA> const &l0ATensor,
-         AscendC::LocalTensor<ElementB> const &l0BTensor,
-         uint32_t m, uint32_t n, uint32_t k,
-         bool initC = true, uint8_t unitFlag = 0)
+                    AscendC::LocalTensor<ElementA> const &l0ATensor, AscendC::LocalTensor<ElementB> const &l0BTensor,
+                    uint32_t m, uint32_t n, uint32_t k, bool initC = true, uint8_t unitFlag = 0)
     {
         AscendC::MmadParams mmadParams;
         mmadParams.m = m;
@@ -52,10 +51,7 @@ struct TileMmad {
         mmadParams.unitFlag = unitFlag;
         mmadParams.cmatrixInitVal = initC;
 
-        AscendC::Mmad(l0CTensor,
-                      l0ATensor,
-                      l0BTensor,
-                      mmadParams);
+        AscendC::Mmad(l0CTensor, l0ATensor, l0BTensor, mmadParams);
 
         const uint32_t PIPE_M_BARRIER_THRESHOLD = 10;
         if ((m / C0_NUM_PER_FRCATLASSAL) * (n / C0_NUM_PER_FRCATLASSAL) < PIPE_M_BARRIER_THRESHOLD) {
@@ -65,11 +61,9 @@ struct TileMmad {
 
     CATLASS_DEVICE
     void operator()(AscendC::LocalTensor<ElementAccumulator> const &l0CTensor,
-         AscendC::LocalTensor<ElementA> const &l0ATensor,
-         AscendC::LocalTensor<ElementB> const &l0BTensor,
-         AscendC::LocalTensor<ElementAccumulator> const &l0BiasTensor,
-         uint32_t m, uint32_t n, uint32_t k,
-         bool initC = true, uint8_t unitFlag = 0)
+                    AscendC::LocalTensor<ElementA> const &l0ATensor, AscendC::LocalTensor<ElementB> const &l0BTensor,
+                    AscendC::LocalTensor<ElementAccumulator> const &l0BiasTensor, uint32_t m, uint32_t n, uint32_t k,
+                    bool initC = true, uint8_t unitFlag = 0)
     {
         AscendC::MmadParams mmadParams;
         mmadParams.m = m;
@@ -81,11 +75,7 @@ struct TileMmad {
             mmadParams.kDirectionAlign = true;
         }
 
-        AscendC::Mmad(l0CTensor,
-                      l0ATensor,
-                      l0BTensor,
-                      l0BiasTensor,
-                      mmadParams);
+        AscendC::Mmad(l0CTensor, l0ATensor, l0BTensor, l0BiasTensor, mmadParams);
 
         const uint32_t PIPE_M_BARRIER_THRESHOLD = 10;
         if ((m / C0_NUM_PER_FRCATLASSAL) * (n / C0_NUM_PER_FRCATLASSAL) < PIPE_M_BARRIER_THRESHOLD) {

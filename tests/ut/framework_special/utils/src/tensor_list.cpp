@@ -80,7 +80,7 @@ bool TensorList::MemSetDevDataImpl(uint8_t *devPtr, int64_t devMax, int32_t val,
         *(ptr + indexCur) = (i << shiftBits) + shapes_[i].GetDimNum();
         indexCur++;
         needSize.push_back(shapes_[i].GetShapeSize() * sizeof(this->dType_));
-        for (uint64_t j = 0; j < this->shapes_[i].GetDimNum() ; j++) {
+        for (uint64_t j = 0; j < this->shapes_[i].GetDimNum(); j++) {
             *(ptr + indexCur) = this->shapes_[i].GetDim(j);
             indexCur++;
         }

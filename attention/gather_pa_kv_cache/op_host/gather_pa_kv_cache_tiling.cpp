@@ -73,7 +73,7 @@ uint32_t GatherPaKvCacheGetBlockDim(gert::TilingContext *context)
     uint32_t blockDim = static_cast<uint32_t>(ascendcPlatform.GetCoreNumAiv());
     auto attrs = context->GetAttrs();
     const char *mode = attrs->GetAttrPointer<char>(CACHE_MODE_INDEX);
-    if (strcmp(mode, "PA_NZ") == 0) {
+    if (mode != nullptr && strcmp(mode, "PA_NZ") == 0) {
         return sumContextLens < blockDim ? sumContextLens : blockDim;
     }
     return blockDim;
@@ -88,6 +88,9 @@ bool CommonGatherPaKvCacheTiling(gert::TilingContext *context)
     auto vShape = context->GetOutputShape(DIM_1);
     auto attrs = context->GetAttrs();
     const char *mode = attrs->GetAttrPointer<char>(CACHE_MODE_INDEX);
+    if (mode == nullptr || mode[0] == '\0') {
+        mode = "Norm";
+    }
     OP_CHECK_IF((strcmp(mode, "PA_NZ") != 0 && strcmp(mode, "Norm") != 0),
                 OP_LOGE(context, "%s is not supported", mode), return ge::GRAPH_FAILED);
     int32_t blockSize;
@@ -133,7 +136,8 @@ bool CommonGatherPaKvCacheTiling(gert::TilingContext *context)
     auto seqStartsTensor = context->GetOptionalInputTensor(DIM_6);
     seqStartsTensor == nullptr ? hasSeqStarts = 0 : hasSeqStarts = 1;
 
-    auto isSeqLensCumsum = attrs->GetAttrPointer<bool>(IS_SEQ_LENS_CUNSUM_INDEX);
+    const bool *isSeqLensCumsumPtr = attrs->GetAttrPointer<bool>(IS_SEQ_LENS_CUNSUM_INDEX);
+    bool isSeqLensCumsum = (isSeqLensCumsumPtr == nullptr) ? true : *isSeqLensCumsumPtr;
     int64_t kCacheBlockStride = 0;
     int64_t vCacheBlockStride = 0;
     bool isViewKCache = context->InputIsView(DIM_0);
@@ -160,7 +164,7 @@ bool CommonGatherPaKvCacheTiling(gert::TilingContext *context)
     tilingData.set_tokenSizeV(tokenSizeV);
     tilingData.set_typeByte(typeByte);
     tilingData.set_hasSeqStarts(hasSeqStarts);
-    tilingData.set_isSeqLensCumsum(*isSeqLensCumsum);
+    tilingData.set_isSeqLensCumsum(isSeqLensCumsum);
     size_t *workspaceSize = context->GetWorkspaceSizes(1);
     *workspaceSize = ASCENDC_TOOLS_WORKSPACE;
     tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());

@@ -19,12 +19,7 @@
 
 namespace Catlass::Gemm::Kernel {
 
-template<
-    class ArchTag_,
-    class ElementAccumulator_,
-    class ElementOut_,
-    uint32_t COMPUTE_LENGTH
->
+template <class ArchTag_, class ElementAccumulator_, class ElementOut_, uint32_t COMPUTE_LENGTH>
 struct ReduceAdd {
     using ArchTag = ArchTag_;
     using ElementAccumulator = ElementAccumulator_;
@@ -46,8 +41,7 @@ struct ReduceAdd {
 
     CATLASS_DEVICE
     void Gm2Ub(AscendC::LocalTensor<ElementAccumulator> const &dst,
-        AscendC::GlobalTensor<ElementAccumulator> const &src,
-        uint32_t dataNum)
+               AscendC::GlobalTensor<ElementAccumulator> const &src, uint32_t dataNum)
     {
         AscendC::DataCopyExtParams dataCopyParams(1, dataNum * sizeof(ElementAccumulator), 0, 0, 0);
         AscendC::DataCopyPadExtParams<ElementAccumulator> padParams(false, 0, 0, 0);
@@ -55,19 +49,16 @@ struct ReduceAdd {
     }
 
     CATLASS_DEVICE
-    void Ub2Gm(AscendC::GlobalTensor<ElementOut> const &dst,
-        AscendC::LocalTensor<ElementOut> const &src,
-        uint32_t dataNum)
+    void Ub2Gm(AscendC::GlobalTensor<ElementOut> const &dst, AscendC::LocalTensor<ElementOut> const &src,
+               uint32_t dataNum)
     {
         AscendC::DataCopyExtParams dataCopyParams(1, dataNum * sizeof(ElementOut), 0, 0, 0);
         AscendC::DataCopyPad(dst, src, dataCopyParams);
     }
 
     CATLASS_DEVICE
-    void operator()(
-        AscendC::GlobalTensor<ElementOut> const &dst,
-        AscendC::GlobalTensor<ElementAccumulator> const &src,
-        uint64_t elementCount, uint32_t splitkFactor)
+    void operator()(AscendC::GlobalTensor<ElementOut> const &dst, AscendC::GlobalTensor<ElementAccumulator> const &src,
+                    uint64_t elementCount, uint32_t splitkFactor)
     {
         // The vec mte processes 256 bytes of data at a time.
         constexpr uint32_t ELE_PER_VECOTR_BLOCK = 256 / sizeof(ElementAccumulator);
@@ -75,7 +66,8 @@ struct ReduceAdd {
         uint32_t aivId = AscendC::GetBlockIdx();
         uint64_t taskPerAiv =
             (elementCount / aivNum + ELE_PER_VECOTR_BLOCK - 1) / ELE_PER_VECOTR_BLOCK * ELE_PER_VECOTR_BLOCK;
-        if (taskPerAiv == 0) taskPerAiv = ELE_PER_VECOTR_BLOCK;
+        if (taskPerAiv == 0)
+            taskPerAiv = ELE_PER_VECOTR_BLOCK;
         uint32_t tileLen;
         if (taskPerAiv > COMPUTE_LENGTH) {
             tileLen = COMPUTE_LENGTH;
@@ -104,13 +96,12 @@ struct ReduceAdd {
 
             for (uint32_t sliceIdx = 1; sliceIdx < splitkFactor; ++sliceIdx) {
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(inputEventIds[bufferIndex]);
-                Gm2Ub(inputBuffer[bufferIndex],
-                    src[sliceIdx * elementCount + loopIdx * tileLen], actualTileLen);
+                Gm2Ub(inputBuffer[bufferIndex], src[sliceIdx * elementCount + loopIdx * tileLen], actualTileLen);
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(inputEventIds[bufferIndex]);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(inputEventIds[bufferIndex]);
 
-                AscendC::Add(accumulatorBuffer[bufferIndex],
-                    accumulatorBuffer[bufferIndex], inputBuffer[bufferIndex], actualTileLen);
+                AscendC::Add(accumulatorBuffer[bufferIndex], accumulatorBuffer[bufferIndex], inputBuffer[bufferIndex],
+                             actualTileLen);
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(inputEventIds[bufferIndex]);
             }
             AscendC::PipeBarrier<PIPE_V>();
@@ -118,11 +109,11 @@ struct ReduceAdd {
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(outputEventIds[bufferIndex]);
             if constexpr (!std::is_same_v<ElementAccumulator, ElementOut>) {
                 if constexpr (std::is_same_v<ElementOut, half>) {
-                    AscendC::Cast(outputBuffer[bufferIndex],
-                        accumulatorBuffer[bufferIndex], AscendC::RoundMode::CAST_NONE, actualTileLen);
+                    AscendC::Cast(outputBuffer[bufferIndex], accumulatorBuffer[bufferIndex],
+                                  AscendC::RoundMode::CAST_NONE, actualTileLen);
                 } else {
-                    AscendC::Cast(outputBuffer[bufferIndex],
-                        accumulatorBuffer[bufferIndex], AscendC::RoundMode::CAST_RINT, actualTileLen);
+                    AscendC::Cast(outputBuffer[bufferIndex], accumulatorBuffer[bufferIndex],
+                                  AscendC::RoundMode::CAST_RINT, actualTileLen);
                 }
             } else {
                 AscendC::DataCopy(outputBuffer[bufferIndex], accumulatorBuffer[bufferIndex], tileLen);
@@ -153,18 +144,15 @@ private:
     AscendC::TEventID inputEventIds[BUFFER_NUM] = {EVENT_ID0, EVENT_ID1};
     AscendC::TEventID accumulatorEventIds[BUFFER_NUM] = {EVENT_ID2, EVENT_ID3};
     AscendC::TEventID outputEventIds[BUFFER_NUM] = {EVENT_ID0, EVENT_ID1};
-    uint32_t bufferIndex{ 0 };
-    static_assert(BUFFER_NUM * COMPUTE_LENGTH * sizeof(ElementAccumulator) * 2
-        +  BUFFER_NUM * COMPUTE_LENGTH * sizeof(ElementOut) <= ArchTag::UB_SIZE, "Excedding the UB space!");
+    uint32_t bufferIndex{0};
+    static_assert(BUFFER_NUM * COMPUTE_LENGTH * sizeof(ElementAccumulator) * 2 +
+                          BUFFER_NUM * COMPUTE_LENGTH * sizeof(ElementOut) <=
+                      ArchTag::UB_SIZE,
+                  "Excedding the UB space!");
 };
 
 // Template for Matmul kernel. Compute C = A * B
-template <
-    class BlockMmad_,
-    class BlockEpilogue_,
-    class BlockScheduler_,
-    class ReduceAdd_
->
+template <class BlockMmad_, class BlockEpilogue_, class BlockScheduler_, class ReduceAdd_>
 class SplitkMatmul {
 public:
     using BlockMmad = BlockMmad_;
@@ -196,30 +184,34 @@ public:
 
         // Methods
         CATLASS_DEVICE
-        Params() {}
+        Params()
+        {
+        }
 
         CATLASS_DEVICE
-        Params(GemmCoord const &problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_,
-               LayoutB layoutB_, GM_ADDR ptrC_, LayoutC layoutC_, GM_ADDR ptrWorkspace_, uint32_t splitkFactor_)
-            : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_),
-              ptrC(ptrC_), layoutC(layoutC_), ptrWorkspace(ptrWorkspace_), splitkFactor(splitkFactor_) {}
+        Params(GemmCoord const &problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_,
+               GM_ADDR ptrC_, LayoutC layoutC_, GM_ADDR ptrWorkspace_, uint32_t splitkFactor_)
+            : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_), ptrC(ptrC_),
+              layoutC(layoutC_), ptrWorkspace(ptrWorkspace_), splitkFactor(splitkFactor_)
+        {
+        }
     };
 
     // Methods
     CATLASS_DEVICE
-    SplitkMatmul() {}
+    SplitkMatmul()
+    {
+    }
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE
-    void operator()(Params const &params);
+    CATLASS_DEVICE void operator()(Params const &params);
 
     /// Executes one Matmul
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIC>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
     {
-        BlockScheduler matmulBlockScheduler(params.problemShape,
-            GemmCoord(L1TileShape::M, L1TileShape::N, L1TileShape::K), params.splitkFactor);
+        BlockScheduler matmulBlockScheduler(
+            params.problemShape, GemmCoord(L1TileShape::M, L1TileShape::N, L1TileShape::K), params.splitkFactor);
         uint32_t coreLoops = matmulBlockScheduler.GetCoreLoops();
 
         Arch::Resource<ArchTag> resource;
@@ -236,8 +228,8 @@ public:
         for (uint32_t loopIdx = AscendC::GetBlockIdx(); loopIdx < coreLoops; loopIdx += AscendC::GetBlockNum()) {
             // Compute block location
             GemmCoord blockCoord = matmulBlockScheduler.GetBlockCoord(loopIdx);
-            GemmCoord actualBlockShape = matmulBlockScheduler.GetActualBlockShape(
-                blockCoord, matmulBlockScheduler.GetSplitkSliceIdx(loopIdx));
+            GemmCoord actualBlockShape =
+                matmulBlockScheduler.GetActualBlockShape(blockCoord, matmulBlockScheduler.GetSplitkSliceIdx(loopIdx));
 
             // Compute initial location in logical coordinates
             MatrixCoord offsetA{blockCoord.m() * L1TileShape::M, blockCoord.k() * L1TileShape::K};
@@ -245,14 +237,13 @@ public:
             MatrixCoord offsetC{blockCoord.m() * L1TileShape::M, blockCoord.n() * L1TileShape::N};
             uint64_t gmOffsetA = params.layoutA.GetOffset(offsetA);
             uint64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
-            uint64_t gmOffsetC = params.layoutC.GetOffset(offsetC)
-                + static_cast<uint64_t>(params.problemShape.m()) * static_cast<uint64_t>(params.problemShape.n())
-                * static_cast<uint64_t>(matmulBlockScheduler.GetSplitkSliceIdx(loopIdx));
+            uint64_t gmOffsetC = params.layoutC.GetOffset(offsetC) +
+                                 static_cast<uint64_t>(params.problemShape.m()) *
+                                     static_cast<uint64_t>(params.problemShape.n()) *
+                                     static_cast<uint64_t>(matmulBlockScheduler.GetSplitkSliceIdx(loopIdx));
 
             // Compute block-scoped matrix multiply-add
-            blockMmad(gmA[gmOffsetA], params.layoutA,
-                      gmB[gmOffsetB], params.layoutB,
-                      gmC[gmOffsetC], params.layoutC,
+            blockMmad(gmA[gmOffsetA], params.layoutA, gmB[gmOffsetB], params.layoutB, gmC[gmOffsetC], params.layoutC,
                       actualBlockShape);
         }
 
@@ -260,8 +251,7 @@ public:
     }
 
     template <>
-    CATLASS_DEVICE
-    void operator()<AscendC::AIV>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
     {
         using ElementOut = typename ReduceAdd::ElementOut;
         using ElementAccumulator = typename ReduceAdd::ElementAccumulator;
@@ -271,12 +261,12 @@ public:
 
         AscendC::GlobalTensor<ElementOut> gmC;
         AscendC::GlobalTensor<ElementAccumulator> gmWorkspace;
-        gmC.SetGlobalBuffer(reinterpret_cast<__gm__ ElementOut*>(params.ptrC));
-        gmWorkspace.SetGlobalBuffer(reinterpret_cast<__gm__ ElementAccumulator*>(params.ptrWorkspace));
+        gmC.SetGlobalBuffer(reinterpret_cast<__gm__ ElementOut *>(params.ptrC));
+        gmWorkspace.SetGlobalBuffer(reinterpret_cast<__gm__ ElementAccumulator *>(params.ptrWorkspace));
         ReduceAdd reduceAdd(resource);
         reduceAdd(gmC, gmWorkspace,
-            static_cast<uint64_t>(params.problemShape.m()) * static_cast<uint64_t>(params.problemShape.n()),
-            params.splitkFactor);
+                  static_cast<uint64_t>(params.problemShape.m()) * static_cast<uint64_t>(params.problemShape.n()),
+                  params.splitkFactor);
     }
 
 private:

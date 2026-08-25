@@ -17,7 +17,8 @@
 
 using namespace ops::adv::tests::utils;
 
-ExpectInfoWithSocversion::ExpectInfoWithSocversion() noexcept {
+ExpectInfoWithSocversion::ExpectInfoWithSocversion() noexcept
+{
     for (auto &ele : mTilingKeys) {
         ele = kInvalidTilingKey;
     }
@@ -35,14 +36,15 @@ ExpectInfoWithSocversion::ExpectInfoWithSocversion(bool success, uint64_t tiling
     }
 }
 
-ExpectInfoWithSocversion::ExpectInfoWithSocversion(bool success, const std::map<int32_t, uint64_t> &expTilingKeys, int64_t tilingBlockDim)
+ExpectInfoWithSocversion::ExpectInfoWithSocversion(bool success, const std::map<int32_t, uint64_t> &expTilingKeys,
+                                                   int64_t tilingBlockDim)
     : mSuccess(success)
 {
     for (auto &ele : expTilingKeys) {
         mTilingKeys[ele.first] = ele.second;
-        if (ele.first == (uint64_t)Platform::SocVersion::Ascend910B2) { // Ascend910B2
-            mTilingKeys[(uint64_t)Platform::SocVersion::Ascend910B1] = ele.second;  // Ascend910B1
-            mTilingKeys[(uint64_t)Platform::SocVersion::Ascend910B3] = ele.second;  // Ascend910B3
+        if (ele.first == (uint64_t)Platform::SocVersion::Ascend910B2) {            // Ascend910B2
+            mTilingKeys[(uint64_t)Platform::SocVersion::Ascend910B1] = ele.second; // Ascend910B1
+            mTilingKeys[(uint64_t)Platform::SocVersion::Ascend910B3] = ele.second; // Ascend910B3
         }
     }
 
@@ -51,22 +53,23 @@ ExpectInfoWithSocversion::ExpectInfoWithSocversion(bool success, const std::map<
     }
 }
 
-ExpectInfoWithSocversion::ExpectInfoWithSocversion(bool success, const std::map<int32_t, uint64_t> &expTilingKeys, 
-        const std::map<int32_t, int64_t> &expTilingBlockDims) : mSuccess(success)
+ExpectInfoWithSocversion::ExpectInfoWithSocversion(bool success, const std::map<int32_t, uint64_t> &expTilingKeys,
+                                                   const std::map<int32_t, int64_t> &expTilingBlockDims)
+    : mSuccess(success)
 {
     for (auto &ele : expTilingKeys) {
         mTilingKeys[ele.first] = ele.second;
-        if (ele.first == (uint64_t)Platform::SocVersion::Ascend910B2) { // Ascend910B2
-            mTilingKeys[(uint64_t)Platform::SocVersion::Ascend910B1] = ele.second;  // Ascend910B1
-            mTilingKeys[(uint64_t)Platform::SocVersion::Ascend910B3] = ele.second;  // Ascend910B3
+        if (ele.first == (uint64_t)Platform::SocVersion::Ascend910B2) {            // Ascend910B2
+            mTilingKeys[(uint64_t)Platform::SocVersion::Ascend910B1] = ele.second; // Ascend910B1
+            mTilingKeys[(uint64_t)Platform::SocVersion::Ascend910B3] = ele.second; // Ascend910B3
         }
     }
 
     for (auto &ele : expTilingBlockDims) {
         mTilingBlockDims[ele.first] = ele.second;
-        if (ele.first == (uint64_t)Platform::SocVersion::Ascend910B2) { // Ascend910B2
-            mTilingBlockDims[(uint64_t)Platform::SocVersion::Ascend910B1] = ele.second;  // Ascend910B1
-            mTilingBlockDims[(uint64_t)Platform::SocVersion::Ascend910B3] = ele.second;  // Ascend910B3
+        if (ele.first == (uint64_t)Platform::SocVersion::Ascend910B2) {                 // Ascend910B2
+            mTilingBlockDims[(uint64_t)Platform::SocVersion::Ascend910B1] = ele.second; // Ascend910B1
+            mTilingBlockDims[(uint64_t)Platform::SocVersion::Ascend910B3] = ele.second; // Ascend910B3
         }
     }
 }

@@ -30,11 +30,11 @@ class AllGatherPlusMMV2 : public OneCalcOneCommBase {
 public:
     double frontMMTime_ = 0;
     bool strongTpBound_ = false;
-    bool hasLocalAtFront_ = true;  // local提前计算
+    bool hasLocalAtFront_ = true; // local提前计算
 
     // Constructor
-    explicit AllGatherPlusMMV2(const mc2tiling::TilingArgs& args, uint32_t inputRankDim, KernelType inputKernelType,
-                             SocVersion inputSocVersion = SocVersion::SOC910_B)
+    explicit AllGatherPlusMMV2(const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
+                               SocVersion inputSocVersion = SocVersion::SOC910_B)
         : OneCalcOneCommBase(args, inputRankDim, inputKernelType, inputSocVersion)
     {
         commPerf_.SetCommShapeLen(clusterInfo_.kValue);

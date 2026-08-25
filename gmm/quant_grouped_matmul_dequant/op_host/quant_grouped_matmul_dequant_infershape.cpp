@@ -20,27 +20,29 @@ static constexpr int64_t X_INPUT_IDX = 0;
 static constexpr int64_t WEIGHT_SCALE_INPUT_IDX = 2;
 static constexpr int64_t Y_OUTPUT_IDX = 0;
 
-static ge::graphStatus QuantMatmulDequantInferShape(gert::InferShapeContext* context) {
-  const gert::Shape* xShape = context->GetInputShape(X_INPUT_IDX);
-  OPS_CHECK_NULL_WITH_CONTEXT(context, xShape);
-  const gert::Shape* weightScaleShape = context->GetInputShape(WEIGHT_SCALE_INPUT_IDX);
-  OPS_CHECK_NULL_WITH_CONTEXT(context, weightScaleShape);
-  gert::Shape* yShape = context->GetOutputShape(Y_OUTPUT_IDX);
-  OPS_CHECK_NULL_WITH_CONTEXT(context, yShape);
-  auto M = xShape->GetDim(0);
-  auto weightScaleDimNum = weightScaleShape->GetDimNum();
-  auto N = weightScaleShape->GetDim(weightScaleDimNum - 1);
-  gert::Shape shape{M, N};
-  *yShape = shape;
+static ge::graphStatus QuantMatmulDequantInferShape(gert::InferShapeContext *context)
+{
+    const gert::Shape *xShape = context->GetInputShape(X_INPUT_IDX);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, xShape);
+    const gert::Shape *weightScaleShape = context->GetInputShape(WEIGHT_SCALE_INPUT_IDX);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, weightScaleShape);
+    gert::Shape *yShape = context->GetOutputShape(Y_OUTPUT_IDX);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, yShape);
+    auto M = xShape->GetDim(0);
+    auto weightScaleDimNum = weightScaleShape->GetDimNum();
+    auto N = weightScaleShape->GetDim(weightScaleDimNum - 1);
+    gert::Shape shape{M, N};
+    *yShape = shape;
 
-  return GRAPH_SUCCESS;
+    return GRAPH_SUCCESS;
 }
 
-static ge::graphStatus QuantMatmulDequantInferDataType(gert::InferDataTypeContext* context) {
-  const ge::DataType xDtype = context->GetInputDataType(X_INPUT_IDX);
-  context->SetOutputDataType(Y_OUTPUT_IDX, xDtype);
+static ge::graphStatus QuantMatmulDequantInferDataType(gert::InferDataTypeContext *context)
+{
+    const ge::DataType xDtype = context->GetInputDataType(X_INPUT_IDX);
+    context->SetOutputDataType(Y_OUTPUT_IDX, xDtype);
 
-  return GRAPH_SUCCESS;
+    return GRAPH_SUCCESS;
 }
 
 IMPL_OP_INFERSHAPE(QuantMatmulDequant)
@@ -50,4 +52,4 @@ IMPL_OP_INFERSHAPE(QuantMatmulDequant)
 IMPL_OP_INFERSHAPE(QuantGroupedMatmulDequant)
     .InferShape(QuantMatmulDequantInferShape)
     .InferDataType(QuantMatmulDequantInferDataType);
-}  // namespace ops
+} // namespace ops

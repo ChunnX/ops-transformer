@@ -18,13 +18,11 @@ import os
 
 curr_dir = os.path.dirname(os.path.realpath(__file__))
 
+
 def compare_data(golden_file_lists, output_file_lists, d_type):
-    d_type_dict = {
-        "float32": np.float32,
-        "float16": np.float16
-    }
+    d_type_dict = {"float32": np.float32, "float16": np.float16}
     np_dtype = d_type_dict[d_type]
-    
+
     data_same = True
     for gold, out in zip(golden_file_lists, output_file_lists):
         tmp_out = np.fromfile(out, np_dtype)
@@ -40,10 +38,12 @@ def compare_data(golden_file_lists, output_file_lists, d_type):
             data_same = False
     return data_same
 
+
 def get_file_lists(dtype):
     golden_file_lists = sorted(glob.glob(curr_dir + "/*golden*.bin"))
     output_file_lists = sorted(glob.glob(curr_dir + "/*output*.bin"))
     return golden_file_lists, output_file_lists
+
 
 def process(d_type):
     golden_file_lists, output_file_lists = get_file_lists(d_type)
@@ -51,6 +51,7 @@ def process(d_type):
     print("compare result:", result)
     return result
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     ret = process(sys.argv[1])
     exit(0 if ret else 1)

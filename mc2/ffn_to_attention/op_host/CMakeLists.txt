@@ -13,9 +13,9 @@ if (BUILD_OPEN_PROJECT)  # custom
         ffn_to_attention_def.cpp
     )
     add_modules_sources_with_soc(
-        OP_API_INDEPENDENT ON 
-        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api 
-        OP_MC2_ENABLE ON 
+        OP_API_INDEPENDENT ON
+        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
+        OP_MC2_ENABLE ON
         OPTYPE ffn_to_attention ACLNNTYPE aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
@@ -30,6 +30,6 @@ if (BUILD_OPEN_PROJECT)  # custom
         )
     endif()
 else() # 回黄host
-    add_mc2_modules_sources(OPTYPE ffn_to_attention ACLNNTYPE aclnn_inner) 
+    add_mc2_modules_sources(OPTYPE ffn_to_attention ACLNNTYPE aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
 endif()

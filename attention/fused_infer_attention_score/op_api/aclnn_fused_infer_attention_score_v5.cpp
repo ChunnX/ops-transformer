@@ -15,7 +15,8 @@
 #include "opdev/op_def.h"
 #include "opdev/op_log.h"
 #include "fused_infer_attention_score_inner.h"
-#include "aclnnInner_fused_infer_attention_score.h" // 该文件为自动生成，在build/autogen/inner路径下
+#include "aclnnInner_fused_infer_attention_score.h" // generated in build/autogen/inner
+#include "opdev/tensor_view_utils.h"
 
 using namespace op;
 
@@ -41,13 +42,19 @@ __attribute__((visibility("default"))) aclnnStatus aclnnFusedInferAttentionScore
     const aclTensor *valueAntiquantScaleOptional, const aclTensor *valueAntiquantOffsetOptional,
     const aclTensor *keySharedPrefixOptional, const aclTensor *valueSharedPrefixOptional,
     const aclIntArray *actualSharedPrefixLenOptional, const aclTensor *queryRopeOptional,
-    const aclTensor *keyRopeOptional, const aclTensor *keyRopeAntiquantScaleOptional, 
+    const aclTensor *keyRopeOptional, const aclTensor *keyRopeAntiquantScaleOptional,
     const aclTensor *dequantScaleQueryOptional, const aclTensor *learnableSinkOptional,
-    const aclIntArray *qStartIdxOptional, const aclIntArray *kvStartIdxOptional, int64_t numHeads, 
-    double scaleValue, int64_t preTokens, int64_t nextTokens, char *inputLayout, int64_t numKeyValueHeads, 
+    const aclIntArray *qStartIdxOptional, const aclIntArray *kvStartIdxOptional, int64_t numHeads,
+    double scaleValue, int64_t preTokens, int64_t nextTokens, char *inputLayout, int64_t numKeyValueHeads,
     int64_t sparseMode, int64_t innerPrecise, int64_t blockSize, int64_t antiquantMode, bool softmaxLseFlag,
     int64_t keyAntiquantMode, int64_t valueAntiquantMode, int64_t queryQuantMode, int64_t pseType,
     const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor);
+
+__attribute__((visibility("default"))) aclnnStatus CheckTensorContiguous(
+    const aclTensorList *key, const aclTensorList *value,
+    const aclTensor *keyAntiquantScaleOptional,
+    const aclTensor *valueAntiquantScaleOptional,
+    const aclTensor *keyRopeOptional);
 
 aclnnStatus aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize(
     const aclTensor *query, const aclTensorList *key, const aclTensorList *value,
@@ -77,7 +84,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize(
     const aclTensor *keyRopeAntiquantScaleOptional,
     const aclTensor *dequantScaleQueryOptional,
     const aclTensor *learnableSinkOptional,
-    const aclIntArray *qStartIdxOptional, 
+    const aclIntArray *qStartIdxOptional,
     const aclIntArray *kvStartIdxOptional,
     int64_t numHeads, double scaleValue, int64_t preTokens,
     int64_t nextTokens, char *inputLayout, int64_t numKeyValueHeads,
@@ -101,21 +108,20 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize(
     aclTensor *fakeQStartIdxOptional{nullptr};
     aclTensor *fakeKVStartIdxOptional{nullptr};
 
-    // nullptr不处理， nullptr是空指针，这样不会影响原来就不传入actual seq length为空的逻辑
     aclnnStatus ret = FakeArray(actualSeqLengthsOptional, fakeActualSeqLengthsOptional);
     CHECK_RET_CODE(ret, "Try alloc fake actualSeqLengthsOptional failed");
 
     ret = FakeArray(actualSeqLengthsKvOptional, fakeActualSeqLengthsKvOptional);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc fake actualSeqLengthsKvOptional failed");
-        aclDestroyTensor(fakeActualSeqLengthsOptional); // 没有返回值无需校验
+        aclDestroyTensor(fakeActualSeqLengthsOptional);
         return ret;
     }
 
     ret = FakeArray(actualSharedPrefixLenOptional, fakeActualSharedPrefixLenOptional);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc fake actualSharedPrefixLenOptional failed");
-        aclDestroyTensor(fakeActualSeqLengthsOptional); // 没有返回值无需校验
+        aclDestroyTensor(fakeActualSeqLengthsOptional);
         aclDestroyTensor(fakeActualSeqLengthsKvOptional);
         return ret;
     }
@@ -123,7 +129,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize(
     ret = FakeArray(qStartIdxOptional, fakeQStartIdxOptional);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc fake qStartIdxOptional failed");
-        aclDestroyTensor(fakeActualSeqLengthsOptional); // 没有返回值无需校验
+        aclDestroyTensor(fakeActualSeqLengthsOptional);
         aclDestroyTensor(fakeActualSeqLengthsKvOptional);
         aclDestroyTensor(fakeActualSharedPrefixLenOptional);
         return ret;
@@ -132,7 +138,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize(
     ret = FakeArray(kvStartIdxOptional, fakeKVStartIdxOptional);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc fake kvStartIdxOptional failed");
-        aclDestroyTensor(fakeActualSeqLengthsOptional); // 没有返回值无需校验
+        aclDestroyTensor(fakeActualSeqLengthsOptional);
         aclDestroyTensor(fakeActualSeqLengthsKvOptional);
         aclDestroyTensor(fakeActualSharedPrefixLenOptional);
         aclDestroyTensor(fakeQStartIdxOptional);
@@ -141,11 +147,11 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize(
 
     const aclTensor *placeHolder = nullptr;
     const aclTensor *tempTensor = nullptr;
-    if (softmaxLseFlag == false) {
+    if (!softmaxLseFlag) {
         std::vector<int64_t> shape = {0};
         int64_t addr = 0xff;
         tempTensor = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_FLOAT, shape.data(), 0, ACL_FORMAT_ND,
-                                     shape.data(), shape.size(), static_cast<void*>(&addr));
+                                     shape.data(), shape.size(), static_cast<void *>(&addr));
         placeHolder = tempTensor;
     } else {
         placeHolder = softmaxLse;
@@ -157,20 +163,39 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize(
         quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional, blockTableOptional,
         queryPaddingSizeOptional, kvPaddingSizeOptional, keyAntiquantScaleOptional, keyAntiquantOffsetOptional,
         valueAntiquantScaleOptional, valueAntiquantOffsetOptional, tensorKeySharedPrefixOptional,
-        tensorValueSharedPrefixOptional, fakeActualSharedPrefixLenOptional, queryRopeOptional,
-        keyRopeOptional, keyRopeAntiquantScaleOptional, dequantScaleQueryOptional, learnableSinkOptional, fakeQStartIdxOptional, fakeKVStartIdxOptional, 
-        numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads, sparseMode, innerPrecise, 
-        blockSize, antiquantMode, softmaxLseFlag, keyAntiquantMode, valueAntiquantMode, queryQuantMode, pseType, 0,
-        attentionOut, placeHolder, workspaceSize, executor);
-    if (softmaxLseFlag == false) {
+        tensorValueSharedPrefixOptional, fakeActualSharedPrefixLenOptional, queryRopeOptional, keyRopeOptional,
+        keyRopeAntiquantScaleOptional, dequantScaleQueryOptional, learnableSinkOptional, fakeQStartIdxOptional,
+        fakeKVStartIdxOptional, numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads, sparseMode,
+        innerPrecise, blockSize, antiquantMode, softmaxLseFlag, keyAntiquantMode, valueAntiquantMode, queryQuantMode,
+        pseType, 0, attentionOut, placeHolder, workspaceSize, executor);
+    if (!softmaxLseFlag) {
         aclDestroyTensor(tempTensor);
     }
-    aclDestroyTensor(fakeActualSeqLengthsOptional); // 只会成功，无需校验
+    aclDestroyTensor(fakeActualSeqLengthsOptional);
     aclDestroyTensor(fakeActualSeqLengthsKvOptional);
     aclDestroyTensor(fakeActualSharedPrefixLenOptional);
     aclDestroyTensor(fakeQStartIdxOptional);
     aclDestroyTensor(fakeKVStartIdxOptional);
     return ret;
+}
+
+aclnnStatus CheckTensorContiguous(
+    const aclTensorList *key, const aclTensorList *value,
+    const aclTensor *keyAntiquantScaleOptional,
+    const aclTensor *valueAntiquantScaleOptional,
+    const aclTensor *keyRopeOptional)
+{
+    if ((key != nullptr && !IsContiguous((*key)[0])) || (value != nullptr && !IsContiguous((*value)[0]))) {
+        return ACLNN_ERR_INNER_TILING_ERROR;
+    }
+    if (keyRopeOptional != nullptr && !IsContiguous(keyRopeOptional)) {
+        return ACLNN_ERR_INNER_TILING_ERROR;
+    }
+    if ((keyAntiquantScaleOptional != nullptr && !IsContiguous(keyAntiquantScaleOptional)) ||
+        (valueAntiquantScaleOptional != nullptr && !IsContiguous(valueAntiquantScaleOptional))) {
+        return ACLNN_ERR_INNER_TILING_ERROR;
+    }
+    return ACLNN_SUCCESS;
 }
 
 aclnnStatus aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
@@ -201,7 +226,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
     const aclTensor *keyRopeAntiquantScaleOptional,
     const aclTensor *dequantScaleQueryOptional,
     const aclTensor *learnableSinkOptional,
-    const aclIntArray *qStartIdxOptional, 
+    const aclIntArray *qStartIdxOptional,
     const aclIntArray *kvStartIdxOptional,
     int64_t numHeads, double scaleValue, int64_t preTokens,
     int64_t nextTokens, char *inputLayout, int64_t numKeyValueHeads,
@@ -218,18 +243,25 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
     const aclTensor *tensorValueSharedPrefixOptional = valueSharedPrefixOptional;
     PrefixTensorPreProcess(tensorKeySharedPrefixOptional, tensorValueSharedPrefixOptional);
 
+    aclnnStatus ret =
+        CheckTensorContiguous(key, value, keyAntiquantScaleOptional, valueAntiquantScaleOptional, keyRopeOptional);
+    if (ret != ACLNN_SUCCESS && NnopbaseSupportTensorV2 == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_TILING_ERROR, "When tensor is not contiguous, opbase package version check failed");
+        return ret;
+    }
+
     const aclTensor *placeHolder = nullptr;
     const aclTensor *tempTensor = nullptr;
     if (softmaxLseFlag == false) {
         std::vector<int64_t> shape = {0};
         int64_t addr = 0xff;
         tempTensor = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_FLOAT, shape.data(), 0, ACL_FORMAT_ND,
-                                     shape.data(), shape.size(), static_cast<void*>(&addr));
+                                     shape.data(), shape.size(), static_cast<void *>(&addr));
         placeHolder = tempTensor;
     } else {
         placeHolder = softmaxLse;
     }
-    aclnnStatus ret = aclnnInnerFusedInferAttentionScoreGetWorkspaceSize(
+    ret = aclnnInnerFusedInferAttentionScoreGetWorkspaceSize(
         query, tensorListKey, tensorListValue, pseShiftOptional, attenMaskOptional, actualSeqLengthsOptional,
         actualSeqLengthsKvOptional, deqScale1Optional, quantScale1Optional, deqScale2Optional, quantScale2Optional,
         quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional, blockTableOptional,
@@ -237,8 +269,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
         valueAntiquantScaleOptional, valueAntiquantOffsetOptional, tensorKeySharedPrefixOptional,
         tensorValueSharedPrefixOptional, actualSharedPrefixLenOptional, queryRopeOptional,
         keyRopeOptional, keyRopeAntiquantScaleOptional, dequantScaleQueryOptional, learnableSinkOptional, qStartIdxOptional, kvStartIdxOptional,
-        numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads, sparseMode, innerPrecise, blockSize, 
-        antiquantMode, softmaxLseFlag, keyAntiquantMode, valueAntiquantMode, queryQuantMode, pseType, 0, attentionOut, 
+        numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads, sparseMode, innerPrecise, blockSize,
+        antiquantMode, softmaxLseFlag, keyAntiquantMode, valueAntiquantMode, queryQuantMode, pseType, 0, attentionOut,
         placeHolder, workspaceSize, executor);
     if (softmaxLseFlag == false) {
         aclDestroyTensor(tempTensor);

@@ -65,16 +65,15 @@ __aicore__ inline void QGmmInplaceAddCubeBasicAPI(GM_ADDR x1, GM_ADDR x2, GM_ADD
         mmTilingData_.baseN,          mmTilingData_.baseK, mmTilingData_.kAL1, mmTilingData_.kBL1, mmTilingData_.dbL0C,
         gmmQuantParams_.groupListType};
 
-    Params params = {
-        // template shape, gmm shape can not get now
-        {1, 1, 1, 1},
-        // mmad args
-        {x1, x2, scale2, scale1, y, nullptr, groupList},
-        // gmm tiling data
-        gmmParams};
+    Params params = {// template shape, gmm shape can not get now
+                     {1, 1, 1, 1},
+                     // mmad args
+                     {x1, x2, scale2, scale1, y, nullptr, groupList},
+                     // gmm tiling data
+                     gmmParams};
 
     QGmmKernel op;
     op(params);
 }
 
-#endif  // QGMM_INPLACE_ADD_CUBE_BASIC_API_H
+#endif // QGMM_INPLACE_ADD_CUBE_BASIC_API_H

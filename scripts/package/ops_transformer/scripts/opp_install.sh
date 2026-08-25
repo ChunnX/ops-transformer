@@ -332,14 +332,13 @@ install_es_whl_package() {
  	  else
  	    logandprint "[INFO]: ${_package_name} installed successfully!"
  	  fi
- 	  chmod -R "${_BUILTIN_PERM}" "${_pythonlocalpath}"/es_transformer 2> /dev/null
- 	  chmod -R "${_BUILTIN_PERM}" "${_pythonlocalpath}"/es_transformer-*.dist-info 2> /dev/null
+ 	  chmod -R "${CUSTOM_PERM}" "${_pythonlocalpath}"/es_transformer 2> /dev/null
+ 	  chmod -R "${CUSTOM_PERM}" "${_pythonlocalpath}"/es_transformer-*.dist-info 2> /dev/null
  	else
- 	  logandprint "[ERROR]: ERR_NO:0x0080;ERR_DES:install ${_package_name} failed, can not find the matched package for this platform."
- 	  exit 1
+ 	  logandprint "[WARNING]: install ${_package_name} skipped, whl package not found for this platform."
  	fi
 }
- 	 
+
 install_es_whl() {
  	local es_whl_path="${OPS_SOURCE_DIR}/es_packages/whl/es_transformer-1.0.0-py3-none-any.whl"
  	local python_es_whl_name="es_transformer"
@@ -375,11 +374,11 @@ install_whl_package() {
   local target_python_dir="${TARGET_VERSION_DIR}/python/site-packages"
 
   # 查找 whl 文件
-  local whl_file=$(find "${whl_dir}" -name "npu_ops_transformer-*.whl" 2>/dev/null | head -1)
+  local whl_file=$(find "${whl_dir}" -name "cann_ops_transformer-*.whl" 2>/dev/null | head -1)
 
   if [ -n "${whl_file}" ] && [ -f "${whl_file}" ]; then
     logandprint "[INFO]: Found whl package: ${whl_file}"
-    logandprint "[INFO]: Installing npu_ops_transformer whl package to ${target_python_dir}"
+    logandprint "[INFO]: Installing cann_ops_transformer whl package to ${target_python_dir}"
 
     # 创建目标目录
     comm_create_dir "${target_python_dir}" "${CREATE_DIR_PERM}" "${TARGET_USERNAME}:${TARGET_USERGROUP}" "${IS_FOR_ALL}"
@@ -402,10 +401,12 @@ install_whl_package() {
       logandprint "[WARNING]: pip not available, copying whl file directly..."
       cp "${whl_file}" "${target_python_dir}/"
     fi
+    chmod -R "${CUSTOM_PERM}" "${target_python_dir}"/cann_ops_transformer 2> /dev/null
+    chmod -R "${CUSTOM_PERM}" "${target_python_dir}"/cann_ops_transformer-*.dist-info 2> /dev/null
 
-    logandprint "[INFO]: npu_ops_transformer whl package installed successfully"
+    logandprint "[INFO]: cann_ops_transformer whl package installed successfully"
   else
-    logandprint "[INFO]: No npu_ops_transformer whl package found, skipping"
+    logandprint "[INFO]: No cann_ops_transformer whl package found, skipping"
   fi
 }
 

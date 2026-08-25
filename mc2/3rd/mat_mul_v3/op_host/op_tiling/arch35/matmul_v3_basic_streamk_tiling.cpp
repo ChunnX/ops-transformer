@@ -46,7 +46,7 @@ bool CheckStreamKSKTiling91095(const Mc2MatmulV3CompileInfo &compileInfo, const 
 
     uint64_t alignValue = BASIC_BLOCK_SIZE_256;
     if (args.aDtypeSize == DATA_SIZE_FP32 && !args.isHf32) {
-        alignValue = BLOCK_BYTE_SIZE;  // 如果是Fp32 基本块判断要用32
+        alignValue = BLOCK_BYTE_SIZE; // 如果是Fp32 基本块判断要用32
     }
     // 判断mn是否需要已经能切32份及以上
     uint64_t mCnt = MathUtil::CeilDivision(args.mValue, alignValue);
@@ -120,7 +120,7 @@ const static std::map<NpuArch, GetL0C2OutFlagFunc> GetL0C2OutFlagFuncMap = {
     {NpuArch::DAV_3510, GetL0C2OutFlag91095},
 };
 
-}  // namespace
+} // namespace
 
 namespace optiling {
 namespace mc2_matmul_v3_advanced {
@@ -132,9 +132,9 @@ bool Mc2MatMulV3BasicStreamKTiling::CheckStreamKSKTiling() const
     auto platformInfo = context_->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     NpuArch npuArchStreamK = ascendcPlatform.GetCurNpuArch();
-    auto iter = (CheckStreamKSKTilingFuncMap.find(npuArchStreamK) == CheckStreamKSKTilingFuncMap.end())
-                    ? CheckStreamKSKTilingDefault
-                    : CheckStreamKSKTilingFuncMap.at(npuArchStreamK);
+    auto iter = (CheckStreamKSKTilingFuncMap.find(npuArchStreamK) == CheckStreamKSKTilingFuncMap.end()) ?
+                    CheckStreamKSKTilingDefault :
+                    CheckStreamKSKTilingFuncMap.at(npuArchStreamK);
     return iter(compileInfo_, args_);
 }
 
@@ -143,9 +143,9 @@ bool Mc2MatMulV3BasicStreamKTiling::CheckStreamKDPSKTiling() const
     auto platformInfo = context_->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     NpuArch npuArchStreamK = ascendcPlatform.GetCurNpuArch();
-    auto iter = (CheckStreamKDPSKTilingFuncMap.find(npuArchStreamK) == CheckStreamKDPSKTilingFuncMap.end())
-                    ? CheckStreamKDPSKTilingDefault
-                    : CheckStreamKDPSKTilingFuncMap.at(npuArchStreamK);
+    auto iter = (CheckStreamKDPSKTilingFuncMap.find(npuArchStreamK) == CheckStreamKDPSKTilingFuncMap.end()) ?
+                    CheckStreamKDPSKTilingDefault :
+                    CheckStreamKDPSKTilingFuncMap.at(npuArchStreamK);
     return iter(compileInfo_, args_);
 }
 
@@ -154,9 +154,9 @@ Mc2MatMulV3L0C2Out Mc2MatMulV3BasicStreamKTiling::GetL0C2OutFlag() const
     auto platformInfo = context_->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     NpuArch npuArchStreamK = ascendcPlatform.GetCurNpuArch();
-    auto iter = (GetL0C2OutFlagFuncMap.find(npuArchStreamK) == GetL0C2OutFlagFuncMap.end())
-                    ? GetL0C2OutFlagDefault
-                    : GetL0C2OutFlagFuncMap.at(npuArchStreamK);
+    auto iter = (GetL0C2OutFlagFuncMap.find(npuArchStreamK) == GetL0C2OutFlagFuncMap.end()) ?
+                    GetL0C2OutFlagDefault :
+                    GetL0C2OutFlagFuncMap.at(npuArchStreamK);
     return iter(args_);
 }
 
@@ -216,7 +216,7 @@ std::vector<size_t> Mc2MatMulV3BasicStreamKTiling::GetWorkspaceSize() const
     size_t workspaceSize =
         compileInfo_.aicNum * BASIC_BLOCK_SIZE_256 * BASIC_BLOCK_SIZE_256 * DATA_SIZE_FP32 + RPC_WORKSIZE * MB_SIZE;
     OP_LOGI(args_.opName, "Mc2MatMulV3 tiling workspace size is %lu", workspaceSize);
-    return { workspaceSize };
+    return {workspaceSize};
 }
 
 uint64_t Mc2MatMulV3BasicStreamKTiling::GetTilingKey() const
@@ -228,5 +228,5 @@ uint64_t Mc2MatMulV3BasicStreamKTiling::GetTilingKey() const
         .SetApiLevel(Mc2MatMulV3ApiLevel::BASIC_LEVEL)
         .GetTilingKey();
 }
-} // namespace mc2_matmul_v3
+} // namespace mc2_matmul_v3_advanced
 } // namespace optiling

@@ -27,8 +27,7 @@ struct BaseBlockOffset {
     uint64_t offsetBias;
 };
 
-struct BaseBlockArguments
-{
+struct BaseBlockArguments {
     bool isRowOrder;
     bool isAtomic;
     bool isTransA;
@@ -52,12 +51,15 @@ struct BaseBlockArguments
 
 class MatmulBaseBlockMC2 {
 public:
-    __aicore__ inline MatmulBaseBlockMC2() {}
-    __aicore__ inline void Init(Mc2Tiling::RCSTiling& cfg, TCubeTiling& tiling, Mc2Tiling::TileL2Tiling &l2Tiling, uint32_t rankID=0);
-    __aicore__ inline void InitBlockIndex(uint32_t index=0);
+    __aicore__ inline MatmulBaseBlockMC2()
+    {
+    }
+    __aicore__ inline void Init(Mc2Tiling::RCSTiling &cfg, TCubeTiling &tiling, Mc2Tiling::TileL2Tiling &l2Tiling,
+                                uint32_t rankID = 0);
+    __aicore__ inline void InitBlockIndex(uint32_t index = 0);
     __aicore__ inline void InitBlockWithoutIndex();
     __aicore__ inline void UpdateBlockIndex(uint32_t currPos);
-    __aicore__ inline void UpdateBlockParams(int32_t mTileIndex=0, int32_t nTileIndex=0);
+    __aicore__ inline void UpdateBlockParams(int32_t mTileIndex = 0, int32_t nTileIndex = 0);
     template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE>
     __aicore__ inline void CalcGMOffset();
     __aicore__ inline void GetBlockStartIdx(uint32_t startIdx, uint32_t endIdx);
@@ -69,15 +71,16 @@ public:
     Mc2Tiling::RCSTiling cfg_;
 };
 
-__aicore__ inline void MatmulBaseBlockMC2::Init(Mc2Tiling::RCSTiling& cfg, TCubeTiling& tiling, Mc2Tiling::TileL2Tiling &l2Tiling, uint32_t rankID)
+__aicore__ inline void MatmulBaseBlockMC2::Init(Mc2Tiling::RCSTiling &cfg, TCubeTiling &tiling,
+                                                Mc2Tiling::TileL2Tiling &l2Tiling, uint32_t rankID)
 {
     (void)l2Tiling;
     (void)rankID;
     tiling_ = tiling;
     cfg_ = cfg;
     args_.preCoreStartIdx = 0;
-    args_.mBlockCnt = DivCeil(tiling.M, tiling.baseM);         //M方向分Base块个数
-    args_.nBlockCnt = DivCeil(tiling.N, tiling.baseN);         //N方向分Base块个数
+    args_.mBlockCnt = DivCeil(tiling.M, tiling.baseM); // M方向分Base块个数
+    args_.nBlockCnt = DivCeil(tiling.N, tiling.baseN); // N方向分Base块个数
     args_.nBaseTail = tiling.N - (args_.nBlockCnt - 1) * tiling.baseN;
     args_.mBaseTail = tiling.M - (args_.mBlockCnt - 1) * tiling.baseM;
     args_.totalBlockCnt = args_.mBlockCnt * args_.nBlockCnt;
@@ -232,5 +235,5 @@ __aicore__ inline void MatmulBaseBlockMC2::CalcGMOffset()
         offset_.offsetBias = args_.nBlockOffset;
     }
 }
-}      // namespace ASCENDC
+} // namespace AscendC
 #endif // MC2_MATMUL_BLOCK_H

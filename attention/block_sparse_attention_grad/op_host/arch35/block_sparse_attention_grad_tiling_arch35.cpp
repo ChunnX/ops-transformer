@@ -17,6 +17,11 @@
 namespace optiling {
 namespace BSA_ARC35 {
 
+int64_t AlignTo(int64_t x, int64_t align)
+{
+    return (x + align - 1) / align * align;
+}
+
 template <typename... Args>
 bool IsSameShape(Args... shapes)
 {
@@ -230,8 +235,8 @@ protected:
         blockShapeY_ = blockShapeList[1];
 
         return InputCheck({q_batch_num, q_head_num, q_seq_len, q_head_dim},
-                          {k_batch_num, k_head_num, k_seq_len, q_head_dim},
-                          {v_batch_num, v_head_num, v_seq_len, q_head_dim}, q_group, context_);
+                          {k_batch_num, k_head_num, k_seq_len, k_head_dim},
+                          {v_batch_num, v_head_num, v_seq_len, v_head_dim}, q_group, context_);
     }
 
     ge::graphStatus GetPlatformInfo() override
@@ -244,8 +249,9 @@ protected:
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
         auto cubeCoreNum = ascendcPlatform.GetCoreNumAic();
 
-        uint32_t baseM = blockShapeX_ <= 128 ? blockShapeX_ : 64;
-        uint32_t baseN = blockShapeY_ <= 128 ? blockShapeY_ : 64;
+        uint32_t baseM = blockShapeX_ <= 128 ? blockShapeX_ : 128;
+        uint32_t baseN = blockShapeY_ <= 128 ? blockShapeY_ : 128;
+        uint32_t singleM = AlignTo(2048, baseM);
         uint32_t block_num_x = q_seq_len_ / blockShapeX_;
         uint32_t block_num_y = kv_seq_len_ / blockShapeY_;
 
@@ -254,6 +260,7 @@ protected:
         tilingData_.set_cubeCoreNum(cubeCoreNum);
         tilingData_.set_baseM(baseM);
         tilingData_.set_baseN(baseN);
+        tilingData_.set_singleM(singleM);
         context_->SetBlockDim(cubeCoreNum);
         context_->SetScheduleMode(1);
         return ge::GRAPH_SUCCESS;

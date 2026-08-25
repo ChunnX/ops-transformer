@@ -84,7 +84,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持 APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接等特性。</td>
+    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接等特性。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -114,7 +114,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持 APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接、原地更新等特性。</td>
+    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接、原地更新等特性。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -124,7 +124,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✗</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>在Sparse Flash Attention的基础上支持了[Per-Token-Head-Tile-128量化]输入。</td>
+    <td>在Sparse Flash Attention的基础上支持了`Per-Token-Head-Tile-128量化`输入。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -158,26 +158,6 @@ Ascend 950支持的算子分类和算子列表如下：
   </tr>
   <tr>
     <td>attention</td>
-    <td><a href="../../attention/mla_prolog/README.md">mla_prolog</a></td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✗</td>
-    <td>✗</td>
-    <td>AI Core</td>
-    <td>推理MlaProlog算子。</td>
-  </tr>
-  <tr>
-    <td>attention</td>
-    <td><a href="../../attention/mla_prolog_v2/README.md">mla_prolog_v2</a></td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✗</td>
-    <td>AI Core</td>
-    <td>推理MlaPrologV2WeightNz算子。</td>
-  </tr>
-  <tr>
-    <td>attention</td>
     <td><a href="../../attention/mla_prolog_v3/README.md">mla_prolog_v3</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -195,6 +175,16 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>AI Core</td>
     <td>推理场景下，SparseFlashAttention前处理的计算，选出关键的稀疏token，并对输入query和key进行量化实现存8算8。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/chunk_kda_fwd/README.md">chunk_kda_fwd</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>完成不涉及CP切分的KDA分块正向计算。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -265,6 +255,36 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✗</td>
     <td>AI Core</td>
     <td>SparselightningIndexerGradKlLoss算子是LightningIndexer的反向算子，再额外融合了Loss计算功能输出。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/stem_oam_prep_paged_kv/README.md">stem_oam_prep_paged_kv</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>大模型推理动态稀疏注意力机制的前置评分模块，为block-sparse-attention的前置评分模块。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/compressor/README.md">compressor</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>推理场景下SMLA和QLI的前处理算子，用于将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/compressor_grad/README.md">compressor_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>Compressor的反向算子，用于计算输入X、权重W^KV/W^Gate与位置编码Ape的梯度，前向在gradEnabled为true时导出softmax_score与kv中间结果作为本算子输入。</td>
   </tr>
   <tr>
     <td>gmm</td>
@@ -354,7 +374,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>完成路由专家AlltoAllv、Permute、GroupedMatMul融合并实现与共享专家MatMul并行融合，先通信后计算。</td>
+    <td>完成路由专家AlltoAllV、Permute、GroupedMatMul融合并实现与共享专家MatMul并行融合，先通信后计算。</td>
   </tr>
   <tr>
     <td>mc2</td>
@@ -364,7 +384,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>完成路由专家AlltoAllv、Permute、QuantGroupedMatMul融合并实现与共享专家MatMul并行融合。</td>
+    <td>完成路由专家AlltoAllV、Permute、QuantGroupedMatMul融合并实现与共享专家MatMul并行融合。</td>
   </tr>
   <tr>
     <td>mc2</td>
@@ -404,7 +424,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>完成路由专家GroupedMatMul、Unpermute、AlltoAllv融合并实现与共享专家MatMul并行融合，先计算后通信。</td>
+    <td>完成路由专家GroupedMatMul、Unpermute、AlltoAllV融合并实现与共享专家MatMul并行融合，先计算后通信。</td>
   </tr>
   <tr>
     <td>mc2</td>
@@ -534,7 +554,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。</td>
+    <td>对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AlltoAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AlltoAllV通信。</td>
   </tr>
   <tr>
     <td>mc2</td>
@@ -564,7 +584,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。</td>
+    <td>对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AlltoAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AlltoAllV通信。</td>
   </tr>
   <tr>
     <td>mc2</td>
@@ -574,7 +594,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。</td>
+    <td>对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AlltoAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AlltoAllV通信。</td>
   </tr>
   <tr>
     <td>mc2</td>
@@ -604,7 +624,7 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>完成路由专家QuantGroupedMatMul、Unpermute、AlltoAllv融合并实现与共享专家MatMul并行融合。</td>
+    <td>完成路由专家QuantGroupedMatMul、Unpermute、AlltoAllV融合并实现与共享专家MatMul并行融合。</td>
   </tr>
   <tr>
     <td>mc2</td>
@@ -715,6 +735,16 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>AI Core</td>
     <td>MoE计算中，对输入x做Sigmoid计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。</td>
+  </tr>
+  <tr>
+    <td>moe</td>
+    <td><a href="../../moe/moe_gating_top_k_backward/README.md">moe_gating_top_k_backward</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>MoeGatingTopK的反向算子。</td>
   </tr>
   <tr>
     <td>moe</td>
@@ -875,6 +905,16 @@ Ascend 950支持的算子分类和算子列表如下：
     <td>✓</td>
     <td>AI Core</td>
     <td>执行旋转位置编码计算，推理网络为了提升性能，将query和key两路算子融合成一路。</td>
+  </tr>
+  <tr>
+    <td>posembedding</td>
+    <td><a href="../../posembedding/inplace_partial_rotary_mul_grad/README.md">inplace_partial_rotary_mul_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>执行局部旋转位置编码InplacePartialRotaryMul的反向计算，对输入dy的D维度上切片[start, end)区域执行旋转位置编码梯度计算，结果inplace写回dy。</td>
   </tr>
   <tr>
     <td>posembedding</td>

@@ -17,4 +17,4 @@
 
 #define ACLNN_API __attribute__((visibility("default")))
 
-#endif  // Transformer_COMMON_ACLNN_UTIL_H
+#endif // Transformer_COMMON_ACLNN_UTIL_H

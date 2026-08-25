@@ -49,23 +49,22 @@ __aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glo
             IsSameType<T, int4b_t>::value ? 64 : AttentionCommon::BYTE_BLOCK / sizeof(T);
         uint64_t l1Offset = 0;
         uint64_t gmOffset = 0;
+        nd2nzPara.dstNzC0Stride = dstNzC0Stride;
+        nd2nzPara.dstNzNStride = 1;
+        nd2nzPara.srcNdMatrixStride = 0;
+        nd2nzPara.dstNzMatrixStride = 0;
+        nd2nzPara.ndNum = 1;
+        nd2nzPara.nValue = 1;
+        if constexpr (IsSameType<T, int4b_t>::value) {
+            constexpr uint32_t HALF_SIZE_DIVISOR = 2;
+            nd2nzPara.dValue = dValue / HALF_SIZE_DIVISOR;
+            nd2nzPara.srcDValue = dValue / HALF_SIZE_DIVISOR;
+        } else {
+            nd2nzPara.dValue = dValue;
+            nd2nzPara.srcDValue = dValue;
+        }
         for (uint32_t i = 0; i < nValue; i++) {
-            nd2nzPara.ndNum = 1;
-            nd2nzPara.nValue = 1;
-            if constexpr (IsSameType<T, int4b_t>::value) {
-                constexpr uint32_t HALF_SIZE_DIVISOR = 2;
-                nd2nzPara.dValue = dValue / HALF_SIZE_DIVISOR;
-                nd2nzPara.srcDValue = dValue / HALF_SIZE_DIVISOR;
-            } else {
-                nd2nzPara.dValue = dValue;
-                nd2nzPara.srcDValue = dValue;
-            }
-            nd2nzPara.dstNzC0Stride = dstNzC0Stride;
-            nd2nzPara.dstNzNStride = 1;
-            nd2nzPara.srcNdMatrixStride = 0;
-            nd2nzPara.dstNzMatrixStride = 0;
             DataCopy(l1Tensor[l1Offset], gmTensor[gmOffset], nd2nzPara);
-
             gmOffset += srcDValue;
             l1Offset += BLOCK_ELEMENT_CNT;
         }
@@ -77,7 +76,8 @@ __aicore__ inline void CopyMultiMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glob
                                              uint32_t dstNzMatrixStride, uint32_t nValue, uint32_t dValue,
                                              uint32_t srcDValue, uint32_t dstNzC0Stride)
 {
-    constexpr uint32_t ND_MATRIX_STRIDE_LIMIT = 65536; // Mutil ND2NZ搬运时，Nd2NzParams支持的srcNdMatrixStride的取值范围为[0, 65536]，单位为元素
+    constexpr uint32_t ND_MATRIX_STRIDE_LIMIT =
+        65536; // Mutil ND2NZ搬运时，Nd2NzParams支持的srcNdMatrixStride的取值范围为[0, 65536]，单位为元素
     if (unlikely(srcNdMatrixStride > ND_MATRIX_STRIDE_LIMIT)) {
         uint64_t l1Offset = 0;
         uint64_t gmOffset = 0;
@@ -141,7 +141,6 @@ private:
         uint64_t queryGmbaseOffset =
             offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, 0, s1IdxStart, gmCoord.dIdx);
 
-
         if (offsetCalculator.GetDimG() == 1) {
             CopySingleMatrixNDToNZ(dstTensor.tensor, srcTensor.gmTensor[queryGmbaseOffset], s1IdxEnd - s1IdxStart,
                                    gmCoord.dDealSize, offsetCalculator.GetStrideS1(), dstTensor.rowCount);
@@ -183,8 +182,8 @@ private:
     }
 
     template <typename FaGmTensorType>
-    __aicore__ inline void ProcessContinuous(FaL1Tensor<Q_T, L1_FORMAT> &dstTensor,
-                                             FaGmTensorType &srcTensor, GmCoord &gmCoord)
+    __aicore__ inline void ProcessContinuous(FaL1Tensor<Q_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
+                                             GmCoord &gmCoord)
     {
         // B*N2*GS1*D
         auto &offsetCalculator = srcTensor.offsetCalculator;
@@ -295,8 +294,8 @@ private:
     }
 
     template <typename FaGmTensorType>
-    __aicore__ inline void ProcessPageAttention(FaL1Tensor<KV_T, L1_FORMAT> &dstTensor,
-                                                FaGmTensorType &srcTensor, GmKvCoord &gmCoord)
+    __aicore__ inline void ProcessPageAttention(FaL1Tensor<KV_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
+                                                GmKvCoord &gmCoord)
     {
         auto &offsetCalculator = srcTensor.offsetCalculator;
         uint32_t curS2Idx = gmCoord.s2Idx;
@@ -341,10 +340,8 @@ class CopyKKropePAGmToL1 {
 public:
     template <typename FaGmTensorKType, typename FaGmTensorKropeType>
     __aicore__ inline void operator()(FaL1Tensor<KV_T, L1_FORMAT> &dstTensorK,
-                                      FaL1Tensor<KV_T, L1_FORMAT> &dstTensorKrope,
-                                      FaGmTensorKType &srcTensorK,
-                                      FaGmTensorKropeType &srcTensorKrope, GmKvCoord &gmCoordK,
-                                      GmKvCoord &gmCoordKrope)
+                                      FaL1Tensor<KV_T, L1_FORMAT> &dstTensorKrope, FaGmTensorKType &srcTensorK,
+                                      FaGmTensorKropeType &srcTensorKrope, GmKvCoord &gmCoordK, GmKvCoord &gmCoordKrope)
     {
         if constexpr (GM_FORMAT == GmFormat::PA_NZ || GM_FORMAT == GmFormat::PA_BnNBsD ||
                       GM_FORMAT == GmFormat::PA_BnBsND) {
@@ -354,15 +351,14 @@ public:
 
 private:
     template <typename FaGmTensorType>
-    __aicore__ inline uint64_t GetBlockIdx(FaGmTensorType &srcKTensor, uint64_t blockIdxInBatch,
-                                           uint32_t bIdx)
+    __aicore__ inline uint64_t GetBlockIdx(FaGmTensorType &srcKTensor, uint64_t blockIdxInBatch, uint32_t bIdx)
     {
         return srcKTensor.offsetCalculator.blockTableParser.GetBlockIdx(bIdx, blockIdxInBatch);
     }
 
     template <typename FaGmTensorType>
-    __aicore__ inline uint64_t GetOffset(FaGmTensorType &srcTensor, int32_t blockIdx, uint32_t n2Idx,
-                                         uint32_t s2Idx, uint32_t dIdx)
+    __aicore__ inline uint64_t GetOffset(FaGmTensorType &srcTensor, int32_t blockIdx, uint32_t n2Idx, uint32_t s2Idx,
+                                         uint32_t dIdx)
     {
         auto &offsetCalculator = srcTensor.offsetCalculator;
         uint64_t bsIdx = s2Idx % offsetCalculator.GetBlockSize();
@@ -384,9 +380,8 @@ private:
     template <typename FaGmTensorKType, typename FaGmTensorKropeType>
     __aicore__ inline void ProcessPageAttention(FaL1Tensor<KV_T, L1_FORMAT> &dstTensorK,
                                                 FaL1Tensor<KV_T, L1_FORMAT> &dstTensorKrope,
-                                                FaGmTensorKType &srcTensorK,
-                                                FaGmTensorKropeType &srcTensorKrope, GmKvCoord &gmCoordK,
-                                                GmKvCoord &gmCoordKrope)
+                                                FaGmTensorKType &srcTensorK, FaGmTensorKropeType &srcTensorKrope,
+                                                GmKvCoord &gmCoordK, GmKvCoord &gmCoordKrope)
     {
         auto &offsetCalculatorK = srcTensorK.offsetCalculator;
         auto &offsetCalculatorKrope = srcTensorKrope.offsetCalculator;
@@ -455,7 +450,7 @@ __aicore__ inline void CopySingleMXScaleDNToNZ(LocalTensor<T> l1Tensor, const Gl
     dn2nzPara.srcDnMatrixStride = 0;     // 相邻Dn矩阵起始地址之间的偏移， 单位为元素个数
     dn2nzPara.srcDValue = srcDValue / 2; // 同一个Dn矩阵中相邻行起始地址之间的偏移， 单位为元素个数
     dn2nzPara.dstNzC0Stride = dstNzC0Stride / 2;
-    dn2nzPara.dstNzNStride = 1; // 转换为NZ矩阵后，ND之间相邻两行在NZ矩阵中起始地址之间的偏移， 单位为Block个数
+    dn2nzPara.dstNzNStride = 1;                     // 转换为NZ矩阵后，ND之间相邻两行在NZ矩阵中起始地址之间的偏移， 单位为Block个数
     dn2nzPara.dstNzMatrixStride = dn2nzPara.nValue; // 两个NZ矩阵，起始地址之间的偏移， 单位为元素数量
 
     LocalTensor<bfloat16_t> l1TensorCast = l1Tensor.template ReinterpretCast<bfloat16_t>();
@@ -477,7 +472,7 @@ __aicore__ inline void CopyMultiMXScaleDNToNZ(LocalTensor<T> l1Tensor, const Glo
     dn2nzPara.srcDnMatrixStride = srcDnMatrixStride; // 相邻Dn矩阵起始地址之间的偏移， 单位为元素个数
     dn2nzPara.srcDValue = srcDValue / 2;             // 同一个Dn矩阵中相邻行起始地址之间的偏移， 单位为元素个数
     dn2nzPara.dstNzC0Stride = dstNzC0Stride / 2;
-    dn2nzPara.dstNzNStride = 1; // 转换为NZ矩阵后，ND之间相邻两行在NZ矩阵中起始地址之间的偏移， 单位为Block个数
+    dn2nzPara.dstNzNStride = 1;                      // 转换为NZ矩阵后，ND之间相邻两行在NZ矩阵中起始地址之间的偏移， 单位为Block个数
     dn2nzPara.dstNzMatrixStride = dstNzMatrixStride; // 两个NZ矩阵，起始地址之间的偏移， 单位为元素数量
 
     LocalTensor<bfloat16_t> l1TensorCast = l1Tensor.template ReinterpretCast<bfloat16_t>();
@@ -489,15 +484,16 @@ __aicore__ inline void CopyMultiMXScaleDNToNZ(LocalTensor<T> l1Tensor, const Glo
 template <typename Q_SCALE_T, GmFormat GM_FORMAT, L1Format L1_FORMAT = L1Format::NZ>
 class CopyQueryScaleGmToL1 {
 public:
+    template <typename FaGmTensorType>
     __aicore__ inline void operator()(FaL1Tensor<Q_SCALE_T, L1_FORMAT> &dstTensor,
-                                      FaGmTensor<Q_SCALE_T, GM_FORMAT> &srcTensor, GmCoord &gmCoord)
+                                      FaGmTensorType &srcTensor, GmCoord &gmCoord)
     {
         if constexpr (GM_FORMAT == GmFormat::NTGD) {
             ProcessS1G(dstTensor, srcTensor, gmCoord);
         } else if (GM_FORMAT == GmFormat::TNGD) {
             ProcessS1(dstTensor, srcTensor, gmCoord);
         } else if constexpr (GM_FORMAT == GmFormat::BNGSD) {
-            OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+            auto &offsetCalculator = srcTensor.offsetCalculator;
             if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
                 ProcessGS1(dstTensor, srcTensor, gmCoord);
             } else {
@@ -507,24 +503,26 @@ public:
     }
 
 private:
+    template <typename FaGmTensorType>
     __aicore__ inline void ProcessS1G(FaL1Tensor<Q_SCALE_T, L1_FORMAT> &dstTensor,
-                                      FaGmTensor<Q_SCALE_T, GM_FORMAT> &srcTensor, GmCoord &gmCoord)
+                                      FaGmTensorType &srcTensor, GmCoord &gmCoord)
     {
-        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+        auto &offsetCalculator = srcTensor.offsetCalculator;
         uint32_t s1IdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimG();
         uint32_t gIdxStart = gmCoord.gS1Idx % offsetCalculator.GetDimG();
         uint64_t queryScaleGmbaseOffset =
-            offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, 0, s1IdxStart, gmCoord.dIdx)
-                                        + gIdxStart * offsetCalculator.GetDimD();
-    
+            offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, 0, s1IdxStart, gmCoord.dIdx) +
+            gIdxStart * offsetCalculator.GetDimD();
+
         CopySingleMXScaleDNToNZ(dstTensor.tensor, srcTensor.gmTensor[queryScaleGmbaseOffset], gmCoord.dDealSize,
                                 gmCoord.gS1DealSize, gmCoord.dDealSize, gmCoord.dDealSize);
     }
 
+    template <typename FaGmTensorType>
     __aicore__ inline void ProcessS1(FaL1Tensor<Q_SCALE_T, L1_FORMAT> &dstTensor,
-                                      FaGmTensor<Q_SCALE_T, GM_FORMAT> &srcTensor, GmCoord &gmCoord)
+                                     FaGmTensorType &srcTensor, GmCoord &gmCoord)
     {
-        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+        auto &offsetCalculator = srcTensor.offsetCalculator;
         uint32_t s1IdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimG();
         uint64_t queryScaleGmbaseOffset =
             offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, 0, s1IdxStart, gmCoord.dIdx);
@@ -534,11 +532,12 @@ private:
                                 gmCoord.dDealSize);
     }
 
+    template <typename FaGmTensorType>
     __aicore__ inline void ProcessContinuous(FaL1Tensor<Q_SCALE_T, L1_FORMAT> &dstTensor,
-                                             FaGmTensor<Q_SCALE_T, GM_FORMAT> &srcTensor, GmCoord &gmCoord)
+                                             FaGmTensorType &srcTensor, GmCoord &gmCoord)
     {
         // B*N2*GS1*D
-        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+        auto &offsetCalculator = srcTensor.offsetCalculator;
         uint32_t gIdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimS1();
         uint32_t s1IdxStart = gmCoord.gS1Idx % offsetCalculator.GetDimS1();
 
@@ -547,11 +546,12 @@ private:
                                 offsetCalculator.GetDimD(), gmCoord.dDealSize);
     }
 
+    template <typename FaGmTensorType>
     __aicore__ inline void ProcessGS1(FaL1Tensor<Q_SCALE_T, L1_FORMAT> &dstTensor,
-                                      FaGmTensor<Q_SCALE_T, GM_FORMAT> &srcTensor, GmCoord &gmCoord)
+                                      FaGmTensorType &srcTensor, GmCoord &gmCoord)
     {
         // N2*G*T(BS1)*D
-        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+        auto &offsetCalculator = srcTensor.offsetCalculator;
         uint64_t s1Size = 0;
         if constexpr (GmLayoutParams<GM_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
             s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
@@ -610,8 +610,9 @@ template <typename K_SCALE_T, GmFormat GM_FORMAT, L1Format L1_FORMAT = L1Format:
           ScaleTrans SCALE_TRANS = ScaleTrans::DN2NZ>
 class CopyKeyScaleGmToL1 {
 public:
+    template <typename FaGmTensorType>
     __aicore__ inline void operator()(FaL1Tensor<K_SCALE_T, L1_FORMAT> &dstTensor,
-                                      FaGmTensor<K_SCALE_T, GM_FORMAT> &srcTensor, GmKvCoord &gmCoord)
+                                      FaGmTensorType &srcTensor, GmKvCoord &gmCoord)
     {
         if constexpr (GM_FORMAT == GmFormat::BNSD || GM_FORMAT == GmFormat::BSND || GM_FORMAT == GmFormat::NTD ||
                       GM_FORMAT == GmFormat::TND) {
@@ -623,23 +624,24 @@ public:
     }
 
 private:
+    template <typename FaGmTensorType>
     __aicore__ inline void ProcessContinuousOrTensorlist(FaL1Tensor<K_SCALE_T, L1_FORMAT> &dstTensor,
-                                                         FaGmTensor<K_SCALE_T, GM_FORMAT> &srcTensor,
+                                                         FaGmTensorType &srcTensor,
                                                          GmKvCoord &gmCoord)
     {
-        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+        auto &offsetCalculator = srcTensor.offsetCalculator;
         uint64_t offset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gmCoord.s2Idx, gmCoord.dIdx);
         CopySingleMXScaleDNToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.dDealSize, gmCoord.s2DealSize,
                                 offsetCalculator.GetStrideS2(), gmCoord.dDealSize);
     }
 
+    template <typename FaGmTensorType>
     __aicore__ inline void ProcessPageAttention(FaL1Tensor<K_SCALE_T, L1_FORMAT> &dstTensor,
-                                                FaGmTensor<K_SCALE_T, GM_FORMAT> &srcTensor, GmKvCoord &gmCoord)
+                                                FaGmTensorType &srcTensor, GmKvCoord &gmCoord)
     {
-        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+        auto &offsetCalculator = srcTensor.offsetCalculator;
         uint32_t curS2Idx = gmCoord.s2Idx;
         uint32_t copyFinishRowCnt = 0;
-        uint32_t blockElementCnt = 32 / sizeof(K_SCALE_T);
         if constexpr (GM_FORMAT == GmFormat::PA_NZ_K_SCALE) {
             while (copyFinishRowCnt < gmCoord.s2DealSize) {
                 // 获取需要拷贝的行数
@@ -648,7 +650,7 @@ private:
                     copyRowCnt = gmCoord.s2DealSize - copyFinishRowCnt; // 一个block未拷满
                 }
                 uint64_t gmOffset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, curS2Idx, gmCoord.dIdx);
-                uint64_t l1Offset = copyFinishRowCnt * blockElementCnt;
+                uint64_t l1Offset = copyFinishRowCnt * gmCoord.dDealSize;
 
                 // 拷贝数据
                 DataCopyParams intriParams;
@@ -669,7 +671,7 @@ private:
                     copyRowCnt = gmCoord.s2DealSize - copyFinishRowCnt; // 一个block未拷满
                 }
                 uint64_t gmOffset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, curS2Idx, gmCoord.dIdx);
-                uint64_t l1Offset = copyFinishRowCnt * blockElementCnt;
+                uint64_t l1Offset = copyFinishRowCnt * gmCoord.dDealSize;
 
                 // 拷贝数据
                 CopySingleMXScaleDNToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], gmCoord.dDealSize,
@@ -708,11 +710,12 @@ template <typename V_SCALE_T, GmFormat GM_FORMAT, L1Format L1_FORMAT = L1Format:
           ScaleTrans SCALE_TRANS = ScaleTrans::ND2NZ>
 class CopyValueScaleGmToL1 {
 public:
+    template <typename FaGmTensorType>
     __aicore__ inline void operator()(FaL1Tensor<V_SCALE_T, L1_FORMAT> &dstTensor,
-                                      FaGmTensor<V_SCALE_T, GM_FORMAT> &srcTensor, GmKvCoord &gmCoord)
+                                      FaGmTensorType &srcTensor, GmKvCoord &gmCoord)
     {
-        if constexpr (GM_FORMAT == GmFormat::BNSD || GM_FORMAT == GmFormat::BSND ||
-                      GM_FORMAT == GmFormat::NTD || GM_FORMAT == GmFormat::TND || GM_FORMAT == GmFormat::TND2) {
+        if constexpr (GM_FORMAT == GmFormat::BNSD || GM_FORMAT == GmFormat::BSND || GM_FORMAT == GmFormat::NTD ||
+                      GM_FORMAT == GmFormat::TND || GM_FORMAT == GmFormat::TND2) {
             ProcessContinuousOrTensorlist(dstTensor, srcTensor, gmCoord);
         } else if constexpr (GM_FORMAT == GmFormat::PA_BnBsND || GM_FORMAT == GmFormat::PA_BnNBsD ||
                              GM_FORMAT == GmFormat::PA_NZ) {
@@ -721,11 +724,12 @@ public:
     }
 
 private:
+    template <typename FaGmTensorType>
     __aicore__ inline void ProcessContinuousOrTensorlist(FaL1Tensor<V_SCALE_T, L1_FORMAT> &dstTensor,
-                                                         FaGmTensor<V_SCALE_T, GM_FORMAT> &srcTensor,
+                                                         FaGmTensorType &srcTensor,
                                                          GmKvCoord &gmCoord)
     {
-        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+        auto &offsetCalculator = srcTensor.offsetCalculator;
         uint64_t offset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gmCoord.s2Idx, gmCoord.dIdx);
         if (SCALE_TRANS == ScaleTrans::ND2NZ) {
             CopySingleMXScaleNDToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.s2DealSize, gmCoord.dDealSize,
@@ -736,10 +740,11 @@ private:
         }
     }
 
+    template <typename FaGmTensorType>
     __aicore__ inline void ProcessPageAttention(FaL1Tensor<V_SCALE_T, L1_FORMAT> &dstTensor,
-                                                FaGmTensor<V_SCALE_T, GM_FORMAT> &srcTensor, GmKvCoord &gmCoord)
+                                                FaGmTensorType &srcTensor, GmKvCoord &gmCoord)
     {
-        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+        auto &offsetCalculator = srcTensor.offsetCalculator;
         uint32_t curS2Idx = gmCoord.s2Idx;
         uint32_t copyFinishRowCnt = 0;
         uint32_t blockElementCnt = 32 / sizeof(V_SCALE_T);

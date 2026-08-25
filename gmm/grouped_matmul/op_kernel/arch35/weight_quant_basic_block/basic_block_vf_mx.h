@@ -86,8 +86,11 @@ static constexpr MicroAPI::CastTrait CAST_FP4_TO_BF16_TRAIT = {MicroAPI::RegLayo
                                                                MicroAPI::MaskMergeMode::ZEROING,
                                                                AscendC::RoundMode::UNKNOWN};
 static constexpr uint32_t E2M1_SHIFT_RIGHT_SIZE = 0x2;
+// Embed packed E1M2 (s|e|mm) into the byte lanes consumed by the MX matmul path.
+static constexpr uint32_t E1M2_SHIFT_RIGHT_SIZE = 0x3;
 static constexpr uint32_t SHIFT_LEFT_SIZE = 0x4;
 static constexpr uint32_t E2M1_AND_MASK = 0x9C;
+static constexpr uint32_t E1M2_AND_MASK = 0x8E;
 
 template <typename xType>
 __aicore__ inline void MxScaleVf(RegTensor<uint8_t> &antiQuantScaleE8m0Vreg0,
@@ -306,7 +309,7 @@ __aicore__ inline void AntiQuantFp4NzKnVf(Fp4NzParams<xType, wType> &fp4NzParams
         for (uint16_t loopGroupIdx = 0; loopGroupIdx < fp4NzParams.loopGroupNum; loopGroupIdx++) {
             // DIST_BLK 的含义为读取一个32B(即16个数)的数据，广播到256B(即128个数)
             antiQuantScaleBasePhyAddr = fp4NzParams.antiQuantScaleBasePhyAddr + loopN1Idx * BLOCK_CUBE +
-                                        loopGroupIdx * 128;  // 当前方案一次对齐到128
+                                        loopGroupIdx * 128; // 当前方案一次对齐到128
             MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_BLK>(antiQuantScaleVreg, antiQuantScaleBasePhyAddr);
 
             for (uint16_t loopGroupInnerIdx = 0; loopGroupInnerIdx < fp4NzParams.loopInnerNum; loopGroupInnerIdx++) {
@@ -370,9 +373,12 @@ __simd_vf__ inline void AntiQuantMxA8W4NzNkVf(MxA8W4NzParams<xType, wType, biasT
     MicroAPI::MaskReg preg = MicroAPI::CreateMask<uint8_t, AscendC::MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg pregVsel = MicroAPI::CreateMask<uint16_t, AscendC::MicroAPI::MaskPattern::ALL>();
 
-    MicroAPI::Duplicate<int8_t, AscendC::MicroAPI::MaskMergeMode::ZEROING>(wShrReg, E2M1_SHIFT_RIGHT_SIZE, preg);
+    constexpr uint32_t shiftRightSize =
+        IsSameType<wType, fp4x2_e1m2_t>::value ? E1M2_SHIFT_RIGHT_SIZE : E2M1_SHIFT_RIGHT_SIZE;
+    constexpr uint32_t andMask = IsSameType<wType, fp4x2_e1m2_t>::value ? E1M2_AND_MASK : E2M1_AND_MASK;
+    MicroAPI::Duplicate<int8_t, AscendC::MicroAPI::MaskMergeMode::ZEROING>(wShrReg, shiftRightSize, preg);
     MicroAPI::Duplicate<int8_t, AscendC::MicroAPI::MaskMergeMode::ZEROING>(wShlReg, SHIFT_LEFT_SIZE, preg);
-    MicroAPI::Duplicate<int8_t, AscendC::MicroAPI::MaskMergeMode::ZEROING>(wAndReg, E2M1_AND_MASK, preg);
+    MicroAPI::Duplicate<int8_t, AscendC::MicroAPI::MaskMergeMode::ZEROING>(wAndReg, andMask, preg);
 
     for (uint16_t loopKIdx = 0; loopKIdx < mxA8W4NzParams.loopKNum; ++loopKIdx) {
         for (uint16_t innerLoopIdx = 0; innerLoopIdx < mxA8W4NzParams.innerLoopNum; ++innerLoopIdx) {

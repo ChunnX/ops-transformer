@@ -18,8 +18,8 @@
 #include "grouped_matmul_weight_quant_a16w4_msd_basic_block_config.h"
 #include "kernel_operator.h"
 #include "kernel_operator_intf.h"
-#include "static_diag_constant.h"
-#include "tool.h"
+#include "gmm_static_diag_constant.h"
+#include "gmm_a16w4_tool.h"
 
 namespace GROUPED_MATMUL::A16W4Msd {
 #define GMM_WQ_A16W4_MSD_CUBE_SERVICE_TEMPLATE_PARAM template <typename mm1InputType, typename mm1OutputType>
@@ -175,6 +175,8 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::InitDato(TPipe *tPip
     initDatoBiasParams.dstGap = 0;
     initDatoBiasParams.initValue = 1260388352;
     AscendC::InitConstValue(cFp16L1_.template ReinterpretCast<int32_t>()[1024], initDatoBiasParams);
+    SetFlag<HardEvent::MTE2_MTE1>(MM1_MTE2_MTE1_EVENT);
+    WaitFlag<HardEvent::MTE2_MTE1>(MM1_MTE2_MTE1_EVENT);
 
     // dato初始化
     InitConstValueParams<bfloat16_t> initDatoL0bParams;
@@ -209,6 +211,8 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CUBE_SERVICE_CLASS::InitMatDuceL0()
     initDiagParams.dstGap = 0;
     initDiagParams.initValue = 0;
     AscendC::InitConstValue(constMatrix2Fp16l0a_, initDiagParams);
+    SetFlag<HardEvent::MTE1_MTE2>(MTE1_MTE2_EVENT);
+    WaitFlag<HardEvent::MTE1_MTE2>(MTE1_MTE2_EVENT);
 
     GlobalTensor<half> c1c2Diag;
     c1c2Diag.SetGlobalBuffer((__gm__ half *)(C1C2_EYE_DIAG));

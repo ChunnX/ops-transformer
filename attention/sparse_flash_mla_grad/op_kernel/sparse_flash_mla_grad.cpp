@@ -13,13 +13,43 @@
  * \brief
  */
 
-#include "kernel_operator.h"
+#if __CCE_AICORE__ == 310
+#include "arch35/sparse_flash_mla_grad_template_tiling_key.h"
+#include "arch35/sparse_flash_mla_grad_tiling_data_regbase.h"
+#include "arch35/sparse_flash_mla_grad_entry_regbase.h"
+#else
 #include "lib/matmul_intf.h"
 #include "sparse_flash_mla_grad_template_tiling_key.h"
 #include "arch22/sfag_basic.h"
 #include "arch22/smlag_basic.h"
+#endif
+#include "kernel_operator.h"
 using namespace AscendC;
 
+#if __CCE_AICORE__ == 310
+template <uint8_t inputDType, bool isTnd, uint16_t gTemplateType, uint16_t s2TemplateType, uint16_t dTemplateType,
+          bool isOriKVExist, bool isCmpKVExist, bool isOriKVSparse, bool isCmpKVSparse, bool deterministic>
+__global__ __aicore__ void
+sparse_flash_mla_grad(__gm__ uint8_t *query, __gm__ uint8_t *d_out, __gm__ uint8_t *out, __gm__ uint8_t *lse,
+                      __gm__ uint8_t *ori_kv, __gm__ uint8_t *cmp_kv, __gm__ uint8_t *ori_sparse_indices,
+                      __gm__ uint8_t *cmp_sparse_indices, __gm__ uint8_t *cu_seqlens_q,
+                      __gm__ uint8_t *cu_seqlens_ori_kv, __gm__ uint8_t *cu_seqlens_cmp_kv, __gm__ uint8_t *seqused_q,
+                      __gm__ uint8_t *seqused_ori_kv, __gm__ uint8_t *seqused_cmp_kv, __gm__ uint8_t *cmp_residual_kv,
+                      __gm__ uint8_t *ori_topk_length, __gm__ uint8_t *cmp_topk_length, __gm__ uint8_t *sinks,
+                      __gm__ uint8_t *metadata, __gm__ uint8_t *d_query, __gm__ uint8_t *d_ori_kv,
+                      __gm__ uint8_t *d_cmp_kv, __gm__ uint8_t *d_sinks, __gm__ uint8_t *ori_softmax_l1_norm,
+                      __gm__ uint8_t *cmp_softmax_l1_norm, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling_data)
+{
+    REGISTER_TILING_DEFAULT(optiling::smlag::SparseFlashMlaGradTilingDataRegbase);
+    RegbaseSFAG<inputDType, isTnd, gTemplateType, s2TemplateType, dTemplateType, isOriKVExist, isCmpKVExist,
+                isOriKVSparse, isCmpKVSparse, deterministic>(
+        query, ori_kv, cmp_kv, d_out, out, ori_sparse_indices, cmp_sparse_indices, cu_seqlens_q, cu_seqlens_ori_kv,
+        cu_seqlens_cmp_kv, seqused_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, ori_topk_length, cmp_topk_length,
+        lse, sinks, metadata, d_query, d_ori_kv, d_cmp_kv, d_sinks, ori_softmax_l1_norm, cmp_softmax_l1_norm, workspace,
+        tiling_data);
+}
+
+#else
 #define INVOKE_SMLAG_BASIC_IMPL(templateClass, ...)                                                  \
     do {                                                                                            \
         __gm__ uint8_t *user = GetUserWorkspace(workspace);                                         \
@@ -77,4 +107,5 @@ sparse_flash_mla_grad(__gm__ uint8_t *query, __gm__ uint8_t *d_out, __gm__ uint8
         }
     }
 }
+#endif
 

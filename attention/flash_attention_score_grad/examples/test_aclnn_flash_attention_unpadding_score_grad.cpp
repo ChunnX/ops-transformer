@@ -231,9 +231,9 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
   // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
-  PrintOutResult(dqShape, &dqDeviceAddr);
-  PrintOutResult(dkShape, &dkDeviceAddr);
-  PrintOutResult(dvShape, &dvDeviceAddr);
+  // PrintOutResult(dqShape, &dqDeviceAddr);
+  // PrintOutResult(dkShape, &dkDeviceAddr);
+  // PrintOutResult(dvShape, &dvDeviceAddr);
 
   // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
   aclDestroyTensor(q);

@@ -35,25 +35,40 @@ TEST_P(AclnnAllGatherMatmulTest, param)
     op::SetPlatformSocVersion(param.soc);
     auto ut = OP_API_UT(
         aclnnAllGatherMatmul,
-        INPUT(param.x1, param.x2, param.bias, param.group.c_str(), param.gatherIndex, param.commTurn,
-              param.streamMode),
-        OUTPUT(param.out, param.gatherOut)
-    );
+        INPUT(param.x1, param.x2, param.bias, param.group.c_str(), param.gatherIndex, param.commTurn, param.streamMode),
+        OUTPUT(param.out, param.gatherOut));
     uint64_t workspace_size = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     auto aclnnRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
     if (param.expectResult == ACLNN_SUCCESS) {
         EXPECT_NE(ACLNN_ERR_PARAM_INVALID, aclnnRet);
+        if (aclnnRet != ACLNN_ERR_PARAM_NULLPTR && executor != nullptr) {
+            (void)aclnnAllGatherMatmul(nullptr, workspace_size, executor, nullptr);
+        }
     } else {
         EXPECT_EQ(param.expectResult, aclnnRet);
     }
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    AllGatherMatmul,
-    AclnnAllGatherMatmulTest,
+    AllGatherMatmul, AclnnAllGatherMatmulTest,
     testing::ValuesIn(GetCasesFromCsv<AllGatherMatmulApiUtParam>(ReplaceFileExtension2Csv(__FILE__))),
-    PrintCaseInfoString<AllGatherMatmulApiUtParam>
-);
+    PrintCaseInfoString<AllGatherMatmulApiUtParam>);
+
+class AclnnAllGatherMatmulLaunchTest : public testing::Test {};
+
+TEST_F(AclnnAllGatherMatmulLaunchTest, LaunchApiCoverage)
+{
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+    (void)aclnnAllGatherMatmul(nullptr, 0, nullptr, nullptr);
+}
+
+TEST_F(AclnnAllGatherMatmulLaunchTest, Ascend950LaunchCcuCommMode)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    (void)aclnnAllGatherMatmul(nullptr, 0, nullptr, nullptr);
+    op::SetPlatformNpuArch(NpuArch::DAV_3103);
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+}
 
 } // namespace AllGatherMatmulUT

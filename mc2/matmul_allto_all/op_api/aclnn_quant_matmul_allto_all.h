@@ -36,7 +36,8 @@ extern "C" {
  * @param [in] x1OffsetOptional: 可选输入，左矩阵的量化偏置，暂不支持。
  * @param [in] x2OffsetOptional: 可选输入，右矩阵的量化偏置，暂不支持。
  * @param [in] group: 通信域名，字符串长度要求（0，128）。
- * @param [in] alltoAllAxesOptional: 可选输入，AlltoAll和Permute数据交换的方向，支持配置空或[-2,-1]，传入空时默认按[-2,-1]处理。
+ * @param [in] alltoAllAxesOptional:
+ * 可选输入，AlltoAll和Permute数据交换的方向，支持配置空或[-2,-1]，传入空时默认按[-2,-1]处理。
  * @param [in] x1QuantMode: 左矩阵的量化模式，支持以下模式：
  *        - 0：无量化
  *        - 1：PerTensor量化

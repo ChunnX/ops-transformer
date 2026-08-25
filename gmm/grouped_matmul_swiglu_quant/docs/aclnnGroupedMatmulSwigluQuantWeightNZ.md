@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -35,7 +45,7 @@
       * $X∈\mathbb{Z_8}^{M \times K}$：激活矩阵（左矩阵），M是总token数，K是特征维度。
       * $W∈\mathbb{Z_8}^{E \times K \times N}$：分组权重矩阵（右矩阵），E是专家个数，K是特征维度，N是输出维度。
       * $w\_scale∈\mathbb{R}^{E \times N}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，N是输出维度。
-      * $x\_scale∈\mathbb{R}^{M}$：激活矩阵（左矩阵）的逐 token缩放因子，M是总token数。
+      * $x\_scale∈\mathbb{R}^{M}$：激活矩阵（左矩阵）的逐token缩放因子，M是总token数。
       * $groupList∈\mathbb{N}^{E}$：cumsum的分组索引列表。
     - **输出**：
 
@@ -44,7 +54,7 @@
 
     - **计算过程**
 
-      - 1.根据groupList[i]确定当前分组的 token ，$i \in [0,Len(groupList))$。
+      - 1.根据groupList[i]确定当前分组的token ，$i \in [0,Len(groupList))$。
 
         >例子：groupList=[3,4,4,6]。
         >
@@ -83,7 +93,7 @@
     <details>
     <summary>MSD场景A8W4（A指激活矩阵，W指权重矩阵，8指INT8数据类型，4指INT4数据类型）：</summary>
     <a id="MSD场景A8W4"></a>
-    
+
     - **定义**：
       * **⋅** 表示矩阵乘法。
       * **⊙** 表示逐元素乘法。
@@ -117,10 +127,10 @@
 
       - 3.根据分组确定的入参进行如下计算：
 
-        - 3.1.将左矩阵$\mathbb{Z_8}$，转变为高低位 两部分的$\mathbb{Z_4}$
+        - 3.1.将左矩阵$\mathbb{Z_8}$，转变为高低位两部分的$\mathbb{Z_4}$
           $X\_high\_4bits_{i} = \lfloor \frac{X_{i}}{16} \rfloor$
           $X\_low\_4bits_{i} = X_{i} \& 0x0f - 8$
-        - 3.2.做矩阵乘时，使能per-channel或per-group量化
+        - 3.2.做矩阵乘时，开启per-channel或per-group量化
           per-channel：
 
           $C\_high_{i} = (X\_high\_4bits_{i} \cdot W_{i}) \odot w\_scale_{i}$
@@ -139,7 +149,7 @@
 
           $C_{i,act}, gate_{i} = split(C_{i})$
 
-          $S_{i}=Swish(C_{i,act})\odot gate_{i}$  &nbsp;&nbsp; 其中$Swish(x)=\frac{x}{1+e^{-x}}$
+          $S_{i}=Swish(C_{i,act})\odot gate_{i}$  &nbsp;&nbsp;其中$Swish(x)=\frac{x}{1+e^{-x}}$
 
       - 3.量化输出结果
 
@@ -150,29 +160,29 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnGroupedMatmulSwigluQuantWeightNZGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnGroupedMatmulSwigluQuantWeightNZ”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnGroupedMatmulSwigluQuantWeightNZGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnGroupedMatmulSwigluQuantWeightNZ”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNZGetWorkspaceSize(
-  const aclTensor *x, 
-  const aclTensor *weight, 
-  const aclTensor *bias, 
-  const aclTensor *offset,  
-  const aclTensor *weightScale, 
-  const aclTensor *xScale, 
-  const aclTensor *groupList, 
-  aclTensor       *output, 
-  aclTensor       *outputScale, 
-  aclTensor       *outputOffset, 
-  uint64_t        *workspaceSize, 
+  const aclTensor *x,
+  const aclTensor *weight,
+  const aclTensor *bias,
+  const aclTensor *offset,
+  const aclTensor *weightScale,
+  const aclTensor *xScale,
+  const aclTensor *groupList,
+  aclTensor       *output,
+  aclTensor       *outputScale,
+  aclTensor       *outputOffset,
+  uint64_t        *workspaceSize,
   aclOpExecutor  **executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNZ(
-  void          *workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor *executor, 
+  void          *workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor *executor,
   aclrtStream    stream)
 ```
 
@@ -330,8 +340,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNZ(
   </table>
 
 - **返回值：**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -399,10 +409,10 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNZ(
     <tr><td>stream</td><td>输入</td><td>指定执行任务的Stream。</td></tr>
   </tbody>
   </table>
-  
+
 - **返回值：**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -421,7 +431,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNZ(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
@@ -461,7 +471,7 @@ int Init(int32_t deviceId, aclrtStream* stream) {
 }
 
 template <typename T>
-int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, 
+int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape,
                     void** deviceAddr, aclDataType dataType, aclFormat formatType, aclTensor** tensor) {
     auto size = GetShapeSize(shape) * sizeof(T);
     // 调用aclrtMalloc申请device侧内存
@@ -484,7 +494,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-    // 1. （固定写法）device/stream初始化，参考acl API手册
+    // 1.（固定写法）device/stream初始化，参考acl API手册
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;
@@ -556,10 +566,10 @@ int main() {
 
     // 3. 调用CANN算子库API
     // 调用aclnnGroupedMatmulSwigluQuantWeightNZ第一段接口
-    ret = aclnnGroupedMatmulSwigluQuantWeightNZGetWorkspaceSize(x, weight, nullptr, nullptr, weightScale, xScale, 
+    ret = aclnnGroupedMatmulSwigluQuantWeightNZGetWorkspaceSize(x, weight, nullptr, nullptr, weightScale, xScale,
                                                         groupList, output, outputScale, nullptr,
                                                         &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS, 
+    CHECK_RET(ret == ACL_SUCCESS,
     LOG_PRINT("aclnnGroupedMatmulSwigluQuantWeightNZGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
     void* workspaceAddr = nullptr;
@@ -569,10 +579,10 @@ int main() {
     }
     // 调用aclnnGroupedMatmulSwigluQuantWeightNZ第二段接口
     ret = aclnnGroupedMatmulSwigluQuantWeightNZ(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS, 
+    CHECK_RET(ret == ACL_SUCCESS,
     LOG_PRINT("aclnnGroupedMatmulSwigluQuantWeightNZ failed. ERROR: %d\n", ret); return ret);
 
-    // 4. （固定写法）同步等待任务执行结束
+    // 4.（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

@@ -15,7 +15,8 @@
 
 namespace MatmulAllReduceAddRmsNormUT {
 
-class InferDataTypeMatmulAllReduceAddRmsNormTest : public testing::TestWithParam<MatmulAllReduceAddRmsNormInferDataTypeUtParam> {
+class InferDataTypeMatmulAllReduceAddRmsNormTest
+    : public testing::TestWithParam<MatmulAllReduceAddRmsNormInferDataTypeUtParam> {
 protected:
     static void SetUpTestCase()
     {

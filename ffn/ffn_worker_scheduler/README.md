@@ -17,7 +17,7 @@
 
     **不建议直接使用，需要与AttentionToFFN，FFNWorkerBatching配合使用。**
 
-    1. 接收AttentionToFFN算子发送的数据。该数据以ScheduleContext结构体内存排布方式存储。其具体定义参见[调用示例](#调用示例)。该结构体包含CommonArea，ControlArea，AttentionArea，FfnArea域。本接口涉及CommonArea(用于存储配置信息，如session_num，micro_batch_num，micro_batch_size，selected_expert_num)，ControlArea(用于上层控制进程是否退出)，FfnArea域(负责管理本算子计算过程中所需的输入及输出缓冲区，其中token_info_buf字段用来存储该算子的输入信息)。
+    1. 接收AttentionToFFN算子发送的数据。该数据以ScheduleContext结构体内存排布方式存储。该结构体包含CommonArea，ControlArea，AttentionArea，FfnArea域。本接口涉及CommonArea(用于存储配置信息，如session_num，micro_batch_num，micro_batch_size，selected_expert_num)，ControlArea(用于上层控制进程是否退出)，FfnArea域(负责管理本算子计算过程中所需的输入及输出缓冲区，其中token_info_buf字段用来存储该算子的输入信息)。
 
     2. 扫描token_info_buf存储的信息，当通信数据准备就绪时，本算子开始进行数据整理。整理如下图所示，将layer id， session id，micro batch id，expert ids分别写入layer_id_buf，session_id_buf，micro_batch_id_buf，expert_ids_buf的device内存上。
 
@@ -26,11 +26,11 @@
         %% 输入缓冲区
         A[token_info_buf输入]
 
-        %% Session 层级结构
+        %% Session层级结构
         A --> Session0
         A --> Session1
 
-        %% Session 0 内部结构
+        %% Session 0内部结构
         subgraph Session0[session 0]
             direction TB
             S0_M1[micro batch id 0]:::micro
@@ -39,7 +39,7 @@
             S0_E1[expert ids 0]:::expert
         end
 
-        %% Session 1 内部结构
+        %% Session 1内部结构
         subgraph Session1[session 1]
             direction TB
             S1_M1[micro batch id 0]:::micro
@@ -74,7 +74,7 @@
         classDef output fill:#e3f2fd
         classDef micro fill:#e1f5fe
         classDef expert fill:#bbdefd
-        
+
         %% 添加子图背景色样式
         style Session0 fill:#fff3e0,stroke:#ff9800,stroke-width:2px
         style Session1 fill:#fce4ec,stroke:#e91e63,stroke-width:2px
@@ -86,9 +86,10 @@
 - 计算公式：
 
 1. 初始化，根据入参ScheduleContext中的session_num和sync_group_size计算分组个数。
-  1. 若分组个数为1，表示全同步处理数据，待全部session数据准备就绪后，进行数据整理。
-  2. 若分组个数不为1，表示非全同步处理数据，待group内的session数据准备就绪后，进行数据整理。
-  
+
+ - 若分组个数为1，表示全同步处理数据，待全部session数据准备就绪后，进行数据整理。
+ - 若分组个数不为1，表示非全同步处理数据，待group内的session数据准备就绪后，进行数据整理。
+
      $$
      \text{Initialize:} \quad\text{group\_num} = \frac{\text{session\_num}}{\text{sync\_group\_size}}
      $$
@@ -151,7 +152,7 @@ $$
       <td>executeMode</td>
       <td>输入</td>
       <td>执行模式。</td>
-      <td>只支持模式0， 表示执行完一次退出。</td>
+      <td>只支持模式0，表示执行完一次退出。</td>
       <td>INT32</td>
       <td>-</td>
       <td>-</td>

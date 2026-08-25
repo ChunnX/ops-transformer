@@ -9,9 +9,9 @@
  */
 
 /*!
-* \file padv3.h
-* \brief
-*/
+ * \file padv3.h
+ * \brief
+ */
 #ifndef PTA_NPU_OP_API_INC_LEVEL0_OP_PADV3_OP_H_
 #define PTA_NPU_OP_API_INC_LEVEL0_OP_PADV3_OP_H_
 
@@ -20,6 +20,6 @@
 
 namespace l0op {
 const aclTensor *PadV3(const aclTensor *self, const aclTensor *paddings, const aclTensor *constant_values,
-                       const std::string& mode, const bool paddingsContiguous, aclOpExecutor *executor);
+                       const std::string &mode, const bool paddingsContiguous, aclOpExecutor *executor);
 }
 #endif // PTA_NPU_OP_API_INC_LEVEL0_OP_PADV3_OP_H_

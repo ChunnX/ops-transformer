@@ -13,7 +13,7 @@
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/runtimeKB.cmake)
 
 function(pack_custom)
-  # download makeself package 
+  # download makeself package
   include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/third_party/makeself-fetch.cmake)
   message(STATUS "System processor: ${CMAKE_SYSTEM_PROCESSOR}")
   if (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
@@ -127,9 +127,9 @@ function(pack_built_in)
       DESTINATION share/info/ops_transformer/script
   )
 
-  # 打包 npu_ops_transformer whl 文件
+  # 打包 cann_ops_transformer whl 文件
   set(WHL_SOURCE_DIR "${CMAKE_SOURCE_DIR}/torch_extension/dist")
-  file(GLOB WHL_FILES "${WHL_SOURCE_DIR}/npu_ops_transformer-*.whl")
+  file(GLOB WHL_FILES "${WHL_SOURCE_DIR}/cann_ops_transformer-*.whl")
   if(WHL_FILES)
       install(FILES ${WHL_FILES}
           DESTINATION ${WHL_INSTALL_DIR}/es_packages/whl
@@ -152,5 +152,5 @@ function(pack_built_in)
   message(STATUS "current compute_unit is: ${compute_unit}")
 
   # ============= CPack =============
-  set_cann_cpack_config(ops-transformer COMPUTE_UNIT ${compute_unit} SHARE_INFO_NAME ops_transformer NO_COMPONENT_INSTALL OUTPUT ${CMAKE_INSTALL_PREFIX})
+  set_cann_cpack_config(ops-transformer COMPUTE_UNIT ${compute_unit} SHARE_INFO_NAME ops_transformer PACKAGE_TYPE "${PACKAGE_TYPE}")
 endfunction()

@@ -23,33 +23,37 @@ namespace Mc2Kernel {
 using namespace AscendC;
 using namespace MoeDistributeV2Base;
 
-class MoeDistributeElastic{
+class MoeDistributeElastic {
 public:
-    TPipe* tpipe_;
+    TPipe *tpipe_;
     TBuf<> elasticInfoBuf_;
     GlobalTensor<int32_t> elasticInfoGM_;
 
     __aicore__ inline MoeDistributeElastic() = default;
 
-    __aicore__ inline void SetElasticInitParams(TPipe* tpipe, GlobalTensor<int32_t> elasticInfoGM) 
+    __aicore__ inline void SetElasticInitParams(TPipe *tpipe, GlobalTensor<int32_t> elasticInfoGM)
     {
         tpipe_ = tpipe;
         elasticInfoGM_ = elasticInfoGM;
     }
 
-    __aicore__ inline void InitElasticInfoTensor(uint32_t epWorldSizeOriginal_, LocalTensor<int32_t> &elasticInfoTensor_)
+    __aicore__ inline void InitElasticInfoTensor(uint32_t epWorldSizeOriginal_,
+                                                 LocalTensor<int32_t> &elasticInfoTensor_)
     {
         uint32_t elasticInfoSizeAlign = GetElasticInfoSizeAlign(epWorldSizeOriginal_);
         tpipe_->InitBuffer(elasticInfoBuf_, elasticInfoSizeAlign);
         elasticInfoTensor_ = elasticInfoBuf_.Get<int32_t>();
-        DataCopyExtParams elasticInfoParams = {1U, static_cast<uint32_t>((ELASTIC_INFO_OFFSET + RANK_LIST_NUM * epWorldSizeOriginal_) * sizeof(int32_t)), 0U, 0U, 0U};
+        DataCopyExtParams elasticInfoParams = {
+            1U, static_cast<uint32_t>((ELASTIC_INFO_OFFSET + RANK_LIST_NUM * epWorldSizeOriginal_) * sizeof(int32_t)),
+            0U, 0U, 0U};
         DataCopyPadExtParams<int32_t> elasticInfoCopyPadParams{false, 0U, 0U, 0U};
         DataCopyPad(elasticInfoTensor_, elasticInfoGM_, elasticInfoParams, elasticInfoCopyPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_S>();
     }
 
-    __aicore__ inline void InitElasticInfo(bool &isScalingDownFlag_, uint32_t &epWorldSize_, uint32_t &sharedExpertRankNum_, 
-                                           uint32_t &moeExpertNum_, uint32_t &epRankId_, uint32_t &moeExpertNumPerRank_)
+    __aicore__ inline void InitElasticInfo(bool &isScalingDownFlag_, uint32_t &epWorldSize_,
+                                           uint32_t &sharedExpertRankNum_, uint32_t &moeExpertNum_, uint32_t &epRankId_,
+                                           uint32_t &moeExpertNumPerRank_)
     {
         if (isScalingDownFlag_) {
             epWorldSize_ = elasticInfoGM_.GetValue(EP_WORLD_SIZE_IDX);
@@ -62,10 +66,11 @@ public:
 
     __aicore__ inline uint32_t GetElasticInfoSizeAlign(uint32_t epWorldSizeOriginal_)
     {
-        uint32_t elasticInfoSize = (ELASTIC_INFO_OFFSET + RANK_LIST_NUM * epWorldSizeOriginal_) * static_cast<uint32_t>(sizeof(uint32_t));
+        uint32_t elasticInfoSize =
+            (ELASTIC_INFO_OFFSET + RANK_LIST_NUM * epWorldSizeOriginal_) * static_cast<uint32_t>(sizeof(uint32_t));
         uint32_t elasticInfoSizeAlign = Ceil(elasticInfoSize, UB_ALIGN) * UB_ALIGN;
         return elasticInfoSizeAlign;
     }
 };
-}
+} // namespace Mc2Kernel
 #endif // MOE_DISTRIBUTE_ELASTIC_H

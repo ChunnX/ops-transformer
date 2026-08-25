@@ -21,15 +21,6 @@
 
 #define MOE_GATING_SOFTMAX_310P_FLOAT16_OPTIONAL_FINISHED  18
 
-#define MOE_GATING_TOP_K_SOFTMAX_310P_IMPL()                                                           \
-    do {                                                                                               \
-        GET_TILING_DATA_WITH_STRUCT(MoeGatingTopKSoftmax310PTilingData, tiling_data_in, tiling);       \
-        MoeGatingTopKSoftmax::MoeGatingTopKSoftmax310P<half, int32_t> op;                              \
-        AscendC::TPipe pipe;                                                                           \
-        op.Init(x, y, expertIdx, workspace, tiling_data_in, &pipe);                                    \
-        op.Process();                                                                                  \
-    } while (0)
-
 extern "C" __global__ __aicore__ void moe_gating_top_k_softmax(GM_ADDR x,
                                                                GM_ADDR finished,
                                                                GM_ADDR y,
@@ -39,7 +30,15 @@ extern "C" __global__ __aicore__ void moe_gating_top_k_softmax(GM_ADDR x,
                                                                GM_ADDR tiling)
 {
     if (TILING_KEY_IS(MOE_GATING_SOFTMAX_310P_FLOAT16_OPTIONAL_FINISHED)) {
-        MOE_GATING_TOP_K_SOFTMAX_310P_IMPL();
+        do {
+            GET_TILING_DATA_WITH_STRUCT(MoeGatingTopKSoftmax310PTilingData, tiling_data_in, tiling);
+            for (int count = 0; count < tiling_data_in.activateCore; count++) {
+                AscendC::TPipe pipe;
+                MoeGatingTopKSoftmax::MoeGatingTopKSoftmax310P<half, int32_t> kernel;
+                kernel.Init(x, y, expertIdx, rowIdx, workspace, tiling_data_in, &pipe, count);
+                kernel.Process();
+            }
+        } while (0);
     }
     return;
 }

@@ -18,7 +18,7 @@
 #include "matmul_all_reduce_util.h"
 #include "common/utils/hccl_util.h"
 #include "mc2_comm_utils.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 
 using namespace op;
 
@@ -27,21 +27,21 @@ extern "C" {
 #endif
 
 extern "C" uint64_t NnopbaseMsprofSysTime();
-extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId);
+extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId &dfxId);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 aclnnStatus aclnnQuantMatmulAllReduceV2GetWorkspaceSize(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional, const aclTensor* x3Optional,
-    const aclTensor* dequantScale, const aclTensor* pertokenScaleOptional, const char* group, const char* reduceOp,
-    int64_t commTurn, int64_t streamMode, const aclTensor* output, uint64_t* workspaceSize, aclOpExecutor** executor)
+    const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional, const aclTensor *x3Optional,
+    const aclTensor *dequantScale, const aclTensor *pertokenScaleOptional, const char *group, const char *reduceOp,
+    int64_t commTurn, int64_t streamMode, const aclTensor *output, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     uint64_t timeStamp = NnopbaseMsprofSysTime();
     // 固定写法，参数检查
-    auto retParam = QuantMatmulAllReduceCheckParams(
-        x1, x2, biasOptional, dequantScale, pertokenScaleOptional, x3Optional, reduceOp, streamMode, output);
+    auto retParam = QuantMatmulAllReduceCheckParams(x1, x2, biasOptional, dequantScale, pertokenScaleOptional,
+                                                    x3Optional, reduceOp, streamMode, output);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     // dequantScale转为uint64
-    auto dequant = const_cast<aclTensor*>(dequantScale);
+    auto dequant = const_cast<aclTensor *>(dequantScale);
     if (dequant == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnQuantMatmulAllReduceV2", "dequantScale");
         return ACLNN_ERR_INNER;
@@ -50,26 +50,21 @@ aclnnStatus aclnnQuantMatmulAllReduceV2GetWorkspaceSize(
         dequant->SetDataType(op::DataType::DT_UINT64);
     }
 
-    aclnnStatus ret = InnerQuantMatmulAllReduceGetWorkspaceSize(
-        x1, x2, biasOptional, x3Optional, dequant, pertokenScaleOptional, group, reduceOp, commTurn, output,
-        workspaceSize, executor);
+    aclnnStatus ret =
+        InnerQuantMatmulAllReduceGetWorkspaceSize(x1, x2, biasOptional, x3Optional, dequant, pertokenScaleOptional,
+                                                  group, reduceOp, commTurn, output, workspaceSize, executor);
     OP_LOGD("QuantMatmulAllReduceV2, end ret %d", ret);
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};
     NnopbaseReportApiInfo(timeStamp, dfxId);
     return ret;
 }
 
-aclnnStatus aclnnQuantMatmulAllReduceV2(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
+aclnnStatus aclnnQuantMatmulAllReduceV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                        const aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-            } else {
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-            }
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
         }
     }
     uint64_t timeStamp = NnopbaseMsprofSysTime();

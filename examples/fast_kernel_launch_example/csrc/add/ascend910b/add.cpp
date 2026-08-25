@@ -62,7 +62,8 @@ std::tuple<int64_t, int64_t, int64_t> calc_tiling_params(int64_t totalLength)
 }
 
 template <typename T>
-__global__ __aicore__ void add_kernel(GM_ADDR x, GM_ADDR y, GM_ADDR z, int64_t totalLength, int64_t blockLength, uint32_t tileSize)
+__global__ __aicore__ void add_kernel(GM_ADDR x, GM_ADDR y, GM_ADDR z, int64_t totalLength, int64_t blockLength,
+                                      uint32_t tileSize)
 {
     constexpr static int64_t PIPELINE_DEPTH = 2;
     AscendC::TPipe pipe;
@@ -79,7 +80,7 @@ __global__ __aicore__ void add_kernel(GM_ADDR x, GM_ADDR y, GM_ADDR z, int64_t t
 
     int64_t currentBlockLength = totalLength - AscendC::GetBlockIdx() * blockLength;
     if (currentBlockLength > blockLength) {
-      currentBlockLength = blockLength;
+        currentBlockLength = blockLength;
     }
     int64_t elementNumPerTile = tileSize / sizeof(T);
     int64_t tileNum = currentBlockLength / elementNumPerTile;
@@ -147,8 +148,8 @@ __global__ __aicore__ void add_kernel(GM_ADDR x, GM_ADDR y, GM_ADDR z, int64_t t
 torch::Tensor add_npu(const torch::Tensor &x, const torch::Tensor &y)
 {
     // OptionalDeviceGuard 确保后续操作在正确的设备上下文执行
- 	// 它会记录当前设备状态，执行完作用域代码后自动恢复
- 	const c10::OptionalDeviceGuard guard(x.device());
+    // 它会记录当前设备状态，执行完作用域代码后自动恢复
+    const c10::OptionalDeviceGuard guard(x.device());
     auto z = add_meta(x, y);
     auto stream = c10_npu::getCurrentNPUStream().stream(false);
     int64_t totalLength, numBlocks, blockLength, tileSize;
@@ -158,21 +159,19 @@ torch::Tensor add_npu(const torch::Tensor &x, const torch::Tensor &y)
     auto y_ptr = (GM_ADDR)y.data_ptr();
     auto z_ptr = (GM_ADDR)z.data_ptr();
     auto acl_call = [=]() -> int {
-        AT_DISPATCH_SWITCH(
-            x.scalar_type(), "add_npu",
-            AT_DISPATCH_CASE(torch::kFloat32, [&] {
-                using scalar_t = float;
-                add_kernel<scalar_t><<<numBlocks, nullptr, stream>>>(x_ptr, y_ptr, z_ptr, totalLength, blockLength, tileSize);
-            })
-            AT_DISPATCH_CASE(torch::kFloat16, [&] {
-                using scalar_t = half;
-                add_kernel<scalar_t><<<numBlocks, nullptr, stream>>>(x_ptr, y_ptr, z_ptr, totalLength, blockLength, tileSize);
-            })
-            AT_DISPATCH_CASE(torch::kInt32, [&] {
-                using scalar_t = int32_t;
-                add_kernel<scalar_t><<<numBlocks, nullptr, stream>>>(x_ptr, y_ptr, z_ptr, totalLength, blockLength, tileSize);
-            })
-        );
+        AT_DISPATCH_SWITCH(x.scalar_type(), "add_npu", AT_DISPATCH_CASE(torch::kFloat32, [&] {
+                               using scalar_t = float;
+                               add_kernel<scalar_t><<<numBlocks, nullptr, stream>>>(x_ptr, y_ptr, z_ptr, totalLength,
+                                                                                    blockLength, tileSize);
+                           }) AT_DISPATCH_CASE(torch::kFloat16, [&] {
+                               using scalar_t = half;
+                               add_kernel<scalar_t><<<numBlocks, nullptr, stream>>>(x_ptr, y_ptr, z_ptr, totalLength,
+                                                                                    blockLength, tileSize);
+                           }) AT_DISPATCH_CASE(torch::kInt32, [&] {
+                               using scalar_t = int32_t;
+                               add_kernel<scalar_t><<<numBlocks, nullptr, stream>>>(x_ptr, y_ptr, z_ptr, totalLength,
+                                                                                    blockLength, tileSize);
+                           }));
         return 0;
     };
     at_npu::native::OpCommand::RunOpApi("Add", acl_call);

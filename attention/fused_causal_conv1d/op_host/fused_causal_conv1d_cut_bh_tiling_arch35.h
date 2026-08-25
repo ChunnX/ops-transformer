@@ -63,9 +63,9 @@ constexpr int32_t ATTR_RESIDUAL_CONNECTION_INDEX = 4; // 是否使用残差连�
 constexpr int32_t ATTR_BLOCK_SIZE_INDEX = 5;          // APC block 大小（APC 开启时必须非零）
 constexpr int32_t ATTR_CONV_MODE_INDEX = 6;           // 卷积模式：0=Qwen3，1=Pangu v2（前 width-1 token 置零）
 
-constexpr int64_t DIM_ALIGN_ELEMENT = 128;       // dim 方向的最小对齐单元（128 个元素，fp16/bf16 = 256 字节）
-constexpr int64_t COARSE_GRAIN_THRESHOLD = 1024; // dim >= 1024 时切换到粗粒度 tiling 模式
-constexpr int64_t COARSE_GRAIN_ELEMENT = 1024;   // 粗粒度模式下每块的元素数
+constexpr int64_t DIM_ALIGN_ELEMENT = 128;                      // dim 方向的最小对齐单元（128 个元素，fp16/bf16 = 256 字节）
+constexpr int64_t COARSE_GRAIN_THRESHOLD = 1024;                // dim >= 1024 时切换到粗粒度 tiling 模式
+constexpr int64_t COARSE_GRAIN_ELEMENT = 1024;                  // 粗粒度模式下每块的元素数
 constexpr int64_t COARSE_GRAIN_SIZE = COARSE_GRAIN_ELEMENT * 2; // 粗粒度块字节数（fp16/bf16）
 constexpr int64_t DIM_ALIGN_SIZE = 256;                         // 细粒度对齐块的字节数（128 元素 × 2 字节）
 constexpr int64_t ALIGN_BYTES = 32;                             // NPU 内存地址基本对齐要求（32 字节）
@@ -90,9 +90,9 @@ constexpr int64_t X_INPUT_2D = 1; // 2D 输入 [cu_seq_len, dim]，需配合 que
 class FusedCausalConv1dCutBHTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     explicit FusedCausalConv1dCutBHTiling(gert::TilingContext *context, bool isInplace = false)
-        : TilingBaseClass(context), isInplace_(isInplace)
-    {
-    }
+        : TilingBaseClass(context),
+          isInplace_(isInplace)
+    {}
 
 protected:
     // ---- TilingBaseClass 虚函数，由框架按序调用 ----
@@ -122,6 +122,9 @@ protected:
     ge::graphStatus ValidateQueryStartLocType();
     ge::graphStatus ValidateCacheIndicesType();
     ge::graphStatus ValidateNumAcceptedTokenType();
+
+    // ---- 属性合法性校验 ----
+    ge::graphStatus ValidateAttrs();
 
     // ---- 总校验入口（依次调用上面的 Validate* 函数）----
     ge::graphStatus CheckInputParams();
@@ -190,7 +193,7 @@ private:
     int64_t hasAcceptTokenNum_ = 0;  // 是否提供 num_accepted_token 输入：0=否，1=是
     int64_t residualConnection_ = 0; // 是否使用残差连接：0=否，1=是
 
-    int64_t apcEnable_ = 0;            // APC 开关：0=关闭，1=开启（由 blockIdxLast 是否存在推断）
+    int64_t apcEnable_ = 0;            // APC 开关：block_idx_first_scheduled_token 存在即初判开启，缺其余必要条件立即报错
     int64_t blockSize_ = 0;            // APC block 大小（由属性读取）
     int64_t maxNumBlocks_ = 0;         // APC 开启时 cacheIndices 第二维大小
     int64_t hasCacheIndices_ = 0;      // cacheIndices 是否有效：0=无，1=有

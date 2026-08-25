@@ -16,7 +16,7 @@
 - **算子功能**：执行单路旋转位置编码[RotaryPositionEmbedding](../rotary_position_embedding/README.md)的反向计算。
 
 - **计算公式**：
-  
+
     取旋转位置编码的正向计算中，broadcast的轴列表为`dims`，则计算公式可表达如下：
 
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
@@ -25,15 +25,15 @@
     $$
     dy1, dy2 = chunk(dy, chunks=2, dim=-1)
     $$
-    
+
     $$
     cos1, cos2 = chunk(cos, chunks=2, dim=-1)
     $$
-    
+
     $$
     sin1, sin2 = chunk(sin, chunks=2, dim=-1)
     $$
-    
+
     $$
     x1, x2 = chunk(x, chunks=2, dim=-1)
     $$
@@ -54,15 +54,15 @@
     $$
     dy1, dy2 = dy[..., :: 2], dy[..., 1 :: 2]
     $$
-    
+
     $$
     cos1, cos2 = cos[..., :: 2], cos[..., 1 :: 2]
     $$
-    
+
     $$
     sin1, sin2 = sin[..., :: 2], sin[..., 1 :: 2]
     $$
-    
+
     $$
     x1, x2 = x[..., :: 2], x[..., 1 :: 2]
     $$
@@ -79,20 +79,20 @@
     dsin = sum(dy * stack((-x2, x1), dim=-1).reshape(dy.shape), dims)
     $$
     - <term>Ascend 950PR/Ascend 950DT</term>：
-    
+
     （3）quarter模式（mode等于2）：
     $$
     dy1, dy2, dy3, dy4 = chunk(dy, chunks=4, dim=-1)
     $$
-    
+
     $$
     cos1, cos2, cos3, cos4 = chunk(cos, chunks=4, dim=-1)
     $$
-    
+
     $$
     sin1, sin2, sin3, sin4 = chunk(sin, chunks=4, dim=-1)
     $$
-    
+
     $$
     x1, x2, x3, x4 = chunk(x, chunks=4, dim=-1)
     $$
@@ -113,15 +113,15 @@
     $$
     dy1, dy2 = chunk(dy, chunks=2, dim=-1)
     $$
-    
+
     $$
     cos1, cos2 = chunk(cos, chunks=2, dim=-1)
     $$
-    
+
     $$
     sin1, sin2 = chunk(sin, chunks=2, dim=-1)
     $$
-    
+
     $$
     x1, x2 = x[..., :: 2], x[..., 1 :: 2]
     $$
@@ -223,7 +223,7 @@
     输入张量dy支持BNSD、BSND、SBND、TND排布。各参数的shape约束可以描述如下：
     - 输入张量dy、cos、sin及输出张量dx的最后一维大小必须相同，且小于等于1024。对于half、interleave和interleave-half模式，最后一维必须能被2整除，对于quarter模式，最后一维必须能被4整除。
     - 输入张量dy和输出张量dx的shape必须完全相同。
-    - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与dy满足[broadcast关系](../../docs/zh/context/broadcast关系.md)，且广播后的shape必须等于dy的shape。
+    - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与dy满足[broadcast关系](../../docs/zh/context/broadcast_relationship.md)，且广播后的shape必须等于dy的shape。
     - 当dy为TND时，cos、sin支持T1D、TND。
 
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：

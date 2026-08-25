@@ -29,5 +29,5 @@ struct AllGatherMatmulTilingData {
     Mc2MatMulV3TilingData mc2MmV3TileTilingData;
     Mc2MatMulV3TilingData mc2MmV3TailTilingData;
 };
-}
+} // namespace Mc2Tiling
 #endif

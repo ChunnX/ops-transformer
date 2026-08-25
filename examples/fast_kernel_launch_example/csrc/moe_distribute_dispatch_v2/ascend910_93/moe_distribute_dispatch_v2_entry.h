@@ -17,13 +17,13 @@ struct MoeDistributeDispatchV2SkArgs {
     GM_ADDR expertIds;
     GM_ADDR scales;
     GM_ADDR xActiveMask;
-    GM_ADDR expertScales; 
+    GM_ADDR expertScales;
     GM_ADDR performanceInfo;
     GM_ADDR expandXOut;
-    GM_ADDR dynamicScalesOut; 
+    GM_ADDR dynamicScalesOut;
     GM_ADDR assistInfoOut;
     GM_ADDR expertTokenNumsOut;
-    GM_ADDR epSendCountsOut; 
+    GM_ADDR epSendCountsOut;
     GM_ADDR expandScalesOut;
     GM_ADDR workspaceGM;
     GM_ADDR mc2Context;
@@ -32,10 +32,11 @@ struct MoeDistributeDispatchV2SkArgs {
 
 
 // <<<>>>调用函数声明
-void moe_distribute_dispatch_v2_entry(int32_t tilingKey, uint32_t blockDim, void* stream, GM_ADDR x, GM_ADDR expertIds,
-    GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales, GM_ADDR performanceInfo, GM_ADDR expandXOut,
-    GM_ADDR dynamicScalesOut, GM_ADDR assistInfoOut, GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut,
-    GM_ADDR expandScalesOut, GM_ADDR workspaceGM, GM_ADDR mc2Context,
-    MoeDistributeDispatchV2Info tilingData);
+void moe_distribute_dispatch_v2_entry(int32_t tilingKey, uint32_t blockDim, void *stream, GM_ADDR x, GM_ADDR expertIds,
+                                      GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales,
+                                      GM_ADDR performanceInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut,
+                                      GM_ADDR assistInfoOut, GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut,
+                                      GM_ADDR expandScalesOut, GM_ADDR workspaceGM, GM_ADDR mc2Context,
+                                      MoeDistributeDispatchV2Info tilingData);
 
-#endif //MOE_DISTRIBUTE_DISPATCH_V2_ENTRY_H
+#endif // MOE_DISTRIBUTE_DISPATCH_V2_ENTRY_H

@@ -50,8 +50,7 @@ const aclTensor *FlashAttnMetadata(const aclTensor *cuSeqlensQOptional, const ac
         OP_ATTR(batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, maskMode, winLeft, winRight,
                 layoutQ, layoutKv, layoutOut, socVersion, aicCoreNum, aivCoreNum));
     OP_CHECK(ret == ACL_SUCCESS,
-             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "FlashAttnMetadata"
-                                              " ADD_TO_LAUNCHER_LIST_AICPU failed."),
+             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "FlashAttnMetadata ADD_TO_LAUNCHER_LIST_AICPU failed."),
              return nullptr);
     return metaData;
 }

@@ -20,8 +20,8 @@
 class AllGatherPlusMMA5 : public AllGatherPlusMM {
 public:
     // Constructor
-    explicit AllGatherPlusMMA5(const mc2tiling::TilingArgs& args, uint32_t inputRankDim, KernelType inputKernelType,
-                             SocVersion inputSocVersion = SocVersion::SOC950)
+    explicit AllGatherPlusMMA5(const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
+                               SocVersion inputSocVersion = SocVersion::SOC950)
         : AllGatherPlusMM(args, inputRankDim, inputKernelType, inputSocVersion)
     {
         commPerf_.SetCommShapeLen(clusterInfo_.kValue);

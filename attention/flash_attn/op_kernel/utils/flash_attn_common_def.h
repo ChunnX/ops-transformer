@@ -13,7 +13,6 @@
  * \brief
  */
 
-
 #ifndef FLASH_ATTN_COMMON_DEF_H_
 #define FLASH_ATTN_COMMON_DEF_H_
 
@@ -32,6 +31,7 @@ static constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096;
 static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192;
 static constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384;
 static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
+static constexpr uint32_t BUFFER_SIZE_BYTE_64K = 65536;
 // FP32的0值和极大值
 static constexpr float FLOAT_ZERO = 0;
 static constexpr float FLOAT_MAX = 3.402823466e+38F;
@@ -163,60 +163,32 @@ struct ConfigParams {
 //   config=0: sOuter=64,sInner=128 → S1=128,S2=128
 //   config=1: sOuter=32,sInner=256 → S1=64,S2=256
 static constexpr ConfigParams ConfigValue[] = {
+    // D=64 configurations
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned64,
+     inferDTemplateType::Aligned64}, // config=0
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned64,
+     inferDTemplateType::Aligned64}, // config=1
+
+    // D=128 configurations
     {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned128,
-     inferDTemplateType::Aligned128}, // config=0
+     inferDTemplateType::Aligned128}, // config=2
     {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned128,
-     inferDTemplateType::Aligned128}, // config=1
+     inferDTemplateType::Aligned128}, // config=3
+
+    // D=256 configurations
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned256,
+     inferDTemplateType::Aligned256}, // config=4
 };
 
-#define Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128 0
-#define Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128 1
-
-
-// PseMode
-#define PSE_MODE_PSE_OUTER_MUL_ADD_TYPE 0
-#define PSE_MODE_PSE_OUTER_ADD_MUL_TYPE 1
-#define PSE_MODE_PSE_INNER_MUL_ADD_TYPE 2
-#define PSE_MODE_PSE_INNER_MUL_ADD_SQRT_TYPE 3
-#define PSE_MODE_PSE_INVALID_TYPE 4
-#define PSE_MODE_PSE_NONE_TYPE 9
-
 // QuantModeEnum
-#define AntiquantMode_PER_CHANNEL 0
-#define AntiquantMode_PER_TOKEN 1
-#define AntiquantMode_K_PER_CHANNEL_V_PER_TOKEN 2
-#define AntiquantMode_PER_TOKEN_HEAD 3
-#define AntiquantMode_PER_TOKEN_PAGE_ATTENTION 4
-#define AntiquantMode_PER_TOKEN_HEAD_PAGE_ATTENTION 5
-#define PerBlock 17
-#define FULLQUANT_MODE_PER_TOKEN_HEAD 18
-#define FullQuantMode 30
 #define NoQuantMode 31
-
-// PFAMaskEnum
-#define PFAMask_DISABLE_MASK 0
-#define PFAMask_ENABLE_MASK_NO_BAND 1
-#define PFAMask_ENABLE_MASK_BAND 2
-
-// PFAMatMulTypeEnum
-#define PFAMatMulType_MM_PFA 0
-#define PFAMatMulType_MM_PA 1
-#define PFAMatMulType_MM_IFA_MLA 2
-#define PFAMatMulType_MM_IFA_MLA_PA 3
-#define PFAMatMulType_MM_PA_D512 4
-#define PFAMatMulType_MM_DN 5
-
-// SplitCoreModeEnum
-#define SplitCoreMode_SPLIT_NBS_VECTOR 0
-#define SplitCoreMode_SPLIT_NBS_CUBE 1
-#define SplitCoreMode_SPLIT_ONEN_VECTOR 2
-#define SplitCoreMode_SPLIT_ONEN_CUBE 3
-#define SplitCoreMode_BALANCE_VECTOR 4
-#define SplitCoreMode_BALANCE_CUBE 5
 
 // bool
 #define false 0
 #define true 1
+
+#define OFFSET_OF_MEMBER(TYPE, MEMBER) ((uint64_t) & ((TYPE *)0)->MEMBER)
+#define SIZE_OF_MEMBER(TYPE, MEMBER) sizeof(((TYPE *)0)->MEMBER)
 
 // kernel stream related struct
 struct FDparamsX {
@@ -239,7 +211,6 @@ struct RunInfoX {
     uint32_t loop = 0;
     uint32_t mloop = 0;
     bool isValid = false;
-    bool isChangeBatch = false;
     bool isFirstS2Loop = false;
     bool isLastS2Loop = false;
 
@@ -268,7 +239,6 @@ struct RunInfoX {
     uint64_t qPaddingBeginOffset = 0;
     uint64_t kvPaddingBeginOffset = 0;
 };
-
 
 struct CommonConstInfo {
     /* 轴长度 */
@@ -319,12 +289,18 @@ struct CommonConstInfo {
     /* 输出shape */
     FA_LAYOUT outputLayout;
     bool needInitOutput;
+    bool enableFlashDecode;
 };
 
 struct PAConstInfo {
     uint32_t blockSize;
     uint32_t maxBlockNumPerBatch;
     uint32_t paLayoutType;
+    /* kvcache非连续场景的strides, 0表示连续 */
+    uint64_t keyBnStride = 0;
+    uint64_t keyN2Stride = 0;
+    uint64_t valueBnStride = 0;
+    uint64_t valueN2Stride = 0;
 };
 
 struct LseConstInfo {
@@ -335,39 +311,6 @@ struct SinkConstInfo {
     bool learnableSinkFlag = false;
 };
 
-struct PseConstInfo {
-    uint32_t pseShiftByBatch;
-    int64_t pseS1Size;
-    int64_t pseS2Size;
-    uint32_t pseStride;
-};
-
-struct TensorListConstInfo {
-    bool isKvContinuous; /* 是否为tensorlist */
-};
-
-struct PostQuantConstInfo {
-    bool isPostQuantPerChnl;
-    bool isPostQuantBF16;
-    bool isPostQuantOffsetExist;
-    float postQuantScaleValue;
-    float postQuantOffsetValue;
-};
-
-struct LeftPaddingConstInfo {
-    bool isQHasLeftPadding;
-    bool isKVHasLeftPadding;
-    int64_t queryRightPaddingSize;
-    int64_t kvRightPaddingSize;
-};
-
-struct SysPrefixConstInfo {
-    bool isActualSharedPrefixLenNull = true;
-    int64_t actualKVPrefixSize = 0; /* 保存prefix实际长度 */
-    int64_t kvPrefixSize = 0;       /* 保存prefix shape完整长度 */
-    int64_t prefixLoopCount = 0;    /* 保存prefix参与的S2方向循环次数 */
-};
-
 template <FiaKernelType>
 struct ConstInfo_t;
 
@@ -375,11 +318,6 @@ template <>
 struct ConstInfo_t<FiaKernelType::NO_QUANT> : CommonConstInfo,
                                               PAConstInfo,
                                               LseConstInfo,
-                                              SinkConstInfo,
-                                              PseConstInfo,
-                                              TensorListConstInfo,
-                                              PostQuantConstInfo,
-                                              LeftPaddingConstInfo,
-                                              SysPrefixConstInfo {};
+                                              SinkConstInfo {};
 
 #endif // FLASH_ATTN_COMMON_DEF_H_

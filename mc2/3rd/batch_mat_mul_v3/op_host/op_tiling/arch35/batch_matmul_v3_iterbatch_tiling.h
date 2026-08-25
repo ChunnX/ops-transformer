@@ -45,6 +45,6 @@ private:
     uint64_t inputSizeOneBatch_{1};
     Mc2MatMulV3Model iterBatchBiasModel_{Mc2MatMulV3Model::ITER_BATCH_BATCH_BIAS};
 };
-}
-}
+} // namespace Mc2batch_matmul_v3_advanced
+} // namespace optiling
 #endif // __OP_HOST_BATCH_MATMUL_V3_ITERBATCH_TILING_H__

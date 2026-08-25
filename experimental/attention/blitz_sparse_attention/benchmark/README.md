@@ -9,18 +9,23 @@ bash build.sh --make_clean --experimental -j96 --pkg --soc=ascend910b --ops=blit
 ./build/cann-ops-transformer-custom_linux-"$(uname -i)".run
 (cd experimental/attention/blitz_sparse_attention/torch_interface && bash build.sh custom)
 ```
+
 Fast recompilation only of bf16 kernel variant
+
 ```shell
 bash build.sh --make_clean --experimental -j96 --pkg --soc=ascend910b --ops=blitz_sparse_attention --op-variant=2
 ./build/cann-ops-transformer-custom_linux-"$(uname -i)".run
 ```
+
 Oneliner smoketest and benchmark
+
 ```shell
 (cd experimental/attention/blitz_sparse_attention/benchmark && python test_attn.py && python benchmark.py)
 ```
 
 Benchmark + plot pipeline (writes `benchmark.png` summarising all
 `(BLOCK_SIZE_Q, BLOCK_SIZE_KV, sparsity)` combinations):
+
 ```shell
 (cd experimental/attention/blitz_sparse_attention/benchmark && python benchmark.py | tee bench.log /dev/tty | python plot.py)
 ```
@@ -43,14 +48,16 @@ Set the `ALL_CAPS` constants at the top of the file to control what gets run. Wh
 * `PRINT_MASK`: To visually check if the mask is as expected
 * `PRINT_BLOCK_EQUALITY`: if the correctness test fails, you can check which blocks in the outputs match with the reference and which not. The block granularity to visualize is given by `PRINT_HEIGHT` and `PRINT_WIDTH`
 * `RUN_REFERENCE`: Besides measuring time, also test correctness. This only is possible for small enough masks, otherwise you will get OOM in the reference run. For this reason, you can disable this for very long contexts, and enable it for short enough sequences.
-* `TORCH_REFERENCE`: If `True`, correctness will be tested against the torch attention implementation. If `False`, for block-sparse attention the reference is the torch_npu dense with the corresponding attention mask (like in `sparse_block` mode). Please only use `H=1`, as torch_npu doesn't support different masks for different heads.
+* `TORCH_REFERENCE`: If `True`, correctness will be tested against the torch attention implementation. If `False`, for block-sparse attention the reference is the TorchNPU dense with the corresponding attention mask (like in `sparse_block` mode). Please only use `H=1`, as torch_npu doesn't support different masks for different heads.
 
 ## Examples
 
 ### 1 - Test correctness and speed with multiple values (and shorter sequence lengths)
 
 #### Input
-Adjust the following values in the ` ===== Begin of Parameter Sweep Definitions ====` section
+
+Adjust the following values in the `===== Begin of Parameter Sweep Definitions ====` section
+
 ```python
 DTYPE = torch.bfloat16
 INPUT_LAYOUT = "BNSD"  # [batch_size, num_hea
@@ -76,9 +83,9 @@ RUN_REFERENCE = True
 TORCH_REFERENCE = "npu_fusion_attention"
 ```
 
-#### Output:
+#### Output
 
-```
+```shell
 ========================================================================================================================
   DTYPE=torch.bfloat16  INPUT_LAYOUT='BNSD'  SABI_SORTED=True  TORCH_REFERENCE='npu_fusion_attention'
 ========================================================================================================================
@@ -130,18 +137,18 @@ TORCH_REFERENCE = "npu_fusion_attention"
       128x512  14   1  10000  10000  128               -      0.90             yes            6685.34            1186.83
 ========================================================================================================================
 ```
+
 Reference goes OOM for 10_000 sequence length and 24 heads (not shown).
 
 On the left you see the inputs, then the "yes" line checks correctness, after that you see the reference runtime and our runtime. After that you see the memory bandwidth usage, which is much better in our kernel.
 
 Note that for short sequence lengths, the speedups are negligible because overheads are higher than actual computation.
 
-
 ### 2 - block_shape granularity sweep (S=118806, H=3, D=128, BF16)
 
 The runtime `block_shape` attr lets the same kernel run at every combination of
 `(BLOCK_SIZE_Q, BLOCK_SIZE_KV)` with each dimension in `{128, 256, 512, 1024}`
-— **16 granularities** sharing one kernel binary. Finer sabi (smaller block
+—**16 granularities** sharing one kernel binary. Finer sabi (smaller block
 sizes) buys more sparsity-pattern resolution per Q-row at the cost of more
 sabi-tensor HBM traffic + more sub-block plumbing per cube tile; coarser sabi
 buys cheaper per-row metadata at the cost of resolution. The sweep below
@@ -177,6 +184,7 @@ The test files apply the same scaling rule with a smaller target (~256 tokens)
 for their `SPARSE_FRAME`.
 
 #### Input
+
 ```python
 B_VALS = [1]; H_VALS = [3]; S_VALS = [118_806]; D_VALS = [128]
 N_REPEATS = 10; N_WARMUP = 2
@@ -208,7 +216,7 @@ pair. The full raw table below was captured at S=118 806, H=3, D=128, BF16:
 <details>
 <summary>Full raw benchmark table (16 block shapes × 11 sparsities — click to expand)</summary>
 
-```
+```shell
 ========================================================================================================================
   DTYPE=torch.bfloat16  INPUT_LAYOUT='BNSD'  SABI_SORTED=True  TORCH_REFERENCE='npu_fusion_attention'
 ========================================================================================================================
@@ -400,7 +408,7 @@ emits every sparsity in `SPARSITY_VALS` for every pair in `BLOCK_SHAPES`. The
 `frame(L,R,T,B)` column is `-` at sparsity 0 because the mask is dense, so
 the frame has no effect on the kept blocks.
 
-#### Speedup vs `npu_fusion_attention` (dense) — full 4 × 4 grid
+#### Speedup vs `npu_fusion_attention` (dense)— full 4 × 4 grid
 
 Each cell is `Ref_Latency(sparsity=0) / Our_Latency(sparsity=p)`. Values
 **< 1.0** mean BSA is slower than PFA dense; **> 1.0** mean BSA is faster.
@@ -429,7 +437,7 @@ Each cell is `Ref_Latency(sparsity=0) / Our_Latency(sparsity=p)`. Values
   This is because a wider sabi entry means less sabi-tensor HBM traffic per
   kept block. Note however that KV=1024 is not always the strict winner at
   sparsity 0.9: for Q=128 and Q=512, KV=512 narrowly beats KV=1024 (9.00× vs
-  8.94×, 9.27× vs 9.11×) — at the coarsest KV the forced-frame footprint
+  8.94×, 9.27× vs 9.11×)— at the coarsest KV the forced-frame footprint
   starts to eat into the kept-block budget.
 * **BLOCK_SIZE_Q has a much smaller effect.** Q-tile re-parameterisation does
   not change the cube tile width (`basicSInnerSize = 512` for D=128 BF16) or
@@ -442,7 +450,7 @@ Each cell is `Ref_Latency(sparsity=0) / Our_Latency(sparsity=p)`. Values
   bandwidth at sparsity 0 in this configuration.
 * **128×128 remains the most expensive baseline.** Finest sabi resolution but
   the most metadata-per-kept-block.
-* **The fastest cell at high sparsity is KV=1024 at Q∈{256, 1024}** — both
+* **The fastest cell at high sparsity is KV=1024 at Q∈{256, 1024}**— both
   reach 9.77× over PFA dense at sparsity 0.9. KV=512 also lands within ~5 %
   of the top (9.00×–9.68×). Picking a granularity is therefore an
   application-level trade-off between pattern-fidelity and end-to-end
@@ -451,7 +459,6 @@ Each cell is `Ref_Latency(sparsity=0) / Our_Latency(sparsity=p)`. Values
 The PFA reference (`npu_fusion_attention` dense) is shape-invariant — the
 small differences in the `Ref_Latency_[usec]` column across block shapes are
 timing noise from re-running the same workload 16 times.
-
 
 ### 3 - softmax_lse correctness tests (test_lse.py)
 
@@ -467,7 +474,7 @@ Every test case is exercised at all **16 default block shapes**
 below (~1600 instances total). A handful of cases at small S or high sparsity
 are auto-skipped because the test parameterisation becomes inherently
 unsatisfiable (forced-frame density exceeds `1 − sparsity`, or the row's
-expected kept-KV-block count drops below 1) — see the `pytest.skip` rules in
+expected kept-KV-block count drops below 1)— see the `pytest.skip` rules in
 the file.
 
 #### What is tested per block shape (B=1 only)
@@ -489,6 +496,7 @@ FIAS (`npu_fused_infer_attention_score`) already exposes a `softmax_lse` output 
 For H>1 shapes FIAS cannot be used directly (its `sparse_mode=1` requires a `[B,1,S,S]` broadcast mask; passing `[B,H,S,S]` hangs the NPU), so a Python float32 reference that loops over the sabi indices is used instead.
 
 #### Tolerances
+
 ATOL = 0.001
 RTOL = 0.01
 
@@ -496,14 +504,14 @@ float16 is excluded from sparse tests: FIAS processes `-inf`-masked tiles throug
 
 ## Test setup
 
-```
-Host CPU: aarch64
-Device: Ascend 910B2
-Device Driver: 25.3.rc1   
-Docker image: `docker pull --platform=arm64 swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:8.5.0-910b-ubuntu22.04-py3.10-ops`
-OS: ubuntu: 22.04
-CANN: 8.5.0-beta.1
-Python: 3.11.10
-torch: 2.8.0+cpu
-torch_npu: 2.8.0
-```
+| Component      | Version                                                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------------------------ |
+| Host CPU       | aarch64                                                                                                       |
+| Device         | Ascend 910B2                                                                                                  |
+| Device Driver  | 25.3.rc1                                                                                                      |
+| Docker image   | `docker pull --platform=arm64 swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:8.5.0-910b-ubuntu22.04-py3.10-ops` |
+| OS             | Ubuntu 22.04                                                                                                  |
+| CANN           | 8.5.0-beta.1                                                                                                  |
+| Python         | 3.11.10                                                                                                       |
+| torch          | 2.8.0+cpu                                                                                                     |
+| TorchNPU      | 2.8.0                                                                                                         |

@@ -38,16 +38,14 @@ using namespace std;
 using namespace std;
 using namespace Mc2Tiling;
 
-extern "C" __global__ __aicore__ void matmul_all_reduce_add_rms_norm(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM,
-                                                                     GM_ADDR residualGM, GM_ADDR gammaGM,
-                                                                     GM_ADDR antiquantScaleGM,
-                                                                     GM_ADDR antiquantOffsetGM, GM_ADDR dequantGM,
-                                                                     GM_ADDR yGM, GM_ADDR normOutGM,
-                                                                     GM_ADDR workspaceGM, GM_ADDR tilingGM);
-extern uint8_t* g_hcclContextReserved[2];
+extern "C" __global__ __aicore__ void
+matmul_all_reduce_add_rms_norm(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR residualGM, GM_ADDR gammaGM,
+                               GM_ADDR antiquantScaleGM, GM_ADDR antiquantOffsetGM, GM_ADDR dequantGM, GM_ADDR yGM,
+                               GM_ADDR normOutGM, GM_ADDR workspaceGM, GM_ADDR tilingGM);
+extern uint8_t *g_hcclContextReserved[2];
 
 struct HcclSignalInfo {
-    uint64_t resId;  // 在代表event时为eventid，notify时为notifyid
+    uint64_t resId; // 在代表event时为eventid，notify时为notifyid
     uint64_t addr;
     uint32_t devId;
     uint32_t tsId;
@@ -68,7 +66,7 @@ struct HcclStreamInfo {
 };
 
 struct HcclConfig {
-    uint8_t determinism;  // 确定性计算开关
+    uint8_t determinism; // 确定性计算开关
 };
 struct HcclCombinOpParam {
     uint64_t WorkSpace;
@@ -81,18 +79,20 @@ struct HcclCombinOpParam {
     char hcomId[128];
     HcclStreamInfo streamInfo[8];
     HcclCombinOpSignalParam signalInfo;
-    HcclConfig config;  // 配置参数
+    HcclConfig config; // 配置参数
 };
 
 class MatmulAllReduceAddRmsNormTest : public testing::Test {
 protected:
-    static void SetUpTestCase() {
+    static void SetUpTestCase()
+    {
         size_t ctxSize = sizeof(HcclCombinOpParam);
-        g_hcclContextReserved[0] = (uint8_t*)AscendC::GmAlloc(ctxSize);
+        g_hcclContextReserved[0] = (uint8_t *)AscendC::GmAlloc(ctxSize);
         cout << "MatmulAllReduceAddRmsNormTest SetUp\n" << endl;
     }
-    static void TearDownTestCase() {
-        AscendC::GmFree((void*)g_hcclContextReserved[0]);
+    static void TearDownTestCase()
+    {
+        AscendC::GmFree((void *)g_hcclContextReserved[0]);
         cout << "MatmulAllReduceAddRmsNormTest TearDown\n" << endl;
     }
 };
@@ -119,8 +119,8 @@ TEST_F(MatmulAllReduceAddRmsNormTest, MatmulAllReduceAddRmsNormTest_no_bias)
     uint8_t *y = (uint8_t *)AscendC::GmAlloc(1536 * 1024 * sizeof(uint16_t));
 
     ICPU_SET_TILING_KEY(10000000000000001100UL);
-    ICPU_RUN_KF(matmul_all_reduce_add_rms_norm, 1, aGM, bGM, nullptr, residualGM, gammaGM,  nullptr, nullptr, nullptr,
-                y, output, workspace, tiling);
+    ICPU_RUN_KF(matmul_all_reduce_add_rms_norm, 1, aGM, bGM, nullptr, residualGM, gammaGM, nullptr, nullptr, nullptr, y,
+                output, workspace, tiling);
 
     AscendC::GmFree((void *)workspace);
     AscendC::GmFree((void *)tiling);
@@ -156,8 +156,8 @@ TEST_F(MatmulAllReduceAddRmsNormTest, MatmulAllReduceAddRmsNormTestBias)
     uint8_t *y = (uint8_t *)AscendC::GmAlloc(1536 * 1024 * sizeof(uint16_t));
 
     ICPU_SET_TILING_KEY(10000000000000000000UL);
-    ICPU_RUN_KF(matmul_all_reduce_add_rms_norm, 1, aGM, bGM, biasGM, residualGM, gammaGM,
-                nullptr, nullptr, nullptr, y, output, workspace, tiling);
+    ICPU_RUN_KF(matmul_all_reduce_add_rms_norm, 1, aGM, bGM, biasGM, residualGM, gammaGM, nullptr, nullptr, nullptr, y,
+                output, workspace, tiling);
 
     AscendC::GmFree((void *)workspace);
     AscendC::GmFree((void *)tiling);
@@ -194,8 +194,8 @@ TEST_F(MatmulAllReduceAddRmsNormTest, MatmulAllReduceAddRmsNormTest11000)
     uint8_t *y = (uint8_t *)AscendC::GmAlloc(1536 * 1024 * sizeof(uint16_t));
 
     ICPU_SET_TILING_KEY(11000);
-    ICPU_RUN_KF(matmul_all_reduce_add_rms_norm, 1, aGM, bGM, biasGM, residualGM, gammaGM,
-    nullptr, nullptr, nullptr, y, output, workspace, tiling);
+    ICPU_RUN_KF(matmul_all_reduce_add_rms_norm, 1, aGM, bGM, biasGM, residualGM, gammaGM, nullptr, nullptr, nullptr, y,
+                output, workspace, tiling);
 
     AscendC::GmFree((void *)workspace);
     AscendC::GmFree((void *)tiling);
@@ -232,10 +232,10 @@ TEST_F(MatmulAllReduceAddRmsNormTest, MatmulAllReduceAddRmsNormTest11100)
     uint8_t *y = (uint8_t *)AscendC::GmAlloc(1536 * 1024 * sizeof(uint16_t));
 
     ICPU_SET_TILING_KEY(11100);
-    ICPU_RUN_KF(matmul_all_reduce_add_rms_norm, 1, aGM, bGM, biasGM, residualGM, gammaGM,
-    nullptr, nullptr, nullptr, y, output, nullptr, tiling);
-    ICPU_RUN_KF(matmul_all_reduce_add_rms_norm, 1, aGM, bGM, biasGM, residualGM, gammaGM,
-    nullptr, nullptr, nullptr, y, output, workspace, tiling);
+    ICPU_RUN_KF(matmul_all_reduce_add_rms_norm, 1, aGM, bGM, biasGM, residualGM, gammaGM, nullptr, nullptr, nullptr, y,
+                output, nullptr, tiling);
+    ICPU_RUN_KF(matmul_all_reduce_add_rms_norm, 1, aGM, bGM, biasGM, residualGM, gammaGM, nullptr, nullptr, nullptr, y,
+                output, workspace, tiling);
 
     AscendC::GmFree((void *)workspace);
     AscendC::GmFree((void *)tiling);
@@ -271,8 +271,8 @@ TEST_F(MatmulAllReduceAddRmsNormTest, MatmulAllReduceAddRmsNormTest1111)
     uint8_t *y = (uint8_t *)AscendC::GmAlloc(1536 * 1024 * sizeof(uint16_t));
 
     ICPU_SET_TILING_KEY(1111);
-    ICPU_RUN_KF(matmul_all_reduce_add_rms_norm, 1, aGM, bGM, biasGM, residualGM, gammaGM,
-    nullptr, nullptr, nullptr, y, output, workspace, tiling);
+    ICPU_RUN_KF(matmul_all_reduce_add_rms_norm, 1, aGM, bGM, biasGM, residualGM, gammaGM, nullptr, nullptr, nullptr, y,
+                output, workspace, tiling);
 
     AscendC::GmFree((void *)workspace);
     AscendC::GmFree((void *)tiling);
@@ -309,8 +309,8 @@ TEST_F(MatmulAllReduceAddRmsNormTest, MatmulAllReduceAddRmsNormTest1011)
     uint8_t *y = (uint8_t *)AscendC::GmAlloc(1536 * 1024 * sizeof(uint16_t));
 
     ICPU_SET_TILING_KEY(1011);
-    ICPU_RUN_KF(matmul_all_reduce_add_rms_norm, 1, aGM, bGM, biasGM, residualGM, gammaGM,
-    nullptr, nullptr, nullptr, y, output, workspace, tiling);
+    ICPU_RUN_KF(matmul_all_reduce_add_rms_norm, 1, aGM, bGM, biasGM, residualGM, gammaGM, nullptr, nullptr, nullptr, y,
+                output, workspace, tiling);
 
     AscendC::GmFree((void *)workspace);
     AscendC::GmFree((void *)tiling);

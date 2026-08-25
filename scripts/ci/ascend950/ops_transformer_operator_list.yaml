@@ -55,12 +55,14 @@ operator_group_4:
   - rotary_position_embedding_grad
   - ring_attention_update
   - sparse_flash_attention_grad
+  - sparse_flash_mla_grad
   - fused_infer_attention_score,10-9
   - moe_token_permute_with_routing_map
 operator_group_5:
   - flash_attention_score,3-0
 operator_group_6:
   - sparse_lightning_indexer_grad_kl_loss
+  - sparse_lightning_indexer_kl_loss_grad
   - prompt_flash_attention
   - kv_quant_sparse_flash_attention
   - quant_lightning_indexer
@@ -74,6 +76,7 @@ operator_group_9:
   - fused_infer_attention_score,10-2
   - norm_rope_concat
   - norm_rope_concat_grad
+  - und_gen_qkv_rms_norm_rope_cache
 operator_group_10:
   - allto_allv_grouped_mat_mul
   - grouped_mat_mul_allto_allv
@@ -89,6 +92,7 @@ operator_group_10:
   - moe_distribute_combine_add_rms_norm
   - moe_distribute_dispatch
   - moe_distribute_dispatch_v2
+  - bandwidth_test
   - quant_all_reduce
   - quant_reduce_scatter
   - moe_update_expert

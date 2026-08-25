@@ -16,7 +16,7 @@
 #define __OP_HOST_MATMUL_BASE_TILING_H__
 
 #include "exe_graph/runtime/tiling_context.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 #include "matmul_tiling_cfg.h"
 
 namespace optiling {
@@ -74,8 +74,8 @@ protected:
         auto buf = (uint32_t *)context_->GetRawTilingData()->GetData();
         auto bufLen = context_->GetRawTilingData()->GetDataSize();
         std::ostringstream oss;
-        oss << "Start to dump tiling info. tilingkey:" << GetTilingKey() << ", tiling data size:" << bufLen <<
-            ", content:";
+        oss << "Start to dump tiling info. tilingkey:" << GetTilingKey() << ", tiling data size:" << bufLen
+            << ", content:";
         for (size_t i = 0; i < bufLen / sizeof(uint32_t); i++) {
             oss << *(buf + i) << ",";
             if (oss.str().length() > 640) { // Split according to 640 to avoid truncation
