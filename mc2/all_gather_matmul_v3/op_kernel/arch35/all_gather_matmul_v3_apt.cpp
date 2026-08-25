@@ -19,7 +19,7 @@
 #include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_udma_impl.h"
 
 using namespace AscendC;
-using namespace AllGatherQuantMatmulImpl;
+using namespace Apace;
 
 template <uint32_t QUANTMODE>
 __global__ __aicore__ void all_gather_matmul_v3(GM_ADDR context, GM_ADDR x1, GM_ADDR x2, GM_ADDR bias,

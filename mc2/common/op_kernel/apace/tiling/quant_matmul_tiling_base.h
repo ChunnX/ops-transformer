@@ -19,10 +19,10 @@
 #include <cstdio>
 #include <optional>
 
-#include "../utils/common_utils.h"
+#include "../utils/apace_common_utils.h"
 #include "quant_matmul_tiling_common.h"
 #include "quant_matmul_tiling_data.h"
-#include "../utils/constant.h"
+#include "../utils/apace_constant.h"
 
 template <mm::DataType aDataType, mm::DataType bDataType>
 class QuantMatmulTilingBase {
