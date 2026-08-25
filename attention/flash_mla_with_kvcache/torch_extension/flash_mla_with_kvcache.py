@@ -158,6 +158,7 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
 
 # Instantiate the builder
 flash_mla_with_kvcache_op_builder = FlashMlaWithKvcacheOpBuilder()
+flash_mla_with_kvcache_op_builder._ensure_initialized()  # 照 flash_attn.py:167：加载时延迟初始化（define schema）
 
 
 @impl(get_as_library(), MLA_METADATA_OP_NAME, "PrivateUse1")
@@ -205,39 +206,6 @@ def flash_mla_with_kvcache_metadata(
     )
 
 
-_flash_mla_with_kvcache_metadata = flash_mla_with_kvcache_metadata
-
-
-@torch.library.register_kernel("cann_ops_transformer::" + MLA_METADATA_OP_NAME, None)
-def flash_mla_with_kvcache_metadata_fallback(
-    cache_seqlens: torch.Tensor,
-    num_heads_q: int,
-    num_heads_kv: int,
-    cu_seqlens_q: Optional[torch.Tensor] = None,
-    seqused_q: Optional[torch.Tensor] = None,
-    max_seqlen_q: Optional[int] = None,
-    max_seqlen_kv: Optional[int] = None,
-    head_dim_qk: int = 576,
-    head_dim_v: int = 512,
-    mask_mode: Optional[int] = None,
-    layout_q: Optional[str] = None,
-):
-    # 处理所有 tensor 都为 None 的情况（CPU 兜底路径）
-    return _flash_mla_with_kvcache_metadata(
-        num_heads_q=num_heads_q,
-        num_heads_kv=num_heads_kv,
-        head_dim_qk=head_dim_qk,
-        head_dim_v=head_dim_v,
-        cu_seqlens_q=cu_seqlens_q,
-        cache_seqlens=cache_seqlens,
-        seqused_q=seqused_q,
-        max_seqlen_q=max_seqlen_q,
-        max_seqlen_kv=max_seqlen_kv,
-        mask_mode=mask_mode,
-        layout_q=layout_q,
-    )
-
-
 @impl(get_as_library(), flash_mla_with_kvcache_op_builder.name, "PrivateUse1")
 def flash_mla_with_kvcache(
     q: torch.Tensor,
@@ -273,6 +241,7 @@ def flash_mla_with_kvcache(
             _check_metadata_capacity(metadata, batch_size)
 
     layout_q = "TND" if layout_q is None else layout_q
+    layout_kv = "NZ" if layout_kv is None else layout_kv
     # D7: 输出布局跟随 query（out==q，不支持转置）；旧默认 "NTD" 已淘汰。
     layout_out = layout_q if layout_out is None else layout_out
 
