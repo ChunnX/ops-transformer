@@ -63,6 +63,22 @@
     O_{s,t,d}=\sum_{n=0}^{N_v-1}E_{s,t,n}V_{t,n,d}.
     $$
 
+    其中：
+
+    - $V\in\mathbb{R}^{T\times N\times D}$ 表示输入 `block_res`，用于存放历史残差块；$V_{t,n,d}$ 表示第 $t$ 个 token、第 $n$ 个历史来源在第 $d$ 个 hidden dimension 上的值。
+    - $Q\in\mathbb{R}^{S\times D}$ 表示输入 `pseudo_query`；$Q_{s,d}$ 表示第 $s$ 个目标 slot 在第 $d$ 个 hidden dimension 上的值。
+    - $\operatorname{valid\_blocks}$ 表示输入 `valid_blocks`，其唯一元素经区间 $[0,N]$ 截断后得到当前参与计算的有效历史来源数 $N_v$。
+    - $\epsilon$ 表示输入 `eps`，是计算 RMS 归一化因子时使用的数值稳定项。
+    - $T$ 表示 token 数，$N$ 表示历史来源缓冲区容量，$S$ 表示目标 slot 数，$D$ 表示 hidden dimension。
+    - $t\in[0,T)$、$n\in[0,N_v)$、$s\in[0,S)$、$d\in[0,D)$ 分别表示 token、有效历史来源、目标 slot 和 hidden dimension 的索引。
+    - $R_{t,n}$ 表示第 $t$ 个 token 的第 $n$ 个有效历史来源对应的 RMS 归一化因子，$R_{t,n}^{-1}$ 表示其倒数。
+    - $Z_{s,t,n}$ 表示第 $s$ 个目标 slot、第 $t$ 个 token 与第 $n$ 个有效历史来源之间的归一化注意力 logit。
+    - $M_{s,t}$ 表示 $Z_{s,t,n}$ 在所有有效历史来源上的最大值，用于执行数值稳定的 max-shift。
+    - $E_{s,t,n}$ 表示 max-shift 后的指数值，即 $\exp(Z_{s,t,n}-M_{s,t})$。
+    - $L_{s,t}$ 表示所有有效历史来源的指数和，是后续计算 softmax 归一化时使用的分母。
+    - $O_{s,t,d}$ 表示所有有效历史来源按 $E_{s,t,n}$ 加权求和得到的 softmax 加权分子；$O$、$M$、$L$ 分别对应返回值 `numerator`、`logit_max`、`exp_sum`。
+    - $\sum$、$\max$ 和 $\exp$ 分别表示求和、取最大值和自然指数运算，$\mathbb{R}$ 表示实数域。
+
 ## 函数原型
 
 ```python
@@ -98,9 +114,8 @@ cann_ops_transformer.block_attn_res_prepare(
 
 - 仅支持 Ascend 950PR/Ascend 950DT。
 - 支持单算子模式调用，暂不支持 TorchAir 图模式调用。
-- `T >= 0`，`S >= 0`，`1 <= N <= 64`，`1 <= D <= 8192`。
+- shape要求：`T >= 0`，`S >= 0`，`1 <= N <= 64`，`0 <= D <= 8192`。
 - `block_res.shape[2]` 必须等于 `pseudo_query.shape[1]`。
-- `block_res`、`pseudo_query` 及三个输出均为 `float32`，`valid_blocks` 为 `int64`。
 - 输入不支持非连续 Tensor。
 - `T == 0` 或 `S == 0` 时，返回对应 shape 的空输出。
 
