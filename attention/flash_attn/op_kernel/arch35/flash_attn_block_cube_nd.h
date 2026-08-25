@@ -340,16 +340,17 @@ public:
             LocalTensor<MM_T> l0CSubTensor = l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
             MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
                                         (uint32_t)(constInfo_.dSize), false, true);
-            if constexpr (dBaseSize > 128) {
+            constexpr uint32_t bmm1BaseK = (dBaseSize > 128) ? 128 : dBaseSize;
+            if (param.singleK > bmm1BaseK) {
                 if constexpr (s2BaseSize == 256) {
                     MatmulN<Q_T, KV_T, MM_T, 64, 128, 256, ABLayout::MK, ABLayout::KN>(
                         qL1Tensor, kL1Tensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
                 } else {
-                    MatmulK<Q_T, KV_T, MM_T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
+                    MatmulK<Q_T, KV_T, MM_T, 128, 128, bmm1BaseK, ABLayout::MK, ABLayout::KN>(
                         qL1Tensor, kL1Tensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
                 }
             } else {
-                MatmulBase<Q_T, KV_T, MM_T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
+                MatmulFull<Q_T, KV_T, MM_T, 128, 128, bmm1BaseK, ABLayout::MK, ABLayout::KN>(
                     qL1Tensor, kL1Tensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
             }
 
