@@ -111,7 +111,10 @@ public:
     static constexpr uint32_t EVENT_ID1 = 3U;              // InitOutput LSE pop 同步（PIPE_V/PIPE_MTE3）
     static constexpr uint32_t UB_OUT_LSE_OUT_EVENT0 = 4U;  // LSE 1K 输出（V/MTE3）
     static constexpr uint32_t UB_BRDCST_SUM_EVENT = 5U;    // sumBrdcst 1K（V/MTE3）
-    // UB_IN_MASK_EVENT0/1 = 6/7：与 FA 排布对齐的预留（表 2）；MLA mask 同步走 common 4 参自同步，不占用
+    // mask 槽 2×4K 的 per-slot 双 pipe 生产-消费握手（FA 同构 flash_attn_block_vec_nd.h:92-93,728-746）：
+    // MTE2(加载) ↔ V(软max消费) 严格交替，避免跨 S2 轮次槽复用读到上一轮掩码（旧深度1队列的进出队语义）
+    static constexpr uint32_t UB_IN_MASK_EVENT0 = 6U;
+    static constexpr uint32_t UB_IN_MASK_EVENT1 = 7U;
     static constexpr uint32_t UB_BRDCST_MAX_EVENT = 8U; // maxBrdcst 1K（V/MTE3）
 
     // ================== 静态布局常量（表 1，数值 = 现状容量；UB 合计 ≈245.25K ≤ 248K）==================
@@ -351,7 +354,13 @@ public:
         const uint32_t maskBufId = runInfo.loop % DB;
         if constexpr (hasAtten) {
             attenMaskUb = ubMaskBuffers_[maskBufId * UB_MASK_BUF_BYTES];
-            AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo); // 全量拷贝
+            // per-slot 生产-消费握手（FA 同构）：加载(main 槽 maskBufId + pre 槽 maskBufId^1) 前
+            // 等待两槽上一轮 V 消费完毕（旧深度1队列的进出队语义，表 2 UB_IN_MASK_EVENT0/1=6/7）
+            Mutex::Lock<PIPE_MTE2>(UB_IN_MASK_EVENT0 + maskBufId);
+            Mutex::Lock<PIPE_MTE2>(UB_IN_MASK_EVENT0 + (maskBufId ^ 1U));
+            AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo); // 全量拷贝（含 pre 槽与 MergeMask）
+            Mutex::Unlock<PIPE_MTE2>(UB_IN_MASK_EVENT0 + (maskBufId ^ 1U));
+            Mutex::Unlock<PIPE_MTE2>(UB_IN_MASK_EVENT0 + maskBufId);
         }
 
         LocalTensor<float> sumUb = softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_BUFCNT) * (UB_SOFTMAX_BUF_BYTES / sizeof(float))];
@@ -439,7 +448,11 @@ public:
         Mutex::Unlock<PIPE_MTE3>(UB_OUT_VEC1_RES_EVENT0);
 
         if constexpr (hasAtten) {
-            // mask 槽由 runInfo.loop%DB 静态轮转，common 自同步（无显式释放）
+            // per-slot 消费端释放（V 管道到达此处即两槽读完成，允许下一轮 MTE2 覆写）
+            Mutex::Lock<PIPE_V>(UB_IN_MASK_EVENT0 + (maskBufId ^ 1U));
+            Mutex::Unlock<PIPE_V>(UB_IN_MASK_EVENT0 + (maskBufId ^ 1U));
+            Mutex::Lock<PIPE_V>(UB_IN_MASK_EVENT0 + maskBufId);
+            Mutex::Unlock<PIPE_V>(UB_IN_MASK_EVENT0 + maskBufId);
         }
     }
 
