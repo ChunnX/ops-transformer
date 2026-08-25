@@ -373,7 +373,10 @@ public:
         return ((bN2Cur != constInfo.bN2End) || (gS1Cur != constInfo.gS1OEnd) || (s2Cur != constInfo.s2OEnd));
     }
 
-    __aicore__ inline bool ShouldExecuteTask(RunInfoX taskRunInfo[PRELOAD_N]) { return validTaskNum > 0; }
+    __aicore__ inline bool ShouldExecuteTask(RunInfoX taskRunInfo[PRELOAD_N])
+    {
+        return validTaskNum > 0;
+    }
 
     __aicore__ inline TASK_DEAL_MODE GetTaskDealMode(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
@@ -540,7 +543,10 @@ public:
         }
     }
 
-    __aicore__ inline void ComputeMm1(RunInfoX &runInfo) { cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo); }
+    __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
+    {
+        cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo);
+    }
 
     __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
     {

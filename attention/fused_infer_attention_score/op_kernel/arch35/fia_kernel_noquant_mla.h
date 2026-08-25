@@ -390,7 +390,10 @@ public:
         return s2Cur < constInfo_.s2OEnd;
     }
 
-    __aicore__ inline bool ShouldExecuteTask(RunInfoX taskRunInfo[PRELOAD_N]) { return validTaskNum_ > 0; }
+    __aicore__ inline bool ShouldExecuteTask(RunInfoX taskRunInfo[PRELOAD_N])
+    {
+        return validTaskNum_ > 0;
+    }
 
     __aicore__ inline TASK_DEAL_MODE GetTaskDealMode(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
