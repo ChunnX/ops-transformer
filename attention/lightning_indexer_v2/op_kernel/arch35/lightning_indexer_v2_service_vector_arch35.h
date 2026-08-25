@@ -352,6 +352,8 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec1(const L
     int64_t curAivS1Idx = curS1Idx;
     int64_t curAivS1ProcNum = curS1ProcNum;
 #endif
+
+    if (curAivS1ProcNum == 0) {
         // V核处理完，通知C核可以把mm1Res搬运到UB
         CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_V>(LIV2Common::ConstInfo::CROSS_VC_EVENT +
                                                                        pingpong);
@@ -436,6 +438,8 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessTopK(const L
     int64_t curAivS1Idx = curS1Idx;
     int64_t curAivS1ProcNum = curS1ProcNum;
 #endif
+
+    // LD 需要搬运到的起始位置 32字节
     int64_t ldDstOffset = (info.isNeedLD) ? curS2StartIdx : 0;
     AscendC::DataCopyExtParams copyInParams;
     copyInParams.blockCount = 1;
