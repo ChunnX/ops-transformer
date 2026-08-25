@@ -353,7 +353,12 @@ void QuantFlashAttnTilingImpl::SetQFATilingData()
 
 bool QuantFlashAttnTilingImpl::CheckNeedInitOutput() const
 {
+    // varlen场景可能存在长度为0的batch, 对应行无计算, 必须清零
     if (seqUsedQFlag_ || seqUsedKvFlag_) {
+        return true;
+    }
+    // 传入cuSeqLenKv时默认清零，可能会有空batch
+    if (cuSeqLenKVFlag_) {
         return true;
     }
     if (qfaInfo_->qLayout == QfaLayout::TND && qfaInfo_->kvLayout == QfaLayout::TND) {
