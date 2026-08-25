@@ -145,6 +145,7 @@ ge::graphStatus PagedAttentionChecker::CheckFeature(const QfaTilingInfo &qfaInfo
     //   - PagedAttention 开启情况下, block_table 必须不为空
     //   - PagedAttention 开启情况下, 必须传入 seqused_kv
     //   - MxFP8 仅支持 Bs 为 64、128、256、512或1024
+    //   - 非连续 Tensor 支持校验
     const gert::Tensor *blockTableTensor = qfaInfo.opParamInfo.blockTable.tensor;
     if (IsPageAttention(qfaInfo)) {
         // PA 场景: block_table 必须非空
