@@ -250,12 +250,16 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
     uint64_t sendCount = static_cast<uint64_t>(taskM) * rankNPerPeer;
     uint64_t strideCount = static_cast<uint64_t>(ti.rankM) * rankNPerPeer;
 
-    // 通算掩盖: AIC下发AllToAll<true>后不阻塞,继续下一tile matmul
-    // HCCL通信在AICPU执行,不占用AIC计算资源
-    // 所有tile的matmul结果写到workspace不同位置(不覆盖),无需中间Wait
+    // pipeline深度2: AllToAll<true>前Wait前一次通信
+    // HCCL通信在AICPU执行,Wait不阻塞AIC计算(AICPU已完成大部分)
     bool hasPrev = false;
 
     for (uint32_t index = 0; index < taskCnt; ++index) {
+        // Wait前一次通信(在matmul之前,不阻塞计算)
+        if (hasPrev) {
+            hccl_.Wait(prevHandle_);
+        }
+
         // matmul: rowOffset = startRow + index * taskM
         MatmulProcess(startRow + static_cast<uint64_t>(index) * taskM, mmTile);
         AscendC::SyncAll();
@@ -269,7 +273,7 @@ QuantMatmulAllToAllHcommImpl<X1Type, X2Type, YType,
         hasPrev = true;
     }
 
-    // 只Wait最后一次通信
+    // Wait最后一次通信
     if (hasPrev) {
         hccl_.Wait(prevHandle_);
     }
