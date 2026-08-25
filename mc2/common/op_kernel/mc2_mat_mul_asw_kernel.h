@@ -122,7 +122,8 @@ MC2MatmulAswKernelDerive<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>:
                 uint32_t mc2MIdx = this->block_.params_.mCntIndex / this->block_.mSliceCnt_;
                 if (this->ownRedirect_ && (mc2MIdx == this->block_.cfg_.rankID)) {
                     this->mm_.GetTensorC(
-                        this->cOwnGlobal_[this->block_.offset_.offsetC - this->block_.cfg_.rankID * this->block_.rankMN_],
+                        uint64_t ownOffset = this->block_.offset_.offsetC - this->block_.cfg_.rankID * this->block_.rankMN_
+                        this->cOwnGlobal_[ownOffset],
                         enAtomic);
                 } else {
                     this->mm_.GetTensorC(this->cGlobal_[this->block_.offset_.offsetC], enAtomic);
