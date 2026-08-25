@@ -52,9 +52,7 @@ def _score_tensor(value: torch.Tensor) -> torch.Tensor:
 def _rankable(value: torch.Tensor) -> torch.Tensor:
     """Give non-finite scores the deterministic ordering used by the kernel."""
     limits = torch.finfo(value.dtype)
-    return torch.nan_to_num(
-        value, nan=limits.min, posinf=limits.max, neginf=limits.min
-    )
+    return torch.nan_to_num(value, nan=limits.min, posinf=limits.max, neginf=limits.min)
 
 
 def _torch_moe_fused_topk(
@@ -91,9 +89,7 @@ def _torch_moe_fused_topk(
     # the gathered sigmoid output preserves its IEEE value.
     group_top_values = torch.topk(_rankable(grouped), top_n, dim=-1).values
     group_scores = _rankable(torch.sum(group_top_values, dim=-1))
-    group_order = torch.argsort(
-        group_scores, dim=-1, descending=True, stable=True
-    )
+    group_order = torch.argsort(group_scores, dim=-1, descending=True, stable=True)
 
     selected_group = torch.zeros_like(group_scores, dtype=torch.bool)
     selected_group.scatter_(1, group_order[:, :group_topk], True)
@@ -245,9 +241,7 @@ class MoeFusedTopkTestSpec:
                 "enable_expert_mapping": enable_expert_mapping,
             }
 
-        def __call__(
-            self, x, add_num, mapping_num=None, mapping_table=None, **_kwargs
-        ):
+        def __call__(self, x, add_num, mapping_num=None, mapping_table=None, **_kwargs):
             return _torch_moe_fused_topk(
                 x, add_num, mapping_num, mapping_table, **self.attrs
             )
@@ -259,7 +253,13 @@ class MoeFusedTopkTestSpec:
     }
 
     def customize_inputs(
-        x, add_num, mapping_num=None, mapping_table=None, *, testcase_name=None, **_kwargs
+        x,
+        add_num,
+        mapping_num=None,
+        mapping_table=None,
+        *,
+        testcase_name=None,
+        **_kwargs,
     ):
         _customize_inputs(x, add_num, testcase_name)
         return x, add_num, mapping_num, mapping_table
