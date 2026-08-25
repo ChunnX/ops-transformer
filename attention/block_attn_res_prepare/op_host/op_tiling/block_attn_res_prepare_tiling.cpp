@@ -349,7 +349,7 @@ ge::graphStatus BlockAttnResPrepareTilingBase::DoLibApiTiling()
 
 uint64_t BlockAttnResPrepareTiling::GetTilingKey() const
 {
-    return BLOCK_ATTN_RES_PREPARE_VECTOR_KEY;
+    return GET_TPL_TILING_KEY(BLOCK_ATTN_RES_PREPARE_TPL_ONLY_VECTOR);
 }
 
 ge::graphStatus BlockAttnResPrepareTilingBase::GetWorkspaceSize()

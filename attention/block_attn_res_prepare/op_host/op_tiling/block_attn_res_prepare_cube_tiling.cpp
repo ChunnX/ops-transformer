@@ -261,7 +261,7 @@ ge::graphStatus BlockAttnResPrepareCubeTiling::DoOpTiling()
 
 uint64_t BlockAttnResPrepareCubeTiling::GetTilingKey() const
 {
-    return BLOCK_ATTN_RES_PREPARE_MIX_CUBE_KEY;
+    return GET_TPL_TILING_KEY(BLOCK_ATTN_RES_PREPARE_TPL_MIX_CUBE);
 }
 
 BlockAttnResPrepareTilingBase::TilingDataView BlockAttnResPrepareCubeTiling::GetTilingDataView() const
