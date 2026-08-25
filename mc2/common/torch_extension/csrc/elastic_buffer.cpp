@@ -323,9 +323,10 @@ private:
                                    uint32_t channelsPerRank, HcclMemHandle &memHandle, ChannelHandle *channels)
     {
         std::vector<HcclChannelDesc> descs;
-        ChannelHandle channelBuf[HCCL_MAX_RANK_SIZE] = {};
+        uint32_t totalChannels = (rankDim - 1U) * channelsPerRank;
+        std::vector<ChannelHandle> channelBuf(totalChannels);
         BuildChannelDescs(commHandle, srcRankId, rankDim, channelsPerRank, memHandle, descs);
-        AcquireChannels(commHandle, CommEngine::COMM_ENGINE_AIV, descs, channelBuf);
+        AcquireChannels(commHandle, CommEngine::COMM_ENGINE_AIV, descs, channelBuf.data());
         uint32_t descIdx = 0;
         for (uint32_t peer = 0; peer < rankDim; ++peer) {
             if (peer == srcRankId)
@@ -347,12 +348,13 @@ private:
             resources.context.channelsPerRank = 1U;
         }
         uint32_t channelsPerRank = resources.context.channelsPerRank;
+        uint32_t rankSize = resources.context.rankSize;
 
-        ChannelHandle handlesByRank[HCCL_MAX_RANK_SIZE] = {};
-        GetHcclCommChannel(commHandle, resources.context.rankSize, rankId, channelsPerRank, resources.memHandle,
-                           handlesByRank);
+        std::vector<ChannelHandle> handlesByRank(rankSize * channelsPerRank);
+        GetHcclCommChannel(commHandle, rankSize, rankId, channelsPerRank, resources.memHandle,
+                           handlesByRank.data());
 
-        for (uint32_t peer = 0; peer < resources.context.rankSize; ++peer) {
+        for (uint32_t peer = 0; peer < rankSize; ++peer) {
             if (peer == rankId)
                 continue;
             for (uint32_t ch = 0; ch < channelsPerRank; ++ch) {
