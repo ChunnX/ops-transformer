@@ -59,6 +59,7 @@ public:
     __aicore__ inline void SetCastBuf(AscendC::TBuf<> &castBuf) { castBuf_ = &castBuf; }
     __aicore__ inline void SetAccumBuf(AscendC::TBuf<> &accumBuf) { accumBuf_ = &accumBuf; }
     __aicore__ inline void SetGradSubBatch(uint32_t batch) { gradSubBatch_ = batch; }
+    __aicore__ inline void SetAccumFloats(uint32_t floats) { accumFloats_ = floats; }
 
     uint64_t usaZeroCycle_{0};
     uint64_t usaCountCycle_{0};
@@ -85,9 +86,11 @@ private:
     __aicore__ inline void WriteBatchUnique(uint32_t tileUniqueCnt, int32_t &runningUniqueOffset,
                                              GM_ADDR uniqueLocalEntryOutGM);
 
-    __aicore__ inline void FlushAccum(GM_ADDR gradUniqueOutGM);
+    __aicore__ inline void FlushAccum(GM_ADDR gradUniqueOutGM, uint32_t slot);
+    __aicore__ inline void FlushDirect(AscendC::LocalTensor<uint8_t> &gradRaw, uint32_t elemIdx,
+                                       int32_t compactIdx, GM_ADDR gradUniqueOutGM);
     __aicore__ inline void AccumulateSubBatch(AscendC::LocalTensor<float> &gradFp32, uint32_t subStart,
-                                               uint32_t subLen, GM_ADDR gradUniqueOutGM);
+                                               uint32_t subLen, uint32_t batchLen, GM_ADDR gradUniqueOutGM);
     __aicore__ inline void CastToFP32(AscendC::LocalTensor<float> &outT,
                                       AscendC::LocalTensor<uint8_t> &gradRaw, uint32_t count);
 
@@ -115,8 +118,11 @@ private:
 
     int32_t accumCompactIdx_{-1};
     bool accumDirty_{false};
-    int32_t flushEvtVMte3_{0};
-    int32_t flushEvtMte3V_{0};
+    uint32_t accumSlot_{0};
+    uint32_t accumFloats_{0};
+    int32_t flushEvtVMte3_[2]{0, 0};
+    int32_t flushEvtMte3V_[2]{0, 0};
+    bool flushInit_[2]{false, false};
 };
 
 __aicore__ inline void EngramFetchGradUnique::Init(uint32_t aivId, uint32_t totalBlocks, uint32_t rankId,
@@ -155,22 +161,30 @@ __aicore__ inline void EngramFetchGradUnique::RunScatterCast(uint32_t numRecv, G
     FixCoreStartForSkippedCores(coreStartGM, segCountGM);
     AscendC::SyncAll<true>();
 
-    flushEvtVMte3_ = static_cast<int32_t>(pipe_->FetchEventID(AscendC::HardEvent::V_MTE3));
-    flushEvtMte3V_ = static_cast<int32_t>(pipe_->FetchEventID(AscendC::HardEvent::MTE3_V));
+    flushEvtVMte3_[0] = static_cast<int32_t>(pipe_->FetchEventID(AscendC::HardEvent::V_MTE3));
+    flushEvtVMte3_[1] = static_cast<int32_t>(pipe_->FetchEventID(AscendC::HardEvent::V_MTE3));
+    flushEvtMte3V_[0] = static_cast<int32_t>(pipe_->FetchEventID(AscendC::HardEvent::MTE3_V));
+    flushEvtMte3V_[1] = static_cast<int32_t>(pipe_->FetchEventID(AscendC::HardEvent::MTE3_V));
+    flushInit_[0] = false;
+    flushInit_[1] = false;
+    accumSlot_ = 0;
 
     ScatterAccumulateParallel(numRecv, recvLocalEntryOutGM, uniqueLocalEntryOutGM, gradUniqueOutGM, recvGradGM,
                                coreStartGM, segCountGM, sortCompanionGM);
 
     if (accumDirty_) {
-        FlushAccum(gradUniqueOutGM);
+        FlushAccum(gradUniqueOutGM, accumSlot_);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(flushEvtMte3V_[accumSlot_]);
         accumDirty_ = false;
     }
 
     WriteNumUnique(segCountGM, numUniqueOutGM);
     SyncFunc<AscendC::HardEvent::MTE3_S>(*pipe_);
 
-    pipe_->ReleaseEventID<AscendC::HardEvent::V_MTE3>(flushEvtVMte3_);
-    pipe_->ReleaseEventID<AscendC::HardEvent::MTE3_V>(flushEvtMte3V_);
+    pipe_->ReleaseEventID<AscendC::HardEvent::V_MTE3>(flushEvtVMte3_[0]);
+    pipe_->ReleaseEventID<AscendC::HardEvent::V_MTE3>(flushEvtVMte3_[1]);
+    pipe_->ReleaseEventID<AscendC::HardEvent::MTE3_V>(flushEvtMte3V_[0]);
+    pipe_->ReleaseEventID<AscendC::HardEvent::MTE3_V>(flushEvtMte3V_[1]);
 }
 
 __aicore__ inline void EngramFetchGradUnique::WriteNumUniqueZero(GM_ADDR numUniqueOutGM)
@@ -386,17 +400,23 @@ __aicore__ inline int32_t EngramFetchGradUnique::ComputePreCoreOffset(GM_ADDR se
     return preCoreOffset;
 }
 
-__aicore__ inline void EngramFetchGradUnique::FlushAccum(GM_ADDR gradUniqueOutGM)
+__aicore__ inline void EngramFetchGradUnique::FlushAccum(GM_ADDR gradUniqueOutGM, uint32_t slot)
 {
+    if (flushInit_[slot]) {
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(flushEvtMte3V_[slot]);
+    }
+    flushInit_[slot] = true;
+
     AscendC::LocalTensor<float> accum = accumBuf_->Get<float>();
+    AscendC::LocalTensor<float> accumSlot = accum[slot * accumFloats_];
     uint32_t outDtypeSize = GetDtypeSize(outputDtype_);
     uint64_t gmByteOffset =
         static_cast<uint64_t>(accumCompactIdx_) * static_cast<uint64_t>(hiddenDim_) * outDtypeSize;
     constexpr uint32_t MAX_BLOCK_BYTES = 65535U;
 
     if (outputDtype_ == Mc2Kernel::ENGRAM_DT_FLOAT) {
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(flushEvtVMte3_);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(flushEvtVMte3_);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(flushEvtVMte3_[slot]);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(flushEvtVMte3_[slot]);
 
         AscendC::GlobalTensor<float> dstGM;
         dstGM.SetGlobalBuffer((__gm__ float *)(gradUniqueOutGM + gmByteOffset));
@@ -408,30 +428,29 @@ __aicore__ inline void EngramFetchGradUnique::FlushAccum(GM_ADDR gradUniqueOutGM
             uint32_t remaining = totalBytes - byteOffset;
             uint16_t blkBytes = static_cast<uint16_t>(remaining > MAX_BLOCK_BYTES ? MAX_BLOCK_BYTES : remaining);
             AscendC::DataCopyParams params{1U, blkBytes, 0U, 0U};
-            AscendC::DataCopyPad(dstGM[elemOffset], accum[elemOffset], params);
+            AscendC::DataCopyPad(dstGM[elemOffset], accumSlot[elemOffset], params);
         }
 
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(flushEvtMte3V_);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(flushEvtMte3V_);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(flushEvtMte3V_[slot]);
     } else {
         AscendC::PipeBarrier<PIPE_V>();
 
         AscendC::LocalTensor<uint8_t> entryRaw = entryBuf_->Get<uint8_t>();
-        uint32_t flushCastOffset = 4U * Mc2Kernel::ENTRY_BATCH_CAP * sizeof(int32_t);
+        uint32_t flushCastOffset = 5U * Mc2Kernel::ENTRY_BATCH_CAP * sizeof(int32_t);
         AscendC::LocalTensor<uint8_t> flushCastBuf = entryRaw[flushCastOffset];
         uint32_t castCount = static_cast<uint32_t>(hiddenDim_);
 
         if (outputDtype_ == Mc2Kernel::ENGRAM_DT_BFLOAT16) {
             AscendC::LocalTensor<bfloat16_t> outT = flushCastBuf.ReinterpretCast<bfloat16_t>();
-            AscendC::Cast(outT, accum, AscendC::RoundMode::CAST_RINT, castCount);
+            AscendC::Cast(outT, accumSlot, AscendC::RoundMode::CAST_RINT, castCount);
         } else {
             AscendC::LocalTensor<half> outT = flushCastBuf.ReinterpretCast<half>();
-            AscendC::Cast(outT, accum, AscendC::RoundMode::CAST_RINT, castCount);
+            AscendC::Cast(outT, accumSlot, AscendC::RoundMode::CAST_RINT, castCount);
         }
         AscendC::PipeBarrier<PIPE_V>();
 
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(flushEvtVMte3_);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(flushEvtVMte3_);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(flushEvtVMte3_[slot]);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(flushEvtVMte3_[slot]);
 
         if (outputDtype_ == Mc2Kernel::ENGRAM_DT_BFLOAT16) {
             AscendC::GlobalTensor<bfloat16_t> dstGM;
@@ -463,8 +482,30 @@ __aicore__ inline void EngramFetchGradUnique::FlushAccum(GM_ADDR gradUniqueOutGM
             }
         }
 
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(flushEvtMte3V_);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(flushEvtMte3V_);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(flushEvtMte3V_[slot]);
+    }
+}
+
+__aicore__ inline void EngramFetchGradUnique::FlushDirect(AscendC::LocalTensor<uint8_t> &gradRaw, uint32_t elemIdx,
+                                                           int32_t compactIdx, GM_ADDR gradUniqueOutGM)
+{
+    uint32_t outDtypeSize = GetDtypeSize(outputDtype_);
+    uint64_t gmByteOffset =
+        static_cast<uint64_t>(compactIdx) * static_cast<uint64_t>(hiddenDim_) * outDtypeSize;
+    constexpr uint32_t MAX_BLOCK_BYTES = 65535U;
+
+    AscendC::GlobalTensor<uint8_t> dstGM;
+    dstGM.SetGlobalBuffer((__gm__ uint8_t *)(gradUniqueOutGM + gmByteOffset));
+    uint32_t srcOffset = elemIdx * static_cast<uint32_t>(hiddenBytes_);
+    uint32_t totalBytes = static_cast<uint32_t>(hiddenBytes_);
+    uint32_t numBlocks = (totalBytes + MAX_BLOCK_BYTES - 1U) / MAX_BLOCK_BYTES;
+    for (uint32_t b = 0; b < numBlocks; b++) {
+        uint32_t byteOffset = b * MAX_BLOCK_BYTES;
+        uint32_t remaining = totalBytes - byteOffset;
+        uint16_t blkBytes = static_cast<uint16_t>(remaining > MAX_BLOCK_BYTES ? MAX_BLOCK_BYTES : remaining);
+        AscendC::DataCopyParams params{1U, blkBytes, 0U, 0U};
+        AscendC::DataCopyPadExtParams<uint8_t> pad{false, 0, 0, 0};
+        AscendC::DataCopyPad(dstGM[byteOffset], gradRaw[srcOffset + byteOffset], params, pad);
     }
 }
 
@@ -482,27 +523,39 @@ __aicore__ inline void EngramFetchGradUnique::CastToFP32(AscendC::LocalTensor<fl
 
 __aicore__ inline void EngramFetchGradUnique::AccumulateSubBatch(AscendC::LocalTensor<float> &gradFp32,
                                                                    uint32_t subStart, uint32_t subLen,
-                                                                   GM_ADDR gradUniqueOutGM)
+                                                                   uint32_t batchLen, GM_ADDR gradUniqueOutGM)
 {
     AscendC::LocalTensor<float> accum = accumBuf_->Get<float>();
 
     AscendC::LocalTensor<int32_t> pingInt32 = entryBuf_->Get<int32_t>();
     AscendC::LocalTensor<int32_t> compactIdxBuf = pingInt32[3 * Mc2Kernel::ENTRY_BATCH_CAP];
+    AscendC::LocalTensor<int32_t> directFlagBuf = pingInt32[4 * Mc2Kernel::ENTRY_BATCH_CAP];
+    bool canDirectCopy = (inputDtype_ == outputDtype_);
 
     for (uint32_t j = 0; j < subLen; j++) {
+        if (canDirectCopy && directFlagBuf.GetValue(subStart + j) != 0) {
+            continue;
+        }
         int32_t compactIdx = compactIdxBuf.GetValue(subStart + j);
         if (compactIdx != accumCompactIdx_) {
             if (accumDirty_) {
-                FlushAccum(gradUniqueOutGM);
+                FlushAccum(gradUniqueOutGM, accumSlot_);
+                accumSlot_ = 1U - accumSlot_;
             }
-            AscendC::Duplicate<float>(accum, 0.0f, static_cast<uint32_t>(hiddenDim_));
+            AscendC::LocalTensor<float> accumSlot = accum[accumSlot_ * accumFloats_];
+            AscendC::Duplicate<float>(accumSlot, 0.0f, static_cast<uint32_t>(hiddenDim_));
             AscendC::PipeBarrier<PIPE_V>();
             accumCompactIdx_ = compactIdx;
+            AscendC::Add<float>(accumSlot, accumSlot, gradFp32[j * static_cast<uint32_t>(hiddenDim_)],
+                                static_cast<uint32_t>(hiddenDim_));
+            AscendC::PipeBarrier<PIPE_V>();
+            accumDirty_ = true;
+        } else {
+            AscendC::LocalTensor<float> accumSlot = accum[accumSlot_ * accumFloats_];
+            AscendC::Add<float>(accumSlot, accumSlot, gradFp32[j * static_cast<uint32_t>(hiddenDim_)],
+                                static_cast<uint32_t>(hiddenDim_));
+            AscendC::PipeBarrier<PIPE_V>();
         }
-        AscendC::Add<float>(accum, accum, gradFp32[j * static_cast<uint32_t>(hiddenDim_)],
-                            static_cast<uint32_t>(hiddenDim_));
-        AscendC::PipeBarrier<PIPE_V>();
-        accumDirty_ = true;
     }
 }
 
@@ -518,6 +571,7 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessBatchUnique(uint32_t cu
     AscendC::LocalTensor<int32_t> uniqueUb = pingInt32[Mc2Kernel::ENTRY_BATCH_CAP];
     AscendC::LocalTensor<int32_t> recvIdxBuf = pingInt32[2 * Mc2Kernel::ENTRY_BATCH_CAP];
     AscendC::LocalTensor<int32_t> compactIdxBuf = pingInt32[3 * Mc2Kernel::ENTRY_BATCH_CAP];
+    AscendC::LocalTensor<int32_t> directFlagBuf = pingInt32[4 * Mc2Kernel::ENTRY_BATCH_CAP];
 
     AscendC::GlobalTensor<int32_t> sortedEntryGM;
     AscendC::GlobalTensor<int32_t> compGM;
@@ -543,6 +597,18 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessBatchUnique(uint32_t cu
         }
         compactIdxBuf.SetValue(i, runningOffset + inclusiveSum - 1);
         recvIdxBuf.SetValue(i, compUb.GetValue(i));
+    }
+    bool canDirectCopy = (inputDtype_ == outputDtype_);
+    for (uint32_t i = 0; i < batchLen; i++) {
+        int32_t flag = 0;
+        if (canDirectCopy && i + 1U < batchLen) {
+            int32_t curIdx = compactIdxBuf.GetValue(i);
+            int32_t nextIdx = compactIdxBuf.GetValue(i + 1U);
+            if (curIdx != nextIdx) {
+                flag = 1;
+            }
+        }
+        directFlagBuf.SetValue(i, flag);
     }
     return tileUniqueCnt;
 }
@@ -586,6 +652,8 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
 
     AscendC::LocalTensor<int32_t> pingInt32 = entryBuf_->Get<int32_t>();
     AscendC::LocalTensor<int32_t> recvIdxBuf = pingInt32[2 * Mc2Kernel::ENTRY_BATCH_CAP];
+    AscendC::LocalTensor<int32_t> compactIdxBuf = pingInt32[3 * Mc2Kernel::ENTRY_BATCH_CAP];
+    AscendC::LocalTensor<int32_t> directFlagBuf = pingInt32[4 * Mc2Kernel::ENTRY_BATCH_CAP];
 
     AscendC::LocalTensor<uint8_t> gradPing = gradBuf_->Get<uint8_t>();
     AscendC::LocalTensor<uint8_t> gradPong = gradPing[gradBufHalf];
@@ -593,6 +661,7 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
     AscendC::DataCopyPadExtParams<uint8_t> gradPad{false, 0, 0, 0};
 
     bool needCast = (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT);
+    bool canDirectCopy = (inputDtype_ == outputDtype_);
     uint32_t castHalfFloats = 0;
     if (needCast) {
         uint32_t castHalfBytes = (static_cast<uint32_t>(hiddenDim_) * sizeof(float) * maxGradPerBatch +
@@ -604,6 +673,16 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
     event_t evtMte2V_1 = static_cast<event_t>(pipe_->FetchEventID(AscendC::HardEvent::MTE2_V));
     event_t evtVMte2_0 = static_cast<event_t>(pipe_->FetchEventID(AscendC::HardEvent::V_MTE2));
     event_t evtVMte2_1 = static_cast<event_t>(pipe_->FetchEventID(AscendC::HardEvent::V_MTE2));
+    event_t evtMte2Mte3_0 = 0;
+    event_t evtMte2Mte3_1 = 0;
+    event_t evtMte3Mte2_0 = 0;
+    event_t evtMte3Mte2_1 = 0;
+    if (canDirectCopy) {
+        evtMte2Mte3_0 = static_cast<event_t>(pipe_->FetchEventID(AscendC::HardEvent::MTE2_MTE3));
+        evtMte2Mte3_1 = static_cast<event_t>(pipe_->FetchEventID(AscendC::HardEvent::MTE2_MTE3));
+        evtMte3Mte2_0 = static_cast<event_t>(pipe_->FetchEventID(AscendC::HardEvent::MTE3_MTE2));
+        evtMte3Mte2_1 = static_cast<event_t>(pipe_->FetchEventID(AscendC::HardEvent::MTE3_MTE2));
+    }
 
     uint32_t tileIdx = 0;
     for (uint32_t subStart = 0; subStart < batchLen; subStart += maxGradPerBatch) {
@@ -616,6 +695,9 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
 
         if (tileIdx >= 2U) {
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(bufIdx == 0U ? evtVMte2_0 : evtVMte2_1);
+            if (canDirectCopy) {
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(bufIdx == 0U ? evtMte3Mte2_0 : evtMte3Mte2_1);
+            }
         }
 
         for (uint32_t j = 0; j < subLen; j++) {
@@ -629,6 +711,19 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
         }
 
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(bufIdx == 0U ? evtMte2V_0 : evtMte2V_1);
+
+        if (canDirectCopy) {
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(bufIdx == 0U ? evtMte2Mte3_0 : evtMte2Mte3_1);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(bufIdx == 0U ? evtMte2Mte3_0 : evtMte2Mte3_1);
+            for (uint32_t j = 0; j < subLen; j++) {
+                if (directFlagBuf.GetValue(subStart + j) != 0) {
+                    int32_t compactIdx = compactIdxBuf.GetValue(subStart + j);
+                    FlushDirect(gradRaw, j, compactIdx, gradUniqueOutGM);
+                }
+            }
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(bufIdx == 0U ? evtMte3Mte2_0 : evtMte3Mte2_1);
+        }
+
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(bufIdx == 0U ? evtMte2V_0 : evtMte2V_1);
 
         if (needCast) {
@@ -638,10 +733,10 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
             uint32_t castCount = subLen * static_cast<uint32_t>(hiddenDim_);
             CastToFP32(gradFp32, gradRaw, castCount);
             AscendC::PipeBarrier<PIPE_V>();
-            AccumulateSubBatch(gradFp32, subStart, subLen, gradUniqueOutGM);
+            AccumulateSubBatch(gradFp32, subStart, subLen, batchLen, gradUniqueOutGM);
         } else {
             AscendC::LocalTensor<float> gradFp32 = gradRaw.ReinterpretCast<float>();
-            AccumulateSubBatch(gradFp32, subStart, subLen, gradUniqueOutGM);
+            AccumulateSubBatch(gradFp32, subStart, subLen, batchLen, gradUniqueOutGM);
         }
 
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(bufIdx == 0U ? evtVMte2_0 : evtVMte2_1);
@@ -650,14 +745,26 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
 
     if (tileIdx >= 1U) {
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>((tileIdx - 1U) % 2U == 0U ? evtVMte2_0 : evtVMte2_1);
+        if (canDirectCopy) {
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>((tileIdx - 1U) % 2U == 0U ? evtMte3Mte2_0 : evtMte3Mte2_1);
+        }
     }
     if (tileIdx >= 2U) {
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(tileIdx % 2U == 0U ? evtVMte2_0 : evtVMte2_1);
+        if (canDirectCopy) {
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(tileIdx % 2U == 0U ? evtMte3Mte2_0 : evtMte3Mte2_1);
+        }
     }
     pipe_->ReleaseEventID<AscendC::HardEvent::MTE2_V>(evtMte2V_0);
     pipe_->ReleaseEventID<AscendC::HardEvent::MTE2_V>(evtMte2V_1);
     pipe_->ReleaseEventID<AscendC::HardEvent::V_MTE2>(evtVMte2_0);
     pipe_->ReleaseEventID<AscendC::HardEvent::V_MTE2>(evtVMte2_1);
+    if (canDirectCopy) {
+        pipe_->ReleaseEventID<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3_0);
+        pipe_->ReleaseEventID<AscendC::HardEvent::MTE2_MTE3>(evtMte2Mte3_1);
+        pipe_->ReleaseEventID<AscendC::HardEvent::MTE3_MTE2>(evtMte3Mte2_0);
+        pipe_->ReleaseEventID<AscendC::HardEvent::MTE3_MTE2>(evtMte3Mte2_1);
+    }
 
     if (tileUniqueCnt > 0) {
         WriteBatchUnique(tileUniqueCnt, runningUniqueOffset, uniqueLocalEntryOutGM);
@@ -686,6 +793,7 @@ __aicore__ inline void EngramFetchGradUnique::ScatterAccumulateParallel(
 
     accumCompactIdx_ = -1;
     accumDirty_ = false;
+    accumSlot_ = 0U;
 
     uint32_t cur = start;
     while (cur < end) {

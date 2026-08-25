@@ -443,7 +443,8 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     if (maxByPong > gradSubBatch_) { maxByPong = gradSubBatch_; }
     uint32_t castBufSize = (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) ?
         Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float) * maxByPong * 2U, UB_ALIGN) * UB_ALIGN : 0U;
-    uint32_t accumBufSize = Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float), UB_ALIGN) * UB_ALIGN;
+    uint32_t accumHalfBytes = Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float), UB_ALIGN) * UB_ALIGN;
+    uint32_t accumBufSize = accumHalfBytes * 2U;
     uint32_t uniqueBufSize = COMM_BUF_SIZE + castBufSize + accumBufSize;
     uint32_t poolSize = sortUbSize;
     if (uniqueBufSize > poolSize) {
@@ -459,6 +460,7 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     uniqueScatter_.Init(aivId_, totalBlocks_, rankId_, numRanks_, numEntriesPerRank_, hiddenDim_, hiddenBytes_,
                         inputDtype_, outputDtype_, tpipe_, entryBuf_, gradBuf_, indicesBuf_, tempBuf_, statusBuf_,
                         castFp32Buf_, accumBuf_);
+    uniqueScatter_.SetAccumFloats(accumHalfBytes / sizeof(float));
 }
 
 __aicore__ inline void EngramFetchGradArch35::UnsortGrad()
@@ -895,11 +897,12 @@ __aicore__ inline void EngramFetchGradArch35::Process()
                     Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float) * maxByPong * 2U, UB_ALIGN) * UB_ALIGN;
                 sortPool_.InitBuffer(castFp32Buf_, castBufSize);
             }
-            uint32_t accumBufSize =
+            uint32_t accumHalfBytes =
                 Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float), UB_ALIGN) * UB_ALIGN;
-            sortPool_.InitBuffer(accumBuf_, accumBufSize);
+            sortPool_.InitBuffer(accumBuf_, accumHalfBytes * 2U);
             uniqueScatter_.SetCastBuf(castFp32Buf_);
             uniqueScatter_.SetAccumBuf(accumBuf_);
+            uniqueScatter_.SetAccumFloats(accumHalfBytes / sizeof(float));
             uniqueScatter_.SetGradSubBatch(gradSubBatch_);
             uint64_t t2 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 

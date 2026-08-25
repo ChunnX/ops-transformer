@@ -549,7 +549,7 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchGr
         maxByPong = 1U;
     }
     uint32_t accumNeed = static_cast<uint32_t>(AlignTo(
-        static_cast<int64_t>(tilingData.hiddenDim) * sizeof(float), static_cast<int64_t>(UB_ALIGN)));
+        static_cast<int64_t>(tilingData.hiddenDim) * sizeof(float) * 2, static_cast<int64_t>(UB_ALIGN)));
     bool needCast = (tilingData.inputDtype != static_cast<int32_t>(ge::DT_FLOAT));
     uint32_t castFp32Need = needCast ? static_cast<uint32_t>(AlignTo(
         static_cast<int64_t>(maxByPong) * tilingData.hiddenDim * sizeof(float) * 2,
