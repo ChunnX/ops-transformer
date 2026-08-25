@@ -16,6 +16,23 @@
 
 namespace QkvRmsNormRopeCacheWithKScale {
 
+/*
+ * Current tile schedule; time advances from left to right:
+ *
+ *   Controller : FillTile ------------------------------------------------ ReleaseInput
+ *   MTE2/Scalar:        LoadTile(slot n) -> slot/input READY
+ *   Vector     :                            ProcessV -> ProcessK -> ProcessQ
+ *   MTE3       :                               V store -> K stores -> Q stores
+ *
+ * The current controller serializes V, K, and Q. Each stage owns a distinct
+ * single-buffered output region and finishes its MTE3 write before Vector may
+ * overwrite that stage's UB. Q is the final reader of qkv/rawCosSin, so the
+ * input slot is returned only after ProcessQ. inputSlot alternates between two
+ * physical UB slots, but this controller does not issue a next-tile preload;
+ * the READY/FREE protocol is retained as the ownership contract for each slot.
+ * Detailed producer/consumer event directions are documented beside the event
+ * IDs in the Vector implementation.
+ */
 template <>
 class QkvRmsNormRopeCacheWithKScaleController<
     QKV_K_SCALE_HEAD_DIM_D128, QKV_K_SCALE_LAYOUT_TND, QKV_K_SCALE_LAYOUT_TND, QKV_K_SCALE_ROPE_MODE_MROPE,
