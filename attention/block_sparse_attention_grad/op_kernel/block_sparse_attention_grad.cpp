@@ -61,7 +61,7 @@ extern "C" __global__ __aicore__ void block_sparse_attention_grad(__gm__ uint8_t
         using bsa_type = BSA_ARC35::BSA_TYPE<half,
                                             BSA_ARC35::BSND,
                                             ARC35_TILING_CLASS,
-                                            true>;
+                                            false>;
         BSA_ARC35::BlockSparseAttentionGradArch35<bsa_type> op;
         op.Process(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape, attentionMask,
                     actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user, tilingDataPtrArch35, &tPipe);
@@ -77,7 +77,7 @@ extern "C" __global__ __aicore__ void block_sparse_attention_grad(__gm__ uint8_t
         using bsa_type = BSA_ARC35::BSA_TYPE<half,
                                             BSA_ARC35::BNSD,
                                             ARC35_TILING_CLASS,
-                                            true>;
+                                            false>;
         BSA_ARC35::BlockSparseAttentionGradArch35<bsa_type> op;
         op.Process(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape, attentionMask,
                     actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user, tilingDataPtrArch35, &tPipe);
@@ -90,6 +90,54 @@ extern "C" __global__ __aicore__ void block_sparse_attention_grad(__gm__ uint8_t
         op.Process(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape, attentionMask,
                     actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user, tilingDataPtrArch35, &tPipe);
     } else if (TILING_KEY_IS(1005)) {
+        using bsa_type = BSA_ARC35::BSA_TYPE<half,
+                                            BSA_ARC35::TND,
+                                            ARC35_TILING_CLASS,
+                                            false>;
+        BSA_ARC35::BlockSparseAttentionGradArch35<bsa_type> op;
+        op.Process(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape, attentionMask,
+                    actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user, tilingDataPtrArch35, &tPipe);
+    } else if (TILING_KEY_IS(1008)) {
+        using bsa_type = BSA_ARC35::BSA_TYPE<bfloat16_t,
+                                            BSA_ARC35::BSND,
+                                            ARC35_TILING_CLASS,
+                                            true>;
+        BSA_ARC35::BlockSparseAttentionGradArch35<bsa_type> op;
+        op.Process(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape, attentionMask,
+                    actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user, tilingDataPtrArch35, &tPipe);
+    } else if (TILING_KEY_IS(1009)) {
+        using bsa_type = BSA_ARC35::BSA_TYPE<half,
+                                            BSA_ARC35::BSND,
+                                            ARC35_TILING_CLASS,
+                                            true>;
+        BSA_ARC35::BlockSparseAttentionGradArch35<bsa_type> op;
+        op.Process(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape, attentionMask,
+                    actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user, tilingDataPtrArch35, &tPipe);
+    } else if (TILING_KEY_IS(1010)) {
+        using bsa_type = BSA_ARC35::BSA_TYPE<bfloat16_t,
+                                            BSA_ARC35::BNSD,
+                                            ARC35_TILING_CLASS,
+                                            true>;
+        BSA_ARC35::BlockSparseAttentionGradArch35<bsa_type> op;
+        op.Process(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape, attentionMask,
+                    actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user, tilingDataPtrArch35, &tPipe);
+    } else if (TILING_KEY_IS(1011)) {
+        using bsa_type = BSA_ARC35::BSA_TYPE<half,
+                                            BSA_ARC35::BNSD,
+                                            ARC35_TILING_CLASS,
+                                            true>;
+        BSA_ARC35::BlockSparseAttentionGradArch35<bsa_type> op;
+        op.Process(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape, attentionMask,
+                    actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user, tilingDataPtrArch35, &tPipe);
+    } else if (TILING_KEY_IS(1012)) {
+        using bsa_type = BSA_ARC35::BSA_TYPE<bfloat16_t,
+                                            BSA_ARC35::TND,
+                                            ARC35_TILING_CLASS,
+                                            true>;
+        BSA_ARC35::BlockSparseAttentionGradArch35<bsa_type> op;
+        op.Process(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape, attentionMask,
+                    actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user, tilingDataPtrArch35, &tPipe);
+    } else if (TILING_KEY_IS(1013)) {
         using bsa_type = BSA_ARC35::BSA_TYPE<half,
                                             BSA_ARC35::TND,
                                             ARC35_TILING_CLASS,
