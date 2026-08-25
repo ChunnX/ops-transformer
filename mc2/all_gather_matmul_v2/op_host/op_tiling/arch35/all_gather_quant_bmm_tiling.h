@@ -65,6 +65,7 @@ protected:
     void SetTilingKeyParams();
     ge::graphStatus DoApaceMatmulTiling();
     void SetHcommTilingInfo();
+    void AlignApaceCutResForKernel(CutResult &cutRes, uint64_t mValue) const;
     ge::graphStatus CheckGroupSize();
     ge::graphStatus CheckPerBlockScaleInput();
     ge::graphStatus CheckMXFPScaleInput();
