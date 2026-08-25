@@ -55,7 +55,11 @@ public:
     static constexpr uint32_t FIX_M_EVENT = EVENT_ID2;
     static constexpr uint32_t M_FIX_EVENT = EVENT_ID3;
 
-    static constexpr uint64_t M_BASIC_BLOCK = 128;
+#if CVRATIO > 1
+    static constexpr uint64_t M_BASIC_BLOCK = 128;   // A5(1:2)
+#else
+    static constexpr uint64_t M_BASIC_BLOCK = 256;   // A6(1:1)
+#endif
     static constexpr uint64_t D_BASIC_BLOCK = 128;
     static constexpr uint64_t S2_BASIC_BLOCK = 128;
     static constexpr uint64_t D_BASIC_BLOCK_L0 = 128;
@@ -162,8 +166,10 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::ComputeMm1(const LIV2
 {
     CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(
         LIV2Common::ConstInfo::CROSS_VC_EVENT + runInfo.loop % 2);
+#if CVRATIO > 1
     CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(
         LIV2Common::ConstInfo::CROSS_VC_EVENT + runInfo.loop % 2 + LIV2Common::ConstInfo::AIV0_AIV1_OFFSET);
+#endif
     uint64_t s2GmBaseOffset = runInfo.s2Idx * constInfo_.s2BaseSize;
     uint64_t s1gProcessSize = runInfo.actMBaseSize;
     uint64_t s2ProcessSize = runInfo.actualSingleProcessSInnerSize;
@@ -229,8 +235,10 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::ComputeMm1(const LIV2
     }
     CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(
         LIV2Common::ConstInfo::CROSS_CV_EVENT + runInfo.loop % 2);
+#if CVRATIO > 1
     CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(
         LIV2Common::ConstInfo::CROSS_CV_EVENT + runInfo.loop % 2 + LIV2Common::ConstInfo::AIV0_AIV1_OFFSET);
+#endif
 }
 
 template <typename LIT>
@@ -374,8 +382,14 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::Fixp(uint64_t s1gGmOf
     fixpipeParams.srcStride = (s1gL0RealSize + 1) >> 1 << 1;
     // mmResUb上两行之间的间隔，单位：element。 // 128：根据比对dump文件得到，ND方案(S1 * S2)时脏数据用mask剔除
     fixpipeParams.dstStride = UB_BANK_DEPTH_STRIDE / sizeof(QK_T);
-    // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
+#if CVRATIO > 1
+    // A5(1:2): 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
     fixpipeParams.dualDstCtl = 1;
+#else
+    // A6(1:1): 单目标模式，不拆M; relu随路执行（vec1不做relu）
+    fixpipeParams.dualDstCtl = 0;
+    fixpipeParams.reluEn = true;
+#endif
     if (nSize <= (256 / sizeof(float))) {
         // N方向小于一个bank(256B), 只需搬一个ND块, 且不用补齐
         fixpipeParams.nSize = nSize;
@@ -387,7 +401,11 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::Fixp(uint64_t s1gGmOf
         fixpipeParams.nSize = S2_BASIC_BLOCK_L0 / 2;
         fixpipeParams.params.ndNum = 2;
         fixpipeParams.params.srcNdStride = ((fixpipeParams.mSize + 15) / 16) * fixpipeParams.nSize;
+#if CVRATIO > 1
         fixpipeParams.params.dstNdStride = constInfo_.s2BaseSize * M_BASIC_BLOCK / 2;
+#else
+        fixpipeParams.params.dstNdStride = constInfo_.s2BaseSize * M_BASIC_BLOCK;
+#endif
     }
 
     // 将matmul结果从L0C搬运到UB

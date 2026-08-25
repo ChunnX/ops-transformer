@@ -204,6 +204,7 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::InitTilingData(const LIV2T
     constInfo.kHeadNum = K_HEAD_NUM;
     constInfo.headDim = HEAD_DIM;
 
+#if CVRATIO > 1
     if (constInfo.gSize > 32 || constInfo.topk > 2048) {
         constInfo.mBaseSize = S1_BASE_SIZE_SMALL * constInfo.gSize;
         constInfo.s1BaseSize = S1_BASE_SIZE_SMALL;
@@ -211,6 +212,11 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::InitTilingData(const LIV2T
         constInfo.mBaseSize = S1_BASE_SIZE * constInfo.gSize;
         constInfo.s1BaseSize = S1_BASE_SIZE;
     }
+#else
+    // A6(1:1): s1BaseSize始终为4，不做SMALL拆分
+    constInfo.mBaseSize = S1_BASE_SIZE * constInfo.gSize;
+    constInfo.s1BaseSize = S1_BASE_SIZE;
+#endif
     constInfo.s2BaseSize = S2_BASE_SIZE;
     constInfo.returnValueFlag = tilingData->returnValue;
 }
@@ -586,7 +592,11 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::Init(__gm__ uint8_t *query
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx();  // vec:0-47
-        aiCoreIdx = tmpBlockIdx / 2;
+#if CVRATIO > 1
+        aiCoreIdx = tmpBlockIdx / 2;           // A5(1:2)
+#else
+        aiCoreIdx = tmpBlockIdx;               // A6(1:1)
+#endif
     } else {
         tmpBlockIdx = GetBlockIdx();  // cube:0-23
         aiCoreIdx = tmpBlockIdx;
@@ -815,7 +825,7 @@ template <typename LIT>
 __aicore__ inline void LightningIndexerV2Kernel<LIT>::ProcessInvalid()
 {
     if ASCEND_IS_AIV {
-        uint32_t aivCoreNum = GetBlockNum() * 2;  // 2 means c:v = 1:2
+        uint32_t aivCoreNum = GetBlockNum() * CVRATIO;  // A5: CVRATIO=2(1:2), A6: CVRATIO=1(1:1)
         uint64_t totalOutputSize =
             static_cast<uint64_t>(constInfo.batchSize) * constInfo.qSeqSize * constInfo.kHeadNum * constInfo.topk;
         uint64_t singleCoreSize =

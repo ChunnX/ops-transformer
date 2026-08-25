@@ -16,11 +16,7 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "lightning_indexer_v2_template_tiling_key.h"
-
-// A6: __NPU_ARCH__ 9201(芯片121) / 9202(芯片122)
-#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202))
-    #include "arch920r1/lightning_indexer_v2_kernel_arch920r1.h"
-#elif (__CCE_AICORE__ == 310)
+#if (__CCE_AICORE__ == 310)
     #include "arch35/lightning_indexer_v2_kernel_arch35.h"
 #else
     #include "arch22/lightning_indexer_v2_kernel_arch22.h"
@@ -50,10 +46,10 @@ __global__ __aicore__ void lightning_indexer_v2(__gm__ uint8_t *q, __gm__ uint8_
 {
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
-#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202))
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
-#else
+#if CVRATIO > 1
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+#else
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
 #endif
 
     if (ORIG_DTYPE_Q == DT_BF16) {

@@ -94,7 +94,11 @@ protected:
     static constexpr uint32_t V_MTE2_EVENT2 = EVENT_ID3;
     static constexpr uint32_t V_MTE2_EVENT3 = EVENT_ID5;
     static constexpr uint32_t MTE3_V_EVENT = EVENT_ID6;
-    static constexpr uint32_t M_BASIC_BLOCK = 128;
+#if CVRATIO > 1
+    static constexpr uint32_t M_BASIC_BLOCK = 128;   // A5(1:2)
+#else
+    static constexpr uint32_t M_BASIC_BLOCK = 256;   // A6(1:1)
+#endif
 
 private:
     // ================================Local Buffer区====================================
@@ -154,12 +158,22 @@ private:
 template <typename LIT>
 __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitBuffers(TPipe *pipe)
 {
+#if CVRATIO > 1
+    // A5(1:2): 每个vec核处理一半M
     pipe->InitBuffer(resMm1Buf_, 2 * CeilDiv(M_BASIC_BLOCK, 2) * s2BaseSize_ * sizeof(float));
     resMm1UB_ = resMm1Buf_.Get<float>();
     pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
     weightUB_ = weightBuf_.Get<W_T>();
     // 大小：2(开dB) * 2 * 128 * 4 = 2KB
     pipe->InitBuffer(outBuf_, 2 * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ * sizeof(SCORE_T));
+#else
+    // A6(1:1): 单vec核处理完整M，不除以2
+    pipe->InitBuffer(resMm1Buf_, 2 * M_BASIC_BLOCK * s2BaseSize_ * sizeof(float));
+    resMm1UB_ = resMm1Buf_.Get<float>();
+    pipe->InitBuffer(weightBuf_, 2 * s1BaseSize_ * UB_BANK_DEPTH_STRIDE);
+    weightUB_ = weightBuf_.Get<W_T>();
+    pipe->InitBuffer(outBuf_, 2 * s1BaseSize_ * s2BaseSize_ * sizeof(SCORE_T));
+#endif
     // out
     vec1OutUB_ = outBuf_.Get<SCORE_T>();
     // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(SCORE_T)
@@ -331,10 +345,13 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec1(const L
     int64_t curS1Idx = info.gS1Idx * s1BaseSize_;
     int64_t curS2Idx = info.s2Idx * s2BaseSize_;
     int64_t curS1ProcNum = curS1Idx + s1BaseSize_ > info.actS1Size ? info.actS1Size % s1BaseSize_ : s1BaseSize_;
+#if CVRATIO > 1
     int64_t curAivS1Idx = curS1Idx + (blockId_ % 2) * CeilDiv(curS1ProcNum, 2);
     int64_t curAivS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curS1ProcNum, 2) : curS1ProcNum / 2;
-
-    if (curAivS1ProcNum == 0) {
+#else
+    int64_t curAivS1Idx = curS1Idx;
+    int64_t curAivS1ProcNum = curS1ProcNum;
+#endif
         // V核处理完，通知C核可以把mm1Res搬运到UB
         CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_V>(LIV2Common::ConstInfo::CROSS_VC_EVENT +
                                                                        pingpong);
@@ -355,8 +372,13 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec1(const L
     SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + pingpong);
     WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + pingpong);
     WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + pingpong);
+#if CVRATIO > 1
     auto qkVLStride = (UB_BANK_DEPTH_STRIDE / sizeof(QK_T)) / 2 * M_BASIC_BLOCK;
     auto outBase = vec1OutUB_[(pingpong) * CeilDiv(s1BaseSize_, 2) * s2BaseSize_];
+#else
+    auto qkVLStride = (UB_BANK_DEPTH_STRIDE / sizeof(QK_T)) * M_BASIC_BLOCK;
+    auto outBase = vec1OutUB_[(pingpong) * s1BaseSize_ * s2BaseSize_];
+#endif
     auto qkBase = resMm1UB_[(pingpong) * (UB_BANK_STRIDE / sizeof(QK_T))];
     auto weightBase = weightUB_[(pingpong) * (UB_BANK_STRIDE / sizeof(float))];
     liV2Vector1::BatchMulWeightAndReduceSum(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T),
@@ -368,11 +390,15 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec1(const L
     SetFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);
     WaitFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);
     // outUB_ --->  scoreGm
+#if CVRATIO > 1
     int64_t vec1OutGmOffset =
         blockId_ % 2 == 0 ?
             curS2Idx :
             CeilDiv(s1BaseSize_, 2) * LIV2Common::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) +
                 curS2Idx;
+#else
+    int64_t vec1OutGmOffset = curS2Idx;
+#endif
     DataCopyExtParams copyOutParams;
     copyOutParams.blockCount = curAivS1ProcNum;
     copyOutParams.blockLen = s2BaseSize_ * sizeof(SCORE_T);
@@ -380,8 +406,13 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec1(const L
     copyOutParams.dstStride =
         (LIV2Common::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) - s2BaseSize_) * sizeof(SCORE_T);
 
+#if CVRATIO > 1
     DataCopyPad(scoreGm[vec1OutGmOffset], vec1OutUB_[pingpong * CeilDiv(s1BaseSize_, 2) * s2BaseSize_],
                 copyOutParams);
+#else
+    DataCopyPad(scoreGm[vec1OutGmOffset], vec1OutUB_[pingpong * s1BaseSize_ * s2BaseSize_],
+                copyOutParams);
+#endif
     SetFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + pingpong);
     // V核处理完，通知C核可以把mm1Res搬运到UB
     CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_V>(LIV2Common::ConstInfo::CROSS_VC_EVENT +
@@ -398,10 +429,13 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessTopK(const L
     int64_t curS2StartIdx = info.s2Start * s2BaseSize_;
     int64_t curS2EndIdx = (info.s2LoopEnd + 1) * s2BaseSize_;
     int64_t curS1ProcNum = curS1Idx + s1BaseSize_ > info.actS1Size ? info.actS1Size % s1BaseSize_ : s1BaseSize_;
+#if CVRATIO > 1
     int64_t curAivS1Idx = curS1Idx + (blockId_ % 2) * CeilDiv(curS1ProcNum, 2);
     int64_t curAivS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curS1ProcNum, 2) : curS1ProcNum / 2;
-
-    // LD 需要搬运到的起始位置 32字节
+#else
+    int64_t curAivS1Idx = curS1Idx;
+    int64_t curAivS1ProcNum = curS1ProcNum;
+#endif
     int64_t ldDstOffset = (info.isNeedLD) ? curS2StartIdx : 0;
     AscendC::DataCopyExtParams copyInParams;
     copyInParams.blockCount = 1;
@@ -434,8 +468,13 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessTopK(const L
 
     int32_t validAllS2Len = cuRealAcSeq;
     for (uint32_t i = 0; i < curAivS1ProcNum; i++) {
+#if CVRATIO > 1
         uint32_t rowIdx = blockId_ % 2 * CeilDiv(curS1ProcNum, 2) + i;
         uint32_t vecOffset = blockId_ % 2 * CeilDiv(s1BaseSize_, 2) + i;
+#else
+        uint32_t rowIdx = i;
+        uint32_t vecOffset = i;
+#endif
         int64_t outputIdxOffset = 0;
         if (info.isOutputIdxOffsetValid) {
             outputIdxOffset = outputIdxOffsetGm.GetValue(info.outputIdxCoreOffset + rowIdx * kHeadNum_);
