@@ -25,8 +25,8 @@
 #include "blaze/gemm/utils/common_utils.h"
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
 #include "include/tensor_api/tensor.h"
-#include "apace/block/mmad/qmm_mx_block_mmad_fragment.h"
-#include "apace/basic/fragment_tensor/fragment_tensor_api.h"
+#include "../../../block/mmad/qmm_mx_block_mmad_fragment.h"
+#include "../../../basic/fragment_tensor/fragment_tensor_api.h"
 
 namespace Blaze {
 namespace Gemm {
