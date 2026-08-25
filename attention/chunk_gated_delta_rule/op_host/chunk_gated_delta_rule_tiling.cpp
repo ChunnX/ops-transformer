@@ -131,18 +131,14 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
     int64_t s = tilingData_.maxGroupLength;
     tilingData_.interWorkspaceSz += sizeHigh * nv * s;     // gCumExp (FP32)
     tilingData_.interWorkspaceSz += sizeLow * nv * s * dk; // kCumDecay (BF16)
-    if (tilingData_.stateIsFp32) {
-        tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv; // vInner (FP32)
-        tilingData_.interWorkspaceSz += sizeLow * nv * s * dv;  // vInnerBf16 (BF16, for stage3)
-    } else {
-        tilingData_.interWorkspaceSz += sizeLow * nv * s * dv; // vInner (BF16)
-    }
+    // vInner is a BF16 Stage1/Stage2 hand-off for both state precisions.
+    tilingData_.interWorkspaceSz += sizeLow * nv * s * dv;
     tilingData_.interWorkspaceSz += sizeLow * nv * s * dk; // qPrime (BF16)
     tilingData_.interWorkspaceSz += sizeLow * nv * s * dv; // attnInter (BF16, arch22 compat)
     tilingData_.interWorkspaceSz += sizeLow * nv * s * dk; // kg (BF16)
     tilingData_.interWorkspaceSz += sizeLow * nv * s * c;  // qkt (BF16)
     if (tilingData_.stateIsFp32) {
-        tilingData_.interWorkspaceSz += sizeLow * nv * dv * dk; // stateBf16Wk (BF16, arch35)
+        tilingData_.interWorkspaceSz += sizeLow * nv * dv * dk; // stateBf16Wk (C1/C2 input copy)
     } else if (socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
         tilingData_.interWorkspaceSz +=
             sizeHigh * tilingData_.b * nv * dv * dk; // highState_ (arch22: kernel unconditionally advances offset)

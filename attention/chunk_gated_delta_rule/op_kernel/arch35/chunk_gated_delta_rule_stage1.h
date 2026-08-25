@@ -69,12 +69,20 @@ struct GDRStageOneInitParams {
 template <bool kStateIsFp32 = false, bool gOptional = false>
 class Stage1 {
 public:
-    using vInnerType = std::conditional_t<kStateIsFp32, float, bfloat16_t>;
+    // Stage1 与状态 dtype 无关：Q/K/V/beta 和各 Cube 中间量均为 BF16，门控累计量为 FP32。
+    // 两种状态分支都输出 BF16 Z0，供 Stage2 的 C1/V2 和 Stage3 共同使用。
+    using vInnerType = bfloat16_t;
     using MMBf16 = StageOneMTT<bfloat16_t>;
     using MMVInner = StageOneMTT<vInnerType>;
     __aicore__ inline Stage1(MMBf16 &mmBf16, MMVInner &mmVInner) : mmBf16_(mmBf16), mmVInner_(mmVInner)
     {
     }
+
+    /**
+     * 绑定 Stage1 的输入、输出和临时 workspace。
+     * 输入：Q/K[T,Nk,Dk]、V[T,Nv,Dv]、beta[T,Nv]、可选 g[T,Nv]。
+     * 输出：G、K_decay、Z0、Q'、K 和 QK^T；临时区按 CK/CC/CV 三类矩阵分区并按核隔离。
+     */
     __aicore__ inline void SetGlobalTensors(const GDRStageOneInitParams<vInnerType> &initParams)
     {
         queryGm_ = initParams.query;
@@ -118,6 +126,10 @@ public:
         vBetaWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(initParams.ws + workSpaceOffset + curWS));
     }
 
+    /**
+     * 初始化 AIV 的队列和 UB 复用区。
+     * UB 同时容纳门控、beta、矩阵逆、Q'/K_decay/Z0 等临时 FP32 计算视图；同生命周期张量复用地址。
+     */
     __aicore__ inline void InitLocalBuffers()
     {
         maxLen_ = AscendC::Std::max(AscendC::Std::max(dvAligned_ / HALF_TWO, dkAligned_ / HALF_TWO), chunkSize_);
@@ -186,6 +198,10 @@ public:
         inverseRes_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(chunkSize_ * halfChunkSize_), buffOffset);
     }
 
+    /**
+     * 构造跨行搬运的 gather 索引。
+     * inputGatherBuffer 用于从带 stride 的 beta/g 中抽取连续元素；inverseGatherBuffer 用于抽取三角矩阵列。
+     */
     __aicore__ inline void InitGatherBuffer()
     {
         for (uint32_t i = 0; i < chunkSize_; ++i) {
@@ -199,6 +215,10 @@ public:
         WaitFlag<HardEvent::S_V>(eventID);
     }
 
+    /**
+     * 解析 tiling 和当前 chunk group，计算 C*C、C*Dk、C*Dv 偏移并初始化 AIC/AIV 资源。
+     * 输入 initParams 为本组 GM 张量，tilingData 给出 C、Dk、Dv、并行数和核数；无数值输出。
+     */
     __aicore__ inline void Init(const GDRStageOneInitParams<vInnerType> &initParams, TPipe *pipe,
                                 const ChunkGatedDeltaRuleTilingData *tilingData)
     {
@@ -232,6 +252,10 @@ public:
         SetGlobalTensors(initParams);
     }
 
+    /**
+     * 将任务 (value_head, chunk) 均匀分配到逻辑 AI Core，并按 stageOneParaNum 批量执行。
+     * 每个任务最终产生当前 chunk 的 G、K_decay、Z0、Q'、K 和 QK^T。
+     */
     __aicore__ inline void Process()
     {
         uint32_t totalChunk = nv_ * numChunk_;
@@ -262,11 +286,11 @@ public:
     }
 
 private:
-    // ----------------------------------------------------------
-    // SetChunkOffset
-    //   curNId  : head 编号 (Nv 维度)
-    //   curCgId : CG 内的 chunk 编号 (0 ~ CG_CHUNKS-1)
-    // ----------------------------------------------------------
+    /**
+     * 计算一个任务的有效长度和 GM 偏移。
+     * 输入：id 为批内并行槽，curNId 为 value head，curCgId 为组内 chunk；
+     * 输出：validLen/subValidLen、head-major workspace 起点和 TND 输入起点。
+     */
     __aicore__ inline void SetChunkOffset(uint64_t id, uint64_t curNId, uint64_t curCgId)
     {
         validLenBatch_[id] = chunkSize_;
@@ -288,6 +312,9 @@ private:
         bgOffsetBatch_[id] = chunkStartRowBatch_[id] * nv_ + curNId;
     }
 
+    /**
+     * 调度一批 chunk：AIC 执行矩阵乘，AIV 执行搬运、门控和三角逆；二者通过 cross-core flag 流水同步。
+     */
     __aicore__ inline void ProcessParaChunk(int32_t curParaNum)
     {
         if ASCEND_IS_AIC {
@@ -298,6 +325,11 @@ private:
         }
     }
 
+    /**
+     * Stage1 的 Cube 部分。
+     * 依次计算 KK^T、QK^T、分块三角逆拼接、K_decay=A@(-beta*exp(G)*K)、Z0=A@(beta*V)。
+     * 输入均为 BF16 GM；输出 QK^T、K_decay、Z0 为 BF16 GM。
+     */
     __aicore__ inline void ParaChunkAIC(int32_t curParaNum)
     {
         // key @ key.transpose(-1,-2)
@@ -339,6 +371,11 @@ private:
         }
     }
 
+    /**
+     * Stage1 的 Vector 部分。
+     * 将 TND Q/K/V/beta/g 整理成连续 chunk，计算 G、门控三角矩阵、beta 加权项、Q' 和 K，并驱动 AIC 流水。
+     * 公式：G_i=sum_{r<=i}g_r；Q'_i=scale*exp(G_i)*Q_i；无 g 时令 G_i=0。
+     */
     __aicore__ inline void ParaChunkAIV(int32_t curParaNum)
     {
         // 获取连续QK
@@ -404,6 +441,10 @@ private:
         }
         AscendC::CrossCoreWaitFlag(0xA); // 同步5
     }
+    /**
+     * 将当前 AIV 负责的半个 Q/K chunk 从带 head stride 的 TND GM 搬成连续 [C/2,Dk] BF16。
+     * 尾行补零；无 g 分支处理 K 时还把原始 K 写入 kg，供 Stage2 C3 使用。
+     */
     __aicore__ inline void QKPreProcess(const GlobalTensor<bfloat16_t> &srcGm, const GlobalTensor<bfloat16_t> &dstGm,
                                         const GlobalTensor<bfloat16_t> &outKgGm, uint32_t subValidRows,
                                         bool kgFlag = false)
@@ -438,20 +479,21 @@ private:
         outQueue_.FreeTensor(tmpTensor);
     }
 
+    /**
+     * 计算门控累计量。
+     * 输入：src 为按 Nv 跨行存放的 g[validLen] FP32；输出：gCumSumUbFloat=G、gCumExpUbFloat=exp(G)，
+     * 其中 G_i=sum_{r=0}^{i}g_r。AIV0 另将有效 G 写入 dst[Nv,Sp]，供 Stage2/3 使用。
+     */
     __aicore__ inline void GCumExpCompute(const GlobalTensor<float> src, const GlobalTensor<float> dst,
                                           LocalTensor<float> gCumSumUbFloat, LocalTensor<float> gCumExpUbFloat,
                                           uint32_t validLen)
     {
         // Copy g
         GCopyInWithStride(src, validLen);
-        // CumSum计算
-        uint32_t outer = 1;
-        uint32_t inner = chunkSize_;
-        CumSumInfo cumSumInfo{outer, inner};
-        CumSum<float>(gCumSumUbFloat, gCumUbFloat_, gCumUbFloat_, cumSumInfo);
-        PipeBarrier<PIPE_V>();
-        // Exp计算
-        Exp<float, 0, true>(gCumExpUbFloat, gCumSumUbFloat, chunkSize_);
+        // C 固定为 64，正好对应一个 FP32 vector register；在 RegBase 中一次完成 G 和 exp(G)。
+        CumSumExpVf(reinterpret_cast<__ubuf__ float *>(gCumUbFloat_.GetPhyAddr()),
+                    reinterpret_cast<__ubuf__ float *>(gCumSumUbFloat.GetPhyAddr()),
+                    reinterpret_cast<__ubuf__ float *>(gCumExpUbFloat.GetPhyAddr()));
         PipeBarrier<PIPE_V>();
 
         if (subBlockIdx_ == 0) {
@@ -467,6 +509,49 @@ private:
         PipeBarrier<PIPE_V>();
     }
 
+    /**
+     * MicroAPI RegBase 实现 64 元素 inclusive scan 和指数。
+     * 输入 gAddr[64] FP32（尾部已补零）；输出 gCumAddr[64]=cumsum(g)，
+     * gCumExpAddr[64]=exp(cumsum(g))。前缀和使用 stride=1/2/4/8/16/32 的 Hillis-Steele 扫描。
+     */
+    static __simd_vf__ inline void CumSumExpVf(__ubuf__ float *gAddr, __ubuf__ float *gCumAddr,
+                                               __ubuf__ float *gCumExpAddr)
+    {
+        using namespace AscendC::MicroAPI;
+
+        RegTensor<float> gCumReg;
+        RegTensor<float> shiftedReg;
+        RegTensor<float> gCumExpReg;
+        RegTensor<int32_t> laneIndexReg;
+        RegTensor<int32_t> gatherIndexReg;
+        MaskReg allMask = CreateMask<int32_t, MaskPattern::ALL>();
+        MaskReg addMask;
+
+        LoadAlign<float, LoadDist::DIST_NORM>(gCumReg, gAddr);
+        Arange(laneIndexReg, static_cast<int32_t>(0));
+
+        // 负 gather 索引钳制为 0，并用 addMask 保留每层不参与累加的前导 lane。
+        for (int32_t stride = 1; stride < static_cast<int32_t>(64); stride <<= 1) {
+            Adds<int32_t>(gatherIndexReg, laneIndexReg, -stride, allMask);
+            Maxs<int32_t>(gatherIndexReg, gatherIndexReg, static_cast<int32_t>(0), allMask);
+            Gather<float, uint32_t>(shiftedReg, gCumReg,
+                                    reinterpret_cast<RegTensor<uint32_t> &>(gatherIndexReg));
+            Compares<int32_t, CMPMODE::GE>(addMask, laneIndexReg, stride, allMask);
+            Add<float, MaskMergeMode::MERGING>(gCumReg, gCumReg, shiftedReg, addMask);
+        }
+
+        static constexpr ExpSpecificMode expMode = {
+            MaskMergeMode::ZEROING, AscendC::ExpAlgo::PRECISION_1ULP_FTZ_FALSE};
+        Exp<float, &expMode>(gCumExpReg, gCumReg, allMask);
+
+        StoreAlign<float, StoreDist::DIST_NORM>(gCumAddr, gCumReg, allMask);
+        StoreAlign<float, StoreDist::DIST_NORM>(gCumExpAddr, gCumExpReg, allMask);
+    }
+
+    /**
+     * 构造严格下三角门控矩阵 gamma。
+     * 输入 G[C] FP32 和严格下三角 mask；输出 gamma[i,j]=exp(G_i-G_j)*1(j<i)，shape [C,C] FP32。
+     */
     __aicore__ inline void GammaCompute(const LocalTensor<float> gBroadUbFloat, LocalTensor<float> gammaUbFloat,
                                         LocalTensor<float> gCumSumUbFloat)
     {
@@ -496,6 +581,10 @@ private:
         PipeBarrier<PIPE_V>();
     }
 
+    /**
+     * 将 Cube 输出的 KK^T 半块搬入 UB 并施加行 beta。
+     * 输入 src=KK^T[C,C] BF16、beta[C/2] FP32；输出 attnUbFloat[i,j]=beta_i*(K_i dot K_j)。
+     */
     __aicore__ inline void KKBetaCompute(const GlobalTensor<bfloat16_t> src, LocalTensor<float> betaUbFloat)
     {
         // copy value
@@ -515,6 +604,11 @@ private:
         PipeBarrier<PIPE_V>();
     }
 
+    /**
+     * 计算单位下三角矩阵的逆并写出 BF16。
+     * 先令 L[i,j]=beta_i*(K_i dot K_j)*exp(G_i-G_j)*1(j<i)，再求 A=(I+L)^(-1)；
+     * 输入 gamma 为门控 mask，输出 dst=A[C,C] BF16，两个 AIV 分别处理 32 行。
+     */
     __aicore__ inline void InverseCompute(const GlobalTensor<bfloat16_t> dst, LocalTensor<float> gammaUbFloat)
     {
         uint64_t curVecLen = chunkSize_ * halfChunkSize_;
@@ -541,6 +635,10 @@ private:
         DataCopyOutBf16(halfChunkSize_, chunkSize_, chunkSize_, dst[subOffset_ * chunkSize_]);
     }
 
+    /**
+     * 用前代递推求 32x32 单位下三角块的逆。
+     * 对第 i 行计算 A_i=I_i-sum_{j<i}L_{i,j}A_j；输入位于 attnUbFloat，结果写入 inverseRes。
+     */
     __aicore__ inline void InverseAIV(uint64_t offset, uint32_t inverseVecLen)
     {
         uint64_t inverseBufferOffset = 0;
@@ -585,6 +683,11 @@ private:
         }
     }
 
+    /**
+     * 生成 K_decay 的 Cube 右矩阵并输出 C3 使用的 K。
+     * 输入 K[C/2,Dk]、beta[C/2]、exp(G)[C]；输出
+     * gBKWs=-beta_i*exp(G_i)*K_i（无 g 时 exp(G_i)=1），kg=K。二者均为 BF16。
+     */
     __aicore__ inline void GBKCompute(const GlobalTensor<bfloat16_t> gBKWsGm, const GlobalTensor<bfloat16_t> outKgGm,
                                       LocalTensor<float> betaUbFloat, LocalTensor<float> gCumSumUbFloat,
                                       LocalTensor<float> gCumExpUbFloat, const GlobalTensor<bfloat16_t> keyContinousGm)
@@ -619,28 +722,19 @@ private:
         DataCopyOutBf16(halfChunkSize_, dk_, dkAligned_, gBKWsGm[gBKBeginOffset]);
         PipeBarrier<PIPE_V>();
         if constexpr (gOptional) {
-            // kg = k * (g_cum_exp[-1, None] / g_cum_exp)[..., None]
-            uint32_t gEndShape[2] = {1, 1};
-            uint32_t gBroadShape[2] = {halfChunkSize_, 1};
-            Broadcast<float, BROADCAST_AXIS, 0>(gEndBroadUbFloat_, gCumSumUbFloat[chunkSize_ - 1], gBroadShape,
-                                                gEndShape);
-            PipeBarrier<PIPE_V>();
-            Sub(gEndBroadUbFloat_, gEndBroadUbFloat_, gCumSumUbFloat[subOffset_], halfChunkSize_);
-            PipeBarrier<PIPE_V>();
-            Exp<float, 0, true>(gEndBroadUbFloat_, gEndBroadUbFloat_, halfChunkSize_);
-            PipeBarrier<PIPE_V>();
-            Broadcast<float, BROADCAST_AXIS, 1>(kgUbFloat_, gEndBroadUbFloat_, kShape, gBroadShape);
-            PipeBarrier<PIPE_V>();
-            Mul(kgUbFloat_, kgUbFloat_, kUbFloatCon_, halfChunkSize_ * dkAligned_);
-            PipeBarrier<PIPE_V>();
+            // V2 已对 Z0 施加 exp(G_last-G_i)，因此 kg 必须保持原始 K，避免 C3 重复乘门控。
             uint64_t kgBeginOffset = subOffset_ * dk_;
             kgLocal_ = outQueue_.AllocTensor<bfloat16_t>();
-            Cast(kgLocal_, kgUbFloat_, RoundMode::CAST_RINT, halfChunkSize_ * dkAligned_);
+            Cast(kgLocal_, kUbFloatCon_, RoundMode::CAST_RINT, halfChunkSize_ * dkAligned_);
             outQueue_.EnQue<bfloat16_t>(kgLocal_);
             DataCopyOutBf16(halfChunkSize_, dk_, dkAligned_, outKgGm[kgBeginOffset]); // stage1 out
         }
     }
 
+    /**
+     * 计算 beta 加权的 value。
+     * 输入 V[C/2,Dv] BF16、beta[C/2] FP32；输出 vBeta[i,:]=beta_i*V_i，转为 BF16 供 A@vBeta。
+     */
     __aicore__ inline void VBetaCompute(const GlobalTensor<bfloat16_t> valueGm,
                                         const GlobalTensor<bfloat16_t> vBetaWsGm, LocalTensor<float> betaUbFloat,
                                         LocalTensor<float> valueUbFloat, uint32_t subValidRows)
@@ -668,6 +762,10 @@ private:
         DataCopyOutBf16(halfChunkSize_, dv_, dvAligned_, vBetaWsGm[subOffset_ * dv_]);
     }
 
+    /**
+     * 计算 Stage2 C2 使用的 Q'。
+     * 输入 Q[C/2,Dk] BF16 和 exp(G)[C] FP32；输出 Q'_i=scale*exp(G_i)*Q_i BF16；无 g 时 exp(G_i)=1。
+     */
     __aicore__ inline void QPrimeCompute(const GlobalTensor<bfloat16_t> outQPrimeGm, LocalTensor<float> gCumSumUbFloat,
                                          LocalTensor<float> gCumExpUbFloat,
                                          const GlobalTensor<bfloat16_t> queryContinousGm)
@@ -700,6 +798,7 @@ private:
         PipeBarrier<PIPE_V>();
     }
 
+    /** 将连续 FP32 GM 的 len 个元素搬入 inQueue，输出为队列中的 FP32 LocalTensor。 */
     __aicore__ inline void DataCopyInFp32(uint64_t len, GlobalTensor<float> y)
     {
         DataCopyPadExtParams<float> padParams;
@@ -709,6 +808,7 @@ private:
         inQueue_.EnQue<float>(fp32InLocal_);
     }
 
+    /** 将连续 BF16 GM 的 len 个元素搬入 inQueue，输出为队列中的 BF16 LocalTensor。 */
     __aicore__ inline void DataCopyInBf16(uint64_t len, GlobalTensor<bfloat16_t> y)
     {
         DataCopyPadExtParams<bfloat16_t> padParams;
@@ -718,6 +818,10 @@ private:
         inQueue_.EnQue<bfloat16_t>(bf16InLocal_);
     }
 
+    /**
+     * 从 beta[T,Nv] 按 Nv stride 抽取当前半 chunk，尾部补零并转为 FP32。
+     * 输入 src BF16；输出 betaUbFloat[C/2] FP32。
+     */
     __aicore__ inline void BetaCopyInWithStride(const GlobalTensor<bfloat16_t> src, LocalTensor<float> betaUbFloat,
                                                 uint32_t subValidRows)
     {
@@ -736,6 +840,7 @@ private:
         inQueue_.FreeTensor(betaLocal_);
     }
 
+    /** 从 g[T,Nv] 按 Nv stride 抽取有效 chunk 到 gCumUbFloat[C] FP32，尾部补零。 */
     __aicore__ inline void GCopyInWithStride(const GlobalTensor<float> src, uint32_t validLen)
     {
         DataCopyInFp32WithStride(validLen, 1, src, nv_);
@@ -750,6 +855,7 @@ private:
         inQueue_.FreeTensor(gLocal_);
     }
 
+    /** 按元素 stride 将 FP32 GM 二维切片搬入队列；输入 rows/cols/srcRowStride，输出连续或指定行距的 UB。 */
     __aicore__ inline void DataCopyInFp32WithStride(uint64_t rows, // 要搬的行数
                                                     uint64_t cols, // 每行的元素数
                                                     const GlobalTensor<float> src,
@@ -766,6 +872,7 @@ private:
         inQueue_.EnQue<float>(fp32InLocal_);
     }
 
+    /** 按元素 stride 将 BF16 GM 二维切片搬入队列，并对每行做 32B 对齐填充。 */
     __aicore__ inline void DataCopyInBf16WithStride(uint64_t rows, // 要搬的行数
                                                     uint64_t cols, // 每行的元素数
                                                     GlobalTensor<bfloat16_t> src,
@@ -781,6 +888,7 @@ private:
         inQueue_.EnQue<bfloat16_t>(bf16InLocal_);
     }
 
+    /** 将 UB 中 [rows,colsAligned] BF16 的每行前 cols 个元素紧凑写回 GM。 */
     __aicore__ inline void DataCopyOutBf16(uint32_t rows, uint32_t cols, uint32_t colsAligned,
                                            GlobalTensor<bfloat16_t> y)
     {
@@ -792,6 +900,10 @@ private:
         outQueue_.FreeTensor(tmpLocal);
     }
 
+    /**
+     * 用 2x2 分块公式补齐 64x64 下三角逆矩阵的左下块。
+     * 输入两个已由 AIV 求逆的 32x32 对角块；输出 A21=-A22*L21*A11，写回 attnWs 左下块。
+     */
     __aicore__ inline void AttnInverseMMCompute(uint64_t offset)
     {
         uint64_t leftDown = offset + chunkSize_ * INVERSE_SHAPE;
@@ -810,6 +922,10 @@ private:
         WaitFlag<HardEvent::FIX_MTE2>(eventID);
     }
 
+    /**
+     * Stage1 通用 Cube 封装：计算 z=x@y（transB=true 时为 x@y^T）。
+     * 输入 shape 同时给出原始 MNK 和单次 MNK；输出 z 的 dtype 由 CType/Matmul 模板决定。
+     */
     template <typename MMType, typename CType>
     __aicore__ inline void AICProcess(MMType &mmRef, GlobalTensor<bfloat16_t> x, GlobalTensor<bfloat16_t> y,
                                       GlobalTensor<CType> z, const MatmulShapeParams &shape, bool transB = false)
