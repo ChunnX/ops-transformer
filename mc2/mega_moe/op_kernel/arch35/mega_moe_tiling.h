@@ -94,6 +94,9 @@ constexpr uint32_t DEQUANT_FP32_SCALE_EXPANSION = 4U;
 constexpr int32_t MIN_DISPATCH_BUFFER_COUNT = 2;
 constexpr int32_t MAX_DISPATCH_BUFFER_COUNT = 6;
 constexpr int32_t BASE_RECV_ROUTE_ITEMS_PER_BATCH = 12288;
+// Persistent compact boundary-batch cache kept below the 64 KiB Dispatch
+// resident-state boundary so Combine cannot overwrite it between waves.
+constexpr int32_t DISPATCH_RANK_BOUNDARY_CACHE_ITEMS = 1024;
 
 /*
  * SendMask buffer policy
