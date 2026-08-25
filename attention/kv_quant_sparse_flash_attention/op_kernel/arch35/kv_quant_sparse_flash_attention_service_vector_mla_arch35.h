@@ -384,9 +384,144 @@ __aicore__ inline void AntiquantVFFp8D448(LocalTensor<Q_T> &outputUb, LocalTenso
     AntiquantVFImplFp8D448<Q_T, KV_T>(ubSrcAddr, ubDstAddr, ubScaleAddr, dealRowCount);
 }
 
+// FP4 E2M1 -> bf16 cast trait (mirrors FaVectorApi::castTraitW4).
+static constexpr MicroAPI::CastTrait castTraitBIFp4 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
+                                                       MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+// bf16 -> half cast trait (mirrors FaVectorApi::castTraitW4_1).
+static constexpr MicroAPI::CastTrait castTraitBIBf16ToQ = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::SAT,
+                                                           MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+
+// A5 B-I MXFP4 combined-record NoPE dequantization.
+// Per-row record (DMA stride 416B): [0,256) packed FP4 E2M1 NoPE D[0:512]; [256,384) raw Q_T RoPE (copied separately);
+// [384,400) 16 E8M0 scales, scale g covers NoPE D[32g, 32g+32).
+// The first 16 scale bytes are expanded in UB to 32 BF16 values per row:
+// [s0,s0,s1,s1,...,s15,s15]. DIST_E2B_B16 then turns every two adjacent entries into
+// one 32-element D group. This keeps the FP4 loads at aligned D=128 tiles (64 packed bytes).
+template <typename Q_T>
+__simd_vf__ void StageBIMxfp4Scales(__ubuf__ uint8_t *ubSrcAddr, __ubuf__ bfloat16_t *ubScaleDst,
+                                    uint32_t dealRowCount)
+{
+    constexpr uint32_t rowStrideBytes = 416;
+    constexpr uint32_t scaleOffsetBytes = 384;
+    constexpr uint32_t scaleSlotsPerRow = 32; // 16 E8M0 values, each duplicated once
+    constexpr int16_t shiftBits = 7;
+
+    MicroAPI::RegTensor<uint8_t> vScaleU8;
+    MicroAPI::RegTensor<bfloat16_t> vScaleBf16, vScaleBf16Dup;
+    MicroAPI::RegTensor<half> vScaleZero, vScaleNan;
+    MicroAPI::RegTensor<int16_t> vScaleFixZero, vScaleFixNan;
+    MicroAPI::MaskReg maskScaleZero, maskScaleNan;
+    MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<bfloat16_t, MicroAPI::MaskPattern::ALL>();
+    MicroAPI::MaskReg mask32 = MicroAPI::CreateMask<bfloat16_t, MicroAPI::MaskPattern::VL32>();
+
+    // E8M0 byte 0x00 -> bf16 subnormal 2^-127 (0x0040); 0xff -> bf16 NaN (0x7fff).
+    // The cache producer/oracle rejects 0xff; this is the existing A5 defensive fallback.
+    MicroAPI::Duplicate(vScaleZero, 0x0);
+    MicroAPI::Duplicate(vScaleNan, 0x7f80); // 0xff << 7
+    MicroAPI::Duplicate(vScaleFixZero, 0x40);
+    MicroAPI::Duplicate(vScaleFixNan, 0x7fff);
+    for (uint32_t row = 0; row < dealRowCount; ++row) {
+        __ubuf__ uint8_t *scaleSrc = ubSrcAddr + row * rowStrideBytes + scaleOffsetBytes;
+        // DIST_UNPACK_B8 reads one full register. The source starts at a 32B-aligned scale area;
+        // only its first 16 lanes are consumed below, and stage0InQue reserves 672B for every row.
+        MicroAPI::LoadAlign<uint8_t, MicroAPI::LoadDist::DIST_UNPACK_B8>(
+            (MicroAPI::RegTensor<uint8_t> &)vScaleU8, scaleSrc);
+        MicroAPI::ShiftLefts((MicroAPI::RegTensor<uint16_t> &)vScaleBf16,
+                             (MicroAPI::RegTensor<uint16_t> &)vScaleU8, shiftBits, maskAll);
+        MicroAPI::Compare<uint16_t, CMPMODE::NE>(maskScaleZero, (MicroAPI::RegTensor<uint16_t> &)vScaleBf16,
+                                                 (MicroAPI::RegTensor<uint16_t> &)vScaleZero, maskAll);
+        MicroAPI::Select((MicroAPI::RegTensor<uint16_t> &)vScaleBf16, (MicroAPI::RegTensor<uint16_t> &)vScaleBf16,
+                         (MicroAPI::RegTensor<uint16_t> &)vScaleFixZero, maskScaleZero);
+        MicroAPI::Compare<uint16_t, CMPMODE::NE>(maskScaleNan, (MicroAPI::RegTensor<uint16_t> &)vScaleBf16,
+                                                 (MicroAPI::RegTensor<uint16_t> &)vScaleNan, maskAll);
+        MicroAPI::Select((MicroAPI::RegTensor<uint16_t> &)vScaleBf16, (MicroAPI::RegTensor<uint16_t> &)vScaleBf16,
+                         (MicroAPI::RegTensor<uint16_t> &)vScaleFixNan, maskScaleNan);
+        MicroAPI::Interleave((MicroAPI::RegTensor<uint16_t> &)vScaleBf16,
+                             (MicroAPI::RegTensor<uint16_t> &)vScaleBf16Dup,
+                             (MicroAPI::RegTensor<uint16_t> &)vScaleBf16,
+                             (MicroAPI::RegTensor<uint16_t> &)vScaleBf16);
+        MicroAPI::StoreAlign<bfloat16_t, MicroAPI::StoreDist::DIST_NORM_B16>(
+            ubScaleDst + row * scaleSlotsPerRow, vScaleBf16, mask32);
+    }
+}
+
+template <typename Q_T>
+__simd_vf__ void AntiquantVFImplBIMxfp4(__ubuf__ uint8_t *ubSrcAddr, __ubuf__ bfloat16_t *ubScaleAddr,
+                                        __ubuf__ Q_T *ubDstAddr, uint32_t dealRowCount)
+{
+    constexpr uint32_t rowStrideBytes = 416;
+    constexpr uint32_t nopeDim = 512;
+    constexpr uint32_t dTile = 128;
+    constexpr uint32_t packedTileBytes = dTile / 2;
+    constexpr uint32_t scaleSlotsPerTile = 8; // [s0,s0,s1,s1,s2,s2,s3,s3]
+    constexpr uint32_t scaleSlotsPerRow = 32;
+    constexpr uint32_t blockStride = 17; // D-block x 17-row-slot output stride
+    constexpr uint32_t repeatStride = 1;
+
+    MicroAPI::RegTensor<fp4x2_e2m1_t> vFp4;
+    MicroAPI::RegTensor<bfloat16_t> vBf16, vScale, vMul;
+    MicroAPI::RegTensor<half> vFp16;
+    MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<Q_T, MicroAPI::MaskPattern::ALL>();
+
+    for (uint32_t dTileIdx = 0; dTileIdx < nopeDim / dTile; ++dTileIdx) {
+        // Every FP4 source address is 32B aligned: D-tile offset is a multiple of 64B and
+        // the staged input row stride is 416B. No 16B-offset LoadAlign is issued.
+        __ubuf__ uint8_t *fp4Row = ubSrcAddr + dTileIdx * packedTileBytes;
+        __ubuf__ Q_T *dst = ubDstAddr + dTileIdx * dTile * blockStride;
+        for (uint32_t row = 0; row < dealRowCount; ++row) {
+            MicroAPI::LoadAlign<uint8_t, MicroAPI::PostLiteral::POST_MODE_UPDATE,
+                                MicroAPI::LoadDist::DIST_UNPACK4_B8>(
+                (MicroAPI::RegTensor<uint8_t> &)vFp4, fp4Row, rowStrideBytes);
+            MicroAPI::Cast<bfloat16_t, fp4x2_e2m1_t, castTraitBIFp4>(vBf16, vFp4, maskAll);
+            // One D=128 tile reads eight staged BF16 values (s0,s0,...,s3,s3).
+            // Its 16B source is naturally aligned because the scratch row is 64B aligned.
+            __ubuf__ bfloat16_t *scaleRow =
+                ubScaleAddr + row * scaleSlotsPerRow + dTileIdx * scaleSlotsPerTile;
+            MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_E2B_B16>(vScale, scaleRow);
+            MicroAPI::Mul<bfloat16_t, MicroAPI::MaskMergeMode::ZEROING>(vMul, vBf16, vScale, maskAll);
+            if constexpr (std::is_same<Q_T, bfloat16_t>::value) {
+                MicroAPI::StoreAlign<Q_T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
+                                     MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                    dst, vMul, blockStride, repeatStride, maskAll);
+            } else {
+                MicroAPI::Cast<half, bfloat16_t, castTraitBIBf16ToQ>(vFp16, vMul, maskAll);
+                MicroAPI::StoreAlign<Q_T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
+                                     MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                    dst, vFp16, blockStride, repeatStride, maskAll);
+            }
+        }
+    }
+}
+
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::DequantKv(
     LocalTensor<Q_T> antiKvTensorAsB16, LocalTensor<KV_T> srcTensor, int64_t dealRow, ConstInfo &constInfo)
 {
+    if (constInfo.dSizeVInput == 400) {
+        // B-I MXFP4 combined record: inline FP4 E2M1 NoPE + E8M0 scales + raw Q_T RoPE.
+        __ubuf__ uint8_t *ubSrcAddr = (__ubuf__ uint8_t *)(srcTensor.GetPhyAddr());
+        __ubuf__ Q_T *ubDstAddr = (__ubuf__ Q_T *)(antiKvTensorAsB16.GetPhyAddr());
+        // stage0InQue keeps its existing 16 * 672B allocation. B-I uses 16 * 416B for
+        // raw records, leaving this non-overlapping 1024B scratch area for expanded scales.
+        LocalTensor<bfloat16_t> scaleStage = srcTensor[416 * 16].template ReinterpretCast<bfloat16_t>();
+        __ubuf__ bfloat16_t *ubScaleStage = (__ubuf__ bfloat16_t *)(scaleStage.GetPhyAddr());
+        StageBIMxfp4Scales<Q_T>(ubSrcAddr, ubScaleStage, static_cast<uint32_t>(dealRow));
+        AntiquantVFImplBIMxfp4<Q_T>(ubSrcAddr, ubScaleStage, ubDstAddr, static_cast<uint32_t>(dealRow));
+
+        // RoPE 位于记录字节 [256,384); 行跨步 416B -> src repeat stride 416 / 32 = 13。
+        LocalTensor<Q_T> kRopeUb = srcTensor[256].template ReinterpretCast<Q_T>();
+        LocalTensor<Q_T> kRopeUbNz = antiKvTensorAsB16[constInfo.dSizeNope * (16 + 1)]; // V0单次处理16行数据
+        Copy(kRopeUbNz, kRopeUb,
+             constInfo.dSizeRope,           // mask 处理多少列数据
+             static_cast<uint8_t>(dealRow), // repeatTime, 每次处理多少个block
+             {
+                 17, // dst stride
+                 1,  // src stride
+                 1,  // dst repeat stride
+                 13  // src repeat stride, 416 / 32
+             });
+        return;
+    }
+
     // srcTensor是nope(512) + nope(64) + scale + pad, dstTensor是nope(512) + rope(64)
     AntiquantVFFp8D448<Q_T, KV_T>(antiKvTensorAsB16, srcTensor, dealRow);
 

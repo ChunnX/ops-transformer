@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "tasks": [
+    {
+      "id": "T001",
+      "kind": "oracle",
+      "objective": "Freeze the clean-room B-I record decoder and deterministic ABI/correctness cases.",
+      "files": [
+        "openspec/changes/add-mxfp4-kv-qsfa/oracle/mxfp4_b_oracle.py",
+        "openspec/changes/add-mxfp4-kv-qsfa/tests/test_mxfp4_b_oracle.py",
+        "openspec/changes/add-mxfp4-kv-qsfa/tests/check_b_contract.py"
+      ],
+      "covers": ["REQ-BI-001", "REQ-BI-002", "REQ-BI-003", "REQ-BI-004"],
+      "acceptance_tests": ["TEST-INTERFACE", "TEST-CORRECTNESS"],
+      "required_evidence": ["interface", "correctness"],
+      "depends_on": []
+    },
+    {
+      "id": "T002",
+      "kind": "implementation",
+      "objective": "Add host format recognition and validation for the 400-byte B-I raw key record.",
+      "files": [
+        "attention/kv_quant_sparse_flash_attention/op_host/kv_quant_sparse_flash_attention_def.cpp",
+        "attention/kv_quant_sparse_flash_attention/op_host/kv_quant_sparse_flash_attention_tiling.cpp",
+        "attention/kv_quant_sparse_flash_attention/op_host/kv_quant_sparse_flash_attention_tiling.h"
+      ],
+      "covers": ["REQ-BI-001", "REQ-BI-004"],
+      "acceptance_tests": ["TEST-BUILD", "TEST-INTERFACE", "TEST-CORRECTNESS"],
+      "required_evidence": ["build", "interface", "correctness"],
+      "depends_on": ["T001"]
+    },
+    {
+      "id": "T003",
+      "kind": "implementation",
+      "objective": "Implement A5 V0 combined-record gather, FP4/E8M0 NoPE dequantization, and unchanged RoPE/output flow.",
+      "files": [
+        "attention/kv_quant_sparse_flash_attention/op_kernel/kv_quant_sparse_flash_attention.cpp",
+        "attention/kv_quant_sparse_flash_attention/op_kernel/arch35/kv_quant_sparse_flash_attention_kernel_mla_arch35.h",
+        "attention/kv_quant_sparse_flash_attention/op_kernel/arch35/kv_quant_sparse_flash_attention_service_vector_mla_arch35.h"
+      ],
+      "covers": ["REQ-BI-001", "REQ-BI-002", "REQ-BI-003", "REQ-BI-004"],
+      "acceptance_tests": ["TEST-BUILD", "TEST-INTERFACE", "TEST-CORRECTNESS"],
+      "required_evidence": ["build", "interface", "correctness"],
+      "depends_on": ["T002"]
+    },
+    {
+      "id": "T004",
+      "kind": "integration",
+      "objective": "Run frozen target-build, interface, oracle parity, and regression evidence against the final source fingerprint.",
+      "files": [
+        "openspec/changes/add-mxfp4-kv-qsfa/tests/run_target_build.sh"
+      ],
+      "covers": ["REQ-BI-001", "REQ-BI-002", "REQ-BI-003", "REQ-BI-004"],
+      "acceptance_tests": ["TEST-BUILD", "TEST-INTERFACE", "TEST-CORRECTNESS"],
+      "required_evidence": ["build", "interface", "correctness"],
+      "depends_on": ["T003"]
+    }
+  ]
+}

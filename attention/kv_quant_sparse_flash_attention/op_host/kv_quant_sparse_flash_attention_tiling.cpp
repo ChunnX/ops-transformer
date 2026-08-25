@@ -1244,10 +1244,14 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShapeSparseAndHeadDim()
                     "The head num of query only support 576, but got " + std::to_string(qHeadDim_)),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(kHeadDim_ != 656, // 656:当前不泛化
+    // B-I MXFP4 合并记录：A5 + key 为 DT_INT8 时，key 存储宽度允许 400
+    // (256B packed FP4 E2M1 NoPE + 128B raw Q_T RoPE + 16B E8M0)。其余场景保持 656 规则不变。
+    bool qsfaIsBIMxfp4 = isA5_ && (inputKvType_ == ge::DT_INT8) && (kHeadDim_ == 400);
+    OP_CHECK_IF(kHeadDim_ != 656 && !qsfaIsBIMxfp4,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     opName_, "key", ToStringRaw(opParamInfo_.key.shape->GetStorageShape()).c_str(),
-                    "The head num of key only support 656, but got " + std::to_string(kHeadDim_)),
+                    "The head dim of key only support 656 (or 400 for A5 B-I MXFP4 int8), but got " +
+                        std::to_string(kHeadDim_)),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
