@@ -1,0 +1,280 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+from typing import Optional, List, Tuple
+
+import torch
+from torch.library import impl
+from torch_npu.utils._error_code import ErrCode, ops_error
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
+from .comm_channel_builder_manager import CommChannelBuilderManager
+
+
+_ACL_DTYPE_TO_TORCH_DTYPE = {
+    5: torch.float16,
+    6: torch.float32,
+    15: torch.bfloat16,
+}
+
+
+class _AllGatherQuantMatmulOpBuilder(OpBuilder):
+    def __init__(self):
+        super(_AllGatherQuantMatmulOpBuilder, self).__init__("npu_all_gather_quant_matmul", category="mc2")
+
+    def sources(self):
+        return ["csrc/mc2/all_gather_quant_matmul.cpp"]
+
+    def schema(self) -> str:
+        return (
+            "npu_all_gather_quant_matmul(Tensor context, Tensor x1, Tensor x2, int hccl_buffer_size, str group_name, int rank_size, *, "
+            "Tensor? bias=None, Tensor? x1_scale=None, Tensor? x2_scale=None, "
+            "int[] group_sizes=[], "
+            "int? x1_dtype=None, int? x2_dtype=None, "
+            "int? x1_scale_dtype=None, int? x2_scale_dtype=None, "
+            "int? y_dtype=None, str comm_mode=\"urma\""
+            ") -> (Tensor, Tensor, Tensor)"
+        )
+
+    def register_meta(self):
+        @impl(get_as_library(), self.name, "Meta")
+        def npu_all_gather_quant_matmul_meta(
+            context,
+            x1,
+            x2,
+            hccl_buffer_size,
+            group_name,
+            rank_size,
+            bias=None,
+            x1_scale=None,
+            x2_scale=None,
+            group_sizes=[],
+            x1_dtype=None,
+            x2_dtype=None,
+            x1_scale_dtype=None,
+            x2_scale_dtype=None,
+            y_dtype=None,
+            comm_mode="urma",
+        ):
+            torch._check(
+                rank_size > 0,
+                lambda: f"rank_size should be greater than 0, {ops_error(ErrCode.VALUE)}.",
+            )
+            torch._check(
+                x1.dim() == 2,
+                lambda: f"x1 should be 2D, but got {x1.dim()}D, {ops_error(ErrCode.VALUE)}.",
+            )
+            torch._check(
+                x2.dim() == 2,
+                lambda: f"x2 should be 2D, but got {x2.dim()}D, {ops_error(ErrCode.VALUE)}.",
+            )
+            m_per_rank = x1.size(0)
+            k = x1.size(1)
+            n = x2.size(1)  # x2 传 .t() view [K, N]，dim1=N
+            out_dtype = torch.bfloat16
+            if y_dtype is not None:
+                out_dtype = _ACL_DTYPE_TO_TORCH_DTYPE.get(y_dtype, out_dtype)
+            y = x1.new_empty(tuple([m_per_rank * rank_size, n]), dtype=out_dtype)
+            gather_out = x1.new_empty(tuple([m_per_rank * rank_size, k]), dtype=x1.dtype)
+            amax_out = x1.new_empty(tuple([0]), dtype=torch.float32)
+            return (y, gather_out, amax_out)
+
+
+_all_gather_quant_matmul_op_builder = _AllGatherQuantMatmulOpBuilder()
+_op_module = _all_gather_quant_matmul_op_builder.load()
+
+
+@impl(get_as_library(), _all_gather_quant_matmul_op_builder.name, "PrivateUse1")
+def _npu_all_gather_quant_matmul(
+    context,
+    x1,
+    x2,
+    hccl_buffer_size,
+    group_name,
+    rank_size,
+    bias=None,
+    x1_scale=None,
+    x2_scale=None,
+    group_sizes=[],
+    x1_dtype=None,
+    x2_dtype=None,
+    x1_scale_dtype=None,
+    x2_scale_dtype=None,
+    y_dtype=None,
+    comm_mode="urma",
+):
+    result = _op_module.npu_all_gather_quant_matmul(
+        context,
+        x1,
+        x2,
+        hccl_buffer_size,
+        group_name,
+        rank_size,
+        bias,
+        x1_scale,
+        x2_scale,
+        group_sizes,
+        x1_dtype,
+        x2_dtype,
+        x1_scale_dtype,
+        x2_scale_dtype,
+        y_dtype,
+        comm_mode,
+    )
+    return result
+
+
+def all_gather_quant_matmul(
+    x1: torch.Tensor,
+    x2: torch.Tensor,
+    group,
+    *,
+    bias: Optional[torch.Tensor] = None,
+    x1_scale: Optional[torch.Tensor] = None,
+    x2_scale: Optional[torch.Tensor] = None,
+    group_sizes: Optional[List[int]] = None,
+    x1_dtype: Optional[int] = None,
+    x2_dtype: Optional[int] = None,
+    x1_scale_dtype: Optional[int] = None,
+    x2_scale_dtype: Optional[int] = None,
+    y_dtype: Optional[int] = None,
+    comm_mode: Optional[str] = "urma",
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """AllGather + MX quantized Matmul fused computation (apace UDMA path).
+
+    Each rank gathers A from all ranks, then multiplies with its local B:
+    ``y = AllGather(x1) @ x2^T``.
+
+    Args:
+        x1 (Tensor): Left matrix (per-rank A), shape ``(M_per_rank, K)``, dtype
+            float8_e4m3fn/float8_e5m2/float4_e2m1fn_x2.
+        x2 (Tensor): Right matrix (transposed B), shape ``(N, K)``, dtype
+            float8_e4m3fn/float8_e5m2/float4_e2m1fn_x2. FP4 requires x1 and x2
+            both FP4.
+        group (ProcessGroup): torch.distributed process group for AllGather
+            communication.
+        bias (Tensor, optional): Bias added after matmul, shape ``(N,)``, dtype float32.
+        x1_scale (Tensor): MX scale for x1, shape ``(M_per_rank, Ceil(K/64), 2)``,
+            dtype float8_e8m0fnu. Required in MX scene.
+        x2_scale (Tensor): MX scale for x2, shape ``(N, Ceil(K/64), 2)``, dtype
+            float8_e8m0fnu. Required in MX scene.
+        group_sizes (List[int], optional): Quantization group sizes, MX only
+            supports ``[1, 1, 32]``. None means auto-inferred from scale shapes.
+        x1_dtype (int, optional): x1 dtype enum for bitcast
+            (290=hif8, 296=fp4_e2m1, 297=fp4_e1m2), None means use tensor dtype.
+        x2_dtype (int, optional): x2 dtype enum for bitcast
+            (290=hif8, 296=fp4_e2m1, 297=fp4_e1m2), None means use tensor dtype.
+        x1_scale_dtype (int, optional): x1_scale dtype enum for bitcast
+            (293=fp8_e8m0), None means use tensor dtype.
+        x2_scale_dtype (int, optional): x2_scale dtype enum for bitcast
+            (293=fp8_e8m0), None means use tensor dtype.
+        y_dtype (int, optional): Output dtype enum, None means default bfloat16
+            (15=bfloat16, 5=float16). Only 15/5 are supported.
+        comm_mode (str): Communication engine, only ``"urma"`` is supported.
+
+    Returns:
+        Tuple[Tensor, Tensor, Tensor]: (y, gather_out, amax_out) where y has
+            shape ``(M_per_rank * rank_size, N)``, gather_out has shape
+            ``(M_per_rank * rank_size, K)``, amax_out is empty tensor (not
+            implemented yet). Users typically use
+            ``y, _, _ = all_gather_quant_matmul(...)`` to ignore the latter two.
+    """
+    if group_sizes is None:
+        group_sizes = []  # 不传时使用 OpDef 缺省值 0，由 tiling 从 scale shape 自动推导
+    torch._check(
+        comm_mode == "urma",
+        lambda: f"comm_mode only supports 'urma', got '{comm_mode}'.",
+    )
+
+    # 拦截：uint8 tensor 只能搭配 fp4 dtype enum（296=fp4_e2m1, 297=fp4_e1m2）传入
+    # 不传 enum 或传了非 fp4 枚举，csrc 都无法正确识别真实类型
+    FP4_DTYPE_ENUMS = (296, 297)
+    if x1.dtype == torch.uint8 and x1_dtype not in FP4_DTYPE_ENUMS:
+        torch._check(
+            False,
+            lambda: f"x1 is uint8 tensor (likely fp4 packed) but x1_dtype={x1_dtype} is not a valid fp4 enum. "
+                    f"Please pass x1_dtype=296 (fp4_e2m1) or 297 (fp4_e1m2).",
+        )
+    if x2.dtype == torch.uint8 and x2_dtype not in FP4_DTYPE_ENUMS:
+        torch._check(
+            False,
+            lambda: f"x2 is uint8 tensor (likely fp4 packed) but x2_dtype={x2_dtype} is not a valid fp4 enum. "
+                    f"Please pass x2_dtype=296 (fp4_e2m1) or 297 (fp4_e1m2).",
+        )
+
+    # 拦截：uint8 scale tensor 必须搭配 fp8_e8m0 枚举（293）传入
+    # torch 没有原生 float8_e8m0 dtype，scale 用 uint8 存储 + enum override
+    FP8_E8M0_DTYPE_ENUM = 293
+    if x1_scale is not None and x1_scale.dtype == torch.uint8 and x1_scale_dtype != FP8_E8M0_DTYPE_ENUM:
+        torch._check(
+            False,
+            lambda: f"x1_scale is uint8 tensor (fp8_e8m0 stored as uint8) but x1_scale_dtype={x1_scale_dtype} "
+                    f"is not 293 (fp8_e8m0). Please pass x1_scale_dtype=293.",
+        )
+    if x2_scale is not None and x2_scale.dtype == torch.uint8 and x2_scale_dtype != FP8_E8M0_DTYPE_ENUM:
+        torch._check(
+            False,
+            lambda: f"x2_scale is uint8 tensor (fp8_e8m0 stored as uint8) but x2_scale_dtype={x2_scale_dtype} "
+                    f"is not 293 (fp8_e8m0). Please pass x2_scale_dtype=293.",
+        )
+    rank_id = torch.distributed.get_rank(group)
+    rank_size = torch.distributed.get_world_size(group)
+    if rank_size <= 0:
+        rank_size = torch.distributed.get_rank_size()  # fallback to default group
+    group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(
+        rank_id
+    )
+
+    channel_builder = CommChannelBuilderManager(group_name)
+    ctx_tag = group_name + "all_gather_matmul"
+    context = channel_builder.create_context(ctx_tag)
+    hccl_buffer_size = channel_builder.get_hccl_buffer_size()
+
+    # 拦截：通信数据总量（x1 data + x1_scale）不能超过 hccl_buffer_size
+    # x1 data:  rank_size * M * K * x1.element_size()（fp4 packed 自动折半）
+    # x1_scale: rank_size * M * Ceil(K/64) * 2 * scale.element_size()（MX scale [M, Ceil(K/64), 2]）
+    m_per_rank = x1.size(0)
+    k = x1.size(1)
+    x1_data_bytes = rank_size * m_per_rank * k * x1.element_size()
+    scale_k_groups = (k + 63) // 64
+    x1_scale_bytes = 0
+    if x1_scale is not None:
+        x1_scale_bytes = rank_size * m_per_rank * scale_k_groups * 2 * x1_scale.element_size()
+    comm_data_bytes = x1_data_bytes + x1_scale_bytes
+    print(f"[all_gather_quant_matmul] hccl_buffer_size={hccl_buffer_size} bytes ({hccl_buffer_size/1024/1024:.2f} MB), "
+          f"comm_data_bytes={comm_data_bytes} bytes ({comm_data_bytes/1024/1024:.2f} MB) "
+          f"= data {x1_data_bytes} + scale {x1_scale_bytes}", flush=True)
+    torch._check(
+        comm_data_bytes <= hccl_buffer_size,
+        lambda: f"Communication data size ({comm_data_bytes} bytes = data {x1_data_bytes} + scale {x1_scale_bytes}) "
+                f"exceeds hccl_buffer_size ({hccl_buffer_size} bytes = {hccl_buffer_size / 1024 / 1024:.2f} MB). "
+                f"Please increase HCCL_BUFFSIZE environment variable.",
+    )
+
+    print(f"[all_gather_quant_matmul] rank={rank_id}, rank_size={rank_size}, comm_mode={comm_mode}, "
+          f"calling npu_all_gather_quant_matmul ...", flush=True)
+    result = torch.ops.cann_ops_transformer.npu_all_gather_quant_matmul(
+        context,
+        x1,
+        x2,
+        hccl_buffer_size,
+        group_name,
+        rank_size,
+        bias=bias,
+        x1_scale=x1_scale,
+        x2_scale=x2_scale,
+        group_sizes=group_sizes,
+        x1_dtype=None if x1_dtype == -1 else x1_dtype,
+        x2_dtype=None if x2_dtype == -1 else x2_dtype,
+        x1_scale_dtype=None if x1_scale_dtype == -1 else x1_scale_dtype,
+        x2_scale_dtype=None if x2_scale_dtype == -1 else x2_scale_dtype,
+        y_dtype=None if y_dtype == -1 else y_dtype,
+        comm_mode=comm_mode,
+    )
+    print(f"[all_gather_quant_matmul] rank={rank_id}, npu_all_gather_quant_matmul returned", flush=True)
+    return result
