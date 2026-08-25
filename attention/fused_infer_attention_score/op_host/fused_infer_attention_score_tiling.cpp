@@ -350,11 +350,11 @@ static ge::graphStatus ConvertAttrsPFA(gert::TilingContext &context, ContextPara
     OP_CHECK_IF(context.GetOptionalInputTensor(DEQUANT_SCALE_QUERY_INDEX) != nullptr ||
                     (attrs->GetAttrPointer<int64_t>(ATTR_QUERY_QUANT_MODE_INDEX) != nullptr &&
                      *attrs->GetAttrPointer<int64_t>(ATTR_QUERY_QUANT_MODE_INDEX) != 0),
-                OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "PFA not support query dequant now"),
+                OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "PFA does not support query dequant now"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(*contextKeyParams.sparseMode == 9U,
-                OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "PFA not support Tree Sparse(9) now"),
+                OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "PFA does not support Tree Sparse(9) now"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -762,7 +762,7 @@ static ge::graphStatus ConvertContextToParamsIFA(gert::TilingContext &context, I
     ifaContext.key.desc = context.GetInputDesc(KEY_INDEX);
     ifaContext.key.shape = context.GetInputShape(KEY_INDEX);
     OP_CHECK_IF((ifaContext.query.shape == nullptr) || (ifaContext.key.shape == nullptr),
-                OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "shape of query of shape of key is null."),
+                OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "shape of query or shape of key is null."),
                 return ge::GRAPH_FAILED);
     auto batchOfQuery = ifaContext.query.shape->GetStorageShape().GetDim(0);
     auto batchOfKey = ifaContext.key.shape->GetStorageShape().GetDim(0);
@@ -921,7 +921,7 @@ static ge::graphStatus TilingProcess4PFA(gert::TilingContext *context, const uin
     contextParamsForPFATiling.compileInfoPtr = &tempCompileInfoPtr;
     ret = ConvertContextToParamsPFA(*context, contextParamsForPFATiling);
     if (ret != ge::GRAPH_SUCCESS) {
-        OP_LOGE(context->GetNodeName(), "Error occurred while convert tilingContext to PFA context");
+        OP_LOGE(context->GetNodeName(), "Error occurred while converting tilingContext to PFA context");
         return ret;
     }
 
@@ -1008,7 +1008,7 @@ ge::graphStatus CheckSparseModeParams(const gert::TilingContext *context, int64_
 
         OP_CHECK_IF((preToken < 0) && (nextToken < 0),
                     OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                                                "preTokens and nextokens cannot neither be negative number, preTokens = %ld, nextTokens = %ld.",
+                                                "preTokens and nextTokens cannot be negative numbers, preTokens = %ld, nextTokens = %ld.",
                                                 preToken, nextToken),
                     return ge::GRAPH_FAILED);
 
@@ -1030,12 +1030,12 @@ ge::graphStatus CheckKVNzShape(const gert::TilingContext *context)
     auto tempV = context->GetInputShape(VALUE_INDEX);
 
     OP_CHECK_IF((tempK->GetStorageShape().GetDim(DIM_4) != 16) || (tempV->GetStorageShape().GetDim(DIM_4) != 16),
-                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "The last dimension of kv should to be 16."),
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "The last dimension of kv should be 16."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((tempK->GetStorageShape().GetDim(DIM_3) != blockSize) ||
                     (tempV->GetStorageShape().GetDim(DIM_3) != blockSize),
                 OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                                            "The four dimension of kv should to be :%ld.", blockSize),
+                                            "The fourth dimension of kv should be %ld.", blockSize),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1130,7 +1130,7 @@ ge::graphStatus CheckFAIQKV(gert::TilingContext *context, bool isPageAttention)
     }
     OP_CHECK_IF((validBatchOfK > 1) || (validBatchOfV > 1),
                 OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                                            "Split fuse senario does not support incontinuous kv tensor list"),
+                                            "Split fuse scenario does not support incontinuous kv tensor list"),
                 return ge::GRAPH_FAILED);
 
     const std::string inputLayoutStr = std::string(context->GetAttrs()->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
@@ -1172,7 +1172,7 @@ ge::graphStatus CheckFAILearnableSink(const gert::TilingContext *context)
     auto sinkDimValue = learnableSinkShape->GetStorageShape().GetDim(DIM_0);
     auto queryN = queryShape->GetStorageShape().GetDim(DIM_1);
     OP_CHECK_IF(sinkDimValue != queryN,
-                OP_LOGE(context->GetNodeName(), "learnable_sink enable, sink shape(%u) must be same equal queryN(%u)!",
+                OP_LOGE(context->GetNodeName(), "learnable_sink enable, sink shape(%u) must be equal to queryN(%u)!",
                         sinkDimValue, queryN),
                 return ge::GRAPH_FAILED);
 
@@ -1314,7 +1314,7 @@ ge::graphStatus CheckFAIMaskShape(const gert::TilingContext *context)
         if (maskDimNum - dimCountDown < EFFECTIVE_CAUSAL_DIMS) {
             OP_CHECK_IF(revOrderDim != OPT_ATTEN_MASK_LEN,
                         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                                                    "In split fuse senario, when sparseMode is 3, "
+                                                    "In split fuse scenario, when sparseMode is 3, "
                                                     "the input mask has %ld dims in total, "
                                                     "maskDim %ld shall be 2048",
                                                     maskDimNum, (dimCountDown - 1)),
@@ -1322,7 +1322,7 @@ ge::graphStatus CheckFAIMaskShape(const gert::TilingContext *context)
         } else {
             OP_CHECK_IF(revOrderDim != 1,
                         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                                                    "In split fuse senario, when sparseMode is 3, "
+                                                    "In split fuse scenario, when sparseMode is 3, "
                                                     "the input mask has %ld dims in total, "
                                                     "maskDim %ld shall be 1",
                                                     maskDimNum, (dimCountDown - 1)),
@@ -1339,7 +1339,7 @@ ge::graphStatus CheckFAIMask(gert::TilingContext *context)
     auto attrs = context->GetAttrs();
     int32_t sparseMode = static_cast<int32_t>(*(attrs->GetAttrPointer<int64_t>(ATTR_SPARSE_MODE_INDEX)));
     OP_CHECK_IF((sparseMode != 0) && (sparseMode != 3) && (sparseMode != 4),
-                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "In split fuse senario, sparseMode shall be 0 or 3 or 4"),
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "In split fuse scenario, sparseMode shall be 0 or 3 or 4"),
                 return ge::GRAPH_FAILED);
     if (tempAttnMaskShape == nullptr) {
         OP_CHECK_IF(sparseMode != 0,
@@ -1675,7 +1675,7 @@ static ge::graphStatus TilingProcess4SplitFuse(gert::TilingContext *context)
     fai_tiling.SetCoreNum(aicoreNum);
     auto ret = fai_tiling.DoTiling(faiTilingData);
     OP_CHECK_IF(ret != ge::GRAPH_SUCCESS,
-                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Do fai tiling went wrong"),
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Failed to do FAI tiling"),
                 return ge::GRAPH_FAILED);
     faiTilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(faiTilingData.GetDataSize());
@@ -1860,7 +1860,7 @@ static ge::graphStatus TilingProcess4IFA(gert::TilingContext *context)
     IncreFlashAttentionContext ifaContext{};
     auto ret = ConvertContextToParamsIFA(*context, ifaContext);
     if (ret != ge::GRAPH_SUCCESS) {
-        OP_LOGE(context->GetNodeName(), "Error occored while convert tilingContext to ifa context");
+        OP_LOGE(context->GetNodeName(), "Error occurred while converting tilingContext to ifa context");
         return ret;
     }
     IFATiling ifaTiling(context);
@@ -1884,7 +1884,7 @@ static ge::graphStatus CheckQKV(gert::TilingContext &context)
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((tempQ->GetStorageShape().GetShapeSize() == 0) && (tempOut->GetStorageShape().GetShapeSize() != 0),
                 OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
-                                            "Query head should not be 0, or when attentionOut is not empty tensor, query input shoud not be empty tensor!"),
+                                            "Query head should not be 0, or when attentionOut is not empty tensor, query input should not be empty tensor!"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((tempQ->GetStorageShape().GetShapeSize() == gert::Shape::kInvalidDimValue),
                 OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "Query input dims are invalid!"),
@@ -2365,7 +2365,7 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
 
     OP_CHECK_IF(HasNonContiguousCacheInput(context) && !IsSupportedRegularFiaCacheStrideInput(context),
                 OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                                            "Non-contiguous cache is supported only by the arch22 regular FAI or D512 MLA PA routes."),
+                                            "Non-contiguous cache is supported only by the arch22 regular FIA or D512 MLA PA routes."),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(CheckQKV(*context) != ge::GRAPH_SUCCESS,
