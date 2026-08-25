@@ -141,7 +141,6 @@ _legacy_map = {
     "quant_flash_attn": "attention.quant_flash_attn",
     "quant_lightning_indexer": "attention.quant_lightning_indexer_v2",
     "quant_sparse_flash_mla": "attention.quant_sparse_flash_mla",
-    "recurrent_kda": "attention.recurrent_kda",
     "scatter_pa_kv_cache_with_k_scale": "attention.scatter_pa_kv_cache_with_k_scale",
     "sparse_flash_mla": "attention.sparse_flash_mla",
     "sparse_flash_mla_grad": "attention.sparse_flash_mla_grad",
