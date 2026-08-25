@@ -677,8 +677,10 @@ __aicore__ inline void Gmm1ExecGeneric(Scheduler &scheduler, const Params &param
     auto gmScaleB = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB *>(gmmAddrInfo.bScaleGlobal)),
         layouts.scaleB);
-    if constexpr (IsWaveFlagGrained && g_coreType == AscendC::AIC) {
-        SetWaveWeightL2CacheHint<KernelConfig::IS_WEIGHT_NZ, KernelConfig>(config, allowWeightL2Bypass, gmB, gmScaleB);
+    if (allowWeightL2Bypass) {
+        auto l2CacheMode = GetWaveWeightL2CacheMode<KernelConfig::IS_WEIGHT_NZ, KernelConfig>(config);
+        gmB.SetL2CacheHint(l2CacheMode.weight);
+        gmScaleB.SetL2CacheHint(l2CacheMode.scale);
     }
     auto gmBias =
         Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType *>(0UL)), layouts.bias);
@@ -777,7 +779,7 @@ template <typename BlockMmad, typename BlockPrologue, typename ElementC, typenam
 __aicore__ inline void Gmm1ExecA8W4(Scheduler &scheduler, const Params &params, const GMMAddrInfo &gmmAddrInfo,
                                     const Config &config, uint32_t startLoopIdx, uint32_t tileNum,
                                     int32_t &gmm1TileReadySequence, ActivationQuantOp &activationQuantOp,
-                                    uint32_t expertBeforeCnt, uint32_t expertIdx)
+                                    uint32_t expertBeforeCnt, uint32_t expertIdx, bool allowWeightL2Bypass)
 {
     using KernelConfig = typename Config::KernelConfig;
     using ElementA = typename KernelConfig::ElementAType;
@@ -799,6 +801,11 @@ __aicore__ inline void Gmm1ExecA8W4(Scheduler &scheduler, const Params &params, 
     auto gmScaleB = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB *>(gmmAddrInfo.bScaleGlobal)),
         layouts.scaleB);
+    if (allowWeightL2Bypass) {
+        auto l2CacheMode = GetWaveWeightL2CacheMode<KernelConfig::IS_WEIGHT_NZ, KernelConfig>(config);
+        gmB.SetL2CacheHint(l2CacheMode.weight);
+        gmScaleB.SetL2CacheHint(l2CacheMode.scale);
+    }
     auto gmBias =
         Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType *>(0UL)), layouts.bias);
     AscendC::GlobalTensor<float> metaInfoGm;
@@ -860,6 +867,10 @@ __aicore__ inline void RunGmm1Generic(
 
     uint32_t startLoopIdx =
         (config.blockIdx < startBlockIdx ? config.blockIdx + config.blockNum : config.blockIdx) - startBlockIdx;
+    if (startLoopIdx >= tileNum) {
+        startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
+        return;
+    }
     using BlockMmad = typename GmmConfig::BlockMmad;
     using MmadContext = GmmKernel::BlockMmadContext<BlockMmad>;
     auto *typedBlockMmadContext = reinterpret_cast<MmadContext *>(blockMmadContext);
@@ -900,7 +911,7 @@ __aicore__ inline void RunGmm1A8W4(
                                    TopkWeightsPrefetch> &activationQuantOp,
     const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &gmm1TileReadySequence,
-    const BlockJobContext &blockJob, uint32_t expertBeforeCnt, uint32_t expertIdx = 0)
+    const BlockJobContext &blockJob, uint32_t expertBeforeCnt, uint32_t expertIdx = 0, bool allowWeightL2Bypass = false)
 {
     static_assert(std::is_same_v<ElementA, __fp8e4m3>, "Activation must be __fp8e4m3");
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
@@ -931,7 +942,7 @@ __aicore__ inline void RunGmm1A8W4(
     GmmKernel::Gmm1ExecA8W4<BlockMmad, BlockPrologue, ElementC, MakeLayoutC, IsShared, GmmKernel::BlockScheduler,
                             decltype(config), TopkWeightsPrefetch, IsWaveFlagGrained>(
         scheduler, params, gmmAddrInfo, config, startLoopIdx, tileNum, gmm1TileReadySequence, activationQuantOp,
-        expertBeforeCnt, expertIdx);
+        expertBeforeCnt, expertIdx, allowWeightL2Bypass);
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
