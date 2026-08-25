@@ -397,9 +397,9 @@ __aicore__ inline uint32_t GetExpertTokenCountFromWorkspace(GM_ADDR expertTokenC
 }
 
 // 轮询 GM 中的 int32 flag 直至等于期望值，并在两次读取之间加入短暂退避。
-__aicore__ inline void WaitUntilGmFlagEquals(__gm__ int32_t *flagAddr, int32_t expectedValue)
+__aicore__ inline void WaitUntilGmFlagEquals(__gm__ int32_t *flagAddr, int32_t expectedValue,
+                                             int64_t pollBackoffCycles = 100)
 {
-    constexpr int64_t pollBackoffCycles = 100;
     while (AscendC::ReadGmByPassDCache(flagAddr) != expectedValue) {
         int64_t startCycle = AscendC::GetSystemCycle();
         while (AscendC::GetSystemCycle() - startCycle < pollBackoffCycles) {
