@@ -9,7 +9,11 @@
 # ----------------------------------------------------------------------------
 set(CATLASS_TAG_ID 769cd40a8716b28650b6bebb08db4834eea4462f) # v2.0.0
 
-if(EXISTS "${CANN_3RD_LIB_PATH}/catlass")
+if(EXISTS ${TOP_DIR}/open_source/catlass)
+  get_filename_component(CATLASS_SOURCE_PATH
+                         ${TOP_DIR}/open_source/catlass REALPATH)
+  message(STATUS "Find catlass source dir: ${CATLASS_SOURCE_PATH}")
+elseif(EXISTS "${CANN_3RD_LIB_PATH}/catlass")
   get_filename_component(CATLASS_SOURCE_PATH
                          ${CANN_3RD_LIB_PATH}/catlass REALPATH)
   message(STATUS "Find catlass source dir: ${CATLASS_SOURCE_PATH}")
