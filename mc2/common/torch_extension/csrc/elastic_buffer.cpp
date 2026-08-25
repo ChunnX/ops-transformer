@@ -759,11 +759,26 @@ public:
     void EngramBarrier(bool useCommStream = true, bool withCpuSync = false);
     void Destroy();
 
-    int64_t GetHostBufPtr() const { return reinterpret_cast<int64_t>(engramHostBufPtr_); }
-    const at::Tensor &GetContextTensor() const { return engramContextTensor_; }
-    const at::Tensor &GetLocalStorageAddrTensor() const { return localStorageAddrTensor_; }
-    int64_t GetCommBufferSize() const { return commBufferSize_; }
-    uint32_t GetRankSize() const { return engramCommContext_.rankSize; }
+    int64_t GetHostBufPtr() const
+    {
+        return reinterpret_cast<int64_t>(engramHostBufPtr_);
+    }
+    const at::Tensor &GetContextTensor() const
+    {
+        return engramContextTensor_;
+    }
+    const at::Tensor &GetLocalStorageAddrTensor() const
+    {
+        return localStorageAddrTensor_;
+    }
+    int64_t GetCommBufferSize() const
+    {
+        return commBufferSize_;
+    }
+    uint32_t GetRankSize() const
+    {
+        return engramCommContext_.rankSize;
+    }
 
     static at::Tensor EngramFetch(const at::Tensor &context, const at::Tensor &indices, int64_t hiddenSize,
                                   int64_t numEntries, int64_t dtypeEnum);
@@ -778,7 +793,10 @@ public:
                                                        const at::Tensor &sendCounts, const at::Tensor &recvCounts,
                                                        const at::Tensor &recvLocalEntry, const at::Tensor &numRecv);
 
-    bool IsWithGrad() const { return withGrad_; }
+    bool IsWithGrad() const
+    {
+        return withGrad_;
+    }
 
     static int64_t GetEngramStorageSizeHint(int64_t numEntries, int64_t hiddenSize,
                                             at::ScalarType dtype = at::kBFloat16);
@@ -1179,7 +1197,10 @@ public:
         }
     }
 
-    void Reset() { *reinterpret_cast<volatile int64_t *>(hostPtr_) = -1; }
+    void Reset()
+    {
+        *reinterpret_cast<volatile int64_t *>(hostPtr_) = -1;
+    }
 
     int64_t SpinWait()
     {
@@ -1191,9 +1212,15 @@ public:
         }
     }
 
-    uintptr_t DevicePtr() const { return reinterpret_cast<uintptr_t>(devPtr_); }
+    uintptr_t DevicePtr() const
+    {
+        return reinterpret_cast<uintptr_t>(devPtr_);
+    }
 
-    uintptr_t HostPtr() const { return reinterpret_cast<uintptr_t>(hostPtr_); }
+    uintptr_t HostPtr() const
+    {
+        return reinterpret_cast<uintptr_t>(hostPtr_);
+    }
 
 private:
     void *hostPtr_ = nullptr;

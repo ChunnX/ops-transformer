@@ -151,8 +151,7 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
     rankId_ = mc2Context_->epRankId;
     channelsPerRank_ = mc2Context_->channelsPerRank;
-    if (channelsPerRank_ == 0 ||
-        (epWorldSize_ > 0 && channelsPerRank_ > Mc2Aclnn::HCCL_MAX_RANK_SIZE / epWorldSize_)) {
+    if (channelsPerRank_ == 0 || (epWorldSize_ > 0 && channelsPerRank_ > Mc2Aclnn::HCCL_MAX_RANK_SIZE / epWorldSize_)) {
         channelsPerRank_ = 1;
     }
     for (uint32_t i = 0; i < epWorldSize_; ++i) {
@@ -220,8 +219,8 @@ __aicore__ inline bool MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
 
     LocalTensor<uint32_t> stateTensor = stateBuf_.Get<uint32_t>();
     SyncFunc<AscendC::HardEvent::S_MTE2>();
-    DataCopyExtParams params = {
-        static_cast<uint16_t>(completionFlagCount), sizeof(uint32_t), WIN_ADDR_ALIGN - sizeof(uint32_t), 0, 0};
+    DataCopyExtParams params = {static_cast<uint16_t>(completionFlagCount), sizeof(uint32_t),
+                                WIN_ADDR_ALIGN - sizeof(uint32_t), 0, 0};
     DataCopyPadExtParams<uint32_t> padParams = {true, 0, 0, 0};
 
     DataCopyPad<uint32_t>(stateTensor, stateGMTensor, params, padParams);
@@ -281,8 +280,7 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     if (activeAivNum > maxChannelAivNum) {
         completionChannelCount = channelsPerRank_;
     } else if (activeAivNum >= epWorldSize_) {
-        completionChannelCount =
-            activeAivNum / epWorldSize_ + (rankId_ < activeAivNum % epWorldSize_ ? 1U : 0U);
+        completionChannelCount = activeAivNum / epWorldSize_ + (rankId_ < activeAivNum % epWorldSize_ ? 1U : 0U);
     }
     uint32_t completionFlagCount = epWorldSize_ * completionChannelCount;
     uint32_t flagBufferBytes = completionFlagCount * STATE_OFFSET;
@@ -300,8 +298,8 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
         GM_ADDR stateGM = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) + flagOffset;
         GlobalTensor<uint32_t> stateGMTensor;
         stateGMTensor.SetGlobalBuffer((__gm__ uint32_t *)stateGM);
-        DataCopyExtParams clearParams = {
-            static_cast<uint16_t>(completionFlagCount), STATE_OFFSET, 0, WIN_ADDR_ALIGN - STATE_OFFSET, 0};
+        DataCopyExtParams clearParams = {static_cast<uint16_t>(completionFlagCount), STATE_OFFSET, 0,
+                                         WIN_ADDR_ALIGN - STATE_OFFSET, 0};
         DataCopyPad<uint32_t>(stateGMTensor, stateTensor, clearParams);
         SyncFunc<AscendC::HardEvent::MTE3_S>();
     }
