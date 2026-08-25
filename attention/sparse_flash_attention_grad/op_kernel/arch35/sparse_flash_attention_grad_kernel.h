@@ -40,7 +40,8 @@ public:
 private:
     __aicore__ inline void ProcessPreload(FagRunInfo &runInfo, int64_t taskId);
     __aicore__ inline void ProcessNotFirst(FagRunInfo &runInfo);
-    __aicore__ inline void DeterCubeVecScatter(FagRunInfo &scatterRunInfo);
+    __aicore__ inline void InitFirstDeterEpoch();
+    __aicore__ inline void LaunchDeterScatter(FagRunInfo &scatterRunInfo);
 };
  
 template <typename CubeBlockType, typename VecBlockType>
@@ -184,16 +185,23 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::DeterCubeVecScatter(
+__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::InitFirstDeterEpoch()
+{
+    // 第一笔 deter epoch：只建立 flag13 launch 许可，不消费 flag14，不打 flag11。
+    if ASCEND_IS_AIC {
+        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
+        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
+    } else {
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
+    }
+}
+
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::LaunchDeterScatter(
     FagRunInfo &scatterRunInfo)
 {
-    // 整轮 sel=0：AIC/AIV 必须得到同一结果，整 epoch 跳过 flag11/12/13，也不消费 flag14 credit。
-    // 只复用 6d0a 的「全空 epoch 一致跳过」，不恢复 AIC chain barrier。
-    if (!this->HasDeterRoundWork(scatterRunInfo.sTaskId)) {
-        return;
-    }
-    // SMLAG 同款：scatter epoch 入口先收 AIV completion（flag14），再开 flag11/13。
-    // Wait 放在这里而不是 compute 刚结束处，compute(N+1) 仍可与 scatter(N) overlap。
+    // 正常/flush/补偿共用：先收上一 epoch 的 flag14，再开 flag11/13。
+    // Wait 在 launch scatter 前，不在 compute 入口，compute(N+1) 仍可与 scatter(N) overlap。
     if ASCEND_IS_AIC {
         CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SCATTER_TO_FIX_SYNC_FLAG);
         CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_TO_FIX_SYNC_FLAG);
@@ -215,56 +223,48 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     this->AllocEventID();
     int64_t taskId = 0;
     int64_t sTaskId = 0;
-    int64_t processNum = 0;
-    FagRunInfo runInfos[2]; // for cv ping pong
+    int64_t deterTaskId = 0;
+    FagRunInfo runInfos[2];
     FagRunInfo deterRunInfos[2];
-    for (int32_t i = 0; i < this->processBS1ByCore; i++) {
+    const int64_t maxEpochs = this->GetMaxDeterEpochs();
+
+    // 所有核走同一条 deter epoch 序列。没有 token / sel=0 / TND padding 只跳过 compute，不删除 epoch。
+    for (int32_t i = 0; i < maxEpochs; i++) {
         this->t1Index = this->cBlockIdx + this->usedCoreNum * i;
-        if (!this->IsValidTndT1Index(this->t1Index)) {
-            break;
-        }
-        processNum++;
-        this->GetTndSeqLen(this->t1Index, this->bIndex);
-        this->SetDeterRunInfo(deterRunInfos[sTaskId & 1], sTaskId);
-        for (this->n2Index = 0; this->n2Index < this->tilingData->baseParams.n2; this->n2Index++) {
-            this->GetActualSelCount(this->t1Index, this->n2Index, this->actualSelectedBlockCount);
-            for (this->blkCntOffset = 0; this->blkCntOffset < this->actualSelectedBlockCount; this->blkCntOffset += this->constInfo.selectedCountOffset) {
-                if (taskId >= 0) {
-                    this->SetRunInfo(runInfos[taskId & 1], taskId, sTaskId);
+        const bool hasCompute =
+            (this->cBlockIdx < this->usedCoreNum) && (this->t1Index < this->GetValidTndT1Size());
+        if (hasCompute) {
+            this->GetTndSeqLen(this->t1Index, this->bIndex);
+            for (this->n2Index = 0; this->n2Index < this->tilingData->baseParams.n2; this->n2Index++) {
+                this->GetActualSelCount(this->t1Index, this->n2Index, this->actualSelectedBlockCount);
+                for (this->blkCntOffset = 0; this->blkCntOffset < this->actualSelectedBlockCount;
+                     this->blkCntOffset += this->constInfo.selectedCountOffset) {
+                    this->SetRunInfo(runInfos[taskId & 1], taskId, sTaskId, deterTaskId);
                     ProcessPreload(runInfos[taskId & 1], taskId);
-                } 
-                
-                if (taskId > 0) {
-                    ProcessNotFirst(runInfos[(taskId + 1) & 1]);
+                    if (taskId > 0) {
+                        ProcessNotFirst(runInfos[(taskId + 1) & 1]);
+                    }
+                    taskId++;
                 }
-                taskId++;
             }
         }
 
-        if (sTaskId == 0) {
-            if ASCEND_IS_AIC {
-                CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
-                CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
-            } else {
-                CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
-            }
+        this->SetDeterRunInfo(deterRunInfos[deterTaskId & 1], sTaskId, deterTaskId);
+        if (deterTaskId == 0) {
+            InitFirstDeterEpoch();
+        } else {
+            LaunchDeterScatter(deterRunInfos[(deterTaskId + 1) & 1]);
         }
-
-        if (sTaskId > 0) {
-            DeterCubeVecScatter(deterRunInfos[(sTaskId + 1) & 1]);
-        }
+        deterTaskId++;
         sTaskId++;
     }
 
     if (runInfos[(taskId + 1) & 1].taskStep == TASK_C1C2) {
         ProcessNotFirst(runInfos[(taskId + 1) & 1]);
-        DeterCubeVecScatter(deterRunInfos[(sTaskId + 1) & 1]);
     }
-
-    // 分核不均匀时部分核会少一个C核的全核同步
-    if (this->NeedDeterExtraSync(processNum)) {
-        this->SetDeterRunInfo(deterRunInfos[sTaskId & 1], sTaskId);
-        DeterCubeVecScatter(deterRunInfos[sTaskId & 1]);
+    if (maxEpochs > 0) {
+        LaunchDeterScatter(deterRunInfos[(deterTaskId + 1) & 1]);
+        deterTaskId++;
     }
     this->FreeEventID();
 }
@@ -285,7 +285,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
             this->GetActualSelCount(this->t1Index, this->n2Index, this->actualSelectedBlockCount);
             for (this->blkCntOffset = 0; this->blkCntOffset < this->actualSelectedBlockCount; this->blkCntOffset += this->constInfo.selectedCountOffset) {
                 if (taskId >= 0) {
-                    this->SetRunInfo(runInfos[taskId & 1], taskId, i);
+                    this->SetRunInfo(runInfos[taskId & 1], taskId, i, 0);
                     ProcessPreload(runInfos[taskId & 1], taskId);
                 } 
                 

@@ -34,7 +34,6 @@ private:
                                         int64_t accumS2Len, int32_t actualSeqLensQ, int32_t actualSeqLensK);
     __aicore__ inline int32_t GetActualSeqLens(int64_t bIdx, GlobalTensor<int32_t> &actualSeqLensGm,
                                                 int64_t &accumLen, FagConstInfo constInfo);
-    __aicore__ inline bool HasDeterScatterWork(FagConstInfo &constInfo, FagRunInfo &runInfo);
 public:
     __aicore__ inline FAGBlockVec(){};
     __aicore__ inline void SetVecBlockParams(TPipe *pipe, SFagTilingType tilingData, uint32_t vBlockIdx,
@@ -623,11 +622,6 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
                                                                    const GlobalTensor<CALC_TYPE> &dvWorkSpaceGm,
                                                                    FagConstInfo &constInfo, FagRunInfo &runInfo)
 {
-    // 整轮 sel=0 时所有 Vector 核判定相同。跳过 Alloc/Fetch/flag12。
-    // 外层 DeterCubeVecScatter 已用 HasDeterRoundWork 跳过空 epoch；这里是进入后的 flag12 保护。
-    if (!HasDeterScatterWork(constInfo, runInfo)) {
-        return;
-    }
     int64_t UB_ROW_SIZE = 8;
     int64_t usedCoreNum = tilingData->baseParams.usedCoreNum;
     int64_t coreNum = GetBlockNum();
@@ -684,10 +678,10 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
         int64_t maxLoops = CeilDiv(currentCoreKSize, UB_ROW_SIZE);
         int64_t tailRows = currentCoreKSize - (maxLoops - 1) * UB_ROW_SIZE;
 
-        int64_t currentMm4SrcOffset = runInfo.sTaskIdMod2 * constInfo.selectedBlockCount * HEAD_DIM_ALIGN * coreNum +
+        int64_t currentMm4SrcOffset = runInfo.deterTaskIdMod2 * constInfo.selectedBlockCount * HEAD_DIM_ALIGN * coreNum +
                                       idx * constInfo.selectedBlockCount * HEAD_DIM_ALIGN +
                                       s2SrcOffset * constInfo.selectedBlockSize * HEAD_DIM_ALIGN;
-        int64_t currentMm5SrcOffset = runInfo.sTaskIdMod2 * constInfo.selectedBlockCount *
+        int64_t currentMm5SrcOffset = runInfo.deterTaskIdMod2 * constInfo.selectedBlockCount *
                                       constInfo.commonConstInfo.dSizeV * coreNum +
                                       idx * constInfo.selectedBlockCount * constInfo.commonConstInfo.dSizeV +
                                       s2SrcOffset * constInfo.selectedBlockSize * constInfo.commonConstInfo.dSizeV;
@@ -799,40 +793,6 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
     SetAtomicNone();
     dSOutQue.FreeTensor(dkInTensor);
     pOutQue.FreeTensor(dvInTensor);
-}
-
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline bool FAGBlockVec<TEMPLATE_ARGS>::HasDeterScatterWork(FagConstInfo &constInfo, FagRunInfo &runInfo)
-{
-    int64_t usedCoreNum = tilingData->baseParams.usedCoreNum;
-    int64_t validT1 = tilingData->baseParams.totalSize;
-    if constexpr (IS_TND) {
-        validT1 = this->actualSeqLengthsQueryGm.GetValue(constInfo.bSize - 1);
-    }
-    int64_t bIdx = 0;
-    int64_t s1Idx = 0;
-    int64_t preBIdx = -1;
-    int64_t accumS1Len = 0;
-    int64_t accumS2Len = 0;
-    int64_t actualSeqLensQ = 0;
-    int64_t actualSeqLensK = 0;
-    for (int64_t idx = 0; idx < usedCoreNum; idx++) {
-        int64_t bS1Index = runInfo.sTaskId * usedCoreNum + idx;
-        if (bS1Index >= tilingData->baseParams.totalSize || bS1Index >= validT1) {
-            break;
-        }
-        GetBS1Index(bS1Index, bIdx, s1Idx, constInfo);
-        if (bIdx != preBIdx) {
-            actualSeqLensQ = GetActualSeqLens(bIdx, this->actualSeqLengthsQueryGm, accumS1Len, constInfo);
-            actualSeqLensK = GetActualSeqLens(bIdx, this->actualSeqLengthsKeyGm, accumS2Len, constInfo);
-            preBIdx = bIdx;
-        }
-        GetRunInfo(bIdx, s1Idx, runInfo, constInfo, accumS2Len, actualSeqLensQ, actualSeqLensK);
-        if (runInfo.actualSelectedBlockCount > 0) {
-            return true;
-        }
-    }
-    return false;
 }
 
 TEMPLATES_DEF_NO_DEFAULT
