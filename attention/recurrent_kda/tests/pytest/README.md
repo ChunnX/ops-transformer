@@ -17,12 +17,19 @@
 
 ## 环境配置
 
-在仓库根目录加载 CANN 和 Python 环境，并将 `torch_extension` 加入
-`PYTHONPATH`：
+在仓库根目录加载 CANN 和 Python 环境，并按照仓库
+`torch_extension/README.md` 的规范构建、安装单算子 wheel：
 
 ```bash
+cd <repo_root>
+bash build.sh --torch_extension --ops=recurrent_kda --vendor_name=custom
+python3 -m pip install \
+    build_out/-1.0.0-py3-none-any.whl \
+    --force-reinstall --no-deps
 export PYTHONPATH=$(pwd)/torch_extension:${PYTHONPATH}
 ```
+
+`test_run.sh` 只负责启动 pytest，不执行 wheel 构建或安装。
 
 如果使用安装到 CANN 目录下的 custom 算子包，还需要设置：
 
