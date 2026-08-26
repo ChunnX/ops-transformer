@@ -185,20 +185,20 @@ def all_gather_quant_matmul(
         lambda: f"comm_mode only supports 'urma', got '{comm_mode}'.",
     )
 
-    # 拦截：uint8 tensor 只能搭配 fp4 dtype enum（296=fp4_e2m1, 297=fp4_e1m2）传入
-    # 不传 enum 或传了非 fp4 枚举，csrc 都无法正确识别真实类型
-    FP4_DTYPE_ENUMS = (296, 297)
+    # 拦截：uint8 tensor 只能搭配 fp4_e2m1 dtype enum（296）传入
+    # 不传 enum 或传了非 fp4_e2m1 枚举，csrc 都无法正确识别真实类型
+    FP4_DTYPE_ENUMS = (296,)
     if x1.dtype == torch.uint8 and x1_dtype not in FP4_DTYPE_ENUMS:
         torch._check(
             False,
             lambda: f"x1 is uint8 tensor (likely fp4 packed) but x1_dtype={x1_dtype} is not a valid fp4 enum. "
-                    f"Please pass x1_dtype=296 (fp4_e2m1) or 297 (fp4_e1m2).",
+                    f"Please pass x1_dtype=296 (fp4_e2m1).",
         )
     if x2.dtype == torch.uint8 and x2_dtype not in FP4_DTYPE_ENUMS:
         torch._check(
             False,
             lambda: f"x2 is uint8 tensor (likely fp4 packed) but x2_dtype={x2_dtype} is not a valid fp4 enum. "
-                    f"Please pass x2_dtype=296 (fp4_e2m1) or 297 (fp4_e1m2).",
+                    f"Please pass x2_dtype=296 (fp4_e2m1).",
         )
 
     # 拦截：uint8 scale tensor 必须搭配 fp8_e8m0 枚举（293）传入
