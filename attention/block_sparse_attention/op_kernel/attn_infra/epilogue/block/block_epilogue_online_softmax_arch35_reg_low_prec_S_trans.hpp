@@ -407,7 +407,8 @@ private:
         MaskReg maskReg16VL64 = CreateMask<half, MaskPattern::VL64>();
         // Each half-to-float Cast selects either the even or odd half elements.
         // tailN is at most 64, so each float-to-FP8 Cast has at most 32 valid inputs.
-        MaskReg maskReg32Cast = UpdateMask<float>((tailN + 1U) / 2U);
+        uint32_t fp32CastElemNum = (tailN + 1U) / 2U;
+        MaskReg maskReg32Cast = UpdateMask<float>(fp32CastElemNum);
 
         constexpr static CastTrait castTraitZeroUNKNOWN = {
             RegLayout::ZERO,
