@@ -172,7 +172,7 @@ $$
   并且三者来自同一份历史状态。当前不支持以`logit_max=-inf`、`exp_sum=0`和零numerator表示的空历史状态。
 - $T \times D$不能超出有符号64位Kernel GM元素偏移的表示范围；按核切分后的$T$大小不能超出uint32_t的表示范围。
 - 一行完整的$D$维数据必须能够以双缓冲方式放入统一缓冲区（Unified Buffer，UB），否则Tiling失败。
-- partial_block为原地更新参数。框架调用时由引用关系保证输入、输出复用存储；Kernel从partial_block输入地址读取，并通过对应输出ABI地址写回，不依赖两个ABI地址相同。
+- partial_block为原地更新参数。框架调用时由引用关系保证输入、输出复用存储；Kernel直接通过partial_block输入地址读写，不访问对应的输出ABI地址。
 - 当前Host Tiling申请的workspace大小为0，Kernel不访问workspace地址。
 - RMS计算使用FP32的sqrt和除法，不进行牛顿迭代，也不对输入Tensor中的零值、极值、NaN或Inf做额外处理。
 

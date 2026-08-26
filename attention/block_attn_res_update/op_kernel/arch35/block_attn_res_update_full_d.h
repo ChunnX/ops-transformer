@@ -556,26 +556,24 @@ public:
         }
     }
 
-    __aicore__ inline __attribute__((always_inline)) void operator()(GM_ADDR partialBlockInput, GM_ADDR delta,
+    __aicore__ inline __attribute__((always_inline)) void operator()(GM_ADDR partialBlock, GM_ADDR delta,
                                                                      GM_ADDR pseudoQuery, GM_ADDR numerator,
-                                                                     GM_ADDR logitMax, GM_ADDR expSum,
-                                                                     GM_ADDR partialBlockOutput, GM_ADDR h,
+                                                                     GM_ADDR logitMax, GM_ADDR expSum, GM_ADDR h,
                                                                      const BlockAttnResUpdateTilingData *tilingData)
     {
-        Init(partialBlockInput, delta, pseudoQuery, numerator, logitMax, expSum, partialBlockOutput, h, tilingData);
+        Init(partialBlock, delta, pseudoQuery, numerator, logitMax, expSum, h, tilingData);
         Process();
     }
 
 private:
-    __aicore__ inline __attribute__((always_inline)) void Init(GM_ADDR partialBlockInput, GM_ADDR delta,
-                                                               GM_ADDR pseudoQuery, GM_ADDR numerator, GM_ADDR logitMax,
-                                                               GM_ADDR expSum, GM_ADDR partialBlockOutput, GM_ADDR h,
+    __aicore__ inline __attribute__((always_inline)) void Init(GM_ADDR partialBlock, GM_ADDR delta, GM_ADDR pseudoQuery,
+                                                               GM_ADDR numerator, GM_ADDR logitMax, GM_ADDR expSum,
+                                                               GM_ADDR h,
                                                                const BlockAttnResUpdateTilingData *tilingData)
     {
         tilingData_ = tilingData;
 
-        partialBlockInputGm_ = reinterpret_cast<__gm__ float *>(partialBlockInput);
-        partialBlockOutputGm_ = reinterpret_cast<__gm__ float *>(partialBlockOutput);
+        partialBlockGm_ = reinterpret_cast<__gm__ float *>(partialBlock);
         deltaGm_ = reinterpret_cast<__gm__ bfloat16_t *>(delta);
         pseudoQueryGm_ = reinterpret_cast<__gm__ float *>(pseudoQuery);
         numeratorGm_ = reinterpret_cast<__gm__ float *>(numerator);
@@ -628,18 +626,15 @@ private:
         auto matrixGmLayout =
             Te::MakeFrameLayout<Te::NDExtLayoutPtn>(static_cast<int64_t>(coreTSize), static_cast<int64_t>(dSize));
         auto statsGmLayout = Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, static_cast<int64_t>(coreTSize));
-        auto partialBlockInputGm = Te::MakeTensor(
-            Te::MakeMemPtr<Te::Location::GM>(partialBlockInputGm_ + coreTStart * static_cast<int64_t>(dSize)),
-            matrixGmLayout);
+        auto partialBlockGm =
+            Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(partialBlockGm_ + coreTStart * static_cast<int64_t>(dSize)),
+                           matrixGmLayout);
         auto deltaGm = Te::MakeTensor(
             Te::MakeMemPtr<Te::Location::GM>(deltaGm_ + coreTStart * static_cast<int64_t>(dSize)), matrixGmLayout);
         auto numeratorGm = Te::MakeTensor(
             Te::MakeMemPtr<Te::Location::GM>(numeratorGm_ + coreTStart * static_cast<int64_t>(dSize)), matrixGmLayout);
         auto logitMaxGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(logitMaxGm_ + coreTStart), statsGmLayout);
         auto expSumGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(expSumGm_ + coreTStart), statsGmLayout);
-        auto partialBlockOutputGm = Te::MakeTensor(
-            Te::MakeMemPtr<Te::Location::GM>(partialBlockOutputGm_ + coreTStart * static_cast<int64_t>(dSize)),
-            matrixGmLayout);
         auto hGm = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(hGm_ + coreTStart * static_cast<int64_t>(dSize)),
                                   matrixGmLayout);
 
@@ -659,9 +654,7 @@ private:
             const int64_t tileTStartDim = static_cast<int64_t>(tileTStart);
             const auto matrixTileShape = Te::MakeShape(static_cast<int64_t>(currentTSize), static_cast<int64_t>(dSize));
 
-            auto partialBlockInputGmTile = partialBlockInputGm.Slice(Te::MakeCoord(tileTStartDim, 0L), matrixTileShape);
-            auto partialBlockOutputGmTile =
-                partialBlockOutputGm.Slice(Te::MakeCoord(tileTStartDim, 0L), matrixTileShape);
+            auto partialBlockGmTile = partialBlockGm.Slice(Te::MakeCoord(tileTStartDim, 0L), matrixTileShape);
             auto deltaGmTile = deltaGm.Slice(Te::MakeCoord(tileTStartDim, 0L), matrixTileShape);
 
             const uint64_t partialUbOffset = queryUbBytes_ + static_cast<uint64_t>(bufferId) * bufferUbBytes_;
@@ -677,7 +670,7 @@ private:
             if constexpr (!SINGLE_TILE) {
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(bufferId);
             }
-            Te::Copy(copyGmToUb, partialUb, partialBlockInputGmTile);
+            Te::Copy(copyGmToUb, partialUb, partialBlockGmTile);
             Te::Copy(copyGmToUb, deltaHUb, deltaGmTile);
 
             const auto statsTileShape = Te::MakeShape(1L, static_cast<int64_t>(currentTSize));
@@ -723,7 +716,7 @@ private:
             // Queue the partial copy-out as soon as its Phase 1 dependency is established.
             // MTE3 waits for Phase 1 while Scalar continues issuing the independent Phase 2 MTE2 copy-in.
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(bufferId);
-            Te::Copy(copyUbToGm, partialBlockOutputGmTile, partialUb);
+            Te::Copy(copyUbToGm, partialBlockGmTile, partialUb);
 
             // Phase 2 copy-in can overlap Phase 1 compute because it writes disjoint UB regions.
             const uint32_t phase2EventId = bufferId + BARU_BUFFER_NUM;
@@ -787,8 +780,7 @@ private:
     uint64_t bufferUbBytes_ = 0;
 
     const BlockAttnResUpdateTilingData *tilingData_ = nullptr;
-    __gm__ float *partialBlockInputGm_ = nullptr;
-    __gm__ float *partialBlockOutputGm_ = nullptr;
+    __gm__ float *partialBlockGm_ = nullptr;
     __gm__ bfloat16_t *deltaGm_ = nullptr;
     __gm__ float *pseudoQueryGm_ = nullptr;
     __gm__ float *numeratorGm_ = nullptr;

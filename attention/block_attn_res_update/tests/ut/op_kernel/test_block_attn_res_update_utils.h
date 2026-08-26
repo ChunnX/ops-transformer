@@ -138,8 +138,7 @@ public:
         std::vector<float> expSumInput(param.t);
         InitInputData(param, partialInput, deltaInput, pseudoQueryInput, numeratorInput, logitMaxInput, expSumInput);
 
-        GmBuffer partialInputGm(partialBytes);
-        GmBuffer partialOutputGm(partialBytes);
+        GmBuffer partialGm(partialBytes);
         GmBuffer deltaGm(bf16MatrixBytes);
         GmBuffer pseudoQueryGm(queryBytes);
         GmBuffer numeratorGm(partialBytes);
@@ -148,8 +147,7 @@ public:
         GmBuffer hGm(bf16MatrixBytes);
         GmBuffer tilingGm(param.tilingData.size() * sizeof(int32_t));
 
-        ASSERT_TRUE(partialInputGm.IsValid());
-        ASSERT_TRUE(partialOutputGm.IsValid());
+        ASSERT_TRUE(partialGm.IsValid());
         ASSERT_TRUE(deltaGm.IsValid());
         ASSERT_TRUE(pseudoQueryGm.IsValid());
         ASSERT_TRUE(numeratorGm.IsValid());
@@ -158,8 +156,7 @@ public:
         ASSERT_TRUE(hGm.IsValid());
         ASSERT_TRUE(tilingGm.IsValid());
 
-        std::memcpy(partialInputGm.Get(), partialInput.data(), partialBytes);
-        std::memset(partialOutputGm.Get(), 0xFF, partialBytes);
+        std::memcpy(partialGm.Get(), partialInput.data(), partialBytes);
         std::memcpy(deltaGm.Get(), deltaInput.data(), bf16MatrixBytes);
         std::memcpy(pseudoQueryGm.Get(), pseudoQueryInput.data(), queryBytes);
         std::memcpy(numeratorGm.Get(), numeratorInput.data(), partialBytes);
@@ -174,11 +171,10 @@ public:
         ICPU_SET_TILING_KEY(param.tilingKey);
         // CANN 9.2 tikicpulib does not emulate Ascend950 Reg/VF arithmetic, so this UT validates CSV scheduling and a
         // clean kernel launch rather than numerical results.
-        // Exercise the input and reference-output ABI slots with distinct valid buffers.
-        // Host tiling publishes zero workspace; nullptr makes any accidental kernel access fail this UT.
-        ASSERT_TRUE(KERNEL_RUN_KF(kernelFunc, launchBlocks, partialInputGm.Get(), deltaGm.Get(), pseudoQueryGm.Get(),
-                                  numeratorGm.Get(), logitMaxGm.Get(), expSumGm.Get(), partialOutputGm.Get(), hGm.Get(),
-                                  nullptr, tilingGm.Get()))
+        // partial_block_ref and workspace are ABI-only here; nullptr makes any accidental kernel access fail this UT.
+        ASSERT_TRUE(KERNEL_RUN_KF(kernelFunc, launchBlocks, partialGm.Get(), deltaGm.Get(), pseudoQueryGm.Get(),
+                                  numeratorGm.Get(), logitMaxGm.Get(), expSumGm.Get(), nullptr, hGm.Get(), nullptr,
+                                  tilingGm.Get()))
             << "case=" << param.caseName << ", kernel CPU simulation failed";
     }
 #endif
