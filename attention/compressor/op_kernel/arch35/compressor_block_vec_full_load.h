@@ -21,6 +21,7 @@
 #include "vf/vf_softmax.h"
 #include "vf/vf_add.h"
 #include "vf/vf_mul.h"
+#include "limits"
 #include <cstdint>
 
 using namespace AscendC;
@@ -34,7 +35,7 @@ class CompressorBlockVectorFullLoad {
 public:
     static constexpr bool X_DTYPE = COMP::xDtype == X_DTYPE::BF16;
     static constexpr float FLOAT_ZERO = 0;
-    static constexpr float SOFTMAX_MIN_NUM = SOFTMAX_MIN_VALUE;
+    static constexpr float SOFTMAX_MIN_NUM = -std::numeric_limits<float>::infinity();
     // =================================类型定义区=================================
     // 中间计算数据类型为float，高精度模式
     using T = float;
