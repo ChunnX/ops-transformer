@@ -91,7 +91,7 @@ protected:
     {
         return ge::GRAPH_SUCCESS;
     }
-    void BuildWorkspaceLayout();
+    virtual void BuildWorkspaceLayout();
 
     void Reset();
 

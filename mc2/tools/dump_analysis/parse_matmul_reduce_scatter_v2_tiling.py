@@ -21,9 +21,9 @@ logging.basicConfig(level=logging.NOTSET, format="[%(levelname)s] %(message)s", 
 
 MC2_INIT_TILING_SIZE = 64
 MC2_CC_TILING_SIZE = 512
-RCS_TILING_SIZE = 120
-MRSV2_TILING_DATA_SIZE = 1396
-QUANT_MRSV2_TILING_DATA_SIZE = 1644
+RCS_TILING_SIZE = 128  # 16*u32(64) + 3*u64(24) + 9*u32(36) + 4(pad to align 8) = 128
+MRSV2_TILING_DATA_SIZE = 1408     # 64+512+128+4+4+4+2*236+4(pad)+8+208
+QUANT_MRSV2_TILING_DATA_SIZE = 1656  # 64+512+128+4+4+4+2*360+4(pad)+8+208
 TILING_DUMP_SIZE = 2048
 
 WORKSPACE_SEG_INFO_SIZE = 24
@@ -108,7 +108,7 @@ def parse_rcs_tiling(data, offset):
         return {"error": "too short"}
     u32_head = struct.unpack_from("<16I", data, offset)
     u64_mid = struct.unpack_from("<3Q", data, offset + 64)
-    u32_tail = struct.unpack_from("<8I", data, offset + 88)
+    u32_tail = struct.unpack_from("<9I", data, offset + 88)
     return {
         "rankDim": u32_head[0], "rankID": u32_head[1], "tileCnt": u32_head[4],
         "tailM": u32_head[5], "tailCnt": u32_head[6], "rankM": u32_head[9],

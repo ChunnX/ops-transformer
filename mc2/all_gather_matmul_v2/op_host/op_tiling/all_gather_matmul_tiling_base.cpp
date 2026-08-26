@@ -742,9 +742,6 @@ ge::graphStatus AllGatherMatmulTilingBase::GetWorkspaceSize()
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "get workspace failed."), return ge::GRAPH_FAILED);
 
     workspaceSize_ = libApiWorkSpaceSize_ + storageA_ + biasLen_;
-    BuildWorkspaceLayout();
-    workspaces[0] = workspaceLayout_.totalSize;
-    OP_LOGD(opName_, "workspaces[0] size=%ld, biasLen=%d", workspaces[0], biasLen_);
 
     return ge::GRAPH_SUCCESS;
 }

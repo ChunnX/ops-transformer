@@ -31,9 +31,9 @@ logging.basicConfig(level=logging.NOTSET, format="[%(levelname)s] %(message)s", 
 # ====== 结构体大小常量 ======
 MC2_INIT_TILING_SIZE = 64
 MC2_CC_TILING_SIZE = 512
-RCS_TILING_SIZE = 120  # 16*u32(64) + 3*u64(24) + 8*u32(32)
-ALL_GATHER_MATMUL_TILING_DATA_V2_SIZE = 1632   # 64+512+120+4+4+4+3*236+8+208
-ALL_GATHER_MATMUL_TILING_DATA_FP8_SIZE = 2004  # 64+512+120+4+4+4+3*360+8+208
+RCS_TILING_SIZE = 128  # 16*u32(64) + 3*u64(24) + 9*u32(36) + 4(pad to align 8) = 128
+ALL_GATHER_MATMUL_TILING_DATA_V2_SIZE = 1640   # 64+512+128+4+4+4+3*236+8+208
+ALL_GATHER_MATMUL_TILING_DATA_FP8_SIZE = 2016  # 64+512+128+4+4+4+3*360+4(pad)+8+208
 TILING_DUMP_SIZE = 2048
 
 # ====== Workspace 结构体大小常量 ======
@@ -150,7 +150,7 @@ def parse_rcs_tiling(data: bytes, offset: int) -> dict:
         return {"error": "data too short for RCSTiling"}
     u32_fields = struct.unpack_from("<16I", data, offset)
     u64_fields = struct.unpack_from("<3Q", data, offset + 64)
-    u32_tail = struct.unpack_from("<8I", data, offset + 88)
+    u32_tail = struct.unpack_from("<9I", data, offset + 88)
     return {
         "rankDim": u32_fields[0],
         "rankID": u32_fields[1],
@@ -179,7 +179,7 @@ def parse_rcs_tiling(data: bytes, offset: int) -> dict:
         "isInputCommQuantScale": u32_tail[5],
         "dataType": u32_tail[6],
         "commInt8WorkSpace": u32_tail[7],
-        "dynamicQuantTempBuffSize": u32_tail[8] if len(u32_tail) > 8 else 0,
+        "dynamicQuantTempBuffSize": u32_tail[8],
     }
 
 
