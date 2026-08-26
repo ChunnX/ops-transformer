@@ -34,7 +34,8 @@ namespace optiling {
 using Ops::Transformer::OpTiling::TilingBaseClass;
 constexpr int64_t SIMT_DCACHE_SIZE = 64 * 1024LL; // UB要给SIMT预留64k的DCache空间，然后要用SetLocalMemSize()
 constexpr int64_t SORT_API_MAX_ELEM = 32 * 255LL; // AscendC::Sort全排序模式最多支持一次排序(32*255rep)个元素
-constexpr int64_t MRG_SORT_API_MAX_ELEM = 1024LL;
+constexpr int64_t MRG_SORT_API_MAX_ELEM =
+    1536LL; // 多核排序省去tempBuffer后，SortOut单轮每list归并元素数提升至1536（32对齐），减少VMS/SortOut轮数
 constexpr int64_t MX_QUANT_BLOCK_SIZE = 32LL;
 constexpr int64_t MXFPX_SCALE_BLOCK_SIZE = 64LL;
 constexpr int64_t SCALE_FACTOR_WITH_X = 32LL;
@@ -391,8 +392,7 @@ private:
     void SetPerLoopParams4NoQuantDropPad(const MultipleParams &multipleParams, PerLoopParams &perLoopParams,
                                          const int64_t perCoreIndicesElements);
     int64_t GetXBufferNum(const int additionalBufferNum);
-    void SetPerLoopParams4NoQuantDropLess(PerLoopParams &perLoopParams,
-                                          const int64_t perCoreIndicesElements);
+    void SetPerLoopParams4NoQuantDropLess(PerLoopParams &perLoopParams, const int64_t perCoreIndicesElements);
     void Tiling4GatherOutCompute();
     void Tiling4GatherOutMxFP8NoQuantCompute();
     void Tiling4GatherOutMxQuant();
@@ -435,8 +435,9 @@ private:
 
     bool IsMXFPXNoQuantCase(int64_t quantMode, ge::DataType xDtype) const
     {
-        return quantMode == QUANT_MODE_UNQUANT && (xDtype == ge::DataType::DT_FLOAT8_E5M2 ||
-               xDtype == ge::DataType::DT_FLOAT8_E4M3FN || xDtype == ge::DataType::DT_FLOAT4_E2M1);
+        return quantMode == QUANT_MODE_UNQUANT &&
+               (xDtype == ge::DataType::DT_FLOAT8_E5M2 || xDtype == ge::DataType::DT_FLOAT8_E4M3FN ||
+                xDtype == ge::DataType::DT_FLOAT4_E2M1);
     }
 
     bool IsSupportFullloadQuantMode() const
