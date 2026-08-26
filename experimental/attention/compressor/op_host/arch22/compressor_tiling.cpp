@@ -186,7 +186,10 @@ ge::graphStatus CompressorTiling::SetWorkSpaceInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorTiling::SetScenarioInfo() { return ge::GRAPH_SUCCESS; }
+ge::graphStatus CompressorTiling::SetScenarioInfo()
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus CompressorTiling::SetTemplateId()
 {
@@ -703,7 +706,10 @@ ge::graphStatus CompressorTiling::CheckSingleParaCoff() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorTiling::CheckSingleParaNormEps() const { return ge::GRAPH_SUCCESS; }
+ge::graphStatus CompressorTiling::CheckSingleParaNormEps() const
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus CompressorTiling::CheckSingleParaRotaryMode() const
 {
