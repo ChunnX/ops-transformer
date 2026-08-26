@@ -486,6 +486,10 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
         LocalTensor<bfloat16_t> scaleStage = srcTensor[416 * 16].template ReinterpretCast<bfloat16_t>();
         __ubuf__ bfloat16_t *ubScaleStage = (__ubuf__ bfloat16_t *)(scaleStage.GetPhyAddr());
         StageBIMxfp4Scales<Q_T>(ubSrcAddr, ubScaleStage, static_cast<uint32_t>(dealRow));
+        LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+#ifdef QSFA_DEBUG_DUMP_UB
+        AscendC::DumpTensor(scaleStage, 402U, static_cast<uint32_t>(dealRow * 32));
+#endif
         AntiquantVFImplBIMxfp4<Q_T>(ubSrcAddr, ubScaleStage, ubDstAddr, static_cast<uint32_t>(dealRow));
 
         LocalTensor<Q_T> kRopeUb = srcTensor[256].template ReinterpretCast<Q_T>();
@@ -499,6 +503,11 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
                  1,
                  13
              });
+#ifdef QSFA_DEBUG_DUMP_UB
+        PipeBarrier<PIPE_V>();
+        AscendC::DumpTensor(antiKvTensorAsB16, 403U,
+                            static_cast<uint32_t>((constInfo.dSizeNope + constInfo.dSizeRope) * (16 + 1)));
+#endif
         return;
     }
 
@@ -516,6 +525,11 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
              1,  // dst repeat stride
              21  // src repeat stride, 640 / 32   // 640 -> 672 : 20 -> 21
          });
+#ifdef QSFA_DEBUG_DUMP_UB
+    PipeBarrier<PIPE_V>();
+    AscendC::DumpTensor(antiKvTensorAsB16, 404U,
+                        static_cast<uint32_t>((constInfo.dSizeNope + constInfo.dSizeRope) * (16 + 1)));
+#endif
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -649,6 +663,11 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessSparseKv(
         }
         stage0InQue.EnQue(kvInUb);
         kvInUb = stage0InQue.DeQue<KV_T>();
+
+#ifdef QSFA_DEBUG_DUMP_UB
+        uint32_t dumpRowStride = CeilAlign(constInfo.dSizeVInput * sizeof(KV_T), BUFFER_SIZE_BYTE_32B) / sizeof(KV_T);
+        AscendC::DumpTensor(kvInUb, 401U, static_cast<uint32_t>(dealRow) * dumpRowStride);
+#endif
 
         // 2、dequant by vf
         LocalTensor<Q_T> kvDequantOutUb = stage0OutQue.AllocTensor<Q_T>();
