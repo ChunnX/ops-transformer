@@ -23,6 +23,8 @@
 #include "kernel_operator.h"
 #endif
 
+#include <limits>
+
 #include "../../../common/op_kernel/arch35/attenmask_gs1_arch35.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "adv_api/activation/softmax.h"
@@ -216,6 +218,14 @@ public:
         LocalTensor<INPUT_T> pL1Tensor = l1PBuffers_[pL1BufId * L1_P_BUF_BYTES].template ReinterpretCast<INPUT_T>();
         auto mm1ResUbTensor = ubMm1ResBuffers_[mm1ResUbBufId * UB_MM1_RES_BUF_BYTES].template ReinterpretCast<T>();
 
+        // 首轮 softmax 折叠：统一走 Update VF 族（ProcessVec1Vf updateFlag=true），由
+        // ResetSoftmaxBuffer 把 mloop 槽 sum/max 置 0/-inf 替代旧 isFirstS2Loop 区分
+        // （对齐 flash_attn 5520571a4：消除首次 softmax VF 分支）
+        if (unlikely(runInfo.isFirstS2Loop)) {
+            ResetSoftmaxBuffer(runInfo.mloop % UB_SOFTMAX_BUFCNT);
+            AscendC::PipeBarrier<PIPE_V>();
+        }
+
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(c1v1CrossCoreSyncIdx);
         if (unlikely(runInfo.actVecMSize == 0)) {
             CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(c1v1CrossCoreSyncIdx); // 反堵 c1v1：AIC 可覆写本槽
@@ -381,62 +391,34 @@ public:
         LocalTensor<T> mmRes = mm1ResUbTensor;
         Mutex::Lock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0);
         LocalTensor<INPUT_T> stage1CastTensor = ubVec1ResBuffers_.template ReinterpretCast<INPUT_T>();
-        if (unlikely(runInfo.isFirstS2Loop)) {
-            if (likely(runInfo.actSingleLoopS2Size == 128)) {
-                ProcessVec1Vf<T, INPUT_T, pseShiftType, false, mBaseSize, s2BaseSize, EQ_128, hasAtten, PSE_MODE,
-                              HAS_DROP, false, false>(
-                    stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb, pseUb, dropMaskUb,
-                    apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size, pseStride, slopes,
-                    posShift, constInfo.scaleValue, // constInfo.scaleValue 已是 T float类型
-                    descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
-            } else if (runInfo.actSingleLoopS2Size <= 64) {
-                ProcessVec1Vf<T, INPUT_T, pseShiftType, false, mBaseSize, s2BaseSize, GT_0_AND_LTE_64, hasAtten,
-                              PSE_MODE, HAS_DROP, false, false>(
-                    stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb, pseUb, dropMaskUb,
-                    apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size, pseStride, slopes,
-                    posShift, constInfo.scaleValue, descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
-            } else if (runInfo.actSingleLoopS2Size < 128) {
-                ProcessVec1Vf<T, INPUT_T, pseShiftType, false, mBaseSize, s2BaseSize, GT_64_AND_LTE_128, hasAtten,
-                              PSE_MODE, HAS_DROP, false, false>(
-                    stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb, pseUb, dropMaskUb,
-                    apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size, pseStride, slopes,
-                    posShift, constInfo.scaleValue, descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
-            } else {
-                if constexpr (s2BaseSize == 256) {
-                    ProcessVec1Vf<T, INPUT_T, pseShiftType, false, mBaseSize, s2BaseSize, GT_128_AND_LTE_256, hasAtten,
-                                  PSE_MODE, HAS_DROP>(
-                        stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb, pseUb,
-                        dropMaskUb, apiTmpBuffer, expUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size, pseStride,
-                        slopes, posShift, constInfo.scaleValue, descaleQK, negativeFloatScalar, 0.0F);
-                }
-            }
+        // 统一走 Update VF 族（updateFlag=true）：首轮 sum/max 由 ProcessVec1 的
+        // ResetSoftmaxBuffer 置 0/-inf，消除 isFirstS2Loop 分支（对齐 flash_attn 5520571a4）
+        if (likely(runInfo.actSingleLoopS2Size == 128)) {
+            ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSize, EQ_128, hasAtten, PSE_MODE, HAS_DROP,
+                          false, false>(
+                stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb, pseUb, dropMaskUb,
+                apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size, pseStride, slopes, posShift,
+                constInfo.scaleValue, // constInfo.scaleValue 已是 T float类型
+                descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
+        } else if (runInfo.actSingleLoopS2Size <= 64) {
+            ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSize, GT_0_AND_LTE_64, hasAtten, PSE_MODE,
+                          HAS_DROP, false, false>(
+                stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb, pseUb, dropMaskUb,
+                apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size, pseStride, slopes, posShift,
+                constInfo.scaleValue, descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
+        } else if (runInfo.actSingleLoopS2Size < 128) {
+            ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSize, GT_64_AND_LTE_128, hasAtten, PSE_MODE,
+                          HAS_DROP, false, false>(
+                stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb, pseUb, dropMaskUb,
+                apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size, pseStride, slopes, posShift,
+                constInfo.scaleValue, descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
         } else {
-            if (likely(runInfo.actSingleLoopS2Size == 128)) {
-                ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSize, EQ_128, hasAtten, PSE_MODE,
-                              HAS_DROP, false, false>(
+            if constexpr (s2BaseSize == 256) {
+                ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSize, GT_128_AND_LTE_256, hasAtten,
+                              PSE_MODE, HAS_DROP>(
                     stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb, pseUb, dropMaskUb,
-                    apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size, pseStride, slopes,
-                    posShift, constInfo.scaleValue, descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
-            } else if (runInfo.actSingleLoopS2Size <= 64) {
-                ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSize, GT_0_AND_LTE_64, hasAtten,
-                              PSE_MODE, HAS_DROP, false, false>(
-                    stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb, pseUb, dropMaskUb,
-                    apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size, pseStride, slopes,
-                    posShift, constInfo.scaleValue, descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
-            } else if (runInfo.actSingleLoopS2Size < 128) {
-                ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSize, GT_64_AND_LTE_128, hasAtten,
-                              PSE_MODE, HAS_DROP, false, false>(
-                    stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb, pseUb, dropMaskUb,
-                    apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size, pseStride, slopes,
-                    posShift, constInfo.scaleValue, descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
-            } else {
-                if constexpr (s2BaseSize == 256) {
-                    ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSize, GT_128_AND_LTE_256, hasAtten,
-                                  PSE_MODE, HAS_DROP>(
-                        stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb, pseUb,
-                        dropMaskUb, apiTmpBuffer, expUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size, pseStride,
-                        slopes, posShift, constInfo.scaleValue, descaleQK, negativeFloatScalar, 0.0F);
-                }
+                    apiTmpBuffer, expUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size, pseStride, slopes, posShift,
+                    constInfo.scaleValue, descaleQK, negativeFloatScalar, 0.0F);
             }
         }
         Mutex::Unlock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0);
@@ -472,11 +454,9 @@ public:
         LocalTensor<float> expUb =
             softmaxExpBuf_[(runInfo.loop % UB_SOFTMAX_BUFCNT) * (UB_SOFTMAX_BUF_BYTES / sizeof(float))];
 
-        // 首个 S2 片不折叠：NoUpdate VF 族（ProcessVec1Vf updateFlag=false）只写 slice 局部 sum/max，
-        // 不填共享快照 vec1ApiTmpBuf_，折叠会读脏快照（基线守卫，行为零变化）
-        if (likely(!runInfo.isFirstS2Loop)) {
-            UpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, vec1ApiTmpBuf_, runInfo.actVecMSize);
-        }
+        // 折叠软最大值：首轮时 mloop 槽 sum/max 已由 ProcessVec1 的 ResetSoftmaxBuffer
+        // 置 0/-inf，Update 恒执行（对齐 flash_attn 5520571a4：消除 isFirstS2Loop 区分）
+        UpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, vec1ApiTmpBuf_, runInfo.actVecMSize);
 
         if (unlikely(runInfo.isLastS2Loop)) {
             SoftmaxDataCopyOut(runInfo, sumUb, maxUb);
@@ -788,6 +768,15 @@ public:
                                                MLA_SIZE_OF_MEMBER(UbLayout, maxBrdcstBuf));
         vec1ApiTmpBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, MLA_OFFSET_OF_MEMBER(UbLayout, tmpBuf),
                                               MLA_SIZE_OF_MEMBER(UbLayout, tmpBuf));
+    }
+
+    __aicore__ inline void ResetSoftmaxBuffer(uint32_t slotIdx)
+    {
+        constexpr uint32_t softmaxBufElementCount = UB_SOFTMAX_BUF_BYTES / sizeof(float);
+        LocalTensor<float> sumUb = softmaxSumBuf_[slotIdx * softmaxBufElementCount];
+        LocalTensor<float> maxUb = softmaxMaxBuf_[slotIdx * softmaxBufElementCount];
+        Duplicate<float>(sumUb, static_cast<float>(0), softmaxBufElementCount);
+        Duplicate<float>(maxUb, static_cast<float>(-std::numeric_limits<float>::infinity()), softmaxBufElementCount);
     }
 
     __aicore__ inline void InitCrossCoreSync()
