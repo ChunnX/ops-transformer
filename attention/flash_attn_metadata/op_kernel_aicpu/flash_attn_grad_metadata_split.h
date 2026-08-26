@@ -243,49 +243,16 @@ void FlashAttnMetadataCpuKernel::SetFagSplitAxis()
     // isAllSame: all batches have same seq lengths (for TND)
     SupportTransBSND();
 
-    // isBn2: S<=128, N1==N2, D<=512, no zero-length sequences in TND
-    // Source: common_regbase.cpp:1584-1589 (tailZeroCount==0 && !isSeqExistZero)
-    fagIsBn2_ = (s1 <= 128 && s2 <= 128) && (n1 == n2) && (d <= 512) && !fagIsSeqExistZero_;
-
-    // bnLimit: BN >= 256, or BN >= 128 with S1/S2 aligned to 128
-    bool bnLimit = ((b * n1) >= 256) ||
-                   ((b * n1) >= 128 && (s1 % 128 == 0) && (s2 % 128 == 0));
-    bool bnSparseLimit = bnLimit && !fagUseTndSplit_;
-
-    // isBn2MultiBlk: BN limit + S>128 + S<=640 + N1==N2 + D<=512
-    fagIsBn2MultiBlk_ = bnSparseLimit &&
-                        (s1 > 128 || s2 > 128) &&
-                        (s1 <= 640 && s2 <= 640) &&
-                        (n1 == n2) && (d <= 512);
-    fagIsBn2_ = fagIsBn2MultiBlk_ ? true : fagIsBn2_;
-
-    // Source: common_regbase.cpp:1608-1614
-    // isBn2 && !isBn2MultiBlk: TND+D>128 时关闭 isBn2 (dropMaskOuter 不涉及)
-    if (fagIsBn2_ && !fagIsBn2MultiBlk_) {
-        if (fagUseTndSplit_ && d > 128) {
-            fagIsBn2_ = false;
-        }
+    // Align with pypto host: tmpl=1 only for MHA + S<=128 + D<=128.
+    // Do not mark S<=640 MultiBlk or D<=512 as BN2, and do not take BN2S2 —
+    // the kernel only implements template 0 (GS1S2) and 1 (BN2).
+    fagIsBn2_ = (s1 <= 128 && s2 <= 128) && (n1 == n2) && (d <= 128) && !fagIsSeqExistZero_;
+    fagIsBn2MultiBlk_ = false;
+    if (fagIsBn2_ && fagUseTndSplit_ && d > 128) {
+        fagIsBn2_ = false;
     }
-
-    // BN2S2 route: Source common_regbase.cpp:1631-1639
-    // bn2S2RouteLimit = !hasRope(removed) && d<=512 &&
-    //   (isTND || (isAllSame && !isDeterministic(removed)) || bn2S2NotTndLimit) &&
-    //   (keepProb>=1(removed) || ...) && (n1==n2) && (queryType checks removed)
-    // Simplified: d<=512 && (isTND || isAllSame || bn2S2NotTndLimit) && (n1==n2)
-    bool bn2S2NotTndLimit = (s1 < s2) && (s2 <= 1024) &&
-                            (s2 - s1 >= 128) && (d <= 128) &&
-                            !fagIsSparse_;
-    bool bn2S2RouteLimit = (d <= 512) &&
-                           (fagUseTndSplit_ || fagIsAllSame_ || bn2S2NotTndLimit) &&
-                           (n1 == n2);
-
     if (fagIsBn2_) {
         fagSplitAxis_ = FAG_SPLIT_AXIS_BN2;
-    } else if (bn2S2RouteLimit) {
-        fagSplitAxis_ = FAG_SPLIT_AXIS_BN2S2;
-        if (fagIsAllSame_) {
-            fagUseTndSplit_ = true;
-        }
     } else {
         fagSplitAxis_ = FAG_SPLIT_AXIS_BN2GS1S2;
     }

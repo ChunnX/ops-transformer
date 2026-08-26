@@ -295,6 +295,10 @@ ge::graphStatus FlashAttnGradCheck::CheckShape(gert::TilingContext *context, con
     OP_CHECK_IF(vD <= 0 || qD <= 0,
                 OP_LOGE(opName, "D dims must be positive, but got q D=%ld, v D=%ld.", qD, vD),
                 return ge::GRAPH_PARAM_INVALID);
+    constexpr int64_t MAX_HEAD_DIM = 192;
+    OP_CHECK_IF(qD > MAX_HEAD_DIM || vD > MAX_HEAD_DIM,
+                OP_LOGE(opName, "D dims must be in (0, %ld], but got q D=%ld, v D=%ld.", MAX_HEAD_DIM, qD, vD),
+                return ge::GRAPH_PARAM_INVALID);
 
     // N: q.N==dout.N==dq.N==attn_out.N; k.N==v.N==dk.N==dv.N; N1%N2==0
     size_t nIdx = isTnd ? 1 : (isBnsd ? 1 : 2);

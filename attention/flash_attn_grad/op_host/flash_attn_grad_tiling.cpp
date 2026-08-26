@@ -9,8 +9,10 @@
  */
 
 #include "flash_attn_grad_tiling.h"
+#include <algorithm>
 #include <set>
 
+#include "flash_attn_grad_block_outer.h"
 #include "flash_attn_grad_tiling_check.h"
 #include "log/log.h"
 #include "op_host/tiling_util.h"
@@ -24,6 +26,12 @@ static bool HasAttenMask(gert::TilingContext *context, int64_t maskMode)
     }
     auto attnMaskShape = context->GetOptionalInputShape(ATTN_MASK_INDEX);
     return (attnMaskShape != nullptr) && (attnMaskShape->GetStorageShape().GetDimNum() > 0);
+}
+
+static bool OptionalInputExists(gert::TilingContext *context, size_t index)
+{
+    auto shape = context->GetOptionalInputShape(index);
+    return (shape != nullptr) && (shape->GetStorageShape().GetDimNum() > 0);
 }
 
 static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
@@ -52,9 +60,6 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
     OP_CHECK_IF(checkRet != ge::GRAPH_SUCCESS,
                 OP_LOGE(context->GetNodeName(), "CheckParams failed."),
                 return ge::GRAPH_PARAM_INVALID);
-
-    uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
-    context->SetBlockDim(blockDim);
 
     auto attrs = context->GetAttrs();
     std::string layoutQStr = "BSND";
@@ -140,7 +145,46 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
                 return ge::GRAPH_PARAM_INVALID);
     int64_t gSize = n1Size / n2Size;
 
-        // Decide the block-to-core mapping. Linear splitting spreads the live cores
+    // BN2 this round: MHA + S<=128 + D<=128. GQA (N1!=N2) and D=192
+    // stay on BN2GS1S2. bit4 swizzle is template=0 only.
+    int64_t tmpl = 0;
+    if (layout != 1 && n1Size == n2Size && dSize <= 128 &&
+        s1Size <= 128 && s2Size <= 128) {
+        tmpl = 1;
+    }
+
+    // Launch cube count = metadata blockOuter for dense non-TND. Tiling cannot
+    // read the AICPU tensor, so this formula must stay identical to
+    // DoFagBn2DenseSplit / DoFagDenseSplit. Sparse / TND / seqused can use
+    // fewer cores than the dense formula; keep the full chip there so we never
+    // under-launch (idle cores already no-op on start==end).
+    int64_t s1OuterMeta = 0;
+    int64_t s2OuterMeta = 0;
+    FagS1S2Outer(s1Size, s2Size, s1OuterMeta, s2OuterMeta);
+    const bool hasSeqused = OptionalInputExists(context, SEQUSED_Q_INDEX) ||
+                            OptionalInputExists(context, SEQUSED_KV_INDEX);
+    const bool useActualCores = (layout != 1) && (maskMode == 0) && !hasSeqused;
+    uint32_t usedCube = aicNum;
+    if (useActualCores) {
+        usedCube = static_cast<uint32_t>(FagUsedCubeCores(
+            tmpl == 1, bSize, n2Size, gSize, s1OuterMeta, s2OuterMeta,
+            static_cast<int64_t>(aicNum)));
+    }
+    uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(
+        usedCube * FAG_AICV_RATIO_DEFAULT, aicNum, aivNum);
+    OP_CHECK_IF(blockDim == 0,
+                OP_LOGE(context->GetNodeName(),
+                        "CalcTschBlockDim returned 0, usedCube=%u, aicNum=%u, aivNum=%u.",
+                        usedCube, aicNum, aivNum),
+                return ge::GRAPH_PARAM_INVALID);
+    context->SetBlockDim(blockDim);
+    // BN2GS1S2 pre/post uses sync_all; batch mode is required when the launched
+    // cube count is not the full chip. BN2 has no sync_all.
+    if (tmpl == 0) {
+        context->SetScheduleMode(1);
+    }
+
+    // Decide the block-to-core mapping. Linear splitting spreads the live cores
     // across many heads: at S=8192 D=128 with 36 cores, core 0 works head 0
     // while core 35 works head 31, so 36 cores stream K/V for 32 heads at once
     // and the working set blows past L2 (128 MB). msprof shows mte2_ratio 0.72
@@ -158,7 +202,7 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
     // too few columns to balance (N=1 has 64 columns for 36 cores: core 0 takes
     // 2 while core 35 takes 1, a 2x skew that costs 14%).
     int64_t swizzle = 0;
-    if (layout != 1) {
+    if (tmpl == 0 && layout != 1 && usedCube == aicNum) {
         constexpr int64_t CUBE_BASE_M = 128;
         constexpr int64_t CUBE_BASE_N = 128;
         constexpr int64_t L2_CACHE_BYTES = 128L * 1024 * 1024;
@@ -174,8 +218,9 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
         int64_t totalBlocks = fusedHeads * perHeadBlocks;
         // Must use aicNum, not blockDim: blockDim is the mixed scheduling value
         // from CalcTschBlockDim, while the kernel's coreNum comes from
-        // pl.get_block_num() which equals the physical cube core count (36).
-        // Using blockDim here would miscount the live heads.
+        // pl.get_block_num() (launched cube count). Using blockDim here would
+        // miscount the live heads. Swizzle only runs when usedCube == aicNum,
+        // matching old FAG's (blockOuter == aicNum) gate.
         if (perHeadBlocks > 0 && aicNum > 0) {
             int64_t cores = static_cast<int64_t>(aicNum);
             int64_t perCore = (totalBlocks + cores - 1) / cores;
@@ -291,30 +336,29 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
     //
     // Dv stays a runtime value (tilingData->dv): it only narrows how many columns
     // of an already-allocated tile get filled, which needs no specialization.
-    int64_t dAlign = (dSize <= 128) ? 128 : 192;
+    int64_t dAlign = (dSize <= 64) ? 64 : ((dSize <= 128) ? 128 : 192);
     OP_CHECK_IF(dSize > 192,
                 OP_LOGE(context->GetNodeName(),
                         "head dim of q (%ld) is not supported; only D <= 192 is implemented.", dSize),
                 return ge::GRAPH_PARAM_INVALID);
-    // Dv gets its own bucket for the same reason D does: the UB block holding
-    // y/dy/prod/tmp is Dv wide, and the vector function that builds
-    // softmaxGradFront walks it in trace-time-constant 128-element segments, so
-    // the segment count is baked into the binary. Dispatching a Dv=192 shape
-    // into the Dv=128 binary silently under-walks that buffer.
-    // dvAlign <= dAlign always holds (CheckParams rejects Dv > D), which is
-    // what keeps the added bit from doubling the combination count: the kernel's
-    // is_valid prunes dv_align > d_align, so the total is 36, not 64.
     int64_t dvAlign = (dvSize <= 128) ? 128 : 192;
-    // TilingKey: bit[1:0]=template(0=bn2gs1s2,1=bn2,2=bn2s2,3=bn2multiblk),
-    //            bit2=layout(0=non-TND,1=TND), bit3=hasAttenMask,
-    //            bit4=swizzle(0=linear split, 1=s2-column strided),
-    //            bit5=d_align(0=128, 1=192), bit6=dv_align(0=128, 1=192)
-    uint64_t tilingKey = static_cast<uint64_t>(0) |
+    if (dAlign == 64) {
+        dvAlign = 128;
+    }
+    // dAlign=64 is still a tilingkey bucket for D<=64, but the kernel keeps
+    // L1/L0 physically 128-wide and crops with compact=1 + set_validshape.
+    // dvAlign stays 128: the tilingkey field has no 64 bucket.
+    // TilingKey: bit[1:0]=template, bit2=layout, bit3=hasAttenMask,
+    //            bit4=swizzle (template=0 only),
+    //            bit[6:5]=d_align (0=64,1=128,2=192), bit7=dv_align (0=128,1=192)
+    uint64_t dAlignBits = (dAlign == 64) ? 0ULL : ((dAlign == 128) ? 1ULL : 2ULL);
+    uint64_t dvAlignBit = (dvAlign == 192) ? 1ULL : 0ULL;
+    uint64_t tilingKey = static_cast<uint64_t>(tmpl) |
                          (static_cast<uint64_t>(layout) << 2) |
                          (static_cast<uint64_t>(hasAttenMask) << 3) |
                          (static_cast<uint64_t>(swizzle) << 4) |
-                         (static_cast<uint64_t>(dAlign == 192 ? 1 : 0) << 5) |
-                         (static_cast<uint64_t>(dvAlign == 192 ? 1 : 0) << 6);
+                         (dAlignBits << 5) |
+                         (dvAlignBit << 7);
     context->SetTilingKey(tilingKey);
 
     // Workspace layout must match the kernel's make_ptr partitioning exactly:
@@ -338,8 +382,9 @@ static ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
     workSpaces[0] = workspaceSize;
 
     OP_LOGI(context->GetNodeName(),
-            "FlashAttnGrad tiling: blockDim=%u, layoutStr=%s, layout=%ld, maskMode=%ld, hasAttenMask=%d, swizzle=%ld, B=%ld, S1=%ld, S2=%ld, N1=%ld, N2=%ld, G=%ld, D=%ld, Dv=%ld, viewQ=[%ld,S,%ld,D] b0=%ld, viewKV=[%ld,S,%ld,D] b0=%ld, coefN=(%ld,%ld), tilingKey=%llu, workspaceSize=%zu.",
-            blockDim, layoutQStr.c_str(), layout, maskMode, hasAttenMask, swizzle, bSize, s1Size, s2Size, n1Size,
+            "FlashAttnGrad tiling: usedCube=%u, usedBlockDim=%u, useActualCores=%d, s1Outer=%ld, s2Outer=%ld, layoutStr=%s, layout=%ld, maskMode=%ld, hasAttenMask=%d, template=%ld, swizzle=%ld, dAlign=%ld, dvAlign=%ld, B=%ld, S1=%ld, S2=%ld, N1=%ld, N2=%ld, G=%ld, D=%ld, Dv=%ld, viewQ=[%ld,S,%ld,D] b0=%ld, viewKV=[%ld,S,%ld,D] b0=%ld, coefN=(%ld,%ld), tilingKey=%llu, workspaceSize=%zu.",
+            usedCube, blockDim, static_cast<int>(useActualCores), s1OuterMeta, s2OuterMeta,
+            layoutQStr.c_str(), layout, maskMode, hasAttenMask, tmpl, swizzle, dAlign, dvAlign, bSize, s1Size, s2Size, n1Size,
             n2Size, gSize, dSize, dvSize,
             tilingData->viewD0Q, tilingData->viewD2Q, tilingData->coefB0Q,
             tilingData->viewD0KV, tilingData->viewD2KV, tilingData->coefB0KV,
