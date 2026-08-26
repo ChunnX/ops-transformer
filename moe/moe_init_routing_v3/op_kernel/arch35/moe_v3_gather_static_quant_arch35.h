@@ -82,6 +82,7 @@ private:
     int64_t totalLength_;
     int64_t rowIdxType_;
     int64_t perCoreRow_;
+    int64_t useGatherCopy_ = 0;
 
     int64_t indicesOffset_;
 };
@@ -211,25 +212,47 @@ __aicore__ inline void MoeV3GatherStaticQuant<T>::GatherCopyOut(int64_t progress
     LocalTensor<int32_t> indicesLocal = expandRowIdxCopyInQueue_.DeQue<int32_t>();
     SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
 
-    for (int64_t indicesIndex = 0; indicesIndex < currentLoopRows_; indicesIndex++) {
-        int64_t rowOffset = perCoreRow_ * blockIdx_ + perLoopRows_ * progress;
-        int64_t rowIdx = indicesLocal.GetValue(indicesIndex);
-        int64_t xSrcOffset = rowIdx / k_ * cols_;
-        int64_t xDstOffset = (rowOffset + indicesIndex) * cols_;
-        int64_t curLoopCols = perLoopCols_;
+    for (int64_t colsLoop = 0; colsLoop < colLoops_; colsLoop++) {
+        int64_t curLoopCols = (colsLoop == colLoops_ - 1) ? lastLoopCols_ : perLoopCols_;
+        int64_t colsLoopOffset = colsLoop * perLoopCols_;
+        colsTileLength_ = curLoopCols;
 
-        SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
+        int64_t globalSortIdx = perCoreRow_ * blockIdx_ + perLoopRows_ * progress;
+        int64_t curLoopRow = 0;
+        int64_t currentLoopStartRow = globalSortIdx / k_;
+        int64_t currentLoopLastRow = (globalSortIdx + currentLoopRows_ - 1) / k_;
 
-        for (int64_t colsLoop = 0; colsLoop < colLoops_; colsLoop++) {
-            if (colsLoop == colLoops_ - 1) {
-                curLoopCols = lastLoopCols_;
+        for (int64_t row = currentLoopStartRow; row <= currentLoopLastRow; row++) {
+            bool hasValidOut = false;
+            while (curLoopRow < currentLoopRows_ && globalSortIdx / k_ == row) {
+                if (indicesLocal.GetValue(curLoopRow) >= 0) {
+                    hasValidOut = true;
+                    break;
+                }
+                curLoopRow++;
+                globalSortIdx++;
             }
-            int64_t colsLoopOffset = colsLoop * perLoopCols_;
-            colsTileLength_ = curLoopCols;
+            if (!hasValidOut) {
+                continue;
+            }
 
-            CopyXIn(xSrcOffset + colsLoopOffset, curLoopCols);
+            SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
+            CopyXIn(row * cols_ + colsLoopOffset, curLoopCols);
             Compute();
-            CopyXOut(xDstOffset + colsLoopOffset, curLoopCols);
+
+            LocalTensor<int8_t> outLocal = inputXCopyOutQueue_.DeQue<int8_t>();
+            DataCopyExtParams copyOutParams{1, static_cast<uint32_t>(curLoopCols * sizeof(int8_t)), 0, 0, 0};
+            while (curLoopRow < currentLoopRows_ && globalSortIdx / k_ == row) {
+                int32_t outIndex = indicesLocal.GetValue(curLoopRow);
+                curLoopRow++;
+                globalSortIdx++;
+                if (outIndex < 0) {
+                    continue;
+                }
+                int64_t outOffset = static_cast<int64_t>(outIndex) * cols_ + colsLoopOffset;
+                DataCopyPad<int8_t>(expandedXGm_[outOffset], outLocal, copyOutParams);
+            }
+            inputXCopyOutQueue_.FreeTensor(outLocal);
         }
     }
     expandRowIdxCopyInQueue_.FreeTensor(indicesLocal);
@@ -253,23 +276,30 @@ __aicore__ inline void MoeV3GatherStaticQuant<T>::Init(GM_ADDR inputX, GM_ADDR s
     totalLength_ = tilingData->n * tilingData->k;
     activateRows_ = gatherOutTilingData_->activeNum;
     rowIdxType_ = tilingData->rowIdxType;
+    useGatherCopy_ = tilingData->useGatherCopy;
     scaleGm_.SetGlobalBuffer((__gm__ float *)scale, 1);
     offsetGm_.SetGlobalBuffer((__gm__ float *)offset, 1);
     scale_ = scaleGm_.GetValue(0);
     offset_ = offsetGm_.GetValue(0);
 
-    expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(totalLength_, sizeof(int32_t)) * 2 +
-                                            Align(actualExpertNum_, sizeof(int32_t)), 1);
-    AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
-        expertTotalCountGm_);
-    expertTotalCount_ = expertTotalCountGm_.GetValue(0);
-
-    outputRows_ = expertTotalCount_;
-    if (activateRows_ > 0 && dropPadMode_ == DROPLESS_MODE) {
-        outputRows_ = Min(outputRows_, activateRows_);
+    int64_t scanRowCount = n_ * k_;
+    if (!useGatherCopy_) {
+        expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(totalLength_, sizeof(int32_t)) * 2 +
+                                                Align(actualExpertNum_, sizeof(int32_t)),
+                                            1);
+        AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+                                          AscendC::DcciDst::CACHELINE_OUT>(expertTotalCountGm_);
+        expertTotalCount_ = expertTotalCountGm_.GetValue(0);
+        outputRows_ = expertTotalCount_;
+        if (activateRows_ > 0 && dropPadMode_ == DROPLESS_MODE) {
+            outputRows_ = Min(outputRows_, activateRows_);
+        }
+        scanRowCount = outputRows_;
+    } else {
+        outputRows_ = n_ * k_;
     }
 
-    if (outputRows_ <= 0) {
+    if (scanRowCount <= 0) {
         needCoreNum_ = 0;
         coreRows_ = 0;
         perCoreRow_ = 1;
@@ -277,9 +307,9 @@ __aicore__ inline void MoeV3GatherStaticQuant<T>::Init(GM_ADDR inputX, GM_ADDR s
         lastLoopRows_ = 0;
         rowLoops_ = 0;
     } else {
-        perCoreRow_ = Ceil(outputRows_, tilingData->coreNum);
-        needCoreNum_ = Ceil(outputRows_, perCoreRow_);
-        int64_t lastCoreIndicesElements = outputRows_ - (needCoreNum_ - 1) * perCoreRow_;
+        perCoreRow_ = Ceil(scanRowCount, tilingData->coreNum);
+        needCoreNum_ = Ceil(scanRowCount, perCoreRow_);
+        int64_t lastCoreIndicesElements = scanRowCount - (needCoreNum_ - 1) * perCoreRow_;
 
         int64_t originPerLoopElements;
         if (blockIdx_ != needCoreNum_ - 1) {
@@ -301,15 +331,24 @@ __aicore__ inline void MoeV3GatherStaticQuant<T>::Init(GM_ADDR inputX, GM_ADDR s
     inputXGm_.SetGlobalBuffer((__gm__ T *)inputX, n_ * cols_);
     expandedXGm_.SetGlobalBuffer((__gm__ int8_t *)expandedX, totalLength_ * cols_);
 
-    if (rowIdxType_ == SCATTER) {
-        // SCATTER模式：从expandedRowIdx参数中读取输出位置索引
-        expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx + blockIdx_ * perCoreRow_,
-                                          Align(coreRows_, sizeof(int32_t)));
+    if (useGatherCopy_) {
+        if (rowIdxType_ == SCATTER) {
+            expandedRowIdxGm_.SetGlobalBuffer(
+                (__gm__ int32_t *)workspace + Align(totalLength_, sizeof(int32_t)) + blockIdx_ * perCoreRow_,
+                Align(coreRows_, sizeof(int32_t)));
+        } else {
+            expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx + blockIdx_ * perCoreRow_,
+                                              Align(coreRows_, sizeof(int32_t)));
+        }
     } else {
-        // GATHER模式：从workspace中读取排好序的原始行索引
-        expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(totalLength_, sizeof(int32_t)) +
-                                              blockIdx_ * perCoreRow_,
-                                          Align(coreRows_, sizeof(int32_t)));
+        if (rowIdxType_ == SCATTER) {
+            expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx + blockIdx_ * perCoreRow_,
+                                              Align(coreRows_, sizeof(int32_t)));
+        } else {
+            expandedRowIdxGm_.SetGlobalBuffer(
+                (__gm__ int32_t *)workspace + Align(totalLength_, sizeof(int32_t)) + blockIdx_ * perCoreRow_,
+                Align(coreRows_, sizeof(int32_t)));
+        }
     }
 
     pipe_->InitBuffer(inputXCopyInQueue_, BUFFER_NUM, AlignBytes(perLoopCols_, sizeof(T)));
@@ -331,7 +370,7 @@ __aicore__ inline void MoeV3GatherStaticQuant<T>::Process()
 
             CopyInIndices(loop);
 
-            if (rowIdxType_ == SCATTER) {
+            if (!useGatherCopy_) {
                 ScatterCopyOut(loop);
             } else {
                 GatherCopyOut(loop);

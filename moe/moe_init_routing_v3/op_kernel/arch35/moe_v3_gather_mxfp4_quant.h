@@ -444,7 +444,8 @@ private:
     __aicore__ inline void InitKernelTiling(GM_ADDR sortedExpertIdxAddr,
                                             const MoeInitRoutingV3Arch35TilingData *tilingData);
     __aicore__ inline void CopyInExpandedExpertIdx(int64_t progress);
-    __aicore__ inline void CopyExpandedXandMXQuant(int64_t progress);
+    __aicore__ inline void ScatterCopyExpandedXandMXQuant(int64_t progress);
+    __aicore__ inline void GatherCopyExpandedXandMXQuant(int64_t progress);
     __aicore__ inline void CopyIn(int64_t srcIdx, int64_t colIdx, int64_t loopCols);
     __aicore__ inline void Compute(uint32_t xElemNum, uint32_t scaleElemNum, uint32_t validScaleElemNum);
     __aicore__ inline void CopyOut(int64_t dstIdx, int64_t colIdx, int64_t loopCols, int64_t loopScaleCols);
@@ -488,6 +489,7 @@ private:
     int64_t lastLoopScaleCols_;
     int64_t indicesOffset_;
     int64_t rowIdxType_ = 0;
+    int64_t useGatherCopy_ = 0;
 
     // 会赋值为计算maxExp时，maxExp对应不同的目标fp8类型U的下限
     uint16_t lowerBoundOfB16MaxExp_ = 0;
@@ -522,13 +524,24 @@ __aicore__ inline void MoeV3GatherMxfp4Quant<T, U>::Init(GM_ADDR xAddr, GM_ADDR 
 
     xInGm_.SetGlobalBuffer((__gm__ T *)xAddr);
     expandedXOutGm_.SetGlobalBuffer((__gm__ uint8_t *)expandedXAddr);
-    if (rowIdxType_ == SCATTER) {
-        sortedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdxAddr + blockIdx_ * perCoreRow_,
-                                        Align(perCoreRow_, sizeof(int32_t)));
+    if (useGatherCopy_) {
+        if (rowIdxType_ == SCATTER) {
+            sortedRowIdxGm_.SetGlobalBuffer(
+                (__gm__ int32_t *)sortedExpertIdxAddr + Align(n_ * k_, sizeof(int32_t)) + blockIdx_ * perCoreRow_,
+                Align(perCoreRow_, sizeof(int32_t)));
+        } else {
+            sortedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdxAddr + blockIdx_ * perCoreRow_,
+                                            Align(perCoreRow_, sizeof(int32_t)));
+        }
     } else {
-        sortedRowIdxGm_.SetGlobalBuffer(
-            (__gm__ int32_t *)sortedExpertIdxAddr + Align(n_ * k_, sizeof(int32_t)) + blockIdx_ * perCoreRow_,
-            Align(perCoreRow_, sizeof(int32_t)));
+        if (rowIdxType_ == SCATTER) {
+            sortedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdxAddr + blockIdx_ * perCoreRow_,
+                                            Align(perCoreRow_, sizeof(int32_t)));
+        } else {
+            sortedRowIdxGm_.SetGlobalBuffer(
+                (__gm__ int32_t *)sortedExpertIdxAddr + Align(n_ * k_, sizeof(int32_t)) + blockIdx_ * perCoreRow_,
+                Align(perCoreRow_, sizeof(int32_t)));
+        }
     }
     expandedScaleOutGm_.SetGlobalBuffer((__gm__ uint8_t *)expandedScaleAddr);
 
@@ -560,16 +573,23 @@ __aicore__ inline void MoeV3GatherMxfp4Quant<T, U>::InitKernelTiling(GM_ADDR sor
     n_ = tilingData->n;
     k_ = tilingData->k;
     rowIdxType_ = tilingData->rowIdxType;
+    useGatherCopy_ = tilingData->useGatherCopy;
 
     // core split
     int64_t actualExpertNum_ = tilingData->actualExpertNum;
-    expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)sortedExpertIdxAddr + Align(n_ * k_, sizeof(int32_t)) * 2 +
-                                            Align(actualExpertNum_, sizeof(int32_t)),
-                                        1);
-    int64_t expertTotalCount_ = expertTotalCountGm_.GetValue(0);
-    perCoreRow_ = Ceil(expertTotalCount_, tilingData->coreNum);
-    needCoreNum_ = Ceil(expertTotalCount_, perCoreRow_);
-    int64_t lastCoreIndicesElements = expertTotalCount_ - (needCoreNum_ - 1) * perCoreRow_;
+    int64_t scanRowCount = n_ * k_;
+    if (!useGatherCopy_) {
+        expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)sortedExpertIdxAddr +
+                                                Align(n_ * k_, sizeof(int32_t)) * 2 +
+                                                Align(actualExpertNum_, sizeof(int32_t)),
+                                            1);
+        AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+                                          AscendC::DcciDst::CACHELINE_OUT>(expertTotalCountGm_);
+        scanRowCount = expertTotalCountGm_.GetValue(0);
+    }
+    perCoreRow_ = Ceil(scanRowCount, tilingData->coreNum);
+    needCoreNum_ = Ceil(scanRowCount, perCoreRow_);
+    int64_t lastCoreIndicesElements = scanRowCount - (needCoreNum_ - 1) * perCoreRow_;
 
     // inner core split
     int64_t originPerLoopElements;
@@ -600,12 +620,20 @@ __aicore__ inline void MoeV3GatherMxfp4Quant<T, U>::Process()
         currentLoopRows_ = perLoopRows_;
         for (int64_t loop = 0; loop < rowLoops_ - 1; loop++) {
             CopyInExpandedExpertIdx(loop);
-            CopyExpandedXandMXQuant(loop);
+            if (!useGatherCopy_) {
+                ScatterCopyExpandedXandMXQuant(loop);
+            } else {
+                GatherCopyExpandedXandMXQuant(loop);
+            }
         }
 
         currentLoopRows_ = lastLoopRows_;
         CopyInExpandedExpertIdx(rowLoops_ - 1);
-        CopyExpandedXandMXQuant(rowLoops_ - 1);
+        if (!useGatherCopy_) {
+            ScatterCopyExpandedXandMXQuant(rowLoops_ - 1);
+        } else {
+            GatherCopyExpandedXandMXQuant(rowLoops_ - 1);
+        }
     }
 }
 
@@ -621,7 +649,7 @@ __aicore__ inline void MoeV3GatherMxfp4Quant<T, U>::CopyInExpandedExpertIdx(int6
 }
 
 template <typename T, typename U>
-__aicore__ inline void MoeV3GatherMxfp4Quant<T, U>::CopyExpandedXandMXQuant(int64_t progress)
+__aicore__ inline void MoeV3GatherMxfp4Quant<T, U>::ScatterCopyExpandedXandMXQuant(int64_t progress)
 {
     LocalTensor<int32_t> indicesLocal = sortedRowIdxInQueue_.DeQue<int32_t>();
     SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
@@ -639,6 +667,67 @@ __aicore__ inline void MoeV3GatherMxfp4Quant<T, U>::CopyExpandedXandMXQuant(int6
             CopyOut(dstIdx, j, loopCols, loopScaleCols);
         }
     }
+    sortedRowIdxInQueue_.FreeTensor(indicesLocal);
+}
+
+template <typename T, typename U>
+__aicore__ inline void MoeV3GatherMxfp4Quant<T, U>::GatherCopyExpandedXandMXQuant(int64_t progress)
+{
+    LocalTensor<int32_t> indicesLocal = sortedRowIdxInQueue_.DeQue<int32_t>();
+    SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
+
+    for (int64_t j = 0; j < colLoops_; j++) {
+        int64_t loopCols = (j == colLoops_ - 1) ? lastLoopCols_ : perLoopCols_;
+        uint32_t loopScaleCols = (j == colLoops_ - 1) ? lastLoopScaleCols_ : perLoopScaleCols_;
+        uint32_t loopValidScaleCols = (j == colLoops_ - 1) ? lastLoopValidScaleCols_ : perLoopScaleCols_;
+
+        int64_t globalSortIdx = perCoreRow_ * blockIdx_ + perLoopRows_ * progress;
+        int64_t curLoopRow = 0;
+        int64_t currentLoopStartRow = globalSortIdx / k_;
+        int64_t currentLoopLastRow = (globalSortIdx + currentLoopRows_ - 1) / k_;
+
+        for (int64_t row = currentLoopStartRow; row <= currentLoopLastRow; row++) {
+            bool hasValidOut = false;
+            while (curLoopRow < currentLoopRows_ && globalSortIdx / k_ == row) {
+                if (indicesLocal.GetValue(curLoopRow) >= 0) {
+                    hasValidOut = true;
+                    break;
+                }
+                curLoopRow++;
+                globalSortIdx++;
+            }
+            if (!hasValidOut) {
+                continue;
+            }
+
+            SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
+            CopyIn(row, j, loopCols);
+            Compute(loopCols, loopScaleCols, loopValidScaleCols);
+
+            LocalTensor<uint8_t> outLocal = xQuantOutQueue_.DeQue<uint8_t>();
+            LocalTensor<uint8_t> mxScaleLocal = mxScaleOutQueue_.DeQue<uint8_t>();
+
+            DataCopyExtParams copyOutParams = {1, static_cast<uint32_t>(loopCols * sizeof(uint8_t) / 2), 0, 0, 0};
+            DataCopyExtParams copyScaleParams = {1, static_cast<uint32_t>(loopScaleCols * sizeof(uint8_t)), 0, 0, 0};
+            while (curLoopRow < currentLoopRows_ && globalSortIdx / k_ == row) {
+                int32_t outIndex = indicesLocal.GetValue(curLoopRow);
+                curLoopRow++;
+                globalSortIdx++;
+                if (outIndex < 0) {
+                    continue;
+                }
+                int64_t outOffset = (static_cast<int64_t>(outIndex) * cols_ + j * perLoopCols_) / 2;
+                DataCopyPad<uint8_t>(expandedXOutGm_[outOffset], outLocal, copyOutParams);
+
+                int64_t outScaleOffset = static_cast<int64_t>(outIndex) * scaleCols_ + j * perLoopScaleCols_;
+                DataCopyPad<uint8_t>(expandedScaleOutGm_[outScaleOffset], mxScaleLocal, copyScaleParams);
+            }
+
+            xQuantOutQueue_.FreeTensor(outLocal);
+            mxScaleOutQueue_.FreeTensor(mxScaleLocal);
+        }
+    }
+    sortedRowIdxInQueue_.FreeTensor(indicesLocal);
 }
 
 template <typename T, typename U>
