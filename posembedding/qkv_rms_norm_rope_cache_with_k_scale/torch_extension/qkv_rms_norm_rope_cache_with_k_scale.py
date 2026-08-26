@@ -384,9 +384,10 @@ def qkv_rms_norm_rope_cache_with_k_scale_(
     """
     Run Q/K/V RMSNorm, RoPE, scene-specific quantization, and in-place KV cache update.
 
-    In the M-RoPE scene, ``mrope_position`` is an INT32 tensor with logical
+    In both M-RoPE scenes, ``mrope_position`` is an INT32 tensor with logical
     shape ``[T, 3]``: each row is one token and columns are ordered T/H/W.
-    The wrapper forwards this optional tensor without transposing or reshaping it.
+    M-RoPE MX additionally requires ``q_quant_mode=k_quant_mode="MxQuant"``,
+    ``rotation=None``, TND input/output layouts, and FP8 E4M3FN ``q_out_dtype``.
     """
     q_out_dtype = _normalize_q_out_dtype(q_out_dtype)
     op_module = qkv_rms_norm_rope_cache_with_k_scale_op_builder.load()
@@ -449,8 +450,10 @@ def qkv_rms_norm_rope_cache_with_k_scale(
     """
     Functional variant returning cloned cache outputs instead of mutating caller-visible caches.
 
-    In the M-RoPE scene, ``mrope_position`` uses logical shape ``[T, 3]`` with
-    T/H/W positions in columns 0/1/2 respectively.
+    In both M-RoPE scenes, ``mrope_position`` uses logical shape ``[T, 3]`` with
+    T/H/W positions in columns 0/1/2 respectively. M-RoPE MX additionally
+    requires ``q_quant_mode=k_quant_mode="MxQuant"``, ``rotation=None``, TND
+    input/output layouts, and FP8 E4M3FN ``q_out_dtype``.
     """
     q_out_dtype = _normalize_q_out_dtype(q_out_dtype)
     op_module = qkv_rms_norm_rope_cache_with_k_scale_op_builder.load()

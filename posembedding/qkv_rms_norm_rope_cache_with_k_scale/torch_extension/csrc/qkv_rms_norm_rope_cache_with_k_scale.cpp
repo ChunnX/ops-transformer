@@ -33,7 +33,7 @@ constexpr const char *K_QUANT_PER_TOKEN_PER_HEAD = "PerTokenPerHead";
 constexpr const char *K_QUANT_MX = "MxQuant";
 constexpr int64_t MX_SCALE_GROUP_SIZE = 32;
 
-enum class QScaleKind {
+enum class QScaleOutputKind {
     FP32_RANK2,
     NONE,
     E8M0_RANK3,
@@ -44,7 +44,7 @@ struct QkvKScaleParams {
     int64_t token_num;
     int64_t head_size;
     bool q_out_is_tnd;
-    QScaleKind q_scale_kind;
+    QScaleOutputKind q_scale_kind;
     at::ScalarType q_out_dtype;
 };
 
@@ -66,7 +66,7 @@ std::string ResolveKQuantMode(const std::string &k_quant_mode)
     return k_quant_mode.empty() ? std::string(K_QUANT_PER_TOKEN_PER_HEAD) : k_quant_mode;
 }
 
-QScaleKind ResolveSceneForOutput(
+QScaleOutputKind ResolveSceneForOutput(
     const c10::optional<at::Tensor> &query_start_loc, const c10::optional<at::Tensor> &seq_lens,
     const c10::optional<at::Tensor> &rotation, const c10::optional<at::Tensor> &mrope_position,
     const c10::optional<std::vector<int64_t>> &mrope_section, const std::string &layout_qkv,
@@ -82,7 +82,7 @@ QScaleKind ResolveSceneForOutput(
                          rotation.has_value() && q_quant_mode == Q_QUANT_PER_TOKEN_PER_HEAD &&
                          k_quant_mode == K_QUANT_PER_TOKEN_PER_HEAD;
     if (is_rope) {
-        return QScaleKind::FP32_RANK2;
+        return QScaleOutputKind::FP32_RANK2;
     }
 
     const bool is_mrope_layout = layout_qkv == QKV_LAYOUT_TND && layout_q_out == QKV_LAYOUT_TND;
@@ -90,7 +90,7 @@ QScaleKind ResolveSceneForOutput(
                           rotation.has_value() && is_mrope_layout && q_quant_mode == Q_QUANT_NO_QUANT &&
                           k_quant_mode == K_QUANT_PER_TOKEN_PER_HEAD;
     if (is_mrope) {
-        return QScaleKind::NONE;
+        return QScaleOutputKind::NONE;
     }
 
     const bool is_mrope_mx = has_mrope_position && !query_start_loc.has_value() && !seq_lens.has_value() &&
@@ -102,7 +102,7 @@ QScaleKind ResolveSceneForOutput(
                 "M-RoPE(TND/TND, M-RoPE position+section present, rotation present, "
                 "NoQuant/PerTokenPerHead), or M-RoPE MX(TND/TND, M-RoPE position+section present, "
                 "rotation absent, MxQuant/MxQuant).");
-    return QScaleKind::E8M0_RANK3;
+    return QScaleOutputKind::E8M0_RANK3;
 }
 
 void CheckOptionalTensorDefined(const c10::optional<at::Tensor> &tensor, const char *name)
@@ -139,11 +139,11 @@ QkvKScaleParams ResolveOutputParams(const at::Tensor &qkv, at::IntArrayRef head_
                 "qkv_rms_norm_rope_cache_with_k_scale: layout_q_out must be TND or NTD for output allocation, but got ",
                 layout_q_out, ".");
 
-    const QScaleKind q_scale_kind =
+    const QScaleOutputKind q_scale_kind =
         ResolveSceneForOutput(query_start_loc, seq_lens, rotation, mrope_position, mrope_section, layout_qkv,
                               layout_q_out, q_quant_mode, k_quant_mode);
     const at::ScalarType expected_q_out_dtype =
-        q_scale_kind == QScaleKind::NONE ? at::kBFloat16 : at::kFloat8_e4m3fn;
+        q_scale_kind == QScaleOutputKind::NONE ? at::kBFloat16 : at::kFloat8_e4m3fn;
     TORCH_CHECK(q_out_dtype == expected_q_out_dtype,
                 "qkv_rms_norm_rope_cache_with_k_scale: q_out_dtype does not match the resolved scene.");
 
@@ -164,10 +164,10 @@ std::tuple<at::Tensor, c10::optional<at::Tensor>> MakeOutputs(const at::Tensor &
     at::Tensor q_out;
     c10::optional<at::Tensor> q_scale = c10::nullopt;
     q_out = at::empty(q_out_shape, qkv.options().dtype(params.q_out_dtype));
-    if (params.q_scale_kind == QScaleKind::FP32_RANK2) {
+    if (params.q_scale_kind == QScaleOutputKind::FP32_RANK2) {
         q_scale = at::empty(q_scale_rank2_shape, qkv.options().dtype(at::kFloat));
-    } else if (params.q_scale_kind == QScaleKind::E8M0_RANK3) {
-        const c10::SmallVector<int64_t, 3> q_scale_mx_shape = {
+    } else if (params.q_scale_kind == QScaleOutputKind::E8M0_RANK3) {
+        const c10::SmallVector<int64_t, DIM_THREE> q_scale_mx_shape = {
             params.token_num, params.n_q,
             (params.head_size + MX_SCALE_GROUP_SIZE - 1) / MX_SCALE_GROUP_SIZE};
         q_scale = at::empty(q_scale_mx_shape, qkv.options().dtype(at::kFloat8_e8m0fnu));
