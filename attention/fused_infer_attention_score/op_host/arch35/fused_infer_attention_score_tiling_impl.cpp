@@ -1811,6 +1811,16 @@ void FusedInferAttentionScoreTilingImpl::ComputeNeedInit(const FiaTilingInfo &fi
 ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTilingInfo &fiaInfo)
 {
     auto &inputParams = faRunTilingAdapter_.inputParamsRegbase;
+    inputParams.keyStrides.set_bnStride(0);
+    inputParams.keyStrides.set_n2Stride(0);
+    inputParams.valueStrides.set_bnStride(0);
+    inputParams.valueStrides.set_n2Stride(0);
+    inputParams.kRopeStrides.set_bnStride(0);
+    inputParams.kRopeStrides.set_n2Stride(0);
+    inputParams.kScaleStrides.set_bnStride(0);
+    inputParams.kScaleStrides.set_n2Stride(0);
+    inputParams.vScaleStrides.set_bnStride(0);
+    inputParams.vScaleStrides.set_n2Stride(0);
     inputParams.set_bSize(fiaInfo.bSize);
     inputParams.set_t1Size(fiaInfo.qTSize);
     inputParams.set_t2Size(fiaInfo.kTSize);
@@ -1829,7 +1839,39 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
             inputParams.kRopeStrides.set_bnStride(fiaInfo.kRopeBnStride);
             inputParams.kRopeStrides.set_n2Stride(fiaInfo.kRopeN2Stride);
         }
+        if (fiaInfo.kScaleStrides != nullptr && fiaInfo.kScaleStrides->GetDimNum() > 0) {
+            const auto &scaleShape = fiaInfo.opParamInfo.keyAntiquantScale.tensor->GetStorageShape();
+            uint64_t contigN2 = 1;
+            for (size_t i = 2; i < scaleShape.GetDimNum(); ++i) {
+                contigN2 *= static_cast<uint64_t>(scaleShape.GetDim(i));
+            }
+            uint64_t contigBn = static_cast<uint64_t>(scaleShape.GetDim(1)) * contigN2;
+            uint64_t bnStride = fiaInfo.kScaleStrides->GetStride(0);
+            uint64_t n2Stride = fiaInfo.kScaleStrides->GetDimNum() > 1 ? fiaInfo.kScaleStrides->GetStride(1) : 0;
+            inputParams.kScaleStrides.set_bnStride(bnStride == contigBn ? 0 : bnStride);
+            inputParams.kScaleStrides.set_n2Stride(n2Stride == contigN2 ? 0 : n2Stride);
+        }
+        if (fiaInfo.vScaleStrides != nullptr && fiaInfo.vScaleStrides->GetDimNum() > 0) {
+            const auto &scaleShape = fiaInfo.opParamInfo.valueAntiquantScale.tensor->GetStorageShape();
+            uint64_t contigN2 = 1;
+            for (size_t i = 2; i < scaleShape.GetDimNum(); ++i) {
+                contigN2 *= static_cast<uint64_t>(scaleShape.GetDim(i));
+            }
+            uint64_t contigBn = static_cast<uint64_t>(scaleShape.GetDim(1)) * contigN2;
+            uint64_t bnStride = fiaInfo.vScaleStrides->GetStride(0);
+            uint64_t n2Stride = fiaInfo.vScaleStrides->GetDimNum() > 1 ? fiaInfo.vScaleStrides->GetStride(1) : 0;
+            inputParams.vScaleStrides.set_bnStride(bnStride == contigBn ? 0 : bnStride);
+            inputParams.vScaleStrides.set_n2Stride(n2Stride == contigN2 ? 0 : n2Stride);
+        }
     }
+    OP_LOGI(fiaInfo.opName, "stride_path: hasViewStride=%d keyBn=%lu keyN2=%lu valBn=%lu valN2=%lu "
+        "kScaleBn=%lu kScaleN2=%lu vScaleBn=%lu vScaleN2=%lu",
+        static_cast<int>(fiaInfo.hasViewStride), fiaInfo.keyBnStride, fiaInfo.keyN2Stride,
+        fiaInfo.valueBnStride, fiaInfo.valueN2Stride,
+        (fiaInfo.kScaleStrides != nullptr && fiaInfo.kScaleStrides->GetDimNum() > 0) ? fiaInfo.kScaleStrides->GetStride(0) : 0,
+        (fiaInfo.kScaleStrides != nullptr && fiaInfo.kScaleStrides->GetDimNum() > 1) ? fiaInfo.kScaleStrides->GetStride(1) : 0,
+        (fiaInfo.vScaleStrides != nullptr && fiaInfo.vScaleStrides->GetDimNum() > 0) ? fiaInfo.vScaleStrides->GetStride(0) : 0,
+        (fiaInfo.vScaleStrides != nullptr && fiaInfo.vScaleStrides->GetDimNum() > 1) ? fiaInfo.vScaleStrides->GetStride(1) : 0);
     inputParams.set_dSizeRope(DSIZE_64);
     inputParams.set_scaleValue(fiaInfo.scaleValue);
     inputParams.set_preTokens(fiaInfo.preToken);

@@ -84,6 +84,10 @@ struct AntiquantTaskParamBaseAPI {
     uint64_t kvPaddingBeginOffset;
 
     bool isPrefixLoop = 0;
+    uint64_t kvBnStride = 0;
+    uint64_t kvN2Stride = 0;
+    uint64_t scaleBnStride = 0;
+    uint64_t scaleN2Stride = 0;
 };
 
 
@@ -294,12 +298,11 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::LoadAnt
                               taskParam.kvPaddingBeginOffset * grpNum +
                               subBlockIdx * GetRealDealSize(s2RealSize) * grpNum;
             } else {
-                scaleOffset =
-                    taskParam.bIdx * taskParam.kvHeadNum * taskParam.antiqSeqSize * grpNum +
-                    taskParam.n2Idx * taskParam.antiqSeqSize * grpNum +
-                    (taskParam.s2Idx * taskParam.singleSInnerSize + (taskParam.antiqSeqSize - taskParam.seqSize)) *
-                        grpNum +
-                    taskParam.kvPaddingBeginOffset * grpNum + subBlockIdx * GetRealDealSize(s2RealSize) * grpNum;
+                scaleOffset = taskParam.bIdx * taskParam.kvHeadNum * taskParam.antiqSeqSize * grpNum +
+                              taskParam.n2Idx * taskParam.antiqSeqSize * grpNum +
+                              (taskParam.s2Idx * taskParam.singleSInnerSize + (taskParam.antiqSeqSize - taskParam.seqSize)) *
+                                  grpNum +
+                              taskParam.kvPaddingBeginOffset * grpNum + subBlockIdx * GetRealDealSize(s2RealSize) * grpNum;
             }
         } else {
             scaleOffset = taskParam.bIdx * taskParam.kvHeadNum * taskParam.seqSize * grpNum +
@@ -530,8 +533,16 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAnt
         if (copyElmenCnt + copyFinishElmenCnt > taskParam.copyTotalS) {
             copyElmenCnt = taskParam.copyTotalS - copyFinishElmenCnt;
         }
-        uint64_t srcOffset = idInBlockTable * taskParam.kvCacheBlockSize * useKvHeadNum +
-                             taskParam.kvCacheBlockSize * useN2Idx + remainElmenCnt;
+        uint64_t blockStride = taskParam.kvCacheBlockSize * useKvHeadNum;
+        uint64_t headStride = taskParam.kvCacheBlockSize;
+        if (taskParam.scaleBnStride != 0) {
+            blockStride = taskParam.scaleBnStride;
+        }
+        if (taskParam.scaleN2Stride != 0) {
+            headStride = taskParam.scaleN2Stride;
+        }
+        uint64_t srcOffset = idInBlockTable * blockStride +
+                             useN2Idx * headStride + remainElmenCnt;
         copyInParams.blockLen = copyElmenCnt * sizeof(ANTIQ_PARAMS_T);
         DataCopyPad(dstLocal[dstOffset], srcGm[srcOffset], copyInParams, copyInPadParams);
         dstOffset += copyElmenCnt;
@@ -624,19 +635,44 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
         }
         uint64_t curOffset = 0;
         if (taskParam.paKvShapeType == static_cast<uint32_t>(KvCacheLayout::KV_CACHE_NZ)) { // NZ
-            curOffset = idInBlockTable * taskParam.kvHeadNum * taskParam.headDim * taskParam.kvCacheBlockSize +
-                        (uint64_t)(taskParam.n2Idx * taskParam.headDim * taskParam.kvCacheBlockSize) +
+            uint64_t nzHeadStride = taskParam.headDim * taskParam.kvCacheBlockSize;
+            uint64_t nzBlockStride = taskParam.kvHeadNum * nzHeadStride;
+            if (taskParam.kvN2Stride != 0) {
+                nzHeadStride = taskParam.kvN2Stride;
+            }
+            if (taskParam.kvBnStride != 0) {
+                nzBlockStride = taskParam.kvBnStride;
+            } else if (taskParam.kvN2Stride != 0) {
+                nzBlockStride = taskParam.kvHeadNum * nzHeadStride;
+            }
+            curOffset = idInBlockTable * nzBlockStride +
+                        (uint64_t)(taskParam.n2Idx * nzHeadStride) +
                         reaminRowCnt * typeElementSize;
             CopyKVPaNz(dstLocal[copyFinishRowCnt * typeElementSize], srcGm, curOffset, copyRowCnt, dealRowCount,
                        taskParam);
         } else {
             if (taskParam.paKvShapeType == static_cast<uint32_t>(KvCacheLayout::KV_CACHE_BSH)) { // BBH
-                curOffset = (idInBlockTable * taskParam.kvCacheBlockSize + reaminRowCnt) * taskParam.kvHeadNum *
-                                taskParam.headDim +
+                uint64_t bsStride = taskParam.kvHeadNum * taskParam.headDim;
+                uint64_t bnStride = taskParam.kvCacheBlockSize * bsStride;
+                if (taskParam.kvBnStride != 0) {
+                    bnStride = taskParam.kvBnStride;
+                }
+                curOffset = idInBlockTable * bnStride +
+                            reaminRowCnt * bsStride +
                             (uint64_t)(taskParam.n2Idx * taskParam.headDim);
             } else { // BNBD
-                curOffset = idInBlockTable * taskParam.kvHeadNum * taskParam.kvCacheBlockSize * taskParam.headDim +
-                            (uint64_t)(taskParam.n2Idx * taskParam.kvCacheBlockSize * taskParam.headDim) +
+                uint64_t headStride = taskParam.kvCacheBlockSize * taskParam.headDim;
+                uint64_t blockStride = taskParam.kvHeadNum * headStride;
+                if (taskParam.kvN2Stride != 0) {
+                    headStride = taskParam.kvN2Stride;
+                }
+                if (taskParam.kvBnStride != 0) {
+                    blockStride = taskParam.kvBnStride;
+                } else if (taskParam.kvN2Stride != 0) {
+                    blockStride = taskParam.kvHeadNum * headStride;
+                }
+                curOffset = idInBlockTable * blockStride +
+                            (uint64_t)(taskParam.n2Idx * headStride) +
                             reaminRowCnt * taskParam.headDim;
             }
             CopyKV(dstLocal[copyFinishRowCnt * dBaseSize], srcGm, curOffset, copyRowCnt, taskParam.headDim,

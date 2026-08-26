@@ -52,11 +52,28 @@ void TensorPreProcess(const aclTensorList *&tensorListKey, const aclTensorList *
         if ((*tempKey)[i] != nullptr) {
             op::Shape viewShape = (*tempKey)[i]->GetViewShape();
             auto viewShapeDim = viewShape.GetDimNum();
+            // 先存原始 stride (PTA传的 int32 口径非连续值), SetViewShape 会重算成连续, 之后要×8恢复
+            auto origStrides = (*tempKey)[i]->GetViewStrides();
             if (viewShapeDim >= 1) {
                 viewShape[viewShapeDim - 1] = viewShape[viewShapeDim - 1] * INT4_NUMS_IN_INT32;
             }
             (*tempKey)[i]->SetViewShape(viewShape);
             (*tempKey)[i]->SetDataType(DataType::DT_INT4);
+            // 同步 StorageShape 口径: 末维 ×8 (让 checker 用 int4 口径)
+            auto storageShape = (*tempKey)[i]->GetStorageShape();
+            if (storageShape.GetDimNum() >= 1) {
+                storageShape[storageShape.GetDimNum() - 1] =
+                    storageShape[storageShape.GetDimNum() - 1] * INT4_NUMS_IN_INT32;
+                (*tempKey)[i]->SetStorageShape(storageShape);
+            }
+            // SetViewShape 会重算 viewStrides 成连续值, 丢失原非连续信息。
+            // 用原始 stride ×8 (int32→int4 口径) 覆盖, 恢复非连续: 非末维×8, 末维不变。
+            if (origStrides.size() > 0 && viewShapeDim >= 1) {
+                for (uint64_t d = 0; d < origStrides.size() - 1; ++d) {
+                    origStrides[d] = origStrides[d] * static_cast<int64_t>(INT4_NUMS_IN_INT32);
+                }
+                (*tempKey)[i]->SetViewStrides(origStrides);
+            }
         }
     }
 
@@ -65,11 +82,24 @@ void TensorPreProcess(const aclTensorList *&tensorListKey, const aclTensorList *
         if ((*tempValue)[i] != nullptr) {
             op::Shape viewShape = (*tempValue)[i]->GetViewShape();
             auto viewShapeDim = viewShape.GetDimNum();
+            auto origStrides = (*tempValue)[i]->GetViewStrides();
             if (viewShapeDim >= 1) {
                 viewShape[viewShapeDim - 1] = viewShape[viewShapeDim - 1] * INT4_NUMS_IN_INT32;
             }
             (*tempValue)[i]->SetViewShape(viewShape);
             (*tempValue)[i]->SetDataType(DataType::DT_INT4);
+            auto storageShapeV = (*tempValue)[i]->GetStorageShape();
+            if (storageShapeV.GetDimNum() >= 1) {
+                storageShapeV[storageShapeV.GetDimNum() - 1] =
+                    storageShapeV[storageShapeV.GetDimNum() - 1] * INT4_NUMS_IN_INT32;
+                (*tempValue)[i]->SetStorageShape(storageShapeV);
+            }
+            if (origStrides.size() > 0 && viewShapeDim >= 1) {
+                for (uint64_t d = 0; d < origStrides.size() - 1; ++d) {
+                    origStrides[d] = origStrides[d] * static_cast<int64_t>(INT4_NUMS_IN_INT32);
+                }
+                (*tempValue)[i]->SetViewStrides(origStrides);
+            }
         }
     }
 
@@ -97,16 +127,42 @@ void PrefixTensorPreProcess(const aclTensor *&tensorKey, const aclTensor *&tenso
     auto tempKey = const_cast<aclTensor *>(tensorKey);
     op::Shape viewKeyShape = tempKey->GetViewShape();
     auto viewKeyShapeDim = viewKeyShape.GetDimNum();
+    auto keyOrigStrides = tempKey->GetViewStrides();
     viewKeyShape[viewKeyShapeDim - 1] = viewKeyShape[viewKeyShapeDim - 1] * INT4_NUMS_IN_INT32;
     tempKey->SetViewShape(viewKeyShape);
     tempKey->SetDataType(DataType::DT_INT4);
+    auto keyStorageShape = tempKey->GetStorageShape();
+    if (keyStorageShape.GetDimNum() >= 1) {
+        keyStorageShape[keyStorageShape.GetDimNum() - 1] =
+            keyStorageShape[keyStorageShape.GetDimNum() - 1] * INT4_NUMS_IN_INT32;
+        tempKey->SetStorageShape(keyStorageShape);
+    }
+    if (keyOrigStrides.size() > 0 && viewKeyShapeDim >= 1) {
+        for (uint64_t d = 0; d < keyOrigStrides.size() - 1; ++d) {
+            keyOrigStrides[d] = keyOrigStrides[d] * static_cast<int64_t>(INT4_NUMS_IN_INT32);
+        }
+        tempKey->SetViewStrides(keyOrigStrides);
+    }
 
     auto tempValue = const_cast<aclTensor *>(tensorValue);
     op::Shape viewValueShape = tempValue->GetViewShape();
     auto viewValueShapeDim = viewValueShape.GetDimNum();
+    auto valueOrigStrides = tempValue->GetViewStrides();
     viewValueShape[viewValueShapeDim - 1] = viewValueShape[viewValueShapeDim - 1] * INT4_NUMS_IN_INT32;
     tempValue->SetViewShape(viewValueShape);
     tempValue->SetDataType(DataType::DT_INT4);
+    auto valueStorageShape = tempValue->GetStorageShape();
+    if (valueStorageShape.GetDimNum() >= 1) {
+        valueStorageShape[valueStorageShape.GetDimNum() - 1] =
+            valueStorageShape[valueStorageShape.GetDimNum() - 1] * INT4_NUMS_IN_INT32;
+        tempValue->SetStorageShape(valueStorageShape);
+    }
+    if (valueOrigStrides.size() > 0 && viewValueShapeDim >= 1) {
+        for (uint64_t d = 0; d < valueOrigStrides.size() - 1; ++d) {
+            valueOrigStrides[d] = valueOrigStrides[d] * static_cast<int64_t>(INT4_NUMS_IN_INT32);
+        }
+        tempValue->SetViewStrides(valueOrigStrides);
+    }
 
     OP_LOGD("The conversion of kvPrefix from int32 to int4 is completed.");
 }
@@ -355,6 +411,14 @@ bool IsFirstAxisOnlyNonContiguous(const aclTensor *tensor, const char *name)
     if (!GetAclTensorViewStrides(tensor, viewStrides, stridesNum)) {
         OP_LOGW("Failed to get view strides for %s, it will be forced to be contiguous.", name);
         return false;
+    }
+    // DEBUG: 打印 IsFirstAxisOnlyNonContiguous 收到的 shape/stride (定位 INT4 口径)
+    {
+        std::string dbgShape, dbgStride;
+        for (int64_t d = 0; d < dimNum; ++d) { dbgShape += std::to_string(viewShape.GetDim(d)) + (d+1<dimNum?",":""); }
+        for (uint64_t d = 0; d < stridesNum; ++d) { dbgStride += std::to_string(viewStrides[d]) + (d+1<stridesNum?",":""); }
+        OP_LOGI("DEBUG_IsFirstAxisOnlyNC: %s viewShape=[%s] dimNum=%ld viewStrides=[%s] stridesNum=%lu",
+                name, dbgShape.c_str(), dimNum, dbgStride.c_str(), stridesNum);
     }
     if (stridesNum < static_cast<uint64_t>(dimNum)) {
         OP_LOGW("%s view strides num[%lu] is less than view shape dim num[%ld], it will be forced to be contiguous.",
@@ -685,6 +749,10 @@ static aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSizeImpl(
     const bool supportTensorV2 = NnopbaseSupportTensorV2 != nullptr;
     const auto cacheStridePolicy = DecideCacheStridePolicy(
         supportTensorV2, IsCacheScene(blockTableOptional), isFAIRoutingCandidate, isArch22MlaRoutingCandidate);
+    OP_LOGI("DEBUG_PolicyDecide: supportTensorV2=%d isCacheScene=%d isFAIRouting=%d isArch22Mla=%d policy=%d inputLayout=%s keyDtype=%d",
+            supportTensorV2, IsCacheScene(blockTableOptional), isFAIRoutingCandidate, isArch22MlaRoutingCandidate,
+            static_cast<int>(cacheStridePolicy), inputLayout == nullptr ? "null" : inputLayout,
+            key != nullptr && key->Size() > 0 && (*key)[0] != nullptr ? static_cast<int>((*key)[0]->GetDataType()) : -1);
     if (!supportTensorV2) {
         OP_LOGW("Current opbase does not support TensorV2, make key, value and keyRope contiguous.");
     }
