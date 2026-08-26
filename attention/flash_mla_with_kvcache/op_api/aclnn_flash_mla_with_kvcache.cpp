@@ -27,6 +27,24 @@ using namespace op;
 extern "C" {
 #endif
 
+namespace {
+
+void FlashMlaWithKvcacheProcessSoftmaxLse(int64_t returnSoftmaxLse, const aclTensor *softmaxLse,
+                                          const aclTensor *&tempTensor, const aclTensor *&placeHolder)
+{
+    if (returnSoftmaxLse == false) {
+        std::vector<int64_t> shape = {0};
+        int64_t addr = 0xff;
+        tempTensor = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_FLOAT, shape.data(), 0, ACL_FORMAT_ND,
+                                     shape.data(), shape.size(), static_cast<void *>(&addr));
+        placeHolder = tempTensor;
+    } else {
+        placeHolder = softmaxLse;
+    }
+}
+
+} // namespace
+
 // 第一段接口：计算workspace大小
 aclnnStatus aclnnFlashMlaWithKvcacheGetWorkspaceSize(
     const aclTensor *q, const aclTensor *kCache, const aclTensor *blockTableOptional,
@@ -57,7 +75,8 @@ aclnnStatus aclnnFlashMlaWithKvcacheGetWorkspaceSize(
 }
 
 // 第二段接口：执行计算
-aclnnStatus aclnnFlashMlaWithKvcache(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, const aclrtStream stream)
+aclnnStatus aclnnFlashMlaWithKvcache(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                     const aclrtStream stream)
 {
     return aclnnInnerFlashMlaWithKvcache(workspace, workspaceSize, executor, stream);
 }
