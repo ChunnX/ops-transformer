@@ -24,7 +24,7 @@ __aicore__ inline void SyncFunc(AscendC::TPipe &pipe)
     AscendC::WaitFlag<event>(eventID);
 }
 
-constexpr uint32_t MAX_BLOCK_BYTES = 65535U;
+constexpr uint32_t MAX_BLOCK_BYTES = 65532U;
 
 class EngramFetchGradUnique {
 public:
@@ -55,7 +55,7 @@ private:
                                                   GM_ADDR gradUniqueFp32GM);
     __aicore__ inline void LoadCoreRange(uint32_t numRecv, GM_ADDR coreStartGM, uint32_t &start, uint32_t &end);
     __aicore__ inline int32_t ComputePreCoreOffset(GM_ADDR segCountGM);
-    __aicore__ inline uint32_t ProcessScatterBatch(uint32_t cur, uint32_t end, int32_t &runningOffset,
+    __aicore__ inline uint32_t ProcessScatterBatch(uint32_t cur, uint32_t end, uint32_t numRecv, int32_t &runningOffset,
                                                    int32_t &runningUniqueOffset, int32_t &prevEntry,
                                                    bool &isFirstElement, GM_ADDR recvLocalEntryOutGM,
                                                    GM_ADDR uniqueLocalEntryOutGM, GM_ADDR gradUniqueOutGM,
@@ -65,9 +65,10 @@ private:
                                                GM_ADDR gradUniqueFp32GM, GM_ADDR recvGradGM);
     __aicore__ inline void AtomicAddGrad(AscendC::GlobalTensor<float> &atomicDstGM, AscendC::LocalTensor<float> &srcT,
                                          uint32_t subStart, uint32_t subLen);
-    __aicore__ inline uint32_t ProcessBatchUnique(uint32_t cur, uint32_t batchLen, int32_t runningOffset,
-                                                  int32_t &prevEntry, bool &isFirstElement, int32_t &inclusiveSum,
-                                                  GM_ADDR recvLocalEntryOutGM, GM_ADDR sortCompanionGM);
+    __aicore__ inline uint32_t ProcessBatchUnique(uint32_t cur, uint32_t batchLen, uint32_t numRecv,
+                                                  int32_t runningOffset, int32_t &prevEntry, bool &isFirstElement,
+                                                  int32_t &inclusiveSum, GM_ADDR recvLocalEntryOutGM,
+                                                  GM_ADDR sortCompanionGM);
     __aicore__ inline void WriteBatchUnique(uint32_t tileUniqueCnt, int32_t &runningUniqueOffset,
                                             GM_ADDR uniqueLocalEntryOutGM);
 
@@ -129,6 +130,7 @@ __aicore__ inline void EngramFetchGradUnique::Run(uint32_t numRecv, GM_ADDR recv
 
     ScatterAddAtomicParallel(numRecv, recvLocalEntryOutGM, uniqueLocalEntryOutGM, gradUniqueOutGM, gradUniqueFp32GM,
                              recvGradGM, coreStartGM, segCountGM, sortCompanionGM);
+    SyncFunc<AscendC::HardEvent::MTE3_S>(*pipe_);
     AscendC::SyncAll<true>();
 
     CastGradUniqueToOutput(segCountGM, numUniqueOutGM, gradUniqueOutGM, gradUniqueFp32GM);
@@ -362,9 +364,9 @@ __aicore__ inline void EngramFetchGradUnique::AtomicAddGrad(AscendC::GlobalTenso
     AscendC::LocalTensor<int32_t> compactIdxBuf = pingInt32[3 * Mc2Kernel::ENTRY_BATCH_CAP];
     uint32_t totalBytes = static_cast<uint32_t>(hiddenDim_) * sizeof(float);
     uint32_t numBlocks = (totalBytes + MAX_BLOCK_BYTES - 1U) / MAX_BLOCK_BYTES;
+    AscendC::SetAtomicAdd<float>();
     for (uint32_t j = 0; j < subLen; j++) {
         int32_t compactIdx = compactIdxBuf.GetValue(subStart + j);
-        AscendC::SetAtomicAdd<float>();
         for (uint32_t b = 0; b < numBlocks; b++) {
             uint32_t byteOffset = b * MAX_BLOCK_BYTES;
             uint32_t elemOffset = byteOffset / sizeof(float);
@@ -375,8 +377,9 @@ __aicore__ inline void EngramFetchGradUnique::AtomicAddGrad(AscendC::GlobalTenso
                                  srcT[static_cast<uint32_t>(j) * static_cast<uint32_t>(hiddenDim_) + elemOffset],
                                  atomicParams);
         }
-        AscendC::SetAtomicNone();
     }
+    SyncFunc<AscendC::HardEvent::MTE3_S>(*pipe_);
+    AscendC::SetAtomicNone();
 }
 
 __aicore__ inline void EngramFetchGradUnique::ScatterGradSubBatch(uint32_t subStart, uint32_t subLen,
@@ -424,7 +427,7 @@ __aicore__ inline void EngramFetchGradUnique::ScatterGradSubBatch(uint32_t subSt
     }
 }
 
-__aicore__ inline uint32_t EngramFetchGradUnique::ProcessBatchUnique(uint32_t cur, uint32_t batchLen,
+__aicore__ inline uint32_t EngramFetchGradUnique::ProcessBatchUnique(uint32_t cur, uint32_t batchLen, uint32_t numRecv,
                                                                      int32_t runningOffset, int32_t &prevEntry,
                                                                      bool &isFirstElement, int32_t &inclusiveSum,
                                                                      GM_ADDR recvLocalEntryOutGM,
@@ -459,8 +462,15 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessBatchUnique(uint32_t cu
             uniqueUb.SetValue(tileUniqueCnt, entry - static_cast<int32_t>(rankId_) * numEntriesPerRank_);
             tileUniqueCnt++;
         }
-        compactIdxBuf.SetValue(i, runningOffset + inclusiveSum - 1);
-        recvIdxBuf.SetValue(i, compUb.GetValue(i));
+        int32_t compactIdx = runningOffset + inclusiveSum - 1;
+        int32_t recvIdx = compUb.GetValue(i);
+        ascendc_assert(compactIdx >= 0 && static_cast<uint32_t>(compactIdx) < numRecv,
+                       "PBUnique IDX OOB rank=%u: i=%u compactIdx=%d numRecv=%u runOff=%d inclSum=%d", rankId_, i,
+                       compactIdx, numRecv, runningOffset, inclusiveSum);
+        ascendc_assert(recvIdx >= 0 && static_cast<uint32_t>(recvIdx) < numRecv,
+                       "PBUnique RECV OOB rank=%u: i=%u recvIdx=%d numRecv=%u", rankId_, i, recvIdx, numRecv);
+        compactIdxBuf.SetValue(i, compactIdx);
+        recvIdxBuf.SetValue(i, recvIdx);
     }
     return tileUniqueCnt;
 }
@@ -480,9 +490,9 @@ __aicore__ inline void EngramFetchGradUnique::WriteBatchUnique(uint32_t tileUniq
 }
 
 __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
-    uint32_t cur, uint32_t end, int32_t &runningOffset, int32_t &runningUniqueOffset, int32_t &prevEntry,
-    bool &isFirstElement, GM_ADDR recvLocalEntryOutGM, GM_ADDR uniqueLocalEntryOutGM, GM_ADDR gradUniqueOutGM,
-    GM_ADDR gradUniqueFp32GM, GM_ADDR recvGradGM, GM_ADDR sortCompanionGM)
+    uint32_t cur, uint32_t end, uint32_t numRecv, int32_t &runningOffset, int32_t &runningUniqueOffset,
+    int32_t &prevEntry, bool &isFirstElement, GM_ADDR recvLocalEntryOutGM, GM_ADDR uniqueLocalEntryOutGM,
+    GM_ADDR gradUniqueOutGM, GM_ADDR gradUniqueFp32GM, GM_ADDR recvGradGM, GM_ADDR sortCompanionGM)
 {
     uint32_t batchLen = end - cur;
     if (batchLen > Mc2Kernel::ENTRY_BATCH_CAP) {
@@ -490,8 +500,9 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
     }
 
     int32_t inclusiveSum = 0;
-    uint32_t tileUniqueCnt = ProcessBatchUnique(cur, batchLen, runningOffset, prevEntry, isFirstElement, inclusiveSum,
-                                                recvLocalEntryOutGM, sortCompanionGM);
+    uint32_t tileUniqueCnt = ProcessBatchUnique(cur, batchLen, numRecv, runningOffset, prevEntry, isFirstElement,
+                                                inclusiveSum, recvLocalEntryOutGM, sortCompanionGM);
+    SyncFunc<AscendC::HardEvent::S_MTE2>(*pipe_);
 
     uint32_t maxGradPerBatch = Mc2Kernel::TILE_BYTES / static_cast<uint32_t>(hiddenBytes_);
     if (maxGradPerBatch < 1U) {
@@ -534,7 +545,7 @@ __aicore__ inline void EngramFetchGradUnique::ScatterAddAtomicParallel(
 
     uint32_t cur = start;
     while (cur < end) {
-        cur = ProcessScatterBatch(cur, end, runningOffset, runningUniqueOffset, prevEntry, isFirstElement,
+        cur = ProcessScatterBatch(cur, end, numRecv, runningOffset, runningUniqueOffset, prevEntry, isFirstElement,
                                   recvLocalEntryOutGM, uniqueLocalEntryOutGM, gradUniqueOutGM, gradUniqueFp32GM,
                                   recvGradGM, sortCompanionGM);
     }
