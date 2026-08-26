@@ -18,13 +18,13 @@ extern "C" {
 #endif
 
 __attribute__((visibility("default"))) aclnnStatus aclnnMoeTokenUnpermuteWithEpGetWorkspaceSize(
-    const aclTensor *permutedTokens, const aclTensor *sortedIndices, const aclTensor *probsOptional,
-    int64_t numTopk, const aclIntArray *rangeOptional, bool paddedMode,
-    const aclIntArray *restoreShapeOptional, const aclTensor *out, uint64_t *workspaceSize,
-    aclOpExecutor **executor);
+    const aclTensor *permutedTokens, const aclTensor *sortedIndices, const aclTensor *probsOptional, int64_t numTopk,
+    const aclIntArray *rangeOptional, bool paddedMode, const aclIntArray *restoreShapeOptional, const aclTensor *out,
+    uint64_t *workspaceSize, aclOpExecutor **executor);
 
-__attribute__((visibility("default"))) aclnnStatus aclnnMoeTokenUnpermuteWithEp(
-    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
+__attribute__((visibility("default"))) aclnnStatus aclnnMoeTokenUnpermuteWithEp(void *workspace, uint64_t workspaceSize,
+                                                                                aclOpExecutor *executor,
+                                                                                aclrtStream stream);
 
 #ifdef __cplusplus
 }

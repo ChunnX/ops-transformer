@@ -30,8 +30,10 @@ _CROSS_CHECK_L0 = {
 
 
 def _is_ep_range(range_value):
-    return range_value is not None and len(range_value) == 2 and not (
-        int(range_value[0]) == 0 and int(range_value[1]) == 0
+    return (
+        range_value is not None
+        and len(range_value) == 2
+        and not (int(range_value[0]) == 0 and int(range_value[1]) == 0)
     )
 
 
@@ -55,7 +57,9 @@ def _golden_compute(permuted_tokens, sorted_indices, probs, num_topk, range_valu
     if ep_range:
         start, end = int(range_value[0]), int(range_value[1])
         valid = (indices >= start) & (indices < end)
-        local_indices = (indices - start).clamp(min=0, max=max(tokens_fp32.shape[0] - 1, 0))
+        local_indices = (indices - start).clamp(
+            min=0, max=max(tokens_fp32.shape[0] - 1, 0)
+        )
         gathered = torch.index_select(tokens_fp32, 0, local_indices)
     else:
         valid = None
@@ -87,7 +91,9 @@ def _third_party_compute(permuted_tokens, sorted_indices, probs, num_topk, range
         start, end = int(range_value[0]), int(range_value[1])
         valid = (indices >= start) & (indices < end)
         slots = torch.zeros(
-            (indices.numel(), tokens_fp32.shape[1]), dtype=torch.float32, device=tokens_fp32.device
+            (indices.numel(), tokens_fp32.shape[1]),
+            dtype=torch.float32,
+            device=tokens_fp32.device,
         )
         positions = torch.nonzero(valid, as_tuple=False).flatten()
         if positions.numel() != 0:
@@ -144,7 +150,9 @@ def moe_token_unpermute_with_ep_aclnn_golden(
     **kwargs,
 ):
     del paddedMode, restoreShapeOptional, kwargs
-    result = _golden_compute(permutedTokens, sortedIndices, probsOptional, numTopk, rangeOptional)
+    result = _golden_compute(
+        permutedTokens, sortedIndices, probsOptional, numTopk, rangeOptional
+    )
     if out is not None:
         result = result.reshape(out.shape).to(out.dtype)
     return [result]
@@ -184,7 +192,10 @@ def _customize_inputs(
         )
     elif "l2_indices_upper_bound" in name:
         indices = torch.full(
-            (total,), 2134372523, dtype=sorted_indices.dtype, device=sorted_indices.device
+            (total,),
+            2134372523,
+            dtype=sorted_indices.dtype,
+            device=sorted_indices.device,
         )
     elif _is_ep_range(range_value):
         start, end = int(range_value[0]), int(range_value[1])
@@ -193,10 +204,14 @@ def _customize_inputs(
             candidates.append(start - 1)
         if end < total:
             candidates.append(end)
-        values = torch.tensor(candidates, dtype=sorted_indices.dtype, device=sorted_indices.device)
+        values = torch.tensor(
+            candidates, dtype=sorted_indices.dtype, device=sorted_indices.device
+        )
         indices = values.repeat((total + values.numel() - 1) // values.numel())[:total]
     else:
-        indices = torch.arange(total - 1, -1, -1, dtype=sorted_indices.dtype, device=sorted_indices.device)
+        indices = torch.arange(
+            total - 1, -1, -1, dtype=sorted_indices.dtype, device=sorted_indices.device
+        )
         indices.remainder_(max(token_rows, 1))
     sorted_indices.reshape(-1).copy_(indices)
 
@@ -206,7 +221,9 @@ def _customize_inputs(
         ).reshape(permuted_tokens.shape)
         permuted_tokens.copy_(((token_values % 29) - 14).to(permuted_tokens.dtype) / 8)
         if probs is not None:
-            prob_values = torch.arange(probs.numel(), dtype=torch.float32, device=probs.device).reshape(probs.shape)
+            prob_values = torch.arange(
+                probs.numel(), dtype=torch.float32, device=probs.device
+            ).reshape(probs.shape)
             probs.copy_(((prob_values % 11) + 1).to(probs.dtype) / 16)
 
     token_flat = permuted_tokens.reshape(-1)
@@ -253,7 +270,9 @@ def _customize_numpy_inputs(
     tokens_t = numpy_to_torch_tensor(permuted_tokens)
     indices_t = numpy_to_torch_tensor(sorted_indices)
     probs_t = numpy_to_torch_tensor(probs) if probs is not None else None
-    _customize_inputs(tokens_t, indices_t, probs_t, num_topk, range_value, testcase_name)
+    _customize_inputs(
+        tokens_t, indices_t, probs_t, num_topk, range_value, testcase_name
+    )
 
 
 def moe_token_unpermute_with_ep_kernel_inputs(
@@ -269,7 +288,9 @@ def moe_token_unpermute_with_ep_kernel_inputs(
     **kwargs,
 ):
     del padded_mode, restore_shape, unpermuted_tokens, kwargs
-    _customize_numpy_inputs(permuted_tokens, sorted_indices, probs, num_topk, range, testcase_name)
+    _customize_numpy_inputs(
+        permuted_tokens, sorted_indices, probs, num_topk, range, testcase_name
+    )
     return permuted_tokens, sorted_indices, probs
 
 
@@ -286,7 +307,14 @@ def moe_token_unpermute_with_ep_aclnn_inputs(
     **kwargs,
 ):
     del paddedMode, restoreShapeOptional, out, kwargs
-    _customize_inputs(permutedTokens, sortedIndices, probsOptional, numTopk, rangeOptional, testcase_name)
+    _customize_inputs(
+        permutedTokens,
+        sortedIndices,
+        probsOptional,
+        numTopk,
+        rangeOptional,
+        testcase_name,
+    )
 
 
 def moe_token_unpermute_with_ep_geir_inputs(
@@ -302,7 +330,9 @@ def moe_token_unpermute_with_ep_geir_inputs(
     **kwargs,
 ):
     del padded_mode, restore_shape, unpermuted_tokens, kwargs
-    _customize_numpy_inputs(permuted_tokens, sorted_indices, probs, num_topk, range, testcase_name)
+    _customize_numpy_inputs(
+        permuted_tokens, sorted_indices, probs, num_topk, range, testcase_name
+    )
     return permuted_tokens, sorted_indices, probs
 
 
@@ -319,7 +349,11 @@ class _TorchKernelReference:
         **kwargs,
     ):
         del padded_mode, restore_shape, kwargs
-        return [_third_party_compute(permuted_tokens, sorted_indices, probs, num_topk, range)]
+        return [
+            _third_party_compute(
+                permuted_tokens, sorted_indices, probs, num_topk, range
+            )
+        ]
 
 
 class _TorchAclnnReference:
@@ -336,7 +370,11 @@ class _TorchAclnnReference:
         **kwargs,
     ):
         del paddedMode, restoreShapeOptional, out, kwargs
-        return [_third_party_compute(permutedTokens, sortedIndices, probsOptional, numTopk, rangeOptional)]
+        return [
+            _third_party_compute(
+                permutedTokens, sortedIndices, probsOptional, numTopk, rangeOptional
+            )
+        ]
 
 
 class _TorchGeirReference:
@@ -352,7 +390,11 @@ class _TorchGeirReference:
         **kwargs,
     ):
         del padded_mode, restore_shape, kwargs
-        return [_third_party_compute(permuted_tokens, sorted_indices, probs, num_topk, range)]
+        return [
+            _third_party_compute(
+                permuted_tokens, sorted_indices, probs, num_topk, range
+            )
+        ]
 
 
 class MoeTokenUnpermuteWithEpKernelSpec:

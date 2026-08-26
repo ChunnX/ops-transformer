@@ -33,7 +33,10 @@ ge::graphStatus TilingMoeTokenUnpermuteWithEp(gert::TilingContext *context)
     return UnpermuteWithEpTilingCompute(context, -1, true);
 }
 
-static inline int64_t AlignN(const int64_t x, const int64_t N) { return (x + N - 1) & ~(N - 1); }
+static inline int64_t AlignN(const int64_t x, const int64_t N)
+{
+    return (x + N - 1) & ~(N - 1);
+}
 
 static inline int64_t GetLengthByType(const int32_t dtype)
 {
@@ -56,9 +59,15 @@ static inline int64_t GetLengthByType(const int32_t dtype)
     }
 }
 
-static inline int64_t safeMod(const int64_t a, const int64_t b) { return b == 0 ? 0 : a % b; }
+static inline int64_t safeMod(const int64_t a, const int64_t b)
+{
+    return b == 0 ? 0 : a % b;
+}
 
-static inline int64_t safeDiv(const int64_t a, const int64_t b) { return b == 0 ? 0 : a / b; }
+static inline int64_t safeDiv(const int64_t a, const int64_t b)
+{
+    return b == 0 ? 0 : a / b;
+}
 
 static inline bool isFloatDtype(const int64_t inputDtypeSize)
 {
@@ -72,8 +81,7 @@ static inline int64_t ComputeUnitHSpace(const int64_t inputDtypeSize, const int6
 {
     int64_t castNum = isFloatDtype(inputDtypeSize) ? 0 : CAST_NUM;
 #if defined(MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950)
-    return inputDtypeSize * (QUE_NUM + bufferNum - 1) +
-           FLOAT_DATA_SIZE * (castNum + STABLE_REDUCTION_BUFFER_NUM);
+    return inputDtypeSize * (QUE_NUM + bufferNum - 1) + FLOAT_DATA_SIZE * (castNum + STABLE_REDUCTION_BUFFER_NUM);
 #else
     return inputDtypeSize * (QUE_NUM + bufferNum - 1) + FLOAT_DATA_SIZE * castNum;
 #endif
@@ -105,14 +113,14 @@ static inline ge::graphStatus MoeTokenUnpermuteWithEpInputParamCheck(const gert:
     auto rangePtr = context->GetAttrs()->GetAttrPointer<gert::ContinuousVector>(UNPERMUTE_WITH_EP_ARRT_RANGE);
     bool fallbackToUnpermute = rangePtr == nullptr || rangePtr->GetSize() == 0;
     if (rangePtr != nullptr && rangePtr->GetSize() != 0) {
-        OP_CHECK_IF(rangePtr->GetSize() != RANGE_SIZE,
-                    OP_LOGE(nodeName, "the size of range only support 2"), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(rangePtr->GetSize() != RANGE_SIZE, OP_LOGE(nodeName, "the size of range only support 2"),
+                    return ge::GRAPH_FAILED);
         const int64_t *rangeList = reinterpret_cast<const int64_t *>(rangePtr->GetData());
         fallbackToUnpermute = rangeList[0] == 0 && rangeList[1] == 0;
     }
 
-    OP_CHECK_IF(!fallbackToUnpermute && inputTopK < 1,
-                OP_LOGE(nodeName, "input num TopK cannot less than 1."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!fallbackToUnpermute && inputTopK < 1, OP_LOGE(nodeName, "input num TopK cannot less than 1."),
+                return ge::GRAPH_FAILED);
 #else
     OP_CHECK_IF(inputTopK < 1, OP_LOGE(nodeName, "input num TopK cannot less than 1."), return ge::GRAPH_FAILED);
 #endif

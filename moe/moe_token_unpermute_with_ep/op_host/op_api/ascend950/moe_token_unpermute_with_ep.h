@@ -14,10 +14,11 @@
 #include "opdev/op_executor.h"
 
 namespace l0op {
-const aclTensor *MoeTokenUnpermuteWithEp(
-    const aclTensor *permutedTokens, const aclTensor *sortedIndices, const aclTensor *probsOptional,
-    int64_t numTopk, const aclIntArray *rangeOptional, bool paddedMode,
-    const aclIntArray *restoreShapeOptional, const aclTensor *out, aclOpExecutor *executor);
+const aclTensor *MoeTokenUnpermuteWithEp(const aclTensor *permutedTokens, const aclTensor *sortedIndices,
+                                         const aclTensor *probsOptional, int64_t numTopk,
+                                         const aclIntArray *rangeOptional, bool paddedMode,
+                                         const aclIntArray *restoreShapeOptional, const aclTensor *out,
+                                         aclOpExecutor *executor);
 }
 
 #endif
