@@ -13,7 +13,7 @@ from atk.tasks.api_execute import register
 from atk.tasks.api_execute.base_api import BaseApi
 
 
-_REPO_ROOT = Path(__file__).resolve().parents[3]
+_REPO_ROOT = Path(__file__).resolve().parents[4]
 _PYTEST_ROOT = _REPO_ROOT / "attention" / "block_attention_residuals" / "tests" / "pytest"
 if str(_PYTEST_ROOT) not in sys.path:
     sys.path.insert(0, str(_PYTEST_ROOT))

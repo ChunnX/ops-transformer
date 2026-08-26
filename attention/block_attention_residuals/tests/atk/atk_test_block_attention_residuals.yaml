@@ -22,7 +22,7 @@ inputs:
       dim_numbers:
         values: [2]
       dim_values:
-        values: [[544, 7168]]
+        values: [544, 7168]
       max_length: 3900416
   - name: block_res
     type: tensor
@@ -36,7 +36,7 @@ inputs:
       dim_numbers:
         values: [3]
       dim_values:
-        values: [[544, 12, 7168]]
+        values: [544, 12, 7168]
       max_length: 46804992
   - name: proj_weight
     type: tensor
@@ -50,7 +50,7 @@ inputs:
       dim_numbers:
         values: [2]
       dim_values:
-        values: [[1, 7168]]
+        values: [1, 7168]
       max_length: 7168
   - name: norm_weight
     type: tensor
@@ -64,7 +64,7 @@ inputs:
       dim_numbers:
         values: [1]
       dim_values:
-        values: [[7168]]
+        values: [7168]
       max_length: 7168
   - name: valid_block_num
     type: attr
