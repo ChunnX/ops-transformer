@@ -52,7 +52,6 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
 
 int Init(int32_t deviceId, aclrtStream *stream)
 {
-    // 固定写法，初始化AscendCL并创建Stream。
     auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
     ret = aclrtSetDevice(deviceId);
@@ -129,7 +128,6 @@ int aclnnBlockAttnResPrepareTest(int32_t deviceId, aclrtStream &stream)
     aclTensor *logitMax = nullptr;
     aclTensor *expSum = nullptr;
 
-    // 创建输入与输出aclTensor，并通过unique_ptr管理Tensor及其Device内存。
     ret = CreateAclTensor(blockResHostData, blockResShape, &blockResDeviceAddr, aclDataType::ACL_FLOAT, &blockRes);
     std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> blockResTensorPtr(blockRes, aclDestroyTensor);
     std::unique_ptr<void, aclError (*)(void *)> blockResDeviceAddrPtr(blockResDeviceAddr, aclrtFree);
@@ -162,7 +160,6 @@ int aclnnBlockAttnResPrepareTest(int32_t deviceId, aclrtStream &stream)
     std::unique_ptr<void, aclError (*)(void *)> expSumDeviceAddrPtr(expSumDeviceAddr, aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    // 调用第一段接口获取Workspace大小和执行器。
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     ret = aclnnBlockAttnResPrepareGetWorkspaceSize(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum,
@@ -178,13 +175,11 @@ int aclnnBlockAttnResPrepareTest(int32_t deviceId, aclrtStream &stream)
         workspaceAddrPtr.reset(workspaceAddr);
     }
 
-    // 调用第二段接口执行计算，并同步等待任务完成。
     ret = aclnnBlockAttnResPrepare(workspaceAddr, workspaceSize, executor, stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnBlockAttnResPrepare failed. ERROR: %d\n", ret); return ret);
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
-    // 将Device侧输出拷贝到Host侧并打印。
     ret = aclrtMemcpy(numeratorHostData.data(), numeratorHostData.size() * sizeof(numeratorHostData[0]),
                       numeratorDeviceAddr, numeratorHostData.size() * sizeof(numeratorHostData[0]),
                       ACL_MEMCPY_DEVICE_TO_HOST);

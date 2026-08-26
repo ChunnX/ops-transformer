@@ -51,18 +51,15 @@ public:
         validBlocksAddr_ = reinterpret_cast<__gm__ int64_t *>(validBlocks);
         validN_ = ReadValidBlocks();
         const uint64_t dAlign =
-            ((static_cast<uint64_t>(tilingData_->totalD) + FP32_32B_ALIGN_ELEMS - 1U) / FP32_32B_ALIGN_ELEMS) *
-            FP32_32B_ALIGN_ELEMS;
+            ((static_cast<uint64_t>(tilingData_->totalD) + FP32_REG_ELEMS - 1U) / FP32_REG_ELEMS) * FP32_REG_ELEMS;
         const uint64_t dTileNum =
             (static_cast<uint64_t>(tilingData_->totalD) + tilingData_->baseD - 1U) / tilingData_->baseD;
         dAlign_ = static_cast<uint32_t>(dAlign);
         dTileNum_ = static_cast<uint32_t>(dTileNum);
-        // Q/V/O are UB rows; 32B (8 FP32 elements) is the required address
-        // granularity.  VF keeps the 64-element register width internally and
-        // masks tail elements during arithmetic.
+        // LoadAlign reads a complete FP32 vector register. A 64-element pitch
+        // keeps a masked tail load inside the current Q/V/O logical UB row.
         const uint64_t baseDAlign =
-            ((static_cast<uint64_t>(tilingData_->baseD) + FP32_32B_ALIGN_ELEMS - 1U) / FP32_32B_ALIGN_ELEMS) *
-            FP32_32B_ALIGN_ELEMS;
+            ((static_cast<uint64_t>(tilingData_->baseD) + FP32_REG_ELEMS - 1U) / FP32_REG_ELEMS) * FP32_REG_ELEMS;
         baseDAlign_ = static_cast<uint32_t>(baseDAlign);
         qBufferNum_ = tilingData_->qBufferNum;
         vBufferNum_ = tilingData_->vBufferNum;
@@ -113,6 +110,7 @@ public:
 private:
     static constexpr uint64_t FP32_BYTES = sizeof(float);
     static constexpr uint32_t FP32_32B_ALIGN_ELEMS = 8U;
+    static constexpr uint32_t FP32_REG_ELEMS = BlockAttnResPrepareVF::FP32_REG_ELEMS;
     static constexpr uint32_t MAX_PIPE_ID = 8U;
     static constexpr uint32_t MTE3_MAX_PIPE_ID = 4U;
     static constexpr uint32_t STAT_BUFFER_NUM = 2U;

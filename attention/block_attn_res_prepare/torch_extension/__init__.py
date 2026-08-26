@@ -1,6 +1,3 @@
-__all__ = ["block_attn_res_prepare"]
-
-from .block_attn_res_prepare import block_attn_res_prepare
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of

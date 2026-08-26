@@ -25,7 +25,7 @@ constexpr float DEFAULT_EPS = 1e-6F;
 class BlockAttnResPrepare : public OpDef {
 public:
     explicit BlockAttnResPrepare(const char *name)
-        : OpDef(name == nullptr ? "BlockAttnResPrepare" : name)
+        : OpDef(name)
     {
         this->Input("block_res")
             .ParamType(REQUIRED)

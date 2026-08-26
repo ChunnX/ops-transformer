@@ -32,13 +32,19 @@ extern "C" {
  * @param executor [输出] 第二段接口使用的执行器。
  * @return 成功时返回ACLNN_SUCCESS。
  */
-ACLNN_API aclnnStatus aclnnBlockAttnResPrepareGetWorkspaceSize(
-    const aclTensor *blockRes, const aclTensor *validBlocks, const aclTensor *pseudoQuery, aclTensor *numerator,
-    aclTensor *logitMax, aclTensor *expSum, float eps, uint64_t *workspaceSize,
-    aclOpExecutor **executor);
+ACLNN_API aclnnStatus aclnnBlockAttnResPrepareGetWorkspaceSize(const aclTensor *blockRes, const aclTensor *validBlocks,
+                                                               const aclTensor *pseudoQuery, aclTensor *numerator,
+                                                               aclTensor *logitMax, aclTensor *expSum, float eps,
+                                                               uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
- * @brief Runs BlockAttnResPrepare using the executor produced by the first-stage API.
+ * @brief 使用第一段接口生成的执行器运行BlockAttnResPrepare。
+ *
+ * @param workspace [输入] Device侧workspace地址；workspaceSize为0时可传入nullptr。
+ * @param workspaceSize [输入] 第一段接口返回的workspace大小，单位为字节。
+ * @param executor [输入] 第一段接口返回的op执行器。
+ * @param stream [输入] AscendCL Stream。
+ * @return ACLNN_SUCCESS或对应错误码。
  */
 ACLNN_API aclnnStatus aclnnBlockAttnResPrepare(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                                aclrtStream stream);

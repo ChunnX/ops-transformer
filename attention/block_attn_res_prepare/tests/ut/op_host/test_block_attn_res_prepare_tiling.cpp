@@ -8,9 +8,23 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+/*!
+ * \file test_block_attn_res_prepare_tiling.cpp
+ * \brief CSV-driven tiling unit tests for BlockAttnResPrepare.
+ */
+
 #include <gtest/gtest.h>
 
-#include "../../../op_host/op_tiling/block_attn_res_prepare_tiling.h"
+#include <exception>
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "../../../op_host/op_tiling/block_attn_res_prepare_base_tiling.h"
+#include "../../../op_kernel/arch35/block_attn_res_prepare_tiling_data.h"
+#include "gmm_csv_ge_parse_utils.h"
 #include "tiling_case_executor.h"
 #include "tiling_context_faker.h"
 
@@ -22,47 +36,50 @@ constexpr uint64_t ASCEND_950_L1_SIZE = 512UL * 1024UL;
 constexpr uint64_t ASCEND_950_L0A_SIZE = 64UL * 1024UL;
 constexpr uint64_t ASCEND_950_L0B_SIZE = 64UL * 1024UL;
 constexpr uint64_t ASCEND_950_L0C_SIZE = 256UL * 1024UL;
-constexpr uint64_t ASCEND_950_AIC_CORE_NUM = 32UL;
-constexpr uint64_t ASCEND_950_AIV_CORE_NUM = 64UL;
 constexpr uint64_t FAKE_L2_SIZE = 4096UL;
-constexpr uint32_t VECTOR_TILING_DATA_SIZE = 64U;
-constexpr uint32_t CUBE_TILING_DATA_SIZE = 160U;
+constexpr uint32_t VECTOR_TILING_DATA_SIZE = 52U;
+constexpr uint32_t CUBE_TILING_DATA_SIZE = 136U;
 constexpr uint32_t DOUBLE_BUFFER_NUM = 2U;
-constexpr size_t D_DIM_INDEX = 2;
-constexpr float DEFAULT_EPS = 1.0e-6F;
+constexpr size_t T_DIM_INDEX = 0U;
+constexpr size_t D_DIM_INDEX = 2U;
+constexpr size_t S_DIM_INDEX = 0U;
+constexpr size_t CSV_COLUMN_COUNT = 27U;
+constexpr const char *CSV_FILE_NAME = "test_block_attn_res_prepare_tiling.csv";
+constexpr const char *CSV_REPO_DIR = "attention/block_attn_res_prepare/tests/ut/op_host";
 
-// TilingInfo stores the serialized kernel ABI, not the host tiling class. The
-// host class derives from TilingDataBase and therefore cannot be reinterpreted
-// directly from this buffer.
 struct VectorTilingDataView {
     uint32_t totalT;
-    uint32_t totalN;
     uint32_t totalS;
     uint32_t totalWorkUnits;
-    uint64_t totalD;
-    uint32_t usedCoreNum;
-    uint32_t bigCoreNum;
+    uint32_t totalD;
     uint32_t blockFactor;
     uint32_t tailBlockFactor;
     uint32_t baseD;
+    uint32_t statUbElems;
+    uint32_t workUbElems;
+    float eps;
+    uint16_t usedCoreNum;
+    uint16_t bigCoreNum;
+    uint8_t totalN;
     uint8_t vCacheRows;
     uint8_t qBufferNum;
     uint8_t vBufferNum;
     uint8_t oBufferNum;
-    uint32_t statUbElems;
-    uint32_t workUbElems;
-    float eps;
 };
 
 struct CubeTilingDataView {
+    uint64_t qL1Elems;
+    uint64_t vL1Elems;
+    uint64_t eL1Elems;
+    uint64_t vUbElems;
+    uint64_t dotUbElems;
+    uint64_t reduceUbElems;
+    uint64_t softmaxUbElems;
+    uint64_t workspacePerCoreElems;
     uint32_t totalT;
-    uint32_t totalN;
     uint32_t totalS;
     uint32_t totalWorkUnits;
-    uint64_t totalD;
-    uint32_t usedCoreNum;
-    uint32_t aicCoreNum;
-    uint32_t aivCoreNum;
+    uint32_t totalD;
     uint32_t baseT;
     uint32_t baseS;
     uint32_t baseD;
@@ -73,188 +90,224 @@ struct CubeTilingDataView {
     uint32_t nAlign;
     uint32_t mm1NAlign;
     uint32_t dAlign;
+    float eps;
+    uint16_t usedCoreNum;
+    uint16_t aicCoreNum;
+    uint16_t aivCoreNum;
+    uint8_t totalN;
     uint8_t qL1BufferNum;
     uint8_t vL1BufferNum;
     uint8_t vUbBufferNum;
-    uint32_t l1CacheMode;
+    uint8_t l1CacheMode;
     uint8_t vL1CacheRows;
-    uint64_t qL1Elems;
-    uint64_t vL1Elems;
-    uint64_t eL1Elems;
-    uint64_t vUbElems;
-    uint64_t dotUbElems;
-    uint64_t reduceUbElems;
-    uint64_t softmaxUbElems;
-    uint64_t workspacePerCoreElems;
-    float eps;
 };
 
 static_assert(sizeof(VectorTilingDataView) == VECTOR_TILING_DATA_SIZE);
 static_assert(sizeof(CubeTilingDataView) == CUBE_TILING_DATA_SIZE);
 
-gert::TilingContextPara BuildCase(optiling::BlockAttnResPrepareCompileInfo &compileInfo,
-                                  const gert::StorageShape &blockResShape, const gert::StorageShape &pseudoQueryShape,
-                                  ge::DataType blockResType = ge::DT_FLOAT, ge::DataType validBlocksType = ge::DT_INT64,
-                                  ge::DataType pseudoQueryType = ge::DT_FLOAT, float eps = DEFAULT_EPS,
-                                  uint64_t coreNum = ASCEND_950_AIV_CORE_NUM)
+void ExpectValueIfSpecified(uint64_t actual, int64_t expected, const std::string &fieldName,
+                            const std::string &caseName)
 {
-    const int64_t totalT = blockResShape.GetOriginShape().GetDim(0);
-    const int64_t totalD = blockResShape.GetOriginShape().GetDim(D_DIM_INDEX);
-    const int64_t totalS = pseudoQueryShape.GetOriginShape().GetDim(0);
-    return gert::TilingContextPara(
-        "BlockAttnResPrepare",
-        {
-            {blockResShape, blockResType, ge::FORMAT_ND},
-            {{{1}, {1}}, validBlocksType, ge::FORMAT_ND},
-            {pseudoQueryShape, pseudoQueryType, ge::FORMAT_ND},
-        },
-        {
-            {{{totalS, totalT, totalD}, {totalS, totalT, totalD}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{totalS, totalT}, {totalS, totalT}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{totalS, totalT}, {totalS, totalT}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {{"eps", Ops::Transformer::AnyValue::CreateFrom<float>(eps)}}, &compileInfo, "Ascend950", coreNum,
-        ASCEND_950_UB_SIZE, FAKE_L2_SIZE);
+    if (expected >= 0) {
+        EXPECT_EQ(actual, static_cast<uint64_t>(expected)) << "field=" << fieldName << ", case=" << caseName;
+    }
 }
 
-optiling::BlockAttnResPrepareCompileInfo Ascend950CompileInfo()
+struct BlockAttnResPrepareTilingCase {
+    optiling::BlockAttnResPrepareCompileInfo MakeCompileInfo() const
+    {
+        return {static_cast<uint64_t>(aicCoreNum),
+                static_cast<uint64_t>(aivCoreNum),
+                ASCEND_950_UB_SIZE,
+                ASCEND_950_L1_SIZE,
+                ASCEND_950_L0A_SIZE,
+                ASCEND_950_L0B_SIZE,
+                ASCEND_950_L0C_SIZE,
+                SYSTEM_WORKSPACE_SIZE};
+    }
+
+    gert::TilingContextPara MakeContext(optiling::BlockAttnResPrepareCompileInfo &compileInfo) const
+    {
+        const std::vector<int64_t> blockDims = ops::ut::ParseDims(blockResShape);
+        const std::vector<int64_t> queryDims = ops::ut::ParseDims(pseudoQueryShape);
+        const int64_t totalT = blockDims[T_DIM_INDEX];
+        const int64_t totalD = blockDims[D_DIM_INDEX];
+        const int64_t totalS = queryDims[S_DIM_INDEX];
+        return gert::TilingContextPara(
+            "BlockAttnResPrepare",
+            {
+                {ops::ut::MakeGertStorageShape(blockDims), ops::ut::ParseGeDtype(blockResDtype), ge::FORMAT_ND},
+                {ops::ut::MakeGertStorageShape({1}), ops::ut::ParseGeDtype(validBlocksDtype), ge::FORMAT_ND},
+                {ops::ut::MakeGertStorageShape(queryDims), ops::ut::ParseGeDtype(pseudoQueryDtype), ge::FORMAT_ND},
+            },
+            {
+                {ops::ut::MakeGertStorageShape({totalS, totalT, totalD}), ge::DT_FLOAT, ge::FORMAT_ND},
+                {ops::ut::MakeGertStorageShape({totalS, totalT}), ge::DT_FLOAT, ge::FORMAT_ND},
+                {ops::ut::MakeGertStorageShape({totalS, totalT}), ge::DT_FLOAT, ge::FORMAT_ND},
+            },
+            {{"eps", Ops::Transformer::AnyValue::CreateFrom<float>(eps)}}, &compileInfo, socVersion,
+            static_cast<uint64_t>(contextCoreNum), ASCEND_950_UB_SIZE, FAKE_L2_SIZE);
+    }
+
+    void CheckVectorTiling(const TilingInfo &tilingInfo) const
+    {
+        ASSERT_GE(tilingInfo.tilingDataSize, sizeof(VectorTilingDataView));
+        const auto *tilingData = reinterpret_cast<const VectorTilingDataView *>(tilingInfo.tilingData.get());
+        ASSERT_NE(tilingData, nullptr);
+        ExpectValueIfSpecified(tilingData->baseD, expectBaseD, "baseD", caseName);
+        ExpectValueIfSpecified(tilingData->qBufferNum, expectQBufferNum, "qBufferNum", caseName);
+        ExpectValueIfSpecified(tilingData->vBufferNum, expectVBufferNum, "vBufferNum", caseName);
+        ExpectValueIfSpecified(tilingData->oBufferNum, expectOBufferNum, "oBufferNum", caseName);
+        ExpectValueIfSpecified(tilingData->vCacheRows, expectVCacheRows, "vCacheRows", caseName);
+    }
+
+    void CheckCubeTiling(const TilingInfo &tilingInfo) const
+    {
+        ASSERT_GE(tilingInfo.tilingDataSize, sizeof(CubeTilingDataView));
+        const auto *tilingData = reinterpret_cast<const CubeTilingDataView *>(tilingInfo.tilingData.get());
+        ASSERT_NE(tilingData, nullptr);
+        ExpectValueIfSpecified(tilingData->baseT, expectBaseT, "baseT", caseName);
+        ExpectValueIfSpecified(tilingData->baseS, expectBaseS, "baseS", caseName);
+        ExpectValueIfSpecified(tilingData->totalWorkUnits, expectTotalWorkUnits, "totalWorkUnits", caseName);
+        ExpectValueIfSpecified(tilingData->nAlign, expectNAlign, "nAlign", caseName);
+        ExpectValueIfSpecified(tilingData->mm1NAlign, expectMm1NAlign, "mm1NAlign", caseName);
+        if (checkWorkspaceFormula) {
+            const uint64_t expectedWorkspaceElems =
+                static_cast<uint64_t>(tilingData->baseS) * tilingData->mm1NAlign +
+                DOUBLE_BUFFER_NUM * static_cast<uint64_t>(tilingData->sAlign) * tilingData->nAlign;
+            EXPECT_EQ(tilingData->workspacePerCoreElems, expectedWorkspaceElems) << "case=" << caseName;
+        }
+    }
+
+    void Run() const
+    {
+        auto compileInfo = MakeCompileInfo();
+        auto context = MakeContext(compileInfo);
+        TilingInfo tilingInfo;
+        const bool actualSuccess = ExecuteTiling(context, tilingInfo);
+        ASSERT_EQ(actualSuccess, expectSuccess) << "case=" << caseName;
+        if (!expectSuccess) {
+            return;
+        }
+        ASSERT_EQ(tilingInfo.tilingKey, static_cast<uint64_t>(expectTilingKey)) << "case=" << caseName;
+        if (checkMode == "vector") {
+            CheckVectorTiling(tilingInfo);
+        } else if (checkMode == "cube") {
+            CheckCubeTiling(tilingInfo);
+        }
+    }
+
+    std::string socVersion;
+    std::string caseName;
+    std::string prefix;
+    std::string blockResShape;
+    std::string pseudoQueryShape;
+    std::string blockResDtype;
+    std::string validBlocksDtype;
+    std::string pseudoQueryDtype;
+    float eps = 1.0e-6F;
+    int64_t aicCoreNum = 32;
+    int64_t aivCoreNum = 64;
+    int64_t contextCoreNum = 64;
+    bool expectSuccess = false;
+    int64_t expectTilingKey = -1;
+    std::string checkMode;
+    int64_t expectBaseD = -1;
+    int64_t expectQBufferNum = -1;
+    int64_t expectVBufferNum = -1;
+    int64_t expectOBufferNum = -1;
+    int64_t expectVCacheRows = -1;
+    int64_t expectBaseT = -1;
+    int64_t expectBaseS = -1;
+    int64_t expectTotalWorkUnits = -1;
+    int64_t expectNAlign = -1;
+    int64_t expectMm1NAlign = -1;
+    bool checkWorkspaceFormula = false;
+};
+
+std::vector<BlockAttnResPrepareTilingCase> LoadCases()
 {
-    return {ASCEND_950_AIC_CORE_NUM, ASCEND_950_AIV_CORE_NUM, ASCEND_950_UB_SIZE,  ASCEND_950_L1_SIZE,
-            ASCEND_950_L0A_SIZE,     ASCEND_950_L0B_SIZE,     ASCEND_950_L0C_SIZE, SYSTEM_WORKSPACE_SIZE};
+    std::vector<BlockAttnResPrepareTilingCase> cases;
+    const std::string csvPath = ops::ut::ResolveCsvPath(CSV_FILE_NAME, CSV_REPO_DIR, __FILE__);
+    std::ifstream csvData(csvPath, std::ios::in);
+    if (!csvData.is_open()) {
+        std::cout << "cannot open case file " << csvPath << std::endl;
+        return cases;
+    }
+
+    std::string line;
+    size_t lineNo = 0U;
+    while (std::getline(csvData, line)) {
+        ++lineNo;
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+        std::vector<std::string> items;
+        ops::ut::SplitStr2Vec(line, ",", items);
+        if (items.empty() || items[0] == "socVersion" || items.size() < CSV_COLUMN_COUNT) {
+            continue;
+        }
+
+        const std::string caseName = ops::ut::Trim(items[1]);
+        try {
+            size_t index = 0U;
+            BlockAttnResPrepareTilingCase testCase;
+            testCase.socVersion = ops::ut::Trim(items[index++]);
+            testCase.caseName = ops::ut::Trim(items[index++]);
+            if (!ops::ut::ParseBool(items[index++]) || testCase.socVersion != "Ascend950") {
+                continue;
+            }
+            testCase.prefix = ops::ut::Trim(items[index++]);
+            testCase.blockResShape = ops::ut::Trim(items[index++]);
+            testCase.pseudoQueryShape = ops::ut::Trim(items[index++]);
+            testCase.blockResDtype = ops::ut::Trim(items[index++]);
+            testCase.validBlocksDtype = ops::ut::Trim(items[index++]);
+            testCase.pseudoQueryDtype = ops::ut::Trim(items[index++]);
+            testCase.eps = std::stof(ops::ut::Trim(items[index++]));
+            testCase.aicCoreNum = std::stoll(ops::ut::Trim(items[index++]));
+            testCase.aivCoreNum = std::stoll(ops::ut::Trim(items[index++]));
+            testCase.contextCoreNum = std::stoll(ops::ut::Trim(items[index++]));
+            testCase.expectSuccess = ops::ut::ParseBool(items[index++]);
+            testCase.expectTilingKey = std::stoll(ops::ut::Trim(items[index++]));
+            testCase.checkMode = ops::ut::Trim(items[index++]);
+            testCase.expectBaseD = std::stoll(ops::ut::Trim(items[index++]));
+            testCase.expectQBufferNum = std::stoll(ops::ut::Trim(items[index++]));
+            testCase.expectVBufferNum = std::stoll(ops::ut::Trim(items[index++]));
+            testCase.expectOBufferNum = std::stoll(ops::ut::Trim(items[index++]));
+            testCase.expectVCacheRows = std::stoll(ops::ut::Trim(items[index++]));
+            testCase.expectBaseT = std::stoll(ops::ut::Trim(items[index++]));
+            testCase.expectBaseS = std::stoll(ops::ut::Trim(items[index++]));
+            testCase.expectTotalWorkUnits = std::stoll(ops::ut::Trim(items[index++]));
+            testCase.expectNAlign = std::stoll(ops::ut::Trim(items[index++]));
+            testCase.expectMm1NAlign = std::stoll(ops::ut::Trim(items[index++]));
+            testCase.checkWorkspaceFormula = ops::ut::ParseBool(items[index++]);
+            cases.emplace_back(std::move(testCase));
+        } catch (const std::exception &error) {
+            ADD_FAILURE() << ops::ut::BuildCsvParseErrorMessage(csvPath, lineNo, caseName, error);
+        }
+    }
+    return cases;
 }
+
+std::string MakeParamName(const testing::TestParamInfo<BlockAttnResPrepareTilingCase> &info)
+{
+    return ops::ut::MakeSafeParamName(info.param.prefix);
+}
+
+const std::vector<BlockAttnResPrepareTilingCase> &GetCases()
+{
+    static const std::vector<BlockAttnResPrepareTilingCase> cases = LoadCases();
+    return cases;
+}
+
+class BlockAttnResPrepareTilingTest : public testing::TestWithParam<BlockAttnResPrepareTilingCase> {};
+
+TEST_P(BlockAttnResPrepareTilingTest, CsvDrivenCase)
+{
+    GetParam().Run();
+}
+
+INSTANTIATE_TEST_SUITE_P(BLOCK_ATTN_RES_PREPARE_TILING_CSV, BlockAttnResPrepareTilingTest,
+                         testing::ValuesIn(GetCases()), MakeParamName);
 
 } // namespace
-
-class BlockAttnResPrepareTilingTest : public testing::Test {};
-
-// Shape literals and expected tiling values below are intentional test vectors. Each test name documents the
-// boundary, scheduling path, or resource condition represented by those values.
-
-TEST_F(BlockAttnResPrepareTilingTest, NetworkDecodeShapeSucceeds)
-{
-    auto compileInfo = Ascend950CompileInfo();
-    auto context = BuildCase(compileInfo, {{1, 8, 7168}, {1, 8, 7168}}, {{18, 7168}, {18, 7168}});
-    TilingInfo tilingInfo;
-    ASSERT_TRUE(ExecuteTiling(context, tilingInfo));
-    EXPECT_EQ(tilingInfo.tilingKey, optiling::BLOCK_ATTN_RES_PREPARE_VECTOR_KEY);
-    ASSERT_GE(tilingInfo.tilingDataSize, sizeof(VectorTilingDataView));
-    const auto *tilingData = reinterpret_cast<const VectorTilingDataView *>(tilingInfo.tilingData.get());
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(tilingData->baseD, 7168U);
-    EXPECT_EQ(tilingData->qBufferNum, 1U);
-    EXPECT_EQ(tilingData->vBufferNum, DOUBLE_BUFFER_NUM);
-    EXPECT_EQ(tilingData->oBufferNum, 1U);
-    EXPECT_EQ(tilingData->vCacheRows, 4U);
-}
-
-TEST_F(BlockAttnResPrepareTilingTest, SingleStaticVLoopUsesOneBufferForAllQueues)
-{
-    auto compileInfo = Ascend950CompileInfo();
-    auto context = BuildCase(compileInfo, {{1, 1, 7168}, {1, 1, 7168}}, {{18, 7168}, {18, 7168}});
-    TilingInfo tilingInfo;
-    ASSERT_TRUE(ExecuteTiling(context, tilingInfo));
-    ASSERT_GE(tilingInfo.tilingDataSize, sizeof(VectorTilingDataView));
-    const auto *tilingData = reinterpret_cast<const VectorTilingDataView *>(tilingInfo.tilingData.get());
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(tilingData->qBufferNum, 1U);
-    EXPECT_EQ(tilingData->vBufferNum, 1U);
-    EXPECT_EQ(tilingData->oBufferNum, 1U);
-    EXPECT_EQ(tilingData->vCacheRows, 1U);
-}
-
-TEST_F(BlockAttnResPrepareTilingTest, QUsesDoubleBufferWhenEachCoreHasMultipleWorkRounds)
-{
-    auto compileInfo = Ascend950CompileInfo();
-    // totalWorkUnits=8*16=128, usedCoreNum=64, so each core handles two rounds.
-    auto context = BuildCase(compileInfo, {{8, 1, 7168}, {8, 1, 7168}}, {{16, 7168}, {16, 7168}});
-    TilingInfo tilingInfo;
-    ASSERT_TRUE(ExecuteTiling(context, tilingInfo));
-    ASSERT_GE(tilingInfo.tilingDataSize, sizeof(VectorTilingDataView));
-    const auto *tilingData = reinterpret_cast<const VectorTilingDataView *>(tilingInfo.tilingData.get());
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(tilingData->qBufferNum, DOUBLE_BUFFER_NUM);
-    EXPECT_EQ(tilingData->vBufferNum, 1U);
-    EXPECT_EQ(tilingData->oBufferNum, 1U);
-}
-
-TEST_F(BlockAttnResPrepareTilingTest, NetworkPrefillShapeSucceeds)
-{
-    auto compileInfo = Ascend950CompileInfo();
-    auto context = BuildCase(compileInfo, {{254, 8, 7168}, {254, 8, 7168}}, {{24, 7168}, {24, 7168}});
-    ExecuteTestCase(context, ge::GRAPH_SUCCESS, optiling::BLOCK_ATTN_RES_PREPARE_MIX_CUBE_KEY);
-}
-
-TEST_F(BlockAttnResPrepareTilingTest, CubeTilingAllocatesMm1AndDoubleBufferedEWorkspace)
-{
-    auto compileInfo = Ascend950CompileInfo();
-    auto context = BuildCase(compileInfo, {{254, 8, 7168}, {254, 8, 7168}}, {{24, 7168}, {24, 7168}});
-    TilingInfo tilingInfo;
-    ASSERT_TRUE(ExecuteTiling(context, tilingInfo));
-    ASSERT_EQ(tilingInfo.tilingKey, optiling::BLOCK_ATTN_RES_PREPARE_MIX_CUBE_KEY);
-    ASSERT_GE(tilingInfo.tilingDataSize, sizeof(CubeTilingDataView));
-    const auto *tilingData = reinterpret_cast<const CubeTilingDataView *>(tilingInfo.tilingData.get());
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(tilingData->baseT, 2U);
-    EXPECT_EQ(tilingData->baseS, 24U);
-    EXPECT_EQ(tilingData->nAlign, 16U);
-    EXPECT_EQ(tilingData->mm1NAlign, 16U);
-    const uint64_t expectedWorkspaceElems =
-        static_cast<uint64_t>(tilingData->baseS) * tilingData->mm1NAlign +
-        DOUBLE_BUFFER_NUM * static_cast<uint64_t>(tilingData->sAlign) * tilingData->nAlign;
-    EXPECT_EQ(tilingData->workspacePerCoreElems, expectedWorkspaceElems);
-    EXPECT_EQ(tilingData->reduceUbElems, 64U);
-}
-
-TEST_F(BlockAttnResPrepareTilingTest, CubeTGroupingPreservesPerCoreTokenLoad)
-{
-    auto compileInfo = Ascend950CompileInfo();
-    auto context = BuildCase(compileInfo, {{32, 8, 7168}, {32, 8, 7168}}, {{24, 7168}, {24, 7168}});
-    TilingInfo tilingInfo;
-    ASSERT_TRUE(ExecuteTiling(context, tilingInfo));
-    const auto *tilingData = reinterpret_cast<const CubeTilingDataView *>(tilingInfo.tilingData.get());
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(tilingData->baseT, 1U);
-    EXPECT_EQ(tilingData->totalWorkUnits, 32U);
-    const uint64_t expectedWorkspaceElems =
-        static_cast<uint64_t>(tilingData->baseS) * tilingData->mm1NAlign +
-        DOUBLE_BUFFER_NUM * static_cast<uint64_t>(tilingData->sAlign) * tilingData->nAlign;
-    EXPECT_EQ(tilingData->workspacePerCoreElems, expectedWorkspaceElems);
-}
-
-TEST_F(BlockAttnResPrepareTilingTest, CubeTilingFallsBackWhenTwoAivPeersAreUnavailable)
-{
-    auto compileInfo = Ascend950CompileInfo();
-    compileInfo.aivCoreNum = 1U;
-    auto context = BuildCase(compileInfo, {{32, 8, 7168}, {32, 8, 7168}}, {{24, 7168}, {24, 7168}}, ge::DT_FLOAT,
-                             ge::DT_INT64, ge::DT_FLOAT, DEFAULT_EPS, 1U);
-    ExecuteTestCase(context, ge::GRAPH_SUCCESS, optiling::BLOCK_ATTN_RES_PREPARE_VECTOR_KEY);
-}
-
-TEST_F(BlockAttnResPrepareTilingTest, MoreThanOneVRegOfBlocksIsRejected)
-{
-    auto compileInfo = Ascend950CompileInfo();
-    auto context = BuildCase(compileInfo, {{1, 65, 7168}, {1, 65, 7168}}, {{18, 7168}, {18, 7168}});
-    ExecuteTestCase(context, ge::GRAPH_FAILED);
-}
-
-TEST_F(BlockAttnResPrepareTilingTest, MismatchedDIsRejected)
-{
-    auto compileInfo = Ascend950CompileInfo();
-    auto context = BuildCase(compileInfo, {{1, 8, 7168}, {1, 8, 7168}}, {{18, 4096}, {18, 4096}});
-    ExecuteTestCase(context, ge::GRAPH_FAILED);
-}
-
-TEST_F(BlockAttnResPrepareTilingTest, NonPositiveEpsIsRejected)
-{
-    auto compileInfo = Ascend950CompileInfo();
-    auto context = BuildCase(compileInfo, {{1, 8, 7168}, {1, 8, 7168}}, {{18, 7168}, {18, 7168}}, ge::DT_FLOAT,
-                             ge::DT_INT64, ge::DT_FLOAT, 0.0F);
-    ExecuteTestCase(context, ge::GRAPH_FAILED);
-}
-
-TEST_F(BlockAttnResPrepareTilingTest, InvalidDtypeIsRejected)
-{
-    auto compileInfo = Ascend950CompileInfo();
-    auto context = BuildCase(compileInfo, {{1, 8, 7168}, {1, 8, 7168}}, {{18, 7168}, {18, 7168}}, ge::DT_FLOAT16);
-    ExecuteTestCase(context, ge::GRAPH_FAILED);
-}
