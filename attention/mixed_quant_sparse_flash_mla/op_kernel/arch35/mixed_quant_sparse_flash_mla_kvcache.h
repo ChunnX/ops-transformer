@@ -354,7 +354,7 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, Glob
                   TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         int64_t oriSparseRangeLen = runParam.s2LineOriEndIdx - runParam.s2LineStartIdx;
         runParam.s2LineStartIdx = 0;
-        runParam.s2LineOriEndIdx = Min(oriSparseRangeLen, runParam.oriSparseBlockCount);
+        runParam.s2LineOriEndIdx = Min(oriSparseRangeLen, oriSparseBlockCount);
         runParam.s2LineOriEndIdx = Min(runParam.s2LineOriEndIdx, runParam.actualS2OriSize);
     }
     runParam.oriKvLoopEndIdx = (runParam.s2LineOriEndIdx - runParam.s2LineStartIdx + s2BaseSize - 1) / s2BaseSize;
