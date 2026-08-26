@@ -445,9 +445,11 @@ struct DispatchRankRoundInterval {
     int32_t rankPosition = -1;
 };
 
-// 固定 ownership 下，同一 core 在专家 row 空间中始终跨 coreCount 领取下一行。
+// 连续 ownership 下，每个 core 领取当前专家分段中的一个连续均衡区间。
+// expertRowEnd 是该 core 的独占上界，规划、搬运和 ready 发布必须共用它。
 struct DispatchCoreRowCursor {
     int32_t expertRow = 0;
+    int32_t expertRowEnd = 0;
 };
 
 // 保存“rank 内逻辑 token ordinal”对应的物理 mask 扫描位置。routeBegin 始终按
@@ -503,43 +505,34 @@ __aicore__ inline int32_t GetDispatchGroupedRankOrdinal(int32_t descriptor)
 }
 
 __aicore__ inline DispatchCoreRowCursor GetFirstDispatchRowOwnedByCore(
-    const TokenDispatchConfig &context, int32_t expertGlobalRowBegin,
-    int32_t segmentRowBegin, int32_t segmentRowEnd)
+    const TokenDispatchConfig &context, int32_t segmentRowBegin, int32_t segmentRowEnd)
 {
     int32_t coreCount = static_cast<int32_t>(
         context.blockJob.totalJobs == 0U ? 1U : context.blockJob.totalJobs);
     int32_t coreIdx = static_cast<int32_t>(context.blockJob.jobIndex);
     DispatchCoreRowCursor cursor{};
-    int32_t firstGlobalRow = expertGlobalRowBegin + segmentRowBegin;
-    int32_t ownerDelta = coreIdx - firstGlobalRow % coreCount;
-    if (ownerDelta < 0) {
-        ownerDelta += coreCount;
-    }
-    cursor.expertRow = segmentRowBegin + ownerDelta;
-    if (cursor.expertRow >= segmentRowEnd) {
-        cursor.expertRow = segmentRowEnd;
-    }
+    int32_t segmentRowCount = segmentRowEnd - segmentRowBegin;
+    int32_t rowsPerCore = segmentRowCount / coreCount;
+    int32_t remainderRows = segmentRowCount % coreCount;
+    int32_t rowsBeforeCore = coreIdx * rowsPerCore +
+        (coreIdx < remainderRows ? coreIdx : remainderRows);
+    int32_t localRowCount = rowsPerCore + (coreIdx < remainderRows ? 1 : 0);
+    cursor.expertRow = segmentRowBegin + rowsBeforeCore;
+    cursor.expertRowEnd = cursor.expertRow + localRowCount;
     return cursor;
 }
 
-__aicore__ inline void AdvanceDispatchCoreRowCursor(
-    DispatchCoreRowCursor &cursor, int32_t coreCount)
+__aicore__ inline void AdvanceDispatchCoreRowCursor(DispatchCoreRowCursor &cursor)
 {
-    cursor.expertRow += coreCount;
+    ++cursor.expertRow;
 }
 
 __aicore__ inline int32_t CountDispatchRowsOwnedByCore(
-    const TokenDispatchConfig &context, int32_t expertGlobalRowBegin,
-    int32_t segmentRowBegin, int32_t segmentRowEnd)
+    const TokenDispatchConfig &context, int32_t segmentRowBegin, int32_t segmentRowEnd)
 {
     DispatchCoreRowCursor cursor = GetFirstDispatchRowOwnedByCore(
-        context, expertGlobalRowBegin, segmentRowBegin, segmentRowEnd);
-    if (cursor.expertRow >= segmentRowEnd) {
-        return 0;
-    }
-    int32_t coreCount = static_cast<int32_t>(
-        context.blockJob.totalJobs == 0U ? 1U : context.blockJob.totalJobs);
-    return (segmentRowEnd - 1 - cursor.expertRow) / coreCount + 1;
+        context, segmentRowBegin, segmentRowEnd);
+    return cursor.expertRowEnd - cursor.expertRow;
 }
 
 template <typename ActivationType>
@@ -1011,7 +1004,7 @@ template <typename ActivationType>
 __aicore__ inline DispatchCoreRouteQueue PlanDispatchCoreRouteQueue(
     const TokenDispatchConfig &context, const Params &params,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
-    int32_t expertGlobalRowBegin, int32_t segmentRowBegin, int32_t segmentRowEnd,
+    int32_t segmentRowBegin, int32_t segmentRowEnd,
     int32_t expectedTaskCount, int32_t taskCapacity,
     WaveDispatchTraceMetrics *traceMetrics)
 {
@@ -1036,16 +1029,15 @@ __aicore__ inline DispatchCoreRouteQueue PlanDispatchCoreRouteQueue(
     // 一次性解析所有 rank 的当前 wave ordinal 边界，并清空本核 rank 任务计数。
     PrepareDispatchSegmentRankPlans(
         context, scratch, segmentRowBegin, segmentRowEnd);
-    // 按本核固定 lane 的 row 序列正向构造 {rank, compactOrdinal}。逻辑 row 到
-    // source 的映射保持不变，同一 core 在后续 round 中固定跨 coreCount 领取 row。sourceCursor
-    // 随 expertRow 单调推进，不再为每一行从 ordinal 0 重新搜索 interval。
+    // 按本核连续 row 区间正向构造 {rank, compactOrdinal}。逻辑 row 到 source
+    // 的 rank-round 映射保持不变；sourceCursor 随 expertRow 单调推进，不再为
+    // 每一行从 ordinal 0 重新搜索 interval。
     DispatchCoreRowCursor rowCursor = GetFirstDispatchRowOwnedByCore(
-        context, expertGlobalRowBegin, segmentRowBegin, segmentRowEnd);
+        context, segmentRowBegin, segmentRowEnd);
     DispatchSourceCursor sourceCursor{};
-    int32_t coreCount = static_cast<int32_t>(
-        context.blockJob.totalJobs == 0U ? 1U : context.blockJob.totalJobs);
     int32_t descriptorCount = 0;
-    while (rowCursor.expertRow < segmentRowEnd && descriptorCount < expectedTaskCount) {
+    while (rowCursor.expertRow < rowCursor.expertRowEnd &&
+           descriptorCount < expectedTaskCount) {
         uint32_t rankIdx = 0U;
         int32_t rankOrdinal = 0;
         if (!GetDispatchSourceForExpertRow(
@@ -1065,7 +1057,7 @@ __aicore__ inline DispatchCoreRouteQueue PlanDispatchCoreRouteQueue(
         scratch.sendCntTensor.SetValue(
             rankScratchBase + DISPATCH_RANK_TASK_COUNT_LANE, rankTaskCount + 1);
         ++descriptorCount;
-        AdvanceDispatchCoreRowCursor(rowCursor, coreCount);
+        AdvanceDispatchCoreRowCursor(rowCursor);
     }
     if (descriptorCount != expectedTaskCount) {
         queue.taskCount = 0;
@@ -1153,7 +1145,7 @@ template <typename ActivationType>
 __aicore__ inline DispatchCoreRouteQueue PlanDispatchCoreRouteQueueFromTable(
     const TokenDispatchConfig &context, const Params &params,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
-    int32_t expertGlobalRowBegin, int32_t segmentRowBegin, int32_t segmentRowEnd,
+    int32_t segmentRowBegin, int32_t segmentRowEnd,
     int32_t expectedTaskCount, int32_t taskCapacity,
     WaveDispatchTraceMetrics *traceMetrics)
 {
@@ -1176,12 +1168,10 @@ __aicore__ inline DispatchCoreRouteQueue PlanDispatchCoreRouteQueueFromTable(
     // 第一遍只按最终目的 row 顺序生成 {rank, ordinal}，并标记本核实际访问的
     // source rank。这里不统计 task count，也不再构造 grouped descriptor。
     DispatchCoreRowCursor rowCursor = GetFirstDispatchRowOwnedByCore(
-        context, expertGlobalRowBegin, segmentRowBegin, segmentRowEnd);
+        context, segmentRowBegin, segmentRowEnd);
     DispatchSourceCursor sourceCursor{};
-    int32_t coreCount = static_cast<int32_t>(
-        context.blockJob.totalJobs == 0U ? 1U : context.blockJob.totalJobs);
     int32_t descriptorCount = 0;
-    while (rowCursor.expertRow < segmentRowEnd &&
+    while (rowCursor.expertRow < rowCursor.expertRowEnd &&
            descriptorCount < expectedTaskCount) {
         uint32_t rankIdx = 0U;
         int32_t rankOrdinal = 0;
@@ -1198,7 +1188,7 @@ __aicore__ inline DispatchCoreRouteQueue PlanDispatchCoreRouteQueueFromTable(
         scratch.sendCntTensor.SetValue(
             rankScratchBase + DISPATCH_RANK_ROUTE_USED_LANE, 1);
         ++descriptorCount;
-        AdvanceDispatchCoreRowCursor(rowCursor, coreCount);
+        AdvanceDispatchCoreRowCursor(rowCursor);
     }
     if (descriptorCount != expectedTaskCount) {
         queue.taskCount = 0;
@@ -1370,10 +1360,8 @@ __aicore__ inline void CopyInterleavedDispatchRouteQueue(
 
     GlobalTensor<ActivationType> remoteRankGlobalTensor;
     int32_t currentRankIdx = -1;
-    int32_t coreCount = static_cast<int32_t>(
-        context.blockJob.totalJobs == 0U ? 1U : context.blockJob.totalJobs);
     DispatchCoreRowCursor rowCursor = GetFirstDispatchRowOwnedByCore(
-        context, expertGlobalRowBegin, segmentRowBegin, segmentRowEnd);
+        context, segmentRowBegin, segmentRowEnd);
     int32_t pendingTopkIndex =
         FetchInterleavedDispatchRouteTask<false, TopkWeightsPrefetch>(
             context, winRankAddr, scratch, 0, 0, remoteRankGlobalTensor,
@@ -1385,7 +1373,7 @@ __aicore__ inline void CopyInterleavedDispatchRouteQueue(
         StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
             context, scratch, 0, expertGlobalRowBegin + rowCursor.expertRow, tokenRevGlobalTensor,
             scaleRevGlobalTensor, metaInfoGlobalTensor, pendingTopkIndex, traceMetrics);
-        AdvanceDispatchCoreRowCursor(rowCursor, coreCount);
+        AdvanceDispatchCoreRowCursor(rowCursor);
         for (int32_t taskIdx = 1; taskIdx < taskCount; ++taskIdx) {
             pendingTopkIndex =
                 FetchInterleavedDispatchRouteTask<true, TopkWeightsPrefetch>(
@@ -1396,7 +1384,7 @@ __aicore__ inline void CopyInterleavedDispatchRouteQueue(
                 expertGlobalRowBegin + rowCursor.expertRow,
                 tokenRevGlobalTensor, scaleRevGlobalTensor,
                 metaInfoGlobalTensor, pendingTopkIndex, traceMetrics);
-            AdvanceDispatchCoreRowCursor(rowCursor, coreCount);
+            AdvanceDispatchCoreRowCursor(rowCursor);
         }
 #if MEGA_MOE_ENABLE_WAVE_TRACE != 0
         uint32_t drainWaitBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
@@ -1423,7 +1411,7 @@ __aicore__ inline void CopyInterleavedDispatchRouteQueue(
             expertGlobalRowBegin + rowCursor.expertRow,
             tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
             pendingTopkIndex, traceMetrics);
-        AdvanceDispatchCoreRowCursor(rowCursor, coreCount);
+        AdvanceDispatchCoreRowCursor(rowCursor);
         pendingTopkIndex = currentTopkIndex;
     }
 
@@ -1440,7 +1428,7 @@ __aicore__ inline void CopyInterleavedDispatchRouteQueue(
             expertGlobalRowBegin + rowCursor.expertRow,
             tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
             pendingTopkIndex, traceMetrics);
-        AdvanceDispatchCoreRowCursor(rowCursor, coreCount);
+        AdvanceDispatchCoreRowCursor(rowCursor);
         pendingTopkIndex = currentTopkIndex;
     }
 
@@ -1470,8 +1458,8 @@ __aicore__ inline void CopyInterleavedDispatchRouteQueue(
 // 分段覆盖的每个 GMM1 tile 发布本核实际完成的 row 数。
 __aicore__ inline void PublishInterleavedDispatchTilesReady(
     const TokenDispatchConfig &context, const Params &params,
-    uint32_t localExpertId, int32_t expertGlobalRowBegin,
-    int32_t segmentRowBegin, int32_t segmentRowEnd, int32_t gmm1TileRowCount,
+    uint32_t localExpertId, int32_t segmentRowBegin, int32_t segmentRowEnd,
+    int32_t gmm1TileRowCount,
     WaveDispatchTraceMetrics *traceMetrics)
 {
     if (segmentRowBegin >= segmentRowEnd) {
@@ -1492,15 +1480,13 @@ __aicore__ inline void PublishInterleavedDispatchTilesReady(
         reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagDispatchToGmm1Ptr) +
         static_cast<uint64_t>(localExpertId) * context.dispatchFlagSlotsPerExpert;
 
-    // 按与搬运完全一致的固定 lane row cursor 精确累计 tile 内行数，
+    // 按与搬运完全一致的连续 row cursor 精确累计 tile 内行数，
     // 避免 wave 在专家中部截断时出现边界误差。
     DispatchCoreRowCursor rowCursor = GetFirstDispatchRowOwnedByCore(
-        context, expertGlobalRowBegin, segmentRowBegin, segmentRowEnd);
-    int32_t coreCount = static_cast<int32_t>(
-        context.blockJob.totalJobs == 0U ? 1U : context.blockJob.totalJobs);
+        context, segmentRowBegin, segmentRowEnd);
     int32_t currentTileIdx = -1;
     int32_t readyRowCount = 0;
-    while (rowCursor.expertRow < segmentRowEnd) {
+    while (rowCursor.expertRow < rowCursor.expertRowEnd) {
         int32_t tileIdx = rowCursor.expertRow / gmm1TileRowCount;
         if (tileIdx != currentTileIdx) {
             if (readyRowCount > 0) {
@@ -1512,7 +1498,7 @@ __aicore__ inline void PublishInterleavedDispatchTilesReady(
             readyRowCount = 0;
         }
         ++readyRowCount;
-        AdvanceDispatchCoreRowCursor(rowCursor, coreCount);
+        AdvanceDispatchCoreRowCursor(rowCursor);
     }
     if (readyRowCount > 0) {
         AtomicAdd(gmm1TileReadyCount +
@@ -1635,18 +1621,18 @@ __aicore__ inline void DispatchExpertTokensByRows(
  *       -> GatherMask 后的 rank 内 compact ordinal
  *       -> rank-round 交织后的专家内 expertRow
  *       -> expertGlobalRowBegin + expertRow 对应的 workspace 全局 row
- *       -> 按 globalRow % coreCount 对应的固定目的 core。
+ *       -> 按当前专家分段连续均分给目的 core。
  *
  * 本函数只为当前 core 完成以下六个阶段：
  *   1. 确定当前专家分段及截断后的专家总行数；
  *   2. 为跨 wave 的专家维护每个 rank 的 mask 扫描 cursor；
- *   3. 每个 coreCount-sized round 将本核领取的 lane 右移一位；
+ *   3. 将当前专家分段连续均分，本核领取一个连续 row 区间；
  *   4. 保持逻辑 row 的 rank-round 映射不变，解析并回填本核 route queue；
  *   5. 复用同一 MTE 环形流水，按 queue 顺序读取远端 token/metaInfo 并写目的 row；
  *   6. MTE3 全部完成后，按 GMM1 tile 发布本核实际完成的 row 数。
  *
- * 分核不改变 expertRow 对应的 source rank/ordinal。以28核为例，
- * 同一专家内 core0 固定跨 28 行领取任务，不再逐 round 换卡。
+ * 分核不改变 expertRow 对应的 source rank/ordinal。以683行、28核为例，
+ * core0~core10 各领取25个连续 row，core11~core27 各领取24个连续 row。
  */
 template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
 __aicore__ inline void DispatchExpertTokensRankRoundRobin(
@@ -1685,10 +1671,9 @@ __aicore__ inline void DispatchExpertTokensRankRoundRobin(
     constexpr int32_t gmm1TileRowCount = static_cast<int32_t>(PipelineTileM);
     int32_t coreCount = static_cast<int32_t>(
         context.blockJob.totalJobs == 0U ? 1U : context.blockJob.totalJobs);
-    // 当前分段触及的 core-sized round 数是所有核统一的安全任务上界；分段截断
-    // 时个别核可能少一项，但不会超过该值。
-    int32_t maxCoreTaskCount =
-        (segmentRowEnd - 1) / coreCount - segmentRowBegin / coreCount + 1;
+    // 连续均分时前 remainder 个核多领取一行，向上取整即所有核统一的安全上界。
+    int32_t segmentRowCount = segmentRowEnd - segmentRowBegin;
+    int32_t maxCoreTaskCount = (segmentRowCount + coreCount - 1) / coreCount;
     int32_t maxTaskCapacity = Ops::Base::CeilAlign(
         maxCoreTaskCount, DISPATCH_ROUTE_QUEUE_ALIGN_ITEMS);
     // 旧路径还要在 queue/descriptor 之后留出 CreateVecIndex 区；共享表路径
@@ -1730,7 +1715,7 @@ __aicore__ inline void DispatchExpertTokensRankRoundRobin(
 
     // 使用与搬运、ready 发布完全相同的 row cursor 得到本核精确任务数。
     int32_t expectedTaskCount = CountDispatchRowsOwnedByCore(
-        context, expertGlobalRowBegin, segmentRowBegin, segmentRowEnd);
+        context, segmentRowBegin, segmentRowEnd);
     if (expectedTaskCount <= 0) {
         return;
     }
@@ -1750,12 +1735,12 @@ __aicore__ inline void DispatchExpertTokensRankRoundRobin(
     // 规划结果按本核目的 row 顺序存放，每项仅包含 {sourceRank, topkIndex}。
     DispatchCoreRouteQueue queue = canUseSharedRouteTable ?
         PlanDispatchCoreRouteQueueFromTable(
-            context, params, scratch, localExpertId, expertGlobalRowBegin,
-            segmentRowBegin, segmentRowEnd, expectedTaskCount,
+            context, params, scratch, localExpertId, segmentRowBegin,
+            segmentRowEnd, expectedTaskCount,
             maxTaskCapacity, traceMetrics) :
         PlanDispatchCoreRouteQueue(
-            context, params, scratch, localExpertId, expertGlobalRowBegin,
-            segmentRowBegin, segmentRowEnd, expectedTaskCount,
+            context, params, scratch, localExpertId, segmentRowBegin,
+            segmentRowEnd, expectedTaskCount,
             maxTaskCapacity, traceMetrics);
     if (queue.taskCount != expectedTaskCount) {
         return;
@@ -1775,7 +1760,7 @@ __aicore__ inline void DispatchExpertTokensRankRoundRobin(
 #if MEGA_MOE_ENABLE_WAVE_TRACE != 0
     uint32_t transferTraceBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
 #endif
-    // queue 已按本核固定 lane 的目的 row 排序；搬运使用同一个 row cursor 写回。
+    // queue 已按本核连续目的 row 排序；搬运使用同一个 row cursor 写回。
     CopyInterleavedDispatchRouteQueue<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
         context, winRankAddr, scratch, expertGlobalRowBegin,
         segmentRowBegin, segmentRowEnd, expectedTaskCount, tokenRevGlobalTensor,
@@ -1790,8 +1775,8 @@ __aicore__ inline void DispatchExpertTokensRankRoundRobin(
     // 只有在本核全部 MTE3 写出回收后，才按 tile 原子累加本核完成的精确 row 数；
     // GMM1 等待该计数达到 tile 实际行数后启动。
     PublishInterleavedDispatchTilesReady(
-        context, params, localExpertId, expertGlobalRowBegin,
-        segmentRowBegin, segmentRowEnd, gmm1TileRowCount, traceMetrics);
+        context, params, localExpertId, segmentRowBegin, segmentRowEnd,
+        gmm1TileRowCount, traceMetrics);
 #if MEGA_MOE_ENABLE_WAVE_TRACE != 0
     if (traceMetrics != nullptr) {
         traceMetrics->readyPublishCycles += MegaMoeWaveTraceDetail::Now() - readyTraceBegin;
