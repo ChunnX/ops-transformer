@@ -78,23 +78,6 @@ private:
         return position.expertIdx < commonConfig_.moeExpertPerRank && waveMGroupCount < mGroupsPerWave_;
     }
 
-    // Use the ready compact count table to plan only the current Wave. This mirrors the real position advancement and
-    // avoids maintaining a separate total/processed M-group count.
-    __aicore__ inline uint32_t GetCurrentWaveMGroupCount(const ExpertTokenPosition &beginPosition) const
-    {
-        ExpertTokenPosition position = beginPosition;
-        uint32_t waveMGroupCount = 0U;
-        while (IsPositionWithinWave(position, waveMGroupCount)) {
-            uint64_t countOffset = GetExpertCountWorkspaceOffset(countWorkspace_, commonConfig_.moeExpertPerRank,
-                                                                 position.expertIdx, true);
-            __gm__ int32_t *expertTokenCountAddr =
-                reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.expertRevTokenNumsPtr) + countOffset;
-            uint32_t expertTokenCount = static_cast<uint32_t>(AscendC::ReadGmByPassDCache(expertTokenCountAddr));
-            AdvanceExpertTokenPositionInWave<GMM1_TILE_M>(expertTokenCount, mGroupsPerWave_, waveMGroupCount, position);
-        }
-        return waveMGroupCount;
-    }
-
     // GMM2 仅由 AIC 和 AIV0 执行；先完成角色和归属判断，避免无任务核更新地址或构造 scheduler。
     __aicore__ inline bool ShouldSkipGmm2Problem(uint32_t problemTileCount, uint32_t &startBlockIdx,
                                                  uint32_t &startLoopIdx) const
@@ -461,9 +444,11 @@ template <bool IsWeightNZ>
 __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::ProcessMoeExpertStagesByWeightFormat()
 {
     DispatchBuffInit();
-    PrepareMoeExpertTokenCountTable(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);
-    // Dynamic tileN planning consumes the same ready compact count table on all 1C2V roles.
-    WaitForMoeExpertTokenCountReady(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace_, 0U);
+    PrepareMoeExpertTokenCountTable<ActivationType, GMM1_TILE_M>(commonConfig_, countWorkspace_, params_,
+                                                                 tokenDispatchScratch_);
+    uint32_t totalMGroupCount = WaitForMoeExpertTokenCountReadyAndGetValue(
+                                    params_.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace_, 0U) -
+                                1U;
     WaveCombineBufferConfig combineBufferConfig =
         InitWaveCombineBuffers<CombineQuantMode>(commonConfig_, waveCombineScratch_);
     uint32_t combineRowSequence = 0U;
@@ -522,9 +507,12 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
         GMM1_TILE_M);
 
     ExpertTokenPosition gmm1Position{};
+    uint32_t processedMGroupCount = 0U;
     uint32_t waveIndex = 0U;
     while (gmm1Position.expertIdx < commonConfig_.moeExpertPerRank) {
-        uint32_t currentWaveMGroupCount = GetCurrentWaveMGroupCount(gmm1Position);
+        uint32_t remainingMGroupCount = totalMGroupCount - processedMGroupCount;
+        uint32_t currentWaveMGroupCount =
+            remainingMGroupCount < mGroupsPerWave_ ? remainingMGroupCount : mGroupsPerWave_;
         uint32_t gmm1TileN = L1_TILE_N;
         uint32_t gmm1TilesPerMGroup = baseGmm1TilesPerMGroup;
         if (currentWaveMGroupCount < mGroupsPerWave_) {
@@ -541,6 +529,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
         Gmm1WaveResult gmm1WaveResult = RunGmm1Wave<PersistentGmmConfig>(
             gmm1Position, gmm1State, gmm1AddrInfo, gmm1RuntimeState, dispatchPosition, dispatchExpertTokenCount,
             dispatchCumsumNeedsReload, gmm1TileN, gmm1TilesPerMGroup, waveIndex, persistentGmmProblemConfig);
+        processedMGroupCount += currentWaveMGroupCount;
         ExpertTokenPosition waveEndPosition = gmm1WaveResult.endPosition;
         uint32_t waveLastActiveExpertIdx = gmm1WaveResult.lastActiveExpertIdx;
         if constexpr (g_coreType == AIC) {

@@ -490,11 +490,15 @@ __aicore__ inline void RunAllWaveExpertDispatchStages(const TokenDispatchConfig 
 // 每个寄存器内执行 Hillis-Steele int32 prefix-scan，再用 carry 串接相邻寄存器；随后提取
 // 每个 expert 的累计尾值并作差。高阶 CumSum 在 A5 上只支持 FP16/FP32；这里保持整数计算，
 // 避免累计路由数超过 2^24 后丢精度。
+template <uint32_t MGroupTileM = 0U>
 static __aicore__ inline void ComputeCompactExpertCountTablesVF(__local_mem__ int32_t *count,
                                                                 __local_mem__ int32_t *expertCounts,
+                                                                __local_mem__ uint32_t *totalMGroupCount,
                                                                 uint32_t elementCount, uint32_t expertCount,
                                                                 uint32_t worldSize)
 {
+    static_assert(MGroupTileM == 0U || MGroupTileM == 256U,
+                  "The fused M-group count currently supports the A4W4 256-row group only.");
     constexpr uint32_t ELEMENTS_PER_VECTOR = GetVecLen() / sizeof(int32_t);
     {
         MicroAPI::RegTensor<int32_t> prefixReg;
@@ -545,11 +549,15 @@ static __aicore__ inline void ComputeCompactExpertCountTablesVF(__local_mem__ in
         MicroAPI::RegTensor<int32_t> laneIndexReg;
         MicroAPI::RegTensor<int32_t> gatherIndexReg;
         MicroAPI::RegTensor<int32_t> previousLaneIndexReg;
+        MicroAPI::RegTensor<uint32_t> totalMGroupCountReg;
         MicroAPI::MaskReg fullMask = MicroAPI::CreateMask<int32_t>();
         MicroAPI::MaskReg firstLaneMask = MicroAPI::CreateMask<int32_t, MicroAPI::MaskPattern::VL1>();
 
         MicroAPI::Arange(laneIndexReg, 0);
         MicroAPI::Duplicate(previousVectorEndReg, 0, fullMask);
+        if constexpr (MGroupTileM != 0U) {
+            MicroAPI::Duplicate(totalMGroupCountReg, 0U, firstLaneMask);
+        }
         for (uint32_t expertOffset = 0U; expertOffset < expertCount; expertOffset += ELEMENTS_PER_VECTOR) {
             uint32_t validCount = expertCount - expertOffset;
             validCount = validCount < ELEMENTS_PER_VECTOR ? validCount : ELEMENTS_PER_VECTOR;
@@ -569,26 +577,44 @@ static __aicore__ inline void ComputeCompactExpertCountTablesVF(__local_mem__ in
             MicroAPI::Select(previousEndPrefixReg, previousVectorEndReg, previousEndPrefixReg, firstLaneMask);
             MicroAPI::Sub(expertCountReg, expertEndPrefixReg, previousEndPrefixReg, activeMask);
             MicroAPI::DataCopy(expertCounts + expertOffset, expertCountReg, activeMask);
+            if constexpr (MGroupTileM != 0U) {
+                MicroAPI::RegTensor<uint32_t> mGroupCountReg;
+                MicroAPI::RegTensor<uint32_t> vectorMGroupCountReg;
+                MicroAPI::Adds(mGroupCountReg, reinterpret_cast<MicroAPI::RegTensor<uint32_t> &>(expertCountReg),
+                               MGroupTileM - 1U, activeMask);
+                MicroAPI::ShiftRights(mGroupCountReg, mGroupCountReg, static_cast<int16_t>(8), activeMask);
+                MicroAPI::ReduceSum(vectorMGroupCountReg, mGroupCountReg, activeMask);
+                MicroAPI::Add(totalMGroupCountReg, totalMGroupCountReg, vectorMGroupCountReg, firstLaneMask);
+            }
 
             MicroAPI::Duplicate(previousLaneIndexReg, static_cast<int32_t>(validCount - 1U), fullMask);
             MicroAPI::Gather(previousVectorEndReg, expertEndPrefixReg,
                              reinterpret_cast<MicroAPI::RegTensor<uint32_t> &>(previousLaneIndexReg));
         }
+        if constexpr (MGroupTileM != 0U) {
+            MicroAPI::DataCopy<uint32_t, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(
+                totalMGroupCount, totalMGroupCountReg, firstLaneMask);
+        }
     }
 }
 
+template <uint32_t MGroupTileM = 0U>
 __aicore__ inline void ComputeCompactExpertCountTables(LocalTensor<int32_t> countTensor,
-                                                       LocalTensor<int32_t> expertCountTensor, uint32_t expertCount,
-                                                       uint32_t worldSize)
+                                                       LocalTensor<int32_t> expertCountTensor,
+                                                       LocalTensor<int32_t> totalMGroupCountTensor,
+                                                       uint32_t expertCount, uint32_t worldSize)
 {
     __local_mem__ int32_t *count = reinterpret_cast<__local_mem__ int32_t *>(countTensor.GetPhyAddr());
     __local_mem__ int32_t *expertCounts = reinterpret_cast<__local_mem__ int32_t *>(expertCountTensor.GetPhyAddr());
-    VF_CALL<ComputeCompactExpertCountTablesVF>(count, expertCounts, expertCount * worldSize, expertCount, worldSize);
+    __local_mem__ uint32_t *totalMGroupCount =
+        reinterpret_cast<__local_mem__ uint32_t *>(totalMGroupCountTensor.GetPhyAddr());
+    VF_CALL<ComputeCompactExpertCountTablesVF<MGroupTileM>>(count, expertCounts, totalMGroupCount,
+                                                            expertCount * worldSize, expertCount, worldSize);
     PipeBarrier<PIPE_V>();
 }
 
 // Wave 进入逐专家流水前一次准备完整 count 表；每个物理 block 只发布一次 ready。
-template <typename ActivationType>
+template <typename ActivationType, uint32_t MGroupTileM = 0U>
 __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfig &common,
                                                        const BlockWorkspaceContext &countWorkspace,
                                                        const Params &params,
@@ -608,9 +634,15 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
                 {1U, rawCountElementCount * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U}, {true, 0U, 0U, 0U});
     SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
 
-    ComputeCompactExpertCountTables(scratch.cumsumInfoTensor, scratch.expertTokenNumsOutTensor, common.moeExpertPerRank,
-                                    common.worldSize);
+    // metaInfoTensor is still idle here; reuse its first word for the optional VF-produced M-group total.
+    ComputeCompactExpertCountTables<MGroupTileM>(scratch.cumsumInfoTensor, scratch.expertTokenNumsOutTensor,
+                                                 scratch.metaInfoTensor, common.moeExpertPerRank, common.worldSize);
     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
+    uint32_t countTableReadyValue = 1U;
+    if constexpr (MGroupTileM != 0U) {
+        // Keep zero reserved for "not ready".
+        countTableReadyValue = static_cast<uint32_t>(scratch.metaInfoTensor.GetValue(0U)) + 1U;
+    }
     uint64_t countOffset = GetExpertCountWorkspaceOffset(countWorkspace, common.moeExpertPerRank, 0U, true);
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
     DataCopyPad(scratch.expertRevNumsGlobalTensor[countOffset], scratch.expertTokenNumsOutTensor,
@@ -624,7 +656,7 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     __gm__ int32_t *countTableReady =
         reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagSendCntCalToUpdParamsPtr) +
         static_cast<uint64_t>(countWorkspace.blockIdx) * INT_CACHELINE;
-    WriteGmByPassDCache(countTableReady, static_cast<int32_t>(1));
+    WriteGmByPassDCache(countTableReady, static_cast<int32_t>(countTableReadyValue));
 }
 
 template <typename ActivationType>

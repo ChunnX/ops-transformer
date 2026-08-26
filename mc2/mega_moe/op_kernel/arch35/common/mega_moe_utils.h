@@ -372,6 +372,21 @@ __aicore__ inline void WaitUntilGmFlagIsNonZero(__gm__ int32_t *flagAddr)
     }
 }
 
+// 轮询 GM 中的 int32 ready flag，并返回观察到的非零值。
+__aicore__ inline uint32_t WaitUntilGmFlagIsNonZeroAndGetValue(__gm__ int32_t *flagAddr)
+{
+    constexpr int64_t pollBackoffCycles = 100;
+    while (true) {
+        int32_t flagValue = AscendC::ReadGmByPassDCache(flagAddr);
+        if (flagValue != 0) {
+            return static_cast<uint32_t>(flagValue);
+        }
+        int64_t startCycle = AscendC::GetSystemCycle();
+        while (AscendC::GetSystemCycle() - startCycle < pollBackoffCycles) {
+        }
+    }
+}
+
 /*
  * 等待 Dispatch 发布当前 expert/block 的 token 总数。这里只同步专家级元数据；每个 256-row group
  * 的 Dispatch 数据就绪依赖由 WaitForGmm1InputReady 处理。
@@ -383,6 +398,17 @@ __aicore__ inline void WaitForMoeExpertTokenCountReady(GM_ADDR tokenCountReadyFl
                                           static_cast<uint64_t>(expertIdx) * countWorkspace.blockNum * INT_CACHELINE +
                                           static_cast<uint64_t>(countWorkspace.blockIdx) * INT_CACHELINE;
     WaitUntilGmFlagIsNonZero(tokenCountReadyFlag);
+}
+
+// 等待 Dispatch 发布当前 expert/block 的 token 总数，并返回 ready flag 携带的非零值。
+__aicore__ inline uint32_t WaitForMoeExpertTokenCountReadyAndGetValue(GM_ADDR tokenCountReadyFlagWorkspace,
+                                                                      const BlockWorkspaceContext &countWorkspace,
+                                                                      uint32_t expertIdx)
+{
+    __gm__ int32_t *tokenCountReadyFlag = reinterpret_cast<__gm__ int32_t *>(tokenCountReadyFlagWorkspace) +
+                                          static_cast<uint64_t>(expertIdx) * countWorkspace.blockNum * INT_CACHELINE +
+                                          static_cast<uint64_t>(countWorkspace.blockIdx) * INT_CACHELINE;
+    return WaitUntilGmFlagIsNonZeroAndGetValue(tokenCountReadyFlag);
 }
 
 // 从当前 expert/block 对应的稳定 workspace 槽读取专家 token 数。
