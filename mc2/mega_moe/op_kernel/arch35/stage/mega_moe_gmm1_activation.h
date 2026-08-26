@@ -59,7 +59,7 @@ struct Gmm1WorkSet {
 };
 
 template <bool IsWaveFlagGrained>
-__aicore__ inline void NotifyGmm2InputReady(__gm__ int32_t *flagBase, uint32_t flagSlotIdx = 0U)
+__aicore__ inline void NotifyGmm2InputReady(__gm__ int32_t *flagBase, uint32_t completedN, uint32_t flagSlotIdx = 0U)
 {
     if (flagBase == nullptr) {
         return;
@@ -67,7 +67,9 @@ __aicore__ inline void NotifyGmm2InputReady(__gm__ int32_t *flagBase, uint32_t f
     if constexpr (IsWaveFlagGrained) {
         flagBase += static_cast<uint64_t>(flagSlotIdx) * INT_CACHELINE;
     }
-    AscendC::AtomicAdd(flagBase, 1);
+    // Accumulate the completed activation output width instead of the number of tiles. The final value is therefore
+    // independent of the GMM1 N tile size and remains valid when a wave selects a smaller tileN.
+    AscendC::AtomicAdd(flagBase, static_cast<int32_t>(completedN));
 }
 
 __aicore__ inline void NotifyGmm1TileStatus(const GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx, uint32_t loopIdx)
@@ -404,7 +406,7 @@ __aicore__ inline void Gmm1Aiv0PrefetchInterleavedEpilogueTileGeneric(
             0};
         AscendC::SetCtrlSpr<60, 60>(0);
         activationQuantOp(epilogueShape, epilogueOffset, 0U);
-        NotifyGmm2InputReady<IsWaveFlagGrained>(gmmAddrInfo.activationToGmm2Flag, subMLoc / L1_TILE_M_256);
+        NotifyGmm2InputReady<IsWaveFlagGrained>(gmmAddrInfo.activationToGmm2Flag, epilogueN, subMLoc / L1_TILE_M_256);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
     }
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
@@ -434,7 +436,7 @@ __aicore__ inline void Gmm1Aiv0InterleavedEpilogueTileGeneric(const Config &conf
         0};
     AscendC::SetCtrlSpr<60, 60>(0);
     activationQuantOp(epilogueShape, epilogueOffset, pingpongIdx);
-    NotifyGmm2InputReady<IsWaveFlagGrained>(gmmAddrInfo.activationToGmm2Flag, mLoc / L1_TILE_M_256);
+    NotifyGmm2InputReady<IsWaveFlagGrained>(gmmAddrInfo.activationToGmm2Flag, epilogueN, mLoc / L1_TILE_M_256);
 }
 
 // Prefetch 非交错路径从 GM 取回两路 GMM1 输出，再执行 SwiGLU/量化。
@@ -493,7 +495,8 @@ __aicore__ inline void Gmm1Aiv0PrefetchEpilogueTileGeneric(const Config &config,
             0};
         AscendC::SetCtrlSpr<60, 60>(0);
         activationQuantOp(epilogueShape, epilogueOffset);
-        NotifyGmm2InputReady<IsWaveFlagGrained>(gmmAddrInfo.activationToGmm2Flag, subMLoc / L1_TILE_M_256);
+        NotifyGmm2InputReady<IsWaveFlagGrained>(gmmAddrInfo.activationToGmm2Flag, Get<N_VALUE>(actualShape),
+                                                subMLoc / L1_TILE_M_256);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
     }
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
@@ -520,7 +523,8 @@ __aicore__ inline void Gmm1Aiv0EpilogueTileGeneric(const Config &config, Activat
         0};
     AscendC::SetCtrlSpr<60, 60>(0);
     activationQuantOp(epilogueShape, epilogueOffset);
-    NotifyGmm2InputReady<IsWaveFlagGrained>(gmmAddrInfo.activationToGmm2Flag, mLoc / L1_TILE_M_256);
+    NotifyGmm2InputReady<IsWaveFlagGrained>(gmmAddrInfo.activationToGmm2Flag, Get<N_VALUE>(actualShape),
+                                            mLoc / L1_TILE_M_256);
 }
 
 // Prefetch 路径的 AIV1 从 GM 取回 A8W4 GMM1 子 tile，执行 SwiGLU/量化并发布完成状态。
@@ -576,7 +580,8 @@ __aicore__ inline void Gmm1Aiv1PrefetchEpilogueTileA8W4(ActivationQuantOp &activ
             0};
         AscendC::SetCtrlSpr<60, 60>(0);
         activationQuantOp(epilogueShape, epilogueOffset);
-        NotifyGmm2InputReady<IsWaveFlagGrained>(gmmAddrInfo.activationToGmm2Flag, subMLoc / L1_TILE_M_256);
+        NotifyGmm2InputReady<IsWaveFlagGrained>(gmmAddrInfo.activationToGmm2Flag, Get<N_VALUE>(actualShape),
+                                                subMLoc / L1_TILE_M_256);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
     }
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
@@ -622,7 +627,8 @@ __aicore__ inline void Gmm1Aiv1EpilogueTileA8W4(ActivationQuantOp &activationQua
         0};
     AscendC::SetCtrlSpr<60, 60>(0);
     activationQuantOp(epilogueShape, epilogueOffset);
-    NotifyGmm2InputReady<IsWaveFlagGrained>(gmmAddrInfo.activationToGmm2Flag, mLoc / L1_TILE_M_256);
+    NotifyGmm2InputReady<IsWaveFlagGrained>(gmmAddrInfo.activationToGmm2Flag, Get<N_VALUE>(actualShape),
+                                            mLoc / L1_TILE_M_256);
     AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
     AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(0);
 }
@@ -1026,13 +1032,14 @@ __aicore__ inline void Gmm1ExecA8W4(Scheduler &scheduler, const Params &params, 
 template <typename GmmConfig, bool TopkWeightsPrefetch, typename ActivationQuantOp>
 __aicore__ inline void RunGmm1A4W4Wave(ActivationQuantOp &activationQuantOp, const GMMAddrInfo &gmmAddrInfo,
                                        typename GmmConfig::ProblemConfig &config, uint32_t startLoopIdx,
-                                       uint32_t tileNum, int32_t &gmm1TileReadySequence, uint32_t expertBeforeCnt,
+                                       uint32_t tileNum, uint32_t tileN, int32_t &gmm1TileReadySequence,
+                                       uint32_t expertBeforeCnt,
                                        GmmKernel::BlockMmadContext<typename GmmConfig::BlockMmad> *blockMmadContext,
                                        bool allowWeightL2Bypass, CriticalPathTileTraceContext *traceContext = nullptr)
 {
     GmmKernel::BlockScheduler scheduler({config.m, config.schedulerN, config.k},
                                         GmmKernel::BlockScheduler::Params{Te::MakeCoord(
-                                            static_cast<int64_t>(config.tileM), static_cast<int64_t>(L1_TILE_N))});
+                                            static_cast<int64_t>(config.tileM), static_cast<int64_t>(tileN))});
     GmmKernel::Gmm1ExecA4W4Wave<GmmConfig, TopkWeightsPrefetch>(
         scheduler, gmmAddrInfo, config, startLoopIdx, tileNum, activationQuantOp, gmm1TileReadySequence,
         expertBeforeCnt, blockMmadContext, allowWeightL2Bypass, traceContext);

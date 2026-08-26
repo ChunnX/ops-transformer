@@ -480,7 +480,8 @@ __aicore__ inline void CombineWaveTokenRange(const MoeStageCommonConfig &common,
     }
 }
 
-// 等待当前 GMM2 tile 对应的 SwiGLU 输入就绪。
+// 等待当前 GMM2 tile 对应的 SwiGLU 输入就绪。Flag 累加的是已完成的 activation 输出 N 长度，
+// 因此等待目标与 GMM1 tileN 无关。
 template <bool IsShared, typename Config>
 __aicore__ inline void WaitForGmm2InputReady(const GMMAddrInfo &gmmAddrInfo, const Config &config, uint32_t mLoc)
 {
@@ -491,19 +492,13 @@ __aicore__ inline void WaitForGmm2InputReady(const GMMAddrInfo &gmmAddrInfo, con
         uint32_t waveIdx = mLoc / L1_TILE_M_256;
         uint32_t waveStart = waveIdx * L1_TILE_M_256;
         uint32_t waveM = waveStart + L1_TILE_M_256 > config.m ? config.m - waveStart : L1_TILE_M_256;
-        constexpr uint32_t sourceNFactor = Config::SOURCE_GMM1_INTERLEAVED ? ACTIVATION_N_HALF : 1U;
-        uint32_t targetLoops =
-            Ops::Base::CeilDiv(waveM, config.activationTileM) * Ops::Base::CeilDiv(config.k * sourceNFactor, L1_TILE_N);
+        uint32_t targetCompletedN = Ops::Base::CeilDiv(waveM, config.activationTileM) * config.k;
         uint64_t flagOffset = static_cast<uint64_t>(waveIdx) * INT_CACHELINE;
         __gm__ int32_t *flagValueAddr = gmmAddrInfo.activationToGmm2Flag + flagOffset;
-        WaitUntilGmFlagEquals(flagValueAddr, static_cast<int32_t>(targetLoops));
+        WaitUntilGmFlagEquals(flagValueAddr, static_cast<int32_t>(targetCompletedN));
     } else {
-        GmmKernel::BlockScheduler gmmBlockScheduler(
-            {config.m, config.k, config.n},
-            GmmKernel::BlockScheduler::Params{
-                Te::MakeCoord(static_cast<int64_t>(config.activationTileM), static_cast<int64_t>(L1_TILE_N))});
-        uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
-        WaitUntilGmFlagEquals(gmmAddrInfo.activationToGmm2Flag, static_cast<int32_t>(targetLoops));
+        uint32_t targetCompletedN = Ops::Base::CeilDiv(config.m, config.activationTileM) * config.k;
+        WaitUntilGmFlagEquals(gmmAddrInfo.activationToGmm2Flag, static_cast<int32_t>(targetCompletedN));
     }
 }
 
