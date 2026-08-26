@@ -179,13 +179,37 @@ struct Config {
         return BlockMmadTilingConfig{tileM, L1_TILE_N, DefaultL1Params()};
     }
 
-    // 持久化 BlockMmad 必须在整个生命周期内保持相同的 Init 配置。A4W4 固定使用 512K 窗口，
+    // 持久化 BlockMmad 必须在整个生命周期内保持相同的 Init 配置。A4W4 固定使用 512K data 窗口，
+    // 并在半片 L1、单侧 64 KiB scale 搬运和实际 K 的约束内尽量覆盖完整 scale。
     // 实际 tile M/N 仍由每次调用的 singleShape 控制，不会补算到初始化容量。
     static __aicore__ inline BlockMmadTilingConfig MakePersistentBlockMmadTilingConfig(uint32_t tileM, uint32_t k)
     {
+        constexpr uint64_t halfL1Size = AscendC::TOTAL_L1_SIZE / 2U;
+        constexpr uint64_t scaleGroupK = MXFP_DIVISOR_SIZE;
+        constexpr uint64_t scaleBytesPerGroup = MXFP_MULTI_BASE_SIZE;
+        constexpr uint64_t scaleTransferBytes = 64U * 1024U;
+        constexpr uint64_t maxScaleFactor = 127U;
+        constexpr uint64_t aElementsPerByte = Blaze::Gemm::IsFp4<ElementA>() ? 2U : 1U;
+        constexpr uint64_t bElementsPerByte = Blaze::Gemm::IsFp4<ElementB>() ? 2U : 1U;
         constexpr uint64_t persistentKL1 = 2U * L1_TILE_K;
         uint64_t kL1 = k >= persistentKL1 ? persistentKL1 : L1_TILE_K;
-        return BlockMmadTilingConfig{tileM, L1_TILE_N, MakeL1Params(kL1, kL1)};
+
+        uint64_t dataBytes = Ops::Base::CeilDiv(static_cast<uint64_t>(tileM) * kL1, aElementsPerByte) +
+                             Ops::Base::CeilDiv(static_cast<uint64_t>(L1_TILE_N) * kL1, bElementsPerByte);
+        uint64_t scaleBytesPerRow = Ops::Base::CeilDiv(kL1, scaleGroupK) * scaleBytesPerGroup;
+        uint64_t scaleABytesPerFactor = static_cast<uint64_t>(tileM) * scaleBytesPerRow;
+        uint64_t scaleBBytesPerFactor = static_cast<uint64_t>(L1_TILE_N) * scaleBytesPerRow;
+        uint64_t scaleBytesPerFactor = scaleABytesPerFactor + scaleBBytesPerFactor;
+
+        uint64_t scaleFactor = dataBytes < halfL1Size ? (halfL1Size - dataBytes) / scaleBytesPerFactor : 0U;
+        scaleFactor = Blaze::Gemm::Min(scaleFactor, scaleTransferBytes / scaleABytesPerFactor);
+        scaleFactor = Blaze::Gemm::Min(scaleFactor, scaleTransferBytes / scaleBBytesPerFactor);
+        scaleFactor = Blaze::Gemm::Min(scaleFactor, static_cast<uint64_t>(k) / kL1);
+        scaleFactor = Blaze::Gemm::Min(scaleFactor, maxScaleFactor);
+        if (scaleFactor == 0U) {
+            scaleFactor = 1U;
+        }
+        return BlockMmadTilingConfig{tileM, L1_TILE_N, MakeL1Params(kL1, scaleFactor * kL1)};
     }
 
     /*
