@@ -132,7 +132,7 @@ cann_ops_transformer.lightning_indexer(
 | block_table | Tensor | 可选 | 表示PageAttention中KV存储使用的block映射表。不支持空tensor。数据格式为ND。 | int32 | (b, k_s_max/block_size) |
 | output_idx_offset | Tensor | 可选 | 表示topK结果输出索引所需要加上的偏移。值必须大于0，加上偏移后topK index不能超过int32最大值。数据格式为ND。 | int32 | layout_q为BSND时shape为(b,q_s,k_n)；layout_q为TND时shape为(q_t,k_n) |
 | metadata | Tensor | 可选 | 由lightning_indexer_metadata得到的分核信息，包含使用核数、分块大小以及每个核处理数据的起始点等内容。不支持空tensor。数据格式为ND。| int32 | (1024,) |
-| max_seqlen_q | int | 可选 | 暂不生效，仅支持-1，默认值为-1。 | int32 | - |
+| max_seqlen_q | int | 可选 | q的最大序列长度。-1表示任意可能长度，默认值为-1。 | int32 | - |
 | layout_q | str | 可选 | 用于标识输入q的数据排布格式，支持BSND、TND，默认值为BSND。 | string | - |
 | layout_k | str | 可选 | 用于标识输入k的数据排布格式，支持BSND、TND、PA_BBND，默认值为BSND。 | string | - |
 | mask_mode | int | 可选 | 表示mask的模式，0代表defaultMask模式，3代表rightDownCausal模式，默认值为0。 | int32 | - |
@@ -162,9 +162,9 @@ cann_ops_transformer.lightning_indexer(
 - b（batch）表示输入样本批量大小。
 - 参数cu_seqlens_q、cu_seqlens_k要求其值为当前batch与前序batch有效token数的累加值，第一个元素必须为0，且后一个元素的值必须大于等于前一个元素的值。
 - 参数seqused_q、seqused_k要求其值表示每个batch中的有效token数。
-- 参数cmp_residual_k需满足0 <= cmp_residual_k\[i\] < cmp_ratio。
+- 参数cmp_residual_k需满足cmp_residual_k\[i\] < cmp_ratio。
 - mask_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../../../docs/zh/context/sparse_mode_introduction.md)。
-- pa_kv_cache支持0轴非连续；pa_block_size支持16~1024，且是16的倍数。
+- pa_kv_cache支持0轴非连续；pa_block_size支持1~1024，且是16的倍数。
 - 参数q、k的数据类型应保持一致。
 - 该接口的TopK排序过程对NaN排序是未定义行为。
 - 当layout_q为BSND时，不支持传入cu_seqlens_q；当layout_k为BSND或PA_BBND时，不支持传入cu_seqlens_k。
@@ -172,12 +172,14 @@ cann_ops_transformer.lightning_indexer(
 - sparse_indices无效部分填-1；sparse_values无效部分填-inf。
 <!-- npu="A3,910b" id7 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>:
-  - topk支持[1, 2048]，以及3072、4096、5120、6144、7168、8192。
-  - layout_q支持BSND、TND；layout_k支持BSND、TND、PA_BBND。非PA场景下layout_q与layout_k必须一致；PA_BBND场景必须传入block_table和seqused_k。
-  - num_heads_k仅支持1；num_heads_q必须为正整数。
-  - cmp_ratio支持[1, 128]。
-  - return_value支持0或1。
-  - 支持传入output_idx_offset；其值必须大于0，且加上偏移后的sparse_indices不能超过INT32最大值。
+  - topk取值范围当前仅支持[1, 2048]。
+  - 当layout_q为TND时，不支持传入seqused_q。
+  - 当layout_k为TND时，不支持传入seqused_k。
+  - 不支持output_idx_offset。
+  - 仅支持num_heads_q = 64、q_n = 64。
+  - layout_k仅支持PA_BBND，必须传入seqused_k。
+  - cmp_ratio仅支持2的幂次方值：1/2/4/8/16/32/64/128。
+  - 不支持return_value功能，不建议传入该参数。
 <!-- end id7 -->
 <!-- npu="950" id8 -->
 - <term>Ascend 950PR/Ascend 950DT</term>:
@@ -357,8 +359,8 @@ metadata校验
             <td>
                 <ul>
                     <li>tensor_type仅支持INT32</li>
-                    <li>传入时shape必须为(1024,)</li>
-                    <li>Ascend 950PR/Ascend 950DT必须传入；Atlas A2/A3可选</li>
+                    <li>shape由lightning_indexer_v2_metadata动态计算</li>
+                    <li>当前不支持不传入，未传入将发出拦截报警</li>
                 </ul>
             </td>
             <td>可选参数</td>
@@ -436,8 +438,8 @@ mask_mode参数解释
                     <li>seqused_k中的值需小于等于k_s</li>
                 </ul>
             </td>
-            <td rowspan="5">可选参数</td>
-            <td rowspan="5">无</td>
+            <td rowspan="6">可选参数</td>
+            <td rowspan="6">无</td>
             <td rowspan="2">无</td>
         </tr>
         <tr>
@@ -479,14 +481,14 @@ mask_mode参数解释
         </tr>
         <tr>
             <td>max_seqlen_q</td>
-            <td>
+            <td rowspan="2">
                 <ul>
                     <li>data_type支持INT</li>
                     <li>暂不生效，仅支持-1</li>
                     <li>默认值为-1</li>
                 </ul>
             </td>
-            <td>
+            <td rowspan="2">
                 <ul>
                     <li>暂不生效，仅支持传入-1</li>
                 </ul>
