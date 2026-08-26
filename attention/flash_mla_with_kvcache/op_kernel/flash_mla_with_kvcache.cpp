@@ -12,8 +12,11 @@
  * \file flash_mla_with_kvcache.cpp
  * \brief flash_mla_with_kvcache Kernel 唯一入口；按 tiling key 编译期推导模板参数，
  *        分发 FlashAttentionNoQuantMlaKernel（由 fia_kernel_noquant_mla.h 复制改名）。
- *        模板实例化集合 = fia MLA 分发宏（fia_arch35_noquant.h Aligned576 路径）限定到
- *        TND/PA_NZ/NTD 路由组合；rope 已并入 q/k_cache 576 宽单张量，无独立 rope 输入。
+ *        结构照 flash_attn.cpp：__global__ 层直接解析 tiling key 四模板参数
+ *        (InOutLayoutType, KvLayoutType, HasAttenMask, Config) → q/out 布局与模板块大小，
+ *        无 isFd（FD 能力恒实例化，运行时由 metadata 各 section mLen>0 驱动）。
+ *        q 仅支持 BSND/BNSD/TND 三布局，不支持输出转置（out 布局恒等于 q）；
+ *        rope 已并入 q/k_cache 576 宽单张量，无独立 rope 输入。
  */
 
 #if ASC_DEVKIT_MAJOR >= 9
@@ -47,144 +50,84 @@ using namespace optiling; // tiling_regbase 提供；kernel 头 static_assert �
 using namespace FaVectorApi; // 命名空间声明仅在 vf 前缀头（经 kernel 头传递）之后可用
 
 using namespace AscendC;
-using namespace AttentionCommon; // flash_mla_with_kvcache_kernel_noquant_mla.h 内 FLASH_MLA_WITH_KVCACHE_LAYOUT 等符号（继承自 fia 结构）
+using namespace AttentionCommon; // flash_mla_with_kvcache_kernel_noquant_mla.h 内 FLASH_MLA_WITH_KVCACHE_LAYOUT
+                                 // 等符号（继承自 fia 结构）
 
-// ============ 入口 layout 推导（flash_attn 风格；参考 flash_attn.cpp:30-100 的
-// GetQueryLayout/GetOutLayout/GetKvLayout/IsPageAttention，命名保留 MLA 语境）。
-// 等价性锚点 = arch35/flash_mla_with_kvcache_template_tiling_key.h 的 InOutLayoutTypeValue 表
-// 与 KvLayoutType 存储模式语义；每条分支与表值 static_assert 互锁（防漂移），
-// 实际实例化组合 = inOutLayoutType=2(TND_TND)、KvLayoutType=3(PA_NZ)。 ============
+// ============ 入口 layout 推导（flash_attn.cpp 风格：if-constexpr 直接映射，无表查找）============
+// InOutLayoutType → q 布局。ql out 布局恒等于 q（MLA 不支持输出转置），无独立 GetOutLayout。
 template <uint8_t inOutLayoutType>
 __aicore__ inline constexpr LayOutTypeEnum GetQueryLayoutMla()
 {
-    static_assert((inOutLayoutType == InOutLayoutType_BNSD_BNSD) ||
-                      (inOutLayoutType == InOutLayoutType_BSH_BSH) ||
-                      (inOutLayoutType == InOutLayoutType_TND_TND) ||
-                      (inOutLayoutType == InOutLayoutType_BNSD_BSND) ||
-                      (inOutLayoutType == InOutLayoutType_NTD_NTD) ||
-                      (inOutLayoutType == InOutLayoutType_NTD_TND),
+    static_assert((inOutLayoutType == InOutLayoutType_BSND) || (inOutLayoutType == InOutLayoutType_BNSD) ||
+                      (inOutLayoutType == InOutLayoutType_TND),
                   "GetQueryLayoutMla fail, inOutLayoutType is incorrect");
-    if constexpr (inOutLayoutType == InOutLayoutType_BNSD_BNSD || inOutLayoutType == InOutLayoutType_BNSD_BSND) {
-        return LayOutTypeEnum::LAYOUT_BNSD;
-    } else if constexpr (inOutLayoutType == InOutLayoutType_BSH_BSH) {
+    if constexpr (inOutLayoutType == InOutLayoutType_BSND) {
         return LayOutTypeEnum::LAYOUT_BSH;
-    } else if constexpr (inOutLayoutType == InOutLayoutType_TND_TND) {
-        return LayOutTypeEnum::LAYOUT_TND;
-    } else if constexpr (inOutLayoutType == InOutLayoutType_NTD_NTD ||
-                         inOutLayoutType == InOutLayoutType_NTD_TND) {
-        return LayOutTypeEnum::LAYOUT_NTD;
-    }
-}
-
-template <uint8_t inOutLayoutType>
-__aicore__ inline constexpr LayOutTypeEnum GetOutLayoutMla()
-{
-    static_assert((inOutLayoutType == InOutLayoutType_BNSD_BNSD) ||
-                      (inOutLayoutType == InOutLayoutType_BSH_BSH) ||
-                      (inOutLayoutType == InOutLayoutType_TND_TND) ||
-                      (inOutLayoutType == InOutLayoutType_BNSD_BSND) ||
-                      (inOutLayoutType == InOutLayoutType_NTD_NTD) ||
-                      (inOutLayoutType == InOutLayoutType_NTD_TND),
-                  "GetOutLayoutMla fail, inOutLayoutType is incorrect");
-    if constexpr (inOutLayoutType == InOutLayoutType_BNSD_BNSD) {
+    } else if constexpr (inOutLayoutType == InOutLayoutType_BNSD) {
         return LayOutTypeEnum::LAYOUT_BNSD;
-    } else if constexpr (inOutLayoutType == InOutLayoutType_BSH_BSH || inOutLayoutType == InOutLayoutType_BNSD_BSND) {
-        return LayOutTypeEnum::LAYOUT_BSH;
-    } else if constexpr (inOutLayoutType == InOutLayoutType_TND_TND) {
-        return LayOutTypeEnum::LAYOUT_TND;
-    } else if constexpr (inOutLayoutType == InOutLayoutType_NTD_NTD) {
-        return LayOutTypeEnum::LAYOUT_NTD;
-    } else { // InOutLayoutType_NTD_TND
+    } else { // InOutLayoutType_TND
         return LayOutTypeEnum::LAYOUT_TND;
     }
 }
 
+// KvLayoutType → 是否 PA 分页（NO_PA=0 不实例化，真值仅为静态约束）
 template <uint8_t kvLayoutType>
 __aicore__ inline constexpr bool IsPageAttentionMla()
 {
-    static_assert(kvLayoutType <= KvLayoutType_PA_NZ, // 合法域 = tiling key bit20-19 编码域 0..3
-                  "IsPageAttentionMla fail, kvLayoutType is incorrect");
+    static_assert(kvLayoutType <= KvLayoutType_PA_NZ, "IsPageAttentionMla fail, kvLayoutType is incorrect");
     return (kvLayoutType != KvLayoutType_NO_PA);
 }
 
-// kv 存储/块内格式的 MLA 语境权威推导 = GetKVGmFormat（gm_format.h:43-65：PA_NZ→GmFormat::PA_NZ，
-// 与四件套 KV_FORMAT 同源）；此处提供 FA 风格命名入口，供入口侧统一调用与互锁。
+// kv 存储/块内格式推导（PA 三格式；layout 仅用于 NO_PA 连续分支，此处 PA 恒真）
 template <LayOutTypeEnum layout, uint8_t kvLayoutType, bool isPa>
 __aicore__ inline constexpr GmFormat GetKvLayoutMla()
 {
     return BaseApi::GetKVGmFormat<layout, kvLayoutType, isPa>();
 }
 
-// —— 互锁①：推导函数 vs InOutLayoutTypeValue 表（全 6 行 × q/out，防表值漂移）——
-static_assert(GetQueryLayoutMla<InOutLayoutType_BNSD_BNSD>() ==
-              static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[InOutLayoutType_BNSD_BNSD][0]));
-static_assert(GetOutLayoutMla<InOutLayoutType_BNSD_BNSD>() ==
-              static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[InOutLayoutType_BNSD_BNSD][1]));
-static_assert(GetQueryLayoutMla<InOutLayoutType_BSH_BSH>() ==
-              static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[InOutLayoutType_BSH_BSH][0]));
-static_assert(GetOutLayoutMla<InOutLayoutType_BSH_BSH>() ==
-              static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[InOutLayoutType_BSH_BSH][1]));
-static_assert(GetQueryLayoutMla<InOutLayoutType_TND_TND>() ==
-              static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[InOutLayoutType_TND_TND][0]));
-static_assert(GetOutLayoutMla<InOutLayoutType_TND_TND>() ==
-              static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[InOutLayoutType_TND_TND][1]));
-static_assert(GetQueryLayoutMla<InOutLayoutType_BNSD_BSND>() ==
-              static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[InOutLayoutType_BNSD_BSND][0]));
-static_assert(GetOutLayoutMla<InOutLayoutType_BNSD_BSND>() ==
-              static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[InOutLayoutType_BNSD_BSND][1]));
-static_assert(GetQueryLayoutMla<InOutLayoutType_NTD_NTD>() ==
-              static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[InOutLayoutType_NTD_NTD][0]));
-static_assert(GetOutLayoutMla<InOutLayoutType_NTD_NTD>() ==
-              static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[InOutLayoutType_NTD_NTD][1]));
-static_assert(GetQueryLayoutMla<InOutLayoutType_NTD_TND>() ==
-              static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[InOutLayoutType_NTD_TND][0]));
-static_assert(GetOutLayoutMla<InOutLayoutType_NTD_TND>() ==
-              static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[InOutLayoutType_NTD_TND][1]));
-
-// —— 互锁②：实际实例化组合的语义断言（inOutLayoutType=2(TND_TND)→inputLayout=TND/outLayout=TND；
-// KvLayoutType=3(PA_NZ)→page attention + kv 格式 PA_NZ）——
-static_assert(GetQueryLayoutMla<InOutLayoutType_TND_TND>() == LayOutTypeEnum::LAYOUT_TND);
-static_assert(GetOutLayoutMla<InOutLayoutType_TND_TND>() == LayOutTypeEnum::LAYOUT_TND);
+// —— 实例化组合语义互锁（tiling key SEL 与块消费一致性；flash_attn 同款静态约束）——
+static_assert(GetQueryLayoutMla<InOutLayoutType_BSND>() == LayOutTypeEnum::LAYOUT_BSH);
+static_assert(GetQueryLayoutMla<InOutLayoutType_BNSD>() == LayOutTypeEnum::LAYOUT_BNSD);
+static_assert(GetQueryLayoutMla<InOutLayoutType_TND>() == LayOutTypeEnum::LAYOUT_TND);
 static_assert(IsPageAttentionMla<KvLayoutType_PA_NZ>() == true);
 static_assert(IsPageAttentionMla<KvLayoutType_NO_PA>() == false);
 static_assert(GetKvLayoutMla<LayOutTypeEnum::LAYOUT_TND, KvLayoutType_PA_NZ, true>() == GmFormat::PA_NZ);
 
-// 解析 tiling key，选择 MLA 四件套（镜像 fused_infer_attention_score/op_kernel/arch35/
-// fia_template_dispatcher.h run_fia_noquant_mla_kernel 的实例化逻辑，删减到限定路由组合）
-template <typename INPUT_T, typename OUT_T, uint8_t inOutLayoutType, uint16_t config, bool hasAttenMask,
-          uint8_t KvLayoutType, bool isFd>
-inline __aicore__ void run_flash_mla_with_kvcache_noquant_kernel(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                                                 __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqlensQ,
-                                                                 __gm__ uint8_t *sequsedQ, __gm__ uint8_t *cacheSeqlens,
-                                                                 __gm__ uint8_t *blockTable, __gm__ uint8_t *softmaxLse,
-                                                                 __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
-                                                                 __gm__ uint8_t *metadata, __gm__ uint8_t *tiling)
+// 解析 tiling key，分发 MLA 四件套（镜像 flash_attn.cpp 的四参解析：ConfigValue[config] 查表
+// 得 s1/s2/d/dv 模板块大小；InOutLayoutType/KvLayoutType 由上述函数推导）
+template <typename INPUT_T, typename OUT_T, uint8_t inOutLayoutType, uint8_t KvLayoutType, bool hasAttenMask,
+          uint8_t config>
+inline __aicore__ void run_flash_mla_with_kvcache_noquant_kernel(
+    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *attenMask,
+    __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *cacheSeqlens, __gm__ uint8_t *blockTable,
+    __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, __gm__ uint8_t *metadata,
+    __gm__ uint8_t *tiling)
 {
-    PARSE_PARAMS_NoQuant(inOutLayoutType, config, PSE_MODE_PSE_NONE_TYPE, ...); // 9: None
-
     fa_base_matmul::idCounterNum = 0;
+    constexpr LayOutTypeEnum inputLayoutType = GetQueryLayoutMla<inOutLayoutType>();
+    constexpr LayOutTypeEnum outputLayoutType = inputLayoutType; // MLA 不支持输出转置
+    constexpr S1TemplateType s1TemplateType = static_cast<S1TemplateType>(ConfigValue[config].s1);
+    constexpr S2TemplateType s2TemplateType = static_cast<S2TemplateType>(ConfigValue[config].s2);
+    constexpr DTemplateType dTemplateType = static_cast<DTemplateType>(ConfigValue[config].d);
+    constexpr DTemplateType dVTemplateType = static_cast<DTemplateType>(ConfigValue[config].dv);
+
     // —— 模板参数聚合（FAType 式，镜像 flash_attn utils/flash_attn_type.h:113-132；
-    // cube/vec/fd 参数集不一致 → 各建聚合类型，见 arch35/flash_mla_with_kvcache_type.h）。
-    // inputLayout/outputLayout 取值来源 = 入口推导函数，与改前 PARSE_PARAMS_NoQuant 宏展开的
-    // 表查值等价（static_assert 互锁）；isFd 保持 kernel 级模板参数（tiling key 第 5 字段），
-    // 仅进入 vec 聚合（FD 运行时由 metadata mLen>0 决定，FATypeFd 不含 flashDecode）。 ——
-    using FA_T_Cube = BaseApi::FATypeCube<INPUT_T, float, GetQueryLayoutMla<inOutLayoutType>(), s1TemplateType,
-                                          s2TemplateType, dTemplateType, dVTemplateType, KvLayoutType>;
+    // cube/vec/fd 参数集不一致 → 各建聚合类型，见 arch35/flash_mla_with_kvcache_type.h）——
+    using FA_T_Cube = BaseApi::FATypeCube<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
+                                          dTemplateType, dVTemplateType, KvLayoutType>;
     using CubBlockNormal = BaseApi::FlashMlaWithKvcacheNoQuantMlaBlockCube<FA_T_Cube>;
     using CubBlockDummy = BaseApi::FlashMlaWithKvcacheNoQuantMlaBlockCubeDummy<FA_T_Cube>;
 
-    // VecFaBlockType
-    using FA_T_Vec = BaseApi::FATypeVec<INPUT_T, float, OUT_T, GetQueryLayoutMla<inOutLayoutType>(),
-                                        GetOutLayoutMla<inOutLayoutType>(), s1TemplateType, s2TemplateType,
-                                        dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, isFd>;
+    // VecFaBlockType（无 isFd；FD 运行时由 metadata mLen>0 决定）
+    using FA_T_Vec = BaseApi::FATypeVec<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
+                                        s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType>;
     using VecFaBlockNormal = BaseApi::FlashMlaWithKvcacheNoQuantMlaBlockVec<FA_T_Vec>;
     using VecFaBlockDummy = BaseApi::FlashMlaWithKvcacheNoQuantMlaBlockVecDummy<FA_T_Vec>;
 
-    // VecFdBlockType（FD 由 IsFd 位实例化；运行时 FD 使能 = metadata mLen > 0；无 isFd 聚合成员；
-    // 无 FD 专属 Dummy —— AIC TU 的 FD 槽复用 vec 哑块，与 flash_attn.cpp:166 同构）
-    using FA_T_Fd = BaseApi::FATypeFd<INPUT_T, float, OUT_T, GetQueryLayoutMla<inOutLayoutType>(),
-                                      GetOutLayoutMla<inOutLayoutType>(), s1TemplateType, s2TemplateType,
-                                      dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType>;
+    // VecFdBlockType（FD 恒实例化；运行时 FD 使能 = metadata mLen > 0；无 FD 专属 Dummy ——
+    // AIC TU 的 FD 槽复用 vec 哑块，与 flash_attn.cpp:166 同构）
+    using FA_T_Fd = BaseApi::FATypeFd<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
+                                      s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType>;
     using VecFdBlockNormal = BaseApi::FlashMlaWithKvcacheBlockVecFlashDecodeMla<FA_T_Fd>;
 
     // 编译期 core-type 选型（与 flash_attn.cpp:150-169 的 #ifdef __DAV_C310_CUBE__ 同构）：
@@ -204,15 +147,6 @@ inline __aicore__ void run_flash_mla_with_kvcache_noquant_kernel(__gm__ uint8_t 
     // KernelType
     using Kernel = BaseApi::FlashAttentionNoQuantMlaKernel<CubBlock, VecFaBlock, VecFdBlock>;
 
-    // —— 互锁③：入口推导 vs 四件套实际消费的模板参数（每实例化组合检查，防推导/消费漂移）——
-    static_assert(GetQueryLayoutMla<inOutLayoutType>() == CubBlockNormal::LAYOUT,
-                  "GetQueryLayoutMla drift vs block LAYOUT");
-    static_assert(IsPageAttentionMla<KvLayoutType>() == CubBlockNormal::PAGE_ATTENTION,
-                  "IsPageAttentionMla drift vs block PAGE_ATTENTION");
-    static_assert(GetKvLayoutMla<GetQueryLayoutMla<inOutLayoutType>(), KvLayoutType,
-                                 IsPageAttentionMla<KvLayoutType>()>() == CubBlockNormal::KV_FORMAT,
-                  "GetKvLayoutMla drift vs block KV_FORMAT");
-
     // 根因（静态图）：固定 shape 下 tiling 是编译期常量字节数组而非 __gm__ buffer，
     // 不能直接 reinterpret_cast 成结构体指针访问，必须先拷贝到栈局部结构体对象再取指针。
     // 该宏由编译器(generate_tiling_code.py)按动态/静态图自动生成两套展开：
@@ -231,13 +165,15 @@ inline __aicore__ void run_flash_mla_with_kvcache_noquant_kernel(__gm__ uint8_t 
     op.Process();
 }
 
-template <uint8_t inOutLayoutType, uint16_t config, bool hasAttenMask, uint8_t KvLayoutType, bool isFd>
+template <uint8_t inOutLayoutType, uint8_t KvLayoutType, bool hasAttenMask, uint8_t config>
 // 形参序必须吃齐 def 输入序 cache_seqlens(3)/cu_seqlens_q(4)/seqused_q(5)（运行时按 def 序绑槽位；
 // 曾用 FIA 内部序致 cacheSeqlens 收到 seqused_q=NULL 槽 → kv 长度解析解引用 GM 0 越界）。
-__global__ __aicore__ void flash_mla_with_kvcache(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *blockTable,
-                                                  __gm__ uint8_t *cacheSeqlens, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
-                                                  __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata, __gm__ uint8_t *attnOut,
-                                                  __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+__global__ __aicore__ void flash_mla_with_kvcache(__gm__ uint8_t *query, __gm__ uint8_t *key,
+                                                  __gm__ uint8_t *blockTable, __gm__ uint8_t *cacheSeqlens,
+                                                  __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
+                                                  __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata,
+                                                  __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse,
+                                                  __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     REGISTER_TILING_DEFAULT(optiling::FlashMlaWithKvcacheTilingData);
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
@@ -260,7 +196,7 @@ __global__ __aicore__ void flash_mla_with_kvcache(__gm__ uint8_t *query, __gm__ 
 #error "flash_mla_with_kvcache: ORIG_DTYPE_* macros must be all fp16 or all bf16"
 #endif
 
-    run_flash_mla_with_kvcache_noquant_kernel<INPUT_T, OUT_T, inOutLayoutType, config, hasAttenMask, KvLayoutType, isFd>(
+    run_flash_mla_with_kvcache_noquant_kernel<INPUT_T, OUT_T, inOutLayoutType, KvLayoutType, hasAttenMask, config>(
         query, key, key, attnMask, cuSeqlensQ, sequsedQ, cacheSeqlens, blockTable, softmaxLse, attnOut, user, metadata,
         tiling);
 
