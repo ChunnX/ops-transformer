@@ -3195,8 +3195,8 @@ aclnnStatus aclnnGroupedMatmulWeightNzGetWorkspaceSize(
     L2_DFX_PHASE_1(aclnnGroupedMatmulWeightNz,
                    DFX_IN(x, weight, biasOptional, scaleOptional, offsetOptional, antiquantScaleOptional,
                           antiquantOffsetOptional, perTokenScaleOptional, groupListOptional, activationInputOptional,
-                          activationQuantScaleOptional, activationQuantOffsetOptional, splitItem,
-                          groupType, groupListType, actType, tuningConfigOptional, quantGroupSize),
+                          activationQuantScaleOptional, activationQuantOffsetOptional, splitItem, groupType,
+                          groupListType, actType, tuningConfigOptional, quantGroupSize),
                    DFX_OUT(out, activationFeatureOutOptional, dynQuantScaleOutOptional));
     if ((*weight)[0]->GetDataType() == DataType::DT_INT32) {
         // convert weight from int32 to int4
@@ -3263,12 +3263,12 @@ aclnnStatus aclnnGroupedMatmulV5GetWorkspaceSize(
     CHECK_COND(CheckNotNull(x, weight, out) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR,
                "In op [%s], required inputs must not be nullptr.", opName);
     // Standard syntax, Check parameters.
-    L2_DFX_PHASE_1(aclnnGroupedMatmulV5,
-                   DFX_IN(x, weight, biasOptional, scaleOptional, offsetOptional, antiquantScaleOptional,
-                          antiquantOffsetOptional, perTokenScaleOptional, groupListOptional, activationInputOptional,
-                          activationQuantScaleOptional, activationQuantOffsetOptional, splitItem,
-                          groupType, groupListType, actType, tuningConfigOptional),
-                   DFX_OUT(out, activationFeatureOutOptional, dynQuantScaleOutOptional));
+    L2_DFX_PHASE_1(
+        aclnnGroupedMatmulV5,
+        DFX_IN(x, weight, biasOptional, scaleOptional, offsetOptional, antiquantScaleOptional, antiquantOffsetOptional,
+               perTokenScaleOptional, groupListOptional, activationInputOptional, activationQuantScaleOptional,
+               activationQuantOffsetOptional, splitItem, groupType, groupListType, actType, tuningConfigOptional),
+        DFX_OUT(out, activationFeatureOutOptional, dynQuantScaleOutOptional));
     CHECK_COND(weight->Size() != 0, ACLNN_ERR_PARAM_INVALID, "In op [%s], [%s] must not be empty tensor list.", opName,
                "weight");
     if ((*weight)[0]->GetDataType() == DataType::DT_INT32) {
