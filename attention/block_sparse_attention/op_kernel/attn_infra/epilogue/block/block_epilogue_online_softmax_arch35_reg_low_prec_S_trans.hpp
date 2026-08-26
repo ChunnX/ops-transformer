@@ -79,6 +79,14 @@ public:
         glUbTensor = resource.ubBuf.template GetBufferByByte<float>(uBufTileHelper.glStartOffset);
         lmUbTensor = resource.ubBuf.template GetBufferByByte<ElementInput>(uBufTileHelper.lmStartOffset);
         llUbTensor = resource.ubBuf.template GetBufferByByte<ElementInput>(uBufTileHelper.llStartOffset);
+        if constexpr (FULL_QUANT_FP8) {
+            // Gather compacts the valid FP8 bytes at offsets 0, 2, ..., 126.
+            fp8GatherIndexUbTensor =
+                resource.ubBuf.template GetBufferByByte<uint8_t>(uBufTileHelper.maskStartOffset);
+            __ubuf__ uint8_t *fp8GatherIndexUbAddr =
+                (__ubuf__ uint8_t *)fp8GatherIndexUbTensor.GetPhyAddr();
+            InitFp8GatherIndex(fp8GatherIndexUbAddr);
+        }
     }
 
     __aicore__ inline
@@ -137,15 +145,20 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
 
         if constexpr (FULL_QUANT_FP8) {
+            __ubuf__ uint8_t *fp8GatherIndexUbAddr =
+                (__ubuf__ uint8_t *)fp8GatherIndexUbTensor.GetPhyAddr();
             if (mAligned16TileNum == 0) {
                 ComputePAndLocalSumFP8<MAlignedTileNum::Zero>(sUbAddr, pUbAddr, lmUbAddr, llUbAddr, mRound, m,
-                                                              mFirstTile, s2BaseSize, tailN, blockStride, scaleValue);
+                                                              mFirstTile, s2BaseSize, tailN, blockStride, scaleValue,
+                                                              fp8GatherIndexUbAddr);
             } else if (mAligned16TileNum == 1) {
                 ComputePAndLocalSumFP8<MAlignedTileNum::One>(sUbAddr, pUbAddr, lmUbAddr, llUbAddr, mRound, m,
-                                                             mFirstTile, s2BaseSize, tailN, blockStride, scaleValue);
+                                                             mFirstTile, s2BaseSize, tailN, blockStride, scaleValue,
+                                                             fp8GatherIndexUbAddr);
             } else {
                 ComputePAndLocalSumFP8<MAlignedTileNum::Two>(sUbAddr, pUbAddr, lmUbAddr, llUbAddr, mRound, m,
-                                                             mFirstTile, s2BaseSize, tailN, blockStride, scaleValue);
+                                                             mFirstTile, s2BaseSize, tailN, blockStride, scaleValue,
+                                                             fp8GatherIndexUbAddr);
             }
         } else {
             if (mAligned16TileNum == 0) {
@@ -199,6 +212,7 @@ private:
     AscendC::LocalTensor<float> dmUbTensor[UB_DM_BUF_MAX_STAGES];
     AscendC::LocalTensor<ElementInput> lmUbTensor;
     AscendC::LocalTensor<ElementInput> llUbTensor;
+    AscendC::LocalTensor<uint8_t> fp8GatherIndexUbTensor;
     uint32_t subBlockIdx_;
 
     enum class MAlignedTileNum {
@@ -206,6 +220,21 @@ private:
         One = 1,
         Two = 2,
     };
+
+    __simd_vf__ inline void InitFp8GatherIndex(__ubuf__ uint8_t *gatherIndexUb)
+    {
+        using namespace AscendC::MicroAPI;
+
+        RegTensor<int8_t> arangeVreg;
+        RegTensor<uint8_t> gatherIndexVreg;
+        MaskReg maskReg8VL64 = CreateMask<uint8_t, MaskPattern::VL64>();
+        MaskReg maskReg8All = CreateMask<uint8_t, MaskPattern::ALL>();
+
+        Arange(arangeVreg, 0);
+        Duplicate(gatherIndexVreg, 0);
+        ShiftLefts(gatherIndexVreg, (RegTensor<uint8_t> &)arangeVreg, 1, maskReg8VL64);
+        StoreAlign(gatherIndexUb, gatherIndexVreg, maskReg8All);
+    }
 
     __simd_vf__ inline void ComputeLocalMax(__ubuf__ half *sUb, __ubuf__ half *lmUb, uint16_t m, uint16_t s2BaseSize,
                                             uint32_t tailN, half scaleValue)
@@ -370,7 +399,7 @@ private:
     __simd_vf__ inline void ComputePAndLocalSumFP8(__ubuf__ half *sUb, __ubuf__ ElementOutput *pUb, __ubuf__ half *lmUb,
                                                 __ubuf__ half *llUb, uint16_t mRound, uint16_t m, uint32_t mFirstTile,
                                                 uint16_t s2BaseSize, uint32_t tailN, uint32_t blockStride,
-                                                half scaleValue)
+                                                half scaleValue, __ubuf__ uint8_t *gatherIndexUb)
     {
         using namespace AscendC::MicroAPI;
 
@@ -394,11 +423,7 @@ private:
         RegTensor<fp8_e4m3fn_t> pVregFP81;
         RegTensor<fp8_e4m3fn_t> pVregFP82;
         RegTensor<fp8_e4m3fn_t> pVregFP83;
-
-        RegTensor<fp8_e4m3fn_t> deInterleaveVreg0;
-        RegTensor<fp8_e4m3fn_t> deInterleaveVreg1;
-        RegTensor<fp8_e4m3fn_t> deInterleaveVreg2;
-        RegTensor<fp8_e4m3fn_t> deInterleaveVreg3;
+        RegTensor<uint8_t> gatherIndexVreg;
 
         RegTensor<half> sumVreg0;
         RegTensor<half> sumVreg1;
@@ -447,6 +472,7 @@ private:
         constexpr half maxValueFP8 = static_cast<half>(448.0f);
 
         LoadAlign(hmVreg, lmUb);
+        LoadAlign(gatherIndexVreg, gatherIndexUb);
         for (uint16_t i = 0; i < mFirstTile; i++) {
             LoadAlign(sVreg0, sUb + i * s2BaseSize);
             LoadAlign(sVreg1, sUb + mRound * s2BaseSize / 2 + i * s2BaseSize);
@@ -476,13 +502,13 @@ private:
             Or((RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP81, maskReg8All);
             Or((RegTensor<uint8_t> &)pVregFP82, (RegTensor<uint8_t> &)pVregFP82, (RegTensor<uint8_t> &)pVregFP83, maskReg8All);
 
-            DeInterleave(deInterleaveVreg0, deInterleaveVreg1, pVregFP80, pVregFP80);
-            DeInterleave(deInterleaveVreg2, deInterleaveVreg3, pVregFP82, pVregFP82);
+            Gather(pVregFP80, pVregFP80, gatherIndexVreg);
+            Gather(pVregFP82, pVregFP82, gatherIndexVreg);
 
             StoreAlign<fp8_e4m3fn_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
-                pUb0, deInterleaveVreg0, mRound + 1, 1, maskReg8VL64);
+                pUb0, pVregFP80, mRound + 1, 1, maskReg8VL64);
             StoreAlign<fp8_e4m3fn_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
-                pUb1, deInterleaveVreg2, mRound + 1, 1, maskReg8VL64);
+                pUb1, pVregFP82, mRound + 1, 1, maskReg8VL64);
 
             if constexpr (mTileNum >= MAlignedTileNum::Zero) {
                 Add(sumVreg0, sumVreg0, pVreg0, maskReg16TailN);
@@ -512,10 +538,10 @@ private:
                 Or((RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP81,
                    maskReg8All);
 
-                DeInterleave(deInterleaveVreg0, deInterleaveVreg1, pVregFP80, pVregFP80);
+                Gather(pVregFP80, pVregFP80, gatherIndexVreg);
 
                 StoreAlign<fp8_e4m3fn_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
-                    pUb0, deInterleaveVreg0, mRound + 1, 1, maskReg8VL64);
+                    pUb0, pVregFP80, mRound + 1, 1, maskReg8VL64);
 
                 if constexpr (mTileNum > MAlignedTileNum::Zero) {
                     Add(sumVreg0, sumVreg0, pVreg0, maskReg16TailN);
