@@ -110,6 +110,9 @@ class SparseFlashAttentionAclnnSpec(SparseFlashAttentionAclnnV2Spec):
 
 __spec__ = {
     "torch_npu.npu_sparse_flash_attention": "SparseFlashAttentionSpec",
+    "torch.ops.cann_ops_transformer.sparse_flash_attention": (
+        "SparseFlashAttentionSpec"
+    ),
     "aclnnSparseFlashAttention": "SparseFlashAttentionAclnnSpec",
     "aclnnSparseFlashAttentionV2": "SparseFlashAttentionAclnnV2Spec",
 }
