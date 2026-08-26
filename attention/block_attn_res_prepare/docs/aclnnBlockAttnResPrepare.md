@@ -86,11 +86,11 @@
     $$
     O=\mathbf{0}_{S\times T\times D},\qquad
     M=m_{\min}\mathbf{1}_{S\times T},\qquad
-    L=\mathbf{1}_{S\times T},\qquad
+    L=\mathbf{0}_{S\times T},\qquad
     m_{\min}=-3.4028234663852886\times10^{38}.
     $$
 
-    即 `numerator` 为 shape `[S, T, D]` 的全 0 Tensor，`logitMax` 为 shape `[S, T]` 且所有元素均为 FLOAT32 最小有限值 $m_{\min}$ 的 Tensor，`expSum` 为 shape `[S, T]` 的全 1 Tensor。该结果表示 online softmax 的空状态；`validBlocks[0] < 0` 时按 0 处理，返回结果相同。
+    即 `numerator` 为 shape `[S, T, D]` 的全 0 Tensor，`logitMax` 为 shape `[S, T]` 且所有元素均为 FLOAT32 最小有限值 $m_{\min}$ 的 Tensor，`expSum` 为 shape `[S, T]` 的全 0 Tensor。该结果表示 online softmax 的空状态；`validBlocks[0] < 0` 时按 0 处理，返回结果相同。
 
     其中：
     - $V\in\mathbb{R}^{T\times N\times D}$ 表示输入 `blockRes`；$V_{t,n,d}$ 表示第 $t$ 个 token、第 $n$ 个历史残差块在第 $d$ 个隐藏特征上的值。
@@ -162,7 +162,7 @@ aclnnStatus aclnnBlockAttnResPrepare(
       <td>validBlocks</td>
       <td>输入</td>
       <td>表示当前有效历史块数。</td>
-      <td>shape为[1]，Tensor中的值为N_v时，计算时blockRes的N维仅前N_v参与运算。值为0时，numerator返回全0 Tensor、logitMax返回所有元素均为FLOAT32最小有限值的Tensor、expSum返回全1 Tensor；值小于0时按0处理，大于N时按N处理。</td>
+      <td>shape为[1]，Tensor中的值为N_v时，计算时blockRes的N维仅前N_v参与运算。值为0时，numerator返回全0 Tensor、logitMax返回所有元素均为FLOAT32最小有限值的Tensor、expSum返回全0 Tensor；值小于0时按0处理，大于N时按N处理。</td>
       <td>INT64</td>
       <td>ND</td>
       <td>1</td>
@@ -285,7 +285,7 @@ aclnnStatus aclnnBlockAttnResPrepare(
 
 - `T >= 0`，`S >= 0`，`1 <= N <= 64`，`1 <= D <= 8192`。
 - `blockRes` 与 `pseudoQuery` 的最后一维必须相同。
-- `validBlocks[0] == 0` 时，`numerator` 返回全 0 Tensor、`logitMax` 返回所有元素均为 FLOAT32 最小有限值的 Tensor、`expSum` 返回全 1 Tensor；`validBlocks[0] < 0` 时返回结果相同。
+- `validBlocks[0] == 0` 时，`numerator` 返回全 0 Tensor、`logitMax` 返回所有元素均为 FLOAT32 最小有限值的 Tensor、`expSum` 返回全 0 Tensor；`validBlocks[0] < 0` 时返回结果相同。
 - `T == 0` 或 `S == 0` 时返回对应形状的空输出。
 
 ## 返回值
