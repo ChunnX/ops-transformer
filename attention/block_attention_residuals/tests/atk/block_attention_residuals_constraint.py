@@ -9,10 +9,10 @@ from atk.configs.case_config import CaseConfig
 class BlockAttentionResidualsConstraintGenerator(CaseGenerator):
     def after_case_config(self, case_config: CaseConfig) -> CaseConfig:
         shapes = {
-            "prefix_sum": [544, 7168],
-            "block_res": [544, 12, 7168],
-            "proj_weight": [1, 7168],
-            "norm_weight": [7168],
+            "prefix_sum": [1, 64],
+            "block_res": [1, 1, 64],
+            "proj_weight": [1, 64],
+            "norm_weight": [64],
         }
         for inp in case_config.inputs:
             if inp.name in shapes:

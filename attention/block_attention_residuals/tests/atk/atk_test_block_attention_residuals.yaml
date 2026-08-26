@@ -74,7 +74,7 @@ inputs:
       values: [int]
     ranges:
       valid:
-        values: [12]
+        values: [1]
   - name: norm_eps
     type: attr
     required: true
