@@ -700,15 +700,14 @@ ge::graphStatus QuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tilingInf
     bool isSplitG = tilingInfo->gSize > 64;
     uint32_t fdStagingSlotNum = isSplitG ? (aicNum >> 1U) : aicNum;
     uint64_t fdStagingMSize = static_cast<uint64_t>(tilingInfo->gSize);
-    uint64_t combineElemSize = fdStagingMSize * D_SIZE +
-                               static_cast<uint64_t>(FD_MAX_SUM_REGION_NUM) * fdStagingMSize * FD_BLOCK_ELEM;
+    uint64_t combineElemSize =
+        fdStagingMSize * D_SIZE + static_cast<uint64_t>(FD_MAX_SUM_REGION_NUM) * fdStagingMSize * FD_BLOCK_ELEM;
     if (tilingInfo->batchConsistency) {
         workspaceSize += 2ULL * fdStagingSlotNum * combineElemSize * FLOAT_ELEM_SIZE;
-        workspaceSize += static_cast<uint64_t>(aicNum) * BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM *
-                         combineElemSize * FLOAT_ELEM_SIZE;
+        workspaceSize +=
+            static_cast<uint64_t>(aicNum) * BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM * combineElemSize * FLOAT_ELEM_SIZE;
     } else {
-        workspaceSize += static_cast<uint64_t>(fdStagingSlotNum) * MAX_S2_SPLIT_NUM * combineElemSize *
-                         FLOAT_ELEM_SIZE;
+        workspaceSize += static_cast<uint64_t>(fdStagingSlotNum) * MAX_S2_SPLIT_NUM * combineElemSize * FLOAT_ELEM_SIZE;
     }
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workSpaces);

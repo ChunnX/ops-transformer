@@ -102,10 +102,10 @@ private:
     __aicore__ inline void InitMMResBuf(__gm__ uint8_t *workspace);
     __aicore__ inline void ComputeConstexpr();
     __aicore__ inline void ParseFdRunInfo(FdRunInfo &fdRunInfo);
-    __aicore__ inline int64_t ConvertS2MetadataBlockToToken(
-        const RunParamStr &runParam, const ConstInfo &constInfo, uint32_t s2BlockIdx);
-    __aicore__ inline bool ApplyS2MetadataRange(RunParamStr &runParam, ConstInfo &constInfo,
-        int64_t s2StartPoint, int64_t s2EndPoint, bool isFirstS2RangeTask, bool isLastS2RangeTask);
+    __aicore__ inline int64_t ConvertS2MetadataBlockToToken(const RunParamStr &runParam, const ConstInfo &constInfo,
+                                                            uint32_t s2BlockIdx);
+    __aicore__ inline bool ApplyS2MetadataRange(RunParamStr &runParam, ConstInfo &constInfo, int64_t s2StartPoint,
+                                                int64_t s2EndPoint, bool isFirstS2RangeTask, bool isLastS2RangeTask);
     __aicore__ inline void SetRunInfo(RunInfo &runInfo, RunParamStr &runParam, int64_t taskId, int64_t s2LoopCount,
                                       int64_t s2LoopLimit, int64_t multiCoreInnerIdx);
     __aicore__ inline void ComputeBmm1Tail(RunInfo &runInfo, RunParamStr &runParam);
@@ -450,13 +450,11 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Init
     v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
     crossCoreSyncBufId++;
 
-    uint64_t v0RegionSize = static_cast<uint64_t>(v0ResSize) * 3 *
-                            (IS_SPLIT_G ? (GetBlockNum() >> 1U) : GetBlockNum());
+    uint64_t v0RegionSize = static_cast<uint64_t>(v0ResSize) * 3 * (IS_SPLIT_G ? (GetBlockNum() >> 1U) : GetBlockNum());
     uint64_t phyAddrRegionSize = 0;
     if constexpr (IS_VEC_S2PHYADDR) {
-        uint64_t totalBS1 = LAYOUT_T == QSMLA_LAYOUT::TND ?
-            static_cast<uint64_t>(constInfo.s1Size) :
-            static_cast<uint64_t>(constInfo.bSize) * constInfo.s1Size;
+        uint64_t totalBS1 = LAYOUT_T == QSMLA_LAYOUT::TND ? static_cast<uint64_t>(constInfo.s1Size) :
+                                                            static_cast<uint64_t>(constInfo.bSize) * constInfo.s1Size;
         if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
                       TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
             phyAddrRegionSize += totalBS1 * constInfo.alignedOriSparseBlockCount * sizeof(int64_t);
@@ -470,20 +468,22 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Init
     constexpr uint32_t FD_MAX_SUM_REGION_NUM = 2U;
     uint32_t gSize = static_cast<uint32_t>(constInfo.gSize);
     if constexpr (IS_BATCH_CONSISTENCY) {
-        uint32_t combineElemSize = gSize * constInfo.dSize + FD_MAX_SUM_REGION_NUM * gSize *
-                                                                 static_cast<uint32_t>(AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW);
+        uint32_t combineElemSize =
+            gSize * constInfo.dSize +
+            FD_MAX_SUM_REGION_NUM * gSize * static_cast<uint32_t>(AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW);
         uint32_t intraCoreSlotNum = IS_SPLIT_G ? GetBlockNum() : (GetBlockNum() << 1U);
         uint32_t intraCoreCombineSize = intraCoreSlotNum * combineElemSize * sizeof(float);
-        uint32_t crossCoreCombineSize = GetBlockNum() * BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM *
-                                        combineElemSize * sizeof(float);
+        uint32_t crossCoreCombineSize =
+            GetBlockNum() * BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM * combineElemSize * sizeof(float);
         intraCoreCombineBuffer.Init(fdStagingBufferManager, intraCoreCombineSize);
         crossCoreCombineBuffer.Init(fdStagingBufferManager, crossCoreCombineSize);
     } else {
         uint32_t fdSlotCount = static_cast<uint32_t>(AttentionCommon::FD_MAX_S2_SPLIT_NUM) *
                                (IS_SPLIT_G ? (GetBlockNum() >> 1U) : GetBlockNum());
-        uint32_t fdStagingSize = fdSlotCount * (gSize * constInfo.dSize * sizeof(float) +
-                                                FD_MAX_SUM_REGION_NUM * gSize *
-                                                    static_cast<uint32_t>(AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW) * sizeof(float));
+        uint32_t fdStagingSize =
+            fdSlotCount * (gSize * constInfo.dSize * sizeof(float) +
+                           FD_MAX_SUM_REGION_NUM * gSize *
+                               static_cast<uint32_t>(AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW) * sizeof(float));
         fdStagingBuffer.Init(fdStagingBufferManager, fdStagingSize);
     }
 }
@@ -592,8 +592,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
                                               this->actualSeqCmpKvlenGm, this->cmpResidualKvGm, this->hasCuSeqlensOriKv,
                                               this->hasCuSeqlensCmpKv, this->hasActualSeqQlen,
                                               this->hasActualSeqOriKvlen, this->hasActualSeqCmpKvlen);
-        ComputeS1LoopInfo<TEMPLATE_INTF_ARGS>(
-            runParam, this->constInfo, lastBN, nextGs1Idx, gS1StartIdx, s2EndIdx);
+        ComputeS1LoopInfo<TEMPLATE_INTF_ARGS>(runParam, this->constInfo, lastBN, nextGs1Idx, gS1StartIdx, s2EndIdx);
 
         int64_t gS1LoopEnd = lastBN ? (runParam.gs1LoopEndIdx + PRELOAD_NUM) : runParam.gs1LoopEndIdx;
         for (int64_t gS1Index = runParam.gs1LoopStartIdx; gS1Index < gS1LoopEnd; gS1Index++) {
@@ -631,12 +630,12 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
                     runParam.baseBlockNumPerReductionBlock = baseBlockNum > 0 ? baseBlockNum : 1LL;
                 }
                 if (!s2NoNeedCalc) {
-                    bool isFirstS2RangeTask =
-                        bnIdx == bN2StartIdx && gS1Index == runParam.gs1LoopStartIdx;
+                    bool isFirstS2RangeTask = bnIdx == bN2StartIdx && gS1Index == runParam.gs1LoopStartIdx;
                     bool isLastS2RangeTask = lastBN && gS1Index == runParam.gs1LoopEndIdx - 1;
                     int64_t s2StartPoint = ConvertS2MetadataBlockToToken(runParam, this->constInfo, s2StartIdx);
-                    int64_t s2EndPoint = isLastS2RangeTask && s2EndIdx == 0 ? 0 :
-                        ConvertS2MetadataBlockToToken(runParam, this->constInfo, s2EndIdx);
+                    int64_t s2EndPoint = isLastS2RangeTask && s2EndIdx == 0 ?
+                                             0 :
+                                             ConvertS2MetadataBlockToToken(runParam, this->constInfo, s2EndIdx);
                     s2NoNeedCalc = ApplyS2MetadataRange(runParam, this->constInfo, s2StartPoint, s2EndPoint,
                                                         isFirstS2RangeTask, isLastS2RangeTask);
                 } else {
@@ -654,9 +653,8 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
                 s2LoopLimit = 0;
             }
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
-                int64_t safeBaseBlockNum = runParam.baseBlockNumPerReductionBlock > 0 ?
-                                               runParam.baseBlockNumPerReductionBlock :
-                                               1LL;
+                int64_t safeBaseBlockNum =
+                    runParam.baseBlockNumPerReductionBlock > 0 ? runParam.baseBlockNumPerReductionBlock : 1LL;
                 if (runParam.isCrossCoreSplit && (s2LoopCount % safeBaseBlockNum == 0)) {
                     runParam.s2SplitIdx = s2SplitIdxCounter++;
                 }
@@ -745,8 +743,8 @@ __aicore__ inline int64_t QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::C
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline bool QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::ApplyS2MetadataRange(
-    RunParamStr &runParam, ConstInfo &constInfo, int64_t s2StartPoint, int64_t s2EndPoint,
-    bool isFirstS2RangeTask, bool isLastS2RangeTask)
+    RunParamStr &runParam, ConstInfo &constInfo, int64_t s2StartPoint, int64_t s2EndPoint, bool isFirstS2RangeTask,
+    bool isLastS2RangeTask)
 {
     int64_t oriStart = runParam.s2LineStartIdx;
     int64_t oriEnd = runParam.s2LineOriEndIdx;
@@ -867,8 +865,8 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::SetR
     int64_t baseBlockIdInReduceBlock = s2LoopCount % runParam.baseBlockNumPerReductionBlock;
     runInfo.reduceBlockId = s2LoopCount / runParam.baseBlockNumPerReductionBlock;
     runInfo.isFirstBase = baseBlockIdInReduceBlock == 0;
-    runInfo.isLastBase = runParam.baseBlockNumPerReductionBlock - baseBlockIdInReduceBlock == 1LL ||
-                         s2LoopCount == s2LoopLimit;
+    runInfo.isLastBase =
+        runParam.baseBlockNumPerReductionBlock - baseBlockIdInReduceBlock == 1LL || s2LoopCount == s2LoopLimit;
     if constexpr (IS_BATCH_CONSISTENCY) {
         runInfo.isFirstReduce = baseBlockIdInReduceBlock == 1;
     } else {

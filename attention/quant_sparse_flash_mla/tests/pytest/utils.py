@@ -149,8 +149,7 @@ def gen_cu_seqlens_cmp_kv(
 
     capacities = [
         math.floor(
-            (cu_seqlens_ori_kv[index + 1] - cu_seqlens_ori_kv[index])
-            / cmp_ratio
+            (cu_seqlens_ori_kv[index + 1] - cu_seqlens_ori_kv[index]) / cmp_ratio
         )
         for index in range(len(cu_seqlens_ori_kv) - 1)
     ]

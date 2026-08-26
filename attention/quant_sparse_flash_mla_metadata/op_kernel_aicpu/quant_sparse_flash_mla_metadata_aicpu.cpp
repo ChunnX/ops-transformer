@@ -89,9 +89,7 @@ bool QuantSparseFlashMlaMetadataCpuKernel::ParamsCheck()
         return false;
     }
     int32_t batchSize = GetQueryBatchSize();
-    return (CheckSeqLen(batchSize) &&
-            CheckCuSeqLen(batchSize) &&
-            CheckTopkLength(batchSize) &&
+    return (CheckSeqLen(batchSize) && CheckCuSeqLen(batchSize) && CheckTopkLength(batchSize) &&
             CheckFeature(batchSize));
 }
 
@@ -171,10 +169,10 @@ bool QuantSparseFlashMlaMetadataCpuKernel::CheckSeqLen(int32_t batchSize)
     // 校验 seqused_q 元素
     if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
         const int32_t *sequsedQPtr = static_cast<const int32_t *>(sequsedQ_->GetData());
-        const int32_t *cuSeqlensQPtr = (layoutQ_ == "TND" && cuSeqlensQ_ != nullptr &&
-                                        cuSeqlensQ_->GetData() != nullptr) ?
-                                           static_cast<const int32_t *>(cuSeqlensQ_->GetData()) :
-                                           nullptr;
+        const int32_t *cuSeqlensQPtr =
+            (layoutQ_ == "TND" && cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) ?
+                static_cast<const int32_t *>(cuSeqlensQ_->GetData()) :
+                nullptr;
         for (int i = 0; i < batchSize; i++) {
             // 校验 seqused_q 元素非负
             if (sequsedQPtr[i] < 0) {
@@ -204,10 +202,10 @@ bool QuantSparseFlashMlaMetadataCpuKernel::CheckSeqLen(int32_t batchSize)
         // 校验 seqused_ori_kv 元素
         if (sequsedOriKv_ != nullptr && sequsedOriKv_->GetData() != nullptr) {
             const int32_t *sequsedOriKvPtr = static_cast<const int32_t *>(sequsedOriKv_->GetData());
-            const int32_t *cuSeqlensOriKvPtr = (layoutKv_ == "TND" && cuSeqlensOriKv_ != nullptr &&
-                                                cuSeqlensOriKv_->GetData() != nullptr) ?
-                                                   static_cast<const int32_t *>(cuSeqlensOriKv_->GetData()) :
-                                                   nullptr;
+            const int32_t *cuSeqlensOriKvPtr =
+                (layoutKv_ == "TND" && cuSeqlensOriKv_ != nullptr && cuSeqlensOriKv_->GetData() != nullptr) ?
+                    static_cast<const int32_t *>(cuSeqlensOriKv_->GetData()) :
+                    nullptr;
             for (int i = 0; i < batchSize; i++) {
                 // 校验 seqused_ori_kv 元素非负
                 if (sequsedOriKvPtr[i] < 0) {
@@ -238,10 +236,10 @@ bool QuantSparseFlashMlaMetadataCpuKernel::CheckSeqLen(int32_t batchSize)
         // 校验 seqused_cmp_kv 元素
         if (sequsedCmpKv_ != nullptr && sequsedCmpKv_->GetData() != nullptr) {
             const int32_t *sequsedCmpKvPtr = static_cast<const int32_t *>(sequsedCmpKv_->GetData());
-            const int32_t *cuSeqlensCmpKvPtr = (layoutKv_ == "TND" && cuSeqlensCmpKv_ != nullptr &&
-                                                cuSeqlensCmpKv_->GetData() != nullptr) ?
-                                                   static_cast<const int32_t *>(cuSeqlensCmpKv_->GetData()) :
-                                                   nullptr;
+            const int32_t *cuSeqlensCmpKvPtr =
+                (layoutKv_ == "TND" && cuSeqlensCmpKv_ != nullptr && cuSeqlensCmpKv_->GetData() != nullptr) ?
+                    static_cast<const int32_t *>(cuSeqlensCmpKv_->GetData()) :
+                    nullptr;
             for (int i = 0; i < batchSize; i++) {
                 // 校验 seqused_cmp_kv 元素非负
                 if (sequsedCmpKvPtr[i] < 0) {
@@ -342,8 +340,7 @@ bool QuantSparseFlashMlaMetadataCpuKernel::CheckFeature(int32_t batchSize)
             if (cmpResidualKvPtr[i] < 0 || cmpResidualKvPtr[i] >= cmpRatio_) {
                 KERNEL_LOG_ERROR("The elements in cmp_residual_kv should be in [0, cmpRatio_(%d)), but got "
                                  "cmp_residual_kv[%d] = %d",
-                                 cmpRatio_,
-                                 i, cmpResidualKvPtr[i]);
+                                 cmpRatio_, i, cmpResidualKvPtr[i]);
                 return false;
             }
         }
@@ -504,8 +501,8 @@ uint32_t QuantSparseFlashMlaMetadataCpuKernel::GetBsStride(uint32_t bIdx, uint32
 uint32_t QuantSparseFlashMlaMetadataCpuKernel::GetOriTopkLength(uint32_t bsStride)
 {
     // 尝试使用 oriTopkLength_
-    if (oriTopK_ != 0 && oriMaskMode_ == static_cast<int32_t>(SparseMode::DEFAULT_MASK) &&
-        oriTopkLength_ != nullptr && oriTopkLength_->GetData() != nullptr) {
+    if (oriTopK_ != 0 && oriMaskMode_ == static_cast<int32_t>(SparseMode::DEFAULT_MASK) && oriTopkLength_ != nullptr &&
+        oriTopkLength_->GetData() != nullptr) {
         const int32_t *oriTopkPtr = static_cast<const int32_t *>(oriTopkLength_->GetData());
         return static_cast<uint32_t>(oriTopkPtr[bsStride]);
     }
@@ -516,8 +513,8 @@ uint32_t QuantSparseFlashMlaMetadataCpuKernel::GetOriTopkLength(uint32_t bsStrid
 uint32_t QuantSparseFlashMlaMetadataCpuKernel::GetCmpTopkLength(uint32_t bsStride)
 {
     // 尝试使用 cmpTopkLength_
-    if (cmpTopK_ != 0 && cmpMaskMode_ == static_cast<int32_t>(SparseMode::DEFAULT_MASK) &&
-        cmpTopkLength_ != nullptr && cmpTopkLength_->GetData() != nullptr) {
+    if (cmpTopK_ != 0 && cmpMaskMode_ == static_cast<int32_t>(SparseMode::DEFAULT_MASK) && cmpTopkLength_ != nullptr &&
+        cmpTopkLength_->GetData() != nullptr) {
         const int32_t *cmpTopkPtr = static_cast<const int32_t *>(cmpTopkLength_->GetData());
         return static_cast<uint32_t>(cmpTopkPtr[bsStride]);
     }
@@ -1007,12 +1004,9 @@ void QuantSparseFlashMlaMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, const S
         // 计算规约级切分大小
         uint64_t actTotalS2Size = s1GCache.actOriS2Size + s1GCache.actCmpS2Size;
         uint64_t rawReductionBlockSize =
-            (actTotalS2Size + BATCH_CONSISTENCY_MAX_REDUCTION_PARTS - 1U) /
-            BATCH_CONSISTENCY_MAX_REDUCTION_PARTS;
-        s1GCache.reductionBlockSize =
-            (rawReductionBlockSize + s2BaseSize_ - 1U) / s2BaseSize_ * s2BaseSize_;
-        s1GCache.reductionBlockSize =
-            s1GCache.reductionBlockSize == 0U ? s2BaseSize_ : s1GCache.reductionBlockSize;
+            (actTotalS2Size + BATCH_CONSISTENCY_MAX_REDUCTION_PARTS - 1U) / BATCH_CONSISTENCY_MAX_REDUCTION_PARTS;
+        s1GCache.reductionBlockSize = (rawReductionBlockSize + s2BaseSize_ - 1U) / s2BaseSize_ * s2BaseSize_;
+        s1GCache.reductionBlockSize = s1GCache.reductionBlockSize == 0U ? s2BaseSize_ : s1GCache.reductionBlockSize;
         // 使用规约级切分大小对基本块进行重新划分
         s1GCache.oriS2End =
             s1GCache.actOriS2Size == 0 ? 0 : (s1GCache.actOriS2Size - 1) / s1GCache.reductionBlockSize + 1U;
@@ -1020,8 +1014,7 @@ void QuantSparseFlashMlaMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, const S
         s1GCache.cmpS2Start = s1GCache.oriS2End;
         s1GCache.cmpS2End = s1GCache.actCmpS2Size == 0 ?
                                 s1GCache.cmpS2Start :
-                                s1GCache.cmpS2Start +
-                                    (s1GCache.actCmpS2Size - 1) / s1GCache.reductionBlockSize + 1U;
+                                s1GCache.cmpS2Start + (s1GCache.actCmpS2Size - 1) / s1GCache.reductionBlockSize + 1U;
         s1GCache.cmpS2TailSize = s1GCache.actCmpS2Size % s1GCache.reductionBlockSize;
     }
     // 计算基本块负载
@@ -1032,10 +1025,9 @@ void QuantSparseFlashMlaMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, const S
     CalcCmpS1GCache(s1GCache, splitInfo);
     // 汇总 ori 和 cmp 部分的 cost 和 block 信息
     GatherOriAndCmpCache(s1GCache);
-    s1GCache.s2Loop = static_cast<uint32_t>(
-        (static_cast<uint64_t>(s1GCache.actOriS2Size) + s2BaseSize_ - 1U) / s2BaseSize_ +
-        (static_cast<uint64_t>(s1GCache.actCmpS2Size) + s2BaseSize_ - 1U) / s2BaseSize_);
-
+    s1GCache.s2Loop =
+        static_cast<uint32_t>((static_cast<uint64_t>(s1GCache.actOriS2Size) + s2BaseSize_ - 1U) / s2BaseSize_ +
+                              (static_cast<uint64_t>(s1GCache.actCmpS2Size) + s2BaseSize_ - 1U) / s2BaseSize_);
 }
 
 void QuantSparseFlashMlaMetadataCpuKernel::CalcBatchCost(uint32_t bIdx, const SplitContext &splitContext,
@@ -1278,8 +1270,7 @@ void QuantSparseFlashMlaMetadataCpuKernel::AssignByBlock(const SplitContext &spl
         assignContext.s1GCache.s1GCost = assignContext.s1GCache.s1GCost - curCost;
         assignContext.bN2Block--;
         assignContext.s1GCache.s1GBlock--;
-        assignContext.bN2S2Loop =
-            assignContext.bN2S2Loop > curS2Loop ? assignContext.bN2S2Loop - curS2Loop : 0U;
+        assignContext.bN2S2Loop = assignContext.bN2S2Loop > curS2Loop ? assignContext.bN2S2Loop - curS2Loop : 0U;
         assignContext.s1GCache.s2Loop =
             assignContext.s1GCache.s2Loop > curS2Loop ? assignContext.s1GCache.s2Loop - curS2Loop : 0U;
         curCost = CalcCurBlockCost(assignContext);
@@ -1303,8 +1294,7 @@ void QuantSparseFlashMlaMetadataCpuKernel::ForceAssign(const SplitContext &split
     // 当前batch被分配一块出去，更新剩余负载
     assignContext.bN2Cost = assignContext.bN2Cost - curCost;
     assignContext.bN2Block--;
-    assignContext.bN2S2Loop =
-        assignContext.bN2S2Loop > curS2Loop ? assignContext.bN2S2Loop - curS2Loop : 0U;
+    assignContext.bN2S2Loop = assignContext.bN2S2Loop > curS2Loop ? assignContext.bN2S2Loop - curS2Loop : 0U;
     // 当前行被分配一块出去，更新剩余负载
     assignContext.s1GCache.s1GCost = assignContext.s1GCache.s1GCost - curCost;
     assignContext.s1GCache.s1GBlock--;
@@ -1314,7 +1304,7 @@ void QuantSparseFlashMlaMetadataCpuKernel::ForceAssign(const SplitContext &split
 }
 
 bool QuantSparseFlashMlaMetadataCpuKernel::isFirstReductionBlock(const AssignContext &assignContext,
-                                                                      const SplitResult &splitRes)
+                                                                 const SplitResult &splitRes)
 {
     // 如果核0的s2终止点落在s2Start和s2End之间，其规约部分一定是首个规约块
     if (assignContext.curCoreIdx == 0U) {
@@ -1420,7 +1410,7 @@ void QuantSparseFlashMlaMetadataCpuKernel::AssignBlocksToCore(const SplitContext
     // 更新S2切分信息
     if (assignContext.curS2Idx > assignContext.s1GCache.s2Start &&
         assignContext.curS2Idx <= assignContext.s1GCache.s2End) {
-        if (isBatchConsistency_) {                             // batch一致性场景
+        if (isBatchConsistency_) {                              // batch一致性场景
             if (isFirstReductionBlock(assignContext, result)) { // 首个规约切分
                 assignContext.curKvSplitPart++;
             } else { // 非首个规约切分
