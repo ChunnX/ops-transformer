@@ -131,9 +131,11 @@ def build_cases():
                           need_bwd=(i % 4 == 0), seed=1000 + i))
 
     branch_h = (64, 7168, 16384)
-    for n in range(1, 101):
-        h = branch_h[(n - 1) % len(branch_h)]
-        cases.append(Case("n_full", 1, n, h, need_bwd=(n % 10 == 0), seed=2000 + n))
+    for dtype_idx, dtype in enumerate(DTYPES):
+        for n in range(1, 101):
+            h = branch_h[(n - 1) % len(branch_h)]
+            cases.append(Case("n_dtype_cross", 1, n, h, dtype, need_bwd=(n % 10 == 0),
+                              seed=2000 + dtype_idx * 100 + n))
 
     for dtype in DTYPES:
         for h, n in ((64, 8), (7168, 100), (16384, 100)):
@@ -141,6 +143,8 @@ def build_cases():
                 cases.append(Case("dtype_branch", 2, n, h, dtype, need_bwd, 3000 + h + n))
         for need_bwd in (False, True):
             cases.append(Case("max_cross", 1, 100, 65536, dtype, need_bwd, 3900))
+        cases.append(Case("very_large_h_odd", 1, 3, 131071, dtype, False, 3950))
+        cases.append(Case("very_large_h_n100", 1, 100, 131072, dtype, True, 3960))
 
     for i, t in enumerate((0, 1, 2, 39, 40, 41, 127, 1024, 4096)):
         cases.append(Case("t_sweep", t, 100, 64, need_bwd=(i % 2 == 0), seed=4000 + t))

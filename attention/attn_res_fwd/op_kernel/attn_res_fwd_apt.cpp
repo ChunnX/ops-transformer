@@ -14,6 +14,7 @@
  */
 #include "arch35/attn_res_fwd_reload.h"
 #include "arch35/attn_res_fwd_resident.h"
+#include "arch35/attn_res_fwd_hslice.h"
 #include "attn_res_fwd_tiling_data.h"
 #include "tiling_key_attn_res_fwd.h"
 
@@ -38,13 +39,17 @@ extern "C" __global__ __aicore__ void attn_res_fwd(GM_ADDR prefixSum, GM_ADDR bl
     TPipe pipe;
     AttnResFwdInitParams initParams{prefixSum, blockResidual, projWeight, normWeight, hiddenStates, invRms, probs};
 
-    // 按 tiling key 分派算法分支（RELOAD/RESIDENT）；dtype 由编译期宏 DTYPE_PREFIX_SUM 决定
+    // 按 tiling key 分派算法分支（RELOAD/RESIDENT/HSLICE）；dtype 由编译期宏 DTYPE_PREFIX_SUM 决定
     if (TILING_KEY_IS(TILING_KEY_RELOAD)) {
         AttnResFwdReload<DTYPE_PREFIX_SUM> op(&pipe, &tilingData);
         op.Init(initParams);
         op.Process();
     } else if (TILING_KEY_IS(TILING_KEY_RESIDENT)) {
         AttnResFwdResident<DTYPE_PREFIX_SUM> op(&pipe, &tilingData);
+        op.Init(initParams);
+        op.Process();
+    } else if (TILING_KEY_IS(TILING_KEY_HSLICE)) {
+        AttnResFwdHSlice<DTYPE_PREFIX_SUM> op(&pipe, &tilingData);
         op.Init(initParams);
         op.Process();
     }

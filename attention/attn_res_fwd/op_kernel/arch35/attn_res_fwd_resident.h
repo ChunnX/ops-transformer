@@ -170,9 +170,8 @@ private:
                 inLocal = CopyInRow(prefixSumGm_, static_cast<uint64_t>(tokenIdx) * hiddenSize_);
             }
             LocalTensor<D_IN> dstRow = GetResidentRow(n);
-            // UB→UB：用 Vector Copy，勿用 DataCopy / DataCopyParams
-            Copy(dstRow, inLocal, static_cast<uint64_t>(hiddenSizeAlignBf16_), 1, {1, 1, 8, 8});
-            PipeBarrier<PIPE_V>();
+            // 单条 Level0 Copy 受 VL 上限约束；RegBase 按 VL 分段并只拷有效 H。
+            RegBase::CopyLocalExact(dstRow, inLocal, hiddenSize_);
             RegBase::CastB16ToFp32Dual(vRow_, inLocal, hiddenSize_);
             FreeInRow(inLocal);
 
