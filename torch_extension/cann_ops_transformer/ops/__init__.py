@@ -163,3 +163,7 @@ if __name__ == "cann_ops_transformer.ops":
 
 
 # Centralized operators not yet migrated to distributed structure
+from .generic_block_sparse_attention_metadata import (
+    generic_block_sparse_attention_metadata,
+    npu_generic_block_sparse_attention_metadata,
+)

@@ -99,6 +99,21 @@ _op_category_inits = {}
 _op_py_files = []
 _op_cpp_files = []
 
+if _selected_ops is not None:
+    for _op_name in sorted(_selected_ops):
+        _centralized_cpp = os.path.join(
+            _src_path, "ops", "csrc", "%s.cpp" % _op_name
+        )
+        if os.path.isfile(_centralized_cpp):
+            _op_cpp_files.append(
+                (
+                    os.path.join(
+                        "ops", "csrc", os.path.basename(_centralized_cpp)
+                    ),
+                    _centralized_cpp,
+                )
+            )
+
 
 def _collect_op(op_cat, op_dir, te_dir):
     _selected_op_categories.append((op_cat, op_dir))
