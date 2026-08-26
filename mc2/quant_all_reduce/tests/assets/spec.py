@@ -36,7 +36,7 @@ class AclnnQuantAllReduceSpec:
     """TestSpec for aclnnQuantAllReduce (ACLNN multi-device path)."""
 
     @staticmethod
-    def multi_device_golden(thread_contexts, device_ids, all_precision):
+    def golden(thread_contexts, device_ids, all_precision):
         return _load_impl_module("golden").quant_all_reduce_multi_device_golden(
             thread_contexts, device_ids, all_precision
         )
@@ -46,7 +46,7 @@ class QuantAllReduceE2ESpec:
     """TestSpec for torch_npu.npu_quant_all_reduce (E2E multi-device path)."""
 
     @staticmethod
-    def e2e_multi_device_golden(
+    def golden(
         cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True
     ):
         return _load_impl_module("golden").quant_all_reduce_e2e_golden(

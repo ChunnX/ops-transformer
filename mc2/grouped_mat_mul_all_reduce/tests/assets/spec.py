@@ -36,7 +36,7 @@ class AclnnGroupedMatMulAllReduceSpec:
     """TestSpec for aclnnGroupedMatMulAllReduce (ACLNN multi-device path)."""
 
     @staticmethod
-    def multi_device_golden(thread_contexts, device_ids, all_precision):
+    def golden(thread_contexts, device_ids, all_precision):
         return _load_impl_module(
             "golden"
         ).grouped_mat_mul_all_reduce_multi_device_golden(
@@ -48,7 +48,7 @@ class GroupedMatMulAllReduceE2ESpec:
     """TestSpec for torch_npu.npu_gmm_all_reduce (E2E multi-device path)."""
 
     @staticmethod
-    def e2e_multi_device_golden(
+    def golden(
         cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True
     ):
         return _load_impl_module("golden").grouped_mat_mul_all_reduce_e2e_golden(

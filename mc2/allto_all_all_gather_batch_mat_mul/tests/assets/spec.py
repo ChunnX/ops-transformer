@@ -40,7 +40,7 @@ class AclnnAlltoAllAllGatherBatchMatMulSpec:
     """TestSpec for aclnnAlltoAllAllGatherBatchMatMul (ACLNN multi-device path)."""
 
     @staticmethod
-    def multi_device_golden(thread_contexts, device_ids, all_precision):
+    def golden(thread_contexts, device_ids, all_precision):
         return _load_impl_module("golden").a2a_ag_bmm_multi_device_golden(
             thread_contexts, device_ids, all_precision
         )
@@ -50,7 +50,7 @@ class AlltoAllAllGatherBatchMatMulE2ESpec:
     """TestSpec for mindspeed.npu_alltoall_allgather_bmm (E2E multi-device path)."""
 
     @staticmethod
-    def e2e_multi_device_golden(
+    def golden(
         cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True
     ):
         return _load_impl_module("golden").a2a_ag_bmm_e2e_golden(
