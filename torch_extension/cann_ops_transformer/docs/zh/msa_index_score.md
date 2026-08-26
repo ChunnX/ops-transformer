@@ -9,7 +9,7 @@
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="950" id3 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
 <!-- end id3 -->
 
 ## 功能说明
@@ -23,6 +23,8 @@ $$
 
 - `sparse_mode=0`：无因果；`sparse_mode=3`：rightDownCausal（须传 `[2048,2048]` `atten_mask`）。
 - `start_loc[B]`：当前 query 所在逻辑 block 索引，用于 `local_mask`。
+- `init_blocks` / `local_blocks`：Maxpool 之后的强制高分块；与 Triton raw score 对齐时置 0。默认 `0` / `1`。
+- Ascend 950 额外支持 query/key 同型 `torch.float8_e4m3fn` / `torch.float8_e5m2` / `torch_npu.hifloat8`（无 `scale`）。`hifloat8.npu()` 当前不安全，测试脚本跳过；kernel 已注册。
 
 ## 函数原型
 
@@ -39,6 +41,8 @@ cann_ops_transformer.msa_index_score(
     actual_seq_klen=None,
     layout_key="BBND",
     sparse_mode=3,
+    init_blocks=0,
+    local_blocks=1,
 ) -> Tensor
 ```
 
@@ -46,8 +50,8 @@ cann_ops_transformer.msa_index_score(
 
 | 参数名 | 可选/必选 | 描述 | dtype | shape |
 |--------|-----------|------|-------|-------|
-| query | 必选 | $Q_{idx}$ TND | fp16/bf16 | `[T1,N1,D]` |
-| key | 必选 | $K_{idx}$ PA BBND/BNBD 或 TND | 同 query 或 int8 | `[NP,P,N2,D]` / `[NP,N2,P,D]` / `[T2,N2,D]` |
+| query | 必选 | $Q_{idx}$ TND | fp16/bf16；950 另支持 fp8_e4m3fn / fp8_e5m2 / hifloat8 | `[T1,N1,D]` |
+| key | 必选 | $K_{idx}$ PA BBND/BNBD 或 TND | 同 query 或 int8（仅 fp16 query） | `[NP,P,N2,D]` / `[NP,N2,P,D]` / `[T2,N2,D]` |
 | start_loc | 必选 | query 所在逻辑 block | int32 | `[B]` |
 | block_table | PA 必选 | 逻辑→物理 page；TND 不传 | int32 | `[B,MB]` |
 | scale | 量化必选 | 反量化 | float32 | PA `[NP,N2,P]`；TND `[T2,N2]` |
@@ -56,6 +60,8 @@ cann_ops_transformer.msa_index_score(
 | actual_seq_klen | 必选 | PA 为各请求 S2；TND 为 key 前缀和 | int32 | `[B]` / `[B+1]` |
 | layout_key | 可选 | key 布局：`TND` / `BBND` / `BNBD`，默认 `BBND` | str | - |
 | sparse_mode | 可选 | 0 / 3，默认 3 | int | - |
+| init_blocks | 可选 | `local_mask` 头部强制块数，默认 0 | int | - |
+| local_blocks | 可选 | `local_mask` 局部窗口，默认 1 | int | - |
 
 ## 输出
 

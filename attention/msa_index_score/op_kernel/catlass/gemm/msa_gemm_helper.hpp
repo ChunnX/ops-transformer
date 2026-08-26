@@ -109,6 +109,23 @@ struct ElementAccumulatorSelector<bfloat16_t, bfloat16_t> {
     using ElementAccumulator = float;
 };
 
+#if defined(__CCE__)
+template <>
+struct ElementAccumulatorSelector<fp8_e4m3fn_t, fp8_e4m3fn_t> {
+    using ElementAccumulator = float;
+};
+
+template <>
+struct ElementAccumulatorSelector<fp8_e5m2_t, fp8_e5m2_t> {
+    using ElementAccumulator = float;
+};
+
+template <>
+struct ElementAccumulatorSelector<hifloat8, hifloat8> {
+    using ElementAccumulator = float;
+};
+#endif
+
 template <>
 struct ElementAccumulatorSelector<AscendC::int4b_t, AscendC::int4b_t> {
     using ElementAccumulator = int32_t;

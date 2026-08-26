@@ -37,7 +37,23 @@ constexpr uint32_t MSA_DIM_3 = 3;
 constexpr uint32_t MSA_RANK_1D = 1;
 constexpr uint32_t MSA_QLEN_MIN_DIM0 = 2; // prefix-sum 长度至少为 B+1
 
-inline uint32_t RoundUpU32(uint32_t value, uint32_t align) { return (value + align - 1) / align * align; }
+inline bool IsFp8ComputeDtype(ge::DataType dt)
+{
+    return dt == ge::DT_HIFLOAT8 || dt == ge::DT_FLOAT8_E5M2 || dt == ge::DT_FLOAT8_E4M3FN;
+}
+
+inline bool IsNonQuantQueryDtype(ge::DataType dt, bool isAscend950)
+{
+    if (dt == ge::DT_BF16 || dt == ge::DT_FLOAT16) {
+        return true;
+    }
+    return isAscend950 && IsFp8ComputeDtype(dt);
+}
+
+inline uint32_t RoundUpU32(uint32_t value, uint32_t align)
+{
+    return (value + align - 1) / align * align;
+}
 
 ge::graphStatus ParseLayoutKeyAttr(gert::TilingContext *context, const std::string &layoutKey, uint32_t &keyLayout)
 {
@@ -186,8 +202,14 @@ ge::graphStatus ParseAndCheck(gert::TilingContext *context, MsaIndexScoreInfo &i
     const auto *queryDesc = context->GetInputDesc(MSA_IDX_QUERY);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryDesc);
     info.queryDtype = queryDesc->GetDataType();
-    OP_CHECK_IF(info.queryDtype != ge::DT_BF16 && info.queryDtype != ge::DT_FLOAT16,
-                OP_LOGE(context, "query dtype must be bf16 or fp16 on A2/A3."), return ge::GRAPH_FAILED);
+
+    auto ascendcPlatformEarly = platform_ascendc::PlatformAscendC(info.platformInfo);
+    info.isAscend950 = (ascendcPlatformEarly.GetSocVersion() == platform_ascendc::SocVersion::ASCEND950);
+    OP_CHECK_IF(!IsNonQuantQueryDtype(info.queryDtype, info.isAscend950),
+                OP_LOGE(context,
+                        "query dtype must be bf16 or fp16 on A2/A3; Ascend 950 also allows hifloat8 / "
+                        "float8_e5m2 / float8_e4m3fn."),
+                return ge::GRAPH_FAILED);
 
     const auto *keyDesc = context->GetInputDesc(MSA_IDX_KEY);
     OP_CHECK_NULL_WITH_CONTEXT(context, keyDesc);
@@ -199,6 +221,8 @@ ge::graphStatus ParseAndCheck(gert::TilingContext *context, MsaIndexScoreInfo &i
     } else {
         OP_CHECK_IF(info.keyDtype != info.queryDtype, OP_LOGE(context, "non-quant key dtype must match query dtype."),
                     return ge::GRAPH_FAILED);
+        OP_CHECK_IF(IsFp8ComputeDtype(info.queryDtype) && !info.isAscend950,
+                    OP_LOGE(context, "FP8 query/key is only supported on Ascend 950."), return ge::GRAPH_FAILED);
     }
 
     const gert::StorageShape *scaleShape = context->GetOptionalInputShape(MSA_IDX_SCALE);
@@ -282,12 +306,18 @@ ge::graphStatus DoTiling(gert::TilingContext *context, const MsaIndexScoreInfo &
     OP_CHECK_IF(aicNum == 0, OP_LOGE(context, "aic core num is 0."), return ge::GRAPH_FAILED);
 
     const uint32_t scoreBlockStride = RoundUpU32(info.maxBlocksPerBatch, MSA_SCORE_STRIDE_ALIGN);
-    // S workspace：非量化路径元素为 fp16（AIC fixpipe F322F16 直接写出），int8 路径 fp32。
+    // 950 C_to_UB：S 不进 GM；int8/TND 尾页仍要一页 K scratch。A2 与 950 回退（MSA_A5_USE_C2UB=0）走 8-stage S。
+    const uint32_t sElemBytes = info.isQuant ? sizeof(float) : sizeof(uint16_t);
+    const bool c2ub = info.isAscend950 && (MSA_A5_USE_C2UB != 0);
     const uint32_t sWsBytes =
-        aicNum * MSA_WORKSPACE_STAGES * MSA_STILE_ELEM_NUM * (info.isQuant ? sizeof(float) : sizeof(uint16_t));
+        c2ub ? 0U : (aicNum * MSA_WORKSPACE_STAGES * MSA_STILE_ELEM_NUM * sElemBytes);
     const bool useKScratch = info.isQuant || (info.keyLayout == MSA_KEY_LAYOUT_TND);
-    const uint32_t kScratchBytes = useKScratch ? (aicNum * MSA_K_SCRATCH_ELEM_NUM * sizeof(uint16_t)) : 0U;
-    // K scratch 基址以 4B 为单位表达（kernel 内按 float* 折算），S 变 fp16 后偏移减半。
+    uint32_t scratchElemBytes = sizeof(uint16_t);
+    if (info.isAscend950 && !info.isQuant && IsFp8ComputeDtype(info.queryDtype)) {
+        scratchElemBytes = 1U;
+    }
+    const uint32_t kScratchElems = c2ub ? MSA_A5_K_SCRATCH_ELEM_NUM : MSA_K_SCRATCH_ELEM_NUM;
+    const uint32_t kScratchBytes = useKScratch ? (aicNum * kScratchElems * scratchElemBytes) : 0U;
     const uint32_t kScratchOffsetElems = sWsBytes / sizeof(float);
 
     MsaIndexScoreTilingData tilingData;
@@ -343,10 +373,20 @@ ge::graphStatus DoTiling(gert::TilingContext *context, const MsaIndexScoreInfo &
     OP_CHECK_NULL_WITH_CONTEXT(context, workspaces);
     workspaces[0] =
         ascendcPlatform.GetLibApiWorkSpaceSize() + static_cast<size_t>(sWsBytes) + static_cast<size_t>(kScratchBytes);
+    // 950 非量化 PA 无 S GM / K scratch 时 user workspace 为 0，GetUserWorkspace 可能返回 nullptr。
+    if (info.isAscend950 && sWsBytes == 0U && kScratchBytes == 0U) {
+        workspaces[0] += 64U;
+    }
 
     uint64_t tilingKey = MSA_TILING_KEY_FP16;
     if (info.isQuant) {
         tilingKey = MSA_TILING_KEY_FP16_INT8;
+    } else if (info.queryDtype == ge::DT_HIFLOAT8) {
+        tilingKey = MSA_TILING_KEY_HIFLOAT8;
+    } else if (info.queryDtype == ge::DT_FLOAT8_E5M2) {
+        tilingKey = MSA_TILING_KEY_FP8_E5M2;
+    } else if (info.queryDtype == ge::DT_FLOAT8_E4M3FN) {
+        tilingKey = MSA_TILING_KEY_FP8_E4M3FN;
     } else {
         tilingKey = (info.queryDtype == ge::DT_BF16) ? MSA_TILING_KEY_BF16 : MSA_TILING_KEY_FP16;
     }
