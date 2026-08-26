@@ -102,6 +102,9 @@ struct MoeV3Arch35CountingSortTilingData {
     int64_t csColsLoops{0};         // Phase C gather 列方向循环数
     int64_t csLastLoopCols{0};      // Phase C gather 尾轮列数
     int64_t maxPerLoopEntries{0};   // CutOrigin 单 chunk 处理上限
+    int64_t pairsWsOffset{0};       // CutOrigin 拆分：pairs/expertCount 区在 workspace 中的起始偏移（int32 元素）
+                                    // 位于 meta 区（sortedRowIdx + expertTotalCount/expertIdxValue + expandedExpertIdx）之后，
+                                    // 避免与硬编码消费者偏移（ws+Align(n*k) 等）冲突。Phase A/B 的 pairs 与 expertCount 按此偏移放置。
     int64_t csAggrEnable{0};        // 聚合搬出开关：0=逐行(现状), 1=按专家k行切批
     int64_t csAggrOutRows{0};       // 搬出聚合 UB 容纳行数 k
     int64_t csAggrOutBufBytes{0};  // 搬出聚合区字节数 = k * colsAligned * sizeof(T)

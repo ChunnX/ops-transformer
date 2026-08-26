@@ -94,9 +94,14 @@ B 在 ComputeGlobalOffset() 之后，再遍历一遍本核 pairs：
 Stage5（以及 Stage3）只消费 GM 上的有序 id 列表（`sortedRowIdx`）+ `expertTotalCount`；
 **pairs 与 offset 不需要再被 Stage5 使用**。因此：
 
-- 跨阶段产物只有两个：`sortedRowIdx`（有序源 flatIdx 列表，`workspace + Align(n*k)`）与
-  `expertTotalCount`（`workspace + 2*Align(n*k) + Align(actualExpertNum)`）。
-- pairs（offset0）与 expertCount（offset1）在 B 结束即失活，workspace 可考虑后续复用（非必需）。
+- 跨阶段产物：
+  - **非 dropPad**：两个 —— `sortedRowIdx`（有序源 flatIdx 列表，`workspace + Align(n*k)`）与
+    `expertTotalCount`（`workspace + 2*Align(n*k) + Align(actualExpertNum)`）。
+  - **dropPad（500100，非量化 GATHER）**：`sortedRowIdx` 仍然产出（即下游 `expandDstToSrcRow`），
+    `expertTotalCount` **不写**，改为补 `expandedExpertIdx`（`workspace` 起始区）+ `expertIdxValue`
+    （同一 `workspace + 2*Align(n*k) + Align(actualExpertNum)` 槽位，`coreNum_*2`），详见 §6.4。
+- pairs（offset0）与 expertCount（offset1）在 B 结束即失活，workspace 可考虑后续复用（非必需；
+  dropPad 下 `workspace` 起始区被复用为 `expandedExpertIdx`）。
 
 > 命名说明：这里写的是 `sortedRowIdx`（**源 flatIdx 有序列表**，即 Stage5 读的「id」），
 > 不是 `sortedExpertIdx`（expert id 列表，offset 0，只被 Stage2 ExpertTokensCount 消费，CutOrigin 不复用 Stage2）。
@@ -168,15 +173,23 @@ __aicore__ inline void Process();
 - workspace 解析：
   - `expertCountWorkspaceGm_`（读，offset0 + filterNeedCoreNum_*pairsPerCore_）
   - `pairsWorkspaceGm_`（读，offset0）
-  - `sortedRowIdxGm_ = workspace + Align(n*k)`（**写**，供 Stage3/Stage5 复用）
-  - `expertTotalCountGm_ = workspace + Align(n*k)*2 + Align(actualExpertNum)`（**写**，供 Stage3/Stage5 分核）
+  - `sortedRowIdxGm_ = workspace + Align(n*k)`（**写**，供 Stage3/Stage5 复用；dropPad 下即下游 `expandDstToSrcRow`）
+  - `expertTotalCountGm_ = workspace + Align(n*k)*2 + Align(actualExpertNum)`（**写**，**仅非 dropPad**，Stage3/Stage5 分核用）
+  - dropPad 下同一槽位为 `expertIdxValueGm_`（`coreNum_*2`，每核 `[lastExpertId, lastTokenCount]`，供 `RowIdxGatherDropPad`）
 - `Process()`：
   1. `ComputeGlobalOffset()`（读全核 expertCount → 算 offset → 写 `expertCountLocal`）
-  2. **新增离散搬出 `ScatterToSortedRowIdx()`**：遍历本核 pairs，`pos = expertCountLocal[expertIdx]++`，离散 scatter 写 `sortedRowIdxGm_[pos] = flatIdx`（供 Stage3/Stage5 从 GM 读；pairs/offset 不再向下传递）
-  3. 写 `expertTotalCountGm_[0]`（总 token 数，Stage3/Stage5 分核用）
+  2. **离散搬出 `ScatterToSortedRowIdx()`**（dropPad 也必须走）：遍历本核 pairs，`pos = expertCountLocal[expertIdx]++`，离散 scatter 写 `sortedRowIdxGm_[pos] = flatIdx`（供 Stage3/Stage5 从 GM 读；pairs/offset 不再向下传递）
+  3. 写跨阶段产物：
+     - 非 dropPad：写 `expertTotalCountGm_[0]`（有效 token 总数，Stage3/Stage5 分核用）
+     - dropPad：写 `expandedExpertIdx` + `expertIdxValueGm_`（详见 §6.4）
   4. `WriteExpertTokens()`（若 flag）
   5. 末尾 `SyncAll()`
+- **offset 统一为有效序列偏移**：`ComputeGlobalOffset` 中 dropPad 与非 dropPad 一致，
+  `offset[e] = 全局前缀 + 本核前缀`（`[0, expertTotalCount)` 连续）。原单类 dropPad 分支的 padded 槽位偏移
+  `(expertStart_+e)*expertCapacity_ + clampedPrefix` 已删除——padded 槽位改由 Stage3 `RowIdxGatherDropPad`
+  依据 `expandedExpertIdx` + 跨核 `tokenCount` 在 CopyOut 中逐位推算。
 - UB 布局：`expertCountLocal`（offset）+ totalCount/prefixSum/batchBuf（沿用单类 Phase B 布局公式）。
+- 分核对齐：写 `sortedRowIdx`/`expandedExpertIdx` 时 pos 为全局输出位置（连续），下游 dropPad 按自身 `perCoreRows` 分块读，见 §6.4。
 
 ---
 
@@ -230,7 +243,7 @@ __aicore__ inline void Process();
 | 500000（非量化 GATHER） | `workspace + Align(n*k)` | `RowIdxGather` 生成 expandedRowIdx | `MoeGatherOut` |
 | 501000（非量化 SCATTER） | 直接写 expandedRowIdx 输出 | 跳过（scatter 时 Stage1 已写） | `MoeGatherOut`（SCATTER 分支读 expandedRowIdx） |
 | 510000/511000（静态量化） | `workspace + Align(n*k)` / expandedRowIdx | 同非量化 | `MoeV3GatherStaticQuant` |
-| 500100（dropPad） | — | — | `MoeV3GatherOutDropPad`（需另行确认 drop/pad 语义） |
+| 500100（dropPad） | `workspace + Align(n*k)`（即 `expandDstToSrcRow`，dropPad 也走离散搬出） | `RowIdxGatherDropPad` | `MoeV3GatherOutDropPad`（非量化） |
 
 ### 6.2 为什么 Stage5 不能直接吃 A/B 的 offset
 
@@ -246,6 +259,47 @@ Stage5 完全脱离 pairs/offset，只消费 GM 上的有序 id 列表。
 MXFP8Quant、FP8GroupQuant、FP8PerBlockQuant、Hif8（cast/pertensor/pertoken）、Mxfp4Quant、FP8GroupAmaxQuant 等。
 **零新增搬出/量化代码。**
 
+### 6.4 dropPad（500100）专用桥接：离散搬出仍然需要，另补两个 GM 产物
+
+**契约约束**（`apt.cpp` L176-179）：`ValidateQuantMode/ValidateRowIdxType` 强制 **dropPad ⇒ quant_mode=-1 且 GATHER**，
+因此 CutOrigin 里只有 **非量化 GATHER 的 dropPad key（500100）可达**，不存在 dropPad+SCATTER 组合。
+
+由此可得：
+
+1. **离散搬出不能跳过**：500100 也是 GATHER，`MoeV3RowIdxGatherDropPad`（Stage3）与 `MoeV3GatherOutDropPad`（Stage5）
+   都读 `workspace + Align(n*k)` 区的 `expandDstToSrcRow`（row_idx_gather_droppad L278 / gather_out_droppad L173），
+   该区正是 Phase B 离散搬出写 `sortedRowIdx` 的位置 —— **dropPad 的 dst→src 有序 id 就由离散搬出承载**。
+   `expertIdxValue` 是 dropPad 的**补充**产物，不是替代离散搬出。
+
+2. **dropPad 下 Phase B 需多写两个 GM 产物**（非 dropPad 不消费，因此只在 `dropPadMode_ == DROP_PAD_MODE` 分支写）：
+
+   | 产物 | 位置 | 内容 | 消费者 |
+   |------|------|------|--------|
+   | `expandedExpertIdx` | `workspace` 起始区（pairs/expertCount 在 B 结束后原地覆写） | 每个输出位置 token 的 expert id | `RowIdxGatherDropPad` CopyIn（L275） |
+   | `expertIdxValue` | `workspace + 2*Align(n*k) + Align(actualExpertNum)`，`coreNum_*2` | 每核 `[lastExpertId, lastTokenCount]` | `RowIdxGatherDropPad.AssistInit`（L84-95）跨核推算 token 偏移 |
+
+   - **`expandedExpertIdx` 不从 pairs 重读，而是由 `totalCountLocal`（全量 expert 计数）推导**：
+     每个专家占全局位置 `[globalPrefix[e], globalPrefix[e]+totalCountLocal[e])`，每 Phase B 核按本核全局输出区间
+     `[globalStart, globalStart+coreTotalPairs)` 内的每专家连续 run 做 `Duplicate+DataCopyPad` 写入。
+     **不能「离散搬出时顺带写」**：`expandedExpertIdx` 位于 `workspace` 起始区（= pairs 区），
+     若在遍历 pairs 时同步写 `expandedExpertIdx[pos]`，对 `blockIdx==0`（pairs 区与全局位置区重叠）会覆盖未读 pairs，
+     造成数据竞争；推导法完全不读 pairs，天然规避该冲突。无效尾区 `[expertTotalCount, n*k)` 由 `blockIdx 0` 填 `-1`
+     （与所有核的有效写 `[0, expertTotalCount)` 无重叠，无需跨核同步）。
+   - **`expertIdxValue` 由 `blockIdx 0` 一次性计算**：依据 `totalCountLocal` 与 `srcToDstDropPadParamsOp`
+     （`perCoreRows`/`lastCoreRows`/`needCoreNum`）对每个下游核段推「段末有效 token 所属专家及其段内计数」，
+     写 `expertIdxValueGm_[i*2..]`，无需跨核 reduce、不依赖 pairs/scatter。
+   - **expertTotalCount 在 dropPad 下不写**：同一 GM 槽位（`workspace + 2*Align(n*k) + Align(actualExpertNum)`）
+     在 dropPad 下是 `expertIdxValue`（Stage2 注释「DropPad模式不保留expertTotalCountGm空间」）。
+
+3. **分核对齐约束**：dropPad 下游按 `srcToDstDropPadParamsOp.perCoreRows` / `gatherOutComputeParamsOp.perCoreIndicesElements`
+   分核读 `expandedExpertIdx`/`expandDstToSrcRow`（`blockIdx_*perCoreRows`），Phase B 按 `filterNeedCoreNum` 分核写。
+   Phase B 写这两个区时需保证**全局连续**（pos 即全局输出位置），下游按自身分块读；跨阶段需 `SyncAll()` 对齐，
+   与 §6 开头「blockDim 不同，靠各 stage 内 `if (blockIdx_ < ownNeedCoreNum)` 过滤 + entry 层 `SyncAll()`」一致。
+   **B 内部还需一次栅栏**：`expandedExpertIdx` 写在 `workspace` 起始区（= pairs 区），而各核 `ScatterToSortedRowIdx`
+   仍在并行读自己的 pairs；某核提前进入 `WriteExpandedExpertIdx` 时，其写的全局位置可能落在**其他核未读的 pairs** 上
+   （例如 `maxCoreEntries=64, total_0=50,total_1=60,total_2=20` 时，核 2 写 `[110,130)` 命中核 1 的 flatIdx 读区 `[128,188)`）。
+   因此 `Process()` 在「离散搬出」与「写跨阶段产物」之间插一次 `SyncAll()`（所有核调用次数一致，避免栅栏错配）。
+
 ---
 
 ## 7. 同步与 cache 一致性
@@ -253,7 +307,8 @@ MXFP8Quant、FP8GroupQuant、FP8PerBlockQuant、Hif8（cast/pertensor/pertoken�
 | 边界 | 同步手段 | 说明 |
 |------|---------|------|
 | A→B | `SyncAll()` | B 读所有核的 expertCount + pairs，必须等 A 全部写完 |
-| B→Stage3/Stage5 | `SyncAll()` | Stage3/Stage5 读 B 写出的 sortedRowIdx/expertTotalCount |
+| B 内（离散搬出→写 expandedExpertIdx） | `SyncAll()` | 各核 `ScatterToSortedRowIdx` 读毕 pairs 后，才能原地覆写 `workspace` 起始区（expandedExpertIdx），避免覆盖他核未读 pairs，见 §6.4 ③ |
+| B→Stage3/Stage5 | `SyncAll()` | Stage3/Stage5 读 B 写出的 sortedRowIdx/expertTotalCount（dropPad 另含 expandedExpertIdx/expertIdxValue） |
 | sortedRowIdx 落盘后 | `DataCacheCleanAndInvalid`（Stage3/Stage5 读前） | B 用 MTE3 写 GM，读者需先失效 cache（对齐 Stage3/Stage5 读 pairs/sortedExpertIdx 的既有做法） |
 
 > `SyncAll()` 放在 entry 层（每类 `Process()` 之外），因为每类的 `TPipe` 在 `Destroy()` 后才轮到下一类。
@@ -265,6 +320,7 @@ MXFP8Quant、FP8GroupQuant、FP8PerBlockQuant、Hif8（cast/pertensor/pertoken�
 1. `GetWorkspaceSize()`（第 247-269 行）：CutOrigin 分支追加 `sortedRowIdx` 区与 `expertTotalCount` 区，
    与 fall-through 布局对齐（`Align(n*k)` 偏移的 n*k int32 + `2*Align(n*k)+Align(actualExpertNum)` 的 1 int32），
    并确保与既有 pairs/expertCount 两块不重叠。`mode==1`（FullLoad）不分配，保持两块布局不动。
+   注意 dropPad（500100）下同一尾区是 `expertIdxValue`（`coreNum_*2`），需按 `max(1, coreNum_*2)` 分配；
 
 2. `ComputeArch35CountingSortCutOriginTiling()`（第 2146 行）：
    - `persistentSize` 中 shortPath 的 gathered 双区（第 2170-2172 行）删除；
