@@ -8,8 +8,13 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef BLOCK_ATTN_RES_PREPARE_TILING_H
-#define BLOCK_ATTN_RES_PREPARE_TILING_H
+/*!
+ * \file block_attn_res_prepare_base_tiling.h
+ * \brief Base tiling workflow for BlockAttnResPrepare.
+ */
+
+#ifndef BLOCK_ATTN_RES_PREPARE_BASE_TILING_H
+#define BLOCK_ATTN_RES_PREPARE_BASE_TILING_H
 
 #include <cstddef>
 #include <cstdint>
@@ -42,12 +47,12 @@ ge::graphStatus TilingPrepareBlockAttnResPrepare(gert::TilingParseContext *conte
 
 // Owns the template-independent tiling workflow. A new template derives directly from this class and only provides
 // its capability check, tile calculation, tiling key, data view and diagnostic dump.
-class BlockAttnResPrepareTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
+class BlockAttnResPrepareBaseTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit BlockAttnResPrepareTilingBase(gert::TilingContext *context)
+    explicit BlockAttnResPrepareBaseTiling(gert::TilingContext *context)
         : TilingBaseClass(context)
     {}
-    ~BlockAttnResPrepareTilingBase() override = default;
+    ~BlockAttnResPrepareBaseTiling() override = default;
 
 protected:
     struct WorkDistribution {
@@ -94,76 +99,6 @@ protected:
     uint32_t usedCoreNum_ = 0;
 };
 
-// Vector fallback template.
-class BlockAttnResPrepareTiling final : public BlockAttnResPrepareTilingBase {
-public:
-    explicit BlockAttnResPrepareTiling(gert::TilingContext *context)
-        : BlockAttnResPrepareTilingBase(context)
-    {}
-    ~BlockAttnResPrepareTiling() override = default;
-
-protected:
-    bool IsCapable() override;
-    ge::graphStatus DoOpTiling() override;
-    uint64_t GetTilingKey() const override;
-    void DumpTilingInfo() override;
-    TilingDataView GetTilingDataView() const override;
-
-private:
-    bool SelectVectorBaseD(bool hasMultipleWorkRounds);
-
-    uint32_t baseD_ = 0;
-    uint32_t qBufferNum_ = 1;
-    uint32_t vBufferNum_ = 1;
-    uint32_t oBufferNum_ = 1;
-    uint32_t vCacheRows_ = 0;
-
-    BlockAttnResPrepareTilingData tilingData_{};
-};
-
-// Mixed Cube/Vector template.
-class BlockAttnResPrepareCubeTiling final : public BlockAttnResPrepareTilingBase {
-public:
-    explicit BlockAttnResPrepareCubeTiling(gert::TilingContext *context)
-        : BlockAttnResPrepareTilingBase(context)
-    {}
-    ~BlockAttnResPrepareCubeTiling() override = default;
-
-protected:
-    bool IsCapable() override;
-    ge::graphStatus DoOpTiling() override;
-    uint64_t GetTilingKey() const override;
-    void DumpTilingInfo() override;
-    TilingDataView GetTilingDataView() const override;
-
-private:
-    bool SelectCubeTileShape();
-
-    uint32_t baseT_ = 1;
-    uint32_t baseS_ = 0;
-    uint32_t baseD_ = 0;
-    uint32_t baseDAlign_ = 0;
-    uint32_t sTileNum_ = 0;
-    uint32_t dTileNum_ = 0;
-    uint32_t sAlign_ = 0;
-    uint32_t nAlign_ = 0;
-    uint32_t mm1NAlign_ = 0;
-    uint32_t dAlign_ = 0;
-    uint32_t qL1BufferNum_ = 1;
-    uint32_t vL1BufferNum_ = 1;
-    uint32_t vUbBufferNum_ = 1;
-    uint64_t qL1Elems_ = 0;
-    uint64_t vL1Elems_ = 0;
-    uint64_t eL1Elems_ = 0;
-    uint64_t vUbElems_ = 0;
-    uint64_t dotUbElems_ = 0;
-    uint64_t reduceUbElems_ = 0;
-    uint64_t softmaxUbElems_ = 0;
-    uint64_t workspacePerCoreElems_ = 0;
-
-    BlockAttnResPrepareCubeTilingData tilingData_{};
-};
-
 } // namespace optiling
 
-#endif // BLOCK_ATTN_RES_PREPARE_TILING_H
+#endif // BLOCK_ATTN_RES_PREPARE_BASE_TILING_H

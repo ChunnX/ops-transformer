@@ -106,9 +106,9 @@ cann_ops_transformer.block_attn_res_prepare(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度（shape） |
 | --- | --- | --- | --- | --- | --- |
-| block_res | Tensor | 必选 | 历史残差块，对应公式中的 $V$。数据格式为 ND，不支持非连续 Tensor。$T$ 为 token 数，$N$ 为历史来源缓冲区容量，$D$ 为 hidden dimension。 | float32 | [T, N, D] |
-| valid_blocks | Tensor | 必选 | 当前有效历史来源数 $N_v$。数据格式为 ND，不支持非连续 Tensor。值为0时，`numerator` 返回全0 Tensor、`logit_max` 返回所有元素均为FLOAT32最小有限值的Tensor、`exp_sum` 返回全1 Tensor；值小于0时按0处理，值大于 $N$ 时按 $N$ 处理。 | int64 | [1] |
-| pseudo_query | Tensor | 必选 | 伪查询，对应公式中的 $Q$。数据格式为 ND，不支持非连续 Tensor，最后一维必须与 `block_res` 的最后一维相同。 | float32 | [S, D] |
+| block_res | Tensor | 必选 | 历史残差块，对应公式中的 $V$。数据格式为 ND；$T$ 为 token 数，$N$ 为可容纳的历史残差块数，$D$ 为隐藏特征维度。 | float32 | [T, N, D] |
+| valid_blocks | Tensor | 必选 | 当前有效历史残差块数 $N_v$。数据格式为 ND。值为0时，`numerator` 返回全0 Tensor、`logit_max` 返回所有元素均为FLOAT32最小有限值的Tensor、`exp_sum` 返回全1 Tensor；值小于0时按0处理，值大于 $N$ 时按 $N$ 处理。 | int64 | [1] |
+| pseudo_query | Tensor | 必选 | 伪 Query，对应公式中的 $Q$；每个目标 slot 对应一个 Query 向量，最后一维必须与 `block_res` 的最后一维相同。数据格式为 ND。 | float32 | [S, D] |
 | eps | float | 可选 | RMS 归一化的数值稳定项，必须为有限正数，默认值为 `1.0e-6`。 | float | - |
 
 ## 返回值说明
@@ -125,11 +125,12 @@ cann_ops_transformer.block_attn_res_prepare(
 
 - 仅支持 Ascend 950PR/Ascend 950DT。
 - 支持单算子模式调用，暂不支持 TorchAir 图模式调用。
-- shape要求：`T >= 0`，`S >= 0`，`1 <= N <= 64`，`0 <= D <= 8192`。
+- shape要求：`T >= 0`，`S >= 0`，`1 <= N <= 64`，`1 <= D <= 8192`。
 - `block_res.shape[2]` 必须等于 `pseudo_query.shape[1]`。
-- 输入不支持非连续 Tensor。
+- 支持非连续输入 Tensor，底层 ACLNN 接口会在内部完成连续化。
 - `valid_blocks[0] == 0` 时，`numerator` 返回全 0 Tensor、`logit_max` 返回所有元素均为 FLOAT32 最小有限值的 Tensor、`exp_sum` 返回全 1 Tensor；`valid_blocks[0] < 0` 时返回结果相同。
 - `T == 0` 或 `S == 0` 时，返回对应 shape 的空输出。
+- `block_res` 或 `pseudo_query` 含 `NaN`、`Inf`，或 FP32 平方、乘法及累加发生溢出时，结果可能包含 `NaN` 或 `Inf`。
 
 ## 确定性计算
 

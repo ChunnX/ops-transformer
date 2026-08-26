@@ -61,16 +61,12 @@ __aicore__ inline Blaze::Attention::BlockAttnResPrepareParams MakeBlockAttnResPr
 } // namespace
 
 template <uint32_t TEMPLATE_MODE>
-__global__ __aicore__ void block_attn_res_prepare(
-    GM_ADDR blockRes, GM_ADDR validBlocks, GM_ADDR pseudoQuery, GM_ADDR numerator, GM_ADDR logitMax,
-    GM_ADDR expSum, GM_ADDR workspace, GM_ADDR tiling)
+__global__ __aicore__ void block_attn_res_prepare(GM_ADDR blockRes, GM_ADDR validBlocks, GM_ADDR pseudoQuery,
+                                                  GM_ADDR numerator, GM_ADDR logitMax, GM_ADDR expSum,
+                                                  GM_ADDR workspace, GM_ADDR tiling)
 {
     AscendC::InitSocState();
     REGISTER_TILING_DEFAULT(optiling::BlockAttnResPrepareCubeTilingData);
-    if (blockRes == nullptr || validBlocks == nullptr || pseudoQuery == nullptr || numerator == nullptr ||
-        logitMax == nullptr || expSum == nullptr || workspace == nullptr || tiling == nullptr) {
-        return;
-    }
     if constexpr (TEMPLATE_MODE == BLOCK_ATTN_RES_PREPARE_TPL_ONLY_VECTOR) {
         GET_TILING_DATA_WITH_STRUCT(optiling::BlockAttnResPrepareTilingData, tilingData, tiling);
         BlockAttnResPrepare::BlockAttnResPrepareVector op(&tilingData);
