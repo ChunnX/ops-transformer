@@ -127,6 +127,7 @@ protected:
     uint32_t kvL1BufIter = 0;
     uint32_t pL1BufIter = 0;
     bool needL1Carry = false;
+    int64_t COF[8] = {256, 384, 512, 640, 768, 896, 960, 1024};
 };
 
 template <LayOutTypeEnum layOutType, bool hasPse, bool hasAtten, bool hasDrop, typename INPUT_T, typename T,
@@ -480,8 +481,8 @@ __aicore__ inline void FlashAttentionVarLenScoreSameAB<layOutType, hasPse, hasAt
     this->CalS1OuterSize(j);
     while (j < totalSize) {
         for (int i = 0; i < 20; ++i) { // 填实际aic核数
-            this->ComputeAxisIdx(j);
             if (j >= totalSize) break;
+            this->ComputeAxisIdx(j);
             if (localVal[i] < avgVal) {
                 int64_t s2RemainSize = this->s2Size % 1024;
                 int64_t s2RealSize = (this->s2Size / 1024) * 1024;
