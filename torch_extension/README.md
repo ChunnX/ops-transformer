@@ -18,33 +18,32 @@
 
 1. Install Dependencies:
 
-    ```sh
-    python3 -m pip install -r requirements.txt
-    ```
-
+   ```sh
+   python3 -m pip install -r requirements.txt
+   ```
 2. Build the Wheel:
 
-    ```sh
-    cd <repo_root>
-    # 整包编译（含所有算子）
-    bash build.sh --torch_extension
+   ```sh
+   cd <repo_root>
+   # 整包编译（含所有算子）
+   bash build.sh --torch_extension
 
-    # 单算子编译（需指定算子名和 vendor）
-    bash build.sh --torch_extension --ops=flash_attn --vendor_name=custom
+   # 单算子编译（需指定算子名和 vendor）
+   bash build.sh --torch_extension --ops=flash_attn --vendor_name=custom
 
-    # 多算子编译（逗号分隔）
-    bash build.sh --torch_extension --ops=flash_attn,moe_finalize_routing --vendor_name=custom
-    ```
+   # 多算子编译（逗号分隔）
+   bash build.sh --torch_extension --ops=flash_attn,moe_finalize_routing --vendor_name=custom
+   ```
 
-    编译产物位于 `build_out/` 目录下：
-    - 整包：`cann_ops_transformer-1.0.0-*.whl`
-    - 单/多算子包：`cann_ops_transformer_custom-1.0.0-*.whl`
+   编译产物位于 `build_out/` 目录下：
 
+   - 整包：`cann_ops_transformer-1.0.0-*.whl`
+   - 单/多算子包：`cann_ops_transformer_custom-1.0.0-*.whl`
 3. Install Package:
 
-    ```sh
-    python3 -m pip install dist/*.whl --force-reinstall --no-deps
-    ```
+   ```sh
+   python3 -m pip install dist/*.whl --force-reinstall --no-deps
+   ```
 
 ## Quick Start
 
@@ -179,8 +178,8 @@ from .graph_convert_abs import convert_abs
 
 ### Technical Notes
 
-| Component | Responsibility |
-| --- | --- |
-| **OpBuilder** | Handles JIT compilation of C++ source using `ninja`. |
-| **Meta Dispatch** | Allows PyTorch to know the output shape/type without running NPU code. |
-| **PrivateUse1** | The specific backend key PyTorch uses to route NPU-specific operations. |
+| Component               | Responsibility                                                          |
+| ----------------------- | ----------------------------------------------------------------------- |
+| **OpBuilder**     | Handles JIT compilation of C++ source using`ninja`.                   |
+| **Meta Dispatch** | Allows PyTorch to know the output shape/type without running NPU code.  |
+| **PrivateUse1**   | The specific backend key PyTorch uses to route NPU-specific operations. |
