@@ -106,8 +106,12 @@ __aicore__ inline void CopyMultiMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glob
     }
 }
 
-template <typename Q_T, GmFormat GM_FORMAT, L1Format L1_FORMAT = L1Format::NZ>
-class CopyQueryGmToL1 {
+template <typename Q_T, GmFormat GM_FORMAT, L1Format L1_FORMAT = L1Format::NZ,
+          InnerMLayout M_LAYOUT = InnerMLayout::GS1_MERGE_LAYOUT>
+class CopyQueryGmToL1 {};
+
+template <typename Q_T, GmFormat GM_FORMAT, L1Format L1_FORMAT>
+class CopyQueryGmToL1<Q_T, GM_FORMAT, L1_FORMAT, InnerMLayout::GS1_MERGE_LAYOUT> {
 public:
     template <typename FaGmTensorType>
     __aicore__ inline void operator()(FaL1Tensor<Q_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
@@ -252,6 +256,21 @@ private:
                                        gmCoord.dDealSize, offsetCalculator.GetStrideS1(), dstTensor.rowCount);
             }
         }
+    }
+};
+
+template <typename Q_T, GmFormat GM_FORMAT, L1Format L1_FORMAT>
+class CopyQueryGmToL1<Q_T, GM_FORMAT, L1_FORMAT, InnerMLayout::S1_ONLY_LAYOUT> {
+public:
+    template <typename FaGmTensorType>
+    __aicore__ inline void operator()(FaL1Tensor<Q_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
+                                      GmCoordT<InnerMLayout::S1_ONLY_LAYOUT> &gmCoord)
+    {
+        auto &offsetCalculator = srcTensor.offsetCalculator;
+        uint64_t offset =
+            offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gmCoord.gIdx, gmCoord.s1Idx, gmCoord.dIdx);
+        CopySingleMatrixNDToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.s1DealSize, gmCoord.dDealSize,
+                               offsetCalculator.GetStrideS1(), dstTensor.rowCount);
     }
 };
 
