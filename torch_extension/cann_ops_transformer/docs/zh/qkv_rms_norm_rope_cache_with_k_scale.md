@@ -410,6 +410,63 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale(
   print(q_out.shape, q_out.dtype, k_cache_out.dtype)
   ```
 
+- M-RoPE MX场景调用：
+
+  M-RoPE MX不传`rotation`，Q/K均使用`MxQuant`；Q/K数据为FP8 E4M3FN，每个D32 block的scale为`torch.float8_e8m0fnu`。
+
+  ```python
+  import torch
+  import torch_npu
+  import cann_ops_transformer
+
+  torch_npu.npu.set_device(0)
+
+  T, Nq, Nk, Nv, D = 5, 16, 2, 2, 128
+  block_num, block_size = 1, 16
+  head_nums = [Nq, Nk, Nv]
+
+  qkv = torch.randn(T, Nq + Nk + Nv, D, device="npu", dtype=torch.bfloat16)
+  q_gamma = torch.ones(D, device="npu", dtype=torch.float32)
+  k_gamma = torch.ones(D, device="npu", dtype=torch.float32)
+  cos_sin = torch.randn(32, D, device="npu", dtype=torch.float32)
+  slot_mapping = torch.arange(T, device="npu", dtype=torch.int32)
+  k_cache = torch.empty(block_num, Nk, block_size, D, device="npu", dtype=torch.float8_e4m3fn)
+  v_cache = torch.empty(block_num, Nv, block_size, D, device="npu", dtype=torch.float8_e4m3fn)
+  k_scale_cache = torch.empty(
+      block_num, Nk, block_size, D // 32, device="npu", dtype=torch.float8_e8m0fnu
+  )
+  v_scale = torch.ones(Nv, D, device="npu", dtype=torch.float32)
+  mrope_position = torch.tensor(
+      [[0, 1, 2], [3, 5, 8], [7, 4, 3], [7, 9, 6], [2, 6, 1]],
+      device="npu",
+      dtype=torch.int32,
+  )
+
+  q_out, q_scale = cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale_(
+      qkv,
+      q_gamma,
+      k_gamma,
+      cos_sin,
+      slot_mapping,
+      k_cache,
+      v_cache,
+      k_scale_cache,
+      None,
+      None,
+      head_nums,
+      v_scale=v_scale,
+      layout_qkv="TND",
+      layout_q_out="TND",
+      mrope_position=mrope_position,
+      mrope_section=[22, 12, 10],
+      q_quant_mode="MxQuant",
+      k_quant_mode="MxQuant",
+      q_out_dtype=torch.float8_e4m3fn,
+  )
+
+  print(q_out.shape, q_out.dtype, q_scale.shape, q_scale.dtype)
+  ```
+
 - TorchAir图模式调用：
 
   暂不支持TorchAir图模式调用。
