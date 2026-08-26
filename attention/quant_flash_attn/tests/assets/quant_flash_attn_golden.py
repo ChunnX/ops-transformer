@@ -67,6 +67,8 @@ BATCH_SIZE = None
 N_q = None
 N_kv = None
 D = None
+# head_dim_v: csv 显式传入则用 csv 值, 否则 None → 算子内默认取 head_dim
+HEAD_DIM_V = None
 
 CU_SEQLENS_Q = None
 CU_SEQLENS_KV = None
@@ -1499,7 +1501,7 @@ def _call_npu_fa_op(
         cu_seqlens_kv=cu_seqlens_kv_t if is_tnd_kv else None,
         seqused_q=seqused_q_t,
         seqused_kv=seqused_kv_t,
-        head_dim_v=None,
+        head_dim_v=HEAD_DIM_V,
         batch_size=BATCH_SIZE,
         mask_mode=sparse_mode,
         layout_q=layout_q,
@@ -1595,7 +1597,7 @@ class Network(nn.Module):
             cu_seqlens_kv=cu_seqlens_kv,
             seqused_q=seqused_q,
             seqused_kv=seqused_kv,
-            head_dim_v=None,
+            head_dim_v=HEAD_DIM_V,
             batch_size=BATCH_SIZE,
             mask_mode=sparse_mode,
             layout_q=layout_q,

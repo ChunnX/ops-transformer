@@ -452,6 +452,8 @@ def _build_attributes(row, cols):
     _set("N_q", _str_to_int(row.get(cols.get("num_heads_q"))))
     _set("N_kv", _str_to_int(row.get(cols.get("num_heads_kv"))))
     _set("D", _str_to_int(row.get(cols.get("head_dim"))))
+    # head_dim_v: csv 显式传入则透传给算子; 省略 → attrs 无此 key → wrapper 默认 None
+    _set("head_dim_v", _str_to_int(row.get(cols.get("head_dim_v"))))
 
     # --- wrapper 接口适配参数（不是 op 参数推导，是 wrapper 签名必选参数） ---
     layout_kv = _strip_or_none(row.get(cols.get("layout_kv")))
