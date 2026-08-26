@@ -100,8 +100,11 @@ struct Config {
     static constexpr bool IS_SHARED = IsShared;
     static constexpr bool IS_WEIGHT_NZ = IsWeightNZ;
     static constexpr bool TOPK_WEIGHTS_PREFETCH = TopkWeightsPrefetch;
-    static constexpr bool ENABLE_GENERIC_L0C_PINGPONG =
-        !IsA8W4 && Blaze::Gemm::IsFp4<ElementA>() && Blaze::Gemm::IsFp4<ElementB>();
+    static constexpr bool IS_GENERIC_A4W4 = !IsA8W4 && Blaze::Gemm::IsFp4<ElementA>() && Blaze::Gemm::IsFp4<ElementB>();
+    static constexpr bool ENABLE_GENERIC_L0C_PINGPONG = IS_GENERIC_A4W4;
+    // FP4 x FP4 的 A4W4 Generic GMM1 在 L0A/L0B 双缓冲半区内可容纳 256 logical K；
+    // 其他路径保留公共的 128，避免 FP8/INT8 单侧数据超过 32 KiB 半区。
+    static constexpr uint32_t GENERIC_L0_TILE_K = IS_GENERIC_A4W4 ? 256U : L0_TILE_K;
     using ElementAType = ElementA;
     using ElementBType = ElementB;
     using ElementCType = ElementC;
@@ -498,7 +501,8 @@ __aicore__ inline void InitBlockMmad(MmadContext &context, const ProblemConfig &
                                               tilingConfig.l1Params.scaleKL1,
                                               enableL0CPingPong};
     if (!context.initialized || context.initConfig != requestedConfig) {
-        typename BlockMmad::BlockShape l0TileShape{tilingConfig.tileM, tilingConfig.tileN, L0_TILE_K, 0};
+        typename BlockMmad::BlockShape l0TileShape{tilingConfig.tileM, tilingConfig.tileN,
+                                                   KernelConfig::GENERIC_L0_TILE_K, 0};
         typename BlockMmad::ProblemShape matmulShape{config.m, config.n, config.k, 0};
         context.blockMmad.Init(matmulShape, l0TileShape, tilingConfig.l1Params, false, enableL0CPingPong);
         context.initConfig = requestedConfig;
