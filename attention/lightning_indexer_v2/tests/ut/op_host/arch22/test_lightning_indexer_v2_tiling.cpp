@@ -56,11 +56,10 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_0)
          {"layout_k", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
          {"mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
          {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"return_value", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
+         {"return_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
-
 // key shape[2] is numhead, only support 1 (BSND/PA_BBND, N2=2)
 TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_1)
 {
@@ -94,7 +93,7 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_1)
          {"layout_k", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BBND")},
          {"mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"return_value", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
+         {"return_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
@@ -130,7 +129,7 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_2)
          {"layout_k", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BBND")},
          {"mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"return_value", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
+         {"return_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
