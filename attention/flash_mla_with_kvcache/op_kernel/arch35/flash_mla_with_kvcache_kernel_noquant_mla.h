@@ -41,7 +41,6 @@ public:
     static constexpr uint32_t dVBaseSize = CubeBlockType::dVBaseSize;
 
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
-    // todo zhj mla老模板使用preload 1，新模板是preload 2，需要看下为什么不使用2，能否切到2
     static constexpr uint32_t PRELOAD_N = 1; // C1 C1 C2
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
 
