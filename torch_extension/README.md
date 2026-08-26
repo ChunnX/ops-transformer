@@ -43,7 +43,7 @@
 3. Install Package:
 
     ```sh
-    python3 -m pip install build_out/cann_ops_transformer-1.0.0-py3-none-any.whl --force-reinstall --no-deps
+    python3 -m pip install torch_extension/dist/*.whl --force-reinstall --no-deps
     ```
 
 ### 定制包说明
