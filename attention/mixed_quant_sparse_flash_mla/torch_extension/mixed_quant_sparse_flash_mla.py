@@ -375,12 +375,6 @@ def mixed_quant_sparse_flash_mla(
     dispatcher implementation for NPU
     'PrivateUse1' is the combine key for custom NPU backends.
     """
-    # fp8 tensors may be passed in disguised as uint8; reinterpret their dtype without copying data.
-    if ori_kv is not None and ori_kv.dtype == torch.uint8:
-        ori_kv = ori_kv.view(torch.float8_e4m3fn)
-    if cmp_kv is not None and cmp_kv.dtype == torch.uint8:
-        cmp_kv = cmp_kv.view(torch.float8_e4m3fn)
-
     op_module = mixed_quant_sparse_flash_mla_op_builder.load()
     return op_module.mixed_quant_sparse_flash_mla(
         q,
