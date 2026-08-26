@@ -24,7 +24,7 @@ inputs:
         values: [2]
       dim_values:
         values: [544, 7168]
-      max_length: 3900416
+      max_length: 3900417
   - name: block_res
     type: tensor
     required: true
@@ -38,7 +38,7 @@ inputs:
         values: [3]
       dim_values:
         values: [544, 12, 7168]
-      max_length: 46804992
+      max_length: 46804993
   - name: proj_weight
     type: tensor
     required: true
