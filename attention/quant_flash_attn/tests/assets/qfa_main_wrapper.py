@@ -22,6 +22,7 @@ TTK test case 是隔离进程, 不能跨 case 内存传 metadata; run_main 接�
 import logging
 import os
 import sys
+from typing import Optional
 
 import torch
 import torch_npu
@@ -74,6 +75,7 @@ def run_main(
     N_q: int,
     N_kv: int,
     D: int,
+    head_dim_v: Optional[int] = None,
     max_seqlen_q: int,
     max_seqlen_kv: int,
     enable_pa: bool,
@@ -139,6 +141,7 @@ def run_main(
             "N_q": N_q,
             "N_kv": N_kv,
             "D": D,
+            "HEAD_DIM_V": head_dim_v,
             "CU_SEQLENS_Q": cu_seqlens_q_list,
             "CU_SEQLENS_KV": cu_seqlens_kv_list,
             "SEQUSED_Q": seqused_q_list,
@@ -294,7 +297,7 @@ def run_main(
             cu_seqlens_kv=cu_seqlens_kv_t if is_tnd_kv else None,
             seqused_q=seqused_q_t,
             seqused_kv=seqused_kv_t,
-            v_descale=inputs["dequant_scale_v"],
+            head_dim_v=head_dim_v,
             batch_size=batch_size,
             mask_mode=inputs["sparse_mode"],
             layout_q=layout_q,
