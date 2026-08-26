@@ -11,6 +11,7 @@
 #ifndef ALLTO_ALL_MATMUL_APACE_TILING_BASE_H
 #define ALLTO_ALL_MATMUL_APACE_TILING_BASE_H
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <cstdio>
@@ -661,10 +662,11 @@ protected:
         auto &mm = td->tileQbmmTilingData;
         usedCoreNum_ = mm.usedCoreNum;
 
-        // usedCoreNum 不能小于 rankSize（通信切分依赖每 rank 至少一个 core）
-        if (usedCoreNum_ < worldSize_) {
-            OP_LOGE_WITHOUT_REPORT(opName, "[usedCoreNum] usedCoreNum(%u) is less than rankSize(%lu)",
-                                   usedCoreNum_, worldSize_);
+        // 可用核数 = min(aicNum, aivNum)，必须 >= rankSize（通信切分依赖每 rank 至少一个核）
+        uint64_t availCoreNum = std::min(quantPlatformInfo_.aicNum, quantPlatformInfo_.aivNum);
+        if (availCoreNum < worldSize_) {
+            OP_LOGE_WITHOUT_REPORT(opName, "[coreNum] availCoreNum(%lu) is less than rankSize(%lu)", availCoreNum,
+                                   worldSize_);
             return ge::GRAPH_FAILED;
         }
 
