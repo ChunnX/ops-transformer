@@ -760,12 +760,12 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
                                                  "Non-contiguous cache is not supported on the current architecture."),
         return ge::GRAPH_FAILED);
 
-    if (enableAntiQuant_ || !(fiaInfo.fullQuantMode == FiaFullQuantMode::Q_PER_TOKEN_HEAD_KV_PER_TENSOR_FULL_QUANT &&
-                              inputLayout == "TND" && fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN)) {
+    if (enableAntiQuant_ || (fiaInfo.fullQuantMode == FiaFullQuantMode::Q_PER_TOKEN_HEAD_KV_PER_TENSOR_FULL_QUANT &&
+                              !(inputLayout == "TND" && fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN))) {
         OP_CHECK_IF(keyDim != -1,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
                         fiaInfo.opName, "key",
-                        ("In anti-quant or mla fullquant scenarios, PA does not support non-contiguous key tensors, "
+                        ("In anti-quant or non-FP8 TND mla fullquant scenarios, PA does not support non-contiguous key tensors, "
                          "but the first non-contiguous dimension is index " +
                          std::to_string(keyDim) + ".")
                             .c_str()),
@@ -773,7 +773,7 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
         OP_CHECK_IF(valueDim != -1,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
                         fiaInfo.opName, "value",
-                        ("In anti-quant or mla fullquant scenarios, PA does not support non-contiguous value tensors, "
+                        ("In anti-quant or non-FP8 TND mla fullquant scenarios, PA does not support non-contiguous value tensors, "
                          "but the first non-contiguous dimension is index " +
                          std::to_string(valueDim) + ".")
                             .c_str()),
@@ -782,7 +782,7 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
             keyRopeDim != -1,
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
                 fiaInfo.opName, "keyRope",
-                ("In anti-quant or mla fullquant scenarios, PA does not support non-contiguous keyRope tensors, "
+                ("In anti-quant or non-FP8 TND mla fullquant scenarios, PA does not support non-contiguous keyRope tensors, "
                  "but the first non-contiguous dimension is index " +
                  std::to_string(keyRopeDim) + ".")
                     .c_str()),
