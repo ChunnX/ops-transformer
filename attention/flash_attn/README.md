@@ -3,15 +3,6 @@
 ## 功能说明
 
 - 算子功能：基于FlashAttention算法实现self-attention（自注意力）计算，训练推理归一化，仅支持非量化场景。
-- 关键特性：
-
-    - **GQA（Grouped Query Attention）**：Q的head数（Q_N）为KV head数（KV_N）的整数倍，同一组Q head共享一份KV，减少KV显存与计算量。
-    - **多布局支持**：Q/输出支持BSND、BNSD、TND三种布局；KV额外支持Paged Attention（PA_BBND/PA_BNBD/PA_NZ）分页KV cache。
-    - **Paged Attention**：KV cache按block分页存储，通过block_table索引物理block，支持推理场景KV cache复用与扩容。
-    - **变长序列**：通过cu_seqlens（TND packing）与seqused_q/seqused_kv（序列截断）支持batch内变长序列。
-    - **FlashDecode**：decode场景（S1小、S2长）将KV方向split-K切分到多核并行，自动启用，无需显式配置。
-    - **稀疏掩码**：mask_mode支持全计算（0）、causal（3）、window（4）三种模式，配合固定(2048, 2048)的attn_mask模板。
-    - **softmax_lse输出**：通过return_softmax_lse开关输出每行softmax的Log-Sum-Exp结果，用于KV cache拼接等跨batch融合场景。
 
 - 计算公式：
 
