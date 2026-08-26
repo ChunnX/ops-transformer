@@ -21,7 +21,7 @@ endfunction()
 
 # 用于custom自定算子包host侧obj生成
 macro(add_modules_sources)
-  set(oneValueArgs OP_API_INDEPENDENT OP_API_DIR OP_MC2_ENABLE)
+  set(oneValueArgs OP_API_INDEPENDENT OP_API_DIR OP_MC2_ENABLE HOSTCPU)
   set(multiValueArgs OPTYPE ACLNNTYPE ACLNN_EXTRA_VERSION)
 
   cmake_parse_arguments(MODULE "" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
@@ -148,6 +148,17 @@ macro(add_modules_sources)
     endif()
   endif()
 
+  if(MODULE_HOSTCPU AND BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG AND ENABLE_BUILT_IN AND ENABLE_AICPU)
+    get_filename_component(_OP_ROOT ${SOURCE_DIR} DIRECTORY)
+    get_filename_component(_OP_NAME ${_OP_ROOT} NAME)
+    file(GLOB AICPU_HOST_SRCS ${_OP_ROOT}/op_kernel_aicpu/*_aicpu.cpp)
+    if(AICPU_HOST_SRCS)
+      set(HOST_OBJ_NAME ${_OP_NAME}_host_const_obj)
+      add_aicpu_host_kernel_modules(${HOST_OBJ_NAME})
+      target_sources(${HOST_OBJ_NAME} PRIVATE ${AICPU_HOST_SRCS})
+    endif()
+  endif()
+
   if (MODULE_OPTYPE)
     list(LENGTH MODULE_OPTYPE OpTypeLen)
     list(LENGTH MODULE_ACLNNTYPE AclnnTypeLen)
@@ -186,7 +197,7 @@ macro(add_modules_sources)
 endmacro()
 
 macro(add_modules_sources_with_soc)
-  set(oneValueArgs OP_API_INDEPENDENT OP_API_DIR OP_MC2_ENABLE)
+  set(oneValueArgs OP_API_INDEPENDENT OP_API_DIR OP_MC2_ENABLE HOSTCPU)
   set(multiValueArgs OPTYPE ACLNNTYPE)
 
   cmake_parse_arguments(MODULE "" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
@@ -341,6 +352,16 @@ macro(add_modules_sources_with_soc)
   if(AICPU_SRCS)
     add_aicpu_kernel_modules()
     target_sources(${OPHOST_NAME}_aicpu_obj PRIVATE ${AICPU_SRCS})
+  endif()
+
+  if(MODULE_HOSTCPU AND BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG AND ENABLE_BUILT_IN AND ENABLE_AICPU)
+    get_filename_component(_OP_ROOT ${SOURCE_DIR} DIRECTORY)
+    file(GLOB AICPU_HOST_SRCS ${_OP_ROOT}/op_kernel_aicpu/*_aicpu.cpp)
+    if(AICPU_HOST_SRCS)
+      set(HOST_OBJ_NAME ${OPS_NAME}_host_const_obj)
+      add_aicpu_host_kernel_modules(${HOST_OBJ_NAME})
+      target_sources(${HOST_OBJ_NAME} PRIVATE ${AICPU_HOST_SRCS})
+    endif()
   endif()
 
   if (MODULE_OPTYPE)
@@ -949,6 +970,7 @@ function(add_aicpu_host_kernel_modules host_target_name)
       ${host_target_name} PRIVATE
                     _FORTIFY_SOURCE=2
                     google=ascend_private
+                    OPS_TRANSFORMER_AICPU_HOST_KERNEL
     )
     target_compile_options(
       ${host_target_name} PRIVATE
