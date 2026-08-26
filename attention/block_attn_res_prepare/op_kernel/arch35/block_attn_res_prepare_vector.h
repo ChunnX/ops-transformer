@@ -151,21 +151,15 @@ private:
                                                                                                           columns));
     }
 
-    template <typename T>
-    __aicore__ inline static auto MakeUbTensor(uint64_t byteOffset, int64_t validElements, int64_t ubPitch)
-    {
-        auto ubStorageTensor = AscendC::Te::MakeTensor(
-            AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, T>(byteOffset),
-            AscendC::Te::MakeFrameLayout<AscendC::Te::NDExtLayoutPtn, AscendC::Te::LayoutTraitDefault<T>>(1, ubPitch));
-        return ubStorageTensor.Slice(AscendC::Te::MakeCoord(static_cast<int64_t>(0), static_cast<int64_t>(0)),
-                                     AscendC::Te::MakeShape(static_cast<int64_t>(1), validElements));
-    }
-
     template <typename T, typename GmTensor>
     __aicore__ inline static void CopyGmToUb(uint64_t dstByteOffset, const GmTensor &srcTensor, int64_t rowIndex,
                                              int64_t columnIndex, int64_t validElements, int64_t ubPitch)
     {
-        auto ubTensor = MakeUbTensor<T>(dstByteOffset, validElements, ubPitch);
+        auto ubStorageTensor = AscendC::Te::MakeTensor(
+            AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, T>(dstByteOffset),
+            AscendC::Te::MakeFrameLayout<AscendC::Te::NDExtLayoutPtn, AscendC::Te::LayoutTraitDefault<T>>(1, ubPitch));
+        auto ubTensor = ubStorageTensor.Slice(AscendC::Te::MakeCoord(static_cast<int64_t>(0), static_cast<int64_t>(0)),
+                                              AscendC::Te::MakeShape(static_cast<int64_t>(1), validElements));
         auto gmTensor = srcTensor.Slice(AscendC::Te::MakeCoord(rowIndex, columnIndex),
                                         AscendC::Te::MakeShape(static_cast<int64_t>(1), validElements));
         auto copyGmToUb = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
@@ -178,7 +172,11 @@ private:
     {
         auto gmTensor = dstTensor.Slice(AscendC::Te::MakeCoord(rowIndex, columnIndex),
                                         AscendC::Te::MakeShape(static_cast<int64_t>(1), validElements));
-        auto ubTensor = MakeUbTensor<T>(srcByteOffset, validElements, ubPitch);
+        auto ubStorageTensor = AscendC::Te::MakeTensor(
+            AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, T>(srcByteOffset),
+            AscendC::Te::MakeFrameLayout<AscendC::Te::NDExtLayoutPtn, AscendC::Te::LayoutTraitDefault<T>>(1, ubPitch));
+        auto ubTensor = ubStorageTensor.Slice(AscendC::Te::MakeCoord(static_cast<int64_t>(0), static_cast<int64_t>(0)),
+                                              AscendC::Te::MakeShape(static_cast<int64_t>(1), validElements));
         auto copyUbToGm = AscendC::Te::MakeCopy(AscendC::Te::CopyUB2GM{});
         AscendC::Te::Copy(copyUbToGm, gmTensor, ubTensor);
     }
