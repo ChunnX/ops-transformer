@@ -4,7 +4,7 @@ api_type: function_block_attention_residuals_atk
 version: v2.1
 generate: block_attention_residuals_constraint
 standard:
-  acc: mixed_tolerance_bm
+  acc: default
   perf: not_key
 dtype_numbers: 1
 extra_numbers: 1
