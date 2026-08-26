@@ -26,7 +26,16 @@ __aicore__ inline void BlockAttnResPrepareTensorApiBlazeKernel(
     GM_ADDR blockRes, GM_ADDR validBlocks, GM_ADDR pseudoQuery, GM_ADDR numerator, GM_ADDR logitMax, GM_ADDR expSum,
     GM_ADDR workspace, const optiling::BlockAttnResPrepareCubeTilingData &tiling)
 {
-    Blaze::Attention::BlockAttnResPrepareParams params{};
+    using DispatchPolicy = Blaze::Attention::BlockAttnResPreparePolicy;
+    using ProblemShape = Blaze::Attention::Kernel::BlockAttnResPrepareProblemShape;
+    using BlockMmadTuple = Blaze::Attention::Kernel::BlockAttnResPrepareMmadTuple;
+    using BlockEpilogue = Blaze::Attention::Kernel::BlockAttnResPrepareBlockEpilogue;
+    using BlockScheduler = Blaze::Attention::Kernel::BlockAttnResPrepareBlockScheduler;
+    using TensorApiKernel = Blaze::Attention::Kernel::AttentionUniversal<DispatchPolicy, ProblemShape, BlockMmadTuple,
+                                                                         BlockEpilogue, BlockScheduler>;
+    using Params = typename TensorApiKernel::Params;
+
+    Params params{};
     params.gmParams.blockResidualGmAddr = blockRes;
     params.gmParams.validBlocksGmAddr = validBlocks;
     params.gmParams.effectiveQueryGmAddr = pseudoQuery;
@@ -61,7 +70,7 @@ __aicore__ inline void BlockAttnResPrepareTensorApiBlazeKernel(
     params.tilingParams.workspacePerCoreElems = tiling.workspacePerCoreElems;
     params.tilingParams.epsilon = tiling.eps;
 
-    Blaze::Attention::Kernel::KernelBlockAttnResPrepare kernel;
+    TensorApiKernel kernel;
     kernel(params);
 }
 
