@@ -12,11 +12,12 @@
 #  \brief
 #
 
+import logging
 import os
 import sys
-import logging
 from dataclasses import dataclass, field
 from typing import List
+
 import numpy as np
 from openpyxl import Workbook
 
@@ -31,14 +32,26 @@ logging.basicConfig(
 METADATA_SIZE = 64 * 1024
 # Metadata 中 10 个 uint32 字段名, 按结构体偏移顺序排列
 METADATA_FIELD_NAMES = [
-    "layoutVersion", "nmt", "topK", "hidden", "epWorldSize",
-    "localExpertNum", "aivNum", "networkMode", "serverNum", "rankNumPerServer",
+    "layoutVersion",
+    "nmt",
+    "topK",
+    "hidden",
+    "epWorldSize",
+    "localExpertNum",
+    "aivNum",
+    "networkMode",
+    "serverNum",
+    "rankNumPerServer",
 ]
 # Metadata 中 7 个固定 Region 的名称
 REGION_COUNT = 7
 REGION_NAMES = [
-    "PER_CORE_DIAG", "COUNT_NOTIFY", "EXPERT_COUNT",
-    "DISPATCH_SLOT_STATE", "COMBINE_TOKEN_STATE", "COMBINE_STATE_TAIL",
+    "PER_CORE_DIAG",
+    "COUNT_NOTIFY",
+    "EXPERT_COUNT",
+    "DISPATCH_SLOT_STATE",
+    "COMBINE_TOKEN_STATE",
+    "COMBINE_STATE_TAIL",
     "HYBRID_SCALEOUT_STATUS",
 ]
 # Region 名称到 dump 文件后缀的映射, 每个 Region 单独输出一个 .bin 文件
@@ -160,8 +173,13 @@ def get_topk_idx(target_path: str, topk: int, global_expert_num: int):
             topk_idx = np.fromfile(file_path, dtype=np.int32)
             bs = topk_idx.shape[0] // topk if topk > 0 else 0
             if topk > 0 and bs * topk != topk_idx.shape[0]:
-                logging.warning("topk_idx 数据大小 %d 不能被 topK %d 整除, 截断为 %d", topk_idx.shape[0], topk, bs)
-                topk_idx = topk_idx[:bs * topk]
+                logging.warning(
+                    "topk_idx 数据大小 %d 不能被 topK %d 整除, 截断为 %d",
+                    topk_idx.shape[0],
+                    topk,
+                    bs,
+                )
+                topk_idx = topk_idx[: bs * topk]
             return topk_idx.reshape(bs, topk), bs
     logging.warning("未找到 %s 文件, 无法获取 topk_idx 数据", target_file_num)
     return None, 0
@@ -172,10 +190,15 @@ def check_topk_idx(topk_idx_reshape, global_expert_num: int):
     mask = (topk_idx_reshape < 0) | (topk_idx_reshape >= global_expert_num)
     if np.any(mask):
         row_func, col_func = np.where(mask)
-        logging.error("检测到topk_idx中有%d个异常输入, 值应 >= 0 且 < 全局专家数%d",
-                      len(row_func), global_expert_num)
+        logging.error(
+            "检测到topk_idx中有%d个异常输入, 值应 >= 0 且 < 全局专家数%d",
+            len(row_func),
+            global_expert_num,
+        )
         for r, c in zip(row_func, col_func):
-            logging.error("topk_idx下标[%d,%d]的值:%d超范围", r, c, topk_idx_reshape[r][c])
+            logging.error(
+                "topk_idx下标[%d,%d]的值:%d超范围", r, c, topk_idx_reshape[r][c]
+            )
     else:
         logging.info("未检测到topk_idx中有超范围的异常输入")
 
@@ -193,7 +216,7 @@ def analyze_per_core(target_path: str):
     run_poses = []
     core_count = max_cores
     for i in range(max_cores):
-        block = raw_data[i * 512:(i + 1) * 512].view(np.uint32)
+        block = raw_data[i * 512 : (i + 1) * 512].view(np.uint32)
         op_count = int(block[0])
         run_pos = int(block[1])
         if op_count == 0 and run_pos == 0:
@@ -222,9 +245,11 @@ def analyze_count_notify(target_path: str, ep_world_size: int):
     counts = []
     for i in range(ep_world_size):
         if (i + 1) * 512 > raw_data.shape[0]:
-            logging.warning("Count Notify 数据不足 %d 个 512B 块, 实际只有 %d 块", ep_world_size, i)
+            logging.warning(
+                "Count Notify 数据不足 %d 个 512B 块, 实际只有 %d 块", ep_world_size, i
+            )
             break
-        block = raw_data[i * 512:(i + 1) * 512].view(np.uint32)
+        block = raw_data[i * 512 : (i + 1) * 512].view(np.uint32)
         counts.append(int(block[0]))
     logging.info("Count Notify 数据: %s", counts)
     return counts
@@ -240,9 +265,11 @@ def analyze_expert_count(target_path: str, ep_world_size: int, local_expert_num:
     expert_counts = []
     for i in range(ep_world_size):
         if (i + 1) * 512 > raw_data.shape[0]:
-            logging.warning("Expert Count 数据不足 %d 个 512B 块, 实际只有 %d 块", ep_world_size, i)
+            logging.warning(
+                "Expert Count 数据不足 %d 个 512B 块, 实际只有 %d 块", ep_world_size, i
+            )
             break
-        block = raw_data[i * 512:(i + 1) * 512].view(np.uint32)
+        block = raw_data[i * 512 : (i + 1) * 512].view(np.uint32)
         per_rank = [int(block[j]) for j in range(local_expert_num)]
         expert_counts.append(per_rank)
     logging.info("Expert Count 数据: %s", expert_counts)
@@ -260,9 +287,11 @@ def analyze_combine_token_state(target_path: str, nmt: int, topk: int):
     states = []
     for i in range(total):
         if (i + 1) * 512 > raw_data.shape[0]:
-            logging.warning("Combine Token State 数据不足 %d 个 512B 块, 实际只有 %d 块", total, i)
+            logging.warning(
+                "Combine Token State 数据不足 %d 个 512B 块, 实际只有 %d 块", total, i
+            )
             break
-        block = raw_data[i * 512:(i + 1) * 512].view(np.uint32)
+        block = raw_data[i * 512 : (i + 1) * 512].view(np.uint32)
         states.append(int(block[0]))
     logging.info("Combine Token State 数据: %s", states)
     return states
@@ -270,7 +299,9 @@ def analyze_combine_token_state(target_path: str, nmt: int, topk: int):
 
 # 单卡分析主函数: 依次获取 context、topk_idx, 解析各 Region .bin 文件
 # 返回 CardAnalysisResult 封装的单卡分析结果
-def analyze_single_card(card_path: str, card_num: int, card_metadata: dict, global_expert_num: int):
+def analyze_single_card(
+    card_path: str, card_num: int, card_metadata: dict, global_expert_num: int
+):
     logging.info("开始分析卡%d数据, dump数据路径: %s", card_num, card_path)
     print_card_metadata(card_num, card_metadata)
     logging.info("全局专家数: %d", global_expert_num)
@@ -294,9 +325,12 @@ def analyze_single_card(card_path: str, card_num: int, card_metadata: dict, glob
     combine_token_state_data = analyze_combine_token_state(card_path, nmt, topk)
 
     return CardAnalysisResult(
-        bs=bs, core_count=core_count, per_core_data=per_core_data,
-        count_notify_data=count_notify_data, expert_count_data=expert_count_data,
-        combine_token_state_data=combine_token_state_data
+        bs=bs,
+        core_count=core_count,
+        per_core_data=per_core_data,
+        count_notify_data=count_notify_data,
+        expert_count_data=expert_count_data,
+        combine_token_state_data=combine_token_state_data,
     )
 
 
@@ -309,7 +343,11 @@ def write_metadata_sheet(wb, all_metadata: dict, card_count: int):
     for card_num in range(card_count):
         row = [card_num]
         for name in all_field_names:
-            row.append(all_metadata[name][card_num] if card_num < len(all_metadata[name]) else None)
+            row.append(
+                all_metadata[name][card_num]
+                if card_num < len(all_metadata[name])
+                else None
+            )
         ws.append(row)
 
 
@@ -328,7 +366,11 @@ def write_count_notify_sheet(wb, all_count_notify: list, all_metadata: dict):
     ws = wb.create_sheet("count_notify")
     ws.append(["card_num", "epWorldSize", "rank_id", "count"])
     for card_num, count_notify_data in enumerate(all_count_notify):
-        ep_ws = all_metadata["epWorldSize"][card_num] if card_num < len(all_metadata["epWorldSize"]) else 0
+        ep_ws = (
+            all_metadata["epWorldSize"][card_num]
+            if card_num < len(all_metadata["epWorldSize"])
+            else 0
+        )
         for rank_id, count in enumerate(count_notify_data):
             ws.append([card_num, ep_ws, rank_id, count])
 
@@ -338,8 +380,11 @@ def write_expert_count_sheet(wb, all_expert_count: list, all_metadata: dict):
     ws = wb.create_sheet("expert_count")
     ws.append(["card_num", "localExpertNum", "rank_id", "expert_id", "count"])
     for card_num, expert_count_data in enumerate(all_expert_count):
-        local_expert_num = all_metadata["localExpertNum"][card_num] \
-            if card_num < len(all_metadata["localExpertNum"]) else 0
+        local_expert_num = (
+            all_metadata["localExpertNum"][card_num]
+            if card_num < len(all_metadata["localExpertNum"])
+            else 0
+        )
         for rank_id, per_rank in enumerate(expert_count_data):
             for expert_id, count in enumerate(per_rank):
                 ws.append([card_num, local_expert_num, rank_id, expert_id, count])
@@ -370,7 +415,9 @@ def save_to_excel(result: AllAnalysisResult):
 if __name__ == "__main__":
     # 1. 解析参数, 构建 card_dirs 列表
     if len(sys.argv) < 4:
-        logging.error("用法: python %s <dump_data_path> <file_num> <is_multi>", sys.argv[0])
+        logging.error(
+            "用法: python %s <dump_data_path> <file_num> <is_multi>", sys.argv[0]
+        )
         sys.exit(1)
 
     target_dir = sys.argv[1]
@@ -380,7 +427,12 @@ if __name__ == "__main__":
         logging.error("路径不存在: %s", target_dir)
         sys.exit(1)
 
-    logging.info("开始解析 dump 数据, 总卡数:%d, is_multi:%d, dump数据路径: %s", file_num, is_multi, target_dir)
+    logging.info(
+        "开始解析 dump 数据, 总卡数:%d, is_multi:%d, dump数据路径: %s",
+        file_num,
+        is_multi,
+        target_dir,
+    )
 
     if is_multi == 1:
         card_dirs = [os.path.join(target_dir, str(i)) for i in range(file_num)]
@@ -413,9 +465,15 @@ if __name__ == "__main__":
             all_expert_count.append([])
             all_combine_token_state.append([])
             continue
-        card_metadata = {name: all_metadata[name][card_num] if card_num < len(all_metadata[name]) else None
-                         for name in METADATA_FIELD_NAMES + REGION_NAMES}
-        card_result = analyze_single_card(card_path, card_num, card_metadata, global_expert_num)
+        card_metadata = {
+            name: all_metadata[name][card_num]
+            if card_num < len(all_metadata[name])
+            else None
+            for name in METADATA_FIELD_NAMES + REGION_NAMES
+        }
+        card_result = analyze_single_card(
+            card_path, card_num, card_metadata, global_expert_num
+        )
         all_bs.append(card_result.bs)
         all_core_count.append(card_result.core_count)
         all_per_core.append(card_result.per_core_data)
@@ -428,9 +486,12 @@ if __name__ == "__main__":
 
     # 4. 写入 Excel
     all_result = AllAnalysisResult(
-        all_metadata=all_metadata, all_per_core=all_per_core,
-        all_count_notify=all_count_notify, all_expert_count=all_expert_count,
-        all_combine_token_state=all_combine_token_state, card_count=len(card_dirs)
+        all_metadata=all_metadata,
+        all_per_core=all_per_core,
+        all_count_notify=all_count_notify,
+        all_expert_count=all_expert_count,
+        all_combine_token_state=all_combine_token_state,
+        card_count=len(card_dirs),
     )
     save_to_excel(all_result)
 
