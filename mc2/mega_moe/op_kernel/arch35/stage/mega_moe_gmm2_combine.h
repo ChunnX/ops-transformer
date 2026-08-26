@@ -377,7 +377,7 @@ __aicore__ inline WorkRange GetWaveCombineOwnedRange(const AivJobContext &job, u
     return GetBalancedTokenRange(tokenCount, logicalJobIndex, combineJob.totalJobs);
 }
 
-// 回收当前 wave 的 Combine 发送在行环形 buffer 上产生的事件。
+// 等待并消费当前 Wave 的 Combine 发送在行环形 buffer 上产生的全部完成事件，使该环不再有在途 slot。
 __aicore__ inline void DrainWaveCombineRowRing(uint32_t &issuedRowCount, uint32_t rowBufferCount)
 {
     uint32_t activeSlotCount = issuedRowCount < rowBufferCount ? issuedRowCount : rowBufferCount;
@@ -385,7 +385,11 @@ __aicore__ inline void DrainWaveCombineRowRing(uint32_t &issuedRowCount, uint32_
         WaitFlag<HardEvent::MTE3_MTE2>(
             static_cast<TEventID>(static_cast<int32_t>(EVENT_ID0) + static_cast<int32_t>(slot)));
     }
-    // Drain 已消费所有在途事件；下一段必须从空闲的 slot 0 重新开始，不能再次等待旧事件。
+    /*
+     * Drain 会消费所有在途事件，下一段必须从空闲的 slot 0 重新开始；否则该段会把已消费的事件
+     * 误判为 buffer 复用依赖并再次等待。W4 的计数跨 Wave 存活，A8W8 则在每次 Combine 调用时
+     * 创建新计数；在这里统一重置，可以保证两种生命周期都遵守相同的行环起始状态。
+     */
     issuedRowCount = 0U;
 }
 
