@@ -1333,12 +1333,12 @@ ge::graphStatus GMMTiling::GMMGetAttrs(const gert::TilingContext *context)
     if (((compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND910B ||
           compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND910_93)) &&
         isA4W4_) {
-        OP_CHECK_IF(
-            !((wFormat0 == ge::FORMAT_FRACTAL_NZ) || (wFormat0 != FORMAT_FRACTAL_NZ && transposeWeight_ == 0)),
-            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                                        "A4W4 GMM currently supports only weight tensor nz transpose/untranspose input \
+        OP_CHECK_IF(!((wFormat0 == ge::FORMAT_FRACTAL_NZ) || (wFormat0 != FORMAT_FRACTAL_NZ && transposeWeight_ == 0)),
+                    OPS_REPORT_VECTOR_INNER_ERR(
+                        context->GetNodeName(),
+                        "A4W4 GMM currently supports only weight tensor nz transpose/untranspose input \
 or nd format untranspose input."),
-            return ge::GRAPH_FAILED);
+                    return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
