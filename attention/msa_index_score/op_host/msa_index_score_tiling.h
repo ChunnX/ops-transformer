@@ -87,6 +87,7 @@ struct MsaIndexScoreInfo {
     uint32_t keyLayout = 0;
     uint32_t totalK = 0;
     bool isQuant = false;
+    bool isAscend950 = false;
     ge::DataType queryDtype = ge::DT_BF16;
     ge::DataType keyDtype = ge::DT_BF16;
 };

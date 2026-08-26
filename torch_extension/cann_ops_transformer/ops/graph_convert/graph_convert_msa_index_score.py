@@ -8,7 +8,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 # GE Converter for Graph Mode
-# Atlas A2/A3 only; key layouts: PA BBND/BNBD and TND packed. Does not support Ascend 950 / FP8.
+# Atlas A2/A3 + Ascend 950; key layouts: PA BBND/BNBD and TND packed.
+# 950 also accepts DT_HIFLOAT8 / DT_FLOAT8_E5M2 / DT_FLOAT8_E4M3FN.
 
 try:
     import torch
@@ -77,8 +78,8 @@ if _TORCHAIR_AVAILABLE:
             outputs=outputs,
             dependencies=dependencies,
             ir=IrDef("MsaIndexScore")
-            .input("query", "DT_FLOAT16, DT_BF16")
-            .input("key", "DT_FLOAT16, DT_BF16, DT_INT8")
+            .input("query", "DT_FLOAT16, DT_BF16, DT_HIFLOAT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN")
+            .input("key", "DT_FLOAT16, DT_BF16, DT_INT8, DT_HIFLOAT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN")
             .optional_input("block_table", "DT_INT32")
             .optional_input("scale", "DT_FLOAT")
             .optional_input("atten_mask", "DT_INT8")

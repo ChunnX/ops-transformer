@@ -33,6 +33,17 @@ __aicore__ inline uint32_t MsaCeilDiv(uint32_t a, uint32_t b)
     return (a + b - 1) / b;
 }
 
+// C2UB 非量化 F322F16 单目标：两次 Fixpipe 的 mSize 切分（每段偶数），AIV 必须相同。
+__aicore__ inline void MsaC2UbHalfSplit(uint32_t mActual, uint32_t &m0, uint32_t &m1)
+{
+    const uint32_t mEven = (mActual + 1U) & ~1U;
+    m0 = mEven / 2U;
+    if ((m0 & 1U) != 0U) {
+        m0 += 1U;
+    }
+    m1 = mEven - m0;
+}
+
 __aicore__ inline uint32_t MsaMinU32(uint32_t a, uint32_t b)
 {
     return a < b ? a : b;

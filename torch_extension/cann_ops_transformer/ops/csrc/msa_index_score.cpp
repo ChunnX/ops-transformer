@@ -11,7 +11,8 @@
 /*!
  * \file msa_index_score.cpp
  * \brief torch_extension 适配：aclnnMsaIndexScore C++ wrapper。
- *        Atlas A2/A3；key 支持 PA BBND/BNBD 与 TND packed。不支持 Ascend 950 / FP8。
+ *        Atlas A2/A3 + Ascend 950；key 支持 PA BBND/BNBD 与 TND packed。
+ *        950 另支持 query/key 同型 HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN。
  */
 
 #include <string>
@@ -107,8 +108,17 @@ void CheckMsaSparseAndDtypes(const at::Tensor &query, const at::Tensor &key, con
                     "sparse_mode=0 must not pass atten_mask.");
     }
 
-    TORCH_CHECK(query.scalar_type() == at::kHalf || query.scalar_type() == at::kBFloat16,
-                "query dtype must be float16 or bfloat16, but got ", query.scalar_type());
+    auto is_hifloat8 = [](at::ScalarType t) {
+        const char *name = c10::toString(t);
+        return name != nullptr && (std::string(name) == "hifloat8" || std::string(name) == "HiFloat8");
+    };
+    const bool q_ok = query.scalar_type() == at::kHalf || query.scalar_type() == at::kBFloat16 ||
+                      query.scalar_type() == at::kFloat8_e5m2 || query.scalar_type() == at::kFloat8_e4m3fn ||
+                      is_hifloat8(query.scalar_type());
+    TORCH_CHECK(q_ok, "query dtype must be float16 / bfloat16 / hifloat8 / float8_e5m2 / float8_e4m3fn, but got ",
+                query.scalar_type());
+    const bool is_fp8 = query.scalar_type() == at::kFloat8_e5m2 || query.scalar_type() == at::kFloat8_e4m3fn ||
+                        is_hifloat8(query.scalar_type());
     const bool is_quant = (key.scalar_type() == at::kChar);
     if (is_quant) {
         TORCH_CHECK(query.scalar_type() == at::kHalf, "int8 key currently requires float16 query.");
@@ -124,6 +134,7 @@ void CheckMsaSparseAndDtypes(const at::Tensor &query, const at::Tensor &key, con
     } else {
         TORCH_CHECK(key.scalar_type() == query.scalar_type(), "non-quant key dtype must match query.");
         TORCH_CHECK(!scale.has_value() || !scale.value().defined(), "non-quant path must not pass scale.");
+        TORCH_CHECK(!is_fp8 || (!scale.has_value() || !scale.value().defined()), "FP8 path must not pass scale.");
     }
     TORCH_CHECK(cu_q.scalar_type() == at::kInt, "actual_seq_qlen dtype must be int32.");
     TORCH_CHECK(kv_len.scalar_type() == at::kInt, "actual_seq_klen dtype must be int32.");
