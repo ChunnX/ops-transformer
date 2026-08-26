@@ -42,6 +42,16 @@ class QuantCompressorSpec:
         "bfloat16": {"standard": "stat_rel_err"},
     }
 
+    @staticmethod
+    def pre_execute(testcase, raw_inputs, switches):
+        golden_module.rebuild_golden_context_from_testcase(testcase)
+        ctx = golden_module.get_golden_context()
+        from ttk.core_modules.tbe_multiprocessing import get_process_context
+        process_ctx = get_process_context()
+        process_ctx.storage["pre_execute_data"] = {
+            "mask": ctx.get("mask"),
+        }
+
     def compare(*outputs, compare_context=None, **kwargs):
         ctx = golden_module.get_golden_context()
         # Replay (manual_data) 模式下 golden plugin 不重新执行，_GOLDEN_CONTEXT 为

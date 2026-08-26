@@ -18,6 +18,19 @@ from pathlib import Path
 import torch
 import numpy as np
 
+try:
+    from ttk.utilities.container_utils import get_global_storage
+except Exception:
+    get_global_storage = None
+
+
+def _get_compare_method():
+    if get_global_storage is not None:
+        try:
+            return getattr(get_global_storage(), "compare_method", None)
+        except Exception:
+            return None
+    return None
 
 PYTEST_GOLDEN_MODULE = None
 
@@ -49,21 +62,25 @@ def load_pytest_golden_module():
                 stub.testing = testing_mod
             sys.modules[mod_name] = stub
 
-    if "cann_ops_transformer" not in sys.modules:
-        cann_stub = types.ModuleType("cann_ops_transformer")
-        ops_stub = types.ModuleType("cann_ops_transformer.ops")
-        quant_stub = types.ModuleType("cann_ops_transformer.ops.quant_compressor")
-        quant_stub.CacheMode = type(
-            "CacheMode", (), {"LINEAR_BUFFER": 1, "RING_BUFFER": 2}
-        )
-        quant_stub.QuantMode = type(
-            "QuantMode", (), {"A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL": 1}
-        )
-        ops_stub.quant_compressor = quant_stub
-        cann_stub.ops = ops_stub
-        sys.modules["cann_ops_transformer"] = cann_stub
-        sys.modules["cann_ops_transformer.ops"] = ops_stub
-        sys.modules["cann_ops_transformer.ops.quant_compressor"] = quant_stub
+    _saved_modules = {}
+    for _mod_name in ("cann_ops_transformer", "cann_ops_transformer.ops",
+                      "cann_ops_transformer.ops.quant_compressor"):
+        if _mod_name in sys.modules:
+            _saved_modules[_mod_name] = sys.modules[_mod_name]
+    cann_stub = types.ModuleType("cann_ops_transformer")
+    ops_stub = types.ModuleType("cann_ops_transformer.ops")
+    quant_stub = types.ModuleType("cann_ops_transformer.ops.quant_compressor")
+    quant_stub.CacheMode = type(
+        "CacheMode", (), {"LINEAR_BUFFER": 1, "RING_BUFFER": 2}
+    )
+    quant_stub.QuantMode = type(
+        "QuantMode", (), {"A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL": 1}
+    )
+    ops_stub.quant_compressor = quant_stub
+    cann_stub.ops = ops_stub
+    sys.modules["cann_ops_transformer"] = cann_stub
+    sys.modules["cann_ops_transformer.ops"] = ops_stub
+    sys.modules["cann_ops_transformer.ops.quant_compressor"] = quant_stub
 
     _np_random_state = np.random.get_state()
     sys.path.insert(0, str(pytest_dir))
@@ -79,6 +96,12 @@ def load_pytest_golden_module():
         except ValueError:
             pass
         np.random.set_state(_np_random_state)
+        for _mod_name, _saved in _saved_modules.items():
+            sys.modules[_mod_name] = _saved
+        for _mod_name in ("cann_ops_transformer", "cann_ops_transformer.ops",
+                          "cann_ops_transformer.ops.quant_compressor"):
+            if _mod_name not in _saved_modules and _mod_name in sys.modules:
+                del sys.modules[_mod_name]
 
     PYTEST_GOLDEN_MODULE = module
     return PYTEST_GOLDEN_MODULE
@@ -162,7 +185,6 @@ def run_cpu_quant_compressor(
         else:
             B = 1
         start_pos_list = [0] * B
-
     cmp_kv, cmp_kv_mask = pytest_golden.cpu_compressor(
         x,
         wkv,
@@ -184,7 +206,8 @@ def run_cpu_quant_compressor(
         cache_mode=cache_mode_val,
         quant_mode=quant_mode_val,
     )
-
+    print("get in here2222--777")
+    print(cmp_kv_mask)
     golden_state_cache = torch.zeros_like(state_cache_f32)
     golden_state_cache[:, :, :half_dim] = kv_state_golden
     golden_state_cache[:, :, half_dim:] = score_state_golden
@@ -265,6 +288,9 @@ def cpu_quant_compressor(
         )
     )
     is_th = x_cpu.dim() == 2
+    mask = []
+    mask.append(cmp_kv_mask)
+    _GOLDEN_CONTEXT["mask"] = mask
     _GOLDEN_CONTEXT["cmp_kv_mask"] = cmp_kv_mask
     _GOLDEN_CONTEXT["update_kv"] = update_kv
     _GOLDEN_CONTEXT["update_score"] = update_score
@@ -338,6 +364,9 @@ def aclnn_quant_compressor_golden(
     )
 
     is_th = x_cpu.dim() == 2 if x_cpu is not None else False
+    mask = []
+    mask.append(cmp_kv_mask)
+    _GOLDEN_CONTEXT["mask"] = mask
     _GOLDEN_CONTEXT["cmp_kv_mask"] = cmp_kv_mask
     _GOLDEN_CONTEXT["update_kv"] = update_kv
     _GOLDEN_CONTEXT["update_score"] = update_score
@@ -551,3 +580,58 @@ def kernel_quant_compressor_golden(
             )
         },
     )
+
+def rebuild_golden_context_from_testcase(testcase, api_kind="e2e"):
+    """从 testcase 的输入参数重建 golden context（不依赖 compare_context）。
+
+    供 pre_execute 钩子在 _execute_eager 前调用，提前填充 _GOLDEN_CONTEXT，
+    使 cmp_kv_mask 等副产品在 eager 阶段即可获取。
+    """
+    try:
+        plan = testcase.get_param_plan()
+        if plan is None:
+            import logging
+            logging.warning("rebuild_golden_context_from_testcase: no param plan")
+            return
+        args, kwargs, extra_attrs = plan.build_args(testcase.tensors)
+        kwargs.update(extra_attrs)
+
+        def _arg(idx, name=None):
+            if idx < len(args) and args[idx] is not None:
+                return args[idx]
+            if name and name in kwargs:
+                return kwargs[name]
+            return None
+
+        def _attr(*names, default=None):
+            for n in names:
+                if n in kwargs:
+                    return kwargs[n]
+            return default
+
+        quant_mode = _attr("quant_mode", "quantMode", default=1)
+        cmp_ratio = _attr("cmp_ratio", "cmpRatio", default=4)
+        coff = _attr("coff", default=1)
+        cache_mode = _attr("cache_mode", "cacheMode", default=1)
+
+        rebuild_golden_context(
+            _arg(0, "x"),
+            _arg(1, "wkv"),
+            _arg(2, "wgate"),
+            _arg(3, "state_cache"),
+            _arg(4, "ape"),
+            quant_mode,
+            cmp_ratio,
+            x_descale=_arg(7, "x_descale"),
+            wkv_descale=_arg(8, "wkv_descale"),
+            wgate_descale=_arg(9, "wgate_descale"),
+            state_block_table=_arg(10, "state_block_table"),
+            cu_seqlens=_attr("cu_seqlens"),
+            seqused=_attr("seqused"),
+            start_pos=_attr("start_pos"),
+            coff=coff,
+            cache_mode=cache_mode,
+        )
+    except Exception as e:
+        import logging
+        logging.exception(f"rebuild_golden_context_from_testcase failed: {e}")

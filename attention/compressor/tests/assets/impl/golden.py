@@ -344,6 +344,9 @@ def cpu_compressor(
         seqused_list,
     )
     is_th = x_cpu.dim() == 2
+    mask = []
+    mask.append(cmp_kv_mask)
+    _GOLDEN_CONTEXT["mask"] = mask
     _GOLDEN_CONTEXT["cmp_kv_mask"] = cmp_kv_mask
     _GOLDEN_CONTEXT["update_kv"] = update_kv
     _GOLDEN_CONTEXT["update_score"] = update_score
@@ -435,6 +438,9 @@ def aclnn_compressor_golden(
     )
 
     is_th = x_cpu.dim() == 2 if x_cpu is not None else False
+    mask = []
+    mask.append(cmp_kv_mask)
+    _GOLDEN_CONTEXT["mask"] = mask
     _GOLDEN_CONTEXT["cmp_kv_mask"] = cmp_kv_mask
     _GOLDEN_CONTEXT["update_kv"] = update_kv
     _GOLDEN_CONTEXT["update_score"] = update_score
@@ -594,9 +600,7 @@ def rebuild_golden_context_from_testcase(testcase):
                     return kwargs[n]
             return default
 
-        # cmp_ratio 是位置参数 (args[5])，若 plan 未放入 args 则从 kwargs/attrs 取
         cmp_ratio_val = args[5] if len(args) > 5 and isinstance(args[5], int) else _attr("cmp_ratio", "cmpRatio", default=4)
-        # state_block_table 在 keyword-only 时位于 kwargs，在位置参数时位于 args[5] 或 args[6]
         state_block_table_val = _attr("state_block_table", default=None)
         if state_block_table_val is None and len(args) > 5 and not isinstance(args[5], int):
             state_block_table_val = args[5]
