@@ -173,6 +173,9 @@ ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquant() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MQSMLATilingCheck::CheckFeature() const { return CheckFeatureAntiquant(); }
+ge::graphStatus MQSMLATilingCheck::CheckFeature() const
+{
+    return CheckFeatureAntiquant();
+}
 
 } // namespace optiling

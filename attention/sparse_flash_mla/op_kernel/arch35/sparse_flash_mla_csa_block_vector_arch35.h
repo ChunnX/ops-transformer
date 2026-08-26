@@ -569,7 +569,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CalSparseCalSize(const RunInf
         uint32_t aicIdx = constInfo.aivIdx >> 1U;
         uint32_t v0S2SizeFirstCore = CeilDiv(runInfo.s2RealSize, 2);
         uint32_t v0S2SizeSecondCore = runInfo.s2RealSize - v0S2SizeFirstCore;
-        int32_t vecCnt = (aicIdx % 2U == 0) ? (GetSubBlockIdx() == 0 ? 0 : 1) : (GetSubBlockIdx() == 0 ? 2 : 3); // 2，3：根据核心索引和子块索引设置处理参数
+        int32_t vecCnt = (aicIdx % 2U == 0) ?
+                             (GetSubBlockIdx() == 0 ? 0 : 1) :
+                             (GetSubBlockIdx() == 0 ? 2 : 3); // 2，3：根据核心索引和子块索引设置处理参数
         if (aicIdx % 2 == 0) { // 2：根据aicIdx的奇偶性来区分不同的处理逻辑
             if (GetSubBlockIdx() == 0) {
                 sparseCalSize = CeilDiv(v0S2SizeFirstCore, 2); // 2：处理大小为v0S2SizeFirstCore的一半
@@ -584,7 +586,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CalSparseCalSize(const RunInf
                 sparseS2Start = v0S2SizeFirstCore;
             } else {
                 sparseCalSize = v0S2SizeSecondCore - CeilDiv(v0S2SizeSecondCore, 2); // 2：处理剩余部分
-                sparseS2Start = v0S2SizeFirstCore + CeilDiv(v0S2SizeSecondCore, 2); // 2：起始位置为v0S2SizeFirstCore加上v0S2SizeSecondCore的一半
+                sparseS2Start =
+                    v0S2SizeFirstCore +
+                    CeilDiv(v0S2SizeSecondCore, 2); // 2：起始位置为v0S2SizeFirstCore加上v0S2SizeSecondCore的一半
             }
         }
         sparseS2End = sparseS2Start + sparseCalSize;
@@ -661,7 +665,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
             LocalTensor<Q_T> stage0OutUb = this->stage0OutBuf[pingPong].template Get<Q_T>();
             WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2[pingPong]);
             while (dealRow < Min(16, sparseCalSize) && s2 < sparseS2End) { // 每次最多处理16行数据
-                int64_t tokenData[8] = {-1, -1, -1, -1, -1, -1, -1, -1}; // 每次处理8个token数据
+                int64_t tokenData[8] = {-1, -1, -1, -1, -1, -1, -1, -1};   // 每次处理8个token数据
                 if constexpr (IS_VEC_S2PHYADDR) {
                     GetRealS2Addr(tokenData, s2, runInfo, constInfo);
                 } else {
@@ -669,7 +673,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
                 }
                 s2 += 8; // 每次处理8个token数据
                 if (tokenData[0] == -1 && tokenData[1] == -1 && tokenData[2] == -1 && tokenData[3] == -1 &&
-                    tokenData[4] == -1 && tokenData[5] == -1 && tokenData[6] == -1 && tokenData[7] == -1) { // {2, 3, 4, 5, 6, 7}：tokenData索引
+                    tokenData[4] == -1 && tokenData[5] == -1 && tokenData[6] == -1 &&
+                    tokenData[7] == -1) { // {2, 3, 4, 5, 6, 7}：tokenData索引
                     meetEnd = true;
                     break;
                 }
