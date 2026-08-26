@@ -58,11 +58,11 @@ $$
 $$
 O=\mathbf{0}_{S\times T\times D},\qquad
 M=m_{\min}\mathbf{1}_{S\times T},\qquad
-L=\mathbf{1}_{S\times T},\qquad
+L=\mathbf{0}_{S\times T},\qquad
 m_{\min}=-3.4028234663852886\times10^{38}
 $$
 
-即 `numerator` 为 shape `[S, T, D]` 的全 0 Tensor，`logit_max` 为 shape `[S, T]` 且所有元素均为 FLOAT32 最小有限值 $m_{\min}$ 的 Tensor，`exp_sum` 为 shape `[S, T]` 的全 1 Tensor。该结果表示 online softmax 的空状态；`valid_blocks[0] < 0` 时按 0 处理，返回结果相同。
+即 `numerator` 为 shape `[S, T, D]` 的全 0 Tensor，`logit_max` 为 shape `[S, T]` 且所有元素均为 FLOAT32 最小有限值 $m_{\min}$ 的 Tensor，`exp_sum` 为 shape `[S, T]` 的全 0 Tensor。该结果表示 online softmax 的空状态；`valid_blocks[0] < 0` 时按 0 处理，返回结果相同。
 
 其中：
 
@@ -103,7 +103,7 @@ $$
     <tr>
       <td>valid_blocks</td>
       <td>输入</td>
-      <td>当前有效历史来源数，shape为[1]。值为0时，numerator返回全0 Tensor、logit_max返回所有元素均为FLOAT32最小有限值的Tensor、exp_sum返回全1 Tensor；值小于0时按0处理，大于N时按N处理。</td>
+      <td>当前有效历史来源数，shape为[1]。值为0时，numerator返回全0 Tensor、logit_max返回所有元素均为FLOAT32最小有限值的Tensor、exp_sum返回全0 Tensor；值小于0时按0处理，大于N时按N处理。</td>
       <td>INT64</td>
       <td>ND</td>
     </tr>
@@ -149,7 +149,7 @@ $$
 
 - `T >= 0`，`S >= 0`，`1 <= N <= 64`，`1 <= D <= 8192`。
 - `block_res` 的 shape 为 `[T, N, D]`，`pseudo_query` 的 shape 为 `[S, D]`；`numerator`、`logit_max` 和 `exp_sum` 的 shape 分别为 `[S, T, D]`、`[S, T]` 和 `[S, T]`。
-- `valid_blocks` 的 shape 必须为 `[1]`；`valid_blocks[0] == 0` 时，`numerator` 返回全 0 Tensor、`logit_max` 返回所有元素均为 FLOAT32 最小有限值的 Tensor、`exp_sum` 返回全 1 Tensor；`valid_blocks[0] < 0` 时返回结果相同。
+- `valid_blocks` 的 shape 必须为 `[1]`；`valid_blocks[0] == 0` 时，`numerator` 返回全 0 Tensor、`logit_max` 返回所有元素均为 FLOAT32 最小有限值的 Tensor、`exp_sum` 返回全 0 Tensor；`valid_blocks[0] < 0` 时返回结果相同。
 - `eps` 必须为有限正数。
 - `T == 0` 或 `S == 0` 时，返回对应 shape 的空输出。
 

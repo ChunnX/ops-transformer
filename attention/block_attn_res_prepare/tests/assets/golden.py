@@ -47,8 +47,10 @@ def block_attn_res_prepare_golden(
             ),
             dtype=torch.float32,
         )
-        logit_max = torch.zeros(
-            (query.shape[S_DIM_INDEX], residual.shape[T_DIM_INDEX]), dtype=torch.float32
+        logit_max = torch.full(
+            (query.shape[S_DIM_INDEX], residual.shape[T_DIM_INDEX]),
+            torch.finfo(torch.float32).min,
+            dtype=torch.float32,
         )
         exp_sum = torch.zeros_like(logit_max)
         outputs = (numerator, logit_max, exp_sum)
