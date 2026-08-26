@@ -27,10 +27,16 @@ public:
     {}
     ~QuantMatmulTilingSwat() override = default;
 
-    void SetMaxBaseM(uint64_t v) { maxBaseM_ = v; }
+    void SetMaxBaseM(uint64_t v)
+    {
+        maxBaseM_ = v;
+    }
 
 protected:
-    const char *TilingName() const override { return "swat"; }
+    const char *TilingName() const override
+    {
+        return "swat";
+    }
 
     void DoOpTiling(QuantMatmulTilingData &tilingData) override
     {
@@ -282,6 +288,19 @@ private:
         uint64_t blockNum = CeilDiv(args_.m, runInfo_.baseM) * CeilDiv(args_.n, runInfo_.baseN);
         if (blockNum < platformInfo_.aicNum) {
             AdjustBasicBlock();
+        }
+        // 当 M/N 方向 base 块总数小于 2 倍核数时，部分核只算一轮 base 块即结束，
+        // 通信与计算无法充分流水。此时将 baseM 减半使 M 方向块数翻倍，
+        // 让每个核至少能分到两轮 base 块。
+        // 减半约束：
+        // 1. baseM 需为 2*对齐粒度 的整数倍，保证减半后仍是 CUBE_BLOCK 对齐；
+        // 2. baseM < M，即 M 方向至少两个 base 块时才减半；极小 shape（baseM >= M）
+        //    不承诺性能，也无需走该逻辑，避免减半制造出 tail 引入精度风险。
+        uint64_t baseMAlignNum = args_.transA ? GetShapeWithDataType<aDataType>(L1_ALIGN_SIZE) : CUBE_BLOCK;
+        uint64_t blockNumAfterAdjust = CeilDiv(args_.m, runInfo_.baseM) * CeilDiv(args_.n, runInfo_.baseN);
+        if (blockNumAfterAdjust < NUM_TWO * platformInfo_.aicNum && runInfo_.baseM % (NUM_TWO * baseMAlignNum) == 0UL &&
+            runInfo_.baseM < args_.m) {
+            runInfo_.baseM = runInfo_.baseM / NUM_TWO;
         }
         CHECK_COND(runInfo_.baseM != 0UL && runInfo_.baseN != 0UL && runInfo_.baseK != 0UL,
                    "Failed to derive a valid tiling base shape: baseM, baseN, and baseK must all be non-zero.");
