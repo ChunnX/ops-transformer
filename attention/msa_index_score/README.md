@@ -6,7 +6,7 @@
 | --------------------------------------------------------- | :------: |
 | <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品</term> |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  |    √     |
-| <term>Ascend 950PR/Ascend 950DT</term>                    |    ×     |
+| <term>Ascend 950PR/Ascend 950DT</term>                    |    √     |
 
 ## 功能说明
 
@@ -47,8 +47,8 @@
 
 | 参数名                   | 输入/输出/属性 | 描述                                                         | 数据类型                     | 数据格式 |
 | ------------------------ | -------------- | ------------------------------------------------------------ | ---------------------------- | -------- |
-| query                    | 输入           | 公式中的 $Q_{idx}$。当前仅支持 TND，shape 为 $[T1, N1, D]$   | BFLOAT16, FLOAT16            | ND       |
-| key                      | 输入           | 公式中的 $K_{idx}$。支持 TND（$[T2, N2, D]$）、BNBD（$[block\_num, N2, block\_size, D]$）、BBND（$[block\_num, block\_size, N2, D]$） | BFLOAT16, FLOAT16, INT8      | ND, NZ   |
+| query                    | 输入           | 公式中的 $Q_{idx}$。当前仅支持 TND，shape 为 $[T1, N1, D]$   | BFLOAT16, FLOAT16, HIFLOAT8, FLOAT8_E5M2, FLOAT8_E4M3FN | ND       |
+| key                      | 输入           | 公式中的 $K_{idx}$。支持 TND（$[T2, N2, D]$）、BNBD（$[block\_num, N2, block\_size, D]$）、BBND（$[block\_num, block\_size, N2, D]$） | BFLOAT16, FLOAT16, INT8, HIFLOAT8, FLOAT8_E5M2, FLOAT8_E4M3FN | ND, NZ   |
 | block_table              | 可选输入       | PageAttention 的逻辑 block → 物理 page 映射表。PA 场景必须传入，二维，第二维长度不能小于 $maxBlockNumPerSeq$；shape 为 $[B, S2/block\_size]$ | INT32                        | ND       |
 | scale                    | 可选输入       | 公式中的 $scale$，反量化系数。非量化必须为空；量化场景必选。PA 为 $[block\_num, N2, block\_size]$ 或 $[block\_num, block\_size, N2]$；TND 为 $[T2, N2]$ | FLOAT                        | ND, NZ   |
 | atten_mask               | 可选输入       | 控制因果可见的 mask。仅在 `sparse_mode=3` 时使用；取值为 1 表示该位不参与计算，为 0 表示参与计算；shape 为 $[2048, 2048]$ | INT8                         | ND       |
@@ -66,7 +66,7 @@
 - 当前 $block\_size$ 仅支持 128。
 - `layout_key` 必须显式指定：`"BBND"` / `"BNBD"` / `"TND"`，与 `key` 实际 shape 一致。
 - PageAttention（`layout_key` 为 `"BBND"` / `"BNBD"`）场景下，`block_table` 必须传入；TND key 场景不得传入 `block_table`，`actual_seq_klen` 为 `[B+1]` 前缀和。
-- 非量化场景下，`key` dtype 与 `query` 相同（当前为 BFLOAT16 / FLOAT16），`scale` 必须为空；量化场景下仅支持 INT8，`scale` 必选：PA 为 $[block\_num, N2, block\_size]$ 或 $[block\_num, block\_size, N2]$，TND 为 $[T2, N2]$，dtype 为 FLOAT。当前不支持 FP8 与 <term>Ascend 950PR/Ascend 950DT</term>。
+- 非量化场景下，`key` dtype 与 `query` 相同（BFLOAT16 / FLOAT16；Ascend 950 另支持 HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN），`scale` 必须为空。量化场景下仅支持 INT8（fp16 query），`scale` 必选：PA 为 $[block\_num, N2, block\_size]$ 或 $[block\_num, block\_size, N2]$，TND 为 $[T2, N2]$，dtype 为 FLOAT。三种 FP8 仅 <term>Ascend 950PR/Ascend 950DT</term>，且 query 与 key 必须同型、不得传 `scale`。
 - `sparse_mode` 当前仅支持 0、3：
     - 为 0 时，代表 defaultMask 模式，`atten_mask` 传入空；
     - 为 3 时，代表 rightDownCausal 模式，`atten_mask` 必须传入，shape 为 $[2048, 2048]$，取值为 1 代表该位不参与计算，为 0 代表该位参与计算。
@@ -81,16 +81,29 @@
 | 接口文档 | [aclnnMsaIndexScore.md](./docs/aclnnMsaIndexScore.md) | 两段式接口说明 |
 | 测试说明 | [tests/README.md](./tests/README.md) | 用例矩阵与运行方式 |
 
-编译与运行：
+编译与运行（Ascend 950，x86 包名为 `linux-x86_64.run`；A2/A3 将 `--soc` 换成对应平台）：
 
 ```bash
-bash build.sh --pkg --soc=ascend910b --ops=msa_index_score -j32
-./build_out/cann-ops-transformer-custom_linux-aarch64.run --quiet --install-path=/tmp/msa_opp
+conda activate py311
+source /home/chenlyucheng/community_pkg/Ascend_0819/cann/set_env.sh
+cd /path/to/ops-transformer-ar-950
+
+bash build.sh --pkg --soc=ascend950 --ops=msa_index_score -j32
+rm -rf /tmp/msa_opp/
+bash ./build_out/cann-ops-transformer-custom_linux-x86_64.run --quiet --install-path=/tmp/msa_opp/
+source /tmp/msa_opp/vendors/custom_transformer/bin/set_env.bash
 export ASCEND_CUSTOM_OPP_PATH=/tmp/msa_opp/vendors/custom_transformer
-bash build.sh --run_example msa_index_score eager cust --vendor_name=custom
+
+# aclnn example 必须带 --soc=ascend950（否则默认 910b）
+bash build.sh --run_example msa_index_score eager cust --vendor_name=custom --soc=ascend950
+# 通过：末行 [PASS]: 21/21 cases passed
+# 矩阵：18 条 fp16/bf16/int8（BBND/BNBD/TND）+ L0-fp8-e4m3fn / L0-fp8-e5m2 / L1-fp8-e4m3fn-prefill（D=128）
+# 容差：fp16/bf16/int8 1e-3，FP8 2e-2
 ```
 
-> **实现备注（A2/A3）**
+torch_extension 见 [msa_index_score.md](../../torch_extension/cann_ops_transformer/docs/zh/msa_index_score.md)。`cann/set_env.sh` 会把 cann 自带 `site-packages` 插到 `PYTHONPATH` 前面，必须把本仓 `torch_extension` 再插回最前。
+
+> **实现备注（A2/A3 / Ascend 950）**
 >
 > - key 布局由属性 `layout_key`（aclnn：`layoutKeyOptional`）指定，支持 PageAttention **BBND** / **BNBD**，以及 packed **TND**（无 `block_table`，`actual_seq_klen` 为 `[B+1]` 前缀和）。默认 `"BBND"`。
 > - `sparse_mode=3` 的 `atten_mask[2048,2048]` 在 host 校验必选；device 侧按 rightDownCausal
@@ -98,3 +111,6 @@ bash build.sh --run_example msa_index_score eager cust --vendor_name=custom
 > - `start_loc` 为逻辑 block 索引，与属性 `init_blocks`（默认 0）、`local_blocks`（默认 1）
 >   一起在 Maxpool 之后施加 `local_mask`。
 > - 完整公式：`score = Maxpool[(scale·)Q@Kᵀ + atten_mask] + local_mask`。
+> - **950 当前交付**（`op_kernel/arch35/`）：计算骨架与 A2 相同（Q 驻留 × K pingpong × **8-page S GM** + MODE 0x2 握手）。Cube **原生** FP8（TilingKey 4/5/6，`hifloat8_t` / `fp8_e5m2_t` / `fp8_e4m3fn_t`，无 scale，禁止 Cast→fp16）。L0C→AIV UB（C_to_UB）尚未作为主路径。`arch22/` 冻结。
+> - torch 的 `torch_npu.hifloat8.npu()` 当前会打出非法 device id，脚本跳过；kernel / aclnn 已挂 HIFLOAT8。
+> - 测性能须选 Health=OK 且空闲的卡。本机经验：物理 **0 / 5** 与基线墙钟一致；**3 / 6** 同 kernel 墙钟可差约 2×（PipeUtilization 仍接近）。物理 0 若 `SetDevice` 卡住，换 5。

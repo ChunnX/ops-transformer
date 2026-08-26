@@ -11,7 +11,8 @@ from typing import Optional
 
 import torch
 from torch.library import impl
-from cann_ops_transformer.op_builder import OpBuilder, get_as_library
+from cann_ops_transformer.op_builder.builder import OpBuilder
+from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 
 SCORE_STRIDE_ALIGN = 16
 DEFAULT_SPARSE_MODE = 3
@@ -38,12 +39,10 @@ def _normalize_layout_key(layout_key: Optional[str]) -> str:
 
 class MsaIndexScoreOpBuilder(OpBuilder):
     def __init__(self):
-        super(MsaIndexScoreOpBuilder, self).__init__(
-            "msa_index_score", category="attention"
-        )
+        super(MsaIndexScoreOpBuilder, self).__init__("msa_index_score")
 
     def sources(self):
-        return ["csrc/attention/msa_index_score.cpp"]
+        return ["ops/csrc/msa_index_score.cpp"]
 
     def schema(self) -> str:
         return (
@@ -54,7 +53,7 @@ class MsaIndexScoreOpBuilder(OpBuilder):
         )
 
     def register_meta(self):
-        @impl(get_as_library(), self.name, "Meta")
+        @impl(AS_LIBRARY, self.name, "Meta")
         def msa_index_score_meta(
             query: torch.Tensor,
             key: torch.Tensor,
@@ -105,10 +104,17 @@ class MsaIndexScoreOpBuilder(OpBuilder):
 
 
 _msa_index_score_op_builder = MsaIndexScoreOpBuilder()
-_msa_index_score_op_builder._ensure_initialized()
+_op_module = None
 
 
-@impl(get_as_library(), _msa_index_score_op_builder.name, "PrivateUse1")
+def _get_op_module():
+    global _op_module
+    if _op_module is None:
+        _op_module = _msa_index_score_op_builder.load()
+    return _op_module
+
+
+@impl(AS_LIBRARY, _msa_index_score_op_builder.name, "PrivateUse1")
 def _msa_index_score(
     query: torch.Tensor,
     key: torch.Tensor,
@@ -124,8 +130,7 @@ def _msa_index_score(
     init_blocks: int = DEFAULT_INIT_BLOCKS,
     local_blocks: int = DEFAULT_LOCAL_BLOCKS,
 ) -> torch.Tensor:
-    op_module = _msa_index_score_op_builder.load()
-    return op_module.msa_index_score(
+    return _get_op_module().msa_index_score(
         query,
         key,
         block_table,
@@ -158,15 +163,16 @@ def msa_index_score(
 ) -> torch.Tensor:
     """MSA Index Branch block score，封装 aclnnMsaIndexScore。
 
-    当前仅 Atlas A2/A3；不支持 Ascend 950 / FP8。
+    Atlas A2/A3 与 Ascend 950。950 额外支持 query/key 同型
+    ``torch_npu.hifloat8`` / ``torch.float8_e5m2`` / ``torch.float8_e4m3fn``（无 scale）。
     key 布局由 ``layout_key`` 指定：PA BBND ``[NP, P, N2, D]``、BNBD ``[NP, N2, P, D]``、TND ``[T2, N2, D]``。
 
     Args:
-        query: ``[T1, N1, D]`` float16 / bfloat16
-        key: 与 ``layout_key`` 对应；BBND 也接受 Triton 风格 ``[NP, P, D]``（P=128 时自动扩 N2=1）
+        query: ``[T1, N1, D]`` float16 / bfloat16；950 还可为三种 FP8
+        key: 与 ``layout_key`` 对应；非量化须与 query 同 dtype；int8 仅 fp16 query + scale
         start_loc: ``[B]``，当前 query 所在逻辑 block 索引（local_mask）
         block_table: ``[B, MB]``，BBND/BNBD 必选；TND 不传
-        scale: int8 反量化。PA 为 ``[NP, N2, P]``；TND 为 ``[T2, N2]``；非量化为 None
+        scale: int8 反量化。PA 为 ``[NP, N2, P]``；TND 为 ``[T2, N2]``；非量化 / FP8 为 None
         atten_mask: sparse_mode=3 时 ``[2048, 2048]`` int8
         actual_seq_qlen: query 前缀和 ``[B+1]``
         actual_seq_klen: PA 为各请求 S2 ``[B]``；TND 为 key 前缀和 ``[B+1]``
