@@ -9,17 +9,24 @@
  */
 
 /*!
- * \file block_attn_res_prepare_cube_tiling.cpp
+ * \file block_attn_res_prepare_mix_tiling.cpp
  * \brief Mixed Cube/Vector tiling for BlockAttnResPrepare.
  */
 
-#include "block_attn_res_prepare_tiling.h"
+#include "block_attn_res_prepare_mix_tiling.h"
 
 #include <algorithm>
 #include <array>
 #include <limits>
+#include <vector>
 
 #include "log/log.h"
+
+namespace {
+
+const std::vector<int32_t> supportedNpuArch = {static_cast<int32_t>(NpuArch::DAV_3510)};
+constexpr int32_t TILING_PRIORITY = 0;
+} // namespace
 
 namespace optiling {
 namespace {
@@ -64,11 +71,9 @@ constexpr T AlignUp(T value, T factor)
 
 } // namespace
 
-bool BlockAttnResPrepareCubeTiling::IsCapable()
+bool BlockAttnResPrepareMixTiling::IsCapable()
 {
-    if (totalT_ < CUBE_MIN_T || totalS_ < CUBE_MIN_S || totalD_ < CUBE_MIN_D || aicCoreNum_ == 0U ||
-        aivCoreNum_ < AIV_CORE_NUM_PER_AIC || l1Size_ <= L1_RESERVED_BYTES || l0ASize_ == 0U || l0BSize_ == 0U ||
-        l0CSize_ == 0U) {
+    if (totalT_ < CUBE_MIN_T || totalS_ < CUBE_MIN_S || totalD_ < CUBE_MIN_D) {
         return false;
     }
     // MM2 Fixpipe writes a strided [S, D] tile directly into O[S, T, D]. The destination row stride is T * D
@@ -76,10 +81,10 @@ bool BlockAttnResPrepareCubeTiling::IsCapable()
     if (totalT_ > std::numeric_limits<uint32_t>::max() / totalD_) {
         return false;
     }
-    return SelectCubeTileShape();
+    return SelectMixTileShape();
 }
 
-bool BlockAttnResPrepareCubeTiling::SelectCubeTileShape()
+bool BlockAttnResPrepareMixTiling::SelectMixTileShape()
 {
     const uint64_t usableUbBytes = ubSize_ - UB_RESERVED_BYTES;
     const uint64_t usableL1Bytes = l1Size_ - L1_RESERVED_BYTES;
@@ -187,24 +192,24 @@ bool BlockAttnResPrepareCubeTiling::SelectCubeTileShape()
     return false;
 }
 
-ge::graphStatus BlockAttnResPrepareCubeTiling::DoOpTiling()
+ge::graphStatus BlockAttnResPrepareMixTiling::DoOpTiling()
 {
     OP_CHECK_IF(baseT_ == 0U || baseD_ == 0U,
                 OP_LOGE(context_->GetNodeName(),
-                        "Cube tile was not selected: T=%lu, N=%lu, S=%lu, D=%lu, baseT=%u, baseS=%u, baseD=%u", totalT_,
+                        "Mix tile was not selected: T=%lu, N=%lu, S=%lu, D=%lu, baseT=%u, baseS=%u, baseD=%u", totalT_,
                         totalN_, totalS_, totalD_, baseT_, baseS_, baseD_),
                 return ge::GRAPH_FAILED);
 
     sTileNum_ = static_cast<uint32_t>(CeilDiv<uint64_t>(totalS_, baseS_));
     const uint64_t tTileNum = CeilDiv<uint64_t>(totalT_, baseT_);
     OP_CHECK_IF(tTileNum > std::numeric_limits<uint64_t>::max() / sTileNum_,
-                OP_LOGE(context_->GetNodeName(), "Cube work count overflows uint64: tTileNum=%lu, sTileNum=%u",
-                        tTileNum, sTileNum_),
+                OP_LOGE(context_->GetNodeName(), "Mix work count overflows uint64: tTileNum=%lu, sTileNum=%u", tTileNum,
+                        sTileNum_),
                 return ge::GRAPH_FAILED);
     const uint64_t totalWorkUnits = tTileNum * sTileNum_;
     const uint64_t mixedCoreNum = std::min<uint64_t>(aicCoreNum_, aivCoreNum_ / AIV_CORE_NUM_PER_AIC);
     WorkDistribution distribution;
-    if (CalculateWorkDistribution(totalWorkUnits, mixedCoreNum, "Cube", distribution) != ge::GRAPH_SUCCESS) {
+    if (CalculateWorkDistribution(totalWorkUnits, mixedCoreNum, "Mix", distribution) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     usedCoreNum_ = distribution.usedCoreNum;
@@ -218,33 +223,33 @@ ge::graphStatus BlockAttnResPrepareCubeTiling::DoOpTiling()
     OP_CHECK_IF(eWorkspaceElems > std::numeric_limits<uint64_t>::max() / eWorkspaceBufferNum ||
                     dotWorkspaceElems > std::numeric_limits<uint64_t>::max() - eWorkspaceBufferNum * eWorkspaceElems,
                 OP_LOGE(context_->GetNodeName(),
-                        "Cube per-core workspace size overflows uint64: dotWorkspaceElems=%lu, "
+                        "Mix per-core workspace size overflows uint64: dotWorkspaceElems=%lu, "
                         "eWorkspaceElems=%lu, eWorkspaceBufferNum=%lu",
                         dotWorkspaceElems, eWorkspaceElems, eWorkspaceBufferNum),
                 return ge::GRAPH_FAILED);
     workspacePerCoreElems_ = dotWorkspaceElems + eWorkspaceBufferNum * eWorkspaceElems;
     OP_CHECK_IF(workspacePerCoreElems_ > std::numeric_limits<uint64_t>::max() / usedCoreNum_ / FP32_BYTES,
                 OP_LOGE(context_->GetNodeName(),
-                        "Cube workspace size overflows uint64: workspacePerCoreElems=%lu, usedCoreNum=%u, "
+                        "Mix workspace size overflows uint64: workspacePerCoreElems=%lu, usedCoreNum=%u, "
                         "elementBytes=%lu",
                         workspacePerCoreElems_, usedCoreNum_, FP32_BYTES),
                 return ge::GRAPH_FAILED);
-    const uint64_t cubeWorkspaceSize = workspacePerCoreElems_ * usedCoreNum_ * FP32_BYTES;
-    OP_CHECK_IF(systemWorkspaceSize_ > std::numeric_limits<uint64_t>::max() - cubeWorkspaceSize,
+    const uint64_t mixWorkspaceSize = workspacePerCoreElems_ * usedCoreNum_ * FP32_BYTES;
+    OP_CHECK_IF(systemWorkspaceSize_ > std::numeric_limits<uint64_t>::max() - mixWorkspaceSize,
                 OP_LOGE(context_->GetNodeName(),
-                        "Cube total workspace size overflows uint64: systemWorkspaceSize=%lu, cubeWorkspaceSize=%lu",
-                        systemWorkspaceSize_, cubeWorkspaceSize),
+                        "Mix total workspace size overflows uint64: systemWorkspaceSize=%lu, mixWorkspaceSize=%lu",
+                        systemWorkspaceSize_, mixWorkspaceSize),
                 return ge::GRAPH_FAILED);
-    workspaceSize_ = systemWorkspaceSize_ + cubeWorkspaceSize;
+    workspaceSize_ = systemWorkspaceSize_ + mixWorkspaceSize;
 
     tilingData_.totalT = static_cast<uint32_t>(totalT_);
-    tilingData_.totalN = static_cast<uint32_t>(totalN_);
+    tilingData_.totalN = static_cast<uint8_t>(totalN_);
     tilingData_.totalS = static_cast<uint32_t>(totalS_);
     tilingData_.totalWorkUnits = static_cast<uint32_t>(totalWorkUnits);
-    tilingData_.totalD = totalD_;
-    tilingData_.usedCoreNum = usedCoreNum_;
-    tilingData_.aicCoreNum = static_cast<uint32_t>(aicCoreNum_);
-    tilingData_.aivCoreNum = static_cast<uint32_t>(aivCoreNum_);
+    tilingData_.totalD = static_cast<uint32_t>(totalD_);
+    tilingData_.usedCoreNum = static_cast<uint16_t>(usedCoreNum_);
+    tilingData_.aicCoreNum = static_cast<uint16_t>(aicCoreNum_);
+    tilingData_.aivCoreNum = static_cast<uint16_t>(aivCoreNum_);
     tilingData_.baseT = baseT_;
     tilingData_.baseS = baseS_;
     tilingData_.baseD = baseD_;
@@ -258,7 +263,7 @@ ge::graphStatus BlockAttnResPrepareCubeTiling::DoOpTiling()
     tilingData_.qL1BufferNum = static_cast<uint8_t>(qL1BufferNum_);
     tilingData_.vL1BufferNum = static_cast<uint8_t>(vL1BufferNum_);
     tilingData_.vUbBufferNum = static_cast<uint8_t>(vUbBufferNum_);
-    tilingData_.l1CacheMode = static_cast<uint32_t>(BlockAttnResPrepareVCacheMode::RELOAD);
+    tilingData_.l1CacheMode = static_cast<uint8_t>(BlockAttnResPrepareVCacheMode::RELOAD);
     tilingData_.vL1CacheRows = static_cast<uint8_t>(0U);
     tilingData_.qL1Elems = qL1Elems_;
     tilingData_.vL1Elems = vL1Elems_;
@@ -272,24 +277,27 @@ ge::graphStatus BlockAttnResPrepareCubeTiling::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t BlockAttnResPrepareCubeTiling::GetTilingKey() const
+uint64_t BlockAttnResPrepareMixTiling::GetTilingKey() const
 {
     return GET_TPL_TILING_KEY(BLOCK_ATTN_RES_PREPARE_TPL_MIX_CUBE);
 }
 
-BlockAttnResPrepareTilingBase::TilingDataView BlockAttnResPrepareCubeTiling::GetTilingDataView() const
+BlockAttnResPrepareBaseTiling::TilingDataView BlockAttnResPrepareMixTiling::GetTilingDataView() const
 {
-    return {&tilingData_, sizeof(tilingData_), "Cube"};
+    return {&tilingData_, sizeof(tilingData_), "Mix"};
 }
 
-void BlockAttnResPrepareCubeTiling::DumpTilingInfo()
+void BlockAttnResPrepareMixTiling::DumpTilingInfo()
 {
     OP_LOGI(context_->GetNodeName(),
-            "BlockAttnResPrepare Cube tiling: T=%lu N=%lu S=%lu D=%lu cores=%u baseS=%u baseD=%u "
+            "BlockAttnResPrepare Mix tiling: T=%lu N=%lu S=%lu D=%lu cores=%u baseS=%u baseD=%u "
             "baseT=%u sLoops=%u dLoops=%u qL1/vL1/vUb buffers=%u/%u/%u nAlign/mm1NAlign=%u/%u "
             "workspacePerCore=%lu workspace=%lu",
             totalT_, totalN_, totalS_, totalD_, usedCoreNum_, baseS_, baseD_, baseT_, sTileNum_, dTileNum_,
             qL1BufferNum_, vL1BufferNum_, vUbBufferNum_, nAlign_, mm1NAlign_, workspacePerCoreElems_, workspaceSize_);
 }
+
+REGISTER_TILING_TEMPLATE_WITH_ARCH(BlockAttnResPrepare, BlockAttnResPrepareMixTiling, supportedNpuArch,
+                                   TILING_PRIORITY);
 
 } // namespace optiling

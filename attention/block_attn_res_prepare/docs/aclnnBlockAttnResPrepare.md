@@ -4,6 +4,8 @@
 
 ## 产品支持情况
 
+<!-- npu="950" id1 -->
+
 - Ascend 950PR/Ascend 950DT：支持。
 
 <!-- end id1 -->
@@ -35,6 +37,8 @@
 <!-- npu="910" id6 -->
 
 - <term>Atlas 训练系列产品</term>：不支持
+
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -89,9 +93,12 @@
     即 `numerator` 为 shape `[S, T, D]` 的全 0 Tensor，`logitMax` 为 shape `[S, T]` 且所有元素均为 FLOAT32 最小有限值 $m_{\min}$ 的 Tensor，`expSum` 为 shape `[S, T]` 的全 1 Tensor。该结果表示 online softmax 的空状态；`validBlocks[0] < 0` 时按 0 处理，返回结果相同。
 
     其中：
+    - $V\in\mathbb{R}^{T\times N\times D}$ 表示输入 `blockRes`；$V_{t,n,d}$ 表示第 $t$ 个 token、第 $n$ 个历史残差块在第 $d$ 个隐藏特征上的值。
+    - $Q\in\mathbb{R}^{S\times D}$ 表示输入 `pseudoQuery`（伪 Query）；每个目标 slot 对应一个 Query 向量，$Q_{s,d}$ 表示第 $s$ 个目标 slot 在第 $d$ 个隐藏特征上的值。
+    - $N_v=\min(\max(\texttt{validBlocks[0]},0),N)$，表示实际参与计算的历史残差块数。
     - $\epsilon$ 表示输入 `eps`，是计算 RMS 归一化因子时使用的数值稳定项。
-    - $T$ 表示 token 数，$N$ 表示历史来源缓冲区容量，$S$ 表示目标 slot 数，$D$ 表示 hidden size。
-    - $t\in[0,T)$、$n\in[0,N_v)$、$s\in[0,S)$、$d\in[0,D)$ 分别表示 token、有效历史来源、目标 slot 和 hidden size 的索引。
+    - $T$ 表示 token 数，$N$ 表示 `blockRes` 第 1 维可容纳的历史残差块数，$S$ 表示目标 slot 数，$D$ 表示HiddenSize。
+    - $t\in[0,T)$、$n\in[0,N_v)$、$s\in[0,S)$、$d\in[0,D)$ 分别表示 token、有效历史残差块、目标 slot 和隐藏特征的索引。
 
 
 ## 函数原型
@@ -105,7 +112,7 @@ aclnnStatus aclnnBlockAttnResPrepareGetWorkspaceSize(
     aclTensor *logitMax, aclTensor *expSum, float eps,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 ```
-```
+```cpp
 aclnnStatus aclnnBlockAttnResPrepare(
     void *workspace, uint64_t workspaceSize,
     aclOpExecutor *executor, aclrtStream stream);
@@ -149,7 +156,7 @@ aclnnStatus aclnnBlockAttnResPrepare(
       <td>FLOAT</td>
       <td>ND</td>
       <td>3</td>
-      <td>x</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>validBlocks</td>
@@ -159,17 +166,17 @@ aclnnStatus aclnnBlockAttnResPrepare(
       <td>INT64</td>
       <td>ND</td>
       <td>1</td>
-      <td>x</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>pseudoQuery</td>
       <td>输入</td>
-      <td>表示伪查询，对应公式中的输入Q。</td>
+      <td>表示伪 Query，对应公式中的输入Q；每个目标slot对应一个Query向量。</td>
       <td>shape为[S, D]，最后一维必须与blockRes的最后一维相同。</td>
       <td>FLOAT</td>
       <td>ND</td>
       <td>2</td>
-      <td>x</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>numerator</td>
@@ -179,7 +186,7 @@ aclnnStatus aclnnBlockAttnResPrepare(
       <td>FLOAT</td>
       <td>ND</td>
       <td>3</td>
-      <td>x</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>logitMax</td>
@@ -189,7 +196,7 @@ aclnnStatus aclnnBlockAttnResPrepare(
       <td>FLOAT</td>
       <td>ND</td>
       <td>2</td>
-      <td>x</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>expSum</td>
@@ -199,7 +206,7 @@ aclnnStatus aclnnBlockAttnResPrepare(
       <td>FLOAT</td>
       <td>ND</td>
       <td>2</td>
-      <td>x</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>eps</td>
@@ -276,9 +283,8 @@ aclnnStatus aclnnBlockAttnResPrepare(
 
 ## 约束说明
 
-- `T >= 0`，`S >= 0`，`0 <= N <= 64`，`0 <= D <= 8192`。
+- `T >= 0`，`S >= 0`，`1 <= N <= 64`，`1 <= D <= 8192`。
 - `blockRes` 与 `pseudoQuery` 的最后一维必须相同。
-- 输入输出不支持非连续 Tensor。
 - `validBlocks[0] == 0` 时，`numerator` 返回全 0 Tensor、`logitMax` 返回所有元素均为 FLOAT32 最小有限值的 Tensor、`expSum` 返回全 1 Tensor；`validBlocks[0] < 0` 时返回结果相同。
 - `T == 0` 或 `S == 0` 时返回对应形状的空输出。
 
@@ -352,7 +358,6 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
 
 int Init(int32_t deviceId, aclrtStream *stream)
 {
-    // 固定写法，初始化AscendCL并创建Stream。
     auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
     ret = aclrtSetDevice(deviceId);
@@ -431,7 +436,6 @@ int aclnnBlockAttnResPrepareTest(int32_t deviceId, aclrtStream &stream)
     aclTensor *logitMax = nullptr;
     aclTensor *expSum = nullptr;
 
-    // 创建输入与输出aclTensor，并通过unique_ptr管理Tensor及其Device内存。
     ret = CreateAclTensor(blockResHostData, blockResShape, &blockResDeviceAddr, aclDataType::ACL_FLOAT, &blockRes);
     std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> blockResTensorPtr(blockRes, aclDestroyTensor);
     std::unique_ptr<void, aclError (*)(void *)> blockResDeviceAddrPtr(blockResDeviceAddr, aclrtFree);
@@ -464,7 +468,6 @@ int aclnnBlockAttnResPrepareTest(int32_t deviceId, aclrtStream &stream)
     std::unique_ptr<void, aclError (*)(void *)> expSumDeviceAddrPtr(expSumDeviceAddr, aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    // 调用第一段接口获取Workspace大小和执行器。
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     ret = aclnnBlockAttnResPrepareGetWorkspaceSize(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum,
@@ -483,7 +486,6 @@ int aclnnBlockAttnResPrepareTest(int32_t deviceId, aclrtStream &stream)
         workspaceAddrPtr.reset(workspaceAddr);
     }
 
-    // 调用第二段接口执行计算，并同步等待任务完成。
     ret = aclnnBlockAttnResPrepare(workspaceAddr, workspaceSize, executor, stream);
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("aclnnBlockAttnResPrepare failed. ERROR: %d\n", ret);
@@ -493,7 +495,6 @@ int aclnnBlockAttnResPrepareTest(int32_t deviceId, aclrtStream &stream)
               LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret);
               return ret);
 
-    // 将Device侧输出拷贝到Host侧并打印。
     ret = aclrtMemcpy(numeratorHostData.data(), numeratorHostData.size() * sizeof(numeratorHostData[0]),
                       numeratorDeviceAddr, numeratorHostData.size() * sizeof(numeratorHostData[0]),
                       ACL_MEMCPY_DEVICE_TO_HOST);

@@ -15,6 +15,7 @@
 
 #include "log/log.h"
 #include "register/op_impl_registry.h"
+#include "util/shape_util.h"
 
 #include <string>
 
@@ -22,11 +23,13 @@ namespace ops {
 namespace {
 
 constexpr size_t BLOCK_RES_INDEX = 0;
+constexpr size_t VALID_BLOCKS_INDEX = 1;
 constexpr size_t PSEUDO_QUERY_INDEX = 2;
 constexpr size_t NUMERATOR_INDEX = 0;
 constexpr size_t LOGIT_MAX_INDEX = 1;
 constexpr size_t EXP_SUM_INDEX = 2;
 constexpr size_t BLOCK_RES_RANK = 3;
+constexpr size_t VALID_BLOCKS_RANK = 1;
 constexpr size_t PSEUDO_QUERY_RANK = 2;
 constexpr size_t T_DIM_INDEX = 0;
 constexpr size_t D_DIM_INDEX = 2;
@@ -38,21 +41,31 @@ ge::graphStatus InferShapeBlockAttnResPrepare(gert::InferShapeContext *context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE(OP_NAME, "infer shape context is null"), return ge::GRAPH_FAILED);
     const gert::Shape *blockResShape = context->GetInputShape(BLOCK_RES_INDEX);
+    const gert::Shape *validBlocksShape = context->GetInputShape(VALID_BLOCKS_INDEX);
     const gert::Shape *pseudoQueryShape = context->GetInputShape(PSEUDO_QUERY_INDEX);
     OP_CHECK_IF(blockResShape == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "block_res", "nullptr",
                                                       "the input shape of block_res must not be nullptr"),
                 return ge::GRAPH_FAILED);
+    OP_CHECK_IF(validBlocksShape == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "valid_blocks", "nullptr",
+                                                      "the input shape of valid_blocks must not be nullptr"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(pseudoQueryShape == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "pseudo_query", "nullptr",
                                                       "the input shape of pseudo_query must not be nullptr"),
                 return ge::GRAPH_FAILED);
+
+    const std::string blockResShapeStr = Ops::Base::ToString(*blockResShape);
+    const std::string validBlocksShapeStr = Ops::Base::ToString(*validBlocksShape);
+    const std::string pseudoQueryShapeStr = Ops::Base::ToString(*pseudoQueryShape);
+    OP_CHECK_IF(validBlocksShape->GetDimNum() != VALID_BLOCKS_RANK || validBlocksShape->GetDim(0) != 1,
+                OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "valid_blocks", validBlocksShapeStr.c_str(), "[1]"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(blockResShape->GetDimNum() != BLOCK_RES_RANK || pseudoQueryShape->GetDimNum() != PSEUDO_QUERY_RANK,
-                OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context->GetNodeName(), "block_res, pseudo_query",
-                                                          (std::to_string(blockResShape->GetDimNum()) + "D, " +
-                                                           std::to_string(pseudoQueryShape->GetDimNum()) + "D")
-                                                              .c_str(),
-                                                          "block_res must be 3D and pseudo_query must be 2D"),
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context->GetNodeName(), "block_res.shape, pseudo_query.shape",
+                                                       (blockResShapeStr + ", " + pseudoQueryShapeStr).c_str(),
+                                                       "block_res.shape must be 3D and pseudo_query.shape must be 2D"),
                 return ge::GRAPH_FAILED);
 
     const int64_t totalT = blockResShape->GetDim(T_DIM_INDEX);
@@ -91,10 +104,9 @@ ge::graphStatus InferShapeBlockAttnResPrepare(gert::InferShapeContext *context)
 ge::graphStatus InferDataTypeBlockAttnResPrepare(gert::InferDataTypeContext *context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE(OP_NAME, "infer data type context is null"), return ge::GRAPH_FAILED);
-    const ge::DataType inputType = context->GetInputDataType(BLOCK_RES_INDEX);
-    context->SetOutputDataType(NUMERATOR_INDEX, inputType);
-    context->SetOutputDataType(LOGIT_MAX_INDEX, inputType);
-    context->SetOutputDataType(EXP_SUM_INDEX, inputType);
+    context->SetOutputDataType(NUMERATOR_INDEX, ge::DT_FLOAT);
+    context->SetOutputDataType(LOGIT_MAX_INDEX, ge::DT_FLOAT);
+    context->SetOutputDataType(EXP_SUM_INDEX, ge::DT_FLOAT);
     return ge::GRAPH_SUCCESS;
 }
 

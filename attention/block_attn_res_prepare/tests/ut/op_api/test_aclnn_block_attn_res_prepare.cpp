@@ -9,112 +9,161 @@
  */
 
 /*!
- * \\file test_aclnn_block_attn_res_prepare.cpp
- * \\brief BlockAttnResPrepare ACLNN unit tests.
+ * \file test_aclnn_block_attn_res_prepare.cpp
+ * \brief CSV-driven ACLNN unit tests for BlockAttnResPrepare.
  */
 
-#include <limits>
+#include <gtest/gtest.h>
+
+#include <exception>
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <utility>
 #include <vector>
 
-#include "gtest/gtest.h"
 #include "../../../op_host/op_api/aclnn_block_attn_res_prepare.h"
+#include "gmm_csv_acl_parse_utils.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "opdev/platform.h"
 
-using namespace op;
-
 namespace {
 
-constexpr int64_t TOTAL_T = 2;
-constexpr int64_t TOTAL_N = 8;
-constexpr int64_t TOTAL_S = 3;
-constexpr int64_t TOTAL_D = 128;
-constexpr float DEFAULT_EPS = 1.0e-6F;
+constexpr size_t CSV_COLUMN_COUNT = 25U;
+constexpr const char *CSV_FILE_NAME = "test_aclnn_block_attn_res_prepare.csv";
+constexpr const char *CSV_REPO_DIR = "attention/block_attn_res_prepare/tests/ut/op_api";
 
-class BlockAttnResPrepareAclnnTest : public testing::Test {
-protected:
-    static void SetUpTestCase()
+struct BlockAttnResPrepareOpApiCase {
+    void Run() const
     {
-        SetPlatformSocVersion(SocVersion::ASCEND950);
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+        TensorDesc blockRes = ops::ut::BuildAclTensorDescFromSpec(blockResShape, blockResDtype, blockResFormat);
+        TensorDesc validBlocks(ops::ut::ParseAclTensorViewDims(validBlocksShape),
+                               ops::ut::ParseAclDtype(validBlocksDtype), ops::ut::ParseAclFormat(validBlocksFormat));
+        const std::vector<int64_t> validBlocksData = ops::ut::ParseI64List(validBlocksValue);
+        if (!validBlocksData.empty()) {
+            validBlocks.Value(validBlocksData);
+        }
+        TensorDesc pseudoQuery =
+            ops::ut::BuildAclTensorDescFromSpec(pseudoQueryShape, pseudoQueryDtype, pseudoQueryFormat);
+        TensorDesc numerator = ops::ut::BuildAclTensorDescFromSpec(numeratorShape, numeratorDtype, numeratorFormat);
+        TensorDesc logitMax = ops::ut::BuildAclTensorDescFromSpec(logitMaxShape, logitMaxDtype, logitMaxFormat);
+        TensorDesc expSum = ops::ut::BuildAclTensorDescFromSpec(expSumShape, expSumDtype, expSumFormat);
+
+        auto ut = OP_API_UT(aclnnBlockAttnResPrepare, INPUT(blockRes, validBlocks, pseudoQuery),
+                            OUTPUT(numerator, logitMax, expSum), eps);
+        uint64_t workspaceSize = 0U;
+        EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), expectRet) << "case=" << caseName;
     }
+
+    std::string socVersion;
+    std::string caseName;
+    std::string prefix;
+    std::string blockResShape;
+    std::string blockResDtype;
+    std::string blockResFormat;
+    std::string validBlocksShape;
+    std::string validBlocksDtype;
+    std::string validBlocksFormat;
+    std::string validBlocksValue;
+    std::string pseudoQueryShape;
+    std::string pseudoQueryDtype;
+    std::string pseudoQueryFormat;
+    std::string numeratorShape;
+    std::string numeratorDtype;
+    std::string numeratorFormat;
+    std::string logitMaxShape;
+    std::string logitMaxDtype;
+    std::string logitMaxFormat;
+    std::string expSumShape;
+    std::string expSumDtype;
+    std::string expSumFormat;
+    float eps = 1.0e-6F;
+    aclnnStatus expectRet = ACLNN_SUCCESS;
 };
 
-// Shape, value-range, and invalid-parameter literals below intentionally define the input and boundary test vectors.
-
-TEST_F(BlockAttnResPrepareAclnnTest, Basic)
+std::vector<BlockAttnResPrepareOpApiCase> LoadCases()
 {
-    auto blockRes = TensorDesc({TOTAL_T, TOTAL_N, TOTAL_D}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-0.1, 0.1);
-    auto validBlocks = TensorDesc({1}, ACL_INT64, ACL_FORMAT_ND).Value(std::vector<int64_t>{TOTAL_N});
-    auto pseudoQuery = TensorDesc({TOTAL_S, TOTAL_D}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-0.1, 0.1);
-    auto numerator = TensorDesc({TOTAL_S, TOTAL_T, TOTAL_D}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto logitMax = TensorDesc({TOTAL_S, TOTAL_T}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto expSum = TensorDesc({TOTAL_S, TOTAL_T}, ACL_FLOAT, ACL_FORMAT_ND);
+    std::vector<BlockAttnResPrepareOpApiCase> cases;
+    const std::string csvPath = ops::ut::ResolveCsvPath(CSV_FILE_NAME, CSV_REPO_DIR, __FILE__);
+    std::ifstream csvData(csvPath, std::ios::in);
+    if (!csvData.is_open()) {
+        std::cout << "cannot open case file " << csvPath << std::endl;
+        return cases;
+    }
 
-    auto ut = OP_API_UT(aclnnBlockAttnResPrepare, INPUT(blockRes, validBlocks, pseudoQuery),
-                        OUTPUT(numerator, logitMax, expSum), DEFAULT_EPS);
-    uint64_t workspaceSize = 0;
-    EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_SUCCESS);
+    std::string line;
+    size_t lineNo = 0U;
+    while (std::getline(csvData, line)) {
+        ++lineNo;
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+        std::vector<std::string> items;
+        ops::ut::SplitStr2Vec(line, ",", items);
+        if (items.empty() || items[0] == "socVersion" || items.size() < CSV_COLUMN_COUNT) {
+            continue;
+        }
+
+        const std::string caseName = ops::ut::Trim(items[1]);
+        try {
+            size_t index = 0U;
+            BlockAttnResPrepareOpApiCase testCase;
+            testCase.socVersion = ops::ut::Trim(items[index++]);
+            testCase.caseName = ops::ut::Trim(items[index++]);
+            if (!ops::ut::ParseBool(items[index++]) || testCase.socVersion != "Ascend950") {
+                continue;
+            }
+            testCase.prefix = ops::ut::Trim(items[index++]);
+            testCase.blockResShape = ops::ut::Trim(items[index++]);
+            testCase.blockResDtype = ops::ut::Trim(items[index++]);
+            testCase.blockResFormat = ops::ut::Trim(items[index++]);
+            testCase.validBlocksShape = ops::ut::Trim(items[index++]);
+            testCase.validBlocksDtype = ops::ut::Trim(items[index++]);
+            testCase.validBlocksFormat = ops::ut::Trim(items[index++]);
+            testCase.validBlocksValue = ops::ut::Trim(items[index++]);
+            testCase.pseudoQueryShape = ops::ut::Trim(items[index++]);
+            testCase.pseudoQueryDtype = ops::ut::Trim(items[index++]);
+            testCase.pseudoQueryFormat = ops::ut::Trim(items[index++]);
+            testCase.numeratorShape = ops::ut::Trim(items[index++]);
+            testCase.numeratorDtype = ops::ut::Trim(items[index++]);
+            testCase.numeratorFormat = ops::ut::Trim(items[index++]);
+            testCase.logitMaxShape = ops::ut::Trim(items[index++]);
+            testCase.logitMaxDtype = ops::ut::Trim(items[index++]);
+            testCase.logitMaxFormat = ops::ut::Trim(items[index++]);
+            testCase.expSumShape = ops::ut::Trim(items[index++]);
+            testCase.expSumDtype = ops::ut::Trim(items[index++]);
+            testCase.expSumFormat = ops::ut::Trim(items[index++]);
+            testCase.eps = std::stof(ops::ut::Trim(items[index++]));
+            testCase.expectRet = ops::ut::ParseAclnnStatus(items[index++]);
+            cases.emplace_back(std::move(testCase));
+        } catch (const std::exception &error) {
+            ADD_FAILURE() << ops::ut::BuildCsvParseErrorMessage(csvPath, lineNo, caseName, error);
+        }
+    }
+    return cases;
 }
 
-TEST_F(BlockAttnResPrepareAclnnTest, RejectsInvalidBlockResDtype)
+std::string MakeParamName(const testing::TestParamInfo<BlockAttnResPrepareOpApiCase> &info)
 {
-    auto blockRes = TensorDesc({TOTAL_T, TOTAL_N, TOTAL_D}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto validBlocks = TensorDesc({1}, ACL_INT64, ACL_FORMAT_ND);
-    auto pseudoQuery = TensorDesc({TOTAL_S, TOTAL_D}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto numerator = TensorDesc({TOTAL_S, TOTAL_T, TOTAL_D}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto logitMax = TensorDesc({TOTAL_S, TOTAL_T}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto expSum = TensorDesc({TOTAL_S, TOTAL_T}, ACL_FLOAT, ACL_FORMAT_ND);
-
-    auto ut = OP_API_UT(aclnnBlockAttnResPrepare, INPUT(blockRes, validBlocks, pseudoQuery),
-                        OUTPUT(numerator, logitMax, expSum), DEFAULT_EPS);
-    uint64_t workspaceSize = 0;
-    EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_ERR_PARAM_INVALID);
+    return ops::ut::MakeSafeParamName(info.param.prefix);
 }
 
-TEST_F(BlockAttnResPrepareAclnnTest, RejectsMismatchedOutputShape)
+const std::vector<BlockAttnResPrepareOpApiCase> &GetCases()
 {
-    auto blockRes = TensorDesc({TOTAL_T, TOTAL_N, TOTAL_D}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto validBlocks = TensorDesc({1}, ACL_INT64, ACL_FORMAT_ND);
-    auto pseudoQuery = TensorDesc({TOTAL_S, TOTAL_D}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto numerator = TensorDesc({TOTAL_S, TOTAL_T, TOTAL_D + 1}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto logitMax = TensorDesc({TOTAL_S, TOTAL_T}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto expSum = TensorDesc({TOTAL_S, TOTAL_T}, ACL_FLOAT, ACL_FORMAT_ND);
-
-    auto ut = OP_API_UT(aclnnBlockAttnResPrepare, INPUT(blockRes, validBlocks, pseudoQuery),
-                        OUTPUT(numerator, logitMax, expSum), DEFAULT_EPS);
-    uint64_t workspaceSize = 0;
-    EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_ERR_PARAM_INVALID);
+    static const std::vector<BlockAttnResPrepareOpApiCase> cases = LoadCases();
+    return cases;
 }
 
-TEST_F(BlockAttnResPrepareAclnnTest, RejectsNonPositiveEps)
-{
-    auto blockRes = TensorDesc({TOTAL_T, TOTAL_N, TOTAL_D}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto validBlocks = TensorDesc({1}, ACL_INT64, ACL_FORMAT_ND);
-    auto pseudoQuery = TensorDesc({TOTAL_S, TOTAL_D}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto numerator = TensorDesc({TOTAL_S, TOTAL_T, TOTAL_D}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto logitMax = TensorDesc({TOTAL_S, TOTAL_T}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto expSum = TensorDesc({TOTAL_S, TOTAL_T}, ACL_FLOAT, ACL_FORMAT_ND);
+class BlockAttnResPrepareOpApiTest : public testing::TestWithParam<BlockAttnResPrepareOpApiCase> {};
 
-    auto ut = OP_API_UT(aclnnBlockAttnResPrepare, INPUT(blockRes, validBlocks, pseudoQuery),
-                        OUTPUT(numerator, logitMax, expSum), 0.0F);
-    uint64_t workspaceSize = 0;
-    EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_ERR_PARAM_INVALID);
+TEST_P(BlockAttnResPrepareOpApiTest, CsvDrivenCase)
+{
+    GetParam().Run();
 }
 
-TEST_F(BlockAttnResPrepareAclnnTest, RejectsNonFiniteEps)
-{
-    auto blockRes = TensorDesc({TOTAL_T, TOTAL_N, TOTAL_D}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto validBlocks = TensorDesc({1}, ACL_INT64, ACL_FORMAT_ND);
-    auto pseudoQuery = TensorDesc({TOTAL_S, TOTAL_D}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto numerator = TensorDesc({TOTAL_S, TOTAL_T, TOTAL_D}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto logitMax = TensorDesc({TOTAL_S, TOTAL_T}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto expSum = TensorDesc({TOTAL_S, TOTAL_T}, ACL_FLOAT, ACL_FORMAT_ND);
-
-    auto ut = OP_API_UT(aclnnBlockAttnResPrepare, INPUT(blockRes, validBlocks, pseudoQuery),
-                        OUTPUT(numerator, logitMax, expSum), std::numeric_limits<float>::infinity());
-    uint64_t workspaceSize = 0;
-    EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_ERR_PARAM_INVALID);
-}
+INSTANTIATE_TEST_SUITE_P(BLOCK_ATTN_RES_PREPARE_OP_API_CSV, BlockAttnResPrepareOpApiTest, testing::ValuesIn(GetCases()),
+                         MakeParamName);
 
 } // namespace
