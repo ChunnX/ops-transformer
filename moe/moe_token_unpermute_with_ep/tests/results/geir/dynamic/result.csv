@@ -1,7 +1,0 @@
-testcase_name,route,scenario,declared_shape,end_to_end_us,status
-dynamic_2x4,dynamic,unknown_dim_minus_1,"[[-1,-1],[-1],[-1,-1]]",2.46666e+07,PASS
-dynamic_4x7,dynamic,unknown_dim_minus_1,"[[-1,-1],[-1],[-1,-1]]",282.092,PASS
-dynamic_8x16,dynamic,unknown_dim_minus_1,"[[-1,-1],[-1],[-1,-1]]",256.936,PASS
-dynamic_2x4,dynamic,unknown_rank_minus_2,"[[-2],[-2],[-2]]",2.4859e+07,PASS
-dynamic_4x7,dynamic,unknown_rank_minus_2,"[[-2],[-2],[-2]]",285.939,PASS
-dynamic_8x16,dynamic,unknown_rank_minus_2,"[[-2],[-2],[-2]]",247.068,PASS
