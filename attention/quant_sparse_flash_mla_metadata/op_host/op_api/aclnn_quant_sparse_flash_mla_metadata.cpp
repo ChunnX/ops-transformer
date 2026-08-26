@@ -42,10 +42,10 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadataGetWorkspaceSize(
     const aclTensor *sequsedCmpKvOptional, const aclTensor *cmpResidualKvOptional,
     const aclTensor *oriTopkLengthOptional, const aclTensor *cmpTopkLengthOptional, int64_t numHeadsQ,
     int64_t numHeadsKv, int64_t headDim, int64_t quantMode, int64_t batchSize, int64_t maxSeqlenQ,
-    int64_t maxSeqlenOriKv, int64_t maxSeqlenCmpKv, int64_t oriTopk, int64_t cmpTopk,
-    int64_t cmpRatio, int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight,
-    const char *layoutQOptional, const char *layoutKvOptional, bool hasOriKv, bool hasCmpKv, const aclTensor *metaData,
-    uint64_t *workspaceSize, aclOpExecutor **executor)
+    int64_t maxSeqlenOriKv, int64_t maxSeqlenCmpKv, int64_t oriTopk, int64_t cmpTopk, int64_t cmpRatio,
+    int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight, const char *layoutQOptional,
+    const char *layoutKvOptional, bool hasOriKv, bool hasCmpKv, const aclTensor *metaData, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 {
     if (workspaceSize == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "workspaceSize is nullptr");
@@ -59,8 +59,8 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadataGetWorkspaceSize(
                    DFX_IN(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional,
                           sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional,
                           cmpTopkLengthOptional, numHeadsQ, numHeadsKv, headDim, quantMode, batchSize, maxSeqlenQ,
-                          maxSeqlenOriKv, maxSeqlenCmpKv, oriTopk, cmpTopk, cmpRatio, oriMaskMode,
-                          cmpMaskMode, oriWinLeft, oriWinRight, layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv),
+                          maxSeqlenOriKv, maxSeqlenCmpKv, oriTopk, cmpTopk, cmpRatio, oriMaskMode, cmpMaskMode,
+                          oriWinLeft, oriWinRight, layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv),
                    DFX_OUT(metaData));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -82,9 +82,9 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadataGetWorkspaceSize(
     auto ret = ParamsCheck(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional,
                            sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional,
                            cmpTopkLengthOptional, numHeadsQ, numHeadsKv, headDim, quantMode, batchSize, maxSeqlenQ,
-                           maxSeqlenOriKv, maxSeqlenCmpKv, oriTopk, cmpTopk, cmpRatio, oriMaskMode,
-                           cmpMaskMode, oriWinLeft, oriWinRight, layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv,
-                           aicCoreNum, aivCoreNum, socVersion, metaData);
+                           maxSeqlenOriKv, maxSeqlenCmpKv, oriTopk, cmpTopk, cmpRatio, oriMaskMode, cmpMaskMode,
+                           oriWinLeft, oriWinRight, layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv, aicCoreNum,
+                           aivCoreNum, socVersion, metaData);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     const aclTensor *cuSeqlensQOptionalContiguous = nullptr;
@@ -163,11 +163,10 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadataGetWorkspaceSize(
     auto output = l0op::QuantSparseFlashMlaMetadata(
         cuSeqlensQOptionalContiguous, cuSeqlensOriKvOptionalContiguous, cuSeqlensCmpKvOptionalContiguous,
         sequsedQOptionalContiguous, sequsedOriKvOptionalContiguous, sequsedCmpKvOptionalContiguous,
-        cmpResidualKvOptionalContiguous, oriTopkLengthOptionalContiguous, cmpTopkLengthOptionalContiguous,
-        numHeadsQ, numHeadsKv, headDim, quantMode, batchSize, maxSeqlenQ, maxSeqlenOriKv, maxSeqlenCmpKv, oriTopk,
-        cmpTopk, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight, layoutQOptional,
-        layoutKvOptional, hasOriKv, hasCmpKv, socVersion, aicCoreNum, aivCoreNum, isBatchConsistency, metaData,
-        uniqueExecutor.get());
+        cmpResidualKvOptionalContiguous, oriTopkLengthOptionalContiguous, cmpTopkLengthOptionalContiguous, numHeadsQ,
+        numHeadsKv, headDim, quantMode, batchSize, maxSeqlenQ, maxSeqlenOriKv, maxSeqlenCmpKv, oriTopk, cmpTopk,
+        cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight, layoutQOptional, layoutKvOptional, hasOriKv,
+        hasCmpKv, socVersion, aicCoreNum, aivCoreNum, isBatchConsistency, metaData, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
@@ -175,8 +174,10 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadataGetWorkspaceSize(
     return ACLNN_SUCCESS;
 }
 
-__attribute__((visibility("default"))) aclnnStatus aclnnQuantSparseFlashMlaMetadata(
-    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
+__attribute__((visibility("default"))) aclnnStatus aclnnQuantSparseFlashMlaMetadata(void *workspace,
+                                                                                    uint64_t workspaceSize,
+                                                                                    aclOpExecutor *executor,
+                                                                                    aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnQuantSparseFlashMlaMetadata);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);

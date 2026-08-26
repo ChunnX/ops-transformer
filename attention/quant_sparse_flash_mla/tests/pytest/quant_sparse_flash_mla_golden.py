@@ -187,9 +187,7 @@ class GeneralizedSFAQuant:
         """按照 NPU batch-consistency 的 S2 切分和固定 FD 规约顺序计算。"""
         ori_s2_size = ori_k_fp32.shape[0]
         cmp_s2_size = 0 if cmp_k_fp32 is None else cmp_k_fp32.shape[0]
-        reduce_size = self._get_batch_consistency_reduce_size(
-            ori_s2_size, cmp_s2_size
-        )
+        reduce_size = self._get_batch_consistency_reduce_size(ori_s2_size, cmp_s2_size)
 
         # Metadata 会对 ori 和 cmp 分别切分；同一个规约块不会
         # 跨越两个不同的量化/反量化域。
@@ -226,8 +224,7 @@ class GeneralizedSFAQuant:
             cur_weight = torch.exp(local_max - global_max) * local_sum
             global_sum = prev_weight + cur_weight
             merged_o = (
-                merged_o * prev_weight.unsqueeze(1)
-                + local_o * cur_weight.unsqueeze(1)
+                merged_o * prev_weight.unsqueeze(1) + local_o * cur_weight.unsqueeze(1)
             ) / global_sum.unsqueeze(1)
 
             # Pairwise FD stores the merged state as (LSE, 1, normalized O),
@@ -436,9 +433,9 @@ class GeneralizedSFAQuant:
                             cur_sinks,
                         )
                         acc_o = acc_o / hifp8_scale_value
-                        attn_out[
-                            i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :
-                        ] = acc_o.to(torch.bfloat16)
+                        attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = acc_o.to(
+                            torch.bfloat16
+                        )
                         if return_softmax_lse:
                             softmax_lse[i_B, i_N2, i_S1, :] = final_lse
                         continue
