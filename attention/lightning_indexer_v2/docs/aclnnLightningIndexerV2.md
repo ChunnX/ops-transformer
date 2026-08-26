@@ -297,10 +297,10 @@ aclnnStatus aclnnLightningIndexerV2(
     <td>sparseValues（aclTensor*）</td>
     <td>输出</td>
     <td>公式中的Indices对应的Values输出。</td>
-    <td>不支持空tensor。</td>
+    <td>returnValue为1时输出有效值；returnValue为0时输出shape为(0,)的空tensor。</td>
     <td>FLOAT</td>
     <td>ND</td>
-    <td><ul><li>layoutQ为"BSND"时输出shape为[B, S1, N2, topk]。</li><li>layoutQ为"TND"时输出shape为[T1, N2, topk]。</li></ul></td>
+    <td><ul><li>returnValue为1且layoutQ为"BSND"时输出shape为[B, S1, N2, topk]。</li><li>returnValue为1且layoutQ为"TND"时输出shape为[T1, N2, topk]。</li><li>returnValue为0时shape为(0,)。</li></ul></td>
     <td>x</td>
     </tr>
     <tr>
@@ -408,7 +408,7 @@ aclnnStatus aclnnLightningIndexerV2(
   - aclnnLightningIndexerV2默认确定性实现。
 - 参数q的N支持1~64，k的N支持1。
 - headdim支持128。
-- pa_kv_cache支持0轴非连续；pa_block_size支持1~1024，满足block大小32 Byte对齐。
+- pa_kv_cache支持0轴非连续；pa_block_size支持16~1024，且是16的倍数。
 - 参数q、k的数据类型应保持一致。
 - sparseIndices无效部分填-1；sparseValues无效部分填-inf。
 - 传入的cmpResidualKOptional中每一个元素的值都应小于压缩率cmpRatio。
@@ -421,6 +421,7 @@ aclnnStatus aclnnLightningIndexerV2(
 <!-- end id7 -->
 <!-- npu="950" id8 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：
+  - 参数q的N支持1~64。
   - 当传入的参数layoutQ为BSND时，不支持传入cuSeqlensQOptional；当layoutK为BSND或PA_BBND时，不支持传入cuSeqlensKOptional。
   - 当传入参数outputIdxOffsetOptional时，只支持大于0的索引偏移值；且应满足约束：加上传入的索引偏移值后，得到的sparseIndice值不超过INT32的最大值。
   - 当传入的参数layoutQ为TND时，必须传入cuSeqlensQOptional，如果也传入sequsedQOptional，应保证由sequsedQOptional传入的各个batch的query长度不超过根据cuSeqlensQOptional计算出的各个batch的q序列长度。当某个batch由sequsedQOptional传入的q序列长度seqlen1小于由cuSeqlensQOptional计算出的query长度seqlen2时，会启用TND Padding功能，将该batch的seqlen2与seqlen1差值部分的query输出的sparseIndices和sparseValues全部置为无效值。部分长序列场景下，如果需要填充的无效数据过多，由于硬件限制可能会导致aicore执行超时，可以通过(seqlen2 - seqlen1) * topk来计算需要填充的数据量，建议将这个数据量控制在4亿以内。

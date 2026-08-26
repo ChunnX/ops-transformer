@@ -21,10 +21,6 @@ public:
 private:
     ge::graphStatus CheckOneDimTensor(const IndexerV2CheckerInfo &info, const CheckerTensor &tensor,
                                       const char *name, int64_t expectedSize) const;
-    ge::graphStatus CheckCuSeqlensValues(const IndexerV2CheckerInfo &info, const CheckerTensor &tensor,
-                                         const char *name, int64_t total) const;
-    ge::graphStatus CheckSeqUsedValues(const IndexerV2CheckerInfo &info, const CheckerTensor &tensor,
-                                       const CheckerTensor *cuSeqlens, const char *name, int64_t maximum) const;
 };
 
 } // namespace indexer_v2_checker

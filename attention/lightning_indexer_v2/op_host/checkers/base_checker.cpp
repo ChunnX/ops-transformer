@@ -58,21 +58,6 @@ std::string IndexerV2BaseChecker::ShapeToString(const CheckerTensor &tensor)
     return shape == nullptr ? "null" : Ops::Base::ToString(*shape);
 }
 
-ge::graphStatus IndexerV2BaseChecker::CheckFormat(const IndexerV2CheckerInfo &info, const CheckerTensor &tensor,
-                                                   const char *name) const
-{
-    if (!tensor.IsPresent() || tensor.desc == nullptr) {
-        return ge::GRAPH_SUCCESS;
-    }
-    const ge::Format format = tensor.desc->GetOriginFormat();
-    if (format != ge::FORMAT_ND) {
-        const std::string actual = Ops::Base::ToString(format);
-        OP_LOGE_FOR_INVALID_FORMAT(info.opName, name, actual.c_str(), "ND");
-        return ge::GRAPH_FAILED;
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus IndexerV2BaseChecker::CheckDtype(const IndexerV2CheckerInfo &info, const CheckerTensor &tensor,
                                                   const char *name,
                                                   const std::vector<ge::DataType> &expected) const
@@ -102,18 +87,6 @@ ge::graphStatus IndexerV2BaseChecker::CheckRank(const IndexerV2CheckerInfo &info
         const std::string actualText = std::to_string(actual) + "D";
         const std::string expectedText = std::to_string(expected) + "D";
         OP_LOGE_FOR_INVALID_SHAPEDIM(info.opName, name, actualText.c_str(), expectedText.c_str());
-        return ge::GRAPH_FAILED;
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus IndexerV2BaseChecker::CheckNotEmpty(const IndexerV2CheckerInfo &info, const CheckerTensor &tensor,
-                                                     const char *name) const
-{
-    const gert::Shape *shape = tensor.GetShape();
-    if (shape != nullptr && shape->GetShapeSize() <= 0) {
-        const std::string actual = ShapeToString(tensor);
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(info.opName, name, actual.c_str(), "Empty tensor is not supported");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

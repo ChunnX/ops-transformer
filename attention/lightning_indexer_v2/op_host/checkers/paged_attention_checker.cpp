@@ -33,7 +33,7 @@ ge::graphStatus PagedAttentionChecker::CheckSinglePara(const IndexerV2CheckerInf
         return ge::GRAPH_SUCCESS;
     }
     if (CheckRank(info, info.blockTable, "block_table", 2) != ge::GRAPH_SUCCESS ||
-        CheckNotEmpty(info, info.blockTable, "block_table") != ge::GRAPH_SUCCESS) {
+        CheckDtype(info, info.blockTable, "block_table", {ge::DT_INT32}) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (info.blockSize < 16 || info.blockSize > 1024 || info.blockSize % 16 != 0) {
@@ -43,7 +43,10 @@ ge::graphStatus PagedAttentionChecker::CheckSinglePara(const IndexerV2CheckerInf
         return ge::GRAPH_FAILED;
     }
     const gert::Shape *keyShape = info.key.GetShape();
-    if (keyShape->GetDim(0) <= 0) {
+    if (keyShape == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (keyShape->GetDim(0) == 0) {
         const std::string actual = ShapeToString(info.key);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(info.opName, "k", actual.c_str(), "block_num must be greater than 0");
         return ge::GRAPH_FAILED;
@@ -60,7 +63,7 @@ ge::graphStatus PagedAttentionChecker::CheckContiguous(const IndexerV2CheckerInf
     }
     int64_t expected = 1;
     for (int64_t i = static_cast<int64_t>(shape->GetDimNum()) - 1; i >= static_cast<int64_t>(firstCheckedAxis); --i) {
-        if (shape->GetDim(i) != 1 && tensor.stride->GetStride(i) != expected) {
+        if (static_cast<uint32_t>(i) < tensor.stride->GetDimNum() && tensor.stride->GetStride(i) != expected) {
             const std::string actual = std::to_string(tensor.stride->GetStride(i));
             const std::string reason =
                 (firstCheckedAxis == 1U ? "Only axis 0 may be non-contiguous in PA_BBND; expected stride "
@@ -78,22 +81,20 @@ ge::graphStatus PagedAttentionChecker::CheckMultiPara(const IndexerV2CheckerInfo
 {
     if (info.layoutK == CheckerLayout::PA_BBND) {
         const gert::Shape *blockShape = info.blockTable.GetShape();
-        if (blockShape->GetDim(0) != info.batch || blockShape->GetDim(1) <= 0) {
+        if (blockShape->GetDim(0) != info.batch) {
             const std::string actual = ShapeToString(info.blockTable);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                info.opName, "block_table", actual.c_str(), "block_table must have shape [B, max_num_blocks_per_seq]");
+                info.opName, "block_table", actual.c_str(), "block_table dim 0 must equal the query batch size");
             return ge::GRAPH_FAILED;
         }
     }
-    const uint32_t firstAxis = info.layoutK == CheckerLayout::PA_BBND ? 1U : 0U;
-    if (CheckContiguous(info, info.query, "q", 0U) != ge::GRAPH_SUCCESS ||
-        CheckContiguous(info, info.key, "k", firstAxis) != ge::GRAPH_SUCCESS ||
-        CheckContiguous(info, info.weights, "w", 0U) != ge::GRAPH_SUCCESS) {
+    const uint32_t firstAxis =
+        info.layoutK == CheckerLayout::PA_BBND && (!info.quantized || info.arch35) ? 1U : 0U;
+    if (CheckContiguous(info, info.key, "k", firstAxis) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (info.quantized &&
-        (CheckContiguous(info, info.queryDescale, "q_descale", 0U) != ge::GRAPH_SUCCESS ||
-         CheckContiguous(info, info.keyDescale, "k_descale", firstAxis) != ge::GRAPH_SUCCESS)) {
+    if (info.quantized && info.quantMode != 4 &&
+        CheckContiguous(info, info.keyDescale, "k_descale", firstAxis) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

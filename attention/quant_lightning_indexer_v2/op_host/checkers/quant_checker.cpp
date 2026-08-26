@@ -24,15 +24,10 @@ constexpr int64_t MX_PACK = 2;
 ge::graphStatus QuantChecker::CheckParaExistence(const IndexerV2CheckerInfo &info) const
 {
     if (!info.queryDescale.IsPresent() || info.queryDescale.desc == nullptr ||
-        !info.keyDescale.IsPresent() || info.keyDescale.desc == nullptr) {
+        info.queryDescale.GetShape() == nullptr || !info.keyDescale.IsPresent() ||
+        info.keyDescale.desc == nullptr || info.keyDescale.GetShape() == nullptr) {
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(info.opName, "q_descale and k_descale",
-                                                 "q_descale and k_descale are required");
-        return ge::GRAPH_FAILED;
-    }
-    if (!info.arch35 && (info.outputIdxOffset.IsPresent() || info.sequsedQ.IsPresent())) {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-            info.opName, "output_idx_offset or seqused_q",
-            "output_idx_offset and seqused_q are not supported on A2/A3 for QuantLightningIndexerV2");
+                                                 "q_descale and k_descale, including descriptors and shapes, are required");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -40,6 +35,11 @@ ge::graphStatus QuantChecker::CheckParaExistence(const IndexerV2CheckerInfo &inf
 
 ge::graphStatus QuantChecker::CheckSinglePara(const IndexerV2CheckerInfo &info) const
 {
+    if (!info.arch35 && info.layoutK != CheckerLayout::PA_BBND) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(info.opName, "layout_k", info.layoutKText.c_str(),
+                                               "layout_k must be PA_BBND on A2/A3");
+        return ge::GRAPH_FAILED;
+    }
     if ((!info.arch35 && info.quantMode != MODE_INT8) ||
         (info.arch35 && (info.quantMode < MODE_FP8 || info.quantMode > MODE_MXFP4))) {
         const std::string actual = std::to_string(info.quantMode);
@@ -63,9 +63,7 @@ ge::graphStatus QuantChecker::CheckSinglePara(const IndexerV2CheckerInfo &info) 
         inputType = ge::DT_FLOAT4_E2M1;
         scaleType = ge::DT_FLOAT8_E8M0;
     }
-    if (CheckFormat(info, info.queryDescale, "q_descale") != ge::GRAPH_SUCCESS ||
-        CheckFormat(info, info.keyDescale, "k_descale") != ge::GRAPH_SUCCESS ||
-        CheckDtype(info, info.query, "q", {inputType}) != ge::GRAPH_SUCCESS ||
+    if (CheckDtype(info, info.query, "q", {inputType}) != ge::GRAPH_SUCCESS ||
         CheckDtype(info, info.key, "k", {inputType}) != ge::GRAPH_SUCCESS ||
         CheckDtype(info, info.queryDescale, "q_descale", {scaleType}) != ge::GRAPH_SUCCESS ||
         CheckDtype(info, info.keyDescale, "k_descale", {scaleType}) != ge::GRAPH_SUCCESS ||

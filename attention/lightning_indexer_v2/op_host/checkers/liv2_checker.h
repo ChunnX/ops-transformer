@@ -7,10 +7,32 @@
 #ifndef LIGHTNING_INDEXER_V2_CHECKER_H
 #define LIGHTNING_INDEXER_V2_CHECKER_H
 
-#include "exe_graph/runtime/tiling_context.h"
-#include "tiling/tiling_api.h"
+#include <functional>
+#include <memory>
+#include <vector>
+#include "base_checker_indexer_v2.h"
 
 namespace optiling {
-ge::graphStatus CheckLightningIndexerV2(gert::TilingContext *context);
+namespace indexer_v2_checker {
+
+class LIV2Checker {
+public:
+    ge::graphStatus Init(const IndexerV2CheckerInfo &info);
+    ge::graphStatus Process(const IndexerV2CheckerInfo &info);
+
+    ge::graphStatus CheckSinglePara(const IndexerV2CheckerInfo &info);
+    ge::graphStatus CheckParaExistence(const IndexerV2CheckerInfo &info);
+    ge::graphStatus CheckFeature(const IndexerV2CheckerInfo &info);
+    ge::graphStatus CheckMultiPara(const IndexerV2CheckerInfo &info);
+
+private:
+    using CheckMethod = std::function<ge::graphStatus(IndexerV2BaseChecker *, const IndexerV2CheckerInfo &)>;
+
+    ge::graphStatus RunCheck(const CheckMethod &method, const IndexerV2CheckerInfo &info);
+    void RegisterCheckers();
+    std::vector<std::unique_ptr<IndexerV2BaseChecker>> checkers_;
+};
+
+} // namespace indexer_v2_checker
 }
 #endif

@@ -126,10 +126,10 @@ cann_ops_transformer.quant_lightning_indexer(
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 |--------|----------|-----------|------|----------|-------------|
 | q | Tensor | 必选 | 公式中的量化输入$Q_{index}^{Quant}$。不支持空tensor。数据格式为ND。 | int8、float8_e4m3fn、HIfloat8、float4_e2m1 | layout_q为BSND时shape为(b,q_s,q_n,d)；layout_q为TND时shape为(q_t,q_n,d) |
-| k | Tensor | 必选 | 公式中的量化输入$K_{index}^{Quant}$。不支持空tensor。数据格式为ND，仅PA_BBND场景下0轴支持非连续。PA_BBND场景下block_size取值为16的倍数，最大支持1024。 | int8、float8_e4m3fn、HIfloat8、float4_e2m1 | layout_k为BSND时shape为(b,k_s,k_n,d)；layout_k为TND时shape为(k_t,k_n,d)；layout_k为PA_BBND时shape为(block_num,block_size,k_n,d) |
+| k | Tensor | 必选 | 公式中的量化输入$K_{index}^{Quant}$。不支持空tensor。数据格式为ND；仅Ascend 950PR/Ascend 950DT的PA_BBND场景支持0轴非连续。PA_BBND场景下block_size取值为16的倍数，最大支持1024。 | int8、float8_e4m3fn、HIfloat8、float4_e2m1 | layout_k为BSND时shape为(b,k_s,k_n,d)；layout_k为TND时shape为(k_t,k_n,d)；layout_k为PA_BBND时shape为(block_num,block_size,k_n,d) |
 | w | Tensor | 必选 | 公式中的权重系数$W$。不支持空tensor。数据格式为ND。 | float16、float32 | layout_q为BSND时shape为(b,q_s,q_n)；layout_q为TND时shape为(q_t,q_n) |
 | q_descale | Tensor | 必选 | 公式中的$Scale_Q$，表示Index q的反量化系数。不支持空tensor。数据格式为ND。 | float16、float32、float8_e8m0 | quant_mode为3/5时，layout_q为BSND时shape为(b,q_s,q_n,d/64,2)，layout_q为TND时shape为(q_t,q_n,d/64,2)；quant_mode为4时shape必须为(1,)；其他场景shape与w保持一致 |
-| k_descale | Tensor | 必选 | 公式中的$Scale_K$，表示Index k的反量化系数。不支持空tensor。数据格式为ND，仅PA_BBND场景下0轴支持非连续。 | float16、float32、float8_e8m0 | quant_mode为3/5时，layout_k为PA_BBND时shape为(block_num,block_size,k_n,d/64,2)，layout_k为BSND时shape为(b,k_s,k_n,d/64,2)，layout_k为TND时shape为(k_t,k_n,d/64,2)；quant_mode为4时shape必须为(1,)；其他场景分别为(block_num,block_size,k_n)、(b,k_s,k_n)或(k_t,k_n) |
+| k_descale | Tensor | 必选 | 公式中的$Scale_K$，表示Index k的反量化系数。不支持空tensor。数据格式为ND；仅Ascend 950PR/Ascend 950DT的PA_BBND场景支持0轴非连续。 | float16、float32、float8_e8m0 | quant_mode为3/5时，layout_k为PA_BBND时shape为(block_num,block_size,k_n,d/64,2)，layout_k为BSND时shape为(b,k_s,k_n,d/64,2)，layout_k为TND时shape为(k_t,k_n,d/64,2)；quant_mode为4时shape必须为(1,)；其他场景分别为(block_num,block_size,k_n)、(b,k_s,k_n)或(k_t,k_n) |
 | topk | int | 必选 | 表示topK阶段需要保留的k token索引数量，当前支持[1, 8192]。 | int32 | - |
 | quant_mode | int | 必选 | 表示量化模式，当前支持1/2/3/4/5。1表示qk: fp8(e4m3fn) per-token-head, scale: fp32；2表示qk: int8 per-token-head, scale: fp16, w: fp16；3表示qk: mxfp8(e4m3fn), scale: fp8(e8m0)；4表示qk: hifloat8 per-tensor, scale: fp32；5表示qk: mxfp4(e2m1), scale: fp8(e8m0)。 | int32 | - |
 | cu_seqlens_q | Tensor | 可选 | 当前batch及前序batch中q的有效token数的累加和，后一个元素的值必须大于等于前一个元素的值。仅layout_q为TND场景下必传，第一个值固定为0。数据格式为ND。 | int32 | (b+1,) |
@@ -139,7 +139,7 @@ cann_ops_transformer.quant_lightning_indexer(
 | cmp_residual_k | Tensor | 可选 | 表示k压缩前token数量除以cmp_ratio的余数，需满足0 \<= cmp_residual_k\[i\] \< cmp_ratio。需要在mask_mode等于3、cmp_ratio不等于1的场景下使用。数据格式为ND。 | int32 | (b,) |
 | block_table | Tensor | 可选 | 表示PageAttention中KV存储使用的block映射表。不支持空tensor。layout_k为PA_BBND时必须传入。数据格式为ND。 | int32 | (b, k_s_max/block_size) |
 | output_idx_offset | Tensor | 可选 | 表示topK结果输出索引所需要加上的偏移。值必须大于0，加上偏移后topk index不能超过int32最大值。数据格式为ND。 | int32 | layout_q为BSND时shape为(b,q_s,k_n)；layout_q为TND时shape为(q_t,k_n) |
-| metadata | Tensor | 可选 | quant_lightning_indexer_metadata算子传入的分核信息，包含使用核数、分块大小以及每个核处理数据的起始点等内容。不支持空tensor。数据格式为ND。 | int32 | (1024,) |
+| metadata | Tensor | 必选 | quant_lightning_indexer_metadata算子传入的分核信息，包含使用核数、分块大小以及每个核处理数据的起始点等内容。当前所有支持平台均必须传入，不支持空tensor。数据格式为ND。 | int32 | (1024,) |
 | max_seqlen_q | int | 可选 | q的最大序列长度。-1表示任意可能长度，默认值为-1。 | int32 | - |
 | layout_q | str | 可选 | 用于标识输入q的数据排布格式，支持BSND、TND，默认值为BSND。 | string | - |
 | layout_k | str | 可选 | 用于标识输入k的数据排布格式，支持BSND、TND、PA_BBND，默认值为BSND。 | string | - |
@@ -172,7 +172,7 @@ cann_ops_transformer.quant_lightning_indexer(
 - 参数seqused_q、seqused_k要求其值表示每个batch中的有效token数。
 - 参数cmp_residual_k需满足0 <= cmp_residual_k\[i\] < cmp_ratio。
 - mask_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../../../docs/zh/context/sparse_mode_introduction.md)。
-- pa_kv_cache支持0轴非连续；pa_block_size支持16~1024，且是16的倍数。
+- 仅Ascend 950PR/Ascend 950DT的pa_kv_cache支持0轴非连续；pa_block_size支持16~1024，且是16的倍数。
 - 参数q、k的数据类型应保持一致。
 - 该接口的TopK排序过程对NaN排序是未定义行为。
 - 当layout_q为BSND时，不支持传入cu_seqlens_q；当layout_k为BSND或PA_BBND时，不支持传入cu_seqlens_k。
@@ -184,7 +184,7 @@ cann_ops_transformer.quant_lightning_indexer(
   - 当layout_q为TND时，不支持传入seqused_q。
   - 当layout_k为TND时，不支持传入seqused_k。
   - 不支持output_idx_offset。
-  - 仅支持num_heads_q = 64、q_n = 64。
+  - 仅支持num_heads_q = 64、num_heads_k = 1。
   - 仅支持quant_mode = 2。
   - q、k仅支持int8，不支持float8_e4m3fn、HIfloat8和float4_e2m1。
   - q_descale和k_descale支持float16，不支持float32和float8_e8m0。
@@ -196,7 +196,7 @@ cann_ops_transformer.quant_lightning_indexer(
 <!-- npu="950" id8 -->
 - <term>Ascend 950PR/Ascend 950DT</term>:
   - topk取值范围当前仅支持[1, 8192]。
-  - 支持num_heads_q = 1~64、q_n = 1~64。
+  - 支持num_heads_q = 1~64，num_heads_k = 1。
   - cmp_ratio支持[1, 128]。
   - 当传入output_idx_offset时，只支持大于0的索引偏移值；且应满足约束：加上传入的索引偏移值后，得到的sparseIndice值不超过INT32的最大值。
   - 当layout_q为TND时，必须传入cu_seqlens_q，如果也传入seqused_q，应保证由seqused_q传入的各个batch的q长度不超过根据cu_seqlens_q计算出的各个batch的q序列长度。当某个batch由seqused_q传入的q序列长度seqlen1小于由cu_seqlens_q计算出的q长度seqlen2时，会启用TND Padding功能，将该batch的seqlen2与seqlen1的差值部分的q输出的sparse_indices和sparse_values全部置为无效值。部分长序列场景下，如果需要填充的无效数据过多，由于硬件限制可能会导致aicore执行超时，可以通过(seqlen2 - seqlen1) * topk来计算需要填充的数据量，建议将这个数据量控制在4亿以内。
@@ -300,8 +300,9 @@ cann_ops_transformer.quant_lightning_indexer(
         <td rowspan="1">
             <ul>
                 <li>tensor_type支持BFLOAT16</li>
-                <li>layout_q为BSND时，sparse_indices的shape为(b, q_s, k_n, topk)</li>
-                <li>layout_q为TND时，sparse_indices的shape为(q_t, k_n, topk)</li>
+                <li>return_value为1且layout_q为BSND时，shape为(b, q_s, k_n, topk)</li>
+                <li>return_value为1且layout_q为TND时，shape为(q_t, k_n, topk)</li>
+                <li>return_value为0时，shape为(0,)</li>
             </ul>
         </td>
     </tr>
@@ -371,11 +372,11 @@ metadata校验
             <td>
                 <ul>
                     <li>tensor_type仅支持INT32</li>
-                    <li>shape由quant_lightning_indexer_v2_metadata动态计算</li>
-                    <li>当前不支持不传入，未传入将发出拦截报警</li>
+                    <li>shape必须为(1024,)</li>
+                    <li>当前所有支持平台均必须传入</li>
                 </ul>
             </td>
-            <td>可选参数</td>
+            <td>必选参数</td>
             <td>无</td>
             <td>传入时需与quant_lightning_indexer_v2_metadata生成的结果一致</td>
         </tr>

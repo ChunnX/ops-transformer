@@ -1,0 +1,20 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# -----------------------------------------------------------------------------------------------------------
+
+set(INDEXER_V2_COMMON_CHECKER_SRC_FILES
+    ${CMAKE_CURRENT_LIST_DIR}/base_checker.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/common_checker.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/paged_attention_checker.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/seq_len_checker.cpp
+)
+
+function(add_indexer_v2_common_checker_sources target_name)
+    get_property(common_checker_added TARGET ${target_name} PROPERTY INDEXER_V2_COMMON_CHECKER_ADDED)
+    if(NOT common_checker_added)
+        target_sources(${target_name} PRIVATE ${INDEXER_V2_COMMON_CHECKER_SRC_FILES})
+        set_property(TARGET ${target_name} PROPERTY INDEXER_V2_COMMON_CHECKER_ADDED TRUE)
+    endif()
+endfunction()

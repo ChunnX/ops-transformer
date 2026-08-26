@@ -88,14 +88,10 @@ public:
     virtual ge::graphStatus CheckMultiPara(const IndexerV2CheckerInfo &info) const;
 
 protected:
-    ge::graphStatus CheckFormat(const IndexerV2CheckerInfo &info, const CheckerTensor &tensor,
-                                const char *name) const;
     ge::graphStatus CheckDtype(const IndexerV2CheckerInfo &info, const CheckerTensor &tensor, const char *name,
                                const std::vector<ge::DataType> &expected) const;
     ge::graphStatus CheckRank(const IndexerV2CheckerInfo &info, const CheckerTensor &tensor, const char *name,
                               uint32_t expected) const;
-    ge::graphStatus CheckNotEmpty(const IndexerV2CheckerInfo &info, const CheckerTensor &tensor,
-                                  const char *name) const;
     static std::string DtypesToString(const std::vector<ge::DataType> &dtypes);
     static std::string ShapeToString(const CheckerTensor &tensor);
 };
