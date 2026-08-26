@@ -36,7 +36,7 @@ function help {
     echo "PLOG_PATH(选填,分析错误日志必填):plog日志存放的路径,不填不进行plog日志分析"
     echo "GRAPH_PATH(选填,分析graph图文件必填):graph图文件存放的路径,不填不进行graph图文件分析"
     echo "START_A2_CLUSTER(选填,分析A2集群数据必填):是否分析A2集群数据,0:不分析,1:分析,不填默认为0"
-    echo "IS_MOE_EP(选填):是否使用moe_ep分析脚本,1:使用dump_moe_ep_analysis.py,0:使用原流程,仅SOC_VERSION=950时生效,不填默认为0"
+    echo "IS_MOE_EP(选填):是否使用moe_ep分析脚本,1:使用dump_analysis_moe_ep.py,0:使用原流程,仅SOC_VERSION=950时生效,不填默认为0"
     exit 0
 }
 #获取sh脚本的文件路径
@@ -300,7 +300,7 @@ elif [ "$SOC_VERSION" = "$SOC_VERSION_950" ]; then
                     fi
                 done
             fi
-            python3 $SCRIPT_DIR/dump_moe_ep_analysis.py $TARGET_DIR 1 0
+            python3 $SCRIPT_DIR/dump_analysis_moe_ep.py $TARGET_DIR 1 0
         elif ls "$TARGET_DIR/1/exception_info"* >/dev/null 2>&1; then
             echo "开始解析多卡dump数据"
             for ((i = 0; i < file_num; i++)); do
@@ -313,7 +313,7 @@ elif [ "$SOC_VERSION" = "$SOC_VERSION_950" ]; then
                     done
                 fi
             done
-            python3 $SCRIPT_DIR/dump_moe_ep_analysis.py $TARGET_DIR $file_num 1
+            python3 $SCRIPT_DIR/dump_analysis_moe_ep.py $TARGET_DIR $file_num 1
         elif ls "$TARGET_DIR/0/exception_info"* >/dev/null 2>&1; then
             echo "开始解析:单卡dump数据"
             if ! ls "$TARGET_DIR/0/exception_info."*.workspace.* >/dev/null 2>&1; then
@@ -323,7 +323,7 @@ elif [ "$SOC_VERSION" = "$SOC_VERSION_950" ]; then
                     fi
                 done
             fi
-            python3 $SCRIPT_DIR/dump_moe_ep_analysis.py $TARGET_DIR/0/ 1 0
+            python3 $SCRIPT_DIR/dump_analysis_moe_ep.py $TARGET_DIR/0/ 1 0
         else
             echo "error:路径 $TARGET_DIR 下没有以exception_info开头的dump数据"
         fi
