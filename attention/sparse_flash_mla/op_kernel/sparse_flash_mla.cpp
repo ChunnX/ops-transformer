@@ -47,7 +47,7 @@ using namespace SMLAKernel;
         const tilingdataClass *__restrict tilingData = &tilingDataIn; \
         op.Init(query, oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqlensQ, \
                 cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedQ, seqUsedOriKV, seqUsedCmpKV, cmpResidualKV, oriTopkLength, \
-                cmpTopkLength, sinks, metadata, attentionOut, softmaxLse, user, tilingData, &tPipe); \
+                cmpTopkLength, sinks, metadata, attentionOut, softmaxLse, user, tilingData); \
         op.Process(); \
     } while (0)
 #else
