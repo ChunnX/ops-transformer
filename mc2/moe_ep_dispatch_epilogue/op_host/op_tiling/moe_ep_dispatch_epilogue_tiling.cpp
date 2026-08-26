@@ -552,8 +552,8 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     uint64_t rankHitCountBytesAlign512 =
         ((rankHitCountBytes + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
 
-    // The first matrix keeps per-core expert counts. The second matrix first stores per-core rank counts and is then
-    // converted in place to each core's compact metadata write offsets.
+    // The first matrix keeps per-core expert counts. The second matrix keeps per-core rank counts; every core reads
+    // it to build its own compact metadata write offsets in local UB.
     info.rankHitCountOffset = hitCountBytesAlign512;
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + hitCountBytesAlign512 + rankHitCountBytesAlign512;
 
