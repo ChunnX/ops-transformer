@@ -52,15 +52,15 @@ uint16_t FloatToBf16(float f)
 {
     uint32_t bits;
     std::memcpy(&bits, &f, sizeof(bits));
-    uint32_t lsb = (bits >> 16) & 1u;
+    uint32_t lsb = (bits >> 16U) & 1u;
     uint32_t roundingBias = 0x7fffu + lsb;
     bits += roundingBias;
-    return static_cast<uint16_t>(bits >> 16); // 16：右移16位，将32位单精度转换为16位bfloat16
+    return static_cast<uint16_t>(bits >> 16U);
 }
 
 float Bf16ToFloat(uint16_t h)
 {
-    uint32_t bits = static_cast<uint32_t>(h) << 16; // 16：左移16位，bfloat16的最高有效位需要对齐到单精度浮点数的第16位
+    uint32_t bits = static_cast<uint32_t>(h) << 16U;
     float result;
     std::memcpy(&result, &bits, sizeof(result));
     return result;
