@@ -75,9 +75,9 @@ __aicore__ inline void WaitPipe(AscendC::TPipe &pipe)
 }
 
 __aicore__ inline void ComputeTileHistogram(__local_mem__ uint32_t *valueUb, uint32_t elementCount, uint32_t byteRound,
-                                            __local_mem__ uint16_t *histogramUb, __local_mem__ uint16_t *cumulativeUb,
-                                            __local_mem__ uint8_t *keyUb, __local_mem__ uint32_t *exclusiveUb,
-                                            __local_mem__ uint32_t *histWideUb);
+                                            int32_t valueOffset, __local_mem__ uint16_t *histogramUb,
+                                            __local_mem__ uint16_t *cumulativeUb, __local_mem__ uint8_t *keyUb,
+                                            __local_mem__ uint32_t *exclusiveUb, __local_mem__ uint32_t *histWideUb);
 
 class EngramFetchGradSort {
 public:
@@ -97,8 +97,6 @@ public:
 
     __aicore__ inline void Process(uint32_t actualCount, AscendC::TPipe &pipe);
 
-    uint64_t sortApplyOffsetCycle_{0};
-    uint64_t sortRestoreOffsetCycle_{0};
     uint64_t sortCopyTempCycle_{0};
     uint64_t sortRoundHistCycle_[4]{0};
     uint64_t sortRoundPrefixCycle_[4]{0};
@@ -111,10 +109,6 @@ public:
     uint64_t sortScatterWriteCycle_[4]{0};
 
 private:
-    __aicore__ inline void ApplyValueOffset(AscendC::TPipe &pipe);
-
-    __aicore__ inline void RestoreValueOffset(AscendC::TPipe &pipe);
-
     __aicore__ inline void ComputePrefixAndOffsets(uint32_t tc, AscendC::GlobalTensor<int32_t> &prefixGm,
                                                    AscendC::GlobalTensor<int32_t> &tileOffsetsGm,
                                                    AscendC::GlobalTensor<int32_t> &histGm, AscendC::TPipe &pipe);
@@ -187,9 +181,9 @@ private:
 // ==== implementations ====
 
 __aicore__ inline void ComputeTileHistogram(__local_mem__ uint32_t *valueUb, uint32_t elementCount, uint32_t byteRound,
-                                            __local_mem__ uint16_t *histogramUb, __local_mem__ uint16_t *cumulativeUb,
-                                            __local_mem__ uint8_t *keyUb, __local_mem__ uint32_t *exclusiveUb,
-                                            __local_mem__ uint32_t *histWideUb)
+                                            int32_t valueOffset, __local_mem__ uint16_t *histogramUb,
+                                            __local_mem__ uint16_t *cumulativeUb, __local_mem__ uint8_t *keyUb,
+                                            __local_mem__ uint32_t *exclusiveUb, __local_mem__ uint32_t *histWideUb)
 {
     uint32_t shiftBits = byteRound * BITS_PER_BYTE;
     __VEC_SCOPE__
@@ -197,18 +191,24 @@ __aicore__ inline void ComputeTileHistogram(__local_mem__ uint32_t *valueUb, uin
         using namespace AscendC::Reg;
         RegTensor<uint32_t> input0, input1, input2, input3;
         RegTensor<uint16_t> hist0, hist1, cumu0, cumu1;
+        RegTensor<uint32_t> offsetReg;
         MaskReg mask32 = CreateMask<uint32_t>();
         MaskReg mask16 = CreateMask<uint16_t>();
         Duplicate(hist0, (uint16_t)0, mask16);
         Duplicate(hist1, (uint16_t)0, mask16);
         Duplicate(cumu0, (uint16_t)0, mask16);
         Duplicate(cumu1, (uint16_t)0, mask16);
+        Duplicate(offsetReg, static_cast<uint32_t>(valueOffset), mask32);
         for (uint16_t i = 0; i < CeilDiv(elementCount, VECTOR_LEN_INT8); i++) {
             MaskReg elemMask = UpdateMask<uint8_t>(elementCount);
             DataCopy<uint32_t, PostLiteral::POST_MODE_UPDATE>(input0, valueUb, VECTOR_LEN_INT32);
             DataCopy<uint32_t, PostLiteral::POST_MODE_UPDATE>(input1, valueUb, VECTOR_LEN_INT32);
             DataCopy<uint32_t, PostLiteral::POST_MODE_UPDATE>(input2, valueUb, VECTOR_LEN_INT32);
             DataCopy<uint32_t, PostLiteral::POST_MODE_UPDATE>(input3, valueUb, VECTOR_LEN_INT32);
+            Sub(input0, input0, offsetReg, mask32);
+            Sub(input1, input1, offsetReg, mask32);
+            Sub(input2, input2, offsetReg, mask32);
+            Sub(input3, input3, offsetReg, mask32);
             RegTensor<uint32_t> s0, s1, s2, s3;
             ShiftRights<uint32_t, int16_t>(s0, input0, shiftBits, mask32);
             ShiftRights<uint32_t, int16_t>(s1, input1, shiftBits, mask32);
@@ -367,81 +367,6 @@ __aicore__ inline void EngramFetchGradSort::SetMaxValue(uint32_t maxVal)
 }
 
 __aicore__ inline void EngramFetchGradSort::SetValueOffset(int32_t offset) { valueOffset_ = offset; }
-
-__aicore__ inline void EngramFetchGradSort::ApplyValueOffset(AscendC::TPipe &pipe)
-{
-    if (valueOffset_ == 0) {
-        return;
-    }
-
-    AscendC::DataCopyPadExtParams<int32_t> valPad{false, 0, 0, 0};
-    event_t evtMte2V = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE2_V));
-    event_t evtVMte3 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_MTE3));
-
-    uint32_t chunk = CeilDiv(elementCount_, coreCount_);
-    uint32_t start = AscendC::GetBlockIdx() * chunk;
-    uint32_t end = MinU32(start + chunk, elementCount_);
-
-    for (uint32_t off = start; off < end; off += tileElements_) {
-        uint32_t tileLen = MinU32(end - off, tileElements_);
-        AscendC::LocalTensor<int32_t> valueLocal = sortWorkspace_.GetWithOffset<int32_t>(tileElements_, 0);
-
-        uint32_t valBytes = tileLen * sizeof(int32_t);
-        AscendC::DataCopyExtParams valParam{1U, valBytes, 0U, 0U, 0U};
-        AscendC::DataCopyPad(valueLocal, valueGm_[off], valParam, valPad);
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evtMte2V);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtMte2V);
-
-        AscendC::Adds<int32_t>(valueLocal, valueLocal, static_cast<int32_t>(-valueOffset_),
-                               static_cast<int32_t>(tileLen));
-
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
-
-        AscendC::DataCopyParams outParams{1U, static_cast<uint16_t>(valBytes), 0U, 0U};
-        AscendC::DataCopyPad(valueGm_[off], valueLocal, outParams);
-        WaitPipe<AscendC::HardEvent::MTE3_S>(pipe);
-    }
-
-    AscendC::SyncAll<true>();
-}
-
-__aicore__ inline void EngramFetchGradSort::RestoreValueOffset(AscendC::TPipe &pipe)
-{
-    if (valueOffset_ == 0) {
-        return;
-    }
-
-    AscendC::DataCopyPadExtParams<int32_t> valPad{false, 0, 0, 0};
-    event_t evtMte2V = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE2_V));
-    event_t evtVMte3 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_MTE3));
-
-    uint32_t chunk = CeilDiv(elementCount_, coreCount_);
-    uint32_t start = AscendC::GetBlockIdx() * chunk;
-    uint32_t end = MinU32(start + chunk, elementCount_);
-
-    for (uint32_t off = start; off < end; off += tileElements_) {
-        uint32_t tileLen = MinU32(end - off, tileElements_);
-        AscendC::LocalTensor<int32_t> valueLocal = sortWorkspace_.GetWithOffset<int32_t>(tileElements_, 0);
-
-        uint32_t valBytes = tileLen * sizeof(int32_t);
-        AscendC::DataCopyExtParams valParam{1U, valBytes, 0U, 0U, 0U};
-        AscendC::DataCopyPad(valueLocal, valueGm_[off], valParam, valPad);
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evtMte2V);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtMte2V);
-
-        AscendC::Adds<int32_t>(valueLocal, valueLocal, valueOffset_, static_cast<int32_t>(tileLen));
-
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
-
-        AscendC::DataCopyParams outParams{1U, static_cast<uint16_t>(valBytes), 0U, 0U};
-        AscendC::DataCopyPad(valueGm_[off], valueLocal, outParams);
-        WaitPipe<AscendC::HardEvent::MTE3_S>(pipe);
-    }
-
-    AscendC::SyncAll<true>();
-}
 
 __aicore__ inline void EngramFetchGradSort::ComputePrefixAndOffsets(uint32_t tc,
                                                                     AscendC::GlobalTensor<int32_t> &prefixGm,
@@ -658,7 +583,7 @@ __aicore__ inline void EngramFetchGradSort::ProcessHist(uint32_t byteRound, uint
             AscendC::LocalTensor<int32_t> histWide = histWideBuffer_.Get<int32_t>();
 
             ComputeTileHistogram(
-                (__local_mem__ uint32_t *)valueLocal.GetPhyAddr(), tileLen, byteRound,
+                (__local_mem__ uint32_t *)valueLocal.GetPhyAddr(), tileLen, byteRound, valueOffset_,
                 (__local_mem__ uint16_t *)histLocal.GetPhyAddr(), (__local_mem__ uint16_t *)cumsumLocal.GetPhyAddr(),
                 (__local_mem__ uint8_t *)keyLocal.GetPhyAddr(), (__local_mem__ uint32_t *)exclusiveLocal.GetPhyAddr(),
                 (__local_mem__ uint32_t *)histWide.GetPhyAddr());
@@ -746,6 +671,8 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
                 __local_mem__ uint32_t *valuePtr = (__local_mem__ uint32_t *)valueLocal.GetPhyAddr();
                 __local_mem__ uint8_t *keyPtr = (__local_mem__ uint8_t *)keyLocal.GetPhyAddr();
                 MaskReg mask32 = CreateMask<uint32_t>();
+                RegTensor<uint32_t> offsetReg;
+                Duplicate(offsetReg, static_cast<uint32_t>(valueOffset_), mask32);
                 for (uint16_t i = 0; i < CeilDiv(tileLen, VECTOR_LEN_INT8); i++) {
                     MaskReg elemMask = UpdateMask<uint8_t>(tileLen);
                     RegTensor<uint32_t> input0, input1, input2, input3;
@@ -753,6 +680,10 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
                     DataCopy<uint32_t, PostLiteral::POST_MODE_UPDATE>(input1, valuePtr, VECTOR_LEN_INT32);
                     DataCopy<uint32_t, PostLiteral::POST_MODE_UPDATE>(input2, valuePtr, VECTOR_LEN_INT32);
                     DataCopy<uint32_t, PostLiteral::POST_MODE_UPDATE>(input3, valuePtr, VECTOR_LEN_INT32);
+                    Sub(input0, input0, offsetReg, mask32);
+                    Sub(input1, input1, offsetReg, mask32);
+                    Sub(input2, input2, offsetReg, mask32);
+                    Sub(input3, input3, offsetReg, mask32);
                     RegTensor<uint32_t> s0, s1, s2, s3;
                     ShiftRights<uint32_t, int16_t>(s0, input0, shiftBits, mask32);
                     ShiftRights<uint32_t, int16_t>(s1, input1, shiftBits, mask32);
@@ -896,38 +827,14 @@ __aicore__ inline void EngramFetchGradSort::Process(uint32_t actualCount, Ascend
     }
     tileCount_ = CeilDiv(elementCount_, tileElements_);
 
-    // uint64_t off0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
-    ApplyValueOffset(pipe);
-    // uint64_t off1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
-    // sortApplyOffsetCycle_ = off1 - off0;
-
     for (uint32_t byteRound = 0; byteRound < byteRounds_; byteRound++) {
         ProcessOneByteRound(byteRound, valueGm_, indexGm_, valueGm_, indexGm_, tempValueGm_, tempIndexGm_, histGm_,
                             prefixGm_, tileOffsetsGm_, pipe);
     }
 
     if (byteRounds_ % 2 == 1) {
-        // uint64_t cp0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
         CopyTempToOutput(tempValueGm_, tempIndexGm_, valueGm_, indexGm_, pipe);
-        // uint64_t cp1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
-        // sortCopyTempCycle_ = cp1 - cp0;
     }
-
-    // uint64_t rest0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
-    RestoreValueOffset(pipe);
-    // uint64_t rest1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
-    // sortRestoreOffsetCycle_ = rest1 - rest0;
-
-    // AscendC::printf("SORT Detail applyOff=%lluu copy=%lluu restOff=%lluu\n",
-    //                 sortApplyOffsetCycle_ / 1000U,
-    //                 sortCopyTempCycle_ / 1000U, sortRestoreOffsetCycle_ / 1000U);
-    // for (uint32_t r = 0; r < byteRounds_; r++) {
-    //     AscendC::printf("SORT r%u hist[m2=%lluu v=%lluu m3=%lluu] pre=%lluu sca[m2=%lluu keySort=%lluu wr=%lluu]\n",
-    //                     r,
-    //                     sortHistMte2Cycle_[r] / 1000U, sortHistComputeCycle_[r] / 1000U, sortHistMte3Cycle_[r] /
-    //                     1000U, sortRoundPrefixCycle_[r] / 1000U, sortScatterMte2Cycle_[r] / 1000U,
-    //                     sortScatterKeyCycle_[r] / 1000U, sortScatterWriteCycle_[r] / 1000U);
-    // }
 }
 
 } // namespace EngramFetchGradSort

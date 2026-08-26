@@ -250,6 +250,7 @@ __aicore__ inline void EngramFetchGradUnique::CountUniquesParallel(uint32_t numR
     sortedEntryGM.SetGlobalBuffer((__gm__ int32_t *)recvLocalEntryOutGM);
 
     uint32_t start = rawStart;
+    int32_t boundaryEntry = 0;
     if (rawStart > 0 && rawStart < rawEnd) {
         AscendC::LocalTensor<int32_t> probeUb = tempBuf_->Get<int32_t>();
         uint32_t probeLen = rawEnd - rawStart + 1U;
@@ -261,7 +262,7 @@ __aicore__ inline void EngramFetchGradUnique::CountUniquesParallel(uint32_t numR
         AscendC::DataCopyPad(probeUb, sortedEntryGM[rawStart - 1U], cpParams, cpPad);
         SyncFunc<AscendC::HardEvent::MTE2_S>(*pipe_);
 
-        int32_t boundaryEntry = probeUb.GetValue(0);
+        boundaryEntry = probeUb.GetValue(0);
         uint32_t p = 1U;
         while (p < probeLen && probeUb.GetValue(p) == boundaryEntry) {
             p++;
@@ -275,11 +276,7 @@ __aicore__ inline void EngramFetchGradUnique::CountUniquesParallel(uint32_t numR
         int32_t prevEntry = 0;
         bool isFirstElement = (start == 0);
         if (!isFirstElement) {
-            AscendC::DataCopyPadExtParams<int32_t> onePad{false, 0, 0, 0};
-            AscendC::DataCopyExtParams oneParams{1U, sizeof(int32_t), 0U, 0U, 0U};
-            AscendC::DataCopyPad(entryUb, sortedEntryGM[start - 1U], oneParams, onePad);
-            SyncFunc<AscendC::HardEvent::MTE2_S>(*pipe_);
-            prevEntry = entryUb.GetValue(0);
+            prevEntry = boundaryEntry;
         }
 
         uint32_t cur = start;
@@ -312,20 +309,16 @@ __aicore__ inline void EngramFetchGradUnique::CountUniquesParallel(uint32_t numR
 
     AscendC::LocalTensor<int32_t> cntUb = statusBuf_->Get<int32_t>();
     cntUb.SetValue(0, static_cast<int32_t>(start));
+    cntUb.SetValue(8, static_cast<int32_t>(localUniqueCount));
+    mySegCount_ = static_cast<int32_t>(localUniqueCount);
     SyncFunc<AscendC::HardEvent::S_MTE3>(*pipe_);
     AscendC::GlobalTensor<int32_t> coreStartGMT;
     coreStartGMT.SetGlobalBuffer((__gm__ int32_t *)coreStartGM);
-    AscendC::DataCopyParams startParams{1U, static_cast<uint16_t>(sizeof(int32_t)), 0U, 0U};
-    AscendC::DataCopyPad(coreStartGMT[aivId_], cntUb, startParams);
-    SyncFunc<AscendC::HardEvent::MTE3_S>(*pipe_);
-
-    cntUb.SetValue(0, static_cast<int32_t>(localUniqueCount));
-    mySegCount_ = static_cast<int32_t>(localUniqueCount);
-    SyncFunc<AscendC::HardEvent::S_MTE3>(*pipe_);
     AscendC::GlobalTensor<int32_t> segCountGMT;
     segCountGMT.SetGlobalBuffer((__gm__ int32_t *)segCountGM);
-    AscendC::DataCopyParams p{1U, static_cast<uint16_t>(sizeof(int32_t)), 0U, 0U};
-    AscendC::DataCopyPad(segCountGMT[aivId_], cntUb, p);
+    AscendC::DataCopyParams cntParams{1U, static_cast<uint16_t>(sizeof(int32_t)), 0U, 0U};
+    AscendC::DataCopyPad(coreStartGMT[aivId_], cntUb, cntParams);
+    AscendC::DataCopyPad(segCountGMT[aivId_], cntUb[8], cntParams);
     SyncFunc<AscendC::HardEvent::MTE3_S>(*pipe_);
 }
 
