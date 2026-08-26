@@ -26,9 +26,10 @@
 #include "lib/matmul_intf.h"
 #include "weight_quant_tool.h"
 
-#include "basic_api/weight_quant_basic_api_v1.h"
+#include "gmm_weight_quant_tensor_api_mx_kernel.h"
 
 using AscendC::Dn2NzParams;
+using AscendC::BLOCK_CUBE;
 using AscendC::GetBlockIdx;
 using AscendC::GlobalTensor;
 using AscendC::HardEvent;
@@ -60,11 +61,13 @@ public:
     __aicore__ inline void Init(uint64_t totalSize, uint64_t weightL1Space, uint64_t aPrefetchSize,
                                 const TCubeTiling *__restrict matmulTiling, AscendC::TPipe *tPipe,
                                 uint64_t mxBiasL1DbOffset);
-    __aicore__ inline void MxA8W4Init(uint64_t l1RemainSize, uint64_t l1StartSize, uint64_t mxBiasL1DbOffset,
+    __aicore__ inline void MxA8W4Init(uint64_t l1RemainSize, uint64_t l1StartSize, uint64_t mxBiasL1BaseOffset,
+                                      uint64_t mxBiasL1DbOffset,
                                       const TCubeTiling *__restrict matmulTiling, const LocalTensor<biasType> &biasL1,
                                       uint64_t mxScaleBL1DbOffset, const LocalTensor<fp8_e8m0_t> &mxScaleBL1);
-    __aicore__ inline void LaunchMatmul(const LocalTensor<xType> &weightL1, int64_t kbOffset, uint64_t kbL1RealSize,
-                                        uint64_t cvLoopIdx, const BasicBlockOffsetParam &param);
+    __aicore__ inline void LaunchMatmul(const LocalTensor<xType> &weightL1, uint64_t weightL1ByteOffset,
+                                        int64_t kbOffset, uint64_t kbL1RealSize, uint64_t cvLoopIdx,
+                                        const BasicBlockOffsetParam &param);
     __aicore__ inline void WaitMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void SetMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void WaitScaleMTE1ToMTE2(uint64_t kbGmOffset);
@@ -110,15 +113,19 @@ private:
 
     LocalTensor<xType> aL1_;
     uint64_t aL1DbOffset_;
+    uint64_t aL1BaseByteOffset_;
 
     LocalTensor<biasType> biasL1_;
     uint64_t biasL1DbOffset_;
+    uint64_t biasL1BaseByteOffset_;
 
     LocalTensor<fp8_e8m0_t> mxScaleAL1_;
     uint64_t mxScaleAL1DbOffset_;
+    uint64_t mxScaleAL1BaseByteOffset_;
 
     LocalTensor<fp8_e8m0_t> mxScaleBL1_;
     uint64_t mxScaleBL1DbOffset_;
+    uint64_t mxScaleBL1BaseByteOffset_;
 };
 
 WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM
@@ -132,7 +139,8 @@ __aicore__ inline uint64_t WQBMM_CUBE_COMPUTE_CLASS::CheckMaxSpace(const BasicBl
 }
 
 WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::LaunchMatmul(const LocalTensor<xType> &weightL1, int64_t kbOffset,
+__aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::LaunchMatmul(const LocalTensor<xType> &weightL1,
+                                                              uint64_t weightL1ByteOffset, int64_t kbOffset,
                                                               uint64_t kbL1RealSize, uint64_t cvLoopIdx,
                                                               const BasicBlockOffsetParam &param)
 {
@@ -175,6 +183,24 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::LaunchMatmul(const LocalTensor<
         mmObj_.SetTail(param.mL1Size, param.nL1Size, kbL1RealSize);
         mmObj_.Iterate(kbOffset != 0);
     } else {
+#if GMM_WEIGHT_QUANT_USE_TENSOR_API_MX
+        Blaze::Gemm::Kernel::WqgmmMixWeightPrologueParams basicApiParams;
+        basicApiParams.l1KbSize = kbL1RealSize;
+        basicApiParams.l1KaSize = param.kaL1Size;
+        basicApiParams.l0NSize = param.nL1Size;
+        basicApiParams.l0MSize = param.mL1Size;
+        basicApiParams.isBias = isBias_;
+        basicApiParams.gmKOffset = kbOffset;
+        Blaze::Gemm::Kernel::WqgmmMixWeightPrologueL1Offsets l1Offsets;
+        l1Offsets.a = aL1BaseByteOffset_ + aL1Offset * sizeof(xType);
+        l1Offsets.scaleA = mxScaleAL1BaseByteOffset_ +
+                           (mxScaleBufIdx_ & 1) * mxScaleAL1DbOffset_ * sizeof(fp8_e8m0_t);
+        l1Offsets.b = weightL1ByteOffset;
+        l1Offsets.scaleB = mxScaleBL1BaseByteOffset_ +
+                           (mxScaleBufIdx_ & 1) * mxScaleBL1DbOffset_ * sizeof(fp8_e8m0_t);
+        l1Offsets.bias = biasL1BaseByteOffset_ + (cvLoopIdx & 1) * biasL1DbOffset_ * sizeof(biasType);
+        mmObj_.Iterate(kbOffset + kbL1RealSize >= param.kSize, kbOffset == 0, l1Offsets, basicApiParams);
+#else
         BasicApiParamsV1 basicApiParams;
         basicApiParams.l1KbSize = kbL1RealSize;
         basicApiParams.l1KaSize = param.kaL1Size;
@@ -186,6 +212,7 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::LaunchMatmul(const LocalTensor<
                        mxScaleAL1_[(mxScaleBufIdx_ & 1) * mxScaleAL1DbOffset_], weightL1,
                        mxScaleBL1_[(mxScaleBufIdx_ & 1) * mxScaleBL1DbOffset_],
                        biasL1_[(cvLoopIdx & 1) * biasL1DbOffset_], basicApiParams);
+#endif
     }
 }
 
@@ -461,7 +488,8 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::PrefetchA(uint64_t aPrefetchSiz
 
 WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void
-WQBMM_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64_t l1RemainSize, uint64_t l1StartSize, uint64_t mxBiasL1DbOffset,
+WQBMM_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64_t l1RemainSize, uint64_t l1StartSize,
+                                     uint64_t mxBiasL1BaseOffset, uint64_t mxBiasL1DbOffset,
                                      const TCubeTiling *__restrict matmulTiling, const LocalTensor<biasType> &biasL1,
                                      uint64_t mxScaleBL1DbOffset, const LocalTensor<fp8_e8m0_t> &mxScaleBL1)
 {
@@ -470,20 +498,24 @@ WQBMM_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64_t l1RemainSize, uint64_t l1StartSize
     //              | AL1_P1(80KB)     | ScaleBL1_P1(32KB) | ScaleAL1_P1(32KB) | Bias_P1(4KB)      | WeightL1_P1(64KB)
     biasL1_ = biasL1; // 预计大小4Kb
     biasL1DbOffset_ = mxBiasL1DbOffset;
+    biasL1BaseByteOffset_ = mxBiasL1BaseOffset;
     aL1Count_ = 0;        // GMM 动态场景暂时关闭A分段全载策略
     aL1MaxHalfCount_ = 0; // GMM 动态场景暂时关闭A分段全载策略
     aL1DbNum_ = DOUBLE_BUFFER_NUM;
 
+    mxScaleAL1BaseByteOffset_ = l1StartSize;
     mxScaleAL1_ = LocalTensor<fp8_e8m0_t>(TPosition::TSCM, l1StartSize, l1RemainSize / sizeof(fp8_e8m0_t));
     mxScaleAL1DbOffset_ = l1RemainSize - MX_SCALE_L1_SIZE;
     l1RemainSize -= DOUBLE_BUFFER_NUM * MX_SCALE_L1_SIZE;
     l1StartSize += MX_SCALE_L1_SIZE;
 
+    mxScaleBL1BaseByteOffset_ = l1StartSize;
     mxScaleBL1_ = mxScaleBL1;
     mxScaleBL1DbOffset_ = mxScaleBL1DbOffset;
     l1RemainSize -= DOUBLE_BUFFER_NUM * MX_SCALE_L1_SIZE;
     l1StartSize += MX_SCALE_L1_SIZE;
 
+    aL1BaseByteOffset_ = l1StartSize;
     aL1_ = LocalTensor<xType>(TPosition::TSCM, l1StartSize, l1RemainSize / sizeof(xType));
     aL1DbOffset_ = l1RemainSize - MX_A8W4_A_L1_RESERVED_KB * 1024;
 
