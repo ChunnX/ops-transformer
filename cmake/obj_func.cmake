@@ -131,7 +131,7 @@ macro(add_modules_sources)
     endif()
   endif()
 
-  file(GLOB FALLBACK_SRCS ${SOURCE_DIR}/../op_graph/*fallback*.cpp)
+  file(GLOB_RECURSE FALLBACK_SRCS ${SOURCE_DIR}/../op_graph/*fallback*.cpp)
   if (FALLBACK_SRCS)
     # fallback
     add_fallback_modules()
@@ -139,7 +139,7 @@ macro(add_modules_sources)
   endif()
 
   if (MODULE_OP_MC2_ENABLE)
-    file(GLOB GENTASK_SRCS
+    file(GLOB_RECURSE GENTASK_SRCS
         ${SOURCE_DIR}/../op_graph/*_gen_task*.cpp
     )
     if(GENTASK_SRCS)
@@ -320,7 +320,7 @@ macro(add_modules_sources_with_soc)
     endif()
   endif()
 
-  file(GLOB FALLBACK_SRCS ${SOURCE_DIR}/../op_graph/*fallback*.cpp)
+  file(GLOB_RECURSE FALLBACK_SRCS ${SOURCE_DIR}/../op_graph/*fallback*.cpp)
   if (FALLBACK_SRCS)
     # fallback
     add_fallback_modules()
@@ -328,7 +328,7 @@ macro(add_modules_sources_with_soc)
   endif()
 
   if (MODULE_OP_MC2_ENABLE)
-    file(GLOB GENTASK_SRCS
+    file(GLOB_RECURSE GENTASK_SRCS
         ${SOURCE_DIR}/../op_graph/*_gen_task*.cpp
     )
     if(GENTASK_SRCS)
@@ -750,10 +750,9 @@ macro(add_graph_plugin_sources)
     endif()
   endif()
 
-  file(GLOB GRAPH_PLUGIN_SRCS
-      ${SOURCE_DIR}/*_graph_plugin*.cpp
-      ${SOURCE_DIR}/fusion_pass/*fusion_pass*.cpp
-  )
+  file(GLOB_RECURSE GRAPH_PLUGIN_SRCS ${SOURCE_DIR}/*.cpp)
+  list(FILTER GRAPH_PLUGIN_SRCS EXCLUDE REGEX "fallback[^/]*\\.cpp$")
+  list(FILTER GRAPH_PLUGIN_SRCS EXCLUDE REGEX "_gen_task[^/]*\\.cpp$")
   if(GRAPH_PLUGIN_SRCS)
     add_graph_plugin_modules()
     target_sources(${GRAPH_PLUGIN_NAME}_obj PRIVATE ${GRAPH_PLUGIN_SRCS})
