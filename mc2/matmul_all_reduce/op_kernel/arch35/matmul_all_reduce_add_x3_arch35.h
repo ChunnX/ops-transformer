@@ -186,6 +186,15 @@ public:
         }
         // 外层 N-chunk：bias 每个 chunk 只搬入一次，对所有 M 行复用
         for (uint64_t nOff = 0; nOff < nValue_; nOff += biasUbCnt_) {
+            // 确保上一 N-chunk 的所有 MTE3 (UB->GM 写回) 完成后再开始新 chunk。
+            // 根因：hasAdd=true 路径的 V 流水线比 hasAdd=false 更慢（多一次 inQueueY_ MTE2 +
+            // 第二次 in-place Add + 两次 PipeBarrier<PIPE_V>），导致每行 MTE3 issued 更晚。
+            // 当 N 被分为 2+ chunk 时，上一 chunk 末行的 MTE3 在下一 chunk 开始时仍在 in-flight，
+            // TQue 的 event 追踪不足以保证 AllocTensor(Z) 正确等待 MTE3 完成，
+            // 导致下一 chunk 的 V 计算读到/写入未完成的 Z buffer，结果错误。
+            // 在 chunk 边界加 PipeBarrier<PIPE_ALL> 显式排空全部流水线。
+            // 第一个 chunk（nOff=0）此 barrier 为 no-op（无前置操作），无额外开销。
+            PipeBarrier<PIPE_ALL>();
             uint64_t calcCnt = (nValue_ - nOff < biasUbCnt_) ? (nValue_ - nOff) : biasUbCnt_;
             DataCopyParams copyParams = {1, static_cast<uint16_t>(calcCnt * sizeof(T)), 0, 0};
             DataCopyPadParams padParams = {false, 0, 0, 0};
