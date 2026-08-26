@@ -767,7 +767,7 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
                                                              ("In anti-quant or non-FP8 TND mla fullquant scenarios, "
                                                               "PA does not support non-contiguous key tensors, "
                                                               "but the first non-contiguous dimension is index " +
-                                                              std::to_string(keyDim) + ".")
+                                                              std::to_string(keyDim))
                                                                  .c_str()),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(valueDim != -1,
@@ -775,7 +775,7 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
                                                              ("In anti-quant or non-FP8 TND mla fullquant scenarios, "
                                                               "PA does not support non-contiguous value tensors, "
                                                               "but the first non-contiguous dimension is index " +
-                                                              std::to_string(valueDim) + ".")
+                                                              std::to_string(valueDim))
                                                                  .c_str()),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(keyRopeDim != -1,
@@ -783,7 +783,7 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
                                                              ("In anti-quant or non-FP8 TND mla fullquant scenarios, "
                                                               "PA does not support non-contiguous keyRope tensors, "
                                                               "but the first non-contiguous dimension is index " +
-                                                              std::to_string(keyRopeDim) + ".")
+                                                              std::to_string(keyRopeDim))
                                                                  .c_str()),
                     return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
@@ -795,7 +795,7 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
                         fiaInfo.opName, "key",
                         ("In PA BBND scenarios, key only supports non-contiguous tensors in dimension 0, "
                          "but the first non-contiguous dimension is index " +
-                         std::to_string(keyDim) + ".")
+                         std::to_string(keyDim))
                             .c_str()),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(valueDim > 0,
@@ -803,7 +803,7 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
                         fiaInfo.opName, "value",
                         ("In PA BBND scenarios, value only supports non-contiguous tensors in dimension 0, "
                          "but the first non-contiguous dimension is index " +
-                         std::to_string(valueDim) + ".")
+                         std::to_string(valueDim))
                             .c_str()),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(keyRopeDim > 0,
@@ -811,7 +811,7 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
                         fiaInfo.opName, "keyRope",
                         ("In PA BBND scenarios, keyRope only supports non-contiguous tensors in dimension 0, "
                          "but the first non-contiguous dimension is index " +
-                         std::to_string(keyRopeDim) + ".")
+                         std::to_string(keyRopeDim))
                             .c_str()),
                     return ge::GRAPH_FAILED);
     } else if (fiaInfo.kvLayout == FiaLayout::BnNBsD || fiaInfo.kvLayout == FiaLayout::NZ) {
@@ -820,7 +820,7 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
                         fiaInfo.opName, "key",
                         ("In PA BNBD/NZ scenarios, key only supports non-contiguous tensors in dimensions 0 or 1, "
                          "but the first non-contiguous dimension is index " +
-                         std::to_string(keyDim) + ".")
+                         std::to_string(keyDim))
                             .c_str()),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(valueDim > 1,
@@ -828,7 +828,7 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
                         fiaInfo.opName, "value",
                         ("In PA BNBD/NZ scenarios, value only supports non-contiguous tensors in dimensions 0 or 1, "
                          "but the first non-contiguous dimension is index " +
-                         std::to_string(valueDim) + ".")
+                         std::to_string(valueDim))
                             .c_str()),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(keyRopeDim > 1,
@@ -836,7 +836,7 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
                         fiaInfo.opName, "keyRope",
                         ("In PA BNBD/NZ scenarios, keyRope only supports non-contiguous tensors in dimensions 0 or 1, "
                          "but the first non-contiguous dimension is index " +
-                         std::to_string(keyRopeDim) + ".")
+                         std::to_string(keyRopeDim))
                             .c_str()),
                     return ge::GRAPH_FAILED);
     }
