@@ -71,7 +71,9 @@ namespace ge {
 * @li softmax_sum: A matrix Tensor. The type support float32.
 * @li softmax_out: A matrix Tensor. The type support float16, bf16, float32.
 * @li attention_out: A matrix Tensor. The type support float16, bf16, float32.
-*/
+ */
+#ifndef OPS_PROTO_DEF_FLASHATTENTIONSCORE
+#define OPS_PROTO_DEF_FLASHATTENTIONSCORE
 REG_OP(FlashAttentionScore)
     .INPUT(query, TensorType({DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT16, DT_BF16, DT_FLOAT32}))
     .INPUT(key, TensorType({DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT16, DT_BF16, DT_FLOAT32}))
@@ -110,6 +112,8 @@ REG_OP(FlashAttentionScore)
     .ATTR(out_dtype, Int, 0)
     .ATTR(softmax_out_layout, String, "")
     .OP_END_FACTORY_REG(FlashAttentionScore)
+#endif
+
 }  // namespace ge
 
 #endif  // FLASH_ATTENTION_SCORE_PROTO_H_
