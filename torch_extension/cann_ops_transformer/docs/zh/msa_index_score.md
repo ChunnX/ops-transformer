@@ -48,20 +48,109 @@ cann_ops_transformer.msa_index_score(
 
 ## 参数说明
 
-| 参数名 | 可选/必选 | 描述 | dtype | shape |
-|--------|-----------|------|-------|-------|
-| query | 必选 | $Q_{idx}$ TND | fp16/bf16；950 另支持 fp8_e4m3fn / fp8_e5m2 / hifloat8 | `[T1,N1,D]` |
-| key | 必选 | $K_{idx}$ PA BBND/BNBD 或 TND | 同 query 或 int8（仅 fp16 query） | `[NP,P,N2,D]` / `[NP,N2,P,D]` / `[T2,N2,D]` |
-| start_loc | 必选 | query 所在逻辑 block | int32 | `[B]` |
-| block_table | PA 必选 | 逻辑→物理 page；TND 不传 | int32 | `[B,MB]` |
-| scale | 量化必选 | 反量化 | float32 | PA `[NP,N2,P]`；TND `[T2,N2]` |
-| atten_mask | mode=3 必选 | 压缩下三角模板 | int8 | `[2048,2048]` |
-| actual_seq_qlen | TND query 必选 | query 前缀和 | int32 | `[B+1]` |
-| actual_seq_klen | 必选 | PA 为各请求 S2；TND 为 key 前缀和 | int32 | `[B]` / `[B+1]` |
-| layout_key | 可选 | key 布局：`TND` / `BBND` / `BNBD`，默认 `BBND` | str | - |
-| sparse_mode | 可选 | 0 / 3，默认 3 | int | - |
-| init_blocks | 可选 | `local_mask` 头部强制块数，默认 0 | int | - |
-| local_blocks | 可选 | `local_mask` 局部窗口，默认 1 | int | - |
+<table style="undefined;table-layout: fixed; width: 1180px"><colgroup>
+<col style="width: 160px">
+<col style="width: 120px">
+<col style="width: 360px">
+<col style="width: 280px">
+<col style="width: 260px">
+</colgroup>
+<thead>
+  <tr>
+    <th>参数名</th>
+    <th>可选/必选</th>
+    <th>描述</th>
+    <th>dtype</th>
+    <th>shape</th>
+  </tr>
+</thead>
+<tbody>
+  <tr>
+    <td>query</td>
+    <td>必选</td>
+    <td>$Q_{idx}$ TND</td>
+    <td>fp16/bf16；950 另支持 fp8_e4m3fn / fp8_e5m2 / hifloat8</td>
+    <td><code>[T1,N1,D]</code></td>
+  </tr>
+  <tr>
+    <td>key</td>
+    <td>必选</td>
+    <td>$K_{idx}$ PA BBND/BNBD 或 TND</td>
+    <td>同 query 或 int8（仅 fp16 query）</td>
+    <td><code>[NP,P,N2,D]</code> / <code>[NP,N2,P,D]</code> / <code>[T2,N2,D]</code></td>
+  </tr>
+  <tr>
+    <td>start_loc</td>
+    <td>必选</td>
+    <td>query 所在逻辑 block</td>
+    <td>int32</td>
+    <td><code>[B]</code></td>
+  </tr>
+  <tr>
+    <td>block_table</td>
+    <td>PA 必选</td>
+    <td>逻辑→物理 page；TND 不传</td>
+    <td>int32</td>
+    <td><code>[B,MB]</code></td>
+  </tr>
+  <tr>
+    <td>scale</td>
+    <td>量化必选</td>
+    <td>反量化</td>
+    <td>float32</td>
+    <td>PA <code>[NP,N2,P]</code>；TND <code>[T2,N2]</code></td>
+  </tr>
+  <tr>
+    <td>atten_mask</td>
+    <td>mode=3 必选</td>
+    <td>压缩下三角模板</td>
+    <td>int8</td>
+    <td><code>[2048,2048]</code></td>
+  </tr>
+  <tr>
+    <td>actual_seq_qlen</td>
+    <td>TND query 必选</td>
+    <td>query 前缀和</td>
+    <td>int32</td>
+    <td><code>[B+1]</code></td>
+  </tr>
+  <tr>
+    <td>actual_seq_klen</td>
+    <td>必选</td>
+    <td>PA 为各请求 S2；TND 为 key 前缀和</td>
+    <td>int32</td>
+    <td><code>[B]</code> / <code>[B+1]</code></td>
+  </tr>
+  <tr>
+    <td>layout_key</td>
+    <td>可选</td>
+    <td>key 布局：<code>TND</code> / <code>BBND</code> / <code>BNBD</code>，默认 <code>BBND</code></td>
+    <td>str</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>sparse_mode</td>
+    <td>可选</td>
+    <td>0 / 3，默认 3</td>
+    <td>int</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>init_blocks</td>
+    <td>可选</td>
+    <td><code>local_mask</code> 头部强制块数，默认 0</td>
+    <td>int</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>local_blocks</td>
+    <td>可选</td>
+    <td><code>local_mask</code> 局部窗口，默认 1</td>
+    <td>int</td>
+    <td>-</td>
+  </tr>
+</tbody>
+</table>
 
 ## 输出
 
