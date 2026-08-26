@@ -1,0 +1,92 @@
+name: torch.block_attention_residuals
+api: pytorch
+api_type: function_block_attention_residuals_atk
+version: v2.1
+standard:
+  acc: mixed_tolerance_bm
+  perf: not_key
+dtype_numbers: 1
+extra_numbers: 1
+shape_distributions:
+  - [0, 1.0]
+inputs:
+  - name: prefix_sum
+    type: tensor
+    required: true
+    dtypes:
+      values: [bf16]
+    ranges:
+      valid:
+        values: [[-5, 5]]
+    shapes:
+      dim_numbers:
+        values: [2]
+      dim_values:
+        values: [[544, 7168]]
+      max_length: 3900416
+  - name: block_res
+    type: tensor
+    required: true
+    dtypes:
+      values: [bf16]
+    ranges:
+      valid:
+        values: [[-5, 5]]
+    shapes:
+      dim_numbers:
+        values: [3]
+      dim_values:
+        values: [[544, 12, 7168]]
+      max_length: 46804992
+  - name: proj_weight
+    type: tensor
+    required: true
+    dtypes:
+      values: [bf16]
+    ranges:
+      valid:
+        values: [[-5, 5]]
+    shapes:
+      dim_numbers:
+        values: [2]
+      dim_values:
+        values: [[1, 7168]]
+      max_length: 7168
+  - name: norm_weight
+    type: tensor
+    required: true
+    dtypes:
+      values: [bf16]
+    ranges:
+      valid:
+        values: [[-5, 5]]
+    shapes:
+      dim_numbers:
+        values: [1]
+      dim_values:
+        values: [[7168]]
+      max_length: 7168
+  - name: valid_block_num
+    type: attr
+    required: true
+    dtypes:
+      values: [int]
+    ranges:
+      valid:
+        values: [12]
+  - name: norm_eps
+    type: attr
+    required: true
+    dtypes:
+      values: [float]
+    ranges:
+      valid:
+        values: [1.0e-5]
+  - name: need_backward
+    type: attr
+    required: true
+    dtypes:
+      values: [attr_bool]
+    ranges:
+      valid:
+        values: [false]
