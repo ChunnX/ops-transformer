@@ -31,6 +31,30 @@ constexpr int64_t BATCH_CONSISTENCY_LEVEL = 3;
 constexpr uint32_t DEFAULT_D_SIZE_V = 512;
 constexpr uint32_t DEFAULT_TILE_SIZE = 512;
 
+std::vector<int64_t> ToVector(const gert::Shape &shape)
+{
+    size_t shapeSize = shape.GetDimNum();
+    std::vector<int64_t> shapeVec(shapeSize, 0);
+
+    for (size_t i = 0; i < shapeSize; i++) {
+        shapeVec[i] = shape.GetDim(i);
+    }
+    return shapeVec;
+}
+
+std::string ToStringRaw(const gert::Shape &shape)
+{
+    std::ostringstream oss;
+    auto v = ToVector(shape);
+    if (v.size() > 0) {
+        for (size_t i = 0; i < v.size() - 1; ++i) {
+            oss << v[i] << ", ";
+        }
+        oss << v[v.size() - 1];
+    }
+    return oss.str();
+}
+
 std::string MQSMLALayoutToSerialString(MQSMLALayout layout)
 {
     switch (layout) {
