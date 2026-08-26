@@ -26,6 +26,9 @@ protected:
 };
 
 namespace {
+constexpr uint32_t INT32_BIT_WIDTH = 32U;
+constexpr int64_t INVALID_TRUNCATED_INT64 = (static_cast<int64_t>(1) << INT32_BIT_WIDTH) + 1;
+
 // Base of a valid Ascend950 TND/PA_BBND fp8 case
 qliv2_ut::CaseParam Make950TndPaFp8()
 {
@@ -65,8 +68,16 @@ TEST_F(QuantLightningIndexerV2TilingArch35, QuantLightningIndexerV2_950_tiling_f
     qliv2_ut::CaseParam p = Make950TndPaFp8();
     p.cmpRatio = 4;
     p.cmpResidual = {2};
-    p.idxOffset = {78, 64};
+    p.idxOffset = {78, 1};
     qliv2_ut::RunTilingCase(p, ge::GRAPH_SUCCESS);
+}
+
+// TND output_idx_offset must match T1 and N2
+TEST_F(QuantLightningIndexerV2TilingArch35, QuantLightningIndexerV2_950_tiling_tnd_idx_offset_shape_failed)
+{
+    qliv2_ut::CaseParam p = Make950TndPaFp8();
+    p.idxOffset = {78, 2};
+    qliv2_ut::RunTilingCase(p, ge::GRAPH_FAILED);
 }
 
 // BSND/BSND mxfp8 success on Ascend950: quant_mode=3, e8m0 scale
@@ -88,6 +99,30 @@ TEST_F(QuantLightningIndexerV2TilingArch35, QuantLightningIndexerV2_950_tiling_m
     p.sequsedK = {};
     p.blockTable = {};
     qliv2_ut::RunTilingCase(p, ge::GRAPH_SUCCESS);
+}
+
+// BSND q and k must have the same batch size
+TEST_F(QuantLightningIndexerV2TilingArch35, QuantLightningIndexerV2_950_tiling_bsnd_batch_mismatch_failed)
+{
+    qliv2_ut::CaseParam p;
+    p.soc = "Ascend950";
+    p.coreNum = 56;
+    p.kShape = {3, 64, 1, 128};
+    p.kScaleShape = {3, 64, 1};
+    p.layoutK = "BSND";
+    p.sequsedK = {};
+    p.blockTable = {};
+    qliv2_ut::RunTilingCase(p, ge::GRAPH_FAILED);
+}
+
+// BSND output_idx_offset must match B, S1 and N2
+TEST_F(QuantLightningIndexerV2TilingArch35, QuantLightningIndexerV2_950_tiling_bsnd_idx_offset_shape_failed)
+{
+    qliv2_ut::CaseParam p;
+    p.soc = "Ascend950";
+    p.coreNum = 56;
+    p.idxOffset = {2, 39, 2};
+    qliv2_ut::RunTilingCase(p, ge::GRAPH_FAILED);
 }
 
 // TND/TND hifloat8 success on Ascend950: quant_mode=4, return_value=1
@@ -188,6 +223,14 @@ TEST_F(QuantLightningIndexerV2TilingArch35, QuantLightningIndexerV2_950_tiling_q
 {
     qliv2_ut::CaseParam p = Make950TndPaFp8();
     p.quantMode = 6;
+    qliv2_ut::RunTilingCase(p, ge::GRAPH_FAILED);
+}
+
+// quant_mode validation must use the complete int64 value
+TEST_F(QuantLightningIndexerV2TilingArch35, QuantLightningIndexerV2_950_tiling_quant_mode_high_bits_failed)
+{
+    qliv2_ut::CaseParam p = Make950TndPaFp8();
+    p.quantMode = INVALID_TRUNCATED_INT64;
     qliv2_ut::RunTilingCase(p, ge::GRAPH_FAILED);
 }
 
@@ -344,6 +387,14 @@ TEST_F(QuantLightningIndexerV2TilingArch35, QuantLightningIndexerV2_950_tiling_t
     qliv2_ut::RunTilingCase(p, ge::GRAPH_FAILED);
 }
 
+// metadata is required on Ascend950
+TEST_F(QuantLightningIndexerV2TilingArch35, QuantLightningIndexerV2_950_tiling_metadata_missing_failed)
+{
+    qliv2_ut::CaseParam p = Make950TndPaFp8();
+    p.metadata = {};
+    qliv2_ut::RunTilingCase(p, ge::GRAPH_FAILED);
+}
+
 // metadata shape size must be 1024
 TEST_F(QuantLightningIndexerV2TilingArch35, QuantLightningIndexerV2_950_tiling_metadata_size_failed)
 {
@@ -432,6 +483,18 @@ TEST_F(QuantLightningIndexerV2TilingArch35, QuantLightningIndexerV2_950_tiling_g
     qliv2_ut::RunTilingCase(p, ge::GRAPH_FAILED);
 }
 
+// head num of q must be at least 1
+TEST_F(QuantLightningIndexerV2TilingArch35, QuantLightningIndexerV2_950_tiling_q_headnum_zero_failed)
+{
+    qliv2_ut::CaseParam p;
+    p.soc = "Ascend950";
+    p.coreNum = 56;
+    p.qShape = {2, 39, 0, 128};
+    p.wShape = {2, 39, 0};
+    p.qScaleShape = {2, 39, 0};
+    qliv2_ut::RunTilingCase(p, ge::GRAPH_FAILED);
+}
+
 // block_size of k must be a multiple of 16
 TEST_F(QuantLightningIndexerV2TilingArch35, QuantLightningIndexerV2_950_tiling_block_size_failed)
 {
@@ -483,7 +546,7 @@ TEST_F(QuantLightningIndexerV2TilingArch35, QuantLightningIndexerV2_950_tiling_i
     qliv2_ut::CaseParam p;
     p.soc = "Ascend950";
     p.coreNum = 56;
-    p.idxOffset = {2, 39, 64};
+    p.idxOffset = {2, 39, 1};
     p.idxOffsetType = ge::DT_INT64;
     p.sequsedQ = {2};
     qliv2_ut::RunTilingCase(p, ge::GRAPH_FAILED);
