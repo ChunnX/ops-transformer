@@ -95,9 +95,9 @@ protected:
     static constexpr uint32_t V_MTE2_EVENT3 = EVENT_ID5;
     static constexpr uint32_t MTE3_V_EVENT = EVENT_ID6;
 #if CVRATIO > 1
-    static constexpr uint32_t M_BASIC_BLOCK = 128;   // A5(1:2)
+    static constexpr uint32_t M_BASIC_BLOCK = 128;
 #else
-    static constexpr uint32_t M_BASIC_BLOCK = 256;   // A6(1:1)
+    static constexpr uint32_t M_BASIC_BLOCK = 256;
 #endif
 
 private:
