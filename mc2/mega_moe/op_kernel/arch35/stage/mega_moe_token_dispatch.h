@@ -234,6 +234,18 @@ __aicore__ inline void StoreDispatchTokenAndMetaInfo(
 #endif
     }
 #if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    uint32_t mte3IssueBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+#endif
+    // token/scale 不依赖 Scalar 生成的 metadata，先下发这两笔 MTE3 以掩盖 S_MTE3 等待；
+    // 只有 metadata 写出必须在 Scalar 对 MTE3 可见后才能下发，保持 upstream 的原始流水顺序。
+    DataCopyPad(tokenRevGlobalTensor[dstIdx * scratch.revTokenElemCnt], tokenScaleBuffer,
+                {1, static_cast<uint16_t>(scratch.revTokenElemCnt * sizeof(ActivationType)), 0U, 0U, 0U});
+    DataCopyPad(scaleRevGlobalTensor[dstIdx * scratch.revScaleElemCnt], scaleBuffer,
+                {1, static_cast<uint16_t>(scratch.revScaleElemCnt * sizeof(QuantScaleType)), 0U, 0U, 0U});
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    if (traceMetrics != nullptr) {
+        traceMetrics->transferMte3IssueCycles += MegaMoeWaveTraceDetail::Now() - mte3IssueBegin;
+    }
     uint32_t metaInfoReadyWaitBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
 #endif
     WaitFlag<AscendC::HardEvent::S_MTE3>(eventId);
@@ -241,13 +253,9 @@ __aicore__ inline void StoreDispatchTokenAndMetaInfo(
     if (traceMetrics != nullptr) {
         traceMetrics->transferMetaInfoReadyWaitCycles +=
             MegaMoeWaveTraceDetail::Now() - metaInfoReadyWaitBegin;
+        mte3IssueBegin = MegaMoeWaveTraceDetail::Now();
     }
-    uint32_t mte3IssueBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
 #endif
-    DataCopyPad(tokenRevGlobalTensor[dstIdx * scratch.revTokenElemCnt], tokenScaleBuffer,
-                {1, static_cast<uint16_t>(scratch.revTokenElemCnt * sizeof(ActivationType)), 0U, 0U, 0U});
-    DataCopyPad(scaleRevGlobalTensor[dstIdx * scratch.revScaleElemCnt], scaleBuffer,
-                {1, static_cast<uint16_t>(scratch.revScaleElemCnt * sizeof(QuantScaleType)), 0U, 0U, 0U});
     DataCopy(metaInfoGlobalTensor[dstIdx * INT32_PER_256B], scratch.metaInfoTensor[bufferIdx * INT32_PER_256B],
              INT32_PER_256B);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
