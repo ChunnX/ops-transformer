@@ -122,6 +122,8 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
     tilingData_.maxGroupLength = p * tilingData_.aiCoreNum * tilingData_.chunkSize;
     tilingData_.stageOneParaNum = STAGE_ONE_PARA_NUM; // stage1 并行数
 
+    bool isArch35 = (socVersion_ == platform_ascendc::SocVersion::ASCEND950);
+
     tilingData_.interWorkspaceSz = 0;
     int64_t sizeHigh = ge::GetSizeByDataType(ge::DT_FLOAT);
     int64_t sizeLow = ge::GetSizeByDataType(ge::DT_BF16);
@@ -131,23 +133,25 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
     int64_t s = tilingData_.maxGroupLength;
     tilingData_.interWorkspaceSz += sizeHigh * nv * s;     // gCumExp (FP32)
     tilingData_.interWorkspaceSz += sizeLow * nv * s * dk; // kCumDecay (BF16)
-    if (tilingData_.stateIsFp32) {
-        tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv; // vInner (FP32)
-        tilingData_.interWorkspaceSz += sizeLow * nv * s * dv;  // vInnerBf16 (BF16, for stage3)
-    } else {
-        tilingData_.interWorkspaceSz += sizeLow * nv * s * dv; // vInner (BF16)
-    }
+    // vInner: always BF16 (arch35 unifies to BF16, arch22 was already BF16)
+    tilingData_.interWorkspaceSz += sizeLow * nv * s * dv; // vInner (BF16)
     tilingData_.interWorkspaceSz += sizeLow * nv * s * dk; // qPrime (BF16)
     tilingData_.interWorkspaceSz += sizeLow * nv * s * dv; // attnInter (BF16, arch22 compat)
     tilingData_.interWorkspaceSz += sizeLow * nv * s * dk; // kg (BF16)
     tilingData_.interWorkspaceSz += sizeLow * nv * s * c;  // qkt (BF16)
-    if (tilingData_.stateIsFp32) {
-        tilingData_.interWorkspaceSz += sizeLow * nv * dv * dk; // stateBf16Wk (BF16, arch35)
-    } else if (socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
-        tilingData_.interWorkspaceSz +=
-            sizeHigh * tilingData_.b * nv * dv * dk; // highState_ (arch22: kernel unconditionally advances offset)
+    if (isArch35) {
+        // arch35: curStateBf16 always allocated for AIC matmul
+        tilingData_.interWorkspaceSz += sizeLow * nv * dv * dk; // curStateBf16 (BF16)
+    } else {
+        // arch22: highState_ allocated
+        tilingData_.interWorkspaceSz += sizeHigh * tilingData_.b * nv * dv * dk; // highState_ (FP32)
     }
     tilingData_.interWorkspaceSz += sizeHigh * c * c * tilingData_.aiCoreNum * MASK_NUM; // mask (FP32)
+    if (isArch35) {
+        // arch35: FP32 workspaces for stage2 W@S and (U-WS)@K
+        tilingData_.interWorkspaceSz += sizeHigh * tilingData_.aiCoreNum * c * dv;    // wsVPrime (FP32)
+        tilingData_.interWorkspaceSz += sizeHigh * tilingData_.aiCoreNum * dv * dk;   // wsStateUpdate (FP32)
+    }
 
     // stage1 临时变量空间
     tilingData_.stageWorkspaceSz =
@@ -198,8 +202,8 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoMatmulTiling()
     tilingData_.matmulTilingFp32.stepM = 1;
     tilingData_.matmulTilingFp32.stepN = 1;
 
-    // ========== MT_FP32C: BF16 -> BF16 -> FP32 (for FP32 state path) ==========
-    if (tilingData_.stateIsFp32) {
+    // ========== MT_FP32C: BF16 -> BF16 -> FP32 (for arch35 stage2 W@S and (U-WS)@K) ==========
+    if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
         matmul_tiling::MultiCoreMatmulTiling mmFp32C;
         mmFp32C.SetBufferSpace(l1Size, l0CSize, ubSize);
         mmFp32C.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,

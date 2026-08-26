@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file chunk_gated_delta_rule_arch35.h
@@ -44,9 +44,6 @@ struct CGDRInitParams {
 template <typename lowType, typename highType, typename stateType = lowType, bool gOptional = false>
 class CGDR {
 public:
-    static constexpr bool kStateIsFp32 = std::is_same_v<stateType, float>;
-    using vInnerType = std::conditional_t<kStateIsFp32, float, lowType>;
-    using StageOneMmVInner = StageOneMTT<vInnerType>;
     __aicore__ inline CGDR(TPipe *pipe, const ChunkGatedDeltaRuleTilingData *tilingData)
         : stageOneOp_(stage1MmBf16_, stage1MmVInner_)
     {
@@ -58,15 +55,9 @@ public:
     {
         if ASCEND_IS_AIC {
             stage1MmBf16_.Init(&tiling_->matmulTilingFp32, pipe_);
-            if constexpr (kStateIsFp32) {
-                stage1MmVInner_.Init(&tiling_->matmulTilingFp32C, pipe_);
-            } else {
-                stage1MmVInner_.Init(&tiling_->matmulTilingFp32, pipe_);
-            }
+            stage1MmVInner_.Init(&tiling_->matmulTilingFp32, pipe_);
             stage2MmBf16_.Init(&tiling_->matmulTilingFp32, pipe_);
-            if constexpr (kStateIsFp32) {
-                stage2MmFp32_.Init(&tiling_->matmulTilingFp32C, pipe_);
-            }
+            stage2MmFp32_.Init(&tiling_->matmulTilingFp32C, pipe_);
             stage3Mm_.Init(&tiling_->matmulTilingFp32, pipe_);
         }
     }
@@ -74,7 +65,6 @@ public:
     __aicore__ inline void InitMask()
     {
         if ASCEND_IS_AIV {
-            // 初始化mask矩阵
             uint32_t cBlockSize = tiling_->chunkSize * tiling_->chunkSize;
             pipe_->InitBuffer(tmpBuff_, cBlockSize * sizeof(float));
             auto cCFloat_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(cBlockSize), 0);
@@ -99,7 +89,7 @@ public:
                 DataCopyPad(stageThreeMask_[GetBlockIdx() * cBlockSize + i * tiling_->chunkSize], cCFloat_, copyParams);
             }
             eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::MTE3_MTE2));
-            SetFlag<HardEvent::MTE3_MTE2>(eventID); // 这里必须同步, 否则会有提前拷出的问题
+            SetFlag<HardEvent::MTE3_MTE2>(eventID);
             WaitFlag<HardEvent::MTE3_MTE2>(eventID);
             pipe_->Reset();
         }
@@ -134,13 +124,9 @@ public:
         kCumDecay_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
         offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
 
-        vInner_.SetGlobalBuffer(reinterpret_cast<__gm__ vInnerType *>(user + offset));
-        offset += sizeof(vInnerType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dv;
-
-        if constexpr (kStateIsFp32) {
-            vInnerBf16_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
-            offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dv;
-        }
+        // vInner always BF16 — U storage
+        vInner_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
+        offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dv;
 
         qPrime_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
         offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
@@ -154,17 +140,23 @@ public:
         qkt_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
         offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->chunkSize;
 
-        if constexpr (kStateIsFp32) {
-            uint64_t stateWkElemCnt = tiling_->nv * tiling_->dv * tiling_->dk;
-            curStateBf16_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset), stateWkElemCnt);
-            offset += sizeof(lowType) * stateWkElemCnt;
-        }
+        // curStateBf16 always allocated — BF16 state for AIC matmul
+        curStateBf16_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
+        offset += sizeof(lowType) * tiling_->nv * tiling_->dv * tiling_->dk;
 
         stageOneMask_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
         offset += sizeof(highType) * tiling_->chunkSize * tiling_->chunkSize * tiling_->aiCoreNum * TASK_RATIO;
 
         stageThreeMask_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
         offset += sizeof(highType) * tiling_->chunkSize * tiling_->chunkSize * tiling_->aiCoreNum * TASK_RATIO;
+
+        // FP32 workspace for W@S result (stage2)
+        wsVPrimeAddr_ = user + offset;
+        offset += sizeof(float) * tiling_->aiCoreNum * tiling_->chunkSize * tiling_->dv;
+
+        // FP32 workspace for (U-WS)@K result (stage2)
+        wsStateUpdateAddr_ = user + offset;
+        offset += sizeof(float) * tiling_->aiCoreNum * tiling_->dv * tiling_->dk;
 
         stageWsAddr_ = user + offset;
 
@@ -194,7 +186,6 @@ public:
                 bool useInitialState = (pos == seqStart);
                 auto curState = (useInitialState) ? initState_[bid * tiling_->stateStride0] :
                                                     finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk];
-                // compute this chunk group
                 RunStage1(cg);
                 SyncAll<false>();
 
@@ -210,9 +201,9 @@ public:
 private:
     __aicore__ inline void RunStage1(const ChunkGroup &cg)
     {
-        GDRStageOneInitParams<vInnerType> initStageOneParams{query_, key_,         value_,        beta_,   g_,
-                                                             gCum_,  kCumDecay_,   vInner_,       qPrime_, kg_,
-                                                             qkt_,   stageWsAddr_, stageOneMask_, cg};
+        GDRStageOneInitParams initStageOneParams{query_, key_,         value_,        beta_,   g_,
+                                                 gCum_,  kCumDecay_,   vInner_,       qPrime_, kg_,
+                                                 qkt_,   stageWsAddr_, stageOneMask_, cg};
         stageOneOp_.Init(initStageOneParams, pipe_, tiling_);
         stageOneOp_.Process();
         pipe_->Reset();
@@ -226,14 +217,15 @@ private:
         StageTwoParams<sType> initStageTwoParams;
         initStageTwoParams.qPrime = qPrime_;
         initStageTwoParams.vInner = vInner_;
-        if constexpr (std::is_same_v<sType, float>) {
-            initStageTwoParams.vInnerBf16 = vInnerBf16_;
-        }
         initStageTwoParams.gCum = gCum_;
         initStageTwoParams.kCumdecay = kCumDecay_;
+        initStageTwoParams.curStateBf16 = curStateBf16_;
+        initStageTwoParams.stateIn = stateIn;
+        initStageTwoParams.stateOut = stateOut;
         initStageTwoParams.kg = kg_;
         initStageTwoParams.out = out_[cg.startPos * tiling_->nv * tiling_->dv];
-        initStageTwoParams.ws = stageWsAddr_;
+        initStageTwoParams.wsVPrime = wsVPrimeAddr_;
+        initStageTwoParams.wsStateUpdate = wsStateUpdateAddr_;
         initStageTwoParams.mm1Bf16 = &stage2MmBf16_;
         initStageTwoParams.mm1Fp32 = &stage2MmFp32_;
         initStageTwoParams.pipe = pipe_;
@@ -245,13 +237,6 @@ private:
         initStageTwoParams.stateStride1 = tiling_->stateStride1;
         initStageTwoParams.useInitialState = isFirstGroup;
         initStageTwoParams.isFirstGroup = isFirstGroup;
-        initStageTwoParams.stateIn = stateIn;
-        initStageTwoParams.stateOut = stateOut;
-        if constexpr (std::is_same_v<sType, float>) {
-            initStageTwoParams.curStateBf16 = curStateBf16_;
-        } else {
-            initStageTwoParams.curStateBf16 = stateIn;
-        }
         stageTwoOp.Init(&initStageTwoParams, tiling_->aiCoreNum);
         stageTwoOp.Process();
         pipe_->Reset();
@@ -262,16 +247,10 @@ private:
         if ASCEND_IS_AIC {
             stage3Mm_.Init(&tiling_->matmulTilingFp32, pipe_);
         }
-        GlobalTensor<lowType> vInnerBf16;
-        if constexpr (kStateIsFp32) {
-            vInnerBf16 = vInnerBf16_;
-        } else {
-            vInnerBf16 = vInner_;
-        }
         Stage3<gOptional> stageThreeOp;
         StageThreeParams initStageThreeParams{
             qkt_,         gCum_,
-            vInnerBf16,   stageThreeMask_[int(GetBlockIdx() / 2) * tiling_->chunkSize * tiling_->chunkSize],
+            vInner_,      stageThreeMask_[int(GetBlockIdx() / 2) * tiling_->chunkSize * tiling_->chunkSize],
             stageWsAddr_, out_[cg.startPos * tiling_->nv * tiling_->dv],
             &stage3Mm_,   pipe_,
             &cg,          tiling_->scale,
@@ -296,32 +275,32 @@ private:
     GlobalTensor<stateType> initState_;
     GlobalTensor<int32_t> actualSeqLens_;
 
-    GlobalTensor<lowType> curStateBf16_;
-    GlobalTensor<lowType> vInnerBf16_; // (Nv, maxGroupLength, Dv) BF16 vInner for stage3 (FP32 path only)
+    GlobalTensor<lowType> curStateBf16_;    // (Nv, Dv, Dk) BF16 state for AIC
 
     GlobalTensor<highType> gCum_;     // (Nv, maxGroupLength)
     GlobalTensor<lowType> kCumDecay_; // (Nv, maxGroupLength, Dk)
-    GlobalTensor<vInnerType> vInner_; // (Nv, maxGroupLength, Dv) primary vInner
+    GlobalTensor<lowType> vInner_;    // (Nv, maxGroupLength, Dv) BF16 — U, then U-WS
     GlobalTensor<lowType> qPrime_;    // (Nv, maxGroupLength, Dk)
     GlobalTensor<lowType> attnInter_; // (Nv, maxGroupLength, Dv)
     GlobalTensor<lowType> kg_;        // (Nv, maxGroupLength, Dk)
     GlobalTensor<lowType> qkt_;       // (Nv, maxGroupLength, C)
-    // mask矩阵
     GlobalTensor<highType> stageOneMask_;   // (Nv, maxGroupLength, C)
     GlobalTensor<highType> stageThreeMask_; // (Nv, maxGroupLength, C)
     GM_ADDR stageWsAddr_;                   // temporary space addr for stages
+    GM_ADDR wsVPrimeAddr_;                  // FP32 W@S workspace for stage2
+    GM_ADDR wsStateUpdateAddr_;             // FP32 (U-WS)@K workspace for stage2
 
     TBuf<TPosition::VECCALC> tmpBuff_; // 构造mask矩阵
 
     // Matmul objects
     StageOneMTT<bfloat16_t> stage1MmBf16_;
-    StageOneMmVInner stage1MmVInner_;
+    StageOneMTT<bfloat16_t> stage1MmVInner_;
     StageTwoMT stage2MmBf16_;
     StageTwoMTFp32C stage2MmFp32_;
     StageThreeMT stage3Mm_;
 
     // Stage operators
-    Stage1<kStateIsFp32, gOptional> stageOneOp_;
+    Stage1<gOptional> stageOneOp_;
 };
 
 } // namespace ChunkGatedDeltaRule
