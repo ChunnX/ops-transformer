@@ -494,6 +494,28 @@ struct Config {
         return config;
     }
 
+    __aicore__ static inline ProblemConfig BuildPersistentGmm2ProblemConfig(uint32_t n, uint32_t k,
+                                                                            const BlockJobContext &blockJob,
+                                                                            uint32_t gmm1TileM)
+    {
+        static_assert(IsA8W4, "Persistent GMM2 config is only used by the A8W4 prologue path");
+        ProblemConfig config;
+        config.m = L1_TILE_M_256;
+        config.n = n;
+        config.k = k;
+        config.outputN = n;
+        config.schedulerN = n;
+        config.tileM = L1_TILE_M_256;
+        config.blockNum = blockJob.totalJobs;
+        config.blockIdx = blockJob.jobIndex;
+        config.scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+        config.activationTileM = TopkWeightsPrefetch ? L1_TILE_M_128 : gmm1TileM;
+        // kL1=0 keeps AIC and AIV0 on the same per-tile 256/512 dynamic K-window rule.
+        config.blockMmadTiling =
+            BlockMmadTilingConfig{L1_TILE_M_256, L1_TILE_N, MakeL1Params(0U, Blaze::Gemm::MX_FP8FP4_SCALE_K_L1_SIZE)};
+        return config;
+    }
+
     __aicore__ static inline LayoutBundle BuildLayouts(const ProblemConfig &config)
     {
         LayoutBundle layouts;

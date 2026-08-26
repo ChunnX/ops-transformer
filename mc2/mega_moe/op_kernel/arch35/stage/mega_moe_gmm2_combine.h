@@ -786,6 +786,65 @@ __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const GMMAddrInfo &gmm
     }
 }
 
+// A4W4 Wave 专用执行路径：GMM2 的 BlockMmad/Prologue 已在 Wave 外构造并保持事件状态。
+template <typename GmmConfig, typename Scheduler>
+__aicore__ inline void Gmm2ExecA4W4Wave(Scheduler &scheduler, const GMMAddrInfo &gmmAddrInfo,
+                                        const typename GmmConfig::ProblemConfig &config, uint32_t startLoopIdx,
+                                        uint32_t tileNum, uint32_t expertTokenCount, uint32_t rowOffsetInExpert,
+                                        bool allowWeightL2Bypass, typename GmmConfig::BlockMmad *blockMmad,
+                                        typename GmmConfig::BlockPrologue *blockPrologue,
+                                        CriticalPathTileTraceContext *traceContext = nullptr)
+{
+    using ElementA = typename GmmConfig::ElementAType;
+    using ElementB = typename GmmConfig::ElementBType;
+    using ElementC = typename GmmConfig::ElementCType;
+    using ElementMxScaleA = typename GmmConfig::ElementMxScaleAType;
+    using ElementMxScaleB = typename GmmConfig::ElementMxScaleBType;
+
+    if constexpr (g_coreType == AscendC::AIC) {
+        auto layouts = GmmConfig::BuildLayouts(config);
+        auto gmC = Te::MakeTensor(
+            Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementC *>(gmmAddrInfo.gmm2OutGlobal)),
+            layouts.c);
+        auto gmA = Te::MakeTensor(
+            Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA *>(gmmAddrInfo.aGlobal)), layouts.a);
+        auto gmScaleA = Te::MakeTensor(
+            Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleA *>(gmmAddrInfo.aScaleGlobal)),
+            layouts.scaleA);
+        auto gmScaleB = Te::MakeTensor(
+            Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB *>(gmmAddrInfo.bScaleGlobal)),
+            layouts.scaleB);
+        if (allowWeightL2Bypass) {
+            auto l2CacheMode = GetWaveWeightL2CacheMode<GmmConfig::IS_WEIGHT_NZ, GmmConfig>(config);
+            gmScaleB.SetL2CacheHint(l2CacheMode.scale);
+        }
+        Gmm2AicMmadA8W4<false, false, typename GmmConfig::BlockMmad, Scheduler, decltype(gmA), decltype(gmScaleA),
+                        decltype(gmScaleB), decltype(gmC), typename GmmConfig::ProblemConfig>(
+            *blockMmad, scheduler, gmA, gmScaleA, gmScaleB, gmC, gmmAddrInfo, config, startLoopIdx, tileNum,
+            expertTokenCount, rowOffsetInExpert, traceContext);
+    } else {
+        auto layouts = GmmConfig::BuildLayouts(config);
+        auto gmB = Te::MakeTensor(
+            Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementB *>(gmmAddrInfo.bGlobal)), layouts.b);
+        if (allowWeightL2Bypass) {
+            auto l2CacheMode = GetWaveWeightL2CacheMode<GmmConfig::IS_WEIGHT_NZ, GmmConfig>(config);
+            gmB.SetL2CacheHint(l2CacheMode.weight);
+        }
+        Gmm2Aiv0PrologueA8W4(*blockPrologue, scheduler, gmB, config, startLoopIdx, tileNum, traceContext);
+    }
+}
+
+template <typename GmmConfig>
+__aicore__ inline void InitPersistentGmm2A8W4BlockMmad(typename GmmConfig::BlockMmad &blockMmad,
+                                                       const typename GmmConfig::ProblemConfig &config)
+{
+    using BlockMmad = typename GmmConfig::BlockMmad;
+    typename BlockMmad::BlockShape l0TileShape{config.blockMmadTiling.tileM, config.blockMmadTiling.tileN, L0_TILE_K,
+                                               0};
+    typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
+    blockMmad.Init(matmulShape, l0TileShape, config.blockMmadTiling.l1Params);
+}
+
 } // namespace GmmKernel
 
 // RunGmm2Generic：执行 Generic GMM2，支持量化和非量化 Combine 模式。
@@ -838,6 +897,26 @@ __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int
     RunGmm2Generic<CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, IsWeightNZ,
                    IsLayered, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained>(
         problemShape, gmmAddrInfo, startBlockIdx, blockJob, blockMmadContext, allowWeightL2Bypass);
+}
+
+// A4W4 Wave 专用入口：直接复用外层配置和持久化对象，不进入公共 GMM2 的构造/分派逻辑。
+template <typename GmmConfig>
+__aicore__ inline void RunGmm2A4W4Wave(const GMMAddrInfo &gmmAddrInfo, const typename GmmConfig::ProblemConfig &config,
+                                       uint32_t startLoopIdx, uint32_t tileNum, uint32_t expertTokenCount,
+                                       uint32_t rowOffsetInExpert, typename GmmConfig::BlockMmad *blockMmad,
+                                       typename GmmConfig::BlockPrologue *blockPrologue,
+                                       bool allowWeightL2Bypass = false,
+                                       CriticalPathTileTraceContext *traceContext = nullptr)
+{
+    static_assert(std::is_same_v<typename GmmConfig::ElementAType, __fp8e4m3>, "Activation must be __fp8e4m3");
+    static_assert(std::is_same_v<typename GmmConfig::ElementBType, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
+
+    GmmKernel::BlockScheduler scheduler({config.m, config.outputN, config.k},
+                                        GmmKernel::BlockScheduler::Params{Te::MakeCoord(
+                                            static_cast<int64_t>(config.tileM), static_cast<int64_t>(L1_TILE_N))});
+    GmmKernel::Gmm2ExecA4W4Wave<GmmConfig>(scheduler, gmmAddrInfo, config, startLoopIdx, tileNum, expertTokenCount,
+                                           rowOffsetInExpert, allowWeightL2Bypass, blockMmad, blockPrologue,
+                                           traceContext);
 }
 
 // RunGmm2A8W4：执行 A8W4 prologue（W4→W8）和 GMM2；Combine 由调用路径独立调度。
