@@ -652,10 +652,12 @@ protected:
         if (x1Dtype == ge::DT_FLOAT4_E2M1) {
             QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingEngine;
             tilingEngine.SetPlatformInfo(quantPlatformInfo_);
+            tilingEngine.EnableBaseMHalving(true);
             tilingEngine.GetTilingData(m_, n_, k_, false, true, td->tileQbmmTilingData);
         } else {
             QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
             tilingEngine.SetPlatformInfo(quantPlatformInfo_);
+            tilingEngine.EnableBaseMHalving(true);
             tilingEngine.GetTilingData(m_, n_, k_, false, true, td->tileQbmmTilingData);
         }
 

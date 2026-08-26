@@ -27,16 +27,15 @@ public:
     {}
     ~QuantMatmulTilingSwat() override = default;
 
-    void SetMaxBaseM(uint64_t v)
-    {
-        maxBaseM_ = v;
-    }
+    void SetMaxBaseM(uint64_t v) { maxBaseM_ = v; }
+
+    // 当 M/N 方向 base 块总数小于 2 倍核数时，启用 baseM 减半使 M 方向块数翻倍，
+    // 保证每个核至少分到两轮 base 块、通信与计算充分流水。默认关闭，仅需要该
+    // 行为的算子（如 MC2 通算融合）显式开启，避免影响其他算子。
+    void EnableBaseMHalving(bool enable) { enableBaseMHalving_ = enable; }
 
 protected:
-    const char *TilingName() const override
-    {
-        return "swat";
-    }
+    const char *TilingName() const override { return "swat"; }
 
     void DoOpTiling(QuantMatmulTilingData &tilingData) override
     {
@@ -62,6 +61,7 @@ private:
     using Base::enableMTailAlign_;
 
     uint64_t maxBaseM_{0};
+    bool enableBaseMHalving_{false};
 
 private:
     uint32_t CalcScaleKL1() const
@@ -289,6 +289,24 @@ private:
         if (blockNum < platformInfo_.aicNum) {
             AdjustBasicBlock();
         }
+        if (enableBaseMHalving_) {
+            HalveBaseMForPipeline();
+        }
+        CHECK_COND(runInfo_.baseM != 0UL && runInfo_.baseN != 0UL && runInfo_.baseK != 0UL,
+                   "Failed to derive a valid tiling base shape: baseM, baseN, and baseK must all be non-zero.");
+
+        runInfo_.mBlockCnt = CeilDiv(args_.m, runInfo_.baseM);
+        runInfo_.nBlockCnt = CeilDiv(args_.n, runInfo_.baseN);
+        runInfo_.totalBlockCnt = runInfo_.mBlockCnt * runInfo_.nBlockCnt;
+        runInfo_.tailBlockCnt = runInfo_.totalBlockCnt % platformInfo_.aicNum;
+        runInfo_.mTailSize = args_.m - (runInfo_.mBlockCnt - 1UL) * runInfo_.baseM;
+        runInfo_.nTailSize = args_.n - (runInfo_.nBlockCnt - 1UL) * runInfo_.baseN;
+        runInfo_.dbL0c =
+            runInfo_.baseM * runInfo_.baseN * DATA_SIZE_L0C * DB_SIZE <= platformInfo_.l0cSize ? DB_SIZE : 1U;
+    }
+
+    void HalveBaseMForPipeline()
+    {
         // 当 M/N 方向 base 块总数小于 2 倍核数时，部分核只算一轮 base 块即结束，
         // 通信与计算无法充分流水。此时将 baseM 减半使 M 方向块数翻倍，
         // 让每个核至少能分到两轮 base 块。
@@ -302,17 +320,6 @@ private:
             runInfo_.baseM < args_.m) {
             runInfo_.baseM = runInfo_.baseM / NUM_TWO;
         }
-        CHECK_COND(runInfo_.baseM != 0UL && runInfo_.baseN != 0UL && runInfo_.baseK != 0UL,
-                   "Failed to derive a valid tiling base shape: baseM, baseN, and baseK must all be non-zero.");
-
-        runInfo_.mBlockCnt = CeilDiv(args_.m, runInfo_.baseM);
-        runInfo_.nBlockCnt = CeilDiv(args_.n, runInfo_.baseN);
-        runInfo_.totalBlockCnt = runInfo_.mBlockCnt * runInfo_.nBlockCnt;
-        runInfo_.tailBlockCnt = runInfo_.totalBlockCnt % platformInfo_.aicNum;
-        runInfo_.mTailSize = args_.m - (runInfo_.mBlockCnt - 1UL) * runInfo_.baseM;
-        runInfo_.nTailSize = args_.n - (runInfo_.nBlockCnt - 1UL) * runInfo_.baseN;
-        runInfo_.dbL0c =
-            runInfo_.baseM * runInfo_.baseN * DATA_SIZE_L0C * DB_SIZE <= platformInfo_.l0cSize ? DB_SIZE : 1U;
     }
 
     void OptimizeEdgeBasicBlock()
