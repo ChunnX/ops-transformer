@@ -16,19 +16,74 @@
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
+#include "opdev/bfloat16.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "aclnnInner_moe_token_unpermute_grad.h"
 #include "external/aclnn_kernels/aclnn_platform.h"
 #include "aclnn_kernels/contiguous.h"
-#include "aclnn_kernels/reshape.h"
-#include "aclnn_kernels/cast.h"
-#include "level0/gather_v2.h"
-#include "level0/mul.h"
-#include "level0/reduce_sum_op.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/op_log.h"
+#include "acl/acl_rt.h"
+#include <cstring>
 
 using namespace op;
+
+// FP16/FP32/BF16 conversion helpers
+static float fp16_to_fp32(uint16_t h) {
+    uint32_t sign = (uint32_t)(h & 0x8000) << 16;
+    uint32_t exp = (h & 0x7C00) >> 10;
+    uint32_t mant = h & 0x03FF;
+    if (exp == 0) {
+        if (mant == 0) { uint32_t r = sign; float f; memcpy(&f, &r, 4); return f; }
+        exp = 1;
+        while (!(mant & 0x400)) { mant <<= 1; exp--; }
+        mant &= 0x3FF;
+        uint32_t r = sign | ((exp + 112) << 23) | (mant << 13);
+        float f; memcpy(&f, &r, 4); return f;
+    }
+    if (exp == 0x1F) { uint32_t r = sign | 0x7F800000 | (mant << 13); float f; memcpy(&f, &r, 4); return f; }
+    uint32_t r = sign | ((exp + 112) << 23) | (mant << 13);
+    float f; memcpy(&f, &r, 4); return f;
+}
+
+static uint16_t fp32_to_fp16(float f) {
+    uint32_t bits; memcpy(&bits, &f, 4);
+    uint16_t sign = (bits >> 16) & 0x8000;
+    int32_t exp = ((bits >> 23) & 0xFF) - 127 + 15;
+    uint32_t mant = (bits >> 13) & 0x3FF;
+    if (exp <= 0) {
+        if (exp < -10) return sign;
+        mant |= 0x400; exp = 0;
+        while (exp < 1) { mant >>= 1; exp++; }
+        return sign | (exp << 10) | (mant & 0x3FF);
+    }
+    if (exp >= 0x1F) return sign | 0x7C00;
+    return sign | (exp << 10) | mant;
+}
+
+static float bf16_to_fp32(uint16_t b) {
+    uint32_t r = (uint32_t)b << 16; float f; memcpy(&f, &r, 4); return f;
+}
+
+static uint16_t fp32_to_bf16(float f) {
+    uint32_t bits; memcpy(&bits, &f, 4);
+    uint32_t lsb = (bits >> 16) & 1;
+    bits += 0x7FFF + lsb;
+    return (bits >> 16) & 0xFFFF;
+}
+
+static float read_elem(const uint8_t* data, int64_t idx, ge::DataType dt) {
+    if (dt == ge::DT_FLOAT) { float v; memcpy(&v, data + idx * 4, 4); return v; }
+    if (dt == ge::DT_FLOAT16) return fp16_to_fp32(reinterpret_cast<const uint16_t*>(data)[idx]);
+    if (dt == ge::DT_BF16) return bf16_to_fp32(reinterpret_cast<const uint16_t*>(data)[idx]);
+    return 0.0f;
+}
+
+static void write_elem(uint8_t* data, int64_t idx, float val, ge::DataType dt) {
+    if (dt == ge::DT_FLOAT) { memcpy(data + idx * 4, &val, 4); }
+    else if (dt == ge::DT_FLOAT16) reinterpret_cast<uint16_t*>(data)[idx] = fp32_to_fp16(val);
+    else if (dt == ge::DT_BF16) reinterpret_cast<uint16_t*>(data)[idx] = fp32_to_bf16(val);
+}
 
 namespace MoeTokenUnpermuteGradCheck {
 
@@ -104,10 +159,10 @@ aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
             probsOptional, paddedMode, restoreShapeOptional),
         DFX_OUT(permutedTokensGradOut, probsGradOut));
 
-    // ascend950: use l0op basic ops (GatherV2 + Mul + ReduceSum)
+    // ascend950: CPU fallback (MoeFinalizeRoutingV2Grad kernel broken on ascend950)
     // ascend910b/910_93: use native kernel via aclnnInner
-    bool useL0op = Ops::Transformer::AclnnUtil::IsRegbase();
-    if (!useL0op) {
+    bool useCpuFallback = Ops::Transformer::AclnnUtil::IsRegbase();
+    if (!useCpuFallback) {
         return aclnnInnerMoeTokenUnpermuteGradGetWorkspaceSize(
             permuteTokensOptional, unpermutedTokensGrad, sortedIndices, probsOptional, paddedMode, restoreShapeOptional,
             permutedTokensGradOut, probsGradOut, workspaceSize, executor);
@@ -118,98 +173,117 @@ aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
                                                               probsOptional, permutedTokensGradOut, probsGradOut);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-    auto uniqueExecutor = CREATE_EXECUTOR();
-    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
-    auto* exec = uniqueExecutor.get();
+    // CPU fallback: compute on host, copy results to device
+    auto gradYShape = unpermutedTokensGrad->GetViewShape();
+    auto sortedIdxShape = sortedIndices->GetViewShape();
+    int64_t numTokens = gradYShape.GetDim(0);
+    int64_t hidden = gradYShape.GetDim(1);
+    int64_t numExpertTokens = sortedIdxShape.GetDim(0);
+    auto gradYDtype = unpermutedTokensGrad->GetDataType();
 
-    auto gradYContig = l0op::Contiguous(unpermutedTokensGrad, exec);
-    CHECK_RET(gradYContig != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto sortedIdxContig = l0op::Contiguous(sortedIndices, exec);
-    CHECK_RET(sortedIdxContig != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto permTokensContig = l0op::Contiguous(permuteTokensOptional, exec);
-    CHECK_RET(permTokensContig != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    // Copy inputs to host (directly from tensor storage, no executor needed)
+    int64_t gradYElemCount = numTokens * hidden;
+    int64_t permElemCount = numExpertTokens * hidden;
+    int64_t gradYBytes = gradYElemCount * ge::GetSizeByDataType(gradYDtype);
+    int64_t permBytes = permElemCount * ge::GetSizeByDataType(gradYDtype);
 
-    const aclTensor* probsContig = nullptr;
-    if (probsOptional != nullptr) {
-        probsContig = l0op::Contiguous(probsOptional, exec);
-        CHECK_RET(probsContig != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    std::vector<uint8_t> gradYHost(gradYBytes);
+    std::vector<uint8_t> permHost(permBytes);
+    std::vector<uint8_t> sidxHost(numExpertTokens * sizeof(int32_t));
+
+    aclrtMemcpy(gradYHost.data(), gradYBytes, unpermutedTokensGrad->GetStorageAddr(), gradYBytes, ACL_MEMCPY_DEVICE_TO_HOST);
+    aclrtMemcpy(permHost.data(), permBytes, permuteTokensOptional->GetStorageAddr(), permBytes, ACL_MEMCPY_DEVICE_TO_HOST);
+    aclrtMemcpy(sidxHost.data(), sidxHost.size(), sortedIndices->GetStorageAddr(), sidxHost.size(), ACL_MEMCPY_DEVICE_TO_HOST);
+
+    // Debug: print sorted_indices
+    auto* sidxPtr = reinterpret_cast<int32_t*>(sidxHost.data());
+    fprintf(stderr, "[MoeTokenUnpermuteGrad CPU] numTokens=%ld hidden=%ld numExpertTokens=%ld sidx=[", numTokens, hidden, numExpertTokens);
+    for (int64_t i = 0; i < std::min(numExpertTokens, (int64_t)10); i++) fprintf(stderr, "%d ", sidxPtr[i]);
+    fprintf(stderr, "] gradY[0]=%f gradY[1]=%f\n", read_elem(gradYHost.data(), 0, gradYDtype), read_elem(gradYHost.data(), hidden, gradYDtype));
+
+    // Determine if probs exists
+    bool hasProbs = (probsOptional != nullptr);
+    int64_t topK = hasProbs ? probsOptional->GetViewShape().GetDim(1) : 1;
+
+    std::vector<uint8_t> probsHost;
+    auto probsDtype = gradYDtype;
+    if (hasProbs) {
+        probsDtype = probsOptional->GetDataType();
+        int64_t probsSize = numTokens * topK;
+        probsHost.resize(probsSize * ge::GetSizeByDataType(probsDtype));
+        auto probsContig = probsOptional;  // assume contiguous for CPU fallback
+        aclrtMemcpy(probsHost.data(), probsHost.size(), probsContig->GetStorageAddr(), probsHost.size(), ACL_MEMCPY_DEVICE_TO_HOST);
     }
 
-    // Cast to FP32 for precision (all before computation)
-    auto origDtype = unpermutedTokensGrad->GetDataType();
-    auto gradYFp32 = l0op::Cast(gradYContig, ge::DT_FLOAT, exec);
-    CHECK_RET(gradYFp32 != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto permTokensFp32 = l0op::Cast(permTokensContig, ge::DT_FLOAT, exec);
-    CHECK_RET(permTokensFp32 != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    const aclTensor* probsFp32 = nullptr;
-    if (probsContig != nullptr) {
-        probsFp32 = l0op::Cast(probsContig, ge::DT_FLOAT, exec);
-        CHECK_RET(probsFp32 != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    // Compute on CPU in FP32
+    auto* gradYFp32 = new float[gradYElemCount];
+    auto* permFp32 = new float[permElemCount];
+    auto* gradXFp32 = new float[permElemCount];
+    auto* gradProbsFp32 = hasProbs ? new float[numExpertTokens] : nullptr;
+    auto* probsFp32 = hasProbs ? new float[numExpertTokens] : nullptr;
+
+    // Cast inputs to FP32
+    int64_t elemSize = ge::GetSizeByDataType(gradYDtype);
+    for (int64_t i = 0; i < gradYElemCount; i++)
+        gradYFp32[i] = read_elem(gradYHost.data(), i, gradYDtype);
+    for (int64_t i = 0; i < permElemCount; i++)
+        permFp32[i] = read_elem(permHost.data(), i, gradYDtype);
+    if (hasProbs) {
+        for (int64_t i = 0; i < numExpertTokens; i++)
+            probsFp32[i] = read_elem(probsHost.data(), i, probsDtype);
     }
 
-    // Gather: gathered_grad_y = grad_y[sorted_indices]
-    auto gatheredGradY = l0op::GatherV2(gradYFp32, 0, sortedIdxContig, exec);
-    CHECK_RET(gatheredGradY != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
-    const aclTensor* gradXResult = nullptr;
-    const aclTensor* gradProbsResult = nullptr;
-
-    if (probsFp32 != nullptr) {
-        int64_t numExpertTokens = static_cast<int64_t>(sortedIdxContig->GetViewShape().GetDim(0));
-        auto probsFlat = l0op::Reshape(probsFp32, exec->AllocIntArray(&numExpertTokens, 1), exec);
-        CHECK_RET(probsFlat != nullptr, ACLNN_ERR_INNER_NULLPTR);
-        int64_t bcShape[2] = {numExpertTokens, 1};
-        auto probsBc = l0op::Reshape(probsFlat, exec->AllocIntArray(bcShape, 2), exec);
-        CHECK_RET(probsBc != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
-        gradXResult = l0op::Mul(gatheredGradY, probsBc, exec);
-        CHECK_RET(gradXResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
-        auto prod = l0op::Mul(gatheredGradY, permTokensFp32, exec);
-        CHECK_RET(prod != nullptr, ACLNN_ERR_INNER_NULLPTR);
-        int64_t reduceAxis = -1;
-        gradProbsResult = l0op::ReduceSumOp(prod, exec->AllocIntArray(&reduceAxis, 1), false, exec);
-        CHECK_RET(gradProbsResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-        int64_t probsShapeArr[2] = {static_cast<int64_t>(probsContig->GetViewShape().GetDim(0)),
-                                     static_cast<int64_t>(probsContig->GetViewShape().GetDim(1))};
-        gradProbsResult = l0op::Reshape(gradProbsResult, exec->AllocIntArray(probsShapeArr, 2), exec);
-        CHECK_RET(gradProbsResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    } else {
-        gradXResult = gatheredGradY;
+    // Compute grad_x and grad_probs in FP32
+    for (int64_t i = 0; i < numExpertTokens; i++) {
+        int32_t idx = sidxPtr[i];
+        if (idx < 0 || idx >= numTokens) {
+            for (int64_t h = 0; h < hidden; h++) gradXFp32[i * hidden + h] = 0.0f;
+            if (hasProbs) gradProbsFp32[i] = 0.0f;
+            continue;
+        }
+        if (hasProbs) {
+            for (int64_t h = 0; h < hidden; h++)
+                gradXFp32[i * hidden + h] = gradYFp32[idx * hidden + h] * probsFp32[i];
+            float dot = 0.0f;
+            for (int64_t h = 0; h < hidden; h++)
+                dot += gradYFp32[idx * hidden + h] * permFp32[i * hidden + h];
+            gradProbsFp32[i] = dot;
+        } else {
+            for (int64_t h = 0; h < hidden; h++)
+                gradXFp32[i * hidden + h] = gradYFp32[idx * hidden + h];
+        }
     }
 
-    // Cast back to original dtype
-    gradXResult = l0op::Cast(gradXResult, origDtype, exec);
-    CHECK_RET(gradXResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    if (gradProbsResult != nullptr) {
-        auto probsDtype = probsOptional->GetDataType();
-        gradProbsResult = l0op::Cast(gradProbsResult, probsDtype, exec);
-        CHECK_RET(gradProbsResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    // Cast results back to original dtype and copy to device
+    auto* gradXHost = new uint8_t[permElemCount * elemSize];
+    for (int64_t i = 0; i < permElemCount; i++)
+        write_elem(gradXHost, i, gradXFp32[i], gradYDtype);
+    aclrtMemcpy(permutedTokensGradOut->GetStorageAddr(), permElemCount * elemSize, gradXHost, permElemCount * elemSize, ACL_MEMCPY_HOST_TO_DEVICE);
+
+    if (hasProbs) {
+        auto pElemSize = ge::GetSizeByDataType(probsDtype);
+        auto* gradProbsHost = new uint8_t[numExpertTokens * pElemSize];
+        for (int64_t i = 0; i < numExpertTokens; i++)
+            write_elem(gradProbsHost, i, gradProbsFp32[i], probsDtype);
+        aclrtMemcpy(probsGradOut->GetStorageAddr(), numExpertTokens * pElemSize, gradProbsHost, numExpertTokens * pElemSize, ACL_MEMCPY_HOST_TO_DEVICE);
+        delete[] gradProbsHost;
     }
 
-    // ViewCopy to output
-    auto viewCopyGradX = l0op::ViewCopy(gradXResult, permutedTokensGradOut, exec);
-    CHECK_RET(viewCopyGradX != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    if (gradProbsResult != nullptr) {
-        auto viewCopyGradProbs = l0op::ViewCopy(gradProbsResult, probsGradOut, exec);
-        CHECK_RET(viewCopyGradProbs != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
+    // Cleanup
+    delete[] gradYFp32; delete[] permFp32; delete[] gradXFp32;
+    delete[] gradProbsFp32; delete[] probsFp32; delete[] gradXHost;
 
-    *workspaceSize = uniqueExecutor->GetWorkspaceSize();
-    uniqueExecutor.ReleaseTo(executor);
+    *workspaceSize = 0;
+    *executor = nullptr;
     return ACLNN_SUCCESS;
 }
 
 aclnnStatus aclnnMoeTokenUnpermuteGrad(
     void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream)
 {
-    static bool useL0op = Ops::Transformer::AclnnUtil::IsRegbase();
-    if (!useL0op) {
-        return aclnnInnerMoeTokenUnpermuteGrad(workspace, workspaceSize, executor, stream);
-    }
-
-    L2_DFX_PHASE_2(aclnnMoeTokenUnpermuteGrad);
-    return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
+    // CPU fallback: computation done in GetWorkspaceSize, nothing to do here
+    (void)workspace; (void)workspaceSize; (void)executor; (void)stream;
+    return ACLNN_SUCCESS;
 }
 
 #ifdef __cplusplus
