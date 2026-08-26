@@ -702,7 +702,7 @@ def tiled_flash_attention(q_curr, k_sparse, v_sparse, scale_value, cur_sinks, q_
         k_tile = k_fp32[start:end, :]
         v_tile = v_fp32[start:end, :]
 
-        scale_res = torch.matmul(q_curr, k_tile.T) * scale_value
+        scale_res = torch.matmul(q_curr.float32(), k_tile.float32().T) * scale_value
         row_max_old = row_max.clone()
         row_max = torch.max(row_max, scale_res.max(dim=1)[0])
         update_mul = torch.exp(row_max_old - row_max)
@@ -710,7 +710,7 @@ def tiled_flash_attention(q_curr, k_sparse, v_sparse, scale_value, cur_sinks, q_
         row_sum = update_mul * row_sum + cur_softmax.sum(dim=1)
 
         cur_softmax = _cast_softmax(cur_softmax, q_dtype)
-        cur_o = torch.matmul(cur_softmax, v_tile)
+        cur_o = torch.matmul(cur_softmax.float32(), v_tile.float32())
         cur_attn_out = cur_attn_out * update_mul.unsqueeze(1) + cur_o
 
     return cur_attn_out / row_sum.unsqueeze(1), row_max, row_sum
@@ -823,7 +823,12 @@ def t_increattention_bnsd(fa_param):
                         cur_sinks,
                         fa_param["q_dtype"],
                     )
-                    y[batch, n2Idx * g : (n2Idx + 1) * g, s1Idx, :] = attn_out
+                    if fa_param["q_dtype"] == "float16":
+                        y[batch, n2Idx * g : (n2Idx + 1) * g, s1Idx, :] = attn_out.to(torch.float16).float()
+                    elif fa_param["q_dtype"] == "bfloat16":
+                        y[batch, n2Idx * g : (n2Idx + 1) * g, s1Idx, :] = attn_out.to(torch.bfloat16).float()
+                    else:
+                        y[batch, n2Idx * g : (n2Idx + 1) * g, s1Idx, :] = attn_out
                     set_softmax_lse(
                         batch, n2Idx, s1Idx, qLastPrefill, row_max, row_sum
                     )
