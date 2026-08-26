@@ -189,6 +189,24 @@ protected:
                                       ConstInfo<isInfer, hasRope> &constInfo, int64_t dSizeAligned64);
 
 private:
+    __aicore__ inline bool GetPrecisionDiagTarget(RunInfo<isInfer> &runInfo,
+                                                   ConstInfo<isInfer, hasRope> &constInfo, int32_t &caseId,
+                                                   int64_t &targetG, int64_t &targetS, int64_t &diagDStart,
+                                                   int64_t &diagDEnd);
+    __aicore__ inline int64_t GetVec1PrecisionDiagRow(RunInfo<isInfer> &runInfo,
+                                                       ConstInfo<isInfer, hasRope> &constInfo, int64_t targetG,
+                                                       int64_t targetS);
+    __aicore__ inline int64_t GetVec2PrecisionDiagRow(RunInfo<isInfer> &runInfo,
+                                                       ConstInfo<isInfer, hasRope> &constInfo, int64_t targetG,
+                                                       int64_t targetS, int64_t vec2S1Idx);
+    __aicore__ inline void PrintVec1PrecisionDiag(RunInfo<isInfer> &runInfo,
+                                                  ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<T> &mmRes,
+                                                  LocalTensor<INPUT_T> &stage1CastTensor, LocalTensor<T> &sumUb,
+                                                  LocalTensor<T> &maxUb, LocalTensor<T> &expUb);
+    __aicore__ inline void PrintBmm2PrecisionDiag(int32_t phase, RunInfo<isInfer> &runInfo,
+                                                  ConstInfo<isInfer, hasRope> &constInfo,
+                                                  LocalTensor<T> &currentBmm2, LocalTensor<T> &accumBmm2,
+                                                  int64_t vec2S1Idx);
     __aicore__ inline void SoftmaxInitBuffer();
     __aicore__ inline void ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
                                          Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
@@ -285,6 +303,218 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::InitCommonGlob
             }
             constInfo.learnableSinkFlag = true;
         }
+    }
+}
+
+TEMPLATES_DEF_BASE_NO_DEFAULT
+__aicore__ inline bool FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::GetPrecisionDiagTarget(
+    RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, int32_t &caseId, int64_t &targetG,
+    int64_t &targetS, int64_t &diagDStart, int64_t &diagDEnd)
+{
+    caseId = 0;
+    targetG = -1;
+    targetS = -1;
+    diagDStart = 0;
+    diagDEnd = constInfo.dSizeV;
+    if constexpr (!(isInfer && IsSameType<OUTPUT_T, int8_t>::value &&
+                    (IsSameType<INPUT_T, half>::value || IsSameType<INPUT_T, bfloat16_t>::value))) {
+        return false;
+    }
+
+    const bool isBf16ShortKvCase =
+        constInfo.bSize == 50 && constInfo.n2Size == 6 && constInfo.gSize == 8 && constInfo.s1Size == 658 &&
+        constInfo.s2Size == 40 && constInfo.dSize == 128 && constInfo.dSizeV == 128 && constInfo.dSizeRope == 64;
+    if (isBf16ShortKvCase && runInfo.boIdx == 8 && runInfo.n2oIdx == 2) {
+        caseId = 1;
+        targetG = 1;
+        targetS = 300;
+        diagDStart = 8;
+        diagDEnd = 40;
+        return true;
+    }
+    if (isBf16ShortKvCase && runInfo.boIdx == 25 && runInfo.n2oIdx == 5) {
+        caseId = 1;
+        targetG = 4;
+        targetS = 446;
+        diagDStart = 49;
+        diagDEnd = 71;
+        return true;
+    }
+
+    const bool isFp16BshLongKvCase =
+        constInfo.bSize == 8 && constInfo.n2Size == 5 && constInfo.gSize == 3 && constInfo.s1Size == 7920 &&
+        constInfo.s2Size == 2688 && constInfo.dSize == 128 && constInfo.dSizeV == 128 &&
+        constInfo.dSizeRope == 64;
+    if (isFp16BshLongKvCase && runInfo.boIdx == 4 && runInfo.n2oIdx == 3) {
+        caseId = 2;
+        targetG = 1;
+        targetS = 5517;
+        return true;
+    }
+    if (isFp16BshLongKvCase && runInfo.boIdx == 5 && runInfo.n2oIdx == 4) {
+        caseId = 2;
+        targetG = 1;
+        targetS = 5624;
+        return true;
+    }
+    if (isFp16BshLongKvCase && runInfo.boIdx == 6 && runInfo.n2oIdx == 0) {
+        caseId = 2;
+        targetG = 0;
+        targetS = 7224;
+        return true;
+    }
+
+    const bool isFp16BsndLongKvCase =
+        constInfo.bSize == 2 && constInfo.n2Size == 1 && constInfo.gSize == 8 && constInfo.s1Size == 8191 &&
+        constInfo.s2Size == 2944 && constInfo.dSize == 128 && constInfo.dSizeV == 128 &&
+        constInfo.dSizeRope == 64;
+    if (isFp16BsndLongKvCase && runInfo.boIdx == 1 && runInfo.n2oIdx == 0) {
+        caseId = 3;
+        targetG = 0;
+        targetS = 606;
+        return true;
+    }
+    return false;
+}
+
+TEMPLATES_DEF_BASE_NO_DEFAULT
+__aicore__ inline int64_t FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::GetVec1PrecisionDiagRow(
+    RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, int64_t targetG, int64_t targetS)
+{
+    int64_t targetGs1 = targetG * runInfo.actualS1Size + targetS;
+    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_BSH ||
+                  layout == LayOutTypeEnum::LAYOUT_SBH) {
+        targetGs1 = targetS * constInfo.gSize + targetG;
+    }
+    const int64_t blockGs1Start =
+        runInfo.gS1Idx + static_cast<int64_t>(constInfo.subBlockIdx) * runInfo.firstHalfS1RealSize;
+    if (targetGs1 < blockGs1Start || targetGs1 >= blockGs1Start + runInfo.halfS1RealSize) {
+        return -1;
+    }
+    return targetGs1 - blockGs1Start;
+}
+
+TEMPLATES_DEF_BASE_NO_DEFAULT
+__aicore__ inline int64_t FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::GetVec2PrecisionDiagRow(
+    RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, int64_t targetG, int64_t targetS,
+    int64_t vec2S1Idx)
+{
+    int64_t targetGs1 = targetG * runInfo.actualS1Size + targetS;
+    int64_t blockGs1Start = runInfo.goIdx * runInfo.actualS1Size + runInfo.sOuterOffset;
+    if (constInfo.isPfaGS1Merge) {
+        targetGs1 = targetS * constInfo.gSize + targetG;
+        blockGs1Start = runInfo.sOuterOffset;
+    }
+    blockGs1Start += vec2S1Idx * runInfo.vec2S1BaseSize;
+    if (targetGs1 < blockGs1Start || targetGs1 >= blockGs1Start + runInfo.vec2S1RealSize) {
+        return -1;
+    }
+    return targetGs1 - blockGs1Start;
+}
+
+TEMPLATES_DEF_BASE_NO_DEFAULT
+__aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::PrintVec1PrecisionDiag(
+    RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<T> &mmRes,
+    LocalTensor<INPUT_T> &stage1CastTensor, LocalTensor<T> &sumUb, LocalTensor<T> &maxUb, LocalTensor<T> &expUb)
+{
+    int32_t caseId = 0;
+    int64_t targetG = -1;
+    int64_t targetS = -1;
+    int64_t diagDStart = 0;
+    int64_t diagDEnd = 0;
+    if (!GetPrecisionDiagTarget(runInfo, constInfo, caseId, targetG, targetS, diagDStart, diagDEnd)) {
+        return;
+    }
+    const int64_t diagRow = GetVec1PrecisionDiagRow(runInfo, constInfo, targetG, targetS);
+    if (diagRow < 0) {
+        return;
+    }
+
+    AscendC::PipeBarrier<PIPE_V>();
+    float top1Value = -3.402823466e+38F;
+    float top2Value = -3.402823466e+38F;
+    int64_t top1Index = -1;
+    int64_t top2Index = -1;
+    const int64_t rowOffset = diagRow * s2BaseSize;
+    for (int64_t s2Index = 0; s2Index < runInfo.s2RealSize; ++s2Index) {
+        const float value = static_cast<float>(mmRes.GetValue(rowOffset + s2Index));
+        if (value > top1Value) {
+            top2Value = top1Value;
+            top2Index = top1Index;
+            top1Value = value;
+            top1Index = s2Index;
+        } else if (value > top2Value) {
+            top2Value = value;
+            top2Index = s2Index;
+        }
+    }
+    if (top1Index < 0 || top2Index < 0) {
+        return;
+    }
+
+    const int64_t stage1Top1Offset =
+        (top1Index >> 4) * static_cast<int64_t>(vec1Srcstride) * 16 + diagRow * 16 + (top1Index & 15);
+    const int64_t stage1Top2Offset =
+        (top2Index >> 4) * static_cast<int64_t>(vec1Srcstride) * 16 + diagRow * 16 + (top2Index & 15);
+    const float stage1Top1 = static_cast<float>(stage1CastTensor.GetValue(stage1Top1Offset));
+    const float stage1Top2 = static_cast<float>(stage1CastTensor.GetValue(stage1Top2Offset));
+    const float onlineMax = static_cast<float>(maxUb.GetValue(diagRow));
+    const float onlineSum = static_cast<float>(sumUb.GetValue(diagRow));
+    const float expMax = runInfo.s2LoopCount == 0 ? 1.0F : static_cast<float>(expUb.GetValue(diagRow));
+    const int64_t logicalS2Start = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;
+    AscendC::PRINTF("[FIA_DIAG][KERNEL][BMM1_SOFTMAX] case=%d b=%ld n2=%ld g=%ld s=%ld loop=%ld "
+                    "s2Start=%ld top1K=%ld top1=%f top2K=%ld top2=%f gap=%f\n",
+                    caseId, runInfo.boIdx, runInfo.n2oIdx, targetG, targetS, runInfo.s2LoopCount, logicalS2Start,
+                    logicalS2Start + top1Index, top1Value, logicalS2Start + top2Index, top2Value,
+                    top1Value - top2Value);
+    AscendC::PRINTF("[FIA_DIAG][KERNEL][SOFTMAX_STATE] case=%d b=%ld n2=%ld g=%ld s=%ld loop=%ld "
+                    "max=%f sum=%f expMax=%f expTop1=%f expTop2=%f\n",
+                    caseId, runInfo.boIdx, runInfo.n2oIdx, targetG, targetS, runInfo.s2LoopCount, onlineMax,
+                    onlineSum, expMax, stage1Top1, stage1Top2);
+}
+
+TEMPLATES_DEF_BASE_NO_DEFAULT
+__aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::PrintBmm2PrecisionDiag(
+    int32_t phase, RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<T> &currentBmm2,
+    LocalTensor<T> &accumBmm2, int64_t vec2S1Idx)
+{
+    int32_t caseId = 0;
+    int64_t targetG = -1;
+    int64_t targetS = -1;
+    int64_t diagDStart = 0;
+    int64_t diagDEnd = 0;
+    if (!GetPrecisionDiagTarget(runInfo, constInfo, caseId, targetG, targetS, diagDStart, diagDEnd)) {
+        return;
+    }
+    const int64_t diagRow = GetVec2PrecisionDiagRow(runInfo, constInfo, targetG, targetS, vec2S1Idx);
+    if (diagRow < 0) {
+        return;
+    }
+
+    AscendC::PipeBarrier<PIPE_V>();
+    const int64_t rowOffset = diagRow * dTemplateAlign64;
+    LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
+    LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>();
+    LocalTensor<T> expUb = this->softmaxExpBuf[runInfo.taskIdMod3].template Get<T>();
+    const float onlineMax = maxUb.GetValue(diagRow);
+    const float onlineSum = sumUb.GetValue(diagRow);
+    const float expMax = runInfo.s2LoopCount == 0 ? 1.0F : static_cast<float>(expUb.GetValue(diagRow));
+    for (int64_t dIndex = 0; dIndex < constInfo.dSizeV; dIndex += 32) {
+        const float currentValue = static_cast<float>(currentBmm2.GetValue(rowOffset + dIndex));
+        const float accumValue = static_cast<float>(accumBmm2.GetValue(rowOffset + dIndex));
+        AscendC::PRINTF("[FIA_DIAG][KERNEL][BMM2_ACCUM] phase=%d case=%d b=%ld n2=%ld g=%ld s=%ld "
+                        "loop=%ld d=%ld current=%f accum=%f max=%f sum=%f expMax=%f\n",
+                        phase, caseId, runInfo.boIdx, runInfo.n2oIdx, targetG, targetS, runInfo.s2LoopCount, dIndex,
+                        currentValue, accumValue, onlineMax, onlineSum, expMax);
+    }
+    const int64_t lastD = constInfo.dSizeV - 1;
+    if ((lastD & 31) != 0) {
+        const float currentValue = static_cast<float>(currentBmm2.GetValue(rowOffset + lastD));
+        const float accumValue = static_cast<float>(accumBmm2.GetValue(rowOffset + lastD));
+        AscendC::PRINTF("[FIA_DIAG][KERNEL][BMM2_ACCUM] phase=%d case=%d b=%ld n2=%ld g=%ld s=%ld "
+                        "loop=%ld d=%ld current=%f accum=%f max=%f sum=%f expMax=%f\n",
+                        phase, caseId, runInfo.boIdx, runInfo.n2oIdx, targetG, targetS, runInfo.s2LoopCount, lastD,
+                        currentValue, accumValue, onlineMax, onlineSum, expMax);
     }
 }
 
@@ -1208,6 +1438,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
             }
         }
     }
+    PrintVec1PrecisionDiag(runInfo, constInfo, mmRes, stage1CastTensor, sumUb, maxUb, expUb);
     bmm1ResBuf.SetCrossCore();
     if constexpr (hasAtten) {
         this->attenMaskInQue[runInfo.taskIdMod2].template FreeTensor(attenMaskUb);
@@ -1344,6 +1575,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2OnU
     WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
     if (unlikely(runInfo.s2LoopCount == 0)) {
         DataCopy(vec2ResUb, mmRes, vec2CalcSize);
+        PrintBmm2PrecisionDiag(1, runInfo, constInfo, mmRes, vec2ResUb, 0);
     } else {
         LocalTensor<T> expUb = softmaxExpBuf[runInfo.taskIdMod3].template Get<T>();
         LocalTensor<T> pScaleUb;
@@ -1385,6 +1617,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2OnU
                 }
             }
         }
+        PrintBmm2PrecisionDiag(0, runInfo, constInfo, mmRes, vec2ResUb, 0);
         if (runInfo.s2LoopCount < runInfo.s2LoopLimit) {
             if constexpr (isFp8 || isMlaNoQuant) {
                 if (unlikely(runInfo.s2LoopCount == 1)) {
@@ -1420,6 +1653,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2OnU
                     1.0);
             }
         }
+        PrintBmm2PrecisionDiag(1, runInfo, constInfo, mmRes, vec2ResUb, 0);
     }
     bmm2ResBuf.SetCrossCore();
     if (runInfo.s2LoopCount == runInfo.s2LoopLimit) {
@@ -2013,22 +2247,22 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::Bmm2DataCopyOu
     if constexpr (splitD) {
         dSizeAligned64 = constInfo.dBasicBlock;
     }
-    if constexpr (IsSameType<INPUT_T, bfloat16_t>::value && IsSameType<OUTPUT_T, int8_t>::value) {
-        const bool isPostQuantRouteDiagCase =
-            constInfo.bSize == 50 && constInfo.n2Size == 6 && constInfo.gSize == 8 &&
-            constInfo.s1Size == 658 && constInfo.s2Size == 40 && constInfo.dSize == 128 &&
-            constInfo.dSizeV == 128 && constInfo.dSizeRope == 64;
-        const bool isPostQuantRouteTarget =
-            (runInfo.boIdx == 8 && runInfo.n2oIdx == 2 && runInfo.goIdx == 1) ||
-            (runInfo.boIdx == 25 && runInfo.n2oIdx == 5 && runInfo.goIdx == 4);
-        if (isPostQuantRouteDiagCase && isPostQuantRouteTarget) {
-            AscendC::PRINTF("[FIA_DIAG][KERNEL][COPYOUT_ROUTE] core=%d sub=%u b=%ld n2=%ld g=%ld "
+    if constexpr (IsSameType<OUTPUT_T, int8_t>::value &&
+                  (IsSameType<INPUT_T, half>::value || IsSameType<INPUT_T, bfloat16_t>::value)) {
+        int32_t caseId = 0;
+        int64_t targetG = -1;
+        int64_t targetS = -1;
+        int64_t diagDStart = 0;
+        int64_t diagDEnd = 0;
+        if (GetPrecisionDiagTarget(runInfo, constInfo, caseId, targetG, targetS, diagDStart, diagDEnd) &&
+            GetVec2PrecisionDiagRow(runInfo, constInfo, targetG, targetS, vec2S1Idx) >= 0) {
+            AscendC::PRINTF("[FIA_DIAG][KERNEL][COPYOUT_ROUTE] case=%d core=%d sub=%u b=%ld n2=%ld g=%ld s=%ld "
                             "s1o=%ld sOuter=%ld actualS1=%ld vec2Idx=%ld vec2Base=%ld vec2Real=%ld "
-                            "vec2Calc=%ld postQuant=%d sameType=%d\n",
-                            constInfo.aivIdx, constInfo.subBlockIdx, runInfo.boIdx, runInfo.n2oIdx,
-                            runInfo.goIdx, runInfo.s1oIdx, runInfo.sOuterOffset, runInfo.actualS1Size,
-                            vec2S1Idx, runInfo.vec2S1BaseSize, runInfo.vec2S1RealSize, vec2CalcSize,
-                            static_cast<int32_t>(POST_QUANT),
+                            "vec2Calc=%ld postQuant=%d perCh=%d sameType=%d\n",
+                            caseId, constInfo.aivIdx, constInfo.subBlockIdx, runInfo.boIdx, runInfo.n2oIdx, targetG,
+                            targetS, runInfo.s1oIdx, runInfo.sOuterOffset, runInfo.actualS1Size, vec2S1Idx,
+                            runInfo.vec2S1BaseSize, runInfo.vec2S1RealSize, vec2CalcSize,
+                            static_cast<int32_t>(POST_QUANT), static_cast<int32_t>(constInfo.isPostQuantPerChnl),
                             static_cast<int32_t>(IsSameType<INPUT_T, VEC2_RES_T>::value));
         }
     }
@@ -2082,6 +2316,34 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::Bmm2DataCopyOu
                     }
                 }
             }
+            if constexpr (IsSameType<INPUT_T, half>::value && IsSameType<OUTPUT_T, int8_t>::value) {
+                int32_t caseId = 0;
+                int64_t targetG = -1;
+                int64_t targetS = -1;
+                int64_t diagDStart = 0;
+                int64_t diagDEnd = 0;
+                if (GetPrecisionDiagTarget(runInfo, constInfo, caseId, targetG, targetS, diagDStart, diagDEnd)) {
+                    const int64_t diagRow =
+                        GetVec2PrecisionDiagRow(runInfo, constInfo, targetG, targetS, vec2S1Idx);
+                    if (diagRow >= 0) {
+                        AscendC::PipeBarrier<PIPE_V>();
+                        AscendC::PRINTF("[FIA_DIAG][KERNEL][POSTQUANT] phase=before case=%d core=%d sub=%u "
+                                        "b=%ld n2=%ld g=%ld s=%ld row=%ld perCh=%d scale=%f offset=%f\n",
+                                        caseId, constInfo.aivIdx, constInfo.subBlockIdx, runInfo.boIdx,
+                                        runInfo.n2oIdx, targetG, targetS, diagRow,
+                                        static_cast<int32_t>(constInfo.isPostQuantPerChnl),
+                                        constInfo.postQuantScaleValue, constInfo.postQuantOffsetValue);
+                        for (int64_t dIndex = diagDStart; dIndex < diagDEnd; ++dIndex) {
+                            const int64_t ubOffset = diagRow * dSizeAligned64 + dIndex;
+                            const float beforeValue = static_cast<float>(vec2ResUb.GetValue(ubOffset));
+                            AscendC::PRINTF("[FIA_DIAG][KERNEL][POSTQUANT] phase=before case=%d b=%ld n2=%ld "
+                                            "g=%ld s=%ld d=%ld value=%f\n",
+                                            caseId, runInfo.boIdx, runInfo.n2oIdx, targetG, targetS, dIndex,
+                                            beforeValue);
+                        }
+                    }
+                }
+            }
             GetDerived()->PostQuant(constInfo, runInfo, attenOut, vec2ResUb, vec2S1Idx, dSizeAligned64);
             if constexpr (IsSameType<INPUT_T, bfloat16_t>::value && IsSameType<OUTPUT_T, int8_t>::value) {
                 const bool isPostQuantDiagCase =
@@ -2110,6 +2372,28 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::Bmm2DataCopyOu
                         const int32_t afterValue = static_cast<int32_t>(attenOut.GetValue(ubOffset));
                         AscendC::PRINTF("[FIA_DIAG][KERNEL][POSTQUANT] phase=after b=%ld n2=%ld gs1=%ld d=%ld value=%d\n",
                                         runInfo.boIdx, runInfo.n2oIdx, targetGs1, dIndex, afterValue);
+                    }
+                }
+            }
+            if constexpr (IsSameType<INPUT_T, half>::value && IsSameType<OUTPUT_T, int8_t>::value) {
+                int32_t caseId = 0;
+                int64_t targetG = -1;
+                int64_t targetS = -1;
+                int64_t diagDStart = 0;
+                int64_t diagDEnd = 0;
+                if (GetPrecisionDiagTarget(runInfo, constInfo, caseId, targetG, targetS, diagDStart, diagDEnd)) {
+                    const int64_t diagRow =
+                        GetVec2PrecisionDiagRow(runInfo, constInfo, targetG, targetS, vec2S1Idx);
+                    if (diagRow >= 0) {
+                        AscendC::PipeBarrier<PIPE_V>();
+                        for (int64_t dIndex = diagDStart; dIndex < diagDEnd; ++dIndex) {
+                            const int64_t ubOffset = diagRow * dSizeAligned64 + dIndex;
+                            const int32_t afterValue = static_cast<int32_t>(attenOut.GetValue(ubOffset));
+                            AscendC::PRINTF("[FIA_DIAG][KERNEL][POSTQUANT] phase=after case=%d b=%ld n2=%ld "
+                                            "g=%ld s=%ld d=%ld value=%d\n",
+                                            caseId, runInfo.boIdx, runInfo.n2oIdx, targetG, targetS, dIndex,
+                                            afterValue);
+                        }
                     }
                 }
             }
