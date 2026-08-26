@@ -14,7 +14,7 @@
  */
 
 #include "arch35/block_attn_res_prepare_apt_tiling_key.h"
-#include "arch35/block_attn_res_prepare_tensor_api_blaze.h"
+#include "arch35/block_attn_res_prepare_mix.h"
 #include "arch35/block_attn_res_prepare_vector.h"
 
 template <uint32_t TEMPLATE_MODE>
