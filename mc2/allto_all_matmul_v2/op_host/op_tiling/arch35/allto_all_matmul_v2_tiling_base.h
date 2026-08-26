@@ -233,11 +233,12 @@ protected:
         }
         auto x1ScaleFmt = static_cast<ge::Format>(ge::GetPrimaryFormat(x1ScaleDesc->GetStorageFormat()));
         auto x2ScaleFmt = static_cast<ge::Format>(ge::GetPrimaryFormat(x2ScaleDesc->GetStorageFormat()));
-        if (x1ScaleFmt != ge::FORMAT_ND || x2ScaleFmt != ge::FORMAT_ND) {
+        if ((x1ScaleFmt != ge::FORMAT_ND && x1ScaleFmt != ge::FORMAT_NCL) ||
+            (x2ScaleFmt != ge::FORMAT_ND && x2ScaleFmt != ge::FORMAT_NCL)) {
             OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(
                 opName, "x1_scale, x2_scale",
                 (Ops::Base::ToString(x1ScaleFmt) + "," + Ops::Base::ToString(x2ScaleFmt)).c_str(),
-                "x1_scale and x2_scale format must be ND");
+                "x1_scale and x2_scale format must be ND or NCL");
             return false;
         }
         auto x1ScaleDtype = x1ScaleDesc->GetDataType();
