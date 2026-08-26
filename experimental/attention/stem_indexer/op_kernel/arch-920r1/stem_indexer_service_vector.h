@@ -77,6 +77,8 @@ protected:
     static constexpr uint32_t VBIAS_BYTES = 2U * S2_BASIC_BLOCK * sizeof(float);
     static constexpr uint32_t HISTORY_SCORE_BYTES = M_BASIC_BLOCK * TOPK_ALIGN_SIZE * sizeof(SCORE_T);
     static constexpr uint32_t GLOBAL_INDEX_BYTES = M_BASIC_BLOCK * TOPK_ALIGN_SIZE * sizeof(uint32_t);
+    static constexpr uint32_t DIRECT_INDEX_BYTES = PACKED_ROW_STRIDE * sizeof(uint32_t);
+    static constexpr uint32_t DIRECT_LENGTH_BYTES = 32U;
     static constexpr uint32_t CURRENT_SCORE_BYTES = M_BASIC_BLOCK * S2_BASIC_BLOCK * sizeof(SCORE_T);
     static constexpr uint32_t TOPK_MERGE_BYTES =
         TOPK_ROW_BATCH * (TOPK_ALIGN_SIZE + SICommon::TOPK_TRUNK_LEN) * sizeof(SCORE_T);
@@ -171,6 +173,12 @@ private:
     TBuf<TPosition::VECCALC> globalIndexBuf_;
     LocalTensor<uint32_t> globalIndexLocal_;
 
+    // Vector-only scratch for the direct-output path. Keep it independent from both TopK history and Cube-owned MM1.
+    TBuf<TPosition::VECCALC> directIndexBuf_;
+    LocalTensor<uint32_t> directIndexLocal_;
+    TBuf<TPosition::VECCALC> directLengthBuf_;
+    LocalTensor<uint32_t> directLengthLocal_;
+
     int32_t blockId_ = -1;
     bool needCleanOutput_ = false;
     // para for vector
@@ -209,6 +217,12 @@ __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe, bool needCleanOut
     // 64 rows * 256 uint32 = 64 KiB persistent global indices.
     pipe->InitBuffer(globalIndexBuf_, GLOBAL_INDEX_BYTES);
     globalIndexLocal_ = globalIndexBuf_.Get<uint32_t>();
+
+    // Direct output owns dedicated UB so its short index/length writes cannot alias persistent TopK state.
+    pipe->InitBuffer(directIndexBuf_, DIRECT_INDEX_BYTES);
+    directIndexLocal_ = directIndexBuf_.Get<uint32_t>();
+    pipe->InitBuffer(directLengthBuf_, DIRECT_LENGTH_BYTES);
+    directLengthLocal_ = directLengthBuf_.Get<uint32_t>();
 
     // 两个ping-pong槽初始均归Cube使用。
     CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + 0U);
@@ -1006,9 +1020,9 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
             InitSparseIndicesToNegOne(gS1Idx, actMBaseSize, actS1Size, indiceOutOffset);
         }
 
-        // This branch has no Cube/Vector slot handshake. Use persistent Vector-only UB, never the Cube-owned MM1 slot.
-        LocalTensor<uint32_t> indicesOutLocal = globalIndexLocal_;
-        LocalTensor<uint32_t> lengthLocal = globalIndexLocal_[PACKED_ROW_STRIDE];
+        // This branch has no Cube/Vector slot handshake. Use dedicated Vector-only UB, never the Cube-owned MM1 slot.
+        LocalTensor<uint32_t> indicesOutLocal = directIndexLocal_;
+        LocalTensor<uint32_t> lengthLocal = directLengthLocal_;
 
         // 当前处理的gS1行起始索引（全局位置）
         int64_t curGS1Idx = gS1Idx * mBaseSize_;
