@@ -65,7 +65,7 @@ static int64_t GetKvHeadNum(const gert::Shape *kvShape, const std::string &layou
     return kvShape->GetDim(DIM_INDEX_2);
 }
 
-const gert::Shape *GetOptionalStorageShape(gert::InferShapeContext *context, uint32_t inputIndex)
+const gert::Shape *GetOptionalStorageShape(const gert::InferShapeContext *context, uint32_t inputIndex)
 {
     return context->GetOptionalInputShape(inputIndex);
 }
