@@ -264,9 +264,11 @@ int main()
 
     ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_BF16, &q);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(oriKvHostData, oriKvShape, &oriKvDeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &oriKv);
+    // Keep the FP8 E4M3FN byte payload unchanged, but expose it through an
+    // ACL_UINT8 tensor descriptor to exercise the op_api disguise path.
+    ret = CreateAclTensor(oriKvHostData, oriKvShape, &oriKvDeviceAddr, aclDataType::ACL_UINT8, &oriKv);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(cmpKvHostData, cmpKvShape, &cmpKvDeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &cmpKv);
+    ret = CreateAclTensor(cmpKvHostData, cmpKvShape, &cmpKvDeviceAddr, aclDataType::ACL_UINT8, &cmpKv);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(cmpSparseIndicesHostData, cmpSparseIndicesShape, &cmpSparseIndicesDeviceAddr,
                           aclDataType::ACL_INT32, &cmpSparseIndices);
@@ -338,6 +340,7 @@ int main()
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
 
+    LOG_PRINT("VERIFY_INPUT: ori_kv/cmp_kv carry FP8 bytes and are passed as ACL_UINT8.\n");
     ret = aclnnMixedQuantSparseFlashMlaGetWorkspaceSize(
         q, oriKv, cmpKv, nullptr, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqLensQ, nullptr, nullptr, nullptr,
         seqUsedOriKv, seqUsedCmpKv, cmpResidualKv, nullptr, nullptr, sinks, metadata, quantMode, ropeHeadDim,
@@ -345,6 +348,7 @@ int main()
         softmaxLse, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMixedQuantSparseFlashMlaGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
+    LOG_PRINT("VERIFY_OP_API: aclnnMixedQuantSparseFlashMlaGetWorkspaceSize accepted disguised uint8 KV inputs.\n");
 
     void *workspaceAddr = nullptr;
     if (workspaceSize > 0) {
