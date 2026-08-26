@@ -43,7 +43,8 @@ except ImportError:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import result_compare_method
 
-logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)
+if not logging.getLogger().handlers:
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1744,8 +1745,63 @@ def _pv_matmul_cpu(
         v_scale_mat = v_scale[spb, n2_idx, v_group_idx, :, v_group_pair].to(
             torch.float32
         )
+        p_scaled = p_quant_subloop * subloop_rescale.view(nq, 1)
         v_dequant = v_mat * v_scale_mat
-        pv += torch.matmul(p_quant_subloop * subloop_rescale.view(nq, 1), v_dequant)
+        pv_subloop = torch.matmul(p_scaled, v_dequant)
+
+        # Dequantizing V before the payload dot can create an artificial Inf.
+        # A masked or underflowed FP8 probability then evaluates as 0 * Inf in
+        # torch.matmul and contaminates the result with NaN.  MXFP8 cube uses
+        # the opposite order: it accumulates finite P/V payloads in each
+        # 32-element group and applies the group descales afterwards.
+        #
+        # Preserve the established fast path and repair only non-finite values
+        # introduced by its operation order.  NaNs already present in the P or
+        # V payload must keep propagating and are deliberately not repaired.
+        repair_mask = ~torch.isfinite(pv_subloop)
+        if bool(repair_mask.any()):
+            payload_has_nan = torch.isnan(p_quant_subloop).any(dim=-1).view(
+                nq, 1
+            ) | torch.isnan(v_mat).any(dim=0).view(1, head_dim)
+            repair_mask &= ~payload_has_nan
+
+            if bool(repair_mask.any()):
+                subloop_k = p_quant_subloop.shape[1]
+                group_count = math.ceil(subloop_k / QUANT_GROUP_SIZE)
+                aligned_k = group_count * QUANT_GROUP_SIZE
+                p_payload = p_quant_subloop
+                v_payload = v_mat
+                if aligned_k != subloop_k:
+                    pad_k = aligned_k - subloop_k
+                    p_payload = torch.nn.functional.pad(p_payload, (0, pad_k))
+                    v_payload = torch.nn.functional.pad(
+                        v_payload, (0, 0, 0, pad_k)
+                    )
+
+                p_grouped = p_payload.reshape(
+                    nq, group_count, QUANT_GROUP_SIZE
+                )
+                v_grouped = v_payload.reshape(
+                    group_count, QUANT_GROUP_SIZE, head_dim
+                )
+                group_dot = torch.matmul(
+                    p_grouped.unsqueeze(-2), v_grouped
+                ).squeeze(-2)
+                group_scale = (
+                    subloop_rescale.view(nq, 1, 1)
+                    * v_scale_mat[::QUANT_GROUP_SIZE].view(
+                        1, group_count, head_dim
+                    )
+                )
+                scaled_group_dot = torch.where(
+                    group_dot == 0,
+                    torch.zeros_like(group_dot),
+                    group_dot * group_scale,
+                )
+                cube_order_pv = scaled_group_dot.sum(dim=1)
+                pv_subloop = torch.where(repair_mask, cube_order_pv, pv_subloop)
+
+        pv += pv_subloop
         round_sum += p_subloop.sum(dim=-1) * subloop_rescale
     return pv, round_sum
 
