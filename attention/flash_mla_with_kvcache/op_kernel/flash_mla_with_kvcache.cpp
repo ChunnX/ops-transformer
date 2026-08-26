@@ -73,38 +73,34 @@ __aicore__ inline constexpr bool IsPageAttentionMla()
 template <uint8_t inOutLayoutType, uint8_t KvLayoutType>
 __aicore__ inline constexpr GmFormat GetKvLayoutMla()
 {
-    return BaseApi::GetKVGmFormat<GetQueryLayoutMla<inOutLayoutType>(), KvLayoutType, IsPageAttentionMla<KvLayoutType>()>();
+    return BaseApi::GetKVGmFormat<GetQueryLayoutMla<inOutLayoutType>(), KvLayoutType,
+                                  IsPageAttentionMla<KvLayoutType>()>();
 }
 
 template <uint8_t inOutLayoutType, uint8_t KvLayoutType, bool hasAttenMask, uint8_t config>
 // 形参序必须吃齐 def 输入序 cache_seqlens(3)/cu_seqlens_q(4)/seqused_q(5)（运行时按 def 序绑槽位；
 // 曾用 FIA 内部序致 cacheSeqlens 收到 seqused_q=NULL 槽 → kv 长度解析解引用 GM 0 越界）。
-__global__ __aicore__ void flash_mla_with_kvcache(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *blockTable,
-                                                  __gm__ uint8_t *cacheSeqlens, __gm__ uint8_t *cuSeqlensQ,
-                                                  __gm__ uint8_t *sequsedQ, __gm__ uint8_t *attnMask,
-                                                  __gm__ uint8_t *metadata, __gm__ uint8_t *attnOut,
-                                                  __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
-                                                  __gm__ uint8_t *tiling)
+__global__ __aicore__ void flash_mla_with_kvcache(__gm__ uint8_t *query, __gm__ uint8_t *key,
+                                                  __gm__ uint8_t *blockTable, __gm__ uint8_t *cacheSeqlens,
+                                                  __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
+                                                  __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata,
+                                                  __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse,
+                                                  __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     REGISTER_TILING_DEFAULT(optiling::FlashMlaWithKvcacheTilingData);
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
-    // 编译宏名须对齐 asc_opc 按输入名派生的 ORIG_DTYPE_{Q,K_CACHE,ATTN_OUT}
-    // （fia 内部名 ORIG_DTYPE_QUERY/KEY/ATTENTION_OUT 未被定义 → 恒走 bf16 分支，fp16 .o 实为 bf16）。
-    // DT_* 在 device TU 为枚举非宏，故比数值（FP16==1/BF16==27，实测确认）。
-#define MLA_DT_FLOAT16 1
-#define MLA_DT_BF16 27
-#if (defined(ORIG_DTYPE_Q) && ORIG_DTYPE_Q == MLA_DT_FLOAT16 && defined(ORIG_DTYPE_K_CACHE) && \
-     ORIG_DTYPE_K_CACHE == MLA_DT_FLOAT16 && defined(ORIG_DTYPE_ATTN_OUT) && ORIG_DTYPE_ATTN_OUT == MLA_DT_FLOAT16)
-    using INPUT_T = half;
-    using OUT_T = half;
-#elif (defined(ORIG_DTYPE_Q) && ORIG_DTYPE_Q == MLA_DT_BF16 && defined(ORIG_DTYPE_K_CACHE) && \
-       ORIG_DTYPE_K_CACHE == MLA_DT_BF16 && defined(ORIG_DTYPE_ATTN_OUT) && ORIG_DTYPE_ATTN_OUT == MLA_DT_BF16)
+    // DT_BF16/DT_FLOAT16 为 device 头树 basic_api/kernel_type.h 定义的预处理宏
+    // （kernel_operator.h 传递 include），直接宏比较对齐 flash_attn.cpp；编译宏名
+    // ORIG_DTYPE_{Q,K_CACHE,ATTN_OUT} 由 asc_opc 按输入名派生（fia 内部名
+    // ORIG_DTYPE_QUERY/KEY/ATTENTION_OUT 未被定义 → 恒走 bf16 分支，勿用）。
+#if (ORIG_DTYPE_Q == DT_BF16)
     using INPUT_T = bfloat16_t;
     using OUT_T = bfloat16_t;
-#else
-#error "flash_mla_with_kvcache: ORIG_DTYPE_* macros must be all fp16 or all bf16"
+#elif (ORIG_DTYPE_Q == DT_FLOAT16)
+    using INPUT_T = half;
+    using OUT_T = half;
 #endif
 
     fa_base_matmul::idCounterNum = 0;
