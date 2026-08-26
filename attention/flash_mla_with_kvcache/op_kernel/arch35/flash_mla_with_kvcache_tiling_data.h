@@ -27,11 +27,13 @@ constexpr uint32_t FA_AIC_CORE_NUM = 36;
 constexpr uint32_t FA_AIV_CORE_NUM = 72;
 
 // ============================= metadata 消费常量 =============================
-// 消费 flash_mla_metadata（flash_attn_metadata 改名克隆）产出的 AICPU 多 section 布局：（producer 旧名：flash_mla_metadata，历史原因保留）
+// 消费 flash_mla_metadata（flash_attn_metadata 改名克隆）产出的 AICPU 多 section 布局：（producer
+// 旧名：flash_mla_metadata，历史原因保留）
 //   [16-word header][sectionNum * 36 * 16 (FA)][sectionNum * 72 * 16 (FD)]
 // AICPU producer 侧对应常量 FA_METADATA_STRIDE=16 / FD_METADATA_STRIDE=16
-// （flash_mla_metadata/op_kernel_aicpu/flash_mla_metadata.h，字节布局与 flash_attn_metadata 一致）。（producer 旧名：flash_mla_metadata，历史原因保留）
-// 名称沿用 flash_attn kernel 侧常量（flash_attn_tiling_data.h / 编译期即暴露与 producer 的偏差）。
+// （flash_mla_metadata/op_kernel_aicpu/flash_mla_metadata.h，字节布局与 flash_attn_metadata 一致）。（producer
+// 旧名：flash_mla_metadata，历史原因保留） 名称沿用 flash_attn kernel 侧常量（flash_attn_tiling_data.h / 编译期即暴露与
+// producer 的偏差）。
 constexpr uint32_t FLASH_ATTN_METADATA_SIZE = 16;
 constexpr uint32_t FA_FD_METADATA_SIZE = 16;
 // header 区 16 个 uint32（sectionNum/isFd/mBaseSize/s2BaseSize + 12 保留）
@@ -148,11 +150,6 @@ struct FlashMlaWithKvcacheWorkspaceParams {
     uint32_t logSumExpSize = 0;
 };
 
-struct FlashMlaWithKvcacheS1OuterSplitCoreParams {
-    bool enableS1OutSplit = false;
-    uint64_t totalSize = 0;
-};
-
 struct FlashMlaWithKvcacheEmptyTensorParams {
     uint32_t singleCoreSize = 0;
     uint8_t needInit = 0;
@@ -172,7 +169,6 @@ public:
     FlashMlaWithKvcacheLeftPaddingParams flashMlaWithKvcacheLeftPaddingParams;
     FlashMlaWithKvcachePostQuantParams flashMlaWithKvcachePostQuantParams;
     FlashMlaWithKvcacheWorkspaceParams flashMlaWithKvcacheWorkspaceParams;
-    FlashMlaWithKvcacheS1OuterSplitCoreParams flashMlaWithKvcacheS1OuterSplitCoreParams;
     FlashMlaWithKvcacheEmptyTensorParams flashMlaWithKvcacheEmptyTensorParams;
 };
 
