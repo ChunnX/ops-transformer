@@ -2014,7 +2014,8 @@ ge::graphStatus QSFAInfoParser::CheckContiguous() const
 
         if (kvLayout_ == QSFALayout::PA_BSND) {
             totalElements = keyStride1_ * static_cast<uint64_t>(keyShape_.GetDim(DIM_IDX_ONE));
-            shapeSize = static_cast<uint64_t>(keyShape_.GetDim(DIM_IDX_ONE)) * static_cast<uint64_t>(keyShape_.GetDim(DIM_IDX_TWO)) *
+            shapeSize = static_cast<uint64_t>(keyShape_.GetDim(DIM_IDX_ONE)) *
+                        static_cast<uint64_t>(keyShape_.GetDim(DIM_IDX_TWO)) *
                         static_cast<uint64_t>(keyShape_.GetDim(DIM_IDX_THREE));
         } else {
             totalElements = keyStride0_ * static_cast<uint64_t>(keyShape_.GetDim(0));
