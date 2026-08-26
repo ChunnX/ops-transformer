@@ -351,6 +351,10 @@ ge::graphStatus QuantFlashAttnTilingInfoParser::GetN2Size()
 ge::graphStatus QuantFlashAttnTilingInfoParser::GetGSize()
 {
     // 获取G基准值
+    if (tilingInfo_.n2Size == 0) {
+        OP_LOGE(tilingInfo_.opName, "Kv Heads(%ld) should not be 0.", tilingInfo_.n2Size);
+        return ge::GRAPH_FAILED;
+    }
     if (tilingInfo_.n1Size % tilingInfo_.n2Size != 0) {
         OP_LOGE(tilingInfo_.opName, "Q numHeads(%ld) should be a multiple of Kv Heads(%ld).", tilingInfo_.n1Size,
                 tilingInfo_.n2Size);
@@ -541,14 +545,12 @@ ge::graphStatus QuantFlashAttnTilingInfoParser::GetInAndOutLayout()
     if (tilingInfo_.opParamInfo.layoutKV == nullptr) {
         tilingInfo_.layoutKV = FiaLayout::BSND;
     } else {
-        const std::map<std::string, FiaLayout> kvLayoutMap = {{"BSND", FiaLayout::BSND},
-                                                              {"BNSD", FiaLayout::BNSD},
-                                                              {"TND", FiaLayout::TND},
-                                                              {"PA_BBND", FiaLayout::BnBsH},
-                                                              {"PA_BNBD", FiaLayout::BnNBsD}};
+        const std::map<std::string, FiaLayout> kvLayoutMap = {
+            {"BSND", FiaLayout::BSND},     {"BNSD", FiaLayout::BNSD},      {"TND", FiaLayout::TND},
+            {"PA_BBND", FiaLayout::BnBsH}, {"PA_BNBD", FiaLayout::BnNBsD}, {"PA_NZ", FiaLayout::NZ}};
         auto itKV = kvLayoutMap.find(tilingInfo_.opParamInfo.layoutKV);
         if (itKV == kvLayoutMap.end()) {
-            OP_LOGE(tilingInfo_.opName, "Invalid layoutKV: %s, only support BSND/BNSD/TND/PA_BBND/PA_BNBD",
+            OP_LOGE(tilingInfo_.opName, "Invalid layoutKV: %s, only support BSND/BNSD/TND/PA_BBND/PA_BNBD/PA_NZ",
                     tilingInfo_.opParamInfo.layoutKV);
             return ge::GRAPH_FAILED;
         }
@@ -610,7 +612,10 @@ void QuantFlashAttnTilingInfoParser::SetFaShape()
 
 void QuantFlashAttnTilingInfoParser::GetKvStorageMode()
 {
-    if (tilingInfo_.opParamInfo.blockTable.tensor != nullptr) {
+    bool isPaLayout = (tilingInfo_.layoutKV == FiaLayout::BnBsH || tilingInfo_.layoutKV == FiaLayout::BnNBsD ||
+                       tilingInfo_.layoutKV == FiaLayout::NZ);
+
+    if (isPaLayout) {
         tilingInfo_.kvStorageMode = KvStorageMode::PAGE_ATTENTION;
     } else {
         tilingInfo_.kvStorageMode = KvStorageMode::BATCH_CONTINUOUS;
@@ -624,6 +629,34 @@ void QuantFlashAttnTilingInfoParser::GetSoftmaxScale()
     } else {
         tilingInfo_.softmaxScale = ((float)1.0) / std::sqrt(tilingInfo_.qkHeadDim);
     }
+}
+
+ge::graphStatus QuantFlashAttnTilingInfoParser::GetEmptyTensorFlag()
+{
+    auto checkEmptyTensor = [this](const gert::StorageShape *shape, const std::string &name) -> bool {
+        if (shape == nullptr) {
+            return false;
+        }
+        for (size_t i = 0; i < shape->GetStorageShape().GetDimNum(); i++) {
+            if (shape->GetStorageShape().GetDim(i) == 0) {
+                OP_LOGE(tilingInfo_.opName,
+                        "Tensor %s has empty dimension at axis %zu, size is 0, which is not supported", name.c_str(),
+                        i);
+                return true;
+            }
+        }
+        return false;
+    };
+    if (checkEmptyTensor(tilingInfo_.opParamInfo.query.shape, QUERY_NAME) ||
+        checkEmptyTensor(tilingInfo_.opParamInfo.key.shape, KEY_NAME) ||
+        checkEmptyTensor(tilingInfo_.opParamInfo.value.shape, VALUE_NAME) ||
+        checkEmptyTensor(tilingInfo_.opParamInfo.qDescale.shape, Q_DESCALE_NAME) ||
+        checkEmptyTensor(tilingInfo_.opParamInfo.kDescale.shape, K_DESCALE_NAME) ||
+        checkEmptyTensor(tilingInfo_.opParamInfo.vDescale.shape, V_DESCALE_NAME) ||
+        checkEmptyTensor(tilingInfo_.opParamInfo.attnOut.shape, ATTEN_OUT_NAME)) {
+        emptyTensorFlag_ = true;
+    }
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QuantFlashAttnTilingInfoParser::ParseAxisInfo()
@@ -677,7 +710,7 @@ ge::graphStatus QuantFlashAttnTilingInfoParser::Parse()
     }
 
     if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() || ge::GRAPH_SUCCESS != GetOpParaInfo() ||
-        ge::GRAPH_SUCCESS != CheckRequiredParaExistence()) {
+        ge::GRAPH_SUCCESS != CheckRequiredParaExistence() || ge::GRAPH_SUCCESS != GetEmptyTensorFlag()) {
         return ge::GRAPH_FAILED;
     }
 
@@ -686,6 +719,12 @@ ge::graphStatus QuantFlashAttnTilingInfoParser::Parse()
     }
     SetFaShape();
     GetKvStorageMode();
+
+    if (emptyTensorFlag_) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(tilingInfo_.opName, "input tensor", "",
+                                              "Empty tensor (containing a dimension of size 0) is not supported");
+        return ge::GRAPH_FAILED;
+    }
 
     if (ge::GRAPH_SUCCESS != ParseAxisInfo()) {
         return ge::GRAPH_FAILED;

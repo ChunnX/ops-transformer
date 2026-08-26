@@ -28,6 +28,7 @@
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
 #include "mc2_hcom_topo_info.h"
+#include "mc2_exception_dump.h"
 #include "../mega_moe_tiling_host.h"
 #include "../../../op_kernel/arch35/mega_moe_tiling.h"
 #include "../../../op_kernel/arch35/mega_moe_tiling_key.h"
@@ -59,6 +60,10 @@ const static int64_t H_ALIGN = 32LL;
 const static int64_t W4_K_ALIGN = 64LL;
 const static int64_t HIDDEN_DIM_BASE = 1024LL;
 const static int64_t MAX_HIDDEN_DIM = 8LL * 1024LL; // 8K
+// MTE 路径 N 泛化：hiddenDim(=GMM1 输出维，含 gate/up 两半) 按 GMM_TILE_N(256) 粒度放宽，
+// 下限 512 保证非交织模式 gate/up 半宽至少覆盖 1 个完整 256 tile；URMA 路径维持 1K 约束不变。
+const static int64_t MTE_MIN_HIDDEN_DIM = 512LL;
+const static int64_t MTE_HIDDEN_DIM_ALIGN = 256LL;
 const static int64_t MIN_EP_WORLD_SIZE = 2LL;
 const static int64_t MAX_EP_WORLD_SIZE = 1024LL;
 const static int64_t MAX_MOE_EXPERT_NUM = 2048LL;
@@ -80,7 +85,8 @@ uint32_t CalcMGroupsPerWave(const MegaMoeTilingData *tilingData, uint32_t aicNum
     /*
      * hiddenDim 包含 gate/up 两部分。交织模式每核至少调度 4 个独立 N tile；非交织模式
      * 每个物理任务成对处理 gate/up，原先每核 2 个物理任务同样等价于 4 个逻辑 N tile。
-     * hiddenDim 已校验为 1024 的倍数，因此两种 kernel 编译模式使用同一个 Host 公式。
+     * hiddenDim 已校验为 GMM_TILE_N(256) 的倍数（MTE；URMA 仍为 1024），CeilDiv 对
+     * 非交织半宽产生的尾 tile 只影响 wave 粒度估算，不影响正确性，两种编译模式共用本公式。
      */
     uint64_t gmm1LogicalTilesPerMGroup = ops::CeilDiv<uint64_t>(tilingData->hiddenDim, GMM_TILE_N);
     uint64_t gmm2TilesPerMGroup = ops::CeilDiv<uint64_t>(tilingData->h, GMM_TILE_N);
@@ -213,43 +219,28 @@ void PrintWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
 void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
 {
     OP_LOGD(nodeName, "========== PeermemInfo ==========");
-    int64_t rankSyncInWorldSize = PEERMEM_DATA_OFFSET;
-    OP_LOGD(nodeName, "rankSyncInWorldSize: {%ld}\n", rankSyncInWorldSize);
-    int64_t sendTotalNum = static_cast<int64_t>(tilingData->numMaxTokensPerRank) * tilingData->topK;
-    int64_t compareCount =
-        ops::CeilAlign(sendTotalNum * (int64_t)sizeof(int32_t), (int64_t)ALIGN_256) / (int64_t)sizeof(int32_t);
-    int64_t maskAlignSize = ops::CeilAlign(compareCount / 8, (int64_t)ALIGN_32);
-    int64_t maskSlotSize = maskAlignSize + (int64_t)ALIGN_32; // mask + 32B count
-    int64_t maskRecvSize = ops::CeilAlign(
-        (int64_t)tilingData->moeExpertPerRank * tilingData->epWorldSize * maskSlotSize, (int64_t)ALIGN_512);
-    OP_LOGD(nodeName, "maskRecvSize: {%ld}\n", maskRecvSize);
-    uint32_t mxScaleNum = ops::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
-    uint32_t dataBytes = ops::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
-    uint32_t scaleAlignBytes =
-        ops::CeilAlign(mxScaleNum * static_cast<uint32_t>(sizeof(int8_t)), static_cast<uint32_t>(ALIGN_32));
-    uint32_t tokenBytes = dataBytes + scaleAlignBytes;
-    if (tilingData->topkWeightsPrefetch == 1) {
-        uint32_t weightBytes =
-            ops::CeilAlign(tilingData->topK * static_cast<uint32_t>(sizeof(float)), static_cast<uint32_t>(ALIGN_32));
-        tokenBytes += weightBytes;
-    }
+    int64_t exceptionDumpRegionSize = tilingData->topoType == TOPO_TYPE_MTE ? EXCEPTION_DUMP_REGION_SIZE : 0;
+    OP_LOGD(nodeName, "exceptionDumpRegionSize: {%ld}\n", exceptionDumpRegionSize);
+    // 各区尺寸取自 kernel 侧同一份布局公式（common/mega_moe_peermem.h）。
+    int64_t maskAlignSize = CalcDispatchMaskAlignSize(tilingData);
+    int64_t maskRecvSize = CalcMaskRecvSize(maskAlignSize, static_cast<int64_t>(tilingData->moeExpertPerRank),
+                                            static_cast<int64_t>(tilingData->epWorldSize));
+    int64_t tokenScaleBytes =
+        CalcQuantTokenScaleBytes(static_cast<int64_t>(tilingData->h), 1U, static_cast<int64_t>(tilingData->topK),
+                                 tilingData->topkWeightsPrefetch == 1);
     int64_t quantTokenScaleSize = ops::CeilAlign(
-        (int64_t)((int64_t)(tilingData->numMaxTokensPerRank) * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
-    OP_LOGD(nodeName, "quantTokenScaleSize: {%ld}\n", quantTokenScaleSize);
-    // Non-quantized Combine stores one BF16 value (2 bytes) for each hidden-dimension element.
-    int64_t combineTokenBytes = static_cast<int64_t>(tilingData->h) * 2;
-    if (tilingData->combineQuantMode != COMBINE_NO_QUANT) {
-        int64_t tokenStorageBytes =
-            ops::CeilAlign(static_cast<int64_t>(tilingData->h), static_cast<int64_t>(ALIGN_256));
-        int64_t scaleCount =
-            ops::CeilDiv(static_cast<int64_t>(tilingData->h), static_cast<int64_t>(MXFP_SCALE_GROUP_NUM));
-        int64_t storedScaleBytes = ops::CeilAlign(scaleCount, static_cast<int64_t>(MXFP_MULTI_BASE_SIZE));
-        combineTokenBytes = ops::CeilAlign(tokenStorageBytes + storedScaleBytes, static_cast<int64_t>(ALIGN_32));
-    }
+        static_cast<int64_t>(tilingData->numMaxTokensPerRank) * tokenScaleBytes, static_cast<int64_t>(ALIGN_512));
+    // 非量化 combine 每个 hidden 元素存一个 BF16（2 字节）。
+    int64_t combineTokenBytes =
+        CalcCombineTokenBytes(static_cast<int64_t>(tilingData->h), 2, tilingData->combineQuantMode != COMBINE_NO_QUANT);
+    int64_t sendTotalNum = static_cast<int64_t>(tilingData->numMaxTokensPerRank) * tilingData->topK;
     int64_t combineSendSize = ops::CeilAlign(sendTotalNum * combineTokenBytes, static_cast<int64_t>(ALIGN_512));
+    OP_LOGD(nodeName, "rankSyncInWorldSize: {%ld}\n", PEERMEM_DATA_OFFSET);
+    OP_LOGD(nodeName, "maskRecvSize: {%ld}\n", maskRecvSize);
+    OP_LOGD(nodeName, "quantTokenScaleSize: {%ld}\n", quantTokenScaleSize);
     OP_LOGD(nodeName, "combineSendSize: {%ld}\n", combineSendSize);
     OP_LOGD(nodeName, "total PeermemInfo Size: {%ld}\n",
-            rankSyncInWorldSize + maskRecvSize + quantTokenScaleSize + combineSendSize);
+            exceptionDumpRegionSize + PEERMEM_DATA_OFFSET + maskRecvSize + quantTokenScaleSize + combineSendSize);
 }
 
 static ge::DataType GetDataTypeByOpQuantMode(const int64_t opQuantMode)
@@ -504,37 +495,22 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
                             .c_str()),
                     return ge::GRAPH_FAILED);
 
-    // maskRecv Size
-    int64_t compareCount =
-        ops::CeilAlign((int64_t)(numMaxTokensPerRank * topK * sizeof(int32_t)), (int64_t)(ALIGN_256)) /
-        (int64_t)sizeof(int32_t);
-    int64_t maskAlignSize = ops::CeilAlign(compareCount / 8, (int64_t)ALIGN_32); // 8 = block_32 / sizeof(int32_t)
-    int64_t maskSlotSize = maskAlignSize + ALIGN_32;                             // mask + 32B count
-    int64_t maskRecvSize = ops::CeilAlign(moeExpertPerRank * epWorldSize * maskSlotSize, ALIGN_512);
-    // quantTokenScale Size
-    uint32_t mxScaleNum = ops::CeilDiv(h, static_cast<int64_t>(ALIGN_32));
-    uint32_t dataBytes = ops::CeilAlign(h, static_cast<int64_t>(ALIGN_256)) * sizeof(int8_t);
-    uint32_t scaleAlignBytes =
-        ops::CeilAlign(mxScaleNum * static_cast<uint32_t>(sizeof(int8_t)), static_cast<uint32_t>(ALIGN_32));
-    uint32_t tokenBytes = dataBytes + scaleAlignBytes;
-    if (*attrs->GetAttrPointer<int64_t>((config.attrTopkWeightsTypeIndex)) == 1) {
-        uint32_t weightBytes =
-            ops::CeilAlign(static_cast<uint32_t>(topK * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
-        tokenBytes = ops::CeilAlign(tokenBytes + weightBytes, static_cast<uint32_t>(ALIGN_32));
+    // peermem 窗口尺寸与 kernel 侧布局同源（common/mega_moe_peermem.h），host / device 不再各写一份公式。
+    // 校验期尚未确定激活 dtype，elemsPerByte 取 1（保守上界，与既有校验口径一致）。
+    PeermemSizeParams peermemSizeParams{static_cast<int64_t>(numMaxTokensPerRank),
+                                        static_cast<int64_t>(topK),
+                                        static_cast<int64_t>(h),
+                                        static_cast<int64_t>(moeExpertPerRank),
+                                        static_cast<int64_t>(epWorldSize),
+                                        static_cast<int64_t>(yDtypeSize),
+                                        1U,
+                                        *attrs->GetAttrPointer<int64_t>((config.attrTopkWeightsTypeIndex)) == 1,
+                                        GetCombineQuantModeByAttr(context, config) != COMBINE_NO_QUANT};
+    int64_t leastCclBufferSize = CalcPeermemLeastSize(peermemSizeParams);
+    auto topoTypePtr = attrs->GetAttrPointer<int64_t>((config.attrTopoTypeIndex));
+    if (*topoTypePtr == TOPO_TYPE_MTE) {
+        leastCclBufferSize += EXCEPTION_DUMP_REGION_SIZE;
     }
-    int64_t quantTokenScaleSize =
-        ops::CeilAlign((int64_t)(numMaxTokensPerRank * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
-    // 必须与 kernel InitCombineBuffers 的 combine record 布局一致。
-    int64_t combineTokenBytes = h * yDtypeSize;
-    if (GetCombineQuantModeByAttr(context, config) != COMBINE_NO_QUANT) {
-        int64_t tokenStorageBytes = ops::CeilAlign(h, static_cast<int64_t>(ALIGN_256));
-        int64_t scaleCount = ops::CeilDiv(h, static_cast<int64_t>(MXFP_SCALE_GROUP_NUM));
-        int64_t storedScaleBytes = ops::CeilAlign(scaleCount, static_cast<int64_t>(MXFP_MULTI_BASE_SIZE));
-        combineTokenBytes = ops::CeilAlign(tokenStorageBytes + storedScaleBytes, static_cast<int64_t>(ALIGN_32));
-    }
-    int64_t combineSendSize =
-        ops::CeilAlign(numMaxTokensPerRank * topK * combineTokenBytes, static_cast<int64_t>(ALIGN_512));
-    int64_t leastCclBufferSize = PEERMEM_DATA_OFFSET + maskRecvSize + quantTokenScaleSize + combineSendSize;
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>((config.attrCclBufferSizeIndex));
     int64_t cclBufferSize = static_cast<int64_t>(*cclBufferSizePtr);
     OP_TILING_CHECK(cclBufferSize < leastCclBufferSize,
@@ -970,14 +946,15 @@ static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilin
 
 static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
 {
-    bool isA8W8 = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
-                  tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
-    bool useMteA8W8Wave = tilingData->topoType == TOPO_TYPE_MTE && isA8W8;
+    bool useMteA8W8Wave =
+        tilingData->topoType == TOPO_TYPE_MTE && (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
+                                                  tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
+    bool useGroupGrainedActivationFlag = tilingData->topoType == TOPO_TYPE_MTE;
     bool useGroupSyncCounters =
         tilingData->topoType == TOPO_TYPE_URMA || (tilingData->combineQuantMode != COMBINE_NO_QUANT && !useMteA8W8Wave);
     uint64_t maxWavesPerExpert = ops::CeilDiv<uint64_t>(tilingData->maxOutputSize, L1_TILE_M_256);
     uint64_t waveFlagSlotsPerExpert = maxWavesPerExpert * INT_CACHELINE;
-    uint64_t activationFlagSlotsPerExpert = useMteA8W8Wave ? waveFlagSlotsPerExpert : INT_CACHELINE;
+    uint64_t activationFlagSlotsPerExpert = useGroupGrainedActivationFlag ? waveFlagSlotsPerExpert : INT_CACHELINE;
     uint64_t moeExpertCount = tilingData->moeExpertPerRank;
 
     uint64_t flagElementCount = moeExpertCount * (activationFlagSlotsPerExpert + waveFlagSlotsPerExpert +
@@ -1856,7 +1833,7 @@ static ge::graphStatus TilingCheckMegaMoe(const gert::TilingContext *context, Me
                                           const char *nodeName)
 {
     OP_TILING_CHECK(CheckTensorPtrNullptr(context, config, nodeName) == ge::GRAPH_FAILED,
-                    OP_LOGE(nodeName, "params check nulld failed."), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "params check nullptr failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(CheckTensorDim(context, config, nodeName) == ge::GRAPH_FAILED,
                     OP_LOGE(nodeName, "params shape is invalid."), return ge::GRAPH_FAILED);
@@ -1918,15 +1895,18 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
 
     int64_t hiddenDim =
         GetSingleExpertTensorDimSize(weightOneStorageShape, WEIGHT_MATRIX_ROW_DIM_INDEX, isPerExpertWeightTensor);
-    OP_TILING_CHECK(hiddenDim < HIDDEN_DIM_BASE || hiddenDim > MAX_HIDDEN_DIM,
+    // URMA 保持 1K 下限/1K 对齐；MTE 泛化到 [512, 8K] 且 256 对齐（gate/up 半宽按 128 对齐）。
+    const int64_t minHiddenDim = *topoTypePtr == TOPO_TYPE_URMA ? HIDDEN_DIM_BASE : MTE_MIN_HIDDEN_DIM;
+    const int64_t hiddenDimAlign = *topoTypePtr == TOPO_TYPE_URMA ? HIDDEN_DIM_BASE : MTE_HIDDEN_DIM_ALIGN;
+    OP_TILING_CHECK(hiddenDim < minHiddenDim || hiddenDim > MAX_HIDDEN_DIM,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "hiddenDim", std::to_string(hiddenDim).c_str(),
-                                              (std::string("should in [") + std::to_string(HIDDEN_DIM_BASE) + ", " +
+                                              (std::string("should in [") + std::to_string(minHiddenDim) + ", " +
                                                std::to_string(MAX_HIDDEN_DIM) + "]")
                                                   .c_str()),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(hiddenDim % HIDDEN_DIM_BASE != 0,
+    OP_TILING_CHECK(hiddenDim % hiddenDimAlign != 0,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "hiddenDim", std::to_string(hiddenDim).c_str(),
-                                              (std::string("multiple of ") + std::to_string(HIDDEN_DIM_BASE)).c_str()),
+                                              (std::string("multiple of ") + std::to_string(hiddenDimAlign)).c_str()),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -2049,4 +2029,35 @@ static ge::graphStatus TilingParseForMegaMoe(gert::TilingParseContext *context)
 }
 
 IMPL_OP_OPTILING(MegaMoe).Tiling(MegaMoeTilingFunc).TilingParse<MegaMoeCompileInfo>(TilingParseForMegaMoe);
+
+#if RUNTIME_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && METADEF_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
+inline void MegaMoeExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
+{
+    Mc2Exception::Mc2ExceptionImpl(args, userdata, "MegaMoe");
+}
+
+__attribute__((constructor)) void RegisterMegaMoeExceptionFunc()
+{
+    int32_t runtimeVersionNum = 0;
+    int32_t metadefVersionNum = 0;
+
+    if (aclsysGetVersionNum("runtime", &runtimeVersionNum) != ACL_SUCCESS) {
+        OP_LOGW("MegaMoe", "Get runtime version failed when register exception func.");
+        return;
+    }
+    if (aclsysGetVersionNum("metadef", &metadefVersionNum) != ACL_SUCCESS) {
+        OP_LOGW("MegaMoe", "Get metadef version failed when register exception func.");
+        return;
+    }
+
+    if (runtimeVersionNum < EXCEPTION_DUMP_SUPPORT_VERSION || metadefVersionNum < EXCEPTION_DUMP_SUPPORT_VERSION) {
+        OP_LOGW("MegaMoe",
+                "The runtime(%d) or metadata(%d) version is lower than the version(%d) supporting exception func.",
+                runtimeVersionNum, metadefVersionNum, EXCEPTION_DUMP_SUPPORT_VERSION);
+        return;
+    }
+
+    IMPL_OP(MegaMoe).ExceptionDumpParseFunc(MegaMoeExceptionImplWrapper);
+}
+#endif
 } // namespace optiling

@@ -11,10 +11,9 @@
 #define CATLASS_ARCH 2201
 
 #include "catlass/arch/arch.hpp"
-#include "catlass/arch/kda_cross_core_sync.hpp"
+#include "catlass/arch/cross_core_sync.hpp"
 #include "catlass/arch/resource.hpp"
 #include "catlass/catlass.hpp"
-#include "catlass/kda_debug.hpp"
 #include "catlass/epilogue/block/block_epilogue.hpp"
 #include "../../epilogue/block/block_epilogue_kda_fwdh_update_arch22.hpp"
 #include "../../epilogue/block/block_epilogue_kda_fwdh_vnew_arch22.hpp"
@@ -26,9 +25,9 @@
 #include "catlass/gemm/gemm_type.hpp"
 #include "catlass/layout/layout.hpp"
 #include "catlass/gemm_coord.hpp"
-#include "tla/kda_tensor.hpp"
+#include "tla/tensor.hpp"
 #include "tla/layout.hpp"
-#include "tla/kda_tensor.hpp"
+#include "tla/tensor.hpp"
 
 #include "kernel_operator.h"
 using namespace Catlass;

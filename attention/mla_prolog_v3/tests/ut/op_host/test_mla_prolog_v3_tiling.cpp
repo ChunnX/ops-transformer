@@ -3744,9 +3744,7 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test67)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
-// ===================== V4 接口并入 V3：do_rope=false（RoPE 关闭）用例 =====================
-// 说明：aclnnMlaPrologV4WeightNz 接口并入 mla_prolog_v3（do_rope 由 Version(1) 属性新增，默认 true）。
-// 以下用例由原 MlaPrologV4 tiling UT 移植，验证 do_rope=false 时 ENABLE_ROPE=0。
+// ===================== RoPE 关闭用例 =====================
 TEST_F(MlaPrologV3, MlaPrologV3_tiling_test_do_rope_false_a2)
 {
     optiling::MlaPrologCompileInfo compileInfo = {48};
@@ -3758,15 +3756,15 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test_do_rope_false_a2)
             {{{1536, 32 * (128 + 64)}, {1536, 32 * (128 + 64)}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ}, // weight_uq_qr
             {{{32, 128, 512}, {32, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},                           // weight_uk
             {{{7168, 512 + 64}, {7168, 512 + 64}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},               // weight_dkv_kr
-            {{{1536}, {1536}}, ge::DT_BF16, ge::FORMAT_ND},                              // rmsnorm_gamma_cq
-            {{{512}, {512}}, ge::DT_BF16, ge::FORMAT_ND},                                // rmsnorm_gamma_ckv
-            {{{8, 1, 64}, {8, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND},                      // rope_sin (required)
-            {{{8, 1, 64}, {8, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND},                      // rope_cos (required)
-            {{{16, 128, 1, 512}, {16, 128, 1, 512}}, ge::DT_INT8, ge::FORMAT_ND},        // kv_cache
-            {{{16, 128, 1, 64}, {16, 128, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND},          // kr_cache
-            {{{8, 1}, {8, 1}}, ge::DT_INT64, ge::FORMAT_ND},                             // cache_index
-            {{{8 * 1, 1}, {8 * 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},                     // dequant_scale_x
-            {{{1, 1536}, {1, 1536}}, ge::DT_FLOAT, ge::FORMAT_ND},                       // dequant_scale_w_dq
+            {{{1536}, {1536}}, ge::DT_BF16, ge::FORMAT_ND},                       // rmsnorm_gamma_cq
+            {{{512}, {512}}, ge::DT_BF16, ge::FORMAT_ND},                         // rmsnorm_gamma_ckv
+            {{{0}, {0}}, ge::DT_BF16, ge::FORMAT_ND},                             // rope_sin empty (do_rope=false)
+            {{{0}, {0}}, ge::DT_BF16, ge::FORMAT_ND},                             // rope_cos empty (do_rope=false)
+            {{{16, 128, 1, 512}, {16, 128, 1, 512}}, ge::DT_INT8, ge::FORMAT_ND}, // kv_cache
+            {{{16, 128, 1, 64}, {16, 128, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND},   // kr_cache
+            {{{8, 1}, {8, 1}}, ge::DT_INT64, ge::FORMAT_ND},                      // cache_index
+            {{{8 * 1, 1}, {8 * 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},              // dequant_scale_x
+            {{{1, 1536}, {1, 1536}}, ge::DT_FLOAT, ge::FORMAT_ND},                // dequant_scale_w_dq
             {{{1, 32 * (128 + 64)}, {1, 32 * (128 + 64)}}, ge::DT_FLOAT, ge::FORMAT_ND}, // dequant_scale_w_uq_qr
             {{{1, 512 + 64}, {1, 512 + 64}}, ge::DT_FLOAT, ge::FORMAT_ND},               // dequant_scale_w_dkv_kr
             {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // quant_scale_ckv
@@ -3800,7 +3798,6 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test_do_rope_false_a2)
             {"do_rope", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         },
         &compileInfo, "Ascend910_B3", MlaPrologV3_tiling_A2SocInfo, 4096);
-    // 与 test0 相同场景；do_rope=false → ENABLE_ROPE=0
     int64_t expectTilingKey = 3671329;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
@@ -3818,8 +3815,8 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test_do_rope_false)
             {{{7168, 512 + 64}, {7168, 512 + 64}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_FRACTAL_NZ}, // weight_dkv_kr 4
             {{{1536}, {1536}}, ge::DT_BF16, ge::FORMAT_ND},                                      // rmsnorm_gamma_cq 5
             {{{512}, {512}}, ge::DT_BF16, ge::FORMAT_ND},                                        // rmsnorm_gamma_ckv 6
-            {{{8, 1, 64}, {8, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND},           // rope_sin 7 (required)
-            {{{8, 1, 64}, {8, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND},           // rope_cos 8 (required)
+            {{{0}, {0}}, ge::DT_BF16, ge::FORMAT_ND},                         // rope_sin 7 empty (do_rope=false)
+            {{{0}, {0}}, ge::DT_BF16, ge::FORMAT_ND},                         // rope_cos 8 empty (do_rope=false)
             {{{1, 16, 1, 512}, {1, 16, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // kv_cache 9
             {{{1, 16, 1, 64}, {1, 16, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND},   // kr_cache 10
             {{{8, 1}, {8, 1}}, ge::DT_INT64, ge::FORMAT_ND},                  // cache_index 11
@@ -3858,7 +3855,6 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test_do_rope_false)
             {"do_rope", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         },
         &compileInfo, "Ascend950", MlaPrologV3_tiling_950SocInfo, 4096);
-    // 与 test43 相同场景；do_rope=false → ENABLE_ROPE=0
     int64_t expectTilingKey = 3671521;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
@@ -3876,8 +3872,8 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test_do_rope_false_combine_kr_empty)
             {{{7168, 512 + 64}, {7168, 512 + 64}}, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ}, // weight_dkv_kr 4
             {{{1536}, {1536}}, ge::DT_BF16, ge::FORMAT_ND},                             // rmsnorm_gamma_cq 5
             {{{512}, {512}}, ge::DT_BF16, ge::FORMAT_ND},                               // rmsnorm_gamma_ckv 6
-            {{{8, 64}, {8, 64}}, ge::DT_BF16, ge::FORMAT_ND},                 // rope_sin 7 (required, BS merge)
-            {{{8, 64}, {8, 64}}, ge::DT_BF16, ge::FORMAT_ND},                 // rope_cos 8 (required, BS merge)
+            {{{0}, {0}}, ge::DT_BF16, ge::FORMAT_ND},                         // rope_sin 7 empty (do_rope=false)
+            {{{0}, {0}}, ge::DT_BF16, ge::FORMAT_ND},                         // rope_cos 8 empty (do_rope=false)
             {{{1, 16, 1, 656}, {1, 16, 1, 656}}, ge::DT_INT8, ge::FORMAT_ND}, // kv_cache 9
             {{{0}, {0}}, ge::DT_INT8, ge::FORMAT_ND},                         // kr_cache 10 empty
             {{{8}, {8}}, ge::DT_INT64, ge::FORMAT_ND},                        // cache_index 11
@@ -3916,7 +3912,6 @@ TEST_F(MlaPrologV3, MlaPrologV3_tiling_test_do_rope_false_combine_kr_empty)
             {"do_rope", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         },
         &compileInfo, "Ascend910_B3", MlaPrologV3_tiling_A2SocInfo, 4096);
-    // 与 test34 相同场景；do_rope=false → ENABLE_ROPE=0
     int64_t expectTilingKey = 3671457;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
