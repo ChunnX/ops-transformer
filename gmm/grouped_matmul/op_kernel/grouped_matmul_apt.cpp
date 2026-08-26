@@ -235,9 +235,8 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
             AscendC::Std::conditional_t<Blaze::Gemm::IsTrans<wLayout>::value, AscendC::Te::ScaleBDNLayoutPtn, \
                                         AscendC::Te::ScaleBNDLayoutPtn>>; \
         GmmTensorApiMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, wLayout, \
-                             scaleLayout, yLayout, DTYPE_L0C_LOCAL>(x, weight, bias, scale, groupList, perTokenScale, \
-                                                                    y, user1, &gmmQuantParams_, &mmTilingData_, \
-                                                                    &tPipe); \
+                             scaleLayout, yLayout, DTYPE_L0C_LOCAL>( \
+            x, weight, bias, scale, groupList, perTokenScale, y, user1, &gmmQuantParams_, &mmTilingData_, &tPipe); \
     } while (0)
 #else
 #define GMM_QUANT_MX_IMPL_CLASS(cgmctXLayout, cgmctWLayout, cgmctYLayout, xLayout, wLayout, yLayout) \
