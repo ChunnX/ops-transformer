@@ -43,17 +43,15 @@ static aclnnStatus CheckTensorContiguous(const aclTensor *oriKvOptional, const a
 aclnnStatus aclnnMixedQuantSparseFlashMlaGetWorkspaceSize(
     const aclTensor *q, const aclTensor *oriKvOptional, const aclTensor *cmpKvOptional,
     const aclTensor *oriSparseIndicesOptional, const aclTensor *cmpSparseIndicesOptional,
-    const aclTensor *oriBlockTableOptional, const aclTensor *cmpBlockTableOptional,
-    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensOriKvOptional,
-    const aclTensor *cuSeqlensCmpKvOptional, const aclTensor *sequsedQOptional,
+    const aclTensor *oriBlockTableOptional, const aclTensor *cmpBlockTableOptional, const aclTensor *cuSeqlensQOptional,
+    const aclTensor *cuSeqlensOriKvOptional, const aclTensor *cuSeqlensCmpKvOptional, const aclTensor *sequsedQOptional,
     const aclTensor *sequsedOriKvOptional, const aclTensor *sequsedCmpKvOptional,
     const aclTensor *cmpResidualKvOptional, const aclTensor *oriTopkLengthOptional,
     const aclTensor *cmpTopkLengthOptional, const aclTensor *sinksOptional, const aclTensor *metadataOptional,
-    int64_t quantMode, int64_t ropeHeadDim, double softmaxScale, int64_t cmpRatio,
-    int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight,
-    const char *layoutQOptional, const char *layoutKvOptional, int64_t topkValueMode, bool returnSoftmaxLse,
-    const aclTensor *attnOut, const aclTensor *softmaxLseOptional,
-    uint64_t *workspaceSize, aclOpExecutor **executor)
+    int64_t quantMode, int64_t ropeHeadDim, double softmaxScale, int64_t cmpRatio, int64_t oriMaskMode,
+    int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight, const char *layoutQOptional,
+    const char *layoutKvOptional, int64_t topkValueMode, bool returnSoftmaxLse, const aclTensor *attnOut,
+    const aclTensor *softmaxLseOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("start aclnnMixedQuantSparseFlashMlaGetWorkspaceSize");
 
@@ -72,13 +70,12 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaGetWorkspaceSize(
         return ret;
     }
     ret = aclnnInnerMixedQuantSparseFlashMlaGetWorkspaceSize(
-        q, oriKvOptional, cmpKvOptional, oriSparseIndicesOptional, cmpSparseIndicesOptional,
-        oriBlockTableOptional, cmpBlockTableOptional, cuSeqlensQOptional, cuSeqlensOriKvOptional,
-        cuSeqlensCmpKvOptional, sequsedQOptional, sequsedOriKvOptional, sequsedCmpKvOptional,
-        cmpResidualKvOptional, oriTopkLengthOptional, cmpTopkLengthOptional, sinksOptional, metadataOptional,
-        quantMode, ropeHeadDim, softmaxScale, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
-        layoutQOptional, layoutKvOptional, topkValueMode, returnSoftmaxLse,
-        attnOut, placeHolder, workspaceSize, executor);
+        q, oriKvOptional, cmpKvOptional, oriSparseIndicesOptional, cmpSparseIndicesOptional, oriBlockTableOptional,
+        cmpBlockTableOptional, cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional,
+        sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional, cmpTopkLengthOptional,
+        sinksOptional, metadataOptional, quantMode, ropeHeadDim, softmaxScale, cmpRatio, oriMaskMode, cmpMaskMode,
+        oriWinLeft, oriWinRight, layoutQOptional, layoutKvOptional, topkValueMode, returnSoftmaxLse, attnOut,
+        placeHolder, workspaceSize, executor);
 
     if (!returnSoftmaxLse) {
         aclDestroyTensor(tempTensor);
@@ -88,7 +85,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaGetWorkspaceSize(
 }
 
 aclnnStatus aclnnMixedQuantSparseFlashMla(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                const aclrtStream stream)
+                                          const aclrtStream stream)
 {
     return aclnnInnerMixedQuantSparseFlashMla(workspace, workspaceSize, executor, stream);
 }

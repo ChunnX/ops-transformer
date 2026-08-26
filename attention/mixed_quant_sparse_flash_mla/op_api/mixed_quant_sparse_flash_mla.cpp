@@ -21,23 +21,21 @@ OP_TYPE_REGISTER(MixedQuantSparseFlashMla);
 const std::array<const aclTensor *, 2> MixedQuantSparseFlashMla(
     const aclTensor *q, const aclTensor *oriKvOptional, const aclTensor *cmpKvOptional,
     const aclTensor *oriSparseIndicesOptional, const aclTensor *cmpSparseIndicesOptional,
-    const aclTensor *oriBlockTableOptional, const aclTensor *cmpBlockTableOptional,
-    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensOriKvOptional,
-    const aclTensor *cuSeqlensCmpKvOptional, const aclTensor *sequsedQOptional,
+    const aclTensor *oriBlockTableOptional, const aclTensor *cmpBlockTableOptional, const aclTensor *cuSeqlensQOptional,
+    const aclTensor *cuSeqlensOriKvOptional, const aclTensor *cuSeqlensCmpKvOptional, const aclTensor *sequsedQOptional,
     const aclTensor *sequsedOriKvOptional, const aclTensor *sequsedCmpKvOptional,
     const aclTensor *cmpResidualKvOptional, const aclTensor *oriTopkLengthOptional,
     const aclTensor *cmpTopkLengthOptional, const aclTensor *sinksOptional, const aclTensor *metadataOptional,
-    int64_t quantMode, int64_t ropeHeadDim, double softmaxScale, int64_t cmpRatio,
-    int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight,
-    const char *layoutQOptional, const char *layoutKvOptional, int64_t topkValueMode, bool returnSoftmaxLse,
-    aclOpExecutor *executor)
+    int64_t quantMode, int64_t ropeHeadDim, double softmaxScale, int64_t cmpRatio, int64_t oriMaskMode,
+    int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight, const char *layoutQOptional,
+    const char *layoutKvOptional, int64_t topkValueMode, bool returnSoftmaxLse, aclOpExecutor *executor)
 {
     L0_DFX(MixedQuantSparseFlashMla, q, oriKvOptional, cmpKvOptional, oriSparseIndicesOptional,
            cmpSparseIndicesOptional, oriBlockTableOptional, cmpBlockTableOptional, cuSeqlensQOptional,
-           cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional, sequsedOriKvOptional,
-           sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional, cmpTopkLengthOptional,
-           sinksOptional, metadataOptional, quantMode, ropeHeadDim, softmaxScale, cmpRatio, oriMaskMode,
-           cmpMaskMode, oriWinLeft, oriWinRight, layoutQOptional, layoutKvOptional, topkValueMode, returnSoftmaxLse);
+           cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional, sequsedOriKvOptional, sequsedCmpKvOptional,
+           cmpResidualKvOptional, oriTopkLengthOptional, cmpTopkLengthOptional, sinksOptional, metadataOptional,
+           quantMode, ropeHeadDim, softmaxScale, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
+           layoutQOptional, layoutKvOptional, topkValueMode, returnSoftmaxLse);
 
     if (oriKvOptional == nullptr) {
         oriKvOptional = executor->AllocTensor(DataType::DT_FLOAT8_E4M3FN, Format::FORMAT_ND, Format::FORMAT_ND);
@@ -94,17 +92,15 @@ const std::array<const aclTensor *, 2> MixedQuantSparseFlashMla(
     auto attentionOutAlloc = executor->AllocTensor(DataType::DT_BF16, Format::FORMAT_ND, Format::FORMAT_ND);
     auto softmaxLseAlloc = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
 
-    auto ret = INFER_SHAPE(MixedQuantSparseFlashMla,
-                           OP_INPUT(q, oriKvOptional, cmpKvOptional, oriSparseIndicesOptional,
-                                    cmpSparseIndicesOptional, oriBlockTableOptional, cmpBlockTableOptional,
-                                    cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional,
-                                    sequsedQOptional, sequsedOriKvOptional, sequsedCmpKvOptional,
-                                    cmpResidualKvOptional, oriTopkLengthOptional, cmpTopkLengthOptional,
-                                    sinksOptional, metadataOptional),
-                           OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
-                           OP_ATTR(quantMode, ropeHeadDim, softmaxScale, cmpRatio, oriMaskMode, cmpMaskMode,
-                                   oriWinLeft, oriWinRight, layoutQOptional, layoutKvOptional, topkValueMode,
-                                   returnSoftmaxLse));
+    auto ret = INFER_SHAPE(
+        MixedQuantSparseFlashMla,
+        OP_INPUT(q, oriKvOptional, cmpKvOptional, oriSparseIndicesOptional, cmpSparseIndicesOptional,
+                 oriBlockTableOptional, cmpBlockTableOptional, cuSeqlensQOptional, cuSeqlensOriKvOptional,
+                 cuSeqlensCmpKvOptional, sequsedQOptional, sequsedOriKvOptional, sequsedCmpKvOptional,
+                 cmpResidualKvOptional, oriTopkLengthOptional, cmpTopkLengthOptional, sinksOptional, metadataOptional),
+        OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
+        OP_ATTR(quantMode, ropeHeadDim, softmaxScale, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
+                layoutQOptional, layoutKvOptional, topkValueMode, returnSoftmaxLse));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MixedQuantSparseFlashMla InferShape failed.");
         return {nullptr, nullptr};

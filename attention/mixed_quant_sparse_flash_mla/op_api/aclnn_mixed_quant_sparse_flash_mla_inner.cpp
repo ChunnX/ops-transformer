@@ -30,7 +30,7 @@ void MixedQuantSparseFlashMlaKvTensorPreProcess(const aclTensor *&kvTensor, cons
 }
 
 void MixedQuantSparseFlashMlaProcessSoftmaxLse(bool returnSoftmaxLse, const aclTensor *softmaxLse,
-                                     const aclTensor *&tempTensor, const aclTensor *&placeHolder)
+                                               const aclTensor *&tempTensor, const aclTensor *&placeHolder)
 {
     if (!returnSoftmaxLse) {
         std::vector<int64_t> shape = {0};

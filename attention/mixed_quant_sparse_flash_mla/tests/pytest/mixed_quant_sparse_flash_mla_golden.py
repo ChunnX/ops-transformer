@@ -2466,12 +2466,8 @@ def generate_and_save_testdata(
 
     # Golden tensors above retain FP8 semantics. Only the tensors crossing the
     # operator/save boundary are reinterpreted as uint8 when requested.
-    ori_k_in_pa_shape = reinterpret_kv_for_operator(
-        ori_k_in_pa_shape, ori_kv_type
-    )
-    cmp_k_in_pa_shape = reinterpret_kv_for_operator(
-        cmp_k_in_pa_shape, cmp_kv_type
-    )
+    ori_k_in_pa_shape = reinterpret_kv_for_operator(ori_k_in_pa_shape, ori_kv_type)
+    cmp_k_in_pa_shape = reinterpret_kv_for_operator(cmp_k_in_pa_shape, cmp_kv_type)
 
     # 0轴非连续
     # if layout_kv == "PA_BBND" and (template_run_mode == "HCA" or template_run_mode == "CSA"):
