@@ -118,6 +118,9 @@ __aicore__ inline void ApplyRotaryPosEmbGradBAB<T>::Init(GM_ADDR gradQueryEmbed,
     this->cosWsGm_.SetGlobalBuffer((__gm__ float*)cosWs);
     this->sinWsGm_.SetGlobalBuffer((__gm__ float*)sinWs);
 
+    gradQGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    gradKGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+
     this->pipe_->InitBuffer(cosInQue_, bufferNum, ubFactorS_ * dAlign_ * sizeof(T));
     this->pipe_->InitBuffer(sinInQue_, bufferNum, ubFactorS_ * dAlign_ * sizeof(T));
     this->pipe_->InitBuffer(gradQInQue_, bufferNum, ubFactorS_ * ubFactorN_ * dAlign_ * sizeof(T));

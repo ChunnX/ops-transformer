@@ -134,6 +134,9 @@ __aicore__ inline void ApplyRotaryPosEmbGradAB<T, kDcosFlag>::Init(
     cosWsGm_.SetGlobalBuffer((__gm__ float*)cosWs);
     sinWsGm_.SetGlobalBuffer((__gm__ float*)sinWs);
 
+    gradQGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    gradKGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+
     // UB: cos/sin 各 ubFactorBS 行; grad/dx 各 ubFactorBS*ubFactorN 行 (双缓冲)
     pipe_->InitBuffer(cosInQue_, bufferNum, ubFactorBS_ * dAlign_ * sizeof(T));
     pipe_->InitBuffer(sinInQue_, bufferNum, ubFactorBS_ * dAlign_ * sizeof(T));
@@ -145,8 +148,6 @@ __aicore__ inline void ApplyRotaryPosEmbGradAB<T, kDcosFlag>::Init(
     if constexpr (kDcosFlag) {
         partialDAlign_ = Ops::Base::CeilAlign<int64_t>(
             tilingData_->d / HALF_COEF, BLOCK_TYPE_SIZE / sizeof(float)) * HALF_COEF;
-        // query/key/gradCos/gradSin 与 grad 同形 (ubFactorBS*ubFactorN*dAlign), 仅 dCosFlag=1 时分配
-        // 注意: nQ/nK 已是统一后的 totalN, 这里按 maxN 分配保证两路都够用
         pipe_->InitBuffer(queryInQue_, bufferNum, ubFactorBS_ * ubFactorN_ * dAlign_ * sizeof(T));
         pipe_->InitBuffer(keyInQue_, bufferNum, ubFactorBS_ * ubFactorN_ * dAlign_ * sizeof(T));
         pipe_->InitBuffer(gradCosOutQue_, bufferNum, ubFactorBS_ * ubFactorN_ * partialDAlign_ * sizeof(float));
