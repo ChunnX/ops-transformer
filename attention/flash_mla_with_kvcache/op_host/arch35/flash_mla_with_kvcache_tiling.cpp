@@ -284,21 +284,21 @@ void FlashMlaWithKvcacheTilingImpl::CalcNumBlocks(uint32_t usedAicNum)
 
 void FlashMlaWithKvcacheTilingImpl::UpdateTilingKeyConfig()
 {
-    // MLA D512 唯一路径: sOuter=64, sInner=128, D=576, DV=512 -> Config index 9
+    // MLA D512 唯一路径: S1=64, S2=128, D=576, DV=512 -> Config index 0
     tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512;
 }
 
 void FlashMlaWithKvcacheTilingImpl::UpdateTilingKeyLayout()
 {
-    // q 布局 -> InOutLayoutType（取值以本算子 op_kernel/arch35/flash_mla_with_kvcache_template_tiling_key.h
-    // 的枚举常量为准：TND_TND=2 / BSH_BSH=1 / BNSD_BNSD=0；勿照抄 flash_attn 的枚举数值——flash_attn
-    // 编号不同：0=BSND/1=BNSD/2=TND）。out 布局走 tiling 运行时字段（kernelOutputLayout），不占键位。
+    // q 布局 -> InOutLayoutType（取值以 op_kernel/utils/flash_mla_with_kvcache_common_def.h
+    // 为准，数值对齐 flash_attn：BSND=0 / BNSD=1 / TND=2；out 布局恒等于 q，无输出转置，
+    // 不占独立键位）
     if (faInfo_->qLayout == FlashMlaWithKvcacheLayout::TND) {
-        tilingKeyInfo_.inputLayout = InOutLayoutType_TND_TND;
+        tilingKeyInfo_.inputLayout = InOutLayoutType_TND;
     } else if (faInfo_->qLayout == FlashMlaWithKvcacheLayout::BSND) {
-        tilingKeyInfo_.inputLayout = InOutLayoutType_BSH_BSH;
+        tilingKeyInfo_.inputLayout = InOutLayoutType_BSND;
     } else if (faInfo_->qLayout == FlashMlaWithKvcacheLayout::BNSD) {
-        tilingKeyInfo_.inputLayout = InOutLayoutType_BNSD_BNSD;
+        tilingKeyInfo_.inputLayout = InOutLayoutType_BNSD;
     }
 }
 
@@ -306,10 +306,9 @@ void FlashMlaWithKvcacheTilingImpl::UpdateTilingKeyInfo()
 {
     UpdateTilingKeyLayout();
     UpdateTilingKeyConfig();
-    tilingKeyInfo_.isFd = flashDecodeFlag_;
     tilingKeyInfo_.hasAttenMask = faInfo_->attenMaskFlag;
     // kv 布局 -> KvLayoutType（取值同 flash_attn 的 UpdateTilingKeyKvLayout 映射）：
-    //   PA_NZ -> PA_NZ(3)；PA_BNBD -> PA_BNBD(2)；PA_BBND -> PA_BBND(1)
+    //   PA_NZ -> KvLayoutType_PA_NZ(3)；PA_BNBD -> KvLayoutType_PA_BNBD(2)；PA_BBND -> KvLayoutType_PA_BBND(1)
     tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_NZ;
     if (faInfo_->kvLayout == FlashMlaWithKvcacheLayout::PA_BNBD) {
         tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BNBD;
@@ -321,15 +320,15 @@ void FlashMlaWithKvcacheTilingImpl::UpdateTilingKeyInfo()
 void FlashMlaWithKvcacheTilingImpl::GenTilingKey()
 {
     UpdateTilingKeyInfo();
-    tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.hasAttenMask,
-                                    tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd);
+    // 实参序 = ASCENDC_TPL_ARGS_DECL 声明序：InOutLayoutType, KvLayoutType, HasAttenMask, Config
+    tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.kvLayoutType,
+                                    tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.config);
 
     OP_LOGI(faInfo_->opName, "The tilingkey is %llu.", tilingKey_);
     OP_LOGI(faInfo_->opName,
-            "The tilingkey param is inOutLayoutType: %llu, config: %llu, hasAttenMask: %u, "
-            "kvLayoutType: %llu, isFd: %u.",
-            tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.kvLayoutType,
-            tilingKeyInfo_.isFd);
+            "The tilingkey param is inOutLayoutType: %llu, kvLayoutType: %llu, hasAttenMask: %u, config: %llu.",
+            tilingKeyInfo_.inputLayout, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.hasAttenMask,
+            tilingKeyInfo_.config);
 }
 
 // FIA MLA workspace 公式，逐字移植（accumOutSize/logSumExpSize 与 FD 槽位
