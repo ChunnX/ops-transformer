@@ -192,6 +192,9 @@ public:
                 vecFaBlock_.InitVecBlock(tPipe, sequsedQ, sequsedKv, pScale, attnMask, softmaxLse, attnOut, workspace);
                 vecFaBlock_.SetCuSeqLensParser(qSeqUsedParser_);
             }
+            if (!constInfo_.needInitOutput && HasZeroLengthBatch()) {
+                constInfo_.needInitOutput = true;
+            }
             vecFaBlock_.ClearOutput();
         }
 
@@ -428,6 +431,61 @@ public:
             return gS1Cur < gS1OEnd_;
         }
         return s2Cur < s2OEnd_;
+    }
+
+    __aicore__ inline bool HasZeroLengthBatch()
+    {
+        const bool hasQVarlen = (constInfo_.cuSeqLensQSize > 0) || (constInfo_.seqUsedQSize > 0);
+        const bool hasKvVarlen = (constInfo_.cuSeqLensKVSize > 0) || (constInfo_.seqUsedKvSize > 0);
+        if (!hasQVarlen && !hasKvVarlen) {
+            return false;
+        }
+        const uint32_t bSize = constInfo_.bSize;
+        const bool bothQ = (constInfo_.cuSeqLensQSize > 0) && (constInfo_.seqUsedQSize > 0);
+        const bool bothKv = (constInfo_.cuSeqLensKVSize > 0) && (constInfo_.seqUsedKvSize > 0);
+        for (uint32_t bIdx = 0; bIdx < bSize; bIdx++) {
+            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+                if (bothQ) {
+                    uint64_t qCuLen = qCuSeqLensParser_.GetTBase(bIdx + 1) - qCuSeqLensParser_.GetTBase(bIdx);
+                    uint64_t qUsedLen = qCuSeqLensParser_.GetActualSeqLength(bIdx);
+                    if (qUsedLen < qCuLen) {
+                        return true;
+                    }
+                } else if (constInfo_.cuSeqLensQSize > 0) {
+                    uint64_t qCuLen = qCuSeqLensParser_.GetTBase(bIdx + 1) - qCuSeqLensParser_.GetTBase(bIdx);
+                    if (qCuLen == 0) {
+                        return true;
+                    }
+                }
+            } else {
+                if (constInfo_.seqUsedQSize > 0) {
+                    if (qSeqUsedParser_.GetActualSeqLength(bIdx) == 0) {
+                        return true;
+                    }
+                }
+            }
+            if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
+                if (bothKv) {
+                    uint64_t kvCuLen = kvCuSeqLensParser_.GetTBase(bIdx + 1) - kvCuSeqLensParser_.GetTBase(bIdx);
+                    uint64_t kvUsedLen = kvCuSeqLensParser_.GetActualSeqLength(bIdx);
+                    if (kvUsedLen < kvCuLen) {
+                        return true;
+                    }
+                } else if (constInfo_.cuSeqLensKVSize > 0) {
+                    uint64_t kvCuLen = kvCuSeqLensParser_.GetTBase(bIdx + 1) - kvCuSeqLensParser_.GetTBase(bIdx);
+                    if (kvCuLen == 0) {
+                        return true;
+                    }
+                }
+            } else {
+                if (constInfo_.seqUsedKvSize > 0) {
+                    if (kvSeqUsedParser_.GetActualSeqLength(bIdx) == 0) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     __aicore__ inline TASK_DEAL_MODE GetTaskDealMode(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
