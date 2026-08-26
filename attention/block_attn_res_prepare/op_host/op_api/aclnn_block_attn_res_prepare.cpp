@@ -106,34 +106,58 @@ aclnnStatus CheckDtype(const aclTensor *blockRes, const aclTensor *validBlocks, 
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus CheckTensorRank(const aclTensor *tensor, const char *tensorName, size_t expectedRank)
+aclnnStatus CheckTensorContiguous(const aclTensor *tensor, const char *tensorName)
+{
+    if (!IsContiguous(tensor)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s must be contiguous, but got shape %s and strides %s.", tensorName,
+                op::ToString(tensor->GetViewShape()).GetString(), op::ToString(tensor->GetViewStrides()).GetString());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus CheckContiguous(const aclTensor *blockRes, const aclTensor *validBlocks, const aclTensor *pseudoQuery,
+                            const aclTensor *numerator, const aclTensor *logitMax, const aclTensor *expSum)
+{
+    if (CheckTensorContiguous(blockRes, "blockRes") != ACLNN_SUCCESS ||
+        CheckTensorContiguous(validBlocks, "validBlocks") != ACLNN_SUCCESS ||
+        CheckTensorContiguous(pseudoQuery, "pseudoQuery") != ACLNN_SUCCESS ||
+        CheckTensorContiguous(numerator, "numerator") != ACLNN_SUCCESS ||
+        CheckTensorContiguous(logitMax, "logitMax") != ACLNN_SUCCESS ||
+        CheckTensorContiguous(expSum, "expSum") != ACLNN_SUCCESS) {
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus CheckTensorDimension(const aclTensor *tensor, const char *tensorName, size_t expectedDimension)
 {
     const auto &shape = tensor->GetViewShape();
-    const size_t actualRank = shape.GetDimNum();
-    if (actualRank != expectedRank) {
+    const size_t actualDimension = shape.GetDimNum();
+    if (actualDimension != expectedDimension) {
         OP_LOGE_FOR_INVALID_SHAPEDIM("aclnnBlockAttnResPrepareGetWorkspaceSize", tensorName,
-                                     (std::to_string(actualRank) + "D").c_str(),
-                                     (std::to_string(expectedRank) + "D").c_str());
+                                     (std::to_string(actualDimension) + "D").c_str(),
+                                     (std::to_string(expectedDimension) + "D").c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus CheckInputRanks(const aclTensor *blockRes, const aclTensor *validBlocks, const aclTensor *pseudoQuery)
+aclnnStatus CheckInputDimensions(const aclTensor *blockRes, const aclTensor *validBlocks, const aclTensor *pseudoQuery)
 {
-    if (CheckTensorRank(blockRes, "blockRes", BLOCK_RES_DIM_NUM) != ACLNN_SUCCESS ||
-        CheckTensorRank(validBlocks, "validBlocks", VALID_BLOCKS_DIM_NUM) != ACLNN_SUCCESS ||
-        CheckTensorRank(pseudoQuery, "pseudoQuery", PSEUDO_QUERY_DIM_NUM) != ACLNN_SUCCESS) {
+    if (CheckTensorDimension(blockRes, "blockRes", BLOCK_RES_DIM_NUM) != ACLNN_SUCCESS ||
+        CheckTensorDimension(validBlocks, "validBlocks", VALID_BLOCKS_DIM_NUM) != ACLNN_SUCCESS ||
+        CheckTensorDimension(pseudoQuery, "pseudoQuery", PSEUDO_QUERY_DIM_NUM) != ACLNN_SUCCESS) {
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus CheckOutputRanks(const aclTensor *numerator, const aclTensor *logitMax, const aclTensor *expSum)
+aclnnStatus CheckOutputDimensions(const aclTensor *numerator, const aclTensor *logitMax, const aclTensor *expSum)
 {
-    if (CheckTensorRank(numerator, "numerator", NUMERATOR_DIM_NUM) != ACLNN_SUCCESS ||
-        CheckTensorRank(logitMax, "logitMax", STATS_DIM_NUM) != ACLNN_SUCCESS ||
-        CheckTensorRank(expSum, "expSum", STATS_DIM_NUM) != ACLNN_SUCCESS) {
+    if (CheckTensorDimension(numerator, "numerator", NUMERATOR_DIM_NUM) != ACLNN_SUCCESS ||
+        CheckTensorDimension(logitMax, "logitMax", STATS_DIM_NUM) != ACLNN_SUCCESS ||
+        CheckTensorDimension(expSum, "expSum", STATS_DIM_NUM) != ACLNN_SUCCESS) {
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -229,10 +253,10 @@ aclnnStatus CheckOutputShapes(const aclTensor *blockRes, const aclTensor *pseudo
 aclnnStatus CheckShape(const aclTensor *blockRes, const aclTensor *validBlocks, const aclTensor *pseudoQuery,
                        const aclTensor *numerator, const aclTensor *logitMax, const aclTensor *expSum)
 {
-    if (CheckInputRanks(blockRes, validBlocks, pseudoQuery) != ACLNN_SUCCESS) {
+    if (CheckInputDimensions(blockRes, validBlocks, pseudoQuery) != ACLNN_SUCCESS) {
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (CheckOutputRanks(numerator, logitMax, expSum) != ACLNN_SUCCESS) {
+    if (CheckOutputDimensions(numerator, logitMax, expSum) != ACLNN_SUCCESS) {
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (CheckInputShapes(blockRes, validBlocks, pseudoQuery) != ACLNN_SUCCESS) {
@@ -254,6 +278,8 @@ aclnnStatus CheckParams(const aclTensor *blockRes, const aclTensor *validBlocks,
         return ACLNN_ERR_PARAM_INVALID;
     }
     CHECK_RET(CheckDtype(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckContiguous(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     return CheckShape(blockRes, validBlocks, pseudoQuery, numerator, logitMax, expSum);
 }

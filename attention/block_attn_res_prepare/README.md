@@ -150,6 +150,7 @@ $$
 - `T >= 0`，`S >= 0`，`1 <= N <= 64`，`1 <= D <= 8192`。
 - `block_res` 的 shape 为 `[T, N, D]`，`pseudo_query` 的 shape 为 `[S, D]`；`numerator`、`logit_max` 和 `exp_sum` 的 shape 分别为 `[S, T, D]`、`[S, T]` 和 `[S, T]`。
 - `valid_blocks` 的 shape 必须为 `[1]`；`valid_blocks[0] == 0` 时，`numerator` 返回全 0 Tensor、`logit_max` 返回所有元素均为 FLOAT32 最小有限值的 Tensor、`exp_sum` 返回全 0 Tensor；`valid_blocks[0] < 0` 时返回结果相同。
+- 所有输入和输出 Tensor 均必须为连续 Tensor，不支持非连续 Tensor。
 - `eps` 必须为有限正数。
 - `T == 0` 或 `S == 0` 时，返回对应 shape 的空输出。
 

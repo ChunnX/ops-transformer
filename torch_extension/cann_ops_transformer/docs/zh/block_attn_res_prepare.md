@@ -127,7 +127,7 @@ cann_ops_transformer.block_attn_res_prepare(
 - 支持单算子模式调用，暂不支持 TorchAir 图模式调用。
 - shape要求：`T >= 0`，`S >= 0`，`1 <= N <= 64`，`1 <= D <= 8192`。
 - `block_res.shape[2]` 必须等于 `pseudo_query.shape[1]`。
-- 支持非连续输入 Tensor，底层 ACLNN 接口会在内部完成连续化。
+- 所有输入和输出 Tensor 均必须为连续 Tensor，不支持非连续 Tensor。
 - `valid_blocks[0] == 0` 时，`numerator` 返回全 0 Tensor、`logit_max` 返回所有元素均为 FLOAT32 最小有限值的 Tensor、`exp_sum` 返回全 0 Tensor；`valid_blocks[0] < 0` 时返回结果相同。
 - `T == 0` 或 `S == 0` 时，返回对应 shape 的空输出。
 - `block_res` 或 `pseudo_query` 含 `NaN`、`Inf`，或 FP32 平方、乘法及累加发生溢出时，结果可能包含 `NaN` 或 `Inf`。

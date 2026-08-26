@@ -62,29 +62,15 @@ bool IsPositiveShape(const gert::Shape &shape)
 ge::graphStatus BlockAttnResPrepareBaseTiling::GetPlatformInfo()
 {
     auto *platformInfo = context_->GetPlatformInfo();
-    if (platformInfo == nullptr) {
-        const auto *compileInfo = reinterpret_cast<const BlockAttnResPrepareCompileInfo *>(context_->GetCompileInfo());
-        OP_CHECK_IF(compileInfo == nullptr, OP_LOGE(context_->GetNodeName(), "compile info is null"),
-                    return ge::GRAPH_FAILED);
-        aicCoreNum_ = compileInfo->aicCoreNum;
-        aivCoreNum_ = compileInfo->aivCoreNum;
-        ubSize_ = compileInfo->ubSize;
-        l1Size_ = compileInfo->l1Size;
-        l0ASize_ = compileInfo->l0ASize;
-        l0BSize_ = compileInfo->l0BSize;
-        l0CSize_ = compileInfo->l0CSize;
-        systemWorkspaceSize_ = compileInfo->systemWorkspaceSize;
-    } else {
-        const auto platform = platform_ascendc::PlatformAscendC(platformInfo);
-        aicCoreNum_ = platform.GetCoreNumAic();
-        aivCoreNum_ = platform.GetCoreNumAiv();
-        platform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize_);
-        platform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, l1Size_);
-        platform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_A, l0ASize_);
-        platform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, l0BSize_);
-        platform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, l0CSize_);
-        systemWorkspaceSize_ = platform.GetLibApiWorkSpaceSize();
-    }
+    const auto platform = platform_ascendc::PlatformAscendC(platformInfo);
+    aicCoreNum_ = platform.GetCoreNumAic();
+    aivCoreNum_ = platform.GetCoreNumAiv();
+    platform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize_);
+    platform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, l1Size_);
+    platform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_A, l0ASize_);
+    platform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, l0BSize_);
+    platform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, l0CSize_);
+    systemWorkspaceSize_ = platform.GetLibApiWorkSpaceSize();
     OP_CHECK_IF(aivCoreNum_ == 0, OP_LOGE(context_->GetNodeName(), "AIV core number is zero"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         aicCoreNum_ > std::numeric_limits<uint16_t>::max() || aivCoreNum_ > std::numeric_limits<uint16_t>::max(),

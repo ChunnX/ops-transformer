@@ -156,7 +156,7 @@ aclnnStatus aclnnBlockAttnResPrepare(
       <td>FLOAT</td>
       <td>ND</td>
       <td>3</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>validBlocks</td>
@@ -166,7 +166,7 @@ aclnnStatus aclnnBlockAttnResPrepare(
       <td>INT64</td>
       <td>ND</td>
       <td>1</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>pseudoQuery</td>
@@ -176,7 +176,7 @@ aclnnStatus aclnnBlockAttnResPrepare(
       <td>FLOAT</td>
       <td>ND</td>
       <td>2</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>numerator</td>
@@ -186,7 +186,7 @@ aclnnStatus aclnnBlockAttnResPrepare(
       <td>FLOAT</td>
       <td>ND</td>
       <td>3</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>logitMax</td>
@@ -196,7 +196,7 @@ aclnnStatus aclnnBlockAttnResPrepare(
       <td>FLOAT</td>
       <td>ND</td>
       <td>2</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>expSum</td>
@@ -206,7 +206,7 @@ aclnnStatus aclnnBlockAttnResPrepare(
       <td>FLOAT</td>
       <td>ND</td>
       <td>2</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>eps</td>
@@ -286,6 +286,7 @@ aclnnStatus aclnnBlockAttnResPrepare(
 - `T >= 0`，`S >= 0`，`1 <= N <= 64`，`1 <= D <= 8192`。
 - `blockRes` 与 `pseudoQuery` 的最后一维必须相同。
 - `validBlocks[0] == 0` 时，`numerator` 返回全 0 Tensor、`logitMax` 返回所有元素均为 FLOAT32 最小有限值的 Tensor、`expSum` 返回全 0 Tensor；`validBlocks[0] < 0` 时返回结果相同。
+- 所有输入和输出 Tensor 均必须为连续 Tensor，不支持非连续 Tensor。
 - `T == 0` 或 `S == 0` 时返回对应形状的空输出。
 
 ## 返回值
@@ -300,7 +301,7 @@ aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/co
 | --- | --- | --- |
 | `ACLNN_SUCCESS` | 0 | 接口调用成功。 |
 | `ACLNN_ERR_PARAM_NULLPTR` | 161001 | `blockRes`、`validBlocks`、`pseudoQuery`、`numerator`、`logitMax`、`expSum`、`workspaceSize` 或 `executor` 为空指针。 |
-| `ACLNN_ERR_PARAM_INVALID` | 161002 | 输入或输出的数据类型、维数或 shape 不满足约束，或者 `eps` 不是有限正数。 |
+| `ACLNN_ERR_PARAM_INVALID` | 161002 | 输入或输出的数据类型、维数、shape 或连续性不满足约束，或者 `eps` 不是有限正数。 |
 | `ACLNN_ERR_RUNTIME_ERROR` | 361001 | 当前运行平台不是 Ascend 950。 |
 | `ACLNN_ERR_INNER_CREATE_EXECUTOR` | 561101 | 接口内部创建 `aclOpExecutor` 失败。 |
 | `ACLNN_ERR_INNER_NULLPTR` | 561103 | 接口内部执行连续化处理、创建算子输出或创建输出拷贝节点时返回空指针。 |
