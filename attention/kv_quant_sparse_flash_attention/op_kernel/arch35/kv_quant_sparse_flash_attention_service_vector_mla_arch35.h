@@ -873,7 +873,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *
     SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
     SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
     if (this->hasSinks) {
-        tPipe->InitBuffer(sinksBuf, 512);
+        tPipe->InitBuffer(sinksBuf, 512); // sinksBuf内存申请512B
         InitSinksBuffer(constInfo);
     }
 }
