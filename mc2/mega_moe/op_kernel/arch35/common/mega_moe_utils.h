@@ -385,16 +385,6 @@ __aicore__ inline void WaitForMoeExpertTokenCountReady(GM_ADDR tokenCountReadyFl
     WaitUntilGmFlagIsNonZero(tokenCountReadyFlag);
 }
 
-// Wave 路径在 expert 0 的 ready 槽中发布 totalMGroupCount + 1；非零仍表示 count 表已就绪。
-__aicore__ inline uint32_t WaitForMoeExpertTokenCountReadyAndGetMGroupCount(GM_ADDR tokenCountReadyFlagWorkspace,
-                                                                            const BlockWorkspaceContext &countWorkspace)
-{
-    __gm__ int32_t *tokenCountReadyFlag = reinterpret_cast<__gm__ int32_t *>(tokenCountReadyFlagWorkspace) +
-                                          static_cast<uint64_t>(countWorkspace.blockIdx) * INT_CACHELINE;
-    WaitUntilGmFlagIsNonZero(tokenCountReadyFlag);
-    return static_cast<uint32_t>(ReadGmByPassDCache(tokenCountReadyFlag) - 1);
-}
-
 // 从当前 expert/block 对应的稳定 workspace 槽读取专家 token 数。
 __aicore__ inline uint32_t GetExpertTokenCountFromWorkspace(GM_ADDR expertTokenCountWorkspace,
                                                             const BlockWorkspaceContext &countWorkspace,
