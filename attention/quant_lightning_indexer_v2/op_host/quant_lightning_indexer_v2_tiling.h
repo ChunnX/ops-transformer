@@ -148,7 +148,7 @@ struct QLIV2ParaInfo {
     const int32_t *blockSize = nullptr;
     const int32_t *sparseMode = nullptr;
     const int32_t *sparseCount = nullptr;
-    const int32_t *cmpRatio = nullptr;
+    const int64_t *cmpRatio = nullptr;
     const int32_t *returnValue = nullptr;
 };
 
