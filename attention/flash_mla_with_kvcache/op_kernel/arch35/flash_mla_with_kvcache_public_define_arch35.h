@@ -158,10 +158,6 @@ struct MlaExtConstInfo {
     StridesConstInfo vScaleStrides;
 
     bool isRowInvalidOpen;
-
-    /* S1 外切 */
-    bool enableS1OutSplit;
-    uint32_t totalSize;
 };
 
 /* 高阶特性 */
@@ -216,10 +212,12 @@ template <FlashMlaWithKvcacheKernelType>
 struct ConstInfo_t;
 
 template <>
-struct ConstInfo_t<FlashMlaWithKvcacheKernelType::NO_QUANT> : CommonConstInfo, MlaExtConstInfo, PAConstInfo, LseConstInfo {};
+struct ConstInfo_t<FlashMlaWithKvcacheKernelType::NO_QUANT>
+    : CommonConstInfo, MlaExtConstInfo, PAConstInfo, LseConstInfo {};
 
 template <>
-struct ConstInfo_t<FlashMlaWithKvcacheKernelType::FULL_QUANT> : CommonConstInfo, MlaExtConstInfo, PAConstInfo, LseConstInfo, TensorListConstInfo {};
+struct ConstInfo_t<FlashMlaWithKvcacheKernelType::FULL_QUANT>
+    : CommonConstInfo, MlaExtConstInfo, PAConstInfo, LseConstInfo, TensorListConstInfo {};
 
 __aicore__ inline int64_t ClipSInnerToken(int64_t sInnerToken, int64_t minValue, int64_t maxValue)
 {

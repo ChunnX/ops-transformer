@@ -31,8 +31,8 @@ extern "C" {
  *                                  TND: shape=(T_q, N_q, D)，T_q为总token数，
  *                                  D=576=nope(512)+rope(64)，rope已合并在q中。
  * @param kCache              [IN]  key-cache tensor。数据类型与q一致，layout由layoutKv决定。
- *                                  PA_Nz: shape=(NumBlocks, N_kv, BlockSize/16, D, 16)，
- *                                  分页注意力NZ格式，D=576=nope(512)+rope(64)，rope已合并在k_cache中。
+ *                                  PA_NZ: shape=(NumBlocks, N_kv, BlockSize/16, D, 16)，
+ *                                  分页注意力PA_NZ格式，D=576=nope(512)+rope(64)，rope已合并在k_cache中。
  *                                  MLA场景固定N_kv=1（单latent KV头）。
  * @param blockTableOptional  [IN]  可选。分页KV缓存的块映射表，数据类型INT32。
  *                                  shape=(B, MaxBlocksPerSeq)，与layoutKv=PA_Nz配合使用。
@@ -55,7 +55,7 @@ extern "C" {
  * @param maxSeqlenQ          [IN]  ATTR可选。query的最大序列长度。数据类型INT，默认值-1。
  * @param maxSeqlenKV         [IN]  ATTR可选。kv的最大序列长度。数据类型INT，默认值-1。
  * @param layoutQ             [IN]  ATTR可选。query的数据布局，支持"TND"（大小写不敏感）。
- * @param layoutKv            [IN]  ATTR可选。key/value的数据布局，支持"PA_Nz"/"NZ"。
+ * @param layoutKv            [IN]  ATTR可选。key/value的数据布局，支持"PA_NZ"。
  * @param layoutOut           [IN]  ATTR可选。输出的数据布局，支持"NTD"（大小写不敏感）。
  * @param returnSoftmaxLse    [IN]  ATTR可选。是否输出softmax_lse。INT类型，1表示输出，0表示不输出。
  *                                  训练正向传播时置1，推理时置0。
@@ -82,7 +82,8 @@ aclnnStatus aclnnFlashMlaWithKvcacheGetWorkspaceSize(
  * @param stream          [IN] 用于执行计算的acl stream。
  * @return aclnnStatus 执行状态。
  */
-aclnnStatus aclnnFlashMlaWithKvcache(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, const aclrtStream stream);
+aclnnStatus aclnnFlashMlaWithKvcache(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                     const aclrtStream stream);
 
 #ifdef __cplusplus
 }

@@ -107,14 +107,11 @@ using FlashMlaWithKvcacheTilingShapeCompareParam = FiaTilingShapeCompareParam;
 using FlashMlaWithKvcacheTilingShape = FiaTilingShape;
 using FlashMlaWithKvcacheTilingShapeCompare = FiaTilingShapeCompare;
 
-const std::map<std::string, FlashMlaWithKvcacheLayout> layoutMap = {{"BSND", FlashMlaWithKvcacheLayout::BSND},
-                                                                    {"BNSD", FlashMlaWithKvcacheLayout::BNSD},
-                                                                    {"TND", FlashMlaWithKvcacheLayout::TND},
-                                                                    {"NZ", FlashMlaWithKvcacheLayout::NZ},
-                                                                    {"NTD", FlashMlaWithKvcacheLayout::NTD},
-                                                                    {"PA_BBND", FlashMlaWithKvcacheLayout::PA_BBND},
-                                                                    {"PA_BNBD", FlashMlaWithKvcacheLayout::PA_BNBD},
-                                                                    {"PA_NZ", FlashMlaWithKvcacheLayout::PA_NZ}};
+const std::map<std::string, FlashMlaWithKvcacheLayout> layoutMap = {
+    {"BSND", FlashMlaWithKvcacheLayout::BSND},       {"BNSD", FlashMlaWithKvcacheLayout::BNSD},
+    {"TND", FlashMlaWithKvcacheLayout::TND},         {"NTD", FlashMlaWithKvcacheLayout::NTD},
+    {"PA_BBND", FlashMlaWithKvcacheLayout::PA_BBND}, {"PA_BNBD", FlashMlaWithKvcacheLayout::PA_BNBD},
+    {"PA_NZ", FlashMlaWithKvcacheLayout::PA_NZ}};
 
 enum class FlashMlaWithKvcacheQuantMode : uint32_t {
     NO_QUANT = 0,
@@ -263,7 +260,8 @@ public:
     FlashMlaWithKvcacheLayout qLayout = FlashMlaWithKvcacheLayout::BSND;
     FlashMlaWithKvcacheLayout outLayout = FlashMlaWithKvcacheLayout::BSND;
     FlashMlaWithKvcacheLayout kvLayout = FlashMlaWithKvcacheLayout::BSND;
-    // kernel 侧 FLASH_MLA_WITH_KVCACHE_LAYOUT 数值（flash_mla_with_kvcache_public_define_arch35.h），限定路由下恒为 NTD(5)
+    // kernel 侧 FLASH_MLA_WITH_KVCACHE_LAYOUT 数值（flash_mla_with_kvcache_public_define_arch35.h），限定路由下恒为
+    // NTD(5)
     int64_t kernelOutputLayout = 0;
 };
 

@@ -304,41 +304,4 @@ __aicore__ inline void DataCopySoftmaxLseNTDArch35(GlobalTensor<float> softmaxLs
         ubOffset += curDealRowCount * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
     }
 }
-
-template <GmFormat FORMAT, typename OUT_T, typename OffsetCalcType>
-__aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, OffsetCalcType &offsetCalculator,
-                                           GlobalTensor<OUT_T> &attentionOutGm)
-{
-    if constexpr (FORMAT == GmFormat::TNGD) {
-        uint32_t s1Count = offsetCalculator.actualSeqLensQParser.GetTBase(bIdx + 1) -
-                           offsetCalculator.actualSeqLensQParser.GetTBase(bIdx);
-        for (int s1Idx = 0; s1Idx < s1Count; s1Idx++) {
-            uint64_t attenOutOffset = offsetCalculator.GetOffset(bIdx, n2Idx, 0, s1Idx, 0);
-            matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], offsetCalculator.GetStrideN2(), 0);
-        }
-    } else if constexpr (FORMAT == GmFormat::NGTD) {
-        uint32_t s1Count = offsetCalculator.actualSeqLensQParser.GetTBase(bIdx + 1) -
-                           offsetCalculator.actualSeqLensQParser.GetTBase(bIdx);
-        uint32_t gSize = offsetCalculator.GetDimG();
-        for (int gIdx = 0; gIdx < gSize; gIdx++) {
-            uint64_t attenOutOffset = offsetCalculator.GetOffset(bIdx, n2Idx, gIdx, 0, 0);
-            matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], s1Count * offsetCalculator.GetDimD(), 0);
-        }
-    } else if constexpr (FORMAT == GmFormat::BNGSD) {
-        uint64_t attenOutOffset = offsetCalculator.GetOffset(bIdx, n2Idx, 0, 0, 0);
-        matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], offsetCalculator.GetStrideN2(), 0);
-    } else if constexpr (FORMAT == GmFormat::BSNGD) {
-        uint32_t s1Size = offsetCalculator.GetDimS1();
-        for (int s1Idx = 0; s1Idx < s1Size; s1Idx++) {
-            uint64_t attenOutOffset = offsetCalculator.GetOffset(bIdx, n2Idx, 0, s1Idx, 0);
-            matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], offsetCalculator.GetStrideN2(), 0);
-        }
-    } else if constexpr (FORMAT == GmFormat::NGBSD) {
-        uint32_t gSize = offsetCalculator.GetDimG();
-        for (int gIdx = 0; gIdx < gSize; gIdx++) {
-            uint64_t attenOutOffset = offsetCalculator.GetOffset(bIdx, n2Idx, gIdx, 0, 0);
-            matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], offsetCalculator.GetStrideB(), 0);
-        }
-    }
-}
 #endif
