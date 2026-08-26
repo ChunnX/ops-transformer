@@ -35,7 +35,9 @@ public:
         // Clear the cached state so one tiling object can safely be reused for
         // multiple shapes without leaking the previous decision.
         args_ = {};
-        platformInfo_ = {};
+        if (!hasExternalPlatformInfo_) {
+            platformInfo_ = {};
+        }
         runInfo_ = {};
 
         // The public entry only prepares the shared state. Path-specific tiling
@@ -67,6 +69,16 @@ public:
         platformInfoPtr_ = ptr;
     }
 
+    // Allows the caller to inject platform information obtained from the tiling
+    // context. When set, InitCompileInfo skips the PlatformAscendCManager global
+    // singleton query (which depends on a real device and therefore fails in
+    // unit-test / simulator environments).
+    void SetPlatformInfo(const QuantMatmulPlatformInfo &platformInfo)
+    {
+        platformInfo_ = platformInfo;
+        hasExternalPlatformInfo_ = true;
+    }
+
 protected:
     QuantMatmulArgs args_{};
     QuantMatmulPlatformInfo platformInfo_{};
@@ -75,6 +87,7 @@ protected:
     bool isOpenOptimize_{true};
     bool enableMTailAlign_{false};
     fe::PlatFormInfos *platformInfoPtr_{nullptr};
+    bool hasExternalPlatformInfo_{false};
 
     virtual const char *TilingName() const = 0;
 
@@ -107,6 +120,12 @@ private:
 
     void InitCompileInfo()
     {
+        // If the caller already injected platform information (e.g. from the
+        // tiling context), skip the global singleton query which relies on a
+        // real device and therefore fails in unit-test environments.
+        if (hasExternalPlatformInfo_) {
+            return;
+        }
         // Query the platform once per tiling request so later decisions can
         // use the real cache sizes and core count of the current device.
         // Prefer the context-injected platform info (UT-friendly); fall back
