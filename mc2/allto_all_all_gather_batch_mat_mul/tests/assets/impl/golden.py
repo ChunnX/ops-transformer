@@ -289,10 +289,10 @@ def a2a_ag_bmm_multi_device_golden(thread_contexts, device_ids, all_precision):
         H = x_shape[2]
     n_ep_groups = world_size // ep_ws
     n_tp_groups = world_size // tp_ws
-    # EP domain: strided by tp_ws — matches TTK profiling.py HCCL comm creation
+    # EP domain: strided by tp_ws (matching TTK profiling.py HCCL comm creation)
     # EP groups: [[0,4],[1,5],[2,6],[3,7]] for ep=2,tp=4,world=8
     ep_groups = [[x * tp_ws + i for x in range(ep_ws)] for i in range(tp_ws)]
-    # TP domain: contiguous — matches TTK profiling.py HCCL comm creation
+    # TP domain: contiguous (matching TTK profiling.py HCCL comm creation)
     # TP groups: [[0,1,2,3],[4,5,6,7]] for ep=2,tp=4,world=8
     tp_groups = [[x + tp_ws * i for x in range(tp_ws)] for i in range(ep_ws)]
     all_a2a_dids = sorted(set(did for grp in ep_groups for did in grp))
@@ -462,9 +462,9 @@ def a2a_ag_bmm_e2e_golden(
 
     n_ep_groups = ws // ep_ws
     n_tp_groups = ws // tp_ws
-    # EP domain: strided by tp_ws — matches TTK profiling.py
+    # EP domain: strided by tp_ws (matching TTK profiling.py HCCL comm creation)
     ep_groups = [[x * tp_ws + i for x in range(ep_ws)] for i in range(tp_ws)]
-    # TP domain: contiguous — matches TTK profiling.py
+    # TP domain: contiguous (matching TTK profiling.py HCCL comm creation)
     tp_groups = [[x + tp_ws * i for x in range(tp_ws)] for i in range(ep_ws)]
     all_x_cache = {}
     for r in range(ws):

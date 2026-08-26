@@ -212,6 +212,7 @@ def bmm_rs_a2a_cpu_golden(thread_contexts, device_ids, ep_ws, tp_ws, world_size)
         C_div_tp = x_dim1 // ep_ws // tp_ws
 
     rs_per_rank = {}
+    n_ep_groups = world_size // ep_ws
     n_tp_groups = world_size // tp_ws
     # TP groups: contiguous (matching TTK profiling.py HCCL comm creation)
     # TP groups: [[0,1,2,3],[4,5,6,7]] for ep=2,tp=4,world=8
@@ -221,7 +222,7 @@ def bmm_rs_a2a_cpu_golden(thread_contexts, device_ids, ep_ws, tp_ws, world_size)
         for did in group_dids:
             tc = thread_contexts[did]
             x = to_torch_f32(tc.flatten_tensors[0])
-            # float32 bmm then truncate to in_dtype (matching mc2_test_0416 get_cpu)
+            # fp32 bmm then truncate to bf16 (best CPU approximation of NPU bf16 Cube)
             weight = to_torch_f32(tc.flatten_tensors[1])
             bmm_out = torch.bmm(x, weight)
             bmm_out = bmm_out.to(in_dtype).float()
@@ -238,19 +239,18 @@ def bmm_rs_a2a_cpu_golden(thread_contexts, device_ids, ep_ws, tp_ws, world_size)
             del bmm_out
         n_tp = len(group_dids)
         for local_idx, did in enumerate(group_dids):
-            # reduce_scatter = all_reduce(SUM) then narrow to my part
-            # sum ALL ranks' chunks for this local_idx (matching mc2_test_0416 get_cpu)
-            # fp32 accumulation (matching mc2_test_0416 get_cpu: all_reduce in fp32)
-            acc = (
-                all_parts[0][local_idx * E_div_ep : (local_idx + 1) * E_div_ep]
-                .clone()
-                .float()
-            )
-            for src_idx in range(1, n_tp):
+            # reduce_scatter: cyclic accumulation with bf16 truncation after each step
+            # (matching original TTK mc2_golden.py — simulates HCCL bf16 reduce)
+            start = (local_idx + 1) % n_tp
+            acc = all_parts[start][
+                local_idx * E_div_ep : (local_idx + 1) * E_div_ep
+            ].clone().float()
+            for step in range(1, n_tp):
+                src_idx = (start + step) % n_tp
                 src_chunk = all_parts[src_idx][
                     local_idx * E_div_ep : (local_idx + 1) * E_div_ep
                 ]
-                acc = acc + src_chunk.float()
+                acc = acc.to(in_dtype).float() + src_chunk.float()
             chunk = acc.to(in_dtype)
             tc = thread_contexts[did]
             if is_bias and len(tc.flatten_tensors) > 2:
@@ -404,6 +404,7 @@ def bmm_rs_a2a_e2e_golden(
         C_div_tp = x_dim1 // ep_ws // tp_ws
 
     rs_per_rank = {}
+    n_ep_groups_e2e = ws // ep_ws
     n_tp_groups = ws // tp_ws
     for g in range(n_tp_groups):
         group_ranks = [g * tp_ws + t for t in range(tp_ws)]
