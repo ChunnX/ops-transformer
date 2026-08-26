@@ -266,6 +266,7 @@ def _apply_golden_globals(attrs, quant_mode=1):
         "N_q": "N_q",
         "N_kv": "N_kv",
         "D": "D",
+        "head_dim_v": "HEAD_DIM_V",
         "enable_pa": "ENABLE_PA",
         "kv_cache_layout": "KV_CACHE_LAYOUT",
         "block_size": "BLOCK_SIZE",

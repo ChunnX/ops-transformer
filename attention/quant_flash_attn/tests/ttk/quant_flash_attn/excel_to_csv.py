@@ -504,6 +504,8 @@ def _build_attributes(row, col_by_name):
     _set("N_q", _str_to_int(row.get(col_by_name["CB_num_heads_q"])))
     _set("N_kv", _str_to_int(row.get(col_by_name["CC_num_heads_kv"])))
     _set("D", _str_to_int(row.get(col_by_name["CD_head_dim"])))
+    # head_dim_v: csv 省略 → None → 算子内默认取 head_dim
+    _set("head_dim_v", _str_to_int(row.get(col_by_name["CF_head_dim_v"])))
     # uncontiguous_dim: Excel CE 列，8 维列表，空值默认全 -1 (全连续)
     # 顺序: [q, k, v, q_descale, k_descale, v_descale, block_table, attn_mask]
     # -1=连续, 0=0轴非连续, 1=0,1轴非连续, 以此类推

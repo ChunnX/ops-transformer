@@ -197,6 +197,7 @@ def _build_kwargs(attrs):
         N_q=attrs["N_q"],
         N_kv=attrs["N_kv"],
         D=attrs["D"],
+        head_dim_v=attrs.get("head_dim_v"),
         cu_seqlens_q=attrs.get("cu_seqlens_q"),
         cu_seqlens_kv=attrs.get("cu_seqlens_kv"),
         seqused_q=attrs.get("seqused_q"),

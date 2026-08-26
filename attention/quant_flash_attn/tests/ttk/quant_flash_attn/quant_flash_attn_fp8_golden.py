@@ -56,6 +56,8 @@ BATCH_SIZE = None
 N_q = None
 N_kv = None
 D = None
+# head_dim_v: csv 显式传入则用 csv 值, 否则 None → 算子内默认取 head_dim
+HEAD_DIM_V = None
 
 ACTUAL_SEQ_Q = None
 ACTUAL_SEQ_KV = None
@@ -751,12 +753,12 @@ class Network(nn.Module):
             num_heads_q=q_n,
             num_heads_kv=kv_n,
             head_dim=q.shape[-1],
+            head_dim_v=HEAD_DIM_V,
             quant_mode=QUANT_MODE,
             cu_seqlens_q=cu_seqlens_q_t,
             cu_seqlens_kv=None,
             seqused_q=seqused_q_t,
             seqused_kv=seqused_kv_t,
-            v_descale=dequant_scale_v,
             batch_size=BATCH_SIZE,
             mask_mode=SPARSE_MODE,
             layout_q=LAYOUT_Q,
