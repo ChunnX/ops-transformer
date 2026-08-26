@@ -96,7 +96,10 @@ ge::graphStatus ValidateForwardedStrideRankLocal(const char *opName, const char 
     return ge::GRAPH_SUCCESS;
 }
 
-bool HasUsableStride(const gert::Stride *stride) { return stride != nullptr && stride->GetDimNum() > 0; }
+bool HasUsableStride(const gert::Stride *stride)
+{
+    return stride != nullptr && stride->GetDimNum() > 0;
+}
 
 bool HasStrideMetadata(const std::vector<gert::Stride *> &strides)
 {
