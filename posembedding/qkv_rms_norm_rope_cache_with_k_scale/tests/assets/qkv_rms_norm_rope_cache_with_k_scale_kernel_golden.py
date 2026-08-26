@@ -1034,6 +1034,8 @@ def compare_outputs(*values, compare_context):
     goldens = [to_numpy(value) for value in values[output_count:]]
     attrs = dict(compare_context.attributes)
     api_name = str(compare_context.api_name)
+    if api_name.startswith("torch.ops."):
+        api_name = api_name[len("torch.ops."):]
     q_quant_mode = attrs.get("q_quant_mode", attrs.get("qQuantMode", "PerTokenPerHead"))
     k_quant_mode = attrs.get("k_quant_mode", attrs.get("kQuantMode", "PerTokenPerHead"))
     is_mx = str(q_quant_mode) == "MxQuant" and str(k_quant_mode) == "MxQuant"
