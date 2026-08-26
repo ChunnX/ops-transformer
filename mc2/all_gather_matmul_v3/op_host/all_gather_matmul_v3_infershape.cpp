@@ -49,6 +49,21 @@ bool IsDimMismatch(uint64_t actual, int64_t expected)
     return actual != static_cast<uint64_t>(DIM_MINUS_ONE) && actual != static_cast<uint64_t>(expected);
 }
 
+// rank_size 未设置(<=0)时拦截
+ge::graphStatus ResolveRankSize(const gert::InferShapeContext *context, int64_t &rankSize)
+{
+    const auto nodeName = context->GetNodeName();
+    const auto attrs = context->GetAttrs();
+    const int64_t *rankSizeAttr = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_RANK_SIZE);
+    OPS_CHECK(rankSizeAttr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "rank_size"),
+              return ge::GRAPH_FAILED);
+    rankSize = *rankSizeAttr;
+    OPS_CHECK(rankSize <= 0,
+              OP_LOGE(nodeName, "rank_size attr must be set, got %ld", rankSize),
+              return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus CheckMatrixInputShapes(const gert::InferShapeContext *context)
 {
     const auto x1Shape = context->GetInputShape(INDEX_IN_X1);
@@ -211,9 +226,10 @@ ge::graphStatus AllGatherMatmulV3InferShape(gert::InferShapeContext *context)
     int64_t n = transX2 ? x2Shape->GetDim(0U) : x2Shape->GetDim(1U);
     int64_t kX2 = transX2 ? x2Shape->GetDim(1U) : x2Shape->GetDim(0U);
 
-    const int64_t *wsPtr = context->GetAttrs()->GetAttrPointer<int64_t>(INDEX_ATTR_RANK_SIZE);
-    OPS_CHECK(wsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "rank_size"), return ge::GRAPH_FAILED);
-    int64_t worldSize = *wsPtr;
+    // rank_size: attr 未设置(<=0)时从 group 反查
+    int64_t worldSize = 0;
+    OP_LOGE_IF(ResolveRankSize(context, worldSize) != ge::GRAPH_SUCCESS, ge::GRAPH_FAILED,
+               nodeName, "resolve rank_size failed.");
 
     OP_LOGD(nodeName, "InferShape: x1[%ld,%ld] x2 K=%ld N=%ld rankSize=%ld", m, k, kX2, n, worldSize);
 

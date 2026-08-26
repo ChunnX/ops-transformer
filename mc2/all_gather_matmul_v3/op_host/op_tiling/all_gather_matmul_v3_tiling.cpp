@@ -27,6 +27,7 @@
 #include "ascendc/host_api/tiling/template_argument.h"
 #include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_urma_tiling_data.h"
 #include "apace/tiling/quant_matmul_tiling_swat.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../op_kernel/arch35/all_gather_matmul_v3_tiling_key.h"
 
 using namespace AscendC;
@@ -47,6 +48,7 @@ constexpr uint32_t IDX_OUTPUT_AMAX_OUT = 2U;
 
 // ---- attr indices (must match def order) ----
 // group(0) hccl_buffer_size(1) is_trans_a(2) is_trans_b(3) rank_size(4) group_size(5) y_dtype(6) comm_mode(7)
+constexpr uint32_t ATTR_GROUP_INDEX = 0U;
 constexpr uint32_t ATTR_IS_TRANS_B_INDEX = 3U;
 constexpr uint32_t ATTR_RANK_SIZE_INDEX = 4U;
 constexpr uint32_t ATTR_GROUP_SIZE_INDEX = 5U;
@@ -269,6 +271,27 @@ static ge::graphStatus CheckOneScaleShape(const gert::StorageShape *scaleShape, 
 }
 
 /**
+ * @brief 解析 rank_size：attr 未设置(<=0)时从 group 反查真实 rank 数
+ */
+static ge::graphStatus ResolveRankSize(const gert::TilingContext *context, int64_t &rankSize)
+{
+    const char *nodeName = context->GetNodeName();
+    auto attrs = context->GetAttrs();
+    auto rankSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_SIZE_INDEX);
+    OP_TILING_CHECK(rankSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "rank_size"),
+                    return ge::GRAPH_FAILED);
+    rankSize = *rankSizePtr;
+    if (rankSize <= 0) {
+        auto groupPtr = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
+        OP_TILING_CHECK(groupPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "group"),
+                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(!mc2tiling::GetRankSize(nodeName, groupPtr, rankSize),
+                        OP_LOGE(nodeName, "GetRankSize by group failed."), return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+/**
  * @brief 校验 x1/x2 维度与取值，并提取基础 shape 信息（m/k/n/rankSize）
  */
 static ge::graphStatus CheckInputShape(const gert::TilingContext *context, ShapeInfo &shapeInfo)
@@ -333,16 +356,15 @@ static ge::graphStatus CheckInputShape(const gert::TilingContext *context, Shape
                         "must not exceed INT32_MAX"),
                     return ge::GRAPH_FAILED);
 
-    // rank_size from attr
-    auto attrs = context->GetAttrs();
-    auto rankSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_SIZE_INDEX);
-    OP_TILING_CHECK(rankSizePtr == nullptr,
-                    OP_LOGE_WITH_INVALID_INPUT(nodeName, "rank_size"), return ge::GRAPH_FAILED);
+    // rank_size: attr 未设置(<=0)时从 group 反查
+    int64_t rankSize = 0;
+    OP_TILING_CHECK(ResolveRankSize(context, rankSize) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "resolve rank_size failed."), return ge::GRAPH_FAILED);
 
     shapeInfo.mPerRank = mPerRank;
     shapeInfo.k = kX1;
     shapeInfo.n = x2N;
-    shapeInfo.rankSize = static_cast<uint64_t>(*rankSizePtr);
+    shapeInfo.rankSize = static_cast<uint64_t>(rankSize);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -466,14 +488,14 @@ static ge::graphStatus CheckTensor(const gert::TilingContext *context, ShapeInfo
 static ge::graphStatus CheckRankSizeAttr(const gert::TilingContext *context)
 {
     const char *nodeName = context->GetNodeName();
-    auto attrs = context->GetAttrs();
 
-    auto rankSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_SIZE_INDEX);
-    OP_TILING_CHECK(rankSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "rank_size"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(*rankSizePtr != 2 && *rankSizePtr != 4 && *rankSizePtr != 8 && *rankSizePtr != 16 &&
-                    *rankSizePtr != 32 && *rankSizePtr != 64,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "rank_size", std::to_string(*rankSizePtr).c_str(),
+    // rank_size: attr 未设置(<=0)时从 group 反查
+    int64_t rankSize = 0;
+    OP_TILING_CHECK(ResolveRankSize(context, rankSize) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "resolve rank_size failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(rankSize != 2 && rankSize != 4 && rankSize != 8 && rankSize != 16 &&
+                    rankSize != 32 && rankSize != 64,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "rank_size", std::to_string(rankSize).c_str(),
                                               "2/4/8/16/32/64"),
                     return ge::GRAPH_FAILED);
     // 拦截：1:1 核配比下实际可用 block 数 = min(aicNum, aivNum)
@@ -482,9 +504,9 @@ static ge::graphStatus CheckRankSizeAttr(const gert::TilingContext *context)
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t actualBlockNum = std::min(aicNum, aivNum);
-    OP_TILING_CHECK(static_cast<uint32_t>(*rankSizePtr) > actualBlockNum,
+    OP_TILING_CHECK(static_cast<uint32_t>(rankSize) > actualBlockNum,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "rank_size",
-                        (std::to_string(*rankSizePtr) + " > min(aicNum=" + std::to_string(aicNum) +
+                        (std::to_string(rankSize) + " > min(aicNum=" + std::to_string(aicNum) +
                          ", aivNum=" + std::to_string(aivNum) + ")=" + std::to_string(actualBlockNum)).c_str(),
                         "<= min(aicNum, aivNum)"),
                     return ge::GRAPH_FAILED);

@@ -93,7 +93,7 @@ public:
         this->Attr("hccl_buffer_size").AttrType(REQUIRED).Int();
         this->Attr("is_trans_a").AttrType(OPTIONAL).Bool(false);
         this->Attr("is_trans_b").AttrType(OPTIONAL).Bool(false);
-        this->Attr("rank_size").AttrType(REQUIRED).Int();
+        this->Attr("rank_size").AttrType(OPTIONAL).Int(0);
         this->Attr("group_size").AttrType(OPTIONAL).Int(0);
         this->Attr("y_dtype").AttrType(OPTIONAL).Int(static_cast<int64_t>(ge::DT_UNDEFINED));
         this->Attr("comm_mode").AttrType(OPTIONAL).String("ai_cpu");
