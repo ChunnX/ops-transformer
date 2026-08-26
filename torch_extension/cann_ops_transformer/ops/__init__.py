@@ -48,6 +48,7 @@ from .kv_compress_epilog import kv_compress_epilog
 from .indexer_quant_cache import indexer_quant_cache
 from .compressor import compressor
 from .key_pool import key_pool
+from .pool_key_indexer import pool_key_indexer
 from .quant_compressor import quant_compressor
 from .inplace_partial_rotary_mul import inplace_partial_rotary_mul
 from .inplace_partial_rotary_mul_backward import inplace_partial_rotary_mul_backward
