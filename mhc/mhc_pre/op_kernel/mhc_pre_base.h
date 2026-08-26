@@ -134,8 +134,8 @@ __aicore__ inline void ApplyABLastDimBrcOp(const LocalTensor<T> &output, const L
 
 template <typename T, ABLastDimBrcOp op, bool needBrc = true>
 __aicore__ inline void ABLastDimBrcInline(const LocalTensor<T> &output, const LocalTensor<T> &input0,
-                                             const LocalTensor<T> &input1, const LocalTensor<T> &tmpBuffer,
-                                             const int32_t curRowNum, const int32_t curColNum)
+                                          const LocalTensor<T> &input1, const LocalTensor<T> &tmpBuffer,
+                                          const int32_t curRowNum, const int32_t curColNum)
 {
     if constexpr (needBrc) {
         uint32_t repeatTimes = CeilDiv(curRowNum, ONE_REPEAT_BLOCK_NUMS);
@@ -192,8 +192,8 @@ __aicore__ inline void ABLastDimBrcInline(const LocalTensor<T> &output, const Lo
                 instrParams.src1RepStride = 0;
                 for (uint32_t i = 0; i < curRowNum; i++) {
                     ApplyABLastDimBrcOp<op>(output[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign],
-                        input0[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign], tmpBuffer[i * elemInOneBlock],
-                        numRemainPerLine, 1, instrParams);
+                                            input0[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign],
+                                            tmpBuffer[i * elemInOneBlock], numRemainPerLine, 1, instrParams);
                 }
             } else {
                 instrParams.dstBlkStride = 1;
@@ -234,7 +234,6 @@ __aicore__ inline void DivABLastDimBrcInline(const LocalTensor<T> &output, const
 {
     ABLastDimBrcInline<T, ABLastDimBrcOp::DIV, needBrc>(output, input0, input1, tmpBuffer, curRowNum, curColNum);
 }
-
 
 template <typename T, bool needBrc = true>
 __aicore__ inline void MulABLastDimBrcInline2(const LocalTensor<T> &output, const LocalTensor<T> &input0,
