@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <functional>
@@ -810,6 +811,12 @@ int main(int argc, char **argv)
         }
     }
     auto cases = BuildCases();
+    if (selectedCase.empty()) {
+        const char *caseFromEnv = std::getenv("QSFA_CASE");
+        if (caseFromEnv != nullptr && caseFromEnv[0] != '\0') {
+            selectedCase = caseFromEnv;
+        }
+    }
     if (listOnly) {
         PrintCases(cases);
         return 0;

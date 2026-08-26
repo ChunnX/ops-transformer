@@ -488,7 +488,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
         StageBIMxfp4Scales<Q_T>(ubSrcAddr, ubScaleStage, static_cast<uint32_t>(dealRow));
         LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 #ifdef QSFA_DEBUG_DUMP_UB
-        AscendC::DumpTensor(scaleStage, 402U, static_cast<uint32_t>(dealRow * 32));
+        AscendC::DumpTensor(scaleStage, 402U, 32U);
 #endif
         AntiquantVFImplBIMxfp4<Q_T>(ubSrcAddr, ubScaleStage, ubDstAddr, static_cast<uint32_t>(dealRow));
 
@@ -505,8 +505,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
              });
 #ifdef QSFA_DEBUG_DUMP_UB
         PipeBarrier<PIPE_V>();
-        AscendC::DumpTensor(antiKvTensorAsB16, 403U,
-                            static_cast<uint32_t>((constInfo.dSizeNope + constInfo.dSizeRope) * (16 + 1)));
+        AscendC::DumpTensor(antiKvTensorAsB16, 403U, 128U * 17U);
 #endif
         return;
     }
@@ -527,8 +526,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
          });
 #ifdef QSFA_DEBUG_DUMP_UB
     PipeBarrier<PIPE_V>();
-    AscendC::DumpTensor(antiKvTensorAsB16, 404U,
-                        static_cast<uint32_t>((constInfo.dSizeNope + constInfo.dSizeRope) * (16 + 1)));
+    AscendC::DumpTensor(antiKvTensorAsB16, 404U, 128U * 17U);
 #endif
 }
 
@@ -666,7 +664,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessSparseKv(
 
 #ifdef QSFA_DEBUG_DUMP_UB
         uint32_t dumpRowStride = CeilAlign(constInfo.dSizeVInput * sizeof(KV_T), BUFFER_SIZE_BYTE_32B) / sizeof(KV_T);
-        AscendC::DumpTensor(kvInUb, 401U, static_cast<uint32_t>(dealRow) * dumpRowStride);
+        AscendC::DumpTensor(kvInUb, 401U, dumpRowStride);
 #endif
 
         // 2、dequant by vf
