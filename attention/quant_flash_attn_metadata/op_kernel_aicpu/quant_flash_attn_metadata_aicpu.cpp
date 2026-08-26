@@ -252,7 +252,7 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
     }
     if (isGradEnable_) {
         int64_t deterMaxRound = CalDeterMaxRound();
-        detail::QuantFAGMetaData quantFAGMetaData(metaData->GetData());
+        detail::QuantFAGMetaData quantFAGMetaData(metaData_->GetData());
         quantFAGMetaData.SetDeterMaxRound(optiling::QUANT_FAG_DETER_MAX_NUM_INDEX, deterMaxRound);
     }
     return true;
@@ -267,10 +267,10 @@ int64_t QuantFlashAttnMetadataCpuKernel::CalDeterMaxRound()
     int64_t b = batchSize_ * baseInfo.kvHeadNum;
     int64_t m = CeilDiv<int64_t>(s1Size_, 512);
     int64_t n = CeilDiv<int64_t>(s2Size_, 512);
-    int64_t k = aiCoreCpuNum_;
+    int64_t k = aicCoreNum_;
  
     if (n == 1) {
-        return std::max(Ceil<int64_t>(m * b, k), m);
+        return std::max(CeilDiv<int64_t>(m * b, k), m);
     } else {
         return CeilDiv<int64_t>(n * b, std::min(k, m * b)) * m;
     }

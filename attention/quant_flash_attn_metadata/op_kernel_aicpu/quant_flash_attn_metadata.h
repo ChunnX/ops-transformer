@@ -123,7 +123,13 @@ struct QuantFAGMetaData {
     void SetDeterMaxRound(uint32_t metaIdx)
     {
         assert(metaIdx < QUANT_FAG_METADATA_SIZE);
-        return headMedata[metaIdx];
+        headMedata[metaIdx] = val;
+    }
+
+    int64_t GetDeterMaxRound(uint32_t metaIdx)
+    {
+       assert(metaIdx < QUANT_FAG_METADATA_SIZE);
+       return headMedata[metaIdx]; 
     }
 };
 } // namespace detail
