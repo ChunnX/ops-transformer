@@ -14,6 +14,10 @@
  */
 #include "moe_token_unpermute_with_ep_tiling.h"
 
+#if defined(MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950)
+#include <limits>
+#endif
+
 namespace optiling {
 
 const static int64_t UNPERMUTE_WITH_EP_INPUT_TOKENS = 0;
@@ -25,6 +29,12 @@ const static int64_t UNPERMUTE_WITH_EP_ARRT_RANGE = 1;
 const static int64_t RANGE_SIZE = 2;
 const static uint64_t WORKSPACE_SIZE_WITH_M = 16;
 const static uint64_t BYTE_SIZE_WITH_K = 1024;
+#if defined(MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950)
+const static int64_t UNPERMUTE_WITH_EP_ARRT_PADDED_MODE = 2;
+const static int64_t UNPERMUTE_WITH_EP_ARRT_RESTORE_SHAPE = 3;
+const static int64_t MAX_TOP_K = 512;
+const static int64_t TOKEN_BUFFER_ALIGNMENT = 32;
+#endif
 
 ge::graphStatus TilingMoeTokenUnpermuteWithEp(gert::TilingContext *context);
 
@@ -33,7 +43,10 @@ ge::graphStatus TilingMoeTokenUnpermuteWithEp(gert::TilingContext *context)
     return UnpermuteWithEpTilingCompute(context, -1, true);
 }
 
-static inline int64_t AlignN(const int64_t x, const int64_t N) { return (x + N - 1) & ~(N - 1); }
+static inline int64_t AlignN(const int64_t x, const int64_t N)
+{
+    return (x + N - 1) & ~(N - 1);
+}
 
 static inline int64_t GetLengthByType(const int32_t dtype)
 {
@@ -56,9 +69,15 @@ static inline int64_t GetLengthByType(const int32_t dtype)
     }
 }
 
-static inline int64_t safeMod(const int64_t a, const int64_t b) { return b == 0 ? 0 : a % b; }
+static inline int64_t safeMod(const int64_t a, const int64_t b)
+{
+    return b == 0 ? 0 : a % b;
+}
 
-static inline int64_t safeDiv(const int64_t a, const int64_t b) { return b == 0 ? 0 : a / b; }
+static inline int64_t safeDiv(const int64_t a, const int64_t b)
+{
+    return b == 0 ? 0 : a / b;
+}
 
 static inline bool isFloatDtype(const int64_t inputDtypeSize)
 {
@@ -71,7 +90,11 @@ static inline bool isFloatDtype(const int64_t inputDtypeSize)
 static inline int64_t ComputeUnitHSpace(const int64_t inputDtypeSize, const int64_t bufferNum)
 {
     int64_t castNum = isFloatDtype(inputDtypeSize) ? 0 : CAST_NUM;
+#if defined(MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950)
+    return inputDtypeSize * (QUE_NUM + bufferNum - 1) + FLOAT_DATA_SIZE * (castNum + STABLE_REDUCTION_BUFFER_NUM);
+#else
     return inputDtypeSize * (QUE_NUM + bufferNum - 1) + FLOAT_DATA_SIZE * castNum;
+#endif
 }
 
 static inline int64_t ComputeMaxHiddenSize(MoeTokenUnpermuteWithEpParam &param, int64_t bufferNum)
@@ -87,22 +110,98 @@ static inline int64_t ComputeMaxHiddenSize(MoeTokenUnpermuteWithEpParam &param, 
 static inline ge::graphStatus MoeTokenUnpermuteWithEpInputParamCheck(const gert::TilingContext *context,
                                                                      const bool isUnpermute)
 {
+#if defined(MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950)
+    OP_CHECK_IF(context == nullptr, OP_LOGE("MoeTokenUnpermuteWithEp", "tiling context is nullptr."),
+                return ge::GRAPH_FAILED);
+#endif
     const gert::StorageShape *tokensShape = context->GetInputShape(0);
     const gert::StorageShape *indicesShape = context->GetInputShape(1);
     const gert::StorageShape *probsShape = context->GetInputShape(2);
     auto dataTensor0 = context->GetInputTensor(0);
     auto dataTensor1 = context->GetInputTensor(1);
     auto nodeName = context->GetNodeName();
+#if defined(MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950)
+    auto attrs = context->GetAttrs();
+    OP_CHECK_IF(attrs == nullptr, OP_LOGE(nodeName, "attrs is nullptr."), return ge::GRAPH_FAILED);
+    const int64_t *tmpTopK = attrs->GetAttrPointer<int64_t>(UNPERMUTE_WITH_EP_ARRT_TOPK);
+    OP_CHECK_IF(tmpTopK == nullptr, OP_LOGE(nodeName, "num_topk is nullptr."), return ge::GRAPH_FAILED);
+    const int64_t inputTopK = *tmpTopK;
+    const bool *paddedMode = attrs->GetAttrPointer<bool>(UNPERMUTE_WITH_EP_ARRT_PADDED_MODE);
+    OP_CHECK_IF(paddedMode != nullptr && *paddedMode, OP_LOGE(nodeName, "padded_mode=true is not supported."),
+                return ge::GRAPH_FAILED);
+    auto restoreShape = attrs->GetAttrPointer<gert::ContinuousVector>(UNPERMUTE_WITH_EP_ARRT_RESTORE_SHAPE);
+    OP_CHECK_IF(restoreShape != nullptr && restoreShape->GetSize() != 0,
+                OP_LOGE(nodeName, "non-empty restore_shape is not supported."), return ge::GRAPH_FAILED);
+#else
     const int64_t *tmpTopK = context->GetAttrs()->GetAttrPointer<int64_t>(0);
     int inputTopK = *tmpTopK;
+#endif
 
+#if defined(MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950)
+    auto rangePtr = attrs->GetAttrPointer<gert::ContinuousVector>(UNPERMUTE_WITH_EP_ARRT_RANGE);
+    bool fallbackToUnpermute = rangePtr == nullptr || rangePtr->GetSize() == 0;
+    int64_t rangeStart = 0;
+    int64_t rangeEnd = 0;
+    if (rangePtr != nullptr && rangePtr->GetSize() != 0) {
+        OP_CHECK_IF(rangePtr->GetSize() != RANGE_SIZE, OP_LOGE(nodeName, "the size of range only support 2"),
+                    return ge::GRAPH_FAILED);
+        const int64_t *rangeList = static_cast<const int64_t *>(rangePtr->GetData());
+        OP_CHECK_IF(rangeList == nullptr, OP_LOGE(nodeName, "range data is nullptr."), return ge::GRAPH_FAILED);
+        rangeStart = rangeList[0];
+        rangeEnd = rangeList[1];
+        fallbackToUnpermute = rangeStart == 0 && rangeEnd == 0;
+    }
+
+    OP_CHECK_IF(!fallbackToUnpermute && (inputTopK < 1 || inputTopK > MAX_TOP_K),
+                OP_LOGE(nodeName, "input num TopK must be in [1, %ld], but got %ld.", MAX_TOP_K, inputTopK),
+                return ge::GRAPH_FAILED);
+#else
     OP_CHECK_IF(inputTopK < 1, OP_LOGE(nodeName, "input num TopK cannot less than 1."), return ge::GRAPH_FAILED);
+#endif
     OP_CHECK_IF(tokensShape == nullptr || indicesShape == nullptr || dataTensor0 == nullptr || dataTensor1 == nullptr,
                 OP_LOGE(nodeName, "permutedTokens or sortedIndices is nullptr."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(tokensShape->GetStorageShape().GetDimNum() != 2, OP_LOGE(nodeName, "permutedTokens's shape is not 2D."),
                 return ge::GRAPH_FAILED);
 
+#if defined(MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950)
+    OP_CHECK_IF(indicesShape->GetStorageShape().GetDimNum() != 1, OP_LOGE(nodeName, "sortedIndices's shape is not 1D."),
+                return ge::GRAPH_FAILED);
+    const int64_t tokensDim0 = tokensShape->GetStorageShape().GetDim(0);
+    const int64_t hiddenSize = tokensShape->GetStorageShape().GetDim(1);
+    const int64_t indicesLength = indicesShape->GetStorageShape().GetDim(0);
+    OP_CHECK_IF(
+        tokensDim0 <= 0 || hiddenSize <= 0 || indicesLength <= 0,
+        OP_LOGE(nodeName, "concrete empty input is not supported: tokens shape [%ld, %ld], sortedIndices length %ld.",
+                tokensDim0, hiddenSize, indicesLength),
+        return ge::GRAPH_FAILED);
+    if (fallbackToUnpermute) {
+        OP_CHECK_IF(
+            tokensDim0 != indicesLength,
+            OP_LOGE(nodeName, "permutedTokens's dim(0)(%ld) must equal sortedIndices length(%ld) in fallback mode.",
+                    tokensDim0, indicesLength),
+            return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(rangeStart < 0 || rangeStart >= rangeEnd,
+                    OP_LOGE(nodeName, "range must satisfy 0 <= start < end, but got [%ld, %ld].", rangeStart, rangeEnd),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(tokensDim0 != rangeEnd - rangeStart,
+                    OP_LOGE(nodeName, "permutedTokens's dim(0)(%ld) must equal end - start(%ld).", tokensDim0,
+                            rangeEnd - rangeStart),
+                    return ge::GRAPH_FAILED);
+        if (probsShape == nullptr) {
+            OP_CHECK_IF(indicesLength % inputTopK != 0,
+                        OP_LOGE(nodeName, "sortedIndices length(%ld) must be divisible by num_topk(%ld).",
+                                indicesLength, inputTopK),
+                        return ge::GRAPH_FAILED);
+        }
+    }
+#endif
+
     if (probsShape != nullptr) {
+#if defined(MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950)
+        auto dataTensor2 = context->GetInputTensor(UNPERMUTE_WITH_EP_INPUT_PROBS);
+        OP_CHECK_IF(dataTensor2 == nullptr, OP_LOGE(nodeName, "probs tensor is nullptr."), return ge::GRAPH_FAILED);
+#endif
         int64_t probsDimNum = probsShape->GetStorageShape().GetDimNum();
         if (isUnpermute) {
             OP_CHECK_IF(probsDimNum != 2, OP_LOGE(nodeName, "probs's shape(%ld) is not 2D.", probsDimNum),
@@ -112,12 +211,24 @@ static inline ge::graphStatus MoeTokenUnpermuteWithEpInputParamCheck(const gert:
             int64_t topK = probsShape->GetStorageShape().GetDim(1);
             int64_t totalLength = indicesShape->GetStorageShape().GetDim(0);
 
+#if defined(MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950)
+            OP_CHECK_IF(tokensNum <= 0, OP_LOGE(nodeName, "probs' dim(0) must be greater than 0."),
+                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(!fallbackToUnpermute && topK != inputTopK,
+                        OP_LOGE(nodeName, "input topK(%ld) can not match probs' dim(1).", inputTopK),
+                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(topK < 1 || topK > MAX_TOP_K,
+                        OP_LOGE(nodeName, "probs' dim(1) must be in [1, %ld].", MAX_TOP_K), return ge::GRAPH_FAILED);
+#else
             OP_CHECK_IF(topK != inputTopK, OP_LOGE(nodeName, "input topK(%d) can not match probs' dim(1).", inputTopK),
                         return ge::GRAPH_FAILED);
+#endif
             OP_CHECK_IF(totalLength != tokensNum * topK,
                         OP_LOGE(nodeName, "permutedTokens's dim(0) is not equal to probs's dim(0) * probs's dim(1)."),
                         return ge::GRAPH_FAILED);
+#if !defined(MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950)
             OP_CHECK_IF(topK > 512, OP_LOGE(nodeName, "topK can not larger than 512."), return ge::GRAPH_FAILED);
+#endif
         } else {
             OP_CHECK_IF(probsDimNum != 1, OP_LOGE(nodeName, "permutedProbsGrad's shape(%ld) is not 1D.", probsDimNum),
                         return ge::GRAPH_FAILED);
@@ -147,8 +258,27 @@ static inline void Init(const gert::TilingContext *context, const int64_t topK, 
 
     auto attrPtr = context->GetAttrs();
     const int64_t *tmpTopK = attrPtr->GetAttrPointer<int64_t>(UNPERMUTE_WITH_EP_ARRT_TOPK);
+#if defined(MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950)
+    const int64_t inputTopK = *tmpTopK;
+#else
     int inputTopK = *tmpTopK;
+#endif
     auto rangePtr = attrPtr->GetAttrPointer<gert::ContinuousVector>(UNPERMUTE_WITH_EP_ARRT_RANGE);
+#if defined(MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950)
+    bool fallbackToUnpermute = rangePtr == nullptr || rangePtr->GetSize() == 0;
+    if (rangePtr != nullptr && rangePtr->GetSize() != 0) {
+        OP_CHECK_IF(rangePtr->GetSize() != RANGE_SIZE,
+                    OP_LOGE(context->GetNodeName(), "the size of range only support 2"), return);
+        const int64_t *rangeList = static_cast<const int64_t *>(rangePtr->GetData());
+        OP_CHECK_IF(rangeList == nullptr, OP_LOGE(context->GetNodeName(), "range data is nullptr."), return);
+        param.input.start = rangeList[0];
+        param.input.end = rangeList[1];
+        fallbackToUnpermute = param.input.start == 0 && param.input.end == 0;
+    } else {
+        param.input.start = 0;
+        param.input.end = 0;
+    }
+#else
     if (rangePtr != nullptr) {
         OP_CHECK_IF(rangePtr->GetSize() != RANGE_SIZE,
                     OP_LOGE(context->GetNodeName(), "the size of range only support 2"), return);
@@ -159,11 +289,19 @@ static inline void Init(const gert::TilingContext *context, const int64_t topK, 
         param.input.start = 0;
         param.input.end = 0;
     }
+#endif
 
     param.input.numOutTokens = tokensShape->GetStorageShape().GetDim(0); // numOutTokens根据tokens第0维获取；
     param.input.hiddenSize = tokensShape->GetStorageShape().GetDim(1);
     param.input.totalLength = sortedIndicesShape->GetStorageShape().GetDim(
         0); // tokens可能存在numOutTokens，因此totalLength从sortedIndices获取。
+#if defined(MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950)
+    if (fallbackToUnpermute) {
+        // ACLNN encodes a missing rangeOptional as the default [0, 0]. In this case the public API contract
+        // falls back to MoeTokenUnpermute semantics: gather directly from the full input without EP filtering.
+        param.input.end = param.input.totalLength;
+    }
+#endif
     if (isUnpermute) {
         if (probsShape != nullptr) {
             auto dataTensor2 = context->GetInputTensor(2);
@@ -173,7 +311,11 @@ static inline void Init(const gert::TilingContext *context, const int64_t topK, 
             param.input.topK = probsShape->GetStorageShape().GetDim(1);
             param.input.PermuteProbGradSize = 0;
         } else {
+#if defined(MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950)
+            param.input.topK = fallbackToUnpermute ? 1 : inputTopK;
+#else
             param.input.topK = inputTopK;
+#endif
             param.input.PermuteProbGradSize = 1;
             param.input.haveProbs = false;
             param.input.tokensNum = safeDiv(param.input.totalLength, param.input.topK);
@@ -227,12 +369,79 @@ static inline void ComputeRemainMemerySpace(MoeTokenUnpermuteWithEpParam &param)
     param.core.remainMemorySpace -= ALIGN_256;
 }
 
+#if defined(MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950)
+static inline bool AddAlignedTokenBuffer(const int64_t elementCount, const int64_t dtypeSize,
+                                         const int64_t availableSpace, int64_t &usedSpace)
+{
+    if (dtypeSize <= 0) {
+        return true;
+    }
+    constexpr int64_t maxInt64 = std::numeric_limits<int64_t>::max();
+    if (elementCount > (maxInt64 - TOKEN_BUFFER_ALIGNMENT + 1) / dtypeSize) {
+        return false;
+    }
+    const int64_t alignedSpace = AlignN(elementCount * dtypeSize, TOKEN_BUFFER_ALIGNMENT);
+    if (usedSpace > availableSpace || alignedSpace > availableSpace - usedSpace) {
+        return false;
+    }
+    usedSpace += alignedSpace;
+    return true;
+}
+
+static inline bool TokenBuffersFitInUb(const MoeTokenUnpermuteWithEpParam &param, const int64_t tokenLength)
+{
+    if (tokenLength < 0 || param.input.topK <= 0 ||
+        tokenLength > std::numeric_limits<int64_t>::max() / param.input.topK) {
+        return false;
+    }
+    const int64_t elementCount = tokenLength * param.input.topK;
+    int64_t usedSpace = 0;
+    if (!AddAlignedTokenBuffer(elementCount, param.input.indicesDtypeSize, param.core.remainMemorySpace, usedSpace)) {
+        return false;
+    }
+    if (param.input.haveProbs && param.input.isUnpermute) {
+        if (!AddAlignedTokenBuffer(elementCount, param.input.probsDtypeSize, param.core.remainMemorySpace, usedSpace)) {
+            return false;
+        }
+        if (!isFloatDtype(param.input.probsDtypeSize)) {
+            if (!AddAlignedTokenBuffer(elementCount, static_cast<int64_t>(sizeof(float)), param.core.remainMemorySpace,
+                                       usedSpace)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+#endif
+
 static inline void TilingToken(MoeTokenUnpermuteWithEpParam &param)
 {
     param.tokenPerCore.length = safeDiv(param.input.tokensNum, param.core.usedCoreNum);
     param.tokenPerCore.num = param.core.usedCoreNum;
     param.tokenPerCore.remain = safeMod(param.input.tokensNum, param.core.usedCoreNum);
 
+#if defined(MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950)
+    if (TokenBuffersFitInUb(param, param.tokenPerCore.length)) {
+        param.tokenTiling.length = param.tokenPerCore.length;
+        param.tokenTiling.remain = 0;
+        param.tokenTiling.num = 1;
+    } else {
+        int64_t lower = 0;
+        int64_t upper = param.tokenPerCore.length;
+        while (lower < upper) {
+            const int64_t middle = lower + (upper - lower + 1) / 2;
+            if (TokenBuffersFitInUb(param, middle)) {
+                lower = middle;
+            } else {
+                upper = middle - 1;
+            }
+        }
+        const int64_t maxTokenSize = lower;
+        param.tokenTiling.length = maxTokenSize;
+        param.tokenTiling.remain = safeMod(param.tokenPerCore.length, maxTokenSize);
+        param.tokenTiling.num = safeDiv(param.tokenPerCore.length, maxTokenSize);
+    }
+#else
     int64_t unitTokenSpace = param.input.indicesDtypeSize;
     if (param.input.haveProbs && param.input.isUnpermute) {
         unitTokenSpace += param.input.probsDtypeSize;
@@ -253,6 +462,7 @@ static inline void TilingToken(MoeTokenUnpermuteWithEpParam &param)
         param.tokenTiling.remain = safeMod(param.tokenPerCore.length, maxTokenSize);
         param.tokenTiling.num = safeDiv(param.tokenPerCore.length, maxTokenSize);
     }
+#endif
 }
 /*
   tilingKey计算规则
@@ -360,6 +570,11 @@ ge::graphStatus UnpermuteWithEpTilingCompute(gert::TilingContext *context, const
     SetBufferNum(param);
     ComputeRemainMemerySpace(param);
     TilingToken(param);
+#if defined(MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950)
+    OP_CHECK_IF(param.input.tokensNum > 0 && param.tokenTiling.length <= 0,
+                OP_LOGE(context->GetNodeName(), "UB cannot hold the aligned buffers for one token."),
+                return ge::GRAPH_FAILED);
+#endif
     SetTilingKey(context, isUnpermute, param);
     SetTilingData(context, param);
     DebugPrint(context, param);
