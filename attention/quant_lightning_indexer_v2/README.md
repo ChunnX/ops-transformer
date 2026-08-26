@@ -32,9 +32,9 @@
 | query_dequant_scale             | 输入      | 公式中的$Scale_Q$，表示Index Query的反量化系数，不支持非连续。`quant_mode`为3/5时，shape为将`query`的D轴替换为(D/64, 2)；`quant_mode`为4时，shape为(1,)；其他场景shape与weights一致 | FLOAT16、FLOAT32、FLOAT8_e8m0     | ND         |
 | key_dequant_scale            | 输入      | 公式中的$Scale_K$，表示Index Key的反量化系数，支持0轴非连续。`quant_mode`为3/5时，shape为将`key`的D轴替换为(D/64, 2)；`quant_mode`为4时，shape为(1,)；其他场景shape为移除`key`的D轴 | FLOAT16、FLOAT32、FLOAT8_e8m0       | ND         |
 | cu_seqlens_q                    | 可选输入      | layout_q为TND时必须传入，表示每个Batch中`query`的有效token数前缀和。；layout_q为BSND时不能传入 | INT32       | ND         |
-| cu_seqlens_k                    | 可选输入      | layout_k为TND时必须传入，表示每个Batch中`key`的有效token数前缀和；layout_k为PA_BSND或BSND时不能传入 | INT32       | ND         |
+| cu_seqlens_k                    | 可选输入      | layout_k为TND时必须传入，表示每个Batch中`key`的有效token数前缀和；layout_k为PA_BBND或BSND时不能传入 | INT32       | ND         |
 | seqused_q                    | 可选输入      | layout_q为BSND时可选传入，表示每个Batch中`query`的有效token数 | INT32       | ND         |
-| seqused_k                    | 可选输入      | layout_k为PA_BSND或BSND时使用，表示每个Batch中`key`的有效token数。| INT32       | ND         |
+| seqused_k                    | 可选输入      | layout_k为PA_BBND或BSND时使用，表示每个Batch中`key`的有效token数。| INT32       | ND         |
 | cmp_residual_k                    | 可选输入      | 压缩场景下Key的残余长度，需满足0 \<= cmp_residual_k\[i\] \< cmp_ratio。| INT32       | ND         |
 | block_table                    | 可选输入      | 表示PageAttention中KV存储使用的block映射表。 | INT32       | ND         |
 | output_idx_offset                    | 可选输入      | 输出索引的偏移量 | INT32       | ND         |
