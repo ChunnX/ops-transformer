@@ -1187,12 +1187,23 @@ static uint64_t QliCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &ql
 
     uint64_t qliWorkspaceSize = qliPlatform.GetLibApiWorkSpaceSize();
     if (qliPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        constexpr uint32_t qli3510S1Base = 4;
+        constexpr uint32_t qli3510S1Base = 8;
         constexpr uint32_t qli3510S2Base = 128;
         uint32_t scoreElemSize = (inputQType == ge::DT_INT8) ? sizeof(uint32_t) : sizeof(uint16_t);
         qliWorkspaceSize +=
             qli3510S1Base * ((qliS2Size + qli3510S2Base - 1) / qli3510S2Base) * qli3510S2Base *
             scoreElemSize * qliAicNum;
+        // LD two-phase TopK workspace (keep in sync with kernel LD_* constants in quant_lightning_indexer_common.h):
+        // candidate list per (aic, aiv, slot, s1row): topkMax * (scoreElem + 4B idx); param per (aic, aiv, slot): 16 * 8B
+        constexpr uint32_t qli3510TopkMax = 2048;
+        constexpr uint32_t qli3510LdAivNum = 2;
+        constexpr uint32_t qli3510LdSlotNum = 2;
+        constexpr uint32_t qli3510LdS1Rows = 4;
+        constexpr uint32_t qli3510LdParamNum = 16;
+        qliWorkspaceSize += static_cast<uint64_t>(qliAicNum) * qli3510LdAivNum * qli3510LdSlotNum * qli3510LdS1Rows *
+            qli3510TopkMax * (scoreElemSize + sizeof(uint32_t));
+        qliWorkspaceSize += static_cast<uint64_t>(qliAicNum) * qli3510LdAivNum * qli3510LdSlotNum * qli3510LdParamNum *
+            sizeof(uint64_t);
     } else {
         constexpr uint32_t qliMm1ResSize = qliMBaseSize * qliS2BaseSize;
         qliWorkspaceSize += qliMm1ResSize * qliMm1ResElemSize * qliDoubleBuffer * qliAicNum;
@@ -1231,7 +1242,17 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
     tilingData_.set_blockSize(tilingInfo->blockSize);
     tilingData_.set_maxBlockNumPerBatch(tilingInfo->maxBlockNumPerBatch);
     tilingData_.set_sparseMode(tilingInfo->sparseMode);
-    tilingData_.set_usedCoreNum(blockDim);
+    // LD two-phase TopK switch (Step A mechanism validation): enable on 950PR with long s2.
+    // Prefill (tSize > 64) must stay off: the LD segment/merge path is validated only for the
+    // decode tiling (s1Base 2, 1 row per AIV); on prefill rows it corrupts the split-row outputs.
+    constexpr uint32_t qliLdSplitCoreNum = 28;
+    bool ldOpen = (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) && (tilingInfo->s2Size >= 2048) &&
+                  (tilingInfo->tSize <= 64);
+    uint32_t ldCores = qliLdSplitCoreNum < aicNum ? qliLdSplitCoreNum : aicNum;
+    tilingData_.set_isLDOpen(ldOpen ? 1U : 0U);
+    tilingData_.set_ldSplitCoreNum(ldCores);
+    tilingData_.set_aicNum(aicNum);
+    tilingData_.set_usedCoreNum(ldOpen ? ldCores : blockDim);
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
 

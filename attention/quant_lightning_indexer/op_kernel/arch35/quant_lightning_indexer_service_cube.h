@@ -108,6 +108,7 @@ protected:
     uint64_t keyLoadedSize_ = 0; // L1中实际加载的S2元素数量
     uint64_t s2BasicBlock_ = 128;
     uint64_t keyBufferOffset_ = 16384; // 128*128
+    bool keyWaitDeferred_ = false;  // R2-lite: pending consumer-side MTE2_MTE1 Wait
 
     ConstInfo constInfo_;
 
@@ -119,7 +120,9 @@ template <typename QLIT>
 __aicore__ inline void QLIMatmul<QLIT>::InitParams(const ConstInfo &constInfo)
 {
     constInfo_ = constInfo;
-    s2BasicBlock_ = (constInfo_.tSize <= 256) ? 256 : 128;
+    // PB: always take the 256-row L1 key window so prefill (tSize > 256) also hits the
+    // isKeyCacheValid_ reuse path; this is the same production path decode (tSize <= 256) uses.
+    s2BasicBlock_ = 256;
     keyBufferOffset_ = s2BasicBlock_ * D_BASIC_BLOCK; // 128*128
 }
 
@@ -155,11 +158,14 @@ QLIMatmul<QLIT>::InitMm1GlobalTensor(const GlobalTensor<int32_t> &blkTableGm, co
 template <typename QLIT>
 __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &runInfo)
 {
-    CrossCoreWaitFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(QLICommon::ConstInfo::CROSS_VC_EVENT + runInfo.loop % 2);
-    CrossCoreWaitFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(QLICommon::ConstInfo::CROSS_VC_EVENT + runInfo.loop % 2 + QLICommon::ConstInfo::AIV0_AIV1_OFFSET);
     uint64_t s2GmBaseOffset = runInfo.s2Idx * constInfo_.s2BaseSize;
     uint64_t s1gProcessSize = runInfo.actMBaseSize;
     uint64_t s2ProcessSize = runInfo.actualSingleProcessSInnerSize;
+    // 循环内不变的量外提, 消除重复除法/对齐计算
+    uint64_t s1gSplitNum = CeilDiv(s1gProcessSize, constInfo_.mBaseSize);
+    uint64_t s1gAlign2GSize = 2 * constInfo_.gSize;
+    CrossCoreWaitFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(QLICommon::ConstInfo::CROSS_VC_EVENT + runInfo.loop % 2);
+    CrossCoreWaitFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(QLICommon::ConstInfo::CROSS_VC_EVENT + runInfo.loop % 2 + QLICommon::ConstInfo::AIV0_AIV1_OFFSET);
     if (s2BasicBlock_ == 128) {
         for (uint64_t s2GmOffset = 0; s2GmOffset < s2ProcessSize; s2GmOffset += s2BasicBlock_) {
             WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + keyL1BufIdx_ % KEY_BUF_NUM);
@@ -171,25 +177,34 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
                 KeyNd2Nz(s2L1RealSize, s2GmOffset, runInfo);
             }
 
-            SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
-            WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
+            // P6 (conservative event-pair dedup): when the query branch below also
+            // issues its MTE2_MTE1 handshake in this same iteration (first s2 block),
+            // skip this pair: set_flag orders after ALL prior MTE2 instructions, so the
+            // single handshake below covers both Nd2Nz copies, and no MTE1 consumer
+            // exists between the two original pairs. Other iterations keep this pair.
+            if (!(runInfo.isFirstS2InnerLoop && s2GmOffset == 0)) {
+                SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
+                WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
+            }
             // s1gProcessSize当前必定不会超过2倍的s1g basic block
             for (uint64_t s1gGmOffset = 0; s1gGmOffset < s1gProcessSize; s1gGmOffset += constInfo_.mBaseSize) {
                 uint64_t s1gL1RealSize =
                     s1gGmOffset + constInfo_.mBaseSize > s1gProcessSize ?
                                                         s1gProcessSize - s1gGmOffset :
                                                         constInfo_.mBaseSize;
-                uint64_t s1gL1SizeAlign2G = CeilAlign(s1gL1RealSize, 2 * constInfo_.gSize);
+                uint64_t s1gL1SizeAlign2G = CeilAlign(s1gL1RealSize, s1gAlign2GSize);
                 if (runInfo.isFirstS2InnerLoop && s2GmOffset == 0) {
                     queryL1Mte2BufIdx_++;
                     queryL1Mte1BufIdx_ = queryL1Mte2BufIdx_;
                     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte2BufIdx_ % QUERY_BUF_NUM);
                     QueryNd2Nz(s1gL1RealSize, s1gGmOffset, runInfo);
+                    // P6 (conservative event-pair dedup): this single handshake also
+                    // covers the key Nd2Nz issued above in the same iteration.
                     SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
                     WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
                 } else {
                     queryL1Mte1BufIdx_ =
-                        queryL1Mte2BufIdx_ - (CeilDiv(s1gProcessSize, constInfo_.mBaseSize) - 1 - (s1gGmOffset > 0));
+                        queryL1Mte2BufIdx_ - (s1gSplitNum - 1 - (s1gGmOffset > 0));
                 }
                 for (uint64_t s2L1Offset = 0; s2L1Offset < s2L1RealSize; s2L1Offset += S2_BASIC_BLOCK_L0) {
                     uint64_t s2L0RealSize =
@@ -243,8 +258,13 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
                     KeyNd2Nz(s2L1LoadSize, s2GmOffset, runInfo);
                 }
 
-                SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
-                WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
+                // R2-lite: Set stays (MTE2-queue order + pairing unchanged);
+                // the scalar Wait is deferred to LoadKeyToL0b so the MTE2 transfer
+                // overlaps with query-side prep and loop setup.
+                if (!(runInfo.isFirstS2InnerLoop && s2GmOffset == 0)) {
+                    SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
+                    keyWaitDeferred_ = true;  // Wait deferred to first key consumer
+                }
 
                 isKeyCacheValid_ = true;
                 keyGmStart_ = s2GmBaseOffset;
@@ -258,17 +278,18 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
                     s1gGmOffset + constInfo_.mBaseSize > s1gProcessSize ?
                                            s1gProcessSize - s1gGmOffset :
                                            constInfo_.mBaseSize;
-                uint64_t s1gL1SizeAlign2G = CeilAlign(s1gL1RealSize, 2 * constInfo_.gSize);
+                uint64_t s1gL1SizeAlign2G = CeilAlign(s1gL1RealSize, s1gAlign2GSize);
                 if (runInfo.isFirstS2InnerLoop && s2GmOffset == 0) {
                     queryL1Mte2BufIdx_++;
                     queryL1Mte1BufIdx_ = queryL1Mte2BufIdx_;
                     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte2BufIdx_ % QUERY_BUF_NUM);
                     QueryNd2Nz(s1gL1RealSize, s1gGmOffset, runInfo);
+                    // P6 dedup Set covers key+query copies; R2-lite: Wait deferred
                     SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
-                    WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
+                    keyWaitDeferred_ = true;
                 } else {
                     queryL1Mte1BufIdx_ =
-                        queryL1Mte2BufIdx_ - (CeilDiv(s1gProcessSize, constInfo_.mBaseSize) - 1 - (s1gGmOffset > 0));
+                        queryL1Mte2BufIdx_ - (s1gSplitNum - 1 - (s1gGmOffset > 0));
                 }
                 uint64_t s2Boundry = l1S2Offset + s2ProcessSize;
                 for (uint64_t s2L1Offset = l1S2Offset; s2L1Offset < s2Boundry; s2L1Offset += S2_BASIC_BLOCK_L0) {
@@ -277,6 +298,10 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
                                             l1S2Offset + s2ProcessSize - s2L1Offset :
                                             S2_BASIC_BLOCK_L0;
                     for (uint64_t s1gOffset = 0; s1gOffset < s1gL1SizeAlign2G; s1gOffset += constInfo_.mBaseSize) {
+                        if (keyWaitDeferred_) {
+                            WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
+                            keyWaitDeferred_ = false;
+                        }
                         WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
                         uint64_t s1gL0RealSize =
                             s1gOffset + constInfo_.mBaseSize > s1gL1SizeAlign2G ?
@@ -343,12 +368,26 @@ __aicore__ inline void QLIMatmul<QLIT>::KeyNd2NzForPA(uint64_t s2L1RealSize, uin
     while (s2L1Offset < s2L1RealSize) {
         uint64_t s2BlkId = (s2L1Offset + s2GmOffset) / constInfo_.kCacheBlockSize;
         uint64_t s2BlkOffset = (s2L1Offset + s2GmOffset) % constInfo_.kCacheBlockSize;
-        uint64_t keyGmOffset = blkTableGm_.GetValue(runInfo.bIdx * constInfo_.maxBlockNumPerBatch + s2BlkId) *
-                                constInfo_.keyStride0 + s2BlkOffset * constInfo_.headDim;
+        uint64_t curPhyBlk = static_cast<uint64_t>(blkTableGm_.GetValue(
+            runInfo.bIdx * constInfo_.maxBlockNumPerBatch + s2BlkId));
+        uint64_t keyGmOffset = curPhyBlk * constInfo_.keyStride0 + s2BlkOffset * constInfo_.headDim;
 
         uint64_t s2Mte2Size = s2L1RealSize - s2L1Offset;
         s2Mte2Size = s2BlkOffset + s2Mte2Size >= constInfo_.kCacheBlockSize ? constInfo_.kCacheBlockSize - s2BlkOffset
                                                                             : s2Mte2Size;
+        // 相邻物理block合并搬运: 后续逻辑block映射的物理block连续时, 合并为单次Nd2Nz(最多到s2L1RealSize),
+        // 降低MTE2小粒度搬运的指令数, 仅改搬运粒度不改数据内容
+        while (s2BlkOffset + s2Mte2Size == constInfo_.kCacheBlockSize &&
+               s2L1Offset + s2Mte2Size < s2L1RealSize) {
+            uint64_t nextBlkNum = (s2BlkOffset + s2Mte2Size) / constInfo_.kCacheBlockSize;
+            uint64_t nextPhyBlk = static_cast<uint64_t>(blkTableGm_.GetValue(
+                runInfo.bIdx * constInfo_.maxBlockNumPerBatch + s2BlkId + nextBlkNum));
+            if (nextPhyBlk != curPhyBlk + nextBlkNum) {
+                break;
+            }
+            uint64_t s2RemainSize = s2L1RealSize - (s2L1Offset + s2Mte2Size);
+            s2Mte2Size += (s2RemainSize < constInfo_.kCacheBlockSize) ? s2RemainSize : constInfo_.kCacheBlockSize;
+        }
         Nd2NzParams nd2nzPara;
         nd2nzPara.ndNum = 1;
         nd2nzPara.nValue = s2Mte2Size; // 行数
