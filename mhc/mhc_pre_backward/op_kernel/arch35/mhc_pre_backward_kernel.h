@@ -74,7 +74,7 @@ public:
     __aicore__ inline void ProcessV2ChunkLoadInvRms(uint32_t bsChunkStart, uint32_t currentChunkSize);
     __aicore__ inline void ProcessV2ChunkLoadHInGrad(uint32_t offsetND, uint32_t copySizeND, uint32_t bsChunkStart,
                                                      uint32_t currentChunkSize, uint32_t currentN, uint32_t bsStart);
-    __aicore__ inline void ProcessV2ChunkLoadXAndGamma(uint32_t offsetND, uint32_t copySizeND,
+    __aicore__ inline void ProcessV2ChunkLoadXAndGamma(uint32_t offsetND, uint32_t copySizeND, uint32_t bsStart,
                                                        uint32_t bsChunkStart, uint32_t currentChunkSize,
                                                        uint32_t buffId);
     __aicore__ inline void ProcessV2ChunkProcessXRsGradMm(uint32_t bsStart, uint32_t bsChunkStart, uint32_t copySizeND,
@@ -1269,7 +1269,7 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoop(uint32_t offsetND, uint32_t copyS
     ProcessV2ChunkLoadHInGrad(offsetND, copySizeND, bsChunkStart, currentChunkSize, currentN, bsStart);
 
     // 3. 加载x和gamma，计算xRs
-    ProcessV2ChunkLoadXAndGamma(offsetND, copySizeND, bsChunkStart, currentChunkSize, buffId);
+    ProcessV2ChunkLoadXAndGamma(offsetND, copySizeND, bsStart, bsChunkStart, currentChunkSize, buffId);
 
     // 4. 融合计算xRsGrad并处理xRsGradMm
     ProcessV2ChunkProcessXRsGradMm(bsStart, bsChunkStart, copySizeND, currentChunkSize, buffId, sumBuf);
@@ -1337,7 +1337,7 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadHInGrad(uint32_t offsetND, uint32_
 // 子函数3: 加载x和gamma，计算xRs
 template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadXAndGamma(uint32_t offsetND, uint32_t copySizeND,
-                                                                               uint32_t bsChunkStart,
+                                                                               uint32_t bsStart, uint32_t bsChunkStart,
                                                                                uint32_t currentChunkSize,
                                                                                uint32_t buffId)
 {
