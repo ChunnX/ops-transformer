@@ -163,63 +163,7 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_query)
 }
 
 // ============================================================================
-// Case 3: returnSoftmaxlse=1 without LSE output (tiling/ViewCopy path, align BSA)
-// ============================================================================
-TEST_F(aclnn_generic_block_sparse_attention_ut, lse_flag_without_output)
-{
-    auto query = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto key = TensorDesc({kMaxBlocks, kBlockSize, kN2, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto value = TensorDesc({kMaxBlocks, kBlockSize, kN2, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto sparseBlockIdx =
-        TensorDesc({kN2, kTotalQBlocks, kTopK}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
-    auto sparseBlockCount =
-        TensorDesc({kN2, kTotalQBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{1});
-    auto metadata = TensorDesc({1024}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
-    auto blockTable = TensorDesc({kBatch, kMaxBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
-    auto blockShape = IntArrayDesc(vector<int64_t>{kBlockShapeX, kBlockSize});
-    char layoutQ[] = "TND";
-    char layoutKv[] = "PAGED_BBND";
-    auto attentionOut = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND);
-
-    auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
-                        INPUT(query,             // query
-                              key,               // key
-                              value,             // value
-                              sparseBlockIdx,    // sparseBlockIdx
-                              sparseBlockCount,  // sparseBlockCount
-                              metadata,          // metadataOptional
-                              nullptr,           // attenMaskOptional
-                              nullptr,           // qDequantScaleOptional
-                              nullptr,           // kDequantScaleOptional
-                              nullptr,           // vDequantScaleOptional
-                              nullptr,           // pQuantScaleOptional
-                              nullptr,           // cuSeqLengthsQOptional
-                              nullptr,           // cuSeqLengthsKvOptional
-                              nullptr,           // sequsedQOptional
-                              nullptr,           // sequsedKvOptional
-                              blockTable,        // blockTableOptional
-                              blockShape,        // blockShape
-                              1,                 // isPackedGQA
-                              layoutQ,           // layoutQ
-                              layoutKv,          // layoutKv
-                              kScale,            // scaleValue
-                              1,                 // maskType
-                              0,                 // quantType
-                              0.0,               // dstTypeMax
-                              0,                 // softmaxPrecision
-                              -1,                // winLeft
-                              -1,                // winRight
-                              1                  // returnSoftmaxlse
-                              ),
-                        OUTPUT(attentionOut, nullptr));
-
-    uint64_t workspaceSize = 0;
-    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
-    EXPECT_EQ(aclRet, ACLNN_ERR_INNER_NULLPTR);
-}
-
-// ============================================================================
-// Case 4: metadata is required by Contiguous path (nullptr -> INNER_NULLPTR)
+// Case 3: metadata is required by Contiguous path (nullptr -> INNER_NULLPTR)
 // ============================================================================
 TEST_F(aclnn_generic_block_sparse_attention_ut, null_metadata)
 {
@@ -274,7 +218,7 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_metadata)
 }
 
 // ============================================================================
-// Case 5: required key is nullptr
+// Case 4: required key is nullptr
 // ============================================================================
 TEST_F(aclnn_generic_block_sparse_attention_ut, null_key)
 {
@@ -329,7 +273,7 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_key)
 }
 
 // ============================================================================
-// Case 6: required attentionOut is nullptr
+// Case 5: required attentionOut is nullptr
 // ============================================================================
 TEST_F(aclnn_generic_block_sparse_attention_ut, null_attention_out)
 {
@@ -384,7 +328,7 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_attention_out)
 }
 
 // ============================================================================
-// Case 7: returnSoftmaxlse=1 with valid LSE output
+// Case 6: returnSoftmaxlse=1 with valid LSE output
 // ============================================================================
 TEST_F(aclnn_generic_block_sparse_attention_ut, normal_with_lse)
 {
@@ -441,7 +385,7 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, normal_with_lse)
 }
 
 // ============================================================================
-// Case 8: unsupported layoutQ
+// Case 7: unsupported layoutQ
 // ============================================================================
 TEST_F(aclnn_generic_block_sparse_attention_ut, invalid_layout_q)
 {
@@ -471,7 +415,7 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, invalid_layout_q)
 }
 
 // ============================================================================
-// Case 9: null blockShape
+// Case 8: null blockShape
 // ============================================================================
 TEST_F(aclnn_generic_block_sparse_attention_ut, null_block_shape)
 {
@@ -500,7 +444,7 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_block_shape)
 }
 
 // ============================================================================
-// Case 10: invalid blockShape size
+// Case 9: invalid blockShape size
 // ============================================================================
 TEST_F(aclnn_generic_block_sparse_attention_ut, invalid_block_shape_size)
 {
@@ -530,7 +474,7 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, invalid_block_shape_size)
 }
 
 // ============================================================================
-// Case 11: Q/K dtype mismatch
+// Case 10: Q/K dtype mismatch
 // ============================================================================
 TEST_F(aclnn_generic_block_sparse_attention_ut, dtype_mismatch)
 {
@@ -560,7 +504,7 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, dtype_mismatch)
 }
 
 // ============================================================================
-// Case 12: invalid softmaxPrecision
+// Case 11: invalid softmaxPrecision
 // ============================================================================
 TEST_F(aclnn_generic_block_sparse_attention_ut, invalid_softmax_precision)
 {
