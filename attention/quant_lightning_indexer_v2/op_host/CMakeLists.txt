@@ -26,5 +26,11 @@ add_ops_compile_options(
 )
 
 if (NOT BUILD_OPS_RTY_KERNEL)
+    file(GLOB_RECURSE QUANT_LIGHTNING_INDEXER_V2_CHECKER_SRC_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/checkers/*.cpp
+    )
     add_modules_sources(OPTYPE quant_lightning_indexer_v2 ACLNNTYPE aclnn)
+    target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
+        ${QUANT_LIGHTNING_INDEXER_V2_CHECKER_SRC_FILES}
+    )
 endif()
