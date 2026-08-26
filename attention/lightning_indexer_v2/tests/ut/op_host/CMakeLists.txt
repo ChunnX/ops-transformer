@@ -9,7 +9,17 @@
 # -----------------------------------------------------------------------------------------------------------
 
 if(UT_TEST_ALL OR OP_HOST_UT)
+    add_modules_ut_sources(UT_NAME ${OP_TILING_MODULE_NAME} MODE PRIVATE DIR ${CMAKE_CURRENT_SOURCE_DIR})
     add_modules_ut_sources(UT_NAME ${OP_INFERSHAPE_MODULE_NAME} MODE PRIVATE DIR ${CMAKE_CURRENT_SOURCE_DIR})
+
+    list(FIND ASCEND_OP_NAME lightning_indexer_v2 lightning_indexer_v2_index)
+    if("${ASCEND_OP_NAME}" STREQUAL "ALL" OR NOT lightning_indexer_v2_index EQUAL -1)
+        target_sources(${OP_TILING_MODULE_NAME}_cases_obj PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/test_lightning_indexer_v2_checker.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/checkers/liv2_checker.cpp)
+        include(${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/checkers/checker_sources.cmake)
+        add_indexer_v2_common_checker_sources(${OP_TILING_MODULE_NAME}_cases_obj)
+    endif()
 endif()
 
 file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)

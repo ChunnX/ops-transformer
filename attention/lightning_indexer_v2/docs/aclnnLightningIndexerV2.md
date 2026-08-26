@@ -297,10 +297,10 @@ aclnnStatus aclnnLightningIndexerV2(
     <td>sparseValues（aclTensor*）</td>
     <td>输出</td>
     <td>公式中的Indices对应的Values输出。</td>
-    <td>不支持空tensor。</td>
+    <td>returnValue为1时输出有效值；returnValue为0时输出shape为(0,)的空tensor。</td>
     <td>FLOAT</td>
     <td>ND</td>
-    <td><ul><li>layoutQ为"BSND"时输出shape为[B, S1, N2, topk]。</li><li>layoutQ为"TND"时输出shape为[T1, N2, topk]。</li></ul></td>
+    <td><ul><li>returnValue为1且layoutQ为"BSND"时输出shape为[B, S1, N2, topk]。</li><li>returnValue为1且layoutQ为"TND"时输出shape为[T1, N2, topk]。</li><li>returnValue为0时shape为(0,)。</li></ul></td>
     <td>x</td>
     </tr>
     <tr>
