@@ -464,7 +464,7 @@ public:
                     }
                 }
             }
-            if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
+            if constexpr (!PAGE_ATTENTION && LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
                 if (bothKv) {
                     uint64_t kvCuLen = kvCuSeqLensParser_.GetTBase(bIdx + 1) - kvCuSeqLensParser_.GetTBase(bIdx);
                     uint64_t kvUsedLen = kvCuSeqLensParser_.GetActualSeqLength(bIdx);
