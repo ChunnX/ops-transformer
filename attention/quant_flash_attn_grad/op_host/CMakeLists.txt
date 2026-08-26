@@ -10,10 +10,10 @@
 add_op_to_compiled_list()
 
 if (BUILD_OPEN_PROJECT)
-    target_sources(op_host_aclnn PRIVATE
+    target_sources(op_host_aclnnInner PRIVATE
         quant_flash_attn_grad_def.cpp
     )
-    add_modules_sources(OPTYPE quant_flash_attn_grad ACLNNTYPE aclnn)
+    add_modules_sources(OPTYPE quant_flash_attn_grad ACLNNTYPE aclnn_inner)
 endif()
 
 # ascend950 条件编译—缺少此项会导致 kernel binary 未编译
