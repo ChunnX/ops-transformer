@@ -290,7 +290,8 @@ def quant_flash_attn_metadata(
     """
     torch._check(
         quant_mode in (1, 5),
-        lambda: f"The quant_mode of quant_flash_attn_metadata only supports 1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) or 5 (A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16), but got {quant_mode}",
+        lambda: f"quant_mode of quant_flash_attn_metadata only supports 1 or 5, but got "
+        f"{quant_mode}",
     )
     if layout_q == "TND":
         torch._check(
@@ -419,7 +420,8 @@ def quant_flash_attn(
     """
     torch._check(
         quant_mode in (1, 5),
-        lambda: f"The quant_mode of quant_flash_attn only supports 1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) or 5 (A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16), but got {quant_mode}",
+        lambda: f"quant_mode of quant_flash_attn only supports 1 or 5, but got "
+        f"{quant_mode}",
     )
     quant_mode = _resolve_quant_mode(quant_mode)
     mask_mode = _resolve_mask_mode(mask_mode)
