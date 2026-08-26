@@ -1023,12 +1023,62 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetInfo(
             MegaMoeWaveTraceEvent::DISPATCH_MASK_LOAD_AND_GATHER,
             traceScope, maskTraceBegin, maskTraceEnd,
             dispatchTraceMetrics.gatherMaskCallCount, 0U);
+        uint32_t transferTraceOffset = traceOffset;
         traceOffset = waveTrace_.RecordAggregatedChild(
             MegaMoeWaveTraceEvent::DISPATCH_TRANSFER_PIPELINE, MegaMoeWaveTraceEvent::DISPATCH,
             traceScope, traceBegin, traceEnd, dispatchTraceMetrics.transferPipelineCycles, traceOffset);
+        uint32_t transferTraceBegin = traceBegin + transferTraceOffset;
+        uint32_t transferTraceEnd = traceBegin + traceOffset;
+        uint32_t transferChildOffset = 0U;
+        transferChildOffset = waveTrace_.RecordAggregatedChild(
+            MegaMoeWaveTraceEvent::DISPATCH_TRANSFER_ROUTE_PREPARE,
+            MegaMoeWaveTraceEvent::DISPATCH_TRANSFER_PIPELINE,
+            traceScope, transferTraceBegin, transferTraceEnd,
+            dispatchTraceMetrics.transferRoutePrepareCycles, transferChildOffset);
+        transferChildOffset = waveTrace_.RecordAggregatedChild(
+            MegaMoeWaveTraceEvent::WAIT_DISPATCH_MTE3_REUSE,
+            MegaMoeWaveTraceEvent::DISPATCH_TRANSFER_PIPELINE,
+            traceScope, transferTraceBegin, transferTraceEnd,
+            dispatchTraceMetrics.transferMte3ReuseWaitCycles, transferChildOffset);
+        transferChildOffset = waveTrace_.RecordAggregatedChild(
+            MegaMoeWaveTraceEvent::DISPATCH_TRANSFER_MTE2_ISSUE,
+            MegaMoeWaveTraceEvent::DISPATCH_TRANSFER_PIPELINE,
+            traceScope, transferTraceBegin, transferTraceEnd,
+            dispatchTraceMetrics.transferMte2IssueCycles, transferChildOffset);
+        transferChildOffset = waveTrace_.RecordAggregatedChild(
+            MegaMoeWaveTraceEvent::WAIT_DISPATCH_TRANSFER_MTE2_READY,
+            MegaMoeWaveTraceEvent::DISPATCH_TRANSFER_PIPELINE,
+            traceScope, transferTraceBegin, transferTraceEnd,
+            dispatchTraceMetrics.transferMte2ReadyWaitCycles, transferChildOffset);
+        transferChildOffset = waveTrace_.RecordAggregatedChild(
+            MegaMoeWaveTraceEvent::DISPATCH_TRANSFER_META_INFO_PREPARE,
+            MegaMoeWaveTraceEvent::DISPATCH_TRANSFER_PIPELINE,
+            traceScope, transferTraceBegin, transferTraceEnd,
+            dispatchTraceMetrics.transferMetaInfoPrepareCycles, transferChildOffset);
+        transferChildOffset = waveTrace_.RecordAggregatedChild(
+            MegaMoeWaveTraceEvent::WAIT_DISPATCH_TRANSFER_META_INFO_READY,
+            MegaMoeWaveTraceEvent::DISPATCH_TRANSFER_PIPELINE,
+            traceScope, transferTraceBegin, transferTraceEnd,
+            dispatchTraceMetrics.transferMetaInfoReadyWaitCycles, transferChildOffset);
+        transferChildOffset = waveTrace_.RecordAggregatedChild(
+            MegaMoeWaveTraceEvent::DISPATCH_TRANSFER_MTE3_ISSUE,
+            MegaMoeWaveTraceEvent::DISPATCH_TRANSFER_PIPELINE,
+            traceScope, transferTraceBegin, transferTraceEnd,
+            dispatchTraceMetrics.transferMte3IssueCycles, transferChildOffset);
         waveTrace_.RecordAggregatedChild(
+            MegaMoeWaveTraceEvent::WAIT_DISPATCH_MTE3_DRAIN,
+            MegaMoeWaveTraceEvent::DISPATCH_TRANSFER_PIPELINE,
+            traceScope, transferTraceBegin, transferTraceEnd,
+            dispatchTraceMetrics.transferMte3DrainWaitCycles, transferChildOffset);
+        uint32_t readyTraceOffset = traceOffset;
+        traceOffset = waveTrace_.RecordAggregatedChild(
             MegaMoeWaveTraceEvent::DISPATCH_READY_PUBLISH, MegaMoeWaveTraceEvent::DISPATCH,
             traceScope, traceBegin, traceEnd, dispatchTraceMetrics.readyPublishCycles, traceOffset);
+        waveTrace_.RecordAggregatedChild(
+            MegaMoeWaveTraceEvent::WAIT_DISPATCH_READY_SYNC,
+            MegaMoeWaveTraceEvent::DISPATCH_READY_PUBLISH,
+            traceScope, traceBegin + readyTraceOffset, traceBegin + traceOffset,
+            dispatchTraceMetrics.readySyncWaitCycles, 0U);
         waveTrace_.Record(MegaMoeWaveTraceEvent::DISPATCH, traceScope,
                           traceBegin, traceEnd);
 #endif

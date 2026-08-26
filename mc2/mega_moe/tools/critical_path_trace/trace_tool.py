@@ -50,6 +50,12 @@ EVENT_NAMES = {
     31: "RoutePlan",
     32: "RoutePlan GatherMask calls (counter)",
     33: "RouteTable GM->UB (aggregate)",
+    34: "Transfer route/address prepare (aggregate)",
+    35: "Transfer MTE2 issue (aggregate)",
+    36: "Wait Transfer MTE2 ready (aggregate)",
+    37: "Transfer metadata prepare (aggregate)",
+    38: "Transfer MTE3 issue (aggregate)",
+    39: "Wait Transfer metadata ready (aggregate)",
 }
 EVENT_COLORS = {
     1: "#06b6d4",
@@ -85,12 +91,18 @@ EVENT_COLORS = {
     31: "#0f766e",
     32: "#475569",
     33: "#0284c7",
+    34: "#7c3aed",
+    35: "#0ea5e9",
+    36: "#f59e0b",
+    37: "#14b8a6",
+    38: "#ea580c",
+    39: "#fbbf24",
 }
-WAIT_EVENT_IDS = frozenset((8, 9, 10, 11, 13, 14, 15, 19, 20, 27, 29))
+WAIT_EVENT_IDS = frozenset((8, 9, 10, 11, 13, 14, 15, 19, 20, 27, 29, 36, 39))
 AGGREGATE_EVENT_IDS = frozenset((12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-                                 25, 26, 27, 28, 29, 30, 32, 33))
+                                 25, 26, 27, 28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 39))
 COUNTER_EVENT_IDS = frozenset((30, 32))
-WAIT_INSTRUMENTED_PARENT_IDS = frozenset((1, 2, 4, 5, 7))
+WAIT_INSTRUMENTED_PARENT_IDS = frozenset((1, 2, 4, 5, 7, 12, 24))
 EVENT_TRACE_POINTS = {
     1: (
         "DispatchWaveAndGetEndCursor：开始规划并处理当前 wave",
@@ -223,6 +235,30 @@ EVENT_TRACE_POINTS = {
     33: (
         "PlanDispatchCoreRouteQueueFromTable 开始搬入当前 rank 的连续 compact ordinal 区间",
         "Route Table GM->UB 完成并对 Scalar 可见（wave 内各专家/rank 累计）",
+    ),
+    34: (
+        "读取本核 route entry，并解析 rank/topkIndex、切换 remote GM 视图和计算地址（累计值）",
+        "当前 token 的 remote source 地址准备完成（累计值）",
+    ),
+    35: (
+        "向 MTE2 下发当前远端 token/scale 的 GM->UB DataCopy（累计值）",
+        "MTE2 DataCopy 指令完成下发，不代表数据已经到达 UB（累计值）",
+    ),
+    36: (
+        "写回当前 token 前等待 MTE2_MTE3/MTE2_S 数据就绪（累计值）",
+        "当前 token/scale 及可选 topk weight 对 MTE3/Scalar 可见（累计值）",
+    ),
+    37: (
+        "准备当前 token 的 rankId/tokenId/topkIndex/weight metadata（累计值）",
+        "metadata 写入 UB 并发布 Scalar->MTE3 依赖（累计值）",
+    ),
+    38: (
+        "下发 token、scale 和 metadata 的 UB->workspace MTE3 写出（累计值）",
+        "当前 token 的全部 MTE3 指令完成下发，不代表写出已完成（累计值）",
+    ),
+    39: (
+        "写出 metadata 前等待 Scalar 写入对 MTE3 可见（累计值）",
+        "当前 token 的 metadata 已可由 MTE3 读取（累计值）",
     ),
 }
 
@@ -638,14 +674,18 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
 <section class="panel">
   <h2>Dispatch 分项</h2>
   <div class="muted">一级分项是每个 AIV1 core 在当前 wave 内所有专家段的精确 cycle 累计；
-  RankRoundPlan 已扣除 RouteTable GM→UB 与旧回退路径的 MaskLoadAndGather，因而各列互不重叠。
+  RankRoundPlan 已扣除 RouteTable GM→UB 与旧回退路径的 MaskLoadAndGather，因而一级分项互不重叠。
   RoutePlan 是 wave 循环前的一次性顶层事件，单独出现在时间线和 Wave 汇总中。Other/control 为 Dispatch
   父阶段减去各项后的 wave 游标规划、地址设置、检查等剩余时间。旧 Mask 子项进一步拆分异步流水：
   DataCopy/CreateVecIndex/GatherMask 标为 issue，仅表示 API 指令下发；真实完成延迟落在原有 MTE2_V/V_S 等待中。
-  GatherMask calls 是当前 core/wave 的调用次数，不是 cycles，也不参与已归类耗时求和。</div>
+  TransferPipeline 子项同样是逐 token 短区间的 wave 级 cycle 累计，子项只解释 TransferPipeline，不会再次计入
+  Dispatch 的一级 classified 合计。GatherMask calls 是当前 core/wave 的调用次数，不是 cycles。</div>
   <div class="table-scroll"><table id="dispatchTable"><thead><tr>
     <th>AI Block</th><th>Wave</th><th>Token 数</th><th>Dispatch 总计</th><th>PrepareDispatchCounts</th>
-    <th>RankRoundPlan</th><th>RouteTable GM→UB</th><th>MaskLoadAndGather (fallback)</th><th>TransferPipeline</th><th>ReadyPublish</th>
+    <th>RankRoundPlan</th><th>RouteTable GM→UB</th><th>MaskLoadAndGather (fallback)</th><th>TransferPipeline</th>
+    <th>Route/address</th><th>MTE3 reuse wait</th><th>MTE2 issue</th><th>MTE2 ready wait</th>
+    <th>Metadata prepare</th><th>Metadata ready wait</th><th>MTE3 issue</th><th>MTE3 drain</th><th>Transfer other</th>
+    <th>ReadyPublish</th><th>Ready sync</th>
     <th>Mask DataCopy issue</th><th>CreateVecIndex issue</th><th>Wait mask/index ready</th>
     <th>GatherMask issue</th><th>Wait GatherMask ready</th><th>GatherMask calls</th>
     <th>Other/control</th><th>已归类占比</th>
@@ -944,10 +984,15 @@ function renderDispatchTable(events) {{
     if(e.role!=='AIV1') continue;
     const relevant=e.event_id===1 ||
       (e.parent_event_id===1 && [12,21,22,23,24,33].includes(e.event_id)) ||
+      (e.parent_event_id===12 && [13,14,34,35,36,37,38,39].includes(e.event_id)) ||
+      (e.parent_event_id===24 && e.event_id===15) ||
       (e.parent_event_id===23 && [25,26,27,28,29,30].includes(e.event_id));
     if(!relevant) continue;
     const key=`${{e.core}}|${{e.wave}}`;
-    const g=groups.get(key)||{{core:e.core,wave:e.wave,tokens:0,total:0,counts:0,plan:0,routeLoad:0,mask:0,transfer:0,ready:0,
+    const g=groups.get(key)||{{core:e.core,wave:e.wave,tokens:0,total:0,counts:0,plan:0,routeLoad:0,mask:0,transfer:0,
+      transferRoute:0,transferReuse:0,transferMte2Issue:0,transferMte2Wait:0,transferMeta:0,transferMetaWait:0,
+      transferMte3Issue:0,transferDrain:0,
+      ready:0,readySync:0,
       maskCopyIssue:0,indexIssue:0,maskIndexWait:0,gatherIssue:0,gatherWait:0,gatherCalls:0}};
     if(e.event_id===1) {{ g.total+=e.duration_cycles; g.tokens=Math.max(g.tokens,e.token_count); }}
     else if(e.event_id===21) g.counts+=e.duration_cycles;
@@ -955,7 +1000,16 @@ function renderDispatchTable(events) {{
     else if(e.event_id===33) g.routeLoad+=e.duration_cycles;
     else if(e.event_id===23) g.mask+=e.duration_cycles;
     else if(e.event_id===12) g.transfer+=e.duration_cycles;
+    else if(e.event_id===34) g.transferRoute+=e.duration_cycles;
+    else if(e.event_id===13) g.transferReuse+=e.duration_cycles;
+    else if(e.event_id===35) g.transferMte2Issue+=e.duration_cycles;
+    else if(e.event_id===36) g.transferMte2Wait+=e.duration_cycles;
+    else if(e.event_id===37) g.transferMeta+=e.duration_cycles;
+    else if(e.event_id===39) g.transferMetaWait+=e.duration_cycles;
+    else if(e.event_id===38) g.transferMte3Issue+=e.duration_cycles;
+    else if(e.event_id===14) g.transferDrain+=e.duration_cycles;
     else if(e.event_id===24) g.ready+=e.duration_cycles;
+    else if(e.event_id===15) g.readySync+=e.duration_cycles;
     else if(e.event_id===25) g.maskCopyIssue+=e.duration_cycles;
     else if(e.event_id===26) g.indexIssue+=e.duration_cycles;
     else if(e.event_id===27) g.maskIndexWait+=e.duration_cycles;
@@ -968,11 +1022,18 @@ function renderDispatchTable(events) {{
   const fmt=value=>`${{value.toLocaleString()}} (${{(value/1000).toFixed(3)}} μs)`;
   document.querySelector('#dispatchTable tbody').innerHTML=rows.map(g=>{{
     const classified=g.counts+g.plan+g.routeLoad+g.mask+g.transfer+g.ready;
+    const transferClassified=g.transferRoute+g.transferReuse+g.transferMte2Issue+g.transferMte2Wait+
+      g.transferMeta+g.transferMetaWait+g.transferMte3Issue+g.transferDrain;
+    const transferOther=Math.max(0,g.transfer-transferClassified);
     const other=Math.max(0,g.total-classified);
     const ratio=g.total?(classified/g.total*100).toFixed(1)+'%':'—';
     return `<tr><td>${{g.core}}</td><td>${{g.wave}}</td><td>${{g.tokens}}</td><td>${{fmt(g.total)}}</td>`
       +`<td>${{fmt(g.counts)}}</td><td>${{fmt(g.plan)}}</td><td>${{fmt(g.routeLoad)}}</td><td>${{fmt(g.mask)}}</td>`
-      +`<td>${{fmt(g.transfer)}}</td><td>${{fmt(g.ready)}}</td>`
+      +`<td>${{fmt(g.transfer)}}</td><td>${{fmt(g.transferRoute)}}</td><td>${{fmt(g.transferReuse)}}</td>`
+      +`<td>${{fmt(g.transferMte2Issue)}}</td><td>${{fmt(g.transferMte2Wait)}}</td><td>${{fmt(g.transferMeta)}}</td>`
+      +`<td>${{fmt(g.transferMetaWait)}}</td>`
+      +`<td>${{fmt(g.transferMte3Issue)}}</td><td>${{fmt(g.transferDrain)}}</td><td>${{fmt(transferOther)}}</td>`
+      +`<td>${{fmt(g.ready)}}</td><td>${{fmt(g.readySync)}}</td>`
       +`<td>${{fmt(g.maskCopyIssue)}}</td><td>${{fmt(g.indexIssue)}}</td><td>${{fmt(g.maskIndexWait)}}</td>`
       +`<td>${{fmt(g.gatherIssue)}}</td><td>${{fmt(g.gatherWait)}}</td><td>${{g.gatherCalls.toLocaleString()}}</td>`
       +`<td>${{fmt(other)}}</td><td>${{ratio}}</td></tr>`;

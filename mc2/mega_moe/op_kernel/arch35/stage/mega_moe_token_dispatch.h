@@ -101,7 +101,16 @@ struct WaveDispatchTraceMetrics {
     uint32_t gatherMaskCallCount = 0U;
     uint32_t routeTableLoadCycles = 0U;
     uint32_t transferPipelineCycles = 0U;
+    uint32_t transferRoutePrepareCycles = 0U;
+    uint32_t transferMte3ReuseWaitCycles = 0U;
+    uint32_t transferMte2IssueCycles = 0U;
+    uint32_t transferMte2ReadyWaitCycles = 0U;
+    uint32_t transferMetaInfoPrepareCycles = 0U;
+    uint32_t transferMetaInfoReadyWaitCycles = 0U;
+    uint32_t transferMte3IssueCycles = 0U;
+    uint32_t transferMte3DrainWaitCycles = 0U;
     uint32_t readyPublishCycles = 0U;
+    uint32_t readySyncWaitCycles = 0U;
 };
 
 template <typename ActivationType>
@@ -118,22 +127,49 @@ template <bool IsBufferReuse, bool TopkWeightsPrefetch, typename ActivationType>
 __aicore__ inline void FetchDispatchTokenAndMetaInfo(const TokenDispatchConfig &context,
                                                      TokenDispatchScratch<ActivationType> &scratch,
                                                      int32_t bufferIdx, int32_t topkIndex, int32_t remoteRankIdx,
-                                                     GlobalTensor<ActivationType> &remoteRankGlobalTensor)
+                                                     GlobalTensor<ActivationType> &remoteRankGlobalTensor,
+                                                     WaveDispatchTraceMetrics *traceMetrics = nullptr)
 {
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    uint32_t routePrepareBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+#endif
     TEventID eventId = static_cast<TEventID>(bufferIdx);
     LocalTensor<ActivationType> copyTmpTensor = GetDispatchCopyBuffer(context, scratch, bufferIdx);
     int32_t tokenIndex = topkIndex / static_cast<int32_t>(context.common.topK);
     uint64_t remoteCopyOffset =
         static_cast<uint64_t>(tokenIndex) * static_cast<uint64_t>(context.quantTokenScaleAlignBytes);
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    if (traceMetrics != nullptr) {
+        traceMetrics->transferRoutePrepareCycles += MegaMoeWaveTraceDetail::Now() - routePrepareBegin;
+    }
+    uint32_t reuseWaitBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+#endif
     if constexpr (IsBufferReuse) {
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
     }
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    if (traceMetrics != nullptr && IsBufferReuse) {
+        traceMetrics->transferMte3ReuseWaitCycles += MegaMoeWaveTraceDetail::Now() - reuseWaitBegin;
+    }
+    uint32_t mte2IssueBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+#endif
     DataCopy(copyTmpTensor, remoteRankGlobalTensor[remoteCopyOffset], context.quantTokenScaleAlignBytes);
     SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
-
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    if (traceMetrics != nullptr) {
+        traceMetrics->transferMte2IssueCycles += MegaMoeWaveTraceDetail::Now() - mte2IssueBegin;
+        reuseWaitBegin = MegaMoeWaveTraceDetail::Now();
+    }
+#endif
     if constexpr (IsBufferReuse) {
         WaitFlag<AscendC::HardEvent::MTE3_S>(eventId);
     }
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    if (traceMetrics != nullptr && IsBufferReuse) {
+        traceMetrics->transferMte3ReuseWaitCycles += MegaMoeWaveTraceDetail::Now() - reuseWaitBegin;
+    }
+    uint32_t metaInfoPrepareBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+#endif
     scratch.metaInfoTensor[bufferIdx * INT32_PER_256B].SetValue(RANK_ID, remoteRankIdx);
     scratch.metaInfoTensor[bufferIdx * INT32_PER_256B].SetValue(TOKEN_ID, tokenIndex);
     scratch.metaInfoTensor[bufferIdx * INT32_PER_256B].SetValue(TOPK_INDEX,
@@ -143,6 +179,12 @@ __aicore__ inline void FetchDispatchTokenAndMetaInfo(const TokenDispatchConfig &
     } else {
         SetFlag<AscendC::HardEvent::S_MTE3>(eventId);
     }
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    if (traceMetrics != nullptr) {
+        traceMetrics->transferMetaInfoPrepareCycles +=
+            MegaMoeWaveTraceDetail::Now() - metaInfoPrepareBegin;
+    }
+#endif
 }
 
 template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
@@ -150,31 +192,71 @@ __aicore__ inline void StoreDispatchTokenAndMetaInfo(
     const TokenDispatchConfig &context, TokenDispatchScratch<ActivationType> &scratch, int32_t bufferIdx,
     int32_t dstIdx, GlobalTensor<ActivationType> &tokenRevGlobalTensor,
     GlobalTensor<QuantScaleType> &scaleRevGlobalTensor, GlobalTensor<int32_t> &metaInfoGlobalTensor,
-    int32_t topkIndex)
+    int32_t topkIndex, WaveDispatchTraceMetrics *traceMetrics = nullptr)
 {
     TEventID eventId = static_cast<TEventID>(bufferIdx);
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    uint32_t mte2ReadyWaitBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+#endif
     WaitFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    if (traceMetrics != nullptr) {
+        traceMetrics->transferMte2ReadyWaitCycles +=
+            MegaMoeWaveTraceDetail::Now() - mte2ReadyWaitBegin;
+    }
+#endif
     LocalTensor<ActivationType> tokenScaleBuffer = GetDispatchCopyBuffer(context, scratch, bufferIdx);
     LocalTensor<QuantScaleType> scaleBuffer =
         tokenScaleBuffer[context.quantTokenAlignBytes].template ReinterpretCast<QuantScaleType>();
     if constexpr (TopkWeightsPrefetch) {
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+        mte2ReadyWaitBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+#endif
         WaitFlag<AscendC::HardEvent::MTE2_S>(eventId);
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+        if (traceMetrics != nullptr) {
+            traceMetrics->transferMte2ReadyWaitCycles +=
+                MegaMoeWaveTraceDetail::Now() - mte2ReadyWaitBegin;
+        }
+        uint32_t metaInfoPrepareBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+#endif
         uint32_t weightOffsetInUb = context.quantTokenAlignBytes + context.quantScaleAlignBytes;
         LocalTensor<int32_t> weightBitsTensor = tokenScaleBuffer[weightOffsetInUb].template ReinterpretCast<int32_t>();
         int32_t weightBits =
             weightBitsTensor.GetValue(static_cast<uint32_t>(topkIndex % static_cast<int32_t>(context.common.topK)));
         scratch.metaInfoTensor[bufferIdx * INT32_PER_256B].SetValue(WEIGHT_INDEX, weightBits);
         SetFlag<AscendC::HardEvent::S_MTE3>(eventId);
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+        if (traceMetrics != nullptr) {
+            traceMetrics->transferMetaInfoPrepareCycles +=
+                MegaMoeWaveTraceDetail::Now() - metaInfoPrepareBegin;
+        }
+#endif
     }
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    uint32_t metaInfoReadyWaitBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+#endif
+    WaitFlag<AscendC::HardEvent::S_MTE3>(eventId);
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    if (traceMetrics != nullptr) {
+        traceMetrics->transferMetaInfoReadyWaitCycles +=
+            MegaMoeWaveTraceDetail::Now() - metaInfoReadyWaitBegin;
+    }
+    uint32_t mte3IssueBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+#endif
     DataCopyPad(tokenRevGlobalTensor[dstIdx * scratch.revTokenElemCnt], tokenScaleBuffer,
                 {1, static_cast<uint16_t>(scratch.revTokenElemCnt * sizeof(ActivationType)), 0U, 0U, 0U});
     DataCopyPad(scaleRevGlobalTensor[dstIdx * scratch.revScaleElemCnt], scaleBuffer,
                 {1, static_cast<uint16_t>(scratch.revScaleElemCnt * sizeof(QuantScaleType)), 0U, 0U, 0U});
-    WaitFlag<AscendC::HardEvent::S_MTE3>(eventId);
     DataCopy(metaInfoGlobalTensor[dstIdx * INT32_PER_256B], scratch.metaInfoTensor[bufferIdx * INT32_PER_256B],
              INT32_PER_256B);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
     SetFlag<AscendC::HardEvent::MTE3_S>(eventId);
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    if (traceMetrics != nullptr) {
+        traceMetrics->transferMte3IssueCycles += MegaMoeWaveTraceDetail::Now() - mte3IssueBegin;
+    }
+#endif
 }
 
 // Prototype: MegaMoe::CopyGMToGMPerToken. Copies one dispatch shard and emits its metadata.
@@ -347,8 +429,8 @@ struct DispatchRankRoundInterval {
     int32_t rankPosition = -1;
 };
 
-// 同一 core 每个 coreCount-sized round 最多领取一个逻辑 row。lane 每轮右移
-// 一位，使同一 core 不再固定命中 rank-round 交织序列中的同一 source rank。
+// 同一 core 每个 coreCount-sized round 最多领取一个逻辑 row。
+// lane 在专家内保持固定，不再随 round 轮转 source rank。
 struct DispatchCoreRowCursor {
     int32_t round = 0;
     int32_t expertRow = 0;
@@ -413,8 +495,9 @@ __aicore__ inline int32_t GetDispatchOwnedRowForRound(
         context.blockJob.totalJobs == 0U ? 1U : context.blockJob.totalJobs);
     int32_t coreIdx = static_cast<int32_t>(context.blockJob.jobIndex);
     int32_t expertOwnerBase = expertGlobalRowBegin % coreCount;
-    // owner=(expertOwnerBase + lane - round) mod coreCount；反解本核 lane。
-    int32_t lane = DispatchPositiveMod(coreIdx - expertOwnerBase + round, coreCount);
+    // 目的 workspace 仍按 globalRow % coreCount 固定分核。反解本核在
+    // 专家 row 空间中的固定 lane，后续 round 只跨 coreCount 向前推进。
+    int32_t lane = DispatchPositiveMod(coreIdx - expertOwnerBase, coreCount);
     return round * coreCount + lane;
 }
 
@@ -922,8 +1005,8 @@ __aicore__ inline DispatchCoreRouteQueue PlanDispatchCoreRouteQueue(
     // 一次性解析所有 rank 的当前 wave ordinal 边界，并清空本核 rank 任务计数。
     PrepareDispatchSegmentRankPlans(
         context, scratch, segmentRowBegin, segmentRowEnd);
-    // 先按本核轮转后的 row 序列正向构造 {rank, compactOrdinal}。逻辑 row 到
-    // source 的映射保持不变，改变的只有每轮由哪个 core 领取该 row。sourceCursor
+    // 按本核固定 lane 的 row 序列正向构造 {rank, compactOrdinal}。逻辑 row 到
+    // source 的映射保持不变，同一 core 在后续 round 中固定跨 coreCount 领取 row。sourceCursor
     // 随 expertRow 单调推进，不再为每一行从 ordinal 0 重新搜索 interval。
     DispatchCoreRowCursor rowCursor = GetFirstDispatchRowOwnedByCore(
         context, expertGlobalRowBegin, segmentRowBegin, segmentRowEnd);
@@ -1027,7 +1110,7 @@ __aicore__ inline DispatchCoreRouteQueue PlanDispatchCoreRouteQueue(
 /**
  * 从共享 Route Table 构造本核 route queue。
  *
- * 逻辑 row 的 rank-round 映射、跨核轮转和目的 row 顺序与旧路径完全一致；
+ * 逻辑 row 的 rank-round 映射、固定核所有权和目的 row 顺序与旧路径完全一致；
  * 区别仅在于 topkIndex 的来源。每个 source rank 先把当前专家分段对应的
  * compact ordinal 连续区间从 GM 批量搬入 UB，再按 descriptor 回填最终 queue。
  */
@@ -1205,8 +1288,11 @@ __aicore__ inline int32_t FetchInterleavedDispatchRouteTask(
     const TokenDispatchConfig &context, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, int32_t taskIdx,
     int32_t bufferIdx, GlobalTensor<ActivationType> &remoteRankGlobalTensor,
-    int32_t &currentRankIdx)
+    int32_t &currentRankIdx, WaveDispatchTraceMetrics *traceMetrics)
 {
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    uint32_t routePrepareBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+#endif
     int32_t routeEntry = scratch.topkIndexTensor.GetValue(taskIdx);
     int32_t remoteRankIdx = static_cast<int32_t>(GetDispatchRouteRank(routeEntry));
     int32_t topkIndex = GetDispatchRouteTopkIndex(routeEntry);
@@ -1216,9 +1302,14 @@ __aicore__ inline int32_t FetchInterleavedDispatchRouteTask(
                 winRankAddr[remoteRankIdx] + context.quantWinOffset));
         currentRankIdx = remoteRankIdx;
     }
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    if (traceMetrics != nullptr) {
+        traceMetrics->transferRoutePrepareCycles += MegaMoeWaveTraceDetail::Now() - routePrepareBegin;
+    }
+#endif
     FetchDispatchTokenAndMetaInfo<IsBufferReuse, TopkWeightsPrefetch>(
         context, scratch, bufferIdx, topkIndex, remoteRankIdx,
-        remoteRankGlobalTensor);
+        remoteRankGlobalTensor, traceMetrics);
     return topkIndex;
 }
 
@@ -1232,7 +1323,8 @@ __aicore__ inline void CopyInterleavedDispatchRouteQueue(
     int32_t segmentRowBegin, int32_t segmentRowEnd, int32_t taskCount,
     GlobalTensor<ActivationType> &tokenRevGlobalTensor,
     GlobalTensor<QuantScaleType> &scaleRevGlobalTensor,
-    GlobalTensor<int32_t> &metaInfoGlobalTensor)
+    GlobalTensor<int32_t> &metaInfoGlobalTensor,
+    WaveDispatchTraceMetrics *traceMetrics)
 {
     if (taskCount <= 0) {
         return;
@@ -1249,29 +1341,37 @@ __aicore__ inline void CopyInterleavedDispatchRouteQueue(
     int32_t pendingTopkIndex =
         FetchInterleavedDispatchRouteTask<false, TopkWeightsPrefetch>(
             context, winRankAddr, scratch, 0, 0, remoteRankGlobalTensor,
-            currentRankIdx);
+            currentRankIdx, traceMetrics);
 
     // 单槽环形缓冲区无法重叠下一次读取与当前写出，单独走正确性路径，避免在
     // 正常多槽热路径中增加 bufferCount 判断。
     if (bufferCount == 1) {
         StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
             context, scratch, 0, expertGlobalRowBegin + rowCursor.expertRow, tokenRevGlobalTensor,
-            scaleRevGlobalTensor, metaInfoGlobalTensor, pendingTopkIndex);
+            scaleRevGlobalTensor, metaInfoGlobalTensor, pendingTopkIndex, traceMetrics);
         AdvanceDispatchCoreRowCursor(context, expertGlobalRowBegin, rowCursor);
         for (int32_t taskIdx = 1; taskIdx < taskCount; ++taskIdx) {
             pendingTopkIndex =
                 FetchInterleavedDispatchRouteTask<true, TopkWeightsPrefetch>(
                     context, winRankAddr, scratch, taskIdx, 0,
-                    remoteRankGlobalTensor, currentRankIdx);
+                    remoteRankGlobalTensor, currentRankIdx, traceMetrics);
             StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
                 context, scratch, 0,
                 expertGlobalRowBegin + rowCursor.expertRow,
                 tokenRevGlobalTensor, scaleRevGlobalTensor,
-                metaInfoGlobalTensor, pendingTopkIndex);
+                metaInfoGlobalTensor, pendingTopkIndex, traceMetrics);
             AdvanceDispatchCoreRowCursor(context, expertGlobalRowBegin, rowCursor);
         }
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+        uint32_t drainWaitBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+#endif
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(static_cast<TEventID>(0));
         WaitFlag<AscendC::HardEvent::MTE3_S>(static_cast<TEventID>(0));
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+        if (traceMetrics != nullptr) {
+            traceMetrics->transferMte3DrainWaitCycles += MegaMoeWaveTraceDetail::Now() - drainWaitBegin;
+        }
+#endif
         return;
     }
 
@@ -1280,13 +1380,13 @@ __aicore__ inline void CopyInterleavedDispatchRouteQueue(
         int32_t currentTopkIndex =
             FetchInterleavedDispatchRouteTask<false, TopkWeightsPrefetch>(
                 context, winRankAddr, scratch, issueIdx, issueIdx,
-                remoteRankGlobalTensor, currentRankIdx);
+                remoteRankGlobalTensor, currentRankIdx, traceMetrics);
         int32_t copyIdx = issueIdx - 1;
         StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
             context, scratch, copyIdx,
             expertGlobalRowBegin + rowCursor.expertRow,
             tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
-            pendingTopkIndex);
+            pendingTopkIndex, traceMetrics);
         AdvanceDispatchCoreRowCursor(context, expertGlobalRowBegin, rowCursor);
         pendingTopkIndex = currentTopkIndex;
     }
@@ -1296,14 +1396,14 @@ __aicore__ inline void CopyInterleavedDispatchRouteQueue(
         int32_t currentTopkIndex =
             FetchInterleavedDispatchRouteTask<true, TopkWeightsPrefetch>(
                 context, winRankAddr, scratch, issueIdx, issueBufferIdx,
-                remoteRankGlobalTensor, currentRankIdx);
+                remoteRankGlobalTensor, currentRankIdx, traceMetrics);
         int32_t copyIdx = issueIdx - 1;
         int32_t copyBufferIdx = copyIdx % bufferCount;
         StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
             context, scratch, copyBufferIdx,
             expertGlobalRowBegin + rowCursor.expertRow,
             tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
-            pendingTopkIndex);
+            pendingTopkIndex, traceMetrics);
         AdvanceDispatchCoreRowCursor(context, expertGlobalRowBegin, rowCursor);
         pendingTopkIndex = currentTopkIndex;
     }
@@ -1313,13 +1413,21 @@ __aicore__ inline void CopyInterleavedDispatchRouteQueue(
         context, scratch, lastTaskIdx % bufferCount,
         expertGlobalRowBegin + rowCursor.expertRow,
         tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
-        pendingTopkIndex);
+        pendingTopkIndex, traceMetrics);
 
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    uint32_t drainWaitBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+#endif
     for (int32_t bufferIdx = 0; bufferIdx < firstUseEnd; ++bufferIdx) {
         TEventID eventId = static_cast<TEventID>(bufferIdx);
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
         WaitFlag<AscendC::HardEvent::MTE3_S>(eventId);
     }
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    if (traceMetrics != nullptr) {
+        traceMetrics->transferMte3DrainWaitCycles += MegaMoeWaveTraceDetail::Now() - drainWaitBegin;
+    }
+#endif
 }
 
 // rank-round 路径在完整专家分段内维持同一条 MTE 流水。尾部统一回收后，再向
@@ -1327,20 +1435,29 @@ __aicore__ inline void CopyInterleavedDispatchRouteQueue(
 __aicore__ inline void PublishInterleavedDispatchTilesReady(
     const TokenDispatchConfig &context, const Params &params,
     uint32_t localExpertId, int32_t expertGlobalRowBegin,
-    int32_t segmentRowBegin, int32_t segmentRowEnd, int32_t gmm1TileRowCount)
+    int32_t segmentRowBegin, int32_t segmentRowEnd, int32_t gmm1TileRowCount,
+    WaveDispatchTraceMetrics *traceMetrics)
 {
     if (segmentRowBegin >= segmentRowEnd) {
         return;
     }
 
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    uint32_t readySyncBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
+#endif
     SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
+#if MEGA_MOE_ENABLE_WAVE_TRACE != 0
+    if (traceMetrics != nullptr) {
+        traceMetrics->readySyncWaitCycles += MegaMoeWaveTraceDetail::Now() - readySyncBegin;
+    }
+#endif
 
     __gm__ int32_t *gmm1TileReadyCount =
         reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagDispatchToGmm1Ptr) +
         static_cast<uint64_t>(localExpertId) * context.dispatchFlagSlotsPerExpert;
 
-    // 新所有权下相邻任务的目的 row 通常相差 coreCount+1，lane 回绕时相差1，
-    // 因此不能再用固定 stride 公式估算 tile 行数；按同一 row cursor 精确累计。
+    // 按与搬运完全一致的固定 lane row cursor 精确累计 tile 内行数，
+    // 避免 wave 在专家中部截断时出现边界误差。
     DispatchCoreRowCursor rowCursor = GetFirstDispatchRowOwnedByCore(
         context, expertGlobalRowBegin, segmentRowBegin, segmentRowEnd);
     int32_t currentTileIdx = -1;
@@ -1480,7 +1597,7 @@ __aicore__ inline void DispatchExpertTokensByRows(
  *       -> GatherMask 后的 rank 内 compact ordinal
  *       -> rank-round 交织后的专家内 expertRow
  *       -> expertGlobalRowBegin + expertRow 对应的 workspace 全局 row
- *       -> 按 core-sized round 轮转 lane 后对应的目的 core。
+ *       -> 按 globalRow % coreCount 对应的固定目的 core。
  *
  * 本函数只为当前 core 完成以下六个阶段：
  *   1. 确定当前专家分段及截断后的专家总行数；
@@ -1490,8 +1607,8 @@ __aicore__ inline void DispatchExpertTokensByRows(
  *   5. 复用同一 MTE 环形流水，按 queue 顺序读取远端 token/metaInfo 并写目的 row；
  *   6. MTE3 全部完成后，按 GMM1 tile 发布本核实际完成的 row 数。
  *
- * 轮次偏移只发生在第3阶段的 row 所有权中，不改变 expertRow 对应的 source
- * rank/ordinal。以28核为例，core0 可领取 0、29、58、87...，从而逐轮换卡。
+ * 分核不改变 expertRow 对应的 source rank/ordinal。以28核为例，
+ * 同一专家内 core0 固定跨 28 行领取任务，不再逐 round 换卡。
  */
 template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
 __aicore__ inline void DispatchExpertTokensRankRoundRobin(
@@ -1609,11 +1726,11 @@ __aicore__ inline void DispatchExpertTokensRankRoundRobin(
 #if MEGA_MOE_ENABLE_WAVE_TRACE != 0
     uint32_t transferTraceBegin = traceMetrics == nullptr ? 0U : MegaMoeWaveTraceDetail::Now();
 #endif
-    // queue 已按本核轮转后的目的 row 排序；搬运使用同一个 row cursor 写回。
+    // queue 已按本核固定 lane 的目的 row 排序；搬运使用同一个 row cursor 写回。
     CopyInterleavedDispatchRouteQueue<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
         context, winRankAddr, scratch, expertGlobalRowBegin,
         segmentRowBegin, segmentRowEnd, expectedTaskCount, tokenRevGlobalTensor,
-        scaleRevGlobalTensor, metaInfoGlobalTensor);
+        scaleRevGlobalTensor, metaInfoGlobalTensor, traceMetrics);
 #if MEGA_MOE_ENABLE_WAVE_TRACE != 0
     if (traceMetrics != nullptr) {
         traceMetrics->transferPipelineCycles += MegaMoeWaveTraceDetail::Now() - transferTraceBegin;
@@ -1625,7 +1742,7 @@ __aicore__ inline void DispatchExpertTokensRankRoundRobin(
     // GMM1 等待该计数达到 tile 实际行数后启动。
     PublishInterleavedDispatchTilesReady(
         context, params, localExpertId, expertGlobalRowBegin,
-        segmentRowBegin, segmentRowEnd, gmm1TileRowCount);
+        segmentRowBegin, segmentRowEnd, gmm1TileRowCount, traceMetrics);
 #if MEGA_MOE_ENABLE_WAVE_TRACE != 0
     if (traceMetrics != nullptr) {
         traceMetrics->readyPublishCycles += MegaMoeWaveTraceDetail::Now() - readyTraceBegin;

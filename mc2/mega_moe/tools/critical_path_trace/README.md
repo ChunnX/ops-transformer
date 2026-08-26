@@ -61,6 +61,10 @@ rank-interleave trace 按 AIV1 core/wave 累计以下互不重叠的指标：
 - `TransferPipeline (aggregate)`：token/scale/meta 的 MTE2/MTE3 ring 搬运完整流程；
 - `ReadyPublish (aggregate)`：数据可见同步以及 GMM1 tile-ready counter 发布。
 
+`TransferPipeline` 进一步按 wave 聚合拆分为：`route/address prepare`、`MTE3 slot reuse wait`、
+`MTE2 issue`、`MTE2 ready wait`、`metadata prepare`、`metadata ready wait`、`MTE3 issue` 和 `MTE3 drain`。
+这些二级项只解释 TransferPipeline，不会再次计入 Dispatch 一级分项合计。
+
 回退路径的 `MaskLoadAndGather` 还会细分为五个二级累计项：`Mask DataCopy issue`、
 `CreateVecIndex issue`、`Wait mask/index ready`、`GatherMask issue` 和
 `Wait GatherMask ready`。三个 `issue` 只表示异步指令下发区间；实际完成延迟分别由既有
@@ -72,7 +76,7 @@ rank-interleave trace 按 AIV1 core/wave 累计以下互不重叠的指标：
 
 这些事件是一个 wave 内多个短区间的累计值，不对应一段连续时间轴位置，因此不会绘制为时间线色块；
 它们会出现在 HTML 的 Dispatch 分项、wave/event 表格、CSV 和 JSON 中。`Other/control` 是 Dispatch
-父事件减去五个分项后的剩余周期，主要包含 wave 游标规划、地址设置、条件检查及计时本身的固定开销。
+父事件减去一级分项后的剩余周期，主要包含 wave 游标规划、地址设置、条件检查及计时本身的固定开销。
 容量不足而回退到旧的 row-range Dispatch 路径时，回退路径暂不拆分，时间会归入 `Other/control`。
 
 ## 当前等待覆盖

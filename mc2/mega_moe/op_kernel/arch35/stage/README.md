@@ -72,7 +72,7 @@ routeTable[rankGlobalRowBegin + compactOrdinal] = topkIndex
 每核完成自己的 pair 后写独立 cache-line done；core0 汇总所有 done，再发布一条独立
 Route Table ready。该同步不复用 Dispatch→GMM1 或 GMM2→Combine 的 flag。
 
-进入当前 expert segment 后，本核从 `cumsumInfo` 取得每个 rank 的 token 数，再按本核的轮转 row
+进入当前 expert segment 后，本核从 `cumsumInfo` 取得每个 rank 的 token 数，再按本核的固定 lane row
 游标生成任务。逻辑 row 到 source 的 rank-round-robin 映射保持不变，描述符为：
 
 ```text
@@ -128,27 +128,27 @@ task7 = E1 r2 d1
 
 ## 5. 分核和 workspace row
 
-正向任务序号仍直接成为该 expert 内的 workspace row，逻辑顺序完全不变。只在
-`coreCount` 行构成的分核 round 内轮转 lane。对 expert 内 row `r`：
+正向任务序号仍直接成为该 expert 内的 workspace row，逻辑顺序完全不变。
+目的 workspace 按全局 row 固定分核：
 
 ```text
-round = r / coreCount
-lane  = r % coreCount
-owner = (expertGlobalRowBegin + lane - round) mod coreCount
+globalRow = expertGlobalRowBegin + r
+owner     = globalRow mod coreCount
 ```
 
-`round` 使用 expert 内绝对 row，因此 expert 跨 wave 时不会重置；`expertGlobalRowBegin`
-保留不同 expert 之间的起始 phase。
+`expertGlobalRowBegin` 保留不同 expert 之间的起始 phase。同一 core 在专家内的
+后续任务始终跨 `coreCount` 行，不再随 round 更换 lane。
 
 以上例、4 个 core 为例：
 
 ```text
 round0: core0->row0, core1->row1, core2->row2, core3->row3
-round1: core0->row5, core1->row6, core2->row7, core3->row4
+round1: core0->row4, core1->row5, core2->row6, core3->row7
 ```
 
-因此逻辑 row 顺序和来源卡均未改变，但同一 core 每轮领取的 lane 改变。28 核、4 个
-均衡 rank 时，core0 依次领取 row 0、29、58、87，对应来源 rank 0、1、2、3。
+因此逻辑 row 顺序和来源卡均未改变，但同一 core 不再逐轮换卡。28 核、4 个
+均衡 rank 时，由于 `28 % 4 == 0`，同一专家内 core0 领取 row 0、28、56、84，
+会固定命中同一 source rank。
 
 GMM 只要求同一 expert 的 row 连续，并不要求 expert 内维持原 rank-major 顺序。Combine 使用 `metaInfo` 中的 `{rankId, tokenId, topkSlot}` 恢复原路由，因此这种 expert 内重排不改变语义。
 
@@ -173,8 +173,11 @@ rankId + topkIndex + destinationRow
 
 - Dispatch 总区间；
 - transfer pipeline；
-- MTE3 reuse wait；
-- stream drain wait；
+- route/address 准备；
+- MTE3 slot reuse wait；
+- MTE2 issue 与 ready wait；
+- metadata 准备与 ready wait；
+- MTE3 issue 与 stream drain wait；
 - ready 发布前同步等待。
 
 trace 仅通过既有 `MEGA_MOE_ENABLE_WAVE_TRACE` 宏控制，没有新增打印。

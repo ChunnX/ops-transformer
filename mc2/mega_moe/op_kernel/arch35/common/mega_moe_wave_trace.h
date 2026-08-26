@@ -81,6 +81,14 @@ enum class MegaMoeWaveTraceEvent : uint32_t {
     DISPATCH_ROUTE_PLAN = 31U,
     DISPATCH_ROUTE_PLAN_GATHER_CALL_COUNT = 32U,
     DISPATCH_ROUTE_TABLE_LOAD = 33U,
+    // TransferPipeline 内部的 wave 级聚合分项。只累加 cycle，不逐 token
+    // 写 trace record，避免记录数量随 token 数增长。
+    DISPATCH_TRANSFER_ROUTE_PREPARE = 34U,
+    DISPATCH_TRANSFER_MTE2_ISSUE = 35U,
+    WAIT_DISPATCH_TRANSFER_MTE2_READY = 36U,
+    DISPATCH_TRANSFER_META_INFO_PREPARE = 37U,
+    DISPATCH_TRANSFER_MTE3_ISSUE = 38U,
+    WAIT_DISPATCH_TRANSFER_META_INFO_READY = 39U,
 };
 
 namespace MegaMoeWaveTraceDetail {
