@@ -30,7 +30,7 @@
 #define COMMMODE_CCU 0
 #define COMMMODE_AICPU 1
 
-// 模板参数范围声明(5个参数, 与PR#10391一致, 无ISSMALLK)
+// 模板参数范围声明
 ASCENDC_TPL_ARGS_DECL(MatmulAlltoAll,
                       ASCENDC_TPL_UINT_DECL(QUANTMODE, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, NON_QUANT_MODE,
                                             KC_QUANT_MODE, MX_QUANT_MODE),
