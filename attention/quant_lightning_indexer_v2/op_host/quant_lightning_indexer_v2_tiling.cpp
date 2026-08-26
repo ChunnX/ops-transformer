@@ -16,6 +16,7 @@
 #include "quant_lightning_indexer_v2_tiling.h"
 
 #include "../op_kernel/quant_lightning_indexer_v2_template_tiling_key.h"
+#include "checkers/qliv2_checker.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -1642,8 +1643,13 @@ ge::graphStatus QuantLightningIndexerV2Tiling::DoTiling(QLIV2TilingInfo *tilingI
 // --------------------------Tiling函数定义---------------------------
 ge::graphStatus TilingForQuantLightningIndexerV2(gert::TilingContext *context)
 {
-    OP_CHECK_IF(context == nullptr, OP_LOGE("QuantLightningIndexerV2", "Tiling context is null."),
+    OP_CHECK_IF(context == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("QuantLightningIndexerV2", "context",
+                                                         "Tiling context must not be null"),
                 return ge::GRAPH_FAILED);
+    if (CheckQuantLightningIndexerV2(context) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     QLIV2TilingInfo QLIV2Info;
     QLIV2InfoParser QLIV2InfoParser(context);
     if (QLIV2InfoParser.ParseAndCheck(QLIV2Info) != ge::GRAPH_SUCCESS) {

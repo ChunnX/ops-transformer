@@ -15,6 +15,7 @@
 
 #include "lightning_indexer_v2_tiling.h"
 #include "../op_kernel/lightning_indexer_v2_template_tiling_key.h"
+#include "checkers/liv2_checker.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -1271,6 +1272,9 @@ ge::graphStatus TilingForLightningIndexerV2(gert::TilingContext *context)
 {
     OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("LightningIndexerV2", "Tiling context is null."),
                 return ge::GRAPH_FAILED);
+    if (CheckLightningIndexerV2(context) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     LIV2TilingInfo liV2Info;
     LIV2InfoParser LIV2InfoParser(context);
     if (LIV2InfoParser.ParseAndCheck(liV2Info) != ge::GRAPH_SUCCESS) {
