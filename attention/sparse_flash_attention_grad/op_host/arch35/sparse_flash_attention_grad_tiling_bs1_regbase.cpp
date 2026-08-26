@@ -589,8 +589,8 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     tmpData.queryType =
         static_cast<uint32_t>(context_->GetInputDesc(static_cast<size_t>(InputIndex::QUERY))->GetDataType());
     tmpData.selected_block_count = selected_block_count;
-    tmpData.selected_block_count = selected_block_count;
     tmpData.selected_block_size = selected_block_size;
+
     auto ret = CheckDtypeValid(context_);
     if (ret != ge::GRAPH_SUCCESS) {
         OP_LOGE(context_, "SparseFlashAttentionGrad the dtype of input is invalid.");
