@@ -109,6 +109,6 @@ static_assert(sizeof(DecodeSchedule) == DECODE_SCHEDULE_FIELD_NUM * sizeof(Metad
 static_assert(sizeof(CombineSchedule) == COMBINE_SCHEDULE_FIELD_NUM * sizeof(MetadataType),
               "CombineSchedule layout mismatch");
 
-}  // namespace GbsaMetadata
+} // namespace GbsaMetadata
 
-#endif  // GENERIC_BLOCK_SPARSE_ATTENTION_METADATA_KERNEL_H
+#endif // GENERIC_BLOCK_SPARSE_ATTENTION_METADATA_KERNEL_H

@@ -52,11 +52,9 @@ public:
     static constexpr uint32_t MAX_CROSS_CORE_BUF_STAGES = PRE_LAUNCH + 1;
     static constexpr uint32_t UB_S_OTMP_BUF_STAGES = 2;
 
-    __aicore__ inline
-    GbsaRegularKernelArch35() {}
+    __aicore__ inline GbsaRegularKernelArch35() {}
 
-    __aicore__ inline
-    void operator()(GbsaKernelParamsArch35 const &params)
+    __aicore__ inline void operator()(GbsaKernelParamsArch35 const &params)
     {
         __gm__ GenericBlockSparseAttn::GenericBlockSparseAttentionTilingData *tilingData =
             reinterpret_cast<__gm__ GenericBlockSparseAttn::GenericBlockSparseAttentionTilingData *>(params.tiling);
@@ -147,7 +145,8 @@ public:
                     gCuSeqLengths.GetValue(static_cast<int64_t>(b + 1)) -
                     gCuSeqLengths.GetValue(static_cast<int64_t>(b)));
                 uint32_t batchLen = hasSequsedQ ?
-                    static_cast<uint32_t>(gSequsedQ.GetValue(static_cast<int64_t>(b))) : storageLen;
+                                        static_cast<uint32_t>(gSequsedQ.GetValue(static_cast<int64_t>(b))) :
+                                        storageLen;
                 if (qToken < accum + batchLen) {
                     batchIdx = b;
                     qTokenInBatch = qToken - accum;
@@ -163,9 +162,11 @@ public:
                 gCuSeqLengths.GetValue(static_cast<int64_t>(batchIdx + 1)) -
                 gCuSeqLengths.GetValue(static_cast<int64_t>(batchIdx)));
             uint32_t kvSeqlen = hasSequsedKv ?
-                static_cast<uint32_t>(gSequsedKv.GetValue(static_cast<int64_t>(batchIdx))) : kvStorageLen;
+                                    static_cast<uint32_t>(gSequsedKv.GetValue(static_cast<int64_t>(batchIdx))) :
+                                    kvStorageLen;
             uint32_t qSeqlen = hasSequsedQ ?
-                static_cast<uint32_t>(gSequsedQ.GetValue(static_cast<int64_t>(batchIdx))) : qStorageLen;
+                                   static_cast<uint32_t>(gSequsedQ.GetValue(static_cast<int64_t>(batchIdx))) :
+                                   qStorageLen;
             // Padding / empty / invalid causal lengths (need kvSeqlen >= qSeqlen for historyLen).
             if (qSeqlen == 0 || kvSeqlen == 0 || kvSeqlen < qSeqlen) {
                 continue;
@@ -190,7 +191,7 @@ public:
             }
             globalQBlock += qTokenInBatch / blockShapeX_;
             int64_t sparseIdxBase = static_cast<int64_t>(kvHeadIdx) * qBlockNum_ * topK_ +
-                                  static_cast<int64_t>(globalQBlock) * topK_;
+                                    static_cast<int64_t>(globalQBlock) * topK_;
             uint32_t validTopK = topK_;
             if (params.sparseBlockCount != nullptr) {
                 // sparseBlockCount 2D: [N_kv, totalQBlocks]
@@ -198,7 +199,8 @@ public:
                                       static_cast<int64_t>(globalQBlock);
                 validTopK = static_cast<uint32_t>(gSparseBlockCount.GetValue(countOffset));
             }
-            if (validTopK == 0) continue;
+            if (validTopK == 0)
+                continue;
 
             uint32_t historyLen = kvSeqlen - qSeqlen;
             uint32_t lastBlockTileSize = (historyLen + qTokenInBatch) % blockShapeY_ + 1;
@@ -212,12 +214,14 @@ public:
             uint32_t actualLoopNum = 0;
             for (uint32_t i = 0; i < kvSLoopNum && i < topK_; i++) {
                 int32_t logicalId = gSparseBlockIdx.GetValue(sparseIdxBase + i);
-                if (logicalId < 0) continue;
+                if (logicalId < 0)
+                    continue;
                 int64_t btOffset = static_cast<int64_t>(batchIdx) * maxBlocksPerBatch_ + logicalId;
                 int32_t physicalId = gBlockTable.GetValue(btOffset);
                 validPhysicalIds[actualLoopNum] = physicalId;
                 validTileSize[actualLoopNum] = (static_cast<uint32_t>(logicalId) == lastLogicalBlockId) ?
-                    lastBlockTileSize : blockShapeY_;
+                                                   lastBlockTileSize :
+                                                   blockShapeY_;
                 actualLoopNum++;
             }
             kvSLoopNum = actualLoopNum;
@@ -345,9 +349,8 @@ public:
     }
 
 private:
-    __aicore__ inline
-    void FetchBaseShapeInfo(__gm__ GenericBlockSparseAttn::GenericBlockSparseAttentionTilingData *tilingData,
-                            GM_ADDR metaData)
+    __aicore__ inline void FetchBaseShapeInfo(__gm__ GenericBlockSparseAttn::GenericBlockSparseAttentionTilingData *tilingData,
+                                              GM_ADDR metaData)
     {
         batch_ = tilingData->batch;
         qHeads_ = tilingData->numHeads;
@@ -370,8 +373,7 @@ private:
         vStride0_ = tilingData->vStride0;
     }
 
-    __aicore__ inline
-    void CalcOnChipBufTileInfo(__gm__ GenericBlockSparseAttn::GenericBlockSparseAttentionTilingData *tilingData)
+    __aicore__ inline void CalcOnChipBufTileInfo(__gm__ GenericBlockSparseAttn::GenericBlockSparseAttentionTilingData *tilingData)
     {
         mm1L1TileM_ = tilingData->mm1L1TileM;
         mm1L1TileN_ = tilingData->mm1L1TileN;
@@ -392,7 +394,7 @@ private:
             mm2L1TileM_, mm2L1TileN_, mm2L1TileKLeft_, mm2L1TileKRight_, pL1BufNum_, vL1BufNum_);
         mm2L1TileHelper_ = mm2L1TileHelper;
         mm2L1AddrStart_ = mm1L1TileM_ * mm1L1TileKLeft_ * qL1BufNum_ * sizeof(ElementQ) +
-            mm1L1TileKRight_ * mm1L1TileN_ * kL1BufNum_ * sizeof(ElementK);
+                          mm1L1TileKRight_ * mm1L1TileN_ * kL1BufNum_ * sizeof(ElementK);
         uint32_t mL0LoopQK = CeilDiv(groupSize_, static_cast<uint32_t>(BlockMmadQK::L0_TILE_M));
         uint32_t mL0LoopPV = CeilDiv(groupSize_, static_cast<uint32_t>(BlockMmadPV::L0_TILE_M));
         mm1L0ATotalStages_ = mL0LoopQK * (embed_ / BlockMmadQK::L0_TILE_K);
@@ -401,8 +403,7 @@ private:
         mm2L0BTotalStages_ = (kvBaseTile_ / BlockMmadPV::L0_TILE_K) * (embed_ / BlockMmadPV::L0_TILE_N);
     }
 
-    __aicore__ inline
-    uint64_t CalcCrossMm1Mm2PrefixSumL0ABStages(
+    __aicore__ inline uint64_t CalcCrossMm1Mm2PrefixSumL0ABStages(
         uint32_t kvBlockIdx, uint32_t singleMm1L0Stages,
         uint32_t singleMm2L0Stages, uint32_t kvSLoopNum,
         bool isCurPhaseMm1)
@@ -410,18 +411,17 @@ private:
         uint64_t prefixSumStages;
         if (isCurPhaseMm1) {
             prefixSumStages = (kvBlockIdx <= PRE_LAUNCH) ?
-                kvBlockIdx * singleMm1L0Stages :
-                kvBlockIdx * singleMm1L0Stages + (kvBlockIdx - PRE_LAUNCH) * singleMm2L0Stages;
+                                  kvBlockIdx * singleMm1L0Stages :
+                                  kvBlockIdx * singleMm1L0Stages + (kvBlockIdx - PRE_LAUNCH) * singleMm2L0Stages;
         } else {
             prefixSumStages = (kvBlockIdx < kvSLoopNum - PRE_LAUNCH) ?
-                (kvBlockIdx + 1 + PRE_LAUNCH) * singleMm1L0Stages + kvBlockIdx * singleMm2L0Stages :
-                kvSLoopNum * singleMm1L0Stages + kvBlockIdx * singleMm2L0Stages;
+                                  (kvBlockIdx + 1 + PRE_LAUNCH) * singleMm1L0Stages + kvBlockIdx * singleMm2L0Stages :
+                                  kvSLoopNum * singleMm1L0Stages + kvBlockIdx * singleMm2L0Stages;
         }
         return prefixSumStages;
     }
 
-    __aicore__ inline
-    void InitCrossCoreDstBuf(
+    __aicore__ inline void InitCrossCoreDstBuf(
         AscendC::LocalTensor<ElementP> (&l1PTensor)[MAX_CROSS_CORE_BUF_STAGES],
         AscendC::LocalTensor<ElementS> (&ubSTensor)[UB_S_OTMP_BUF_STAGES],
         AscendC::LocalTensor<ElementOTmp> (&ubOTmpTensor)[UB_S_OTMP_BUF_STAGES])
@@ -444,8 +444,7 @@ private:
     }
 
     template <uint32_t MM1_SM_MODE, uint32_t MM2_RE_MODE, uint32_t SM_MM2_MODE>
-    __aicore__ inline
-    void InitSyncFlags()
+    __aicore__ inline void InitSyncFlags()
     {
 #ifdef __DAV_CUBE__
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
@@ -493,8 +492,7 @@ private:
     }
 
     template <uint32_t MM1_SM_MODE, uint32_t MM2_RE_MODE, uint32_t SM_MM2_MODE>
-    __aicore__ inline
-    void ReleaseSyncFlags()
+    __aicore__ inline void ReleaseSyncFlags()
     {
 #ifdef __DAV_CUBE__
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);

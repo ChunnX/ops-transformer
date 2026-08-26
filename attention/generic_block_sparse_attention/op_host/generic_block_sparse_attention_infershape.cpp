@@ -210,4 +210,4 @@ IMPL_OP_INFERSHAPE(GenericBlockSparseAttention)
     .InferShape(InferShapeGenericBlockSparseAttention)
     .InferDataType(InferDataTypeGenericBlockSparseAttention);
 
-}  // namespace ops
+} // namespace ops

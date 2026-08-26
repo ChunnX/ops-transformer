@@ -61,10 +61,10 @@ static bool CheckDataType(const aclTensor *query, const aclTensor *key, const ac
 }
 
 static aclnnStatus CheckMandatoryTensors(const aclTensor *query,
-                                           const aclTensor *key,
-                                           const aclTensor *value,
-                                           const aclTensor *sparseBlockIdx,
-                                           const aclTensor *sparseBlockCount)
+                                         const aclTensor *key,
+                                         const aclTensor *value,
+                                         const aclTensor *sparseBlockIdx,
+                                         const aclTensor *sparseBlockCount)
 {
     CHECK_RET(query != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(key != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -300,7 +300,7 @@ static const aclTensor *NormalizeDim0KvTensor(const aclTensor *tensor, const cha
     return l0op::Contiguous(tensor, executor);
 }
 
-}  // namespace
+} // namespace
 
 __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttentionGetWorkspaceSize(
     const aclTensor *query,
@@ -363,11 +363,11 @@ __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttent
     auto *executorImpl = uniqueExecutor.get();
 
     ret = MakeContiguous(query, sparseBlockIdx, sparseBlockCount,
-                                     metadataOptional, attenMaskOptional,
-                                     qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional,
-                                     pQuantScaleOptional, cuSeqLengthsQOptional, cuSeqLengthsKvOptional,
-                                     sequsedQOptional, sequsedKvOptional,
-                                     blockTableOptional, executorImpl);
+                         metadataOptional, attenMaskOptional,
+                         qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional,
+                         pQuantScaleOptional, cuSeqLengthsQOptional, cuSeqLengthsKvOptional,
+                         sequsedQOptional, sequsedKvOptional,
+                         blockTableOptional, executorImpl);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }

@@ -16,13 +16,11 @@
 #include "../../../attn_infra/layout/layout.hpp"
 #include "../../../attn_infra/gemm/gemm_type.hpp"
 
-namespace NpuArch::Epilogue::Tile 
-{
+namespace NpuArch::Epilogue::Tile {
 
 template <
     class ArchTag,
-    class GmType
->
+    class GmType>
 struct CopyUb2Gm {
     static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported copy ub to gm, can not find the specialization.");
 };
@@ -34,11 +32,9 @@ struct CopyUb2Gm<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>> {
 
     static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
 
-    __aicore__ inline
-    CopyUb2Gm() = default;
+    __aicore__ inline CopyUb2Gm() = default;
 
-    __aicore__ inline
-    void operator()(
+    __aicore__ inline void operator()(
         AscendC::GlobalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,
         layout::RowMajor const &layoutDst,
@@ -49,12 +45,10 @@ struct CopyUb2Gm<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>> {
             layoutDst.shape(1) * sizeof(Element),
             (layoutSrc.stride(0) - layoutSrc.shape(1)) / ELE_NUM_PER_C0,
             (layoutDst.stride(0) - layoutDst.shape(1)) * sizeof(Element),
-            0
-        );
+            0);
         AscendC::DataCopyPad(dstTensor, srcTensor, dataCopyParams);
     }
 };
-
 
 // new add vectorlayout version
 template <typename Element>
@@ -64,11 +58,9 @@ struct CopyUb2Gm<Arch::AtlasA2, Gemm::GemmType<Element, layout::VectorLayout>> {
 
     static constexpr uint32_t ELE_NUM_PER_BLK = BYTE_PER_BLK / sizeof(Element);
 
-    __aicore__ inline
-    CopyUb2Gm() = default;
+    __aicore__ inline CopyUb2Gm() = default;
 
-    __aicore__ inline
-    void operator()(
+    __aicore__ inline void operator()(
         AscendC::GlobalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,
         layout::VectorLayout const &layoutDst,
@@ -79,17 +71,14 @@ struct CopyUb2Gm<Arch::AtlasA2, Gemm::GemmType<Element, layout::VectorLayout>> {
             layoutDst.shape(0) * sizeof(Element),
             0,
             0,
-            0
-        );
+            0);
         AscendC::DataCopyPad(dstTensor, srcTensor, dataCopyParams);
     };
 };
 
-
 template <
     class ArchTag,
-    class GmType
->
+    class GmType>
 struct CopyUb2GmAligned {
     static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported copy ub to gm aligned, can not find the specialization.");
 };
@@ -104,11 +93,9 @@ struct CopyUb2GmAligned<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>
     static constexpr uint32_t MAX_REPEAT = 4095;
     static constexpr uint32_t STRIDE_LIMIT = 65536;
 
-    __aicore__ inline
-    CopyUb2GmAligned() = default;
+    __aicore__ inline CopyUb2GmAligned() = default;
 
-    __aicore__ inline
-    void operator()(
+    __aicore__ inline void operator()(
         AscendC::GlobalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,
         layout::RowMajor const &layoutDst,
@@ -126,8 +113,7 @@ struct CopyUb2GmAligned<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>
             for (uint32_t i = 0; i < rLoops; ++i) {
                 uint32_t rActual = (i < rLoops - 1) ? MAX_REPEAT : rows - i * MAX_REPEAT;
                 AscendC::DataCopyParams dataCopyParams(
-                    rActual, cols / ELE_NUM_PER_BLK, srcStride, dstStride
-                );
+                    rActual, cols / ELE_NUM_PER_BLK, srcStride, dstStride);
                 DataCopy(dstTensor[i * MAX_REPEAT * layoutDst.stride(0)],
                          srcTensor[i * MAX_REPEAT * layoutSrc.stride(0)], dataCopyParams);
             }
@@ -139,6 +125,6 @@ struct CopyUb2GmAligned<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>
     };
 };
 
-}  // NpuArch::Epilogue::Tile
+} // namespace NpuArch::Epilogue::Tile
 
 #endif

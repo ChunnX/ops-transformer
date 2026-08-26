@@ -28,7 +28,7 @@ using namespace NpuArch;
 using namespace GbsaKernelArch22;
 
 template <class InDtype, class SMDtype, class REDtype = SMDtype,
-    Epilogue::LseMode lseMode = Epilogue::LseMode::NONE>
+          Epilogue::LseMode lseMode = Epilogue::LseMode::NONE>
 __global__ __aicore__ void GbsaInferIntfRegularArch22(
     GM_ADDR q, GM_ADDR k, GM_ADDR v,
     GM_ADDR sparseBlockIdx, GM_ADDR sparseBlockCount,
@@ -96,8 +96,8 @@ __global__ __aicore__ void GbsaInferIntfRegularArch22(
         BlockMmadQK, EpilogueOnlineSoftmax, BlockMmadPV, EpilogueRescaleO>;
 
     GbsaKernelParamsArch22 params{q, k, v, sparseBlockIdx, sparseBlockCount,
-        metaData, cuSeqLengths, cuSeqLengthsKv, sequsedQ, sequsedKv, blockTable,
-        o, softmaxLse, workspace, tiling};
+                                  metaData, cuSeqLengths, cuSeqLengthsKv, sequsedQ, sequsedKv, blockTable,
+                                  o, softmaxLse, workspace, tiling};
     GbsaKernel gbsaKernel;
     gbsaKernel(params);
 }
@@ -108,8 +108,8 @@ __global__ __aicore__ void GbsaInferIntfRegularArch22(
 using namespace GbsaKernelArch35;
 
 template <class InDtype, class SMDtype, class REDtype, Format qFormat,
-    Epilogue::LseMode lseMode = Epilogue::LseMode::NONE,
-    Epilogue::LseFormat lseFormat = Epilogue::LseFormat::TN1>
+          Epilogue::LseMode lseMode = Epilogue::LseMode::NONE,
+          Epilogue::LseFormat lseFormat = Epilogue::LseFormat::TN1>
 __global__ __aicore__ void GbsaInferIntfRegular(
     GM_ADDR q, GM_ADDR k, GM_ADDR v,
     GM_ADDR sparseBlockIdx, GM_ADDR sparseBlockCount,
@@ -177,15 +177,15 @@ __global__ __aicore__ void GbsaInferIntfRegular(
         BlockMmadQK, EpilogueOnlineSoftmax, BlockMmadPV, EpilogueRescaleO, qFormat, qFormat>;
 
     GbsaKernelParamsArch35 params{q, k, v, sparseBlockIdx, sparseBlockCount,
-        metaData, cuSeqLengths, cuSeqLengthsKv, sequsedQ, sequsedKv, blockTable,
-        o, softmaxLse, workspace, tiling};
+                                  metaData, cuSeqLengths, cuSeqLengthsKv, sequsedQ, sequsedKv, blockTable,
+                                  o, softmaxLse, workspace, tiling};
     GbsaKernel gbsaKernel;
     gbsaKernel(params);
 }
 
 template <class InDtype, class SMDtype, class REDtype, Format qFormat,
-    Epilogue::LseMode lseMode = Epilogue::LseMode::NONE,
-    Epilogue::LseFormat lseFormat = Epilogue::LseFormat::TN1>
+          Epilogue::LseMode lseMode = Epilogue::LseMode::NONE,
+          Epilogue::LseFormat lseFormat = Epilogue::LseFormat::TN1>
 __global__ __aicore__ void GbsaInferInterfaceFullQuant(
     GM_ADDR q, GM_ADDR k, GM_ADDR v,
     GM_ADDR sparseBlockIdx, GM_ADDR sparseBlockCount,

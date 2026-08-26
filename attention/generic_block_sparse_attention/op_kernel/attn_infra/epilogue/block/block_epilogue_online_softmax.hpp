@@ -30,8 +30,7 @@ class BlockEpilogue<
     EpilogueAtlasA2OnlineSoftmax<LSE_MODE_, float>,
     OutputType_,
     InputType_,
-    MaskType_>
-{
+    MaskType_> {
 public:
     using DispatchPolicy = EpilogueAtlasA2OnlineSoftmax<LSE_MODE_, float>;
     using ArchTag = typename DispatchPolicy::ArchTag;
@@ -63,8 +62,7 @@ public:
     static constexpr uint32_t MAX_ROW_NUM_SUB_CORE = 256;
     static constexpr int64_t UB_FLOAT_LINE_SIZE = 64;
 
-    __aicore__ inline
-    BlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue_)
+    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue_)
     {
         // Allocate UB space
         constexpr uint32_t LS_UB_TENSOR_OFFSET = 0;
@@ -98,8 +96,7 @@ public:
         glUbTensor = resource.ubBuf.template GetBufferByByte<float>(GL_UB_TENSOR_OFFSET);
     }
 
-    __aicore__ inline
-    ~BlockEpilogue() {}
+    __aicore__ inline ~BlockEpilogue() {}
 
     template <typename T>
     __aicore__ inline T Min(T a, T b)
@@ -107,8 +104,7 @@ public:
         return (a > b) ? b : a;
     }
 
-    __aicore__ inline
-    void SetVecMask(int32_t len)
+    __aicore__ inline void SetVecMask(int32_t len)
     {
         uint64_t mask = 0;
         uint64_t one = 1;
@@ -126,8 +122,7 @@ public:
         }
     }
 
-    __aicore__ inline
-    void SetBlockReduceMask(int32_t len)
+    __aicore__ inline void SetBlockReduceMask(int32_t len)
     {
         if (len > 8 || len < 1) {
             AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
@@ -139,10 +134,9 @@ public:
         AscendC::SetVectorMask<int8_t>(maskValue, maskValue);
     }
 
-   __aicore__ inline
-    void RowsumSPECTILE1024(const AscendC::LocalTensor<float> &srcUb, const AscendC::LocalTensor<float> &rowsumUb,
-        const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
-        uint32_t numElemsAligned)
+    __aicore__ inline void RowsumSPECTILE1024(const AscendC::LocalTensor<float> &srcUb, const AscendC::LocalTensor<float> &rowsumUb,
+                                              const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
+                                              uint32_t numElemsAligned)
     {
         AscendC::BlockReduceSum<float, false>(
             tvUbTensor,
@@ -177,10 +171,9 @@ public:
         AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
     }
 
-    __aicore__ inline
-    void RowsumSPECTILE512(const AscendC::LocalTensor<float> &srcUb, const AscendC::LocalTensor<float> &rowsumUb,
-        const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
-        uint32_t numElemsAligned)
+    __aicore__ inline void RowsumSPECTILE512(const AscendC::LocalTensor<float> &srcUb, const AscendC::LocalTensor<float> &rowsumUb,
+                                             const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
+                                             uint32_t numElemsAligned)
     {
         AscendC::BlockReduceSum<float, false>(
             tvUbTensor,
@@ -203,10 +196,9 @@ public:
         AscendC::PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline
-    void RowsumSPECTILE256(const AscendC::LocalTensor<float> &srcUb, const AscendC::LocalTensor<float> &rowsumUb,
-        const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
-        uint32_t numElemsAligned)
+    __aicore__ inline void RowsumSPECTILE256(const AscendC::LocalTensor<float> &srcUb, const AscendC::LocalTensor<float> &rowsumUb,
+                                             const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
+                                             uint32_t numElemsAligned)
     {
         AscendC::BlockReduceSum<float, false>(
             tvUbTensor,
@@ -231,10 +223,9 @@ public:
         AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
     }
 
-    __aicore__ inline
-    void RowsumTAILTILE(const AscendC::LocalTensor<float> &srcUb, const AscendC::LocalTensor<float> &rowsumUb,
-        const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
-        uint32_t numElemsAligned)
+    __aicore__ inline void RowsumTAILTILE(const AscendC::LocalTensor<float> &srcUb, const AscendC::LocalTensor<float> &rowsumUb,
+                                          const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
+                                          uint32_t numElemsAligned)
     {
         if (numElems >= FLOAT_VECTOR_SIZE) {
             AscendC::BlockReduceSum<float, false>(
@@ -311,10 +302,9 @@ public:
         }
     }
 
-    __aicore__ inline
-    void RowmaxSPECTILE1024(const AscendC::LocalTensor<float> &srcUb, const AscendC::LocalTensor<float> &rowmaxUb,
-        const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
-        uint32_t numElemsAligned)
+    __aicore__ inline void RowmaxSPECTILE1024(const AscendC::LocalTensor<float> &srcUb, const AscendC::LocalTensor<float> &rowmaxUb,
+                                              const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
+                                              uint32_t numElemsAligned)
     {
         AscendC::BlockReduceMax<float, false>(
             tvUbTensor,
@@ -350,10 +340,9 @@ public:
         AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
     }
 
-    __aicore__ inline
-    void RowmaxSPECTILE512(const AscendC::LocalTensor<float> &srcUb, const AscendC::LocalTensor<float> &rowmaxUb,
-        const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
-        uint32_t numElemsAligned)
+    __aicore__ inline void RowmaxSPECTILE512(const AscendC::LocalTensor<float> &srcUb, const AscendC::LocalTensor<float> &rowmaxUb,
+                                             const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
+                                             uint32_t numElemsAligned)
     {
         AscendC::BlockReduceMax<float, false>(
             tvUbTensor,
@@ -375,10 +364,9 @@ public:
         AscendC::PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline
-    void RowmaxSPECTILE256(const AscendC::LocalTensor<float> &srcUb, const AscendC::LocalTensor<float> &rowmaxUb,
-        const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
-        uint32_t numElemsAligned)
+    __aicore__ inline void RowmaxSPECTILE256(const AscendC::LocalTensor<float> &srcUb, const AscendC::LocalTensor<float> &rowmaxUb,
+                                             const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
+                                             uint32_t numElemsAligned)
     {
         AscendC::BlockReduceMax<float, false>(
             tvUbTensor,
@@ -403,10 +391,9 @@ public:
         AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
     }
 
-    __aicore__ inline
-    void RowmaxTAILTILE(const AscendC::LocalTensor<float> &srcUb, const AscendC::LocalTensor<float> &rowmaxUb,
-        const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
-        uint32_t numElemsAligned)
+    __aicore__ inline void RowmaxTAILTILE(const AscendC::LocalTensor<float> &srcUb, const AscendC::LocalTensor<float> &rowmaxUb,
+                                          const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
+                                          uint32_t numElemsAligned)
     {
         if (numElems >= FLOAT_VECTOR_SIZE) {
             AscendC::BlockReduceMax<float, false>(
@@ -436,11 +423,11 @@ public:
                 AscendC::PipeBarrier<PIPE_V>();
                 SetVecMask(numRowsRound);
                 AscendC::Max<float, false>(rowmaxUb,
-                    rowmaxUb,
-                    tvUbTensor[REDUCE_UB_SIZE],
-                    (uint64_t)0,
-                    1,
-                    AscendC::BinaryRepeatParams(1, 1, 1, 8, 8, 8));
+                                           rowmaxUb,
+                                           tvUbTensor[REDUCE_UB_SIZE],
+                                           (uint64_t)0,
+                                           1,
+                                           AscendC::BinaryRepeatParams(1, 1, 1, 8, 8, 8));
                 AscendC::PipeBarrier<PIPE_V>();
                 AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
             }
@@ -456,31 +443,30 @@ public:
             SetBlockReduceMask(CeilDiv(numElems % FLOAT_VECTOR_SIZE, FLOAT_BLOCK_SIZE));
             if (numElems < FLOAT_VECTOR_SIZE) {
                 AscendC::BlockReduceMax<float, false>(rowmaxUb,
-                    tvUbTensor,
-                    CeilDiv(numRowsRound * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
-                    0, 1, 1, 8);
+                                                      tvUbTensor,
+                                                      CeilDiv(numRowsRound * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
+                                                      0, 1, 1, 8);
                 AscendC::PipeBarrier<PIPE_V>();
             } else {
                 AscendC::BlockReduceMax<float, false>(tvUbTensor[REDUCE_UB_SIZE],
-                    tvUbTensor,
-                    CeilDiv(numRowsRound * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
-                    0, 1, 1, 8);
+                                                      tvUbTensor,
+                                                      CeilDiv(numRowsRound * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
+                                                      0, 1, 1, 8);
                 AscendC::PipeBarrier<PIPE_V>();
                 SetVecMask(numRowsRound);
                 AscendC::Max<float, false>(rowmaxUb,
-                    rowmaxUb,
-                    tvUbTensor[REDUCE_UB_SIZE],
-                    (uint64_t)0,
-                    1,
-                    AscendC::BinaryRepeatParams(1, 1, 1, 8, 8, 8));
+                                           rowmaxUb,
+                                           tvUbTensor[REDUCE_UB_SIZE],
+                                           (uint64_t)0,
+                                           1,
+                                           AscendC::BinaryRepeatParams(1, 1, 1, 8, 8, 8));
                 AscendC::PipeBarrier<PIPE_V>();
             }
             AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
         }
     }
 
-    __aicore__ inline
-    void CopySGmToUb(
+    __aicore__ inline void CopySGmToUb(
         AscendC::GlobalTensor<ElementInput> gInput,
         uint32_t sUbOffset,
         uint32_t rowNumCurLoop,
@@ -495,8 +481,7 @@ public:
                 (columnNumPad - columnNumRound) / FLOAT_BLOCK_SIZE, 0));
     }
 
-    __aicore__ inline
-    void CopyMaskGmToUb(
+    __aicore__ inline void CopyMaskGmToUb(
         AscendC::GlobalTensor<ElementMask> gMask,
         uint32_t columnNum, uint32_t columnNumRound,
         uint32_t maskStride, uint32_t tokenNumPerHead,
@@ -532,8 +517,7 @@ public:
         }
     }
 
-    __aicore__ inline
-    void ScaleS(uint32_t sUbOffset, uint32_t rowNumCurLoop, uint32_t columnNumRound)
+    __aicore__ inline void ScaleS(uint32_t sUbOffset, uint32_t rowNumCurLoop, uint32_t columnNumRound)
     {
         AscendC::Muls<float, false>(
             lsUbTensor[sUbOffset],
@@ -545,9 +529,8 @@ public:
         AscendC::PipeBarrier<PIPE_V>();
     }
 
-    template<typename ElementMaskDst, typename ElementMaskSrc>
-    __aicore__ inline 
-    void UpCastMask(
+    template <typename ElementMaskDst, typename ElementMaskSrc>
+    __aicore__ inline void UpCastMask(
         const AscendC::LocalTensor<ElementMaskDst> &maskUbTensorDst,
         const AscendC::LocalTensor<ElementMaskSrc> &maskUbTensorSrc,
         uint32_t rowNumCurLoop,
@@ -560,9 +543,8 @@ public:
         AscendC::PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline
-    void ApplyMask(uint32_t sUbOffset, uint32_t rowNumCurLoop, uint32_t columnNumRound, uint32_t maskColumnRound,
-        uint32_t addMaskUbOffset)
+    __aicore__ inline void ApplyMask(uint32_t sUbOffset, uint32_t rowNumCurLoop, uint32_t columnNumRound, uint32_t maskColumnRound,
+                                     uint32_t addMaskUbOffset)
     {
         AscendC::Muls<float, false>(
             maskUbTensor32,
@@ -584,37 +566,36 @@ public:
             uint32_t loop = maskColumnRound / FLOAT_VECTOR_SIZE;
             for (uint32_t i = 0; i < loop; i++) {
                 AscendC::Add<float, false>(lsUbTensor[sUbOffset][addMaskUbOffset + i * FLOAT_VECTOR_SIZE],
-                    lsUbTensor[sUbOffset][addMaskUbOffset + i * FLOAT_VECTOR_SIZE],
-                    maskUbTensor32[i * FLOAT_VECTOR_SIZE],
-                    (uint64_t)0,
-                    rowNumCurLoop,
-                    AscendC::BinaryRepeatParams(
-                        1, 1, 1,
-                        columnNumRound / FLOAT_BLOCK_SIZE,
-                        columnNumRound / FLOAT_BLOCK_SIZE,
-                        maskColumnRound / FLOAT_BLOCK_SIZE));
+                                           lsUbTensor[sUbOffset][addMaskUbOffset + i * FLOAT_VECTOR_SIZE],
+                                           maskUbTensor32[i * FLOAT_VECTOR_SIZE],
+                                           (uint64_t)0,
+                                           rowNumCurLoop,
+                                           AscendC::BinaryRepeatParams(
+                                               1, 1, 1,
+                                               columnNumRound / FLOAT_BLOCK_SIZE,
+                                               columnNumRound / FLOAT_BLOCK_SIZE,
+                                               maskColumnRound / FLOAT_BLOCK_SIZE));
             }
             if (maskColumnRound % FLOAT_VECTOR_SIZE > 0) {
                 SetVecMask(maskColumnRound % FLOAT_VECTOR_SIZE);
                 AscendC::Add<float, false>(lsUbTensor[sUbOffset][addMaskUbOffset + loop * FLOAT_VECTOR_SIZE],
-                    lsUbTensor[sUbOffset][addMaskUbOffset + loop * FLOAT_VECTOR_SIZE],
-                    maskUbTensor32[loop * FLOAT_VECTOR_SIZE],
-                    (uint64_t)0,
-                    rowNumCurLoop,
-                    AscendC::BinaryRepeatParams(
-                        1, 1, 1,
-                        columnNumRound / FLOAT_BLOCK_SIZE,
-                        columnNumRound / FLOAT_BLOCK_SIZE,
-                        maskColumnRound / FLOAT_BLOCK_SIZE));
+                                           lsUbTensor[sUbOffset][addMaskUbOffset + loop * FLOAT_VECTOR_SIZE],
+                                           maskUbTensor32[loop * FLOAT_VECTOR_SIZE],
+                                           (uint64_t)0,
+                                           rowNumCurLoop,
+                                           AscendC::BinaryRepeatParams(
+                                               1, 1, 1,
+                                               columnNumRound / FLOAT_BLOCK_SIZE,
+                                               columnNumRound / FLOAT_BLOCK_SIZE,
+                                               maskColumnRound / FLOAT_BLOCK_SIZE));
                 AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
             }
         }
         AscendC::PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline
-    void CalcLocalRowMax(uint32_t sUbOffset, uint32_t rowNumCurLoopRound, uint32_t columnNum, uint32_t columnNumRound,
-        uint32_t rowOffset)
+    __aicore__ inline void CalcLocalRowMax(uint32_t sUbOffset, uint32_t rowNumCurLoopRound, uint32_t columnNum, uint32_t columnNumRound,
+                                           uint32_t rowOffset)
     {
         if (columnNum == 1024) {
             RowmaxSPECTILE1024(
@@ -651,9 +632,8 @@ public:
         }
     }
 
-    __aicore__ inline
-    void UpdateGlobalRowMax(uint32_t rowNumCurLoop, uint32_t rowNumCurLoopRound, uint32_t columnNum,
-        uint32_t columnNumRound, uint32_t dmUbOffsetCurCycle, uint32_t rowOffset, uint32_t isFirstStackTile)
+    __aicore__ inline void UpdateGlobalRowMax(uint32_t rowNumCurLoop, uint32_t rowNumCurLoopRound, uint32_t columnNum,
+                                              uint32_t columnNumRound, uint32_t dmUbOffsetCurCycle, uint32_t rowOffset, uint32_t isFirstStackTile)
     {
         if (isFirstStackTile) {
             AscendC::DataCopy(
@@ -699,9 +679,8 @@ public:
         AscendC::PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline
-    void CalcExp(uint32_t sUbOffset, uint32_t rowNumCurLoop, uint32_t rowNumCurLoopRound, uint32_t columnNum,
-        uint32_t columnNumRound, uint32_t rowOffset)
+    __aicore__ inline void CalcExp(uint32_t sUbOffset, uint32_t rowNumCurLoop, uint32_t rowNumCurLoopRound, uint32_t columnNum,
+                                   uint32_t columnNumRound, uint32_t rowOffset)
     {
         // *** hm_block = expand_to_block(hm), 存放于 tv
         AscendC::Brcb(
@@ -744,9 +723,8 @@ public:
         AscendC::PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline
-    void CalcLocalRowSum(uint32_t sUbOffset, uint32_t rowNumCurLoopRound, uint32_t columnNum, uint32_t columnNumRound,
-        uint32_t rowOffset)
+    __aicore__ inline void CalcLocalRowSum(uint32_t sUbOffset, uint32_t rowNumCurLoopRound, uint32_t columnNum, uint32_t columnNumRound,
+                                           uint32_t rowOffset)
     {
         // *** ll = rowsum(ls32)
         if (columnNum == 1024) {
@@ -784,9 +762,8 @@ public:
         }
     }
 
-    __aicore__ inline
-    void UpdateGlobalRowSum(uint32_t sUbOffset, uint32_t rowNumCurLoop, uint32_t rowNumCurLoopRound,
-        uint32_t dmUbOffsetCurCycle, uint32_t rowOffset, uint32_t isFirstStackTile)
+    __aicore__ inline void UpdateGlobalRowSum(uint32_t sUbOffset, uint32_t rowNumCurLoop, uint32_t rowNumCurLoopRound,
+                                              uint32_t dmUbOffsetCurCycle, uint32_t rowOffset, uint32_t isFirstStackTile)
     {
         if (isFirstStackTile) {
             // *** gl = ll
@@ -819,8 +796,7 @@ public:
         }
     }
 
-    __aicore__ inline
-    void DownCastP(uint32_t sUbOffset, uint32_t rowNumCurLoop, uint32_t columnNumRound)
+    __aicore__ inline void DownCastP(uint32_t sUbOffset, uint32_t rowNumCurLoop, uint32_t columnNumRound)
     {
         // *** lp = castfp32to16(ls)
         if (std::is_same<ElementOutput, bfloat16_t>::value) {
@@ -842,9 +818,8 @@ public:
         }
     }
 
-    __aicore__ inline
-    void CopyPUbToGm(AscendC::GlobalTensor<ElementOutput> gOutput, uint32_t sUbOffset, uint32_t rowNumCurLoop,
-        uint32_t columnNumRound, uint32_t columnNumPad)
+    __aicore__ inline void CopyPUbToGm(AscendC::GlobalTensor<ElementOutput> gOutput, uint32_t sUbOffset, uint32_t rowNumCurLoop,
+                                       uint32_t columnNumRound, uint32_t columnNumPad)
     {
         AscendC::DataCopy(
             gOutput,
@@ -854,8 +829,7 @@ public:
     }
 
     template <bool doTriUMask>
-    __aicore__ inline
-    void SubCoreCompute(
+    __aicore__ inline void SubCoreCompute(
         AscendC::GlobalTensor<ElementOutput> gOutput, const LayoutOutput &layoutOutput,
         uint32_t rowOffset, uint32_t isFirstStackTile, uint32_t isLastNoMaskStackTile,
         uint32_t isFirstRowLoop, uint32_t isLastRowLoop,
@@ -913,11 +887,10 @@ public:
             sUbOffset, rowNumCurLoop, rowNumCurLoopRound, dmUbOffsetCurCycle, rowOffset, isFirstStackTile);
     }
 
-    __aicore__ inline
-    void operator()(AscendC::GlobalTensor<ElementOutput> gOutput, AscendC::GlobalTensor<ElementInput> gInput,
-        const LayoutOutput &layoutOutput, const LayoutInput &layoutInput, GemmCoord actualBlockShape,
-        uint32_t isFirstStackTile, uint32_t isLastNoMaskStackTile,
-        uint32_t qSBlockSize, uint32_t qNBlockSize, uint32_t curStackTileMod, Arch::CrossCoreFlag softmaxFlag)
+    __aicore__ inline void operator()(AscendC::GlobalTensor<ElementOutput> gOutput, AscendC::GlobalTensor<ElementInput> gInput,
+                                      const LayoutOutput &layoutOutput, const LayoutInput &layoutInput, GemmCoord actualBlockShape,
+                                      uint32_t isFirstStackTile, uint32_t isLastNoMaskStackTile,
+                                      uint32_t qSBlockSize, uint32_t qNBlockSize, uint32_t curStackTileMod, Arch::CrossCoreFlag softmaxFlag)
     {
         uint32_t rowNum = actualBlockShape.m();
         uint32_t columnNum = actualBlockShape.n();
@@ -929,9 +902,12 @@ public:
 
         uint32_t qNSplitSubBlock = qNBlockSize / subBlockNum;
         uint32_t qNThisSubBlock = (qNBlockSize == 1) ?
-            0 : (subBlockIdx == 1) ? (qNBlockSize - qNSplitSubBlock) : qNSplitSubBlock;
+                                      0 :
+                                  (subBlockIdx == 1) ? (qNBlockSize - qNSplitSubBlock) :
+                                                       qNSplitSubBlock;
         uint32_t rowSplitSubBlock = (qNBlockSize == 1) ?
-            (qSBlockSize / 2) : (qSBlockSize * qNSplitSubBlock);
+                                        (qSBlockSize / 2) :
+                                        (qSBlockSize * qNSplitSubBlock);
         uint32_t rowActualThisSubBlock = (subBlockIdx == 1) ? (rowNum - rowSplitSubBlock) : rowSplitSubBlock;
         uint32_t rowOffsetThisSubBlock = subBlockIdx * rowSplitSubBlock;
         uint32_t maxRowNumPerLoop = MAX_UB_S_ELEM_NUM / columnNumRound;
@@ -950,7 +926,8 @@ public:
                 uint32_t rowOffsetCurLoop = rowLoopIdx * rowNumTile;
                 uint32_t rowOffsetIoGm = rowOffsetCurLoop + rowOffsetThisSubBlock;
                 uint32_t rowNumCurLoop = (rowLoopIdx == rowLoopNum - 1) ?
-                    (rowActualThisSubBlock - rowOffsetCurLoop) : rowNumTile;
+                                             (rowActualThisSubBlock - rowOffsetCurLoop) :
+                                             rowNumTile;
 
                 int64_t offsetInput = layoutInput.GetOffset(MatrixCoord(rowOffsetIoGm, 0));
                 auto gInputCurLoop = gInput[offsetInput];
@@ -989,12 +966,11 @@ public:
         }
     }
 
-    __aicore__ inline
-    void operator()(AscendC::GlobalTensor<ElementOutput> gOutput, AscendC::GlobalTensor<ElementInput> gInput,
-        AscendC::GlobalTensor<ElementMask> gMask, const LayoutOutput &layoutOutput, const LayoutInput &layoutInput,
-        const LayoutInput &layoutMask, GemmCoord actualBlockShape, uint32_t isFirstStackTile, uint32_t qSBlockSize,
-        uint32_t qNBlockSize, uint32_t curStackTileMod, Arch::CrossCoreFlag qkReady, uint32_t triUp, uint32_t triDown,
-        uint32_t kvSStartIdx, uint32_t kvSEndIdx)
+    __aicore__ inline void operator()(AscendC::GlobalTensor<ElementOutput> gOutput, AscendC::GlobalTensor<ElementInput> gInput,
+                                      AscendC::GlobalTensor<ElementMask> gMask, const LayoutOutput &layoutOutput, const LayoutInput &layoutInput,
+                                      const LayoutInput &layoutMask, GemmCoord actualBlockShape, uint32_t isFirstStackTile, uint32_t qSBlockSize,
+                                      uint32_t qNBlockSize, uint32_t curStackTileMod, Arch::CrossCoreFlag qkReady, uint32_t triUp, uint32_t triDown,
+                                      uint32_t kvSStartIdx, uint32_t kvSEndIdx)
     {
         uint32_t rowNum = actualBlockShape.m();
         uint32_t columnNum = actualBlockShape.n();
@@ -1006,16 +982,21 @@ public:
 
         uint32_t qNSplitSubBlock = qNBlockSize / subBlockNum;
         uint32_t qNThisSubBlock = (qNBlockSize == 1) ?
-            0 : (subBlockIdx == 1) ? (qNBlockSize - qNSplitSubBlock) : qNSplitSubBlock;
+                                      0 :
+                                  (subBlockIdx == 1) ? (qNBlockSize - qNSplitSubBlock) :
+                                                       qNSplitSubBlock;
         uint32_t rowSplitSubBlock = (qNBlockSize == 1) ?
-            (qSBlockSize / 2) : (qSBlockSize * qNSplitSubBlock);
+                                        (qSBlockSize / 2) :
+                                        (qSBlockSize * qNSplitSubBlock);
         uint32_t rowActualThisSubBlock = (subBlockIdx == 1) ?
-            (rowNum - rowSplitSubBlock) : rowSplitSubBlock;
+                                             (rowNum - rowSplitSubBlock) :
+                                             rowSplitSubBlock;
         uint32_t rowOffsetThisSubBlock = subBlockIdx * rowSplitSubBlock;
 
         uint32_t tokenNumPerHeadThisSubBlock = Min(qSBlockSize, rowActualThisSubBlock);
         uint32_t maskOffsetThisSubBlock = (qNBlockSize == 1) ?
-            rowOffsetThisSubBlock : 0;
+                                              rowOffsetThisSubBlock :
+                                              0;
 
         // calc mask shift in gm
         uint32_t gmOffsetMaskRow;
@@ -1058,7 +1039,8 @@ public:
                 uint32_t rowOffsetCurLoop = rowLoopIdx * rowNumTile;
                 uint32_t rowOffsetIoGm = rowOffsetCurLoop + rowOffsetThisSubBlock;
                 uint32_t rowNumCurLoop = (rowLoopIdx == rowLoopNum - 1) ?
-                    (rowActualThisSubBlock - rowOffsetCurLoop) : rowNumTile;
+                                             (rowActualThisSubBlock - rowOffsetCurLoop) :
+                                             rowNumTile;
                 // loop 0 mask load before cross core sync
                 if (rowLoopIdx == 0) {
                     // the token idx of the start token of the prologue part
@@ -1091,12 +1073,13 @@ public:
                 uint32_t pingpongFlag = delayedRowLoopIdx % 2;
                 uint32_t rowOffsetCurLoop = delayedRowLoopIdx * rowNumTile;
                 uint32_t rowNumCurLoop = (delayedRowLoopIdx == rowLoopNum - 1) ?
-                    (rowActualThisSubBlock - rowOffsetCurLoop) : rowNumTile;
+                                             (rowActualThisSubBlock - rowOffsetCurLoop) :
+                                             rowNumTile;
 
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID2);
                 UpCastMask<half, ElementMask>(maskUbTensor16, maskUbTensor, rowNumCurLoop, columnNumRound);
                 UpCastMask<float, half>(maskUbTensor32, maskUbTensor16, rowNumCurLoop, columnNumRound);
-                
+
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(pingpongFlag);
                 ScaleS((pingpongFlag * MAX_UB_S_ELEM_NUM), rowNumCurLoop, columnNumRound);
                 ApplyMask(
@@ -1160,6 +1143,6 @@ private:
     AscendC::LocalTensor<float> tvUbTensor;
     AscendC::LocalTensor<float> glUbTensor;
 };
-}
+} // namespace NpuArch::Epilogue::Block
 
-#endif  // EPILOGUE_BLOCK_BLOCK_EPILOGUE_ONLINE_SOFTMAX_HPP
+#endif // EPILOGUE_BLOCK_BLOCK_EPILOGUE_ONLINE_SOFTMAX_HPP

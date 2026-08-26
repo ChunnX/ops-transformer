@@ -16,9 +16,7 @@
 #include "../../../attn_infra/layout/layout.hpp"
 #include "../../../attn_infra/gemm/gemm_type.hpp"
 
-
 namespace NpuArch::Gemm::Tile {
-
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

@@ -89,7 +89,7 @@ std::vector<gert::InfershapeContextPara::OpAttr> MakeAttrs(int64_t returnLse,
         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<int64_t>(returnLse)},
     };
 }
-}  // namespace
+} // namespace
 
 TEST_F(generic_block_sparse_attention_infershape_ut, tnd_paged_no_lse)
 {
@@ -138,8 +138,7 @@ TEST_F(generic_block_sparse_attention_infershape_ut, unsupported_layout)
 TEST_F(generic_block_sparse_attention_infershape_ut, key_value_d_mismatch)
 {
     auto inputs = MakeInputs();
-    inputs[1] = {{{kMaxBlocks, kBlockSize, kN2, 64}, {kMaxBlocks, kBlockSize, kN2, 64}}, ge::DT_FLOAT16,
-                 ge::FORMAT_ND};
+    inputs[1] = {{{kMaxBlocks, kBlockSize, kN2, 64}, {kMaxBlocks, kBlockSize, kN2, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND};
     gert::InfershapeContextPara infershapeContextPara(
         "GenericBlockSparseAttention", inputs,
         {

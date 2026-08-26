@@ -90,8 +90,7 @@ public:
     static_assert(std::is_same_v<LayoutC, layout::RowMajor>, "LayoutC only support RowMajor yet!");
 
     /// Construct
-    __aicore__ inline
-    BlockMmad(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart = 0)
+    __aicore__ inline BlockMmad(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart = 0)
     {
         // Allocate L1 memory space
         l1BTensor = resource.l1Buf.template GetBufferByByte<ElementB>(l1BufAddrStart + L1A_SIZE * 2);
@@ -104,11 +103,9 @@ public:
     }
 
     /// Destructor
-    __aicore__ inline
-    ~BlockMmad() {}
+    __aicore__ inline ~BlockMmad() {}
 
-    __aicore__ inline
-    void getBlockShape(
+    __aicore__ inline void getBlockShape(
         GemmCoord &actualShape, uint32_t &nowNIdx, uint32_t &nLoop, uint32_t &stackSeqTile, uint32_t &blockSize)
     {
         uint32_t nSplitSize = blockSize;
@@ -118,16 +115,15 @@ public:
         actualShape[2] = nSplitSize;
     }
 
-    __aicore__ inline
-    void operator()(AscendC::GlobalTensor<ElementA> gA,
-                    AscendC::GlobalTensor<ElementB> gB,
-                    AscendC::GlobalTensor<ElementC> gC,
-                    AscendC::GlobalTensor<int32_t> gBlockTable,
-                    AscendC::GlobalTensor<int32_t> gSelectIdx,
-                    LayoutA layoutA, LayoutB layoutB, LayoutC layoutC,GemmCoord actualOriShape,
-                    uint32_t nIdx, uint32_t nLoop, uint32_t &blockSize, uint32_t kvSeqlen, uint32_t strideKV,
-                    uint32_t blockStackNum, Arch::CrossCoreFlag softmaxFlag, 
-                    uint32_t &y, uint32_t selectNum, uint32_t kvYBlockNum)
+    __aicore__ inline void operator()(AscendC::GlobalTensor<ElementA> gA,
+                                      AscendC::GlobalTensor<ElementB> gB,
+                                      AscendC::GlobalTensor<ElementC> gC,
+                                      AscendC::GlobalTensor<int32_t> gBlockTable,
+                                      AscendC::GlobalTensor<int32_t> gSelectIdx,
+                                      LayoutA layoutA, LayoutB layoutB, LayoutC layoutC, GemmCoord actualOriShape,
+                                      uint32_t nIdx, uint32_t nLoop, uint32_t &blockSize, uint32_t kvSeqlen, uint32_t strideKV,
+                                      uint32_t blockStackNum, Arch::CrossCoreFlag softmaxFlag,
+                                      uint32_t &y, uint32_t selectNum, uint32_t kvYBlockNum)
     {
         uint32_t rowNum = actualOriShape[0];
         uint32_t embed = actualOriShape[1];
@@ -142,7 +138,7 @@ public:
         for (uint32_t blockStackIdx = 0; blockStackIdx < nL1Loop; ++blockStackIdx) {
             uint32_t nowNIdx = nIdx + blockStackIdx;
             getBlockShape(actualShape, blockStackIdx, nL1Loop, stackSeqTile, blockSize);
-            uint32_t kActual = actualShape.k(); 
+            uint32_t kActual = actualShape.k();
             uint32_t nActual = actualShape.n();
 
             uint32_t processSize = 0;
@@ -153,8 +149,9 @@ public:
             uint32_t offsetInKV = currentYIdx * y + currentYoffset;
 
             while (processSize < kActual && currentSelectYIdx < selectNum && currentYIdx < kvYBlockNum && offsetInKV < kvSeqlen) {
-                uint32_t yAcutal = (currentSelectYIdx == selectNum - 1 && currentYIdx == kvYBlockNum - 1 && kvSeqlen % y != 0) ? 
-                                    (kvSeqlen - y * currentYIdx) : y;
+                uint32_t yAcutal = (currentSelectYIdx == selectNum - 1 && currentYIdx == kvYBlockNum - 1 && kvSeqlen % y != 0) ?
+                                       (kvSeqlen - y * currentYIdx) :
+                                       y;
                 uint32_t remainingInYBlock = yAcutal - currentYoffset;
                 uint32_t remainingInNBlock = kActual - processSize;
 
@@ -166,9 +163,9 @@ public:
                 auto layoutBTile = layoutB.GetTileLayout(MakeCoord(actualYSize, nActual));
                 MatrixCoord l1BTileCoord{blockStackIdx * blockSize + processSize, 0};
                 auto l1BTile = l1BTensor[layoutBInL1.GetOffset(l1BTileCoord)];
-           
+
                 copyGmToL1B(l1BTile, gB[offsetInKV * strideKV], layoutBInL1, layoutBTile);
-                
+
                 processSize += actualYSize;
                 currentYoffset += actualYSize;
                 offsetInKV += actualYSize;
@@ -237,12 +234,12 @@ public:
                     AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(EVENT_ID0);
                     bool initMmad = kL1Idx == 0 && kL0Idx == 0;
                     tileMmad(l0CTensor[l0CPingPongFlag],
-                        l0ATensor[l0ABPingPongFlag],
-                        l0BTensor[l0ABPingPongFlag],
-                        mRound,
-                        embed,
-                        kL0Actual,
-                        initMmad);
+                             l0ATensor[l0ABPingPongFlag],
+                             l0BTensor[l0ABPingPongFlag],
+                             mRound,
+                             embed,
+                             kL0Actual,
+                             initMmad);
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABPingPongFlag);
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABPingPongFlag + 2);
                     l0ABPingPongFlag = 1 - l0ABPingPongFlag;
@@ -283,7 +280,6 @@ protected:
 
 ////////////////////////////////////////////////////////////////////
 
-}  // namespace NpuArch::Gemm::Block
+} // namespace NpuArch::Gemm::Block
 
-#endif  // GEMM_BLOCK_MMAD_SFAI_PV_HPP
-
+#endif // GEMM_BLOCK_MMAD_SFAI_PV_HPP

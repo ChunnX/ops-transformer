@@ -18,8 +18,7 @@ template <
     class ArchTag,
     class TensorSrc,
     class TensorDst,
-    class Enable = void
->
+    class Enable = void>
 struct TileCopyTla {
     static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported TileCopyTla, can not find the specialization.");
 };

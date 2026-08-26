@@ -47,24 +47,32 @@ struct GbsaKernelParamsArch22 {
     GM_ADDR workSpace;
     GM_ADDR tiling;
 
-    __aicore__ inline
-    GbsaKernelParamsArch22() {}
-    __aicore__ inline
-    GbsaKernelParamsArch22(GM_ADDR q_, GM_ADDR k_, GM_ADDR v_,
-        GM_ADDR sparseBlockIdx_, GM_ADDR sparseBlockCount_,
-        GM_ADDR metaData_,
-        GM_ADDR cuSeqLengths_, GM_ADDR cuSeqLengthsKv_,
-        GM_ADDR sequsedQ_, GM_ADDR sequsedKv_,
-        GM_ADDR blockTable_,
-        GM_ADDR o_, GM_ADDR softmaxLse_, GM_ADDR workSpace_, GM_ADDR tiling_)
-        : q(q_), k(k_), v(v_), sparseBlockIdx(sparseBlockIdx_),
-          sparseBlockCount(sparseBlockCount_), metaData(metaData_),
-          cuSeqLengths(cuSeqLengths_), cuSeqLengthsKv(cuSeqLengthsKv_),
-          sequsedQ(sequsedQ_), sequsedKv(sequsedKv_),
+    __aicore__ inline GbsaKernelParamsArch22() {}
+    __aicore__ inline GbsaKernelParamsArch22(GM_ADDR q_, GM_ADDR k_, GM_ADDR v_,
+                                             GM_ADDR sparseBlockIdx_, GM_ADDR sparseBlockCount_,
+                                             GM_ADDR metaData_,
+                                             GM_ADDR cuSeqLengths_, GM_ADDR cuSeqLengthsKv_,
+                                             GM_ADDR sequsedQ_, GM_ADDR sequsedKv_,
+                                             GM_ADDR blockTable_,
+                                             GM_ADDR o_, GM_ADDR softmaxLse_, GM_ADDR workSpace_, GM_ADDR tiling_)
+        : q(q_),
+          k(k_),
+          v(v_),
+          sparseBlockIdx(sparseBlockIdx_),
+          sparseBlockCount(sparseBlockCount_),
+          metaData(metaData_),
+          cuSeqLengths(cuSeqLengths_),
+          cuSeqLengthsKv(cuSeqLengthsKv_),
+          sequsedQ(sequsedQ_),
+          sequsedKv(sequsedKv_),
           blockTable(blockTable_),
-          o(o_), softmaxLse(softmaxLse_), workSpace(workSpace_), tiling(tiling_) {}
+          o(o_),
+          softmaxLse(softmaxLse_),
+          workSpace(workSpace_),
+          tiling(tiling_)
+    {}
 };
 
-}  // namespace GbsaKernelArch22
+} // namespace GbsaKernelArch22
 
-#endif  // GBSA_ARCH22_KERNEL_UTILS
+#endif // GBSA_ARCH22_KERNEL_UTILS

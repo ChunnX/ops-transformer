@@ -43,8 +43,7 @@ class BlockEpilogue<
     ElementS_,
     ElementKV_,
     TileCopy_,
-    OTmpSrcPos_>
-{
+    OTmpSrcPos_> {
 public:
     using DispatchPolicy = EpilogueAtlasA5BsaRescaleO<LSE_MODE_, LSE_FORMAT_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
@@ -66,8 +65,7 @@ public:
     static constexpr uint32_t RESCALE_VREG_SIZE = 256 / sizeof(ElementOTmp);
     static constexpr float MAX_VALUE_RECIPROCAL_FP8 = 1.0f / 448.0f;
     static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementKV, fp8_e4m3fn_t>::value;
-    __aicore__ inline
-    BlockEpilogue(Arch::Resource<ArchTag> &resource)
+    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource)
     {
         constexpr uint32_t LO_UB_TENSOR_OFFSET = 4 * UB_UINT8_BLOCK_SIZE;
         constexpr uint32_t GO_UB_TENSOR_OFFSET = 6 * UB_UINT8_BLOCK_SIZE;
@@ -75,8 +73,8 @@ public:
         constexpr uint32_t GM_UB_TENSOR_OFFSET = LM_UB_TENSOR_OFFSET + 64 * sizeof(float);
         constexpr uint32_t DM_UB_TENSOR_OFFSET = GM_UB_TENSOR_OFFSET + 64 * sizeof(float);
         constexpr uint32_t LL_UB_TENSOR_OFFSET = DM_UB_TENSOR_OFFSET + 3 * 64 * sizeof(float);
-        constexpr uint32_t GL_UB_TENSOR_OFFSET = LL_UB_TENSOR_OFFSET +  64 * sizeof(float);
-        constexpr uint32_t LSE_UB_TENSOR_OFFSET = GL_UB_TENSOR_OFFSET +  64 * sizeof(float);
+        constexpr uint32_t GL_UB_TENSOR_OFFSET = LL_UB_TENSOR_OFFSET + 64 * sizeof(float);
+        constexpr uint32_t LSE_UB_TENSOR_OFFSET = GL_UB_TENSOR_OFFSET + 64 * sizeof(float);
 
         for (uint32_t i = 0; i < UB_OTMP_BUF_STAGES; i++) {
             loUbTensor[i] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
@@ -90,14 +88,12 @@ public:
         lseUbTensor32 = resource.ubBuf.template GetBufferByByte<float>(LSE_UB_TENSOR_OFFSET);
     }
 
-    __aicore__ inline
-    ~BlockEpilogue()
+    __aicore__ inline ~BlockEpilogue()
     {
     }
 
     template <uint32_t MODE, pipe_t PIPE>
-    __aicore__ inline
-    void SetCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    __aicore__ inline void SetCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
     {
         // in mode 4, AIC set for 2 AIVs seperately
         if constexpr (MODE == 4U) {
@@ -106,8 +102,7 @@ public:
     }
 
     template <uint32_t MODE, pipe_t PIPE>
-    __aicore__ inline
-    void WaitCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    __aicore__ inline void WaitCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
     {
         // in mode 4, AIC wait for 2 AIVs seperately
         if constexpr (MODE == 4U) {
@@ -116,12 +111,11 @@ public:
     }
 
     template <class TensorLseGm, class TensorLseUb>
-    __aicore__ inline
-    void CopyUbToGmLse(TensorLseGm const &gLseTensorTlaTile, TensorLseUb const &ubLseTensorTla)
+    __aicore__ inline void CopyUbToGmLse(TensorLseGm const &gLseTensorTlaTile, TensorLseUb const &ubLseTensorTla)
     {
         AscendC::DataCopyExtParams repeatParams;
         if constexpr ((DispatchPolicy::LSE_FORMAT == LseFormat::TN1) ||
-            (DispatchPolicy::LSE_FORMAT == LseFormat::BSN1)) {
+                      (DispatchPolicy::LSE_FORMAT == LseFormat::BSN1)) {
             repeatParams.blockCount = tla::get<0>(ubLseTensorTla.shape());
             repeatParams.blockLen = sizeof(float);
             repeatParams.srcStride = 0;
@@ -138,15 +132,14 @@ public:
     }
 
     template <class TensorO, class TensorLse>
-    __aicore__ inline
-    void SubCoreCompute(TensorO &gOTensorTlaTile,
-                        TensorLse &gLseTensorTlaTile,
-                        uint32_t curTileMod,
-                        uint32_t ubOTmpBufId,
-                        bool isFirstKvSTile,
-                        bool isLastKvSTile,
-                        uint32_t colStrideCurSubCore,
-                        Arch::CrossCoreFlag mm2ToReFlag)
+    __aicore__ inline void SubCoreCompute(TensorO &gOTensorTlaTile,
+                                          TensorLse &gLseTensorTlaTile,
+                                          uint32_t curTileMod,
+                                          uint32_t ubOTmpBufId,
+                                          bool isFirstKvSTile,
+                                          bool isLastKvSTile,
+                                          uint32_t colStrideCurSubCore,
+                                          Arch::CrossCoreFlag mm2ToReFlag)
     {
         uint32_t rowNumCurSubCore = tla::get<0>(gOTensorTlaTile.shape());
         uint32_t colNumCurSubCore = tla::get<1>(gOTensorTlaTile.shape());
@@ -155,14 +148,14 @@ public:
         uint32_t colTail = (colNumCurSubCore - 1) % vlElemNum + 1;
         uint32_t dStages = CeilDiv(colNumCurSubCore, RESCALE_VREG_SIZE);
 
-        __ubuf__ ElementOTmp *goUb = (__ubuf__ ElementOTmp *) goUbTensor32.GetPhyAddr();
-        __ubuf__ ElementOTmp *loUb = (__ubuf__ ElementOTmp *) loUbTensor[ubOTmpBufId].GetPhyAddr();
-        __ubuf__ ElementOTmp *glUb = (__ubuf__ ElementOTmp *) glUbTensor32.GetPhyAddr();
+        __ubuf__ ElementOTmp *goUb = (__ubuf__ ElementOTmp *)goUbTensor32.GetPhyAddr();
+        __ubuf__ ElementOTmp *loUb = (__ubuf__ ElementOTmp *)loUbTensor[ubOTmpBufId].GetPhyAddr();
+        __ubuf__ ElementOTmp *glUb = (__ubuf__ ElementOTmp *)glUbTensor32.GetPhyAddr();
         __ubuf__ ElementOTmp *dmUb =
-            (__ubuf__ ElementOTmp *) dmUbTensor32[curTileMod * DM_UB_GLOBAL_ELEM_NUM].GetPhyAddr();
-        __ubuf__ float *gmUb = (__ubuf__ float *) gmUbTensor32.GetPhyAddr();
-        __ubuf__ float *lseUb = (__ubuf__ float *) lseUbTensor32.GetPhyAddr();
-        
+            (__ubuf__ ElementOTmp *)dmUbTensor32[curTileMod * DM_UB_GLOBAL_ELEM_NUM].GetPhyAddr();
+        __ubuf__ float *gmUb = (__ubuf__ float *)gmUbTensor32.GetPhyAddr();
+        __ubuf__ float *lseUb = (__ubuf__ float *)lseUbTensor32.GetPhyAddr();
+
         WaitCrossCoreSync<4, PIPE_V>(mm2ToReFlag);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
         if (isFirstKvSTile) {
@@ -190,10 +183,10 @@ public:
         } else {
             if (dStages == 1) {
                 RescaleFuncLastNotFirst<DRegSplitStages::ONE>(
-                goUb, loUb, dmUb, glUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum);
+                    goUb, loUb, dmUb, glUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum);
             } else if (dStages == 2) {
                 RescaleFuncLastNotFirst<DRegSplitStages::TWO>(
-                goUb, loUb, dmUb, glUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum);
+                    goUb, loUb, dmUb, glUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum);
             }
         }
         // release lo buf
@@ -203,7 +196,7 @@ public:
                 uint32_t colNumLseUb = 0;
                 uint32_t colStrideLseUb = 0;
                 if constexpr ((DispatchPolicy::LSE_FORMAT == LseFormat::TN1) ||
-                    (DispatchPolicy::LSE_FORMAT == LseFormat::BSN1)) {
+                              (DispatchPolicy::LSE_FORMAT == LseFormat::BSN1)) {
                     LogSumExpFuncQSAxisIncontinuous(gmUb, glUb, lseUb, rowNumCurSubCore);
                     colNumLseUb = 8;
                     colStrideLseUb = 8;
@@ -237,14 +230,13 @@ public:
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
             auto ubOLayoutTla = tla::MakeLayout(
                 tla::MakeShape(rowNumCurSubCore, colNumCurSubCore),
-                tla::MakeStride(colStrideCurSubCore, tla::Int<1>{})
-            );
+                tla::MakeStride(colStrideCurSubCore, tla::Int<1>{}));
             auto ubOTensorTla = tla::MakeTensor(goUbTensor16, ubOLayoutTla, Arch::PositionUB{});
             copyUbToGmO(gOTensorTlaTile, ubOTensorTla);
         }
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
     }
-    
+
     template <DRegSplitStages dRegSplitStages>
     __simd_vf__ inline void RescaleFunc(
         __ubuf__ ElementOTmp *goUb, __ubuf__ ElementOTmp *loUb, __ubuf__ ElementOTmp *dmUb,
@@ -499,7 +491,7 @@ public:
         static constexpr LnSpecificMode mode = {MaskMergeMode::ZEROING, AscendC::LnAlgo::PRECISION_1ULP_FTZ_FALSE};
         static constexpr uint32_t postUpdateStride = 32 / sizeof(float);
 
-        for (uint16_t i = 0; i < row; i+=2) {
+        for (uint16_t i = 0; i < row; i += 2) {
             LoadAlign<ElementOTmp, LoadDist::DIST_BRC_B32>(glRowwiseVreg0, glUb + i);
             LoadAlign<ElementOTmp, LoadDist::DIST_BRC_B32>(glRowwiseVreg1, glUb + (i + 1));
             LoadAlign<ElementOTmp, LoadDist::DIST_BRC_B32>(gmRowwiseVreg0, gmUb + i);
@@ -516,15 +508,14 @@ public:
     }
 
     template <class TensorO, class TensorLse>
-    __aicore__ inline
-    void operator()(TensorO &gOTensor,
-                    TensorLse &gLseTensor,
-                    GemmCoord actualOriShape,
-                    uint32_t curTileMod,
-                    uint32_t gatheredKvSTileIdx,
-                    bool isFirstKvSTile,
-                    bool isLastKvSTile,
-                    Arch::CrossCoreFlag mm2ToReFlag)
+    __aicore__ inline void operator()(TensorO &gOTensor,
+                                      TensorLse &gLseTensor,
+                                      GemmCoord actualOriShape,
+                                      uint32_t curTileMod,
+                                      uint32_t gatheredKvSTileIdx,
+                                      bool isFirstKvSTile,
+                                      bool isLastKvSTile,
+                                      Arch::CrossCoreFlag mm2ToReFlag)
     {
         uint32_t rowNumOri = actualOriShape[0];
         uint32_t colNumOri = actualOriShape[1];
@@ -542,9 +533,9 @@ public:
         uint32_t colStrideCurSubCore = colNumOriAligned8;
 
         auto gOTensorTlaTile = GetTile(gOTensor,
-            tla::MakeCoord(rowOffsetCurSubCore, 0), tla::MakeShape(rowNumCurSubCore, colNumCurSubCore));
+                                       tla::MakeCoord(rowOffsetCurSubCore, 0), tla::MakeShape(rowNumCurSubCore, colNumCurSubCore));
         auto gLseTensorTlaTile = GetTile(gLseTensor,
-            tla::MakeCoord(rowOffsetCurSubCore, 0), tla::MakeShape(rowNumCurSubCore, 1));
+                                         tla::MakeCoord(rowOffsetCurSubCore, 0), tla::MakeShape(rowNumCurSubCore, 1));
         uint32_t ubOTmpBufId = gatheredKvSTileIdx % UB_OTMP_BUF_STAGES;
 
         if (rowNumCurSubCore > 0) {
@@ -576,5 +567,5 @@ private:
 
     CopyUbToGmO copyUbToGmO;
 };
-}
+} // namespace NpuArch::Epilogue::Block
 #endif

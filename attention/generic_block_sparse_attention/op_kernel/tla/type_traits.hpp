@@ -19,7 +19,7 @@
 #define inline __inline__ __attribute__((always_inline))
 #endif
 
-#define TLA_REQUIRES(...)   typename std::enable_if<(__VA_ARGS__)>::type* = nullptr
+#define TLA_REQUIRES(...) typename std::enable_if<(__VA_ARGS__)>::type * = nullptr
 
 namespace tla {
 
@@ -32,7 +32,6 @@ struct remove_cvref {
 // using std::remove_cvref_t;
 template <class T>
 using remove_cvref_t = typename remove_cvref<T>::type;
-
 
 // tuple_size, tuple_element
 template <class T, class = void>

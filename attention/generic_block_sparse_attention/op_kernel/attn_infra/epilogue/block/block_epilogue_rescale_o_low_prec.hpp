@@ -31,8 +31,7 @@ class BlockEpilogue<
     OutputType_,
     InputType_,
     UpdateType_,
-    LseType_>
-{
+    LseType_> {
 public:
     // Type aliases
     using DispatchPolicy = EpilogueAtlasA2RescaleO<LSE_MODE_, half>;
@@ -71,8 +70,7 @@ public:
     static constexpr uint32_t MAX_ROW_NUM_SUB_CORE = 256;
     static constexpr uint32_t SIZE_OF_16BIT = 2;
 
-    __aicore__ inline
-    BlockEpilogue(Arch::Resource<ArchTag> &resource)
+    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource)
     {
         // Allocate UB space
         constexpr uint32_t LO_UB_TENSOR_OFFSET = 8 * UB_UINT8_BLOCK_SIZE;
@@ -98,11 +96,9 @@ public:
         lse32_ubuf_tensor = resource.ubBuf.template GetBufferByByte<float>(LSE32_UB_TENSOR_OFFSET);
     }
 
-    __aicore__ inline
-    ~BlockEpilogue() {}
+    __aicore__ inline ~BlockEpilogue() {}
 
-    __aicore__ inline
-    void SetMask(int32_t len)
+    __aicore__ inline void SetMask(int32_t len)
     {
         const int32_t MAX_MASK_LEN = 128;
         const int32_t HALF_MASK_LEN = 64;
@@ -119,9 +115,8 @@ public:
         }
     }
 
-    __aicore__ inline
-    void CopyOToGm(AscendC::GlobalTensor<ElementOutput> gOutput, uint32_t proTokenIdx, uint32_t proTokenNum,
-        uint32_t epiTokenNum, uint32_t integralHeadNum, uint32_t qSThisSubBlock, uint32_t embed, uint32_t oHiddenSize)
+    __aicore__ inline void CopyOToGm(AscendC::GlobalTensor<ElementOutput> gOutput, uint32_t proTokenIdx, uint32_t proTokenNum,
+                                     uint32_t epiTokenNum, uint32_t integralHeadNum, uint32_t qSThisSubBlock, uint32_t embed, uint32_t oHiddenSize)
     {
         uint32_t innerOGmOffset = 0;
         uint32_t innerGOUbOffset = 0;
@@ -152,8 +147,7 @@ public:
         }
     }
 
-    __aicore__ inline
-    void SubCoreCompute(
+    __aicore__ inline void SubCoreCompute(
         AscendC::GlobalTensor<ElementOutput> gOutput,
         AscendC::GlobalTensor<ElementInput> gInput,
         AscendC::GlobalTensor<ElementUpdate> gUpdate,
@@ -287,7 +281,7 @@ public:
                     AscendC::Ln<half, false>(
                         lse16_ubuf_tensor,
                         glUbTensor,
-                        (uint64_t)0, 
+                        (uint64_t)0,
                         CeilDiv(totalRowNum, HALF_VECTOR_SIZE),
                         AscendC::UnaryRepeatParams(1, 1, 8, 8));
                     AscendC::PipeBarrier<PIPE_V>();
@@ -295,7 +289,7 @@ public:
                         lse16_ubuf_tensor,
                         lse16_ubuf_tensor,
                         gmUbTensor,
-                        (uint64_t)0, 
+                        (uint64_t)0,
                         CeilDiv(totalRowNum, HALF_VECTOR_SIZE),
                         AscendC::BinaryRepeatParams(1, 1, 1, 8, 8, 8));
                     AscendC::PipeBarrier<PIPE_V>();
@@ -303,7 +297,7 @@ public:
                         lse32_ubuf_tensor,
                         lse16_ubuf_tensor,
                         AscendC::RoundMode::CAST_NONE,
-                        (uint64_t)0, 
+                        (uint64_t)0,
                         CeilDiv(totalRowNum, FLOAT_VECTOR_SIZE),
                         AscendC::UnaryRepeatParams(1, 1, 8, 4));
                     AscendC::PipeBarrier<PIPE_V>();
@@ -317,7 +311,7 @@ public:
                     AscendC::PipeBarrier<PIPE_V>();
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID4);
                     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID4);
-                    
+
                     if (qNThisSubBlock == 0U) {
                         AscendC::DataCopyPad(
                             gLse, tvUbTensor32,
@@ -344,8 +338,7 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID6);
     }
 
-    __aicore__ inline
-    void operator()(
+    __aicore__ inline void operator()(
         AscendC::GlobalTensor<ElementOutput> gOutput,
         AscendC::GlobalTensor<ElementInput> gInput,
         AscendC::GlobalTensor<ElementUpdate> gUpdate,
@@ -367,9 +360,8 @@ public:
         uint32_t subBlockNum = AscendC::GetSubBlockNum();
 
         uint32_t qNSplitSubBlock = qNBlockSize / subBlockNum;
-        uint32_t qNThisSubBlock = (qNBlockSize == 1U) ? 0
-                                  : (subBlockIdx == 1U) ? (qNBlockSize - qNSplitSubBlock)
-                                                       : qNSplitSubBlock;
+        uint32_t qNThisSubBlock = (qNBlockSize == 1U) ? 0 : (subBlockIdx == 1U) ? (qNBlockSize - qNSplitSubBlock) :
+                                                                                  qNSplitSubBlock;
         uint32_t inRowSplitSubBlock =
             (qNBlockSize == 1U) ? (qSBlockSize / subBlockNum) : (qSBlockSize * qNSplitSubBlock);
         uint32_t inRowActualThisSubBlock = (subBlockIdx == 1U) ? (rowNum - inRowSplitSubBlock) : inRowSplitSubBlock;
@@ -379,23 +371,23 @@ public:
         uint32_t qSThisSubBlock = (qNBlockSize == 1U) ? inRowActualThisSubBlock : qSBlockSize;
         int64_t outOffsetSubBlock =
             layoutOutput.GetOffset(MatrixCoord(outRowOffsetThisSubBlock, outColOffsetThisSubBlock));
-        
+
         uint32_t outLseRowOffsetThisSubBlock = (qNBlockSize == 1U) ? inRowOffsetThisSubBlock : 0;
         uint32_t outLseColOffsetThisSubBlock = (qNBlockSize == 1U) ? 0 : subBlockIdx * qNSplitSubBlock;
         int64_t offsetLse = layoutLse.GetOffset(MatrixCoord(outLseRowOffsetThisSubBlock, outLseColOffsetThisSubBlock));
         auto gLseThisSubBlock = gLse[offsetLse];
-        
+
         if (inRowActualThisSubBlock > 0U) {
             uint32_t rowLoop = CeilDiv(inRowActualThisSubBlock, rowNumTile);
             uint32_t needRowLoop = (rowLoop > 1U) ? 1 : 0;
 
             // The rows of each cycle consist of multiple heads with several tokens.
             // There are several integral heads, one prologue head, one epilogue head.
-            uint32_t proTokenIdx = 0;      // the token idx of the start token of the prologue part
-            uint32_t proTokenIdxPre = 0;   // the token idx of the start token of the pre prologue part
-            uint32_t proTokenNum = 0;      // the token num of the prologue part
-            uint32_t epiTokenNum = 0;      // the token num of the epilogue part
-            uint32_t integralHeadNum = 0;  // the number of integral heads within a cycle
+            uint32_t proTokenIdx = 0;     // the token idx of the start token of the prologue part
+            uint32_t proTokenIdxPre = 0;  // the token idx of the start token of the pre prologue part
+            uint32_t proTokenNum = 0;     // the token num of the prologue part
+            uint32_t epiTokenNum = 0;     // the token num of the epilogue part
+            uint32_t integralHeadNum = 0; // the number of integral heads within a cycle
             uint32_t qSRemian = qSThisSubBlock;
             for (uint32_t rowLoopIdx = 0; rowLoopIdx < rowLoop; rowLoopIdx++) {
                 uint32_t rowOffsetLoop = rowLoopIdx * rowNumTile;
@@ -458,6 +450,6 @@ private:
     AscendC::LocalTensor<half> lse16_ubuf_tensor;
     AscendC::LocalTensor<float> lse32_ubuf_tensor;
 };
-}
+} // namespace NpuArch::Epilogue::Block
 
 #endif // EPILOGUE_BLOCK_BLOCK_EPILOGUE_RESCALE_LOW_PREC_O_HPP

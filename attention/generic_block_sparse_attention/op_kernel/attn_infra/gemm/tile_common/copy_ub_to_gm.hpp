@@ -16,6 +16,6 @@
 #include "../../../attn_infra/gemm/tile_common/tile_copy_tla.hpp"
 namespace NpuArch::Gemm::Tile {
 
-}  // NpuArch::Gemm::Tile
+} // namespace NpuArch::Gemm::Tile
 
 #endif // GEMM_TILE_COPY_UB_TO_GM_HPP

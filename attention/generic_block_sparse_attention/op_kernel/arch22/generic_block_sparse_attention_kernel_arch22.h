@@ -53,11 +53,9 @@ public:
     static constexpr uint32_t SOFTMAX_READY_ID = 2;
     static constexpr uint32_t PV_READY_ID = 3;
 
-    __aicore__ inline
-    GbsaRegularKernelArch22() {}
+    __aicore__ inline GbsaRegularKernelArch22() {}
 
-    __aicore__ inline
-    void operator()(GbsaKernelParamsArch22 const &params)
+    __aicore__ inline void operator()(GbsaKernelParamsArch22 const &params)
     {
         __gm__ GenericBlockSparseAttn::GenericBlockSparseAttentionTilingData *tilingData =
             reinterpret_cast<__gm__ GenericBlockSparseAttn::GenericBlockSparseAttentionTilingData *>(params.tiling);
@@ -108,10 +106,10 @@ public:
         gOTmp.SetGlobalBuffer((__gm__ ElementOTmp *)(params.workSpace + mm1OutSize_ + smOnlineOutSize_));
         AscendC::GlobalTensor<ElementOTmp> gOUpdate;
         gOUpdate.SetGlobalBuffer((__gm__ ElementOTmp *)(params.workSpace + mm1OutSize_ +
-            smOnlineOutSize_ + mm2OutSize_));
+                                                        smOnlineOutSize_ + mm2OutSize_));
         AscendC::GlobalTensor<int32_t> gIdentityIdx;
         gIdentityIdx.SetGlobalBuffer((__gm__ int32_t *)(params.workSpace + mm1OutSize_ +
-            smOnlineOutSize_ + mm2OutSize_ + updateSize_));
+                                                        smOnlineOutSize_ + mm2OutSize_ + updateSize_));
 
         uint32_t coreIdx = AscendC::GetBlockIdx();
         uint32_t coreNum = AscendC::GetBlockNum();
@@ -195,7 +193,8 @@ public:
                     gCuSeqLengths.GetValue(static_cast<int64_t>(b + 1)) -
                     gCuSeqLengths.GetValue(static_cast<int64_t>(b)));
                 uint32_t batchLen = hasSequsedQ ?
-                    static_cast<uint32_t>(gSequsedQ.GetValue(static_cast<int64_t>(b))) : storageLen;
+                                        static_cast<uint32_t>(gSequsedQ.GetValue(static_cast<int64_t>(b))) :
+                                        storageLen;
                 if (qToken < accum + batchLen) {
                     batchIdx = b;
                     qTokenInBatch = qToken - accum;
@@ -211,9 +210,11 @@ public:
                 gCuSeqLengths.GetValue(static_cast<int64_t>(batchIdx + 1)) -
                 gCuSeqLengths.GetValue(static_cast<int64_t>(batchIdx)));
             uint32_t kvSeqlen = hasSequsedKv ?
-                static_cast<uint32_t>(gSequsedKv.GetValue(static_cast<int64_t>(batchIdx))) : kvStorageLen;
+                                    static_cast<uint32_t>(gSequsedKv.GetValue(static_cast<int64_t>(batchIdx))) :
+                                    kvStorageLen;
             uint32_t qSeqlen = hasSequsedQ ?
-                static_cast<uint32_t>(gSequsedQ.GetValue(static_cast<int64_t>(batchIdx))) : qStorageLen;
+                                   static_cast<uint32_t>(gSequsedQ.GetValue(static_cast<int64_t>(batchIdx))) :
+                                   qStorageLen;
             // Padding / empty request: actual q_len or kv_len == 0 → skip this batch.
             // Need kvSeqlen >= qSeqlen for unsigned historyLen = kv - q.
             if (qSeqlen == 0 || kvSeqlen == 0 || kvSeqlen < qSeqlen) {
@@ -237,7 +238,7 @@ public:
             }
             globalQBlock += qTokenInBatch / blockShapeX_;
             int64_t sparseIdxBase = static_cast<int64_t>(kvHeadIdx) * qBlockNum_ * topK_ +
-                                  static_cast<int64_t>(globalQBlock) * topK_;
+                                    static_cast<int64_t>(globalQBlock) * topK_;
             uint32_t validTopK = topK_;
             if (params.sparseBlockCount != nullptr) {
                 // sparseBlockCount 2D: [N_kv, totalQBlocks]
@@ -245,7 +246,8 @@ public:
                                       static_cast<int64_t>(globalQBlock);
                 validTopK = static_cast<uint32_t>(gSparseBlockCount.GetValue(countOffset));
             }
-            if (validTopK == 0) continue;
+            if (validTopK == 0)
+                continue;
 
             uint32_t historyLen = kvSeqlen - qSeqlen;
             uint32_t lastBlockTileSize = (historyLen + qTokenInBatch) % blockShapeY_ + 1;
@@ -259,12 +261,14 @@ public:
             uint32_t actualLoopNum = 0;
             for (uint32_t i = 0; i < kvSLoopNum && i < topK_; i++) {
                 int32_t logicalId = gSparseBlockIdx.GetValue(sparseIdxBase + i);
-                if (logicalId < 0) continue;
+                if (logicalId < 0)
+                    continue;
                 int64_t btOffset = static_cast<int64_t>(batchIdx) * maxBlocksPerBatch_ + logicalId;
                 int32_t physicalId = gBlockTable.GetValue(btOffset);
                 validPhysicalIds[actualLoopNum] = physicalId;
                 validTileSize[actualLoopNum] = (static_cast<uint32_t>(logicalId) == lastLogicalBlockId) ?
-                    lastBlockTileSize : blockShapeY_;
+                                                   lastBlockTileSize :
+                                                   blockShapeY_;
                 actualLoopNum++;
             }
             if (actualLoopNum == 0) {
@@ -301,7 +305,7 @@ public:
 
                     uint32_t stageId = kvBlockIdx % MAX_CROSS_CORE_BUF_STAGES;
                     uint64_t gmOffsetS = static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * MAX_CROSS_CORE_BUF_STAGES +
-                        static_cast<uint64_t>(stageId) * WORKSPACE_BLOCK_SIZE_DB;
+                                         static_cast<uint64_t>(stageId) * WORKSPACE_BLOCK_SIZE_DB;
 
 #ifdef __DAV_C220_CUBE__
                     // Stage 1: QK Matmul
@@ -310,11 +314,11 @@ public:
                     GemmCoord actualBlockShapeQK{rowNum, kvSTileSizeAct, embed_};
 
                     blockMmadQK(gQ[gmOffsetQ], gK[gmOffsetK], gS[gmOffsetS],
-                        gBlockTable[blockTOffset], gIdentityIdx,
-                        gmQLayout, gmKLayout, ubSLayout,
-                        actualBlockShapeQK,
-                        0, 0, blockSize_, strideKVRow,
-                        blockSize_, 1, 1, kvSTileSizeAct);
+                                gBlockTable[blockTOffset], gIdentityIdx,
+                                gmQLayout, gmKLayout, ubSLayout,
+                                actualBlockShapeQK,
+                                0, 0, blockSize_, strideKVRow,
+                                blockSize_, 1, 1, kvSTileSizeAct);
 
                     NpuArch::Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(qkReady_);
 #endif
@@ -329,10 +333,10 @@ public:
                     NpuArch::Arch::CrossCoreWaitFlag(qkReady_);
 
                     epilogueOnlineSoftmax(gP[gmOffsetP], gS[gmOffsetS],
-                        ubPLayout, ubSLayout,
-                        actualBlockShapeQK,
-                        (kvBlockIdx == 0), 0, qSBlockSize, groupSize,
-                        stageId, softmaxReady_);
+                                          ubPLayout, ubSLayout,
+                                          actualBlockShapeQK,
+                                          (kvBlockIdx == 0), 0, qSBlockSize, groupSize,
+                                          stageId, softmaxReady_);
 #endif
                 }
 
@@ -346,9 +350,9 @@ public:
 
                     uint32_t stageId = kvBlockIdxDe % MAX_CROSS_CORE_BUF_STAGES;
                     uint64_t gmOffsetP = static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * MAX_CROSS_CORE_BUF_STAGES +
-                        static_cast<uint64_t>(stageId) * WORKSPACE_BLOCK_SIZE_DB;
+                                         static_cast<uint64_t>(stageId) * WORKSPACE_BLOCK_SIZE_DB;
                     uint64_t gmOffsetOTmp = static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * MAX_CROSS_CORE_BUF_STAGES +
-                        static_cast<uint64_t>(stageId) * WORKSPACE_BLOCK_SIZE_DB;
+                                            static_cast<uint64_t>(stageId) * WORKSPACE_BLOCK_SIZE_DB;
 
 #ifdef __DAV_C220_CUBE__
                     // Stage 3: PV Matmul
@@ -358,12 +362,12 @@ public:
                     GemmCoord actualBlockShapePV{rowNum, embed_, kvSTileSizeAct};
 
                     blockMmadPV(gP[gmOffsetP], gV[gmOffsetV], gOTmp[gmOffsetOTmp],
-                        gBlockTable[blockTOffset], gIdentityIdx,
-                        ubPLayout, gmVLayout, ubOTmpLayout,
-                        actualBlockShapePV,
-                        0, 0, blockSize_,
-                        kvSTileSizeAct, strideKVRow, 1,
-                        softmaxReady_, blockSize_, 1, 1);
+                                gBlockTable[blockTOffset], gIdentityIdx,
+                                ubPLayout, gmVLayout, ubOTmpLayout,
+                                actualBlockShapePV,
+                                0, 0, blockSize_,
+                                kvSTileSizeAct, strideKVRow, 1,
+                                softmaxReady_, blockSize_, 1, 1);
                     NpuArch::Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(pvReady_);
 #endif
 
@@ -378,12 +382,12 @@ public:
 
                     // LSE GM must use storage token index (same as O), not packed task qToken.
                     epilogueRescaleO(gO[gmOffsetO], gOTmp[gmOffsetOTmp], gOUpdate[gmOffsetUpdate],
-                        gLse[qStorageToken * qHeads_ + qHeadStart],
-                        gmOLayout, ubOTmpLayout, ubUpdateLayout, gmLseLayout,
-                        actualBlockShapePV,
-                        qSBlockSize, groupSize,
-                        (kvBlockIdxDe == 0), (kvBlockIdxDe == kvSLoopNum - 1),
-                        stageId);
+                                     gLse[qStorageToken * qHeads_ + qHeadStart],
+                                     gmOLayout, ubOTmpLayout, ubUpdateLayout, gmLseLayout,
+                                     actualBlockShapePV,
+                                     qSBlockSize, groupSize,
+                                     (kvBlockIdxDe == 0), (kvBlockIdxDe == kvSLoopNum - 1),
+                                     stageId);
 #endif
                 }
             }
@@ -432,9 +436,8 @@ public:
     }
 
 private:
-    __aicore__ inline
-    void FetchTilingData(__gm__ GenericBlockSparseAttn::GenericBlockSparseAttentionTilingData *tilingData,
-                         GM_ADDR metaData)
+    __aicore__ inline void FetchTilingData(__gm__ GenericBlockSparseAttn::GenericBlockSparseAttentionTilingData *tilingData,
+                                           GM_ADDR metaData)
     {
         batch_ = tilingData->batch;
         qHeads_ = tilingData->numHeads;
@@ -492,6 +495,6 @@ private:
     uint64_t updateSize_;
 };
 
-}  // namespace GbsaKernelArch22
+} // namespace GbsaKernelArch22
 
-#endif  // GENERIC_BLOCK_SPARSE_ATTENTION_KERNEL_ARCH22_H
+#endif // GENERIC_BLOCK_SPARSE_ATTENTION_KERNEL_ARCH22_H

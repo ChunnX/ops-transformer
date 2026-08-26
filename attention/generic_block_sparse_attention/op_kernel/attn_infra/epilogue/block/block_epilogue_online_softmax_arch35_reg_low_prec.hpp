@@ -33,8 +33,7 @@ template <
 class BlockEpilogue<
     EpilogueOnlineSoftmaxBsa,
     OutputType_,
-    Gemm::GemmType<half, LayoutS_>>
-{
+    Gemm::GemmType<half, LayoutS_>> {
 public:
     using DispatchPolicy = EpilogueOnlineSoftmaxBsa;
     using ArchTag = typename DispatchPolicy::ArchTag;
@@ -80,8 +79,7 @@ public:
 
     static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value;
 
-    __aicore__ inline
-    BlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue_)
+    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue_)
     {
         // Allocate UB space
         constexpr uint32_t LS_UB_TENSOR_OFFSET = 0;
@@ -91,7 +89,7 @@ public:
         constexpr uint32_t GM_UB_TENSOR_OFFSET = LM_UB_TENSOR_OFFSET + 64 * sizeof(float);
         constexpr uint32_t DM_UB_TENSOR_OFFSET = GM_UB_TENSOR_OFFSET + 64 * sizeof(float);
         constexpr uint32_t LL_UB_TENSOR_OFFSET = DM_UB_TENSOR_OFFSET + 3 * 64 * sizeof(float);
-        constexpr uint32_t GL_UB_TENSOR_OFFSET = LL_UB_TENSOR_OFFSET +  64 * sizeof(float);
+        constexpr uint32_t GL_UB_TENSOR_OFFSET = LL_UB_TENSOR_OFFSET + 64 * sizeof(float);
 
         subBlockIdx_ = AscendC::GetSubBlockIdx();
 
@@ -105,14 +103,12 @@ public:
         llUbTensor = resource.ubBuf.template GetBufferByByte<ElementInput>(LL_UB_TENSOR_OFFSET);
     }
 
-    __aicore__ inline
-    ~BlockEpilogue()
+    __aicore__ inline ~BlockEpilogue()
     {
     }
 
     template <class TensorDst, class TensorSrc>
-    __aicore__ inline
-    void CopyPUbToPL1(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint32_t m)
+    __aicore__ inline void CopyPUbToPL1(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint32_t m)
     {
         const uint32_t blockCount = tla::get<1, 1>(srcTensor.shape());
         const uint32_t blockLen = tla::get<0, 0>(srcTensor.shape()) * tla::get<0, 1>(srcTensor.shape());
@@ -138,8 +134,7 @@ public:
     }
 
     template <uint32_t MODE, pipe_t PIPE>
-    __aicore__ inline
-    void SetCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    __aicore__ inline void SetCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
     {
         // in mode 4, AIC set for 2 AIVs seperately
         if constexpr (MODE == 4U) {
@@ -148,20 +143,18 @@ public:
     }
 
     template <uint32_t MODE, pipe_t PIPE>
-    __aicore__ inline
-    void WaitCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    __aicore__ inline void WaitCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
     {
         // in mode 4, AIC wait for 2 AIVs seperately
         if constexpr (MODE == 4U) {
             Arch::CrossCoreWaitFlag<MODE, PIPE>(crossCoreFlag);
         }
     }
-    
+
     template <class TensorP>
-    __aicore__ inline
-    void operator()(TensorP &l1PTensorTla, GemmCoord actualBlockShape,
-        uint32_t isFirstKvSTile, uint32_t ubSBufId, uint32_t l1PBufId,
-         Arch::CrossCoreFlag mm1ToSmFlag, Arch::CrossCoreFlag smToMm2Flag)
+    __aicore__ inline void operator()(TensorP &l1PTensorTla, GemmCoord actualBlockShape,
+                                      uint32_t isFirstKvSTile, uint32_t ubSBufId, uint32_t l1PBufId,
+                                      Arch::CrossCoreFlag mm1ToSmFlag, Arch::CrossCoreFlag smToMm2Flag)
     {
         uint32_t mCopyOffset = RoundUp(actualBlockShape.m(), 8) / 2;
         uint32_t m = actualBlockShape.m() < mCopyOffset ? actualBlockShape.m() : mCopyOffset;
@@ -183,12 +176,12 @@ public:
         int16_t mLoops = AscendC::CeilDivision(m, vlSize) - 1;
         uint32_t tailM = (m - 1) % vlSize + 1;
         uint32_t nPadding = (tailN + BLOCK_SIZE_IN_BYTE - 1) / BLOCK_SIZE_IN_BYTE * BLOCK_SIZE_IN_BYTE;
-        __ubuf__ ElementOutput *pAddr = (__ubuf__ ElementOutput*) lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM].GetPhyAddr();
-        __ubuf__ ElementInput *sAddr = (__ubuf__ ElementInput*) lsUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM].GetPhyAddr();
+        __ubuf__ ElementOutput *pAddr = (__ubuf__ ElementOutput *)lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM].GetPhyAddr();
+        __ubuf__ ElementInput *sAddr = (__ubuf__ ElementInput *)lsUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM].GetPhyAddr();
         __ubuf__ float *lastMaxAddr = (__ubuf__ float *)gmUbTensor.GetPhyAddr();
-        __ubuf__ float *lastSumAddr = (__ubuf__ float*) glUbTensor.GetPhyAddr();
-        __ubuf__ ElementInput *nowMaxAddr = (__ubuf__ ElementInput*) lmUbTensor.GetPhyAddr();
-        __ubuf__ ElementInput *nowSumAddr = (__ubuf__ ElementInput*) llUbTensor.GetPhyAddr();
+        __ubuf__ float *lastSumAddr = (__ubuf__ float *)glUbTensor.GetPhyAddr();
+        __ubuf__ ElementInput *nowMaxAddr = (__ubuf__ ElementInput *)lmUbTensor.GetPhyAddr();
+        __ubuf__ ElementInput *nowSumAddr = (__ubuf__ ElementInput *)llUbTensor.GetPhyAddr();
         __ubuf__ float *expMaxUbAddr = (__ubuf__ float *)dmUbTensor[l1PBufId * DM_UB_GLOBAL_ELEM_NUM].GetPhyAddr();
 
         // wait QK Fixpipe finsh
@@ -218,11 +211,11 @@ public:
         } else if (kvBaseTileRegStages == 2) {
             if constexpr (FULL_QUANT_FP8) {
                 ComputeExpSubSum16FP8<KvBaseTileRegSplitStages::TWO>(pAddr, sAddr, nowMaxAddr, nowSumAddr, m, tailN,
-                                                                  blockStride, nRound);
+                                                                     blockStride, nRound);
 
             } else {
                 ComputeExpSubSum16<KvBaseTileRegSplitStages::TWO>(pAddr, sAddr, nowMaxAddr, nowSumAddr, m, tailN,
-                                                                     blockStride, nRound);
+                                                                  blockStride, nRound);
             }
         }
 
@@ -233,11 +226,11 @@ public:
         uint32_t curNRound = FULL_QUANT_FP8 ? RoundUp(n, ELE_NUM_PER_C0_FP8) : RoundUp(n, ELE_NUM_PER_C0);
         auto ubPLayoutTla = tla::MakeLayout<ElementOutput, LayoutOutput>(mRound, curNRound);
         auto ubPTensorTla = tla::MakeTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM],
-            ubPLayoutTla, Arch::PositionUB{});
+                                            ubPLayoutTla, Arch::PositionUB{});
         auto ubPTensorTlaTile = GetTile(ubPTensorTla,
-                tla::MakeCoord(0, 0), tla::MakeShape(m, n));
+                                        tla::MakeCoord(0, 0), tla::MakeShape(m, n));
         auto l1PTensorTlaTile = GetTile(l1PTensorTla,
-                tla::MakeCoord(subBlockIdx_ * mCopyOffset, 0), tla::MakeShape(m, n));
+                                        tla::MakeCoord(subBlockIdx_ * mCopyOffset, 0), tla::MakeShape(m, n));
         WaitCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
 
         CopyPUbToPL1(l1PTensorTlaTile, ubPTensorTlaTile, m);
@@ -269,13 +262,13 @@ private:
 
     template <KvBaseTileRegSplitStages kvBaseTileRegSplitStages>
     __simd_vf__ inline void ComputeScaleAndMax(__ubuf__ ElementInput *srcUb, __ubuf__ ElementInput *newMaxUb,
-        uint16_t m, uint32_t tailN, uint32_t nPadding, ElementInput dScale, uint16_t S2BaseSize)
+                                               uint16_t m, uint32_t tailN, uint32_t nPadding, ElementInput dScale, uint16_t S2BaseSize)
     {
         static_assert(kvBaseTileRegSplitStages == KvBaseTileRegSplitStages::ONE ||
-                      kvBaseTileRegSplitStages == KvBaseTileRegSplitStages::TWO,
+                          kvBaseTileRegSplitStages == KvBaseTileRegSplitStages::TWO,
                       "ComputeScaleAndMax only supports ONE Or TWO stages, please use the specialized versions.");
     }
-    
+
     template <>
     __simd_vf__ inline void ComputeScaleAndMax<KvBaseTileRegSplitStages::ONE>(
         __ubuf__ ElementInput *srcUb, __ubuf__ ElementInput *newMaxUb,
@@ -366,23 +359,23 @@ private:
         MaskReg pregTailM = UpdateMask<ElementInput>(tailM);
         for (uint16_t i = 0; i < mLoops; ++i) {
             LoadAlign<float, LoadDist::DIST_DINTLV_B32>(
-                    lastMaxFloatVreg0, lastMaxFloatVreg1, lastMaxUb + i * HALF_REP_SIZE);
+                lastMaxFloatVreg0, lastMaxFloatVreg1, lastMaxUb + i * HALF_REP_SIZE);
             Cast<ElementInput, float, castTraitZero>(lastMaxVreg0, lastMaxFloatVreg0, pregFloatFull);
             Cast<ElementInput, float, castTraitOne>(lastMaxVreg1, lastMaxFloatVreg1, pregFloatFull);
-            Or((RegTensor<uint16_t>&)lastMaxVreg,
-                (RegTensor<uint16_t>&)lastMaxVreg0, (RegTensor<uint16_t>&)lastMaxVreg1,
-                pregFull);
+            Or((RegTensor<uint16_t> &)lastMaxVreg,
+               (RegTensor<uint16_t> &)lastMaxVreg0, (RegTensor<uint16_t> &)lastMaxVreg1,
+               pregFull);
             LoadAlign(nowMaxVreg, nowMaxUb + i * HALF_REP_SIZE);
             Max(maxVreg, nowMaxVreg, lastMaxVreg, pregFull);
             StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(nowMaxUb + i * HALF_REP_SIZE, maxVreg, pregFull);
         }
         if (tailM > 64) {
             LoadAlign<float, LoadDist::DIST_DINTLV_B32>(
-                    lastMaxFloatVreg0, lastMaxFloatVreg1, lastMaxUb + mLoops * HALF_REP_SIZE);
+                lastMaxFloatVreg0, lastMaxFloatVreg1, lastMaxUb + mLoops * HALF_REP_SIZE);
             Cast<ElementInput, float, castTraitZero>(lastMaxVreg0, lastMaxFloatVreg0, pregFloatFull);
             Cast<ElementInput, float, castTraitOne>(lastMaxVreg1, lastMaxFloatVreg1, pregFloatFull);
-            Or((RegTensor<uint16_t>&)lastMaxVreg,
-               (RegTensor<uint16_t>&)lastMaxVreg0, (RegTensor<uint16_t>&)lastMaxVreg1,
+            Or((RegTensor<uint16_t> &)lastMaxVreg,
+               (RegTensor<uint16_t> &)lastMaxVreg0, (RegTensor<uint16_t> &)lastMaxVreg1,
                pregFull);
             LoadAlign(nowMaxVreg, nowMaxUb + mLoops * HALF_REP_SIZE);
             Max(maxVreg, nowMaxVreg, lastMaxVreg, pregTailM);
@@ -403,7 +396,7 @@ private:
                                                uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize)
     {
         static_assert(kvBaseTileRegSplitStages == KvBaseTileRegSplitStages::ONE ||
-                      kvBaseTileRegSplitStages == KvBaseTileRegSplitStages::TWO,
+                          kvBaseTileRegSplitStages == KvBaseTileRegSplitStages::TWO,
                       "ComputeExpSubSum16 only supports ONE Or TWO stages, please use the specialized versions.");
     }
 
@@ -485,7 +478,7 @@ private:
                                                   uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize)
     {
         static_assert(kvBaseTileRegSplitStages == KvBaseTileRegSplitStages::ONE ||
-                      kvBaseTileRegSplitStages == KvBaseTileRegSplitStages::TWO,
+                          kvBaseTileRegSplitStages == KvBaseTileRegSplitStages::TWO,
                       "ComputeExpSubSum16FP8 only supports ONE Or TWO stages, please use the specialized versions.");
     }
 
@@ -684,8 +677,8 @@ private:
 
     template <typename ElementInput>
     __simd_vf__ inline void CastExpSumAndExpMax(__ubuf__ float *sumUb, __ubuf__ float *maxUb,
-        __ubuf__ ElementInput *expSumUb, __ubuf__ ElementInput *nowMaxUb,
-        uint16_t mLoops, uint32_t tailM)
+                                                __ubuf__ ElementInput *expSumUb, __ubuf__ ElementInput *nowMaxUb,
+                                                uint16_t mLoops, uint32_t tailM)
     {
         using namespace AscendC::MicroAPI;
 
@@ -731,8 +724,8 @@ private:
 
     template <typename ElementInput>
     __simd_vf__ inline void UpdateExpSumAndExpMax(__ubuf__ float *sumUb, __ubuf__ float *expMaxUb,
-        __ubuf__ float *maxUb, __ubuf__ ElementInput *expSumUb, __ubuf__ ElementInput *nowMaxUb,
-        uint16_t mLoops, uint32_t tailM)
+                                                  __ubuf__ float *maxUb, __ubuf__ ElementInput *expSumUb, __ubuf__ ElementInput *nowMaxUb,
+                                                  uint16_t mLoops, uint32_t tailM)
     {
         using namespace AscendC::MicroAPI;
 
@@ -792,6 +785,6 @@ private:
         StoreAlign<float, StoreDist::DIST_NORM_B32>(sumUb + mLoops * FLOAT_REP_SIZE, updateExpSumVreg, pregTailM);
     }
 };
-}
+} // namespace NpuArch::Epilogue::Block
 
-#endif  // EPILOGUE_BLOCK_BLOCK_EPILOGUE_ONLINE_SOFTMAX_LOW_PREC_HPP
+#endif // EPILOGUE_BLOCK_BLOCK_EPILOGUE_ONLINE_SOFTMAX_LOW_PREC_HPP
