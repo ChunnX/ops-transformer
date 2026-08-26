@@ -2384,6 +2384,27 @@ ge::graphStatus DequantChecker::CheckFeatureD032ForAntiquant(const FiaTilingInfo
         return ge::GRAPH_SUCCESS;
     }
 
+    int64_t keyAntiquantMode = 0;
+    if (fiaInfo.opParamInfo.keyAntiquantMode != nullptr) {
+        keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode;
+    }
+    int64_t valueAntiquantMode = 0;
+    if (fiaInfo.opParamInfo.valueAntiquantMode != nullptr) {
+        valueAntiquantMode = *fiaInfo.opParamInfo.valueAntiquantMode;
+    }
+    OP_CHECK_IF(keyAntiquantMode != PER_CHANNEL_MODE && keyAntiquantMode != PER_TOKEN_MODE,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    fiaInfo.opName, "key_antiquant_mode", std::to_string(keyAntiquantMode).c_str(),
+                    "key_antiquant_mode only supports 0 (per-channel) or 1 (per-token) "
+                    "when PA_NZ D0=32 antiquant is enabled"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(valueAntiquantMode != PER_CHANNEL_MODE && valueAntiquantMode != PER_TOKEN_MODE,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    fiaInfo.opName, "value_antiquant_mode", std::to_string(valueAntiquantMode).c_str(),
+                    "value_antiquant_mode only supports 0 (per-channel) or 1 (per-token) "
+                    "when PA_NZ D0=32 antiquant is enabled"),
+                return ge::GRAPH_FAILED);
+
     const std::string &inputLayout = fiaInfo.opParamInfo.layOut;
     OP_CHECK_IF(inputLayout != "BSH" && inputLayout != "BSND" && inputLayout != "BNSD",
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
