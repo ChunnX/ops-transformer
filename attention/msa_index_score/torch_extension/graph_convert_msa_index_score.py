@@ -99,12 +99,12 @@ if _TORCHAIR_AVAILABLE:
     def convert_msa_index_score(
         query: Tensor,
         key: Tensor,
+        start_loc: Tensor,
         block_table: Optional[Tensor],
         scale: Optional[Tensor],
         atten_mask: Optional[Tensor],
         actual_seq_qlen: Optional[Tensor],
         actual_seq_klen: Optional[Tensor],
-        start_loc: Tensor,
         *,
         layout_key: str = "BBND",
         sparse_mode: int = 3,
