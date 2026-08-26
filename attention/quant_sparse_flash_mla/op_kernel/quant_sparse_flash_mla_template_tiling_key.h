@@ -43,8 +43,7 @@ ASCENDC_TPL_ARGS_DECL(QuantSparseFlashMla, // 算子OpType
                                             HCA_TEMPLATE, CSA_TEMPLATE, ORI_SPARSE_TEMPLATE, ORI_CMP_SPARSE_TEMPLATE),
                       ASCENDC_TPL_BOOL_DECL(SPLIT_G, 0, 1),
                       ASCENDC_TPL_UINT_DECL(KV_DTYPE, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, DTYPE_HIF8),
-                      ASCENDC_TPL_BOOL_DECL(IS_VEC_S2PHYADDR, 0, 1),
-                      ASCENDC_TPL_BOOL_DECL(BATCH_CONSISTENCY, 0, 1));
+                      ASCENDC_TPL_BOOL_DECL(IS_VEC_S2PHYADDR, 0, 1), ASCENDC_TPL_BOOL_DECL(BATCH_CONSISTENCY, 0, 1));
 
 // 支持的模板参数组合
 // 用于调用GET_TPL_TILING_KEY获取TilingKey时，接口内部校验TilingKey是否合法
