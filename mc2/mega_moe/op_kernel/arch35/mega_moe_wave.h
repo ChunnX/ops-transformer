@@ -117,6 +117,7 @@ private:
         uint32_t problemStartRowOffset, uint32_t problemEndRowOffset);
     __aicore__ inline bool IsSameExpertRowCursor(
         const ExpertRowCursor &currentWaveCursor, const ExpertRowCursor &targetWaveCursor) const;
+    __aicore__ inline uint32_t GetGlobalRowForCursor(const ExpertRowCursor &cursor) const;
     __aicore__ inline ExpertRowCursor ProcessGmm1Wave(
         ExpertRowCursor &gmm1WaveCursor, Gmm1ExpertLoopState &gmm1ExpertState,
         GMMAddrInfo &gmm1AddrInfo, Gmm1ActivationState &runtimeState);
@@ -124,9 +125,9 @@ private:
         ExpertRowCursor &gmm2WaveCursor, const ExpertRowCursor &waveEndCursor,
         Gmm2ExpertLoopState &gmm2ExpertState, GMMAddrInfo &gmm2AddrInfo,
         Gmm2RuntimeState &runtimeState);
-    __aicore__ inline void ProcessCombineExperts(
-        uint32_t expertBegin, uint32_t expertEnd, Gmm2ExpertLoopState &combineState,
-        GMMAddrInfo &combineAddrInfo, const CombineBufferConfig &bufferConfig);
+    __aicore__ inline void ProcessCombineWave(
+        const ExpertRowCursor &waveBeginCursor, const ExpertRowCursor &waveEndCursor,
+        uint32_t requiredWaveSequence, const CombineBufferConfig &bufferConfig);
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
     __aicore__ inline void CrossRankSyncInWorldSize();
 
@@ -170,8 +171,8 @@ private:
      *   [64, 160 KiB)     非量化 Combine 的 6 个 BF16 row buffer（H 最大 8 KiB）；
      *                     量化 Combine 使用 2 个 [BF16 row | FP8 data + scale] 槽及共享量化 scratch；
      *   [160, 184 KiB)    空闲；
-     *   [184, 187.5 KiB)  GMM2-ready 的 GM 搬入、ReduceSum scratch 和最终 sum；
-     *   [187.5, 200 KiB)  空闲；
+     *   [184, 187 KiB)    GMM2-ready 的逐 AIC wave 序号搬入区（最多 36 条 cache line）；
+     *   [187, 200 KiB)    空闲；
      *   [200, 248 KiB)    Combine 共用的 meta-info，共 1536 token * 8 int32；
      *   [248, 256 KiB)    硬件保留，不使用。
      */
@@ -909,6 +910,29 @@ __aicore__ inline bool MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::IsSameExpertRow
 }
 
 template <TemplateMegaMoeWaveTypeClass>
+__aicore__ inline uint32_t MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GetGlobalRowForCursor(
+    const ExpertRowCursor &cursor) const
+{
+    uint64_t globalRow = 0U;
+    if (cursor.expertIdx > 0U && moeExpertPerRank_ > 0U) {
+        uint32_t completedExpertCount =
+            cursor.expertIdx < moeExpertPerRank_ ? cursor.expertIdx : moeExpertPerRank_;
+        uint32_t previousExpertLastRank =
+            (completedExpertCount - 1U) * tokenDispatchConfig_.common.worldSize +
+            tokenDispatchConfig_.common.worldSize - 1U;
+        globalRow = static_cast<uint64_t>(
+            tokenDispatchScratch_.cumsumInfoTensor.GetValue(previousExpertLastRank));
+    }
+    if (cursor.expertIdx < moeExpertPerRank_) {
+        globalRow += cursor.rowOffsetInExpert;
+    }
+    if (globalRow > tokenDispatchConfig_.maxOutputSize) {
+        globalRow = tokenDispatchConfig_.maxOutputSize;
+    }
+    return static_cast<uint32_t>(globalRow);
+}
+
+template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline typename MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ExpertRowCursor
 MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm1Wave(
     ExpertRowCursor &gmm1WaveCursor, Gmm1ExpertLoopState &gmm1ExpertState,
@@ -1026,7 +1050,6 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2Wave
 
         gmm2WaveCursor.rowOffsetInExpert = waveEndRowOffsetInExpert;
         if (gmm2WaveCursor.rowOffsetInExpert >= expertRowCount) {
-            NotifyWaveGmm2Ready(waveCombineConfig_, params_, gmm2WaveCursor.expertIdx);
             ++gmm2WaveCursor.expertIdx;
             gmm2WaveCursor.rowOffsetInExpert = 0U;
         }
@@ -1034,9 +1057,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2Wave
 }
 
 template <TemplateMegaMoeWaveTypeClass>
-__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineExperts(
-    uint32_t expertBegin, uint32_t expertEnd, Gmm2ExpertLoopState &combineState,
-    GMMAddrInfo &combineAddrInfo, const CombineBufferConfig &bufferConfig)
+__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineWave(
+    const ExpertRowCursor &waveBeginCursor, const ExpertRowCursor &waveEndCursor,
+    uint32_t requiredWaveSequence, const CombineBufferConfig &bufferConfig)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -1045,18 +1068,16 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineE
         return;
     }
 
-    uint32_t rowSequence = 0U;
-    for (uint32_t expertIdx = expertBegin; expertIdx < expertEnd; ++expertIdx) {
-        if (!PrepareMoeExpertGmm2Stage<ActivationType, ActivationType, QuantScaleOutType,
-                                       1U, 1U, 1U, true, false, false>(
-                gmm2Config_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmm2Scratch_,
-                combineState, combineAddrInfo, expertIdx)) {
-            continue;
-        }
-        RunWaveExpertCombineStage<CombineQuantMode>(
-            waveCombineConfig_, bufferConfig, waveCombineScratch_, params_,
-            combineAddrInfo, combineState, expertIdx, rowSequence);
+    uint32_t waveGlobalRowBegin = GetGlobalRowForCursor(waveBeginCursor);
+    uint32_t waveGlobalRowEnd = GetGlobalRowForCursor(waveEndCursor);
+    if (waveGlobalRowEnd <= waveGlobalRowBegin) {
+        return;
     }
+    uint32_t rowSequence = 0U;
+    RunWaveCombineStage<CombineQuantMode>(
+        waveCombineConfig_, bufferConfig, waveCombineScratch_, params_,
+        waveGlobalRowBegin, waveGlobalRowEnd - waveGlobalRowBegin,
+        requiredWaveSequence, rowSequence);
     DrainWaveCombineRowRing<CombineQuantMode>(rowSequence);
 }
 
@@ -1075,10 +1096,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
 
     GMMAddrInfo gmm1AddrInfo{};
     GMMAddrInfo gmm2AddrInfo{};
-    GMMAddrInfo combineAddrInfo{};
     Gmm1ExpertLoopState gmm1ExpertState = CreateGmm1ExpertLoopState(gmm1Config_);
     Gmm2ExpertLoopState gmm2ExpertState = CreateGmm2ExpertLoopState(gmm2Config_);
-    Gmm2ExpertLoopState combineExpertState = CreateGmm2ExpertLoopState(gmm2Config_);
     int32_t vecSetSyncCom = 0;
     int32_t gmm1TileSequence = 0;
     Gmm1ActivationState gmm1RuntimeState{
@@ -1089,7 +1108,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
     ExpertRowCursor gmm1WaveCursor{};
     ExpertRowCursor gmm2WaveCursor{};
     ExpertRowCursor preparedWaveEndCursor{};
-    uint32_t combineBeginExpertIndex = 0U;
+    uint32_t waveSequence = 0U;
     bool hasPreparedWave = false;
 
     while (waveBeginCursor.expertIdx < moeExpertPerRank_) {
@@ -1126,6 +1145,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
             startBlockIdx_, vecSetSyncCom, gmm2TileSequence, gmm2PingPongIdx_};
         ProcessGmm2Wave(
             gmm2WaveCursor, waveEndCursor, gmm2ExpertState, gmm2AddrInfo, gmm2RuntimeState);
+        const uint32_t completedWaveSequence = waveSequence + 1U;
+        NotifyWaveGmm2Ready(waveCombineConfig_, params_, completedWaveSequence);
 
         const bool hasNextWave = waveEndCursor.expertIdx < moeExpertPerRank_;
         const bool fixedRoleResonance =
@@ -1135,12 +1156,10 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
             startBlockIdx_ = gmm1EndBlockIndex;
         }
 
-        uint32_t combineEndExpertIndex = waveEndCursor.expertIdx;
-        ProcessCombineExperts(
-            combineBeginExpertIndex, combineEndExpertIndex, combineExpertState,
-            combineAddrInfo, combineBufferConfig);
-        combineBeginExpertIndex = combineEndExpertIndex;
+        ProcessCombineWave(
+            waveBeginCursor, waveEndCursor, completedWaveSequence, combineBufferConfig);
         waveBeginCursor = waveEndCursor;
+        waveSequence = completedWaveSequence;
     }
 
     if constexpr (!TopkWeightsPrefetch) {
@@ -1162,7 +1181,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmmPipel
     // 等待所有 rank 完成本轮输入准备，再读取远端 dispatch 数据。
     CrossRankSyncInWorldSize();
 
-    // Dispatch 按 wave 预取；Combine 暂时恢复为完整专家粒度，用于隔离性能差值。
+    // Dispatch、GMM1、GMM2 与 Combine 共用同一 wave 游标；AIV1 保持一 wave Dispatch lookahead。
     ProcessMoeExpertStages();
 
     if constexpr (g_coreType == AIV) {
