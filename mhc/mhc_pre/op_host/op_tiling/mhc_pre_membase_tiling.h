@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file mhc_pre_tiling.h
+ * \file mhc_pre_membase_tiling.h
  * \brief MhcPre tiling
  */
 
-#ifndef MHC_PRE_TILING_H
-#define MHC_PRE_TILING_H
+#ifndef MHC_PRE_MEMBASE_TILING_H
+#define MHC_PRE_MEMBASE_TILING_H
 
 #include <vector>
 #include <iostream>
@@ -166,4 +166,4 @@ private:
 };
 
 } // namespace optiling
-#endif // MHC_PRE_TILING_H
+#endif // MHC_PRE_MEMBASE_TILING_H

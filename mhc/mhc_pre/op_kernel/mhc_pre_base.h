@@ -99,8 +99,41 @@ __aicore__ inline uint64_t Factorial(uint64_t n)
     return r;
 }
 
-template <typename T, bool needBrc = true>
-__aicore__ inline void MulABLastDimBrcInline(const LocalTensor<T> &output, const LocalTensor<T> &input0,
+enum class ABLastDimBrcOp : uint8_t {
+    MUL,
+    SUB,
+    DIV
+};
+
+template <ABLastDimBrcOp op, typename T>
+__aicore__ inline void ApplyABLastDimBrcOp(const LocalTensor<T> &output, const LocalTensor<T> &input0,
+                                           const LocalTensor<T> &input1, const int32_t count)
+{
+    if constexpr (op == ABLastDimBrcOp::MUL) {
+        Mul(output, input0, input1, count);
+    } else if constexpr (op == ABLastDimBrcOp::SUB) {
+        Sub(output, input0, input1, count);
+    } else {
+        Div(output, input0, input1, count);
+    }
+}
+
+template <ABLastDimBrcOp op, typename T>
+__aicore__ inline void ApplyABLastDimBrcOp(const LocalTensor<T> &output, const LocalTensor<T> &input0,
+                                           const LocalTensor<T> &input1, const int32_t repeatSize,
+                                           const int32_t repeatTimes, const BinaryRepeatParams &instrParams)
+{
+    if constexpr (op == ABLastDimBrcOp::MUL) {
+        Mul(output, input0, input1, repeatSize, repeatTimes, instrParams);
+    } else if constexpr (op == ABLastDimBrcOp::SUB) {
+        Sub(output, input0, input1, repeatSize, repeatTimes, instrParams);
+    } else {
+        Div(output, input0, input1, repeatSize, repeatTimes, instrParams);
+    }
+}
+
+template <typename T, ABLastDimBrcOp op, bool needBrc = true>
+__aicore__ inline void ABLastDimBrcInline(const LocalTensor<T> &output, const LocalTensor<T> &input0,
                                              const LocalTensor<T> &input1, const LocalTensor<T> &tmpBuffer,
                                              const int32_t curRowNum, const int32_t curColNum)
 {
@@ -113,7 +146,7 @@ __aicore__ inline void MulABLastDimBrcInline(const LocalTensor<T> &output, const
     uint32_t elemInOneRepeat = REPEAT_SIZE / sizeof(T);
     uint32_t curColNumAlign = RoundUp<T>(curColNum);
     if (curColNum <= elemInOneBlock) {
-        Mul(output, input0, tmpBuffer, curRowNum * curColNumAlign);
+        ApplyABLastDimBrcOp<op>(output, input0, tmpBuffer, curRowNum * curColNumAlign);
     } else {
         int32_t numRepeatPerLine = curColNum / elemInOneRepeat;
         int32_t numRemainPerLine = curColNum % elemInOneRepeat;
@@ -130,8 +163,9 @@ __aicore__ inline void MulABLastDimBrcInline(const LocalTensor<T> &output, const
                 instrParams.src0RepStride = DEFAULT_REPEAT_STRIDE;
                 instrParams.src1RepStride = 0;
                 for (uint32_t i = 0; i < curRowNum; i++) {
-                    Mul(output[i * curColNumAlign], input0[i * curColNumAlign], tmpBuffer[i * elemInOneBlock],
-                        elemInOneRepeat, numRepeatPerLine, instrParams);
+                    ApplyABLastDimBrcOp<op>(output[i * curColNumAlign], input0[i * curColNumAlign],
+                                            tmpBuffer[i * elemInOneBlock], elemInOneRepeat, numRepeatPerLine,
+                                            instrParams);
                 }
             } else {
                 // 在Row方向开Repeat
@@ -142,8 +176,8 @@ __aicore__ inline void MulABLastDimBrcInline(const LocalTensor<T> &output, const
                 instrParams.src0RepStride = dstRepStridePerLine;
                 instrParams.src1RepStride = 1;
                 for (uint32_t i = 0; i < numRepeatPerLine; i++) {
-                    Mul(output[i * elemInOneRepeat], input0[i * elemInOneRepeat], tmpBuffer, elemInOneRepeat, curRowNum,
-                        instrParams);
+                    ApplyABLastDimBrcOp<op>(output[i * elemInOneRepeat], input0[i * elemInOneRepeat], tmpBuffer,
+                                            elemInOneRepeat, curRowNum, instrParams);
                 }
             }
         }
@@ -157,7 +191,7 @@ __aicore__ inline void MulABLastDimBrcInline(const LocalTensor<T> &output, const
                 instrParams.src0RepStride = 0;
                 instrParams.src1RepStride = 0;
                 for (uint32_t i = 0; i < curRowNum; i++) {
-                    Mul(output[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign],
+                    ApplyABLastDimBrcOp<op>(output[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign],
                         input0[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign], tmpBuffer[i * elemInOneBlock],
                         numRemainPerLine, 1, instrParams);
                 }
@@ -168,13 +202,39 @@ __aicore__ inline void MulABLastDimBrcInline(const LocalTensor<T> &output, const
                 instrParams.dstRepStride = dstRepStridePerLine;
                 instrParams.src0RepStride = dstRepStridePerLine;
                 instrParams.src1RepStride = 0;
-                Mul(output[numRepeatPerLine * elemInOneRepeat], input0[numRepeatPerLine * elemInOneRepeat], tmpBuffer,
-                    numRemainPerLine, curRowNum, instrParams);
+                ApplyABLastDimBrcOp<op>(output[numRepeatPerLine * elemInOneRepeat],
+                                        input0[numRepeatPerLine * elemInOneRepeat], tmpBuffer, numRemainPerLine,
+                                        curRowNum, instrParams);
             }
         }
     }
     PipeBarrier<PIPE_V>();
 }
+
+template <typename T, bool needBrc = true>
+__aicore__ inline void MulABLastDimBrcInline(const LocalTensor<T> &output, const LocalTensor<T> &input0,
+                                             const LocalTensor<T> &input1, const LocalTensor<T> &tmpBuffer,
+                                             const int32_t curRowNum, const int32_t curColNum)
+{
+    ABLastDimBrcInline<T, ABLastDimBrcOp::MUL, needBrc>(output, input0, input1, tmpBuffer, curRowNum, curColNum);
+}
+
+template <typename T, bool needBrc = true>
+__aicore__ inline void SubABLastDimBrcInline(const LocalTensor<T> &output, const LocalTensor<T> &input0,
+                                             const LocalTensor<T> &input1, const LocalTensor<T> &tmpBuffer,
+                                             const int32_t curRowNum, const int32_t curColNum)
+{
+    ABLastDimBrcInline<T, ABLastDimBrcOp::SUB, needBrc>(output, input0, input1, tmpBuffer, curRowNum, curColNum);
+}
+
+template <typename T, bool needBrc = true>
+__aicore__ inline void DivABLastDimBrcInline(const LocalTensor<T> &output, const LocalTensor<T> &input0,
+                                             const LocalTensor<T> &input1, const LocalTensor<T> &tmpBuffer,
+                                             const int32_t curRowNum, const int32_t curColNum)
+{
+    ABLastDimBrcInline<T, ABLastDimBrcOp::DIV, needBrc>(output, input0, input1, tmpBuffer, curRowNum, curColNum);
+}
+
 
 template <typename T, bool needBrc = true>
 __aicore__ inline void MulABLastDimBrcInline2(const LocalTensor<T> &output, const LocalTensor<T> &input0,
@@ -239,160 +299,6 @@ __aicore__ inline void MulABLastDimBrcInline2(const LocalTensor<T> &output, cons
                     input0[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign],
                     tmpBuffer[(i / numN * elemInOneBlock + i % numN) * elemInOneBlock], numRemainPerLine, 1,
                     instrParams);
-            }
-        }
-    }
-    PipeBarrier<PIPE_V>();
-}
-
-template <typename T, bool needBrc = true>
-__aicore__ inline void SubABLastDimBrcInline(const LocalTensor<T> &output, const LocalTensor<T> &input0,
-                                             const LocalTensor<T> &input1, const LocalTensor<T> &tmpBuffer,
-                                             const int32_t curRowNum, const int32_t curColNum)
-{
-    if constexpr (needBrc) {
-        uint32_t repeatTimes = CeilDiv(curRowNum, ONE_REPEAT_BLOCK_NUMS);
-        Brcb(tmpBuffer, input1, repeatTimes, {DEFAULT_BLOCK_STRIDE, DEFAULT_REPEAT_STRIDE});
-    }
-    PipeBarrier<PIPE_V>();
-    uint32_t elemInOneBlock = BLOCK_SIZE / sizeof(T);
-    uint32_t elemInOneRepeat = REPEAT_SIZE / sizeof(T);
-    uint32_t curColNumAlign = RoundUp<T>(curColNum);
-    if (curColNum <= elemInOneBlock) {
-        Sub(output, input0, tmpBuffer, curRowNum * curColNumAlign);
-    } else {
-        int32_t numRepeatPerLine = curColNum / elemInOneRepeat;
-        int32_t numRemainPerLine = curColNum % elemInOneRepeat;
-        int32_t dstRepStridePerLine = CeilDiv(curColNum, elemInOneBlock);
-        BinaryRepeatParams instrParams;
-
-        if (numRepeatPerLine > 0) {
-            if (dstRepStridePerLine > MAX_REPEAT_STRIDE || curRowNum < numRepeatPerLine) {
-                // 在Col方向开Repeat, 并且Repeat小于255
-                instrParams.dstBlkStride = 1;
-                instrParams.src0BlkStride = 1;
-                instrParams.src1BlkStride = 0;
-                instrParams.dstRepStride = DEFAULT_REPEAT_STRIDE;
-                instrParams.src0RepStride = DEFAULT_REPEAT_STRIDE;
-                instrParams.src1RepStride = 0;
-                for (uint32_t i = 0; i < curRowNum; i++) {
-                    Sub(output[i * curColNumAlign], input0[i * curColNumAlign], tmpBuffer[i * elemInOneBlock],
-                        elemInOneRepeat, numRepeatPerLine, instrParams);
-                }
-            } else {
-                // 在Row方向开Repeat
-                instrParams.dstBlkStride = 1;
-                instrParams.src0BlkStride = 1;
-                instrParams.src1BlkStride = 0;
-                instrParams.dstRepStride = dstRepStridePerLine;
-                instrParams.src0RepStride = dstRepStridePerLine;
-                instrParams.src1RepStride = 1;
-                for (uint32_t i = 0; i < numRepeatPerLine; i++) {
-                    Sub(output[i * elemInOneRepeat], input0[i * elemInOneRepeat], tmpBuffer, elemInOneRepeat, curRowNum,
-                        instrParams);
-                }
-            }
-        }
-
-        if (numRemainPerLine > 0) {
-            if (dstRepStridePerLine > MAX_REPEAT_STRIDE) {
-                instrParams.dstBlkStride = 1;
-                instrParams.src0BlkStride = 1;
-                instrParams.src1BlkStride = 0;
-                instrParams.dstRepStride = 0;
-                instrParams.src0RepStride = 0;
-                instrParams.src1RepStride = 0;
-                for (uint32_t i = 0; i < curRowNum; i++) {
-                    Sub(output[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign],
-                        input0[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign], tmpBuffer[i * elemInOneBlock],
-                        numRemainPerLine, 1, instrParams);
-                }
-            } else {
-                instrParams.dstBlkStride = 1;
-                instrParams.src0BlkStride = 1;
-                instrParams.src1BlkStride = 0;
-                instrParams.dstRepStride = dstRepStridePerLine;
-                instrParams.src0RepStride = dstRepStridePerLine;
-                instrParams.src1RepStride = 0;
-                Sub(output[numRepeatPerLine * elemInOneRepeat], input0[numRepeatPerLine * elemInOneRepeat], tmpBuffer,
-                    numRemainPerLine, curRowNum, instrParams);
-            }
-        }
-    }
-    PipeBarrier<PIPE_V>();
-}
-
-template <typename T, bool needBrc = true>
-__aicore__ inline void DivABLastDimBrcInline(const LocalTensor<T> &output, const LocalTensor<T> &input0,
-                                             const LocalTensor<T> &input1, const LocalTensor<T> &tmpBuffer,
-                                             const int32_t curRowNum, const int32_t curColNum)
-{
-    if constexpr (needBrc) {
-        uint32_t repeatTimes = CeilDiv(curRowNum, ONE_REPEAT_BLOCK_NUMS);
-        Brcb(tmpBuffer, input1, repeatTimes, {DEFAULT_BLOCK_STRIDE, DEFAULT_REPEAT_STRIDE});
-    }
-    PipeBarrier<PIPE_V>();
-    uint32_t elemInOneBlock = BLOCK_SIZE / sizeof(T);
-    uint32_t elemInOneRepeat = REPEAT_SIZE / sizeof(T);
-    uint32_t curColNumAlign = RoundUp<T>(curColNum);
-    if (curColNum <= elemInOneBlock) {
-        Div(output, input0, tmpBuffer, curRowNum * curColNumAlign);
-    } else {
-        int32_t numRepeatPerLine = curColNum / elemInOneRepeat;
-        int32_t numRemainPerLine = curColNum % elemInOneRepeat;
-        int32_t dstRepStridePerLine = CeilDiv(curColNum, elemInOneBlock);
-        BinaryRepeatParams instrParams;
-
-        if (numRepeatPerLine > 0) {
-            if (dstRepStridePerLine > MAX_REPEAT_STRIDE || curRowNum < numRepeatPerLine) {
-                // 在Col方向开Repeat, 并且Repeat小于255
-                instrParams.dstBlkStride = 1;
-                instrParams.src0BlkStride = 1;
-                instrParams.src1BlkStride = 0;
-                instrParams.dstRepStride = DEFAULT_REPEAT_STRIDE;
-                instrParams.src0RepStride = DEFAULT_REPEAT_STRIDE;
-                instrParams.src1RepStride = 0;
-                for (uint32_t i = 0; i < curRowNum; i++) {
-                    Div(output[i * curColNumAlign], input0[i * curColNumAlign], tmpBuffer[i * elemInOneBlock],
-                        elemInOneRepeat, numRepeatPerLine, instrParams);
-                }
-            } else {
-                // 在Row方向开Repeat
-                instrParams.dstBlkStride = 1;
-                instrParams.src0BlkStride = 1;
-                instrParams.src1BlkStride = 0;
-                instrParams.dstRepStride = dstRepStridePerLine;
-                instrParams.src0RepStride = dstRepStridePerLine;
-                instrParams.src1RepStride = 1;
-                for (uint32_t i = 0; i < numRepeatPerLine; i++) {
-                    Div(output[i * elemInOneRepeat], input0[i * elemInOneRepeat], tmpBuffer, elemInOneRepeat, curRowNum,
-                        instrParams);
-                }
-            }
-        }
-
-        if (numRemainPerLine > 0) {
-            if (dstRepStridePerLine > MAX_REPEAT_STRIDE) {
-                instrParams.dstBlkStride = 1;
-                instrParams.src0BlkStride = 1;
-                instrParams.src1BlkStride = 0;
-                instrParams.dstRepStride = 0;
-                instrParams.src0RepStride = 0;
-                instrParams.src1RepStride = 0;
-                for (uint32_t i = 0; i < curRowNum; i++) {
-                    Div(output[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign],
-                        input0[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign], tmpBuffer[i * elemInOneBlock],
-                        numRemainPerLine, 1, instrParams);
-                }
-            } else {
-                instrParams.dstBlkStride = 1;
-                instrParams.src0BlkStride = 1;
-                instrParams.src1BlkStride = 0;
-                instrParams.dstRepStride = dstRepStridePerLine;
-                instrParams.src0RepStride = dstRepStridePerLine;
-                instrParams.src1RepStride = 0;
-                Div(output[numRepeatPerLine * elemInOneRepeat], input0[numRepeatPerLine * elemInOneRepeat], tmpBuffer,
-                    numRemainPerLine, curRowNum, instrParams);
             }
         }
     }

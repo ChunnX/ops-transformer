@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file mmhc_pre_tiling.cpp
+ * \file mhc_pre_membase_tiling.cpp
  * \brief MhcPre tiling implementation
  */
 
 #include <sstream>
-#include "mhc_pre_tiling.h"
+#include "mhc_pre_membase_tiling.h"
 #include "op_host/tiling_templates_registry.h"
 #include "op_host/tiling_util.h"
 
