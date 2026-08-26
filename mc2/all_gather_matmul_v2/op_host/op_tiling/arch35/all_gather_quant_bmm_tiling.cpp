@@ -302,7 +302,12 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckMXFPScaleInput()
                     .c_str()),
             return ge::GRAPH_FAILED);
     }
-    scale1kSpaceSize_ = args_.rankDim * scale1FirstDim * scale1SecondDim * sizeof(ge::DT_FLOAT8_E8M0);
+    // scale1kSpaceSize_ = args_.rankDim * scale1FirstDim * scale1SecondDim * sizeof(ge::DT_FLOAT8_E8M0);
+    // mx场景x1Scale为3D: (m, ceilDiv(k,64), 2), 每64列对应2个E8M0, 即每32个元素1字节
+    // 需乘上scale1ThirdDim(=2), 并与kernel端gatherScale1Offset的计算对齐, 再按512B对齐总region
+    constexpr uint64_t alignAddrLen = 512;
+    scale1kSpaceSize_ = mc2tiling::AlignUp(
+        args_.rankDim * scale1FirstDim * scale1SecondDim * scale1ThirdDim * sizeof(ge::DT_FLOAT8_E8M0), alignAddrLen);
     OP_LOGI(opName_, "scale1kSpaceSize_=%lu.", scale1kSpaceSize_);
     return ge::GRAPH_SUCCESS;
 }
