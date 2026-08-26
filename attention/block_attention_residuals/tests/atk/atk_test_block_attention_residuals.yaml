@@ -2,6 +2,7 @@ name: torch.block_attention_residuals
 api: pytorch
 api_type: function_block_attention_residuals_atk
 version: v2.1
+generate: block_attention_residuals_constraint
 standard:
   acc: mixed_tolerance_bm
   perf: not_key
