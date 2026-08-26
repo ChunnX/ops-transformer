@@ -137,6 +137,7 @@ int main() {
     char layoutKv[layout_kv.length() + 1];
     strcpy(layoutKv, layout_kv.c_str());
     int32_t sparseMode = 3;
+    bool isGradEnable = false;
 
     int64_t metadataSize = ((36 + 72) * batchSize * numKeyValueHeads + 1) * 16;
     int64_t alignedSize = ((metadataSize + 4095) / 4096) * 4096;
@@ -175,7 +176,7 @@ int main() {
     void* workspaceAddr = nullptr;
 
     printf("start aclnnQuantFlashAttnMetadata\n");
-    ret = aclnnQuantFlashAttnMetadataGetWorkspaceSize(
+        ret = aclnnQuantFlashAttnMetadataGetWorkspaceSize(
         nullptr, nullptr,
         nullptr, nullptr,
         nullptr,
@@ -183,6 +184,7 @@ int main() {
         numHeads, numKeyValueHeads,
         headDim, quantMode, sparseMode, preTokens, nextTokens,
         "BSND", "BSND", "BSND", "BSND",
+        isGradEnable,
         metadataTensor,
         &workspaceSize, &executor);
     if (ret != ACL_SUCCESS) {
