@@ -25,6 +25,8 @@ constexpr uint32_t ATTR_TOPK_INDEX = 0;
 constexpr uint32_t ATTR_QUERY_LAYOUT_INDEX = 2;
 constexpr uint32_t ATTR_KEY_LAYOUT_INDEX = 3;
 constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 6;
+constexpr int64_t TOPK_MIN = 1;
+constexpr int64_t TOPK_MAX = 8192;
 
 static ge::graphStatus InferShapeLightningIndexerV2(gert::InferShapeContext *context)
 {
@@ -46,48 +48,60 @@ static ge::graphStatus InferShapeLightningIndexerV2(gert::InferShapeContext *con
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayoutQueryPtr);
     const char *inputLayoutKeyPtr = attrs->GetAttrPointer<char>(ATTR_KEY_LAYOUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayoutKeyPtr);
-    const int64_t *seleced_count = attrs->GetInt(ATTR_TOPK_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, seleced_count);
+    const int64_t *selectedCount = attrs->GetInt(ATTR_TOPK_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, selectedCount);
+    if (*selectedCount < TOPK_MIN || *selectedCount > TOPK_MAX) {
+        const std::string actual = std::to_string(*selectedCount);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("LightningIndexerV2", "topk", actual.c_str(),
+                                              "topk must be in [1, 8192]");
+        return ge::GRAPH_FAILED;
+    }
     std::string inputLayoutQueryPtrStr = std::string(inputLayoutQueryPtr);
     std::string inputLayoutKeyPtrStr = std::string(inputLayoutKeyPtr);
     OP_CHECK_IF(
         inputLayoutQueryPtrStr != "TND" && inputLayoutQueryPtrStr != "BSND",
         OP_LOGE_FOR_INVALID_VALUE("LightningIndexerV2", "layout_q", inputLayoutQueryPtrStr.c_str(), "TND or BSND"),
         return ge::GRAPH_FAILED);
+    OP_CHECK_IF(inputLayoutKeyPtrStr != "TND" && inputLayoutKeyPtrStr != "BSND" && inputLayoutKeyPtrStr != "PA_BBND",
+                OP_LOGE_FOR_INVALID_VALUE("LightningIndexerV2", "layout_k", inputLayoutKeyPtrStr.c_str(),
+                                          "TND, BSND or PA_BBND"),
+                return ge::GRAPH_FAILED);
 
-    sparseIndicesShape->SetDimNum(queryShape->GetDimNum());
+    const uint32_t queryDimNum = inputLayoutQueryPtrStr == "BSND" ? 4U : 3U;
+    const uint32_t keyDimNum = inputLayoutKeyPtrStr == "TND" ? 3U : 4U;
+    OP_CHECK_IF(queryShape->GetDimNum() != queryDimNum,
+                OP_LOGE_FOR_INVALID_SHAPEDIM("LightningIndexerV2", "q", std::to_string(queryShape->GetDimNum()).c_str(),
+                                             std::to_string(queryDimNum).c_str()),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(keyShape->GetDimNum() != keyDimNum,
+                OP_LOGE_FOR_INVALID_SHAPEDIM("LightningIndexerV2", "k", std::to_string(keyShape->GetDimNum()).c_str(),
+                                             std::to_string(keyDimNum).c_str()),
+                return ge::GRAPH_FAILED);
+
+    const uint32_t keyHeadDimIndex = inputLayoutKeyPtrStr == "TND" ? 1U : 2U;
+    sparseIndicesShape->SetDimNum(queryDimNum);
     if (inputLayoutQueryPtrStr == "BSND") {
-        OP_CHECK_IF(queryShape->GetDimNum() != 4,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("LightningIndexerV2", "q",
-                                                             std::to_string(queryShape->GetDimNum()).c_str(),
-                                                             "When in BSND case, the shape dim of q must be 4"),
-                    return ge::GRAPH_FAILED);
-        sparseIndicesShape->SetDim(0, queryShape->GetDim(0)); // 0:Dim B
-        sparseIndicesShape->SetDim(1, queryShape->GetDim(1)); // 1:Dim S
-        sparseIndicesShape->SetDim(2, keyShape->GetDim(2));   // 2:Dim N
-        sparseIndicesShape->SetDim(3, *seleced_count);        // 3:Dim K
+        sparseIndicesShape->SetDim(0, queryShape->GetDim(0));             // 0:Dim B
+        sparseIndicesShape->SetDim(1, queryShape->GetDim(1));             // 1:Dim S
+        sparseIndicesShape->SetDim(2, keyShape->GetDim(keyHeadDimIndex)); // 2:Dim N
+        sparseIndicesShape->SetDim(3, *selectedCount);                    // 3:Dim K
     } else {
-        OP_CHECK_IF(queryShape->GetDimNum() != 3,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("LightningIndexerV2", "q",
-                                                             std::to_string(queryShape->GetDimNum()).c_str(),
-                                                             "When in TND case, the shape dim of q must be 3"),
-                    return ge::GRAPH_FAILED);
-        sparseIndicesShape->SetDim(0, queryShape->GetDim(0));            // 0:Dim T
-        int32_t nDimIndex = (inputLayoutKeyPtrStr == "PA_BBND") ? 2 : 1; // 2:Key Dim N
-        sparseIndicesShape->SetDim(1, keyShape->GetDim(nDimIndex));      // 1:Dim N
-        sparseIndicesShape->SetDim(2, *seleced_count);                   // 2:Dim K
+        sparseIndicesShape->SetDim(0, queryShape->GetDim(0));             // 0:Dim T
+        sparseIndicesShape->SetDim(1, keyShape->GetDim(keyHeadDimIndex)); // 1:Dim N
+        sparseIndicesShape->SetDim(2, *selectedCount);                    // 2:Dim K
     }
 
-    const bool *return_value = attrs->GetAttrPointer<bool>(ATTR_RETURN_VALUE_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, return_value);
-    bool returnValueFlag = (return_value != nullptr) ? *return_value : false;
+    const int64_t *returnValue = attrs->GetInt(ATTR_RETURN_VALUE_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, returnValue);
+    bool returnValueFlag = *returnValue != 0;
     if (returnValueFlag) {
         *sparseValuesShape = *sparseIndicesShape;
     } else {
         sparseValuesShape->SetDimNum(1);
         sparseValuesShape->SetDim(0, 0);
     }
-    OP_LOGI(context->GetNodeName(), "LightningIndexerV2 InferShape end.");
+    const char *opName = context->GetNodeName();
+    OP_LOGI(opName == nullptr ? "LightningIndexerV2" : opName, "LightningIndexerV2 InferShape end.");
 
     return ge::GRAPH_SUCCESS;
 }
@@ -96,13 +110,15 @@ static ge::graphStatus InferDataTypeLightningIndexerV2(gert::InferDataTypeContex
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("LightningIndexerV2", "InferDataTypeContext is nullptr!"),
                 return ge::GRAPH_FAILED);
-    OP_LOGI(context->GetNodeName(), "Enter LightningIndexerV2 InferDataType impl.");
+    const char *opName = context->GetNodeName();
+    opName = opName == nullptr ? "LightningIndexerV2" : opName;
+    OP_LOGI(opName, "Enter LightningIndexerV2 InferDataType impl.");
     // default set q's dtype as fia's output type
     ge::DataType outputType = ge::DT_INT32;
     // attention_out, outidx:0
     context->SetOutputDataType(0, outputType);
     context->SetOutputDataType(1, ge::DT_FLOAT);
-    OP_LOGI(context->GetNodeName(), "LightningIndexerV2 InferDataType end.");
+    OP_LOGI(opName, "LightningIndexerV2 InferDataType end.");
     return GRAPH_SUCCESS;
 }
 

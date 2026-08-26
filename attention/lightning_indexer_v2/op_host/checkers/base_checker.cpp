@@ -1,12 +1,22 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
+ * CANN
+ * Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not
+ * use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT
+ * WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY,
+ * OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the
+ * License.
  */
 
 #include "base_checker_indexer_v2.h"
 
 #include <algorithm>
+#include <limits>
 #include <sstream>
 #include "graph/utils/type_utils.h"
 #include "log/log.h"
@@ -18,7 +28,7 @@ constexpr int64_t DIM_0 = 0;
 constexpr int64_t DIM_1 = 1;
 constexpr int64_t DIM_2 = 2;
 constexpr int64_t DIM_3 = 3;
-}
+} // namespace
 
 ge::graphStatus IndexerV2BaseChecker::CheckParaExistence(const IndexerV2CheckerInfo &) const
 {
@@ -58,27 +68,15 @@ std::string IndexerV2BaseChecker::ShapeToString(const CheckerTensor &tensor)
     return shape == nullptr ? "null" : Ops::Base::ToString(*shape);
 }
 
-ge::graphStatus IndexerV2BaseChecker::CheckFormat(const IndexerV2CheckerInfo &info, const CheckerTensor &tensor,
-                                                   const char *name) const
-{
-    if (!tensor.IsPresent() || tensor.desc == nullptr) {
-        return ge::GRAPH_SUCCESS;
-    }
-    const ge::Format format = tensor.desc->GetOriginFormat();
-    if (format != ge::FORMAT_ND) {
-        const std::string actual = Ops::Base::ToString(format);
-        OP_LOGE_FOR_INVALID_FORMAT(info.opName, name, actual.c_str(), "ND");
-        return ge::GRAPH_FAILED;
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus IndexerV2BaseChecker::CheckDtype(const IndexerV2CheckerInfo &info, const CheckerTensor &tensor,
-                                                  const char *name,
-                                                  const std::vector<ge::DataType> &expected) const
+                                                 const char *name, const std::vector<ge::DataType> &expected) const
 {
-    if (!tensor.IsPresent() || tensor.desc == nullptr) {
+    if (!tensor.IsPresent()) {
         return ge::GRAPH_SUCCESS;
+    }
+    if (tensor.desc == nullptr) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(info.opName, name, "Tensor desc cannot be null");
+        return ge::GRAPH_FAILED;
     }
     const ge::DataType actualDtype = tensor.desc->GetDataType();
     if (std::find(expected.begin(), expected.end(), actualDtype) == expected.end()) {
@@ -91,29 +89,21 @@ ge::graphStatus IndexerV2BaseChecker::CheckDtype(const IndexerV2CheckerInfo &inf
 }
 
 ge::graphStatus IndexerV2BaseChecker::CheckRank(const IndexerV2CheckerInfo &info, const CheckerTensor &tensor,
-                                                 const char *name, uint32_t expected) const
+                                                const char *name, uint32_t expected) const
 {
+    if (!tensor.IsPresent()) {
+        return ge::GRAPH_SUCCESS;
+    }
     const gert::Shape *shape = tensor.GetShape();
     if (shape == nullptr) {
-        return ge::GRAPH_SUCCESS;
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(info.opName, name, "Tensor shape cannot be null");
+        return ge::GRAPH_FAILED;
     }
     const uint32_t actual = shape->GetDimNum();
     if (actual != expected) {
         const std::string actualText = std::to_string(actual) + "D";
         const std::string expectedText = std::to_string(expected) + "D";
         OP_LOGE_FOR_INVALID_SHAPEDIM(info.opName, name, actualText.c_str(), expectedText.c_str());
-        return ge::GRAPH_FAILED;
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus IndexerV2BaseChecker::CheckNotEmpty(const IndexerV2CheckerInfo &info, const CheckerTensor &tensor,
-                                                     const char *name) const
-{
-    const gert::Shape *shape = tensor.GetShape();
-    if (shape != nullptr && shape->GetShapeSize() <= 0) {
-        const std::string actual = ShapeToString(tensor);
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(info.opName, name, actual.c_str(), "Empty tensor is not supported");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -133,7 +123,7 @@ CheckerLayout ParseLayout(const std::string &layout)
     return CheckerLayout::INVALID;
 }
 
-ge::graphStatus FinalizeCommonInfo(IndexerV2CheckerInfo &info)
+void FinalizeCommonInfo(IndexerV2CheckerInfo &info)
 {
     info.layoutQ = ParseLayout(info.layoutQText);
     info.layoutK = ParseLayout(info.layoutKText);
@@ -141,7 +131,7 @@ ge::graphStatus FinalizeCommonInfo(IndexerV2CheckerInfo &info)
     const gert::Shape *kShape = info.key.GetShape();
     if (qShape == nullptr || kShape == nullptr || info.layoutQ == CheckerLayout::INVALID ||
         info.layoutK == CheckerLayout::INVALID) {
-        return ge::GRAPH_SUCCESS;
+        return;
     }
     const uint32_t qRank = qShape->GetDimNum();
     const uint32_t kRank = kShape->GetDimNum();
@@ -158,14 +148,20 @@ ge::graphStatus FinalizeCommonInfo(IndexerV2CheckerInfo &info)
             info.blockSize = kShape->GetDim(DIM_1);
             const gert::Shape *blockTableShape = info.blockTable.GetShape();
             if (blockTableShape != nullptr && blockTableShape->GetDimNum() >= 2) {
-                info.kSeq = blockTableShape->GetDim(DIM_1) * info.blockSize;
+                const int64_t blockCount = blockTableShape->GetDim(DIM_1);
+                if (blockCount >= 0 && info.blockSize > 0 &&
+                    blockCount <= std::numeric_limits<int64_t>::max() / info.blockSize) {
+                    info.kSeq = blockCount * info.blockSize;
+                } else {
+                    info.kSeq = -1;
+                }
             }
         }
     }
-    if (info.layoutQ == CheckerLayout::TND && info.cuSeqlensQ.tensor != nullptr) {
-        info.batch = info.cuSeqlensQ.tensor->GetShapeSize() - 1;
+    if (info.layoutQ == CheckerLayout::TND && info.cuSeqlensQ.IsPresent()) {
+        const int64_t cuSeqlensQSize = info.cuSeqlensQ.GetShape()->GetShapeSize();
+        info.batch = cuSeqlensQSize > 0 ? cuSeqlensQSize - 1 : -1;
     }
-    return ge::GRAPH_SUCCESS;
 }
 
 } // namespace indexer_v2_checker
