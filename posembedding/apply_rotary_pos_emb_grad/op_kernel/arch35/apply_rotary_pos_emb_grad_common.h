@@ -93,6 +93,176 @@ __aicore__ inline void HalfGradAlignVF(
 }
 
 // ============================================================================
+// HalfGradCosSinPartialVF — 合并 dx + grad_cos/grad_sin 部分积 (dCosFlag=1 公共实现)
+// 原 BAB/AB 模板 ComputeGradWithCosSinVF 实现体逐行一致, 抽取至此共用:
+//   dx[0:d/2]   = grad[0:d/2]*cos[0:d/2] + grad[d/2:d]*sin[d/2:d]
+//   dx[d/2:d]   = grad[d/2:d]*cos[d/2:d] - grad[0:d/2]*sin[0:d/2]
+//   isAccumulate=false (SET):  cosPartial = grad*x, sinPartial = grad*rot(x)
+//   isAccumulate=true  (ADD):  cosPartial += grad*x, sinPartial += grad*rot(x)
+//   (rotate(x) = cat(-x2, x1))
+// 注意: cosPartial/sinPartial 为 Q/K 共享缓冲，行距必须用固定的 ubFactorN（而非 currDNum），
+// 否则 nQ != nK 时 Q/K 两路的行偏移不一致，累加/写回会错位
+// ============================================================================
+template <typename T>
+__aicore__ inline void HalfGradCosSinPartialVF(
+    const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor,
+    const LocalTensor<T>& gradIn, const LocalTensor<T>& gradOut, const LocalTensor<T>& xIn,
+    const LocalTensor<float>& cosPartial, const LocalTensor<float>& sinPartial,
+    uint32_t dLen, uint32_t dAlign, uint32_t partialDAlign, int64_t ubFactorN,
+    uint16_t currSNum, uint16_t currDNum, bool isAccumulate)
+{
+    __local_mem__ T* sinUb = (__local_mem__ T*)sinTensor.GetPhyAddr();
+    __local_mem__ T* cosUb = (__local_mem__ T*)cosTensor.GetPhyAddr();
+    __local_mem__ T* gradUb = (__local_mem__ T*)gradIn.GetPhyAddr();
+    __local_mem__ T* gradOutUb = (__local_mem__ T*)gradOut.GetPhyAddr();
+    __local_mem__ T* xUb = (__local_mem__ T*)xIn.GetPhyAddr();
+    __local_mem__ float* cosPartialUb = (__local_mem__ float*)cosPartial.GetPhyAddr();
+    __local_mem__ float* sinPartialUb = (__local_mem__ float*)sinPartial.GetPhyAddr();
+    uint32_t halfD = dLen / HALF_COEF;
+    uint32_t halfDAlign = dAlign / HALF_COEF;
+    uint32_t halfPartialDAlign = partialDAlign / HALF_COEF;
+    uint16_t repeatTimes = Ops::Base::CeilDiv(halfD, VL_FLOAT32_SIZE);
+    __local_mem__ T *currGradUb, *currGradOutUb, *currSinUb, *currCosUb, *currXUb;
+    __local_mem__ float *currCosPartialUb, *currSinPartialUb;
+
+    __VEC_SCOPE__
+    {
+        Reg::RegTensor<float> vregGrad1, vregGrad2, vregCos1, vregCos2, vregSin1, vregSin2, vregX1, vregX2;
+        Reg::RegTensor<float> vregTmp1, vregTmp2, vregTmp3, vregTmp4, vregTmp5, vregTmp6, vregTmp7, vregTmp8;
+        Reg::MaskReg preg;
+        for (uint16_t sIdx = 0; sIdx < currSNum; sIdx++) {
+            currSinUb = sinUb + sIdx * dAlign;
+            currCosUb = cosUb + sIdx * dAlign;
+            for (uint16_t row = 0; row < currDNum; row++) {
+                currGradUb = gradUb + (sIdx * currDNum + row) * dAlign;
+                currGradOutUb = gradOutUb + (sIdx * currDNum + row) * dAlign;
+                currXUb = xUb + (sIdx * currDNum + row) * dAlign;
+                currCosPartialUb = cosPartialUb + (sIdx * ubFactorN + row) * partialDAlign;
+                currSinPartialUb = sinPartialUb + (sIdx * ubFactorN + row) * partialDAlign;
+                uint32_t updateCnt = halfD;
+                for (uint16_t i = 0; i < repeatTimes; i++) {
+                    preg = Reg::UpdateMask<float>(updateCnt);
+                    int32_t offset = i * VL_FLOAT32_SIZE;
+                    int32_t halfOffset = offset + halfDAlign;
+
+                    ops::LoadTwoTensorForDtypeT<T>(
+                        currGradUb, currGradUb, vregGrad1, vregGrad2, preg, preg, offset, halfOffset);
+                    ops::LoadTwoTensorForDtypeT<T>(
+                        currCosUb, currCosUb, vregCos1, vregCos2, preg, preg, offset, halfOffset);
+                    ops::LoadTwoTensorForDtypeT<T>(
+                        currSinUb, currSinUb, vregSin1, vregSin2, preg, preg, offset, halfOffset);
+                    ops::LoadTwoTensorForDtypeT<T>(
+                        currXUb, currXUb, vregX1, vregX2, preg, preg, offset, halfOffset);
+
+                    // dx[0:d/2] = grad[0:d/2]*cos[0:d/2] + grad[d/2:d]*sin[d/2:d]
+                    Mul(vregTmp1, vregCos1, vregGrad1, preg);
+                    Mul(vregTmp2, vregSin2, vregGrad2, preg);
+                    Add(vregTmp1, vregTmp1, vregTmp2, preg);
+                    // dx[d/2:d] = grad[d/2:d]*cos[d/2:d] - grad[0:d/2]*sin[0:d/2]
+                    Mul(vregTmp3, vregCos2, vregGrad2, preg);
+                    Mul(vregTmp4, vregSin1, vregGrad1, preg);
+                    Sub(vregTmp3, vregTmp3, vregTmp4, preg);
+
+                    // grad_cos = grad*x (前/后半)
+                    Mul(vregTmp5, vregGrad1, vregX1, preg);
+                    Mul(vregTmp6, vregGrad2, vregX2, preg);
+                    // grad_sin = -(grad1*x2) + grad2*x1
+                    Mul(vregTmp7, vregGrad1, vregX2, preg);
+                    Muls(vregTmp7, vregTmp7, -1.0f, preg);
+                    Mul(vregTmp8, vregGrad2, vregX1, preg);
+
+                    if (!isAccumulate) {
+                        ops::StoreOneTensorForDtypeT<T>(currGradOutUb, vregTmp1, preg, offset);
+                        ops::StoreOneTensorForDtypeT<T>(currGradOutUb, vregTmp3, preg, halfOffset);
+                        ops::StoreOneTensorForDtypeT<float>(currCosPartialUb, vregTmp5, preg, offset);
+                        ops::StoreOneTensorForDtypeT<float>(currCosPartialUb, vregTmp6, preg, halfPartialDAlign + offset);
+                        ops::StoreOneTensorForDtypeT<float>(currSinPartialUb, vregTmp7, preg, offset);
+                        ops::StoreOneTensorForDtypeT<float>(currSinPartialUb, vregTmp8, preg, halfPartialDAlign + offset);
+                    } else {
+                        ops::StoreOneTensorForDtypeT<T>(currGradOutUb, vregTmp1, preg, offset);
+                        ops::StoreOneTensorForDtypeT<T>(currGradOutUb, vregTmp3, preg, halfOffset);
+
+                        ops::LoadTwoTensorForDtypeT<float>(
+                            currCosPartialUb, currCosPartialUb, vregCos1, vregCos2, preg, preg,
+                            offset, halfPartialDAlign + offset);
+                        Add(vregCos1, vregCos1, vregTmp5, preg);
+                        Add(vregCos2, vregCos2, vregTmp6, preg);
+                        ops::StoreOneTensorForDtypeT<float>(currCosPartialUb, vregCos1, preg, offset);
+                        ops::StoreOneTensorForDtypeT<float>(currCosPartialUb, vregCos2, preg, halfPartialDAlign + offset);
+
+                        ops::LoadTwoTensorForDtypeT<float>(
+                            currSinPartialUb, currSinPartialUb, vregSin1, vregSin2, preg, preg,
+                            offset, halfPartialDAlign + offset);
+                        Add(vregSin1, vregSin1, vregTmp7, preg);
+                        Add(vregSin2, vregSin2, vregTmp8, preg);
+                        ops::StoreOneTensorForDtypeT<float>(currSinPartialUb, vregSin1, preg, offset);
+                        ops::StoreOneTensorForDtypeT<float>(currSinPartialUb, vregSin2, preg, halfPartialDAlign + offset);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ============================================================================
+// ProcessGradTile — 单 tile 单路径公共流程: CopyIn grad(+x) -> Compute -> CopyOut dx
+// 原 BAB/AB 模板 ProcessN 实现体一致, 抽取至此共用:
+//   kDcosFlag=true : CopyIn x(query/key) + HalfGradCosSinPartialVF 合并计算 dx 与部分积
+//   kDcosFlag=false: 仅 HalfGradAlignVF 计算 dx
+// 搬运统一按 D/2 拆分：每个半行独立 32B padding 对齐 (cos/sin/grad/x/dx 同布局)
+// ============================================================================
+template <typename T, bool kDcosFlag, int32_t bufferNum>
+__aicore__ inline void ProcessGradTile(
+    const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor,
+    GlobalTensor<T>& gradXGm, GlobalTensor<T>& gradXOutGm, GlobalTensor<T>& xGm,
+    TQue<QuePosition::VECIN, bufferNum>& gradXInQue, TQue<QuePosition::VECOUT, bufferNum>& gradXOutQue,
+    TQue<QuePosition::VECIN, bufferNum>& xInQue,
+    int64_t gradGmOffset, int64_t currXN, uint32_t currBS,
+    LocalTensor<float>& cosPartial, LocalTensor<float>& sinPartial, bool isAccumulate,
+    uint32_t dLen, uint32_t dAlign, uint32_t partialDAlign, int64_t ubFactorN)
+{
+    uint32_t dHalfByteSize = static_cast<uint32_t>(dLen / HALF_COEF * sizeof(T));
+
+    // CopyIn: gradX，一次 DataCopyPad 按 D/2 拆分搬运。
+    LocalTensor<T> gradXIn = gradXInQue.template AllocTensor<T>();
+    DataCopyExtParams copyParams = {static_cast<uint16_t>(currBS * currXN * HALF_COEF),
+                                    dHalfByteSize, 0, 0, 0};
+    DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
+    DataCopyPad(gradXIn, gradXGm[gradGmOffset], copyParams, padParams);
+    gradXInQue.EnQue(gradXIn);
+    gradXIn = gradXInQue.template DeQue<T>();
+    LocalTensor<T> gradXOut = gradXOutQue.template AllocTensor<T>();
+
+    // CopyIn: x (query/key, 仅 dCosFlag) + Compute
+    LocalTensor<T> xIn;
+    if constexpr (kDcosFlag) {
+        xIn = xInQue.template AllocTensor<T>();
+        DataCopyPad(xIn, xGm[gradGmOffset], copyParams, padParams);
+        xInQue.EnQue(xIn);
+        xIn = xInQue.template DeQue<T>();
+        HalfGradCosSinPartialVF<T>(sinTensor, cosTensor, gradXIn, gradXOut, xIn,
+                                   cosPartial, sinPartial, dLen, dAlign, partialDAlign, ubFactorN,
+                                   currBS, currXN, isAccumulate);
+    } else {
+        // HalfGradAlignVF: currSNum=currBS(cos 行数), currDNum=currXN(每 cos 行下的 n 行)
+        HalfGradAlignVF<T>(sinTensor, cosTensor, gradXIn, gradXOut, dLen, dAlign, currBS, currXN);
+    }
+
+    // CopyOut: dx (currBS 行 × currXN 列)
+    // 注意: UB→GM 方向的 DataCopyPad 无 (dst, src, ExtParams, PadParams) 四参重载,
+    // 仅支持 (dst, src, ExtParams) 三参
+    gradXOutQue.EnQue(gradXOut);
+    gradXOut = gradXOutQue.template DeQue<T>();
+    DataCopyPad(gradXOutGm[gradGmOffset], gradXOut, copyParams);
+    gradXOutQue.FreeTensor(gradXOut);
+
+    gradXInQue.FreeTensor(gradXIn);
+    if constexpr (kDcosFlag) {
+        xInQue.FreeTensor(xIn);
+    }
+}
+
+// ============================================================================
 // BatchHalfGradContiguousVF — A 模板 half gradient
 // UB 中每行按 dAlign = CeilAlign(D/2, BLOCK/sizeof(T)) * 2 存放（半行分别 32B 对齐落位），
 // 后半段偏移为 dAlign/2，保证 D 非 16 对齐（如 D=100）时向量 Load/Store 地址仍然对齐。
