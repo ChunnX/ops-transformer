@@ -142,7 +142,9 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::DoOpTiling()
             actualExpertNum > 0) {
             countingSortMode_ = 0;
         } else {
-            // 模板1（FullLoad UB 全载）：与 A3 countingSortFullLoad_==1 条件逐条对齐
+            // 模板1（FullLoad UB 全载）：与 A3 条件一致（ep_==1，部分 expert 区间）。
+            // 注：部分区间 + 有过滤时 FullLoad 声明输出 activeNum_ 行但 dropless 只写 [0, effective)，
+            // 形状与语义可能不符；此处保持与 A3 对齐，用例需保证无过滤（effective==n*k）才自洽。
             int64_t perCoreTokensEst = Ops::Base::CeilDiv(n_, aivCoreNum_);
             int64_t estUb = EstimateArch35CountingSortFullLoadUB(perCoreTokensEst);
             bool fullLoadCond = estUb > 0 && estUb <= availUbSize_ - LENGTH_1024 && ep_ == 1 &&

@@ -48,6 +48,7 @@
 #define MOE_V3_COUNTING_SORT_UNFULL_LOAD_H
 
 #include "moe_v3_common.h"
+#include "simt_api/asc_simt.h"
 
 namespace MoeInitRoutingV3 {
 using namespace AscendC;
@@ -71,6 +72,23 @@ template <typename T>
 __aicore__ inline T OpsBaseCeilAlign(T a, T b)
 {
     return OpsBaseCeilDiv(a, b) * b;
+}
+
+// ========================== ScatterPairsStableSimt（Phase B 离散搬出，SIMT 化）==========================
+// 稳定放置语义：rank 由串行输入序计算（pos = offset[e]++，见 ScatterToSortedRowIdx 的 rank 循环），
+// vf 内仅做并行离散写 dstGmAddr[rankLocal[i]] = flatIdxLocal[i]，**无原子操作** →
+// 不依赖硬件原子执行顺序（本机实测 asc_atomic_add 在 SIMT lane 上按逆 lane 序解析，
+// 会导致专家内 rank 反转），专家内顺序与输入顺序完全一致（稳定计数排序，对齐 golden stable argsort）。
+// dstGmAddr 按 rowIdxType_ 解析：GATHER -> sortedRowIdxGm_，SCATTER -> expandedRowIdxGm_。
+// 跨核可见性由调用方 Process() 的 SyncAll（B 内）保证。
+__simt_vf__ __aicore__ LAUNCH_BOUND(SIMT_THREAD_NUM) inline void ScatterPairsStableSimt(
+    int32_t batchSize, __ubuf__ int32_t *flatIdxLocalAddr, __ubuf__ int32_t *rankLocalAddr,
+    __gm__ int32_t *dstGmAddr)
+{
+    for (int32_t i = static_cast<int32_t>(threadIdx.x); i < batchSize;
+         i += static_cast<int32_t>(blockDim.x)) {
+        dstGmAddr[rankLocalAddr[i]] = flatIdxLocalAddr[i];
+    }
 }
 
 // ========================== MoeV3CutOriginPhaseAB（Phase A + Phase B 单类）==========================
@@ -311,8 +329,6 @@ __aicore__ inline void MoeV3CutOriginPhaseAB<T>::Process()
 {
     if (blockIdx_ >= filterNeedCoreNum_) {
         // 非 filter 核不参与 A/B 计算，但必须参与所有 SyncAll 栅栏（与 filter 核计数一致），保证无死锁。
-        SyncAll();
-        SyncAll();
         SyncAll();
         return;
     }
@@ -603,6 +619,14 @@ __aicore__ inline void MoeV3CutOriginPhaseAB<T>::ComputeGlobalOffset()
 // GATHER -> sortedRowIdxGm_（workspace+Align(n*k)，供 Stage3/Stage5 消费）
 // SCATTER -> expandedRowIdxGm_（直接写输出 expandedRowIdx，Stage3 跳过、Stage5 SCATTER 分支直接读输出）。
 // 这是计数排序的「第二趟稳定放置」，与 Stage5 的顺序 gather 方向相反。
+//
+// 实现分两步：
+// 1) 稳定 rank（串行输入序）：按输入顺序 pos = offset[e]++ 计算每个 pair 的全局排序位置。
+//    确定性、专家内保序（对齐 golden stable argsort）。结果覆盖 expertIdxLocal（此后不再需要
+//    expert 索引，重用为 rank 缓冲）；offset 数组（expertCountLocal）跨 batch 持续累加。
+// 2) SIMT vf 并行离散写（见 ScatterPairsStableSimt）：dstGmAddr[rank[i]] = flatIdx[i]，
+//    替代逐元素 4B DataCopyPad + S_MTE3/MTE3_S 事件等待，且无原子操作，不依赖原子执行顺序。
+// 跨核可见性由 Process() 中既有 SyncAll（B 内）保证。
 template <typename T>
 __aicore__ inline void MoeV3CutOriginPhaseAB<T>::ScatterToSortedRowIdx()
 {
@@ -616,10 +640,14 @@ __aicore__ inline void MoeV3CutOriginPhaseAB<T>::ScatterToSortedRowIdx()
     LocalTensor<int32_t> expertCountLocal = buf_.Get<int32_t>()[expertCountLocalOffset_ / sizeof(int32_t)];
     LocalTensor<int32_t> flatIdxLocal = buf_.Get<int32_t>()[scatterFlatIdxOffset_ / sizeof(int32_t)];
     LocalTensor<int32_t> expertIdxLocal = buf_.Get<int32_t>()[scatterExpertIdxOffset_ / sizeof(int32_t)];
-    LocalTensor<int32_t> idxBuf = buf_.Get<int32_t>()[scatterIdxBufOffset_ / sizeof(int32_t)];
+
+    // 目标 GM 基址：GATHER -> sortedRowIdx（workspace+Align(n*k)）；SCATTER -> expandedRowIdx（输出）
+    __gm__ int32_t *dstGmAddr = (rowIdxType_ == GATHER) ? (__gm__ int32_t *)sortedRowIdxGm_.GetPhyAddr()
+                                                        : (__gm__ int32_t *)expandedRowIdxGm_.GetPhyAddr();
+    __ubuf__ int32_t *flatIdxAddr = (__ubuf__ int32_t *)flatIdxLocal.GetPhyAddr();
+    __ubuf__ int32_t *rankAddr = (__ubuf__ int32_t *)expertIdxLocal.GetPhyAddr();
 
     DataCopyPadExtParams<int32_t> intPadParams{false, 0, 0, 0};
-    DataCopyExtParams idxCopyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t)), 0, 0, 0};
 
     int64_t pairCursor = 0;
     while (pairCursor < coreTotalPairs_) {
@@ -632,23 +660,20 @@ __aicore__ inline void MoeV3CutOriginPhaseAB<T>::ScatterToSortedRowIdx()
         DataCopyPad(expertIdxLocal,
                     pairsWorkspaceGm_[blockIdx_ * pairsPerCore_ + pairsPerCore_ / 2 + pairCursor], pairLoadParams,
                     intPadParams);
-        SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
+        SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S); // MTE2 → scalar：UB 数据就绪
 
+        // 稳定 rank：按输入顺序串行计算 pos = offset[e]++（确定性，专家内保序）。
+        // 故意不用 asc_atomic_add —— 本机实测 SIMT lane 上原子按逆 lane 序解析，
+        // 导致专家内 rank 反转、破坏稳定排序（对齐 golden stable argsort 失败）。
         for (int64_t i = 0; i < batchSize; i++) {
-            int32_t flatIdx = flatIdxLocal.GetValue(i);
-            int32_t expertIdx = expertIdxLocal.GetValue(i);
-            int32_t pos = expertCountLocal.GetValue(expertIdx);
-            expertCountLocal.SetValue(expertIdx, pos + 1);
-
-            idxBuf.SetValue(0, flatIdx);
-            SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
-            if (rowIdxType_ == GATHER) {
-                DataCopyPad(sortedRowIdxGm_[pos], idxBuf, idxCopyParams);
-            } else {
-                DataCopyPad(expandedRowIdxGm_[pos], idxBuf, idxCopyParams);
-            }
-            SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+            int32_t e = expertIdxLocal.GetValue(i);
+            int32_t pos = expertCountLocal.GetValue(e);
+            expertIdxLocal.SetValue(i, pos);
+            expertCountLocal.SetValue(e, pos + 1);
         }
+
+        asc_vf_call<ScatterPairsStableSimt>(dim3{SIMT_THREAD_NUM, 1, 1}, static_cast<int32_t>(batchSize),
+                                            flatIdxAddr, rankAddr, dstGmAddr);
 
         pairCursor += batchSize;
     }
@@ -786,7 +811,6 @@ __aicore__ inline void MoeV3CutOriginPhaseAB<T>::WriteExpertTokens()
 
         if (expertTokensNumType_ == EXERPT_TOKENS_COUNT) {
             Cast(expertTokensLocal, totalCountLocal, RoundMode::CAST_NONE, static_cast<int32_t>(actualExpertNum_));
-            PipeBarrier<PIPE_V>();
             SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
             DataCopyExtParams copyParams{static_cast<uint16_t>(1),
                                          static_cast<uint32_t>(actualExpertNum_ * sizeof(int64_t)), 0, 0, 0};
