@@ -342,20 +342,30 @@ def analyze_single_card(
     )
 
 
-# 写 metadata sheet: 每卡一行, 包含 10 个 uint32 字段 + 7 个 Region[offset,size] + bs + core_count
+# 写 metadata sheet: 每卡一行, 10 个 uint32 字段 + 7 个 Region 拆为 offset/size 两列 + bs + core_count
 def write_metadata_sheet(wb, all_metadata: dict, card_count: int):
     ws = wb.active
     ws.title = "metadata"
-    all_field_names = METADATA_FIELD_NAMES + REGION_NAMES + ["bs", "core_count"]
+    region_offset_names = [r + "_offset" for r in REGION_NAMES]
+    region_size_names = [r + "_size" for r in REGION_NAMES]
+    all_field_names = METADATA_FIELD_NAMES + region_offset_names + region_size_names + ["bs", "core_count"]
     ws.append(["card_num"] + all_field_names)
     for card_num in range(card_count):
         row = [card_num]
-        for name in all_field_names:
-            row.append(
-                all_metadata[name][card_num]
-                if card_num < len(all_metadata[name])
-                else None
-            )
+        for name in METADATA_FIELD_NAMES:
+            val = all_metadata[name][card_num] if card_num < len(all_metadata[name]) else 0
+            row.append(val)
+        for name in REGION_NAMES:
+            val = all_metadata[name][card_num] if card_num < len(all_metadata[name]) else [0, 0]
+            offset, size = val if isinstance(val, list) else [val, 0]
+            row.append(offset)
+            row.append(size)
+        row.append(all_metadata["bs"][card_num] if card_num < len(all_metadata.get("bs", [])) else 0)
+        row.append(
+            all_metadata["core_count"][card_num]
+            if card_num < len(all_metadata.get("core_count", []))
+            else 0
+        )
         ws.append(row)
 
 
