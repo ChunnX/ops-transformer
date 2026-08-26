@@ -128,13 +128,31 @@ public:
                                        AscendC::Te::Get<MNK_B>(params.problemShape)};
         BlockSchedulerParams sliceSchedulerParams;
         SetupSliceSchedulerParams(params.schedulerParams, sliceSchedulerParams);
-        BlockScheduler scheduler(sliceProblemShape, sliceSchedulerParams);
         BlockShape l0TileShape{params.qbmmParams.baseM, params.qbmmParams.baseN,
                                params.qbmmParams.baseK, 0};
         mmOp_.Init(params.problemShape, l0TileShape, params.l1Params, isBias,
                    params.qbmmParams.dbL0C > 1, 1);
         BuildSliceFragmentTensors(params, sliceProblemShape);
-        Process(params, sliceProblemShape, sliceSchedulerParams, scheduler);
+        if constexpr (IsFp4<AType>()) {
+            // FP4 ND->NZ copies cannot safely place the second half of a
+            // cross-rank MM block at an arbitrary M offset in L1. Schedule one
+            // rank fragment at a time so every MM block stays within exactly
+            // one packed-FP4 fragment. The output remains compact and
+            // slice-major, therefore the following ReduceScatter contract is
+            // unchanged.
+            ProblemShape rankProblemShape{static_cast<int64_t>(sp.sliceM),
+                                          AscendC::Te::Get<MNK_N>(params.problemShape),
+                                          AscendC::Te::Get<MNK_K>(params.problemShape),
+                                          AscendC::Te::Get<MNK_B>(params.problemShape)};
+            for (uint32_t rankIdx = 0; rankIdx < sp.rankDim; ++rankIdx) {
+                BlockScheduler rankScheduler(rankProblemShape, sliceSchedulerParams);
+                Process(params, rankProblemShape, sliceSchedulerParams, rankScheduler,
+                        static_cast<uint64_t>(rankIdx) * sp.sliceM);
+            }
+        } else {
+            BlockScheduler scheduler(sliceProblemShape, sliceSchedulerParams);
+            Process(params, sliceProblemShape, sliceSchedulerParams, scheduler, 0);
+        }
     }
 
     __aicore__ inline void operator()(const Params &params)
@@ -217,9 +235,25 @@ private:
             BlockSchedulerParams sliceSchedulerParams;
             SetupSliceSchedulerParams(params.schedulerParams, sliceSchedulerParams);
 
-            BlockScheduler scheduler(sliceProblemShape, sliceSchedulerParams);
             BuildSliceFragmentTensors(params, sliceProblemShape);
-            Process(params, sliceProblemShape, sliceSchedulerParams, scheduler);
+            if constexpr (IsFp4<AType>()) {
+                // Keep packed-FP4 blocks inside one rank fragment. For
+                // M=78/rank=2 this turns the unsafe logical [32, 64) block
+                // (rank0 tail + rank1 head) into two independent rank-local
+                // scheduler ranges, while retaining one communication slice.
+                ProblemShape rankProblemShape{static_cast<int64_t>(sliceM),
+                                              AscendC::Te::Get<MNK_N>(params.problemShape),
+                                              AscendC::Te::Get<MNK_K>(params.problemShape),
+                                              AscendC::Te::Get<MNK_B>(params.problemShape)};
+                for (uint32_t rankIdx = 0; rankIdx < baseSlice.rankDim; ++rankIdx) {
+                    BlockScheduler rankScheduler(rankProblemShape, sliceSchedulerParams);
+                    Process(params, rankProblemShape, sliceSchedulerParams, rankScheduler,
+                            static_cast<uint64_t>(rankIdx) * sliceM);
+                }
+            } else {
+                BlockScheduler scheduler(sliceProblemShape, sliceSchedulerParams);
+                Process(params, sliceProblemShape, sliceSchedulerParams, scheduler, 0);
+            }
             AscendC::SyncAll();
             commPolicy.IssueSlice(sliceStart, sliceM);
             coveredM += sliceM;
@@ -329,7 +363,7 @@ private:
 
     __aicore__ inline void Process(const Params &params, const ProblemShape &sliceProblemShape,
                                    const BlockSchedulerParams &sliceSchedulerParams,
-                                   BlockScheduler &scheduler)
+                                   BlockScheduler &scheduler, uint64_t logicalMOffset)
     {
         using AscendC::Te::Get;
         const auto &sp = params.sliceParams;
@@ -372,6 +406,7 @@ private:
             }
 
             scheduler.GetTileCoord(blockIdx, mPos, nPos);
+            const uint64_t logicalMPos = logicalMOffset + static_cast<uint64_t>(mPos);
             auto blockB = gmB.Slice(
                 AscendC::Te::MakeCoord(0L, nPos), AscendC::Te::MakeShape(k, currentN));
             auto blockScaleB = gmScaleB.Slice(
@@ -379,18 +414,18 @@ private:
             auto blockBias = gmBias.Slice(
                 AscendC::Te::MakeCoord(0L, nPos), AscendC::Te::MakeShape(1L, currentN));
             auto blockA = sliceFragA_.Slice(
-                AscendC::Te::MakeCoord(mPos, 0L), AscendC::Te::MakeShape(currentM, k));
+                AscendC::Te::MakeCoord(logicalMPos, 0L), AscendC::Te::MakeShape(currentM, k));
             auto blockScaleA = sliceFragScaleA_.Slice(
-                AscendC::Te::MakeCoord(mPos, 0L), AscendC::Te::MakeShape(currentM, scaleK));
+                AscendC::Te::MakeCoord(logicalMPos, 0L), AscendC::Te::MakeShape(currentM, scaleK));
             auto blockC = sliceFragC_.Slice(
-                AscendC::Te::MakeCoord(mPos, nPos), AscendC::Te::MakeShape(currentM, currentN));
+                AscendC::Te::MakeCoord(logicalMPos, nPos), AscendC::Te::MakeShape(currentM, currentN));
 
             // FragmentTensor presents all rank-local input slices as one
             // logical M. The fragment MMAD gathers A/ScaleA into L1 and
             // scatters C back to the slice-major workspace fragments.
             mmOp_(blockA, blockB, blockScaleA, blockScaleB, blockBias,
                   sliceAddrListC_, sp.perRankM, sp.sliceM, 1, 0,
-                  sp.rankDim, n, singleShape, mPos, nPos, 0, blockC);
+                  sp.rankDim, n, singleShape, static_cast<int64_t>(logicalMPos), nPos, 0, blockC);
         }
     }
 
