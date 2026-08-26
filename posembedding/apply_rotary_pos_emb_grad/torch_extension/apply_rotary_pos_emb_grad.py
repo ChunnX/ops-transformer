@@ -8,12 +8,9 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 from typing import Optional, Tuple
-
 import torch
 from torch.library import impl
-
-from cann_ops_transformer.op_builder.builder import AS_LIBRARY
-from cann_ops_transformer.op_builder.builder import OpBuilder
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 
 OP_NAME = "apply_rotary_pos_emb_grad"
@@ -28,11 +25,13 @@ SUPPORTED_DTYPES = (torch.float16, torch.float32, torch.bfloat16)
 
 class ApplyRotaryPosEmbGradOpBuilder(OpBuilder):
     def __init__(self):
-        super(ApplyRotaryPosEmbGradOpBuilder, self).__init__(OP_NAME)
+        super(ApplyRotaryPosEmbGradOpBuilder, self).__init__(
+            OP_NAME, category="posembedding"
+        )
 
     def sources(self):
         """Path to C++ source code."""
-        return ["ops/csrc/apply_rotary_pos_emb_grad.cpp"]
+        return ["csrc/posembedding/apply_rotary_pos_emb_grad.cpp"]
 
     def schema(self) -> str:
         """PyTorch operator signature."""
@@ -48,7 +47,7 @@ class ApplyRotaryPosEmbGradOpBuilder(OpBuilder):
         Essential for Autograd and FakeTensor support.
         """
 
-        @impl(AS_LIBRARY, self.name, "Meta")
+        @impl(get_as_library(), self.name, "Meta")
         def apply_rotary_pos_emb_grad_meta(
             grad_query_embed: torch.Tensor,
             grad_key_embed: torch.Tensor,
@@ -170,7 +169,7 @@ apply_rotary_pos_emb_grad_op_builder = ApplyRotaryPosEmbGradOpBuilder()
 apply_rotary_pos_emb_grad_op_builder.load()
 
 
-@impl(AS_LIBRARY, apply_rotary_pos_emb_grad_op_builder.name, "PrivateUse1")
+@impl(get_as_library(), apply_rotary_pos_emb_grad_op_builder.name, "PrivateUse1")
 def _apply_rotary_pos_emb_grad(
     grad_query_embed: torch.Tensor,
     grad_key_embed: torch.Tensor,
