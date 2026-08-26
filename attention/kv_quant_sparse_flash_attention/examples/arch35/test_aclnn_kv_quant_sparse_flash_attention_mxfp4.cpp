@@ -48,6 +48,7 @@ struct CaseSpec {
     QKind qKind;
     KvLayout layout;
     RecordKind recordKind;
+    bool queryTnd;
     int64_t n1;
     std::vector<int64_t> kvLengths;
     std::vector<std::vector<int32_t>> sparseRows;
@@ -336,27 +337,35 @@ std::vector<int32_t> RangeSparse(int64_t count, bool appendEnd)
 std::vector<CaseSpec> BuildCases()
 {
     return {
-        {"mx_bs_bf16_g1_full16_offset32", QKind::BF16, KvLayout::BSND, RecordKind::MXFP4, 1, {16},
+        {"mx_bs_bf16_g1_full16_offset32", QKind::BF16, KvLayout::BSND, RecordKind::MXFP4, false, 1, {16},
          {RangeSparse(16, false)}, 32, false, false, false, ACL_INT8, 400},
-        {"mx_bs_fp16_g1_tail3_offset0", QKind::FP16, KvLayout::BSND, RecordKind::MXFP4, 1, {3},
+        {"mx_bs_fp16_g1_tail3_offset0", QKind::FP16, KvLayout::BSND, RecordKind::MXFP4, false, 1, {3},
          {{0, 1, 2, -1}}, 0, false, false, false, ACL_INT8, 400},
-        {"mx_bs_bf16_g1_s2_33_offset1", QKind::BF16, KvLayout::BSND, RecordKind::MXFP4, 1, {33},
+        {"mx_bs_bf16_g1_s2_33_offset1", QKind::BF16, KvLayout::BSND, RecordKind::MXFP4, false, 1, {33},
          {RangeSparse(33, false)}, 1, false, false, false, ACL_INT8, 400},
-        {"mx_bs_bf16_g128_split_full16", QKind::BF16, KvLayout::BSND, RecordKind::MXFP4, 128, {16},
+        {"mx_bs_bf16_g128_split_full16", QKind::BF16, KvLayout::BSND, RecordKind::MXFP4, false, 128, {16},
          {RangeSparse(16, false)}, 0, false, false, false, ACL_INT8, 400},
-        {"mx_bs_bf16_sparse_repeat_desc", QKind::BF16, KvLayout::BSND, RecordKind::MXFP4, 1, {8},
+        {"mx_bs_bf16_sparse_repeat_desc", QKind::BF16, KvLayout::BSND, RecordKind::MXFP4, false, 1, {8},
          {{7, 3, 7, 1, 0, -1}}, 0, false, false, false, ACL_INT8, 400},
-        {"mx_tnd_bf16_b2_prefix", QKind::BF16, KvLayout::TND, RecordKind::MXFP4, 1, {3, 4},
+        {"mx_tnd_bf16_b2_prefix", QKind::BF16, KvLayout::TND, RecordKind::MXFP4, true, 1, {3, 4},
          {{0, 1, 2, -1}, {0, 1, 3, -1}}, 32, false, false, false, ACL_INT8, 400},
-        {"mx_pa_bf16_block_table", QKind::BF16, KvLayout::PA_BSND, RecordKind::MXFP4, 1, {3},
+        {"mx_tnd_bf16_g128_split", QKind::BF16, KvLayout::TND, RecordKind::MXFP4, true, 128, {16},
+         {RangeSparse(16, false)}, 0, false, false, false, ACL_INT8, 400},
+        {"mx_pa_bf16_block_table", QKind::BF16, KvLayout::PA_BSND, RecordKind::MXFP4, false, 1, {3},
          {{0, 1, 2, -1}}, 0, false, false, false, ACL_INT8, 400},
-        {"mx_bs_bf16_e8m0_edges_s2_1", QKind::BF16, KvLayout::BSND, RecordKind::MXFP4, 1, {1},
+        {"mx_pa_bf16_g128_split", QKind::BF16, KvLayout::PA_BSND, RecordKind::MXFP4, false, 128, {3},
+         {{0, 1, 2, -1}}, 0, false, false, false, ACL_INT8, 400},
+        {"mx_tnd_pa_bf16_g1", QKind::BF16, KvLayout::PA_BSND, RecordKind::MXFP4, true, 1, {3},
+         {{0, 1, 2, -1}}, 0, false, false, false, ACL_INT8, 400},
+        {"mx_tnd_pa_bf16_g128_split", QKind::BF16, KvLayout::PA_BSND, RecordKind::MXFP4, true, 128, {3},
+         {{0, 1, 2, -1}}, 0, false, false, false, ACL_INT8, 400},
+        {"mx_bs_bf16_e8m0_edges_s2_1", QKind::BF16, KvLayout::BSND, RecordKind::MXFP4, false, 1, {1},
          {{0, -1}}, 0, true, true, false, ACL_INT8, 400},
-        {"legacy_bs_bf16_d656", QKind::BF16, KvLayout::BSND, RecordKind::LEGACY_INT8, 1, {3},
+        {"legacy_bs_bf16_d656", QKind::BF16, KvLayout::BSND, RecordKind::LEGACY_INT8, false, 1, {3},
          {{0, 1, 2, -1}}, 0, false, false, false, ACL_INT8, 656},
-        {"reject_d400_fp8", QKind::BF16, KvLayout::BSND, RecordKind::RAW, 1, {1}, {{0, -1}}, 0, false,
+        {"reject_d400_fp8", QKind::BF16, KvLayout::BSND, RecordKind::RAW, false, 1, {1}, {{0, -1}}, 0, false,
          false, true, ACL_FLOAT8_E4M3FN, 400},
-        {"reject_d399_int8", QKind::BF16, KvLayout::BSND, RecordKind::RAW, 1, {1}, {{0, -1}}, 0, false, false,
+        {"reject_d399_int8", QKind::BF16, KvLayout::BSND, RecordKind::RAW, false, 1, {1}, {{0, -1}}, 0, false, false,
          true, ACL_INT8, 399},
     };
 }
@@ -411,21 +420,15 @@ PreparedCase PrepareCase(const CaseSpec &spec)
         data.keyStorageShape = {1, s2 + (spec.storageOffsetElements > 0 ? 1 : 0), 1, spec.keyDim};
         data.valueViewShape = {1, s2, 1, kNopeDim};
         data.valueStorageShape = {1, s2 + (spec.storageOffsetElements > 0 ? 1 : 0), 1, kNopeDim};
-        data.sparseShape = {1, 1, 1, sparseWidth};
-        data.queryShape = {1, 1, spec.n1, kQueryDim};
-        data.outputShape = {1, 1, spec.n1, kNopeDim};
-        data.actualSeqQ = {1};
         data.actualSeqKv = {static_cast<int32_t>(s2)};
     } else if (spec.layout == KvLayout::TND) {
         int64_t totalKv = 0;
-        int32_t qPrefix = 0;
         int32_t kvPrefix = 0;
         for (int64_t b = 0; b < batchCount; ++b) {
             for (const auto &record : data.logicalRecords[b]) {
                 data.key.insert(data.key.end(), record.begin(), record.end());
             }
             totalKv += spec.kvLengths[b];
-            data.actualSeqQ.push_back(++qPrefix);
             kvPrefix += static_cast<int32_t>(spec.kvLengths[b]);
             data.actualSeqKv.push_back(kvPrefix);
         }
@@ -433,9 +436,6 @@ PreparedCase PrepareCase(const CaseSpec &spec)
         data.keyStorageShape = {totalKv + (spec.storageOffsetElements > 0 ? 1 : 0), 1, spec.keyDim};
         data.valueViewShape = {totalKv, 1, kNopeDim};
         data.valueStorageShape = {totalKv + (spec.storageOffsetElements > 0 ? 1 : 0), 1, kNopeDim};
-        data.sparseShape = {batchCount, 1, sparseWidth};
-        data.queryShape = {batchCount, spec.n1, kQueryDim};
-        data.outputShape = {batchCount, spec.n1, kNopeDim};
     } else {
         data.key.resize(2 * kPaBlockSize * spec.keyDim);
         auto sentinel = MakeRecordForCase(spec, 113);
@@ -450,12 +450,22 @@ PreparedCase PrepareCase(const CaseSpec &spec)
         data.keyStorageShape = data.keyViewShape;
         data.valueViewShape = {2, kPaBlockSize, 1, kNopeDim};
         data.valueStorageShape = data.valueViewShape;
-        data.sparseShape = {1, 1, 1, sparseWidth};
-        data.queryShape = {1, 1, spec.n1, kQueryDim};
-        data.outputShape = {1, 1, spec.n1, kNopeDim};
-        data.actualSeqQ = {1};
         data.actualSeqKv = {static_cast<int32_t>(spec.kvLengths[0])};
         data.blockTable = {1};
+    }
+    if (spec.queryTnd) {
+        data.sparseShape = {batchCount, 1, sparseWidth};
+        data.queryShape = {batchCount, spec.n1, kQueryDim};
+        data.outputShape = {batchCount, spec.n1, kNopeDim};
+        int32_t qPrefix = 0;
+        for (int64_t b = 0; b < batchCount; ++b) {
+            data.actualSeqQ.push_back(++qPrefix);
+        }
+    } else {
+        data.sparseShape = {batchCount, 1, 1, sparseWidth};
+        data.queryShape = {batchCount, 1, spec.n1, kQueryDim};
+        data.outputShape = {batchCount, 1, spec.n1, kNopeDim};
+        data.actualSeqQ.assign(batchCount, 1);
     }
     data.value.resize(ShapeSize(data.valueViewShape), 0);
     data.output.resize(ShapeSize(data.outputShape), 0);
@@ -648,7 +658,7 @@ int RunCase(const CaseSpec &spec, aclrtStream stream)
         return 1;
     }
     char layoutQuery[5] = "BSND";
-    if (spec.layout == KvLayout::TND) {
+    if (spec.queryTnd) {
         std::strcpy(layoutQuery, "TND");
     }
     char layoutKv[8] = {0};
