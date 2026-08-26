@@ -371,10 +371,11 @@ __aicore__ inline void MoeSortMultiCore::Init(GM_ADDR expertIdx, GM_ADDR expande
     int64_t bufferSize = Ceil(Max(this->sortOutTilingData->oneLoopMaxElements * MAX_MRGSORT_LIST, sortCoreLoopElements),
                               ONE_REPEAT_SORT_NUM) *
                          ONE_REPEAT_SORT_NUM * sizeof(int32_t) * kvFactor;
+    // 多核排序路径不使用tempBuffer（UBSortCompute无需Concat，MrgsortOut复用sortedBuffer），
+    // 省下UB空间用于提升SortOut单轮归并元素数，减少VMS/SortOut轮数与同步次数
     pipe->InitBuffer(sortDataCopyInQueue, bufferNum, bufferSize);
     pipe->InitBuffer(sortDataCopyOutQueue, bufferNum, bufferSize);
     pipe->InitBuffer(sortedBuffer, bufferSize);
-    pipe->InitBuffer(tempBuffer, bufferSize);
 }
 
 __aicore__ inline void MoeSortMultiCore::Process()
