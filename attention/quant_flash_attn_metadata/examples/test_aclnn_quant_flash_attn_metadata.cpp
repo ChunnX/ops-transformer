@@ -1,227 +1,167 @@
-/**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under
- * the terms and conditions of CANN Open Software License Agreement Version 2.0
- * (the "License"). Please refer to the License for details. You may not use
- * this file except in compliance with the License. THIS SOFTWARE IS PROVIDED ON
- * AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS
- * FOR A PARTICULAR PURPOSE. See LICENSE in the software repository for the full
- * text of the License.
- */
+#!/usr/bin/env python
+# Copyright 2017 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
 
-#include <iostream>
-#include <vector>
-#include <cmath>
-#include <cstring>
-#include "acl/acl.h"
-#include "aclnnop/aclnn_quant_flash_attn_metadata.h"
-#include "../op_kernel_aicpu/quant_flash_attn_metadata.h"
-#include "securec.h"
+import os
+import sys
+import unittest
 
-using namespace std;
-using namespace optiling;
+import PRESUBMIT
 
-#define CHECK_RET(cond) ((cond) ? true :(false))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import PRESUBMIT_test_mocks
 
-#define LOG_PRINT(message, ...)                                                                                        \
-    do {                                                                                                               \
-        printf(message, ##__VA_ARGS__);                                                                                \
-    } while (0)
+class CheckTODOFormatTest(unittest.TestCase):
+    """Test the _CheckBugInToDo presubmit check."""
 
-int64_t GetShapeSize(const std::vector<int64_t> &shape) {
-    int64_t shapeSize = 1;
-    for (auto i : shape) {
-        shapeSize *= i;
-    }
-    return shapeSize;
-}
+    def testTODOs(self):
+        # All instances of the "TO DO" string in the following test cases are
+        # broken by line breaks, because this file is run through the PRESUBIT
+        # that it tests, so incorrectly formatted items in the test fixture
+        # will trigger errors.
+        bad_lines = [
+            'TO'
+            'DO(ldap): fix this', 'TO'
+            'DO(ladp): see crbug.com/8675309', 'TO'
+            'DO(8675309): fix this', 'TO'
+            'DO(http://crbug.com/8675309): fix this', 'TO'
+            'DO( crbug.com/8675309): fix this', 'TO'
+            'DO(crbug/8675309): fix this', 'TO'
+            'DO(crbug.com): fix this', 'TO'
+            'DO(inccrbug.com): fix this',
+        ]
+        deprecated_lines = [
+            'TO'
+            'DO(b/12345): fix this'
+        ]
+        good_lines = [
+            'TO'
+            'DO(crbug.com/8675309): fix this', 'TO'
+            'DO(crbug.com/8675309): fix this (please)'
+        ]
+        mock_input = PRESUBMIT_test_mocks.MockInputApi()
+        lines = bad_lines + deprecated_lines + good_lines
+        mock_input.files = [
+            PRESUBMIT_test_mocks.MockFile('ios/path/foo_controller.mm', lines)
+        ]
+        mock_output = PRESUBMIT_test_mocks.MockOutputApi()
+        results = PRESUBMIT._CheckBugInToDo(mock_input, mock_output)
+        # Expect one error result and one warning result.
+        self.assertEqual(len(results), 2)
+        self.assertEqual('error', results[0].type)
+        self.assertEqual('warning', results[1].type)
+        self.assertTrue('without bug numbers' in results[0].message)
+        self.assertTrue('with a deprecated bug link' in results[1].message)
+        error_lines = results[0].message.split('\n')
+        self.assertEqual(len(error_lines), len(bad_lines) + 2)
+        warning_lines = results[1].message.split('\n')
+        self.assertEqual(len(warning_lines), len(deprecated_lines) + 2)
 
-int Init(int32_t deviceId, aclrtStream *stream) {
-    auto ret = aclInit(nullptr);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclInit failed. ERROR: %d\n", ret); 
-        return ret;
-    }
-    ret = aclrtSetDevice(deviceId);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); 
-        return ret;
-    }
-    ret = aclrtCreateStream(stream);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); 
-        return ret;
-    }
-    return 0;
-}
+class CheckHasNoIncludeDirectivesTest(unittest.TestCase):
+    """Test the _CheckHasNoIncludeDirectives presubmit check."""
 
-static void DumpMeta(void* data) {
-    int32_t sectionNum = static_cast<int32_t>(((int32_t*)data)[0]);
-    optiling::detail::FaMetaData faMetadata(data, sectionNum);
-    printf("sectionNum:%d\n", faMetadata.GetHeadMedata(optiling::HEAD_SECTION_NUM_INDEX));
-    printf("isFd:%d\n", faMetadata.GetHeadMedata(optiling::HEAD_IS_FD_INDEX));
-    printf("mBaseSize:%d\n", faMetadata.GetHeadMedata(optiling::HEAD_M_BASE_SIZE_INDEX));
-    printf("s2BaseSize:%d\n", faMetadata.GetHeadMedata(optiling::HEAD_S2_BASE_SIZE_INDEX));
-    for (uint32_t sectionId = 0; sectionId < sectionNum; ++sectionId) {
-        printf("sectionIdx:%d\n",sectionId);
-        for (size_t i = 0; i < AIC_CORE_NUM; ++i) {
-            printf("bn2 start: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX));
-            printf("m start: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_M_START_INDEX));
-            printf("s2 start: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_S2_START_INDEX));
-            printf("bn2 end: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_BN2_END_INDEX));
-            printf("m end: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_M_END_INDEX));
-            printf("s2 end: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_S2_END_INDEX));
-            printf("first fd data ws idx: %d\n",faMetadata.GetFaMetadata(sectionId, i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX));
-        }
+    def testFindsIncludeDirectives(self):
+        good_lines = [
+            '#import <system>', '#import "my/path/my/header.h"',
+            '#import "my/path/my/source.mm"', '#import "my/path/my/source.m"'
+        ]
+        bad_lines = [
+            '#include <system>', '#import <system>',
+            '#include "my/path/my/header.h"',
+            '#include "my/path/my/source.mm"', '#import "my/path/my/header.h"'
+            '#include "my/path/my/source.m"'
+        ]
+        mock_input = PRESUBMIT_test_mocks.MockInputApi()
+        mock_input.files = [
+            PRESUBMIT_test_mocks.MockFile('ios/path/foo_controller.mm',
+                                          bad_lines),
+            PRESUBMIT_test_mocks.MockFile('ios/path/foo_controller_2.mm',
+                                          good_lines),
+            PRESUBMIT_test_mocks.MockFile('ios/path/bar_controller.h',
+                                          bad_lines),
+            PRESUBMIT_test_mocks.MockFile('ios/path/bar_controller.m',
+                                          bad_lines),
+            PRESUBMIT_test_mocks.MockFile('ios/path/bar_controller.cc',
+                                          bad_lines),
+            PRESUBMIT_test_mocks.MockFile('chrome/path/foo_controller.mm',
+                                          bad_lines),
+        ]
+        mock_output = PRESUBMIT_test_mocks.MockOutputApi()
+        errors = PRESUBMIT._CheckHasNoIncludeDirectives(
+            mock_input, mock_output)
+        self.assertEqual(len(errors), 1)
+        self.assertEqual('error', errors[0].type)
+        self.assertTrue('ios/path/foo_controller.mm:1' in errors[0].message)
+        self.assertTrue('ios/path/foo_controller.mm:3' in errors[0].message)
+        self.assertTrue('ios/path/foo_controller.mm:4' in errors[0].message)
 
-        for (size_t i = 0; i < AIV_CORE_NUM; ++i) {
-            printf("bn2 idx: %d\n", faMetadata.GetFdMetadata(sectionId, i, optiling::FD_BN2_IDX_INDEX));
-            printf("m idx: %d\n", faMetadata.GetFdMetadata(sectionId, i, optiling::FD_M_IDX_INDEX));
-            printf("fd workspace idx: %d\n", faMetadata.GetFdMetadata(sectionId, i, optiling::FD_WORKSPACE_IDX_INDEX));
-            printf("fd workspace num: %d\n", faMetadata.GetFdMetadata(sectionId, i, optiling::FD_WORKSPACE_NUM_INDEX));
-            printf("m start: %d\n", faMetadata.GetFdMetadata(sectionId, i, optiling::FD_M_START_INDEX));
-            printf("m num: %d\n", faMetadata.GetFdMetadata(sectionId, i, optiling::FD_M_NUM_INDEX));
-        }
-    }
-}
 
-template <typename T>
-int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-                    aclDataType dataType, aclTensor **tensor) {
-    auto size = GetShapeSize(shape) * sizeof(T);
-    auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) { 
-        LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); 
-        return ret;
-    }
-    ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); 
-        return ret;
-    }
+class CheckHasNoPipeInCommentTest(unittest.TestCase):
+    """Test the _CheckHasNoPipeInComment presubmit check."""
 
-    std::vector<int64_t> strides(shape.size(), 1);
-    for (int64_t i = shape.size() - 2; i >= 0; i--) {
-        strides[i] = shape[i + 1] * strides[i + 1];
-    }
+    def testFindsIncludeDirectives(self):
+        good_lines = [
+            '#if !defined(a) || !defined(b)',
+            '// This does A || B', '// `MySymbol` is correct',
+            'bitVariable1 | bitVariable2'
+        ]
+        bad_lines = [
+            '// |MySymbol| is wrong', '// What is wrong is: |MySymbol|'
+        ]
+        mock_input = PRESUBMIT_test_mocks.MockInputApi()
+        mock_input.files = [
+            PRESUBMIT_test_mocks.MockFile('ios/path/foo_controller.mm',
+                                          good_lines + bad_lines),
+            PRESUBMIT_test_mocks.MockFile('ios/path/foo_controller.h',
+                                          bad_lines + good_lines),
+        ]
+        mock_output = PRESUBMIT_test_mocks.MockOutputApi()
+        errors = PRESUBMIT._CheckHasNoPipeInComment(mock_input, mock_output)
+        self.assertEqual(len(errors), 1)
+        self.assertEqual('warning', errors[0].type)
+        self.assertTrue('ios/path/foo_controller.mm:5' in errors[0].message)
+        self.assertTrue('ios/path/foo_controller.mm:6' in errors[0].message)
+        self.assertTrue('ios/path/foo_controller.h:1' in errors[0].message)
+        self.assertTrue('ios/path/foo_controller.h:2' in errors[0].message)
+        error_lines = errors[0].message.split('\n')
+        self.assertEqual(len(error_lines), len(bad_lines) * 2 + 3)
 
-    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
-                              shape.data(), shape.size(), *deviceAddr);
-    return 0;
-}
+class _CheckCanImproveTestUsingExpectNSEQ(unittest.TestCase):
+    """Test the _CheckCanImproveTestUsingExpectNSEQ presubmit. """
 
-int main() {
-    int32_t deviceId = 0;
-    aclrtStream stream;
-    auto ret = Init(deviceId, &stream);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("Init acl failed. ERROR: %d\n", ret); 
-        return ret;
-    }
+    def testFindImprovableTestUsingExpectNSEQ(self):
+        good_lines = [
+          'EXPECT_TRUE(a == b);',
+          'if (a isEqualToString:b) {',
+          'if (a isEqualToData:b) {'
+          ]
+        bad_lines = [
+          'EXPECT_TRUE(a ',
+          ' isEqualToString:b);',
+          'EXPECT_TRUE(@"example" isEqualToString:@"example");',
+          'EXPECT_FALSE(@"example" isEqualToData:@"example");',
+          'EXPECT_TRUE(@"example" isEqualToArray:@"example");'
+        ]
+        mock_input = PRESUBMIT_test_mocks.MockInputApi()
+        mock_input.files = [
+            PRESUBMIT_test_mocks.MockFile('ios/path/foo_unittest.mm',
+                                          good_lines + bad_lines),
+        ]
+        mock_output = PRESUBMIT_test_mocks.MockOutputApi()
+        errors = PRESUBMIT._CheckCanImproveTestUsingExpectNSEQ(
+            mock_input, mock_output)
+        self.assertEqual(len(errors), 1)
+        self.assertEqual('warning', errors[0].type)
+        self.assertFalse('ios/path/foo_unittest.mm:1' in errors[0].message)
+        self.assertFalse('ios/path/foo_unittest.mm:2' in errors[0].message)
+        self.assertFalse('ios/path/foo_unittest.mm:3' in errors[0].message)
+        self.assertTrue('ios/path/foo_unittest.mm:4' in errors[0].message)
+        self.assertFalse('ios/path/foo_unittest.mm:5' in errors[0].message)
+        self.assertTrue('ios/path/foo_unittest.mm:6' in errors[0].message)
+        self.assertTrue('ios/path/foo_unittest.mm:7' in errors[0].message)
+        self.assertTrue('ios/path/foo_unittest.mm:8' in errors[0].message)
 
-    int32_t batchSize = 4;
-    int32_t numHeads = 32;
-    int32_t numKeyValueHeads = numHeads;
-    int32_t qS = 1;
-    int32_t kvS = 8192;
-    int32_t headDim = 128;
-    int32_t quantMode = 1;
 
-    int32_t preTokens = -1;
-    int32_t nextTokens = -1;
-    string layout_query = "BSND";
-    char layoutQuery[layout_query.length() + 1];
-    strcpy(layoutQuery, layout_query.c_str());
-    string layout_kv = "BSND";
-    char layoutKv[layout_kv.length() + 1];
-    strcpy(layoutKv, layout_kv.c_str());
-    int32_t sparseMode = 3;
-
-    int64_t metadataSize = ((36 + 72) * batchSize * numKeyValueHeads + 1) * 16;
-    int64_t alignedSize = ((metadataSize + 4095) / 4096) * 4096;
-
-    std::vector<int64_t> actualSeqLengthsQueryShape = {batchSize};
-    std::vector<int64_t> actualSeqLengthsKvShape = {batchSize};
-    std::vector<int64_t> metadataShape = {alignedSize};
-    void *actualSeqLengthsQueryDeviceAddr = nullptr;
-    void *actualSeqLengthsKvDeviceAddr = nullptr;
-    void *metadataDeviceAddr = nullptr;
-    aclTensor* actualSeqLengthsQueryTensor = nullptr;
-    aclTensor* actualSeqLengthsKvTensor = nullptr;
-    aclTensor* metadataTensor = nullptr;
-    int64_t actualSeqLengthsQueryShapeSize = GetShapeSize(actualSeqLengthsQueryShape);
-    int64_t actualSeqLengthsKvShapeSize = GetShapeSize(actualSeqLengthsKvShape);
-    int64_t metadataShapeSize = GetShapeSize(metadataShape);
-    std::vector<int32_t> actualSeqLengthsQueryHostData(actualSeqLengthsQueryShapeSize, qS);
-    std::vector<int32_t> actualSeqLengthsKvHostData(actualSeqLengthsKvShapeSize, kvS);
-    std::vector<int32_t> metadataHostData(metadataShapeSize, 0);
-
-    ret = CreateAclTensor(actualSeqLengthsQueryHostData, actualSeqLengthsQueryShape, &actualSeqLengthsQueryDeviceAddr, aclDataType::ACL_INT32, &actualSeqLengthsQueryTensor);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        return ret;
-    }
-    ret = CreateAclTensor(actualSeqLengthsKvHostData, actualSeqLengthsKvShape, &actualSeqLengthsKvDeviceAddr, aclDataType::ACL_INT32, &actualSeqLengthsKvTensor);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        return ret;
-    }
-    ret = CreateAclTensor(metadataHostData, metadataShape, &metadataDeviceAddr, aclDataType::ACL_INT32, &metadataTensor);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        return ret;
-    }
-
-    aclOpExecutor* executor = nullptr;
-    uint64_t workspaceSize = 0;
-    void* workspaceAddr = nullptr;
-
-    printf("start aclnnQuantFlashAttnMetadata\n");
-    ret = aclnnQuantFlashAttnMetadataGetWorkspaceSize(
-        nullptr, nullptr,
-        nullptr, nullptr,
-        nullptr,
-        batchSize, qS, kvS,
-        numHeads, numKeyValueHeads,
-        headDim, quantMode, sparseMode, preTokens, nextTokens,
-        "BSND", "BSND", "BSND", "BSND",
-        metadataTensor,
-        &workspaceSize, &executor);
-    if (ret != ACL_SUCCESS) {
-        printf("aclnnQuantFlashAttnMetadataGetWorkspaceSize %d\n", ret);
-        return -1;
-    }
-
-    ret = aclnnQuantFlashAttnMetadata(workspaceAddr, workspaceSize, executor, stream);
-    if (ret != ACL_SUCCESS) {
-        printf("aclnnQuantFlashAttnMetadata %d\n", ret);
-        return -1;
-    }
-
-    ret = aclrtSynchronizeStream(stream);
-    if (ret != ACL_SUCCESS) {
-        printf("aclrtSynchronizeStream %d\n", ret);
-        return -1;
-    }
-
-    ret = aclrtMemcpy(metadataHostData.data(),
-                        metadataHostData.size() * sizeof(metadataHostData[0]), metadataDeviceAddr,
-                        metadataShapeSize,
-                        ACL_MEMCPY_DEVICE_TO_HOST);
-    if (ret != ACL_SUCCESS) {
-        printf("aclrtMemcpy %d\n", ret);
-        return -1;
-    }
-    
-    DumpMeta(&metadataHostData[0]);
-
-    aclDestroyTensor(metadataTensor);
-    aclrtFree(metadataDeviceAddr);
-    if (workspaceSize > 0U) {
-        aclrtFree(workspaceAddr);
-    }
-
-    aclrtDestroyStream(stream);
-    aclrtResetDevice(deviceId);
-    aclFinalize();
-
-    return 0;
-}
+if __name__ == '__main__':
+    unittest.main()
