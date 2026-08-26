@@ -69,6 +69,7 @@ __global__ __aicore__ void moe_ep_dispatch(GM_ADDR context, GM_ADDR x, GM_ADDR t
                 dstBufferSlotIdx, workspaceGM, tilingGM, &pipe, &tilingData);
         op.Process();
     }
+    MoeEpExceptionDump::DebugTrap(); // 临时维测：验证 dump 落盘后回退
 
 #endif
 }
