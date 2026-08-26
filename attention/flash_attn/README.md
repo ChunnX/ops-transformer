@@ -383,7 +383,7 @@ for bN2 in [bN2Start, bN2End):        # batch × KV head 维度
 
 **SectionStreamK 切分要点**：
 
-- **section 划分**：按 L2 预算（96MB token 成本）逐 batch×head 累加切 section；`maxGS1Size ≤ mBaseSize` 或单 head 成本 ≤ 预算/AIC数 时不切。
+- **section 划分**：按 L2 预算（96MB token 成本）逐 batch×head 累加切 section，这样可以确保一个section内的kv数据不会被挤出L2 cache，从而提升L2 cache的命中率，降低KV数据的拷贝时间；`maxGS1Size ≤ mBaseSize` 或单 head 成本 ≤ 预算/AIC数 时不切，因为此时在整个计算过程中，kv数据不需要重复拷贝，也就不存在L2复用。
 - **成本模型**（非 token 加权）：块成本 = `6*ceil(m/16) + 10*ceil(s2/64)`。
 - **每 section 核数**：`minCore = sqrt(块数)` 下界启发，maxCore = min(36, 块数)。
 - **FA 任务分配**：三档贪心 —— 整 batch → 整行（gS1G）→ 行内按 s2 块，逐核按 `成本/剩余核数` 配额分配。
@@ -409,10 +409,7 @@ FD 段  [section][aivIdx(72)][16 字段]：bN2Idx, mIdx(gS1Idx), workspaceIdx, s
 
 **对 NumBlock（核数）设置的影响**：
 
-- host tiling 中 `CalcNumBlocks` 决定 `SetBlockDim`（NumBlock）：`numBlocks_ = CalcTschBlockDim(aivNum, aicNum, aivNum)`，aivNum = aicNum × CV_RATIO（950 上 aic=36 → aiv=72 → NumBlock=36）。
-- metadata 的切分基于平台的 aicCoreNum/aivCoreNum（36/72）：FA 段按 AIC 核数分配，FD 段按 AIV 核数分配。
-- **两者必须一致**：NumBlock 决定启动多少个 AIC 核，metadata 决定每个核分到哪些任务；NumBlock 小于 metadata 需要的核数时部分任务无核执行（丢任务/结果错误），大于时多余核空转。二者均取自同一平台核数接口，默认一致；人为调整 NumBlock 时必须保证 ≥ metadata 实际分配核数。
-- kernel 侧有兜底：`aicIdx >= coreNum` 的核直接 return（核号越界保护）。
+- 因为Host侧Tiling在计算NumBlock时，并不知道实际需要使用的核数（运行在AICPU上的metadata接口计算的），所以将NumBlock设置为全部核数。
 
 ### 5. TilingKey
 
