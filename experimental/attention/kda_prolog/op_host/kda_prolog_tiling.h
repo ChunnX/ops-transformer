@@ -1,0 +1,138 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file kda_prolog_tiling.h
+ * \brief
+ */
+
+#ifndef KDA_PROLOG_TILING_H
+#define KDA_PROLOG_TILING_H
+
+#include "err/ops_err.h"
+#include "exe_graph/runtime/tiling_context.h"
+#include "platform/platform_info.h"
+#include "register/op_def_registry.h"
+#include "register/tilingdata_base.h"
+#include "tiling/platform/platform_ascendc.h"
+#include "tiling/tiling_api.h"
+#include "../op_kernel/kda_prolog_tiling_data.h"
+
+namespace optiling {
+struct TilingRequiredParaInfo {
+    const gert::CompileTimeTensorDesc *desc;
+    const gert::StorageShape *shape;
+};
+
+struct TilingOptionalParaInfo {
+    const gert::CompileTimeTensorDesc *desc;
+    const gert::Tensor *tensor;
+};
+
+constexpr uint32_t X_INDEX = 0;
+constexpr uint32_t WEIGHT_QKV_INDEX = 1;
+constexpr uint32_t WEIGHT_BETA_INDEX = 2;
+constexpr uint32_t WEIGHT_GATE_INDEX = 3;
+constexpr uint32_t WEIGHT_G_INDEX = 4;
+constexpr uint32_t SCALE_QKV_INDEX = 5;
+
+constexpr uint32_t QKV_INDEX = 0;
+constexpr uint32_t BETA_INDEX = 1;
+constexpr uint32_t GATE_INDEX = 2;
+constexpr uint32_t G_INDEX = 3;
+
+constexpr uint32_t ATTR_TRANS_WEIGHT_QKV_INDEX = 0;
+constexpr uint32_t ATTR_TRANS_WEIGHT_BETA_INDEX = 1;
+constexpr uint32_t ATTR_TRANS_WEIGHT_GATE_INDEX = 2;
+constexpr uint32_t ATTR_TRANS_WEIGHT_G_INDEX = 3;
+
+struct KdaPrologCompileInfo {};
+
+struct KdaPrologParaInfo {
+    TilingRequiredParaInfo x = {nullptr, nullptr};
+    TilingRequiredParaInfo weightQkv = {nullptr, nullptr};
+    TilingRequiredParaInfo weightBeta = {nullptr, nullptr};
+    TilingRequiredParaInfo weightGate = {nullptr, nullptr};
+    TilingRequiredParaInfo weightG = {nullptr, nullptr};
+    TilingOptionalParaInfo scaleQkv = {nullptr, nullptr};
+    TilingRequiredParaInfo qkvOut = {nullptr, nullptr};
+    TilingRequiredParaInfo betaOut = {nullptr, nullptr};
+    TilingRequiredParaInfo gateOut = {nullptr, nullptr};
+    TilingRequiredParaInfo gOut = {nullptr, nullptr};
+
+    const bool *transWeightQkv = nullptr;
+    const bool *transWeightBeta = nullptr;
+    const bool *transWeightGate = nullptr;
+    const bool *transWeightG = nullptr;
+};
+
+class KdaPrologTilingInfo {
+public:
+    const char *opName = nullptr;
+    fe::PlatFormInfos *platformInfo = nullptr;
+    KdaPrologParaInfo opParamInfo;
+    platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND950;
+    uint32_t tSize = 0;
+    bool transWeightQkv = true;
+    bool transWeightBeta = true;
+    bool transWeightGate = true;
+    bool transWeightG = true;
+    ge::DataType inputXType = ge::DT_BF16;
+    ge::DataType inputWeightQkvType = ge::DT_FLOAT8_E4M3FN;
+    ge::DataType outputQkvType = ge::DT_BF16;
+};
+
+class KdaPrologInfoParser {
+public:
+    explicit KdaPrologInfoParser(gert::TilingContext *context) : context_(context)
+    {
+    }
+    ~KdaPrologInfoParser() = default;
+
+    ge::graphStatus GetOpName();
+    ge::graphStatus GetNpuInfo();
+    void GetInputParaInfo();
+    void GetOutputParaInfo();
+    ge::graphStatus GetAndCheckAttrParaInfo();
+    ge::graphStatus CheckRequiredInOutExistence() const;
+    ge::graphStatus CheckRequiredAttrExistence() const;
+    ge::graphStatus GetAndCheckInOutDataType();
+    ge::graphStatus CheckShapeDim();
+    ge::graphStatus GetBaseShapeInfo();
+    ge::graphStatus ValidateInputShapesMatch();
+    ge::graphStatus ParseAndCheck(KdaPrologTilingInfo &tilingInfo);
+    void GenerateInfo(KdaPrologTilingInfo &tilingInfo);
+
+private:
+    gert::TilingContext *context_ = nullptr;
+    const char *opName_ = nullptr;
+    fe::PlatFormInfos *platformInfo_ = nullptr;
+    KdaPrologParaInfo opParamInfo_;
+    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND950;
+    uint32_t tSize_ = 0;
+    ge::DataType inputXType_ = ge::DT_BF16;
+    ge::DataType inputWeightQkvType_ = ge::DT_FLOAT8_E4M3FN;
+    ge::DataType outputQkvType_ = ge::DT_BF16;
+};
+
+class KdaPrologTiling {
+public:
+    explicit KdaPrologTiling(gert::TilingContext *context) : context_(context)
+    {
+    }
+    ge::graphStatus DoTiling(const KdaPrologTilingInfo *tilingInfo);
+
+private:
+    gert::TilingContext *context_ = nullptr;
+    KdaPrologTilingData tilingData_;
+};
+} // namespace optiling
+
+#endif // KDA_PROLOG_TILING_H
