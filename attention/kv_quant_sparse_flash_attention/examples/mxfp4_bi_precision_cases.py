@@ -124,19 +124,22 @@ def build_cpu_inputs(case: PrecisionCase, records: list[bytes]):
         padding = [pack_bi_record([0] * NOPE_DIM, bytes(ROPE_DIM * 2), [0] * SCALE_COUNT)] * (16 - case.s2)
         sentinel = [pack_bi_record([0xE] * NOPE_DIM, bytes(ROPE_DIM * 2), [127] * SCALE_COUNT)] * 16
         key = records_to_int8(sentinel + records + padding).reshape(2, 16, 1, RECORD_BYTES)
+        value = torch.zeros((2, 16, 1, NOPE_DIM), dtype=torch.int8)
         block_table = torch.tensor([[1]], dtype=torch.int32)
     elif case.layout_kv == "BSND":
         key = records_to_int8(records).reshape(1, case.s2, 1, RECORD_BYTES)
+        value = torch.zeros((1, case.s2, 1, NOPE_DIM), dtype=torch.int8)
         block_table = None
     else:  # TND
         key = records_to_int8(records).reshape(case.s2, 1, RECORD_BYTES)
+        value = torch.zeros((case.s2, 1, NOPE_DIM), dtype=torch.int8)
         block_table = None
 
     sparse_shape = (1, 1, 1, len(case.sparse_ids)) if case.layout_query == "BSND" else (1, 1, len(case.sparse_ids))
     return {
         "query": query,
         "key": key,
-        "value": key.clone(),  # MLA V0 reads key; the public host schema still requires value.
+        "value": value,
         "sparse_indices": torch.tensor(case.sparse_ids, dtype=torch.int32).reshape(sparse_shape),
         "key_dequant_scale": torch.ones((1,), dtype=torch.float32),
         "value_dequant_scale": torch.ones((1,), dtype=torch.float32),
@@ -292,7 +295,7 @@ def build_tnd_prefix_inputs():
         "value_dequant_scale": torch.ones((1,), dtype=torch.float32),
         "block_table": None,
     }
-    inputs["value"] = inputs["key"].clone()
+    inputs["value"] = torch.zeros((7, 1, NOPE_DIM), dtype=torch.int8)
     return inputs, ((records0, (0, 1, 2, -1)), (records1, (0, 1, 3, -1)))
 
 

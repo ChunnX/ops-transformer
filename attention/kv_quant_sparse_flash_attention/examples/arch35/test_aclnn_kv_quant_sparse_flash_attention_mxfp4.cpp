@@ -16,6 +16,7 @@
 #include <functional>
 #include <limits>
 #include <numeric>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -27,13 +28,36 @@ namespace {
 constexpr int64_t kNopeDim = 512;
 constexpr int64_t kRopeDim = 64;
 constexpr int64_t kQueryDim = kNopeDim + kRopeDim;
-constexpr int64_t kRecordBytes = 400;
+constexpr int64_t kMxfp4RecordBytes = 400;
+constexpr int64_t kLegacyRecordBytes = 656;
 constexpr int64_t kFp4Bytes = 256;
-constexpr int64_t kRopeOffset = 256;
-constexpr int64_t kScaleOffset = 384;
+constexpr int64_t kMxfp4RopeOffset = 256;
+constexpr int64_t kMxfp4ScaleOffset = 384;
+constexpr int64_t kLegacyRopeOffset = 512;
+constexpr int64_t kLegacyScaleOffset = 640;
 constexpr int64_t kScaleCount = 16;
 constexpr int64_t kMxGroupSize = 32;
-constexpr int64_t kS2 = 16;
+constexpr int64_t kPaBlockSize = 16;
+
+enum class QKind { BF16, FP16 };
+enum class KvLayout { BSND, TND, PA_BSND };
+enum class RecordKind { MXFP4, LEGACY_INT8, RAW };
+
+struct CaseSpec {
+    std::string name;
+    QKind qKind;
+    KvLayout layout;
+    RecordKind recordKind;
+    int64_t n1;
+    std::vector<int64_t> kvLengths;
+    std::vector<std::vector<int32_t>> sparseRows;
+    int64_t storageOffsetElements;
+    bool edgeScales;
+    bool bitExact;
+    bool expectWorkspaceFailure;
+    aclDataType keyDtype;
+    int64_t keyDim;
+};
 
 struct ResourceSet {
     std::vector<void *> deviceBuffers;
@@ -50,25 +74,132 @@ struct ResourceSet {
     }
 };
 
+struct PreparedCase {
+    std::vector<uint16_t> query;
+    std::vector<int8_t> key;
+    std::vector<int8_t> value;
+    std::vector<int32_t> sparseIndices;
+    std::vector<int32_t> actualSeqQ;
+    std::vector<int32_t> actualSeqKv;
+    std::vector<int32_t> blockTable;
+    std::vector<uint16_t> output;
+    std::vector<uint16_t> expected;
+    std::vector<int64_t> queryShape;
+    std::vector<int64_t> keyViewShape;
+    std::vector<int64_t> keyStorageShape;
+    std::vector<int64_t> valueViewShape;
+    std::vector<int64_t> valueStorageShape;
+    std::vector<int64_t> sparseShape;
+    std::vector<int64_t> outputShape;
+    std::vector<std::vector<std::vector<int8_t>>> logicalRecords;
+};
+
 int64_t ShapeSize(const std::vector<int64_t> &shape)
 {
     return std::accumulate(shape.begin(), shape.end(), int64_t{1}, std::multiplies<int64_t>());
 }
 
-uint16_t FloatToBf16(float value)
+uint32_t FloatBits(float value)
 {
     uint32_t bits = 0;
     std::memcpy(&bits, &value, sizeof(bits));
+    return bits;
+}
+
+float BitsFloat(uint32_t bits)
+{
+    float value = 0.0F;
+    std::memcpy(&value, &bits, sizeof(value));
+    return value;
+}
+
+uint16_t FloatToBf16(float value)
+{
+    uint32_t bits = FloatBits(value);
     bits += 0x7FFFU + ((bits >> 16U) & 1U);
     return static_cast<uint16_t>(bits >> 16U);
 }
 
 float Bf16ToFloat(uint16_t value)
 {
-    uint32_t bits = static_cast<uint32_t>(value) << 16U;
-    float result = 0.0F;
-    std::memcpy(&result, &bits, sizeof(result));
-    return result;
+    return BitsFloat(static_cast<uint32_t>(value) << 16U);
+}
+
+uint16_t FloatToHalf(float value)
+{
+    uint32_t bits = FloatBits(value);
+    uint16_t sign = static_cast<uint16_t>((bits >> 16U) & 0x8000U);
+    uint32_t exponentBits = (bits >> 23U) & 0xFFU;
+    uint32_t mantissa = bits & 0x7FFFFFU;
+    if (exponentBits == 0xFFU) {
+        return static_cast<uint16_t>(sign | (mantissa == 0U ? 0x7C00U : 0x7E00U));
+    }
+    int32_t exponent = static_cast<int32_t>(exponentBits) - 127;
+    if (exponent > 15) {
+        return static_cast<uint16_t>(sign | 0x7C00U);
+    }
+    if (exponent >= -14) {
+        uint32_t rounded = mantissa + 0xFFFU + ((mantissa >> 13U) & 1U);
+        if ((rounded & 0x800000U) != 0U) {
+            rounded = 0U;
+            ++exponent;
+            if (exponent > 15) {
+                return static_cast<uint16_t>(sign | 0x7C00U);
+            }
+        }
+        return static_cast<uint16_t>(sign | (static_cast<uint16_t>(exponent + 15) << 10U) |
+                                     static_cast<uint16_t>(rounded >> 13U));
+    }
+    if (exponent < -24) {
+        return sign;
+    }
+    mantissa |= 0x800000U;
+    uint32_t shift = static_cast<uint32_t>(-exponent - 1);
+    uint32_t roundBias = (1U << (shift - 1U)) - 1U + ((mantissa >> shift) & 1U);
+    return static_cast<uint16_t>(sign | static_cast<uint16_t>((mantissa + roundBias) >> shift));
+}
+
+float HalfToFloat(uint16_t value)
+{
+    uint32_t sign = static_cast<uint32_t>(value & 0x8000U) << 16U;
+    uint32_t exponent = (value >> 10U) & 0x1FU;
+    uint32_t mantissa = value & 0x3FFU;
+    if (exponent == 0U) {
+        if (mantissa == 0U) {
+            return BitsFloat(sign);
+        }
+        int32_t unbiased = -14;
+        while ((mantissa & 0x400U) == 0U) {
+            mantissa <<= 1U;
+            --unbiased;
+        }
+        mantissa &= 0x3FFU;
+        return BitsFloat(sign | (static_cast<uint32_t>(unbiased + 127) << 23U) | (mantissa << 13U));
+    }
+    if (exponent == 0x1FU) {
+        return BitsFloat(sign | 0x7F800000U | (mantissa << 13U));
+    }
+    return BitsFloat(sign | ((exponent + 112U) << 23U) | (mantissa << 13U));
+}
+
+uint16_t EncodeQ(float value, QKind kind)
+{
+    return kind == QKind::BF16 ? FloatToBf16(value) : FloatToHalf(value);
+}
+
+float DecodeQ(uint16_t value, QKind kind)
+{
+    return kind == QKind::BF16 ? Bf16ToFloat(value) : HalfToFloat(value);
+}
+
+float RoundBf16(float value)
+{
+    return Bf16ToFloat(FloatToBf16(value));
+}
+
+float RoundQ(float value, QKind kind)
+{
+    return DecodeQ(EncodeQ(value, kind), kind);
 }
 
 float Fp4E2M1Value(uint8_t code)
@@ -91,98 +222,333 @@ float E8M0Value(uint8_t code)
     return std::ldexp(1.0F, static_cast<int>(code) - 127);
 }
 
-std::vector<int8_t> MakeRecord(int64_t token)
+void StoreQ(std::vector<int8_t> &record, int64_t offset, float value, QKind kind)
 {
-    std::vector<int8_t> record(kRecordBytes, 0);
+    uint16_t bits = EncodeQ(value, kind);
+    record[offset] = static_cast<int8_t>(bits & 0xFFU);
+    record[offset + 1] = static_cast<int8_t>(bits >> 8U);
+}
+
+float LoadQ(const int8_t *record, int64_t offset, QKind kind)
+{
+    uint16_t bits = static_cast<uint8_t>(record[offset]);
+    bits |= static_cast<uint16_t>(static_cast<uint8_t>(record[offset + 1])) << 8U;
+    return DecodeQ(bits, kind);
+}
+
+std::vector<int8_t> MakeMxfp4Record(int64_t token, QKind kind, bool edgeScales)
+{
+    std::vector<int8_t> record(kMxfp4RecordBytes, 0);
     for (int64_t d = 0; d < kNopeDim; d += 2) {
-        uint8_t low = static_cast<uint8_t>((token + d) % 16);
-        uint8_t high = static_cast<uint8_t>((token + d + 1) % 16);
+        uint8_t low = edgeScales ? 0x2U : static_cast<uint8_t>((token + d) % 16);
+        uint8_t high = edgeScales ? 0x2U : static_cast<uint8_t>((token + d + 1) % 16);
         record[d / 2] = static_cast<int8_t>(low | static_cast<uint8_t>(high << 4U));
     }
     for (int64_t d = 0; d < kRopeDim; ++d) {
-        float value = 0.03125F * static_cast<float>(token + 1) * static_cast<float>((d % 9) - 4);
-        uint16_t bits = FloatToBf16(value);
-        record[kRopeOffset + d * 2] = static_cast<int8_t>(bits & 0xFFU);
-        record[kRopeOffset + d * 2 + 1] = static_cast<int8_t>(bits >> 8U);
+        float value = edgeScales ? 0.0F
+                                 : 0.015625F * static_cast<float>(token + 1) * static_cast<float>((d % 9) - 4);
+        StoreQ(record, kMxfp4RopeOffset + d * 2, value, kind);
     }
     for (int64_t group = 0; group < kScaleCount; ++group) {
-        record[kScaleOffset + group] = static_cast<int8_t>(126 + ((token + group) % 4));
+        uint8_t scale = static_cast<uint8_t>(126 + ((token + group) % 4));
+        if (edgeScales) {
+            scale = group == 0 ? 0U : (group == 1 ? 254U : 127U);
+        }
+        record[kMxfp4ScaleOffset + group] = static_cast<int8_t>(scale);
     }
     return record;
 }
 
-std::vector<float> DecodeRecord(const int8_t *record)
+std::vector<int8_t> MakeLegacyRecord(int64_t token, QKind kind)
+{
+    std::vector<int8_t> record(kLegacyRecordBytes, 0);
+    for (int64_t d = 0; d < kNopeDim; ++d) {
+        record[d] = static_cast<int8_t>(((token + d) % 15) - 7);
+    }
+    for (int64_t d = 0; d < kRopeDim; ++d) {
+        StoreQ(record, kLegacyRopeOffset + d * 2,
+               0.015625F * static_cast<float>(token + 1) * static_cast<float>((d % 7) - 3), kind);
+    }
+    for (int64_t tile = 0; tile < 4; ++tile) {
+        float scale = 0.5F + 0.25F * static_cast<float>((token + tile) % 4);
+        std::memcpy(record.data() + kLegacyScaleOffset + tile * sizeof(float), &scale, sizeof(float));
+    }
+    return record;
+}
+
+std::vector<int8_t> MakeRawRecord(int64_t token, int64_t bytes)
+{
+    std::vector<int8_t> record(bytes);
+    for (int64_t i = 0; i < bytes; ++i) {
+        record[i] = static_cast<int8_t>((token * 17 + i) & 0x7F);
+    }
+    return record;
+}
+
+std::vector<float> DecodeMxfp4Record(const int8_t *record, QKind kind)
 {
     std::vector<float> decoded(kQueryDim, 0.0F);
     for (int64_t byte = 0; byte < kFp4Bytes; ++byte) {
         uint8_t packed = static_cast<uint8_t>(record[byte]);
         int64_t group = (byte * 2) / kMxGroupSize;
-        float scale = E8M0Value(static_cast<uint8_t>(record[kScaleOffset + group]));
-        decoded[byte * 2] = Fp4E2M1Value(packed & 0xFU) * scale;
-        decoded[byte * 2 + 1] = Fp4E2M1Value(packed >> 4U) * scale;
+        float scale = RoundBf16(E8M0Value(static_cast<uint8_t>(record[kMxfp4ScaleOffset + group])));
+        float low = RoundBf16(Fp4E2M1Value(packed & 0xFU) * scale);
+        float high = RoundBf16(Fp4E2M1Value(packed >> 4U) * scale);
+        decoded[byte * 2] = kind == QKind::BF16 ? low : RoundQ(low, QKind::FP16);
+        decoded[byte * 2 + 1] = kind == QKind::BF16 ? high : RoundQ(high, QKind::FP16);
     }
     for (int64_t d = 0; d < kRopeDim; ++d) {
-        uint16_t bits = static_cast<uint8_t>(record[kRopeOffset + d * 2]);
-        bits |= static_cast<uint16_t>(static_cast<uint8_t>(record[kRopeOffset + d * 2 + 1])) << 8U;
-        decoded[kNopeDim + d] = Bf16ToFloat(bits);
+        decoded[kNopeDim + d] = LoadQ(record, kMxfp4RopeOffset + d * 2, kind);
     }
     return decoded;
 }
 
-std::vector<float> CpuReference(const std::vector<uint16_t> &query, const std::vector<int8_t> &records)
+std::vector<float> DecodeLegacyRecord(const int8_t *record, QKind kind)
 {
-    std::vector<float> q(kQueryDim);
-    std::transform(query.begin(), query.end(), q.begin(), Bf16ToFloat);
-    std::vector<std::vector<float>> decoded;
-    std::vector<float> scores(kS2, 0.0F);
-    decoded.reserve(kS2);
-    for (int64_t token = 0; token < kS2; ++token) {
-        decoded.push_back(DecodeRecord(records.data() + token * kRecordBytes));
-        for (int64_t d = 0; d < kQueryDim; ++d) {
-            scores[token] += q[d] * decoded[token][d];
+    std::vector<float> decoded(kQueryDim, 0.0F);
+    for (int64_t d = 0; d < kNopeDim; ++d) {
+        float scale = 0.0F;
+        std::memcpy(&scale, record + kLegacyScaleOffset + (d / 128) * sizeof(float), sizeof(float));
+        decoded[d] = RoundQ(static_cast<float>(record[d]) * scale, kind);
+    }
+    for (int64_t d = 0; d < kRopeDim; ++d) {
+        decoded[kNopeDim + d] = LoadQ(record, kLegacyRopeOffset + d * 2, kind);
+    }
+    return decoded;
+}
+
+std::vector<float> DecodeRecord(const std::vector<int8_t> &record, const CaseSpec &spec)
+{
+    return spec.recordKind == RecordKind::MXFP4 ? DecodeMxfp4Record(record.data(), spec.qKind)
+                                                : DecodeLegacyRecord(record.data(), spec.qKind);
+}
+
+std::vector<int32_t> RangeSparse(int64_t count, bool appendEnd)
+{
+    std::vector<int32_t> result(count + (appendEnd ? 1 : 0));
+    std::iota(result.begin(), result.begin() + count, 0);
+    if (appendEnd) {
+        result.back() = -1;
+    }
+    return result;
+}
+
+std::vector<CaseSpec> BuildCases()
+{
+    return {
+        {"mx_bs_bf16_g1_full16_offset32", QKind::BF16, KvLayout::BSND, RecordKind::MXFP4, 1, {16},
+         {RangeSparse(16, false)}, 32, false, false, false, ACL_INT8, 400},
+        {"mx_bs_fp16_g1_tail3_offset0", QKind::FP16, KvLayout::BSND, RecordKind::MXFP4, 1, {3},
+         {{0, 1, 2, -1}}, 0, false, false, false, ACL_INT8, 400},
+        {"mx_bs_bf16_g1_s2_33_offset1", QKind::BF16, KvLayout::BSND, RecordKind::MXFP4, 1, {33},
+         {RangeSparse(33, false)}, 1, false, false, false, ACL_INT8, 400},
+        {"mx_bs_bf16_g128_split_full16", QKind::BF16, KvLayout::BSND, RecordKind::MXFP4, 128, {16},
+         {RangeSparse(16, false)}, 0, false, false, false, ACL_INT8, 400},
+        {"mx_bs_bf16_sparse_repeat_desc", QKind::BF16, KvLayout::BSND, RecordKind::MXFP4, 1, {8},
+         {{7, 3, 7, 1, 0, -1}}, 0, false, false, false, ACL_INT8, 400},
+        {"mx_tnd_bf16_b2_prefix", QKind::BF16, KvLayout::TND, RecordKind::MXFP4, 1, {3, 4},
+         {{0, 1, 2, -1}, {0, 1, 3, -1}}, 32, false, false, false, ACL_INT8, 400},
+        {"mx_pa_bf16_block_table", QKind::BF16, KvLayout::PA_BSND, RecordKind::MXFP4, 1, {3},
+         {{0, 1, 2, -1}}, 0, false, false, false, ACL_INT8, 400},
+        {"mx_bs_bf16_e8m0_edges_s2_1", QKind::BF16, KvLayout::BSND, RecordKind::MXFP4, 1, {1},
+         {{0, -1}}, 0, true, true, false, ACL_INT8, 400},
+        {"legacy_bs_bf16_d656", QKind::BF16, KvLayout::BSND, RecordKind::LEGACY_INT8, 1, {3},
+         {{0, 1, 2, -1}}, 0, false, false, false, ACL_INT8, 656},
+        {"reject_d400_fp8", QKind::BF16, KvLayout::BSND, RecordKind::RAW, 1, {1}, {{0, -1}}, 0, false,
+         false, true, ACL_FLOAT8_E4M3FN, 400},
+        {"reject_d399_int8", QKind::BF16, KvLayout::BSND, RecordKind::RAW, 1, {1}, {{0, -1}}, 0, false, false,
+         true, ACL_INT8, 399},
+    };
+}
+
+std::vector<int8_t> MakeRecordForCase(const CaseSpec &spec, int64_t token)
+{
+    if (spec.recordKind == RecordKind::MXFP4) {
+        return MakeMxfp4Record(spec.edgeScales ? 0 : token, spec.qKind, spec.edgeScales);
+    }
+    if (spec.recordKind == RecordKind::LEGACY_INT8) {
+        return MakeLegacyRecord(token, spec.qKind);
+    }
+    return MakeRawRecord(token, spec.keyDim);
+}
+
+PreparedCase PrepareCase(const CaseSpec &spec)
+{
+    PreparedCase data;
+    int64_t batchCount = static_cast<int64_t>(spec.kvLengths.size());
+    data.query.resize(batchCount * spec.n1 * kQueryDim);
+    for (int64_t b = 0; b < batchCount; ++b) {
+        for (int64_t head = 0; head < spec.n1; ++head) {
+            for (int64_t d = 0; d < kQueryDim; ++d) {
+                float value = spec.edgeScales
+                                  ? 0.0F
+                                  : 0.00390625F * static_cast<float>(((d * 3 + head * 5 + b * 7) % 29) - 14);
+                data.query[(b * spec.n1 + head) * kQueryDim + d] = EncodeQ(value, spec.qKind);
+            }
         }
-        scores[token] /= std::sqrt(static_cast<float>(kQueryDim));
     }
-    float maxScore = *std::max_element(scores.begin(), scores.end());
-    float sum = 0.0F;
-    for (auto &score : scores) {
-        score = std::exp(score - maxScore);
-        sum += score;
+    int64_t sparseWidth = static_cast<int64_t>(spec.sparseRows.front().size());
+    for (const auto &row : spec.sparseRows) {
+        if (static_cast<int64_t>(row.size()) != sparseWidth) {
+            throw std::runtime_error("all sparse rows must have the same width");
+        }
+        data.sparseIndices.insert(data.sparseIndices.end(), row.begin(), row.end());
     }
-    for (auto &score : scores) {
-        score /= sum;
+    data.logicalRecords.resize(batchCount);
+    int64_t logicalTokenBase = 0;
+    for (int64_t b = 0; b < batchCount; ++b) {
+        for (int64_t token = 0; token < spec.kvLengths[b]; ++token) {
+            data.logicalRecords[b].push_back(MakeRecordForCase(spec, logicalTokenBase + token));
+        }
+        logicalTokenBase += spec.kvLengths[b] + 17;
     }
-    std::vector<float> output(kNopeDim, 0.0F);
-    for (int64_t token = 0; token < kS2; ++token) {
-        for (int64_t d = 0; d < kNopeDim; ++d) {
-            output[d] += scores[token] * decoded[token][d];
+    if (spec.layout == KvLayout::BSND) {
+        int64_t s2 = spec.kvLengths[0];
+        for (const auto &record : data.logicalRecords[0]) {
+            data.key.insert(data.key.end(), record.begin(), record.end());
+        }
+        data.keyViewShape = {1, s2, 1, spec.keyDim};
+        data.keyStorageShape = {1, s2 + (spec.storageOffsetElements > 0 ? 1 : 0), 1, spec.keyDim};
+        data.valueViewShape = {1, s2, 1, kNopeDim};
+        data.valueStorageShape = {1, s2 + (spec.storageOffsetElements > 0 ? 1 : 0), 1, kNopeDim};
+        data.sparseShape = {1, 1, 1, sparseWidth};
+        data.queryShape = {1, 1, spec.n1, kQueryDim};
+        data.outputShape = {1, 1, spec.n1, kNopeDim};
+        data.actualSeqQ = {1};
+        data.actualSeqKv = {static_cast<int32_t>(s2)};
+    } else if (spec.layout == KvLayout::TND) {
+        int64_t totalKv = 0;
+        int32_t qPrefix = 0;
+        int32_t kvPrefix = 0;
+        for (int64_t b = 0; b < batchCount; ++b) {
+            for (const auto &record : data.logicalRecords[b]) {
+                data.key.insert(data.key.end(), record.begin(), record.end());
+            }
+            totalKv += spec.kvLengths[b];
+            data.actualSeqQ.push_back(++qPrefix);
+            kvPrefix += static_cast<int32_t>(spec.kvLengths[b]);
+            data.actualSeqKv.push_back(kvPrefix);
+        }
+        data.keyViewShape = {totalKv, 1, spec.keyDim};
+        data.keyStorageShape = {totalKv + (spec.storageOffsetElements > 0 ? 1 : 0), 1, spec.keyDim};
+        data.valueViewShape = {totalKv, 1, kNopeDim};
+        data.valueStorageShape = {totalKv + (spec.storageOffsetElements > 0 ? 1 : 0), 1, kNopeDim};
+        data.sparseShape = {batchCount, 1, sparseWidth};
+        data.queryShape = {batchCount, spec.n1, kQueryDim};
+        data.outputShape = {batchCount, spec.n1, kNopeDim};
+    } else {
+        data.key.resize(2 * kPaBlockSize * spec.keyDim);
+        auto sentinel = MakeRecordForCase(spec, 113);
+        for (int64_t token = 0; token < kPaBlockSize; ++token) {
+            std::copy(sentinel.begin(), sentinel.end(), data.key.begin() + token * spec.keyDim);
+        }
+        for (int64_t token = 0; token < kPaBlockSize; ++token) {
+            const auto &record = token < spec.kvLengths[0] ? data.logicalRecords[0][token] : sentinel;
+            std::copy(record.begin(), record.end(), data.key.begin() + (kPaBlockSize + token) * spec.keyDim);
+        }
+        data.keyViewShape = {2, kPaBlockSize, 1, spec.keyDim};
+        data.keyStorageShape = data.keyViewShape;
+        data.valueViewShape = {2, kPaBlockSize, 1, kNopeDim};
+        data.valueStorageShape = data.valueViewShape;
+        data.sparseShape = {1, 1, 1, sparseWidth};
+        data.queryShape = {1, 1, spec.n1, kQueryDim};
+        data.outputShape = {1, 1, spec.n1, kNopeDim};
+        data.actualSeqQ = {1};
+        data.actualSeqKv = {static_cast<int32_t>(spec.kvLengths[0])};
+        data.blockTable = {1};
+    }
+    data.value.resize(ShapeSize(data.valueViewShape), 0);
+    data.output.resize(ShapeSize(data.outputShape), 0);
+    return data;
+}
+
+std::vector<uint16_t> CpuReference(const CaseSpec &spec, const PreparedCase &data)
+{
+    int64_t batchCount = static_cast<int64_t>(spec.kvLengths.size());
+    std::vector<uint16_t> expected(ShapeSize(data.outputShape), 0);
+    for (int64_t b = 0; b < batchCount; ++b) {
+        std::vector<std::vector<float>> decoded;
+        for (const auto &record : data.logicalRecords[b]) {
+            decoded.push_back(DecodeRecord(record, spec));
+        }
+        std::vector<int32_t> selected;
+        for (int32_t index : spec.sparseRows[b]) {
+            if (index == -1) {
+                break;
+            }
+            if (index < 0 || index >= spec.kvLengths[b]) {
+                throw std::runtime_error("sparse index is outside actual sequence length");
+            }
+            selected.push_back(index);
+        }
+        if (selected.empty()) {
+            throw std::runtime_error("positive case must select at least one KV token");
+        }
+        for (int64_t head = 0; head < spec.n1; ++head) {
+            const uint16_t *query = data.query.data() + (b * spec.n1 + head) * kQueryDim;
+            std::vector<float> scores(selected.size(), 0.0F);
+            for (size_t i = 0; i < selected.size(); ++i) {
+                for (int64_t d = 0; d < kQueryDim; ++d) {
+                    scores[i] += DecodeQ(query[d], spec.qKind) * decoded[selected[i]][d];
+                }
+                scores[i] /= std::sqrt(static_cast<float>(kQueryDim));
+            }
+            float maxScore = *std::max_element(scores.begin(), scores.end());
+            float sum = 0.0F;
+            for (auto &score : scores) {
+                score = std::exp(score - maxScore);
+                sum += score;
+            }
+            for (auto &score : scores) {
+                score /= sum;
+            }
+            for (int64_t d = 0; d < kNopeDim; ++d) {
+                float value = 0.0F;
+                for (size_t i = 0; i < selected.size(); ++i) {
+                    value += scores[i] * decoded[selected[i]][d];
+                }
+                expected[(b * spec.n1 + head) * kNopeDim + d] = EncodeQ(value, spec.qKind);
+            }
         }
     }
-    return output;
+    return expected;
 }
 
 template <typename T>
-aclTensor *CreateTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, aclDataType dtype,
+aclTensor *CreateTensor(const std::vector<T> &hostData, const std::vector<int64_t> &viewShape,
+                        const std::vector<int64_t> &storageShape, aclDataType dtype, int64_t offsetElements,
                         ResourceSet &resources, void **deviceOut = nullptr)
 {
-    if (static_cast<int64_t>(hostData.size()) != ShapeSize(shape)) {
+    if (static_cast<int64_t>(hostData.size()) != ShapeSize(viewShape) || viewShape.size() != storageShape.size()) {
         return nullptr;
     }
+    std::vector<int64_t> strides(storageShape.size(), 1);
+    for (int64_t i = static_cast<int64_t>(storageShape.size()) - 2; i >= 0; --i) {
+        strides[i] = strides[i + 1] * storageShape[i + 1];
+    }
+    int64_t lastElement = offsetElements;
+    for (size_t i = 0; i < viewShape.size(); ++i) {
+        lastElement += (viewShape[i] - 1) * strides[i];
+    }
+    if (lastElement >= ShapeSize(storageShape)) {
+        return nullptr;
+    }
+    size_t storageBytes = static_cast<size_t>(ShapeSize(storageShape)) * sizeof(T);
     void *device = nullptr;
-    size_t bytes = hostData.size() * sizeof(T);
-    if (aclrtMalloc(&device, bytes, ACL_MEM_MALLOC_HUGE_FIRST) != ACL_SUCCESS) {
+    if (aclrtMalloc(&device, storageBytes, ACL_MEM_MALLOC_HUGE_FIRST) != ACL_SUCCESS) {
         return nullptr;
     }
     resources.deviceBuffers.push_back(device);
-    if (aclrtMemcpy(device, bytes, hostData.data(), bytes, ACL_MEMCPY_HOST_TO_DEVICE) != ACL_SUCCESS) {
+    if (aclrtMemset(device, storageBytes, 0, storageBytes) != ACL_SUCCESS) {
         return nullptr;
     }
-    std::vector<int64_t> strides(shape.size(), 1);
-    for (int64_t i = static_cast<int64_t>(shape.size()) - 2; i >= 0; --i) {
-        strides[i] = strides[i + 1] * shape[i + 1];
+    size_t hostBytes = hostData.size() * sizeof(T);
+    void *viewDevice = static_cast<void *>(static_cast<uint8_t *>(device) + offsetElements * sizeof(T));
+    if (aclrtMemcpy(viewDevice, hostBytes, hostData.data(), hostBytes, ACL_MEMCPY_HOST_TO_DEVICE) != ACL_SUCCESS) {
+        return nullptr;
     }
-    aclTensor *tensor = aclCreateTensor(shape.data(), shape.size(), dtype, strides.data(), 0, ACL_FORMAT_ND,
-                                        shape.data(), shape.size(), device);
+    aclTensor *tensor = aclCreateTensor(viewShape.data(), viewShape.size(), dtype, strides.data(), offsetElements,
+                                        ACL_FORMAT_ND, storageShape.data(), storageShape.size(), device);
     if (tensor != nullptr) {
         resources.tensors.push_back(tensor);
     }
@@ -192,113 +558,254 @@ aclTensor *CreateTensor(const std::vector<T> &hostData, const std::vector<int64_
     return tensor;
 }
 
-int Run()
+template <typename T>
+aclTensor *CreateContiguousTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape,
+                                  aclDataType dtype, ResourceSet &resources, void **deviceOut = nullptr)
 {
-    std::vector<uint16_t> query(kQueryDim);
-    for (int64_t d = 0; d < kQueryDim; ++d) {
-        query[d] = FloatToBf16(0.015625F * static_cast<float>(((d * 3) % 17) - 8));
-    }
-    std::vector<int8_t> key;
-    key.reserve(kS2 * kRecordBytes);
-    for (int64_t token = 0; token < kS2; ++token) {
-        auto record = MakeRecord(token);
-        key.insert(key.end(), record.begin(), record.end());
-    }
-    std::vector<int8_t> value = key;
-    std::vector<int32_t> sparseIndices(kS2);
-    std::iota(sparseIndices.begin(), sparseIndices.end(), 0);
-    std::vector<int32_t> actualSeqQ{1};
-    std::vector<int32_t> actualSeqKv{static_cast<int32_t>(kS2)};
-    std::vector<float> dequantScale{1.0F};
-    std::vector<uint16_t> output(kNopeDim, 0);
-    auto expected = CpuReference(query, key);
+    return CreateTensor(hostData, shape, shape, dtype, 0, resources, deviceOut);
+}
 
-    ResourceSet resources;
-    void *outputDevice = nullptr;
-    aclTensor *queryTensor = CreateTensor(query, {1, 1, 1, kQueryDim}, ACL_BF16, resources);
-    aclTensor *keyTensor = CreateTensor(key, {1, kS2, 1, kRecordBytes}, ACL_INT8, resources);
-    aclTensor *valueTensor = CreateTensor(value, {1, kS2, 1, kRecordBytes}, ACL_INT8, resources);
-    aclTensor *sparseTensor = CreateTensor(sparseIndices, {1, 1, 1, kS2}, ACL_INT32, resources);
-    aclTensor *keyScaleTensor = CreateTensor(dequantScale, {1}, ACL_FLOAT, resources);
-    aclTensor *valueScaleTensor = CreateTensor(dequantScale, {1}, ACL_FLOAT, resources);
-    aclTensor *actualQTensor = CreateTensor(actualSeqQ, {1}, ACL_INT32, resources);
-    aclTensor *actualKvTensor = CreateTensor(actualSeqKv, {1}, ACL_INT32, resources);
-    aclTensor *outputTensor = CreateTensor(output, {1, 1, 1, kNopeDim}, ACL_BF16, resources, &outputDevice);
-    if (queryTensor == nullptr || keyTensor == nullptr || valueTensor == nullptr || sparseTensor == nullptr ||
-        keyScaleTensor == nullptr || valueScaleTensor == nullptr || actualQTensor == nullptr ||
-        actualKvTensor == nullptr || outputTensor == nullptr) {
-        std::printf("tensor creation failed\n");
+const char *LayoutName(KvLayout layout)
+{
+    if (layout == KvLayout::TND) {
+        return "TND";
+    }
+    return layout == KvLayout::PA_BSND ? "PA_BSND" : "BSND";
+}
+
+aclDataType QAclType(QKind kind)
+{
+    return kind == QKind::BF16 ? ACL_BF16 : ACL_FLOAT16;
+}
+
+int CompareOutput(const CaseSpec &spec, const PreparedCase &data, const std::vector<uint16_t> &actual)
+{
+    if (actual.size() != data.expected.size()) {
+        std::printf("[FAIL] %s output size mismatch\n", spec.name.c_str());
         return 1;
     }
+    if (spec.bitExact) {
+        for (size_t i = 0; i < actual.size(); ++i) {
+            if (actual[i] != data.expected[i]) {
+                std::printf("[FAIL] %s bit mismatch at %zu: actual=0x%04x expected=0x%04x\n", spec.name.c_str(), i,
+                            actual[i], data.expected[i]);
+                return 1;
+            }
+        }
+        std::printf("[PASS] %s bit-exact, elements=%zu\n", spec.name.c_str(), actual.size());
+        return 0;
+    }
+    int64_t closeCount = 0;
+    float maxAbsError = 0.0F;
+    for (size_t i = 0; i < actual.size(); ++i) {
+        float actualValue = DecodeQ(actual[i], spec.qKind);
+        float expectedValue = DecodeQ(data.expected[i], spec.qKind);
+        float error = std::abs(actualValue - expectedValue);
+        float tolerance = 0.05F + 0.02F * std::abs(expectedValue);
+        closeCount += error <= tolerance;
+        maxAbsError = std::max(maxAbsError, error);
+    }
+    double ratio = static_cast<double>(closeCount) / static_cast<double>(actual.size());
+    std::printf("[%s] %s close_ratio=%.6f max_abs_error=%.6f\n", ratio >= 0.99 ? "PASS" : "FAIL",
+                spec.name.c_str(), ratio, maxAbsError);
+    return ratio >= 0.99 ? 0 : 1;
+}
 
-    char layoutQuery[] = "BSND";
-    char layoutKv[] = "BSND";
+int RunCase(const CaseSpec &spec, aclrtStream stream)
+{
+    PreparedCase data = PrepareCase(spec);
+    if (!spec.expectWorkspaceFailure) {
+        data.expected = CpuReference(spec, data);
+    }
+    ResourceSet resources;
+    void *outputDevice = nullptr;
+    aclTensor *queryTensor =
+        CreateContiguousTensor(data.query, data.queryShape, QAclType(spec.qKind), resources);
+    aclTensor *keyTensor = CreateTensor(data.key, data.keyViewShape, data.keyStorageShape, spec.keyDtype,
+                                        spec.storageOffsetElements, resources);
+    aclTensor *valueTensor = CreateTensor(data.value, data.valueViewShape, data.valueStorageShape, spec.keyDtype,
+                                          spec.storageOffsetElements, resources);
+    aclTensor *sparseTensor =
+        CreateContiguousTensor(data.sparseIndices, data.sparseShape, ACL_INT32, resources);
+    std::vector<float> dummyScale{1.0F};
+    aclTensor *keyScaleTensor = CreateContiguousTensor(dummyScale, {1}, ACL_FLOAT, resources);
+    aclTensor *valueScaleTensor = CreateContiguousTensor(dummyScale, {1}, ACL_FLOAT, resources);
+    aclTensor *actualQTensor = CreateContiguousTensor(data.actualSeqQ, {static_cast<int64_t>(data.actualSeqQ.size())},
+                                                       ACL_INT32, resources);
+    aclTensor *actualKvTensor = CreateContiguousTensor(
+        data.actualSeqKv, {static_cast<int64_t>(data.actualSeqKv.size())}, ACL_INT32, resources);
+    aclTensor *blockTableTensor = nullptr;
+    if (!data.blockTable.empty()) {
+        blockTableTensor = CreateContiguousTensor(data.blockTable, {1, 1}, ACL_INT32, resources);
+    }
+    aclTensor *outputTensor = CreateContiguousTensor(data.output, data.outputShape, QAclType(spec.qKind), resources,
+                                                      &outputDevice);
+    if (queryTensor == nullptr || keyTensor == nullptr || valueTensor == nullptr || sparseTensor == nullptr ||
+        keyScaleTensor == nullptr || valueScaleTensor == nullptr || actualQTensor == nullptr ||
+        actualKvTensor == nullptr || outputTensor == nullptr ||
+        (spec.layout == KvLayout::PA_BSND && blockTableTensor == nullptr)) {
+        std::printf("[FAIL] %s tensor creation failed\n", spec.name.c_str());
+        return 1;
+    }
+    char layoutQuery[5] = "BSND";
+    if (spec.layout == KvLayout::TND) {
+        std::strcpy(layoutQuery, "TND");
+    }
+    char layoutKv[8] = {0};
+    std::strcpy(layoutKv, LayoutName(spec.layout));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus status = aclnnKvQuantSparseFlashAttentionGetWorkspaceSize(
-        queryTensor, keyTensor, valueTensor, sparseTensor, keyScaleTensor, valueScaleTensor, nullptr, actualQTensor,
-        actualKvTensor, 1.0 / std::sqrt(static_cast<double>(kQueryDim)), 2, 2, 1, layoutQuery, layoutKv, 3,
-        std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max(), 2, 1, 128, kRopeDim, outputTensor,
-        &workspaceSize, &executor);
+        queryTensor, keyTensor, valueTensor, sparseTensor, keyScaleTensor, valueScaleTensor, blockTableTensor,
+        actualQTensor, actualKvTensor, 1.0 / std::sqrt(static_cast<double>(kQueryDim)), 2, 2, 1, layoutQuery, layoutKv,
+        3, std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max(), 2, 1, 128, kRopeDim,
+        outputTensor, &workspaceSize, &executor);
+    if (spec.expectWorkspaceFailure) {
+        if (status == ACL_SUCCESS) {
+            std::printf("[FAIL] %s unexpectedly passed GetWorkspaceSize\n", spec.name.c_str());
+            return 1;
+        }
+        std::printf("[PASS] %s rejected as expected, status=%d\n", spec.name.c_str(), status);
+        return 0;
+    }
     if (status != ACL_SUCCESS) {
-        std::printf("GetWorkspaceSize failed: %d\n", status);
+        std::printf("[FAIL] %s GetWorkspaceSize status=%d\n", spec.name.c_str(), status);
         return status;
     }
-
     void *workspace = nullptr;
-    if (workspaceSize > 0 && aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST) != ACL_SUCCESS) {
-        std::printf("workspace allocation failed\n");
-        return 1;
-    }
-    if (workspace != nullptr) {
+    if (workspaceSize > 0U) {
+        if (aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST) != ACL_SUCCESS) {
+            std::printf("[FAIL] %s workspace allocation failed\n", spec.name.c_str());
+            return 1;
+        }
         resources.deviceBuffers.push_back(workspace);
-    }
-    aclrtStream stream = nullptr;
-    if (aclrtCreateStream(&stream) != ACL_SUCCESS) {
-        std::printf("stream creation failed\n");
-        return 1;
     }
     status = aclnnKvQuantSparseFlashAttention(workspace, workspaceSize, executor, stream);
     if (status == ACL_SUCCESS) {
         status = aclrtSynchronizeStream(stream);
     }
-    aclrtDestroyStream(stream);
     if (status != ACL_SUCCESS) {
-        std::printf("operator execution failed: %d\n", status);
+        std::printf("[FAIL] %s execution status=%d\n", spec.name.c_str(), status);
         return status;
     }
-
-    if (aclrtMemcpy(output.data(), output.size() * sizeof(uint16_t), outputDevice,
-                    output.size() * sizeof(uint16_t), ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
-        std::printf("output copy failed\n");
+    std::vector<uint16_t> actual(data.output.size());
+    size_t outputBytes = actual.size() * sizeof(uint16_t);
+    if (aclrtMemcpy(actual.data(), outputBytes, outputDevice, outputBytes, ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
+        std::printf("[FAIL] %s output copy failed\n", spec.name.c_str());
         return 1;
     }
+    return CompareOutput(spec, data, actual);
+}
 
-    int64_t closeCount = 0;
-    float maxAbsError = 0.0F;
-    for (int64_t i = 0; i < kNopeDim; ++i) {
-        float actual = Bf16ToFloat(output[i]);
-        float error = std::abs(actual - expected[i]);
-        float tolerance = 0.05F + 0.02F * std::abs(expected[i]);
-        closeCount += error <= tolerance;
-        maxAbsError = std::max(maxAbsError, error);
+void PrintCases(const std::vector<CaseSpec> &cases)
+{
+    for (const auto &spec : cases) {
+        std::printf("%s\n", spec.name.c_str());
     }
-    double closeRatio = static_cast<double>(closeCount) / static_cast<double>(kNopeDim);
-    std::printf("BSND BF16 full16: close_ratio=%.6f, max_abs_error=%.6f\n", closeRatio, maxAbsError);
-    return closeRatio >= 0.99 ? 0 : 1;
+}
+
+int RunCpuOnly(const CaseSpec &spec)
+{
+    PreparedCase data = PrepareCase(spec);
+    if (spec.expectWorkspaceFailure) {
+        std::printf("[SKIP] %s requires aclnn GetWorkspaceSize\n", spec.name.c_str());
+        return 0;
+    }
+    data.expected = CpuReference(spec, data);
+    if (data.expected.size() != static_cast<size_t>(ShapeSize(data.outputShape))) {
+        std::printf("[FAIL] %s CPU output size mismatch\n", spec.name.c_str());
+        return 1;
+    }
+    for (uint16_t bits : data.expected) {
+        if (!std::isfinite(DecodeQ(bits, spec.qKind))) {
+            std::printf("[FAIL] %s CPU output contains NaN/Inf\n", spec.name.c_str());
+            return 1;
+        }
+    }
+    std::printf("[PASS] %s CPU record/oracle, elements=%zu\n", spec.name.c_str(), data.expected.size());
+    return 0;
 }
 
 }  // namespace
 
-int main()
+int main(int argc, char **argv)
 {
-    constexpr int32_t deviceId = 0;
+    std::string selectedCase;
+    int32_t deviceId = 0;
+    bool listOnly = false;
+    bool cpuOnly = false;
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--list") {
+            listOnly = true;
+        } else if (arg == "--cpu-only") {
+            cpuOnly = true;
+        } else if (arg == "--case" && i + 1 < argc) {
+            selectedCase = argv[++i];
+        } else if (arg == "--device" && i + 1 < argc) {
+            deviceId = static_cast<int32_t>(std::stoi(argv[++i]));
+        } else {
+            std::printf("usage: %s [--list] [--cpu-only] [--case NAME] [--device ID]\n", argv[0]);
+            return 2;
+        }
+    }
+    auto cases = BuildCases();
+    if (listOnly) {
+        PrintCases(cases);
+        return 0;
+    }
+    if (!selectedCase.empty() &&
+        std::none_of(cases.begin(), cases.end(), [&](const CaseSpec &spec) { return spec.name == selectedCase; })) {
+        std::printf("unknown case: %s\n", selectedCase.c_str());
+        PrintCases(cases);
+        return 2;
+    }
+    if (cpuOnly) {
+        int failed = 0;
+        int executed = 0;
+        for (const auto &spec : cases) {
+            if (!selectedCase.empty() && spec.name != selectedCase) {
+                continue;
+            }
+            ++executed;
+            try {
+                failed += RunCpuOnly(spec) != 0;
+            } catch (const std::exception &error) {
+                std::printf("[FAIL] %s exception: %s\n", spec.name.c_str(), error.what());
+                ++failed;
+            }
+        }
+        std::printf("CPU summary: executed=%d passed=%d failed=%d\n", executed, executed - failed, failed);
+        return failed == 0 ? 0 : 1;
+    }
     if (aclInit(nullptr) != ACL_SUCCESS || aclrtSetDevice(deviceId) != ACL_SUCCESS) {
         std::printf("ACL initialization failed\n");
         return 1;
     }
-    int result = Run();
+    aclrtStream stream = nullptr;
+    if (aclrtCreateStream(&stream) != ACL_SUCCESS) {
+        std::printf("stream creation failed\n");
+        aclrtResetDevice(deviceId);
+        aclFinalize();
+        return 1;
+    }
+    int failed = 0;
+    int executed = 0;
+    for (const auto &spec : cases) {
+        if (!selectedCase.empty() && spec.name != selectedCase) {
+            continue;
+        }
+        ++executed;
+        try {
+            failed += RunCase(spec, stream) != 0;
+        } catch (const std::exception &error) {
+            std::printf("[FAIL] %s exception: %s\n", spec.name.c_str(), error.what());
+            ++failed;
+        }
+    }
+    aclrtDestroyStream(stream);
     aclrtResetDevice(deviceId);
     aclFinalize();
-    return result;
+    std::printf("summary: executed=%d passed=%d failed=%d\n", executed, executed - failed, failed);
+    return failed == 0 ? 0 : 1;
 }

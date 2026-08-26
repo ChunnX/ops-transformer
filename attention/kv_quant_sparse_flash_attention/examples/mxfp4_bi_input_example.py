@@ -123,8 +123,7 @@ def make_torch_inputs(records: list[bytes]):
     packed = b"".join(records)
     signed_bytes = [byte if byte < 128 else byte - 256 for byte in packed]
     key = torch.tensor(signed_bytes, dtype=torch.int8).reshape(1, len(records), 1, RECORD_BYTES)
-    # MLA V0 only reads key, but host schema still requires value with identical int8 BSND shape.
-    value = key.clone()
+    value = torch.zeros((1, len(records), 1, NOPE_DIM), dtype=torch.int8)
     # Zero query makes every QK score equal, while PV still checks the dequantized NoPE values.
     query = torch.zeros((1, 1, 1, 576), dtype=torch.bfloat16)
     sparse_indices = torch.arange(len(records), dtype=torch.int32).reshape(1, 1, 1, len(records))
