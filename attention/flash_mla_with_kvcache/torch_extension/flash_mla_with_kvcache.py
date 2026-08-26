@@ -47,7 +47,9 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
     def __init__(self):
         # Builder name == torch 公开接口名（照 flash_attn.py 惯例）；仅用作 JIT 缓存键与
         # @impl 注册名，sources() 指向同名 cpp（csrc/attention/flash_mla_with_kvcache.cpp）。
-        super(FlashMlaWithKvcacheOpBuilder, self).__init__("flash_mla_with_kvcache", category="attention")
+        super(FlashMlaWithKvcacheOpBuilder, self).__init__(
+            "flash_mla_with_kvcache", category="attention"
+        )
 
     def sources(self):
         """Path to C++ source code."""
@@ -67,7 +69,7 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
             "Tensor? attn_mask=None, Tensor? metadata=None, "
             "int head_dim_v=512, float softmax_scale=1.0, int mask_mode=0, "
             "int max_seqlen_q=-1, int max_seqlen_kv=-1, "
-            'str layout_q="TND", str layout_kv="NZ", str? layout_out=None, '
+            'str layout_q="TND", str layout_kv="PA_NZ", str? layout_out=None, '
             "bool return_softmax_lse=False) -> (Tensor, Tensor)",
         ]
 
@@ -111,7 +113,7 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
             max_seqlen_q: Optional[int] = -1,
             max_seqlen_kv: Optional[int] = -1,
             layout_q: Optional[str] = "TND",
-            layout_kv: Optional[str] = "NZ",
+            layout_kv: Optional[str] = "PA_NZ",
             layout_out: Optional[str] = None,
             return_softmax_lse: Optional[bool] = False,
         ):
@@ -222,7 +224,7 @@ def flash_mla_with_kvcache(
     max_seqlen_q: Optional[int] = -1,
     max_seqlen_kv: Optional[int] = -1,
     layout_q: Optional[str] = "TND",
-    layout_kv: Optional[str] = "NZ",
+    layout_kv: Optional[str] = "PA_NZ",
     layout_out: Optional[str] = None,
     return_softmax_lse: Optional[bool] = False,
 ):
@@ -241,7 +243,7 @@ def flash_mla_with_kvcache(
             _check_metadata_capacity(metadata, batch_size)
 
     layout_q = "TND" if layout_q is None else layout_q
-    layout_kv = "NZ" if layout_kv is None else layout_kv
+    layout_kv = "PA_NZ" if layout_kv is None else layout_kv
     # D7: 输出布局跟随 query（out==q，不支持转置）；旧默认 "NTD" 已淘汰。
     layout_out = layout_q if layout_out is None else layout_out
 

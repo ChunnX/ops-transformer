@@ -45,7 +45,8 @@ ge::graphStatus FlashMlaWithKvcacheInfoParser::GetEmptyTensorFlag()
         return false;
     };
 
-    if (checkEmptyTensor(opParamInfo_.query.shape, QUERY_NAME) || checkEmptyTensor(opParamInfo_.kCache.shape, K_CACHE_NAME) ||
+    if (checkEmptyTensor(opParamInfo_.query.shape, QUERY_NAME) ||
+        checkEmptyTensor(opParamInfo_.kCache.shape, K_CACHE_NAME) ||
         checkEmptyTensor(opParamInfo_.attnOut.shape, ATTN_OUT_NAME)) {
         emptyTensorFlag_ = true;
         return ge::GRAPH_FAILED;
@@ -120,14 +121,12 @@ ge::graphStatus FlashMlaWithKvcacheInfoParser::GetOpName()
 ge::graphStatus FlashMlaWithKvcacheInfoParser::GetNpuInfo()
 {
     platformInfo_ = context_->GetPlatformInfo();
-    OP_CHECK_IF(platformInfo_ == nullptr, OP_LOGE(opName_, "GetPlatformInfo is nullptr."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(platformInfo_ == nullptr, OP_LOGE(opName_, "GetPlatformInfo is nullptr."), return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo_);
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
-    OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."),
-                return GRAPH_FAILED);
+    OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     if (npuArch_ != NpuArch::DAV_3510) {
         OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
@@ -336,15 +335,15 @@ void FlashMlaWithKvcacheInfoParser::GetKvIsContiguous()
     bool valContig = false;
     if (keyStrides_ != nullptr) {
         const gert::Shape &keyShape = opParamInfo_.kCache.shape->GetStorageShape();
-        keyContig = (CheckTensorContiguous(keyShape.GetDimNum(), keyShape, keyStrides_, keyDimIdx) ==
-                     ge::GRAPH_SUCCESS);
+        keyContig =
+            (CheckTensorContiguous(keyShape.GetDimNum(), keyShape, keyStrides_, keyDimIdx) == ge::GRAPH_SUCCESS);
         keyNonContigDim_ = keyContig ? -1 : keyDimIdx;
     }
 
     if (valueStrides_ != nullptr) {
         const gert::Shape &valueShape = opParamInfo_.kCache.shape->GetStorageShape();
-        valContig = (CheckTensorContiguous(valueShape.GetDimNum(), valueShape, valueStrides_, valDimIdx) ==
-                     ge::GRAPH_SUCCESS);
+        valContig =
+            (CheckTensorContiguous(valueShape.GetDimNum(), valueShape, valueStrides_, valDimIdx) == ge::GRAPH_SUCCESS);
         valueNonContigDim_ = valContig ? -1 : valDimIdx;
     }
 
@@ -357,8 +356,7 @@ void FlashMlaWithKvcacheInfoParser::GetKvIsContiguous()
             valueBnStride_ = valueStrides_->GetStride(0);
             valueN2Stride_ = valueStrides_->GetStride(2);
         }
-    } else if (layoutKV_ == FlashMlaWithKvcacheLayout::PA_BNBD || layoutKV_ == FlashMlaWithKvcacheLayout::PA_NZ ||
-               layoutKV_ == FlashMlaWithKvcacheLayout::NZ) {
+    } else if (layoutKV_ == FlashMlaWithKvcacheLayout::PA_BNBD || layoutKV_ == FlashMlaWithKvcacheLayout::PA_NZ) {
         if (keyStrides_ != nullptr) {
             keyBnStride_ = keyStrides_->GetStride(0);
             keyN2Stride_ = keyStrides_->GetStride(1);
@@ -372,8 +370,9 @@ void FlashMlaWithKvcacheInfoParser::GetKvIsContiguous()
 
 void FlashMlaWithKvcacheInfoParser::GetKvStorageMode()
 {
-    bool isPaLayout = (layoutKV_ == FlashMlaWithKvcacheLayout::PA_BBND || layoutKV_ == FlashMlaWithKvcacheLayout::PA_BNBD ||
-                       layoutKV_ == FlashMlaWithKvcacheLayout::PA_NZ || layoutKV_ == FlashMlaWithKvcacheLayout::NZ);
+    bool isPaLayout =
+        (layoutKV_ == FlashMlaWithKvcacheLayout::PA_BBND || layoutKV_ == FlashMlaWithKvcacheLayout::PA_BNBD ||
+         layoutKV_ == FlashMlaWithKvcacheLayout::PA_NZ);
 
     if (isPaLayout) {
         kvStorageMode_ = KvStorageMode::PAGE_ATTENTION;
@@ -416,10 +415,11 @@ ge::graphStatus FlashMlaWithKvcacheInfoParser::GetBlockNum()
 
 ge::graphStatus FlashMlaWithKvcacheInfoParser::GetS2SizeForPageAttention()
 {
-    OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_table", "provided",
-                                                      "When layout_kv is PA, block_table must be provided but got nullptr."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        opParamInfo_.blockTable.tensor == nullptr,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_table", "provided",
+                                              "When layout_kv is PA, block_table must be provided but got nullptr."),
+        return ge::GRAPH_FAILED);
     if (GetBlockSize() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -466,8 +466,7 @@ ge::graphStatus FlashMlaWithKvcacheInfoParser::GetInAndOutLayout()
     auto itQ = layoutMap.find(opParamInfo_.layoutQ);
     if (itQ == layoutMap.end()) {
         std::string reason = "layout_q: " + std::string(opParamInfo_.layoutQ) + " is not supported.";
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q",
-                                              opParamInfo_.layoutQ, reason.c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q", opParamInfo_.layoutQ, reason.c_str());
         return ge::GRAPH_FAILED;
     }
     layoutQ_ = itQ->second;
@@ -475,8 +474,7 @@ ge::graphStatus FlashMlaWithKvcacheInfoParser::GetInAndOutLayout()
     auto itKV = layoutMap.find(opParamInfo_.layoutKV);
     if (itKV == layoutMap.end()) {
         std::string reason = "layout_kv: " + std::string(opParamInfo_.layoutKV) + " is not supported.";
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_kv",
-                                              opParamInfo_.layoutKV, reason.c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_kv", opParamInfo_.layoutKV, reason.c_str());
         return ge::GRAPH_FAILED;
     }
     layoutKV_ = itKV->second;
@@ -484,41 +482,31 @@ ge::graphStatus FlashMlaWithKvcacheInfoParser::GetInAndOutLayout()
     auto itOut = layoutMap.find(opParamInfo_.layoutOut);
     if (itOut == layoutMap.end()) {
         std::string reason = "layout_out: " + std::string(opParamInfo_.layoutOut) + " is not supported.";
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_out",
-                                              opParamInfo_.layoutOut, reason.c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_out", opParamInfo_.layoutOut, reason.c_str());
         return ge::GRAPH_FAILED;
     }
     layoutOut_ = itOut->second;
 
     // 路由约束（与 op_host/checkers/common_checker.cpp 的新布局矩阵对齐）：
-    //   q ∈ {TND, BNSD, BSND}；kv 仅分页布局 {PA_NZ, NZ, PA_BBND, PA_BNBD}（连续 KV 不放行）；out 必须等于 q。
-    // "PA_NZ" 归一为 "NZ"（kernel 侧 FiaLayout::NZ 即 PA_NZ，arch35 tiling 断言 kvLayout==NZ）。
+    //   q ∈ {TND, BNSD, BSND}；kv 仅分页布局 {PA_NZ, PA_BBND, PA_BNBD}（连续 KV 不放行）；out 必须等于 q。
     if (layoutQ_ != FlashMlaWithKvcacheLayout::TND && layoutQ_ != FlashMlaWithKvcacheLayout::BNSD &&
         layoutQ_ != FlashMlaWithKvcacheLayout::BSND) {
         std::string reason = "The value of layout_q must be TND/BNSD/BSND";
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q",
-                                              opParamInfo_.layoutQ, reason.c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q", opParamInfo_.layoutQ, reason.c_str());
         return ge::GRAPH_FAILED;
     }
-    if (layoutKV_ != FlashMlaWithKvcacheLayout::PA_NZ && layoutKV_ != FlashMlaWithKvcacheLayout::NZ &&
-        layoutKV_ != FlashMlaWithKvcacheLayout::PA_BBND && layoutKV_ != FlashMlaWithKvcacheLayout::PA_BNBD) {
+    if (layoutKV_ != FlashMlaWithKvcacheLayout::PA_NZ && layoutKV_ != FlashMlaWithKvcacheLayout::PA_BBND &&
+        layoutKV_ != FlashMlaWithKvcacheLayout::PA_BNBD) {
         std::string reason =
             "The value of layout_kv must be PA_NZ/PA_BBND/PA_BNBD (paged KV only, continuous KV is not supported)";
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_kv",
-                                              opParamInfo_.layoutKV, reason.c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_kv", opParamInfo_.layoutKV, reason.c_str());
         return ge::GRAPH_FAILED;
     }
     if (layoutOut_ != layoutQ_) {
         std::string reason = "The value of layout_out must be TND/BNSD/BSND (layout_out must equal layout_q)";
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_out",
-                                              opParamInfo_.layoutOut, reason.c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_out", opParamInfo_.layoutOut, reason.c_str());
         return ge::GRAPH_FAILED;
     }
-    // PA_NZ 归一为 NZ（kernel 侧 FiaLayout::NZ 即 PA_NZ）；PA_BNBD/PA_BBND 保持原枚举
-    if (layoutKV_ == FlashMlaWithKvcacheLayout::PA_NZ) {
-        layoutKV_ = FlashMlaWithKvcacheLayout::NZ;
-    }
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -548,13 +536,13 @@ ge::graphStatus FlashMlaWithKvcacheInfoParser::GetN2Size()
 
 void FlashMlaWithKvcacheInfoParser::SetFaShape()
 {
-    queryShape_ =
-        std::make_shared<FlashMlaWithKvcacheTilingShape>(opParamInfo_.query.shape->GetStorageShape(), layoutQ_, QUERY_NAME, opName_);
+    queryShape_ = std::make_shared<FlashMlaWithKvcacheTilingShape>(opParamInfo_.query.shape->GetStorageShape(),
+                                                                   layoutQ_, QUERY_NAME, opName_);
     // 单个 k_cache 同时承载 key 与 value（k == v 语义），key/value 形状按同一张量推导
-    keyShape_ =
-        std::make_shared<FlashMlaWithKvcacheTilingShape>(opParamInfo_.kCache.shape->GetStorageShape(), layoutKV_, K_CACHE_NAME, opName_);
-    valueShape_ =
-        std::make_shared<FlashMlaWithKvcacheTilingShape>(opParamInfo_.kCache.shape->GetStorageShape(), layoutKV_, K_CACHE_NAME, opName_);
+    keyShape_ = std::make_shared<FlashMlaWithKvcacheTilingShape>(opParamInfo_.kCache.shape->GetStorageShape(),
+                                                                 layoutKV_, K_CACHE_NAME, opName_);
+    valueShape_ = std::make_shared<FlashMlaWithKvcacheTilingShape>(opParamInfo_.kCache.shape->GetStorageShape(),
+                                                                   layoutKV_, K_CACHE_NAME, opName_);
 }
 
 ge::graphStatus FlashMlaWithKvcacheInfoParser::GetGSize()
@@ -567,8 +555,8 @@ ge::graphStatus FlashMlaWithKvcacheInfoParser::GetGSize()
     if (n1Size_ % n2Size_ != 0U) {
         std::string shapeStr = ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
                                ToString(opParamInfo_.kCache.shape->GetStorageShape());
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and k_cache",
-                                               shapeStr.c_str(), "N of query must be an integer multiple of the same axis of k_cache");
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and k_cache", shapeStr.c_str(),
+                                               "N of query must be an integer multiple of the same axis of k_cache");
         return ge::GRAPH_FAILED;
     }
     gSize_ = n1Size_ / n2Size_;
@@ -581,8 +569,7 @@ ge::graphStatus FlashMlaWithKvcacheInfoParser::GetActualSeqInfo()
     // 直接读取 host 传入的 INT32 GM buffer（cu_seqlens_q / cache_seqlens），此处只统计元素数。
     //   cu_seqlens_q  [b+1]：TND 累计语义（含头部 0）→ actualLenQDims = b + 1
     //   cache_seqlens [b]  ：每 batch 的实际 KV-cache 长度（BY_BATCH 语义）→ actualLenKvDims = b
-    actualLenQDims_ =
-        (opParamInfo_.cuSeqlensQ.tensor == nullptr) ? 0 : opParamInfo_.cuSeqlensQ.tensor->GetShapeSize();
+    actualLenQDims_ = (opParamInfo_.cuSeqlensQ.tensor == nullptr) ? 0 : opParamInfo_.cuSeqlensQ.tensor->GetShapeSize();
     actualLenKvDims_ =
         (opParamInfo_.cacheSeqlens.tensor == nullptr) ? 0 : opParamInfo_.cacheSeqlens.tensor->GetShapeSize();
     return ge::GRAPH_SUCCESS;
@@ -597,8 +584,8 @@ void FlashMlaWithKvcacheInfoParser::GenerateFeatureInfo(FlashMlaWithKvcacheTilin
 
     // Mask 参数组（maskMode ∈ {NO_MASK, RIGHT_DOWN}；attenMaskFlag = attn_mask 张量存在，FIA 语义）
     faInfo.maskMode = maskMode_;
-    faInfo.attenMaskFlag =
-        (opParamInfo_.attnMask.tensor != nullptr) && (opParamInfo_.attnMask.tensor->GetStorageShape().GetShapeSize() != 0);
+    faInfo.attenMaskFlag = (opParamInfo_.attnMask.tensor != nullptr) &&
+                           (opParamInfo_.attnMask.tensor->GetStorageShape().GetShapeSize() != 0);
     faInfo.winLeft = winLeft_;
     faInfo.winRight = winRight_;
 
@@ -628,7 +615,8 @@ void FlashMlaWithKvcacheInfoParser::GenerateLayoutInfo(FlashMlaWithKvcacheTiling
     faInfo.qLayout = layoutQ_;
     faInfo.kvLayout = layoutKV_;
     faInfo.outLayout = layoutOut_;
-    // kernel 侧 FLASH_MLA_WITH_KVCACHE_LAYOUT 数值（flash_mla_with_kvcache_public_define_arch35.h），限定路由下恒为 NTD(5)
+    // kernel 侧 FLASH_MLA_WITH_KVCACHE_LAYOUT 数值（flash_mla_with_kvcache_public_define_arch35.h），限定路由下恒为
+    // NTD(5)
     switch (layoutOut_) {
         case FlashMlaWithKvcacheLayout::BSH:
         case FlashMlaWithKvcacheLayout::BSND:
@@ -636,9 +624,6 @@ void FlashMlaWithKvcacheInfoParser::GenerateLayoutInfo(FlashMlaWithKvcacheTiling
             break;
         case FlashMlaWithKvcacheLayout::BNSD:
             faInfo.kernelOutputLayout = arch35MLA::KERNEL_LAYOUT_BNSD;
-            break;
-        case FlashMlaWithKvcacheLayout::NZ:
-            faInfo.kernelOutputLayout = arch35MLA::KERNEL_LAYOUT_NZ;
             break;
         case FlashMlaWithKvcacheLayout::TND:
             faInfo.kernelOutputLayout = arch35MLA::KERNEL_LAYOUT_TND;
@@ -771,9 +756,9 @@ ge::graphStatus FlashMlaWithKvcacheInfoParser::ParseFeatureInfo()
 {
     // Mask 参数组解析；合法集 {NO_MASK(0), RIGHT_DOWN(3)}（FIA MLA 仅验证过这两个 sparseMode）
     GetMaskParams();
-    if (maskMode_ != static_cast<int64_t>(MaskMode::NO_MASK) &&
-        maskMode_ != static_cast<int64_t>(MaskMode::CAUSAL)) {
-        OP_LOGE_FOR_INVALID_VALUE(opName_, "mask_mode", std::to_string(maskMode_).c_str(), "0 (no mask) or 3 (right-down causal)");
+    if (maskMode_ != static_cast<int64_t>(MaskMode::NO_MASK) && maskMode_ != static_cast<int64_t>(MaskMode::CAUSAL)) {
+        OP_LOGE_FOR_INVALID_VALUE(opName_, "mask_mode", std::to_string(maskMode_).c_str(),
+                                  "0 (no mask) or 3 (right-down causal)");
         return ge::GRAPH_FAILED;
     }
     if (maskMode_ == static_cast<int64_t>(MaskMode::NO_MASK) && opParamInfo_.attnMask.tensor != nullptr) {

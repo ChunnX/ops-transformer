@@ -45,15 +45,17 @@ ge::graphStatus PagedAttentionChecker::CheckSinglePara(const FlashMlaWithKvcache
         return ge::GRAPH_SUCCESS;
     }
 
-    OP_CHECK_IF(faInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || faInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_size", std::to_string(faInfo.blockSize).c_str(),
-                                                      "The value of block_size must be within the range [16, 1024]"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        faInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || faInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_size", std::to_string(faInfo.blockSize).c_str(),
+                                              "The value of block_size must be within the range [16, 1024]"),
+        return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(faInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_size", std::to_string(faInfo.blockSize).c_str(),
-                                                      "The value of block_size must be 16-aligned"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        faInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_size", std::to_string(faInfo.blockSize).c_str(),
+                                              "The value of block_size must be 16-aligned"),
+        return ge::GRAPH_FAILED);
 
     auto &blockTableTensor = faInfo.opParamInfo.blockTable.tensor;
     // 这里和存在性校验冲突了，但是为了在单参数校验校验dtype需要先判空
@@ -74,9 +76,10 @@ ge::graphStatus PagedAttentionChecker::CheckSinglePara(const FlashMlaWithKvcache
     }
 
     uint32_t dimNum = blockTableTensor->GetStorageShape().GetDimNum();
-    OP_CHECK_IF(dimNum != 2,
-                OP_LOGE_FOR_INVALID_SHAPEDIM(faInfo.opName, "block_table", (std::to_string(dimNum) + "D").c_str(), "2D"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        dimNum != 2,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(faInfo.opName, "block_table", (std::to_string(dimNum) + "D").c_str(), "2D"),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -87,17 +90,20 @@ ge::graphStatus PagedAttentionChecker::CheckParaExistence(const FlashMlaWithKvca
         // 非 PA 模式下，block_table 不应传入
         auto &blockTableTensor = faInfo.opParamInfo.blockTable.tensor;
         OP_CHECK_IF(blockTableTensor != nullptr,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_table", "provided",
-                                                          "When layout_kv is not PA (PA_BBND/PA_BNBD/PA_NZ), block_table must not be provided"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        faInfo.opName, "block_table", "provided",
+                        "When layout_kv is not PA (PA_BBND/PA_BNBD/PA_NZ), block_table must not be provided"),
                     return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }
 
     auto &blockTableTensor = faInfo.opParamInfo.blockTable.tensor;
-    OP_CHECK_IF(blockTableTensor == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_table", "provided",
-                                                      "When PagedAttention is enabled (layout_kv is PA_BBND/PA_BNBD/PA_NZ), block_table must not be empty"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        blockTableTensor == nullptr,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            faInfo.opName, "block_table", "provided",
+            "When PagedAttention is enabled (layout_kv is PA_BBND/PA_BNBD/PA_NZ), block_table must not be empty"),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -116,15 +122,16 @@ ge::graphStatus PagedAttentionChecker::CheckMultiPara(const FlashMlaWithKvcacheT
     int64_t dim1 = blockTableTensor->GetStorageShape().GetDim(1);
     if (dim0 != faInfo.bSize) {
         std::string shapeStr = Ops::Base::ToString(blockTableTensor->GetStorageShape());
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "block_table", shapeStr.c_str(),
-                                              ("The first dim of block_table must be equal to the batch size " + std::to_string(faInfo.bSize)).c_str());
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            faInfo.opName, "block_table", shapeStr.c_str(),
+            ("The first dim of block_table must be equal to the batch size " + std::to_string(faInfo.bSize)).c_str());
         return ge::GRAPH_FAILED;
     }
 
     OP_CHECK_IF(dim1 <= 0,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "block_table",
-                                                      Ops::Base::ToString(blockTableTensor->GetStorageShape()).c_str(),
-                                                      "The second dim of block_table (max block num per batch) must be greater than 0"),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    faInfo.opName, "block_table", Ops::Base::ToString(blockTableTensor->GetStorageShape()).c_str(),
+                    "The second dim of block_table (max block num per batch) must be greater than 0"),
                 return ge::GRAPH_FAILED);
 
     // PA 场景下 kvcache 非连续stride校验 (dimIndex由parser预计算); k_cache 是唯一 kv buffer
@@ -136,16 +143,15 @@ ge::graphStatus PagedAttentionChecker::CheckMultiPara(const FlashMlaWithKvcacheT
                             "but the first non-contiguous dimension is index %d.",
                             faInfo.keyNonContigDim),
                     return ge::GRAPH_FAILED);
-    } else if (faInfo.hasViewStride &&
-               (faInfo.kvLayout == FlashMlaWithKvcacheLayout::PA_BNBD ||
-                faInfo.kvLayout == FlashMlaWithKvcacheLayout::PA_NZ ||
-                faInfo.kvLayout == FlashMlaWithKvcacheLayout::NZ)) {
-        OP_CHECK_IF((faInfo.keyNonContigDim > 1),
-                    OP_LOGE(faInfo.opName,
-                            "In PA BNBD/NZ scenarios, k_cache only supports non-contiguous tensors in dimensions 0 or 1, "
-                            "but the first non-contiguous dimension is index %d.",
-                            faInfo.keyNonContigDim),
-                    return ge::GRAPH_FAILED);
+    } else if (faInfo.hasViewStride && (faInfo.kvLayout == FlashMlaWithKvcacheLayout::PA_BNBD ||
+                                        faInfo.kvLayout == FlashMlaWithKvcacheLayout::PA_NZ)) {
+        OP_CHECK_IF(
+            (faInfo.keyNonContigDim > 1),
+            OP_LOGE(faInfo.opName,
+                    "In PA BNBD/PA_NZ scenarios, k_cache only supports non-contiguous tensors in dimensions 0 or 1, "
+                    "but the first non-contiguous dimension is index %d.",
+                    faInfo.keyNonContigDim),
+            return ge::GRAPH_FAILED);
     }
 
     // Per-batch block counts consistent with cache_seqlens：值级校验在 ACLNN 直调路径下

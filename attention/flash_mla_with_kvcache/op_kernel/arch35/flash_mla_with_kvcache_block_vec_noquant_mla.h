@@ -104,7 +104,8 @@ public:
     static constexpr uint32_t CROSSCORE_L1P_2 = 7U;
     // AIV0_AIV1_OFFSET 使用全局宏（attention/common/op_kernel/buffer.h:30，=16）
 
-    // ================== 核内 Mutex ID（AIV 核内，表 2 + 注 10 枚举；mask 槽由 common 自同步、6/7 预留同 FA 排布）==================
+    // ================== 核内 Mutex ID（AIV 核内，表 2 + 注 10 枚举；mask 槽由 common 自同步、6/7 预留同 FA
+    // 排布）==================
     static constexpr uint32_t UB_OUT_VEC2_RES_EVENT0 = 0U; // vec2Res（64K@160K）V/MTE3
     static constexpr uint32_t EVENT_ID0 = 1U;              // InitOutput atten-out pop 同步（PIPE_V/PIPE_MTE3）
     static constexpr uint32_t UB_OUT_VEC1_RES_EVENT0 = 2U; // stage1/vec1Res（8.25K@224K）V/MTE3
@@ -123,18 +124,20 @@ public:
     static constexpr uint32_t UB_MM2_RES_BUF_BYTES = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
     static constexpr uint32_t UB_MM1_RES_BUFCNT = 2U;
     static constexpr uint32_t UB_MM1_RES_BUF_BYTES = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
-    static constexpr uint32_t UB_VEC2_RES_BUF_BYTES = mBaseSize / CV_RATIO * dVTemplateAlign64 * sizeof(T);      // 64K
-    static constexpr uint32_t UB_VEC1_RES_BUF_BYTES = (mBaseSize / CV_RATIO + 1) * s2BaseSize * sizeof(INPUT_T); // 8.25K
+    static constexpr uint32_t UB_VEC2_RES_BUF_BYTES = mBaseSize / CV_RATIO * dVTemplateAlign64 * sizeof(T); // 64K
+    static constexpr uint32_t UB_VEC1_RES_BUF_BYTES =
+        (mBaseSize / CV_RATIO + 1) * s2BaseSize * sizeof(INPUT_T); // 8.25K
     static constexpr uint32_t UB_MASK_BUFCNT = DB;
     static constexpr uint32_t UB_MASK_BUF_BYTES = 4096U; // attenMaskInQue[2] 各 4096B
     static constexpr uint32_t UB_SOFTMAX_BUFCNT = PRELOAD_N + 1;
-    static constexpr uint32_t UB_SOFTMAX_BUF_BYTES = 256U;                                     // SOFTMAX VF max/sum/exp 按 256B 对齐
+    static constexpr uint32_t UB_SOFTMAX_BUF_BYTES = 256U; // SOFTMAX VF max/sum/exp 按 256B 对齐
     static constexpr uint32_t UB_LSE_OUT_BUF_BYTES = mBaseSize / CV_RATIO * sizeof(float) * 8; // 1K（32×4×8）
     static constexpr uint32_t UB_BRDCST_BUF_BYTES = 1024U;                                     // max/sumBrdcst
     static constexpr uint32_t UB_TMP_BUF_BYTES = 512U;                                         // commonTBuf 512B
 
     // L1 P（A1）：vec1 写 P 的目标 = cube 的 L1 KVP 区（A1 72K 起、3×144K、每个任务 loop%3 槽）；
-    // P 在槽内 rope 段偏移 = s2BaseSize*dVBaseSize（元素，与 cube CopyKeyAndRopeTile 的 dSize*dstStride 一致，表 2 注 2）
+    // P 在槽内 rope 段偏移 = s2BaseSize*dVBaseSize（元素，与 cube CopyKeyAndRopeTile 的 dSize*dstStride 一致，表 2 注
+    // 2）
     static constexpr uint32_t L1_P_BUFCNT = 3U;
     static constexpr uint32_t L1_P_BUF_BYTES = s2BaseSize * 576 * sizeof(INPUT_T);   // 144K
     static constexpr uint32_t L1_Q_PREFIX_BYTES = mBaseSize * 576 * sizeof(INPUT_T); // 72K（cube Q 区，跳过）
@@ -215,7 +218,7 @@ public:
 
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(c1v1CrossCoreSyncIdx);
         if (unlikely(runInfo.actVecMSize == 0)) {
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(c1v1CrossCoreSyncIdx);    // 反堵 c1v1：AIC 可覆写本槽
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(c1v1CrossCoreSyncIdx); // 反堵 c1v1：AIC 可覆写本槽
             CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(v1c2CrossCoreSyncIdx); // 反堵 v1c2：本 AIV 无 P 行
             return;
         }
@@ -275,7 +278,8 @@ public:
         }
     }
 
-    __aicore__ inline void SoftmaxDataCopyOut(FlashMlaWithKvcacheRunInfoX runInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
+    __aicore__ inline void SoftmaxDataCopyOut(FlashMlaWithKvcacheRunInfoX runInfo, LocalTensor<float> &sumUb,
+                                              LocalTensor<float> &maxUb)
     {
         if constexpr (FLASH_DECODE) {
             if (runInfo.isS2SplitCore) {
@@ -363,9 +367,12 @@ public:
             Mutex::Unlock<PIPE_MTE2>(UB_IN_MASK_EVENT0 + maskBufId);
         }
 
-        LocalTensor<float> sumUb = softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_BUFCNT) * (UB_SOFTMAX_BUF_BYTES / sizeof(float))];
-        LocalTensor<float> maxUb = softmaxMaxBuf_[(runInfo.mloop % UB_SOFTMAX_BUFCNT) * (UB_SOFTMAX_BUF_BYTES / sizeof(float))];
-        LocalTensor<float> expUb = softmaxExpBuf_[(runInfo.loop % UB_SOFTMAX_BUFCNT) * (UB_SOFTMAX_BUF_BYTES / sizeof(float))];
+        LocalTensor<float> sumUb =
+            softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_BUFCNT) * (UB_SOFTMAX_BUF_BYTES / sizeof(float))];
+        LocalTensor<float> maxUb =
+            softmaxMaxBuf_[(runInfo.mloop % UB_SOFTMAX_BUFCNT) * (UB_SOFTMAX_BUF_BYTES / sizeof(float))];
+        LocalTensor<float> expUb =
+            softmaxExpBuf_[(runInfo.loop % UB_SOFTMAX_BUFCNT) * (UB_SOFTMAX_BUF_BYTES / sizeof(float))];
         LocalTensor<T> pScaleUb;
         LocalTensor<T> queryScaleUb;
         LocalTensor<uint8_t> apiTmpBuffer;
@@ -458,9 +465,12 @@ public:
 
     __aicore__ inline void Vec1PostProcess(FlashMlaWithKvcacheRunInfoX runInfo)
     {
-        LocalTensor<float> sumUb = softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_BUFCNT) * (UB_SOFTMAX_BUF_BYTES / sizeof(float))];
-        LocalTensor<float> maxUb = softmaxMaxBuf_[(runInfo.mloop % UB_SOFTMAX_BUFCNT) * (UB_SOFTMAX_BUF_BYTES / sizeof(float))];
-        LocalTensor<float> expUb = softmaxExpBuf_[(runInfo.loop % UB_SOFTMAX_BUFCNT) * (UB_SOFTMAX_BUF_BYTES / sizeof(float))];
+        LocalTensor<float> sumUb =
+            softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_BUFCNT) * (UB_SOFTMAX_BUF_BYTES / sizeof(float))];
+        LocalTensor<float> maxUb =
+            softmaxMaxBuf_[(runInfo.mloop % UB_SOFTMAX_BUFCNT) * (UB_SOFTMAX_BUF_BYTES / sizeof(float))];
+        LocalTensor<float> expUb =
+            softmaxExpBuf_[(runInfo.loop % UB_SOFTMAX_BUFCNT) * (UB_SOFTMAX_BUF_BYTES / sizeof(float))];
 
         // 首个 S2 片不折叠：NoUpdate VF 族（ProcessVec1Vf updateFlag=false）只写 slice 局部 sum/max，
         // 不填共享快照 vec1ApiTmpBuf_，折叠会读脏快照（基线守卫，行为零变化）
@@ -497,14 +507,16 @@ public:
         if (unlikely(runInfo.isFirstS2Loop)) {
             DataCopy(vec2ResUb, mmRes, vec2CalcSize);
         } else {
-            LocalTensor<float> expUb = softmaxExpBuf_[(runInfo.loop % UB_SOFTMAX_BUFCNT) * (UB_SOFTMAX_BUF_BYTES / sizeof(float))];
+            LocalTensor<float> expUb =
+                softmaxExpBuf_[(runInfo.loop % UB_SOFTMAX_BUFCNT) * (UB_SOFTMAX_BUF_BYTES / sizeof(float))];
             LocalTensor<T> pScaleUb;
 
             if (likely(!runInfo.isLastS2Loop)) {
                 FlashUpdateNew<T, INPUT_T, OUTPUT_T, dVTemplateAlign64, false, false>(
                     vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, runInfo.actVecMSize, dVTemplateAlign64, 1.0, 1.0);
             } else {
-                LocalTensor<float> sumUb = softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_BUFCNT) * (UB_SOFTMAX_BUF_BYTES / sizeof(float))];
+                LocalTensor<float> sumUb =
+                    softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_BUFCNT) * (UB_SOFTMAX_BUF_BYTES / sizeof(float))];
                 FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dVTemplateAlign64, false, false>(
                     vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, runInfo.actVecMSize, dVTemplateAlign64, 1.0,
                     1.0);
@@ -515,7 +527,8 @@ public:
         if (unlikely(runInfo.isLastS2Loop)) {
             if (unlikely(runInfo.isFirstS2Loop)) {
                 Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
-                LocalTensor<float> sumUb = softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_BUFCNT) * (UB_SOFTMAX_BUF_BYTES / sizeof(float))];
+                LocalTensor<float> sumUb =
+                    softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_BUFCNT) * (UB_SOFTMAX_BUF_BYTES / sizeof(float))];
                 LastDivNew<T, INPUT_T, OUTPUT_T, dVTemplateAlign64, false>(
                     vec2ResUb, vec2ResUb, sumUb, runInfo.actVecMSize, (uint16_t)dVTemplateAlign64, 0.0F);
                 Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
@@ -524,8 +537,8 @@ public:
         }
     }
 
-    __aicore__ inline void CopyOutAttentionOut(FlashMlaWithKvcacheRunInfoX runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
-                                               uint32_t mDealSize)
+    __aicore__ inline void CopyOutAttentionOut(FlashMlaWithKvcacheRunInfoX runInfo, LocalTensor<T> &vec2ResUb,
+                                               uint32_t mStartVec, uint32_t mDealSize)
     {
         if constexpr (FLASH_DECODE) {
             if (runInfo.isS2SplitCore) {
@@ -540,8 +553,8 @@ public:
         }
     }
 
-    __aicore__ inline void Bmm2ResCastAndCopyOut(FlashMlaWithKvcacheRunInfoX &runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
-                                                 uint32_t mDealSize)
+    __aicore__ inline void Bmm2ResCastAndCopyOut(FlashMlaWithKvcacheRunInfoX &runInfo, LocalTensor<T> &vec2ResUb,
+                                                 uint32_t mStartVec, uint32_t mDealSize)
     {
         LocalTensor<OUTPUT_T> attenOut;
         attenOut.SetAddr(vec2ResUb.address_);
@@ -614,8 +627,9 @@ public:
         }
     }
 
-    __aicore__ inline void Bmm2DataCopyOutTrans(const FlashMlaWithKvcacheRunInfoX &info, LocalTensor<OUTPUT_T> &attenOutUb,
-                                                uint32_t vecMIdx, uint32_t dealRowCount)
+    __aicore__ inline void Bmm2DataCopyOutTrans(const FlashMlaWithKvcacheRunInfoX &info,
+                                                LocalTensor<OUTPUT_T> &attenOutUb, uint32_t vecMIdx,
+                                                uint32_t dealRowCount)
     {
         GmCoord gmCoord{.bIdx = info.bIdx,
                         .n2Idx = info.n2Idx,
@@ -635,7 +649,8 @@ public:
             FaGmTensor<OUTPUT_T, OUT_FORMAT, uint32_t> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+                                              constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ,
+                                              constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::BNSD) {
@@ -643,23 +658,24 @@ public:
             FaGmTensor<OUTPUT_T, OUT_FORMAT, uint32_t> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+                                              constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ,
+                                              constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT, uint32_t, true> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
-            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ,
-                                              constInfo.actualSeqLenSize);
+            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV,
+                                              seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::NTD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::NGTD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT, uint32_t, true> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
-            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ,
-                                              constInfo.actualSeqLenSize);
+            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV,
+                                              seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::NBSD) {
@@ -667,7 +683,8 @@ public:
             FaGmTensor<OUTPUT_T, OUT_FORMAT, uint32_t> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+                                              constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ,
+                                              constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         }
@@ -695,8 +712,8 @@ public:
         Mutex::Unlock<PIPE_MTE3>(UB_BRDCST_MAX_EVENT);
     }
 
-    __aicore__ inline void ComputeLogSumExpAndCopyToGm(const FlashMlaWithKvcacheRunInfoX &runInfo, LocalTensor<float> &sumUb,
-                                                       LocalTensor<float> &maxUb)
+    __aicore__ inline void ComputeLogSumExpAndCopyToGm(const FlashMlaWithKvcacheRunInfoX &runInfo,
+                                                       LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
     {
         if (unlikely(runInfo.actVecMSize == 0)) {
             return;
@@ -707,8 +724,8 @@ public:
         BroadCastAndCopyOut(runInfo, sumUb, maxUb, gmOffset, calculateSize);
     }
 
-    __aicore__ inline void Bmm2ResForFDCopyOut(const FlashMlaWithKvcacheRunInfoX &runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
-                                               uint32_t mDealSize)
+    __aicore__ inline void Bmm2ResForFDCopyOut(const FlashMlaWithKvcacheRunInfoX &runInfo, LocalTensor<T> &vec2ResUb,
+                                               uint32_t mStartVec, uint32_t mDealSize)
     {
         int64_t dSizeAligned64 = (int64_t)FA_T::dVBaseSize;
         uint64_t gmOffset =
@@ -729,11 +746,12 @@ public:
 
         /*--------------------------------------------UB--------------------------------------------*/
         struct UbLayout {
-            uint8_t mm2ResBuffers[UB_MM2_RES_BUFCNT][UB_MM2_RES_BUF_BYTES]; // 2*64K=128K @0，CV通信BUF（与 cube 同一偏移）
+            uint8_t mm2ResBuffers[UB_MM2_RES_BUFCNT]
+                                 [UB_MM2_RES_BUF_BYTES]; // 2*64K=128K @0，CV通信BUF（与 cube 同一偏移）
             uint8_t mm1ResBuffers[UB_MM1_RES_BUFCNT][UB_MM1_RES_BUF_BYTES]; // 2*16K=32K @128K，CV通信BUF
             uint8_t vec2Res[UB_VEC2_RES_BUF_BYTES];                         // 64K @160K，vec2/输出BUF（单槽）
-            uint8_t vec1Res[UB_VEC1_RES_BUF_BYTES];                         // 8.25K @224K，stage1/softmax结果（单槽）
-            uint8_t maskBuffers[UB_MASK_BUFCNT][UB_MASK_BUF_BYTES];         // 2*4K=8K，输入BUF: MASK拷入
+            uint8_t vec1Res[UB_VEC1_RES_BUF_BYTES];                 // 8.25K @224K，stage1/softmax结果（单槽）
+            uint8_t maskBuffers[UB_MASK_BUFCNT][UB_MASK_BUF_BYTES]; // 2*4K=8K，输入BUF: MASK拷入
             uint8_t softmaxSumBuf[UB_SOFTMAX_BUFCNT][UB_SOFTMAX_BUF_BYTES]; // 2*256B，sum常驻BUF
             uint8_t softmaxMaxBuf[UB_SOFTMAX_BUFCNT][UB_SOFTMAX_BUF_BYTES]; // 2*256B，max常驻BUF
             uint8_t softmaxExpBuf[UB_SOFTMAX_BUFCNT][UB_SOFTMAX_BUF_BYTES]; // 2*256B，exp常驻BUF
@@ -782,18 +800,14 @@ public:
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CROSSCORE_BMM1_1);
     }
 
-    __aicore__ inline void UnInitCrossCoreSync()
-    {
-    }
+    __aicore__ inline void UnInitCrossCoreSync() {}
 
     __aicore__ inline void AllocEventID()
     {
         // 核内同步已全部静态化为 Mutex（表 2），无动态事件可分配
     }
 
-    __aicore__ inline void FreeEventID()
-    {
-    }
+    __aicore__ inline void FreeEventID() {}
 
     __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
                                            FlashMlaWithKvcacheRunInfoX &runInfo)
@@ -834,43 +848,9 @@ public:
         }
 
         if (!IsSkipMaskForPre) {
-            LocalTensor<uint8_t> attenMaskUbPre =
-                ubMaskBuffers_[(1 - runInfo.loop % DB) * UB_MASK_BUF_BYTES];
+            LocalTensor<uint8_t> attenMaskUbPre = ubMaskBuffers_[(1 - runInfo.loop % DB) * UB_MASK_BUF_BYTES];
             AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(attenMaskUbPre, attenMaskGmInt, maskInfo, true);
             MergeMask(attenMaskUb, attenMaskUbPre, maskInfo.gs1dealNum, s2BaseSize);
-        }
-    }
-
-    __aicore__ inline void DealZeroActSeqLen(uint32_t bN2Cur)
-    {
-        uint32_t n2Idx = bN2Cur % constInfo.n2Size;
-        uint32_t bIdx = bN2Cur / constInfo.n2Size;
-        // 对整个batch的结果置0
-        if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::BSH) {
-            OffsetCalculator<GmFormat::BSNGD, uint32_t> offsetCalculator;
-            offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                  constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
-            DealActSeqLenIsZero<GmFormat::BSNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
-        } else if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::BNSD) {
-            OffsetCalculator<GmFormat::BNGSD, uint32_t> offsetCalculator;
-            offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                  constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
-            DealActSeqLenIsZero<GmFormat::BNGSD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
-        } else if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND) {
-            OffsetCalculator<GmFormat::TNGD, uint32_t, true> offsetCalculator;
-            offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ,
-                                  constInfo.actualSeqLenSize);
-            DealActSeqLenIsZero<GmFormat::TNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
-        } else if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::NTD) {
-            OffsetCalculator<GmFormat::NGTD, uint32_t, true> offsetCalculator;
-            offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ,
-                                  constInfo.actualSeqLenSize);
-            DealActSeqLenIsZero<GmFormat::NGTD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
-        } else if (constInfo.outputLayout == FLASH_MLA_WITH_KVCACHE_LAYOUT::NBSD) {
-            OffsetCalculator<GmFormat::NGBSD, uint32_t> offsetCalculator;
-            offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                  constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
-            DealActSeqLenIsZero<GmFormat::NGBSD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
         }
     }
 };
