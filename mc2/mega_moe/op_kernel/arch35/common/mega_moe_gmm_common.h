@@ -179,6 +179,15 @@ struct Config {
         return BlockMmadTilingConfig{tileM, L1_TILE_N, DefaultL1Params()};
     }
 
+    // 持久化 BlockMmad 必须在整个生命周期内保持相同的 Init 配置。A4W4 固定使用 512K 窗口，
+    // 实际 tile M/N 仍由每次调用的 singleShape 控制，不会补算到初始化容量。
+    static __aicore__ inline BlockMmadTilingConfig MakePersistentBlockMmadTilingConfig(uint32_t tileM, uint32_t k)
+    {
+        constexpr uint64_t persistentKL1 = 2U * L1_TILE_K;
+        uint64_t kL1 = k >= persistentKL1 ? persistentKL1 : L1_TILE_K;
+        return BlockMmadTilingConfig{tileM, L1_TILE_N, MakeL1Params(kL1, kL1)};
+    }
+
     /*
      * 容量模型（只表示占用关系，不表示 BlockMmad 的实际地址顺序）：
      *
@@ -425,6 +434,25 @@ struct Config {
         config.schedulerN = IsGmm1Interleaved ? config.n : config.outputN;
         config.tileM = gmm1TileM;
         FinalizeProblemConfig(config, blockJob, gmm1TileM);
+        return config;
+    }
+
+    __aicore__ static inline ProblemConfig BuildPersistentGmm1ProblemConfig(uint32_t n, uint32_t k,
+                                                                            const BlockJobContext &blockJob,
+                                                                            uint32_t gmm1TileM)
+    {
+        ProblemConfig config;
+        config.m = gmm1TileM;
+        config.n = n;
+        config.k = k;
+        config.outputN = n / ACTIVATION_N_HALF;
+        config.schedulerN = IsGmm1Interleaved ? n : config.outputN;
+        config.tileM = gmm1TileM;
+        config.blockNum = blockJob.totalJobs;
+        config.blockIdx = blockJob.jobIndex;
+        config.scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+        config.activationTileM = TopkWeightsPrefetch ? L1_TILE_M_128 : gmm1TileM;
+        config.blockMmadTiling = MakePersistentBlockMmadTilingConfig(gmm1TileM, k);
         return config;
     }
 

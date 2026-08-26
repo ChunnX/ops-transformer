@@ -219,6 +219,44 @@ __aicore__ inline void Gmm1AicMmadToGmGeneric(WorkSet &workSet, const GMMAddrInf
     }
 }
 
+// A4W4 Wave 的 BlockMmad 已在外层完成 Init；这里只执行本核持有的 tile 并发布顺序 flag。
+template <typename MmadContext, typename WorkSet, typename Config>
+__aicore__ inline void Gmm1AicMmadToGmA4W4Wave(WorkSet &workSet, const GMMAddrInfo &gmmAddrInfo, const Config &config,
+                                               uint32_t startLoopIdx, uint32_t tileNum, int32_t &gmm1TileReadySequence,
+                                               MmadContext &blockMmadContext,
+                                               CriticalPathTileTraceContext *traceContext = nullptr)
+{
+    using BlockMmad = decltype(blockMmadContext.blockMmad);
+    auto &blockMmad = blockMmadContext.blockMmad;
+    uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
+    for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
+        auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
+        auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
+        uint32_t mLoc = Get<M_VALUE>(blockCoord);
+        uint32_t nLoc = Get<N_VALUE>(blockCoord);
+        uint32_t kLoc = Get<K_VALUE>(blockCoord);
+        auto gmBlockA = workSet.gmA.Slice(Te::MakeCoord(mLoc, kLoc),
+                                          Te::MakeShape(Get<M_VALUE>(actualShape), Get<K_VALUE>(actualShape)));
+        auto gmBlockScaleA =
+            workSet.gmScaleA.Slice(Te::MakeCoord(mLoc, 0), Te::MakeShape(Get<M_VALUE>(actualShape), config.scaleK));
+        uint32_t waveIdx = mLoc / config.tileM;
+        if (waveIdx != lastWaveWaited) {
+            uint32_t waitBegin = BeginTraceInterval(traceContext);
+            WaitForGmm1InputReady<false>(gmmAddrInfo, config, mLoc);
+            EndTraceInterval(traceContext, true, mLoc, Get<M_VALUE>(actualShape), 1U, waitBegin);
+            lastWaveWaited = waveIdx;
+        }
+        uint32_t computeBegin = BeginTraceInterval(traceContext);
+        Gmm1AicMmadTileToGmGeneric<BlockMmad, false>(blockMmad, config, workSet.gmB, workSet.gmScaleB, workSet.gmBias,
+                                                     workSet.gmC, actualShape, mLoc, nLoc, kLoc, gmBlockA,
+                                                     gmBlockScaleA);
+        AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+        EndTraceInterval(traceContext, false, mLoc, Get<M_VALUE>(actualShape), 1U, computeBegin);
+        AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag, ++gmm1TileReadySequence);
+    }
+}
+
 // 非 Prefetch 路径的 AIC 将 GMM1 tile 写入 UB，并维持与 AIV 的 ping-pong 同步。
 template <typename MmadContext, bool IsShared, bool IsGmm1Interleaved, typename WorkSet, typename Config>
 __aicore__ inline void Gmm1AicMmadGeneric(WorkSet &workSet, const GMMAddrInfo &gmmAddrInfo, const Config &config,
@@ -825,6 +863,62 @@ __aicore__ inline void Gmm1ExecGeneric(Scheduler &scheduler, const Params &param
     }
 }
 
+// A4W4 Wave 专用执行路径：BlockMmad 已在 Wave 外初始化，Activation 固定由 AIV1 从 GM 消费。
+template <typename GmmConfig, bool TopkWeightsPrefetch, typename Scheduler, typename ActivationQuantOp>
+__aicore__ inline void Gmm1ExecA4W4Wave(Scheduler &scheduler, const GMMAddrInfo &gmmAddrInfo,
+                                        typename GmmConfig::ProblemConfig &config, uint32_t startLoopIdx,
+                                        uint32_t tileNum, ActivationQuantOp &activationQuantOp,
+                                        int32_t &gmm1TileReadySequence, uint32_t expertBeforeCnt,
+                                        BlockMmadContext<typename GmmConfig::BlockMmad> *blockMmadContext,
+                                        bool allowWeightL2Bypass, CriticalPathTileTraceContext *traceContext = nullptr)
+{
+    using BlockMmad = typename GmmConfig::BlockMmad;
+    using ElementA = typename GmmConfig::ElementAType;
+    using ElementB = typename GmmConfig::ElementBType;
+    using ElementC = typename GmmConfig::ElementCType;
+    using ElementMxScaleA = typename GmmConfig::ElementMxScaleAType;
+    using ElementMxScaleB = typename GmmConfig::ElementMxScaleBType;
+    using BiasType = typename GmmConfig::BiasType;
+    using MakeLayoutC = typename GmmConfig::MakeLayoutC;
+
+    auto layouts = GmmConfig::BuildLayouts(config);
+    auto gmA = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA *>(gmmAddrInfo.aGlobal)), layouts.a);
+    auto gmB = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementB *>(gmmAddrInfo.bGlobal)), layouts.b);
+    auto gmScaleA = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleA *>(gmmAddrInfo.aScaleGlobal)),
+        layouts.scaleA);
+    auto gmScaleB = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB *>(gmmAddrInfo.bScaleGlobal)),
+        layouts.scaleB);
+    if (allowWeightL2Bypass) {
+        auto l2CacheMode = GetWaveWeightL2CacheMode<GmmConfig::IS_WEIGHT_NZ, GmmConfig>(config);
+        gmB.SetL2CacheHint(l2CacheMode.weight);
+        gmScaleB.SetL2CacheHint(l2CacheMode.scale);
+    }
+    auto gmBias =
+        Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType *>(0UL)), layouts.bias);
+    auto gmC = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementC *>(gmmAddrInfo.gmm1OutGlobal)), layouts.c);
+    AscendC::GlobalTensor<float> metaInfoGm;
+    if constexpr (TopkWeightsPrefetch && g_coreType == AscendC::AIV) {
+        metaInfoGm.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(gmmAddrInfo.metaInfoGlobal));
+    }
+
+    using WorkSetType = Gmm1WorkSet<Scheduler, decltype(gmA), decltype(gmB), decltype(gmScaleA), decltype(gmScaleB),
+                                    decltype(gmBias), decltype(gmC), decltype(metaInfoGm)>;
+    WorkSetType workSet{scheduler, gmA, gmB, gmScaleA, gmScaleB, gmBias, gmC, metaInfoGm};
+    if constexpr (g_coreType == AscendC::AIC) {
+        Gmm1AicMmadToGmA4W4Wave(workSet, gmmAddrInfo, config, startLoopIdx, tileNum, gmm1TileReadySequence,
+                                *blockMmadContext, traceContext);
+    } else {
+        Gmm1Aiv1EpilogueGeneric<ElementC, MakeLayoutC, TopkWeightsPrefetch, false, true>(
+            workSet, gmmAddrInfo, config, startLoopIdx, tileNum, gmm1TileReadySequence, activationQuantOp,
+            expertBeforeCnt, traceContext);
+    }
+}
+
 // Prefetch 路径的 AIV1 等待 GM tile 就绪，再执行 A8W4 SwiGLU/量化。
 template <typename ElementC, typename MakeLayoutC, bool IsWaveFlagGrained, typename WorkSet, typename Config,
           typename ActivationQuantOp>
@@ -928,6 +1022,21 @@ __aicore__ inline void Gmm1ExecA8W4(Scheduler &scheduler, const Params &params, 
 }
 
 } // namespace GmmKernel
+
+template <typename GmmConfig, bool TopkWeightsPrefetch, typename ActivationQuantOp>
+__aicore__ inline void RunGmm1A4W4Wave(ActivationQuantOp &activationQuantOp, const GMMAddrInfo &gmmAddrInfo,
+                                       typename GmmConfig::ProblemConfig &config, uint32_t startLoopIdx,
+                                       uint32_t tileNum, int32_t &gmm1TileReadySequence, uint32_t expertBeforeCnt,
+                                       GmmKernel::BlockMmadContext<typename GmmConfig::BlockMmad> *blockMmadContext,
+                                       bool allowWeightL2Bypass, CriticalPathTileTraceContext *traceContext = nullptr)
+{
+    GmmKernel::BlockScheduler scheduler({config.m, config.schedulerN, config.k},
+                                        GmmKernel::BlockScheduler::Params{Te::MakeCoord(
+                                            static_cast<int64_t>(config.tileM), static_cast<int64_t>(L1_TILE_N))});
+    GmmKernel::Gmm1ExecA4W4Wave<GmmConfig, TopkWeightsPrefetch>(
+        scheduler, gmmAddrInfo, config, startLoopIdx, tileNum, activationQuantOp, gmm1TileReadySequence,
+        expertBeforeCnt, blockMmadContext, allowWeightL2Bypass, traceContext);
+}
 
 template <typename ElementA, typename EpilogueElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, bool IsWeightNZ = false, uint32_t Gmm1TileM = L1_TILE_M_256,
