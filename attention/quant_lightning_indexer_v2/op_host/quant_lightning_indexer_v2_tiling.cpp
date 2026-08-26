@@ -16,7 +16,7 @@
 #include "quant_lightning_indexer_v2_tiling.h"
 
 #include "../op_kernel/quant_lightning_indexer_v2_template_tiling_key.h"
-#include "checkers/qliv2_checker.h"
+#include "quant_lightning_indexer_v2_tiling_info_parser.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -183,7 +183,7 @@ ge::graphStatus QLIV2InfoParser::CheckRequiredParaExistence() const
 ge::graphStatus QLIV2InfoParser::GetOpName()
 {
     if (context_->GetNodeName() == nullptr) {
-        OP_LOGE("LightningIndexerV2", "opName got from TilingContext is nullptr");
+        OP_LOGE("QuantLightningIndexerV2", "opName got from TilingContext is nullptr");
         return ge::GRAPH_FAILED;
     }
     opName_ = context_->GetNodeName();
@@ -1643,16 +1643,17 @@ ge::graphStatus QuantLightningIndexerV2Tiling::DoTiling(QLIV2TilingInfo *tilingI
 // --------------------------Tiling函数定义---------------------------
 ge::graphStatus TilingForQuantLightningIndexerV2(gert::TilingContext *context)
 {
-    OP_CHECK_IF(context == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("QuantLightningIndexerV2", "context",
-                                                         "Tiling context must not be null"),
+    OP_CHECK_IF(context == nullptr, OP_LOGE("QuantLightningIndexerV2", "Tiling context is null."),
                 return ge::GRAPH_FAILED);
-    if (CheckQuantLightningIndexerV2(context) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
     QLIV2TilingInfo QLIV2Info;
-    QLIV2InfoParser QLIV2InfoParser(context);
-    if (QLIV2InfoParser.ParseAndCheck(QLIV2Info) != ge::GRAPH_SUCCESS) {
+    auto platformInfoPtr = context->GetPlatformInfo();
+    OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(context, "platformInfoPtr is null"), return ge::GRAPH_FAILED);
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+    const bool useArch35Checker = ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510;
+    QLIV2InfoParser qliV2InfoParser(context);
+    const ge::graphStatus parseStatus =
+        useArch35Checker ? ParseAndCheckQLIV2Arch35(context, QLIV2Info) : qliV2InfoParser.ParseAndCheck(QLIV2Info);
+    if (parseStatus != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     QuantLightningIndexerV2Tiling QLIV2Tiling(context);
