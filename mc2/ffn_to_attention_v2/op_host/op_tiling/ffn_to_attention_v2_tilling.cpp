@@ -46,6 +46,7 @@ namespace MC2Tiling {
 constexpr size_t URMA_FLAG_SLOT_SIZE = 32U;
 constexpr size_t URMA_WORKSPACE_ALIGN = 32U;
 constexpr size_t URMA_X_TYPE_SIZE = sizeof(uint16_t);
+constexpr uint32_t BATCH_MODE_SCHEDULE = 1U;
 
 ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
 {
@@ -69,6 +70,9 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
+    OP_TILING_CHECK(context->SetScheduleMode(BATCH_MODE_SCHEDULE) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(context->GetNodeName(), "failed to enable batch schedule mode"),
+                    return ge::GRAPH_FAILED);
 
     // Reserve one token staging slot and one flag slot for every AIV. URMA WriteNbi uses these local GM slots.
     FFNToAttentionV2TilingData *tilingData = context->GetTilingData<FFNToAttentionV2TilingData>();
@@ -90,25 +94,16 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
     const size_t axisH = static_cast<size_t>(tilingData->ffnToAttentionV2Info.H);
     OP_TILING_CHECK(aivNum == 0U, OP_LOGE(context->GetNodeName(), "aivNum must be greater than zero"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(axisH > std::numeric_limits<size_t>::max() / URMA_X_TYPE_SIZE,
-                    OP_LOGE(context->GetNodeName(), "URMA token staging size overflow"), return ge::GRAPH_FAILED);
     const size_t tokenBytes = axisH * URMA_X_TYPE_SIZE;
-    OP_TILING_CHECK(tokenBytes > std::numeric_limits<size_t>::max() - (URMA_WORKSPACE_ALIGN - 1U),
-                    OP_LOGE(context->GetNodeName(), "URMA token staging alignment overflow"),
-                    return ge::GRAPH_FAILED);
     const size_t dataWorkspaceStride =
         (tokenBytes + URMA_WORKSPACE_ALIGN - 1U) / URMA_WORKSPACE_ALIGN * URMA_WORKSPACE_ALIGN;
     OP_TILING_CHECK(dataWorkspaceStride > std::numeric_limits<size_t>::max() / aivNum,
                     OP_LOGE(context->GetNodeName(), "URMA data workspace size overflow"), return ge::GRAPH_FAILED);
     const size_t dataWorkspaceSize = aivNum * dataWorkspaceStride;
-    OP_TILING_CHECK(URMA_FLAG_SLOT_SIZE > std::numeric_limits<size_t>::max() / aivNum,
-                    OP_LOGE(context->GetNodeName(), "URMA flag workspace size overflow"), return ge::GRAPH_FAILED);
     const size_t flagWorkspaceSize = aivNum * URMA_FLAG_SLOT_SIZE;
     OP_TILING_CHECK(dataWorkspaceSize > std::numeric_limits<size_t>::max() - flagWorkspaceSize,
                     OP_LOGE(context->GetNodeName(), "URMA workspace size overflow"), return ge::GRAPH_FAILED);
     const size_t urmaWorkspaceSize = dataWorkspaceSize + flagWorkspaceSize;
-    OP_TILING_CHECK(workSpaces[0] > std::numeric_limits<size_t>::max() - (URMA_WORKSPACE_ALIGN - 1U),
-                    OP_LOGE(context->GetNodeName(), "workspace alignment overflow"), return ge::GRAPH_FAILED);
     const size_t urmaWorkspaceOffset =
         (workSpaces[0] + URMA_WORKSPACE_ALIGN - 1U) / URMA_WORKSPACE_ALIGN * URMA_WORKSPACE_ALIGN;
     OP_TILING_CHECK(urmaWorkspaceOffset > std::numeric_limits<size_t>::max() - urmaWorkspaceSize,
