@@ -14,6 +14,7 @@
 #include <vector>
 #include "err/ops_err.h"
 #include "exe_graph/runtime/tiling_context.h"
+#include "exe_graph/runtime/tiling_parse_context.h"
 #include "platform/platform_info.h"
 #include "register/op_def_registry.h"
 #include "register/tilingdata_base.h"
@@ -121,7 +122,17 @@ END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(PoolKeyIndexer, PoolKeyIndexerTilingData)
 
 // ------------------ CompileInfo ------------------
-struct PoolKeyIndexerCompileInfo {};
+// 图模式(GE/torchair)必需: 注册 TilingParse 后框架才会为算子生成 compile info
+// JSON(含 _pattern 等字段), 供 FE 在图编译期解析(TbeOpTilingPyInterfaceNew ->
+// ParseAutoTilingRun)。未注册时图编译报 "compile info not contain [_pattern]"。
+struct PoolKeyIndexerCompileInfo {
+    platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
+    NpuArch npuArch = NpuArch::DAV_2201;
+    uint64_t aicNum = 0;
+    uint64_t aivNum = 0;
+    uint64_t ubSize = 0;
+    uint64_t l1Size = 0;
+};
 
 // ------------------ TilingInfo ------------------
 struct PoolKeyIndexerTilingInfo {

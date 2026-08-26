@@ -86,6 +86,28 @@ private:
                                                   int32_t L_orig, uint32_t curS1Idx,
                                                   uint32_t curS1Size);
 
+    // 标量(S pipe)与向量(V pipe)/MTE3 间必须显式硬同步, PipeBarrier<PIPE_V>
+    // 只保证 V 流水线内部有序, 不保证 S 侧读写顺序(对齐 arch35 的
+    // VToSSync/SToVSync/SToMTE3Sync 模式, 参照 bsa_select_block_mask)
+    __aicore__ inline void VToSSync()
+    {
+        event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+        SetFlag<HardEvent::V_S>(eventID);
+        WaitFlag<HardEvent::V_S>(eventID);
+    }
+    __aicore__ inline void SToVSync()
+    {
+        event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+        SetFlag<HardEvent::S_V>(eventID);
+        WaitFlag<HardEvent::S_V>(eventID);
+    }
+    __aicore__ inline void SToMTE3Sync()
+    {
+        event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
+        SetFlag<HardEvent::S_MTE3>(eventID);
+        WaitFlag<HardEvent::S_MTE3>(eventID);
+    }
+
 protected:
     GlobalTensor<MM1_OUT_T> mm1ResGm;
     GlobalTensor<float> vec1ResGm;
@@ -288,10 +310,17 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ExpandAndAppendIndices(
     PipeBarrier<PIPE_V>();
 
     if (validS2Len > 0) {
+        // V→S: poolIndices 的最近写入方为向量操作(TopK 输出 DataCopy /
+        // CreateVecIndex / -1 Duplicate 填充), 后续标量 GetValue 必须等其
+        // 可见, 否则读到陈旧/垃圾 pool 序号(对齐 arch35 同位 VToSSync)
+        VToSSync();
+
         LocalTensor<int32_t> offsetTpl = workBuf;
         for (uint32_t p = 0; p < poolSize; p++) {
             offsetTpl.SetValue(p, static_cast<int32_t>(p));
         }
+        // S→V: 模板标量写需对后续向量 Add 可见, 否则部分 lane 读到陈旧模板
+        SToVSync();
 
         uint32_t outOff = 0;
         // 展开轮数受 sparseCount(TopK 选池数)截断: validS2Len 为 causal 可见池数,
@@ -332,12 +361,15 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ExpandAndAppendIndices(
             // 污染行尾/相邻行(实测 ps=8 tail=5 时写 8 个导致整行有效)
             Duplicate<int32_t>(tokenIndices[tailPos], -1,
                                PkiCommon::Align(totalOut - tailPos, (uint32_t)8));
-            PipeBarrier<PIPE_V>();
+            // V→S: 上述 -1 向量填充必须先于标量 SetValue 落地, 否则迟到的
+            // V 写会覆盖标量写(实测图模式 mask_mode=0 且池数<sparseCount 时
+            // 尾 token 大面积丢失; arch35 同位已有 VToSSync, 本处对齐修复)
+            VToSSync();
             for (int32_t t = 0; t < visibleTailK; t++) {
                 tokenIndices.SetValue(tailPos + t, L_orig - poolTailK + t);
             }
             // SCALAR(SetValue) 写 UB 后由 MTE3(DataCopyPad) 读出, 需硬同步
-            SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+            SToMTE3Sync();
         }
     }
 }
@@ -576,6 +608,15 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec(const PkiCom
                         outQueue_.FreeTensor(outValueUb);
                     }
                     PipeBarrier<PIPE_V>();
+                    // MTE3→V: 上一行的 DataCopyPad 可能仍在读 expandOutLocal_,
+                    // 本行 ExpandAndAppendIndices 开头的 Duplicate(-1)(V 写)会覆写
+                    // 同一 UB, 必须等上一行 MTE3 读完成后才可写(行尾仅有惰性
+                    // SetWaitFlag<MTE3_V> 登记, 不构成等待; arch35 行循环头有显式
+                    // WaitFlag<MTE3_V>, 本处对齐修复)。SetFlag 由 MTE3 队尾执行,
+                    // WaitFlag 在 V 队列等待, 构成真跨流水同步。
+                    event_t evtMte3V = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+                    SetFlag<HardEvent::MTE3_V>(evtMte3V);
+                    WaitFlag<HardEvent::MTE3_V>(evtMte3V);
                     // cuRealAcSeq 对非因果为当前 batch 实际池数(actS2Size), 对因果为
                     // 逐行可见池数; 均为有效池数上界。不可回退 sparseCount: 当实际池数
                     // < sparseCount 时, TopK 结果尾部为 -1 无效池标记, 若仍按
@@ -873,6 +914,12 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessLD()
             Extract(outValueUb, outIdxUb, curValueIdxUb, (BASE_TOPK / 32));
             if (poolSize_ > 1) {
                 PipeBarrier<PIPE_V>();
+                // MTE3→V: 上一行的 DataCopyPad 可能仍在读 expandOutLocal_,
+                // 本行 ExpandAndAppendIndices 的 Duplicate(-1)(V 写)必须等其
+                // 完成(与 ProcessVec 主输出路径同位修复)
+                event_t evtMte3V = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+                SetFlag<HardEvent::MTE3_V>(evtMte3V);
+                WaitFlag<HardEvent::MTE3_V>(evtMte3V);
                 // s2ActSeq(=写入侧 cuRealAcSeq)非因果为 batch 实际池数/因果为逐行
                 // 可见池数, 不可回退 sparseCount(实际池数<sparseCount 时会展开 -1
                 // 无效池标记产生 [-ps,-1] 负索引残留, 见 ProcessVec 同位修复)
@@ -901,6 +948,12 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessLD()
             Extract(outValueUb, outIdxUb, curValueIdxUb, (BASE_TOPK / 32));
             PipeBarrier<PIPE_V>();
             if (poolSize_ > 1) {
+                // MTE3→V: 上一行的 DataCopyPad 可能仍在读 expandOutLocal_,
+                // 本行 ExpandAndAppendIndices 的 Duplicate(-1)(V 写)必须等其
+                // 完成(与 ProcessVec 主输出路径同位修复)
+                event_t evtMte3V = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+                SetFlag<HardEvent::MTE3_V>(evtMte3V);
+                WaitFlag<HardEvent::MTE3_V>(evtMte3V);
                 uint32_t validS2Len = static_cast<uint32_t>(s2ActSeq);
                 ExpandAndAppendIndices(outIdxUb.template ReinterpretCast<int32_t>(),
                                        expandOutLocal_, workLocal_,

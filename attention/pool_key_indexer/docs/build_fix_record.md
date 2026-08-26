@@ -1481,3 +1481,159 @@ int32）。代价为 +1 个 outputLen 长度 UB 模板（≤32KB）。待非 8 �
 `arch22/pool_key_indexer_service_vector.h` 的同款逐行模板构建（~291-294 行）
 可按此模式同步（arch22 的 CreateVecIndex 用法已在 ProcessVec/ProcessLD 存在，
 确认其在 910B 的 pipe 语义后移植；arch22 无需 VToSSync 的前提不变）。
+
+---
+
+# GE 图模式（TorchAir）打通与 arch22 尾块流水线竞态修复（2026-08-26）
+
+> 2026-08-26 实施。目标：使 pool_key_indexer 支持 TorchAir（GE 图）模式调用，
+> 并修复排障过程中发现的 arch22 kernel 尾块追加流水线竞态。全程 Atlas A2
+> 910B3 验证。
+
+## 一、GE 图模式打通（3 个缺失环节）
+
+### 环节 1：TilingParse 未注册 → 图编译必挂
+
+**现象**：torchair `torch.compile(fullgraph=True)` 图编译失败，表层报错被吞
+（`Tiling func of op_type PoolKeyIndexer failed`），真实报错需
+`ASCEND_SLOG_PRINT_TO_STDOUT=1` 捞取：
+
+```
+[auto_tiling_rt2.cc:120][OP_PROTO][ParseAutoTilingRun] OpName:[PoolKeyIndexer]
+"compile info not contain [_pattern]"
+```
+
+**根因**：图编译期 FE（`TbeOpTilingPyInterfaceNew` → `ParseAutoTilingRun`）
+需从算子 compile info JSON 解析 `_pattern` 等字段，该 JSON 只有注册了
+`TilingParse` 回调才会由 te 编译器生成。此前 `IMPL_OP_OPTILING(PoolKeyIndexer)`
+只注册了 `.Tiling()`，eager/aclnn 路径不走此解析所以从未暴露。
+
+**修复**（`op_host/pool_key_indexer_tiling.h/.cpp`，参照仓内
+`grouped_matmul_finalize_routing_tiling.cpp:118` 范式）：
+
+1. `tiling.h`：填充 `PoolKeyIndexerCompileInfo`（socVersion/npuArch/aicNum/
+   aivNum/ubSize/l1Size），include `tiling_parse_context.h`
+2. `tiling.cpp`：新增 `TilingPrepareForPoolKeyIndexer` 回调（写平台信息进
+   CompileInfo），注册改为 `.Tiling(...).TilingParse<PoolKeyIndexerCompileInfo>(...)`
+
+### 环节 2：图模式下 tiling 值校验硬报错 → TND/PA 编译失败
+
+**现象**：打通环节 1 后，BSND 图模式可编译，但 TND/PA 布局图编译报
+`"TND: actual_seq_q data is null, tiling sink not supported"`。
+
+**根因**：图模式下 `actual_seq_q/k/pool_tail_k` 是 device tensor，tiling 期
+（编译期）数值不可见（`GetOptionalInputTensor()->GetData<int64_t>()` 返回
+nullptr）。原 tiling 对 data==null 硬报错（假定走 tiling sink，本算子未实现）。
+kernel 侧本就运行期从 GM 读值（`GetActualSeqLen`/`poolTailKGm_.GetValue`），
+host 侧值校验只是防线，跳过不影响功能正确性。
+
+**修复**（`tiling.cpp` TND/PA 值校验分支）：data==null 时降级为跳过值校验
+（打 INFO 日志），B 值改由 shape（元素数）推导；eager 路径 data 非 null 时
+保持原校验不变。
+
+### 环节 3：converter 缺 key_stride0 → PA 非连续图模式失效
+
+**修复**（`torch_extension/.../graph_convert/graph_convert_pool_key_indexer.py`）：
+converter 补 `key_stride0` attr 下传（转换期从 tensor 元数据读 stride(0)，
+读不到回退 -1），与 eager 路径 csrc 直读 `at::Tensor::stride(0)` 对齐；属性
+顺序按 op_def 注册序（key_stride0 为第 8 个属性）。
+
+## 二、arch22 尾块追加流水线竞态（mask=0 且池数<sparseCount 时 tail 丢失）
+
+### 现象与定位
+
+GE 泛化测试 60 例中 5 例失败（eager 同参数全过）。DIAG 日志证明 eager 与
+图模式 tiling 完全一致（tilingKey=196865/aic=20），失败精确锁定在唯一让
+"-1 清理分支（validExpand<topk）+ 尾块写入分支"同行先后执行的组合：
+
+| 组合 | 清理分支 | 尾块写入 | GE 图模式 |
+|------|:---:|:---:|:---:|
+| mask=3（大 topk） | 执行 | 不执行 | ✓ |
+| mask=3（小 topk，pools≥sparse） | 不执行 | 执行 | ✓ |
+| mask=0 + pools≥sparse | 不执行 | 执行 | ✓ |
+| **mask=0 + pools<sparse** | **执行** | **执行** | **✗（~75% 行 tail 丢失）** |
+
+排除项（均有实验证据）：tiling 不同（证伪）、kernel bin 不同（证伪）、
+图模式读不到 pool_tail_k 值（mask=3+topk=64 实验 visibleTailK 正确，证伪）。
+
+### 根因：arch22 缺失 arch35 已有的同步纪律
+
+`arch22/pool_key_indexer_service_vector.h` 的 `ExpandAndAppendIndices`
+（对照 arch35 同函数 :396-407，**arch35 注释明言"否则迟到的 V 写会覆盖标量
+写(实测尾区全 -1)"——同症状已修复过，arch22 未同步**）：
+
+1. **V→S 竞态**：尾区 `Duplicate(-1)`（V 流水异步）与紧随的标量 `SetValue`
+   写尾 token 之间仅 `PipeBarrier<PIPE_V>`（只保证 V 内部有序）。S 写先发射、
+   V 写后落地时尾值被 -1 覆盖。
+2. **行间 MTE3→V 竞态**：行循环每行 `DataCopyPad`（MTE3 读 expandOutLocal_）
+   后仅惰性 `SetWaitFlag<MTE3_V>` 登记（不构成等待）；下一行 Expand 开头的
+   `Duplicate(-1)`（V 写）覆写同一 UB。arch35 行循环头有显式
+   `WaitFlag<MTE3_V>`（TOPK_MTE3_V_EVENT），arch22 没有。
+
+eager 与 GE 只是**不同 launch 时序执行同一 kernel**：aclnn 单算子下发与整图
+紧凑下发的 GM 访问延迟/跨核握手时序不同，恰好把 S 发射推进/推出 V/S 交叠
+窗口——eager 被时序掩盖，GE 稳定踩中（约 96/128 行，run 间波动是时序竞态
+签名）。
+
+### 修复（对齐 arch35 同步纪律，`arch22/pool_key_indexer_service_vector.h`）
+
+| # | 位置 | 修复 |
+|---|------|------|
+| 1 | 展开段 | `poolIndices.GetValue`（S 读）前加 `VToSSync`；offsetTpl 标量写后加 `SToVSync` |
+| 2 | 尾块段 | 尾区 `Duplicate(-1)` 与标量 `SetValue` 之间加 `VToSSync`（tail 丢失主因）；尾部惰性 `SetWaitFlag<S_MTE3>` 升级为 `SToMTE3Sync` 真等待 |
+| 3 | 行循环 3 个调用点（ProcessVec 1 处 + ProcessLD 2 处） | 每行 Expand 前加 MTE3→V 真等待（SetFlag/WaitFlag 自旋对，arch35 CleanInvalidOutput 同款写法） |
+
+新增 `VToSSync/SToVSync/SToMTE3Sync` helpers（FetchEventID 动态分配）。
+同步只增不减，eager 行为不受影响（回归证实）。
+
+### 排障环境陷阱：GE 编译缓存
+
+排障中途"修复无效"（改 kernel 后 GE 行为不变、错误行集合恒定）的元凶是
+**GE 图编译命中 `/root/atc_data/kernel_cache/Ascend910B3/` 旧编译缓存**
+（te_poolkeyindexer_* 共 216 条），重建 vendor 包不影响该缓存。清缓存后
+竞态组合立即 20/20 全对。
+
+**经验**：后续修改 pool_key_indexer kernel 并验证 GE 图模式时，必须先执行
+
+```bash
+rm -rf /root/atc_data/kernel_cache/Ascend910B3/te_poolkeyindexer_*
+```
+
+否则图模式跑的是旧 bin，结论无效。
+
+## 三、新增测试
+
+`tests/pytest/test_pool_key_indexer_ge_graph.py`（新增文件，GE 图模式定点）：
+
+- `test_ge_graph_bsnd_baseline`：BSND+causal+pooling 基线（图模式原已可用）
+- `test_ge_graph_tnd`：TND（值校验跳过路径，原编译失败）
+- `test_ge_graph_bsnd_pa` / `test_ge_graph_tnd_pa`：PA_BBND（含不等池数/-1 空槽）
+- `test_ge_graph_bsnd_pa_key_noncontig`：PA key 0 轴非连续（key_stride0 属性路径）
+- `test_ge_graph_bsnd_mask0_pools_lt_sparse_race`：**竞态回归**（精确失败组合
+  mask=0/pools=4<sparse=14/非零 tail），编译图后重复调用 20 次逐次比对
+- `test_ge_graph_tnd_mask0_pools_lt_sparse_race`：竞态回归 TND 变体（顺带覆盖
+  前缀和 device tensor 值校验跳过路径），同样 20 次压测
+
+`tests/pytest/test_pool_key_indexer_general_ge_graph.py`（新增文件，GE 泛化）：
+复用 eager 泛化的全部 60 例配置（ALL_CASES 确定性生成）+ 覆盖率汇总断言，
+执行后端替换为 torchair 编译路径；支持 `PKI_GE_GENERAL_MAX=N` 冒烟子集。
+
+## 四、验证结果（Atlas A2 910B3）
+
+| 项目 | 结果 |
+|------|------|
+| 竞态组合压力（GE，同图重复调用 20 次） | 0 bad / 20 runs（修复前 96/128 行稳定失败） |
+| GE 图模式定点（7 例，含 2 竞态回归） | 7 passed |
+| eager 定点 + 泛化 + 覆盖率收口 | 103 passed |
+| GE 泛化（60 例 + 汇总） | 61 passed（修复前 56/61） |
+| eager 竞态组合回归（3 次） | 0 bad |
+
+## 五、回退记录（排障过程中的错误方向，留档避免重蹈）
+
+排障中期曾按"REQUIRED+ValueDepend 触发 GE placeholder 替换"的推断修改
+`op_def`（去掉 pool_tail_k 的 ValueDepend）及配套 csrc/ATK/文档，引入 eager
+segfault 回归。该推断被 mask=3+topk=64 实验**直接证伪**（图模式
+visibleTailK 计算正确 → kernel 能读到真实 ptk 值）。已全部回退
+（`git checkout` def.cpp/csrc/kernel，ATK/文档手工恢复），真实根因为上述
+kernel 流水线竞态。教训：**placeholder 假设无直接证据时不应改 op_def 这种
+全局影响面最大的文件；应先做读值判别实验。**

@@ -702,28 +702,34 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
     if (info.layoutQ == PkiDataLayout::TND) {
         const gert::Tensor *asqTensor = context_->GetOptionalInputTensor(PKI_ACTUAL_SEQ_Q_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context_, asqTensor);
-        const int64_t *asqData = asqTensor->GetData<int64_t>();
-        OP_CHECK_IF(asqData == nullptr,
-                    OP_LOGE(context_, "TND: actual_seq_q data is null, tiling sink not supported"),
-                    return ge::GRAPH_FAILED);
+        // B is derived from the shape (element count), available in both eager and
+        // GE graph mode.
         int64_t asqCount = asqTensor->GetShapeSize();
         info.bSize = static_cast<uint32_t>(asqCount);
-        int64_t prev = 0;
-        for (int64_t i = 0; i < asqCount; ++i) {
-            OP_CHECK_IF(asqData[i] < 0,
-                        OP_LOGE(context_, "actual_seq_q[%ld]=%ld must be >= 0", i, asqData[i]),
-                        return ge::GRAPH_FAILED);
-            OP_CHECK_IF(asqData[i] < prev,
-                        OP_LOGE(context_, "actual_seq_q must be non-decreasing, [%ld]=%ld < prev=%ld",
-                                i, asqData[i], prev),
-                        return ge::GRAPH_FAILED);
-            prev = asqData[i];
-        }
-        if (asqCount > 0) {
-            OP_CHECK_IF(asqData[asqCount - 1] != static_cast<int64_t>(info.s1Size),
-                        OP_LOGE(context_, "actual_seq_q last(%ld) must equal query T1(%u)",
-                                asqData[asqCount - 1], info.s1Size),
-                        return ge::GRAPH_FAILED);
+        const int64_t *asqData = asqTensor->GetData<int64_t>();
+        if (asqData == nullptr) {
+            // GE graph mode: actual_seq_q is a device tensor whose values are not
+            // visible at tiling time. Skip host-side value validation; the kernel
+            // reads the prefix sums from GM at run time (GetActualSeqLen).
+            OP_LOGI(context_, "TND: actual_seq_q data is null (GE graph mode), skip value validation");
+        } else {
+            int64_t prev = 0;
+            for (int64_t i = 0; i < asqCount; ++i) {
+                OP_CHECK_IF(asqData[i] < 0,
+                            OP_LOGE(context_, "actual_seq_q[%ld]=%ld must be >= 0", i, asqData[i]),
+                            return ge::GRAPH_FAILED);
+                OP_CHECK_IF(asqData[i] < prev,
+                            OP_LOGE(context_, "actual_seq_q must be non-decreasing, [%ld]=%ld < prev=%ld",
+                                    i, asqData[i], prev),
+                            return ge::GRAPH_FAILED);
+                prev = asqData[i];
+            }
+            if (asqCount > 0) {
+                OP_CHECK_IF(asqData[asqCount - 1] != static_cast<int64_t>(info.s1Size),
+                            OP_LOGE(context_, "actual_seq_q last(%ld) must equal query T1(%u)",
+                                    asqData[asqCount - 1], info.s1Size),
+                            return ge::GRAPH_FAILED);
+            }
         }
     }
 
@@ -732,15 +738,18 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
         const gert::Tensor *askTensor = context_->GetOptionalInputTensor(PKI_ACTUAL_SEQ_K_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context_, askTensor);
         const int64_t *askData = askTensor->GetData<int64_t>();
-        OP_CHECK_IF(askData == nullptr,
-                    OP_LOGE(context_, "actual_seq_k data is null, tiling sink not supported"),
-                    return ge::GRAPH_FAILED);
         int64_t askCount = askTensor->GetShapeSize();
         OP_CHECK_IF(static_cast<uint32_t>(askCount) != info.bSize,
                     OP_LOGE(context_, "actual_seq_k count(%ld) must equal B(%u)", askCount, info.bSize),
                     return ge::GRAPH_FAILED);
 
-        if (info.layoutK == PkiDataLayout::TND) {
+        if (askData == nullptr) {
+            // GE graph mode: values not visible at tiling time. Skip host-side
+            // value validation; the kernel reads the values from GM at run time
+            // (GetActualSeqLen). The PA maxBlockNumPerSeq check is likewise
+            // deferred (block_table upper bound is enforced by kernel addressing).
+            OP_LOGI(context_, "actual_seq_k data is null (GE graph mode), skip value validation");
+        } else if (info.layoutK == PkiDataLayout::TND) {
             int64_t prev = 0;
             for (int64_t i = 0; i < askCount; ++i) {
                 OP_CHECK_IF(askData[i] < 0,
@@ -1062,7 +1071,42 @@ static ge::graphStatus TilingPoolKeyIndexer(gert::TilingContext *context)
     return tiling.DoTiling(&info);
 }
 
+// 图模式 compile info 解析回调: te 编译期调用, 将平台信息写入 CompileInfo,
+// 框架据此生成 compile info JSON(_pattern 等字段), 供 FE 图编译期解析。
+// 参照 grouped_matmul_finalize_routing / grouped_matmul_add 的注册范式。
+static ge::graphStatus TilingPrepareForPoolKeyIndexer(gert::TilingParseContext *context)
+{
+    OP_CHECK_IF(context == nullptr,
+                OP_LOGE("PoolKeyIndexer", "TilingParseContext is nullptr!"),
+                return ge::GRAPH_FAILED);
+    fe::PlatFormInfos *platformInfo = context->GetPlatformInfo();
+    OP_CHECK_IF(platformInfo == nullptr,
+                OP_LOGE(context->GetNodeName(), "TilingParse: platformInfo is nullptr"),
+                return ge::GRAPH_FAILED);
+    auto compileInfoPtr = context->GetCompiledInfo<PoolKeyIndexerCompileInfo>();
+    OP_CHECK_IF(compileInfoPtr == nullptr,
+                OP_LOGE(context->GetNodeName(), "TilingParse: compileInfoPtr is nullptr"),
+                return ge::GRAPH_FAILED);
+
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    compileInfoPtr->socVersion = ascendcPlatform.GetSocVersion();
+    compileInfoPtr->npuArch = ascendcPlatform.GetCurNpuArch();
+    compileInfoPtr->aicNum = ascendcPlatform.GetCoreNumAic();
+    compileInfoPtr->aivNum = ascendcPlatform.GetCoreNumAiv();
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfoPtr->ubSize);
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, compileInfoPtr->l1Size);
+
+    OP_LOGI(context->GetNodeName(),
+            "TilingParse: soc=%d, npuArch=%d, aicNum=%lu, aivNum=%lu, ubSize=%lu, l1Size=%lu",
+            static_cast<int32_t>(compileInfoPtr->socVersion),
+            static_cast<int32_t>(compileInfoPtr->npuArch),
+            compileInfoPtr->aicNum, compileInfoPtr->aivNum,
+            compileInfoPtr->ubSize, compileInfoPtr->l1Size);
+    return ge::GRAPH_SUCCESS;
+}
+
 IMPL_OP_OPTILING(PoolKeyIndexer)
-    .Tiling(TilingPoolKeyIndexer);
+    .Tiling(TilingPoolKeyIndexer)
+    .TilingParse<PoolKeyIndexerCompileInfo>(TilingPrepareForPoolKeyIndexer);
 
 } // namespace optiling
