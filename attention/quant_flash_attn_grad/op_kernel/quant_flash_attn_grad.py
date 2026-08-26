@@ -640,8 +640,6 @@ def compute_p_ds_vf(sp_tile, dpds_tile, sp_tile_bit8, dpds_tile_bit8, perm_tile,
         vf.scatter(dpds_tile_bit8 + ((i + 0) * 512), vf.bit_cast(vreg_ds_res1, dtype=pl.DT_INT8), vreg_perm, preg_all_8)
         vf.scatter(dpds_tile_bit8 + ((i + 1) * 512), vf.bit_cast(vreg_ds_res2, dtype=pl.DT_INT8), vreg_perm, preg_all_8)
 
-    vf.mem_bar(mode=pl.MemBarMode.VLD_VST)
-
     for i in pl.range(0, src_m, un_roll_num):
         vreg_sp1 = vf.load_align(sp_tile, (i + 4) * 128)
         vreg_sp2 = vf.load_align(sp_tile, (i + 5) * 128)
