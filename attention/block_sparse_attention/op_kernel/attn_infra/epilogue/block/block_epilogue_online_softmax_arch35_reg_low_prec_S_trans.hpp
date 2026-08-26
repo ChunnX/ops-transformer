@@ -232,7 +232,7 @@ private:
 
         Arange(arangeVreg, 0);
         Duplicate(gatherIndexVreg, 0);
-        ShiftLefts(gatherIndexVreg, (RegTensor<uint8_t> &)arangeVreg, 1, maskReg8VL64);
+        ShiftLefts(gatherIndexVreg, (RegTensor<uint8_t> &)arangeVreg, static_cast<int16_t>(1), maskReg8VL64);
         StoreAlign(gatherIndexUb, gatherIndexVreg, maskReg8All);
     }
 
