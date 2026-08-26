@@ -56,7 +56,7 @@ rank-interleave trace 按 AIV1 core/wave 累计以下互不重叠的指标：
 
 - `PrepareDispatchCounts (aggregate)`：从 cumsum 准备当前专家各 source rank 的 token 计数；
 - `RankRoundPlan (aggregate)`：规划本 core 的 compact `{rank, topkIndex}` 队列，不含嵌套的 mask 处理；
-- `RouteTable GM->UB (aggregate)`：按 source rank 批量搬入当前专家段的连续 compact ordinal 区间；
+- `RouteTable GM->UB (aggregate)`：连续下发本核实际访问的 source-rank compact slice，并统一等待一次；
 - `MaskLoadAndGather (aggregate)`：仅旧容量/编码回退路径的 mask compact 开销；
 - `TransferPipeline (aggregate)`：token/scale/meta 的 MTE2/MTE3 ring 搬运完整流程；
 - `ReadyPublish (aggregate)`：数据可见同步以及 GMM1 tile-ready counter 发布。

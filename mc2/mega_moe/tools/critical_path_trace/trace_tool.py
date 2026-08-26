@@ -233,8 +233,8 @@ EVENT_TRACE_POINTS = {
         "duration word 保存本核一次性 RoutePlan 的 GatherMask 调用总数，不代表 cycles",
     ),
     33: (
-        "PlanDispatchCoreRouteQueueFromTable 开始搬入当前 rank 的连续 compact ordinal 区间",
-        "Route Table GM->UB 完成并对 Scalar 可见（wave 内各专家/rank 累计）",
+        "PlanDispatchCoreRouteQueueFromTable 连续下发本核所需 rank 的 compact ordinal slice",
+        "全部所需 Route Table slice 经一次 MTE2_S 同步后对 Scalar 可见（wave 内各专家累计）",
     ),
     34: (
         "读取本核 route entry，并解析 rank/topkIndex、切换 remote GM 视图和计算地址（累计值）",

@@ -72,31 +72,38 @@ routeTable[rankGlobalRowBegin + compactOrdinal] = topkIndex
 每核完成自己的 pair 后写独立 cache-line done；core0 汇总所有 done，再发布一条独立
 Route Table ready。该同步不复用 Dispatch→GMM1 或 GMM2→Combine 的 flag。
 
-进入当前 expert segment 后，本核从 `cumsumInfo` 取得每个 rank 的 token 数，再按本核的固定 lane row
-游标生成任务。逻辑 row 到 source 的 rank-round-robin 映射保持不变，描述符为：
+进入当前 expert segment 后，本核从 `cumsumInfo` 取得每个 rank 的 token 数，并解析该
+segment 在每个 rank compact 序列中的 `[ordinalBegin, ordinalEnd)`。第一遍 logical-row
+扫描生成原序 `{rankId, compactOrdinal}`，并标记本核实际访问的 rank。只有这些 rank 的
+slice 会下发到 `validTopkIndexTensor` 的独立 32B 对齐区域，最后只执行一次 `MTE2_S` 等待：
+
+```text
+validTopkIndexTensor:
+[used-rank0 slice][padding][used-rank1 slice]...[used-rankN slice]
+```
+
+随后第二遍按原 task 顺序原地回填：
 
 ```text
 {rankId, compactOrdinal}
+  -> rankUbBase[rankId] + compactOrdinal - ordinalBegin
+  -> 读取 topkIndex
+  -> 原地写最终 {rankId, topkIndex} queue
 ```
 
-随后只对本核确实用到的 rank 执行：
+不均衡时，第一遍的 rank-round cursor 只在某个 rank 耗尽、进入下一个 active-rank
+interval 时更新活跃 rank 表；正常 interval 内按本核 logical row 单调推进。该流程不依赖
+单-rank 假设，任意 rank token 分布都走相同路径，也不会搬入本核没有访问的 rank slice。
+
+正常路径的 `topkIndexTensor` 只保存最终 queue：
 
 ```text
-批量搬入 Route Table 中该专家段的连续 ordinal 区间
-  -> 用 compactOrdinal 直接回填本核描述符中的 topkIndex
+[最终 {rankId, topkIndex} queue]
 ```
 
-这里不构造全 expert Layer，也不生成、复制或回放全 wave 的 compact list。规划和回填的
-逐 row 工作量都是本核任务数，约为 `segmentRows / coreCount`。
-
-正常路径的 `topkIndexTensor` 分成两个不重叠且对齐的区域：
-
-```text
-[最终 {rankId, topkIndex} queue][{rankId, ordinal} descriptor]
-```
-
-两个本核任务表分别按 32B 对齐；`validTopkIndexTensor` 暂存每个 rank 的连续 Route Table
-切片。旧 per-core mask 扫描仍作为编译期/容量保护回退，不参与正常性能路径。
+旧的 grouped descriptor、rank prefix 和 descriptor scatter 均已从共享表路径移除；
+原先“scatter 后再回填”的三遍任务扫描缩减为“原序 descriptor + 原地回填”两遍。
+旧 per-core mask 扫描仍作为编译期/容量保护回退。
 
 ## 4. 正向 rank-round-robin 任务顺序
 
@@ -184,11 +191,11 @@ trace 仅通过既有 `MEGA_MOE_ENABLE_WAVE_TRACE` 宏控制，没有新增打�
 
 ## 8. 当前需通过实测判断的开销
 
-当前版本仍有两项需要通过 trace 量化的成本：
+当前版本仍有三项需要通过 trace 量化的成本：
 
 1. 一次性 RoutePlan 在 28/32/36 核上的临界 producer 与汇总等待；
-2. 每 wave `RouteTable GM->UB` 相比原重复 GatherMask 减少的净耗时；
-3. Route queue 的 Scalar descriptor 回填是否成为新的 RankRoundPlan 主项。
+2. 本核所需 rank slice 连续下发、统一等待后的 `RouteTable GM->UB` 净耗时；
+3. 一次 logical-row source 映射与一次原地 queue 回填的 RankRoundPlan 耗时。
 
 正常路径不再使用跨-wave mask scan cursor；专家续段由统一 wave cursor 给出的
 `rowOffsetInExpert` 和 Route Table compact ordinal 直接恢复。旧 cursor 仅留在隔离回退路径。
