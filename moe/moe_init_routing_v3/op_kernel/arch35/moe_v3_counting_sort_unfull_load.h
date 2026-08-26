@@ -1,0 +1,830 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file moe_v3_counting_sort_unfull_load.h
+ * \brief 计数排序非全载（CutOrigin）模板的阶段拆分：单类 MoeV3CutOriginPhaseAB 一个 Process 内串行执行
+ *        Phase A（Filter + Count）→ Phase B（Offset + 离散搬出 + bridge 产物）。
+ *
+ *        对齐 moe_init_routing_v3_apt.cpp 中原分阶段路径的组织方式：单类 Process 内先做
+ *        FilterAndCountChunked / WriteExpertCountToWorkspace（Phase A），再做
+ *        ComputeGlobalOffset / ScatterToSortedRowIdx / bridge 产物（Phase B）。
+ *        Phase C（搬 x / 量化）由既有 Stage3（RowIdxGather）+ Stage5（搬出/量化）承接。
+ *
+ *        Phase B 在 ComputeGlobalOffset 之后多做一趟「离散搬出」ScatterToSortedRowIdx：遍历本核 pairs，
+ *        pos = offset[expertIdx]++，把源 flatIdx 离散 scatter 写到
+ *          - GATHER -> sortedRowIdx（workspace + Align(n*k)，供 Stage3/Stage5 消费）
+ *          - SCATTER -> expandedRowIdx 输出（501000/511000，Stage3 跳过、Stage5 SCATTER 分支直接读输出）
+ *        并写 expertTotalCount（workspace + 2*Align(n*k) + Align(actualExpertNum)，仅非 dropPad），供 Stage3/Stage5 分核消费。
+ *        pairs/expertCount 为 A/B 内部临时量，host 置位 pairsWsOffset 后移到头部 meta 区之后，
+ *        不与 sortedRowIdx / expandedExpertIdx / expertTotalCount 等硬编码消费者偏移重叠，不跨越 A/B -> Stage5 边界。
+ *
+ *        dropPad（500100，仅非量化 GATHER）：离散搬出同样需要（下游 RowIdxGatherDropPad / GatherOutDropPad
+ *        读 sortedRowIdx 即 expandDstToSrcRow），另补两个 GM 产物：
+ *          - expandedExpertIdx（workspace 起始区；pairs 区已后移，互不冲突）：每全局排序位置 token 的全局 expert id，
+ *            有效区 [0, expertTotalCount) 连续，无效尾区 [expertTotalCount, n*k) 填 -1；
+ *          - expertIdxValue（workspace + 2*Align(n*k) + Align(actualExpertNum)）：每下游 srcToDst 核
+ *            [lastExpertId, lastTokenCount]，供 RowIdxGatherDropPad.AssistInit 跨核推算 boundary tokenCount。
+ *        dropPad 下 expertTotalCount 不写（同一槽位是 expertIdxValue）；offset 统一为有效序列偏移
+ *        （padded 槽位改由 Stage3 依 expandedExpertIdx + 跨核 tokenCount 逐位推算）。
+ *
+ *        同步结构（单 Process 合并设计，每次 launch 全核一致，无死锁）：
+ *          - Init（仅 GATHER）：InitGlobalMemory 预填 + SyncAll（全核一次）
+ *          - Process：
+ *              - filter 核：FilterAndCountChunked → WriteExpertCountToWorkspace → SyncAll（A→B）
+ *                → ComputeGlobalOffset → ScatterToSortedRowIdx → SyncAll（B 内，全核 pairs 读毕）
+ *                → 写 bridge 产物 + WriteExpertTokens → SyncAll（B→Stage3/Stage5）
+ *              - 非 filter 核：3 次 SyncAll 后直接返回
+ *          每次 launch 所有核执行相同次数的 SyncAll，栅栏计数一致。
+ */
+#ifndef MOE_V3_COUNTING_SORT_UNFULL_LOAD_H
+#define MOE_V3_COUNTING_SORT_UNFULL_LOAD_H
+
+#include "moe_v3_common.h"
+
+namespace MoeInitRoutingV3 {
+using namespace AscendC;
+
+// 迁移说明：base 侧 moe_v3_common.h 里的 OpsBaseCeilDiv / OpsBaseCeilAlign / EXERPT_TOKENS_CUMSUM 在
+// arch35 环境中不存在（arch35 惯用 Ops::Base::CeilAlign/CeilDiv）。为完整保持 A3 迁移语义并与调用点
+// 一一对应，此处本地复刻 base 的这几个标识符（__aicore__ inline，实现与 base 完全一致）。
+// 与 moe_v3_cut_origin_arch35_t.h 中的复刻内容相同，待 CutOrigin 单类删除后本文件成为唯一定义处。
+constexpr int64_t EXERPT_TOKENS_CUMSUM = 0;
+
+template <typename T>
+__aicore__ inline T OpsBaseCeilDiv(T a, T b)
+{
+    if (b == 0) {
+        return 0;
+    }
+    return (a + b - 1) / b;
+}
+
+template <typename T>
+__aicore__ inline T OpsBaseCeilAlign(T a, T b)
+{
+    return OpsBaseCeilDiv(a, b) * b;
+}
+
+// ========================== MoeV3CutOriginPhaseAB（Phase A + Phase B 单类）==========================
+template <typename T>
+class MoeV3CutOriginPhaseAB {
+public:
+    __aicore__ inline MoeV3CutOriginPhaseAB(){};
+    __aicore__ inline void Init(GM_ADDR expertIdx, GM_ADDR expandedRowIdx, GM_ADDR expertTokens, GM_ADDR workspace,
+                                const MoeInitRoutingV3Arch35TilingData *tiling, TPipe *pipe);
+    __aicore__ inline void Process();
+
+private:
+    // Phase A
+    __aicore__ inline void FilterAndCountChunked();
+    __aicore__ inline void WriteExpertCountToWorkspace();
+    // Phase B
+    __aicore__ inline void ComputeGlobalOffset();
+    __aicore__ inline void ScatterToSortedRowIdx();
+    __aicore__ inline void WriteExpandedExpertIdx();
+    __aicore__ inline void WriteExpertIdxValue();
+    __aicore__ inline void WriteExpertTotalCount();
+    __aicore__ inline void WriteExpertTokens();
+
+private:
+    static constexpr int64_t DST_REP_STRIDE = 8;
+    static constexpr int64_t MASK_STRIDE = 64;
+
+    TPipe *pipe_;
+    TBuf<TPosition::VECCALC> buf_;
+
+    // GM tensors
+    GlobalTensor<int32_t> expertIdxGm_;
+    GlobalTensor<int32_t> expandedRowIdxGm_;
+    GlobalTensor<int32_t> pairsWorkspaceGm_;
+    GlobalTensor<int32_t> expertCountWorkspaceGm_;
+    GlobalTensor<int32_t> sortedRowIdxGm_;
+    GlobalTensor<int32_t> expertTotalCountGm_;
+    GlobalTensor<int32_t> expandedExpertIdxGm_; // dropPad：workspace 起始区（pairs 区已后移，互不冲突），每输出位置全局 expert id
+    GlobalTensor<int32_t> expertIdxValueGm_;   // dropPad：workspace + 2*Align(n*k)+Align(actualExpertNum)，coreNum*2
+    GlobalTensor<int64_t> expertTokensGm_;
+
+    // Tiling params
+    int64_t blockIdx_;
+    int64_t n_;
+    int64_t k_;
+    int64_t expertStart_;
+    int64_t expertEnd_;
+    int64_t actualExpertNum_;
+    int64_t rowIdxType_;
+    int64_t ep_;
+    int64_t filterNeedCoreNum_;
+    int64_t filterChunkSize_;
+    int64_t expertTokensNumFlag_;
+    int64_t expertTokensNumType_;
+    int64_t dropPadMode_;
+
+    // Per-core distribution（Phase A）
+    int64_t coreFlatStart_;
+    int64_t coreEntries_;
+
+    // Derived constants
+    int64_t expertCountStride_;
+    int64_t pairsPerCore_;
+    int64_t maxChunks_;
+    int64_t chunkAligned_;
+    int64_t maskBytes_;
+
+    // dropPad（500100）专用：下游 srcToDst 分核参数（Stage3 RowIdxGatherDropPad 按此分块读）
+    int64_t dropPadNeedCoreNum_;
+    int64_t dropPadPerCoreRows_;
+    int64_t dropPadLastCoreRows_;
+
+    // UB offsets
+    int64_t expertCountLocalOffset_;
+    int64_t totalCountLocalOffset_;
+    int64_t prefixSumLocalOffset_;
+    int64_t oneCoreExpertCountLocalOffset_; // batchBuf
+    int64_t expertTokensLocalOffset_;
+    int64_t persistentSize_;
+    int64_t totalBufSize_;
+    int64_t batchBufSize_;
+    int64_t pairsBatchElements_;
+    int64_t scatterFlatIdxOffset_;
+    int64_t scatterExpertIdxOffset_;
+    int64_t scatterIdxBufOffset_;
+
+    // Results
+    int64_t coreTotalPairs_;
+    int64_t expertTotalCount_;
+};
+
+template <typename T>
+__aicore__ inline void MoeV3CutOriginPhaseAB<T>::Init(GM_ADDR expertIdx, GM_ADDR expandedRowIdx, GM_ADDR expertTokens,
+                                                      GM_ADDR workspace,
+                                                      const MoeInitRoutingV3Arch35TilingData *tiling, TPipe *pipe)
+{
+    pipe_ = pipe;
+    blockIdx_ = GetBlockIdx();
+
+    // ===== Parse tiling params =====
+    n_ = tiling->n;
+    k_ = tiling->k;
+    expertStart_ = tiling->expertStart;
+    expertEnd_ = tiling->expertEnd;
+    actualExpertNum_ = tiling->actualExpertNum;
+    rowIdxType_ = tiling->rowIdxType;
+    filterNeedCoreNum_ = tiling->countingSortParamsOp.filterNeedCoreNum;
+    expertTokensNumFlag_ = tiling->expertTokensNumFlag;
+    expertTokensNumType_ = tiling->expertTokensNumType;
+    dropPadMode_ = tiling->dropPadMode;
+    ep_ = (expertStart_ == 0 && expertEnd_ == tiling->expertNum) ? 0 : 1;
+    filterChunkSize_ = COUNTING_SORT_FILTER_CHUNK_SIZE;
+
+    // ===== Per-core token distribution（Phase A）=====
+    int64_t filterPerCoreTokens = tiling->countingSortParamsOp.filterPerCoreTokens;
+    int64_t coreTokenStart = blockIdx_ * filterPerCoreTokens;
+    int64_t coreTokenEnd = Min(coreTokenStart + filterPerCoreTokens, n_);
+    if (blockIdx_ == filterNeedCoreNum_ - 1) {
+        coreTokenEnd = n_;
+    }
+    coreEntries_ = (coreTokenEnd - coreTokenStart) * k_;
+    coreFlatStart_ = coreTokenStart * k_;
+
+    // ===== Derived constants =====
+    expertCountStride_ = OpsBaseCeilAlign(actualExpertNum_, static_cast<int64_t>(8));
+    chunkAligned_ = OpsBaseCeilAlign(filterChunkSize_, static_cast<int64_t>(8));
+    maxChunks_ = Ceil(coreEntries_, filterChunkSize_);
+    maskBytes_ = OpsBaseCeilAlign(Ceil(chunkAligned_, static_cast<int64_t>(8)), static_cast<int64_t>(sizeof(int8_t)));
+
+    // Workspace stride: consistent across all cores (use max possible per-core entries)
+    int64_t lastCoreTokens = n_ - (filterNeedCoreNum_ - 1) * filterPerCoreTokens;
+    int64_t maxCoreTokens = Max(filterPerCoreTokens, lastCoreTokens);
+    int64_t maxCoreEntries = maxCoreTokens * k_;
+    pairsPerCore_ = OpsBaseCeilAlign(maxCoreEntries, static_cast<int64_t>(8)) * 2;
+
+    // ===== Setup GlobalTensors =====
+    expertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expertIdx);
+    expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx);
+
+    // ===== InitGlobalMemory: GATHER mode pre-fill expandedRowIdx with -1 =====
+    if (rowIdxType_ == GATHER) {
+        if (blockIdx_ < filterNeedCoreNum_) {
+            GlobalTensor<int32_t> expandedRowIdxGmTmp = expandedRowIdxGm_[filterPerCoreTokens * k_ * blockIdx_];
+            if (blockIdx_ == filterNeedCoreNum_ - 1) {
+                InitGlobalMemory(expandedRowIdxGmTmp, lastCoreTokens * k_, -1);
+            } else {
+                InitGlobalMemory(expandedRowIdxGmTmp, maxCoreEntries, -1);
+            }
+            SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+        }
+        SyncAll();
+    }
+
+    // ===== Workspace layout: pairs (offset pairsWsOffset) + expertCount =====
+    // pairsWsOffset 由 host 置位（meta 区之后），保证 pairs 区不与 sortedRowIdx / expandedExpertIdx /
+    // expertTotalCount 等硬编码消费者偏移（ws、ws+Align(n*k)、ws+2*Align(n*k)+Align(actualExpertNum)）重叠。
+    int64_t wsOffset = tiling->countingSortParamsOp.pairsWsOffset;
+    pairsWorkspaceGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + wsOffset);
+    wsOffset += filterNeedCoreNum_ * pairsPerCore_;
+    expertCountWorkspaceGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + wsOffset);
+
+    // sortedRowIdx 在 workspace + Align(n*k)（Stage3/Stage5 读的有序 id 列表）
+    sortedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(n_ * k_, static_cast<int64_t>(sizeof(int32_t))));
+    // expertTotalCount 在 workspace + 2*Align(n*k) + Align(actualExpertNum)（Stage3/Stage5 分核用）
+    expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
+                                        Align(n_ * k_, static_cast<int64_t>(sizeof(int32_t))) * 2 +
+                                        Align(actualExpertNum_, static_cast<int64_t>(sizeof(int32_t))));
+    // dropPad（500100）专用桥接产物，仅 dropPadMode_ == DROP_PAD_MODE 时使用：
+    // expandedExpertIdx 在 workspace 起始区，每输出位置全局 expert id，
+    // 消费者 RowIdxGatherDropPad（moe_v3_row_idx_gather_droppad_arch35.h L275）按 srcToDst perCoreRows 分块读。
+    expandedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace);
+    // expertIdxValue 在 workspace + 2*Align(n*k) + Align(actualExpertNum)（dropPad 下该槽位不写 expertTotalCount），
+    // 每核 [lastExpertId, lastTokenCount]，消费者 RowIdxGatherDropPad.AssistInit（L84-95）跨核推算 token 偏移。
+    expertIdxValueGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
+                                      Align(n_ * k_, static_cast<int64_t>(sizeof(int32_t))) * 2 +
+                                      Align(actualExpertNum_, static_cast<int64_t>(sizeof(int32_t))));
+    // 下游 srcToDst 分核参数：perCoreRows / lastCoreRows / needCoreNum
+    dropPadNeedCoreNum_ = tiling->srcToDstDropPadParamsOp.needCoreNum;
+    dropPadPerCoreRows_ = tiling->srcToDstDropPadParamsOp.perCoreRows;
+    dropPadLastCoreRows_ = tiling->srcToDstDropPadParamsOp.lastCoreRows;
+    if (expertTokensNumFlag_ != EXERPT_TOKENS_NONE) {
+        expertTokensGm_.SetGlobalBuffer((__gm__ int64_t *)expertTokens);
+    }
+
+    // ===== UB layout =====
+    // expertCountLocal（persistent）+ Max(Phase A temp, Phase B temp)：A、B 在 Process 内串行执行，
+    // 各自 temp 区永不同时存活，可共享 persistent 之后的同一段 UB。
+    int64_t expertCountAlign =
+        OpsBaseCeilAlign(expertCountStride_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
+    expertCountLocalOffset_ = 0;
+    persistentSize_ = expertCountAlign;
+
+    // Phase A temp（expertIdxLocal/expertIdxFp32Local/masks/flatIdxBuffer/gatheredExpert/gatheredIdx）
+    int64_t phaseASize = 0;
+    phaseASize +=
+        OpsBaseCeilAlign(chunkAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES); // expertIdxLocal
+    phaseASize +=
+        OpsBaseCeilAlign(chunkAligned_ * static_cast<int64_t>(sizeof(float)), BLOCK_BYTES); // expertIdxFp32Local
+    phaseASize += maskBytes_ * 3; // compareMask0/1 + gatherMask
+    phaseASize +=
+        OpsBaseCeilAlign(chunkAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES); // flatIdxBufferLocal
+    // 无 shortPath：gatheredExpert/gatheredIdx 恒计入（拆分为 GM 路径）
+    phaseASize += OpsBaseCeilAlign(chunkAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES) * 2;
+
+    // Phase B temp（totalCount + prefixSum + batchBuf + scatter temp）
+    int64_t fixedOverhead = persistentSize_ + 2 * expertCountAlign;
+    int64_t maxBatchBufSize = static_cast<int64_t>(196608) - fixedOverhead - static_cast<int64_t>(1024);
+    if (maxBatchBufSize < expertCountAlign) {
+        maxBatchBufSize = expertCountAlign;
+    }
+    int64_t allCoresBufSize =
+        OpsBaseCeilAlign(filterNeedCoreNum_ * expertCountStride_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
+    batchBufSize_ = Min(allCoresBufSize, maxBatchBufSize);
+
+    totalCountLocalOffset_ = persistentSize_;
+    prefixSumLocalOffset_ = persistentSize_ + expertCountAlign;
+    oneCoreExpertCountLocalOffset_ = persistentSize_ + 2 * expertCountAlign;
+    // expertTokensLocal 复用 prefixSum + batchBuf 区（scalar loop 后 prefixSum 不再需要）
+    expertTokensLocalOffset_ = prefixSumLocalOffset_;
+
+    // 离散搬出临时区：pairs batch（flatIdx + expertIdx）+ idxBuf，放在 batchBuf 之后
+    pairsBatchElements_ = 2048;
+    int64_t pairsBatchSlot = OpsBaseCeilAlign(pairsBatchElements_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
+    int64_t scatterBase = persistentSize_ + 2 * expertCountAlign + batchBufSize_;
+    scatterFlatIdxOffset_ = scatterBase;
+    scatterExpertIdxOffset_ = scatterBase + pairsBatchSlot;
+    scatterIdxBufOffset_ = scatterExpertIdxOffset_ + pairsBatchSlot;
+
+    int64_t scatterTempSize = pairsBatchSlot * 2 + BLOCK_BYTES;
+    int64_t phaseBSize = 2 * expertCountAlign + batchBufSize_ + scatterTempSize;
+
+    totalBufSize_ = persistentSize_ + Max(phaseASize, phaseBSize);
+    pipe_->InitBuffer(buf_, totalBufSize_);
+}
+
+template <typename T>
+__aicore__ inline void MoeV3CutOriginPhaseAB<T>::Process()
+{
+    if (blockIdx_ >= filterNeedCoreNum_) {
+        // 非 filter 核不参与 A/B 计算，但必须参与所有 SyncAll 栅栏（与 filter 核计数一致），保证无死锁。
+        SyncAll();
+        SyncAll();
+        SyncAll();
+        return;
+    }
+
+    // ===== Phase A: filter + count =====
+    FilterAndCountChunked();
+    WriteExpertCountToWorkspace();
+    SyncAll(); // A→B：所有核看到各自 expertCount
+
+    // ===== Phase B: global offset + discrete scatter + bridge products =====
+    ComputeGlobalOffset();
+    ScatterToSortedRowIdx();
+    SyncAll(); // B 内：所有核 pairs 读毕、离散搬出完成，之后原地覆写 workspace 起始区
+    if (dropPadMode_ == DROP_PAD_MODE) {
+        // dropPad：离散搬出后补两个桥接产物（expandedExpertIdx + expertIdxValue），
+        // 供 Stage3 RowIdxGatherDropPad 消费；expertTotalCount 在 dropPad 下不写（同一槽位是 expertIdxValue）。
+        WriteExpandedExpertIdx();
+        WriteExpertIdxValue();
+    } else {
+        WriteExpertTotalCount();
+    }
+    if (expertTokensNumFlag_ != EXERPT_TOKENS_NONE) {
+        WriteExpertTokens();
+    }
+    SyncAll(); // B→Stage3/Stage5：bridge 产物落定，下游可安全读取
+}
+
+// ========================== FilterAndCountChunked（Phase A）==========================
+template <typename T>
+__aicore__ inline void MoeV3CutOriginPhaseAB<T>::FilterAndCountChunked()
+{
+    LocalTensor<int32_t> expertCountLocal = buf_.Get<int32_t>()[expertCountLocalOffset_ / sizeof(int32_t)];
+
+    // Vectorized initialization
+    Duplicate(expertCountLocal, static_cast<int32_t>(0), static_cast<int32_t>(expertCountStride_));
+    SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
+
+    int64_t pairCursor = 0;
+
+    for (int64_t chunkIdx = 0; chunkIdx < maxChunks_; chunkIdx++) {
+        int64_t chunkStart = chunkIdx * filterChunkSize_;
+        int64_t chunkLength = Min(filterChunkSize_, coreEntries_ - chunkStart);
+        int64_t gmFlatOffset = coreFlatStart_ + chunkStart;
+
+        int64_t filteredInChunk = 0;
+
+        if (ep_ == 0) {
+            // ===== No filtering: all entries valid (expertStart_==0, expertEnd_==expertNum) =====
+            int64_t off = persistentSize_;
+            int64_t expertIdxOff = off;
+            off += OpsBaseCeilAlign(chunkAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
+            int64_t flatIdxOff = off;
+            off += OpsBaseCeilAlign(chunkAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
+            int64_t expertIdxCopyOff = off; // V-written copy for scalar reads
+
+            LocalTensor<int32_t> expertIdxLocal = buf_.Get<int32_t>()[expertIdxOff / sizeof(int32_t)];
+            LocalTensor<int32_t> flatIdxLocal = buf_.Get<int32_t>()[flatIdxOff / sizeof(int32_t)];
+            LocalTensor<int32_t> expertIdxCopyLocal = buf_.Get<int32_t>()[expertIdxCopyOff / sizeof(int32_t)];
+
+            if (chunkIdx > 0) {
+                SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+            }
+
+            DataCopyExtParams copyParams{static_cast<uint16_t>(1),
+                                         static_cast<uint32_t>(chunkLength * sizeof(int32_t)), 0, 0, 0};
+            DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
+            DataCopyPad(expertIdxLocal, expertIdxGm_[gmFlatOffset], copyParams, padParams);
+            SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
+
+            Adds(expertIdxCopyLocal, expertIdxLocal, static_cast<int32_t>(0), static_cast<int32_t>(chunkLength));
+            ArithProgression<int32_t>(flatIdxLocal, static_cast<int32_t>(gmFlatOffset), 1,
+                                      static_cast<int32_t>(chunkLength));
+            PipeBarrier<PIPE_V>();
+            SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
+
+            for (int64_t j = 0; j < chunkLength; j++) {
+                int32_t expertVal = expertIdxCopyLocal.GetValue(j);
+                int32_t curCount = expertCountLocal.GetValue(expertVal);
+                expertCountLocal.SetValue(expertVal, curCount + 1);
+            }
+
+            filteredInChunk = chunkLength;
+
+            SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+            DataCopyExtParams wpCopyParams{static_cast<uint16_t>(1),
+                                           static_cast<uint32_t>(filteredInChunk * sizeof(int32_t)), 0, 0, 0};
+            DataCopyPad(pairsWorkspaceGm_[blockIdx_ * pairsPerCore_ + pairCursor], flatIdxLocal, wpCopyParams);
+            DataCopyPad(pairsWorkspaceGm_[blockIdx_ * pairsPerCore_ + pairsPerCore_ / 2 + pairCursor], expertIdxLocal,
+                        wpCopyParams);
+        } else {
+            // ===== Vector filter path =====
+            int64_t off = persistentSize_;
+            int64_t expertIdxOff = off;
+            off += OpsBaseCeilAlign(chunkAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
+
+            LocalTensor<int32_t> expertIdxLocal = buf_.Get<int32_t>()[expertIdxOff / sizeof(int32_t)];
+            DataCopyExtParams copyParams{static_cast<uint16_t>(1),
+                                         static_cast<uint32_t>(chunkLength * sizeof(int32_t)), 0, 0, 0};
+            DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
+            DataCopyPad(expertIdxLocal, expertIdxGm_[gmFlatOffset], copyParams, padParams);
+
+            SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
+            SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
+
+            int64_t alignedLen = Ceil(chunkLength, ONE_REPEAT_COMPARE_NUM) * ONE_REPEAT_COMPARE_NUM;
+
+            int64_t expertIdxFp32Off = off;
+            off += OpsBaseCeilAlign(chunkAligned_ * static_cast<int64_t>(sizeof(float)), BLOCK_BYTES);
+            int64_t compareMask0Off = off;
+            off += maskBytes_;
+            int64_t compareMask1Off = off;
+            off += maskBytes_;
+            int64_t gatherMaskOff = off;
+            off += maskBytes_;
+            int64_t flatIdxBufferOff = off;
+            off += OpsBaseCeilAlign(chunkAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
+
+            int64_t gatheredExpertOff = off;
+            off += OpsBaseCeilAlign(chunkAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
+            int64_t gatheredIdxOff = off;
+            off += OpsBaseCeilAlign(chunkAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
+
+            LocalTensor<float> expertIdxFp32Local = buf_.Get<float>()[expertIdxFp32Off / sizeof(float)];
+            Cast(expertIdxFp32Local, expertIdxLocal, RoundMode::CAST_ROUND, alignedLen);
+            PipeBarrier<PIPE_V>();
+
+            LocalTensor<uint8_t> compareMask0 = buf_.Get<uint8_t>()[compareMask0Off];
+            LocalTensor<uint8_t> compareMask1 = buf_.Get<uint8_t>()[compareMask1Off];
+            LocalTensor<uint8_t> gatherMaskLocal = buf_.Get<uint8_t>()[gatherMaskOff];
+
+            CompareScalar(compareMask0, expertIdxFp32Local, static_cast<float>(expertStart_), CMPMODE::GE, alignedLen);
+            PipeBarrier<PIPE_V>();
+            CompareScalar(compareMask1, expertIdxFp32Local, static_cast<float>(expertEnd_), CMPMODE::LT, alignedLen);
+            PipeBarrier<PIPE_V>();
+            And(gatherMaskLocal.ReinterpretCast<uint16_t>(), compareMask0.ReinterpretCast<uint16_t>(),
+                compareMask1.ReinterpretCast<uint16_t>(),
+                Ceil(alignedLen, MASK_STRIDE) * MASK_STRIDE / DST_REP_STRIDE / 2);
+            PipeBarrier<PIPE_V>();
+
+            LocalTensor<int32_t> gatheredExpertLocal = buf_.Get<int32_t>()[gatheredExpertOff / sizeof(int32_t)];
+            uint64_t rsvdCnt = 0;
+            GatherMaskParams gatherMaskParams;
+            gatherMaskParams.repeatTimes = 1;
+            gatherMaskParams.src0BlockStride = 1;
+            gatherMaskParams.src0RepeatStride = DST_REP_STRIDE;
+            gatherMaskParams.src1RepeatStride = DST_REP_STRIDE;
+            GatherMask(gatheredExpertLocal, expertIdxLocal, gatherMaskLocal.ReinterpretCast<uint32_t>(), true,
+                       static_cast<uint32_t>(chunkLength), gatherMaskParams, rsvdCnt);
+            PipeBarrier<PIPE_V>();
+            filteredInChunk = static_cast<int64_t>(rsvdCnt);
+
+            if (filteredInChunk > 0) {
+                LocalTensor<int32_t> flatIdxBufferLocal = buf_.Get<int32_t>()[flatIdxBufferOff / sizeof(int32_t)];
+                ArithProgression<int32_t>(flatIdxBufferLocal, static_cast<int32_t>(gmFlatOffset), 1,
+                                          static_cast<int32_t>(chunkLength));
+                PipeBarrier<PIPE_V>();
+
+                LocalTensor<int32_t> gatheredIdxLocal = buf_.Get<int32_t>()[gatheredIdxOff / sizeof(int32_t)];
+                uint64_t idxRsvdCnt = 0;
+                GatherMask(gatheredIdxLocal, flatIdxBufferLocal, gatherMaskLocal.ReinterpretCast<uint32_t>(), true,
+                           static_cast<uint32_t>(chunkLength), gatherMaskParams, idxRsvdCnt);
+                PipeBarrier<PIPE_V>();
+
+                Adds(gatheredExpertLocal, gatheredExpertLocal, static_cast<int32_t>(-expertStart_),
+                     static_cast<int32_t>(filteredInChunk));
+
+                SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
+
+                for (int64_t j = 0; j < filteredInChunk; j++) {
+                    int32_t expertOffset = gatheredExpertLocal.GetValue(j);
+                    int32_t curCount = expertCountLocal.GetValue(expertOffset);
+                    expertCountLocal.SetValue(expertOffset, curCount + 1);
+                }
+
+                SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+
+                DataCopyExtParams wpCopyParams{static_cast<uint16_t>(1),
+                                               static_cast<uint32_t>(filteredInChunk * sizeof(int32_t)), 0, 0, 0};
+                DataCopyPad(pairsWorkspaceGm_[blockIdx_ * pairsPerCore_ + pairCursor], gatheredIdxLocal, wpCopyParams);
+                DataCopyPad(pairsWorkspaceGm_[blockIdx_ * pairsPerCore_ + pairsPerCore_ / 2 + pairCursor],
+                            gatheredExpertLocal, wpCopyParams);
+            }
+        }
+
+        pairCursor += filteredInChunk;
+    }
+    SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+}
+
+// ========================== WriteExpertCountToWorkspace（Phase A）==========================
+template <typename T>
+__aicore__ inline void MoeV3CutOriginPhaseAB<T>::WriteExpertCountToWorkspace()
+{
+    LocalTensor<int32_t> expertCountLocal = buf_.Get<int32_t>()[expertCountLocalOffset_ / sizeof(int32_t)];
+
+    SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+    DataCopyExtParams copyParams{static_cast<uint16_t>(1),
+                                 static_cast<uint32_t>(expertCountStride_ * sizeof(int32_t)), 0, 0, 0};
+    DataCopyPad(expertCountWorkspaceGm_[blockIdx_ * expertCountStride_], expertCountLocal, copyParams);
+}
+
+// ========================== ComputeGlobalOffset（Phase B）==========================
+template <typename T>
+__aicore__ inline void MoeV3CutOriginPhaseAB<T>::ComputeGlobalOffset()
+{
+    // Invalidate cache to see workspace writes from all cores (Phase A)
+    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(expertCountWorkspaceGm_);
+
+    int64_t expertCountAlign =
+        OpsBaseCeilAlign(expertCountStride_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
+    int64_t batchCores = batchBufSize_ / expertCountAlign;
+    if (batchCores > filterNeedCoreNum_) {
+        batchCores = filterNeedCoreNum_;
+    }
+    if (batchCores < 1) {
+        batchCores = 1;
+    }
+
+    LocalTensor<int32_t> batchBufLocal = buf_.Get<int32_t>()[oneCoreExpertCountLocalOffset_ / sizeof(int32_t)];
+    LocalTensor<int32_t> totalCountLocal = buf_.Get<int32_t>()[totalCountLocalOffset_ / sizeof(int32_t)];
+    LocalTensor<int32_t> prefixSumLocal = buf_.Get<int32_t>()[prefixSumLocalOffset_ / sizeof(int32_t)];
+    LocalTensor<int32_t> expertCountLocal = buf_.Get<int32_t>()[expertCountLocalOffset_ / sizeof(int32_t)];
+
+    Duplicate(totalCountLocal, static_cast<int32_t>(0), static_cast<int32_t>(expertCountStride_));
+    PipeBarrier<PIPE_V>();
+    Duplicate(prefixSumLocal, static_cast<int32_t>(0), static_cast<int32_t>(expertCountStride_));
+    PipeBarrier<PIPE_V>();
+
+    DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
+    coreTotalPairs_ = 0;
+    for (int64_t batchStart = 0; batchStart < filterNeedCoreNum_; batchStart += batchCores) {
+        int64_t batchEnd = Min(batchStart + batchCores, filterNeedCoreNum_);
+        int64_t curBatchSize = batchEnd - batchStart;
+
+        int64_t batchElements = curBatchSize * expertCountStride_;
+        DataCopyExtParams loadParams{static_cast<uint16_t>(1),
+                                     static_cast<uint32_t>(batchElements * sizeof(int32_t)), 0, 0, 0};
+        DataCopyPad(batchBufLocal, expertCountWorkspaceGm_[batchStart * expertCountStride_], loadParams, padParams);
+        SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
+
+        for (int64_t c = 0; c < curBatchSize; c++) {
+            Add(totalCountLocal, totalCountLocal, batchBufLocal[c * expertCountStride_], expertCountStride_);
+            PipeBarrier<PIPE_V>();
+        }
+
+        for (int64_t c = 0; c < curBatchSize; c++) {
+            int64_t globalCoreIdx = batchStart + c;
+            if (globalCoreIdx < blockIdx_) {
+                Add(prefixSumLocal, prefixSumLocal, batchBufLocal[c * expertCountStride_], expertCountStride_);
+                PipeBarrier<PIPE_V>();
+            }
+        }
+
+        // 捕获本核 pair 总数（sum over experts of this core's expertCount）
+        if (batchStart <= blockIdx_ && blockIdx_ < batchEnd) {
+            SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
+            int64_t coreIdxInBatch = blockIdx_ - batchStart;
+            for (int64_t e = 0; e < actualExpertNum_; e++) {
+                coreTotalPairs_ += batchBufLocal.GetValue(coreIdxInBatch * expertCountStride_ + e);
+            }
+        }
+
+        if (batchStart + batchCores < filterNeedCoreNum_) {
+            SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
+        }
+    }
+
+    SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
+
+    // Scalar: compute per-expert global offset -> store in expertCountLocal（即 offset 数组）。
+    // dropPad 与非 dropPad 统一为「有效序列」偏移：offset[e] = 全局前缀(cumulativeSum) + 本核前缀(prefixForExpert)。
+    // 该偏移即离散搬出 pos（[0, expertTotalCount) 连续区）；dropPad 的 padded 槽位不再在此计算，
+    // 改由 Stage3 RowIdxGatherDropPad 依据 expandedExpertIdx + 跨核 tokenCount 在 CopyOut 中逐位推算。
+    int64_t cumulativeSum = 0;
+    for (int64_t e = 0; e < actualExpertNum_; e++) {
+        int32_t totalForExpert = totalCountLocal.GetValue(e);
+        int32_t prefixForExpert = prefixSumLocal.GetValue(e);
+        expertCountLocal.SetValue(e, static_cast<int32_t>(cumulativeSum) + prefixForExpert);
+        cumulativeSum += totalForExpert;
+    }
+    // expertTotalCount：有效（非 pad）token 总数，仅非 dropPad 场景写 GM 供 Stage3/Stage5 分核；
+    // dropPad 场景不消费此值（同一 GM 槽位复用为 expertIdxValueGm_，padding 由 outputRows_/expandedExpertIdx 表达）。
+    expertTotalCount_ = cumulativeSum;
+}
+
+// ========================== ScatterToSortedRowIdx（Phase B）==========================
+// 离散搬出：遍历本核 pairs，pos = offset[expertIdx]++，把源 flatIdx 离散 scatter 写到
+// GATHER -> sortedRowIdxGm_（workspace+Align(n*k)，供 Stage3/Stage5 消费）
+// SCATTER -> expandedRowIdxGm_（直接写输出 expandedRowIdx，Stage3 跳过、Stage5 SCATTER 分支直接读输出）。
+// 这是计数排序的「第二趟稳定放置」，与 Stage5 的顺序 gather 方向相反。
+template <typename T>
+__aicore__ inline void MoeV3CutOriginPhaseAB<T>::ScatterToSortedRowIdx()
+{
+    if (coreTotalPairs_ <= 0) {
+        return;
+    }
+
+    // Invalidate cache to see pairs written in Phase A
+    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(pairsWorkspaceGm_);
+
+    LocalTensor<int32_t> expertCountLocal = buf_.Get<int32_t>()[expertCountLocalOffset_ / sizeof(int32_t)];
+    LocalTensor<int32_t> flatIdxLocal = buf_.Get<int32_t>()[scatterFlatIdxOffset_ / sizeof(int32_t)];
+    LocalTensor<int32_t> expertIdxLocal = buf_.Get<int32_t>()[scatterExpertIdxOffset_ / sizeof(int32_t)];
+    LocalTensor<int32_t> idxBuf = buf_.Get<int32_t>()[scatterIdxBufOffset_ / sizeof(int32_t)];
+
+    DataCopyPadExtParams<int32_t> intPadParams{false, 0, 0, 0};
+    DataCopyExtParams idxCopyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t)), 0, 0, 0};
+
+    int64_t pairCursor = 0;
+    while (pairCursor < coreTotalPairs_) {
+        int64_t batchSize = Min(pairsBatchElements_, coreTotalPairs_ - pairCursor);
+
+        DataCopyExtParams pairLoadParams{static_cast<uint16_t>(1),
+                                         static_cast<uint32_t>(batchSize * sizeof(int32_t)), 0, 0, 0};
+        DataCopyPad(flatIdxLocal, pairsWorkspaceGm_[blockIdx_ * pairsPerCore_ + pairCursor], pairLoadParams,
+                    intPadParams);
+        DataCopyPad(expertIdxLocal,
+                    pairsWorkspaceGm_[blockIdx_ * pairsPerCore_ + pairsPerCore_ / 2 + pairCursor], pairLoadParams,
+                    intPadParams);
+        SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
+
+        for (int64_t i = 0; i < batchSize; i++) {
+            int32_t flatIdx = flatIdxLocal.GetValue(i);
+            int32_t expertIdx = expertIdxLocal.GetValue(i);
+            int32_t pos = expertCountLocal.GetValue(expertIdx);
+            expertCountLocal.SetValue(expertIdx, pos + 1);
+
+            idxBuf.SetValue(0, flatIdx);
+            SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+            if (rowIdxType_ == GATHER) {
+                DataCopyPad(sortedRowIdxGm_[pos], idxBuf, idxCopyParams);
+            } else {
+                DataCopyPad(expandedRowIdxGm_[pos], idxBuf, idxCopyParams);
+            }
+            SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+        }
+
+        pairCursor += batchSize;
+    }
+}
+
+// ========================== WriteExpandedExpertIdx（Phase B，dropPad 专用）==========================
+// dropPad（500100）专用：写 expandedExpertIdx（workspace 起始区；pairs/expertCount 已后移到 pairsWsOffset，互不冲突）。
+// 该数组按「全局排序位置」索引，expandedExpertIdx[pos] = 该位置 token 的全局 expert id（e + expertStart_）。
+// 有效区 [0, expertTotalCount) 连续；无效区 [expertTotalCount, n*k) 填 -1（供 Stage3 跳过 drop 位）。
+// 实现方式：每个 Phase B 核按本核全局输出区间 [globalStart, globalStart+coreTotalPairs) 内的
+// 每专家连续 run 做 Duplicate+DataCopyPad，**不重读 pairs**（推导自 totalCountLocal，与 pairs 区无地址重叠）。
+// 每个专家占全局位置 [globalPrefix[e], globalPrefix[e]+totalCountLocal[e])，由 totalCountLocal 全量计数推导。
+template <typename T>
+__aicore__ inline void MoeV3CutOriginPhaseAB<T>::WriteExpandedExpertIdx()
+{
+    LocalTensor<int32_t> totalCountLocal = buf_.Get<int32_t>()[totalCountLocalOffset_ / sizeof(int32_t)];
+    LocalTensor<int32_t> prefixSumLocal = buf_.Get<int32_t>()[prefixSumLocalOffset_ / sizeof(int32_t)];
+    LocalTensor<int32_t> fillBuf = buf_.Get<int32_t>()[scatterFlatIdxOffset_ / sizeof(int32_t)];
+
+    SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
+
+    // 本核全局输出区间 [globalStart, globalEnd)：globalStart = sum_e prefixSumLocal[e]（之前所有核的 token 数）
+    int64_t globalStart = 0;
+    for (int64_t e = 0; e < actualExpertNum_; e++) {
+        globalStart += static_cast<int64_t>(prefixSumLocal.GetValue(e));
+    }
+    int64_t globalEnd = globalStart + coreTotalPairs_;
+
+    // 每专家连续 run：expert e 占全局位置 [globalPrefix, globalPrefix + totalCountLocal[e])
+    int64_t globalPrefix = 0;
+    DataCopyExtParams runCp{1, 0, 0, 0, 0};
+    for (int64_t e = 0; e < actualExpertNum_; e++) {
+        int32_t count = totalCountLocal.GetValue(e);
+        int64_t runStart = Max(globalStart, globalPrefix);
+        int64_t runEnd = Min(globalEnd, globalPrefix + static_cast<int64_t>(count));
+        globalPrefix += count;
+        if (runStart >= runEnd) {
+            continue;
+        }
+        int32_t globalExpertId = static_cast<int32_t>(e + expertStart_);
+        for (int64_t off = runStart; off < runEnd; off += pairsBatchElements_) {
+            int64_t n = Min(pairsBatchElements_, runEnd - off);
+            Duplicate(fillBuf, globalExpertId, static_cast<int32_t>(n));
+            SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+            runCp.blockLen = static_cast<uint32_t>(n * sizeof(int32_t));
+            DataCopyPad(expandedExpertIdxGm_[off], fillBuf, runCp);
+            SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
+        }
+    }
+
+    // 无效尾区 [expertTotalCount, n*k) 填 -1：blockIdx 0 负责（与所有核的有效写 [0, expertTotalCount) 无重叠）
+    if (blockIdx_ == 0 && expertTotalCount_ < n_ * k_) {
+        for (int64_t off = expertTotalCount_; off < n_ * k_; off += pairsBatchElements_) {
+            int64_t n = Min(pairsBatchElements_, n_ * k_ - off);
+            Duplicate(fillBuf, static_cast<int32_t>(-1), static_cast<int32_t>(n));
+            SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+            runCp.blockLen = static_cast<uint32_t>(n * sizeof(int32_t));
+            DataCopyPad(expandedExpertIdxGm_[off], fillBuf, runCp);
+            SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
+        }
+    }
+}
+
+// ========================== WriteExpertIdxValue（Phase B，dropPad 专用）==========================
+// dropPad（500100）专用：写 expertIdxValueGm_（workspace + 2*Align(n*k) + Align(actualExpertNum)，coreNum_*2）。
+// 每核 [lastExpertId, lastTokenCount]：blockIdx 0 依据 totalCountLocal（全量 expert 计数）与
+// srcToDst 分核（perCoreRows/lastCoreRows）推算每个下游核段末的有效 token 所属专家及其段内计数，
+// 供 RowIdxGatherDropPad.AssistInit 跨核推算 boundary expert 的起始 tokenCount。
+template <typename T>
+__aicore__ inline void MoeV3CutOriginPhaseAB<T>::WriteExpertIdxValue()
+{
+    if (blockIdx_ != 0) {
+        return;
+    }
+    LocalTensor<int32_t> totalCountLocal = buf_.Get<int32_t>()[totalCountLocalOffset_ / sizeof(int32_t)];
+    LocalTensor<int32_t> idxBuf = buf_.Get<int32_t>()[scatterIdxBufOffset_ / sizeof(int32_t)];
+    DataCopyExtParams cp{1, static_cast<uint32_t>(2 * sizeof(int32_t)), 0, 0, 0};
+
+    SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
+
+    for (int64_t i = 0; i < dropPadNeedCoreNum_; i++) {
+        int64_t segStart = i * dropPadPerCoreRows_;
+        int64_t segLen = (i == dropPadNeedCoreNum_ - 1) ? dropPadLastCoreRows_ : dropPadPerCoreRows_;
+        int64_t segEnd = segStart + segLen;
+
+        int32_t lastExpertId = -1;
+        int32_t lastTokenCount = 0;
+        if (segStart < expertTotalCount_) {
+            // 段内最后一个有效 token 的全局位置
+            int64_t lastValidPos = Min(segEnd, expertTotalCount_) - 1;
+            // 线性找 e：globalPrefix[e] <= lastValidPos < globalPrefix[e] + totalCountLocal[e]
+            int64_t e = 0;
+            int64_t prefix = 0;
+            while (e < actualExpertNum_) {
+                int32_t cnt = totalCountLocal.GetValue(e);
+                if (lastValidPos >= prefix && lastValidPos < prefix + static_cast<int64_t>(cnt)) {
+                    break;
+                }
+                prefix += cnt;
+                e++;
+            }
+            // 边界专家在段内计数 = lastValidPos - max(segStart, prefix) + 1
+            lastExpertId = static_cast<int32_t>(e + expertStart_);
+            lastTokenCount = static_cast<int32_t>(lastValidPos - Max(segStart, prefix) + 1);
+        }
+        idxBuf.SetValue(0, lastExpertId);
+        idxBuf.SetValue(1, lastTokenCount);
+        SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+        DataCopyPad(expertIdxValueGm_[i * 2], idxBuf, cp);
+        SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+    }
+}
+
+// ========================== WriteExpertTotalCount（Phase B）==========================
+template <typename T>
+__aicore__ inline void MoeV3CutOriginPhaseAB<T>::WriteExpertTotalCount()
+{
+    // 非 dropPad 才写：dropPad 场景同一 GM 槽位是 expertIdxValueGm_，且 Stage3 dropPad 不读此值
+    if (blockIdx_ == 0 && dropPadMode_ != DROP_PAD_MODE) {
+        LocalTensor<int32_t> totalCountBuf = buf_.Get<int32_t>()[scatterIdxBufOffset_ / sizeof(int32_t)];
+        totalCountBuf.SetValue(0, static_cast<int32_t>(expertTotalCount_));
+        SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+        DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t)), 0, 0, 0};
+        DataCopyPad(expertTotalCountGm_[0], totalCountBuf, copyParams);
+    }
+}
+
+// ========================== WriteExpertTokens（Phase B）==========================
+template <typename T>
+__aicore__ inline void MoeV3CutOriginPhaseAB<T>::WriteExpertTokens()
+{
+    if (blockIdx_ == 0 && expertTokensNumFlag_ != EXERPT_TOKENS_NONE) {
+        LocalTensor<int32_t> totalCountLocal = buf_.Get<int32_t>()[totalCountLocalOffset_ / sizeof(int32_t)];
+        LocalTensor<int64_t> expertTokensLocal = buf_.Get<int64_t>()[expertTokensLocalOffset_ / sizeof(int64_t)];
+
+        if (expertTokensNumType_ == EXERPT_TOKENS_COUNT) {
+            Cast(expertTokensLocal, totalCountLocal, RoundMode::CAST_NONE, static_cast<int32_t>(actualExpertNum_));
+            PipeBarrier<PIPE_V>();
+            SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+            DataCopyExtParams copyParams{static_cast<uint16_t>(1),
+                                         static_cast<uint32_t>(actualExpertNum_ * sizeof(int64_t)), 0, 0, 0};
+            DataCopyPad(expertTokensGm_, expertTokensLocal, copyParams);
+
+        } else if (expertTokensNumType_ == EXERPT_TOKENS_CUMSUM) {
+            SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
+            int64_t cumsum = 0;
+            for (int64_t e = 0; e < actualExpertNum_; e++) {
+                cumsum += static_cast<int64_t>(totalCountLocal.GetValue(e));
+                expertTokensLocal.SetValue(e, cumsum);
+            }
+            SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+            DataCopyExtParams copyParams{static_cast<uint16_t>(1),
+                                         static_cast<uint32_t>(actualExpertNum_ * sizeof(int64_t)), 0, 0, 0};
+            DataCopyPad(expertTokensGm_, expertTokensLocal, copyParams);
+
+        } else if (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) {
+            int64_t kvTotalElements = (actualExpertNum_ + 1) * 2;
+            Duplicate(expertTokensLocal.ReinterpretCast<int32_t>(), static_cast<int32_t>(0),
+                      static_cast<int32_t>(kvTotalElements * 2));
+            SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
+            int64_t kvOffset = 0;
+            for (int64_t e = 0; e < actualExpertNum_; e++) {
+                int32_t count = totalCountLocal.GetValue(e);
+                if (count != 0) {
+                    expertTokensLocal.SetValue(kvOffset * 2, static_cast<int64_t>(e + expertStart_));
+                    expertTokensLocal.SetValue(kvOffset * 2 + 1, static_cast<int64_t>(count));
+                    kvOffset++;
+                }
+            }
+            SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+            DataCopyExtParams copyParams{static_cast<uint16_t>(1),
+                                         static_cast<uint32_t>(kvTotalElements * sizeof(int64_t)), 0, 0, 0};
+            DataCopyPad(expertTokensGm_, expertTokensLocal, copyParams);
+        }
+    }
+}
+
+} // namespace MoeInitRoutingV3
+#endif // MOE_V3_COUNTING_SORT_UNFULL_LOAD_H

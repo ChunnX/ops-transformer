@@ -244,20 +244,33 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::GetWorkspaceSize()
         return GetEmptyTensorWorkspaceSize();
     }
 
-    // CountingSort 性能模板的 workspace：核间专家计数归约表 + 过滤 pairs 表
-    // 布局（kernel Init 按此顺序解析）：offset0 = pairs（filterNeedCoreNum*pairsPerCore*int32），
-    // offset1 = expertCount（filterNeedCoreNum*expertCountStride*int32）
+    // CountingSort 性能模板的 workspace：核间专家计数归约表 + 过滤 pairs 表。
+    // 布局按模式区分（kernel Init 按此解析）：
+    //   mode 1（FullLoad 单类）：offset0 = pairs，offset1 = expertCount（均从 ws 起始）
+    //   mode 2（CutOrigin 拆分）：offset0 = 头部 meta 区（sortedRowIdx / expertTotalCount / expertIdxValue /
+    //       expandedExpertIdx，供 Stage3/Stage5 按硬编码偏移消费），pairs/expertCount 后移到 pairsWsOffset 之后
     if (countingSortMode_ == 1 || countingSortMode_ == 2) {
         int64_t filterNeedCoreNum = tilingDataPtr_->countingSortParamsOp.filterNeedCoreNum;
         int64_t expertCountStride = tilingDataPtr_->countingSortParamsOp.expertCountStride;
-        int64_t csWorkspace = filterNeedCoreNum * expertCountStride * static_cast<int64_t>(sizeof(int32_t));
         // pairs 区：pairsPerCore = CeilAlign(max(filterPerCoreTokens, lastCoreTokens)*k_, CS_ONE_BLOCK_ELEMENT) * 2
         // （镜像 kernel pairsPerCore_ 与 A3 pairsPerCore 推导）
         int64_t filterPerCoreTokens = tilingDataPtr_->countingSortParamsOp.filterPerCoreTokens;
         int64_t lastCoreTokens = tilingDataPtr_->countingSortParamsOp.lastCoreTokens;
         int64_t maxCoreEntries = std::max(filterPerCoreTokens, lastCoreTokens) * tilingDataPtr_->k;
         int64_t pairsPerCore = Ops::Base::CeilAlign(maxCoreEntries, CS_ONE_BLOCK_ELEMENT) * NUM_TWO;
-        csWorkspace += filterNeedCoreNum * pairsPerCore * static_cast<int64_t>(sizeof(int32_t));
+        int64_t csWorkspace = 0;
+        if (countingSortMode_ == 1) {
+            // FullLoad（模板1，单类）：保持原有布局 = expertCount + pairs（均从 ws 起始）
+            csWorkspace = filterNeedCoreNum * expertCountStride * static_cast<int64_t>(sizeof(int32_t));
+            csWorkspace += filterNeedCoreNum * pairsPerCore * static_cast<int64_t>(sizeof(int32_t));
+        } else {
+            // CutOrigin 拆分（模板2）：pairs/expertCount 后移到 meta 区之后（pairsWsOffset，见
+            // ComputeArch35CountingSortCutOriginTiling），头部 meta 区（sortedRowIdx / expertTotalCount /
+            // expertIdxValue / expandedExpertIdx）由 pairsBase 兜底覆盖。
+            int64_t pairsBase = tilingDataPtr_->countingSortParamsOp.pairsWsOffset;
+            csWorkspace = (pairsBase + filterNeedCoreNum * pairsPerCore +
+                           filterNeedCoreNum * expertCountStride) * static_cast<int64_t>(sizeof(int32_t));
+        }
         // 框架开销
         csWorkspace += SIZE_16 * LENGTH_1024 * LENGTH_1024;
         workspaceSize_ = static_cast<uint32_t>(csWorkspace);
@@ -2262,6 +2275,14 @@ void MoeInitRoutingV3TilingArch35::ComputeArch35CountingSortCutOriginTiling()
     cs->csColsLoops = csColsLoops;
     cs->csLastLoopCols = csLastLoopCols;
     cs->maxPerLoopEntries = CS_FILTER_CHUNK_SIZE;
+    // CutOrigin 拆分 workspace：pairs/expertCount 区后移到 meta 区之后（pairsWsOffset），
+    // 避免与硬编码消费者偏移重叠：sortedRowIdx（ws+Align(n*k)）、expertTotalCount/expertIdxValue
+    // （ws+2*Align(n*k)+Align(actualExpertNum)）、expandedExpertIdx（ws 起始）。
+    // metaBase = 2*Align(n*k,4) + Align(actualExpertNum,4)（int32 元素）；再为 expertIdxValue 预留 2*coreNum 元素。
+    int64_t metaBase = Align(n_ * k_, static_cast<int64_t>(sizeof(int32_t))) * NUM_TWO +
+                       Align(actualExpertNum, static_cast<int64_t>(sizeof(int32_t)));
+    cs->pairsWsOffset = metaBase +
+                        Align(NUM_TWO * std::max(aivCoreNum_, static_cast<int64_t>(1)), static_cast<int64_t>(8));
 
     OP_LOGD(context_, "CountingSort CutOrigin: needCoreNum=%ld, perCoreTokens=%ld, coreEntries=%ld, chunkSize=%ld, "
             "colsLoops=%ld, perLoopCols=%ld, totalUB=%ld, budget=%ld",
