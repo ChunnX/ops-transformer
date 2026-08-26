@@ -159,28 +159,22 @@ def all_gather_quant_matmul(
         group (ProcessGroup): torch.distributed process group for AllGather
             communication.
         bias (Tensor, optional): Bias added after matmul, shape ``(N,)``, dtype float32.
-        x1_scale (Tensor): MX scale for x1, shape ``(M_per_rank, Ceil(K/64), 2)``,
+        x1_scale (Tensor, optional): MX scale for x1, shape ``(M_per_rank, Ceil(K/64), 2)``,
             dtype float8_e8m0fnu. Required in MX scene.
-        x2_scale (Tensor): MX scale for x2, shape ``(N, Ceil(K/64), 2)``, dtype
+        x2_scale (Tensor, optional): MX scale for x2, shape ``(N, Ceil(K/64), 2)``, dtype
             float8_e8m0fnu. Required in MX scene.
         group_sizes (List[int], optional): Quantization group sizes, MX only
             supports ``[1, 1, 32]``. None means auto-inferred from scale shapes.
-        x1_dtype (int, optional): x1 dtype enum for bitcast
-            (290=hif8, 296=fp4_e2m1, 297=fp4_e1m2), None means use tensor dtype.
-        x2_dtype (int, optional): x2 dtype enum for bitcast
-            (290=hif8, 296=fp4_e2m1, 297=fp4_e1m2), None means use tensor dtype.
-        x1_scale_dtype (int, optional): x1_scale dtype enum for bitcast
-            (293=fp8_e8m0), None means use tensor dtype.
-        x2_scale_dtype (int, optional): x2_scale dtype enum for bitcast
-            (293=fp8_e8m0), None means use tensor dtype.
-        y_dtype (int, optional): Output dtype enum, None means default bfloat16
-            (15=bfloat16, 5=float16). Only 15/5 are supported.
-        comm_mode (str): Communication engine, only ``"urma"`` is supported.
+        x1_dtype (int, optional): x1 dtype enum for bitcast, None means use tensor dtype.
+        x2_dtype (int, optional): x2 dtype enum for bitcast, None means use tensor dtype.
+        x1_scale_dtype (int, optional): x1_scale dtype enum for bitcast, None means use tensor dtype.
+        x2_scale_dtype (int, optional): x2_scale dtype enum for bitcast, None means use tensor dtype.
+        y_dtype (int, optional): Output dtype enum, None means default bfloat16. Only bfloat16/float16 are supported.
+        comm_mode (str, optional): Communication engine, only ``"urma"`` is supported.
 
     Returns:
         Tuple[Tensor, Tensor, Tensor]: (y, gather_out, amax_out) where y has
-            shape ``(M_per_rank * rank_size, N)``, gather_out has shape
-            ``(M_per_rank * rank_size, K)``, amax_out is empty tensor (not
+            shape ``(M_per_rank * rank_size, N)``, gather_out and amax_out are empty tensor (not
             implemented yet). Users typically use
             ``y, _, _ = all_gather_quant_matmul(...)`` to ignore the latter two.
     """
