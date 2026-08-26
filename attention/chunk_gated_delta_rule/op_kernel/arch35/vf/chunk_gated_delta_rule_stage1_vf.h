@@ -17,6 +17,40 @@ namespace ChunkGatedDeltaRule {
 using namespace AscendC;
 using namespace MicroAPI;
 
+/*
+ * 按传入的 chunkSize 计算 FP32 inclusive cumsum，并对有效元素逐元素取 exp。
+ *   gCum[i] = sum(g[0:i + 1]), gCumExp[i] = exp(gCum[i])。
+ */
+__simd_vf__ inline void CumSumExpVF(__ubuf__ float *gAddr, __ubuf__ float *gCumAddr,
+                                    __ubuf__ float *gCumExpAddr, uint32_t chunkSize)
+{
+    RegTensor<float> gCumReg;
+    RegTensor<float> shiftedReg;
+    RegTensor<float> gCumExpReg;
+    RegTensor<int32_t> laneIndexReg;
+    RegTensor<int32_t> gatherIndexReg;
+    MaskReg allMask = CreateMask<int32_t, MaskPattern::ALL>();
+    uint32_t validCount = chunkSize;
+    MaskReg validMask = UpdateMask<float>(validCount);
+    MaskReg addMask;
+
+    LoadAlign<float, LoadDist::DIST_NORM>(gCumReg, gAddr);
+    Arange(laneIndexReg, static_cast<int32_t>(0));
+    for (int32_t stride = 1; stride < static_cast<int32_t>(chunkSize); stride <<= 1) {
+        Adds<int32_t>(gatherIndexReg, laneIndexReg, -stride, allMask);
+        Maxs<int32_t>(gatherIndexReg, gatherIndexReg, static_cast<int32_t>(0), allMask);
+        Gather<float, uint32_t>(shiftedReg, gCumReg,
+                                reinterpret_cast<RegTensor<uint32_t> &>(gatherIndexReg));
+        Compares<int32_t, CMPMODE::GE>(addMask, laneIndexReg, stride, validMask);
+        Add<float, MaskMergeMode::MERGING>(gCumReg, gCumReg, shiftedReg, addMask);
+    }
+
+    // 原 Exp<float, 0, true> 使用默认 INTRINSIC 算法，RegBase 选择相同模式。
+    Exp<float, MaskMergeMode::ZEROING>(gCumExpReg, gCumReg, validMask);
+    StoreAlign<float, StoreDist::DIST_NORM>(gCumAddr, gCumReg, validMask);
+    StoreAlign<float, StoreDist::DIST_NORM>(gCumExpAddr, gCumExpReg, validMask);
+}
+
 /*!
  * InverseAIVVF: forward-substitution inverse of the N x N lower-triangular (unit-diagonal) attn block.
  *   inv[0] = e_0; for i=1..N-1: inv[i] = e_i - sum_{j<i} attn[i,j] * inv[j]
