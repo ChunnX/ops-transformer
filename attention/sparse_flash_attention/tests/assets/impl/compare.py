@@ -95,9 +95,9 @@ class PytestResultComparator:
         return {
             "pass": passed,
             "precision": float(precision),
-            "error_info": None if passed else (
-                f"pytest check_result output[{output_index}] returned {status!r}"
-            ),
+            "error_info": None
+            if passed
+            else (f"pytest check_result output[{output_index}] returned {status!r}"),
         }
 
     @staticmethod
@@ -117,20 +117,26 @@ class PytestResultComparator:
         half = len(outputs) // 2
         results = []
         for output_index, (npu_output, golden) in enumerate(
-                zip(outputs[:half], outputs[half:])):
+            zip(outputs[:half], outputs[half:])
+        ):
             if golden is None:
                 results.append({"pass": True, "precision": "SUPPRESSED"})
                 continue
             if npu_output is None:
-                results.append({
-                    "pass": False,
-                    "precision": "NO_OUTPUT",
-                    "error_info": f"NPU output[{output_index}] is None",
-                })
+                results.append(
+                    {
+                        "pass": False,
+                        "precision": "NO_OUTPUT",
+                        "error_info": f"NPU output[{output_index}] is None",
+                    }
+                )
                 continue
             if self.is_empty_tensor(golden) and self.is_empty_tensor(npu_output):
                 continue
-            result = module.check_result(self.to_torch(golden), self.to_torch(npu_output))
+
+            result = module.check_result(
+                self.to_torch(golden), self.to_torch(npu_output)
+            )
             results.append(self.normalize_result(result, output_index))
         return results
 
