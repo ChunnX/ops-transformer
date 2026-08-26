@@ -61,7 +61,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("block_attention_residuals", &BlockAttentionResiduals, "block_attention_residuals",
           py::arg("prefix_sum"), py::arg("block_res"), py::arg("proj_weight"), py::arg("norm_weight"),
-          py::arg("norm_eps") = 1e-5, py::arg("need_backward") = false);
+          py::arg("valid_block_num"), py::arg("norm_eps") = 1e-5, py::arg("need_backward") = false);
 }
 
 } // namespace op_api
