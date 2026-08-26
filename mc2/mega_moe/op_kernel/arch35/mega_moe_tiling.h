@@ -127,10 +127,11 @@ constexpr int32_t BASE_SEND_ROUTE_ITEMS_PER_BATCH = 12288;
  * A8W8 Wave compact route-index policy
  *
  * SendMask 侧仍使用 CompareScalar + GatherMask，但不再发送 bitmask，而是直接发送 int32 topkIndex。
- * 每个 ring slot 同时容纳本 batch 的 mask、最坏情况下 routeItemsPerBatch 个 compact index 和 32B count。
- * 8192 是保守基准；host tiling 必须根据实际 UB 容量缩小 batch，并保证至少双 buffer，不能无条件保底。
+ * 合法 TopK 输入中同一 token 不会重复选择同一专家，因此长度 N 的连续 route slice 最多命中
+ * CeilDiv(N + topK - 1, topK) 个 index。每个 ring slot 只按该上限预留 compact 区，并保留 mask 与
+ * 32B count。host tiling 在 2~6 个 ring slot 间枚举：优先减少 route batch 数，同 batch 数时优先
+ * 使用更多 slot 隐藏 MTE3。
  */
-constexpr int32_t BASE_COMPACT_ROUTE_ITEMS_PER_BATCH = 8192;
 
 /*
  * Reset buffer policy

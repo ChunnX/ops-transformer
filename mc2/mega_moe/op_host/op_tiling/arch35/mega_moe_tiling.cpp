@@ -901,7 +901,16 @@ static MegaMoeDispatchBufferConfig CalcCompactDispatchBufferConfig(const MegaMoe
     return bufferConfig;
 }
 
-// A8W8 Wave compact producer：每个 ring slot = mask + 最坏 N 个 int32 topkIndex + 32B count。
+static uint64_t CalcCompactRouteRingSlotBytes(uint32_t routeItemsPerBatch, uint32_t topK)
+{
+    const uint64_t maxMatchedRouteItems = ops::CeilDiv(
+        static_cast<uint64_t>(routeItemsPerBatch) + topK - 1U, static_cast<uint64_t>(topK));
+    const uint64_t compactBytes = ops::CeilAlign(
+        maxMatchedRouteItems * sizeof(int32_t), static_cast<uint64_t>(ALIGN_32));
+    return static_cast<uint64_t>(routeItemsPerBatch) / 8U + compactBytes + ALIGN_32;
+}
+
+// A8W8 Wave compact producer：按合法 TopK 最大命中数压缩每个 ring slot 的 compact index 区。
 static MegaMoeSendMaskBufferConfig CalcCompactSendBufferConfig(const MegaMoeTilingData *tilingData,
                                                                uint32_t fixedBufferBytes,
                                                                uint32_t ownedExpertCount,
@@ -911,62 +920,73 @@ static MegaMoeSendMaskBufferConfig CalcCompactSendBufferConfig(const MegaMoeTili
     const uint64_t sendTotalNum = static_cast<uint64_t>(tilingData->bs) * tilingData->topK;
     const uint64_t alignedTotalRouteItems =
         ops::CeilAlign(sendTotalNum, static_cast<uint64_t>(ALIGN_256));
-    uint32_t routeItemsPerBatch = static_cast<uint32_t>(
-        std::min(alignedTotalRouteItems, static_cast<uint64_t>(BASE_COMPACT_ROUTE_ITEMS_PER_BATCH)));
-
-    uint32_t availableBufferCount = 0U;
-    while (routeItemsPerBatch >= static_cast<uint32_t>(ALIGN_256)) {
-        const uint64_t routeTensorBytes =
-            static_cast<uint64_t>(routeItemsPerBatch) * sizeof(int32_t);
-        const uint64_t bytesWithoutRing =
-            static_cast<uint64_t>(fixedBufferBytes) + 2U * routeTensorBytes;
-        const uint64_t ringSlotBytes =
-            static_cast<uint64_t>(routeItemsPerBatch) / 8U + routeTensorBytes + ALIGN_32;
-        availableBufferCount = bytesWithoutRing < availableUbBytes ?
-            static_cast<uint32_t>((static_cast<uint64_t>(availableUbBytes) - bytesWithoutRing) / ringSlotBytes) :
-            0U;
-        if (availableBufferCount >= static_cast<uint32_t>(MIN_SEND_MASK_BUFFER_COUNT)) {
-            break;
-        }
-        routeItemsPerBatch -= static_cast<uint32_t>(ALIGN_256);
-    }
-    if (routeItemsPerBatch < static_cast<uint32_t>(ALIGN_256) ||
-        availableBufferCount < static_cast<uint32_t>(MIN_SEND_MASK_BUFFER_COUNT)) {
+    if (sendTotalNum == 0U || tilingData->topK == 0U) {
         return bufferConfig;
     }
 
-    bufferConfig.bufferCount = static_cast<int32_t>(
-        std::min(availableBufferCount, static_cast<uint32_t>(MAX_SEND_MASK_BUFFER_COUNT)));
-    const uint64_t routeBatchCount = ops::CeilDiv(sendTotalNum, static_cast<uint64_t>(routeItemsPerBatch));
-    const uint64_t routePushCount = routeBatchCount * ownedExpertCount;
-    if (routePushCount > 0U) {
+    uint32_t bestRouteItemsPerBatch = 0U;
+    uint32_t bestBufferCount = 0U;
+    uint64_t bestRouteBatchCount = 0U;
+    uint64_t bestRingSlotBytes = 0U;
+    for (uint32_t candidateBufferCount = static_cast<uint32_t>(MIN_SEND_MASK_BUFFER_COUNT);
+         candidateBufferCount <= static_cast<uint32_t>(MAX_SEND_MASK_BUFFER_COUNT);
+         ++candidateBufferCount) {
+        const uint64_t fixedBytesWithRingCount =
+            static_cast<uint64_t>(fixedBufferBytes) + candidateBufferCount * ALIGN_32;
+        if (fixedBytesWithRingCount >= availableUbBytes) {
+            continue;
+        }
+
+        // 两个 int32 route tensor 已经给出 routeItems 的简单上界，再逐 256 items 收缩以覆盖对齐开销。
+        uint64_t candidateRouteItems =
+            (static_cast<uint64_t>(availableUbBytes) - fixedBytesWithRingCount) /
+            (2U * sizeof(int32_t));
+        candidateRouteItems = candidateRouteItems / ALIGN_256 * ALIGN_256;
+        candidateRouteItems = std::min(candidateRouteItems, alignedTotalRouteItems);
+        while (candidateRouteItems >= static_cast<uint64_t>(ALIGN_256)) {
+            const uint64_t routeTensorBytes = candidateRouteItems * sizeof(int32_t);
+            const uint64_t ringSlotBytes = CalcCompactRouteRingSlotBytes(
+                static_cast<uint32_t>(candidateRouteItems), tilingData->topK);
+            const uint64_t requiredBytes = static_cast<uint64_t>(fixedBufferBytes) +
+                                           2U * routeTensorBytes +
+                                           candidateBufferCount * ringSlotBytes;
+            if (requiredBytes <= availableUbBytes) {
+                break;
+            }
+            candidateRouteItems -= static_cast<uint64_t>(ALIGN_256);
+        }
+        if (candidateRouteItems < static_cast<uint64_t>(ALIGN_256)) {
+            continue;
+        }
+
+        const uint64_t candidateRouteBatchCount = ops::CeilDiv(sendTotalNum, candidateRouteItems);
+        const uint64_t routePushCount = candidateRouteBatchCount * ownedExpertCount;
         const uint64_t usefulBufferCount =
             std::max(routePushCount, static_cast<uint64_t>(MIN_SEND_MASK_BUFFER_COUNT));
-        bufferConfig.bufferCount = static_cast<int32_t>(
-            std::min(static_cast<uint64_t>(bufferConfig.bufferCount), usefulBufferCount));
+        if (candidateBufferCount > usefulBufferCount) {
+            continue;
+        }
+
+        const bool isBetter =
+            bestRouteItemsPerBatch == 0U || candidateRouteBatchCount < bestRouteBatchCount ||
+            (candidateRouteBatchCount == bestRouteBatchCount && candidateBufferCount > bestBufferCount) ||
+            (candidateRouteBatchCount == bestRouteBatchCount && candidateBufferCount == bestBufferCount &&
+             candidateRouteItems > bestRouteItemsPerBatch);
+        if (isBetter) {
+            bestRouteItemsPerBatch = static_cast<uint32_t>(candidateRouteItems);
+            bestBufferCount = candidateBufferCount;
+            bestRouteBatchCount = candidateRouteBatchCount;
+            bestRingSlotBytes = CalcCompactRouteRingSlotBytes(bestRouteItemsPerBatch, tilingData->topK);
+        }
     }
 
-    // 固定 ring 深度后，用剩余 UB 同时扩大两个 route tensor 及每个 ring 的 mask/compact 区。
-    const uint64_t fixedBytesWithRingCount =
-        static_cast<uint64_t>(fixedBufferBytes) +
-        static_cast<uint64_t>(bufferConfig.bufferCount) * ALIGN_32;
-    const uint64_t routeItemBudgetBytes =
-        static_cast<uint64_t>(availableUbBytes) - fixedBytesWithRingCount;
-    const uint64_t routeItemDenominator =
-        64U + 33U * static_cast<uint64_t>(bufferConfig.bufferCount); // 每 item 字节数乘 8
-    uint64_t expandedRouteItems = routeItemBudgetBytes * 8U / routeItemDenominator;
-    expandedRouteItems = expandedRouteItems / ALIGN_256 * ALIGN_256;
-    expandedRouteItems = std::min(expandedRouteItems, alignedTotalRouteItems);
-    if (expandedRouteItems > routeItemsPerBatch) {
-        routeItemsPerBatch = static_cast<uint32_t>(expandedRouteItems);
+    if (bestRouteItemsPerBatch == 0U) {
+        return bufferConfig;
     }
-
-    bufferConfig.routeItemsPerBatch = static_cast<int32_t>(routeItemsPerBatch);
-    bufferConfig.routeBatchCount = static_cast<int32_t>(
-        ops::CeilDiv(sendTotalNum, static_cast<uint64_t>(routeItemsPerBatch)));
-    bufferConfig.bufferBytes = routeItemsPerBatch / 8U +
-                               routeItemsPerBatch * static_cast<uint32_t>(sizeof(int32_t)) +
-                               static_cast<uint32_t>(ALIGN_32);
+    bufferConfig.routeItemsPerBatch = static_cast<int32_t>(bestRouteItemsPerBatch);
+    bufferConfig.routeBatchCount = static_cast<int32_t>(bestRouteBatchCount);
+    bufferConfig.bufferCount = static_cast<int32_t>(bestBufferCount);
+    bufferConfig.bufferBytes = static_cast<uint32_t>(bestRingSlotBytes);
     return bufferConfig;
 }
 

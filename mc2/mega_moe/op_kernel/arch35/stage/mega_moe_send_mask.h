@@ -152,9 +152,9 @@ __aicore__ inline void GatherAndSendExpertMasks(const DispatchPrepareConfig &con
 /**
  * A8W8 Wave compact 路径：源 rank 直接发送按原始 topkIndex 升序排列的有效索引。
  *
- * 一个远端槽位固定容纳 tokenNum 个 int32 index，末尾 32B 的第一个 int32 保存 count。
- * 正常 TopK 输入中同一 token 不会重复选择同一专家，因此单槽 count 不超过 tokenNum；写入前仍做
- * 上界裁剪，保证异常输入不会产生越界 MTE3。
+ * 一个远端 GM 槽位固定容纳 tokenNum 个 int32 index，末尾 32B 的第一个 int32 保存 count。
+ * UB ring slot 只按当前 route batch 的合法最大命中数预留 compact 区；正常 TopK 输入中同一 token
+ * 不会重复选择同一专家，因此不会覆盖相邻 ring slot。
  */
 __aicore__ inline void GatherAndSendExpertCompactRouteBatch(
     const DispatchPrepareConfig &context, GM_ADDR *winRankAddr, const SendMaskConfig &config,
@@ -165,8 +165,10 @@ __aicore__ inline void GatherAndSendExpertCompactRouteBatch(
     const MoeStageCommonConfig &common = context.common;
     const MegaMoeSendMaskBufferConfig &bufferConfig = config.bufferConfig;
     const uint32_t maskBytes = static_cast<uint32_t>(bufferConfig.routeItemsPerBatch / 8);
-    const uint32_t compactBytes =
-        static_cast<uint32_t>(bufferConfig.routeItemsPerBatch) * static_cast<uint32_t>(sizeof(int32_t));
+    const uint32_t compactItemCapacity = Ops::Base::CeilDiv(
+        static_cast<uint32_t>(bufferConfig.routeItemsPerBatch) + common.topK - 1U, common.topK);
+    const uint32_t compactBytes = Ops::Base::CeilAlign(
+        compactItemCapacity * static_cast<uint32_t>(sizeof(int32_t)), static_cast<uint32_t>(ALIGN_32));
     const uint32_t routeSlotSize = config.routeIndexAlignSize + static_cast<uint32_t>(ALIGN_32);
     const int32_t batchStart = batchIdx * bufferConfig.routeItemsPerBatch;
     const bool isLastBatch = batchIdx == bufferConfig.routeBatchCount - 1;
@@ -199,8 +201,7 @@ __aicore__ inline void GatherAndSendExpertCompactRouteBatch(
         LocalTensor<int32_t> countBuf = slot[maskBytes + compactBytes].template ReinterpretCast<int32_t>();
 
         WaitFlag<AscendC::HardEvent::MTE3_V>(eventId);
-        CompareScalar(maskBuf, scratch.topkIdsTensor, globalExpertId, AscendC::CMPMODE::EQ,
-                      bufferConfig.routeItemsPerBatch);
+        CompareScalar(maskBuf, scratch.topkIdsTensor, globalExpertId, AscendC::CMPMODE::EQ, validLen);
         uint64_t batchMatchedRouteCount = 0U;
         GatherMask(compactBuf, scratch.topkIndexTensor, maskBufU32, true, static_cast<uint32_t>(validLen),
                    {1, 1, 0, 0}, batchMatchedRouteCount);
