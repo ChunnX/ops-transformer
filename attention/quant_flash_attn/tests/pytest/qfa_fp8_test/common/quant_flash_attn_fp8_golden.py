@@ -621,6 +621,7 @@ class Network(nn.Module):
             cu_seqlens_kv=None,
             seqused_q=seqused_q_t,
             seqused_kv=seqused_kv_t,
+            head_dim_v=None,
             mask_mode=MASK_MODE,
             layout_q=LAYOUT_Q,
             layout_q_descale=LAYOUT_Q_DESCALE,
