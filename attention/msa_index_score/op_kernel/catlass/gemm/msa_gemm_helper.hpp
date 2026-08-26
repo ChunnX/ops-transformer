@@ -109,7 +109,8 @@ struct ElementAccumulatorSelector<bfloat16_t, bfloat16_t> {
     using ElementAccumulator = float;
 };
 
-#if defined(__CCE__)
+// FP8 / hifloat8 仅 AIC 310（Ascend 950）。
+#if defined(__CCE_AICORE__) && (__CCE_AICORE__ == 310)
 template <>
 struct ElementAccumulatorSelector<fp8_e4m3fn_t, fp8_e4m3fn_t> {
     using ElementAccumulator = float;
