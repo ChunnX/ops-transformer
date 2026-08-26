@@ -344,6 +344,14 @@ TEST_F(QuantLightningIndexerV2TilingArch35, QuantLightningIndexerV2_950_tiling_t
     qliv2_ut::RunTilingCase(p, ge::GRAPH_FAILED);
 }
 
+// metadata is required on Ascend950
+TEST_F(QuantLightningIndexerV2TilingArch35, QuantLightningIndexerV2_950_tiling_metadata_missing_failed)
+{
+    qliv2_ut::CaseParam p = Make950TndPaFp8();
+    p.metadata = {};
+    qliv2_ut::RunTilingCase(p, ge::GRAPH_FAILED);
+}
+
 // metadata shape size must be 1024
 TEST_F(QuantLightningIndexerV2TilingArch35, QuantLightningIndexerV2_950_tiling_metadata_size_failed)
 {
