@@ -382,14 +382,9 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::Fixp(uint64_t s1gGmOf
     fixpipeParams.srcStride = (s1gL0RealSize + 1) >> 1 << 1;
     // mmResUb上两行之间的间隔，单位：element。 // 128：根据比对dump文件得到，ND方案(S1 * S2)时脏数据用mask剔除
     fixpipeParams.dstStride = UB_BANK_DEPTH_STRIDE / sizeof(QK_T);
-#if CVRATIO > 1
-    // A5(1:2): 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
-    fixpipeParams.dualDstCtl = 1;
-#else
-    // A6(1:1): 单目标模式，不拆M; relu随路执行（vec1不做relu）
-    fixpipeParams.dualDstCtl = 0;
-    fixpipeParams.reluEn = true;
-#endif
+    // dualDstCtl: A5(CVRATIO=2)=1双目标拆M, A6(CVRATIO=1)=0单目标; reluEn: A6随路relu
+    fixpipeParams.dualDstCtl = CVRATIO - 1;
+    fixpipeParams.reluEn = (CVRATIO == 1);
     if (nSize <= (256 / sizeof(float))) {
         // N方向小于一个bank(256B), 只需搬一个ND块, 且不用补齐
         fixpipeParams.nSize = nSize;
@@ -401,11 +396,7 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::Fixp(uint64_t s1gGmOf
         fixpipeParams.nSize = S2_BASIC_BLOCK_L0 / 2;
         fixpipeParams.params.ndNum = 2;
         fixpipeParams.params.srcNdStride = ((fixpipeParams.mSize + 15) / 16) * fixpipeParams.nSize;
-#if CVRATIO > 1
-        fixpipeParams.params.dstNdStride = constInfo_.s2BaseSize * M_BASIC_BLOCK / 2;
-#else
-        fixpipeParams.params.dstNdStride = constInfo_.s2BaseSize * M_BASIC_BLOCK;
-#endif
+        fixpipeParams.params.dstNdStride = constInfo_.s2BaseSize * M_BASIC_BLOCK / CVRATIO;
     }
 
     // 将matmul结果从L0C搬运到UB

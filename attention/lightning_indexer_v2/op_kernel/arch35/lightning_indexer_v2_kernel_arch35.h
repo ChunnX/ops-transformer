@@ -592,11 +592,7 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::Init(__gm__ uint8_t *query
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx();  // vec:0-47
-#if CVRATIO > 1
-        aiCoreIdx = tmpBlockIdx / 2;           // A5(1:2)
-#else
-        aiCoreIdx = tmpBlockIdx;               // A6(1:1)
-#endif
+        aiCoreIdx = tmpBlockIdx / CVRATIO;  // A5: /2, A6: /1
     } else {
         tmpBlockIdx = GetBlockIdx();  // cube:0-23
         aiCoreIdx = tmpBlockIdx;
