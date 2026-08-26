@@ -1774,25 +1774,14 @@ def _pv_matmul_cpu(
                 if aligned_k != subloop_k:
                     pad_k = aligned_k - subloop_k
                     p_payload = torch.nn.functional.pad(p_payload, (0, pad_k))
-                    v_payload = torch.nn.functional.pad(
-                        v_payload, (0, 0, 0, pad_k)
-                    )
+                    v_payload = torch.nn.functional.pad(v_payload, (0, 0, 0, pad_k))
 
-                p_grouped = p_payload.reshape(
-                    nq, group_count, QUANT_GROUP_SIZE
-                )
-                v_grouped = v_payload.reshape(
-                    group_count, QUANT_GROUP_SIZE, head_dim
-                )
-                group_dot = torch.matmul(
-                    p_grouped.unsqueeze(-2), v_grouped
-                ).squeeze(-2)
-                group_scale = (
-                    subloop_rescale.view(nq, 1, 1)
-                    * v_scale_mat[::QUANT_GROUP_SIZE].view(
-                        1, group_count, head_dim
-                    )
-                )
+                p_grouped = p_payload.reshape(nq, group_count, QUANT_GROUP_SIZE)
+                v_grouped = v_payload.reshape(group_count, QUANT_GROUP_SIZE, head_dim)
+                group_dot = torch.matmul(p_grouped.unsqueeze(-2), v_grouped).squeeze(-2)
+                group_scale = subloop_rescale.view(nq, 1, 1) * v_scale_mat[
+                    ::QUANT_GROUP_SIZE
+                ].view(1, group_count, head_dim)
                 scaled_group_dot = torch.where(
                     group_dot == 0,
                     torch.zeros_like(group_dot),
