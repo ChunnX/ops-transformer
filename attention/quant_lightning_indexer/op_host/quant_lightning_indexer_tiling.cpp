@@ -1242,12 +1242,16 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
     tilingData_.set_blockSize(tilingInfo->blockSize);
     tilingData_.set_maxBlockNumPerBatch(tilingInfo->maxBlockNumPerBatch);
     tilingData_.set_sparseMode(tilingInfo->sparseMode);
-    // LD two-phase TopK switch (Step A mechanism validation): enable on 950PR with long s2.
-    // Prefill (tSize > 64) must stay off: the LD segment/merge path is validated only for the
-    // decode tiling (s1Base 2, 1 row per AIV); on prefill rows it corrupts the split-row outputs.
+    // LD two-phase TopK switch: enable on 950PR with long s2.
+    // The prefill MTE3 visibility race (remote merge core reads ldValGm/ldIdxGm while
+    // async DMA writes still in flight; SyncAll only syncs the SCALAR pipe) was
+    // fixed by FlushLDWrites() before SyncAll in ProcessDecode -> gate re-opened for prefill.
     constexpr uint32_t qliLdSplitCoreNum = 28;
+    // gate refinement: LD workspace constants (LD_WS_S1_BASE=8, s1Base=8 rows) are pinned to
+    // the PD g32 tiling; gSize 16 (mBase 64) crashes, gSize 64 (s1Base 4) intermittent ->
+    // only decode tiling + gSize==32 prefill (g1/g2 shapes) may open LD.
     bool ldOpen = (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) && (tilingInfo->s2Size >= 2048) &&
-                  (tilingInfo->tSize <= 64);
+                  ((tilingInfo->tSize <= 64) || (tilingInfo->gSize == 32));
     uint32_t ldCores = qliLdSplitCoreNum < aicNum ? qliLdSplitCoreNum : aicNum;
     tilingData_.set_isLDOpen(ldOpen ? 1U : 0U);
     tilingData_.set_ldSplitCoreNum(ldCores);
