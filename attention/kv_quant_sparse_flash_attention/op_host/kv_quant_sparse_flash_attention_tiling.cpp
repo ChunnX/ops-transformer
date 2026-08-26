@@ -1873,13 +1873,13 @@ ge::graphStatus QSFAInfoParser::GetMaxBlockNumPerBatch()
                                                  "The shape dim of block_table must be " + std::to_string(DIM_NUM_TWO));
         return ge::GRAPH_FAILED;
     }
-    if (opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1) <= 0) {
+    if (opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(DIM_IDX_ONE) <= 0) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "block_table",
                                               ToStringRaw(opParamInfo_.blockTable.tensor->GetStorageShape()).c_str(),
                                               "The second dim of block_table should be greater than 0");
         return ge::GRAPH_FAILED;
     }
-    maxBlockNumPerBatch_ = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1);
+    maxBlockNumPerBatch_ = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(DIM_IDX_ONE);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -2013,9 +2013,9 @@ ge::graphStatus QSFAInfoParser::CheckContiguous() const
         uint64_t shapeSize = 0;
 
         if (kvLayout_ == QSFALayout::PA_BSND) {
-            totalElements = keyStride1_ * static_cast<uint64_t>(keyShape_.GetDim(1));
-            shapeSize = static_cast<uint64_t>(keyShape_.GetDim(1)) * static_cast<uint64_t>(keyShape_.GetDim(2U)) *
-                        static_cast<uint64_t>(keyShape_.GetDim(3U));
+            totalElements = keyStride1_ * static_cast<uint64_t>(keyShape_.GetDim(DIM_IDX_ONE));
+            shapeSize = static_cast<uint64_t>(keyShape_.GetDim(DIM_IDX_ONE)) * static_cast<uint64_t>(keyShape_.GetDim(DIM_IDX_TWO)) *
+                        static_cast<uint64_t>(keyShape_.GetDim(DIM_IDX_THREE));
         } else {
             totalElements = keyStride0_ * static_cast<uint64_t>(keyShape_.GetDim(0));
             shapeSize = static_cast<uint64_t>(context_->GetOptionalInputTensor(KEY_INPUT_INDEX)->GetShapeSize());
