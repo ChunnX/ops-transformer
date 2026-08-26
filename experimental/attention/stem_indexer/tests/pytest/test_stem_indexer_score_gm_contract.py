@@ -161,3 +161,29 @@ def test_initial_blocks_are_masked_before_first_score_tile_store():
     assert first_tile_guard in store
     assert mask_initial_blocks in store
     assert store.index(first_tile_guard) < store.index(mask_initial_blocks) < store.index(store_to_gm)
+
+
+def test_direct_output_skips_zero_length_index_vector_and_mte3():
+    service = (ARCH_920R1 / "stem_indexer_service_vector.h").read_text(encoding="utf-8")
+
+    direct_begin = service.index("inline void SIVector<SIT>::WriteDirectIndices")
+    direct_end = service.index("inline void SIVector<SIT>::CopyOutBatchRows", direct_begin)
+    direct = service[direct_begin:direct_end]
+    direct_compact = "".join(direct.split())
+
+    guarded_create = (
+        "if(outputLen>0U){"
+        "CreateVecIndex(indicesOutLocal.ReinterpretCast<int32_t>(),0,outputLen);"
+        "}"
+    )
+    guarded_indices_copy = (
+        "if(outputLen>0U){"
+        "DataCopyPad(sparseIndicesGm[baseOutOffset+"
+        "static_cast<uint64_t>(gIdx)*constInfo_.qSeqSize*constInfo_.kSeqSize],"
+        "indicesOutLocal.ReinterpretCast<int32_t>(),copyOut);"
+        "}"
+    )
+
+    assert guarded_create in direct_compact
+    assert "DataCopyPad(sparseSeqLenGm" in direct_compact
+    assert guarded_indices_copy in direct_compact

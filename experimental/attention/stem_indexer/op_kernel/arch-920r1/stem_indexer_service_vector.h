@@ -487,7 +487,9 @@ __aicore__ inline void SIVector<SIT>::WriteDirectIndices(uint32_t outputLen, uin
     outputLen = Min(outputLen, PACKED_ROW_STRIDE);
     WaitFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
     Duplicate(lengthLocal, outputLen, 1);
-    CreateVecIndex(indicesOutLocal.ReinterpretCast<int32_t>(), 0, outputLen);
+    if (outputLen > 0U) {
+        CreateVecIndex(indicesOutLocal.ReinterpretCast<int32_t>(), 0, outputLen);
+    }
     SetFlag<HardEvent::V_MTE3>(topkVMte3Event_);
     WaitFlag<HardEvent::V_MTE3>(topkVMte3Event_);
 
@@ -508,9 +510,11 @@ __aicore__ inline void SIVector<SIT>::WriteDirectIndices(uint32_t outputLen, uin
         }
         DataCopyPad(sparseSeqLenGm[baseLenOffset + static_cast<uint64_t>(gIdx) * constInfo_.qSeqSize],
                     lengthLocal.ReinterpretCast<int32_t>(), indiceLenCp);
-        DataCopyPad(
-            sparseIndicesGm[baseOutOffset + static_cast<uint64_t>(gIdx) * constInfo_.qSeqSize * constInfo_.kSeqSize],
-            indicesOutLocal.ReinterpretCast<int32_t>(), copyOut);
+        if (outputLen > 0U) {
+            DataCopyPad(sparseIndicesGm[baseOutOffset +
+                                        static_cast<uint64_t>(gIdx) * constInfo_.qSeqSize * constInfo_.kSeqSize],
+                        indicesOutLocal.ReinterpretCast<int32_t>(), copyOut);
+        }
     }
     SetFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
 }
