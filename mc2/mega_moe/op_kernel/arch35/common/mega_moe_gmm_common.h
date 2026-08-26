@@ -30,7 +30,7 @@ namespace GmmKernel {
 constexpr uint32_t L1_TILE_K = 256U;
 constexpr uint32_t SCALE_K_L1_RATE = 2U;
 
-using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 1>; // 3: SwizzleOffset
+using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 0>; // 3: SwizzleOffset
 
 // 根据数据类型路径选择对应的 BlockMmad 实现。
 template <bool IsA8W4, typename C>
