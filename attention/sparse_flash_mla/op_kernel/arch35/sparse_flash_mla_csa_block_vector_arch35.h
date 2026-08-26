@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file sparse_flash_mla_csa_block_vector.h
+ * \file sparse_flash_mla_csa_block_vector_arch35.h
  * \brief
  */
-#ifndef SPARSE_FLASH_MLA_CSA_BLOCK_VECTOR_H
-#define SPARSE_FLASH_MLA_CSA_BLOCK_VECTOR_H
+#ifndef SPARSE_FLASH_MLA_CSA_BLOCK_VECTOR_ARCH35_H
+#define SPARSE_FLASH_MLA_CSA_BLOCK_VECTOR_ARCH35_H
 
 #include "util_regbase.h"
 #include "sparse_flash_mla_common_arch35.h"
@@ -25,10 +25,10 @@ using AscendC::Reg::StoreDist;
 
 #include "common/flash_decode.h"
 
-#if __has_include("../../common/op_kernel/arch35/vf/vf_flash_decode.h")
-#include "../../common/op_kernel/arch35/vf/vf_flash_decode.h"
+#if __has_include("../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h")
+#include "../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
 #else
-#include "../common/arch35/vf/vf_flash_decode.h"
+#include "../common/arch35/vf/vf_flash_decode_arch35.h"
 #endif
 
 #if __has_include("../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h")
@@ -164,6 +164,7 @@ public:
                                         GlobalTensor<int32_t> cmpResidualKvGm, GlobalTensor<int32_t> actualSeqQlenGm,
                                         GlobalTensor<int32_t> cuSeqlensQGm, __gm__ uint8_t *workspace,
                                         ConstInfo &constInfo);
+    __aicore__ inline void FreeEvent(ConstInfo &constInfo);
 
 private:
     template <bool UPDATE>
@@ -396,7 +397,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetRealCmpS2Idx(int64_t *toke
     }
 
     uint64_t topkKIdx = s2IdxInBase + curS2LoopCnt * constInfo.s2BaseSize;
-    for (uint64_t i = 0; i < 8; ++i) {
+    for (uint64_t i = 0; i < 8U; ++i) {
         uint64_t idx = topkBS1Idx + runInfo.s2StartIdx + topkKIdx + i;
         if (likely((topkKIdx + i < sparseBlockCount) && (s2IdxInBase + i < sparseS2End))) {
             tokenData[i] = sparseIndicesGm.GetValue(idx);
@@ -431,7 +432,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetRealS2Addr(int64_t *tokenD
             runInfo.boIdx * constInfo.s1Size * alignedSparseBlockCount + runInfo.s1oIdx * alignedSparseBlockCount;
     }
     uint64_t topkKIdx = s2IdxInBase + curS2LoopCnt * constInfo.s2BaseSize;
-    for (uint64_t i = 0; i < 8; ++i) {
+    for (uint64_t i = 0; i < 8U; ++i) {
         uint64_t idx = topkBS1Idx + runInfo.s2StartIdx + topkKIdx + i;
         if (likely((topkKIdx + i < sparseBlockCount) && (s2IdxInBase + i < sparseS2End))) {
             tokenData[i] = phyAddrGm64.GetValue(idx);
@@ -499,7 +500,7 @@ __aicore__ inline uint32_t CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTenso
                                                                       ConstInfo &constInfo)
 {
     uint32_t dealRow = 0;
-    for (uint32_t i = 0; i < 8; i += 2) {
+    for (uint32_t i = 0; i < 8U; i += 2U) {
         int64_t keyOffset0;
         int64_t keyOffset1;
         if constexpr (IS_VEC_S2PHYADDR) {
@@ -539,7 +540,7 @@ __aicore__ inline uint32_t CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTenso
             DataCopyPad(kvInUb[startRow * constInfo.dSize], keyGm[keyOffset], intriParams, padParams);
         }
         dealRow += (keyOffset0 >= 0) + (keyOffset1 >= 0);
-        startRow += 2;
+        startRow += 2U;
     }
     return dealRow;
 }
@@ -571,24 +572,24 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CalSparseCalSize(const RunInf
         int32_t vecCnt = (aicIdx % 2U == 0) ? (GetSubBlockIdx() == 0 ? 0 : 1) : (GetSubBlockIdx() == 0 ? 2 : 3);
         if (aicIdx % 2U == 0) {
             if (GetSubBlockIdx() == 0) {
-                sparseCalSize = CeilDiv(v0S2SizeFirstCore, 2);
+                sparseCalSize = CeilDiv(v0S2SizeFirstCore, 2U);
                 sparseS2Start = 0;
             } else {
                 sparseCalSize = v0S2SizeFirstCore - CeilDiv(v0S2SizeFirstCore, 2);
-                sparseS2Start = CeilDiv(v0S2SizeFirstCore, 2);
+                sparseS2Start = CeilDiv(v0S2SizeFirstCore, 2U);
             }
         } else {
             if (GetSubBlockIdx() == 0) {
-                sparseCalSize = CeilDiv(v0S2SizeSecondCore, 2);
+                sparseCalSize = CeilDiv(v0S2SizeSecondCore, 2U);
                 sparseS2Start = v0S2SizeFirstCore;
             } else {
-                sparseCalSize = v0S2SizeSecondCore - CeilDiv(v0S2SizeSecondCore, 2);
-                sparseS2Start = v0S2SizeFirstCore + CeilDiv(v0S2SizeSecondCore, 2);
+                sparseCalSize = v0S2SizeSecondCore - CeilDiv(v0S2SizeSecondCore, 2U);
+                sparseS2Start = v0S2SizeFirstCore + CeilDiv(v0S2SizeSecondCore, 2U);
             }
         }
         sparseS2End = sparseS2Start + sparseCalSize;
     } else {
-        uint32_t v0S2SizeFirstCore = CeilDiv(runInfo.s2RealSize, 2);
+        uint32_t v0S2SizeFirstCore = CeilDiv(runInfo.s2RealSize, 2U);
         sparseCalSize = GetSubBlockIdx() == 0 ? v0S2SizeFirstCore : runInfo.s2RealSize - v0S2SizeFirstCore;
         sparseS2Start = GetSubBlockIdx() == 0 ? 0 : v0S2SizeFirstCore;
         sparseS2End = sparseS2Start + sparseCalSize;
@@ -659,14 +660,14 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
             int64_t dealRow = 0;
             LocalTensor<Q_T> stage0OutUb = this->stage0OutBuf[pingPong].template Get<Q_T>();
             WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2[pingPong]);
-            while (dealRow < Min(16, sparseCalSize) && s2 < sparseS2End) {
+            while (dealRow < Min(16U, sparseCalSize) && s2 < sparseS2End) {
                 int64_t tokenData[8] = {-1, -1, -1, -1, -1, -1, -1, -1};
                 if constexpr (IS_VEC_S2PHYADDR) {
                     GetRealS2Addr(tokenData, s2, runInfo, constInfo);
                 } else {
                     GetRealCmpS2Idx(tokenData, s2, runInfo, constInfo);
                 }
-                s2 += 8;
+                s2 += 8U;
                 if (tokenData[0] == -1 && tokenData[1] == -1 && tokenData[2] == -1 && tokenData[3] == -1 &&
                     tokenData[4] == -1 && tokenData[5] == -1 && tokenData[6] == -1 && tokenData[7] == -1) {
                     meetEnd = true;
@@ -732,7 +733,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitVec1SoftmaxFromSinks(Loca
     }
     int64_t sinksOffset = 0;
     if constexpr (!IS_SPLIT_G) {
-        sinksOffset = GetBlockIdx() % 2 == 0 ? 0 : runInfo.firstHalfMRealSize;
+        sinksOffset = GetBlockIdx() % 2U == 0 ? 0 : runInfo.firstHalfMRealSize;
     } else {
         sinksOffset = runInfo.goIdx;
         if (constInfo.subBlockIdx == 1) {
@@ -1325,7 +1326,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::SoftmaxInitBuffer()
         tPipe->InitBuffer(softmaxFinalSumBuf[1], softmaxBufSize);
         tPipe->InitBuffer(softmaxFinalMaxBuf[0], softmaxBufSize);
         tPipe->InitBuffer(softmaxFinalMaxBuf[1], softmaxBufSize);
-        tPipe->InitBuffer(batchReduceTmpBuf, 768 * sizeof(float));
+        tPipe->InitBuffer(batchReduceTmpBuf, 768U * sizeof(float));
     }
     tPipe->InitBuffer(softmaxExpBuf[0], softmaxBufSize);
     tPipe->InitBuffer(softmaxExpBuf[1], softmaxBufSize);
@@ -1363,12 +1364,12 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
     if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE ||
                   TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
                   TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-        tPipe->InitBuffer(stage0OutBuf[0], dVTemplateType * 16 * sizeof(KV_T));
-        tPipe->InitBuffer(stage0OutBuf[1], dVTemplateType * 16 * sizeof(KV_T));
+        tPipe->InitBuffer(stage0OutBuf[0], dVTemplateType * 16U * sizeof(KV_T));
+        tPipe->InitBuffer(stage0OutBuf[1], dVTemplateType * 16U * sizeof(KV_T));
     }
     if (constInfo.returnSoftmaxLse) {
-        tPipe->InitBuffer(outLseBuf[0], 256);
-        tPipe->InitBuffer(outLseBuf[1], 256);
+        tPipe->InitBuffer(outLseBuf[0], 256U);
+        tPipe->InitBuffer(outLseBuf[1], 256U);
     }
 
     tPipe->InitBuffer(stage1OutQue[0], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
@@ -1404,7 +1405,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
     if constexpr (IS_BATCH_CONSISTENCY) {
         fdMte3ToMte2Id = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
         SetFlag<HardEvent::MTE3_MTE2>(fdMte3ToMte2Id);
-        for (uint32_t eventIdx = 0; eventIdx < 2; ++eventIdx) {
+        for (uint32_t eventIdx = 0; eventIdx < 2U; ++eventIdx) {
             intraLseMte3ToMte2Id[eventIdx] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
             intraAttnOutMte3ToMte2Id[eventIdx] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
         }
@@ -1421,6 +1422,26 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
     SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
     SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[1]);
     initOutputEventId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::FreeEvent(ConstInfo &constInfo)
+{
+    WaitFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
+    WaitFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+    WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+    WaitFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
+    WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2[0]);
+    WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2[1]);
+    WaitFlag<HardEvent::V_MTE2>(fdVToMte2Id[0]);
+    WaitFlag<HardEvent::V_MTE2>(fdVToMte2Id[1]);
+    WaitFlag<HardEvent::MTE3_V>(fdMte3ToVId);
+    if constexpr (IS_BATCH_CONSISTENCY) {
+        WaitFlag<HardEvent::V_MTE2>(intraPartialOVToMte2Id);
+        WaitFlag<HardEvent::V_MTE2>(reduceMaxSumVToMte2Id);
+    }
+    WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
+    WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[1]);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -2225,4 +2246,4 @@ public:
     __aicore__ inline void ProcessFlashDecode(FdRunInfo &fdRunInfo, ConstInfo &constInfo) {}
 };
 } // namespace SMLAKernel
-#endif // SPARSE_FLASH_MLA_CSA_BLOCK_VECTOR_H
+#endif // SPARSE_FLASH_MLA_CSA_BLOCK_VECTOR_ARCH35_H
