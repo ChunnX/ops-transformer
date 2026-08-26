@@ -19,13 +19,25 @@
 #include "opdev/make_op_executor.h"
 #include "opdev/op_def.h"
 #include "opdev/op_log.h"
-#include "aclnn_flash_mla_with_kvcache_inner.h"
 
 using namespace op;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// aclnnInner* 实现由构建工具自动生成（build/autogen/inner/aclnnInner_flash_mla_with_kvcache.cpp）
+// 并链接进 libcust_opapi.so，此处仅作前置声明（合并自原 aclnn_flash_mla_with_kvcache_inner.h）。
+extern aclnnStatus aclnnInnerFlashMlaWithKvcacheGetWorkspaceSize(
+    const aclTensor *q, const aclTensor *kCache, const aclTensor *blockTableOptional,
+    const aclTensor *cacheSeqlensOptional, const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional,
+    const aclTensor *attnMaskOptional, const aclTensor *metadataOptional, int64_t headDimV, double softmaxScale,
+    int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutKv,
+    const char *layoutOut, int64_t returnSoftmaxLse, const aclTensor *attnOut, const aclTensor *softmaxLse,
+    uint64_t *workspaceSize, aclOpExecutor **executor);
+
+extern aclnnStatus aclnnInnerFlashMlaWithKvcache(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                                 const aclrtStream stream);
 
 namespace {
 
