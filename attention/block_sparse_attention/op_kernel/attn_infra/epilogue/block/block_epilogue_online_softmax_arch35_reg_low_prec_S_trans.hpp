@@ -402,11 +402,12 @@ private:
         Duplicate(sumVreg1, 0);
 
         MaskReg maskReg8VL64 = CreateMask<uint8_t, MaskPattern::VL64>();
-        MaskReg maskReg8All = CreateMask<uint8_t, MaskPattern::ALL>();
+        MaskReg maskReg8VL128 = CreateMask<uint8_t, MaskPattern::VL128>();
         MaskReg maskReg16TailN = UpdateMask<half>(tailN);
         MaskReg maskReg16VL64 = CreateMask<half, MaskPattern::VL64>();
-        MaskReg maskReg16ALL = CreateMask<half, MaskPattern::ALL>();
-        MaskReg maskReg32ALL = CreateMask<float, MaskPattern::ALL>();
+        // Each half-to-float Cast selects either the even or odd half elements.
+        // tailN is at most 64, so each float-to-FP8 Cast has at most 32 valid inputs.
+        MaskReg maskReg32Cast = UpdateMask<float>((tailN + 1U) / 2U);
 
         constexpr static CastTrait castTraitZeroUNKNOWN = {
             RegLayout::ZERO,
@@ -458,18 +459,20 @@ private:
             Muls(pVregScaleMaxValue0, pVreg0, maxValueFP8, maskReg16TailN);
             Muls(pVregScaleMaxValue1, pVreg1, maxValueFP8, maskReg16TailN);
 
-            Cast<float, half, castTraitZeroUNKNOWN>(pVregFloat0, pVregScaleMaxValue0, maskReg16ALL);
-            Cast<float, half, castTraitOneUNKNOWN>(pVregFloat1, pVregScaleMaxValue0, maskReg16ALL);
-            Cast<float, half, castTraitZeroUNKNOWN>(pVregFloat2, pVregScaleMaxValue1, maskReg16ALL);
-            Cast<float, half, castTraitOneUNKNOWN>(pVregFloat3, pVregScaleMaxValue1, maskReg16ALL);
+            Cast<float, half, castTraitZeroUNKNOWN>(pVregFloat0, pVregScaleMaxValue0, maskReg16TailN);
+            Cast<float, half, castTraitOneUNKNOWN>(pVregFloat1, pVregScaleMaxValue0, maskReg16TailN);
+            Cast<float, half, castTraitZeroUNKNOWN>(pVregFloat2, pVregScaleMaxValue1, maskReg16TailN);
+            Cast<float, half, castTraitOneUNKNOWN>(pVregFloat3, pVregScaleMaxValue1, maskReg16TailN);
 
-            Cast<fp8_e4m3fn_t, float, castTraitZeroRINT>(pVregFP80, pVregFloat0, maskReg32ALL);
-            Cast<fp8_e4m3fn_t, float, castTraitTwoRINT>(pVregFP81, pVregFloat1, maskReg32ALL);
-            Cast<fp8_e4m3fn_t, float, castTraitZeroRINT>(pVregFP82, pVregFloat2, maskReg32ALL);
-            Cast<fp8_e4m3fn_t, float, castTraitTwoRINT>(pVregFP83, pVregFloat3, maskReg32ALL);
+            Cast<fp8_e4m3fn_t, float, castTraitZeroRINT>(pVregFP80, pVregFloat0, maskReg32Cast);
+            Cast<fp8_e4m3fn_t, float, castTraitTwoRINT>(pVregFP81, pVregFloat1, maskReg32Cast);
+            Cast<fp8_e4m3fn_t, float, castTraitZeroRINT>(pVregFP82, pVregFloat2, maskReg32Cast);
+            Cast<fp8_e4m3fn_t, float, castTraitTwoRINT>(pVregFP83, pVregFloat3, maskReg32Cast);
 
-            Or((RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP81, maskReg8All);
-            Or((RegTensor<uint8_t> &)pVregFP82, (RegTensor<uint8_t> &)pVregFP82, (RegTensor<uint8_t> &)pVregFP83, maskReg8All);
+            Or((RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP81,
+               maskReg8VL128);
+            Or((RegTensor<uint8_t> &)pVregFP82, (RegTensor<uint8_t> &)pVregFP82, (RegTensor<uint8_t> &)pVregFP83,
+               maskReg8VL128);
 
             Pack<uint8_t, uint16_t, HighLowPart::LOWEST>(
                 (RegTensor<uint8_t> &)pVregFP81, (RegTensor<uint16_t> &)pVregFP80);
@@ -500,14 +503,14 @@ private:
 
                 Muls(pVregScaleMaxValue0, pVreg0, maxValueFP8, maskReg16TailN);
 
-                Cast<float, half, castTraitZeroUNKNOWN>(pVregFloat0, pVregScaleMaxValue0, maskReg16ALL);
-                Cast<float, half, castTraitOneUNKNOWN>(pVregFloat1, pVregScaleMaxValue0, maskReg16ALL);
+                Cast<float, half, castTraitZeroUNKNOWN>(pVregFloat0, pVregScaleMaxValue0, maskReg16TailN);
+                Cast<float, half, castTraitOneUNKNOWN>(pVregFloat1, pVregScaleMaxValue0, maskReg16TailN);
 
-                Cast<fp8_e4m3fn_t, float, castTraitZeroRINT>(pVregFP80, pVregFloat0, maskReg32ALL);
-                Cast<fp8_e4m3fn_t, float, castTraitTwoRINT>(pVregFP81, pVregFloat1, maskReg32ALL);
+                Cast<fp8_e4m3fn_t, float, castTraitZeroRINT>(pVregFP80, pVregFloat0, maskReg32Cast);
+                Cast<fp8_e4m3fn_t, float, castTraitTwoRINT>(pVregFP81, pVregFloat1, maskReg32Cast);
 
                 Or((RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP81,
-                   maskReg8All);
+                   maskReg8VL128);
 
                 Pack<uint8_t, uint16_t, HighLowPart::LOWEST>(
                     (RegTensor<uint8_t> &)pVregFP81, (RegTensor<uint16_t> &)pVregFP80);
