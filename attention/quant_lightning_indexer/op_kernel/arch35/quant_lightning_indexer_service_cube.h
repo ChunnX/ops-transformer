@@ -52,6 +52,13 @@ public:
     static constexpr uint32_t MTE1_M_EVENT = EVENT_ID2;
     static constexpr uint32_t FIX_M_EVENT = EVENT_ID2;
     static constexpr uint32_t M_FIX_EVENT = EVENT_ID3;
+    // DB4: per-slot MTE1→M completion signals. Each L0 slot gets its own event ID,
+    // so CUBE pipe can queue Wait(slot0_data) and Wait(slot1_data) independently.
+    // SCALAR issues both blocks' LoadData + Set in one batch (no intervening Wait),
+    // then CUBE consumes the two Waits back-to-back. MTE1 loads both blocks
+    // concurrently (~94ns each, 188ns total vs 2×(94+wait overhead) serial).
+    static constexpr uint32_t MTE1_M_SLOT0 = EVENT_ID4;   // MTE1→M: slot 0 data ready
+    static constexpr uint32_t MTE1_M_SLOT1 = EVENT_ID6;   // MTE1→M: slot 1 data ready
 
     static constexpr uint64_t M_BASIC_BLOCK = 256;
     static constexpr uint64_t D_BASIC_BLOCK = 128;
@@ -292,6 +299,7 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
                         queryL1Mte2BufIdx_ - (s1gSplitNum - 1 - (s1gGmOffset > 0));
                 }
                 uint64_t s2Boundry = l1S2Offset + s2ProcessSize;
+                bool db5Prefetched = false;  // DB5: next pair's L0 loads already issued
                 for (uint64_t s2L1Offset = l1S2Offset; s2L1Offset < s2Boundry; s2L1Offset += S2_BASIC_BLOCK_L0) {
                     uint64_t s2L0RealSize =
                         s2L1Offset + S2_BASIC_BLOCK_L0 > l1S2Offset + s2ProcessSize ?
@@ -302,22 +310,116 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
                             WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
                             keyWaitDeferred_ = false;
                         }
-                        WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
                         uint64_t s1gL0RealSize =
                             s1gOffset + constInfo_.mBaseSize > s1gL1SizeAlign2G ?
                                                     s1gL1SizeAlign2G - s1gOffset :
                                                     constInfo_.mBaseSize;
+
+                        // ---- DB5: holistic dual-issue (MMAD+FIXP+MTE1 software pipeline) ----
+                        // Slot-flexible: pair may start on either L0 slot.
+                        uint64_t db4NextS2L1 = s2L1Offset + S2_BASIC_BLOCK_L0;
+                        bool db4CanDual = (constInfo_.tSize > 64) &&
+                            (s1gL0RealSize == constInfo_.mBaseSize) &&
+                            (s2L0RealSize == S2_BASIC_BLOCK_L0) &&
+                            (db4NextS2L1 + S2_BASIC_BLOCK_L0 <= l1TotalSize) &&
+                            (db4NextS2L1 < s2Boundry);
+
+                        if (db4CanDual) {
+                            // ======== DB5 prefetch-first 3-pipe pipeline ========
+                            // Per pair: [load A][load B] -> [MMAD A][MMAD B]
+                            //           -> [prefetch next A][Fixp A] -> [prefetch next B][Fixp B]
+                            // Prefetch Waits clear exactly when DB4's Fixp() Waits cleared
+                            // (MMAD retire), so FIXP start timing is unchanged, while MTE1
+                            // gains a full FIXP period of runway at every pair boundary.
+                            uint64_t db5Keep = l0BufIdx_;
+                            uint64_t db5Base = db5Keep & ~(uint64_t)1;
+                            uint64_t db5SlotA = db5Keep % L0_BUF_NUM;
+                            uint64_t db5SlotB = 1 - db5SlotA;
+                            uint32_t db5EvA = (db5SlotA == 0) ? MTE1_M_SLOT0 : MTE1_M_SLOT1;
+                            uint32_t db5EvB = (db5SlotB == 0) ? MTE1_M_SLOT0 : MTE1_M_SLOT1;
+
+                            if (!db5Prefetched) {
+                                // --- guard + load block A, Set(SLOT_A) ---
+                                l0BufIdx_ = db5Base + db5SlotA;
+                                WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + db5SlotA);
+                                LoadQueryToL0a(s1gGmOffset, s1gOffset, s1gL1SizeAlign2G, s1gL0RealSize, runInfo);
+                                LoadKeyToL0b(s2L1Offset, l1TotalSize, S2_BASIC_BLOCK_L0, runInfo);
+                                SetFlag<HardEvent::MTE1_M>(db5EvA);
+                                // --- guard + load block B (no intervening CUBE wait) ---
+                                l0BufIdx_ = db5Base + db5SlotB;
+                                WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + db5SlotB);
+                                LoadQueryToL0a(s1gGmOffset, s1gOffset, s1gL1SizeAlign2G, s1gL0RealSize, runInfo);
+                                LoadKeyToL0b(db4NextS2L1, l1TotalSize, S2_BASIC_BLOCK_L0, runInfo);
+                                SetFlag<HardEvent::MTE1_M>(db5EvB);
+                            }
+
+                            // --- CUBE consumes both Waits + MMADs back-to-back ---
+                            l0BufIdx_ = db5Base + db5SlotA;
+                            WaitFlag<HardEvent::MTE1_M>(db5EvA);
+                            WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + db5SlotA);
+                            ComputeL0c(s1gL0RealSize, S2_BASIC_BLOCK_L0, runInfo);
+                            SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + db5SlotA);
+
+                            l0BufIdx_ = db5Base + db5SlotB;
+                            WaitFlag<HardEvent::MTE1_M>(db5EvB);
+                            WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + db5SlotB);
+                            ComputeL0c(s1gL0RealSize, S2_BASIC_BLOCK_L0, runInfo);
+                            SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + db5SlotB);
+
+                            // --- prefetch next pair block A, THEN Fixp(A) ---
+                            uint64_t db5NextPair = s2L1Offset + 2 * S2_BASIC_BLOCK_L0;
+                            bool db5NextDual = (constInfo_.tSize > 64) &&
+                                (s1gL0RealSize == constInfo_.mBaseSize) &&
+                                (db5NextPair + 2 * S2_BASIC_BLOCK_L0 <= l1TotalSize) &&
+                                (db5NextPair + S2_BASIC_BLOCK_L0 < s2Boundry);
+                            if (db5NextDual) {
+                                l0BufIdx_ = db5Base + db5SlotA;
+                                WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + db5SlotA);
+                                LoadQueryToL0a(s1gGmOffset, s1gOffset, s1gL1SizeAlign2G, s1gL0RealSize, runInfo);
+                                LoadKeyToL0b(db5NextPair, l1TotalSize, S2_BASIC_BLOCK_L0, runInfo);
+                                SetFlag<HardEvent::MTE1_M>(db5EvA);
+                            }
+
+                            l0BufIdx_ = db5Base + db5SlotA;
+                            Fixp(s1gGmOffset + s1gOffset, (s2L1Offset - l1S2Offset),
+                                 s1gL0RealSize, S2_BASIC_BLOCK_L0, runInfo);
+                            SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + db5SlotA);
+
+                            // --- prefetch next pair block B, THEN Fixp(B) ---
+                            if (db5NextDual) {
+                                l0BufIdx_ = db5Base + db5SlotB;
+                                WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + db5SlotB);
+                                LoadQueryToL0a(s1gGmOffset, s1gOffset, s1gL1SizeAlign2G, s1gL0RealSize, runInfo);
+                                LoadKeyToL0b(db5NextPair + S2_BASIC_BLOCK_L0, l1TotalSize, S2_BASIC_BLOCK_L0, runInfo);
+                                SetFlag<HardEvent::MTE1_M>(db5EvB);
+                            }
+
+                            l0BufIdx_ = db5Base + db5SlotB;
+                            Fixp(s1gGmOffset + s1gOffset, (db4NextS2L1 - l1S2Offset),
+                                 s1gL0RealSize, S2_BASIC_BLOCK_L0, runInfo);
+                            SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + db5SlotB);
+
+                            db5Prefetched = db5NextDual;
+                            l0BufIdx_ = db5Keep + 2;
+
+                            // Skip next s2L1Offset iteration (consumed both blocks)
+                            s2L1Offset += S2_BASIC_BLOCK_L0;
+                            continue;
+                        }
+
+                        // ---- Original single-block path (tail/edge/non-prefill blocks) ----
+                        WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
                         LoadQueryToL0a(s1gGmOffset, s1gOffset, s1gL1SizeAlign2G, s1gL0RealSize, runInfo);
                         LoadKeyToL0b(s2L1Offset, l1TotalSize, s2L0RealSize, runInfo);
 
                         SetFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
                         WaitFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
-                        
+
                         WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + l0BufIdx_ % L0_BUF_NUM);
                         ComputeL0c(s1gL0RealSize, s2L0RealSize, runInfo);
 
                         SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
-                        
+
                         Fixp(s1gGmOffset + s1gOffset, (s2L1Offset - l1S2Offset),
                                                 s1gL0RealSize, s2L0RealSize, runInfo);
                         SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + l0BufIdx_ % L0_BUF_NUM);
