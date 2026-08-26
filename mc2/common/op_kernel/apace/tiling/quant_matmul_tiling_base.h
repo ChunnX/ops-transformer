@@ -30,7 +30,7 @@ public:
     QuantMatmulTilingBase() = default;
     virtual ~QuantMatmulTilingBase() = default;
 
-    void GetTilingData(uint64_t m, uint64_t n, uint64_t k, bool transA, bool transB, QuantMatmulTilingData &tilingData)
+    void GetTilingData(uint64_t m, uint64_t n, uint64_t k, bool transA, bool transB, QuantMatmulTilingData& tilingData)
     {
         // Clear the cached state so one tiling object can safely be reused for
         // multiple shapes without leaking the previous decision.
@@ -49,7 +49,7 @@ public:
         PrintTilingData(tilingData);
     }
 
-    void GetTilingData(uint64_t m, uint64_t n, uint64_t k, QuantMatmulTilingData &tilingData)
+    void GetTilingData(uint64_t m, uint64_t n, uint64_t k, QuantMatmulTilingData& tilingData)
     {
         // Keep compatibility with the common sample default:
         // A is not transposed and B is transposed.
@@ -73,7 +73,7 @@ public:
     // context. When set, InitCompileInfo skips the PlatformAscendCManager global
     // singleton query (which depends on a real device and therefore fails in
     // unit-test / simulator environments).
-    void SetPlatformInfo(const QuantMatmulPlatformInfo &platformInfo)
+    void SetPlatformInfo(const QuantMatmulPlatformInfo& platformInfo)
     {
         platformInfo_ = platformInfo;
         hasExternalPlatformInfo_ = true;
@@ -89,12 +89,12 @@ protected:
     fe::PlatFormInfos *platformInfoPtr_{nullptr};
     bool hasExternalPlatformInfo_{false};
 
-    virtual const char *TilingName() const = 0;
+    virtual const char* TilingName() const = 0;
 
-    virtual void DoOpTiling(QuantMatmulTilingData &tilingData) = 0;
+    virtual void DoOpTiling(QuantMatmulTilingData& tilingData) = 0;
 
 private:
-    void PrintTilingData(const QuantMatmulTilingData &tilingData) const
+    void PrintTilingData(const QuantMatmulTilingData& tilingData) const
     {
         printf("[QuantMatmul Strategy]\n");
         printf("  strategy           : %s\n", TilingName());
@@ -159,3 +159,4 @@ private:
         args_.transB = transB;
     }
 };
+
