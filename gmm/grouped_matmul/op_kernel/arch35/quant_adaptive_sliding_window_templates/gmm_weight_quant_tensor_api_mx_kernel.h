@@ -55,7 +55,19 @@ __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
 
     const int64_t n = static_cast<int64_t>(gmmBaseParams->nSize);
     const int64_t k = static_cast<int64_t>(gmmBaseParams->kSize);
-    const uint64_t kAL1 = static_cast<uint64_t>(mmTilingData->stepKb * mmTilingData->baseK);
+    const uint64_t baseM = static_cast<uint64_t>(mmTilingData->baseM);
+    const uint64_t baseN = static_cast<uint64_t>(mmTilingData->baseN);
+    const uint64_t baseK = static_cast<uint64_t>(mmTilingData->baseK);
+    const uint64_t tilingKL1 = static_cast<uint64_t>(mmTilingData->stepKb * mmTilingData->baseK);
+    // The GMM-specific kernel recomputes the legacy KL1 policy from the actual
+    // groupList M split and N resplit blocks. Keep the launcher shape on the
+    // conservative regular path; the kernel expands it to 512 only when the
+    // complete runtime workload satisfies the old small-M/N condition.
+    const uint64_t kAL1 = tilingKL1;
+    // Host tiling keeps baseK at 64 for compatibility. The legacy basic block
+    // used 128 for regular blocks and 256 for small M/N blocks; do not expose
+    // that implementation detail through the shared tiling data.
+    const uint64_t l0K = (baseM <= 128U && baseN <= 128U) ? 256U : (baseK < 128U ? 128U : baseK);
     // The fourth l1TileShape field controls the MX scale-K reuse window.
     // Keep it aligned with the legacy GMM MX controller; it is not tiling data.
     static constexpr uint64_t kScaleKL1 = 4096U;
@@ -83,14 +95,16 @@ __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
         static_cast<int64_t>(kAL1),
         static_cast<int64_t>(kScaleKL1));
     params.mmadParams.l0TileShape = AscendC::Te::MakeShape(
-        static_cast<int64_t>(mmTilingData->baseM),
-        static_cast<int64_t>(mmTilingData->baseN),
-        static_cast<int64_t>(mmTilingData->baseK));
+        static_cast<int64_t>(baseM), static_cast<int64_t>(baseN), static_cast<int64_t>(l0K));
     params.mmadParams.l1BufferNum = static_cast<uint64_t>(Blaze::Gemm::DOUBLE_BUFFER_COUNT);
     params.mmadParams.hasBias = gmmBaseParams->hasBias == 1;
     params.prologueParams.bGmAddr = weightDataAddr;
     params.prologueParams.biasGmAddr = biasDataAddr;
-    params.prologueParams.kBubSize = kAL1;
+    // The legacy MXA8W4 basic block splits one K-L1 tile between the two AIV
+    // sub-blocks.  The GMM-specific prologue uses kBubSize as the per-AIV K
+    // slice; passing the whole kAL1 here serializes the conversion on AIV0
+    // whenever one K-L1 tile fits in a single UB slice.
+    params.prologueParams.kBubSize = kAL1 / Blaze::Gemm::DOUBLE_BUFFER_COUNT;
     params.prologueParams.nBubSize = static_cast<uint64_t>(mmTilingData->baseN);
     params.groupListGmAddr = groupList;
 
