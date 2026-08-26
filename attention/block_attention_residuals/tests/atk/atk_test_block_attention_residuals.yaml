@@ -81,7 +81,7 @@ inputs:
     type: attr
     required: true
     dtypes:
-      values: [float]
+      values: [double]
     ranges:
       valid:
         values: [1.0e-5]
