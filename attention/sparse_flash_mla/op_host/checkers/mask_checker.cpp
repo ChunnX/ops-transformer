@@ -14,12 +14,16 @@
 namespace optiling {
 namespace sparse_mla_checker {
 namespace {
-const char *Op(const CheckContext &context) { return context.opName == nullptr ? "SparseMla" : context.opName; }
+const char *Op(const CheckContext &context)
+{
+    return context.opName == nullptr ? "SparseMla" : context.opName;
+}
 } // namespace
 
 ge::graphStatus MaskChecker::CheckSinglePara(const CheckContext &context) const
 {
-    OP_CHECK_IF(context.oriMaskMode != 0 && context.oriMaskMode != 3 && context.oriMaskMode != 4, // 3: RightDownCausal模式 4: Band模式
+    OP_CHECK_IF(context.oriMaskMode != 0 && context.oriMaskMode != 3 &&
+                    context.oriMaskMode != 4, // 3: RightDownCausal模式 4: Band模式
                 OP_LOGE_FOR_INVALID_VALUE(Op(context), "ori_mask_mode", std::to_string(context.oriMaskMode).c_str(),
                                           "0, 3 or 4"),
                 return ge::GRAPH_FAILED);
