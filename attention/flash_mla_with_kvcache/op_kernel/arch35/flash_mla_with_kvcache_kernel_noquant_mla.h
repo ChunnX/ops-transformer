@@ -181,7 +181,9 @@ public:
         constInfo_.s2Size = flashMlaWithKvcacheBaseParams.s2Size;
         constInfo_.dSize = flashMlaWithKvcacheBaseParams.dSize;
         constInfo_.dSizeV = flashMlaWithKvcacheBaseParams.dSizeV;
-        constInfo_.dSizeRope = 64; // todo 修改成传入值
+        // rope 段宽度由 host 从 q last dim - headDimV 推导后经 tiling data 传入
+        // （当前 MLA D512 仅支持 rope==64，见 tiling_info_parser GetQkHeadDim）
+        constInfo_.dSizeRope = flashMlaWithKvcacheBaseParams.dSizeRope;
         constInfo_.actualSeqLenSize = flashMlaWithKvcacheBaseParams.actualSeqLengthsQSize;
         constInfo_.actualSeqLenKVSize = flashMlaWithKvcacheBaseParams.actualSeqLengthsKVSize;
         constInfo_.scaleValue = flashMlaWithKvcacheBaseParams.scaleValue;
@@ -206,12 +208,10 @@ public:
         constInfo_.isExistRowInvalid = flashMlaWithKvcacheAttenMaskParams.isExistRowInvalid;
         constInfo_.accumOutSize = flashMlaWithKvcacheWorkspaceParams.accumOutSize;
         constInfo_.logSumExpSize = flashMlaWithKvcacheWorkspaceParams.logSumExpSize;
-        // pageAttention
-        if constexpr (PAGE_ATTENTION) {
-            constInfo_.maxBlockNumPerBatch = flashMlaWithKvcachePageAttentionParams.maxBlockNumPerBatch;
-            constInfo_.blockSize = flashMlaWithKvcachePageAttentionParams.blockSize;
-            constInfo_.paLayoutType = flashMlaWithKvcachePageAttentionParams.paLayoutType;
-        }
+        // pageAttention（仅 PA 实例化：SEL 不含 NO_PA，host IsCapableFeatureCheckMla 亦强制 PA 路由）
+        constInfo_.maxBlockNumPerBatch = flashMlaWithKvcachePageAttentionParams.maxBlockNumPerBatch;
+        constInfo_.blockSize = flashMlaWithKvcachePageAttentionParams.blockSize;
+        constInfo_.paLayoutType = flashMlaWithKvcachePageAttentionParams.paLayoutType;
         // LSE
         constInfo_.isSoftmaxLseEnable = flashMlaWithKvcacheBaseParams.isSoftMaxLseEnable;
 
