@@ -103,13 +103,13 @@ struct WorkspaceInfo {
             ALIGN_512);
 
         expertRevTokenNumsPtr = base + workspaceSize;
-        int64_t legacyExpertCountBytes =
+        int64_t expertMajorPaddedCountBytes =
             static_cast<int64_t>(tilingData->moeExpertPerRank) * ALIGN_32 * tilingData->aicNum;
-        int64_t compactExpertCountBytes = static_cast<int64_t>(Ops::Base::CeilAlign(
-                                              tilingData->moeExpertPerRank, static_cast<uint32_t>(INT_CACHELINE))) *
-                                          static_cast<int64_t>(sizeof(int32_t)) * tilingData->aicNum;
+        int64_t blockMajorCountBytes = static_cast<int64_t>(Ops::Base::CeilAlign(
+                                           tilingData->moeExpertPerRank, static_cast<uint32_t>(INT_CACHELINE))) *
+                                       static_cast<int64_t>(sizeof(int32_t)) * tilingData->aicNum;
         int64_t expertCountWorkspaceBytes =
-            tilingData->topoType == TOPO_TYPE_MTE ? compactExpertCountBytes : legacyExpertCountBytes;
+            tilingData->topoType == TOPO_TYPE_MTE ? blockMajorCountBytes : expertMajorPaddedCountBytes;
         workspaceSize += Ops::Base::CeilAlign(expertCountWorkspaceBytes, ALIGN_512);
 
         metaInfoPtr = base + workspaceSize;
