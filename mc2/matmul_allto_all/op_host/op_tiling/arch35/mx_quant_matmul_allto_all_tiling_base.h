@@ -27,6 +27,8 @@
 #include "quant_batch_matmul_v3/op_kernel/arch35/quant_batch_matmul_v3_tiling_data.h"
 #include "../../../op_kernel/arch35/matmul_allto_all_tiling_data.h"
 #include "../../../op_kernel/arch35/matmul_allto_all_tiling_key.h"
+#include "apace/kernel/fusions/quant_matmul_allto_all/quant_matmul_all_to_all_tiling_data.h"
+#include "apace/tiling/quant_matmul_tiling_swat.h"
 
 namespace MC2Tiling {
 using namespace optiling;
@@ -53,6 +55,7 @@ protected:
     bool IsCapable() override;
     ge::graphStatus DoOpTiling() override;
     ge::graphStatus PostTiling() override;
+    ge::graphStatus GetWorkspaceSize() override;
     uint64_t GetTilingKey() const override;
     CutResult GetTilingResult() override;
     ge::graphStatus CheckOpInputInfo();
@@ -73,12 +76,17 @@ protected:
                                       TilingContextInfo &contextInfo);
     ge::graphStatus CheckMxQuantScaleDataType(const gert::TilingContext *context, const char *opName);
     void SetTilingInfo(MatmulAlltoAllTilingInfo &tilingInfo) const;
+    void SetHcommTilingInfo(MatmulAllToAllApaceTilingInfo &tilingInfo) const;
+    void AlignCutResForKernel(CutResult &cutRes, uint64_t mValue) const;
+    ge::graphStatus DoHcommMxQuantMMTiling();
     void PrintMxQuantMatmulAlltoAllTilingData(QuantMatmulAlltoAllTilingData &outTilingData);
 
 private:
     QuantMatmulAlltoAllTilingData localTilingData_;
+    hcommAllToAllMatmulTilingData hcommTilingData_;
     uint64_t mmMvalueLen_ = 0;
     bool isMxfp4_ = false;
+    bool usingApaceImpl_ = false;
     void PrintMxQuantMatmulAlltoAllTilingInfo(const std::string &opName, MatmulAlltoAllTilingInfo &tilingInfo);
     void PrintMxQuantMMV3TilingData(const std::string &opName,
                                     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &tiling);
