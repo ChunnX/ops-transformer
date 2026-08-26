@@ -103,6 +103,12 @@ bool CheckShapeAndAttrs(const aclTensor *permutedTokens, const aclTensor *sorted
     }
 
     const int64_t indicesLength = sortedIndices->GetViewShape().GetDim(0);
+    if (fallback) {
+        OP_CHECK(
+            permutedTokens->GetViewShape().GetDim(0) == indicesLength,
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "permutedTokens dim 0 must equal sortedIndices length in fallback mode."),
+            return false);
+    }
     int64_t tokensNum = 0;
     if (probsOptional != nullptr) {
         const Shape &probsShape = probsOptional->GetViewShape();

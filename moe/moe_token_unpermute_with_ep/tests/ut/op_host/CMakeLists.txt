@@ -9,6 +9,14 @@
 # -----------------------------------------------------------------------------------------------------------
 
 if(UT_TEST_ALL OR OP_HOST_UT)
+    set(MOE_TOKEN_UNPERMUTE_WITH_EP_CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
+    if("${MOE_TOKEN_UNPERMUTE_WITH_EP_CONDITION_UNIT}" STREQUAL "ascend950")
+        set_source_files_properties(
+            ${CMAKE_CURRENT_SOURCE_DIR}/test_moe_token_unpermute_with_ep_ascend950_infershape.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/test_moe_token_unpermute_with_ep_tiling.cpp
+            PROPERTIES COMPILE_DEFINITIONS MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950=1
+        )
+    endif()
     add_modules_ut_sources(UT_NAME ${OP_TILING_MODULE_NAME} MODE PRIVATE DIR ${CMAKE_CURRENT_SOURCE_DIR})
     add_modules_ut_sources(UT_NAME ${OP_INFERSHAPE_MODULE_NAME} MODE PRIVATE DIR ${CMAKE_CURRENT_SOURCE_DIR})
 endif()

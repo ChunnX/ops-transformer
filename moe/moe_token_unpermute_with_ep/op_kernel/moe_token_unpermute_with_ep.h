@@ -30,9 +30,6 @@ public:
 
 protected:
     __aicore__ inline void CalMultiOutToken(const int64_t out_offset, const int64_t out_tokens_number);
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    __aicore__ inline void ValidateIndices(const int64_t start_token);
-#endif
     __aicore__ inline void CalSingleOutToken(const int64_t start_token, const int64_t out_token_idx);
     __aicore__ inline void CalPartOutToken(const int64_t start_token, const int64_t h_index, const int64_t h_length,
                                            const int64_t out_token_index);
@@ -284,30 +281,10 @@ __aicore__ inline void KernelMoeTokenUnpermuteWithEp<T1, T2, T3, PROBS, ISTOKEN>
     }
 }
 
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-template <typename T1, typename T2, typename T3, bool PROBS, bool ISTOKEN>
-__aicore__ inline void KernelMoeTokenUnpermuteWithEp<T1, T2, T3, PROBS, ISTOKEN>::ValidateIndices(
-    const int64_t start_token)
-{
-    for (int64_t token_index = start_token; token_index < start_token + this->top_k; ++token_index) {
-        SetFlag<HardEvent::MTE2_S>(probsMte2ToS);
-        WaitFlag<HardEvent::MTE2_S>(probsMte2ToS);
-        const T2 index = this->indicesLocal.GetValue(token_index);
-        SetFlag<HardEvent::S_MTE2>(probsSToMte2);
-        WaitFlag<HardEvent::S_MTE2>(probsSToMte2);
-        ASSERT_MSG(index >= 0 && static_cast<int64_t>(index) < MAX_SORTED_INDEX,
-                   "sortedIndices value %d is outside [0, %ld).", index, MAX_SORTED_INDEX);
-    }
-}
-#endif
-
 template <typename T1, typename T2, typename T3, bool PROBS, bool ISTOKEN>
 __aicore__ inline void KernelMoeTokenUnpermuteWithEp<T1, T2, T3, PROBS, ISTOKEN>::CalSingleOutToken(
     const int64_t start_token, const int64_t out_token_idx)
 {
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    ValidateIndices(start_token);
-#endif
     if constexpr (ISTOKEN) {
         for (int64_t h_index = 0; h_index < this->hidden_splited_num; ++h_index) {
             CalPartOutToken(start_token, h_index, this->hidden_splited_length, out_token_idx);
@@ -447,11 +424,15 @@ __aicore__ inline void KernelMoeTokenUnpermuteWithEp<T1, T2, T3, PROBS, ISTOKEN>
     SetFlag<HardEvent::S_V>(probsSToV);
     WaitFlag<HardEvent::S_V>(probsSToV);
 
+    if (h_index == 0) {
+        ASSERT_MSG(acl_token_idx >= 0 && static_cast<int64_t>(acl_token_idx) < MAX_SORTED_INDEX,
+                   "sortedIndices value %d is outside [0, %ld).", acl_token_idx, MAX_SORTED_INDEX);
+    }
+
     float prob_value = 0;
     bool need_copy_in = acl_token_idx >= this->start && acl_token_idx < this->end;
     if constexpr (PROBS) {
         prob_value = this->probs_tensor.GetValue(token_index);
-        need_copy_in = need_copy_in && prob_value != 0;
     }
     if (need_copy_in) {
         CopyTokenIn(acl_token_idx, h_index, h_length);
@@ -595,6 +576,13 @@ __aicore__ inline void KernelMoeTokenUnpermuteWithEp<T1, T2, T3, PROBS, ISTOKEN>
         WaitFlag<HardEvent::S_MTE2>(probsSToMte2);
         SetFlag<HardEvent::S_V>(probsSToV);
         WaitFlag<HardEvent::S_V>(probsSToV);
+
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+        if (h_index == 0) {
+            ASSERT_MSG(acl_prob_idx >= 0 && static_cast<int64_t>(acl_prob_idx) < MAX_SORTED_INDEX,
+                       "sortedIndices value %d is outside [0, %ld).", acl_prob_idx, MAX_SORTED_INDEX);
+        }
+#endif
 
         CopyProbIn(acl_prob_idx, h_index, h_length);
         CopyProbOut(out_prob_index * this->top_k + prob_index - start_prob, h_index, h_length);

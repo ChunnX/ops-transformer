@@ -45,6 +45,7 @@ if(NOT BUILD_OPS_RTY_KERNEL)
         )
         set_source_files_properties(
             ${CMAKE_CURRENT_SOURCE_DIR}/moe_token_unpermute_with_ep_tiling.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/moe_token_unpermute_with_ep_infershape.cpp
             PROPERTIES COMPILE_DEFINITIONS MOE_TOKEN_UNPERMUTE_WITH_EP_ASCEND950=1
         )
     else()
