@@ -1261,3 +1261,223 @@ arch35 kernel score 区域 = `GetBlockNum()(=aicNum) × s1BaseSize(4|2) × Align
    赋值路径
 4. A/B 对照（同一物理张量、两种 layout 属性调用）是隔离"数据问题 vs 路径问题"的最快手段；
    tiling 调试日志（临时 OP_LOGI + ASCEND_SLOG_PRINT_TO_STDOUT=1）一击定位 s2Size=0
+
+---
+---
+
+# 已知缺陷场景测试纳入与修复记录（缺陷 C/D/E，arch35/Ascend 950PR）
+
+> 2026-08-26 排查修复。环境：8×Ascend950PR（arch35，28 cube/56 vector），CANN 9.1.0-beta.3。
+> 背景：`test_pool_key_indexer_general.py` 曾将三类崩溃组合主动排除出测试（2026-08-24
+> 在 arch22/910B3 实测，EE9999/507015 且崩溃污染进程内后续用例）。本次按缺陷家族
+> 逐个重新纳入（新增 `test_pool_key_indexer_known_defects.py` + `known_defect_cases.py`
+> + `_defect_case_runner.py`），在 arch35 上逐个复现、定位与修复；arch22 侧由对应
+> 责任人处理（文末附修改建议）。
+
+## 测试架构：进程隔离
+
+EE9999/aicore exception 会污染进程内后续用例（异步报错、进程级 device context 失效），
+historically 因此连 xfail 都未纳入。本次方案：
+
+- `known_defect_cases.py`：缺陷用例注册表，三家族 26 例（C:pool_size 非 8 倍数 11 例、
+  D:topk 5120/6144/7168 9 例、E:ps≥32 且 topk≥6144 5 例，每家族含 canary 对照例）
+- `_defect_case_runner.py`：单用例 runner，独立子进程执行；输出协议
+  `DEFECT_CASE_RESULT: PASS|FAIL|CRASH <id> <detail>`，退出码 0/1/2
+- `test_pool_key_indexer_known_defects.py`：pytest 封装，`subprocess.run` 逐例拉起
+  （600s 超时兜底），按协议行+退出码判定；子进程被信号杀死/无协议行亦兜底判 CRASH
+
+崩溃只污染子进程，套件可持续执行并给出逐例判定。比对策略与主套件一致
+（indices 逐行有效索引集合比对 100% 门禁 + values 参考日志）。
+
+## 缺陷 C：pool_size 非 8 的倍数崩溃（arch35 复现并修复）
+
+### 复现（修复前，arch35）
+
+11 例全部 CRASH（507015），与 arch22 表现一致：ps∈{2,3,4,5,7,12,100,127} ×
+BSND/TND/PA 全崩；canary（ps=8 同 shape）通过。
+
+### 定位：判别实验锁定向量操作数非 32B 对齐
+
+**假设**：arch35 向量指令（Duplicate/Add 等）要求操作数地址 32B（int32 即 8 元素）
+对齐；`ExpandAndAppendIndices`（`arch35/pool_key_indexer_service_vector.h`）中三处
+向量写的 dst 偏移在 ps%8≠0 时非 8 元素对齐：
+
+| 写点 | 偏移 | ps%8≠0 时 |
+|------|------|-----------|
+| 展开轮 Duplicate/Add | `outOff = k*poolSize`（k≥1） | 非对齐 |
+| 池不足补 -1 Duplicate | `validExpand = validS2Len*poolSize` | 非对齐 |
+| 尾区清空 Duplicate | `tailPos = topk = sparseCount*poolSize` | 可能非对齐 |
+
+**判别实验**（BSND, s2pools=64, nocausal，逐个独立进程）：
+
+| 用例 | 形态 | 预测 | 实测 |
+|------|------|------|------|
+| E: ps=16 | 对照（全对齐） | 不崩 | 不崩, indices 对 |
+| A: ps=5, topk=5(sc=1), tail=0 | 唯一无非对齐写形态（仅 offset 0 对齐写） | 不崩 | **不崩**（但 indices 错，见下） |
+| B: ps=5, topk=5, tail=3 | 尾区 Duplicate 在 offset 5 | 崩 | **崩** |
+| C: ps=5, topk=10(sc=2), tail=0 | 第 2 轮展开在 offset 5 | 崩 | **崩** |
+| D: ps=5, topk=40(sc=8), tail=0 | 多处非对齐 | 崩 | **崩** |
+
+预测全部命中 → 根因确证。ps=1 例外成立的原因：`ProcessTopK` 仅在 `poolSize_>1`
+时调用展开；ps%8==0 时上述偏移天然 8 对齐——原向量路径本就隐含"ps 为 8 倍数"前提。
+
+**附带发现**（探针 A）：即使无崩溃，向量路径按 `Align(poolSize,8)` 宽度写会越出
+pool 边界（ps=5 写 8 个），无尾块清理时 [topk, topk+Align(ps,8)-ps) 残留
+`base+p` 垃圾索引（正值、非 -1），集合比对失败——与崩溃同源的第二类缺陷。
+
+### 修复（`op_kernel/arch35/pool_key_indexer_service_vector.h`）
+
+`ExpandAndAppendIndices` 增加非对齐 ps 的标量退化路径，`poolSize % 8 != 0` 时：
+
+1. 向量铺 -1：`Duplicate(tokenIndices, -1, alignedTotalOut)`（offset 0，恒对齐）
+2. `VToSSync()`：V 写（-1 填充 + poolIndices 的 TopK 向量写）对标量读写可见
+3. 标量精确写展开：`tokenIndices.SetValue(k*ps + p, base + p)`（逐 token，无对齐
+   要求，天然精确到 pool 边界——同时消除垃圾残留问题）
+4. 标量精确写尾块 `visibleTailK` 个（visibleTailK 计算提取为两路径共用）
+5. `SToMTE3Sync()`：S 写由 MTE3(DataCopyPad) 读出前的硬同步（外层 ProcessTopK
+   的 V_MTE3 等待不覆盖 S 写）
+
+`poolSize % 8 == 0` 主流路径（ps=8/16/.../128）保持原向量实现不变（性能无损）。
+标量路径仅作用于非 8 倍数边缘场景（≤ topk 个标量写/行），且规格 topk 值集与
+ps%8≠0 组合下 sparseCount 恒 ≤2048，不触碰 isSparseCountOver2K 路径。
+
+### 验证
+
+| 项目 | 修复前 | 修复后 |
+|------|--------|--------|
+| 缺陷 C 家族 11 例（runner 直跑） | 10 CRASH + canary PASS | **11/11 PASS** |
+| `test_pool_key_indexer_known_defects.py` 全套件 | — | **26/26 passed**（含 D/E 家族与清单校验） |
+| 定点 42 例 + 泛化 60 例 + 覆盖率收口回归 | 103 passed | **103 passed**（无回归） |
+| `boundary_causal_test.py`（ps=16 因果边界 t=0..15 全扫） | ALL PASS | ALL PASS |
+| `--soc=ascend950 --pkg` 编译 | — | exit=0，3 个 dtype bin 齐全 |
+
+## 缺陷 D：topk ∈ {5120, 6144, 7168}（arch35 不复现）
+
+9 例（含 arch22 实测崩溃点 ps=16/topk=5120×s2p∈{384,512}、正常点 s2p=640 对照、
+ps=1/ps=8 对照、TND 形态、topk=6144/7168）在 arch35 **全部 PASS，修复前后一致**
+（本缺陷无需 arch35 修复）。
+
+原因分析：arch22 的 TopK 走 LD 跨核归并路径（vec1Res/vec1Param workspace 三段布局、
+`ProcessLD` 按 BASE_TOPK=2048 分档），崩溃与其 LD 区域 sizing/分档逻辑相关；arch35
+为 VF 直通路径（`vf/pool_key_indexer_topk.h` LITopk 直方图 radix TopK，scoreGm 单段），
+无 LD 路径，不存在该缺陷面。用例保留作 arch35 回归保护。
+
+## 缺陷 E：pool_size≥32 且 topk≥6144（arch35 不复现）
+
+5 例（含原始崩溃形态 TND ps32/topk6144 k=16384、BSND ps64/topk8192 k=16384，及
+ps32/6144、ps64/8192、ps128/8192 变体）在 arch35 **全部 PASS，修复前后一致**。
+同缺陷 D，属 arch22 LD 路径特有。用例保留作 arch35 回归保护。
+
+## 修复文件清单
+
+| 文件 | 修改 |
+|------|------|
+| `op_kernel/arch35/pool_key_indexer_service_vector.h` | `ExpandAndAppendIndices`：visibleTailK 计算前移共用；新增 ps%8≠0 标量精确写退化路径（Duplicate 铺 -1 + VToSSync + 标量展开/尾块 + SToMTE3Sync）；ps%8==0 向量路径不变 |
+| `tests/pytest/known_defect_cases.py` | 新增：缺陷 C/D/E 三家族 26 例注册表（含 canary 对照与 arch22 崩溃形态复刻） |
+| `tests/pytest/_defect_case_runner.py` | 新增：子进程单用例 runner（输入构造 BSND/TND/PA + golden 比对 + PASS/FAIL/CRASH 输出协议） |
+| `tests/pytest/test_pool_key_indexer_known_defects.py` | 新增：pytest 封装（subprocess 逐例拉起、超时兜底、用例清单校验） |
+| `tests/pytest/test_pool_key_indexer.py` | NOTE/docstring 更新：缺陷 E 的 arch35 复测结论与用例去向 |
+| `tests/pytest/test_pool_key_indexer_general.py` | docstring C/D/E/H 项与分析报告打印更新为 arch35 现状 |
+
+## arch22（910B）修改建议（待责任人处理，本次未改动）
+
+1. **缺陷 C 同款根因确认**：`arch22/pool_key_indexer_service_vector.h`
+   `ExpandAndAppendIndices` 的 302-306 行（展开轮 Duplicate/Add 于 `tokenIndices[outOff]`，
+   outOff=k*poolSize）、313 行（`tokenIndices[validExpand]` 补 -1）、333 行
+   （`tokenIndices[tailPos]` 尾区清空）与 arch35 修复前逐字同构——arch22 的
+   ps∈[2,7]/非 8 倍数崩溃应同为向量操作数非 32B 对齐。建议按本次 arch35 修复
+   同模式移植标量退化路径，差异点：arch22 无需 VToSSync（其 V→S 顺序由时序保证，
+   与既有 tail 标量写一致仅 PipeBarrier 即可）、S→MTE3 沿用其
+   `SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3)` 惯用法
+2. **缺陷 D/E 建议排查方向**（arch35 无 LD 路径，无参照，仅给线索）：
+   崩溃面与 s2pool 相对 `topkCountAlign256_=Align(sparseCount,256)` 的位置相关
+   （实测 s2p∈{384,512} 崩、640 正常，ps=16/topk=5120 时 sparseCount=320、
+   Align256=512）；建议在 910B 上审计 `ProcessLD`/`CalcWorkspaceSize` 的 LD 区域
+   在 `validS2Len < topkCountAlign256_` 与 `topkCount_ > trunkLen_` 分档组合下的
+   越界（对照 mssanitizer MEMORY_RECORD 边界法，见前文 workspace 排查记录）；
+   `tiling.cpp` 的 `GetTrunkLen`（按 sparseCount 分档 16K/12K/8K/4K/2K）与
+   arch22 kernel 侧实际消费的 trunkLen 是否镜像一致也需复核
+3. 修复后可直接复用 `test_pool_key_indexer_known_defects.py` 三件套在 910B 上回归
+   （runner 支持 `--device` 参数；用例注册表与平台无关）
+
+## 遗留
+
+1. values 参考通道在 950 上存在数值差异（集合比对下 valid count 一致、max_abs_err
+   量级 1e-3~8，rtol=1e-3 门限下多行失配；基线亦如此，非本次缺陷修复引入）。
+   疑与 arch35 分数通道累加顺序/sortable key 转换精度相关，建议后续独立排查
+   （比对策略本就不以 values 为门禁，不影响精度结论）
+2. 缺陷 C 修复后，泛化随机层的 `POOL_SIZES_VALID` 采样包络保持 8 倍数不变
+   （基准稳定性），非 8 倍数 pool_size 由 known_defects 套件覆盖；后续可考虑
+   将非 8 倍数纳入随机采样扩大泛化面
+3. FP8 反量化（quantMode=0/1）kernel 实现仍缺失（host fail-fast，见前文）
+
+## 经验教训
+
+1. **"实测仅 {1}∪{8 的倍数} 可用"这类现象背后往往是硬性对齐约束**：8 元素=32B
+   正是 int32 向量操作数对齐粒度。遇到"参数值域按 8 的倍数可用"的崩溃面，
+   第一反应应查向量指令操作数地址对齐，而非业务逻辑
+2. **判别实验设计**：构造"假设成立时唯一不触发问题"的形态（sc=1+tail=0 →
+   仅 offset 0 对齐写）与"假设成立时必触发"的形态（tail 在非对齐 offset），
+   一次实验同时拿到正反两面证据，比逐点注释代码二分更快
+3. **进程隔离是把"崩溃型缺陷"纳入 CI 的唯一可行路径**：xfail 无法处理进程级
+   污染（EE9999 毒化后续用例），子进程 + 输出协议 + 退出码三重判定既保住逐例
+   报告又防雪崩
+4. 崩溃与数据错误可能同源（非对齐写崩溃 + 对齐宽度越界垃圾残留）：修复时按
+   根因统一处理（标量精确写一举消除两类问题），不要分开打补丁
+
+---
+
+# 展开模板一次性构建优化（ps%8==0 主路径去逐行标量）
+
+> 2026-08-26 实施。缺陷 C 修复评审时识别的性能点：ps%8==0 主路径的展开主体
+> 已是 SIMD（每池 Duplicate 广播 + Add 加模板），但模板 `offsetTpl`(0..ps-1)
+> 此前在 `ExpandAndAppendIndices` 内**每行**用 ps 次 `SetValue` 标量重建，
+> 并伴随一次 `SToVSync` 硬同步。
+
+## 修改（`op_kernel/arch35/pool_key_indexer_service_vector.h`）
+
+1. `InitBuffers`：`poolSize_>1` 时模板经 `CreateVecIndex(workLocal_, 0, ps)`
+   一次性构建并常驻 `workLocal_` 头部（kernel 生命周期内不变，ps 是 tiling 常量）
+2. `ExpandAndAppendIndices` 向量路径：删除每行模板标量重建与 `SToVSync`，
+   直接消费常驻模板
+
+依据：`CreateVecIndex` Level-2(count 模式) 在 dav_3510 支持 int32、V pipe 写出
+（`ProcessTopK` 既有用法 605/677 行同款）；模板写(InitBuffers)与消费(Add)同在
+V pipe，中间隔多次向量操作与跨核同步，同 pipe 有序性足够（与既有
+CreateVecIndex→PipeBarrier→向量消费的依赖模式一致）。ps%8!=0 标量退化路径
+不使用模板，不受影响；workLocal_ 除模板外无其他写方，常驻安全。
+
+## 性能（Atlas 950PR，BSND/fp16/causal/val=True，n=30 中位，共享机器）
+
+| 配置 | 优化前 | 优化后 | 中位提升 |
+|------|--------|--------|----------|
+| ps=16, topk=2048, S1=64, S2pool=512 | 0.087 ms | 0.070 ms | ~20% |
+| ps=64, topk=2048, S1=32, S2pool=128 | 0.081 ms | 0.062 ms | ~23% |
+| ps=128, topk=8192, S1=16, S2pool=128 | 0.084 ms | 0.060 ms | ~29% |
+
+（min 值同步下降 0.077→0.052~0.062，非负载噪声；探针：
+`tests/pytest/_perf_probe.py`）
+
+## 残留标量与后续优化方向
+
+向量路径每行仍残留：① 逐池 `GetValue`（sparseCount 次，Duplicate 广播源的
+固有成本）② 尾块标量写（≤ps-1 次）。二者与 ps%8!=0 路径的完全向量化可由
+Gather 方案统一解决：`out[i] = i + ps*(poolIdx[i/ps] - i/ps)`，逐行
+CreateVecIndex(iota) + Gather(sel, poolIdx, kTpl) + Sub/Muls/Add 共 ~5 条向量
+指令（kTpl=i/ps 模板同样可一次性构建；Gather Level-2 已确认 dav_3510 支持
+int32）。代价为 +1 个 outputLen 长度 UB 模板（≤32KB）。待非 8 倍数 ps 成为
+真实业务配置或逐池 GetValue 成为瓶颈时实施。
+
+## 回归
+
+| 项目 | 结果 |
+|------|------|
+| 定点 42 + 泛化 60 + 覆盖率收口 | 103 passed（耗时 40s→15.6s） |
+| known_defects 26 例（ps%8==0 向量路径 + ps%8!=0 标量路径双覆盖） | 26 passed |
+| boundary_causal_test.py（ps=16, t=0..15 全扫） | ALL PASS |
+
+## arch22 同步建议
+
+`arch22/pool_key_indexer_service_vector.h` 的同款逐行模板构建（~291-294 行）
+可按此模式同步（arch22 的 CreateVecIndex 用法已在 ProcessVec/ProcessLD 存在，
+确认其在 910B 的 pipe 语义后移植；arch22 无需 VToSSync 的前提不变）。
