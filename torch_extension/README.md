@@ -38,13 +38,19 @@
 
     编译产物位于 `build_out/` 目录下：
     - 整包：`cann_ops_transformer-1.0.0-*.whl`
-    - 单/多算子包：`cann_ops_transformer_custom-1.0.0-*.whl`
+    - 单/多算子包：`cann_ops_transformer_<vendor>-1.0.0-*.whl`（默认 vendor 为 `custom`）
 
 3. Install Package:
 
     ```sh
-    python3 -m pip install dist/*.whl --force-reinstall --no-deps
+    python3 -m pip install torch_extension/dist/*.whl --force-reinstall --no-deps
     ```
+
+### 定制包说明
+
+- 整包与定制包的 Python 模块名均为 `cann_ops_transformer`，`from cann_ops_transformer.ops import ...` 无需随安装包修改。
+- 定制包自动打包所选算子 `from ..X` 引用的兄弟模块（如 `mc2/common`），仅收集不导出。
+- 整包与定制包共享顶层模块目录，不可同时安装，切换前请先卸载前者。
 
 ## Quick Start
 

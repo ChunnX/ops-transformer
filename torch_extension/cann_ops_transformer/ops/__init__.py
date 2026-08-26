@@ -152,13 +152,19 @@ _legacy_map = {
 }
 
 if __name__ == "cann_ops_transformer.ops":
+    import importlib.util as _importlib_util
+
     for _old_name, _new_target in _legacy_map.items():
+        _target_module = "cann_ops_transformer.ops.%s" % _new_target
         try:
-            _new_mod = importlib.import_module(
-                "cann_ops_transformer.ops.%s" % _new_target
-            )
+            if _importlib_util.find_spec(_target_module) is None:
+                continue
+        except (ImportError, ModuleNotFoundError, ValueError, AttributeError):
+            continue
+        try:
+            _new_mod = importlib.import_module(_target_module)
             _sys.modules["cann_ops_transformer.ops.%s" % _old_name] = _new_mod
-        except (ImportError, RuntimeError, AttributeError) as _e:
+        except (ImportError, RuntimeError, ModuleNotFoundError, AttributeError) as _e:
             logger.warning("Failed to register legacy module '%s': %s", _old_name, _e)
 
 
