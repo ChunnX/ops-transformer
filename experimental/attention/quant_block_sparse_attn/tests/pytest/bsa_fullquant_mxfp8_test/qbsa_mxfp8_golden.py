@@ -1549,7 +1549,21 @@ def _qk_matmul_cpu(q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax
         torch.zeros_like(group_dot),
         group_dot * group_scale,
     )
-    cube_order_scores = scaled_group_dot.sum(dim=-1) * softmax_scale
+    # MXFP8 Cube accumulates D groups in order.  Once the FP32 result
+    # overflows to +/-Inf, later groups do not turn an opposite-sign overflow
+    # into NaN; the first overflow remains sticky.  torch.sum instead applies
+    # IEEE Inf + -Inf semantics and would create an artificial NaN for these
+    # extreme descales.  Reproduce the Cube order only in this non-finite
+    # fallback; the normal dequant + torch.matmul path above is unchanged.
+    cube_order_scores = torch.zeros_like(scaled_group_dot[..., 0])
+    for group_idx in range(group_count):
+        accumulated = cube_order_scores + scaled_group_dot[..., group_idx]
+        cube_order_scores = torch.where(
+            torch.isinf(cube_order_scores),
+            cube_order_scores,
+            accumulated,
+        )
+    cube_order_scores = cube_order_scores * softmax_scale
     return torch.where(repair_mask, cube_order_scores, scores)
 
 
