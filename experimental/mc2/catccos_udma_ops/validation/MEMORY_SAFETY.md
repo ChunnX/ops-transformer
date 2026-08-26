@@ -45,6 +45,16 @@ bash scripts/run_mssanitizer.sh --case-id mem_a2av_gmm_tail_zero_experts_ep2
 
 默认启用 `memcheck,initcheck`，可用 `MSSANITIZER_TOOLS=memcheck` 覆盖。该工具适合发现本地 GM/MTE 越界和未初始化访问；当前交付固定的 SHMEM 版本不保证所有 UDMA peer 访存都能被插桩，因此它不能替代 workspace poison、red zone 与多 rank 精度检查。
 
+脚本默认向 msSanitizer 传入 `--kernel-name=Grouped`，只插桩两个交付 kernel，HBM/workspace/output 的 NaN Fill 仍会执行但不会进入采集结果。若本地编译产物的 kernel 名发生变化，可通过环境变量覆盖；也可以用下面两个精确模式分别检测两个方向：
+
+```bash
+MSSANITIZER_KERNEL_NAME=Ascend950AllToAllVGroupedMatmul \
+  bash scripts/run_mssanitizer.sh --case-id mem_a2av_gmm_tail_zero_experts_ep2
+
+MSSANITIZER_KERNEL_NAME=GroupedMatmulAllToAllV \
+  bash scripts/run_mssanitizer.sh --case-id mem_gmm_a2av_tail_zero_experts_ep2
+```
+
 ## 如何缩小问题范围
 
 - 只有 workspace poison 后出现 NaN，且 output canary 完整：优先排查通信 stage 未写、flag 生命周期、零 token expert 和尾轮流水。

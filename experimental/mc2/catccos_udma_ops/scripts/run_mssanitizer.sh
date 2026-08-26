@@ -16,5 +16,17 @@ command=(mssanitizer)
 for tool in "${tools[@]}"; do
     command+=(-t "${tool}")
 done
+# run_memory_safety.sh deliberately launches allocator/workspace/output NaN
+# poison kernels before the fused operator.  Without a kernel filter,
+# msSanitizer instruments those Fill kernels as well and obscures the result we
+# care about.  Both delivered device kernels contain "Grouped" in their kernel
+# names, while the setup kernels do not.  Keep an override for tool versions or
+# locally renamed kernels that need a more precise pattern.
+kernel_name=${MSSANITIZER_KERNEL_NAME:-Grouped}
+if [[ -z "${kernel_name}" ]]; then
+    echo "MSSANITIZER_KERNEL_NAME must not be empty." >&2
+    exit 2
+fi
+command+=(--kernel-name="${kernel_name}")
 command+=(-- bash "${SCRIPT_DIR}/run_memory_safety.sh" "$@")
 exec "${command[@]}"

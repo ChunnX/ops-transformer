@@ -31,6 +31,18 @@ def test_workspace_poison_excludes_sync_tail_and_is_registered():
     assert 'm.def("_poison_udma_workspace' in host_source
 
 
+def test_mssanitizer_filters_nan_fill_kernels_by_default():
+    launcher = (
+        PROJECT_ROOT / "scripts" / "run_mssanitizer.sh"
+    ).read_text(encoding="utf-8")
+    filter_position = launcher.index('command+=(--kernel-name="${kernel_name}")')
+    worker_position = launcher.index(
+        'command+=(-- bash "${SCRIPT_DIR}/run_memory_safety.sh" "$@")'
+    )
+    assert "MSSANITIZER_KERNEL_NAME:-Grouped" in launcher
+    assert filter_position < worker_position
+
+
 def test_nan_red_zones_detect_a_corrupted_suffix():
     guarded = GuardedTensor.allocate(
         (4, 8), dtype=torch.bfloat16, device="cpu", name="x",
