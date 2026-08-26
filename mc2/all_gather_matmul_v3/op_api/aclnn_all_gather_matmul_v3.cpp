@@ -87,7 +87,7 @@ static const aclTensor *TransX2Tensor(const aclTensor *x2)
                            storageDimsNum, x2->GetTensor()->GetAddr());
 }
 
-// CheckNotNull: 校验 REQUIRED 输入/输出非空（gather_out 由 torch 侧内部构造空 tensor，不校验）
+// CheckNotNull: 校验 REQUIRED 输入/输出非空（本次交付不使能 gather_out/amax_out，不做校验）
 aclnnStatus CheckNotNull(const aclTensor *context, const aclTensor *x1, const aclTensor *x2,
                          const aclTensor *output, const uint64_t *workspaceSize,
                          const aclOpExecutor **executor)
@@ -205,7 +205,7 @@ aclnnStatus CheckScaleShape(const aclTensor *scale, const char *paramName, int64
     return ACLNN_SUCCESS;
 }
 
-// CheckShape: gather_out 必须空 tensor；scale dim(0) 校验
+// CheckShape: scale dim(0) 校验（gather_out/amax_out 不使能，不校验）
 aclnnStatus CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *x1Scale,
                        const aclTensor *x2Scale, const aclTensor *output)
 {
@@ -215,7 +215,6 @@ aclnnStatus CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     ret = CheckTensorDimNum(output, "output", TWO_DIMS);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
-    // gather_out 由 torch 侧构造空 tensor，不校验
     // x1: [M, K]; x2: [N, K]
     int64_t mVal = x1->GetViewShape().GetDim(0);
     int64_t kX1 = x1->GetViewShape().GetDim(1);
@@ -273,7 +272,7 @@ extern "C" aclnnStatus aclnnAllGatherQuantMatmulV3GetWorkspaceSize(
     const aclTensor *context, const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
     const aclTensor *x1ScaleOptional, const aclTensor *x2ScaleOptional, const char *group, int64_t rankSize,
     int64_t hcclBufferSize, int64_t groupSize, const char *commMode, const aclTensor *output,
-    const aclTensor *gatherOut, uint64_t *workspaceSize, aclOpExecutor **executor)  // todo: 这里就没amaxout对接torch了，可选输出暂不支持
+    const aclTensor *gatherOut, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("aclnnAllGatherQuantMatmulV3GetWorkspaceSize start");
 
@@ -318,6 +317,8 @@ extern "C" aclnnStatus aclnnAllGatherQuantMatmulV3GetWorkspaceSize(
     uint64_t outDtype = static_cast<uint64_t>(output->GetDataType());
     OP_LOGD("outDtype value is: %lu.", outDtype);
 
+    // gather_out 本次交付不使能（def 为 REQUIRED，torch 侧传 {0} 空占位 tensor），aclnn 原样透传 inner，
+    // aclnn/tiling 不做处理；amax_out 为 OPTIONAL，inner 固定传 nullptr
     ret = aclnnInnerAllGatherMatmulV3GetWorkspaceSize(
         context, x1, transX2, biasOptional, x1ScaleOptional, transX2Scale,
         const_cast<char *>(group), hcclBufferSize,
