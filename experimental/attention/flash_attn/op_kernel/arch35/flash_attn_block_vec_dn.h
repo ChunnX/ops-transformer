@@ -51,6 +51,7 @@ public:
     static constexpr FA_LAYOUT LAYOUT_OUT = FA_T::attnOutLayout;
     static constexpr bool PAGE_ATTENTION = FA_T::pageAttention;
     static constexpr bool HAS_MASK = FA_T::hasMask;
+    static constexpr bool HAS_REL = FA_T::hasRel;
 
     using T = float;
     static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)FA_T::dVBaseSize);
@@ -76,6 +77,8 @@ public:
     static constexpr uint32_t UB_OUT_VEC1_RES_EVENT1 = 3;
     static constexpr uint32_t UB_OUT_LSE_OUT_EVENT0 = 4;
     static constexpr uint32_t UB_OUT_LSE_OUT_EVENT1 = 5;
+    static constexpr uint32_t UB_IN_REL_H_EVENT0 = 6;
+    static constexpr uint32_t UB_IN_REL_W_EVENT1 = 7;
 
     // L1
     static constexpr uint32_t L1_P_BUFCNT = 3U;
@@ -113,6 +116,14 @@ public:
     LocalTensor<uint8_t> ubLseOutBuffers_;
     uint32_t lseOutUbBufId_ = 0;
 
+    static constexpr uint32_t UB_REL_BUFCNT = 2U;
+    static constexpr uint32_t UB_REL_BUF_BYTES = 4096U;
+    LocalTensor<INPUT_T> relHBuffers_;
+    LocalTensor<INPUT_T> relWBuffers_;
+    LocalTensor<INPUT_T> relHTransposeBuf_;
+    LocalTensor<INPUT_T> relWTransposeBuf_;
+    static constexpr uint32_t UB_REL_TRANSPOSE_BUF_BYTES = UB_REL_BUF_BYTES;
+
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
     const ConstInfoX &constInfo_;
 
@@ -130,6 +141,8 @@ public:
     GlobalTensor<float> accumOutGm_;
     GlobalTensor<float> softmaxFDSumGm_;
     GlobalTensor<float> softmaxFDMaxGm_;
+    GlobalTensor<INPUT_T> relHGm_;
+    GlobalTensor<INPUT_T> relWGm_;
 
     T negativeFloatScalar_;
 
@@ -141,6 +154,7 @@ public:
           kvSeqLensTool_(kvSeqLensTool){};
 
     __aicore__ inline void InitBlock(__gm__ uint8_t *attenMask, __gm__ uint8_t *learnableSink,
+                                     __gm__ uint8_t *relH, __gm__ uint8_t *relW,
                                      __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
                                      __gm__ uint8_t *workspace)
     {
@@ -153,6 +167,11 @@ public:
 
         if (constInfo_.isSoftmaxLseEnable) {
             softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
+        }
+
+        if (HAS_REL) {
+            relHGm_.SetGlobalBuffer((__gm__ INPUT_T *)relH);
+            relWGm_.SetGlobalBuffer((__gm__ INPUT_T *)relW);
         }
 
         if (constInfo_.enableFlashDecode) {
@@ -199,6 +218,22 @@ public:
                                               UB_SOFTMAX_EXP_BUFCNT * UB_SOFTMAX_EXP_BUF_BYTES)
                              .template ReinterpretCast<T>(); // 3 * 0.25K = 0.75K, 常驻BUF
         addrUb += UB_SOFTMAX_EXP_BUFCNT * UB_SOFTMAX_EXP_BUF_BYTES;
+
+        relHBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb, UB_REL_BUFCNT * UB_REL_BUF_BYTES)
+                           .template ReinterpretCast<INPUT_T>(); // REL buf  2 * 4k
+        addrUb += UB_REL_BUFCNT * UB_REL_BUF_BYTES;
+
+        relWBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb, UB_REL_BUFCNT * UB_REL_BUF_BYTES)
+                           .template ReinterpretCast<INPUT_T>(); // REL buf  2 * 4k
+        addrUb += UB_REL_BUFCNT * UB_REL_BUF_BYTES;
+
+        relHTransposeBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb, UB_REL_TRANSPOSE_BUF_BYTES)
+                                .template ReinterpretCast<INPUT_T>();
+        addrUb += UB_REL_TRANSPOSE_BUF_BYTES;
+
+        relWTransposeBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb, UB_REL_TRANSPOSE_BUF_BYTES)
+                                .template ReinterpretCast<INPUT_T>();
+        addrUb += UB_REL_TRANSPOSE_BUF_BYTES;
 
         ubLseOutBuffers_ = LocalTensor<uint8_t>(
             TPosition::VECIN, addrUb,
@@ -368,12 +403,23 @@ public:
         static constexpr uint32_t vec1ResOffsetDn = s2BaseSize * 32 + 64;
 
         LocalTensor<uint8_t> attenMaskUb;
+        LocalTensor<INPUT_T> relHUb;
+        LocalTensor<INPUT_T> relWUb;
         LocalTensor<T> sumUb =
             softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT) * (UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T))];
         LocalTensor<T> maxUb =
             softmaxMaxBuf_[(runInfo.mloop % UB_SOFTMAX_MAX_BUFCNT) * (UB_SOFTMAX_MAX_BUF_BYTES / sizeof(T))];
         LocalTensor<T> expUb =
             softmaxExpBuf_[(runInfo.loop % UB_SOFTMAX_EXP_BUFCNT) * (UB_SOFTMAX_EXP_BUF_BYTES / sizeof(T))];
+
+        const uint32_t relBufId = runInfo.loop & (DB - 1);
+        if constexpr (HAS_REL) {
+            relHUb = relHBuffers_[relBufId * UB_REL_BUF_BYTES];
+            relWUb = relWBuffers_[relBufId * UB_REL_BUF_BYTES];
+            AttnRelCopyIn(relHUb, relWUb, runInfo);
+            // AddRelBiasToScore(mm1ResUbTensor, relHUb, relWUb, runInfo);
+            // Mutex::Unlock<PIPE_V>(UB_IN_REL_H_EVENT0 + relBufId);
+        }
 
         Mutex::Lock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
 
@@ -560,6 +606,117 @@ public:
                 Mutex::Unlock<PIPE_MTE3>(UB_OUT_VEC2_RES_EVENT0);
             }
         }
+    }
+
+    __aicore__ inline void AttnRelCopyIn(LocalTensor<INPUT_T> &relHUb, LocalTensor<INPUT_T> &relWUb,
+                                         const RunInfoX &runInfo)
+    {
+        const uint32_t bufIdx = runInfo.loop & (DB - 1);
+        const uint32_t mte2ToVId = UB_IN_REL_H_EVENT0 + bufIdx;
+        RelCopyIn(relHUb, relWUb, relHGm_, relWGm_, runInfo, mte2ToVId);
+
+        Mutex::Lock<PIPE_V>(mte2ToVId);
+
+        constexpr uint32_t blockSize = FA_BYTE_BLOCK / sizeof(INPUT_T);
+        if (constInfo_.relHSize < blockSize) {
+            WaitFlag<HardEvent::MTE2_S>(mte2ToVId);
+        }
+
+        RelTranspose(relHUb, runInfo.actVecMSize, constInfo_.relHSize, relHTransposeBuf_);
+        relHUb = relHTransposeBuf_;
+
+        RelTranspose(relWUb, runInfo.actVecMSize, constInfo_.relWSize, relWTransposeBuf_);
+        relWUb = relWTransposeBuf_;
+
+        if (constInfo_.relHSize < blockSize) {
+            SetFlag<HardEvent::S_MTE2>(mte2ToVId);
+        }
+
+        DumpTensor(relHUb, 1111, 128);
+    }
+
+    __aicore__ inline void RelTranspose(const LocalTensor<INPUT_T> &srcUb, uint32_t actM, uint32_t relSize,
+                                        LocalTensor<INPUT_T> &dstUb)
+    {
+        constexpr uint32_t blockSize = FA_BYTE_BLOCK / sizeof(INPUT_T);
+        constexpr uint32_t blockCube = 16U;
+        const uint32_t highBlock = actM / blockCube;
+        const uint32_t repeat = (relSize + blockSize - 1) / blockSize;
+
+        TransDataTo5HDParams params;
+        params.repeatTimes = repeat;
+        params.dstRepStride = repeat > 1 ? actM : 0;
+        params.srcRepStride = repeat > 1 ? 1 : 0;
+
+        uint64_t dstList[NCHW_CONV_ADDR_LIST_SIZE];
+        uint64_t srcList[NCHW_CONV_ADDR_LIST_SIZE];
+
+        if (relSize < blockSize) {
+            for (uint32_t r = 0; r < actM; r++) {
+                for (uint32_t c = 0; c < relSize; c++) {
+                    dstUb.SetValue(c * actM + r, srcUb.GetValue(r * relSize + c));
+                }
+            }
+        } else {
+            for (uint32_t i = 0; i < highBlock; i++) {
+                for (uint32_t m = 0; m < NCHW_CONV_ADDR_LIST_SIZE; m++) {
+                    dstList[m] = (uint64_t)dstUb[i * blockCube + actM * m].GetPhyAddr();
+                }
+                for (uint32_t n = 0; n < NCHW_CONV_ADDR_LIST_SIZE; n++) {
+                    srcList[n] = (uint64_t)srcUb[i * relSize * blockCube + relSize * n].GetPhyAddr();
+                }
+                TransDataTo5HD<INPUT_T>(dstList, srcList, params);
+            }
+        }
+    }
+
+    __aicore__ inline void RelCopyIn(LocalTensor<INPUT_T> &relHUb, LocalTensor<INPUT_T> &relWUb,
+                                     GlobalTensor<INPUT_T> &relHGm, GlobalTensor<INPUT_T> &relWGm,
+                                     const RunInfoX &runInfo, uint32_t mte2ToVEventId)
+    {
+        uint32_t n1Size = constInfo_.n2Size * constInfo_.gSize;
+        uint32_t absGS1Idx = runInfo.gS1Idx + runInfo.vecMbaseIdx;
+
+        uint32_t s1Idx = 0;
+        uint32_t gIdx = 0;
+        if constexpr (LAYOUT_T == FA_LAYOUT::BSND || LAYOUT_T == FA_LAYOUT::TND) {
+            s1Idx = absGS1Idx / constInfo_.gSize;
+            gIdx = absGS1Idx % constInfo_.gSize;
+        } else {
+            s1Idx = absGS1Idx % runInfo.actS1Size;
+            gIdx = absGS1Idx / runInfo.actS1Size;
+        }
+        uint32_t n1Idx = runInfo.n2Idx * constInfo_.gSize + gIdx;
+
+        int64_t relHOffset = 0;
+        int64_t relWOffset = 0;
+        if constexpr (LAYOUT_T == FA_LAYOUT::TND) {
+            uint32_t prefixS1 = qSeqLensTool_.cuSeqLensParser.GetTBase(runInfo.bIdx);
+            relHOffset = prefixS1 * n1Size * constInfo_.relHSize +
+                         s1Idx * n1Size * constInfo_.relHSize + n1Idx * constInfo_.relHSize;
+            relWOffset = prefixS1 * n1Size * constInfo_.relWSize +
+                         s1Idx * n1Size * constInfo_.relWSize + n1Idx * constInfo_.relWSize;
+        } else if constexpr (LAYOUT_T == FA_LAYOUT::BSND) {
+            relHOffset = runInfo.bIdx * constInfo_.s1Size * n1Size * constInfo_.relHSize +
+                         s1Idx * n1Size * constInfo_.relHSize + n1Idx * constInfo_.relHSize;
+            relWOffset = runInfo.bIdx * constInfo_.s1Size * n1Size * constInfo_.relWSize +
+                         s1Idx * n1Size * constInfo_.relWSize + n1Idx * constInfo_.relWSize;
+        } else {
+            relHOffset = runInfo.bIdx * n1Size * constInfo_.s1Size * constInfo_.relHSize +
+                         n1Idx * constInfo_.s1Size * constInfo_.relHSize + s1Idx * constInfo_.relHSize;
+            relWOffset = runInfo.bIdx * n1Size * constInfo_.s1Size * constInfo_.relWSize +
+                         n1Idx * constInfo_.s1Size * constInfo_.relWSize + s1Idx * constInfo_.relWSize;
+        }
+
+        uint32_t relHLen = runInfo.actVecMSize * constInfo_.relHSize;
+        uint32_t relWLen = runInfo.actVecMSize * constInfo_.relWSize;
+
+        Mutex::Lock<PIPE_MTE2>(mte2ToVEventId);
+        DataCopy(relHUb, relHGm[relHOffset], relHLen);
+        DataCopy(relWUb, relWGm[relWOffset], relWLen);
+        SetFlag<HardEvent::MTE2_S>(mte2ToVEventId);
+        Mutex::Unlock<PIPE_MTE2>(mte2ToVEventId);
+        // DumpTensor(relHGm, 2222, 32);
     }
 };
 

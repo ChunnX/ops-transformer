@@ -311,6 +311,12 @@ struct SinkConstInfo {
     bool learnableSinkFlag = false;
 };
 
+struct RelConstInfo {
+    uint32_t relHSize;
+    uint32_t relWSize;
+};
+
+
 template <FiaKernelType>
 struct ConstInfo_t;
 
@@ -318,6 +324,7 @@ template <>
 struct ConstInfo_t<FiaKernelType::NO_QUANT> : CommonConstInfo,
                                               PAConstInfo,
                                               LseConstInfo,
-                                              SinkConstInfo {};
+                                              SinkConstInfo,
+                                              RelConstInfo {};
 
 #endif // FLASH_ATTN_COMMON_DEF_H_

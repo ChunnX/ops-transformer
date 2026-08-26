@@ -112,7 +112,7 @@ template <typename INPUT_T, typename OUTPUT_T, bool PAGE_ATTENTION,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
           DTemplateType dVTemplateType = DTemplateType::Aligned128,
-          bool HAS_MASK = false, typename... Args>
+          bool HAS_MASK = false, bool HAS_REL = false, typename... Args>
 struct FAType {
     using inputType = INPUT_T;
     using outputType = OUTPUT_T;
@@ -125,6 +125,7 @@ struct FAType {
     static constexpr DTemplateType dBaseSize = dTemplateType;
     static constexpr DTemplateType dVBaseSize = dVTemplateType;
     static constexpr bool hasMask = HAS_MASK;
+    static constexpr bool hasRel = HAS_REL;
 };
 
 template <FA_LAYOUT LAYOUT_T, typename SEQLEN_T>

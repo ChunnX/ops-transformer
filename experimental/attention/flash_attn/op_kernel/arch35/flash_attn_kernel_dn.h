@@ -44,6 +44,7 @@ public:
     using T = float;
     using SEQLEN_T = uint32_t;
     using INPUT_T = typename FA_T::inputType;
+    static constexpr bool HAS_REL = FA_T::hasRel;
     static constexpr uint32_t mBaseSize = (uint32_t)FA_T::mBaseSize;
     static constexpr uint32_t s2BaseSize = (uint32_t)FA_T::s2BaseSize;
     static constexpr FA_LAYOUT LAYOUT_T = FA_T::qLayout;
@@ -72,6 +73,9 @@ public:
     CubeBlockType cubeBlock_;
     VecFaBlockType vecFaBlock_;
     VecFdBlockType vecFdBlock_;
+
+    //eventId
+    static constexpr uint32_t UB_IN_PSE_EVENT0 = 0;
 
     // 分核信息
     GlobalTensor<uint32_t> faMetaDataGm_;
@@ -108,6 +112,7 @@ public:
           vecFdBlock_(constInfo_, qSeqLensTool_, kvSeqLensTool_){};
 
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
+                                __gm__ uint8_t *relH, __gm__ uint8_t *relW,
                                 __gm__ uint8_t *blockTable, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
                                 __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv, __gm__ uint8_t *learnableSink,
                                 __gm__ uint8_t *attenMask, __gm__ uint8_t *fiaMetaData, __gm__ uint8_t *attentionOut,
@@ -133,7 +138,7 @@ public:
             cubeBlock_.InitBlock(query, key, value, blockTable);
         }
         if ASCEND_IS_AIV {
-            vecFaBlock_.InitBlock(attenMask, learnableSink, softmaxLse, attentionOut, workspace);
+            vecFaBlock_.InitBlock(attenMask, learnableSink, relH, relW, softmaxLse, attentionOut, workspace);
             vecFaBlock_.ClearOutput();
             if (constInfo_.enableFlashDecode) {
                 fdMetaDataGm_.SetGlobalBuffer(
@@ -195,6 +200,11 @@ public:
             constInfo_.keyN2Stride = tilingData_->flashAttnBaseParams.keyN2Stride;
             constInfo_.valueBnStride = tilingData_->flashAttnBaseParams.valueBnStride;
             constInfo_.valueN2Stride = tilingData_->flashAttnBaseParams.valueN2Stride;
+        }
+        // REL
+        if constexpr (HAS_REL) {
+            constInfo_.relHSize = tilingData_->flashAttnBaseParams.relHSize;
+            constInfo_.relWSize = tilingData_->flashAttnBaseParams.relWSize;
         }
         // LSE
         constInfo_.isSoftmaxLseEnable = tilingData_->flashAttnBaseParams.isSoftMaxLseEnable;

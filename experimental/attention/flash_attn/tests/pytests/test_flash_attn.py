@@ -14,6 +14,8 @@ import os
 import gc
 import argparse
 import torch
+import numpy as np
+import random
 from pathlib import Path
 
 # ── 新架构 modules ──
@@ -26,6 +28,14 @@ _DEFAULT_CASE_FILES = [os.path.splitext(f)[0] for f in os.listdir(
     os.path.join(os.path.dirname(__file__), "test_cases"))
     if f.endswith(".py") and not f.startswith("_")]
 
+seed = 42
+random.seed(seed)
+
+# 2. NumPy 随机数生成器
+np.random.seed(seed)
+
+# 3. PyTorch CPU 随机数生成器
+torch.manual_seed(seed)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="FlashAttn 精度测试（新架构）")

@@ -30,6 +30,7 @@ struct FaTilingKeyInfo {
     uint64_t inputLayout = 0;
     uint64_t kvLayoutType = 0;
     bool hasAttenMask = false;
+    bool hasRel = false;
     uint64_t config = 0;
 };
 

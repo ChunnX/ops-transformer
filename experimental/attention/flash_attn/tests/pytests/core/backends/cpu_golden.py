@@ -192,7 +192,9 @@ def tforward(q, k, v, **kwargs):
         q = q.reshape(1, b, n1, s1, q.shape[-1]).transpose(1, 2).reshape(1, n1, b * s1, q.shape[-1])
         k = k.reshape(1, b, n2, s2, k.shape[-1]).transpose(1, 2).reshape(1, n2, b * s2, k.shape[-1])
         v = v.reshape(1, b, n2, s2, v.shape[-1]).transpose(1, 2).reshape(1, n2, b * s2, v.shape[-1])
-
+        torch.set_printoptions(threshold=float("inf"))
+        print(rel_h.transpose(2, 3))
+        print(rel_h.transpose(2, 3).shape)
         if rel_h is not None:
             h_dim = rel_h.shape[-1]
             rel_h = rel_h.reshape(1, b, n1, s1, h_dim).transpose(1, 2).reshape(1, n1, b * s1, h_dim)
