@@ -33,12 +33,12 @@ __aicore__ constexpr uint64_t Align32Func(uint64_t data)
 
 #define TEMPLATE_INTF \
     template <typename Q_T, typename KV_T, typename T, typename OUTPUT_T, bool isFd, bool isPa, QSMLA_LAYOUT LAYOUT_T, \
-    QSMLA_LAYOUT KV_LAYOUT_T, QSMLATemplateMode TEMPLATE_MODE, bool IS_SPLIT_G, bool IS_VEC_S2PHYADDR, \
-    bool IS_BATCH_CONSISTENCY>
+              QSMLA_LAYOUT KV_LAYOUT_T, QSMLATemplateMode TEMPLATE_MODE, bool IS_SPLIT_G, bool IS_VEC_S2PHYADDR, \
+              bool IS_BATCH_CONSISTENCY>
 
 #define TEMPLATE_INTF_ARGS \
     Q_T, KV_T, T, OUTPUT_T, isFd, isPa, LAYOUT_T, KV_LAYOUT_T, TEMPLATE_MODE, IS_SPLIT_G, IS_VEC_S2PHYADDR, \
-    IS_BATCH_CONSISTENCY
+        IS_BATCH_CONSISTENCY
 
 #define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X) \
     X(Q_T) \
