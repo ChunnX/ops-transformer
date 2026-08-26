@@ -689,15 +689,12 @@ static MegaMoeDispatchBufferConfig CalcDispatchBufferConfig(const MegaMoeTilingD
     }
     bufferConfig.copyBufferBytes = copyBufferBytes;
 
-    // 普通模板需要 expertTokenNumsOutTensor_，wave 模板需要独立的 rankScanCursorTensor_；
-    // 两条 kernel 路径互斥，因此公共 tiling 只需为二者中的较大者预留固定 UB。
+    // 普通模板仍需要 expertTokenNumsOutTensor_。wave 模板直接消费共享 Route Table，
+    // 不再维护跨 wave 的 per-rank mask cursor，因此无需为 cursor 额外预留 UB。
     uint32_t expertTokenNumsOutBytes = static_cast<uint32_t>(
         ops::CeilAlign(static_cast<uint64_t>(tilingData->moeExpertPerRank) * sizeof(int32_t),
                        static_cast<uint64_t>(ALIGN_32)));
-    uint32_t rankScanCursorBytes = static_cast<uint32_t>(
-        ops::CeilAlign(static_cast<uint64_t>(tilingData->epWorldSize) * 2U * sizeof(int32_t),
-                       static_cast<uint64_t>(ALIGN_32)));
-    uint32_t pathExclusiveFixedBytes = std::max(expertTokenNumsOutBytes, rankScanCursorBytes);
+    uint32_t pathExclusiveFixedBytes = expertTokenNumsOutBytes;
     uint32_t fixedBufferBytes =
         static_cast<uint32_t>(ALIGN_32) +
         static_cast<uint32_t>(

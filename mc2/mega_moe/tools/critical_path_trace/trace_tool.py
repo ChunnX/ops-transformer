@@ -38,7 +38,7 @@ EVENT_NAMES = {
     19: "Wait Combine MTE3 reuse (aggregate)",
     20: "Wait Combine MTE3 drain (aggregate)",
     21: "PrepareDispatchCounts (aggregate)",
-    22: "RankRoundPlan (aggregate)",
+    22: "RankSegmentPlan (aggregate)",
     23: "MaskLoadAndGather (aggregate)",
     24: "ReadyPublish (aggregate)",
     25: "Mask DataCopy issue (aggregate)",
@@ -189,15 +189,15 @@ EVENT_TRACE_POINTS = {
         "计数及其前缀信息写入当前 core 的 UB scratch（wave 内多专家累计）",
     ),
     22: (
-        "PlanDispatchCoreRouteQueue：开始当前专家段的 rank-round 路由规划",
-        "compact {rank, topkIndex} 任务队列规划完成；不含 MaskLoadAndGather（累计值）",
+        "开始将当前 wave 专家段连续均分，并定位本核相交的 source-rank segment",
+        "本核连续 row ownership 与 rank 边界规划完成（累计值）",
     ),
     23: (
-        "PlanDispatchCoreRankRoutes：开始 mask GM→UB、CreateVecIndex 与 GatherMask",
-        "GatherMask 结果对 Scalar 可见（wave 内各 rank/batch 累计）",
+        "兼容 mask 扫描路径开始 GM→UB、CreateVecIndex 与 GatherMask",
+        "GatherMask 结果对 Scalar 可见；正常共享 Route Table 路径应为 0",
     ),
     24: (
-        "PublishInterleavedDispatchTilesReady：开始等待数据可见并统计 tile 完成量",
+        "PublishGmm1TileReady：开始等待数据可见并统计 tile 完成量",
         "当前专家段负责的 GMM1 ready counter 发布完成（累计值）",
     ),
     25: (
@@ -233,8 +233,8 @@ EVENT_TRACE_POINTS = {
         "duration word 保存本核一次性 RoutePlan 的 GatherMask 调用总数，不代表 cycles",
     ),
     33: (
-        "PlanDispatchCoreRouteQueueFromTable 连续下发本核所需 rank 的 compact ordinal slice",
-        "全部所需 Route Table slice 经一次 MTE2_S 同步后对 Scalar 可见（wave 内各专家累计）",
+        "下发本核连续 row 区间对应的精确 Route Table slice",
+        "该连续 slice 经一次 MTE2_S 同步后对 Scalar 可见（wave 内各专家累计）",
     ),
     34: (
         "读取本核 route entry，并解析 rank/topkIndex、切换 remote GM 视图和计算地址（累计值）",
@@ -674,7 +674,7 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
 <section class="panel">
   <h2>Dispatch 分项</h2>
   <div class="muted">一级分项是每个 AIV1 core 在当前 wave 内所有专家段的精确 cycle 累计；
-  RankRoundPlan 已扣除 RouteTable GM→UB 与旧回退路径的 MaskLoadAndGather，因而一级分项互不重叠。
+  RankSegmentPlan 仅统计连续分核与 rank 边界求交，RouteTable GM→UB 单独统计，因而一级分项互不重叠。
   RoutePlan 是 wave 循环前的一次性顶层事件，单独出现在时间线和 Wave 汇总中。Other/control 为 Dispatch
   父阶段减去各项后的 wave 游标规划、地址设置、检查等剩余时间。旧 Mask 子项进一步拆分异步流水：
   DataCopy/CreateVecIndex/GatherMask 标为 issue，仅表示 API 指令下发；真实完成延迟落在原有 MTE2_V/V_S 等待中。
@@ -682,7 +682,7 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
   Dispatch 的一级 classified 合计。GatherMask calls 是当前 core/wave 的调用次数，不是 cycles。</div>
   <div class="table-scroll"><table id="dispatchTable"><thead><tr>
     <th>AI Block</th><th>Wave</th><th>Token 数</th><th>Dispatch 总计</th><th>PrepareDispatchCounts</th>
-    <th>RankRoundPlan</th><th>RouteTable GM→UB</th><th>MaskLoadAndGather (fallback)</th><th>TransferPipeline</th>
+    <th>RankSegmentPlan</th><th>RouteTable GM→UB</th><th>MaskLoadAndGather (fallback)</th><th>TransferPipeline</th>
     <th>Route/address</th><th>MTE3 reuse wait</th><th>MTE2 issue</th><th>MTE2 ready wait</th>
     <th>Metadata prepare</th><th>Metadata ready wait</th><th>MTE3 issue</th><th>MTE3 drain</th><th>Transfer other</th>
     <th>ReadyPublish</th><th>Ready sync</th>

@@ -52,12 +52,12 @@ python3 mc2/mega_moe/tools/critical_path_trace/trace_tool.py <raw-directory>
 `RoutePlan GatherMask calls` 是本核在该一次性阶段的调用数，不是 cycles。正常消费路径的
 每 wave `GatherMask calls` 应为 0。
 
-rank-interleave trace 按 AIV1 core/wave 累计以下互不重叠的指标：
+rank-contiguous trace 按 AIV1 core/wave 累计以下互不重叠的指标：
 
-- `PrepareDispatchCounts (aggregate)`：从 cumsum 准备当前专家各 source rank 的 token 计数；
-- `RankRoundPlan (aggregate)`：规划本 core 的 compact `{rank, topkIndex}` 队列，不含嵌套的 mask 处理；
-- `RouteTable GM->UB (aggregate)`：连续下发本核实际访问的 source-rank compact slice，并统一等待一次；
-- `MaskLoadAndGather (aggregate)`：仅旧容量/编码回退路径的 mask compact 开销；
+- `PrepareDispatchCounts (aggregate)`：保留的 trace 协议位，正常共享 Route Table 消费路径应为 0；
+- `RankSegmentPlan (aggregate)`：连续均分当前 wave 专家段，并用 cumsum 定位本 core 相交的 rank 边界；
+- `RouteTable GM->UB (aggregate)`：一次搬入本 core 精确负责的连续 row slice；
+- `MaskLoadAndGather (aggregate)`：兼容协议位，正常共享 Route Table 消费路径应为 0；
 - `TransferPipeline (aggregate)`：token/scale/meta 的 MTE2/MTE3 ring 搬运完整流程；
 - `ReadyPublish (aggregate)`：数据可见同步以及 GMM1 tile-ready counter 发布。
 
