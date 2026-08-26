@@ -1,20 +1,26 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
+ * CANN
+ * Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not
+ * use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT
+ * WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY,
+ * OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the
+ * License.
  */
 
 #include "common_checker_indexer_v2.h"
 
-#include <limits>
 #include <utility>
-#include "graph/utils/type_utils.h"
 #include "log/log.h"
 
 namespace optiling {
 namespace indexer_v2_checker {
 namespace {
-constexpr int64_t BATCH_LIMIT = 65536;
 constexpr int64_t HEAD_DIM = 128;
 constexpr int64_t HEAD_GROUP_LIMIT = 64;
 constexpr int64_t TOPK_2K = 2048;
@@ -33,19 +39,25 @@ ge::graphStatus LogShapeMismatch(const IndexerV2CheckerInfo &info, const char *n
     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(info.opName, names, actual.c_str(), reason);
     return ge::GRAPH_FAILED;
 }
-}
+} // namespace
 
 ge::graphStatus CommonChecker::CheckParaExistence(const IndexerV2CheckerInfo &info) const
 {
     const std::pair<const CheckerTensor *, const char *> required[] = {
-        {&info.query, "q"}, {&info.key, "k"}, {&info.weights, "w"},
-        {&info.sparseIndices, "sparse_indices"}, {&info.sparseValues, "sparse_values"}};
+        {&info.query, "q"}, {&info.key, "k"}, {&info.weights, "w"}, {&info.sparseIndices, "sparse_indices"}};
     for (const auto &item : required) {
         if (!item.first->IsPresent() || item.first->desc == nullptr || item.first->GetShape() == nullptr) {
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(info.opName, item.second,
                                                      "Required tensor, descriptor and shape must be provided");
             return ge::GRAPH_FAILED;
         }
+    }
+    if (info.arch35 && info.returnValue == 1 &&
+        (!info.sparseValues.IsPresent() || info.sparseValues.desc == nullptr ||
+         info.sparseValues.GetShape() == nullptr)) {
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(info.opName, "sparse_values",
+                                                 "sparse_values must be provided when return_value is 1");
+        return ge::GRAPH_FAILED;
     }
     if (info.layoutQText.empty() || info.layoutKText.empty()) {
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(info.opName, "layout_q and layout_k",
@@ -57,38 +69,7 @@ ge::graphStatus CommonChecker::CheckParaExistence(const IndexerV2CheckerInfo &in
 
 ge::graphStatus CommonChecker::CheckTensorBasics(const IndexerV2CheckerInfo &info) const
 {
-    const std::pair<const CheckerTensor *, const char *> tensors[] = {
-        {&info.query, "q"}, {&info.key, "k"}, {&info.weights, "w"},
-        {&info.cuSeqlensQ, "cu_seqlens_q"}, {&info.cuSeqlensK, "cu_seqlens_k"},
-        {&info.sequsedQ, "seqused_q"}, {&info.sequsedK, "seqused_k"},
-        {&info.cmpResidualK, "cmp_residual_k"}, {&info.blockTable, "block_table"},
-        {&info.outputIdxOffset, "output_idx_offset"}, {&info.metadata, "metadata"},
-        {&info.sparseIndices, "sparse_indices"}, {&info.sparseValues, "sparse_values"}};
-    for (const auto &item : tensors) {
-        if (CheckFormat(info, *item.first, item.second) != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
-    }
-    if (CheckDtype(info, info.sparseIndices, "sparse_indices", {ge::DT_INT32}) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    const std::pair<const CheckerTensor *, const char *> intInputs[] = {
-        {&info.cuSeqlensQ, "cu_seqlens_q"}, {&info.cuSeqlensK, "cu_seqlens_k"},
-        {&info.sequsedQ, "seqused_q"}, {&info.sequsedK, "seqused_k"},
-        {&info.cmpResidualK, "cmp_residual_k"}, {&info.blockTable, "block_table"},
-        {&info.outputIdxOffset, "output_idx_offset"}, {&info.metadata, "metadata"}};
-    for (const auto &item : intInputs) {
-        if (CheckDtype(info, *item.first, item.second, {ge::DT_INT32}) != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
-    }
-    if (CheckNotEmpty(info, info.query, "q") != ge::GRAPH_SUCCESS ||
-        CheckNotEmpty(info, info.key, "k") != ge::GRAPH_SUCCESS ||
-        CheckNotEmpty(info, info.weights, "w") != ge::GRAPH_SUCCESS ||
-        CheckNotEmpty(info, info.sparseIndices, "sparse_indices") != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    return ge::GRAPH_SUCCESS;
+    return CheckDtype(info, info.sparseIndices, "sparse_indices", {ge::DT_INT32});
 }
 
 ge::graphStatus CommonChecker::CheckAttrs(const IndexerV2CheckerInfo &info) const
@@ -116,13 +97,13 @@ ge::graphStatus CommonChecker::CheckAttrs(const IndexerV2CheckerInfo &info) cons
     if (!info.arch35 && info.quantized && info.topk > TOPK_2K) {
         const std::string actual = std::to_string(info.topk);
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(info.opName, "topk", actual.c_str(),
-                                               "topk must be in [1, 2048] on A2/A3 for QuantLightningIndexerV2");
+                                              "topk must be in [1, 2048] on A2/A3 for QuantLightningIndexerV2");
         return ge::GRAPH_FAILED;
     }
     if (!info.arch35 && !info.quantized && info.topk > TOPK_2K && info.topk % TOPK_STEP != 0) {
         const std::string actual = std::to_string(info.topk);
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            info.opName, "topk", actual.c_str(), "topk above 2048 must be a multiple of 1024 on A2/A3");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(info.opName, "topk", actual.c_str(),
+                                              "topk above 2048 must be a multiple of 1024 on A2/A3");
         return ge::GRAPH_FAILED;
     }
     if (info.maskMode != 0 && info.maskMode != 3) {
@@ -133,21 +114,21 @@ ge::graphStatus CommonChecker::CheckAttrs(const IndexerV2CheckerInfo &info) cons
     if (info.cmpRatio < 1 || info.cmpRatio > 128) {
         const std::string actual = std::to_string(info.cmpRatio);
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(info.opName, "cmp_ratio", actual.c_str(),
-                                               "cmp_ratio must be in [1, 128]");
+                                              "cmp_ratio must be in [1, 128]");
         return ge::GRAPH_FAILED;
     }
     if (!info.arch35 && info.quantized && (info.cmpRatio & (info.cmpRatio - 1)) != 0) {
         const std::string actual = std::to_string(info.cmpRatio);
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(info.opName, "cmp_ratio", actual.c_str(),
-                                               "cmp_ratio must be a power of two on A2/A3");
+                                              "cmp_ratio must be a power of two on A2/A3");
         return ge::GRAPH_FAILED;
     }
-    if (info.maxSeqlenQ < -1) {
+    if ((info.quantized || info.arch35) && info.maxSeqlenQ < -1) {
         const std::string actual = std::to_string(info.maxSeqlenQ);
         OP_LOGE_FOR_INVALID_VALUE(info.opName, "max_seqlen_q", actual.c_str(), ">= -1");
         return ge::GRAPH_FAILED;
     }
-    if (info.returnValue != 0 && info.returnValue != 1) {
+    if (info.arch35 && info.returnValue != 0 && info.returnValue != 1) {
         const std::string actual = std::to_string(info.returnValue);
         OP_LOGE_FOR_INVALID_VALUE(info.opName, "return_value", actual.c_str(), "0 or 1");
         return ge::GRAPH_FAILED;
@@ -155,7 +136,7 @@ ge::graphStatus CommonChecker::CheckAttrs(const IndexerV2CheckerInfo &info) cons
     if (!info.arch35 && info.quantized && info.returnValue != 0) {
         const std::string actual = std::to_string(info.returnValue);
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(info.opName, "return_value", actual.c_str(),
-                                               "return_value must be 0 on A2/A3 for QuantLightningIndexerV2");
+                                              "return_value must be 0 on A2/A3 for QuantLightningIndexerV2");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -174,10 +155,12 @@ ge::graphStatus CommonChecker::CheckSinglePara(const IndexerV2CheckerInfo &info)
         CheckRank(info, info.sparseIndices, "sparse_indices", qRank) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (info.metadata.IsPresent() && CheckRank(info, info.metadata, "metadata", 1U) != ge::GRAPH_SUCCESS) {
+    if (info.arch35 && info.returnValue == 1 &&
+        CheckRank(info, info.sparseValues, "sparse_values", qRank) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (info.returnValue == 1 && CheckRank(info, info.sparseValues, "sparse_values", qRank) != ge::GRAPH_SUCCESS) {
+    if (info.outputIdxOffset.IsPresent() && (info.quantized || info.arch35) &&
+        CheckRank(info, info.outputIdxOffset, "output_idx_offset", qRank - 1U) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -185,15 +168,9 @@ ge::graphStatus CommonChecker::CheckSinglePara(const IndexerV2CheckerInfo &info)
 
 ge::graphStatus CommonChecker::CheckFeature(const IndexerV2CheckerInfo &info) const
 {
-    if (info.batch <= 0 || info.batch >= BATCH_LIMIT) {
-        const std::string actual = std::to_string(info.batch);
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(info.opName, "axis B", actual.c_str(), "B must be in (0, 65536)");
-        return ge::GRAPH_FAILED;
-    }
-    if (info.qSeq <= 0 || info.kSeq <= 0 || info.qHeads <= 0 || info.kHeads != 1 || info.headDim != HEAD_DIM) {
+    if (info.kHeads != 1 || info.headDim != HEAD_DIM) {
         const std::string actual = ShapeToString(info.query) + " and " + ShapeToString(info.key);
-        return LogShapeMismatch(info, "q and k", actual,
-                                "S/T and q head count must be positive, k head count must be 1, and head_dim must be 128");
+        return LogShapeMismatch(info, "q and k", actual, "k head count must be 1 and head_dim must be 128");
     }
     if (info.arch35 && info.qHeads / info.kHeads > HEAD_GROUP_LIMIT) {
         const std::string actual = ShapeToString(info.query) + " and " + ShapeToString(info.key);
@@ -201,8 +178,7 @@ ge::graphStatus CommonChecker::CheckFeature(const IndexerV2CheckerInfo &info) co
     }
     if (!info.arch35 && info.quantized && info.qHeads / info.kHeads != HEAD_GROUP_LIMIT) {
         const std::string actual = ShapeToString(info.query) + " and " + ShapeToString(info.key);
-        return LogShapeMismatch(info, "q and k", actual,
-                                "q head count divided by k head count must equal 64 on A2/A3");
+        return LogShapeMismatch(info, "q and k", actual, "q head count divided by k head count must equal 64 on A2/A3");
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -221,12 +197,13 @@ ge::graphStatus CommonChecker::CheckMainShapes(const IndexerV2CheckerInfo &info)
     const uint32_t wN = info.layoutQ == CheckerLayout::BSND ? 2U : 1U;
     if (!SameDim(q, qS, w, wS) || !SameDim(q, qN, w, wN) || !SameDim(q, qD, k, kD) ||
         (info.layoutQ == CheckerLayout::BSND && !SameDim(q, 0, w, 0))) {
-        const std::string actual = ShapeToString(info.query) + ", " + ShapeToString(info.key) + " and " +
-                                   ShapeToString(info.weights);
+        const std::string actual =
+            ShapeToString(info.query) + ", " + ShapeToString(info.key) + " and " + ShapeToString(info.weights);
         return LogShapeMismatch(info, "q, k and w", actual,
                                 "q and w must share sequence/head axes, and q and k must share head_dim");
     }
-    if (info.layoutQ == CheckerLayout::BSND && info.layoutK == CheckerLayout::BSND && !SameDim(q, 0, k, 0)) {
+    if (!info.quantized && info.layoutQ == CheckerLayout::BSND && info.layoutK == CheckerLayout::BSND &&
+        !SameDim(q, 0, k, 0)) {
         const std::string actual = ShapeToString(info.query) + " and " + ShapeToString(info.key);
         return LogShapeMismatch(info, "q and k", actual, "Batch dimensions of BSND q and k must be equal");
     }
@@ -243,47 +220,26 @@ ge::graphStatus CommonChecker::CheckOutputShapes(const IndexerV2CheckerInfo &inf
     const gert::Shape &q = *info.query.GetShape();
     const gert::Shape &out = *info.sparseIndices.GetShape();
     const uint32_t outN = info.layoutQ == CheckerLayout::BSND ? 2U : 1U;
-    if (out.GetDim(0) != q.GetDim(0) ||
-        (info.layoutQ == CheckerLayout::BSND && out.GetDim(1) != q.GetDim(1)) ||
+    if (out.GetDim(0) != q.GetDim(0) || (info.layoutQ == CheckerLayout::BSND && out.GetDim(1) != q.GetDim(1)) ||
         out.GetDim(outN) != info.kHeads || out.GetDim(outN + 1U) != info.topk) {
         const std::string actual = ShapeToString(info.query) + " and " + ShapeToString(info.sparseIndices);
         return LogShapeMismatch(info, "q and sparse_indices", actual,
                                 "sparse_indices must be [B,S1,N2,topk] or [T1,N2,topk]");
     }
-    if (info.returnValue == 1) {
+    if (info.arch35 && info.returnValue == 1) {
         const gert::Shape &values = *info.sparseValues.GetShape();
-        if (values.GetDimNum() != out.GetDimNum()) {
-            const std::string actual = ShapeToString(info.sparseValues);
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(info.opName, "sparse_values", actual.c_str(),
-                                                  "sparse_values must have the same shape as sparse_indices");
-            return ge::GRAPH_FAILED;
-        }
-        for (uint32_t i = 0; i < out.GetDimNum(); ++i) {
-            if (values.GetDim(i) != out.GetDim(i)) {
-                const std::string actual = ShapeToString(info.sparseIndices) + " and " + ShapeToString(info.sparseValues);
-                return LogShapeMismatch(info, "sparse_indices and sparse_values", actual,
-                                        "sparse_values must have the same shape as sparse_indices");
-            }
-        }
-    } else {
-        const gert::Shape &values = *info.sparseValues.GetShape();
-        if (values.GetDimNum() != 1U || values.GetDim(0) != 0) {
-            const std::string actual = ShapeToString(info.sparseValues);
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(info.opName, "sparse_values", actual.c_str(),
-                                                  "sparse_values must have shape [0] when return_value is 0");
-            return ge::GRAPH_FAILED;
+        if ((info.layoutQ == CheckerLayout::TND && values.GetDim(0) != q.GetDim(0)) ||
+            values.GetDim(outN) != info.kHeads || values.GetDim(outN + 1U) != info.topk) {
+            const std::string actual = ShapeToString(info.query) + " and " + ShapeToString(info.sparseValues);
+            return LogShapeMismatch(info, "q and sparse_values", actual,
+                                    "sparse_values must match T1 (for TND), N2 and topk");
         }
     }
-    if (info.outputIdxOffset.IsPresent()) {
-        const gert::Shape &offset = *info.outputIdxOffset.GetShape();
-        const uint32_t expectedRank = info.layoutQ == CheckerLayout::BSND ? 3U : 2U;
-        if (offset.GetDimNum() != expectedRank || offset.GetDim(0) != q.GetDim(0) ||
-            (info.layoutQ == CheckerLayout::BSND && offset.GetDim(1) != q.GetDim(1)) ||
-            offset.GetDim(expectedRank - 1U) != info.kHeads) {
-            const std::string actual = ShapeToString(info.query) + " and " + ShapeToString(info.outputIdxOffset);
-            return LogShapeMismatch(info, "q and output_idx_offset", actual,
-                                    "output_idx_offset must be [B,S1,N2] or [T1,N2]");
-        }
+    if (info.arch35 && info.layoutQ == CheckerLayout::TND && info.outputIdxOffset.IsPresent() &&
+        info.outputIdxOffset.GetShape()->GetDim(0) != q.GetDim(0)) {
+        const std::string actual = ShapeToString(info.query) + " and " + ShapeToString(info.outputIdxOffset);
+        return LogShapeMismatch(info, "q and output_idx_offset", actual,
+                                "TND q and output_idx_offset must have the same dim 0");
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -293,12 +249,12 @@ ge::graphStatus CommonChecker::CheckMultiPara(const IndexerV2CheckerInfo &info) 
     if (CheckMainShapes(info) != ge::GRAPH_SUCCESS || CheckOutputShapes(info) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (info.metadata.tensor != nullptr && info.metadata.tensor->GetShapeSize() != METADATA_SIZE) {
+    if (info.metadata.IsPresent() && info.metadata.tensor->GetShapeSize() != METADATA_SIZE) {
         const std::string actual = ShapeToString(info.metadata);
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(info.opName, "metadata", actual.c_str(), "metadata shape must be [1024]");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(info.opName, "metadata", actual.c_str(), "metadata size must be 1024");
         return ge::GRAPH_FAILED;
     }
-    if ((info.quantized || info.arch35) && info.metadata.tensor == nullptr) {
+    if ((info.quantized || info.arch35) && !info.metadata.IsPresent()) {
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(info.opName, "metadata", "metadata must be provided");
         return ge::GRAPH_FAILED;
     }
