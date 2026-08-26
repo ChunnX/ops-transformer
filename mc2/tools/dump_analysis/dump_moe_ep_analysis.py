@@ -15,9 +15,9 @@
 import os
 import sys
 import logging
-import numpy as np
 from dataclasses import dataclass, field
 from typing import List
+import numpy as np
 from openpyxl import Workbook
 
 logging.basicConfig(
