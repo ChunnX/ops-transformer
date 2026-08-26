@@ -27,6 +27,7 @@
 #include "weight_quant_basic_block_base.h"
 #include "weight_quant_cube_compute.h"
 #include "weight_quant_vec_compute.h"
+#include "basic_api/weight_quant_basic_api_v1.h"
 
 using AscendC::Conditional;
 using AscendC::GetSubBlockIdx;
@@ -90,13 +91,8 @@ protected:
     using cType = MatmulType<TPosition::GM, CubeFormat::ND, yType>;
     using biasMatmulType = MatmulType<TPosition::TSCM, CubeFormat::ND, biasType>;
 
-#if GMM_WEIGHT_QUANT_USE_TENSOR_API_MX
-    using MxMMImpl = Blaze::Gemm::Kernel::KernelWqgmmMixWeightPrologue<xType, biasType, yType, wqmmConfig.aTrans,
-                                                                      wqmmConfig.bTrans>;
-#else
-    using MxMMImpl = WqbmmBasicApiV1<xType, biasType, yType, wqmmConfig.aTrans, wqmmConfig.bTrans>;
-#endif
-    using MMImpl = typename Conditional<IsMxA8W4<xType, wqmmConfig.antiQuantType>(), MxMMImpl,
+    using MMImpl = typename Conditional<IsMxA8W4<xType, wqmmConfig.antiQuantType>(),
+                                        WqbmmBasicApiV1<xType, biasType, yType, wqmmConfig.aTrans, wqmmConfig.bTrans>,
                                         MatmulImpl<aType, bType, cType, biasMatmulType, CFG_MDL>>::type;
     WeightQuantBatchMatmulV2CubeCompute<xType, biasType, antiQuantScaleType, perTokenScaleType, yType, wqmmConfig,
                                         MMImpl>
@@ -128,7 +124,6 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::Init(bool hasBias, uint64_t ant
         weightL1DbOffset_ = L1_SIZE * GetKBUnit<xType>() - MXA8W4_WEIGHT_SIZE;
         uint64_t l1RemainSize = L1_SIZE_BYTE - MXA8W4_WEIGHT_SIZE * DOUBLE_BUFFER_NUM;
         uint64_t l1StartSize = MXA8W4_WEIGHT_SIZE;
-        const uint64_t biasL1StartSize = l1StartSize;
         biasL1_ = LocalTensor<biasType>(TPosition::TSCM, l1StartSize, l1RemainSize / sizeof(biasType));
         if (hasBias_) {
             biasL1DbOffset_ = (l1RemainSize - MX_BIAS_L1_SIZE) / sizeof(biasType);
@@ -145,8 +140,8 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::Init(bool hasBias, uint64_t ant
         mxScaleBL1DbOffset_ = (l1RemainSize - MX_SCALE_L1_SIZE) / sizeof(fp8_e8m0_t);
 
         if ASCEND_IS_AIC {
-            cubeCompute_.MxA8W4Init(mxScaleAL1L1RemainSize, mxScaleAL1L1StartSize, biasL1StartSize,
-                                    biasL1DbOffset_, matmulTiling, biasL1_, mxScaleBL1DbOffset_, mxScaleBL1_);
+            cubeCompute_.MxA8W4Init(mxScaleAL1L1RemainSize, mxScaleAL1L1StartSize, biasL1DbOffset_, matmulTiling,
+                                    biasL1_, mxScaleBL1DbOffset_, mxScaleBL1_);
         } else {
             vectorCompute_.Init(tPipe, hasBias_);
         }
@@ -336,9 +331,8 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::ComputeBasicBlockAic(const Basi
         cubeCompute_.WaitMTE1ToMTE2(kbGmOffset, offsetParam);
         cubeCompute_.CopyAAndBiasGmToL1(offsetParam, kbGmOffset, cvLoopIdx_);
         WaitAivToAic();
-        cubeCompute_.LaunchMatmul(weightL1_[(cvLoopIdx_ & 1) * weightL1DbOffset_],
-                                  (cvLoopIdx_ & 1) * weightL1DbOffset_ * sizeof(xType), kbGmOffset,
-                                  kbL1RealSize, cvLoopIdx_, offsetParam); // mte1 mmad fixp流水
+        cubeCompute_.LaunchMatmul(weightL1_[(cvLoopIdx_ & 1) * weightL1DbOffset_], kbGmOffset, kbL1RealSize, cvLoopIdx_,
+                                  offsetParam); // mte1 mmad fixp流水
         cubeCompute_.SetMTE1ToMTE2(kbGmOffset, offsetParam);
         if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
             cubeCompute_.SetScaleMTE1ToMTE2(kbGmOffset, offsetParam);
