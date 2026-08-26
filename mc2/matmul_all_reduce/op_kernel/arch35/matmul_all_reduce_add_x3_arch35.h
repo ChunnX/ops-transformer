@@ -237,6 +237,14 @@ public:
                 outQueueZ_.FreeTensor(zLocal);
             }
         }
+        // 确保 N-chunk 循环结束后所有 MTE3 (UB->GM 写回) 真正完成后再返回 Process()。
+        // 根因：hasAdd=true 路径的 V 流水线比 hasAdd=false 更慢（多一次 inQueueY_ MTE2 +
+        // 第二次 in-place Add + 两次 PipeBarrier<PIPE_V>），导致最后一行的 MTE3 issued 更晚。
+        // 当 N 被分为 2+ chunk 且末 chunk calcCnt 足够大时，末行 MTE3 在 Process() 返回时
+        // 仍在 in-flight；后续 Mc2SyncAll 不保证 flush MTE3，hccl_.Commit 触发的 AllReduce
+        // 会读到 cGM 中未写完的数据，导致精度 fail。
+        // 修复：在循环末尾加 PipeBarrier<PIPE_ALL> 显式排空全部流水线，性能开销 <3%。
+        PipeBarrier<PIPE_ALL>();
     }
 
     TPipe *pipe_;
