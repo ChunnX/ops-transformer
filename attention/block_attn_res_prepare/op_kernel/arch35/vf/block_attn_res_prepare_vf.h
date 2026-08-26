@@ -61,7 +61,7 @@ __simd_vf__ inline void InitializeEmptyOnlineSoftmax(__ubuf__ float *statAddr)
     MaskReg oneMask = CreateMask<float, MaskPattern::VL1>();
 
     Duplicate(maxReg, FP32_LOWEST_FINITE, oneMask);
-    Duplicate(sumReg, 1.0F, oneMask);
+    Duplicate(sumReg, 0.0F, oneMask);
     StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + MAX_OFFSET, maxReg, oneMask);
     StoreAlign<float, StoreDist::DIST_FIRST_ELEMENT_B32>(statAddr + SUM_OFFSET, sumReg, oneMask);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
