@@ -11,7 +11,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <functional>
@@ -39,7 +38,6 @@ constexpr int64_t kLegacyScaleOffset = 640;
 constexpr int64_t kScaleCount = 16;
 constexpr int64_t kMxGroupSize = 32;
 constexpr int64_t kPaBlockSize = 16;
-bool gDumpValues = false;
 
 enum class QKind { BF16, FP16 };
 enum class KvLayout { BSND, TND, PA_BSND };
@@ -596,57 +594,13 @@ int CompareOutput(const CaseSpec &spec, const PreparedCase &data, const std::vec
         std::printf("[FAIL] %s output size mismatch\n", spec.name.c_str());
         return 1;
     }
-    auto dump = [&]() {
-        std::printf("[DUMP] case=%s q=%s query_layout=%s kv_layout=%s n1=%lld offset=%lld\n", spec.name.c_str(),
-                    spec.qKind == QKind::BF16 ? "bf16" : "fp16", spec.queryTnd ? "TND" : "BSND",
-                    LayoutName(spec.layout), static_cast<long long>(spec.n1),
-                    static_cast<long long>(spec.storageOffsetElements));
-        for (size_t row = 0; row < spec.sparseRows.size(); ++row) {
-            std::printf("[DUMP] sparse[%zu]=", row);
-            for (int32_t index : spec.sparseRows[row]) {
-                std::printf("%d,", index);
-            }
-            std::printf("\n");
-        }
-        if (spec.recordKind == RecordKind::MXFP4 && !data.logicalRecords.empty() &&
-            !data.logicalRecords.front().empty()) {
-            const auto &record = data.logicalRecords.front().front();
-            std::printf("[DUMP] record0 E8M0=");
-            for (int64_t group = 0; group < kScaleCount; ++group) {
-                std::printf("%u,", static_cast<uint8_t>(record[kMxfp4ScaleOffset + group]));
-            }
-            std::printf("\n");
-        }
-        size_t rowCount = actual.size() / kNopeDim;
-        for (size_t row = 0; row < std::min<size_t>(rowCount, 2); ++row) {
-            std::printf("[DUMP] output_row=%zu first16\n", row);
-            for (size_t d = 0; d < 16; ++d) {
-                size_t index = row * kNopeDim + d;
-                std::printf("  d=%zu actual=0x%04x(%g) expected=0x%04x(%g)\n", d, actual[index],
-                            DecodeQ(actual[index], spec.qKind), data.expected[index],
-                            DecodeQ(data.expected[index], spec.qKind));
-            }
-            std::printf("[DUMP] output_row=%zu D32_group_starts\n", row);
-            for (int64_t group = 0; group < kScaleCount; ++group) {
-                size_t index = row * kNopeDim + group * kMxGroupSize;
-                std::printf("  group=%lld d=%lld actual=0x%04x(%g) expected=0x%04x(%g)\n",
-                            static_cast<long long>(group), static_cast<long long>(group * kMxGroupSize), actual[index],
-                            DecodeQ(actual[index], spec.qKind), data.expected[index],
-                            DecodeQ(data.expected[index], spec.qKind));
-            }
-        }
-    };
     if (spec.bitExact) {
         for (size_t i = 0; i < actual.size(); ++i) {
             if (actual[i] != data.expected[i]) {
                 std::printf("[FAIL] %s bit mismatch at %zu: actual=0x%04x expected=0x%04x\n", spec.name.c_str(), i,
                             actual[i], data.expected[i]);
-                dump();
                 return 1;
             }
-        }
-        if (gDumpValues) {
-            dump();
         }
         std::printf("[PASS] %s bit-exact, elements=%zu\n", spec.name.c_str(), actual.size());
         return 0;
@@ -664,9 +618,6 @@ int CompareOutput(const CaseSpec &spec, const PreparedCase &data, const std::vec
     double ratio = static_cast<double>(closeCount) / static_cast<double>(actual.size());
     std::printf("[%s] %s close_ratio=%.6f max_abs_error=%.6f\n", ratio >= 0.99 ? "PASS" : "FAIL",
                 spec.name.c_str(), ratio, maxAbsError);
-    if (gDumpValues || ratio < 0.99) {
-        dump();
-    }
     return ratio >= 0.99 ? 0 : 1;
 }
 
@@ -799,24 +750,16 @@ int main(int argc, char **argv)
             listOnly = true;
         } else if (arg == "--cpu-only") {
             cpuOnly = true;
-        } else if (arg == "--dump") {
-            gDumpValues = true;
         } else if (arg == "--case" && i + 1 < argc) {
             selectedCase = argv[++i];
         } else if (arg == "--device" && i + 1 < argc) {
             deviceId = static_cast<int32_t>(std::stoi(argv[++i]));
         } else {
-            std::printf("usage: %s [--list] [--cpu-only] [--dump] [--case NAME] [--device ID]\n", argv[0]);
+            std::printf("usage: %s [--list] [--cpu-only] [--case NAME] [--device ID]\n", argv[0]);
             return 2;
         }
     }
     auto cases = BuildCases();
-    if (selectedCase.empty()) {
-        const char *caseFromEnv = std::getenv("QSFA_CASE");
-        if (caseFromEnv != nullptr && caseFromEnv[0] != '\0') {
-            selectedCase = caseFromEnv;
-        }
-    }
     if (listOnly) {
         PrintCases(cases);
         return 0;
