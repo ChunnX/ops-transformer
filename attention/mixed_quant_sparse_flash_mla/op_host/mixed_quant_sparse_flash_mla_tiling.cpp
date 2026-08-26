@@ -28,6 +28,8 @@ using std::string;
 namespace optiling {
 
 constexpr int64_t BATCH_CONSISTENCY_LEVEL = 3;
+constexpr uint32_t DEFAULT_D_SIZE_V = 512;
+constexpr uint32_t DEFAULT_TILE_SIZE = 512;
 
 std::string MQSMLALayoutToSerialString(MQSMLALayout layout)
 {
@@ -545,7 +547,7 @@ void MQSMLAInfoParser::GenerateInfo(MQSMLATilingInfo &qsmlaInfo)
     qsmlaInfo.cmpKvType = cmpKvType_;
     qsmlaInfo.outputType = outputType_;
     qsmlaInfo.dSize = dSizeQ_;
-    qsmlaInfo.dSizeV = 512U;
+    qsmlaInfo.dSizeV = DEFAULT_D_SIZE_V;
     qsmlaInfo.dSizeVInput = dSizeKV_;
 
     qsmlaInfo.totalBlockNum =
@@ -561,7 +563,7 @@ void MQSMLAInfoParser::GenerateInfo(MQSMLATilingInfo &qsmlaInfo)
     qsmlaInfo.batchConsistency = batchConsistency_;
 
     qsmlaInfo.quantMode = *opParamInfo_.quantMode;
-    qsmlaInfo.tileSize = 64U;
+    qsmlaInfo.tileSize = DEFAULT_TILE_SIZE;
     qsmlaInfo.ropeHeadDim = *opParamInfo_.ropeHeadDim;
     qsmlaInfo.softmaxScale = *opParamInfo_.softmaxScale;
     qsmlaInfo.oriKvStride = oriKvStride_;
