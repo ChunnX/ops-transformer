@@ -795,9 +795,20 @@ int main(int argc, char **argv)
                     executed - skipped - failed, skipped, failed);
         return failed == 0 ? 0 : 1;
     }
-    if (aclInit(nullptr) != ACL_SUCCESS || aclrtSetDevice(deviceId) != ACL_SUCCESS) {
-        std::printf("ACL initialization failed\n");
-        return 1;
+    if (deviceId < 0) {
+        std::printf("invalid device id: %d\n", deviceId);
+        return 2;
+    }
+    aclError initStatus = aclInit(nullptr);
+    if (initStatus != ACL_SUCCESS) {
+        std::printf("aclInit failed, status=%d\n", initStatus);
+        return initStatus;
+    }
+    aclError setDeviceStatus = aclrtSetDevice(deviceId);
+    if (setDeviceStatus != ACL_SUCCESS) {
+        std::printf("aclrtSetDevice(%d) failed, status=%d\n", deviceId, setDeviceStatus);
+        aclFinalize();
+        return setDeviceStatus;
     }
     aclrtStream stream = nullptr;
     if (aclrtCreateStream(&stream) != ACL_SUCCESS) {
