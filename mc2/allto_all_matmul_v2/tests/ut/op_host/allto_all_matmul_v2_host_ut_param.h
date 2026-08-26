@@ -38,6 +38,7 @@ struct AlltoAllMatmulV2TilingUtParam {
     std::string commMode;
     int64_t precisionMode;
     std::string soc;
+    uint64_t coreNum;
     ge::graphStatus expectResult;
     uint64_t expectTilingKey;
 
@@ -65,6 +66,7 @@ struct AlltoAllMatmulV2TilingUtParam {
         this->commMode = ReadMap(csvMap, "comm_mode", "urma");
         this->precisionMode = stoll(ReadMap(csvMap, "precision_mode", "0"));
         this->soc = ReadMap(csvMap, "soc_version", "3510");
+        this->coreNum = stoull(ReadMap(csvMap, "core_num", "64"));
         this->expectResult = Str2StatusGE(ReadMap(csvMap, "expectResult"));
         std::string tilingKeyStr = ReadMap(csvMap, "expectTilingKey");
         if (!tilingKeyStr.empty()) {

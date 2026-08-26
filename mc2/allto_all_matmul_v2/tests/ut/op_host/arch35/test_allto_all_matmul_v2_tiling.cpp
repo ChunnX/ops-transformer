@@ -57,7 +57,7 @@ TEST_P(AlltoAllMatmulV2Arch35TilingTest, param)
          {"precision_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.precisionMode)}});
 
     gert::TilingContextPara tilingContextPara(OP_NAME, inputTensorDesc_, outputTensorDesc_, attrs_, &compileInfo,
-                                              param.soc);
+                                              param.soc, param.coreNum);
     ExecuteTestCase(tilingContextPara, param.expectResult, param.expectTilingKey, "", {});
 }
 
