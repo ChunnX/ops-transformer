@@ -476,8 +476,14 @@ private:
             Or((RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP81, maskReg8All);
             Or((RegTensor<uint8_t> &)pVregFP82, (RegTensor<uint8_t> &)pVregFP82, (RegTensor<uint8_t> &)pVregFP83, maskReg8All);
 
-            DeInterleave(deInterleaveVreg0, deInterleaveVreg1, pVregFP80, pVregFP80);
-            DeInterleave(deInterleaveVreg2, deInterleaveVreg3, pVregFP82, pVregFP82);
+            DeInterleave<uint8_t>((RegTensor<uint8_t> &)deInterleaveVreg0,
+                                  (RegTensor<uint8_t> &)deInterleaveVreg1,
+                                  (RegTensor<uint8_t> &)pVregFP80,
+                                  (RegTensor<uint8_t> &)pVregFP80);
+            DeInterleave<uint8_t>((RegTensor<uint8_t> &)deInterleaveVreg2,
+                                  (RegTensor<uint8_t> &)deInterleaveVreg3,
+                                  (RegTensor<uint8_t> &)pVregFP82,
+                                  (RegTensor<uint8_t> &)pVregFP82);
 
             StoreAlign<fp8_e4m3fn_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
                 pUb0, deInterleaveVreg0, mRound + 1, 1, maskReg8VL64);
@@ -512,7 +518,10 @@ private:
                 Or((RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP81,
                    maskReg8All);
 
-                DeInterleave(deInterleaveVreg0, deInterleaveVreg1, pVregFP80, pVregFP80);
+                DeInterleave<uint8_t>((RegTensor<uint8_t> &)deInterleaveVreg0,
+                                      (RegTensor<uint8_t> &)deInterleaveVreg1,
+                                      (RegTensor<uint8_t> &)pVregFP80,
+                                      (RegTensor<uint8_t> &)pVregFP80);
 
                 StoreAlign<fp8_e4m3fn_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
                     pUb0, deInterleaveVreg0, mRound + 1, 1, maskReg8VL64);
