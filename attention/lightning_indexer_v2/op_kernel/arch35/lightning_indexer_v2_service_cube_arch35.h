@@ -133,8 +133,8 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::InitParams(const Cons
 template <typename LIT>
 __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::InitBuffers(TPipe *pipe)
 {
-    // 大小：2(开dB) * 2 * 64 * 128 * 4 = 128KB
-    pipe->InitBuffer(bufUB_, 2 * CeilDiv(M_BASIC_BLOCK, 2) * constInfo_.s2BaseSize * sizeof(QK_T));
+    // 大小：2(开dB) * CeilDiv(M_BASIC_BLOCK, CVRATIO) * s2BaseSize * sizeof(QK_T)
+    pipe->InitBuffer(bufUB_, 2 * CeilDiv(M_BASIC_BLOCK, CVRATIO) * constInfo_.s2BaseSize * sizeof(QK_T));
     mm1ResUB_ = bufUB_.Get<QK_T>();
     pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * M_BASIC_BLOCK * D_BASIC_BLOCK * sizeof(Q_T));
     queryL1_ = bufQL1_.Get<Q_T>();
