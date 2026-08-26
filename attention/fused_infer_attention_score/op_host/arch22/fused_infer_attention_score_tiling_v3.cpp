@@ -1400,17 +1400,9 @@ bool RouteToFia(gert::TilingContext *context)
 
     const std::string inputLayoutStr = std::string(context->GetAttrs()->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
 
-    // BNBD (4D KV) page attention scenarios are handled by the original route (FAI/IFA/PFA), not FIA V3.
-    if (isPageAttention) {
-        uint32_t kDimNum = context->GetInputShape(KEY_INDEX)->GetStorageShape().GetDimNum();
-        uint32_t vDimNum = context->GetInputShape(VALUE_INDEX)->GetStorageShape().GetDimNum();
-        if (kDimNum == 4U && vDimNum == 4U) {
-            return false;
-        }
-    }
-
     // TND without rope only supports headDim 64/128/192 in FIA V3 (see CommonChecker::ValidateNoRopeLayoutDim);
-    // other headDim values are handled by the original route (FAI), which supports D up to 256.
+    // other headDim values (e.g. 256) are handled by the original route (FAI), which supports D up to 256.
+    // Note: this covers both 3D (BnBsH) and 4D (BNBD) page-attention KV, so BNBD itself needs no extra block.
     if (inputLayoutStr == "TND" && queryRopeD == 0 && queryD == valueD && queryD != 64 && queryD != 128 &&
         queryD != 192) {
         return false;
