@@ -17,7 +17,7 @@
   - RoPE：Q/K执行`RMSNorm -> RoPE -> rotation`，Q/K做PerTokenPerHead动态量化；
   - M-RoPE：Q/K执行`RMSNorm -> M-RoPE -> rotation`，Q不量化，K做PerTokenPerHead INT8动态量化；
   - M-RoPE MX：Q/K执行`RMSNorm -> M-RoPE -> Dynamic MX Quant`，不执行`rotation`；每个D32 block使用cuBLAS MXFP8的E8M0二次幂scale量化为FP8 E4M3FN。
-  V分支不做RMSNorm、位置编码或`rotation`；RoPE使用`v_scale[Nv]`，M-RoPE和M-RoPE MX使用每个head、每个channel的`v_scale[Nv,D]`量化为FP8 E4M3FN。
+  - 三种场景的V分支均不做RMSNorm、位置编码或`rotation`；RoPE使用`v_scale[Nv]`，M-RoPE和M-RoPE MX使用每个head、每个channel的`v_scale[Nv,D]`量化为FP8 E4M3FN。
 - 使用场景：适用于推理场景下的PagedAttention KV Cache更新，当前仅支持<term>Ascend 950PR/Ascend 950DT</term>。
 - 计算公式：
 
@@ -60,7 +60,7 @@
   q_{b,i}=\operatorname{cast}^{\mathrm{rint,sat}}_{\mathrm{FP8\ E4M3FN}}\left(\frac{x_{b,i}}{s_b}\right).
   $$
 
-  当$a_b=0$时取$e_b=-127$。$s_b$以FP8 E8M0存储，有限scale的原始编码为$e_b+127$；block中存在Inf或NaN时scale原始编码为`0xFF`。该规则即cuBLAS MXFP8 scale语义（对应`DynamicMxQuantV3`的`scaleAlg=1`）。有效scale按D32 block线性存储，数量为`ceil(D/32)`。
+  当$a_b=0$时取$e_b=-127$。$s_b$以FLOAT8_E8M0存储，有限scale的原始编码为$e_b+127$；block中存在Inf或NaN时scale原始编码为`0xFF`。该规则即cuBLAS MXFP8 scale语义（对应`DynamicMxQuantV3`的`scaleAlg=1`）。有效scale按D32 block线性存储，数量为`ceil(D/32)`。
 
   V分支在FP8 E4M3FN转换前统一乘以`v_scale`；`v_scale`按其输入shape广播到V的逻辑shape：
 
@@ -97,14 +97,14 @@
 | slot_mapping | 输入 | 每个token写入cache的slot索引，shape为`[T]`。 | INT32 | ND |
 | k_cache | 输入/输出 | K Cache，输入输出同地址复用，shape为`[BlockNum,Nk,BlockSize,D]`，支持非连续Tensor。RoPE和M-RoPE MX为FP8 E4M3FN；M-RoPE为INT8。 | FLOAT8_E4M3FN / INT8 | ND |
 | v_cache | 输入/输出 | V Cache，输入输出同地址复用，shape为`[BlockNum, Nv, BlockSize, D]`，支持非连续Tensor。 | FLOAT8_E4M3FN | ND |
-| k_scale_cache | 输入/输出 | K动态量化scale cache，输入输出同地址复用。RoPE/M-RoPE为FP32 `[BlockNum,Nk,BlockSize,1]`；M-RoPE MX为E8M0 `[BlockNum,Nk,BlockSize,ceil(D/32)]`。 | FLOAT / FLOAT8_E8M0 | ND |
+| k_scale_cache | 输入/输出 | K动态量化scale cache，输入输出同地址复用。RoPE/M-RoPE为FP32 `[BlockNum,Nk,BlockSize,1]`；M-RoPE MX为FLOAT8_E8M0 `[BlockNum,Nk,BlockSize,ceil(D/32)]`。 | FLOAT / FLOAT8_E8M0 | ND |
 | query_start_loc | 可选输入 | RoPE场景当前调用内各batch token数的前缀和，shape为`[Batch+1]`；M-RoPE场景不传。 | INT32 | ND |
 | seq_lens | 可选输入 | RoPE场景每个batch追加当前token后的实际序列长度，shape为`[Batch]`；M-RoPE场景不传。 | INT32 | ND |
 | rotation | 可选输入 | Q/K共享矩阵乘权重。RoPE/M-RoPE必须传BF16 `[D,D]`；M-RoPE MX必须不传。 | BFLOAT16 | ND |
 | v_scale | 可选输入 | V分支量化缩放因子。RoPE为`[Nv]`；M-RoPE和M-RoPE MX为每head、每channel的`[Nv,D]`。三个场景均必须传有效Tensor。 | FLOAT | ND |
 | mrope_position | 可选输入 | M-RoPE场景token-major位置索引，shape为`[T,3]`，三列依次为T/H/W；RoPE场景不传。 | INT32 | ND |
 | q_out | 输出 | Q输出。RoPE为FP8 E4M3FN，shape由`layout_q_out`决定；M-RoPE为BF16 `[T,Nq,D]`；M-RoPE MX为FP8 E4M3FN `[T,Nq,D]`。 | FLOAT8_E4M3FN / BFLOAT16 | ND |
-| q_scale | 输出 | Q动态量化scale。RoPE为FP32 `[T,Nq]`或`[Nq,T]`；M-RoPE公开输出为`nullptr`/`None`；M-RoPE MX为E8M0 `[T,Nq,ceil(D/32)]`。 | FLOAT / FLOAT8_E8M0 | ND |
+| q_scale | 输出 | Q动态量化scale。RoPE为FP32 `[T,Nq]`或`[Nq,T]`；M-RoPE公开输出为`nullptr`/`None`；M-RoPE MX为FLOAT8_E8M0 `[T,Nq,ceil(D/32)]`。 | FLOAT / FLOAT8_E8M0 | ND |
 | head_nums | 属性 | Q/K/V头数，按`[Nq,Nk,Nv]`传入；三个场景均要求`0<Nq<=64`、`Nq=8*Nk`、`Nk=Nv`。 | INT64数组 | - |
 | layout_qkv | 可选属性 | `qkv`的N/T轴布局，默认值为`"TND"`。仅支持大小写敏感的`"TND"`和`"NTD"`。 | STRING | - |
 | layout_q_out | 可选属性 | `q_out`和`q_scale`的N/T轴布局，默认值为`"NTD"`。仅支持大小写敏感的`"TND"`和`"NTD"`。 | STRING | - |
@@ -122,7 +122,7 @@
   |---|---|---|---|---|---|
   | RoPE | 传`query_start_loc/seq_lens`；不传`mrope_position/mrope_section` | 必须传`[D,D]` BF16 | `q_quant_mode=PerTokenPerHead`；Q为FP8 E4M3FN，scale为FP32 rank2 | `k_quant_mode=PerTokenPerHead`；K为FP8 E4M3FN，scale为FP32 rank4 | `v_scale=[Nv]`，输出FP8 E4M3FN |
   | M-RoPE | 传`mrope_position/mrope_section`；不传`query_start_loc/seq_lens` | 必须传`[D,D]` BF16 | `q_quant_mode=NoQuant`；Q为BF16，无公开scale | `k_quant_mode=PerTokenPerHead`；K为INT8，scale为FP32 rank4 | `v_scale=[Nv,D]`，输出FP8 E4M3FN |
-  | M-RoPE MX | 传`mrope_position/mrope_section`；不传`query_start_loc/seq_lens` | 必须不传 | `q_quant_mode=MxQuant`；Q为FP8 E4M3FN，scale为E8M0 rank3 | `k_quant_mode=MxQuant`；K为FP8 E4M3FN，scale为E8M0 rank4 | `v_scale=[Nv,D]`，按head/channel静态量化为FP8 E4M3FN |
+  | M-RoPE MX | 传`mrope_position/mrope_section`；不传`query_start_loc/seq_lens` | 必须不传 | `q_quant_mode=MxQuant`；Q为FP8 E4M3FN，scale为FLOAT8_E8M0 rank3 | `k_quant_mode=MxQuant`；K为FP8 E4M3FN，scale为FLOAT8_E8M0 rank4 | `v_scale=[Nv,D]`，按head/channel静态量化为FP8 E4M3FN |
 
 - 输入shape限制：
   - 当前实现仅支持`D=128`，三个场景均要求`1<=T<=262144`、`0<Nq<=64`、`Nq=8*Nk`、`Nk=Nv`。
@@ -132,7 +132,7 @@
     M-RoPE要求`q_quant_mode=NoQuant`、`k_quant_mode=PerTokenPerHead`、`q_out_dtype=BF16`、公开`q_scale=None`，K Cache为INT8，且仅支持
     `layout_qkv="TND"`、`layout_q_out="TND"`。两组位置输入不能同时存在或同时缺失。
   - M-RoPE MX场景固定`layout_qkv=layout_q_out="TND"`、`q_quant_mode=k_quant_mode="MxQuant"`且不传`rotation`；
-    Q/K输出为FP8 E4M3FN，Q scale为E8M0 `[T,Nq,ceil(D/32)]`，K scale Cache为E8M0
+    Q/K输出为FP8 E4M3FN，Q scale为FLOAT8_E8M0 `[T,Nq,ceil(D/32)]`，K scale Cache为FLOAT8_E8M0
     `[BlockNum,Nk,BlockSize,ceil(D/32)]`。
   - `v_scale`在RoPE场景的shape必须为`[Nv]`，在M-RoPE和M-RoPE MX场景的shape必须为`[Nv,D]`。
   - M-RoPE的`mrope_section`长度必须为3且三项非负；D128时H/W两项的范围均为`[0,21]`，第0项无独立lane上限，三项之和不得超过64；`mrope_position`必须为INT32、rank 2、shape `[T,3]`。
