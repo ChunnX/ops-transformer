@@ -1,6 +1,6 @@
 # quantMatmulReduceScatter Profiling 数据归档
 
-> 采集日期: 2026-08-22
+> 采集日期: 2026-08-25 (重新采集, 机器空闲)
 > 平台: Ascend 950PR (dav-3510), CANN 9.2.0
 > 代码版本: 方案B — 后R核通信 + 前(28-R)核计算 (严格分离, winOffset=128, totalJobs=rankSize)
 > 采集脚本: `tests/st/quant_matmul_reduce_scatter/run_12cases_msprof.sh`
@@ -15,6 +15,8 @@ profiling/
 │   └── raw/                               # msprof op_summary 原始 CSV (仅保留 csv, 删除 db/json/log)
 │       ├── m2048k3584n4096r2/             # 每 case 一个目录
 │       │   └── op_summary_dev{0..R-1}.csv # 每个 device 的 op_summary (10 次迭代, 含 pipe 级指标)
+│       ├── headM_compare/                  # R=4 headMSize 最优搜索数据 (6 case × 3~4 headM)
+│       │   └── m{M}k{K}n{N}r{R}_h{headM}/  # 按 case + headMSize 分目录
 │       └── ... (12 个目录, 共 36 个 CSV)
 ├── mc2_test/                              # 融合算子路径 (aclnnMatmulReduceScatterV2)
 │   ├── aclnnMatmulReduceScatterV2_performance_result.csv  # 完整结果
@@ -37,17 +39,17 @@ profiling/
 | Case | Task Duration (us) |
 |------|--------------------|
 | 2048x3584x4096 R=2 | 272.6 |
-| 2048x3584x4096 R=4 | 179.6 |
-| 4096x3584x4096 R=2 | 473.4 |
-| 4096x3584x4096 R=4 | 308.2 |
-| 4032x8192x4096 R=2 | 574.9 |
-| 4032x8192x4096 R=4 | 613.5 |
-| 8192x1024x8192 R=2 | 1623.4 |
-| 8192x1024x8192 R=4 | 921.4 |
-| 8192x3696x8192 R=2 | 1771.9 |
-| 8192x3696n8192 R=4 | 1322.5 |
-| 8192x1536x12288 R=2 | 2438.3 |
-| 8192x1536x12288 R=4 | 1337.3 |
+| 2048x3584x4096 R=4 | 175.6 |
+| 4096x3584x4096 R=2 | 472.3 |
+| 4096x3584x4096 R=4 | 307.5 |
+| 4032x8192x4096 R=2 | 575.0 |
+| 4032x8192x4096 R=4 | 615.4 |
+| 8192x1024x8192 R=2 | 1622.5 |
+| 8192x1024x8192 R=4 | 918.7 |
+| 8192x3696x8192 R=2 | 1772.0 |
+| 8192x3696n8192 R=4 | 1317.8 |
+| 8192x1536x12288 R=2 | 2435.5 |
+| 8192x1536x12288 R=4 | 1336.3 |
 
 ## 采集方法
 

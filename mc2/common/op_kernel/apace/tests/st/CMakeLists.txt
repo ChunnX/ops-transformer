@@ -119,5 +119,5 @@ target_include_directories(apace_blaze_api INTERFACE
 add_subdirectory(all_to_all_quant_matmul)
 add_subdirectory(all_gather_quant_matmul/urma)
 add_subdirectory(all_gather_quant_matmul/ubmem)
-add_subdirectory(quant_matmul_reduce_scatter)
 add_subdirectory(quant_matmul_reduce_scatter/ubmem)
+add_subdirectory(quant_matmul_reduce_scatter)
