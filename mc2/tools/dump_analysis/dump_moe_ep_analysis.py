@@ -12,11 +12,12 @@
 #  \brief
 #
 
+import logging
 import os
 import sys
-import logging
 from dataclasses import dataclass, field
 from typing import List
+
 import numpy as np
 from openpyxl import Workbook
 
@@ -172,8 +173,7 @@ def check_topk_idx(topk_idx_reshape, global_expert_num: int):
     mask = (topk_idx_reshape < 0) | (topk_idx_reshape >= global_expert_num)
     if np.any(mask):
         row_func, col_func = np.where(mask)
-        logging.error("检测到topk_idx中有%d个异常输入, 值应 >= 0 且 < 全局专家数%d",
-                      len(row_func), global_expert_num)
+        logging.error("检测到topk_idx中有%d个异常输入, 值应 >= 0 且 < 全局专家数%d", len(row_func), global_expert_num)
         for r, c in zip(row_func, col_func):
             logging.error("topk_idx下标[%d,%d]的值:%d超范围", r, c, topk_idx_reshape[r][c])
     else:
@@ -294,9 +294,12 @@ def analyze_single_card(card_path: str, card_num: int, card_metadata: dict, glob
     combine_token_state_data = analyze_combine_token_state(card_path, nmt, topk)
 
     return CardAnalysisResult(
-        bs=bs, core_count=core_count, per_core_data=per_core_data,
-        count_notify_data=count_notify_data, expert_count_data=expert_count_data,
-        combine_token_state_data=combine_token_state_data
+        bs=bs,
+        core_count=core_count,
+        per_core_data=per_core_data,
+        count_notify_data=count_notify_data,
+        expert_count_data=expert_count_data,
+        combine_token_state_data=combine_token_state_data,
     )
 
 
@@ -338,8 +341,11 @@ def write_expert_count_sheet(wb, all_expert_count: list, all_metadata: dict):
     ws = wb.create_sheet("expert_count")
     ws.append(["card_num", "localExpertNum", "rank_id", "expert_id", "count"])
     for card_num, expert_count_data in enumerate(all_expert_count):
-        local_expert_num = all_metadata["localExpertNum"][card_num] \
-            if card_num < len(all_metadata["localExpertNum"]) else 0
+        local_expert_num = (
+            all_metadata["localExpertNum"][card_num]
+            if card_num < len(all_metadata["localExpertNum"])
+            else 0
+        )
         for rank_id, per_rank in enumerate(expert_count_data):
             for expert_id, count in enumerate(per_rank):
                 ws.append([card_num, local_expert_num, rank_id, expert_id, count])
@@ -413,8 +419,12 @@ if __name__ == "__main__":
             all_expert_count.append([])
             all_combine_token_state.append([])
             continue
-        card_metadata = {name: all_metadata[name][card_num] if card_num < len(all_metadata[name]) else None
-                         for name in METADATA_FIELD_NAMES + REGION_NAMES}
+        card_metadata = {
+            name: all_metadata[name][card_num]
+            if card_num < len(all_metadata[name])
+            else None
+            for name in METADATA_FIELD_NAMES + REGION_NAMES
+        }
         card_result = analyze_single_card(card_path, card_num, card_metadata, global_expert_num)
         all_bs.append(card_result.bs)
         all_core_count.append(card_result.core_count)
@@ -428,9 +438,12 @@ if __name__ == "__main__":
 
     # 4. 写入 Excel
     all_result = AllAnalysisResult(
-        all_metadata=all_metadata, all_per_core=all_per_core,
-        all_count_notify=all_count_notify, all_expert_count=all_expert_count,
-        all_combine_token_state=all_combine_token_state, card_count=len(card_dirs)
+        all_metadata=all_metadata,
+        all_per_core=all_per_core,
+        all_count_notify=all_count_notify,
+        all_expert_count=all_expert_count,
+        all_combine_token_state=all_combine_token_state,
+        card_count=len(card_dirs),
     )
     save_to_excel(all_result)
 
