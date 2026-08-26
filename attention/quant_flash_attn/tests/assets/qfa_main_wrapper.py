@@ -22,6 +22,7 @@ TTK test case 是隔离进程, 不能跨 case 内存传 metadata; run_main 接�
 import logging
 import os
 import sys
+from typing import Optional
 
 import torch
 import torch_npu
@@ -38,7 +39,6 @@ if _TESTS_DIR not in sys.path:
     sys.path.insert(0, _TESTS_DIR)
 import quant_flash_attn_golden as mxfp8_golden_mod
 import quant_flash_attn_fp8_golden as fp8_golden_mod
-import quant_flash_attn_hif8_golden as hif8_golden_mod
 
 logger = logging.getLogger(__name__)
 
@@ -47,15 +47,9 @@ def _apply_golden_globals(params, quant_mode=1):
     """把 case 参数注入 golden 模块全局变量 (按 quant_mode 选择目标模块).
 
     quant_mode=6 → fp8_golden_mod (GQA FP8 全量化路径)
-    quant_mode=0 → hif8_golden_mod (HIF8 per-tensor 量化路径)
     其他 → mxfp8_golden_mod (MXFP8 路径)
     """
-    if quant_mode == 6:
-        target = fp8_golden_mod
-    elif quant_mode == 0:
-        target = hif8_golden_mod
-    else:
-        target = mxfp8_golden_mod
+    target = fp8_golden_mod if quant_mode == 6 else mxfp8_golden_mod
     for k, v in params.items():
         setattr(target, k, v)
 
@@ -81,6 +75,7 @@ def run_main(
     N_q: int,
     N_kv: int,
     D: int,
+    head_dim_v: Optional[int] = None,
     max_seqlen_q: int,
     max_seqlen_kv: int,
     enable_pa: bool,
@@ -146,6 +141,7 @@ def run_main(
             "N_q": N_q,
             "N_kv": N_kv,
             "D": D,
+            "HEAD_DIM_V": head_dim_v,
             "CU_SEQLENS_Q": cu_seqlens_q_list,
             "CU_SEQLENS_KV": cu_seqlens_kv_list,
             "SEQUSED_Q": seqused_q_list,
@@ -206,17 +202,6 @@ def run_main(
         q_fp8 = fp8_golden_mod.quant_fp16_to_fp8(q_cpu, quant_scale_q)
         k_fp8 = fp8_golden_mod.quant_fp16_to_fp8(k_cpu, quant_scale_k)
         v_fp8 = fp8_golden_mod.quant_fp16_to_fp8(v_cpu, quant_scale_v)
-    elif quant_mode == 0:
-        # HIF8 per-tensor (Q/K/V per-tensor quant, descale=FP32 scalar)
-        quant_scale_q = hif8_golden_mod.get_hif8_per_tensor_quant_scale(q_cpu)
-        quant_scale_k = hif8_golden_mod.get_hif8_per_tensor_quant_scale(k_cpu)
-        quant_scale_v = hif8_golden_mod.get_hif8_per_tensor_quant_scale(v_cpu)
-        deq_q = quant_scale_q
-        deq_k = quant_scale_k
-        deq_v = quant_scale_v
-        q_fp8 = hif8_golden_mod.hif8_per_tensor_quant(q_cpu, quant_scale_q)
-        k_fp8 = hif8_golden_mod.hif8_per_tensor_quant(k_cpu, quant_scale_k)
-        v_fp8 = hif8_golden_mod.hif8_per_tensor_quant(v_cpu, quant_scale_v)
     else:
         # MXFP8 (per-token-group Q/K, per-channel-group V, descale=e8m0)
         quant_scale_q = mxfp8_golden_mod.get_mxfp8_per_token_group_quant_scale(
@@ -253,28 +238,9 @@ def run_main(
             .to(fp8_dtype)
         )
 
-    # 按 quant_mode 派发 prepare_npu_inputs (mxfp8 / gqa_fp8 / hif8 路径 layout 不同)
+    # 按 quant_mode 派发 prepare_npu_inputs (mxfp8 / gqa_fp8 路径 layout 不同)
     if quant_mode == 6:
         inputs = fp8_golden_mod.prepare_npu_inputs_gqa_fp8(
-            q_fp8,
-            k_fp8,
-            v_fp8,
-            deq_q,
-            deq_k,
-            deq_v,
-            p_scale_cpu,
-            cu_seqlens_q_list,
-            cu_seqlens_kv_list,
-            seqused_q_list,
-            seqused_kv_list,
-            max_seqlen_q,
-            max_seqlen_kv,
-            block_table_cpu
-            if isinstance(block_table_cpu, torch.Tensor) and enable_pa
-            else None,
-        )
-    elif quant_mode == 0:
-        inputs = hif8_golden_mod.prepare_npu_inputs(
             q_fp8,
             k_fp8,
             v_fp8,
@@ -331,8 +297,8 @@ def run_main(
             cu_seqlens_kv=cu_seqlens_kv_t if is_tnd_kv else None,
             seqused_q=seqused_q_t,
             seqused_kv=seqused_kv_t,
-            v_descale=inputs["dequant_scale_v"],
-            batch_size=batch_size if not is_tnd_q else None,
+            head_dim_v=head_dim_v,
+            batch_size=batch_size,
             mask_mode=inputs["sparse_mode"],
             layout_q=layout_q,
             layout_q_descale=inputs["layout_q_descale"],
@@ -384,8 +350,6 @@ def run_main(
     act_seqused_q = (
         fp8_golden_mod._actual_seq_q()
         if quant_mode == 6
-        else hif8_golden_mod._actual_seq_q()
-        if quant_mode == 0
         else mxfp8_golden_mod._actual_seq_q()
     )
     # T_actual: 以 actual_seq_q (seqused_q 优先, 否则从 cu_seqlens_q 差分) 为准,
