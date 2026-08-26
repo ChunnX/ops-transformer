@@ -44,7 +44,7 @@ else()
     )
 endif()
 if (NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(OPTYPE quant_flash_attn_grad ACLNNTYPE aclnn)
+    add_modules_sources(OPTYPE quant_flash_attn_grad ACLNNTYPE aclnn_inner)
 endif()
 
 if (NOT BUILD_OPS_RTY_KERNEL)
