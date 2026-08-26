@@ -735,7 +735,7 @@ mc2_moe_advanced@ops-transformer:
                 - ops/ops-transformer/mc2/moe_update_expert/docs/
             non_delivery: null
             open_source:
-                - ops/ops-transformer/mc2/3rd/mat_mul_v3/
+                # - ops/ops-transformer/mc2/3rd/mat_mul_v3/
 
 mc2_moe@ops-transformer:
     src:
@@ -757,7 +757,7 @@ mc2_moe@ops-transformer:
                 - ops/ops-transformer/mc2/mega_moe/tests/
             non_delivery: null
             open_source:
-                - ops/ops-transformer/mc2/3rd/batch_mat_mul_v3/
+                # - ops/ops-transformer/mc2/3rd/batch_mat_mul_v3/
 
 mc2_apace@ops-transformer:
     src:
@@ -928,7 +928,7 @@ mc2_training@ops-transformer:
                 - ops/ops-transformer/mc2/quant_reduce_scatter/docs/
             non_delivery: null
             open_source:
-                - ops/ops-transformer/mc2/3rd/quant_batch_matmul_v3/
+                # - ops/ops-transformer/mc2/3rd/quant_batch_matmul_v3/
 
 mc2_infer@ops-transformer:
     src:
@@ -1209,9 +1209,9 @@ mc2_infer@ops-transformer:
                 - asl/ops/cann/ops/mc2/communication_and_computation/all_gather_matmul_v2/op_host/
                 - asl/ops/cann/ops/mc2/communication_and_computation/all_gather_matmul_v2/graph_plugin/
                 - asl/ops/cann/ops/mc2/communication_and_computation/all_gather_matmul_v2/op_kernel/
-                - ops/ops-transformer/mc2/3rd/common/
-                - ops/ops-transformer/mc2/3rd/ops_legacy/
-                - ops/ops-transformer/mc2/3rd/CMakeLists.txt
+                # - ops/ops-transformer/mc2/3rd/common/
+                # - ops/ops-transformer/mc2/3rd/ops_legacy/
+                # - ops/ops-transformer/mc2/3rd/CMakeLists.txt
             opensource_style: null
             kernel_style: null
         unrelease:
@@ -1236,7 +1236,7 @@ mc2_infer@ops-transformer:
                 - asl/ops/cann/ops/mc2/communication_and_computation/all_gather_matmul_v2/docs/
             non_delivery: null
             open_source:
-                - ops/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/
+                # - ops/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/
 
 moe@ops-transformer:
     src:
