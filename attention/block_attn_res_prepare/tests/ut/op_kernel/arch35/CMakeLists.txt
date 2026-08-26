@@ -9,9 +9,37 @@
 # -----------------------------------------------------------------------------------------------------------
 
 if(UT_TEST_ALL OR OP_KERNEL_UT)
-    AddOpTestCase(block_attn_res_prepare "Ascend950PR_9599" "" "")
-    if(TARGET block_attn_res_prepare_Ascend950PR_9599_cases_obj)
-        target_include_directories(block_attn_res_prepare_Ascend950PR_9599_cases_obj
-            PRIVATE ${TENSOR_API} ${TENSOR_API}/include)
+    set(block_attn_res_prepare_tiling_files
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../op_host/op_tiling/block_attn_res_prepare_base_tiling.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../op_host/op_tiling/block_attn_res_prepare_vector_tiling.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../op_host/op_tiling/block_attn_res_prepare_mix_tiling.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/block_attn_res_prepare_tiling_registry_stub.cpp
+    )
+
+    set(block_attn_res_prepare_soc_version "Ascend950PR_9599")
+    set(block_attn_res_prepare_kernel_file
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../op_kernel/block_attn_res_prepare_apt.cpp)
+    AddOpTestCase(block_attn_res_prepare "${block_attn_res_prepare_soc_version}" ""
+                  "${block_attn_res_prepare_tiling_files}" "${block_attn_res_prepare_kernel_file}")
+
+    set(block_attn_res_prepare_tiling_tmp
+        "block_attn_res_prepare_${block_attn_res_prepare_soc_version}_tiling_tmp")
+    set(block_attn_res_prepare_cases_obj
+        "block_attn_res_prepare_${block_attn_res_prepare_soc_version}_cases_obj")
+    if(TARGET ${block_attn_res_prepare_cases_obj})
+        target_link_libraries(${block_attn_res_prepare_tiling_tmp} PRIVATE
+            -Wl,--whole-archive rt2_registry_static -Wl,--no-whole-archive register)
+
+        set(ops_tensor_kernel_ut_dir "${OPTENSOR_SOURCE_PATH}/tests/ut/op_kernel")
+        if(NOT EXISTS "${ops_tensor_kernel_ut_dir}/blaze_kernel_stub.h" OR
+           NOT EXISTS "${ops_tensor_kernel_ut_dir}/kernel_ut_runner.h" OR
+           NOT EXISTS "${ops_tensor_kernel_ut_dir}/k3_pvwrap.cpp")
+            message(FATAL_ERROR "ops-tensor kernel UT support files are unavailable: ${ops_tensor_kernel_ut_dir}")
+        endif()
+
+        target_include_directories(${block_attn_res_prepare_cases_obj} PRIVATE
+            "${ops_tensor_kernel_ut_dir}" ${TENSOR_API} ${TENSOR_API}/include)
+        target_sources(${OP_KERNEL_MODULE_NAME}_${block_attn_res_prepare_soc_version}_cases_obj
+                       PRIVATE "${ops_tensor_kernel_ut_dir}/k3_pvwrap.cpp")
     endif()
 endif()
