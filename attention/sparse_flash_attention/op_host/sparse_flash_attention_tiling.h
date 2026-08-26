@@ -51,6 +51,10 @@ constexpr uint32_t PRE_TOKENS_ATTR_INDEX = 5;
 constexpr uint32_t NEXT_TOKENS_ATTR_INDEX = 6;
 constexpr uint32_t ATTENTION_MODE_ATTR_INDEX = 7;
 constexpr uint32_t RETURN_SOFTMAX_LSE_ATTR_INDEX = 8;
+// Dim Index
+constexpr uint32_t DIM_IDX_ONE = 1;
+constexpr uint32_t DIM_IDX_TWO = 2;
+constexpr uint32_t DIM_IDX_THREE = 3;
 // Dim Num
 constexpr size_t DIM_NUM_ONE = 1;
 constexpr size_t DIM_NUM_TWO = 2;
