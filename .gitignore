@@ -29,7 +29,6 @@ output/
 # binary files
 *.so
 *.a
-*.bundle
 
 # python cache
 *.pyc
