@@ -5,10 +5,19 @@
 `examples/test_aclnn_msa_index_score.cpp` 自包含 aclnn 调用 + CPU golden。
 
 ```bash
+# Atlas A2
 bash build.sh --pkg --soc=ascend910b --ops=msa_index_score -j32
-./build_out/cann-ops-transformer-custom_linux-aarch64.run --quiet --install-path=/tmp/msa_opp
+bash ./build_out/cann-ops-transformer-custom_linux-x86_64.run --quiet --install-path=/tmp/msa_opp
 export ASCEND_CUSTOM_OPP_PATH=/tmp/msa_opp/vendors/custom_transformer
-bash build.sh --run_example msa_index_score eager cust --vendor_name=custom
+bash build.sh --run_example msa_index_score eager cust --vendor_name=custom --soc=ascend910b
+
+# Ascend 950：必须 --soc=ascend950；安装后 source vendors/custom_transformer/bin/set_env.bash
+bash build.sh --pkg --soc=ascend950 --ops=msa_index_score -j32
+bash ./build_out/cann-ops-transformer-custom_linux-x86_64.run --quiet --install-path=/tmp/msa_opp
+source /tmp/msa_opp/vendors/custom_transformer/bin/set_env.bash
+export ASCEND_CUSTOM_OPP_PATH=/tmp/msa_opp/vendors/custom_transformer
+bash build.sh --run_example msa_index_score eager cust --vendor_name=custom --soc=ascend950
+# 通过：末行 [PASS]: 21/21 cases passed
 ```
 
 ## 2. 用例矩阵
@@ -29,8 +38,9 @@ bash build.sh --run_example msa_index_score eager cust --vendor_name=custom
 | `L2-tiny-kv` | 极小 kv | 尾填充 |
 | `L1-bnbd` / `L1-bnbd-int8` | PA BNBD | `[NP, N2, P, D]` |
 | `L1-tnd-unaligned` / `L1-tnd-int8` / `L0-tnd-tiny` | TND packed | 无 block_table，klen 前缀和 |
+| `L0-fp8-e4m3fn` / `L0-fp8-e5m2` / `L1-fp8-e4m3fn-prefill` | 950 FP8（D=128） | Cube 原生 e4m3fn / e5m2；hifloat8 仅 kernel |
 
-默认跑完整用例矩阵（含 TND / BNBD）。key 布局由 `layout_key`（aclnn：`layoutKeyOptional`）指定，不再从 shape 推断。
+默认跑完整用例矩阵（含 TND / BNBD）。950 另含 3 条 FP8，共 21 条。key 布局由 `layout_key`（aclnn：`layoutKeyOptional`）指定，不再从 shape 推断。
 
 ## 3. Python 参考
 
@@ -46,4 +56,4 @@ golden = msa_index_score_golden(MsaIndexScoreGoldenInputs(
 
 - 填充位（不可见 block）两侧同为 `-inf`
 - `local_mask` 强制高分两侧同为 `≥1e28`
-- 有效位 `atol/rtol=1e-3`，`error_ratio≤1e-3`
+- 有效位 `atol/rtol=1e-3`，`error_ratio≤1e-3`；950 FP8 为 `2e-2`
