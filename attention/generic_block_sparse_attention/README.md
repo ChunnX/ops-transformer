@@ -166,7 +166,7 @@ GenericBlockSparseAttention使用sparseBlockIdx/sparseBlockCount稀疏pattern:
 
 对于qSeqlen=512, kvSeqlen=1024, blockShapeX=1, blockShapeY=128:
 
-```
+```text
 Q方向: ceil(512/1)=512块
 KV方向: ceil(1024/128)=8块 [0, 1, 2, 3, 4, 5, 6, 7]
 
