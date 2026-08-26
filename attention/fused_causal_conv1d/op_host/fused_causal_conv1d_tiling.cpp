@@ -45,8 +45,8 @@ static ge::graphStatus TilingFusedCausalConv1d(gert::TilingContext *context)
     }
 
     bool useBH = false;
-    if (context->GetAttrs()->GetInt(ATTR_MAX_DRAFT_TOKENS_INDEX) != nullptr) {
-        int64_t maxDraftTokens = *(context->GetAttrs()->GetAttrPointer<int64_t>(ATTR_MAX_DRAFT_TOKENS_INDEX));
+    if (context->GetAttrs() != nullptr && context->GetAttrs()->GetInt(ATTR_MAX_DRAFT_TOKENS_INDEX) != nullptr) {
+        int64_t maxDraftTokens = *(context->GetAttrs()->GetInt(ATTR_MAX_DRAFT_TOKENS_INDEX));
         useBH = (xDimNum == 3) || (xDimNum == 2 && maxQueryLen <= maxDraftTokens + 1);
     } else {
         useBH = (xDimNum == 3) || (xDimNum == 2 && maxQueryLen <= MAX_BH_SEQ_LEN);
