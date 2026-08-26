@@ -54,7 +54,10 @@ ge::graphStatus QSMLAInfoParser::CheckRequiredInOutExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLAInfoParser::CheckRequiredAttrExistence() const { return ge::GRAPH_SUCCESS; }
+ge::graphStatus QSMLAInfoParser::CheckRequiredAttrExistence() const
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus QSMLAInfoParser::CheckRequiredParaExistence() const
 {
@@ -492,7 +495,7 @@ ge::graphStatus QSMLAInfoParser::GetKvstride()
             oriKvStride_ = oriKvStrides->GetStride(0);
         }
     } else if (kvLayout_ == QSMLALayout::PA_BBND) {
-        oriKvStride_ = oriBlockSize_ * dSizeKV_;
+        oriKvStride_ = oriBlockSize_ * n2Size_ * dSizeKV_;
     }
     if (cmpKvStrides != nullptr && cmpKvStrides->GetDimNum() > 0) {
         for (size_t i = 0; i < cmpKvStrides->GetDimNum(); i++) {
@@ -502,7 +505,7 @@ ge::graphStatus QSMLAInfoParser::GetKvstride()
             cmpKvStride_ = cmpKvStrides->GetStride(0);
         }
     } else if (kvLayout_ == QSMLALayout::PA_BBND) {
-        cmpKvStride_ = cmpBlockSize_ * dSizeKV_;
+        cmpKvStride_ = cmpBlockSize_ * n2Size_ * dSizeKV_;
     }
     return ge::GRAPH_SUCCESS;
 }

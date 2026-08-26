@@ -11,8 +11,8 @@
 #ifndef TLA_KDA_TENSOR_HPP
 #define TLA_KDA_TENSOR_HPP
 
-#include "catlass/arch/arch.hpp"
-#include "tla/layout.hpp"                    // tla::Shape
+#include "catlass/arch/kda_arch.hpp"
+#include "tla/kda_tla_layout.hpp"                    // tla::Shape
 #include "tla/numeric/integral_constant.hpp" // tla::is_integral
 #include "tla/int_tuple.hpp"
 

@@ -505,7 +505,7 @@ ge::graphStatus MQSMLAInfoParser::GetKvstride()
             oriKvStride_ = oriKvStrides->GetStride(0);
         }
     } else if (kvLayout_ == MQSMLALayout::PA_BBND) {
-        oriKvStride_ = oriBlockSize_ * dSizeKV_;
+        oriKvStride_ = oriBlockSize_ * n2Size_ * dSizeKV_;
     }
     if (cmpKvStrides != nullptr && cmpKvStrides->GetDimNum() > 0) {
         for (size_t i = 0; i < cmpKvStrides->GetDimNum(); i++) {
@@ -515,7 +515,7 @@ ge::graphStatus MQSMLAInfoParser::GetKvstride()
             cmpKvStride_ = cmpKvStrides->GetStride(0);
         }
     } else if (kvLayout_ == MQSMLALayout::PA_BBND) {
-        cmpKvStride_ = cmpBlockSize_ * dSizeKV_;
+        cmpKvStride_ = cmpBlockSize_ * n2Size_ * dSizeKV_;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -659,7 +659,7 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(MQSMLATilingInfo *til
     constexpr uint32_t D_SIZE = 512;
     constexpr uint32_t VEC_RES_ELEM_SIZE = 2; // 2: fp16/bf16字节数
     constexpr uint32_t TOPK_MAX_SIZE = 2048;  // TopK选取个数
-    constexpr uint32_t UB_SIZE = 248 * 1024;
+    constexpr uint32_t UB_SIZE = 184 * 1024;
     constexpr uint32_t SPARSE_BLOCK_ALIGN_NUM = 128;
     constexpr int64_t QUANT_CONTIGUOUS_MODE = 1;
     constexpr uint32_t MAX_S2_SPLIT_NUM = 2;      // 每核最多S2切分次数
@@ -768,12 +768,15 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(MQSMLATilingInfo *til
     uint32_t outputType = static_cast<uint32_t>(tilingInfo->outputType);
     uint32_t qLayout = static_cast<uint32_t>(tilingInfo->qLayout);
     uint32_t inputKvLayout = static_cast<uint32_t>(tilingInfo->kvLayout);
-    uint64_t tilingKey =
-        GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(perfMode_),
-                           static_cast<uint32_t>(isSplitG), static_cast<uint32_t>(tilingInfo->quantMode),
-                           ((oriKvType == ge::DT_FLOAT8_E4M3FN) ? DTYPE_FP8_E4M3FN : DTYPE_HIF8),
-                           static_cast<uint32_t>(tilingInfo->batchConsistency), vectorizeFlag);
-    OP_LOGI("tilingkey", "Tiling key: %u.", tilingKey);
+    // maskmode为4+3，无topk len输入且不输出lse时, 走HIGH_PERF高性能模板
+    bool highPerf = (tilingInfo->oriMaskMode == 4 && tilingInfo->cmpMaskMode == 3) &&
+                    tilingInfo->opParamInfo.oriTopkLength.tensor == nullptr &&
+                    tilingInfo->opParamInfo.cmpTopkLength.tensor == nullptr && !tilingInfo->returnSoftmaxLse;
+    uint64_t tilingKey = GET_TPL_TILING_KEY(
+        0U, qLayout, inputKvLayout, static_cast<uint32_t>(perfMode_), static_cast<uint32_t>(isSplitG),
+        static_cast<uint32_t>(tilingInfo->quantMode),
+        ((oriKvType == ge::DT_FLOAT8_E4M3FN) ? DTYPE_FP8_E4M3FN : DTYPE_HIF8),
+        static_cast<uint32_t>(tilingInfo->batchConsistency), vectorizeFlag, static_cast<uint32_t>(highPerf));
     context_->SetTilingKey(tilingKey);
     context_->SetScheduleMode(1);
 
