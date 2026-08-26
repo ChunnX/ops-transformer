@@ -1,12 +1,20 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
+ * CANN
+ * Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not
+ * use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT
+ * WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY,
+ * OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the
+ * License.
  */
 
 #include "quant_checker_qliv2.h"
 
-#include "graph/utils/type_utils.h"
 #include "log/log.h"
 
 namespace optiling {
@@ -18,21 +26,18 @@ constexpr int64_t MODE_MXFP8 = 3;
 constexpr int64_t MODE_HIFLOAT8 = 4;
 constexpr int64_t MODE_MXFP4 = 5;
 constexpr int64_t MX_GROUP = 64;
-constexpr int64_t MX_PACK = 2;
-}
+constexpr int64_t MX_SCALE_PACK = 2;
+constexpr int64_t MXFP4_PACK = 2;
+} // namespace
 
 ge::graphStatus QuantChecker::CheckParaExistence(const IndexerV2CheckerInfo &info) const
 {
     if (!info.queryDescale.IsPresent() || info.queryDescale.desc == nullptr ||
-        !info.keyDescale.IsPresent() || info.keyDescale.desc == nullptr) {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(info.opName, "q_descale and k_descale",
-                                                 "q_descale and k_descale are required");
-        return ge::GRAPH_FAILED;
-    }
-    if (!info.arch35 && (info.outputIdxOffset.IsPresent() || info.sequsedQ.IsPresent())) {
+        info.queryDescale.GetShape() == nullptr || !info.keyDescale.IsPresent() || info.keyDescale.desc == nullptr ||
+        info.keyDescale.GetShape() == nullptr) {
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-            info.opName, "output_idx_offset or seqused_q",
-            "output_idx_offset and seqused_q are not supported on A2/A3 for QuantLightningIndexerV2");
+            info.opName, "q_descale and k_descale",
+            "q_descale and k_descale, including descriptors and shapes, are required");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -40,6 +45,11 @@ ge::graphStatus QuantChecker::CheckParaExistence(const IndexerV2CheckerInfo &inf
 
 ge::graphStatus QuantChecker::CheckSinglePara(const IndexerV2CheckerInfo &info) const
 {
+    if (!info.arch35 && info.layoutK != CheckerLayout::PA_BBND) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(info.opName, "layout_k", info.layoutKText.c_str(),
+                                              "layout_k must be PA_BBND on A2/A3");
+        return ge::GRAPH_FAILED;
+    }
     if ((!info.arch35 && info.quantMode != MODE_INT8) ||
         (info.arch35 && (info.quantMode < MODE_FP8 || info.quantMode > MODE_MXFP4))) {
         const std::string actual = std::to_string(info.quantMode);
@@ -63,9 +73,7 @@ ge::graphStatus QuantChecker::CheckSinglePara(const IndexerV2CheckerInfo &info) 
         inputType = ge::DT_FLOAT4_E2M1;
         scaleType = ge::DT_FLOAT8_E8M0;
     }
-    if (CheckFormat(info, info.queryDescale, "q_descale") != ge::GRAPH_SUCCESS ||
-        CheckFormat(info, info.keyDescale, "k_descale") != ge::GRAPH_SUCCESS ||
-        CheckDtype(info, info.query, "q", {inputType}) != ge::GRAPH_SUCCESS ||
+    if (CheckDtype(info, info.query, "q", {inputType}) != ge::GRAPH_SUCCESS ||
         CheckDtype(info, info.key, "k", {inputType}) != ge::GRAPH_SUCCESS ||
         CheckDtype(info, info.queryDescale, "q_descale", {scaleType}) != ge::GRAPH_SUCCESS ||
         CheckDtype(info, info.keyDescale, "k_descale", {scaleType}) != ge::GRAPH_SUCCESS ||
@@ -77,8 +85,8 @@ ge::graphStatus QuantChecker::CheckSinglePara(const IndexerV2CheckerInfo &info) 
 }
 
 ge::graphStatus QuantChecker::CheckScaleShape(const IndexerV2CheckerInfo &info, const CheckerTensor &input,
-                                               const CheckerTensor &scale, const char *inputName,
-                                               const char *scaleName) const
+                                              const CheckerTensor &scale, const char *inputName,
+                                              const char *scaleName) const
 {
     const gert::Shape &inputShape = *input.GetShape();
     const gert::Shape &scaleShape = *scale.GetShape();
@@ -103,16 +111,16 @@ ge::graphStatus QuantChecker::CheckScaleShape(const IndexerV2CheckerInfo &info, 
     for (uint32_t i = 0; i < inputRank - 1U; ++i) {
         if (scaleShape.GetDim(i) != inputShape.GetDim(i)) {
             const std::string actual = ShapeToString(input) + " and " + ShapeToString(scale);
-            const std::string reason = std::string(inputName) + " and " + scaleName +
-                                       " must have equal dimensions before the head_dim axis";
+            const std::string reason =
+                std::string(inputName) + " and " + scaleName + " must have equal dimensions before the head_dim axis";
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(info.opName, scaleName, actual.c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
         }
     }
     if (mx) {
         const int64_t scaleD = inputShape.GetDim(inputRank - 1U) / MX_GROUP;
-        if (inputShape.GetDim(inputRank - 1U) % MX_GROUP != 0 ||
-            scaleShape.GetDim(inputRank - 1U) != scaleD || scaleShape.GetDim(inputRank) != MX_PACK) {
+        if (inputShape.GetDim(inputRank - 1U) % MX_GROUP != 0 || scaleShape.GetDim(inputRank - 1U) != scaleD ||
+            scaleShape.GetDim(inputRank) != MX_SCALE_PACK) {
             const std::string actual = ShapeToString(scale);
             const std::string reason = "The last two scale dimensions must be [head_dim/64, 2] in MX mode";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(info.opName, scaleName, actual.c_str(), reason.c_str());
@@ -130,21 +138,20 @@ ge::graphStatus QuantChecker::CheckMultiPara(const IndexerV2CheckerInfo &info) c
     }
     if (info.layoutK == CheckerLayout::PA_BBND && info.key.stride != nullptr && info.key.stride->GetDimNum() > 0) {
         const int64_t stride0 = info.key.stride->GetStride(0);
-        if (stride0 <= 0 || (info.quantMode == MODE_MXFP4 && stride0 % MX_PACK != 0)) {
+        if (stride0 <= 0 || (info.quantMode == MODE_MXFP4 && stride0 % MXFP4_PACK != 0)) {
             const std::string actual = std::to_string(stride0);
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                info.opName, "k stride0", actual.c_str(), "PA stride0 must be positive and MXFP4 stride0 must be even");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(info.opName, "k stride0", actual.c_str(),
+                                                  "PA stride0 must be positive and MXFP4 stride0 must be even");
             return ge::GRAPH_FAILED;
         }
     }
-    if ((info.quantMode == MODE_MXFP8 || info.quantMode == MODE_MXFP4) &&
-        info.layoutK == CheckerLayout::PA_BBND && info.keyDescale.stride != nullptr &&
-        info.keyDescale.stride->GetDimNum() > 0) {
+    if ((info.quantMode == MODE_MXFP8 || info.quantMode == MODE_MXFP4) && info.layoutK == CheckerLayout::PA_BBND &&
+        info.keyDescale.stride != nullptr && info.keyDescale.stride->GetDimNum() > 0) {
         const int64_t stride0 = info.keyDescale.stride->GetStride(0);
-        if (stride0 <= 0 || stride0 % MX_PACK != 0) {
+        if (stride0 <= 0 || stride0 % MX_SCALE_PACK != 0) {
             const std::string actual = std::to_string(stride0);
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                info.opName, "k_descale stride0", actual.c_str(), "PA MX scale stride0 must be positive and even");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(info.opName, "k_descale stride0", actual.c_str(),
+                                                  "PA MX scale stride0 must be positive and even");
             return ge::GRAPH_FAILED;
         }
     }
