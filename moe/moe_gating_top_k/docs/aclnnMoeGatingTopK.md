@@ -20,7 +20,7 @@
    
   **Step 1: 归一化**                                                                                                                 
                 
-  根据normType对输入x做归一化：
+  根据normType对输入x做归一化了：
 
 $$
 normOut =
