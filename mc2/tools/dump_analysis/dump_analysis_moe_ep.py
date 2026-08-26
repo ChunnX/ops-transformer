@@ -97,11 +97,11 @@ def read_region_file(target_path: str, suffix: str):
             with open(file_path, "rb") as f:
                 return np.frombuffer(f.read(), dtype=np.uint8)
     logging.warning("未找到 %s 文件", suffix)
-    return np.array(0, dtype=np.uint8)
+    return np.array([], dtype=np.uint8)
 
 
 # 从 .metadata.bin 文件解析 Metadata
-# 有效结构体布局: 10 个 uint32 字段 + 7 个 MoeEpDumpRegion(offset, size), 每个 region 占 2 个 uint32
+# 有效结构体布局: 10 个 uint32 字段 + 7 个 MoeEpDumpRegion(offset: uint64, size: uint64), 每个 region 占 4 个 uint32
 def parse_metadata(target_path: str):
     metadata_dict = {name: 0 for name in METADATA_FIELD_NAMES}
     for name in REGION_NAMES:
@@ -114,10 +114,11 @@ def parse_metadata(target_path: str):
     # 解析 10 个 uint32 字段
     for i, name in enumerate(METADATA_FIELD_NAMES):
         metadata_dict[name] = int(metadata_raw[i])
-    # 解析 7 个 Region 的 offset 和 size
+    # 解析 7 个 Region 的 offset 和 size (每个 region: offset uint64 + size uint64 = 4 个 uint32)
     for i, name in enumerate(REGION_NAMES):
-        offset = int(metadata_raw[10 + i * 2])
-        size = int(metadata_raw[10 + i * 2 + 1])
+        base = 10 + i * 4
+        offset = int(metadata_raw[base]) | (int(metadata_raw[base + 1]) << 32)
+        size = int(metadata_raw[base + 2]) | (int(metadata_raw[base + 3]) << 32)
         metadata_dict[name] = [offset, size]
     return metadata_dict, True
 
@@ -144,31 +145,31 @@ def collect_all_metadata(card_dirs: list):
 
 # 打印单卡 Metadata
 def print_card_metadata(card_num: int, card_metadata: dict):
+    logging.info("===== 卡%d Metadata 数据 =====", card_num)
     for name in METADATA_FIELD_NAMES + REGION_NAMES:
         logging.info("卡%d %s: %s", card_num, name, card_metadata.get(name))
+    logging.info("===== 卡%d Metadata 打印结束 =====", card_num)
 
 
 # 从 exception_info 解析后的 input.0.bin 中读取 context 数据(int32)
 # context 是 MoeEpDispatch/Combine 的第一个输入, 包含 HCCL 通信上下文信息
 def get_context(target_path: str):
-    target_file_num = "input.0.bin"
-    for filename in os.listdir(os.path.join(target_path)):
-        if target_file_num in filename:
+    for filename in os.listdir(target_path):
+        if filename.startswith("input.0") and filename.endswith("bin"):
             file_path = os.path.join(target_path, filename)
             context = np.fromfile(file_path, dtype=np.int32)
             logging.info("context dtype: %s, size: %d", context.dtype, context.shape[0])
             logging.info("context 数据:\n%s", context)
             return context
-    logging.warning("未找到 %s 文件, 无法获取 context 数据", target_file_num)
+    logging.warning("未找到 input.0*bin 文件, 无法获取 context 数据")
     return None
 
 
 # 从 input.2.bin 读取 topk_idx(int32), 按 Metadata 中的 topK reshape 为 (bs, k)
 # 返回 reshape 后的数组和计算出的 bs
 def get_topk_idx(target_path: str, topk: int, global_expert_num: int):
-    target_file_num = "input.2.bin"
-    for filename in os.listdir(os.path.join(target_path)):
-        if target_file_num in filename:
+    for filename in os.listdir(target_path):
+        if filename.startswith("input.2") and filename.endswith("bin"):
             file_path = os.path.join(target_path, filename)
             topk_idx = np.fromfile(file_path, dtype=np.int32)
             bs = topk_idx.shape[0] // topk if topk > 0 else 0
@@ -181,7 +182,7 @@ def get_topk_idx(target_path: str, topk: int, global_expert_num: int):
                 )
                 topk_idx = topk_idx[: bs * topk]
             return topk_idx.reshape(bs, topk), bs
-    logging.warning("未找到 %s 文件, 无法获取 topk_idx 数据", target_file_num)
+    logging.warning("未找到 input.2*bin 文件, 无法获取 topk_idx 数据")
     return None, 0
 
 
@@ -255,7 +256,11 @@ def analyze_count_notify(target_path: str, ep_world_size: int):
         end = (i + 1) * 512
         block = raw_data[start:end].view(np.uint32)
         counts.append(int(block[0]))
-    logging.info("Count Notify 数据: %s", counts)
+    logging.info(
+        "Count Notify 数据(epWorldSize=%d, 每 rank 一个 512B 块, 取第一个 uint32): %s",
+        ep_world_size,
+        counts,
+    )
     return counts
 
 
@@ -278,7 +283,12 @@ def analyze_expert_count(target_path: str, ep_world_size: int, local_expert_num:
         block = raw_data[start:end].view(np.uint32)
         per_rank = [int(block[j]) for j in range(local_expert_num)]
         expert_counts.append(per_rank)
-    logging.info("Expert Count 数据: %s", expert_counts)
+    logging.info(
+        "Expert Count 数据(epWorldSize=%d, 每 rank 一个 512B 块, 每 block 取 localExpertNum=%d 个 uint32): %s",
+        ep_world_size,
+        local_expert_num,
+        expert_counts,
+    )
     return expert_counts
 
 
@@ -301,7 +311,13 @@ def analyze_combine_token_state(target_path: str, nmt: int, topk: int):
         end = (i + 1) * 512
         block = raw_data[start:end].view(np.uint32)
         states.append(int(block[0]))
-    logging.info("Combine Token State 数据: %s", states)
+    logging.info(
+        "Combine Token State 数据(nmt=%d * topK=%d = %d 个 512B 块, 取每块第一个 uint32): %s",
+        nmt,
+        topk,
+        total,
+        states,
+    )
     return states
 
 
