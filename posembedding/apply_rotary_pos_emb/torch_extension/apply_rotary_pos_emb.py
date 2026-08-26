@@ -8,12 +8,9 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 from typing import Tuple
-
 import torch
 from torch.library import impl
-
-from cann_ops_transformer.op_builder.builder import AS_LIBRARY
-from cann_ops_transformer.op_builder.builder import OpBuilder
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 
 OP_NAME = "apply_rotary_pos_emb"
@@ -110,7 +107,7 @@ class ApplyRotaryPosEmbFunction(torch.autograd.Function):
         if grad_key_embed is None:
             grad_key_embed = torch.zeros_like(key)
 
-        from cann_ops_transformer.ops.apply_rotary_pos_emb_grad import (
+        from torch.ops.cann_ops_transformer.apply_rotary_pos_emb_grad import (
             apply_rotary_pos_emb_grad,
         )
 
@@ -138,10 +135,12 @@ class ApplyRotaryPosEmbFunction(torch.autograd.Function):
 
 class ApplyRotaryPosEmbOpBuilder(OpBuilder):
     def __init__(self):
-        super(ApplyRotaryPosEmbOpBuilder, self).__init__(OP_NAME)
+        super(ApplyRotaryPosEmbOpBuilder, self).__init__(
+            OP_NAME, category="posembedding"
+        )
 
     def sources(self):
-        return ["ops/csrc/apply_rotary_pos_emb.cpp"]
+        return ["csrc/posembedding/apply_rotary_pos_emb.cpp"]
 
     def schema(self) -> str:
         return (
@@ -150,7 +149,7 @@ class ApplyRotaryPosEmbOpBuilder(OpBuilder):
         )
 
     def register_meta(self):
-        @impl(AS_LIBRARY, self.name, "Meta")
+        @impl(get_as_library(), self.name, "Meta")
         def apply_rotary_pos_emb_meta(query, key, cos, sin, layout, rotary_mode):
             _check_inputs(query, key, cos, sin, layout, rotary_mode)
             return torch.empty_like(query), torch.empty_like(key)
@@ -160,7 +159,7 @@ apply_rotary_pos_emb_op_builder = ApplyRotaryPosEmbOpBuilder()
 apply_rotary_pos_emb_op_builder.load()
 
 
-@impl(AS_LIBRARY, apply_rotary_pos_emb_op_builder.name, "PrivateUse1")
+@impl(get_as_library(), apply_rotary_pos_emb_op_builder.name, "PrivateUse1")
 def _apply_rotary_pos_emb(query, key, cos, sin, layout, rotary_mode):
     _check_inputs(query, key, cos, sin, layout, rotary_mode)
     op_module = apply_rotary_pos_emb_op_builder.load()
