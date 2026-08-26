@@ -43,8 +43,6 @@ constexpr uint32_t IDX_INPUT_BIAS = 3U;
 constexpr uint32_t IDX_INPUT_X1_SCALE = 4U;
 constexpr uint32_t IDX_INPUT_X2_SCALE = 5U;
 constexpr uint32_t IDX_OUTPUT_Y = 0U;
-constexpr uint32_t IDX_OUTPUT_GATHER_OUT = 1U;
-constexpr uint32_t IDX_OUTPUT_AMAX_OUT = 2U;
 
 // ---- attr indices (must match def order) ----
 // group(0) hccl_buffer_size(1) is_trans_a(2) is_trans_b(3) rank_size(4) group_size(5) y_dtype(6) comm_mode(7)
@@ -63,6 +61,7 @@ constexpr int64_t MAX_INT32_VAL = 2147483647;
 constexpr int64_t K_MIN_VAL = 256;
 constexpr int64_t K_MAX_VAL = 65535;
 constexpr uint64_t COMM_TILE_M = 512UL;
+constexpr uint64_t M_TAIL_ALIGN = 16UL;  // m方向对齐粒度，确保 L0C 拷出时首地址 1024 对齐
 
 constexpr uint64_t GROUP_MNK_BIT_SIZE = 0xFFFF;
 constexpr uint64_t GROUP_N_OFFSET = 16UL;
@@ -97,13 +96,12 @@ static ge::graphStatus CheckTensorPtrNullptr(const gert::TilingContext *context)
     auto x1Desc = context->GetInputDesc(IDX_INPUT_X1);
     auto x2Desc = context->GetInputDesc(IDX_INPUT_X2);
     auto yDesc = context->GetOutputDesc(IDX_OUTPUT_Y);
-    auto gatherOutDesc = context->GetOutputDesc(IDX_OUTPUT_GATHER_OUT);
 
     OP_CHECK_NULL_WITH_CONTEXT(context, contextDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, x1Desc);
     OP_CHECK_NULL_WITH_CONTEXT(context, x2Desc);
     OP_CHECK_NULL_WITH_CONTEXT(context, yDesc);
-    OP_CHECK_NULL_WITH_CONTEXT(context, gatherOutDesc);
+    // gather_out 本次交付不使能，tiling 不做处理
 
     // scale 在 def 中为 OPTIONAL，但 V3 仅支持 MX 量化，tiling 强制要求必传
     auto x1ScaleDesc = context->GetOptionalInputDesc(IDX_INPUT_X1_SCALE);
@@ -271,7 +269,7 @@ static ge::graphStatus CheckOneScaleShape(const gert::StorageShape *scaleShape, 
 }
 
 /**
- * @brief 解析 rank_size：attr 未设置(<=0)时从 group 反查真实 rank 数
+ * @brief 读取 rank_size attr（必须由外界显式传入，不做 group 反查）
  */
 static ge::graphStatus ResolveRankSize(const gert::TilingContext *context, int64_t &rankSize)
 {
@@ -281,13 +279,6 @@ static ge::graphStatus ResolveRankSize(const gert::TilingContext *context, int64
     OP_TILING_CHECK(rankSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "rank_size"),
                     return ge::GRAPH_FAILED);
     rankSize = *rankSizePtr;
-    if (rankSize <= 0) {
-        auto groupPtr = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
-        OP_TILING_CHECK(groupPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "group"),
-                        return ge::GRAPH_FAILED);
-        OP_TILING_CHECK(!mc2tiling::GetRankSize(nodeName, groupPtr, rankSize),
-                        OP_LOGE(nodeName, "GetRankSize by group failed."), return ge::GRAPH_FAILED);
-    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -356,7 +347,7 @@ static ge::graphStatus CheckInputShape(const gert::TilingContext *context, Shape
                         "must not exceed INT32_MAX"),
                     return ge::GRAPH_FAILED);
 
-    // rank_size: attr 未设置(<=0)时从 group 反查
+    // rank_size: 直接读取外界传入的 attr
     int64_t rankSize = 0;
     OP_TILING_CHECK(ResolveRankSize(context, rankSize) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "resolve rank_size failed."), return ge::GRAPH_FAILED);
@@ -489,14 +480,13 @@ static ge::graphStatus CheckRankSizeAttr(const gert::TilingContext *context)
 {
     const char *nodeName = context->GetNodeName();
 
-    // rank_size: attr 未设置(<=0)时从 group 反查
+    // rank_size: 仅校验外界传入的 attr，不做 group 反查
     int64_t rankSize = 0;
     OP_TILING_CHECK(ResolveRankSize(context, rankSize) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "resolve rank_size failed."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(rankSize != 2 && rankSize != 4 && rankSize != 8 && rankSize != 16 &&
-                    rankSize != 32 && rankSize != 64,
+    OP_TILING_CHECK(rankSize != 2 && rankSize != 4 && rankSize != 8 && rankSize != 16,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "rank_size", std::to_string(rankSize).c_str(),
-                                              "2/4/8/16/32/64"),
+                                              "2/4/8/16"),
                     return ge::GRAPH_FAILED);
     // 拦截：1:1 核配比下实际可用 block 数 = min(aicNum, aivNum)
     // rankSize 不能超过实际可用 block 数，否则通信挂死
@@ -677,7 +667,7 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
     uint64_t tileCnt = m / tileM;
     uint64_t tailM = m % tileM;
     uint64_t tailCnt = (tailM > 0) ? 1 : 0;
-    uint64_t paddedTailM = (tailM > 0) ? ((tailM + 15U) / 16U * 16U) : 0U;  // m方向16对齐，从而确保L0C拷出时首地址1024对齐
+    uint64_t paddedTailM = (tailM > 0) ? ((tailM + M_TAIL_ALIGN - 1) / M_TAIL_ALIGN * M_TAIL_ALIGN) : 0U;
     uint64_t totalLogicalM = rankSize * (tileCnt * tileM + tailCnt * paddedTailM);
 
     tilingData->commTile.splitAxisTileSize = tileM;

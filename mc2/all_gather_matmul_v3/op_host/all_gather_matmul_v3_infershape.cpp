@@ -226,7 +226,7 @@ ge::graphStatus AllGatherMatmulV3InferShape(gert::InferShapeContext *context)
     int64_t n = transX2 ? x2Shape->GetDim(0U) : x2Shape->GetDim(1U);
     int64_t kX2 = transX2 ? x2Shape->GetDim(1U) : x2Shape->GetDim(0U);
 
-    // rank_size: attr 未设置(<=0)时从 group 反查
+    // rank_size: 必须由外界显式传入（<=0 时 ResolveRankSize 拦截报错）
     int64_t worldSize = 0;
     OP_LOGE_IF(ResolveRankSize(context, worldSize) != ge::GRAPH_SUCCESS, ge::GRAPH_FAILED,
                nodeName, "resolve rank_size failed.");

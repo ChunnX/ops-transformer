@@ -20,7 +20,7 @@ static const int64_t GROUP_MAX = 65535;
 static const size_t GROUP_DIM = 3;
 static const size_t OFFSET_32_BITS = 32;
 static const size_t OFFSET_16_BITS = 16;
-const std::set<int> SUPPORT_RANK_SIZE_LIST{2, 4, 8, 16, 32, 64};
+const std::set<int> SUPPORT_RANK_SIZE_LIST{2, 4, 8, 16};
 
 int64_t CheckAndGetGroupSizeAg(at::IntArrayRef groupSizeList)
 {
@@ -90,10 +90,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> NpuAllGatherQuantMatmul(
     aclDataType x2AclDtype = (x2Dtype.has_value() && x2Dtype.value() != -1) ? GetAclDataType(x2Dtype.value()) :
                                                                               ConvertToAclDataType(x2.scalar_type());
 
-    // gather_out / amax_out: REQUIRED/OPTIONAL output, 当前版本未实现，返回空 tensor。
-    // gather_out 始终用 x1.scalar_type() 构造空 tensor（仅占位），再通过 TensorWrapper 用
-    // x1AclDtype 强制 override acl 层 dtype，使 OpDef 校验看到正确类型（如 fp4 场景 x1 是 uint8
-    // 但 x1AclDtype=ACL_FLOAT4_E2M1），不依赖 torch ScalarType 是否有 Float4_e2m1fn_x2 枚举。
+    // gather_out / amax_out: 本次交付不使能，gather_out 为 def REQUIRED 输出，
+    // torch 侧传 {0} 空占位 tensor 经 aclnn 透传 inner（aclnn/tiling/kernel 均不处理），并原样返回给 torch。
     at::Tensor gatherOut = at::empty({0}, x1.options().dtype(x1.scalar_type()));
     at::Tensor amaxOut = at::empty({0}, x1.options().dtype(at::kFloat));
 
