@@ -2439,7 +2439,7 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
         workspaceSize += PRELOAD_NUM * bmm2ResUbSize_ * VEC2_RES_ELEM_SIZE * aicNum;
         if (tilingInfo->perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE ||
             (tilingInfo->perfMode == SMLATemplateMode::SWA_TEMPLATE_MODE && tilingInfo->hasOriSparseIndices)) {
-            constexpr uint32_t MERGE_CACHE_GM_BUF_NUM = 3; // 3：缓存缓冲区数量
+            constexpr uint32_t MERGE_CACHE_GM_BUF_NUM = 3;                    // 3：缓存缓冲区数量
             workspaceSize += MERGE_CACHE_GM_BUF_NUM * 512 * 512 * 2 * aicNum; // 缓冲区的尺寸为512x512字节，2表示双缓冲
         }
     }
