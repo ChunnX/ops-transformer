@@ -437,14 +437,15 @@ __aicore__ inline void DispatchExpertTokensByRankShard(
 }
 
 /**
- * Dispatch 第 1 层：将当前专家接收的 row 均分给 Dispatch core，再将本 core
- * 的 row range 交给 DispatchExpertTokensByRank 处理。
+ * Dispatch 第 1 层：将当前专家在本 wave 内的 row 段均分给 Dispatch core，
+ * 再将本 core 的 row range 交给 DispatchExpertTokensByRank 处理。
  */
 template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
 __aicore__ inline void DispatchExpertTokensByRows(
     const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
-    int32_t expertGlobalRowBegin, uint32_t dispatchRowCount)
+    int32_t expertGlobalRowBegin, uint32_t dispatchRowCount,
+    uint32_t dispatchRowBegin = 0U)
 {
     if (dispatchRowCount == 0U) {
         return;
@@ -454,10 +455,12 @@ __aicore__ inline void DispatchExpertTokensByRows(
     uint32_t dispatchCoreCount = context.blockJob.totalJobs == 0U ? 1U : context.blockJob.totalJobs;
     int32_t rowsPerCore = Ops::Base::CeilDiv(
         static_cast<int32_t>(dispatchRowCount), static_cast<int32_t>(dispatchCoreCount));
-    int32_t coreDispatchRowBegin = static_cast<int32_t>(context.blockJob.jobIndex) * rowsPerCore;
+    int32_t coreDispatchRowBegin = static_cast<int32_t>(dispatchRowBegin) +
+                                   static_cast<int32_t>(context.blockJob.jobIndex) * rowsPerCore;
     int32_t coreDispatchRowEnd = coreDispatchRowBegin + rowsPerCore;
-    if (coreDispatchRowEnd > static_cast<int32_t>(dispatchRowCount)) {
-        coreDispatchRowEnd = static_cast<int32_t>(dispatchRowCount);
+    int32_t dispatchRowEnd = static_cast<int32_t>(dispatchRowBegin + dispatchRowCount);
+    if (coreDispatchRowEnd > dispatchRowEnd) {
+        coreDispatchRowEnd = dispatchRowEnd;
     }
     if (coreDispatchRowBegin >= coreDispatchRowEnd) {
         return;
