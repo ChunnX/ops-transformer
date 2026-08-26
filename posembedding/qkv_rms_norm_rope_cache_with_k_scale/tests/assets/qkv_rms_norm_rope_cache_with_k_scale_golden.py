@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: UTF-8 -*-
+# ----------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# ----------------------------------------------------------------------------
+
 """TTK assets for QkvRmsNormRopeCacheWithKScale.
 
 The numerical source of truth is deliberately independent of ops-test-kit.  All
@@ -325,14 +335,12 @@ def _rms_rope(x, gamma, cos_sin, positions, section, epsilon):
     norm = x / np.sqrt(np.mean(x * x, axis=-1, keepdims=True) + np.float32(epsilon))
     norm *= gamma
     axes = _mrope_axes(section)
-    token_index = np.arange(x.shape[0], dtype=np.int64)[:, None]
     selected_pos = positions[:, axes]
     lanes = np.arange(_HALF_D, dtype=np.int64)[None, :]
     cos = cos_sin[selected_pos, lanes]
     sin = cos_sin[selected_pos, lanes + _HALF_D]
     low, high = norm[..., :_HALF_D], norm[..., _HALF_D:]
     # cos/sin are token x lane; broadcast across heads.
-    del token_index
     return np.concatenate((low * cos[:, None, :] - high * sin[:, None, :],
                            high * cos[:, None, :] + low * sin[:, None, :]), axis=-1)
 
