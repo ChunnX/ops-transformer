@@ -100,6 +100,12 @@ class PytestResultComparator:
             ),
         }
 
+    @staticmethod
+    def is_empty_tensor(value):
+        if torch.is_tensor(value):
+            return value.numel() == 0
+        return isinstance(value, np.ndarray) and value.size == 0
+
     def compare(self, *outputs):
         if len(outputs) < 2 or len(outputs) % 2 != 0:
             return {
@@ -121,6 +127,8 @@ class PytestResultComparator:
                     "precision": "NO_OUTPUT",
                     "error_info": f"NPU output[{output_index}] is None",
                 })
+                continue
+            if self.is_empty_tensor(golden) and self.is_empty_tensor(npu_output):
                 continue
             result = module.check_result(self.to_torch(golden), self.to_torch(npu_output))
             results.append(self.normalize_result(result, output_index))
