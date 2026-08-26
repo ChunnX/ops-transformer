@@ -34,7 +34,7 @@ class QuantFlashAttnGradOpBuilder(OpBuilder):
 
     def sources(self):
         """Path to C++ source code."""
-        return ['ops/attention/quant_flash_attn_grad.cpp']
+        return ['csrc/attention/quant_flash_attn_grad.cpp']
     
     def schema(self) -> str:
         """PyTorch operator signature.
@@ -124,6 +124,7 @@ class QuantFlashAttnGradOpBuilder(OpBuilder):
 
 # Instantiate the builder
 quant_flash_attn_grad_op_builder = QuantFlashAttnGradOpBuilder()
+quant_flash_attn_grad_op_builder._ensure_initialized()
 
 
 @impl(get_as_library(), quant_flash_attn_grad_op_builder.name, "PrivateUse1")
