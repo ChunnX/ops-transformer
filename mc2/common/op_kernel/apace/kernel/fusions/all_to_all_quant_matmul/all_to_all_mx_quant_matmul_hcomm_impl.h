@@ -70,6 +70,8 @@ struct HcommCommState {
 template <AscendC::HcclServerType ServerType>
 struct HcommCommWaitPolicy {
     HcommCommState<ServerType> *state_{nullptr};
+    uint32_t bufferCount{0};                 // 纯 Hccl 路径不复用，恒为 0
+    __gm__ int32_t *syncCounterAddr_{nullptr};
 
     __aicore__ inline void WaitTile(uint32_t tileIdx)
     {
@@ -82,6 +84,9 @@ struct HcommCommWaitPolicy {
             state_->hccl_.Wait(state_->dataTailHandle_);
         }
     }
+
+    __aicore__ inline void ReleaseTile(uint32_t tileIdx)
+    {}
 };
 
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,

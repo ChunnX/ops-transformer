@@ -23,9 +23,9 @@ namespace AivComm {
 
 using namespace AscendC;
 
-template <typename Dtype, typename Barrier>
-class AllToAllCommPutImpl : public CollectiveCommBase<AllToAllCommPutImpl<Dtype, Barrier>, Dtype, Barrier> {
-    friend class CollectiveCommBase<AllToAllCommPutImpl<Dtype, Barrier>, Dtype, Barrier>;
+template <typename Dtype, typename Barrier, bool EnableBufferReuse = false>
+class AllToAllCommPutImpl : public CollectiveCommBase<AllToAllCommPutImpl<Dtype, Barrier, EnableBufferReuse>, Dtype, Barrier, EnableBufferReuse> {
+    friend class CollectiveCommBase<AllToAllCommPutImpl<Dtype, Barrier, EnableBufferReuse>, Dtype, Barrier, EnableBufferReuse>;
 
 private:
     template <uint8_t BarrierMode>
@@ -48,8 +48,15 @@ private:
         GM_ADDR srcAddr = this->localAddr_ + targetRankId * this->chunkBytes_ +
                           this->currentTileIdx_ * this->tileMaxByteSize_;
 
-        GM_ADDR dstAddr = reinterpret_cast<GM_ADDR>(this->udmaCtx_->commBufferAddrs[targetRankId] + this->winOffset_) +
-                          this->udmaCtx_->rankId * this->chunkBytes_ + this->tileByteOffset_;
+        GM_ADDR dstAddr;
+        if constexpr (EnableBufferReuse) {
+            uint64_t slotIdx = this->currentTileIdx_ % this->bufferCount_;
+            dstAddr = reinterpret_cast<GM_ADDR>(this->udmaCtx_->commBufferAddrs[targetRankId] + this->winOffset_) +
+                      this->udmaCtx_->rankId * this->dstChunkBytes_ + slotIdx * this->tileMaxByteSize_;
+        } else {
+            dstAddr = reinterpret_cast<GM_ADDR>(this->udmaCtx_->commBufferAddrs[targetRankId] + this->winOffset_) +
+                      this->udmaCtx_->rankId * this->chunkBytes_ + this->tileByteOffset_;
+        }
 
         int32_t ret = this->comm_.WriteNbi(
             static_cast<ChannelHandle>(this->udmaCtx_->channelHandles[targetRankId]), dstAddr, srcAddr, tileByteSize);

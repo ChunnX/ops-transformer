@@ -36,6 +36,7 @@
 #include "apace/core/aiv_comm/collective_comm_context.h"
 #include "apace/tiling/comm_tiling_data.h"
 #include "apace/core/aiv_comm/barrier/barrier_ubmem.h"
+#include "apace/utils/comm_sync_utils.h"
 
 namespace Apace {
 
@@ -45,9 +46,20 @@ using AscendC::Te::Get;
 using namespace Apace::AivComm;
 
 struct UrmaCommWaitPolicy {
+    __gm__ int32_t *syncCounterAddr_{nullptr}; // 复用释放计数器基址（win 区尾部）
+    uint32_t bufferCount{0};                   // 复用槽位数，0=不复用
+
     __aicore__ inline void WaitTile(uint32_t tileIdx)
     {
         AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE2>(tileIdx);
+    }
+
+    __aicore__ inline void ReleaseTile(uint32_t tileIdx)
+    {
+        // 保证本核对该 tile 的 A 数据读已完成，再对外可见释放计数（仿 mega_moe 通知前 FIX_S 排序）
+        AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+        AscendC::AtomicAdd(syncCounterAddr_ + static_cast<uint64_t>(tileIdx) * COMM_SYNC_SLOT_STRIDE, int32_t(1));
     }
 };
 
@@ -127,9 +139,9 @@ private:
     // ---------------- 通信相关组件与参数 ----------------
     __gm__ CommUbmemContext *syncBuffer_{nullptr};
     __gm__ CommUdmaContext *udmaCtx_{nullptr};
-    CollectiveComm<CommCollectiveOp::AllToAll, CommMode::PUT, AType, TeamBarrier> allToAllA_;
+    CollectiveComm<CommCollectiveOp::AllToAll, CommMode::PUT, AType, TeamBarrier, true> allToAllA_;
     CollectiveComm<
-        CommCollectiveOp::AllToAll, CommMode::PUT, TypeScaleA, TeamBarrier>
+        CommCollectiveOp::AllToAll, CommMode::PUT, TypeScaleA, TeamBarrier, false>
         allToAllScaleA_;
     TeamBarrier teamBarrier_;
 
@@ -149,6 +161,10 @@ private:
         uint64_t headMSize{0};   // 长块 M 大小
         uint64_t scaleKaSize{0}; // Scale 的 K 轴字节长度
         uint64_t rankDataBytes{0};
+        uint32_t bufferCount{0};          // win区复用槽位数，0=不复用
+        uint64_t scaleWinOffset{0};       // win区 A 数据区字节大小，用作 scale 的 winOffset
+        uint64_t syncCounterOffset{0};    // 复用释放计数器在 win 区的偏移
+        uint32_t zeroCounterUbOffset{0};  // AIV 清零计数器用的零 UB 偏移
     } baseParams_;
 
     const allToAllMatmulTilingData *tilingData_{nullptr};
@@ -193,6 +209,9 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     auto commScaleBuf = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset); // 用512B
     ubOffset += COMM_WORKSPACE_SIZE;
     auto barrierBuf = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset);
+    ubOffset += COMM_WORKSPACE_SIZE;
+    baseParams_.zeroCounterUbOffset = ubOffset;
+    ubOffset += COMM_SYNC_ZERO_BLOCK * sizeof(int32_t);
     teamBarrier_.Init(barrierBuf.Get(), syncBuffer_, baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()));
 
     allToAllA_.template Init<BARRIER_NONE>(udmaCtx_, teamBarrier_, tilingData->commTilingData, baseParams_.aGm,
@@ -200,7 +219,7 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 
     allToAllScaleA_.Init(udmaCtx_, teamBarrier_, tilingData->scaleCommTilingData, baseParams_.scaleAGm,
                          commScaleBuf.Get(), baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()),
-                         baseParams_.rankSize * baseParams_.rankDataBytes);
+                         baseParams_.scaleWinOffset);
 }
 
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
@@ -225,9 +244,39 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA, TransB>::RunAllToAll()
 {
+    // 复用开启时，先清零释放计数器（幂等，参与通信的 AIV 核各自清零自身 cache 后刷 GM）
+    if (baseParams_.bufferCount > 0 && AscendC::GetBlockIdx() < baseParams_.rankSize) {
+        auto zeroUbMem = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, int32_t>(baseParams_.zeroCounterUbOffset);
+        AscendC::LocalTensor<int32_t> zeroUb(
+            AscendC::TPosition::VECCALC, reinterpret_cast<uint64_t>(zeroUbMem.Get()), COMM_SYNC_ZERO_BLOCK);
+        AscendC::Duplicate<int32_t>(zeroUb, int32_t(0), COMM_SYNC_ZERO_BLOCK);
+
+        __gm__ int32_t *counterGm = reinterpret_cast<__gm__ int32_t *>(
+            baseParams_.selfWinAddr + baseParams_.syncCounterOffset);
+        uint32_t counterInt32 = static_cast<uint32_t>(baseParams_.commTurn) * COMM_SYNC_SLOT_STRIDE;
+        AscendC::GlobalTensor<int32_t> counterTensor;
+        counterTensor.SetGlobalBuffer(counterGm);
+        for (uint32_t off = 0; off < counterInt32; off += COMM_SYNC_ZERO_BLOCK) {
+            uint32_t n = counterInt32 - off < COMM_SYNC_ZERO_BLOCK ? counterInt32 - off : COMM_SYNC_ZERO_BLOCK;
+            AscendC::DataCopyExtParams copyParams{1U, n * sizeof(int32_t), 0U, 0U, 0U};
+            AscendC::DataCopyPad(counterTensor[off], zeroUb, copyParams);
+        }
+        dcci(reinterpret_cast<__gm__ void *>(baseParams_.selfWinAddr + baseParams_.syncCounterOffset),
+             static_cast<uint64_t>(CacheLine::ENTIRE_DATA_CACHE), static_cast<uint64_t>(DcciDst::CACHELINE_OUT));
+    }
+
     for (uint32_t tid = 0; tid < baseParams_.commTurn; ++tid) {
         // 必选保证baseParams_.rankSize <= BlockNum
         if (AscendC::GetBlockIdx() < baseParams_.rankSize) {
+            // 复用开启：写 tile tid 前，等槽位对应的旧 tile 已被所有 cube 核读完（cube 通知 vector）
+            if (baseParams_.bufferCount > 0 && tid >= baseParams_.bufferCount) {
+                uint32_t releaseTile = tid - baseParams_.bufferCount;
+                __gm__ int32_t *counterAddr = reinterpret_cast<__gm__ int32_t *>(
+                    baseParams_.selfWinAddr + baseParams_.syncCounterOffset) +
+                    static_cast<uint64_t>(releaseTile) * COMM_SYNC_SLOT_STRIDE;
+                WaitUntilGmFlagAtLeast(counterAddr,
+                                       static_cast<int32_t>(tilingData_->tileQbmmTilingData.usedCoreNum));
+            }
             allToAllScaleA_.Commit();
             allToAllA_.Commit();
             allToAllA_.template Wait<BARRIER_DEVICE>(); // scale的通信和a矩阵的通信使用同一channel，因此只需要wait一次
@@ -265,6 +314,28 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 
     // 计算地址偏移所需的参数
     baseParams_.rankDataBytes = baseParams_.axisM * baseParams_.axisKa * sizeof(AType);
+
+    // 复用槽位数与 win 区布局（A 数据区 + scale 数据区 + 释放计数器区）
+    baseParams_.bufferCount = tilingData->commTilingData.bufferCount;
+    uint64_t aRegionBytes;
+    if (baseParams_.bufferCount > 0) {
+        uint64_t maxTileSize = tilingData->commTilingData.splitAxisTileSize > tilingData->commTilingData.splitAxisTailSize ?
+                                   tilingData->commTilingData.splitAxisTileSize :
+                                   tilingData->commTilingData.splitAxisTailSize;
+        aRegionBytes = static_cast<uint64_t>(baseParams_.rankSize) * baseParams_.bufferCount * maxTileSize *
+                       baseParams_.axisKa * sizeof(AType);
+    } else {
+        aRegionBytes = static_cast<uint64_t>(baseParams_.rankSize) * baseParams_.rankDataBytes;
+    }
+    baseParams_.scaleWinOffset = aRegionBytes;
+
+    uint64_t scaleChunkSize = tilingData->scaleCommTilingData.splitAxisTileSize *
+                                  tilingData->scaleCommTilingData.splitAxisTileCnt +
+                              tilingData->scaleCommTilingData.splitAxisTailSize *
+                                  tilingData->scaleCommTilingData.splitAxisTailCnt;
+    uint64_t scaleRegionBytes = static_cast<uint64_t>(baseParams_.rankSize) * scaleChunkSize *
+                                tilingData->scaleCommTilingData.nonSplitAxisSize * sizeof(TypeScaleA);
+    baseParams_.syncCounterOffset = baseParams_.scaleWinOffset + scaleRegionBytes;
 }
 
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
@@ -317,10 +388,13 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     MatmulMode mode = (tilingData_->localMatmul == 2) ? MatmulMode::DEFERRED_SYNC : MatmulMode::REMOTE;
     SetupParams(&tilingData_->tileQbmmTilingData, params, mode);
     params.mmadParams.aGmAddr = baseParams_.selfWinAddr;
-    params.mmadParams.scaleAGmAddr = baseParams_.selfWinAddr + baseParams_.rankSize * baseParams_.rankDataBytes;
+    params.mmadParams.scaleAGmAddr = baseParams_.selfWinAddr + baseParams_.scaleWinOffset;
     params.mmadParams.cGmAddr = baseParams_.cGm;
     params.localParams.localAGmAddr = baseParams_.aGm;
     params.localParams.localScaleAGmAddr = baseParams_.scaleAGm;
+    quantMatmulKernelImpl_.GetCommPolicy().bufferCount = baseParams_.bufferCount;
+    quantMatmulKernelImpl_.GetCommPolicy().syncCounterAddr_ = reinterpret_cast<__gm__ int32_t *>(
+        baseParams_.selfWinAddr + baseParams_.syncCounterOffset);
     quantMatmulKernelImpl_(params);
 }
 
