@@ -69,6 +69,15 @@ class PyAclnnBlockAttentionResidualsAtk(AclnnBaseApi):
             output_packages.extend(self.backend.convert_output_data(output_data, index))
 
         input_args.extend(output_packages)
+        # The ACLNN ABI always has invNorm and probs output positions.
+        # They are nullable at the operator level when need_backward=false,
+        # but ATK signature checking still requires ACL tensor pointers.
+        optional_outputs = []
+        if not bool(input_data.kwargs['need_backward']):
+            for index, output_data in enumerate(self.task_result.output_info_list[0:1], start=1):
+                optional_outputs.extend(self.backend.convert_output_data(output_data, index))
+                optional_outputs.extend(self.backend.convert_output_data(output_data, index + 1))
+        input_args.extend(optional_outputs)
         return input_args, output_packages
 
     @classmethod
