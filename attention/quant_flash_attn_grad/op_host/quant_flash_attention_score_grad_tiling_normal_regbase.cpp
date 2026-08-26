@@ -662,8 +662,8 @@ void QuantFlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSize4Deter(siz
 
 uint64_t QuantFlashAttentionScoreGradTilingNormalRegbase::GetTilingKey() const
 {
-    uint32_t has_attn_mask = 0;
-    uint32_t has_sink = 0;
+    uint32_t has_attn_mask = fBaseParams.hasAttnMask ? 1 : 0;
+    uint32_t has_sink = fBaseParams.hasSink ? 1 : 0;
     uint32_t s1_template_num = 512;
     uint32_t s2_template_num = 512;
     uint32_t d_template_num = 128;
@@ -673,7 +673,7 @@ uint64_t QuantFlashAttentionScoreGradTilingNormalRegbase::GetTilingKey() const
         GET_TPL_TILING_KEY(static_cast<uint8_t>(has_attn_mask), static_cast<uint8_t>(has_sink),
           static_cast<uint16_t>(s1_template_num), static_cast<uint16_t>(s2_template_num), static_cast<uint8_t>(d_template_num),
           static_cast<uint8_t>(is_n_equal), static_cast<uint8_t>(layout));
-    OP_LOGI(context_, "QUANTFAGTiling DoTiling success, tiling is %lu.", tilingKey);
+    OP_LOGI(context_, "QuantFAGTiling DoTiling success, tiling is %lu.", tilingKey);
     return tilingKey;
 }
 

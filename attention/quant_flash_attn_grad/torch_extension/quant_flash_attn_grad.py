@@ -53,7 +53,7 @@ class QuantFlashAttnGradOpBuilder(OpBuilder):
             "Tensor p_scale, Tensor ds_scale, Tensor softmax_lse, " \
             "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, " \
             "Tensor? seqused_q=None, Tensor? seqused_kv=None, " \
-            "Tensor? sinks=None, Tensor? metadata=None, " \
+            "Tensor? sinks=None, Tensor? attn_mask=None, Tensor? metadata=None, " \
             "int quant_mode=0, float softmax_scale=1.0, int mask_mode=0, " \
             "int win_left=-1, int win_right=-1, " \
             "int max_seqlen_q=-1, int max_seqlen_kv=-1, " \
@@ -81,6 +81,7 @@ class QuantFlashAttnGradOpBuilder(OpBuilder):
             seqused_q: Optional[torch.Tensor] = None,
             seqused_kv: Optional[torch.Tensor] = None,
             sinks: Optional[torch.Tensor] = None,
+            attn_mask: Optional[torch.Tensor] = None,
             metadata: Optional[torch.Tensor] = None,
             quant_mode: QuantMode = QuantMode.HIF8_PER_TENSOR,
             softmax_scale: Optional[float] = 1.0,
@@ -138,6 +139,7 @@ def quant_flash_attn_grad(
     seqused_q: Optional[torch.Tensor] = None,
     seqused_kv: Optional[torch.Tensor] = None,
     sinks: Optional[torch.Tensor] = None,
+    attn_mask: Optional[torch.Tensor] = None,
     metadata: Optional[torch.Tensor] = None,
     quant_mode: QuantMode = QuantMode.HIF8_PER_TENSOR,
     softmax_scale: Optional[float] = 1.0,
@@ -152,7 +154,7 @@ def quant_flash_attn_grad(
 
     QuantFlashAttnGrad反向梯度算子:
         输入: q/k/v/dout (UINT8, 量化), attn_out (BF16), 6个 descale/scale (FP32),
-              softmax_lse (FP32), cu_seqlens/seqused/sinks/metadata (可选)
+              softmax_lse (FP32), cu_seqlens/seqused/sinks/attn_mask/metadata (可选)
         输出: dq/dk/dv/dsink (BF16)
     """
     quant_mode = quant_mode.value if isinstance(quant_mode, IntEnum) else quant_mode
@@ -161,7 +163,7 @@ def quant_flash_attn_grad(
     return op_module.quant_flash_attn_grad(
         q, k, v, dout, attn_out,
         q_descale, k_descale, v_descale, do_descale, p_scale, ds_scale, softmax_lse,
-        cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sinks, metadata,
+        cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sinks, attn_mask, metadata,
         quant_mode, softmax_scale, mask_mode, win_left, win_right,
         max_seqlen_q, max_seqlen_kv,
         layout_q, layout_kv

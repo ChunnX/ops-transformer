@@ -47,6 +47,7 @@ quant_flash_attn_grad(
     const c10::optional<at::Tensor> &seqused_q,
     const c10::optional<at::Tensor> &seqused_kv,
     const c10::optional<at::Tensor> &sinks,
+    const c10::optional<at::Tensor> &attn_mask,
     const c10::optional<at::Tensor> &metadata,
     int64_t quant_mode,
     double softmax_scale,
@@ -89,23 +90,16 @@ quant_flash_attn_grad(
         at::Tensor dk = at::empty(dkSize, query.options().dtype(at::kBFloat16));
         at::Tensor dv = at::empty(dkSize, query.options().dtype(at::kBFloat16));
         at::Tensor dsink = at::empty(dsinkSize, query.options().dtype(at::kFloat));
-        if (quant_mode == 0) {
-            TensorWrapper q_wrapper = make_wrapper(query, ACL_HIFLOAT8);
-            TensorWrapper k_wrapper = make_wrapper(key, ACL_HIFLOAT8);
-            TensorWrapper v_wrapper = make_wrapper(value, ACL_HIFLOAT8);
-            TensorWrapper dout_wrapper = make_wrapper(dout, ACL_HIFLOAT8);
-            ACLNN_CMD(aclnnQuantFlashAttnGrad,
-                      q_wrapper, k_wrapper, v_wrapper, dout_wrapper, attn_out, q_descale, k_descale, v_descale, do_descale, p_scale, ds_scale,
-                      softmax_lse, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sinks, metadata, quant_mode,
-                      softmax_scale, mask_mode, win_left, win_right, max_seqlen_q, max_seqlen_kv, layout_q, layout_k,
-                      dq, dk, dv, dsink);
-        } else {
-            ACLNN_CMD(aclnnQuantFlashAttnGrad,
-                      query, key, value, dout, attn_out, q_descale, k_descale, v_descale, do_descale, p_scale, ds_scale,
-                      softmax_lse, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sinks, metadata, quant_mode,
-                      softmax_scale, mask_mode, win_left, win_right, max_seqlen_q, max_seqlen_kv, layout_q, layout_k,
-                      dq, dk, dv, dsink);
-        }
+        TORCH_CHECK(quant_mode == 0, "quant mode must be 0 now is: ", stateCacheDim);
+        TensorWrapper q_wrapper = make_wrapper(query, ACL_HIFLOAT8);
+        TensorWrapper k_wrapper = make_wrapper(key, ACL_HIFLOAT8);
+        TensorWrapper v_wrapper = make_wrapper(value, ACL_HIFLOAT8);
+        TensorWrapper dout_wrapper = make_wrapper(dout, ACL_HIFLOAT8);
+        ACLNN_CMD(aclnnQuantFlashAttnGrad,
+                q_wrapper, k_wrapper, v_wrapper, dout_wrapper, attn_out, q_descale, k_descale, v_descale, do_descale, p_scale, ds_scale,
+                softmax_lse, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sinks, attn_mask, metadata, quant_mode,
+                softmax_scale, mask_mode, win_left, win_right, max_seqlen_q, max_seqlen_kv, layout_q, layout_k,
+                dq, dk, dv, dsink);
         return std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>(dq, dk, dv, dsink);
     }
     

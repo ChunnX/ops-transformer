@@ -153,6 +153,7 @@ enum class InputIndex : uint32_t {
     SEQUSED_Q,
     SEQUSED_KV,
     SINK_IDX,
+    ATTN_MASK,
     METADATA
 };
 

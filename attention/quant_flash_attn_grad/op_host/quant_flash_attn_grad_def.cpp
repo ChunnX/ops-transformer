@@ -121,6 +121,11 @@ public:
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+        this->Input("attn_mask")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT8})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("metadata")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})

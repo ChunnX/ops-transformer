@@ -699,16 +699,16 @@ ge::graphStatus ProcessOptionalInput(gert::TilingContext *context_, FuzzyBaseInf
     fBaseParams.dropoutIsDivisibleBy8 = 1.0;
     auto hasSequsedQ = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::SEQUSED_Q));
     auto hasSequsedKV = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::SEQUSED_KV));
-    // if (hasSequsedQ != nullptr) {
-    //     fBaseParams.hasSequsedQ = true;
-    // }
-    // if (hasSequsedKV != nullptr) {
-    //     fBaseParams.hasSequsedKV = true;
-    // }
-    // auto sink = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::SINK_IDX));
-    // if (sink != nullptr) {
-    //     fBaseParams.hasSink = true;
-    // }
+    if (hasSequsedQ != nullptr) {
+        fBaseParams.hasSequsedQ = true;
+    }
+    if (hasSequsedKV != nullptr) {
+        fBaseParams.hasSequsedKV = true;
+    }
+    auto sink = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::SINK_IDX));
+    if (sink != nullptr) {
+        fBaseParams.hasSink = true;
+    }
     PrintShapeInfo(context_, fBaseParams);
     auto ret = ProcessQuantInfo(context_, fBaseParams);
     if (ret != ge::GRAPH_SUCCESS) {
@@ -858,6 +858,9 @@ ge::graphStatus ProcessSparseModeInfo(const gert::TilingContext *context_, Fuzzy
     fBaseParams.sparseMode = static_cast<uint32_t>(SparseMode::NO_MASK);
     if (attrs->GetAttrNum() > static_cast<size_t>(AttrIndex::SPARSE_MODE)) {
         fBaseParams.sparseMode = *(attrs->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::SPARSE_MODE))); // 7
+    }
+    auto attnMaskShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::ATTN_MASK));
+    if (attnMaskShape != nullptr) {
         fBaseParams.hasAttnMask = true;
     }
     if (!CheckSparseModeValue(fBaseParams)) {
