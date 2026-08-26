@@ -592,7 +592,8 @@ template <typename ActivationType>
 __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfig &common,
                                                        const BlockWorkspaceContext &countWorkspace,
                                                        const Params &params,
-                                                       TokenDispatchScratch<ActivationType> &scratch)
+                                                       TokenDispatchScratch<ActivationType> &scratch,
+                                                       uint32_t mGroupTileM = 0U)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -611,6 +612,13 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     ComputeCompactExpertCountTables(scratch.cumsumInfoTensor, scratch.expertTokenNumsOutTensor, common.moeExpertPerRank,
                                     common.worldSize);
     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
+    uint32_t totalMGroupCount = 0U;
+    if (mGroupTileM != 0U) {
+        for (uint32_t expertIdx = 0U; expertIdx < common.moeExpertPerRank; ++expertIdx) {
+            uint32_t expertTokenCount = static_cast<uint32_t>(scratch.expertTokenNumsOutTensor.GetValue(expertIdx));
+            totalMGroupCount += Ops::Base::CeilDiv(expertTokenCount, mGroupTileM);
+        }
+    }
     uint64_t countOffset = GetExpertCountWorkspaceOffset(countWorkspace, common.moeExpertPerRank, 0U, true);
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
     DataCopyPad(scratch.expertRevNumsGlobalTensor[countOffset], scratch.expertTokenNumsOutTensor,
@@ -624,7 +632,8 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     __gm__ int32_t *countTableReady =
         reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagSendCntCalToUpdParamsPtr) +
         static_cast<uint64_t>(countWorkspace.blockIdx) * INT_CACHELINE;
-    WriteGmByPassDCache(countTableReady, static_cast<int32_t>(1));
+    int32_t readyValue = mGroupTileM == 0U ? 1 : static_cast<int32_t>(totalMGroupCount + 1U);
+    WriteGmByPassDCache(countTableReady, readyValue);
 }
 
 template <typename ActivationType>
