@@ -292,7 +292,10 @@ static uint64_t CalTilingKey(const gert::TilingContext *context, MegaMoeConfig &
     auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantModeIndex));
     int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
     int64_t combineQuantMode = GetCombineQuantModeByAttr(context, config);
-    int64_t topoType = TILINGKEY_TPL_URMA;
+    int64_t topoType = TILINGKEY_TPL_MTE;
+    if (tilingData->topoType == TOPO_TYPE_URMA) {
+        topoType = TILINGKEY_TPL_URMA;  
+    }
     int64_t topkWeightsType = *attrs->GetAttrPointer<int64_t>((config.attrTopkWeightsTypeIndex));
 
     return GET_TPL_TILING_KEY(static_cast<int64_t>(*dispatchQuantModePtr), opQuantMode, combineQuantMode, topoType,
@@ -1964,7 +1967,7 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     tilingData->aicNum = aicNum;
     tilingData->blockAivNum = aivNum;
     auto attrs = context->GetAttrs();
-    tilingData->topoType = 1;
+    tilingData->topoType = *attrs->GetAttrPointer<int64_t>((config.attrTopoTypeIndex));
     tilingData->topkWeightsPrefetch =
         static_cast<int32_t>(*attrs->GetAttrPointer<int64_t>((config.attrTopkWeightsTypeIndex)));
     OP_TILING_CHECK(aivNum <= 0 || aicNum <= 0,
@@ -1990,9 +1993,13 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     uint64_t tilingKey = CalTilingKey(context, config, tilingData, nodeName);
     OP_LOGI(nodeName, "OP TilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
-
+    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>((config.attrEpWorldSizeIndex));
+    int64_t epWorldSize = static_cast<int64_t>(*epWorldSizePtr);
+ 
+    int64_t rankSizePerServer = *attrs->GetAttrPointer<int64_t>((config.attrRankNumPerServerIndex));
+    int64_t serverNum  = epWorldSize / rankSizePerServer;
     // WorkspaceSize
-    WorkspaceInfo workspaceInfo((uint8_t *)0, tilingData, 8);
+    WorkspaceInfo workspaceInfo((uint8_t *)0, tilingData, serverNum);
     OP_TILING_CHECK(SetWorkspace(context, workspaceInfo, nodeName) == ge::GRAPH_FAILED,
                     OP_LOGE(nodeName, "Tiling set workspace Failed"), return ge::GRAPH_FAILED);
 
