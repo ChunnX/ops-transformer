@@ -352,10 +352,9 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         CountHits();
         SyncAll<true>();
 
-        // Rank counts are converted to compact metadata row starts once by core 0. Keeping this prefix internal
-        // lets Combine build its own rank offsets without adding another Epilogue output.
+        // Every core builds its own compact metadata row starts from the shared per-core rank-count matrix.
+        // The starts stay in local UB, so no post-build cross-core synchronization is needed.
         BuildRankRowStarts();
-        SyncAll<true>();
 
         uint32_t totalHits = 0;
         for (uint32_t localExpertIdx = 0; localExpertIdx < numLocalExperts_; ++localExpertIdx) {
@@ -496,45 +495,57 @@ template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWe
 __aicore__ inline void
 MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::BuildRankRowStarts()
 {
-    if (aivId_ != 0) {
-        return;
-    }
+    // CountHits used ubRankHitCount_ as an MTE3 source. Finish that read before reusing the buffer as the
+    // per-rank prefix contributed by cores preceding this core.
+    SyncFunc<AscendC::HardEvent::MTE3_V>();
 
-    DataCopyExtParams rankCopyParams{1U, static_cast<uint32_t>(epWorldSize_ * sizeof(int32_t)), 0U, 0U, 0U};
-    DataCopyPadExtParams<int32_t> rankPadParams{false, 0U, 0U, 0};
-
-    // First reduce all per-core counts to obtain the global count of metadata rows for every source rank.
+    // rankTotal[r] = sum(count[core][r]) for all cores.
+    // corePrefix[r] = sum(count[core][r]) for core < aivId_.
     Duplicate(ubRankRowStart_, (int32_t)0, epWorldSize_);
-    for (uint32_t coreId = 0; coreId < aivNum_; ++coreId) {
-        DataCopyPad(ubRankHitCount_, rankHitCountGm_[(int64_t)coreId * rankHitCountStride_], rankCopyParams,
-                    rankPadParams);
+    Duplicate(ubRankHitCount_, (int32_t)0, epWorldSize_);
+
+    // Reuse the metadata staging buffer to batch contiguous core rows. The loop processes the complete matrix in
+    // one tile when it fits, and otherwise splits it by complete core rows.
+    uint32_t ubMetaBytes =
+        Ceil((uint32_t)(SLOTS_TILE * paddedMetaElems_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+    uint32_t rankRowBytes = rankHitCountStride_ * sizeof(int32_t);
+    uint32_t coreRowsPerTile = ubMetaBytes / rankRowBytes;
+    coreRowsPerTile = coreRowsPerTile > aivNum_ ? aivNum_ : coreRowsPerTile;
+
+    DataCopyPadExtParams<int32_t> rankMatrixPadParams{false, 0U, 0U, 0};
+    for (uint32_t coreBase = 0; coreBase < aivNum_; coreBase += coreRowsPerTile) {
+        uint32_t rowsThisTile =
+            (aivNum_ - coreBase > coreRowsPerTile) ? coreRowsPerTile : (aivNum_ - coreBase);
+        uint32_t copyBytes = rowsThisTile * rankRowBytes;
+        DataCopyExtParams rankMatrixCopyParams{1U, copyBytes, 0U, 0U, 0U};
+        DataCopyPad(ubMeta_, rankHitCountGm_[(int64_t)coreBase * rankHitCountStride_], rankMatrixCopyParams,
+                    rankMatrixPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
-        Add(ubRankRowStart_, ubRankRowStart_, ubRankHitCount_, epWorldSize_);
+
+        for (uint32_t localCoreId = 0; localCoreId < rowsThisTile; ++localCoreId) {
+            uint32_t coreId = coreBase + localCoreId;
+            LocalTensor<int32_t> rankCountRow = ubMeta_[localCoreId * rankHitCountStride_];
+            Add(ubRankRowStart_, ubRankRowStart_, rankCountRow, epWorldSize_);
+            if (coreId < aivId_) {
+                Add(ubRankHitCount_, ubRankHitCount_, rankCountRow, epWorldSize_);
+            }
+        }
+
+        // The next tile, or CopyFromWindowByExpert after the last tile, reuses ubMeta_ through MTE2. Wait until all
+        // vector reads of this tile have completed before allowing that overwrite.
         SyncFunc<AscendC::HardEvent::V_MTE2>();
     }
 
-    // Convert rank totals to exclusive rank prefixes. The total number of rows is bounded by INT32_MAX in tiling.
+    // Convert rank totals and this core's within-rank prefix to the final exclusive row starts. The total number of
+    // rows is bounded by INT32_MAX in tiling. Both the producer and the following consumer use the scalar pipeline,
+    // so no extra synchronization is needed after these SetValue calls.
     SyncFunc<AscendC::HardEvent::V_S>();
     int32_t rankPrefix = 0;
     for (uint32_t rankId = 0; rankId < epWorldSize_; ++rankId) {
         int32_t rankCount = ubRankRowStart_.GetValue(rankId);
-        ubRankRowStart_.SetValue(rankId, rankPrefix);
+        int32_t corePrefix = ubRankHitCount_.GetValue(rankId);
+        ubRankRowStart_.SetValue(rankId, rankPrefix + corePrefix);
         rankPrefix += rankCount;
-    }
-
-    // Walk cores in slot order. Before adding a core's counts, the current vector is exactly that core's compact
-    // metadata start for every rank, so the count matrix can be reused in place as a start-offset matrix.
-    SyncFunc<AscendC::HardEvent::S_MTE3>();
-    for (uint32_t coreId = 0; coreId < aivNum_; ++coreId) {
-        DataCopyPad(ubRankHitCount_, rankHitCountGm_[(int64_t)coreId * rankHitCountStride_], rankCopyParams,
-                    rankPadParams);
-        // The matrix is overwritten in place, so finish reading this core's counts before publishing its starts.
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
-        DataCopyPad(rankHitCountGm_[(int64_t)coreId * rankHitCountStride_], ubRankRowStart_, rankCopyParams);
-        SyncFunc<AscendC::HardEvent::MTE3_V>();
-        Add(ubRankRowStart_, ubRankRowStart_, ubRankHitCount_, epWorldSize_);
-        SyncFunc<AscendC::HardEvent::V_MTE2>();
-        SyncFunc<AscendC::HardEvent::V_MTE3>();
     }
 }
 
@@ -553,14 +564,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         Add(ubRowStart_, ubRowStart_, ubHitCountRowI64_, numLocalExperts_);
         SyncFunc<AscendC::HardEvent::V_MTE2>();
     }
-
-    // Core 0 has converted the rank count matrix to per-core metadata starts. Loading one row gives this core a
-    // disjoint, compact output range for every source rank.
-    DataCopyExtParams rankStartCopyParams{1U, static_cast<uint32_t>(epWorldSize_ * sizeof(int32_t)), 0U, 0U, 0U};
-    DataCopyPadExtParams<int32_t> rankStartPadParams{false, 0U, 0U, 0};
-    DataCopyPad(ubRankRowStart_, rankHitCountGm_[(int64_t)aivId_ * rankHitCountStride_], rankStartCopyParams,
-                rankStartPadParams);
-    SyncFunc<AscendC::HardEvent::MTE2_S>();
 
     Duplicate(ubLocalCursor_, (int32_t)0, numLocalExperts_);
     SyncFunc<AscendC::HardEvent::V_S>();
