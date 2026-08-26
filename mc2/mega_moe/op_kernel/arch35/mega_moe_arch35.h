@@ -302,6 +302,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     uint32_t cumsumInfoTensorSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(commonConfig_.worldSize * commonConfig_.moeExpertPerRank * sizeof(int32_t)),
         static_cast<int64_t>(ALIGN_32));
+    if (params_.workspaceInfo.cumsumInfoPtr != nullptr) {
+        scratch.cumsumInfoGlobalTensor.SetGlobalBuffer(
+            reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.cumsumInfoPtr +
+                                               static_cast<uint64_t>(cumsumInfoTensorSize) * countWorkspace_.blockIdx));
+    }
     scratch.nextDispatchCoreIdx = 0U;
 
     uint32_t cumsumInfoTensorAddr = 0U;

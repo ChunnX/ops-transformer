@@ -39,6 +39,7 @@ struct TokenDispatchConfig {
 template <typename ActivationType>
 struct TokenDispatchScratch {
     GlobalTensor<int32_t> expertRevNumsGlobalTensor;
+    GlobalTensor<int32_t> cumsumInfoGlobalTensor;
     LocalTensor<int32_t> topkIndexTensor;
     LocalTensor<uint8_t> maskBatchTensor;
     LocalTensor<uint32_t> maskBatchU32Tensor;
@@ -52,6 +53,16 @@ struct TokenDispatchScratch {
     int64_t revScaleElemCnt;
     uint32_t nextDispatchCoreIdx;
 };
+
+template <typename ActivationType>
+__aicore__ inline void RestoreMoeExpertTokenCountTable(const MoeStageCommonConfig &common,
+                                                       TokenDispatchScratch<ActivationType> &scratch)
+{
+    uint32_t cumsumBytes = common.worldSize * common.moeExpertPerRank * static_cast<uint32_t>(sizeof(int32_t));
+    DataCopyPad(scratch.cumsumInfoTensor, scratch.cumsumInfoGlobalTensor, {1U, cumsumBytes, 0U, 0U, 0U},
+                {true, 0U, 0U, 0U});
+    SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
+}
 
 // Wave Dispatch 将专家有效行在全部物理 AIV1 上连续均分，并跨专家滚动首核。
 struct WaveDispatchCoreRange {
@@ -604,6 +615,10 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
     DataCopyPad(scratch.expertRevNumsGlobalTensor[countOffset], scratch.expertTokenNumsOutTensor,
                 {1U, common.moeExpertPerRank * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U});
+    if (params.workspaceInfo.cumsumInfoPtr != nullptr) {
+        DataCopyPad(scratch.cumsumInfoGlobalTensor, scratch.cumsumInfoTensor,
+                    {1U, rawCountElementCount * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U});
+    }
     SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID2>();
 
     __gm__ int32_t *countTableReady =

@@ -243,6 +243,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
 
     ExpertTokenPosition dispatchPosition{};
     uint32_t dispatchExpertTokenCount = 0U;
+    bool dispatchCumsumNeedsReload = false;
 
     // GMM1 开始消费输入前，由 AIV1 先准备第一个完整 Wave。
     if constexpr (g_coreType == AIV) {
@@ -306,6 +307,10 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
             if constexpr (g_coreType == AIV) {
                 if (GetSubBlockIdx() == 1U && nextWaveNeedsDispatch) {
                     if (dispatchPosition.tokenIndexInExpert == 0U) {
+                        if (dispatchCumsumNeedsReload) {
+                            RestoreMoeExpertTokenCountTable(commonConfig_, tokenDispatchScratch_);
+                            dispatchCumsumNeedsReload = false;
+                        }
 #if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
                         CriticalPathTileTraceContext dispatchTraceContext =
                             trace_.CreateTileTraceContext(A4W4WaveTraceEvent::DISPATCH, A4W4WaveTraceEvent::INVALID,
@@ -338,6 +343,11 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
                     waveLastActiveExpertIdx = gmm1State.expertIdx;
                     RunGmm1ActivationForExpert(gmm1State, gmm1AddrInfo, gmm1RuntimeState, sliceTokenStartIndexInExpert,
                                                sliceTokenCount, gmm1TilesPerMGroup, waveIndex);
+                    if constexpr (g_coreType == AIV) {
+                        if (GetSubBlockIdx() == 1U) {
+                            dispatchCumsumNeedsReload = true;
+                        }
+                    }
                 }
                 waveEndPosition = gmm1Position;
                 currentWaveNeedsGmm1 = IsPositionWithinWave(gmm1Position, currentWaveMGroupCount);
