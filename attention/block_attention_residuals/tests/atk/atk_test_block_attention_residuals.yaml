@@ -21,10 +21,10 @@ inputs:
         values: [[-5, 5]]
     shapes:
       dim_numbers:
-        values: [2]
+        values: [1]
       dim_values:
-        values: [544, 7168]
-      max_length: 3900417
+        values: [1]
+      max_length: 2
   - name: block_res
     type: tensor
     required: true
@@ -35,10 +35,10 @@ inputs:
         values: [[-5, 5]]
     shapes:
       dim_numbers:
-        values: [3]
+        values: [1]
       dim_values:
-        values: [544, 12, 7168]
-      max_length: 46804993
+        values: [1]
+      max_length: 2
   - name: proj_weight
     type: tensor
     required: true
@@ -49,10 +49,10 @@ inputs:
         values: [[-5, 5]]
     shapes:
       dim_numbers:
-        values: [2]
+        values: [1]
       dim_values:
-        values: [1, 7168]
-      max_length: 7168
+        values: [1]
+      max_length: 2
   - name: norm_weight
     type: tensor
     required: true
@@ -65,8 +65,8 @@ inputs:
       dim_numbers:
         values: [1]
       dim_values:
-        values: [7168]
-      max_length: 7168
+        values: [1]
+      max_length: 2
   - name: valid_block_num
     type: attr
     required: true
