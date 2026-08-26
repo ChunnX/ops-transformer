@@ -898,7 +898,7 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::SaveToTilingDat
     quantFagTilingData_->s2_tail = fBaseParams.s2CvTail;
     quantFagTilingData_->softmax_scale = fBaseParams.scaleValue;
     quantFagTilingData_->has_seq_used_q = fBaseParams.hasSequsedQ;
-    quantFagTilingData_->has_seq_used_k = fBaseParams.hasSequsedK;
+    quantFagTilingData_->has_seq_used_k = fBaseParams.hasSequsedKV;
     // quantFagTilingData_->core_num = fBaseParams.coreNum;
     return ge::GRAPH_SUCCESS;
 }

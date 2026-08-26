@@ -344,7 +344,7 @@ struct FuzzyBaseInfoParamsRegbase { // 频繁使用的基础参数
 
     bool isAllSame = false;
     bool hasSequsedQ = false;
-    bool hasSequsedK = false;
+    bool hasSequsedKV = false;
     bool hasAttnMask = false;
     std::vector<int64_t> actualSeqQlen;
     std::vector<int64_t> actualSeqKvlen;
