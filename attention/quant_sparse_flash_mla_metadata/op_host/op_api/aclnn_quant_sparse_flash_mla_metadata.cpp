@@ -30,6 +30,8 @@
 #include "acl/acl_rt.h"
 #include "../quant_sparse_flash_mla_metadata_check.h"
 
+constexpr int64_t BATCH_CONSISTENCY_LEVEL = 3;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -76,7 +78,7 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadataGetWorkspaceSize(
         OP_LOGW("aclnnQuantSparseFlashMlaMetadata unable to get system param batch consistency level.");
     }
     OP_LOGD("deterministic_level=%lld", batchConsistencyLevel);
-
+    bool isBatchConsistency = (batchConsistencyLevel == BATCH_CONSISTENCY_LEVEL);
     auto ret = ParamsCheck(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional,
                            sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional,
                            cmpTopkLengthOptional, numHeadsQ, numHeadsKv, headDim, quantMode, batchSize, maxSeqlenQ,
@@ -164,7 +166,8 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadataGetWorkspaceSize(
         cmpResidualKvOptionalContiguous, oriTopkLengthOptionalContiguous, cmpTopkLengthOptionalContiguous,
         numHeadsQ, numHeadsKv, headDim, quantMode, batchSize, maxSeqlenQ, maxSeqlenOriKv, maxSeqlenCmpKv, oriTopk,
         cmpTopk, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight, layoutQOptional,
-        layoutKvOptional, hasOriKv, hasCmpKv, socVersion, aicCoreNum, aivCoreNum, metaData, uniqueExecutor.get());
+        layoutKvOptional, hasOriKv, hasCmpKv, socVersion, aicCoreNum, aivCoreNum, isBatchConsistency, metaData,
+        uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
