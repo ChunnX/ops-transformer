@@ -11,8 +11,7 @@ from typing import Optional
 
 import torch
 from torch.library import impl
-from cann_ops_transformer.op_builder.builder import OpBuilder
-from cann_ops_transformer.op_builder.builder import AS_LIBRARY
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 SCORE_STRIDE_ALIGN = 16
 DEFAULT_SPARSE_MODE = 3
@@ -39,30 +38,35 @@ def _normalize_layout_key(layout_key: Optional[str]) -> str:
 
 class MsaIndexScoreOpBuilder(OpBuilder):
     def __init__(self):
-        super(MsaIndexScoreOpBuilder, self).__init__("msa_index_score")
+        super(MsaIndexScoreOpBuilder, self).__init__(
+            "msa_index_score", category="attention"
+        )
 
     def sources(self):
-        return ["ops/csrc/msa_index_score.cpp"]
+        """Path to C++ source code."""
+        return ["csrc/attention/msa_index_score.cpp"]
 
     def schema(self) -> str:
+        # Positional order must match the public Python API: query, key, start_loc.
+        # cann_ops_transformer.__init__ re-exports torch.ops once the schema exists.
         return (
-            "msa_index_score(Tensor query, Tensor key, Tensor? block_table, "
-            "Tensor? scale, Tensor? atten_mask, Tensor? actual_seq_qlen, "
-            'Tensor? actual_seq_klen, Tensor start_loc, *, str layout_key="BBND", '
+            "msa_index_score(Tensor query, Tensor key, Tensor start_loc, "
+            "Tensor? block_table, Tensor? scale, Tensor? atten_mask, "
+            'Tensor? actual_seq_qlen, Tensor? actual_seq_klen, *, str layout_key="BBND", '
             "int sparse_mode=3, int init_blocks=0, int local_blocks=1) -> Tensor"
         )
 
     def register_meta(self):
-        @impl(AS_LIBRARY, self.name, "Meta")
+        @impl(get_as_library(), self.name, "Meta")
         def msa_index_score_meta(
             query: torch.Tensor,
             key: torch.Tensor,
+            start_loc: torch.Tensor,
             block_table: Optional[torch.Tensor],
             scale: Optional[torch.Tensor],
             atten_mask: Optional[torch.Tensor],
             actual_seq_qlen: Optional[torch.Tensor],
             actual_seq_klen: Optional[torch.Tensor],
-            start_loc: torch.Tensor,
             *,
             layout_key: str = DEFAULT_LAYOUT_KEY,
             sparse_mode: int = DEFAULT_SPARSE_MODE,
@@ -104,6 +108,7 @@ class MsaIndexScoreOpBuilder(OpBuilder):
 
 
 _msa_index_score_op_builder = MsaIndexScoreOpBuilder()
+_msa_index_score_op_builder._ensure_initialized()
 _op_module = None
 
 
@@ -114,22 +119,26 @@ def _get_op_module():
     return _op_module
 
 
-@impl(AS_LIBRARY, _msa_index_score_op_builder.name, "PrivateUse1")
+@impl(get_as_library(), _msa_index_score_op_builder.name, "PrivateUse1")
 def _msa_index_score(
     query: torch.Tensor,
     key: torch.Tensor,
+    start_loc: torch.Tensor,
     block_table: Optional[torch.Tensor],
     scale: Optional[torch.Tensor],
     atten_mask: Optional[torch.Tensor],
     actual_seq_qlen: Optional[torch.Tensor],
     actual_seq_klen: Optional[torch.Tensor],
-    start_loc: torch.Tensor,
     *,
     layout_key: str = DEFAULT_LAYOUT_KEY,
     sparse_mode: int = DEFAULT_SPARSE_MODE,
     init_blocks: int = DEFAULT_INIT_BLOCKS,
     local_blocks: int = DEFAULT_LOCAL_BLOCKS,
 ) -> torch.Tensor:
+    layout = _normalize_layout_key(layout_key)
+    if layout == "BBND" and key.dim() == 3 and int(key.size(1)) == 128:
+        key = key.unsqueeze(2)
+    # C++ wrapper still follows aclnn order: optionals then start_loc.
     return _get_op_module().msa_index_score(
         query,
         key,
@@ -139,7 +148,7 @@ def _msa_index_score(
         actual_seq_qlen,
         actual_seq_klen,
         start_loc,
-        layout_key,
+        layout,
         sparse_mode,
         init_blocks,
         local_blocks,
@@ -183,19 +192,16 @@ def msa_index_score(
     Returns:
         ``[N1, T1, RoundUp(MB, 16)]`` float32
     """
-    layout = _normalize_layout_key(layout_key)
-    if layout == "BBND" and key.dim() == 3 and int(key.size(1)) == 128:
-        key = key.unsqueeze(2)
     return torch.ops.cann_ops_transformer.msa_index_score(
         query,
         key,
+        start_loc,
         block_table,
         scale,
         atten_mask,
         actual_seq_qlen,
         actual_seq_klen,
-        start_loc,
-        layout_key=layout,
+        layout_key=_normalize_layout_key(layout_key),
         sparse_mode=sparse_mode,
         init_blocks=init_blocks,
         local_blocks=local_blocks,
