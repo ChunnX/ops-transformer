@@ -94,18 +94,15 @@ bool FlashMlaWithKvcacheTilingImpl::IsCapableSparseLayoutCheckMla()
     }
     // layout 约束（宽矩阵，与 common_checker 的 SinglePara 布局路由一致）:
     // q ∈ {TND, BNSD, BSND}；out 必须与 q 同布局（不支持转置）；
-    // kv 仅分页布局: NZ / PA_NZ（parser 将 PA_NZ 归一为 NZ，实测两者都必须放行）
-    //              ∪ PA_BNBD / PA_BBND（以原枚举到达），连续 KV 永不放行
-    if (faInfo_->qLayout != FlashMlaWithKvcacheLayout::TND &&
-        faInfo_->qLayout != FlashMlaWithKvcacheLayout::BNSD &&
+    // kv 仅分页布局: PA_NZ / PA_BNBD / PA_BBND，连续 KV 永不放行
+    if (faInfo_->qLayout != FlashMlaWithKvcacheLayout::TND && faInfo_->qLayout != FlashMlaWithKvcacheLayout::BNSD &&
         faInfo_->qLayout != FlashMlaWithKvcacheLayout::BSND) {
         return false;
     }
     if (faInfo_->outLayout != faInfo_->qLayout) { // out 必须与 q 一致，不支持转置
         return false;
     }
-    if (faInfo_->kvLayout != FlashMlaWithKvcacheLayout::NZ &&
-        faInfo_->kvLayout != FlashMlaWithKvcacheLayout::PA_NZ &&
+    if (faInfo_->kvLayout != FlashMlaWithKvcacheLayout::PA_NZ &&
         faInfo_->kvLayout != FlashMlaWithKvcacheLayout::PA_BNBD &&
         faInfo_->kvLayout != FlashMlaWithKvcacheLayout::PA_BBND) {
         return false;
@@ -177,8 +174,7 @@ ge::graphStatus FlashMlaWithKvcacheTilingImpl::DoOpTiling()
     GenTilingKey();
 
     if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) || (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
-        (SetWorkspaceSize(workspaceSize_) != ge::GRAPH_SUCCESS) ||
-        (SetTilingData(tilingData_) != ge::GRAPH_SUCCESS) ||
+        (SetWorkspaceSize(workspaceSize_) != ge::GRAPH_SUCCESS) || (SetTilingData(tilingData_) != ge::GRAPH_SUCCESS) ||
         (SetScheduleMode(scheduleMode_) != ge::GRAPH_SUCCESS)) {
         return ge::GRAPH_FAILED;
     }
@@ -282,7 +278,8 @@ void FlashMlaWithKvcacheTilingImpl::CalcNumBlocks(uint32_t usedAicNum)
     auto aivNum = usedAicNum * platformInfo_.cvRatio;
 
     numBlocks_ = ascendcPlatform.CalcTschBlockDim(aivNum, usedAicNum, aivNum);
-    OP_LOGI(faInfo_->opName, "FlashMlaWithKvcache block dim: %u aiv Num: %u aic Num: %u.", numBlocks_, aivNum, usedAicNum);
+    OP_LOGI(faInfo_->opName, "FlashMlaWithKvcache block dim: %u aiv Num: %u aic Num: %u.", numBlocks_, aivNum,
+            usedAicNum);
 }
 
 void FlashMlaWithKvcacheTilingImpl::UpdateTilingKeyConfig()
@@ -311,9 +308,8 @@ void FlashMlaWithKvcacheTilingImpl::UpdateTilingKeyInfo()
     UpdateTilingKeyConfig();
     tilingKeyInfo_.isFd = flashDecodeFlag_;
     tilingKeyInfo_.hasAttenMask = faInfo_->attenMaskFlag;
-    // kv 布局 -> KvLayoutType（取值同 flash_attn 的 UpdateTilingKeyKvLayout 映射；
-    // parser 已将 PA_NZ 归一为 NZ，两者都必须放行）：
-    //   NZ/PA_NZ -> PA_NZ(3)；PA_BNBD -> PA_BNBD(2)；PA_BBND -> PA_BBND(1)
+    // kv 布局 -> KvLayoutType（取值同 flash_attn 的 UpdateTilingKeyKvLayout 映射）：
+    //   PA_NZ -> PA_NZ(3)；PA_BNBD -> PA_BNBD(2)；PA_BBND -> PA_BBND(1)
     tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_NZ;
     if (faInfo_->kvLayout == FlashMlaWithKvcacheLayout::PA_BNBD) {
         tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BNBD;
@@ -325,16 +321,15 @@ void FlashMlaWithKvcacheTilingImpl::UpdateTilingKeyInfo()
 void FlashMlaWithKvcacheTilingImpl::GenTilingKey()
 {
     UpdateTilingKeyInfo();
-    tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.config,
-                                    tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.kvLayoutType,
-                                    tilingKeyInfo_.isFd);
+    tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.hasAttenMask,
+                                    tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd);
 
     OP_LOGI(faInfo_->opName, "The tilingkey is %llu.", tilingKey_);
     OP_LOGI(faInfo_->opName,
             "The tilingkey param is inOutLayoutType: %llu, config: %llu, hasAttenMask: %u, "
             "kvLayoutType: %llu, isFd: %u.",
-            tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.hasAttenMask,
-            tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd);
+            tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.kvLayoutType,
+            tilingKeyInfo_.isFd);
 }
 
 // FIA MLA workspace 公式，逐字移植（accumOutSize/logSumExpSize 与 FD 槽位
@@ -353,8 +348,10 @@ void FlashMlaWithKvcacheTilingImpl::CalcWorkspaceSize()
         const uint64_t faTmpResLseGmSize =
             static_cast<uint64_t>(numBlocks_) * PRE_LOAD_NUM_MLA_ARCH35 * mSize * lseSize;
         workspaceSize_ += (faTmpAttenGmSize + 2 * faTmpResLseGmSize) * sizeof(float); // ResLse有2份，sum和max
-        tilingData_.baseTiling.flashMlaWithKvcacheWorkspaceParams.accumOutSize = static_cast<uint32_t>(faTmpAttenGmSize);
-        tilingData_.baseTiling.flashMlaWithKvcacheWorkspaceParams.logSumExpSize = static_cast<uint32_t>(faTmpResLseGmSize);
+        tilingData_.baseTiling.flashMlaWithKvcacheWorkspaceParams.accumOutSize =
+            static_cast<uint32_t>(faTmpAttenGmSize);
+        tilingData_.baseTiling.flashMlaWithKvcacheWorkspaceParams.logSumExpSize =
+            static_cast<uint32_t>(faTmpResLseGmSize);
     }
 
     OP_LOGI(faInfo_->opName, "Workspaces: %lu", workspaceSize_);
@@ -443,7 +440,8 @@ void FlashMlaWithKvcacheTilingImpl::SetFATilingData()
         (faInfo_->kvStorageMode == KvStorageMode::BATCH_CONTINUOUS) ? 1 : 0;
     tilingData_.baseTiling.flashMlaWithKvcacheBaseParams.isSoftMaxLseEnable = faInfo_->softmaxLseFlag;
     tilingData_.baseTiling.flashMlaWithKvcacheBaseParams.coreNum = numBlocks_;
-    tilingData_.baseTiling.flashMlaWithKvcacheBaseParams.outputLayout = static_cast<uint32_t>(faInfo_->kernelOutputLayout);
+    tilingData_.baseTiling.flashMlaWithKvcacheBaseParams.outputLayout =
+        static_cast<uint32_t>(faInfo_->kernelOutputLayout);
 
     tilingData_.baseTiling.flashMlaWithKvcachePageAttentionParams.blockSize = faInfo_->blockSize;
     uint32_t maxBlockNumPerBatch = 0;
@@ -456,8 +454,7 @@ void FlashMlaWithKvcacheTilingImpl::SetFATilingData()
     tilingData_.baseTiling.flashMlaWithKvcacheSystemPrefixParams.prefixSeqInnerSize = 0;
 
     int64_t outSize = faInfo_->opParamInfo.attnOut.shape->GetStorageShape().GetShapeSize();
-    int64_t lseSize =
-        faInfo_->softmaxLseFlag ? faInfo_->opParamInfo.lseOut.shape->GetStorageShape().GetShapeSize() : 0;
+    int64_t lseSize = faInfo_->softmaxLseFlag ? faInfo_->opParamInfo.lseOut.shape->GetStorageShape().GetShapeSize() : 0;
     uint32_t singleCoreSize = (outSize + platformInfo_.aivNum - 1) / (platformInfo_.aivNum);
     tilingData_.baseTiling.flashMlaWithKvcacheEmptyTensorParams.singleCoreSize = singleCoreSize;
     tilingData_.baseTiling.flashMlaWithKvcacheEmptyTensorParams.totalOutputSize = outSize;
@@ -488,15 +485,21 @@ void FlashMlaWithKvcacheTilingImpl::PrintAllTilingData()
 {
     FlashMlaWithKvcacheNoQuantTilingArch35 &baseTiling = tilingData_.baseTiling;
     FlashMlaWithKvcacheBaseParams &flashMlaWithKvcacheBaseParams = baseTiling.flashMlaWithKvcacheBaseParams;
-    FlashMlaWithKvcacheAttenMaskParams &flashMlaWithKvcacheAttenMaskParams = baseTiling.flashMlaWithKvcacheAttenMaskParams;
+    FlashMlaWithKvcacheAttenMaskParams &flashMlaWithKvcacheAttenMaskParams =
+        baseTiling.flashMlaWithKvcacheAttenMaskParams;
     FlashMlaWithKvcachePseParams &flashMlaWithKvcachePseParams = baseTiling.flashMlaWithKvcachePseParams;
-    FlashMlaWithKvcacheSystemPrefixParams &flashMlaWithKvcacheSystemPrefixParams = baseTiling.flashMlaWithKvcacheSystemPrefixParams;
-    FlashMlaWithKvcachePageAttentionParams &flashMlaWithKvcachePageAttentionParams = baseTiling.flashMlaWithKvcachePageAttentionParams;
-    FlashMlaWithKvcacheLeftPaddingParams &flashMlaWithKvcacheLeftPaddingParams = baseTiling.flashMlaWithKvcacheLeftPaddingParams;
-    FlashMlaWithKvcachePostQuantParams &flashMlaWithKvcachePostQuantParams = baseTiling.flashMlaWithKvcachePostQuantParams;
-    FlashMlaWithKvcacheWorkspaceParams &flashMlaWithKvcacheWorkspaceParams = baseTiling.flashMlaWithKvcacheWorkspaceParams;
-    FlashMlaWithKvcacheS1OuterSplitCoreParams &flashMlaWithKvcacheS1OuterSplitCoreParams = baseTiling.flashMlaWithKvcacheS1OuterSplitCoreParams;
-    FlashMlaWithKvcacheEmptyTensorParams &flashMlaWithKvcacheEmptyTensorParams = baseTiling.flashMlaWithKvcacheEmptyTensorParams;
+    FlashMlaWithKvcacheSystemPrefixParams &flashMlaWithKvcacheSystemPrefixParams =
+        baseTiling.flashMlaWithKvcacheSystemPrefixParams;
+    FlashMlaWithKvcachePageAttentionParams &flashMlaWithKvcachePageAttentionParams =
+        baseTiling.flashMlaWithKvcachePageAttentionParams;
+    FlashMlaWithKvcacheLeftPaddingParams &flashMlaWithKvcacheLeftPaddingParams =
+        baseTiling.flashMlaWithKvcacheLeftPaddingParams;
+    FlashMlaWithKvcachePostQuantParams &flashMlaWithKvcachePostQuantParams =
+        baseTiling.flashMlaWithKvcachePostQuantParams;
+    FlashMlaWithKvcacheWorkspaceParams &flashMlaWithKvcacheWorkspaceParams =
+        baseTiling.flashMlaWithKvcacheWorkspaceParams;
+    FlashMlaWithKvcacheEmptyTensorParams &flashMlaWithKvcacheEmptyTensorParams =
+        baseTiling.flashMlaWithKvcacheEmptyTensorParams;
 
     OP_LOGD(faInfo_->opName, "bSize:%d", flashMlaWithKvcacheBaseParams.bSize);
     OP_LOGD(faInfo_->opName, "t1Size:%d", flashMlaWithKvcacheBaseParams.t1Size);
@@ -529,7 +532,8 @@ void FlashMlaWithKvcacheTilingImpl::PrintAllTilingData()
     OP_LOGD(faInfo_->opName, "qStartIdx:%d", flashMlaWithKvcachePseParams.qStartIdx);
     OP_LOGD(faInfo_->opName, "kvStartIdx:%d", flashMlaWithKvcachePseParams.kvStartIdx);
 
-    OP_LOGD(faInfo_->opName, "isActualSharedPrefixLenNull:%d", flashMlaWithKvcacheSystemPrefixParams.isActualSharedPrefixLenNull);
+    OP_LOGD(faInfo_->opName, "isActualSharedPrefixLenNull:%d",
+            flashMlaWithKvcacheSystemPrefixParams.isActualSharedPrefixLenNull);
     OP_LOGD(faInfo_->opName, "prefixSeqInnerSize:%d", flashMlaWithKvcacheSystemPrefixParams.prefixSeqInnerSize);
 
     if (faInfo_->pageAttentionFlag) {
@@ -549,13 +553,11 @@ void FlashMlaWithKvcacheTilingImpl::PrintAllTilingData()
         OP_LOGD(faInfo_->opName, "logSumExpSize:%d", flashMlaWithKvcacheWorkspaceParams.logSumExpSize);
     }
 
-    OP_LOGD(faInfo_->opName, "enableS1OutSplit:%d", flashMlaWithKvcacheS1OuterSplitCoreParams.enableS1OutSplit);
-    OP_LOGD(faInfo_->opName, "totalSize:%d", flashMlaWithKvcacheS1OuterSplitCoreParams.totalSize);
-
     OP_LOGD(faInfo_->opName, "singleCoreSize:%d", flashMlaWithKvcacheEmptyTensorParams.singleCoreSize);
     OP_LOGD(faInfo_->opName, "needInit:%d", flashMlaWithKvcacheEmptyTensorParams.needInit);
     OP_LOGD(faInfo_->opName, "totalOutputSize:%d", flashMlaWithKvcacheEmptyTensorParams.totalOutputSize);
-    OP_LOGD(faInfo_->opName, "totalSoftMaxLseOutputSize:%d", flashMlaWithKvcacheEmptyTensorParams.totalSoftMaxLseOutputSize);
+    OP_LOGD(faInfo_->opName, "totalSoftMaxLseOutputSize:%d",
+            flashMlaWithKvcacheEmptyTensorParams.totalSoftMaxLseOutputSize);
 
     int64_t cap = context_->GetRawTilingData()->GetCapacity();
     OP_LOGD(faInfo_->opName, "Tiling Data context_ GetCapacity: %lu.", cap);

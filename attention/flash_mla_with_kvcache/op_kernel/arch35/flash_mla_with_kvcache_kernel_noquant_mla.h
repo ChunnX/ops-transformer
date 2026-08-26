@@ -68,11 +68,13 @@ public:
     __gm__ uint8_t *keyPtr_ = nullptr;
     __gm__ uint8_t *valuePtr_ = nullptr;
 
-    // 与 producer（flash_mla_metadata，flash_attn_metadata 字节兼容克隆）的核 strides 一致：（producer 旧名：flash_mla_metadata，历史原因保留）
-    // AICPU 侧 FA_METADATA_STRIDE=16 / FD_METADATA_STRIDE=16 / HEAD_METADATA_STRIDE=16，
-    // producer 侧 static_assert 已就位于 flash_mla_metadata.h（本注释不再复制断言，避免漂移）。（producer 旧名：flash_mla_metadata，历史原因保留）
-    static_assert(FLASH_ATTN_METADATA_SIZE == 16 && FA_FD_METADATA_SIZE == 16,
-                  "flash_mla_with_kvcache: metadata per-core stride must be 16 to match flash_mla_metadata AICPU layout");
+    // 与 producer（flash_mla_metadata，flash_attn_metadata 字节兼容克隆）的核 strides 一致：（producer
+    // 旧名：flash_mla_metadata，历史原因保留） AICPU 侧 FA_METADATA_STRIDE=16 / FD_METADATA_STRIDE=16 /
+    // HEAD_METADATA_STRIDE=16， producer 侧 static_assert 已就位于
+    // flash_mla_metadata.h（本注释不再复制断言，避免漂移）。（producer 旧名：flash_mla_metadata，历史原因保留）
+    static_assert(
+        FLASH_ATTN_METADATA_SIZE == 16 && FA_FD_METADATA_SIZE == 16,
+        "flash_mla_with_kvcache: metadata per-core stride must be 16 to match flash_mla_metadata AICPU layout");
 
     ConstInfoX constInfo_;
     FlashMlaSeqLensTool<Q_MODE, KV_MODE> seqLensTool_;
@@ -83,12 +85,6 @@ public:
     CubeBlockType cubeBlock_;
     VecFaBlockType vecFaBlock_;
     VecFdBlockType vecFdBlock_;
-
-    uint32_t coreGS1Loops_ = 0U;
-    uint32_t accGS1Loops_ = 0U;
-    uint32_t varlenCalcTimes_ = 0U;
-    int64_t preTaskIdx_ = 0;
-    int64_t curTaskIdx_ = 0;
 
     // schduler params
     int64_t validTaskNum_ = 0;
@@ -175,7 +171,6 @@ public:
         const auto &flashMlaWithKvcacheAttenMaskParams = this->tilingData_->flashMlaWithKvcacheAttenMaskParams;
         const auto &flashMlaWithKvcachePageAttentionParams = this->tilingData_->flashMlaWithKvcachePageAttentionParams;
         const auto &flashMlaWithKvcacheWorkspaceParams = this->tilingData_->flashMlaWithKvcacheWorkspaceParams;
-        const auto &flashMlaWithKvcacheS1OuterSplitCoreParams = this->tilingData_->flashMlaWithKvcacheS1OuterSplitCoreParams;
         const auto &flashMlaWithKvcacheEmptyTensorParams = this->tilingData_->flashMlaWithKvcacheEmptyTensorParams;
 
         constInfo_.bSize = flashMlaWithKvcacheBaseParams.bSize;
@@ -192,7 +187,8 @@ public:
         constInfo_.actualSeqLenKVSize = flashMlaWithKvcacheBaseParams.actualSeqLengthsKVSize;
         constInfo_.scaleValue = flashMlaWithKvcacheBaseParams.scaleValue;
         constInfo_.coreNum = flashMlaWithKvcacheBaseParams.coreNum;
-        constInfo_.outputLayout = static_cast<FLASH_MLA_WITH_KVCACHE_LAYOUT>(flashMlaWithKvcacheBaseParams.outputLayout);
+        constInfo_.outputLayout =
+            static_cast<FLASH_MLA_WITH_KVCACHE_LAYOUT>(flashMlaWithKvcacheBaseParams.outputLayout);
 
         constInfo_.keyStrides.bnStride = flashMlaWithKvcacheBaseParams.keyStrides.bnStride;
         constInfo_.keyStrides.n2Stride = flashMlaWithKvcacheBaseParams.keyStrides.n2Stride;
@@ -220,21 +216,8 @@ public:
         // LSE
         constInfo_.isSoftmaxLseEnable = flashMlaWithKvcacheBaseParams.isSoftMaxLseEnable;
 
-        if (flashMlaWithKvcacheS1OuterSplitCoreParams.enableS1OutSplit) {
-            constInfo_.enableS1OutSplit = true;
-            constInfo_.bN2Start = 0;
-            constInfo_.gS1OStart = 0;
-            constInfo_.s2OStart = 0;
-            constInfo_.bN2End = 0;
-            constInfo_.gS1OEnd = 0;
-            constInfo_.s2OEnd = 0;
-            constInfo_.coreFirstTmpOutWsPos = 0;
-            constInfo_.totalSize = flashMlaWithKvcacheS1OuterSplitCoreParams.totalSize;
-        } else {
-            // 非 S1 外切：每 section 的 FA 任务区间在 FlashAttention(sectionIdx) 内
-            // 由 GetFASectionInfo 从 AICPU metadata 读取（多 section 0 基布局）
-            constInfo_.enableS1OutSplit = false;
-        }
+        // 每 section 的 FA 任务区间由 FlashAttention(sectionIdx) 内 GetFASectionInfo
+        // 从 AICPU metadata 读取（多 section 0 基布局，无 S1 外切）
         constInfo_.dBasicBlock = AttentionCommon::Align(constInfo_.dSizeV, 64U);
         constInfo_.kRopeStrides.bnStride = flashMlaWithKvcacheBaseParams.kRopeStrides.bnStride;
         constInfo_.kRopeStrides.n2Stride = flashMlaWithKvcacheBaseParams.kRopeStrides.n2Stride;
@@ -255,8 +238,8 @@ public:
     // FA 各字段索引 -1；FA_CORE_ENABLE 删除，核活跃由区间隐含）
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
     {
-        constInfo_.bN2Start = faMetaDataGm_.GetValue(
-            GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_BN2_START_INDEX, sectionIdx));
+        constInfo_.bN2Start =
+            faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_BN2_START_INDEX, sectionIdx));
         constInfo_.gS1OStart =
             faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_M_START_INDEX, sectionIdx));
         constInfo_.s2OStart =
@@ -274,8 +257,7 @@ public:
     // 单 section FD 参数读取；FD 核活跃 = mLen > 0（无 CORE_ENABLE 字段，flash_attn_kernel_nd.h:610-611）
     __aicore__ inline void GetFDSectionInfo(uint32_t sectionIdx)
     {
-        fdParams_.mLen =
-            fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_M_NUM_INDEX, sectionIdx));
+        fdParams_.mLen = fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_M_NUM_INDEX, sectionIdx));
         fdParams_.fdCoreEnable = fdParams_.mLen > 0 ? 1U : 0U;
         if (!fdParams_.fdCoreEnable) {
             return;
@@ -291,39 +273,13 @@ public:
             fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_M_START_INDEX, sectionIdx));
     }
 
-    __aicore__ inline void CalcS1OutSplitLoopTimes()
-    {
-        int64_t varlenCycleCoreNums = constInfo_.coreNum * 2;
-        int64_t varlenCalcLoops =
-            constInfo_.totalSize / varlenCycleCoreNums;                             // 需要进行计算的循环次数(正序+倒序为一次循环)
-        int64_t varlenCalcLoopsRemain = constInfo_.totalSize % varlenCycleCoreNums; // 一次循环正序+倒序为两倍核数
-        varlenCalcTimes_ = varlenCalcLoops * 2;
-        if (varlenCalcLoopsRemain >= constInfo_.aicIdx + 1) {
-            varlenCalcTimes_++;
-            if (varlenCalcLoopsRemain > constInfo_.coreNum &&
-                (constInfo_.aicIdx + 1) > varlenCycleCoreNums - varlenCalcLoopsRemain) {
-                varlenCalcTimes_++;
-            }
-        }
-    }
-
-    __aicore__ inline int64_t CalcS1OutTaskIdx()
-    {
-        if (coreGS1Loops_ % 2 == 0) {
-            return coreGS1Loops_ * constInfo_.coreNum + constInfo_.aicIdx;
-        }
-        return (coreGS1Loops_ + 1U) * constInfo_.coreNum - constInfo_.aicIdx - 1U;
-    }
-
     __aicore__ inline void FlashAttention(uint32_t sectionIdx)
     {
         if (constInfo_.aicIdx >= constInfo_.coreNum) {
             return;
         }
 
-        if (!constInfo_.enableS1OutSplit) {
-            GetFASectionInfo(sectionIdx);
-        }
+        GetFASectionInfo(sectionIdx);
 
         FlashMlaWithKvcacheRunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
         uint32_t bN2Cur = constInfo_.bN2Start;
@@ -331,10 +287,6 @@ public:
         uint32_t s2Cur = constInfo_.s2OStart;
         prevBN2Idx_ = bN2Cur;
         prevGS1Idx_ = gS1Cur;
-
-        if (constInfo_.enableS1OutSplit) {
-            CalcS1OutSplitLoopTimes();
-        }
 
         bool shouldDispatchTask = true;
         bool shouldExecuteTask = false;
@@ -350,13 +302,8 @@ public:
                     CreateTask(createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfo);
                     createdTaskCount++;
                     UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
-                } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
-                    if ASCEND_IS_AIV {
-                        vecFaBlock_.DealZeroActSeqLen(bN2Cur);
-                    }
-                    UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
-                    continue;
                 } else {
+                    // DEAL_ZERO / SKIP_ZERO / SKIP 等非建任务模式：统一推进轴信息
                     UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
                     continue;
                 }
@@ -372,9 +319,6 @@ public:
 
     __aicore__ inline bool ShouldDispatchTask(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
-        if (constInfo_.enableS1OutSplit) {
-            return coreGS1Loops_ < varlenCalcTimes_;
-        }
         if (bN2Cur != constInfo_.bN2End) {
             return bN2Cur < constInfo_.bN2End;
         }
@@ -401,10 +345,6 @@ public:
             cachedS2LoopTimes_ = (actSeqLensKv_ + s2BaseSize - 1) / s2BaseSize;
             uint64_t gS1Size = actSeqLensQ_ * constInfo_.gSize;
             cachedG1S1LoopTimes_ = (gS1Size + mBaseSize - 1) / mBaseSize;
-        }
-
-        if (constInfo_.enableS1OutSplit && accGS1Loops_ != CalcS1OutTaskIdx()) {
-            return TASK_DEAL_MODE::SKIP_S1OUT;
         }
 
         if (cachedS2LoopTimes_ == 0 || cachedG1S1LoopTimes_ == 0) {
@@ -472,7 +412,7 @@ public:
             curS2Start_ = constInfo_.s2OStart;
         }
 
-        if (!constInfo_.enableS1OutSplit && (bN2Cur == constInfo_.bN2End) && (gS1Cur == constInfo_.gS1OEnd)) {
+        if ((bN2Cur == constInfo_.bN2End) && (gS1Cur == constInfo_.gS1OEnd)) {
             tailS2Split_ = constInfo_.s2OEnd != 0U;
             curS2End_ = constInfo_.s2OEnd;
         }
@@ -539,8 +479,9 @@ public:
 
     __aicore__ inline void ExecuteTask(uint64_t loop, FlashMlaWithKvcacheRunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        FlashMlaWithKvcacheRunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];                  // 本轮任务
-        FlashMlaWithKvcacheRunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE]; // 上PRELOAD_N轮任务
+        FlashMlaWithKvcacheRunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE]; // 本轮任务
+        FlashMlaWithKvcacheRunInfoX &runInfoNegN =
+            taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE]; // 上PRELOAD_N轮任务
         if (runInfo0.isValid) {
             if ASCEND_IS_AIC {
                 ComputeMm1(runInfo0);
@@ -601,7 +542,8 @@ public:
         EnableTask(runInfo);
     }
 
-    __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, FlashMlaWithKvcacheRunInfoX &info)
+    __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
+                                      FlashMlaWithKvcacheRunInfoX &info)
     {
         info.loop = loop;
         info.mloop = mloop_;
@@ -649,11 +591,6 @@ public:
             info.actVecMSize = info.actMSize - info.actVecMSize;
         }
 
-        if (constInfo_.enableS1OutSplit) {
-            info.isS2SplitCore = false;
-            return;
-        }
-
         if ((constInfo_.bN2Start == constInfo_.bN2End && constInfo_.gS1OStart == constInfo_.gS1OEnd)) {
             // 所有任务属于同一个S1G
             info.isS2SplitCore = true;
@@ -669,77 +606,6 @@ public:
         }
     }
 
-    __aicore__ inline void S1OutSplitUpdateAxis(uint32_t &bN2Cur, uint32_t &gS1Cur)
-    {
-        if (coreGS1Loops_ >= varlenCalcTimes_ || bN2Cur >= constInfo_.n2Size * constInfo_.bSize) {
-            return;
-        }
-        curTaskIdx_ = CalcS1OutTaskIdx();
-
-        // 本次需要跳过的GS1
-        int64_t gS1Skip = curTaskIdx_ - preTaskIdx_;
-        accGS1Loops_ += gS1Skip;
-        preTaskIdx_ = curTaskIdx_;
-        if (gS1Skip == 0) {
-            return;
-        }
-
-        uint64_t gS1Size = actSeqLensQ_ * constInfo_.gSize;
-        uint64_t gS1LoopTimes = actSeqLensQ_ == 0 ? constInfo_.gSize : (gS1Size + mBaseSize - 1) / mBaseSize;
-        uint64_t gS1RemainCurBN2 = gS1LoopTimes - gS1Cur;
-
-        // gS1Skip 不超过当前BN2剩余的S1G，则只需要更新gS1Cur
-        if (gS1Skip < gS1RemainCurBN2) {
-            gS1Cur += gS1Skip;
-            return;
-        }
-
-        // 先跳过当前BN2剩余的S1G，再跳N2
-        gS1Skip -= gS1RemainCurBN2;
-        gS1Cur = 0;
-
-        uint32_t n2Size = constInfo_.n2Size;
-        uint32_t n2Idx = bN2Cur % n2Size;
-        uint32_t bIdx = bN2Cur / n2Size;
-        uint64_t gS1RemainCurBatch = 0;
-        // 先跳过当前Batch剩余的N2
-        if (n2Idx + 1 < n2Size) {
-            bN2Cur++;
-            n2Idx++;
-            gS1RemainCurBatch = gS1LoopTimes * (n2Size - n2Idx);
-            // 这个batch剩余的N2足够 gS1Skip
-            if (gS1Skip < gS1RemainCurBatch) {
-                bN2Cur += gS1Skip / gS1LoopTimes;
-                gS1Cur = gS1Skip % gS1LoopTimes;
-                return;
-            }
-            gS1Skip -= gS1RemainCurBatch;
-        }
-        n2Idx = 0;
-        bIdx++;
-
-        // 跳batch
-        while (bIdx < constInfo_.bSize) {
-            actSeqLensQ_ = seqLensTool_.qActSeqLensParser.GetActualSeqLength(bIdx);
-            actSeqLensKv_ = seqLensTool_.kvActSeqLensParser.GetActualSeqLength(bIdx);
-            gS1Size = actSeqLensQ_ * constInfo_.gSize;
-            gS1LoopTimes = actSeqLensQ_ == 0 ? constInfo_.gSize : (gS1Size + mBaseSize - 1) / mBaseSize;
-            if (gS1Skip >= n2Size * gS1LoopTimes) {
-                bIdx++;
-                gS1Skip -= n2Size * gS1LoopTimes;
-                continue;
-            }
-
-            gS1Cur = gS1Skip % gS1LoopTimes;
-            n2Idx = (gS1Skip / gS1LoopTimes) % n2Size;
-            bN2Cur = bIdx * n2Size + n2Idx;
-            return;
-        }
-
-        // 所有batch已经执行完
-        bN2Cur = constInfo_.bSize * n2Size;
-    }
-
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
                                           uint32_t &s2Cur)
     {
@@ -753,13 +619,6 @@ public:
 
         // 当前BN2未处理完
         s2Cur = 0;
-        if (constInfo_.enableS1OutSplit) {
-            if (taskDealMode != TASK_DEAL_MODE::SKIP_S1OUT) {
-                coreGS1Loops_++;
-            }
-            S1OutSplitUpdateAxis(bN2Cur, gS1Cur);
-            return;
-        }
 
         uint64_t gS1LoopTimes = cachedG1S1LoopTimes_;
         if (gS1Cur + 1 < gS1LoopTimes) {
