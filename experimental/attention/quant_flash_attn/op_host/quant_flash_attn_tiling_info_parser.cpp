@@ -640,8 +640,8 @@ ge::graphStatus QuantFlashAttnTilingInfoParser::GetEmptyTensorFlag()
         for (size_t i = 0; i < shape->GetStorageShape().GetDimNum(); i++) {
             if (shape->GetStorageShape().GetDim(i) == 0) {
                 OP_LOGE(tilingInfo_.opName,
-                        "Tensor %s has empty dimension at axis %zu, size is 0, which is not supported",
-                        name.c_str(), i);
+                        "Tensor %s has empty dimension at axis %zu, size is 0, which is not supported", name.c_str(),
+                        i);
                 return true;
             }
         }

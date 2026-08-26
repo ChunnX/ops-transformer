@@ -22,9 +22,9 @@ namespace optiling {
 class QuantFlashAttnTilingInfoParser {
 public:
     explicit QuantFlashAttnTilingInfoParser(const gert::TilingContext *context, QuantFlashAttnTilingInfo &faInfo)
-        : context_(context), tilingInfo_(faInfo)
-    {
-    }
+        : context_(context),
+          tilingInfo_(faInfo)
+    {}
     ~QuantFlashAttnTilingInfoParser() = default;
     ge::graphStatus Parse();
 
