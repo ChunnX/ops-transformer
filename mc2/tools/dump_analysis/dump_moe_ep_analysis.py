@@ -12,11 +12,12 @@
 #  \brief
 #
 
+import logging
 import os
 import sys
-import logging
 from dataclasses import dataclass, field
 from typing import List
+
 import numpy as np
 from openpyxl import Workbook
 
@@ -27,21 +28,33 @@ logging.basicConfig(
 )
 
 
-# Metadata 区固定大小 64KiB, 有效结构体 <=512B, 剩余保留
+# Metadata 区固定大�?64KiB, 有效结构�?<=512B, 剩余保留
 METADATA_SIZE = 64 * 1024
-# Metadata 中 10 个 uint32 字段名, 按结构体偏移顺序排列
+# Metadata �?10 �?uint32 字段�? 按结构体偏移顺序排列
 METADATA_FIELD_NAMES = [
-    "layoutVersion", "nmt", "topK", "hidden", "epWorldSize",
-    "localExpertNum", "aivNum", "networkMode", "serverNum", "rankNumPerServer",
+    "layoutVersion",
+    "nmt",
+    "topK",
+    "hidden",
+    "epWorldSize",
+    "localExpertNum",
+    "aivNum",
+    "networkMode",
+    "serverNum",
+    "rankNumPerServer",
 ]
-# Metadata 中 7 个固定 Region 的名称
+# Metadata �?7 个固�?Region 的名�?
 REGION_COUNT = 7
 REGION_NAMES = [
-    "PER_CORE_DIAG", "COUNT_NOTIFY", "EXPERT_COUNT",
-    "DISPATCH_SLOT_STATE", "COMBINE_TOKEN_STATE", "COMBINE_STATE_TAIL",
+    "PER_CORE_DIAG",
+    "COUNT_NOTIFY",
+    "EXPERT_COUNT",
+    "DISPATCH_SLOT_STATE",
+    "COMBINE_TOKEN_STATE",
+    "COMBINE_STATE_TAIL",
     "HYBRID_SCALEOUT_STATUS",
 ]
-# Region 名称到 dump 文件后缀的映射, 每个 Region 单独输出一个 .bin 文件
+# Region 名称�?dump 文件后缀的映�? 每个 Region 单独输出一�?.bin 文件
 REGION_FILE_SUFFIX = {
     "METADATA": "metadata.bin",
     "PER_CORE_DIAG": "per_core_diag.bin",
@@ -54,7 +67,7 @@ REGION_FILE_SUFFIX = {
 }
 
 
-# 单卡分析结果, 封装 analyze_single_card 的返回值
+# 单卡分析结果, 封装 analyze_single_card 的返回�?
 @dataclass
 class CardAnalysisResult:
     bs: int = 0
@@ -65,7 +78,7 @@ class CardAnalysisResult:
     combine_token_state_data: list = field(default_factory=list)
 
 
-# 全卡分析结果, 封装 save_to_excel 的参数
+# 全卡分析结果, 封装 save_to_excel 的参�?
 @dataclass
 class AllAnalysisResult:
     all_metadata: dict = field(default_factory=dict)
@@ -76,19 +89,19 @@ class AllAnalysisResult:
     card_count: int = 0
 
 
-# 在卡目录中按后缀查找 Region 对应的 .bin 文件, 读取全部数据返回 uint8 数组
+# 在卡目录中按后缀查找 Region 对应�?.bin 文件, 读取全部数据返回 uint8 数组
 def read_region_file(target_path: str, suffix: str):
     for filename in os.listdir(target_path):
         if filename.endswith(suffix):
             file_path = os.path.join(target_path, filename)
             with open(file_path, "rb") as f:
                 return np.frombuffer(f.read(), dtype=np.uint8)
-    logging.warning("未找到 %s 文件", suffix)
+    logging.warning("未找�?%s 文件", suffix)
     return np.array(0, dtype=np.uint8)
 
 
-# 从 .metadata.bin 文件解析 Metadata
-# 有效结构体布局: 10 个 uint32 字段 + 7 个 MoeEpDumpRegion(offset, size), 每个 region 占 2 个 uint32
+# �?.metadata.bin 文件解析 Metadata
+# 有效结构体布局: 10 �?uint32 字段 + 7 �?MoeEpDumpRegion(offset, size), 每个 region �?2 �?uint32
 def parse_metadata(target_path: str):
     metadata_dict = {name: 0 for name in METADATA_FIELD_NAMES}
     for name in REGION_NAMES:
@@ -98,10 +111,10 @@ def parse_metadata(target_path: str):
         logging.warning("metadata.bin 文件大小不足 512 字节, 无法解析 Metadata")
         return metadata_dict, False
     metadata_raw = raw[:512].view(np.uint32)
-    # 解析 10 个 uint32 字段
+    # 解析 10 �?uint32 字段
     for i, name in enumerate(METADATA_FIELD_NAMES):
         metadata_dict[name] = int(metadata_raw[i])
-    # 解析 7 个 Region 的 offset 和 size
+    # 解析 7 �?Region �?offset �?size
     for i, name in enumerate(REGION_NAMES):
         offset = int(metadata_raw[10 + i * 2])
         size = int(metadata_raw[10 + i * 2 + 1])
@@ -114,11 +127,11 @@ def collect_all_metadata(card_dirs: list):
     all_metadata = {name: [] for name in METADATA_FIELD_NAMES + REGION_NAMES}
     for card_num, card_path in enumerate(card_dirs):
         if not os.path.isdir(card_path):
-            logging.error("卡%d 路径不存在: %s, 跳过该卡", card_num, card_path)
+            logging.error("�?d 路径不存�? %s, 跳过该卡", card_num, card_path)
             continue
         metadata_dict, ok = parse_metadata(card_path)
         if not ok:
-            logging.error("卡%d Metadata 解析失败, 使用默认值填充", card_num)
+            logging.error("�?d Metadata 解析失败, 使用默认值填�?, card_num)
             for name in METADATA_FIELD_NAMES:
                 all_metadata[name].append(0)
             for name in REGION_NAMES:
@@ -132,11 +145,11 @@ def collect_all_metadata(card_dirs: list):
 # 打印单卡 Metadata
 def print_card_metadata(card_num: int, card_metadata: dict):
     for name in METADATA_FIELD_NAMES + REGION_NAMES:
-        logging.info("卡%d %s: %s", card_num, name, card_metadata.get(name))
+        logging.info("�?d %s: %s", card_num, name, card_metadata.get(name))
 
 
-# 从 exception_info 解析后的 input.0.bin 中读取 context 数据(int32)
-# context 是 MoeEpDispatch/Combine 的第一个输入, 包含 HCCL 通信上下文信息
+# �?exception_info 解析后的 input.0.bin 中读�?context 数据(int32)
+# context �?MoeEpDispatch/Combine 的第一个输�? 包含 HCCL 通信上下文信�?
 def get_context(target_path: str):
     target_file_num = "input.0.bin"
     for filename in os.listdir(os.path.join(target_path)):
@@ -146,12 +159,12 @@ def get_context(target_path: str):
             logging.info("context dtype: %s, size: %d", context.dtype, context.shape[0])
             logging.info("context 数据:\n%s", context)
             return context
-    logging.warning("未找到 %s 文件, 无法获取 context 数据", target_file_num)
+    logging.warning("未找�?%s 文件, 无法获取 context 数据", target_file_num)
     return None
 
 
-# 从 input.2.bin 读取 topk_idx(int32), 按 Metadata 中的 topK reshape 为 (bs, k)
-# 返回 reshape 后的数组和计算出的 bs
+# �?input.2.bin 读取 topk_idx(int32), �?Metadata 中的 topK reshape �?(bs, k)
+# 返回 reshape 后的数组和计算出�?bs
 def get_topk_idx(target_path: str, topk: int, global_expert_num: int):
     target_file_num = "input.2.bin"
     for filename in os.listdir(os.path.join(target_path)):
@@ -160,29 +173,39 @@ def get_topk_idx(target_path: str, topk: int, global_expert_num: int):
             topk_idx = np.fromfile(file_path, dtype=np.int32)
             bs = topk_idx.shape[0] // topk if topk > 0 else 0
             if topk > 0 and bs * topk != topk_idx.shape[0]:
-                logging.warning("topk_idx 数据大小 %d 不能被 topK %d 整除, 截断为 %d", topk_idx.shape[0], topk, bs)
-                topk_idx = topk_idx[:bs * topk]
+                logging.warning(
+                    "topk_idx 数据大小 %d 不能�?topK %d 整除, 截断�?%d",
+                    topk_idx.shape[0],
+                    topk,
+                    bs,
+                )
+                topk_idx = topk_idx[: bs * topk]
             return topk_idx.reshape(bs, topk), bs
-    logging.warning("未找到 %s 文件, 无法获取 topk_idx 数据", target_file_num)
+    logging.warning("未找�?%s 文件, 无法获取 topk_idx 数据", target_file_num)
     return None, 0
 
 
-# 校验 topk_idx 值范围: 每个值应 >= 0 且 < global_expert_num, 异常项逐个打印
+# 校验 topk_idx 值范�? 每个值应 >= 0 �?< global_expert_num, 异常项逐个打印
 def check_topk_idx(topk_idx_reshape, global_expert_num: int):
     mask = (topk_idx_reshape < 0) | (topk_idx_reshape >= global_expert_num)
     if np.any(mask):
         row_func, col_func = np.where(mask)
-        logging.error("检测到topk_idx中有%d个异常输入, 值应 >= 0 且 < 全局专家数%d",
-                      len(row_func), global_expert_num)
+        logging.error(
+            "检测到topk_idx中有%d个异常输�? 值应 >= 0 �?< 全局专家�?d",
+            len(row_func),
+            global_expert_num,
+        )
         for r, c in zip(row_func, col_func):
-            logging.error("topk_idx下标[%d,%d]的值:%d超范围", r, c, topk_idx_reshape[r][c])
+            logging.error(
+                "topk_idx下标[%d,%d]的�?%d超范�?, r, c, topk_idx_reshape[r][c]
+            )
     else:
         logging.info("未检测到topk_idx中有超范围的异常输入")
 
 
-# 分析 Per-core 诊断区: 从 .per_core_diag.bin 读取
-# 布局: 100 个核 × 512B/核, 每核前两个 uint32 为 op_count(执行次数) 和 run_pos(执行位置)
-# 核数判断: 当某核的 op_count 和 run_pos 全为 0 时, 认为该核未使用, 之前的核数即使用核数
+# 分析 Per-core 诊断�? �?.per_core_diag.bin 读取
+# 布局: 100 个核 × 512B/�? 每核前两�?uint32 �?op_count(执行次数) �?run_pos(执行位置)
+# 核数判断: 当某核的 op_count �?run_pos 全为 0 �? 认为该核未使�? 之前的核数即使用核数
 def analyze_per_core(target_path: str):
     raw_data = read_region_file(target_path, REGION_FILE_SUFFIX["PER_CORE_DIAG"])
     if raw_data.shape[0] == 0:
@@ -193,7 +216,7 @@ def analyze_per_core(target_path: str):
     run_poses = []
     core_count = max_cores
     for i in range(max_cores):
-        block = raw_data[i * 512:(i + 1) * 512].view(np.uint32)
+        block = raw_data[i * 512 : (i + 1) * 512].view(np.uint32)
         op_count = int(block[0])
         run_pos = int(block[1])
         if op_count == 0 and run_pos == 0:
@@ -209,11 +232,11 @@ def print_per_core(core_count: int, per_core_data: list):
     logging.info("使用核数: %d", core_count)
     for i in range(core_count):
         op_count, run_pos = per_core_data[i]
-        logging.info("核%d: op_count=%d, 执行位置=%d", i, op_count, run_pos)
+        logging.info("�?d: op_count=%d, 执行位置=%d", i, op_count, run_pos)
 
 
-# 分析 Count Notify 区: 从 .count_notify.bin 读取
-# 布局: epWorldSize 个 512B 块, 每块第一个 uint32 为该源 rank 发送的 token 计数
+# 分析 Count Notify �? �?.count_notify.bin 读取
+# 布局: epWorldSize �?512B �? 每块第一�?uint32 为该�?rank 发送的 token 计数
 def analyze_count_notify(target_path: str, ep_world_size: int):
     raw_data = read_region_file(target_path, REGION_FILE_SUFFIX["COUNT_NOTIFY"])
     if raw_data.shape[0] == 0:
@@ -222,16 +245,16 @@ def analyze_count_notify(target_path: str, ep_world_size: int):
     counts = []
     for i in range(ep_world_size):
         if (i + 1) * 512 > raw_data.shape[0]:
-            logging.warning("Count Notify 数据不足 %d 个 512B 块, 实际只有 %d 块", ep_world_size, i)
+            logging.warning("Count Notify 数据不足 %d �?512B �? 实际只有 %d �?, ep_world_size, i)
             break
-        block = raw_data[i * 512:(i + 1) * 512].view(np.uint32)
+        block = raw_data[i * 512 : (i + 1) * 512].view(np.uint32)
         counts.append(int(block[0]))
     logging.info("Count Notify 数据: %s", counts)
     return counts
 
 
-# 分析 Expert Count 区: 从 .expert_count.bin 读取
-# 布局: epWorldSize 个 512B 块, 每块包含 localExpertNum 个 uint32, 为该 rank 每个专家收到的 token 计数
+# 分析 Expert Count �? �?.expert_count.bin 读取
+# 布局: epWorldSize �?512B �? 每块包含 localExpertNum �?uint32, 为该 rank 每个专家收到�?token 计数
 def analyze_expert_count(target_path: str, ep_world_size: int, local_expert_num: int):
     raw_data = read_region_file(target_path, REGION_FILE_SUFFIX["EXPERT_COUNT"])
     if raw_data.shape[0] == 0:
@@ -240,17 +263,17 @@ def analyze_expert_count(target_path: str, ep_world_size: int, local_expert_num:
     expert_counts = []
     for i in range(ep_world_size):
         if (i + 1) * 512 > raw_data.shape[0]:
-            logging.warning("Expert Count 数据不足 %d 个 512B 块, 实际只有 %d 块", ep_world_size, i)
+            logging.warning("Expert Count 数据不足 %d �?512B �? 实际只有 %d �?, ep_world_size, i)
             break
-        block = raw_data[i * 512:(i + 1) * 512].view(np.uint32)
+        block = raw_data[i * 512 : (i + 1) * 512].view(np.uint32)
         per_rank = [int(block[j]) for j in range(local_expert_num)]
         expert_counts.append(per_rank)
     logging.info("Expert Count 数据: %s", expert_counts)
     return expert_counts
 
 
-# 分析 Combine Token State 区: 从 .combine_token_state.bin 读取
-# 布局: N*K 个 512B 块(N=nmt, K=topK), 每块第一个 uint32 为该 (token, topk) 的回传完成状态
+# 分析 Combine Token State �? �?.combine_token_state.bin 读取
+# 布局: N*K �?512B �?N=nmt, K=topK), 每块第一�?uint32 为该 (token, topk) 的回传完成状�?
 def analyze_combine_token_state(target_path: str, nmt: int, topk: int):
     raw_data = read_region_file(target_path, REGION_FILE_SUFFIX["COMBINE_TOKEN_STATE"])
     if raw_data.shape[0] == 0:
@@ -260,20 +283,22 @@ def analyze_combine_token_state(target_path: str, nmt: int, topk: int):
     states = []
     for i in range(total):
         if (i + 1) * 512 > raw_data.shape[0]:
-            logging.warning("Combine Token State 数据不足 %d 个 512B 块, 实际只有 %d 块", total, i)
+            logging.warning("Combine Token State 数据不足 %d �?512B �? 实际只有 %d �?, total, i)
             break
-        block = raw_data[i * 512:(i + 1) * 512].view(np.uint32)
+        block = raw_data[i * 512 : (i + 1) * 512].view(np.uint32)
         states.append(int(block[0]))
     logging.info("Combine Token State 数据: %s", states)
     return states
 
 
-# 单卡分析主函数: 依次获取 context、topk_idx, 解析各 Region .bin 文件
-# 返回 CardAnalysisResult 封装的单卡分析结果
-def analyze_single_card(card_path: str, card_num: int, card_metadata: dict, global_expert_num: int):
+# 单卡分析主函�? 依次获取 context、topk_idx, 解析�?Region .bin 文件
+# 返回 CardAnalysisResult 封装的单卡分析结�?
+def analyze_single_card(
+    card_path: str, card_num: int, card_metadata: dict, global_expert_num: int
+):
     logging.info("开始分析卡%d数据, dump数据路径: %s", card_num, card_path)
     print_card_metadata(card_num, card_metadata)
-    logging.info("全局专家数: %d", global_expert_num)
+    logging.info("全局专家�? %d", global_expert_num)
 
     get_context(card_path)
 
@@ -294,13 +319,16 @@ def analyze_single_card(card_path: str, card_num: int, card_metadata: dict, glob
     combine_token_state_data = analyze_combine_token_state(card_path, nmt, topk)
 
     return CardAnalysisResult(
-        bs=bs, core_count=core_count, per_core_data=per_core_data,
-        count_notify_data=count_notify_data, expert_count_data=expert_count_data,
-        combine_token_state_data=combine_token_state_data
+        bs=bs,
+        core_count=core_count,
+        per_core_data=per_core_data,
+        count_notify_data=count_notify_data,
+        expert_count_data=expert_count_data,
+        combine_token_state_data=combine_token_state_data,
     )
 
 
-# 写 metadata sheet: 每卡一行, 包含 10 个 uint32 字段 + 7 个 Region[offset,size] + bs + core_count
+# �?metadata sheet: 每卡一�? 包含 10 �?uint32 字段 + 7 �?Region[offset,size] + bs + core_count
 def write_metadata_sheet(wb, all_metadata: dict, card_count: int):
     ws = wb.active
     ws.title = "metadata"
@@ -309,11 +337,15 @@ def write_metadata_sheet(wb, all_metadata: dict, card_count: int):
     for card_num in range(card_count):
         row = [card_num]
         for name in all_field_names:
-            row.append(all_metadata[name][card_num] if card_num < len(all_metadata[name]) else None)
+            row.append(
+                all_metadata[name][card_num]
+                if card_num < len(all_metadata[name])
+                else None
+            )
         ws.append(row)
 
 
-# 写 per_card_per_core sheet: 每核一行, 包含 card_num, core_count, core_id, op_count, run_pos
+# �?per_card_per_core sheet: 每核一�? 包含 card_num, core_count, core_id, op_count, run_pos
 def write_per_core_sheet(wb, all_per_core: list):
     ws = wb.create_sheet("per_card_per_core")
     ws.append(["card_num", "core_count", "core_id", "op_count", "run_pos"])
@@ -323,29 +355,36 @@ def write_per_core_sheet(wb, all_per_core: list):
             ws.append([card_num, core_count, core_id, op_count, run_pos])
 
 
-# 写 count_notify sheet: 每卡每 rank 一行, 含 epWorldSize 便于核对行数
+# �?count_notify sheet: 每卡�?rank 一�? �?epWorldSize 便于核对行数
 def write_count_notify_sheet(wb, all_count_notify: list, all_metadata: dict):
     ws = wb.create_sheet("count_notify")
     ws.append(["card_num", "epWorldSize", "rank_id", "count"])
     for card_num, count_notify_data in enumerate(all_count_notify):
-        ep_ws = all_metadata["epWorldSize"][card_num] if card_num < len(all_metadata["epWorldSize"]) else 0
+        ep_ws = (
+            all_metadata["epWorldSize"][card_num]
+            if card_num < len(all_metadata["epWorldSize"])
+            else 0
+        )
         for rank_id, count in enumerate(count_notify_data):
             ws.append([card_num, ep_ws, rank_id, count])
 
 
-# 写 expert_count sheet: 每卡每 rank 每 expert 一行, 含 localExpertNum 便于核对行数
+# �?expert_count sheet: 每卡�?rank �?expert 一�? �?localExpertNum 便于核对行数
 def write_expert_count_sheet(wb, all_expert_count: list, all_metadata: dict):
     ws = wb.create_sheet("expert_count")
     ws.append(["card_num", "localExpertNum", "rank_id", "expert_id", "count"])
     for card_num, expert_count_data in enumerate(all_expert_count):
-        local_expert_num = all_metadata["localExpertNum"][card_num] \
-            if card_num < len(all_metadata["localExpertNum"]) else 0
+        local_expert_num = (
+            all_metadata["localExpertNum"][card_num]
+            if card_num < len(all_metadata["localExpertNum"])
+            else 0
+        )
         for rank_id, per_rank in enumerate(expert_count_data):
             for expert_id, count in enumerate(per_rank):
                 ws.append([card_num, local_expert_num, rank_id, expert_id, count])
 
 
-# 写 combine_token_state sheet: 每卡每 (token,topk) 一行, idx 为 0~N*K-1 的序号
+# �?combine_token_state sheet: 每卡�?(token,topk) 一�? idx �?0~N*K-1 的序�?
 def write_combine_token_state_sheet(wb, all_combine_token_state: list):
     ws = wb.create_sheet("combine_token_state")
     ws.append(["card_num", "idx", "token_state"])
@@ -354,7 +393,7 @@ def write_combine_token_state_sheet(wb, all_combine_token_state: list):
             ws.append([card_num, idx, state])
 
 
-# 将所有分析结果写入 Excel: 5 个 sheet(metadata/per_card_per_core/count_notify/expert_count/combine_token_state)
+# 将所有分析结果写�?Excel: 5 �?sheet(metadata/per_card_per_core/count_notify/expert_count/combine_token_state)
 def save_to_excel(result: AllAnalysisResult):
     wb = Workbook()
     write_metadata_sheet(wb, result.all_metadata, result.card_count)
@@ -366,33 +405,35 @@ def save_to_excel(result: AllAnalysisResult):
     logging.info("全卡分析结果已归档至 moe_ep_dump_analysis_result.xlsx")
 
 
-# ===== 主流程 =====
+# ===== 主流�?=====
 if __name__ == "__main__":
     # 1. 解析参数, 构建 card_dirs 列表
     if len(sys.argv) < 4:
-        logging.error("用法: python %s <dump_data_path> <file_num> <is_multi>", sys.argv[0])
+        logging.error(
+            "用法: python %s <dump_data_path> <file_num> <is_multi>", sys.argv[0]
+        )
         sys.exit(1)
 
     target_dir = sys.argv[1]
     file_num = int(sys.argv[2])
     is_multi = int(sys.argv[3])
     if not os.path.isdir(target_dir):
-        logging.error("路径不存在: %s", target_dir)
+        logging.error("路径不存�? %s", target_dir)
         sys.exit(1)
 
-    logging.info("开始解析 dump 数据, 总卡数:%d, is_multi:%d, dump数据路径: %s", file_num, is_multi, target_dir)
+    logging.info("开始解�?dump 数据, 总卡�?%d, is_multi:%d, dump数据路径: %s", file_num, is_multi, target_dir)
 
     if is_multi == 1:
         card_dirs = [os.path.join(target_dir, str(i)) for i in range(file_num)]
     else:
         card_dirs = [target_dir]
 
-    # 2. 收集所有卡 Metadata, 计算全局专家数
+    # 2. 收集所有卡 Metadata, 计算全局专家�?
     all_metadata = collect_all_metadata(card_dirs)
     logging.info("所有卡 Metadata 收集完成")
 
     global_expert_num = sum(all_metadata["localExpertNum"])
-    logging.info("全局专家数: %d", global_expert_num)
+    logging.info("全局专家�? %d", global_expert_num)
 
     # 3. 逐卡执行单卡分析, 收集结果
     all_bs = []
@@ -405,7 +446,7 @@ if __name__ == "__main__":
     for card_num, card_path in enumerate(card_dirs):
         logging.info("--------------------------------------------")
         if not os.path.isdir(card_path):
-            logging.error("卡%d 路径不存在: %s, 跳过该卡", card_num, card_path)
+            logging.error("�?d 路径不存�? %s, 跳过该卡", card_num, card_path)
             all_bs.append(0)
             all_core_count.append(0)
             all_per_core.append([])
@@ -413,9 +454,15 @@ if __name__ == "__main__":
             all_expert_count.append([])
             all_combine_token_state.append([])
             continue
-        card_metadata = {name: all_metadata[name][card_num] if card_num < len(all_metadata[name]) else None
-                         for name in METADATA_FIELD_NAMES + REGION_NAMES}
-        card_result = analyze_single_card(card_path, card_num, card_metadata, global_expert_num)
+        card_metadata = {
+            name: all_metadata[name][card_num]
+            if card_num < len(all_metadata[name])
+            else None
+            for name in METADATA_FIELD_NAMES + REGION_NAMES
+        }
+        card_result = analyze_single_card(
+            card_path, card_num, card_metadata, global_expert_num
+        )
         all_bs.append(card_result.bs)
         all_core_count.append(card_result.core_count)
         all_per_core.append(card_result.per_core_data)
@@ -428,11 +475,14 @@ if __name__ == "__main__":
 
     # 4. 写入 Excel
     all_result = AllAnalysisResult(
-        all_metadata=all_metadata, all_per_core=all_per_core,
-        all_count_notify=all_count_notify, all_expert_count=all_expert_count,
-        all_combine_token_state=all_combine_token_state, card_count=len(card_dirs)
+        all_metadata=all_metadata,
+        all_per_core=all_per_core,
+        all_count_notify=all_count_notify,
+        all_expert_count=all_expert_count,
+        all_combine_token_state=all_combine_token_state,
+        card_count=len(card_dirs),
     )
     save_to_excel(all_result)
 
     logging.info("--------------------------------------------")
-    logging.info("所有卡数据解析完成, 多卡分析待实现")
+    logging.info("所有卡数据解析完成, 多卡分析待实�?)
