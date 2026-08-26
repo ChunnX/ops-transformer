@@ -273,7 +273,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
                                         sliceTokenCount, combineBufferConfig, combineRowSequence, useAllAivCores);
             }
         }
-        DrainWaveCombineRowRing(combineRowSequence, combineBufferConfig.rowBufferCount);
+        DrainCombineRowBuffers(combineRowSequence, combineBufferConfig.rowBufferCount);
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
     }
 

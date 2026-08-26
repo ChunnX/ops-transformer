@@ -748,7 +748,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         RunWaveExpertCombineStage<CombineQuantMode, true>(
             commonConfig_, waveCombineJob_, activeBufferConfig, waveCombineScratch_, params_, combineAddrInfo,
             allCoreCombineExpertState, allCoreCombineExpertIndex, rowSequence);
-        DrainWaveCombineRowRing(rowSequence, activeBufferConfig.rowBufferCount);
+        DrainCombineRowBuffers(rowSequence, activeBufferConfig.rowBufferCount);
         return;
     }
 
@@ -775,7 +775,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                                                         combineState.expertIdx, rowSequence);
         }
     }
-    DrainWaveCombineRowRing(rowSequence, activeBufferConfig.rowBufferCount);
+    DrainCombineRowBuffers(rowSequence, activeBufferConfig.rowBufferCount);
 }
 
 template <TemplateMegaMoeA8W8WaveTypeClass>

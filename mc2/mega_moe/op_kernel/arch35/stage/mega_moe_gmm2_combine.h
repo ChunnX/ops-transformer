@@ -378,7 +378,7 @@ __aicore__ inline WorkRange GetWaveCombineOwnedRange(const AivJobContext &job, u
 }
 
 // 等待并消费当前 Wave 的 Combine 发送在行环形 buffer 上产生的全部完成事件，使该环不再有在途 slot。
-__aicore__ inline void DrainWaveCombineRowRing(uint32_t &issuedRowCount, uint32_t rowBufferCount)
+__aicore__ inline void DrainCombineRowBuffers(uint32_t &issuedRowCount, uint32_t rowBufferCount)
 {
     uint32_t activeSlotCount = issuedRowCount < rowBufferCount ? issuedRowCount : rowBufferCount;
     for (uint32_t slot = 0U; slot < activeSlotCount; ++slot) {
