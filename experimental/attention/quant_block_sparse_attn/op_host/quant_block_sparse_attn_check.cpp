@@ -337,9 +337,11 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckScaleDtype() const
                 ge::GRAPH_SUCCESS ||
             CheckInputDtype(opParamInfo.vDescale, "valueAntiquantScale", ge::DT_FLOAT8_E8M0, "FLOAT8_E8M0") !=
                 ge::GRAPH_SUCCESS ||
-            (opParamInfo.pScale.desc != nullptr &&
+            (opParamInfo.pScale.desc != nullptr && opParamInfo.pScale.shape != nullptr &&
+             opParamInfo.pScale.shape->GetStorageShape().GetShapeSize() > 0 &&
              CheckInputDtype(opParamInfo.pScale, "quantScale1", ge::DT_FLOAT8_E8M0, "FLOAT8_E8M0") !=
-                 ge::GRAPH_SUCCESS)) {
+                 ge::GRAPH_SUCCESS &&
+             CheckInputDtype(opParamInfo.pScale, "quantScale1", ge::DT_FLOAT, "FLOAT") != ge::GRAPH_SUCCESS)) {
             return ge::GRAPH_FAILED;
         }
     }

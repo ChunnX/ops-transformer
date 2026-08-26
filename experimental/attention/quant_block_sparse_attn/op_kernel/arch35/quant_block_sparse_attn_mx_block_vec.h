@@ -76,7 +76,8 @@ public:
     static constexpr uint32_t SOFTMAX_STATE_UB_SIZE = VEC_M_BASE * sizeof(float);
 
     __aicore__ inline void Init(TPipe *pipe, __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxLse,
-                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *attenMask, uint32_t attenMaskS2Size)
+                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *attenMask, uint32_t attenMaskS2Size,
+                                uint8_t pScaleDtype)
     {
         if ASCEND_IS_AIV {
             tPipe_ = pipe;
@@ -85,9 +86,15 @@ public:
                 softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
             }
             if (pScale != nullptr) {
-                GlobalTensor<uint8_t> pScaleGm;
-                pScaleGm.SetGlobalBuffer((__gm__ uint8_t *)pScale);
-                pScaleValue_ = DecodeE8M0Scale(pScaleGm.GetValue(0));
+                if (pScaleDtype == optiling::MX_PSCALE_DTYPE_FP32) {
+                    GlobalTensor<float> pScaleGmFp32;
+                    pScaleGmFp32.SetGlobalBuffer((__gm__ float *)pScale);
+                    pScaleValue_ = pScaleGmFp32.GetValue(0);
+                } else {
+                    GlobalTensor<uint8_t> pScaleGm;
+                    pScaleGm.SetGlobalBuffer((__gm__ uint8_t *)pScale);
+                    pScaleValue_ = DecodeE8M0Scale(pScaleGm.GetValue(0));
+                }
             }
             if constexpr (HAS_ATTEN) {
                 attenMaskGm_.SetGlobalBuffer((__gm__ uint8_t *)attenMask);
@@ -318,8 +325,7 @@ private:
         // E8M0 code 0 is 2^-127 (an FP32 subnormal), not FP32 zero.
         // Code 255 is the format's NaN encoding; all other codes map directly
         // to the FP32 exponent field.
-        uint32_t bits = scale == 0U ? 0x00400000U :
-                                      (scale == 0xFFU ? 0x7FC00000U : static_cast<uint32_t>(scale) << 23);
+        uint32_t bits = scale == 0U ? 0x00400000U : (scale == 0xFFU ? 0x7FC00000U : static_cast<uint32_t>(scale) << 23);
         return *((float *)&bits);
     }
 
