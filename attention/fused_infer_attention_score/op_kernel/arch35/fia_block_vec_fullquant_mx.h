@@ -70,7 +70,7 @@ public:
                                   IsSameType<INPUT_T, hifloat8_t>::value;
     static constexpr uint32_t DB = 2;
     static constexpr uint32_t PRELOAD_N = 3; // C1 C1 C1 C2
-    static constexpr uint32_t s2SplitSize = 256U;
+    static constexpr uint32_t s2SplitSize = (s2BaseSize == 256) ? 128U : 256U;
     static constexpr uint32_t MXFP_GROUP_SIZE = 32U;
     static constexpr bool HAS_MASK = hasAtten;
     static constexpr bool FLASH_DECODE = isFd;
@@ -86,6 +86,8 @@ public:
 
     static constexpr bool USE_DN = useDn;
 
+    static constexpr uint32_t L1P_REUSE_PERMIT_ID = 10;
+    static constexpr uint32_t L1P_REUSE_ACK_ID = 0;
     static constexpr bool POST_QUANT = !IsSameType<OUTPUT_T, half>::value && !IsSameType<OUTPUT_T, bfloat16_t>::value &&
                                        !IsSameType<OUTPUT_T, float>::value;
     using pseShiftType = half;
@@ -133,6 +135,7 @@ public:
     // ub
     TBuf<> commonTBuf; // common的复用空间
     TQue<QuePosition::VECOUT, 1> stage1OutQue[2];
+    TQue<QuePosition::VECOUT, 1> pScaleSubLoop0Que;
     TQue<QuePosition::VECIN, 1> attenMaskInQue[2];
     TBuf<> stage2OutBuf;
     TEventID mte3ToVId[2]; // 存放MTE3_V的eventId, 2份表示可能存在pingpong
@@ -173,7 +176,7 @@ public:
                                         __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace)
     {
         tPipe = pipe;
-        uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32_LN2;
+        uint32_t tmp1 = (s2BaseSize == 256) ? NEGATIVE_MIN_VALUE_FP32 : NEGATIVE_MIN_VALUE_FP32_LN2;
         this->negativeFloatScalar = *((T *)&tmp1);
         if constexpr (USE_DN) {
             minValue = NEGATIVE_MIN_VALUE_FP32;
@@ -217,6 +220,13 @@ public:
                                        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
                                        RunInfoX runInfo, uint32_t subLoop)
     {
+        if constexpr (s2BaseSize == 256 && dTemplateAlign64 == 256 && KvLayoutType > 0) {
+            // Fill all three preload slots before consuming one permit per reused slot.
+            if (subLoop == 0 && runInfo.loop >= PRELOAD_N) {
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(L1P_REUSE_PERMIT_ID);
+                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(L1P_REUSE_ACK_ID);
+            }
+        }
         bmm1ResBuf.WaitCrossCore();
         if (unlikely(runInfo.actVecMSize == 0)) {
             bmm1ResBuf.SetCrossCore();
@@ -328,9 +338,10 @@ public:
 
         LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
         auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
-        constexpr int32_t pScaleByteOffset = 16640; // 16640: softmax res UB size
-        LocalTensor<fp8_e8m0_t> pScaleSubLoop0Tensor =
-            stage1CastTensor.template ReinterpretCast<fp8_e8m0_t>()[pScaleByteOffset];
+        constexpr int32_t pScaleByteOffset = 16640; // D128 master: softmax res UB size, pScale region start
+        LocalTensor<fp8_e8m0_t> pScaleSubLoop0Tensor = (s2BaseSize == 256)
+            ? this->pScaleSubLoop0Que.template AllocTensor<fp8_e8m0_t>()
+            : stage1CastTensor.template ReinterpretCast<fp8_e8m0_t>()[pScaleByteOffset];
 
         float descaleQK = 1.0;
         static constexpr int32_t s2BaseSizeCur = s2BaseSize >> 1;
@@ -375,29 +386,74 @@ public:
         //-------------------------Data copy to l1-------------------------
         uint64_t pScaleL1Offset = mBaseSize * s2BaseSize; // PScale在L1P的偏移量（单位：元素）
         LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor = outputBuf.GetTensor<fp8_e8m0_t>(pScaleL1Offset);
+        if constexpr (s2BaseSize == 256) {
+            this->pScaleSubLoop0Que.template EnQue(pScaleSubLoop0Tensor);
+            this->pScaleSubLoop0Que.template DeQue<fp8_e8m0_t>();
+        }
         constexpr uint64_t pScaleDataLen = (mBaseSize >> 1) * s2BaseSizeCur / MXFP_GROUP_SIZE;
         constexpr uint16_t pScaleDstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
         uint64_t vecOffset = constInfo.subBlockIdx * pScaleDataLen;
-        if ((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) {
-            for (uint16_t i = 0; i < 4; i++) {
-                // PScale在s2方向的block块大小为32，所以一共有256/32=8个，而L1上需要满足16x2的分形，所以重复拷贝4次
-                DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStride});
+        if (runInfo.actSingleLoopS2Size > s2SplitSize) {
+            if constexpr (s2BaseSizeCur == 128) { // D256 M-major KV256: selective P0 K-group rescale (fix NIGHT3 over-rescale P1)
+                // i=Ksg (LAYOUT_A: tile=l1_off//32, Ksg=tile%4=i). Ksg0,1=P0(K0-127), Ksg2,3=P1(K128-255).
+                // subLoop1 tensor=rescale(P0 factor exp(m0-m_new), 0x7e bad/0x7f good) -> Ksg0,1 (P0) ONLY.
+                // subLoop0 tensor=0x7f(P1 factor 1.0, P1=exp(S1-m_new) already m_new basis) -> Ksg2,3 (P1) ONLY.
+                // SIM-VERIFIED (sim_selective_verify.py): P0 bad rows Ksg0,1=0x7e(20/20), P1 Ksg2,3=0x7f NOT over-rescaled(20/20).
+                // e8m0 per-(M-row,K-group-32) NOT per-32-M-group (memory:616 LINCHPIN D128 l0amx 24 0x7e=3rowsx8Kgrp).
+                constexpr uint16_t pScaleDstStrideD256 = 3;
+                constexpr uint64_t vecOffsetSpacingD256 = mBaseSize * s2BaseSizeCur / MXFP_GROUP_SIZE; // 128*128/32 = 0x200
+                uint64_t vecOffsetD256 = constInfo.subBlockIdx * vecOffsetSpacingD256;
+                if (subLoop % 2 == 1) {
+                    for (uint16_t i = 0; i < 2; i++) { // Ksg 0,1 = P0 only (was 0..4 = over-rescale P1, NIGHT3)
+                        DataCopy(mm2AScaleL1Tensor[vecOffsetD256 + i * blockBytes],
+                                 pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStrideD256});
+                    }
+                } else {
+                    for (uint16_t i = 2; i < 4; i++) { // Ksg 2,3 = P1 only (fill P1=0x7f; cube gate s2BaseSize>256 skips InitConstValue)
+                        DataCopy(mm2AScaleL1Tensor[vecOffsetD256 + i * blockBytes],
+                                 pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStrideD256});
+                    }
+                }
+            } else { // D128 K-major: PathC 0bda7a4a pattern (subLoop1 only -> P0 region; cube P1-init 0x7f7f for P1 region; MatmulFullMX kLoops P0 rescale + P1=1.0)
+                if (subLoop % 2 == 1) {
+                    for (uint16_t i = 0; i < 4; i++) {
+                        DataCopy(mm2AScaleL1Tensor[vecOffset + i * blockBytes],
+                                 pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStride});
+                    }
+                }
             }
+        } else if (unlikely(runInfo.actSingleLoopS2Size <= s2SplitSize)) {
+            // 一次循环拷贝32个S1的scale，每个S1对应8个scale
+            // actVecMSize为64，通过2次拷贝覆盖完整的S1分形需求
+            for (uint16_t i = 0; i < 2; i++) {
+                DataCopy(mm2AScaleL1Tensor[vecOffset + i * blockBytes * 8],
+                         pScaleSubLoop0Tensor, {1, 8, 0, 0});
+            }
+        }
+        if constexpr (s2BaseSize == 256) {
+            this->pScaleSubLoop0Que.template FreeTensor(pScaleSubLoop0Tensor);
         }
 
         LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
-        int64_t subLoopOffset = s2BaseSizeCur * mBaseSize * subLoop;
+        int64_t subLoopOffset = (s2BaseSizeCur == 128) ? (s2BaseSizeCur * 32 * subLoop) // D256 KV256 Opt A (selective 100%, P1 in MatmulN read range)
+                                                         :
+                                                         (s2BaseSizeCur * mBaseSize * subLoop); // D128 KV512 PathC 0bda7a4a (P1 at 0x8000 for MatmulFullMX kLoops l1BaseKOffset)
         constexpr uint16_t elementSize = 32;
         constexpr uint32_t singleProcessSOuterSize = mBaseSize >> 1;
         constexpr uint32_t actCopyCount = (singleProcessSOuterSize + elementSize - 1) / elementSize;
         constexpr uint32_t actVec0Align32 = mBaseSize >> 1;
         uint32_t s2RealSizeAlign = (((runInfo.actSingleLoopS2Size + 63) >> 6) << 6);
         for (uint32_t i = 0; i < actCopyCount; i++) {
-            uint32_t dstOffset = 32 * s2BaseSizeCur * i + subLoopOffset;
+            // LoadData srcStride (matmul.h LoadDataToL0AMx, ifTranspose=true=USE_DN Prefill) = 256>>4, unit 512B (源码注释)
+            // DataCopy dstOffset unit=byte(fp8 1B/elt) => l1MFractalStride = srcStride*512 = (256>>4)*512 = 0x2000
+            // d128 原始 32*256 恰好对齐(巧合), d256 32*128=0x1000 错位需 subLoopOffset 补偿
+            constexpr uint32_t l1MFractalStride = (256 >> 4) * 512;  // = 0x2000, 跟 LoadData srcStride 同公式
+            constexpr uint32_t l1SubBlk1Offset = 2 * l1MFractalStride;  // subBlockIdx==1 = 跨 2 fractal (=0x4000)
+            uint32_t dstOffset = l1MFractalStride * i + subLoopOffset;
             if (constInfo.subBlockIdx == 1) {
-                dstOffset += s2BaseSizeCur * actVec0Align32;
+                dstOffset += l1SubBlk1Offset;
             }
-            uint32_t srcOffset = i * (65 << 5);
+            uint32_t srcOffset = i * ((s2BaseSizeCur / 4 + 1) << 5);
             DataCopy(mm2AL1Tensor[dstOffset], stage1CastTensor[srcOffset],
                      {4, s2BaseSizeCur / 4, s2BaseSizeCur / 4 + 2, 0});
         }
@@ -552,8 +608,9 @@ public:
         LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
         auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
         constexpr int32_t pScaleByteOffset = 16640; // 16640: softmax res UB size
-        LocalTensor<fp8_e8m0_t> pScaleSubLoop0Tensor =
-            stage1CastTensor.template ReinterpretCast<fp8_e8m0_t>()[pScaleByteOffset];
+        LocalTensor<fp8_e8m0_t> pScaleSubLoop0Tensor = (s2BaseSize == 256)
+            ? this->pScaleSubLoop0Que.template AllocTensor<fp8_e8m0_t>()
+            : stage1CastTensor.template ReinterpretCast<fp8_e8m0_t>()[pScaleByteOffset];
 
         static constexpr int32_t s2BaseSizeCur = s2BaseSize >> 1;
         uint32_t s2CalcSize = runInfo.actSingleLoopS2Size;
@@ -643,6 +700,10 @@ public:
         this->stage1OutQue[stage1Offset].template DeQue<INPUT_T>();
         uint64_t pScaleL1Offset = mBaseSize * s2BaseSize; // PScale在L1P的偏移量（单位：元素）
         LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor = outputBuf.GetTensor<fp8_e8m0_t>(pScaleL1Offset);
+        if constexpr (s2BaseSize == 256) {
+            this->pScaleSubLoop0Que.template EnQue(pScaleSubLoop0Tensor);
+            this->pScaleSubLoop0Que.template DeQue<fp8_e8m0_t>();
+        }
         uint64_t pScaleDataLen = actVecMSizeAlign16 * s2BaseSizeCur / MXFP_GROUP_SIZE;
         constexpr uint16_t pScaleDstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
         uint64_t pScaleSubLoopOffset = pScaleDataLen * 2;
@@ -650,18 +711,32 @@ public:
         uint64_t vecOffset = constInfo.subBlockIdx * pScaleDataLen;
         uint16_t dstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
         if ((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) {
-            for (uint16_t i = 0; i < 4; i++) {
-                // PScale在s2方向的block块大小为32，所以一共有256/32=8个，而L1上需要满足16x2的分形，所以重复拷贝4次
-                DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor,
-                         {copyCount, 1, 0, pScaleDstStride});
-                DataCopy(mm2AScaleL1Tensor[pScaleSubLoopOffset + vecOffset + i * 32], pScaleSubLoop0Tensor[128],
-                         {copyCount, 1, 0, pScaleDstStride});
+            if constexpr (s2BaseSizeCur == 128) {
+                constexpr uint16_t pScaleDstStrideD256 = 3;
+                uint64_t vecOffsetD256 =
+                    constInfo.subBlockIdx * actVecMSizeAlign16 * s2BaseSize / MXFP_GROUP_SIZE;
+                for (uint16_t i = 0; i < 2; i++) {
+                    DataCopy(mm2AScaleL1Tensor[vecOffsetD256 + i * blockBytes],
+                             pScaleSubLoop0Tensor, {copyCount, 1, 0, pScaleDstStrideD256});
+                    DataCopy(mm2AScaleL1Tensor[vecOffsetD256 + (i + 2) * blockBytes],
+                             pScaleSubLoop0Tensor[128], {copyCount, 1, 0, pScaleDstStrideD256});
+                }
+            } else {
+                for (uint16_t i = 0; i < 2; i++) {
+                    DataCopy(mm2AScaleL1Tensor[vecOffset + i * blockBytes], pScaleSubLoop0Tensor,
+                             {copyCount, 1, 0, pScaleDstStride});
+                    DataCopy(mm2AScaleL1Tensor[pScaleSubLoopOffset + vecOffset + i * blockBytes],
+                             pScaleSubLoop0Tensor[128], {copyCount, 1, 0, pScaleDstStride});
+                }
             }
         } else if (unlikely(runInfo.actSingleLoopS2Size <= s2SplitSize)) {
-            for (uint16_t i = 0; i < 4; i++) {
+            for (uint16_t i = 0; i < 2; i++) {
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor,
                          {copyCount, 1, 0, pScaleDstStride});
             }
+        }
+        if constexpr (s2BaseSize == 256) {
+            this->pScaleSubLoop0Que.template FreeTensor(pScaleSubLoop0Tensor);
         }
 
         LocalTensor<INPUT_T> mm2AL1Tensor;
@@ -707,6 +782,9 @@ public:
             LocalTensor<T> pScaleUb;
 
             constexpr float deSCalePreVValue = 1.0f;
+            if constexpr (dTemplateAlign64 == 256) {
+                PipeBarrier<PIPE_ALL>();
+            } // KV512 cure force mmRes complete before in-place FlashUpdate WaitFlag MTE3_V issue-based NIGHT12r cure NIGHT12j
             if (likely(!runInfo.isLastS2Loop)) {
                 FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
                     vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, vecMSize, dTemplateAlign64, 1.0f, 1.0f);
@@ -1004,8 +1082,14 @@ public:
         }
         SoftmaxInitBuffer();
         tPipe->InitBuffer(stage2OutBuf, 64 * dTemplateAlign64 * sizeof(T));
-        tPipe->InitBuffer(stage1OutQue[0], 1, 16896); // 16640 + 256(pScale)
-        tPipe->InitBuffer(stage1OutQue[1], 1, 16896);
+        if constexpr (s2BaseSize == 256) {
+            tPipe->InitBuffer(stage1OutQue[0], 1, 16640); // D256: pScale in dedicated pScaleSubLoop0Que
+            tPipe->InitBuffer(stage1OutQue[1], 1, 16640);
+            tPipe->InitBuffer(pScaleSubLoop0Que, 1, 512);
+        } else {
+            tPipe->InitBuffer(stage1OutQue[0], 1, 16896); // D128 master: 16640 softmax res + 256 pScale region (ReinterpretCast[16640])
+            tPipe->InitBuffer(stage1OutQue[1], 1, 16896);
+        }
         tPipe->InitBuffer(commonTBuf, 512);
         if constexpr (HAS_MASK && !USE_DN) {
             tPipe->InitBuffer(attenMaskInQue[0], 1, 16384); // 256 * 64

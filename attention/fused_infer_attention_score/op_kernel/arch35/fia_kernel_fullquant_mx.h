@@ -43,15 +43,18 @@ public:
     static constexpr uint32_t s2BaseSize = CubeBlockType::s2BaseSize;
     static constexpr uint32_t dBaseSize = CubeBlockType::dBaseSize;
     static constexpr uint32_t dVBaseSize = CubeBlockType::dVBaseSize;
+    static constexpr uint32_t s2SplitSize = (dBaseSize > 128) ? 128U : 256U;
 
     static constexpr bool USE_DN = CubeBlockType::USE_DN;
     static constexpr bool BMM2_TOUB = CubeBlockType::BMM2_TOUB;
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
 
-    static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
+    static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
+    static constexpr uint32_t L1P_REUSE_PERMIT_ID = 10;
+    static constexpr uint32_t L1P_REUSE_ACK_ID = 0;
     static constexpr bool HAS_ROPE = CubeBlockType::HAS_ROPE;
     static constexpr bool FLASH_DECODE = VecFaBlockType::FLASH_DECODE;
     static constexpr LayOutTypeEnum LAYOUT_Q = CubeBlockType::LAYOUT; // V100 只支持一种??
@@ -308,6 +311,14 @@ public:
 
     __aicore__ inline void CrossCoreBufferUnInit()
     {
+        if constexpr (s2BaseSize == 256 && dVBaseSize == 256 && PAGE_ATTENTION) {
+            if ASCEND_IS_AIC {
+                if (createdTaskCount > PRELOAD_TASK_CACHE_SIZE) {
+                    CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(L1P_REUSE_ACK_ID);
+                    CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(L1P_REUSE_ACK_ID + AIV0_AIV1_OFFSET);
+                }
+            }
+        }
         if ASCEND_IS_AIC {
             bmm1Buffers.Get().WaitCrossCore();
             bmm1Buffers.Get().WaitCrossCore();
@@ -534,10 +545,28 @@ public:
         RunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];                  // 本轮任务
         RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE]; // 上PRELOAD_N轮任务
         if (runInfo0.isValid) {
-            uint32_t c1v1Loop = CeilDiv(runInfo0.actSingleLoopS2Size, 256);
+            if constexpr (s2BaseSize == 256 && dVBaseSize == 256 && PAGE_ATTENTION) {
+                if ASCEND_IS_AIC {
+                    if (runInfo0.loop >= PRELOAD_TASK_CACHE_SIZE) {
+                        if (runInfo0.loop > PRELOAD_TASK_CACHE_SIZE) {
+                            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(L1P_REUSE_ACK_ID);
+                            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(L1P_REUSE_ACK_ID + AIV0_AIV1_OFFSET);
+                        }
+                        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(L1P_REUSE_PERMIT_ID);
+                        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(L1P_REUSE_PERMIT_ID + AIV0_AIV1_OFFSET);
+                    }
+                }
+            }
+            uint32_t c1v1Loop = CeilDiv(runInfo0.actSingleLoopS2Size, s2SplitSize);
             for (uint32_t subLoop = 0; subLoop < c1v1Loop; ++subLoop) {
                 if ASCEND_IS_AIC {
                     ComputeMm1(runInfo0, subLoop);
+                    if (subLoop + 1 < c1v1Loop) {
+                        // D256 BMM1 K-cut subLoop 间 drain: 缺此 cure 则 q2048/KV2048 残留 race (multirun maxdiff 0.044) FAIL 96.82%. NIGHT12tt: cure guard 只在 s2Loop 间, 不覆盖 BMM1 subLoop 0/1 (c1v1Loop=2 K-cut).
+                        if constexpr (s2BaseSize == 256) {
+                            PipeBarrier<PIPE_ALL>();
+                        }
+                    }
                 } else {
                     ComputeVec1(runInfo0, subLoop);
                 }
@@ -548,6 +577,10 @@ public:
             if (runInfoNegN.isValid) {
                 if ASCEND_IS_AIC {
                     ComputeMm2(runInfoNegN);
+                    // D256 within-iter drain: 缺此 cure 则 q2048/KV2048 (Dn 大Q multi-s2Loop, customer CSV nonpa_q2048_kv2048) inf/NaN extreme race FAIL. BMM1+BMM2 share L0A/L0B, PRELOAD_N=2 slot collision (NIGHT12tt d256-kv256-debug:1961).
+                    if constexpr (s2BaseSize == 256) {
+                        PipeBarrier<PIPE_ALL>();
+                    }
                 } else {
                     ComputeVec2(runInfoNegN);
                 }
