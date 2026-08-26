@@ -33,7 +33,7 @@ constexpr uint32_t AIV_SYSTEM_WORKSPACE_SIZE = 16U * 1024U * 1024U;
 constexpr uint64_t AIV_WORKSPACE_ALIGN = 512U;
 constexpr uint32_t AIV_ALLTOALL_OP_TYPE = 8U;
 constexpr uint32_t AIV_MULTIPUT_OP_TYPE = 18U;
-constexpr uint32_t BF16_BYTES = 2U;
+constexpr uint32_t AIV_INPUT_BYTES = 2U;
 constexpr uint32_t UB_MOVE_CAPACITY = 16U * 1024U;
 
 bool IsShapePresentAiv(const gert::StorageShape *shape)
@@ -44,6 +44,17 @@ bool IsShapePresentAiv(const gert::StorageShape *shape)
 bool IsPositiveInt32(int64_t value)
 {
     return value > 0 && value <= static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+}
+
+bool IsSupportedAivRankSize(int64_t rankSize)
+{
+    return rankSize == 2 || rankSize == 4 || rankSize == 8 || rankSize == 16 || rankSize == 32 ||
+           rankSize == 64 || rankSize == 128;
+}
+
+bool IsSupportedAivDType(ge::DataType dtype)
+{
+    return dtype == ge::DT_FLOAT16 || dtype == ge::DT_BF16;
 }
 
 uint64_t AlignWorkspace(uint64_t value)
@@ -66,7 +77,7 @@ void SetCocTiling(uint32_t m, uint32_t k, uint32_t n, uint64_t ubSize, AlltoAllv
         tiling.k0 = 32U;
         tiling.n0 = 64U;
     }
-    uint64_t moveCapacity = std::min<uint64_t>(UB_MOVE_CAPACITY, ubSize / (BF16_BYTES * 2U));
+    uint64_t moveCapacity = std::min<uint64_t>(UB_MOVE_CAPACITY, ubSize / (AIV_INPUT_BYTES * 2U));
     tiling.ubMoveNum = static_cast<uint32_t>(moveCapacity / 16U * 16U);
     if (tiling.ubMoveNum == 0U) {
         tiling.ubMoveNum = 16U;
@@ -113,15 +124,17 @@ ge::graphStatus FillAivTiling(gert::TilingContext *context)
                         recvCountsVector == nullptr || transGmmWeight == nullptr || transMmWeight == nullptr ||
                         permuteOutFlag == nullptr,
                     OP_LOGE(nodeName, "AIV attributes are incomplete."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(*epWorldSize != 2 && *epWorldSize != 4 && *epWorldSize != 8,
-                    OP_LOGE(nodeName, "AIV epWorldSize must be 2, 4 or 8, but got %lld.", *epWorldSize),
+    OP_TILING_CHECK(!IsSupportedAivRankSize(*epWorldSize),
+                    OP_LOGE(nodeName, "AIV epWorldSize must be one of 2/4/8/16/32/64/128, but got %lld.",
+                            static_cast<long long>(*epWorldSize)),
                     return ge::GRAPH_FAILED);
 
     int64_t rankSize = 0;
     OP_TILING_CHECK(!mc2tiling::GetRankSize(nodeName, group, rankSize),
                     OP_LOGE(nodeName, "Failed to get rank size for group %s.", group), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(rankSize != *epWorldSize,
-                    OP_LOGE(nodeName, "epWorldSize %lld does not match HCCL rank size %lld.", *epWorldSize, rankSize),
+                    OP_LOGE(nodeName, "epWorldSize %lld does not match HCCL rank size %lld.",
+                            static_cast<long long>(*epWorldSize), static_cast<long long>(rankSize)),
                     return ge::GRAPH_FAILED);
 
     const auto *gmmXShape = context->GetInputShape(optiling::GMM_X_INDEX);
@@ -133,9 +146,11 @@ ge::graphStatus FillAivTiling(gert::TilingContext *context)
     OP_TILING_CHECK(gmmXShape == nullptr || gmmWeightShape == nullptr || gmmYShape == nullptr ||
                         gmmXDesc == nullptr || gmmWeightDesc == nullptr || gmmYDesc == nullptr,
                     OP_LOGE(nodeName, "Required GMM tensors are incomplete."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(gmmXDesc->GetDataType() != ge::DT_BF16 || gmmWeightDesc->GetDataType() != ge::DT_BF16 ||
-                        gmmYDesc->GetDataType() != ge::DT_BF16,
-                    OP_LOGE(nodeName, "AIV mode supports BF16 GMM tensors only."), return ge::GRAPH_FAILED);
+    const ge::DataType aivDtype = gmmXDesc->GetDataType();
+    OP_TILING_CHECK(!IsSupportedAivDType(aivDtype) || gmmWeightDesc->GetDataType() != aivDtype ||
+                        gmmYDesc->GetDataType() != aivDtype,
+                    OP_LOGE(nodeName, "AIV mode requires matching FP16 or BF16 GMM tensors."),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(gmmXDesc->GetStorageFormat() != ge::FORMAT_ND ||
                         gmmWeightDesc->GetStorageFormat() != ge::FORMAT_ND ||
                         gmmYDesc->GetStorageFormat() != ge::FORMAT_ND,
@@ -215,13 +230,13 @@ ge::graphStatus FillAivTiling(gert::TilingContext *context)
         const auto *mmWeightDesc = context->GetOptionalInputDesc(optiling::NON_QUANT_MM_WEIGHT_INDEX);
         const auto *mmYDesc = context->GetOutputDesc(optiling::OUTPUT_MM_Y_INDEX);
         OP_TILING_CHECK(mmXDesc == nullptr || mmWeightDesc == nullptr || mmYDesc == nullptr ||
-                            mmXDesc->GetDataType() != ge::DT_BF16 ||
-                            mmWeightDesc->GetDataType() != ge::DT_BF16 ||
-                            mmYDesc->GetDataType() != ge::DT_BF16 ||
+                            mmXDesc->GetDataType() != aivDtype ||
+                            mmWeightDesc->GetDataType() != aivDtype ||
+                            mmYDesc->GetDataType() != aivDtype ||
                             mmXDesc->GetStorageFormat() != ge::FORMAT_ND ||
                             mmWeightDesc->GetStorageFormat() != ge::FORMAT_ND ||
                             mmYDesc->GetStorageFormat() != ge::FORMAT_ND,
-                        OP_LOGE(nodeName, "AIV shared MM supports BF16 ND tensors only."),
+                        OP_LOGE(nodeName, "AIV shared MM requires matching FP16/BF16 ND tensors."),
                         return ge::GRAPH_FAILED);
         const auto &mx = mmXShape->GetStorageShape();
         const auto &mw = mmWeightShape->GetStorageShape();
@@ -248,10 +263,10 @@ ge::graphStatus FillAivTiling(gert::TilingContext *context)
     if (hasPermute) {
         const auto *permuteDesc = context->GetOutputDesc(optiling::OUTPUT_PERMUTE_OUT_INDEX);
         const auto &shape = permuteShape->GetStorageShape();
-        OP_TILING_CHECK(permuteDesc == nullptr || permuteDesc->GetDataType() != ge::DT_BF16 ||
+        OP_TILING_CHECK(permuteDesc == nullptr || permuteDesc->GetDataType() != aivDtype ||
                             permuteDesc->GetStorageFormat() != ge::FORMAT_ND || shape.GetDimNum() != 2 ||
                             shape.GetDim(0) != outputM || shape.GetDim(1) != inputK,
-                        OP_LOGE(nodeName, "AIV permuteOut must be BF16 ND with shape [outputM, K]."),
+                        OP_LOGE(nodeName, "AIV permuteOut must match the FP16/BF16 input dtype and shape [outputM, K]."),
                         return ge::GRAPH_FAILED);
     }
 
@@ -308,7 +323,7 @@ ge::graphStatus FillAivTiling(gert::TilingContext *context)
     tilingData->countNum = static_cast<uint32_t>(countNum);
 
     const uint64_t recvBytes =
-        AlignWorkspace(static_cast<uint64_t>(outputM) * static_cast<uint64_t>(inputK) * BF16_BYTES);
+        AlignWorkspace(static_cast<uint64_t>(outputM) * static_cast<uint64_t>(inputK) * AIV_INPUT_BYTES);
     const uint64_t countBytes = AlignWorkspace(countNum * sizeof(AlltoAllvGmmExpertSourceMeta));
     const uint64_t metaBytes =
         AlignWorkspace(static_cast<uint64_t>(expertPerRank) * sizeof(AlltoAllvGmmExpertMeta));

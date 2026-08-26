@@ -19,7 +19,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/common/a2av_common_tiling.h"
 
-constexpr uint32_t A2AVGMM_MAX_COUNT_NUM = 128U;
+constexpr uint32_t A2AVGMM_MAX_COUNT_NUM = 256U;
 
 #pragma pack(push, 8)
 struct AlltoAllvGmmInfo {

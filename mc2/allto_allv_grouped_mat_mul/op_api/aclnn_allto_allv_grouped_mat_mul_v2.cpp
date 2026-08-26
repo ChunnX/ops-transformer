@@ -34,24 +34,38 @@ enum class NnopbaseHcclServerType : uint32_t {
 static constexpr uint32_t RANK_DIM_BOUNDARY = 8;
 
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
+extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
+extern "C" void *NnopbaseGetUserHandle(void *executor);
 
-static aclnnStatus CheckAndHandleCommMode(const char *commModeStr)
+static aclnnStatus CheckAndHandleCommMode(const char *commModeStr, uint8_t &commModeEnum)
 {
-    if (commModeStr == nullptr || std::strcmp(commModeStr, "aiv") != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "AlltoAllvGroupedMatMulV2 only supports commMode 'aiv'.");
+    if (commModeStr == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Optional commMode name is Empty.");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_2201) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "AlltoAllvGroupedMatMulV2 AIV mode only supports Ascend 910B/910C.");
-        return ACLNN_ERR_PARAM_INVALID;
+    const auto arch = GetCurrentPlatformInfo().GetCurNpuArch();
+    if (std::strcmp(commModeStr, "ai_cpu") == 0) {
+        commModeEnum = Mc2Comm::COMM_MODE_AICPU;
+        return ACLNN_SUCCESS;
     }
-    return ACLNN_SUCCESS;
+    if (arch == NpuArch::DAV_2201 && std::strcmp(commModeStr, "aiv") == 0) {
+        commModeEnum = Mc2Comm::COMM_MODE_AIV;
+        return ACLNN_SUCCESS;
+    }
+    if (arch == NpuArch::DAV_3510 && std::strcmp(commModeStr, "ccu") == 0) {
+        commModeEnum = Mc2Comm::COMM_MODE_CCU;
+        return ACLNN_SUCCESS;
+    }
+    OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "AlltoAllvGroupedMatMulV2 commMode %s is unsupported on the current platform.", commModeStr);
+    return ACLNN_ERR_PARAM_INVALID;
 }
 
-static aclnnStatus CheckBf16NdTensor(const aclTensor *tensor, const char *tensorName, bool allowPtaNcl = false)
+static aclnnStatus CheckAivTensor(const aclTensor *tensor, const char *tensorName, bool allowPtaNcl = false)
 {
-    if (tensor->GetDataType() != op::DataType::DT_BF16) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s only supports BF16.", tensorName);
+    const auto dtype = tensor->GetDataType();
+    if (dtype != op::DataType::DT_BF16 && dtype != op::DataType::DT_FLOAT16) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s only supports FP16 or BF16 in AIV mode.", tensorName);
         return ACLNN_ERR_PARAM_INVALID;
     }
     const auto storageFormat = tensor->GetStorageFormat();
@@ -111,7 +125,7 @@ static aclnnStatus CheckParams(const aclTensor *gmmX, const aclTensor *gmmWeight
                                const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional,
                                const aclTensor *mmXOptional, const aclTensor *mmWeightOptional, const char *group,
                                int64_t epWorldSize, bool permuteOutFlag, aclTensor *gmmY, aclTensor *mmYOptional,
-                               aclTensor *permuteOutOptional)
+                               aclTensor *permuteOutOptional, bool checkAivTensor)
 {
     (void)epWorldSize; // Unused
     CHECK_RET(CheckNullStatus(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional,
@@ -123,22 +137,26 @@ static aclnnStatus CheckParams(const aclTensor *gmmX, const aclTensor *gmmWeight
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    aclnnStatus ret = CheckBf16NdTensor(gmmX, "gmmX");
+    if (!checkAivTensor) {
+        return ACLNN_SUCCESS;
+    }
+
+    aclnnStatus ret = CheckAivTensor(gmmX, "gmmX");
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
-    ret = CheckBf16NdTensor(gmmWeight, "gmmWeight", true);
+    ret = CheckAivTensor(gmmWeight, "gmmWeight", true);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
-    ret = CheckBf16NdTensor(gmmY, "gmmY");
+    ret = CheckAivTensor(gmmY, "gmmY");
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     if (mmXOptional != nullptr) {
-        ret = CheckBf16NdTensor(mmXOptional, "mmXOptional");
+        ret = CheckAivTensor(mmXOptional, "mmXOptional");
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
-        ret = CheckBf16NdTensor(mmWeightOptional, "mmWeightOptional");
+        ret = CheckAivTensor(mmWeightOptional, "mmWeightOptional");
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
-        ret = CheckBf16NdTensor(mmYOptional, "mmYOptional");
+        ret = CheckAivTensor(mmYOptional, "mmYOptional");
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
     }
     if (permuteOutOptional != nullptr) {
-        ret = CheckBf16NdTensor(permuteOutOptional, "permuteOutOptional");
+        ret = CheckAivTensor(permuteOutOptional, "permuteOutOptional");
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
     }
 
@@ -179,18 +197,29 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(
 {
     auto ret_param =
         CheckParams(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
-                    group, epWorldSize, permuteOutFlag, gmmY, mmYOptional, permuteOutOptional);
+                    group, epWorldSize, permuteOutFlag, gmmY, mmYOptional, permuteOutOptional, false);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
     auto ret_send_and_recv = CheckSendAndRecv(sendCounts, recvCounts);
     CHECK_RET(ret_send_and_recv == ACLNN_SUCCESS, ret_send_and_recv);
     char *str_commMode = const_cast<char *>(commMode);
-    aclnnStatus checkCommModeRet = CheckAndHandleCommMode(commMode);
+    uint8_t commModeEnum = Mc2Comm::COMM_MODE_AICPU;
+    aclnnStatus checkCommModeRet = CheckAndHandleCommMode(commMode, commModeEnum);
     CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
+    if (commModeEnum == Mc2Comm::COMM_MODE_AIV) {
+        ret_param = CheckParams(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional,
+                                mmWeightOptional, group, epWorldSize, permuteOutFlag, gmmY, mmYOptional,
+                                permuteOutOptional, true);
+        CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
+    }
     aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMulGetWorkspaceSize(
         gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
         const_cast<char *>(group), epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight, permuteOutFlag,
         str_commMode, gmmY, mmYOptional, permuteOutOptional, workspaceSize, executor);
     OP_LOGD("AlltoAllvGroupedMatmul, aclnnInnerAlltoAllvGroupedMatMulGetWorkspaceSize ret %d.", ret);
+    if (*executor != nullptr) {
+        void *args = reinterpret_cast<void *>(static_cast<uintptr_t>(commModeEnum));
+        NnopbaseSetUserHandle(*executor, args);
+    }
     return ret;
 }
 
@@ -198,8 +227,19 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2(void *workspace, uint64_t workspaceSiz
                                           aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
-        OP_LOGD("AlltoAllvGroupedMatMulV2 uses AIV/MTE communication mode");
-        NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
+        const uintptr_t handleVal = reinterpret_cast<uintptr_t>(NnopbaseGetUserHandle(executor));
+        const uint8_t commMode = static_cast<uint8_t>(handleVal);
+        if (commMode == Mc2Comm::COMM_MODE_AIV) {
+            OP_LOGD("AlltoAllvGroupedMatMulV2 uses AIV/MTE communication mode");
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
+        } else if (commMode == Mc2Comm::COMM_MODE_CCU &&
+                   GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+            OP_LOGD("AlltoAllvGroupedMatMulV2 uses CCU communication mode");
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+        } else {
+            OP_LOGD("AlltoAllvGroupedMatMulV2 uses AICPU communication mode");
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+        }
     }
     aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMul(workspace, workspaceSize, executor, stream);
     OP_LOGD("AlltoAllvGroupedMatmul, aclnnInnerAlltoAllvGroupedMatMul ret %d.", ret);

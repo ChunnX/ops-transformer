@@ -11,15 +11,14 @@
 
 namespace AlltoAllvGroupedMatMulAiv {
 
-constexpr uint32_t kMaxRankSize = 8U;
+constexpr uint32_t kMaxRankSize = 128U;
 constexpr uint64_t kWindowAlignment = 512U;
 constexpr uint64_t kDefaultWindowBytes = 200U * 1024U * 1024U;
-constexpr uint64_t kControlFlagStride = 32U;
+constexpr uint64_t kFlagSlotBytes = 32U;
+constexpr uint64_t kControlFlagStride = kFlagSlotBytes;
 constexpr uint64_t kEpochOffset = 0U;
 constexpr uint64_t kPublishSlotsOffset = kControlFlagStride;
-constexpr uint64_t kReleaseSlotsOffset = kPublishSlotsOffset + kMaxRankSize * kControlFlagStride;
-constexpr uint64_t kFirstExpertFlagOffset = kReleaseSlotsOffset + kMaxRankSize * kControlFlagStride;
-constexpr uint64_t kBfloat16Bytes = 2U;
+constexpr uint64_t kInputElementBytes = 2U;
 
 struct ExpertMeta {
     uint64_t recvTokenBase = 0U;
@@ -39,6 +38,14 @@ struct A2avWindowLayout {
     uint64_t countsOffset = 0U;
     uint64_t controlOffset = 0U;
     uint64_t readyOffset = 0U;
+    uint64_t totalBytes = 0U;
+};
+
+struct RuntimeControlLayout {
+    uint64_t epochOffset = 0U;
+    uint64_t publishSlotsOffset = 0U;
+    uint64_t releaseSlotsOffset = 0U;
+    uint64_t firstExpertFlagOffset = 0U;
     uint64_t totalBytes = 0U;
 };
 
@@ -87,6 +94,39 @@ A2AVGMM_HOST_DEVICE bool SafeMulU64(uint64_t lhs, uint64_t rhs, uint64_t &result
     }
     result = lhs * rhs;
     return true;
+}
+
+A2AVGMM_HOST_DEVICE bool BuildRuntimeControlLayout(uint32_t rankSize, uint32_t expertPerRank,
+                                                   RuntimeControlLayout &layout)
+{
+    if (rankSize == 0U || rankSize > kMaxRankSize || expertPerRank == 0U) {
+        return false;
+    }
+    uint64_t rankSlotsBytes = 0U;
+    uint64_t expertSlotsBytes = 0U;
+    layout = {};
+    layout.epochOffset = kEpochOffset;
+    layout.publishSlotsOffset = kPublishSlotsOffset;
+    rankSlotsBytes = rankSize * kFlagSlotBytes;
+    expertSlotsBytes = expertPerRank * kFlagSlotBytes;
+    if (!SafeAddU64(layout.publishSlotsOffset, rankSlotsBytes, layout.releaseSlotsOffset) ||
+        !SafeAddU64(layout.releaseSlotsOffset, rankSlotsBytes, layout.firstExpertFlagOffset) ||
+        !SafeAddU64(layout.firstExpertFlagOffset, expertSlotsBytes, layout.totalBytes)) {
+        layout = {};
+        return false;
+    }
+    return true;
+}
+
+A2AVGMM_HOST_DEVICE bool IsRankAssignedToWorker(uint32_t rank, uint32_t workerIdx, uint32_t workerNum)
+{
+    return workerNum != 0U && workerIdx < workerNum && rank >= workerIdx &&
+           (rank - workerIdx) % workerNum == 0U;
+}
+
+A2AVGMM_HOST_DEVICE bool RequiresA2DynamicWindowTable(uint32_t rankSize)
+{
+    return rankSize >= 64U;
 }
 
 
@@ -196,7 +236,7 @@ A2AVGMM_HOST_DEVICE bool GetPeerSourceTokenOffset(const int64_t *peerSendCounts,
 }
 
 A2AVGMM_HOST_DEVICE bool BuildWindowLayout(uint64_t inputTokenNum, uint64_t hiddenSize, uint64_t countNum,
-                                           uint64_t controlBytes, uint64_t windowBytes,
+                                           const RuntimeControlLayout &control, uint64_t windowBytes,
                                            A2avWindowLayout &layout)
 {
     uint64_t inputElements = 0U;
@@ -205,16 +245,18 @@ A2AVGMM_HOST_DEVICE bool BuildWindowLayout(uint64_t inputTokenNum, uint64_t hidd
     uint64_t countAreaBytes = 0U;
     uint64_t requiredBytes = 0U;
     uint64_t payloadAndCounts = 0U;
+    uint64_t controlBytes = 0U;
     if (!SafeMulU64(inputTokenNum, hiddenSize, inputElements) ||
-        !SafeMulU64(inputElements, kBfloat16Bytes, rawInputBytes) ||
+        !SafeMulU64(inputElements, kInputElementBytes, rawInputBytes) ||
         !AlignUpU64(rawInputBytes, kWindowAlignment, layout.inputBytes) ||
         !SafeMulU64(countNum, sizeof(int64_t), rawCountBytes) ||
         !AlignUpU64(rawCountBytes, kWindowAlignment, countAreaBytes) ||
+        !AlignUpU64(control.totalBytes, kWindowAlignment, controlBytes) ||
         !SafeAddU64(layout.inputBytes, countAreaBytes, payloadAndCounts) ||
         !SafeAddU64(payloadAndCounts, controlBytes, requiredBytes)) {
         return false;
     }
-    if (controlBytes < kFirstExpertFlagOffset || requiredBytes > windowBytes ||
+    if (control.totalBytes == 0U || control.totalBytes > controlBytes || requiredBytes > windowBytes ||
         controlBytes > windowBytes) {
         return false;
     }
@@ -227,7 +269,7 @@ A2AVGMM_HOST_DEVICE bool BuildWindowLayout(uint64_t inputTokenNum, uint64_t hidd
     if (layout.inputBytes > layout.countsOffset) {
         return false;
     }
-    layout.readyOffset = kFirstExpertFlagOffset;
+    layout.readyOffset = control.firstExpertFlagOffset;
     layout.totalBytes = requiredBytes;
     return true;
 }
@@ -244,7 +286,6 @@ A2AVGMM_HOST_DEVICE bool BuildWindowLayout(uint64_t inputTokenNum, uint64_t hidd
 #include "kernel_operator.h"
 #endif
 #include "adv_api/hccl/hccl.h"
-#include "../../common/op_kernel/moe_distribute_base.h"
 
 namespace AlltoAllvGroupedMatMulAiv {
 
@@ -259,37 +300,32 @@ public:
 
         PeerContextMetadata metadata = {};
         if (is910C != 0U) {
-            __gm__ HcclOpResParam *a3Context =
-                reinterpret_cast<__gm__ HcclOpResParam *>(contextAddress);
-            if (!NormalizePeerContextMetadata(a3Context->localUsrRankId, a3Context->rankSize,
-                                              a3Context->winSize, metadata)) {
+            a3Context_ = reinterpret_cast<__gm__ AscendC::HcclContextDef::HcclOpResParam *>(contextAddress);
+            if (!NormalizePeerContextMetadata(a3Context_->rankId, a3Context_->rankNum,
+                                              a3Context_->winSize, metadata)) {
                 return false;
             }
-            for (uint32_t rank = 0U; rank < metadata.rankSize; ++rank) {
-                if (rank == metadata.rankId) {
-                    windows_[rank] = reinterpret_cast<GM_ADDR>(a3Context->localWindowsIn);
-                } else {
-                    __gm__ HcclRankRelationResV2 *relation =
-                        reinterpret_cast<__gm__ HcclRankRelationResV2 *>(
-                            a3Context->remoteRes[rank].nextDevicePtr);
-                    windows_[rank] = reinterpret_cast<GM_ADDR>(relation->windowsIn);
-                }
-            }
+            isA3_ = true;
         } else {
-            __gm__ HcclA2CombineOpParam *a2Context =
-                reinterpret_cast<__gm__ HcclA2CombineOpParam *>(contextAddress);
-            if (!NormalizePeerContextMetadata(a2Context->rankId, a2Context->rankNum,
-                                              a2Context->winSize, metadata)) {
+            a2Context_ = reinterpret_cast<__gm__ AscendC::HcclCombineOpParam *>(contextAddress);
+            if (!NormalizePeerContextMetadata(a2Context_->rankId, a2Context_->rankNum,
+                                              a2Context_->winSize, metadata)) {
                 return false;
             }
-            for (uint32_t rank = 0U; rank < metadata.rankSize; ++rank) {
-                windows_[rank] = reinterpret_cast<GM_ADDR>(a2Context->windowsIn[rank]);
+            if (RequiresA2DynamicWindowTable(metadata.rankSize) &&
+                (a2Context_->multiFlag == 0U || a2Context_->data == nullptr)) {
+                return false;
             }
         }
 
         rankId_ = metadata.rankId;
         rankSize_ = metadata.rankSize;
         windowBytes_ = metadata.windowBytes;
+        for (uint32_t rank = 0U; rank < rankSize_; ++rank) {
+            if (Window(rank) == nullptr) {
+                return false;
+            }
+        }
         return true;
     }
 
@@ -310,14 +346,34 @@ public:
 
     __aicore__ inline GM_ADDR Window(uint32_t rank) const
     {
-        return windows_[rank];
+        if (rank >= rankSize_) {
+            return nullptr;
+        }
+        if (isA3_) {
+            if (rank == rankId_) {
+                return reinterpret_cast<GM_ADDR>(a3Context_->localWindowsIn);
+            }
+            auto *relation = AscendC::GetRemoteRankAddrs(a3Context_, rank);
+            return relation == nullptr ? nullptr : reinterpret_cast<GM_ADDR>(relation->windowsIn);
+        }
+        if (a2Context_->multiFlag == 0U) {
+            return reinterpret_cast<GM_ADDR>(a2Context_->windowsIn[rank]);
+        }
+        if (a2Context_->data == nullptr) {
+            return nullptr;
+        }
+        return rank == rankId_
+                   ? reinterpret_cast<GM_ADDR>(a2Context_->data[rank].localInput.addr)
+                   : reinterpret_cast<GM_ADDR>(a2Context_->data[rank].remoteInput.addr);
     }
 
 private:
-    GM_ADDR windows_[kMaxRankSize] = {};
+    __gm__ AscendC::HcclCombineOpParam *a2Context_ = nullptr;
+    __gm__ AscendC::HcclContextDef::HcclOpResParam *a3Context_ = nullptr;
     uint32_t rankId_ = 0U;
     uint32_t rankSize_ = 0U;
     uint64_t windowBytes_ = 0U;
+    bool isA3_ = false;
 };
 
 template <typename T>
@@ -405,16 +461,19 @@ __aicore__ inline int32_t NextInvocationEpoch(const PeerWindowContext &context, 
 }
 
 __aicore__ inline void PublishPeerPhase(const PeerWindowContext &context, const A2avWindowLayout &layout,
-                                        uint64_t phaseOffset, int32_t epoch, uint32_t blockIdx, uint32_t aivIdx,
+                                        uint64_t phaseOffset, int32_t epoch, uint32_t workerIdx,
+                                        uint32_t workerNum, uint32_t subBlockIdx,
                                         AscendC::TBuf<AscendC::TPosition::VECCALC> &flagBuffer)
 {
-    if (aivIdx != 0U || blockIdx >= context.RankSize()) {
+    if (subBlockIdx != 0U || workerNum == 0U || workerIdx >= workerNum) {
         return;
     }
-    __gm__ int32_t *slot = GetFlagAddress(
-        context.Window(blockIdx), layout.controlOffset,
-        phaseOffset + static_cast<uint64_t>(context.RankId()) * kControlFlagStride);
-    StoreFlag(slot, flagBuffer, epoch);
+    for (uint32_t rank = workerIdx; rank < context.RankSize(); rank += workerNum) {
+        __gm__ int32_t *slot = GetFlagAddress(
+            context.Window(rank), layout.controlOffset,
+            phaseOffset + static_cast<uint64_t>(context.RankId()) * kControlFlagStride);
+        StoreFlag(slot, flagBuffer, epoch);
+    }
 }
 
 __aicore__ inline void WaitPeerPhase(const PeerWindowContext &context, const A2avWindowLayout &layout,

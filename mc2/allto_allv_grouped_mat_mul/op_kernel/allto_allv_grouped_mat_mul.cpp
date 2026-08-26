@@ -63,12 +63,17 @@ allto_allv_grouped_mat_mul(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCoun
     }
 
     if constexpr (TILINGKEY_COMM_MODE == TILINGKEY_TPL_AIV) {
-        if constexpr (std::is_same_v<DTYPE_GMM_X, bfloat16_t> &&
-                      std::is_same_v<DTYPE_GMM_WEIGHT, bfloat16_t> &&
-                      std::is_same_v<DTYPE_GMM_Y, bfloat16_t>) {
+        constexpr bool isBf16 = std::is_same_v<DTYPE_GMM_X, bfloat16_t> &&
+                                std::is_same_v<DTYPE_GMM_WEIGHT, bfloat16_t> &&
+                                std::is_same_v<DTYPE_GMM_Y, bfloat16_t>;
+        constexpr bool isFp16 = std::is_same_v<DTYPE_GMM_X, half> &&
+                                std::is_same_v<DTYPE_GMM_WEIGHT, half> &&
+                                std::is_same_v<DTYPE_GMM_Y, half>;
+        if constexpr (isBf16 || isFp16) {
             GET_TILING_DATA_WITH_STRUCT(
                 AlltoAllvGmmAivTilingData, aivTilingData, tilingGM);
             AlltoAllvGroupedMatMulAivMode::Run<
+                DTYPE_GMM_X,
                 TILINGKEY_GMM_WEIGHT_TRANSPOSE,
                 TILINGKEY_MM_WEIGHT_TRANSPOSE>(
                     gmmxGM, gmmweightGM, mmxOptionalGM, mmweightOptionalGM,

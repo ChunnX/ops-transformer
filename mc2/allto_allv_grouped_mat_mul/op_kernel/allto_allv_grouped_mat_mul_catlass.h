@@ -110,7 +110,7 @@ A2AVGMM_CATLASS_HOST_DEVICE bool BuildSharedGemmSpec(
 
 namespace AlltoAllvGroupedMatMulCatlass {
 
-template <bool TRANSPOSE_B>
+template <typename Element, bool TRANSPOSE_B>
 __aicore__ inline bool RunExpertGemm(
     GM_ADDR recvTokenBuffer, GM_ADDR weight, GM_ADDR output, uint32_t expertIdx,
     const AlltoAllvGroupedMatMulAiv::ExpertMeta &expert,
@@ -130,7 +130,7 @@ __aicore__ inline bool RunExpertGemm(
             IsSupportedTile(tiling.m0, tiling.k0, tiling.n0));
 }
 
-template <bool TRANSPOSE_B>
+template <typename Element, bool TRANSPOSE_B>
 __aicore__ inline bool RunSharedExpertGemm(
     GM_ADDR input, GM_ADDR weight, GM_ADDR output,
     const AlltoAllvGmmInfo &info, const AlltoAllvGmmCoCTiling &tiling)
@@ -156,12 +156,12 @@ __aicore__ inline void CompileCheckCatlassWrappers(
 {
     if (false) {
         AlltoAllvGroupedMatMulAiv::ExpertMeta expert{};
-        (void)RunExpertGemm<false>(
+        (void)RunExpertGemm<bfloat16_t, false>(
             input, weight, output, 0U, expert, info, tiling);
-        (void)RunExpertGemm<true>(
+        (void)RunExpertGemm<half, true>(
             input, weight, output, 0U, expert, info, tiling);
-        (void)RunSharedExpertGemm<false>(input, weight, output, info, tiling);
-        (void)RunSharedExpertGemm<true>(input, weight, output, info, tiling);
+        (void)RunSharedExpertGemm<bfloat16_t, false>(input, weight, output, info, tiling);
+        (void)RunSharedExpertGemm<half, true>(input, weight, output, info, tiling);
     }
 }
 
@@ -186,12 +186,11 @@ namespace detail {
 
 constexpr int32_t kL1TileK = 256;
 
-template <bool TRANSPOSE_B, int32_t TILE_M, int32_t TILE_K, int32_t TILE_N>
-__aicore__ inline void RunBfloat16Gemm(const GemmLaunchSpec &spec, GM_ADDR ptrA, GM_ADDR ptrB, GM_ADDR ptrC)
+template <typename Element, bool TRANSPOSE_B, int32_t TILE_M, int32_t TILE_K, int32_t TILE_N>
+__aicore__ inline void RunElementGemm(const GemmLaunchSpec &spec, GM_ADDR ptrA, GM_ADDR ptrB, GM_ADDR ptrC)
 {
     using namespace Catlass;
     using ArchTag = Arch::AtlasA2;
-    using Element = bfloat16_t;
     using LayoutA = layout::RowMajor;
     using LayoutB = typename std::conditional<TRANSPOSE_B, layout::ColumnMajor, layout::RowMajor>::type;
     using LayoutC = layout::RowMajor;
@@ -207,7 +206,7 @@ __aicore__ inline void RunBfloat16Gemm(const GemmLaunchSpec &spec, GM_ADDR ptrA,
     using MatmulKernel = Gemm::Kernel::BasicMatmul<BlockMmad, void, BlockScheduler>;
 
     static_assert(std::is_same<typename BlockMmad::ElementAccumulator, float>::value,
-                  "BF16 CATLASS GEMM must accumulate in FP32.");
+                  "FP16/BF16 CATLASS GEMM must accumulate in FP32.");
 
     LayoutA layoutA{spec.m, spec.k, spec.lda};
     LayoutB layoutB{spec.k, spec.n, spec.ldb};
@@ -218,8 +217,8 @@ __aicore__ inline void RunBfloat16Gemm(const GemmLaunchSpec &spec, GM_ADDR ptrA,
     matmul(params);
 }
 
-template <bool TRANSPOSE_B>
-__aicore__ inline bool RunConfiguredBfloat16Gemm(
+template <typename Element, bool TRANSPOSE_B>
+__aicore__ inline bool RunConfiguredGemm(
     const GemmLaunchSpec &spec, const AlltoAllvGmmCoCTiling &tiling,
     GM_ADDR ptrA, GM_ADDR ptrB, GM_ADDR ptrC)
 {
@@ -227,13 +226,13 @@ __aicore__ inline bool RunConfiguredBfloat16Gemm(
         return true;
     }
     if (tiling.m0 == 128U && tiling.k0 == 64U && tiling.n0 == 128U) {
-        RunBfloat16Gemm<TRANSPOSE_B, 128, 64, 128>(spec, ptrA, ptrB, ptrC);
+        RunElementGemm<Element, TRANSPOSE_B, 128, 64, 128>(spec, ptrA, ptrB, ptrC);
     } else if (tiling.m0 == 128U && tiling.k0 == 32U && tiling.n0 == 128U) {
-        RunBfloat16Gemm<TRANSPOSE_B, 128, 32, 128>(spec, ptrA, ptrB, ptrC);
+        RunElementGemm<Element, TRANSPOSE_B, 128, 32, 128>(spec, ptrA, ptrB, ptrC);
     } else if (tiling.m0 == 64U && tiling.k0 == 64U && tiling.n0 == 128U) {
-        RunBfloat16Gemm<TRANSPOSE_B, 64, 64, 128>(spec, ptrA, ptrB, ptrC);
+        RunElementGemm<Element, TRANSPOSE_B, 64, 64, 128>(spec, ptrA, ptrB, ptrC);
     } else if (tiling.m0 == 64U && tiling.k0 == 32U && tiling.n0 == 64U) {
-        RunBfloat16Gemm<TRANSPOSE_B, 64, 32, 64>(spec, ptrA, ptrB, ptrC);
+        RunElementGemm<Element, TRANSPOSE_B, 64, 32, 64>(spec, ptrA, ptrB, ptrC);
     } else {
         return false;
     }
@@ -242,7 +241,7 @@ __aicore__ inline bool RunConfiguredBfloat16Gemm(
 
 } // namespace detail
 
-template <bool TRANSPOSE_B>
+template <typename Element, bool TRANSPOSE_B>
 __aicore__ inline bool RunExpertGemm(
     GM_ADDR recvTokenBuffer, GM_ADDR weight, GM_ADDR output, uint32_t expertIdx,
     const AlltoAllvGroupedMatMulAiv::ExpertMeta &expert, const AlltoAllvGmmInfo &info,
@@ -256,13 +255,13 @@ __aicore__ inline bool RunExpertGemm(
     if (!BuildExpertGemmSpec<TRANSPOSE_B>(expertIdx, expert, info.K, info.N, spec)) {
         return false;
     }
-    constexpr uint64_t elementBytes = sizeof(bfloat16_t);
-    return detail::RunConfiguredBfloat16Gemm<TRANSPOSE_B>(
+    constexpr uint64_t elementBytes = sizeof(Element);
+    return detail::RunConfiguredGemm<Element, TRANSPOSE_B>(
         spec, tiling, recvTokenBuffer + spec.offsetA * elementBytes,
         weight + spec.offsetB * elementBytes, output + spec.offsetC * elementBytes);
 }
 
-template <bool TRANSPOSE_B>
+template <typename Element, bool TRANSPOSE_B>
 __aicore__ inline bool RunSharedExpertGemm(
     GM_ADDR input, GM_ADDR weight, GM_ADDR output, const AlltoAllvGmmInfo &info,
     const AlltoAllvGmmCoCTiling &tiling)
@@ -275,7 +274,7 @@ __aicore__ inline bool RunSharedExpertGemm(
     if (!BuildSharedGemmSpec<TRANSPOSE_B>(info.hasSharedExpert != 0U, info.M, info.K, info.N, spec)) {
         return info.hasSharedExpert == 0U || info.M == 0U;
     }
-    return detail::RunConfiguredBfloat16Gemm<TRANSPOSE_B>(spec, tiling, input, weight, output);
+    return detail::RunConfiguredGemm<Element, TRANSPOSE_B>(spec, tiling, input, weight, output);
 }
 
 __aicore__ inline void CompileCheckCatlassWrappers(
@@ -284,10 +283,10 @@ __aicore__ inline void CompileCheckCatlassWrappers(
 {
     if (false) {
         AlltoAllvGroupedMatMulAiv::ExpertMeta expert{};
-        (void)RunExpertGemm<false>(input, weight, output, 0U, expert, info, tiling);
-        (void)RunExpertGemm<true>(input, weight, output, 0U, expert, info, tiling);
-        (void)RunSharedExpertGemm<false>(input, weight, output, info, tiling);
-        (void)RunSharedExpertGemm<true>(input, weight, output, info, tiling);
+        (void)RunExpertGemm<bfloat16_t, false>(input, weight, output, 0U, expert, info, tiling);
+        (void)RunExpertGemm<half, true>(input, weight, output, 0U, expert, info, tiling);
+        (void)RunSharedExpertGemm<bfloat16_t, false>(input, weight, output, info, tiling);
+        (void)RunSharedExpertGemm<half, true>(input, weight, output, info, tiling);
     }
 }
 

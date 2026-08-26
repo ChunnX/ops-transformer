@@ -135,7 +135,6 @@ A2AVGMM_AIV_MODE_HOST_DEVICE bool IsSourceWorker(
 namespace AlltoAllvGroupedMatMulAivMode {
 namespace detail {
 
-constexpr uint64_t kControlRegionBytes = 16U * 1024U * 1024U;
 // A CrossCore flag has a finite outstanding set-count.  MegaMoE advances to
 // the next flag id after fifteen producer notifications; use the same proven
 // protocol for the per-expert AIV -> AIC hand-off on both A2 and A3.
@@ -265,44 +264,47 @@ __aicore__ inline bool GetPeerSourceTokenOffset(
     return true;
 }
 
+template <typename T>
 __aicore__ inline bool BuildDeviceWindowLayout(
     uint64_t inputTokens, uint32_t hiddenSize, uint32_t countNum,
-    uint64_t windowBytes,
+    uint32_t rankSize, uint32_t expertPerRank, uint64_t windowBytes,
+    AlltoAllvGroupedMatMulAiv::RuntimeControlLayout &control,
     AlltoAllvGroupedMatMulAiv::A2avWindowLayout &layout)
 {
-    if (inputTokens > 0xffffffffULL) {
+    if (sizeof(T) != AlltoAllvGroupedMatMulAiv::kInputElementBytes ||
+        inputTokens > 0xffffffffULL ||
+        !AlltoAllvGroupedMatMulAiv::BuildRuntimeControlLayout(
+            rankSize, expertPerRank, control)) {
         return false;
     }
-    const uint64_t inputElements =
-        AlltoAllvGroupedMatMulAiv::MulU32ToU64(
-            static_cast<uint32_t>(inputTokens), hiddenSize);
+    const uint64_t inputElements = AlltoAllvGroupedMatMulAiv::MulU32ToU64(
+        static_cast<uint32_t>(inputTokens), hiddenSize);
     if (inputElements > (~static_cast<uint64_t>(0U) >> 1U)) {
         return false;
     }
 
     uint64_t countAreaBytes = 0U;
+    uint64_t controlBytes = 0U;
     uint64_t payloadAndCounts = 0U;
     uint64_t requiredBytes = 0U;
     if (!AlltoAllvGroupedMatMulAiv::AlignUpU64(
-            inputElements << 1U,
-            AlltoAllvGroupedMatMulAiv::kWindowAlignment,
+            inputElements << 1U, AlltoAllvGroupedMatMulAiv::kWindowAlignment,
             layout.inputBytes) ||
         !AlltoAllvGroupedMatMulAiv::AlignUpU64(
             static_cast<uint64_t>(countNum) << 3U,
-            AlltoAllvGroupedMatMulAiv::kWindowAlignment,
-            countAreaBytes) ||
+            AlltoAllvGroupedMatMulAiv::kWindowAlignment, countAreaBytes) ||
+        !AlltoAllvGroupedMatMulAiv::AlignUpU64(
+            control.totalBytes, AlltoAllvGroupedMatMulAiv::kWindowAlignment,
+            controlBytes) ||
         !AlltoAllvGroupedMatMulAiv::SafeAddU64(
             layout.inputBytes, countAreaBytes, payloadAndCounts) ||
         !AlltoAllvGroupedMatMulAiv::SafeAddU64(
-            payloadAndCounts, kControlRegionBytes, requiredBytes) ||
-        requiredBytes > windowBytes ||
-        kControlRegionBytes > windowBytes) {
+            payloadAndCounts, controlBytes, requiredBytes) ||
+        requiredBytes > windowBytes || controlBytes > windowBytes) {
         return false;
     }
-
     layout.controlOffset = AlltoAllvGroupedMatMulAiv::AlignDownU64(
-        windowBytes - kControlRegionBytes,
-        AlltoAllvGroupedMatMulAiv::kWindowAlignment);
+        windowBytes - controlBytes, AlltoAllvGroupedMatMulAiv::kWindowAlignment);
     if (layout.controlOffset < countAreaBytes) {
         return false;
     }
@@ -310,16 +312,17 @@ __aicore__ inline bool BuildDeviceWindowLayout(
     if (layout.inputBytes > layout.countsOffset) {
         return false;
     }
-    layout.readyOffset = AlltoAllvGroupedMatMulAiv::kFirstExpertFlagOffset;
+    layout.readyOffset = control.firstExpertFlagOffset;
     layout.totalBytes = requiredBytes;
     return true;
 }
 
+template <typename T>
 __aicore__ inline uint32_t GetCopyQueueBytes(
     const AlltoAllvGmmAivTilingData &tiling)
 {
     const uint64_t payloadBytes =
-        static_cast<uint64_t>(tiling.gmmCocTiling.ubMoveNum) * sizeof(bfloat16_t);
+        static_cast<uint64_t>(tiling.gmmCocTiling.ubMoveNum) * sizeof(T);
     const uint64_t countBytes =
         static_cast<uint64_t>(A2AVGMM_MAX_COUNT_NUM) * sizeof(int64_t);
     const uint64_t bytes = payloadBytes > countBytes ? payloadBytes : countBytes;
@@ -327,6 +330,7 @@ __aicore__ inline uint32_t GetCopyQueueBytes(
         bytes > static_cast<uint64_t>(0xffffffffU) ? 0xffffffffU : bytes);
 }
 
+template <typename T>
 __aicore__ inline bool CopyInitialWindowPayload(
     GM_ADDR gmmx,
     const AlltoAllvGmmAivTilingData &tiling,
@@ -357,10 +361,10 @@ __aicore__ inline bool CopyInitialWindowPayload(
         return false;
     }
 
-    AscendC::GlobalTensor<bfloat16_t> input;
-    input.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(gmmx));
-    AscendC::GlobalTensor<bfloat16_t> localWindow;
-    localWindow.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(
+    AscendC::GlobalTensor<T> input;
+    input.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(gmmx));
+    AscendC::GlobalTensor<T> localWindow;
+    localWindow.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(
         context.Window(context.RankId())));
     AlltoAllvGroupedMatMulAiv::CopyLocalGmToWindow(
         localWindow[range.offset], input[range.offset], range.count,
@@ -393,6 +397,7 @@ __aicore__ inline bool CopyInitialWindowPayload(
     return true;
 }
 
+template <typename T>
 __aicore__ inline bool CopyExpertFromSource(
     GM_ADDR recvBuffer, const AlltoAllvGmmAivTilingData &tiling,
     const AlltoAllvGroupedMatMulAiv::PeerWindowContext &context,
@@ -442,12 +447,12 @@ __aicore__ inline bool CopyExpertFromSource(
         AlltoAllvGroupedMatMulAiv::MulU32ToU64(
             sourceTokenCount, tiling.gmmInfo.K);
 
-    AscendC::GlobalTensor<bfloat16_t> peerInput;
-    peerInput.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(
+    AscendC::GlobalTensor<T> peerInput;
+    peerInput.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(
         context.Window(sourceRank)));
-    AscendC::GlobalTensor<bfloat16_t> destination;
+    AscendC::GlobalTensor<T> destination;
     destination.SetGlobalBuffer(
-        reinterpret_cast<__gm__ bfloat16_t *>(recvBuffer));
+        reinterpret_cast<__gm__ T *>(recvBuffer));
     AlltoAllvGroupedMatMulAiv::CopyPeerGmToLocalGm(
         destination[destinationElementOffset],
         peerInput[sourceElementOffset], elementCount,
@@ -455,7 +460,7 @@ __aicore__ inline bool CopyExpertFromSource(
     return true;
 }
 
-template <bool GMM_TRANSPOSE_B, bool MM_TRANSPOSE_B>
+template <typename T, bool GMM_TRANSPOSE_B, bool MM_TRANSPOSE_B>
 __aicore__ inline void ProcessAic(
     GM_ADDR gmmweight, GM_ADDR mmx, GM_ADDR mmweight, GM_ADDR gmmy,
     GM_ADDR mmy, GM_ADDR recvBuffer,
@@ -474,8 +479,8 @@ __aicore__ inline void ProcessAic(
         WaitAicSharedExpertReady();
         if (mmx == nullptr || mmweight == nullptr || mmy == nullptr ||
             !AlltoAllvGroupedMatMulCatlass::RunSharedExpertGemm<
-                MM_TRANSPOSE_B>(mmx, mmweight, mmy, tiling.mmInfo,
-                                tiling.mmCocTiling)) {
+                T, MM_TRANSPOSE_B>(mmx, mmweight, mmy, tiling.mmInfo,
+                                   tiling.mmCocTiling)) {
             return;
         }
     }
@@ -498,19 +503,21 @@ __aicore__ inline void ProcessAic(
             return;
         }
         if (!AlltoAllvGroupedMatMulCatlass::RunExpertGemm<
-                GMM_TRANSPOSE_B>(recvBuffer, gmmweight, gmmy, expertIdx,
-                                 expert, tiling.gmmInfo,
-                                 tiling.gmmCocTiling)) {
+                T, GMM_TRANSPOSE_B>(recvBuffer, gmmweight, gmmy, expertIdx,
+                                    expert, tiling.gmmInfo,
+                                    tiling.gmmCocTiling)) {
             return;
         }
     }
 }
 
+template <typename T>
 __aicore__ inline void ProcessAiv(
     GM_ADDR gmmx, GM_ADDR recvBuffer,
     const AlltoAllvGmmAivTilingData &tiling,
     const AlltoAllvGroupedMatMulAiv::PeerWindowContext &context,
     const AlltoAllvGroupedMatMulAiv::A2avWindowLayout &layout,
+    const AlltoAllvGroupedMatMulAiv::RuntimeControlLayout &control,
     AscendC::TBuf<AscendC::TPosition::VECCALC> &copyBuffer,
     AscendC::TBuf<AscendC::TPosition::VECCALC> &flagBuffer)
 {
@@ -519,6 +526,7 @@ __aicore__ inline void ProcessAiv(
     const uint32_t taskRatio = AscendC::GetTaskRation();
     const uint32_t blockIdx =
         taskRatio == 0U ? 0xffffffffU : taskIdx / taskRatio;
+    const uint32_t workerNum = tiling.gmmInfo.aivCoreNum;
 
     int32_t epoch = 0;
     if (taskIdx == 0U && subBlockIdx == 0U) {
@@ -528,20 +536,20 @@ __aicore__ inline void ProcessAiv(
     AscendC::SyncAll<true>();
     epoch = LoadInvocationEpoch(context, layout, flagBuffer);
 
-    (void)CopyInitialWindowPayload(
+    (void)CopyInitialWindowPayload<T>(
         gmmx, tiling, context, layout, taskIdx, subBlockIdx, copyBuffer,
         flagBuffer);
     AscendC::SyncAll<true>();
     AlltoAllvGroupedMatMulAiv::PublishPeerPhase(
-        context, layout, AlltoAllvGroupedMatMulAiv::kPublishSlotsOffset,
-        epoch, blockIdx, subBlockIdx, flagBuffer);
+        context, layout, control.publishSlotsOffset, epoch, blockIdx,
+        workerNum, subBlockIdx, flagBuffer);
     AscendC::SyncAll<true>();
     if (tiling.gmmInfo.hasSharedExpert != 0U) {
         SignalAicSharedExpertReady();
     }
     if (taskIdx == 0U && subBlockIdx == 0U) {
         AlltoAllvGroupedMatMulAiv::WaitPeerPhase(
-            context, layout, AlltoAllvGroupedMatMulAiv::kPublishSlotsOffset,
+            context, layout, control.publishSlotsOffset,
             epoch, flagBuffer);
     }
     AscendC::SyncAll<true>();
@@ -549,12 +557,12 @@ __aicore__ inline void ProcessAiv(
     const bool expertOverlap = ShouldUseExpertOverlap(tiling);
     for (uint32_t expertIdx = 0U;
          expertIdx < tiling.gmmInfo.expertPerRank; ++expertIdx) {
-        const uint32_t sourceRank = blockIdx;
-        if (IsSourceWorker(taskIdx, taskRatio, subBlockIdx,
-                           context.RankSize(), sourceRank)) {
-            (void)CopyExpertFromSource(
-                recvBuffer, tiling, context, layout, expertIdx, sourceRank,
-                copyBuffer);
+        if (subBlockIdx == 0U && blockIdx < workerNum) {
+            for (uint32_t rank = blockIdx; rank < context.RankSize(); rank += workerNum) {
+                (void)CopyExpertFromSource<T>(
+                    recvBuffer, tiling, context, layout, expertIdx, rank,
+                    copyBuffer);
+            }
         }
         AscendC::SyncAll<true>();
         if (expertOverlap) {
@@ -567,19 +575,19 @@ __aicore__ inline void ProcessAiv(
     }
 
     AlltoAllvGroupedMatMulAiv::PublishPeerPhase(
-        context, layout, AlltoAllvGroupedMatMulAiv::kReleaseSlotsOffset,
-        epoch, blockIdx, subBlockIdx, flagBuffer);
+        context, layout, control.releaseSlotsOffset, epoch, blockIdx,
+        workerNum, subBlockIdx, flagBuffer);
     AscendC::SyncAll<true>();
     if (taskIdx == 0U && subBlockIdx == 0U) {
         AlltoAllvGroupedMatMulAiv::WaitPeerPhase(
-            context, layout, AlltoAllvGroupedMatMulAiv::kReleaseSlotsOffset,
+            context, layout, control.releaseSlotsOffset,
             epoch, flagBuffer);
     }
 }
 
 } // namespace detail
 
-template <bool GMM_TRANSPOSE_B, bool MM_TRANSPOSE_B>
+template <typename T, bool GMM_TRANSPOSE_B, bool MM_TRANSPOSE_B>
 __aicore__ inline void Run(
     GM_ADDR gmmx, GM_ADDR gmmweight, GM_ADDR mmx, GM_ADDR mmweight,
     GM_ADDR gmmy, GM_ADDR mmy, GM_ADDR permuteOut, GM_ADDR userWorkspace,
@@ -598,6 +606,7 @@ __aicore__ inline void Run(
         }
 
         AlltoAllvGroupedMatMulAiv::A2avWindowLayout layout = {};
+        AlltoAllvGroupedMatMulAiv::RuntimeControlLayout control = {};
         uint64_t inputTokens = 0U;
         for (uint32_t index = 0U; index < tiling.countNum; ++index) {
             const int64_t count = tiling.sendCounts[index];
@@ -607,9 +616,10 @@ __aicore__ inline void Run(
                 return;
             }
         }
-        if (!detail::BuildDeviceWindowLayout(
+        if (!detail::BuildDeviceWindowLayout<T>(
                 inputTokens, tiling.gmmInfo.K, tiling.countNum,
-                context.WindowBytes(), layout)) {
+                tiling.gmmInfo.rankSize, tiling.gmmInfo.expertPerRank,
+                context.WindowBytes(), control, layout)) {
             return;
         }
         AscendC::TPipe pipe;
@@ -617,17 +627,17 @@ __aicore__ inline void Run(
         AscendC::TBuf<AscendC::TPosition::VECCALC> flagBuffer;
         pipe.InitBuffer(flagBuffer, detail::kFlagBufferBytes);
         AscendC::TBuf<AscendC::TPosition::VECCALC> copyBuffer;
-        const uint32_t queueBytes = detail::GetCopyQueueBytes(tiling);
+        const uint32_t queueBytes = detail::GetCopyQueueBytes<T>(tiling);
         if (queueBytes == 0U) {
             return;
         }
         pipe.InitBuffer(copyBuffer, queueBytes);
-        detail::ProcessAiv(
-            gmmx, recvBuffer, tiling, context, layout, copyBuffer,
+        detail::ProcessAiv<T>(
+            gmmx, recvBuffer, tiling, context, layout, control, copyBuffer,
             flagBuffer);
     }
     if ASCEND_IS_AIC {
-        detail::ProcessAic<GMM_TRANSPOSE_B, MM_TRANSPOSE_B>(
+        detail::ProcessAic<T, GMM_TRANSPOSE_B, MM_TRANSPOSE_B>(
             gmmweight, mmx, mmweight, gmmy, mmy, recvBuffer, tiling);
     }
 }
