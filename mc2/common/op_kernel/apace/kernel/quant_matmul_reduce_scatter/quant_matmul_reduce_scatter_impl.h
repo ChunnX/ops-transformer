@@ -283,15 +283,13 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
         uint32_t curTileM = GetTileM(t);
         uint64_t tileMOffset = GetTileMOffset(t);
 
-        // 选择 tiling: T=1 用 mmT, head tile 用 subMmT, tail tile 用 tailMmT
         const auto& subMmT = tilingData_->subMmTilingData;
         const auto& tailMmT = tilingData_->tailMmTilingData;
         bool isHeadTile = (t < baseParams_.headTileCnt);
         const auto& tileT = (commTurn == 1) ? mmT : (isHeadTile ? subMmT : tailMmT);
 
-        // Fragment 参数 — 单一 HEAD region (per-tile 调用, 无 MAIN/TAIL)
-        // headRows = R * curTileM (当前 tile 跨所有 rank 段的总 M)
-        // tail tile 的非对齐由 tailMmTilingData 的 mTailTile 处理 (BlockScheduler 内部)
+        // localMatmul 后置: FragmentTensor localLast=true, fragment 顺序 [remote..., local]
+        // Process 在 remote→local 边界自动 SetFlag(1), 此处 SetFlag(0) 为 all done
         FragFragmentParams fragParams;
         fragParams.tileCnt = 0;
         fragParams.tileM = curTileM;
@@ -306,12 +304,13 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
         fragParams.k = baseParams_.axisK;
         fragParams.n = baseParams_.axisN;
         fragParams.scaleKLen = (baseParams_.axisK + 63U) / 64U * 2U;
+        fragParams.localLast = true;
+        fragParams.fragCount = 0;
 
         FragKernelParams params;
         params.mmTile = &tileT;
         params.qbmmParams = {tileT.baseM, tileT.baseN, tileT.baseK, tileT.dbL0c};
         params.fragParams = fragParams;
-        // A/C 地址带 tile 偏移
         params.aGM = baseParams_.aGm + tileMOffset * baseParams_.axisK;
         params.aScaleGM = baseParams_.scaleAGm + tileMOffset * baseParams_.scaleARowBytes;
         params.bGM = baseParams_.bGm;
@@ -323,7 +322,7 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
 
         fragKernelImpl_(params);
 
-        CrossCoreSetFlag<0x2, PIPE_FIX>(0);
+        CrossCoreSetFlag<0x2, PIPE_FIX>(0);  // all done (remote+local)
     }
 }
 
@@ -352,16 +351,28 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
     bool isComputeBlock = (blockIdx < rsCoreNum);
 
     if (commTurn <= 1) {
-        CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
-        SyncAll<true>();  // #1: 确保所有 AIC matmul 完成 (workspace 数据完整)
+        // localMatmul 后置: AIC 在 remote→local 边界 SetFlag(1), 全部完成后 SetFlag(0)
+        // comm: WaitFlag(1) → SyncAll(跨core同步, 确保所有 AIC remote 完成) → AllToAll → WaitFlag(0)
+        // comp: WaitFlag(1) → SyncAll → WaitFlag(0) → ReduceSum
+        if (isCommBlock) {
+            CrossCoreWaitFlag<0x2, PIPE_MTE2>(1);  // remote done on this core
+        }
+        if (isComputeBlock) {
+            CrossCoreWaitFlag<0x2, PIPE_MTE2>(1);  // consume remote flag
+        }
+        SyncAll<true>();  // #1: all cores' remote done
+
         if (isCommBlock) {
             allToAllC_.template Commit<BARRIER_NONE>();
-            allToAllC_.template Wait<BARRIER_NONE>();  // Drain only, 不做 CrossDevice
+            allToAllC_.template Wait<BARRIER_NONE>();
+            CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);  // consume local flag
         }
-        SyncAll<true>();  // #2: 本地所有核同步 (通信核 Drain 完成)
-        teamBarrier_.CrossDevice();  // #3: block 0 (jobIndex=0) 做跨设备 fence (step=1, 轮询所有 remote)
-        SyncAll<true>();  // #4: 所有核确认跨设备数据可见后开始 reduceSum
-        // ReduceSum tile 0 — 仅计算核参与
+        if (isComputeBlock) {
+            CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);  // all done (local included)
+        }
+        SyncAll<true>();  // #2: AllToAll done / all matmul done
+        teamBarrier_.CrossDevice();
+        SyncAll<true>();  // #3: remote data visible
         if (isComputeBlock) {
             uint32_t tileM = GetTileM(0);
             uint64_t tileMOffset = GetTileMOffset(0);
@@ -373,28 +384,41 @@ __aicore__ inline void QuantMatmulReduceScatterImpl<AType, BType, CType, TransA,
         return;
     }
 
-    // 多 tile: 通信核 AllToAll(t) ‖ 计算核 ReduceSum(t-1)
-    // Tile 0: AllToAll only (通信尽早启动, 无 ReduceSum)
-    CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
+    // 多 tile
+    if (isCommBlock) {
+        CrossCoreWaitFlag<0x2, PIPE_MTE2>(1);
+    }
+    if (isComputeBlock) {
+        CrossCoreWaitFlag<0x2, PIPE_MTE2>(1);
+    }
     SyncAll<true>();
     if (isCommBlock) {
         allToAllC_.template Commit<BARRIER_NONE>();
         allToAllC_.template Wait<BARRIER_NONE>();
+        CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
+    }
+    if (isComputeBlock) {
+        CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
     }
     SyncAll<true>();
     teamBarrier_.CrossDevice();
     SyncAll<true>();
 
-    // Tiles 1..commTurn-1: AllToAll(t) 与 ReduceSum(t-1) 并行
     for (uint32_t t = 1; t < commTurn; ++t) {
-        CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
+        if (isCommBlock) {
+            CrossCoreWaitFlag<0x2, PIPE_MTE2>(1);
+        }
+        if (isComputeBlock) {
+            CrossCoreWaitFlag<0x2, PIPE_MTE2>(1);
+        }
         SyncAll<true>();
 
-        // 通信核做 AllToAll(t), 计算核做 ReduceSum(t-1)
         if (isCommBlock) {
             allToAllC_.template Commit<BARRIER_NONE>();
             allToAllC_.template Wait<BARRIER_NONE>();
+            CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
         } else if (isComputeBlock) {
+            CrossCoreWaitFlag<0x2, PIPE_MTE2>(0);
             uint32_t rsT = t - 1;
             uint32_t rsTileM = GetTileM(rsT);
             uint64_t rsTileMOffset = GetTileMOffset(rsT);

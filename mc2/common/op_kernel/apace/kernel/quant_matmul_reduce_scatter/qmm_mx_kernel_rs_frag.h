@@ -117,6 +117,8 @@ public:
         uint64_t k{0};
         uint64_t n{0};
         uint64_t scaleKLen{0};
+        bool localLast{false};
+        uint32_t fragCount{0};
     };
 
     struct Params {
@@ -248,10 +250,11 @@ __aicore__ inline void QmmMxKernelRsFrag<AType, BType, CType>::Run(const Params&
     const int64_t scaleKLen = static_cast<int64_t>(fp.scaleKLen);
 
     bool hasTail = (fp.tailCnt > 0 && fp.tailM > 0);
-    const int64_t headMainRows = static_cast<int64_t>(fp.headRows);
-    const int64_t mainRoundRows = static_cast<int64_t>(fp.rankSize) * static_cast<int64_t>(fp.tileM);
+    uint32_t effRankCnt = (fp.fragCount > 0) ? fp.fragCount : fp.rankSize;
+    const int64_t headMainRows = static_cast<int64_t>(fp.headRows) * effRankCnt / fp.rankSize;
+    const int64_t mainRoundRows = static_cast<int64_t>(effRankCnt) * static_cast<int64_t>(fp.tileM);
     const int64_t mainSectionRows = static_cast<int64_t>(fp.tileCnt) * mainRoundRows;
-    const int64_t tailRows = hasTail ? static_cast<int64_t>(fp.rankSize) * static_cast<int64_t>(fp.paddedTailM) : 0;
+    const int64_t tailRows = hasTail ? static_cast<int64_t>(effRankCnt) * static_cast<int64_t>(fp.paddedTailM) : 0;
     const int64_t totalLogicalM = headMainRows + mainSectionRows + tailRows;
 
     BlockSchedulerParams schParams;
@@ -287,8 +290,9 @@ __aicore__ inline void QmmMxKernelRsFrag<AType, BType, CType>::Process(
     const int64_t Ni = static_cast<int64_t>(fp.n);
     const int64_t scaleKLen = static_cast<int64_t>(fp.scaleKLen);
 
-    const int64_t headMainRows = static_cast<int64_t>(fp.headRows);
-    const int64_t mainRoundRows = static_cast<int64_t>(fp.rankSize) * static_cast<int64_t>(fp.tileM);
+    uint32_t effRankCnt = (fp.fragCount > 0) ? fp.fragCount : fp.rankSize;
+    const int64_t headMainRows = static_cast<int64_t>(fp.headRows) * effRankCnt / fp.rankSize;
+    const int64_t mainRoundRows = static_cast<int64_t>(effRankCnt) * static_cast<int64_t>(fp.tileM);
     const int64_t mainSectionRows = static_cast<int64_t>(fp.tileCnt) * mainRoundRows;
 
     auto gmB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(bGmAddr_),
@@ -302,6 +306,11 @@ __aicore__ inline void QmmMxKernelRsFrag<AType, BType, CType>::Process(
     Te::Coord<int64_t, int64_t, int64_t, int64_t> blockIdx;
     int64_t mPos = 0L, nPos = 0L;
 
+    // localLast 模式: 检测 remote→local fragment 边界, 提前 SetFlag(1)
+    int64_t fragM = headMainRows / effRankCnt;
+    int64_t localFragBoundary = fp.localLast ? (headMainRows - fragM) : -1;
+    bool remoteFlagSet = false;
+
     while (sch.GetTileIdx(blockIdx)) {
         auto singleShape = sch.template GetBlockShape<
           Blaze::Gemm::QuantMode::MX_PERGROUP_MODE, Blaze::Gemm::QuantMode::MX_PERGROUP_MODE,
@@ -313,8 +322,14 @@ __aicore__ inline void QmmMxKernelRsFrag<AType, BType, CType>::Process(
         }
         sch.GetTileCoord(blockIdx, mPos, nPos);
 
+        // localLast: mPos 跨越 remote→local 边界时, 提前 SetFlag(1) 通知 AIV 启动 AllToAll
+        if (fp.localLast && !remoteFlagSet && mPos >= localFragBoundary) {
+            CrossCoreSetFlag<0x2, PIPE_FIX>(1);
+            remoteFlagSet = true;
+        }
+
         auto ctx = ResolveTileCtx(mPos, headMainRows, mainRoundRows, mainSectionRows,
-                                  fp.rankSize, fp.commTurn);
+                                  effRankCnt, fp.commTurn);
 
         SetL2Cache(problemShape, curMtile, curNtile, gmB, gmScaleB);
 
@@ -347,6 +362,11 @@ __aicore__ inline void QmmMxKernelRsFrag<AType, BType, CType>::Process(
                 static_cast<uint64_t>(fp.tileCnt), static_cast<uint64_t>(fp.tailM),
                 ctx.rankCnt, Ni, singleShape, ctx.regionMPos, nPos, 0, blockC);
     }
+
+    // localLast: 确保所有 core 都设置 flag(1) (某些 core 可能未跨越边界)
+    if (fp.localLast && !remoteFlagSet) {
+        CrossCoreSetFlag<0x2, PIPE_FIX>(1);
+    }
 }
 
 template <typename AType, typename BType, typename CType>
@@ -375,7 +395,9 @@ __aicore__ inline void QmmMxKernelRsFrag<AType, BType, CType>::BuildFragmentTens
     const auto& fp = params.fragParams;
     constexpr uint32_t MAX_FRAG = Apace::Basic::MAX_FRAGMENT_COUNT;
 
-    // C fragment 地址: workspace 中各 rank 段的起始位置
+    // C fragment 地址: workspace 中各 rank 段的起始位置 (保持原始 rank 顺序)
+    // localLast 模式下 addrListC 会按 [remote..., local] 重排, 但 cFragAddrs_ 保持原始顺序
+    // mmadFrag 内部用 cFragAddrs_ 做 L1 cache 管理, 用 blockC (从 FragmentTensor) 做实际输出
     for (uint32_t r = 0; r < fp.rankSize; ++r) {
         cFragAddrs_[r] = params.cGM + static_cast<uint64_t>(r) * fp.mPerRank * params.cBytesPerM;
     }
@@ -390,19 +412,33 @@ __aicore__ inline void QmmMxKernelRsFrag<AType, BType, CType>::BuildFragmentTens
     GM_ADDR addrListA[MAX_FRAG];
     GM_ADDR addrListScale[MAX_FRAG];
     GM_ADDR addrListC[MAX_FRAG];
-    for (uint32_t r = 0; r < fp.rankSize; ++r) {
-        addrListA[r] = params.aGM + static_cast<uint64_t>(r) * fp.mPerRank * params.dataBytesPerMRow;
-        addrListScale[r] = params.aScaleGM + static_cast<uint64_t>(r) * fp.mPerRank * params.scaleBytesPerMRow;
-        addrListC[r] = cFragAddrs_[r];
+    if (fp.localLast) {
+        uint32_t idx = 0;
+        for (uint32_t r = 0; r < fp.rankSize; ++r) {
+            if (r == fp.rankId) { continue; }
+            addrListA[idx] = params.aGM + static_cast<uint64_t>(r) * fp.mPerRank * params.dataBytesPerMRow;
+            addrListScale[idx] = params.aScaleGM + static_cast<uint64_t>(r) * fp.mPerRank * params.scaleBytesPerMRow;
+            addrListC[idx] = cFragAddrs_[r];
+            ++idx;
+        }
+        addrListA[idx] = params.aGM + static_cast<uint64_t>(fp.rankId) * fp.mPerRank * params.dataBytesPerMRow;
+        addrListScale[idx] = params.aScaleGM + static_cast<uint64_t>(fp.rankId) * fp.mPerRank * params.scaleBytesPerMRow;
+        addrListC[idx] = cFragAddrs_[fp.rankId];
+    } else {
+        for (uint32_t r = 0; r < fp.rankSize; ++r) {
+            addrListA[r] = params.aGM + static_cast<uint64_t>(r) * fp.mPerRank * params.dataBytesPerMRow;
+            addrListScale[r] = params.aScaleGM + static_cast<uint64_t>(r) * fp.mPerRank * params.scaleBytesPerMRow;
+            addrListC[r] = cFragAddrs_[r];
+        }
     }
-    // fragmentSize = headRows / rankSize = curTileM (每个 rank 段在当前 tile 的行数)
     uint64_t fragM = fp.headRows / fp.rankSize;
+    uint32_t fragCnt = (fp.fragCount > 0) ? fp.fragCount : fp.rankSize;
     headFragA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutA, AType>(
-        MakeFragParam(fragM, fragM, fp.rankSize, fp.k), addrListA);
+        MakeFragParam(fragM, fragM, fragCnt, fp.k), addrListA);
     headFragScaleA_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutScaleA, fp8_e8m0_t>(
-        MakeFragParam(fragM, fragM, fp.rankSize, fp.scaleKLen), addrListScale);
+        MakeFragParam(fragM, fragM, fragCnt, fp.scaleKLen), addrListScale);
     headFragC_ = Apace::Basic::MakeFragmentTensor<2, MAX_FRAG, MakeLayoutC, CType>(
-        MakeFragParam(fragM, fragM, fp.rankSize, fp.n), addrListC);
+        MakeFragParam(fragM, fragM, fragCnt, fp.n), addrListC);
 }
 
 template <typename AType, typename BType, typename CType>
