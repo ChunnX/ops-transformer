@@ -70,7 +70,10 @@ aclDataType GetDataTypeMqsmla(const aclTensor *tensor)
     return dataType;
 }
 
-inline bool IsTensorSourceMqsmla(const std::string &source) { return source != "batch_size"; }
+inline bool IsTensorSourceMqsmla(const std::string &source)
+{
+    return source != "batch_size";
+}
 
 inline int64_t GetRawShapeSizeMqsmla(const std::string &source, int64_t batchValue)
 {

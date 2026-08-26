@@ -351,7 +351,10 @@ void SFAMlaTiling::CalcUbBmm()
     qPreSizeMla_ = sfaInfo_->gSize * (headDimAlign_ + 64U) * sfaInfo_->s1Size;
 }
 
-void SFAMlaTiling::CheckUbSpace() { CalcUbBmm(); }
+void SFAMlaTiling::CheckUbSpace()
+{
+    CalcUbBmm();
+}
 
 void SFAMlaTiling::CalcInnerSize(uint32_t sfaS2Size)
 {
@@ -388,7 +391,10 @@ void SFAMlaTiling::SplitBalanced()
     usedCoreNum_ = aicNum_;
 }
 
-void SFAMlaTiling::Split() { SplitBalanced(); }
+void SFAMlaTiling::Split()
+{
+    SplitBalanced();
+}
 
 void SFAMlaTiling::FillTilingBaseParamsMla()
 {
@@ -430,7 +436,10 @@ void SFAMlaTiling::FillTilingSplitKVMla()
     }
 }
 
-void SFAMlaTiling::FillTilingSingleCoreParamsMla() { tilingData_.singleCoreParams.set_usedCoreNum(usedCoreNum_); }
+void SFAMlaTiling::FillTilingSingleCoreParamsMla()
+{
+    tilingData_.singleCoreParams.set_usedCoreNum(usedCoreNum_);
+}
 
 void SFAMlaTiling::FillTilingSingleCoreTensorSizeMla()
 {
@@ -465,7 +474,10 @@ void SFAMlaTiling::NormalCalcFDWorkSpace(const uint32_t actCoreNum)
     }
 }
 
-void SFAMlaTiling::CalcFDWorkSpace(const uint32_t actCoreNum) { NormalCalcFDWorkSpace(actCoreNum); }
+void SFAMlaTiling::CalcFDWorkSpace(const uint32_t actCoreNum)
+{
+    NormalCalcFDWorkSpace(actCoreNum);
+}
 
 void SFAMlaTiling::GetWorkspaceSize()
 {
@@ -756,9 +768,15 @@ ge::graphStatus SFATilingCheck::CheckSingleParaKey() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SFATilingCheck::CheckSingleParaNumHeads() const { return ge::GRAPH_SUCCESS; }
+ge::graphStatus SFATilingCheck::CheckSingleParaNumHeads() const
+{
+    return ge::GRAPH_SUCCESS;
+}
 
-ge::graphStatus SFATilingCheck::CheckSingleParaKvHeadNums() const { return ge::GRAPH_SUCCESS; }
+ge::graphStatus SFATilingCheck::CheckSingleParaKvHeadNums() const
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus SFATilingCheck::CheckSingleParaSparseMode() const
 {
@@ -948,7 +966,10 @@ ge::graphStatus SFATilingCheck::CheckParaExistenceMlaNoquant() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SFATilingCheck::CheckParaExistenceMla() const { return CheckParaExistenceMlaNoquant(); }
+ge::graphStatus SFATilingCheck::CheckParaExistenceMla() const
+{
+    return CheckParaExistenceMlaNoquant();
+}
 
 ge::graphStatus SFATilingCheck::CheckParaExistence()
 {
@@ -1550,9 +1571,15 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoquant() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SFATilingCheck::CheckFeatureMla() const { return CheckFeatureMlaNoquant(); }
+ge::graphStatus SFATilingCheck::CheckFeatureMla() const
+{
+    return CheckFeatureMlaNoquant();
+}
 
-ge::graphStatus SFATilingCheck::CheckFeature() const { return CheckFeatureMla(); }
+ge::graphStatus SFATilingCheck::CheckFeature() const
+{
+    return CheckFeatureMla();
+}
 
 void SFATilingCheck::Init()
 {
@@ -2155,7 +2182,8 @@ ge::graphStatus SFAInfoParser::CheckContiguous() const
 
         if (kvLayout_ == SFALayout::PA_BSND) {
             totalElements = keyStride1_ * static_cast<uint64_t>(keyShape_.GetDim(DIM_IDX_ONE));
-            shapeSize = static_cast<uint64_t>(keyShape_.GetDim(DIM_IDX_ONE)) * static_cast<uint64_t>(keyShape_.GetDim(DIM_IDX_TWO)) *
+            shapeSize = static_cast<uint64_t>(keyShape_.GetDim(DIM_IDX_ONE)) *
+                        static_cast<uint64_t>(keyShape_.GetDim(DIM_IDX_TWO)) *
                         static_cast<uint64_t>(keyShape_.GetDim(DIM_IDX_THREE));
         } else {
             totalElements = keyStride0_ * static_cast<uint64_t>(keyShape_.GetDim(0));
