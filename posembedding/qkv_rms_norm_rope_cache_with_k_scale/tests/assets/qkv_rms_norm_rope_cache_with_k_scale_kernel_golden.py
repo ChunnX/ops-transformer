@@ -431,7 +431,7 @@ def qkv_rms_norm_rope_cache_with_k_scale_numpy(
         _require(str(q_quant_mode) == "NoQuant", "M-RoPE requires q_quant_mode=NoQuant")
         _require(
             str(k_quant_mode) == "PerTokenPerHead",
-            "legacy M-RoPE requires k_quant_mode=PerTokenPerHead",
+            "M-RoPE requires k_quant_mode=PerTokenPerHead",
         )
         _require(
             "bfloat16" in dtype_name or dtype_name in ("bf16", str(GE_DT_BF16)),
