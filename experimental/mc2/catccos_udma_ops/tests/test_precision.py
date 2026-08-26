@@ -2,7 +2,12 @@
 
 import torch
 
-from validation.precision import _quantiles, analyze_accuracy, precision_standard
+from validation.precision import (
+    _quantiles,
+    analyze_accuracy,
+    precision_standard,
+    write_accuracy_artifacts,
+)
 
 
 def test_bfloat16_opbase_thresholds_include_per_element_ulp_parameters():
@@ -89,3 +94,26 @@ def test_small_diagnostic_quantiles_remain_exact():
     assert statistics["finite_elements"] == 4
     assert statistics["quantile_sample_elements"] == 4
     assert statistics["median"] == 1.5
+
+
+def test_nan_is_an_explicit_failure_with_actionable_location(tmp_path):
+    expected = torch.zeros((4, 3), dtype=torch.bfloat16)
+    actual = expected.clone()
+    actual[2, 1] = float("nan")
+    report = analyze_accuracy(actual, expected, global_table=[[4]])
+
+    assert not report["passed"]
+    assert "FAIL_ACTUAL_NONFINITE" in report["failure_reasons"]
+    assert report["actual_nonfinite"]["total_nonfinite"] == 1
+    assert report["actual_nonfinite"]["first_locations"][0] == {
+        "flat_index": 7,
+        "row": 2,
+        "column": 1,
+        "local_expert": 0,
+        "source_rank": 0,
+        "kind": "nan",
+    }
+
+    write_accuracy_artifacts(tmp_path, report)
+    rows = (tmp_path / "nonfinite_values.csv").read_text(encoding="utf-8")
+    assert "actual,7,2,1,0,0,nan" in rows

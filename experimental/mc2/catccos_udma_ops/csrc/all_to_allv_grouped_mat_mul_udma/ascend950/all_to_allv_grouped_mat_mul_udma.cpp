@@ -132,6 +132,27 @@ void CheckNpuTensor(const at::Tensor &tensor, const char *name, at::ScalarType d
     TORCH_CHECK(tensor.is_contiguous(), name, " must be contiguous");
 }
 
+bool TensorByteRangesOverlap(const at::Tensor &lhs, const at::Tensor &rhs)
+{
+    if (lhs.numel() == 0 || rhs.numel() == 0) {
+        return false;
+    }
+    const uintptr_t lhsBegin = reinterpret_cast<uintptr_t>(lhs.data_ptr());
+    const uintptr_t rhsBegin = reinterpret_cast<uintptr_t>(rhs.data_ptr());
+    const uintptr_t lhsEnd = lhsBegin +
+        static_cast<uintptr_t>(lhs.numel()) * lhs.element_size();
+    const uintptr_t rhsEnd = rhsBegin +
+        static_cast<uintptr_t>(rhs.numel()) * rhs.element_size();
+    return lhsBegin < rhsEnd && rhsBegin < lhsEnd;
+}
+
+void CheckNoTensorOverlap(const at::Tensor &written, const char *writtenName,
+                          const at::Tensor &read, const char *readName)
+{
+    TORCH_CHECK(!TensorByteRangesOverlap(written, read), writtenName,
+                " must not overlap the storage range of ", readName);
+}
+
 void ConfigureUdma(const at::Tensor &deviceAnchor, int64_t rank, int64_t worldSize,
                    const std::string &initMethod, int64_t heapSize)
 {
@@ -152,6 +173,15 @@ void FinalizeUdma(const at::Tensor &deviceAnchor)
     const c10::OptionalDeviceGuard guard(deviceAnchor.device());
     aclrtStream stream = c10_npu::getCurrentNPUStream().stream(false);
     UdmaRuntime::Instance().Finalize(stream);
+}
+
+void PoisonUdmaWorkspace(const at::Tensor &deviceAnchor, int64_t byteValue)
+{
+    CheckNpuTensor(deviceAnchor, "device_anchor", at::kByte);
+    TORCH_CHECK(byteValue >= 0 && byteValue <= 255,
+                "workspace poison byte_value must be in [0, 255]");
+    const c10::OptionalDeviceGuard guard(deviceAnchor.device());
+    UdmaRuntime::Instance().PoisonWorkspace(static_cast<uint8_t>(byteValue));
 }
 
 template <class Kernel, class Params>
@@ -312,8 +342,11 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
     TORCH_CHECK(output.device() == x.device(), "out and x must be on the same NPU");
     TORCH_CHECK(output.dim() == 2 && output.size(0) == receivedRows64 && output.size(1) == n64,
                 "out must have shape [received_rows, n]");
-    TORCH_CHECK(output.data_ptr() != x.data_ptr() && output.data_ptr() != weight.data_ptr(),
-                "out must not alias x or weight");
+    CheckNoTensorOverlap(output, "out", x, "x");
+    CheckNoTensorOverlap(output, "out", weight, "weight");
+    CheckNoTensorOverlap(output, "out", localTokensPerExpert, "local_tokens_per_expert");
+    CheckNoTensorOverlap(output, "out", globalTokensPerLocalExpert,
+                         "global_tokens_per_local_expert");
 
     at::Tensor allToAllVOutput;
     if (allToAllVOutputOptional.has_value()) {
@@ -325,11 +358,13 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
                         allToAllVOutput.size(0) == receivedRows64 &&
                         allToAllVOutput.size(1) == k64,
                     "all_to_allv_out must have shape [received_rows, k]");
-        TORCH_CHECK(allToAllVOutput.data_ptr() != x.data_ptr() &&
-                        allToAllVOutput.data_ptr() != weight.data_ptr() &&
-                        (allToAllVOutput.numel() == 0 || output.numel() == 0 ||
-                         allToAllVOutput.data_ptr() != output.data_ptr()),
-                    "all_to_allv_out must not alias x, weight, or out");
+        CheckNoTensorOverlap(allToAllVOutput, "all_to_allv_out", x, "x");
+        CheckNoTensorOverlap(allToAllVOutput, "all_to_allv_out", weight, "weight");
+        CheckNoTensorOverlap(allToAllVOutput, "all_to_allv_out", output, "out");
+        CheckNoTensorOverlap(allToAllVOutput, "all_to_allv_out", localTokensPerExpert,
+                             "local_tokens_per_expert");
+        CheckNoTensorOverlap(allToAllVOutput, "all_to_allv_out", globalTokensPerLocalExpert,
+                             "global_tokens_per_local_expert");
     }
     if (routeMetadataOptional.has_value()) {
         const at::Tensor &routeMetadata = routeMetadataOptional.value();
@@ -341,6 +376,9 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
         TORCH_CHECK(routeMetadata.numel() ==
                         static_cast<int64_t>(sizeof(Catccos::DGemm::MoeRouteMetadata)),
                     "route_metadata has an invalid packed size");
+        CheckNoTensorOverlap(output, "out", routeMetadata, "route_metadata");
+        CheckNoTensorOverlap(allToAllVOutput, "all_to_allv_out", routeMetadata,
+                             "route_metadata");
     }
     aclrtStream stream = c10_npu::getCurrentNPUStream().stream(false);
     runtime.RecordStream(stream);
@@ -589,6 +627,7 @@ TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
 {
     m.def("_configure_udma(Tensor device_anchor, int rank, int world_size, str init_method, int heap_size) -> ()");
     m.def("_finalize_udma(Tensor device_anchor) -> ()");
+    m.def("_poison_udma_workspace(Tensor device_anchor, int byte_value) -> ()");
     m.def("all_to_allv_grouped_mat_mul_udma(Tensor x, Tensor weight, Tensor local_tokens_per_expert, "
           "Tensor global_tokens_per_local_expert, int ep_size, int expert_num, int received_rows) -> Tensor");
     m.def("all_to_allv_grouped_mat_mul_udma_out(Tensor x, Tensor weight, Tensor local_tokens_per_expert, "
@@ -606,6 +645,7 @@ TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m)
 {
     m.impl("_configure_udma", ConfigureUdma);
     m.impl("_finalize_udma", FinalizeUdma);
+    m.impl("_poison_udma_workspace", PoisonUdmaWorkspace);
     m.impl("all_to_allv_grouped_mat_mul_udma", AllToAllVGroupedMatMulUdmaNpu);
     m.impl("all_to_allv_grouped_mat_mul_udma_out", AllToAllVGroupedMatMulUdmaOutNpu);
     m.impl("all_to_allv_grouped_mat_mul_udma_export", AllToAllVGroupedMatMulUdmaExportNpu);

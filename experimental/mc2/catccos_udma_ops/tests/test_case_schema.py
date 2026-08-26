@@ -14,6 +14,7 @@ GROUPED_CASES = (
     / "cases"
     / "grouped_mat_mul_all_to_allv.yaml"
 )
+MEMORY_CASES = Path(__file__).parents[1] / "validation" / "cases" / "memory_safety.yaml"
 
 
 def test_default_manifest_resolves_and_selects_modes():
@@ -36,3 +37,15 @@ def test_grouped_mat_mul_all_to_allv_manifest_uses_stricter_expert_limit():
     assert all(case["operator"] == "grouped_mat_mul_all_to_allv" for case in cases)
     assert all(not case["output_all_to_allv"] for case in cases)
     assert len(select_cases(cases, mode="performance")) == 2
+
+
+def test_memory_safety_manifest_covers_both_directions_and_tail_cases():
+    cases = load_case_manifest(MEMORY_CASES)
+    assert len(cases) == 4
+    assert {case["operator"] for case in cases} == {
+        "all_to_allv_grouped_mat_mul",
+        "grouped_mat_mul_all_to_allv",
+    }
+    assert any("tail" in case["tags"] for case in cases)
+    assert sum(case["route"] == "unbalanced" for case in cases) == 2
+    assert all(case["run"] == ["accuracy"] for case in cases)

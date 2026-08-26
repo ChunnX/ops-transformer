@@ -212,6 +212,43 @@ def _segment_for_row(segments: Sequence[Mapping[str, int]], row: int) -> Tuple[O
     return None, None
 
 
+def _nonfinite_diagnostics(
+    tensor: Any,
+    segments: Sequence[Mapping[str, int]],
+    *,
+    max_locations: int = 32,
+) -> Dict[str, Any]:
+    import torch
+
+    nan_mask = torch.isnan(tensor)
+    positive_inf_mask = torch.isposinf(tensor)
+    negative_inf_mask = torch.isneginf(tensor)
+    mask = nan_mask | positive_inf_mask | negative_inf_mask
+    locations = []
+    columns = tensor.shape[1]
+    for flat_index in torch.nonzero(mask.flatten(), as_tuple=False).flatten()[:max_locations].tolist():
+        row, column = divmod(int(flat_index), columns)
+        local_expert, source_rank = _segment_for_row(segments, row)
+        value = float(tensor[row, column])
+        locations.append({
+            "flat_index": int(flat_index),
+            "row": row,
+            "column": column,
+            "local_expert": local_expert,
+            "source_rank": source_rank,
+            "kind": "nan" if math.isnan(value) else ("positive_inf" if value > 0 else "negative_inf"),
+        })
+    total = int(mask.sum().item())
+    return {
+        "nan": int(nan_mask.sum().item()),
+        "positive_inf": int(positive_inf_mask.sum().item()),
+        "negative_inf": int(negative_inf_mask.sum().item()),
+        "total_nonfinite": total,
+        "first_locations": locations,
+        "passed": total == 0,
+    }
+
+
 def _breakdown(
     abs_error: Any,
     mismatch: Any,
@@ -321,7 +358,10 @@ def analyze_accuracy(
         max_abs_error = math.inf
     ratio_pass = matched_ratio >= standard["required_matched_ratio"]
     max_error_pass = hard_violation_count == 0
-    passed = ratio_pass and max_error_pass
+    actual_nonfinite_count = int((~torch.isfinite(actual_cpu)).sum().item())
+    expected_nonfinite_count = int((~torch.isfinite(expected_cpu)).sum().item())
+    nonfinite_pass = actual_nonfinite_count == 0 and expected_nonfinite_count == 0
+    passed = ratio_pass and max_error_pass and nonfinite_pass
 
     tiny = torch.finfo(torch.float64).tiny
     relative_error = abs_error / expected_cpu.abs().double().clamp_min(tiny)
@@ -352,6 +392,8 @@ def analyze_accuracy(
             f"route table describes {expected_rows} valid rows but compared tensor has {actual.shape[0]} rows"
         )
     expert_stats, source_stats = _breakdown(abs_error, mismatch, segments)
+    actual_nonfinite = _nonfinite_diagnostics(actual_cpu, segments)
+    expected_nonfinite = _nonfinite_diagnostics(expected_cpu, segments)
 
     top_mismatches = []
     if total:
@@ -392,6 +434,10 @@ def analyze_accuracy(
         reasons.append("FAIL_MATCHED_RATIO")
     if not max_error_pass:
         reasons.append("FAIL_MAX_ABS_ERROR")
+    if not actual_nonfinite["passed"]:
+        reasons.append("FAIL_ACTUAL_NONFINITE")
+    if not expected_nonfinite["passed"]:
+        reasons.append("FAIL_EXPECTED_NONFINITE")
     return {
         "passed": passed,
         "failure_reasons": reasons,
@@ -407,6 +453,8 @@ def analyze_accuracy(
         "max_abs_error_pass": max_error_pass,
         "hard_limit_violation_count": hard_violation_count,
         "maximum_hard_error_ratio": _safe_float(maximum_hard_error_ratio),
+        "actual_nonfinite": actual_nonfinite,
+        "expected_nonfinite": expected_nonfinite,
         "nan": {
             "actual": int(torch.isnan(actual_cpu).sum().item()),
             "expected": int(torch.isnan(expected_cpu).sum().item()),
@@ -477,6 +525,23 @@ def write_accuracy_artifacts(
         writer = csv.DictWriter(stream, fieldnames=list(rows[0]) if rows else ["row"])
         writer.writeheader()
         writer.writerows(rows)
+
+    nonfinite_rows = []
+    for tensor_name in ("actual", "expected"):
+        for row in report.get("{}_nonfinite".format(tensor_name), {}).get(
+            "first_locations", []
+        ):
+            nonfinite_rows.append({"tensor": tensor_name, **row})
+    with (output_path / "nonfinite_values.csv").open(
+        "w", encoding="utf-8", newline=""
+    ) as stream:
+        fields = [
+            "tensor", "flat_index", "row", "column", "local_expert",
+            "source_rank", "kind",
+        ]
+        writer = csv.DictWriter(stream, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(nonfinite_rows)
 
     if dump_payload is not None and not report["passed"]:
         import torch

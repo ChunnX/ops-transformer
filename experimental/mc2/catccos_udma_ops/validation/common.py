@@ -98,6 +98,9 @@ def environment_fingerprint() -> Dict[str, Any]:
         "cann_install_path": ascend_home,
         "cann_version": None,
         "soc_version": os.environ.get("SOC_VERSION", "Ascend950"),
+        "catccos_udma_validate_routes": os.environ.get(
+            "CATCCOS_UDMA_VALIDATE_ROUTES", "0"
+        ),
     }
     try:
         import torch

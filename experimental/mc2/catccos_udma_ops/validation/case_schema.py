@@ -15,6 +15,7 @@ SCHEMA_VERSION = 1
 CASE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 SUPPORTED_RUN_MODES = {"accuracy", "performance"}
 SUPPORTED_DISTRIBUTIONS = {"uniform", "normal"}
+SUPPORTED_ROUTES = {"balanced", "unbalanced"}
 SUPPORTED_OPERATORS = {
     "all_to_allv_grouped_mat_mul",
     "grouped_mat_mul_all_to_allv",
@@ -127,9 +128,12 @@ def _validate_case(raw_case: Mapping[str, Any]) -> Dict[str, Any]:
     if case.get("dtype", "bfloat16") != "bfloat16":
         raise CaseManifestError(f"case {case_id}: the current operator supports only bfloat16")
     case["dtype"] = "bfloat16"
-    if case.get("route", "balanced") != "balanced":
-        raise CaseManifestError(f"case {case_id}: the current validator supports only balanced routes")
-    case["route"] = "balanced"
+    route = case.get("route", "balanced")
+    if route not in SUPPORTED_ROUTES:
+        raise CaseManifestError(
+            f"case {case_id}: route must be one of {sorted(SUPPORTED_ROUTES)}"
+        )
+    case["route"] = route
 
     run = case.get("run", ["accuracy", "performance"])
     if not isinstance(run, Sequence) or isinstance(run, (str, bytes)) or not run:

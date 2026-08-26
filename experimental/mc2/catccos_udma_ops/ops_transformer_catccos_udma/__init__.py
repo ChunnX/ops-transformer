@@ -17,6 +17,7 @@ from .runtime import (
     empty_symmetric,
     get_udma_config,
     init_udma_group,
+    poison_udma_workspace_for_testing,
     udma_group,
 )
 
@@ -35,5 +36,6 @@ __all__ = [
     "get_udma_config",
     "grouped_mat_mul_all_to_allv",
     "init_udma_group",
+    "poison_udma_workspace_for_testing",
     "udma_group",
 ]

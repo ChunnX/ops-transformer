@@ -104,6 +104,25 @@ def get_udma_config() -> UdmaConfig:
     return _config
 
 
+def poison_udma_workspace_for_testing(byte_value: int = 0xFF) -> None:
+    """Fill the symmetric kernel data workspace with a diagnostic byte pattern.
+
+    ``0xFF`` represents a NaN for every BF16 lane.  This deliberately excludes
+    the workspace's synchronization flags.  It is a validation-only operation,
+    must be called collectively before a fused launch, and adds a full stream
+    synchronization plus a roughly 400-MiB device memset.
+    """
+    if _anchor is None:
+        raise RuntimeError("UDMA is not initialized; call init_udma_group() first")
+    if isinstance(byte_value, bool) or not isinstance(byte_value, int):
+        raise TypeError("byte_value must be an integer")
+    if byte_value < 0 or byte_value > 255:
+        raise ValueError("byte_value must be in [0, 255]")
+    torch.ops.ops_transformer_catccos_udma._poison_udma_workspace(
+        _anchor, byte_value
+    )
+
+
 def empty_symmetric(shape, *, dtype=torch.bfloat16) -> torch.Tensor:
     """Allocate a tensor from the SHMEM heap for low-level interoperability.
 

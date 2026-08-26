@@ -18,13 +18,17 @@ namespace OpsTransformer::CatccosUdma {
 
 class UdmaRuntime {
 public:
-    static constexpr size_t kKernelWorkspaceBytes = 200UL * 1024 * 1024 * sizeof(uint16_t) + 4096;
+    static constexpr size_t kKernelWorkspaceDataBytes =
+        200UL * 1024 * 1024 * sizeof(uint16_t);
+    static constexpr size_t kKernelWorkspaceBytes =
+        kKernelWorkspaceDataBytes + 4096;
 
     static UdmaRuntime &Instance();
 
     void Initialize(int32_t rank, int32_t worldSize, const std::string &initMethod, uint64_t heapSize);
     void Finalize(aclrtStream stream);
     void EnsureInitialized() const;
+    void PoisonWorkspace(uint8_t byteValue);
 
     void *AllocateSymmetric(size_t bytes);
     void FreeSymmetric(void *pointer);

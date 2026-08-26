@@ -87,6 +87,24 @@ void UdmaRuntime::EnsureInitialized() const
     TORCH_CHECK(initialized_, "UDMA runtime is not initialized; call init_udma_group() before the operator");
 }
 
+void UdmaRuntime::PoisonWorkspace(uint8_t byteValue)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    EnsureInitialized();
+    // A previous fused launch may still use the symmetric data stages.  Do not
+    // let the diagnostic memset race it.  The final 4096 bytes contain kernel
+    // synchronization state and are intentionally excluded from poisoning.
+    if (lastStream_ != nullptr) {
+        const aclError syncStatus = aclrtSynchronizeStream(lastStream_);
+        TORCH_CHECK(syncStatus == ACL_SUCCESS,
+                    "failed to synchronize before poisoning UDMA workspace: ", syncStatus);
+    }
+    const aclError memsetStatus = aclrtMemset(
+        workspace_, kKernelWorkspaceDataBytes, byteValue, kKernelWorkspaceDataBytes);
+    TORCH_CHECK(memsetStatus == ACL_SUCCESS,
+                "failed to poison UDMA workspace: ", memsetStatus);
+}
+
 void *UdmaRuntime::AllocateSymmetric(size_t bytes)
 {
     std::lock_guard<std::mutex> lock(mutex_);

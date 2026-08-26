@@ -59,3 +59,5 @@ def test_public_ops_normalize_route_tables_before_dispatch():
     assert "global_tokens_per_local_expert: RouteInput" in source
     assert "global_tokens_per_local_expert.view(-1)" not in source
     assert "torch.tensor(host_values, dtype=torch.int64, device=x.device)" in source
+    assert "CATCCOS_UDMA_VALIDATE_ROUTES" in source
+    assert "value > 0xFFFFFFFF" in source

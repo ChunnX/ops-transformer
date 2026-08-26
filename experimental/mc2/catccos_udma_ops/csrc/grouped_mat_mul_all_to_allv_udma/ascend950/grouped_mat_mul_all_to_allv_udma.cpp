@@ -108,6 +108,27 @@ void CheckNpuTensor(const at::Tensor &tensor, const char *name, at::ScalarType d
     TORCH_CHECK(tensor.is_contiguous(), name, " must be contiguous");
 }
 
+bool TensorByteRangesOverlap(const at::Tensor &lhs, const at::Tensor &rhs)
+{
+    if (lhs.numel() == 0 || rhs.numel() == 0) {
+        return false;
+    }
+    const uintptr_t lhsBegin = reinterpret_cast<uintptr_t>(lhs.data_ptr());
+    const uintptr_t rhsBegin = reinterpret_cast<uintptr_t>(rhs.data_ptr());
+    const uintptr_t lhsEnd = lhsBegin +
+        static_cast<uintptr_t>(lhs.numel()) * lhs.element_size();
+    const uintptr_t rhsEnd = rhsBegin +
+        static_cast<uintptr_t>(rhs.numel()) * rhs.element_size();
+    return lhsBegin < rhsEnd && rhsBegin < lhsEnd;
+}
+
+void CheckNoTensorOverlap(const at::Tensor &written, const char *writtenName,
+                          const at::Tensor &read, const char *readName)
+{
+    TORCH_CHECK(!TensorByteRangesOverlap(written, read), writtenName,
+                " must not overlap the storage range of ", readName);
+}
+
 at::Tensor AllocateSymmetricTensor(
     const at::Tensor &deviceAnchor, at::IntArrayRef sizes, at::ScalarType dtype)
 {
@@ -268,8 +289,11 @@ at::Tensor GroupedMatMulAllToAllVUdmaImpl(
     TORCH_CHECK(output.device() == x.device(), "out and x must be on the same NPU");
     TORCH_CHECK(output.dim() == 2 && output.size(1) == n64,
                 "out must have shape [sum(local_tokens_per_expert), n]");
-    TORCH_CHECK(output.data_ptr() != x.data_ptr() && output.data_ptr() != weight.data_ptr(),
-                "out must not alias x or weight");
+    CheckNoTensorOverlap(output, "out", x, "x");
+    CheckNoTensorOverlap(output, "out", weight, "weight");
+    CheckNoTensorOverlap(output, "out", localTokensPerExpert, "local_tokens_per_expert");
+    CheckNoTensorOverlap(output, "out", globalTokensPerLocalExpert,
+                         "global_tokens_per_local_expert");
 
     aclrtStream stream = c10_npu::getCurrentNPUStream().stream(false);
     runtime.RecordStream(stream);

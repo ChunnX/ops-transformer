@@ -30,6 +30,14 @@ def main():
     parser.add_argument("--include-tag", action="append", default=[])
     parser.add_argument("--output-dir")
     parser.add_argument("--fail-fast", action="store_true")
+    parser.add_argument(
+        "--memory-safety", action="store_true",
+        help="poison HBM/workspace and add red-zone, unwritten-output and mutation checks",
+    )
+    parser.add_argument("--hbm-reserve-gib", type=float, default=2.0)
+    parser.add_argument("--hbm-poison-chunk-mib", type=int, default=256)
+    parser.add_argument("--guard-mib", type=int, default=16)
+    parser.add_argument("--fingerprint-elements", type=int, default=1 << 20)
     args = parser.parse_args()
     cases = select_cases(
         load_case_manifest(args.cases), mode="accuracy",
@@ -63,6 +71,20 @@ def main():
             "--nproc-per-node={}".format(world_size), str(HERE / "accuracy_worker.py"),
             "--resolved-cases", str(resolved), "--output-dir", str(output_root),
         ]
+        if args.memory_safety:
+            if args.hbm_reserve_gib < 0:
+                raise ValueError("--hbm-reserve-gib must be non-negative")
+            if args.hbm_poison_chunk_mib <= 0 or args.guard_mib <= 0:
+                raise ValueError("poison chunk and guard sizes must be positive")
+            if args.fingerprint_elements <= 0:
+                raise ValueError("--fingerprint-elements must be positive")
+            command.extend([
+                "--memory-safety",
+                "--hbm-reserve-bytes", str(int(args.hbm_reserve_gib * (1 << 30))),
+                "--hbm-poison-chunk-bytes", str(args.hbm_poison_chunk_mib << 20),
+                "--guard-bytes", str(args.guard_mib << 20),
+                "--fingerprint-elements", str(args.fingerprint_elements),
+            ])
         print("+ " + " ".join(command), flush=True)
         result = subprocess.run(command, cwd=str(output_root), env=environment)
         if result.returncode:
@@ -82,12 +104,17 @@ def main():
                         "path": report["path"], "passed": report["passed"],
                         "matched_ratio": report["matched_ratio"],
                         "max_abs_error": report["max_abs_error"],
+                        "actual_nonfinite": report.get("actual_nonfinite", 0),
+                        "memory_safety_passed": report.get("memory_safety_passed"),
                     })
         else:
             rows.append({"case_id": case["id"], "passed": False, "path": "launch_failed"})
     write_csv(
         output_root / "summary.csv", rows,
-        ["case_id", "rank", "path", "passed", "matched_ratio", "max_abs_error"],
+        [
+            "case_id", "rank", "path", "passed", "matched_ratio",
+            "max_abs_error", "actual_nonfinite", "memory_safety_passed",
+        ],
     )
     overall = not failed_launches and rows and all(bool(row.get("passed")) for row in rows)
     write_json(output_root / "summary.json", {

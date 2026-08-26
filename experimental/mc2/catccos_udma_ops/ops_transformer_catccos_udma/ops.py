@@ -1,6 +1,7 @@
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 """Stable Python facade for CatCCOS UDMA operators."""
 
+import os
 import struct
 from numbers import Integral
 from typing import Optional, Sequence, Tuple, Union
@@ -56,6 +57,8 @@ def _host_route_values(route: RouteInput, name: str):
         value = int(value)
         if value < 0:
             raise ValueError("{}[{}] must be non-negative".format(name, index))
+        if value > 0xFFFFFFFF:
+            raise ValueError("{}[{}] must fit uint32".format(name, index))
         normalized.append(value)
     return normalized
 
@@ -87,6 +90,29 @@ def _normalize_route(
             "{} must contain {} elements".format(name, expected_elements)
         )
     return route, None
+
+
+def _debug_route_values(route: torch.Tensor, name: str):
+    """Synchronously validate a device route when integration diagnostics are enabled."""
+    values = route.detach().cpu().reshape(-1).tolist()
+    for index, value in enumerate(values):
+        if value < 0 or value > 0xFFFFFFFF:
+            raise ValueError(
+                "{}[{}]={} is outside the kernel uint32 range; a negative int64 "
+                "would otherwise wrap to a huge token count".format(name, index, value)
+            )
+    return values
+
+
+def _route_debug_enabled() -> bool:
+    value = os.environ.get("CATCCOS_UDMA_VALIDATE_ROUTES", "0").strip().lower()
+    if value in {"", "0", "false", "no", "off"}:
+        return False
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    raise ValueError(
+        "CATCCOS_UDMA_VALIDATE_ROUTES must be a boolean value"
+    )
 
 
 def _normalize_received_rows(
@@ -245,6 +271,29 @@ def all_to_allv_grouped_mat_mul(
         global_host_values,
         ep_size * x.shape[0],
     )
+    if _route_debug_enabled():
+        local_debug = (
+            local_host_values
+            if local_host_values is not None
+            else _debug_route_values(local_tokens_per_expert, "local_tokens_per_expert")
+        )
+        global_debug = (
+            global_host_values
+            if global_host_values is not None
+            else _debug_route_values(
+                global_tokens_per_local_expert,
+                "global_tokens_per_local_expert",
+            )
+        )
+        if sum(local_debug) != x.shape[0]:
+            raise ValueError(
+                "route diagnostic: sum(local_tokens_per_expert) must equal x.shape[0]"
+            )
+        if sum(global_debug) != received_rows:
+            raise ValueError(
+                "route diagnostic: received_rows must equal "
+                "sum(global_tokens_per_local_expert)"
+            )
     arguments = (
         x,
         weight,
@@ -331,6 +380,25 @@ def grouped_mat_mul_all_to_allv(
         x,
         expert_num,
     )
+    debug_local_values = None
+    if _route_debug_enabled():
+        debug_local_values = (
+            local_host_values
+            if local_host_values is not None
+            else _debug_route_values(local_tokens_per_expert, "local_tokens_per_expert")
+        )
+        debug_global_values = (
+            global_host_values
+            if global_host_values is not None
+            else _debug_route_values(
+                global_tokens_per_local_expert,
+                "global_tokens_per_local_expert",
+            )
+        )
+        if sum(debug_global_values) != x.shape[0]:
+            raise ValueError(
+                "route diagnostic: sum(global_tokens_per_local_expert) must equal x.shape[0]"
+            )
     if global_host_values is not None and sum(global_host_values) != x.shape[0]:
         raise ValueError(
             "sum(global_tokens_per_local_expert) must equal x.shape[0]"
@@ -345,6 +413,12 @@ def grouped_mat_mul_all_to_allv(
         elif tuple(out.shape) != expected_output_shape:
             raise ValueError(
                 "out must have shape [sum(local_tokens_per_expert), n]"
+            )
+    if debug_local_values is not None and out is not None:
+        if out.shape[0] != sum(debug_local_values):
+            raise ValueError(
+                "route diagnostic: out.shape[0] must equal "
+                "sum(local_tokens_per_expert)"
             )
     arguments = (
         x,

@@ -1,0 +1,53 @@
+schema_version: 1
+
+defaults:
+  dtype: bfloat16
+  route: balanced
+  seed: 2026
+  accuracy:
+    standard: opbase_experimental
+    repeats: 2
+    topk: 32
+    heatmap_bins: 32
+    dump_on_failure: true
+
+cases:
+  - id: mem_a2av_gmm_aligned_ep2
+    operator: all_to_allv_grouped_mat_mul
+    output_all_to_allv: true
+    world_size: 2
+    shape: {m: 128, n: 256, k: 256}
+    expert_num: 8
+    input_distribution: {kind: uniform, low: -5.0, high: 5.0}
+    run: [accuracy]
+    tags: [memory_safety, aligned, all_to_allv_grouped_mat_mul]
+
+  - id: mem_a2av_gmm_tail_zero_experts_ep2
+    operator: all_to_allv_grouped_mat_mul
+    output_all_to_allv: true
+    world_size: 2
+    shape: {m: 17, n: 257, k: 259}
+    expert_num: 32
+    route: unbalanced
+    input_distribution: {kind: uniform, low: -5.0, high: 5.0}
+    run: [accuracy]
+    tags: [memory_safety, tail, zero_token_experts, all_to_allv_grouped_mat_mul]
+
+  - id: mem_gmm_a2av_aligned_ep2
+    operator: grouped_mat_mul_all_to_allv
+    world_size: 2
+    shape: {m: 128, n: 256, k: 256}
+    expert_num: 8
+    input_distribution: {kind: uniform, low: -5.0, high: 5.0}
+    run: [accuracy]
+    tags: [memory_safety, aligned, grouped_mat_mul_all_to_allv]
+
+  - id: mem_gmm_a2av_tail_zero_experts_ep2
+    operator: grouped_mat_mul_all_to_allv
+    world_size: 2
+    shape: {m: 17, n: 257, k: 259}
+    expert_num: 32
+    route: unbalanced
+    input_distribution: {kind: uniform, low: -5.0, high: 5.0}
+    run: [accuracy]
+    tags: [memory_safety, tail, zero_token_experts, grouped_mat_mul_all_to_allv]
