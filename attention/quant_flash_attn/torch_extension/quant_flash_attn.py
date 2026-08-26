@@ -285,6 +285,7 @@ def quant_flash_attn_metadata(
     layout_q_descale: Optional[str] = "BSND",
     layout_kv: Optional[str] = "BSND",
     layout_out: Optional[str] = "BSND",
+    is_grad_enabled: Optional[bool] = False,
 ):
     """
     Dispatcher implementation: NPU.
