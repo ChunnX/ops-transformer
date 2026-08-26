@@ -320,7 +320,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Dispatc
     bufferConfig = params_.tilingData->dispatchBufferConfig;
     int32_t routeItemsPerBatch = bufferConfig.routeItemsPerBatch;
 
-    // 按既定顺序落地址。Tensor 保存所有 [expert][source rank] 紧凑 count 的前缀和。
+    // 按既定顺序落地址。Tensor 保存所有 [expert][source rank] count 的前缀和。
     // Tensor 大小：worldSize_ * moeExpertPerRank_ * sizeof(int32_t)，向上对齐至 32 字节；
     uint32_t cumsumInfoTensorAddr = 0U;
     tokenDispatchScratch_.cumsumInfoTensor =
@@ -555,9 +555,11 @@ MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::InitTokenUnpermuteBuffers()
 template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::DispatchAllExpertTokens()
 {
-    RunAllWaveExpertDispatchStages<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
-        tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_,
-        g_winRankAddr_, tokenDispatchScratch_);
+    for (uint32_t expertIdx = 0U; expertIdx < commonConfig_.moeExpertPerRank; ++expertIdx) {
+        RunWaveExpertDispatchStage<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
+            tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_,
+            g_winRankAddr_, tokenDispatchScratch_, expertIdx);
+    }
 }
 
 template <TemplateMegaMoeA8W8WaveTypeClass>
@@ -587,8 +589,10 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
                                                 0U);
                 gmm1ExpertState.expertCountTableReady = true;
             }
-            UpdateExpertLoopStateFromWorkspace(params_.workspaceInfo, countWorkspace_, gmm1ExpertState,
-                                               gmm1Position.expertIdx, true, moeExpertPerRank_);
+            uint32_t expertTokenCount =
+                GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_,
+                                                 moeExpertPerRank_, gmm1Position.expertIdx);
+            UpdateExpertLoopState(gmm1ExpertState, gmm1Position.expertIdx, expertTokenCount);
         }
 
         uint64_t expertRowCount = Get<M_VALUE>(gmm1ExpertState.problemShape);
@@ -603,21 +607,13 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
             expertRowCount, gmm1Position.tokenIndexInExpert, remainingMGroupCount, GMM1_TILE_M);
         uint32_t waveRowCount = waveEndTokenIndexInExpert - gmm1Position.tokenIndexInExpert;
         uint32_t problemMGroupCount = GetMGroupCountForRows(waveRowCount, GMM1_TILE_M);
-        bool ownsGmm1Tile = true;
+        bool skipGmm1Problem = false;
         if constexpr (g_coreType == AIC) {
             uint32_t problemTileCount = problemMGroupCount * gmm1TilesPerMGroup_;
-            // tile 数量足以覆盖所有 AIC 时，每个核必然有任务，保持原执行路径。
-            if (problemTileCount < blockNum_) {
-                uint32_t firstOwnedTile = (blockIdx_ < runtimeState.startBlockIdx ? blockIdx_ + blockNum_ : blockIdx_) -
-                                          runtimeState.startBlockIdx;
-                ownsGmm1Tile = firstOwnedTile < problemTileCount;
-                if (!ownsGmm1Tile) {
-                    // 与底层 no-owner 分支保持相同 rolling 推进，但跳过 problem/address/scheduler 构造。
-                    runtimeState.startBlockIdx = (runtimeState.startBlockIdx + problemTileCount) % blockNum_;
-                }
-            }
+            skipGmm1Problem =
+                AdvanceIfWaveProblemUnowned(problemTileCount, gmmExecutionConfig_.blockJob, runtimeState.startBlockIdx);
         }
-        if (!ownsGmm1Tile) {
+        if (skipGmm1Problem) {
             processedMGroupCount += problemMGroupCount;
             gmm1Position.tokenIndexInExpert = waveEndTokenIndexInExpert;
             if (gmm1Position.tokenIndexInExpert >= expertRowCount) {
@@ -670,8 +666,10 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
 
     while (!IsSameExpertTokenPosition(gmm2Position, waveEndPosition) && gmm2Position.expertIdx < moeExpertPerRank_) {
         if (gmm2Position.tokenIndexInExpert == 0U) {
-            UpdateExpertLoopStateFromWorkspace(params_.workspaceInfo, countWorkspace_, gmm2ExpertState,
-                                               gmm2Position.expertIdx, true, moeExpertPerRank_);
+            uint32_t expertTokenCount =
+                GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_,
+                                                 moeExpertPerRank_, gmm2Position.expertIdx);
+            UpdateExpertLoopState(gmm2ExpertState, gmm2Position.expertIdx, expertTokenCount);
         }
 
         uint64_t expertRowCount = Get<M_VALUE>(gmm2ExpertState.problemShape);
@@ -687,21 +685,13 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         }
         uint32_t waveRowCount = waveEndTokenIndexInExpert - gmm2Position.tokenIndexInExpert;
         uint32_t problemMGroupCount = GetMGroupCountForRows(waveRowCount, GMM1_TILE_M);
-        bool ownsGmm2Tile = true;
+        bool skipGmm2Problem = false;
         if constexpr (g_coreType == AIC) {
             uint32_t problemTileCount = problemMGroupCount * gmm2TilesPerMGroup_;
-            // tile 数量足以覆盖所有 AIC 时，每个核必然有任务，保持原执行路径。
-            if (problemTileCount < blockNum_) {
-                uint32_t firstOwnedTile = (blockIdx_ < runtimeState.startBlockIdx ? blockIdx_ + blockNum_ : blockIdx_) -
-                                          runtimeState.startBlockIdx;
-                ownsGmm2Tile = firstOwnedTile < problemTileCount;
-                if (!ownsGmm2Tile) {
-                    // 与底层 no-owner 分支保持相同 rolling 推进，但跳过 problem/address/scheduler 构造。
-                    runtimeState.startBlockIdx = (runtimeState.startBlockIdx + problemTileCount) % blockNum_;
-                }
-            }
+            skipGmm2Problem =
+                AdvanceIfWaveProblemUnowned(problemTileCount, gmmExecutionConfig_.blockJob, runtimeState.startBlockIdx);
         }
-        if (!ownsGmm2Tile) {
+        if (skipGmm2Problem) {
             gmm2Position.tokenIndexInExpert = waveEndTokenIndexInExpert;
             if (gmm2Position.tokenIndexInExpert >= expertRowCount) {
                 NotifyWaveGmm2Ready(waveCombineJob_, params_, gmm2Position.expertIdx);
@@ -758,15 +748,17 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         RunWaveExpertCombineStage<CombineQuantMode, true>(
             commonConfig_, waveCombineJob_, activeBufferConfig, waveCombineScratch_, params_, combineAddrInfo,
             allCoreCombineExpertState, allCoreCombineExpertIndex, rowSequence);
-        DrainWaveCombineRowRing(rowSequence, activeBufferConfig.rowBufferCount);
+        DrainCombineRowBuffers(rowSequence, activeBufferConfig.rowBufferCount);
         return;
     }
 
     CombineBufferConfig activeBufferConfig = bufferConfig;
     uint32_t rowSequence = 0U;
     for (uint32_t expertIdx = expertBegin; expertIdx < expertEnd; ++expertIdx) {
-        if (!UpdateExpertLoopStateFromWorkspace(params_.workspaceInfo, countWorkspace_, combineState, expertIdx, true,
-                                                moeExpertPerRank_)) {
+        uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr,
+                                                                     countWorkspace_, moeExpertPerRank_, expertIdx);
+        UpdateExpertLoopState(combineState, expertIdx, expertTokenCount);
+        if (expertTokenCount == 0U) {
             continue;
         }
         bool useAllAivCores = expertIdx == allCoreCombineExpertIndex;
@@ -783,7 +775,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                                                         combineState.expertIdx, rowSequence);
         }
     }
-    DrainWaveCombineRowRing(rowSequence, activeBufferConfig.rowBufferCount);
+    DrainCombineRowBuffers(rowSequence, activeBufferConfig.rowBufferCount);
 }
 
 template <TemplateMegaMoeA8W8WaveTypeClass>

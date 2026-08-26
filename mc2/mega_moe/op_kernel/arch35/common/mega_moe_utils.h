@@ -36,6 +36,115 @@ struct WorkRange {
     uint32_t count = 0;
 };
 
+/*
+ * 对一段连续 int32 数据原地执行 inclusive prefix-scan。
+ *
+ * 路由计数全程保持 int32 精确累加。本实现专用于一段连续的一维数据，不需要通用多维 CumSum 的
+ * 维度转换和额外临时 UB：每个向量寄存器内使用 Hillis-Steele scan，相邻寄存器通过上一寄存器
+ * 末值 carry 串接。
+ *
+ * 本函数是 VF 内部的可复用计算单元，其他 VF 可直接调用，不会产生额外的 VF 启动。
+ */
+__simd_callee__ inline void InclusivePrefixSumInt32(__ubuf__ int32_t *values, uint32_t elementCount)
+{
+    constexpr uint32_t ELEMENTS_PER_VECTOR = GetVecLen() / sizeof(int32_t);
+    AscendC::Reg::RegTensor<int32_t> prefixReg;
+    AscendC::Reg::RegTensor<int32_t> shiftedReg;
+    AscendC::Reg::RegTensor<int32_t> carryReg;
+    AscendC::Reg::RegTensor<int32_t> laneIndexReg;
+    AscendC::Reg::RegTensor<int32_t> shiftedIndexReg;
+    AscendC::Reg::MaskReg fullMask = AscendC::Reg::CreateMask<int32_t, AscendC::Reg::MaskPattern::ALL>();
+
+    AscendC::Reg::Arange(laneIndexReg, 0);
+    AscendC::Reg::Duplicate(carryReg, 0, fullMask);
+    for (uint32_t vectorOffset = 0U; vectorOffset < elementCount; vectorOffset += ELEMENTS_PER_VECTOR) {
+        uint32_t validCount = elementCount - vectorOffset;
+        validCount = validCount < ELEMENTS_PER_VECTOR ? validCount : ELEMENTS_PER_VECTOR;
+        uint32_t maskCount = validCount;
+        AscendC::Reg::MaskReg activeMask = AscendC::Reg::UpdateMask<int32_t>(maskCount);
+        AscendC::Reg::LoadAlign(prefixReg, values + vectorOffset);
+
+        for (uint32_t shift = 1U; shift < validCount; shift <<= 1U) {
+            AscendC::Reg::Adds(shiftedIndexReg, laneIndexReg, -static_cast<int32_t>(shift), fullMask);
+            AscendC::Reg::Maxs(shiftedIndexReg, shiftedIndexReg, 0, fullMask);
+            AscendC::Reg::Gather(shiftedReg, prefixReg,
+                                 reinterpret_cast<AscendC::Reg::RegTensor<uint32_t> &>(shiftedIndexReg));
+            AscendC::Reg::MaskReg shiftedLaneMask;
+            AscendC::Reg::Compares<int32_t, AscendC::CMPMODE::GE>(shiftedLaneMask, laneIndexReg,
+                                                                  static_cast<int32_t>(shift), activeMask);
+            AscendC::Reg::Add<int32_t, AscendC::Reg::MaskMergeMode::MERGING>(prefixReg, prefixReg, shiftedReg,
+                                                                             shiftedLaneMask);
+        }
+
+        AscendC::Reg::Add<int32_t, AscendC::Reg::MaskMergeMode::MERGING>(prefixReg, prefixReg, carryReg, activeMask);
+        AscendC::Reg::StoreAlign(values + vectorOffset, prefixReg, activeMask);
+
+        AscendC::Reg::Duplicate(shiftedIndexReg, static_cast<int32_t>(validCount - 1U), fullMask);
+        AscendC::Reg::Gather(carryReg, prefixReg,
+                             reinterpret_cast<AscendC::Reg::RegTensor<uint32_t> &>(shiftedIndexReg));
+    }
+}
+
+/*
+ * MegaMoe count 表的融合版本：先复用 int32 prefix-scan，再在同一次 VF 中提取每个专家的累计尾值
+ * 并作差。相比先调用通用前缀和、再启动第二个 VF，融合实现省去一次 asc_vf_call 和外部流水同步。
+ */
+__simd_vf__ inline void ComputeExpertCountTablesVF(__ubuf__ int32_t *count, __ubuf__ int32_t *expertCounts,
+                                                   uint32_t elementCount, uint32_t expertCount, uint32_t worldSize)
+{
+    InclusivePrefixSumInt32(count, elementCount);
+
+    // prefix 已写回 UB；后续从同一区域 Gather 前建立 VEC_STORE -> VEC_LOAD 可见性。
+    AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
+
+    constexpr uint32_t ELEMENTS_PER_VECTOR = GetVecLen() / sizeof(int32_t);
+    AscendC::Reg::RegTensor<int32_t> expertEndPrefixReg;
+    AscendC::Reg::RegTensor<int32_t> previousEndPrefixReg;
+    AscendC::Reg::RegTensor<int32_t> expertCountReg;
+    AscendC::Reg::RegTensor<int32_t> previousVectorEndReg;
+    AscendC::Reg::RegTensor<int32_t> laneIndexReg;
+    AscendC::Reg::RegTensor<int32_t> gatherIndexReg;
+    AscendC::Reg::RegTensor<int32_t> previousLaneIndexReg;
+    AscendC::Reg::MaskReg fullMask = AscendC::Reg::CreateMask<int32_t, AscendC::Reg::MaskPattern::ALL>();
+    AscendC::Reg::MaskReg firstLaneMask = AscendC::Reg::CreateMask<int32_t, AscendC::Reg::MaskPattern::VL1>();
+
+    AscendC::Reg::Arange(laneIndexReg, 0);
+    AscendC::Reg::Duplicate(previousVectorEndReg, 0, fullMask);
+    for (uint32_t expertOffset = 0U; expertOffset < expertCount; expertOffset += ELEMENTS_PER_VECTOR) {
+        uint32_t validCount = expertCount - expertOffset;
+        validCount = validCount < ELEMENTS_PER_VECTOR ? validCount : ELEMENTS_PER_VECTOR;
+        uint32_t maskCount = validCount;
+        AscendC::Reg::MaskReg activeMask = AscendC::Reg::UpdateMask<int32_t>(maskCount);
+
+        AscendC::Reg::Adds(gatherIndexReg, laneIndexReg, static_cast<int32_t>(expertOffset), fullMask);
+        AscendC::Reg::Muls(gatherIndexReg, gatherIndexReg, static_cast<int32_t>(worldSize), fullMask);
+        AscendC::Reg::Adds(gatherIndexReg, gatherIndexReg, static_cast<int32_t>(worldSize - 1U), fullMask);
+        AscendC::Reg::Gather(expertEndPrefixReg, count,
+                             reinterpret_cast<AscendC::Reg::RegTensor<uint32_t> &>(gatherIndexReg), activeMask);
+
+        AscendC::Reg::Adds(previousLaneIndexReg, laneIndexReg, -1, fullMask);
+        AscendC::Reg::Maxs(previousLaneIndexReg, previousLaneIndexReg, 0, fullMask);
+        AscendC::Reg::Gather(previousEndPrefixReg, expertEndPrefixReg,
+                             reinterpret_cast<AscendC::Reg::RegTensor<uint32_t> &>(previousLaneIndexReg));
+        AscendC::Reg::Select(previousEndPrefixReg, previousVectorEndReg, previousEndPrefixReg, firstLaneMask);
+        AscendC::Reg::Sub(expertCountReg, expertEndPrefixReg, previousEndPrefixReg, activeMask);
+        AscendC::Reg::StoreAlign(expertCounts + expertOffset, expertCountReg, activeMask);
+
+        AscendC::Reg::Duplicate(previousLaneIndexReg, static_cast<int32_t>(validCount - 1U), fullMask);
+        AscendC::Reg::Gather(previousVectorEndReg, expertEndPrefixReg,
+                             reinterpret_cast<AscendC::Reg::RegTensor<uint32_t> &>(previousLaneIndexReg));
+    }
+}
+
+__aicore__ inline void ComputeExpertCountTables(LocalTensor<int32_t> countTensor,
+                                                LocalTensor<int32_t> expertCountTensor, uint32_t expertCount,
+                                                uint32_t worldSize)
+{
+    __ubuf__ int32_t *count = reinterpret_cast<__ubuf__ int32_t *>(countTensor.GetPhyAddr());
+    __ubuf__ int32_t *expertCounts = reinterpret_cast<__ubuf__ int32_t *>(expertCountTensor.GetPhyAddr());
+    asc_vf_call<ComputeExpertCountTablesVF>(count, expertCounts, expertCount * worldSize, expertCount, worldSize);
+}
+
 __aicore__ inline WorkRange TilingByJobContext(uint32_t totalLen, uint32_t jobIndex, uint32_t totalJobs,
                                                uint32_t align = ALIGN_32)
 {
@@ -110,9 +219,9 @@ __aicore__ inline uint32_t GetMGroupCountForRows(uint64_t rowCount, uint32_t row
     return static_cast<uint32_t>((rowCount - 1U) / rowsPerMGroup + 1U);
 }
 
-// AIC 未拥有当前冷专家切片的任何 tile 时，只推进 rolling 游标，跳过地址和 scheduler 构造。
-__aicore__ inline bool SkipUnownedWaveAicProblem(uint32_t problemTileCount, const BlockJobContext &blockJob,
-                                                 uint32_t &startBlockIdx)
+// AIC 未拥有当前冷专家切片的任何 tile 时，推进 rolling 游标并返回 true。
+__aicore__ inline bool AdvanceIfWaveProblemUnowned(uint32_t problemTileCount, const BlockJobContext &blockJob,
+                                                   uint32_t &startBlockIdx)
 {
     if constexpr (g_coreType == AIC) {
         if (problemTileCount < blockJob.totalJobs) {
@@ -247,11 +356,11 @@ __aicore__ inline void TilingByCore(int32_t totalLen, int32_t &coreLen, int32_t 
 // 普通路径沿用 [expert][block] 的 32B 槽；Wave 一次发布完整表后使用
 // [block][expert] 连续布局，减少逐专家元数据同步。
 __aicore__ inline uint64_t GetExpertCountWorkspaceOffset(const BlockWorkspaceContext &workspace, uint32_t expertCount,
-                                                         uint32_t expertIdx, bool useCompactLayout)
+                                                         uint32_t expertIdx, bool useBlockMajorLayout)
 {
-    if (useCompactLayout) {
-        uint32_t compactStride = Ops::Base::CeilAlign(expertCount, static_cast<uint32_t>(INT_CACHELINE));
-        return static_cast<uint64_t>(workspace.blockIdx) * compactStride + expertIdx;
+    if (useBlockMajorLayout) {
+        uint32_t blockMajorStride = Ops::Base::CeilAlign(expertCount, static_cast<uint32_t>(INT_CACHELINE));
+        return static_cast<uint64_t>(workspace.blockIdx) * blockMajorStride + expertIdx;
     }
     return static_cast<uint64_t>(expertIdx) * INT32_PER_256B * workspace.blockNum +
            static_cast<uint64_t>(INT32_PER_256B) * workspace.blockIdx;
@@ -319,7 +428,7 @@ __aicore__ inline ExpertLoopState CreateExpertLoopState(const MoeStageCommonConf
     return state;
 }
 
-// 按专家顺序推进紧凑 token 行偏移，并用当前专家的 token 数更新 M 维度。
+// 按专家顺序推进连续 token 行偏移，并用当前专家的 token 数更新 M 维度。
 __aicore__ inline void UpdateExpertLoopState(ExpertLoopState &state, uint32_t expertIdx, uint64_t expertTokenCount)
 {
     if (expertIdx != state.expertIdx) {
@@ -327,20 +436,6 @@ __aicore__ inline void UpdateExpertLoopState(ExpertLoopState &state, uint32_t ex
     }
     state.expertIdx = expertIdx;
     Get<M_VALUE>(state.problemShape) = static_cast<int64_t>(expertTokenCount);
-}
-
-// 从当前 expert/block 的 count 槽读取 token 数后更新专家遍历状态。
-__aicore__ inline bool UpdateExpertLoopStateFromWorkspace(const WorkspaceInfo &workspace,
-                                                          const BlockWorkspaceContext &countWorkspace,
-                                                          ExpertLoopState &state, uint32_t expertIdx,
-                                                          bool useCompactLayout = false, uint32_t expertCount = 0U)
-{
-    uint64_t countOffset = GetExpertCountWorkspaceOffset(countWorkspace, expertCount, expertIdx, useCompactLayout);
-    __gm__ int32_t *expertTokenCountAddr =
-        reinterpret_cast<__gm__ int32_t *>(workspace.expertRevTokenNumsPtr) + countOffset;
-    uint32_t expertTokenCount = static_cast<uint32_t>(AscendC::ReadGmByPassDCache(expertTokenCountAddr));
-    UpdateExpertLoopState(state, expertIdx, expertTokenCount);
-    return expertTokenCount != 0U;
 }
 
 // 按当前 Wave 的剩余容量推进专家 token 位置，返回本次推进覆盖的 token 数。
@@ -385,10 +480,10 @@ __aicore__ inline void WaitForMoeExpertTokenCountReady(GM_ADDR tokenCountReadyFl
     WaitUntilGmFlagIsNonZero(tokenCountReadyFlag);
 }
 
-// 从当前 block 的紧凑 [block][expert] workspace 行读取专家 token 数。
-__aicore__ inline uint32_t GetCompactExpertTokenCountFromWorkspace(GM_ADDR expertTokenCountWorkspace,
-                                                                   const BlockWorkspaceContext &countWorkspace,
-                                                                   uint32_t expertCount, uint32_t expertIdx)
+// 从当前 block 的 [block][expert] workspace 行读取专家 token 数。
+__aicore__ inline uint32_t GetExpertTokenCountFromWorkspace(GM_ADDR expertTokenCountWorkspace,
+                                                            const BlockWorkspaceContext &countWorkspace,
+                                                            uint32_t expertCount, uint32_t expertIdx)
 {
     uint64_t countSlotIndex = GetExpertCountWorkspaceOffset(countWorkspace, expertCount, expertIdx, true);
     __gm__ int32_t *expertTokenCountAddr =
