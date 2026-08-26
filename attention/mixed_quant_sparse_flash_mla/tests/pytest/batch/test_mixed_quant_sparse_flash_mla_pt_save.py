@@ -257,9 +257,7 @@ def mqsmla(param_combinations):
             ops_mode = "prefill" if params["S1"] > 4 else "decode"
             q_type_str = "BF16" if params["q_type"] == torch.bfloat16 else "FP16"
             kv_type_str = (
-                "FP8_AS_UINT8"
-                if params["ori_kv_type"] == torch.uint8
-                else "FP8_E4M3FN"
+                "FP8_AS_UINT8" if params["ori_kv_type"] == torch.uint8 else "FP8_E4M3FN"
             )
             prefix_part = (
                 f"{param_combinations['tc_prefix']}_"
