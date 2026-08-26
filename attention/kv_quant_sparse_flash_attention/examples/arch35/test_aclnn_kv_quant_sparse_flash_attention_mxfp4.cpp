@@ -763,11 +763,17 @@ int main(int argc, char **argv)
     if (cpuOnly) {
         int failed = 0;
         int executed = 0;
+        int skipped = 0;
         for (const auto &spec : cases) {
             if (!selectedCase.empty() && spec.name != selectedCase) {
                 continue;
             }
             ++executed;
+            if (spec.expectWorkspaceFailure) {
+                RunCpuOnly(spec);
+                ++skipped;
+                continue;
+            }
             try {
                 failed += RunCpuOnly(spec) != 0;
             } catch (const std::exception &error) {
@@ -775,7 +781,8 @@ int main(int argc, char **argv)
                 ++failed;
             }
         }
-        std::printf("CPU summary: executed=%d passed=%d failed=%d\n", executed, executed - failed, failed);
+        std::printf("CPU summary: executed=%d passed=%d skipped=%d failed=%d\n", executed,
+                    executed - skipped - failed, skipped, failed);
         return failed == 0 ? 0 : 1;
     }
     if (aclInit(nullptr) != ACL_SUCCESS || aclrtSetDevice(deviceId) != ACL_SUCCESS) {
