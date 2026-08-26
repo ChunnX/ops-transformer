@@ -25,10 +25,10 @@ namespace ge {
 * @brief Fast and Memory-Efficient Exact Attention with IO-Awareness.
 
 * @par Inputs:
-* twelve inputs, including:
-* @li query: A matrix Tensor. The type support float16, bf16, float32.
-* @li key: A matrix Tensor. The type support float16, bf16, float32.
-* @li value: A matrix Tensor. The type support float16, bf16, float32.
+* nineteen inputs, including:
+* @li query: A matrix Tensor. The type support float8_e5m2, float8_e4m3fn, float16, bf16, float32.
+* @li key: A matrix Tensor. The type support float8_e5m2, float8_e4m3fn, float16, bf16, float32.
+* @li value: A matrix Tensor. The type support float8_e5m2, float8_e4m3fn, float16, bf16, float32.
 * @li real_shift: A matrix Tensor. An optional input parameter. The type support float16, bf16, float32.
 * @li drop_mask: A matrix Tensor. An optional input parameter. The type support uint8.
 * @li padding_mask: A matrix Tensor. An optional input parameter. The type support float16, bf16, float32.
@@ -43,8 +43,8 @@ namespace ge {
 * @li d_scale_q: A matrix Tensor. An optional input parameter. The type support float32.
 * @li d_scale_k: A matrix Tensor. An optional input parameter. The type support float32.
 * @li d_scale_v: A matrix Tensor. An optional input parameter. The type support float32.
-* @li queryRope: A matrix Tensor. An optional input parameter. The type support float16, bf16, float32.
-* @li keyRope: A matrix Tensor. An optional input parameter. The type support float16, bf16, float32.
+* @li query_rope: A matrix Tensor. An optional input parameter. The type support float8_e5m2, float8_e4m3fn, float16, bf16, float32.
+* @li key_rope: A matrix Tensor. An optional input parameter. The type support float8_e5m2, float8_e4m3fn, float16, bf16, float32.
 * @li sink: A matrix Tensor. An optional input parameter. The type support float32.
 * @li p_scale: A matrix Tensor. An optional input parameter. The type support float32.
 
@@ -71,7 +71,9 @@ namespace ge {
 * @li softmax_sum: A matrix Tensor. The type support float32.
 * @li softmax_out: A matrix Tensor. The type support float16, bf16, float32.
 * @li attention_out: A matrix Tensor. The type support float16, bf16, float32.
-*/
+ */
+#ifndef OPS_PROTO_DEF_FLASHATTENTIONSCORE
+#define OPS_PROTO_DEF_FLASHATTENTIONSCORE
 REG_OP(FlashAttentionScore)
     .INPUT(query, TensorType({DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT16, DT_BF16, DT_FLOAT32}))
     .INPUT(key, TensorType({DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT16, DT_BF16, DT_FLOAT32}))
@@ -110,6 +112,8 @@ REG_OP(FlashAttentionScore)
     .ATTR(out_dtype, Int, 0)
     .ATTR(softmax_out_layout, String, "")
     .OP_END_FACTORY_REG(FlashAttentionScore)
-}  // namespace ge
+#endif
 
-#endif  // FLASH_ATTENTION_SCORE_PROTO_H_
+} // namespace ge
+
+#endif // FLASH_ATTENTION_SCORE_PROTO_H_
