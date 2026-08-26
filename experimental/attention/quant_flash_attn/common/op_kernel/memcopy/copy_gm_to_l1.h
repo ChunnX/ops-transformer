@@ -663,31 +663,28 @@ private:
             CopySingleMXScaleDNToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.dDealSize, headQsSize,
                                     offsetCalculator.GetStrideS1(), gmCoord.dDealSize);
         } else {
-            // 有padding: 分组搬运
-            uint32_t headSize = 0;
-            if (gIdxStart == gIdxEnd) {
-                headSize = s1IdxEnd - s1IdxStart;
-            } else {
-                headSize = s1Size - s1IdxStart;
-            }
-            uint64_t offset = queryScaleGmbaseOffset + s1IdxStart * offsetCalculator.GetDimD();
-            CopySingleMXScaleDNToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.dDealSize, headSize,
-                                    offsetCalculator.GetStrideS1(), gmCoord.dDealSize);
+            // 有padding: 逐组搬运
+            uint64_t gmOffset = queryScaleGmbaseOffset + s1IdxStart * offsetCalculator.GetDimD();
+            uint64_t l1Offset = 0;
 
-            if (gIdxEnd - gIdxStart >= 1) {
-                uint64_t gmOffset = queryScaleGmbaseOffset + offsetCalculator.GetStrideG();
-                uint64_t l1Offset = headSize * offsetCalculator.GetDimD();
-                if (gIdxEnd - gIdxStart > 1) {
-                    CopyMultiMXScaleDNToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset],
-                                           gIdxEnd - gIdxStart - 1, offsetCalculator.GetStrideG(), 1, 1, s1Size,
-                                           offsetCalculator.GetStrideS1(), offsetCalculator.GetDimD());
-                    gmOffset += (gIdxEnd - gIdxStart - 1) * offsetCalculator.GetStrideG();
-                    l1Offset += (gIdxEnd - gIdxStart - 1) * s1Size * offsetCalculator.GetDimD();
-                }
-                if (s1IdxEnd > 0) {
-                    CopySingleMXScaleDNToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], gmCoord.dDealSize,
-                                            s1IdxEnd, offsetCalculator.GetStrideS1(), gmCoord.dDealSize);
-                }
+            uint32_t headSize = (gIdxStart == gIdxEnd) ? (s1IdxEnd - s1IdxStart) : (s1Size - s1IdxStart);
+            if (headSize > 0) {
+                CopySingleMXScaleDNToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], gmCoord.dDealSize,
+                                        headSize, offsetCalculator.GetStrideS1(), gmCoord.dDealSize);
+                l1Offset += headSize * offsetCalculator.GetDimD();
+            }
+
+            for (uint32_t i = gIdxStart + 1; i < gIdxEnd; i++) {
+                gmOffset = queryScaleGmbaseOffset + (i - gIdxStart) * offsetCalculator.GetStrideG();
+                CopySingleMXScaleDNToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], gmCoord.dDealSize,
+                                        s1Size, offsetCalculator.GetStrideS1(), gmCoord.dDealSize);
+                l1Offset += s1Size * offsetCalculator.GetDimD();
+            }
+
+            if (s1IdxEnd > 0) {
+                gmOffset = queryScaleGmbaseOffset + (gIdxEnd - gIdxStart) * offsetCalculator.GetStrideG();
+                CopySingleMXScaleDNToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], gmCoord.dDealSize,
+                                        s1IdxEnd, offsetCalculator.GetStrideS1(), gmCoord.dDealSize);
             }
         }
     }
