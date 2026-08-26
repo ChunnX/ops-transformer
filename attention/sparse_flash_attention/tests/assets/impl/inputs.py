@@ -371,6 +371,9 @@ INPUT_ADAPTER = SparseFlashAttentionInputAdapter()
 __input__ = {
     "e2e": {
         "torch_npu.npu_sparse_flash_attention": "generate_sfa_inputs",
+        "torch.ops.cann_ops_transformer.sparse_flash_attention": (
+            "generate_sfa_inputs"
+        ),
     },
     "aclnn": {
         "aclnnSparseFlashAttention": "generate_sfa_inputs_aclnn",
