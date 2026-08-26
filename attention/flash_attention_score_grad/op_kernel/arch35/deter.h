@@ -2019,13 +2019,18 @@ __aicore__ inline void LoadTNDOuterMN(const __gm__ uint8_t *actualSeqQlenAddr, c
     int64_t actualS1Len = 0;
     int64_t actualS2Len = 0;
     GetSeqQlenKvlenByBidx(actualSeqQlenAddr, actualSeqKvlenAddr, batchType, actualS1Len, actualS2Len);
-    m = (actualS1Len + CUBE_BASEM - 1) / CUBE_BASEM;
-    n = (actualS2Len + CUBE_BASEN - 1) / CUBE_BASEN;
-    if (m < 1) {
-        m = 1;
-    }
-    if (n < 1) {
-        n = 1;
+    if (actualS1Len <= 0 || actualS2Len <= 0) {
+        m = 0;
+        n = 0;
+    } else {
+        m = (actualS1Len + CUBE_BASEM - 1) / CUBE_BASEM;
+        n = (actualS2Len + CUBE_BASEN - 1) / CUBE_BASEN;
+        if (m < 1) {
+            m = 1;
+        }
+        if (n < 1) {
+            n = 1;
+        }
     }
     coordinateInfo.actualS1Len = actualS1Len;
     coordinateInfo.actualS2Len = actualS2Len;
@@ -2086,6 +2091,11 @@ __aicore__ inline void LoadTNDBandMN(const __gm__ uint8_t *actualSeqQlenAddr, co
                                      CoordinateInfo &coordinateInfo)
 {
     LoadTNDOuterMN<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, bIdx, m, n, coordinateInfo);
+    if (m < 1 || n < 1) {
+        p = 0;
+        q = 0;
+        return;
+    }
     int64_t actualP = coordinateInfo.p;
     int64_t actualQ = coordinateInfo.q;
     int64_t dummyM = 0;
@@ -2193,6 +2203,39 @@ __aicore__ inline void MapTNDTriToBatch(int64_t tri, int64_t n1, int64_t runHead
 __aicore__ inline void MapTNDCopyToBatch(int64_t copyId, int64_t n1, int64_t runHead, int64_t &batchId)
 {
     MapTNDTriToBatch(copyId - 1, n1, runHead, batchId);
+}
+
+template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
+__aicore__ inline void BindTNDCausalMappedBatch(const __gm__ uint8_t *actualSeqQlenAddr,
+                                                const __gm__ uint8_t *actualSeqKvlenAddr, int64_t runHead, int64_t n1,
+                                                int64_t n1Id, int64_t x, int64_t y, CoordinateInfo &coordinateInfo)
+{
+    MapTNDTriToBatch(n1Id - 1, n1, runHead, coordinateInfo.batchId);
+    int64_t dummyM = 0;
+    int64_t dummyN = 0;
+    LoadTNDOuterMN<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, runHead + (n1Id - 1) / n1, dummyM,
+                                           dummyN, coordinateInfo);
+    coordinateInfo.s1Idx = x;
+    coordinateInfo.s2Idx = y;
+}
+
+template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
+__aicore__ inline void BindTNDBandMappedBatch(const __gm__ uint8_t *actualSeqQlenAddr,
+                                              const __gm__ uint8_t *actualSeqKvlenAddr, int64_t runHead, int64_t n1,
+                                              int64_t copyId, int64_t x, int64_t y, int64_t rawP, int64_t rawQ,
+                                              CoordinateInfo &coordinateInfo)
+{
+    MapTNDCopyToBatch(copyId, n1, runHead, coordinateInfo.batchId);
+    coordinateInfo.p = rawP;
+    coordinateInfo.q = rawQ;
+    int64_t dummyM = 0;
+    int64_t dummyN = 0;
+    int64_t dummyP = 0;
+    int64_t dummyQ = 0;
+    LoadTNDBandMN<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, runHead + (copyId - 1) / n1, dummyM,
+                                          dummyN, dummyP, dummyQ, coordinateInfo);
+    coordinateInfo.s1Idx = x;
+    coordinateInfo.s2Idx = y;
 }
 
 __aicore__ inline void AssignTNDDenseDelta(int64_t m, int64_t n, int64_t rMax, int64_t delta, int64_t &x, int64_t &y)
@@ -2309,8 +2352,10 @@ __aicore__ inline bool CalTNDDenseByAreaPrefix(const __gm__ uint8_t *actualSeqQl
     }
 
     int64_t batchBaseNum = virtM * virtN * copies;
-    while (delta > batchBaseNum && w < b) {
-        delta -= batchBaseNum;
+    while (w < b && (batchBaseNum <= 0 || delta > batchBaseNum)) {
+        if (batchBaseNum > 0) {
+            delta -= batchBaseNum;
+        }
         w += 1;
         if (w >= b) {
             return false;
@@ -2493,9 +2538,8 @@ __aicore__ inline void CalTNDCausalRunIndex(const __gm__ uint8_t *actualSeqQlenA
                 const bool mapped = ok && (LEFT_UP ? MapTNDLeftUp(m, n, pairId, pairSpace, x, y, n1Id) :
                                                      MapTNDRightDown(m, n, pairId, pairSpace, x, y, n1Id));
                 if (mapped) {
-                    MapTNDTriToBatch(n1Id - 1, n1, runHead, coordinateInfo.batchId);
-                    coordinateInfo.s1Idx = x;
-                    coordinateInfo.s2Idx = y;
+                    BindTNDCausalMappedBatch<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, runHead, n1,
+                                                                     n1Id, x, y, coordinateInfo);
                 }
                 return;
             }
@@ -2510,9 +2554,8 @@ __aicore__ inline void CalTNDCausalRunIndex(const __gm__ uint8_t *actualSeqQlenA
                 ok = CalTNDDenseLine(k, m, n, 1, j, singleRound, w, x, y) && IsTNDRightDownValid(m, n, x, y);
             }
             if (ok) {
-                MapTNDTriToBatch(total - 1, n1, runHead, coordinateInfo.batchId);
-                coordinateInfo.s1Idx = x;
-                coordinateInfo.s2Idx = y;
+                BindTNDCausalMappedBatch<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, runHead, n1,
+                                                                 total, x, y, coordinateInfo);
             }
             return;
         }
@@ -2687,6 +2730,8 @@ __aicore__ inline void CalTNDBandSoloIndex(const __gm__ uint8_t *actualSeqQlenAd
                                            CoordinateInfo &coordinateInfo)
 {
     coordinateInfo.batchId = -1;
+    const int64_t rawP = coordinateInfo.p;
+    const int64_t rawQ = coordinateInfo.q;
     const int64_t batchTypeBase = BinarySearch(prefix, b, r, step);
     int64_t a = r - prefix[batchTypeBase];
     int64_t bIdx = batchTypeBase * step;
@@ -2730,9 +2775,8 @@ __aicore__ inline void CalTNDBandSoloIndex(const __gm__ uint8_t *actualSeqQlenAd
             const bool ok = useLine ? CalTNDDenseLine(k, m, n, copies, j, a, w, x, y) :
                                       CalTNDDenseOnRect(k, m, n, copies, j, a, soloRounds, w, x, y);
             if (ok && w >= 1 && w <= copies && x >= 1 && x <= m && y >= 1 && y <= n && y <= x + q - 1) {
-                MapTNDCopyToBatch(w, n1, runHead, coordinateInfo.batchId);
-                coordinateInfo.s1Idx = x;
-                coordinateInfo.s2Idx = y;
+                BindTNDBandMappedBatch<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, runHead, n1, w, x,
+                                                               y, rawP, rawQ, coordinateInfo);
             }
             return;
         }
@@ -2750,9 +2794,8 @@ __aicore__ inline void CalTNDBandSoloIndex(const __gm__ uint8_t *actualSeqQlenAd
             const bool ok = useLine ? CalTNDDenseLine(k, m, denseN, copies, j, a, w, x, y) :
                                       CalTNDDenseOnRect(k, m, denseN, copies, j, a, soloRounds, w, x, y);
             if (ok && MapTNDBandWide(m, n, p, q, x, y) && w >= 1 && w <= copies) {
-                MapTNDCopyToBatch(w, n1, runHead, coordinateInfo.batchId);
-                coordinateInfo.s1Idx = x;
-                coordinateInfo.s2Idx = y;
+                BindTNDBandMappedBatch<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, runHead, n1, w, x,
+                                                               y, rawP, rawQ, coordinateInfo);
             }
             return;
         }
@@ -2769,9 +2812,8 @@ __aicore__ inline void CalTNDBandSoloIndex(const __gm__ uint8_t *actualSeqQlenAd
             y = y != 0 ? y : n;
             const int64_t x = y + a2 - q;
             if (w >= 1 && w <= copies && x >= 1 && x <= m && y >= 1 && y <= n) {
-                MapTNDCopyToBatch(w, n1, runHead, coordinateInfo.batchId);
-                coordinateInfo.s1Idx = x;
-                coordinateInfo.s2Idx = y;
+                BindTNDBandMappedBatch<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, runHead, n1, w, x,
+                                                               y, rawP, rawQ, coordinateInfo);
             }
             return;
         }
@@ -2785,9 +2827,8 @@ __aicore__ inline void CalTNDBandSoloIndex(const __gm__ uint8_t *actualSeqQlenAd
         x = x != 0 ? x : m;
         const int64_t y = x + q - a2;
         if (w >= 1 && w <= copies && x >= 1 && x <= m && y >= 1 && y <= n) {
-            MapTNDCopyToBatch(w, n1, runHead, coordinateInfo.batchId);
-            coordinateInfo.s1Idx = x;
-            coordinateInfo.s2Idx = y;
+            BindTNDBandMappedBatch<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, runHead, n1, w, x, y,
+                                                           rawP, rawQ, coordinateInfo);
         }
         return;
     }

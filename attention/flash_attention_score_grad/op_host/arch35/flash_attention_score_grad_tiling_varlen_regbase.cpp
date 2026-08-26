@@ -23,6 +23,11 @@ inline void GetTNDOuterMN(const FuzzyBaseInfoParamsRegbase &p, int64_t bIdx, int
 {
     const int64_t cubeM = p.s1Inner * p.s1CvRatio;
     const int64_t cubeN = p.s2Inner * p.s2CvRatio;
+    if (p.actualSeqQlen[bIdx] <= 0 || p.actualSeqKvlen[bIdx] <= 0) {
+        m = 0;
+        n = 0;
+        return;
+    }
     m = CeilDivideBy(p.actualSeqQlen[bIdx], cubeM);
     n = CeilDivideBy(p.actualSeqKvlen[bIdx], cubeN);
     if (m < 1) {
@@ -136,6 +141,11 @@ inline void GetTNDBandMN(FuzzyBaseInfoParamsRegbase &p, int64_t bIdx, int64_t &m
                          int64_t &bandQ)
 {
     GetTNDOuterMN(p, bIdx, m, n);
+    if (m < 1 || n < 1) {
+        bandP = 0;
+        bandQ = 0;
+        return;
+    }
     int64_t actualS1Token = 0;
     int64_t actualS2Token = 0;
     CalcleActualToken(p, bIdx, actualS1Token, actualS2Token);
@@ -258,6 +268,17 @@ inline void CalcleTNDSparseDeterParam(FuzzyBaseInfoParamsRegbase &p)
         int64_t runSolo = 0;
         int64_t poolArea = 0;
         int64_t singleArea = 0;
+
+        if (shape.m < 1 || shape.n < 1) {
+            const int64_t soloEnd = prefixSolo.back();
+            for (int64_t runIdx = 0; runIdx < groupSize; ++runIdx) {
+                prefixSolo.push_back(soloEnd);
+                prefixPool.push_back(prefixPool.back());
+                prefixSingle.push_back(prefixSingle.back());
+            }
+            i += groupSize;
+            continue;
+        }
 
         if (!isBand) {
             int64_t virtM = 0;
