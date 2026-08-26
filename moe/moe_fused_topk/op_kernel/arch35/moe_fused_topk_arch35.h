@@ -246,11 +246,20 @@ __aicore__ inline void MoeFusedTopkArch35<inputT, calT, enableExpertMapping>::Ac
 {
     LocalTensor<float> xLocal = xInBuf_.Get<float>();
     LocalTensor<float> addNumLocal = addNumInBuf_.Get<float>();
-    LocalTensor<uint8_t> sharedTmpBuffer = tempBuf_.Get<uint8_t>();
+    LocalTensor<float> expTensor = tempBuf_.Get<float>();
     LocalTensor<float> sigmoidTensor = sigmoidBuf_.Get<float>();
     LocalTensor<float> sigmoidAddTensor = sigmoidAddBuf_.Get<float>();
 
-    Sigmoid(sigmoidTensor, xLocal, sharedTmpBuffer, secondDimSize_);
+    Muls(xLocal, xLocal, -1.0F, secondDimSize_);
+    AscendC::PipeBarrier<PIPE_V>();
+    Exp(expTensor, xLocal, secondDimSize_);
+    AscendC::PipeBarrier<PIPE_V>();
+    Adds(expTensor, expTensor, 1.0F, secondDimSize_);
+    AscendC::PipeBarrier<PIPE_V>();
+    Duplicate(sigmoidAddTensor, 1.0F, secondDimSize_);
+    AscendC::PipeBarrier<PIPE_V>();
+    static constexpr DivConfig divConfig = {DivAlgo::PRECISION_0ULP_FTZ_TRUE};
+    Div<float, divConfig>(sigmoidTensor, sigmoidAddTensor, expTensor, secondDimSize_);
     AscendC::PipeBarrier<PIPE_V>();
     Add(sigmoidAddTensor, sigmoidTensor, addNumLocal, secondDimSize_);
     event_t eventIdVToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));

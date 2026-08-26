@@ -22,7 +22,20 @@ import numpy as np
 import torch
 
 
-__spec__ = {"moe_fused_topk": "MoeFusedTopkTestSpec"}
+__spec__ = {
+    "moe_fused_topk": "MoeFusedTopkTestSpec",
+    "aclnnMoeFusedTopk": "AclnnMoeFusedTopkTestSpec",
+}
+
+_KERNEL_TOLERANCE = {
+    "float32": {"standard": "cross_check", "level": "L1"},
+    "int32": {"standard": "binary_equal"},
+}
+
+_ACLNN_TOLERANCE = {
+    "float32": {"standard": "cross_check", "level": "L1"},
+    "int32": {"standard": "binary_equal"},
+}
 
 # Retain the legacy registrations while ATK cases migrate to TTK.
 __golden__ = {
@@ -43,10 +56,17 @@ def _check_activation(activate_type) -> None:
 
 
 def _score_tensor(value: torch.Tensor) -> torch.Tensor:
-    """Match kernel FP32 intermediates, while retaining TTK Promote FP64."""
+    """Keep TTK Promote FP64 as an independent CPU truth value."""
     if value.dtype in (torch.float32, torch.float64):
         return value
     return value.float()
+
+
+def _routing_score_tensor(value: torch.Tensor) -> torch.Tensor:
+    """Use the operator's FP32 accumulator contract for discrete routing."""
+    if value.dtype == torch.float64:
+        return value.float()
+    return _score_tensor(value)
 
 
 def _rankable(value: torch.Tensor) -> torch.Tensor:
@@ -77,10 +97,17 @@ def _torch_moe_fused_topk(
     top_n = int(top_n)
     top_k = int(top_k)
 
+    # Promote remains the independent truth for the floating output.  Routing
+    # is deliberately evaluated with the operator/competitor FP32 accumulator:
+    # promoting it to FP64 changes discrete TopK choices for sub-ULP score
+    # differences and no longer describes the API's indices semantics.
     x_score = _score_tensor(x)
     add_score = _score_tensor(add_num)
     sigmoid = torch.sigmoid(x_score)
-    scores = sigmoid + add_score
+    route_x = _routing_score_tensor(x_score)
+    route_add = _routing_score_tensor(add_score)
+    route_sigmoid = sigmoid if route_x is x_score else torch.sigmoid(route_x)
+    scores = route_sigmoid + route_add
 
     token_num, expert_num = scores.shape
     grouped = scores.reshape(token_num, group_num, expert_num // group_num)
@@ -126,6 +153,12 @@ def _numpy_to_torch(value):
         return None
     array = np.ascontiguousarray(value)
     # NumPy/ML-dtypes BF16 has no torch.from_numpy bridge on some hosts.
+    if str(array.dtype) == "bfloat16" or (
+        array.dtype.kind == "V" and array.dtype.itemsize == 2
+    ):
+        return torch.frombuffer(
+            bytearray(array.tobytes()), dtype=torch.bfloat16
+        ).clone().reshape(array.shape)
     if str(array.dtype) not in {
         "float16",
         "float32",
@@ -247,10 +280,7 @@ class MoeFusedTopkTestSpec:
             )
 
     third_party = {"torch": TorchImpl}
-    tolerance = {
-        "float32": {"standard": "cross_check"},
-        "int32": {"standard": "binary_equal"},
-    }
+    tolerance = _KERNEL_TOLERANCE
 
     def customize_inputs(
         x,
@@ -369,3 +399,43 @@ def aclnn_moe_fused_topk_golden(
             enable_expert_mapping=enableExpertMapping,
         )
     )
+
+
+class AclnnMoeFusedTopkTestSpec:
+    """TTK ACLNN TestSpec sharing the same PyTorch reference implementation."""
+
+    golden = staticmethod(aclnn_moe_fused_topk_golden)
+    customize_inputs = staticmethod(aclnn_moe_fused_topk_input)
+
+    class TorchImpl:
+        def __init__(
+            self,
+            *,
+            groupNum,
+            groupTopk,
+            topN,
+            topK,
+            activateType,
+            isNorm,
+            scale,
+            enableExpertMapping,
+            **_kwargs,
+        ):
+            self.attrs = {
+                "group_num": groupNum,
+                "group_topk": groupTopk,
+                "top_n": topN,
+                "top_k": topK,
+                "activate_type": activateType,
+                "is_norm": isNorm,
+                "scale": scale,
+                "enable_expert_mapping": enableExpertMapping,
+            }
+
+        def __call__(self, x, addNum, mappingNum=None, mappingTable=None, **_kwargs):
+            return _torch_moe_fused_topk(
+                x, addNum, mappingNum, mappingTable, **self.attrs
+            )
+
+    third_party = {"torch": TorchImpl}
+    tolerance = _ACLNN_TOLERANCE
