@@ -2,21 +2,33 @@
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef INDEXER_V2_BASE_CHECKER_H
-#define INDEXER_V2_BASE_CHECKER_H
+/*!
+ * \file checker_context_lightning_indexer_v2.h
+ * \brief Declares the shared validation context for Lightning Indexer V2 checkers.
+ */
+
+#ifndef CHECKER_CONTEXT_LIGHTNING_INDEXER_V2_H
+#define CHECKER_CONTEXT_LIGHTNING_INDEXER_V2_H
 
 #include <cstdint>
 #include <string>
-#include <vector>
 #include "exe_graph/runtime/tiling_context.h"
-#include "tiling/tiling_api.h"
 
 namespace optiling {
-namespace indexer_v2_checker {
+namespace lightning_indexer_v2_checker {
 
-enum class CheckerLayout : uint32_t { BSND = 0, TND = 1, PA_BBND = 2, INVALID = 3 };
+enum class CheckerLayout : uint32_t {
+    BSND = 0,
+    TND = 1,
+    PA_BBND = 2,
+    INVALID = 3
+};
 
 struct CheckerTensor {
     const gert::CompileTimeTensorDesc *desc = nullptr;
@@ -38,10 +50,9 @@ struct CheckerTensor {
     }
 };
 
-struct IndexerV2CheckerInfo {
+struct LightningIndexerV2CheckerInfo {
     const char *opName = nullptr;
     bool quantized = false;
-    bool arch35 = false;
 
     CheckerTensor query;
     CheckerTensor key;
@@ -79,30 +90,6 @@ struct IndexerV2CheckerInfo {
     int64_t blockSize = 0;
 };
 
-class IndexerV2BaseChecker {
-public:
-    virtual ~IndexerV2BaseChecker() = default;
-    virtual ge::graphStatus CheckParaExistence(const IndexerV2CheckerInfo &info) const;
-    virtual ge::graphStatus CheckSinglePara(const IndexerV2CheckerInfo &info) const;
-    virtual ge::graphStatus CheckFeature(const IndexerV2CheckerInfo &info) const;
-    virtual ge::graphStatus CheckMultiPara(const IndexerV2CheckerInfo &info) const;
-
-protected:
-    ge::graphStatus CheckFormat(const IndexerV2CheckerInfo &info, const CheckerTensor &tensor,
-                                const char *name) const;
-    ge::graphStatus CheckDtype(const IndexerV2CheckerInfo &info, const CheckerTensor &tensor, const char *name,
-                               const std::vector<ge::DataType> &expected) const;
-    ge::graphStatus CheckRank(const IndexerV2CheckerInfo &info, const CheckerTensor &tensor, const char *name,
-                              uint32_t expected) const;
-    ge::graphStatus CheckNotEmpty(const IndexerV2CheckerInfo &info, const CheckerTensor &tensor,
-                                  const char *name) const;
-    static std::string DtypesToString(const std::vector<ge::DataType> &dtypes);
-    static std::string ShapeToString(const CheckerTensor &tensor);
-};
-
-CheckerLayout ParseLayout(const std::string &layout);
-ge::graphStatus FinalizeCommonInfo(IndexerV2CheckerInfo &info);
-
-} // namespace indexer_v2_checker
+} // namespace lightning_indexer_v2_checker
 } // namespace optiling
-#endif
+#endif // CHECKER_CONTEXT_LIGHTNING_INDEXER_V2_H
