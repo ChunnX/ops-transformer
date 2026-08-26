@@ -83,16 +83,13 @@ inline void GetTNDLeftUpVirt(int64_t m, int64_t n, int64_t &virtM, int64_t &virt
     virtN = n;
 }
 
-inline int64_t GetTNDRightDownRowShift(int64_t m, int64_t n)
-{
-    return std::max(static_cast<int64_t>(0), m - n - 1);
-}
-
 inline void GetTNDRightDownVirt(int64_t m, int64_t n, int64_t &virtM, int64_t &virtN)
 {
-    m -= GetTNDRightDownRowShift(m, n);
+    if (m > n) {
+        m = n;
+    }
     virtM = m;
-    virtN = NUM_TWO * n - m + NUM_THREE;
+    virtN = (m == n) ? (n + 1) : (NUM_TWO * n - m + NUM_THREE);
 }
 
 inline void ClassifyTNDPairCols(int64_t k, int64_t virtM, int64_t virtN, int64_t pairCount, bool &isSmall,
@@ -132,7 +129,9 @@ inline TNDRunShape MakeTNDCausalRunShape(const FuzzyBaseInfoParamsRegbase &p, in
         }
         s.kind = 2;
     } else {
-        s.m -= GetTNDRightDownRowShift(s.m, s.n);
+        if (s.m > s.n) {
+            s.m = s.n;
+        }
         s.kind = 3;
     }
     return s;
