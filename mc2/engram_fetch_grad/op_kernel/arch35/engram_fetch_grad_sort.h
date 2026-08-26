@@ -19,15 +19,18 @@
 constexpr uint32_t SIMT_THREAD_NUM = 1024;
 
 __simt_vf__ LAUNCH_BOUND(SIMT_THREAD_NUM)
-__aicore__ inline void ScatterSimt(uint32_t tileLen, __ubuf__ uint32_t *sortedIndex, __ubuf__ int32_t *value,
-                                   __ubuf__ int32_t *index, __ubuf__ int32_t *globalPos, __gm__ int32_t *dstValueGm,
-                                   __gm__ int32_t *dstIndexGm)
+__aicore__ inline void ScatterWithPosSimt(uint32_t tileLen, __ubuf__ uint8_t *sortedKey,
+                                          __ubuf__ uint32_t *sortedIndex, __ubuf__ uint16_t *binStart,
+                                          __ubuf__ uint32_t *basePos, __ubuf__ int32_t *value,
+                                          __ubuf__ int32_t *index, __gm__ int32_t *dstValueGm,
+                                          __gm__ int32_t *dstIndexGm)
 {
     for (uint32_t i = threadIdx.x; i < tileLen; i += SIMT_THREAD_NUM) {
-        int32_t pos = globalPos[i];
-        uint32_t localIdx = sortedIndex[i];
-        dstValueGm[pos] = value[localIdx];
-        dstIndexGm[pos] = index[localIdx];
+        uint8_t k = sortedKey[i];
+        uint32_t gmPos = basePos[k] + i - binStart[k];
+        uint32_t srcIdx = sortedIndex[i];
+        dstValueGm[gmPos] = value[srcIdx];
+        dstIndexGm[gmPos] = index[srcIdx];
     }
 }
 
@@ -703,40 +706,25 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
                 sortWorkspace_.GetWithOffset<uint8_t>(tileAlignBytes_, 3U * tileAlignBytes_);
             AscendC::Sort<uint8_t, false, sortConfig>(sortedKey, sortIndices, keyLocal, sortTemp, tileLen);
 
+            AscendC::PipeBarrier<PIPE_V>();
+
+            AscendC::LocalTensor<int32_t> basePosUb = histWideBuffer_.Get<int32_t>();
+            AscendC::Add(basePosUb, prefixLocal, offsetLocal, HISTOGRAM_BINS);
+
             AscendC::SetFlag<AscendC::HardEvent::V_S>(evtVS2);
             AscendC::WaitFlag<AscendC::HardEvent::V_S>(evtVS2);
-            // t2 = static_cast<uint64_t>(AscendC::GetSystemCycle());
-            // keyTotal += t2 - t1;
-
-            AscendC::LocalTensor<int32_t> globalPosUb =
-                sortWorkspace_.GetWithOffset<int32_t>(tileElements_, 4U * tileAlignBytes_);
-
-            uint32_t keyStart = 0;
-            uint8_t curKey = sortedKey.GetValue(0);
-            for (uint32_t i = 1; i <= tileLen; i++) {
-                if (i == tileLen || sortedKey.GetValue(i) != curKey) {
-                    uint32_t keyCount = i - keyStart;
-                    int32_t gmStart = prefixLocal.GetValue(curKey) + offsetLocal.GetValue(curKey);
-                    for (uint32_t j = 0; j < keyCount; j++) {
-                        globalPosUb.SetValue(keyStart + j, gmStart + static_cast<int32_t>(j));
-                    }
-                    offsetLocal.SetValue(curKey, offsetLocal.GetValue(curKey) + static_cast<int32_t>(keyCount));
-                    if (i < tileLen) {
-                        curKey = sortedKey.GetValue(i);
-                        keyStart = i;
-                    }
-                }
-            }
 
             __gm__ int32_t *dstValPtr = (__gm__ int32_t *)(*dstValue).GetPhyAddr();
             __gm__ int32_t *dstIdxPtr = (__gm__ int32_t *)(*dstIndex).GetPhyAddr();
+            __ubuf__ uint8_t *sortedKeyUb = (__ubuf__ uint8_t *)sortedKey.GetPhyAddr();
             __ubuf__ uint32_t *sortedIdxUb = (__ubuf__ uint32_t *)sortIndices.GetPhyAddr();
+            __ubuf__ uint16_t *binStartUb = (__ubuf__ uint16_t *)cumulativeBuffer_.Get<uint16_t>().GetPhyAddr();
+            __ubuf__ uint32_t *basePosPtr = (__ubuf__ uint32_t *)basePosUb.GetPhyAddr();
             __ubuf__ int32_t *valUb = (__ubuf__ int32_t *)valueLocal.GetPhyAddr();
             __ubuf__ int32_t *idxUb = (__ubuf__ int32_t *)indexLocal.GetPhyAddr();
-            __ubuf__ int32_t *posUb = (__ubuf__ int32_t *)globalPosUb.GetPhyAddr();
 
-            asc_vf_call<ScatterSimt>(dim3(SIMT_THREAD_NUM), tileLen, sortedIdxUb, valUb, idxUb, posUb, dstValPtr,
-                                     dstIdxPtr);
+            asc_vf_call<ScatterWithPosSimt>(dim3(SIMT_THREAD_NUM), tileLen, sortedKeyUb, sortedIdxUb, binStartUb,
+                                            basePosPtr, valUb, idxUb, dstValPtr, dstIdxPtr);
 
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
