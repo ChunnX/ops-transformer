@@ -8,15 +8,17 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 import os
-from cann_ops_transformer.op_builder.builder import OpBuilder
+from cann_ops_transformer.op_builder import OpBuilder
 
 
 class CommChannelBuilderManagerOpBuilder(OpBuilder):
     def __init__(self):
-        super(CommChannelBuilderManagerOpBuilder, self).__init__("comm_channel_builder_manager")
+        super(CommChannelBuilderManagerOpBuilder, self).__init__(
+            "comm_channel_builder_manager", category="mc2"
+        )
 
     def sources(self):
-        return ["ops/csrc/comm_channel_builder_manager.cpp"]
+        return ["csrc/mc2/comm_channel_builder_manager.cpp"]
 
     def schema(self):
         return None

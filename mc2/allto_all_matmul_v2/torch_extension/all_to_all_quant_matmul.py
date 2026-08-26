@@ -12,8 +12,7 @@ from typing import Optional, List, Tuple
 import torch
 from torch.library import impl
 from torch_npu.utils._error_code import ErrCode, ops_error
-from cann_ops_transformer.op_builder.builder import OpBuilder
-from cann_ops_transformer.op_builder.builder import AS_LIBRARY
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 from .comm_channel_builder_manager import CommChannelBuilderManager
 
 
@@ -26,10 +25,12 @@ _ACL_DTYPE_TO_TORCH_DTYPE = {
 
 class _AllToAllQuantMatmulOpBuilder(OpBuilder):
     def __init__(self):
-        super(_AllToAllQuantMatmulOpBuilder, self).__init__("npu_all_to_all_quant_matmul")
+        super(_AllToAllQuantMatmulOpBuilder, self).__init__(
+            "npu_all_to_all_quant_matmul", category="mc2"
+        )
 
     def sources(self):
-        return ["ops/csrc/all_to_all_quant_matmul.cpp"]
+        return ["csrc/mc2/all_to_all_quant_matmul.cpp"]
 
     def schema(self) -> str:
         return (
@@ -44,7 +45,7 @@ class _AllToAllQuantMatmulOpBuilder(OpBuilder):
         )
 
     def register_meta(self):
-        @impl(AS_LIBRARY, self.name, "Meta")
+        @impl(get_as_library(), self.name, "Meta")
         def npu_all_to_all_quant_matmul_meta(
             context,
             x1,
@@ -93,10 +94,10 @@ class _AllToAllQuantMatmulOpBuilder(OpBuilder):
 
 
 _all_to_all_quant_matmul_op_builder = _AllToAllQuantMatmulOpBuilder()
-_op_module = _all_to_all_quant_matmul_op_builder.load()
+_all_to_all_quant_matmul_op_builder._ensure_initialized()
 
 
-@impl(AS_LIBRARY, _all_to_all_quant_matmul_op_builder.name, "PrivateUse1")
+@impl(get_as_library(), _all_to_all_quant_matmul_op_builder.name, "PrivateUse1")
 def _npu_all_to_all_quant_matmul(
     context,
     x1,
@@ -118,7 +119,8 @@ def _npu_all_to_all_quant_matmul(
     comm_mode="ai_cpu",
     precision_mode=0,
 ):
-    result = _op_module.npu_all_to_all_quant_matmul(
+    op_module = _all_to_all_quant_matmul_op_builder.load()
+    result = op_module.npu_all_to_all_quant_matmul(
         context,
         x1,
         x2,
