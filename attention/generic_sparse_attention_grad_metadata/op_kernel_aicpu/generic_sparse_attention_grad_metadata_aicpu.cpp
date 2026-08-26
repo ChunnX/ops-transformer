@@ -28,6 +28,7 @@ uint32_t GenericSparseAttentionGradMetadataCpuKernel::Compute(CpuKernelContext &
     return success ? KERNEL_STATUS_OK : KERNEL_STATUS_PARAM_INVALID;
 }
 
+// 从 CpuKernelContext 取输入输出与属性，并进行参数检查和初始化
 bool GenericSparseAttentionGradMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
 {
     rsvdBlockIdx_ = ctx.Input(static_cast<uint32_t>(ParamId::rsvdBlockIdx));
@@ -62,6 +63,7 @@ bool GenericSparseAttentionGradMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     return ParamsCheck() && ParamsInit();
 }
 
+// 检查参数是否合法
 bool GenericSparseAttentionGradMetadataCpuKernel::ParamsCheck()
 {
     if (metadata_ == nullptr || metadata_->GetData() == nullptr) {
@@ -91,6 +93,7 @@ bool GenericSparseAttentionGradMetadataCpuKernel::ParamsCheck()
     return true;
 }
 
+// 初始化参数
 bool GenericSparseAttentionGradMetadataCpuKernel::ParamsInit()
 {
     auto idxShape = rsvdBlockIdx_->GetTensorShape();
@@ -158,6 +161,7 @@ uint64_t GenericSparseAttentionGradMetadataCpuKernel::CalcGroupBlockCost(int32_t
     return mTiles * nTiles * static_cast<uint64_t>(groupSize_);
 }
 
+// 构建 KV 块组,遍历顺序 B → N2 → J。每个 count>0 的 (b,n2,j) 成一个 KV 块组，并记录总的任务数量（128）
 bool GenericSparseAttentionGradMetadataCpuKernel::BuildKvBlockGroups()
 {
     const int32_t *countPtr = static_cast<const int32_t *>(rsvdBlockCount_->GetData());
@@ -204,6 +208,8 @@ bool GenericSparseAttentionGradMetadataCpuKernel::BuildKvBlockGroups()
     return true;
 }
 
+// 负载均衡,将 KV 块组分配到 AIC 核心上，按照任务数量进行分配，使得每个核心的块成本尽可能均衡，
+// 且保证每个group在同一个核上进行处理，使KV L1 可复用
 bool GenericSparseAttentionGradMetadataCpuKernel::BalanceKvBlockGroups()
 {
     const uint32_t groupNum = static_cast<uint32_t>(kvBlockGroups_.size());
@@ -249,6 +255,7 @@ bool GenericSparseAttentionGradMetadataCpuKernel::BalanceKvBlockGroups()
         unassignedCost = unassignedCost > coreCost ? unassignedCost - coreCost : 0U;
     }
 
+    // 处理剩余的 KV 块组，分配到最后一个核上
     if (groupIdx < groupNum && usedCoreNum_ > 0U) {
         const uint32_t lastCore = usedCoreNum_ - 1U;
         uint64_t tailCost = 0U;
@@ -261,6 +268,7 @@ bool GenericSparseAttentionGradMetadataCpuKernel::BalanceKvBlockGroups()
     return true;
 }
 
+// 展开任务列表，将每个 KV 块组中的任务展开，并记录到任务列表中
 bool GenericSparseAttentionGradMetadataCpuKernel::ExpandTaskList()
 {
     taskList_.clear();
@@ -285,6 +293,7 @@ bool GenericSparseAttentionGradMetadataCpuKernel::ExpandTaskList()
     return true;
 }
 
+// 生成元数据，将任务列表、块成本、核心数量等信息写入到 metadata 中
 bool GenericSparseAttentionGradMetadataCpuKernel::GenMetadata()
 {
     int64_t *metadataPtr = static_cast<int64_t *>(metadata_->GetData());

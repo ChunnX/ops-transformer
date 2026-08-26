@@ -32,18 +32,19 @@ static constexpr uint32_t DK = 13;
 static constexpr uint32_t DV = 14;
 
 static constexpr uint32_t C0_SIZE = 16;
+static constexpr uint32_t FLAG_CUBE_POST = 4; // end-of-main only: Cube → Vec before SendVecPost
+// Cube → Vec: Cube finished prior MM345 and is about to Wait gather (taskId>0).
+static constexpr uint32_t FLAG_C_GATHER_ARM = 5;
+// Cube → Vec: MM345(last) finished; dq_sel ready for Scatter (mode-4 base/+16).
+static constexpr uint32_t FLAG_C_MM345_DONE = 6;
+// Ping-pong gather sync (FAG-style IDs 7/9): Q/dO L1 handoff Vector → Cube.
+static constexpr uint32_t FLAG_V_GATHER_C_PING = 7;
+static constexpr uint32_t FLAG_V_GATHER_C_PONG = 9;
+// Softmax 同轮 / MM345 延后 (mode-2). IDs 0..3 match working baseline.
 static constexpr uint32_t FLAG_C1_V1 = 0;
 static constexpr uint32_t FLAG_C2_V2 = 1;
 static constexpr uint32_t FLAG_V1_C3 = 2;
 static constexpr uint32_t FLAG_V2_C45 = 3;
-static constexpr uint32_t FLAG_CUBE_POST = 4;
-// Cube → Vec: Cube finished prior work and is about to Wait gather (taskId>0).
-// Vec SoftmaxGrad of the previous task blocks on this before next gather so
-// Cube's mode-4 Wait is armed before Vec Set (avoids lost wakeup).
-static constexpr uint32_t FLAG_C_MM345_DONE = 5;
-// Ping-pong gather sync (FAG-style IDs 7/9): Q/dO L1 handoff Vector → Cube.
-static constexpr uint32_t FLAG_V_GATHER_C_PING = 7;
-static constexpr uint32_t FLAG_V_GATHER_C_PONG = 9;
 // FAG arch35: mode=4 + flag / flag+16 for AIV0/AIV1 subblock isolation.
 static constexpr uint32_t CROSS_CORE_SYNC_MODE = 4;
 static constexpr uint32_t AIV0_AIV1_FLAG_OFFSET = 16;

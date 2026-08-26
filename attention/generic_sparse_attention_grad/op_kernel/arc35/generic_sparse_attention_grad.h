@@ -12,7 +12,7 @@
  * \file generic_sparse_attention_grad.h
  * \brief Arch35 Process / CubeProcess / VectorProcess for GenericSparseAttentionGrad
 
- *        (design §3.5 pipeline: Pre once → [Gather+MM12] || [Vector+MM345] → Post once).
+ *        (design §3.5: Pre once → Preload[Gather+MM12](N) || NotFirst[Vec+MM345](N-1) → Post).
  */
 #pragma once
 #include "common_header.h"
@@ -40,8 +40,6 @@ class GenericSparseAttentionGradArch35 {
 
 private:
     RunTimeInfo runTimeInfo_[2];
-    RunTimeInfo dqScatterInfo_[2];
-    uint8_t dqScatterPending_[2] {0, 0};
     AddrComputeModule<GSAG_TYPE> addr_;
     GlobalTensor<INPUT_TYPE> query_gm_, key_gm_, val_gm_, dout_gm_, attention_out_gm_;
     GlobalTensor<INPUT_TYPE> dq_gm_, dk_gm_, dv_gm_;
@@ -51,10 +49,12 @@ private:
     LocalTensor<float> mm1_res_ub_tensor_ping_, mm1_res_ub_tensor_pong_;
     LocalTensor<float> mm2_res_ub_tensor_ping_, mm2_res_ub_tensor_pong_;
     LocalTensor<float> mm1_res_ub_tensor_, mm2_res_ub_tensor_;
-    // AIV gather staging: Q/dO are first read as ND, then converted to these
-    // NZ buffers before the ordinary UB -> L1 DataCopy.
-    LocalTensor<INPUT_TYPE> query_nz_ub_tensor_, dout_nz_ub_tensor_;
-    LocalTensor<INPUT_TYPE> gather_q_nd_ub_, gather_dout_nd_ub_;
+    // Per-slot gather staging overlays only that slot's mm1+mm2 region (+ NZ pad),
+    // so Gather(curr) never touches Softmax(last)'s mm1/mm2.
+    LocalTensor<INPUT_TYPE> gather_q_nd_ub_ping_, gather_q_nd_ub_pong_;
+    LocalTensor<INPUT_TYPE> gather_dout_nd_ub_ping_, gather_dout_nd_ub_pong_;
+    LocalTensor<INPUT_TYPE> query_nz_ub_tensor_ping_, query_nz_ub_tensor_pong_;
+    LocalTensor<INPUT_TYPE> dout_nz_ub_tensor_ping_, dout_nz_ub_tensor_pong_;
     LocalTensor<INPUT_TYPE> p_l1_tensor_ping_, p_l1_tensor_pong_;
     LocalTensor<INPUT_TYPE> ds_l1_tensor_ping_, ds_l1_tensor_pong_;
     LocalTensor<INPUT_TYPE> p_l1_tensor_, ds_l1_tensor_;
@@ -141,33 +141,50 @@ public:
         tPipe->InitBuffer(l1_buffer_, L1_SIZE);
 
         //todo: 检查这里的UB分配是否超过247KB
-        // mm1/mm2 ping-pong: Cube Fixpipe S/dP here; Vec Softmax/Grad reads here.
-        // Gather ND/NZ always overlays the same physical region (bf16/fp16 only):
-        //   gatherBytes=(8M+4)N*2 <= mmBytes=16MN; float input would not fit.
-        // Timeline: Gather → Set gather flag → Cube Fixpipe mm[ping] → Softmax.
-        // During Gather both mm slots are dead for Vec; ND↔NZ stay distinct views.
+        // Per ping-pong slot layout (bf16/fp16 only):
+        //   [mm1 float MN | mm2 float MN | NZ +1-row pad 4N]
+        // Softmax/Cube Fixpipe use mm1+mm2 of that slot.
+        // Gather ND/NZ overlays the same slot from the start (8MN+4N).
+        // Gather(curr) therefore never touches Softmax(last)'s mm1/mm2.
         static_assert(sizeof(INPUT_TYPE) == 2, "Gather/mm UB overlay requires bf16/fp16");
         const uint32_t mmSlotElems = vec_base_m * vec_base_n;
-        const uint32_t mmUbBase = ub_offset_;
-        mm1_res_ub_tensor_ping_ = ub_buffer_.GetWithOffset<float>(mmSlotElems, ub_offset_);
-        ub_offset_ += mmSlotElems * sizeof(float);
-        mm1_res_ub_tensor_pong_ = ub_buffer_.GetWithOffset<float>(mmSlotElems, ub_offset_);
-        ub_offset_ += mmSlotElems * sizeof(float);
-        mm2_res_ub_tensor_ping_ = ub_buffer_.GetWithOffset<float>(mmSlotElems, ub_offset_);
-        ub_offset_ += mmSlotElems * sizeof(float);
-        mm2_res_ub_tensor_pong_ = ub_buffer_.GetWithOffset<float>(mmSlotElems, ub_offset_);
-        ub_offset_ += mmSlotElems * sizeof(float);
-        // +1 row per C0 column for TransdataND2NZ deconflict pad.
         const uint32_t nz_ub_elements = (vec_base_m + 1) * vec_base_n;
-        uint32_t gOff = mmUbBase;
-        gather_q_nd_ub_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(vec_ub_matrix_elements_, gOff);
-        gOff += vec_ub_matrix_elements_ * sizeof(INPUT_TYPE);
-        gather_dout_nd_ub_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(vec_ub_matrix_elements_, gOff);
-        gOff += vec_ub_matrix_elements_ * sizeof(INPUT_TYPE);
-        query_nz_ub_tensor_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(nz_ub_elements, gOff);
-        gOff += nz_ub_elements * sizeof(INPUT_TYPE);
-        dout_nz_ub_tensor_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(nz_ub_elements, gOff);
-        (void)gOff;
+        const uint32_t gatherBytes =
+            2u * vec_ub_matrix_elements_ * static_cast<uint32_t>(sizeof(INPUT_TYPE)) +
+            2u * nz_ub_elements * static_cast<uint32_t>(sizeof(INPUT_TYPE)); // 8MN+4N
+        const uint32_t slotBytes = gatherBytes;
+        const uint32_t mmUbBase = ub_offset_;
+        const uint32_t mmFloatBytes = mmSlotElems * static_cast<uint32_t>(sizeof(float));
+
+        // slot 0 (ping)
+        {
+            const uint32_t slotBase = mmUbBase;
+            mm1_res_ub_tensor_ping_ = ub_buffer_.GetWithOffset<float>(mmSlotElems, slotBase);
+            mm2_res_ub_tensor_ping_ = ub_buffer_.GetWithOffset<float>(mmSlotElems, slotBase + mmFloatBytes);
+            uint32_t gOff = slotBase;
+            gather_q_nd_ub_ping_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(vec_ub_matrix_elements_, gOff);
+            gOff += vec_ub_matrix_elements_ * sizeof(INPUT_TYPE);
+            gather_dout_nd_ub_ping_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(vec_ub_matrix_elements_, gOff);
+            gOff += vec_ub_matrix_elements_ * sizeof(INPUT_TYPE);
+            query_nz_ub_tensor_ping_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(nz_ub_elements, gOff);
+            gOff += nz_ub_elements * sizeof(INPUT_TYPE);
+            dout_nz_ub_tensor_ping_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(nz_ub_elements, gOff);
+        }
+        // slot 1 (pong)
+        {
+            const uint32_t slotBase = mmUbBase + slotBytes;
+            mm1_res_ub_tensor_pong_ = ub_buffer_.GetWithOffset<float>(mmSlotElems, slotBase);
+            mm2_res_ub_tensor_pong_ = ub_buffer_.GetWithOffset<float>(mmSlotElems, slotBase + mmFloatBytes);
+            uint32_t gOff = slotBase;
+            gather_q_nd_ub_pong_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(vec_ub_matrix_elements_, gOff);
+            gOff += vec_ub_matrix_elements_ * sizeof(INPUT_TYPE);
+            gather_dout_nd_ub_pong_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(vec_ub_matrix_elements_, gOff);
+            gOff += vec_ub_matrix_elements_ * sizeof(INPUT_TYPE);
+            query_nz_ub_tensor_pong_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(nz_ub_elements, gOff);
+            gOff += nz_ub_elements * sizeof(INPUT_TYPE);
+            dout_nz_ub_tensor_pong_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(nz_ub_elements, gOff);
+        }
+        ub_offset_ = mmUbBase + 2u * slotBytes;
 
         p_l1_tensor_ping_ = l1_buffer_.GetWithOffset<INPUT_TYPE>(base_m * base_n, l1_offset_);
         l1_offset_ += base_m * base_n * sizeof(INPUT_TYPE);
@@ -266,10 +283,16 @@ public:
         constexpr event_t evtGatherVmte3 = EVENT_ID6;
         constexpr event_t evtGatherMte3mte2 = EVENT_ID7;
 
-        // Gather ND staging aliases mm1/mm2 physical UB (see Process alloc). Softmax does not
-        // touch these views until after gather Set; Cube Fixpipe mm[ping] starts only after Wait gather.
-        LocalTensor<INPUT_TYPE> qUb = gather_q_nd_ub_;
-        LocalTensor<INPUT_TYPE> doutUb = gather_dout_nd_ub_;
+        // Gather ND/NZ overlays only this pingPongIdx slot's mm1+mm2 (+ NZ pad).
+        // Softmax(last) keeps using the other slot — safe to overlap with Gather(curr).
+        LocalTensor<INPUT_TYPE> qUb =
+            pingPongIdx == 0 ? gather_q_nd_ub_ping_ : gather_q_nd_ub_pong_;
+        LocalTensor<INPUT_TYPE> doutUb =
+            pingPongIdx == 0 ? gather_dout_nd_ub_ping_ : gather_dout_nd_ub_pong_;
+        LocalTensor<INPUT_TYPE> qNz =
+            pingPongIdx == 0 ? query_nz_ub_tensor_ping_ : query_nz_ub_tensor_pong_;
+        LocalTensor<INPUT_TYPE> doutNz =
+            pingPongIdx == 0 ? dout_nz_ub_tensor_ping_ : dout_nz_ub_tensor_pong_;
 
         const int32_t ndElems = static_cast<int32_t>(vec_ub_matrix_elements_);
         Duplicate(qUb, static_cast<INPUT_TYPE>(0), ndElems);
@@ -279,6 +302,8 @@ public:
         for (int32_t row = 0; row < rowCount; ++row) {
             const int32_t qTok = sparse_idx_gm_.GetValue(runTimeInfo.sparseIdxOffset + rowBegin + row);
             const int64_t gmOffset = GetSparseTokenGmOffset(runTimeInfo, qTok);
+            SET_FLAG(S, MTE2, EVENT_ID1);
+            WAIT_FLAG(S, MTE2, EVENT_ID1);
             DataCopy(qUb[row * head_dim_], query_gm_[gmOffset], head_dim_);
             DataCopy(doutUb[row * head_dim_], dout_gm_[gmOffset], head_dim_);
         }
@@ -286,8 +311,8 @@ public:
         WAIT_FLAG(MTE2, V, evtGatherMte2v);
         // VF always converts the full vec_base_m ND tile (FAG CopyUB2L1).
         const uint32_t vfM = vec_base_m_;
-        TransdataND2NZ<INPUT_TYPE>(query_nz_ub_tensor_, qUb, vfM, head_dim_);
-        TransdataND2NZ<INPUT_TYPE>(dout_nz_ub_tensor_, doutUb, vfM, head_dim_);
+        TransdataND2NZ<INPUT_TYPE>(qNz, qUb, vfM, head_dim_);
+        TransdataND2NZ<INPUT_TYPE>(doutNz, doutUb, vfM, head_dim_);
         SET_FLAG(V, MTE3, evtGatherVmte3);
         WAIT_FLAG(V, MTE3, evtGatherVmte3);
         // Copy a full 16-row-aligned shard into L1 NZ. Rows beyond rowCount
@@ -309,8 +334,8 @@ public:
         LocalTensor<INPUT_TYPE> doutL1 =
             pingPongIdx == 0 ? dout_l1_tensor_ping_ : dout_l1_tensor_pong_;
         const int32_t l1RowOffset = rowBegin * static_cast<int32_t>(C0_SIZE);
-        DataCopy(qL1[l1RowOffset], query_nz_ub_tensor_, copyParams);
-        DataCopy(doutL1[l1RowOffset], dout_nz_ub_tensor_, copyParams);
+        DataCopy(qL1[l1RowOffset], qNz, copyParams);
+        DataCopy(doutL1[l1RowOffset], doutNz, copyParams);
         SET_FLAG(MTE3, MTE2, evtGatherMte3mte2);
         WAIT_FLAG(MTE3, MTE2, evtGatherMte3mte2);
     }
@@ -325,7 +350,7 @@ public:
         CubeOp<GSAG_TYPE> cubeOp;
         cubeOp.Init(tilingData, tPipe, l1_buffer_, l1_offset_, query_l1_tensor_ping_, query_l1_tensor_pong_,
                     dout_l1_tensor_ping_, dout_l1_tensor_pong_, rsvdBlockIdx, workspace);
-        CrossCoreWaitFlag(FLAG_CUBE_POST);
+        // Boot: no Wait FLAG_CUBE_POST — Cube's first barrier is Wait gather (armed while Vec runs Pre).
         (void)query;
         (void)key;
         (void)value;
@@ -343,7 +368,12 @@ public:
         (void)dv;
         (void)workspace;
 
-        // Pipeline: Gather → MM12 || Vector Softmax/Grad → MM345 → Post (align BSAG).
+        // BSAG software pipeline (Softmax 同轮, MM345 延后):
+        //   Curr: Wait gather → MM12 → Set C1/C2
+        //   Last: Wait Softmax(N-1) → MM345(N-1)
+        // task0: Cube Wait gather is armed during Vec Pre (no boot CUBE_POST).
+        // task>0: FLAG_C_GATHER_ARM before Wait gather (lost-wakeup guard).
+        // Per-slot UB: Gather(curr) does not clobber Softmax mm; Q/dO L1[last] lives until MM345.
         while (true) {
             ping_pong_idx = taskId % 2;
             last_ping_pong_idx = 1 - ping_pong_idx;
@@ -359,34 +389,41 @@ public:
                         ping_pong_idx == 0 ? FLAG_V_GATHER_C_PING : FLAG_V_GATHER_C_PONG;
                     const int32_t m = static_cast<int32_t>(runTimeInfo_[ping_pong_idx].s1Len);
                     const int32_t mAlign = static_cast<int32_t>(runTimeInfo_[ping_pong_idx].s1LenAlign);
-                    // Release Vec (taskId>0) then Wait gather with nothing in between.
-                    // Vec SoftmaxGrad of previous task blocks on MM345_DONE until here,
-                    // so Cube Wait is always armed before Vec Set gather.
+                    // Release Vec (taskId>0) then Wait gather — Cube Wait armed before Vec Set.
                     if (taskId > 0) {
-                        CrossCoreSetFlag<2, PIPE_FIX>(FLAG_C_MM345_DONE);
+                        CrossCoreSetFlag<2, PIPE_FIX>(FLAG_C_GATHER_ARM);
                     }
                     CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE2>(gatherFlag);
                     if (GatherNeedAiv1(m, mAlign)) {
                         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE2>(gatherFlag + AIV0_AIV1_FLAG_OFFSET);
                     }
                 }
-                cubeOp.SendMatmulQK(query_gm_, key_gm_, mm1_res_ub_tensor_, runTimeInfo_[ping_pong_idx], ping_pong_idx);
+                cubeOp.SendMatmulQK(query_gm_, key_gm_, mm1_res_ub_tensor_, runTimeInfo_[ping_pong_idx],
+                                    ping_pong_idx);
                 CrossCoreSetFlag<2, PIPE_FIX>(FLAG_C1_V1);
-                cubeOp.SendMatmulDyV(dout_gm_, val_gm_, mm2_res_ub_tensor_, runTimeInfo_[ping_pong_idx], ping_pong_idx);
+                cubeOp.SendMatmulDyV(dout_gm_, val_gm_, mm2_res_ub_tensor_, runTimeInfo_[ping_pong_idx],
+                                     ping_pong_idx);
                 CrossCoreSetFlag<2, PIPE_FIX>(FLAG_C2_V2);
             }
 
             if (taskId > 0 && runTimeInfo_[last_ping_pong_idx].need_compute) {
+                // Softmax(last) wrote P/dS; Q/dO L1[last] still valid.
                 CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V1_C3);
-                cubeOp.SendMatmulDv(p_l1_tensor_, dv_workspace_, runTimeInfo_[last_ping_pong_idx],
-                                    last_ping_pong_idx);
                 CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V2_C45);
+                // Dq → Dv → Dk (Dv Atomic Fixpipe must not be interrupted by Dq).
                 cubeOp.SendMatmulDq(ds_l1_tensor_, dq_workspace_, runTimeInfo_[last_ping_pong_idx],
+                                    last_ping_pong_idx);
+                cubeOp.SendMatmulDv(p_l1_tensor_, dv_workspace_, runTimeInfo_[last_ping_pong_idx],
                                     last_ping_pong_idx);
                 cubeOp.SendMatmulDk(ds_l1_tensor_, dk_workspace_, runTimeInfo_[last_ping_pong_idx],
                                     last_ping_pong_idx);
                 SET_FLAG(MTE1, MTE2, EVENT_ID0);
                 WAIT_FLAG(MTE1, MTE2, EVENT_ID0);
+                if (runTimeInfo_[last_ping_pong_idx].use_sparse_gather) {
+                    CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(FLAG_C_MM345_DONE);
+                    CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(FLAG_C_MM345_DONE +
+                                                                    AIV0_AIV1_FLAG_OFFSET);
+                }
             }
 
             if (runTimeInfo_[ping_pong_idx].need_compute == false) {
@@ -417,10 +454,12 @@ public:
         vecOp.SendVecSftgFront(dout_gm_, attention_out_gm_, sftg_workspace_, tilingData, ub_buffer_);
         PipeBarrier<PIPE_ALL>();
         SyncAll();
-        AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_CUBE_POST);
+        // No boot Set FLAG_CUBE_POST: Cube already Wait-gather; first Set is gather after CopyQAndDoutToL1.
         vecOp.SetFlag();
+        // Softmax(curr) with MM12; Scatter(last) after MM345(last) in same NotFirst window.
         while (true) {
             ping_pong_idx = taskId % 2;
+            last_ping_pong_idx = 1 - ping_pong_idx;
             mm1_res_ub_tensor_ = ping_pong_idx ? mm1_res_ub_tensor_ping_ : mm1_res_ub_tensor_pong_;
             mm2_res_ub_tensor_ = ping_pong_idx ? mm2_res_ub_tensor_ping_ : mm2_res_ub_tensor_pong_;
             p_l1_tensor_ = ping_pong_idx ? p_l1_tensor_ping_ : p_l1_tensor_pong_;
@@ -432,17 +471,8 @@ public:
                     const int32_t m = static_cast<int32_t>(runTimeInfo_[ping_pong_idx].s1Len);
                     const int32_t mAlign = static_cast<int32_t>(runTimeInfo_[ping_pong_idx].s1LenAlign);
                     const int32_t aivHalfIdx = static_cast<int32_t>(GetSubBlockIdx());
-                    // task0: Cube is already in Wait gather before Vec Softmax of any prior task.
-                    // task>0: wait until Cube finished prior MM345 so Wait gather is armed.
                     if (taskId > 0) {
-                        CrossCoreWaitFlag<2, PIPE_MTE3>(FLAG_C_MM345_DONE);
-                        // After Wait: Cube completed MM345 for the prior tile that lived in
-                        // this ping slot (schedule: MM345 at Cube task T-1 uses last=T%2).
-                        // taskId==1 Wait is vacuous (no prior MM345); scatter from taskId>=2.
-                        if (taskId >= 2 && dqScatterPending_[ping_pong_idx]) {
-                            vecOp.ScatterDqSel(dqScatterInfo_[ping_pong_idx], ub_buffer_, ping_pong_idx);
-                            dqScatterPending_[ping_pong_idx] = 0;
-                        }
+                        CrossCoreWaitFlag<2, PIPE_MTE3>(FLAG_C_GATHER_ARM);
                     }
                     CopyQAndDoutToL1(runTimeInfo_[ping_pong_idx], ping_pong_idx);
                     if (GatherAivRowCount(m, mAlign, aivHalfIdx) > 0) {
@@ -455,7 +485,6 @@ public:
                 }
                 vecOp.SendVecSftPreProcess(runTimeInfo_[ping_pong_idx], ping_pong_idx);
                 CrossCoreWaitFlag<2, PIPE_V>(FLAG_C1_V1);
-                // dualDst Fixpipe → both AIV UB; barrier before Softmax/Dump read mm1.
                 PipeBarrier<PIPE_ALL>();
                 vecOp.SendVecSoftmax(p_l1_tensor_, mm1_res_ub_tensor_, runTimeInfo_[ping_pong_idx]);
                 CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V1_C3);
@@ -463,10 +492,16 @@ public:
                 vecOp.SendVecSoftmaxGrad(ds_l1_tensor_, mm1_res_ub_tensor_, mm2_res_ub_tensor_,
                                          runTimeInfo_[ping_pong_idx]);
                 CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V2_C45);
-                if (runTimeInfo_[ping_pong_idx].use_sparse_gather) {
-                    dqScatterInfo_[ping_pong_idx] = runTimeInfo_[ping_pong_idx];
-                    dqScatterPending_[ping_pong_idx] = 1;
-                }
+            }
+
+            // Scatter(last) after Cube MM345(last); same NotFirst as SFAG.
+            if (taskId > 0 && runTimeInfo_[last_ping_pong_idx].need_compute &&
+                runTimeInfo_[last_ping_pong_idx].use_sparse_gather) {
+                const uint32_t mm345DoneFlag =
+                    FLAG_C_MM345_DONE +
+                    static_cast<uint32_t>(GetSubBlockIdx()) * AIV0_AIV1_FLAG_OFFSET;
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(mm345DoneFlag);
+                vecOp.ScatterDqSel(runTimeInfo_[last_ping_pong_idx], ub_buffer_, last_ping_pong_idx);
             }
 
             if (runTimeInfo_[ping_pong_idx].need_compute == false) {
@@ -479,15 +514,8 @@ public:
 
         CrossCoreWaitFlag(FLAG_CUBE_POST);
         SyncAll();
-        for (uint32_t s = 0; s < 2; ++s) {
-            if (dqScatterPending_[s]) {
-                vecOp.ScatterDqSel(dqScatterInfo_[s], ub_buffer_, s);
-                dqScatterPending_[s] = 0;
-            }
-        }
         vecOp.SendVecPost(dq_gm_, dk_gm_, dv_gm_, dq_workspace_, dk_workspace_, dv_workspace_, tilingData,
                           ub_buffer_);
-
     }
 };
 
