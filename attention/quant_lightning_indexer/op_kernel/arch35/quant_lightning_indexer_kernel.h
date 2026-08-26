@@ -49,6 +49,8 @@ struct TempLoopInfo {
     uint32_t mBasicSizeTail = 0U;          // gS1方向循环的尾基本块大小
     uint32_t s2BasicSizeTail = 0U;         // S2方向循环的尾基本块大小
     uint32_t validS2Len = 0U;
+    uint64_t qPrefixSum = 0U;  // TND: actualSeqQ[bIdx-1]; BSND: bIdx*qSeqSize; bIdx==0时为0; 每bN2算一次
+    uint64_t kPrefixSum = 0U;  // TND: actualSeqK[bIdx-1]; 非TND: bIdx*kSeqSize; bIdx==0时为0; 每bN2算一次
 };
 
 template <typename QLIT>
@@ -119,6 +121,8 @@ protected:
     QLICommon::ConstInfo constInfo{};
     TempLoopInfo tempLoopInfo{};
     QLICommon::SplitCoreInfo splitCoreInfo{};
+    uint32_t ldAicNum = 0U;  // AIC count from host tiling (LD workspace layout)
+    uint32_t accumSeqQTotalLen = 0U;  // TND: actualSeqLengthsQ[batchSize-1], Init时读一次缓存
 
     // ================================Init functions==================================
     __aicore__ inline void InitBuffers();
@@ -132,6 +136,7 @@ protected:
     __aicore__ inline void ProcessMain();
     __aicore__ inline void ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx,
                                             QLICommon::RunInfo runInfo, uint32_t qScaleLoop, uint32_t kScaleLoop);
+    __aicore__ inline void ProcessDecode();
     __aicore__ inline void ProcessInvalid();
     // ================================Params Calc=====================================
     __aicore__ inline void CalcGS1LoopParams(uint32_t bN2Idx);
@@ -178,9 +183,17 @@ __aicore__ inline void QuantLightningIndexerKernel<QLIT>::InitTilingData(const Q
     if (constInfo.tSize <= 64) {
         constInfo.mBaseSize /= 2;
         constInfo.s1BaseSize /= 2;
+    } else if (constInfo.gSize == 32) {
+        // prefill mBase 128->256: halve per-block fixed overhead (scalar issue, fixpipe, loop, CV sync).
+        // Same m=256 cube path as gSize=64 production shapes; s1Base 4->8 (AIV batch=4 via paired batch=2 calls).
+        constInfo.mBaseSize *= 2;
+        constInfo.s1BaseSize *= 2;
     }
 
     constInfo.setL2DisableFlag = constInfo.tSize / constInfo.batchSize <= constInfo.s1BaseSize;
+    constInfo.isLDOpen = tilingData->isLDOpen != 0;
+    // AIC core count from host (GetBlockNum() returns grid blockDim = AIC+2*AIV, NOT aicNum)
+    ldAicNum = tilingData->aicNum;
 }
 
 template <typename QLIT>
@@ -208,6 +221,11 @@ __aicore__ inline void QuantLightningIndexerKernel<QLIT>::InitActualSeqLen(__gm_
     } else {
         constInfo.actualLenQDims = constInfo.batchSize;
         actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint32_t *)actualSeqLengthsQ, constInfo.actualLenQDims);
+        if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
+            // TND总长只需在初始化读一次GM, 避免DealActSeqLenIsZero里重复读
+            accumSeqQTotalLen =
+                (constInfo.batchSize == 0) ? 0 : actualSeqLengthsGmQ.GetValue(constInfo.batchSize - 1);
+        }
     }
 }
 
@@ -329,6 +347,8 @@ __aicore__ void inline QuantLightningIndexerKernel<QLIT>::SplitCore(uint32_t cur
                 findLastCoreEnd = false;
             }
             s2Loop = constInfo.isLDOpen ? s2BaseNum : (actS2Size > 0 ? 1 : 0);
+            // LD mode: cap each row to at most 2 segments (head/tail slots support exactly 2 cores per row)
+            uint32_t ldSplitCap = constInfo.isLDOpen ? ((s2Loop + 1) / 2) : s2Loop;
             for (uint32_t s2Idx = 0; s2Idx < s2Loop;) {
                 if (findLastCoreEnd) {
                     info.bN2Start = bN2Idx;
@@ -340,8 +360,19 @@ __aicore__ void inline QuantLightningIndexerKernel<QLIT>::SplitCore(uint32_t cur
                 if (lastGS1RemainBlockCnt + s2RemainBaseNum >= coreDealBlockCnt) {
                     info.bN2End = bN2Idx;
                     info.gS1End = gS1Idx;
-                    info.s2End = constInfo.isLDOpen ?
+                    uint32_t s2EndCalc = constInfo.isLDOpen ?
                         s2Idx + coreDealBlockCnt - lastGS1RemainBlockCnt - 1 : s2BaseNum - 1;
+                    // clamp to 2-segment boundary: head segment ends at (ldSplitCap-1), tail covers the rest
+                    if (constInfo.isLDOpen) {
+                        uint32_t segMid = ldSplitCap - 1;  // head segment: [0, ldSplitCap)
+                        if (s2Idx == 0) {
+                            s2EndCalc = Min(s2EndCalc, segMid);
+                        } else {
+                            // tail core takes everything to row end
+                            s2EndCalc = s2Loop - 1;
+                        }
+                    }
+                    info.s2End = s2EndCalc;
 
 
                     if (coreIdx == curCoreIdx) {
@@ -378,9 +409,8 @@ __aicore__ inline void QuantLightningIndexerKernel<QLIT>::DealActSeqLenIsZero(ui
 {
     if ASCEND_IS_AIV {
         if (constInfo.outputLayout == LI_LAYOUT::TND) {
-            uint32_t tSize = actualSeqLengthsGmQ.GetValue(constInfo.batchSize - 1);
-            uint32_t tBase = bIdx == 0 ?
-                0 : actualSeqLengthsGmQ.GetValue(bIdx - 1);
+            uint32_t tSize = accumSeqQTotalLen;
+            uint32_t tBase = static_cast<uint32_t>(tempLoopInfo.qPrefixSum);
             uint32_t s1Count = tempLoopInfo.actS1Size;
 
             for (uint32_t s1Idx = s1Start; s1Idx < s1Count; s1Idx++) {
@@ -435,6 +465,22 @@ __aicore__ inline void QuantLightningIndexerKernel<QLIT>::Init(__gm__ uint8_t *q
     scoreGm.SetGlobalBuffer((__gm__ SCORE_T *)(workspace + aiCoreIdx * singleCoreScoreSize));
     offset += GetBlockNum() * singleCoreScoreSize;
 
+    // LD two-phase TopK workspace: appended right after the host-budgeted score region
+    // (host score region uses LD_WS_S1_BASE stride which is >= kernel s1BaseSize, keep formulas in sync;
+    //  aicNum comes from host tiling: GetBlockNum() is grid blockDim (AIC+2*AIV), NOT aicNum)
+    uint64_t ldScoreRegionBytes = (uint64_t)ldAicNum * QLICommon::ConstInfo::LD_WS_S1_BASE *
+        QLICommon::Align((uint64_t)constInfo.kSeqSize, (uint64_t)constInfo.s2BaseSize) * sizeof(SCORE_T);
+    uint64_t ldListBytes = (uint64_t)ldAicNum * QLICommon::ConstInfo::LD_AIV_NUM *
+        QLICommon::ConstInfo::LD_SLOT_NUM * QLICommon::ConstInfo::LD_S1_ROWS_PER_AIV *
+        constInfo.sparseCount * (sizeof(SCORE_T) + sizeof(uint32_t));
+    GlobalTensor<SCORE_T> ldValGm;
+    ldValGm.SetGlobalBuffer((__gm__ SCORE_T *)(workspace + ldScoreRegionBytes));
+    GlobalTensor<uint32_t> ldIdxGm;
+    ldIdxGm.SetGlobalBuffer((__gm__ uint32_t *)(workspace + ldScoreRegionBytes));
+    GlobalTensor<int64_t> ldParamGm;
+    ldParamGm.SetGlobalBuffer(
+        (__gm__ int64_t *)(workspace + ldScoreRegionBytes + ldListBytes));
+
     if ASCEND_IS_AIV {
         vectorService.InitParams(constInfo, tiling);
         indiceOutGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
@@ -447,6 +493,7 @@ __aicore__ inline void QuantLightningIndexerKernel<QLIT>::Init(__gm__ uint8_t *q
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         vectorService.InitVecInputTensor(weightsGm, qScaleGm, kScaleGm, indiceOutGm, blockTableGm);
         vectorService.InitVecWorkspaceTensor(scoreGm);
+        vectorService.InitLDTensor(ldValGm, ldIdxGm, ldParamGm);
     } else {
         matmulService.InitParams(constInfo);
         queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
@@ -496,6 +543,21 @@ template <typename QLIT>
 __aicore__ inline void QuantLightningIndexerKernel<QLIT>::CalcGS1LoopParams(uint32_t bN2LoopIdx)
 {
     GetBN2Idx(bN2LoopIdx);
+    // 前缀和按bN2粒度算一次存tempLoopInfo, CalcRunInfo/DealActSeqLenIsZero直接复用, 消除循环内GM标量读
+    if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
+        tempLoopInfo.qPrefixSum = (tempLoopInfo.bIdx == 0) ?
+            0 : static_cast<uint64_t>(actualSeqLengthsGmQ.GetValue(tempLoopInfo.bIdx - 1));
+    } else {  // BSND
+        tempLoopInfo.qPrefixSum = (tempLoopInfo.bIdx == 0) ?
+            0 : static_cast<uint64_t>(tempLoopInfo.bIdx) * constInfo.qSeqSize;
+    }
+    if constexpr (K_LAYOUT_T == LI_LAYOUT::TND) {
+        tempLoopInfo.kPrefixSum = (tempLoopInfo.bIdx == 0) ?
+            0 : static_cast<uint64_t>(actualSeqLengthsGm.GetValue(tempLoopInfo.bIdx - 1));
+    } else {
+        tempLoopInfo.kPrefixSum = (tempLoopInfo.bIdx == 0) ?
+            0 : static_cast<uint64_t>(tempLoopInfo.bIdx) * constInfo.kSeqSize;
+    }
     GetS1S2ActualSeqLen(tempLoopInfo.bIdx, tempLoopInfo.actS1Size, tempLoopInfo.actS2Size, tempLoopInfo.actS2SizeOrig);
     if ((tempLoopInfo.actS2Size == 0) || (tempLoopInfo.actS1Size == 0)) {
         tempLoopInfo.curActSeqLenIsZero = true;
@@ -556,13 +618,7 @@ __aicore__ inline void QuantLightningIndexerKernel<QLIT>::CalcRunInfo(uint32_t l
                            (runInfo.s2Idx == splitCoreInfo.s2End);
 
     if (runInfo.isFirstS2InnerLoop) {
-        uint64_t actualSeqQPrefixSum;
-        if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
-            actualSeqQPrefixSum = (runInfo.bIdx <= 0) ?
-                0 : actualSeqLengthsGmQ.GetValue(runInfo.bIdx - 1);
-        } else {  // BSND
-            actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.qSeqSize;
-        }
+        uint64_t actualSeqQPrefixSum = tempLoopInfo.qPrefixSum;
         uint64_t tndBIdxOffset = actualSeqQPrefixSum * constInfo.qHeadNum * constInfo.headDim;
         // B,S1,N1(N2,G),D
         queryCoreOffset = tndBIdxOffset + runInfo.gS1Idx * constInfo.mBaseSize * constInfo.headDim;
@@ -572,12 +628,7 @@ __aicore__ inline void QuantLightningIndexerKernel<QLIT>::CalcRunInfo(uint32_t l
         indiceOutCoreOffset = actualSeqQPrefixSum * constInfo.kHeadNum *
             constInfo.sparseCount + runInfo.n2Idx * constInfo.sparseCount;
     }
-    uint64_t actualSeqKPrefixSum;
-    if constexpr (K_LAYOUT_T == LI_LAYOUT::TND) { // T N2 D
-        actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : actualSeqLengthsGm.GetValue(runInfo.bIdx - 1);
-    } else {
-        actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.kSeqSize;
-    }
+    uint64_t actualSeqKPrefixSum = tempLoopInfo.kPrefixSum;
     uint64_t tndBIdxOffsetForK = actualSeqKPrefixSum * constInfo.kHeadNum * constInfo.headDim;
     keyCoreOffset = tndBIdxOffsetForK + runInfo.s2Idx * constInfo.s2BaseSize *
         constInfo.kHeadNum * constInfo.headDim;
@@ -599,6 +650,24 @@ __aicore__ inline void QuantLightningIndexerKernel<QLIT>::Process()
     }
 
     ProcessMain();
+
+    ProcessDecode();
+}
+
+template <typename QLIT>
+__aicore__ inline void QuantLightningIndexerKernel<QLIT>::ProcessDecode()
+{
+    if (!constInfo.isLDOpen) {
+        return;
+    }
+    if ASCEND_IS_AIV {
+        vectorService.FlushLDWrites();  // L-fix
+        // AIV-only SyncAll(同 arch22 QLI ProcessDecode / arch35 FA infer gqa 先例, AIC 已退出不参与)
+        SyncAll();
+        if (splitCoreInfo.isLD) {
+            vectorService.ProcessLD();
+        }
+    }
 }
 
 template <typename QLIT>

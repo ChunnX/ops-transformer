@@ -125,7 +125,14 @@ struct ConstInfo {
     uint32_t actualLenDims = 0U;   // KV 的actualSeqLength 的维度
     bool isAccumSeqS1 = false;     // 是否累加模式
     bool isAccumSeqS2 = false;     // 是否累加模式
-    bool isLDOpen = false;
+    bool isLDOpen = false;         // s2切核+两阶段TopK开关(host下发)
+
+    // LD two-phase TopK workspace layout, keep in sync with op_host QliCalcWorkspaceSize (qli3510*)
+    static constexpr uint32_t LD_WS_S1_BASE = 8;         // == host qli3510S1Base, score region stride (>= max kernel s1BaseSize)
+    static constexpr uint32_t LD_AIV_NUM = 2;            // AIV0/AIV1 per AIC
+    static constexpr uint32_t LD_SLOT_NUM = 2;           // slot0: first-row segment(head), slot1: last-row segment(tail)
+    static constexpr uint32_t LD_S1_ROWS_PER_AIV = 4;    // max s1 rows per AIV (s1Base 8 / 2 AIVs)
+    static constexpr uint32_t LD_PARAM_NUM = 16;         // int64 param fields per (aic, aiv, slot)
 };
 
 struct SplitCoreInfo {
