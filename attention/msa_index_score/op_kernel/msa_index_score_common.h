@@ -61,11 +61,10 @@ constexpr uint32_t MSA_K_SCRATCH_ELEM_NUM = MSA_BLOCKS_PER_STILE * MSA_BLOCK_SIZ
 constexpr uint32_t MSA_A5_K_SCRATCH_ELEM_NUM = MSA_BLOCK_SIZE * MSA_K_TILE;
 constexpr uint32_t MSA_A5_S_STAGES = 2;
 constexpr uint32_t MSA_A5_FP8_C0 = 32;
-// 950 一页握手的 S workspace：[M, N=128] fp32 pingpong。C_to_UB 未把 QK 送到 AIV 前先走 GM。
 constexpr uint32_t MSA_A5_S_PAGE_ELEM_NUM = MSA_ROW_TILE_M * MSA_BLOCK_SIZE;
 
 #ifndef MSA_A5_USE_C2UB
-#define MSA_A5_USE_C2UB 0
+#define MSA_A5_USE_C2UB 1
 #endif
 
 // AIV 单次归约处理的行数。受 level-0 向量 API repeatTimes(uint8_t) 上限约束：
@@ -84,6 +83,10 @@ constexpr uint32_t MSA_DATABLOCK_BYTES = 32;
 constexpr uint32_t MSA_VEC_MASK_WORDS = 2;
 // MIX 核比：1 AIC : 2 AIV。
 constexpr uint32_t MSA_AIV_PER_AIC = 2;
+// 950 C_to_UB：dual-dst 后每 AIV 半个 M-tile × N=128 fp32 pingpong。
+constexpr uint32_t MSA_A5_S_PING_ROWS = MSA_ROW_TILE_M / MSA_AIV_PER_AIC;
+constexpr uint32_t MSA_A5_S_PING_ELEM_NUM = MSA_A5_S_PING_ROWS * MSA_BLOCK_SIZE;
+constexpr uint32_t MSA_A5_S_PING_BYTES = MSA_A5_S_PING_ELEM_NUM * static_cast<uint32_t>(sizeof(float));
 // UB 手工布局 512B 对齐。
 constexpr uint32_t MSA_UB_ALIGN_BYTES = 512;
 

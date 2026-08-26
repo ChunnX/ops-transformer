@@ -48,17 +48,24 @@ public:
     static constexpr uint32_t UB_OFF_S = 0;
     static constexpr uint32_t UB_SIZE_S = MSA_ROWS_PER_PASS * MSA_BLOCKS_PER_STILE * MSA_BLOCK_SIZE * sizeof(float);
     static constexpr uint32_t UB_OFF_T64 = UB_OFF_S + UB_SIZE_S;
+    // GM：SegRowMax 的 [128,64] fp32（32KB）。C2UB：拼 [mSub,128] fp16 的 pack 区（16KB）复用这块。
     static constexpr uint32_t UB_SIZE_T64 = MSA_REDUCE_ROWS * (MSA_BLOCK_SIZE / 2) * sizeof(float);
     static constexpr uint32_t UB_OFF_T8 = UB_OFF_T64 + UB_SIZE_T64;
     static constexpr uint32_t UB_SIZE_T8 = MSA_REDUCE_ROWS * MSA_FP32_PER_BLOCK * sizeof(float);
     static constexpr uint32_t UB_OFF_ROWMAX = UB_OFF_T8 + UB_SIZE_T8;
-    static constexpr uint32_t UB_SIZE_ROWMAX = MSA_REDUCE_ROWS * sizeof(float);
+    static constexpr uint32_t UB_SIZE_ROWMAX_GM = MSA_REDUCE_ROWS * sizeof(float);
+    static constexpr uint32_t UB_SIZE_ROWMAX_C2UB = MSA_A5_S_PING_ROWS * MSA_BLOCKS_PER_STILE * sizeof(float);
+    static constexpr uint32_t UB_SIZE_ROWMAX =
+        (UB_SIZE_ROWMAX_C2UB > UB_SIZE_ROWMAX_GM) ? UB_SIZE_ROWMAX_C2UB : UB_SIZE_ROWMAX_GM;
     // 反量化 scale 一页：block_size 个 fp32 = 512B。
     static constexpr uint32_t UB_OFF_DEQ = UB_OFF_ROWMAX + UB_SIZE_ROWMAX;
     static constexpr uint32_t UB_SIZE_DEQ = MSA_BLOCK_SIZE * sizeof(float);
-    // 非量化：WholeReduceMax 的 fp16 输出（每 pass MSA_REDUCE_ROWS 个 half）。
+    // 非量化：GM 为 128 个 half；C2UB stile 为 64×8 个 half。
     static constexpr uint32_t UB_OFF_RED16 = UB_OFF_DEQ + UB_SIZE_DEQ;
-    static constexpr uint32_t UB_SIZE_RED16 = MSA_REDUCE_ROWS * sizeof(half);
+    static constexpr uint32_t UB_SIZE_RED16_GM = MSA_REDUCE_ROWS * sizeof(half);
+    static constexpr uint32_t UB_SIZE_RED16_C2UB = MSA_A5_S_PING_ROWS * MSA_BLOCKS_PER_STILE * sizeof(half);
+    static constexpr uint32_t UB_SIZE_RED16 =
+        (UB_SIZE_RED16_C2UB > UB_SIZE_RED16_GM) ? UB_SIZE_RED16_C2UB : UB_SIZE_RED16_GM;
     // score 暂存：本 subcore 的行 × 一次 flush 覆盖的 block 数。逐 pass 只写 32B 到 GM
     // 会把 MTE3 压到 ~9GB/s；改为在 UB 内按行累积、整行（≥1KB）一次写回。
     static constexpr uint32_t UB_OFF_STAGE =
@@ -73,6 +80,13 @@ public:
     static constexpr uint32_t UB_TOTAL = UB_OFF_STAGE + UB_SIZE_STAGE;
     static_assert(UB_TOTAL <= ArchTag::UB_SIZE, "MsaSegRowMaxEpilogue UB out of bounds");
     static_assert(UB_OFF_S16 + S16_STAGES * UB_SIZE_S16 <= UB_OFF_T64, "S16 ping-pong overlaps T64");
+    // C2UB pack：[mSub,64]×2 half + [mSub,128] packed，最大 32KB，落在 T64。
+    static_assert(MSA_A5_S_PING_ROWS * MSA_BLOCK_SIZE * sizeof(half) * 2 <= UB_SIZE_T64,
+                  "C2UB fp16 128-wide pack exceeds T64");
+    // v40：两路 64 宽 fp32 WRM 的 dst 落在 T8，需 32B 对齐且互不重叠。
+    static constexpr uint32_t C2UB_WRM_DST_STRIDE = (MSA_A5_S_PING_ROWS + 7U) & ~7U;
+    static_assert(2U * C2UB_WRM_DST_STRIDE * sizeof(float) <= UB_SIZE_T8,
+                  "C2UB dual fp32 WRM dst exceeds T8");
 
     static constexpr uint32_t STILE_WIDTH = MSA_BLOCKS_PER_STILE * MSA_BLOCK_SIZE;
     // fp16：一个 32B datablock 16 个元素，一个 repeat 128 个元素（掩码 128 位）。
@@ -109,10 +123,13 @@ public:
         gBlockTable_ = gBlockTable;
 
         ubS_ = resource.ubBuf.template GetBufferByByte<float>(UB_OFF_S);
+        ubSPing_[0] = resource.ubBuf.template GetBufferByByte<float>(0);
+        ubSPing_[1] = resource.ubBuf.template GetBufferByByte<float>(MSA_A5_S_PING_BYTES);
         ubS16Ping_[0] = resource.ubBuf.template GetBufferByByte<half>(UB_OFF_S16);
         ubS16Ping_[1] = resource.ubBuf.template GetBufferByByte<half>(UB_OFF_S16 + UB_SIZE_S16);
         ubS16_ = ubS16Ping_[0];
         ubT64_ = resource.ubBuf.template GetBufferByByte<float>(UB_OFF_T64);
+        ubStash_ = resource.ubBuf.template GetBufferByByte<half>(UB_OFF_T64);
         ubT8_ = resource.ubBuf.template GetBufferByByte<float>(UB_OFF_T8);
         ubRowMax_ = resource.ubBuf.template GetBufferByByte<float>(UB_OFF_ROWMAX);
         ubDeqScale_ = resource.ubBuf.template GetBufferByByte<float>(UB_OFF_DEQ);
@@ -126,13 +143,35 @@ public:
         const uint32_t subM = MsaCeilDiv(task.mActual, subBlockNum);
         mOff_ = subIdx * subM;
         mSub_ = (mOff_ >= task.mActual) ? 0U : MsaMinU32(subM, task.mActual - mOff_);
+        if constexpr (MSA_A5_USE_C2UB && !IS_QUANT) {
+            uint32_t m0 = 0;
+            uint32_t m1 = 0;
+            MsaC2UbHalfSplit(task.mActual, m0, m1);
+            if (subIdx == 0U) {
+                mOff_ = 0;
+                mSub_ = MsaMinU32(m0, task.mActual);
+            } else {
+                mOff_ = m0;
+                mSub_ = (task.mActual > m0) ? (task.mActual - m0) : 0U;
+            }
+        }
         // 暂存区按半个 M-tile 静态分配；若 subcore 数变化导致行数超出则退回逐 pass 直写。
         stageOn_ = (mSub_ > 0U) && (mSub_ <= MSA_STAGE_ROWS);
         stageBlkBase_ = 0;
         stageBlkEnd_ = 0;
         rowInReqBase_ = task.mStart + mOff_;
         tokenBase0_ = task.cuQStart;
-        if constexpr (!IS_QUANT) {
+        if constexpr (MSA_A5_USE_C2UB) {
+            // 禁止 4B DataCopyPad：MTE3 会按 32B 写出，把后面的 fill 槽写成 0。
+            // 先在 UB 按行攒满 score 末维，再按 stride 一次 DataCopy（16 对齐）。
+            stageOn_ = (mSub_ > 0U) && (mSub_ <= MSA_STAGE_ROWS) && (strideOutToken_ <= MSA_STAGE_BLOCKS);
+            stageBlkBase_ = 0;
+            stageBlkEnd_ = stageOn_ ? strideOutToken_ : 0;
+            if (stageOn_) {
+                AscendC::Duplicate(ubStage_, MSA_FILL_VALUE, mSub_ * MSA_STAGE_BLOCKS);
+                AscendC::PipeBarrier<PIPE_V>();
+            }
+        } else if constexpr (!IS_QUANT) {
             // 本任务两级 S16 的 V_MTE2 余额；EndTask 对称 Wait，避免跨任务/跨启动泄漏。
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
@@ -143,7 +182,7 @@ public:
     __aicore__ inline void EndTask()
     {
         FlushStage();
-        if constexpr (!IS_QUANT) {
+        if constexpr (!MSA_A5_USE_C2UB && !IS_QUANT) {
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
         }
@@ -203,6 +242,55 @@ public:
             }
         }
         stageBlkEnd_ = blkBase + MSA_BLOCKS_PER_STILE;
+    }
+
+    /// C_to_UB：非量化 ping 已是 packed [mSub,128] fp16（两次单目标 F322F16）；
+    /// int8 仍为两块 [mSub,64] fp32 panel，64 宽密排 WRM 后 Max。
+    __aicore__ inline void ProcessPageUb(uint32_t ping, const MsaTask &task, uint32_t blk)
+    {
+        if (mSub_ == 0U || blk >= MSA_STAGE_BLOCKS) {
+            return;
+        }
+        constexpr uint32_t N_PER_ND = 64;
+        constexpr uint32_t N_PAGE = MSA_BLOCK_SIZE;
+        constexpr uint8_t SRC_REP_128 = N_PAGE / MSA_HALF_PER_BLOCK; // 8
+        constexpr uint8_t REP_BLK_64 = N_PER_ND / MSA_FP32_PER_BLOCK; // 8
+        const uint32_t col = blk % MSA_BLOCKS_PER_STILE;
+        if (col == 0U) {
+            AscendC::Duplicate(ubRed16_, FILL_VALUE_H, MSA_A5_S_PING_ROWS * MSA_BLOCKS_PER_STILE);
+            AscendC::PipeBarrier<PIPE_V>();
+        }
+        const bool invalid = (blk >= task.visibleEndBlk);
+        if (!invalid) {
+            if constexpr (IS_QUANT) {
+                auto ubPage = ubSPing_[ping];
+                ApplyDequantScalePage(task, blk, ubPage);
+                ApplyMaskPage(task, blk, ubPage);
+                auto ubP1 = ubPage[mSub_ * N_PER_ND];
+                auto dst0 = ubT8_;
+                auto dst1 = ubT8_[C2UB_WRM_DST_STRIDE];
+                AscendC::WholeReduceMax<float>(dst0, ubPage, static_cast<int32_t>(N_PER_ND),
+                                              static_cast<int32_t>(mSub_), 1, 1, REP_BLK_64,
+                                              AscendC::ReduceOrder::ORDER_ONLY_VALUE);
+                AscendC::WholeReduceMax<float>(dst1, ubP1, static_cast<int32_t>(N_PER_ND), static_cast<int32_t>(mSub_),
+                                              1, 1, REP_BLK_64, AscendC::ReduceOrder::ORDER_ONLY_VALUE);
+                AscendC::PipeBarrier<PIPE_V>();
+                AscendC::Max(dst0, dst0, dst1, mSub_);
+                AscendC::PipeBarrier<PIPE_V>();
+                AscendC::Cast(ubRed16_[col * MSA_A5_S_PING_ROWS], dst0, AscendC::RoundMode::CAST_RINT, mSub_);
+                AscendC::PipeBarrier<PIPE_V>();
+            } else {
+                auto ubPageH = ubSPing_[ping].template ReinterpretCast<half>();
+                ApplyMaskPageHalf(task, blk, ubPageH);
+                AscendC::WholeReduceMax<half>(ubRed16_[col * MSA_A5_S_PING_ROWS], ubPageH, static_cast<int32_t>(N_PAGE),
+                                              static_cast<int32_t>(mSub_), 1, 1, SRC_REP_128,
+                                              AscendC::ReduceOrder::ORDER_ONLY_VALUE);
+                AscendC::PipeBarrier<PIPE_V>();
+            }
+        }
+        if (col == (MSA_BLOCKS_PER_STILE - 1U) || (blk + 1U) == task.visibleEndBlk) {
+            ReduceStileToStage(task, blk - col);
+        }
     }
 
 private:
@@ -321,6 +409,7 @@ private:
             return;
         }
         const uint32_t count = stageBlkEnd_ - stageBlkBase_;
+        AscendC::PipeBarrier<PIPE_ALL>();
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
         uint32_t tOff = rowInReqBase_ / numQHeads_;
@@ -446,27 +535,13 @@ private:
     /// 拆成「整 64-fp32 repeat 尾段」+「单 repeat 内的位掩码」两步，保证每次 Duplicate 都是 256B 对齐。
     __aicore__ inline void FillBlockTail(uint32_t base, uint32_t validCount)
     {
-        if (validCount >= MSA_BLOCK_SIZE) {
-            return;
-        }
-        const uint32_t alignedStart = MsaCeilDiv(validCount, MSA_FP32_PER_REPEAT) * MSA_FP32_PER_REPEAT;
-        if (alignedStart < MSA_BLOCK_SIZE) {
-            AscendC::Duplicate(ubS_[base + alignedStart], MSA_FILL_VALUE, MSA_BLOCK_SIZE - alignedStart);
-        }
-        if (validCount < alignedStart) {
-            const uint32_t repeatBase = base + (validCount / MSA_FP32_PER_REPEAT) * MSA_FP32_PER_REPEAT;
-            const uint32_t lane = validCount % MSA_FP32_PER_REPEAT;
-            uint64_t bits = (lane == 0) ? ~0ULL : (~0ULL << lane);
-            uint64_t mask[MSA_VEC_MASK_WORDS] = {bits, 0};
-            AscendC::Duplicate<float>(ubS_[repeatBase], MSA_FILL_VALUE, mask, 1, 1,
-                                      MSA_FP32_PER_REPEAT / MSA_FP32_PER_BLOCK);
-        }
+        FillBlockTailAt(ubS_, base, validCount);
     }
 
     /// 把某一行在某个 block 内 [validCount, MSA_BLOCK_SIZE) 的列置为 -inf。
     /// fp16 下一个 repeat 恰好 128 lane = 一个 block 的 8 个 datablock，
     /// 故一条带 128 位掩码的 Duplicate 即可。
-    __aicore__ inline void FillBlockTailFp16(uint32_t base, uint32_t validCount)
+    __aicore__ inline void FillBlockTailFp16At(const AscendC::LocalTensor<half> &ub, uint32_t base, uint32_t validCount)
     {
         if (validCount >= MSA_BLOCK_SIZE) {
             return;
@@ -480,7 +555,12 @@ private:
             hi = ~0ULL << (validCount - MSA_HALF_PER_MASK_WORD);
         }
         uint64_t mask[MSA_VEC_MASK_WORDS] = {lo, hi};
-        AscendC::Duplicate<half>(ubS16_[base], FILL_VALUE_H, mask, 1, 1, MSA_BLOCK_SIZE / MSA_HALF_PER_BLOCK);
+        AscendC::Duplicate<half>(ub[base], FILL_VALUE_H, mask, 1, 1, MSA_BLOCK_SIZE / MSA_HALF_PER_BLOCK);
+    }
+
+    __aicore__ inline void FillBlockTailFp16(uint32_t base, uint32_t validCount)
+    {
+        FillBlockTailFp16At(ubS16_, base, validCount);
     }
 
     /// int8 路径：S 已是 Q · cast(K_int8)，再按列乘 scale[page,0,n] 完成反量化。
@@ -637,13 +717,210 @@ private:
         }
     }
 
+    __aicore__ inline void ApplyMaskPage(const MsaTask &task, uint32_t blk, const AscendC::LocalTensor<float> &ubPage)
+    {
+        if (blk < task.fullEndBlk || blk >= task.visibleEndBlk) {
+            return;
+        }
+        bool touched = false;
+        for (uint32_t r = 0; r < mSub_; ++r) {
+            const uint32_t rowInReq = task.mStart + mOff_ + r;
+            const uint32_t tOff = rowInReq / numQHeads_;
+            const int32_t visibleKeyEnd = VisibleKeyEnd(task, static_cast<int32_t>(tOff));
+            int32_t validCount = visibleKeyEnd - static_cast<int32_t>(blk * MSA_BLOCK_SIZE);
+            if (validCount < 0) {
+                validCount = 0;
+            }
+            if (validCount >= static_cast<int32_t>(MSA_BLOCK_SIZE)) {
+                continue;
+            }
+            const uint32_t vc = static_cast<uint32_t>(validCount);
+            const uint32_t v0 = (vc >= 64U) ? 64U : vc;
+            const uint32_t v1 = (vc >= 64U) ? (vc - 64U) : 0U;
+            FillBlockTailAt(ubPage, r * 64U, v0, 64U);
+            FillBlockTailAt(ubPage[mSub_ * 64U], r * 64U, v1, 64U);
+            touched = true;
+        }
+        if (touched) {
+            AscendC::PipeBarrier<PIPE_V>();
+        }
+    }
+
+    /// packed [mSub,128] fp16：每行一条 128-bit Duplicate。
+    __aicore__ inline void ApplyMaskPageHalf(const MsaTask &task, uint32_t blk,
+                                             const AscendC::LocalTensor<half> &ubPage)
+    {
+        if (blk < task.fullEndBlk || blk >= task.visibleEndBlk) {
+            return;
+        }
+        bool touched = false;
+        for (uint32_t r = 0; r < mSub_; ++r) {
+            const uint32_t rowInReq = task.mStart + mOff_ + r;
+            const uint32_t tOff = rowInReq / numQHeads_;
+            const int32_t visibleKeyEnd = VisibleKeyEnd(task, static_cast<int32_t>(tOff));
+            int32_t validCount = visibleKeyEnd - static_cast<int32_t>(blk * MSA_BLOCK_SIZE);
+            if (validCount < 0) {
+                validCount = 0;
+            }
+            if (validCount >= static_cast<int32_t>(MSA_BLOCK_SIZE)) {
+                continue;
+            }
+            FillBlockTailFp16At(ubPage, r * MSA_BLOCK_SIZE, static_cast<uint32_t>(validCount));
+            touched = true;
+        }
+        if (touched) {
+            AscendC::PipeBarrier<PIPE_V>();
+        }
+    }
+
+    /// local/init 整页同一值：归约后再盖 packed 列，避免 Duplicate 整页 S。
+    __aicore__ inline void ApplyLocalMaskRowMax(const MsaTask &task, uint32_t blk,
+                                                const AscendC::LocalTensor<float> &dst)
+    {
+        if (task.initBlocks == 0 && task.localBlocks == 0) {
+            return;
+        }
+        const int32_t qBlock = task.startLoc;
+        const int32_t localStart = (qBlock + 1 > static_cast<int32_t>(task.localBlocks)) ?
+                                       (qBlock + 1 - static_cast<int32_t>(task.localBlocks)) :
+                                       0;
+        const int32_t iblk = static_cast<int32_t>(blk);
+        bool isLocal = (iblk >= localStart && iblk <= qBlock && iblk < static_cast<int32_t>(task.visibleEndBlk));
+        bool isInit = (!isLocal) && (blk < task.initBlocks) && (blk < task.visibleEndBlk);
+        if (!isLocal && !isInit) {
+            return;
+        }
+        const float fill = isLocal ? MSA_LOCAL_SCORE_LOCAL : MSA_LOCAL_SCORE_INIT;
+        AscendC::Duplicate(dst, fill, mSub_);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+
+    /// ubRed16_ 为 [8][64] packed 列。16×16 ND2ND_B16 转成 [64][16]，取前 8 列走 GM StageScore。
+    __aicore__ inline void ReduceStileToStage(const MsaTask &task, uint32_t colOff)
+    {
+        constexpr uint32_t VA = 16;
+        constexpr uint32_t M_PAD = MSA_A5_S_PING_ROWS;
+        constexpr uint32_t N_PAD = 16;
+        auto ubPad = ubStash_;
+        auto ubOutH = ubStash_[VA * M_PAD];
+        AscendC::Duplicate(ubPad, FILL_VALUE_H, VA * M_PAD);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::DataCopy(ubPad, ubRed16_, MSA_BLOCKS_PER_STILE * M_PAD);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::LocalTensor<half> srcList[VA];
+        AscendC::LocalTensor<half> dstList[VA];
+        AscendC::TransDataTo5HDParams params;
+        params.dstHighHalf = false;
+        params.srcHighHalf = false;
+        params.repeatTimes = 1;
+        params.dstRepStride = 0;
+        params.srcRepStride = 0;
+        for (uint32_t j = 0; j < M_PAD / VA; ++j) {
+            for (uint32_t i = 0; i < VA; ++i) {
+                srcList[i] = ubPad[i * M_PAD + j * VA];
+            }
+            for (uint32_t k = 0; k < VA; ++k) {
+                dstList[k] = ubOutH[(k + j * VA) * N_PAD];
+            }
+            AscendC::TransDataTo5HD(dstList, srcList, params);
+        }
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Cast(ubT8_, ubOutH, AscendC::RoundMode::CAST_NONE, M_PAD * N_PAD);
+        AscendC::PipeBarrier<PIPE_V>();
+        // 每行 16 个 fp32，取前 8 个到 packed [mSub,8]；burst=32B，srcGap=1。
+        AscendC::DataCopyParams take8(static_cast<uint16_t>(mSub_), 1, 1, 0);
+        AscendC::DataCopy(ubRowMax_, ubT8_, take8);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Maxs<float>(ubRowMax_, ubRowMax_, MSA_FILL_VALUE, static_cast<int32_t>(mSub_ * MSA_BLOCKS_PER_STILE));
+        AscendC::PipeBarrier<PIPE_V>();
+        ApplyLocalMaskUb(task, colOff, mSub_);
+        StageScore(colOff, 0, mSub_);
+    }
+
+    __aicore__ inline void ApplyDequantScalePage(const MsaTask &task, uint32_t blk,
+                                                 AscendC::LocalTensor<float> ubPage)
+    {
+        uint64_t scaleOff = 0;
+        uint32_t nValidScale = MSA_BLOCK_SIZE;
+        if (keyLayout_ == MSA_KEY_LAYOUT_TND) {
+            const uint32_t tokenStart = task.cuKStart + blk * MSA_BLOCK_SIZE;
+            scaleOff = static_cast<uint64_t>(tokenStart);
+            const uint32_t seqTok = blk * MSA_BLOCK_SIZE;
+            nValidScale = 0;
+            if (task.kvLen > 0 && seqTok < static_cast<uint32_t>(task.kvLen)) {
+                nValidScale = static_cast<uint32_t>(task.kvLen) - seqTok;
+                if (nValidScale > MSA_BLOCK_SIZE) {
+                    nValidScale = MSA_BLOCK_SIZE;
+                }
+            }
+        } else {
+            const int32_t page = gBlockTable_.GetValue(task.batchIdx * maxBlocksPerBatch_ + blk);
+            scaleOff = static_cast<uint64_t>(page) * strideScalePage_;
+        }
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
+        if (nValidScale < MSA_BLOCK_SIZE) {
+            AscendC::Duplicate(ubDeqScale_, 0.0f, MSA_BLOCK_SIZE);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
+        }
+        if (nValidScale > 0) {
+            const uint32_t bytes = nValidScale * static_cast<uint32_t>(sizeof(float));
+            if ((bytes % MSA_DATABLOCK_BYTES) == 0U) {
+                AscendC::DataCopy(ubDeqScale_, gScale_[scaleOff], nValidScale);
+            } else {
+                AscendC::DataCopyExtParams params;
+                params.blockCount = 1;
+                params.blockLen = bytes;
+                params.srcStride = 0;
+                params.dstStride = 0;
+                AscendC::DataCopyPadExtParams<float> pad;
+                pad.isPad = false;
+                pad.leftPadding = 0;
+                pad.rightPadding = 0;
+                pad.paddingValue = 0;
+                AscendC::DataCopyPad(ubDeqScale_, gScale_[scaleOff], params, pad);
+            }
+        }
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
+        for (uint32_t r = 0; r < mSub_; ++r) {
+            AscendC::Mul(ubPage[r * 64U], ubPage[r * 64U], ubDeqScale_, 64);
+            AscendC::Mul(ubPage[mSub_ * 64U + r * 64U], ubPage[mSub_ * 64U + r * 64U], ubDeqScale_[64], 64);
+        }
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+
+    __aicore__ inline void FillBlockTailAt(AscendC::LocalTensor<float> s, uint32_t base, uint32_t validCount,
+                                           uint32_t width = MSA_BLOCK_SIZE)
+    {
+        if (validCount >= width) {
+            return;
+        }
+        const uint32_t alignedStart = MsaCeilDiv(validCount, MSA_FP32_PER_REPEAT) * MSA_FP32_PER_REPEAT;
+        if (alignedStart < width) {
+            AscendC::Duplicate(s[base + alignedStart], MSA_FILL_VALUE, width - alignedStart);
+        }
+        if (validCount < alignedStart) {
+            const uint32_t repeatBase = base + (validCount / MSA_FP32_PER_REPEAT) * MSA_FP32_PER_REPEAT;
+            const uint32_t lane = validCount % MSA_FP32_PER_REPEAT;
+            uint64_t bits = (lane == 0) ? ~0ULL : (~0ULL << lane);
+            uint64_t mask[MSA_VEC_MASK_WORDS] = {bits, 0};
+            AscendC::Duplicate<float>(s[repeatBase], MSA_FILL_VALUE, mask, 1, 1,
+                                      MSA_FP32_PER_REPEAT / MSA_FP32_PER_BLOCK);
+        }
+    }
+
     AscendC::GlobalTensor<float> gScore_;
     AscendC::GlobalTensor<float> gScale_;
     AscendC::GlobalTensor<int32_t> gBlockTable_;
     AscendC::LocalTensor<float> ubS_;
+    AscendC::LocalTensor<float> ubSPing_[MSA_A5_S_STAGES];
     AscendC::LocalTensor<half> ubS16_;
     AscendC::LocalTensor<half> ubS16Ping_[S16_STAGES];
     AscendC::LocalTensor<float> ubT64_;
+    AscendC::LocalTensor<half> ubStash_;
     AscendC::LocalTensor<float> ubT8_;
     AscendC::LocalTensor<float> ubRowMax_;
     AscendC::LocalTensor<float> ubDeqScale_;

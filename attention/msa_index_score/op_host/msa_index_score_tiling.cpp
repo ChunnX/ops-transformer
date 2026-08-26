@@ -306,16 +306,17 @@ ge::graphStatus DoTiling(gert::TilingContext *context, const MsaIndexScoreInfo &
     OP_CHECK_IF(aicNum == 0, OP_LOGE(context, "aic core num is 0."), return ge::GRAPH_FAILED);
 
     const uint32_t scoreBlockStride = RoundUpU32(info.maxBlocksPerBatch, MSA_SCORE_STRIDE_ALIGN);
-    // 第一阶段 950 与 A2 共用 S-tile workspace（非量化 fp16 / int8 fp32）。
-    // C_to_UB / 新 dtype 优化后再改 950 专用布局。
+    // 950 C_to_UB：S 不进 GM；int8/TND 尾页仍要一页 K scratch。A2 与 950 回退（MSA_A5_USE_C2UB=0）走 8-stage S。
     const uint32_t sElemBytes = info.isQuant ? sizeof(float) : sizeof(uint16_t);
-    const uint32_t sWsBytes = aicNum * MSA_WORKSPACE_STAGES * MSA_STILE_ELEM_NUM * sElemBytes;
+    const bool c2ub = info.isAscend950 && (MSA_A5_USE_C2UB != 0);
+    const uint32_t sWsBytes =
+        c2ub ? 0U : (aicNum * MSA_WORKSPACE_STAGES * MSA_STILE_ELEM_NUM * sElemBytes);
     const bool useKScratch = info.isQuant || (info.keyLayout == MSA_KEY_LAYOUT_TND);
     uint32_t scratchElemBytes = sizeof(uint16_t);
     if (info.isAscend950 && !info.isQuant && IsFp8ComputeDtype(info.queryDtype)) {
         scratchElemBytes = 1U;
     }
-    const uint32_t kScratchElems = MSA_K_SCRATCH_ELEM_NUM;
+    const uint32_t kScratchElems = c2ub ? MSA_A5_K_SCRATCH_ELEM_NUM : MSA_K_SCRATCH_ELEM_NUM;
     const uint32_t kScratchBytes = useKScratch ? (aicNum * kScratchElems * scratchElemBytes) : 0U;
     const uint32_t kScratchOffsetElems = sWsBytes / sizeof(float);
 

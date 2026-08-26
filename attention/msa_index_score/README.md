@@ -81,14 +81,27 @@
 | 接口文档 | [aclnnMsaIndexScore.md](./docs/aclnnMsaIndexScore.md) | 两段式接口说明 |
 | 测试说明 | [tests/README.md](./tests/README.md) | 用例矩阵与运行方式 |
 
-编译与运行：
+编译与运行（Ascend 950，x86 包名为 `linux-x86_64.run`；A2/A3 将 `--soc` 换成对应平台）：
 
 ```bash
+conda activate py311
+source /home/chenlyucheng/community_pkg/Ascend_0819/cann/set_env.sh
+cd /path/to/ops-transformer-ar-950
+
 bash build.sh --pkg --soc=ascend950 --ops=msa_index_score -j32
-./build_out/cann-ops-transformer-custom_linux-aarch64.run --quiet --install-path=/tmp/msa_opp
+rm -rf /tmp/msa_opp/
+bash ./build_out/cann-ops-transformer-custom_linux-x86_64.run --quiet --install-path=/tmp/msa_opp/
+source /tmp/msa_opp/vendors/custom_transformer/bin/set_env.bash
 export ASCEND_CUSTOM_OPP_PATH=/tmp/msa_opp/vendors/custom_transformer
-bash build.sh --run_example msa_index_score eager cust --vendor_name=custom
+
+# aclnn example 必须带 --soc=ascend950（否则默认 910b）
+bash build.sh --run_example msa_index_score eager cust --vendor_name=custom --soc=ascend950
+# 通过：末行 [PASS]: 21/21 cases passed
+# 矩阵：18 条 fp16/bf16/int8（BBND/BNBD/TND）+ L0-fp8-e4m3fn / L0-fp8-e5m2 / L1-fp8-e4m3fn-prefill（D=128）
+# 容差：fp16/bf16/int8 1e-3，FP8 2e-2
 ```
+
+torch_extension 见 [msa_index_score.md](../../torch_extension/cann_ops_transformer/docs/zh/msa_index_score.md)。`cann/set_env.sh` 会把 cann 自带 `site-packages` 插到 `PYTHONPATH` 前面，必须把本仓 `torch_extension` 再插回最前。
 
 > **实现备注（A2/A3 / Ascend 950）**
 >
@@ -98,3 +111,6 @@ bash build.sh --run_example msa_index_score eager cust --vendor_name=custom
 > - `start_loc` 为逻辑 block 索引，与属性 `init_blocks`（默认 0）、`local_blocks`（默认 1）
 >   一起在 Maxpool 之后施加 `local_mask`。
 > - 完整公式：`score = Maxpool[(scale·)Q@Kᵀ + atten_mask] + local_mask`。
+> - **950 当前交付**（`op_kernel/arch35/`）：计算骨架与 A2 相同（Q 驻留 × K pingpong × **8-page S GM** + MODE 0x2 握手）。Cube **原生** FP8（TilingKey 4/5/6，`hifloat8_t` / `fp8_e5m2_t` / `fp8_e4m3fn_t`，无 scale，禁止 Cast→fp16）。L0C→AIV UB（C_to_UB）尚未作为主路径。`arch22/` 冻结。
+> - torch 的 `torch_npu.hifloat8.npu()` 当前会打出非法 device id，脚本跳过；kernel / aclnn 已挂 HIFLOAT8。
+> - 测性能须选 Health=OK 且空闲的卡。本机经验：物理 **0 / 5** 与基线墙钟一致；**3 / 6** 同 kernel 墙钟可差约 2×（PipeUtilization 仍接近）。物理 0 若 `SetDevice` 卡住，换 5。
