@@ -467,6 +467,7 @@ def fill_none_params(params_dict):
         "cmp_sparse_indices_mode": params_dict.get("cmp_sparse_indices_mode", "full"),
         "ori_topk_length": params_dict.get("ori_topk_length", None),
         "cmp_topk_length": params_dict.get("cmp_topk_length", None),
+        "batch_consistency": params_dict.get("batch_consistency", False),
     }
 
     return filled_params
