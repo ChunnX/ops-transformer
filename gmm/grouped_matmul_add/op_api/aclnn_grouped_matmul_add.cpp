@@ -191,11 +191,11 @@ static aclnnStatus CheckDtype(gmm_add_advanced::GroupedMatmulAddParams params, c
                "groupList",
                op::ToString(params.groupList->GetDataType()).GetString());
     if ((xDtype != DataType::DT_FLOAT16 && xDtype != DataType::DT_BF16) || (xDtype != weightDtype)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "In op [%s], when non-quant, the data types of [%s...] are mismatched, the reason is: [x dtype "
-                "%s and weight dtype %s are not supported. This operator supports x/weight dtype FLOAT16 or BF16 "
-                "only].",
-                opName, "x, weight", op::ToString(xDtype).GetString(), op::ToString(weightDtype).GetString());
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            opName, "x, weight",
+            std::string("x dtype ") + op::ToString(xDtype).GetString() + " and weight dtype " +
+                op::ToString(weightDtype).GetString(),
+            "x and weight dtypes are not supported. This operator supports x/weight dtype FLOAT16 or BF16 only");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;

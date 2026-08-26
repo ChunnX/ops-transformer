@@ -9,6 +9,7 @@
  */
 
 #include <dlfcn.h>
+#include "../../common/op_host/log_format_util.h"
 #include "aclnn_grouped_matmul_finalize_routing_weight_nz.h"
 #include "aclnn_grouped_matmul_finalize_routing_weight_nz_v2.h"
 #include "aclnn_grouped_matmul_finalize_routing_v3.h"
@@ -180,9 +181,7 @@ static inline bool CheckDtypeValid(const GroupedMatmulParams &params)
 
     OP_CHECK_DTYPE_NOT_SUPPORT(params.out, OUT_TYPE_SUPPORT_LIST, return false);
     if (params.shareInput != nullptr && params.logit != nullptr && params.out->GetDataType() != DataType::DT_FLOAT) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "when shareInput is not null and logit is not null, y's dtype should be [DT_FLOAT], actual is [%s].",
-                op::ToString(params.out->GetDataType()).GetString());
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "out", op::ToString(params.out->GetDataType()).GetString(), Ops::Transformer::Gmm::FormatString("when shareInput is not null and logit is not null, y's dtype should be [DT_FLOAT].").c_str());
         return false;
     }
     if (params.x2->GetDataType() == DataType::DT_INT4) {
@@ -191,8 +190,7 @@ static inline bool CheckDtypeValid(const GroupedMatmulParams &params)
 
     // 无芯片差异的公共校验
     if (params.x1->GetDataType() != params.x2->GetDataType()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x1 and x2 dtype should be same, actual x1 dtype is %s and x2 dtype is %s.",
-                op::ToString(params.x1->GetDataType()).GetString(), op::ToString(params.x2->GetDataType()).GetString());
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(GMMFR_ACLNN_OP_NAME, "x1, x2", Ops::Transformer::Gmm::FormatString("%s, %s", op::ToString(params.x1->GetDataType()).GetString(), op::ToString(params.x2->GetDataType()).GetString()).c_str(), Ops::Transformer::Gmm::FormatString("x1 and x2 dtype should be the same.").c_str());
         return false;
     }
 
@@ -202,8 +200,7 @@ static inline bool CheckDtypeValid(const GroupedMatmulParams &params)
 static bool IsFormatSupport(const aclTensor *input, Format format, const std::string &inputName)
 {
     if (input != nullptr && input->GetStorageFormat() != format) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s's format should be ND. actual is [%s].", inputName.c_str(),
-                op::ToString(input->GetStorageFormat()).GetString());
+        OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(GMMFR_ACLNN_OP_NAME, inputName.c_str(), op::ToString(input->GetStorageFormat()).GetString(), Ops::Transformer::Gmm::FormatString("%s's format should be ND.", inputName.c_str()).c_str());
         return false;
     }
     return true;
@@ -223,8 +220,7 @@ static inline bool CheckFormat(const GroupedMatmulParams &params)
     CHECK_RET(IsFormatSupport(params.out, Format::FORMAT_ND, "out"), false);
     if (params.x2 != nullptr && params.x2->GetStorageFormat() != Format::FORMAT_ND &&
         params.x2->GetStorageFormat() != Format::FORMAT_FRACTAL_NZ) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x2's format should be ND or FRACTAL_NZ. actual is [%s].",
-                op::ToString(params.x2->GetStorageFormat()).GetString());
+        OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(GMMFR_ACLNN_OP_NAME, "x2", op::ToString(params.x2->GetStorageFormat()).GetString(), Ops::Transformer::Gmm::FormatString("x2's format should be ND or FRACTAL_NZ.").c_str());
         return false;
     }
     return true;
@@ -281,7 +277,7 @@ GetX1X2DimValue(const aclTensor *x1, const aclTensor *x2, bool transposeX1, bool
     auto x1DimNum = x1->GetViewShape().GetDimNum();
     auto x2DimNum = x2->GetViewShape().GetDimNum();
     if (!(x1DimNum == TWO_DIM_NUM && x2DimNum == THREE_DIM_NUM)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "input x Dims is %zu, weight Dims is %zu.", x1DimNum, x2DimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(GMMFR_ACLNN_OP_NAME, "x1, x2", Ops::Transformer::Gmm::FormatString("%zu, %zu", x1DimNum, x2DimNum).c_str(), Ops::Transformer::Gmm::FormatString("input x and weight ranks do not meet the supported dimensions.").c_str());
     }
 
     const op::Shape x1Shape = x1->GetViewShape();
@@ -299,10 +295,7 @@ static inline bool CheckW4orW8DimValue(const CheckW4orW8DimParams &params, bool 
     if (!isWeightInt4) {
         if (!(params.scale->GetViewShape().GetDim(0) == params.x2EDim &&
               params.scale->GetViewShape().GetDim(1) == params.x2NDim)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Scale first dim should equal to weight EDim %lld, but actual is %lld.\
-            Scale last dim should equal to weight NDim %lld or 1, but actual is %lld.",
-                    params.x2EDim, params.scale->GetViewShape().GetDim(0), params.x2NDim,
-                    params.scale->GetViewShape().GetDim(1));
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "scale", Ops::Transformer::Gmm::FormatString("(%ld, %ld)", params.scale->GetViewShape().GetDim(0), params.scale->GetViewShape().GetDim(1)).c_str(), Ops::Transformer::Gmm::FormatString("Scale first dim should equal weight EDim, and last dim should equal weight NDim or 1.").c_str());
             return false;
         }
         return true;
@@ -310,31 +303,18 @@ static inline bool CheckW4orW8DimValue(const CheckW4orW8DimParams &params, bool 
         if (!(params.scale->GetViewShape().GetDim(0) == params.x2EDim &&
               params.scale->GetViewShape().GetDim(ONE_DIM_NUM) == ONE_DIM_NUM &&
               params.scale->GetViewShape().GetDim(TWO_DIM_NUM) == params.x2NDim)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "Scale first dim should equal to weight EDim %lld, but actual is %lld,"
-                    " Scale second dim should be 1, but actual is %lld,"
-                    " Scale last dim should equal to weight NDim %lld or 1, but actual is %lld.",
-                    params.x2EDim, params.scale->GetViewShape().GetDim(0),
-                    params.scale->GetViewShape().GetDim(ONE_DIM_NUM), params.x2NDim,
-                    params.scale->GetViewShape().GetDim(TWO_DIM_NUM));
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "scale", Ops::Transformer::Gmm::FormatString("(%ld, %ld, %ld)", params.scale->GetViewShape().GetDim(0), params.scale->GetViewShape().GetDim(ONE_DIM_NUM), params.scale->GetViewShape().GetDim(TWO_DIM_NUM)).c_str(), Ops::Transformer::Gmm::FormatString("Scale dimensions should match weight E/N dimensions and the middle dimension should be 1; expected E=%ld, N=%ld.", params.x2EDim, params.x2NDim).c_str());
             return false;
         }
         if ((params.offset != nullptr) && !(params.offset->GetViewShape().GetDim(0) == params.x2EDim &&
                                             params.offset->GetViewShape().GetDim(TWO_DIM_NUM) == params.x2NDim &&
                                             params.offset->GetViewShape().GetDim(ONE_DIM_NUM) == ONE_DIM_NUM)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "w4a8 offset's dim value should equal scale,"
-                    " which is (%lld, %lld, %lld)",
-                    params.offset->GetViewShape().GetDim(0), params.offset->GetViewShape().GetDim(ONE_DIM_NUM),
-                    params.offset->GetViewShape().GetDim(TWO_DIM_NUM));
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "offset", Ops::Transformer::Gmm::FormatString("(%ld, %ld, %ld)", params.offset->GetViewShape().GetDim(0), params.offset->GetViewShape().GetDim(ONE_DIM_NUM), params.offset->GetViewShape().GetDim(TWO_DIM_NUM)).c_str(), "w4a8 offset shape should equal scale shape.");
             return false;
         }
         if (params.bias != nullptr && !(params.bias->GetViewShape().GetDim(0) == params.x2EDim &&
                                         params.bias->GetViewShape().GetDim(ONE_DIM_NUM) == params.x2NDim)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "w4a8 bias's dim value should be (e, n),"
-                    " which is (%lld, %lld)",
-                    params.bias->GetViewShape().GetDim(0), params.bias->GetViewShape().GetDim(ONE_DIM_NUM));
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "bias", Ops::Transformer::Gmm::FormatString("(%ld, %ld)", params.bias->GetViewShape().GetDim(0), params.bias->GetViewShape().GetDim(ONE_DIM_NUM)).c_str(), "w4a8 bias shape should be (e, n).");
             return false;
         }
         return true;
@@ -351,43 +331,33 @@ static inline bool CheckDimValue(GroupedMatmulParams &params, int64_t x2EDim, in
 
     if ((params.pertokenScaleOptional != nullptr) &&
         (!(params.pertokenScaleOptional->GetViewShape().GetDim(0) == x1MDim))) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "pertokenScale first dim should equal to x MDim %lld, but actual is %lld.",
-                x1MDim, params.pertokenScaleOptional->GetViewShape().GetDim(0));
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "pertokenScaleOptional", Ops::Transformer::Gmm::FormatString("(%ld)", params.pertokenScaleOptional->GetViewShape().GetDim(0)).c_str(), Ops::Transformer::Gmm::FormatString("pertokenScale first dim should equal to x MDim %ld.", x1MDim).c_str());
         return false;
     }
 
     if (!(params.groupList->GetViewShape().GetDim(0) == x2EDim)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "groupList first dim should equal to weight EDim %lld, but actual is %lld.",
-                x2EDim, params.groupList->GetViewShape().GetDim(0));
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "groupList", Ops::Transformer::Gmm::FormatString("(%ld)", params.groupList->GetViewShape().GetDim(0)).c_str(), Ops::Transformer::Gmm::FormatString("groupList first dim should equal to weight EDim %ld.", x2EDim).c_str());
         return false;
     }
 
     if (params.shareInput != nullptr && !(params.shareInput->GetViewShape().GetDim(0) <= outputBS &&
                                           params.shareInput->GetViewShape().GetDim(1) == x2NDim)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "shareInput first dim should less than or equal to outputBS %lld, but actual is %lld."
-                "shareInput last dim should equal to weight NDim %lld, but actual is %lld.",
-                outputBS, params.shareInput->GetViewShape().GetDim(0), x2NDim,
-                params.shareInput->GetViewShape().GetDim(1));
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "shareInput", Ops::Transformer::Gmm::FormatString("(%ld, %ld)", params.shareInput->GetViewShape().GetDim(0), params.shareInput->GetViewShape().GetDim(1)).c_str(), Ops::Transformer::Gmm::FormatString("shareInput first dim must be <= outputBS %ld and last dim must equal weight NDim %ld.", outputBS, x2NDim).c_str());
         return false;
     }
 
     if (params.logit != nullptr && !(params.logit->GetViewShape().GetDim(0) == x1MDim)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "logit first dim should equal to x MDim %lld, but actual is %lld.", x1MDim,
-                params.logit->GetViewShape().GetDim(0));
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "logit", Ops::Transformer::Gmm::FormatString("(%ld)", params.logit->GetViewShape().GetDim(0)).c_str(), Ops::Transformer::Gmm::FormatString("logit first dim should equal to x MDim %ld.", x1MDim).c_str());
         return false;
     }
 
     if (!(params.rowIndex->GetViewShape().GetDim(0) == x1MDim)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "rowIndex first dim should equal to x MDim %lld, but actual is %lld.", x1MDim,
-                params.rowIndex->GetViewShape().GetDim(0));
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "rowIndex", Ops::Transformer::Gmm::FormatString("(%ld)", params.rowIndex->GetViewShape().GetDim(0)).c_str(), Ops::Transformer::Gmm::FormatString("rowIndex first dim should equal to x MDim %ld.", x1MDim).c_str());
         return false;
     }
 
     OP_CHECK(outputBS <= x1MDim,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                     "outputBS should be less than or equal to x MDim, but outputBS is %lld, x MDim is %lld.", outputBS,
-                     x1MDim),
+             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "outputBS", std::to_string(outputBS), Ops::Transformer::Gmm::FormatString("outputBS should be less than or equal to x MDim %ld.", x1MDim).c_str()),
              return false);
 
     auto shareInputDim = 0;
@@ -396,10 +366,11 @@ static inline bool CheckDimValue(GroupedMatmulParams &params, int64_t x2EDim, in
     }
 
     OP_CHECK((shareInputOffset + shareInputDim) <= outputBS,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                     "shareInputOffset add shareInputDim should be less than or equal to outputBS, but "
-                     "shareInputOffset is %lld, weight is %lld.",
-                     shareInputOffset + shareInputDim, outputBS),
+             OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                 GMMFR_ACLNN_OP_NAME, "shareInputOffset, shareInput dim 0, outputBS",
+                 Ops::Transformer::Gmm::FormatString(
+                     "%ld, %ld, %ld", shareInputOffset, shareInputDim, outputBS).c_str(),
+                 "shareInputOffset plus shareInput dim 0 must not exceed outputBS"),
              return false);
 
     return true;
@@ -418,9 +389,7 @@ static inline bool CheckShapeForWeightNz(const aclTensor *x1, const aclTensor *x
                               (transposeX2 ? NZ_K0_VALUE_INT8_TRANS : NZ_K0_VALUE_INT8);
     int64_t alignedX1K = ((x1KDim + aligneValue - 1) / aligneValue) * aligneValue;
     if (alignedX1K != x2K1Dim * aligneValue) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "AlignedK1 value %lld is not matched with k1 value times aligneValue, which is %lld.", alignedX1K,
-                x2K1Dim * aligneValue);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "alignedK1", std::to_string(alignedX1K), Ops::Transformer::Gmm::FormatString("AlignedK1 does not match k1 times alignment value %ld; expected %ld.", aligneValue, x2K1Dim * aligneValue).c_str());
         return false;
     }
     return true;
@@ -453,59 +422,59 @@ static inline bool CheckShape(GroupedMatmulParams &params)
     }
 
     OP_CHECK(x1KDim == x2KDim,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                     "x1 k dim and x2 k dim should be same,"
-                     " but x1 is %lld, x2 is %lld.",
-                     x1KDim, x2KDim),
+             OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                 GMMFR_ACLNN_OP_NAME, "x1 K, x2 K",
+                 Ops::Transformer::Gmm::FormatString("%ld, %ld", x1KDim, x2KDim).c_str(),
+                 "x1 K and x2 K must be equal"),
              return false);
 
     if (!isWeightInt4) {
         OP_CHECK(
             ((x2KDim % NZ_K0_VALUE_INT8 == 0) && (x2NDim % NZ_K0_VALUE_INT8_TRANS == 0) && (x2NDim >= N_VALUE_256)),
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "k dim %lld and n dim %lld do not support."
-                    " only support k mod 16 equal 0, n mod 32 equal 0 and n bigger or equal 256",
-                    x2KDim, x2NDim),
+            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                GMMFR_ACLNN_OP_NAME, "x2 K, x2 N",
+                Ops::Transformer::Gmm::FormatString("%ld, %ld", x2KDim, x2NDim).c_str(),
+                "x2 K must be divisible by 16; x2 N must be divisible by 32 and at least 256"),
             return false);
     } else {
         int n_align = isWeightNz ? NZ_N_VALUE_ALIGN : ND_N_VALUE_ALIGN;
         OP_CHECK(((x2NDim % n_align == 0) && (x2KDim % ND_K_VALUE_ALIGN == 0) && (x2NDim > N_VALUE_64) &&
                   (x2KDim > K_VALUE_128)),
-                 OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                         "Weight k dim %lld and n dim %lld do not support."
-                         " In W4A8 mode, only support k mod 64 equal 0, n mod %d equal 0, k should bigger than 128, n "
-                         "should bigger than 64.",
-                         x2KDim, x2NDim, n_align),
+                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                     GMMFR_ACLNN_OP_NAME, "x2 K, x2 N",
+                     Ops::Transformer::Gmm::FormatString("%ld, %ld", x2KDim, x2NDim).c_str(),
+                     Ops::Transformer::Gmm::FormatString(
+                         "x2 K must be divisible by 64 and greater than 128; x2 N must be divisible by %d and greater than 64",
+                         n_align).c_str()),
                  return false);
     }
 
     int64_t outDimNum = params.out->GetViewShape().GetDimNum();
     OP_CHECK(outDimNum == 2,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Out dim num should be equal to 2, but is %lld.", outDimNum),
+             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GMMFR_ACLNN_OP_NAME, "out", std::to_string(outDimNum), "Out rank should be 2."),
              return false);
     int64_t outputBS = params.out->GetViewShape().GetDim(outDimNum - PENULTIMATE_DIM);
     int64_t outNDim = params.out->GetViewShape().GetDim(outDimNum - 1);
 
     OP_CHECK(outputBS <= x1MDim && outputBS >= 0,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                     "Out 1st dim should be less than or equal to x MDim , but out 1st dim is %lld", outputBS),
+             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "out first dimension", std::to_string(outputBS), Ops::Transformer::Gmm::FormatString("Out first dimension should be between 0 and x MDim %ld.", x1MDim).c_str()),
              return false);
     OP_CHECK(outNDim == x2NDim,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                     "Out 2nd dim should be equal to weight NDim, but out 2nd dim is %lld, weight NDim is %lld.",
-                     outNDim, x2NDim),
+             OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(GMMFR_ACLNN_OP_NAME, "out second dimension, weight NDim", Ops::Transformer::Gmm::FormatString("%ld, %ld", outNDim, x2NDim).c_str(), "Out second dimension should equal weight NDim."),
              return false);
     OP_CHECK(shareInputOffset >= 0,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "sharedInputOffset should bigger than or equal to 0"), return false);
+             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "shareInputOffset", std::to_string(shareInputOffset), "shareInputOffset should be greater than or equal to 0."), return false);
     OP_CHECK(groupListType == 0 || groupListType == 1,
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "groupListType should be 0 or 1, but is %lld", groupListType),
+             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "groupListType", std::to_string(groupListType), "groupListType should be 0 or 1."),
              return false);
 
     CHECK_RET(CheckDimValue(params, x2EDim, x2NDim, x1MDim, outputBS, shareInputOffset, isWeightInt4), false);
 
     if (params.pertokenScaleOptional != nullptr && CheckInputViewShape(params.pertokenScaleOptional->GetViewShape())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "GroupedMatmulFinalizeRouting do not support pertokenScaleOptional size is 0.");
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+            GMMFR_ACLNN_OP_NAME, "pertokenScaleOptional",
+            std::to_string(params.pertokenScaleOptional->GetViewShape().GetShapeSize()),
+            "GroupedMatmulFinalizeRouting does not support an empty pertokenScaleOptional.");
         return false;
     }
 
@@ -514,8 +483,8 @@ static inline bool CheckShape(GroupedMatmulParams &params)
         (params.shareInput != nullptr && CheckInputViewShape(params.shareInput->GetViewShape())) ||
         (params.logit != nullptr && CheckInputViewShape(params.logit->GetViewShape())) ||
         CheckInputViewShape(params.rowIndex->GetViewShape())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "GroupedMatmulFinalizeRouting WeightNz do not support input tensor size is 0.");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+            GMMFR_ACLNN_OP_NAME, "input", "GroupedMatmulFinalizeRouting WeightNz does not support empty input tensors.");
         return false;
     }
 
@@ -526,7 +495,11 @@ static inline bool CheckEmptyTensor(const GroupedMatmulParams &params)
 {
     // scale, out和可选参数已在CheckShape函数校验，无需再次校验空tensor场景。
     if (params.x1->IsEmpty() || params.x2->IsEmpty()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRouting not support to process empty tensor currently.");
+        OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
+            GMMFR_ACLNN_OP_NAME, "x1, x2",
+            Ops::Transformer::Gmm::FormatString("%zu, %zu", static_cast<size_t>(params.x1->GetViewShape().GetShapeSize()),
+                                                static_cast<size_t>(params.x2->GetViewShape().GetShapeSize())).c_str(),
+            "GroupedMatmulFinalizeRouting does not support empty tensors currently.");
         return false;
     }
     return true;
@@ -540,10 +513,7 @@ static inline bool CheckTuningConfig(const GroupedMatmulParams &params)
     if (tuningConfig != nullptr && tuningConfig->Size() > 0) {
         auto tuningConfigVal = (*tuningConfig)[0];
         if (tuningConfigVal < 0 || tuningConfigVal > x1Shape[0]) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "GroupedMatmulFinalizeRouting Invalid tuningConfigOptional (%lld)! It should"
-                    " be a non-negative num and smaller than (%lld)",
-                    tuningConfigVal, x1Shape[0]);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "tuningConfigOptional", std::to_string(tuningConfigVal), Ops::Transformer::Gmm::FormatString("tuningConfigOptional must be non-negative and smaller than %ld.", x1Shape[0]).c_str());
             return false;
         }
     }
@@ -672,7 +642,7 @@ static op::Shape SwapLastTwoDimValue(const op::Shape tensorShape)
         // dimNum - 2, 这里2指的是取倒数第二维的dim值
         swapedShape.SetDim(dimNum - 2, lastDim);
     } else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dimNum is not supported , which is %lld.", dimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GMMFR_ACLNN_OP_NAME, "tensor", std::to_string(dimNum), "The rank is not supported.");
     }
     return swapedShape;
 }
@@ -838,8 +808,7 @@ static aclnnStatus WeightNZCaseProcessForMXScale(const aclTensor *&x2Scale, bool
 {
     // if weight is already in nz format, no need to set contiguous
     if (ge::GetPrimaryFormat(x2Scale->GetStorageFormat()) == op::Format::FORMAT_FRACTAL_NZ) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRoutingWeightV3: Scale only supports ND format, but "
-                                         "current format is FORMAT_FRACTAL_NZ.");
+        OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(GMMFR_ACLNN_OP_NAME, "scale", op::ToString(x2Scale->GetStorageFormat()).GetString(), "Scale only supports ND format.");
         return ACLNN_ERR_PARAM_INVALID;
     } else {
         CHECK_RET(TransposeTensorContiguousProcessForMXScale(x2Scale, transposeX2, executor), ACLNN_ERR_INNER_NULLPTR);
@@ -1030,20 +999,18 @@ static inline aclnnStatus CheckWeightNzFormat(const aclTensor *x1, const aclTens
 {
     // only support x1 ND, x2 NZ
     if (x1->GetStorageFormat() != op::Format::FORMAT_ND || x2->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "GroupedMatmulFinalizeRoutingWeightNzV2 do not support x1's format[%s],"
-                "x2's format[%s]. Only support x1: ND, x2: NZ",
-                op::ToString(x1->GetStorageFormat()).GetString(), op::ToString(x2->GetStorageFormat()).GetString());
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(GMMFR_ACLNN_OP_NAME, "x1, x2", Ops::Transformer::Gmm::FormatString("%s, %s", op::ToString(x1->GetStorageFormat()).GetString(), op::ToString(x2->GetStorageFormat()).GetString()).c_str(), "Only support x1 ND and x2 NZ formats.");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     // check x2(NZ)'s shape
     op::Shape weightNzShape = GetWeightNzShape(x2, transposeX2);
     if (!CheckWeightNzStorageShape(weightNzShape, x2->GetStorageShape())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "GroupedMatmulFinalizeRoutingWeightNzV2 x2'format only support NZ, but now x2's format \
-                is not NZ(Ascend affinity format). aclnnCalculateMatmulWeightSizeV2 and aclnnTransMatmulWeight can be \
-                used to convert the input format from ND to Ascend affinity format.");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            GMMFR_ACLNN_OP_NAME, "x2 storage shape", op::ToString(x2->GetStorageShape()).GetString(),
+            Ops::Transformer::Gmm::FormatString(
+                "x2 storage shape must match expected NZ storage shape %s",
+                op::ToString(weightNzShape).GetString()).c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -1058,23 +1025,31 @@ static inline aclnnStatus CheckSupportScene(const CheckSupportSceneParams &param
                  params.rowIndexOptional != nullptr;
 
     if (!scene) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "%s do not support input nullptr.", opName);
+        OP_LOGE_WITH_INVALID_INPUT(
+            GMMFR_ACLNN_OP_NAME,
+            params.x == nullptr ? "x1" :
+            params.w == nullptr ? "x2" :
+            params.scaleOptional == nullptr ? "scale" :
+            params.logitOptional == nullptr ? "logit" :
+            params.groupListOptional == nullptr ? "groupList" : "rowIndex");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
 
     if (params.dtype != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s dtype must be 0, but is %lld.", opName, params.dtype);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "dtype", std::to_string(params.dtype), "dtype must be 0.");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     int64_t viewDimNum = params.w->GetViewShape().GetDimNum();
     if (viewDimNum < MIN_DIM_NUM_ND) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s w's view dimNum should greater than 1, but is %lld.", opName, viewDimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GMMFR_ACLNN_OP_NAME, "w", std::to_string(viewDimNum), Ops::Transformer::Gmm::FormatString("%s w's view rank should be greater than 1.", opName).c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     if (!(transposeX == false && transposeW == false)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s transpose should be false", opName);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(GMMFR_ACLNN_OP_NAME, "transposeX, transposeW",
+            Ops::Transformer::Gmm::FormatString("%d, %d", static_cast<int>(transposeX), static_cast<int>(transposeW)).c_str(),
+            Ops::Transformer::Gmm::FormatString("%s transposeX and transposeW should both be false.", opName).c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
     // check input format
@@ -1138,21 +1113,19 @@ static inline aclnnStatus CheckInputParamsForWeightNzV2(const aclTensor *x, cons
                                                         const aclTensor *antiquantOffsetOptional)
 {
     if (x == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "GroupedMatmulFinalizeRoutingWeightNzV2: x should not be nullptr.");
+        OP_LOGE_WITH_INVALID_INPUT(GMMFR_ACLNN_OP_NAME, "x");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
     if (weight == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "GroupedMatmulFinalizeRoutingWeightNzV2: weight should not be nullptr.");
+        OP_LOGE_WITH_INVALID_INPUT(GMMFR_ACLNN_OP_NAME, "weight");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
     if (antiquantScaleOptional != nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
-                "GroupedMatmulFinalizeRoutingWeightNzV2 does not support antiquantScaleOptional, it must be nullptr.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "antiquantScaleOptional", "nonnull", "The optional antiquantScaleOptional input must be nullptr.");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
     if (antiquantOffsetOptional != nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
-                "GroupedMatmulFinalizeRoutingWeightNzV2 does not support antiquantOffsetOptional, it must be nullptr.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "antiquantOffsetOptional", "nonnull", "The optional antiquantOffsetOptional input must be nullptr.");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
     return ACLNN_SUCCESS;
@@ -1176,8 +1149,8 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(
         CheckInputParamsForWeightNzV2(x1, x2, antiquantScaleOptional, antiquantOffsetOptional);
     CHECK_RET(checkInputRet == ACLNN_SUCCESS, checkInputRet);
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 && dtype != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "GroupedMatmulFinalizeRoutingWeightNzV2 dtype must be 0 (FLOAT32), but is %lld.", dtype);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "dtype", std::to_string(dtype),
+                                              "GroupedMatmulFinalizeRoutingWeightNzV2 dtype must be 0 (FLOAT32).");
         return ACLNN_ERR_PARAM_INVALID;
     }
     auto viewShape = x2->GetViewShape();
@@ -1229,8 +1202,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(
         tmpWeight->SetStorageShape(storageShape);
 
         if (tmpWeight->GetDataType() == DataType::DT_INT4 && pertokenScaleOptional == nullptr) {
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
-                    "GroupedMatmulFinalizeRoutingWeightNzV2 does not support nullptr for pertokenScale.");
+            OP_LOGE_WITH_INVALID_INPUT(GMMFR_ACLNN_OP_NAME, "pertokenScaleOptional");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
 
@@ -1293,21 +1265,30 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSize(
     auto scene = x1 != nullptr && x2 != nullptr && scale != nullptr && pertokenScaleOptional != nullptr &&
                  groupList != nullptr && logit != nullptr && rowIndex != nullptr && bias != nullptr;
     if (!scene) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "GroupedMatmulFinalizeRouting weightNd do not support input nullptr.");
+        OP_LOGE_WITH_INVALID_INPUT(
+            GMMFR_ACLNN_OP_NAME,
+            x1 == nullptr ? "x1" :
+            x2 == nullptr ? "x2" :
+            scale == nullptr ? "scale" :
+            pertokenScaleOptional == nullptr ? "pertokenScaleOptional" :
+            groupList == nullptr ? "groupList" :
+            logit == nullptr ? "logit" :
+            rowIndex == nullptr ? "rowIndex" : "bias");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
 
     int64_t viewDimNum = x2->GetViewShape().GetDimNum();
     if (dtype != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRouting weightNd dtype must be 0, but is %lld.", dtype);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "dtype", std::to_string(dtype),
+                                              "GroupedMatmulFinalizeRouting weightNd dtype must be 0.");
         return ACLNN_ERR_PARAM_INVALID;
     } else if (viewDimNum < MIN_DIM_NUM_ND) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "GroupedMatmulFinalizeRouting weightNd x2's view dimNum should greater than 1, but is %lld.",
-                viewDimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GMMFR_ACLNN_OP_NAME, "x2", std::to_string(viewDimNum), "GroupedMatmulFinalizeRouting weightNd x2 rank should be greater than 1.");
         return ACLNN_ERR_PARAM_INVALID;
     } else if (!(transposeX1 == false && transposeX2 == false)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRouting weightNd transpose should be false");
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(GMMFR_ACLNN_OP_NAME, "transposeX1, transposeX2",
+            Ops::Transformer::Gmm::FormatString("%d, %d", static_cast<int>(transposeX1), static_cast<int>(transposeX2)).c_str(),
+            "GroupedMatmulFinalizeRouting weightNd transposeX1 and transposeX2 should both be false.");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -1320,9 +1301,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSize(
         tmpWeight->SetViewShape(weightShape);
         tmpWeight->SetDataType(DataType::DT_INT4);
     } else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "GroupedMatmulFinalizeRouting weightNd weight type should be DT_INT32, but now is %s",
-                op::ToString(tmpWeight->GetDataType()).GetString());
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "weight", op::ToString(tmpWeight->GetDataType()).GetString(), "GroupedMatmulFinalizeRouting weightNd weight dtype should be DT_INT32.");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -1377,22 +1356,37 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2GetWorkspaceSize(
                  groupListOptional != nullptr && logitOptional != nullptr && rowIndexOptional != nullptr &&
                  biasOptional != nullptr && antiquantScaleOptional == nullptr && antiquantOffsetOptional == nullptr;
     if (!scene) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "GroupedMatmulFinalizeRoutingV2 weightNd do not support input nullptr.");
+        const char *invalidParam =
+            x1 == nullptr ? "x1" :
+            x2 == nullptr ? "x2" :
+            scaleOptional == nullptr ? "scaleOptional" :
+            pertokenScaleOptional == nullptr ? "pertokenScaleOptional" :
+            groupListOptional == nullptr ? "groupListOptional" :
+            logitOptional == nullptr ? "logitOptional" :
+            rowIndexOptional == nullptr ? "rowIndexOptional" :
+            biasOptional == nullptr ? "biasOptional" :
+            antiquantScaleOptional != nullptr ? "antiquantScaleOptional" : "antiquantOffsetOptional";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            GMMFR_ACLNN_OP_NAME, invalidParam,
+            (x1 == nullptr || x2 == nullptr || scaleOptional == nullptr ||
+             pertokenScaleOptional == nullptr || groupListOptional == nullptr || logitOptional == nullptr ||
+             rowIndexOptional == nullptr || biasOptional == nullptr) ? "nullptr" : "nonnull",
+            "required inputs must be non-null and antiquant optional inputs must be null");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
 
     int64_t viewDimNum = x2->GetViewShape().GetDimNum();
     if (dtype != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRoutingV2 weightNd dtype must be 0, but is %lld.",
-                dtype);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "dtype", std::to_string(dtype),
+                                              "GroupedMatmulFinalizeRoutingV2 weightNd dtype must be 0.");
         return ACLNN_ERR_PARAM_INVALID;
     } else if (viewDimNum < MIN_DIM_NUM_ND) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "GroupedMatmulFinalizeRoutingV2 weightNd x2's view dimNum should greater than 1, but is %lld.",
-                viewDimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GMMFR_ACLNN_OP_NAME, "x2", std::to_string(viewDimNum), "GroupedMatmulFinalizeRoutingV2 weightNd x2 rank should be greater than 1.");
         return ACLNN_ERR_PARAM_INVALID;
     } else if (!(transposeX1 == false && transposeX2 == false)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRoutingV2 weightNd transpose should be false");
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(GMMFR_ACLNN_OP_NAME, "transposeX1, transposeX2",
+            Ops::Transformer::Gmm::FormatString("%d, %d", static_cast<int>(transposeX1), static_cast<int>(transposeX2)).c_str(),
+            "GroupedMatmulFinalizeRoutingV2 weightNd transposeX1 and transposeX2 should both be false.");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -1405,9 +1399,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2GetWorkspaceSize(
         tmpWeightV2->SetViewShape(weightShapeV2);
         tmpWeightV2->SetDataType(DataType::DT_INT4);
     } else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "GroupedMatmulFinalizeRoutingV2 weightNd weight type should be DT_INT32, but now is %s",
-                op::ToString(tmpWeightV2->GetDataType()).GetString());
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "weight", op::ToString(tmpWeightV2->GetDataType()).GetString(), "GroupedMatmulFinalizeRoutingV2 weightNd weight dtype should be DT_INT32.");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -1492,7 +1484,7 @@ static inline aclnnStatus CheckSupportSceneforV3(const aclTensor *x1, const aclT
     if (antiquantOffsetOptional != nullptr) {
         errMsg += " Required parameter 'antiquantOffset' must be null.";
     }
-    OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "%s", errMsg.c_str());
+    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GMMFR_ACLNN_OP_NAME, "input", errMsg.c_str());
     return ACLNN_ERR_PARAM_NULLPTR;
 }
 aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(
@@ -1518,13 +1510,11 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(
 
     int64_t viewDimNum = x2->GetViewShape().GetDimNum();
     if (dtype != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnGroupedMatmulFinalizeRoutingV3 dtype must be 0 (FLOAT32), but is %lld.",
-                dtype);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "dtype", std::to_string(dtype),
+                                              "aclnnGroupedMatmulFinalizeRoutingV3 dtype must be 0 (FLOAT32).");
         return ACLNN_ERR_PARAM_INVALID;
     } else if (viewDimNum < MIN_DIM_NUM_ND) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnGroupedMatmulFinalizeRoutingV3 weightNd x2's view dimNum should greater than 1, but is %lld.",
-                viewDimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GMMFR_ACLNN_OP_NAME, "x2", std::to_string(viewDimNum), "aclnnGroupedMatmulFinalizeRoutingV3 weightNd x2 rank should be greater than 1.");
         return ACLNN_ERR_PARAM_INVALID;
     } else if (!((transposeX1 == false && transposeX2 == false) ||
                  (transposeX1 == false && transposeX2 == true &&
@@ -1546,10 +1536,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(
             tmpWeightV3->SetViewShape(weightShapeV3);
             tmpWeightV3->SetDataType(DataType::DT_INT4);
         } else {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "aclnnGroupedMatmulFinalizeRoutingV3 weightNd weight type should be DT_INT32, but now "
-                    "is %s",
-                    op::ToString(tmpWeightV3->GetDataType()).GetString());
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "weight", op::ToString(tmpWeightV3->GetDataType()).GetString(), "aclnnGroupedMatmulFinalizeRoutingV3 weightNd weight dtype should be DT_INT32.");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }

@@ -42,7 +42,12 @@ static graphStatus InferDataTypeGroupedMatmulAdd(gert::InferDataTypeContext* con
     auto xDtype = context->GetInputDataType(INDEX_IN_X);
     auto wDtype = context->GetInputDataType(INDEX_IN_WEIGHT);
 
-    OP_CHECK_IF(xDtype != wDtype, OP_LOGE(context->GetNodeName(), "xDtype must equal to wDtype"), return GRAPH_FAILED);
+    OP_CHECK_IF(
+        xDtype != wDtype,
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            context->GetNodeName(), "x, weight", Ops::Base::ToString(xDtype) + ", " + Ops::Base::ToString(wDtype),
+            "xDtype must equal to wDtype"),
+        return GRAPH_FAILED);
 
     context->SetOutputDataType(INDEX_OUT_Y, ge::DataType::DT_FLOAT);
 

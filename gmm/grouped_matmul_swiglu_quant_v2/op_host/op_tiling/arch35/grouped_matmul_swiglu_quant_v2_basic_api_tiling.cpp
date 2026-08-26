@@ -59,7 +59,9 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BasicApiTiling950::GetPlatformInfo()
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
         const auto *compileInfo = context_->GetCompileInfo<GMMSwigluV2CompileInfo>();
-        OP_CHECK_IF(compileInfo == nullptr, OP_LOGE(context_->GetNodeName(), "Compile info is nullptr."),
+        OP_CHECK_IF(compileInfo == nullptr,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context_->GetNodeName(), "GetCompileInfo result", "nullptr", "compile info lookup failed"),
                     return ge::GRAPH_FAILED);
         aicoreParams_.aicNum = compileInfo->aicNum_;
         aivNum_ = compileInfo->aivNum_;
@@ -91,7 +93,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BasicApiTiling950::GetShapeAttrsInfo()
     inputParams_.opName = context_->GetNodeName();
     inputParams_.opType = GetOpType();
     OP_CHECK_IF(!AnalyzeDtype() || !AnalyzeAttrs() || !AnalyzeInputs(),
-                OP_LOGE(inputParams_.opName, "Failed to analyze Tensor API tiling inputs."), return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(inputParams_.opName, "tiling inputs", "Failed to analyze Tensor API tiling inputs."), return ge::GRAPH_FAILED);
     inputParams_.initFlag = true;
     return ge::GRAPH_SUCCESS;
 }
@@ -106,7 +108,14 @@ bool GroupedMatmulSwigluQuantV2BasicApiTiling950::AnalyzeDtype()
     auto yScaleDesc = context_->GetOutputDesc(Y_SCALE_INDEX);
     OP_CHECK_IF(xDesc == nullptr || xScaleDesc == nullptr || weightDesc == nullptr || weightScaleDesc == nullptr ||
                     yDesc == nullptr || yScaleDesc == nullptr,
-                OP_LOGE(context_->GetNodeName(), "Tensor API input or output desc is nullptr."), return false);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(),
+                    xDesc == nullptr ? "x descriptor" :
+                    xScaleDesc == nullptr ? "xScale descriptor" :
+                    weightDesc == nullptr ? "weight[0] descriptor" :
+                    weightScaleDesc == nullptr ? "weightScale[0] descriptor" :
+                    yDesc == nullptr ? "y descriptor" : "yScale descriptor",
+                    "nullptr", "tensor descriptor lookup failed"), return false);
 
     inputParams_.aDtype = xDesc->GetDataType();
     inputParams_.bDtype = weightDesc->GetDataType();
@@ -126,7 +135,7 @@ bool GroupedMatmulSwigluQuantV2BasicApiTiling950::AnalyzeDtype()
     inputParams_.hasBias = biasShape != nullptr && biasShape->GetStorageShape().GetShapeSize() != 0;
     auto biasDesc = context_->GetOptionalInputDesc(BIAS_INDEX);
     OP_CHECK_IF(inputParams_.hasBias && biasDesc == nullptr,
-                OP_LOGE(context_->GetNodeName(), "Bias shape is present but bias desc is nullptr."), return false);
+                OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "bias desc"), return false);
     if (biasDesc != nullptr) {
         inputParams_.biasDtype = biasDesc->GetDataType();
     }
@@ -136,19 +145,28 @@ bool GroupedMatmulSwigluQuantV2BasicApiTiling950::AnalyzeDtype()
 bool GroupedMatmulSwigluQuantV2BasicApiTiling950::AnalyzeAttrs()
 {
     auto attrs = context_->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "Attrs is nullptr."), return false);
+    OP_CHECK_IF(attrs == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "GetAttrs result", "nullptr", "attribute lookup failed"), return false);
 
     const int64_t *dequantMode = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_MODE);
     const int64_t *dequantDtype = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_DTYPE);
     const int64_t *quantMode = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_MODE);
     const int64_t *quantDtype = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_DTYPE);
     OP_CHECK_IF(dequantMode == nullptr || dequantDtype == nullptr || quantMode == nullptr || quantDtype == nullptr,
-                OP_LOGE(context_->GetNodeName(), "Required quantization attrs are nullptr."), return false);
+                OP_LOGE_WITH_INVALID_INPUT(
+                    context_->GetNodeName(),
+                    dequantMode == nullptr ? "dequant_mode" :
+                    dequantDtype == nullptr ? "dequant_dtype" :
+                    quantMode == nullptr ? "quant_mode" : "quant_dtype"), return false);
     OP_CHECK_IF(*dequantMode != MX_QUANT_MODE || *quantMode != MX_QUANT_MODE,
-                OP_LOGE(context_->GetNodeName(), "dequant_mode and quant_mode must both be 2 for MX quant."),
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                     context_->GetNodeName(), "dequant_mode, quant_mode",
+                     std::to_string(*dequantMode) + ", " + std::to_string(*quantMode),
+                     "both must be 2 for MX quant."),
                 return false);
     OP_CHECK_IF(static_cast<ge::DataType>(*dequantDtype) != ge::DT_FLOAT,
-                OP_LOGE(context_->GetNodeName(), "dequant_dtype must be DT_FLOAT for MX quant."), return false);
+                OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "dequant_dtype", ge::TypeUtils::DataTypeToSerialString(static_cast<ge::DataType>(*dequantDtype)).c_str(), "DT_FLOAT"), return false);
     quantDtype_ = static_cast<ge::DataType>(*quantDtype);
     const bool *transposeWeight = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANSPOSE_WEIGHT);
     const int64_t *groupListType = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUPLIST_TYPE);
@@ -156,7 +174,7 @@ bool GroupedMatmulSwigluQuantV2BasicApiTiling950::AnalyzeAttrs()
     inputParams_.transB = transposeWeight != nullptr ? *transposeWeight : false;
     inputParams_.groupListType = groupListType != nullptr ? static_cast<int8_t>(*groupListType) : 0;
     OP_CHECK_IF(inputParams_.groupListType != 0 && inputParams_.groupListType != 1,
-                OP_LOGE(context_->GetNodeName(), "group_list_type must be 0 or 1."), return false);
+                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "group_list_type", std::to_string(inputParams_.groupListType), "0 or 1"), return false);
     inputParams_.groupType = static_cast<int8_t>(GroupedMatmul::SPLIT_M);
     inputParams_.aQuantMode = QuantMode::MX_PERGROUP_MODE;
     inputParams_.bQuantMode = QuantMode::MX_PERGROUP_MODE;
@@ -169,15 +187,22 @@ bool GroupedMatmulSwigluQuantV2BasicApiTiling950::AnalyzeInputs()
     auto weightStorageShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
     auto groupListStorageShape = context_->GetOptionalInputShape(GROUPLIST_INDEX);
     OP_CHECK_IF(xStorageShape == nullptr || weightStorageShape == nullptr || groupListStorageShape == nullptr,
-                OP_LOGE(context_->GetNodeName(), "x, weight or group_list shape is nullptr."), return false);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(),
+                    xStorageShape == nullptr ? "x shape" :
+                    weightStorageShape == nullptr ? "weight[0] shape" : "group_list shape",
+                    "nullptr", "tensor shape lookup failed"), return false);
 
     const auto &xShape = xStorageShape->GetOriginShape();
     const auto &weightShape = weightStorageShape->GetOriginShape();
     const auto &groupListShape = groupListStorageShape->GetStorageShape();
     OP_CHECK_IF(xShape.GetDimNum() < SHAPE_DIM_TWO || weightShape.GetDimNum() < SHAPE_DIM_TWO,
-                OP_LOGE(context_->GetNodeName(), "x and weight must have at least two dimensions."), return false);
+                OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
+                    context_->GetNodeName(), "x and weight",
+                    std::to_string(xShape.GetDimNum()) + "D, " + std::to_string(weightShape.GetDimNum()) + "D",
+                    "Both x and weight must have at least two dimensions"), return false);
     OP_CHECK_IF(groupListShape.GetDimNum() != SHAPE_DIM_ONE,
-                OP_LOGE(context_->GetNodeName(), "group_list must be one-dimensional."), return false);
+                OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "group_list", std::to_string(groupListShape.GetDimNum()) + "D", "1D"), return false);
 
     const size_t xDimNum = xShape.GetDimNum();
     const size_t weightDimNum = weightShape.GetDimNum();
@@ -190,8 +215,11 @@ bool GroupedMatmulSwigluQuantV2BasicApiTiling950::AnalyzeInputs()
     OP_CHECK_IF(
         m <= 0 || n <= 0 || k <= 0 || weightK != k || groupNum <= 0 ||
             groupNum > static_cast<int64_t>(GmmConstant::GMM_MAX_GROUP_LIST_SIZE),
-        OP_LOGE(context_->GetNodeName(), "Invalid Tensor API shape: M=%ld, N=%ld, K=%ld, weightK=%ld, groupNum=%ld.", m,
-                n, k, weightK, groupNum),
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+            context_->GetNodeName(), "M, N, K, weightK, groupNum",
+            "M=" + std::to_string(m) + ", N=" + std::to_string(n) + ", K=" + std::to_string(k) +
+                ", weightK=" + std::to_string(weightK) + ", groupNum=" + std::to_string(groupNum),
+            "M, N, K and groupNum must be positive, weightK must equal K, and groupNum must not exceed the maximum"),
         return false);
 
     inputParams_.mSize = static_cast<uint64_t>(m);
@@ -327,8 +355,13 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BasicApiTiling950::DoOpTiling()
 ge::graphStatus GroupedMatmulSwigluQuantV2BasicApiTiling950::DoLibApiTiling()
 {
     GroupedQmmTiling::CalBasicBlock();
-    OP_CHECK_IF(GroupedQmmBasicApiTiling::CalL1Tiling() != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed."), return ge::GRAPH_FAILED);
+    auto l1TilingStatus = GroupedQmmBasicApiTiling::CalL1Tiling();
+    OP_CHECK_IF(l1TilingStatus != ge::GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "CalL1Tiling status",
+                    std::to_string(static_cast<int64_t>(l1TilingStatus)),
+                    "CalL1Tiling must return GRAPH_SUCCESS"),
+                return ge::GRAPH_FAILED);
     if (inputParams_.mSize >= GmmConstant::BASIC_BLOCK_SIZE_256) {
         basicTiling_.baseM = TENSOR_API_LARGE_M_BASE_M;
     }

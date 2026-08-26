@@ -24,6 +24,7 @@
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
+#include "log/log.h"
 #include "opdev/platform.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/tensor_view_utils.h"
@@ -78,7 +79,12 @@ static aclnnStatus CheckParamsNullOrNot(const aclTensor* x, const aclTensor* wei
     OP_CHECK_NULL(out, return ACLNN_ERR_PARAM_NULLPTR);
 
     if (biasOptional != nullptr || xOffsetOptional != nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "not support biasOptional and xOffsetOptional for now, should be nullptr");
+        const char *invalidParams = (biasOptional != nullptr && xOffsetOptional != nullptr) ?
+                                        "biasOptional, xOffsetOptional" :
+                                        (biasOptional != nullptr ? "biasOptional" : "xOffsetOptional");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+            "aclnnQuantGroupedMatmulDequant", invalidParams,
+            "these optional inputs are not supported and must be nullptr");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
 
@@ -96,7 +102,9 @@ static aclnnStatus CheckParamsDateType(const aclTensor* x, const aclTensor* weig
 
     const auto& DTYPE_SUPPORT_LIST_CURRENT = GetSupportDtypeList(socVersion);
     if (DTYPE_SUPPORT_LIST_CURRENT.size() == 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "support for %s is not implemented", op::ToString(socVersion).GetString());
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+            "aclnnQuantGroupedMatmulDequant", "socVersion",
+            "support for " + std::string(op::ToString(socVersion).GetString()) + " is not implemented");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -116,7 +124,25 @@ static aclnnStatus CheckParamsDateType(const aclTensor* x, const aclTensor* weig
         return ACLNN_SUCCESS;
     }
 
-    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "CheckParamsDateType failed, please check log");
+    std::string paramNames = "x, weight, weightScale, groupList";
+    std::string actualDtypes =
+        "x=" + std::string(op::ToString(x->GetDataType()).GetString()) +
+        ", weight=" + op::ToString(weight->GetDataType()).GetString() +
+        ", weightScale=" + op::ToString(weightScale->GetDataType()).GetString() +
+        ", groupList=" + op::ToString(groupList->GetDataType()).GetString();
+    if (xScaleOptional != nullptr) {
+        paramNames += ", xScaleOptional";
+        actualDtypes += ", xScaleOptional=" +
+            std::string(op::ToString(xScaleOptional->GetDataType()).GetString());
+    }
+    if (smoothScaleOptional != nullptr) {
+        paramNames += ", smoothScaleOptional";
+        actualDtypes += ", smoothScaleOptional=" +
+            std::string(op::ToString(smoothScaleOptional->GetDataType()).GetString());
+    }
+    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+        "aclnnQuantGroupedMatmulDequant", paramNames, actualDtypes,
+        "input dtypes do not match a supported combination");
     return ACLNN_ERR_PARAM_INVALID;
 }
 
@@ -142,7 +168,11 @@ static aclnnStatus ConvertWeightNdToNz(const aclTensor *&weight, aclOpExecutor *
 {
     if (weight->GetViewShape().GetDim(N_IDX) % FRACTAL_N_INT8 != 0 ||
         weight->GetViewShape().GetDim(K_IDX) % FRACTAL_N_INT8 != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "weight shape (N, K) must both align to 16, please check");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            "aclnnQuantGroupedMatmulDequant", "weight",
+            "N=" + std::to_string(weight->GetViewShape().GetDim(N_IDX)) +
+                ", K=" + std::to_string(weight->GetViewShape().GetDim(K_IDX)),
+            "weight shape (N, K) must both align to 16, please check");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (weight->GetViewShape().GetDim(K_IDX) % FRACTAL_K_INT8 != 0) {
@@ -171,9 +201,13 @@ static aclnnStatus PrepareWeightFormat(const aclTensor *&weight, aclOpExecutor *
         (weight->GetStorageFormat() == op::Format::FORMAT_ND ||
         weight->GetStorageFormat() == op::Format::FORMAT_NCL)) {
         return ConvertWeightNdToNz(weight, exec);
-    } else if (weightStorageDimNum != NZ_DIMNUM || weight->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "weight is not in 5-dim (G, K//32, N//16, 16, 32), please check");
+    } else if (weightStorageDimNum != NZ_DIMNUM ||
+               weight->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ) {
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+            "aclnnQuantGroupedMatmulDequant", "weight storage rank, weight storage format",
+            std::to_string(weightStorageDimNum) + ", " +
+                std::string(op::ToString(weight->GetStorageFormat()).GetString()),
+            "weight storage must be 5-dimensional FRACTAL_NZ");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -214,8 +248,14 @@ static aclnnStatus aclnnQuantGroupedMatmulDequantGetWorkspaceSizeCommon(
     if (smoothScaleContiguous != nullptr) {
         smoothScaleContiguous = l0op::Contiguous(smoothScaleOptional, uniqueExecutor.get());
     }
-    if (!IsContiguous(weight) || !IsContiguous(out)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "weight and out must be contiguous, please check");
+    if (!IsContiguous(weight)) {
+        OP_LOGE_FOR_INVALID_STRIDE("aclnnQuantGroupedMatmulDequant", "weight",
+                                   op::ToString(weight->GetViewStrides()).GetString(), "contiguous");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (!IsContiguous(out)) {
+        OP_LOGE_FOR_INVALID_STRIDE("aclnnQuantGroupedMatmulDequant", "out",
+                                   op::ToString(out->GetViewStrides()).GetString(), "contiguous");
         return ACLNN_ERR_PARAM_INVALID;
     }
 

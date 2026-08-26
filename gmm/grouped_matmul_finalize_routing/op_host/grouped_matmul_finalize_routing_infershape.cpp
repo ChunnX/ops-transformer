@@ -163,7 +163,8 @@ static ge::graphStatus ValidateScaleAndBias(const InferShapeContext *context, co
                         OPS_REPORT_CUBE_INNER_ERR(op_name, "bias is not supported."), return ge::GRAPH_FAILED);
         }
     } else {
-        OP_LOGE(op_name, "scale shape is not supported");
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            op_name, "scale", std::to_string(shape_scale->GetDimNum()), "scale rank must be 2 or 3");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -265,7 +266,8 @@ static ge::graphStatus ValidateOffsetShape(const InferShapeContext *context, con
     auto shape_offset = context->GetOptionalInputShape(offsetOptionIndex);
     if (shape_offset != nullptr) {
         if (shape_offset->GetDimNum() != threeDimNum) {
-            OP_LOGE(op_name, "offset shape is not supported");
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                op_name, "offset", std::to_string(shape_offset->GetDimNum()), "offset rank must be 3");
             return ge::GRAPH_FAILED;
         }
         OP_CHECK_IF(shape_offset->GetDim(0) != xAndWParams.e || shape_offset->GetDim(1) != 1 || shape_offset->GetDim(2) != xAndWParams.n,

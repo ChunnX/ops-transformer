@@ -11,6 +11,7 @@
 #include "opdev/op_log.h"
 #include "opdev/op_dfx.h"
 #include "opdev/make_op_executor.h"
+#include "log/log.h"
 #include "quant_grouped_matmul_inplace_add.h"
 
 using namespace op;
@@ -26,14 +27,18 @@ aclTensor *QuantGroupedMatmulInplaceAdd(const aclTensor *x1, const aclTensor *x2
     auto ret = INFER_SHAPE(QuantGroupedMatmulInplaceAdd, OP_INPUT(x1, x2, scale2, groupList, yRef, scale1Optional),
                            OP_OUTPUT(yRef), OP_ATTR(groupListType, groupSize));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "InferShape failed.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "QuantGroupedMatmulInplaceAdd", "InferShape status", std::to_string(static_cast<int64_t>(ret)),
+            "InferShape must return ACLNN_SUCCESS");
         return nullptr;
     }
     ret = ADD_TO_LAUNCHER_LIST_AICORE(QuantGroupedMatmulInplaceAdd,
                                       OP_INPUT(x1, x2, scale2, groupList, yRef, scale1Optional), OP_OUTPUT(yRef),
                                       OP_ATTR(groupListType, groupSize));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "ADD_TO_LAUNCHER_LIST_AICORE failed.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "QuantGroupedMatmulInplaceAdd", "ADD_TO_LAUNCHER_LIST_AICORE status",
+            std::to_string(static_cast<int64_t>(ret)), "ADD_TO_LAUNCHER_LIST_AICORE must return ACLNN_SUCCESS");
         return nullptr;
     }
     return yRef;

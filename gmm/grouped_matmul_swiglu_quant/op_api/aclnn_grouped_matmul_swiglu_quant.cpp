@@ -24,6 +24,7 @@
 #include "opdev/shape_utils.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/make_op_executor.h"
+#include "log/log.h"
 #include "grouped_matmul_swiglu_quant.h"
 #include "aclnn_grouped_matmul_swiglu_quant_weight_nz.h"
 #include "aclnn_grouped_matmul_swiglu_quant.h"
@@ -102,8 +103,7 @@ static bool CheckNotNull(const aclTensor *x, const aclTensor *weight, const aclT
         OP_LOGW("In op [%s], when A8W8, nonzero bias is not supported. Features and accuracy are not guaranteed "
                 "if inputting bias with values other than 0.", opName);
     } else if (x->GetDataType() == DataType::DT_INT8 && weight->GetDataType() == DataType::DT_INT4 && bias == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "In op [%s], when A8W4, [%s] must not be nullptr.", opName, "bias");
+        OP_LOGE_WITH_INVALID_INPUT(opName, "bias");
         return false;
     }
     if (offset != nullptr) {
@@ -169,9 +169,8 @@ static bool CheckInputOutShape_A8W8(const aclTensor *x, const aclTensor *weight,
     int64_t n = weightScale->GetViewShape().GetDim(1);
     int64_t e = weight->GetViewShape().GetDim(0);
     if (n % SPLIT != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "In op [%s], when A8W8, the shape of [%s] is not supported, got [N %ld]. Constraint:[%s]",
-                opName, "weightScale", n, "N must be even when A8W8.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "weightScale N", std::to_string(n),
+                                                 "N must be even when A8W8.");
         return false;
     }
     int64_t nAfterHalve = static_cast<int64_t>(n / SPLIT);
@@ -205,22 +204,19 @@ static bool CheckInputOutShape_A8W8(const aclTensor *x, const aclTensor *weight,
     // groupList的长度应小于等于weight的专家数
     int64_t groupListLen = groupList->GetViewShape().GetDim(0);
     if (groupListLen > e) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "In op [%s], the shape of [%s] is not supported, got [length %ld]. Constraint:[%s length should be "
-                "in range of [1, %ld] when A8W8]",
-                opName, "groupList", groupListLen, "groupList", e);
+        OP_LOGE_FOR_INVALID_LISTSIZE_WITH_REASON(
+            opName, "groupList", std::to_string(groupListLen),
+            "groupList length must be in [1, " + std::to_string(e) + "].");
         return false;
     }
     if (n > N_LIMIT) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "In op [%s], the shape of [%s] is not supported, got [N %ld]. Constraint:[%s]",
-                opName, "weightScale", n, "N must be less than or equal to 10240 when A8W8.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "weightScale N", std::to_string(n),
+                                                 "N must be less than or equal to 10240 when A8W8.");
         return false;
     }
     if (k >= K_LIMIT_A8W8) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "In op [%s], the shape of [%s] is not supported, got [tail axis dimension %ld]. Constraint:[%s]",
-                opName, "x", k, "tail axis dimension must be lower than 65536 when A8W8.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x K", std::to_string(k),
+                                                 "tail axis dimension must be lower than 65536 when A8W8.");
         return false;
     }
     return true;
@@ -250,17 +246,14 @@ static bool CheckInputOutShape_A8W4(const aclTensor *x, const aclTensor *weight,
         weightScaleExpectShape = {e, KGroupCount, n};
     }
     if (KGroupCount == 0 || k % KGroupCount != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "In op [%s], when A8W4, the number of groups along the k-axis is %ld, and the length of the "
-                "k-axis is %ld. The number of groups must be greater than 0, and k-axis length %% number of "
-                "groups == 0 must be true.",
-                opName, KGroupCount, k);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+            opName, "weightScale group count, x K", std::to_string(KGroupCount) + ", " + std::to_string(k),
+            "when A8W4, the weight-scale group count must be greater than 0 and divide the x K dimension.");
         return false;
     }
     if (n % SPLIT != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "In op [%s], when A8W4, the shape of [%s] is not supported, got [N %ld]. Constraint:[%s]",
-                opName, "weightScale", n, "N must be even when A8W4.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "weightScale N", std::to_string(n),
+                                                 "N must be even when A8W4.");
         return false;
     }
     int64_t nAfterHalve = static_cast<int64_t>(n / SPLIT);
@@ -293,22 +286,19 @@ static bool CheckInputOutShape_A8W4(const aclTensor *x, const aclTensor *weight,
     // groupList的长度应小于等于weight的专家数
     int64_t groupListLen = groupList->GetViewShape().GetDim(0);
     if (groupListLen > e) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "In op [%s], the shape of [%s] is not supported, got [length %ld]. Constraint:[%s length should be "
-                "in range of [1, %ld] when A8W4]",
-                opName, "groupList", groupListLen, "groupList", e);
+        OP_LOGE_FOR_INVALID_LISTSIZE_WITH_REASON(
+            opName, "groupList", std::to_string(groupListLen),
+            "groupList length must be in [1, " + std::to_string(e) + "].");
         return false;
     }
     if (n > N_LIMIT) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "In op [%s], the shape of [%s] is not supported, got [N %ld]. Constraint:[%s]",
-                opName, "weightScale", n, "N must be less than or equal to 10240 when A8W4.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "weightScale N", std::to_string(n),
+                                                 "N must be less than or equal to 10240 when A8W4.");
         return false;
     }
     if (k >= K_LIMIT_A8W4) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "In op [%s], the shape of [%s] is not supported, got [tail axis dimension %ld]. Constraint:[%s]",
-                opName, "x", k, "tail axis dimension must be lower than 20000 when A8W4.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x K", std::to_string(k),
+                                                 "tail axis dimension must be lower than 20000 when A8W4.");
         return false;
     }
     (void)KGroupSize;
@@ -343,24 +333,21 @@ static bool CheckFormat(const aclTensor *x, const aclTensor *weight, const aclTe
     std::string scenario = GetSwigluQuantScenarioName(x->GetDataType(), weight->GetDataType());
     if ((x->GetDataType() == DataType::DT_INT8 && weight->GetDataType() == DataType::DT_INT8) && !isNZ) {
         // fp16 in fp32 out that is split k template, not precision-advanced now
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "In op [%s], when A8W8, the format of [%s] is not supported, got [%s].",
-                opName, "weight",
-                op::ToString(weight->GetStorageFormat()).GetString());
+        OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(
+            opName, "weight", op::ToString(weight->GetStorageFormat()).GetString(),
+            "when A8W8, the format is not supported.");
         return false;
     }
     if (IsPrivateFormat(x->GetStorageFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "In op [%s], when %s, the format of [%s] is not supported, got [%s].",
-                opName, scenario.c_str(), "x",
-                op::ToString(x->GetStorageFormat()).GetString());
+        OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(
+            opName, "x", op::ToString(x->GetStorageFormat()).GetString(),
+            "when " + scenario + ", the format is not supported.");
         return false;
     }
     if (IsPrivateFormat(output->GetStorageFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "In op [%s], when %s, the format of [%s] is not supported, got [%s].",
-                opName, scenario.c_str(), "output",
-                op::ToString(output->GetStorageFormat()).GetString());
+        OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(
+            opName, "output", op::ToString(output->GetStorageFormat()).GetString(),
+            "when " + scenario + ", the format is not supported.");
         return false;
     }
     return true;

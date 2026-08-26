@@ -47,8 +47,13 @@ static ge::graphStatus IsInputTensorNull(const gert::InferShapeContext *context)
 static ge::graphStatus InferShape4QuantGroupedMatmulInplaceAdd(gert::InferShapeContext *context)
 {
     OP_CHECK_NULL_WITH_CONTEXT(context, context);
-    OP_CHECK_IF(IsInputTensorNull(context) != GRAPH_SUCCESS,
-              OP_LOGE(context->GetNodeName(), "Some of the required inputs are null."), return GRAPH_FAILED);
+    auto inputCheckStatus = IsInputTensorNull(context);
+    OP_CHECK_IF(inputCheckStatus != GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context->GetNodeName(), "IsInputTensorNull status",
+                    std::to_string(static_cast<int64_t>(inputCheckStatus)),
+                    "IsInputTensorNull must return GRAPH_SUCCESS"),
+                return GRAPH_FAILED);
     auto yRefShape = context->GetInputShape(YREF_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, yRefShape);
     auto outShape = context->GetOutputShape(0);

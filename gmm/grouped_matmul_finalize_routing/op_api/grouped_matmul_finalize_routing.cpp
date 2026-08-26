@@ -15,6 +15,7 @@
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
+#include "log/log.h"
 #include "opdev/shape_utils.h"
 
 using namespace op;
@@ -34,12 +35,14 @@ const aclTensor *GroupedMatmulFinalizeRouting(const aclTensor *x1, const aclTens
 
     Format format = Format::FORMAT_ND;
     if (executor == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_CREATE_EXECUTOR, "GroupedMatmulFinalizeRouting executor is nullptr.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "GroupedMatmulFinalizeRouting", "executor result", "nullptr", "executor creation returned nullptr");
         return nullptr;
     }
     auto output = executor->AllocTensor(outType, format, format);
     if (output == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "AllocTensor for GroupedMatmulFinalizeRouting output failed.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "GroupedMatmulFinalizeRouting", "AllocTensor result", "nullptr", "output allocation returned nullptr");
         return nullptr;
     }
 

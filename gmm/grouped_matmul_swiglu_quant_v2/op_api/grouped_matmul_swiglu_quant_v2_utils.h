@@ -311,7 +311,9 @@ protected:
             aclTensor *tensor =
                 executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
             if (tensor == nullptr) {
-                OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "CreateView for contiguous MX scale failed.");
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    apiName_.c_str(), "CreateView result", "nullptr",
+                    ("creating contiguous weightScale[" + std::to_string(idx) + "] failed").c_str());
                 return false;
             }
             tensor->SetStorageFormat(inputTensor->GetStorageFormat());
@@ -342,7 +344,9 @@ protected:
             aclTensor *tensor =
                 executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
             if (tensor == nullptr) {
-                OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "CreateView for contiguous tensor failed.");
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    apiName_.c_str(), "CreateView result", "nullptr",
+                    ("creating contiguous weight[" + std::to_string(idx) + "] failed").c_str());
                 return false;
             }
             tensor->SetStorageFormat(inputTensor->GetStorageFormat());
@@ -496,7 +500,9 @@ protected:
                 gmmDsqParams_.weightScale =
                     executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
                 if (gmmDsqParams_.weightScale == nullptr) {
-                    OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "AllocTensorList for contiguous weightScale failed.");
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        apiName_.c_str(), "AllocTensorList result", "nullptr",
+                        "allocating contiguous weightScale tensor list failed");
                     return false;
                 }
                 if (!CreateContiguousTensorList(gmmDsqParams_.weight, weightTensorList, executorPtr)) {
@@ -504,7 +510,9 @@ protected:
                 }
                 gmmDsqParams_.weight = executorPtr->AllocTensorList(weightTensorList.data(), weightTensorList.size());
                 if (gmmDsqParams_.weight == nullptr) {
-                    OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "AllocTensorList for contiguous weight failed.");
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        apiName_.c_str(), "AllocTensorList result", "nullptr",
+                        "allocating contiguous weight tensor list failed");
                     return false;
                 }
                 uniqueExecutor.ReleaseTo(executor_);
@@ -617,7 +625,9 @@ protected:
             }
             gmmDsqParams_.weight = executorPtr->AllocTensorList(weightTensorList.data(), weightTensorList.size());
             if (gmmDsqParams_.weight == nullptr) {
-                OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "AllocTensorList for contiguous weight failed.");
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    apiName_.c_str(), "AllocTensorList result", "nullptr",
+                    "allocating contiguous weight tensor list failed");
                 return false;
             }
             uniqueExecutor.ReleaseTo(executor_);
@@ -1100,7 +1110,9 @@ protected:
     bool CheckInputOutDims() override
     {
         if (!CheckAttrs()) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], when %s, CheckAttrs failed.", opName_.c_str(),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                apiName_.c_str(), "CheckAttrs result", "false",
+                std::string("CheckAttrs must return true for ") +
                     GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_));
             return false;
         }
@@ -1228,12 +1240,16 @@ protected:
     bool CheckInputOutShapeForMX()
     {
         if (!CheckMXTranspose()) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], when %s, CheckMXTranspose failed.", opName_.c_str(),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                apiName_.c_str(), "CheckMXTranspose result", "false",
+                std::string("CheckMXTranspose must return true for ") +
                     GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_));
             return false;
         }
         if (!CheckMXShape()) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], when %s, CheckMXShape failed.", opName_.c_str(),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                apiName_.c_str(), "CheckMXShape result", "false",
+                std::string("CheckMXShape must return true for ") +
                     GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_));
             return false;
         }
@@ -1263,12 +1279,16 @@ protected:
     bool CheckInputOutShapeForPertoken()
     {
         if (!CheckPertokenTranspose()) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], when %s, CheckPertokenTranspose failed.", opName_.c_str(),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                apiName_.c_str(), "CheckPertokenTranspose result", "false",
+                std::string("CheckPertokenTranspose must return true for ") +
                     GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_));
             return false;
         }
         if (!CheckPertokenShape()) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], when %s, CheckPerTokenShape failed.", opName_.c_str(),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                apiName_.c_str(), "CheckPertokenShape result", "false",
+                std::string("CheckPertokenShape must return true for ") +
                     GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_));
             return false;
         }

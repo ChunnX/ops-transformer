@@ -221,7 +221,10 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckWeightNzDtype(const gert::Shape &
 
 bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
 {
-    OP_CHECK_IF(!LoadDescsAndDtypes(), OP_LOGE(inputParams_.opName, "LoadDescsAndDtypes failed."), return false);
+    OP_CHECK_IF(!LoadDescsAndDtypes(),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opName, "LoadDescsAndDtypes result", "false",
+                    "LoadDescsAndDtypes must return true"), return false);
     auto x1ScaleStorageShape = context_->GetInputShape(PER_TOKEN_SCALE_INDEX);
     OP_CHECK_IF(x1ScaleStorageShape == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "per_token_scale", "nullptr",
@@ -261,9 +264,15 @@ bool GroupedMatmulSwigluQuantV2Tiling950::ValidateDtypeAndQuantParams(const gert
         return false);
     const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_W);
     inputParams_.transB = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
-    OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
+    OP_CHECK_IF(!SetMKN(xShape, wShape),
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                    inputParams_.opName, "x, weight",
+                    ShapesToString({ShapeToString(xShape), ShapeToString(wShape)}), "SetMKN failed."),
+                return false);
     OP_CHECK_IF(!SetQuantModeForGMMSwigluQuant(wScaleShape, xScaleShape),
-                OP_LOGE(inputParams_.opName, "SetQuantModeForGMMSwigluQuant failed."), return false);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opName, "SetQuantModeForGMMSwigluQuant result", "false",
+                    "SetQuantModeForGMMSwigluQuant must return true"), return false);
     auto wDesc = context_->GetInputDesc(WEIGHT_INDEX);
     auto weightFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetFormat().GetStorageFormat()));
     inputParams_.bFormat = weightFormat;
@@ -272,14 +281,17 @@ bool GroupedMatmulSwigluQuantV2Tiling950::ValidateDtypeAndQuantParams(const gert
     }
     if (weightFormat == ge::FORMAT_FRACTAL_NZ) {
         OP_CHECK_IF(!CheckWeightNzDtype(xShape, wShape, weightFormat),
-                    OP_LOGE(inputParams_.opName, "CheckWeightNzDtype failed."), return false);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        inputParams_.opName, "CheckWeightNzDtype result", "false",
+                        "CheckWeightNzDtype must return true"),
+                    return false);
     }
-    OP_CHECK_IF(!CheckWeightNdDtype(), OP_LOGE(context_->GetNodeName(), "CheckWeightNdDtype failed."), return false);
+    OP_CHECK_IF(!CheckWeightNdDtype(), OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "weight", ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype), "CheckWeightNdDtype failed."), return false);
     const int64_t *quantDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_DTYPE);
     if (quantDtypePtr != nullptr) {
         ge::DataType quantDtype = static_cast<ge::DataType>(*quantDtypePtr);
         OP_CHECK_IF(!CheckQuantDtypeByFormat(quantDtype, weightFormat),
-                    OP_LOGE(context_->GetNodeName(), "CheckQuantDtypeByFormat failed."), return false);
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "quant dtype", ge::TypeUtils::DataTypeToSerialString(quantDtype), "CheckQuantDtypeByFormat failed."), return false);
     }
     return CheckDtype();
 }
@@ -511,7 +523,9 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDims(const gert::Shape &xShape, c
 }
 bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
 {
-    OP_CHECK_IF(!CheckCoreNum(), OP_LOGE(inputParams_.opName, "CheckCoreNum failed."), return false);
+    OP_CHECK_IF(!CheckCoreNum(),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opName, "CheckCoreNum result", "false", "CheckCoreNum must return true"), return false);
     if (inputParams_.aQuantMode == optiling::QuantMode::PERTOKEN_MODE) {
         return AnalyzeInputsPertoken();
     }
@@ -553,7 +567,9 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
     OP_CHECK_IF(xScaleDimNum != MX_X_SCALE_DIM,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "x_scale", std::to_string(xScaleDimNum), "3"),
                 return false);
-    OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(inputParams_.opName, "SetGroupNum failed."), return false);
+    OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opName, "SetGroupNum result", "false", "SetGroupNum must return true"), return false);
     OP_CHECK_IF(isMultiWeightNz && weightCount != static_cast<size_t>(inputParams_.groupNum),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "weight", std::to_string(weightCount),
                                                       "weight tensor list size must equal groupList length"),
@@ -563,8 +579,14 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
                                                       "weightScale tensor list size must equal "
                                                       "weight tensor list size"),
                 return false);
-    OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
-    OP_CHECK_IF(!CheckDims(xShape, wShape), OP_LOGE(inputParams_.opName, "CheckDims failed."), return false);
+    OP_CHECK_IF(!SetMKN(xShape, wShape),
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                    inputParams_.opName, "x, weight",
+                    ShapesToString({ShapeToString(xShape), ShapeToString(wShape)}), "SetMKN failed."),
+                return false);
+    OP_CHECK_IF(!CheckDims(xShape, wShape),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opName, "CheckDims result", "false", "CheckDims must return true"), return false);
     if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
         if (isMultiWeightNz) {
             auto expectedKDimValue = GroupedMatmul::CeilDiv(inputParams_.kSize, MXFP_BASEK_FACTOR);
@@ -605,7 +627,11 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
                         return false);
         } else {
             OP_CHECK_IF(!CheckQuantParamsForMXTypeM(xScaleShape, wScaleShape),
-                        OP_LOGE(inputParams_.opName, "CheckShapeForMxQuant failed."), return false);
+                        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                            inputParams_.opName, "x_scale, weight_scale",
+                            ShapesToString({ShapeToString(xScaleShape), ShapeToString(wScaleShape)}),
+                            "CheckQuantParamsForMXTypeM failed."),
+                        return false);
         }
     }
     return true;
@@ -614,15 +640,20 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
 bool GroupedMatmulSwigluQuantV2Tiling950::CheckCoreNum() const
 {
     auto compileInfo = context_->GetCompileInfo<GMMSwigluV2CompileInfo>();
-    OP_CHECK_IF(compileInfo == nullptr, OP_LOGE(inputParams_.opName, "compileInfo is nullptr."), return false);
+    OP_CHECK_IF(compileInfo == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opName, "GetCompileInfo result", "nullptr", "compile info lookup failed"), return false);
     auto aicNum = compileInfo->aicNum_;
     auto aivNum = compileInfo->aivNum_;
     OP_CHECK_IF(aicNum == 0,
-                OP_LOGE(inputParams_.opName, "aicNum should be positive integer, actual is %u.", aicNum),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opName, "aicNum", std::to_string(aicNum),
+                    "aicNum should be a positive integer"),
                 return false);
     OP_CHECK_IF(aivNum != GmmConstant::CORE_RATIO * aicNum,
-                OP_LOGE(inputParams_.opName,
-                        "aicNum:aivNum should be 1:2, actual aicNum: %u, aivNum: %u.", aicNum, aivNum),
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(inputParams_.opName, "aicNum and aivNum",
+                                                        "aicNum=" + std::to_string(aicNum) + ", aivNum=" + std::to_string(aivNum),
+                                                        "ratio must be 1:2"),
                 return false);
     return true;
 }
@@ -668,7 +699,10 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoLibApiTiling()
     auto baseM_modified = std::min(basicTiling_.baseM, static_cast<uint64_t>(128));
     basicTiling_.baseM = GroupedMatmul::CeilAlign(baseM_modified, GmmConstant::CUBE_BLOCK);
     ge::graphStatus l1TilingStatus = IsMxFp4WeightNz() ? CalWeightNzL1Tiling() : CalL1Tiling();
-    OP_CHECK_IF(l1TilingStatus != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed"),
+    OP_CHECK_IF(l1TilingStatus != ge::GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "L1 tiling status", std::to_string(static_cast<int64_t>(l1TilingStatus)),
+                    "L1 tiling must return GRAPH_SUCCESS"),
                 return ge::GRAPH_FAILED);
     tilingData_.mmTilingData.set_M(inputParams_.mSize);
     tilingData_.mmTilingData.set_N(inputParams_.nSize);
@@ -715,8 +749,13 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalWeightNzL1Tiling()
         return ge::GRAPH_SUCCESS;
     }
     uint64_t leftL1Size = 0;
-    OP_CHECK_IF(CalcLeftL1Size(leftL1Size) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "CalcLeftL1Size failed"), return ge::GRAPH_FAILED);
+    auto calcLeftStatus = CalcLeftL1Size(leftL1Size);
+    OP_CHECK_IF(calcLeftStatus != ge::GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opName, "CalcLeftL1Size status",
+                    std::to_string(static_cast<int64_t>(calcLeftStatus)),
+                    "CalcLeftL1Size must return GRAPH_SUCCESS"),
+                return ge::GRAPH_FAILED);
     return CalWeightNzL1Depth(leftL1Size);
 }
 
@@ -729,8 +768,10 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalWeightNzL1Depth(uint64_t
     CalcAlignedMxBaseScaleSize(baseScaleASize, baseScaleBSize);
     uint64_t baseL1Size = baseASize + baseBSize + baseScaleASize + baseScaleBSize;
     OP_CHECK_IF(leftL1Size < baseL1Size,
-                OP_LOGE(context_->GetNodeName(), "L1 space overflow. Free L1Size : %lu, used space: %lu", leftL1Size,
-                        baseL1Size),
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                    context_->GetNodeName(), "free L1Size, used L1Size",
+                    Ops::Transformer::Gmm::FormatString("%lu, %lu", leftL1Size, baseL1Size).c_str(),
+                    "used L1Size must not exceed free L1Size"),
                 return ge::GRAPH_FAILED);
 
     uint64_t depthInit = GetDepthA1B1(leftL1Size, baseL1Size, 1UL);
@@ -809,11 +850,9 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalWeightNzScaleFactors()
     uint64_t baseScaleBSize = GetSizeWithDataType(
         GroupedMatmul::CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE) * basicTiling_.baseN, inputParams_.scaleDtype);
     OP_CHECK_IF(baseScaleASize == 0 || baseScaleBSize == 0,
-                OP_LOGE(context_->GetNodeName(),
-                        "When m(%lu)/n(%lu)/k(%lu)/groupNum(%lu) in mx quant mode, baseScaleASize(%lu) and "
-                        "baseScaleBSize(%lu) should not be equal to 0.",
-                        inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum,
-                        baseScaleASize, baseScaleBSize),
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_->GetNodeName(), "baseScaleASize and baseScaleBSize",
+                                                        "A=" + std::to_string(baseScaleASize) + ", B=" + std::to_string(baseScaleBSize),
+                                                        "both must be greater than 0"),
                 return ge::GRAPH_FAILED);
     uint64_t biasDtypeSize = ge::GetSizeByDataType(inputParams_.biasDtype);
     uint64_t baseBiasSize = inputParams_.hasBias ? basicTiling_.baseN * biasDtypeSize : 0;
@@ -823,9 +862,11 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalWeightNzScaleFactors()
         leftL1Size / (std::max(basicTiling_.depthA1, basicTiling_.depthB1) * (baseScaleASize + baseScaleBSize)));
     OP_CHECK_IF(
         scaleInit == 0,
-        OP_LOGE(context_->GetNodeName(),
-                "When m(%lu)/n(%lu)/k(%lu)/groupNum(%lu) in mx quant mode, scaleFactor should not be equal to 0.",
-                inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "scaleFactor", std::to_string(scaleInit),
+            Ops::Transformer::Gmm::FormatString(
+                "scaleFactor must be greater than 0 when m=%lu, n=%lu, k=%lu, groupNum=%lu",
+                inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum).c_str()),
         return ge::GRAPH_FAILED);
 
     uint32_t scaleFactorAMax =
@@ -833,11 +874,9 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalWeightNzScaleFactors()
     uint32_t scaleFactorBMax =
         std::min(static_cast<uint32_t>(MTE2_MIN_LOAD_SIZE_V120 / baseScaleBSize), SCALER_FACTOR_MAX);
     OP_CHECK_IF(scaleFactorAMax == 0 || scaleFactorBMax == 0,
-                OP_LOGE(context_->GetNodeName(),
-                        "When m(%lu)/n(%lu)/k(%lu)/groupNum(%lu) in mx quant mode, scaleFactorAMax(%u) and "
-                        "scaleFactorBMax(%u) should not be equal to 0.",
-                        inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum,
-                        scaleFactorAMax, scaleFactorBMax),
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_->GetNodeName(), "scaleFactorAMax and scaleFactorBMax",
+                                                        "A=" + std::to_string(scaleFactorAMax) + ", B=" + std::to_string(scaleFactorBMax),
+                                                        "both must be greater than 0"),
                 return ge::GRAPH_FAILED);
     uint32_t scaleFactorA =
         static_cast<uint32_t>(GroupedMatmul::CeilDiv(inputParams_.kSize, basicTiling_.stepKa * basicTiling_.baseK));
@@ -859,11 +898,9 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalWeightNzScaleFactors()
     }
     OP_CHECK_IF(basicTiling_.scaleFactorA < SCALER_FACTOR_MIN || basicTiling_.scaleFactorA > SCALER_FACTOR_MAX ||
                     basicTiling_.scaleFactorB < SCALER_FACTOR_MIN || basicTiling_.scaleFactorB > SCALER_FACTOR_MAX,
-                OP_LOGE(context_->GetNodeName(),
-                        "When m(%lu)/n(%lu)/k(%lu)/groupNum(%lu) in mx quant mode, scaleFactorA(%u) and "
-                        "scaleFactorB(%u) should be in range [%u, %u].",
-                        inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum,
-                        basicTiling_.scaleFactorA, basicTiling_.scaleFactorB, SCALER_FACTOR_MIN, SCALER_FACTOR_MAX),
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_->GetNodeName(), "scaleFactorA and scaleFactorB",
+                                                        "A=" + std::to_string(basicTiling_.scaleFactorA) + ", B=" + std::to_string(basicTiling_.scaleFactorB),
+                                                        "must be in range [" + std::to_string(SCALER_FACTOR_MIN) + ", " + std::to_string(SCALER_FACTOR_MAX) + "]"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -874,7 +911,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::PostTiling()
     context_->SetScheduleMode(1);
     OP_CHECK_IF(
         tilingData_.GetDataSize() % sizeof(uint64_t) != 0,
-        OP_LOGE(context_->GetNodeName(), "Tiling data size[%zu] is not aligned to 8", tilingData_.GetDataSize()),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "tiling data", std::to_string(tilingData_.GetDataSize()), "Tiling data size must be aligned to 8"),
         return ge::GRAPH_FAILED);
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
@@ -954,7 +991,9 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputsPertoken()
     OP_CHECK_IF(xScaleDimNum != PERTOKEN_X_SCALE_DIM,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "x_scale", std::to_string(xScaleDimNum), "1"),
                 return false);
-    OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(inputParams_.opName, "SetGroupNum failed."), return false);
+    OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opName, "SetGroupNum result", "false", "SetGroupNum must return true"), return false);
     OP_CHECK_IF(inputParams_.nSize % GmmConstant::EVEN_FACTOR != 0,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opType, "weight", ShapeToString(wShape),
                                                       "n axis element number of weight must be an even number"),

@@ -70,7 +70,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2FusionTiling::ParseInputAndAttr()
     const int64_t *groupListTypePtr = attr->GetAttrPointer<int64_t>(ATTR_INDEX_GROUPLIST_TYPE);
     groupListType_ = groupListTypePtr != nullptr ? *groupListTypePtr : 0;
     OP_CHECK_IF(!(groupListType_ == 0 || groupListType_ == 1),
-        OP_LOGE(context_->GetNodeName(), "GroupListType must be 0 or 1, but actual value is %ld.", groupListType_),
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "groupListType", std::to_string(groupListType_), "0 or 1"),
         return ge::GRAPH_FAILED);
 
     m_ = xShape->GetStorageShape().GetDim(0);
@@ -93,7 +93,9 @@ ge::graphStatus GroupedMatmulSwigluQuantV2FusionTiling::ParseInputAndAttr()
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
         auto compileInfoPtr = context_->GetCompileInfo<GMMSwigluV2CompileInfo>();
-        OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_->GetNodeName(), "CompileInfo is nullptr"),
+        OP_CHECK_IF(compileInfoPtr == nullptr,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context_->GetNodeName(), "GetCompileInfo result", "nullptr", "compile info lookup failed"),
                     return ge::GRAPH_FAILED);
         aicCoreNum_ = compileInfoPtr->aicNum_;
         aivCoreNum_ = compileInfoPtr->aivNum_;

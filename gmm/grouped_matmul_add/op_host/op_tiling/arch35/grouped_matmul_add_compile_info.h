@@ -30,9 +30,13 @@ namespace gmm_add_advanced {
 using namespace GroupedMatmulAdd;
 inline ge::graphStatus InitCompileInfo(fe::PlatFormInfos *platformInfo, GMMCompileInfo *compileInfoPtr)
 {
-    OP_CHECK_IF(platformInfo == nullptr, OP_LOGE("GroupedMatmulAdd", "InitCompileInfo platformInfo is null"),
+    OP_CHECK_IF(platformInfo == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    "GroupedMatmulAdd", "GetPlatformInfo result", "nullptr", "platform info lookup failed"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE("GroupedMatmulAdd", "InitCompileInfo compileInfoPtr is null"),
+    OP_CHECK_IF(compileInfoPtr == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    "GroupedMatmulAdd", "GetCompiledInfo result", "nullptr", "compile info lookup failed"),
                 return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
@@ -57,7 +61,9 @@ inline ge::graphStatus InitCompileInfo(fe::PlatFormInfos *platformInfo, GMMCompi
 
 inline ge::graphStatus InitCompileInfo(gert::TilingParseContext *context)
 {
-    OP_CHECK_IF(context == nullptr, OP_LOGE(context->GetNodeName(), "InitCompileInfo context is null"),
+    OP_CHECK_IF(context == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    "GroupedMatmulAdd", "tiling parse context", "nullptr", "tiling parse context must not be null"),
                 return ge::GRAPH_FAILED);
     fe::PlatFormInfos *platformInfo = context->GetPlatformInfo();
     auto compileInfoPtr = context->GetCompiledInfo<GMMCompileInfo>();

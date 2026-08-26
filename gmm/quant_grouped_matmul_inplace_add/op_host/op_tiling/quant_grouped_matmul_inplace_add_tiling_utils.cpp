@@ -132,14 +132,26 @@ bool CheckDtypeForInplaceAdd(const GQmmInputInfo &inputParams)
 bool CheckCoreNumForInplaceAdd(const gert::TilingContext *context, const GQmmInputInfo &inputParams)
 {
     auto compileInfo = context->GetCompileInfo<GMMCompileInfo>();
-    OP_CHECK_IF(compileInfo == nullptr, OP_LOGE(inputParams.opName, "compileInfo is nullptr."), return false);
+    OP_CHECK_IF(compileInfo == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams.opName, "GetCompileInfo result", "nullptr",
+                    "compile info lookup failed"),
+                return false);
     auto aicNum = compileInfo->aicNum;
     auto aivNum = compileInfo->aivNum;
-    OP_CHECK_IF(aicNum == 0, OP_LOGE(inputParams.opName, "aicNum should be positive integer, actual is %u.", aicNum),
-                return false);
+    OP_CHECK_IF(
+        aicNum == 0,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            inputParams.opType, "aicNum", std::to_string(aicNum),
+            "aicNum should be positive integer, actual is " + std::to_string(aicNum) + "."),
+        return false);
     OP_CHECK_IF(
         aivNum != GmmConstant::CORE_RATIO * aicNum,
-        OP_LOGE(inputParams.opName, "aicNum:aivNum should be 1:2, actual aicNum: %u, aivNum: %u.", aicNum, aivNum),
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+            inputParams.opType, "aicNum, aivNum",
+            "aicNum=" + std::to_string(aicNum) + ", aivNum=" + std::to_string(aivNum),
+            "aicNum:aivNum should be 1:2, actual aicNum: " + std::to_string(aicNum) +
+                ", aivNum: " + std::to_string(aivNum) + "."),
         return false);
     return true;
 }

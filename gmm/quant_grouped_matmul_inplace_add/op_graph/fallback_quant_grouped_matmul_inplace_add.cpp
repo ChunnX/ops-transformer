@@ -12,6 +12,7 @@
 
 #include "fallback/fallback.h"
 #include "fallback/fallback_comm.h"
+#include "graph/utils/type_utils.h"
 #include "log/log.h"
 
 #ifdef __cplusplus
@@ -46,7 +47,11 @@ static inline aclTensor *GeTensor2AclTensor(const gert::Tensor *geTensor, bool e
         storageShapeVec.push_back(storageShape.GetDim(i));
     }
     static const auto aclCreateTensor = GET_OP_API_FUNC(aclCreateTensor);
-    OP_CHECK_IF(aclCreateTensor == nullptr, OP_LOGE("aclnnfallback", "aclCreateTensor nullptr"), return nullptr);
+    OP_CHECK_IF(aclCreateTensor == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    "QuantGroupedMatmulInplaceAdd", "aclCreateTensor lookup result", "nullptr",
+                    "aclCreateTensor function is unavailable"),
+                return nullptr);
     void *deviceAddr = const_cast<void *>(geTensor->GetAddr());
     auto dataType_ge = geTensor->GetDataType();
     aclDataType dataType = ACL_DT_UNDEFINED;
@@ -64,16 +69,23 @@ static inline aclTensor *GeTensor2AclTensor(const gert::Tensor *geTensor, bool e
     std::vector<int64_t> strides(viewShape.size(), 1);
     // Compute the strides of contiguous tensor
     OP_CHECK_IF(viewShape.size() < DIM_TWO,
-                OP_LOGE("QuantGroupedMatmulInplaceAdd aclnnfallback",
-                        "The dim num of viewshape should be greater than or equal to 2, but the actual is %zu.",
-                        viewShape.size()),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                    "QuantGroupedMatmulInplaceAdd",
+                    index == INDEX_INPUT_X1 ? "x1" : index == INDEX_INPUT_X2 ? "x2" :
+                    index == INDEX_INPUT_SCALE1 ? "scale1" : "scale2",
+                    std::to_string(viewShape.size()),
+                    "The dim num of viewshape should be greater than or equal to 2, but the actual is " +
+                        std::to_string(viewShape.size()) + "."),
                 return nullptr);
     for (int64_t i = viewShape.size() - 2; i >= 0; i--) {
         strides[i] = viewShape[i + 1] * strides[i + 1];
     }
 
     if (index == INDEX_INPUT_SCALE1 && dataType_ge == ge::DataType::DT_FLOAT8_E8M0 && enableTranspose) {
-        OP_CHECK_IF(viewShape.size() < 3, OP_LOGE("aclnnfallback", "Mx tpyek wrong pertokenscale size"),
+        OP_CHECK_IF(viewShape.size() < 3,
+                  OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                      "QuantGroupedMatmulInplaceAdd", "scale1", std::to_string(viewShape.size()),
+                      "Mx tpyek wrong pertokenscale size"),
                   return nullptr);
         auto swap = viewShape[0];
         viewShape[0] = viewShape[1];
@@ -97,7 +109,11 @@ static inline aclTensor *GeTensor2AclTensor(const gert::Tensor *geTensor, bool e
     auto aclFormat = aclFormat::ACL_FORMAT_ND;
     aclTensor *out = aclCreateTensor(viewShape.data(), viewShape.size(), dataType, strides.data(), 0, aclFormat,
                                      storageShapeVec.data(), storageShapeVec.size(), deviceAddr);
-    OP_CHECK_IF(out == nullptr, OP_LOGE("aclnnfallback", "out nullptr"), return nullptr);
+    OP_CHECK_IF(out == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    "QuantGroupedMatmulInplaceAdd", "aclCreateTensor result", "nullptr",
+                    "aclCreateTensor returned null"),
+                return nullptr);
     return out;
 }
 
@@ -109,59 +125,107 @@ static graphStatus PrepareAclTensor(const OpExecuteContext *host_api_ctx, const 
     } else {
         tensor = GeTensor2AclTensor(host_api_ctx->GetOptionalInputTensor(INDEX_INPUT_SCALE1), enableTranspose, index);
     }
-    OP_CHECK_IF(tensor == nullptr, OP_LOGE("QuantGroupedMatmulInplaceAdd aclnnfallback", "PrepareAclTensor failed."),
+    OP_CHECK_IF(tensor == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    "QuantGroupedMatmulInplaceAdd", "GeTensor2AclTensor result", "nullptr",
+                    "PrepareAclTensor failed"),
                 return GRAPH_FAILED);
     return GRAPH_SUCCESS;
 }
 
 static graphStatus QuantGroupedMatmulInplaceAddExecuteFunc(OpExecuteContext *host_api_ctx)
 {
-    OP_CHECK_IF(host_api_ctx == nullptr, OP_LOGE("aclnnfallback", "host_api_ctx is null"), return GRAPH_FAILED);
+    OP_CHECK_IF(host_api_ctx == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    "QuantGroupedMatmulInplaceAdd", "execution context", "nullptr",
+                    "execution context must not be null"),
+                return GRAPH_FAILED);
 
     auto attrs = host_api_ctx->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OP_LOGE("aclnnfallback", "attrs is null"), return GRAPH_FAILED);
+    OP_CHECK_IF(attrs == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    "QuantGroupedMatmulInplaceAdd", "GetAttrs result", "nullptr", "attribute lookup failed"),
+                return GRAPH_FAILED);
     const int64_t *groupListTypeGe = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_GROUP_LIST_TYPE);
-    OP_CHECK_IF(groupListTypeGe == nullptr, OP_LOGE("aclnnfallback", "groupListTypeGe is null"), return GRAPH_FAILED);
+    OP_CHECK_IF(groupListTypeGe == nullptr,
+                OP_LOGE_WITH_INVALID_INPUT("QuantGroupedMatmulInplaceAdd", "group_list_type"),
+                return GRAPH_FAILED);
 
     const aclTensor *aclTensorX1 = nullptr;
-    OP_CHECK_IF(PrepareAclTensor(host_api_ctx, aclTensorX1, INDEX_INPUT_X1, true) != GRAPH_SUCCESS,
-                OP_LOGE("aclnnfallback", "PrepareAclTensor x1 failed"), return GRAPH_FAILED);
+    auto prepareX1Status = PrepareAclTensor(host_api_ctx, aclTensorX1, INDEX_INPUT_X1, true);
+    OP_CHECK_IF(prepareX1Status != GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    "QuantGroupedMatmulInplaceAdd", "PrepareAclTensor(x1) status",
+                    std::to_string(static_cast<int64_t>(prepareX1Status)),
+                    "PrepareAclTensor must return GRAPH_SUCCESS"),
+                return GRAPH_FAILED);
 
     const aclTensor *aclTensorX2 = nullptr;
-    OP_CHECK_IF(PrepareAclTensor(host_api_ctx, aclTensorX2, INDEX_INPUT_X2, false) != GRAPH_SUCCESS,
-                OP_LOGE("aclnnfallback", "PrepareAclTensor x2 failed"), return GRAPH_FAILED);
+    auto prepareX2Status = PrepareAclTensor(host_api_ctx, aclTensorX2, INDEX_INPUT_X2, false);
+    OP_CHECK_IF(prepareX2Status != GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    "QuantGroupedMatmulInplaceAdd", "PrepareAclTensor(x2) status",
+                    std::to_string(static_cast<int64_t>(prepareX2Status)),
+                    "PrepareAclTensor must return GRAPH_SUCCESS"),
+                return GRAPH_FAILED);
 
     const aclTensor *aclTensorScale2 = nullptr;
-    OP_CHECK_IF(PrepareAclTensor(host_api_ctx, aclTensorScale2, INDEX_INPUT_SCALE2, false) != GRAPH_SUCCESS,
-                OP_LOGE("aclnnfallback", "PrepareAclTensor scale2 failed"), return GRAPH_FAILED);
+    auto prepareScale2Status = PrepareAclTensor(host_api_ctx, aclTensorScale2, INDEX_INPUT_SCALE2, false);
+    OP_CHECK_IF(prepareScale2Status != GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    "QuantGroupedMatmulInplaceAdd", "PrepareAclTensor(scale2) status",
+                    std::to_string(static_cast<int64_t>(prepareScale2Status)),
+                    "PrepareAclTensor must return GRAPH_SUCCESS"),
+                return GRAPH_FAILED);
 
     auto scale1Tensor = host_api_ctx->GetOptionalInputTensor(INDEX_INPUT_SCALE1);
     const aclTensor *aclTensorScale1 = nullptr;
 
     if (scale1Tensor != nullptr && scale1Tensor->GetDataType() == ge::DataType::DT_FLOAT8_E8M0) {
-        OP_CHECK_IF(PrepareAclTensor(host_api_ctx, aclTensorScale1, INDEX_INPUT_SCALE1, true) != GRAPH_SUCCESS,
-                    OP_LOGE("aclnnfallback", "PrepareAclTensor scale1 failed"), return GRAPH_FAILED);
+        auto prepareScale1Status = PrepareAclTensor(host_api_ctx, aclTensorScale1, INDEX_INPUT_SCALE1, true);
+        OP_CHECK_IF(prepareScale1Status != GRAPH_SUCCESS,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        "QuantGroupedMatmulInplaceAdd", "PrepareAclTensor(scale1) status",
+                        std::to_string(static_cast<int64_t>(prepareScale1Status)),
+                        "PrepareAclTensor must return GRAPH_SUCCESS"),
+                    return GRAPH_FAILED);
     } else if (scale1Tensor != nullptr && scale1Tensor->GetDataType() == ge::DataType::DT_FLOAT) {
         aclTensorScale1 = ConvertType(scale1Tensor);
-        OP_CHECK_IF(aclTensorScale1 == nullptr, OP_LOGE("aclnnfallback", "scale1 convert failed"), return GRAPH_FAILED);
+        OP_CHECK_IF(aclTensorScale1 == nullptr,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        "QuantGroupedMatmulInplaceAdd", "ConvertType result", "nullptr",
+                        "scale1 tensor conversion failed"),
+                    return GRAPH_FAILED);
     } else {
-        OP_CHECK_IF(scale1Tensor == nullptr, OP_LOGE("aclnnfallback", "scale1 nullptr"), return GRAPH_FAILED);
-        OP_LOGE("aclnnfallback", "scale1 dtype is invalid");
+        OP_CHECK_IF(scale1Tensor == nullptr,
+                    OP_LOGE_WITH_INVALID_INPUT("QuantGroupedMatmulInplaceAdd", "scale1"),
+                    return GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_DTYPE(
+            "QuantGroupedMatmulInplaceAdd", "scale1",
+            ge::TypeUtils::DataTypeToSerialString(scale1Tensor->GetDataType()), "DT_FLOAT or DT_FLOAT8_E8M0");
         return GRAPH_FAILED;
     }
 
     auto groupListTensor = host_api_ctx->GetInputTensor(INDEX_INPUT_GROUP_LIST);
     auto inputYTensor = host_api_ctx->GetInputTensor(INDEX_INPUT_Y);
-    OP_CHECK_IF(groupListTensor == nullptr, OP_LOGE("aclnnfallback", "groupListTensor nullptr"), return GRAPH_FAILED);
-    OP_CHECK_IF(inputYTensor == nullptr, OP_LOGE("aclnnfallback", "inputYTensor nullptr"), return GRAPH_FAILED);
+    OP_CHECK_IF(groupListTensor == nullptr,
+                OP_LOGE_WITH_INVALID_INPUT("QuantGroupedMatmulInplaceAdd", "group_list"),
+                return GRAPH_FAILED);
+    OP_CHECK_IF(inputYTensor == nullptr,
+                OP_LOGE_WITH_INVALID_INPUT("QuantGroupedMatmulInplaceAdd", "y"),
+                return GRAPH_FAILED);
 
     int64_t groupsize = 0;
 
     // execute opapi
     auto api_ret_gmm = EXEC_OPAPI_CMD(aclnnQuantGroupedMatmulInplaceAdd, aclTensorX1, aclTensorX2, aclTensorScale1,
                                       aclTensorScale2, groupListTensor, inputYTensor, *groupListTypeGe, groupsize);
-    OP_CHECK_IF(api_ret_gmm != GRAPH_SUCCESS, OP_LOGE("aclnnfallback", "api_ret failed:%u", api_ret_gmm),
-              return GRAPH_FAILED);
+    OP_CHECK_IF(
+        api_ret_gmm != GRAPH_SUCCESS,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "QuantGroupedMatmulInplaceAdd", "EXEC_OPAPI_CMD status",
+            std::to_string(static_cast<int64_t>(api_ret_gmm)), "EXEC_OPAPI_CMD must return GRAPH_SUCCESS"),
+        return GRAPH_FAILED);
     return GRAPH_SUCCESS;
 }
 

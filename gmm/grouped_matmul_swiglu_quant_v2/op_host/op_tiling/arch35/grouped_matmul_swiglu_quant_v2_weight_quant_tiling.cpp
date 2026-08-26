@@ -134,12 +134,12 @@ bool CheckDynamicInputDesc(const gert::TilingContext &context, uint32_t inputInd
                            const char *inputName, ge::DataType expectedDtype)
 {
     const auto *desc = context.GetDynamicInputDesc(inputIndex, tensorIndex);
-    OP_CHECK_IF(desc == nullptr, OP_LOGE(OP_NAME, "Dynamic input desc of %s[%u] is nullptr.", inputName, tensorIndex),
+    OP_CHECK_IF(desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(OP_NAME, (std::string(inputName) + "[" + std::to_string(tensorIndex) + "]").c_str()),
                 return false);
     OP_CHECK_IF(desc->GetDataType() != expectedDtype,
-                OP_LOGE(OP_NAME, "%s[%u] dtype must be %s, got %s.", inputName, tensorIndex,
-                        ge::TypeUtils::DataTypeToSerialString(expectedDtype).c_str(),
-                        ge::TypeUtils::DataTypeToSerialString(desc->GetDataType()).c_str()),
+                OP_LOGE_FOR_INVALID_DTYPE(OP_NAME, (std::string(inputName) + "[" + std::to_string(tensorIndex) + "]").c_str(),
+                                           ge::TypeUtils::DataTypeToSerialString(desc->GetDataType()).c_str(),
+                                           ge::TypeUtils::DataTypeToSerialString(expectedDtype).c_str()),
                 return false);
     return true;
 }
@@ -147,7 +147,7 @@ bool CheckDynamicInputDesc(const gert::TilingContext &context, uint32_t inputInd
 bool CheckWeightFormat(const gert::TilingContext &context, uint32_t tensorIndex)
 {
     const auto *desc = context.GetDynamicInputDesc(WEIGHT_INDEX, tensorIndex);
-    OP_CHECK_IF(desc == nullptr, OP_LOGE(OP_NAME, "Dynamic input desc of weight[%u] is nullptr.", tensorIndex),
+    OP_CHECK_IF(desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(OP_NAME, ("weight[" + std::to_string(tensorIndex) + "]").c_str()),
                 return false);
     auto wFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(desc->GetStorageFormat()));
     if (unlikely(wFormat != ge::FORMAT_FRACTAL_NZ && wFormat != ge::FORMAT_FRACTAL_NZ_C0_32)) {
@@ -161,7 +161,7 @@ bool CheckWeightFormat(const gert::TilingContext &context, uint32_t tensorIndex)
 bool CheckWeightScaleFormat(const gert::TilingContext &context, uint32_t tensorIndex, const char *opName)
 {
     const auto *desc = context.GetDynamicInputDesc(WEIGHT_SCALE_INDEX, tensorIndex);
-    OP_CHECK_IF(desc == nullptr, OP_LOGE(opName, "Dynamic input desc of weightScale[%u] is nullptr.", tensorIndex),
+    OP_CHECK_IF(desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName, ("weightScale[" + std::to_string(tensorIndex) + "]").c_str()),
                 return false);
     auto wScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(desc->GetStorageFormat()));
     if (unlikely(wScaleFormat != ge::FORMAT_ND && wScaleFormat != ge::FORMAT_NCHW && wScaleFormat != ge::FORMAT_NCL)) {
@@ -178,8 +178,9 @@ bool CheckWeightAndScaleListSize(const gert::TilingContext &context, GMMSQWeight
     uint32_t weightScaleListSize = GetDynamicInputTensorListSize(context, WEIGHT_SCALE_INDEX);
     params.isSingleMultiSingle = weightListSize > 1;
     OP_CHECK_IF((weightListSize > 1 || weightScaleListSize > 1) && weightListSize != weightScaleListSize,
-                OP_LOGE(OP_NAME, "weight and weightScale tensor list size should be equal, got %u and %u.",
-                        weightListSize, weightScaleListSize),
+                OP_LOGE_FOR_INVALID_TENSORNUMS_WITH_REASON(OP_NAME, "weight and weightScale",
+                                                            "weight=" + std::to_string(weightListSize) + ", weightScale=" + std::to_string(weightScaleListSize),
+                                                            "tensor list sizes must be equal"),
                 return false);
     params.groupNum = params.isSingleMultiSingle ? static_cast<int64_t>(weightListSize) : params.groupNum;
     return true;
@@ -188,12 +189,17 @@ bool CheckWeightAndScaleListSize(const gert::TilingContext &context, GMMSQWeight
 bool CheckTilingDataCapacity(gert::TilingContext &context, uint64_t tilingDataSize)
 {
     const auto *rawTiling = context.GetRawTilingData();
-    OP_CHECK_IF(rawTiling == nullptr, OP_LOGE(OP_NAME, "GetRawTilingData can not be empty."), return false);
-    OP_CHECK_IF(rawTiling->GetData() == nullptr, OP_LOGE(OP_NAME, "RawTilingData cannot be a null pointer."),
+    OP_CHECK_IF(rawTiling == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    OP_NAME, "GetRawTilingData result", "nullptr", "raw tiling data lookup failed"),
+                return false);
+    OP_CHECK_IF(rawTiling->GetData() == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    OP_NAME, "GetRawTilingData()->GetData result", "nullptr", "raw tiling buffer lookup failed"),
                 return false);
     OP_CHECK_IF(rawTiling->GetCapacity() < tilingDataSize,
-                OP_LOGE(OP_NAME, "context tiling data capacity %zu < actual tiling data size %zu.",
-                        rawTiling->GetCapacity(), tilingDataSize),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "tilingDataSize", std::to_string(tilingDataSize),
+                                                       "exceeds raw tiling data capacity=" + std::to_string(rawTiling->GetCapacity())),
                 return false);
     return true;
 }
@@ -201,19 +207,21 @@ bool CheckTilingDataCapacity(gert::TilingContext &context, uint64_t tilingDataSi
 bool CheckContext(gert::TilingContext &context, uint64_t tilingDataSize)
 {
     const auto *attrs = context.GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OP_LOGE(OP_NAME, "Function context.GetAttrs() failed!"), return false);
+    OP_CHECK_IF(attrs == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    OP_NAME, "GetAttrs result", "nullptr", "attribute lookup failed"), return false);
 
-    OP_CHECK_IF(context.GetInputDesc(X_INDEX) == nullptr, OP_LOGE(OP_NAME, "InputDesc x is nullptr."), return false);
-    OP_CHECK_IF(context.GetInputDesc(X_SCALE_INDEX) == nullptr, OP_LOGE(OP_NAME, "InputDesc xScale is nullptr."),
+    OP_CHECK_IF(context.GetInputDesc(X_INDEX) == nullptr, OP_LOGE_WITH_INVALID_INPUT(OP_NAME, "x"), return false);
+    OP_CHECK_IF(context.GetInputDesc(X_SCALE_INDEX) == nullptr, OP_LOGE_WITH_INVALID_INPUT(OP_NAME, "xScale"),
                 return false);
-    OP_CHECK_IF(context.GetInputDesc(GROUPLIST_INDEX) == nullptr, OP_LOGE(OP_NAME, "InputDesc groupList is nullptr."),
+    OP_CHECK_IF(context.GetInputDesc(GROUPLIST_INDEX) == nullptr, OP_LOGE_WITH_INVALID_INPUT(OP_NAME, "groupList"),
                 return false);
-    OP_CHECK_IF(context.GetInputDesc(WEIGHT_INDEX) == nullptr, OP_LOGE(OP_NAME, "InputDesc weight is nullptr."),
+    OP_CHECK_IF(context.GetInputDesc(WEIGHT_INDEX) == nullptr, OP_LOGE_WITH_INVALID_INPUT(OP_NAME, "weight"),
                 return false);
     OP_CHECK_IF(context.GetInputDesc(WEIGHT_SCALE_INDEX) == nullptr,
-                OP_LOGE(OP_NAME, "InputDesc weightScale is nullptr."), return false);
-    OP_CHECK_IF(context.GetOutputDesc(Y_INDEX) == nullptr, OP_LOGE(OP_NAME, "OutputDesc y is nullptr."), return false);
-    OP_CHECK_IF(context.GetOutputDesc(Y_SCALE_INDEX) == nullptr, OP_LOGE(OP_NAME, "OutputDesc yScale is nullptr."),
+                OP_LOGE_WITH_INVALID_INPUT(OP_NAME, "weightScale"), return false);
+    OP_CHECK_IF(context.GetOutputDesc(Y_INDEX) == nullptr, OP_LOGE_WITH_INVALID_INPUT(OP_NAME, "y"), return false);
+    OP_CHECK_IF(context.GetOutputDesc(Y_SCALE_INDEX) == nullptr, OP_LOGE_WITH_INVALID_INPUT(OP_NAME, "yScale"),
                 return false);
 
     if (unlikely(!IsDynamicInputEmpty(context, WEIGHT_ASSIST_MATRIX_INDEX))) {
@@ -312,8 +320,8 @@ bool CheckDtypes(const gert::TilingContext &context, const GMMSQWeightQuantInput
     const auto *xScaleDesc = context.GetInputDesc(X_SCALE_INDEX);
     const auto *wScaleDesc = context.GetDynamicInputDesc(WEIGHT_SCALE_INDEX, 0);
     const auto *groupListDesc = context.GetInputDesc(GROUPLIST_INDEX);
-    OP_CHECK_IF(wDesc == nullptr, OP_LOGE(OP_NAME, "Dynamic input desc of weight[0] is nullptr."), return false);
-    OP_CHECK_IF(wScaleDesc == nullptr, OP_LOGE(OP_NAME, "Dynamic input desc of weightScale[0] is nullptr."),
+    OP_CHECK_IF(wDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(OP_NAME, "weight[0]"), return false);
+    OP_CHECK_IF(wScaleDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(OP_NAME, "weightScale[0]"),
                 return false);
 
     if (unlikely(xDesc->GetDataType() != ge::DataType::DT_FLOAT8_E4M3FN)) {
@@ -356,18 +364,31 @@ bool CheckDtypes(const gert::TilingContext &context, const GMMSQWeightQuantInput
 
 bool GetInputs(GMMSQWeightQuantInputParams &params, const gert::TilingContext &context)
 {
-    OP_CHECK_IF(!CheckWeightFormat(context, 0), OP_LOGE(OP_NAME, "Check weight format failed."), return false);
+    OP_CHECK_IF(!CheckWeightFormat(context, 0),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    OP_NAME, "CheckWeightFormat(weight[0]) result", "false",
+                    "CheckWeightFormat must return true"),
+                return false);
     const auto *wDesc = context.GetDynamicInputDesc(WEIGHT_INDEX, 0);
-    OP_CHECK_IF(wDesc == nullptr, OP_LOGE(OP_NAME, "Dynamic input desc of weight[0] is nullptr."), return false);
+    OP_CHECK_IF(wDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(OP_NAME, "weight[0]"), return false);
     params.wFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetStorageFormat()));
 
     const auto *xShapePtr = context.GetInputShape(X_INDEX);
     OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_INDEX, 0, "weight"),
-                OP_LOGE(OP_NAME, "Check dynamic input shape of weight failed."), return false);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    OP_NAME, "CheckDynamicInputShapeNotEmpty(weight[0]) result", "false",
+                    "CheckDynamicInputShapeNotEmpty must return true"),
+                return false);
     OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_SCALE_INDEX, 0, "weightScale"),
-                OP_LOGE(OP_NAME, "Check dynamic input shape of weightScale failed."), return false);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    OP_NAME, "CheckDynamicInputShapeNotEmpty(weightScale[0]) result", "false",
+                    "CheckDynamicInputShapeNotEmpty must return true"),
+                return false);
     const auto *wShapePtr = context.GetDynamicInputShape(WEIGHT_INDEX, 0);
-    OP_CHECK_IF(xShapePtr == nullptr || wShapePtr == nullptr, OP_LOGE(OP_NAME, "Required input shape is nullptr."),
+    OP_CHECK_IF(xShapePtr == nullptr || wShapePtr == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    OP_NAME, xShapePtr == nullptr ? "x shape" : "weight[0] shape", "nullptr",
+                    "tensor shape lookup failed"),
                 return false);
 
     const gert::Shape &xShape = xShapePtr->GetOriginShape();
@@ -375,8 +396,11 @@ bool GetInputs(GMMSQWeightQuantInputParams &params, const gert::TilingContext &c
     auto xShapeLen = xShape.GetDimNum();
     auto wShapeLen = wShape.GetDimNum();
     OP_CHECK_IF(!CheckWeightAndScaleListSize(context, params),
-                OP_LOGE(OP_NAME, "Check weight and weightScale tensor list size failed."), return false);
-    OP_CHECK_IF(xShape.GetShapeSize() == 0, OP_LOGE(OP_NAME, "Not yet support empty tensor for x"), return false);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    OP_NAME, "CheckWeightAndScaleListSize result", "false",
+                    "CheckWeightAndScaleListSize must return true"),
+                return false);
+    OP_CHECK_IF(xShape.GetShapeSize() == 0, OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(OP_NAME, "x", "0", "empty tensors are not supported"), return false);
     if (unlikely(xShapeLen != DIM_NUM_X)) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "x", std::to_string(xShapeLen),
                                                  "The shape dim of x must be " + std::to_string(DIM_NUM_X));
@@ -430,7 +454,10 @@ bool CheckInputFormats(const gert::TilingContext &context, const GMMSQWeightQuan
     }
 
     OP_CHECK_IF(!CheckWeightScaleFormat(context, 0, params.opName.c_str()),
-                OP_LOGE(OP_NAME, "Check weightScale format failed."), return false);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    params.opName, "CheckWeightScaleFormat(weightScale[0]) result", "false",
+                    "CheckWeightScaleFormat must return true"),
+                return false);
 
     return true;
 }
@@ -518,19 +545,42 @@ bool CheckSingleMultiSingleInputs(gert::TilingContext &context, const GMMSQWeigh
         auto *curWeightShapePtr = context.GetDynamicInputShape(WEIGHT_INDEX, tensorIndex);
         auto *curWeightScaleShapePtr = context.GetDynamicInputShape(WEIGHT_SCALE_INDEX, tensorIndex);
         OP_CHECK_IF(curWeightShapePtr == nullptr || curWeightScaleShapePtr == nullptr,
-                    OP_LOGE(params.opName, "weight or weightScale shape[%ld] should not be null", i), return false);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        params.opName,
+                        curWeightShapePtr == nullptr ?
+                            ("weight[" + std::to_string(tensorIndex) + "] shape").c_str() :
+                            ("weightScale[" + std::to_string(tensorIndex) + "] shape").c_str(),
+                        "nullptr", "tensor shape lookup failed"), return false);
         OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_INDEX, tensorIndex, "weight"),
-                    OP_LOGE(params.opName, "Check dynamic input shape of weight[%ld] failed.", i), return false);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        params.opName, "CheckDynamicInputShapeNotEmpty(weight) result", "false",
+                        "CheckDynamicInputShapeNotEmpty must return true"),
+                    return false);
         OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_SCALE_INDEX, tensorIndex, "weightScale"),
-                    OP_LOGE(params.opName, "Check dynamic input shape of weightScale[%ld] failed.", i), return false);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        params.opName, "CheckDynamicInputShapeNotEmpty(weightScale) result", "false",
+                        "CheckDynamicInputShapeNotEmpty must return true"),
+                    return false);
         OP_CHECK_IF(!CheckDynamicInputDesc(context, WEIGHT_INDEX, tensorIndex, "weight", ge::DT_FLOAT4_E2M1),
-                    OP_LOGE(params.opName, "Check dynamic input desc of weight[%ld] failed.", i), return false);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        params.opName, "CheckDynamicInputDesc(weight) result", "false",
+                        "CheckDynamicInputDesc must return true"),
+                    return false);
         OP_CHECK_IF(!CheckDynamicInputDesc(context, WEIGHT_SCALE_INDEX, tensorIndex, "weightScale", ge::DT_FLOAT8_E8M0),
-                    OP_LOGE(params.opName, "Check dynamic input desc of weightScale[%ld] failed.", i), return false);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        params.opName, "CheckDynamicInputDesc(weightScale) result", "false",
+                        "CheckDynamicInputDesc must return true"),
+                    return false);
         OP_CHECK_IF(!CheckWeightFormat(context, tensorIndex),
-                    OP_LOGE(params.opName, "Check weight[%ld] format failed.", i), return false);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        params.opName, "CheckWeightFormat result", "false",
+                        "CheckWeightFormat must return true"),
+                    return false);
         OP_CHECK_IF(!CheckWeightScaleFormat(context, tensorIndex, params.opName.c_str()),
-                    OP_LOGE(params.opName, "Check weightScale[%ld] format failed.", i), return false);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        params.opName, "CheckWeightScaleFormat result", "false",
+                        "CheckWeightScaleFormat must return true"),
+                    return false);
         if (!CheckInputShape(&context, "weight", curWeightShapePtr->GetStorageShape(), expectedWeightShape)) {
             return false;
         }
@@ -575,16 +625,28 @@ bool CheckInputs(gert::TilingContext &context, const GMMSQWeightQuantInputParams
     auto *xScaleShapePtr = context.GetInputShape(X_SCALE_INDEX);
     auto *groupListShapePtr = context.GetInputShape(GROUPLIST_INDEX);
     OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_INDEX, 0, "weight"),
-                OP_LOGE(OP_NAME, "Check dynamic input shape of weight failed."), return false);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    params.opName, "CheckDynamicInputShapeNotEmpty(weight[0]) result", "false",
+                    "CheckDynamicInputShapeNotEmpty must return true"),
+                return false);
     OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_SCALE_INDEX, 0, "weightScale"),
-                OP_LOGE(OP_NAME, "Check dynamic input shape of weightScale failed."), return false);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    params.opName, "CheckDynamicInputShapeNotEmpty(weightScale[0]) result", "false",
+                    "CheckDynamicInputShapeNotEmpty must return true"),
+                return false);
     auto *weightShapePtr = context.GetDynamicInputShape(WEIGHT_INDEX, 0);
     auto *weightScaleShapePtr = context.GetDynamicInputShape(WEIGHT_SCALE_INDEX, 0);
 
-    OP_CHECK_IF(xScaleShapePtr == nullptr, OP_LOGE(OP_NAME, "xScaleShape cannot be null"), return false);
-    OP_CHECK_IF(groupListShapePtr == nullptr, OP_LOGE(OP_NAME, "groupListShape cannot be null"), return false);
+    OP_CHECK_IF(xScaleShapePtr == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    OP_NAME, "xScale shape", "nullptr", "tensor shape lookup failed"), return false);
+    OP_CHECK_IF(groupListShapePtr == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    OP_NAME, "groupList shape", "nullptr", "tensor shape lookup failed"), return false);
     OP_CHECK_IF(weightShapePtr == nullptr || weightScaleShapePtr == nullptr,
-                OP_LOGE(OP_NAME, "weightShape or weightScaleShape cannot be null"), return false);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    OP_NAME, weightShapePtr == nullptr ? "weight[0] shape" : "weightScale[0] shape", "nullptr",
+                    "tensor shape lookup failed"), return false);
 
     auto &xScaleShape = xScaleShapePtr->GetOriginShape();
     auto &groupListShape = groupListShapePtr->GetOriginShape();
@@ -633,7 +695,10 @@ bool GroupedMatmulSwigluQuantV2WeightQuantTiling::IsCapable()
 ge::graphStatus GroupedMatmulSwigluQuantV2WeightQuantTiling::GetPlatformInfo()
 {
     const auto *compileInfoPtr = context_->GetCompileInfo<GMMSwigluV2CompileInfo>();
-    OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(OP_NAME, "CompileInfo is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(compileInfoPtr == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "GetCompileInfo result", "nullptr", "compile info lookup failed"),
+                return ge::GRAPH_FAILED);
     compileInfoPtr_ = compileInfoPtr;
     OP_LOGI(context_, "Compile info: aicNum(%u) aivNum(%lu) ubSize(%lu) baseM(%lu) baseN(%lu) supportL12BtBf16(%lu).",
             compileInfoPtr_->aicNum_, compileInfoPtr_->aivNum_, compileInfoPtr_->ubSize_, compileInfoPtr_->baseM_,
@@ -706,7 +771,10 @@ uint64_t GroupedMatmulSwigluQuantV2WeightQuantTiling::GetTilingKey() const
 ge::graphStatus GroupedMatmulSwigluQuantV2WeightQuantTiling::GetWorkspaceSize()
 {
     size_t *workspaces = context_->GetWorkspaceSizes(1);
-    OP_CHECK_IF(workspaces == nullptr, OP_LOGE(OP_NAME, "workspaces is nullptr."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(workspaces == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    OP_NAME, "GetWorkspaceSizes result", "nullptr", "workspace lookup failed"),
+                return ge::GRAPH_FAILED);
     workspaces[0] = SYS_WORKSPACE_SIZE;
     return ge::GRAPH_SUCCESS;
 }
@@ -718,11 +786,14 @@ ge::graphStatus GroupedMatmulSwigluQuantV2WeightQuantTiling::PostTiling()
 
     context_->SetBlockDim(tilingData_.coreNum);
     auto *rawTiling = context_->GetRawTilingData();
-    OP_CHECK_IF(rawTiling == nullptr, OP_LOGE(OP_NAME, "RawTilingData is nullptr."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(rawTiling == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    OP_NAME, "GetRawTilingData result", "nullptr", "raw tiling data lookup failed"),
+                return ge::GRAPH_FAILED);
     errno_t ret = memcpy_s(rawTiling->GetData(), rawTiling->GetCapacity(), static_cast<void *>(&tilingData_),
                            sizeof(tilingData_));
     if (ret != EOK) {
-        OP_LOGE(OP_NAME, "memcpy_s failed, ret = %d", ret);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "memcpy_s return", std::to_string(ret), "tiling data copy failed");
         return ge::GRAPH_FAILED;
     }
     context_->GetRawTilingData()->SetDataSize(sizeof(tilingData_));
@@ -738,7 +809,10 @@ void GroupedMatmulSwigluQuantV2WeightQuantTiling::Reset()
     if (rawTiling == nullptr || rawTiling->GetData() == nullptr) {
         return;
     }
-    OP_CHECK_IF(memset_s(rawTiling->GetData(), rawTiling->GetCapacity(), 0, rawTiling->GetCapacity()) != EOK,
-                OP_LOGE(OP_NAME, "Fail to clear tiling data"), return);
+    const errno_t clearStatus =
+        memset_s(rawTiling->GetData(), rawTiling->GetCapacity(), 0, rawTiling->GetCapacity());
+    OP_CHECK_IF(clearStatus != EOK,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    OP_NAME, "memset_s status", std::to_string(clearStatus), "memset_s must return EOK"), return);
 }
 } // namespace optiling

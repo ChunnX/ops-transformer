@@ -20,32 +20,47 @@ namespace optiling {
 bool GroupedMatmulAddNoQuantTiling::SetTiling(gert::TilingContext *context)
 {
     auto compileInfoPtr = context->GetCompileInfo<GMMCompileInfo>();
-    OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context->GetNodeName(), "compileInfoPtr is nullptr."), return false);
+    OP_CHECK_IF(compileInfoPtr == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context->GetNodeName(), "GetCompileInfo result", "nullptr", "compile info lookup failed"),
+                return false);
     usedCoreNum_ = compileInfoPtr->aicNum;
-    OP_CHECK_IF(!Init(context), OP_LOGE(context->GetNodeName(), "Init failed"), return false);
+    OP_CHECK_IF(!Init(context),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context->GetNodeName(), "Init result", "false", "Init must return true"),
+                return false);
     OP_CHECK_IF(!CalMatMulTiling(context, compileInfoPtr),
-                OP_LOGE(context->GetNodeName(), "calculate matmul-tiling failed"), return false);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context->GetNodeName(), "CalMatMulTiling result", "false",
+                    "CalMatMulTiling must return true"),
+                return false);
     SetGMMTiling();
     SetMatMulTiling();
     SetTilingKey(context);
-    OP_CHECK_IF(!SetCustomParam(context), OP_LOGE(context->GetNodeName(), "set custom param failed"), return false);
+    OP_CHECK_IF(!SetCustomParam(context),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context->GetNodeName(), "SetCustomParam result", "false", "SetCustomParam must return true"),
+                return false);
     PrintTilingResult(context);
     return true;
 }
 
 bool GroupedMatmulAddNoQuantTiling::Init(const gert::TilingContext *context)
 {
-    OP_CHECK_IF(!GetAttrs(context), OP_LOGE(context->GetNodeName(), "Unable to calculate matmul-tiling"), return false);
+    OP_CHECK_IF(!GetAttrs(context),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context->GetNodeName(), "GetAttrs result", "false", "GetAttrs must return true"),
+                return false);
 
     auto xTensor = context->GetDynamicInputTensor(INDEX_X, 0);
-    OP_CHECK_IF(xTensor == nullptr, OP_LOGE(context->GetNodeName(), "xTensor is nullptr."), return false);
+    OP_CHECK_IF(xTensor == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "x"), return false);
     gert::Shape xShape = xTensor->GetStorageShape();
     xDimNum_ = static_cast<uint32_t>(xShape.GetDimNum());
     for (uint32_t i = 0; i < xDimNum_; i++) {
         OP_LOGI(context->GetNodeName(), "x DIM[%u] is %lu", i, static_cast<uint64_t>(xShape.GetDim(i)));
     }
     auto wTensor = context->GetDynamicInputTensor(INDEX_WEIGHT, 0);
-    OP_CHECK_IF(wTensor == nullptr, OP_LOGE(context->GetNodeName(), "wTensor is nullptr."), return false);
+    OP_CHECK_IF(wTensor == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "weight"), return false);
     gert::Shape wShape = wTensor->GetOriginShape();
     uint32_t wDimNum = static_cast<uint32_t>(wShape.GetDimNum());
     for (uint32_t i = 0; i < xDimNum_; i++) {
@@ -78,7 +93,9 @@ bool GroupedMatmulAddNoQuantTiling::Init(const gert::TilingContext *context)
 bool GroupedMatmulAddNoQuantTiling::GetAttrs(const gert::TilingContext *context)
 {
     auto attr = context->GetAttrs();
-    OP_CHECK_IF(attr == nullptr, OP_LOGE(context->GetNodeName(), "attr is nullptr."),
+    OP_CHECK_IF(attr == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context->GetNodeName(), "GetAttrs result", "nullptr", "attribute lookup failed"),
                 return false); // check attr is not null
     const bool *transposeWeightPtr = attr->GetAttrPointer<bool>(ATTR_IDX_TRANS_W);
     const bool *transposeXPtr = attr->GetAttrPointer<bool>(ATTR_IDX_TRANS_X);
@@ -101,12 +118,12 @@ bool GroupedMatmulAddNoQuantTiling::GetAttrs(const gert::TilingContext *context)
                 return false);
 
     auto xDesc = context->GetDynamicInputDesc(INDEX_X, 0);
-    OP_CHECK_IF(xDesc == nullptr, OP_LOGE(context->GetNodeName(), "xDesc is nullptr."), return false);
+    OP_CHECK_IF(xDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "x"), return false);
     xDType_ = xDesc->GetDataType();
     auto xFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat()));
 
     auto w0Desc = context->GetDynamicInputDesc(INDEX_WEIGHT, 0);
-    OP_CHECK_IF(w0Desc == nullptr, OP_LOGE(context->GetNodeName(), "w0Desc is nullptr."), return false);
+    OP_CHECK_IF(w0Desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "weight"), return false);
     weightDtype_ = w0Desc->GetDataType();
     auto wFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(w0Desc->GetStorageFormat()));
     OP_CHECK_IF(xFormat != ge::FORMAT_ND || wFormat != ge::Format::FORMAT_ND,
@@ -269,8 +286,8 @@ bool GroupedMatmulAddNoQuantTiling::SplitKSingleXSingleWeightSingleY(const gert:
                                                                      const gert::Shape xShape, const gert::Shape wShape)
 {
     auto groupListTensor = context->GetDynamicInputTensor(INDEX_GROUPLIST, 0);
-    OP_CHECK_IF(groupListTensor == nullptr, OP_LOGE(context->GetNodeName(), "groupListTensor is nullptr"),
-                return false);
+    OP_CHECK_IF(groupListTensor == nullptr,
+                OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "group_list"), return false);
     gert::Shape groupListShape = groupListTensor->GetStorageShape();
     groupNum_ = static_cast<uint32_t>(groupListShape.GetDim(0)); // 0: the first dim of groupList is groupNum
     m_ = static_cast<uint64_t>(xShape.GetDim(1));
@@ -282,17 +299,22 @@ bool GroupedMatmulAddNoQuantTiling::SplitKSingleXSingleWeightSingleY(const gert:
 bool GroupedMatmulAddNoQuantTiling::SetCustomParam(gert::TilingContext *context)
 {
     size_t *workspaces = context->GetWorkspaceSizes(1); // get second variable
-    OP_CHECK_IF(workspaces == nullptr, OP_LOGE(context->GetNodeName(), "workspaces is nullptr."),
+    OP_CHECK_IF(workspaces == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context->GetNodeName(), "GetWorkspaceSizes result", "nullptr", "workspace lookup failed"),
                 return false); // check workspaces is not null
     workspaces[0] = 32U;       // 32: default workspace size
 
     context->SetBlockDim(usedCoreNum_);
-    OP_CHECK_IF(context->GetRawTilingData() == nullptr, OP_LOGE(context->GetNodeName(), "RawTilingData is nullptr."),
+    OP_CHECK_IF(context->GetRawTilingData() == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context->GetNodeName(), "GetRawTilingData result", "nullptr", "raw tiling data lookup failed"),
                 return false);
     errno_t ret = memcpy_s(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity(),
                            reinterpret_cast<void *>(&tilingData_), sizeof(tilingData_));
     if (ret != EOK) {
-        OP_LOGE(context->GetNodeName(), "memcpy_s failed, ret=%d", ret);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context->GetNodeName(), "memcpy_s status", std::to_string(ret), "memcpy_s must return EOK");
         return false;
     }
     context->GetRawTilingData()->SetDataSize(sizeof(tilingData_));
