@@ -4,7 +4,7 @@
 
 | 产品                                                      | 是否支持 |
 | --------------------------------------------------------- | :------: |
-| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品</term> |    √     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  |    √     |
 | <term>Ascend 950PR/Ascend 950DT</term>                    |    √     |
 
@@ -45,21 +45,116 @@
 > - D（Head Dim）表示单个注意力头维度
 > - PageAttention 场景下 $block\_num$ 为物理 block 总数、$block\_size$ 为每个 block 的 token 数，$maxBlockNumPerSeq$ 为每个 batch 最大逻辑 block 数（通常 $\ge\lceil S2/block\_size\rceil$），$M_b=\lceil S2/block\_size\rceil$ 为逻辑 block 总数
 
-| 参数名                   | 输入/输出/属性 | 描述                                                         | 数据类型                     | 数据格式 |
-| ------------------------ | -------------- | ------------------------------------------------------------ | ---------------------------- | -------- |
-| query                    | 输入           | 公式中的 $Q_{idx}$。当前仅支持 TND，shape 为 $[T1, N1, D]$   | BFLOAT16, FLOAT16, HIFLOAT8, FLOAT8_E5M2, FLOAT8_E4M3FN | ND       |
-| key                      | 输入           | 公式中的 $K_{idx}$。支持 TND（$[T2, N2, D]$）、BNBD（$[block\_num, N2, block\_size, D]$）、BBND（$[block\_num, block\_size, N2, D]$） | BFLOAT16, FLOAT16, INT8, HIFLOAT8, FLOAT8_E5M2, FLOAT8_E4M3FN | ND, NZ   |
-| block_table              | 可选输入       | PageAttention 的逻辑 block → 物理 page 映射表。PA 场景必须传入，二维，第二维长度不能小于 $maxBlockNumPerSeq$；shape 为 $[B, S2/block\_size]$ | INT32                        | ND       |
-| scale                    | 可选输入       | 公式中的 $scale$，反量化系数。非量化必须为空；量化场景必选。PA 为 $[block\_num, N2, block\_size]$ 或 $[block\_num, block\_size, N2]$；TND 为 $[T2, N2]$ | FLOAT                        | ND, NZ   |
-| atten_mask               | 可选输入       | 控制因果可见的 mask。仅在 `sparse_mode=3` 时使用；取值为 1 表示该位不参与计算，为 0 表示参与计算；shape 为 $[2048, 2048]$ | INT8                         | ND       |
-| actual_seq_qlen | 可选输入       | 每个 Batch 中 Query 的有效 token 数。query 为 TND 时必须传入，单调不减（前缀和），shape 为 $[B+1]$ | INT32                        | ND       |
-| actual_seq_klen   | 可选输入       | 每个 Batch 中 Key 的有效 token 数。key 为 TND 时必须传入（前缀和）；PageAttention 场景下为各请求可见 $S2$，shape 为 $[B]$ | INT32                        | ND       |
-| start_loc                | 输入           | 当前 query 所在逻辑 block 索引（非 token 前缀），用于生成 $local\_mask$；shape 为 $[B]$ | INT32                        | ND       |
-| layout_key               | 属性           | key 布局。`"TND"` / `"BBND"` / `"BNBD"`。aclnn 参数名为 `layoutKeyOptional`，不传时默认 `"BBND"` | STRING                       | -        |
-| sparse_mode              | 属性           | sparse 模式。0：defaultMask（`atten_mask` 传空）；3：rightDownCausal（须传入 $[2048, 2048]$ 的 `atten_mask`） | INT64                        | -        |
-| init_blocks              | 属性           | $local\_mask$ 强制选中的头部 block 数。对逻辑 block $[0, init\_blocks)$ 写入高分 $1\mathrm{e}30$。可选，默认 $0$ | INT64                        | -        |
-| local_blocks             | 属性           | $local\_mask$ 强制选中的局部窗口长度。窗口为 $[max(0, start\_loc+1-local\_blocks), start\_loc]$，写入高分 $1\mathrm{e}29$（覆盖同位置的 `init_blocks`）。可选，默认 $1$（对齐 MiniMax HF）；与 Triton raw score 对齐时置 $0$ | INT64                        | -        |
-| score                    | 输出           | 公式中的 $score$，逐 block 重要性分数；shape 为 $[N1, T1, RoundUp(maxBlockNumPerSeq, 16)]$ | FLOAT                        | ND       |
+<table style="undefined;table-layout: fixed; width: 1280px"><colgroup>
+<col style="width: 160px">
+<col style="width: 120px">
+<col style="width: 560px">
+<col style="width: 320px">
+<col style="width: 120px">
+</colgroup>
+<thead>
+  <tr>
+    <th>参数名</th>
+    <th>输入/输出/属性</th>
+    <th>描述</th>
+    <th>数据类型</th>
+    <th>数据格式</th>
+  </tr>
+</thead>
+<tbody>
+  <tr>
+    <td>query</td>
+    <td>输入</td>
+    <td>公式中的 $Q_{idx}$。当前仅支持 TND，shape 为 $[T1, N1, D]$。</td>
+    <td>BFLOAT16、FLOAT16、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>key</td>
+    <td>输入</td>
+    <td>公式中的 $K_{idx}$。支持 TND（$[T2, N2, D]$）、BNBD（$[block\_num, N2, block\_size, D]$）、BBND（$[block\_num, block\_size, N2, D]$）。</td>
+    <td>BFLOAT16、FLOAT16、INT8、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN</td>
+    <td>ND、NZ</td>
+  </tr>
+  <tr>
+    <td>block_table</td>
+    <td>可选输入</td>
+    <td>PageAttention 的逻辑 block → 物理 page 映射表。PA 场景必须传入，二维，第二维长度不能小于 $maxBlockNumPerSeq$；shape 为 $[B, S2/block\_size]$。</td>
+    <td>INT32</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>scale</td>
+    <td>可选输入</td>
+    <td>公式中的 $scale$，反量化系数。非量化必须为空；量化场景必选。PA 为 $[block\_num, N2, block\_size]$ 或 $[block\_num, block\_size, N2]$；TND 为 $[T2, N2]$。</td>
+    <td>FLOAT</td>
+    <td>ND、NZ</td>
+  </tr>
+  <tr>
+    <td>atten_mask</td>
+    <td>可选输入</td>
+    <td>控制因果可见的 mask。仅在 <code>sparse_mode=3</code> 时使用；取值为 1 表示该位不参与计算，为 0 表示参与计算；shape 为 $[2048, 2048]$。</td>
+    <td>INT8</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>actual_seq_qlen</td>
+    <td>可选输入</td>
+    <td>每个 Batch 中 Query 的有效 token 数。query 为 TND 时必须传入，单调不减（前缀和），shape 为 $[B+1]$。</td>
+    <td>INT32</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>actual_seq_klen</td>
+    <td>可选输入</td>
+    <td>每个 Batch 中 Key 的有效 token 数。key 为 TND 时必须传入（前缀和）；PageAttention 场景下为各请求可见 $S2$，shape 为 $[B]$。</td>
+    <td>INT32</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>start_loc</td>
+    <td>输入</td>
+    <td>当前 query 所在逻辑 block 索引（非 token 前缀），用于生成 $local\_mask$；shape 为 $[B]$。</td>
+    <td>INT32</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>layout_key</td>
+    <td>属性</td>
+    <td>key 布局。<code>"TND"</code> / <code>"BBND"</code> / <code>"BNBD"</code>。aclnn 参数名为 <code>layoutKeyOptional</code>，不传时默认 <code>"BBND"</code>。</td>
+    <td>STRING</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>sparse_mode</td>
+    <td>属性</td>
+    <td>sparse 模式。0：defaultMask（<code>atten_mask</code> 传空）；3：rightDownCausal（须传入 $[2048, 2048]$ 的 <code>atten_mask</code>）。</td>
+    <td>INT64</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>init_blocks</td>
+    <td>属性</td>
+    <td>$local\_mask$ 强制选中的头部 block 数。对逻辑 block $[0, init\_blocks)$ 写入高分 $1\mathrm{e}30$。可选，默认 $0$。</td>
+    <td>INT64</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>local_blocks</td>
+    <td>属性</td>
+    <td>$local\_mask$ 强制选中的局部窗口长度。窗口为 $[max(0, start\_loc+1-local\_blocks), start\_loc]$，写入高分 $1\mathrm{e}29$（覆盖同位置的 <code>init_blocks</code>）。可选，默认 $1$（对齐 MiniMax HF）；与 Triton raw score 对齐时置 $0$。</td>
+    <td>INT64</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>score</td>
+    <td>输出</td>
+    <td>公式中的 $score$，逐 block 重要性分数；shape 为 $[N1, T1, RoundUp(maxBlockNumPerSeq, 16)]$</td>
+    <td>FLOAT</td>
+    <td>ND</td>
+  </tr>
+</tbody>
+</table>
 
 ## 约束说明
 
@@ -75,12 +170,41 @@
 
 ## 调用示例
 
-| 调用方式 | 样例代码 | 说明 |
-|----------|----------|------|
-| aclnn 单算子调用 | [test_aclnn_msa_index_score.cpp](./examples/test_aclnn_msa_index_score.cpp) | 内置 CPU golden 的端到端精度自验证 |
-| 接口文档 | [aclnnMsaIndexScore.md](./docs/aclnnMsaIndexScore.md) | 两段式接口说明 |
-| 测试说明 | [tests/README.md](./tests/README.md) | 用例矩阵与运行方式 |
-| PyTorch API | - | 通过[msa_index_score](../../attention/msa_index_score/docs/torchapi_msa_index_score.md)接口调用msa_index_score算子。 |
+<table style="undefined;table-layout: fixed; width: 1100px"><colgroup>
+<col style="width: 180px">
+<col style="width: 400px">
+<col style="width: 520px">
+</colgroup>
+<thead>
+  <tr>
+    <th>调用方式</th>
+    <th>样例代码</th>
+    <th>说明</th>
+  </tr>
+</thead>
+<tbody>
+  <tr>
+    <td>aclnn 单算子调用</td>
+    <td><a href="./examples/test_aclnn_msa_index_score.cpp">test_aclnn_msa_index_score.cpp</a></td>
+    <td>内置 CPU golden 的端到端精度自验证</td>
+  </tr>
+  <tr>
+    <td>接口文档</td>
+    <td><a href="./docs/aclnnMsaIndexScore.md">aclnnMsaIndexScore.md</a></td>
+    <td>两段式接口说明</td>
+  </tr>
+  <tr>
+    <td>测试说明</td>
+    <td><a href="./tests/README.md">tests/README.md</a></td>
+    <td>用例矩阵与运行方式</td>
+  </tr>
+  <tr>
+    <td>PyTorch API</td>
+    <td>-</td>
+    <td>通过<a href="./docs/torchapi_msa_index_score.md">msa_index_score</a>接口调用msa_index_score算子。</td>
+  </tr>
+</tbody>
+</table>
 
 编译与运行（Ascend 950，x86 包名为 `linux-x86_64.run`；A2/A3 将 `--soc` 换成对应平台）：
 
@@ -102,7 +226,7 @@ bash build.sh --run_example msa_index_score eager cust --vendor_name=custom --so
 # 容差：fp16/bf16/int8 1e-3，FP8 2e-2
 ```
 
-torch_extension 见 [msa_index_score.md](../../torch_extension/cann_ops_transformer/docs/zh/msa_index_score.md)。`cann/set_env.sh` 会把 cann 自带 `site-packages` 插到 `PYTHONPATH` 前面，必须把本仓 `torch_extension` 再插回最前。
+torch_extension 见 [msa_index_score.md](./docs/torchapi_msa_index_score.md)。`cann/set_env.sh` 会把 cann 自带 `site-packages` 插到 `PYTHONPATH` 前面，必须把本仓 `torch_extension` 再插回最前。
 
 > **实现备注（A2/A3 / Ascend 950）**
 >
