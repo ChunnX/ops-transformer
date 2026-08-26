@@ -395,11 +395,6 @@ private:
         RegTensor<fp8_e4m3fn_t> pVregFP82;
         RegTensor<fp8_e4m3fn_t> pVregFP83;
 
-        RegTensor<fp8_e4m3fn_t> deInterleaveVreg0;
-        RegTensor<fp8_e4m3fn_t> deInterleaveVreg1;
-        RegTensor<fp8_e4m3fn_t> deInterleaveVreg2;
-        RegTensor<fp8_e4m3fn_t> deInterleaveVreg3;
-
         RegTensor<half> sumVreg0;
         RegTensor<half> sumVreg1;
 
@@ -476,19 +471,15 @@ private:
             Or((RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP81, maskReg8All);
             Or((RegTensor<uint8_t> &)pVregFP82, (RegTensor<uint8_t> &)pVregFP82, (RegTensor<uint8_t> &)pVregFP83, maskReg8All);
 
-            DeInterleave<uint8_t>((RegTensor<uint8_t> &)deInterleaveVreg0,
-                                  (RegTensor<uint8_t> &)deInterleaveVreg1,
-                                  (RegTensor<uint8_t> &)pVregFP80,
-                                  (RegTensor<uint8_t> &)pVregFP80);
-            DeInterleave<uint8_t>((RegTensor<uint8_t> &)deInterleaveVreg2,
-                                  (RegTensor<uint8_t> &)deInterleaveVreg3,
-                                  (RegTensor<uint8_t> &)pVregFP82,
-                                  (RegTensor<uint8_t> &)pVregFP82);
+            Pack<uint8_t, uint16_t, HighLowPart::LOWEST>(
+                (RegTensor<uint8_t> &)pVregFP81, (RegTensor<uint16_t> &)pVregFP80);
+            Pack<uint8_t, uint16_t, HighLowPart::LOWEST>(
+                (RegTensor<uint8_t> &)pVregFP83, (RegTensor<uint16_t> &)pVregFP82);
 
             StoreAlign<fp8_e4m3fn_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
-                pUb0, deInterleaveVreg0, mRound + 1, 1, maskReg8VL64);
+                pUb0, pVregFP81, mRound + 1, 1, maskReg8VL64);
             StoreAlign<fp8_e4m3fn_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
-                pUb1, deInterleaveVreg2, mRound + 1, 1, maskReg8VL64);
+                pUb1, pVregFP83, mRound + 1, 1, maskReg8VL64);
 
             if constexpr (mTileNum >= MAlignedTileNum::Zero) {
                 Add(sumVreg0, sumVreg0, pVreg0, maskReg16TailN);
@@ -518,13 +509,11 @@ private:
                 Or((RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP81,
                    maskReg8All);
 
-                DeInterleave<uint8_t>((RegTensor<uint8_t> &)deInterleaveVreg0,
-                                      (RegTensor<uint8_t> &)deInterleaveVreg1,
-                                      (RegTensor<uint8_t> &)pVregFP80,
-                                      (RegTensor<uint8_t> &)pVregFP80);
+                Pack<uint8_t, uint16_t, HighLowPart::LOWEST>(
+                    (RegTensor<uint8_t> &)pVregFP81, (RegTensor<uint16_t> &)pVregFP80);
 
                 StoreAlign<fp8_e4m3fn_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
-                    pUb0, deInterleaveVreg0, mRound + 1, 1, maskReg8VL64);
+                    pUb0, pVregFP81, mRound + 1, 1, maskReg8VL64);
 
                 if constexpr (mTileNum > MAlignedTileNum::Zero) {
                     Add(sumVreg0, sumVreg0, pVreg0, maskReg16TailN);
