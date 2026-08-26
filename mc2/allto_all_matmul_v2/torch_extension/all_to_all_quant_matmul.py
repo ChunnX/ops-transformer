@@ -13,7 +13,7 @@ import torch
 from torch.library import impl
 from torch_npu.utils._error_code import ErrCode, ops_error
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
-from .comm_channel_builder_manager import CommChannelBuilderManager
+from cann_ops_transformer.common.comm_channel_builder_manager import CommChannelBuilderManager
 
 
 _ACL_DTYPE_TO_TORCH_DTYPE = {
