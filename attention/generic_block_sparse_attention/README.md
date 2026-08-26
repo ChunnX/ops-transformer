@@ -196,7 +196,7 @@ KV方向: ceil(1024/128)=8块 [0, 1, 2, 3, 4, 5, 6, 7]
 8. winLeft和winRight当前只支持-1。
 9. quantType当前支持0；Ascend 950上可选5；quantType为1~4当前不支持。
 10. 输入query、key、value的数据类型必须一致；当前支持FLOAT16、BFLOAT16；Ascend 950上另支持FLOAT8_E4M3FN（须quantType=5）。
-11. query输入为BFLOAT16时，softmaxPrecision只能配置为0。
+11. softmaxPrecision：Ascend 950仅支持1；Atlas A2/A3上FLOAT16可配置0或1，BFLOAT16仅支持0。
 
 ## 编译说明
 
