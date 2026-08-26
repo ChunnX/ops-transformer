@@ -103,7 +103,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize(const aclTensor *x,
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnGroupedMatmulSwigluQuantV2,
-                   DFX_IN(x, weight, weightScale, xScale, groupList),
+                   DFX_IN(x, weight, weightScale, weightAssistMatrix, bias, xScale, smoothScale, groupList,
+                          dequantMode, dequantDtype, quantMode, groupListType, tuningConfigOptional),
                    DFX_OUT(output, outputScale));
     CHECK_COND((output != nullptr), ACLNN_ERR_PARAM_INVALID,
                "In op [%s], output must not be nullptr.", GMM_SWIGLU_QUANT_V2_OP_NAME);
@@ -135,7 +136,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                   DFX_IN(x, weight, weightScale, xScale, groupList),
+                   DFX_IN(x, weight, weightScale, weightAssistMatrix, bias, xScale, smoothScale, groupList,
+                          dequantMode, dequantDtype, quantMode, groupListType, tuningConfigOptional),
                    DFX_OUT(output, outputScale));
 
     // weight在该场景下强制绑定StorageFormat 和 ViewFormat 为NZ
