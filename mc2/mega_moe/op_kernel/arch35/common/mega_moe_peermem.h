@@ -67,8 +67,8 @@ HOST_DEVICE int64_t CalcMaskRecvSize(int64_t maskAlignSize, int64_t moeExpertPer
     return Ops::Base::CeilAlign(moeExpertPerRank * epWorldSize * maskSlotSize, ALIGN_512);
 }
 
-// 独立 raw count 表按 [localExpert][sourceRank] 紧凑排列，供接收端一次搬入并做前缀和。
-HOST_DEVICE int64_t CalcCompactCountRecvSize(int64_t moeExpertPerRank, int64_t epWorldSize)
+// 独立 raw count 表按 [localExpert][sourceRank] 排列，供接收端一次搬入并做前缀和。
+HOST_DEVICE int64_t CalcExpertCountRecvSize(int64_t moeExpertPerRank, int64_t epWorldSize)
 {
     return Ops::Base::CeilAlign(moeExpertPerRank * epWorldSize * static_cast<int64_t>(sizeof(int32_t)), ALIGN_512);
 }
@@ -124,14 +124,14 @@ HOST_DEVICE int64_t CalcPeermemLeastSize(const PeermemSizeParams &params)
 {
     int64_t maskAlignSize = CalcDispatchMaskAlignSizeBy(params.numMaxTokensPerRank, params.topK);
     int64_t maskRecvSize = CalcMaskRecvSize(maskAlignSize, params.moeExpertPerRank, params.epWorldSize);
-    int64_t compactCountRecvSize = CalcCompactCountRecvSize(params.moeExpertPerRank, params.epWorldSize);
+    int64_t expertCountRecvSize = CalcExpertCountRecvSize(params.moeExpertPerRank, params.epWorldSize);
     int64_t tokenScaleBytes =
         CalcQuantTokenScaleBytes(params.h, params.elemsPerByte, params.topK, params.topkWeightsPrefetch);
     int64_t quantTokenScaleSize = Ops::Base::CeilAlign(params.numMaxTokensPerRank * tokenScaleBytes, ALIGN_512);
     int64_t combineTokenBytes = CalcCombineTokenBytes(params.h, params.yDtypeSize, params.isQuantCombine);
     int64_t combineSendSize =
         Ops::Base::CeilAlign(params.numMaxTokensPerRank * params.topK * combineTokenBytes, ALIGN_512);
-    return PEERMEM_DATA_OFFSET + maskRecvSize + compactCountRecvSize + quantTokenScaleSize + combineSendSize;
+    return PEERMEM_DATA_OFFSET + maskRecvSize + expertCountRecvSize + quantTokenScaleSize + combineSendSize;
 }
 
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
@@ -139,7 +139,7 @@ HOST_DEVICE int64_t CalcPeermemLeastSize(const PeermemSizeParams &params)
 struct PeermemInfo {
     GM_ADDR rankSyncInWorldPtr;
     GM_ADDR maskRecvPtr;
-    GM_ADDR compactCountRecvPtr;
+    GM_ADDR expertCountRecvPtr;
     GM_ADDR quantTokenScalePtr;
     GM_ADDR dispatchRecivePtr;
     GM_ADDR dispatchFlagPtr;
@@ -156,9 +156,9 @@ struct PeermemInfo {
             CalcMaskRecvSize(CalcDispatchMaskAlignSize(tilingData), static_cast<int64_t>(tilingData->moeExpertPerRank),
                              static_cast<int64_t>(tilingData->epWorldSize));
 
-        compactCountRecvPtr = base + offset;
-        offset += CalcCompactCountRecvSize(static_cast<int64_t>(tilingData->moeExpertPerRank),
-                                           static_cast<int64_t>(tilingData->epWorldSize));
+        expertCountRecvPtr = base + offset;
+        offset += CalcExpertCountRecvSize(static_cast<int64_t>(tilingData->moeExpertPerRank),
+                                          static_cast<int64_t>(tilingData->epWorldSize));
 
         int64_t tokenScaleBytes =
             CalcQuantTokenScaleBytes(static_cast<int64_t>(tilingData->h), elemsPerByte,

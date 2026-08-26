@@ -22,8 +22,8 @@ struct SendMaskConfig {
     // 单个 (expert, srcRank) win 槽位 = maskAlignSize(mask 位区) + 32B(count 区)，装配时算一次。
     uint32_t maskSlotSize;
     uint64_t maskWinOffset;
-    uint64_t compactCountWinOffset;
-    bool publishCompactCountTable;
+    uint64_t expertCountWinOffset;
+    bool publishExpertCountTable;
     MegaMoeSendMaskBufferConfig bufferConfig;
 };
 
@@ -35,21 +35,21 @@ struct SendMaskConfig {
  * 发送写入的槽位就会与接收方读取的槽位错开。
  */
 __aicore__ inline SendMaskConfig CreateSendMaskConfig(const Params &params, uint32_t aivCoreIdx,
-                                                      bool publishCompactCountTable = false)
+                                                      bool publishExpertCountTable = false)
 {
     uint32_t maskAlignSize = static_cast<uint32_t>(CalcDispatchMaskAlignSize(params.tilingData));
     uint64_t maskWinOffset =
         static_cast<uint64_t>(params.peermemInfo.maskRecvPtr - params.peermemInfo.rankSyncInWorldPtr);
-    uint64_t compactCountWinOffset =
-        static_cast<uint64_t>(params.peermemInfo.compactCountRecvPtr - params.peermemInfo.rankSyncInWorldPtr);
+    uint64_t expertCountWinOffset =
+        static_cast<uint64_t>(params.peermemInfo.expertCountRecvPtr - params.peermemInfo.rankSyncInWorldPtr);
     const MegaMoeSendMaskBufferConfig &bufferConfig = aivCoreIdx < params.tilingData->sendMaskCoreCountWithExtraExpert ?
                                                           params.tilingData->sendMaskConfigForCoreWithExtraExpert :
                                                           params.tilingData->sendMaskConfigForCoreWithoutExtraExpert;
     return {.maskAlignSize = maskAlignSize,
             .maskSlotSize = maskAlignSize + static_cast<uint32_t>(ALIGN_32),
             .maskWinOffset = maskWinOffset,
-            .compactCountWinOffset = compactCountWinOffset,
-            .publishCompactCountTable = publishCompactCountTable,
+            .expertCountWinOffset = expertCountWinOffset,
+            .publishExpertCountTable = publishExpertCountTable,
             .bufferConfig = bufferConfig};
 }
 
@@ -62,10 +62,9 @@ struct SendMaskScratch {
 };
 
 __aicore__ inline void GatherAndSendExpertMaskBatch(const MoeStageCommonConfig &common, GM_ADDR *winRankAddr,
-                                                    const SendMaskConfig &config,
-                                                    SendMaskScratch &scratch, GlobalTensor<int32_t> &topkIdsGm,
-                                                    GlobalTensor<uint8_t> &dstMaskGm, int32_t ownedExpertBegin,
-                                                    int32_t ownedExpertNum, int32_t batchIdx, int32_t &ringIteration)
+                                                    const SendMaskConfig &config, SendMaskScratch &scratch,
+                                                    GlobalTensor<int32_t> &topkIdsGm, GlobalTensor<uint8_t> &dstMaskGm,
+                                                    int32_t ownedExpertBegin, int32_t ownedExpertNum, int32_t batchIdx)
 {
     const MegaMoeSendMaskBufferConfig &bufferConfig = config.bufferConfig;
     uint32_t maskSlotSize = config.maskSlotSize;
@@ -88,8 +87,8 @@ __aicore__ inline void GatherAndSendExpertMaskBatch(const MoeStageCommonConfig &
         if (batchStart / 8 + sliceBytes > static_cast<int32_t>(config.maskAlignSize)) {
             sliceBytes = static_cast<int32_t>(config.maskAlignSize) - batchStart / 8;
         }
-        // 非 layered Wave 路径从独立紧凑表读取 count，mask 尾部只为旧协议保留。
-        pushBytes = sliceBytes + (config.publishCompactCountTable ? 0 : static_cast<int32_t>(sizeof(int32_t)));
+        // 非 layered Wave 路径从独立 count 表读取；mask 尾部 count 仅为 layered 兼容布局保留。
+        pushBytes = sliceBytes + (config.publishExpertCountTable ? 0 : static_cast<int32_t>(sizeof(int32_t)));
     }
 
     SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID1>();
@@ -100,12 +99,13 @@ __aicore__ inline void GatherAndSendExpertMaskBatch(const MoeStageCommonConfig &
     }
     SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
 
-    for (int32_t ownedIdx = 0; ownedIdx < ownedExpertNum; ++ownedIdx, ++ringIteration) {
+    int32_t batchRingBegin = batchIdx * ownedExpertNum;
+    for (int32_t ownedIdx = 0; ownedIdx < ownedExpertNum; ++ownedIdx) {
         int32_t globalExpertId = ownedExpertBegin + ownedIdx;
         int32_t dstRank = globalExpertId / static_cast<int32_t>(common.moeExpertPerRank);
         int32_t localExpertId = globalExpertId % static_cast<int32_t>(common.moeExpertPerRank);
         // 环形槽位按 (batch, ownedExpert) 的全局迭代序推进，与 MTE3_V 事件编号一一对应。
-        int32_t bufferIdx = ringIteration % bufferConfig.bufferCount;
+        int32_t bufferIdx = (batchRingBegin + ownedIdx) % bufferConfig.bufferCount;
         TEventID eventId = static_cast<TEventID>(bufferIdx);
         LocalTensor<uint8_t> maskBuf = scratch.sendMaskTensor[bufferIdx * bufferConfig.bufferBytes];
         LocalTensor<uint32_t> maskBufU32 = maskBuf.template ReinterpretCast<uint32_t>();
@@ -124,7 +124,7 @@ __aicore__ inline void GatherAndSendExpertMaskBatch(const MoeStageCommonConfig &
         int32_t expertMatchedRouteCount =
             scratch.sendCntAccTensor.GetValue(ownedIdx) + static_cast<int32_t>(batchMatchedRouteCount);
         scratch.sendCntAccTensor.SetValue(ownedIdx, expertMatchedRouteCount);
-        if (isLastBatch && !config.publishCompactCountTable) {
+        if (isLastBatch && !config.publishExpertCountTable) {
             maskBuf.template ReinterpretCast<int32_t>().SetValue(sliceBytes / sizeof(int32_t), expertMatchedRouteCount);
         }
         SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
@@ -140,12 +140,12 @@ __aicore__ inline void GatherAndSendExpertMaskBatch(const MoeStageCommonConfig &
     }
 }
 
-// 将本核连续专家区间的 raw count 发布到各目标 rank 的 [localExpert][sourceRank] 紧凑表。
-__aicore__ inline void PublishCompactExpertCounts(const MoeStageCommonConfig &common, GM_ADDR *winRankAddr,
-                                                  const SendMaskConfig &config, const SendMaskScratch &scratch,
-                                                  int32_t ownedExpertBegin, int32_t ownedExpertNum)
+// 将本核连续专家区间的 raw count 发布到各目标 rank 的 [localExpert][sourceRank] 表。
+__aicore__ inline void PublishExpertCounts(const MoeStageCommonConfig &common, GM_ADDR *winRankAddr,
+                                           const SendMaskConfig &config, const SendMaskScratch &scratch,
+                                           int32_t ownedExpertBegin, int32_t ownedExpertNum)
 {
-    if (!config.publishCompactCountTable || ownedExpertNum <= 0) {
+    if (!config.publishExpertCountTable || ownedExpertNum <= 0) {
         return;
     }
 
@@ -164,7 +164,7 @@ __aicore__ inline void PublishCompactExpertCounts(const MoeStageCommonConfig &co
         int32_t segmentExpertCount = ownedExpertNum - ownedOffset;
         segmentExpertCount = segmentExpertCount < remainingInRank ? segmentExpertCount : remainingInRank;
 
-        uint64_t dstOffset = config.compactCountWinOffset +
+        uint64_t dstOffset = config.expertCountWinOffset +
                              static_cast<uint64_t>(localExpertBegin * worldSize + sourceRank) * sizeof(int32_t);
         dstCountGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(winRankAddr[dstRank] + dstOffset));
         DataCopyExtParams countCopyParams{
@@ -224,16 +224,15 @@ __aicore__ inline void GatherAndSendExpertMasks(const AivJobContext &job, const 
         SetFlag<AscendC::HardEvent::MTE3_V>(static_cast<TEventID>(bufIdx));
     }
 
-    int32_t ringIteration = 0;
     for (int32_t batchIdx = 0; batchIdx < bufferConfig.routeBatchCount; ++batchIdx) {
         GatherAndSendExpertMaskBatch(common, winRankAddr, config, scratch, topkIdsGm, dstMaskGm, ownedExpertBegin,
-                                     ownedExpertNum, batchIdx, ringIteration);
+                                     ownedExpertNum, batchIdx);
     }
 
     for (int32_t bufIdx = 0; bufIdx < bufferConfig.bufferCount; ++bufIdx) {
         WaitFlag<AscendC::HardEvent::MTE3_V>(static_cast<TEventID>(bufIdx));
     }
-    PublishCompactExpertCounts(common, winRankAddr, config, scratch, ownedExpertBegin, ownedExpertNum);
+    PublishExpertCounts(common, winRankAddr, config, scratch, ownedExpertBegin, ownedExpertNum);
 }
 
 } // namespace MegaMoeImpl

@@ -1634,7 +1634,7 @@ __aicore__ inline bool MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::UpdateGro
                                           static_cast<uint64_t>(blockIdx_) * INT_CACHELINE;
             while (AscendC::ReadGmByPassDCache(sendCntFlag) == 0) {
                 int64_t st = AscendC::GetSystemCycle();
-                while (AscendC::GetSystemCycle() - st < 100) {
+                while (AscendC::GetSystemCycle() - st < GM_FLAG_POLL_BACKOFF_CYCLES) {
                 }
             }
 
@@ -2495,7 +2495,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
     if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
         RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
                     L1_TILE_M_256, TopkWeightsPrefetch, IsShared, true>(state.problemShape, gmmAddrInfo,
-                                                                       startBlockIdx_);
+                                                                        startBlockIdx_);
     } else {
         // A8W8_NZ / Generic 共用 RunGmm2Generic，仅 LayoutB 不同（ZN/ND）。
         if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
@@ -2656,7 +2656,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
                 static_cast<int64_t>(moeExpertPerRank_) * params_.tilingData->maxTilesPerExpert * INT_CACHELINE;
             while (AscendC::ReadGmByPassDCache(allDoneAddr) != allDoneTag) {
                 int64_t st = AscendC::GetSystemCycle();
-                while (AscendC::GetSystemCycle() - st < 100) {
+                while (AscendC::GetSystemCycle() - st < GM_FLAG_POLL_BACKOFF_CYCLES) {
                 }
             }
         }
