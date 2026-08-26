@@ -27,10 +27,7 @@ extern aclnnStatus aclnnInnerFlashMlaWithKvcacheGetWorkspaceSize(
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
 extern aclnnStatus aclnnInnerFlashMlaWithKvcache(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                       const aclrtStream stream);
-
-void FlashMlaWithKvcacheProcessSoftmaxLse(int64_t returnSoftmaxLse, const aclTensor *softmaxLse, const aclTensor *&tempTensor,
-                                const aclTensor *&placeHolder);
+                                                 const aclrtStream stream);
 
 #ifdef __cplusplus
 }
