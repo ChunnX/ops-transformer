@@ -180,13 +180,13 @@ public:
         if constexpr (FULL_QUANT_FP8) {
             if (mAligned16TileNum == 0) {
                 ComputePAndLocalSumFP8<MAlignedTileNum::Zero>(sUbAddr, pUbAddr, lmUbAddr, llUbAddr, mRound, m,
-                                                              mFirstTile, s2BaseSize, tailN, blockStride, scaleValue);
+                                                              mFirstTile, s2BaseSize, tailN, blockStride);
             } else if (mAligned16TileNum == 1) {
                 ComputePAndLocalSumFP8<MAlignedTileNum::One>(sUbAddr, pUbAddr, lmUbAddr, llUbAddr, mRound, m,
-                                                             mFirstTile, s2BaseSize, tailN, blockStride, scaleValue);
+                                                             mFirstTile, s2BaseSize, tailN, blockStride);
             } else {
                 ComputePAndLocalSumFP8<MAlignedTileNum::Two>(sUbAddr, pUbAddr, lmUbAddr, llUbAddr, mRound, m,
-                                                             mFirstTile, s2BaseSize, tailN, blockStride, scaleValue);
+                                                             mFirstTile, s2BaseSize, tailN, blockStride);
             }
         } else {
             if (mAligned16TileNum == 0) {
@@ -398,7 +398,9 @@ private:
             Max(maxVreg0, maxVreg0, sVreg4, maskReg16TailN);
         }
     
-        Muls(maxVreg0, maxVreg0, scaleValue, maskReg16TailN);
+        if constexpr (!FULL_QUANT_FP8) {
+            Muls(maxVreg0, maxVreg0, scaleValue, maskReg16TailN);
+        }
         StoreAlign<half, StoreDist::DIST_NORM_B16>(lmUb, maxVreg0, maskReg16TailN);
     }
 
@@ -512,8 +514,7 @@ private:
     template <MAlignedTileNum mTileNum>
     __simd_vf__ inline void ComputePAndLocalSumFP8(__ubuf__ half *sUb, __ubuf__ ElementOutput *pUb, __ubuf__ half *lmUb,
                                                 __ubuf__ half *llUb, uint16_t mRound, uint16_t m, uint32_t mFirstTile,
-                                                uint16_t s2BaseSize, uint32_t tailN, uint32_t blockStride,
-                                                half scaleValue)
+                                                uint16_t s2BaseSize, uint32_t tailN, uint32_t blockStride)
     {
         using namespace AscendC::MicroAPI;
 
@@ -594,9 +595,6 @@ private:
             LoadAlign(sVreg0, sUb + i * s2BaseSize);
             LoadAlign(sVreg1, sUb + mRound * s2BaseSize / 2 + i * s2BaseSize);
 
-            Muls(sVreg0, sVreg0, scaleValue, maskReg16TailN);
-            Muls(sVreg1, sVreg1, scaleValue, maskReg16TailN);
-
             Sub(sVreg0, sVreg0, hmVreg, maskReg16TailN);
             Sub(sVreg1, sVreg1, hmVreg, maskReg16TailN);
 
@@ -637,8 +635,6 @@ private:
         if constexpr (mTileNum < MAlignedTileNum::Two) {
             for (uint16_t i = mFirstTile; i < mRound / 2; i++) {
                 LoadAlign(sVreg0, sUb + i * s2BaseSize);
-
-                Muls(sVreg0, sVreg0, scaleValue, maskReg16TailN);
 
                 Sub(sVreg0, sVreg0, hmVreg, maskReg16TailN);
 

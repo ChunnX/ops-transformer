@@ -173,13 +173,13 @@ public:
         if constexpr (FULL_QUANT_FP8) {
             if (mAligned16TileNum == 0) {
                 ComputePAndLocalSumFP8<MAlignedTileNum::Zero>(sUbAddr, pUbAddr, lmUbAddr, llUbAddr, mRound, m,
-                                                              mFirstTile, s2BaseSize, tailN, blockStride, scaleValue);
+                                                              mFirstTile, s2BaseSize, tailN, blockStride);
             } else if (mAligned16TileNum == 1) {
                 ComputePAndLocalSumFP8<MAlignedTileNum::One>(sUbAddr, pUbAddr, lmUbAddr, llUbAddr, mRound, m,
-                                                             mFirstTile, s2BaseSize, tailN, blockStride, scaleValue);
+                                                             mFirstTile, s2BaseSize, tailN, blockStride);
             } else {
                 ComputePAndLocalSumFP8<MAlignedTileNum::Two>(sUbAddr, pUbAddr, lmUbAddr, llUbAddr, mRound, m,
-                                                             mFirstTile, s2BaseSize, tailN, blockStride, scaleValue);
+                                                             mFirstTile, s2BaseSize, tailN, blockStride);
             }
         } else {
             if (mAligned16TileNum == 0) {
@@ -372,7 +372,9 @@ private:
         Duplicate(maxVreg1, MIN_VALUE);
         Duplicate(maxVreg2, MIN_VALUE);
         Duplicate(maxVreg3, MIN_VALUE);
-        Duplicate(scaleValueVreg, scaleValue);
+        if constexpr (!FULL_QUANT_FP8) {
+            Duplicate(scaleValueVreg, scaleValue);
+        }
 
         for (uint16_t i = 0; i < m / 4; i++) {
             LoadAlign(sVreg0, sUb0 + i * s2BaseSize * 4);
@@ -393,7 +395,9 @@ private:
             Max(maxVreg0, maxVreg0, sVreg4, maskReg16TailN);
         }
 
-        Mul(maxVreg0, maxVreg0, scaleValueVreg, maskReg16TailN);
+        if constexpr (!FULL_QUANT_FP8) {
+            Mul(maxVreg0, maxVreg0, scaleValueVreg, maskReg16TailN);
+        }
         Interleave(maxVreg1, maxVreg2, maxVreg0, maxVreg0);
         Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(maxVregFloat, maxVreg1, maskReg16All);
 
@@ -572,14 +576,12 @@ private:
     __simd_vf__ inline void ComputePAndLocalSumFP8(__ubuf__ bfloat16_t *sUb, __ubuf__ ElementOutput *pUb,
                                                    __ubuf__ float *lmUb, __ubuf__ float *llUb, uint16_t mRound,
                                                    uint16_t m, uint32_t mFirstTile, uint16_t s2BaseSize, uint32_t tailN,
-                                                   uint32_t blockStride, bfloat16_t scaleValue)
+                                                   uint32_t blockStride)
     {
         using namespace AscendC::MicroAPI;
 
         RegTensor<bfloat16_t> sVreg0;
         RegTensor<bfloat16_t> sVreg1;
-
-        RegTensor<bfloat16_t> scaleValueVreg;
 
         RegTensor<bfloat16_t> pVreg0;
         RegTensor<bfloat16_t> pVreg1;
@@ -617,8 +619,6 @@ private:
 
         Duplicate(sumVreg0, 0);
         Duplicate(sumVreg1, 0);
-        Duplicate(scaleValueVreg, scaleValue);
-
         uint32_t anotherTailN = tailN;
         MaskReg maskReg8VL64 = CreateMask<uint8_t, MaskPattern::VL64>();
         MaskReg maskReg8All = CreateMask<uint8_t, MaskPattern::ALL>();
@@ -666,9 +666,6 @@ private:
             LoadAlign(sVreg0, sUb + i * s2BaseSize);
             LoadAlign(sVreg1, sUb + mRound * s2BaseSize / 2 + i * s2BaseSize);
 
-            Mul(sVreg0, sVreg0, scaleValueVreg, maskReg16TailN);
-            Mul(sVreg1, sVreg1, scaleValueVreg, maskReg16TailN);
-
             Interleave(interleaveVreg0, interleaveVreg1, sVreg0, sVreg0);
             Interleave(interleaveVreg2, interleaveVreg3, sVreg1, sVreg1);
 
@@ -706,8 +703,6 @@ private:
         if constexpr (mTileNum < MAlignedTileNum::Two) {
             for (uint16_t i = mFirstTile; i < mRound / 2; i++) {
                 LoadAlign(sVreg0, sUb + i * s2BaseSize);
-
-                Mul(sVreg0, sVreg0, scaleValueVreg, maskReg16TailN);
 
                 Interleave(interleaveVreg0, interleaveVreg1, sVreg0, sVreg0);
 
