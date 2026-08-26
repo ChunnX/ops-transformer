@@ -9,14 +9,14 @@
 # -----------------------------------------------------------------------------------------------------------
 import torch
 
-from cann_ops_transformer.ops.attn_res_fwd import attn_res_fwd
+from cann_ops_transformer.ops.block_attention_residuals import block_attention_residuals
 from cann_ops_transformer.ops.attention_res_grad import attention_res_grad
 
 
 class AttnResFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, prefix_sum, block_residual, proj_weight, norm_weight, norm_eps):
-        hidden, inv_rms, probs = attn_res_fwd(
+        hidden, inv_rms, probs = block_attention_residuals(
             prefix_sum, block_residual, proj_weight, norm_weight,
             norm_eps=norm_eps, need_backward=True)
         ctx.save_for_backward(prefix_sum, block_residual, proj_weight, norm_weight, inv_rms, probs)
@@ -34,7 +34,7 @@ class AttnResFunction(torch.autograd.Function):
 def attn_res(prefix_sum, block_residual, proj_weight, norm_weight, norm_eps=1e-5):
     """Attention Residual 加权融合前向 + 反向（autograd 绑定，参考 mhc_post）。
 
-    输入需可微时返回可微算子（forward=attn_res_fwd，backward=attention_res_grad）；
+    输入需可微时返回可微算子（forward=block_attention_residuals，backward=attention_res_grad）；
     否则仅执行正向返回 hidden_states。
     """
     needs_grad = (
@@ -47,7 +47,7 @@ def attn_res(prefix_sum, block_residual, proj_weight, norm_weight, norm_eps=1e-5
     if needs_grad:
         return AttnResFunction.apply(prefix_sum, block_residual, proj_weight, norm_weight, norm_eps)
 
-    hidden = attn_res_fwd(
+    hidden = block_attention_residuals(
         prefix_sum, block_residual, proj_weight, norm_weight,
         norm_eps=norm_eps, need_backward=False)
     return hidden

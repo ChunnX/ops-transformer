@@ -56,7 +56,7 @@ def _attention_res_grad_dispatch(prefix_sum, block_residual, proj_weight, norm_w
 def attention_res_grad(prefix_sum, block_residual, proj_weight, norm_weight, grad_output, inv_rms, probs):
     """Attention Residual 加权融合反向（Eager / PrivateUse1）。
 
-    输入为 attn_res_fwd(need_backward=True) 的中间结果与 grad_output：
+    输入为 block_attention_residuals(need_backward=True) 的中间结果与 grad_output：
       prefix_sum [B, H], block_residual [B, N, H], proj_weight [1, H], norm_weight [H],
       grad_output [B, H], inv_rms [B, N+1], probs [B, N+1]
     返回 (grad_prefix_sum, grad_block_residual, grad_proj_weight, grad_norm_weight)，dtype 与输入一致。

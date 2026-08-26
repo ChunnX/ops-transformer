@@ -33,7 +33,7 @@
 namespace NsAttentionResGrad {
 using namespace AscendC;
 
-// ---- half-interval reduce，参照 attn_res_fwd/op_kernel/arch22/reduce_common.h ----
+// ---- half-interval reduce，参照 block_attention_residuals/op_kernel/arch22/reduce_common.h ----
 // src 就地 half-interval fold 后 WholeReduceSum 归约到独立 dst[0]；无 sharedTmpBuffer。
 constexpr uint32_t ARG_ELEM_PER_REP_FP32 = 64;
 constexpr int32_t ARG_HALF_INTERVAL = 2;
