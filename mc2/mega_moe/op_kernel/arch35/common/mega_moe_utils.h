@@ -110,9 +110,9 @@ __aicore__ inline uint32_t GetMGroupCountForRows(uint64_t rowCount, uint32_t row
     return static_cast<uint32_t>((rowCount - 1U) / rowsPerMGroup + 1U);
 }
 
-// AIC 未拥有当前冷专家切片的任何 tile 时，只推进 rolling 游标，跳过地址和 scheduler 构造。
-__aicore__ inline bool SkipUnownedWaveAicProblem(uint32_t problemTileCount, const BlockJobContext &blockJob,
-                                                 uint32_t &startBlockIdx)
+// AIC 未拥有当前冷专家切片的任何 tile 时，推进 rolling 游标并返回 true。
+__aicore__ inline bool AdvanceIfWaveProblemUnowned(uint32_t problemTileCount, const BlockJobContext &blockJob,
+                                                   uint32_t &startBlockIdx)
 {
     if constexpr (g_coreType == AIC) {
         if (problemTileCount < blockJob.totalJobs) {
@@ -247,11 +247,11 @@ __aicore__ inline void TilingByCore(int32_t totalLen, int32_t &coreLen, int32_t 
 // 普通路径沿用 [expert][block] 的 32B 槽；Wave 一次发布完整表后使用
 // [block][expert] 连续布局，减少逐专家元数据同步。
 __aicore__ inline uint64_t GetExpertCountWorkspaceOffset(const BlockWorkspaceContext &workspace, uint32_t expertCount,
-                                                         uint32_t expertIdx, bool useCompactLayout)
+                                                         uint32_t expertIdx, bool useBlockMajorLayout)
 {
-    if (useCompactLayout) {
-        uint32_t compactStride = Ops::Base::CeilAlign(expertCount, static_cast<uint32_t>(INT_CACHELINE));
-        return static_cast<uint64_t>(workspace.blockIdx) * compactStride + expertIdx;
+    if (useBlockMajorLayout) {
+        uint32_t blockMajorStride = Ops::Base::CeilAlign(expertCount, static_cast<uint32_t>(INT_CACHELINE));
+        return static_cast<uint64_t>(workspace.blockIdx) * blockMajorStride + expertIdx;
     }
     return static_cast<uint64_t>(expertIdx) * INT32_PER_256B * workspace.blockNum +
            static_cast<uint64_t>(INT32_PER_256B) * workspace.blockIdx;
@@ -319,7 +319,7 @@ __aicore__ inline ExpertLoopState CreateExpertLoopState(const MoeStageCommonConf
     return state;
 }
 
-// 按专家顺序推进紧凑 token 行偏移，并用当前专家的 token 数更新 M 维度。
+// 按专家顺序推进连续 token 行偏移，并用当前专家的 token 数更新 M 维度。
 __aicore__ inline void UpdateExpertLoopState(ExpertLoopState &state, uint32_t expertIdx, uint64_t expertTokenCount)
 {
     if (expertIdx != state.expertIdx) {
@@ -327,20 +327,6 @@ __aicore__ inline void UpdateExpertLoopState(ExpertLoopState &state, uint32_t ex
     }
     state.expertIdx = expertIdx;
     Get<M_VALUE>(state.problemShape) = static_cast<int64_t>(expertTokenCount);
-}
-
-// 从当前 expert/block 的 count 槽读取 token 数后更新专家遍历状态。
-__aicore__ inline bool UpdateExpertLoopStateFromWorkspace(const WorkspaceInfo &workspace,
-                                                          const BlockWorkspaceContext &countWorkspace,
-                                                          ExpertLoopState &state, uint32_t expertIdx,
-                                                          bool useCompactLayout = false, uint32_t expertCount = 0U)
-{
-    uint64_t countOffset = GetExpertCountWorkspaceOffset(countWorkspace, expertCount, expertIdx, useCompactLayout);
-    __gm__ int32_t *expertTokenCountAddr =
-        reinterpret_cast<__gm__ int32_t *>(workspace.expertRevTokenNumsPtr) + countOffset;
-    uint32_t expertTokenCount = static_cast<uint32_t>(AscendC::ReadGmByPassDCache(expertTokenCountAddr));
-    UpdateExpertLoopState(state, expertIdx, expertTokenCount);
-    return expertTokenCount != 0U;
 }
 
 // 按当前 Wave 的剩余容量推进专家 token 位置，返回本次推进覆盖的 token 数。
@@ -385,10 +371,10 @@ __aicore__ inline void WaitForMoeExpertTokenCountReady(GM_ADDR tokenCountReadyFl
     WaitUntilGmFlagIsNonZero(tokenCountReadyFlag);
 }
 
-// 从当前 block 的紧凑 [block][expert] workspace 行读取专家 token 数。
-__aicore__ inline uint32_t GetCompactExpertTokenCountFromWorkspace(GM_ADDR expertTokenCountWorkspace,
-                                                                   const BlockWorkspaceContext &countWorkspace,
-                                                                   uint32_t expertCount, uint32_t expertIdx)
+// 从当前 block 的 [block][expert] workspace 行读取专家 token 数。
+__aicore__ inline uint32_t GetExpertTokenCountFromWorkspace(GM_ADDR expertTokenCountWorkspace,
+                                                            const BlockWorkspaceContext &countWorkspace,
+                                                            uint32_t expertCount, uint32_t expertIdx)
 {
     uint64_t countSlotIndex = GetExpertCountWorkspaceOffset(countWorkspace, expertCount, expertIdx, true);
     __gm__ int32_t *expertTokenCountAddr =

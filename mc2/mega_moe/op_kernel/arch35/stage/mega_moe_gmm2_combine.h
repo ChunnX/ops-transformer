@@ -93,13 +93,13 @@ __aicore__ inline void SendCombineTokenRow(uint32_t rowElements, uint64_t gmRemo
 {
     CombineTokenRoute route = LoadCombineTokenRoute(metaInfoTensor, 0U);
 
-    AscendC::GlobalTensor<Element> gmRemoteD;
+    GlobalTensor<Element> gmRemoteD;
     gmRemoteD.SetGlobalBuffer(
         reinterpret_cast<__gm__ Element *>(GetRankWinAddrWithOffset(route.dstRankId, gmRemoteBaseOffset)));
     uint64_t gmDstRowOffset = GetCombineDstRowIndex(route, params) * rowElements;
 
-    AscendC::DataCopyExtParams ub2GmParams{1U, static_cast<uint32_t>(rowElements * sizeof(Element)), 0U, 0U, 0U};
-    AscendC::DataCopyPad(gmRemoteD[gmDstRowOffset], rowTensor, ub2GmParams);
+    DataCopyExtParams ub2GmParams{1U, static_cast<uint32_t>(rowElements * sizeof(Element)), 0U, 0U, 0U};
+    DataCopyPad(gmRemoteD[gmDstRowOffset], rowTensor, ub2GmParams);
 }
 
 // 通过本地 MTE 路径或远端 URMA 路径发送一个 layered 模板 token。
