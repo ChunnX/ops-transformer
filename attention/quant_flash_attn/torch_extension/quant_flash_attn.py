@@ -427,18 +427,18 @@ def quant_flash_attn(
     mask_mode = _resolve_mask_mode(mask_mode)
 
     if quant_mode == int(QuantMode.A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16):
-        torch._check(
-            q.dtype == torch.uint8,
-            lambda: f"In MxFP4 mode (quant_mode=5), q must be uint8, but got {q.dtype}",
-        )
-        torch._check(
-            k.dtype == torch.uint8,
-            lambda: f"In MxFP4 mode (quant_mode=5), k must be uint8, but got {k.dtype}",
-        )
-        torch._check(
-            v.dtype == torch.uint8,
-            lambda: f"In MxFP4 mode (quant_mode=5), v must be uint8, but got {v.dtype}",
-        )
+        if q.dtype != torch.uint8:
+            raise ValueError(
+                f"In MxFP4 mode (quant_mode=5), q must be uint8, but got {q.dtype}"
+            )
+        if k.dtype != torch.uint8:
+            raise ValueError(
+                f"In MxFP4 mode (quant_mode=5), k must be uint8, but got {k.dtype}"
+            )
+        if v.dtype != torch.uint8:
+            raise ValueError(
+                f"In MxFP4 mode (quant_mode=5), v must be uint8, but got {v.dtype}"
+            )
 
     op_module = quant_flash_attn_op_builder.load()
     return op_module.quant_flash_attn(
