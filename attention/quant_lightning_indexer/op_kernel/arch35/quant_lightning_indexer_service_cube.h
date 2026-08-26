@@ -57,8 +57,8 @@ public:
     // SCALAR issues both blocks' LoadData + Set in one batch (no intervening Wait),
     // then CUBE consumes the two Waits back-to-back. MTE1 loads both blocks
     // concurrently (~94ns each, 188ns total vs 2×(94+wait overhead) serial).
-    static constexpr uint32_t MTE1_M_SLOT0 = EVENT_ID4;   // MTE1→M: slot 0 data ready
-    static constexpr uint32_t MTE1_M_SLOT1 = EVENT_ID6;   // MTE1→M: slot 1 data ready
+    static constexpr uint32_t MTE1_M_SLOT0 = EVENT_ID0;  // FIX: id4/6 collide with KEY/QUERY MTE1 events   // MTE1→M: slot 0 data ready
+    static constexpr uint32_t MTE1_M_SLOT1 = EVENT_ID1;  // FIX: use free 0/1 ids on MTE1->M channel   // MTE1→M: slot 1 data ready
 
     static constexpr uint64_t M_BASIC_BLOCK = 256;
     static constexpr uint64_t D_BASIC_BLOCK = 128;
@@ -366,7 +366,13 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
                             ComputeL0c(s1gL0RealSize, S2_BASIC_BLOCK_L0, runInfo);
                             SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + db5SlotB);
 
-                            // --- prefetch next pair block A, THEN Fixp(A) ---
+                            // --- Fixp(A) FIRST (queue Fixpipe before any prefetch issue), then prefetch A' ---
+l0BufIdx_ = db5Base + db5SlotA;
+                            Fixp(s1gGmOffset + s1gOffset, (s2L1Offset - l1S2Offset),
+                                 s1gL0RealSize, S2_BASIC_BLOCK_L0, runInfo);
+                            SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + db5SlotA);
+
+                                                        // --- prefetch next pair block A (overlaps Fixpipe A execution) ---
                             uint64_t db5NextPair = s2L1Offset + 2 * S2_BASIC_BLOCK_L0;
                             bool db5NextDual = (constInfo_.tSize > 64) &&
                                 (s1gL0RealSize == constInfo_.mBaseSize) &&
@@ -380,12 +386,13 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
                                 SetFlag<HardEvent::MTE1_M>(db5EvA);
                             }
 
-                            l0BufIdx_ = db5Base + db5SlotA;
-                            Fixp(s1gGmOffset + s1gOffset, (s2L1Offset - l1S2Offset),
+                                                        // --- Fixp(B) first, then prefetch B' ---
+l0BufIdx_ = db5Base + db5SlotB;
+                            Fixp(s1gGmOffset + s1gOffset, (db4NextS2L1 - l1S2Offset),
                                  s1gL0RealSize, S2_BASIC_BLOCK_L0, runInfo);
-                            SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + db5SlotA);
+                            SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + db5SlotB);
 
-                            // --- prefetch next pair block B, THEN Fixp(B) ---
+                            // --- prefetch next pair block B (overlaps Fixpipe B execution) ---
                             if (db5NextDual) {
                                 l0BufIdx_ = db5Base + db5SlotB;
                                 WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + db5SlotB);
@@ -394,12 +401,7 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
                                 SetFlag<HardEvent::MTE1_M>(db5EvB);
                             }
 
-                            l0BufIdx_ = db5Base + db5SlotB;
-                            Fixp(s1gGmOffset + s1gOffset, (db4NextS2L1 - l1S2Offset),
-                                 s1gL0RealSize, S2_BASIC_BLOCK_L0, runInfo);
-                            SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + db5SlotB);
-
-                            db5Prefetched = db5NextDual;
+                                                        db5Prefetched = db5NextDual;
                             l0BufIdx_ = db5Keep + 2;
 
                             // Skip next s2L1Offset iteration (consumed both blocks)
@@ -612,6 +614,7 @@ __aicore__ inline void QLIMatmul<QLIT>::Fixp(uint64_t s1gGmOffset, uint64_t s2Gm
     Fixpipe<QK_T, QK_T, QLI_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * constInfo_.s2BaseSize / 2],
                                                 cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], fixpipeParams);
 }
+
 
 template <typename QLIT>
 __aicore__ inline void QLIMatmul<QLIT>::AllocEventID()
