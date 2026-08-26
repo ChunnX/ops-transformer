@@ -10,4 +10,10 @@
 
 if(UT_TEST_ALL OR OP_HOST_UT)
     add_modules_ut_sources(UT_NAME ${OP_TILING_MODULE_NAME} MODE PRIVATE DIR ${CMAKE_CURRENT_SOURCE_DIR})
+    include(${CMAKE_CURRENT_SOURCE_DIR}/../../../../../lightning_indexer_v2/op_host/checkers/checker_sources.cmake)
+    add_indexer_v2_common_checker_sources(${OP_TILING_MODULE_NAME}_cases_obj)
+    target_sources(${OP_TILING_MODULE_NAME}_cases_obj PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../op_host/checkers/qliv2_checker.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../op_host/checkers/quant_checker.cpp
+    )
 endif()
