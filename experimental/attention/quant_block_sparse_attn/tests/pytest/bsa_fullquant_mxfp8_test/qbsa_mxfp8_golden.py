@@ -1541,15 +1541,31 @@ def _qk_matmul_cpu(q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax
         q_grouped.permute(1, 0, 2),
         k_grouped.permute(1, 2, 0),
     ).permute(1, 2, 0)
-    group_scale = q_scale_block[..., :group_count].view(
+    # Q/K descales are exact powers of two.  Applying each group scale before
+    # the D-group reduction can make opposite-sign partials overflow to
+    # +Inf/-Inf and then collapse to NaN, even when the complete dot product
+    # has a well-defined sign.  Cube keeps enough range to resolve that sign.
+    # Factor out the largest shared power of two, reduce finite normalized
+    # partials, and restore the common exponent only once after the reduction.
+    q_scale_exp = torch.round(
+        torch.log2(q_scale_block[..., :group_count])
+    ).to(torch.int32)
+    k_scale_exp = torch.round(
+        torch.log2(k_scale_mat[..., :group_count])
+    ).to(torch.int32)
+    group_scale_exp = q_scale_exp.view(
         -1, 1, group_count
-    ) * k_scale_mat[..., :group_count].view(1, -1, group_count)
-    scaled_group_dot = torch.where(
-        group_dot == 0,
-        torch.zeros_like(group_dot),
-        group_dot * group_scale,
+    ) + k_scale_exp.view(1, -1, group_count)
+    common_scale_exp = group_scale_exp.max(dim=-1, keepdim=True).values
+    relative_group_scale = torch.ldexp(
+        torch.ones_like(group_dot),
+        group_scale_exp - common_scale_exp,
     )
-    cube_order_scores = scaled_group_dot.sum(dim=-1) * softmax_scale
+    normalized_dot = (group_dot * relative_group_scale).sum(dim=-1)
+    cube_order_scores = torch.ldexp(
+        normalized_dot,
+        common_scale_exp.squeeze(-1),
+    ) * softmax_scale
     return torch.where(repair_mask, cube_order_scores, scores)
 
 
