@@ -172,7 +172,7 @@ cann_ops_transformer.quant_lightning_indexer(
 - 参数seqused_q、seqused_k要求其值表示每个batch中的有效token数。
 - 参数cmp_residual_k需满足0 <= cmp_residual_k\[i\] < cmp_ratio。
 - mask_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../../../docs/zh/context/sparse_mode_introduction.md)。
-- pa_kv_cache支持0轴非连续；pa_block_size支持16~1024，且是16的倍数。
+- pa_kv_cache支持0轴非连续；pa_block_size支持1~1024，且是16的倍数。
 - 参数q、k的数据类型应保持一致。
 - 该接口的TopK排序过程对NaN排序是未定义行为。
 - 当layout_q为BSND时，不支持传入cu_seqlens_q；当layout_k为BSND或PA_BBND时，不支持传入cu_seqlens_k。
@@ -450,8 +450,8 @@ mask_mode参数解释
                     <li>seqused_k中的值需小于等于k_s</li>
                 </ul>
             </td>
-            <td rowspan="5">可选参数</td>
-            <td rowspan="5">无</td>
+            <td rowspan="6">可选参数</td>
+            <td rowspan="6">无</td>
             <td rowspan="2">无</td>
         </tr>
         <tr>
@@ -493,14 +493,14 @@ mask_mode参数解释
         </tr>
         <tr>
             <td>max_seqlen_q</td>
-            <td>
+            <td rowspan="2">
                 <ul>
                     <li>data_type支持INT</li>
                     <li>取值应大于等于-1</li>
                     <li>默认值为-1</li>
                 </ul>
             </td>
-            <td>
+            <td rowspan="2">
                 <ul>
                     <li>无</li>
                 </ul>
