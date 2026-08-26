@@ -95,8 +95,8 @@ private:
 };
 
 BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS
-__aicore__ inline void
-BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::Init(Params const &params)
+__aicore__ inline void BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::Init(
+    Params const &params)
 {
     if ASCEND_IS_AIC {
         return;
@@ -144,9 +144,8 @@ BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PA
 }
 
 BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS
-__aicore__ inline void
-BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::InitOutputWithZeros(
-    uint64_t outOffset, uint64_t totalLen)
+__aicore__ inline void BlockPrologueFinalizeRouting<
+    BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::InitOutputWithZeros(uint64_t outOffset, uint64_t totalLen)
 {
     // may be sharedInput Offset = 0 or tail = batch
     if (totalLen == 0) {
@@ -217,33 +216,50 @@ BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS
 __aicore__ inline void BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::Compute(
     uint64_t singleCount, uint64_t outOffset, uint64_t baseOffset, uint64_t curCount)
 {
-    uint32_t pingPongID = 0;
+    uint32_t currentBufferId = 0;
     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(1);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(1);
-    for (uint32_t offset = 0; offset < singleCount; offset += curCount) {
-        if (unlikely(offset + curCount > singleCount)) {
-            curCount = singleCount - offset;
+
+    // Warm up the pipeline by loading the first tile into the ping buffer.
+    uint64_t currentOffset = 0;
+    uint64_t currentCount = singleCount < curCount ? singleCount : curCount;
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(currentBufferId);
+    CopyInShareInput(shareInputUbPing_, baseOffset, currentCount);
+    AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(currentBufferId);
+
+    while (currentOffset < singleCount) {
+        uint64_t nextOffset = currentOffset + currentCount;
+        uint64_t nextCount = 0;
+        uint32_t nextBufferId = currentBufferId ^ 1;
+        if (nextOffset < singleCount) {
+            // Prefetch the next tile to overlap MTE2 with the current vector compute and MTE3 copy-out.
+            nextCount = singleCount - nextOffset < curCount ? singleCount - nextOffset : curCount;
+            AscendC::LocalTensor<DataTypeIn> *nextResidualLocal =
+                nextBufferId == 0 ? &shareInputUbPing_ : &shareInputUbPong_;
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(nextBufferId);
+            CopyInShareInput(*nextResidualLocal, baseOffset + nextOffset, nextCount);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(nextBufferId);
         }
-        AscendC::LocalTensor<DataTypeIn> *residualLocal = pingPongID == 0 ? &shareInputUbPing_ : &shareInputUbPong_;
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(pingPongID);
-        CopyInShareInput(*residualLocal, baseOffset + offset, curCount);
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(pingPongID);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(pingPongID);
-        AscendC::LocalTensor<DataTypeOut> *yLocal = pingPongID == 0 ? &UbOutPing_ : &UbOutPong_;
+
+        AscendC::LocalTensor<DataTypeIn> *residualLocal =
+            currentBufferId == 0 ? &shareInputUbPing_ : &shareInputUbPong_;
+        AscendC::LocalTensor<DataTypeOut> *yLocal = currentBufferId == 0 ? &UbOutPing_ : &UbOutPong_;
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(currentBufferId);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(currentBufferId);
         __ubuf__ DataTypeIn *residualLocalUbAddr = (__ubuf__ DataTypeIn *)residualLocal->GetPhyAddr();
         __ubuf__ DataTypeOut *outUbAddr = (__ubuf__ DataTypeOut *)yLocal->GetPhyAddr();
-        // before vector compute,need wait MTE3 copyout finished
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(pingPongID);
-        VFDoSharedCastAndMuls(outUbAddr, residualLocalUbAddr, params_->residualScale, curCount);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(pingPongID);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(pingPongID);
-        CopyOutShareInput(*yLocal, outOffset + offset, curCount);
-        AscendC::PipeBarrier<PIPE_ALL>();
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(pingPongID);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(pingPongID);
-        pingPongID = (pingPongID + 1) & 1;
+        VFDoSharedCastAndMuls(outUbAddr, residualLocalUbAddr, params_->residualScale, currentCount);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(currentBufferId);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(currentBufferId);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(currentBufferId);
+        CopyOutShareInput(*yLocal, outOffset + currentOffset, currentCount);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(currentBufferId);
+
+        currentOffset = nextOffset;
+        currentCount = nextCount;
+        currentBufferId = nextBufferId;
     }
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(1);
@@ -288,7 +304,7 @@ BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PA
     if (baseOffset + singleCount > totalOutput) {
         singleCount = totalOutput - baseOffset;
     }
-    uint64_t outOffset = baseOffset + firstZeroSize;
+    uint64_t outOffset = firstZeroSize + baseOffset;
     uint64_t curCount = UB_DOUBLE_BUFFER_LEN;
     Compute(singleCount, outOffset, baseOffset, curCount);
 }
