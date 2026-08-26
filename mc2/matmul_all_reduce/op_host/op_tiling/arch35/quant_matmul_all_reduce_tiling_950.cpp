@@ -202,6 +202,47 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::DoOpTiling()
     DoRCSTiling();
     MC2_CHECK_LOG_RET(opName_, CheckHCCLSize());
     DoSplitMTiling();
+
+    // ===== AICPU + pertile量化场景定制M轴切分（debug：集中于此，便于调参） =====
+    // 256对齐优先，尾块后置，减少通信次数降低AICPU静态开销
+    constexpr uint64_t PERTILE_AICPU_ALIGN_BASE = 256;
+    constexpr uint64_t PERTILE_AICPU_SPLIT_NUM = 2; // 改此数字调切分份数
+    if (GetCommMode() == Mc2Comm::COMM_MODE_AICPU &&
+        MutableRCSTilingData().isInputCommQuantScale == QUANT_MODE_FP8) {
+        auto &&param = MutableRCSTilingData();
+        uint64_t rankM = static_cast<uint64_t>(param.rankM);
+        uint64_t totalAlignedBlocks = Ops::Base::CeilDiv(rankM, PERTILE_AICPU_ALIGN_BASE);
+        if (totalAlignedBlocks < PERTILE_AICPU_SPLIT_NUM) {
+            // M过小，不切分
+            tileMValue_ = rankM;
+            param.tileCnt = 1;
+            param.tailM = 0;
+            param.tailCnt = 0;
+            tailMValue_ = 0;
+        } else {
+            // 长块 = floor(256对齐块数 / splitNum) × 256，尾块 = M - 长块 × (splitNum-1)
+            uint64_t longTileLen = (totalAlignedBlocks / PERTILE_AICPU_SPLIT_NUM) * PERTILE_AICPU_ALIGN_BASE;
+            uint64_t tailLen = rankM - longTileLen * (PERTILE_AICPU_SPLIT_NUM - 1);
+            if (longTileLen == 0 || tailLen == 0) {
+                tileMValue_ = rankM;
+                param.tileCnt = 1;
+                param.tailM = 0;
+                param.tailCnt = 0;
+                tailMValue_ = 0;
+            } else {
+                tileMValue_ = longTileLen;
+                param.tileCnt = static_cast<uint32_t>(PERTILE_AICPU_SPLIT_NUM - 1);
+                tailMValue_ = tailLen;
+                param.tailM = static_cast<uint32_t>(tailLen);
+                param.tailCnt = 1;
+            }
+        }
+        OP_LOGI(opName_,
+                "PertileAicpuSplitM: M[%lu] split[%lu] → tileM[%lu] tileCnt[%u] tailM[%lu] tailCnt[%u].",
+                rankM, PERTILE_AICPU_SPLIT_NUM, tileMValue_, param.tileCnt, tailMValue_, param.tailCnt);
+    }
+    // ===== end 定制切分 =====
+
     MC2_CHECK_LOG_RET(opName_, AdjustHCCLLimit());
     MC2_CHECK_LOG_RET(opName_, DoQuantTiling());
     if (MutableRCSTilingData().isInputCommQuantScale == 1) {
