@@ -246,7 +246,8 @@ __aicore__ inline DispatchExpertRankRange FindDispatchExpertRankRange(
     return range;
 }
 
-// 发布一个 source-rank 段覆盖到的 GMM1 tile ready 计数。
+// 发布一个 core 专家段覆盖到的 GMM1 tile ready 计数。
+// 调用前 Dispatch copy ring 必须已经 drain；这里不再重复执行 MTE3 -> S 同步。
 __aicore__ inline void PublishGmm1TileReady(
     const TokenDispatchConfig &context, const Params &params, uint32_t localExpertId,
     int32_t gmm1TileRowCount, int32_t segmentExpertRowBegin, int32_t segmentExpertRowEnd)
@@ -254,7 +255,6 @@ __aicore__ inline void PublishGmm1TileReady(
     if (segmentExpertRowBegin >= segmentExpertRowEnd) {
         return;
     }
-    SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
     __gm__ int32_t *gmm1TileReadyCount =
         reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagDispatchToGmm1Ptr) +
         static_cast<uint64_t>(localExpertId) * context.dispatchFlagSlotsPerExpert;
@@ -272,12 +272,13 @@ __aicore__ inline void PublishGmm1TileReady(
 }
 
 /**
- * Dispatch 第 3 层：扫描单个 source rank 的 route mask，搬运选中的 token
- * 和 metadata，并发布 GMM1 tile ready count。
+ * Dispatch 第 3 层：读取单个 source rank 的 route，搬运选中的 token
+ * 和 metadata，并返回实际完成的 row 数。ready 由上层在当前 core 的完整
+ * 专家段搬运结束后统一发布，避免每个 rank 段重复同步和原子累加。
  */
 template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch,
           bool UseCompactRouteIndex = false>
-__aicore__ inline void DispatchRankTokens(
+__aicore__ inline int32_t DispatchRankTokens(
     const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
     int32_t expertGlobalRowBegin, uint32_t remoteRankIdx,
@@ -367,12 +368,7 @@ __aicore__ inline void DispatchRankTokens(
         }
     }
 
-    if (dispatchedRowCount > 0) {
-        int32_t segmentExpertRowBegin = rankSegmentRowBegin + segmentMatchOrdinalBegin;
-        int32_t segmentExpertRowEnd = segmentExpertRowBegin + dispatchedRowCount;
-        PublishGmm1TileReady(context, params, localExpertId, gmm1TileRowCount,
-                             segmentExpertRowBegin, segmentExpertRowEnd);
-    }
+    return dispatchedRowCount;
 }
 
 /**
@@ -390,6 +386,7 @@ __aicore__ inline void DispatchExpertTokensByRank(
 {
     int32_t rankSegmentRowBegin = rankRange.firstRankOffset;
     int32_t rankSegmentRowEnd = 0;
+    int32_t dispatchedRowCount = 0;
     for (int32_t remoteRankIdx = static_cast<int32_t>(rankRange.firstRankIdx);
          remoteRankIdx <= rankRange.lastRankIdx; ++remoteRankIdx) {
         if (remoteRankIdx > static_cast<int32_t>(rankRange.firstRankIdx)) {
@@ -412,11 +409,19 @@ __aicore__ inline void DispatchExpertTokensByRank(
             continue;
         }
 
-        DispatchRankTokens<ActivationType, QuantScaleType, TopkWeightsPrefetch, UseCompactRouteIndex>(
+        dispatchedRowCount +=
+            DispatchRankTokens<ActivationType, QuantScaleType, TopkWeightsPrefetch, UseCompactRouteIndex>(
             context, params, winRankAddr, scratch, localExpertId,
             expertGlobalRowBegin, static_cast<uint32_t>(remoteRankIdx),
             rankSegmentRowBegin, segmentMatchOrdinalBegin, segmentMatchOrdinalEnd,
             gmm1TileRowCount);
+    }
+
+    if (dispatchedRowCount > 0) {
+        PublishGmm1TileReady(
+            context, params, localExpertId, gmm1TileRowCount,
+            expertRange.coreExpertRowBegin,
+            expertRange.coreExpertRowBegin + dispatchedRowCount);
     }
 }
 
@@ -464,10 +469,18 @@ __aicore__ inline void DispatchExpertTokensByRankShard(
             continue;
         }
 
-        DispatchRankTokens<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+        int32_t dispatchedRowCount =
+            DispatchRankTokens<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
             context, params, winRankAddr, scratch, localExpertId, expertGlobalRowBegin,
             remoteRankIdx, static_cast<int32_t>(rankSegmentDstRowBegin) - expertGlobalRowBegin,
             rankShardRowBegin, rankShardRowBegin + dispatchRowCount, gmm1TileRowCount);
+        if (dispatchedRowCount > 0) {
+            int32_t segmentExpertRowBegin =
+                static_cast<int32_t>(rankSegmentDstRowBegin) - expertGlobalRowBegin + rankShardRowBegin;
+            PublishGmm1TileReady(
+                context, params, localExpertId, gmm1TileRowCount,
+                segmentExpertRowBegin, segmentExpertRowBegin + dispatchedRowCount);
+        }
     }
 }
 
