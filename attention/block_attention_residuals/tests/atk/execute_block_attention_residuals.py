@@ -11,6 +11,7 @@ import torch
 from atk.configs.dataset_config import InputDataset
 from atk.tasks.api_execute import register
 from atk.tasks.api_execute.base_api import BaseApi
+from atk.tasks.api_execute.aclnn_base_api import AclnnBaseApi
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -54,3 +55,29 @@ class BlockAttentionResidualsAtk(BaseApi):
             torch.npu.synchronize()
             return output
         raise RuntimeError(f"Unsupported device: {self.device}")
+
+@register("pyaclnn_block_attention_residuals_atk")
+class PyAclnnBlockAttentionResidualsAtk(AclnnBaseApi):
+    def init_by_input_data(self, input_data: InputDataset):
+        input_args = []
+        output_packages = []
+
+        for name, value in input_data.kwargs.items():
+            input_args.extend(self.backend.convert_input_data(value, name=name))
+
+        for index, output_data in enumerate(self.task_result.output_info_list):
+            output_packages.extend(self.backend.convert_output_data(output_data, index))
+
+        input_args.extend(output_packages)
+        return input_args, output_packages
+
+    @classmethod
+    def get_cpp_func_signature_type(cls):
+        return (
+            "aclnnStatus aclnnBlockAttentionResidualsGetWorkspaceSize("
+            "const aclTensor *prefixSum, const aclTensor *blockRes, "
+            "const aclTensor *projWeight, const aclTensor *normWeight, "
+            "int64_t validBlockNum, double normEps, bool needBackward, "
+            "aclTensor *hiddenStates, aclTensor *invNorm, aclTensor *probs, "
+            "uint64_t *workspaceSize, aclOpExecutor **executor)"
+        )

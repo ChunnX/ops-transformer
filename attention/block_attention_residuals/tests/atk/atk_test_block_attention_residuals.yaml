@@ -2,7 +2,7 @@ name: torch.block_attention_residuals
 api: pytorch
 api_type: function_block_attention_residuals_atk
 aclnn_name: aclnnBlockAttentionResiduals
-aclnn_api_type: aclnn_function
+aclnn_api_type: pyaclnn_block_attention_residuals_atk
 version: v2.1
 generate: block_attention_residuals_constraint
 standard:
