@@ -65,6 +65,7 @@ template <typename T>
 __global__ __aicore__ void add_kernel(GM_ADDR x, GM_ADDR y, GM_ADDR z, int64_t totalLength, int64_t blockLength,
                                       uint32_t tileSize)
 {
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     constexpr static int64_t PIPELINE_DEPTH = 2;
     AscendC::TPipe pipe;
     AscendC::GlobalTensor<T> xGm, yGm, zGm;
@@ -86,64 +87,65 @@ __global__ __aicore__ void add_kernel(GM_ADDR x, GM_ADDR y, GM_ADDR z, int64_t t
     int64_t tileNum = currentBlockLength / elementNumPerTile;
     int64_t tailTileElementNum = currentBlockLength - tileNum * elementNumPerTile;
 
-    for (int64_t i = 0; i < tileNum; ++i) {
-        int64_t offset = i * elementNumPerTile;
-        // CopyIn
-        AscendC::DataCopyExtParams copyParams;
-        copyParams.blockCount = 1;
-        copyParams.blockLen = elementNumPerTile * sizeof(T);
-        copyParams.srcStride = 0;
-        copyParams.dstStride = 0;
-        AscendC::DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
-        AscendC::LocalTensor<T> xLocal = inQueueX.AllocTensor<T>();
-        AscendC::LocalTensor<T> yLocal = inQueueY.AllocTensor<T>();
-        return;
-        AscendC::DataCopyPad(xLocal, xGm[offset], copyParams, padParams);
-        AscendC::DataCopyPad(yLocal, yGm[offset], copyParams, padParams);
-        inQueueX.EnQue(xLocal);
-        inQueueY.EnQue(yLocal);
-        // Compute
-        xLocal = inQueueX.DeQue<T>();
-        yLocal = inQueueY.DeQue<T>();
-        AscendC::LocalTensor<T> zLocal = outQueueZ.AllocTensor<T>();
-        AscendC::Add(zLocal, xLocal, yLocal, elementNumPerTile);
-        outQueueZ.EnQue(zLocal);
-        inQueueX.FreeTensor(xLocal);
-        inQueueY.FreeTensor(yLocal);
-        // CopyOut
-        zLocal = outQueueZ.DeQue<T>();
-        AscendC::DataCopyPad(zGm[offset], zLocal, copyParams);
-        outQueueZ.FreeTensor(zLocal);
-    }
+    // v4: for/tail全注释，return也注释，kernel仅执行初始化后自然fall through
+    // for (int64_t i = 0; i < tileNum; ++i) {
+    //     int64_t offset = i * elementNumPerTile;
+    //     // CopyIn
+    //     AscendC::DataCopyExtParams copyParams;
+    //     copyParams.blockCount = 1;
+    //     copyParams.blockLen = elementNumPerTile * sizeof(T);
+    //     copyParams.srcStride = 0;
+    //     copyParams.dstStride = 0;
+    //     AscendC::DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
+    //     AscendC::LocalTensor<T> xLocal = inQueueX.AllocTensor<T>();
+    //     AscendC::LocalTensor<T> yLocal = inQueueY.AllocTensor<T>();
+    //     //return;
+    //     AscendC::DataCopyPad(xLocal, xGm[offset], copyParams, padParams);
+    //     AscendC::DataCopyPad(yLocal, yGm[offset], copyParams, padParams);
+    //     inQueueX.EnQue(xLocal);
+    //     inQueueY.EnQue(yLocal);
+    //     // Compute
+    //     xLocal = inQueueX.DeQue<T>();
+    //     yLocal = inQueueY.DeQue<T>();
+    //     AscendC::LocalTensor<T> zLocal = outQueueZ.AllocTensor<T>();
+    //     AscendC::Add(zLocal, xLocal, yLocal, elementNumPerTile);
+    //     outQueueZ.EnQue(zLocal);
+    //     inQueueX.FreeTensor(xLocal);
+    //     inQueueY.FreeTensor(yLocal);
+    //     // CopyOut
+    //     zLocal = outQueueZ.DeQue<T>();
+    //     AscendC::DataCopyPad(zGm[offset], zLocal, copyParams);
+    //     outQueueZ.FreeTensor(zLocal);
+    // }
 
-    if (tailTileElementNum > 0) {
-        int64_t offset = tileNum * elementNumPerTile;
-        // CopyIn
-        AscendC::DataCopyExtParams copyParams;
-        copyParams.blockCount = 1;
-        copyParams.blockLen = tailTileElementNum * sizeof(T);
-        copyParams.srcStride = 0;
-        copyParams.dstStride = 0;
-        AscendC::DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
-        AscendC::LocalTensor<T> xLocal = inQueueX.AllocTensor<T>();
-        AscendC::LocalTensor<T> yLocal = inQueueY.AllocTensor<T>();
-        AscendC::DataCopyPad(xLocal, xGm[offset], copyParams, padParams);
-        AscendC::DataCopyPad(yLocal, yGm[offset], copyParams, padParams);
-        inQueueX.EnQue(xLocal);
-        inQueueY.EnQue(yLocal);
-        // Compute
-        xLocal = inQueueX.DeQue<T>();
-        yLocal = inQueueY.DeQue<T>();
-        AscendC::LocalTensor<T> zLocal = outQueueZ.AllocTensor<T>();
-        AscendC::Add(zLocal, xLocal, yLocal, tailTileElementNum);
-        outQueueZ.EnQue(zLocal);
-        inQueueX.FreeTensor(xLocal);
-        inQueueY.FreeTensor(yLocal);
-        // CopyOut
-        zLocal = outQueueZ.DeQue<T>();
-        AscendC::DataCopyPad(zGm[offset], zLocal, copyParams);
-        outQueueZ.FreeTensor(zLocal);
-    }
+    // if (tailTileElementNum > 0) {
+    //     int64_t offset = tileNum * elementNumPerTile;
+    //     // CopyIn
+    //     AscendC::DataCopyExtParams copyParams;
+    //     copyParams.blockCount = 1;
+    //     copyParams.blockLen = tailTileElementNum * sizeof(T);
+    //     copyParams.srcStride = 0;
+    //     copyParams.dstStride = 0;
+    //     AscendC::DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
+    //     AscendC::LocalTensor<T> xLocal = inQueueX.AllocTensor<T>();
+    //     AscendC::LocalTensor<T> yLocal = inQueueY.AllocTensor<T>();
+    //     AscendC::DataCopyPad(xLocal, xGm[offset], copyParams, padParams);
+    //     AscendC::DataCopyPad(yLocal, yGm[offset], copyParams, padParams);
+    //     inQueueX.EnQue(xLocal);
+    //     inQueueY.EnQue(yLocal);
+    //     // Compute
+    //     xLocal = inQueueX.DeQue<T>();
+    //     yLocal = inQueueY.DeQue<T>();
+    //     AscendC::LocalTensor<T> zLocal = outQueueZ.AllocTensor<T>();
+    //     AscendC::Add(zLocal, xLocal, yLocal, tailTileElementNum);
+    //     outQueueZ.EnQue(zLocal);
+    //     inQueueX.FreeTensor(xLocal);
+    //     inQueueY.FreeTensor(yLocal);
+    //     // CopyOut
+    //     zLocal = outQueueZ.DeQue<T>();
+    //     AscendC::DataCopyPad(zGm[offset], zLocal, copyParams);
+    //     outQueueZ.FreeTensor(zLocal);
+    // }
 }
 
 torch::Tensor add_npu(const torch::Tensor &x, const torch::Tensor &y)
