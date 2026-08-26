@@ -1099,3 +1099,97 @@ export PYTHONPATH=/home/vllm:/home/vllm-ascend;
 docker exec lsy_pd bash -c '
 for pid in $(pgrep -f "vllm.entrypoints"); do kill -9 $pid; done'
 ```
+
+---
+
+# 附录B：新机器（非共用环境） vllm 启动脚本修复版（含图编译超时修复）
+
+> 在全新机器上复现时的实用修复版启动脚本。与正文脚本的差异见注释。
+> 适用于: 模型在 /weights/deepseekv4-flash-w8a8-mtp，代码在 /home/lsy/vllm 与 /home/lsy/vllm-ascend，本机IP 71.77.143.52，网卡 enp196s0f0 的机器。
+
+```bash
+# 用法: bash start_vllm.sh <off|on|on_prefetch>
+```
+
+## 与原版脚本的关键差异
+
+1. **VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS=3600**：必须添加。首条请求会触发 torchair 图编译（耗时约 30 分钟），超过引擎默认超时1836s后 EngineCore 抛出 `RuntimeError: cancelled`，导致 EngineDead，后续请求全部 Connection refused。
+2. **PYTHONPATH 指向实际源码目录**：如果写成 /home/vllm（不存在），会静默回退到 site-packages 的脚本包（版本不可控）。
+3. **启动后必须手动预热**（吸收图编译时间），再跑压测。
+
+## 预热命令
+
+```bash
+curl -s --noproxy '*' http://<IP>:8004/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"deepseek_v4","messages":[{"role":"user","content":"warmup"}],"max_tokens":4,"temperature":0,"stream":false}'
+```
+
+> 首条会卡约 30 分钟（图编译），耐心等待返回。返回后再发一条应秒回。
+
+## 完整修复版启动脚本
+
+```bash
+#!/bin/bash
+# DeepSeek-V4-Flash PD娣烽儴鍚姩鑴氭湰锛堟柊鏈哄櫒淇鐗堬級
+# 鐢ㄦ硶: bash start_vllm.sh <off|on|on_prefetch>
+# 涓庡師鐗堝樊寮?
+#   1. 鏂板 VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS=3600锛岄槻姝㈤鏉¤姹?torchair 鍥剧紪璇?#      (~30鍒嗛挓) 瓒呰繃寮曟搸鍐呴儴瓒呮椂(1836s) 瀵艰嚧 EngineDead 宕╂簝
+#   2. PYTHONPATH 鎸囧悜瀹為檯婧愮爜鐩綍 /home/lsy/vllm锛堝啓鎴愪笉瀛樺湪鐨?/home/vllm 浼?#      闈欓粯鍥為€€鍒?site-packages 閲岀殑鑴氭湰鍖咃紝鐗堟湰涓嶅彲鎺э級
+#   3. 淇 if/elif 鍒ゆ柇銆乪cho銆佸懡浠ょ画琛岀鐨勮娉曢敊璇?
+MODE=${1:-on}
+
+source /usr/local/Ascend/ascend-toolkit/latest/set_env.sh 2>/dev/null
+source /usr/local/Ascend/nnal/atb/set_env.sh 2>/dev/null
+
+export PYTHONPATH=/home/lsy/vllm:/home/lsy/vllm-ascend:${PYTHONPATH}
+export PYTHONUNBUFFERED=1
+export MMC_LOCAL_CONFIG_PATH=/usr/local/python3.11.10/lib/python3.11/site-packages/memcache_hybrid/config/mmc-local.conf
+
+export HCCL_IF_IP=71.77.143.52
+export GLOO_SOCKET_IFNAME=enp196s0f0
+export TP_SOCKET_IFNAME=enp196s0f0
+export HCCL_SOCKET_IFNAME=enp196s0f0
+export PYTHONHASHSEED=0
+export HCCL_BUFFSIZE=200
+export HCCL_NPU_SOCKET_PORT_RANGE=20000-25000
+export OMP_PROC_BIND=false
+export OMP_NUM_THREADS=10
+export PYTORCH_NPU_ALLOC_CONF="expandable_segments:True"
+export LD_LIBRARY_PATH=/usr/local/Ascend/ascend-toolkit/latest/python/site-packages/mooncake:$LD_LIBRARY_PATH
+
+# 鍏抽敭鏂板锛氶槻姝㈤鏉¤姹傚浘缂栬瘧 31 鍒嗛挓瀵艰嚧 EngineCore 瓒呮椂宕╂簝
+export VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS=3600
+
+if [ "$MODE" = "off" ]; then
+    KV_CONFIG='{"kv_connector":"AscendStoreConnector","kv_role":"kv_both","kv_connector_extra_config":{"backend":"memcache","use_layerwise":false,"mooncake_rpc_port":"0"}}'
+    LOG_FILE=/home/lsy/log_layerwise_off.log
+elif [ "$MODE" = "on" ]; then
+    KV_CONFIG='{"kv_connector":"AscendStoreConnector","kv_role":"kv_both","kv_connector_extra_config":{"backend":"memcache","use_layerwise":true,"mooncake_rpc_port":"0"}}'
+    LOG_FILE=/home/lsy/log_layerwise_on.log
+else
+    KV_CONFIG='{"kv_connector":"AscendStoreConnector","kv_role":"kv_both","kv_connector_extra_config":{"backend":"memcache","use_layerwise":true,"layerwise_prefetch_layers":3,"mooncake_rpc_port":"0"}}'
+    LOG_FILE=/home/lsy/log_layerwise_on_prefetch.log
+fi
+
+echo "=== MODE: $MODE ==="
+echo "=== KV_CONFIG: $KV_CONFIG ==="
+
+/usr/local/python3.11.10/bin/python3 -m vllm.entrypoints.openai.api_server \
+    --model /weights/deepseekv4-flash-w8a8-mtp \
+    --port 8004 --tensor-parallel-size 8 --seed 1024 \
+    --served-model-name deepseek_v4 \
+    --enable-expert-parallel \
+    --max-num-seqs 40 --max-model-len 16384 \
+    --max-num-batched-tokens 4096 \
+    --trust-remote-code \
+    --no-enable-prefix-caching \
+    --no-disable-hybrid-kv-cache-manager \
+    --gpu-memory-utilization 0.85 \
+    --quantization ascend \
+    --additional-config '{"ascend_scheduler_config":{"enabled":false},"torchair_graph_config":{"enabled":true}}' \
+    --kv-transfer-config "$KV_CONFIG" > ${LOG_FILE} 2>&1
+
+echo "=== vllm serve exited, log: ${LOG_FILE} ==="
+```
+> 注意: 复用到其他机器时需修改 --model、HCCL_IF_IP、SOCKET_IFNAME、MMC_LOCAL_CONFIG_PATH、PYTHONPATH 为实际值。
