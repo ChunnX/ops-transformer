@@ -528,7 +528,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
     }
 }
 
-// 使用统一 compact-count Dispatch stage 增量发送一个专家，供 W4 的 Wave-ahead 调度调用。
+// 使用统一 expert-count Dispatch stage 增量发送一个专家，供 W4 的 Wave-ahead 调度调用。
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::DispatchMoeExpert(uint32_t expertIdx)
 {
@@ -550,8 +550,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::PrepareGmmExpertState(E
             state.expertCountTableReady = true;
         }
     }
-    UpdateExpertLoopStateFromWorkspace(params_.workspaceInfo, countWorkspace_, state, expertIdx, true,
-                                       commonConfig_.moeExpertPerRank);
+    uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(
+        params_.workspaceInfo.expertRevTokenNumsPtr, countWorkspace_, commonConfig_.moeExpertPerRank, expertIdx);
+    UpdateExpertLoopState(state, expertIdx, expertTokenCount);
 }
 
 template <TemplateMegaMoeTypeClass>

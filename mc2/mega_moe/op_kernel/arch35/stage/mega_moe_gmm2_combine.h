@@ -93,13 +93,13 @@ __aicore__ inline void SendCombineTokenRow(uint32_t rowElements, uint64_t gmRemo
 {
     CombineTokenRoute route = LoadCombineTokenRoute(metaInfoTensor, 0U);
 
-    AscendC::GlobalTensor<Element> gmRemoteD;
+    GlobalTensor<Element> gmRemoteD;
     gmRemoteD.SetGlobalBuffer(
         reinterpret_cast<__gm__ Element *>(GetRankWinAddrWithOffset(route.dstRankId, gmRemoteBaseOffset)));
     uint64_t gmDstRowOffset = GetCombineDstRowIndex(route, params) * rowElements;
 
-    AscendC::DataCopyExtParams ub2GmParams{1U, static_cast<uint32_t>(rowElements * sizeof(Element)), 0U, 0U, 0U};
-    AscendC::DataCopyPad(gmRemoteD[gmDstRowOffset], rowTensor, ub2GmParams);
+    DataCopyExtParams ub2GmParams{1U, static_cast<uint32_t>(rowElements * sizeof(Element)), 0U, 0U, 0U};
+    DataCopyPad(gmRemoteD[gmDstRowOffset], rowTensor, ub2GmParams);
 }
 
 // 通过本地 MTE 路径或远端 URMA 路径发送一个 layered 模板 token。
@@ -377,15 +377,19 @@ __aicore__ inline WorkRange GetWaveCombineOwnedRange(const AivJobContext &job, u
     return GetBalancedTokenRange(tokenCount, logicalJobIndex, combineJob.totalJobs);
 }
 
-// 回收当前 wave 的 Combine 发送在行环形 buffer 上产生的事件。
-__aicore__ inline void DrainWaveCombineRowRing(uint32_t &issuedRowCount, uint32_t rowBufferCount)
+// 等待并消费当前 Wave 的 Combine 发送在行环形 buffer 上产生的全部完成事件，使该环不再有在途 slot。
+__aicore__ inline void DrainCombineRowBuffers(uint32_t &issuedRowCount, uint32_t rowBufferCount)
 {
     uint32_t activeSlotCount = issuedRowCount < rowBufferCount ? issuedRowCount : rowBufferCount;
     for (uint32_t slot = 0U; slot < activeSlotCount; ++slot) {
         WaitFlag<HardEvent::MTE3_MTE2>(
             static_cast<TEventID>(static_cast<int32_t>(EVENT_ID0) + static_cast<int32_t>(slot)));
     }
-    // Drain 已消费所有在途事件；下一段必须从空闲的 slot 0 重新开始，不能再次等待旧事件。
+    /*
+     * Drain 会消费所有在途事件，下一段必须从空闲的 slot 0 重新开始；否则该段会把已消费的事件
+     * 误判为 buffer 复用依赖并再次等待。W4 的计数跨 Wave 存活，A8W8 则在每次 Combine 调用时
+     * 创建新计数；在这里统一重置，可以保证两种生命周期都遵守相同的行环起始状态。
+     */
     issuedRowCount = 0U;
 }
 
@@ -1042,7 +1046,7 @@ __aicore__ inline void WaitWaveGmm2Ready(const AivJobContext &job, const Params 
             return;
         }
         int64_t waitStart = AscendC::GetSystemCycle();
-        while (AscendC::GetSystemCycle() - waitStart < 100) {
+        while (AscendC::GetSystemCycle() - waitStart < GM_FLAG_POLL_BACKOFF_CYCLES) {
         }
     }
 }

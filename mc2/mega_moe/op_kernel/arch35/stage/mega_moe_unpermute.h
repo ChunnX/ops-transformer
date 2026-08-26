@@ -148,7 +148,7 @@ __aicore__ inline void AccumulateSharedExpertForToken(const MoeStageCommonConfig
             static_cast<uint64_t>(sharedExpertIdx) * sharedExpertStride,
         tokenGroupIndex);
     uint32_t gmm2NTilesPerGroup = Ops::Base::CeilDiv(common.tokenHiddenDim, L1_TILE_N);
-    WaitUntilGmFlagEquals(counterAddr, static_cast<int32_t>(gmm2NTilesPerGroup), 200);
+    WaitUntilGmFlagEquals(counterAddr, static_cast<int32_t>(gmm2NTilesPerGroup));
 
     GlobalTensor<bfloat16_t> sharedResult;
     sharedResult.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(params.workspaceInfo.sharedExpertResultPtr));
