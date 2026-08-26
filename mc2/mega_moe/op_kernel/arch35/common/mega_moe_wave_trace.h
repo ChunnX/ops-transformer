@@ -68,7 +68,7 @@ enum class MegaMoeWaveTraceEvent : uint32_t {
     // Aggregated per-wave Dispatch stage metrics. Their durations are exact
     // sums; their synthetic child intervals are not real timeline placement.
     DISPATCH_COUNT_PREP = 21U,
-    DISPATCH_RANK_SEGMENT_PLAN = 22U,
+    DISPATCH_RANK_ROUND_PLAN = 22U,
     DISPATCH_MASK_LOAD_AND_GATHER = 23U,
     DISPATCH_READY_PUBLISH = 24U,
     DISPATCH_MASK_COPY_ISSUE = 25U,
