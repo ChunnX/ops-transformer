@@ -174,8 +174,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize(
         return status;
     }
     L2_DFX_PHASE_1(aclnnGroupedMatmulSwigluQuantV2,
-                   DFX_IN(x, weight, weightScale, weightAssistMatrix, bias, xScale, smoothScale, groupList,
-                          dequantMode, dequantDtype, quantMode, groupListType, tuningConfigOptional),
+                   DFX_IN(x, weight, weightScale, weightAssistMatrix, bias, xScale, smoothScale, groupList, dequantMode,
+                          dequantDtype, quantMode, groupListType, tuningConfigOptional),
                    DFX_OUT(output, outputScale));
     GroupedMatmulSwigluQuantParamsBase params =
         GroupedMatmulSwigluQuantParamsBuilder::Create(x, weight, weightScale, output, outputScale)
@@ -265,8 +265,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(
         return status;
     }
     L2_DFX_PHASE_1(aclnnGroupedMatmulSwigluQuantWeightNzV2,
-                   DFX_IN(x, weight, weightScale, weightAssistMatrix, bias, xScale, smoothScale, groupList,
-                          dequantMode, dequantDtype, quantMode, groupListType, tuningConfigOptional),
+                   DFX_IN(x, weight, weightScale, weightAssistMatrix, bias, xScale, smoothScale, groupList, dequantMode,
+                          dequantDtype, quantMode, groupListType, tuningConfigOptional),
                    DFX_OUT(output, outputScale));
     size_t wLength = weight->Size();
     auto firstWeightViewDimNum = (*weight)[0]->GetViewShape().GetDimNum();
