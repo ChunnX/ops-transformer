@@ -215,7 +215,8 @@ public:
             uint32_t qSeqlen = hasSequsedQ ?
                 static_cast<uint32_t>(gSequsedQ.GetValue(static_cast<int64_t>(batchIdx))) : qStorageLen;
             // Padding / empty request: actual q_len or kv_len == 0 → skip this batch.
-            if (qSeqlen == 0 || kvSeqlen == 0) {
+            // Need kvSeqlen >= qSeqlen for unsigned historyLen = kv - q.
+            if (qSeqlen == 0 || kvSeqlen == 0 || kvSeqlen < qSeqlen) {
                 continue;
             }
 
