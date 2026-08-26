@@ -1296,7 +1296,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadInvRms(uint
     vecInQueue0_.EnQue(invRmsInBuf_);
     vecInQueue0_.DeQue<P>(invRmsInBuf_);
 
-    PipeBarrier<PIPE_MTE2>();
     invRmsGradBuf_ = vecInQueue1_.AllocTensor<P>();
     DataCopyPad(invRmsGradBuf_, workSpaceGm_[workspaceBuf_.GetInvRmsGradOffset(bsChunkStart)], bsCopyParams,
                 dataCopyPadParams);
