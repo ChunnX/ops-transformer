@@ -25,11 +25,10 @@ add_ops_compile_options(
 )
 
 if (NOT BUILD_OPS_RTY_KERNEL)
-    file(GLOB_RECURSE LIGHTNING_INDEXER_V2_CHECKER_SRC_FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/checkers/*.cpp
-    )
     add_modules_sources(OPTYPE lightning_indexer_v2 ACLNNTYPE aclnn)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/checkers/checker_sources.cmake)
+    add_lightning_indexer_v2_common_checker_sources(${OPHOST_NAME}_tiling_obj)
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
-        ${LIGHTNING_INDEXER_V2_CHECKER_SRC_FILES}
+        ${CMAKE_CURRENT_SOURCE_DIR}/checkers/liv2_checker.cpp
     )
 endif()
