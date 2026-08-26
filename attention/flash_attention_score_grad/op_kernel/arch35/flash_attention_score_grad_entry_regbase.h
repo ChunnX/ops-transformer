@@ -47,7 +47,7 @@ using namespace AscendC::MicroAPI;
                 FlashAttentionScoreGradPresfmgRegbase<INPUT_TYPE, CALC_TYPE, OUTDTYPE, dTemplateType, IS_D_NO_EQUAL,   \
                                                       DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS, IS_TND_SWIZZLE>           \
                     opPre;                                                                                             \
-                opPre.Init(dq, dk, dv, dy, attention_in, deqScaleDy, actual_seq_qlen, user, tilingData, &pipeIn);      \
+                opPre.Init(dq, dk, dv, dy, attention_in, deqScaleDy, actual_seq_qlen, workspace, tilingData, &pipeIn);      \
                 opPre.Process();                                                                                       \
                 opPre.SyncALLCores();                                                                                  \
             }                                                                                                          \
@@ -55,7 +55,7 @@ using namespace AscendC::MicroAPI;
             FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<INPUT_TYPE, float, DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS,     \
                                                          IS_TND_SWIZZLE, IS_ATTEN_MASK>                                \
                 opPre;                                                                                                 \
-            opPre.Init(dq, dk, dv, actual_seq_kvlen, drop_mask, user, tilingData, &pipeIn);                            \
+            opPre.Init(dq, dk, dv, actual_seq_kvlen, drop_mask, workspace, tilingData, &pipeIn);                            \
             opPre.Process();                                                                                           \
             opPre.SyncALLCores();                                                                                      \
         }                                                                                                              \
@@ -86,7 +86,7 @@ using namespace AscendC::MicroAPI;
             FagBaseApi::FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>>::type op;                     \
         op.Init(key, value, dy, query, pse_shift, drop_mask, atten_mask, attention_in, softmax_max, softmax_sum,       \
                 prefix, actual_seq_qlen, actual_seq_kvlen, deqScaleQ, deqScaleK, deqScaleV, deqScaleDy, queryRope,     \
-                keyRope, sink, dq, dk, dv, dpse, dqRope, dkRope, dsink, user, tilingData, &pipeBase);                  \
+                keyRope, sink, dq, dk, dv, dpse, dqRope, dkRope, dsink, workspace, tilingData, &pipeBase);                  \
         op.Process();                                                                                                  \
         if (ORIG_DTYPE_QUERY != DT_FLOAT) {                                                                            \
             op.SyncALLCores();                                                                                         \
@@ -96,7 +96,7 @@ using namespace AscendC::MicroAPI;
                 FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<INPUT_TYPE, float, OUTDTYPE, SPLIT_AXIS, IS_ROPE,        \
                                                               DETER_SPARSE_TYPE, IS_TND, IS_TND_SWIZZLE>               \
                     opPost;                                                                                            \
-                opPost.Init(dq, dk, dv, dqRope, dkRope, dsink, user, tilingData, &pipePost);                           \
+                opPost.Init(dq, dk, dv, dqRope, dkRope, dsink, workspace, tilingData, &pipePost);                           \
                 opPost.Process();                                                                                      \
             } else {                                                                                                   \
                 FlashAttentionScoreGradNzPost<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_ATTEN_MASK, IS_PSE, IS_DROP, IS_TND, \
@@ -104,7 +104,7 @@ using namespace AscendC::MicroAPI;
                                               IS_NZ_OUT, IS_TND_SWIZZLE, SPLIT_AXIS, s1TemplateType, s2TemplateType,   \
                                               dTemplateType>                                                           \
                     opPost;                                                                                            \
-                opPost.Init(dq, dk, dv, dqRope, dkRope, dsink, actual_seq_qlen, actual_seq_kvlen, user, tilingData,    \
+                opPost.Init(dq, dk, dv, dqRope, dkRope, dsink, actual_seq_qlen, actual_seq_kvlen, workspace, tilingData,    \
                             &pipePost);                                                                                \
                 opPost.Process();                                                                                      \
             }                                                                                                          \
@@ -135,7 +135,7 @@ using namespace AscendC::MicroAPI;
             FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<INPUT_TYPE, float, DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS,     \
                                                          IS_TND_SWIZZLE, IS_ATTEN_MASK>                                \
                 opPre;                                                                                                 \
-            opPre.Init(dq, dk, dv, actual_seq_kvlen, drop_mask, user, tilingData, &pipeIn);                            \
+            opPre.Init(dq, dk, dv, actual_seq_kvlen, drop_mask, workspace, tilingData, &pipeIn);                            \
             opPre.Process();                                                                                           \
             opPre.SyncALLCores();                                                                                      \
         }                                                                                                              \
@@ -165,7 +165,7 @@ using namespace AscendC::MicroAPI;
         FagBaseApi::FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType> op;                                     \
         op.Init(key, value, dy, query, pse_shift, drop_mask, atten_mask, attention_in, softmax_max, softmax_sum,       \
                 prefix, actual_seq_qlen, actual_seq_kvlen, deqScaleQ, deqScaleK, deqScaleV, deqScaleDy, queryRope,     \
-                keyRope, sink, dq, dk, dv, dpse, dqRope, dkRope, dsink, user, tilingData, &pipeBase);                  \
+                keyRope, sink, dq, dk, dv, dpse, dqRope, dkRope, dsink, workspace, tilingData, &pipeBase);                  \
         op.Process();                                                                                                  \
         if (tilingData->s1s2BNGS1S2BaseParams.sinkOptional) {                                                          \
             op.SyncALLCores();                                                                                         \
@@ -174,7 +174,7 @@ using namespace AscendC::MicroAPI;
             FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<INPUT_TYPE, float, OUTDTYPE, SPLIT_AXIS, IS_ROPE,            \
                                                           DETER_SPARSE_TYPE, IS_TND, IS_TND_SWIZZLE>                   \
                 opPost;                                                                                                \
-            opPost.Init(dq, dk, dv, dqRope, dkRope, dsink, user, tilingData, &pipePost);                               \
+            opPost.Init(dq, dk, dv, dqRope, dkRope, dsink, workspace, tilingData, &pipePost);                               \
             opPost.Process();                                                                                          \
         } else {                                                                                                       \
             pipeBase.Destroy();                                                                                        \
@@ -213,7 +213,6 @@ RegbaseFAG(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __
     TPipe pipeIn;
     SetMaskNorm();
     SetSysWorkspace(workspace);
-    __gm__ uint8_t *user = GetUserWorkspace(workspace);
     constexpr static bool needDeterPrefix = NEED_DETER_PREFIX(deterType, isTnd);
     using fagTiling = FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER(deterType),
         needDeterPrefix, isTnd, isTndSwizzle>;
