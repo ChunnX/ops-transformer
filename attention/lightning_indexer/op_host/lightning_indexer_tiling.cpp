@@ -550,7 +550,8 @@ ge::graphStatus LIInfoParser::CheckKeyContiguous() const
 
         if (kLayout_ == DataLayout::BnBsND) {
             totalElements = keyStride1_ * static_cast<uint64_t>(shape.GetDim(DIM_IDX_ONE));
-            shapeSize = static_cast<uint64_t>(shape.GetDim(DIM_IDX_ONE)) * static_cast<uint64_t>(shape.GetDim(DIM_IDX_TWO)) *
+            shapeSize = static_cast<uint64_t>(shape.GetDim(DIM_IDX_ONE)) *
+                        static_cast<uint64_t>(shape.GetDim(DIM_IDX_TWO)) *
                         static_cast<uint64_t>(shape.GetDim(DIM_IDX_THREE));
         } else {
             totalElements = keyStride0_ * static_cast<uint64_t>(shape.GetDim(0));
@@ -885,15 +886,16 @@ ge::graphStatus LIInfoParser::ValidateInputShapesMatchQbsnd()
                         std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(DIM_IDX_ONE)) +
                         " respectively, they must be same"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF((opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(DIM_IDX_ONE) != s1Size_ && (*opParamInfo_.returnValue)),
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                    opName_, "query and sparse_values",
-                    Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
-                        Ops::Base::ToString(opParamInfo_.valuesOut.shape->GetStorageShape()),
-                    "BSND case query and sparse_values dim 1 are " + std::to_string(s1Size_) + ", " +
-                        std::to_string(opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(DIM_IDX_ONE)) +
-                        " respectively, they must be same"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        (opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(DIM_IDX_ONE) != s1Size_ && (*opParamInfo_.returnValue)),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            opName_, "query and sparse_values",
+            Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
+                Ops::Base::ToString(opParamInfo_.valuesOut.shape->GetStorageShape()),
+            "BSND case query and sparse_values dim 1 are " + std::to_string(s1Size_) + ", " +
+                std::to_string(opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(DIM_IDX_ONE)) +
+                " respectively, they must be same"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
