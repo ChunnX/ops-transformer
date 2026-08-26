@@ -64,6 +64,7 @@
 |[mhc_post](../../torch_extension/cann_ops_transformer/docs/zh/mhc_post.md)|实现MHC Post组件的前向计算，用于Transformer模型中多层残差连接的后处理阶段。该算子将残差矩阵变换与输出状态投影融合为单次计算，避免多次独立算子调用带来的额外开销。|默认确定性实现|-|
 |[mhc_pre_sinkhorn](../../torch_extension/cann_ops_transformer/docs/zh/mhc_pre_sinkhorn.md)|基于一系列计算得到MHC架构中hidden层的$\mathbf{H}'_{\text{res}}$和$\mathbf{H}_{\text{post}}$投影矩阵以及Attention或MLP层的输入矩阵$\mathbf{h}_{\text{in}}$。对$\mathbf{H}'_{\text{res}}$矩阵执行Sinkhorn迭代归一化变换，最终得到双随机矩阵$\mathbf{H}_{\text{res}}$；支持输出中间计算结果，用于反向梯度计算。|默认确定性实现|默认确定性实现|
 |[mixed_quant_sparse_flash_mla](../../torch_extension/cann_ops_transformer/docs/zh/mixed_quant_sparse_flash_mla.md)|量化场景下基于共享KV完成MixedQuantSparseFlashMla稀疏注意力计算。需与`mixed_quant_sparse_flash_mla_metadata`配套使用。|默认确定性实现|默认确定性实现|
+|[msa_index_score](../../torch_extension/cann_ops_transformer/docs/zh/msa_index_score.md)|计算 MSA Index Branch 的 block score，对每个 query token 与 KV sparse block 做 matmul+maxpool 得到重要性分数。|默认确定性实现|默认确定性实现|
 |[moe_finalize_routing](../../torch_extension/cann_ops_transformer/docs/zh/moe_finalize_routing.md)|将各专家FFN的输出结果按路由权重加权合并，还原为原始token序列。|默认支持确定性计算。|默认支持确定性计算。|
 |[moe_init_routing](../../torch_extension/cann_ops_transformer/docs/zh/moe_init_routing.md)|MoE的routing计算，根据moe_gating_top_k_softmax的计算结果做routing处理，支持不量化、静态量化和动态量化模式。|默认确定性实现|默认确定性实现|
 |[moe_re_routing](../../torch_extension/cann_ops_transformer/docs/zh/moe_re_routing.md)|MoE网络中，进行AlltoAll操作从其他卡上拿到需要算的token后，将token按照专家顺序重新排列。支持对topkWeight重排。|默认确定性实现|默认确定性实现|
