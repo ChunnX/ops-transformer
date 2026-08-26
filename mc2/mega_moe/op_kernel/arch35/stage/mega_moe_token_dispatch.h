@@ -31,6 +31,8 @@ struct TokenDispatchConfig {
     uint32_t quantScaleAlignBytes;
     uint32_t quantTokenScaleAlignBytes;
     int32_t dispatchFlagSlotsPerExpert;
+    // A8W8 Wave compact 路由槽中 int32 topkIndex 数据区的对齐字节数；其后 32B 保存 count。
+    uint32_t routeIndexAlignSize;
 };
 
 template <typename ActivationType>
@@ -273,7 +275,8 @@ __aicore__ inline void PublishGmm1TileReady(
  * Dispatch 第 3 层：扫描单个 source rank 的 route mask，搬运选中的 token
  * 和 metadata，并发布 GMM1 tile ready count。
  */
-template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
+template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch,
+          bool UseCompactRouteIndex = false>
 __aicore__ inline void DispatchRankTokens(
     const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
@@ -283,54 +286,85 @@ __aicore__ inline void DispatchRankTokens(
     int32_t gmm1TileRowCount)
 {
     const MegaMoeDispatchBufferConfig &bufferConfig = context.bufferConfig;
-    uint32_t maskSlotSize = context.maskAlignSize + static_cast<uint32_t>(ALIGN_32);
-    GlobalTensor<uint8_t> remoteRankMaskGlobal;
     int32_t matchedRouteCount = 0;
     int32_t dispatchedRowCount = 0;
-    for (int32_t batchIdx = 0;
-         batchIdx < bufferConfig.routeBatchCount && matchedRouteCount < segmentMatchOrdinalEnd;
-         ++batchIdx) {
-        int32_t batchRouteBegin = batchIdx * bufferConfig.routeItemsPerBatch;
-        bool isLastBatch = batchIdx == bufferConfig.routeBatchCount - 1;
-        int32_t validRouteCount = bufferConfig.routeItemsPerBatch;
-        int32_t maskSliceBytes = bufferConfig.routeItemsPerBatch / 8;
-        if (isLastBatch) {
-            uint64_t sendTotalNum = static_cast<uint64_t>(context.common.tokenNum) * context.common.topK;
-            validRouteCount = static_cast<int32_t>(sendTotalNum - static_cast<uint64_t>(batchRouteBegin));
-            if (batchRouteBegin / 8 + maskSliceBytes > static_cast<int32_t>(context.maskAlignSize)) {
-                maskSliceBytes = static_cast<int32_t>(context.maskAlignSize) - batchRouteBegin / 8;
-            }
-        }
+    if constexpr (UseCompactRouteIndex) {
+        // compact 槽已按 source rank 保存有序 topkIndex，直接搬入当前 core 所需的连续 ordinal 区间。
+        const uint32_t routeSlotSize = context.routeIndexAlignSize + static_cast<uint32_t>(ALIGN_32);
+        GlobalTensor<int32_t> remoteRouteIndexGlobal;
+        while (matchedRouteCount < segmentMatchOrdinalEnd - segmentMatchOrdinalBegin) {
+            const int32_t remainingRouteCount =
+                segmentMatchOrdinalEnd - segmentMatchOrdinalBegin - matchedRouteCount;
+            const int32_t batchDispatchRowCount =
+                remainingRouteCount < bufferConfig.routeItemsPerBatch ? remainingRouteCount :
+                                                                       bufferConfig.routeItemsPerBatch;
+            const int32_t routeOrdinal = segmentMatchOrdinalBegin + matchedRouteCount;
+            const uint64_t slotOffset =
+                (static_cast<uint64_t>(localExpertId) * context.common.worldSize + remoteRankIdx) * routeSlotSize;
+            remoteRouteIndexGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+                params.peermemInfo.maskRecvPtr + slotOffset +
+                static_cast<uint64_t>(routeOrdinal) * sizeof(int32_t)));
+            DataCopyExtParams routeCopyParams{
+                1U, static_cast<uint32_t>(batchDispatchRowCount * sizeof(int32_t)), 0U, 0U, 0U};
+            DataCopyPadExtParams<int32_t> routeCopyPad{false, 0U, 0U, 0U};
+            DataCopyPad(scratch.validTopkIndexTensor, remoteRouteIndexGlobal, routeCopyParams, routeCopyPad);
+            SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID4>();
 
-        remoteRankMaskGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(
-            params.peermemInfo.maskRecvPtr +
-            (static_cast<uint64_t>(localExpertId) * context.common.worldSize + remoteRankIdx) * maskSlotSize +
-            static_cast<uint64_t>(batchRouteBegin / 8)));
-        DataCopy(scratch.maskBatchTensor, remoteRankMaskGlobal, static_cast<uint32_t>(maskSliceBytes));
-        SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
-        CreateVecIndex(scratch.topkIndexTensor, batchRouteBegin, bufferConfig.routeItemsPerBatch);
-        uint64_t batchMatchedRouteCount = 0;
-        GatherMask(scratch.validTopkIndexTensor, scratch.topkIndexTensor, scratch.maskBatchU32Tensor, true,
-                   static_cast<uint32_t>(validRouteCount), {1, 1, 0, 0}, batchMatchedRouteCount);
-        SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
-
-        int32_t batchMatchOrdinalBegin = matchedRouteCount;
-        int32_t batchMatchOrdinalEnd = matchedRouteCount + static_cast<int32_t>(batchMatchedRouteCount);
-        int32_t dispatchMatchOrdinalBegin =
-            batchMatchOrdinalBegin > segmentMatchOrdinalBegin ? batchMatchOrdinalBegin : segmentMatchOrdinalBegin;
-        int32_t dispatchMatchOrdinalEnd =
-            batchMatchOrdinalEnd < segmentMatchOrdinalEnd ? batchMatchOrdinalEnd : segmentMatchOrdinalEnd;
-        if (dispatchMatchOrdinalEnd > dispatchMatchOrdinalBegin) {
-            int32_t batchLocalMatchBegin = dispatchMatchOrdinalBegin - batchMatchOrdinalBegin;
-            int32_t batchDispatchRowCount = dispatchMatchOrdinalEnd - dispatchMatchOrdinalBegin;
-            int32_t dispatchDstRowBegin =
-                rankSegmentRowBegin + expertGlobalRowBegin + dispatchMatchOrdinalBegin;
+            const int32_t dispatchDstRowBegin = rankSegmentRowBegin + expertGlobalRowBegin + routeOrdinal;
             CopyTokensAndMetaForDispatch<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
                 context, params, winRankAddr, scratch, dispatchDstRowBegin, remoteRankIdx,
-                batchLocalMatchBegin, batchDispatchRowCount);
+                0, batchDispatchRowCount);
+            matchedRouteCount += batchDispatchRowCount;
             dispatchedRowCount += batchDispatchRowCount;
         }
-        matchedRouteCount = batchMatchOrdinalEnd;
+    } else {
+        const uint32_t maskSlotSize = context.maskAlignSize + static_cast<uint32_t>(ALIGN_32);
+        GlobalTensor<uint8_t> remoteRankMaskGlobal;
+        for (int32_t batchIdx = 0;
+             batchIdx < bufferConfig.routeBatchCount && matchedRouteCount < segmentMatchOrdinalEnd;
+             ++batchIdx) {
+            int32_t batchRouteBegin = batchIdx * bufferConfig.routeItemsPerBatch;
+            bool isLastBatch = batchIdx == bufferConfig.routeBatchCount - 1;
+            int32_t validRouteCount = bufferConfig.routeItemsPerBatch;
+            int32_t maskSliceBytes = bufferConfig.routeItemsPerBatch / 8;
+            if (isLastBatch) {
+                uint64_t sendTotalNum = static_cast<uint64_t>(context.common.tokenNum) * context.common.topK;
+                validRouteCount = static_cast<int32_t>(sendTotalNum - static_cast<uint64_t>(batchRouteBegin));
+                if (batchRouteBegin / 8 + maskSliceBytes > static_cast<int32_t>(context.maskAlignSize)) {
+                    maskSliceBytes = static_cast<int32_t>(context.maskAlignSize) - batchRouteBegin / 8;
+                }
+            }
+
+            remoteRankMaskGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(
+                params.peermemInfo.maskRecvPtr +
+                (static_cast<uint64_t>(localExpertId) * context.common.worldSize + remoteRankIdx) * maskSlotSize +
+                static_cast<uint64_t>(batchRouteBegin / 8)));
+            DataCopy(scratch.maskBatchTensor, remoteRankMaskGlobal, static_cast<uint32_t>(maskSliceBytes));
+            SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
+            CreateVecIndex(scratch.topkIndexTensor, batchRouteBegin, bufferConfig.routeItemsPerBatch);
+            uint64_t batchMatchedRouteCount = 0;
+            GatherMask(scratch.validTopkIndexTensor, scratch.topkIndexTensor, scratch.maskBatchU32Tensor, true,
+                       static_cast<uint32_t>(validRouteCount), {1, 1, 0, 0}, batchMatchedRouteCount);
+            SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
+
+            int32_t batchMatchOrdinalBegin = matchedRouteCount;
+            int32_t batchMatchOrdinalEnd = matchedRouteCount + static_cast<int32_t>(batchMatchedRouteCount);
+            int32_t dispatchMatchOrdinalBegin =
+                batchMatchOrdinalBegin > segmentMatchOrdinalBegin ? batchMatchOrdinalBegin : segmentMatchOrdinalBegin;
+            int32_t dispatchMatchOrdinalEnd =
+                batchMatchOrdinalEnd < segmentMatchOrdinalEnd ? batchMatchOrdinalEnd : segmentMatchOrdinalEnd;
+            if (dispatchMatchOrdinalEnd > dispatchMatchOrdinalBegin) {
+                int32_t batchLocalMatchBegin = dispatchMatchOrdinalBegin - batchMatchOrdinalBegin;
+                int32_t batchDispatchRowCount = dispatchMatchOrdinalEnd - dispatchMatchOrdinalBegin;
+                int32_t dispatchDstRowBegin =
+                    rankSegmentRowBegin + expertGlobalRowBegin + dispatchMatchOrdinalBegin;
+                CopyTokensAndMetaForDispatch<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+                    context, params, winRankAddr, scratch, dispatchDstRowBegin, remoteRankIdx,
+                    batchLocalMatchBegin, batchDispatchRowCount);
+                dispatchedRowCount += batchDispatchRowCount;
+            }
+            matchedRouteCount = batchMatchOrdinalEnd;
+        }
     }
 
     if (dispatchedRowCount > 0) {
@@ -345,7 +379,8 @@ __aicore__ inline void DispatchRankTokens(
  * Dispatch 第 2 层：将当前专家中本 core 负责的 row range 映射到重叠的
  * source-rank segment，并逐段调用 DispatchRankTokens。
  */
-template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
+template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch,
+          bool UseCompactRouteIndex = false>
 __aicore__ inline void DispatchExpertTokensByRank(
     const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
@@ -377,7 +412,7 @@ __aicore__ inline void DispatchExpertTokensByRank(
             continue;
         }
 
-        DispatchRankTokens<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+        DispatchRankTokens<ActivationType, QuantScaleType, TopkWeightsPrefetch, UseCompactRouteIndex>(
             context, params, winRankAddr, scratch, localExpertId,
             expertGlobalRowBegin, static_cast<uint32_t>(remoteRankIdx),
             rankSegmentRowBegin, segmentMatchOrdinalBegin, segmentMatchOrdinalEnd,
@@ -440,7 +475,8 @@ __aicore__ inline void DispatchExpertTokensByRankShard(
  * Dispatch 第 1 层：将当前专家在本 wave 内的 row 段均分给 Dispatch core，
  * 再将本 core 的 row range 交给 DispatchExpertTokensByRank 处理。
  */
-template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch>
+template <typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM, bool TopkWeightsPrefetch,
+          bool UseCompactRouteIndex = false>
 __aicore__ inline void DispatchExpertTokensByRows(
     const TokenDispatchConfig &context, const Params &params, GM_ADDR *winRankAddr,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId,
@@ -474,27 +510,30 @@ __aicore__ inline void DispatchExpertTokensByRows(
         return;
     }
 
-    DispatchExpertTokensByRank<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
+    DispatchExpertTokensByRank<ActivationType, QuantScaleType, TopkWeightsPrefetch, UseCompactRouteIndex>(
         context, params, winRankAddr, scratch, localExpertId, expertGlobalRowBegin,
         expertRange, rankRange, gmm1TileRowCount);
 }
 
 // 计算一个专家的接收 token 数，并发布就绪 flag。
-template <typename ActivationType, bool EnableA8W4, bool TopkWeightsPrefetch>
+template <typename ActivationType, bool EnableA8W4, bool TopkWeightsPrefetch,
+          bool UseCompactRouteIndex = false>
 __aicore__ inline void ComputeExpertTokenCountAndNotify(
     const TokenDispatchConfig &context, const Params &params,
     TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId, uint64_t &sendCnt)
 {
     sendCnt = 0;
-    uint32_t maskSlotSize = context.maskAlignSize + static_cast<uint32_t>(ALIGN_32);
+    const uint32_t routeDataAlignSize =
+        UseCompactRouteIndex ? context.routeIndexAlignSize : context.maskAlignSize;
+    const uint32_t routeSlotSize = routeDataAlignSize + static_cast<uint32_t>(ALIGN_32);
     GlobalTensor<int32_t> countSrcGlobal;
     countSrcGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
         params.peermemInfo.maskRecvPtr +
-        static_cast<uint64_t>(localExpertId) * context.common.worldSize * maskSlotSize +
-        context.maskAlignSize));
+        static_cast<uint64_t>(localExpertId) * context.common.worldSize * routeSlotSize +
+        routeDataAlignSize));
     DataCopyExtParams countCopyParams{static_cast<uint16_t>(context.common.worldSize),
                                       static_cast<uint32_t>(sizeof(int32_t)),
-                                      static_cast<uint32_t>(maskSlotSize - sizeof(int32_t)), 0U, 0U};
+                                      static_cast<uint32_t>(routeSlotSize - sizeof(int32_t)), 0U, 0U};
     DataCopyPadExtParams<int32_t> countPad{true, 0U, 0U, 0U};
     DataCopyPad(scratch.sendCntTensor, countSrcGlobal, countCopyParams, countPad);
 

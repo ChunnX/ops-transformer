@@ -10,6 +10,7 @@
 
 #include <torch/extension.h>
 #include <cstring>
+#include <limits>
 #include "aclnn_common.h"
 
 namespace op_api {
@@ -206,7 +207,7 @@ int64_t CalcLeastCclBufferSizeA3(int64_t h, int64_t epWorldSize, bool isQuantRou
     return (offsetTokenPerExpert + offsetTensor + offsetFlag + RESERVED_SPACE_SIZE + MB_SIZE) / MB_SIZE;
 }
 
-// A5 half-buffer minimum size (MB). Ported 1:1 from the original Python implementation.
+// A5 half-buffer minimum size in bytes. The route region follows the A8W8 Wave compact CCL layout.
 int64_t CalcHalfBufferSizeMBA5(int64_t epWorldSize, int64_t moeExpertNum, int64_t numMaxTokensPerRank, int64_t numTopk,
                                int64_t hidden, int64_t topkWeightsType)
 {
@@ -215,11 +216,10 @@ int64_t CalcHalfBufferSizeMBA5(int64_t epWorldSize, int64_t moeExpertNum, int64_
     // 全卡软同步使用 60KB
     int64_t peermemDataOffset = 60LL * 1024LL;
 
-    // mask_recv_size
-    int64_t compareCount = CeilAlign(numMaxTokensPerRank * numTopk * 4, 256) / 4;
-    int64_t maskAlignSize = CeilAlign(compareCount / 8, 32);
-    int64_t maskSlotSize = maskAlignSize + 32;
-    int64_t maskRecvSize = CeilAlign(expertPerRank * epWorldSize * maskSlotSize, 512);
+    // A8W8 Wave compact route-index 区：每个 (expert, sourceRank) 槽最多保存 bs 个 int32 index + 32B count。
+    int64_t routeIndexAlignSize = CeilAlign(numMaxTokensPerRank * static_cast<int64_t>(sizeof(int32_t)), 32);
+    int64_t routeSlotSize = routeIndexAlignSize + 32;
+    int64_t routeRecvSize = CeilAlign(expertPerRank * epWorldSize * routeSlotSize, 512);
 
     // quant_token_scale_size
     int64_t mxScaleNum = (hidden + 31) / 32;
@@ -234,7 +234,7 @@ int64_t CalcHalfBufferSizeMBA5(int64_t epWorldSize, int64_t moeExpertNum, int64_
     // combine_send_size
     int64_t combineOut = CeilAlign(numMaxTokensPerRank * hidden * numTopk * 2, 512);
 
-    int64_t totalBytes = peermemDataOffset + maskRecvSize + quantTokenScaleSize + combineOut;
+    int64_t totalBytes = peermemDataOffset + routeRecvSize + quantTokenScaleSize + combineOut;
 
     return totalBytes;
 }
@@ -275,7 +275,7 @@ int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum, int64
                                         numTopk);
     }
 
-    // A5 / 950 — 校验与原 Python get_mega_moe_ccl_buffer_size 对齐
+    // A5 / 950 参数校验；空间公式由上面的 compact CCL 布局统一给出。
     TORCH_CHECK(epWorldSize >= 2 && epWorldSize <= 1024, "ep_world_size only support in [2, 1024], but got ",
                 epWorldSize);
     TORCH_CHECK(hidden >= 1024 && hidden <= 8192, "hidden only support in [1024, 8192], but got ", hidden);
@@ -283,6 +283,15 @@ int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum, int64
     TORCH_CHECK(moeExpertNum >= 1 && moeExpertNum <= 2048, "moe_expert_num only support in [1, 2048], but got ",
                 moeExpertNum);
     TORCH_CHECK(numTopk >= 1 && numTopk <= 32, "num_topk only support in [1, 32], but got ", numTopk);
+    TORCH_CHECK(numMaxTokensPerRank <= std::numeric_limits<int32_t>::max() / numTopk,
+                "num_max_tokens_per_rank * num_topk must fit in int32 topkIndex, but got ",
+                numMaxTokensPerRank, " * ", numTopk);
+    constexpr int64_t maxCompactRouteTokenCount =
+        (static_cast<int64_t>(std::numeric_limits<uint32_t>::max()) - 64LL) /
+        static_cast<int64_t>(sizeof(int32_t));
+    TORCH_CHECK(numMaxTokensPerRank <= maxCompactRouteTokenCount,
+                "num_max_tokens_per_rank is too large for the uint32 compact route slot size, but got ",
+                numMaxTokensPerRank);
 
     return CalcHalfBufferSizeMBA5(epWorldSize, moeExpertNum, numMaxTokensPerRank, numTopk, hidden, topkWeightsType);
 }

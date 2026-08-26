@@ -124,6 +124,15 @@ constexpr int32_t MAX_SEND_MASK_BUFFER_COUNT = 6;
 constexpr int32_t BASE_SEND_ROUTE_ITEMS_PER_BATCH = 12288;
 
 /*
+ * A8W8 Wave compact route-index policy
+ *
+ * SendMask 侧仍使用 CompareScalar + GatherMask，但不再发送 bitmask，而是直接发送 int32 topkIndex。
+ * 每个 ring slot 同时容纳本 batch 的 mask、最坏情况下 routeItemsPerBatch 个 compact index 和 32B count。
+ * 8192 是保守基准；host tiling 必须根据实际 UB 容量缩小 batch，并保证至少双 buffer，不能无条件保底。
+ */
+constexpr int32_t BASE_COMPACT_ROUTE_ITEMS_PER_BATCH = 8192;
+
+/*
  * Reset buffer policy
  *
  * ResetFlagList 分批清零的粒度，单位为 int32 元素。2048 * sizeof(int32_t) = 8KB；本核 flag 份额
@@ -200,5 +209,9 @@ struct MegaMoeTilingData {
     uint32_t mGroupsPerWave;    // 每个 routed expert Wave 消费的 256-row M 分组数
     // MoE 和共享专家使用相同布局：true 表示每个专家一个二维 tensor，false 表示单个三维堆叠 tensor。
     bool isPerExpertWeightTensor;
+    // A8W8 Wave 专用 compact route-index 配置；旧 bitmask 路径继续使用上面的原配置。
+    MegaMoeDispatchBufferConfig compactDispatchBufferConfig;
+    MegaMoeSendMaskBufferConfig compactSendConfigForCoreWithExtraExpert;
+    MegaMoeSendMaskBufferConfig compactSendConfigForCoreWithoutExtraExpert;
 };
 #endif

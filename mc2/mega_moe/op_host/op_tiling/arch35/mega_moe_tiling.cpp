@@ -157,6 +157,11 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
     OP_LOGD(nodeName, "dispatch: routeItemsPerBatch=%d, routeBatchCount=%d, bufferCount=%d, copyBufferBytes=%u",
             dispatchConfig.routeItemsPerBatch, dispatchConfig.routeBatchCount, dispatchConfig.bufferCount,
             dispatchConfig.copyBufferBytes);
+    const auto &compactDispatchConfig = tilingData->compactDispatchBufferConfig;
+    OP_LOGD(nodeName,
+            "compactDispatch: routeItemsPerBatch=%d, routeBatchCount=%d, bufferCount=%d, copyBufferBytes=%u",
+            compactDispatchConfig.routeItemsPerBatch, compactDispatchConfig.routeBatchCount,
+            compactDispatchConfig.bufferCount, compactDispatchConfig.copyBufferBytes);
 
     const auto &sendMaskConfigWithExtraExpert = tilingData->sendMaskConfigForCoreWithExtraExpert;
     const auto &sendMaskConfigWithoutExtraExpert = tilingData->sendMaskConfigForCoreWithoutExtraExpert;
@@ -169,6 +174,17 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
             "sendMaskWithoutExtraExpert: routeItemsPerBatch=%d, routeBatchCount=%d, bufferCount=%d, bufferBytes=%u",
             sendMaskConfigWithoutExtraExpert.routeItemsPerBatch, sendMaskConfigWithoutExtraExpert.routeBatchCount,
             sendMaskConfigWithoutExtraExpert.bufferCount, sendMaskConfigWithoutExtraExpert.bufferBytes);
+    const auto &compactSendConfigWithExtraExpert = tilingData->compactSendConfigForCoreWithExtraExpert;
+    const auto &compactSendConfigWithoutExtraExpert = tilingData->compactSendConfigForCoreWithoutExtraExpert;
+    OP_LOGD(nodeName,
+            "compactSendWithExtraExpert: routeItemsPerBatch=%d, routeBatchCount=%d, bufferCount=%d, bufferBytes=%u",
+            compactSendConfigWithExtraExpert.routeItemsPerBatch, compactSendConfigWithExtraExpert.routeBatchCount,
+            compactSendConfigWithExtraExpert.bufferCount, compactSendConfigWithExtraExpert.bufferBytes);
+    OP_LOGD(nodeName,
+            "compactSendWithoutExtraExpert: routeItemsPerBatch=%d, routeBatchCount=%d, bufferCount=%d, bufferBytes=%u",
+            compactSendConfigWithoutExtraExpert.routeItemsPerBatch,
+            compactSendConfigWithoutExtraExpert.routeBatchCount,
+            compactSendConfigWithoutExtraExpert.bufferCount, compactSendConfigWithoutExtraExpert.bufferBytes);
 
     const auto &unpermuteFullChunkConfig = tilingData->unpermuteConfigForFullTokenChunk;
     const auto &unpermuteTailChunkConfig = tilingData->unpermuteConfigForTailTokenChunk;
@@ -213,13 +229,14 @@ void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
     int64_t rankSyncInWorldSize = PEERMEM_DATA_OFFSET;
     OP_LOGD(nodeName, "rankSyncInWorldSize: {%ld}\n", rankSyncInWorldSize);
     int64_t sendTotalNum = static_cast<int64_t>(tilingData->bs) * tilingData->topK;
-    int64_t compareCount =
-        ops::CeilAlign(sendTotalNum * (int64_t)sizeof(int32_t), (int64_t)ALIGN_256) / (int64_t)sizeof(int32_t);
-    int64_t maskAlignSize = ops::CeilAlign(compareCount / 8, (int64_t)ALIGN_32);
-    int64_t maskSlotSize = maskAlignSize + (int64_t)ALIGN_32; // mask + 32B count
-    int64_t maskRecvSize = ops::CeilAlign(
-        (int64_t)tilingData->moeExpertPerRank * tilingData->epWorldSize * maskSlotSize, (int64_t)ALIGN_512);
-    OP_LOGD(nodeName, "maskRecvSize: {%ld}\n", maskRecvSize);
+    int64_t routeIndexAlignSize = ops::CeilAlign(
+        static_cast<int64_t>(tilingData->bs) * static_cast<int64_t>(sizeof(int32_t)),
+        static_cast<int64_t>(ALIGN_32));
+    int64_t routeSlotSize = routeIndexAlignSize + static_cast<int64_t>(ALIGN_32);
+    int64_t routeRecvSize = ops::CeilAlign(
+        static_cast<int64_t>(tilingData->moeExpertPerRank) * tilingData->epWorldSize * routeSlotSize,
+        static_cast<int64_t>(ALIGN_512));
+    OP_LOGD(nodeName, "routeRecvSize: {%ld}\n", routeRecvSize);
     uint32_t mxScaleNum = ops::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
     uint32_t dataBytes = ops::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
     uint32_t scaleAlignBytes =
@@ -246,7 +263,7 @@ void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
     int64_t combineSendSize = ops::CeilAlign(sendTotalNum * combineTokenBytes, static_cast<int64_t>(ALIGN_512));
     OP_LOGD(nodeName, "combineSendSize: {%ld}\n", combineSendSize);
     OP_LOGD(nodeName, "total PeermemInfo Size: {%ld}\n",
-            rankSyncInWorldSize + maskRecvSize + quantTokenScaleSize + combineSendSize);
+            rankSyncInWorldSize + routeRecvSize + quantTokenScaleSize + combineSendSize);
 }
 
 static ge::DataType GetDataTypeByOpQuantMode(const int64_t opQuantMode)
@@ -412,6 +429,19 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
     int64_t bs = xStorageShape->GetStorageShape().GetDim(0);
     int64_t h = xStorageShape->GetStorageShape().GetDim(1);
     int64_t topK = topkIdsStorageShape->GetStorageShape().GetDim(1);
+    OP_TILING_CHECK(
+        bs <= 0 || topK <= 0 || bs > std::numeric_limits<int32_t>::max() / topK,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "bs * topK", (std::to_string(bs) + " * " + std::to_string(topK)).c_str(),
+                                  "must be positive and fit in int32 topkIndex"),
+        return ge::GRAPH_FAILED);
+    constexpr int64_t maxCompactRouteTokenCount =
+        (static_cast<int64_t>(std::numeric_limits<uint32_t>::max()) - 2 * ALIGN_32) /
+        static_cast<int64_t>(sizeof(int32_t));
+    OP_TILING_CHECK(
+        bs > maxCompactRouteTokenCount,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "bs", std::to_string(bs).c_str(),
+                                  "is too large for the uint32 compact route slot size"),
+        return ge::GRAPH_FAILED);
     bool isPerExpertWeightTensor = weightOneStorageShape->GetStorageShape().GetDimNum() == TWO_DIMS;
     int64_t weightMoeExpertCount = GetWeightExpertCount(context, config.weight1Index, isPerExpertWeightTensor);
 
@@ -447,12 +477,12 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
                 .c_str()),
         return ge::GRAPH_FAILED);
 
-    // maskRecv Size
-    int64_t compareCount =
-        ops::CeilAlign((int64_t)(bs * topK * sizeof(int32_t)), (int64_t)(ALIGN_256)) / (int64_t)sizeof(int32_t);
-    int64_t maskAlignSize = ops::CeilAlign(compareCount / 8, (int64_t)ALIGN_32); // 8 = block_32 / sizeof(int32_t)
-    int64_t maskSlotSize = maskAlignSize + ALIGN_32;                             // mask + 32B count
-    int64_t maskRecvSize = ops::CeilAlign(moeExpertPerRank * epWorldSize * maskSlotSize, ALIGN_512);
+    // A8W8 compact route-index CCL 区；旧 bitmask 路径可安全复用其前缀。
+    int64_t routeIndexAlignSize = ops::CeilAlign(bs * static_cast<int64_t>(sizeof(int32_t)),
+                                                 static_cast<int64_t>(ALIGN_32));
+    int64_t routeSlotSize = routeIndexAlignSize + static_cast<int64_t>(ALIGN_32);
+    int64_t routeRecvSize = ops::CeilAlign(moeExpertPerRank * epWorldSize * routeSlotSize,
+                                           static_cast<int64_t>(ALIGN_512));
     // quantTokenScale Size
     uint32_t mxScaleNum = ops::CeilDiv(h, static_cast<int64_t>(ALIGN_32));
     uint32_t dataBytes = ops::CeilAlign(h, static_cast<int64_t>(ALIGN_256)) * sizeof(int8_t);
@@ -474,7 +504,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
         combineTokenBytes = ops::CeilAlign(tokenStorageBytes + storedScaleBytes, static_cast<int64_t>(ALIGN_32));
     }
     int64_t combineSendSize = ops::CeilAlign(bs * topK * combineTokenBytes, static_cast<int64_t>(ALIGN_512));
-    int64_t leastCclBufferSize = PEERMEM_DATA_OFFSET + maskRecvSize + quantTokenScaleSize + combineSendSize;
+    int64_t leastCclBufferSize = PEERMEM_DATA_OFFSET + routeRecvSize + quantTokenScaleSize + combineSendSize;
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>((config.attrCclBufferSizeIndex));
     int64_t cclBufferSize = static_cast<int64_t>(*cclBufferSizePtr);
     OP_TILING_CHECK(cclBufferSize < leastCclBufferSize,
@@ -797,6 +827,149 @@ static MegaMoeSendMaskBufferConfig CalcSendMaskBufferConfig(const MegaMoeTilingD
     return bufferConfig;
 }
 
+// A8W8 Wave compact Dispatch：GM 中已是连续 int32 topkIndex，仅保留一份 index batch UB。
+static MegaMoeDispatchBufferConfig CalcCompactDispatchBufferConfig(const MegaMoeTilingData *tilingData,
+                                                                   uint32_t activationElementsPerByte,
+                                                                   uint32_t availableUbBytes)
+{
+    MegaMoeDispatchBufferConfig bufferConfig{};
+    const uint64_t routeCapacity = ops::CeilAlign(
+        static_cast<uint64_t>(tilingData->bs), static_cast<uint64_t>(ALIGN_256));
+
+    uint32_t quantTokenBytes =
+        ops::CeilAlign(tilingData->h / activationElementsPerByte, static_cast<uint32_t>(ALIGN_256));
+    uint32_t quantScaleAlignBytes = ops::CeilAlign(
+        ops::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32)) * static_cast<uint32_t>(sizeof(int8_t)),
+        static_cast<uint32_t>(ALIGN_32));
+    bufferConfig.copyBufferBytes = quantTokenBytes + quantScaleAlignBytes;
+    if (tilingData->topkWeightsPrefetch == 1) {
+        bufferConfig.copyBufferBytes += ops::CeilAlign(
+            static_cast<uint32_t>(tilingData->topK * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
+    }
+
+    const uint32_t fixedBufferBytes =
+        static_cast<uint32_t>(ALIGN_32) +
+        static_cast<uint32_t>(ops::CeilAlign(
+            static_cast<uint64_t>(tilingData->epWorldSize) * tilingData->moeExpertPerRank * sizeof(int32_t),
+            static_cast<uint64_t>(ALIGN_32))) +
+        tilingData->epWorldSize * static_cast<uint32_t>(ALIGN_32) +
+        static_cast<uint32_t>(ops::CeilAlign(
+            static_cast<uint64_t>(tilingData->moeExpertPerRank) * sizeof(int32_t),
+            static_cast<uint64_t>(ALIGN_32)));
+    const uint32_t dispatchSlotBytes = bufferConfig.copyBufferBytes + static_cast<uint32_t>(ALIGN_32);
+
+    uint32_t routeItemsPerBatch = static_cast<uint32_t>(
+        std::min(routeCapacity, static_cast<uint64_t>(BASE_RECV_ROUTE_ITEMS_PER_BATCH)));
+    while (routeItemsPerBatch >= static_cast<uint32_t>(ALIGN_256)) {
+        const uint64_t requiredBytes =
+            static_cast<uint64_t>(fixedBufferBytes) +
+            static_cast<uint64_t>(routeItemsPerBatch) * sizeof(int32_t) +
+            static_cast<uint64_t>(MIN_DISPATCH_BUFFER_COUNT) * dispatchSlotBytes;
+        if (requiredBytes <= availableUbBytes) {
+            break;
+        }
+        routeItemsPerBatch -= static_cast<uint32_t>(ALIGN_256);
+    }
+    if (routeItemsPerBatch < static_cast<uint32_t>(ALIGN_256)) {
+        return bufferConfig;
+    }
+
+    const uint64_t bytesWithoutDispatchSlots =
+        static_cast<uint64_t>(fixedBufferBytes) +
+        static_cast<uint64_t>(routeItemsPerBatch) * sizeof(int32_t);
+    bufferConfig.bufferCount = static_cast<int32_t>(
+        (static_cast<uint64_t>(availableUbBytes) - bytesWithoutDispatchSlots) / dispatchSlotBytes);
+    bufferConfig.bufferCount = std::min(bufferConfig.bufferCount, MAX_DISPATCH_BUFFER_COUNT);
+    if (bufferConfig.bufferCount < MIN_DISPATCH_BUFFER_COUNT) {
+        bufferConfig.bufferCount = 0;
+        return bufferConfig;
+    }
+
+    const uint64_t fixedBytesWithDispatchSlots =
+        static_cast<uint64_t>(fixedBufferBytes) +
+        static_cast<uint64_t>(bufferConfig.bufferCount) * dispatchSlotBytes;
+    uint64_t expandedRouteItems =
+        (static_cast<uint64_t>(availableUbBytes) - fixedBytesWithDispatchSlots) / sizeof(int32_t);
+    expandedRouteItems = expandedRouteItems / ALIGN_256 * ALIGN_256;
+    expandedRouteItems = std::min(expandedRouteItems, routeCapacity);
+    if (expandedRouteItems > routeItemsPerBatch) {
+        routeItemsPerBatch = static_cast<uint32_t>(expandedRouteItems);
+    }
+    bufferConfig.routeItemsPerBatch = static_cast<int32_t>(routeItemsPerBatch);
+    bufferConfig.routeBatchCount = static_cast<int32_t>(
+        ops::CeilDiv(static_cast<uint64_t>(tilingData->bs), static_cast<uint64_t>(routeItemsPerBatch)));
+    return bufferConfig;
+}
+
+// A8W8 Wave compact producer：每个 ring slot = mask + 最坏 N 个 int32 topkIndex + 32B count。
+static MegaMoeSendMaskBufferConfig CalcCompactSendBufferConfig(const MegaMoeTilingData *tilingData,
+                                                               uint32_t fixedBufferBytes,
+                                                               uint32_t ownedExpertCount,
+                                                               uint32_t availableUbBytes)
+{
+    MegaMoeSendMaskBufferConfig bufferConfig{};
+    const uint64_t sendTotalNum = static_cast<uint64_t>(tilingData->bs) * tilingData->topK;
+    const uint64_t alignedTotalRouteItems =
+        ops::CeilAlign(sendTotalNum, static_cast<uint64_t>(ALIGN_256));
+    uint32_t routeItemsPerBatch = static_cast<uint32_t>(
+        std::min(alignedTotalRouteItems, static_cast<uint64_t>(BASE_COMPACT_ROUTE_ITEMS_PER_BATCH)));
+
+    uint32_t availableBufferCount = 0U;
+    while (routeItemsPerBatch >= static_cast<uint32_t>(ALIGN_256)) {
+        const uint64_t routeTensorBytes =
+            static_cast<uint64_t>(routeItemsPerBatch) * sizeof(int32_t);
+        const uint64_t bytesWithoutRing =
+            static_cast<uint64_t>(fixedBufferBytes) + 2U * routeTensorBytes;
+        const uint64_t ringSlotBytes =
+            static_cast<uint64_t>(routeItemsPerBatch) / 8U + routeTensorBytes + ALIGN_32;
+        availableBufferCount = bytesWithoutRing < availableUbBytes ?
+            static_cast<uint32_t>((static_cast<uint64_t>(availableUbBytes) - bytesWithoutRing) / ringSlotBytes) :
+            0U;
+        if (availableBufferCount >= static_cast<uint32_t>(MIN_SEND_MASK_BUFFER_COUNT)) {
+            break;
+        }
+        routeItemsPerBatch -= static_cast<uint32_t>(ALIGN_256);
+    }
+    if (routeItemsPerBatch < static_cast<uint32_t>(ALIGN_256) ||
+        availableBufferCount < static_cast<uint32_t>(MIN_SEND_MASK_BUFFER_COUNT)) {
+        return bufferConfig;
+    }
+
+    bufferConfig.bufferCount = static_cast<int32_t>(
+        std::min(availableBufferCount, static_cast<uint32_t>(MAX_SEND_MASK_BUFFER_COUNT)));
+    const uint64_t routeBatchCount = ops::CeilDiv(sendTotalNum, static_cast<uint64_t>(routeItemsPerBatch));
+    const uint64_t routePushCount = routeBatchCount * ownedExpertCount;
+    if (routePushCount > 0U) {
+        const uint64_t usefulBufferCount =
+            std::max(routePushCount, static_cast<uint64_t>(MIN_SEND_MASK_BUFFER_COUNT));
+        bufferConfig.bufferCount = static_cast<int32_t>(
+            std::min(static_cast<uint64_t>(bufferConfig.bufferCount), usefulBufferCount));
+    }
+
+    // 固定 ring 深度后，用剩余 UB 同时扩大两个 route tensor 及每个 ring 的 mask/compact 区。
+    const uint64_t fixedBytesWithRingCount =
+        static_cast<uint64_t>(fixedBufferBytes) +
+        static_cast<uint64_t>(bufferConfig.bufferCount) * ALIGN_32;
+    const uint64_t routeItemBudgetBytes =
+        static_cast<uint64_t>(availableUbBytes) - fixedBytesWithRingCount;
+    const uint64_t routeItemDenominator =
+        64U + 33U * static_cast<uint64_t>(bufferConfig.bufferCount); // 每 item 字节数乘 8
+    uint64_t expandedRouteItems = routeItemBudgetBytes * 8U / routeItemDenominator;
+    expandedRouteItems = expandedRouteItems / ALIGN_256 * ALIGN_256;
+    expandedRouteItems = std::min(expandedRouteItems, alignedTotalRouteItems);
+    if (expandedRouteItems > routeItemsPerBatch) {
+        routeItemsPerBatch = static_cast<uint32_t>(expandedRouteItems);
+    }
+
+    bufferConfig.routeItemsPerBatch = static_cast<int32_t>(routeItemsPerBatch);
+    bufferConfig.routeBatchCount = static_cast<int32_t>(
+        ops::CeilDiv(sendTotalNum, static_cast<uint64_t>(routeItemsPerBatch)));
+    bufferConfig.bufferBytes = routeItemsPerBatch / 8U +
+                               routeItemsPerBatch * static_cast<uint32_t>(sizeof(int32_t)) +
+                               static_cast<uint32_t>(ALIGN_32);
+    return bufferConfig;
+}
+
 static MegaMoeUnpermuteBufferConfig CalcUnpermuteBufferConfig(const MegaMoeTilingData *tilingData,
                                                               uint32_t coreTokenCount,
                                                               uint32_t topKWeightsConversionElementBytes,
@@ -946,10 +1119,22 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
 
     uint32_t activationElementsPerByte =
         GetOpQuantModeByAttrDispatchOutType(context, config) == DISPATCH_QUANT_OUT_DTYPE_E2M1 ? 2U : 1U;
+    const bool useCompactRouteIndex =
+        tilingData->topoType == TOPO_TYPE_MTE &&
+        (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
+         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ);
     // DispatchBuffInit 的 UB 布局不依赖 AIV 分核结果，所有 AIV core 使用同一套 dispatch 配置。
     // 若 kernel 后续按 core 拆分 DispatchBuffInit 的 tensor 或改变 copyTmp slot 布局，需同步调整此处。
     tilingData->dispatchBufferConfig =
         CalcDispatchBufferConfig(tilingData, activationElementsPerByte, availableUbBytes);
+    tilingData->compactDispatchBufferConfig =
+        CalcCompactDispatchBufferConfig(tilingData, activationElementsPerByte, availableUbBytes);
+    OP_TILING_CHECK(
+        useCompactRouteIndex &&
+            (tilingData->compactDispatchBufferConfig.routeItemsPerBatch <= 0 ||
+             tilingData->compactDispatchBufferConfig.bufferCount < MIN_DISPATCH_BUFFER_COUNT),
+        OP_LOGE(nodeName, "UB is insufficient for the A8W8 Wave compact dispatch buffers."),
+        return ge::GRAPH_FAILED);
 
     tilingData->combineSyncSlotCountPerExpert = CalcCombineSyncSlotCountPerExpert(tilingData);
 
@@ -998,6 +1183,18 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
         tilingData, sendMaskFixedBufferBytes, expertCountPerCoreWithExtraExpert, availableUbBytes);
     tilingData->sendMaskConfigForCoreWithoutExtraExpert = CalcSendMaskBufferConfig(
         tilingData, sendMaskFixedBufferBytes, expertCountPerCoreWithoutExtraExpert, availableUbBytes);
+    tilingData->compactSendConfigForCoreWithExtraExpert = CalcCompactSendBufferConfig(
+        tilingData, sendMaskFixedBufferBytes, expertCountPerCoreWithExtraExpert, availableUbBytes);
+    tilingData->compactSendConfigForCoreWithoutExtraExpert = CalcCompactSendBufferConfig(
+        tilingData, sendMaskFixedBufferBytes, expertCountPerCoreWithoutExtraExpert, availableUbBytes);
+    OP_TILING_CHECK(
+        useCompactRouteIndex &&
+            (tilingData->compactSendConfigForCoreWithExtraExpert.routeItemsPerBatch <= 0 ||
+             tilingData->compactSendConfigForCoreWithExtraExpert.bufferCount < MIN_SEND_MASK_BUFFER_COUNT ||
+             tilingData->compactSendConfigForCoreWithoutExtraExpert.routeItemsPerBatch <= 0 ||
+             tilingData->compactSendConfigForCoreWithoutExtraExpert.bufferCount < MIN_SEND_MASK_BUFFER_COUNT),
+        OP_LOGE(nodeName, "UB is insufficient for the A8W8 Wave compact route producer buffers."),
+        return ge::GRAPH_FAILED);
 
     /*
      * 与 kernel Unpermute 开头的 TilingByCore(m_, ..., align=1) 一一对应。TilingByCore 使用：

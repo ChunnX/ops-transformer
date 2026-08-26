@@ -57,13 +57,13 @@ struct PeermemInfo {
         rankSyncInWorldPtr = base;
         int64_t offset = PEERMEM_DATA_OFFSET;
         maskRecvPtr = base + offset;
-        int64_t sendTotalNum = static_cast<int64_t>(tilingData->bs) * tilingData->topK;
-        int64_t compareCount = Ops::Base::CeilAlign(sendTotalNum * static_cast<int64_t>(sizeof(int32_t)), ALIGN_256) /
-                               static_cast<int64_t>(sizeof(int32_t));
-        int64_t maskAlignSize = Ops::Base::CeilAlign(compareCount / 8, ALIGN_32);
-        int64_t maskSlotSize = maskAlignSize + ALIGN_32;
+        // MTE CCL 路由区按 A8W8 compact 格式统一预留：每个 source rank 最多 bs 个 int32 topkIndex，
+        // 槽尾 32B 保存 count。旧 bitmask 路径只使用该区域前缀，不改变自身槽内格式。
+        int64_t routeIndexAlignSize = Ops::Base::CeilAlign(
+            static_cast<int64_t>(tilingData->bs) * static_cast<int64_t>(sizeof(int32_t)), ALIGN_32);
+        int64_t routeSlotSize = routeIndexAlignSize + ALIGN_32;
         offset += Ops::Base::CeilAlign(
-            static_cast<int64_t>(tilingData->moeExpertPerRank) * tilingData->epWorldSize * maskSlotSize, ALIGN_512);
+            static_cast<int64_t>(tilingData->moeExpertPerRank) * tilingData->epWorldSize * routeSlotSize, ALIGN_512);
 
         uint32_t mxScaleNum = Ops::Base::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
         uint32_t dataBytes =
