@@ -58,6 +58,7 @@ constexpr int32_t TILING_TEMPLATE_PRIORITY = 1000;
 constexpr uint64_t WORKSPACE_COUNT = 1;
 constexpr uint64_t RESERVED_WORKSPACE_SIZE = 16ULL * 1024ULL * 1024ULL;
 constexpr uint64_t TOKEN_TILE_PER_AIV_CAP = 4;
+constexpr uint64_t MX_SCALE_GROUP_SIZE = 32U;
 constexpr uint64_t MROPE_MX_GM_STRIDE_MAX_BYTES = (1ULL << 40U) - 1U;
 constexpr const char *QKV_LAYOUT_NTD = "NTD";
 constexpr const char *QKV_LAYOUT_TND = "TND";
@@ -568,7 +569,8 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateCacheShapes() c
                                    std::to_string(input_.blockSize) + ", " + std::to_string(input_.headDim))
                                       .c_str()),
         return ge::GRAPH_FAILED);
-    const uint64_t scaleCount = traits.usesMxScaleLayout ? Ops::Base::CeilDiv(input_.headDim, 32UL) : 1U;
+    const uint64_t scaleCount =
+        traits.usesMxScaleLayout ? Ops::Base::CeilDiv(input_.headDim, MX_SCALE_GROUP_SIZE) : 1U;
     const bool invalidScaleShape =
         static_cast<uint64_t>(input_.kScaleCache.shape.GetDim(0)) != input_.blockNum ||
         static_cast<uint64_t>(input_.kScaleCache.shape.GetDim(1)) != input_.numKHeads ||
@@ -606,7 +608,8 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateStrides() const
     const gert::Stride &kScaleStride = input_.kScaleCache.stride;
     const int64_t headDim = static_cast<int64_t>(input_.headDim);
     const int64_t minKScaleTokenStride = traits.usesMxScaleLayout ?
-                                             static_cast<int64_t>(Ops::Base::CeilDiv(input_.headDim, 32UL)) :
+                                             static_cast<int64_t>(
+                                                 Ops::Base::CeilDiv(input_.headDim, MX_SCALE_GROUP_SIZE)) :
                                              1;
     OP_CHECK_IF(!input_.kCache.stridePresent || kStride.GetDimNum() != 4 || kStride.GetStride(0) <= 0 ||
                     kStride.GetStride(1) < headDim || kStride.GetStride(2) < headDim || kStride.GetStride(3) != 1,

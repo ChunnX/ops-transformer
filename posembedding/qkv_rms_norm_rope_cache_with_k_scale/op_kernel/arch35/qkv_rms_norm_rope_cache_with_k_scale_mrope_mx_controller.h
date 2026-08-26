@@ -71,6 +71,8 @@ private:
                                               const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData,
                                               uint32_t aivIndex, uint32_t activeAiv) const
     {
+        // Host tiling rejects T == 0 and aivNum == 0, then launches exactly
+        // min(T, aivNum) AIV blocks. Therefore activeAiv is nonzero here.
         const uint64_t base = tilingData->totalTokens / activeAiv;
         const uint64_t remainder = tilingData->totalTokens % activeAiv;
         range.begin = static_cast<uint64_t>(aivIndex) * base + MinU64(aivIndex, remainder);
