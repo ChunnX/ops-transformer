@@ -1302,27 +1302,25 @@ __aicore__ inline uint64_t GetWaveGmm2ReadySlotStride(const WaveCombineConfig &c
     return static_cast<uint64_t>(context.job.totalJobs) * INT_CACHELINE;
 }
 
-// 每个 AIC 在 GMM2 写入可见后发布当前专家已完成的累计 row 边界。
+// 每个 AIC 在 GMM2 写入可见后发布一个独占 cache line 的完成标记。
 __aicore__ inline void NotifyWaveGmm2Ready(const WaveCombineConfig &context,
-                                           const Params &params, uint32_t expertIdx,
-                                           uint32_t completedRowOffset)
+                                           const Params &params, uint32_t slotIdx)
 {
     if constexpr (g_coreType == AIC) {
         AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
         __gm__ int32_t *readyBase = reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm2ReadyPtr);
         uint64_t slotOffset =
-            static_cast<uint64_t>(expertIdx) * GetWaveGmm2ReadySlotStride(context);
+            static_cast<uint64_t>(slotIdx) * GetWaveGmm2ReadySlotStride(context);
         AscendC::WriteGmByPassDCache(
             readyBase + slotOffset + static_cast<uint64_t>(context.job.jobIndex) * INT_CACHELINE,
-            static_cast<int32_t>(completedRowOffset));
+            int32_t(1));
     }
 }
 
-// 一个 AIV Combine 任务等待全部 AIC 完成指定专家的目标 row 边界。
+// 一个 AIV Combine 任务等待全部 AIC 完成指定专家。
 __aicore__ inline void WaitWaveGmm2Ready(const WaveCombineConfig &context,
-                                         const Params &params, uint32_t expertIdx,
-                                         uint32_t requiredRowOffset)
+                                         const Params &params, uint32_t slotIdx)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -1333,23 +1331,24 @@ __aicore__ inline void WaitWaveGmm2Ready(const WaveCombineConfig &context,
     uint32_t readyElements = context.job.totalJobs * static_cast<uint32_t>(INT_CACHELINE);
     __gm__ int32_t *readyBase = reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm2ReadyPtr);
     uint64_t readySlotOffset =
-        static_cast<uint64_t>(expertIdx) * GetWaveGmm2ReadySlotStride(context);
+        static_cast<uint64_t>(slotIdx) * GetWaveGmm2ReadySlotStride(context);
     GlobalTensor<int32_t> readyGm;
     readyGm.SetGlobalBuffer(readyBase);
     LocalTensor<int32_t> scanUb(TPosition::VECCALC, WAVE_GMM2_READY_SCAN_UB_ADDR, readyElements);
+    LocalTensor<uint8_t> reduceTmpUb(
+        TPosition::VECCALC, WAVE_GMM2_READY_REDUCE_TMP_UB_ADDR, ALIGN_512);
+    LocalTensor<int32_t> sumUb(
+        TPosition::VECCALC, WAVE_GMM2_READY_SUM_UB_ADDR, INT_CACHELINE);
+    const uint32_t readyShape[] = {1U, readyElements};
     while (true) {
         DataCopy(scanUb, readyGm[readySlotOffset], readyElements);
-        SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
-        WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
-        bool allReady = true;
-        for (uint32_t jobIdx = 0U; jobIdx < context.job.totalJobs; ++jobIdx) {
-            if (scanUb.GetValue(jobIdx * INT_CACHELINE) <
-                static_cast<int32_t>(requiredRowOffset)) {
-                allReady = false;
-                break;
-            }
-        }
-        if (allReady) {
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+        ReduceSum<int32_t, AscendC::Pattern::Reduce::AR, true>(
+            sumUb, scanUb, reduceTmpUb, readyShape, true);
+        SetFlag<HardEvent::V_S>(EVENT_ID0);
+        WaitFlag<HardEvent::V_S>(EVENT_ID0);
+        if (sumUb.GetValue(0) >= static_cast<int32_t>(context.job.totalJobs)) {
             return;
         }
         int64_t waitStart = AscendC::GetSystemCycle();
@@ -1362,14 +1361,12 @@ template <uint8_t CombineMode>
 __aicore__ inline void RunWaveExpertCombineStage(
     const WaveCombineConfig &context, const WaveCombineBufferConfig &bufferConfig,
     WaveCombineScratch &scratch, const Params &params, const GMMAddrInfo &gmmAddrInfo,
-    const Gmm2ExpertLoopState &state, uint32_t expertIdx,
-    uint32_t requiredRowOffset, uint32_t &rowSequence)
+    const Gmm2ExpertLoopState &state, uint32_t expertIdx, uint32_t &rowSequence)
 {
     uint32_t currentExpertTokenNum = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
     WorkRange currentCoreTokenRange = GetWaveCombineOwnedRange(context, currentExpertTokenNum);
     if (currentCoreTokenRange.count != 0U) {
-        WaitWaveGmm2Ready(
-            context, params, expertIdx, requiredRowOffset);
+        WaitWaveGmm2Ready(context, params, expertIdx);
     }
     for (uint32_t processedTokenNum = 0U; processedTokenNum < currentCoreTokenRange.count;) {
         uint32_t remainingTokenNum = currentCoreTokenRange.count - processedTokenNum;
