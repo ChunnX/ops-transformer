@@ -66,9 +66,10 @@ $$
 
 其中：
 
-- $V\in\mathbb{R}^{T\times N\times D}$ 表示历史残差块，$Q\in\mathbb{R}^{S\times D}$ 表示伪查询。
-- $T$、$N$、$S$、$D$ 分别表示 token 数、历史来源缓冲区容量、目标 slot 数和 hidden size。
-- $N_v$ 表示参与计算的有效历史来源数，取值由 `valid_blocks` 经区间 $[0,N]$ 截断后得到。
+- $V\in\mathbb{R}^{T\times N\times D}$ 表示输入 `block_res`；$V_{t,n,d}$ 表示第 $t$ 个 token、第 $n$ 个历史残差块在第 $d$ 个隐藏特征上的值。
+- $Q\in\mathbb{R}^{S\times D}$ 表示输入 `pseudo_query`（伪 Query）；每个目标 slot 对应一个 Query 向量，$Q_{s,d}$ 表示第 $s$ 个目标 slot 在第 $d$ 个隐藏特征上的值。
+- $T$ 表示 token 数，$N$ 表示 `block_res` 第 1 维可容纳的历史残差块数，$S$ 表示目标 slot 数，$D$ 表示HiddenSize。
+- $N_v=\min(\max(\texttt{valid\_blocks[0]},0),N)$，表示实际参与计算的历史残差块数。
 - $R$ 表示 RMS 归一化因子，$Z$ 表示归一化注意力 logit，$E$ 表示 max-shift 后的指数值。
 - $O$、$M$、$L$ 分别表示 softmax 加权分子、logit 最大值和指数和，对应输出 `numerator`、`logit_max`、`exp_sum`。
 - $\epsilon$ 表示 RMS 归一化的数值稳定项，对应属性 `eps`。
@@ -109,7 +110,7 @@ $$
     <tr>
       <td>pseudo_query</td>
       <td>输入</td>
-      <td>伪查询，对应公式中的Q，shape为[S, D]。</td>
+      <td>伪 Query，对应公式中的Q；每个目标slot对应一个Query向量，shape为[S, D]。</td>
       <td>FLOAT</td>
       <td>ND</td>
     </tr>
@@ -146,9 +147,8 @@ $$
 
 ## 约束说明
 
-- 仅支持 Ascend 950PR/Ascend 950DT。
 - `T >= 0`，`S >= 0`，`1 <= N <= 64`，`1 <= D <= 8192`。
-- `block_res.shape[2]` 必须等于 `pseudo_query.shape[1]`。
+- `block_res` 的 shape 为 `[T, N, D]`，`pseudo_query` 的 shape 为 `[S, D]`；`numerator`、`logit_max` 和 `exp_sum` 的 shape 分别为 `[S, T, D]`、`[S, T]` 和 `[S, T]`。
 - `valid_blocks` 的 shape 必须为 `[1]`；`valid_blocks[0] == 0` 时，`numerator` 返回全 0 Tensor、`logit_max` 返回所有元素均为 FLOAT32 最小有限值的 Tensor、`exp_sum` 返回全 1 Tensor；`valid_blocks[0] < 0` 时返回结果相同。
 - `eps` 必须为有限正数。
 - `T == 0` 或 `S == 0` 时，返回对应 shape 的空输出。
@@ -157,7 +157,9 @@ $$
 
 | 调用方式 | 调用样例 | 说明 |
 | --- | --- | --- |
-| aclnn调用 | [test_aclnn_block_attn_res_prepare](./examples/test_aclnn_block_attn_res_prepare.cpp) | 快速调用示例如下，仅供参考，详细算子编译运行方法参见[算子调用](../../docs/zh/invocation/quick_op_invocation.md)。
+| aclnn调用 | [test_aclnn_block_attn_res_prepare](./examples/test_aclnn_block_attn_res_prepare.cpp) | 示例包含 GetWorkspaceSize、workspace 申请和算子执行。 |
+
+详细的算子编译运行方法参见[算子调用](../../docs/zh/invocation/quick_op_invocation.md)。
 
 ```bash
 # 在ops-transformer仓库根目录执行
