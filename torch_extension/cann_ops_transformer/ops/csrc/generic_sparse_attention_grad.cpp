@@ -14,7 +14,16 @@
 #include "aclnn_common.h"
 
 namespace op_api {
-constexpr int64_t GSAG_METADATA_SIZE = 4096;
+namespace {
+// Keep in sync with generic_sparse_attention_grad_metadata.h
+constexpr int64_t GSAG_TASK_LIST_OFFSET = 80; // 8 + 2 * 36
+constexpr int64_t GSAG_TASK_ENTRY_SIZE = 4;
+
+inline int64_t CalcGsagMetadataSize(int64_t batchSize, int64_t numQHeads, int64_t numJ)
+{
+    return GSAG_TASK_LIST_OFFSET + batchSize * numQHeads * numJ * GSAG_TASK_ENTRY_SIZE;
+}
+} // namespace
 
 at::Tensor GenericSparseAttentionGradMetadata(
     const at::Tensor &rsvdBlockIdx, const at::Tensor &rsvdBlockCount,
@@ -25,8 +34,14 @@ at::Tensor GenericSparseAttentionGradMetadata(
     const std::string &kvInputLayout, int64_t maskType, int64_t softmaxPrecision, int64_t windowSizeLeft,
     int64_t windowSizeRight)
 {
+    TORCH_CHECK(rsvdBlockIdx.dim() == 4, "rsvd_block_idx must be 4D [B, N2, J, maxS1]");
+    TORCH_CHECK(numQHeads > 0, "num_q_heads must be > 0");
+    const int64_t batchSize = rsvdBlockIdx.size(0);
+    const int64_t numJ = rsvdBlockIdx.size(2);
+    const int64_t metadataSize = CalcGsagMetadataSize(batchSize, numQHeads, numJ);
+
     at::Tensor metadata = torch::empty(
-        {GSAG_METADATA_SIZE},
+        {metadataSize},
         torch::TensorOptions().dtype(torch::kInt64).device(rsvdBlockIdx.device()));
 
     const at::Tensor &cuSeqLengthsValue = cuSeqLengths.value_or(at::Tensor());
@@ -70,9 +85,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> GenericSparseAttentionGrad(
 
     ACLNN_CMD(aclnnGenericSparseAttentionGrad, query, key, value, dout, out, lse, rsvdBlockIdx, rsvdBlockCount,
               metadata, attenMaskValue, cuSeqLengthsValue, cuSeqLengthsKvValue, sequsedQValue, sequsedKvValue,
-              blockShape, isPackedGqa,
-              qInputLayoutPtr, kvInputLayoutPtr, scaleValue, maskType, softmaxPrecision, windowSizeLeft,
-              windowSizeRight, dQuery, dKey, dValue);
+              blockShape, isPackedGqa, qInputLayoutPtr, kvInputLayoutPtr, scaleValue, maskType, softmaxPrecision,
+              windowSizeLeft, windowSizeRight, dQuery, dKey, dValue);
 
     return std::make_tuple(dQuery, dKey, dValue);
 }

@@ -107,6 +107,7 @@ private:
     uint32_t baseN_ = optiling::GSAG_DEFAULT_BASE_N;
     uint32_t totalNum_ = 0U;
     uint32_t usedCoreNum_ = 0U;
+    uint32_t metadataCapacity_ = 0U; // actual metadata tensor length (int64 elems)
     uint64_t totalBlockCost_ = 0U;
     uint64_t maxCoreBlockCost_ = 0U;
     int32_t maxTaskCount_ = 0;

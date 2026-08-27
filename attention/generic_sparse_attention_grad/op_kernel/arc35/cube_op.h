@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #pragma once
+#include "common_header.h"
 using namespace AscendC;
 
 namespace GSAG_ARC35 {
@@ -125,7 +126,9 @@ public:
         SET_FLAG(FIX, M, event_pong_);
         q_token_stride_ = q_stride_;
         if (rsvdBlockIdx != nullptr) {
-            sparse_idx_gm_.SetGlobalBuffer((__gm__ int32_t *)rsvdBlockIdx);
+            const int64_t sparseIdxElems = static_cast<int64_t>(tilingData->batchNum) * tilingData->kvHeadNum *
+                                           tilingData->numJ * tilingData->maxS1;
+            sparse_idx_gm_.SetGlobalBuffer((__gm__ int32_t *)rsvdBlockIdx, sparseIdxElems);
         }
         if (workspace != nullptr) {
             const int64_t selElems = static_cast<int64_t>(base_m_) * head_dim_align_;
@@ -156,6 +159,9 @@ public:
         nd2nzPara.dstNzMatrixStride = 0;
         for (int32_t r = 0; r < m; ++r) {
             const int32_t qTok = sparse_idx_gm_.GetValue(runTimeInfo.sparseIdxOffset + r);
+            if (qTok < 0 || qTok >= runTimeInfo.cur_q_seq_len) {
+                continue;
+            }
             const int64_t gmOff = GetSparseTokenGmOffset(runTimeInfo, qTok);
             AscendC::DataCopy(dstL1[r], srcGm[gmOff], nd2nzPara);
         }

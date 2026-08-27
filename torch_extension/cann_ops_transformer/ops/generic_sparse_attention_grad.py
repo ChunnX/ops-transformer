@@ -12,8 +12,15 @@ from torch.library import impl
 
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY, OpBuilder
 
-GSAG_METADATA_SIZE = 4096
+GSAG_METADATA_SIZE = 16464  # legacy fallback; actual size is dynamic via calc_gsag_metadata_size
+GSAG_TASK_LIST_OFFSET = 80  # 8 + 2 * 36
+GSAG_TASK_ENTRY_SIZE = 4
 GSAG_METADATA_OP_NAME = "generic_sparse_attention_grad_metadata"
+
+
+def calc_gsag_metadata_size(batch_size: int, num_q_heads: int, num_j: int) -> int:
+    """Required metadata int64 length: TASK_LIST_OFFSET + B * N1 * J * TASK_ENTRY_SIZE."""
+    return GSAG_TASK_LIST_OFFSET + batch_size * num_q_heads * num_j * GSAG_TASK_ENTRY_SIZE
 
 
 class GenericSparseAttentionGradOpBuilder(OpBuilder):
@@ -75,11 +82,8 @@ class GenericSparseAttentionGradOpBuilder(OpBuilder):
                 seqused_q,
                 seqused_kv,
                 max_q_seqlen,
-                max_kv_seqlen,
-                num_q_heads,
                 num_kv_heads,
                 head_dim,
-                block_shape,
                 is_packed_gqa,
                 q_input_layout,
                 kv_input_layout,
@@ -88,7 +92,15 @@ class GenericSparseAttentionGradOpBuilder(OpBuilder):
                 window_size_left,
                 window_size_right,
             )
-            return torch.empty((GSAG_METADATA_SIZE,), dtype=torch.int64, device=rsvd_block_idx.device)
+            block_y = 128
+            if block_shape is not None and len(block_shape) >= 2:
+                block_y = int(block_shape[1])
+            batch = int(rsvd_block_idx.shape[0])
+            num_j = int(rsvd_block_idx.shape[2]) if rsvd_block_idx.dim() == 4 else 0
+            if num_j <= 0 and max_kv_seqlen > 0:
+                num_j = (int(max_kv_seqlen) + block_y - 1) // block_y
+            meta_size = calc_gsag_metadata_size(batch, int(num_q_heads), max(num_j, 0))
+            return torch.empty((meta_size,), dtype=torch.int64, device=rsvd_block_idx.device)
 
         @torch.library.register_fake("cann_ops_transformer::generic_sparse_attention_grad")
         def generic_sparse_attention_grad_meta(

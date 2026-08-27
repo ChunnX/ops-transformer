@@ -112,6 +112,13 @@ inline __aicore__ T RoundUp(const T val, const T align)
     return (val + align - 1) / align * align;
 }
 
+// MIX 1:2: dualDst + AIV1 NZ L1 only when each half is a 16-row fractal.
+// Kept for documentation; runtime matches BSAG (always dualDst=1, RoundUp(m,16)).
+__aicore__ inline bool GsagAivMSplit(int32_t mAlign)
+{
+    return (mAlign >= 32) && ((mAlign % 32) == 0);
+}
+
 __aicore__ inline int64_t GetSeqLen(int32_t i, __gm__ uint8_t *seqLen)
 {
     if (seqLen == nullptr) {

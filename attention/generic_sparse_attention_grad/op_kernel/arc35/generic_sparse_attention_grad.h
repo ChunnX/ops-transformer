@@ -117,19 +117,31 @@ public:
         uint32_t vec_base_m = base_m / 2;
         uint32_t vec_base_n = base_n;
 
-        query_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)query);
-        key_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)key);
-        val_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)value);
-        dout_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)dout);
-        attention_out_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)attention_out);
-        dq_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)dq);
-        dk_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)dk);
-        dv_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)dv);
-        dq_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dqWorkspaceOffset));
-        dk_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dkWorkspaceOffset));
-        dv_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dvWorkspaceOffset));
-        sftg_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->sftgWorkspaceOffset));
-        sparse_idx_gm_.SetGlobalBuffer((__gm__ int32_t *)rsvdBlockIdx);
+        query_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)query, tilingData->dqSize);
+        key_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)key, tilingData->dkSize);
+        val_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)value, tilingData->dkSize);
+        dout_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)dout, tilingData->dqSize);
+        attention_out_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)attention_out, tilingData->dqSize);
+        dq_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)dq, tilingData->dqSize);
+        dk_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)dk, tilingData->dkSize);
+        dv_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)dv, tilingData->dkSize);
+        dq_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dqWorkspaceOffset),
+                                      tilingData->dqSize);
+        dk_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dkWorkspaceOffset),
+                                      tilingData->dkSize);
+        dv_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dvWorkspaceOffset),
+                                      tilingData->dkSize);
+        const int64_t lseElems = (INPUT_LAYOUT == TND)
+                                     ? static_cast<int64_t>(tilingData->qSeqLen) * tilingData->qHeadNum
+                                     : static_cast<int64_t>(tilingData->batchNum) * tilingData->qHeadNum *
+                                           tilingData->qSeqLen;
+        // Match host GetWorkspaceSize padding (AlignTo 256).
+        const int64_t sftgElems = ((lseElems * 8) + 255) / 256 * 256;
+        sftg_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->sftgWorkspaceOffset),
+                                        sftgElems);
+        const int64_t sparseIdxElems = static_cast<int64_t>(tilingData->batchNum) * tilingData->kvHeadNum *
+                                       tilingData->numJ * tilingData->maxS1;
+        sparse_idx_gm_.SetGlobalBuffer((__gm__ int32_t *)rsvdBlockIdx, sparseIdxElems);
         q_head_num_ = static_cast<int32_t>(tilingData->qHeadNum);
         head_dim_ = static_cast<int32_t>(tilingData->headDim);
         vec_ub_matrix_elements_ = vec_base_m * vec_base_n;
@@ -148,7 +160,7 @@ public:
         // Gather(curr) therefore never touches Softmax(last)'s mm1/mm2.
         static_assert(sizeof(INPUT_TYPE) == 2, "Gather/mm UB overlay requires bf16/fp16");
         const uint32_t mmSlotElems = vec_base_m * vec_base_n;
-        const uint32_t nz_ub_elements = (vec_base_m + 1) * vec_base_n;
+        const uint32_t nz_ub_elements = (vec_base_m + 1) * vec_base_n; // +1-row防止UB越界
         const uint32_t gatherBytes =
             2u * vec_ub_matrix_elements_ * static_cast<uint32_t>(sizeof(INPUT_TYPE)) +
             2u * nz_ub_elements * static_cast<uint32_t>(sizeof(INPUT_TYPE)); // 8MN+4N
@@ -301,6 +313,9 @@ public:
         WAIT_FLAG(V, MTE2, evtGatherVmte2);
         for (int32_t row = 0; row < rowCount; ++row) {
             const int32_t qTok = sparse_idx_gm_.GetValue(runTimeInfo.sparseIdxOffset + rowBegin + row);
+            if (qTok < 0 || qTok >= runTimeInfo.cur_q_seq_len) {
+                continue;
+            }
             const int64_t gmOffset = GetSparseTokenGmOffset(runTimeInfo, qTok);
             SET_FLAG(S, MTE2, EVENT_ID1);
             WAIT_FLAG(S, MTE2, EVENT_ID1);

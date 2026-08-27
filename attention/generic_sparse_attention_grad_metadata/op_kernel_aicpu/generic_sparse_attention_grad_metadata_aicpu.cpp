@@ -66,8 +66,12 @@ bool GenericSparseAttentionGradMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
 // 检查参数是否合法
 bool GenericSparseAttentionGradMetadataCpuKernel::ParamsCheck()
 {
-    if (metadata_ == nullptr || metadata_->GetData() == nullptr) {
+    if (metadata_ == nullptr || metadata_->GetData() == nullptr || metadata_->GetTensorShape() == nullptr) {
         KERNEL_LOG_ERROR("Output metadata is nullptr");
+        return false;
+    }
+    if (metadata_->GetTensorShape()->GetDims() != 1) {
+        KERNEL_LOG_ERROR("metadata must be a 1D tensor");
         return false;
     }
     if (rsvdBlockIdx_ == nullptr || rsvdBlockIdx_->GetData() == nullptr ||
@@ -119,6 +123,20 @@ bool GenericSparseAttentionGradMetadataCpuKernel::ParamsInit()
         return false;
     }
 
+    metadataCapacity_ = static_cast<uint32_t>(metadata_->GetTensorShape()->GetDimSize(0));
+    const uint64_t requiredElems = CalcGsagMetadataSize(batchSize_, static_cast<uint64_t>(numQHeads_), jSize_);
+    if (static_cast<uint64_t>(metadataCapacity_) < requiredElems) {
+        KERNEL_LOG_ERROR("metadata size %u < required %llu (B=%u N1=%d J=%u)", metadataCapacity_,
+                         static_cast<unsigned long long>(requiredElems), batchSize_, numQHeads_, jSize_);
+        return false;
+    }
+    if (CalcGsagMetadataMaxTasks(batchSize_, static_cast<uint64_t>(numQHeads_), jSize_) >
+        GSAG_METADATA_ABSOLUTE_MAX_TASKS) {
+        KERNEL_LOG_ERROR("task upper bound exceeds absolute max %llu",
+                         static_cast<unsigned long long>(GSAG_METADATA_ABSOLUTE_MAX_TASKS));
+        return false;
+    }
+
     baseM_ = GSAG_DEFAULT_BASE_M;
     baseN_ = static_cast<uint32_t>(blockShapeY_ > 0 ? blockShapeY_ : GSAG_DEFAULT_BASE_N);
     coreGroupStart_.assign(aicCoreNum_, 0U);
@@ -161,7 +179,7 @@ uint64_t GenericSparseAttentionGradMetadataCpuKernel::CalcGroupBlockCost(int32_t
     return mTiles * nTiles * static_cast<uint64_t>(groupSize_);
 }
 
-// 构建 KV 块组,遍历顺序 B → N2 → J。每个 count>0 的 (b,n2,j) 成一个 KV 块组，并记录总的任务数量（128）
+// 构建 KV 块组,遍历顺序 B → N2 → J。每个 count>0 的 (b,n2,j) 成一个 KV 块组，并记录总的任务数量（baseN=128）
 bool GenericSparseAttentionGradMetadataCpuKernel::BuildKvBlockGroups()
 {
     const int32_t *countPtr = static_cast<const int32_t *>(rsvdBlockCount_->GetData());
@@ -285,9 +303,10 @@ bool GenericSparseAttentionGradMetadataCpuKernel::ExpandTaskList()
     }
 
     totalNum_ = static_cast<uint32_t>(taskList_.size());
-    const uint32_t maxTasks = (GSAG_METADATA_TOTAL_SIZE - TASK_LIST_OFFSET) / TASK_ENTRY_SIZE;
+    const uint32_t maxTasks = static_cast<uint32_t>(CalcGsagMetadataTaskCapacity(metadataCapacity_));
     if (totalNum_ > maxTasks) {
-        KERNEL_LOG_ERROR("task num %u exceeds metadata capacity %u", totalNum_, maxTasks);
+        KERNEL_LOG_ERROR("task num %u exceeds metadata capacity %u (elems=%u)", totalNum_, maxTasks,
+                         metadataCapacity_);
         return false;
     }
     return true;
@@ -297,7 +316,7 @@ bool GenericSparseAttentionGradMetadataCpuKernel::ExpandTaskList()
 bool GenericSparseAttentionGradMetadataCpuKernel::GenMetadata()
 {
     int64_t *metadataPtr = static_cast<int64_t *>(metadata_->GetData());
-    for (uint32_t i = 0U; i < GSAG_METADATA_TOTAL_SIZE; ++i) {
+    for (uint32_t i = 0U; i < metadataCapacity_; ++i) {
         metadataPtr[i] = 0;
     }
 

@@ -123,7 +123,13 @@ private:
             const int64_t countOffset =
                 (static_cast<int64_t>(curB_) * constInfo_.kv_head_num + curN2_) * constInfo_.num_j + curJ_;
             curCount_ = reinterpret_cast<__gm__ int32_t *>(rsvdBlockCount_)[countOffset];
-            curIdxBase_ = countOffset * constInfo_.max_s1;
+            // Guard against corrupt / out-of-range counts (avoids GetValue into -1 pad → AIC 264).
+            if (curCount_ < 0) {
+                curCount_ = 0;
+            } else if (curCount_ > constInfo_.max_s1) {
+                curCount_ = constInfo_.max_s1;
+            }
+            curIdxBase_ = countOffset * static_cast<int64_t>(constInfo_.max_s1);
 
             curS2Start_ = curJ_ * constInfo_.block_y;
             curKvBlockLen_ = constInfo_.block_y;
@@ -228,7 +234,7 @@ private:
     int32_t curJ_ { 0 };
     int32_t curG_ { 0 };
     int32_t curCount_ { 0 };
-    int32_t curIdxBase_ { 0 };
+    int64_t curIdxBase_ { 0 };
     int32_t curS2Start_ { 0 };
     int32_t curKvBlockLen_ { 0 };
     int64_t curQPrefix_ { 0 };

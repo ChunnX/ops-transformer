@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #pragma once
+#include "common_header.h"
 #include "vector_api/vf_cast_nd2nz.h"
 using namespace AscendC;
 
@@ -136,19 +137,30 @@ public:
         v_sub_core_idx_ = GetSubBlockIdx();
         q_stride_lse_ = (INPUT_LAYOUT == TND) ? q_head_num_ : 1;
 
-        // gm_tensor
-        lse_gm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
-        sftg_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->sftgWorkspaceOffset));
-        dq_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dqWorkspaceOffset));
-        dk_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dkWorkspaceOffset));
-        dv_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dvWorkspaceOffset));
+        // gm_tensor — pass explicit sizes so GetValue cannot treat large T offsets as OOB (AIC 264).
+        const int64_t sparseIdxElems = static_cast<int64_t>(tilingData->batchNum) * tilingData->kvHeadNum *
+                                       tilingData->numJ * tilingData->maxS1;
+        const int64_t lseElems = (INPUT_LAYOUT == TND)
+                                     ? static_cast<int64_t>(tilingData->qSeqLen) * tilingData->qHeadNum
+                                     : static_cast<int64_t>(tilingData->batchNum) * tilingData->qHeadNum *
+                                           tilingData->qSeqLen;
+        // Match host GetWorkspaceSize padding (AlignTo 256) so EvenCore DataCopy tails stay in-bound.
+        const int64_t sftgElems = ((lseElems * 8) + 255) / 256 * 256;
+        lse_gm_.SetGlobalBuffer((__gm__ float *)softmaxLse, lseElems);
+        sftg_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->sftgWorkspaceOffset), sftgElems);
+        dq_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dqWorkspaceOffset),
+                                      tilingData->dqSize);
+        dk_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dkWorkspaceOffset),
+                                      tilingData->dkSize);
+        dv_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dvWorkspaceOffset),
+                                      tilingData->dkSize);
         dq_sel_workspace_offset_ = tilingData->dqSelWorkspaceOffset;
         dq_sel_core_elems_ = static_cast<int64_t>(base_m) * head_dim_align_;
         const int64_t cubeBlk = static_cast<int64_t>(GetBlockIdx() / 2);
         dq_sel_workspace_.SetGlobalBuffer(
             (__gm__ float *)(workspace + dq_sel_workspace_offset_) + cubeBlk * 2 * dq_sel_core_elems_,
             2 * dq_sel_core_elems_);
-        sparse_idx_gm_.SetGlobalBuffer((__gm__ int32_t *)rsvdBlockIdx);
+        sparse_idx_gm_.SetGlobalBuffer((__gm__ int32_t *)rsvdBlockIdx, sparseIdxElems);
         (void)rsvdBlockCount;
         (void)metadata;
         (void)dout;
@@ -285,7 +297,7 @@ public:
         s1_process_ = runTimeInfo.s1Len;
         s1_process_align_ = runTimeInfo.s1LenAlign;
         s2_process_align_ = runTimeInfo.s2LenAlign;
-        // Design: AIV0 → mAlign/2, AIV1 → m - mAlign/2 (same as Fixpipe dualDst).
+        // Match Cube dualDstCtl=1 / BSAG: each AIV owns mAlign/2 (pad rows may be empty).
         half_s1_process_align_ = s1_process_align_ / 2;
         if (v_sub_core_idx_ == 0) {
             half_s1_process_real_ =
@@ -309,6 +321,9 @@ public:
             const int32_t rowStart = v_sub_core_idx_ * half_s1_process_align_;
             for (int32_t r = 0; r < half_s1_process_real_; ++r) {
                 const int32_t qTok = sparse_idx_gm_.GetValue(runTimeInfo.sparseIdxOffset + rowStart + r);
+                if (qTok < 0 || qTok >= runTimeInfo.cur_q_seq_len) {
+                    continue;
+                }
                 int64_t lseOff = 0;
                 int64_t sftgOff = 0;
                 if constexpr (INPUT_LAYOUT == TND) {
@@ -470,8 +485,11 @@ public:
             return;
         }
 
-        // 8 * D_align fp32 ~4KB; overlays mm region which is dead until Gather after scatter.
-        LocalTensor<float> batchUb = ub_buffer.GetWithOffset<float>(UB_ROW_SIZE * head_dim_align_, 0);
+        // Keep Scatter staging far from mm/gather overlay (offset 0). FIX_SUMMARY: offset-0
+        // collided with AIV gather and zeroed dq; 200KB sits in the unused tail of 247KB UB.
+        constexpr uint32_t SCATTER_UB_OFFSET = 200 * 1024;
+        LocalTensor<float> batchUb =
+            ub_buffer.GetWithOffset<float>(UB_ROW_SIZE * head_dim_align_, SCATTER_UB_OFFSET);
         const int64_t slotOff = static_cast<int64_t>(ping_pong_idx) * dq_sel_core_elems_;
         const int32_t maxLoops = CeilDiv(currentRows, UB_ROW_SIZE);
         const int32_t tailRows = currentRows - (maxLoops - 1) * UB_ROW_SIZE;
@@ -489,6 +507,9 @@ public:
             for (int32_t row = 0; row < nRows; ++row) {
                 const int32_t r = globalRow0 + row;
                 const int32_t qTok = sparse_idx_gm_.GetValue(runTimeInfo.sparseIdxOffset + r);
+                if (qTok < 0 || qTok >= runTimeInfo.cur_q_seq_len) {
+                    continue;
+                }
                 int64_t gmOff = 0;
                 if constexpr (INPUT_LAYOUT == TND) {
                     gmOff = (static_cast<int64_t>(runTimeInfo.last_q_seq_sum) + qTok) * q_head_num_ * head_dim_ +
@@ -613,8 +634,20 @@ private:
             copyParam.blockLen = head_dim_ * sizeof(INPUT_TYPE);
             copyParam.srcStride = (src_stride - head_dim_) * sizeof(INPUT_TYPE);
             copyParam.dstStride = 0;
-            DataCopyPad(dy_tensor, dy_gm[in_gm_offset], copyParam, {false, 0, 0, 0});
-            DataCopyPad(attention_tensor, out_gm[in_gm_offset], copyParam, {false, 0, 0, 0});
+            // BNSD tokens are contiguous (srcStride==0). Multi-row DataCopyPad with
+            // 0-gap can hang MTE on arch35; use a single contiguous block instead.
+            if (copyParam.srcStride == 0) {
+                DataCopyParams cont;
+                cont.blockCount = 1;
+                cont.blockLen = process_size * head_dim_ * sizeof(INPUT_TYPE);
+                cont.srcStride = 0;
+                cont.dstStride = 0;
+                DataCopyPad(dy_tensor, dy_gm[in_gm_offset], cont, {false, 0, 0, 0});
+                DataCopyPad(attention_tensor, out_gm[in_gm_offset], cont, {false, 0, 0, 0});
+            } else {
+                DataCopyPad(dy_tensor, dy_gm[in_gm_offset], copyParam, {false, 0, 0, 0});
+                DataCopyPad(attention_tensor, out_gm[in_gm_offset], copyParam, {false, 0, 0, 0});
+            }
             SET_FLAG(MTE2, V, EVENT_ID0);
             WAIT_FLAG(MTE2, V, EVENT_ID0);
 
@@ -792,9 +825,18 @@ private:
          */
         uint32_t per_core_size = CeilDiv<uint32_t>(data_size, v_core_num_);
         info.start_idx = v_core_idx_ * per_core_size;
-        info.len = (info.start_idx + per_core_size > data_size) ? data_size - info.start_idx : per_core_size;
         info.max_process_size = max_process_size;
         info.data_size = data_size;
+        // Tail cores: start_idx can be >= data_size (e.g. T=1024, 56 AIVs, per=19).
+        // Must not do uint32 (data_size - start_idx) underflow.
+        if (info.start_idx >= data_size) {
+            info.len = 0;
+            info.loop_num = 0;
+            info.align_tail = 0;
+            info.pad_tail = 0;
+            return;
+        }
+        info.len = (info.start_idx + per_core_size > data_size) ? data_size - info.start_idx : per_core_size;
         info.loop_num = CeilDiv<uint32_t>(info.len, max_process_size);
 
         uint32_t tail = info.len % max_process_size;

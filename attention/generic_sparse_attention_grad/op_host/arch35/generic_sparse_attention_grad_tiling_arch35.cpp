@@ -60,6 +60,13 @@ protected:
             OP_LOGE(context_->GetNodeName(), "block_shape[1] must be >= 128 and 64-aligned.");
             return false;
         }
+        // Cube tile baseN shares UB/L1 with baseM; current layout budgets baseN<=128.
+        if (blockShapeY_ > BASE_M) {
+            OP_LOGE(context_->GetNodeName(),
+                    "block_shape[1]=%ld exceeds supported cube baseN=%ld (UB/L1 budget).",
+                    blockShapeY_, BASE_M);
+            return false;
+        }
         if (isPackedGqa_ != 1) {
             OP_LOGE(context_->GetNodeName(), "only support is_packed_gqa == 1.");
             return false;
@@ -232,11 +239,15 @@ protected:
         if (strcmp(qLayout_, TND_STR) == 0) {
             dqSize = static_cast<uint64_t>(qSeqLen_) * qHeadNum_ * headDim_;
             dkSize = static_cast<uint64_t>(kvSeqLen_) * kvHeadNum_ * headDim_;
-            sftgSize = static_cast<uint64_t>(qSeqLen_) * qHeadNum_ * 8;
+            // Pad sftg so DataCopy of last EvenCore tail cannot write past the buffer
+            // (T=1024 / 56 AIVs leaves a non-16-aligned tail that may round up).
+            sftgSize = static_cast<uint64_t>(
+                AlignTo(static_cast<int64_t>(qSeqLen_) * qHeadNum_ * 8, 256));
         } else {
             dqSize = static_cast<uint64_t>(batchNum_) * qSeqLen_ * qHeadNum_ * headDim_;
             dkSize = static_cast<uint64_t>(batchNum_) * kvSeqLen_ * kvHeadNum_ * headDim_;
-            sftgSize = static_cast<uint64_t>(batchNum_) * qHeadNum_ * qSeqLen_ * 8;
+            sftgSize = static_cast<uint64_t>(
+                AlignTo(static_cast<int64_t>(batchNum_) * qHeadNum_ * qSeqLen_ * 8, 256));
         }
 
         tilingData_.set_dqSize(dqSize);
