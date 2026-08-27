@@ -1332,8 +1332,8 @@ def _apply_sticky_overflow_stc_pattern(
         "MXSTC114_": (-1.0, -1.0, 1.0, 1.0),
     }
     pv_signs = {
-        "MXSTC115_": (1.0, 1.0, -1.0, -1.0),
-        "MXSTC116_": (-1.0, -1.0, 1.0, 1.0),
+        "MXSTC115_": (1.0, -1.0, 1.0, -1.0),
+        "MXSTC116_": (-1.0, 1.0, -1.0, 1.0),
     }
 
     qk_pattern = next(
@@ -1368,7 +1368,7 @@ def _apply_sticky_overflow_stc_pattern(
         if k_fp32 is not None and v_fp32 is not None:
             k_fp32.zero_()
             v_fp32.zero_()
-            v_group_value = math.ldexp(448.0, 114)
+            v_group_value = math.ldexp(448.0, 115)
             for group_idx, sign in enumerate(pv_pattern):
                 group_start = group_idx * QUANT_GROUP_SIZE
                 group_end = group_start + QUANT_GROUP_SIZE
