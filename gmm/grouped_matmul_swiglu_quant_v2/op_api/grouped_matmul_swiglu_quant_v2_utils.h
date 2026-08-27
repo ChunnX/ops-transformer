@@ -562,7 +562,7 @@ protected:
             shape.SetScalar();
             shape.AppendDim(viewShape.GetDim(1));
             shape.AppendDim(viewShape.GetDim(0));
-            shape.AppendDim(viewShape.GetDim(2));
+            shape.AppendDim(viewShape.GetDim(2));   //第三维不交换
             aclTensor *tensor = executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset());
             tensor->SetStorageFormat(inputTensor->GetStorageFormat());
             tensor->SetStorageShape(storageShape);
@@ -1005,7 +1005,7 @@ protected:
         // 1：检查K是否为偶数
         int64_t kModValue = kValue % MXFP4_K_CONSTRAINT;
         // 2：检查N是否为偶数
-        int64_t nModValue = nValue % MXFP4_N_CONSTRAINT;
+        //int64_t nModValue = nValue % MXFP4_N_CONSTRAINT;
         if (kModValue != 0) {
             std::string gotStr = BuildLogValue("K", kValue);
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
@@ -1078,7 +1078,7 @@ protected:
 
     bool CheckMxA8W4InputShape()
     {
-        int64_t m = gmmDsqParams_.x->GetViewShape().GetDim(0);
+        //int64_t m = gmmDsqParams_.x->GetViewShape().GetDim(0);
         int64_t k = gmmDsqParams_.x->GetViewShape().GetDim(1);
         // 多tensor下shape:(n,k), 单tensor下shape:(e, n, k)
         int64_t n = IsMultiTensorWeight() ? ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0) :
