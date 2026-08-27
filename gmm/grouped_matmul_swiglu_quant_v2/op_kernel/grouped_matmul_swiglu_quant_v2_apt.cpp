@@ -60,6 +60,13 @@ constexpr bool isMxFp4Input =
 #endif
 } // namespace
 
+#define GMM_SWIGLU_QUANT_PRINT_TEMPLATE(templateName)                    \
+    do {                                                                 \
+        if (GetBlockIdx() == 0) {                                        \
+            AscendC::printf("[GMMSQv2] template: " templateName "\\n"); \
+        }                                                                \
+    } while (0)
+
 #if defined(GMM_SWIGLU_QUANT_WEIGHT_QUANT)
 template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS, bool IS_SINGLE_MULTI_SINGLE>
 #else
@@ -78,6 +85,7 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     REGISTER_TILING_DEFAULT(GMMSQArch35Tiling::GMMSQWeightQuantTilingData);
+    GMM_SWIGLU_QUANT_PRINT_TEMPLATE("GMMSQWeightQuantResplitController<MXA8W4_NZNK>");
     GET_TILING_DATA_WITH_STRUCT(GMMSQArch35Tiling::GMMSQWeightQuantTilingData, tilingDataIn, tiling);
 
     GMMSQWeightQuant::GMMSQWeightQuantResplitController<
@@ -97,20 +105,24 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
 #if ORIG_DTYPE_X_SCALE == DT_FLOAT8_E8M0
     if constexpr (weightFormat == CubeFormat::NZ && isMxFp4Input) {
         if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_NO_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
+            GMM_SWIGLU_QUANT_PRINT_TEMPLATE("GmmSwigluMxFp4WeightNz<RowMajor, Nz>");
             GmmSwigluMxFp4WeightNz<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz>(
                 x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
                 tiling);
         } else if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
+            GMM_SWIGLU_QUANT_PRINT_TEMPLATE("GmmSwigluMxFp4WeightNz<RowMajor, Zn>");
             GmmSwigluMxFp4WeightNz<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn>(
                 x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
                 tiling);
         }
     } else if constexpr (weightFormat == CubeFormat::NZ) {
         if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_NO_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
+            GMM_SWIGLU_QUANT_PRINT_TEMPLATE("GmmSwigluAswt<RowMajor, Nz>");
             GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz>(
                 x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
                 tiling);
         } else if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
+            GMM_SWIGLU_QUANT_PRINT_TEMPLATE("GmmSwigluAswt<RowMajor, Zn>");
             GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn>(
                 x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
                 tiling);
@@ -118,20 +130,24 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
     } else {
         if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_NO_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
             if constexpr (KERNEL_TYPE == GMM_SWIGLU_QUANT_ORIGINAL_KERNEL_TYPE) {
+                GMM_SWIGLU_QUANT_PRINT_TEMPLATE("GmmSwigluAswt<RowMajor, RowMajor>");
                 GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor>(
                     x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale,
                     workspace, tiling);
             } else {
+                GMM_SWIGLU_QUANT_PRINT_TEMPLATE("GmmTensorApiSwigluQuantMxFp8Kernel<NDExt, NDExt>");
                 GmmTensorApiSwigluQuantMxFp8Kernel<AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>(
                     x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale,
                     workspace, tiling);
             }
         } else if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
             if constexpr (KERNEL_TYPE == GMM_SWIGLU_QUANT_ORIGINAL_KERNEL_TYPE) {
+                GMM_SWIGLU_QUANT_PRINT_TEMPLATE("GmmSwigluAswt<RowMajor, ColumnMajor>");
                 GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::ColumnMajor>(
                     x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale,
                     workspace, tiling);
             } else {
+                GMM_SWIGLU_QUANT_PRINT_TEMPLATE("GmmTensorApiSwigluQuantMxFp8Kernel<NDExt, DNExt>");
                 GmmTensorApiSwigluQuantMxFp8Kernel<AscendC::Te::NDExtLayoutPtn, AscendC::Te::DNExtLayoutPtn>(
                     x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale,
                     workspace, tiling);
@@ -141,20 +157,24 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
 #elif ORIG_DTYPE_X_SCALE == DT_FLOAT
     if constexpr (weightFormat == CubeFormat::NZ) {
         if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_NO_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
+            GMM_SWIGLU_QUANT_PRINT_TEMPLATE("GmmSwigluAswtPertoken<RowMajor, Nz>");
             GmmSwigluAswtPertoken<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz>(
                 x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
                 tiling, &tPipe);
         } else if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
+            GMM_SWIGLU_QUANT_PRINT_TEMPLATE("GmmSwigluAswtPertoken<RowMajor, Zn>");
             GmmSwigluAswtPertoken<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn>(
                 x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
                 tiling, &tPipe);
         }
     } else {
         if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_NO_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
+            GMM_SWIGLU_QUANT_PRINT_TEMPLATE("GmmSwigluAswtPertoken<RowMajor, RowMajor>");
             GmmSwigluAswtPertoken<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor>(
                 x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
                 tiling, &tPipe);
         } else if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
+            GMM_SWIGLU_QUANT_PRINT_TEMPLATE("GmmSwigluAswtPertoken<RowMajor, ColumnMajor>");
             GmmSwigluAswtPertoken<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::ColumnMajor>(
                 x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
                 tiling, &tPipe);
@@ -164,3 +184,5 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
 #endif
 }
+
+#undef GMM_SWIGLU_QUANT_PRINT_TEMPLATE

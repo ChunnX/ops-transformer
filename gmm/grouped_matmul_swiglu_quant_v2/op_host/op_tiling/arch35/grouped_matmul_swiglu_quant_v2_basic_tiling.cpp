@@ -708,6 +708,70 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoLibApiTiling()
         }
     }
 
+    auto &quantParams = tilingData_.gmmSwigluQuantParams;
+    auto &mmTiling = tilingData_.mmTilingData;
+    std::ostringstream oss;
+    oss << "DoLibApiTiling tilingData: "
+        << "gmmSwigluQuantParams={groupNum=" << quantParams.get_groupNum()
+        << ", groupListType=" << static_cast<uint32_t>(quantParams.get_groupListType())
+        << ", quantDtype=" << static_cast<uint32_t>(quantParams.get_quantDtype())
+        << ", isMxWeightNzMultiTensor="
+        << static_cast<uint32_t>(quantParams.get_isMxWeightNzMultiTensor())
+        << ", dequantDtype=" << static_cast<uint32_t>(quantParams.get_dequantDtype())
+        << ", rowLen=" << quantParams.get_rowLen()
+        << ", ubAvail=" << quantParams.get_ubAvail()
+        << "}, mmTilingData={M=" << mmTiling.get_M()
+        << ", N=" << mmTiling.get_N()
+        << ", Ka=" << mmTiling.get_Ka()
+        << ", Kb=" << mmTiling.get_Kb()
+        << ", usedCoreNum=" << mmTiling.get_usedCoreNum()
+        << ", baseM=" << mmTiling.get_baseM()
+        << ", baseN=" << mmTiling.get_baseN()
+        << ", baseK=" << mmTiling.get_baseK()
+        << ", singleCoreM=" << mmTiling.get_singleCoreM()
+        << ", singleCoreN=" << mmTiling.get_singleCoreN()
+        << ", singleCoreK=" << mmTiling.get_singleCoreK()
+        << ", depthA1=" << mmTiling.get_depthA1()
+        << ", depthB1=" << mmTiling.get_depthB1()
+        << ", stepM=" << mmTiling.get_stepM()
+        << ", stepN=" << mmTiling.get_stepN()
+        << ", stepKa=" << mmTiling.get_stepKa()
+        << ", stepKb=" << mmTiling.get_stepKb()
+        << ", isBias=" << mmTiling.get_isBias()
+        << ", transLength=" << mmTiling.get_transLength()
+        << ", iterateOrder=" << mmTiling.get_iterateOrder()
+        << ", shareMode=" << mmTiling.get_shareMode()
+        << ", shareL1Size=" << mmTiling.get_shareL1Size()
+        << ", shareL0CSize=" << mmTiling.get_shareL0CSize()
+        << ", shareUbSize=" << mmTiling.get_shareUbSize()
+        << ", batchM=" << mmTiling.get_batchM()
+        << ", batchN=" << mmTiling.get_batchN()
+        << ", singleBatchM=" << mmTiling.get_singleBatchM()
+        << ", singleBatchN=" << mmTiling.get_singleBatchN()
+        << ", depthAL1CacheUB=" << mmTiling.get_depthAL1CacheUB()
+        << ", depthBL1CacheUB=" << mmTiling.get_depthBL1CacheUB()
+        << ", dbL0A=" << mmTiling.get_dbL0A()
+        << ", dbL0B=" << mmTiling.get_dbL0B()
+        << ", dbL0C=" << mmTiling.get_dbL0C()
+        << ", ALayoutInfoB=" << mmTiling.get_ALayoutInfoB()
+        << ", ALayoutInfoS=" << mmTiling.get_ALayoutInfoS()
+        << ", ALayoutInfoN=" << mmTiling.get_ALayoutInfoN()
+        << ", ALayoutInfoG=" << mmTiling.get_ALayoutInfoG()
+        << ", ALayoutInfoD=" << mmTiling.get_ALayoutInfoD()
+        << ", BLayoutInfoB=" << mmTiling.get_BLayoutInfoB()
+        << ", BLayoutInfoS=" << mmTiling.get_BLayoutInfoS()
+        << ", BLayoutInfoN=" << mmTiling.get_BLayoutInfoN()
+        << ", BLayoutInfoG=" << mmTiling.get_BLayoutInfoG()
+        << ", BLayoutInfoD=" << mmTiling.get_BLayoutInfoD()
+        << ", CLayoutInfoB=" << mmTiling.get_CLayoutInfoB()
+        << ", CLayoutInfoS1=" << mmTiling.get_CLayoutInfoS1()
+        << ", CLayoutInfoN=" << mmTiling.get_CLayoutInfoN()
+        << ", CLayoutInfoG=" << mmTiling.get_CLayoutInfoG()
+        << ", CLayoutInfoS2=" << mmTiling.get_CLayoutInfoS2()
+        << ", BatchNum=" << mmTiling.get_BatchNum()
+        << ", mxTypePara=" << mmTiling.get_mxTypePara() << "}";
+    OP_LOGI(context_->GetNodeName(), "%s", oss.str().c_str());
+
     return ge::GRAPH_SUCCESS;
 }
 
