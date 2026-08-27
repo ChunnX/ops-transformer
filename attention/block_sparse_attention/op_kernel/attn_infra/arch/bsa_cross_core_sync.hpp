@@ -32,6 +32,8 @@ constexpr FlagID FLAG_ID3 = 3;
 constexpr FlagID FLAG_ID4 = 4;
 constexpr FlagID FLAG_ID5 = 5;
 constexpr FlagID FLAG_ID6 = 6;
+constexpr FlagID FLAG_ID7 = 7;
+constexpr FlagID FLAG_ID8 = 8;
 constexpr FlagID FLAG_ID16 = 16;
 constexpr FlagID FLAG_ID17 = 17;
 constexpr FlagID FLAG_ID18 = 18;
@@ -39,6 +41,8 @@ constexpr FlagID FLAG_ID19 = 19;
 constexpr FlagID FLAG_ID20 = 20;
 constexpr FlagID FLAG_ID21 = 21;
 constexpr FlagID FLAG_ID22 = 22;
+constexpr FlagID FLAG_ID23 = 23;
+constexpr FlagID FLAG_ID24 = 24;
 
 struct CrossCoreFlag {
     __aicore__ inline

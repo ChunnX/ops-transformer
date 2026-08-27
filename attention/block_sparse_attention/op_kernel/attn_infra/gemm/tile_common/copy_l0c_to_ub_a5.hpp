@@ -18,6 +18,7 @@
 
 #if (__CCE_AICORE__ == 310)
 constexpr AscendC::FixpipeConfig CFG_ROW_MAJOR_UB = {AscendC::CO2Layout::ROW_MAJOR, true};
+constexpr AscendC::FixpipeConfig CFG_COLUMN_MAJOR_UB = {AscendC::CO2Layout::COLUMN_MAJOR, true};
 #endif
 
 namespace NpuArch::Gemm::Tile {
@@ -68,6 +69,7 @@ struct CopyL0CToUBTla<
             dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
     }
     
+    // MmadQk+ND+非量化+混合精度 / MmadQk+DN+非量化+混合精度
     template <class TensorDst, class TensorSrc>
     __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, bool subBlockId, uint8_t unitFlag = 0)
     {
@@ -117,6 +119,7 @@ struct CopyL0CToUBTla<
         CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst, ScaleGranularity::NO_QUANT>::VALUE;
     static constexpr auto reluEn = ReluEnable_;
 
+    // MmadPv+非量化
     template <class TensorDst, class TensorSrc>
     __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t unitFlag = 0)
     {
@@ -165,6 +168,7 @@ struct CopyL0CToUBTla<
         CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst, ScaleGranularity::NO_QUANT>::VALUE;
     static constexpr auto reluEn = ReluEnable_;
 
+    // MmadQk+DN+非量化+高精度
     template <class TensorDst, class TensorSrc>
     __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t unitFlag = 0)
     {
@@ -213,6 +217,7 @@ struct CopyL0CToUBTla<
         CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst, ScaleGranularity::PER_TENSOR>::VALUE;
     static constexpr auto reluEn = ReluEnable_;
 
+    // MmadQk+DN+全量化FP8+混合精度 / MmadQk+DN+全量化FP8+混合精度 / MmadPv+ND+全量化FP8+混合精度
     template <class TensorDst, class TensorSrc>
     __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint64_t deqScalar,
                                       bool subBlockId, uint8_t unitFlag = 0)
@@ -244,6 +249,64 @@ struct CopyL0CToUBTla<
 
         // Call AscendC Fixpipe
         AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(
+            dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
+    }
+};
+
+// MmadPv+DN+RescaleOnCube+全量化FP8+混合精度
+template <class TensorSrc_, class ElementDst_, class LayoutDst_, class CoordDst_, bool ReluEnable_>
+struct CopyL0CToUBTla<
+    NpuArch::Arch::AtlasA5,
+    TensorSrc_,
+    tla::Tensor<AscendC::LocalTensor<ElementDst_>, LayoutDst_, CoordDst_, AscendC::TPosition::VECCALC>,
+    CopyL0CToUBMode::NO_SPLIT,
+    ScaleGranularity::PER_TENSOR,
+    ReluEnable_,
+    std::enable_if_t<tla::detail::isColumnMajor<LayoutDst_>::value>> {
+    using ArchTag = NpuArch::Arch::AtlasA5;
+    using ElementDst = ElementDst_;
+    using ElementSrc = typename TensorSrc_::Element;
+    static constexpr auto quantPre =
+        CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst, ScaleGranularity::PER_TENSOR>::VALUE;
+    static constexpr auto reluEn = ReluEnable_;
+
+    template <class TensorDst, class TensorSrc>
+    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint64_t deqScalar,
+                                      bool subBlockId, uint8_t unitFlag = 0)
+    {
+        static_assert(
+            tla::detail::isColumnMajor<typename TensorDst::Layout>::value
+                && TensorSrc::position == AscendC::TPosition::CO1
+                && TensorDst::position == AscendC::TPosition::VECCALC,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and ColumnMajor"
+        );
+
+        AscendC::FixpipeParamsC310<AscendC::CO2Layout::COLUMN_MAJOR> intriParams;
+
+        // Fixpipe layout information
+        intriParams.nSize = tla::get<1>(dstTensor.shape());
+        intriParams.mSize = tla::get<0>(dstTensor.shape());
+        intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<0, 0>(srcTensor.stride());
+        intriParams.dstStride = tla::get<1>(dstTensor.stride());
+
+        intriParams.params.dnNum = 1;
+        intriParams.params.srcNzMatrixStride = 0;
+        intriParams.params.dstDnMatrixStride = 0;
+        intriParams.params.srcNzC0Stride = 1;
+
+        // Fixpipe auxiliary arguments
+        intriParams.quantPre = quantPre;
+        intriParams.deqScalar = deqScalar;
+        intriParams.reluEn = reluEn;
+        intriParams.unitFlag = unitFlag;
+        intriParams.dualDstCtl = 0;
+        intriParams.subBlockId = subBlockId;
+
+        auto dstOffset = dstTensor.layout()(dstTensor.coord());
+        auto srcOffset = srcTensor.layout()(srcTensor.coord());
+
+        // Call AscendC Fixpipe
+        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_COLUMN_MAJOR_UB>(
             dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
     }
 };

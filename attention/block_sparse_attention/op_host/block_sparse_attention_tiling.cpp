@@ -103,6 +103,7 @@ constexpr uint32_t INF_WINDOW_SIZE_PRE_NEXT = 2147483647;
 constexpr uint32_t TILE_SIZE_16 = 16;
 constexpr uint32_t TILE_SIZE_128 = 128;
 constexpr uint32_t TILE_SIZE_256 = 256;
+constexpr uint32_t TILE_SIZE_512 = 512;
 constexpr uint32_t D_SIZE_128 = 128;
 constexpr uint32_t D_SIZE_256 = 256;
 
@@ -744,7 +745,8 @@ ge::graphStatus BSATiling::ParseSparsePattern(gert::TilingContext *bsaContext)
 ge::graphStatus BSATiling::ParseAttenMask(gert::TilingContext *bsaContext)
 {
     const auto *attenMaskTensor = bsaContext->GetOptionalInputTensor(ATTEN_MASK_INDEX);
-    if (attenMaskTensor != nullptr) {
+    hasAttenMask_ = attenMaskTensor != nullptr;
+    if (hasAttenMask_) {
         OP_LOGE(bsaContext->GetNodeName(), "AttenMask is NOT YET supported.");
         return ge::GRAPH_FAILED;
     }
@@ -988,11 +990,22 @@ ge::graphStatus BSATiling::ParseAttrs(gert::TilingContext *bsaContext)
         innerPrecise_ = *attrs->GetAttrPointer<uint32_t>(INNER_PRECISE_INDEX);
     }
     if (socVer_ == SOC_VER_950_CODE) {
-        if (innerPrecise_ != BsaInnerCalcPrec::LOW_HIGH_MIXED) {
-            OP_LOGE(bsaContext->GetNodeName(),
-                    "On chip 950, only innerPrec = 4 is supported, "
-                    "but got %u.",
+        auto qInputDesc = bsaContext->GetInputDesc(QUERY_INDEX);
+        OP_CHECK_NULL_WITH_CONTEXT(bsaContext, qInputDesc);
+        auto dtypeQ = qInputDesc->GetDataType();
+
+        if (dtypeQ == ge::DT_FLOAT16 || dtypeQ == ge::DT_BF16) {
+            if (innerPrecise_ != BsaInnerCalcPrec::ALL_HIGH &&
+                innerPrecise_ != BsaInnerCalcPrec::LOW_HIGH_MIXED) {
+                OP_LOGE(bsaContext->GetNodeName(),
+                    "On chip 950, float16 and bfloat16 dtype only support innerPrec = 0 or 4, but got %u.",
                     innerPrecise_);
+                return ge::GRAPH_FAILED;
+            }
+        } else if (innerPrecise_ != BsaInnerCalcPrec::LOW_HIGH_MIXED) {
+            OP_LOGE(bsaContext->GetNodeName(),
+                "On chip 950, non-float16/bfloat16 dtype only supports innerPrec = 4, but got %u.",
+                innerPrecise_);
             return ge::GRAPH_FAILED;
         }
     } else {
@@ -1132,16 +1145,38 @@ static inline uint32_t CalcFp8KvBaseTile(uint32_t blockShapeY, uint32_t preferre
     return blockShapeY;
 }
 
+bool BSATiling::IsFp8DnEnabled() const
+{
+    return dataType_ == ge::DT_FLOAT8_E4M3FN &&
+           embeddingSize_ <= D_SIZE_128 &&
+           blockShapeY_ % TILE_SIZE_512 == 0 &&
+           maskType_ == 0 &&
+           !hasAttenMask_;
+}
+
 void BSATiling::CalcBaseTileTilingParams950()
 {
     qBaseTile_ = (blockShapeX_ > TILE_SIZE_128) ? TILE_SIZE_128 : static_cast<uint32_t>(blockShapeX_);
     const bool isMixedPrecision = (innerPrecise_ == BsaInnerCalcPrec::LOW_HIGH_MIXED && embeddingSize_ <= D_SIZE_128);
-    if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
+    if (IsFp8DnEnabled()) {
+        kvBaseTile_ = TILE_SIZE_512;
+    } else if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
         const uint32_t preferredTile = isMixedPrecision ? TILE_SIZE_256 : TILE_SIZE_128;
         kvBaseTile_ = CalcFp8KvBaseTile(static_cast<uint32_t>(blockShapeY_), preferredTile);
     } else {
         kvBaseTile_ = isMixedPrecision ? TILE_SIZE_256 : TILE_SIZE_128;
     }
+}
+
+void BSATiling::TransposedMatmulConfig950()
+{
+    if (IsFp8DnEnabled() ||
+        (maskType_ == 0 && innerPrecise_ == BsaInnerCalcPrec::ALL_HIGH)) {
+        transposedMm1_ = true;
+    } else {
+        transposedMm1_ = false;
+    }
+    transposedMm2_ = false;
 }
 
 void BSATiling::CalcSplitCoreTilingParams950()
@@ -1274,10 +1309,8 @@ void BSATiling::CalcMatmulPhaseL1TileInfo950()
         mm1L1TileN_ = TILE_SIZE_256;
         mm1L1TileKRight_ = TILE_SIZE_128;
         kL1BufNum_ = DUO_BUF;
-        // V矩阵开启db，D按128分割，kvBaseTile_不分割，指令同样提前于核间同步下发
-        // 如果kvBaseTile_进一步增大，考虑关闭db，使得kvBaseTile_不分割
         mm2L1TileN_ = TILE_SIZE_128;
-        mm2L1TileKLeft_ = TILE_SIZE_256;
+        mm2L1TileKLeft_ = IsFp8DnEnabled() ? TILE_SIZE_512 : TILE_SIZE_256;
         vL1BufNum_ = DUO_BUF;
         // P矩阵在950上会常驻L1，由于基块的prelaunch为2，因此最好有3 buf，以免基块间流水阻塞
         mm2L1TileM_ = qBaseTileAligned128;
@@ -1456,6 +1489,11 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
         tilingKey += 100000000ULL; // 1 for lse out
     }
 
+    // mmad-qk是否转置
+    if (transposedMm1_) {
+        tilingKey += 1000000000ULL;
+    }
+
     return tilingKey;
 }
 
@@ -1490,6 +1528,7 @@ ge::graphStatus BSATiling::GetBsaTiling(gert::TilingContext *bsaContext, BlockSp
     if (socVer_ == SOC_VER_950_CODE) {
         CalcSplitCoreTilingParams950();
         CalcMatmulPhaseL1TileInfo950();
+        TransposedMatmulConfig950();
         CalcWorkspaceTilingParams950(bsaContext);
     } else {
         ret = CalculateTaskSplit(bsaContext);
