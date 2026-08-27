@@ -16,9 +16,12 @@
 ```bash
 cd <repo_root>
 bash build_mla.sh                # 全量编译
-# 或增量编译（复用 build/output）：
+# 增量编译（复用 build/output）：
 # bash build_mla.sh --incremental
 ```
+
+> ⚠️ **验证/上板前务必用全量**：增量构建多次实测不可信（改源码后 kernel `.o`/json
+> 不保证重建，曾出现"kernel not found"假象）。`--incremental` 仅在无源码改动时复用产物。
 
 固定参数：`--soc=ascend950 --ops=flash_mla_with_kvcache,flash_mla_with_kvcache_metadata -j20`
 （`flash_mla_with_kvcache_metadata` 为纯 AICPU 伴生算子，负责生成 workspace metadata）。
@@ -45,11 +48,14 @@ bash build_mla.sh                # 全量编译
 source <dir>/vendors/custom_transformer/bin/set_env.bash   # 追加 ASCEND_CUSTOM_OPP_PATH
 ```
 
-校验 vendor 生效：
+校验 vendor 生效（默认安装到 `${ASCEND_HOME_PATH}/opp/vendors` 时）：
 
 ```bash
 grep load_priority ${ASCEND_HOME_PATH}/opp/vendors/config.ini   # 预期含 custom_transformer
 ```
+
+> 使用 `--install-path` 指定目录安装时无 vendor config.ini，直接 `source <dir>/vendors/custom_transformer/bin/set_env.bash`
+> 并以 `echo $ASCEND_CUSTOM_OPP_PATH` 确认即可。
 
 ---
 
@@ -108,47 +114,56 @@ python3 -m pip install torch_extension/dist/cann_ops_transformer-1.0.0-py3-none-
 （AICPU 算子），再调 `flash_mla_with_kvcache`（cub 主算子），metadata 作为入参传入。
 
 ```python
+import math
+
 import torch
 import torch_npu            # 必须先 import，注册 PrivateUse1 后端
-import cann_ops_transformer
-from cann_ops_transformer.ops import flash_mla_with_kvcache
-from cann_ops_transformer.ops.attention.flash_mla_with_kvcache import flash_mla_with_kvcache_metadata
+import cann_ops_transformer  # noqa: F401
+from cann_ops_transformer.ops import flash_mla_with_kvcache, flash_mla_with_kvcache_metadata
 
 num_heads_q = 8
 num_heads_kv = 1            # MLA 约束：kv head 数必须为 1
 head_dim_qk = 576           # nope 512 + rope 64
 head_dim_v = 512
+block_size = 16             # 分页块大小（>=16 且 %16==0）
 batch = 2
+seqlen_q = 1                # decode：每个 batch 一个 query token
+cache_lens = [1024, 4096]
 
 # 1) metadata（AICPU）
-cache_seqlens = torch.tensor([4, 3], dtype=torch.int32, device="npu")
-seqused_q = torch.tensor([2, 2], dtype=torch.int32, device="npu")
+cache_seqlens = torch.tensor(cache_lens, dtype=torch.int32, device="npu")
 meta = flash_mla_with_kvcache_metadata(
     cache_seqlens, num_heads_q, num_heads_kv,
-    seqused_q=seqused_q,
-    max_seqlen_q=2, max_seqlen_kv=4,
+    seqused_q=None,
+    max_seqlen_q=seqlen_q, max_seqlen_kv=max(cache_lens),
     head_dim_qk=head_dim_qk, head_dim_v=head_dim_v,
     mask_mode=0, layout_q="BSND",
 )
 # 注意：layout_q 非 TND 时不得传 cu_seqlens_q（aclnn checker 会拒绝）
 
-# 2) 主算子（cub）
-q = torch.randn(batch, num_heads_q, 2, head_dim_qk, dtype=torch.float16).npu()      # BNSD
-k_cache = torch.randn(batch, num_heads_kv, 4, head_dim_qk, dtype=torch.float16).npu()  # BNSD
-out, lse = flash_mla_with_kvcache(
+# 2) PA_BBND 分页 KV：块池 [num_blocks, block_size, 1, 576] + block_table
+nb0, nb1 = math.ceil(cache_lens[0] / block_size), math.ceil(cache_lens[1] / block_size)
+k_cache = torch.randn(nb0 + nb1, block_size, num_heads_kv, head_dim_qk, dtype=torch.float16).npu()
+bt = torch.zeros(batch, max(nb0, nb1), dtype=torch.int32, device="npu")
+bt[0, :nb0] = torch.arange(nb0, dtype=torch.int32)
+bt[1, :nb1] = torch.arange(nb0, nb0 + nb1, dtype=torch.int32)
+
+# 3) 主算子（cube）：q 为 BSND [B, seq, N, 576]，layout 三处统一
+q = torch.randn(batch, seqlen_q, num_heads_q, head_dim_qk, dtype=torch.float16).npu()
+attn_out, _lse = flash_mla_with_kvcache(
     q, k_cache,
-    cache_seqlens=cache_seqlens,
-    seqused_q=seqused_q,
+    block_table=bt, cache_seqlens=cache_seqlens,
+    cu_seqlens_q=None, seqused_q=None,
     metadata=meta,
     head_dim_v=head_dim_v,
-    softmax_scale=1.0,
+    softmax_scale=1.0 / math.sqrt(head_dim_qk),
     mask_mode=0,
-    max_seqlen_q=2,
-    max_seqlen_kv=4,
-    layout_q="BNSD",
-    layout_kv="BNSD",
+    max_seqlen_q=seqlen_q, max_seqlen_kv=max(cache_lens),
+    layout_q="BSND",
+    layout_kv="PA_BBND",
+    layout_out="BSND",        # 必须显式传，且 == layout_q
 )
-print("out shape:", out.shape, "lse shape:", lse.shape)
+print("out shape:", attn_out.shape)
 ```
 
 完整可执行脚本见同目录 `run_flash_mla_op.py`。
@@ -157,9 +172,9 @@ print("out shape:", out.shape, "lse shape:", lse.shape)
 
 - `num_heads_kv` 必须为 1（"MLA kv head num must be 1"）。
 - `layout_q` 非 `TND` 时，不可传 `cu_seqlens_q`（"cuSeqlensQOptional should not be provided"）。
-- `layout_out` 跟随 `layout_q`（out==q，不支持转置）。
+- `layout_out` 必须显式传且 == `layout_q`（out==q，不支持转置）。
+- **layout_kv 只能是分页布局** `PA_NZ / PA_BBND / PA_BNBD`，连续 KV 不被支持（EZ0026）；分页 KV 必须配 `block_table`。`cu_seqlens_q` 仅 TND 场景需要（且 layout_q 非 TND 时禁止传）。
 - 主算子的 `q`/`k_cache` 最后维为 576（nope 512 + rope 64 合并存储）。
-- 若使用 TND/PA_NZ（page attention）场景，需同时提供 `block_table` 与 `cu_seqlens_q`。
 
 ### 3.2 运行态排查
 
