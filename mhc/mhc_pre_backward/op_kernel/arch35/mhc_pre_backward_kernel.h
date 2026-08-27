@@ -1074,10 +1074,14 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV2XCastAndMulGamma(
     uint16_t vfLoopCnt = CeilDiv(copySizeND, eleNumPerVf);
     __VEC_SCOPE__
     {
+        Reg::RegTensor<T> xInB16Reg;
+        Reg::RegTensor<P> xFp32Reg, gammaReg, resultReg;
+        if constexpr (hasGamma) {
+            // copySizeND最大为ND_BLOCK_SIZE的一半，即64个元素，gamma可完整驻留在一个向量寄存器中。
+            Reg::LoadAlign(gammaReg, gammaInAddr);
+        }
         for (uint16_t tIdx = 0; tIdx < (uint16_t)currentChunkSize; tIdx++) {
             uint32_t lenND = copySizeND;
-            Reg::RegTensor<T> xInB16Reg;
-            Reg::RegTensor<P> xFp32Reg, gammaReg, resultReg;
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < vfLoopCnt; vfBlockIdx++) {
                 Reg::MaskReg mask = Reg::UpdateMask<P>(lenND);
                 uint32_t offset = tIdx * copySizeND + vfBlockIdx * eleNumPerVf;
@@ -1088,8 +1092,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV2XCastAndMulGamma(
                 Reg::StoreAlign(xRsFp32Addr + offset, xFp32Reg, mask); // 后续其他计算需要xFp32
 
                 if constexpr (hasGamma) {
-                    Reg::LoadAlign(gammaReg, gammaInAddr + vfBlockIdx * eleNumPerVf);
-
                     Reg::Mul(resultReg, gammaReg, xFp32Reg, mask); // 逐元素乘：gamma * x
                     Reg::StoreAlign(gammaOutAddr + offset, resultReg, mask);
                 } else { // 没有gamma，原始逻辑是 xFp32Reg * 1.0，等价于不处理，这里直接store
@@ -1112,11 +1114,15 @@ MhcPreBackwardKernel<T, P>::VFDoV2GammaMulXRsGradMm(__ubuf__ P *xGradVec3Addr, _
     uint16_t vfLoopCnt = CeilDiv(copySizeND, eleNumPerVf);
     __VEC_SCOPE__
     {
+        Reg::RegTensor<P> gammaReg, xRsFp32Reg, xRsGradMmReg, xRsGradReg, gammaGradReg, xGradReg;
+        Reg::RegTensor<P> invRmsReg;
+        Reg::MaskReg maskAll = Reg::CreateMask<P, Reg::MaskPattern::ALL>();
+        if constexpr (hasGamma) {
+            // copySizeND最大为ND_BLOCK_SIZE的一半，即64个元素，gamma可完整驻留在一个向量寄存器中。
+            Reg::LoadAlign(gammaReg, gammaInAddr);
+        }
         for (uint16_t tIdx = 0; tIdx < (uint16_t)currentChunkSize; tIdx++) {
             uint32_t lenND = copySizeND;
-            Reg::RegTensor<P> gammaReg, xRsFp32Reg, xRsGradMmReg, xRsGradReg, gammaGradReg, xGradReg;
-            Reg::RegTensor<P> invRmsReg;
-            Reg::MaskReg maskAll = Reg::CreateMask<P, Reg::MaskPattern::ALL>();
             P invRmsScalar = invRmsAddr[tIdx];
             Reg::Duplicate<P>(invRmsReg, invRmsScalar, maskAll);
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < vfLoopCnt; vfBlockIdx++) {
@@ -1130,8 +1136,6 @@ MhcPreBackwardKernel<T, P>::VFDoV2GammaMulXRsGradMm(__ubuf__ P *xGradVec3Addr, _
                 Reg::Add(xGradReg, xGradReg, xRsGradReg, mask);
 
                 if constexpr (hasGamma) {
-                    Reg::LoadAlign(gammaReg, gammaInAddr + vfBlockIdx * eleNumPerVf);
-
                     Reg::Mul(xRsGradReg, gammaReg, xRsGradMmReg, mask);
                     Reg::Add(xGradReg, xGradReg, xRsGradReg, mask);
                     Reg::Mul(gammaGradReg, xRsFp32Reg, xRsGradMmReg, mask);
