@@ -419,11 +419,10 @@ __aicore__ inline void EngramFetchGradUnique::FlushAccum(GM_ADDR gradUniqueOutGM
 
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(flushEvtMte3VArr_[bufIdx]);
     } else {
-        AscendC::LocalTensor<uint8_t> entryRaw = entryBuf_->Get<uint8_t>();
-        uint32_t flushCastOffset = 5U * Mc2Kernel::ENTRY_BATCH_CAP * sizeof(int32_t);
         uint32_t castHalfBytes = (static_cast<uint32_t>(hiddenDim_) * outDtypeSize + Mc2Kernel::UB_ALIGN - 1U) /
                                   Mc2Kernel::UB_ALIGN * Mc2Kernel::UB_ALIGN;
-        AscendC::LocalTensor<uint8_t> flushCastBuf = entryRaw[flushCastOffset + bufIdx * castHalfBytes];
+        AscendC::LocalTensor<uint8_t> castRaw = castBuf_->Get<uint8_t>();
+        AscendC::LocalTensor<uint8_t> flushCastBuf = castRaw[bufIdx * castHalfBytes];
         uint32_t castCount = static_cast<uint32_t>(hiddenDim_);
 
         if (outputDtype_ == Mc2Kernel::ENGRAM_DT_BFLOAT16) {
