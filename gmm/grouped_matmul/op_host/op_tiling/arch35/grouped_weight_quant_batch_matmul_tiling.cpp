@@ -1267,8 +1267,8 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckEmptyTensorSingleXMultiWeightSing
         int64_t n = transB_ ? wShape.GetDim(wDimNum - 2) : wShape.GetDim(wDimNum - 1);
         if (weightNzFlag_) {
             // 非转置NZ排布(N1, K1, K0, N0), 转置NZ排布(K1, N1, N0, K0)
-            n = transB_ ? wShape.GetDim(wDimNum - 3) * wShape.GetDim(wDimNum - 2) :
-                          wShape.GetDim(wDimNum - 4) * wShape.GetDim(wDimNum - 1);
+            n = transB_ ? wShape.GetDim(wDimNum - 3) * wShape.GetDim(wDimNum - 2) :     //wDimNum = 4，代表4维NZ，数字各自代表倒数第几维
+                          wShape.GetDim(wDimNum - 4) * wShape.GetDim(wDimNum - 1);      //wDimNum = 4，代表4维NZ，数字各自代表倒数第几维
         }
         // k不能单独为0
         OP_CHECK_IF(
@@ -1346,8 +1346,7 @@ bool GroupedWeightQuantBatchMatmulTiling::SetShapeListSplitMSingleXSingleWeightS
         // -3含义：转置N1索引；-2含义：转置N0索引
         nSize_ = transB_ ? wShape.GetDim(wDimNum - 3) * wShape.GetDim(wDimNum - 2)
                            // -4含义：非转置N1索引；-1含义：非转置N0索引
-                           :
-                           wShape.GetDim(wDimNum - 4) * wShape.GetDim(wDimNum - 1);
+                           :wShape.GetDim(wDimNum - 4) * wShape.GetDim(wDimNum - 1);
         const gert::StorageShape *yShapePtr = context->GetOutputShape(0);
         OP_CHECK_IF(yShapePtr == nullptr, OP_LOGE(context->GetNodeName(), "yShapePtr is nullptr."), return false);
         const gert::Shape &yShape = yShapePtr->GetOriginShape();
@@ -1417,8 +1416,7 @@ bool GroupedWeightQuantBatchMatmulTiling::SetShapeListSplitMSingleXMultiWeightSi
             // -3含义：转置N1索引；-2含义：转置N0索引
             nSize = transB_ ? wShape.GetDim(wDimNum - 3) * wShape.GetDim(wDimNum - 2)
                               // -4含义：非转置N1索引；-1含义：非转置N0索引
-                              :
-                              wShape.GetDim(wDimNum - 4) * wShape.GetDim(wDimNum - 1);
+                              :wShape.GetDim(wDimNum - 4) * wShape.GetDim(wDimNum - 1);
         }
         if (isFp4PackType && !transB_) {
             // 一个float32/int32表示8个fp4/int4，设置为正确shape；kSize来自x，不需要考虑转置场景k轴扩大
@@ -1552,7 +1550,7 @@ bool GroupedWeightQuantBatchMatmulTiling::DeriveGroupSizeSingle(const gert::Tili
         } else {
             // (g, K, N) format: K axis index depends on transB
             groupNum = transB_ ? antiquantScaleShape.GetDim(antiquantScaleDimNum - 1) :
-                                 antiquantScaleShape.GetDim(antiquantScaleDimNum - 2);
+                                 antiquantScaleShape.GetDim(antiquantScaleDimNum - 2);      //- 2代表倒数第二个维度，目的是在是否转置时取得N维度
         }
     } else if (antiquantScaleDimNum == ANTIQUANT_SCALE_DIM_NUM) {
         // antiquantScaleShape: (g,n,k/64,2) or (g,k/64,n,2)
@@ -1999,7 +1997,7 @@ bool GroupedS8S4BasicApiTiling::AnalyzeAttrs()
     const int64_t *groupTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUPTYPE);
     const int64_t *groupListTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUP_LIST_TYPE);
     const int64_t *actTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_ACT_TYPE);
-    const auto tuningConfigPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_INDEX_TUNING_CONFIG);
+    const auto tuningConfigPtr = attrs->GetAttrPointer<gert::TypedContinuousVector<int64_t>>(ATTR_INDEX_TUNING_CONFIG);
 
     inputParams_.splitItem = splitItemPtr != nullptr ? static_cast<int8_t>(*splitItemPtr) : inputParams_.splitItem;
     inputParams_.transB = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
@@ -2013,7 +2011,7 @@ bool GroupedS8S4BasicApiTiling::AnalyzeAttrs()
     OP_CHECK_IF(inputParams_.splitItem != X_SEPARATED && inputParams_.splitItem != NO_SEPARATED,
                 OP_LOGE(context_->GetNodeName(), "S8S4 BasicApi expects splitItem to be 2 or 3."), return false);
     if (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > 0) {
-        const auto tuningConfig = reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData());
+        const auto tuningConfig = tuningConfigPtr->GetData();
         OP_CHECK_IF(tuningConfig[TUNING_CONFIG_EXPECTED_TOKEN_INDEX] < 0 ||
                         static_cast<uint64_t>(tuningConfig[TUNING_CONFIG_EXPECTED_TOKEN_INDEX]) > UINT32_MAX,
                     OP_LOGE(context_->GetNodeName(), "tuningConfig[0] must be in [0, UINT32_MAX]."), return false);
@@ -2396,7 +2394,7 @@ ge::graphStatus GroupedS8S4BasicApiTiling::DoLibApiTiling()
             result = lhs + rhs;
             return true;
         };
-        auto checkedAlign = [&](uint64_t value, uint64_t &result) {
+        auto checkedAlign = [](uint64_t value, uint64_t &result) {
             if (value > UINT64_MAX_VALUE - (WORKSPACE_ALIGN - 1UL)) {
                 return false;
             }
