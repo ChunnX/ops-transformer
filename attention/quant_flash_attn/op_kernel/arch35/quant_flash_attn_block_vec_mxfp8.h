@@ -172,7 +172,6 @@ public:
     TQue<QuePosition::VECIN, 1> postQuantOffsetQue_; // postQuant
 
     const ConstInfoX &constInfo_;
-    bool needInitOutput_ = false;
     T negativeFloatScalar_;
     float pScaleValue_{1.0f};
     bool isSkipMask_{false};
@@ -182,11 +181,6 @@ public:
     // ==================== Functions ======================
     __aicore__ inline QuantFlashAttnBlockVecMxfp8(ConstInfoX &constInfo)
         : constInfo_(constInfo){};
-
-    __aicore__ inline void SetNeedInitOutput(bool needInitOutput)
-    {
-        needInitOutput_ = needInitOutput;
-    }
 
     __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *actualSeqQlenAddr,
                                         __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *pScale,
@@ -270,7 +264,7 @@ public:
 
     __aicore__ inline bool IsInitAttentionOutGm()
     {
-        return needInitOutput_;
+        return constInfo_.needInitOutput;
     }
 
     __aicore__ inline void InitOutputSingleCore()
