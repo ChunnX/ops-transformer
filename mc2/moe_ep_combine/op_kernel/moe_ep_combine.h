@@ -404,6 +404,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressT
         }
         SyncFunc<AscendC::HardEvent::MTE2_S>();
 
+        // rankCounts was updated by scalar in the counting pass. Drain scalar accesses before V clears it.
+        SyncFunc<AscendC::HardEvent::S_V>();
         Duplicate<int32_t>(rankCounts, 0, rankCountElements);
         SyncFunc<AscendC::HardEvent::V_S>();
         for (uint32_t i = 0; i < groupTokens; ++i) {
@@ -532,7 +534,8 @@ template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::FlushPreparedWrites(bool keepHandle)
 {
     if (preparedWriteCount_ != 0) {
-        (void)hcomm_.BatchCommit(activeBatchHandle_);
+        int32_t ret = hcomm_.BatchCommit(activeBatchHandle_);
+        ascendc_assert(ret == HCOMM_SUCCESS, "BatchCommit failed, ret=%d", ret);
         preparedWriteCount_ = 0;
     }
     if (!keepHandle) {
@@ -566,7 +569,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWrite(
         // BatchCommit resets the WQE count in the handle; keep using it for this channel as PR 10309 does.
         FlushPreparedWrites(true);
     }
-    (void)hcomm_.WriteNbi<config>(activeBatchHandle_, dst, src, len);
+    int32_t ret = hcomm_.WriteNbi<config>(activeBatchHandle_, dst, src, len);
+    ascendc_assert(ret == HCOMM_SUCCESS, "batch WriteNbi failed, ret=%d", ret);
     ++preparedWriteCount_;
 }
 
@@ -581,8 +585,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendLocalSlot
     uint64_t recvStateOffset = (srcTokenIdx * topK_ + srcTopKIdx) * WIN_ADDR_ALIGN;
 
     SendLocalToken(tokenIndex, localDataBase + sendTokenOffset);
+    // Keep the diagnostic path deliberately conservative: without top-k weights there used to be no MTE3 drain
+    // between local token copies and the completion flag. The weight path happened to provide one below.
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
     if constexpr (HasTopkWeight == 1) {
-        SyncFunc<AscendC::HardEvent::MTE3_S>();
         statusTensor_(0) = weight;
         SyncFunc<AscendC::HardEvent::S_MTE3>();
         GlobalTensor<uint32_t> state;
@@ -706,13 +712,19 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         }
     }
 
-    // Local copies completed before BuildAddressTable's final barrier. Each remote rank publishes one completion
-    // flag through channel 0 without a second all-core barrier here.
+    // Commit every token batch before publishing completion. Local copies use MTE3, so drain that pipeline first;
+    // then wait for all AIVs because only one AIV publishes the completion flag for each rank.
+    FlushPreparedWrites();
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
+    SyncAll<true>();
+
+    // Each remote rank publishes one completion flag through channel 0 after all token writes have been issued.
     constexpr uint32_t completionChannelCount = COMBINE_CHANNEL_COUNT;
     bool publishesChannelFlag =
         aivId_ < activeAivNum && (!splitRankTokens || coreIndexInGroup < completionChannelCount);
     if (publishesChannelFlag) {
         LocalTensor<uint64_t> flagTensor = statusTensor_.ReinterpretCast<uint64_t>();
+        SyncFunc<AscendC::HardEvent::S_V>();
         Duplicate<uint64_t>(flagTensor, 1U, UB_ALIGN / sizeof(uint64_t));
         SyncFunc<AscendC::HardEvent::V_MTE3>();
         GlobalTensor<uint64_t> flagWorkspace;
