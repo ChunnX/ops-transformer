@@ -296,15 +296,15 @@ def quant_flash_attn_metadata(
         f"5 (A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16) "
         f"or 0 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32), but got {quant_mode}",
     )
-    torch._check(
-        is_grad_enabled is not True or quant_mode == 0,
-        lambda: f"When is_grad_enabled is True, quant_mode must be 0, but got quant_mode={quant_mode}",
-    )
     if layout_q == "TND":
         torch._check(
             batch_size == None,
             lambda: f"When the layout of query is TND, the attribute batch_size of quant_flash_attn_metadata must be None, but got {batch_size}.",
         )
+    torch._check(
+        is_grad_enabled is not True or quant_mode == 0,
+        lambda: f"When is_grad_enabled is True, quant_mode must be 0, but got quant_mode={quant_mode}",
+    )
     batch_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
     max_seqlen_q = -1 if max_seqlen_q is None else max_seqlen_q
     max_seqlen_kv = -1 if max_seqlen_kv is None else max_seqlen_kv
