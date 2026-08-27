@@ -48,7 +48,7 @@ __global__ __aicore__ void ffn_to_attention(GM_ADDR x, GM_ADDR sessionIds, GM_AD
     if constexpr (ArchTag == TILINGKEY_TPL_A3) {
         GET_TILING_DATA_WITH_STRUCT(FFNToAttentionTilingData, tilingData, tilingGM);
         FFNToAttention<DTYPE_X, RankTableMode> op;
-        op.Init(contextGM0, x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, attnRankTable, workspaceGM,
+        op.Init(x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum, attnRankTable, workspaceGM,
                 &pipe, &tilingData);
         op.Process();
     }
