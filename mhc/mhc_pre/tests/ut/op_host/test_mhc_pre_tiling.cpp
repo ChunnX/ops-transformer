@@ -44,7 +44,7 @@ static string TilingData2Str(void *buf, size_t size)
     return result;
 }
 
-static string MakeAscend950SocInfo(uint32_t cubeCoreCnt)
+static string MakeAscend950SocInfo(uint32_t cubeCoreCnt, uint32_t vectorCoreCnt)
 {
     return R"({"hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1", "Intrinsic_fix_pipe_l0c2out": false,)"
            R"( "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true,)"
@@ -52,7 +52,12 @@ static string MakeAscend950SocInfo(uint32_t cubeCoreCnt)
            R"( "L1_SIZE": 524288, "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,)"
            R"( "CORE_NUM": )" +
            std::to_string(cubeCoreCnt) + R"(, "cube_core_cnt": )" + std::to_string(cubeCoreCnt) +
-           R"(, "vector_core_cnt": )" + std::to_string(cubeCoreCnt * 2) + R"(, "socVersion":"Ascend950"} })";
+           R"(, "vector_core_cnt": )" + std::to_string(vectorCoreCnt) + R"(, "socVersion":"Ascend950"} })";
+}
+
+static string MakeAscend950SocInfo(uint32_t cubeCoreCnt)
+{
+    return MakeAscend950SocInfo(cubeCoreCnt, cubeCoreCnt * 2);
 }
 
 /*
@@ -1855,4 +1860,70 @@ TEST_F(MhcPreTiling, Ut_Check_BatchConsistency_ForceSplitBs)
 {
     // Batch consistency level 3 must use the BS accumulation order instead of the M-K template.
     CheckMkGeneralizedTiling(256U, 4U, 5120U, 2, 3);
+}
+
+/*
+ * 控核约束：Ascend950要求aicNum:aivNum=1:2，不满足核数比的tiling必须失败。
+ * 以下用例使用在1:2比例下能够tiling成功的形状(B=2,S=4096,n=4,d=1536)，
+ * 仅改变cube/vector核数比，验证不满足1:2时返回GRAPH_FAILED。
+ */
+static void CheckCoreRatioFailure(uint32_t cubeCoreCnt, uint32_t vectorCoreCnt)
+{
+    constexpr uint32_t B = 2;
+    constexpr uint32_t S = 4096;
+    constexpr uint32_t n = 4;
+    constexpr uint32_t d = 1536;
+    const uint32_t phiDim0 = n * n + 2 * n;
+    const uint32_t phiDim1 = n * d;
+    const uint32_t biasDim = phiDim0;
+    constexpr float normEps = 0.000001f;
+    constexpr float hcEps = 0.000001f;
+    constexpr uint32_t outFlag = 0;
+
+    optiling::MhcPreCompileInfo compileInfo = {};
+
+    gert::TilingContextPara tilingContextPara(
+        "MhcPre",
+        {{{{B, S, n, d}, {B, S, n, d}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{phiDim0, phiDim1}, {phiDim0, phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{biasDim}, {biasDim}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{phiDim1}, {phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{{{B, S, d}, {B, S, d}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{B, S, phiDim0}, {B, S, phiDim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
+         {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
+         {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
+        &compileInfo, "Ascend950", cubeCoreCnt, 262144, 4096,
+        MakeAscend950SocInfo(cubeCoreCnt, vectorCoreCnt));
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+// aicNum:aivNum = 1:1，不满足1:2，预期失败
+TEST_F(MhcPreTiling, Ut_Check_CoreRatio_1to1_Fail)
+{
+    CheckCoreRatioFailure(32, 32);
+}
+
+// aicNum:aivNum = 1:3，不满足1:2，预期失败
+TEST_F(MhcPreTiling, Ut_Check_CoreRatio_1to3_Fail)
+{
+    CheckCoreRatioFailure(16, 48);
+}
+
+// aicNum:aivNum = 1:4，不满足1:2，预期失败
+TEST_F(MhcPreTiling, Ut_Check_CoreRatio_1to4_Fail)
+{
+    CheckCoreRatioFailure(32, 128);
+}
+
+// aicNum:aivNum = 2:1，vector核数不足，预期失败
+TEST_F(MhcPreTiling, Ut_Check_CoreRatio_2to1_Fail)
+{
+    CheckCoreRatioFailure(64, 32);
 }
