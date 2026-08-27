@@ -208,19 +208,19 @@ public:
                 if (unlikely((runInfo.attenMaskSubLoopBits & attenMaskBit) != 0U)) {
                     // 真实mask先搬入UB，与C1生产阶段重叠；完全可见subLoop不分配mask队列。
                     attenMaskUb = CopyAttenMaskToUb<SUB_LOOP>(runInfo, s2CalcSize);
-                    ExecuteVec1Vf<true, SUB_LOOP>(
-                        bmm1ResBuf, stage1CastTensor, sumUb, maxUb, mmRes, expUb, attenMaskUb, pScaleSubLoopTensor,
-                        preLoopMaxUb, preLoopSumUb, firstLoopSumUb, runInfo, constInfo, s2CalcSize);
+                    ExecuteVec1Vf<true, SUB_LOOP>(bmm1ResBuf, stage1CastTensor, sumUb, maxUb, mmRes, expUb, attenMaskUb,
+                                                  pScaleSubLoopTensor, preLoopMaxUb, preLoopSumUb, firstLoopSumUb,
+                                                  runInfo, constInfo, s2CalcSize);
                     attenMaskInQue_.template FreeTensor(attenMaskUb);
                 } else {
-                    ExecuteVec1Vf<false, SUB_LOOP>(
-                        bmm1ResBuf, stage1CastTensor, sumUb, maxUb, mmRes, expUb, attenMaskUb, pScaleSubLoopTensor,
-                        preLoopMaxUb, preLoopSumUb, firstLoopSumUb, runInfo, constInfo, s2CalcSize);
+                    ExecuteVec1Vf<false, SUB_LOOP>(bmm1ResBuf, stage1CastTensor, sumUb, maxUb, mmRes, expUb,
+                                                   attenMaskUb, pScaleSubLoopTensor, preLoopMaxUb, preLoopSumUb,
+                                                   firstLoopSumUb, runInfo, constInfo, s2CalcSize);
                 }
             } else {
-                ExecuteVec1Vf<false, SUB_LOOP>(
-                    bmm1ResBuf, stage1CastTensor, sumUb, maxUb, mmRes, expUb, attenMaskUb, pScaleSubLoopTensor,
-                    preLoopMaxUb, preLoopSumUb, firstLoopSumUb, runInfo, constInfo, s2CalcSize);
+                ExecuteVec1Vf<false, SUB_LOOP>(bmm1ResBuf, stage1CastTensor, sumUb, maxUb, mmRes, expUb, attenMaskUb,
+                                               pScaleSubLoopTensor, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, runInfo,
+                                               constInfo, s2CalcSize);
             }
         } else {
             static_assert(USE_DN, "MXFullQuantMode vector currently implements DN VF only; "
@@ -324,31 +324,31 @@ private:
     }
 
     template <bool IS_UPDATE, bool VF_HAS_ATTEN, uint32_t SUB_LOOP>
-    __aicore__ inline void RunVec1Vf(
-        const LocalTensor<INPUT_T> &stage1CastTensor, const LocalTensor<float> &sumUb,
-        const LocalTensor<float> &maxUb, const LocalTensor<MM_T> &mmRes, const LocalTensor<float> &expUb,
-        const LocalTensor<uint8_t> &attenMaskUb, const LocalTensor<SCALE_T> &pScaleSubLoopTensor,
-        const LocalTensor<float> &preLoopMaxUb, const LocalTensor<float> &preLoopSumUb,
-        const LocalTensor<float> &firstLoopSumUb, const MxRunInfo &runInfo, const MxConstInfo &constInfo,
-        uint32_t s2CalcSize, float descaleQK)
+    __aicore__ inline void RunVec1Vf(const LocalTensor<INPUT_T> &stage1CastTensor, const LocalTensor<float> &sumUb,
+                                     const LocalTensor<float> &maxUb, const LocalTensor<MM_T> &mmRes,
+                                     const LocalTensor<float> &expUb, const LocalTensor<uint8_t> &attenMaskUb,
+                                     const LocalTensor<SCALE_T> &pScaleSubLoopTensor,
+                                     const LocalTensor<float> &preLoopMaxUb, const LocalTensor<float> &preLoopSumUb,
+                                     const LocalTensor<float> &firstLoopSumUb, const MxRunInfo &runInfo,
+                                     const MxConstInfo &constInfo, uint32_t s2CalcSize, float descaleQK)
     {
         static_assert(SUB_LOOP < 2U, "MX V1 only supports subLoop 0/1");
         FaVectorApi::ProcessVec1VfDnMxfp8<MM_T, INPUT_T, IS_UPDATE, VF_HAS_ATTEN, S2_SPLIT, SUB_LOOP>(
             stage1CastTensor, sumUb, maxUb, mmRes, expUb, vselrIndexesBuf_, attenMaskUb, pScaleSubLoopTensor,
             ((runInfo.actMSizeAlign32 >> 1U) + 63U) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign >> 1, s2CalcSize,
-            static_cast<MM_T>(constInfo.scaleValue), descaleQK, pScaleValue_, negativeFloatScalar_, 0.0F,
-            preLoopMaxUb, preLoopSumUb, firstLoopSumUb);
+            static_cast<MM_T>(constInfo.scaleValue), descaleQK, pScaleValue_, negativeFloatScalar_, 0.0F, preLoopMaxUb,
+            preLoopSumUb, firstLoopSumUb);
     }
 
     template <bool VF_HAS_ATTEN, uint32_t SUB_LOOP>
-    __aicore__ inline void ExecuteVec1Vf(
-        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-        const LocalTensor<INPUT_T> &stage1CastTensor, const LocalTensor<float> &sumUb,
-        const LocalTensor<float> &maxUb, const LocalTensor<MM_T> &mmRes, const LocalTensor<float> &expUb,
-        const LocalTensor<uint8_t> &attenMaskUb, const LocalTensor<SCALE_T> &pScaleSubLoopTensor,
-        const LocalTensor<float> &preLoopMaxUb, const LocalTensor<float> &preLoopSumUb,
-        const LocalTensor<float> &firstLoopSumUb, const MxRunInfo &runInfo, const MxConstInfo &constInfo,
-        uint32_t s2CalcSize)
+    __aicore__ inline void ExecuteVec1Vf(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
+                                         const LocalTensor<INPUT_T> &stage1CastTensor, const LocalTensor<float> &sumUb,
+                                         const LocalTensor<float> &maxUb, const LocalTensor<MM_T> &mmRes,
+                                         const LocalTensor<float> &expUb, const LocalTensor<uint8_t> &attenMaskUb,
+                                         const LocalTensor<SCALE_T> &pScaleSubLoopTensor,
+                                         const LocalTensor<float> &preLoopMaxUb, const LocalTensor<float> &preLoopSumUb,
+                                         const LocalTensor<float> &firstLoopSumUb, const MxRunInfo &runInfo,
+                                         const MxConstInfo &constInfo, uint32_t s2CalcSize)
     {
         static_assert(!VF_HAS_ATTEN || HAS_ATTEN, "masked VF requires an attention-mask kernel instance");
         // mask搬运发生在调用前；随后等待C1并执行纯编译期mask/subLoop VF实例。
@@ -356,12 +356,12 @@ private:
         constexpr float descaleQK = 1.0f;
         if (unlikely(runInfo.isFirstS2Loop)) {
             RunVec1Vf<false, VF_HAS_ATTEN, SUB_LOOP>(stage1CastTensor, sumUb, maxUb, mmRes, expUb, attenMaskUb,
-                                                    pScaleSubLoopTensor, preLoopMaxUb, preLoopSumUb, firstLoopSumUb,
-                                                    runInfo, constInfo, s2CalcSize, descaleQK);
+                                                     pScaleSubLoopTensor, preLoopMaxUb, preLoopSumUb, firstLoopSumUb,
+                                                     runInfo, constInfo, s2CalcSize, descaleQK);
         } else {
             RunVec1Vf<true, VF_HAS_ATTEN, SUB_LOOP>(stage1CastTensor, sumUb, maxUb, mmRes, expUb, attenMaskUb,
-                                                   pScaleSubLoopTensor, preLoopMaxUb, preLoopSumUb, firstLoopSumUb,
-                                                   runInfo, constInfo, s2CalcSize, descaleQK);
+                                                    pScaleSubLoopTensor, preLoopMaxUb, preLoopSumUb, firstLoopSumUb,
+                                                    runInfo, constInfo, s2CalcSize, descaleQK);
         }
         bmm1ResBuf.SetCrossCore();
     }

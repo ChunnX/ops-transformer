@@ -358,8 +358,7 @@ private:
                 }
             }
             if (likely(loop >= C2_DELAY)) {
-                MxRunInfo &runInfoC2 =
-                    taskRunInfo[(loop - C2_DELAY) % PIPELINE_TASK_CACHE_SIZE];
+                MxRunInfo &runInfoC2 = taskRunInfo[(loop - C2_DELAY) % PIPELINE_TASK_CACHE_SIZE];
                 if (likely(runInfoC2.isValid)) {
                     cubeBlock.IterateBmm2(bmm2Buffers.Get(), l1PBuffers, runInfoC2, constInfo);
                     runInfoC2.isValid = false;
@@ -368,8 +367,7 @@ private:
         } else {
             // AIV 先消费上一轮已经就绪的 C2，以有效 V2 工作覆盖当前 C1 的生产时间。
             if (likely(loop >= V2_DELAY)) {
-                MxRunInfo &runInfoV2 =
-                    taskRunInfo[(loop - V2_DELAY) % PIPELINE_TASK_CACHE_SIZE];
+                MxRunInfo &runInfoV2 = taskRunInfo[(loop - V2_DELAY) % PIPELINE_TASK_CACHE_SIZE];
                 if (likely(runInfoV2.isValid)) {
                     vecBlock.ProcessVec2(bmm2Buffers.Get(), runInfoV2, constInfo);
                     runInfoV2.isValid = false;

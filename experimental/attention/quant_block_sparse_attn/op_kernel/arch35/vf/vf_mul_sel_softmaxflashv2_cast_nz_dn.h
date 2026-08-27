@@ -2584,13 +2584,15 @@ __aicore__ inline void ProcessVec1DnNoUpdateMxfp8(const LocalTensor<T2> &dstTens
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, uint32_t SUB_LOOP = 0U>
-__simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(
-    __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
-    __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ uint8_t *indexesUb,
-    __ubuf__ fp8_e8m0_t *pScaleSubLoop0, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
-    float deScaleQK, float pScale, const T minValue, float keepProb, const float dScale, const uint32_t blockStride,
-    const uint32_t repeatStride, __ubuf__ float *pre_loop_max, __ubuf__ float *pre_loop_sum,
-    __ubuf__ float *first_loop_sum)
+__simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
+                                                   __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
+                                                   __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb,
+                                                   __ubuf__ uint8_t *indexesUb, __ubuf__ fp8_e8m0_t *pScaleSubLoop0,
+                                                   const uint32_t m, const uint32_t n, const uint32_t originN,
+                                                   const T scale, float deScaleQK, float pScale, const T minValue,
+                                                   float keepProb, const float dScale, const uint32_t blockStride,
+                                                   const uint32_t repeatStride, __ubuf__ float *pre_loop_max,
+                                                   __ubuf__ float *pre_loop_sum, __ubuf__ float *first_loop_sum)
 {
     static_assert(SUB_LOOP < 2U, "MX V1 only supports subLoop 0/1");
     constexpr uint32_t mConst = 64;                                                        // m = 64
