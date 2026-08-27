@@ -940,11 +940,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
     }
 
     uint32_t buffId = 0;
-    uint32_t prevOffsetND = 0;
-    uint32_t prevNDBlock = 0;
-    uint32_t prevOffsetBS = 0;
-    uint32_t prevBSBlock = 0;
-    bool hasPrev = false;
 
     for (uint32_t offsetND = dealStartND_; offsetND < dealEndND_; offsetND += ND_BLOCK_SIZE) {
         uint32_t currentNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - offsetND);
@@ -952,23 +947,11 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
         for (uint32_t offsetBS = 0; offsetBS < totalLength_; offsetBS += SINGLE_M) {
             uint32_t currentBSBlock = Min(SINGLE_M, uint32_t(totalLength_ - offsetBS));
 
-            // C0将当前分块写入双UB缓冲，C1延迟一拍消费上一分块的V2输出。
+            // 功能验证阶段每次只保留一个在途分块，避免双flag提前发布导致跨核等待失配。
             ProcessC0(offsetND, currentNDBlock, offsetBS, currentBSBlock, buffId);
-            if (hasPrev) {
-                ProcessC1(prevOffsetND, prevNDBlock, prevOffsetBS, prevBSBlock, buffId - 1);
-            }
-
-            prevOffsetND = offsetND;
-            prevNDBlock = currentNDBlock;
-            prevOffsetBS = offsetBS;
-            prevBSBlock = currentBSBlock;
-            hasPrev = true;
+            ProcessC1(offsetND, currentNDBlock, offsetBS, currentBSBlock, buffId);
             buffId++;
         }
-    }
-
-    if (hasPrev) {
-        ProcessC1(prevOffsetND, prevNDBlock, prevOffsetBS, prevBSBlock, buffId - 1);
     }
 
     if ASCEND_IS_AIC {
