@@ -288,6 +288,10 @@ __aicore__ inline void EngramFetchGradArch35::LocalCopySlice(GM_ADDR dst, GM_ADD
     srcGm.SetGlobalBuffer((__gm__ uint8_t *)src);
     dstGm.SetGlobalBuffer((__gm__ uint8_t *)dst);
 
+    for (uint64_t off = 0; off < len; off += ALIGNED_LEN_256) {
+        DataCacheCleanAndInvalid<uint8_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(srcGm[off]);
+    }
+
     LocalTensor<uint8_t> buf0 = pingBuf_.Get<uint8_t>();
     LocalTensor<uint8_t> buf1 = pongBuf_.Get<uint8_t>();
 
@@ -470,9 +474,9 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     generationGM_ = workspaceGM_ + wsOffset;
     wsOffset += UB_ALIGN;
     segCountGM_ = workspaceGM_ + wsOffset;
-    wsOffset += Ceil(static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    wsOffset += static_cast<uint64_t>(totalBlocks_) * ALIGNED_LEN_256;
     coreStartGM_ = workspaceGM_ + wsOffset;
-    wsOffset += Ceil(static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    wsOffset += static_cast<uint64_t>(totalBlocks_) * ALIGNED_LEN_256;
 
     uint32_t maxSortCount = static_cast<uint32_t>(totalRecv_);
     uint64_t sortCompanionSize = Ceil(static_cast<uint64_t>(maxSortCount) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
@@ -1003,6 +1007,20 @@ __aicore__ inline void EngramFetchGradArch35::UniqueScatterAdd()
     RunSort(numRecv);
     SyncAll<true>();
 
+    {
+        uint64_t sortBytes = static_cast<uint64_t>(numRecv) * sizeof(int32_t);
+        GlobalTensor<uint8_t> entryFlushGM;
+        entryFlushGM.SetGlobalBuffer((__gm__ uint8_t *)recvLocalEntryOutGM_);
+        for (uint64_t off = 0; off < sortBytes; off += ALIGNED_LEN_256) {
+            DataCacheCleanAndInvalid<uint8_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(entryFlushGM[off]);
+        }
+        GlobalTensor<uint8_t> compFlushGM2;
+        compFlushGM2.SetGlobalBuffer((__gm__ uint8_t *)sortCompanionGM_);
+        for (uint64_t off = 0; off < sortBytes; off += ALIGNED_LEN_256) {
+            DataCacheCleanAndInvalid<uint8_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(compFlushGM2[off]);
+        }
+    }
+
     uniqueScatter_.Run(numRecv, recvLocalEntryOutGM_, uniqueLocalEntryOutGM_, numUniqueOutGM_, gradUniqueOutGM_,
                        gradUniqueFp32GM_, recvGradGM_, coreStartGM_, segCountGM_, sortCompanionGM_);
 }
@@ -1012,6 +1030,18 @@ __aicore__ inline void EngramFetchGradArch35::InitFlagsAndDispls()
     if (aivId_ != 0) {
         return;
     }
+
+    GlobalTensor<int32_t> genGM;
+    genGM.SetGlobalBuffer((__gm__ int32_t *)generationGM_);
+    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(genGM);
+    int32_t prevGen = genGM.GetValue(0);
+    currentGen_ = static_cast<uint32_t>(prevGen + 1) & GEN_MASK;
+    LocalTensor<int32_t> genLocal = statusBuf_.Get<int32_t>();
+    genLocal.SetValue(0, static_cast<int32_t>(currentGen_));
+    EngramFetchGradSyncFunc<HardEvent::S_MTE3>();
+    DataCopyParams genParams = {1U, static_cast<uint16_t>(sizeof(int32_t)), 0U, 0U};
+    DataCopyPad(genGM, genLocal, genParams);
+    EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
 
     LocalTensor<int32_t> flagLocal = statusBuf_.Get<int32_t>();
     Duplicate<int32_t>(flagLocal, 1, STATE_OFFSET / sizeof(int32_t));
@@ -1183,16 +1213,17 @@ __aicore__ inline void EngramFetchGradArch35::VerifyGradUnique()
     uint32_t zeroRowCount = 0;
     uint32_t firstZeroIdx = 0xFFFFFFFFU;
     for (uint32_t k = 0; k < numUnique; k++) {
-        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(uniqueEntryGM);
+        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(uniqueEntryGM[k]);
         int32_t localIdx = uniqueEntryGM.GetValue(k);
         uint64_t fp32Offset = static_cast<uint64_t>(k) * static_cast<uint64_t>(hiddenDim_);
-        DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(gradUniqueGM);
+        DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(gradUniqueGM[fp32Offset]);
         float val0 = gradUniqueGM.GetValue(fp32Offset);
         if (val0 == 0.0f) {
             zeroRowCount++;
             if (firstZeroIdx == 0xFFFFFFFFU) {
                 firstZeroIdx = k;
-                DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(gradUniqueGM);
+                DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+                    gradUniqueGM[fp32Offset + 1U]);
                 float val1 = gradUniqueGM.GetValue(fp32Offset + 1U);
                 ascendc_assert(
                     false, "VerifyGradUnique ZERO rank=%u: k=%u localIdx=%d val0=0.0 val1=%f numUnique=%u numRecv=%u",
@@ -1218,12 +1249,12 @@ __aicore__ inline void EngramFetchGradArch35::Process()
         InitFlagsAndDispls();
         SyncAll<true>();
 
-        currentGen_ = 1U;
+        GlobalTensor<int32_t> genGM;
+        genGM.SetGlobalBuffer((__gm__ int32_t *)generationGM_);
+        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(genGM);
+        currentGen_ = static_cast<uint32_t>(genGM.GetValue(0));
 
         UnsortGrad();
-        SyncAll<true>();
-
-        InvalidateCommWindow();
         SyncAll<true>();
 
         ExchangeGrad();

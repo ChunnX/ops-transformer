@@ -1286,7 +1286,17 @@ __aicore__ inline void EngramFetchTrainArch35::ClearWinForBackward()
         return;
     }
 
-    uint32_t backwardSendersPerRank = 8U;
+    uint32_t halfBlocks = totalBlocks_ / 2U;
+    if (halfBlocks == 0U) {
+        halfBlocks = 1U;
+    }
+    uint32_t backwardSendersPerRank = halfBlocks / numRanks_;
+    if (backwardSendersPerRank < 1U) {
+        backwardSendersPerRank = 1U;
+    }
+    if (backwardSendersPerRank > 8U) {
+        backwardSendersPerRank = 8U;
+    }
 
     uint64_t backwardTotalRanksOffset =
         static_cast<uint64_t>(numRanks_) * static_cast<uint64_t>(backwardSendersPerRank) * STATE_OFFSET;

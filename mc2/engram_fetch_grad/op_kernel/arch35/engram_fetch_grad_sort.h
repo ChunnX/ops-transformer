@@ -572,6 +572,7 @@ __aicore__ inline void EngramFetchGradSort::ProcessOneByteRound(
                                               AscendC::DcciDst::CACHELINE_OUT>(histGm[off / sizeof(int32_t)]);
         }
     }
+    AscendC::SyncAll<true>();
 
     if (AscendC::GetBlockIdx() == 0) {
         ComputePrefixAndOffsets(tileCount_, prefixGm, tileOffsetsGm, histGm, pipe);
@@ -590,6 +591,7 @@ __aicore__ inline void EngramFetchGradSort::ProcessOneByteRound(
                                               AscendC::DcciDst::CACHELINE_OUT>(tileOffsetsGm[off / sizeof(int32_t)]);
         }
     }
+    AscendC::SyncAll<true>();
 
     ProcessScatter(byteRound, batchCount, srcValueGm, indexGm, outputValueGm, outputIndexGm, tempValueGm, tempIndexGm,
                    histGm, prefixGm, tileOffsetsGm, pipe);

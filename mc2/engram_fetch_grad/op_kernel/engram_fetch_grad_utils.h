@@ -31,9 +31,9 @@ constexpr uint32_t SENDER_CHANNEL_IDX = 0U;
 constexpr uint32_t RECEIVER_CHANNEL_IDX = 1U;
 constexpr int32_t COUNTER_MAGIC = static_cast<int32_t>(0x40000000);
 constexpr int32_t COUNTER_MAGIC_MASK = static_cast<int32_t>(0xC0000000);
-constexpr uint32_t GEN_SHIFT = 30U;
-constexpr uint32_t GEN_MASK = 0x3U;
-constexpr int32_t COUNT_MASK = static_cast<int32_t>(0x3FFFFFFF);
+constexpr uint32_t GEN_SHIFT = 24U;
+constexpr uint32_t GEN_MASK = 0xFFU;
+constexpr int32_t COUNT_MASK = static_cast<int32_t>(0xFFFFFF);
 
 constexpr int32_t ENGRAM_DT_BFLOAT16 = 27;
 constexpr int32_t ENGRAM_DT_FLOAT16 = 1;
