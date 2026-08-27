@@ -91,15 +91,18 @@ private:
                                                                   uint32_t batchId);
     __aicore__ inline void ExpertAlltoAllDispatchCopyAdd();
     __aicore__ inline void ProcessConstantExpert(uint32_t tokenIndex, uint32_t const_expert_idx, float scaleVal);
+    __aicore__ inline void AddConstantExpert(uint32_t tokenIndex, uint32_t const_expert_idx, float scaleVal,
+                                             float alpha1Float, float alpha2Float);
     __aicore__ inline void ProcessCopyExpert(uint32_t tokenIndex, float scaleVal);
     __aicore__ inline void ProcessMoeExpert(uint32_t tokenIndexOffset, uint32_t topkId, float scaleVal);
-    __aicore__ inline uint32_t ProcessMoeExpertSlots(uint32_t tokenIndex, uint32_t tokenIndexOffset,
-                                                     uint32_t beginSlotIdx, uint32_t slotCount, uint32_t &index,
-                                                     uint32_t tokenLocalIdx);
+    __aicore__ inline uint32_t GetMoeExpertSlotCount(uint32_t tokenIndex, uint32_t topkId);
+    __aicore__ inline uint32_t ProcessMoeExpertSlots(uint32_t tokenIndex, uint32_t beginSlotIdx, uint32_t slotCount,
+                                                     uint32_t &index, uint32_t tokenLocalIdx);
+    __aicore__ inline void ProcessSpecialExpert(uint32_t tokenIndex, uint32_t expertId, uint32_t &index);
     __aicore__ inline bool ProcessExpert(uint32_t tokenIndex, uint32_t processLen, uint32_t tokenLocalIdx,
                                          uint32_t &topkId, uint32_t &index);
-    __aicore__ inline bool ProcessMoeExpertsLoop(uint32_t tokenIndex, uint32_t tokenIndexOffset, uint32_t &topkId,
-                                                 uint32_t &index, uint32_t tokenLocalIdx);
+    __aicore__ inline bool ProcessMoeExpertsLoop(uint32_t tokenIndex, uint32_t &topkId, uint32_t &index,
+                                                 uint32_t tokenLocalIdx);
     __aicore__ inline bool ProcessSharedExpertsLoop(uint32_t tokenIndex, uint32_t tokenIndexOffset, uint32_t processLen,
                                                     uint32_t &topkId, uint32_t tokenLocalIdx);
     __aicore__ inline void AddSharedExpertX(uint32_t tokenIndex, uint32_t processLen);
@@ -107,14 +110,18 @@ private:
                                            const uint32_t receiveAivNum);
     __aicore__ inline void CalConstExpertAlpha(GlobalTensor<ExpandXType> constExpertAlphaGM, uint32_t const_expert_idx,
                                                float &alphaFloat);
+    __aicore__ inline void LocalWindowInit();
+    __aicore__ inline void TokenInit(uint32_t bufferIndex, uint32_t &tokenLocalIdx, uint32_t &topkId, uint32_t &index);
+    __aicore__ inline void ProcessToken(uint32_t bufferIndex, uint32_t &tokenLocalIdx, uint32_t &topkId,
+                                        uint32_t &index);
     __aicore__ inline void LocalWindowCopy();
     __aicore__ inline void BuffInit();
+    __aicore__ inline void DispatchBufferInit();
     __aicore__ inline void SplitCoreCal();
     __aicore__ inline uint32_t WaitDispatch(uint32_t tokenIndex, uint32_t slotIdx, uint32_t slotCount,
                                             uint32_t tokenLocalIdx);
     __aicore__ inline void PerformanceInfoPerToken(uint32_t tokenIndex, uint32_t slotIdx, uint32_t tokenLocalIdx);
-    __aicore__ inline void ClearPackedTokenFlags(uint32_t tokenIndex, LocalTensor<float> flagTensor);
-    __aicore__ inline uint32_t CalcDispatchBufferNum(uint32_t perDispatchBufBytes);
+    __aicore__ inline void ClearPackedTokenFlags(uint32_t tokenIndex);
     __aicore__ inline uint32_t CheckPackedFlagRangeArrive(GM_ADDR flagBaseAddr, uint16_t blockCount,
                                                           uint32_t flagFloatNum, uint32_t srcStrideBytes);
     __aicore__ inline uint32_t CheckPackedTokenArrive(GM_ADDR rankGM, uint32_t slotCount);
@@ -194,6 +201,7 @@ private:
     LocalTensor<bool> maskStrideTensor_;
     LocalTensor<bool> maskGenerateTensor_;
     LocalTensor<uint32_t> dataStateLocalTensor_;
+    LocalTensor<XType> gammaLocal_;
 
     // tiling侧已确保数据上限， 相乘不会越界，因此统一采用uin32_t进行处理
     uint32_t axisBS_{0};
@@ -252,6 +260,15 @@ private:
     uint32_t axisBsAlignSize_{0};
     uint32_t performanceInfoSizeAlign_{0};
     uint32_t tokenNumPerCoreAlign_{0};
+    uint32_t beginIndex_{0};
+    uint32_t newAivId_{0};
+    uint32_t tokenPerAivNum_{0};
+    uint32_t receiveAivNum_{0};
+    uint32_t tokenNumCompleted_{0};
+    uint32_t statePos_{0};
+    bool outputCopyPending_{false};
+    uint32_t nextTokenLocalIdx_{0};
+    uint32_t sumFloatBufOffset_{0};
     float armAvgFactor_{0.0};
     float epsilon_{0.0};
 
@@ -277,17 +294,15 @@ private:
     TBuf<> xActMaskTBuf_;
     TBuf<> xActMaskCastTBuf_;
     TBuf<> tokenTargetTBuf_;
-    TBuf<> validBsIndexTBuf_;
     TBuf<> xActMaskSumTBuf_;
     TBuf<> expertMaskBuf_;
     TBuf<> performanceInfoBuf_;
     TBuf<> performanceInfoTmpBuf_;
     TBuf<> firstRecordBuf_;
-    TBuf<> packedCheckFlagBuf_;
-    TBuf<> packedCheckCompareBuf_;
     TBuf<> packedClearFlagBuf_;
     TBuf<> calBeginBuf_;
     TBuf<> calEndBuf_;
+    TBuf<> opPosDfxBuf_;
     bool isInputTokenMaskFlag_ = false;
     bool isInputExpertMaskFlag_ = false;
     bool hasSharedExpertX_ = false;
@@ -311,7 +326,6 @@ private:
     LocalTensor<float> scaleDupLocalTensor_;
     LocalTensor<XType> sendLocalTensor_;
     LocalTensor<half> tokenTargetTensor_;
-    LocalTensor<int32_t> validBsIndexTensor_;
     LocalTensor<bool> expertMaskTensor_;
     LocalTensor<float> expertScalesLocal_;
     uint32_t dispatchBufferNum_{1};
@@ -348,14 +362,9 @@ template <A5MteCombineTypeClass>
 __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ExpertMaskCalCnt()
 {
     // 二维mask, 挑选有效token
-    uint64_t rsvdCnt = 0;
-    uint32_t mask = axisBS_;
     LocalTensor<bool> maskStrideTensor = tokenBuf_.Get<bool>();
     LocalTensor<half> tempTensor = rowTmpFloatBuf_.Get<half>();
     LocalTensor<half> maskTempTensor = sumFloatBuf_.Get<half>();
-    LocalTensor<uint8_t> maskTensor = tokenBuf_.Get<uint8_t>();
-    LocalTensor<int32_t> bsIndexTensor = mulBuf_.Get<int32_t>();
-    LocalTensor<uint32_t> maskTensorInt32 = tokenBuf_.Get<uint32_t>();
     DataCopyExtParams xActiveMaskParams{static_cast<uint16_t>(axisBS_), static_cast<uint32_t>(axisK_ * sizeof(bool)),
                                         0U, 0U, 0U};
     DataCopyPadExtParams<bool> xActiveMaskCopyPadParams{false, 0U, 0U, 0U};
@@ -375,10 +384,11 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Expert
     PipeBarrier<PIPE_V>();
     Mins(maskTempTensor, tokenTargetTensor_, static_cast<half>(1), axisBS_);
     PipeBarrier<PIPE_V>();
-    CompareScalar(maskTensor, maskTempTensor, static_cast<half>(1), AscendC::CMPMODE::EQ, calCnt);
-    CreateVecIndex(bsIndexTensor, 0, axisBS_);
-    PipeBarrier<PIPE_V>();
-    GatherMask(validBsIndexTensor_, bsIndexTensor, maskTensorInt32, true, mask, {1, 1, 0, 0}, activeMaskBsCnt_);
+    SumParams activeMaskSumParams{
+        1, static_cast<uint32_t>(Ceil(axisBS_ * sizeof(half), UB_ALIGN) * UB_ALIGN / sizeof(half)), axisBS_};
+    Sum(tokenTargetTensor_, maskTempTensor, activeMaskSumParams);
+    SyncFunc<AscendC::HardEvent::V_S>();
+    activeMaskBsCnt_ = static_cast<int32_t>(tokenTargetTensor_.GetValue(0));
 }
 
 template <A5MteCombineTypeClass>
@@ -575,25 +585,6 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Init(
 }
 
 template <A5MteCombineTypeClass>
-__aicore__ inline uint32_t
-MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::CalcDispatchBufferNum(uint32_t perDispatchBufBytes)
-{
-    tpipe_->InitBuffer(calEndBuf_, UB_ALIGN);
-    uint64_t beginUbAddr = calBeginBuf_.Get<uint8_t>().GetPhyAddr();
-    uint64_t endUbAddr = calEndBuf_.Get<uint8_t>().GetPhyAddr();
-    uint64_t usedUbSize = endUbAddr - beginUbAddr + UB_ALIGN;
-    uint64_t remainUbSize = (ubSize_ > usedUbSize) ? (ubSize_ - usedUbSize) : 0U;
-    uint32_t bufNum = static_cast<uint32_t>(remainUbSize / perDispatchBufBytes);
-    if (bufNum == 0U) {
-        bufNum = 1U;
-    }
-    if (bufNum > 8U) {
-        bufNum = 8U;
-    }
-    return bufNum;
-}
-
-template <A5MteCombineTypeClass>
 __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::BuffInit()
 {
     tpipe_->Reset(); // reset后 ctrl寄存器会复位为默认值
@@ -621,6 +612,12 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::BuffIn
     if (isScalingDownFlag_) {
         elasticInst_.InitElasticInfoTensor(epWorldSizeOriginal_, elasticInfoTensor_);
     }
+    DispatchBufferInit();
+}
+
+template <A5MteCombineTypeClass>
+__aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::DispatchBufferInit()
+{
     uint32_t perDispatchBufBytes = 0U;
     if constexpr (QuantMode > UNQUANT) {
         perDispatchBufBytes = hExpandXAlignSize_ + hAlignWinSize_;
@@ -645,7 +642,18 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::BuffIn
     }
     uint32_t indexCountsBufSize = Ceil(maxTokenNumInUB_ * EXPAND_IDX_INFO * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(indexCountsBuf_, indexCountsBufSize);
-    dispatchBufferNum_ = CalcDispatchBufferNum(perDispatchBufBytes);
+
+    tpipe_->InitBuffer(calEndBuf_, UB_ALIGN);
+    uint64_t endUbAddr = calEndBuf_.Get<uint8_t>().GetPhyAddr();
+    uint64_t usedUbSize = endUbAddr - beginUbAddr + UB_ALIGN;
+    remainUbSize = (ubSize_ > usedUbSize) ? (ubSize_ - usedUbSize) : 0U;
+    dispatchBufferNum_ = static_cast<uint32_t>(remainUbSize / perDispatchBufBytes);
+    if (dispatchBufferNum_ == 0U) {
+        dispatchBufferNum_ = 1U;
+    }
+    if (dispatchBufferNum_ > 8U) {
+        dispatchBufferNum_ = 8U;
+    }
     if constexpr (QuantMode > UNQUANT) {
         tpipe_->InitBuffer(expandXInQueue_, dispatchBufferNum_, hExpandXAlignSize_);
         tpipe_->InitBuffer(xOutPackageQueue_, dispatchBufferNum_, hAlignWinSize_);
@@ -771,7 +779,7 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::AlltoA
     tpipe_->InitBuffer(tokenBuf_, maxSizeTokenBuf);             // 16K 用于搬入输入token
     tpipe_->InitBuffer(rowTmpFloatBuf_, maxSizeRowTmpFloatBuf); // 32K 用于存储cast之后的fp32 token数据
     tpipe_->InitBuffer(mulBuf_, mulBufSize); // 32K buffer复用， 最大用于存储Brcb之后的token，需要256对齐
-    tpipe_->InitBuffer(sumFloatBuf_, hFloatAlign32Size_ * 2U); // 64K add
+    tpipe_->InitBuffer(sumFloatBuf_, hFloatAlign32Size_ * bufferNum_); // 单buf按序处理，双buf交错处理
     uint32_t packedDataBytes = blockCntPerToken_ * SPLIT_BLOCK_DATA_SIZE;
     uint32_t rawPackedDataBytes = Ceil(hExpandXTypeSize_, SPLIT_BLOCK_DATA_SIZE) * SPLIT_BLOCK_DATA_SIZE;
     uint32_t moeQueueBytes = Ceil(packedDataBytes, UB_ALIGN) * UB_ALIGN;
@@ -784,14 +792,13 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::AlltoA
         tpipe_->InitBuffer(reduceFp32Buf_, NUM_PER_REP_FP32 * sizeof(float) * 2);
         // H取最大值时，根据ReduceSum接口公式计算所需空间至少为64 * 2 = 128个元素
     }
-    uint32_t checkFlagCount = flagRcvCount_ * blockCntPerToken_ * SPLIT_BLOCK_FLAG_COUNT;
-    uint32_t checkCompareCount = Ceil(checkFlagCount, 64U) * 64U;
-    uint32_t checkFlagBufSize = Ceil(checkCompareCount * sizeof(float), UB_ALIGN) * UB_ALIGN;
-    uint32_t checkCompareBufSize = Ceil(checkCompareCount * sizeof(uint8_t), ALIGNED_LEN) * ALIGNED_LEN;
     uint32_t clearFlagCount = flagRcvCount_ * blockCntPerToken_ * SPLIT_BLOCK_FLAG_COUNT;
     uint32_t clearFlagBufSize = Ceil(clearFlagCount * sizeof(float), UB_ALIGN) * UB_ALIGN;
-    tpipe_->InitBuffer(packedCheckFlagBuf_, checkFlagBufSize);
-    tpipe_->InitBuffer(packedCheckCompareBuf_, checkCompareBufSize);
+    if (enableSpecialExpert_) {
+        uint32_t maskGenerateBufSize =
+            Ceil(axisBS_ * axisK_ * sizeof(half), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(half);
+        clearFlagBufSize = (clearFlagBufSize > maskGenerateBufSize) ? clearFlagBufSize : maskGenerateBufSize;
+    }
     tpipe_->InitBuffer(packedClearFlagBuf_, clearFlagBufSize);
 }
 
@@ -817,19 +824,18 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::AlltoA
     }
     if (isInputExpertMaskFlag_) {
         tpipe_->InitBuffer(tokenTargetTBuf_, Ceil(axisBS_ * sizeof(half), UB_ALIGN) * UB_ALIGN);
-        tpipe_->InitBuffer(validBsIndexTBuf_, Ceil(axisBS_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN);
         tpipe_->InitBuffer(expertMaskBuf_, Ceil(axisBS_ * axisK_ * sizeof(bool), UB_ALIGN) * UB_ALIGN);
         tokenTargetTensor_ = tokenTargetTBuf_.Get<half>();
-        validBsIndexTensor_ = validBsIndexTBuf_.Get<int32_t>();
         ExpertMaskCalCnt(); // 计算二维mask
         expertMaskTensor_ = expertMaskBuf_.Get<bool>();
         DataCopyPadExtParams<bool> maskCopyPadParams{false, 0U, 0U, 0U};
         DataCopyExtParams maskParams{1U, static_cast<uint32_t>(axisBS_ * axisK_ * sizeof(bool)), 0U, 0U, 0U};
         DataCopyPad(expertMaskTensor_, xActiveMaskGM_, maskParams, maskCopyPadParams);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
         SyncFunc<AscendC::HardEvent::V_S>();
     }
     if (enableSpecialExpert_) {
-        maskGenerateTensor_ = sumFloatBuf_.Get<bool>();
+        maskGenerateTensor_ = packedClearFlagBuf_.Get<bool>();
         if (!isInputExpertMaskFlag_) {
             tpipe_->InitBuffer(tokenTargetTBuf_, Ceil(axisBS_ * sizeof(half), UB_ALIGN) * UB_ALIGN);
             tokenTargetTensor_ = tokenTargetTBuf_.Get<half>();
@@ -882,7 +888,6 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::SetWai
         return;
     }
     ExpertAlltoAllDispatchCopyAdd();
-    SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
 template <A5MteCombineTypeClass>
@@ -1030,36 +1035,64 @@ __aicore__ inline uint32_t MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Ch
     if (flagFloatNum == 0U) {
         return 0U;
     }
-    const uint32_t compareCount = Ceil(flagFloatNum, 64U) * 64U;
-    const uint32_t compResultU64Num = Ceil(flagFloatNum, 64U);
-    LocalTensor<float> flagTensor = packedCheckFlagBuf_.Get<float>();
-    LocalTensor<uint8_t> compResultTensor = packedCheckCompareBuf_.Get<uint8_t>();
-    LocalTensor<uint64_t> compResultU64Tensor = packedCheckCompareBuf_.Get<uint64_t>();
-    Duplicate<float>(flagTensor, float(0), compareCount);
-    PipeBarrier<PIPE_V>();
-    DataCopyExtParams expFlagCopyParams{blockCount, SPLIT_BLOCK_FLAG_SIZE, srcStrideBytes, 0U, 0U};
-    DataCopyPadExtParams<float> expFlagPadParams{false, 0U, 0U, 0U};
-    GlobalTensor<float> dataFlagGlobal;
-    dataFlagGlobal.SetGlobalBuffer((__gm__ float *)(flagBaseAddr));
-    DataCopyPad(flagTensor, dataFlagGlobal, expFlagCopyParams, expFlagPadParams);
-    SyncFunc<AscendC::HardEvent::MTE2_V>();
-    CompareScalar(compResultTensor, flagTensor, float(1), AscendC::CMPMODE::EQ, compareCount);
-    SyncFunc<AscendC::HardEvent::V_S>();
-    uint32_t arriveFlagNum = 0U;
-    for (uint32_t i = 0U; i < compResultU64Num; ++i) {
-        uint64_t flagCompMask = compResultU64Tensor.GetValue(i);
-        int64_t firstInvalidIdx = ScalarGetSFFValue<0>(flagCompMask);
-        if (firstInvalidIdx == -1) {
-            arriveFlagNum += 64U;
-        } else {
-            arriveFlagNum += static_cast<uint32_t>(firstInvalidIdx);
-            break;
+    // 等待阶段复用计算scratch，避免额外申请flag检查buffer
+    LocalTensor<float> flagTensor = rowTmpFloatBuf_.Get<float>();
+    LocalTensor<uint8_t> compResultTensor = mulBuf_.Get<uint8_t>();
+    LocalTensor<uint64_t> compResultU64Tensor = mulBuf_.Get<uint64_t>();
+    const uint32_t flagPerBlock = SPLIT_BLOCK_FLAG_COUNT;
+    const uint32_t maxFlagFloatNum = hFloatAlign32Size_ / sizeof(float);
+    // CompareScalar按64个元素对齐，分段大小也按64个flag对齐，避免尾段补齐写出scratch
+    const uint32_t maxBlockCount = (maxFlagFloatNum / 64U) * (64U / flagPerBlock);
+    uint32_t processedBlockCount = 0U;
+    uint32_t processedFlagNum = 0U;
+    if (maxBlockCount == 0U) {
+        while (processedBlockCount < blockCount) {
+            GlobalTensor<float> dataFlagGlobal;
+            dataFlagGlobal.SetGlobalBuffer((__gm__ float *)(flagBaseAddr + processedBlockCount * SPLIT_BLOCK_SIZE));
+            DataCopyExtParams expFlagCopyParams{1U, SPLIT_BLOCK_FLAG_SIZE, srcStrideBytes, 0U, 0U};
+            DataCopyPadExtParams<float> expFlagPadParams{false, 0U, 0U, 0U};
+            DataCopyPad(flagTensor, dataFlagGlobal, expFlagCopyParams, expFlagPadParams);
+            SyncFunc<AscendC::HardEvent::MTE2_S>();
+            for (uint32_t i = 0U; i < flagPerBlock; ++i) {
+                if (flagTensor.GetValue(i) != float(1)) {
+                    return MIN(processedFlagNum + i, flagFloatNum);
+                }
+            }
+            processedBlockCount++;
+            processedFlagNum += flagPerBlock;
         }
+        return MIN(processedFlagNum, flagFloatNum);
     }
-    if (arriveFlagNum > flagFloatNum) {
-        arriveFlagNum = flagFloatNum;
+    while (processedBlockCount < blockCount) {
+        uint32_t currentBlockCount = MIN(maxBlockCount, static_cast<uint32_t>(blockCount) - processedBlockCount);
+        uint32_t currentFlagFloatNum = currentBlockCount * flagPerBlock;
+        uint32_t compareCount = Ceil(currentFlagFloatNum, 64U) * 64U;
+        uint32_t compResultU64Num = Ceil(currentFlagFloatNum, 64U);
+        Duplicate<float>(flagTensor, float(0), compareCount);
+        PipeBarrier<PIPE_V>();
+        SyncFunc<AscendC::HardEvent::V_MTE2>();
+        DataCopyExtParams expFlagCopyParams{static_cast<uint16_t>(currentBlockCount), SPLIT_BLOCK_FLAG_SIZE,
+                                            srcStrideBytes, 0U, 0U};
+        DataCopyPadExtParams<float> expFlagPadParams{false, 0U, 0U, 0U};
+        GlobalTensor<float> dataFlagGlobal;
+        dataFlagGlobal.SetGlobalBuffer((__gm__ float *)(flagBaseAddr + processedBlockCount * SPLIT_BLOCK_SIZE));
+        DataCopyPad(flagTensor, dataFlagGlobal, expFlagCopyParams, expFlagPadParams);
+        SyncFunc<AscendC::HardEvent::MTE2_V>();
+        CompareScalar(compResultTensor, flagTensor, float(1), AscendC::CMPMODE::EQ, compareCount);
+        SyncFunc<AscendC::HardEvent::V_S>();
+        for (uint32_t i = 0U; i < compResultU64Num; ++i) {
+            uint64_t flagCompMask = compResultU64Tensor.GetValue(i);
+            int64_t firstInvalidIdx = ScalarGetSFFValue<0>(flagCompMask);
+            if (firstInvalidIdx == -1) {
+                continue;
+            }
+            uint32_t arriveFlagNum = processedFlagNum + i * 64U + static_cast<uint32_t>(firstInvalidIdx);
+            return MIN(arriveFlagNum, flagFloatNum);
+        }
+        processedBlockCount += currentBlockCount;
+        processedFlagNum += currentFlagFloatNum;
     }
-    return arriveFlagNum;
+    return MIN(processedFlagNum, flagFloatNum);
 }
 
 template <A5MteCombineTypeClass>
@@ -1079,14 +1112,13 @@ MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::CheckPackedTokenArrive(GM_ADD
 }
 
 template <A5MteCombineTypeClass>
-__aicore__ inline void
-MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ClearPackedTokenFlags(uint32_t tokenIndex,
-                                                                         LocalTensor<float> flagTensor)
+__aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ClearPackedTokenFlags(uint32_t tokenIndex)
 {
     if (blockCntPerToken_ == 0U) {
         return;
     }
 
+    LocalTensor<float> flagTensor = packedClearFlagBuf_.Get<float>();
     uint32_t clearBlockCount = flagRcvCount_ * blockCntPerToken_;
     const DataCopyExtParams clearFlagParams{static_cast<uint16_t>(clearBlockCount), SPLIT_BLOCK_FLAG_SIZE, 0U,
                                             SPLIT_BLOCK_DATA_SIZE, 0U};
@@ -1269,7 +1301,15 @@ MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ProcessConstantExpert(uint32_
     float alphaSumFloat = alphaFloatLocal.GetValue(0) + alphaFloatLocal.GetValue(1);
     alpha1Float = alphaFloatLocal.GetValue(0) / alphaSumFloat;
     alpha2Float = alphaFloatLocal.GetValue(1) / alphaSumFloat;
+    AddConstantExpert(tokenIndex, const_expert_idx, scaleVal, alpha1Float, alpha2Float);
+}
 
+template <A5MteCombineTypeClass>
+__aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::AddConstantExpert(
+    uint32_t tokenIndex, uint32_t const_expert_idx, float scaleVal, float alpha1Float, float alpha2Float)
+{
+    DataCopyPadExtParams<ExpandXType> copyPadExtParams{false, 0U, 0U, 0U};
+    DataCopyExtParams expandXCopyParams{1U, static_cast<uint32_t>(hExpandXTypeSize_), 0U, 0U, 0U};
     // 使用moeMainSumQueue_分配缓冲区来存储常量专家向量v
     LocalTensor<float> constVFloatLocal = mulBuf_.Get<float>();
     LocalTensor<ExpandXType> const_v_ub = moeMainSumQueue_.AllocTensor<ExpandXType>();
@@ -1391,10 +1431,36 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Expert
 }
 
 template <A5MteCombineTypeClass>
-__aicore__ inline uint32_t MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ProcessMoeExpertSlots(
-    uint32_t tokenIndex, uint32_t tokenIndexOffset, uint32_t beginSlotIdx, uint32_t slotCount, uint32_t &index,
-    uint32_t tokenLocalIdx)
+__aicore__ inline uint32_t MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::GetMoeExpertSlotCount(uint32_t tokenIndex,
+                                                                                                    uint32_t topkId)
 {
+    uint32_t slotCount = axisK_ - topkId;
+    if (!isInputExpertMaskFlag_ && !enableSpecialExpert_) {
+        return slotCount;
+    }
+    slotCount = 1U;
+    while (topkId + slotCount < axisK_) {
+        if (isInputExpertMaskFlag_ && !expertMaskTensor_.GetValue(tokenIndex * axisK_ + topkId + slotCount)) {
+            break;
+        }
+        if (enableSpecialExpert_) {
+            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+                expertIdsGM_[tokenIndex * axisK_ + topkId + slotCount]);
+            uint32_t nextExpertId = expertIdsGM_.GetValue(tokenIndex * axisK_ + topkId + slotCount);
+            if (nextExpertId >= moeExpertOriginalNum_) {
+                break;
+            }
+        }
+        slotCount++;
+    }
+    return slotCount;
+}
+
+template <A5MteCombineTypeClass>
+__aicore__ inline uint32_t MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ProcessMoeExpertSlots(
+    uint32_t tokenIndex, uint32_t beginSlotIdx, uint32_t slotCount, uint32_t &index, uint32_t tokenLocalIdx)
+{
+    uint32_t tokenIndexOffset = tokenIndex * (axisK_ + sharedExpertNum_);
     uint32_t slotIdx = beginSlotIdx;
     uint32_t arriveSlotCount = WaitDispatch(tokenIndex, slotIdx, slotCount, tokenLocalIdx);
     uint32_t endSlotIdx = slotIdx + arriveSlotCount;
@@ -1410,8 +1476,32 @@ __aicore__ inline uint32_t MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Pr
 }
 
 template <A5MteCombineTypeClass>
-__aicore__ inline bool MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ProcessMoeExpertsLoop(
-    uint32_t tokenIndex, uint32_t tokenIndexOffset, uint32_t &topkId, uint32_t &index, uint32_t tokenLocalIdx)
+__aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ProcessSpecialExpert(uint32_t tokenIndex,
+                                                                                               uint32_t expertId,
+                                                                                               uint32_t &index)
+{
+    float scaleVal = 0.0;
+    if (hasExpertScalesFlag_) {
+        scaleVal = expertScalesLocal_.GetValue(index);
+    }
+    if (expertId < moeExpertOriginalNum_ + zeroExpertNum_) {
+        // 零专家不需要任何操作
+        index++;
+    } else if (expertId < moeExpertOriginalNum_ + zeroExpertNum_ + copyExpertNum_) {
+        ProcessCopyExpert(tokenIndex, scaleVal);
+        index++;
+    } else if (expertId < moeExpertOriginalNum_ + zeroExpertNum_ + copyExpertNum_ + constExpertNum_) {
+        uint32_t const_expert_idx = expertId - (moeExpertOriginalNum_ + zeroExpertNum_ + copyExpertNum_);
+        ProcessConstantExpert(tokenIndex, const_expert_idx, scaleVal);
+        index++;
+    }
+}
+
+template <A5MteCombineTypeClass>
+__aicore__ inline bool MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ProcessMoeExpertsLoop(uint32_t tokenIndex,
+                                                                                                uint32_t &topkId,
+                                                                                                uint32_t &index,
+                                                                                                uint32_t tokenLocalIdx)
 {
     while (topkId < axisK_) {
         if (isInputExpertMaskFlag_ && !expertMaskTensor_.GetValue(tokenIndex * axisK_ + topkId)) {
@@ -1427,27 +1517,8 @@ __aicore__ inline bool MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Proces
             expert_id = expertIdsGM_.GetValue(tokenIndex * axisK_ + topkId);
         }
         if (!enableSpecialExpert_ || (expert_id < moeExpertOriginalNum_)) {
-            uint32_t slotCount = axisK_ - topkId;
-            if (isInputExpertMaskFlag_ || enableSpecialExpert_) {
-                slotCount = 1U;
-                while (topkId + slotCount < axisK_) {
-                    if (isInputExpertMaskFlag_ &&
-                        !expertMaskTensor_.GetValue(tokenIndex * axisK_ + topkId + slotCount)) {
-                        break;
-                    }
-                    if (enableSpecialExpert_) {
-                        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
-                            expertIdsGM_[tokenIndex * axisK_ + topkId + slotCount]);
-                        uint32_t nextExpertId = expertIdsGM_.GetValue(tokenIndex * axisK_ + topkId + slotCount);
-                        if (nextExpertId >= moeExpertOriginalNum_) {
-                            break;
-                        }
-                    }
-                    slotCount++;
-                }
-            }
-            uint32_t arriveSlotCount =
-                ProcessMoeExpertSlots(tokenIndex, tokenIndexOffset, topkId, slotCount, index, tokenLocalIdx);
+            uint32_t slotCount = GetMoeExpertSlotCount(tokenIndex, topkId);
+            uint32_t arriveSlotCount = ProcessMoeExpertSlots(tokenIndex, topkId, slotCount, index, tokenLocalIdx);
             topkId += arriveSlotCount;
             if (arriveSlotCount < slotCount) {
                 return false;
@@ -1455,21 +1526,7 @@ __aicore__ inline bool MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Proces
             continue;
         }
 
-        float scaleVal = 0.0;
-        if (hasExpertScalesFlag_) {
-            scaleVal = expertScalesLocal_.GetValue(index);
-        }
-        if (expert_id < moeExpertOriginalNum_ + zeroExpertNum_) {
-            // 零专家不需要任何操作
-            index++;
-        } else if (expert_id < moeExpertOriginalNum_ + zeroExpertNum_ + copyExpertNum_) {
-            ProcessCopyExpert(tokenIndex, scaleVal);
-            index++;
-        } else if (expert_id < moeExpertOriginalNum_ + zeroExpertNum_ + copyExpertNum_ + constExpertNum_) {
-            uint32_t const_expert_idx = expert_id - (moeExpertOriginalNum_ + zeroExpertNum_ + copyExpertNum_);
-            ProcessConstantExpert(tokenIndex, const_expert_idx, scaleVal);
-            index++;
-        }
+        ProcessSpecialExpert(tokenIndex, expert_id, index);
         topkId++;
     }
     return true;
@@ -1542,7 +1599,7 @@ __aicore__ inline bool MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Proces
     uint32_t tokenIndexOffset = tokenIndex * (axisK_ + sharedExpertNum_);
 
     // 按原有专家顺序处理，保证累加顺序不变
-    if (!ProcessMoeExpertsLoop(tokenIndex, tokenIndexOffset, topkId, index, tokenLocalIdx)) {
+    if (!ProcessMoeExpertsLoop(tokenIndex, topkId, index, tokenLocalIdx)) {
         return false;
     }
     if (!ProcessSharedExpertsLoop(tokenIndex, tokenIndexOffset, processLen, topkId, tokenLocalIdx)) {
@@ -1556,14 +1613,136 @@ __aicore__ inline bool MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Proces
 }
 
 template <A5MteCombineTypeClass>
+__aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::LocalWindowInit()
+{
+    tpipe_->InitBuffer(opPosDfxBuf_, UB_ALIGN);
+    dataStateLocalTensor_ = opPosDfxBuf_.Get<uint32_t>();
+    rowTmpFloatLocal_ = rowTmpFloatBuf_.Get<float>();
+    mulBufLocal_ = mulBuf_.Get<float>();
+    sumFloatBufLocal_ = sumFloatBuf_.Get<float>();
+    if constexpr (HasAddRmsNorm) {
+        const DataCopyPadExtParams<XType> copyPadXTypeParams{false, 0U, 0U, 0U};
+        const DataCopyExtParams expandXCopyParams{1U, static_cast<uint32_t>(hExpandXTypeSize_), 0U, 0U, 0U};
+        gammaLocal_ = gammaBuf_.Get<XType>();
+        DataCopyPad(gammaLocal_, gammaGM_, expandXCopyParams, copyPadXTypeParams);
+        SyncFunc<AscendC::HardEvent::MTE2_V>();
+    }
+    ExpertScaleCopy(beginIndex_ + newAivId_, tokenPerAivNum_, receiveAivNum_);
+    if (isScalingDownFlag_) {
+        elasticInst_.InitElasticInfoTensor(epWorldSizeOriginal_, elasticInfoTensor_);
+    }
+    if (isPerformanceFlag_) {
+        uint32_t tokenNumPerCore = tokenPerAivNum_ * flagRcvCount_ * sizeof(int32_t);
+        tokenNumPerCoreAlign_ = Ceil(tokenNumPerCore, UB_ALIGN) * UB_ALIGN;
+        tpipe_->InitBuffer(firstRecordBuf_, tokenNumPerCoreAlign_);
+        firstRecordTensor_ = firstRecordBuf_.Get<int32_t>();
+        Duplicate<int32_t>(firstRecordTensor_, static_cast<int32_t>(0), tokenPerAivNum_ * flagRcvCount_);
+    }
+    LocalTensor<float> flagTensor = packedClearFlagBuf_.Get<float>();
+    Duplicate<float>(flagTensor, float(0), flagRcvCount_ * blockCntPerToken_ * SPLIT_BLOCK_FLAG_COUNT);
+    SyncFunc<AscendC::HardEvent::V_S>();
+    performanceTimeStart_ = static_cast<uint64_t>(GetSystemCycle());
+    outputCopyPending_ = false;
+    nextTokenLocalIdx_ = 0U;
+    sumFloatBufOffset_ = hFloatAlign32Size_ / sizeof(float);
+}
+
+template <A5MteCombineTypeClass>
+__aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::TokenInit(uint32_t bufferIndex,
+                                                                                    uint32_t &tokenLocalIdx,
+                                                                                    uint32_t &topkId, uint32_t &index)
+{
+    if (tokenLocalIdx < tokenPerAivNum_) {
+        return;
+    }
+    uint32_t tokenIndex = 0U;
+    while (nextTokenLocalIdx_ < tokenPerAivNum_) {
+        tokenLocalIdx = nextTokenLocalIdx_++;
+        tokenIndex = beginIndex_ + newAivId_ + tokenLocalIdx * receiveAivNum_;
+        if (!isInputExpertMaskFlag_) {
+            break;
+        }
+        bool validToken = false;
+        for (uint32_t slotIdx = 0U; slotIdx < axisK_; slotIdx++) {
+            if (expertMaskTensor_.GetValue(tokenIndex * axisK_ + slotIdx)) {
+                validToken = true;
+                break;
+            }
+        }
+        if (validToken) {
+            break;
+        }
+        tokenNumCompleted_++;
+        tokenLocalIdx = tokenPerAivNum_;
+    }
+    if (tokenLocalIdx >= tokenPerAivNum_) {
+        return;
+    }
+    topkId = 0U;
+    index = tokenLocalIdx * axisK_;
+    if (outputCopyPending_) {
+        // 上一个token搬出完成后，V流水才能复用tokenBuf_
+        SyncFunc<AscendC::HardEvent::MTE3_V>();
+        outputCopyPending_ = false;
+    }
+    sumFloatBufLocal_ = sumFloatBuf_.Get<float>()[bufferIndex * sumFloatBufOffset_];
+    Duplicate(sumFloatBufLocal_, static_cast<float>(0), axisH_);
+    statePos_++;
+    DataCopyParams dataStateParams{1U, sizeof(uint32_t), 0U, 0U};
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
+    dataStateLocalTensor_.SetValue(0, statePos_);
+    SyncFunc<AscendC::HardEvent::S_MTE3>();
+    DataCopyPad(selfDataStatusGMTensor_[1], dataStateLocalTensor_, dataStateParams);
+}
+
+template <A5MteCombineTypeClass>
+__aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ProcessToken(uint32_t bufferIndex,
+                                                                                       uint32_t &tokenLocalIdx,
+                                                                                       uint32_t &topkId,
+                                                                                       uint32_t &index)
+{
+    if (tokenLocalIdx >= tokenPerAivNum_) {
+        return;
+    }
+    uint32_t tokenIndex = beginIndex_ + newAivId_ + tokenLocalIdx * receiveAivNum_;
+    uint32_t processLen = axisH_;
+    const DataCopyPadExtParams<XType> copyPadXTypeParams{false, 0U, 0U, 0U};
+    const DataCopyExtParams expandXCopyParams{1U, static_cast<uint32_t>(hExpandXTypeSize_), 0U, 0U, 0U};
+    if (outputCopyPending_) {
+        SyncFunc<AscendC::HardEvent::MTE3_V>();
+        outputCopyPending_ = false;
+    }
+    sumFloatBufLocal_ = sumFloatBuf_.Get<float>()[bufferIndex * sumFloatBufOffset_];
+    if (!ProcessExpert(tokenIndex, processLen, tokenLocalIdx, topkId, index)) {
+        return;
+    }
+    ClearPackedTokenFlags(tokenIndex);
+    if constexpr (HasAddRmsNorm) {
+        AddRmsNormAddCompute(tokenIndex, 0U, processLen, sumFloatBufLocal_, rowTmpFloatLocal_, sumFloatBufLocal_,
+                             expandXCopyParams, copyPadXTypeParams);
+    }
+    // 结果搬出
+    PipeBarrier<PIPE_V>();
+    LocalTensor<XType> sumBufLocal = tokenBuf_.Get<XType>();
+    Cast(sumBufLocal, sumFloatBufLocal_, AscendC::RoundMode::CAST_RINT, processLen);
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    DataCopyPad(expandOutGlobal_[tokenIndex * axisH_], sumBufLocal, expandXCopyParams);
+    if constexpr (HasAddRmsNorm) {
+        SyncFunc<AscendC::HardEvent::MTE3_V>();
+        AddRmsNormRmsNormCompute(tokenIndex, 0U, processLen, sumFloatBufLocal_, mulBufLocal_, gammaLocal_,
+                                 expandXCopyParams);
+    }
+    outputCopyPending_ = true;
+    tokenLocalIdx = tokenPerAivNum_;
+    tokenNumCompleted_++;
+}
+
+template <A5MteCombineTypeClass>
 __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::LocalWindowCopy()
 {
     if (activeMaskBsCnt_ == 0U) {
         return;
     }
-    uint32_t processLen = 0U;
-    uint32_t tokenOffset = 0U;
-    uint32_t statePos = 1U;
     uint32_t tokenNum = isInputExpertMaskFlag_ ? axisBS_ : activeMaskBsCnt_;
     uint32_t earlyTokenNum = tokenNum;
     if (tokenNum > recvAivNum_) {
@@ -1574,144 +1753,33 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::LocalW
         earlyTokenNum = MIN(tokenNum, Ceil(earlyTokenNum, recvAivNum_) * recvAivNum_);
     }
     bool isRecvAiv = coreIdx_ >= sendAivNum_;
-    uint32_t receiveAivNum = isRecvAiv ? recvAivNum_ : sendAivNum_;
+    receiveAivNum_ = isRecvAiv ? recvAivNum_ : sendAivNum_;
     uint32_t receiveTokenNum = isRecvAiv ? earlyTokenNum : tokenNum - earlyTokenNum;
-    uint32_t beginIndex = isRecvAiv ? 0U : earlyTokenNum;
-    uint32_t newAivId = isRecvAiv ? coreIdx_ - sendAivNum_ : coreIdx_;
-    uint32_t tokenPerAivNum = receiveTokenNum / receiveAivNum;
-    uint32_t remainderToken = receiveTokenNum % receiveAivNum;
-
-    if (newAivId < remainderToken) {
-        tokenPerAivNum++;
+    beginIndex_ = isRecvAiv ? 0U : earlyTokenNum;
+    newAivId_ = isRecvAiv ? coreIdx_ - sendAivNum_ : coreIdx_;
+    tokenPerAivNum_ = receiveTokenNum / receiveAivNum_;
+    uint32_t remainderToken = receiveTokenNum % receiveAivNum_;
+    if (newAivId_ < remainderToken) {
+        tokenPerAivNum_++;
     }
-    if (tokenPerAivNum == 0U) {
+    if (tokenPerAivNum_ == 0U) {
         return;
     }
-    processLen = axisH_;
-    TBuf<> opPosDfxBuf;
-    tpipe_->InitBuffer(opPosDfxBuf, UB_ALIGN);
-    dataStateLocalTensor_ = opPosDfxBuf.Get<uint32_t>();
-    rowTmpFloatLocal_ = rowTmpFloatBuf_.Get<float>();
-    mulBufLocal_ = mulBuf_.Get<float>();
-    sumFloatBufLocal_ = sumFloatBuf_.Get<float>();
-    const DataCopyPadExtParams<XType> copyPadXTypeParams{false, 0U, 0U, 0U};
-    DataCopyParams dataStateParams{1U, sizeof(uint32_t), 0U, 0U};
-    const DataCopyExtParams expandXCopyParams{1U, static_cast<uint32_t>(hExpandXTypeSize_), 0U, 0U, 0U};
-    LocalTensor<XType> gammaLocal;
-    if constexpr (HasAddRmsNorm) {
-        gammaLocal = gammaBuf_.Get<XType>();
-        DataCopyPad(gammaLocal, gammaGM_, expandXCopyParams, copyPadXTypeParams);
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
-    }
-    ExpertScaleCopy(beginIndex + newAivId, tokenPerAivNum, receiveAivNum);
-    TBuf<> tokenStatusBuf;
-    tpipe_->InitBuffer(tokenStatusBuf, Ceil(tokenPerAivNum * sizeof(int32_t), UB_ALIGN) * UB_ALIGN);
-    LocalTensor tokenStatusTensor = tokenStatusBuf.Get<int32_t>();
-    Duplicate<int32_t>(tokenStatusTensor, static_cast<int32_t>(0), tokenPerAivNum);
-    uint32_t tokenNumCompleted = static_cast<uint32_t>(0);
-    if (isInputExpertMaskFlag_) {
-        SyncFunc<AscendC::HardEvent::V_S>();
-        for (uint32_t tokenLocalIdx = 0U; tokenLocalIdx < tokenPerAivNum; tokenLocalIdx++) {
-            uint32_t tokenIndex = beginIndex + newAivId + tokenLocalIdx * receiveAivNum;
-            bool validToken = false;
-            for (uint32_t topkId = 0U; topkId < axisK_; topkId++) {
-                if (expertMaskTensor_.GetValue(tokenIndex * axisK_ + topkId)) {
-                    validToken = true;
-                    break;
-                }
-            }
-            if (!validToken) {
-                tokenNumCompleted++;
-                tokenStatusTensor.SetValue(tokenLocalIdx, 1);
-            }
-        }
-    }
-    if (isScalingDownFlag_) {
-        elasticInst_.InitElasticInfoTensor(epWorldSizeOriginal_, elasticInfoTensor_);
-    }
-    if (isPerformanceFlag_) {
-        uint32_t tokenNumPerCore = tokenPerAivNum * flagRcvCount_ * sizeof(int32_t);
-        tokenNumPerCoreAlign_ = Ceil(tokenNumPerCore, UB_ALIGN) * UB_ALIGN;
-        tpipe_->InitBuffer(firstRecordBuf_, tokenNumPerCoreAlign_);
-        firstRecordTensor_ = firstRecordBuf_.Get<int32_t>();
-        Duplicate<int32_t>(firstRecordTensor_, static_cast<int32_t>(0), tokenPerAivNum * flagRcvCount_);
-    }
-    LocalTensor<float> flagTensor = packedClearFlagBuf_.Get<float>();
-    Duplicate<float>(flagTensor, float(0), flagRcvCount_ * blockCntPerToken_ * SPLIT_BLOCK_FLAG_COUNT);
-    SyncFunc<AscendC::HardEvent::V_S>();
-    performanceTimeStart_ = static_cast<uint64_t>(GetSystemCycle());
-    uint32_t tokenLocalIdxList[2] = {0U, 0U};
-    uint32_t tokenIndexList[2] = {0U, 0U};
-    uint32_t topkIdList[2] = {0U, 0U};
-    uint32_t indexList[2] = {0U, 0U};
-    bool tokenActiveList[2] = {false, false};
-    bool outputCopyPending = false;
-    uint32_t nextTokenLocalIdx = 0U;
-    uint32_t sumFloatBufOffset = hFloatAlign32Size_ / sizeof(float);
+    tokenNumCompleted_ = 0U;
+    statePos_ = 1U;
+    LocalWindowInit();
+    uint32_t tokenLocalIdx0 = tokenPerAivNum_, topkId0 = 0U, index0 = 0U;
+    uint32_t tokenLocalIdx1 = tokenPerAivNum_, topkId1 = 0U, index1 = 0U;
     // token内按slot顺序处理，两个token之间轮转
-    while (tokenNumCompleted < tokenPerAivNum) {
-        for (uint32_t bufferIndex = 0U; bufferIndex < 2U; bufferIndex++) {
-            if (tokenActiveList[bufferIndex]) {
-                continue;
-            }
-            while ((nextTokenLocalIdx < tokenPerAivNum) && (tokenStatusTensor(nextTokenLocalIdx) == 1)) {
-                nextTokenLocalIdx++;
-            }
-            if (nextTokenLocalIdx >= tokenPerAivNum) {
-                break;
-            }
-            uint32_t tokenLocalIdx = nextTokenLocalIdx++;
-            uint32_t tokenIndex = beginIndex + newAivId + tokenLocalIdx * receiveAivNum;
-            tokenStatusTensor.SetValue(tokenLocalIdx, 1);
-            tokenLocalIdxList[bufferIndex] = tokenLocalIdx;
-            tokenIndexList[bufferIndex] = tokenIndex;
-            topkIdList[bufferIndex] = 0U;
-            indexList[bufferIndex] = tokenLocalIdx * axisK_;
-            tokenActiveList[bufferIndex] = true;
-            sumFloatBufLocal_ = sumFloatBuf_.Get<float>()[bufferIndex * sumFloatBufOffset];
-            Duplicate(sumFloatBufLocal_, static_cast<float>(0), axisH_);
-            statePos++;
-            SyncFunc<AscendC::HardEvent::MTE3_S>();
-            outputCopyPending = false;
-            dataStateLocalTensor_.SetValue(0, statePos);
-            SyncFunc<AscendC::HardEvent::S_MTE3>();
-            DataCopyPad(selfDataStatusGMTensor_[1], dataStateLocalTensor_, dataStateParams);
-        }
-        for (uint32_t bufferIndex = 0U; bufferIndex < 2U; bufferIndex++) {
-            if (!tokenActiveList[bufferIndex]) {
-                continue;
-            }
-            if (outputCopyPending) {
-                SyncFunc<AscendC::HardEvent::MTE3_V>();
-                outputCopyPending = false;
-            }
-            uint32_t tokenIndex = tokenIndexList[bufferIndex];
-            uint32_t tokenLocalIdx = tokenLocalIdxList[bufferIndex];
-            sumFloatBufLocal_ = sumFloatBuf_.Get<float>()[bufferIndex * sumFloatBufOffset];
-            if (!ProcessExpert(tokenIndex, processLen, tokenLocalIdx, topkIdList[bufferIndex],
-                               indexList[bufferIndex])) {
-                continue;
-            }
-            ClearPackedTokenFlags(tokenIndex, flagTensor);
-
-            if constexpr (HasAddRmsNorm) {
-                AddRmsNormAddCompute(tokenIndex, tokenOffset, processLen, sumFloatBufLocal_, rowTmpFloatLocal_,
-                                     sumFloatBufLocal_, expandXCopyParams, copyPadXTypeParams);
-            }
-            // 结果搬出
-            PipeBarrier<PIPE_V>();
-            LocalTensor<XType> sumBufLocal = tokenBuf_.Get<XType>();
-            Cast(sumBufLocal, sumFloatBufLocal_, AscendC::RoundMode::CAST_RINT, processLen);
-            SyncFunc<AscendC::HardEvent::V_MTE3>();
-            DataCopyPad(expandOutGlobal_[tokenIndex * axisH_ + tokenOffset], sumBufLocal, expandXCopyParams);
-            if constexpr (HasAddRmsNorm) {
-                SyncFunc<AscendC::HardEvent::MTE3_V>();
-                AddRmsNormRmsNormCompute(tokenIndex, tokenOffset, processLen, sumFloatBufLocal_, mulBufLocal_,
-                                         gammaLocal, expandXCopyParams);
-            }
-            outputCopyPending = true;
-            tokenActiveList[bufferIndex] = false;
-            tokenNumCompleted++;
+    while (tokenNumCompleted_ < tokenPerAivNum_) {
+        if (bufferNum_ == 1U) {
+            TokenInit(0U, tokenLocalIdx0, topkId0, index0);
+            ProcessToken(0U, tokenLocalIdx0, topkId0, index0);
+        } else {
+            TokenInit(0U, tokenLocalIdx0, topkId0, index0);
+            TokenInit(1U, tokenLocalIdx1, topkId1, index1);
+            ProcessToken(0U, tokenLocalIdx0, topkId0, index0);
+            ProcessToken(1U, tokenLocalIdx1, topkId1, index1);
         }
     }
     if (isPerformanceFlag_) {
