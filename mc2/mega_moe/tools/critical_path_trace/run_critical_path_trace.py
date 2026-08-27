@@ -35,7 +35,7 @@ from mega_moe_trace_contract import (
 )
 
 
-ADAPTER_VERSION = 8
+ADAPTER_VERSION = 9
 TESTED_MOE_TEST_COMMIT = "90319bbd05993d2fbe7674d693395d5520732553"
 TESTED_SCRIPT_SHA256 = (
     "35f600ca443782fd8f210a33af879af651a9dea011f32afa51191ae2bf9ee43e"
@@ -79,9 +79,6 @@ TRACE_SWITCH_DEFAULTS = {
 }
 
 HELPER_INSERT_ANCHOR = "\ndef get_cascade_graph_model_class():\n"
-SCRIPT_DIR_ANCHOR = "script_dir = os.path.dirname(os.path.abspath(__file__))"
-CACHE_DIR_ANCHOR = 'cache_dir = os.path.join(script_dir, "torch_extensions_cache")'
-GOLDEN_CACHE_DIR_ANCHOR = 'golden_cache_dir = os.path.join(script_dir, "golden_cache")'
 FINAL_SYNC_ANCHOR = (
     "    torch.npu.synchronize()\n"
     "    print(f'rank {rank} epid {rank // tp_world_size} tpid {rank % tp_world_size} npu finished! \\n')"
@@ -190,7 +187,7 @@ def _critical_path_trace_capture_y(y, rank):
     raw_path = os.path.join(artifact_dir, f"rank{rank}.raw")
     metadata_path = os.path.join(artifact_dir, f"rank{rank}.runtime.json")
     metadata = {
-        "adapter_version": 8,
+        "adapter_version": 9,
         "dispatch_group_ready": int(os.environ["MEGA_MOE_CRITICAL_PATH_TRACE_DISPATCH_GROUP_READY"]),
         "capture_policy": "last_iteration_only",
         "executed_iterations": int(loop_acc_time),
@@ -340,6 +337,37 @@ def replace_once(source: str, anchor: str, replacement: str, description: str) -
     return source.replace(anchor, replacement, 1)
 
 
+def replace_unique_top_level_assignment(
+    source: str, name: str, replacement: str, description: str
+) -> str:
+    """Replace one top-level assignment without depending on its RHS spelling."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        raise ContractError(f"moe_test source is not valid Python: {exc}") from exc
+
+    matches: list[ast.Assign | ast.AnnAssign] = []
+    for node in tree.body:
+        target: ast.expr | None = None
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+        elif isinstance(node, ast.AnnAssign):
+            target = node.target
+        if isinstance(target, ast.Name) and target.id == name:
+            matches.append(node)
+
+    if len(matches) != 1 or matches[0].end_lineno is None:
+        raise ContractError(
+            f"{description} top-level assignment {name!r} must occur exactly once, "
+            f"found {len(matches)}"
+        )
+
+    lines = source.splitlines(keepends=True)
+    node = matches[0]
+    lines[node.lineno - 1 : node.end_lineno] = [replacement.rstrip("\n") + "\n"]
+    return "".join(lines)
+
+
 def insert_after_top_level_assignment(source: str, name: str, insertion: str) -> str:
     tree = ast.parse(source)
     matches = [
@@ -366,21 +394,21 @@ def adapt_test_source(
     overrides: dict[str, bool | int | str],
 ) -> str:
     transformed = replace_top_level_assignments(source, overrides)
-    transformed = replace_once(
+    transformed = replace_unique_top_level_assignment(
         transformed,
-        SCRIPT_DIR_ANCHOR,
+        "script_dir",
         f"script_dir = os.environ[{ORIGINAL_DIR_ENV!r}]",
         "script directory",
     )
-    transformed = replace_once(
+    transformed = replace_unique_top_level_assignment(
         transformed,
-        CACHE_DIR_ANCHOR,
+        "cache_dir",
         f"cache_dir = os.path.join(os.environ[{ARTIFACT_ENV!r}], 'runtime-cache', 'torch_extensions')",
         "Torch extension cache directory",
     )
-    transformed = replace_once(
+    transformed = replace_unique_top_level_assignment(
         transformed,
-        GOLDEN_CACHE_DIR_ANCHOR,
+        "golden_cache_dir",
         f"golden_cache_dir = os.path.join(os.environ[{ARTIFACT_ENV!r}], 'runtime-cache', 'golden_cache')",
         "golden cache directory",
     )

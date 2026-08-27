@@ -39,6 +39,7 @@ from run_critical_path_trace import (
     FORCED_OVERRIDES,
     adapt_test_source,
     decode_artifacts,
+    replace_unique_top_level_assignment,
     validate_artifact_destination,
     validate_trace_source_defaults,
 )
@@ -63,7 +64,7 @@ def make_synthetic_capture(
     spec = load_json(spec_path)
     protocol = spec["trace"]["protocol"]
     metadata = {
-        "adapter_version": 8,
+        "adapter_version": 9,
         "dispatch_group_ready": dispatch_group_ready,
         "rank": 0,
         "bs": 24,
@@ -226,6 +227,41 @@ def make_synthetic_capture(
 
 
 class TraceContractTests(unittest.TestCase):
+    def test_directory_assignment_adapter_accepts_rhs_format_changes(self) -> None:
+        replacement = "golden_cache_dir = '/tmp/trace-golden'"
+        variants = (
+            "golden_cache_dir = os.path.join(script_dir, 'golden_cache')\n",
+            "golden_cache_dir: str = str(Path(script_dir) / 'golden_cache')\n",
+            "golden_cache_dir = os.path.join(\n    script_dir,\n    'golden_cache',\n)\n",
+        )
+        for source in variants:
+            with self.subTest(source=source):
+                self.assertEqual(
+                    replace_unique_top_level_assignment(
+                        source,
+                        "golden_cache_dir",
+                        replacement,
+                        "golden cache directory",
+                    ),
+                    replacement + "\n",
+                )
+
+    def test_directory_assignment_adapter_remains_fail_closed(self) -> None:
+        with self.assertRaisesRegex(ContractError, "found 0"):
+            replace_unique_top_level_assignment(
+                "cache_dir = '/tmp/cache'\n",
+                "golden_cache_dir",
+                "golden_cache_dir = '/tmp/golden'",
+                "golden cache directory",
+            )
+        with self.assertRaisesRegex(ContractError, "found 2"):
+            replace_unique_top_level_assignment(
+                "golden_cache_dir = 'a'\ngolden_cache_dir = 'b'\n",
+                "golden_cache_dir",
+                "golden_cache_dir = '/tmp/golden'",
+                "golden cache directory",
+            )
+
     def test_trace_switch_defaults_to_diagnostic_mode(self) -> None:
         source_defaults = validate_trace_source_defaults(REPO_ROOT)
         self.assertEqual(
