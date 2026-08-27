@@ -56,6 +56,8 @@ struct GatedActivationArgs {
     uint32_t validRowCount = 0U;
     uint32_t validColumnCount = 0U;
     uint32_t inputRowStrideElements = 0U;
+    // 当前 Block Epilogue 使用 CeilAlign(validColumnCount, 32)；直接调用接口保留
+    // 更广输出物理行距下的两段写回和补零能力。
     uint32_t outputRowStrideElements = 0U;
 };
 
@@ -107,10 +109,12 @@ struct ActivationLoopPlan {
     // 以下字段均为尾块的标量派生结果。UpdateMask 接收可写引用，具体激活需复制 mask 计数后再调用。
     uint32_t tailColumnOffsetElements = 0U;
     uint32_t tailComputeMaskElementCount = 0U;
-    uint32_t firstTailStoreMaskElementCount = 0U;
-    uint32_t secondPaddingStoreMaskElementCount = 0U;
-    uint16_t tailLoopCount = 0U;
-    uint16_t secondPaddingLoopCount = 0U;
+    uint32_t tailStoreMaskElementCount = 0U;
+    uint32_t additionalPaddingStoreMaskElementCount = 0U;
+    // 0/1 标志：是否需要尾 Vector 计算，为保持原 VecScope for-loop 形态直接作为循环上界。
+    uint16_t needTailVectorCompute = 0U;
+    // 0/1 标志：是否需要额外补零写回，为保持原 VecScope for-loop 形态直接作为循环上界。
+    uint16_t needAdditionalPaddingStore = 0U;
 };
 
 template <typename InputType>
@@ -129,16 +133,16 @@ __aicore__ inline ActivationLoopPlan BuildActivationLoopPlan(const GatedActivati
     if (plan.tailElementCountPerRow > 0U) {
         plan.tailColumnOffsetElements = plan.fullVectorLoopCountPerRow * VECTOR_LENGTH_FP32;
         plan.tailComputeMaskElementCount = plan.tailElementCountPerRow;
-        plan.tailLoopCount = 1U;
+        plan.needTailVectorCompute = 1U;
 
-        const uint32_t firstTailAndPaddingElementCount =
+        const uint32_t tailAndPaddingElementCount =
             plan.tailElementCountPerRow + plan.outputPaddingElementCountPerRow;
-        if (firstTailAndPaddingElementCount <= VECTOR_LENGTH_FP32) {
-            plan.firstTailStoreMaskElementCount = firstTailAndPaddingElementCount;
+        if (tailAndPaddingElementCount <= VECTOR_LENGTH_FP32) {
+            plan.tailStoreMaskElementCount = tailAndPaddingElementCount;
         } else {
-            plan.firstTailStoreMaskElementCount = VECTOR_LENGTH_FP32;
-            plan.secondPaddingStoreMaskElementCount = firstTailAndPaddingElementCount - VECTOR_LENGTH_FP32;
-            plan.secondPaddingLoopCount = 1U;
+            plan.tailStoreMaskElementCount = VECTOR_LENGTH_FP32;
+            plan.additionalPaddingStoreMaskElementCount = tailAndPaddingElementCount - VECTOR_LENGTH_FP32;
+            plan.needAdditionalPaddingStore = 1U;
         }
     }
     return plan;
