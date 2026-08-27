@@ -27,18 +27,39 @@ def _rows_per_batch(kv_seqlens: torch.Tensor, block_size: int) -> torch.Tensor:
     return (kv_seqlens.to(torch.int64) + int(block_size) - 1) // int(block_size)
 
 
-def _packed_row_map(rows_per_batch: torch.Tensor) -> Tuple[torch.Tensor, int]:
-    """Map (batch, local_kv_block) → packed dense CSR row id (MSA / CUDA order)."""
+def _packed_row_map(
+    rows_per_batch: torch.Tensor,
+    max_rows: Optional[int] = None,
+    total_rows: Optional[int] = None,
+) -> Tuple[torch.Tensor, int]:
+    """Map (batch, local_kv_block) → packed dense CSR row id (MSA / CUDA order).
+
+    When ``max_rows`` / ``total_rows`` are provided (from a prior host sync), this
+    function issues no additional D2H syncs.
+    """
     batch = int(rows_per_batch.numel())
     device = rows_per_batch.device
     if batch == 0:
         return torch.empty((0, 0), dtype=torch.int32, device=device), 0
-    max_rows = int(rows_per_batch.max().item())
+
+    rows = rows_per_batch.to(torch.int64)
+    if max_rows is None or total_rows is None:
+        # Single sync for both scalars used by allocation / map width.
+        meta = torch.stack((rows.max(), rows.sum()))
+        max_rows_i, total_rows_i = (int(v) for v in meta.tolist())
+        if max_rows is None:
+            max_rows = max_rows_i
+        if total_rows is None:
+            total_rows = total_rows_i
     if max_rows == 0:
-        return torch.empty((batch, 0), dtype=torch.int32, device=device), 0
+        return torch.empty((batch, 0), dtype=torch.int32, device=device), int(total_rows)
+
+    # Fast path: single batch → packed row id == local block id.
+    if batch == 1:
+        row_map = torch.arange(max_rows, device=device, dtype=torch.int32).view(1, -1)
+        return row_map, int(total_rows)
 
     k = torch.arange(max_rows, device=device, dtype=torch.int64)
-    rows = rows_per_batch.to(torch.int64)
     min_k = torch.minimum(k.unsqueeze(1), rows.unsqueeze(0))
     prefix_by_k = min_k.sum(dim=1)
     greater = rows.unsqueeze(0) > k.unsqueeze(1)
@@ -48,7 +69,7 @@ def _packed_row_map(rows_per_batch: torch.Tensor) -> Tuple[torch.Tensor, int]:
     valid = k.unsqueeze(1) < rows.unsqueeze(0)
     row_map = torch.full((batch, max_rows), -1, dtype=torch.int32, device=device)
     row_map.transpose(0, 1)[valid] = packed[valid].to(torch.int32)
-    return row_map, int(rows.sum().item())
+    return row_map, int(total_rows)
 
 
 def _apply_select_num(
@@ -138,16 +159,18 @@ def _global_to_batch_local(
 def _mask_padding_tokens(
     select_idx: torch.Tensor, q_token_lens: torch.Tensor, actual_q: torch.Tensor
 ) -> torch.Tensor:
-    """Zero out padded Q tokens when the Q axis is B*S rather than packed T."""
-    if torch.equal(q_token_lens, actual_q.to(q_token_lens.dtype)):
-        return select_idx
+    """Zero out padded Q tokens when the Q axis is B*S rather than packed T.
+
+    Always applies the vectorized mask (no ``torch.equal`` D2H sync). When there
+    is no padding, ``keep`` is all-True and the ``where`` is a cheap copy.
+    """
     device = select_idx.device
     q_tokens = select_idx.size(1)
-    q_ids = torch.arange(q_tokens, device=device)
+    q_ids = torch.arange(q_tokens, device=device, dtype=torch.int64)
     q_offs = torch.zeros(q_token_lens.numel() + 1, dtype=torch.int64, device=device)
     q_offs[1:] = torch.cumsum(q_token_lens.to(torch.int64), 0)
-    batch_ids = torch.searchsorted(q_offs[1:], q_ids.to(torch.int64), right=True)
-    local_t = q_ids.to(torch.int64) - q_offs[batch_ids]
+    batch_ids = torch.searchsorted(q_offs[1:], q_ids, right=True)
+    local_t = q_ids - q_offs[batch_ids]
     keep = local_t < actual_q.to(device=device, dtype=torch.int64)[batch_ids]
     return torch.where(keep.view(1, q_tokens, 1), select_idx, torch.full_like(select_idx, -1))
 
@@ -159,6 +182,7 @@ def _build_csr_from_q2k(
     block_size: int,
     q_id_stride: int,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Vectorized q2k → k2q CSR. Hot path avoids per-batch Python / D2H syncs."""
     if block_size <= 0:
         raise ValueError(f"block_size must be > 0, got {block_size}")
     if q2k_indices.ndim != 3:
@@ -167,93 +191,93 @@ def _build_csr_from_q2k(
         )
 
     kv_heads, total_q, top_k = q2k_indices.shape
-    q_expected = int(q_token_lens.to(torch.int64).sum().item())
+    device = q2k_indices.device
+    rows_per_batch = _rows_per_batch(actual_seq_lengths_kv, block_size)
+
+    # One host sync for all allocation sizes (replaces many .item()/.tolist()).
+    meta = torch.stack(
+        (
+            rows_per_batch.to(torch.int64).max(),
+            rows_per_batch.to(torch.int64).sum(),
+            q_token_lens.to(torch.int64).sum(),
+        )
+    )
+    max_rows, total_rows, q_expected = (int(v) for v in meta.tolist())
     if total_q != q_expected:
         raise ValueError(
             f"select_idx Q axis ({total_q}) must equal sum(q_token_lens) ({q_expected})"
         )
 
-    device = q2k_indices.device
-    rows_per_batch = _rows_per_batch(actual_seq_lengths_kv, block_size)
-    row_map, total_rows = _packed_row_map(rows_per_batch)
+    row_map, total_rows = _packed_row_map(
+        rows_per_batch, max_rows=max_rows, total_rows=total_rows
+    )
     nnz_upper = total_q * top_k
-
     k2q_row_ptr = torch.zeros((kv_heads, total_rows + 1), dtype=torch.int32, device=device)
-    k2q_q_indices = torch.full((kv_heads, nnz_upper), -1, dtype=torch.int32, device=device)
-    k2q_slot_indices = torch.full((kv_heads, nnz_upper), -1, dtype=torch.int32, device=device)
     if total_rows == 0 or total_q == 0 or top_k == 0:
-        return k2q_row_ptr, k2q_q_indices, k2q_slot_indices
+        empty = torch.empty((kv_heads, 0), dtype=torch.int32, device=device)
+        return k2q_row_ptr, empty, empty
 
-    counts = torch.zeros((kv_heads, total_rows), dtype=torch.int32, device=device)
-    row_all = torch.empty((kv_heads, nnz_upper), dtype=torch.int64, device=device)
-    q_all = torch.empty((kv_heads, nnz_upper), dtype=torch.int32, device=device)
-    slot_all = torch.empty((kv_heads, nnz_upper), dtype=torch.int32, device=device)
-    valid_all = torch.empty((kv_heads, nnz_upper), dtype=torch.bool, device=device)
-
+    # Per-Q batch id and CSR q-token id (packed T or padded b*S+t).
     q_offs = torch.zeros(q_token_lens.numel() + 1, dtype=torch.int64, device=device)
     q_offs[1:] = torch.cumsum(q_token_lens.to(torch.int64), 0)
-    entry_cursor = 0
+    q_pos = torch.arange(total_q, device=device, dtype=torch.int64)
+    batch_ids = torch.searchsorted(q_offs[1:], q_pos, right=True)
+    if q_id_stride > 0:
+        q_token_ids = batch_ids * int(q_id_stride) + (q_pos - q_offs[batch_ids])
+    else:
+        q_token_ids = q_pos
 
-    for batch_idx, kv_rows in enumerate(rows_per_batch.tolist()):
-        q_start = int(q_offs[batch_idx].item())
-        q_end = int(q_offs[batch_idx + 1].item())
-        q_len = q_end - q_start
-        if q_len == 0:
-            continue
-        num_entries = q_len * top_k
-        q2k_batch = q2k_indices[:, q_start:q_end, :]
-        valid_batch = q2k_batch >= 0
-        if valid_batch.any():
-            max_valid_kv = int(q2k_batch[valid_batch].max().item())
-            if max_valid_kv >= int(kv_rows):
-                raise ValueError(
-                    f"select_idx references kv_block {max_valid_kv} for batch {batch_idx}, "
-                    f"but that batch only has {int(kv_rows)} logical kv blocks"
-                )
+    local_kv = q2k_indices.to(torch.int64)
+    valid = local_kv >= 0
+    # Drop OOB block ids without a host sync (row_map columns are [0, max_rows)).
+    kv_rows_for_q = rows_per_batch.to(torch.int64)[batch_ids].view(1, total_q, 1)
+    valid = valid & (local_kv < kv_rows_for_q)
+    safe_kv = local_kv.clamp(min=0, max=max(max_rows - 1, 0))
 
-        kv_flat = q2k_batch.reshape(kv_heads, num_entries).long()
-        valid_flat = valid_batch.reshape(kv_heads, num_entries)
-        safe_kv = torch.where(valid_flat, kv_flat, torch.zeros_like(kv_flat))
-        row_flat = row_map[batch_idx][safe_kv]
-        local_q = (
-            torch.arange(q_len, device=device, dtype=torch.int32)
-            .view(1, q_len, 1)
-            .expand(kv_heads, q_len, top_k)
-            .reshape(kv_heads, num_entries)
-        )
-        if q_id_stride > 0:
-            q_flat = local_q + batch_idx * q_id_stride
-        else:
-            q_flat = local_q + q_start
-        slot_flat = (
-            torch.arange(top_k, device=device, dtype=torch.int32)
-            .view(1, 1, top_k)
-            .expand(kv_heads, q_len, top_k)
-            .reshape(kv_heads, num_entries)
-        )
-        row_all[:, entry_cursor:entry_cursor + num_entries] = row_flat
-        q_all[:, entry_cursor:entry_cursor + num_entries] = q_flat
-        slot_all[:, entry_cursor:entry_cursor + num_entries] = slot_flat
-        valid_all[:, entry_cursor:entry_cursor + num_entries] = valid_flat
-        counts.scatter_add_(1, row_flat.to(torch.int64), valid_flat.to(torch.int32))
-        entry_cursor += num_entries
+    if rows_per_batch.numel() == 1:
+        packed_rows = safe_kv
+    else:
+        b_exp = batch_ids.view(1, total_q, 1).expand(kv_heads, total_q, top_k)
+        packed_rows = row_map[b_exp, safe_kv].to(torch.int64)
 
+    row_flat = packed_rows.reshape(kv_heads, nnz_upper)
+    q_flat = (
+        q_token_ids.to(torch.int32)
+        .view(1, total_q, 1)
+        .expand(kv_heads, total_q, top_k)
+        .reshape(kv_heads, nnz_upper)
+    )
+    slot_flat = (
+        torch.arange(top_k, device=device, dtype=torch.int32)
+        .view(1, 1, top_k)
+        .expand(kv_heads, total_q, top_k)
+        .reshape(kv_heads, nnz_upper)
+    )
+    valid_flat = valid.reshape(kv_heads, nnz_upper)
+
+    counts = torch.zeros((kv_heads, total_rows), dtype=torch.int32, device=device)
+    safe_rows = torch.where(valid_flat, row_flat, torch.zeros_like(row_flat))
+    counts.scatter_add_(1, safe_rows, valid_flat.to(torch.int32))
     k2q_row_ptr[:, 1:] = counts.cumsum(dim=1, dtype=torch.int32)
 
-    sort_stride = max(total_q, 1)
-    invalid_key = total_rows * sort_stride
-    sort_keys = torch.full_like(row_all, invalid_key, dtype=torch.int64)
-    sort_keys[valid_all] = row_all[valid_all] * sort_stride + q_all[valid_all].to(torch.int64)
-    _, sort_idx = sort_keys.sort(dim=1, stable=True)
-    sorted_q = q_all.gather(1, sort_idx)
-    sorted_slot = slot_all.gather(1, sort_idx)
-    valid_counts = valid_all.sum(dim=1)
-    write_mask = (
-        torch.arange(nnz_upper, device=device).unsqueeze(0).expand(kv_heads, -1)
-        < valid_counts.unsqueeze(1)
+    # Partition by packed row only. Intra-row order does not matter to the kernel,
+    # so avoid the expensive (row * stride + q) keys (high cardinality / AiCpu int64).
+    row_keys = torch.where(
+        valid_flat,
+        row_flat,
+        torch.full_like(row_flat, total_rows),
     )
-    k2q_q_indices[write_mask] = sorted_q[write_mask]
-    k2q_slot_indices[write_mask] = sorted_slot[write_mask]
+    # total_rows <= ~S/block; float32 exact and stays on AiCore.
+    sort_idx = row_keys.to(torch.float32).argsort(dim=1, stable=False)
+    sorted_q = q_flat.gather(1, sort_idx)
+    sorted_slot = slot_flat.gather(1, sort_idx)
+    keep = (
+        torch.arange(nnz_upper, device=device).unsqueeze(0)
+        < valid_flat.sum(dim=1, keepdim=True)
+    )
+    neg = torch.full((), -1, dtype=torch.int32, device=device)
+    k2q_q_indices = torch.where(keep, sorted_q, neg)
+    k2q_slot_indices = torch.where(keep, sorted_slot, neg)
     return k2q_row_ptr, k2q_q_indices, k2q_slot_indices
 
 

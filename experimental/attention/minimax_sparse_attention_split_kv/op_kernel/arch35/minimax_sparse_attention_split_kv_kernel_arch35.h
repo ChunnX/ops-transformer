@@ -444,20 +444,33 @@ private:
     }
 
     // BNSD/BSND keep padded S in the tensor; a dummy request is q_len=kv_len=0 (and
-    // tokens t>=q_len are intra-seq padding). TND is packed, so empty batches add
-    // no qTokens and Phase2 has nothing to skip.
+    // tokens t>=q_len are intra-seq padding). TND is packed, so q_len=0 batches add
+    // no qTokens; q_len>0 && kv_len=0 still has packed qTokens and must be skipped in
+    // Phase2 so O/LSE stay zero (ComputeScaleValue would otherwise write -inf LSE).
     __aicore__ inline
     bool IsPaddingQToken(uint32_t qToken) const
     {
-        if ((layoutType_ != MinimaxSaSplitKv::LAYOUT_BNSD &&
-             layoutType_ != MinimaxSaSplitKv::LAYOUT_BSND) || qSeqLen_ == 0U) {
-            return false;
+        if (layoutType_ == MinimaxSaSplitKv::LAYOUT_BNSD ||
+            layoutType_ == MinimaxSaSplitKv::LAYOUT_BSND) {
+            if (qSeqLen_ == 0U) {
+                return false;
+            }
+            uint32_t b = qToken / qSeqLen_;
+            uint32_t t = qToken - b * qSeqLen_;
+            uint32_t qLen = static_cast<uint32_t>(gActualQseqlen_.GetValue(b));
+            uint32_t kvLen = static_cast<uint32_t>(gActualKvseqlen_.GetValue(b));
+            return (qLen == 0U) || (kvLen == 0U) || (t >= qLen);
         }
-        uint32_t b = qToken / qSeqLen_;
-        uint32_t t = qToken - b * qSeqLen_;
-        uint32_t qLen = static_cast<uint32_t>(gActualQseqlen_.GetValue(b));
-        uint32_t kvLen = static_cast<uint32_t>(gActualKvseqlen_.GetValue(b));
-        return (qLen == 0U) || (kvLen == 0U) || (t >= qLen);
+        uint32_t cumQ = 0U;
+        for (uint32_t b = 0U; b < batch_; ++b) {
+            uint32_t qLen = static_cast<uint32_t>(gActualQseqlen_.GetValue(b));
+            if (qToken < cumQ + qLen) {
+                uint32_t kvLen = static_cast<uint32_t>(gActualKvseqlen_.GetValue(b));
+                return kvLen == 0U;
+            }
+            cumQ += qLen;
+        }
+        return true;
     }
 
     // GM offset of query[qToken, qHeadStart, 0:D).
