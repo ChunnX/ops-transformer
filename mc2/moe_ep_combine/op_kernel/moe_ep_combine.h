@@ -707,8 +707,13 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         }
     }
 
-    // Local copies completed before BuildAddressTable's final barrier. Each remote rank publishes one completion
-    // flag through channel 0 without a second all-core barrier here.
+    // Commit every token batch before publishing completion. Local copies use MTE3, so drain that pipeline first;
+    // then wait for all AIVs because only one AIV publishes the completion flag for each rank.
+    FlushPreparedWrites();
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
+    SyncAll<true>();
+
+    // Each remote rank publishes one completion flag through channel 0 after all token writes have been issued.
     constexpr uint32_t completionChannelCount = COMBINE_CHANNEL_COUNT;
     bool publishesChannelFlag =
         aivId_ < activeAivNum && (!splitRankTokens || coreIndexInGroup < completionChannelCount);
