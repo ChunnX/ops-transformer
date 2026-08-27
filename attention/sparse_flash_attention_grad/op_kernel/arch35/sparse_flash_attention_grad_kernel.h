@@ -38,7 +38,7 @@ public:
     __aicore__ inline void ProcessUnDeter();
 
 private:
-    __aicore__ inline void ProcessGather(FagRunInfo &runInfo);
+    __aicore__ inline void ProcessGather(FagRunInfo &runInfo, bool fusion=false);
     __aicore__ inline void ProcessMm12(FagRunInfo &runInfo);
     __aicore__ inline void ProcessSoftmax(FagRunInfo &runInfo);
     __aicore__ inline void ProcessMm345(FagRunInfo &runInfo);
@@ -56,16 +56,28 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 {}
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessGather(FagRunInfo &runInfo)
+__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessGather(FagRunInfo &runInfo, bool fusion)
 {
     if ASCEND_IS_AIV {
         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(SYNC_C3_TO_V0_FLAG[runInfo.commonRunInfo.taskIdMod2]);
+        bool gather_scatter_fusion = false;
+        if (this->constInfo.isHeadNLe64 && fusion){
+            gather_scatter_fusion = true;
+        }
+        if (gather_scatter_fusion == false) {
+            SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+            SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+        }
     }
     this->vecBlock.GatherKV(this->selectedKWorkSpaceGm, this->constInfo, runInfo);
     if ASCEND_IS_AIV {
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V0_TO_C1_FLAG[runInfo.commonRunInfo.taskIdMod2]);
     }
     this->vecBlock.CopyMaxSum(this->constInfo, runInfo, runInfo.commonRunInfo.taskId);
+    if ASCEND_IS_AIV {
+        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+    }
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -180,8 +192,15 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         if ASCEND_IS_AIV {
             CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SYNC_C5_TO_V5_FLAG[runInfo.commonRunInfo.taskIdMod2]);
         }
-        this->vecBlock.ScatterAdd(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dkWorkSpaceGm,
-                                  this->dvWorkSpaceGm, dkInTensor, dvInTensor, this->constInfo, runInfo);
+        if (!IS_DETER && this->constInfo.isHeadNLe64){
+            SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+            SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
+            this->vecBlock.ScatterAddHead64(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dkWorkSpaceGm,
+                                            this->dvWorkSpaceGm, dkInTensor, dvInTensor, this->constInfo, runInfo);
+        } else {
+            this->vecBlock.ScatterAdd(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dkWorkSpaceGm,
+                                    this->dvWorkSpaceGm, dkInTensor, dvInTensor, this->constInfo, runInfo);
+        }
         if ASCEND_IS_AIV {
             CrossCoreSetFlag<SYNC_MODE, PIPE_MTE2>(SYNC_V5_TO_C4_FLAG[runInfo.commonRunInfo.taskIdMod2]);
         }
@@ -298,14 +317,25 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         ProcessSoftmax(runInfos[0]);
         ProcessMm345(runInfos[0]);
         ProcessScatter(runInfos[0]);
+        if ASCEND_IS_AIV {
+            WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+            WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
+        }
         return;
     }
     // taskId >= 2: remaining mm345/softmax/scatter of the last two tasks
-    ProcessMm345(runInfos[(taskId - 2) % 3]);
     ProcessSoftmax(runInfos[(taskId - 1) % 3]);
-    ProcessScatter(runInfos[(taskId - 2) % 3]);
     ProcessMm345(runInfos[(taskId - 1) % 3]);
+    ProcessScatter(runInfos[(taskId - 2) % 3]);
+    if ASCEND_IS_AIV {
+        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
+    }
     ProcessScatter(runInfos[(taskId - 1) % 3]);
+    if ASCEND_IS_AIV {
+        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
+    }
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -313,7 +343,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 {
     this->AllocEventID();
     int64_t taskId = 0;
-    FagRunInfo runInfos[3];
+    FagRunInfo runInfos[4];
     for (int32_t i = 0; i < this->processBS1ByCore; i++) {
         this->t1Index = this->cBlockIdx + this->usedCoreNum * i;
         this->GetTndSeqLen(this->t1Index, this->bIndex);
@@ -330,15 +360,23 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                     ProcessGather(cur);
                     ProcessMm12(cur);
                     ProcessSoftmax(runInfos[0]);
+                    ProcessMm345(runInfos[0]);
                 } else {
-                    ProcessMm345(runInfos[(taskId - 2) % 3]);
-                    ProcessGather(cur);
+                    ProcessGather(cur, taskId > 2);
                     ProcessMm12(cur);
                     ProcessSoftmax(runInfos[(taskId - 1) % 3]);
+                    ProcessMm345(runInfos[(taskId - 1) % 3]);
                     ProcessScatter(runInfos[(taskId - 2) % 3]);
                 }
                 taskId++;
             }
+        }
+    }
+
+    if(taskId > 2) {
+        if ASCEND_IS_AIV {
+            WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+            WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
         }
     }
     DrainUnDeter(runInfos, taskId);
