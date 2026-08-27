@@ -443,9 +443,17 @@ private:
         return rankMaskLocal.GetValue(rank) != 0;
     }
 
+    // 遍历序错峰：块内访问序按 (rank×coreNum+coreIdx)/(EP×coreNum) 相位环形旋转的起始相位。
+    // 组级 CrossCoreSetFlag 为总量界（组完成=各核总工作量，与访问序无关），旋转不影响组完成时间。
+    CATLASS_DEVICE static int32_t GetScatterVisitStart(int32_t totalCount, uint32_t workerIdx, uint32_t workerCount)
+    {
+        return static_cast<int32_t>((static_cast<uint64_t>(workerIdx) * static_cast<uint32_t>(totalCount)) /
+                                    workerCount);
+    }
+
     template <typename T>
     CATLASS_DEVICE void CopyGMToGM(AscendC::GlobalTensor<T> dst, AscendC::GlobalTensor<T> src, int32_t elemNum,
-                                   int32_t ubMoveNum)
+                                   int32_t ubMoveNum, uint32_t scatterWorkerIdx = 0, uint32_t scatterWorkerCount = 1)
     {
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
@@ -465,12 +473,17 @@ private:
 
         int pingpongId = 0;
         auto processCount = CeilDiv(elemNum, ubMoveNum);
+        // 遍历序错峰（环形旋转）：第 j 次发射取块 permIdx；尾块判定基于域内索引 permIdx（与访问序无关）；
+        // 乒乓与事件仍绑定发射位置。
+        uint32_t permIdx =
+            static_cast<uint32_t>(GetScatterVisitStart(processCount, scatterWorkerIdx, scatterWorkerCount));
         for (uint32_t processIndex = 0; processIndex < processCount; ++processIndex) {
-            uint32_t curProcessNum =
-                (processIndex == processCount - 1) ? elemNum - ubMoveNum * (processCount - 1) : ubMoveNum;
+            uint32_t curProcessNum = (permIdx == static_cast<uint32_t>(processCount) - 1U) ?
+                                         elemNum - ubMoveNum * (processCount - 1) :
+                                         ubMoveNum;
             AscendC::TEventID EVENT_ID = pingpongId == 0 ? EVENT_ID0 : EVENT_ID1;
             AscendC::LocalTensor<T> buf = pingpongId == 0 ? tmpBuffer1 : tmpBuffer2;
-            auto processOffset = processIndex * ubMoveNum;
+            auto processOffset = permIdx * ubMoveNum;
 
             auto inputOffset = processOffset;
             auto outputOffset = processOffset;
@@ -482,6 +495,7 @@ private:
 
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID);
             pingpongId = (pingpongId + 1) % BufferNum;
+            permIdx = permIdx + 1 == static_cast<uint32_t>(processCount) ? 0U : permIdx + 1;
         }
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
@@ -490,7 +504,8 @@ private:
     template <typename T>
     CATLASS_DEVICE void CopyGMToGMPerToken(AscendC::GlobalTensor<T> dst, AscendC::GlobalTensor<float> dstScale,
                                            AscendC::GlobalTensor<T> src, int32_t rows, int32_t hiddenSize,
-                                           int32_t ubMoveNum, int32_t &pingpongId)
+                                           int32_t ubMoveNum, int32_t &pingpongId, uint32_t scatterWorkerIdx = 0,
+                                           uint32_t scatterWorkerCount = 1)
     {
         constexpr int32_t BufferNum = 2;
         AscendC::LocalTensor<T> tmpBuffer1 = resource.ubBuf.template GetBufferByByte<T>(0);
@@ -498,16 +513,20 @@ private:
         AscendC::LocalTensor<T> tmpBuffer2 = resource.ubBuf.template GetBufferByByte<T>(tmpBufferOffset);
         uint32_t copyInNum = hiddenSize + UB_ALIGN;
         auto processCount = CeilDiv(rows, ubMoveNum);
+        // 遍历序错峰（环形旋转）：第 j 次发射取批 permIdx；尾批判定基于域内索引 permIdx（与访问序无关）；
+        // 乒乓与事件仍绑定发射位置。
+        uint32_t permIdx =
+            static_cast<uint32_t>(GetScatterVisitStart(processCount, scatterWorkerIdx, scatterWorkerCount));
         for (uint32_t processIndex = 0; processIndex < processCount; ++processIndex) {
             pingpongId = (pingpongId + 1) % BufferNum;
             AscendC::TEventID EVENT_ID = pingpongId == 0 ? EVENT_ID0 : EVENT_ID1;
             AscendC::LocalTensor<T> buf = pingpongId == 0 ? tmpBuffer1 : tmpBuffer2;
             AscendC::LocalTensor<float> bufScale = buf[hiddenSize].template ReinterpretCast<float>();
-            auto inputOffset = processIndex * ubMoveNum * copyInNum;
+            auto inputOffset = permIdx * ubMoveNum * copyInNum;
 
             int32_t rowNum = ubMoveNum;
-            if (processIndex == processCount - 1) {
-                rowNum = rows - processIndex * ubMoveNum;
+            if (permIdx == static_cast<uint32_t>(processCount) - 1U) {
+                rowNum = rows - static_cast<int32_t>(permIdx) * ubMoveNum;
             }
 
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID);
@@ -516,18 +535,20 @@ private:
 
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID);
-            auto outputOffset = processIndex * ubMoveNum * hiddenSize;
+            auto outputOffset = permIdx * ubMoveNum * hiddenSize;
 #define U16(x) static_cast<uint16_t>(x)
             AscendC::DataCopyPad(dst[outputOffset], buf, {U16(rowNum), U16(hiddenSize), 1, 0, 0});
-            AscendC::DataCopyPad(dstScale[processIndex * ubMoveNum], bufScale,
+            AscendC::DataCopyPad(dstScale[permIdx * ubMoveNum], bufScale,
                                  {U16(rowNum), U16(sizeof(float)), static_cast<uint32_t>(hiddenSize / 32), 0, 0});
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID);
+            permIdx = permIdx + 1 == static_cast<uint32_t>(processCount) ? 0U : permIdx + 1;
         }
     }
 
     CATLASS_DEVICE void FetchAndPreprocessInt8ToInt4(uint64_t gmOffsetA, AscendC::GlobalTensor<float> dstScale,
                                                      AscendC::GlobalTensor<int8_t> src, int32_t rows,
-                                                     int32_t hiddenSize)
+                                                     int32_t hiddenSize, uint32_t scatterWorkerIdx = 0,
+                                                     uint32_t scatterWorkerCount = 1)
     {
         uint32_t tmpBufferOffset = 0;
 
@@ -595,15 +616,18 @@ private:
         uint32_t copyInNum = hiddenSize + ALIGN_512;
 
         int pingpongId = 0;
+        // 遍历序错峰（环形旋转）：第 j 次处理行 permIdx；行偏移全部由 permIdx 决定，
+        // 乒乓与事件仍绑定发射位置。
+        uint32_t permIdx = static_cast<uint32_t>(GetScatterVisitStart(rows, scatterWorkerIdx, scatterWorkerCount));
         for (uint32_t processIndex = 0; processIndex < rows; ++processIndex) {
-            uint64_t relStartAddr = processIndex * hiddenSize;
+            uint64_t relStartAddr = permIdx * hiddenSize;
             uint64_t absStartAddr = gmOffsetA + relStartAddr;
             AscendC::TEventID EVENT_ID = pingpongId == 0 ? EVENT_ID6 : EVENT_ID7;
             AscendC::LocalTensor<int8_t> buf = pingpongId == 0 ? tmpBuffer0 : tmpBuffer1;
             AscendC::LocalTensor<int8_t> xTensor = pingpongId == 0 ? xTensor0 : xTensor1;
             AscendC::LocalTensor<float> bufScale = buf[hiddenSize].template ReinterpretCast<float>();
-            auto inputOffset = processIndex * copyInNum;
-            auto outputOffset = processIndex * hiddenSize;
+            auto inputOffset = permIdx * copyInNum;
+            auto outputOffset = permIdx * hiddenSize;
 
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID);
@@ -612,7 +636,7 @@ private:
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID);
             // 远端 scale 拷贝到GM
-            AscendC::DataCopyPad(dstScale[processIndex], bufScale, {1, 4, 0, 0, 0});
+            AscendC::DataCopyPad(dstScale[permIdx], bufScale, {1, 4, 0, 0, 0});
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID);
             SetFlag<HardEvent::MTE2_V>(EVENT_ID);
             WaitFlag<HardEvent::MTE2_V>(EVENT_ID);
@@ -652,6 +676,7 @@ private:
             SetFlag<HardEvent::MTE3_V>(EVENT_ID6);
             // 低四位处理结束
             pingpongId = (pingpongId + 1) % BufferNum;
+            permIdx = permIdx + 1 == static_cast<uint32_t>(rows) ? 0U : permIdx + 1;
         }
 
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID6);
@@ -1262,6 +1287,10 @@ private:
         uint32_t dequantSum1 = 0;
         uint32_t dequantSum2 = 0;
         int32_t pingpongIdx = 0;
+        // 遍历序错峰：dispatch 块内访问序按 (rank×coreNum+coreIdx)/(EP×coreNum) 相位环形旋转，
+        // 错开各 rank 各核对同一远端源的读突发；组级 CrossCoreSetFlag 为总量界，旋转不影响组完成时间。
+        const uint32_t scatterWorkerIdx = runtimeRank * coreNum + coreIdx;
+        const uint32_t scatterWorkerCount = static_cast<uint32_t>(params.EP) * coreNum;
         icache_preload(8);
         if constexpr (std::is_same_v<ElementB, int8_t>) {
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
@@ -1301,16 +1330,18 @@ private:
                     if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
                         int64_t gmOffsetPeer = rowSrc * (params.problemShape.k() + ALIGN_512);
                         FetchAndPreprocessInt8ToInt4(static_cast<uint64_t>(gmOffsetA), gmPerTokenScale1[rowStart],
-                                                     gmRemoteA[gmOffsetPeer], rows, params.problemShape.k());
+                                                     gmRemoteA[gmOffsetPeer], rows, params.problemShape.k(),
+                                                     scatterWorkerIdx, scatterWorkerCount);
                     } else if constexpr (std::is_same_v<ElementB, int8_t>) {
                         int64_t gmOffsetPeer = rowSrc * (params.problemShape.k() + UB_ALIGN);
                         int32_t ubMoveNum = 2;
                         CopyGMToGMPerToken(gmA[gmOffsetA], gmPerTokenScale1[rowStart], gmRemoteA[gmOffsetPeer], rows,
-                                           params.problemShape.k(), ubMoveNum, pingpongIdx);
+                                           params.problemShape.k(), ubMoveNum, pingpongIdx, scatterWorkerIdx,
+                                           scatterWorkerCount);
                     } else {
                         int64_t gmOffsetPeer = params.layoutA.GetOffset(offsetPeer);
-                        CopyGMToGM(gmA[gmOffsetA], gmRemoteA[gmOffsetPeer], rows * params.problemShape.k(),
-                                   UB_MOVE_NUM);
+                        CopyGMToGM(gmA[gmOffsetA], gmRemoteA[gmOffsetPeer], rows * params.problemShape.k(), UB_MOVE_NUM,
+                                   scatterWorkerIdx, scatterWorkerCount);
                     }
                 }
             }
