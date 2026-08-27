@@ -63,8 +63,11 @@ __aicore__ inline void grouped_matmul_finalize_routing_mx_tensor_api(GM_ADDR x, 
     constexpr uint32_t scaleFactorBShift = 8U;
     const uint32_t scaleFactorA = mmTiling.mxTypePara & scaleFactorMask;
     const uint32_t scaleFactorB = (mmTiling.mxTypePara >> scaleFactorBShift) & scaleFactorMask;
-    const uint32_t scaleFactor = AscendC::Max(scaleFactorA * mmTiling.stepKa, scaleFactorB * mmTiling.stepKb);
-    const uint32_t scaleKL1 = AscendC::Min(scaleFactor * mmTiling.baseK, static_cast<uint32_t>(mmTiling.Ka));
+    const uint64_t scaleKAL1 = static_cast<uint64_t>(scaleFactorA) * kAL1;
+    const uint64_t scaleKBL1 = static_cast<uint64_t>(scaleFactorB) * kBL1;
+    const uint64_t scaleKCandidate = scaleKAL1 > scaleKBL1 ? scaleKAL1 : scaleKBL1;
+    const uint64_t problemK = static_cast<uint64_t>(mmTiling.Ka);
+    const uint32_t scaleKL1 = static_cast<uint32_t>(scaleKCandidate < problemK ? scaleKCandidate : problemK);
     typename Kernel::GMMTiling gmmTiling{opTiling.groupNum,
                                          mmTiling.M,
                                          mmTiling.N,
