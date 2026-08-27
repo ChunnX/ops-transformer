@@ -13,6 +13,7 @@
  * \brief
  */
 
+#include <climits>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -63,7 +64,7 @@ constexpr uint64_t METADATA_DTYPE_SIZE = 4UL;
 constexpr int64_t H_MIN = 1;
 constexpr int64_t H_MAX = 8192;
 constexpr int64_t K_MAX = 32;
-constexpr int64_t META_INNER_DIM = 4;
+constexpr int64_t META_INNER_DIM = 5;
 constexpr uint32_t NETWORK_DIRECT = 0U;
 constexpr uint32_t NETWORK_HYBRID = 1U;
 
@@ -135,6 +136,12 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
                             "x dim0(A) must not exceed A_Upper=%ld (ep_world_size=%ld * num_max_tokens_per_rank=%ld * "
                             "min(top_k=%ld, num_local_experts=%ld)), but got %ld.",
                             aAllocUpper, epWorldSize, nmt, topkDim1, numLocalExperts, recvxDim0),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(recvxDim0 > INT32_MAX,
+                    OP_LOGE(nodeName,
+                            "x dim0(A_alloc) must not exceed INT32_MAX because metadata stores "
+                            "recv_x_idx as int32, but got %ld.",
+                            recvxDim0),
                     return ge::GRAPH_FAILED);
 
     info.cfg.hidden = static_cast<uint32_t>(recvxDim1);
@@ -416,12 +423,13 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
     uint64_t perCoreRankCountStride =
-        ops::CeilDiv(static_cast<uint64_t>(info.cfg.epWorldSize) * UB_ALIGN, COMM_ALIGN) * COMM_ALIGN;
-    // Address tables, per-AIV flags, rank totals, and one aligned per-rank count row for every AIV.
-    workSpaces[0] =
-        SYSTEM_NEED_WORKSPACE + static_cast<uint64_t>(info.cfg.epWorldSize) * info.sendDataWorkspaceSizePerRank +
-        static_cast<uint64_t>(aivNum) * COMM_ALIGN + static_cast<uint64_t>(info.cfg.epWorldSize) * COMM_ALIGN +
-        static_cast<uint64_t>(aivNum) * perCoreRankCountStride;
+        ops::CeilDiv(static_cast<uint64_t>(info.cfg.epWorldSize) * sizeof(int32_t), COMM_ALIGN) * COMM_ALIGN;
+    uint64_t rankOffsetsBytes =
+        ops::CeilDiv((static_cast<uint64_t>(info.cfg.epWorldSize) + 1UL) * sizeof(int32_t), COMM_ALIGN) * COMM_ALIGN;
+    // Per-AIV flag sources, compact per-core rank counts, and rank_offsets[ep_world_size + 1].
+    // Sorted metadata is consumed directly, so no per-token address table is needed.
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE + static_cast<uint64_t>(aivNum) * COMM_ALIGN +
+                    static_cast<uint64_t>(aivNum) * perCoreRankCountStride + rankOffsetsBytes;
 
     OP_LOGD(nodeName, "tilingKey=%lu, blockDim=%u, aivNum=%u", tilingKey, blockDim, aivNum);
     PrintTilingDataInfo(nodeName, info);
