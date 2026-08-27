@@ -40,6 +40,42 @@ constexpr int K2Q_SLOT_INDICES_INDEX = 6;
 constexpr int ACTUAL_SEQ_LENGTHS_INDEX = 7;
 constexpr int ACTUAL_SEQ_LENGTHS_KV_INDEX = 8;
 
+// GetInputShape / GetInputDesc use INSTANCE index. Omitting optional blockTable
+// (IR 3) compacts later REQUIRED inputs, so IR 8 is OOB and BNSD/contiguous TND
+// tiling reports "actual_seq_lengths ... required" (EZ1008).
+// GetRequiredInputShape maps IR prototype index -> instance when the API works;
+// otherwise compact the instance index ourselves.
+static int RequiredInstanceIndex(gert::TilingContext *context, int irIndex)
+{
+    if (irIndex <= BLOCK_TABLE_INDEX) {
+        return irIndex;
+    }
+    if (context->GetOptionalInputShape(BLOCK_TABLE_INDEX) == nullptr) {
+        return irIndex - 1;
+    }
+    return irIndex;
+}
+
+static const gert::StorageShape *GetIrRequiredShape(gert::TilingContext *context, int irIndex)
+{
+    const gert::StorageShape *shape =
+        context->GetRequiredInputShape(static_cast<size_t>(irIndex));
+    if (shape != nullptr) {
+        return shape;
+    }
+    return context->GetInputShape(static_cast<size_t>(RequiredInstanceIndex(context, irIndex)));
+}
+
+static const gert::CompileTimeTensorDesc *GetIrRequiredDesc(gert::TilingContext *context, int irIndex)
+{
+    const gert::CompileTimeTensorDesc *desc =
+        context->GetRequiredInputDesc(static_cast<size_t>(irIndex));
+    if (desc != nullptr) {
+        return desc;
+    }
+    return context->GetInputDesc(static_cast<size_t>(RequiredInstanceIndex(context, irIndex)));
+}
+
 constexpr int TND_DIM_T = 0;
 constexpr int TND_DIM_N = 1;
 constexpr int TND_DIM_D = 2;
@@ -156,7 +192,7 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseAttrs(gert::TilingCont
 
 ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseInputTensors(gert::TilingContext *context)
 {
-    auto qShape = context->GetInputShape(QUERY_INDEX);
+    auto qShape = GetIrRequiredShape(context, QUERY_INDEX);
     if (qShape == nullptr) {
         OP_LOGE(context->GetNodeName(), "query shape is null.");
         return ge::GRAPH_FAILED;
@@ -212,8 +248,8 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseInputTensors(gert::Til
         totalQTokens_ = batch_ * qSeqLen_;
     }
 
-    auto kShape = context->GetInputShape(KEY_INDEX);
-    auto vShape = context->GetInputShape(VALUE_INDEX);
+    auto kShape = GetIrRequiredShape(context, KEY_INDEX);
+    auto vShape = GetIrRequiredShape(context, VALUE_INDEX);
     if (kShape == nullptr || vShape == nullptr) {
         OP_LOGE(context->GetNodeName(), "key/value shape is null.");
         return ge::GRAPH_FAILED;
@@ -309,8 +345,8 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseInputTensors(gert::Til
                     "%s value must match key shape.", layoutName);
             return ge::GRAPH_FAILED;
         }
-        auto seqQShape = context->GetInputShape(ACTUAL_SEQ_LENGTHS_INDEX);
-        auto seqKvShape = context->GetInputShape(ACTUAL_SEQ_LENGTHS_KV_INDEX);
+        auto seqQShape = GetIrRequiredShape(context, ACTUAL_SEQ_LENGTHS_INDEX);
+        auto seqKvShape = GetIrRequiredShape(context, ACTUAL_SEQ_LENGTHS_KV_INDEX);
         if (seqQShape == nullptr || seqKvShape == nullptr) {
             OP_LOGE(context->GetNodeName(),
                     "actual_seq_lengths and actual_seq_lengths_kv are required for %s.",
@@ -355,7 +391,7 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseInputTensors(gert::Til
                     valueHeads, valueD, keyHeads, keyD);
             return ge::GRAPH_FAILED;
         }
-        auto seqKvShape = context->GetInputShape(ACTUAL_SEQ_LENGTHS_KV_INDEX);
+        auto seqKvShape = GetIrRequiredShape(context, ACTUAL_SEQ_LENGTHS_KV_INDEX);
         if (seqKvShape == nullptr) {
             OP_LOGE(context->GetNodeName(),
                     "actual_seq_lengths_kv is required for contiguous TND input.");
@@ -367,7 +403,11 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseInputTensors(gert::Til
     }
     groupSize_ = (kvHeads_ > 0U) ? (numHeads_ / kvHeads_) : 1U;
 
-    auto qTensor = context->GetInputDesc(QUERY_INDEX);
+    auto qTensor = GetIrRequiredDesc(context, QUERY_INDEX);
+    if (qTensor == nullptr) {
+        OP_LOGE(context->GetNodeName(), "query desc is null.");
+        return ge::GRAPH_FAILED;
+    }
     dataType_ = qTensor->GetDataType();
     return ge::GRAPH_SUCCESS;
 }
@@ -472,7 +512,7 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseSeqlens(gert::TilingCo
     // printf("[MinimaxSparseAttentionSplitKvTiling] Enter ParseSeqlens\n");
     // fflush(stdout);
 
-    auto k2qRowPtrShape = context->GetInputShape(K2Q_ROW_PTR_INDEX);
+    auto k2qRowPtrShape = GetIrRequiredShape(context, K2Q_ROW_PTR_INDEX);
     if (k2qRowPtrShape == nullptr) {
         printf("[MinimaxSparseAttentionSplitKvTiling] k2qRowPtr shape is null!\n");
         return ge::GRAPH_FAILED;
@@ -504,7 +544,7 @@ ge::graphStatus MinimaxSparseAttentionSplitKvTiling::ParseSeqlens(gert::TilingCo
 ge::graphStatus MinimaxSparseAttentionSplitKvTiling::CalculateReverseIndexMeta(gert::TilingContext *context)
 {
     // k2qQIndices / k2qSlotIndices: [kvHeads, totalQ * topK]
-    auto qIndicesShape = context->GetInputShape(K2Q_Q_INDICES_INDEX);
+    auto qIndicesShape = GetIrRequiredShape(context, K2Q_Q_INDICES_INDEX);
     if (qIndicesShape != nullptr && qIndicesShape->GetStorageShape().GetDimNum() >= 2) {
         k2qNnzUpperBound_ = static_cast<uint32_t>(qIndicesShape->GetStorageShape().GetDim(1));
     } else {
