@@ -1556,9 +1556,7 @@ def _accumulate_mxfp8_groups_cpu(group_dot, q_scale, k_scale):
         overflow_now = ~sticky_overflow & torch.isinf(merged_value)
         sticky_value = torch.where(overflow_now, merged_value, sticky_value)
         sticky_overflow |= overflow_now
-        accumulator = torch.where(
-            sticky_overflow, accumulator, merged_mantissa
-        )
+        accumulator = torch.where(sticky_overflow, accumulator, merged_mantissa)
         accumulator_exponent = torch.where(
             sticky_overflow, accumulator_exponent, merged_exponent
         )
