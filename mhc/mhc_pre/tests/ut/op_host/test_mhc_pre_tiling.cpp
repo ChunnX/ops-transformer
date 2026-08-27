@@ -20,9 +20,15 @@ using namespace std;
 
 class MhcPreTiling : public testing::Test {
 protected:
-    static void SetUpTestCase() { std::cout << "MhcPreTiling SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "MhcPreTiling SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "MhcPreTiling TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "MhcPreTiling TearDown" << std::endl;
+    }
 };
 
 template <typename T>
@@ -36,6 +42,31 @@ static string TilingData2Str(void *buf, size_t size)
         result += " ";
     }
     return result;
+}
+
+static string MakeAscend950SocInfo(uint32_t cubeCoreCnt, uint32_t vectorCoreCnt)
+{
+    return R"({"hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1", "Intrinsic_fix_pipe_l0c2out": false,)"
+           R"( "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true,)"
+           R"( "Intrinsic_data_move_out2l1_nd2nz": false, "UB_SIZE": 262144, "L2_SIZE": 33554432,)"
+           R"( "L1_SIZE": 524288, "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072,)"
+           R"( "CORE_NUM": )" +
+           std::to_string(cubeCoreCnt) + R"(, "cube_core_cnt": )" + std::to_string(cubeCoreCnt) +
+           R"(, "vector_core_cnt": )" + std::to_string(vectorCoreCnt) + R"(, "socVersion":"Ascend950"} })";
+}
+
+static string MakeAscend950SocInfo(uint32_t cubeCoreCnt)
+{
+    return MakeAscend950SocInfo(cubeCoreCnt, cubeCoreCnt * 2);
+}
+
+static optiling::MhcPreCompileInfo MakeMhcPreCompileInfo(uint32_t cubeCoreCnt, uint32_t vectorCoreCnt)
+{
+    optiling::MhcPreCompileInfo info{};
+    info.aicNum = cubeCoreCnt;
+    info.aivNum = vectorCoreCnt;
+    info.ubSize = 262144;
+    return info;
 }
 
 /*
@@ -57,7 +88,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case01_B1_S1_n4_d1_BF16)
     float alpha[3] = {0.1f, 0.1f, 0.1f}; // alpha = [0.1, 0.1, 0.1]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -79,7 +110,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case01_B1_S1_n4_d1_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
@@ -103,7 +134,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case02_B1_S1_n6_d65535_FP16)
     float alpha[3] = {0.5f, 0.5f, 0.5f}; // alpha = [0.5, 0.5, 0.5]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -121,7 +152,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case02_B1_S1_n6_d65535_FP16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
@@ -145,7 +176,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case03_B65535_S1_n8_d1_BF16)
     float alpha[3] = {-0.3f, -0.3f, -0.3f}; // alpha = [-0.3, -0.3, -0.3]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -163,7 +194,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case03_B65535_S1_n8_d1_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
@@ -187,7 +218,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case04_B2_S4096_n4_d1536_BF16)
     float alpha[3] = {0.2f, 0.2f, 0.2f}; // alpha = [0.2, 0.2, 0.2]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -205,7 +236,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case04_B2_S4096_n4_d1536_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -234,7 +265,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case05_B2_S4096_n6_d2048_FP16)
     float alpha[3] = {0.6f, 0.6f, 0.6f}; // alpha = [0.6, 0.6, 0.6]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -252,7 +283,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case05_B2_S4096_n6_d2048_FP16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -281,7 +312,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case06_B2_S4096_n8_d6144_BF16)
     float alpha[3] = {-0.5f, -0.5f, -0.5f}; // alpha = [-0.5, -0.5, -0.5]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -299,7 +330,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case06_B2_S4096_n8_d6144_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -328,7 +359,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case07_B256_S1024_n4_d2048_BF16)
     float alpha[3] = {0.3f, 0.3f, 0.3f}; // alpha = [0.3, 0.3, 0.3]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -346,7 +377,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case07_B256_S1024_n4_d2048_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
@@ -375,7 +406,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case08_B20_S4096_n6_d1024_FP16)
     float alpha[3] = {0.7f, 0.7f, 0.7f}; // alpha = [0.7, 0.7, 0.7]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -393,7 +424,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case08_B20_S4096_n6_d1024_FP16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
@@ -422,7 +453,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case09_B8_S512_n8_d768_FP16)
     float alpha[3] = {-0.2f, -0.2f, -0.2f}; // alpha = [-0.2, -0.2, -0.2]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -440,7 +471,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case09_B8_S512_n8_d768_FP16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -469,7 +500,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case10_B32_S256_n4_d512_BF16)
     float alpha[3] = {0.4f, 0.4f, 0.4f}; // alpha = [0.4, 0.4, 0.4]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -487,7 +518,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case10_B32_S256_n4_d512_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -516,7 +547,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case11_B1_S8192_n6_d256_FP16)
     float alpha[3] = {0.8f, 0.8f, 0.8f}; // alpha = [0.8, 0.8, 0.8]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -534,7 +565,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case11_B1_S8192_n6_d256_FP16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -563,7 +594,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case12_B128_S64_n8_d1024_BF16)
     float alpha[3] = {-0.4f, -0.4f, -0.4f}; // alpha = [-0.4, -0.4, -0.4]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -581,7 +612,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case12_B128_S64_n8_d1024_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -610,7 +641,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case13_B4_S2048_n4_d3072_FP16)
     float alpha[3] = {0.15f, 0.15f, 0.15f}; // alpha = [0.15, 0.15, 0.15]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -628,7 +659,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case13_B4_S2048_n4_d3072_FP16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -657,7 +688,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case14_B16_S1024_n6_d128_BF16)
     float alpha[3] = {0.65f, 0.65f, 0.65f}; // alpha = [0.65, 0.65, 0.65]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -675,7 +706,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case14_B16_S1024_n6_d128_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
@@ -704,7 +735,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case15_B64_S128_n8_d4096_FP16)
     float alpha[3] = {-0.35f, -0.35f, -0.35f}; // alpha = [-0.35, -0.35, -0.35]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -722,7 +753,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case15_B64_S128_n8_d4096_FP16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -751,7 +782,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case16_B2_S32768_n4_d512_BF16)
     float alpha[3] = {0.25f, 0.25f, 0.25f}; // alpha = [0.25, 0.25, 0.25]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -769,7 +800,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case16_B2_S32768_n4_d512_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
@@ -798,7 +829,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case17_B48_S512_n6_d2048_FP16)
     float alpha[3] = {0.75f, 0.75f, 0.75f}; // alpha = [0.75, 0.75, 0.75]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -816,7 +847,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case17_B48_S512_n6_d2048_FP16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
@@ -845,7 +876,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case18_B12_S1536_n8_d1536_BF16)
     float alpha[3] = {-0.25f, -0.25f, -0.25f}; // alpha = [-0.25, -0.25, -0.25]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -863,7 +894,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case18_B12_S1536_n8_d1536_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
@@ -892,7 +923,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case19_B1_S1_n4_d128_FP16)
     float alpha[3] = {0.35f, 0.35f, 0.35f}; // alpha = [0.35, 0.35, 0.35]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -910,7 +941,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case19_B1_S1_n4_d128_FP16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -939,7 +970,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case20_B1024_S32_n6_d768_BF16)
     float alpha[3] = {0.85f, 0.85f, 0.85f}; // alpha = [0.85, 0.85, 0.85]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -957,7 +988,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case20_B1024_S32_n6_d768_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
@@ -985,7 +1016,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case21_T1024_n6_d768_BF16)
     float alpha[3] = {0.85f, 0.85f, 0.85f}; // alpha = [0.85, 0.85, 0.85]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -1003,7 +1034,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case21_T1024_n6_d768_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -1032,7 +1063,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case22_B2_S4096_n4_d1536_NoGamma)
     float alpha[3] = {0.2f, 0.2f, 0.2f};
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     // 不包含gamma输入，只有4个输入：x, phi, alpha, bias（gamma为可选输入，此处不填）
     gert::TilingContextPara tilingContextPara(
@@ -1054,7 +1085,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case22_B2_S4096_n4_d1536_NoGamma)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -1084,7 +1115,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case23_OutFlag1_SplitBS_BSND_BF16)
     float alpha[3] = {0.3f, 0.3f, 0.3f};
     uint32_t outFlag = 1;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -1102,7 +1133,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case23_OutFlag1_SplitBS_BSND_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -1132,7 +1163,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case24_OutFlag1_SplitND_BSND_FP16)
     float alpha[3] = {0.5f, 0.5f, 0.5f};
     uint32_t outFlag = 1;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -1150,7 +1181,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case24_OutFlag1_SplitND_BSND_FP16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -1179,7 +1210,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case25_OutFlag1_SplitBS_TND_BF16)
     float alpha[3] = {0.4f, 0.4f, 0.4f};
     uint32_t outFlag = 1;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -1197,7 +1228,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case25_OutFlag1_SplitBS_TND_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -1226,7 +1257,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case26_OutFlag1_SplitND_TND_FP16)
     float alpha[3] = {0.6f, 0.6f, 0.6f};
     uint32_t outFlag = 1;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -1244,7 +1275,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case26_OutFlag1_SplitND_TND_FP16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -1274,7 +1305,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case27_OutFlag1_LongSeq_BSND_BF16)
     float alpha[3] = {0.5f, 0.5f, 0.5f};
     uint32_t outFlag = 1;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -1292,7 +1323,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case27_OutFlag1_LongSeq_BSND_BF16)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
@@ -1318,7 +1349,7 @@ TEST_F(MhcPreTiling, Ut_Check_BasicApi_N4_SplitBS_HasResi_Gamma)
     float hcEps = 0.000001f;
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -1336,7 +1367,7 @@ TEST_F(MhcPreTiling, Ut_Check_BasicApi_N4_SplitBS_HasResi_Gamma)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
@@ -1367,7 +1398,7 @@ TEST_F(MhcPreTiling, Ut_Check_BasicApi_N6_SplitBS)
     float hcEps = 0.000001f;
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -1385,7 +1416,7 @@ TEST_F(MhcPreTiling, Ut_Check_BasicApi_N6_SplitBS)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 0;
     string expectTilingDataStr = "";
@@ -1411,7 +1442,7 @@ TEST_F(MhcPreTiling, Ut_Check_BasicApi_N8_LongM_Workspace)
     float hcEps = 0.000001f;
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
     gert::TilingContextPara tilingContextPara("MhcPre",
                                               {{{{B, S, n, d}, {B, S, n, d}}, ge::DT_BF16, ge::FORMAT_ND},
                                                {{{phiDim0, phiDim1}, {phiDim0, phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
@@ -1427,7 +1458,7 @@ TEST_F(MhcPreTiling, Ut_Check_BasicApi_N8_LongM_Workspace)
                                               {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
                                                {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
                                                {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-                                              &compileInfo);
+                                              &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     TilingInfo tilingInfo;
     ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
@@ -1454,7 +1485,7 @@ TEST_F(MhcPreTiling, Ut_Check_MK_N4_M1024_D5120_HasResi)
     float hcEps = 0.000001f;
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -1472,7 +1503,7 @@ TEST_F(MhcPreTiling, Ut_Check_MK_N4_M1024_D5120_HasResi)
         {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     int64_t expectTilingKey = 2;
     string expectTilingDataStr = "";
@@ -1556,7 +1587,7 @@ TEST_F(MhcPreTiling, Ut_Check_InvalidAlphaRank)
     constexpr uint32_t d = 256;
     constexpr uint32_t phiDim0 = n * n + 2 * n;
     constexpr uint32_t phiDim1 = n * d;
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara("MhcPre",
                                               {{{{T, n, d}, {T, n, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -1573,7 +1604,7 @@ TEST_F(MhcPreTiling, Ut_Check_InvalidAlphaRank)
                                               {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                                                {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
                                                {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}},
-                                              &compileInfo);
+                                              &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
@@ -1585,7 +1616,7 @@ TEST_F(MhcPreTiling, Ut_Check_InvalidAlphaShape)
     constexpr uint32_t d = 256;
     constexpr uint32_t phiDim0 = n * n + 2 * n;
     constexpr uint32_t phiDim1 = n * d;
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara("MhcPre",
                                               {{{{T, n, d}, {T, n, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -1602,7 +1633,7 @@ TEST_F(MhcPreTiling, Ut_Check_InvalidAlphaShape)
                                               {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                                                {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
                                                {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}},
-                                              &compileInfo);
+                                              &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
@@ -1614,7 +1645,7 @@ TEST_F(MhcPreTiling, Ut_Check_InvalidXRank)
     constexpr uint32_t d = 256;
     constexpr uint32_t phiDim0 = n * n + 2 * n;
     constexpr uint32_t phiDim1 = n * d;
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara("MhcPre",
                                               {{{{T, n}, {T, n}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -1631,7 +1662,7 @@ TEST_F(MhcPreTiling, Ut_Check_InvalidXRank)
                                               {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                                                {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
                                                {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}},
-                                              &compileInfo);
+                                              &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
@@ -1643,7 +1674,7 @@ TEST_F(MhcPreTiling, Ut_Check_InvalidHMixShape)
     constexpr uint32_t d = 256;
     constexpr uint32_t phiDim0 = n * n + 2 * n;
     constexpr uint32_t phiDim1 = n * d;
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara("MhcPre",
                                               {{{{T, n, d}, {T, n, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -1660,7 +1691,7 @@ TEST_F(MhcPreTiling, Ut_Check_InvalidHMixShape)
                                               {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                                                {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
                                                {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}},
-                                              &compileInfo);
+                                              &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
@@ -1673,7 +1704,7 @@ static void CheckMkGeneralizedTiling(uint32_t totalLength, uint32_t n, uint32_t 
     uint32_t phiDim0 = hasResi ? n * n + 2U * n : 2U * n;
     uint32_t alphaDim0 = hasResi ? 3U : 2U;
     uint32_t phiDim1 = n * d;
-    optiling::MhcPreCompileInfo compileInfo = {};
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -1692,7 +1723,7 @@ static void CheckMkGeneralizedTiling(uint32_t totalLength, uint32_t n, uint32_t 
          {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(0.000001f)},
          {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(0.000001f)},
          {"op_impl_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(implMode)}},
-        &compileInfo);
+        &compileInfo, "Ascend950", 32, 262144, 4096, MakeAscend950SocInfo(32));
     tilingContextPara.deterministicInfo_ = deterministicLevel;
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectedTilingKey, "", {}, 0, TilingData2Str<int32_t>);
@@ -1792,9 +1823,15 @@ TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_N4_Boundary)
     CheckMkGeneralizedTiling(10241U, 4U, 5120U, 0);
 }
 
-TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_N6_KTail) { CheckMkGeneralizedTiling(1000U, 6U, 2576U, 2); }
+TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_N6_KTail)
+{
+    CheckMkGeneralizedTiling(1000U, 6U, 2576U, 2);
+}
 
-TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_N8_WideFusion) { CheckMkGeneralizedTiling(1024U, 8U, 6144U, 2); }
+TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_N8_WideFusion)
+{
+    CheckMkGeneralizedTiling(1024U, 8U, 6144U, 2);
+}
 
 TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_NoResi)
 {
@@ -1832,4 +1869,70 @@ TEST_F(MhcPreTiling, Ut_Check_BatchConsistency_ForceSplitBs)
 {
     // Batch consistency level 3 must use the BS accumulation order instead of the M-K template.
     CheckMkGeneralizedTiling(256U, 4U, 5120U, 2, 3);
+}
+
+/*
+ * 控核约束：Ascend950要求aicNum:aivNum=1:2，不满足核数比的tiling必须失败。
+ * 以下用例使用在1:2比例下能够tiling成功的形状(B=2,S=4096,n=4,d=1536)，
+ * 仅改变cube/vector核数比，验证不满足1:2时返回GRAPH_FAILED。
+ */
+static void CheckCoreRatioFailure(uint32_t cubeCoreCnt, uint32_t vectorCoreCnt)
+{
+    constexpr uint32_t B = 2;
+    constexpr uint32_t S = 4096;
+    constexpr uint32_t n = 4;
+    constexpr uint32_t d = 1536;
+    const uint32_t phiDim0 = n * n + 2 * n;
+    const uint32_t phiDim1 = n * d;
+    const uint32_t biasDim = phiDim0;
+    constexpr float normEps = 0.000001f;
+    constexpr float hcEps = 0.000001f;
+    constexpr uint32_t outFlag = 0;
+
+    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(cubeCoreCnt, vectorCoreCnt);
+
+    gert::TilingContextPara tilingContextPara(
+        "MhcPre",
+        {{{{B, S, n, d}, {B, S, n, d}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{phiDim0, phiDim1}, {phiDim0, phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{biasDim}, {biasDim}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{phiDim1}, {phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{{{B, S, d}, {B, S, d}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{B, S, phiDim0}, {B, S, phiDim0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
+         {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
+         {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}},
+        &compileInfo, "Ascend950", cubeCoreCnt, 262144, 4096,
+        MakeAscend950SocInfo(cubeCoreCnt, vectorCoreCnt));
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+// aicNum:aivNum = 1:1，不满足1:2，预期失败
+TEST_F(MhcPreTiling, Ut_Check_CoreRatio_1to1_Fail)
+{
+    CheckCoreRatioFailure(32, 32);
+}
+
+// aicNum:aivNum = 1:3，不满足1:2，预期失败
+TEST_F(MhcPreTiling, Ut_Check_CoreRatio_1to3_Fail)
+{
+    CheckCoreRatioFailure(16, 48);
+}
+
+// aicNum:aivNum = 1:4，不满足1:2，预期失败
+TEST_F(MhcPreTiling, Ut_Check_CoreRatio_1to4_Fail)
+{
+    CheckCoreRatioFailure(32, 128);
+}
+
+// aicNum:aivNum = 2:1，vector核数不足，预期失败
+TEST_F(MhcPreTiling, Ut_Check_CoreRatio_2to1_Fail)
+{
+    CheckCoreRatioFailure(64, 32);
 }
