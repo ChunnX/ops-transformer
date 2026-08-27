@@ -34,14 +34,14 @@ class BlockSparseAttentionOpBuilder(OpBuilder):
             "block_sparse_attention("
             "Tensor query, Tensor key, Tensor value, "
             "Tensor block_sparse_mask, "
-            "Tensor block_shape, *, "
+            "int[] block_shape, *, "
             "str q_input_layout=\"TND\", "
             "str kv_input_layout=\"TND\", "
             "int num_key_value_heads=1, "
-            "float scale_value=0.0, "
+            "float scale_value=1.0, "
             "int inner_precise=1, "
-            "Tensor? actual_seq_lengths=None, "
-            "Tensor? actual_seq_lengths_kv=None, "
+            "int[]? actual_seq_lengths=None, "
+            "int[]? actual_seq_lengths_kv=None, "
             "bool return_softmax_lse=False, "
             "int mask_type=0, "
             "int quant_mode=0, "
@@ -66,15 +66,15 @@ class BlockSparseAttentionOpBuilder(OpBuilder):
             key: torch.Tensor,
             value: torch.Tensor,
             block_sparse_mask: torch.Tensor,
-            block_shape: torch.Tensor,
+            block_shape: List[int],
             *,
             q_input_layout: str = "TND",
             kv_input_layout: str = "TND",
             num_key_value_heads: int = 1,
-            scale_value: float = 0.0,
+            scale_value: float = 1.0,
             inner_precise: int = 1,
-            actual_seq_lengths: Optional[torch.Tensor] = None,
-            actual_seq_lengths_kv: Optional[torch.Tensor] = None,
+            actual_seq_lengths: Optional[List[int]] = None,
+            actual_seq_lengths_kv: Optional[List[int]] = None,
             return_softmax_lse: bool = False,
             mask_type: int = 0,
             quant_mode: int = 0,
@@ -90,7 +90,16 @@ class BlockSparseAttentionOpBuilder(OpBuilder):
             p_quant_scale: Optional[torch.Tensor] = None,
             attention_out_dtype: Optional[torch.dtype] = None,
         ):
-            out_dtype = attention_out_dtype if attention_out_dtype is not None else query.dtype
+            # 与 C++ 实现保持一致：quant_mode != 0 时 attention_out_dtype 必填，
+            # 否则 meta 推断的 dtype 会与实际输出不一致（错误迟到运行时才抛出）
+            if attention_out_dtype is not None:
+                out_dtype = attention_out_dtype
+            elif quant_mode == QuantMode.NO_QUANT:
+                out_dtype = query.dtype
+            else:
+                raise ValueError(
+                    "attention_out_dtype must be specified when quant_mode != 0"
+                )
             # FP4: two values pack into one uint8 byte, so last dim is 2*D
             if query.dtype == torch.uint8 and quant_mode in (QuantMode.MXFP4_OCP_QUANT, QuantMode.MXFP4_CX_QUANT):
                 attn_shape = list(query.shape)
@@ -119,15 +128,15 @@ def block_sparse_attention(
     key: torch.Tensor,
     value: torch.Tensor,
     block_sparse_mask: torch.Tensor,
-    block_shape: torch.Tensor,
+    block_shape: List[int],
     *,
     q_input_layout: str = "TND",
     kv_input_layout: str = "TND",
     num_key_value_heads: int = 1,
     scale_value: float = 1.0,
     inner_precise: int = 1,
-    actual_seq_lengths: Optional[torch.Tensor] = None,
-    actual_seq_lengths_kv: Optional[torch.Tensor] = None,
+    actual_seq_lengths: Optional[List[int]] = None,
+    actual_seq_lengths_kv: Optional[List[int]] = None,
     return_softmax_lse: bool = False,
     mask_type: int = 0,
     quant_mode: int = 0,
