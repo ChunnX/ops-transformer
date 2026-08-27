@@ -665,6 +665,16 @@ protected:
         auto &mm = td->tileQbmmTilingData;
         usedCoreNum_ = mm.usedCoreNum;
 
+        // matmul 实际分配核数必须 >= rankSize（kernel 侧通信切分依赖每 rank 至少一个核，
+        // 见 RunAllToAll: if (GetBlockIdx() < rankSize)），否则部分 rank 无核参与 alltoall 导致死锁。
+        if (static_cast<uint64_t>(usedCoreNum_) < worldSize_) {
+            OP_LOGE_WITHOUT_REPORT(opName,
+                                   "[coreNum] usedCoreNum(%u) is less than rankSize(%lu), "
+                                   "matmul tiling 分配核数不足以覆盖所有 rank",
+                                   usedCoreNum_, worldSize_);
+            return ge::GRAPH_FAILED;
+        }
+
         // 可用核数 = min(aicNum, aivNum)，必须 >= rankSize（通信切分依赖每 rank 至少一个核）
         uint64_t availCoreNum = std::min(quantPlatformInfo_.aicNum, quantPlatformInfo_.aivNum);
         if (availCoreNum < worldSize_) {
