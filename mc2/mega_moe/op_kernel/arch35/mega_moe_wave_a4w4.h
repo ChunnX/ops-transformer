@@ -73,6 +73,115 @@ private:
     A4W4WaveTrace trace_{};
 #endif
 
+    __aicore__ inline void TraceProcessWaveBegin()
+    {
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+        trace_.BeginProcessBody();
+#endif
+    }
+    __aicore__ inline void TraceInputPreparationBegin()
+    {
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+        trace_.BeginOuterStage();
+#endif
+    }
+    __aicore__ inline void TraceInputPreparationEnd()
+    {
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+        trace_.EndOuterStage(A4W4WaveTraceEvent::INPUT_PREPARATION);
+#endif
+    }
+    __aicore__ inline void TraceSharedGmm1Begin()
+    {
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+        trace_.BeginOuterStage();
+#endif
+    }
+    __aicore__ inline void TraceSharedGmm1End()
+    {
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+        trace_.EndOuterStage(A4W4WaveTraceEvent::SHARED_GMM1_SUBMIT);
+#endif
+    }
+    __aicore__ inline void TracePreMoeRankSyncBegin()
+    {
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+        trace_.BeginOuterStage();
+#endif
+    }
+    __aicore__ inline void TracePreMoeRankSyncEnd()
+    {
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+        trace_.EndOuterStage(A4W4WaveTraceEvent::PRE_MOE_RANK_SYNC);
+#endif
+    }
+    __aicore__ inline void TraceMoeStageBegin()
+    {
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+        trace_.BeginMoeStage();
+#endif
+    }
+    __aicore__ inline void TraceMoeStageEnd()
+    {
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+        trace_.EndMoeStage();
+#endif
+    }
+    __aicore__ inline void TraceCountExportBegin()
+    {
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+        trace_.BeginOuterStage();
+#endif
+    }
+    __aicore__ inline void TraceCountExportEnd()
+    {
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+        trace_.EndOuterStage(A4W4WaveTraceEvent::COUNT_EXPORT);
+#endif
+    }
+    __aicore__ inline void TraceSharedGmm2Begin()
+    {
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+        trace_.BeginOuterStage();
+#endif
+    }
+    __aicore__ inline void TraceSharedGmm2End()
+    {
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+        trace_.EndOuterStage(A4W4WaveTraceEvent::SHARED_GMM2_SUBMIT);
+#endif
+    }
+    __aicore__ inline void TracePostMoeRankSyncBegin()
+    {
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+        trace_.BeginOuterStage();
+#endif
+    }
+    __aicore__ inline void TracePostMoeRankSyncEnd()
+    {
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+        trace_.EndOuterStage(A4W4WaveTraceEvent::POST_MOE_RANK_SYNC);
+#endif
+    }
+    __aicore__ inline void TraceOutputAggregationBegin()
+    {
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+        trace_.BeginOuterStage();
+#endif
+    }
+    __aicore__ inline void TraceOutputAggregationEnd()
+    {
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+        trace_.EndOuterStage(A4W4WaveTraceEvent::OUTPUT_AGGREGATION_SUBMIT);
+#endif
+    }
+    __aicore__ inline void TraceProcessWaveEnd()
+    {
+#if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
+        trace_.EndProcessBody();
+#endif
+    }
+
     __aicore__ inline bool IsPositionWithinWave(const ExpertTokenPosition &position, uint32_t waveMGroupCount) const
     {
         return position.expertIdx < commonConfig_.moeExpertPerRank && waveMGroupCount < mGroupsPerWave_;

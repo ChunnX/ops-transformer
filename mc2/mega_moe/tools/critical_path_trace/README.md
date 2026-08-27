@@ -1,7 +1,8 @@
 # MegaMoe A4W4 Wave 关键路径打点
 
-这是一套用于 A4W4 Wave 性能分析的轻量诊断工具。协议 v5 将打点下沉到真正的 tile/chunk 计算调用，记录
-Dispatch、GMM1、Activation、GMM2 prologue、GMM2、Combine metadata 预取和 Combine 的精确区间。
+这是一套用于 A4W4 Wave 性能分析的轻量诊断工具。协议 v6 在 v5 的 tile/chunk 精确计算事件之外，补充
+Pre-MoE、MoE stage submit、Post-MoE，以及输入准备、跨 rank 同步、count 导出、共享专家、输出聚合和
+pipeline drain 区间，用于确认耗时是否落在 MoE 专家流水以外。
 
 本轮打点主要用于分析小 BS 下的三类问题：Wave 是否欠载、AIC/AIV0/AIV1 的阶段是否失衡，以及后级阶段是否因
 等待 Dispatch、GMM1、Activation 或 GMM2 出现空泡。等待事件与计算事件分离，因此计算块不再包含地址更新、
@@ -192,7 +193,7 @@ Wait GMM2：AIV Combine worker 等待 GMM2 completion counter
 
 wait 事件通过 `parentStage` 表示所阻塞的计算类型，但在时间轴上是计算开始前的相邻独立区间。协议 v4 起，
 `activeCycles` 就是 tile/chunk 计算事件本身的时长，不再从外层阶段时长中扣除等待。协议 v5 进一步将
-Combine metadata 的 GM→UB 预取记录为独立事件。工具仍兼容协议 v1-v4。
+Combine metadata 的 GM→UB 预取记录为独立事件。协议 v6 增加算子外层阶段，工具仍兼容协议 v1-v5。
 
 GMM/Activation 事件按本核拥有的 tile 记录，Combine metadata 预取和 Combine 按本核拥有的 chunk 记录；
 坐标仍映射为 Wave 内专家 token 范围。Dispatch 只记录本核实际发送的行，因此没有任务的核不会产生伪计算块。
@@ -205,6 +206,25 @@ GMM/Activation 事件按本核拥有的 tile 记录，Combine metadata 预取和
   PIPE_V 真正进入并退出等待的边界；
 - Combine metadata 预取复用 `PreloadWaveCombineMetaInfo` 内已有的 `MTE2_S` 完成边界；
 - AIV0 GMM2 prologue 与 AIV Combine worker 在外层额外执行一次 `MTE3_S`，再读取 Scalar 时间戳。
+
+协议 v6 的外层阶段中，`Input preparation`、两次 rank sync、`Count export`、`Post-MoE` 和
+`Pipeline drain` 复用原流程已有的 `SyncAll` 完成边界，没有新增业务同步。`MoE stage submit`、共享专家两段和
+`Output aggregation submit` 的 end 仅表示对应函数返回后的 Scalar 提交边界；异步流水尚未完成的部分会继续落入
+后续阶段，并最终由 `Pipeline drain` 展示。报告因此不会把这些 submit end 误称为硬件完成时间。
+
+外层完成边界审计如下：
+
+| 事件 | 角色 | End 语义 |
+|---|---|---|
+| Input preparation | AIC/AIV0/AIV1 | 输入准备后的既有 `SyncAll<false>()` |
+| Shared GMM1 submit | AIC/AIV0/AIV1 | 包装函数返回，仅为 Scalar submit |
+| Pre-MoE rank sync | AIV0/AIV1 | rank 握手后的既有 `SyncAll<true>()`；AIC 路径为 no-op |
+| MoE stage submit | AIC/AIV0/AIV1 | `ProcessMoeExpertStages` 返回，仅为 Scalar submit |
+| Count export | AIV0/AIV1 | 导出后的既有 `SyncAll<true>()`；AIC 路径无实际工作 |
+| Shared GMM2 submit | AIC/AIV0/AIV1 | 包装函数返回，仅为 Scalar submit |
+| Post-MoE rank sync | AIV0/AIV1 | rank 握手后的既有 `SyncAll<true>()` |
+| Output aggregation submit | AIV0/AIV1 | `UnpermuteTokens` 返回，仅为 Scalar submit |
+| Post-MoE / Pipeline drain | AIC/AIV0/AIV1 | trace 发布前原有 `SyncAll<false>()`，正常计算已排空 |
 
 ## 4. 当前有意保留的限制
 

@@ -25,7 +25,7 @@ namespace MegaMoeImpl {
 #if MEGA_MOE_ENABLE_A4W4_WAVE_TRACE != 0
 
 constexpr uint32_t A4W4_WAVE_TRACE_MAGIC = 0x41345452U; // "A4TR"
-constexpr uint32_t A4W4_WAVE_TRACE_VERSION = 5U;
+constexpr uint32_t A4W4_WAVE_TRACE_VERSION = 6U;
 constexpr uint32_t A4W4_WAVE_TRACE_ROLE_COUNT = 3U;
 constexpr uint32_t A4W4_WAVE_TRACE_HEADER_WORDS = 24U;
 constexpr uint32_t A4W4_WAVE_TRACE_RECORD_HEADER_WORDS = 4U;
@@ -54,6 +54,17 @@ enum class A4W4WaveTraceEvent : uint32_t {
     WAIT_FOR_ACTIVATION = 10U,
     WAIT_FOR_GMM2 = 11U,
     COMBINE_META_PREFETCH = 12U,
+    PRE_MOE = 13U,
+    MOE_STAGE_SUBMIT = 14U,
+    POST_MOE = 15U,
+    INPUT_PREPARATION = 16U,
+    SHARED_GMM1_SUBMIT = 17U,
+    PRE_MOE_RANK_SYNC = 18U,
+    COUNT_EXPORT = 19U,
+    SHARED_GMM2_SUBMIT = 20U,
+    POST_MOE_RANK_SYNC = 21U,
+    OUTPUT_AGGREGATION_SUBMIT = 22U,
+    PIPELINE_DRAIN = 23U,
 };
 
 /*
@@ -76,6 +87,11 @@ struct A4W4WaveTrace {
     uint32_t moeExpertCount = 0U;
     uint32_t worldSize = 0U;
     uint32_t waveMGroupTarget = 0U;
+    uint32_t preMoeBegin = 0U;
+    uint32_t moeBegin = 0U;
+    uint32_t postMoeBegin = 0U;
+    uint32_t processBodyEnd = 0U;
+    uint32_t outerStageBegin = 0U;
     CriticalPathTraceEventWriter eventWriter{};
     bool enabled = false;
     uint32_t truncated = 0U;
@@ -148,6 +164,52 @@ struct A4W4WaveTrace {
         waveMGroupTarget = target;
     }
 
+    __aicore__ inline void RecordOperatorStage(A4W4WaveTraceEvent event, uint32_t beginCycle, uint32_t endCycle)
+    {
+        if (!enabled) {
+            return;
+        }
+        Record(event, 0U, 0U, 0U, bs, 0U, beginCycle, endCycle);
+    }
+
+    __aicore__ inline void BeginProcessBody()
+    {
+        if (!enabled) {
+            return;
+        }
+        preMoeBegin = processBegin;
+    }
+
+    __aicore__ inline void BeginOuterStage()
+    {
+        if (!enabled) {
+            return;
+        }
+        outerStageBegin = Now();
+    }
+
+    __aicore__ inline void EndOuterStage(A4W4WaveTraceEvent event)
+    {
+        RecordOperatorStage(event, outerStageBegin, Now());
+    }
+
+    __aicore__ inline void BeginMoeStage()
+    {
+        moeBegin = Now();
+        RecordOperatorStage(A4W4WaveTraceEvent::PRE_MOE, preMoeBegin, moeBegin);
+    }
+
+    __aicore__ inline void EndMoeStage()
+    {
+        postMoeBegin = Now();
+        RecordOperatorStage(A4W4WaveTraceEvent::MOE_STAGE_SUBMIT, moeBegin, postMoeBegin);
+    }
+
+    __aicore__ inline void EndProcessBody()
+    {
+        processBodyEnd = Now();
+    }
+
     __aicore__ inline void Record(A4W4WaveTraceEvent event, uint32_t waveIndex, uint32_t expertIndex,
                                   uint32_t tokenStartIndexInExpert, uint32_t tokenCount, uint32_t mGroupCount,
                                   uint32_t beginCycle, uint32_t endCycle)
@@ -176,10 +238,11 @@ struct A4W4WaveTrace {
         if (!enabled) {
             return;
         }
-        const uint32_t processEnd = Now();
-
         // 先等正常 y 写回完成，再用 trace 覆盖 y；随后等待所有角色完成记录复制，最后发布 magic。
         AscendC::SyncAll<false>();
+        const uint32_t processEnd = Now();
+        RecordOperatorStage(A4W4WaveTraceEvent::POST_MOE, postMoeBegin, processEnd);
+        RecordOperatorStage(A4W4WaveTraceEvent::PIPELINE_DRAIN, processBodyEnd, processEnd);
         AscendC::WriteGmByPassDCache(scratchRecord + 0U, processBegin);
         AscendC::WriteGmByPassDCache(scratchRecord + 1U, processEnd);
         AscendC::WriteGmByPassDCache(scratchRecord + 2U, eventCount);

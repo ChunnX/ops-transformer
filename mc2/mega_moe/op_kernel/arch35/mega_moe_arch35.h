@@ -90,6 +90,25 @@ private:
     __aicore__ inline void InitTokenUnpermuteConfig();
 
 protected:
+    // A4W4 诊断路径覆盖这些 hook；其他 Wave 路径保持空实现，编译后不引入运行时开销。
+    __aicore__ inline void TraceProcessWaveBegin() {}
+    __aicore__ inline void TraceInputPreparationBegin() {}
+    __aicore__ inline void TraceInputPreparationEnd() {}
+    __aicore__ inline void TraceSharedGmm1Begin() {}
+    __aicore__ inline void TraceSharedGmm1End() {}
+    __aicore__ inline void TracePreMoeRankSyncBegin() {}
+    __aicore__ inline void TracePreMoeRankSyncEnd() {}
+    __aicore__ inline void TraceMoeStageBegin() {}
+    __aicore__ inline void TraceMoeStageEnd() {}
+    __aicore__ inline void TraceCountExportBegin() {}
+    __aicore__ inline void TraceCountExportEnd() {}
+    __aicore__ inline void TraceSharedGmm2Begin() {}
+    __aicore__ inline void TraceSharedGmm2End() {}
+    __aicore__ inline void TracePostMoeRankSyncBegin() {}
+    __aicore__ inline void TracePostMoeRankSyncEnd() {}
+    __aicore__ inline void TraceOutputAggregationBegin() {}
+    __aicore__ inline void TraceOutputAggregationEnd() {}
+    __aicore__ inline void TraceProcessWaveEnd() {}
     __aicore__ inline void SendAndQuantBuffInit();
     __aicore__ inline void DispatchBuffInit();
     __aicore__ inline void InitQuantTokenBufferConfig();
@@ -555,51 +574,69 @@ template <TemplateMegaMoeTypeClass>
 template <typename Derived>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &derived)
 {
+    derived.TraceProcessWaveBegin();
     // 保存入口时的溢出模式，计算期间关闭溢出检查。
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
 
     // 阶段 1：量化本卡输入、推送路由 mask、清零同步状态，并准备共享专家输入。
+    derived.TraceInputPreparationBegin();
     ProcessInputPreparationStage();
     if constexpr (g_coreType == AIV) {
         PipeBarrier<PIPE_ALL>();
     }
     SyncAll<false>(); // AIC 等待 AIV 完成输入准备后再进入 GMM。
+    derived.TraceInputPreparationEnd();
 
     int32_t gmm1TileReadySequence = 0;
     if (sharedExpertNum_ > 0U) {
         // 阶段 2：可选的共享专家 GMM1 及 Activation。
+        derived.TraceSharedGmm1Begin();
         ProcessSharedExpertGmm1(gmm1TileReadySequence);
+        derived.TraceSharedGmm1End();
     }
 
     // 等待所有 rank 完成输入准备，再消费远端 Dispatch 数据。
+    derived.TracePreMoeRankSyncBegin();
     CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
+    derived.TracePreMoeRankSyncEnd();
     // 阶段 3：由派生类编排 MoE 专家的 Dispatch、GMM1/Activation 和 GMM2/Combine。
+    derived.TraceMoeStageBegin();
     if constexpr (ENABLE_A8W4) {
         derived.ProcessMoeExpertStages(gmm1TileReadySequence);
     } else {
         derived.ProcessMoeExpertStages();
     }
+    derived.TraceMoeStageEnd();
+    derived.TraceCountExportBegin();
     if constexpr (g_coreType == AIV) {
         ExportCompactExpertTokenCounts(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
     }
+    derived.TraceCountExportEnd();
     if (sharedExpertNum_ > 0U) {
         // 阶段 4：可选的共享专家 GMM2，其结果由输出聚合阶段合并。
+        derived.TraceSharedGmm2Begin();
         ProcessSharedExpertGmm2();
+        derived.TraceSharedGmm2End();
     }
 
     // 阶段 5：所有 rank 完成 Combine 结果发送后，AIV 执行输出聚合。
     if constexpr (g_coreType == AIV) {
+        derived.TracePostMoeRankSyncBegin();
         CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
+        derived.TracePostMoeRankSyncEnd();
+        derived.TraceOutputAggregationBegin();
         MegaMoeUnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();
         UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>(
             tokenUnpermuteConfig_, commonConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);
+        derived.TraceOutputAggregationEnd();
     }
 
     // 恢复入口时的溢出模式。
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+    derived.TraceProcessWaveEnd();
 }
 
 } // namespace MegaMoeImpl

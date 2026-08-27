@@ -39,6 +39,17 @@ EVENT_NAMES = {
     10: "Wait Activation",
     11: "Wait GMM2",
     12: "Combine metadata prefetch",
+    13: "Pre-MoE",
+    14: "MoE stage submit",
+    15: "Post-MoE",
+    16: "Input preparation",
+    17: "Shared GMM1 submit",
+    18: "Pre-MoE rank sync",
+    19: "Count export",
+    20: "Shared GMM2 submit",
+    21: "Post-MoE rank sync",
+    22: "Output aggregation submit",
+    23: "Pipeline drain",
 }
 EVENT_COLORS = {
     1: "#06b6d4",
@@ -53,8 +64,21 @@ EVENT_COLORS = {
     10: "#cbd5e1",
     11: "#cbd5e1",
     12: "#fbbf24",
+    13: "#0f766e",
+    14: "#4338ca",
+    15: "#be123c",
+    16: "#14b8a6",
+    17: "#7c3aed",
+    18: "#0891b2",
+    19: "#65a30d",
+    20: "#9333ea",
+    21: "#0284c7",
+    22: "#db2777",
+    23: "#475569",
 }
 WAIT_EVENT_IDS = frozenset((8, 9, 10, 11))
+BACKGROUND_EVENT_IDS = frozenset((13, 14, 15))
+OPERATOR_EVENT_IDS = frozenset(range(13, 24))
 WAIT_INSTRUMENTED_PARENT_IDS = frozenset((2, 4, 5, 7))
 EVENT_TRACE_POINTS = {
     1: (
@@ -104,6 +128,50 @@ EVENT_TRACE_POINTS = {
     12: (
         "AIV Combine worker：开始将当前 chunk 的 metadata 从 GM 搬入 UB 前",
         "PreloadWaveCombineMetaInfo 的 MTE2_S 完成边界",
+    ),
+    13: (
+        "trace 初始化完成后的 ProcessWave 入口",
+        "调用 ProcessMoeExpertStages 前的 Scalar 边界",
+    ),
+    14: (
+        "调用 ProcessMoeExpertStages 前",
+        "ProcessMoeExpertStages 返回后的 Scalar submit 边界",
+    ),
+    15: (
+        "ProcessMoeExpertStages 返回后",
+        "trace 发布前已有 SyncAll 确认正常工作排空后",
+    ),
+    16: (
+        "ProcessInputPreparationStage 前",
+        "输入准备后的既有 SyncAll 完成边界",
+    ),
+    17: (
+        "ProcessSharedExpertGmm1 前",
+        "ProcessSharedExpertGmm1 返回后的 Scalar submit 边界",
+    ),
+    18: (
+        "MoE 前 CrossRankSyncInWorldSize 前",
+        "CrossRankSyncInWorldSize 返回后；AIV 路径包含既有 SyncAll",
+    ),
+    19: (
+        "ExportCompactExpertTokenCounts 前",
+        "count 导出后的既有 AIV SyncAll 完成边界",
+    ),
+    20: (
+        "ProcessSharedExpertGmm2 前",
+        "ProcessSharedExpertGmm2 返回后的 Scalar submit 边界",
+    ),
+    21: (
+        "输出聚合前 CrossRankSyncInWorldSize 前",
+        "CrossRankSyncInWorldSize 返回后；AIV 路径包含既有 SyncAll",
+    ),
+    22: (
+        "InitTokenUnpermuteBuffers 前",
+        "UnpermuteTokens 返回后的 Scalar submit 边界",
+    ),
+    23: (
+        "ProcessWave 返回并恢复控制寄存器后",
+        "trace 发布前已有 SyncAll 确认正常工作排空后",
     ),
 }
 
@@ -178,7 +246,7 @@ def parse_trace(words: tuple[int, ...]) -> dict:
     }
     if header["header_words"] != HEADER_WORDS:
         raise ValueError(f"unsupported header size: {header['header_words']}")
-    expected_event_words = {1: 8, 2: 9, 3: 9, 4: 9, 5: 9}
+    expected_event_words = {1: 8, 2: 9, 3: 9, 4: 9, 5: 9, 6: 9}
     if header["version"] not in expected_event_words:
         raise ValueError(f"unsupported trace version: {header['version']}")
     if header["event_words"] != expected_event_words[header["version"]]:
@@ -228,7 +296,7 @@ def parse_trace(words: tuple[int, ...]) -> dict:
             parent_event_id = 0
             is_wait_event = False
             wait_event_count = None
-            if header["version"] in (3, 4, 5):
+            if header["version"] in (3, 4, 5, 6):
                 parent_event_id, begin, end = event_words[6:9]
                 is_wait_event = event_type in WAIT_EVENT_IDS
                 wait_cycles = None
@@ -251,6 +319,7 @@ def parse_trace(words: tuple[int, ...]) -> dict:
                     "event": EVENT_NAMES.get(event_type, f"unknown({event_type})"),
                     "event_id": event_type,
                     "is_wait_event": is_wait_event,
+                    "is_operator_event": event_type in OPERATOR_EVENT_IDS,
                     "parent_event": EVENT_NAMES.get(parent_event_id)
                     if parent_event_id
                     else None,
@@ -297,6 +366,7 @@ def write_csv(trace: dict, path: Path) -> None:
         "event",
         "event_id",
         "is_wait_event",
+        "is_operator_event",
         "parent_event",
         "parent_event_id",
         "wave",
@@ -347,7 +417,16 @@ def write_svg(trace: dict, path: Path) -> None:
                 record["core"],
                 lane_label,
                 lane_tip,
-                sorted(record["events"], key=lambda event: event["is_wait_event"]),
+                sorted(
+                    record["events"],
+                    key=lambda event: (
+                        0
+                        if event["event_id"] in BACKGROUND_EVENT_IDS
+                        else 2
+                        if event["is_wait_event"]
+                        else 1
+                    ),
+                ),
             )
         )
     width = 1880
@@ -579,9 +658,10 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
 <script id="traceData" type="application/json">{payload}</script>
 <script>
 const trace = JSON.parse(document.getElementById('traceData').textContent);
-const colors = {{Dispatch:'#06b6d4',GMM1:'#2563eb','GMM1 prologue':'#a855f7',Activation:'#22c55e',GMM2:'#ef4444','GMM2 prologue':'#c084fc',Combine:'#f97316','Combine metadata prefetch':'#fbbf24','Wait Dispatch':'#cbd5e1','Wait GMM1':'#cbd5e1','Wait Activation':'#cbd5e1','Wait GMM2':'#cbd5e1'}};
-const legendColors = {{Dispatch:'#06b6d4',GMM1:'#2563eb','GMM1 prologue':'#a855f7',Activation:'#22c55e',GMM2:'#ef4444','GMM2 prologue':'#c084fc',Combine:'#f97316','Combine metadata prefetch':'#fbbf24',Wait:'#cbd5e1'}};
+const colors = {{Dispatch:'#06b6d4',GMM1:'#2563eb','GMM1 prologue':'#a855f7',Activation:'#22c55e',GMM2:'#ef4444','GMM2 prologue':'#c084fc',Combine:'#f97316','Combine metadata prefetch':'#fbbf24','Pre-MoE':'#0f766e','MoE stage submit':'#4338ca','Post-MoE':'#be123c','Input preparation':'#14b8a6','Shared GMM1 submit':'#7c3aed','Pre-MoE rank sync':'#0891b2','Count export':'#65a30d','Shared GMM2 submit':'#9333ea','Post-MoE rank sync':'#0284c7','Output aggregation submit':'#db2777','Pipeline drain':'#475569','Wait Dispatch':'#cbd5e1','Wait GMM1':'#cbd5e1','Wait Activation':'#cbd5e1','Wait GMM2':'#cbd5e1'}};
+const legendColors = {{Dispatch:'#06b6d4',GMM1:'#2563eb','GMM1 prologue':'#a855f7',Activation:'#22c55e',GMM2:'#ef4444','GMM2 prologue':'#c084fc',Combine:'#f97316','Combine metadata prefetch':'#fbbf24','Pre-MoE':'#0f766e','MoE stage submit':'#4338ca','Post-MoE':'#be123c','Input preparation':'#14b8a6','Shared GMM1 submit':'#7c3aed','Pre-MoE rank sync':'#0891b2','Count export':'#65a30d','Shared GMM2 submit':'#9333ea','Post-MoE rank sync':'#0284c7','Output aggregation submit':'#db2777','Pipeline drain':'#475569',Wait:'#cbd5e1'}};
 const roles = ['AIC','AIV0','AIV1'];
+const backgroundEventIds = new Set([13,14,15]);
 const coreSelect = document.getElementById('coreSelect');
 const waveSelect = document.getElementById('waveSelect');
 const waitFilter = document.getElementById('waitFilter');
@@ -591,7 +671,7 @@ const pinnedBlocks = new Set();
 const pinnedLanes = new Set();
 coreSelect.add(new Option('全部','all'));
 for (let core=0; core<trace.header.logical_core_count; core++) coreSelect.add(new Option(String(core),String(core)));
-const waves = [...new Set(trace.records.flatMap(r=>r.events.map(e=>e.wave)))].sort((a,b)=>a-b);
+const waves = [...new Set(trace.records.flatMap(r=>r.events.filter(e=>!e.is_operator_event).map(e=>e.wave)))].sort((a,b)=>a-b);
 for (const wave of waves) waveSelect.add(new Option(String(wave),String(wave)));
 document.getElementById('legend').innerHTML = Object.entries(legendColors).map(([name,color])=>`<span><i style="background:${{color}}"></i>${{name}}</span>`).join('');
 const cycleModulo = 4294967296;
@@ -609,7 +689,7 @@ const relativeCycle=cycle=>signedCycleDelta(cycle)-domainStart;
 const absoluteCycle=offset=>((cycleAnchor+domainStart+offset)%cycleModulo+cycleModulo)%cycleModulo;
 const cycleDelta=(begin,end)=>(end-begin+cycleModulo)%cycleModulo;
 function withLaneMetrics(record) {{
-  const stageEvents=record.events.filter(e=>!e.is_wait_event);
+  const stageEvents=record.events.filter(e=>!e.is_wait_event&&!backgroundEventIds.has(e.event_id));
   const waitEvents=record.events.filter(e=>e.is_wait_event);
   const firstEvent=record.events.reduce((first,e)=>!first||signedCycleDelta(e.begin_cycle)<signedCycleDelta(first.begin_cycle)?e:first,null);
   const lastEvent=record.events.reduce((last,e)=>!last||signedCycleDelta(e.end_cycle)>signedCycleDelta(last.end_cycle)?e:last,null);
@@ -722,7 +802,8 @@ function renderTimeline(blockGroups,pinSourceGroups,events) {{
       +`<span class="lane-name-text">${{record.role}}`
       +`<small>P/W ${{(record.process_duration_cycles/1000).toFixed(3)}}/${{(metrics.waitCycles/1000).toFixed(3)}} us</small>`
       +`</span></div><div class="lane">`;
-    const laneEvents=[...record.events].sort((a,b)=>Number(a.is_wait_event)-Number(b.is_wait_event));
+    const layer=e=>backgroundEventIds.has(e.event_id)?0:e.is_wait_event?2:1;
+    const laneEvents=[...record.events].sort((a,b)=>layer(a)-layer(b));
     for(const e of laneEvents) {{
         const left=relativeCycle(e.begin_cycle)/domainSpan*100, width=Math.max(e.duration_cycles/domainSpan*100,.12);
         const waitKnown=e.wait_cycles!==null;
@@ -775,8 +856,10 @@ function showEventDetail(item) {{
   const parentText=e.parent_event?`　父阶段：<b>${{esc(e.parent_event)}}</b>`:'';
   const intervalText=e.is_wait_event?'这是由 kernel 直接记录的真实轮询等待区间。':
     `包含 <b>${{e.wait_event_count===null?'—':e.wait_event_count}}</b> 个独立等待区间。`;
+  const scopeText=e.is_operator_event?`算子范围，Token [0, ${{e.token_count}})`:
+    `Wave ${{e.wave}}，Expert ${{e.expert}}，Token [${{e.token_start_in_expert}}, ${{e.token_start_in_expert+e.token_count}})`;
   document.getElementById('eventDetail').innerHTML=`<b>Block ${{r.core}} · ${{r.role}} · ${{esc(e.event)}}</b>　`
-    +`Wave ${{e.wave}}，Expert ${{e.expert}}，Token [${{e.token_start_in_expert}}, ${{e.token_start_in_expert+e.token_count}})${{parentText}}<br>`
+    +`${{scopeText}}${{parentText}}<br>`
     +`Begin cycle: <b>${{e.begin_cycle}}</b>　End cycle: <b>${{e.end_cycle}}</b>　Total: <b>${{e.duration_cycles}} cycles</b><br>`
     +`Active: <b>${{e.active_cycles}} cycles</b>　Wait: <b>${{waitText}}</b>　Wait 占比: <b>${{waitPercent}}</b><br>`
     +`${{intervalText}}<br>`
@@ -821,7 +904,7 @@ function renderWaveTable(events) {{
   const groups=new Map();
   for(const e of events) {{
     const key=`${{e.core}}|${{e.wave}}|${{e.role}}|${{e.event}}`;
-    const g=groups.get(key)||{{core:e.core,wave:e.wave,role:e.role,event:e.event,count:0,tokens:0,mGroups:0,cycles:0,active:0,wait:0,waitKnown:true,max:0}};
+    const g=groups.get(key)||{{core:e.core,wave:e.wave,role:e.role,event:e.event,isOperator:e.is_operator_event,count:0,tokens:0,mGroups:0,cycles:0,active:0,wait:0,waitKnown:true,max:0}};
     g.count++;
     if(e.is_wait_event) {{ g.tokens=Math.max(g.tokens,e.token_count); g.mGroups=Math.max(g.mGroups,e.m_group_count); }}
     else {{ g.tokens+=e.token_count; g.mGroups+=e.m_group_count; }}
@@ -832,7 +915,7 @@ function renderWaveTable(events) {{
   const rows=[...groups.values()].sort((a,b)=>a.core-b.core||a.wave-b.wave||roles.indexOf(a.role)-roles.indexOf(b.role)||a.event.localeCompare(b.event));
   document.querySelector('#waveTable tbody').innerHTML=rows.map(g=>{{
     const wait=g.waitKnown?g.wait.toLocaleString():'—', waitPercent=g.waitKnown&&g.cycles?(g.wait/g.cycles*100).toFixed(1)+'%':'—';
-    return `<tr><td>${{g.core}}</td><td>${{g.wave}}</td><td>${{g.role}}</td><td>${{g.event}}</td><td>${{g.count}}</td><td>${{g.tokens}}</td><td>${{g.mGroups}}</td><td>${{g.cycles.toLocaleString()}}</td><td>${{g.active.toLocaleString()}}</td><td>${{wait}}</td><td>${{waitPercent}}</td><td>${{g.max.toLocaleString()}}</td></tr>`;
+    return `<tr><td>${{g.core}}</td><td>${{g.isOperator?'—':g.wave}}</td><td>${{g.role}}</td><td>${{g.event}}</td><td>${{g.count}}</td><td>${{g.tokens}}</td><td>${{g.mGroups}}</td><td>${{g.cycles.toLocaleString()}}</td><td>${{g.active.toLocaleString()}}</td><td>${{wait}}</td><td>${{waitPercent}}</td><td>${{g.max.toLocaleString()}}</td></tr>`;
   }}).join('');
 }}
 function renderEventTable(events) {{
@@ -840,7 +923,7 @@ function renderEventTable(events) {{
   document.querySelector('#eventTable tbody').innerHTML=rows.map(e=>{{
     const wait=e.wait_cycles===null?'—':e.wait_cycles.toLocaleString();
     const waitPercent=e.wait_cycles!==null&&e.duration_cycles?(e.wait_cycles/e.duration_cycles*100).toFixed(1)+'%':'—';
-    return `<tr><td>${{e.core}}</td><td>${{e.role}}</td><td>${{e.event}}</td><td>${{e.parent_event||'—'}}</td><td>${{e.wave}}</td><td>${{e.expert}}</td><td>[${{e.token_start_in_expert}}, ${{e.token_start_in_expert+e.token_count}})</td><td>${{e.m_group_count}}</td><td>${{e.begin_cycle}}</td><td>${{e.end_cycle}}</td><td>${{e.duration_cycles.toLocaleString()}}</td><td>${{e.active_cycles.toLocaleString()}}</td><td>${{wait}}</td><td>${{waitPercent}}</td><td>${{(e.duration_cycles/1000).toFixed(3)}}</td><td>${{esc(e.begin_trace_point)}}</td><td>${{esc(e.end_trace_point)}}</td></tr>`;
+    return `<tr><td>${{e.core}}</td><td>${{e.role}}</td><td>${{e.event}}</td><td>${{e.parent_event||'—'}}</td><td>${{e.is_operator_event?'—':e.wave}}</td><td>${{e.is_operator_event?'—':e.expert}}</td><td>${{e.is_operator_event?'[0, '+e.token_count+')':'['+e.token_start_in_expert+', '+(e.token_start_in_expert+e.token_count)+')'}}</td><td>${{e.m_group_count}}</td><td>${{e.begin_cycle}}</td><td>${{e.end_cycle}}</td><td>${{e.duration_cycles.toLocaleString()}}</td><td>${{e.active_cycles.toLocaleString()}}</td><td>${{wait}}</td><td>${{waitPercent}}</td><td>${{(e.duration_cycles/1000).toFixed(3)}}</td><td>${{esc(e.begin_trace_point)}}</td><td>${{esc(e.end_trace_point)}}</td></tr>`;
   }}).join('');
 }}
 for(const control of [coreSelect,waveSelect,waitFilter,laneSort,laneLimit]) control.addEventListener('change',render);
