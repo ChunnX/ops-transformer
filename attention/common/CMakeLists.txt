@@ -14,6 +14,7 @@ if(NOT ENABLE_TEST AND NOT BENCHMARK)
 endif()
 foreach(SUB_DIR ${CURRENT_DIRS})
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${SUB_DIR}/CMakeLists.txt")
+        # test
         add_subdirectory(${SUB_DIR})
     endif()
 endforeach()
