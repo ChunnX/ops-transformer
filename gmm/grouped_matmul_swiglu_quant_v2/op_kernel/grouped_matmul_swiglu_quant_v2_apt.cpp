@@ -60,11 +60,11 @@ constexpr bool isMxFp4Input =
 #endif
 } // namespace
 
-#define GMM_SWIGLU_QUANT_PRINT_TEMPLATE(templateName)                    \
-    do {                                                                 \
-        if (GetBlockIdx() == 0) {                                        \
-            AscendC::printf("[GMMSQv2] template: " templateName "\\n"); \
-        }                                                                \
+#define GMM_SWIGLU_QUANT_PRINT_TEMPLATE(templateName) \
+    do { \
+        if (GetBlockIdx() == 0) { \
+            AscendC::printf("[GMMSQv2] template: " templateName "\n"); \
+        } \
     } while (0)
 
 #if defined(GMM_SWIGLU_QUANT_WEIGHT_QUANT)

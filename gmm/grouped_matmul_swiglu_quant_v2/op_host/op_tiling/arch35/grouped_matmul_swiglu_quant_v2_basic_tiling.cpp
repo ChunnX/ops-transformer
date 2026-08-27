@@ -15,6 +15,7 @@
 
 #include <alog_pub.h>
 #include <climits>
+#include <iostream>
 #include "log/log.h"
 #include "op_host/tiling_templates_registry.h"
 #include "op_host/tiling_type.h"
@@ -710,67 +711,67 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoLibApiTiling()
 
     auto &quantParams = tilingData_.gmmSwigluQuantParams;
     auto &mmTiling = tilingData_.mmTilingData;
-    std::ostringstream oss;
-    oss << "DoLibApiTiling tilingData: "
-        << "gmmSwigluQuantParams={groupNum=" << quantParams.get_groupNum()
-        << ", groupListType=" << static_cast<uint32_t>(quantParams.get_groupListType())
-        << ", quantDtype=" << static_cast<uint32_t>(quantParams.get_quantDtype())
-        << ", isMxWeightNzMultiTensor="
-        << static_cast<uint32_t>(quantParams.get_isMxWeightNzMultiTensor())
-        << ", dequantDtype=" << static_cast<uint32_t>(quantParams.get_dequantDtype())
-        << ", rowLen=" << quantParams.get_rowLen()
-        << ", ubAvail=" << quantParams.get_ubAvail()
-        << "}, mmTilingData={M=" << mmTiling.get_M()
-        << ", N=" << mmTiling.get_N()
-        << ", Ka=" << mmTiling.get_Ka()
-        << ", Kb=" << mmTiling.get_Kb()
-        << ", usedCoreNum=" << mmTiling.get_usedCoreNum()
-        << ", baseM=" << mmTiling.get_baseM()
-        << ", baseN=" << mmTiling.get_baseN()
-        << ", baseK=" << mmTiling.get_baseK()
-        << ", singleCoreM=" << mmTiling.get_singleCoreM()
-        << ", singleCoreN=" << mmTiling.get_singleCoreN()
-        << ", singleCoreK=" << mmTiling.get_singleCoreK()
-        << ", depthA1=" << mmTiling.get_depthA1()
-        << ", depthB1=" << mmTiling.get_depthB1()
-        << ", stepM=" << mmTiling.get_stepM()
-        << ", stepN=" << mmTiling.get_stepN()
-        << ", stepKa=" << mmTiling.get_stepKa()
-        << ", stepKb=" << mmTiling.get_stepKb()
-        << ", isBias=" << mmTiling.get_isBias()
-        << ", transLength=" << mmTiling.get_transLength()
-        << ", iterateOrder=" << mmTiling.get_iterateOrder()
-        << ", shareMode=" << mmTiling.get_shareMode()
-        << ", shareL1Size=" << mmTiling.get_shareL1Size()
-        << ", shareL0CSize=" << mmTiling.get_shareL0CSize()
-        << ", shareUbSize=" << mmTiling.get_shareUbSize()
-        << ", batchM=" << mmTiling.get_batchM()
-        << ", batchN=" << mmTiling.get_batchN()
-        << ", singleBatchM=" << mmTiling.get_singleBatchM()
-        << ", singleBatchN=" << mmTiling.get_singleBatchN()
-        << ", depthAL1CacheUB=" << mmTiling.get_depthAL1CacheUB()
-        << ", depthBL1CacheUB=" << mmTiling.get_depthBL1CacheUB()
-        << ", dbL0A=" << mmTiling.get_dbL0A()
-        << ", dbL0B=" << mmTiling.get_dbL0B()
-        << ", dbL0C=" << mmTiling.get_dbL0C()
-        << ", ALayoutInfoB=" << mmTiling.get_ALayoutInfoB()
-        << ", ALayoutInfoS=" << mmTiling.get_ALayoutInfoS()
-        << ", ALayoutInfoN=" << mmTiling.get_ALayoutInfoN()
-        << ", ALayoutInfoG=" << mmTiling.get_ALayoutInfoG()
-        << ", ALayoutInfoD=" << mmTiling.get_ALayoutInfoD()
-        << ", BLayoutInfoB=" << mmTiling.get_BLayoutInfoB()
-        << ", BLayoutInfoS=" << mmTiling.get_BLayoutInfoS()
-        << ", BLayoutInfoN=" << mmTiling.get_BLayoutInfoN()
-        << ", BLayoutInfoG=" << mmTiling.get_BLayoutInfoG()
-        << ", BLayoutInfoD=" << mmTiling.get_BLayoutInfoD()
-        << ", CLayoutInfoB=" << mmTiling.get_CLayoutInfoB()
-        << ", CLayoutInfoS1=" << mmTiling.get_CLayoutInfoS1()
-        << ", CLayoutInfoN=" << mmTiling.get_CLayoutInfoN()
-        << ", CLayoutInfoG=" << mmTiling.get_CLayoutInfoG()
-        << ", CLayoutInfoS2=" << mmTiling.get_CLayoutInfoS2()
-        << ", BatchNum=" << mmTiling.get_BatchNum()
-        << ", mxTypePara=" << mmTiling.get_mxTypePara() << "}";
-    OP_LOGI(context_->GetNodeName(), "%s", oss.str().c_str());
+    std::cout << "DoLibApiTiling tilingData:" << std::endl;
+    std::cout << "gmmSwigluQuantParams.groupNum=" << quantParams.get_groupNum() << std::endl;
+    std::cout << "gmmSwigluQuantParams.groupListType=" << static_cast<uint32_t>(quantParams.get_groupListType())
+              << std::endl;
+    std::cout << "gmmSwigluQuantParams.quantDtype=" << static_cast<uint32_t>(quantParams.get_quantDtype()) << std::endl;
+    std::cout << "gmmSwigluQuantParams.isMxWeightNzMultiTensor="
+              << static_cast<uint32_t>(quantParams.get_isMxWeightNzMultiTensor()) << std::endl;
+    std::cout << "gmmSwigluQuantParams.dequantDtype=" << static_cast<uint32_t>(quantParams.get_dequantDtype())
+              << std::endl;
+    std::cout << "gmmSwigluQuantParams.rowLen=" << quantParams.get_rowLen() << std::endl;
+    std::cout << "gmmSwigluQuantParams.ubAvail=" << quantParams.get_ubAvail() << std::endl;
+    std::cout << "mmTilingData.M=" << mmTiling.get_M() << std::endl;
+    std::cout << "mmTilingData.N=" << mmTiling.get_N() << std::endl;
+    std::cout << "mmTilingData.Ka=" << mmTiling.get_Ka() << std::endl;
+    std::cout << "mmTilingData.Kb=" << mmTiling.get_Kb() << std::endl;
+    std::cout << "mmTilingData.usedCoreNum=" << mmTiling.get_usedCoreNum() << std::endl;
+    std::cout << "mmTilingData.baseM=" << mmTiling.get_baseM() << std::endl;
+    std::cout << "mmTilingData.baseN=" << mmTiling.get_baseN() << std::endl;
+    std::cout << "mmTilingData.baseK=" << mmTiling.get_baseK() << std::endl;
+    std::cout << "mmTilingData.singleCoreM=" << mmTiling.get_singleCoreM() << std::endl;
+    std::cout << "mmTilingData.singleCoreN=" << mmTiling.get_singleCoreN() << std::endl;
+    std::cout << "mmTilingData.singleCoreK=" << mmTiling.get_singleCoreK() << std::endl;
+    std::cout << "mmTilingData.depthA1=" << mmTiling.get_depthA1() << std::endl;
+    std::cout << "mmTilingData.depthB1=" << mmTiling.get_depthB1() << std::endl;
+    std::cout << "mmTilingData.stepM=" << mmTiling.get_stepM() << std::endl;
+    std::cout << "mmTilingData.stepN=" << mmTiling.get_stepN() << std::endl;
+    std::cout << "mmTilingData.stepKa=" << mmTiling.get_stepKa() << std::endl;
+    std::cout << "mmTilingData.stepKb=" << mmTiling.get_stepKb() << std::endl;
+    std::cout << "mmTilingData.isBias=" << mmTiling.get_isBias() << std::endl;
+    std::cout << "mmTilingData.transLength=" << mmTiling.get_transLength() << std::endl;
+    std::cout << "mmTilingData.iterateOrder=" << mmTiling.get_iterateOrder() << std::endl;
+    std::cout << "mmTilingData.shareMode=" << mmTiling.get_shareMode() << std::endl;
+    std::cout << "mmTilingData.shareL1Size=" << mmTiling.get_shareL1Size() << std::endl;
+    std::cout << "mmTilingData.shareL0CSize=" << mmTiling.get_shareL0CSize() << std::endl;
+    std::cout << "mmTilingData.shareUbSize=" << mmTiling.get_shareUbSize() << std::endl;
+    std::cout << "mmTilingData.batchM=" << mmTiling.get_batchM() << std::endl;
+    std::cout << "mmTilingData.batchN=" << mmTiling.get_batchN() << std::endl;
+    std::cout << "mmTilingData.singleBatchM=" << mmTiling.get_singleBatchM() << std::endl;
+    std::cout << "mmTilingData.singleBatchN=" << mmTiling.get_singleBatchN() << std::endl;
+    std::cout << "mmTilingData.depthAL1CacheUB=" << mmTiling.get_depthAL1CacheUB() << std::endl;
+    std::cout << "mmTilingData.depthBL1CacheUB=" << mmTiling.get_depthBL1CacheUB() << std::endl;
+    std::cout << "mmTilingData.dbL0A=" << mmTiling.get_dbL0A() << std::endl;
+    std::cout << "mmTilingData.dbL0B=" << mmTiling.get_dbL0B() << std::endl;
+    std::cout << "mmTilingData.dbL0C=" << mmTiling.get_dbL0C() << std::endl;
+    std::cout << "mmTilingData.ALayoutInfoB=" << mmTiling.get_ALayoutInfoB() << std::endl;
+    std::cout << "mmTilingData.ALayoutInfoS=" << mmTiling.get_ALayoutInfoS() << std::endl;
+    std::cout << "mmTilingData.ALayoutInfoN=" << mmTiling.get_ALayoutInfoN() << std::endl;
+    std::cout << "mmTilingData.ALayoutInfoG=" << mmTiling.get_ALayoutInfoG() << std::endl;
+    std::cout << "mmTilingData.ALayoutInfoD=" << mmTiling.get_ALayoutInfoD() << std::endl;
+    std::cout << "mmTilingData.BLayoutInfoB=" << mmTiling.get_BLayoutInfoB() << std::endl;
+    std::cout << "mmTilingData.BLayoutInfoS=" << mmTiling.get_BLayoutInfoS() << std::endl;
+    std::cout << "mmTilingData.BLayoutInfoN=" << mmTiling.get_BLayoutInfoN() << std::endl;
+    std::cout << "mmTilingData.BLayoutInfoG=" << mmTiling.get_BLayoutInfoG() << std::endl;
+    std::cout << "mmTilingData.BLayoutInfoD=" << mmTiling.get_BLayoutInfoD() << std::endl;
+    std::cout << "mmTilingData.CLayoutInfoB=" << mmTiling.get_CLayoutInfoB() << std::endl;
+    std::cout << "mmTilingData.CLayoutInfoS1=" << mmTiling.get_CLayoutInfoS1() << std::endl;
+    std::cout << "mmTilingData.CLayoutInfoN=" << mmTiling.get_CLayoutInfoN() << std::endl;
+    std::cout << "mmTilingData.CLayoutInfoG=" << mmTiling.get_CLayoutInfoG() << std::endl;
+    std::cout << "mmTilingData.CLayoutInfoS2=" << mmTiling.get_CLayoutInfoS2() << std::endl;
+    std::cout << "mmTilingData.BatchNum=" << mmTiling.get_BatchNum() << std::endl;
+    std::cout << "mmTilingData.mxTypePara=" << mmTiling.get_mxTypePara() << std::endl;
 
     return ge::GRAPH_SUCCESS;
 }
