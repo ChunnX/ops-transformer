@@ -43,6 +43,34 @@ cannbotdsl_generate_provider_aclnn_registry(
   OUTPUT_DIR "${_cannbotdsl_registry_dir}"
   RUNTIME_ROOT "${CANNBOTDSL_RUNTIME_ROOT}")
 
+set(_flash_kda_policy_dir
+  "${CMAKE_CURRENT_LIST_DIR}/attention/flash_kda")
+set(_flash_kda_policy_source
+  "${_flash_kda_policy_dir}/flash_kda_variant_policy.py")
+set(_flash_kda_policy_generator
+  "${_flash_kda_policy_dir}/generate_variant_policy.py")
+set(_flash_kda_manifest
+  "${_cannbotdsl_stage_dir}/packages/ops-transformer-flash-kda/0.1.0/manifest.json")
+set(_flash_kda_policy_header
+  "${_cannbotdsl_registry_dir}/flash_kda_variant_policy.h")
+add_custom_command(
+  OUTPUT "${_flash_kda_policy_header}"
+  COMMAND "${CMAKE_COMMAND}" -E env
+    "PYTHONPATH=${_flash_kda_policy_dir}"
+    python3 "${_flash_kda_policy_generator}"
+    --manifest "${_flash_kda_manifest}"
+    --output "${_flash_kda_policy_header}"
+  DEPENDS
+    "${CANNBOTDSL_PROVIDER_ACLNN_REGISTRY_HEADER}"
+    "${_flash_kda_policy_source}"
+    "${_flash_kda_policy_generator}"
+  COMMENT "Validating FlashKDA variant coverage and generating L0 policy"
+  VERBATIM)
+add_custom_target(cannbotdsl_flash_kda_variant_policy
+  DEPENDS "${_flash_kda_policy_header}")
+add_dependencies(cannbotdsl_flash_kda_variant_policy
+  cannbotdsl_provider_aclnn_registry)
+
 set(CANNBOTDSL_PROVIDER_OPBASE_SOURCE_DIR "" CACHE PATH
   "opbase source tree containing opdev/provider_kernel.h")
 if(NOT CANNBOTDSL_PROVIDER_OPBASE_SOURCE_DIR AND
@@ -104,7 +132,8 @@ target_sources(${OPHOST_NAME}_opapi_obj PRIVATE
   "${CANNBOTDSL_PROVIDER_ACLNN_ADAPTER_SOURCE}"
   "${CMAKE_CURRENT_LIST_DIR}/flash_kda_l0.cpp")
 add_dependencies(${OPHOST_NAME}_opapi_obj
-  cannbotdsl_provider_aclnn_registry)
+  cannbotdsl_provider_aclnn_registry
+  cannbotdsl_flash_kda_variant_policy)
 target_include_directories(${OPHOST_NAME}_opapi_obj BEFORE PRIVATE
   "${CANNBOTDSL_PROVIDER_OPBASE_SOURCE_DIR}/include/nnopbase"
   "${_cannbotdsl_registry_dir}"
@@ -129,6 +158,7 @@ if(CANNBOTDSL_BUILD_FLASH_KDA_ACLNN_SMOKE)
   target_compile_features(cannbotdsl_flash_kda_aclnn_smoke PRIVATE cxx_std_17)
   target_include_directories(cannbotdsl_flash_kda_aclnn_smoke PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}"
+    "${_cannbotdsl_registry_dir}"
     "${CANNBOTDSL_PROVIDER_OPBASE_SOURCE_DIR}/include/aclnnop"
     "${ASCEND_CANN_PACKAGE_PATH}/include"
     "${ASCEND_CANN_PACKAGE_PATH}/${CMAKE_SYSTEM_PROCESSOR}-linux/include")

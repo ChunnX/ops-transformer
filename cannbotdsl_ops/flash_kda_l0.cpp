@@ -14,6 +14,7 @@
 #include "opdev/framework_op.h"
 #include "cannbotdsl_provider_adapter.h"
 #include "cannbotdsl_provider_registry.h"
+#include "flash_kda_variant_policy.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_def.h"
 #include "opdev/op_dfx.h"
@@ -23,11 +24,7 @@
 
 namespace {
 
-constexpr int64_t kChunkSize = 64;
 constexpr int64_t kHeadDim = 128;
-// Ascend950PR has 28 cube cores. FlashKDA uses a whole-grid barrier, so the
-// packaged launch must fit in a single resident cube-core wave.
-constexpr int64_t kBlockNum = 28;
 
 static_assert(op::PROVIDER_KERNEL_SPEC_ABI_VERSION == 1U,
               "FlashKDA requires opbase Provider kernel ABI v1");
@@ -67,73 +64,6 @@ bool HasShape(const aclTensor* tensor, std::initializer_list<int64_t> expected)
     return true;
 }
 
-bool IsSupportedVariant(int64_t batch, int64_t heads, int64_t sequence)
-{
-    if (sequence <= 0 || sequence % kChunkSize != 0) {
-        return false;
-    }
-    if (batch == 1 && heads == 3) {
-        return sequence == 8192 || (sequence >= 32768 && sequence <= 131072);
-    }
-    if (batch == 4 && heads == 3) {
-        return sequence >= 8192 && sequence <= 131072;
-    }
-    if (heads != 96) {
-        return false;
-    }
-    if (batch == 1 || batch == 4) {
-        return sequence >= 1024 && sequence <= 65536;
-    }
-    return batch == 2 && sequence >= 10240 && sequence <= 65536;
-}
-
-int64_t ResolveGroup(int64_t bnTotal, int64_t sequence)
-{
-    int64_t group = 1;
-    if (bnTotal <= 1) {
-        group = 512;
-    } else if (bnTotal <= 3) {
-        group = 256;
-    } else if (bnTotal <= 6) {
-        group = 128;
-    } else if (bnTotal <= 13) {
-        group = 64;
-    } else if (bnTotal <= 26) {
-        group = 32;
-    } else if (bnTotal <= 53) {
-        group = 16;
-    } else if (bnTotal <= 107) {
-        group = 8;
-    } else if (bnTotal <= 215) {
-        group = 4;
-    } else if (bnTotal <= 430) {
-        group = 2;
-    }
-    const int64_t chunks = sequence / kChunkSize;
-    group = group < chunks ? group : chunks;
-    while (bnTotal * group < kBlockNum && group < chunks) {
-        group *= 2;
-    }
-    return group > 0 ? group : 1;
-}
-
-int64_t ResolveDvBase(int64_t bnTotal, int64_t sequence)
-{
-    if (sequence / kChunkSize < 1) {
-        return kHeadDim;
-    }
-    if (bnTotal <= 4) {
-        return 16;
-    }
-    if (bnTotal <= 8) {
-        return 32;
-    }
-    if (bnTotal <= 16) {
-        return 64;
-    }
-    return kHeadDim;
-}
-
 bool CheckTensorContract(
     const aclTensor* k, const aclTensor* v, const aclTensor* q,
     const aclTensor* beta, const aclTensor* g, const aclTensor* aLog,
@@ -151,7 +81,9 @@ bool CheckTensorContract(
     const int64_t batch = Dim(v, 0U);
     const int64_t heads = Dim(v, 1U);
     const int64_t sequence = Dim(v, 2U);
-    if (!IsSupportedVariant(batch, heads, sequence) || Dim(v, 3U) != kHeadDim) {
+    if (cannbotdsl::generated::MatchFlashKdaVariantPolicy(
+            batch, heads, sequence) == nullptr ||
+        Dim(v, 3U) != kHeadDim) {
         return false;
     }
     if (!HasShape(k, {batch, heads, sequence, kHeadDim}) ||
@@ -205,13 +137,16 @@ aclnnStatus FlashKda(
     const int64_t batch = Dim(v, 0U);
     const int64_t heads = Dim(v, 1U);
     const int64_t sequence = Dim(v, 2U);
+    const auto* deliveryPolicy =
+        cannbotdsl::generated::MatchFlashKdaVariantPolicy(
+            batch, heads, sequence);
+    if (deliveryPolicy == nullptr) {
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     if (batch <= 0 || heads <= 0 ||
         batch > std::numeric_limits<int64_t>::max() / heads) {
         return ACLNN_ERR_PARAM_INVALID;
     }
-    const int64_t bnTotal = batch * heads;
-    const int64_t group = ResolveGroup(bnTotal, sequence);
-
     cannbotdsl::generated::FlashKdaEntryArguments entryArguments;
     entryArguments.K = k;
     entryArguments.V = v;
@@ -225,9 +160,9 @@ aclnnStatus FlashKda(
     entryArguments.lower_bound = lowerBound;
     entryArguments.o = out;
     entryArguments.st_out = finalState;
-    entryArguments.group = group;
-    entryArguments.dv_base = ResolveDvBase(bnTotal, sequence);
-    entryArguments.block_num = kBlockNum;
+    entryArguments.group = deliveryPolicy->group;
+    entryArguments.dv_base = deliveryPolicy->dvBase;
+    entryArguments.block_num = deliveryPolicy->blockNum;
     cannbotdsl::generated::FlashKdaProviderArguments providerArguments;
     aclnnStatus status =
         cannbotdsl::generated::PrepareFlashKdaProviderArguments(

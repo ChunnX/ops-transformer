@@ -31,6 +31,7 @@ from cannbotdsl.jit_function import jit
 from cannbotdsl.kernel_launcher import kernel
 from cannbotdsl.math import cast, cumsum, matmul
 from cannbotdsl.package import PackageVariant
+from flash_kda_variant_policy import FLASH_KDA_VARIANT_POLICIES
 from cannbotdsl.raw_reg import (
     PackMode,
     UnpackMode,
@@ -2114,6 +2115,7 @@ def _flash_kda_package_variant(
     sequence_min: int,
     sequence_max: int,
     group: int,
+    dv_base: int,
     block_num: int = ASCEND950PR_PACKAGE_BLOCK_NUM,
 ) -> PackageVariant:
     sequence = cannbotdsl.Dim(
@@ -2157,63 +2159,26 @@ def _flash_kda_package_variant(
         SUPPORTED_HEAD_DIM,
         group,
         "BNSD",
-        get_dv_base_config(bn_total, sequence_min),
+        dv_base,
         block_num,
     )
     return PackageVariant(id=variant_id, args=args)
 
 
 def flash_kda_variants() -> list[PackageVariant]:
-    """Finite A5 BNSD delivery set derived from the checked-in bench shapes."""
+    """Finite A5 BNSD delivery set from the shared L0/AOT policy."""
     return [
         _flash_kda_package_variant(
-            "k3_b1_s8192",
-            batch=1,
-            heads=3,
-            sequence_min=8192,
-            sequence_max=8192,
-            group=128,
-        ),
-        _flash_kda_package_variant(
-            "k3_b1_s32768_131072",
-            batch=1,
-            heads=3,
-            sequence_min=32768,
-            sequence_max=131072,
-            group=256,
-        ),
-        _flash_kda_package_variant(
-            "k3_b4_s8192_131072",
-            batch=4,
-            heads=3,
-            sequence_min=8192,
-            sequence_max=131072,
-            group=64,
-        ),
-        _flash_kda_package_variant(
-            "prefill_n96_b1_s1024_65536",
-            batch=1,
-            heads=96,
-            sequence_min=1024,
-            sequence_max=65536,
-            group=8,
-        ),
-        _flash_kda_package_variant(
-            "prefill_n96_b2_s10240_65536",
-            batch=2,
-            heads=96,
-            sequence_min=10240,
-            sequence_max=65536,
-            group=4,
-        ),
-        _flash_kda_package_variant(
-            "prefill_n96_b4_s1024_65536",
-            batch=4,
-            heads=96,
-            sequence_min=1024,
-            sequence_max=65536,
-            group=2,
-        ),
+            policy.variant_id,
+            batch=policy.batch,
+            heads=policy.heads,
+            sequence_min=policy.sequence_min,
+            sequence_max=policy.sequence_max,
+            group=policy.group,
+            dv_base=policy.dv_base,
+            block_num=policy.block_num,
+        )
+        for policy in FLASH_KDA_VARIANT_POLICIES
     ]
 
 

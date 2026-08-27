@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "aclnn_flash_kda.h"
+#include "flash_kda_variant_policy.h"
 
 namespace {
 
@@ -187,22 +188,8 @@ struct ShapeConfig {
 
 bool IsSupportedShape(const ShapeConfig &shape)
 {
-    if (shape.sequence <= 0 || shape.sequence % 64 != 0) {
-        return false;
-    }
-    if (shape.batch == 1 && shape.heads == 3) {
-        return shape.sequence == 8192 || (shape.sequence >= 32768 && shape.sequence <= 131072);
-    }
-    if (shape.batch == 4 && shape.heads == 3) {
-        return shape.sequence >= 8192 && shape.sequence <= 131072;
-    }
-    if (shape.heads != 96) {
-        return false;
-    }
-    if (shape.batch == 1 || shape.batch == 4) {
-        return shape.sequence >= 1024 && shape.sequence <= 65536;
-    }
-    return shape.batch == 2 && shape.sequence >= 10240 && shape.sequence <= 65536;
+    return cannbotdsl::generated::MatchFlashKdaVariantPolicy(
+               shape.batch, shape.heads, shape.sequence) != nullptr;
 }
 
 struct Invocation {

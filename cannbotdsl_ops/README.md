@@ -54,6 +54,13 @@ schema v3 还显式声明 `output_parameters=["o", "st_out"]`；当前生成器�
 `SetFlashKdaProviderWorkspaceTensors`。因此七段 scratch、identity 常量、view、
 checked runtime shape 求值、物理参数顺序和底层 workspace 登记均无需手写。
 
+六个交付域及其 `group/dv_base/block_num` 由
+`attention/flash_kda/flash_kda_variant_policy.py` 单点声明。Python AOT variant
+直接消费该表；构建在生成 `libcust_opapi.so` 前会穷举每个 64-token 交付点，拒绝
+覆盖空洞/重叠，并逐 artifact 校验真实 sidecar 的 B/N/S 约束与 constexpr，随后
+生成同源 C++ L0/smoke matcher。任何 manifest、specialization 或 L0 支持域漂移
+都会在编译阶段 fail-closed。
+
 ## 构建
 
 先构建 CANNBotDSL Python runtime，然后在 ops-transformer 根目录配置：
@@ -189,9 +196,9 @@ Ascend950PR 上已完成以下验证：
 - 已生成并只读解包实际混合 `.run`：归档内 SHA256 校验通过，Provider 包内全部
   文件 checksum 通过；包中同时存在 8 个传统 ChunkKda `.o`、6 个 FlashKDA
   `provider.so`，且 `libcust_opapi.so` 同时导出 ChunkKda ACLNN、FlashKDA ACLNN
-  和 `l0op::FlashKda`。本次官方 CPack 完整构建样本大小为 11,650,480 字节，
+  和 `l0op::FlashKda`。本次官方 CPack 完整构建样本大小为 11,650,113 字节，
   整包 SHA256 为
-  `169d3c5cf8020327deb3d17d7e4d1b49daf985f95e26cd1aefe4b919967d9bf9`；
+  `eafe8f89e89f5ee2c05e87dce8c60f427615fb52d77ffdc6f8fc2aaec6ebd566`；
 
 ## 当前 FlashKDA 契约
 
@@ -199,7 +206,8 @@ Ascend950PR 上已完成以下验证：
   final_state` 为 FP32；
 - head dimension 固定为 128，chunk size 固定为 64；
 - `lower_bound` 必须为有限值且位于闭区间 `[-5, 0]`；
-- 当前仅发布 package provider 声明中的 6 组有限 `(B, N, S)` 变体；
+- 当前仅发布单一策略表声明并经 manifest/sidecar 构建门禁证明唯一匹配的
+  6 组有限 `(B, N, S)` 变体；
 - 7 个内部临时张量由 executor workspace 分配并在 launch 前回填地址；
 - Provider 物理 ABI 为 16 个 tensor inputs、2 个 tensor outputs、4 个 scalar
   attributes；顺序必须与生成 registry 完全一致；
