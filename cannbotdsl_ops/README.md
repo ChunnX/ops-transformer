@@ -15,6 +15,8 @@
 - `l0op::FlashKda` 可被其他 L2 ACLNN 实现直接组装；
 - `aclnnFlashKdaGetWorkspaceSize` / `aclnnFlashKda` 提供独立的两阶段 ACLNN
   调用入口；
+- `aclnnCustomFlashKdaGetWorkspaceSize` / `aclnnCustomFlashKda` 是随包交付的
+  L2 示例/产品入口，在独立 executor 中仅通过公共 `l0op::FlashKda` 组图；
 - L0 executor 内同时包含生成的 workspace 分配、`CopyToNpu`/`CreateView`
   常量与 view 准备以及 Provider 节点，因而验证了混合执行拓扑，而非仅把
   两类文件放在同一个安装目录。
@@ -36,8 +38,9 @@ Provider kernel ABI v1，并在构建及运行时提供下列符号：
 kernel/registry ABI v1 做了编译期断言；CMake 还会链接
 `RequireProviderAclnnRuntimeAbiV1`，在配置阶段拒绝旧运行库。
 
-当前方案不生成传统 OpDef、InferShape、TilingData 或 TilingKey。FlashKDA 是供
-L2 组装的 ACLNN L0；本目录只手写公共契约校验以及 `group/dv_base/block_num`
+当前方案不生成传统 OpDef、InferShape、TilingData 或 TilingKey。FlashKDA 同时
+交付可供任意 L2 组装的 ACLNN L0 和 `aclnnCustomFlashKda` L2；本目录只手写公共
+契约校验、L2 组图以及 `group/dv_base/block_num`
 调度策略，`@entry` 的 workspace/constant/view、checked shape 表达式、物理
 Provider 参数结构、`OP_INPUT/OP_OUTPUT/OP_ATTR` 顺序和 workspace 登记均由
 schema v3 adapter 生成，Provider 变体选择由生成 registry 完成。
@@ -53,6 +56,15 @@ schema v3 还显式声明 `output_parameters=["o", "st_out"]`；当前生成器�
 `FlashKdaProviderArguments`、`MakeFlashKdaProviderOpArgContext` 和
 `SetFlashKdaProviderWorkspaceTensors`。因此七段 scratch、identity 常量、view、
 checked runtime shape 求值、物理参数顺序和底层 workspace 登记均无需手写。
+
+三层接口职责固定如下：
+
+- `l0op::FlashKda(..., aclOpExecutor*)`：公共 L0 组图函数，供仓内或外部 L2 C++
+  实现自由组合；
+- `aclnnFlashKda*`：单个 FlashKDA L0 的独立两阶段 ACLNN 包装，用于调试和兼容；
+- `aclnnCustomFlashKda*`：正式 L2 交付接口，由 `custom_flash_kda.cpp` 创建 executor
+  并调用公共 L0。该层不引用 registry、Provider sidecar、物理 slot 或隐藏
+  workspace API，后续可在这里继续组装 layout/view/cast 等其他 L0。
 
 六个交付域及其 `group/dv_base/block_num` 由
 `attention/flash_kda/flash_kda_variant_policy.py` 单点声明。Python AOT variant
@@ -145,8 +157,9 @@ cmake --build build-provider --target cannbotdsl_flash_kda_acceptance -j4
 
 该 target 只读校验并解包 `.run`，强制 `ldd` 将 smoke 解析到解包所得
 `libcust_opapi.so` 和指定 Provider ABI v1 `libnnopbase.so`，随后由单一 variant
-策略表驱动六 shape 的完整 CPU golden、代表性 native 位级对拍、三轮单流时延，
-最后执行 2 streams × 20 waves 和 10 类 GetWorkspace 错误矩阵。JSON 报告记录
+策略表通过 `aclnnCustomFlashKda*` 驱动六 shape 的完整 CPU golden、代表性 native
+位级对拍、三轮单流时延，最后执行 2 streams × 20 waves 和 10 类 GetWorkspace
+错误矩阵；原 `aclnnFlashKda*` 另执行一次 standalone 回归。JSON 报告记录
 归档/二进制 SHA256、源码提交、实际动态库路径、每个 shape 的 workspace/误差/
 时延和 soak 结果；任一子门禁失败时写入 `passed=false` 并使 target 失败。
 
@@ -161,6 +174,7 @@ cmake --build build-provider --target cannbotdsl_flash_kda_acceptance -j4
 ```text
 packages/vendors/<vendor>_transformer/
 ├── op_api/
+│   ├── include/aclnnop/aclnn_custom_flash_kda.h
 │   ├── include/aclnnop/aclnn_flash_kda.h
 │   └── lib/libcust_opapi.so
 └── op_impl/cannbotdsl/
@@ -193,7 +207,7 @@ provider_pkg="${extract_dir}/packages/vendors/<vendor>_transformer/op_impl/cannb
 (cd "${provider_pkg}" && sha256sum -c checksums.sha256)
 
 nm -D -C "${extract_dir}/packages/vendors/<vendor>_transformer/op_api/lib/libcust_opapi.so" \
-  | grep -E 'aclnn(ChunkKdaFwd|FlashKda)|l0op::FlashKda'
+  | grep -E 'aclnn(ChunkKdaFwd|CustomFlashKda|FlashKda)|l0op::FlashKda'
 ```
 
 该 makeself 封装的单独 `--check` 会继续执行内嵌 `install.sh`；内嵌脚本又会忽略
@@ -204,6 +218,7 @@ nm -D -C "${extract_dir}/packages/vendors/<vendor>_transformer/op_api/lib/libcus
 依赖下载流程。`verify_mixed_run.py` 不安装归档，并会自动检查 registry/manifest
 语义摘要、entry schema v3、12 个公共参数、2 个输出参数、3 个内部 specialization、artifact
 digest、包内 checksum、传统 kernel 数量下限、Provider DSO 数量和混合导出符号；
+同时要求 L0/Custom L2 两个公开头文件存在；
 发布配置还可用命令行参数锁定传统 kernel 的精确数量。
 
 ## 实机验证

@@ -31,9 +31,15 @@ PUBLIC_PARAMETERS = [
 ]
 INTERNAL_PARAMETERS = ["group", "dv_base", "block_num"]
 OUTPUT_PARAMETERS = ["o", "st_out"]
+REQUIRED_PUBLIC_HEADERS = [
+    "aclnn_custom_flash_kda.h",
+    "aclnn_flash_kda.h",
+]
 REQUIRED_SYMBOLS = [
     "aclnnChunkKdaFwd",
     "aclnnChunkKdaFwdGetWorkspaceSize",
+    "aclnnCustomFlashKda",
+    "aclnnCustomFlashKdaGetWorkspaceSize",
     "aclnnFlashKda",
     "aclnnFlashKdaGetWorkspaceSize",
     "l0op::FlashKda(",
@@ -189,7 +195,7 @@ def _verify_mixed_contents(
     vendor_root: pathlib.Path,
     minimum_traditional_kernel_count: int,
     expected_traditional_kernel_count: int | None,
-) -> tuple[int, pathlib.Path]:
+) -> tuple[int, pathlib.Path, list[str]]:
     traditional_root = vendor_root / "op_impl/ai_core/tbe/kernel"
     traditional_kernels = sorted(traditional_root.glob("**/*.o"))
     if len(traditional_kernels) < minimum_traditional_kernel_count:
@@ -209,16 +215,32 @@ def _verify_mixed_contents(
     opapi = vendor_root / "op_api/lib/libcust_opapi.so"
     if not opapi.is_file():
         raise AssertionError(f"missing mixed opapi library: {opapi}")
+    include_root = vendor_root / "op_api/include/aclnnop"
+    for header in REQUIRED_PUBLIC_HEADERS:
+        if not (include_root / header).is_file():
+            raise AssertionError(f"missing public ACLNN header: {header}")
     symbols = subprocess.run(
         ["nm", "-D", "-C", str(opapi)],
         check=True,
         capture_output=True,
         text=True,
     ).stdout
+    _verify_required_symbols(symbols)
+    return len(traditional_kernels), opapi, list(REQUIRED_PUBLIC_HEADERS)
+
+
+def _verify_required_symbols(symbols: str) -> None:
+    symbol_lines = symbols.splitlines()
     for symbol in REQUIRED_SYMBOLS:
-        if symbol not in symbols:
+        if "(" in symbol:
+            present = any(symbol in line for line in symbol_lines)
+        else:
+            present = any(
+                line.split() and line.split()[-1] == symbol
+                for line in symbol_lines
+            )
+        if not present:
             raise AssertionError(f"libcust_opapi.so does not export {symbol!r}")
-    return len(traditional_kernels), opapi
 
 
 def _extract_run(run_file: pathlib.Path, extract_root: pathlib.Path) -> None:
@@ -275,7 +297,7 @@ def verify_run_package(
     provider_count, checked_files = _verify_provider_package(
         vendor_root, package_name, expected_provider_count
     )
-    traditional_count, opapi = _verify_mixed_contents(
+    traditional_count, opapi, public_headers = _verify_mixed_contents(
         vendor_root,
         minimum_traditional_kernel_count,
         expected_traditional_kernel_count,
@@ -285,6 +307,7 @@ def verify_run_package(
         "archive_size": run_file.stat().st_size,
         "checked_package_files": checked_files,
         "opapi": str(opapi.relative_to(extract_root)),
+        "public_acl_nn_headers": public_headers,
         "provider_binaries": provider_count,
         "traditional_kernel_objects": traditional_count,
         "vendor": vendor_root.name,

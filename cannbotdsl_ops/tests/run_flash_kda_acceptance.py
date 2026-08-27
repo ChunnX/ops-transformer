@@ -319,6 +319,23 @@ def main() -> int:
                 },
             }
 
+            standalone_l0_output = _run(
+                [
+                    str(smoke),
+                    "--api",
+                    "standalone-l0",
+                    "--waves",
+                    "1",
+                ],
+                environment=environment,
+                description="standalone FlashKDA L0 ACLNN regression",
+            )
+            standalone_l0_result = _parse_smoke(
+                standalone_l0_output,
+                expected_streams=1,
+                expected_waves=1,
+            )
+
             variants = []
             for policy in FLASH_KDA_VARIANT_POLICIES:
                 dump_dir = work_root / f"dump-{policy.variant_id}"
@@ -326,6 +343,8 @@ def main() -> int:
                 smoke_output = _run(
                     [
                         str(smoke),
+                        "--api",
+                        "custom-l2",
                         "--batch",
                         str(policy.batch),
                         "--heads",
@@ -401,6 +420,8 @@ def main() -> int:
             soak_output = _run(
                 [
                     str(smoke),
+                    "--api",
+                    "custom-l2",
                     "--stress",
                     "--negative",
                     "--waves",
@@ -431,10 +452,12 @@ def main() -> int:
                     "cannbotdsl_commit": _git_head(cannbotdsl_source),
                 },
                 configuration={
+                    "delivery_api": "aclnnCustomFlashKda",
                     "timing_waves": arguments.timing_waves,
                     "soak_streams": 2,
                     "soak_waves": arguments.soak_waves,
                 },
+                standalone_l0_regression=standalone_l0_result,
                 variants=variants,
                 soak=soak_result,
             )

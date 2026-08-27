@@ -16,6 +16,7 @@
 #include <utility>
 #include <vector>
 
+#include "aclnn_custom_flash_kda.h"
 #include "aclnn_flash_kda.h"
 #include "flash_kda_variant_policy.h"
 
@@ -183,6 +184,45 @@ constexpr double kLowerBound = -1.0;
 constexpr aclnnStatus kAclnnSuccess = 0;
 constexpr aclnnStatus kAclnnFailure = -1;
 
+enum class DeliveryApi {
+    kCustomL2,
+    kStandaloneL0,
+};
+
+const char *DeliveryApiName(DeliveryApi api)
+{
+    return api == DeliveryApi::kCustomL2 ? "aclnnCustomFlashKda"
+                                        : "aclnnFlashKda";
+}
+
+aclnnStatus GetWorkspaceSize(
+    DeliveryApi api, const aclTensor *k, const aclTensor *v,
+    const aclTensor *q, const aclTensor *beta, const aclTensor *g,
+    const aclTensor *aLog, const aclTensor *dtBias,
+    const aclTensor *initialState, double scale, double lowerBound,
+    const aclTensor *out, const aclTensor *finalState,
+    uint64_t *workspaceSize, aclOpExecutor **executor)
+{
+    if (api == DeliveryApi::kCustomL2) {
+        return aclnnCustomFlashKdaGetWorkspaceSize(
+            k, v, q, beta, g, aLog, dtBias, initialState, scale, lowerBound,
+            out, finalState, workspaceSize, executor);
+    }
+    return aclnnFlashKdaGetWorkspaceSize(
+        k, v, q, beta, g, aLog, dtBias, initialState, scale, lowerBound, out,
+        finalState, workspaceSize, executor);
+}
+
+aclnnStatus Execute(DeliveryApi api, void *workspace, uint64_t workspaceSize,
+                    aclOpExecutor *executor, aclrtStream stream)
+{
+    if (api == DeliveryApi::kCustomL2) {
+        return aclnnCustomFlashKda(
+            workspace, workspaceSize, executor, stream);
+    }
+    return aclnnFlashKda(workspace, workspaceSize, executor, stream);
+}
+
 struct ShapeConfig {
     int64_t batch = kDefaultBatch;
     int64_t heads = kDefaultHeads;
@@ -253,7 +293,7 @@ bool DumpInvocationOutputs(const Invocation &invocation, const std::string &dump
 
 bool PrepareInvocation(Invocation &invocation, const ShapeConfig &shape,
                        uint32_t seedOffset, size_t wave, size_t streamIndex,
-                       bool checkNegative)
+                       bool checkNegative, DeliveryApi deliveryApi)
 {
     if (!Check(aclrtCreateStream(&invocation.stream), "aclrtCreateStream")) {
         return false;
@@ -287,7 +327,8 @@ bool PrepareInvocation(Invocation &invocation, const ShapeConfig &shape,
             uint64_t rejectedWorkspaceSize = 123U;
             aclOpExecutor *rejectedExecutor =
                 reinterpret_cast<aclOpExecutor *>(static_cast<uintptr_t>(1U));
-            const aclnnStatus rejectedStatus = aclnnFlashKdaGetWorkspaceSize(
+            const aclnnStatus rejectedStatus = GetWorkspaceSize(
+                deliveryApi,
                 rejectedK, rejectedV, resources[2].tensor,
                 resources[3].tensor, resources[4].tensor,
                 resources[5].tensor, resources[6].tensor,
@@ -342,7 +383,8 @@ bool PrepareInvocation(Invocation &invocation, const ShapeConfig &shape,
         aclOpExecutor *nullOutputExecutor =
             reinterpret_cast<aclOpExecutor *>(static_cast<uintptr_t>(1U));
         const aclnnStatus nullWorkspaceOutputStatus =
-            aclnnFlashKdaGetWorkspaceSize(
+            GetWorkspaceSize(
+                deliveryApi,
                 resources[0].tensor, resources[1].tensor,
                 resources[2].tensor, resources[3].tensor,
                 resources[4].tensor, resources[5].tensor,
@@ -350,7 +392,8 @@ bool PrepareInvocation(Invocation &invocation, const ShapeConfig &shape,
                 kLowerBound, resources[8].tensor, resources[9].tensor,
                 nullptr, &nullOutputExecutor);
         const aclnnStatus nullExecutorOutputStatus =
-            aclnnFlashKdaGetWorkspaceSize(
+            GetWorkspaceSize(
+                deliveryApi,
                 resources[0].tensor, resources[1].tensor,
                 resources[2].tensor, resources[3].tensor,
                 resources[4].tensor, resources[5].tensor,
@@ -371,7 +414,8 @@ bool PrepareInvocation(Invocation &invocation, const ShapeConfig &shape,
         }
     }
 
-    invocation.status = aclnnFlashKdaGetWorkspaceSize(
+    invocation.status = GetWorkspaceSize(
+        deliveryApi,
         resources[0].tensor, resources[1].tensor, resources[2].tensor,
         resources[3].tensor, resources[4].tensor, resources[5].tensor,
         resources[6].tensor, resources[7].tensor, kScale, kLowerBound,
@@ -395,9 +439,11 @@ bool PrepareInvocation(Invocation &invocation, const ShapeConfig &shape,
     return true;
 }
 
-bool LaunchInvocation(Invocation &invocation, size_t wave, size_t streamIndex)
+bool LaunchInvocation(Invocation &invocation, size_t wave, size_t streamIndex,
+                      DeliveryApi deliveryApi)
 {
-    invocation.status = aclnnFlashKda(
+    invocation.status = Execute(
+        deliveryApi,
         invocation.workspace, invocation.workspaceSize, invocation.executor,
         invocation.stream);
     std::printf("wave=%zu stream=%zu execute_status=%d\n",
@@ -447,6 +493,7 @@ int main(int argc, char **argv)
     bool dump = false;
     bool stress = false;
     bool negative = false;
+    DeliveryApi deliveryApi = DeliveryApi::kCustomL2;
     int64_t requestedWaves = 0;
     std::string dumpDir;
     ShapeConfig shape;
@@ -469,6 +516,16 @@ int main(int argc, char **argv)
             stress = true;
         } else if (option == "--negative") {
             negative = true;
+        } else if (option == "--api" && index + 1 < argc) {
+            const std::string value = argv[++index];
+            if (value == "custom-l2") {
+                deliveryApi = DeliveryApi::kCustomL2;
+            } else if (value == "standalone-l0") {
+                deliveryApi = DeliveryApi::kStandaloneL0;
+            } else {
+                std::fprintf(stderr, "unsupported --api value: %s\n", value.c_str());
+                return EXIT_FAILURE;
+            }
         } else if (option == "--waves" && index + 1 < argc &&
                    parsePositive(argv[index + 1], requestedWaves)) {
             ++index;
@@ -485,7 +542,8 @@ int main(int argc, char **argv)
             std::fprintf(
                 stderr,
                 "usage: %s [--dump-dir DIR] [--stress] [--negative] "
-                "[--waves N] [--batch B] [--heads N] [--sequence S]\n",
+                "[--api custom-l2|standalone-l0] [--waves N] [--batch B] "
+                "[--heads N] [--sequence S]\n",
                 argv[0]);
             return EXIT_FAILURE;
         }
@@ -503,7 +561,8 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    std::printf("shape=B%lld/N%lld/S%lld\n",
+    std::printf("api=%s shape=B%lld/N%lld/S%lld\n",
+                DeliveryApiName(deliveryApi),
                 static_cast<long long>(shape.batch),
                 static_cast<long long>(shape.heads),
                 static_cast<long long>(shape.sequence));
@@ -527,7 +586,8 @@ int main(int argc, char **argv)
             const uint32_t seedOffset = static_cast<uint32_t>(streamIndex * 16U);
             if (!PrepareInvocation(invocations[streamIndex], shape, seedOffset,
                                    wave, streamIndex,
-                                   negative && wave == 0U && streamIndex == 0U)) {
+                                   negative && wave == 0U && streamIndex == 0U,
+                                   deliveryApi)) {
                 success = false;
                 break;
             }
@@ -541,7 +601,7 @@ int main(int argc, char **argv)
         for (size_t streamIndex = 0;
              streamIndex < streamCount && success; ++streamIndex) {
             success = LaunchInvocation(
-                invocations[streamIndex], wave, streamIndex);
+                invocations[streamIndex], wave, streamIndex, deliveryApi);
         }
         for (size_t streamIndex = 0;
              streamIndex < streamCount && success; ++streamIndex) {

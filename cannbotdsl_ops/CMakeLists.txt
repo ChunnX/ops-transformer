@@ -130,6 +130,7 @@ set_source_files_properties(
 target_sources(${OPHOST_NAME}_opapi_obj PRIVATE
   "${CANNBOTDSL_PROVIDER_ACLNN_REGISTRY_SOURCE}"
   "${CANNBOTDSL_PROVIDER_ACLNN_ADAPTER_SOURCE}"
+  "${CMAKE_CURRENT_LIST_DIR}/custom_flash_kda.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/flash_kda_l0.cpp")
 add_dependencies(${OPHOST_NAME}_opapi_obj
   cannbotdsl_provider_aclnn_registry
@@ -141,7 +142,9 @@ target_include_directories(${OPHOST_NAME}_opapi_obj BEFORE PRIVATE
 target_link_libraries(cust_opapi PRIVATE
   "${CANNBOTDSL_PROVIDER_OPBASE_LIBRARY}")
 
-install(FILES "${CMAKE_CURRENT_LIST_DIR}/aclnn_flash_kda.h"
+install(FILES
+  "${CMAKE_CURRENT_LIST_DIR}/aclnn_custom_flash_kda.h"
+  "${CMAKE_CURRENT_LIST_DIR}/aclnn_flash_kda.h"
   DESTINATION "${ACLNN_INC_INSTALL_DIR}")
 
 option(CANNBOTDSL_BUILD_FLASH_KDA_ACLNN_SMOKE
