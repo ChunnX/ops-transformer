@@ -293,7 +293,7 @@ FiaTilingRegistry::DoTilingImpl（common/op_host/fia_tiling_templates_registry.h
     InitImplParam       cu_seqlens/seqused 存在性判断
     SplitPolicy         win处理 + AdjustSinnerAndSouter + CalcNumBlocks（coreNum）
     FillTiling          ComputeTilingData：tiling data 与 metadata 所需尺寸
-    CalcWorkspaceSize   sys区 + D>128额外BMM2暂存 + PA对齐 + FD区（见§11）
+    CalcWorkspaceSize   sys区 + D>128额外BMM2暂存 + PA对齐 + FD区（见§10）
     GenTilingKey        UpdateTilingKeyInfo → GET_TPL_TILING_KEY
 产出：tiling data / workspace size / tiling key / 核数
 ```
@@ -310,6 +310,8 @@ FiaTilingRegistry::DoTilingImpl（common/op_host/fia_tiling_templates_registry.h
 | ② 调度框架层 | `arch35/flash_attn_kernel_dn.h` / `arch35/flash_attn_kernel_nd.h` | 任务级流水框架：`Process()` 按 metadata section 循环 `FlashAttention`（(bN2, gS1, s2) 三重循环 + `CreateTask/ExecuteTask`，PRELOAD_N=2 预取）与 `FlashDecode`（AIV 做跨核归约，两端 `SyncAll`） |
 | ③ 计算 block 层（AIC/AIV 分离） | `arch35/flash_attn_block_cube_dn.h` / `arch35/flash_attn_block_cube_nd.h`（AIC 侧）、`flash_attn_block_vec_dn.h` / `flash_attn_block_vec_nd.h`（AIV 侧）、`flash_attn_block_vec_flashdecode.h`（FD 归约） | AIC：BMM1/BMM2（L0A/L0B/L0C 多级 buffer、MTE2→MTE1→M→FIX 四级流水）；AIV：softmax VF（ProcessVec1）与 output 累加（ProcessVec2）、FD 用的跨 split 归约 |
 | ④ 公共 API 层 | `attention/common/op_kernel/arch35/`（`flash_attention_score_common_regbase_arch35.h` 等）、`utils/`（`flash_attn_type.h`、`flash_attn_common_def.h`、`attenmask_gs1.h`） | 指令级 VF 算子库（`ProcessVec1VfDn`/`FusedExpSub`/`FlashUpdateNew` 等）与类型/布局/掩码工具；与 flash_attention_score 等算子共享 |
+
+> 更细的 kernel 内部划分见下文各章：kernel 层调度框架（§7）、block cube 层（§8）、block vector 层（§9）、FD block（§10）、common 层（§11）。
 
 #### 2.5 层间关系
 
@@ -357,7 +359,7 @@ FA 计算的核心是把注意力矩阵按块切分、逐块 online 计算。基
   - **GS1 排布**（BNSD 布局）：g 在外、S1 在内，`s1Idx = gS1Idx % actSeqLensQ`（`flash_attn_kernel_dn.h:476`）。
 - **合轴收益**：bN2 × gS1 二维任务空间按 mBaseSize 统一分块（`gS1LoopTimes = ceil(gS1Size / mBaseSize)`）；共享同一份 KV 的 g 个 Q head 落在相邻行，便于 KV 复用与负载均衡切分。
 
-**任务循环结构**（kernel 内三重循环，详见 §8）：
+**任务循环结构**（kernel 内三重循环，详见 §7）：
 
 ```
 for bN2 in [bN2Start, bN2End):        # batch × KV head 维度
@@ -394,7 +396,7 @@ FD 段  [section][aivIdx(72)][16 字段]：bN2Idx, mIdx(gS1Idx), workspaceIdx, s
 
 - **FA 段分核**：每个 AIC 核（aicIdx）在 section 内被分到一段 `(bN2, gS1, s2)` 区间，kernel 只执行自己区间内的任务；区间边界由三档贪心分配确定（batch→行→块）。
 - **FD 段分核**：仅当该 section 内存在跨核行（同一 gS1 行被多个核切分）时生成，每个 AIV 核（aivIdx）分到一行中的一段 `mStart + mLen`，并按 `s2SplitNum` 对应到 workspace 槽位。
-- **section 与核数的关系**：sectionNum 由 L2 预算决定，每个 section 独立分核——同一 AIC 核在不同 section 有不同任务区间，`Process()` 按 section 循环执行（见 §8.1）。
+- **section 与核数的关系**：sectionNum 由 L2 预算决定，每个 section 独立分核——同一 AIC 核在不同 section 有不同任务区间，`Process()` 按 section 循环执行（见 §7）。
 
 **metadata 输出**：`16 + sectionNum×(36 AIC + 72 AIV)×16` 个 uint32（header + FA 段 + FD 段），尺寸计算见 `flash_attn_metadata.h:57-128` 与 `flash_attn_metadata_aicpu.cpp:63-68`。
 
@@ -438,21 +440,7 @@ useDn = !hasAttenMask && (config == 0 || config == 2)
 
 加新模板组合（如新 config、新布局）的改动点：`flash_attn_template_tiling_key.h`（参数声明）→ host `UpdateTilingKeyConfig`（映射）→ `flash_attn.cpp` 的路由与 kernel 模板实例化处。
 
-### 7. Kernel 代码分层
-
-kernel 侧按职责拆为 **kernel 层（调度框架）→ block cube 层（AIC）→ block vector 层（AIV）→ FD block（AIV 归约）** 四部分，其上叠加共享的 common 设施。总览：
-
-| 层 | 文件 | 职责 |
-|---|---|---|
-| **kernel 层** | `op_kernel/flash_attn.cpp`、`arch35/flash_attn_kernel_dn.h` / `arch35/flash_attn_kernel_nd.h` | 全局入口 + 任务级调度框架：InitOutput、FA while 循环、FD 调度、核间 PRELOAD 流水 |
-| **block cube 层** | `arch35/flash_attn_block_cube_dn.h` / `arch35/flash_attn_block_cube_nd.h` | AIC 侧：BMM1/BMM2 两个 MM 计算流程、核内四级流水、多级 buffer 分配 |
-| **block vector 层** | `arch35/flash_attn_block_vec_dn.h` / `arch35/flash_attn_block_vec_nd.h` | AIV 侧：softmax/输出累加 VF 计算流程（Dn/Nd 差异） |
-| **FD block** | `arch35/flash_attn_block_vec_flashdecode.h` | AIV 侧：跨 split-K 归约计算流程 |
-| common 设施 | `attention/common/op_kernel/arch35/`、`op_kernel/utils/` | 指令级 VF 算子库、类型/掩码工具 |
-
-调用关系：kernel 层驱动 → block cube 与 block vector 通过核间 flag 数据交换（BMM1→Vec1→BMM2），FD block 在 FA 完成后由 kernel 层统一调度。
-
-### 8. kernel 层：调度框架（flash_attn_kernel_dn.h / flash_attn_kernel_nd.h）
+### 7. kernel 层：调度框架（flash_attn_kernel_dn.h / flash_attn_kernel_nd.h）
 
 **整体流程**（`Process()`）：
 
@@ -524,9 +512,9 @@ BMM2:      P×V → L0C → Fixpipe → UB[bufId]
 - **行分担**：两个 AIV 各算 `mBaseSize/2` 行（Dn 按 `align32(actM)>>1`、Nd 按 `(actM+1)>>1` 切分），与 BMM1 fixpipe 的 `dualDstCtl=2` 双目标写、BMM2 fixpipe 的 `dualDstCtl=1` 配合，保证每 AIV 恰好拿到自己那半。
 
 
-### 9. block cube 层
+### 8. block cube 层
 
-#### 9.1 buffer 分配
+#### 8.1 buffer 分配
 AIC 侧按存储层级分配 buffer，覆盖 BMM1（Q×K^T）与 BMM2（P×V）两级 Matmul 的数据流。flash_attn_block_cube_nd.h的总体分配如下：
 
 | 存储层 | Buffer | 数量×大小 | 用途 |
@@ -552,9 +540,9 @@ AIC 侧按存储层级分配 buffer，覆盖 BMM1（Q×K^T）与 BMM2（P×V）�
 
 **UB 分配策略解释**：`ubMm1Res/ubMm2ResBuffers_` 是 AIC→AIV 的 CV 通信 buffer（fixpipe 写、AIV 读）。2 buffer 轮转配合核间 flag（`CC_BMM1_0/1`、`CC_BMM2_0/1`）实现双缓冲：AIC fixpipe 写 buf A 时 AIV 正在读 buf B，flag 置位/等待交替，隐藏 CV 传输延迟。大小为 `mBaseSize/2` 行切片（双 AIV 各处理一半，`CV_RATIO=2`）。需要与block_vec上对应UB buffer的地址和大小完全对齐。
 
-### 10. block vector 层
+### 9. block vector 层
 
-#### 10.1 buffer 分配
+#### 9.1 buffer 分配
 **UB buffer 分配（以 Nd 为例，`UbLayout` 结构体定义，`flash_attn_block_vec_nd.h:205-220`）**：Nd 是功能最全的路径（含 mask），其布局覆盖 Dn 全部 buffer 并多出 mask/tmp 两项；按地址从低到高排布，`static_assert(sizeof(UbLayout) <= 248KB)` 限制总占用；UB总size为256KB，但是由于需要为AscendC和VF预留8K，所以业务只能使用248K。
 
 | Buffer | 数量×大小 | 用途 | 分配策略 |
@@ -562,7 +550,7 @@ AIC 侧按存储层级分配 buffer，覆盖 BMM1（Q×K^T）与 BMM2（P×V）�
 | `ubMm2ResBuffers_` | 2 × (mBaseSize/2 × dVBaseSize × sizeof(FP32)) ≈ 2×32KB | CV 通信 BUF：AIC BMM2 fixpipe 结果（Vec2 输入） | **双 buffer**：AIC fixpipe 写与 AIV Vec2 读并行，配合 `CC_BMM2_0/1` flag 轮转 |
 | `ubMm1ResBuffers_` | 2 × (mBaseSize/2 × s2BaseSize × sizeof(FP32)) ≈ 2×32KB | CV 通信 BUF：AIC BMM1 fixpipe 结果（Vec1 输入） | **双 buffer**：同上，`CC_BMM1_0/1` flag 轮转；大小为 mBaseSize/2 行切片（双 AIV 各处理一半） |
 | `ubMaskBuffers_` | 2 × (mBaseSize/2 × s2BaseSize × sizeof(uint8)) | mask 从 GM 拷入的输入 BUF（仅 Nd） | **双 buffer 预取**：当前轮 `AttenMaskCopyIn` 计算的同时 MTE3 预取下一轮 mask，规避 GM 访存延迟。真实需求 = 每个 AIV 的 mBaseSize/2 行 × s2BaseSize 个 INT8（1B），即 2×(mBaseSize/2 × s2BaseSize × 1B)（当前代码写死 2×8KB，仅等于 s2BaseSize=128 时的需求） |
-| `ubVec2Res_` | 1 × (mBaseSize/2 × dVBaseSize × sizeof(FP32)) | Vec2 中间结果 + attn_out 输出 buffer | **单 buffer**：与 PRELOAD_N=2 流水配合（Vec2 与 2 轮前 Vec1 同时执行），首次 tile 用 `DataCopy` 分支跳过脏值（见 §8.1），无需双缓冲。真实需求 = 每个 AIV 的 mBaseSize/2 行 × dVBaseSize × FP32(4B)（当前代码写死 32KB，仅等于 dVBaseSize=128 时的需求） |
+| `ubVec2Res_` | 1 × (mBaseSize/2 × dVBaseSize × sizeof(FP32)) | Vec2 中间结果 + attn_out 输出 buffer | **单 buffer**：与 PRELOAD_N=2 流水配合（Vec2 与 2 轮前 Vec1 同时执行），首次 tile 用 `DataCopy` 分支跳过脏值（见 §7），无需双缓冲。真实需求 = 每个 AIV 的 mBaseSize/2 行 × dVBaseSize × FP32(4B)（当前代码写死 32KB，仅等于 dVBaseSize=128 时的需求） |
 | `ubVec1ResBuffers_` | 2 × ((mBaseSize/2 + 1) × dVBaseSize × sizeof(BF16/FP16)) | softmax 结果 cast 后拷至 L1(P) 的过渡 BUF | **双 buffer**：V pipe 写与 MTE3 拷 L1 并行，2 buffer 使两段传输交替。**行大小取 (mBaseSize/2 + 1) 而非 mBaseSize/2**：每行多留 1 个元素作为地址偏移，使相邻行的起始地址错开（不再同余于 UB bank 数），避免多行并发访问命中同一 bank 造成 bank 冲突；×2B 为 cast 回 FP16 的元素大小 |
 | `softmaxSumBuf_` / `softmaxMaxBuf_` | 各 3 × (mBaseSize/2 × sizeof(FP32)) | online softmax 的 sum/max 累加状态 | **3 buffer，`mloop % 3`**：每个 gS1 行（mloop）独立一组状态，3 轮转容纳 PRELOAD_N=2 下同时活跃的 mloop（当前行 + 2 行在途），需要注意的是由于VF的处理约束，单个buffer的大小需要256B对齐 |
 | `softmaxExpBuf_` | 3 × (mBaseSize/2 × sizeof(FP32)) | exp 中间结果 | **3 buffer，`loop % 3`**：与 sum/max 配合同步轮转，需要注意的是由于VF的处理约束，单个buffer的大小需要256B对齐 |
@@ -571,7 +559,7 @@ AIC 侧按存储层级分配 buffer，覆盖 BMM1（Q×K^T）与 BMM2（P×V）�
 
 **L1 buffer 分配（Nd 同 Dn）**：`l1PBuffers_` 3 × (mBaseSize×s2BaseSize×sizeof(INPUT_T))，softmax 结果（P）写 L1 供 BMM2 读取——**3 buffer 与 PRELOAD_N=2 配合**：AIV 写第 N 轮 P、AIC 读第 N-2 轮 P，中间始终有一个 buffer 处于「写入中/待读取/已释放」之外的缓冲态，避免跨核 flag 等待。需要与block_cube上对应L1 buffer的地址和大小完全对齐。
 
-### 11. FD block：flash_attn_block_vec_flashdecode.h
+### 10. FD block：flash_attn_block_vec_flashdecode.h
 
 **数学原理**（跨 split-K 归约的 online softmax 反向展开）：
 
@@ -636,9 +624,9 @@ Process():       AIC（block_cube）                     AIV（block_vec / FD）
 - **BV 并行窗口**：AIC 完成本 section 的 BMM2 后无需等待 FD，直接提前开始下一 section 的 FA（`Process()` 中 AIC 分支只执行 `FlashAttention`）；AIC 写下一 section 的 `[0, BASE)` 的 mm 区，FD 读 `[BASE, …)` 的归约区，**两者 UB 区域不重叠**——这正是 BASE 将 FD 业务区与 CV 通信区隔离的目的：FD 执行期间 AIC 可继续搬运/计算下一 section 的 BMM，两引擎不互相阻塞。
 - **边界**：AIV 的 FA 下一 section 必须等其自身 FD 完成（SyncAll）才开始，因此 AIC 的提前量受限于下一 section 的 mm1 结果还需 AIV 消费（flag 等待），实际重叠窗口为「AIC 的 BMM 计算/搬运」与「AIV 的 FD 归约」并行。
 
-FD 与 FA 通过 **workspace 槽位**衔接：FA 阶段每个跨核行的部分结果写入 `workspaceIdx` 槽（accumOut + lseSum + lseMax 三段布局），FD 阶段按 `fdWorkspaceIdx` 前缀和读回归约（详见 §11 的 workspace 槽位与 §4 的 section 内分核）。
+FD 与 FA 通过 **workspace 槽位**衔接：FA 阶段每个跨核行的部分结果写入 `workspaceIdx` 槽（accumOut + lseSum + lseMax 三段布局），FD 阶段按 `fdWorkspaceIdx` 前缀和读回归约（详见 §10 的 workspace 槽位与 §4 的 section 内分核）。
 
-### 12. common 层：共享设施
+### 11. common 层：共享设施
 
 common 层位于 `attention/common/op_kernel/`，按功能分四类基础设施：
 
@@ -665,7 +653,7 @@ common 层位于 `attention/common/op_kernel/`，按功能分四类基础设施�
 - **类型/布局工具**（flash_attn 侧 `op_kernel/utils/`）：`flash_attn_type.h`（FAType/布局映射）、`flash_attn_common_def.h`（常量/枚举）、`attenmask_gs1.h`（掩码计算）。
 - **负载均衡算法**（`common/op_kernel/load_balance/section_stream_k/`）：host 侧 metadata 生成的算法库（见 §4）。
 
-### 13. 给贡献者的建议
+### 12. 给贡献者的建议
 
 - **从哪读起**：`flash_attn_def.cpp` → `checkers/` → `arch35/flash_attn_tiling.cpp` → `op_kernel/flash_attn.cpp` → `flash_attn_kernel_dn.h`/`flash_attn_kernel_nd.h`。
 - **改接口**：def.cpp 增删参数 → 同步 checkers → infershape → 接口文档（torch_extension 侧）。
