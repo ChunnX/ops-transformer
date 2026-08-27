@@ -212,7 +212,6 @@ private:
     TQue<QuePosition::VECOUT, 1> vecOutQueueSmall_;
 
     TBuf<TPosition::VECCALC> fp32TBuf_;
-    TBuf<TPosition::B1> xRsL1TBuf_;
     LocalTensor<P> xRsL1_;
 
     uint32_t hPreMaxBufLen_;
@@ -285,8 +284,8 @@ template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParams initParams)
 {
     pipe_ = initParams.tPipeIn;
-    pipe_->InitBuffer(xRsL1TBuf_, C1_L1_BUFFER_SIZE);
-    xRsL1_ = xRsL1TBuf_.Get<P>();
+    // 与GMM的CV通路一致，AIC/AIV按同一物理偏移直接访问共享L1，避免各核独立的TPipe分配状态不一致。
+    xRsL1_ = LocalTensor<P>(TPosition::TSCM, 0, C1_L1_BUFFER_SIZE / sizeof(P));
 
     vecDealChunk_ = N_ > LARGE_N_THRESHOLD ? VEC_DEAL_CHUNK_LARGE_N : VEC_DEAL_CHUNK_SMALL_N;
     hPreMaxBufLen_ = vecDealChunk_ * N_;
@@ -1006,7 +1005,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC1(uint32_t offsetND, 
     mm1.SetSingleShape(fusionSize_, currentNDBlock, currentBSBlock);                 // [sM, sN, sK]
     // h_mix_grad^T @ x_rs
     mm1.SetTensorA(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], true); // [BS, N^2+2N]
-    mm1.SetTensorB(xRsL1_, false);                                                // B1/NZ: [BS, NDBlock]
+    mm1.SetTensorB(xRsL1_, false);                                                // TSCM/NZ: [BS, NDBlock]
     // 计算
     bool enAtomic = (offsetBS != 0);
     mm1.IterateAll(gradPhiGm_[offsetND], enAtomic); // 非连续写
