@@ -605,9 +605,23 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     if (splitRankTokens && aivId_ < activeAivNum) {
         GetCoreAssignment(activeAivNum, targetRank, coreIndexInGroup, groupSize);
     }
+    constexpr uint32_t completionChannelCount = COMBINE_CHANNEL_COUNT;
+    bool publishesChannelFlag =
+        aivId_ < activeAivNum && (!splitRankTokens || coreIndexInGroup < completionChannelCount);
+    if (publishesChannelFlag) {
+        // The remote flag reads this per-AIV GM source. Finish the MTE3 write before appending the flag WQE.
+        LocalTensor<uint64_t> flagTensor = statusTensor_.ReinterpretCast<uint64_t>();
+        Duplicate<uint64_t>(flagTensor, 1U, UB_ALIGN / sizeof(uint64_t));
+        SyncFunc<AscendC::HardEvent::V_MTE3>();
+        GlobalTensor<uint64_t> flagWorkspace;
+        flagWorkspace.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(flagWorkspaceAddr_));
+        DataCopy(flagWorkspace, flagTensor, UB_ALIGN / sizeof(uint64_t));
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
+    }
+
     bool sendsTokens = actualA_ != 0 && aivId_ < activeAivNum;
-    if (sendsTokens) {
-        if (splitRankTokens) {
+    if (splitRankTokens) {
+        if (sendsTokens) {
             uint32_t rankStart = static_cast<uint32_t>(rankOffsets_.GetValue(targetRank));
             uint32_t rankEnd = static_cast<uint32_t>(rankOffsets_.GetValue(targetRank + 1U));
             uint32_t rankRows = rankEnd - rankStart;
@@ -617,44 +631,40 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
                                 ((coreIndexInGroup < remainder) ? coreIndexInGroup : remainder);
             uint32_t rowEnd = rowStart + rowsPerCore + ((coreIndexInGroup < remainder) ? 1U : 0U);
             SendMetadataRange(targetRank, rowStart, rowEnd);
-        } else {
-            for (uint32_t rank = aivId_; rank < epWorldSize_; rank += activeAivNum) {
+        }
+        if (publishesChannelFlag && targetRank != rankId_) {
+            // Keep the completion flag in the same channel batch as the final payload WQEs. odr=6 then orders the
+            // flag after every preceding odr=5 payload, including payloads committed at an earlier batch boundary.
+            SendChannelFlag(targetRank);
+            FlushPreparedWrites();
+        }
+    } else {
+        for (uint32_t rank = aivId_; rank < epWorldSize_; rank += activeAivNum) {
+            if (sendsTokens) {
                 uint32_t rankStart = static_cast<uint32_t>(rankOffsets_.GetValue(rank));
                 uint32_t rankEnd = static_cast<uint32_t>(rankOffsets_.GetValue(rank + 1U));
                 SendMetadataRange(rank, rankStart, rankEnd);
             }
+            if (rank != rankId_) {
+                SendChannelFlag(rank);
+                FlushPreparedWrites();
+            }
         }
     }
 
-    // Submit every remote payload before entering the all-AIV barrier. Keeping a prepared, uncommitted Hcomm batch
-    // across SyncAll can leave the channel in a partially built state and deadlock the next Dispatch/Combine round.
-    // Local MTE3 copies must also finish before the completion flag is published.
+    // No remote batch is left prepared across the barrier. Wait for every AIV's local MTE3 copies before publishing
+    // the local-rank completion flag; remote payload and flag pairs were already committed together above.
     FlushPreparedWrites();
     SyncFunc<AscendC::HardEvent::MTE3_S>();
     SyncAll<true>();
 
-    // Start a fresh batch for the flag. All payload batches were committed before the barrier, so the channel-0 flag
-    // is submitted after every AIV's payload and cannot overtake a slower payload producer.
-    constexpr uint32_t completionChannelCount = COMBINE_CHANNEL_COUNT;
-    bool publishesChannelFlag =
-        aivId_ < activeAivNum && (!splitRankTokens || coreIndexInGroup < completionChannelCount);
     if (publishesChannelFlag) {
-        LocalTensor<uint64_t> flagTensor = statusTensor_.ReinterpretCast<uint64_t>();
-        Duplicate<uint64_t>(flagTensor, 1U, UB_ALIGN / sizeof(uint64_t));
-        SyncFunc<AscendC::HardEvent::V_MTE3>();
-        GlobalTensor<uint64_t> flagWorkspace;
-        flagWorkspace.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(flagWorkspaceAddr_));
-        DataCopy(flagWorkspace, flagTensor, UB_ALIGN / sizeof(uint64_t));
-        SyncFunc<AscendC::HardEvent::MTE3_S>();
-        if (splitRankTokens) {
+        if (splitRankTokens && targetRank == rankId_) {
             SendChannelFlag(targetRank);
-        } else {
-            for (uint32_t dstRank = aivId_; dstRank < epWorldSize_; dstRank += activeAivNum) {
-                SendChannelFlag(dstRank);
-            }
+        } else if (!splitRankTokens && rankId_ % activeAivNum == aivId_) {
+            SendChannelFlag(rankId_);
         }
     }
-    FlushPreparedWrites();
     if (sendsTokens) {
         DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
     }
