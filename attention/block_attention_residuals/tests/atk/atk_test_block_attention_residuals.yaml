@@ -8,8 +8,8 @@ generate: block_attention_residuals_constraint
 standard:
   acc: default
   perf: not_key
-dtype_numbers: 1
-extra_numbers: 1
+dtype_numbers: 3
+extra_numbers: 100
 shape_distributions:
   - [0, 1.0]
 inputs:
@@ -17,58 +17,72 @@ inputs:
     type: tensor
     required: true
     dtypes:
-      values: [bf16]
+      values: [bf16, fp16, fp32]
     ranges:
       valid:
         values: [[-5, 5]]
+    boundary:
+      has_empty: true
+      has_lower_border: true
+      has_upper_border: false
     shapes:
       dim_numbers:
-        values: [1]
+        values: [2]
       dim_values:
-        values: [1]
-      max_length: 2
+        values: [0, 1, 2, 3, 7, 8, 15, 16, 31, 32, 63, 64, 127, 128, 255, 256, 511, 512, 1023, 1024]
+      max_length: 1048576
   - name: block_res
     type: tensor
     required: true
     dtypes:
-      values: [bf16]
+      values: [bf16, fp16, fp32]
     ranges:
       valid:
         values: [[-5, 5]]
+    boundary:
+      has_empty: true
+      has_lower_border: true
+      has_upper_border: false
     shapes:
       dim_numbers:
-        values: [1]
+        values: [3]
       dim_values:
-        values: [1]
-      max_length: 2
+        values: [0, 1, 2, 3, 7, 8, 15, 16, 31, 32, 63, 64, 127, 128, 255, 256, 511, 512, 1023, 1024]
+      max_length: 1048576
   - name: proj_weight
     type: tensor
     required: true
     dtypes:
-      values: [bf16]
+      values: [bf16, fp16, fp32]
     ranges:
       valid:
         values: [[-5, 5]]
+    boundary:
+      has_lower_border: true
+      has_upper_border: false
     shapes:
       dim_numbers:
-        values: [1]
+        values: [1, 2]
       dim_values:
-        values: [1]
-      max_length: 2
+        values: [1, 2, 3, 7, 8, 15, 16, 31, 32, 63, 64, 127, 128, 255, 256, 511, 512, 1023, 1024]
+      max_length: 1048576
   - name: norm_weight
     type: tensor
     required: true
     dtypes:
-      values: [bf16]
+      values: [bf16, fp16, fp32]
     ranges:
       valid:
         values: [[-5, 5]]
+    boundary:
+      has_lower_border: true
+      has_upper_border: false
     shapes:
       dim_numbers:
         values: [1]
       dim_values:
-        values: [1]
-      max_length: 2
+        values: [1, 2, 3, 7, 8, 15, 16, 31, 32, 63, 64, 127, 128, 255, 256, 511, 512, 1023, 1024]
+      max_length: 1048576
   - name: valid_block_num
     type: attr
     required: true
@@ -76,7 +90,7 @@ inputs:
       values: [int]
     ranges:
       valid:
-        values: [1]
+        values: [1, 100]
   - name: norm_eps
     type: attr
     required: true
