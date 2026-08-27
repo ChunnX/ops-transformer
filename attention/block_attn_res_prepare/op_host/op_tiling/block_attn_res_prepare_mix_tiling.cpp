@@ -88,6 +88,10 @@ bool BlockAttnResPrepareMixTiling::SelectMixTileShape()
 {
     const uint64_t usableUbBytes = ubSize_ - UB_RESERVED_BYTES;
     const uint64_t usableL1Bytes = l1Size_ - L1_RESERVED_BYTES;
+    const uint64_t mixedCoreNum = std::min<uint64_t>(aicCoreNum_, aivCoreNum_ / AIV_CORE_NUM_PER_AIC);
+    if (mixedCoreNum == 0U) {
+        return false;
+    }
     nAlign_ = static_cast<uint32_t>(AlignUp<uint64_t>(totalN_, CUBE_BLOCK));
     dAlign_ = static_cast<uint32_t>(AlignUp<uint64_t>(totalD_, CUBE_BLOCK));
 
@@ -110,7 +114,6 @@ bool BlockAttnResPrepareMixTiling::SelectMixTileShape()
         previousS = sCandidate;
         const uint32_t candidateSAlign = static_cast<uint32_t>(AlignUp<uint64_t>(sCandidate, CUBE_BLOCK));
         const uint64_t candidateSTileNum = CeilDiv(totalS_, sCandidate);
-        const uint64_t mixedCoreNum = std::min<uint64_t>(aicCoreNum_, aivCoreNum_ / AIV_CORE_NUM_PER_AIC);
         const uint64_t baselineWorkUnits = totalT_ * candidateSTileNum;
         const uint64_t baselineUsedCores = std::min<uint64_t>(mixedCoreNum, baselineWorkUnits);
         const uint64_t baselineTokenWork = CeilDiv(baselineWorkUnits, baselineUsedCores);
