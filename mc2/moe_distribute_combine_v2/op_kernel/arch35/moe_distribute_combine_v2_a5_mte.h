@@ -294,14 +294,11 @@ private:
     TBuf<> xActMaskTBuf_;
     TBuf<> xActMaskCastTBuf_;
     TBuf<> tokenTargetTBuf_;
-    TBuf<> validBsIndexTBuf_;
     TBuf<> xActMaskSumTBuf_;
     TBuf<> expertMaskBuf_;
     TBuf<> performanceInfoBuf_;
     TBuf<> performanceInfoTmpBuf_;
     TBuf<> firstRecordBuf_;
-    TBuf<> packedCheckFlagBuf_;
-    TBuf<> packedCheckCompareBuf_;
     TBuf<> packedClearFlagBuf_;
     TBuf<> calBeginBuf_;
     TBuf<> calEndBuf_;
@@ -329,7 +326,6 @@ private:
     LocalTensor<float> scaleDupLocalTensor_;
     LocalTensor<XType> sendLocalTensor_;
     LocalTensor<half> tokenTargetTensor_;
-    LocalTensor<int32_t> validBsIndexTensor_;
     LocalTensor<bool> expertMaskTensor_;
     LocalTensor<float> expertScalesLocal_;
     uint32_t dispatchBufferNum_{1};
@@ -366,14 +362,9 @@ template <A5MteCombineTypeClass>
 __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ExpertMaskCalCnt()
 {
     // 二维mask, 挑选有效token
-    uint64_t rsvdCnt = 0;
-    uint32_t mask = axisBS_;
     LocalTensor<bool> maskStrideTensor = tokenBuf_.Get<bool>();
     LocalTensor<half> tempTensor = rowTmpFloatBuf_.Get<half>();
     LocalTensor<half> maskTempTensor = sumFloatBuf_.Get<half>();
-    LocalTensor<uint8_t> maskTensor = tokenBuf_.Get<uint8_t>();
-    LocalTensor<int32_t> bsIndexTensor = mulBuf_.Get<int32_t>();
-    LocalTensor<uint32_t> maskTensorInt32 = tokenBuf_.Get<uint32_t>();
     DataCopyExtParams xActiveMaskParams{static_cast<uint16_t>(axisBS_), static_cast<uint32_t>(axisK_ * sizeof(bool)),
                                         0U, 0U, 0U};
     DataCopyPadExtParams<bool> xActiveMaskCopyPadParams{false, 0U, 0U, 0U};
@@ -393,10 +384,11 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Expert
     PipeBarrier<PIPE_V>();
     Mins(maskTempTensor, tokenTargetTensor_, static_cast<half>(1), axisBS_);
     PipeBarrier<PIPE_V>();
-    CompareScalar(maskTensor, maskTempTensor, static_cast<half>(1), AscendC::CMPMODE::EQ, calCnt);
-    CreateVecIndex(bsIndexTensor, 0, axisBS_);
-    PipeBarrier<PIPE_V>();
-    GatherMask(validBsIndexTensor_, bsIndexTensor, maskTensorInt32, true, mask, {1, 1, 0, 0}, activeMaskBsCnt_);
+    SumParams activeMaskSumParams{
+        1, static_cast<uint32_t>(Ceil(axisBS_ * sizeof(half), UB_ALIGN) * UB_ALIGN / sizeof(half)), axisBS_};
+    Sum(tokenTargetTensor_, maskTempTensor, activeMaskSumParams);
+    SyncFunc<AscendC::HardEvent::V_S>();
+    activeMaskBsCnt_ = static_cast<int32_t>(tokenTargetTensor_.GetValue(0));
 }
 
 template <A5MteCombineTypeClass>
@@ -787,7 +779,7 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::AlltoA
     tpipe_->InitBuffer(tokenBuf_, maxSizeTokenBuf);             // 16K 用于搬入输入token
     tpipe_->InitBuffer(rowTmpFloatBuf_, maxSizeRowTmpFloatBuf); // 32K 用于存储cast之后的fp32 token数据
     tpipe_->InitBuffer(mulBuf_, mulBufSize); // 32K buffer复用， 最大用于存储Brcb之后的token，需要256对齐
-    tpipe_->InitBuffer(sumFloatBuf_, hFloatAlign32Size_ * 2U); // 64K add
+    tpipe_->InitBuffer(sumFloatBuf_, hFloatAlign32Size_ * bufferNum_); // 单buf按序处理，双buf交错处理
     uint32_t packedDataBytes = blockCntPerToken_ * SPLIT_BLOCK_DATA_SIZE;
     uint32_t rawPackedDataBytes = Ceil(hExpandXTypeSize_, SPLIT_BLOCK_DATA_SIZE) * SPLIT_BLOCK_DATA_SIZE;
     uint32_t moeQueueBytes = Ceil(packedDataBytes, UB_ALIGN) * UB_ALIGN;
@@ -800,14 +792,13 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::AlltoA
         tpipe_->InitBuffer(reduceFp32Buf_, NUM_PER_REP_FP32 * sizeof(float) * 2);
         // H取最大值时，根据ReduceSum接口公式计算所需空间至少为64 * 2 = 128个元素
     }
-    uint32_t checkFlagCount = flagRcvCount_ * blockCntPerToken_ * SPLIT_BLOCK_FLAG_COUNT;
-    uint32_t checkCompareCount = Ceil(checkFlagCount, 64U) * 64U;
-    uint32_t checkFlagBufSize = Ceil(checkCompareCount * sizeof(float), UB_ALIGN) * UB_ALIGN;
-    uint32_t checkCompareBufSize = Ceil(checkCompareCount * sizeof(uint8_t), ALIGNED_LEN) * ALIGNED_LEN;
     uint32_t clearFlagCount = flagRcvCount_ * blockCntPerToken_ * SPLIT_BLOCK_FLAG_COUNT;
     uint32_t clearFlagBufSize = Ceil(clearFlagCount * sizeof(float), UB_ALIGN) * UB_ALIGN;
-    tpipe_->InitBuffer(packedCheckFlagBuf_, checkFlagBufSize);
-    tpipe_->InitBuffer(packedCheckCompareBuf_, checkCompareBufSize);
+    if (enableSpecialExpert_) {
+        uint32_t maskGenerateBufSize =
+            Ceil(axisBS_ * axisK_ * sizeof(half), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(half);
+        clearFlagBufSize = (clearFlagBufSize > maskGenerateBufSize) ? clearFlagBufSize : maskGenerateBufSize;
+    }
     tpipe_->InitBuffer(packedClearFlagBuf_, clearFlagBufSize);
 }
 
@@ -833,19 +824,18 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::AlltoA
     }
     if (isInputExpertMaskFlag_) {
         tpipe_->InitBuffer(tokenTargetTBuf_, Ceil(axisBS_ * sizeof(half), UB_ALIGN) * UB_ALIGN);
-        tpipe_->InitBuffer(validBsIndexTBuf_, Ceil(axisBS_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN);
         tpipe_->InitBuffer(expertMaskBuf_, Ceil(axisBS_ * axisK_ * sizeof(bool), UB_ALIGN) * UB_ALIGN);
         tokenTargetTensor_ = tokenTargetTBuf_.Get<half>();
-        validBsIndexTensor_ = validBsIndexTBuf_.Get<int32_t>();
         ExpertMaskCalCnt(); // 计算二维mask
         expertMaskTensor_ = expertMaskBuf_.Get<bool>();
         DataCopyPadExtParams<bool> maskCopyPadParams{false, 0U, 0U, 0U};
         DataCopyExtParams maskParams{1U, static_cast<uint32_t>(axisBS_ * axisK_ * sizeof(bool)), 0U, 0U, 0U};
         DataCopyPad(expertMaskTensor_, xActiveMaskGM_, maskParams, maskCopyPadParams);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
         SyncFunc<AscendC::HardEvent::V_S>();
     }
     if (enableSpecialExpert_) {
-        maskGenerateTensor_ = sumFloatBuf_.Get<bool>();
+        maskGenerateTensor_ = packedClearFlagBuf_.Get<bool>();
         if (!isInputExpertMaskFlag_) {
             tpipe_->InitBuffer(tokenTargetTBuf_, Ceil(axisBS_ * sizeof(half), UB_ALIGN) * UB_ALIGN);
             tokenTargetTensor_ = tokenTargetTBuf_.Get<half>();
@@ -898,7 +888,6 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::SetWai
         return;
     }
     ExpertAlltoAllDispatchCopyAdd();
-    SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
 template <A5MteCombineTypeClass>
@@ -1046,36 +1035,64 @@ __aicore__ inline uint32_t MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Ch
     if (flagFloatNum == 0U) {
         return 0U;
     }
-    const uint32_t compareCount = Ceil(flagFloatNum, 64U) * 64U;
-    const uint32_t compResultU64Num = Ceil(flagFloatNum, 64U);
-    LocalTensor<float> flagTensor = packedCheckFlagBuf_.Get<float>();
-    LocalTensor<uint8_t> compResultTensor = packedCheckCompareBuf_.Get<uint8_t>();
-    LocalTensor<uint64_t> compResultU64Tensor = packedCheckCompareBuf_.Get<uint64_t>();
-    Duplicate<float>(flagTensor, float(0), compareCount);
-    PipeBarrier<PIPE_V>();
-    DataCopyExtParams expFlagCopyParams{blockCount, SPLIT_BLOCK_FLAG_SIZE, srcStrideBytes, 0U, 0U};
-    DataCopyPadExtParams<float> expFlagPadParams{false, 0U, 0U, 0U};
-    GlobalTensor<float> dataFlagGlobal;
-    dataFlagGlobal.SetGlobalBuffer((__gm__ float *)(flagBaseAddr));
-    DataCopyPad(flagTensor, dataFlagGlobal, expFlagCopyParams, expFlagPadParams);
-    SyncFunc<AscendC::HardEvent::MTE2_V>();
-    CompareScalar(compResultTensor, flagTensor, float(1), AscendC::CMPMODE::EQ, compareCount);
-    SyncFunc<AscendC::HardEvent::V_S>();
-    uint32_t arriveFlagNum = 0U;
-    for (uint32_t i = 0U; i < compResultU64Num; ++i) {
-        uint64_t flagCompMask = compResultU64Tensor.GetValue(i);
-        int64_t firstInvalidIdx = ScalarGetSFFValue<0>(flagCompMask);
-        if (firstInvalidIdx == -1) {
-            arriveFlagNum += 64U;
-        } else {
-            arriveFlagNum += static_cast<uint32_t>(firstInvalidIdx);
-            break;
+    // 等待阶段复用计算scratch，避免额外申请flag检查buffer
+    LocalTensor<float> flagTensor = rowTmpFloatBuf_.Get<float>();
+    LocalTensor<uint8_t> compResultTensor = mulBuf_.Get<uint8_t>();
+    LocalTensor<uint64_t> compResultU64Tensor = mulBuf_.Get<uint64_t>();
+    const uint32_t flagPerBlock = SPLIT_BLOCK_FLAG_COUNT;
+    const uint32_t maxFlagFloatNum = hFloatAlign32Size_ / sizeof(float);
+    // CompareScalar按64个元素对齐，分段大小也按64个flag对齐，避免尾段补齐写出scratch
+    const uint32_t maxBlockCount = (maxFlagFloatNum / 64U) * (64U / flagPerBlock);
+    uint32_t processedBlockCount = 0U;
+    uint32_t processedFlagNum = 0U;
+    if (maxBlockCount == 0U) {
+        while (processedBlockCount < blockCount) {
+            GlobalTensor<float> dataFlagGlobal;
+            dataFlagGlobal.SetGlobalBuffer((__gm__ float *)(flagBaseAddr + processedBlockCount * SPLIT_BLOCK_SIZE));
+            DataCopyExtParams expFlagCopyParams{1U, SPLIT_BLOCK_FLAG_SIZE, srcStrideBytes, 0U, 0U};
+            DataCopyPadExtParams<float> expFlagPadParams{false, 0U, 0U, 0U};
+            DataCopyPad(flagTensor, dataFlagGlobal, expFlagCopyParams, expFlagPadParams);
+            SyncFunc<AscendC::HardEvent::MTE2_S>();
+            for (uint32_t i = 0U; i < flagPerBlock; ++i) {
+                if (flagTensor.GetValue(i) != float(1)) {
+                    return MIN(processedFlagNum + i, flagFloatNum);
+                }
+            }
+            processedBlockCount++;
+            processedFlagNum += flagPerBlock;
         }
+        return MIN(processedFlagNum, flagFloatNum);
     }
-    if (arriveFlagNum > flagFloatNum) {
-        arriveFlagNum = flagFloatNum;
+    while (processedBlockCount < blockCount) {
+        uint32_t currentBlockCount = MIN(maxBlockCount, static_cast<uint32_t>(blockCount) - processedBlockCount);
+        uint32_t currentFlagFloatNum = currentBlockCount * flagPerBlock;
+        uint32_t compareCount = Ceil(currentFlagFloatNum, 64U) * 64U;
+        uint32_t compResultU64Num = Ceil(currentFlagFloatNum, 64U);
+        Duplicate<float>(flagTensor, float(0), compareCount);
+        PipeBarrier<PIPE_V>();
+        SyncFunc<AscendC::HardEvent::V_MTE2>();
+        DataCopyExtParams expFlagCopyParams{static_cast<uint16_t>(currentBlockCount), SPLIT_BLOCK_FLAG_SIZE,
+                                            srcStrideBytes, 0U, 0U};
+        DataCopyPadExtParams<float> expFlagPadParams{false, 0U, 0U, 0U};
+        GlobalTensor<float> dataFlagGlobal;
+        dataFlagGlobal.SetGlobalBuffer((__gm__ float *)(flagBaseAddr + processedBlockCount * SPLIT_BLOCK_SIZE));
+        DataCopyPad(flagTensor, dataFlagGlobal, expFlagCopyParams, expFlagPadParams);
+        SyncFunc<AscendC::HardEvent::MTE2_V>();
+        CompareScalar(compResultTensor, flagTensor, float(1), AscendC::CMPMODE::EQ, compareCount);
+        SyncFunc<AscendC::HardEvent::V_S>();
+        for (uint32_t i = 0U; i < compResultU64Num; ++i) {
+            uint64_t flagCompMask = compResultU64Tensor.GetValue(i);
+            int64_t firstInvalidIdx = ScalarGetSFFValue<0>(flagCompMask);
+            if (firstInvalidIdx == -1) {
+                continue;
+            }
+            uint32_t arriveFlagNum = processedFlagNum + i * 64U + static_cast<uint32_t>(firstInvalidIdx);
+            return MIN(arriveFlagNum, flagFloatNum);
+        }
+        processedBlockCount += currentBlockCount;
+        processedFlagNum += currentFlagFloatNum;
     }
-    return arriveFlagNum;
+    return MIN(processedFlagNum, flagFloatNum);
 }
 
 template <A5MteCombineTypeClass>
@@ -1755,10 +1772,15 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::LocalW
     uint32_t tokenLocalIdx1 = tokenPerAivNum_, topkId1 = 0U, index1 = 0U;
     // token内按slot顺序处理，两个token之间轮转
     while (tokenNumCompleted_ < tokenPerAivNum_) {
-        TokenInit(0U, tokenLocalIdx0, topkId0, index0);
-        TokenInit(1U, tokenLocalIdx1, topkId1, index1);
-        ProcessToken(0U, tokenLocalIdx0, topkId0, index0);
-        ProcessToken(1U, tokenLocalIdx1, topkId1, index1);
+        if (bufferNum_ == 1U) {
+            TokenInit(0U, tokenLocalIdx0, topkId0, index0);
+            ProcessToken(0U, tokenLocalIdx0, topkId0, index0);
+        } else {
+            TokenInit(0U, tokenLocalIdx0, topkId0, index0);
+            TokenInit(1U, tokenLocalIdx1, topkId1, index1);
+            ProcessToken(0U, tokenLocalIdx0, topkId0, index0);
+            ProcessToken(1U, tokenLocalIdx1, topkId1, index1);
+        }
     }
     if (isPerformanceFlag_) {
         SyncFunc<AscendC::HardEvent::V_MTE3>();
