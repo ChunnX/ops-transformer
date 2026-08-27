@@ -265,7 +265,14 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
             nodeName, "sendCounts",
             (std::string("dim0=") + std::to_string(sendCountsShape->GetStorageShape().GetDim(0))).c_str(), "> 0"),
         return ge::GRAPH_FAILED);
-    rankSize = static_cast<uint32_t>(sendCountsShape->GetStorageShape().GetDim(0));
+    constexpr int64_t SEND_COUNTS_ALIGN_FACTOR = 8;
+    int64_t sendCountsDim0 = sendCountsShape->GetStorageShape().GetDim(0);
+    OP_TILING_CHECK(sendCountsDim0 % SEND_COUNTS_ALIGN_FACTOR != 0,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "sendCounts.dim0",
+                                              std::to_string(sendCountsDim0).c_str(),
+                                              "must be multiple of SEND_COUNTS_ALIGN_FACTOR(8)"),
+                    return ge::GRAPH_FAILED);
+    rankSize = static_cast<uint32_t>(sendCountsDim0 / SEND_COUNTS_ALIGN_FACTOR);
 
     // recvCounts: 1D (W,)
     const gert::StorageShape *recvCountsShape = context->GetInputShape(IN_RECV_COUNTS);
@@ -621,7 +628,9 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
     int64_t wsRdispls = numRanks * UB_ALIGN;
     int64_t wsCounterScratch = static_cast<int64_t>(tilingData.aivNum) * UB_ALIGN;
     int64_t wsFlagScratch = 32;
-    int64_t wsSegCount = static_cast<int64_t>(tilingData.aivNum) * sizeof(int32_t);
+    int64_t coreArrayAligned = AlignTo(static_cast<int64_t>(tilingData.aivNum) * sizeof(int32_t), UB_ALIGN);
+    int64_t wsSegCount = coreArrayAligned;
+    int64_t wsCoreStart = coreArrayAligned;
 
     int64_t maxSortCount = totalRecv;
     OP_TILING_CHECK(maxSortCount > INT64_MAX / static_cast<int64_t>(sizeof(int32_t)),
@@ -642,11 +651,14 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
     int64_t wsSortPrefix = 256 * sizeof(int32_t);
     int64_t wsSortCoreSums = static_cast<int64_t>(tilingData.aivNum) * 256 * sizeof(int32_t);
     int64_t wsSortOffsets = sortTileCount * 256 * sizeof(int32_t);
+    int64_t sortTileAlignBytes = ((4096 * sizeof(int32_t) + UB_ALIGN - 1) / UB_ALIGN) * UB_ALIGN;
+    int64_t wsSortKeyLocal = sortTileCount * sortTileAlignBytes;
     int64_t wsSortTotal =
-        wsSortTempVal + wsSortTempIdx + wsSortCompanion + wsSortHist + wsSortPrefix + wsSortCoreSums + wsSortOffsets;
+        wsSortTempVal + wsSortTempIdx + wsSortCompanion + wsSortHist + wsSortPrefix + wsSortCoreSums + wsSortOffsets +
+        wsSortKeyLocal;
 
     int64_t wsTotal = wsGradSorted + wsRecvGrad + wsSdispls + wsRdispls + wsCounterScratch + wsFlagScratch +
-                      wsSegCount + wsSortTotal;
+                      wsSegCount + wsCoreStart + wsSortTotal;
     wsTotal = AlignTo(wsTotal, BUFFER_ALIGNMENT);
     wsTotal += SYSTEM_NEED_WORKSPACE;
 

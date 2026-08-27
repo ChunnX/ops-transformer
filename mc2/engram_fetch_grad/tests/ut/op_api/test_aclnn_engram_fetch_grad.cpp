@@ -64,7 +64,7 @@ TEST_F(AclnnEngramFetchGradTest, ascend950_success)
     auto commContext_desc = TensorDesc({6146}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto gradFetched_desc = TensorDesc({8, 512}, ACL_BF16, ACL_FORMAT_ND);
     auto perm_desc = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 7);
-    auto sendCounts_desc = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 8);
+    auto sendCounts_desc = TensorDesc({16}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 8);
     auto recvCounts_desc = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 16);
     auto recvLocalEntry_desc = TensorDesc({16}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 3);
     auto numRecv_desc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
@@ -92,7 +92,7 @@ TEST_F(AclnnEngramFetchGradTest, ascend950_nullptr_commContext)
 {
     auto gradFetched_desc = TensorDesc({8, 512}, ACL_BF16, ACL_FORMAT_ND);
     auto perm_desc = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND);
-    auto sendCounts_desc = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND);
+    auto sendCounts_desc = TensorDesc({16}, ACL_INT32, ACL_FORMAT_ND);
     auto recvCounts_desc = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND);
     auto recvLocalEntry_desc = TensorDesc({16}, ACL_INT32, ACL_FORMAT_ND);
     auto numRecv_desc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
@@ -119,7 +119,7 @@ TEST_F(AclnnEngramFetchGradTest, ascend950_nullptr_gradFetched)
 {
     auto commContext_desc = TensorDesc({6146}, ACL_INT32, ACL_FORMAT_ND);
     auto perm_desc = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND);
-    auto sendCounts_desc = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND);
+    auto sendCounts_desc = TensorDesc({16}, ACL_INT32, ACL_FORMAT_ND);
     auto recvCounts_desc = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND);
     auto recvLocalEntry_desc = TensorDesc({16}, ACL_INT32, ACL_FORMAT_ND);
     auto numRecv_desc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
@@ -147,7 +147,7 @@ TEST_F(AclnnEngramFetchGradTest, ascend950_nullptr_gradUniqueOut)
     auto commContext_desc = TensorDesc({6146}, ACL_INT32, ACL_FORMAT_ND);
     auto gradFetched_desc = TensorDesc({8, 512}, ACL_BF16, ACL_FORMAT_ND);
     auto perm_desc = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND);
-    auto sendCounts_desc = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND);
+    auto sendCounts_desc = TensorDesc({16}, ACL_INT32, ACL_FORMAT_ND);
     auto recvCounts_desc = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND);
     auto recvLocalEntry_desc = TensorDesc({16}, ACL_INT32, ACL_FORMAT_ND);
     auto numRecv_desc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
