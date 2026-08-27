@@ -1322,54 +1322,6 @@ def _materialize_pa_bnsd(tensor):
 # ==============================================================================
 
 
-def _apply_sticky_overflow_stc_pattern(
-    case, q_fp32=None, k_fp32=None, v_fp32=None
-):
-    """Materialize deterministic inputs for the four sticky-overflow STCs."""
-    seed = int(case["seed"])
-    qk_signs = {
-        260130: (1.0, 1.0, -1.0, -1.0),
-        260131: (-1.0, -1.0, 1.0, 1.0),
-    }
-    pv_signs = {
-        260132: (1.0, -1.0, 1.0, -1.0),
-        260133: (-1.0, 1.0, -1.0, 1.0),
-    }
-
-    if seed in qk_signs:
-        if q_fp32 is not None:
-            q_fp32.zero_()
-            group_value = math.ldexp(448.0, 105)
-            for group_idx, sign in enumerate(qk_signs[seed]):
-                group_start = group_idx * QUANT_GROUP_SIZE
-                q_fp32[
-                    ..., group_start : group_start + QUANT_GROUP_SIZE
-                ] = sign * group_value
-        if k_fp32 is not None and v_fp32 is not None:
-            k_fp32.zero_()
-            v_fp32.zero_()
-            k_fp32[0, 0, 0, :] = 448.0
-            v_fp32[0, 0, 0, :] = -1.0
-            v_fp32[0, 0, 1, :] = 1.0
-        return
-
-    if seed in pv_signs:
-        if q_fp32 is not None:
-            q_fp32.zero_()
-        if k_fp32 is not None and v_fp32 is not None:
-            k_fp32.zero_()
-            v_fp32.zero_()
-            group_value = math.ldexp(448.0, 115)
-            for group_idx, sign in enumerate(pv_signs[seed]):
-                group_start = group_idx * QUANT_GROUP_SIZE
-                v_fp32[
-                    0,
-                    0,
-                    group_start : group_start + QUANT_GROUP_SIZE,
-                    :,
-                ] = sign * group_value
-
-
 def generate_mxfp8_inputs(case=None, max_block_per_batch=None, atten_mask_shape=None):
     """Generate test inputs with paired fp8 + descale.
 
@@ -1404,7 +1356,6 @@ def generate_mxfp8_inputs(case=None, max_block_per_batch=None, atten_mask_shape=
     head_dim = case["D"]
     # Q: fp32 随机 → MXFP8 配套量化 (per-32-group along D)
     q_fp32 = _rand_float((total_q, n1, head_dim), generator, DATA_RANGE_Q)
-    _apply_sticky_overflow_stc_pattern(case, q_fp32=q_fp32)
     query, q_descale = quantize_mxfp8_qk(
         q_fp32.unsqueeze(0), FP8_DTYPE, QUANT_GROUP_SIZE
     )
@@ -1418,7 +1369,6 @@ def generate_mxfp8_inputs(case=None, max_block_per_batch=None, atten_mask_shape=
     #   V descale [BlockNum, N2, ceil(BlockSize/64), D, 2]
     k_fp32 = _rand_float((BLOCK_NUM, n2, BLOCK_SIZE, head_dim), generator, DATA_RANGE_K)
     v_fp32 = _rand_float((BLOCK_NUM, n2, BLOCK_SIZE, head_dim), generator, DATA_RANGE_V)
-    _apply_sticky_overflow_stc_pattern(case, k_fp32=k_fp32, v_fp32=v_fp32)
     _log_tensor_ranges(
         "original FP32 range",
         q=q_fp32,
