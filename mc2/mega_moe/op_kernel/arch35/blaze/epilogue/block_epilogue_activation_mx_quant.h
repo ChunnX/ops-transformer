@@ -24,6 +24,8 @@
 #endif
 #include "../../common/mega_moe_constants.h"
 #include "../../common/mega_moe_utils.h"
+#include "detail/activation_mx_quant_store.h"
+#include "detail/activation_mx_quant_ub_layout.h"
 #include "gated_activation.h"
 #include "quant/mx_quant.h"
 
@@ -98,7 +100,9 @@ public:
     __aicore__ inline void UpdateNextProblem(const ProblemShape &problemShape);
 
 private:
-    __aicore__ inline void VFDoActivationForMX(uint16_t mSize, uint16_t pingpongIdx = 0);
+    using UbPointers = Detail::ActivationMxQuantUbPointers<DataTypeIn>;
+
+    __aicore__ inline void VFDoActivationForMX(uint16_t mSize, const UbPointers &ubPointers);
 
     __aicore__ inline void VFDoActivationAndQuantForMX(__ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst,
                                                        __ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTypeIn *secondSrc,
@@ -110,10 +114,6 @@ private:
                                           __ubuf__ bfloat16_t *gluResAddr, uint16_t validRowCount,
                                           uint16_t validColumnCount, uint32_t outputRowStrideElements);
 
-    __aicore__ inline void CopyOutputFromUb2Gm(uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src);
-
-    __aicore__ inline void CopyScaleFromUb2GmCompact(uint64_t blockCount, uint64_t offset,
-                                                     AscendC::LocalTensor<int8_t> &src);
     // GM ADDR
     AscendC::GlobalTensor<int8_t> quantOutputGlobal_;
     AscendC::GlobalTensor<int8_t> quantScaleGlobal_;
@@ -121,10 +121,17 @@ private:
     GM_ADDR yScaleGmAddr_{nullptr};
 
     // UB ADDR
-    AscendC::LocalTensor<DataTypeIn> l0cOutUbFirst_{AscendC::TPosition::VECIN, 0, MAX_SINGLE_MN};
+    static constexpr uint32_t kUbFirstOffset =
+        Detail::BuildActivationMxQuantUbOffsets<DataTypeIn, TileM, TileN, IsInterleaved_>().firstInputOffsetBytes;
+    static constexpr uint32_t kUbInputElementCapacity =
+        Detail::BuildActivationMxQuantUbOffsets<DataTypeIn, TileM, TileN,
+                                                IsInterleaved_>().firstInputElementCapacity;
     static constexpr uint32_t kUbSecondOffset =
-        (MAX_SINGLE_MN * sizeof(DataTypeIn) * 2U <= 256U * 1024U) ? (MAX_SINGLE_MN * sizeof(DataTypeIn)) : 0U;
-    AscendC::LocalTensor<DataTypeIn> l0cOutUbSecond_{AscendC::TPosition::VECIN, kUbSecondOffset, MAX_SINGLE_MN};
+        Detail::BuildActivationMxQuantUbOffsets<DataTypeIn, TileM, TileN, IsInterleaved_>().secondInputOffsetBytes;
+    AscendC::LocalTensor<DataTypeIn> l0cOutUbFirst_{AscendC::TPosition::VECIN, kUbFirstOffset,
+                                                    kUbInputElementCapacity};
+    AscendC::LocalTensor<DataTypeIn> l0cOutUbSecond_{AscendC::TPosition::VECIN, kUbSecondOffset,
+                                                     kUbInputElementCapacity};
     AscendC::LocalTensor<int8_t> quantOutput_;
     AscendC::LocalTensor<int8_t> quantScaleOutput_;
     AscendC::LocalTensor<bfloat16_t> gluRes_;
@@ -160,26 +167,23 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
     activationAlpha_ = params.activationAlpha;
     activationBeta_ = params.activationBeta;
 
-    // 非交织布局使用完整 tile，交织布局使用带 ping-pong 偏移的半 tile。
-    constexpr uint32_t MAX_SINGLE_MN_ALIAS = IsInterleaved_ ? MAX_SINGLE_MN / ACTIVATION_N_HALF : MAX_SINGLE_MN;
-    constexpr uint32_t gluResOffset = 0;
-    gluRes_ = AscendC::LocalTensor<bfloat16_t>(AscendC::TPosition::VECCALC, gluResOffset, MAX_SINGLE_MN_ALIAS);
-    constexpr uint32_t quantOutputOffset = gluResOffset + MAX_SINGLE_MN_ALIAS * sizeof(bfloat16_t);
-    quantOutput_ = AscendC::LocalTensor<int8_t>(AscendC::TPosition::VECOUT, quantOutputOffset, MAX_SINGLE_MN_ALIAS);
-    constexpr uint32_t quantScaleOffset = quantOutputOffset + MAX_SINGLE_MN_ALIAS * sizeof(int8_t);
-    quantScaleOutput_ = AscendC::LocalTensor<int8_t>(AscendC::TPosition::VECOUT, quantScaleOffset,
-                                                     MAX_SINGLE_MN_ALIAS / AscendC::ONE_BLK_SIZE);
-    constexpr uint32_t maxExpOffset = quantScaleOffset + MAX_SINGLE_MN_ALIAS / AscendC::ONE_BLK_SIZE * sizeof(int8_t);
-    maxExp_ = AscendC::LocalTensor<uint16_t>(AscendC::TPosition::VECCALC, maxExpOffset,
-                                             MAX_SINGLE_MN_ALIAS / AscendC::ONE_BLK_SIZE);
-    constexpr uint32_t halfScaleOffset = maxExpOffset + MAX_SINGLE_MN_ALIAS / AscendC::ONE_BLK_SIZE * sizeof(uint16_t);
-    halfScale_ = AscendC::LocalTensor<uint16_t>(AscendC::TPosition::VECCALC, halfScaleOffset,
-                                                MAX_SINGLE_MN_ALIAS / AscendC::ONE_BLK_SIZE);
+    constexpr auto ubOffsets =
+        Detail::BuildActivationMxQuantUbOffsets<DataTypeIn, TileM, TileN, IsInterleaved_>();
+    gluRes_ = AscendC::LocalTensor<bfloat16_t>(AscendC::TPosition::VECCALC, ubOffsets.activationOutputOffsetBytes,
+                                               ubOffsets.activationQuantElementCapacity);
+    quantOutput_ = AscendC::LocalTensor<int8_t>(AscendC::TPosition::VECOUT, ubOffsets.quantOutputOffsetBytes,
+                                                ubOffsets.activationQuantElementCapacity);
+    quantScaleOutput_ = AscendC::LocalTensor<int8_t>(AscendC::TPosition::VECOUT, ubOffsets.quantScaleOffsetBytes,
+                                                     ubOffsets.scaleElementCapacity);
+    maxExp_ = AscendC::LocalTensor<uint16_t>(AscendC::TPosition::VECCALC, ubOffsets.maxExpOffsetBytes,
+                                             ubOffsets.scaleElementCapacity);
+    halfScale_ = AscendC::LocalTensor<uint16_t>(AscendC::TPosition::VECCALC, ubOffsets.reciprocalScaleOffsetBytes,
+                                                ubOffsets.scaleElementCapacity);
 
     // weight UB: 放在 VECIN 区之后的安全区域，仅 mode=1 分配
     if constexpr (TopkWeightsPrefetch) {
-        constexpr uint32_t vecinEnd = MAX_SINGLE_MN * sizeof(DataTypeIn) * 2U;
-        weightUb_ = AscendC::LocalTensor<float>(AscendC::TPosition::VECCALC, vecinEnd, MAX_TILE_M * INT32_PER_256B);
+        weightUb_ = AscendC::LocalTensor<float>(AscendC::TPosition::VECCALC, ubOffsets.topkWeightOffsetBytes,
+                                                ubOffsets.topkWeightElementCapacity);
     }
 }
 
@@ -200,44 +204,6 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
     n_ = Get<N_VALUE>(problemShape); // n/2
     scaleN_ =
         Ops::Base::CeilDiv(static_cast<uint64_t>(n_), static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
-}
-
-BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::CopyOutputFromUb2Gm(
-    uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src)
-{
-    AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
-    ub2GmParams.blockCount = blockCount; // 128
-    if constexpr (AscendC::IsSameType<DataTypeOut, fp4x2_e2m1_t>::value ||
-                  AscendC::IsSameType<DataTypeOut, fp4x2_e1m2_t>::value) {
-        ub2GmParams.blockLen = singleN_ >> 1;
-        ub2GmParams.dstStride = (n_ - singleN_) >> 1;
-        offset = offset >> 1;
-    } else {
-        uint64_t nDstUbAligned =
-            Ops::Base::CeilAlign(static_cast<uint64_t>(singleN_), static_cast<uint64_t>(AscendC::ONE_BLK_SIZE));
-        ub2GmParams.blockLen = singleN_; // 256
-        ub2GmParams.srcStride = (nDstUbAligned - singleN_) / AscendC::ONE_BLK_SIZE;
-        ub2GmParams.dstStride = n_ - singleN_;
-    }
-    AscendC::DataCopyPad(quantOutputGlobal_[offset], src, ub2GmParams);
-}
-
-BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline void
-BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::CopyScaleFromUb2GmCompact(
-    uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src)
-{
-    AscendC::DataCopyExtParams ub2GmParams{0, 0, 0, 0, 0};
-    auto blockScaleN = Ops::Base::CeilDiv(static_cast<uint64_t>(singleN_),
-                                          static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) *
-                       MXFP_MULTI_BASE_SIZE; // 256 / 32 = 8
-    // scale layout in UB is already compact: (mSize, blockScaleN). Compact copy avoids (mSize*8)->(mSize,32).
-    ub2GmParams.blockCount = blockCount; // 128
-    ub2GmParams.blockLen = blockScaleN;  // 8
-    ub2GmParams.srcStride = 0;
-    ub2GmParams.dstStride = scaleN_ - blockScaleN;
-    AscendC::DataCopyPad<int8_t, AscendC::PaddingMode::Compact>(quantScaleGlobal_[offset], src, ub2GmParams);
 }
 
 BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
@@ -303,32 +269,11 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoAc
 
 BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoActivationForMX(
-    uint16_t mSize, uint16_t pingpongIdx)
+    uint16_t mSize, const UbPointers &ubPointers)
 {
-    constexpr uint32_t pongElemOf_DataTypeIn = MAX_SINGLE_MN;
-    constexpr uint32_t pongElemOf_bf16 = MAX_SINGLE_MN * sizeof(DataTypeIn) / sizeof(bfloat16_t);
-    constexpr uint32_t pongElemOf_int8 = MAX_SINGLE_MN * sizeof(DataTypeIn);
-    constexpr uint32_t pongElemOf_uint16 = MAX_SINGLE_MN * sizeof(DataTypeIn) / sizeof(uint16_t);
-    // 为交织 ping-pong 布局选择当前使用的半 tile 缓冲区。
-    const uint32_t pongMul = (IsInterleaved_ && pingpongIdx == 1U) ? 1U : 0U;
-
-    __ubuf__ DataTypeIn *l0cOutUbBase =
-        (__ubuf__ DataTypeIn *)l0cOutUbFirst_.GetPhyAddr() + pongMul * pongElemOf_DataTypeIn;
-    __ubuf__ bfloat16_t *gluResAddr = (__ubuf__ bfloat16_t *)gluRes_.GetPhyAddr() + pongMul * pongElemOf_bf16;
-    __ubuf__ int8_t *quantOutputInUbAddr = (__ubuf__ int8_t *)quantOutput_.GetPhyAddr() + pongMul * pongElemOf_int8;
-    __ubuf__ uint16_t *quantScaleOutputInUbAddr =
-        (__ubuf__ uint16_t *)quantScaleOutput_.GetPhyAddr() + pongMul * pongElemOf_uint16;
-    __ubuf__ uint16_t *maxExpAddr = (__ubuf__ uint16_t *)maxExp_.GetPhyAddr() + pongMul * pongElemOf_uint16;
-    __ubuf__ uint16_t *halfScaleAddr = (__ubuf__ uint16_t *)halfScale_.GetPhyAddr() + pongMul * pongElemOf_uint16;
-
-    __ubuf__ DataTypeIn *l0cOutUbSecondAddr;
-    if constexpr (IsInterleaved_) {
-        l0cOutUbSecondAddr = l0cOutUbBase + singleN_;
-    } else {
-        l0cOutUbSecondAddr = (__ubuf__ DataTypeIn *)l0cOutUbSecond_.GetPhyAddr();
-    }
-    VFDoActivationAndQuantForMX(quantOutputInUbAddr, quantScaleOutputInUbAddr, l0cOutUbBase, l0cOutUbSecondAddr,
-                                gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_);
+    VFDoActivationAndQuantForMX(ubPointers.quantOutput, ubPointers.quantScale, ubPointers.firstInput,
+                                ubPointers.secondInput, ubPointers.activationOutput, ubPointers.maxExp,
+                                ubPointers.reciprocalScale, mSize, singleN_);
 }
 
 BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
@@ -362,24 +307,37 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
 
     uint64_t yOffset = Get<Y_IDX>(blockCoord);
     uint64_t yScaleOffset = Get<Y_SCALE_IDX>(blockCoord);
-    VFDoActivationForMX(singleM_, pingpongIdx); // switch(x)*y 计算quant quantScale
+    __ubuf__ DataTypeIn *secondInputBase = nullptr;
+    if constexpr (!IsInterleaved_) {
+        secondInputBase = (__ubuf__ DataTypeIn *)l0cOutUbSecond_.GetPhyAddr();
+    }
+    auto ubPointers = Detail::ResolveActivationMxQuantUbPointers<DataTypeIn, MAX_SINGLE_MN, IsInterleaved_>(
+        (__ubuf__ DataTypeIn *)l0cOutUbFirst_.GetPhyAddr(), secondInputBase,
+        (__ubuf__ bfloat16_t *)gluRes_.GetPhyAddr(), (__ubuf__ int8_t *)quantOutput_.GetPhyAddr(),
+        (__ubuf__ uint16_t *)quantScaleOutput_.GetPhyAddr(), (__ubuf__ uint16_t *)maxExp_.GetPhyAddr(),
+        (__ubuf__ uint16_t *)halfScale_.GetPhyAddr(), singleN_, pingpongIdx);
+    VFDoActivationForMX(singleM_, ubPointers); // switch(x)*y 计算quant quantScale
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
     // scale已按compact布局生成，直接copy到GM，省掉原先TransMxScaleLayout重排scale。
     if constexpr (IsInterleaved_) {
-        constexpr uint32_t PONG_INT8_ELEMS = MAX_SINGLE_MN * sizeof(DataTypeIn);
         if (pingpongIdx == 1U) {
-            AscendC::LocalTensor<int8_t> quantOutputPong = quantOutput_[PONG_INT8_ELEMS];
-            AscendC::LocalTensor<int8_t> quantScalePong = quantScaleOutput_[PONG_INT8_ELEMS];
-            CopyOutputFromUb2Gm(singleM_, yOffset, quantOutputPong);
-            CopyScaleFromUb2GmCompact(singleM_, yScaleOffset, quantScalePong);
+            AscendC::LocalTensor<int8_t> quantOutputPong = quantOutput_[ubPointers.selectedInt8BufferOffsetElements];
+            AscendC::LocalTensor<int8_t> quantScalePong =
+                quantScaleOutput_[ubPointers.selectedInt8BufferOffsetElements];
+            Detail::StoreQuantOutput<DataTypeOut>(quantOutputGlobal_, quantOutputPong, singleM_, yOffset, n_,
+                                                  singleN_);
+            Detail::StoreQuantScaleCompact(quantScaleGlobal_, quantScalePong, singleM_, yScaleOffset, scaleN_,
+                                           singleN_);
         } else {
-            CopyOutputFromUb2Gm(singleM_, yOffset, quantOutput_);
-            CopyScaleFromUb2GmCompact(singleM_, yScaleOffset, quantScaleOutput_);
+            Detail::StoreQuantOutput<DataTypeOut>(quantOutputGlobal_, quantOutput_, singleM_, yOffset, n_, singleN_);
+            Detail::StoreQuantScaleCompact(quantScaleGlobal_, quantScaleOutput_, singleM_, yScaleOffset, scaleN_,
+                                           singleN_);
         }
     } else {
-        CopyOutputFromUb2Gm(singleM_, yOffset, quantOutput_);
-        CopyScaleFromUb2GmCompact(singleM_, yScaleOffset, quantScaleOutput_);
+        Detail::StoreQuantOutput<DataTypeOut>(quantOutputGlobal_, quantOutput_, singleM_, yOffset, n_, singleN_);
+        Detail::StoreQuantScaleCompact(quantScaleGlobal_, quantScaleOutput_, singleM_, yScaleOffset, scaleN_,
+                                       singleN_);
     }
     AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
