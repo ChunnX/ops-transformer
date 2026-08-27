@@ -17,6 +17,10 @@
 
 #include "kernel_tiling/kernel_tiling.h"
 
+#ifndef MC2_DFX_ENABLE
+#define MC2_DFX_ENABLE 1
+#endif
+
 namespace Mc2Tiling {
 constexpr uint8_t COMM_ALG_DEFAULT = 0;
 constexpr uint8_t COMM_ALG_FULL_MESH = 1;

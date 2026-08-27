@@ -200,6 +200,7 @@ inline int DumpToFile(std::string dir, std::string name, uint32_t id, void *buf,
     return 0;
 }
 
+#if MC2_DFX_ENABLE
 const uint32_t XN_ADDR_DUMP_SIZE = 64U * 64U * 8U;
 const uint32_t CKE_ADDR_DUMP_SIZE = 64U * 2U * 8U;
 
@@ -246,6 +247,7 @@ inline int DumpToFileWithSize(std::string dir, std::string name, uint32_t id, vo
     OP_LOGE(OP_NAME, "Dump to file %s done.", path.c_str());
     return 0;
 }
+#endif // MC2_DFX_ENABLE
 
 inline int ProcessArgsForA5(uint64_t argsAddr, std::vector<uint8_t> &winBuf, const char *op)
 {
@@ -672,6 +674,7 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
     }
 }
 
+#if MC2_DFX_ENABLE
 inline void Mc2ExceptionImplTmp(aclrtExceptionInfo *args, void *userdata, const char *op)
 {
     const char* socName = aclrtGetSocName();
@@ -951,7 +954,14 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
     }
     OP_LOGE(OP_NAME, "Workspace dump done: op=%s, deviceId=%u.", op, deviceId);
 }
- 	 
+#else  // !MC2_DFX_ENABLE
+inline void Mc2ExceptionImplTmp(aclrtExceptionInfo *args, void *userdata, const char *op) {}
+inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t tilingGmArgIdx,
+                            uint32_t argsOffset = 0U, uint32_t workspaceGmArgIdx = 0U,
+                            uint32_t quantModeOffset = 0U, uint32_t wsLayoutOffsetNonQuant = 0U,
+                            uint32_t wsLayoutOffsetQuant = 0U, uint32_t wsLayoutOffsetApace = 0U) {}
+#endif // MC2_DFX_ENABLE
+ 
 } // namespace Mc2Exception
 #endif
 

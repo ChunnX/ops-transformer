@@ -39,6 +39,7 @@ IMPL_OP_OPTILING(AllGatherMatmulV2)
     .Tiling(AllGatherMatmulTilingV2Func)
     .TilingParse<AllGatherMatmulCompileInfo>(TilingParseForAllGatherMatmulV2);
 
+#if MC2_DFX_ENABLE
 // Register exception dump func
 inline void AllGatherMatmulV2ExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
 {
@@ -62,4 +63,5 @@ __attribute__((constructor)) void RegisterAllGatherMatmulV2ExceptionFunc()
     IMPL_OP(AllGatherMatmulV2)
         .ExceptionDumpParseFunc(AllGatherMatmulV2ExceptionImplWrapper);
 }
+#endif // MC2_DFX_ENABLE
 } // namespace optiling

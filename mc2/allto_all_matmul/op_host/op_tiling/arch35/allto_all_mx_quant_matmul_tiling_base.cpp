@@ -983,9 +983,11 @@ void AllToAllMxQuantMatmulTilingBase::BuildWorkspaceLayout()
         offset += inferredInfo_.permuteLen;
     }
     // [5] 运行时信息段 (64KB)
+#if MC2_DFX_ENABLE
     workspaceLayout_.segments[idx++] = {offset, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE,
                                         static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
     offset += Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
+#endif
 
     workspaceLayout_.totalSize = offset;
     workspaceLayout_.segCount = idx;
@@ -1020,9 +1022,11 @@ void AllToAllMxQuantMatmulTilingBase::BuildWorkspaceLayoutApace()
         offset += inferredInfo_.commLen;
     }
     // [3] 运行时信息段 (64KB)
+#if MC2_DFX_ENABLE
     workspaceLayout_.segments[idx++] = {offset, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE,
                                         static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
     offset += Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
+#endif
 
     workspaceLayout_.totalSize = offset;
     workspaceLayout_.segCount = idx;

@@ -22,6 +22,7 @@
 
 namespace Mc2Kernel {
 
+#if MC2_DFX_ENABLE
 class Mc2RuntimeInfo {
 public:
     __aicore__ inline Mc2RuntimeInfo() = default;
@@ -147,6 +148,18 @@ private:
     __gm__ Mc2Tiling::RuntimeInfoPerCore *runtimeInfoBase_ = nullptr;
     uint32_t slotIdx_ = 0;
 };
+#else  // !MC2_DFX_ENABLE
+class Mc2RuntimeInfo {
+public:
+    __aicore__ inline Mc2RuntimeInfo() = default;
+    __aicore__ inline void Init(GM_ADDR, Mc2Tiling::WorkspaceLayoutInfo *, uint32_t) {}
+    __aicore__ inline void WriteGmByPassDCache(uint8_t, uint8_t, uint8_t) {}
+    __aicore__ inline void WritePhaseByPassDCache(uint8_t) {}
+    __aicore__ inline void WriteTurnByPassDCache(uint8_t) {}
+    __aicore__ inline void IncCommitCount() {}
+    __aicore__ inline void IncWaitCount() {}
+};
+#endif // MC2_DFX_ENABLE
 
 } // namespace Mc2Kernel
 #endif // __CCE_AICORE__
