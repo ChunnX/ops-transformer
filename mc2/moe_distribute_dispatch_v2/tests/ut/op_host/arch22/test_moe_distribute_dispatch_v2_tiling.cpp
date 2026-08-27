@@ -2138,6 +2138,10 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, HierarchyCommAlg)
 
 TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A3HierarchyVariableBsSuccess)
 {
+    const char *envValue = getenv("HCCL_BUFFSIZE");
+    std::string originalEnv = envValue != nullptr ? envValue : "";
+    setenv("HCCL_BUFFSIZE", "6000", 1);
+
     struct MoeDistributeDispatchV2CompileInfo {};
     MoeDistributeDispatchV2CompileInfo compileInfo;
     uint64_t coreNum = 20;
@@ -2147,7 +2151,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A3HierarchyVariableBsSuccess)
         {
             {{{8, 7168}, {8, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{8, 1}, {8, 1}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{8, 1}, {8, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{}, ge::DT_BOOL, ge::FORMAT_ND},
             {{{8, 1}, {8, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
@@ -2158,6 +2162,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A3HierarchyVariableBsSuccess)
             {{{1}, {1}}, ge::DT_INT64, ge::FORMAT_ND},
             {{{2064}, {2064}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{512}, {512}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
          {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
@@ -2178,8 +2183,15 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A3HierarchyVariableBsSuccess)
          {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
         &compileInfo, "Ascend910_93", coreNum, ubSize);
 
-    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 16}};
+    uint64_t expectTilingKey = 576UL; // no quant + no scales + hierarchy + MTE + A3
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
+
+    if (originalEnv.empty()) {
+        unsetenv("HCCL_BUFFSIZE");
+    } else {
+        setenv("HCCL_BUFFSIZE", originalEnv.c_str(), 1);
+    }
 }
 
 TEST_F(MoeDistributeDispatchV2Arch22TilingTest, XActiveMask2D)

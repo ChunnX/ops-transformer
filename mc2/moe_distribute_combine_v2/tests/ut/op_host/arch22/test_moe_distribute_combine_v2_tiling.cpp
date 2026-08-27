@@ -9,6 +9,8 @@
  */
 
 #include <iostream>
+#include <cstdlib>
+#include <string>
 #include <gtest/gtest.h>
 #include "mc2_tiling_case_executor.h"
 
@@ -1867,6 +1869,10 @@ TEST_F(MoeDistributeCombineV2Arch22TilingTest, A3_Hierarchy)
 
 TEST_F(MoeDistributeCombineV2Arch22TilingTest, A3HierarchyVariableBsSuccess)
 {
+    const char *envValue = getenv("HCCL_BUFFSIZE");
+    std::string originalEnv = envValue != nullptr ? envValue : "";
+    setenv("HCCL_BUFFSIZE", "6000", 1);
+
     struct MoeDistributeCombineV2TilingCompileInfo {};
     MoeDistributeCombineV2TilingCompileInfo compileInfo;
     uint64_t coreNum = 20;
@@ -1909,7 +1915,14 @@ TEST_F(MoeDistributeCombineV2Arch22TilingTest, A3HierarchyVariableBsSuccess)
          {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
         &compileInfo, "Ascend910_93", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 16}};
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS);
+    uint64_t expectTilingKey = 28UL; // no quant + hierarchy + A3
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
+
+    if (originalEnv.empty()) {
+        unsetenv("HCCL_BUFFSIZE");
+    } else {
+        setenv("HCCL_BUFFSIZE", originalEnv.c_str(), 1);
+    }
 }
 
 TEST_F(MoeDistributeCombineV2Arch22TilingTest, A3_HierarchyWithZeroComputeExpert)
