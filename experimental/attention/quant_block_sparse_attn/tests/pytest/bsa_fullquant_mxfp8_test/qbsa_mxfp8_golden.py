@@ -1339,6 +1339,16 @@ def _apply_sticky_overflow_stc_pattern(
         "MXSTC122_": ((-1.0, -1.0, 1.0, 1.0), 288.0, (105,) * 4),
         "MXSTC123_": ((1.0, 1.0, -1.0, -1.0), 448.0, (105, 104, 105, 104)),
         "MXSTC124_": ((-1.0, -1.0, 1.0, 1.0), 448.0, (105, 104, 105, 104)),
+        "MXSTC129_": ((1.0, 1.0, 1.0, -1.0), 448.0, (104,) * 4),
+        "MXSTC130_": ((-1.0, -1.0, -1.0, 1.0), 448.0, (104,) * 4),
+        "MXSTC131_": ((1.0, 1.0, 1.0, 1.0), 320.0, (104,) * 4),
+        "MXSTC132_": ((-1.0, -1.0, -1.0, -1.0), 320.0, (104,) * 4),
+        "MXSTC133_": ((1.0, -1.0, 1.0, -1.0), 448.0, (106, 82, 106, 82)),
+        "MXSTC134_": ((-1.0, 1.0, -1.0, 1.0), 448.0, (106, 81, 106, 81)),
+        "MXSTC135_": ((1.0, 1.0, 1.0, 1.0), 448.0, (103, 104, 105, 105)),
+        "MXSTC136_": ((1.0, 1.0, -1.0, -1.0), 448.0, (105, 105, 104, 103)),
+        "MXSTC151_": ((1.0, 1.0, -1.0, -1.0), 448.0, (105,) * 4),
+        "MXSTC152_": ((-1.0, -1.0, 1.0, 1.0), 448.0, (105,) * 4),
     }
     pv_specs = {
         # (sign, E4M3 payload, E8M0 exponent) per S2 group.
@@ -1354,6 +1364,27 @@ def _apply_sticky_overflow_stc_pattern(
         "MXSTC128_": ((-1.0, 288.0, 111),) * 16
         + ((1.0, 320.0, 119),),
     }
+    pv_boundary_groups = {
+        "MXSTC137_": (1, 1.0),
+        "MXSTC138_": (1, -1.0),
+        "MXSTC139_": (2, 1.0),
+        "MXSTC140_": (2, -1.0),
+        "MXSTC141_": (2, 1.0),
+        "MXSTC142_": (3, -1.0),
+        "MXSTC143_": (4, 1.0),
+        "MXSTC144_": (4, -1.0),
+        "MXSTC145_": (5, 1.0),
+        "MXSTC146_": (8, -1.0),
+        "MXSTC147_": (8, 1.0),
+        "MXSTC148_": (9, -1.0),
+        "MXSTC149_": (16, 1.0),
+        "MXSTC150_": (16, -1.0),
+    }
+    for prefix, (group_count, first_sign) in pv_boundary_groups.items():
+        pv_specs[prefix] = tuple(
+            (first_sign * (-1.0 if group_idx % 2 else 1.0), 448.0, 115)
+            for group_idx in range(group_count)
+        )
 
     qk_spec = next(
         (spec for prefix, spec in qk_specs.items() if case_name.startswith(prefix)),
@@ -1374,9 +1405,9 @@ def _apply_sticky_overflow_stc_pattern(
             v_fp32.zero_()
             # Logical KV 0 crosses FLT_MAX while accumulating its first two D
             # groups; KV 1 remains a finite zero-score control.
-            k_fp32[0, 0, 0, :] = 448.0
-            v_fp32[0, 0, 0, :] = -1.0
-            v_fp32[0, 0, 1, :] = 1.0
+            k_fp32[..., 0, :] = 448.0
+            v_fp32[..., 0, :] = -1.0
+            v_fp32[..., 1, :] = 1.0
         return
 
     pv_spec = next(
