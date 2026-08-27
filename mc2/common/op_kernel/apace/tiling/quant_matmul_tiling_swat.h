@@ -445,8 +445,10 @@ private:
         // two scale paths balanced while staying inside the leftover L1 budget.
         uint64_t scaleFactorAMax = std::min(MTE2_MIN_LOAD_SIZE / baseScaleASize, SCALER_FACTOR_MAX);
         uint64_t scaleFactorBMax = std::min(MTE2_MIN_LOAD_SIZE / baseScaleBSize, SCALER_FACTOR_MAX);
-        uint64_t scaleFactorA = args.k / (runInfo.stepKa * runInfo.baseK);
-        uint64_t scaleFactorB = args.k / (runInfo.stepKb * runInfo.baseK);
+        // uint64_t scaleFactorA = args.k / (runInfo.stepKa * runInfo.baseK);
+        // uint64_t scaleFactorB = args.k / (runInfo.stepKb * runInfo.baseK);
+        uint64_t scaleFactorA = CeilDiv(args.k, runInfo.stepKa * runInfo.baseK);
+        uint64_t scaleFactorB = CeilDiv(args.k, runInfo.stepKb * runInfo.baseK);
         runInfo.scaleFactorA = std::max(SCALER_FACTOR_MIN, scaleFactorA);
         runInfo.scaleFactorB = std::max(SCALER_FACTOR_MIN, scaleFactorB);
         runInfo.scaleFactorA = std::min(scaleFactorAMax, runInfo.scaleFactorA);
