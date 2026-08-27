@@ -20,14 +20,13 @@ QFA_METADATA_OP_NAME = "quant_flash_attn_metadata"
 
 class QuantMode(IntEnum):
     """quant_mode 枚举：对外字符串/int 经由本枚举映射为传给算子侧的 int。"""
-
     A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 1
     A8C8_QKV_MXFP8_P_MXFP8_SOFTMAX_FP32 = 2
     A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP16 = 3
     A8C8_QKV_MXFP8_P_MXFP8_SOFTMAX_FP16 = 4
     A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16 = 5
     A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 6
-    A8C8_QKV_HIF8_PER_TENSOR_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 7
+    A8C8_QKV_HIF8_PER_TENSOR_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 0
     A4C4_QKV_HIF4_P_HIF4_LEVEL1_SOFTMAX_FP16 = 8
     A4C4_QKV_HIF4_P_HIF4_LEVEL2_SOFTMAX_FP16 = 9
     A4C4_QKV_HIF4_P_HIF4_LEVEL3_SOFTMAX_FP16 = 10
@@ -79,7 +78,7 @@ def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
     return 0
 
 
-def _calculate_metadata_size():
+def _calculate_max_schedule_size():
     return 4096
 
 
@@ -114,7 +113,8 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             "int? batch_size=None, int? max_seqlen_q=-1, int? max_seqlen_kv=-1, "
             "int? mask_mode=0, int? win_left=-1, int? win_right=-1, "
             'str? layout_q="BSND", str? layout_q_descale="BSND", '
-            'str? layout_kv="BSND", str? layout_out="BSND") -> Tensor',
+            'str? layout_kv="BSND", str? layout_out="BSND", '
+            'bool is_grad_enabled=False) -> Tensor',
             "quant_flash_attn(Tensor q, Tensor k, Tensor v, "
             "Tensor q_descale, Tensor k_descale, Tensor v_descale, int quant_mode, "
             "Tensor? block_table=None, Tensor? p_scale=None, "
@@ -154,9 +154,10 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             layout_q_descale: Optional[str] = "BSND",
             layout_kv: Optional[str] = "BSND",
             layout_out: Optional[str] = "BSND",
+            is_grad_enabled: Optional[bool] = False,
         ):
-            metadata_size = _calculate_metadata_size()
-            return torch.empty((metadata_size,), dtype=torch.int32, device="npu")
+            max_schedule_size = _calculate_max_schedule_size()
+            return torch.empty((2, max_schedule_size), dtype=torch.int32, device="npu")
 
         @impl(get_as_library(), self.name, "Meta")
         def quant_flash_attn_meta(
@@ -283,15 +284,21 @@ def quant_flash_attn_metadata(
     layout_q_descale: Optional[str] = "BSND",
     layout_kv: Optional[str] = "BSND",
     layout_out: Optional[str] = "BSND",
+    is_grad_enabled: Optional[bool] = False,
 ):
     """
     Dispatcher implementation: NPU.
     'PrivateUse1' is dispatch key for custom NPU backends.
     """
     torch._check(
-        quant_mode in (1, 5),
-        lambda: f"quant_mode of quant_flash_attn_metadata only supports 1 or 5, but got "
-        f"{quant_mode}",
+        quant_mode in (1, 5, 0),
+        lambda: f"The quant_mode of quant_flash_attn_metadata only supports 1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), "
+        f"5 (A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16) "
+        f"or 0 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32), but got {quant_mode}",
+    )
+    torch._check(
+        is_grad_enabled is not True or quant_mode == 0,
+        lambda: f"When is_grad_enabled is True, quant_mode must be 0, but got quant_mode={quant_mode}",
     )
     if layout_q == "TND":
         torch._check(
@@ -310,8 +317,8 @@ def quant_flash_attn_metadata(
     layout_kv = "BSND" if layout_kv is None else layout_kv
     layout_out = "BSND" if layout_out is None else layout_out
 
-    metadata_size = _calculate_metadata_size()
-    output = torch.empty((metadata_size,), dtype=torch.int32, device="npu")
+    max_schedule_size = _calculate_max_schedule_size()
+    output = torch.empty((2, max_schedule_size), dtype=torch.int32, device="npu")
 
     op_module = quant_flash_attn_op_builder.load()
     return op_module.quant_flash_attn_metadata(
@@ -334,6 +341,7 @@ def quant_flash_attn_metadata(
         layout_q_descale,
         layout_kv,
         layout_out,
+        is_grad_enabled,
         output,
     )
 
@@ -359,6 +367,7 @@ def quant_flash_attn_metadata_fallback(
     layout_q_descale: Optional[str] = "BSND",
     layout_kv: Optional[str] = "BSND",
     layout_out: Optional[str] = "BSND",
+    is_grad_enabled: Optional[bool] = False,
 ):
     # 处理所有 tensor 都为 None 的情况
     return quant_flash_attn_metadata(
@@ -381,6 +390,7 @@ def quant_flash_attn_metadata_fallback(
         layout_q_descale,
         layout_kv,
         layout_out,
+        is_grad_enabled,
     )
 
 
@@ -419,9 +429,10 @@ def quant_flash_attn(
     'PrivateUse1' is the combine key for custom NPU backends.
     """
     torch._check(
-        quant_mode in (1, 5),
-        lambda: f"quant_mode of quant_flash_attn only supports 1 or 5, but got "
-        f"{quant_mode}",
+        quant_mode in (1, 5, 0),
+        lambda: f"The quant_mode of quant_flash_attn only supports 1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32), "
+        f"5 (A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16) "
+        f"or 0 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32), but got {quant_mode}",
     )
     quant_mode = _resolve_quant_mode(quant_mode)
     mask_mode = _resolve_mask_mode(mask_mode)
