@@ -27,17 +27,18 @@ using namespace ge;
 namespace MC2Tiling {
 
 using Ops::Transformer::OpTiling::TilingRegistryArch;
-using Ops::Transformer::OpTiling::TilingRegistryNew;
 
 static ge::graphStatus AlltoAllMatmulV2TilingFunc(gert::TilingContext *context)
 {
     auto platformInfo = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
     NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
-    if (npuArch == NpuArch::DAV_3510) {
-        return TilingRegistryArch::GetInstance().DoTilingImpl(context);
+    if (npuArch != NpuArch::DAV_3510) {
+        OP_LOGE_WITHOUT_REPORT(context->GetNodeName(),
+                               "[platform] AlltoAllMatmulV2 only supports DAV_3510, current arch is not supported");
+        return ge::GRAPH_FAILED;
     }
-    return TilingRegistryNew::GetInstance().DoTilingImpl(context);
+    return TilingRegistryArch::GetInstance().DoTilingImpl(context);
 }
 
 static ge::graphStatus TilingParseForAlltoAllMatmulV2(gert::TilingParseContext *context)
