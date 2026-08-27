@@ -14,6 +14,17 @@ get_filename_component(QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_DIR "${CMAKE_CURRENT
 set(qkv_rms_norm_rope_cache_with_k_scale_dir ${QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_DIR} CACHE INTERNAL "")
 set(qkv_rms_norm_rope_cache_with_k_scale_apt_dir ${QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_DIR} CACHE INTERNAL "")
 
+# The custom OPP launcher resolves this operator's kernel config by opInterface,
+# while opFile keeps the architecture suffix used by the kernel build.
+if(NOT ENABLE_BUILT_IN AND ENABLE_BUILD_PKG)
+    install(
+        FILES ${ASCEND_BINARY_OUT_DIR}/${ASCEND_COMPUTE_UNIT}/bin/qkv_rms_norm_rope_cache_with_k_scale_apt.json
+        DESTINATION packages/vendors/${VENDOR_NAME}_transformer/op_impl/ai_core/tbe/kernel/config/${ASCEND_COMPUTE_UNIT}
+        RENAME qkv_rms_norm_rope_cache_with_k_scale.json
+        OPTIONAL
+    )
+endif()
+
 if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnExc PRIVATE
         qkv_rms_norm_rope_cache_with_k_scale_def.cpp
