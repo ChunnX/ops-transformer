@@ -201,6 +201,7 @@
 
 - n目前支持4。
 - numIters目前仅支持20。
+
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
   - 输入x仅支持4维BSND格式，shape为(bs, seq_len, n, c)。
   - 输入x的最后一维c需满足128对齐，且取值范围为[1, 100000]。
