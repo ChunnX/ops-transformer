@@ -774,7 +774,8 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
                             uint32_t argsOffset = 0U, uint32_t workspaceGmArgIdx = 0U,
                             uint32_t quantModeOffset = 0U,
                             uint32_t wsLayoutOffsetNonQuant = 0U,
-                            uint32_t wsLayoutOffsetQuant = 0U)
+                            uint32_t wsLayoutOffsetQuant = 0U,
+                            uint32_t wsLayoutOffsetApace = 0U)
 {
     if (args == nullptr || op == nullptr) {
         return;
@@ -864,8 +865,9 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
     }
 
     OP_LOGE(OP_NAME, "Workspace dump start: op=%s, wsGmArgIdx=%u, quantModeOffset=%u, "
-            "wsLayoutOffsetNonQuant=%u, wsLayoutOffsetQuant=%u",
-            op, workspaceGmArgIdx, quantModeOffset, wsLayoutOffsetNonQuant, wsLayoutOffsetQuant);
+            "wsLayoutOffsetNonQuant=%u, wsLayoutOffsetQuant=%u, wsLayoutOffsetApace=%u",
+            op, workspaceGmArgIdx, quantModeOffset, wsLayoutOffsetNonQuant, wsLayoutOffsetQuant,
+            wsLayoutOffsetApace);
 
     // 1. 选择 wsLayoutOffset
     uint32_t wsLayoutOffset = wsLayoutOffsetNonQuant;
@@ -881,19 +883,29 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
         OP_LOGE(OP_NAME, "Quant mode detect: x1QuantMode=%u, wsLayoutOffset=%u", x1QuantMode, wsLayoutOffset);
     }
 
-    // 2. 解析 WorkspaceLayoutInfo
+    // 2. 解析 WorkspaceLayoutInfo，若首选偏移无效则尝试所有提供的偏移
     constexpr uint32_t wsLayoutInfoSize = sizeof(Mc2Tiling::WorkspaceLayoutInfo);
-    if (wsLayoutOffset == 0U || wsLayoutOffset + wsLayoutInfoSize > tilingDumpSize) {
-        OP_LOGE(OP_NAME, "wsLayoutOffset=%u invalid or out of range.", wsLayoutOffset);
-        return;
-    }
     Mc2Tiling::WorkspaceLayoutInfo wsLayout;
-    memcpy(&wsLayout, tilingBuf.data() + wsLayoutOffset, wsLayoutInfoSize);
-    if (wsLayout.totalSize == 0 || wsLayout.segCount == 0) {
-        OP_LOGE(OP_NAME, "wsLayout invalid: totalSize=%lu, segCount=%u.", wsLayout.totalSize, wsLayout.segCount);
+    bool wsLayoutValid = false;
+    uint32_t tryOffsets[] = {wsLayoutOffset, wsLayoutOffsetApace, wsLayoutOffsetQuant, wsLayoutOffsetNonQuant};
+    for (uint32_t tryOff : tryOffsets) {
+        if (tryOff == 0U || tryOff + wsLayoutInfoSize > tilingDumpSize) {
+            continue;
+        }
+        memcpy(&wsLayout, tilingBuf.data() + tryOff, wsLayoutInfoSize);
+        if (wsLayout.totalSize != 0 && wsLayout.segCount > 0 &&
+            wsLayout.segCount <= Mc2Tiling::MAX_WORKSPACE_SEGMENTS) {
+            wsLayoutOffset = tryOff;
+            wsLayoutValid = true;
+            break;
+        }
+    }
+    if (!wsLayoutValid) {
+        OP_LOGE(OP_NAME, "No valid wsLayout found at any provided offset, skip workspace dump.");
         return;
     }
-    OP_LOGE(OP_NAME, "wsLayout: totalSize=%lu, segCount=%u.", wsLayout.totalSize, wsLayout.segCount);
+    OP_LOGE(OP_NAME, "wsLayout valid: offset=%u, totalSize=%lu, segCount=%u.",
+            wsLayoutOffset, wsLayout.totalSize, wsLayout.segCount);
 
     // 3. 读取 workspaceGM 指针 (workspaceGmArgIdx = tilingGmArgIdx - 1)
     uint32_t wsGmOffset = argsOffset + workspaceGmArgIdx * sizeof(uint64_t);

@@ -44,6 +44,7 @@
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
 #include "../../matmul/quant_batch_matmul/all_to_all_qbmm_mx_kernel.h"
 #include "include/tensor_api/tensor.h"
+#include "../../../mc2_runtime_info.h"
 
 namespace Apace {
 template <typename T>
@@ -70,16 +71,28 @@ struct HcommCommState {
 template <AscendC::HcclServerType ServerType>
 struct HcommCommWaitPolicy {
     HcommCommState<ServerType> *state_{nullptr};
+    Mc2Kernel::Mc2RuntimeInfo *runtimeInfo_{nullptr};
+
+    __aicore__ inline void SetRuntimeInfo(Mc2Kernel::Mc2RuntimeInfo *rt) { runtimeInfo_ = rt; }
 
     __aicore__ inline void WaitTile(uint32_t tileIdx)
     {
         if (tileIdx == 0) {
             state_->hccl_.Wait(state_->scaleHandle_);
+            if (runtimeInfo_ != nullptr) {
+                runtimeInfo_->IncWaitCount();
+            }
         }
         if (tileIdx < state_->headTileCnt_) {
             state_->hccl_.Wait(state_->dataHeadHandle_);
+            if (runtimeInfo_ != nullptr) {
+                runtimeInfo_->IncWaitCount();
+            }
         } else {
             state_->hccl_.Wait(state_->dataTailHandle_);
+            if (runtimeInfo_ != nullptr) {
+                runtimeInfo_->IncWaitCount();
+            }
         }
     }
 };
@@ -126,6 +139,11 @@ public:
     HcommCommState<ServerType> commState_;
 
 private:
+    static constexpr uint8_t POS_COMM_BEFORE        = 0U;
+    static constexpr uint8_t POS_COMP_LOCAL_BEFORE  = 1U;
+    static constexpr uint8_t POS_COMP_REMOTE_BEFORE = 2U;
+    static constexpr uint8_t POS_FINALIZE_BEFORE    = 3U;
+
     AlltoAllMatmulTilingDataType *tilingData_;
 
     GM_ADDR x1_;
@@ -149,6 +167,9 @@ private:
     static constexpr uint64_t MXFP_MULTI_BASE_SIZE = 2UL;
     static constexpr uint64_t MXFP_DATA_NUM_PER_BYTE = 2UL;
     static constexpr uint64_t ALIGN_NUM = 512UL;
+
+    Mc2Kernel::Mc2RuntimeInfo runtimeInfo_;
+    uint8_t execTurn_ = 0;
 
     __aicore__ inline void SetupParams(Params &out, MatmulMode matmulMode);
     __aicore__ inline void MatmulProcess(MatmulMode matmulMode);
@@ -180,7 +201,9 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1,
     if (all2all_out == nullptr) {
         commOutGM_ = workspaceGM + x1ScaleLen;
     }
+    runtimeInfo_.Init(workspaceGM_, &tilingData_->workspaceLayout, tilingData_->tileQbmmTilingData.usedCoreNum);
     quantMatmulKernelImpl_.GetCommPolicy().state_ = &commState_;
+    quantMatmulKernelImpl_.GetCommPolicy().SetRuntimeInfo(&runtimeInfo_);
     commState_.hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
     commState_.hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(AlltoAllMatmulTilingDataType, mc2CcTiling)));
     rankId_ = commState_.hccl_.GetRankId();
@@ -196,10 +219,14 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1,
 
     uint64_t dataStrideCount = static_cast<uint64_t>(splitAxisSize_) * rankForComm;
     uint64_t scaleSendCount = static_cast<uint64_t>(splitAxisSize_) * scaleKPerRank;
+    execTurn_++;
+    runtimeInfo_.WriteGmByPassDCache(execTurn_, POS_COMM_BEFORE,
+                                        static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
     commState_.scaleHandle_ = commState_.hccl_.template AlltoAll<true>(
         x1Scale_, commX1ScaleGM1_,
         scaleSendCount, static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_),
         scaleSendCount, 1);
+    runtimeInfo_.IncCommitCount();
 
     if (commTiling.splitAxisTileCnt > 0) {
         uint64_t headSendCount = static_cast<uint64_t>(commTiling.splitAxisTileSize) * rankForComm;
@@ -207,6 +234,7 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1,
             x1_, commOutGM_,
             headSendCount, static_cast<AscendC::HcclDataType>(x1HcclDataType_),
             dataStrideCount, static_cast<uint8_t>(commTiling.splitAxisTileCnt));
+        runtimeInfo_.IncCommitCount();
     }
 
     if (commTiling.splitAxisTailCnt > 0) {
@@ -217,6 +245,7 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1,
             x1_ + headOffset, commOutGM_ + headOffset,
             tailSendCount, static_cast<AscendC::HcclDataType>(x1HcclDataType_),
             dataStrideCount, static_cast<uint8_t>(commTiling.splitAxisTailCnt));
+        runtimeInfo_.IncCommitCount();
     }
     commState_.headTileCnt_ = static_cast<uint32_t>(commTiling.splitAxisTileCnt);
 }
@@ -228,11 +257,18 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1,
                                AlltoAllMatmulTilingDataType, ServerType, IsMxFp4>::Run()
 {
     if (tilingData_->localMatmul != 0) {
+        execTurn_++;
+        runtimeInfo_.WriteGmByPassDCache(execTurn_, POS_COMP_LOCAL_BEFORE,
+                                            static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         MatmulProcess(MatmulMode::LOCAL);
     }
+    execTurn_++;
+    runtimeInfo_.WriteGmByPassDCache(execTurn_, POS_COMP_REMOTE_BEFORE,
+                                        static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
     MatmulProcess(MatmulMode::REMOTE);
     AscendC::SyncAll();
     commState_.hccl_.Finalize();
+    runtimeInfo_.WritePhaseByPassDCache(static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_FINALIZE));
 }
 
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,

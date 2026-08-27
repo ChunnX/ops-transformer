@@ -18,6 +18,7 @@
 #include "allto_all_matmul_tiling_base.h"
 #include "mc2_exception_dump.h"
 #include "../../op_kernel/arch35/allto_all_matmul_tiling_data.h"
+#include "apace/kernel/fusions/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h"
 
 using namespace ge;
 using Ops::Transformer::OpTiling::TilingRegistryArch;
@@ -62,7 +63,8 @@ inline void AlltoAllMatmulExceptionImplWrapper(aclrtExceptionInfo *args, void *u
         11U,   // workspaceGmArgIdx
         offsetof(AlltoAllMatmulTilingData, alltoAllMatmulTilingInfo.x1QuantMode),  // quantModeOffset
         offsetof(AlltoAllMatmulTilingData, workspaceLayout),                       // wsLayoutOffsetNonQuant
-        offsetof(AlltoAllQuantMatmulTilingData, workspaceLayout));                 // wsLayoutOffsetQuant
+        offsetof(AlltoAllQuantMatmulTilingData, workspaceLayout),                 // wsLayoutOffsetQuant
+        offsetof(hcommAllToAllMatmulTilingData, workspaceLayout));                // wsLayoutOffsetApace
 }
 
 __attribute__((constructor)) void RegisterAlltoAllMatmulExceptionFunc()
