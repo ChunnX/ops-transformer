@@ -144,14 +144,11 @@ public:
 
         if constexpr (FLASH_DECODE) {
             if ASCEND_IS_AIV {
-                vecFdBlock_.InitParams();
+                // FA fd（Mutex 版）Init 契约：InitBlock(learnableSink=nullptr, softmaxLse, attentionOut)
+                // 建 outGmTensor_/softmaxLseGm_/dSizeV_Align_；InitGlobalTensor 仅接 FD 读的 accum/LSE GM。
+                vecFdBlock_.InitBlock(nullptr, softmaxLse, attentionOut);
                 vecFdBlock_.InitGlobalTensor(this->vecFaBlock_.softmaxFDMaxGm, this->vecFaBlock_.softmaxFDSumGm,
-                                             this->vecFaBlock_.accumOutGm, this->vecFaBlock_.attentionOutGm, keyPtr_);
-                if (unlikely(constInfo_.isSoftmaxLseEnable)) {
-                    AscendC::GlobalTensor<float> softmaxLseGm;
-                    softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
-                    vecFdBlock_.InitSoftmaxLseGm(softmaxLseGm);
-                }
+                                             this->vecFaBlock_.accumOutGm);
             }
         }
     }
@@ -638,12 +635,9 @@ public:
         }
         vecFdBlock_.InitBuffers();
         AscendC::ICachePreLoad(2);
-        vecFdBlock_.AllocEventID();
         AscendC::SyncAll();
         vecFdBlock_.FlashDecode(fdParams_);
         AscendC::SyncAll();
-        // 尾同步镜像 flash_attn_kernel_nd.h:590：FD 全 pipe 完成再进入下一 section（防跨 section 流水残留）
-        vecFdBlock_.FreeEventID();
     }
 
     __aicore__ inline void Process()
