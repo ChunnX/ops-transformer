@@ -573,6 +573,12 @@ ge::graphStatus MhcPreBaseTiling::InitPlatformMemory()
     blockDim_ = ascendcPlatform.GetCoreNumAic();
     aivBlockDim_ = ascendcPlatform.GetCoreNumAiv();
 
+    if (aivBlockDim_ != blockDim_ * 2U) {
+        OP_LOGE(context_->GetNodeName(), "MhcPre requires aivNum == aicNum * 2, aicNum: %lu, aivNum: %lu", blockDim_,
+                aivBlockDim_);
+        return ge::GRAPH_FAILED;
+    }
+
     ubSize_ = ubSize; // Save UB size for later validation
 
     return ge::GRAPH_SUCCESS;
@@ -665,8 +671,8 @@ ge::graphStatus MhcPreBaseTiling::CalculateBsTiling()
     tilingData_.set_kL1Size(BASIC_API_K_L1_SIZE);
     tilingData_.set_fusionAlign(fusionAlign);
 
-    chunkTSize_ = (((totalLength_ + blockDim_ - 1U) / blockDim_) + CHUNK_T_CALC_FACTOR - 1U) /
-                  CHUNK_T_CALC_FACTOR * CHUNK_T_CALC_FACTOR;
+    chunkTSize_ = (((totalLength_ + blockDim_ - 1U) / blockDim_) + CHUNK_T_CALC_FACTOR - 1U) / CHUNK_T_CALC_FACTOR *
+                  CHUNK_T_CALC_FACTOR;
     chunkTSize_ = std::min(chunkTSize_, CHUNK_T_MAX);
     v1ChunkDSize_ = V1_CHUNK_D_SIZE;
 
@@ -676,8 +682,7 @@ ge::graphStatus MhcPreBaseTiling::CalculateBsTiling()
     // SYSTEM_WORKSPACE follows the user workspace and is reserved for the runtime.
     size_t xStageWorkspaceSize = static_cast<size_t>(chunkTSize_) * BASIC_API_K_UB_SIZE *
                                  BASIC_API_X_STAGE_BUFFER_COUNT * sizeof(float) * blockDim_;
-    size_t hMixWorkspaceSize =
-        outFlag_ ? 0U : static_cast<size_t>(matM_) * static_cast<size_t>(matN_) * sizeof(float);
+    size_t hMixWorkspaceSize = outFlag_ ? 0U : static_cast<size_t>(matM_) * static_cast<size_t>(matN_) * sizeof(float);
     workspaceSize_ = xStageWorkspaceSize + hMixWorkspaceSize + SYSTEM_WORKSPACE;
     return CheckUbBufferSize();
 }
@@ -755,8 +760,8 @@ ge::graphStatus MhcPreBaseTiling::CalculateMkTiling()
     v1ChunkDSize_ = V1_CHUNK_D_SIZE;
     size_t xStageBytes = mkStage == M_K_USE_L1_STAGE ?
                              0U :
-                             static_cast<size_t>(mDim) * actualKBlockNum * BASIC_API_X_STAGE_BUFFER_COUNT *
-                                 mL1Size * kL1Size * sizeof(float);
+                             static_cast<size_t>(mDim) * actualKBlockNum * BASIC_API_X_STAGE_BUFFER_COUNT * mL1Size *
+                                 kL1Size * sizeof(float);
     workspaceSize_ = finalOffset + xStageBytes + SYSTEM_WORKSPACE;
     return CheckUbBufferSize();
 }
@@ -778,8 +783,8 @@ ge::graphStatus MhcPreBaseTiling::CalculateNdTiling()
         (xFloatWorkspaceSizeRaw + DECODE_WORKSPACE_ALIGN - 1U) / DECODE_WORKSPACE_ALIGN * DECODE_WORKSPACE_ALIGN;
     uint64_t chunkNd = (matK_ + blockDim_ - 1U) / blockDim_;
     uint64_t mmResBlockNum = (matK_ + chunkNd - 1U) / chunkNd;
-    size_t mmResWorkspaceSize = static_cast<size_t>(mmResBlockNum) * static_cast<size_t>(matM_) *
-                                static_cast<size_t>(matN_) * sizeof(float);
+    size_t mmResWorkspaceSize =
+        static_cast<size_t>(mmResBlockNum) * static_cast<size_t>(matM_) * static_cast<size_t>(matN_) * sizeof(float);
     workspaceSize_ = xFloatWorkspaceSize + mmResWorkspaceSize + SYSTEM_WORKSPACE;
     return CheckUbBufferSize();
 }
