@@ -156,8 +156,12 @@ public:
     const gert::Stride *kRopeStrides_ = nullptr;
     gert::Stride keyScaleContiguousStrides_;
     gert::Stride valueScaleContiguousStrides_;
+    gert::Stride keyOffsetContiguousStrides_;
+    gert::Stride valueOffsetContiguousStrides_;
     const gert::Stride *kScaleStrides_ = nullptr;
     const gert::Stride *vScaleStrides_ = nullptr;
+    const gert::Stride *kOffsetStrides_ = nullptr;
+    const gert::Stride *vOffsetStrides_ = nullptr;
     bool hasViewStride_ = true;
     uint64_t keyBnStride_ = 0;
     uint64_t keyN2Stride_ = 0;

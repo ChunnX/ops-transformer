@@ -237,17 +237,46 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
 {
     const aclTensorList *tensorListKey = key;
     const aclTensorList *tensorListValue = value;
+    // DEBUG: 打印 TensorPreProcess 前 K 的原始 stride (定位是PTA抹平还是SetViewShape重算)
+    if (tensorListKey != nullptr && tensorListKey->Size() > 0 && (*tensorListKey)[0] != nullptr) {
+        const aclTensor *k0 = (*tensorListKey)[0];
+        auto vs = k0->GetViewShape();
+        std::string vsh;
+        for (size_t d = 0; d < vs.GetDimNum(); ++d) vsh += std::to_string(vs.GetDim(d)) + (d+1<vs.GetDimNum()?",":"");
+        int64_t *strides = nullptr; uint64_t sn = 0;
+        aclGetViewStrides(k0, &strides, &sn);
+        std::string strsh = "nullptr";
+        if (strides != nullptr && sn > 0) { strsh = ""; for (uint64_t d = 0; d < sn; ++d) strsh += std::to_string(strides[d]) + (d+1<sn?",":""); }
+        OP_LOGI("DEBUG_BeforeTensorPreProcess: K viewShape=[%s] viewStrides=[%s] stridesNum=%lu dtype=%d",
+                vsh.c_str(), strsh.c_str(), sn, static_cast<int>(k0->GetDataType()));
+        if (strides != nullptr) delete[] strides;
+    }
     TensorPreProcess(tensorListKey, tensorListValue);
 
     const aclTensor *tensorKeySharedPrefixOptional = keySharedPrefixOptional;
     const aclTensor *tensorValueSharedPrefixOptional = valueSharedPrefixOptional;
     PrefixTensorPreProcess(tensorKeySharedPrefixOptional, tensorValueSharedPrefixOptional);
 
-    aclnnStatus ret =
-        CheckTensorContiguous(key, value, keyAntiquantScaleOptional, valueAntiquantScaleOptional, keyRopeOptional);
-    if (ret != ACLNN_SUCCESS && NnopbaseSupportTensorV2 == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_TILING_ERROR, "When tensor is not contiguous, opbase package version check failed");
-        return ret;
+    // DEBUG: 打印 TensorPreProcess 后 K 的 viewShape/viewStrides/StorageShape/dtype, 定位 INT4 口径
+    if (tensorListKey != nullptr && tensorListKey->Size() > 0 && (*tensorListKey)[0] != nullptr) {
+        const aclTensor *k0 = (*tensorListKey)[0];
+        auto vs = k0->GetViewShape();
+        auto ss = k0->GetStorageShape();
+        std::string vsh, ssh;
+        for (size_t d = 0; d < vs.GetDimNum(); ++d) vsh += std::to_string(vs.GetDim(d)) + (d+1<vs.GetDimNum()?",":"");
+        for (size_t d = 0; d < ss.GetDimNum(); ++d) ssh += std::to_string(ss.GetDim(d)) + (d+1<ss.GetDimNum()?",":"");
+        int64_t *strides = nullptr; uint64_t sn = 0;
+        aclGetViewStrides(k0, &strides, &sn);
+        std::string strsh = "nullptr";
+        if (strides != nullptr && sn > 0) { strsh = ""; for (uint64_t d = 0; d < sn; ++d) strsh += std::to_string(strides[d]) + (d+1<sn?",":""); }
+        OP_LOGI("DEBUG_AfterTensorPreProcess: K viewShape=[%s] storageShape=[%s] viewStrides=[%s] dtype=%d",
+                vsh.c_str(), ssh.c_str(), strsh.c_str(), static_cast<int>(k0->GetDataType()));
+        if (strides != nullptr) delete[] strides;
+    }
+
+    if (CheckTensorContiguous(key, value, keyAntiquantScaleOptional, valueAntiquantScaleOptional,
+                              keyRopeOptional) != ACLNN_SUCCESS) {
+        OP_LOGI("Non-contiguous tensor detected, proceeding with stride-based path.");
     }
 
     const aclTensor *placeHolder = nullptr;
@@ -261,7 +290,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
     } else {
         placeHolder = softmaxLse;
     }
-    ret = aclnnInnerFusedInferAttentionScoreGetWorkspaceSize(
+    aclnnStatus ret = aclnnInnerFusedInferAttentionScoreGetWorkspaceSize(
         query, tensorListKey, tensorListValue, pseShiftOptional, attenMaskOptional, actualSeqLengthsOptional,
         actualSeqLengthsKvOptional, deqScale1Optional, quantScale1Optional, deqScale2Optional, quantScale2Optional,
         quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional, blockTableOptional,

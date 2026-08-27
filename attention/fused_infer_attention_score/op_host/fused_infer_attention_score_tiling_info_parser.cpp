@@ -320,6 +320,12 @@ ge::graphStatus FiaInfoParser::GetStrides()
         hasSingleKvTensor && hasKeyScale && context_->InputIsView(KEY_ANTIQUANT_SCALE_INDEX);
     const bool valueScaleIsView =
         hasSingleKvTensor && hasValueScale && context_->InputIsView(VALUE_ANTIQUANT_SCALE_INDEX);
+    const bool hasKeyOffset = opParamInfo_.keyAntiquantOffset.tensor != nullptr;
+    const bool hasValueOffset = opParamInfo_.valueAntiquantOffset.tensor != nullptr;
+    const bool keyOffsetIsView =
+        hasSingleKvTensor && hasKeyOffset && context_->InputIsView(KEY_ANTIQUANT_OFFSET_INDEX);
+    const bool valueOffsetIsView =
+        hasSingleKvTensor && hasValueOffset && context_->InputIsView(VALUE_ANTIQUANT_OFFSET_INDEX);
 
     if (hasKeyRope) {
         kRopeStrides_ = context_->GetOptionalInputStride(KEY_ROPE_INDEX);
@@ -354,6 +360,18 @@ ge::graphStatus FiaInfoParser::GetStrides()
     if (!HasUsableStride(vScaleStrides_)) {
         vScaleStrides_ = nullptr;
     }
+    if (hasKeyOffset) {
+        kOffsetStrides_ = context_->GetOptionalInputStride(KEY_ANTIQUANT_OFFSET_INDEX);
+    }
+    if (hasValueOffset) {
+        vOffsetStrides_ = context_->GetOptionalInputStride(VALUE_ANTIQUANT_OFFSET_INDEX);
+    }
+    if (!HasUsableStride(kOffsetStrides_)) {
+        kOffsetStrides_ = nullptr;
+    }
+    if (!HasUsableStride(vOffsetStrides_)) {
+        vOffsetStrides_ = nullptr;
+    }
 
     OP_CHECK_IF(keyIsView && !HasStrideMetadata(kStrideCache_),
                 OP_LOGE(opName_, "Failed to get stride metadata for view input key."), return ge::GRAPH_FAILED);
@@ -366,6 +384,12 @@ ge::graphStatus FiaInfoParser::GetStrides()
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(valueScaleIsView && vScaleStrides_ == nullptr,
                 OP_LOGE(opName_, "Failed to get stride metadata for view input valueAntiquantScale."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(keyOffsetIsView && kOffsetStrides_ == nullptr,
+                OP_LOGE(opName_, "Failed to get stride metadata for view input keyAntiquantOffset."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(valueOffsetIsView && vOffsetStrides_ == nullptr,
+                OP_LOGE(opName_, "Failed to get stride metadata for view input valueAntiquantOffset."),
                 return ge::GRAPH_FAILED);
 
     if (HasUsableStride(kStrideCache_[0])) {
@@ -418,6 +442,27 @@ ge::graphStatus FiaInfoParser::GetStrides()
         }
         if (ValidateStrideLocal(opName_, "valueAntiquantScale",
                                 opParamInfo_.valueAntiquantScale.tensor->GetStorageShape(), vScaleStrides_) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+    }
+    if (hasKeyOffset) {
+        if (kOffsetStrides_ == nullptr) {
+            BuildContiguousStride(opParamInfo_.keyAntiquantOffset.tensor->GetStorageShape(), keyOffsetContiguousStrides_);
+            kOffsetStrides_ = &keyOffsetContiguousStrides_;
+        }
+        if (ValidateStrideLocal(opName_, "keyAntiquantOffset",
+                                opParamInfo_.keyAntiquantOffset.tensor->GetStorageShape(), kOffsetStrides_) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+    }
+    if (hasValueOffset) {
+        if (vOffsetStrides_ == nullptr) {
+            BuildContiguousStride(
+                opParamInfo_.valueAntiquantOffset.tensor->GetStorageShape(), valueOffsetContiguousStrides_);
+            vOffsetStrides_ = &valueOffsetContiguousStrides_;
+        }
+        if (ValidateStrideLocal(opName_, "valueAntiquantOffset",
+                                opParamInfo_.valueAntiquantOffset.tensor->GetStorageShape(), vOffsetStrides_) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
     }
@@ -1773,6 +1818,8 @@ void FiaInfoParser::GenerateInfo(FiaTilingInfo &fiaInfo)
     fiaInfo.kRopeStrides = kRopeStrides_;
     fiaInfo.kScaleStrides = kScaleStrides_;
     fiaInfo.vScaleStrides = vScaleStrides_;
+    fiaInfo.kOffsetStrides = kOffsetStrides_;
+    fiaInfo.vOffsetStrides = vOffsetStrides_;
     fiaInfo.hasViewStride = hasViewStride_;
     fiaInfo.keyBnStride = keyBnStride_;
     fiaInfo.keyN2Stride = keyN2Stride_;
