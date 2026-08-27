@@ -112,3 +112,27 @@ target_link_libraries(cust_opapi PRIVATE
 
 install(FILES "${CMAKE_CURRENT_LIST_DIR}/aclnn_flash_kda.h"
   DESTINATION "${ACLNN_INC_INSTALL_DIR}")
+
+option(CANNBOTDSL_BUILD_FLASH_KDA_ACLNN_SMOKE
+  "Build the FlashKDA ACLNN device smoke executable" OFF)
+if(CANNBOTDSL_BUILD_FLASH_KDA_ACLNN_SMOKE)
+  find_library(_cannbotdsl_ascendcl_library ascendcl
+    PATHS
+      "${ASCEND_CANN_PACKAGE_PATH}/lib64"
+      "${ASCEND_CANN_PACKAGE_PATH}/${CMAKE_SYSTEM_PROCESSOR}-linux/lib64"
+    NO_DEFAULT_PATH REQUIRED)
+  add_executable(cannbotdsl_flash_kda_aclnn_smoke
+    "${CMAKE_CURRENT_LIST_DIR}/tests/flash_kda_aclnn_smoke.cpp")
+  add_dependencies(cannbotdsl_flash_kda_aclnn_smoke cust_opapi)
+  target_compile_features(cannbotdsl_flash_kda_aclnn_smoke PRIVATE cxx_std_17)
+  target_include_directories(cannbotdsl_flash_kda_aclnn_smoke PRIVATE
+    "${CMAKE_CURRENT_LIST_DIR}"
+    "${CANNBOTDSL_PROVIDER_OPBASE_SOURCE_DIR}/include/aclnnop"
+    "${ASCEND_CANN_PACKAGE_PATH}/include"
+    "${ASCEND_CANN_PACKAGE_PATH}/${CMAKE_SYSTEM_PROCESSOR}-linux/include")
+  target_link_libraries(cannbotdsl_flash_kda_aclnn_smoke PRIVATE
+    cust_opapi
+    opapi_math
+    "${CANNBOTDSL_PROVIDER_OPBASE_LIBRARY}"
+    "${_cannbotdsl_ascendcl_library}")
+endif()

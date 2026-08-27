@@ -1780,6 +1780,9 @@ def _run_stage2_body(
 # from the target device on the host.
 ALGORITHM_MAX_BLOCK_NUM = 32
 DEFAULT_BLOCK_NUM = ALGORITHM_MAX_BLOCK_NUM
+# Offline FlashKDA packages currently target Ascend950PR.  The mode=0
+# whole-grid barrier must launch no more than one resident cube-core wave.
+ASCEND950PR_PACKAGE_BLOCK_NUM = 28
 
 STAGE1_BOUNDARY_FLAG_ID = 0
 STAGE2_BOUNDARY_FLAG_ID = 1
@@ -2108,6 +2111,7 @@ def _flash_kda_package_variant(
     sequence_min: int,
     sequence_max: int,
     group: int,
+    block_num: int = ASCEND950PR_PACKAGE_BLOCK_NUM,
 ) -> PackageVariant:
     sequence = cannbotdsl.Dim(
         "S", min=sequence_min, max=sequence_max, multiple_of=CHUNK_SIZE
@@ -2129,7 +2133,7 @@ def _flash_kda_package_variant(
         beta,
         bf16_sequence,  # g
         tensor(
-            (ALGORITHM_MAX_BLOCK_NUM, 2, CHUNK_SIZE, D_HALF), dtypes.float32
+            (block_num, 2, CHUNK_SIZE, D_HALF), dtypes.float32
         ),
         tensor((heads,), dtypes.float32),
         tensor((heads, SUPPORTED_HEAD_DIM), dtypes.float32),
@@ -2151,7 +2155,7 @@ def _flash_kda_package_variant(
         group,
         "BNSD",
         get_dv_base_config(bn_total, sequence_min),
-        ALGORITHM_MAX_BLOCK_NUM,
+        block_num,
     )
     return PackageVariant(id=variant_id, args=args)
 

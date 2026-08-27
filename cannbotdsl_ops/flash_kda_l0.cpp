@@ -12,8 +12,7 @@
 #include <limits>
 
 #include "aclnn_flash_kda.h"
-#include "aclnn_kernels/contiguous.h"
-#include "aclnn_kernels/reshape.h"
+#include "opdev/framework_op.h"
 #include "cannbotdsl_provider_registry.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_def.h"
@@ -27,7 +26,9 @@ namespace {
 constexpr int64_t kChunkSize = 64;
 constexpr int64_t kHeadDim = 128;
 constexpr int64_t kHalfHeadDim = 64;
-constexpr int64_t kBlockNum = 32;
+// Ascend950PR has 28 cube cores. FlashKDA uses a whole-grid barrier, so the
+// packaged launch must fit in a single resident cube-core wave.
+constexpr int64_t kBlockNum = 28;
 constexpr uint64_t kWorkspaceAlignment = 512U;
 
 static_assert(op::PROVIDER_KERNEL_SPEC_ABI_VERSION == 1U,
@@ -193,11 +194,11 @@ const aclTensor* BuildIdentity16(aclOpExecutor* executor)
     if (host == nullptr) {
         return nullptr;
     }
-    const aclTensor* device = l0op::Contiguous(host, executor);
+    const aclTensor* device = op::CopyToNpu(host, executor);
     if (device == nullptr) {
         return nullptr;
     }
-    return l0op::Reshape(device, MakeShape({16, 16}), executor);
+    return executor->CreateView(device, MakeShape({16, 16}), 0);
 }
 
 }  // namespace

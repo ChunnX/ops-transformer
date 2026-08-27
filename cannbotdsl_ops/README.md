@@ -15,8 +15,8 @@
 - `l0op::FlashKda` 可被其他 L2 ACLNN 实现直接组装；
 - `aclnnFlashKdaGetWorkspaceSize` / `aclnnFlashKda` 提供独立的两阶段 ACLNN
   调用入口；
-- L0 executor 内同时包含传统 `Contiguous`/`Reshape` 节点和 Provider 节点，
-  因而验证了混合执行拓扑，而非仅把两类文件放在同一个安装目录。
+- L0 executor 内同时包含 `CopyToNpu`/`CreateView` 常量准备和 Provider
+  节点，因而验证了混合执行拓扑，而非仅把两类文件放在同一个安装目录。
 
 ## 依赖与 ABI
 
@@ -60,6 +60,14 @@ cmake --build build-provider --target cust_opapi -j
 cmake --install build-provider --prefix /path/to/stage
 ```
 
+需要编译设备 smoke 时，在配置命令中增加
+`-DCANNBOTDSL_BUILD_FLASH_KDA_ACLNN_SMOKE=ON`，然后执行：
+
+```bash
+cmake --build build-provider --target cannbotdsl_flash_kda_aclnn_smoke -j
+./build-provider/cannbotdsl_ops/cannbotdsl_flash_kda_aclnn_smoke
+```
+
 未开启 `ENABLE_CANNBOTDSL_PROVIDER_ACLNN` 时，既有传统算子构建流程不变。
 
 安装后的关键布局如下：
@@ -76,6 +84,16 @@ packages/vendors/<vendor>_transformer/
         └── artifacts/ascend950pr/<variant-id>/provider.so
 ```
 
+## 实机验证
+
+Ascend950PR 上的 B1/N3/S8192 smoke 已验证：
+
+- `aclnnFlashKdaGetWorkspaceSize` 成功并返回 29,430,272 字节；
+- `aclnnFlashKda` 成功入队并完成 stream 同步；
+- 确定性有效输入下 output 与 final state 均为有限值；
+- Provider launch 固定为 28 blocks，满足该目标 28 个 Cube core 的整网格
+  barrier 单波驻留约束。
+
 ## 当前 FlashKDA 契约
 
 - 布局固定为 BNSD，`K/V/Q/G/O` 为 BF16；`A_log/dt_bias/initial_state/
@@ -85,5 +103,7 @@ packages/vendors/<vendor>_transformer/
 - 7 个内部临时张量由 executor workspace 分配并在 launch 前回填地址；
 - Provider 物理 ABI 为 16 个 tensor inputs、2 个 tensor outputs、4 个 scalar
   attributes；顺序必须与生成 registry 完全一致；
-- 当前完成 AOT、registry、host 编译/链接、混合符号及安装布局验证；真实 NPU 数值
-  与性能回归仍需在 Ascend 950 设备环境执行。
+- 当前完成 AOT、registry、host 编译/链接、混合符号、安装布局及单 stream
+  Ascend950PR 实机 smoke；B1/N3/S8192 原生 DSL 对 golden 精度回归也已通过。
+  混合 ACLNN 与 golden 的逐元素三方对拍、多 stream、全变体性能和错误路径仍是
+  量产验收项。
