@@ -250,12 +250,112 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
             }
         }
     }
+    needInitOutput_ = CheckNeedInitOutput();
     return true;
 }
 
 bool QuantFlashAttnMetadataCpuKernel::BalanceSchedule(SectionStreamKResult &splitRes)
 {
     return load_balance::SectionStreamK::Compute(deviceInfo, baseInfo, param, splitRes) == SECTION_STREAM_K_SUCCESS;
+}
+
+bool QuantFlashAttnMetadataCpuKernel::HasZeroLengthBatch()
+{
+    const bool hasQVarlen = (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) ||
+                            (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr);
+    const bool hasKvVarlen = (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) ||
+                            (sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr);
+    if (!hasQVarlen && !hasKvVarlen) {
+        return false;
+    }
+    const uint32_t bSize = static_cast<uint32_t>(batchSize_);
+    if (bSize == 0) {
+        return false;
+    }
+    const bool bothQ = (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) &&
+                       (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr);
+    const bool bothKv = (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) &&
+                        (sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr);
+    for (uint32_t bIdx = 0; bIdx < bSize; ++bIdx) {
+        if (baseInfo.isCumulativeQuerySeq) {
+            if (bothQ) {
+                int64_t qCuLen = (bIdx + 1 < baseInfo.actualQuerySeqSize.size())
+                                     ? baseInfo.actualQuerySeqSize[bIdx + 1] - baseInfo.actualQuerySeqSize[bIdx]
+                                     : 0;
+                int64_t qUsedLen = baseInfo.actualQuerySeqSize[bIdx];
+                if (bIdx > 0) {
+                    qUsedLen = baseInfo.actualQuerySeqSize[bIdx] - baseInfo.actualQuerySeqSize[bIdx - 1];
+                }
+                if (qUsedLen < qCuLen) {
+                    return true;
+                }
+            } else if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
+                int64_t qCuLen = (bIdx + 1 < baseInfo.actualQuerySeqSize.size())
+                                     ? baseInfo.actualQuerySeqSize[bIdx + 1] - baseInfo.actualQuerySeqSize[bIdx]
+                                     : 0;
+                if (qCuLen == 0) {
+                    return true;
+                }
+            }
+        } else {
+            if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
+                if (bIdx < baseInfo.actualQuerySeqSize.size() && baseInfo.actualQuerySeqSize[bIdx] == 0) {
+                    return true;
+                }
+            }
+        }
+        if (baseInfo.isCumulativeKvSeq) {
+            if (bothKv) {
+                int64_t kvCuLen = (bIdx + 1 < baseInfo.actualKvSeqSize.size())
+                                      ? baseInfo.actualKvSeqSize[bIdx + 1] - baseInfo.actualKvSeqSize[bIdx]
+                                      : 0;
+                int64_t kvUsedLen = baseInfo.actualKvSeqSize[bIdx];
+                if (bIdx > 0) {
+                    kvUsedLen = baseInfo.actualKvSeqSize[bIdx] - baseInfo.actualKvSeqSize[bIdx - 1];
+                }
+                if (kvUsedLen < kvCuLen) {
+                    return true;
+                }
+            } else if (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) {
+                int64_t kvCuLen = (bIdx + 1 < baseInfo.actualKvSeqSize.size())
+                                      ? baseInfo.actualKvSeqSize[bIdx + 1] - baseInfo.actualKvSeqSize[bIdx]
+                                      : 0;
+                if (kvCuLen == 0) {
+                    return true;
+                }
+            }
+        } else {
+            if (sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr) {
+                if (bIdx < baseInfo.actualKvSeqSize.size() && baseInfo.actualKvSeqSize[bIdx] == 0) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+bool QuantFlashAttnMetadataCpuKernel::CheckNeedInitOutput()
+{
+    if (HasZeroLengthBatch()) {
+        return true;
+    }
+    if (layoutQ_ == "TND" && layoutKv_ == "TND") {
+        return maskMode_ != 0;
+    }
+    if (maskMode_ == 0) {
+        return false;
+    }
+    if (maskMode_ == 1) {
+        return baseInfo.querySeqSize > baseInfo.kvSeqSize;
+    }
+    if (maskMode_ == 3) {
+        if (winRight_ == -1) {
+            return false;
+        }
+        return (baseInfo.querySeqSize - baseInfo.kvSeqSize) > winRight_;
+    }
+    return false;
 }
 
 bool QuantFlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes)
@@ -332,6 +432,7 @@ bool QuantFlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes
             faMetadata.SetFdMetadata(sectionId, i, optiling::FD_M_NUM_INDEX, fdSplitRes.mLen[i]);
         }
     }
+    faMetadata.SetHeadMedata(optiling::HEAD_NEED_INIT_OUTPUT_INDEX, needInitOutput_ ? 1U : 0U);
     return true;
 }
 
