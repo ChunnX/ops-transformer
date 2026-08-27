@@ -390,8 +390,8 @@ static constexpr MicroAPI::CastTrait castTraitBIBf16ToQ = {MicroAPI::RegLayout::
                                                            MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
 
 template <typename Q_T>
-__simd_vf__ void StageBIMxfp4Scales(__ubuf__ uint8_t *ubSrcAddr, __ubuf__ bfloat16_t *ubScaleDst,
-                                    uint32_t dealRowCount)
+__simd_callee__ inline void StageBIMxfp4Scales(__ubuf__ uint8_t *ubSrcAddr, __ubuf__ bfloat16_t *ubScaleDst,
+                                               uint32_t dealRowCount)
 {
     constexpr uint32_t rowStrideBytes = 416;
     constexpr uint32_t scaleOffsetBytes = 384;
@@ -437,6 +437,9 @@ template <typename Q_T>
 __simd_vf__ void AntiquantVFImplBIMxfp4(__ubuf__ uint8_t *ubSrcAddr, __ubuf__ bfloat16_t *ubScaleAddr,
                                         __ubuf__ Q_T *ubDstAddr, uint32_t dealRowCount)
 {
+    StageBIMxfp4Scales<Q_T>(ubSrcAddr, ubScaleAddr, dealRowCount);
+    MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
+
     constexpr uint32_t rowStrideBytes = 416;
     constexpr uint32_t nopeDim = 512;
     constexpr uint32_t dTile = 128;
@@ -485,7 +488,6 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
         __ubuf__ Q_T *ubDstAddr = (__ubuf__ Q_T *)(antiKvTensorAsB16.GetPhyAddr());
         LocalTensor<bfloat16_t> scaleStage = srcTensor[416 * 16].template ReinterpretCast<bfloat16_t>();
         __ubuf__ bfloat16_t *ubScaleStage = (__ubuf__ bfloat16_t *)(scaleStage.GetPhyAddr());
-        StageBIMxfp4Scales<Q_T>(ubSrcAddr, ubScaleStage, static_cast<uint32_t>(dealRow));
         AntiquantVFImplBIMxfp4<Q_T>(ubSrcAddr, ubScaleStage, ubDstAddr, static_cast<uint32_t>(dealRow));
 
         LocalTensor<Q_T> kRopeUb = srcTensor[256].template ReinterpretCast<Q_T>();
