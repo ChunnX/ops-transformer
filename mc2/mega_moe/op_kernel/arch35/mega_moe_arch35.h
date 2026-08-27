@@ -166,11 +166,10 @@ protected:
     static constexpr uint32_t C_ELEMS_PER_BYTE = PackedElementTraits<ActivationQuantOutType>::ELEMENTS_PER_BYTE;
 
     using BlockEpilogue =
-        BlockEpilogueActivationMxQuant<ActivationQuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true,
-                                       EPILOGUE_TILE_M, L1_TILE_N, TopkWeightsPrefetch>;
+        BlockEpilogueActivationMxQuant<ActivationQuantOutType, bfloat16_t, EPILOGUE_TILE_M, L1_TILE_N,
+                                       TopkWeightsPrefetch>;
     using SharedBlockEpilogue =
-        BlockEpilogueActivationMxQuant<ActivationQuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true,
-                                       L1_TILE_M_256, L1_TILE_N, false>;
+        BlockEpilogueActivationMxQuant<ActivationQuantOutType, bfloat16_t, L1_TILE_M_256, L1_TILE_N, false>;
     BlockEpilogue epilogueOp_;
     SharedBlockEpilogue sharedEpilogueOp_;
     TokenDispatchScratch<ActivationType> tokenDispatchScratch_;
@@ -262,9 +261,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     params_.tilingData = tilingData;
     epilogueOp_.Init({.yGmAddr = params_.workspaceInfo.activationQuantDataPtr,
                       .yScaleGmAddr = params_.workspaceInfo.activationQuantScalePtr,
-                      .x2ScaleGmAddr = nullptr,
-                      .x1ScaleGmAddr = nullptr,
-                      .biasGmAddr = nullptr,
                       .clampLimit = tilingData->clampLimit,
                       .actMode = tilingData->actMode,
                       .actSubMode = tilingData->actSubMode,
@@ -489,9 +485,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1
     typename SharedBlockEpilogue::Params epilogueParams{
         .yGmAddr = params_.workspaceInfo.sharedExpertActivationDataPtr,
         .yScaleGmAddr = params_.workspaceInfo.sharedExpertActivationScalePtr,
-        .x2ScaleGmAddr = nullptr,
-        .x1ScaleGmAddr = nullptr,
-        .biasGmAddr = nullptr,
         .clampLimit = params_.tilingData->clampLimit,
         .actMode = params_.tilingData->actMode,
         .actSubMode = params_.tilingData->actSubMode,
