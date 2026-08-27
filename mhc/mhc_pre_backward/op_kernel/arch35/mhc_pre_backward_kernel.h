@@ -288,10 +288,10 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParam
     hFusionBufLen_ = hPreMaxBufLen_ + hPostMaxBufLen_ + gradHResBufLen_;
     if ASCEND_IS_AIV {
         pipe_ = initParams.tPipeIn;
-        pipe_->InitBuffer(vecInQueue0_, 1, INOUT_QUEUE_SIZE);
-        pipe_->InitBuffer(vecOutQueue1_, 1, INOUT_QUEUE_SIZE);
-        pipe_->InitBuffer(vecInQueue1_, 1, INOUT_QUEUE_SIZE);
-        pipe_->InitBuffer(vecOutQueueSmall_, 1, SMALL_QUEUE_SIZE);
+        pipe_->InitBuffer(vecInQueue0_, 2, INOUT_QUEUE_SIZE);
+        pipe_->InitBuffer(vecOutQueue1_, 2, INOUT_QUEUE_SIZE);
+        pipe_->InitBuffer(vecInQueue1_, 2, INOUT_QUEUE_SIZE);
+        pipe_->InitBuffer(vecOutQueueSmall_, 2, SMALL_QUEUE_SIZE);
         pipe_->InitBuffer(fp32TBuf_, FP32_BUF_SIZE);
         globalUbOffset_ = 0; // V0V1部分开始分配fp32TBuf_
         globalUbOffset_ += hFusionBufLen_ * sizeof(P);
