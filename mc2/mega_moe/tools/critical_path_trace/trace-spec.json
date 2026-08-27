@@ -1,0 +1,376 @@
+{
+  "schema_version": 1,
+  "trace": {
+    "name": "mega-moe-pr10302-token-group-wave-active-task-critical-path",
+    "compile_switch": "MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE",
+    "roles": ["AIC", "AIV0", "AIV1"],
+    "clock": {
+      "api": "AscendC::GetSystemCycle",
+      "unit": "cycle",
+      "bits": 32,
+      "timestamp_pipeline": "Scalar",
+      "scope": "one device/rank; AIC, AIV0, and AIV1 in the same physical AI Block share a synchronized clock; different AI Blocks may have a fixed offset and are normalized independently",
+      "comparable_across_records": false,
+      "missing_value": 0,
+      "zero_handling": "a sampled low-32 system-cycle value of zero is remapped to one so zero remains an unambiguous missing sentinel"
+    },
+    "visualization": {
+      "comparison_group": {
+        "kind": "shared-core-index",
+        "key": "core",
+        "label": "AI Block",
+        "roles": ["AIC", "AIV0", "AIV1"],
+        "reference_role": "AIC",
+        "cross_group_comparable": false,
+        "reason": "AIC[i], AIV0[i], and AIV1[i] form one physical AI Block and share a synchronized timestamp; different AI Blocks are not compared by absolute x position"
+      },
+      "host_only": true,
+      "protocol_impact": "grouping and Chinese wording are host-only; compact route-index preparation, all physical AI Blocks, sparse active-task payloads, GMM1 gap diagnostics, AIV1 inter-Dispatch Scalar diagnostics, and 256-token Combine group tasks are protocol-v13 device ABI"
+    },
+    "protocol": {
+      "magic": "0x43505452",
+      "version": 13,
+      "schema_id": "0xdae1e878",
+      "word_bits": 32,
+      "endianness": "little",
+      "header_words": 30,
+      "record_words": 26,
+      "record_order": "role-major",
+      "record_order_description": "AIC[0..aicNum-1], AIV0[0..aicNum-1], then AIV1[0..aicNum-1], each in ascending physical AI Block index",
+      "header_contract": "30 little-endian uint32 words; record_words=26 contains 16 fixed timestamps followed by ten sparse descriptors for five stages, record_count=3*aicNum, capture_capacity is the per-stage per-core scratch segment capacity, repetition_count is the runtime GMM Wave count, truncated covers scratch or y compaction overflow, and magic is published last",
+      "flags_contract": "bits[12:0] must equal 0x00001fff; bit12 identifies the PR10302 compact route-index and 256-token Combine group trace semantics; bit13 records MEGA_MOE_A8W8_DISPATCH_GROUP_READY",
+      "header_fields": [
+        {"name": "magic", "word": 0, "width_words": 1},
+        {"name": "version", "word": 1, "width_words": 1},
+        {"name": "schema_id", "word": 2, "width_words": 1},
+        {"name": "header_words", "word": 3, "width_words": 1},
+        {"name": "record_words", "word": 4, "width_words": 1},
+        {"name": "record_count", "word": 5, "width_words": 1},
+        {"name": "role_counts", "word": 6, "width_words": 3},
+        {"name": "clock_bits", "word": 9, "width_words": 1},
+        {"name": "repetition_count", "word": 10, "width_words": 1},
+        {"name": "capture_capacity", "word": 11, "width_words": 1},
+        {"name": "truncated", "word": 12, "width_words": 1},
+        {"name": "flags", "word": 13, "width_words": 1},
+        {"name": "rank", "word": 14, "width_words": 1},
+        {"name": "runtime_config_hash", "word": 15, "width_words": 1},
+        {"name": "path_id", "word": 16, "width_words": 1},
+        {"name": "bs", "word": 17, "width_words": 1},
+        {"name": "h", "word": 18, "width_words": 1},
+        {"name": "hidden_dim", "word": 19, "width_words": 1},
+        {"name": "top_k", "word": 20, "width_words": 1},
+        {"name": "moe_experts_per_rank", "word": 21, "width_words": 1},
+        {"name": "shared_expert_count", "word": 22, "width_words": 1},
+        {"name": "m_groups_per_wave", "word": 23, "width_words": 1},
+        {"name": "world_size", "word": 24, "width_words": 1},
+        {"name": "dispatch_quant_out_key", "word": 25, "width_words": 1},
+        {"name": "combine_quant_mode", "word": 26, "width_words": 1},
+        {"name": "topk_weights_prefetch", "word": 27, "width_words": 1},
+        {"name": "weight1_interleaved", "word": 28, "width_words": 1},
+        {"name": "carrier_words", "word": 29, "width_words": 1}
+      ],
+      "record_fields": [
+        {"name": "process_begin_S", "kind": "timestamp", "roles": ["AIC", "AIV0", "AIV1"], "word": 0, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "work_end_S", "kind": "timestamp", "roles": ["AIC", "AIV0", "AIV1"], "word": 1, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "input_buffer_init_begin_S", "kind": "timestamp", "roles": ["AIV0", "AIV1"], "word": 2, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "input_buffer_init_end_S", "kind": "timestamp", "roles": ["AIV0", "AIV1"], "word": 3, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "input_quantize_begin_S", "kind": "timestamp", "roles": ["AIV0", "AIV1"], "word": 4, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "input_quantize_end_S", "kind": "timestamp", "roles": ["AIV0", "AIV1"], "word": 5, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "route_index_begin_S", "kind": "timestamp", "roles": ["AIV0", "AIV1"], "word": 6, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "route_index_end_S", "kind": "timestamp", "roles": ["AIV0", "AIV1"], "word": 7, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "workspace_reset_begin_S", "kind": "timestamp", "roles": ["AIV0", "AIV1"], "word": 8, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "workspace_reset_end_S", "kind": "timestamp", "roles": ["AIV0", "AIV1"], "word": 9, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "local_prepare_sync_begin_S", "kind": "timestamp", "roles": ["AIC", "AIV0", "AIV1"], "word": 10, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "local_prepare_sync_end_S", "kind": "timestamp", "roles": ["AIC", "AIV0", "AIV1"], "word": 11, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "cross_rank_sync_begin_S", "kind": "timestamp", "roles": ["AIC", "AIV0", "AIV1"], "word": 12, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "cross_rank_sync_end_S", "kind": "timestamp", "roles": ["AIC", "AIV0", "AIV1"], "word": 13, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "expert_buffer_init_begin_S", "kind": "timestamp", "roles": ["AIC", "AIV0", "AIV1"], "word": 14, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "expert_buffer_init_end_S", "kind": "timestamp", "roles": ["AIC", "AIV0", "AIV1"], "word": 15, "width_words": 1, "count": 1, "stride_words": 1}
+      ],
+      "sparse_segments": {
+        "entry_words": 4,
+        "payload_base_formula": "header_words + record_count * record_words",
+        "entry_fields": {"wave": 0, "expert": 1, "begin": 2, "end": 3},
+        "stages": [
+          {
+            "name": "stage0",
+            "offset_record_word": 16,
+            "count_record_word": 17,
+            "role_points": {
+              "AIC": {"begin": "gmm1_problem_begin_S", "end": "gmm1_problem_end_S", "span": "gmm1_problem"},
+              "AIV0": {"begin": "swiglu_problem_begin_S", "end": "swiglu_problem_end_S", "span": "swiglu_problem"},
+              "AIV1": {"begin": "dispatch_task_begin_S", "end": "dispatch_task_end_S", "span": "dispatch_task"}
+            }
+          },
+          {
+            "name": "stage1",
+            "offset_record_word": 18,
+            "count_record_word": 19,
+            "role_points": {
+              "AIC": {"begin": "gmm2_problem_begin_S", "end": "gmm2_problem_end_S", "span": "gmm2_problem"},
+              "AIV0": {"begin": "combine_group_begin_S", "end": "combine_group_end_S", "span": "combine_group_task"},
+              "AIV1": {"begin": "combine_group_begin_S", "end": "combine_group_end_S", "span": "combine_group_task"}
+            }
+          },
+          {
+            "name": "stage2",
+            "offset_record_word": 20,
+            "count_record_word": 21,
+            "role_points": {
+              "AIC": {"begin": "gmm1_scalar_setup_begin_S", "end": "gmm1_scalar_setup_end_S", "span": "gmm1_scalar_setup"},
+              "AIV1": {"begin": "dispatch_scalar_gap_begin_S", "end": "dispatch_scalar_gap_end_S", "span": "dispatch_scalar_gap"}
+            }
+          },
+          {
+            "name": "stage3",
+            "offset_record_word": 22,
+            "count_record_word": 23,
+            "role_points": {
+              "AIC": {"begin": "gmm1_dispatch_wait_begin_S", "end": "gmm1_dispatch_wait_end_S", "span": "gmm1_dispatch_wait"}
+            }
+          },
+          {
+            "name": "stage4",
+            "offset_record_word": 24,
+            "count_record_word": 25,
+            "role_points": {
+              "AIC": {"begin": "gmm1_vector_wait_begin_S", "end": "gmm1_vector_wait_end_S", "span": "gmm1_vector_wait"}
+            }
+          }
+        ]
+      }
+    },
+    "output": {
+      "carrier": "after normal BF16 y[bs,h] is complete, its bytes are reused for protocol-v13 fixed timestamps, sparse descriptors, and compact sparse segment payloads",
+      "overwrites_user_output": true,
+      "capacity_check": "host preflight proves descriptor and fixed workspace-scratch capacity; AIC0 computes the actual compact payload size after work_end, writes no out-of-bounds payload on overflow, sets truncated, and the default decoder rejects it",
+      "write_phase": "each role appends only to its exclusive 50-MiB reserved-workspace slice during useful work; after work_end and y-lifetime rendezvous AIC0 plans offsets, role writers compact payloads, then AIC0 publishes header and magic last",
+      "rendezvous": "three mixed AIC/AIV rendezvous occur only after work_end: protect normal y and summaries, publish descriptors, then publish payloads"
+    }
+  },
+  "points": [
+    {
+      "id": "process_begin_S", "stage": "operator", "edge": "begin", "boundary_quality": "causal", "roles": ["AIC", "AIV0", "AIV1"],
+      "scope": "每个物理 AI Block 的 AIC/AIV0/AIV1 各一次。", "why": "提供同一 AI Block 内三角色共同参考起点。", "semantics": "Process 的第一条诊断指令，尚未执行正常算子语句。", "perturbation": "每角色一次时钟读取和寄存器赋值。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::Process", "target_anchor": {"mode": "literal", "pattern": "int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();"}, "placement": "before", "marker": "TRACE_POINT: process_begin_S", "max_line_distance": 8},
+      "dependency": {"precondition": "kernel role entered Process", "producer_pipeline": "Scalar", "timestamp_pipeline": "Scalar", "bridge": "program order", "proof": "marker precedes the first production statement"}
+    },
+    {
+      "id": "input_buffer_init_begin_S", "stage": "input_buffer_init", "edge": "begin", "boundary_quality": "causal", "roles": ["AIV0", "AIV1"],
+      "scope": "每个 AIV0/AIV1 各一次。", "why": "分离输入准备 UB 布局与后续 token 量化。", "semantics": "即将构造 quant/route-index/reset 的 UB 视图并发出 resetTensor Duplicate。", "perturbation": "每个 AIV 一次时钟读取。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::Process", "target_anchor": {"mode": "literal", "pattern": "SendAndQuantBuffInit();", "occurrence": 2}, "placement": "before", "marker": "TRACE_POINT: input_buffer_init_begin_S", "max_line_distance": 6},
+      "dependency": {"precondition": "overflow mode configured", "producer_pipeline": "Scalar", "timestamp_pipeline": "Scalar", "bridge": "program order", "proof": "marker is immediately before SendAndQuantBuffInit"}
+    },
+    {
+      "id": "input_buffer_init_end_S", "stage": "input_buffer_init", "edge": "end", "boundary_quality": "issue", "roles": ["AIV0", "AIV1"],
+      "scope": "与 input_buffer_init_begin_S 一一对应。", "why": "量化前单独显示 UB 地址构造和零张量发出成本。", "semantics": "UB 视图已构造且 Duplicate 已发出；Vector 尾部可继续运行。", "perturbation": "每个 AIV 一次时钟读取，不新增 Vector drain。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::Process", "target_anchor": {"mode": "literal", "pattern": "SendAndQuantBuffInit();", "occurrence": 2}, "placement": "after", "marker": "TRACE_POINT: input_buffer_init_end_S", "max_line_distance": 6},
+      "dependency": {"precondition": "SendAndQuantBuffInit returned", "producer_pipeline": "Scalar plus Vector issue", "timestamp_pipeline": "Scalar", "bridge": "program order only", "proof": "no tracing-only Vector drain is inserted"}
+    },
+    {
+      "id": "input_quantize_begin_S", "stage": "input_quantize", "edge": "begin", "boundary_quality": "causal", "roles": ["AIV0", "AIV1"],
+      "scope": "每个 AIV0/AIV1 各一次。", "why": "量化本卡输入 token 的固定成本独立可见。", "semantics": "即将进入 QuantizeLocalTokens。", "perturbation": "每个 AIV 一次时钟读取。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::Process", "target_anchor": {"mode": "literal", "pattern": "QuantizeLocalTokens<QuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>("}, "placement": "before", "marker": "TRACE_POINT: input_quantize_begin_S", "max_line_distance": 7},
+      "dependency": {"precondition": "input UB views are configured", "producer_pipeline": "Scalar", "timestamp_pipeline": "Scalar", "bridge": "program order", "proof": "marker precedes QuantizeLocalTokens"}
+    },
+    {
+      "id": "input_quantize_end_S", "stage": "input_quantize", "edge": "end", "boundary_quality": "actual", "roles": ["AIV0", "AIV1"],
+      "scope": "与 input_quantize_begin_S 一一对应。", "why": "区分 token 量化与后续 compact route-index 通信。", "semantics": "本核负责 token 的量化结果已写回 GM。", "perturbation": "每个 AIV 一次时钟读取；复用 helper 已有双 buffer MTE3 回收。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::Process", "target_anchor": {"mode": "literal", "pattern": "QuantizeLocalTokens<QuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>("}, "placement": "after", "marker": "TRACE_POINT: input_quantize_end_S", "max_line_distance": 7},
+      "dependency": {"precondition": "QuantizeLocalTokens returned", "producer_pipeline": "MTE2/Vector/MTE3", "timestamp_pipeline": "Scalar", "bridge": "production MTE3_MTE2 ring drain", "proof": "QuantizeLocalTokens waits both MTE3_MTE2 events before return"}
+    },
+    {
+      "id": "route_index_begin_S", "stage": "route_index", "edge": "begin", "boundary_quality": "causal", "roles": ["AIV0", "AIV1"],
+      "scope": "每个 AIV0/AIV1 各一次。", "why": "单独量化 compact route index 构造、count 整理与跨 rank 发送。", "semantics": "即将进入 GatherAndSendExpertCompactRoutes。", "perturbation": "每个 AIV 一次时钟读取。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::Process", "target_anchor": {"mode": "literal", "pattern": "GatherAndSendExpertCompactRoutes(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_,"}, "placement": "before", "marker": "TRACE_POINT: route_index_begin_S", "max_line_distance": 5},
+      "dependency": {"precondition": "input quantization helper returned", "producer_pipeline": "Scalar", "timestamp_pipeline": "Scalar", "bridge": "program order", "proof": "marker immediately precedes the compact route-index helper"}
+    },
+    {
+      "id": "route_index_end_S", "stage": "route_index", "edge": "end", "boundary_quality": "actual", "roles": ["AIV0", "AIV1"],
+      "scope": "与 route_index_begin_S 一一对应。", "why": "把 compact route index/count 远端发送完成与 workspace 清零分开。", "semantics": "本核所有 compact route/count ring 槽的 MTE3 写已完成。", "perturbation": "每个 AIV 一次时钟读取；复用 helper 生产事件。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::Process", "target_anchor": {"mode": "literal", "pattern": "GatherAndSendExpertCompactRoutes(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_,"}, "placement": "after", "marker": "TRACE_POINT: route_index_end_S", "max_line_distance": 7},
+      "dependency": {"precondition": "GatherAndSendExpertCompactRoutes returned", "producer_pipeline": "Vector/MTE3", "timestamp_pipeline": "Scalar", "bridge": "production ring drain", "proof": "helper returns after every active compact-route MTE3 slot is drained"}
+    },
+    {
+      "id": "workspace_reset_begin_S", "stage": "workspace_reset", "edge": "begin", "boundary_quality": "causal", "roles": ["AIV0", "AIV1"],
+      "scope": "每个 AIV0/AIV1 各一次。", "why": "量化 flag/workspace 清零成本和同步等待。", "semantics": "即将发出本核负责的 workspace 清零。", "perturbation": "每个 AIV 一次时钟读取。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::Process", "target_anchor": {"mode": "literal", "pattern": "ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);"}, "placement": "before", "marker": "TRACE_POINT: workspace_reset_begin_S", "max_line_distance": 5},
+      "dependency": {"precondition": "compact route-index helper returned", "producer_pipeline": "Scalar", "timestamp_pipeline": "Scalar", "bridge": "program order", "proof": "marker immediately precedes ResetSyncStatus"}
+    },
+    {
+      "id": "workspace_reset_end_S", "stage": "workspace_reset", "edge": "end", "boundary_quality": "actual", "roles": ["AIV0", "AIV1"],
+      "scope": "与 workspace_reset_begin_S 一一对应。", "why": "不把未完成的 MTE3 清零尾部错误归入后续本地 barrier。", "semantics": "本核此前发出的 workspace 清零 MTE3 已完成。", "perturbation": "诊断态每个 AIV 增加一次 MTE3_S；会把原本由随后 SyncAll 吸收的等待前移。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::Process", "target_anchor": {"mode": "literal", "pattern": "ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);"}, "placement": "after", "marker": "TRACE_POINT: workspace_reset_end_S", "max_line_distance": 8},
+      "dependency": {"precondition": "ResetDispatchWorkspace returned", "producer_pipeline": "MTE3", "timestamp_pipeline": "Scalar", "bridge": "tracing-only MTE3_S", "proof": "MTE3_S SetFlag/WaitFlag completes immediately before sampling"}
+    },
+    {
+      "id": "local_prepare_sync_begin_S", "stage": "local_prepare_sync", "edge": "begin", "boundary_quality": "causal", "roles": ["AIC", "AIV0", "AIV1"],
+      "scope": "每个物理 AI Block 的三角色各一次。", "why": "直接量化 AIC 等待 AIV 输入准备和 flag 可见的本地 barrier。", "semantics": "即将进入输入准备后的 SyncAll。", "perturbation": "每角色一次时钟读取。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::Process", "target_anchor": {"mode": "literal", "pattern": "SyncAll<false>(); // AIC 等待 AIV 完成输入准备与 flag 清零后再进入计算"}, "placement": "before", "marker": "TRACE_POINT: local_prepare_sync_begin_S", "max_line_distance": 6},
+      "dependency": {"precondition": "role-local input preparation issued", "producer_pipeline": "mixed local pipelines", "timestamp_pipeline": "Scalar", "bridge": "program order", "proof": "marker is immediately before the mixed AIC/AIV rendezvous"}
+    },
+    {
+      "id": "local_prepare_sync_end_S", "stage": "local_prepare_sync", "edge": "end", "boundary_quality": "actual", "roles": ["AIC", "AIV0", "AIV1"],
+      "scope": "与 local_prepare_sync_begin_S 一一对应。", "why": "区分单卡角色同步与随后跨 rank 同步。", "semantics": "本 AI Block 所有角色已越过输入准备 rendezvous。", "perturbation": "每角色一次时钟读取。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::Process", "target_anchor": {"mode": "literal", "pattern": "SyncAll<false>(); // AIC 等待 AIV 完成输入准备与 flag 清零后再进入计算"}, "placement": "after", "marker": "TRACE_POINT: local_prepare_sync_end_S", "max_line_distance": 6},
+      "dependency": {"precondition": "SyncAll returned", "producer_pipeline": "mixed local pipelines", "timestamp_pipeline": "Scalar", "bridge": "production rendezvous", "proof": "sample occurs after SyncAll"}
+    },
+    {
+      "id": "cross_rank_sync_begin_S", "stage": "cross_rank_sync", "edge": "begin", "boundary_quality": "causal", "roles": ["AIC", "AIV0", "AIV1"],
+      "scope": "每个物理 AI Block 的三角色各一次。", "why": "直接量化 Dispatch 前由最慢 rank 决定的全卡等待。", "semantics": "即将进入 CrossRankSyncInWorldSize。", "perturbation": "每角色一次时钟读取。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::ProcessGmmPipeline", "target_anchor": {"mode": "literal", "pattern": "CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);", "occurrence": 1}, "placement": "before", "marker": "TRACE_POINT: cross_rank_sync_begin_S", "max_line_distance": 6},
+      "dependency": {"precondition": "local input preparation rendezvous completed", "producer_pipeline": "Scalar/remote GM", "timestamp_pipeline": "Scalar", "bridge": "program order", "proof": "marker immediately precedes the first cross-rank barrier"}
+    },
+    {
+      "id": "cross_rank_sync_end_S", "stage": "cross_rank_sync", "edge": "end", "boundary_quality": "actual", "roles": ["AIC", "AIV0", "AIV1"],
+      "scope": "与 cross_rank_sync_begin_S 一一对应。", "why": "把全 rank 等待与本地专家 buffer 初始化分开。", "semantics": "本角色已观察到所有 rank 输入准备完成。", "perturbation": "每角色一次时钟读取。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::ProcessGmmPipeline", "target_anchor": {"mode": "literal", "pattern": "CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);", "occurrence": 1}, "placement": "after", "marker": "TRACE_POINT: cross_rank_sync_end_S", "max_line_distance": 6},
+      "dependency": {"precondition": "CrossRankSyncInWorldSize returned", "producer_pipeline": "Scalar/remote GM", "timestamp_pipeline": "Scalar", "bridge": "production remote barrier", "proof": "sample occurs after the cross-rank wait"}
+    },
+    {
+      "id": "expert_buffer_init_begin_S", "stage": "expert_buffer_init", "edge": "begin", "boundary_quality": "causal", "roles": ["AIC", "AIV0", "AIV1"],
+      "scope": "每个物理 AI Block 的三角色各一次。", "why": "量化进入首轮 Dispatch/GMM 前的专家阶段 buffer 和状态初始化。", "semantics": "即将构造 Dispatch、Combine 和 token-count export 的本地视图。", "perturbation": "每角色一次时钟读取。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::ProcessMoeExpertStages", "target_anchor": {"mode": "literal", "pattern": "tokenDispatchScratch_.expertRevNumsGlobalTensor.SetGlobalBuffer("}, "placement": "before", "marker": "TRACE_POINT: expert_buffer_init_begin_S", "max_line_distance": 8},
+      "dependency": {"precondition": "cross-rank input barrier completed", "producer_pipeline": "Scalar", "timestamp_pipeline": "Scalar", "bridge": "program order", "proof": "marker precedes the three buffer initialization helpers"}
+    },
+    {
+      "id": "expert_buffer_init_end_S", "stage": "expert_buffer_init", "edge": "end", "boundary_quality": "actual", "roles": ["AIC", "AIV0", "AIV1"],
+      "scope": "与 expert_buffer_init_begin_S 一一对应。", "why": "分离本地视图构造与后续 cursor/problem 状态建立及首个 Dispatch。", "semantics": "三个 buffer 初始化 helper 已完成；这些 helper 仅构造 Scalar/LocalTensor 状态。", "perturbation": "每角色一次时钟读取。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::ProcessMoeExpertStages", "target_anchor": {"mode": "literal", "pattern": "PrepareMoeExpertTokenCountTable(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);"}, "placement": "after", "marker": "TRACE_POINT: expert_buffer_init_end_S", "max_line_distance": 6},
+      "dependency": {"precondition": "all expert buffer helpers returned", "producer_pipeline": "Scalar", "timestamp_pipeline": "Scalar", "bridge": "program order", "proof": "helpers only bind buffer views and scalar fields"}
+    },
+    {
+      "id": "work_end_S", "stage": "operator", "edge": "end", "boundary_quality": "actual", "roles": ["AIC", "AIV0", "AIV1"],
+      "scope": "每个物理 AI Block 的 AIC/AIV0/AIV1 各一次。", "why": "把有效工作与 tracing 终结同步/落盘分离。", "semantics": "正常 routed/shared 流水、跨 rank 尾部和 Unpermute 已结束，尚未进入 tracing rendezvous。", "perturbation": "每角色一次时钟读取和寄存器赋值。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::Process", "target_anchor": {"mode": "literal", "pattern": "exceptionDump_.UpdateStage(MegaMoeImpl::Stage::COMPLETE);"}, "placement": "after", "marker": "TRACE_POINT: work_end_S", "max_line_distance": 6},
+      "dependency": {"precondition": "all production work for this role returned", "producer_pipeline": "mixed production pipelines", "timestamp_pipeline": "Scalar", "bridge": "production completion plus program order", "proof": "sample is after ProcessGmmPipeline, final AIV cross-rank wait/Unpermute, and control restoration"}
+    },
+    {
+      "id": "dispatch_task_begin_S", "stage": "dispatch", "edge": "begin", "boundary_quality": "causal", "roles": ["AIV1"],
+      "scope": "所有 AIV1，每次 PlanWaveExpertDispatch 为本核分配非空专家行区间时一次。", "why": "只绘制实际拥有 token 行的 Dispatch helper，排除 count/cursor 和无工作专家。", "semantics": "本核即将发送当前专家的连续行区间。", "perturbation": "每个本核活跃专家任务一次时钟和状态更新。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_token_dispatch.h", "symbol": "MegaMoeImpl::RunGlobalWaveDispatchStage", "target_anchor": {"mode": "literal", "pattern": "DispatchWaveExpertRows<ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch,"}, "placement": "before", "marker": "TRACE_POINT: dispatch_task_begin_S", "max_line_distance": 14},
+      "dependency": {"precondition": "dispatch plan assigned a non-empty row range to this AIV1", "producer_pipeline": "Scalar", "timestamp_pipeline": "Scalar", "bridge": "program order", "proof": "marker is inside HasWaveDispatchRows and immediately before the helper call"}
+    },
+    {
+      "id": "dispatch_task_end_S", "stage": "dispatch", "edge": "end", "boundary_quality": "actual", "roles": ["AIV1"],
+      "scope": "与 dispatch_task_begin_S 一一对应。", "why": "只覆盖本核实际负责的专家行 Dispatch，不包住下一专家或 cursor 推进。", "semantics": "helper 已排空使用过的 copy ring 并发布本核行区间的 Dispatch-ready。", "perturbation": "一次结束时钟和四个独占 scratch 写；无新增 MTE3 bridge。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_token_dispatch.h", "symbol": "MegaMoeImpl::RunGlobalWaveDispatchStage", "target_anchor": {"mode": "literal", "pattern": "DispatchWaveExpertRows<ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch,"}, "placement": "after", "marker": "TRACE_POINT: dispatch_task_end_S", "max_line_distance": 18},
+      "dependency": {"precondition": "DispatchWaveExpertRows returned", "producer_pipeline": "MTE2/Vector/MTE3 and Scalar ready publication", "timestamp_pipeline": "Scalar", "bridge": "production helper's existing ring drain and MTE3_S", "proof": "CopyTokensAndMetaForDispatch consumes every used MTE3 completion event before return; ready publication follows production MTE3_S"}
+    },
+    {
+      "id": "dispatch_scalar_gap_begin_S", "stage": "dispatch_scalar_gap", "edge": "begin", "boundary_quality": "causal", "roles": ["AIV1"],
+      "scope": "所有 AIV1，每对连续有效 Dispatch task 之间最多一段；最后一个 task 后的未闭合尾段会丢弃，不跨入 GMM2/Combine。", "why": "直接量化相邻有效 Dispatch 之间由专家 count 查询、rolling owner 规划、Wave cursor 推进以及相邻预取调用衔接产生的 Scalar 空隙。", "semantics": "前一个有效 Dispatch 已完成并写入其 trace 段；本 AIV1 开始寻找下一个拥有非空专家行的 Dispatch task。", "perturbation": "每个有效 Dispatch 结束后增加一次时钟和一个 Scalar 状态赋值；最后一个 task 的未使用起点也会采样，但不写 scratch。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_token_dispatch.h", "symbol": "MegaMoeImpl::RunGlobalWaveDispatchStage", "target_anchor": {"mode": "literal", "pattern": "DispatchWaveExpertRows<ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch,"}, "placement": "after", "marker": "TRACE_POINT: dispatch_scalar_gap_begin_S", "max_line_distance": 22},
+      "dependency": {"precondition": "previous DispatchWaveExpertRows returned and dispatch_task_end_S was sampled", "producer_pipeline": "Scalar after production MTE3 completion/ready publication", "timestamp_pipeline": "Scalar", "bridge": "program order after the existing Dispatch completion contract", "proof": "the sample follows EndStage0, whose timestamp is taken only after the production helper has drained its used copy ring and published ready"}
+    },
+    {
+      "id": "dispatch_scalar_gap_end_S", "stage": "dispatch_scalar_gap", "edge": "end", "boundary_quality": "actual", "roles": ["AIV1"],
+      "scope": "与 dispatch_scalar_gap_begin_S 一一对应，仅当后续确实找到另一个非空 Dispatch task 时闭合。", "why": "判断 HTML 中 Dispatch 之间的白色区间是否就是 AIV1 的逐专家 Scalar 扫描，而不是隐藏的通信或等待。", "semantics": "下一有效专家的 count/owner 规划已完成且本核已获得非空连续行区间，即将建立下一段 Dispatch task。", "perturbation": "每个真实 inter-Dispatch gap 增加一次时钟和四个独占 scratch word 写；结束时钟在 scratch 写之前采样，因此写入开销不计入该段。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_token_dispatch.h", "symbol": "MegaMoeImpl::RunGlobalWaveDispatchStage", "target_anchor": {"mode": "literal", "pattern": "DispatchWaveExpertRows<ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch,"}, "placement": "before", "marker": "TRACE_POINT: dispatch_scalar_gap_end_S", "max_line_distance": 18},
+      "dependency": {"precondition": "PlanWaveExpertDispatch assigned a non-empty row interval for the next task", "producer_pipeline": "Scalar", "timestamp_pipeline": "Scalar", "bridge": "none; same-pipeline program order", "proof": "the sample is guarded by HasDispatchGap and HasWaveDispatchRows after planning, immediately before PrepareStage0/dispatch_task_begin_S"}
+    },
+    {
+      "id": "gmm1_scalar_setup_begin_S", "stage": "gmm1_scalar_setup", "edge": "begin", "boundary_quality": "causal", "roles": ["AIC"],
+      "scope": "每个 AIC 从上一个活跃 GMM1 problem 后开始，跨越连续空专家或无 owner problem，直到下一个 owned tile 的 ready 检查。", "why": "判断 GMM1 空洞是否来自逐专家状态准备、地址更新和 rolling ownership 跳过，而不是通信依赖。", "semantics": "开始为后续 GMM1 owned problem 扫描并准备专家状态；连续无 owner problem 合并为一个低扰动区间。", "perturbation": "每段一次起点时钟；连续无 owner 专家不逐项写 trace，避免诊断写放大空洞。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/common/mega_moe_trace.h", "symbol": "CriticalPathTrace::PrepareGmm1Gap", "target_anchor": {"mode": "literal", "pattern": "gmm1SetupBegin_ = begin;"}, "placement": "before", "marker": "TRACE_POINT: gmm1_scalar_setup_begin_S", "max_line_distance": 4},
+      "dependency": {"precondition": "ProcessGmm1Wave entered the next expert/problem attempt", "producer_pipeline": "Scalar", "timestamp_pipeline": "Scalar", "bridge": "program order", "proof": "the first pending setup timestamp is sampled before expert state preparation; later skipped experts retain that timestamp"}
+    },
+    {
+      "id": "gmm1_scalar_setup_end_S", "stage": "gmm1_scalar_setup", "edge": "end", "boundary_quality": "actual", "roles": ["AIC"],
+      "scope": "与聚合后的 gmm1_scalar_setup_begin_S 一一对应。", "why": "把 Scalar 调度与随后真实 Dispatch-ready 等待分开。", "semantics": "本核已找到下一个 owned tile 并完成 BlockMmad/problem 构造，或本 Wave 已无 owned tile。", "perturbation": "每聚合段一次结束时钟和四个 scratch 标量写。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/common/mega_moe_trace.h", "symbol": "CriticalPathTrace::EndGmm1Setup", "target_anchor": {"mode": "literal", "pattern": "AppendSegment(gmm1GapWave_, gmm1GapExpert_, gmm1SetupBegin_, value, 2U,"}, "placement": "before", "marker": "TRACE_POINT: gmm1_scalar_setup_end_S", "max_line_distance": 2},
+      "dependency": {"precondition": "owned-tile ready check is about to start, or ProcessGmm1Wave is returning", "producer_pipeline": "Scalar", "timestamp_pipeline": "Scalar", "bridge": "program order", "proof": "active paths close setup immediately before WaitForGmm1InputReady; tail paths close it at Wave exit"}
+    },
+    {
+      "id": "gmm1_dispatch_wait_begin_S", "stage": "gmm1_dispatch_wait", "edge": "begin", "boundary_quality": "causal", "roles": ["AIC"],
+      "scope": "每个 AIC 活跃 GMM1 problem 的首个 owned tile。", "why": "直接验证下一段 GMM1 是否仍被 Dispatch-ready flag 阻塞。", "semantics": "即将轮询当前 256-row group 的 Dispatch-ready flag。", "perturbation": "每个活跃 problem 一次时钟；setup scratch 写位于该采样之前。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm1_activation.h", "symbol": "TraceGmm1DispatchWaitBegin", "target_anchor": {"mode": "literal", "pattern": "trace->BeginGmm1DispatchWait(CriticalPathTrace::Now());"}, "placement": "before", "marker": "TRACE_POINT: gmm1_dispatch_wait_begin_S", "max_line_distance": 1},
+      "dependency": {"precondition": "scheduler assigned the current tile to this AIC", "producer_pipeline": "Scalar", "timestamp_pipeline": "Scalar", "bridge": "program order", "proof": "helper is called immediately before WaitForGmm1InputReady"}
+    },
+    {
+      "id": "gmm1_dispatch_wait_end_S", "stage": "gmm1_dispatch_wait", "edge": "end", "boundary_quality": "actual", "roles": ["AIC"],
+      "scope": "与 gmm1_dispatch_wait_begin_S 一一对应。", "why": "量化 Dispatch 是否真的落在两段 GMM1 之间。", "semantics": "目标 Dispatch-ready 值已经被本核观察到。", "perturbation": "每个活跃 problem 一次时钟和四个 scratch 标量写。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm1_activation.h", "symbol": "TraceGmm1DispatchWaitEnd", "target_anchor": {"mode": "literal", "pattern": "trace->EndGmm1DispatchWait(CriticalPathTrace::Now());"}, "placement": "before", "marker": "TRACE_POINT: gmm1_dispatch_wait_end_S", "max_line_distance": 1},
+      "dependency": {"precondition": "WaitForGmm1InputReady returned", "producer_pipeline": "AIV1 remote MTE3 plus ready publication", "timestamp_pipeline": "Scalar", "bridge": "bypass-GM polling then program order", "proof": "helper is called immediately after WaitForGmm1InputReady"}
+    },
+    {
+      "id": "gmm1_vector_wait_begin_S", "stage": "gmm1_vector_wait", "edge": "begin", "boundary_quality": "causal", "roles": ["AIC"],
+      "scope": "非 prefetch GMM1 中确实需要回收 UB ping-pong 槽的活跃 problem。", "why": "判断前一段 SwiGLU 是否尚未释放 GMM1 输出槽，从而阻塞下一段 GMM1。", "semantics": "Dispatch 已 ready，即将等待 AIV0 归还当前 ping-pong 槽。", "perturbation": "仅在生产路径本来会 WaitForVector 时增加一次时钟。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm1_activation.h", "symbol": "TraceGmm1VectorWaitBegin", "target_anchor": {"mode": "literal", "pattern": "trace->BeginGmm1VectorWait(CriticalPathTrace::Now());"}, "placement": "before", "marker": "TRACE_POINT: gmm1_vector_wait_begin_S", "max_line_distance": 1},
+      "dependency": {"precondition": "production vecSetSyncCom requires a ping-pong recycle", "producer_pipeline": "AIV0 Vector/MTE3", "timestamp_pipeline": "Scalar", "bridge": "program order", "proof": "helper is called only inside the branch that immediately invokes WaitForVector"}
+    },
+    {
+      "id": "gmm1_vector_wait_end_S", "stage": "gmm1_vector_wait", "edge": "end", "boundary_quality": "actual", "roles": ["AIC"],
+      "scope": "与 gmm1_vector_wait_begin_S 一一对应。", "why": "把 SwiGLU backpressure 与下一段 GMM1 实际 MMAD 分开。", "semantics": "AIV0 已归还所需 ping-pong 槽。", "perturbation": "每次真实 WaitForVector 增加一次时钟和四个 scratch 标量写。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm1_activation.h", "symbol": "TraceGmm1VectorWaitEnd", "target_anchor": {"mode": "literal", "pattern": "trace->EndGmm1VectorWait(CriticalPathTrace::Now());"}, "placement": "before", "marker": "TRACE_POINT: gmm1_vector_wait_end_S", "max_line_distance": 1},
+      "dependency": {"precondition": "WaitForVector returned", "producer_pipeline": "AIV0 Vector/MTE3", "timestamp_pipeline": "Scalar", "bridge": "production event wait then program order", "proof": "helper is called immediately after WaitForVector"}
+    },
+    {
+      "id": "gmm1_problem_begin_S", "stage": "gmm1", "edge": "begin", "boundary_quality": "causal", "roles": ["AIC"],
+      "scope": "所有 AIC，每个拥有 tile 的 GMM1 problem 一次。", "why": "排除首 tile 的 Dispatch-ready/ping-pong 等待，并拆开 Wave 内多个 problem。", "semantics": "首个 owned GMM1 tile 已 ready，即将发出。", "perturbation": "每活跃 problem 一次条件判断、必要的因果 bridge 和时钟。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm1_activation.h", "symbol": "TraceGmm1ProblemBeginAfterReady", "target_anchor": {"mode": "literal", "pattern": "trace->BeginStage0(CriticalPathTrace::Now());", "occurrence": 1}, "placement": "before", "marker": "TRACE_POINT: gmm1_problem_begin_S", "max_line_distance": 2},
+      "dependency": {"precondition": "first owned tile's production readiness wait returned", "producer_pipeline": "Dispatch/FIX or ping-pong producer", "timestamp_pipeline": "Scalar", "bridge": "SCALAR, FIX_S, or V_S selected by production variant", "proof": "all routed generic call sites invoke the helper after their production wait"}
+    },
+    {
+      "id": "gmm1_problem_end_S", "stage": "gmm1", "edge": "end", "boundary_quality": "actual", "roles": ["AIC"],
+      "scope": "与有 owned tile 的 gmm1_problem_begin_S 一一对应。", "why": "只把本 problem 真正完成的 FIX 工作染色，使 problem 间白色可解释为调度/依赖空洞。", "semantics": "本 problem 已发出的全部 FIX 工作已完成并桥接到 Scalar。", "perturbation": "每个活跃 AIC problem 增加一次 FIX_S、一次时钟和四个 scratch 写；诊断态会抑制跨 problem FIX 尾部重叠。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::ProcessGmm1Wave", "target_anchor": {"mode": "literal", "pattern": "RunGmm1GenericByWeightFormat<QuantOutType, ActivationType, QuantScaleOutType, GMM1_TILE_M, EPILOGUE_TILE_M,"}, "placement": "after", "marker": "TRACE_POINT: gmm1_problem_end_S", "max_line_distance": 24},
+      "dependency": {"precondition": "RunGmm1ActivationByMode returned with an owned tile", "producer_pipeline": "FIX", "timestamp_pipeline": "Scalar", "bridge": "tracing-only FIX_S", "proof": "HasStage0Begin gates an immediately preceding FIX_S SetFlag/WaitFlag pair"}
+    },
+    {
+      "id": "swiglu_problem_begin_S", "stage": "swiglu", "edge": "begin", "boundary_quality": "causal", "roles": ["AIV0"],
+      "scope": "所有 AIV0，每个拥有 epilogue tile 的 GMM1 problem 一次。", "why": "排除 WaitForCube/ready，并拆开 Wave 内多次 SwiGLU。", "semantics": "首个 owned epilogue tile 已 ready，即将执行 SwiGLU/MX。", "perturbation": "每活跃 problem 一次条件判断、因果 bridge 和时钟。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm1_activation.h", "symbol": "TraceGmm1ProblemBeginAfterReady", "target_anchor": {"mode": "literal", "pattern": "trace->BeginStage0(CriticalPathTrace::Now());", "occurrence": 2}, "placement": "before", "marker": "TRACE_POINT: swiglu_problem_begin_S", "max_line_distance": 2},
+      "dependency": {"precondition": "first owned epilogue tile readiness wait returned", "producer_pipeline": "GMM1/FIX", "timestamp_pipeline": "Scalar", "bridge": "V_S or production program order", "proof": "marker is after WaitForCube/WaitGmm1TileStatus and before the first epilogue tile helper"}
+    },
+    {
+      "id": "swiglu_problem_end_S", "stage": "swiglu", "edge": "end", "boundary_quality": "issue", "roles": ["AIV0"],
+      "scope": "与有 owned tile 的 swiglu_problem_begin_S 一一对应。", "why": "不把下一 problem 前的等待算入 SwiGLU。", "semantics": "当前 problem helper 已返回并完成生产路径的输出/ready 提交。", "perturbation": "一次时钟和四个 scratch 写；不增加额外排空。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::ProcessGmm1Wave", "target_anchor": {"mode": "literal", "pattern": "RunGmm1GenericByWeightFormat<QuantOutType, ActivationType, QuantScaleOutType, GMM1_TILE_M, EPILOGUE_TILE_M,"}, "placement": "after", "marker": "TRACE_POINT: swiglu_problem_end_S", "max_line_distance": 28},
+      "dependency": {"precondition": "RunGmm1ActivationByMode returned on AIV0", "producer_pipeline": "Vector/MTE3 issue and ready publication", "timestamp_pipeline": "Scalar", "bridge": "program order only", "proof": "no tracing-only completion event is introduced; boundary is conservatively issue"}
+    },
+    {
+      "id": "gmm2_problem_begin_S", "stage": "gmm2", "edge": "begin", "boundary_quality": "causal", "roles": ["AIC"],
+      "scope": "所有 AIC，每个拥有 tile 的 GMM2 problem 一次。", "why": "排除 SwiGLU-ready 轮询并拆开 Wave 内多个 problem。", "semantics": "首个 owned GMM2 tile 已 ready，即将发出。", "perturbation": "每活跃 problem 一次条件判断和时钟。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h", "symbol": "TraceGmm2ProblemBeginAfterReady", "target_anchor": {"mode": "literal", "pattern": "trace->BeginStage1(CriticalPathTrace::Now());"}, "placement": "before", "marker": "TRACE_POINT: gmm2_problem_begin_S", "max_line_distance": 2},
+      "dependency": {"precondition": "first owned tile observed SwiGLU-ready", "producer_pipeline": "AIV0 MTE3/ready", "timestamp_pipeline": "Scalar", "bridge": "bypass-GM ready polling then program order", "proof": "helper is called only after WaitForGmm2InputReady returns"}
+    },
+    {
+      "id": "gmm2_problem_end_S", "stage": "gmm2", "edge": "end", "boundary_quality": "actual", "roles": ["AIC"],
+      "scope": "与有 owned tile 的 gmm2_problem_begin_S 一一对应。", "why": "让大量短 GMM2 段覆盖真实 FIX 执行，而不是只显示 Scalar 发出。", "semantics": "本 problem 已发出的全部 GMM2 FIX 工作已完成并桥接到 Scalar。", "perturbation": "每个活跃 AIC problem 增加一次 FIX_S、一次时钟和四个 scratch 写；诊断态会串行化跨 problem FIX 尾部。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::ProcessGmm2Wave", "target_anchor": {"mode": "literal", "pattern": "RunGmm2ByMode<COMBINE_NO_QUANT, QuantOutType, ActivationType, Weight1Type, QuantScaleOutType, false, false,", "occurrence": 2}, "placement": "after", "marker": "TRACE_POINT: gmm2_problem_end_S", "max_line_distance": 24},
+      "dependency": {"precondition": "RunMoeExpertGmm2Stage returned with an owned tile", "producer_pipeline": "FIX", "timestamp_pipeline": "Scalar", "bridge": "tracing-only FIX_S", "proof": "HasStage1Begin gates an immediately preceding FIX_S SetFlag/WaitFlag pair"}
+    },
+    {
+      "id": "combine_group_begin_S", "stage": "combine", "edge": "begin", "boundary_quality": "causal", "roles": ["AIV0", "AIV1"],
+      "scope": "所有参与 Combine 的 AIV，每个本核 owned expert-local 256-token group 切片一次。", "why": "直接观察本次新增的 256-token group ready 是否让 Combine 提前启动，并排除 ready 轮询。", "semantics": "当前 expert-local 256-token group 的 GMM2 N-tile 计数已齐，即将读取并发送本核所负责行。", "perturbation": "每活跃 group 一次条件判断和时钟。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h", "symbol": "MegaMoeImpl::CombineWaveExpertRows", "target_anchor": {"mode": "literal", "pattern": "WaitWaveCombineGroupReady(common, syncLayout, params, expertIdx, tokenGroupIdx);"}, "placement": "after", "marker": "TRACE_POINT: combine_group_begin_S", "max_line_distance": 8},
+      "dependency": {"precondition": "current 256-token group's complete GMM2 N-tile count was observed", "producer_pipeline": "AIC FIX plus bypass-GM counter", "timestamp_pipeline": "Scalar", "bridge": "bypass-GM polling then program order", "proof": "marker is immediately after WaitWaveCombineGroupReady"}
+    },
+    {
+      "id": "combine_group_end_S", "stage": "combine", "edge": "end", "boundary_quality": "actual", "roles": ["AIV0", "AIV1"],
+      "scope": "与 combine_group_begin_S 一一对应。", "why": "只覆盖当前 256-token group 切片，并在远端发送完成后结束。", "semantics": "当前 group 切片此前发出的所有 MTE3 send 已完成并桥接到 Scalar。", "perturbation": "每个本核活跃 group 增加一次 MTE3_S 完成桥、一次时钟和四个 scratch 写；诊断态会抑制跨 group MTE3 尾部重叠。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h", "symbol": "MegaMoeImpl::CombineWaveExpertRows", "target_anchor": {"mode": "literal", "pattern": "processedTokenCount += rowsInCurrentGroup;"}, "placement": "before", "marker": "TRACE_POINT: combine_group_end_S", "max_line_distance": 8},
+      "dependency": {"precondition": "the active group slice has issued all of its Combine rows", "producer_pipeline": "MTE2/Vector/MTE3", "timestamp_pipeline": "Scalar", "bridge": "tracing-only MTE3_S", "proof": "MTE3_S SetFlag/WaitFlag is immediately before sampling, so every earlier remote send is complete"}
+    }
+  ],
+  "spans": [
+    {"id": "process", "label": "角色有效工作", "begin": "process_begin_S", "end": "work_end_S", "roles": ["AIC", "AIV0", "AIV1"], "quality": "exact", "color": "#cbd5e1"},
+    {"id": "input_buffer_init", "label": "输入 UB/零张量初始化", "begin": "input_buffer_init_begin_S", "end": "input_buffer_init_end_S", "roles": ["AIV0", "AIV1"], "quality": "issue", "color": "#64748b"},
+    {"id": "input_quantize", "label": "本卡输入量化", "begin": "input_quantize_begin_S", "end": "input_quantize_end_S", "roles": ["AIV0", "AIV1"], "quality": "exact", "color": "#0891b2"},
+    {"id": "route_index", "label": "Compact 路由 Index/Count 构造与发送", "begin": "route_index_begin_S", "end": "route_index_end_S", "roles": ["AIV0", "AIV1"], "quality": "exact", "color": "#0284c7"},
+    {"id": "workspace_reset", "label": "Flag/Workspace 清零", "begin": "workspace_reset_begin_S", "end": "workspace_reset_end_S", "roles": ["AIV0", "AIV1"], "quality": "exact", "color": "#0d9488"},
+    {"id": "local_prepare_sync", "label": "单卡输入准备同步", "begin": "local_prepare_sync_begin_S", "end": "local_prepare_sync_end_S", "roles": ["AIC", "AIV0", "AIV1"], "quality": "exact", "color": "#eab308"},
+    {"id": "cross_rank_sync", "label": "Dispatch 前跨 Rank 同步", "begin": "cross_rank_sync_begin_S", "end": "cross_rank_sync_end_S", "roles": ["AIC", "AIV0", "AIV1"], "quality": "exact", "color": "#f59e0b"},
+    {"id": "expert_buffer_init", "label": "专家阶段 Buffer 初始化", "begin": "expert_buffer_init_begin_S", "end": "expert_buffer_init_end_S", "roles": ["AIC", "AIV0", "AIV1"], "quality": "exact", "color": "#a3a3a3"},
+    {"id": "dispatch_task", "label": "Dispatch 本核有效专家行", "begin": "dispatch_task_begin_S", "end": "dispatch_task_end_S", "roles": ["AIV1"], "quality": "exact", "color": "#0ea5e9"},
+    {"id": "dispatch_scalar_gap", "label": "Dispatch 间 Scalar 规划/游标推进", "begin": "dispatch_scalar_gap_begin_S", "end": "dispatch_scalar_gap_end_S", "roles": ["AIV1"], "quality": "exact", "color": "#a78bfa"},
+    {"id": "gmm1_scalar_setup", "label": "GMM1 Scalar 调度/无 owner 跳过", "begin": "gmm1_scalar_setup_begin_S", "end": "gmm1_scalar_setup_end_S", "roles": ["AIC"], "quality": "exact", "color": "#94a3b8"},
+    {"id": "gmm1_dispatch_wait", "label": "GMM1 等待 Dispatch-ready", "begin": "gmm1_dispatch_wait_begin_S", "end": "gmm1_dispatch_wait_end_S", "roles": ["AIC"], "quality": "exact", "color": "#f97316"},
+    {"id": "gmm1_vector_wait", "label": "GMM1 等待 SwiGLU 释放槽位", "begin": "gmm1_vector_wait_begin_S", "end": "gmm1_vector_wait_end_S", "roles": ["AIC"], "quality": "exact", "color": "#dc2626"},
+    {"id": "gmm1_problem", "label": "GMM1 逐 problem（FIX 完成）", "begin": "gmm1_problem_begin_S", "end": "gmm1_problem_end_S", "roles": ["AIC"], "quality": "exact", "color": "#2563eb"},
+    {"id": "swiglu_problem", "label": "SwiGLU/MX 逐 problem", "begin": "swiglu_problem_begin_S", "end": "swiglu_problem_end_S", "roles": ["AIV0"], "quality": "issue", "color": "#16a34a"},
+    {"id": "gmm2_problem", "label": "GMM2 逐 problem（FIX 完成）", "begin": "gmm2_problem_begin_S", "end": "gmm2_problem_end_S", "roles": ["AIC"], "quality": "exact", "color": "#7c3aed"},
+    {"id": "combine_group_task", "label": "Combine 逐 256-token group 任务", "begin": "combine_group_begin_S", "end": "combine_group_end_S", "roles": ["AIV0", "AIV1"], "quality": "exact", "color": "#ea580c"}
+  ]
+}

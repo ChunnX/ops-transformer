@@ -12,6 +12,7 @@
 #define MEGA_MOE_TOKEN_DISPATCH_H
 
 #include "../common/mega_moe_utils.h"
+#include "../common/mega_moe_trace.h"
 #include "mega_moe_token_quant.h"
 
 #ifndef MEGA_MOE_A8W8_DISPATCH_GROUP_READY
@@ -568,7 +569,13 @@ __aicore__ inline void RunGlobalWaveDispatchStage(const TokenDispatchConfig &con
                                                   const MoeSyncWorkspaceLayout &syncLayout, const Params &params,
                                                   GM_ADDR *winRankAddr, TokenDispatchScratch<ActivationType> &scratch,
                                                   uint32_t waveFirstExpertIdx, uint32_t waveGlobalRowBegin,
-                                                  uint32_t waveRowCount)
+                                                  uint32_t waveRowCount
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                                                  ,
+                                                  CriticalPathTrace *criticalPathTrace = nullptr,
+                                                  uint32_t criticalPathWaveIndex = 0U
+#endif
+)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -603,11 +610,35 @@ __aicore__ inline void RunGlobalWaveDispatchStage(const TokenDispatchConfig &con
             WaveDispatchCoreRange expertRange{static_cast<uint64_t>(expertGlobalRowEnd - expertGlobalRowBegin),
                                               expertGlobalRowBegin, overlapGlobalRowBegin - expertGlobalRowBegin,
                                               overlapGlobalRowEnd - expertGlobalRowBegin};
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+            if (criticalPathTrace != nullptr) {
+                if (criticalPathTrace->HasDispatchGap()) {
+                    // TRACE_POINT: dispatch_scalar_gap_end_S
+                    criticalPathTrace->EndDispatchGap(criticalPathWaveIndex, expertIdx, CriticalPathTrace::Now());
+                }
+                criticalPathTrace->PrepareStage0(criticalPathWaveIndex, expertIdx);
+                // TRACE_POINT: dispatch_task_begin_S
+                criticalPathTrace->BeginStage0(CriticalPathTrace::Now());
+            }
+#endif
             DispatchWaveExpertRows<ActivationType, QuantScaleType, PipelineTileM, TopkWeightsPrefetch,
                                    UseCompactRouteIndex, PublishGroupReady>(
                 context, common, syncLayout, params, winRankAddr, scratch, expertIdx, expertRange);
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+            if (criticalPathTrace != nullptr) {
+                // TRACE_POINT: dispatch_task_end_S
+                criticalPathTrace->EndStage0(CriticalPathTrace::Now());
+                // TRACE_POINT: dispatch_scalar_gap_begin_S
+                criticalPathTrace->BeginDispatchGap(CriticalPathTrace::Now());
+            }
+#endif
         }
     }
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+    if (criticalPathTrace != nullptr) {
+        criticalPathTrace->CancelDispatchGap();
+    }
+#endif
 }
 
 // 非 layered 路径统一入口：使用独立 count 表规划跨专家滚动分核，并发送当前专家的有效行。

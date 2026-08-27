@@ -24,6 +24,7 @@
 #include "tensor_api/tensor.h"
 #include "adv_api/reduce/reduce.h"
 #include "../common/mega_moe_gmm_common.h"
+#include "../common/mega_moe_trace.h"
 #include "../common/mega_moe_utils.h"
 #include "../common/mega_moe_mxfp8_utils.h"
 #if __has_include("../../../common/mc2_kernel_utils.h")
@@ -506,6 +507,19 @@ __aicore__ inline void WaitForGmm2InputReady(const GMMAddrInfo &gmmAddrInfo, con
     }
 }
 
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+// Called after the current problem's first owned GMM2 tile has observed
+// SwiGLU-ready and immediately before the first MMAD is issued.
+__aicore__ inline void TraceGmm2ProblemBeginAfterReady(CriticalPathTrace *trace)
+{
+    if (trace == nullptr || !trace->NeedsStage1Begin()) {
+        return;
+    }
+    // TRACE_POINT: gmm2_problem_begin_S
+    trace->BeginStage1(CriticalPathTrace::Now());
+}
+#endif
+
 // Notifies all AIV consumers assigned to the completed GMM2 token group.
 __aicore__ inline void NotifyCombineConsumersOfTileCompletion(uint32_t rowTileOffset,
                                                               const GroupSyncSlotLayout &slotLayout,
@@ -551,7 +565,12 @@ template <uint8_t CombineQuantMode, typename BlockMmad, bool IsShared, bool IsLa
           bool UseGroupCombineReady = false, typename WorkSet, typename Config>
 __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet, const GMMAddrInfo &gmmAddrInfo,
                                           const Config &config, uint32_t startLoopIdx, uint32_t tileNum,
-                                          uint32_t rowOffsetInExpert = 0U)
+                                          uint32_t rowOffsetInExpert = 0U
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                                          ,
+                                          CriticalPathTrace *criticalPathTrace = nullptr
+#endif
+)
 {
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
     GroupSyncSlotLayout groupSyncSlotLayout{};
@@ -587,6 +606,9 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
         } else if (loopIdx == startLoopIdx) {
             WaitForGmm2InputReady<IsShared>(gmmAddrInfo, config, mLoc);
         }
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        TraceGmm2ProblemBeginAfterReady(criticalPathTrace);
+#endif
 
         typename BlockMmad::BlockShape singleShape{Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape),
                                                    Get<K_VALUE>(actualShape), 0};
@@ -678,7 +700,12 @@ template <uint8_t CombineQuantMode, typename BlockMmad, typename ElementC, bool 
 __aicore__ inline void Gmm2ExecGeneric(Scheduler &scheduler, const GMMAddrInfo &gmmAddrInfo, const Config &config,
                                        uint32_t startLoopIdx, uint32_t tileNum,
                                        BlockMmadContext<BlockMmad> *blockMmadContext, bool allowWeightL2Bypass,
-                                       uint32_t rowOffsetInExpert = 0U)
+                                       uint32_t rowOffsetInExpert = 0U
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                                       ,
+                                       CriticalPathTrace *criticalPathTrace = nullptr
+#endif
+)
 {
     using KernelConfig = typename Config::KernelConfig;
     using ElementA = typename KernelConfig::ElementAType;
@@ -714,13 +741,22 @@ __aicore__ inline void Gmm2ExecGeneric(Scheduler &scheduler, const GMMAddrInfo &
         if (blockMmadContext != nullptr) {
             InitBlockMmad(*blockMmadContext, config);
             Gmm2AicMmadGeneric<CombineQuantMode, BlockMmad, IsShared, IsLayered, UseGroupCombineReady>(
-                blockMmadContext->blockMmad, workSet, gmmAddrInfo, config, startLoopIdx, tileNum, rowOffsetInExpert);
+                blockMmadContext->blockMmad, workSet, gmmAddrInfo, config, startLoopIdx, tileNum, rowOffsetInExpert
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                ,
+                criticalPathTrace
+#endif
+            );
         } else {
             BlockMmadContext<BlockMmad> localBlockMmadContext;
             InitBlockMmad(localBlockMmadContext, config);
             Gmm2AicMmadGeneric<CombineQuantMode, BlockMmad, IsShared, IsLayered, UseGroupCombineReady>(
-                localBlockMmadContext.blockMmad, workSet, gmmAddrInfo, config, startLoopIdx, tileNum,
-                rowOffsetInExpert);
+                localBlockMmadContext.blockMmad, workSet, gmmAddrInfo, config, startLoopIdx, tileNum, rowOffsetInExpert
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                ,
+                criticalPathTrace
+#endif
+            );
         }
     }
 }
@@ -787,7 +823,12 @@ template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typena
 __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                       const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
                                       const BlockJobContext &blockJob, void *blockMmadContext = nullptr,
-                                      bool allowWeightL2Bypass = false, uint32_t rowOffsetInExpert = 0U)
+                                      bool allowWeightL2Bypass = false, uint32_t rowOffsetInExpert = 0U
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                                      ,
+                                      CriticalPathTrace *criticalPathTrace = nullptr
+#endif
+)
 {
     using GmmConfig =
         GmmKernel::Config<false, CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB,
@@ -811,7 +852,12 @@ __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int
     auto *typedBlockMmadContext = reinterpret_cast<MmadContext *>(blockMmadContext);
     GmmKernel::Gmm2ExecGeneric<CombineQuantMode, BlockMmad, ElementC, IsLayered, IsShared, UseGroupCombineReady>(
         scheduler, gmmAddrInfo, config, startLoopIdx, tileNum, typedBlockMmadContext, allowWeightL2Bypass,
-        rowOffsetInExpert);
+        rowOffsetInExpert
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        ,
+        criticalPathTrace
+#endif
+    );
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
@@ -823,14 +869,24 @@ template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typena
 __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                       const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
                                       void *blockMmadContext = nullptr, bool allowWeightL2Bypass = false,
-                                      uint32_t rowOffsetInExpert = 0U)
+                                      uint32_t rowOffsetInExpert = 0U
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                                      ,
+                                      CriticalPathTrace *criticalPathTrace = nullptr
+#endif
+)
 {
     BlockJobContext blockJob{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
                              static_cast<uint32_t>(GetBlockNum())};
     RunGmm2Generic<CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, IsWeightNZ,
                    IsLayered, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained,
                    UseGroupCombineReady>(problemShape, gmmAddrInfo, startBlockIdx, blockJob, blockMmadContext,
-                                         allowWeightL2Bypass, rowOffsetInExpert);
+                                         allowWeightL2Bypass, rowOffsetInExpert
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                                         ,
+                                         criticalPathTrace
+#endif
+    );
 }
 
 // RunGmm2A8W4：执行 A8W4 prologue（W4→W8）和 GMM2；Combine 由调用路径独立调度。
@@ -986,7 +1042,12 @@ template <uint8_t CombineMode, typename GenericElementA, typename A8W4ElementA, 
 __aicore__ inline void RunGmm2ByMode(const GmmExecutionConfig &gmmConfig, const GMMAddrInfo &gmmAddrInfo,
                                      const ProblemShape &problemShape, GmmRuntimeState &runtimeState,
                                      void *persistentBlockMmadContext = nullptr, bool allowWeightL2Bypass = false,
-                                     uint32_t rowOffsetInExpert = 0U)
+                                     uint32_t rowOffsetInExpert = 0U
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                                     ,
+                                     CriticalPathTrace *criticalPathTrace = nullptr
+#endif
+)
 {
     if constexpr (EnableA8W4 || EnableA4W4) {
         RunGmm2A8W4<A8W4ElementA, WeightType, bfloat16_t, QuantScaleType, QuantScaleType, Gmm1TileM,
@@ -998,12 +1059,22 @@ __aicore__ inline void RunGmm2ByMode(const GmmExecutionConfig &gmmConfig, const 
         RunGmm2Generic<CombineMode, GenericElementA, GenericElementA, bfloat16_t, QuantScaleType, QuantScaleType, true,
                        false, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained,
                        UseGroupCombineReady>(problemShape, gmmAddrInfo, runtimeState.startBlockIdx, gmmConfig.blockJob,
-                                             persistentBlockMmadContext, allowWeightL2Bypass, rowOffsetInExpert);
+                                             persistentBlockMmadContext, allowWeightL2Bypass, rowOffsetInExpert
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                                             ,
+                                             criticalPathTrace
+#endif
+        );
     } else {
         RunGmm2Generic<CombineMode, GenericElementA, GenericElementA, bfloat16_t, QuantScaleType, QuantScaleType, false,
                        false, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained,
                        UseGroupCombineReady>(problemShape, gmmAddrInfo, runtimeState.startBlockIdx, gmmConfig.blockJob,
-                                             persistentBlockMmadContext, allowWeightL2Bypass, rowOffsetInExpert);
+                                             persistentBlockMmadContext, allowWeightL2Bypass, rowOffsetInExpert
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                                             ,
+                                             criticalPathTrace
+#endif
+        );
     }
 }
 
@@ -1087,7 +1158,12 @@ __aicore__ inline void CombineWaveExpertRows(const MoeStageCommonConfig &common,
                                              const MoeSyncWorkspaceLayout &syncLayout,
                                              const WaveCombineBufferConfig &bufferConfig, WaveCombineScratch &scratch,
                                              const Params &params, uint32_t expertIdx, uint32_t expertLocalRowBegin,
-                                             uint32_t globalRowBegin, uint32_t tokenCount, uint32_t &rowSequence)
+                                             uint32_t globalRowBegin, uint32_t tokenCount, uint32_t &rowSequence
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                                             ,
+                                             CriticalPathTrace *criticalPathTrace, uint32_t criticalPathWaveIndex
+#endif
+)
 {
     uint32_t processedTokenCount = 0U;
     while (processedTokenCount < tokenCount) {
@@ -1100,6 +1176,13 @@ __aicore__ inline void CombineWaveExpertRows(const MoeStageCommonConfig &common,
             rowsInCurrentGroup = remainingTokenCount;
         }
         WaitWaveCombineGroupReady(common, syncLayout, params, expertIdx, tokenGroupIdx);
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        if (criticalPathTrace != nullptr) {
+            criticalPathTrace->PrepareStage1(criticalPathWaveIndex, expertIdx);
+            // TRACE_POINT: combine_group_begin_S
+            criticalPathTrace->BeginStage1(CriticalPathTrace::Now());
+        }
+#endif
 
         for (uint32_t processedGroupRows = 0U; processedGroupRows < rowsInCurrentGroup;) {
             uint32_t remainingGroupRows = rowsInCurrentGroup - processedGroupRows;
@@ -1113,6 +1196,14 @@ __aicore__ inline void CombineWaveExpertRows(const MoeStageCommonConfig &common,
                                                                chunkTokenCount, 0U, rowSequence);
             processedGroupRows += chunkTokenCount;
         }
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        if (criticalPathTrace != nullptr && criticalPathTrace->HasStage1Begin()) {
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID5);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID5);
+            // TRACE_POINT: combine_group_end_S
+            criticalPathTrace->EndStage1(CriticalPathTrace::Now());
+        }
+#endif
         processedTokenCount += rowsInCurrentGroup;
     }
 }
@@ -1122,7 +1213,12 @@ __aicore__ inline void RunGlobalWaveCombineStage(
     const MoeStageCommonConfig &common, const AivJobContext &job, const BlockWorkspaceContext &countWorkspace,
     const MoeSyncWorkspaceLayout &syncLayout, const WaveCombineBufferConfig &bufferConfig, WaveCombineScratch &scratch,
     const Params &params, uint32_t waveFirstExpertIdx, uint32_t waveFirstTokenIndexInExpert,
-    uint32_t waveGlobalRowBegin, uint32_t waveRowCount, uint32_t &rowSequence)
+    uint32_t waveGlobalRowBegin, uint32_t waveRowCount, uint32_t &rowSequence
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+    ,
+    CriticalPathTrace *criticalPathTrace = nullptr, uint32_t criticalPathWaveIndex = 0U
+#endif
+)
 {
     WorkRange currentCoreTokenRange = GetWaveCombineOwnedRange<UseAllAivCores>(job, waveRowCount, waveGlobalRowBegin);
     if (currentCoreTokenRange.count == 0U) {
@@ -1157,7 +1253,12 @@ __aicore__ inline void RunGlobalWaveCombineStage(
             uint32_t overlapGlobalRowBegin = waveGlobalRowBegin + overlapWaveRowBegin;
             CombineWaveExpertRows<CombineMode, UseAllAivCores>(common, syncLayout, bufferConfig, scratch, params,
                                                                expertIdx, overlapExpertRowBegin, overlapGlobalRowBegin,
-                                                               overlapWaveRowEnd - overlapWaveRowBegin, rowSequence);
+                                                               overlapWaveRowEnd - overlapWaveRowBegin, rowSequence
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                                                               ,
+                                                               criticalPathTrace, criticalPathWaveIndex
+#endif
+            );
         }
 
         waveRowCursor = expertWaveRowEnd;
