@@ -310,10 +310,13 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
         AscendC::MicroAPI::RegTensor<uint16_t> vdExpExtract0, vdExpExtract1;
         AscendC::MicroAPI::RegTensor<uint16_t> expMaskBF16, vdMaxExp;
         AscendC::MicroAPI::Duplicate(expMaskBF16, MAX_EXP_FOR_BF16);
-        AscendC::MicroAPI::MaskReg scaleMask1;
+        AscendC::MicroAPI::MaskReg scaleMask1, scaleMask2;
         AscendC::MicroAPI::UnalignReg u1;
         for (uint16_t i = 0; i < loopNum; i++) {
             scaleMask1 = AscendC::MicroAPI::UpdateMask<bfloat16_t>(totalCountInUB);
+            // DINTLV_B16 每轮消费两个 BF16 寄存器。scaleMask2 的结果不直接参与计算，
+            // 第二次 UpdateMask 仍需执行，用于推进第二个寄存器对应的剩余计数。
+            scaleMask2 = AscendC::MicroAPI::UpdateMask<bfloat16_t>(totalCountInUB);
             AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE,
                                         AscendC::MicroAPI::LoadDist::DIST_DINTLV_B16>(
                 vdExp0, vdExp1, srcAddr, onceNum); // copy two chunks from srcAddr to regbase
