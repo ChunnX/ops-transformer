@@ -23,7 +23,7 @@
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_util.h"
 #include "util/platform_util.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 #include "log/log.h"
 #include <nlohmann/json.hpp>
 #include "../../../inc/moe_log.h"

@@ -20,7 +20,7 @@
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "mc2_hcom_topo_info.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "matmul_reduce_scatter_v2/op_host/op_tiling/reduce_scatter_formulaic_tiling.h"
 #include "../../op_kernel/matmul_reduce_scatter_tiling_key.h"

@@ -18,7 +18,7 @@
 #include "tiling/tiling_api.h"
 
 #include "log/log.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 #include "op_host/tiling_util.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "platform/platform_info_def.h"

@@ -12,7 +12,7 @@
 #define OP_HOST_OP_API_GROUPED_MATMUL_SWIGLU_QUANT_V2_UTILS_H
 
 #include "grouped_matmul_swiglu_quant_utils.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 #include "log/log.h"
 
 #include <sstream>

@@ -19,7 +19,7 @@
 #include "tiling/platform/platform_ascendc.h"
 #include "log/log.h"
 #include "platform/platform_info.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 #include "util/platform_util.h"
 #include "op_common/op_host/util/math_util.h"
 #include "op_common/op_host/util/platform_util.h"

@@ -21,7 +21,7 @@
 #include "op_host/tiling_base.h"
 #include "platform/platform_info.h"
 #include "log/log.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 #include "../mhc_post_tiling.h"
 #include "../../../op_kernel/arch22/mhc_post_tiling_data.h"
 #include "../../../op_kernel/arch22/mhc_post_tiling_key.h"

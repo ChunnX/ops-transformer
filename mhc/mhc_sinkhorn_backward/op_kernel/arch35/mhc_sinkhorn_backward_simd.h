@@ -16,7 +16,7 @@
 #define ASCENDC_MHC_SINKHORN_BACKWARD_SIMD_H
 
 #include "kernel_operator.h"
-#include "op_kernel/mc2_math_util.h"
+#include "op_kernel/math_util.h"
 #include "op_kernel/platform_util.h"
 #include "mhc_sinkhorn_backward_tiling_data.h"
 #include "mhc_sinkhorn_backward_tiling_key.h"

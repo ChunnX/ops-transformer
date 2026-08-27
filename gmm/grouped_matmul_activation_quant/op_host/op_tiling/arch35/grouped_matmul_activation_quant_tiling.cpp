@@ -19,7 +19,7 @@
 #include "op_host/tiling_templates_registry.h"
 #include "platform/platform_infos_def.h"
 #include "register/op_def_registry.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 #include "../../../op_kernel/arch35/grouped_matmul_activation_quant_tiling_key.h"
 
 using namespace Ops::Transformer::OpTiling;

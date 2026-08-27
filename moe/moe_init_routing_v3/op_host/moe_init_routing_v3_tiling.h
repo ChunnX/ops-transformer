@@ -22,7 +22,7 @@
 #include "register/op_def_registry.h"
 #include "log/log.h"
 #include "platform/platform_infos_def.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 #include "tiling/platform/platform_ascendc.h"
 
 namespace optiling {

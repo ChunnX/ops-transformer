@@ -21,7 +21,7 @@
 
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
 #include "kernel_operator.h"
-#include "op_kernel/mc2_math_util.h"
+#include "op_kernel/math_util.h"
 #define HOST_DEVICE __forceinline__[aicore]
 #else
 #define GM_ADDR uint8_t *

@@ -29,7 +29,7 @@
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
 #include "opdev/shape_utils.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 #include "log/log.h"
 
 using namespace op;

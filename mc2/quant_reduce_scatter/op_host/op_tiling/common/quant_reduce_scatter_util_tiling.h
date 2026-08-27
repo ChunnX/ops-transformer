@@ -12,7 +12,7 @@
 #define QUANT_REDECE_SCATTER_UTIL_TILING_H
 
 #include "op_host/op_tiling/mc2_tiling_utils.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 
 namespace MC2Tiling {
 

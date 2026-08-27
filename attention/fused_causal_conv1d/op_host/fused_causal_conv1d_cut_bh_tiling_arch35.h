@@ -25,7 +25,7 @@
 #include "register/tilingdata_base.h"
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_templates_registry.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 #include "util/platform_util.h"
 #include "util/shape_util.h"
 #include "../op_kernel/arch35/fused_causal_conv1d_cut_bh_struct.h"

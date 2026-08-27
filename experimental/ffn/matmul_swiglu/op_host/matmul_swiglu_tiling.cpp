@@ -23,7 +23,7 @@
 #include <climits>
 #include "register/op_impl_registry.h"
 #include "log/log.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 #include "util/platform_util.h"
 #include "tiling/tiling_api.h"
 #include "tiling/platform/platform_ascendc.h"

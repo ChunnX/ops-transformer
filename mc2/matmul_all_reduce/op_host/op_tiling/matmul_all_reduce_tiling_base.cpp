@@ -26,7 +26,7 @@
 #include "mc2_log.h"
 #include "common/utils/op_mc2.h"
 #include "all_reduce_formulaic_tiling.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 
 #include "op_host/tiling_type.h"
 #include "mc2/common/utils/mc2_comm_utils.h"

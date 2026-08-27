@@ -22,7 +22,7 @@
 #include "op_host/tiling_templates_registry.h"
 #include "register/op_impl_registry.h"
 #include "register/op_def_registry.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "../op_kernel/arch35/mhc_sinkhorn_backward_tiling_data.h"
 #include "../op_kernel/arch35/mhc_sinkhorn_backward_tiling_key.h"

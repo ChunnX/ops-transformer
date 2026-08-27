@@ -14,7 +14,7 @@
  */
 #include "log/log.h"
 #include "register/op_impl_registry.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 #include "util/shape_util.h"
 using namespace ge;
 

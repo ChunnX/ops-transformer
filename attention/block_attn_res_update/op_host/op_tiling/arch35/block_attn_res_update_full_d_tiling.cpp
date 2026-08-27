@@ -17,7 +17,7 @@
 #include "op_host/tiling_templates_registry.h"
 #include "platform/soc_spec.h"
 #include "securec.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 #include "../../../op_kernel/arch35/block_attn_res_update_tiling_key.h"
 
 namespace optiling {

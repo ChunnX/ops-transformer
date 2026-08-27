@@ -18,7 +18,7 @@
 #include <cmath>
 #include "moe_gating_top_k_arch35_common.h"
 #include "kernel_operator.h"
-#include "op_kernel/mc2_math_util.h"
+#include "op_kernel/math_util.h"
 #include "op_kernel/load_store_utils.h"
 
 namespace MoeGatingTopK {

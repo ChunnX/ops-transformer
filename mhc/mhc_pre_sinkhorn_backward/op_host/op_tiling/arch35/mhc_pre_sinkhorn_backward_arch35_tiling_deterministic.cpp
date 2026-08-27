@@ -19,7 +19,7 @@
 #include "mhc_pre_sinkhorn_backward_arch35_tiling_deterministic.h"
 #include "log/log.h"
 #include "platform/platform_info.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 #include "util/platform_util.h"
 
 using namespace AscendC;

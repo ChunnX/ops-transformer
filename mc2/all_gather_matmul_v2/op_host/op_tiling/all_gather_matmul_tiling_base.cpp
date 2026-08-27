@@ -32,7 +32,7 @@
 #include "mc2_log.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "register/op_def_registry.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 
 using namespace AscendC;
 using namespace ge;

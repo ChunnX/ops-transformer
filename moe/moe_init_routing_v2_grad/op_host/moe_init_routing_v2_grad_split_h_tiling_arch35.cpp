@@ -15,7 +15,7 @@
 #include <cmath>
 #include "moe_init_routing_v2_grad_tiling.h"
 #include "util/platform_util.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "op_host/tiling_util.h"
 

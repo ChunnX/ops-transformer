@@ -14,7 +14,7 @@
  */
 #include "apply_rotary_pos_emb_tiling.h"
 #include "log/log.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 
 namespace optiling {
 

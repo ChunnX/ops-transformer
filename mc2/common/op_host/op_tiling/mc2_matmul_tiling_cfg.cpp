@@ -14,7 +14,7 @@
  */
 
 #include "mc2_matmul_tiling_cfg.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 
 namespace Mc2MatmulHelper {
 

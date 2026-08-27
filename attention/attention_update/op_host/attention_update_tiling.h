@@ -18,7 +18,7 @@
 #include "platform/platform_info.h"
 #include "register/op_impl_registry.h"
 #include "op_host/tiling_templates_registry.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 #include "util/platform_util.h"
 #include "util/shape_util.h"
 #include "decode_update_tiling.h"

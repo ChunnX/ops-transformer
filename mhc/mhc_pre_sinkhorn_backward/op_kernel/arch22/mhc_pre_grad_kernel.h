@@ -17,7 +17,7 @@
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
-#include "op_kernel/mc2_math_util.h"
+#include "op_kernel/math_util.h"
 #include "mhc_pre_sinkhorn_backward_key_arch22.h"
 #include "mhc_pre_sinkhorn_backward_data_arch22.h"
 

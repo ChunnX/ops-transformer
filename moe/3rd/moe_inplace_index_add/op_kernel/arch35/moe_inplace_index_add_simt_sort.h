@@ -16,7 +16,7 @@
 #define ASCENDC_MOE_INPLACE_INDEX_ADD_SIMT_SORT_H_
 
 #include "kernel_operator.h"
-#include "op_kernel/mc2_math_util.h"
+#include "op_kernel/math_util.h"
 #include "moe_inplace_index_add_common.h"
 #include "simt_api/asc_simt.h"
 #include "simt_api/device_atomic_functions.h"

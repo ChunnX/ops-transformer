@@ -16,7 +16,7 @@
 #include "log/log.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "register/op_impl_registry.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 
 namespace optiling {
 

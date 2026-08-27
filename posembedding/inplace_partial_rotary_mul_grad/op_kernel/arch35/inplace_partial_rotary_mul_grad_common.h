@@ -18,7 +18,7 @@
 
 #include "kernel_operator.h"
 #include "op_kernel/load_store_utils.h"
-#include "op_kernel/mc2_math_util.h"
+#include "op_kernel/math_util.h"
 
 namespace InplacePartialRotaryMulGrad {
 using namespace AscendC;

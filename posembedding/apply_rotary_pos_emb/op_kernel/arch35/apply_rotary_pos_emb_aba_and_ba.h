@@ -15,7 +15,7 @@
 #ifndef APPLY_ROTARY_POS_EMB_ABA_AND_BA_H
 #define APPLY_ROTARY_POS_EMB_ABA_AND_BA_H
 
-#include "op_kernel/mc2_math_util.h"
+#include "op_kernel/math_util.h"
 #include "apply_rotary_pos_emb_common.h"
 
 namespace ApplyRotaryPosEmb {

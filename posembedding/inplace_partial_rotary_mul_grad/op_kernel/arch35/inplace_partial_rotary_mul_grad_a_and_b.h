@@ -16,7 +16,7 @@
 #define __INPLACE_PARTIAL_ROTARY_MUL_GRAD_A_AND_B_H__
 
 #include "kernel_operator.h"
-#include "op_kernel/mc2_math_util.h"
+#include "op_kernel/math_util.h"
 #include "op_kernel/load_store_utils.h"
 #include "inplace_partial_rotary_mul_grad_common.h"
 #include <cstdint>

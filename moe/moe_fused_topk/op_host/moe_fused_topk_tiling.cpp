@@ -17,7 +17,7 @@
 #include "log/log.h"
 #include "err/ops_err.h"
 #include "op_host/tiling_util.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 #include "moe_fused_topk_tiling.h"
 
 namespace {

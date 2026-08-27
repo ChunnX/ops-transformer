@@ -27,7 +27,7 @@
 #include "opdev/platform.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/tensor_view_utils.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 using namespace op;
 #ifdef __cplusplus
 extern "C" {

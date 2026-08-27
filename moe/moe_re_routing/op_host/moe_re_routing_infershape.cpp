@@ -17,7 +17,7 @@
 #include <vector>
 #include "register/op_def_registry.h"
 #include "log/log.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 #include "util/shape_util.h"
 
 using namespace ge;

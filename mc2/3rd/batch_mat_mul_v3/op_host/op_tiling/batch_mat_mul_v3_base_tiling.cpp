@@ -14,7 +14,7 @@
  */
 #include "batch_mat_mul_v3_base_tiling.h"
 #include "batch_mat_mul_v3/op_kernel/batch_mat_mul_v3_tiling_key.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 #include "mc2_log_compat.h"
 #include "op_host/tiling_key.h"
 #include "mc2_log.h"

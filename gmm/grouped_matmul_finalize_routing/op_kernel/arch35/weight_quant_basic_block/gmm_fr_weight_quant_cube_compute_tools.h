@@ -17,7 +17,7 @@
 #define GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TOOLS_H
 
 #include "kernel_cube_intf.h"
-#include "op_kernel/mc2_math_util.h"
+#include "op_kernel/math_util.h"
 
 using AscendC::BLOCK_CUBE;
 using AscendC::GlobalTensor;

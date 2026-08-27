@@ -16,7 +16,7 @@
 #ifndef ROTARY_POSITION_EMBEDDING_BAB_H
 #define ROTARY_POSITION_EMBEDDING_BAB_H
 
-#include "op_kernel/mc2_math_util.h"
+#include "op_kernel/math_util.h"
 #if __has_include("../../apply_rotary_pos_emb/arch35/apply_rotary_pos_emb_common.h")
 #include "../../apply_rotary_pos_emb/arch35/apply_rotary_pos_emb_common.h"
 #else

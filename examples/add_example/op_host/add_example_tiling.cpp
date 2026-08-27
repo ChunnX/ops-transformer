@@ -14,7 +14,7 @@
  */
 
 #include "log/log.h"
-#include "util/mc2_math_util.h"
+#include "util/math_util.h"
 #include "op_host/tiling_util.h"
 #include "op_host/tiling_templates_registry.h"
 #include "../op_kernel/add_example_tiling_data.h"
