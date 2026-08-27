@@ -179,7 +179,6 @@ private:
     AscendC::GlobalTensor<int32_t> prefixGm_;
     AscendC::GlobalTensor<int32_t> coreSumsGm_;
     AscendC::GlobalTensor<int32_t> tileOffsetsGm_;
-    GM_ADDR keyLocalGm_{nullptr};
 };
 
 // ==== implementations ====
@@ -278,13 +277,10 @@ __aicore__ inline uint64_t EngramFetchGradSort::GetWorkspaceSize(uint32_t totalE
     uint32_t sortTileCountByDefault = CeilDiv(totalElements, DEFAULT_TILE_SIZE);
     uint32_t sortTileCount =
         (sortTileCountByCore > sortTileCountByDefault) ? sortTileCountByCore : sortTileCountByDefault;
-    uint32_t tileAlignBytes = static_cast<uint32_t>(AlignUpU32(tileElements * sizeof(int32_t)));
     uint64_t sortTempBytes = static_cast<uint64_t>(totalElements) * sizeof(int32_t);
     uint64_t sortTempSize = (sortTempBytes + UB_BLOCK_BYTES - 1U) / UB_BLOCK_BYTES * UB_BLOCK_BYTES;
-    uint64_t keyLocalSize = static_cast<uint64_t>(tileCount) * static_cast<uint64_t>(tileAlignBytes);
     return 2 * sortTempSize + 2 * static_cast<uint64_t>(sortTileCount) * HISTOGRAM_BINS * sizeof(int32_t) +
-           HISTOGRAM_BINS * sizeof(int32_t) + static_cast<uint64_t>(numCores) * HISTOGRAM_BINS * sizeof(int32_t) +
-           keyLocalSize;
+           HISTOGRAM_BINS * sizeof(int32_t) + static_cast<uint64_t>(numCores) * HISTOGRAM_BINS * sizeof(int32_t);
 }
 
 __aicore__ inline uint32_t EngramFetchGradSort::GetUbSize(uint32_t totalElements, uint32_t numCores)
@@ -337,10 +333,8 @@ __aicore__ inline void EngramFetchGradSort::Init(uint32_t totalElements, uint32_
     coreSumsGm_.SetGlobalBuffer((__gm__ int32_t *)(workspaceGm + offset));
     offset += static_cast<uint64_t>(numCores) * HISTOGRAM_BINS * sizeof(int32_t);
     tileOffsetsGm_.SetGlobalBuffer((__gm__ int32_t *)(workspaceGm + offset));
-    offset += static_cast<uint64_t>(sortTileCount) * HISTOGRAM_BINS * sizeof(int32_t);
 
     uint32_t tileAlignBytes = static_cast<uint32_t>(AlignUpU32(tileElements_ * sizeof(int32_t)));
-    keyLocalGm_ = workspaceGm + offset;
     tileAlignBytes_ = tileAlignBytes;
     uint32_t phaseHistSize = 2U * tileAlignBytes;
     uint32_t phasePrefixSize = static_cast<uint32_t>(numCores) * HISTOGRAM_BINS * sizeof(int32_t) + tileAlignBytes;
@@ -607,11 +601,6 @@ __aicore__ inline void EngramFetchGradSort::ProcessHist(uint32_t byteRound, uint
 
             AscendC::DataCopyParams histOutParam{1U, static_cast<uint16_t>(HISTOGRAM_BINS * sizeof(int32_t)), 0U, 0U};
             AscendC::DataCopyPad(histGm[tileId * HISTOGRAM_BINS], histWide, histOutParam);
-
-            AscendC::GlobalTensor<uint8_t> keyLocalGmT;
-            keyLocalGmT.SetGlobalBuffer((__gm__ uint8_t *)(keyLocalGm_ + static_cast<uint64_t>(tileId) * tileAlignBytes_));
-            AscendC::DataCopyParams keyOutParam{1U, static_cast<uint16_t>(tileLen), 0U, 0U};
-            AscendC::DataCopyPad(keyLocalGmT, keyLocal, keyOutParam);
         }
         WaitPipe<AscendC::HardEvent::MTE3_S>(pipe);
         // uint64_t t3 = static_cast<uint64_t>(AscendC::GetSystemCycle());
@@ -699,13 +688,14 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
 
             AscendC::LocalTensor<uint8_t> sortTemp =
                 sortWorkspace_.GetWithOffset<uint8_t>(tileAlignBytes_, 3U * tileAlignBytes_);
-            AscendC::GlobalTensor<uint8_t> keyLocalGmT;
-            keyLocalGmT.SetGlobalBuffer((__gm__ uint8_t *)(keyLocalGm_ + static_cast<uint64_t>(tileId) * tileAlignBytes_));
-            AscendC::DataCopyExtParams keyLoadParam{1U, static_cast<uint32_t>(tileLen), 0U, 0U, 0U};
-            AscendC::DataCopyPadExtParams<uint8_t> keyLoadPad{false, 0, 0, 0};
-            AscendC::DataCopyPad(keyLocal, keyLocalGmT, keyLoadParam, keyLoadPad);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evtMte2V);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtMte2V);
+            uint32_t shiftBits = byteRound * BITS_PER_BYTE;
+            for (uint32_t i = 0; i < tileLen; i++) {
+                uint32_t v = static_cast<uint32_t>(valueLocal.GetValue(i));
+                uint32_t local = v - static_cast<uint32_t>(valueOffset_);
+                keyLocal.SetValue(i, static_cast<uint8_t>((local >> shiftBits) & 0xFFU));
+            }
+            AscendC::SetFlag<AscendC::HardEvent::S_V>(evtSV);
+            AscendC::WaitFlag<AscendC::HardEvent::S_V>(evtSV);
             AscendC::Sort<uint8_t, false, sortConfig>(sortedKey, sortIndices, keyLocal, sortTemp, tileLen);
 
             AscendC::SetFlag<AscendC::HardEvent::V_S>(evtVS2);

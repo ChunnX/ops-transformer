@@ -651,11 +651,8 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
     int64_t wsSortPrefix = 256 * sizeof(int32_t);
     int64_t wsSortCoreSums = static_cast<int64_t>(tilingData.aivNum) * 256 * sizeof(int32_t);
     int64_t wsSortOffsets = sortTileCount * 256 * sizeof(int32_t);
-    int64_t sortTileAlignBytes = ((4096 * sizeof(int32_t) + UB_ALIGN - 1) / UB_ALIGN) * UB_ALIGN;
-    int64_t wsSortKeyLocal = sortTileCount * sortTileAlignBytes;
     int64_t wsSortTotal =
-        wsSortTempVal + wsSortTempIdx + wsSortCompanion + wsSortHist + wsSortPrefix + wsSortCoreSums + wsSortOffsets +
-        wsSortKeyLocal;
+        wsSortTempVal + wsSortTempIdx + wsSortCompanion + wsSortHist + wsSortPrefix + wsSortCoreSums + wsSortOffsets;
 
     int64_t wsTotal = wsGradSorted + wsRecvGrad + wsSdispls + wsRdispls + wsCounterScratch + wsFlagScratch +
                       wsSegCount + wsCoreStart + wsSortTotal;
