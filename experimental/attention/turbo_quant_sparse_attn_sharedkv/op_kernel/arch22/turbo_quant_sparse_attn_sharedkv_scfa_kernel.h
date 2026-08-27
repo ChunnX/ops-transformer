@@ -120,7 +120,6 @@ private:
 
     TPipe *pipe = nullptr;
     GlobalTensor<uint32_t> metadataGm;
-    GlobalTensor<half> tqScaleGm_;
     uint64_t mSizeVStart = 0ULL;
     uint64_t topKBaseOffset = 0ULL;
     uint64_t tensorACoreOffset = 0ULL;
@@ -481,15 +480,11 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::Init(
         aiCoreIdx * mergeCacheCoreSize * sizeof(KV_T)));
     offset += static_cast<uint64_t>(tilingData->baseParams.usedCoreNum) * mergeCacheCoreSize * sizeof(KV_T);
 
-    uint64_t scaleCacheCoreSize = static_cast<uint64_t>(constInfo.s2BaseSize) * MERGE_CACHE_GM_BUF_NUM;
-    tqScaleGm_.SetGlobalBuffer((__gm__ half *)(workspace + offset +
-        aiCoreIdx * scaleCacheCoreSize * sizeof(half)));
-
     if ASCEND_IS_AIV {
         vectorBlock.InitParams(constInfo, tilingData);
-        vectorBlock.InitVec0GlobalTensor(kvMergeGm_, tqScaleGm_, oriKvGm, cmpKvGm, cmpTqGm, oriBlockTableGm,
-                                         cmpBlockTableGm);
-        vectorBlock.InitVec1GlobalTensor(mm1ResGm, vec1ResGm, tqScaleGm_, actualSeqLengthsQGm,
+        vectorBlock.InitVec0GlobalTensor(kvMergeGm_, oriKvGm, cmpKvGm, cmpTqGm, oriBlockTableGm,
+                                          cmpBlockTableGm);
+        vectorBlock.InitVec1GlobalTensor(mm1ResGm, vec1ResGm, actualSeqLengthsQGm,
                                          actualSeqLengthsKVGm, topKGm, sinksGm, softmaxLseGm);
         vectorBlock.InitVec2GlobalTensor(accumOutGm, vec2ResGm, mm2ResGm, attentionOutGm);
     }

@@ -46,14 +46,12 @@ public:
     __aicore__ inline void InitParams(const struct ConstInfo &constInfo,
                                       const TurboQuantSparseAttnSharedkvTilingData *__restrict tilingData);
     __aicore__ inline void InitVec0GlobalTensor(const GlobalTensor<KV_T> &kvMergeGm,
-                                                const GlobalTensor<half> &tqScaleGm,
                                                 const GlobalTensor<KV_T> &oriKvGm,
                                                 const GlobalTensor<KV_T> &cmpKvGm,
                                                 const GlobalTensor<uint8_t> &cmpTqGm,
                                                 const GlobalTensor<int32_t> &oriBlockTableGm,
                                                 const GlobalTensor<int32_t> &cmpBlockTableGm);
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm,
-                                                GlobalTensor<half> tqScaleGm,
                                                 GlobalTensor<int32_t> actualSeqLengthsQGm,
                                                 GlobalTensor<int32_t> actualSeqLengthsKVGm,
                                                 GlobalTensor<int32_t> topKGm, GlobalTensor<T> sinksGm, GlobalTensor<T> softmaxLseGm);
@@ -82,13 +80,7 @@ public:
     __aicore__ inline void CopyOutMrgeResult(int64_t mte2Size, int64_t mte3Size, int64_t s2StartGmOffset,
                                              int64_t mergeMte3Idx, const RunInfo &runInfo);
     __aicore__ inline void DequantTq4Rows(LocalTensor<uint8_t> slots, LocalTensor<KV_T> output,
-                                          int64_t rowCount, bool foldScale);
-    __aicore__ inline void ExtractTq4Scales(LocalTensor<uint8_t> slots, LocalTensor<half> scales,
-                                            uint32_t rowCount);
-    __aicore__ inline bool ShouldFoldTq4Scale(const RunInfo &info) const;
-    __aicore__ inline void LoadTq4Scales(const RunInfo &info);
-    __aicore__ inline void ApplyTq4ColumnScale(LocalTensor<T> tensor, uint32_t rowCount,
-                                               uint32_t columnCount);
+                                          int64_t rowCount);
     __aicore__ inline void CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx,
                                           int64_t keyBNBOffset, int64_t s2IdLimit, const RunInfo &runInfo);
     // ================================Vector1==========================================
@@ -172,16 +164,12 @@ private:
     static constexpr uint32_t TQ4_RAW_OFFSET = TQ4_INDEX_OFFSET + TQ4_INDEX_BYTES;
     static constexpr uint32_t TQ4_CENTROID_COUNT = 16U;
     static constexpr uint32_t TQ4_SCALE_GATHER_INDEX_OFFSET = TQ4_CENTROID_COUNT * sizeof(float);
-    static constexpr uint32_t TQ4_SCALE_GATHER_INDEX_BYTES = TQ4_MAX_STAGED_ROWS * sizeof(uint32_t);
+    static constexpr uint32_t TQ4_SCALE_GATHER_INDEX_BYTES = TQ4_DEQUANT_BATCH_ROWS * sizeof(uint32_t);
     static constexpr uint32_t TQ4_SCALE_CARRIER_BYTES = TQ4_DEQUANT_BATCH_ROWS * BYTE_BLOCK;
     static constexpr uint32_t TQ4_SCALE_BROADCAST_OFFSET = BYTE_BLOCK;
     static constexpr uint32_t TQ4_SCALE_BROADCAST_BYTES =
         (TQ4_DEQUANT_BATCH_ROWS + FP32_BLOCK_ELEMENT_NUM - 1U) / FP32_BLOCK_ELEMENT_NUM *
         FP32_BLOCK_ELEMENT_NUM * FP32_BLOCK_ELEMENT_NUM * sizeof(float);
-    static constexpr uint32_t TQ4_SCALE_SLOT_SIZE = TQ4_HEAD_DIM;
-    static constexpr uint32_t TQ4_SCALE_UB_F32_OFFSET = TQ4_SCALE_SLOT_SIZE * sizeof(half);
-    static constexpr uint32_t TQ4_SCALE_BUFFER_BYTES =
-        TQ4_SCALE_UB_F32_OFFSET + TQ4_SCALE_SLOT_SIZE * sizeof(float);
     // Vec0 and Vec2 execute in different pipeline stages, but keep Vec2's existing 512B scratch region reserved.
     static constexpr uint32_t V0_VEC2_TEMP_OFFSET = 384U * sizeof(T);
     static constexpr uint32_t V0_VEC2_TEMP_BYTES = ConstInfo::BUFFER_SIZE_BYTE_512B;
@@ -201,8 +189,6 @@ private:
                   "TQ4 scale extraction exceeds signed-code scratch");
     static_assert(TQ4_SCALE_BROADCAST_OFFSET + TQ4_SCALE_BROADCAST_BYTES <= TQ4_INDEX_BYTES,
                   "TQ4 scale broadcast exceeds index scratch");
-    static_assert(TQ4_SCALE_BUFFER_BYTES <= ConstInfo::BUFFER_SIZE_BYTE_4K,
-                  "TQ4 scale staging exceeds tqScaleBuff");
     static_assert(TQ4_TOPK_CACHE_BYTES <= TQ4_BLOCK_TABLE_CACHE_OFFSET,
                   "TQ4 index caches overlap in v0ValidSizeBuff");
     static constexpr T SOFTMAX_MIN_NUM = -2e38;
@@ -229,7 +215,6 @@ private:
 
     GlobalTensor<int32_t> blkTableGm_;
     GlobalTensor<KV_T> kvMergeGm_;
-    GlobalTensor<half> tqScaleGm_;
     GlobalTensor<KV_T> keyGm_;
     GlobalTensor<int32_t> topkGm_;
     GlobalTensor<KV_T> oriKvGm_;
@@ -247,7 +232,6 @@ private:
     TBuf<> tmpBuff1;        // 32K
     TBuf<> v0ValidSizeBuff; // 8K
     TBuf<> tqCentBuff;      // 256B
-    TBuf<> tqScaleBuff;     // half input followed by FP32 column scales
 
     TBuf<> sinksBuff;     // 1K
     TBuf<> sinksBrcbBuff; // 12K
@@ -289,12 +273,9 @@ __aicore__ inline void SASVectorBlock<SAST>::InitBuffers(TPipe *pipe)
         LoadTq4Centroids(tqCentBuff.Get<float>());
         LocalTensor<uint32_t> scaleGatherIndices =
             tqCentBuff.Get<uint32_t>()[TQ4_SCALE_GATHER_INDEX_OFFSET / sizeof(uint32_t)];
-        for (uint32_t row = 0; row < TQ4_MAX_STAGED_ROWS; ++row) {
+        for (uint32_t row = 0; row < TQ4_DEQUANT_BATCH_ROWS; ++row) {
             scaleGatherIndices.SetValue(row, row * BYTE_BLOCK);
         }
-        pipe->InitBuffer(tqScaleBuff, ConstInfo::BUFFER_SIZE_BYTE_4K);
-        Duplicate(tqScaleBuff.Get<float>()[TQ4_SCALE_UB_F32_OFFSET / sizeof(float)],
-                  static_cast<float>(1.0f), TQ4_SCALE_SLOT_SIZE);
         PipeBarrier<PIPE_ALL>();
     }
 
@@ -336,7 +317,6 @@ __aicore__ inline void SASVectorBlock<SAST>::InitParams(const struct ConstInfo &
 
 template <typename SAST>
 __aicore__ inline void SASVectorBlock<SAST>::InitVec0GlobalTensor(const GlobalTensor<KV_T> &kvMergeGm,
-                                                                  const GlobalTensor<half> &tqScaleGm,
                                                                   const GlobalTensor<KV_T> &oriKvGm,
                                                                   const GlobalTensor<KV_T> &cmpKvGm,
                                                                   const GlobalTensor<uint8_t> &cmpTqGm,
@@ -344,7 +324,6 @@ __aicore__ inline void SASVectorBlock<SAST>::InitVec0GlobalTensor(const GlobalTe
                                                                   const GlobalTensor<int32_t> &cmpBlockTableGm)
 {
     this->kvMergeGm_ = kvMergeGm;
-    this->tqScaleGm_ = tqScaleGm;
     this->oriKvGm_ = oriKvGm;
     this->cmpKvGm_ = cmpKvGm;
     this->cmpTqGm_ = cmpTqGm;
@@ -354,13 +333,12 @@ __aicore__ inline void SASVectorBlock<SAST>::InitVec0GlobalTensor(const GlobalTe
 
 template <typename SAST>
 __aicore__ inline void SASVectorBlock<SAST>::InitVec1GlobalTensor(
-    GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm, GlobalTensor<half> tqScaleGm,
+    GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm,
     GlobalTensor<int32_t> actualSeqLengthsQGm, GlobalTensor<int32_t> actualSeqLengthsKVGm,
     GlobalTensor<int32_t> topKGm, GlobalTensor<SINKS_T> sinksGm, GlobalTensor<T> softmaxLseGm)
 {
     this->mm1ResGm = mm1ResGm;
     this->vec1ResGm = vec1ResGm;
-    this->tqScaleGm_ = tqScaleGm;
     this->actualSeqLengthsQGm = actualSeqLengthsQGm;
     this->actualSeqLengthsKVGm = actualSeqLengthsKVGm;
     this->topkGm_ = topKGm;
@@ -461,9 +439,6 @@ __aicore__ inline void SASVectorBlock<SAST>::ElewiseCompute(const RunInfo &info,
                                                             uint32_t dealRowCount, uint32_t columnCount)
 {
     Muls(mmResUb, mmResUb, static_cast<T>(tilingData->baseParams.softmaxScale), dealRowCount * columnCount);
-    if (ShouldFoldTq4Scale(info)) {
-        ApplyTq4ColumnScale(mmResUb, dealRowCount, columnCount);
-    }
 
     // cmp_sparse_indices is capacity-sized and may be padded with -1.  The Cube
     // path still computes the capacity-sized tile, so mask the padded columns
@@ -624,9 +599,6 @@ __aicore__ inline void SASVectorBlock<SAST>::DealBmm1ResBaseBlock(const RunInfo 
                           info.actualSingleProcessSInnerSize);
 
     PipeBarrier<PIPE_V>();
-    if (ShouldFoldTq4Scale(info)) {
-        ApplyTq4ColumnScale(mmResUb, dealRowCount, columnCount);
-    }
     LocalTensor<KV_T> tmpMMResCastTensor = outputBuff1.Get<KV_T>();
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
 
@@ -729,8 +701,7 @@ __aicore__ inline int64_t SASVectorBlock<SAST>::GetKeyGmOffset(int64_t realS2Idx
 
 template <typename SAST>
 __aicore__ inline void SASVectorBlock<SAST>::DequantTq4Rows(LocalTensor<uint8_t> slots,
-                                                            LocalTensor<KV_T> output, int64_t rowCount,
-                                                            bool foldScale)
+                                                            LocalTensor<KV_T> output, int64_t rowCount)
 {
     LocalTensor<float> work = tmpBuff1.Get<float>();
     LocalTensor<half> signedCodes = tmpBuff1.Get<half>()[TQ4_SIGNED_OFFSET / sizeof(half)];
@@ -765,28 +736,26 @@ __aicore__ inline void SASVectorBlock<SAST>::DequantTq4Rows(LocalTensor<uint8_t>
         Gather(work, centroids, unsignedIndices, 0, elementCount);
         PipeBarrier<PIPE_V>();
 
-        if (!foldScale) {
-            // Extract one aligned carrier per staged row, then broadcast its leading FP16 scale.
-            DataCopyParams scaleCopyParams;
-            scaleCopyParams.blockCount = static_cast<uint16_t>(currentRows);
-            scaleCopyParams.blockLen = 1;
-            scaleCopyParams.srcStride = static_cast<uint16_t>(TQ4_SLOT_ROW_BYTES / BYTE_BLOCK - 1U);
-            scaleCopyParams.dstStride = 0;
-            uint32_t scaleSourceOffset =
-                (static_cast<uint32_t>(base) * TQ4_SLOT_ROW_BYTES + TQ4_PACKED_BYTES) / sizeof(half);
-            DataCopy(scaleCarriers, slotHalf[scaleSourceOffset], scaleCopyParams);
-            PipeBarrier<PIPE_V>();
-            Gather(scalesFp16, scaleCarriers, scaleGatherIndices, 0, currentRows);
-            PipeBarrier<PIPE_V>();
-            Cast(scalesFp32, scalesFp16, RoundMode::CAST_NONE, currentRows);
-            PipeBarrier<PIPE_V>();
-            uint8_t scaleBrcbRepeats = static_cast<uint8_t>(
-                (currentRows + FP32_BLOCK_ELEMENT_NUM - 1U) / FP32_BLOCK_ELEMENT_NUM);
-            Brcb(scalesBrcb, scalesFp32, scaleBrcbRepeats, {1, FP32_BLOCK_ELEMENT_NUM});
-            PipeBarrier<PIPE_V>();
-            RowMuls(work, work, scalesBrcb, currentRows, TQ4_HEAD_DIM, TQ4_HEAD_DIM);
-            PipeBarrier<PIPE_V>();
-        }
+        // Extract one aligned carrier per staged row, then broadcast its leading FP16 scale.
+        DataCopyParams scaleCopyParams;
+        scaleCopyParams.blockCount = static_cast<uint16_t>(currentRows);
+        scaleCopyParams.blockLen = 1;
+        scaleCopyParams.srcStride = static_cast<uint16_t>(TQ4_SLOT_ROW_BYTES / BYTE_BLOCK - 1U);
+        scaleCopyParams.dstStride = 0;
+        uint32_t scaleSourceOffset =
+            (static_cast<uint32_t>(base) * TQ4_SLOT_ROW_BYTES + TQ4_PACKED_BYTES) / sizeof(half);
+        DataCopy(scaleCarriers, slotHalf[scaleSourceOffset], scaleCopyParams);
+        PipeBarrier<PIPE_V>();
+        Gather(scalesFp16, scaleCarriers, scaleGatherIndices, 0, currentRows);
+        PipeBarrier<PIPE_V>();
+        Cast(scalesFp32, scalesFp16, RoundMode::CAST_NONE, currentRows);
+        PipeBarrier<PIPE_V>();
+        uint8_t scaleBrcbRepeats = static_cast<uint8_t>(
+            (currentRows + FP32_BLOCK_ELEMENT_NUM - 1U) / FP32_BLOCK_ELEMENT_NUM);
+        Brcb(scalesBrcb, scalesFp32, scaleBrcbRepeats, {1, FP32_BLOCK_ELEMENT_NUM});
+        PipeBarrier<PIPE_V>();
+        RowMuls(work, work, scalesBrcb, currentRows, TQ4_HEAD_DIM, TQ4_HEAD_DIM);
+        PipeBarrier<PIPE_V>();
         if constexpr (IsSameType<KV_T, bfloat16_t>::value) {
             Cast(output[base * TQ4_HEAD_DIM], work, RoundMode::CAST_RINT, elementCount);
         } else {
@@ -797,65 +766,6 @@ __aicore__ inline void SASVectorBlock<SAST>::DequantTq4Rows(LocalTensor<uint8_t>
             PipeBarrier<PIPE_V>();
         }
     }
-}
-
-template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::ExtractTq4Scales(LocalTensor<uint8_t> slots,
-                                                              LocalTensor<half> scales,
-                                                              uint32_t rowCount)
-{
-    LocalTensor<half> carriers = tmpBuff1.Get<half>()[TQ4_SIGNED_OFFSET / sizeof(half)];
-    LocalTensor<half> slotHalf = slots.template ReinterpretCast<half>();
-    LocalTensor<uint32_t> gatherIndices =
-        tqCentBuff.Get<uint32_t>()[TQ4_SCALE_GATHER_INDEX_OFFSET / sizeof(uint32_t)];
-    DataCopyParams copyParams;
-    copyParams.blockCount = static_cast<uint16_t>(rowCount);
-    copyParams.blockLen = 1;
-    copyParams.srcStride = static_cast<uint16_t>(TQ4_SLOT_ROW_BYTES / BYTE_BLOCK - 1U);
-    copyParams.dstStride = 0;
-    DataCopy(carriers, slotHalf[TQ4_PACKED_BYTES / sizeof(half)], copyParams);
-    PipeBarrier<PIPE_V>();
-    Gather(scales, carriers, gatherIndices, 0, rowCount);
-    PipeBarrier<PIPE_V>();
-}
-
-template <typename SAST>
-__aicore__ inline bool SASVectorBlock<SAST>::ShouldFoldTq4Scale(const RunInfo &info) const
-{
-    // Row scaling costs D vector elements per compressed token. Folding costs two M-wide
-    // column multiplies, one on scores and one on probabilities.
-    return constInfo.kvQuantMode == 3 && !info.isOriOnly &&
-           static_cast<uint64_t>(2U) * info.actMBaseSize < constInfo.headDim;
-}
-
-template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::LoadTq4Scales(const RunInfo &info)
-{
-    LocalTensor<half> scalesFp16 = tqScaleBuff.Get<half>();
-    LocalTensor<float> scalesFp32 =
-        tqScaleBuff.Get<float>()[TQ4_SCALE_UB_F32_OFFSET / sizeof(float)];
-    DataCopyExtParams copyParams{
-        1, static_cast<uint32_t>(constInfo.s2BaseSize * sizeof(half)), 0, 0, 0};
-    DataCopyPadExtParams<half> padParams;
-    uint64_t scaleOffset =
-        static_cast<uint64_t>(info.cmpLoop % MERGE_CACHE_GM_BUF_NUM) * constInfo.s2BaseSize;
-    DataCopyPad(scalesFp16, tqScaleGm_[scaleOffset], copyParams, padParams);
-    SetFlag<HardEvent::MTE2_V>(SYNC_SINKS_BUF_FLAG);
-    WaitFlag<HardEvent::MTE2_V>(SYNC_SINKS_BUF_FLAG);
-    Cast(scalesFp32, scalesFp16, RoundMode::CAST_NONE, constInfo.s2BaseSize);
-    PipeBarrier<PIPE_V>();
-}
-
-template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::ApplyTq4ColumnScale(LocalTensor<T> tensor,
-                                                                 uint32_t rowCount,
-                                                                 uint32_t columnCount)
-{
-    LocalTensor<float> scales = tqScaleBuff.Get<float>()[TQ4_SCALE_UB_F32_OFFSET / sizeof(float)];
-    for (uint32_t row = 0; row < rowCount; ++row) {
-        Mul(tensor[row * columnCount], tensor[row * columnCount], scales, columnCount);
-    }
-    PipeBarrier<PIPE_V>();
 }
 
 template <typename SAST>
@@ -1001,12 +911,7 @@ __aicore__ inline void SASVectorBlock<SAST>::CopyOutMrgeResult(int64_t mte2Size,
             TQ4_RAW_OFFSET + mergeMte3Idx % 2 * TQ4_RAW_REGION_BYTES];
         LocalTensor<KV_T> output = kvMergUb_[
             mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T)];
-        bool foldScale = ShouldFoldTq4Scale(runInfo);
-        DequantTq4Rows(slots, output, mte2Size - mte3Size, foldScale);
-        if (foldScale) {
-            LocalTensor<half> scales = tqScaleBuff.Get<half>()[s2GmStartOffset + mte3Size];
-            ExtractTq4Scales(slots, scales, static_cast<uint32_t>(mte2Size - mte3Size));
-        }
+        DequantTq4Rows(slots, output, mte2Size - mte3Size);
         SetFlag<AscendC::HardEvent::V_MTE3>(mergeMte3Idx % 2 + SYNC_INPUT_BUF2_FLAG);
         WaitFlag<AscendC::HardEvent::V_MTE3>(mergeMte3Idx % 2 + SYNC_INPUT_BUF2_FLAG);
     } else {
@@ -1042,11 +947,6 @@ __aicore__ inline void SASVectorBlock<SAST>::ProcessVec0L(const RunInfo &runInfo
     int64_t s2GmLimit = GetSubBlockIdx() == 0 ? s2SplitPoint : s2ProcessSize;
     if (s2GmLimit > s2ProcessSize) {
         s2GmLimit = s2ProcessSize;
-    }
-    bool foldScale = ShouldFoldTq4Scale(runInfo);
-    if (foldScale) {
-        Duplicate(tqScaleBuff.Get<half>(), static_cast<half>(1.0f), TQ4_SCALE_SLOT_SIZE);
-        PipeBarrier<PIPE_V>();
     }
     LocalTensor<int32_t> topkCache = v0ValidSizeBuff.Get<int32_t>();
     LocalTensor<int32_t> blockTableCache =
@@ -1121,18 +1021,6 @@ __aicore__ inline void SASVectorBlock<SAST>::ProcessVec0L(const RunInfo &runInfo
             needWaitMte3ToMte2 = true;
         }
     }
-    if (foldScale && s2GmLimit > s2GmStartOffset) {
-        SetFlag<HardEvent::V_MTE3>(0);
-        WaitFlag<HardEvent::V_MTE3>(0);
-        DataCopyExtParams copyParams{
-            1, static_cast<uint32_t>((s2GmLimit - s2GmStartOffset) * sizeof(half)), 0, 0, 0};
-        uint64_t scaleOffset =
-            static_cast<uint64_t>(runInfo.cmpLoop % MERGE_CACHE_GM_BUF_NUM) * constInfo.s2BaseSize +
-            s2GmStartOffset;
-        DataCopyPad(tqScaleGm_[scaleOffset], tqScaleBuff.Get<half>()[s2GmStartOffset], copyParams);
-        SetFlag<HardEvent::MTE3_MTE2>(0);
-        WaitFlag<HardEvent::MTE3_MTE2>(0);
-    }
     return;
 }
 
@@ -1156,9 +1044,6 @@ __aicore__ inline void SASVectorBlock<SAST>::ProcessVec1L(const RunInfo &info)
         }
 
         CrossCoreWaitFlag(constInfo.syncC1V1);
-        if (i == 0 && ShouldFoldTq4Scale(info)) {
-            LoadTq4Scales(info);
-        }
         // vec1 compute
         ProcessVec1SingleBuf(info, mSplitInfo);
         CrossCoreSetFlag<ConstInfo::SAS_SYNC_MODE2, PIPE_MTE3>(constInfo.syncV1C2);

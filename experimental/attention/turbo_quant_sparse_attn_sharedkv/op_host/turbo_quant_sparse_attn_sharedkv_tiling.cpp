@@ -1592,10 +1592,6 @@ ge::graphStatus TurboQuantSparseAttnSharedkvTiling::DoOpTiling(SASTilingInfo *ti
     if (tilingInfo->perfMode == SASTemplateMode::SCFA_TEMPLATE_MODE) {
         workspaceSize += static_cast<size_t>(MERGE_CACHE_GM_BUF_NUM) * sInnerSize_ *
                          tilingInfo->qHeadDim * NUM_BYTES_FLOAT16 * aicNum;
-        if (tilingInfo->kvQuantMode == 3) {
-            workspaceSize += static_cast<size_t>(MERGE_CACHE_GM_BUF_NUM) * sInnerSize_ *
-                             NUM_BYTES_FLOAT16 * aicNum;
-        }
     }
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
