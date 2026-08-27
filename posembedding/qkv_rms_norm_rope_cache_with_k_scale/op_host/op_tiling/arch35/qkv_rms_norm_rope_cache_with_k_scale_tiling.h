@@ -11,12 +11,20 @@
 #ifndef QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_TILING_H_
 #define QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_TILING_H_
 
+#include <cstddef>
+
 #include "../../../op_kernel/arch35/qkv_rms_norm_rope_cache_with_k_scale_tiling_data.h"
 #include "register/op_impl_registry.h"
 
 namespace optiling {
 
 using QkvRmsNormRopeCacheWithKScaleKernelTiling::QkvRmsNormRopeCacheWithKScaleTilingData;
+
+static_assert(sizeof(QkvRmsNormRopeCacheWithKScaleTilingData) == 144U, "tiling data ABI size changed");
+static_assert(offsetof(QkvRmsNormRopeCacheWithKScaleTilingData, tokenTile) == 112U, "tokenTile ABI offset changed");
+static_assert(offsetof(QkvRmsNormRopeCacheWithKScaleTilingData, epsilon) == 120U, "epsilon ABI offset changed");
+static_assert(offsetof(QkvRmsNormRopeCacheWithKScaleTilingData, mropeSectionH) == 128U,
+              "mropeSectionH ABI offset changed");
 
 struct QkvRmsNormRopeCacheWithKScaleCompileInfo {
     uint32_t aicNum = 0;
