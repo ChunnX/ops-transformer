@@ -486,7 +486,6 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
         LocalTensor<bfloat16_t> scaleStage = srcTensor[416 * 16].template ReinterpretCast<bfloat16_t>();
         __ubuf__ bfloat16_t *ubScaleStage = (__ubuf__ bfloat16_t *)(scaleStage.GetPhyAddr());
         StageBIMxfp4Scales<Q_T>(ubSrcAddr, ubScaleStage, static_cast<uint32_t>(dealRow));
-        LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
         AntiquantVFImplBIMxfp4<Q_T>(ubSrcAddr, ubScaleStage, ubDstAddr, static_cast<uint32_t>(dealRow));
 
         LocalTensor<Q_T> kRopeUb = srcTensor[256].template ReinterpretCast<Q_T>();
