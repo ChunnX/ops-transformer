@@ -104,10 +104,10 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensorList *sharedWeightScales2Optional, const aclTensorList *sharedBias1Optional,
     const aclTensorList *sharedBias2Optional, const aclTensor *maskBufferOptional, int64_t moeExpertNum,
     int64_t epWorldSize, int64_t cclBufferSize, int64_t maxRecvTokenNum, int64_t dispatchQuantMode,
-    int64_t dispatchQuantOutDtype, int64_t combineQuantMode, const char *commAlg, int64_t numMaxTokensPerRank,
-    const char *activation, const aclFloatArray *activationParams, int64_t topoType, int64_t rankNumPerServer,
-    int64_t topkWeightsType, aclTensor *yOut, aclTensor *expertTokenNumsOut, uint64_t *workspaceSize,
-    aclOpExecutor **executor)
+    int64_t dispatchQuantOutDtype, int64_t sharedExpertQuantOutDtype, int64_t combineQuantMode, const char *commAlg,
+    int64_t numMaxTokensPerRank, const char *activation, const aclFloatArray *activationParams, int64_t topoType,
+    int64_t rankNumPerServer, int64_t topkWeightsType, aclTensor *yOut, aclTensor *expertTokenNumsOut,
+    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("aclnn_mega_moe WorkspaceSize start");
 
@@ -170,7 +170,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         }
     }
 
-    // 共享专家权重的dtype/format与MoE权重一致，为空时用MoE权重的dtype和format创建空tensor
+    // shared weight 为空时，使用 MoE weight 的 dtype/format 创建占位 tensor 以完成原型匹配。
     aclDataType moeWeight1Dtype = (weight1 != nullptr && weight1->Size() > 0) ?
                                       static_cast<aclDataType>((*weight1)[0]->GetDataType()) :
                                       ACL_FLOAT8_E4M3FN;
@@ -195,7 +195,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         maskBufferOptional, moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode,
         dispatchQuantOutDtype, combineQuantMode, const_cast<char *>(commAlg), numMaxTokensPerRank,
         const_cast<char *>(activation), activationParams, ge::DT_UNDEFINED, false, false, 0, topoType, rankNumPerServer,
-        topkWeightsType, yOut, expertTokenNumsOut, workspaceSize, executor);
+        topkWeightsType, sharedExpertQuantOutDtype, yOut, expertTokenNumsOut, workspaceSize, executor);
 
     return getWorkspaceSizesRes;
 }

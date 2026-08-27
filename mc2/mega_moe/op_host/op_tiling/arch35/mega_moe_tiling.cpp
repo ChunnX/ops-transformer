@@ -318,6 +318,7 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context, M
     auto maxRecvTokenNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMaxRecvTokenNumIndex));
     auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantModeIndex));
     auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantOutDtypeIndex));
+    auto sharedExpertQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>((config.attrSharedExpertQuantOutDtypeIndex));
     auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrCombineQuantModeIndex));
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
     auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
@@ -335,6 +336,16 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context, M
     OP_TILING_CHECK(dispatchQuantModePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "dispatchQuantMode"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(dispatchQuantOutDtypePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "dispatchQuantOutDtype"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(sharedExpertQuantOutDtypePtr == nullptr,
+                    OP_LOGE_WITH_INVALID_INPUT(nodeName, "sharedExpertQuantOutDtype"), return ge::GRAPH_FAILED);
+    const int64_t effectiveSharedExpertQuantOutDtype =
+        *sharedExpertQuantOutDtypePtr == static_cast<int64_t>(ge::DT_UNDEFINED) ? *dispatchQuantOutDtypePtr :
+                                                                                  *sharedExpertQuantOutDtypePtr;
+    OP_TILING_CHECK(effectiveSharedExpertQuantOutDtype != *dispatchQuantOutDtypePtr,
+                    OP_LOGE_WITH_INVALID_ATTR(nodeName, "shared_expert_quant_out_dtype",
+                                              std::to_string(*sharedExpertQuantOutDtypePtr).c_str(),
+                                              "DT_UNDEFINED or the same value as dispatch_quant_out_dtype"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(combineQuantModePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "combineQuantMode"),
                     return ge::GRAPH_FAILED);

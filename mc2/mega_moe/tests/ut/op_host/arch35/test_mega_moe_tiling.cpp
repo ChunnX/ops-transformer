@@ -82,6 +82,8 @@ TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN)
             {"topo_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"rank_num_per_server", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
             {"topk_weights_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"shared_expert_quant_out_dtype",
+             Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
         },
         &compileInfo);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 4}};
@@ -141,6 +143,8 @@ TEST_F(MegaMoeArch35TilingTest, H5120_BS256_FP8E5M2)
             {"topo_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"rank_num_per_server", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
             {"topk_weights_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"shared_expert_quant_out_dtype",
+             Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
         },
         &compileInfo);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -200,6 +204,8 @@ TEST_F(MegaMoeArch35TilingTest, H7168_BS512)
             {"topo_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"rank_num_per_server", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
             {"topk_weights_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"shared_expert_quant_out_dtype",
+             Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
         },
         &compileInfo);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 2}};
@@ -259,6 +265,8 @@ TEST_F(MegaMoeArch35TilingTest, DifferentNConfig)
             {"topo_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"rank_num_per_server", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
             {"topk_weights_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"shared_expert_quant_out_dtype",
+             Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
         },
         &compileInfo);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 4}};
