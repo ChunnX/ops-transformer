@@ -99,9 +99,8 @@ static const int64_t UB_BASIC_LIMIT_SIZE = static_cast<int64_t>(8) * 1024;
 static const int64_t SLOPE_BN_DIM_NUM = 2L;
 static const int64_t SLOPE_N_DIM_NUM = 1L;
 static const int64_t L1REUSE_D_LIMIT = 128L;
-static const int64_t L1REUSE_D_LIMIT_MIN = 192L;
 static const int64_t L1REUSE_D_REGULAR_MIN = 256L;
-static const int64_t L1REUSE_D_LIMIT_MAX = 512L;
+static const int64_t L1REUSE_D_LIMIT_MAX = 384L;
 static const int64_t L1REUSE_D_ALIGN = 128L;
 static const int64_t L1REUSE_LARGE_D_HEAD_NUM = 16L;
 static const int64_t L1REUSE_B_SIZE = 1L;
@@ -158,7 +157,12 @@ enum AttenMaskShapeType : uint8_t {
     ATTEN_1_1_1_T_T = 99,
 };
 
-enum PseShapeType : uint8_t { PSE_B_N2_G_S1_S2 = 0, PSE_B_N2_G_1_S2 = 1, PSE_B_N2_G_SLOPE, PSE_1_N2_G_SLOPE };
+enum PseShapeType : uint8_t {
+    PSE_B_N2_G_S1_S2 = 0,
+    PSE_B_N2_G_1_S2 = 1,
+    PSE_B_N2_G_SLOPE,
+    PSE_1_N2_G_SLOPE
+};
 
 enum SparseMode : uint8_t {
     NO_MASK = 0,
@@ -182,7 +186,11 @@ enum AttenMaskCompressMode : uint8_t {
     BAND_LEFT_UP_CAUSAL_MODE
 };
 
-enum ImplMode : uint8_t { AA_HIGH_PRECISION = 0, AA_HIGH_PERFORMANCE = 1, AA_INVALID_LINE_HIGH_PRECISION = 2 };
+enum ImplMode : uint8_t {
+    AA_HIGH_PRECISION = 0,
+    AA_HIGH_PERFORMANCE = 1,
+    AA_INVALID_LINE_HIGH_PRECISION = 2
+};
 
 enum PseType : uint8_t {
     PSE_OUTER_MUL_ADD_TYPE = 0,
@@ -225,7 +233,10 @@ struct MatmulConstParams {
     DTemplateType dType;
 };
 
-enum MatmulPolicyType : uint8_t { MATMUL_POLICY_NORMAL = 0, MATMUL_POLICY_UNSPLITK = 1 };
+enum MatmulPolicyType : uint8_t {
+    MATMUL_POLICY_NORMAL = 0,
+    MATMUL_POLICY_UNSPLITK = 1
+};
 
 template <typename T>
 static T AlignUp(T num1, T num2)
@@ -278,7 +289,15 @@ static T CalcTailSize(T num1, T num2)
 
 class TilingKey {
 public:
-    TilingKey() : splitS1(0), splitS2(0), splitD(0), dtype(0), layoutType(0), sparseType(0), reserved(0) {}
+    TilingKey()
+        : splitS1(0),
+          splitS2(0),
+          splitD(0),
+          dtype(0),
+          layoutType(0),
+          sparseType(0),
+          reserved(0)
+    {}
 
     void Reset()
     {
@@ -291,7 +310,10 @@ public:
         reserved = 0U;
     }
 
-    uint32_t GetRawTilingKey() const { return *(reinterpret_cast<const uint32_t *>(this)); }
+    uint32_t GetRawTilingKey() const
+    {
+        return *(reinterpret_cast<const uint32_t *>(this));
+    }
 
     std::string ToString() const
     {
@@ -326,7 +348,11 @@ public:
 
 class FlashAttentionScoreTilingBase : public TilingBaseClass {
 public:
-    explicit FlashAttentionScoreTilingBase(gert::TilingContext *context) : TilingBaseClass(context) { Reset(); }
+    explicit FlashAttentionScoreTilingBase(gert::TilingContext *context)
+        : TilingBaseClass(context)
+    {
+        Reset();
+    }
     ~FlashAttentionScoreTilingBase() override = default;
 
     void Reset(gert::TilingContext *context) override
@@ -336,8 +362,14 @@ public:
     }
 
 protected:
-    [[nodiscard]] gert::TilingContext *GetContext() { return context_; }
-    bool IsCapable() override { return true; }
+    [[nodiscard]] gert::TilingContext *GetContext()
+    {
+        return context_;
+    }
+    bool IsCapable() override
+    {
+        return true;
+    }
     // 1、获取平台信息比如CoreNum、UB/L1/L0C资源大小
     ge::graphStatus GetPlatformInfo() override;
     // 2、获取INPUT/OUTPUT/ATTR信息
@@ -377,8 +409,7 @@ protected:
         bool isUngroupedHead = gSize == L1REUSE_G_SIZE;
         bool isSupportedSeqLen = s1Size == s2Size && s1Size >= L1REUSE_S_SIZE_MIN && s1Size <= L1REUSE_S_SIZE_MAX;
         bool isSupportedD =
-            dSize == L1REUSE_D_LIMIT_MIN ||
-            (dSize >= L1REUSE_D_REGULAR_MIN && dSize <= L1REUSE_D_LIMIT_MAX && dSize % L1REUSE_D_ALIGN == 0L);
+            dSize >= L1REUSE_D_REGULAR_MIN && dSize <= L1REUSE_D_LIMIT_MAX && dSize % L1REUSE_D_ALIGN == 0L;
         bool isSupportedHead = n1Size > 0L && (dSize <= L1REUSE_D_REGULAR_MIN || n1Size == L1REUSE_LARGE_D_HEAD_NUM);
         bool isSupportedDtype = inputDtype == ge::DT_FLOAT16 || inputDtype == ge::DT_BF16;
         bool isNoMask = sparseMode == static_cast<int64_t>(NO_MASK) && attenMaskExistFlag == 0U;
@@ -393,9 +424,15 @@ protected:
                isSupportedHead && isSupportedDtype && isSupportedMask && isKeepProbOne && hasNoExtraFeature;
     }
 
-    virtual int64_t GetMinS1BasicBlock() const { return std::min(64L, alignedS1); }
+    virtual int64_t GetMinS1BasicBlock() const
+    {
+        return std::min(64L, alignedS1);
+    }
 
-    virtual bool IsTemplateMatched() const { return expectTemplate == actualTemplate; }
+    virtual bool IsTemplateMatched() const
+    {
+        return expectTemplate == actualTemplate;
+    }
 
     ge::graphStatus CheckContext();
     virtual bool AnalyzeDtype();
@@ -564,7 +601,10 @@ protected:
     FlashAttentionScoreGeneralTilingData *tilingData = context_->GetTilingData<FlashAttentionScoreGeneralTilingData>();
 };
 
-int64_t FlashAttentionScoreTilingBase::GetNRatio() { return BMM_SOFTMAX_RATIO; }
+int64_t FlashAttentionScoreTilingBase::GetNRatio()
+{
+    return BMM_SOFTMAX_RATIO;
+}
 
 void FlashAttentionScoreTilingBase::GetMaxWorkspaceFlag()
 {
@@ -1926,9 +1966,15 @@ void FlashAttentionScoreTilingBase::CalcS1S2BasicBlock(const BufferNum &bufferNu
     }
 }
 
-void FlashAttentionScoreTilingBase::CalcNRatio() { return; }
+void FlashAttentionScoreTilingBase::CalcNRatio()
+{
+    return;
+}
 
-void FlashAttentionScoreTilingBase::CalcDBasicBlock() { return; }
+void FlashAttentionScoreTilingBase::CalcDBasicBlock()
+{
+    return;
+}
 
 int64_t FlashAttentionScoreTilingBase::CalcMaxS1BasicBlockSize(int64_t actualD, const BufferNum &bufferNum) const
 {
@@ -2553,10 +2599,16 @@ void FlashAttentionScoreTilingBase::SetSparseParams()
 }
 
 /* 在子类中设置matmulConstArr列表 */
-void FlashAttentionScoreTilingBase::SetMatmulConstArr() { return; }
+void FlashAttentionScoreTilingBase::SetMatmulConstArr()
+{
+    return;
+}
 
 /* 检查是否满足进行matmul常量化的基本条件 */
-bool FlashAttentionScoreTilingBase::CheckScalarConstCondation() { return false; }
+bool FlashAttentionScoreTilingBase::CheckScalarConstCondation()
+{
+    return false;
+}
 
 /* 检查当前tiling中的baseMNK是否与子类枚举的常量化参数匹配 */
 bool FlashAttentionScoreTilingBase::MatchMatmulConst(MatmulConstParams &matmulConst)
@@ -2597,7 +2649,8 @@ ge::graphStatus FlashAttentionScoreTilingBase::GetWorkspaceSize()
 
 class FlashAttentionScoreTilingS1Bn2gs1 : public FlashAttentionScoreTilingBase {
 public:
-    explicit FlashAttentionScoreTilingS1Bn2gs1(gert::TilingContext *context) : FlashAttentionScoreTilingBase(context)
+    explicit FlashAttentionScoreTilingS1Bn2gs1(gert::TilingContext *context)
+        : FlashAttentionScoreTilingBase(context)
     {
         expectTemplate.splitS1 = 1;
         expectTemplate.splitD = 1;
@@ -2752,7 +2805,10 @@ protected:
         }
     }
 
-    int64_t GetNRatio() override { return s1Ratio; }
+    int64_t GetNRatio() override
+    {
+        return s1Ratio;
+    }
 
     bool CalcUBSize(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock) override
     {
@@ -2760,7 +2816,10 @@ protected:
         return true;
     }
 
-    void GetBufferNum(BufferNum &bufferNum) const override { bufferNum.bufferS1S2Num = s1dHighPerfBufferNum; }
+    void GetBufferNum(BufferNum &bufferNum) const override
+    {
+        bufferNum.bufferS1S2Num = s1dHighPerfBufferNum;
+    }
 
     void CalcS1S2BasicBlock([[maybe_unused]] const BufferNum &bufferNum) override
     {
@@ -2773,7 +2832,10 @@ protected:
         s2BasicBlock = std::min(128L, alignedS2);
     }
 
-    void CalcDBasicBlock() override { dBasicBlock = std::min(128L, alignedD); }
+    void CalcDBasicBlock() override
+    {
+        dBasicBlock = std::min(128L, alignedD);
+    }
 
     bool SetBmm1TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock, [[maybe_unused]] int64_t batch,
                             matmul_tiling::MatmulApiTiling &bmm1) override
@@ -2931,7 +2993,8 @@ protected:
 
 class FlashAttentionScoreTilingB : public FlashAttentionScoreTilingBase {
 public:
-    explicit FlashAttentionScoreTilingB(gert::TilingContext *context) : FlashAttentionScoreTilingBase(context)
+    explicit FlashAttentionScoreTilingB(gert::TilingContext *context)
+        : FlashAttentionScoreTilingBase(context)
     {
         templateName = "FlashAttentionScoreB";
     }
@@ -2945,7 +3008,10 @@ protected:
     int64_t dVec2BasicBlock_ = 1;
     int64_t s1Vec2BasicBlock_ = 1;
 
-    void GetBufferNum(BufferNum &bufferNum) const override { bufferNum.bufferS1S2Num = HIGH_PERF_BUFFER_NUM; }
+    void GetBufferNum(BufferNum &bufferNum) const override
+    {
+        bufferNum.bufferS1S2Num = HIGH_PERF_BUFFER_NUM;
+    }
 
     void CalcS1S2BasicBlock([[maybe_unused]] const BufferNum &bufferNum) override
     {
@@ -3053,7 +3119,10 @@ protected:
         tensorSizeParams.set_bmm2ResUbSize(coreParams.get_s1Vec2BaseSize() * dBasicBlock);
     }
 
-    void CalcDBasicBlock() override { dBasicBlock = alignedD; }
+    void CalcDBasicBlock() override
+    {
+        dBasicBlock = alignedD;
+    }
 
     bool SetBmm1TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock, int64_t batch,
                             matmul_tiling::MatmulApiTiling &bmm1) override
@@ -3158,7 +3227,10 @@ protected:
         return true;
     }
 
-    bool IsTemplateMatched() const override { return true; }
+    bool IsTemplateMatched() const override
+    {
+        return true;
+    }
 
     bool CalcUBSize(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock) override
     {
@@ -3202,7 +3274,8 @@ protected:
 
 class FlashAttentionScoreTilingS1s2Bn2gs1 : public FlashAttentionScoreTilingBase {
 public:
-    explicit FlashAttentionScoreTilingS1s2Bn2gs1(gert::TilingContext *context) : FlashAttentionScoreTilingBase(context)
+    explicit FlashAttentionScoreTilingS1s2Bn2gs1(gert::TilingContext *context)
+        : FlashAttentionScoreTilingBase(context)
     {
         expectTemplate.splitS1 = 1U;
         expectTemplate.splitS2 = 1U;
@@ -3215,9 +3288,15 @@ protected:
     int64_t dAlignSize = 16;
     bool enableL1Reuse = false;
 
-    int64_t GetNRatio() override { return nRatio; }
+    int64_t GetNRatio() override
+    {
+        return nRatio;
+    }
 
-    void GetBufferNum(BufferNum &bufferNum) const override { bufferNum.bufferS1S2Num = HIGH_PERF_BUFFER_NUM; }
+    void GetBufferNum(BufferNum &bufferNum) const override
+    {
+        bufferNum.bufferS1S2Num = HIGH_PERF_BUFFER_NUM;
+    }
 
     void CalcS1S2BasicBlock([[maybe_unused]] const BufferNum &bufferNum) override
     {
@@ -3253,7 +3332,10 @@ protected:
         }
     }
 
-    void CalcDBasicBlock() override { dBasicBlock = std::min(128L, alignedD); }
+    void CalcDBasicBlock() override
+    {
+        dBasicBlock = std::min(128L, alignedD);
+    }
 
     bool IsSpecialShape()
     {
@@ -3396,7 +3478,10 @@ protected:
         return false;
     }
 
-    bool IsTemplateMatched() const override { return true; }
+    bool IsTemplateMatched() const override
+    {
+        return true;
+    }
 
     bool CalcUBSize(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock) override
     {
@@ -3535,7 +3620,10 @@ protected:
     int64_t dAlignSize = 16;
     int64_t sAlignSize = 64;
 
-    int64_t GetNRatio() override { return nRatio; }
+    int64_t GetNRatio() override
+    {
+        return nRatio;
+    }
 
     void CalcNRatio() override
     {
@@ -3554,7 +3642,10 @@ protected:
         }
     }
 
-    void GetBufferNum(BufferNum &bufferNum) const override { bufferNum.bufferS1S2Num = HIGH_PERF_BUFFER_NUM; }
+    void GetBufferNum(BufferNum &bufferNum) const override
+    {
+        bufferNum.bufferS1S2Num = HIGH_PERF_BUFFER_NUM;
+    }
 
     void CalcS1S2BasicBlock([[maybe_unused]] const BufferNum &bufferNum) override
     {
@@ -3570,7 +3661,10 @@ protected:
         }
     }
 
-    void CalcDBasicBlock() override { dBasicBlock = std::min(128L, alignedD); }
+    void CalcDBasicBlock() override
+    {
+        dBasicBlock = std::min(128L, alignedD);
+    }
 
     void SetMultiCoreParams() override
     {
@@ -3706,7 +3800,10 @@ protected:
         return false;
     }
 
-    bool IsTemplateMatched() const override { return true; }
+    bool IsTemplateMatched() const override
+    {
+        return true;
+    }
 
     bool CalcUBSize(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock) override
     {
@@ -3800,7 +3897,8 @@ protected:
 
 class FlashAttentionVarLenScoreTiling : public FlashAttentionScoreTilingBase {
 public:
-    explicit FlashAttentionVarLenScoreTiling(gert::TilingContext *context) : FlashAttentionScoreTilingBase(context)
+    explicit FlashAttentionVarLenScoreTiling(gert::TilingContext *context)
+        : FlashAttentionScoreTilingBase(context)
     {
         expectTemplate.splitS1 = 1U;
         expectTemplate.splitS2 = 1U;
@@ -3822,7 +3920,10 @@ protected:
         }
     }
 
-    void GetBufferNum(BufferNum &bufferNum) const override { bufferNum.bufferS1S2Num = HIGH_PERF_BUFFER_NUM; }
+    void GetBufferNum(BufferNum &bufferNum) const override
+    {
+        bufferNum.bufferS1S2Num = HIGH_PERF_BUFFER_NUM;
+    }
 
     void CalcS1S2BasicBlock([[maybe_unused]] const BufferNum &bufferNum) override
     {
@@ -3839,7 +3940,10 @@ protected:
         s2BasicBlock = std::min(TND_S1_BASICBLOCK_128, alignedS2);
     }
 
-    void CalcDBasicBlock() override { dBasicBlock = std::min(128L, alignedD); }
+    void CalcDBasicBlock() override
+    {
+        dBasicBlock = std::min(128L, alignedD);
+    }
 
     bool SetBmm1TilingInput(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock, [[maybe_unused]] int64_t batch,
                             matmul_tiling::MatmulApiTiling &bmm1) override
@@ -4025,7 +4129,10 @@ protected:
         multiCoreParams.set_splitFactorSize(CeilDivision(totalSize, actualSplitAiCoreNum));
         multiCoreParams.set_splitFactorTailSize(CalcTailSize(totalSize, multiCoreParams.get_splitFactorSize()));
     }
-    bool IsTemplateMatched() const override { return true; }
+    bool IsTemplateMatched() const override
+    {
+        return true;
+    }
 
     bool CalcUBSize(int64_t tmpS1BasicBlock, int64_t tmpS2BasicBlock) override
     {
@@ -4568,7 +4675,9 @@ protected:
 
 class FlashAttentionScoreTilingDropMask : public FlashAttentionScoreTilingBase {
 public:
-    explicit FlashAttentionScoreTilingDropMask(gert::TilingContext *context) : FlashAttentionScoreTilingBase(context) {}
+    explicit FlashAttentionScoreTilingDropMask(gert::TilingContext *context)
+        : FlashAttentionScoreTilingBase(context)
+    {}
     ~FlashAttentionScoreTilingDropMask() override = default;
 
 protected:
