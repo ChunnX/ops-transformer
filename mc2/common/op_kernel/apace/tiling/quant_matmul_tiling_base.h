@@ -67,6 +67,14 @@ public:
         platformInfo_ = platformInfo;
         hasExternalPlatformInfo_ = true;
     }
+    // 允许调用方限制计算tiling的核 
+    void SetCoreLimit(uint32_t aicNum, uint32_t aivNum)
+    {
+        coreLimitAicNum_ = aicNum;
+        coreLimitAivNum_ = aivNum;
+        hasCoreLimit_ = true;
+    }
+    void SetAdjustBasicBlockEnable(bool enable) { enableAdjustBasicBlock_ = enable; }
 
 protected:
     QuantMatmulArgs args_{};
@@ -74,8 +82,12 @@ protected:
     QuantMatmulRunInfo runInfo_{};
 
     bool isOpenOptimize_{true};
+    bool hasCoreLimit_{false};
+    uint32_t coreLimitAicNum_{0};
+    uint32_t coreLimitAivNum_{0};
     bool enableMTailAlign_{false};
     bool hasExternalPlatformInfo_{false};
+    bool enableAdjustBasicBlock_{true};
 
     virtual const char* TilingName() const = 0;
 
@@ -119,6 +131,9 @@ private:
         auto ascendcPlatform = platform_ascendc::PlatformAscendCManager::GetInstance();
         platformInfo_.aicNum = ascendcPlatform->GetCoreNumAic();
         platformInfo_.aivNum = ascendcPlatform->GetCoreNumAiv();
+        if (hasCoreLimit_) {
+            platformInfo_.aicNum = std::min(coreLimitAicNum_, coreLimitAivNum_);
+        }
         platformInfo_.socVersion = ascendcPlatform->GetSocVersion();
         ascendcPlatform->GetCoreMemSize(platform_ascendc::CoreMemType::UB, platformInfo_.ubSize);
         ascendcPlatform->GetCoreMemSize(platform_ascendc::CoreMemType::L1, platformInfo_.l1Size);

@@ -22,9 +22,7 @@
 template <mm::DataType aDataType, mm::DataType bDataType>
 class QuantMatmulTilingSwat : public QuantMatmulTilingBase<aDataType, bDataType> {
 public:
-    QuantMatmulTilingSwat()
-        : maxBaseM_(BASIC_BLOCK_SIZE_256)
-    {}
+    QuantMatmulTilingSwat() = default;
     ~QuantMatmulTilingSwat() override = default;
 
     void SetMaxBaseM(uint64_t v) { maxBaseM_ = v; }
@@ -35,9 +33,12 @@ public:
     void EnableBaseMHalving(bool enable) { enableBaseMHalving_ = enable; }
 
 protected:
-    const char *TilingName() const override { return "swat"; }
+    const char* TilingName() const override
+    {
+        return "swat";
+    }
 
-    void DoOpTiling(QuantMatmulTilingData &tilingData) override
+    void DoOpTiling(QuantMatmulTilingData& tilingData) override
     {
         // The streaming path can reuse the common base block search directly,
         // then specializes only the tail split and L1-depth decisions.
@@ -59,6 +60,7 @@ private:
     using Base::runInfo_;
     using Base::isOpenOptimize_;
     using Base::enableMTailAlign_;
+    using Base::enableAdjustBasicBlock_;
 
     uint64_t maxBaseM_{0};
     bool enableBaseMHalving_{false};
@@ -68,11 +70,12 @@ private:
     {
         // Scale reuse is bounded by the smaller reusable K window on the A and
         // B sides, because both scale tensors must stay valid for the same K range.
-        return static_cast<uint32_t>(std::min(runInfo_.scaleFactorA * runInfo_.stepKa * runInfo_.baseK,
-                                              runInfo_.scaleFactorB * runInfo_.stepKb * runInfo_.baseK));
+        return static_cast<uint32_t>(std::min(
+            runInfo_.scaleFactorA * runInfo_.stepKa * runInfo_.baseK,
+            runInfo_.scaleFactorB * runInfo_.stepKb * runInfo_.baseK));
     }
 
-    void BuildTilingData(QuantMatmulTilingData &tilingData, uint32_t scaleKL1, uint8_t nBufferNum) const
+    void BuildTilingData(QuantMatmulTilingData& tilingData, uint32_t scaleKL1, uint8_t nBufferNum) const
     {
         // Flatten the host-side search result into the POD payload consumed by
         // the launcher and device kernel.
@@ -90,9 +93,9 @@ private:
         tilingData.mTailMain = static_cast<uint32_t>(runInfo_.mTailMain);
         tilingData.nTailMain = static_cast<uint32_t>(runInfo_.nTailMain);
         tilingData.usedCoreNum =
-            static_cast<uint32_t>((runInfo_.totalBlockCnt > 1UL || runInfo_.tailBlockCnt == 0UL) ?
-                                      platformInfo_.aicNum :
-                                      runInfo_.tailBlockCnt * runInfo_.mTailTile * runInfo_.nTailTile);
+            static_cast<uint32_t>((runInfo_.totalBlockCnt > 1UL || runInfo_.tailBlockCnt == 0UL)
+                                      ? platformInfo_.aicNum
+                                      : runInfo_.tailBlockCnt * runInfo_.mTailTile * runInfo_.nTailTile);
         tilingData.dbL0c = static_cast<uint8_t>(runInfo_.dbL0c);
         tilingData.scaleKL1 = scaleKL1;
         tilingData.stepK = static_cast<uint8_t>(std::min(runInfo_.stepKa, runInfo_.stepKb));
@@ -111,8 +114,8 @@ private:
         uint64_t nTile = 1UL;
         uint64_t preSplit = 1UL;
         uint64_t secSplit = 1UL;
-        uint64_t &preSplitValid = runInfo_.mTailSize >= runInfo_.nTailSize ? mTile : nTile;
-        uint64_t &secSplitValid = runInfo_.mTailSize >= runInfo_.nTailSize ? nTile : mTile;
+        uint64_t& preSplitValid = runInfo_.mTailSize >= runInfo_.nTailSize ? mTile : nTile;
+        uint64_t& secSplitValid = runInfo_.mTailSize >= runInfo_.nTailSize ? nTile : mTile;
         uint64_t tileMax = platformInfo_.aicNum / runInfo_.tailBlockCnt;
         uint64_t mTileMax = std::min(tileMax, CeilDiv(runInfo_.baseM, CUBE_BLOCK));
         uint64_t nTileMax = std::min(tileMax, CeilDiv(runInfo_.baseN, CUBE_BLOCK));
@@ -127,25 +130,19 @@ private:
 
                 if (preSplit < preSplitMax &&
                     CalUsedCoreNum(runInfo_, preSplit + 1UL, secSplit) <= platformInfo_.aicNum) {
-                    uint64_t nextTileCount =
-                        CalcAlignedSplit(preSplit, secSplit, preSplitMax, preIsM ? runInfo_.mTailSize : 0);
-                    if (nextTileCount > 0) {
-                        newPreTile = nextTileCount;
-                    }
+                    uint64_t nextTileCount = CalcAlignedSplit(preSplit, secSplit, preSplitMax,
+                                                              preIsM ? runInfo_.mTailSize : 0);
+                    if (nextTileCount > 0) { newPreTile = nextTileCount; }
                 }
 
                 if (secSplit < secSplitMax &&
                     CalUsedCoreNum(runInfo_, newPreTile, secSplit + 1UL) <= platformInfo_.aicNum) {
-                    uint64_t nextTileCount =
-                        CalcAlignedSplit(secSplit, newPreTile, secSplitMax, !preIsM ? runInfo_.mTailSize : 0);
-                    if (nextTileCount > 0) {
-                        newSecTile = nextTileCount;
-                    }
+                    uint64_t nextTileCount = CalcAlignedSplit(secSplit, newPreTile, secSplitMax,
+                                                              !preIsM ? runInfo_.mTailSize : 0);
+                    if (nextTileCount > 0) { newSecTile = nextTileCount; }
                 }
 
-                if (newPreTile == preSplit && newSecTile == secSplit) {
-                    break;
-                }
+                if (newPreTile == preSplit && newSecTile == secSplit) { break; }
 
                 preSplit = newPreTile;
                 secSplit = newSecTile;
@@ -273,9 +270,6 @@ private:
         // Start from a 256-sized candidate tile, then refine it and capture
         // the tail statistics used by later scheduling decisions.
         runInfo_.baseM = std::min(args_.m, BASIC_BLOCK_SIZE_256);
-        if (runInfo_.baseM > maxBaseM_) {
-            runInfo_.baseM = maxBaseM_;
-        }
         runInfo_.baseM = !args_.transA ? Align(runInfo_.baseM, CUBE_BLOCK) :
                                          Align(runInfo_.baseM, GetShapeWithDataType<aDataType>(L1_ALIGN_SIZE));
         runInfo_.baseN = std::min(args_.n, BASIC_BLOCK_SIZE_256);
@@ -286,7 +280,7 @@ private:
             TILING_MXFP_DIVISOR_SIZE);
 
         uint64_t blockNum = CeilDiv(args_.m, runInfo_.baseM) * CeilDiv(args_.n, runInfo_.baseN);
-        if (blockNum < platformInfo_.aicNum) {
+        if (enableAdjustBasicBlock_ && blockNum < platformInfo_.aicNum) {
             AdjustBasicBlock();
         }
         if (enableBaseMHalving_) {
@@ -379,23 +373,19 @@ private:
         }
     }
 
-    uint64_t CalUsedCoreNum(const QuantMatmulRunInfo &runInfo, uint64_t mTile, uint64_t nTile)
+    uint64_t CalUsedCoreNum(const QuantMatmulRunInfo& runInfo, uint64_t mTile, uint64_t nTile)
     {
         return mTile * nTile * runInfo.tailBlockCnt;
     }
 
-    uint64_t CalcAlignedSplit(uint64_t growTileCount, uint64_t fixedTileCount, uint64_t tileCountMax,
-                              uint64_t alignTailSize)
+    uint64_t CalcAlignedSplit(uint64_t growTileCount, uint64_t fixedTileCount,
+                              uint64_t tileCountMax, uint64_t alignTailSize)
     {
         for (uint64_t increment = 1; increment <= 2; ++increment) {
             uint64_t nextTileCount = growTileCount + increment;
-            if (nextTileCount > tileCountMax) {
-                break;
-            }
+            if (nextTileCount > tileCountMax) { break; }
             uint64_t usedCores = CalUsedCoreNum(runInfo_, nextTileCount, fixedTileCount);
-            if (usedCores > platformInfo_.aicNum) {
-                break;
-            }
+            if (usedCores > platformInfo_.aicNum) { break; }
             if (alignTailSize == 0 || CeilDiv(alignTailSize, nextTileCount) % CUBE_BLOCK == 0) {
                 return nextTileCount;
             }
@@ -403,8 +393,8 @@ private:
         return 0;
     }
 
-    uint64_t GetDepthA1B1(const QuantMatmulRunInfo &runInfo, uint64_t leftSize, uint64_t perDepthSize,
-                          uint64_t depthInit)
+    uint64_t GetDepthA1B1(const QuantMatmulRunInfo& runInfo, uint64_t leftSize, uint64_t perDepthSize,
+                                 uint64_t depthInit)
     {
         // The first pass grows by powers of two to find a feasible region; the
         // second pass snaps the result to a DMA-friendly K granularity.
@@ -434,7 +424,7 @@ private:
         return depthInit * depthScale;
     }
 
-    void CalStepKs(const QuantMatmulArgs &args, QuantMatmulRunInfo &runInfo)
+    void CalStepKs(const QuantMatmulArgs& args, QuantMatmulRunInfo& runInfo)
     {
         // Convert L1 depth to step-K counts and keep A/B synchronized so both
         // sides advance through K with the same outer scheduling cadence.
@@ -463,9 +453,9 @@ private:
         runInfo.depthB1 = runInfo.stepKb * DB_SIZE;
     }
 
-    void CalScaleFactors(const QuantMatmulArgs &args, const QuantMatmulPlatformInfo &platformInfo,
-                         QuantMatmulRunInfo &runInfo, uint64_t baseASize, uint64_t baseBSize, uint64_t baseScaleASize,
-                         uint64_t baseScaleBSize)
+    void CalScaleFactors(const QuantMatmulArgs& args, const QuantMatmulPlatformInfo& platformInfo,
+                                QuantMatmulRunInfo& runInfo, uint64_t baseASize, uint64_t baseBSize,
+                                uint64_t baseScaleASize, uint64_t baseScaleBSize)
     {
         // Scale reuse is solved after A/B depth is fixed. The search keeps the
         // two scale paths balanced while staying inside the leftover L1 budget.
@@ -500,3 +490,4 @@ private:
         }
     }
 };
+
