@@ -55,6 +55,7 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "executor is nullptr");
         return ACLNN_ERR_INNER_NULLPTR;
     }
+
     L2_DFX_PHASE_1(aclnnSparseFlashMlaMetadata,
                    DFX_IN(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional,
                           sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional,
@@ -174,8 +175,9 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
     return ACLNN_SUCCESS;
 }
 
-__attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashMlaMetadata(
-    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
+__attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashMlaMetadata(void *workspace, uint64_t workspaceSize,
+                                                                               aclOpExecutor *executor,
+                                                                               aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnSparseFlashMlaMetadata);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);

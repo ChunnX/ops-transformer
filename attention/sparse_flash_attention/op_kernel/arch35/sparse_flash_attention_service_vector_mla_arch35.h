@@ -38,15 +38,15 @@
 #else
 #include "../../common/buffers_policy.h"
 #endif
-#if __has_include("../../common/op_kernel/buffer_manager.h")
-#include "../../common/op_kernel/buffer_manager.h"
+#if __has_include("../../common/op_kernel/attn_buffer_manager.h")
+#include "../../common/op_kernel/attn_buffer_manager.h"
 #else
-#include "../../common/buffer_manager.h"
+#include "../../common/attn_buffer_manager.h"
 #endif
-#if __has_include("../../common/op_kernel/buffer.h")
-#include "../../common/op_kernel/buffer.h"
+#if __has_include("../../common/op_kernel/attn_buffer.h")
+#include "../../common/op_kernel/attn_buffer.h"
 #else
-#include "../../common/buffer.h"
+#include "../../common/attn_buffer.h"
 #endif
 
 using namespace AscendC;
@@ -232,8 +232,9 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline int64_t SFAVectorService<TEMPLATE_ARG
     if constexpr (isPa) {
         int64_t blkTableIdx = s2Idx / blockSize;
         int64_t blkTableOffset = s2Idx % blockSize;
-        realkeyOffset = blockTableGm.GetValue(runInfo.boIdx * maxBlockNumPerBatch + blkTableIdx) *
-                        constInfo.keyStride0 + blkTableOffset; // BlockNum, BlockSize, N(1), D
+        realkeyOffset =
+            blockTableGm.GetValue(runInfo.boIdx * maxBlockNumPerBatch + blkTableIdx) * constInfo.keyStride0 +
+            blkTableOffset; // BlockNum, BlockSize, N(1), D
     } else {
         if constexpr (LAYOUT_T == SFA_LAYOUT::BSND) {
             realkeyOffset = (runInfo.boIdx * constInfo.s2Size + s2Idx); // BSN(1)D

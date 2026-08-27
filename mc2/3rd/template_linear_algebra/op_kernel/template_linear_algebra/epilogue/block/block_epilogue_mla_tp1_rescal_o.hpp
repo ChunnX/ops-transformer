@@ -13,8 +13,8 @@
 
 #include "../../catlass.hpp"
 #include "../../arch/resource.hpp"
-#include "../../epilogue/dispatch_policy.hpp"
-#include "../../epilogue/tile/tile_copy.hpp"
+#include "../../epilogue/tla_epilogue_dispatch_policy.hpp"
+#include "../../epilogue/tile/tla_epilogue_tile_copy.hpp"
 #include "../../gemm_coord.hpp"
 #include "../../matrix_coord.hpp"
 
@@ -75,9 +75,7 @@ public:
     }
 
     CATLASS_DEVICE
-    ~BlockEpilogue()
-    {
-    }
+    ~BlockEpilogue() {}
 
     CATLASS_DEVICE
     void SetMask(int32_t len)

@@ -27,8 +27,8 @@
 #include "../epilogue/block_epilogue_dequant_swiglu.h"
 #include "../epilogue/block_epilogue_pertoken_quant.h"
 
-#include "../utils/common_utils.h"
-#include "../utils/layout_utils.h"
+#include "../utils/cgmct_common_utils.h"
+#include "../utils/cgmct_layout_utils.h"
 #include "../utils/tuple_utils.h"
 #include "../utils/coord_utils.h"
 #include "../utils/tensor_utils.h"
@@ -76,13 +76,12 @@ private:
     TPipe *pPipe_ = nullptr;
 
 public:
-    __aicore__ inline KernelGmmSwiGluPertokenQuant(TPipe *pipe) : pPipe_(pipe), epiloguePertokenQuantOp_(pipe)
-    {
-    }
+    __aicore__ inline KernelGmmSwiGluPertokenQuant(TPipe *pipe)
+        : pPipe_(pipe),
+          epiloguePertokenQuantOp_(pipe)
+    {}
 
-    __aicore__ inline ~KernelGmmSwiGluPertokenQuant()
-    {
-    }
+    __aicore__ inline ~KernelGmmSwiGluPertokenQuant() {}
 
     using BlockEpilogueDequantAndSwiglu = BlockEpilogueDequantAndSwiglu_;
     using BlockEpiloguePertokenQuant = BlockEpiloguePertokenQuant_;
@@ -145,13 +144,14 @@ public:
         int32_t baseN;
         int32_t baseK;
         const TCubeTiling *__restrict matmulTiling;
-        __aicore__ GMMTiling()
-        {
-        }
+        __aicore__ GMMTiling() {}
         __aicore__ GMMTiling(uint32_t groupNum_, uint8_t groupListType_, int32_t baseM_, int32_t baseN_, int32_t baseK_)
-            : groupNum(groupNum_), groupListType(groupListType_), baseM(baseM_), baseN(baseN_), baseK(baseK_)
-        {
-        }
+            : groupNum(groupNum_),
+              groupListType(groupListType_),
+              baseM(baseM_),
+              baseN(baseN_),
+              baseK(baseK_)
+        {}
     };
 
     struct Arguments {

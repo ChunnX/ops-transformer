@@ -17,10 +17,11 @@
 #include <utility>
 #include "tests/utils/case.h"
 #include "tests/utils/io.h"
-#include "tests/utils/log.h"
+#include "tests/utils/tests_utils_log.h"
 
 namespace {
-template <class T> bool InitAclIntArray(aclIntArray **intArray, std::vector<T> &hostData)
+template <class T>
+bool InitAclIntArray(aclIntArray **intArray, std::vector<T> &hostData)
 {
     if (intArray == nullptr) {
         LOG_ERR("intArray nil.");
@@ -52,8 +53,7 @@ AclnnNsaCompressWithCacheParam::AclnnNsaCompressWithCacheParam(int64_t batchSize
     : NsaCompressWithCacheParam(batchSize, headNum, headDim, dtype, std::move(actSeqLenList), layoutType,
                                 compressBlockSize, compressStride, actSeqLenType, pageBlockSize),
       aclnnActualSeqLenIntAry(nullptr)
-{
-}
+{}
 
 AclnnNsaCompressWithCacheParam::~AclnnNsaCompressWithCacheParam()
 {

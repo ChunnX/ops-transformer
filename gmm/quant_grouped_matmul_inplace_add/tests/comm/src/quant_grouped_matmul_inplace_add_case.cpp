@@ -18,7 +18,7 @@
 #include <tikicpulib.h>
 #include <register/op_impl_registry.h>
 #include <graph/utils/type_utils.h>
-#include "tests/utils/log.h"
+#include "tests/utils/tests_utils_log.h"
 #include "tests/utils/io.h"
 #include "tests/utils/platform.h"
 #include "tiling/qgmmia/tiling_data.h"
@@ -35,8 +35,8 @@ using ops::adv::tests::utils::WriteFile;
  * 参数所控制的 Kernel 入口一致.
  */
 
-#define QUANTGROUPEDMATMULINPLACEADD_KERNEL_PARAM                                                                      \
-    (GM_ADDR x1, GM_ADDR x2, GM_ADDR scale2, GM_ADDR groupList, GM_ADDR yIn, GM_ADDR scale1, GM_ADDR y,                \
+#define QUANTGROUPEDMATMULINPLACEADD_KERNEL_PARAM \
+    (GM_ADDR x1, GM_ADDR x2, GM_ADDR scale2, GM_ADDR groupList, GM_ADDR yIn, GM_ADDR scale1, GM_ADDR y, \
      GM_ADDR workspace, GM_ADDR tiling)
 
 using QuantGroupedMatmulInplaceAddKernelFunc = void(*) QUANTGROUPEDMATMULINPLACEADD_KERNEL_PARAM;
@@ -77,13 +77,14 @@ bool RunGroupedMatmul(void *func, uint64_t tilingKey, int64_t blockDim, std::vec
 
 QuantGroupedMatmulInplaceAddCase::QuantGroupedMatmulInplaceAddCase()
     : QuantGroupedMatmulInplaceAddCase("Undefined", true, "", OpInfo(), Param(), 0)
-{
-}
+{}
 
 QuantGroupedMatmulInplaceAddCase::QuantGroupedMatmulInplaceAddCase(const char *name, bool enable, const char *dbgInfo,
                                                                    OpInfo opInfo, Param param,
                                                                    int32_t tilingTemplatePriority)
-    : Case(name, enable, dbgInfo, tilingTemplatePriority), mOpInfo(std::move(opInfo)), mParam(std::move(param))
+    : Case(name, enable, dbgInfo, tilingTemplatePriority),
+      mOpInfo(std::move(opInfo)),
+      mParam(std::move(param))
 {
     this->mOpInfo.mName = "QuantGroupedMatmulInplaceAdd";
 }

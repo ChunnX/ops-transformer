@@ -15,7 +15,7 @@
 
 #include "tests/utils/tensor_list.h"
 #include <tikicpulib.h>
-#include "tests/utils/log.h"
+#include "tests/utils/tests_utils_log.h"
 
 using namespace ops::adv::tests::utils;
 
@@ -39,9 +39,7 @@ TensorList::TensorList(const char *name, const std::vector<std::vector<int64_t>>
 TensorList::TensorList(const char *name, const std::initializer_list<int64_t> &shapes, const char *shapeType,
                        ge::DataType dType, ge::Format format, TensorType type)
     : TensorIntf(name, shapes, shapeType, dType, format, type)
-{
-}
-
+{}
 
 TensorList::~TensorList()
 {

@@ -18,7 +18,7 @@
 #include <tikicpulib.h>
 #include <register/op_impl_registry.h>
 #include <graph/utils/type_utils.h>
-#include "tests/utils/log.h"
+#include "tests/utils/tests_utils_log.h"
 #include "tests/utils/io.h"
 #include "tests/utils/platform.h"
 #include "tiling/ffn/tiling_data.h"
@@ -34,11 +34,11 @@ using ops::adv::tests::utils::WriteFile;
  * 参数所控制的 Kernel 入口一致.
  */
 
-#define FFN_KERNEL_PARAM                                                                                               \
-    (__gm__ uint8_t * x, __gm__ uint8_t * weight1, __gm__ uint8_t * weight2, __gm__ uint8_t * expertTokens,            \
-     __gm__ uint8_t * bias1, __gm__ uint8_t * bias2, __gm__ uint8_t * scale, __gm__ uint8_t * offset,                  \
-     __gm__ uint8_t * deqScale1, __gm__ uint8_t * deqScale2, __gm__ uint8_t * antiquant_scale1,                        \
-     __gm__ uint8_t * antiquant_scale2, __gm__ uint8_t * antiquant_offset1, __gm__ uint8_t * antiquant_offset2,        \
+#define FFN_KERNEL_PARAM \
+    (__gm__ uint8_t * x, __gm__ uint8_t * weight1, __gm__ uint8_t * weight2, __gm__ uint8_t * expertTokens, \
+     __gm__ uint8_t * bias1, __gm__ uint8_t * bias2, __gm__ uint8_t * scale, __gm__ uint8_t * offset, \
+     __gm__ uint8_t * deqScale1, __gm__ uint8_t * deqScale2, __gm__ uint8_t * antiquant_scale1, \
+     __gm__ uint8_t * antiquant_scale2, __gm__ uint8_t * antiquant_offset1, __gm__ uint8_t * antiquant_offset2, \
      __gm__ uint8_t * y, __gm__ uint8_t * workSpace, __gm__ uint8_t * tiling)
 
 typedef void(*FFNKernelFunc) FFN_KERNEL_PARAM;
@@ -90,13 +90,15 @@ bool RunFFN(void *func, uint64_t tilingKey, int64_t blockDim, std::vector<Tensor
     return true;
 }
 
-FFNCase::FFNCase() : FFNCase("Undefined", true, "", OpInfo(), Param(), 0)
-{
-}
+FFNCase::FFNCase()
+    : FFNCase("Undefined", true, "", OpInfo(), Param(), 0)
+{}
 
 FFNCase::FFNCase(const char *name, bool enable, const char *dbgInfo, OpInfo opInfo, Param param,
                  int32_t tilingTemplatePriority)
-    : Case(name, enable, dbgInfo, tilingTemplatePriority), mOpInfo(std::move(opInfo)), mParam(std::move(param))
+    : Case(name, enable, dbgInfo, tilingTemplatePriority),
+      mOpInfo(std::move(opInfo)),
+      mParam(std::move(param))
 {
     this->mOpInfo.mName = "FFN";
 }
@@ -203,8 +205,8 @@ bool FFNCase::Run()
     if (ffnTiling->mm1TilingData.M == 0) {
         int mmTilingSize = sizeof(TCubeTiling) / sizeof(int32_t);
         for (int i = 0; i < mmTilingSize; i++) {
-            *((int32_t*)(&ffnTiling->mm1TilingData) + i) = 1;
-            *((int32_t*)(&ffnTiling->mm2TilingData) + i) = 1;
+            *((int32_t *)(&ffnTiling->mm1TilingData) + i) = 1;
+            *((int32_t *)(&ffnTiling->mm2TilingData) + i) = 1;
         }
     }
     if (!mOpInfo.ProcessKernel(mName)) {

@@ -24,9 +24,9 @@
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
 
-#include "../utils/common_utils.h"
+#include "../utils/cgmct_common_utils.h"
 #include "../utils/grouped_matmul_constant.h"
-#include "../utils/layout_utils.h"
+#include "../utils/cgmct_layout_utils.h"
 #include "../utils/tuple_utils.h"
 #include "../utils/coord_utils.h"
 #include "../utils/tensor_utils.h"
@@ -34,7 +34,7 @@
 
 #include "./semaphore.h"
 #include "../block/block_quant_matmul_builder.h"
-#include "../epilogue/block_epilogue_empty.h"
+#include "../epilogue/cgmct_block_epilogue_empty.h"
 #include "../block/block_scheduler_utils.h"
 #include "../block/block_scheduler_gmm_aswt_with_tail_split.h"
 
@@ -71,13 +71,9 @@ class KernelQGmmInplaceAdd<
     ProblemShape_, BlockMmadBuilder_, BlockEpilogue_, BlockScheduler_,
     AscendC::Std::enable_if_t<AscendC::Std::is_same_v<BlockScheduler_, GroupedMatmulAswtWithTailSplitScheduler>>> {
 public:
-    __aicore__ inline KernelQGmmInplaceAdd()
-    {
-    }
+    __aicore__ inline KernelQGmmInplaceAdd() {}
 
-    __aicore__ inline ~KernelQGmmInplaceAdd()
-    {
-    }
+    __aicore__ inline ~KernelQGmmInplaceAdd() {}
 
     using BlockEpilogue = BlockEpilogue_;
     using BlockMmadBuilder = BlockMmadBuilder_;
@@ -131,13 +127,14 @@ public:
         int32_t baseN;
         int32_t baseK;
         const TCubeTiling *__restrict matmulTiling;
-        __aicore__ GMMTiling()
-        {
-        }
+        __aicore__ GMMTiling() {}
         __aicore__ GMMTiling(uint32_t groupNum_, uint8_t groupListType_, int32_t baseM_, int32_t baseN_, int32_t baseK_)
-            : groupNum(groupNum_), groupListType(groupListType_), baseM(baseM_), baseN(baseN_), baseK(baseK_)
-        {
-        }
+            : groupNum(groupNum_),
+              groupListType(groupListType_),
+              baseM(baseM_),
+              baseN(baseN_),
+              baseK(baseK_)
+        {}
     };
 
     struct Arguments {

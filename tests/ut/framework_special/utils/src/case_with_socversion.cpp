@@ -15,21 +15,23 @@
 
 #include "tests/utils/case_with_socversion.h"
 #include <utility>
-#include "tests/utils/log.h"
+#include "tests/utils/tests_utils_log.h"
 
 using namespace ops::adv::tests::utils;
 
 void *CaseWithSocversion::mCurrentCasePtr = nullptr;
 
-CaseWithSocversion::CaseWithSocversion() : CaseWithSocversion("Undefined", true, "", kTilingTemplatePriority_Invalid)
-{
-}
+CaseWithSocversion::CaseWithSocversion()
+    : CaseWithSocversion("Undefined", true, "", kTilingTemplatePriority_Invalid)
+{}
 
 CaseWithSocversion::CaseWithSocversion(const char *name, bool enable, const char *dbgInfo,
                                        int32_t tilingTemplatePriority)
-    : mName(name), mEnable(enable), mDbgInfo(dbgInfo), mTilingTemplatePriority(tilingTemplatePriority)
-{
-}
+    : mName(name),
+      mEnable(enable),
+      mDbgInfo(dbgInfo),
+      mTilingTemplatePriority(tilingTemplatePriority)
+{}
 
 bool CaseWithSocversion::Init(int32_t socVersionIn)
 {

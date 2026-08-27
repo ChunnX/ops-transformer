@@ -17,7 +17,7 @@
 #include <map>
 #include <graph/utils/type_utils.h>
 #include <acl/acl.h>
-#include "tests/utils/log.h"
+#include "tests/utils/tests_utils_log.h"
 #include "tests/utils/io.h"
 
 namespace {
@@ -41,13 +41,14 @@ using namespace ops::adv::tests::utils;
 AclnnTensor::AclnnTensor(const char *name, const std::initializer_list<int64_t> &shape, const char *shapeType,
                          ge::DataType dType, ge::Format format, TensorType type)
     : AclnnTensor(name, std::vector<int64_t>(shape), shapeType, dType, format, type)
-{
-}
+{}
 
 AclnnTensor::AclnnTensor(const char *name, const std::vector<int64_t> &shape, const char *shapeType, ge::DataType dType,
                          ge::Format format, TensorType type)
-    : TensorIntf(name, shape, shapeType, dType, format, type), aclDataType_(ACL_DT_UNDEFINED),
-      aclTensorDataStrides_({}), aclTensor_(nullptr)
+    : TensorIntf(name, shape, shapeType, dType, format, type),
+      aclDataType_(ACL_DT_UNDEFINED),
+      aclTensorDataStrides_({}),
+      aclTensor_(nullptr)
 {
     /* 计算连续 tensor 的 strides */
     aclTensorDataStrides_.resize(shape_.GetDimNum(), 1);
@@ -66,8 +67,7 @@ AclnnTensor::AclnnTensor(const char *name, const std::vector<int64_t> &shape, co
 AclnnTensor::AclnnTensor(const Tensor &t)
     : AclnnTensor(t.Name().c_str(), t.ShapeView(), t.ShapeType().c_str(), t.GetDataType(), t.GetFormat(),
                   t.GetTensorType())
-{
-}
+{}
 
 AclnnTensor::~AclnnTensor()
 {

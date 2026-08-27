@@ -17,13 +17,14 @@
 #include <utility>
 #include "tests/utils/case.h"
 #include "tests/utils/io.h"
-#include "tests/utils/log.h"
+#include "tests/utils/tests_utils_log.h"
 
 using ops::adv::tests::utils::ReadFile;
 using ops::adv::tests::utils::WriteFile;
 
 namespace {
-template <class T> bool InitAclIntArray(aclIntArray **intArray, std::vector<T> &hostData)
+template <class T>
+bool InitAclIntArray(aclIntArray **intArray, std::vector<T> &hostData)
 {
     if (intArray == nullptr) {
         LOG_ERR("intArray nil.");
@@ -51,10 +52,9 @@ AclnnFFNParam::AclnnFFNParam(std::vector<Tensor> inputs, std::vector<int64_t> ex
                              int32_t innerPrecise, int32_t outputDtype, FunctionType functionType,
                              AclnnFFNVersion aclnnFFNVersion, bool tokensIndexFlag)
     : Param(std::move(inputs), std::move(expertTokensData), activation, innerPrecise, outputDtype, tokensIndexFlag),
-      mFunctionType(functionType), mAclnnFFNVersion(aclnnFFNVersion)
-{
-}
-
+      mFunctionType(functionType),
+      mAclnnFFNVersion(aclnnFFNVersion)
+{}
 
 AclnnFFNParam::~AclnnFFNParam()
 {
