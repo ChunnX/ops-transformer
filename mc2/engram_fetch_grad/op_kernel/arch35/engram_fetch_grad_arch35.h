@@ -1160,6 +1160,21 @@ __aicore__ inline void EngramFetchGradArch35::Process()
         } else {
             InitCompanion(numRecv);
             SyncAll<true>();
+            if (aivId_ == 0) {
+                LocalTensor<int32_t> dUb = indicesBuf_.Get<int32_t>();
+                GlobalTensor<int32_t> cGM; cGM.SetGlobalBuffer((__gm__ int32_t *)sortCompanionGM_);
+                DataCopyPad(dUb, cGM[0], AscendC::DataCopyExtParams{1U, 4U * sizeof(int32_t), 0U, 0U, 0U},
+                            AscendC::DataCopyPadExtParams<int32_t>{false, 0, 0, 0});
+                EngramFetchGradSyncFunc<HardEvent::MTE2_S>();
+                AscendC::printf("ENGRAM DUMP-compAfterInit core=%uu c0=%d c1=%d c2=%d c3=%d\n", aivId_,
+                                dUb.GetValue(0), dUb.GetValue(1), dUb.GetValue(2), dUb.GetValue(3));
+                GlobalTensor<int32_t> eGM; eGM.SetGlobalBuffer((__gm__ int32_t *)recvLocalEntryOutGM_);
+                DataCopyPad(dUb, eGM[0], AscendC::DataCopyExtParams{1U, 4U * sizeof(int32_t), 0U, 0U, 0U},
+                            AscendC::DataCopyPadExtParams<int32_t>{false, 0, 0, 0});
+                EngramFetchGradSyncFunc<HardEvent::MTE2_S>();
+                AscendC::printf("ENGRAM DUMP-entAfterInit core=%uu e0=%d e1=%d e2=%d e3=%d\n", aivId_,
+                                dUb.GetValue(0), dUb.GetValue(1), dUb.GetValue(2), dUb.GetValue(3));
+            }
             uint64_t t1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
             sortPool_.Reset();
@@ -1167,6 +1182,21 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             sorter_.Init(maxSortCount, totalBlocks_, recvLocalEntryOutGM_, sortCompanionGM_, sortWorkspaceGm_,
                          *tpipe_, sortPool_);
             RunSort(numRecv);
+            if (aivId_ == 0) {
+                LocalTensor<int32_t> dUb = indicesBuf_.Get<int32_t>();
+                GlobalTensor<int32_t> cGM; cGM.SetGlobalBuffer((__gm__ int32_t *)sortCompanionGM_);
+                DataCopyPad(dUb, cGM[0], AscendC::DataCopyExtParams{1U, 4U * sizeof(int32_t), 0U, 0U, 0U},
+                            AscendC::DataCopyPadExtParams<int32_t>{false, 0, 0, 0});
+                EngramFetchGradSyncFunc<HardEvent::MTE2_S>();
+                AscendC::printf("ENGRAM DUMP-compAfterSort core=%uu c0=%d c1=%d c2=%d c3=%d\n", aivId_,
+                                dUb.GetValue(0), dUb.GetValue(1), dUb.GetValue(2), dUb.GetValue(3));
+                GlobalTensor<int32_t> eGM; eGM.SetGlobalBuffer((__gm__ int32_t *)recvLocalEntryOutGM_);
+                DataCopyPad(dUb, eGM[0], AscendC::DataCopyExtParams{1U, 4U * sizeof(int32_t), 0U, 0U, 0U},
+                            AscendC::DataCopyPadExtParams<int32_t>{false, 0, 0, 0});
+                EngramFetchGradSyncFunc<HardEvent::MTE2_S>();
+                AscendC::printf("ENGRAM DUMP-entAfterSort core=%uu e0=%d e1=%d e2=%d e3=%d\n", aivId_,
+                                dUb.GetValue(0), dUb.GetValue(1), dUb.GetValue(2), dUb.GetValue(3));
+            }
             sortPool_.Reset();
             sortPool_.InitBuffer(entryBuf_, 64U * 1024U);
             sortPool_.InitBuffer(gradBuf_, 64U * 1024U);
