@@ -10,9 +10,7 @@
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/build)
 
-file(GLOB_RECURSE OP_PROTO_FILES "*.cpp")
-
-add_library(proto_math SHARED ${OP_PROTO_FILES})
+add_library(proto_math SHARED ${CMAKE_CURRENT_SOURCE_DIR}/math_proto_stub.cpp)
 
 target_compile_definitions(proto_math PRIVATE
     _GLIBCXX_USE_CXX11_ABI=0
@@ -36,4 +34,30 @@ add_es_library_and_whl(
     ES_LINKABLE_AND_ALL_TARGET es_math
     OPP_PROTO_TARGET proto_math
     OUTPUT_PATH ${CMAKE_BINARY_DIR}/es_packages_math
+)
+
+add_library(proto_nn SHARED ${CMAKE_CURRENT_SOURCE_DIR}/nn_proto_stub.cpp)
+
+target_compile_definitions(proto_nn PRIVATE
+    _GLIBCXX_USE_CXX11_ABI=0
+    LOG_CPP
+)
+
+target_link_libraries(proto_nn PRIVATE
+    $<BUILD_INTERFACE:intf_pub_cxx17>
+    c_sec
+    -Wl,--no-as-needed
+    register
+    -Wl,--as-needed
+    -Wl,--whole-archive
+    rt2_registry_static
+    -Wl,--no-whole-archive
+    mmpa
+)
+
+# 生成es_nn
+add_es_library_and_whl(
+    ES_LINKABLE_AND_ALL_TARGET es_nn
+    OPP_PROTO_TARGET proto_nn
+    OUTPUT_PATH ${CMAKE_BINARY_DIR}/es_packages_nn
 )
