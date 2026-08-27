@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file swiglu_oai_activation.h
- * \brief A5（arch35）SwiGLU-OAI 门控激活实现。
+ * \file swigluoai_activation.h
+ * \brief A5（arch35）SwiGLUOAI 门控激活实现。
  */
 
-#ifndef MEGA_MOE_ARCH35_SWIGLU_OAI_ACTIVATION_H
-#define MEGA_MOE_ARCH35_SWIGLU_OAI_ACTIVATION_H
+#ifndef MEGA_MOE_ARCH35_SWIGLUOAI_ACTIVATION_H
+#define MEGA_MOE_ARCH35_SWIGLUOAI_ACTIVATION_H
 
 #if defined(__DAV_C310__)
 #include "activation_common.h"
@@ -23,40 +23,16 @@ namespace MegaMoeImpl {
 namespace Activation {
 
 template <typename InputType, bool FuseTopkWeight>
-__aicore__ inline void RunSwiGLUOai(const GatedActivationArgs<InputType> &args, const SwiGluOaiParams &params)
+__aicore__ inline void RunSwiGLUOAI(const GatedActivationArgs<InputType> &args, const SwiGluOaiParams &params)
 {
     const ActivationLoopPlan plan = BuildActivationLoopPlan(args);
     const float scalarOne = 1.0f;
     bfloat16_t zeroValue = 0;
 
-    uint32_t tailComputeMaskElements = 0U;
-    uint32_t firstTailStoreMaskElements = 0U;
-    uint32_t secondPaddingStoreMaskElements = 0U;
-    uint16_t tailLoopCount = 0U;
-    uint16_t secondPaddingLoopCount = 0U;
-    __ubuf__ InputType *gateTail = args.gate;
-    __ubuf__ InputType *upTail = args.up;
-    __ubuf__ bfloat16_t *outputTail = args.output;
-    __ubuf__ bfloat16_t *secondPaddingOutput = args.output;
-    if (plan.tailElementCountPerRow > 0U) {
-        tailComputeMaskElements = plan.tailElementCountPerRow;
-        tailLoopCount = 1U;
-        const uint32_t tailStoreElements =
-            plan.tailElementCountPerRow + plan.outputPaddingElementCountPerRow;
-        if (tailStoreElements <= VECTOR_LENGTH_FP32) {
-            firstTailStoreMaskElements = tailStoreElements;
-        } else {
-            secondPaddingLoopCount = 1U;
-            firstTailStoreMaskElements = VECTOR_LENGTH_FP32;
-            secondPaddingStoreMaskElements = tailStoreElements - VECTOR_LENGTH_FP32;
-        }
-        const uint32_t tailColumnOffset = plan.fullVectorLoopCountPerRow * VECTOR_LENGTH_FP32;
-        gateTail = args.gate + tailColumnOffset;
-        upTail = args.up + tailColumnOffset;
-        outputTail = args.output + tailColumnOffset;
-        secondPaddingOutput = outputTail + tailLoopCount * VECTOR_LENGTH_FP32;
-    }
-
+    __ubuf__ InputType *gateTail = args.gate + plan.tailColumnOffsetElements;
+    __ubuf__ InputType *upTail = args.up + plan.tailColumnOffsetElements;
+    __ubuf__ bfloat16_t *outputTail = args.output + plan.tailColumnOffsetElements;
+    __ubuf__ bfloat16_t *secondPaddingOutput = outputTail + plan.tailLoopCount * VECTOR_LENGTH_FP32;
     const uint16_t rowLoopCount = static_cast<uint16_t>(plan.validRowCount);
     const uint16_t fullVectorLoopCount = static_cast<uint16_t>(plan.fullVectorLoopCountPerRow);
     __VEC_SCOPE__
@@ -76,11 +52,11 @@ __aicore__ inline void RunSwiGLUOai(const GatedActivationArgs<InputType> &args, 
         AscendC::MicroAPI::MaskReg fullMask =
             AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
         AscendC::MicroAPI::MaskReg tailComputeMask =
-            AscendC::MicroAPI::UpdateMask<float>(tailComputeMaskElements);
+            AscendC::MicroAPI::UpdateMask<float>(plan.tailComputeMaskElementCount);
         AscendC::MicroAPI::MaskReg firstTailStoreMask =
-            AscendC::MicroAPI::UpdateMask<float>(firstTailStoreMaskElements);
+            AscendC::MicroAPI::UpdateMask<float>(plan.firstTailStoreMaskElementCount);
         AscendC::MicroAPI::MaskReg secondPaddingStoreMask =
-            AscendC::MicroAPI::UpdateMask<bfloat16_t>(secondPaddingStoreMaskElements);
+            AscendC::MicroAPI::UpdateMask<bfloat16_t>(plan.secondPaddingStoreMaskElementCount);
 
         for (uint16_t rowIndex = 0; rowIndex < rowLoopCount; rowIndex++) {
             if constexpr (FuseTopkWeight) {
@@ -121,7 +97,7 @@ __aicore__ inline void RunSwiGLUOai(const GatedActivationArgs<InputType> &args, 
                 AscendC::MicroAPI::CreateAddrReg<InputType>(rowIndex, plan.inputRowStrideElements);
             AscendC::MicroAPI::AddrReg tailOutputOffset =
                 AscendC::MicroAPI::CreateAddrReg<bfloat16_t>(rowIndex, plan.outputRowStrideElements);
-            for (uint16_t tailIndex = 0; tailIndex < tailLoopCount; tailIndex++) {
+            for (uint16_t tailIndex = 0; tailIndex < plan.tailLoopCount; tailIndex++) {
                 AscendC::MicroAPI::DataCopy<InputType, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
                     gateReg, gateTail, tailInputOffset);
                 AscendC::MicroAPI::DataCopy<InputType, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
@@ -148,7 +124,7 @@ __aicore__ inline void RunSwiGLUOai(const GatedActivationArgs<InputType> &args, 
                 AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
                     outputTail, outputReg, tailOutputOffset, firstTailStoreMask);
             }
-            for (uint16_t paddingIndex = 0; paddingIndex < secondPaddingLoopCount; paddingIndex++) {
+            for (uint16_t paddingIndex = 0; paddingIndex < plan.secondPaddingLoopCount; paddingIndex++) {
                 AscendC::MicroAPI::Duplicate(zeroReg, zeroValue);
                 AscendC::MicroAPI::DataCopy<bfloat16_t>(
                     secondPaddingOutput, zeroReg, tailOutputOffset, secondPaddingStoreMask);
@@ -161,4 +137,4 @@ __aicore__ inline void RunSwiGLUOai(const GatedActivationArgs<InputType> &args, 
 } // namespace MegaMoeImpl
 
 #endif // defined(__DAV_C310__)
-#endif // MEGA_MOE_ARCH35_SWIGLU_OAI_ACTIVATION_H
+#endif // MEGA_MOE_ARCH35_SWIGLUOAI_ACTIVATION_H
