@@ -995,7 +995,10 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC1(uint32_t offsetND, 
                                                              uint32_t offsetBS, uint32_t currentBSBlock,
                                                              uint32_t buffIdx)
 {
-    AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1);
+    // 两个AIV分别完成右矩阵的前、后64列后，C1才能读取完整的L1数据。
+    AscendC::CrossCoreWaitFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE1>(CROSS_CORE_WAIT_FLAG_C1);
+    AscendC::CrossCoreWaitFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE1>(
+        CROSS_CORE_WAIT_FLAG_C1 + CROSS_CORE_SUBBLOCK_FLAG_OFFSET);
     // 1C2V 对应操作两块 workspaceGm_
     buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
     // 设置矩阵形状
@@ -1008,8 +1011,10 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC1(uint32_t offsetND, 
     bool enAtomic = (offsetBS != 0);
     mm1.IterateAll(gradPhiGm_[offsetND], enAtomic); // 非连续写
     mm1.End();
-    // 单L1缓冲已被C1消费，可以允许两个AIV写入下一分块。
-    AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_MTE1>(CROSS_CORE_WAIT_FLAG_C1_CONSUMED);
+    // 单L1缓冲已被C1消费，分别归还两个AIV对应的写入许可。
+    AscendC::CrossCoreSetFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE1>(CROSS_CORE_WAIT_FLAG_C1_CONSUMED);
+    AscendC::CrossCoreSetFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE1>(
+        CROSS_CORE_WAIT_FLAG_C1_CONSUMED + CROSS_CORE_SUBBLOCK_FLAG_OFFSET);
 }
 
 template <class T, class P>
@@ -1042,7 +1047,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2Pipeline()
             uint32_t currentBSBlock = Min(SINGLE_M, uint32_t(totalLength_ - offsetBS));
             if (buffId > 0) {
                 // L1只有一块，等待C1完成上一分块后再覆盖。
-                AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1_CONSUMED);
+                AscendC::CrossCoreWaitFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE3>(
+                    CROSS_CORE_WAIT_FLAG_C1_CONSUMED);
             }
             // 等待C0完成计算
             AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C0);
@@ -1051,7 +1057,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2Pipeline()
             ProcessV2(offsetND, copySizeND, offsetBS, offsetBS + currentBSBlock, sumBuf, buffId);
             buffId++;
             // 通知C1计算
-            AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_MTE3>(CROSS_CORE_WAIT_FLAG_C1);
+            AscendC::CrossCoreSetFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE3>(CROSS_CORE_WAIT_FLAG_C1);
         }
         if (withGamma_) {
             vecOutQueueSmall_.EnQue(sumBuf);
