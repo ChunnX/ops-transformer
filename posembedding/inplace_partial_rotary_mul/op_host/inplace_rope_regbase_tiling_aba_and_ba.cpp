@@ -60,7 +60,8 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClassABAAndBA::SplitCore()
     auto blockFactorB1 = CeilDiv(static_cast<uint64_t>(b_), aicoreParams_.blockDim);
     auto blockNumB1 = CeilDiv(static_cast<uint64_t>(b_), blockFactorB1);
     if (blockNumB1 == 0) {
-        OP_LOGE("InplacePartialRopeRegBaseTilingClassABAAndBA SplitCore error, blockNumB1 == 0");
+        OP_LOGE(context_->GetNodeName(),
+                "InplacePartialRopeRegBaseTilingClassABAAndBA SplitCore error, blockNumB1 == 0");
         return ge::GRAPH_FAILED;
     }
     auto blockNumS1 = std::min(static_cast<uint64_t>(s_), aicoreParams_.blockDim / blockNumB1);
@@ -71,7 +72,8 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClassABAAndBA::SplitCore()
     auto blockFactorS2 = CeilDiv(static_cast<uint64_t>(s_), aicoreParams_.blockDim);
     auto blockNumS2 = CeilDiv(static_cast<uint64_t>(s_), blockFactorS2);
     if (blockNumS2 == 0) {
-        OP_LOGE("InplacePartialRopeRegBaseTilingClassABAAndBA SplitCore error, blockNumS2 == 0");
+        OP_LOGE(context_->GetNodeName(),
+                "InplacePartialRopeRegBaseTilingClassABAAndBA SplitCore error, blockNumS2 == 0");
         return ge::GRAPH_FAILED;
     }
     auto blockNumB2 = std::min(static_cast<uint64_t>(b_), aicoreParams_.blockDim / blockNumS2);
@@ -122,7 +124,8 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClassABAAndBA::ComputeUbFactor()
     ubFactorS_ = std::min(blockFactorS_, FloorDiv(numOfDAvailable, ubFactorB_ + 1));
     ubFactorS_ = std::min(ubFactorS_, MAX_COPY_BLOCK_COUNT / dSplitCoef_);
     if (ubFactorS_ == 0) {
-        OP_LOGE("InplacePartialRopeRegBaseTilingClassABAAndBA ComputeUbFactor error, ubFactorS_ == 0");
+        OP_LOGE(context_->GetNodeName(),
+                "InplacePartialRopeRegBaseTilingClassABAAndBA ComputeUbFactor error, ubFactorS_ == 0");
         return ge::GRAPH_FAILED;
     }
     numOfDAvailable /= ubFactorS_;
@@ -134,7 +137,8 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClassABAAndBA::ComputeUbFactor()
         numOfDAvailable -= 1;
         ubFactorN_ = std::min(n_, numOfDAvailable);
         if (ubFactorN_ == 0) {
-            OP_LOGE("InplacePartialRopeRegBaseTilingClassABAAndBA ComputeUbFactor error, ubFactorN_ == 0");
+            OP_LOGE(context_->GetNodeName(),
+                    "InplacePartialRopeRegBaseTilingClassABAAndBA ComputeUbFactor error, ubFactorN_ == 0");
             return ge::GRAPH_FAILED;
         }
         numOfDAvailable /= ubFactorN_;
