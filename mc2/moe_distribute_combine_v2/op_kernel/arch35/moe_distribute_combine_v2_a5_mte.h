@@ -87,8 +87,6 @@ private:
     __aicore__ inline void SetWaitTpStatusAndDisPatch();
     __aicore__ inline void ExpertAlltoAllDispatchInnerCopyAdd(uint32_t toRankId, uint32_t tokenId, uint32_t topkId,
                                                               uint32_t tkIndex);
-    __aicore__ inline uint32_t ExpertAlltoAllDispatchBatchCopyAdd(uint32_t tokenOffset, uint32_t currentTokenNum,
-                                                                  uint32_t batchId);
     __aicore__ inline void ExpertAlltoAllDispatchCopyAdd();
     __aicore__ inline void ProcessConstantExpert(uint32_t tokenIndex, uint32_t const_expert_idx, float scaleVal);
     __aicore__ inline void AddConstantExpert(uint32_t tokenIndex, uint32_t const_expert_idx, float scaleVal,
@@ -232,7 +230,6 @@ private:
     uint32_t startTokenId_{0};
     uint32_t endTokenId_{0};
     uint32_t sendCntNum_{0};
-    uint32_t maxTokenNumInUB_{0};
     uint32_t ubSize_{0};
     uint32_t dataState_{0};
     uint32_t stateOffset_{0};
@@ -625,28 +622,17 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Dispat
         perDispatchBufBytes = hExpandXAlign32Size_ + hAlignWinSize_;
     }
 
-    // 按实际剩余UB计算每次可处理的token数，常见场景仍一次处理完，极端偏斜场景分片处理
-    TBuf<> fixedEndBuf;
-    tpipe_->InitBuffer(fixedEndBuf, UB_ALIGN);
     uint64_t beginUbAddr = calBeginBuf_.Get<uint8_t>().GetPhyAddr();
-    uint64_t fixedEndUbAddr = fixedEndBuf.Get<uint8_t>().GetPhyAddr();
-    uint64_t fixedUbSize = fixedEndUbAddr - beginUbAddr + UB_ALIGN;
-    uint64_t reservedUbSize = perDispatchBufBytes + UB_ALIGN;
-    uint64_t remainUbSize =
-        (ubSize_ > fixedUbSize + reservedUbSize) ? (ubSize_ - fixedUbSize - reservedUbSize) : 0U;
-    remainUbSize = remainUbSize / UB_ALIGN * UB_ALIGN;
-    uint32_t tokenBufSize = EXPAND_IDX_INFO * sizeof(ExpandIdxType);
-    maxTokenNumInUB_ = MIN(sendCntNum_, static_cast<uint32_t>(remainUbSize / tokenBufSize));
-    if (maxTokenNumInUB_ == 0U) {
-        maxTokenNumInUB_ = 1U;
-    }
-    uint32_t indexCountsBufSize = Ceil(maxTokenNumInUB_ * EXPAND_IDX_INFO * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    uint32_t batchTokenNum = Ceil(axisBS_, recvAivNum_);
+    uint32_t batchInfoNum = Ceil((batchTokenNum * 3U + 1U) * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN / sizeof(uint32_t);
+    uint32_t indexCountsNum = batchInfoNum + sendCntNum_ * (EXPAND_IDX_INFO + 1U);
+    uint32_t indexCountsBufSize = Ceil(indexCountsNum * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(indexCountsBuf_, indexCountsBufSize);
 
     tpipe_->InitBuffer(calEndBuf_, UB_ALIGN);
     uint64_t endUbAddr = calEndBuf_.Get<uint8_t>().GetPhyAddr();
     uint64_t usedUbSize = endUbAddr - beginUbAddr + UB_ALIGN;
-    remainUbSize = (ubSize_ > usedUbSize) ? (ubSize_ - usedUbSize) : 0U;
+    uint64_t remainUbSize = (ubSize_ > usedUbSize) ? (ubSize_ - usedUbSize) : 0U;
     dispatchBufferNum_ = static_cast<uint32_t>(remainUbSize / perDispatchBufBytes);
     if (dispatchBufferNum_ == 0U) {
         dispatchBufferNum_ = 1U;
@@ -891,81 +877,90 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::SetWai
 }
 
 template <A5MteCombineTypeClass>
-__aicore__ inline uint32_t MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ExpertAlltoAllDispatchBatchCopyAdd(
-    uint32_t tokenOffset, uint32_t currentTokenNum, uint32_t batchId)
-{
-    LocalTensor<ExpandIdxType> expandIdxLocal = indexCountsBuf_.Get<ExpandIdxType>();
-    uint32_t batchBegin = batchId * recvAivNum_;
-    uint32_t batchEnd = batchBegin + recvAivNum_;
-    uint32_t batchSendCount = 0U;
-    uint32_t permStride = 1U;
-    if (likely(currentTokenNum > 2U)) {
-        permStride = currentTokenNum / 2U + 1U;
-        if (((currentTokenNum & 1U) == 0U) && ((permStride & 1U) == 0U)) {
-            permStride++;
-        }
-    }
-    uint32_t localIdx = ((epRankId_ * currentTokenNum) / epWorldSize_) % currentTokenNum;
-    for (uint32_t loop = 0U; loop < currentTokenNum; loop++) {
-        uint32_t baseOffset = localIdx * EXPAND_IDX_INFO;
-        uint32_t tokenId = static_cast<uint32_t>(expandIdxLocal(baseOffset + 1U));
-        if ((tokenId >= batchBegin) && (tokenId < batchEnd)) {
-            uint32_t rankIdExpandIdx = static_cast<uint32_t>(expandIdxLocal(baseOffset));
-            uint32_t toRankId = rankIdExpandIdx;
-            if (isScalingDownFlag_) {
-                toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + rankIdExpandIdx);
-            }
-            uint32_t topkId = static_cast<uint32_t>(expandIdxLocal(baseOffset + 2U));
-            uint32_t tkIndex = startTokenId_ + tokenOffset + localIdx;
-            ExpertAlltoAllDispatchInnerCopyAdd(toRankId, tokenId, topkId, tkIndex);
-            batchSendCount++;
-        }
-        localIdx += permStride;
-        if (localIdx >= currentTokenNum) {
-            localIdx -= currentTokenNum;
-        }
-    }
-    return batchSendCount;
-}
-
-template <A5MteCombineTypeClass>
 __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ExpertAlltoAllDispatchCopyAdd()
 {
     if (sendCntNum_ == 0U) { // 空闲核，直接返回
         return;
     }
 
-    LocalTensor<ExpandIdxType> expandIdxLocal = indexCountsBuf_.Get<ExpandIdxType>();
-    uint32_t tokenLoopNum = Ceil(sendCntNum_, maxTokenNumInUB_);
-    if (tokenLoopNum == 1U) {
-        const DataCopyExtParams bskParams{1U, static_cast<uint32_t>(sendCntNum_ * EXPAND_IDX_INFO * sizeof(uint32_t)),
-                                          0U, 0U, 0U};
-        const DataCopyPadExtParams<ExpandIdxType> copyPadParams{false, 0U, 0U, 0U};
-        DataCopyPad(expandIdxLocal, expandIdxGM_[startTokenId_ * EXPAND_IDX_INFO], bskParams, copyPadParams);
-        SyncFunc<AscendC::HardEvent::MTE2_S>();
+    uint32_t batchTokenNum = Ceil(axisBS_, recvAivNum_);
+    uint32_t batchInfoNum = Ceil((batchTokenNum * 3U + 1U) * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN / sizeof(uint32_t);
+    LocalTensor<uint32_t> batchInfoLocal = indexCountsBuf_.Get<uint32_t>();
+    LocalTensor<uint32_t> batchCountLocal = batchInfoLocal;
+    LocalTensor<uint32_t> batchOffsetLocal = batchInfoLocal[batchTokenNum];
+    LocalTensor<uint32_t> batchWriteLocal = batchInfoLocal[batchTokenNum * 2U + 1U];
+    LocalTensor<ExpandIdxType> expandIdxLocal = indexCountsBuf_.Get<ExpandIdxType>()[batchInfoNum];
+    LocalTensor<uint32_t> batchIndexLocal =
+        indexCountsBuf_.Get<uint32_t>()[batchInfoNum + sendCntNum_ * EXPAND_IDX_INFO];
+
+    const DataCopyExtParams bskParams{1U, static_cast<uint32_t>(sendCntNum_ * EXPAND_IDX_INFO * sizeof(ExpandIdxType)),
+                                      0U, 0U, 0U};
+    const DataCopyPadExtParams<ExpandIdxType> copyPadParams{false, 0U, 0U, 0U};
+    DataCopyPad(expandIdxLocal, expandIdxGM_[startTokenId_ * EXPAND_IDX_INFO], bskParams, copyPadParams);
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+
+    for (uint32_t batchId = 0U; batchId < batchTokenNum; batchId++) {
+        batchCountLocal.SetValue(batchId, 0U);
+    }
+    uint32_t permStride = 1U;
+    if (likely(sendCntNum_ > 2U)) {
+        permStride = sendCntNum_ / 2U + 1U;
+        if (((sendCntNum_ & 1U) == 0U) && ((permStride & 1U) == 0U)) {
+            permStride++;
+        }
+    }
+    uint32_t localIdx = ((epRankId_ * sendCntNum_) / epWorldSize_) % sendCntNum_;
+    for (uint32_t loop = 0U; loop < sendCntNum_; loop++) {
+        uint32_t tokenId = static_cast<uint32_t>(expandIdxLocal(localIdx * EXPAND_IDX_INFO + 1U));
+        if (tokenId < axisBS_) {
+            uint32_t batchId = tokenId / recvAivNum_;
+            batchCountLocal.SetValue(batchId, batchCountLocal.GetValue(batchId) + 1U);
+        }
+        localIdx += permStride;
+        if (localIdx >= sendCntNum_) {
+            localIdx -= sendCntNum_;
+        }
     }
 
-    uint32_t batchTokenNum = Ceil(axisBS_, recvAivNum_);
-    uint32_t batchSendCount = 0U;
-    for (uint32_t batchId = 0U; batchId < batchTokenNum && batchSendCount < sendCntNum_; batchId++) {
-        uint32_t firstLoopId = (epRankId_ + batchId) % tokenLoopNum;
-        for (uint32_t tokenLoopId = 0U; tokenLoopId < tokenLoopNum; tokenLoopId++) {
-            uint32_t currentLoopId = firstLoopId + tokenLoopId;
-            if (currentLoopId >= tokenLoopNum) {
-                currentLoopId -= tokenLoopNum;
+    uint32_t batchOffset = 0U;
+    for (uint32_t batchId = 0U; batchId < batchTokenNum; batchId++) {
+        batchOffsetLocal.SetValue(batchId, batchOffset);
+        batchWriteLocal.SetValue(batchId, batchOffset);
+        batchOffset += batchCountLocal.GetValue(batchId);
+    }
+    batchOffsetLocal.SetValue(batchTokenNum, batchOffset);
+
+    localIdx = ((epRankId_ * sendCntNum_) / epWorldSize_) % sendCntNum_;
+    for (uint32_t loop = 0U; loop < sendCntNum_; loop++) {
+        uint32_t srcOffset = localIdx * EXPAND_IDX_INFO;
+        uint32_t tokenId = static_cast<uint32_t>(expandIdxLocal(srcOffset + 1U));
+        if (tokenId < axisBS_) {
+            uint32_t batchId = tokenId / recvAivNum_;
+            uint32_t dstOffset = batchWriteLocal.GetValue(batchId);
+            batchIndexLocal.SetValue(dstOffset, localIdx);
+            batchWriteLocal.SetValue(batchId, batchWriteLocal.GetValue(batchId) + 1U);
+        }
+        localIdx += permStride;
+        if (localIdx >= sendCntNum_) {
+            localIdx -= sendCntNum_;
+        }
+    }
+
+    for (uint32_t batchId = 0U; batchId < batchTokenNum; batchId++) {
+        uint32_t batchBegin = batchOffsetLocal.GetValue(batchId);
+        uint32_t batchEnd = batchOffsetLocal.GetValue(batchId + 1U);
+        for (uint32_t index = batchBegin; index < batchEnd; index++) {
+            localIdx = batchIndexLocal.GetValue(index);
+            uint32_t srcOffset = localIdx * EXPAND_IDX_INFO;
+            uint32_t rankIdExpandIdx = static_cast<uint32_t>(expandIdxLocal(srcOffset));
+            uint32_t toRankId = rankIdExpandIdx;
+            if (isScalingDownFlag_) {
+                toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + rankIdExpandIdx);
             }
-            uint32_t tokenOffset = currentLoopId * maxTokenNumInUB_;
-            uint32_t currentTokenNum = MIN(maxTokenNumInUB_, sendCntNum_ - tokenOffset);
-            if (sendCntNum_ > maxTokenNumInUB_) {
-                uint32_t copySize = currentTokenNum * EXPAND_IDX_INFO * sizeof(uint32_t);
-                const DataCopyExtParams bskParams{1U, copySize, 0U, 0U, 0U};
-                const DataCopyPadExtParams<ExpandIdxType> copyPadParams{false, 0U, 0U, 0U};
-                SyncFunc<AscendC::HardEvent::S_MTE2>();
-                DataCopyPad(expandIdxLocal, expandIdxGM_[(startTokenId_ + tokenOffset) * EXPAND_IDX_INFO], bskParams,
-                            copyPadParams);
-                SyncFunc<AscendC::HardEvent::MTE2_S>();
-            }
-            batchSendCount += ExpertAlltoAllDispatchBatchCopyAdd(tokenOffset, currentTokenNum, batchId);
+            uint32_t tokenId = static_cast<uint32_t>(expandIdxLocal(srcOffset + 1U));
+            uint32_t topkId = static_cast<uint32_t>(expandIdxLocal(srcOffset + 2U));
+            uint32_t tkIndex = startTokenId_ + localIdx;
+            ExpertAlltoAllDispatchInnerCopyAdd(toRankId, tokenId, topkId, tkIndex);
         }
     }
 }
