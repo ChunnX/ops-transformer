@@ -51,7 +51,11 @@ enum MegaMoeWaveTs : int32_t {
     TS_SYNC_AFTER_MOE = 12,     // MoE 段后 SyncAll（AIV）
     TS_CROSS_SYNC_OUT = 13,     // 输出侧跨卡屏障（AIV）
     TS_UNPERMUTE = 14,          // Unpermute（AIV）
-    TS_WAVE_SLOT_END = 15,      // 哨兵
+    TS_AIC_WAIT_VECTOR = 15,    // 累加：WaitForVector 硬等待（AIC 等 AIV 释放 pingpong 缓冲）
+    TS_AIV_WAIT_CUBE = 16,      // 累加：WaitForCube 硬等待（AIV 等 AIC 的 mmad 结果）
+    TS_EPILOGUE_TILE = 17,      // 累加：AIV0 单 tile epilogue 本体（swiglu+MX 量化+GM 写）
+    TS_MMAD_TILE = 18,          // 累加：AIC 单 tile mmad 本体（含 B 加载与 FIXP UB 写）
+    TS_WAVE_SLOT_END = 19,      // 哨兵
 };
 
 } // namespace Mc2Kernel

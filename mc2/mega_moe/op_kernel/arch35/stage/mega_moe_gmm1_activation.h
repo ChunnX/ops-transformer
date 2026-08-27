@@ -254,9 +254,11 @@ __aicore__ inline void Gmm1AicMmadGeneric(WorkSet &workSet, const GMMAddrInfo &g
             WaitForVector();
         }
 
+        MC2_TS_START(TS_MMAD_TILE);
         Gmm1AicMmadTileToUbGeneric<BlockMmad, IsGmm1Interleaved>(
             blockMmad, config, workSet.gmB, workSet.gmScaleB, workSet.gmBias, actualShape, nLoc, kLoc, gmBlockA,
             gmBlockScaleA, l0cOutUbFirst, l0cOutUbSecond, pingpongIdx);
+        MC2_TS_STOP(TS_MMAD_TILE);
 
         if constexpr (IsGmm1Interleaved) {
             NotifyVector(pingpongIdx);
@@ -645,8 +647,10 @@ __aicore__ inline void Gmm1Aiv0EpilogueGeneric(WorkSet &workSet, const GMMAddrIn
             pingpongIdx = 1U - pingpongIdx;
         } else {
             WaitForCube();
+            MC2_TS_START(TS_EPILOGUE_TILE);
             Gmm1Aiv0EpilogueTileGeneric<IsWaveFlagGrained>(config, activationQuantOp, gmmAddrInfo, actualShape, mLoc,
                                                            nLoc);
+            MC2_TS_STOP(TS_EPILOGUE_TILE);
             NotifyCube();
         }
     }

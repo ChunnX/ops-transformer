@@ -99,6 +99,8 @@ __aicore__ inline void SendCombineTokenRow(uint32_t rowElements, uint64_t gmRemo
         reinterpret_cast<__gm__ Element *>(GetRankWinAddrWithOffset(route.dstRankId, gmRemoteBaseOffset)));
     uint64_t gmDstRowOffset = GetCombineDstRowIndex(route, params) * rowElements;
 
+    // 512B 定长分片经 A/B 实测坐实为最优：整行 14336B 单发会把 combine 拖慢约 3 倍
+    // （单大描述符在跨卡互联上串行，多描述符可多链路流水），勿合并。
     constexpr uint32_t TRANSFER_BYTES = 512U;
     constexpr uint32_t TILE_ELEMENTS = TRANSFER_BYTES / sizeof(Element);
     AscendC::DataCopyExtParams ub2GmParams{1U, 0U, 0U, 0U, 0U};
@@ -1079,6 +1081,46 @@ __aicore__ inline void NotifyWaveGmm2Ready(const AivJobContext &job, const Param
         uint64_t slotOffset = static_cast<uint64_t>(slotIdx) * GetWaveGmm2ReadySlotStride(job);
         AscendC::WriteGmByPassDCache(readyBase + slotOffset + static_cast<uint64_t>(job.jobIndex) * INT_CACHELINE,
                                      int32_t(1));
+    }
+}
+
+/*
+ * wave 粒度 GMM2→Combine 进度通道：每个 AIC 在 gmm2Ready 区第 0 槽行内独占一条
+ * cacheline，写入自己已完成的 GMM2 wave 单调计数（沿用每 launch 清零的 reset 语义，
+ * 无需扩 workspace）。Combine 侧取全体 AIC 计数的最小值与目标比较。
+ */
+__aicore__ inline void PublishGmm2WaveProgress(const AivJobContext &job, const Params &params, int32_t completedWaves)
+{
+    if constexpr (g_coreType == AIC) {
+        AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+        __gm__ int32_t *readyBase = reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm2ReadyPtr);
+        AscendC::WriteGmByPassDCache(readyBase + static_cast<uint64_t>(job.jobIndex) * INT_CACHELINE, completedWaves);
+    }
+}
+
+// AIV1 自旋等待全部 AIC 的 GMM2 wave 计数到达 targetWaves（标量 min 扫描，绕 DCache）。
+__aicore__ inline void WaitGmm2WaveProgress(const AivJobContext &job, const Params &params, int32_t targetWaves)
+{
+    if constexpr (g_coreType == AIC) {
+        return;
+    }
+    if (GetSubBlockIdx() != 1U || job.totalJobs == 0U) {
+        return;
+    }
+    __gm__ int32_t *readyBase = reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm2ReadyPtr);
+    while (true) {
+        int32_t minWaves = 0x7FFFFFFF;
+        for (uint32_t aicIdx = 0U; aicIdx < job.totalJobs; ++aicIdx) {
+            int32_t waves = AscendC::ReadGmByPassDCache(readyBase + static_cast<uint64_t>(aicIdx) * INT_CACHELINE);
+            minWaves = waves < minWaves ? waves : minWaves;
+        }
+        if (minWaves >= targetWaves) {
+            return;
+        }
+        int64_t waitStart = AscendC::GetSystemCycle();
+        while (AscendC::GetSystemCycle() - waitStart < 100) {
+        }
     }
 }
 
