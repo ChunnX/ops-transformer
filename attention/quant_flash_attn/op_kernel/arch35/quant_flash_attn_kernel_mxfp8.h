@@ -95,6 +95,7 @@ public:
     __gm__ uint8_t *valuePtr_ = nullptr;
 
     ConstInfoX constInfo_;
+    bool needInitOutput_ = false;
 
     const __gm__ QuantFlashAttnTilingData *__restrict tilingData_;
     TPipe *pipe_ = nullptr;
@@ -157,7 +158,8 @@ public:
         this->tilingData_ = tiling;
 
         InitConstInfo();
-        constInfo_.needInitOutput = ((__gm__ uint32_t *)metadata)[QFA_HEAD_NEED_INIT_OUTPUT_INDEX] != 0;
+        needInitOutput_ = ((__gm__ uint32_t *)metadata)[QFA_HEAD_NEED_INIT_OUTPUT_INDEX] != 0;
+        vecFaBlock_.SetNeedInitOutput(needInitOutput_);
 
         keyPtr_ = key;
         valuePtr_ = value;
