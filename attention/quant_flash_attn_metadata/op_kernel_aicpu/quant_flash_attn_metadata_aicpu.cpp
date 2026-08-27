@@ -340,20 +340,11 @@ bool QuantFlashAttnMetadataCpuKernel::CheckNeedInitOutput()
     if (HasZeroLengthBatch()) {
         return true;
     }
-    if (layoutQ_ == "TND" && layoutKv_ == "TND") {
-        return maskMode_ != 0;
-    }
-    if (maskMode_ == 0) {
+    if (maskMode_ == 0) { // NO_MASK
         return false;
     }
-    if (maskMode_ == 1) {
+    if (maskMode_ == 3) { // CAUSAL
         return baseInfo.querySeqSize > baseInfo.kvSeqSize;
-    }
-    if (maskMode_ == 3) {
-        if (winRight_ == -1) {
-            return false;
-        }
-        return (baseInfo.querySeqSize - baseInfo.kvSeqSize) > winRight_;
     }
     return false;
 }
