@@ -381,6 +381,8 @@ public:
                 uint32_t subBlockIdx = curTileInfo.loop % 2;
 
                 if ASCEND_IS_AIC {
+                    // 同 MXFP4：V1_C1 wait 在 QK 前，不塞进 gather 之后（回退 P0.5 gather-wait-load）。
+                    AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] + subBlockIdx * 16);
                     auto gQLayoutTla = tla::MakeLayout<ElementQ, LayoutQ>(
                         curTaskInfo.qsActBaseTile,   // rows = S1 实际 tile
                         qHeadMul * embed_);          // cols → row-stride（BNSD 时 qHeadMul=1，即 embed_）
@@ -404,8 +406,7 @@ public:
                         embed_,
                         kvBaseTile_, 
                         blockShapeY_,
-                        subBlockIdx, kvHeadMul, qHeadMul,
-                        CROSS_CORE_SYNC_V1_C1[mm1ResBufId] + subBlockIdx * 16);
+                        subBlockIdx, kvHeadMul, qHeadMul);
                     AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] + subBlockIdx * 16);
                 } else {
 #ifdef __DAV_VEC__

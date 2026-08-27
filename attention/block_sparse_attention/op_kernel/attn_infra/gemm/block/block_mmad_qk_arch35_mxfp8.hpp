@@ -377,8 +377,7 @@ public:
                     uint32_t kvSBaseTile, uint32_t blockShapeY,
                     uint32_t subBlockIdx,
                     uint32_t kvHeadMul,
-                    uint32_t qHeadMul,
-                    uint32_t sReadyFlag)
+                    uint32_t qHeadMul)
     {
         uint32_t qsActBaseTile = curTaskInfo.qsActBaseTile;
         int64_t kvSeqlen = curTaskInfo.kvSeqlen;
@@ -416,13 +415,6 @@ public:
             CopyQScaleGmToL1(qsActBaseTile, scaleK, gQDequantScale, qBufId, qHeadMul);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1QEventId);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1QEventId);
-
-            // Q 常驻 L0B[0]（16KB）。两路 L0A 共用这份 Q；装之前等两槽上一轮 M 结束。
-            AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(QK_L0AB_EVENT0);
-            AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(QK_L0AB_EVENT1);
-            LoadQToL0B(qsMmadN, embed, qsMmadN, qsMmadN, scaleK, qBufId, 0, 0);
-            AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(QK_L0AB_EVENT0);
-            AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(QK_L0AB_EVENT1);
         }
 
         // 每 tile 稀疏 gather K / K-scale 到 L1
@@ -437,10 +429,8 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1KEventId);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1KEventId);
 
-        // P0.5：V1_C1 wait 挪到 K gather 之后，用 gather 盖核间同步。
-        AscendC::CrossCoreWaitFlag<4, PIPE_FIX>(sReadyFlag);
-
-        // n 向 2×64：满块 nLoop=2，L0A ping-pong；fixpipe 延后一拍盖 MTE1_M。
+        // 一拍 QK 128×128（L0_TILE_N=128，满块 nLoopNum=1）；尾块 kvs<128 仍一次 mmad。
+        // wait 已在 kernel 侧 QK 前完成（同 MXFP4）。fixpipe 延后一拍：单拍则循环外 flush。
         uint32_t nLoopNum = CeilDivision(kvsActBaseTile, L0_TILE_N);
         bool fixPending = false;
         uint32_t pendL0cBufId = 0;
@@ -455,6 +445,8 @@ public:
 
             AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
+            LoadQToL0B(qsMmadN, embed, qsMmadN, qsMmadN,
+                       scaleK, qBufId, L0B_Q_SLOT, 0);
             LoadKToL0A(nSubRowStart, nCur, embed, kvsActBaseTileAlign16, scaleK, kBufId,
                        qkL0abBufId, 0);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);

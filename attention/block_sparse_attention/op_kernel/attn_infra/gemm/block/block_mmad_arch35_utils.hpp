@@ -167,11 +167,10 @@ namespace MXFP8 {
     static constexpr bool KV_SHARE_DEBUG = false;
     static constexpr uint32_t KV_TRACE_TILES = 40;
 
-    // L0：K 按 n 向 2×64×128 ping-pong（每槽 8KB），仍落在 PV Vᵀ 之前的 16KB。
-    // 2×16KB K 会与 Vᵀ 2×18 合计 68>64，所以只拆 n、不加大 K 槽。
-    // L0C QK 2×64KB + PV 72KB = 200KB < 256KB。Q 仍单缓 16KB（跨 nSub 常驻）。
-    static constexpr uint32_t L0A_QK_BUF_CNT = 2;
-    static constexpr uint32_t L0A_QK_BUF_SIZE = 8 * KB_BYTE;  // 64×128×1B K
+    // L0：QK 一拍 128×128。K 单缓 16KB（2×16 会与 Vᵀ 2×18 合计 68>64）；
+    // L0C QK 2×64KB + PV 72KB = 200KB < 256KB。Q 仍单缓 16KB（不绑双槽）。
+    static constexpr uint32_t L0A_QK_BUF_CNT = 1;
+    static constexpr uint32_t L0A_QK_BUF_SIZE = 16 * KB_BYTE;  // 128×128×1B K
     static constexpr uint32_t L0A_QK_BUF_OFFSET = 0;
 
     static constexpr uint32_t L0A_PV_BUF_CNT = 2;
@@ -213,7 +212,7 @@ namespace MXFP8 {
 
     static constexpr uint32_t PV_MMAD_M_DIM = ROW_SUM_NUM + ROW_SUM_PAD_NUM; // 144
     static constexpr uint32_t S2_BASE_TILE_SIZE = 128;
-    static constexpr uint32_t QK_HALF_KVS = 64; // L0 n 向半面；L1 基块仍 128
+    static constexpr uint32_t QK_HALF_KVS = 128; // 一拍 QK 打满基块 kvs 128
 
     static constexpr uint16_t SEED_V_DATA_FILL = 0x3838;
     static constexpr uint16_t SEED_V_SCALE_FILL = 0x7F7F;
