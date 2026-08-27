@@ -54,7 +54,6 @@ private:
     bool BalanceSchedule(SectionStreamKResult &splitRes);
     bool GenMetaData(SectionStreamKResult &splitRes);
     bool ParamsInit();
-    bool HasZeroLengthBatch();
     bool CheckNeedInitOutput();
     std::vector<int64_t> GetTensorDataAsInt64(Tensor *tensor, size_t size);
 
