@@ -146,7 +146,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>FLOAT16/BFLOAT16/FLOAT8_E4M3FN/FLOAT4_E2M1FN/HIFLOAT8</td>
       <td>ND</td>
       <td>3/4</td>
-      <td>×</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>value</td>
@@ -169,7 +169,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>FLOAT16/BFLOAT16/FLOAT8_E4M3FN/FLOAT4_E2M1FN/HIFLOAT8</td>
       <td>ND</td>
       <td>3/4</td>
-      <td>×</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>sparseBlockIdx</td>
@@ -190,12 +190,12 @@ aclnnStatus aclnnGenericBlockSparseAttention(
           </ul>
         </ul>
         其中 totalQBlocks = Σ ceilDiv(qStorageLen_i, blockShapeX)，i 为 batch 索引；qStorageLen_i 为 cuSeqLengthsQOptional 前缀和差分得到的<strong>存储长度</strong>（与seqused双长度语义见约束说明）。
-<br>maxSparseBlockCount为sparseBlockCount tensor中所有元素的最大值，即所有Q块选择的KV块数量的最大值。传入值须 >= 该最大值，当前上限为64。
+<br>maxSparseBlockCount为sparseBlockCount tensor中所有元素的最大值，即所有Q块选择的KV块数量的最大值。传入值须 >= 该最大值，当前上限为256。
       </td>
       <td>INT32</td>
       <td>ND</td>
       <td>3/4</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>sparseBlockCount</td>
@@ -219,25 +219,25 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>INT32</td>
       <td>ND</td>
       <td>2/3</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>metadataOptional</td>
       <td>输入</td>
-      <td>稀疏attention的分核信息。</td>
+      <td>AICPU算子aclnnGenericBlockSparseAttentionMetadata的分核结果。</td>
       <td>
-        由aclnnGenericBlockSparseAttentionMetadata生成；INT32一维[1024]；须与当前输入/属性配套，不可跨case复用。目标为可选；当前版本必须传入。
+        必须传入。由aclnnGenericBlockSparseAttentionMetadata算子生成，每次调用须重新生成。
       </td>
       <td>INT32</td>
       <td>ND</td>
       <td>1</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>attenMaskOptional</td>
       <td>输入</td>
       <td>公式中的atten_mask。</td>
-      <td>atten_mask会与稀疏pattern叠加。目标shape为BOOL [2048,2048]（随maskType变化，见「掩码说明」）。当前不支持，必须传入nullptr。</td>
+      <td>atten_mask会与稀疏pattern叠加（见「掩码说明」）。当前不支持，必须传入nullptr。</td>
       <td>BOOL</td>
       <td>ND</td>
       <td>2</td>
@@ -321,30 +321,36 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>输入</td>
       <td>各batch中query的实际序列长度。</td>
       <td>
-        可选输入，shape为(B,)。可与cuSeqLengthsQOptional同时传入（layoutQ为TND时cu仍必传）；各batch元素须≤对应cu存储长度；须与Metadata侧一致。双长度语义见约束说明。
+        <ul>
+          <li>不指定序列长度可传入nullptr，表示和cuSeqLengthsQOptional差分得到的存储长度相同。</li>
+          <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
+        </ul>
       </td>
       <td>INT32</td>
       <td>ND</td>
       <td>1</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>sequsedKvOptional</td>
       <td>输入</td>
       <td>各batch中kv的实际序列长度。</td>
       <td>
-        可选输入，shape为(B,)。可与cuSeqLengthsKvOptional同时传入（layoutKv为TND/PAGED时cu仍必传）；各batch元素须≤对应cu存储长度；须与Metadata侧一致。双长度语义见约束说明。
+        <ul>
+          <li>不指定序列长度可传入nullptr，表示和cuSeqLengthsKvOptional差分得到的存储长度相同。</li>
+          <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
+        </ul>
       </td>
       <td>INT32</td>
       <td>ND</td>
       <td>1</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>blockTableOptional</td>
       <td>输入</td>
       <td>Block表用于PagedAttention。</td>
-      <td>如配置此输入，则表示使用PagedAttention，layout、KV shape均需对应配置（见「Paged Attention相关说明」）。目标可为nullptr（原始KV）；当前必须传入，且layoutKv须为PAGED_BBND。</td>
+      <td>如配置此输入，则表示使用PagedAttention，layout、KV shape均需对应配置（见「Paged Attention相关说明」）。当前必须传入，且layoutKv须为PAGED_BBND。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>2</td>
@@ -406,7 +412,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>表示attention计算中的掩码类型。</td>
       <td>
         取值0~5，含义见「掩码说明」。<br>
-        当前仅支持1（causal mask，attenMaskOptional须为nullptr，winLeft/winRight为-1）。
+        当前仅支持1（causal mask）。
       </td>
       <td>INT64</td>
       <td>-</td>
@@ -418,15 +424,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>输入</td>
       <td>代表采用的量化手段。</td>
       <td>
-        取值0~5，完整配置见「量化相关说明」：
-        <ul>
-          <li>0：非量化</li>
-          <li>1：FLOAT8静态per-group（当前不支持）</li>
-          <li>2：FLOAT8动态micro scaling（当前不支持）</li>
-          <li>3：FLOAT4动态OCP（当前不支持）</li>
-          <li>4：FLOAT4动态CX（当前不支持）</li>
-          <li>5：FLOAT8全量化（算子内将P cast为FP8，不传量化系数；Ascend 950支持）</li>
-        </ul>
+        取值0~5，完整配置见「量化相关说明」：<br>
         当前可用：0；Ascend 950上可选5。取值1~4传入将校验失败。
       </td>
       <td>INT64</td>
@@ -437,10 +435,12 @@ aclnnStatus aclnnGenericBlockSparseAttention(
     <tr>
       <td>dstTypeMax</td>
       <td>输入</td>
-      <td>MXFP4 CX量化时,传入的自定义量化量程。</td>
+      <td>MXFP4 CX量化时传入的自定义量化量程。</td>
       <td>
-        目标：仅当quantType=3或4时，可设0.0或[6.0, 12.0]。0.0表示Amax为量化结果dtype最大值；[6.0,12.0]表示使用传入值。<br>
-        当前只支持传入0.0。
+        <ul>
+          <li>当前版本不支持自定义量程，必须传入0.0。</li>
+          <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
+        </ul>
       </td>
       <td>double</td>
       <td>-</td>
@@ -571,7 +571,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
     <tr>
       <td>ACLNN_ERR_PARAM_NULLPTR</td>
       <td>161001</td>
-      <td>query/key/value/sparseBlockIdx/sparseBlockCount/attentionOut 等必选指针为空；returnSoftmaxlse=1 时 softmaxLse 为空。</td>
+      <td>query/key/value/sparseBlockIdx/sparseBlockCount/attentionOut 等必选指针为空；returnSoftmaxlse=1 时 softmaxLse 必须非空。</td>
     </tr>
     <tr>
       <td>ACLNN_ERR_PARAM_INVALID</td>
@@ -913,13 +913,13 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 ## 约束说明
 
 - 确定性计算：aclnnGenericBlockSparseAttention默认确定性实现。
-- 调用前须先执行aclnnGenericBlockSparseAttentionMetadata生成metadataOptional（INT32 [1024]），再调用本接口；metadata须与当前输入/属性配套，不可跨case复用。
+- 调用前须先执行aclnnGenericBlockSparseAttentionMetadata生成metadataOptional（INT32 [1024]），再调用本接口；metadata须与当前输入/属性配套，每次调用须重新生成。
 - layoutQ当前仅支持"TND"。
 - layoutKv当前仅支持"PAGED_BBND"。
 - isPackedGQA当前仅支持1。
 - maskType当前仅支持1（算子内置causal）；attenMaskOptional须传入nullptr；winLeft和winRight当前只支持-1。
 - blockShape当前仅支持[1,128]；query/key/value的headDim(D)当前仅支持128；KV页blockSize当前仅支持128，且须等于blockShapeY。
-- TND + isPackedGQA=1时：sparseBlockIdx为[N2, totalQBlocks, topK]，sparseBlockCount为[N2, totalQBlocks]；totalQBlocks按cu存储长度分块；maxSparseBlockCount（即topK）须≥sparseBlockCount中所有元素的最大值，且当前上限为64。
+- TND + isPackedGQA=1时：sparseBlockIdx为[N2, totalQBlocks, topK]，sparseBlockCount为[N2, totalQBlocks]；totalQBlocks按cu存储长度分块；maxSparseBlockCount（即topK）须≥sparseBlockCount中所有元素的最大值，且当前上限为256。
 - metadataOptional、blockTableOptional、cuSeqLengthsQOptional、cuSeqLengthsKvOptional当前必须传入；blockTableOptional为nullptr（原始KV）当前不支持。
 - cuSeqLengthsQOptional在layoutQ为"TND"时必选；cuSeqLengthsKvOptional在layoutKv为"PAGED_BBND"时必选。
 - sequsedQOptional/sequsedKvOptional可选，可与cu前缀和同时传入；不传（nullptr）时按cu差分得到的存储长度处理。传入时：分核/任务空间按各batch实际有效长度（seqused）累加；sparseBlockIdx/sparseBlockCount分块与QKV寻址仍按cu存储长度计算；各batch的seqused元素须≤对应cu存储长度，且须与Metadata侧完全一致。
