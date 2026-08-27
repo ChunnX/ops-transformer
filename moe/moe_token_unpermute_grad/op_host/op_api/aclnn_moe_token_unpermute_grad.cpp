@@ -278,10 +278,12 @@ aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
         aclrtMemcpy(probsGradOut->GetStorageAddr(), numExpertTokens * pElemSize, gradProbsHost, numExpertTokens * pElemSize, ACL_MEMCPY_HOST_TO_DEVICE);
         delete[] gradProbsHost;
     } else {
-        // prob_none: write zeros to probsGradOut
+        // prob_none: write zeros to probsGradOut (use actual output size, not numExpertTokens)
+        auto probsGradShape = probsGradOut->GetViewShape();
+        int64_t probsGradSize = probsGradShape.GetShapeSize();
         auto pElemSize = ge::GetSizeByDataType(probsDtype);
-        auto* zeros = new uint8_t[numExpertTokens * pElemSize]();
-        aclrtMemcpy(probsGradOut->GetStorageAddr(), numExpertTokens * pElemSize, zeros, numExpertTokens * pElemSize, ACL_MEMCPY_HOST_TO_DEVICE);
+        auto* zeros = new uint8_t[probsGradSize * pElemSize]();
+        aclrtMemcpy(probsGradOut->GetStorageAddr(), probsGradSize * pElemSize, zeros, probsGradSize * pElemSize, ACL_MEMCPY_HOST_TO_DEVICE);
         delete[] zeros;
     }
 
