@@ -289,8 +289,8 @@ def quant_flash_attn_metadata(
     'PrivateUse1' is dispatch key for custom NPU backends.
     """
     torch._check(
-        quant_mode in (1, 5),
-        lambda: f"quant_mode of quant_flash_attn_metadata only supports 1 or 5, but got "
+        quant_mode in (1, 3, 5),
+        lambda: f"quant_mode of quant_flash_attn_metadata only supports 1, 3 or 5, but got "
         f"{quant_mode}",
     )
     if layout_q == "TND":
@@ -419,8 +419,8 @@ def quant_flash_attn(
     'PrivateUse1' is the combine key for custom NPU backends.
     """
     torch._check(
-        quant_mode in (1, 5),
-        lambda: f"quant_mode of quant_flash_attn only supports 1 or 5, but got "
+        quant_mode in (1, 3, 5),
+        lambda: f"quant_mode of quant_flash_attn only supports 1, 3 or 5, but got "
         f"{quant_mode}",
     )
     quant_mode = _resolve_quant_mode(quant_mode)

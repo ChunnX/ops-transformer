@@ -111,7 +111,8 @@ ge::graphStatus PagedAttentionChecker::CheckSinglePara(const QfaTilingInfo &qfaI
 
 ge::graphStatus PagedAttentionChecker::CheckBlockSizeMxFp8(const QfaTilingInfo &qfaInfo) const
 {
-    if (qfaInfo.quantMode != QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
+    if (qfaInfo.quantMode != QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 &&
+        qfaInfo.quantMode != QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP16) {
         return ge::GRAPH_SUCCESS;
     }
     // MxFP8 场景: blockSize 仅支持 64、128、256、512或1024

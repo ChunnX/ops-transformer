@@ -40,7 +40,8 @@ bool QuantFlashAttnTilingImpl::IsCapable()
     if (qfaInfo_ == nullptr) {
         return false;
     }
-    if (qfaInfo_->quantMode != QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
+    if (qfaInfo_->quantMode != QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 &&
+        qfaInfo_->quantMode != QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP16) {
         return false;
     }
     return true;

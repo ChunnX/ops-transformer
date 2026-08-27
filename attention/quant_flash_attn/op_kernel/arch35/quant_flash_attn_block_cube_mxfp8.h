@@ -39,6 +39,8 @@ using namespace AttentionCommon;
 
 namespace BaseApi {
 
+#ifndef QFA_GET_KV_GM_FORMAT_DEFINED
+#define QFA_GET_KV_GM_FORMAT_DEFINED
 template <LayOutTypeEnum LAYOUT, uint8_t kvLayoutType = 0, bool isPa = false>
 __aicore__ inline constexpr GmFormat GetKVGmFormat()
 {
@@ -62,6 +64,7 @@ __aicore__ inline constexpr GmFormat GetKVGmFormat()
         return GmFormat::PA_NZ;
     }
 }
+#endif
 
 template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::None,
           S1TemplateType s1TemplateType = S1TemplateType::Aligned128,

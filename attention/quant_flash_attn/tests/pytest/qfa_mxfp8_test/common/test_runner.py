@@ -41,7 +41,7 @@ PARAM_MAP = {
     "data_range_qr": "DATA_RANGE_QR",
     "data_range_kr": "DATA_RANGE_KR",
     "enable_lse": "ENABLE_LSE",
-    "quant_mode": None,  # quant_mode 用于新接口，golden 中不需要设置全局变量
+    "quant_mode": "QUANT_MODE",
     "device_id": "DEVICE_ID",
     "is_contiguous": "IS_CONTIGUOUS",
 }

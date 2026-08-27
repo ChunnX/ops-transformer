@@ -154,6 +154,7 @@ static constexpr ConfigParams ConfigValue[] = {
 
 #define QFA_MXFP8_FP32_PREFILL 1
 #define QFA_MXFP8_FP32_DECODE 2
+#define QFA_MXFP8_FP16_PREFILL 3
 #define QFA_GQA_FP8_FULLQUANT 6
 
 #define false 0

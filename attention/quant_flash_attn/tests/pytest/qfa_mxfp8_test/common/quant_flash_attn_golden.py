@@ -108,6 +108,8 @@ IS_CONTIGUOUS = True
 
 ENABLE_LSE = False
 
+QUANT_MODE = 1
+
 # e8m0fnu 最小正数: 2^(-127)，用于替换 scale 中的 0 和非有限值
 # e8m0fnu 没有 0 值语义，0 的 biased exponent 会被 NPU 解释为 NaN
 E8M0_MIN_POSITIVE = 2 ** (-127)
@@ -1269,7 +1271,7 @@ def _call_npu_fa_op(
         q_descale=dequant_scale_q,
         k_descale=dequant_scale_k,
         v_descale=v_descale,
-        quant_mode=1,
+        quant_mode=QUANT_MODE,
         block_table=block_table,
         p_scale=p_scale,
         cu_seqlens_q=cu_seqlens_q_t if is_tnd_q else None,

@@ -41,12 +41,15 @@ using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 
 namespace BaseApi {
+#ifndef QFA_CLIP_S_INNER_TOKEN_DEFINED
+#define QFA_CLIP_S_INNER_TOKEN_DEFINED
 __aicore__ inline int64_t ClipSInnerToken(int64_t sInnerToken, int64_t minValue, int64_t maxValue)
 {
     sInnerToken = sInnerToken > minValue ? sInnerToken : minValue;
     sInnerToken = sInnerToken < maxValue ? sInnerToken : maxValue;
     return sInnerToken;
 }
+#endif
 
 template <typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
 class QuantFlashAttnKernelMxfp8 {

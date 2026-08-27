@@ -47,6 +47,8 @@ using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 using namespace AttentionCommon;
 
+#ifndef QFA_BMM2_RES_BUFF_SEL_DEFINED
+#define QFA_BMM2_RES_BUFF_SEL_DEFINED
 /* ============确定bmm2ResBuffer的类型============= */
 template <bool useDn, bool isFp8>
 struct Bmm2ResBuffSel {
@@ -54,6 +56,7 @@ struct Bmm2ResBuffSel {
         std::conditional_t<(useDn && isFp8), BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
                            BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>>;
 };
+#endif
 
 namespace BaseApi {
 
