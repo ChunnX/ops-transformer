@@ -137,8 +137,8 @@ private:
                                                        uint16_t nSize);
 
     __aicore__ inline void VFDoActivation(__ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTypeIn *secondSrc,
-                                          __ubuf__ bfloat16_t *gluResAddr, uint16_t mSize, uint16_t nSize,
-                                          uint32_t nDstUbAligned);
+                                          __ubuf__ bfloat16_t *gluResAddr, uint16_t validRowCount,
+                                          uint16_t validColumnCount, uint32_t outputRowStrideElements);
 
     __aicore__ inline void ComputeScale(__ubuf__ uint16_t *maxExpAddr, __ubuf__ uint16_t *mxScaleLocalAddr,
                                         __ubuf__ uint16_t *halfScaleLocalAddr, uint32_t totalScaleInUB,
@@ -431,9 +431,9 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Comput
             // vdExp0/vdExp1乘以广播后的halfScale，得到量化前缩放值
             AscendC::MicroAPI::Mul(vdExp0, vdExp0, (AscendC::MicroAPI::RegTensor<T> &)halfScaleForMul, maskAll);
             AscendC::MicroAPI::Mul(vdExp1, vdExp1, (AscendC::MicroAPI::RegTensor<T> &)halfScaleForMul, maskAll);
-            AscendC::MicroAPI::Cast<float, T, ActivationImpl::CAST_ZERO>(vdExp0FP32Zero, vdExp0, maskAll);
+            AscendC::MicroAPI::Cast<float, T, Activation::CAST_INPUT_TO_FP32>(vdExp0FP32Zero, vdExp0, maskAll);
             AscendC::MicroAPI::Cast<float, T, CAST_ONE>(vdExp0FP32One, vdExp0, maskAll);
-            AscendC::MicroAPI::Cast<float, T, ActivationImpl::CAST_ZERO>(vdExp1FP32Zero, vdExp1, maskAll);
+            AscendC::MicroAPI::Cast<float, T, Activation::CAST_INPUT_TO_FP32>(vdExp1FP32Zero, vdExp1, maskAll);
             AscendC::MicroAPI::Cast<float, T, CAST_ONE>(vdExp1FP32One, vdExp1, maskAll);
             // CAST_32_TO_80/82/81/83把4路fp32 lane cast到fp8 lane，后续按uint8合并成连续fp8输出
             AscendC::MicroAPI::Cast<U, float, CAST_32_TO_80>(vdExp0FP8Zero, vdExp0FP32Zero, maskAll);
@@ -504,106 +504,40 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Comput
 
 BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoActivation(
-    __ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTypeIn *secondSrc, __ubuf__ bfloat16_t *gluResAddr, uint16_t mSize,
-    uint16_t nSize, uint32_t nDstUbAligned)
+    __ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTypeIn *secondSrc, __ubuf__ bfloat16_t *gluResAddr,
+    uint16_t validRowCount, uint16_t validColumnCount, uint32_t outputRowStrideElements)
 {
-    uint32_t nSrcUbAligned;
+    uint32_t inputRowStrideElements;
     if constexpr (IsInterleaved_) {
-        // interleaved源布局为[x1, x2]连续存放在同一行，下一行stride是2*nSize。
-        // 注意：2*nSize==实际行距(TileN) 仅在满 tile 成立；tiling 已约束 hiddenDim%256==0，
+        // interleaved源布局为[x1, x2]连续存放在同一行，下一行stride是2*validColumnCount。
+        // 注意：2*validColumnCount==实际行距(TileN) 仅在满 tile 成立；tiling 已约束 hiddenDim%256==0，
         // 交织调度宽度为完整 hiddenDim，故交织路径不会出现尾 tile；若未来放宽须改用 TileN。
-        nSrcUbAligned = static_cast<uint32_t>(nSize) * 2U;
+        inputRowStrideElements = static_cast<uint32_t>(validColumnCount) * 2U;
     } else {
         // 非交织源是两块独立 UB tile，生产端按固定行距 TileN 写入（MakeLayoutC(tileM, L1_TILE_N)）；
-        // 尾块 nSize < TileN 时行距不随 nSize 收缩，否则第 1 行起整行错位。
-        nSrcUbAligned = TileN;
+        // 尾块 validColumnCount < TileN 时行距不随有效宽度收缩，否则第 1 行起整行错位。
+        inputRowStrideElements = TileN;
     }
-    uint16_t dim0VfTimes = mSize;
-    uint16_t dim1VfTimes = nSize / ActivationImpl::VF_LEN_FP32;
-    uint32_t dim1Tail = nSize % ActivationImpl::VF_LEN_FP32;
-    uint16_t dim1TailTimes = 0;
-    uint16_t dim1Tail2 = 0;
-    uint32_t mask1Num = 0;
-    uint32_t mask2Num = 0;
-    uint32_t mask3Num = 0;
-    __ubuf__ DataTypeIn *firstTailAddr = firstSrc;
-    __ubuf__ DataTypeIn *secondTailAddr = secondSrc;
-    __ubuf__ bfloat16_t *activationTailAddr1 = gluResAddr;
-    __ubuf__ bfloat16_t *activationTailAddr2 = gluResAddr;
-    if (dim1Tail > 0) {
-        mask1Num = dim1Tail;
-        dim1TailTimes = 1;
-        uint32_t padNum = nDstUbAligned - dim1VfTimes * ActivationImpl::VF_LEN_FP32;
-        if (padNum <= ActivationImpl::VF_LEN_FP32) {
-            mask2Num = padNum;
-        } else {
-            dim1Tail2 = 1;
-            mask2Num = ActivationImpl::VF_LEN_FP32;
-            mask3Num = padNum - ActivationImpl::VF_LEN_FP32;
-        }
-        uint32_t offsetAlign = dim1VfTimes * ActivationImpl::VF_LEN_FP32;
-        firstTailAddr = firstSrc + offsetAlign;
-        secondTailAddr = secondSrc + offsetAlign;
-        activationTailAddr1 = gluResAddr + offsetAlign;
-        activationTailAddr2 = gluResAddr + offsetAlign + dim1TailTimes * ActivationImpl::VF_LEN_FP32;
-    }
-
-    ActivationImpl::ActivationContext<DataTypeIn> ctx;
-    ctx.firstSrc = firstSrc;
-    ctx.secondSrc = secondSrc;
-    ctx.gluResAddr = gluResAddr;
-    ctx.firstTailAddr = firstTailAddr;
-    ctx.secondTailAddr = secondTailAddr;
-    ctx.activationTailAddr1 = activationTailAddr1;
-    ctx.activationTailAddr2 = activationTailAddr2;
-    if constexpr (TopkWeightsPrefetch) {
-        ctx.weightUbAddr = (__ubuf__ float *)weightUb_.GetPhyAddr();
-    } else {
-        ctx.weightUbAddr = nullptr;
-    }
-
-    ctx.nSrcUbAligned = nSrcUbAligned;
-    ctx.nDstUbAligned = nDstUbAligned;
-    ctx.dim0VfTimes = dim0VfTimes;
-    ctx.dim1VfTimes = dim1VfTimes;
-    ctx.dim1Tail = dim1Tail;
-    ctx.dim1TailTimes = dim1TailTimes;
-    ctx.dim1Tail2 = dim1Tail2;
-    ctx.mask1Num = mask1Num;
-    ctx.mask2Num = mask2Num;
-    ctx.mask3Num = mask3Num;
 
     Activation::GatedActivationArgs<DataTypeIn> gatedArgs;
     gatedArgs.gate = firstSrc;
     gatedArgs.up = secondSrc;
     gatedArgs.output = gluResAddr;
-    gatedArgs.topkWeights = ctx.weightUbAddr;
-    gatedArgs.validRowCount = mSize;
-    gatedArgs.validColumnCount = nSize;
-    gatedArgs.inputRowStrideElements = nSrcUbAligned;
-    gatedArgs.outputRowStrideElements = nDstUbAligned;
-
-    const auto activation = static_cast<ActMode>(actMode_);
-    if (activation == ActMode::SITU) {
-        const float invBeta = (activationBeta_ != 0.0f) ? (1.0f / activationBeta_) : 1.0f;
-        if (actSubMode_ == static_cast<uint8_t>(ActSubMode::LINEAR)) {
-            const float invAlpha = (activationAlpha_ != 0.0f) ? (1.0f / activationAlpha_) : 1.0f;
-            const Activation::SituParams situParams{clampLimit_, activationBeta_, invBeta, activationAlpha_, invAlpha};
-            Activation::RunSiTU<DataTypeIn, TopkWeightsPrefetch, true>(gatedArgs, situParams);
-        } else {
-            const Activation::SituParams situParams{clampLimit_, activationBeta_, invBeta, 1.0f, 1.0f};
-            Activation::RunSiTU<DataTypeIn, TopkWeightsPrefetch, false>(gatedArgs, situParams);
-        }
-    } else if (activation == ActMode::SWIGLU_STEP) {
-        const Activation::SwiGluParams swiGluParams{clampLimit_};
-        Activation::RunSwiGLU<DataTypeIn, TopkWeightsPrefetch, true>(gatedArgs, swiGluParams);
-    } else if (activation == ActMode::SWIGLU_OAI) {
-        const ActivationImpl::SwiGLUOaiParams swiGluOaiParams{clampLimit_, activationAlpha_, activationBeta_};
-        ActivationImpl::RunSwiGLUOai<DataTypeIn, TopkWeightsPrefetch, IsInterleaved_>(ctx, swiGluOaiParams);
-    } else {
-        const Activation::SwiGluParams swiGluParams{clampLimit_};
-        Activation::RunSwiGLU<DataTypeIn, TopkWeightsPrefetch, false>(gatedArgs, swiGluParams);
+    if constexpr (TopkWeightsPrefetch) {
+        gatedArgs.topkWeights = (__ubuf__ float *)weightUb_.GetPhyAddr();
     }
+    gatedArgs.validRowCount = validRowCount;
+    gatedArgs.validColumnCount = validColumnCount;
+    gatedArgs.inputRowStrideElements = inputRowStrideElements;
+    gatedArgs.outputRowStrideElements = outputRowStrideElements;
+
+    Activation::ActivationParams activationParams;
+    activationParams.clampLimit = clampLimit_;
+    activationParams.alpha = activationAlpha_;
+    activationParams.beta = activationBeta_;
+    activationParams.mode = static_cast<ActMode>(actMode_);
+    activationParams.subMode = static_cast<ActSubMode>(actSubMode_);
+    Activation::RunGatedActivation<DataTypeIn, TopkWeightsPrefetch>(gatedArgs, activationParams);
 }
 
 BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
