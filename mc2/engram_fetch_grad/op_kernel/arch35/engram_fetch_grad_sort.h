@@ -20,7 +20,7 @@ constexpr uint32_t SIMT_THREAD_NUM = 1024;
 
 __simt_vf__ LAUNCH_BOUND(SIMT_THREAD_NUM)
 __aicore__ inline void ScatterWithPosSimt(uint32_t tileLen, __ubuf__ uint8_t *sortedKey,
-                                          __ubuf__ uint32_t *sortedIndex, __ubuf__ uint16_t *binStart,
+                                          __ubuf__ uint32_t *sortedIndex, __ubuf__ uint32_t *binStart,
                                           __ubuf__ uint32_t *basePos, __ubuf__ int32_t *value,
                                           __ubuf__ int32_t *index, __gm__ int32_t *dstValueGm,
                                           __gm__ int32_t *dstIndexGm)
@@ -405,8 +405,12 @@ __aicore__ inline void EngramFetchGradSort::ComputePrefixAndOffsets(uint32_t tc,
         AscendC::Add(localSum, localSum, histogram, HISTOGRAM_BINS);
     }
 
-    AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
-    AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(evtVMte3);
+            // SIMT writes dst GM via the V pipe; next byte-round's ProcessHist reads it via MTE2.
+            // Make V stores visible to MTE2 explicitly (don't rely on SyncAll flushing V->GM).
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(evtVMte2);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evtVMte2);
     AscendC::DataCopyPad(coreSumsGm_[coreId * HISTOGRAM_BINS], localSum, offsetParam);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(evtMte3S);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(evtMte3S);
@@ -621,6 +625,8 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
     event_t evtMte2S = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::MTE2_S));
     event_t evtVS2 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_S));
     event_t evtVMte3 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_MTE3));
+    event_t evtSV = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::S_V));
+    event_t evtVMte2 = static_cast<event_t>(pipe.FetchEventID(AscendC::HardEvent::V_MTE2));
 
     // uint64_t mte2Total = 0;
     // uint64_t keyTotal = 0;
@@ -682,28 +688,52 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
 
             AscendC::LocalTensor<uint8_t> sortTemp =
                 sortWorkspace_.GetWithOffset<uint8_t>(tileAlignBytes_, 3U * tileAlignBytes_);
-            uint32_t sortLen = (tileLen + VECTOR_LEN_INT8 - 1U) / VECTOR_LEN_INT8 * VECTOR_LEN_INT8;
-            if (sortLen > tileElements_) {
-                sortLen = tileElements_;
+            // Recompute byte keys for the CURRENT tile (PR10464 relied on stale keyLocal left
+            // by ProcessHist -> OOB for batchCount>1) and sort the real tileLen (no 0xFF padding:
+            // Duplicate<uint8_t> at unaligned keyLocal[tileLen] trips VEC UB alignment err 340).
+            uint32_t shiftBits = byteRound * BITS_PER_BYTE;
+            for (uint32_t i = 0; i < tileLen; i++) {
+                uint32_t v = static_cast<uint32_t>(valueLocal.GetValue(i));
+                uint32_t local = v - static_cast<uint32_t>(valueOffset_);
+                keyLocal.SetValue(i, static_cast<uint8_t>((local >> shiftBits) & 0xFFU));
             }
-            if (tileLen < sortLen) {
-                AscendC::Duplicate<uint8_t>(keyLocal[tileLen], 0xFF, sortLen - tileLen);
+            AscendC::SetFlag<AscendC::HardEvent::S_V>(evtSV);
+            AscendC::WaitFlag<AscendC::HardEvent::S_V>(evtSV);
+            AscendC::Sort<uint8_t, false, sortConfig>(sortedKey, sortIndices, keyLocal, sortTemp, tileLen);
+
+            AscendC::SetFlag<AscendC::HardEvent::V_S>(evtVS2);
+            AscendC::WaitFlag<AscendC::HardEvent::V_S>(evtVS2);
+
+            // Recompute binStart (within-tile exclusive prefix per bin) as uint32 (k*4 is 4B
+            // aligned; uint16 at k*2 triggered VEC UB alignment err 340) by scanning sorted keys.
+            AscendC::LocalTensor<uint32_t> binStartUbT =
+                sortWorkspace_.GetWithOffset<uint32_t>(HISTOGRAM_BINS, 4U * tileAlignBytes_);
+            if (tileLen > 0U) {
+                uint8_t prev = sortedKey.GetValue(0);
+                binStartUbT.SetValue(prev, (uint32_t)0);
+                for (uint32_t i = 1U; i < tileLen; i++) {
+                    uint8_t k = sortedKey.GetValue(i);
+                    if (k != prev) {
+                        binStartUbT.SetValue(k, (uint32_t)i);
+                        prev = k;
+                    }
+                }
             }
-            AscendC::Sort<uint8_t, false, sortConfig>(sortedKey, sortIndices, keyLocal, sortTemp, sortLen);
+            AscendC::SetFlag<AscendC::HardEvent::S_V>(evtSV);
+            AscendC::WaitFlag<AscendC::HardEvent::S_V>(evtSV);
 
             AscendC::PipeBarrier<PIPE_V>();
 
             AscendC::LocalTensor<int32_t> basePosUb = histWideBuffer_.Get<int32_t>();
             AscendC::Add(basePosUb, prefixLocal, offsetLocal, HISTOGRAM_BINS);
 
-            AscendC::SetFlag<AscendC::HardEvent::V_S>(evtVS2);
-            AscendC::WaitFlag<AscendC::HardEvent::V_S>(evtVS2);
+            AscendC::PipeBarrier<PIPE_V>();
 
             __gm__ int32_t *dstValPtr = (__gm__ int32_t *)(*dstValue).GetPhyAddr();
             __gm__ int32_t *dstIdxPtr = (__gm__ int32_t *)(*dstIndex).GetPhyAddr();
             __ubuf__ uint8_t *sortedKeyUb = (__ubuf__ uint8_t *)sortedKey.GetPhyAddr();
             __ubuf__ uint32_t *sortedIdxUb = (__ubuf__ uint32_t *)sortIndices.GetPhyAddr();
-            __ubuf__ uint16_t *binStartUb = (__ubuf__ uint16_t *)cumulativeBuffer_.Get<uint16_t>().GetPhyAddr();
+            __ubuf__ uint32_t *binStartUb = (__ubuf__ uint32_t *)binStartUbT.GetPhyAddr();
             __ubuf__ uint32_t *basePosPtr = (__ubuf__ uint32_t *)basePosUb.GetPhyAddr();
             __ubuf__ int32_t *valUb = (__ubuf__ int32_t *)valueLocal.GetPhyAddr();
             __ubuf__ int32_t *idxUb = (__ubuf__ int32_t *)indexLocal.GetPhyAddr();

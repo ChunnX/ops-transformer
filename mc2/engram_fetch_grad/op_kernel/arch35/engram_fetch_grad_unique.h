@@ -811,21 +811,32 @@ __aicore__ inline void EngramFetchGradUnique::ScatterAccumulateParallel(
 
 __aicore__ inline void EngramFetchGradUnique::WriteNumUnique(GM_ADDR segCountGM, GM_ADDR numUniqueOutGM)
 {
+    // Sum per-core segCount on core 0 and plain-write (do NOT atomic-add: numUniqueOutGM is
+    // at::empty/uninitialized, so SetAtomicAdd would accumulate onto garbage -> wrong numUnique).
     AscendC::GlobalTensor<int32_t> segCountGMT;
     segCountGMT.SetGlobalBuffer((__gm__ int32_t *)segCountGM);
-    int32_t mySegCount = segCountGMT.GetValue(aivId_);
+    AscendC::LocalTensor<int32_t> segCountUb = tempBuf_->Get<int32_t>();
+    AscendC::DataCopyPadExtParams<int32_t> scPad{false, 0, 0, 0};
+    AscendC::DataCopyExtParams scParams{1U, static_cast<uint32_t>(totalBlocks_ * sizeof(int32_t)), 0U, 0U, 0U};
+    AscendC::DataCopyPad(segCountUb, segCountGMT, scParams, scPad);
+    SyncFunc<AscendC::HardEvent::MTE2_S>(*pipe_);
 
-    AscendC::LocalTensor<int32_t> tmp = statusBuf_->Get<int32_t>();
-    tmp.SetValue(0, mySegCount);
-    SyncFunc<AscendC::HardEvent::S_MTE3>(*pipe_);
+    int32_t numUnique = 0;
+    for (uint32_t core = 0; core < totalBlocks_; core++) {
+        numUnique += segCountUb.GetValue(core);
+    }
 
-    AscendC::GlobalTensor<int32_t> numUniqueGM;
-    numUniqueGM.SetGlobalBuffer((__gm__ int32_t *)numUniqueOutGM);
-    AscendC::SetAtomicAdd<int32_t>();
-    AscendC::DataCopyParams p{1U, static_cast<uint16_t>(sizeof(int32_t)), 0U, 0U};
-    AscendC::DataCopyPad(numUniqueGM, tmp, p);
-    AscendC::SetAtomicNone();
-    SyncFunc<AscendC::HardEvent::MTE3_S>(*pipe_);
+    if (aivId_ == 0) {
+        AscendC::LocalTensor<int32_t> tmp = statusBuf_->Get<int32_t>();
+        tmp.SetValue(0, numUnique);
+        SyncFunc<AscendC::HardEvent::S_MTE3>(*pipe_);
+        AscendC::GlobalTensor<int32_t> numUniqueGM;
+        numUniqueGM.SetGlobalBuffer((__gm__ int32_t *)numUniqueOutGM);
+        AscendC::DataCopyParams p{1U, static_cast<uint16_t>(sizeof(int32_t)), 0U, 0U};
+        AscendC::DataCopyPad(numUniqueGM, tmp, p);
+        SyncFunc<AscendC::HardEvent::MTE3_S>(*pipe_);
+    }
+    AscendC::SyncAll<true>();
 }
 
 
