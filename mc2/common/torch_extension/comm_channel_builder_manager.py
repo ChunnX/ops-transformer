@@ -14,11 +14,11 @@ from cann_ops_transformer.op_builder import OpBuilder
 class CommChannelBuilderManagerOpBuilder(OpBuilder):
     def __init__(self):
         super(CommChannelBuilderManagerOpBuilder, self).__init__(
-            "comm_channel_builder_manager"
+            "comm_channel_builder_manager", category="mc2"
         )
 
     def sources(self):
-        return ["csrc/comm_channel_builder_manager.cpp"]
+        return ["csrc/mc2/comm_channel_builder_manager.cpp"]
 
     def schema(self):
         return None
