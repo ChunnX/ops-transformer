@@ -51,6 +51,8 @@ struct GmmRuntimeState {
 struct ExpertTokenPosition {
     uint32_t expertIdx = 0U;
     uint32_t tokenIndexInExpert = 0U;
+    // 从全部本卡 MoE 专家起点累计的全局连续 row，避免末波 Combine 重新标量扫描 count 表。
+    uint64_t globalTokenIndex = 0U;
 };
 
 using Mc2MoeContext = Mc2Aclnn::Mc2MoeContext;

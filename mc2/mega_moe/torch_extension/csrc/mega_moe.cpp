@@ -228,6 +228,11 @@ int64_t CalcHalfBufferSizeMBA5(int64_t epWorldSize, int64_t moeExpertNum, int64_
     int64_t maskAlignSize = CeilAlign(compareCount / 8, 32);
     int64_t maskSlotSize = maskAlignSize + 32;
     int64_t maskRecvSize = CeilAlign(expertPerRank * epWorldSize * maskSlotSize, 512);
+    // 本接口没有 weight dtype，无法精确判定 A8W8/A8W4。取两种 route 布局上界，避免 A8W8 compact
+    // index 窗口比旧 mask 窗口更大时低估 CCL buffer。
+    int64_t routeIndexAlignSize = CeilAlign(numMaxTokensPerRank * static_cast<int64_t>(sizeof(int32_t)), 32);
+    int64_t routeIndexRecvSize = CeilAlign(expertPerRank * epWorldSize * routeIndexAlignSize, 512);
+    int64_t routeRecvSize = std::max(maskRecvSize, routeIndexRecvSize);
 
     // Expert-major raw count table: [localExpert][sourceRank].
     int64_t expertCountRecvSize = CeilAlign(expertPerRank * epWorldSize * static_cast<int64_t>(sizeof(int32_t)), 512);
@@ -245,7 +250,7 @@ int64_t CalcHalfBufferSizeMBA5(int64_t epWorldSize, int64_t moeExpertNum, int64_
     // combine_send_size
     int64_t combineOut = CeilAlign(numMaxTokensPerRank * hidden * numTopk * 2, 512);
 
-    int64_t totalBytes = EXCEPTION_DUMP_REGION_SIZE + PEERMEM_DATA_OFFSET + maskRecvSize + expertCountRecvSize +
+    int64_t totalBytes = EXCEPTION_DUMP_REGION_SIZE + PEERMEM_DATA_OFFSET + routeRecvSize + expertCountRecvSize +
                          quantTokenScaleSize + combineOut;
 
     return totalBytes;

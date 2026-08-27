@@ -119,6 +119,7 @@ struct WorkspaceInfo {
         // 以下三组 flag 仅由 MoE 专家使用；共享专家路径不使用这些 flag。
         bool useGroupGrainedActivationFlag = tilingData->topoType == TOPO_TYPE_MTE;
         bool useMteWaveCombine = tilingData->topoType == TOPO_TYPE_MTE;
+        bool useGlobalWaveSequence = UseCompactRouteIndex(tilingData->topoType, tilingData->groupedMatmulMode);
         bool useGroupSyncCounters = tilingData->topoType == TOPO_TYPE_URMA;
 
         int64_t maxWavesPerExpert =
@@ -152,9 +153,9 @@ struct WorkspaceInfo {
 
         if (useMteWaveCombine) {
             gmm2ReadyPtr = base + workspaceSize;
-            // PER_EXPERT 模式下 slotIdx 为 expertIdx，PER_BATCH 模式下为 batchIdx；
-            // 每个 AIC 到达标记独占一个 64B cache line。
-            workspaceSize += SIZE_INT_32 * moeExpertCount * tilingData->aicNum * INT_CACHELINE;
+            // A8W8 用每 AIC 一个单调递增的全局 wave 序号；W4 保持逐专家槽，避免改变既有路径。
+            int64_t readySlotCount = useGlobalWaveSequence ? 1 : moeExpertCount;
+            workspaceSize += SIZE_INT_32 * readySlotCount * tilingData->aicNum * INT_CACHELINE;
         }
 
         if (useGroupSyncCounters) {
@@ -178,7 +179,7 @@ struct WorkspaceInfo {
         // 以下条件分配与 mega_moe.h 编译期守卫 (ENABLE_A8W4 / ENABLE_A4W4 / CombineQuantMode) 一致，
         // 由 TilingKey 保证同步。
         // W4 Wave-ahead Dispatch 与 layered A8W4 都会跨 Activation 保留 cumsum；Activation 会覆盖对应 UB，
-        // 因此需要逐物理 block 的 GM 备份。A8W8 在 GMM 前完成全部 Dispatch，不需要该备份。
+        // 因此需要逐物理 block 的 GM 备份。A8W8 的 cumsum 常驻 AIV1 UB 并按 wave 连续推进，不需要该备份。
         cumsumInfoPtr = nullptr;
         gmm1MmadResPtr = nullptr;
         gmm2MmadResPtr = nullptr;

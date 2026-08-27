@@ -261,6 +261,18 @@ __aicore__ inline WorkRange GetBalancedTokenRange(uint32_t totalTokens, uint32_t
     return {workerIdx * base + extraBefore, base + static_cast<uint32_t>(workerIdx < remainder)};
 }
 
+// 以全局 row 前缀轮转“多一个 token”的首 owner；Dispatch/Combine 共用这一公式。
+__aicore__ inline WorkRange GetRotatedBalancedTokenRange(uint32_t totalTokens, uint32_t workerIdx, uint32_t workerCount,
+                                                         uint64_t globalRowPrefix)
+{
+    if (workerCount == 0U || workerIdx >= workerCount) {
+        return {};
+    }
+    uint32_t firstOwner = static_cast<uint32_t>(globalRowPrefix % workerCount);
+    uint32_t logicalWorkerIdx = workerIdx >= firstOwner ? workerIdx - firstOwner : workerIdx + workerCount - firstOwner;
+    return GetBalancedTokenRange(totalTokens, logicalWorkerIdx, workerCount);
+}
+
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
 // 使用调用方准备的全零 UB Tensor，清理当前 AIV 任务负责的连续 GM 区域。
 template <int32_t JobAlignment>
@@ -449,6 +461,7 @@ __aicore__ inline uint32_t AdvanceExpertTokenPositionInWave(uint32_t expertToken
         expertRemainingTokenCount < waveRemainingTokenCapacity ? expertRemainingTokenCount : waveRemainingTokenCapacity;
     waveMGroupCount += Ops::Base::CeilDiv(sliceTokenCount, TileM);
     position.tokenIndexInExpert += sliceTokenCount;
+    position.globalTokenIndex += sliceTokenCount;
     if (position.tokenIndexInExpert >= expertTokenCount) {
         ++position.expertIdx;
         position.tokenIndexInExpert = 0U;
