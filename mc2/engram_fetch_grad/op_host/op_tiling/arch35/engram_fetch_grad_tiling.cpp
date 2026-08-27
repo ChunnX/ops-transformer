@@ -586,6 +586,7 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
     int64_t wsRdispls = numRanks * UB_ALIGN;
     int64_t wsCounterScratch = static_cast<int64_t>(tilingData.aivNum) * UB_ALIGN;
     int64_t wsFlagScratch = 32;
+    int64_t wsGeneration = UB_ALIGN;
     int64_t wsSegCount = static_cast<int64_t>(tilingData.aivNum) * sizeof(int32_t);
 
     int64_t maxSortCount = totalRecv;
@@ -607,7 +608,7 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
     int64_t wsGradUniqueFp32 = totalRecv * tilingData.hiddenDim * sizeof(float);
 
     int64_t wsTotal = wsGradSorted + wsRecvGrad + wsSdispls + wsRdispls + wsCounterScratch + wsFlagScratch +
-                      wsSegCount + wsSortTotal + wsGradUniqueFp32;
+                      wsGeneration + wsSegCount + wsSortTotal + wsGradUniqueFp32;
     wsTotal = AlignTo(wsTotal, BUFFER_ALIGNMENT);
     wsTotal += SYSTEM_NEED_WORKSPACE;
 

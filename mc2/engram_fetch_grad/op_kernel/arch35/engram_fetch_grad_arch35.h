@@ -151,6 +151,8 @@ private:
     GM_ADDR recvLocalEntryGM_{0};
     GM_ADDR counterScratchGM_{0};
     GM_ADDR flagScratchGM_{0};
+    GM_ADDR generationGM_{0};
+    uint32_t currentGen_{0};
     GM_ADDR segCountGM_{0};
     GM_ADDR coreStartGM_{0};
     GM_ADDR sortCompanionGM_{0};
@@ -455,6 +457,8 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     counterScratchGM_ = workspaceGM_ + wsOffset;
     wsOffset += static_cast<uint64_t>(tilingData->aivNum) * UB_ALIGN;
     flagScratchGM_ = workspaceGM_ + wsOffset;
+    wsOffset += UB_ALIGN;
+    generationGM_ = workspaceGM_ + wsOffset;
     wsOffset += UB_ALIGN;
     segCountGM_ = workspaceGM_ + wsOffset;
     wsOffset += Ceil(static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
@@ -772,15 +776,13 @@ __aicore__ inline void EngramFetchGradArch35::SendGradRemote(uint32_t dstRank, u
         if (totalBlocks_ > 1U) {
             uint64_t startTime = static_cast<uint64_t>(AscendC::GetSystemCycle()) / ENGRAM_GRAD_CYCLES_PER_US;
             int32_t remoteReadCntRaw = ReadLocalCounter(localWinBase, tokenReadOffset_, dstRank, senderIdx);
-            int32_t remoteReadCnt = ((remoteReadCntRaw & COUNTER_MAGIC_MASK) == COUNTER_MAGIC) ?
-                                        (remoteReadCntRaw & ~COUNTER_MAGIC_MASK) :
-                                        0;
+            int32_t remoteReadCnt =
+                ((remoteReadCntRaw >> GEN_SHIFT & GEN_MASK) == currentGen_) ? (remoteReadCntRaw & COUNT_MASK) : 0;
             while (localWriteCnt >= static_cast<uint32_t>(remoteReadCnt) &&
                    localWriteCnt - static_cast<uint32_t>(remoteReadCnt) >= slotsPerSender) {
                 remoteReadCntRaw = ReadLocalCounter(localWinBase, tokenReadOffset_, dstRank, senderIdx);
-                remoteReadCnt = ((remoteReadCntRaw & COUNTER_MAGIC_MASK) == COUNTER_MAGIC) ?
-                                    (remoteReadCntRaw & ~COUNTER_MAGIC_MASK) :
-                                    0;
+                remoteReadCnt =
+                    ((remoteReadCntRaw >> GEN_SHIFT & GEN_MASK) == currentGen_) ? (remoteReadCntRaw & COUNT_MASK) : 0;
                 TimeoutCheck(startTime);
             }
         }
@@ -799,9 +801,9 @@ __aicore__ inline void EngramFetchGradArch35::SendGradRemote(uint32_t dstRank, u
 
         GM_ADDR remoteCounterAddr = GetRemoteWinAddr(dstRank, tokenWriteOffset_) +
                                     (static_cast<uint64_t>(rankId_) * sendersPerRank_ + senderIdx) * STATE_OFFSET;
-        int32_t ret =
-            hcomm_.WriteWithNotifyNbi(handle, remoteSlotAddr, srcAddr, dataBytes, remoteCounterAddr,
-                                      static_cast<uint64_t>(COUNTER_MAGIC | static_cast<int32_t>(localWriteCnt + 1)));
+        int32_t ret = hcomm_.WriteWithNotifyNbi(handle, remoteSlotAddr, srcAddr, dataBytes, remoteCounterAddr,
+                                                static_cast<uint64_t>(static_cast<int32_t>(currentGen_ << GEN_SHIFT) |
+                                                                      static_cast<int32_t>(localWriteCnt + 1)));
         ascendc_assert(ret == 0, "WriteWithNotifyNbi failed, ret=%d, tag=ExTok_data, rankId=%u, dstRank=%u", ret,
                        rankId_, dstRank);
 
@@ -861,14 +863,12 @@ __aicore__ inline void EngramFetchGradArch35::RecvGradFromPeers()
         while (senderReceived < senderRecvCount) {
             uint64_t startTime = static_cast<uint64_t>(AscendC::GetSystemCycle()) / ENGRAM_GRAD_CYCLES_PER_US;
             int32_t remoteWriteCntRaw = ReadLocalCounter(localWinBase, tokenWriteOffset_, srcRank, si);
-            int32_t remoteWriteCnt = ((remoteWriteCntRaw & COUNTER_MAGIC_MASK) == COUNTER_MAGIC) ?
-                                         (remoteWriteCntRaw & ~COUNTER_MAGIC_MASK) :
-                                         0;
+            int32_t remoteWriteCnt =
+                ((remoteWriteCntRaw >> GEN_SHIFT & GEN_MASK) == currentGen_) ? (remoteWriteCntRaw & COUNT_MASK) : 0;
             while (static_cast<uint32_t>(remoteWriteCnt) <= localReadCnt) {
                 remoteWriteCntRaw = ReadLocalCounter(localWinBase, tokenWriteOffset_, srcRank, si);
-                remoteWriteCnt = ((remoteWriteCntRaw & COUNTER_MAGIC_MASK) == COUNTER_MAGIC) ?
-                                     (remoteWriteCntRaw & ~COUNTER_MAGIC_MASK) :
-                                     0;
+                remoteWriteCnt =
+                    ((remoteWriteCntRaw >> GEN_SHIFT & GEN_MASK) == currentGen_) ? (remoteWriteCntRaw & COUNT_MASK) : 0;
                 TimeoutCheck(startTime);
             }
 
@@ -919,7 +919,8 @@ __aicore__ inline void EngramFetchGradArch35::RecvGradFromPeers()
 
             localReadCnt += slotsRead;
             senderReceived += tokensRead;
-            WriteRemoteCounter(srcRank, tokenReadOffset_, COUNTER_MAGIC | static_cast<int32_t>(localReadCnt), si);
+            WriteRemoteCounter(srcRank, tokenReadOffset_,
+                               static_cast<int32_t>(currentGen_ << GEN_SHIFT) | static_cast<int32_t>(localReadCnt), si);
         }
     }
 }
@@ -986,6 +987,18 @@ __aicore__ inline void EngramFetchGradArch35::InitFlagsAndDispls()
     if (aivId_ != 0) {
         return;
     }
+
+    GlobalTensor<int32_t> genGM;
+    genGM.SetGlobalBuffer((__gm__ int32_t *)generationGM_);
+    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(genGM);
+    int32_t prevGen = genGM.GetValue(0);
+    currentGen_ = static_cast<uint32_t>(prevGen + 1) & GEN_MASK;
+    LocalTensor<int32_t> genLocal = statusBuf_.Get<int32_t>();
+    genLocal.SetValue(0, static_cast<int32_t>(currentGen_));
+    EngramFetchGradSyncFunc<HardEvent::S_MTE3>();
+    DataCopyParams genParams = {1U, static_cast<uint16_t>(sizeof(int32_t)), 0U, 0U};
+    DataCopyPad(genGM, genLocal, genParams);
+    EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
 
     LocalTensor<int32_t> flagLocal = statusBuf_.Get<int32_t>();
     Duplicate<int32_t>(flagLocal, 1, STATE_OFFSET / sizeof(int32_t));
@@ -1160,6 +1173,11 @@ __aicore__ inline void EngramFetchGradArch35::Process()
     if ASCEND_IS_AIV {
         InitFlagsAndDispls();
         SyncAll<true>();
+
+        GlobalTensor<int32_t> genGM;
+        genGM.SetGlobalBuffer((__gm__ int32_t *)generationGM_);
+        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(genGM);
+        currentGen_ = static_cast<uint32_t>(genGM.GetValue(0));
 
         UnsortGrad();
         SyncAll<true>();
