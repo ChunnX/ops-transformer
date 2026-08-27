@@ -23,7 +23,12 @@
 
 > [!NOTE]
 >
-> FP8（`quant_mode=1`）、MXFP4（`quant_mode=2/3`）量化输入以及BSND布局仅在<term>Ascend 950PR/Ascend 950DT</term>（arch35）上支持；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>仅支持float16/bfloat16输入与TND/BNSD布局。
+> <!-- npu="950" id10 -->
+> <term>Ascend 950PR/Ascend 950DT</term>支持`quant_mode=0`（非量化的float16/bfloat16）、`quant_mode=1`（FP8量化）、`quant_mode=2/3`（MXFP4量化）。
+> <!-- end id10 -->
+> <!-- npu="910b,A3" id11 -->
+> <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>仅支持`quant_mode=0`（非量化的float16/bfloat16输入）。
+> <!-- end id11 -->
 
 ## 功能说明
 
@@ -95,9 +100,9 @@ cann_ops_transformer.block_sparse_attention(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 | 非连续Tensor |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| query | Tensor | 必选 | 公式中的query | float16/bfloat16/float8_e4m3fn/uint8 | ND | <ul><li>TND: [Tq, Nq, D]</li><li>BNSD: [B, Nq, Sq, D]</li><li>BSND: [B, Sq, Nq, D]</li></ul> | × |
-| key | Tensor | 必选 | 公式中的key | float16/bfloat16/float8_e4m3fn/uint8 | ND | <ul><li>TND: [Tkv, Nkv, D]</li><li>BNSD: [B, Nkv, Skv, D]</li><li>BSND: [B, Skv, Nkv, D]</li></ul> | × |
-| value | Tensor | 必选 | 公式中的value | float16/bfloat16/float8_e4m3fn/uint8 | ND | <ul><li>TND: [Tkv, Nkv, D]</li><li>BNSD: [B, Nkv, Skv, D]</li><li>BSND: [B, Skv, Nkv, D]</li></ul> | × |
+| query | Tensor | 必选 | 公式中的query | float16/bfloat16/float8_e4m3fn/uint8 | ND | <ul><li>TND: [Tq, Nq, D]</li><li>BNSD: [B, Nq, Sq, D]</li><li>BSND: [B, Sq, Nq, D]</li></ul>（MXFP4量化时D为逻辑headDim，实际存储为uint8、形状末维为D//2） | × |
+| key | Tensor | 必选 | 公式中的key | float16/bfloat16/float8_e4m3fn/uint8 | ND | <ul><li>TND: [Tkv, Nkv, D]</li><li>BNSD: [B, Nkv, Skv, D]</li><li>BSND: [B, Skv, Nkv, D]</li></ul>（MXFP4量化时D为逻辑headDim，实际存储为uint8、形状末维为D//2） | × |
+| value | Tensor | 必选 | 公式中的value | float16/bfloat16/float8_e4m3fn/uint8 | ND | <ul><li>TND: [Tkv, Nkv, D]</li><li>BNSD: [B, Nkv, Skv, D]</li><li>BSND: [B, Skv, Nkv, D]</li></ul>（MXFP4量化时D为逻辑headDim，实际存储为uint8、形状末维为D//2） | × |
 | block_sparse_mask | Tensor | 必选 | 块级稀疏mask，1表示保留该块参与计算，0表示跳过该块 | int8 | ND | [B, N, ceil(Sq/block_x), ceil(Skv/block_y)] | × |
 | block_shape | list[int] | 必选 | 稀疏块形状，必须包含两个元素[block_x, block_y] | int64 | - | 长度为2 | - |
 | q_input_layout | string | 可选 | 输入query张量的数据排布格式，默认"TND" | string | - | - | - |
@@ -126,7 +131,7 @@ cann_ops_transformer.block_sparse_attention(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 | 非连续Tensor |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| attention_out | Tensor | 必选 | 公式中的attentionOut | float16/bfloat16 | ND | 与query一致（MXFP4输入时最后一维为2*D） | × |
+| attention_out | Tensor | 必选 | 公式中的attentionOut | float16/bfloat16 | ND | 与query一致（MXFP4量化时，query以uint8伪装传入且存储维为D/2，attentionOut为反量化后的浮点输出，最后一维为逻辑headDim，即2*(D/2)=D） | × |
 | softmax_lse | Tensor | 可选 | Softmax计算的log-sum-exp中间结果，`return_softmax_lse`为True时输出，否则输出空Tensor {0} | float32 | ND | <ul><li>TND: [Tq, Nq, 1]</li><li>BNSD: [B, Nq, Sq, 1]</li><li>BSND: [B, Sq, Nq, 1]</li></ul> | × |
 
 ## 约束说明
@@ -292,7 +297,7 @@ cann_ops_transformer.block_sparse_attention(
         attention_out_dtype=torch.float16,
     )
     torch_npu.npu.synchronize()
-    # MXFP4输入时输出为逻辑headDim D（Q/K/V存储维D//2，反量化输出D）
+    # MXFP4量化时输出为逻辑headDim D（Q/K/V存储维D//2，反量化输出D）
     assert attention_out.shape == (Tq, Nq, D)
     assert attention_out.dtype == torch.float16
     ```
