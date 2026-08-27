@@ -63,6 +63,9 @@ __aicore__ inline void RunSiTUGLU(const GatedActivationArgs<InputType> &args, co
     __ubuf__ bfloat16_t *secondPaddingOutput = outputTail + plan.tailLoopCount * VECTOR_LENGTH_FP32;
     const uint16_t rowLoopCount = static_cast<uint16_t>(plan.validRowCount);
     const uint16_t fullVectorLoopCount = static_cast<uint16_t>(plan.fullVectorLoopCountPerRow);
+    uint32_t tailComputeMaskElementCount = plan.tailComputeMaskElementCount;
+    uint32_t firstTailStoreMaskElementCount = plan.firstTailStoreMaskElementCount;
+    uint32_t secondPaddingStoreMaskElementCount = plan.secondPaddingStoreMaskElementCount;
     __VEC_SCOPE__
     {
         AscendC::MicroAPI::RegTensor<InputType> gateReg;
@@ -90,11 +93,11 @@ __aicore__ inline void RunSiTUGLU(const GatedActivationArgs<InputType> &args, co
         AscendC::MicroAPI::MaskReg fullMask =
             AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
         AscendC::MicroAPI::MaskReg tailComputeMask =
-            AscendC::MicroAPI::UpdateMask<float>(plan.tailComputeMaskElementCount);
+            AscendC::MicroAPI::UpdateMask<float>(tailComputeMaskElementCount);
         AscendC::MicroAPI::MaskReg firstTailStoreMask =
-            AscendC::MicroAPI::UpdateMask<float>(plan.firstTailStoreMaskElementCount);
+            AscendC::MicroAPI::UpdateMask<float>(firstTailStoreMaskElementCount);
         AscendC::MicroAPI::MaskReg secondPaddingStoreMask =
-            AscendC::MicroAPI::UpdateMask<bfloat16_t>(plan.secondPaddingStoreMaskElementCount);
+            AscendC::MicroAPI::UpdateMask<bfloat16_t>(secondPaddingStoreMaskElementCount);
         AscendC::MicroAPI::Duplicate(oneReg, scalarOne);
         AscendC::MicroAPI::Duplicate(c1Reg, tanhC1);
         AscendC::MicroAPI::Duplicate(c2Reg, tanhC2);

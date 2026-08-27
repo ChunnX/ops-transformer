@@ -104,7 +104,7 @@ struct ActivationLoopPlan {
     uint32_t tailElementCountPerRow = 0U;
     uint32_t outputPaddingElementCountPerRow = 0U;
 
-    // 以下字段均为尾块的标量派生结果，具体激活仅在自身 VecScope 内据此创建 mask。
+    // 以下字段均为尾块的标量派生结果。UpdateMask 接收可写引用，具体激活需复制 mask 计数后再调用。
     uint32_t tailColumnOffsetElements = 0U;
     uint32_t tailComputeMaskElementCount = 0U;
     uint32_t firstTailStoreMaskElementCount = 0U;
