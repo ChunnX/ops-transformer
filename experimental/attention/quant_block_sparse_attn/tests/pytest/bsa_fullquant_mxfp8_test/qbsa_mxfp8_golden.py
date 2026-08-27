@@ -1327,27 +1327,48 @@ def _apply_sticky_overflow_stc_pattern(
 ):
     """Materialize deterministic STC inputs for ordered MX group overflow."""
     case_name = str(case.get("name") or "")
-    qk_signs = {
-        "MXSTC113_": (1.0, 1.0, -1.0, -1.0),
-        "MXSTC114_": (-1.0, -1.0, 1.0, 1.0),
+    qk_specs = {
+        # (signs, E4M3 payload, E8M0 exponent per D group)
+        "MXSTC113_": ((1.0, 1.0, -1.0, -1.0), 448.0, (105,) * 4),
+        "MXSTC114_": ((-1.0, -1.0, 1.0, 1.0), 448.0, (105,) * 4),
+        "MXSTC117_": ((1.0, -1.0, 0.0, 0.0), 448.0, (106,) * 4),
+        "MXSTC118_": ((-1.0, 1.0, 0.0, 0.0), 448.0, (106,) * 4),
+        "MXSTC119_": ((1.0, 1.0, -1.0, -1.0), 320.0, (105,) * 4),
+        "MXSTC120_": ((-1.0, -1.0, 1.0, 1.0), 320.0, (105,) * 4),
+        "MXSTC121_": ((1.0, 1.0, -1.0, -1.0), 288.0, (105,) * 4),
+        "MXSTC122_": ((-1.0, -1.0, 1.0, 1.0), 288.0, (105,) * 4),
+        "MXSTC123_": ((1.0, 1.0, -1.0, -1.0), 448.0, (105, 104, 105, 104)),
+        "MXSTC124_": ((-1.0, -1.0, 1.0, 1.0), 448.0, (105, 104, 105, 104)),
     }
-    pv_signs = {
-        "MXSTC115_": (1.0, -1.0, 1.0, -1.0),
-        "MXSTC116_": (-1.0, 1.0, -1.0, 1.0),
+    pv_specs = {
+        # (sign, E4M3 payload, E8M0 exponent) per S2 group.
+        "MXSTC115_": ((1.0, 448.0, 115), (-1.0, 448.0, 115)) * 2,
+        "MXSTC116_": ((-1.0, 448.0, 115), (1.0, 448.0, 115)) * 2,
+        "MXSTC125_": ((1.0, 448.0, 115), (-1.0, 448.0, 115)),
+        "MXSTC126_": ((-1.0, 448.0, 115), (1.0, 448.0, 115)),
+        # Each 256-token tile contributes about 0.5625*FLT_MAX.  The second
+        # tile therefore overflows the ordered accumulator, while the final
+        # tail token contributes the opposite 0.625*FLT_MAX.
+        "MXSTC127_": ((1.0, 288.0, 111),) * 16
+        + ((-1.0, 320.0, 119),),
+        "MXSTC128_": ((-1.0, 288.0, 111),) * 16
+        + ((1.0, 320.0, 119),),
     }
 
-    qk_pattern = next(
-        (signs for prefix, signs in qk_signs.items() if case_name.startswith(prefix)),
+    qk_spec = next(
+        (spec for prefix, spec in qk_specs.items() if case_name.startswith(prefix)),
         None,
     )
-    if qk_pattern is not None:
+    if qk_spec is not None:
+        signs, payload, exponents = qk_spec
         if q_fp32 is not None:
             q_fp32.zero_()
-            q_group_value = math.ldexp(448.0, 105)
-            for group_idx, sign in enumerate(qk_pattern):
+            for group_idx, (sign, exponent) in enumerate(zip(signs, exponents)):
                 group_start = group_idx * QUANT_GROUP_SIZE
                 group_end = group_start + QUANT_GROUP_SIZE
-                q_fp32[..., group_start:group_end] = sign * q_group_value
+                q_fp32[..., group_start:group_end] = sign * math.ldexp(
+                    payload, exponent
+                )
         if k_fp32 is not None and v_fp32 is not None:
             k_fp32.zero_()
             v_fp32.zero_()
@@ -1358,21 +1379,22 @@ def _apply_sticky_overflow_stc_pattern(
             v_fp32[0, 0, 1, :] = 1.0
         return
 
-    pv_pattern = next(
-        (signs for prefix, signs in pv_signs.items() if case_name.startswith(prefix)),
+    pv_spec = next(
+        (spec for prefix, spec in pv_specs.items() if case_name.startswith(prefix)),
         None,
     )
-    if pv_pattern is not None:
+    if pv_spec is not None:
         if q_fp32 is not None:
             q_fp32.zero_()
         if k_fp32 is not None and v_fp32 is not None:
             k_fp32.zero_()
             v_fp32.zero_()
-            v_group_value = math.ldexp(448.0, 115)
-            for group_idx, sign in enumerate(pv_pattern):
+            for group_idx, (sign, payload, exponent) in enumerate(pv_spec):
                 group_start = group_idx * QUANT_GROUP_SIZE
                 group_end = group_start + QUANT_GROUP_SIZE
-                v_fp32[0, 0, group_start:group_end, :] = sign * v_group_value
+                v_fp32[0, 0, group_start:group_end, :] = sign * math.ldexp(
+                    payload, exponent
+                )
 
 
 def generate_mxfp8_inputs(case=None, max_block_per_batch=None, atten_mask_shape=None):
