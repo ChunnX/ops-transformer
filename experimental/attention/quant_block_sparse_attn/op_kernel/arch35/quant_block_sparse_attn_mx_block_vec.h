@@ -176,10 +176,8 @@ public:
             outCopyParams.blockCount = actVecMSize;
             outCopyParams.srcStride = 0U;
             outCopyParams.dstStride = constInfo.attentionOutStride;
-            const uint64_t tokenOffset =
-                static_cast<uint64_t>(queryTokenBase) + s1Idx + vecMbaseIdx;
-            const uint64_t outOffset =
-                (tokenOffset * constInfo.realN2Size + n1Idx) * constInfo.dSizeV;
+            const uint64_t tokenOffset = static_cast<uint64_t>(queryTokenBase) + s1Idx + vecMbaseIdx;
+            const uint64_t outOffset = (tokenOffset * constInfo.realN2Size + n1Idx) * constInfo.dSizeV;
             // 空行是冷路径，复用 V1 queue 作为临时零块，避免常驻占用 16 KiB UB。
             LocalTensor<OUTPUT_T> emptyOut = stage1OutQue_[0].template AllocTensor<OUTPUT_T>();
             Duplicate<OUTPUT_T>(emptyOut, 0.0F, actVecMSize * constInfo.dSizeV);
@@ -552,11 +550,9 @@ private:
         dataCopyParams.blockCount = runInfo.actVecMSize;
         dataCopyParams.srcStride = (dTemplateAlign64 - constInfo.dSizeV) >> 4;
         dataCopyParams.dstStride = constInfo.attentionOutStride;
-        const uint64_t tokenOffset = static_cast<uint64_t>(runInfo.queryTokenBase) + runInfo.s1Idx +
-                                     runInfo.vecMbaseIdx;
-        const uint64_t dstOffset =
-            (tokenOffset * constInfo.realN2Size + runInfo.realN2Idx) *
-            constInfo.dSizeV;
+        const uint64_t tokenOffset =
+            static_cast<uint64_t>(runInfo.queryTokenBase) + runInfo.s1Idx + runInfo.vecMbaseIdx;
+        const uint64_t dstOffset = (tokenOffset * constInfo.realN2Size + runInfo.realN2Idx) * constInfo.dSizeV;
         DataCopyPad(attentionOutGm_[dstOffset], attenOut, dataCopyParams);
     }
 
@@ -572,8 +568,8 @@ private:
         dataCopyParams.blockCount = runInfo.actVecMSize;
         dataCopyParams.srcStride = 0;
         dataCopyParams.dstStride = constInfo.softmaxLseStride;
-        const uint64_t tokenOffset = static_cast<uint64_t>(runInfo.queryTokenBase) + runInfo.s1Idx +
-                                     runInfo.vecMbaseIdx;
+        const uint64_t tokenOffset =
+            static_cast<uint64_t>(runInfo.queryTokenBase) + runInfo.s1Idx + runInfo.vecMbaseIdx;
         const uint64_t dstOffset = tokenOffset * constInfo.realN2Size + runInfo.realN2Idx;
         DataCopyPad(softmaxLseGm_[dstOffset], lseUb, dataCopyParams);
         softmaxLseQueue_.template FreeTensor(lseUb);

@@ -262,9 +262,15 @@ public:
     }
 
 private:
-    __aicore__ inline uint32_t AlignUp32(uint32_t value) const { return (value + 31U) >> 5 << 5; }
+    __aicore__ inline uint32_t AlignUp32(uint32_t value) const
+    {
+        return (value + 31U) >> 5 << 5;
+    }
 
-    __aicore__ inline uint32_t AlignUp64(uint32_t value) const { return (value + 63U) >> 6 << 6; }
+    __aicore__ inline uint32_t AlignUp64(uint32_t value) const
+    {
+        return (value + 63U) >> 6 << 6;
+    }
 
     template <uint32_t SUB_LOOP>
     __aicore__ inline uint32_t GetSubLoopS2Size(const MxRunInfo &runInfo) const
