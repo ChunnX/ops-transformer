@@ -19,7 +19,7 @@ QFA_METADATA_OP_NAME = "quant_flash_attn_metadata"
 
 class QuantMode(IntEnum):
     """quant_mode 枚举：对外字符串/int 经由本枚举映射为传给算子侧的 int。"""
-
+    HIF8_PER_TENSOR = 0
     A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 1
     A8C8_QKV_MXFP8_P_MXFP8_SOFTMAX_FP32 = 2
     A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP16 = 3
