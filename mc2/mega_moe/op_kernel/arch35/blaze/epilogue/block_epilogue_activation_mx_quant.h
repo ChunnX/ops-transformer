@@ -27,30 +27,12 @@
 #include "gated_activation.h"
 
 namespace ActivationQuantMsg {
-enum class QuantMode : uint32_t {
-    DEFAULT = 0x0U,
-    PERTENSOR_MODE = 0x1U,
-    PERCHANNEL_MODE = 0x1U << 1,
-    PERTOKEN_MODE = 0x1U << 2,
-    MX_PERGROUP_MODE = 0x1U << 3,
-    PERBLOCK_MODE = 0x1U << 4,
-};
-
-enum class QuantDtype : uint8_t {
-    DEFAULT = 0x0U,
-    FP8_E4M3FN = 0x1U,
-    FP8_E5M2 = 0x1U << 1,
-};
-
 using ActMode = MegaMoeImpl::MegaMoeActMode;
 using ActSubMode = MegaMoeImpl::MegaMoeActSubMode;
 
 constexpr int64_t OUT_ELE_NUM_ONE_BLK = 64;
 constexpr uint32_t Y_IDX = 0;
 constexpr uint32_t Y_SCALE_IDX = 1;
-constexpr uint32_t GROUP_FLAG_IDX = 2;
-constexpr uint32_t M_LOC_IDX = 4;
-constexpr uint32_t BLOCK_SIZE = 32;
 constexpr uint16_t MAX_EXP_FOR_BF16 = 0x7f80;
 constexpr uint16_t MAX_EXP_FOR_FP8 = 0x00ff;
 constexpr uint16_t BF16_EXP_BIAS = 0x7f00;
@@ -61,32 +43,11 @@ constexpr uint16_t FP8_E4M3_MAX_EXP = 0x0400; // elem_emax右移7位(BF16E8M7)
 constexpr uint16_t FP8_E5M2_MAX_EXP = 0x0780;
 constexpr uint16_t FP4_E2M1_MAX_EXP = 0x0100;
 constexpr uint16_t FP4_E1M2_MAX_EXP = 0x0000;
-constexpr uint32_t FLAG_VALUE_ONE = 1;
 constexpr int64_t QUANT_ONCE_NUM = 256;
 constexpr int64_t QUANT_ONCE_NUM_FP4 = 128;
 constexpr int64_t SCALE_ONCE_NUM = 8;
 constexpr int64_t MX_SCALE_PACK_COUNT = 64;
 
-constexpr AscendC::MicroAPI::CastTrait ctInt322Fp32 = {
-    AscendC::MicroAPI::RegLayout::UNKNOWN, AscendC::MicroAPI::SatMode::UNKNOWN,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
-
-constexpr AscendC::MicroAPI::CastTrait ctFp322Half = {
-    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_RINT};
-
-constexpr AscendC::MicroAPI::CastTrait ctHalf2Fp32Zero = {
-    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::UNKNOWN};
-
-constexpr AscendC::MicroAPI::CastTrait ctHalf2Fp32One = {
-    AscendC::MicroAPI::RegLayout::ONE, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::UNKNOWN};
-
-static constexpr AscendC::MicroAPI::DivSpecificMode DIV_MODE = {
-    AscendC::MicroAPI::MaskMergeMode::ZEROING,
-    true,
-};
 static constexpr AscendC::MicroAPI::CastTrait CAST_ONE = {
     AscendC::MicroAPI::RegLayout::ONE, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
     AscendC::RoundMode::UNKNOWN};
@@ -167,13 +128,13 @@ public:
     __aicore__ inline void UpdateNextProblem(const ProblemShape &problemShape);
 
 private:
-    __aicore__ inline void VFDoActivationForMX(uint16_t mSize, uint16_t pingpongIdx = 0, uint64_t mLoc = 0);
+    __aicore__ inline void VFDoActivationForMX(uint16_t mSize, uint16_t pingpongIdx = 0);
 
     __aicore__ inline void VFDoActivationAndQuantForMX(__ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst,
                                                        __ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTypeIn *secondSrc,
                                                        __ubuf__ bfloat16_t *gluResAddr, __ubuf__ uint16_t *maxExpAddr,
                                                        __ubuf__ uint16_t *halfScaleLocalAddr, uint16_t mSize,
-                                                       uint16_t nSize, uint64_t mLoc = 0);
+                                                       uint16_t nSize);
 
     __aicore__ inline void VFDoActivation(__ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTypeIn *secondSrc,
                                           __ubuf__ bfloat16_t *gluResAddr, uint16_t mSize, uint16_t nSize,
@@ -220,16 +181,11 @@ private:
 
     int64_t n_;
     int64_t scaleN_;
-    uint32_t subBlockIdx_ = AscendC::GetSubBlockIdx();
     uint32_t singleM_; // cur singleShapeM
     uint32_t singleN_;
-    bool isBiasEpilogue_ = false;
-    int64_t UBBlockSize_ = 0;
     uint32_t vlForHalfNumber_ = 0;
-    uint16_t elementAfterReduce_ = 0;
     uint16_t fpEmax_ = 0;
 
-    BlockCoord blockCoord_{0, 0, 0, 0, 0, 0};
     float clampLimit_{0.0f};
     uint8_t actMode_{static_cast<uint8_t>(ActMode::SWIGLU)};
     uint8_t actSubMode_{static_cast<uint8_t>(ActSubMode::DEFAULT)};
@@ -354,11 +310,10 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
         AscendC::MicroAPI::RegTensor<uint16_t> vdExpExtract0, vdExpExtract1;
         AscendC::MicroAPI::RegTensor<uint16_t> expMaskBF16, vdMaxExp;
         AscendC::MicroAPI::Duplicate(expMaskBF16, MAX_EXP_FOR_BF16);
-        AscendC::MicroAPI::MaskReg scaleMask1, scaleMask2;
+        AscendC::MicroAPI::MaskReg scaleMask1;
         AscendC::MicroAPI::UnalignReg u1;
         for (uint16_t i = 0; i < loopNum; i++) {
             scaleMask1 = AscendC::MicroAPI::UpdateMask<bfloat16_t>(totalCountInUB);
-            scaleMask2 = AscendC::MicroAPI::UpdateMask<bfloat16_t>(totalCountInUB);
             AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE,
                                         AscendC::MicroAPI::LoadDist::DIST_DINTLV_B16>(
                 vdExp0, vdExp1, srcAddr, onceNum); // copy two chunks from srcAddr to regbase
@@ -385,7 +340,7 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
     {
         AscendC::MicroAPI::RegTensor<uint16_t> expMask, vdMaxExp;
         AscendC::MicroAPI::Duplicate(expMask, MAX_EXP_FOR_BF16); // MAX_EXP_FOR_BF16表示bf16正无穷 大小：128
-        AscendC::MicroAPI::MaskReg cmpResult, zeroMask, cmpResultSub, preMaskScale;
+        AscendC::MicroAPI::MaskReg cmpResult, zeroMask, preMaskScale;
         AscendC::MicroAPI::RegTensor<uint16_t> maxExpValue, sharedExp, scaleValue, scaleBias, halfScale;
         AscendC::MicroAPI::Duplicate(maxExpValue, fpEmax_);     // 0x0780 大小：128 对应bf16指数位后四位
         AscendC::MicroAPI::Duplicate(scaleBias, BF16_EXP_BIAS); // 0x7f00 大小：128
@@ -644,7 +599,7 @@ __aicore__ inline void
 BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoActivationAndQuantForMX(
     __ubuf__ int8_t *outputDst, __ubuf__ uint16_t *scaleDst, __ubuf__ DataTypeIn *firstSrc,
     __ubuf__ DataTypeIn *secondSrc, __ubuf__ bfloat16_t *gluResAddr, __ubuf__ uint16_t *maxExpAddr,
-    __ubuf__ uint16_t *halfScaleLocalAddr, uint16_t mSize, uint16_t nSize, uint64_t mLoc)
+    __ubuf__ uint16_t *halfScaleLocalAddr, uint16_t mSize, uint16_t nSize)
 {
     uint32_t nDstUbAligned =
         Ops::Base::CeilAlign(static_cast<uint32_t>(nSize), static_cast<uint32_t>(AscendC::ONE_BLK_SIZE));
@@ -670,7 +625,7 @@ BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoAc
 
 BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoActivationForMX(
-    uint16_t mSize, uint16_t pingpongIdx, uint64_t mLoc)
+    uint16_t mSize, uint16_t pingpongIdx)
 {
     constexpr uint32_t pongElemOf_DataTypeIn = MAX_SINGLE_MN;
     constexpr uint32_t pongElemOf_bf16 = MAX_SINGLE_MN * sizeof(DataTypeIn) / sizeof(bfloat16_t);
@@ -695,7 +650,7 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
         l0cOutUbSecondAddr = (__ubuf__ DataTypeIn *)l0cOutUbSecond_.GetPhyAddr();
     }
     VFDoActivationAndQuantForMX(quantOutputInUbAddr, quantScaleOutputInUbAddr, l0cOutUbBase, l0cOutUbSecondAddr,
-                                gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_, mLoc);
+                                gluResAddr, maxExpAddr, halfScaleAddr, mSize, singleN_);
 }
 
 BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
@@ -722,20 +677,16 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
 {
     singleM_ = Get<M_VALUE>(blockShape); // 128
     singleN_ = Get<N_VALUE>(blockShape); // 256
-    blockCoord_ = blockCoord;
 
     if (singleM_ == 0) {
         return;
     }
 
     vlForHalfNumber_ = AscendC::VECTOR_REG_WIDTH / sizeof(bfloat16_t); // 256 / 2 = 128
-    UBBlockSize_ = BLOCK_SIZE;                                         // 32
-    elementAfterReduce_ = AscendC::VECTOR_REG_WIDTH / UBBlockSize_;    // 256 / 32 = 8
 
     uint64_t yOffset = Get<Y_IDX>(blockCoord);
     uint64_t yScaleOffset = Get<Y_SCALE_IDX>(blockCoord);
-    uint64_t mLoc = Get<M_LOC_IDX>(blockCoord);
-    VFDoActivationForMX(singleM_, pingpongIdx, mLoc); // switch(x)*y 计算quant quantScale
+    VFDoActivationForMX(singleM_, pingpongIdx); // switch(x)*y 计算quant quantScale
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
     // scale已按compact布局生成，直接copy到GM，省掉原先TransMxScaleLayout重排scale。
