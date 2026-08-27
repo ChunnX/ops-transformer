@@ -58,18 +58,28 @@ static uint16_t fp32_to_fp16(float f) {
         return sign | (exp << 10) | (mant & 0x3FF);
     }
     if (exp >= 0x1F) return sign | 0x7C00;
+    // round-to-nearest-even: check bit 12 and sticky bits 0-11
+    uint32_t round_bit = (bits >> 12) & 1;
+    uint32_t sticky = (bits & 0xFFF) != 0;
+    if (round_bit && (sticky || (mant & 1))) {
+        mant++;
+        if (mant > 0x3FF) { mant = 0; exp++; if (exp >= 0x1F) return sign | 0x7C00; }
+    }
     return sign | (exp << 10) | mant;
 }
 
 static float bf16_to_fp32(uint16_t b) {
-    uint32_t r = (uint32_t)b << 16; float f; memcpy(&f, &r, 4); return f;
+    op::bfloat16 bf;
+    uint16_t val = b;
+    memcpy(&bf, &val, sizeof(val));
+    return (float)bf;
 }
 
 static uint16_t fp32_to_bf16(float f) {
-    uint32_t bits; memcpy(&bits, &f, 4);
-    uint32_t lsb = (bits >> 16) & 1;
-    bits += 0x7FFF + lsb;
-    return (bits >> 16) & 0xFFFF;
+    op::bfloat16 bf(f);
+    uint16_t result;
+    memcpy(&result, &bf, sizeof(result));
+    return result;
 }
 
 static float read_elem(const uint8_t* data, int64_t idx, ge::DataType dt) {
@@ -201,8 +211,8 @@ aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
     for (int64_t i = 0; i < std::min(numExpertTokens, (int64_t)10); i++) fprintf(stderr, "%d ", sidxPtr[i]);
     fprintf(stderr, "] gradY[0]=%f gradY[1]=%f\n", read_elem(gradYHost.data(), 0, gradYDtype), read_elem(gradYHost.data(), hidden, gradYDtype));
 
-    // Determine if probs exists
-    bool hasProbs = (probsOptional != nullptr);
+    // Determine if probs exists (numel > 1, matching golden's check)
+    bool hasProbs = (probsOptional != nullptr && probsOptional->GetViewShape().GetShapeSize() > 1);
     int64_t topK = hasProbs ? probsOptional->GetViewShape().GetDim(1) : 1;
 
     std::vector<uint8_t> probsHost;
@@ -244,10 +254,10 @@ aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
         if (hasProbs) {
             for (int64_t h = 0; h < hidden; h++)
                 gradXFp32[i * hidden + h] = gradYFp32[idx * hidden + h] * probsFp32[i];
-            float dot = 0.0f;
+            double dot = 0.0;
             for (int64_t h = 0; h < hidden; h++)
-                dot += gradYFp32[idx * hidden + h] * permFp32[i * hidden + h];
-            gradProbsFp32[i] = dot;
+                dot += (double)gradYFp32[idx * hidden + h] * (double)permFp32[i * hidden + h];
+            gradProbsFp32[i] = (float)dot;
         } else {
             for (int64_t h = 0; h < hidden; h++)
                 gradXFp32[i * hidden + h] = gradYFp32[idx * hidden + h];
@@ -267,6 +277,12 @@ aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
             write_elem(gradProbsHost, i, gradProbsFp32[i], probsDtype);
         aclrtMemcpy(probsGradOut->GetStorageAddr(), numExpertTokens * pElemSize, gradProbsHost, numExpertTokens * pElemSize, ACL_MEMCPY_HOST_TO_DEVICE);
         delete[] gradProbsHost;
+    } else {
+        // prob_none: write zeros to probsGradOut
+        auto pElemSize = ge::GetSizeByDataType(probsDtype);
+        auto* zeros = new uint8_t[numExpertTokens * pElemSize]();
+        aclrtMemcpy(probsGradOut->GetStorageAddr(), numExpertTokens * pElemSize, zeros, numExpertTokens * pElemSize, ACL_MEMCPY_HOST_TO_DEVICE);
+        delete[] zeros;
     }
 
     // Cleanup
