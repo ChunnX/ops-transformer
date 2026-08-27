@@ -379,7 +379,6 @@ private:
     uint32_t cmpKvHeadDim_ = 0;
 
     uint32_t qTSize_ = 0;  // 仅TND时生效
-    uint32_t kvTSize_ = 0; // 仅TND时生效
     int64_t cmpRatio_ = 1;
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
     uint32_t sparseBlockCount_ = 0;
@@ -403,7 +402,6 @@ private:
     uint64_t l2CacheSize_ = 0;
 
     bool isSameSeqAllKVTensor_ = true;
-    bool isSameActualseq_ = true;
     uint32_t maxActualseq_ = 0;
 
     ge::DataType qType_ = ge::DT_FLOAT16;
@@ -453,7 +451,6 @@ public:
     ge::graphStatus GetGSize();
     ge::graphStatus GetBatchSize();
     ge::graphStatus GetQTSize();
-    ge::graphStatus GetKVTSize();
     ge::graphStatus GetS1Size();
     ge::graphStatus GetS2SizeForPageAttention();
     ge::graphStatus GetS2SizeForTND();
@@ -486,10 +483,7 @@ public:
     uint32_t gSize_ = 0;
     uint32_t s1Size_ = 0;
     int64_t s2Size_ = 0;
-    uint32_t headDim_ = 0;
     uint32_t qTSize_ = 0;
-    uint32_t orikvTSize_ = 0;
-    uint32_t cmpkvTSize_ = 0;
     uint32_t qHeadDim_ = 0;
     uint32_t oriKvHeadDim_ = 0;
     uint32_t cmpKvHeadDim_ = 0;
@@ -536,7 +530,6 @@ public:
     gert::Shape qShape_{};
     gert::Shape oriKvShape_{};
     gert::Shape cmpKvShape_{};
-    gert::Shape oriSparseIndicesShape_{};
     gert::Shape cmpSparseIndicesShape_{};
 };
 

@@ -36,7 +36,7 @@ ge::graphStatus InferShapeTurboQuantSparseAttnSharedkv(gert::InferShapeContext *
     gert::Shape *softmaxLseShape = context->GetOutputShape(1);
     OPS_LOG_E_IF_NULL(context, softmaxLseShape, return ge::GRAPH_FAILED)
     auto attr = context->GetAttrs();
-    const bool *returnSoftmaxLsePtr = attr->GetAttrPointer<bool>(RETURN_SOFTMAX_INDEX);
+    const bool *returnSoftmaxLsePtr = attr == nullptr ? nullptr : attr->GetAttrPointer<bool>(RETURN_SOFTMAX_INDEX);
     bool returnSoftmaxLse = (returnSoftmaxLsePtr != nullptr) ? *returnSoftmaxLsePtr : false;
     if (returnSoftmaxLse) {
         *softmaxLseShape = *queryShape;

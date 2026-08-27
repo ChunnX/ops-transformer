@@ -195,6 +195,19 @@ TEST(TurboQuantSparseAttnSharedkvTiling, RejectsWrongAuxiliaryInput)
     EXPECT_FALSE(RunTilingCase(emptyOriBlockTable, Attrs(), emptyOriBlockTableInfo));
 }
 
+TEST(TurboQuantSparseAttnSharedkvTiling, RejectsMissingRequiredTurboQuantInput)
+{
+    auto missingCmpKv = Inputs();
+    missingCmpKv[2] = {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND};
+    TilingInfo missingCmpKvInfo;
+    EXPECT_FALSE(RunTilingCase(missingCmpKv, Attrs(), missingCmpKvInfo));
+
+    auto missingCmpBlockTable = Inputs();
+    missingCmpBlockTable[6] = {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND};
+    TilingInfo missingCmpBlockTableInfo;
+    EXPECT_FALSE(RunTilingCase(missingCmpBlockTable, Attrs(), missingCmpBlockTableInfo));
+}
+
 TEST(TurboQuantSparseAttnSharedkvTiling, ChecksSlotAndTopkShape)
 {
     auto wrongSlot = Inputs();

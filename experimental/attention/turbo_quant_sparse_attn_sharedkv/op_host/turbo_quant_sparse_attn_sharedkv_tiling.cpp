@@ -138,20 +138,43 @@ ge::graphStatus TQSASInfoParser::CheckRequiredInOutExistence() const
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.q.desc == nullptr, OP_LOGE(opName_, "Desc of tensor q is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.oriKv.tensor == nullptr, OP_LOGE(opName_, "tensor of ori_Kv is nullptr"),
-                return ge::GRAPH_FAILED);
-    if (kvLayout_ == SASLayout::PA_ND) {
-        OP_CHECK_IF(opParamInfo_.oriBlockTable.tensor == nullptr,
-                    OP_LOGE(opName_, "tensor of ori_block_table is nullptr"), return ge::GRAPH_FAILED);
-    }
-    if (perfMode_ == SASTemplateMode::CFA_TEMPLATE_MODE) {
-        OP_CHECK_IF(opParamInfo_.cmpKv.tensor == nullptr, OP_LOGE(opName_, "tensor of cmp_kv is nullptr"),
+    // This operator is intentionally restricted to the SCFA/PA_ND contract.
+    // Validate all ABI-required tensors before any shape or dtype helper can
+    // dereference their descriptors.  Several of these inputs remain
+    // OPTIONAL in the generic OpDef for compatibility with the upstream
+    // sparse-attention schema, but they are mandatory for TurboQuant.
+    const std::pair<const void *, const char *> requiredInputs[] = {
+        {opParamInfo_.oriKv.tensor, "ori_kv"},
+        {opParamInfo_.cmpKv.tensor, "cmp_kv"},
+        {opParamInfo_.cmpSparseIndices.tensor, "cmp_sparse_indices"},
+        {opParamInfo_.oriBlockTable.tensor, "ori_block_table"},
+        {opParamInfo_.cmpBlockTable.tensor, "cmp_block_table"},
+        {opParamInfo_.cuSeqLensQ.tensor, "cu_seqlens_q"},
+        {opParamInfo_.sequsedKv.tensor, "seqused_kv"},
+        {opParamInfo_.sinks.tensor, "sinks"},
+        {opParamInfo_.metadata.tensor, "metadata"},
+        {opParamInfo_.attnOut.shape, "attn_out shape"},
+    };
+    for (const auto &required : requiredInputs) {
+        OP_CHECK_IF(required.first == nullptr,
+                    OP_LOGE(opName_, "%s is required for TurboQuantSparseAttnSharedkv.", required.second),
                     return ge::GRAPH_FAILED);
     }
-    if (perfMode_ == SASTemplateMode::SCFA_TEMPLATE_MODE) {
-        OP_CHECK_IF(opParamInfo_.cmpKv.tensor == nullptr, OP_LOGE(opName_, "tensor of cmp_kv is nullptr"),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(opParamInfo_.cmpSparseIndices.tensor == nullptr, OP_LOGE(opName_, "cmp_sparse_indices is nullptr"),
+    const std::pair<const void *, const char *> requiredDescs[] = {
+        {opParamInfo_.oriKv.desc, "ori_kv descriptor"},
+        {opParamInfo_.cmpKv.desc, "cmp_kv descriptor"},
+        {opParamInfo_.cmpSparseIndices.desc, "cmp_sparse_indices descriptor"},
+        {opParamInfo_.oriBlockTable.desc, "ori_block_table descriptor"},
+        {opParamInfo_.cmpBlockTable.desc, "cmp_block_table descriptor"},
+        {opParamInfo_.cuSeqLensQ.desc, "cu_seqlens_q descriptor"},
+        {opParamInfo_.sequsedKv.desc, "seqused_kv descriptor"},
+        {opParamInfo_.sinks.desc, "sinks descriptor"},
+        {opParamInfo_.metadata.desc, "metadata descriptor"},
+        {opParamInfo_.attnOut.desc, "attn_out descriptor"},
+    };
+    for (const auto &required : requiredDescs) {
+        OP_CHECK_IF(required.first == nullptr,
+                    OP_LOGE(opName_, "%s is required for TurboQuantSparseAttnSharedkv.", required.second),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -159,6 +182,15 @@ ge::graphStatus TQSASInfoParser::CheckRequiredInOutExistence() const
 
 ge::graphStatus TQSASInfoParser::CheckRequiredAttrExistence() const
 {
+    const std::pair<const void *, const char *> requiredAttrs[] = {
+        {opParamInfo_.softmaxScale, "softmax_scale"}, {opParamInfo_.cmpRatio, "cmp_ratio"},
+        {opParamInfo_.oriMaskMode, "ori_mask_mode"},  {opParamInfo_.cmpMaskMode, "cmp_mask_mode"},
+        {opParamInfo_.oriKvStride0, "ori_kv_stride"}, {opParamInfo_.cmpKvStride0, "cmp_kv_stride"},
+    };
+    for (const auto &required : requiredAttrs) {
+        OP_CHECK_IF(required.first == nullptr, OP_LOGE(opName_, "%s attribute is missing.", required.second),
+                    return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -269,6 +301,31 @@ ge::graphStatus TQSASInfoParser::GetAttrParaInfo()
     opParamInfo_.layoutKv = attrs->GetStr(ATTR_LAYOUT_KV_INDEX);
     opParamInfo_.returnSoftmaxLse = attrs->GetAttrPointer<bool>(ATTR_RETURN_SOFTMAX_LSE);
     opParamInfo_.kvQuantMode = attrs->GetAttrPointer<int64_t>(ATTR_KV_QUANT_MODE_INDEX);
+
+    // Keep OPTIONAL OpDef attributes usable when a graph omits them.  The
+    // framework normally materializes defaults, but explicit fallbacks also
+    // make direct tiling/UT contexts deterministic and prevent later parser
+    // stages from dereferencing a null attribute pointer.
+    static const int64_t kDefaultOriWinLeft = 127;
+    static const int64_t kDefaultOriWinRight = 0;
+    static const bool kDefaultReturnSoftmaxLse = false;
+    static const char kDefaultLayoutQ[] = "TND";
+    static const char kDefaultLayoutKv[] = "PA_ND";
+    if (opParamInfo_.oriWinLeft == nullptr) {
+        opParamInfo_.oriWinLeft = &kDefaultOriWinLeft;
+    }
+    if (opParamInfo_.oriWinRight == nullptr) {
+        opParamInfo_.oriWinRight = &kDefaultOriWinRight;
+    }
+    if (opParamInfo_.returnSoftmaxLse == nullptr) {
+        opParamInfo_.returnSoftmaxLse = &kDefaultReturnSoftmaxLse;
+    }
+    if (opParamInfo_.layoutQ == nullptr) {
+        opParamInfo_.layoutQ = kDefaultLayoutQ;
+    }
+    if (opParamInfo_.layoutKv == nullptr) {
+        opParamInfo_.layoutKv = kDefaultLayoutKv;
+    }
 
     OP_LOGI(context_->GetNodeName(), "GetAttrParaInfo end");
     return ge::GRAPH_SUCCESS;
@@ -419,7 +476,6 @@ void TQSASInfoParser::SetSASShape()
     if (perfMode_ == SASTemplateMode::SCFA_TEMPLATE_MODE) {
         if (opParamInfo_.cmpSparseIndices.tensor != nullptr) {
             cmpSparseIndicesShape_ = opParamInfo_.cmpSparseIndices.tensor->GetStorageShape();
-            uint32_t cmpSparseIndicesT = GetAxisNum(cmpSparseIndicesShape_, SASAxis::T, cmpSparseIndicesLayout_);
         } else {
             OP_LOGE(opName_, "cmp_sparse_indices tensor is nullptr, please check input parameters.");
         }
@@ -505,18 +561,6 @@ ge::graphStatus TQSASInfoParser::GetQTSize()
     // 1、非TND时, 以query的batch_size维度为基准;
     // 2、TND时, actual_seq_lens_q必须传入, 以actual_seq_lens_q数组的长度为B轴大小
     qTSize_ = (qLayout_ == SASLayout::TND) ? GetAxisNum(qShape_, SASAxis::T, qLayout_) : 0;
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus TQSASInfoParser::GetKVTSize()
-{
-    // 获取KV的T基准值
-    // 1、非TND时, 以KV的batch_size维度为基准;
-    // 2、TND时, actual_seq_lens_ori_kv和actual_seq_lens_cmp_kv必须传入,
-    // 以actual_seq_lens_ori_kv数组的长度为B轴大小(当前接口只传入oriseq，先以oriseq算出cmpseq)
-    orikvTSize_ = (kvLayout_ == SASLayout::TND) ? GetAxisNum(oriKvShape_, SASAxis::T, kvLayout_) : 0;
-    // 入参接口信息可以从GetOptionalInputParaInfo()函数中获取
-    // cmpkvTSize_ = (kvLayout_ == SASLayout::TND) ? GetAxisNum(cmpKvShape_, SASAxis::T, kvLayout_) : 0;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -615,10 +659,6 @@ ge::graphStatus TQSASInfoParser::GetS2SizeForTND()
                 TQSASLayoutToSerialString(kvLayout_).c_str());
         return ge::GRAPH_FAILED;
     }
-    // if (opParamInfo_.sequsedKv.tensor == nullptr) {
-    //     OP_LOGE(opName_, "the layout_kv is %s, sequsedKv must be provided.",
-    //     TQSASLayoutToSerialString(kvLayout_).c_str()); return ge::GRAPH_FAILED;
-    // }
     // 这里返回累加和的最大值
     s2Size_ = GetAxisNum(oriKvShape_, SASAxis::T, kvLayout_);
     return ge::GRAPH_SUCCESS;
@@ -837,8 +877,8 @@ ge::graphStatus TQSASInfoParser::Parse(SASTilingInfo &sasInfo)
 
     SetSASShape();
     if (ge::GRAPH_SUCCESS != GetN1Size() || ge::GRAPH_SUCCESS != GetN2Size() || ge::GRAPH_SUCCESS != GetGSize() ||
-        ge::GRAPH_SUCCESS != GetBatchSize() || ge::GRAPH_SUCCESS != GetQTSize() || ge::GRAPH_SUCCESS != GetKVTSize() ||
-        ge::GRAPH_SUCCESS != GetS1Size() || ge::GRAPH_SUCCESS != GetS2Size() || ge::GRAPH_SUCCESS != GetQHeadDim() ||
+        ge::GRAPH_SUCCESS != GetBatchSize() || ge::GRAPH_SUCCESS != GetQTSize() || ge::GRAPH_SUCCESS != GetS1Size() ||
+        ge::GRAPH_SUCCESS != GetS2Size() || ge::GRAPH_SUCCESS != GetQHeadDim() ||
         ge::GRAPH_SUCCESS != GetValueHeadDim() || ge::GRAPH_SUCCESS != GetSparseBlockCount() ||
         ge::GRAPH_SUCCESS != GetSinks()) {
         return ge::GRAPH_FAILED;
