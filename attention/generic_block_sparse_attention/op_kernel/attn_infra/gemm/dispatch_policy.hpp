@@ -14,8 +14,7 @@
 #include "../../attn_infra/base_defs.hpp"
 #include "../../attn_infra/arch/arch.hpp"
 
-namespace NpuArch::Gemm 
-{
+namespace NpuArch::Gemm {
 
 // Block Mmad Policies
 
@@ -56,6 +55,6 @@ struct MmadAtlasA5BsaPV : public MmadAtlasA5 {
     static constexpr uint32_t L0_STAGES = 2;
 };
 
-}  // namespace NpuArch::Gemm
+} // namespace NpuArch::Gemm
 
-#endif  // GEMM_DISPATCH_POLICY_HPP
+#endif // GEMM_DISPATCH_POLICY_HPP

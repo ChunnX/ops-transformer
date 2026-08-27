@@ -14,7 +14,8 @@ namespace ops {
 
 class GenericBlockSparseAttention : public OpDef {
 public:
-    explicit GenericBlockSparseAttention(const char* name) : OpDef(name)
+    explicit GenericBlockSparseAttention(const char *name)
+        : OpDef(name)
     {
         this->Input("query")
             .ParamType(REQUIRED)
@@ -111,7 +112,7 @@ public:
         this->Attr("layout_kv").AttrType(OPTIONAL).String("TND");
         this->Attr("scale_value").AttrType(OPTIONAL).Float(0.0);
         this->Attr("mask_type").AttrType(OPTIONAL).Int(0);
-        this->Attr("quant_type").AttrType(OPTIONAL).Int(0);     
+        this->Attr("quant_type").AttrType(OPTIONAL).Int(0);
         this->Attr("dst_type_max").AttrType(OPTIONAL).Float(0.0);
         this->Attr("softmax_precision").AttrType(OPTIONAL).Int(0);
         this->Attr("win_left").AttrType(OPTIONAL).Int(-1);
@@ -125,4 +126,4 @@ public:
 
 OP_ADD(GenericBlockSparseAttention);
 
-}  // namespace ops
+} // namespace ops

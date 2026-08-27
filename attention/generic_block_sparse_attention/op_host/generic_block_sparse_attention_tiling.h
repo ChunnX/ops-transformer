@@ -21,8 +21,8 @@
 namespace optiling {
 
 // Host tiling-key bases (BSA-style bitfields). Full keys live in op_kernel tilingkey.h.
-constexpr uint64_t GBSA_OP_ARCH22_BASE = 9200000000000000ULL;  // aicore220
-constexpr uint64_t GBSA_OP_ARCH35_BASE = 9250000000000000ULL;  // aicore310
+constexpr uint64_t GBSA_OP_ARCH22_BASE = 9200000000000000ULL; // aicore220
+constexpr uint64_t GBSA_OP_ARCH35_BASE = 9250000000000000ULL; // aicore310
 constexpr uint64_t GBSA_LSE_OUT_OFFSET = 100000000ULL;
 
 BEGIN_TILING_DATA_DEF(GenericBlockSparseAttentionTilingData)
@@ -83,10 +83,8 @@ public:
     GBSATiling() = default;
     ~GBSATiling() = default;
 
-    ge::graphStatus GetTiling(gert::TilingContext *context,
-                              GenericBlockSparseAttentionTilingData &tilingData);
-    ge::graphStatus SetTilingData(gert::TilingContext *context,
-                                  GenericBlockSparseAttentionTilingData &tilingData);
+    ge::graphStatus GetTiling(gert::TilingContext *context, GenericBlockSparseAttentionTilingData &tilingData);
+    ge::graphStatus SetTilingData(gert::TilingContext *context, GenericBlockSparseAttentionTilingData &tilingData);
 
 private:
     ge::graphStatus GetNpuInfo(gert::TilingContext *context);
@@ -153,6 +151,6 @@ private:
     GenericBlockSparseAttentionTilingData *tilingData_ = nullptr;
 };
 
-}  // namespace optiling
+} // namespace optiling
 
-#endif  // GENERIC_BLOCK_SPARSE_ATTENTION_TILING_H
+#endif // GENERIC_BLOCK_SPARSE_ATTENTION_TILING_H

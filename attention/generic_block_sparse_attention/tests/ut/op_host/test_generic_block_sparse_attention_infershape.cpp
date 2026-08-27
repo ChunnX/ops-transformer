@@ -70,8 +70,7 @@ std::vector<gert::InfershapeContextPara::TensorDescription> MakeInputs()
     };
 }
 
-std::vector<gert::InfershapeContextPara::OpAttr> MakeAttrs(int64_t returnLse,
-                                                           const std::string &layoutQ = "TND",
+std::vector<gert::InfershapeContextPara::OpAttr> MakeAttrs(int64_t returnLse, const std::string &layoutQ = "TND",
                                                            const std::string &layoutKv = "PAGED_BBND")
 {
     return {
@@ -89,17 +88,16 @@ std::vector<gert::InfershapeContextPara::OpAttr> MakeAttrs(int64_t returnLse,
         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<int64_t>(returnLse)},
     };
 }
-}  // namespace
+} // namespace
 
 TEST_F(generic_block_sparse_attention_infershape_ut, tnd_paged_no_lse)
 {
-    gert::InfershapeContextPara infershapeContextPara(
-        "GenericBlockSparseAttention", MakeInputs(),
-        {
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        MakeAttrs(0));
+    gert::InfershapeContextPara infershapeContextPara("GenericBlockSparseAttention", MakeInputs(),
+                                                      {
+                                                          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                          {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                      },
+                                                      MakeAttrs(0));
     std::vector<std::vector<int64_t>> expectOutputShape = {
         {kT, kN1, kD},
         {0},
@@ -109,13 +107,12 @@ TEST_F(generic_block_sparse_attention_infershape_ut, tnd_paged_no_lse)
 
 TEST_F(generic_block_sparse_attention_infershape_ut, tnd_paged_with_lse)
 {
-    gert::InfershapeContextPara infershapeContextPara(
-        "GenericBlockSparseAttention", MakeInputs(),
-        {
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        MakeAttrs(1));
+    gert::InfershapeContextPara infershapeContextPara("GenericBlockSparseAttention", MakeInputs(),
+                                                      {
+                                                          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                          {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                      },
+                                                      MakeAttrs(1));
     std::vector<std::vector<int64_t>> expectOutputShape = {
         {kT, kN1, kD},
         {kT, kN1, 1},
@@ -125,28 +122,25 @@ TEST_F(generic_block_sparse_attention_infershape_ut, tnd_paged_with_lse)
 
 TEST_F(generic_block_sparse_attention_infershape_ut, unsupported_layout)
 {
-    gert::InfershapeContextPara infershapeContextPara(
-        "GenericBlockSparseAttention", MakeInputs(),
-        {
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        MakeAttrs(0, "TND", "TND"));
+    gert::InfershapeContextPara infershapeContextPara("GenericBlockSparseAttention", MakeInputs(),
+                                                      {
+                                                          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                          {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                      },
+                                                      MakeAttrs(0, "TND", "TND"));
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED);
 }
 
 TEST_F(generic_block_sparse_attention_infershape_ut, key_value_d_mismatch)
 {
     auto inputs = MakeInputs();
-    inputs[1] = {{{kMaxBlocks, kBlockSize, kN2, 64}, {kMaxBlocks, kBlockSize, kN2, 64}}, ge::DT_FLOAT16,
-                 ge::FORMAT_ND};
-    gert::InfershapeContextPara infershapeContextPara(
-        "GenericBlockSparseAttention", inputs,
-        {
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        MakeAttrs(0));
+    inputs[1] = {{{kMaxBlocks, kBlockSize, kN2, 64}, {kMaxBlocks, kBlockSize, kN2, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND};
+    gert::InfershapeContextPara infershapeContextPara("GenericBlockSparseAttention", inputs,
+                                                      {
+                                                          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                          {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                      },
+                                                      MakeAttrs(0));
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED);
 }
 
@@ -154,13 +148,12 @@ TEST_F(generic_block_sparse_attention_infershape_ut, query_not_3d)
 {
     auto inputs = MakeInputs();
     inputs[0] = {{{kBatch, kS1, kN1, kD}, {kBatch, kS1, kN1, kD}}, ge::DT_FLOAT16, ge::FORMAT_ND};
-    gert::InfershapeContextPara infershapeContextPara(
-        "GenericBlockSparseAttention", inputs,
-        {
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        MakeAttrs(0));
+    gert::InfershapeContextPara infershapeContextPara("GenericBlockSparseAttention", inputs,
+                                                      {
+                                                          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                          {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                      },
+                                                      MakeAttrs(0));
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED);
 }
 
@@ -168,13 +161,12 @@ TEST_F(generic_block_sparse_attention_infershape_ut, unknown_rank_query)
 {
     auto inputs = MakeInputs();
     inputs[0] = {{{-2}, {-2}}, ge::DT_FLOAT16, ge::FORMAT_ND};
-    gert::InfershapeContextPara infershapeContextPara(
-        "GenericBlockSparseAttention", inputs,
-        {
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        MakeAttrs(0));
+    gert::InfershapeContextPara infershapeContextPara("GenericBlockSparseAttention", inputs,
+                                                      {
+                                                          {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                          {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                      },
+                                                      MakeAttrs(0));
     std::vector<std::vector<int64_t>> expectOutputShape = {
         {-2},
         {-2},

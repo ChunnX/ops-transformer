@@ -60,11 +60,8 @@ static bool CheckDataType(const aclTensor *query, const aclTensor *key, const ac
     return true;
 }
 
-static aclnnStatus CheckMandatoryTensors(const aclTensor *query,
-                                           const aclTensor *key,
-                                           const aclTensor *value,
-                                           const aclTensor *sparseBlockIdx,
-                                           const aclTensor *sparseBlockCount)
+static aclnnStatus CheckMandatoryTensors(const aclTensor *query, const aclTensor *key, const aclTensor *value,
+                                         const aclTensor *sparseBlockIdx, const aclTensor *sparseBlockCount)
 {
     CHECK_RET(query != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(key != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -100,14 +97,9 @@ static aclnnStatus ParseBlockShape(const aclIntArray *blockShape)
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus ValidateParams(const aclTensor *query,
-                                  const aclTensor *key,
-                                  const aclTensor *value,
-                                  const aclTensor *sparseBlockIdx,
-                                  const aclTensor *sparseBlockCount,
-                                  const aclIntArray *blockShape,
-                                  char *layoutQ,
-                                  char *layoutKv)
+static aclnnStatus ValidateParams(const aclTensor *query, const aclTensor *key, const aclTensor *value,
+                                  const aclTensor *sparseBlockIdx, const aclTensor *sparseBlockCount,
+                                  const aclIntArray *blockShape, char *layoutQ, char *layoutKv)
 {
     CHECK_RET(CheckMandatoryTensors(query, key, value, sparseBlockIdx, sparseBlockCount) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_NULLPTR);
@@ -140,10 +132,8 @@ static aclnnStatus ValidateParams(const aclTensor *query,
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus ValidateAdditionalParams(int64_t softmaxPrecision,
-                                            const aclTensor *attentionOut,
-                                            uint64_t *workspaceSize,
-                                            aclOpExecutor **executor)
+static aclnnStatus ValidateAdditionalParams(int64_t softmaxPrecision, const aclTensor *attentionOut,
+                                            uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     if (softmaxPrecision != 0 && softmaxPrecision != 1) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "softmaxPrecision must be 0 or 1, got %ld.", softmaxPrecision);
@@ -167,20 +157,13 @@ static std::string ConvertLayoutString(char *layoutStr)
 // Keep Contiguous even when OpDef has AutoContiguous.
 // Do NOT Contiguous key/value here — dim0-strided KV is handled by NormalizeDim0KvTensor
 // (CreateView + SetStorageShape(viewShape)).
-static aclnnStatus MakeContiguous(const aclTensor *&query,
-                                  const aclTensor *&sparseBlockIdx,
-                                  const aclTensor *&sparseBlockCount,
-                                  const aclTensor *&metadataOptional,
-                                  const aclTensor *&attenMaskOptional,
-                                  const aclTensor *&qDequantScaleOptional,
-                                  const aclTensor *&kDequantScaleOptional,
-                                  const aclTensor *&vDequantScaleOptional,
-                                  const aclTensor *&pQuantScaleOptional,
-                                  const aclTensor *&cuSeqLengthsQOptional,
-                                  const aclTensor *&cuSeqLengthsKvOptional,
-                                  const aclTensor *&sequsedQOptional,
-                                  const aclTensor *&sequsedKvOptional,
-                                  const aclTensor *&blockTableOptional,
+static aclnnStatus MakeContiguous(const aclTensor *&query, const aclTensor *&sparseBlockIdx,
+                                  const aclTensor *&sparseBlockCount, const aclTensor *&metadataOptional,
+                                  const aclTensor *&attenMaskOptional, const aclTensor *&qDequantScaleOptional,
+                                  const aclTensor *&kDequantScaleOptional, const aclTensor *&vDequantScaleOptional,
+                                  const aclTensor *&pQuantScaleOptional, const aclTensor *&cuSeqLengthsQOptional,
+                                  const aclTensor *&cuSeqLengthsKvOptional, const aclTensor *&sequsedQOptional,
+                                  const aclTensor *&sequsedKvOptional, const aclTensor *&blockTableOptional,
                                   aclOpExecutor *executor)
 {
     query = l0op::Contiguous(query, executor);
@@ -300,44 +283,21 @@ static const aclTensor *NormalizeDim0KvTensor(const aclTensor *tensor, const cha
     return l0op::Contiguous(tensor, executor);
 }
 
-}  // namespace
+} // namespace
 
 __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttentionGetWorkspaceSize(
-    const aclTensor *query,
-    const aclTensor *key,
-    const aclTensor *value,
-    const aclTensor *sparseBlockIdx,
-    const aclTensor *sparseBlockCount,
-    const aclTensor *metadataOptional,
-    const aclTensor *attenMaskOptional,
-    const aclTensor *qDequantScaleOptional,
-    const aclTensor *kDequantScaleOptional,
-    const aclTensor *vDequantScaleOptional,
-    const aclTensor *pQuantScaleOptional,
-    const aclTensor *cuSeqLengthsQOptional,
-    const aclTensor *cuSeqLengthsKvOptional,
-    const aclTensor *sequsedQOptional,
-    const aclTensor *sequsedKvOptional,
-    const aclTensor *blockTableOptional,
-    const aclIntArray *blockShape,
-    int64_t isPackedGQA,
-    char *layoutQ,
-    char *layoutKv,
-    double scaleValue,
-    int64_t maskType,
-    int64_t quantType,
-    double dstTypeMax,
-    int64_t softmaxPrecision,
-    int64_t winLeft,
-    int64_t winRight,
-    int64_t returnSoftmaxlse,
-    aclTensor *attentionOut,
-    aclTensor *softmaxLseOptional,
-    uint64_t *workspaceSize,
-    aclOpExecutor **executor)
+    const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *sparseBlockIdx,
+    const aclTensor *sparseBlockCount, const aclTensor *metadataOptional, const aclTensor *attenMaskOptional,
+    const aclTensor *qDequantScaleOptional, const aclTensor *kDequantScaleOptional,
+    const aclTensor *vDequantScaleOptional, const aclTensor *pQuantScaleOptional,
+    const aclTensor *cuSeqLengthsQOptional, const aclTensor *cuSeqLengthsKvOptional, const aclTensor *sequsedQOptional,
+    const aclTensor *sequsedKvOptional, const aclTensor *blockTableOptional, const aclIntArray *blockShape,
+    int64_t isPackedGQA, char *layoutQ, char *layoutKv, double scaleValue, int64_t maskType, int64_t quantType,
+    double dstTypeMax, int64_t softmaxPrecision, int64_t winLeft, int64_t winRight, int64_t returnSoftmaxlse,
+    aclTensor *attentionOut, aclTensor *softmaxLseOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    aclnnStatus ret = ValidateParams(query, key, value, sparseBlockIdx, sparseBlockCount, blockShape, layoutQ,
-                                     layoutKv);
+    aclnnStatus ret =
+        ValidateParams(query, key, value, sparseBlockIdx, sparseBlockCount, blockShape, layoutQ, layoutKv);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
@@ -348,26 +308,21 @@ __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttent
     }
 
     L2_DFX_PHASE_1(aclnnGenericBlockSparseAttention,
-                   DFX_IN(query, key, value, sparseBlockIdx, sparseBlockCount,
-                          metadataOptional, attenMaskOptional, qDequantScaleOptional,
-                          kDequantScaleOptional, vDequantScaleOptional, pQuantScaleOptional,
-                          cuSeqLengthsQOptional, cuSeqLengthsKvOptional,
-                          sequsedQOptional, sequsedKvOptional, blockTableOptional,
-                          blockShape, isPackedGQA, layoutQ, layoutKv, scaleValue,
-                          maskType, quantType, dstTypeMax, softmaxPrecision,
-                          winLeft, winRight, returnSoftmaxlse),
+                   DFX_IN(query, key, value, sparseBlockIdx, sparseBlockCount, metadataOptional, attenMaskOptional,
+                          qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional, pQuantScaleOptional,
+                          cuSeqLengthsQOptional, cuSeqLengthsKvOptional, sequsedQOptional, sequsedKvOptional,
+                          blockTableOptional, blockShape, isPackedGQA, layoutQ, layoutKv, scaleValue, maskType,
+                          quantType, dstTypeMax, softmaxPrecision, winLeft, winRight, returnSoftmaxlse),
                    DFX_OUT(attentionOut, softmaxLseOptional));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto *executorImpl = uniqueExecutor.get();
 
-    ret = MakeContiguous(query, sparseBlockIdx, sparseBlockCount,
-                                     metadataOptional, attenMaskOptional,
-                                     qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional,
-                                     pQuantScaleOptional, cuSeqLengthsQOptional, cuSeqLengthsKvOptional,
-                                     sequsedQOptional, sequsedKvOptional,
-                                     blockTableOptional, executorImpl);
+    ret = MakeContiguous(query, sparseBlockIdx, sparseBlockCount, metadataOptional, attenMaskOptional,
+                         qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional, pQuantScaleOptional,
+                         cuSeqLengthsQOptional, cuSeqLengthsKvOptional, sequsedQOptional, sequsedKvOptional,
+                         blockTableOptional, executorImpl);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
@@ -381,15 +336,11 @@ __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttent
     CHECK_RET(valueFinal != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     auto outputs = l0op::GenericBlockSparseAttention(
-        query, keyFinal, valueFinal, sparseBlockIdx, sparseBlockCount,
-        metadataOptional, attenMaskOptional,
-        qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional,
-        pQuantScaleOptional, cuSeqLengthsQOptional, cuSeqLengthsKvOptional,
-        sequsedQOptional, sequsedKvOptional, blockTableOptional,
-        blockShape, isPackedGQA, layoutQStr.c_str(), layoutKvStr.c_str(), scaleValue,
-        maskType, quantType, dstTypeMax, softmaxPrecision,
-        winLeft, winRight, returnSoftmaxlse,
-        attentionOut, executorImpl);
+        query, keyFinal, valueFinal, sparseBlockIdx, sparseBlockCount, metadataOptional, attenMaskOptional,
+        qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional, pQuantScaleOptional, cuSeqLengthsQOptional,
+        cuSeqLengthsKvOptional, sequsedQOptional, sequsedKvOptional, blockTableOptional, blockShape, isPackedGQA,
+        layoutQStr.c_str(), layoutKvStr.c_str(), scaleValue, maskType, quantType, dstTypeMax, softmaxPrecision, winLeft,
+        winRight, returnSoftmaxlse, attentionOut, executorImpl);
 
     if (outputs[0] == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "GenericBlockSparseAttention returned nullptr output.");
@@ -409,11 +360,10 @@ __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttent
     return ACLNN_SUCCESS;
 }
 
-__attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttention(
-    void *workspace,
-    uint64_t workspaceSize,
-    aclOpExecutor *executor,
-    aclrtStream stream)
+__attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttention(void *workspace,
+                                                                                    uint64_t workspaceSize,
+                                                                                    aclOpExecutor *executor,
+                                                                                    aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnGenericBlockSparseAttention);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
