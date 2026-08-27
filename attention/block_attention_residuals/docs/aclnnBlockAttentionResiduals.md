@@ -82,7 +82,7 @@ aclnnStatus aclnnBlockAttentionResidualsGetWorkspaceSize(
     const aclTensor *projWeight,
     const aclTensor *normWeight,
     int64_t          validBlockNum,
-    float            normEps,
+    double           normEps,
     bool             needBackward,
     aclTensor       *hiddenStates,
     aclTensor       *invNorm,
@@ -130,7 +130,7 @@ aclnnStatus aclnnBlockAttentionResiduals(
     <td>prefixSum（aclTensor*）</td>
     <td>输入</td>
     <td>前向输入前缀和，对应公式中拼接后的第N+1个value。</td>
-    <td>不支持空Tensor；T、H与blockRes保持一致。</td>
+    <td>支持T=0的空Tensor；T、H与blockRes保持一致。</td>
     <td>FLOAT16、BFLOAT16、FLOAT32</td>
     <td>ND</td>
     <td>(T,H)</td>
@@ -140,7 +140,7 @@ aclnnStatus aclnnBlockAttentionResiduals(
     <td>blockRes（aclTensor*）</td>
     <td>输入</td>
     <td>前向输入分块残差，对应公式中前N个value。</td>
-    <td>不支持空Tensor；dtype与prefixSum保持一致。</td>
+    <td>支持T=0的空Tensor；dtype与prefixSum保持一致。</td>
     <td>FLOAT16、BFLOAT16、FLOAT32</td>
     <td>ND</td>
     <td>(T,N,H)</td>
@@ -150,7 +150,7 @@ aclnnStatus aclnnBlockAttentionResiduals(
     <td>projWeight（aclTensor*）</td>
     <td>输入</td>
     <td>前向线性投影权重，与normWeight共同构成score_weight。</td>
-    <td>不支持空Tensor；shape支持(1,H)或(H)；dtype与prefixSum保持一致。</td>
+    <td>shape支持(1,H)或(H)；dtype与prefixSum保持一致。</td>
     <td>FLOAT16、BFLOAT16、FLOAT32</td>
     <td>ND</td>
     <td>(1,H)或(H)</td>
@@ -160,7 +160,7 @@ aclnnStatus aclnnBlockAttentionResiduals(
     <td>normWeight（aclTensor*）</td>
     <td>输入</td>
     <td>前向归一化权重，与projWeight共同构成score_weight。</td>
-    <td>不支持空Tensor；dtype与prefixSum保持一致。</td>
+    <td>shape为(H)；dtype与prefixSum保持一致。</td>
     <td>FLOAT16、BFLOAT16、FLOAT32</td>
     <td>ND</td>
     <td>(H)</td>
@@ -177,11 +177,11 @@ aclnnStatus aclnnBlockAttentionResiduals(
     <td>-</td>
   </tr>
   <tr>
-    <td>normEps（float）</td>
+    <td>normEps（double）</td>
     <td>输入</td>
     <td>RMS归一化数值稳定性参数。</td>
     <td>需大于0，默认1e-5。</td>
-    <td>FLOAT</td>
+    <td>DOUBLE</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -271,13 +271,13 @@ aclnnStatus aclnnBlockAttentionResiduals(
   <tr>
     <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
     <td rowspan="3">161002</td>
-    <td>输入输出张量存在空指针（含needBackward为true时invNorm/probs为空）。</td>
+    <td>输入输出张量存在空指针（含needBackward为true时invNorm/probs为空），返回实际日志包含空指针校验错误。</td>
   </tr>
   <tr>
     <td>输入张量的数据类型不在支持的范围内。</td>
   </tr>
   <tr>
-    <td>invNorm/probs的shape不匹配、validBlockNum不等于N或normEps小于等于0。</td>
+    <td>实际错误文本包括：<code>invalid tensor rank</code>、<code>only default valid_block_num=N is supported, got %ld</code>、<code>shape range requires T&gt;=0, H&gt;=1 and 1&lt;=N&lt;=%ld</code>、<code>block_res shape must be [T,N,H]</code>、<code>proj_weight must be [H] or [1,H], and norm_weight must be [H]</code>、<code>hidden_states shape must be [T,H]</code>、<code>inv_norm/probs must be 2D [T,B]</code>、<code>inv_norm/probs shape must be [%ld,%ld]</code>、<code>normEps must be &gt; 0</code>。</td>
   </tr>
   <tr>
     <td>ACLNN_ERR_RUNTIME_ERROR</td>
@@ -320,12 +320,22 @@ aclnnStatus aclnnBlockAttentionResiduals(
 ### 规格约束
 
 - prefixSum、blockRes、projWeight、normWeight和hiddenStates支持FLOAT16、BFLOAT16、FLOAT32；invNorm和probs仅支持FLOAT32。
-- shape需满足：prefixSum为(T,H)，blockRes为(T,N,H)，projWeight为(1,H)或(H)，normWeight为(H)，hiddenStates为(T,H)，invNorm为(T,N+1)，probs为(T,N+1)，其中T、N、H均为正整数，N大于等于1，且各张量中的T、H保持一致。
+- shape需满足：prefixSum为(T,H)，blockRes为(T,N,H)，projWeight为(1,H)或(H)，normWeight为(H)，hiddenStates为(T,H)，invNorm为(T,N+1)，probs为(T,N+1)，其中T可为0，H大于等于1，N在1到100之间，且各张量中的T、H保持一致。
 - validBlockNum为INT64，当前仅支持validBlockNum=N。
-- normEps需大于0，默认值为1e-5。
+- normEps为DOUBLE，需大于0，默认值为1e-5；传入0或负值时返回ACLNN_ERR_PARAM_INVALID，实际错误文本为“normEps must be > 0”。
 - needBackward为true时，invNorm和probs必须为非空Tensor且shape为(T,N+1)。
 - 输入张量支持非连续Tensor，接口内部统一转为Contiguous后计算；输出通过ViewCopy写回。
 - workspace为系统预留16MB。
+
+### 预期异常
+
+以下输入校验异常统一返回`ACLNN_ERR_PARAM_INVALID`（161002），ATK异常用例按实际错误文本匹配：
+
+- `validBlockNum != blockRes.shape[1]`：`only default valid_block_num=N is supported, got %ld`。
+- `normEps <= 0`：`normEps must be > 0`。
+- rank、跨输入shape或反向输出shape不匹配：分别匹配`invalid tensor rank`、`block_res shape must be [T,N,H]`、`proj_weight must be [H] or [1,H], and norm_weight must be [H]`、`hidden_states shape must be [T,H]`、`inv_norm/probs must be 2D [T,B]`或`inv_norm/probs shape must be [%ld,%ld]`。
+- T/H/N越界：`shape range requires T>=0, H>=1 and 1<=N<=100`。
+- `needBackward=false`时`invNorm`和`probs`按接口约定传空指针；`needBackward=true`时两者必须非空且为`FLOAT32`、shape为(T,N+1)。
 
 ## 调用示例
 
