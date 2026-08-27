@@ -238,6 +238,8 @@ public:
     const gert::Stride *kRopeStrides = nullptr;
     const gert::Stride *kScaleStrides = nullptr;
     const gert::Stride *vScaleStrides = nullptr;
+    const gert::Stride *kOffsetStrides = nullptr;
+    const gert::Stride *vOffsetStrides = nullptr;
     bool hasViewStride = true;
     uint64_t keyBnStride = 0;
     uint64_t keyN2Stride = 0;

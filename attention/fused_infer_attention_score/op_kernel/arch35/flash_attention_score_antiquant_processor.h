@@ -88,6 +88,8 @@ struct AntiquantTaskParamBaseAPI {
     uint64_t kvN2Stride = 0;
     uint64_t scaleBnStride = 0;
     uint64_t scaleN2Stride = 0;
+    uint64_t offsetBnStride = 0;
+    uint64_t offsetN2Stride = 0;
 };
 
 
@@ -155,7 +157,8 @@ public:
                                                             GlobalTensor<int32_t> &blockTableGm,
                                                             const AntiquantTaskParamBaseAPI &taskParam,
                                                             DataCopyExtParams copyInParams,
-                                                            DataCopyPadExtParams<ANTIQ_PARAMS_T> copyInPadParams);
+                                                            DataCopyPadExtParams<ANTIQ_PARAMS_T> copyInPadParams,
+                                                            bool isOffset = false);
     template <bool HAS_OFFSET, bool IS_PER_TOKEN>
     __aicore__ inline void CallAntiquantVF(LocalTensor<Q_T> &antiqResUb, LocalTensor<KV_T> &antiqInUb,
                                            LocalTensor<ANTIQ_PARAMS_T> &offsetTensor,
@@ -402,7 +405,7 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::LoadAnt
         LocalTensor<ANTIQ_PARAMS_T> antiqOffsetTmpUb = antiqOffsetInputQue.template AllocTensor<ANTIQ_PARAMS_T>();
         if (taskParam.isPageAttentionAntiquant) {
             CopyAntiquantParamsPageAttention(antiqOffsetTmpUb, antiqOffsetGm, blockTableGm, taskParam, copyInParams,
-                                             copyInPadParams);
+                                             copyInPadParams, true);
         } else {
             DataCopyPad(antiqOffsetTmpUb, antiqOffsetGm[scaleOffset], copyInParams, copyInPadParams);
         }
@@ -513,7 +516,7 @@ __aicore__ inline void
 AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAntiquantParamsPageAttention(
     LocalTensor<ANTIQ_PARAMS_T> dstLocal, GlobalTensor<ANTIQ_PARAMS_T> &srcGm, GlobalTensor<int32_t> &blockTableGm,
     const AntiquantTaskParamBaseAPI &taskParam, DataCopyExtParams copyInParams,
-    DataCopyPadExtParams<ANTIQ_PARAMS_T> copyInPadParams)
+    DataCopyPadExtParams<ANTIQ_PARAMS_T> copyInPadParams, bool isOffset)
 {
     uint32_t useKvHeadNum = 1;
     uint32_t useN2Idx = 0;
@@ -535,11 +538,14 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAnt
         }
         uint64_t blockStride = taskParam.kvCacheBlockSize * useKvHeadNum;
         uint64_t headStride = taskParam.kvCacheBlockSize;
-        if (taskParam.scaleBnStride != 0) {
-            blockStride = taskParam.scaleBnStride;
+        // offset 用自己的 stride (与 scale 可不同), scale 用 scale 的
+        uint64_t bnStride = isOffset ? taskParam.offsetBnStride : taskParam.scaleBnStride;
+        uint64_t n2Stride = isOffset ? taskParam.offsetN2Stride : taskParam.scaleN2Stride;
+        if (bnStride != 0) {
+            blockStride = bnStride;
         }
-        if (taskParam.scaleN2Stride != 0) {
-            headStride = taskParam.scaleN2Stride;
+        if (n2Stride != 0) {
+            headStride = n2Stride;
         }
         uint64_t srcOffset = idInBlockTable * blockStride +
                              useN2Idx * headStride + remainElmenCnt;

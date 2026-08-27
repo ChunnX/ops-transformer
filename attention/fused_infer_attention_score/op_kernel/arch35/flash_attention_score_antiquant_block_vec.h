@@ -643,11 +643,15 @@ FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SetAntiqParamCommon(const RunInfo<
         taskParam.kvN2Stride = constInfo.keyN2Stride;
         taskParam.scaleBnStride = constInfo.kScaleBnStride;
         taskParam.scaleN2Stride = constInfo.kScaleN2Stride;
+        taskParam.offsetBnStride = constInfo.kOffsetBnStride;
+        taskParam.offsetN2Stride = constInfo.kOffsetN2Stride;
     } else {
         taskParam.kvBnStride = constInfo.valueBnStride;
         taskParam.kvN2Stride = constInfo.valueN2Stride;
         taskParam.scaleBnStride = constInfo.vScaleBnStride;
         taskParam.scaleN2Stride = constInfo.vScaleN2Stride;
+        taskParam.offsetBnStride = constInfo.vOffsetBnStride;
+        taskParam.offsetN2Stride = constInfo.vOffsetN2Stride;
     }
     taskParam.antiqParamOffset = runInfo.n2oIdx * taskParam.headDim;
     if constexpr (isInfer) {
