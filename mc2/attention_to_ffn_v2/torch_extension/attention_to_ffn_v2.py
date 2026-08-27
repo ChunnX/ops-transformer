@@ -13,17 +13,16 @@ import torch
 import torch_npu
 from torch.library import impl
 from torch_npu.utils._error_code import ErrCode, ops_error
-from cann_ops_transformer.op_builder.builder import OpBuilder
-from cann_ops_transformer.op_builder.builder import AS_LIBRARY
-from .comm_context import CommContextManager
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
+from ..common import CommContextManager
 
 
 class _AttentionToFfnV2OpBuilder(OpBuilder):
     def __init__(self):
-        super(_AttentionToFfnV2OpBuilder, self).__init__("npu_attention_to_ffn_v2")
+        super(_AttentionToFfnV2OpBuilder, self).__init__("npu_attention_to_ffn_v2", category="mc2")
 
     def sources(self):
-        return ["ops/csrc/attention_to_ffn_v2.cpp"]
+        return ["csrc/mc2/attention_to_ffn_v2.cpp"]
 
     def schema(self) -> str:
         return (
@@ -36,7 +35,7 @@ class _AttentionToFfnV2OpBuilder(OpBuilder):
         )
 
     def register_meta(self):
-        @impl(AS_LIBRARY, self.name, "Meta")
+        @impl(get_as_library(), self.name, "Meta")
         def npu_attention_to_ffn_v2_meta(
             context,
             x,
@@ -94,9 +93,10 @@ class _AttentionToFfnV2OpBuilder(OpBuilder):
 
 
 _attention_to_ffn_v2_op_builder = _AttentionToFfnV2OpBuilder()
+_attention_to_ffn_v2_op_builder._ensure_initialized()
 
 
-@impl(AS_LIBRARY, _attention_to_ffn_v2_op_builder.name, "PrivateUse1")
+@impl(get_as_library(), _attention_to_ffn_v2_op_builder.name, "PrivateUse1")
 def _npu_attention_to_ffn_v2(
     context,
     x,
