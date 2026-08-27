@@ -333,7 +333,7 @@ AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, Is
     // 未用到的AIC核不需要参与计算
     // 已注释：MXFP4量化中matmul本地块计算
     // if ((GetBlockIdx() < tilingData_->quantBmmv3LocalTiling.matmulTiling.usedCoreNum) && (cfg.rankN != 0)) {
-    //     QuantMatmulLocalCompute();
+    //     QuantMatmulLocalCompute(); 
     // }
     Mc2SyncAll<Mc2CoreType::ON_CUBE>();
 
