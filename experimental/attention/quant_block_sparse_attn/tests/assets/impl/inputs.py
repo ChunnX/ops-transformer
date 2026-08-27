@@ -108,7 +108,6 @@ def customize_inputs(
     metadata,
     *,
     p_scale_value=1.0,
-    p_scale_type="float8_e8m0fnu",
     cu_seqlens_q_value=None,
     cu_seqlens_kv_value=None,
     seqused_q_value=None,
@@ -178,7 +177,6 @@ def customize_inputs(
             seqused_q_value=seq_q_values,
             seqused_kv_value=kv_lengths,
             p_scale_value=p_scale_value,
-            p_scale_type=p_scale_type,
             seed=mxfp8_seed,
             blocknum=int(key.shape[0]),
             max_block_per_batch=int(block_table.shape[1]),
@@ -315,7 +313,6 @@ def _mxfp8_assemble_case(
     seqused_kv_value,
     sparse_mode,
     p_scale_value,
-    p_scale_type="float8_e8m0fnu",
     seed,
     quant_group_size,
     s2_base_size,
@@ -356,7 +353,6 @@ def _mxfp8_assemble_case(
         "layout_out": layout_out,
         "kv_cache_layout": "BnNBsD",
         "p_scale_value": (None if p_scale_value is None else float(p_scale_value)),
-        "p_scale_type": p_scale_type,
         "softmax_scale": float(softmax_scale),
         "return_softmax_lse": bool(return_softmax_lse),
         "seed": int(seed),
@@ -398,7 +394,6 @@ def _mxfp8_customize_inputs(
     seqused_kv_value=None,
     sparse_mode=None,
     p_scale_value=None,
-    p_scale_type="float8_e8m0fnu",
     seed=0,
     quant_group_size=32,
     s2_base_size=512,
@@ -411,9 +406,6 @@ def _mxfp8_customize_inputs(
     **kwargs,
 ):
     module = _mxfp8_load_golden_module()
-    # 根据 p_scale tensor 的 dtype 自动推断 p_scale_type
-    if p_scale is not None and _numel(p_scale) > 0 and p_scale.dtype == torch.float32:
-        p_scale_type = "float32"
     case = _mxfp8_assemble_case(
         query,
         key,
@@ -433,7 +425,6 @@ def _mxfp8_customize_inputs(
         seqused_kv_value=seqused_kv_value,
         sparse_mode=(sparse_mode if sparse_mode in ("dense", "random") else "dense"),
         p_scale_value=p_scale_value,
-        p_scale_type=p_scale_type,
         seed=seed,
         quant_group_size=quant_group_size,
         s2_base_size=s2_base_size,
@@ -469,7 +460,7 @@ def _mxfp8_customize_inputs(
     _inplace_copy(k_descale, module.fp32_to_e8m0fnu_safe(k_scale_pa, "K descale"))
     _inplace_copy(v_descale, module.fp32_to_e8m0fnu_safe(v_scale_pa, "V descale"))
     if p_scale is not None and _numel(p_scale) > 0:
-        if data["p_scale"].dtype == torch.float32:
+        if p_scale.dtype == torch.float32:
             _inplace_copy(p_scale, data["p_scale"])
         else:
             _inplace_copy(
