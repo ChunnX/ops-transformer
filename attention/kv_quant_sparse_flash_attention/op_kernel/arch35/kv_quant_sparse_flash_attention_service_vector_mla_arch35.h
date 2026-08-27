@@ -386,97 +386,77 @@ __aicore__ inline void AntiquantVFFp8D448(LocalTensor<Q_T> &outputUb, LocalTenso
 
 static constexpr MicroAPI::CastTrait castTraitBIFp4 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
                                                        MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+static constexpr MicroAPI::CastTrait castTraitBIE8M0ToBf16 = {
+    MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN, MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 static constexpr MicroAPI::CastTrait castTraitBIBf16ToQ = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::SAT,
                                                            MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
 
 template <typename Q_T>
-__simd_callee__ inline void StageBIMxfp4Scales(__ubuf__ uint8_t *ubSrcAddr, __ubuf__ bfloat16_t *ubScaleDst,
-                                               uint32_t dealRowCount)
+__simd_callee__ inline void AntiquantBIMxfp4Tile(__ubuf__ uint8_t *fp4Src, __ubuf__ Q_T *dst,
+                                                 MicroAPI::RegTensor<bfloat16_t> &vScaleCompact,
+                                                 MicroAPI::RegTensor<int16_t> &vScaleIndex,
+                                                 MicroAPI::MaskReg &maskAll)
 {
-    constexpr uint32_t rowStrideBytes = 416;
-    constexpr uint32_t scaleOffsetBytes = 384;
-    constexpr uint32_t scaleSlotsPerRow = 32;
-    constexpr int16_t shiftBits = 7;
-
-    MicroAPI::RegTensor<uint8_t> vScaleU8;
-    MicroAPI::RegTensor<bfloat16_t> vScaleBf16, vScaleBf16Dup;
-    MicroAPI::RegTensor<half> vScaleZero, vScaleNan;
-    MicroAPI::RegTensor<int16_t> vScaleFixZero, vScaleFixNan;
-    MicroAPI::MaskReg maskScaleZero, maskScaleNan;
-    MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<bfloat16_t, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg mask32 = MicroAPI::CreateMask<bfloat16_t, MicroAPI::MaskPattern::VL32>();
-
-    MicroAPI::Duplicate(vScaleZero, 0x0);
-    MicroAPI::Duplicate(vScaleNan, 0x7f80);
-    MicroAPI::Duplicate(vScaleFixZero, 0x40);
-    MicroAPI::Duplicate(vScaleFixNan, 0x7fff);
-    for (uint32_t row = 0; row < dealRowCount; ++row) {
-        __ubuf__ uint8_t *scaleSrc = ubSrcAddr + row * rowStrideBytes + scaleOffsetBytes;
-        MicroAPI::LoadAlign<uint8_t, MicroAPI::LoadDist::DIST_UNPACK_B8>(
-            (MicroAPI::RegTensor<uint8_t> &)vScaleU8, scaleSrc);
-        MicroAPI::ShiftLefts((MicroAPI::RegTensor<uint16_t> &)vScaleBf16,
-                             (MicroAPI::RegTensor<uint16_t> &)vScaleU8, shiftBits, maskAll);
-        MicroAPI::Compare<uint16_t, CMPMODE::NE>(maskScaleZero, (MicroAPI::RegTensor<uint16_t> &)vScaleBf16,
-                                                 (MicroAPI::RegTensor<uint16_t> &)vScaleZero, maskAll);
-        MicroAPI::Select((MicroAPI::RegTensor<uint16_t> &)vScaleBf16, (MicroAPI::RegTensor<uint16_t> &)vScaleBf16,
-                         (MicroAPI::RegTensor<uint16_t> &)vScaleFixZero, maskScaleZero);
-        MicroAPI::Compare<uint16_t, CMPMODE::NE>(maskScaleNan, (MicroAPI::RegTensor<uint16_t> &)vScaleBf16,
-                                                 (MicroAPI::RegTensor<uint16_t> &)vScaleNan, maskAll);
-        MicroAPI::Select((MicroAPI::RegTensor<uint16_t> &)vScaleBf16, (MicroAPI::RegTensor<uint16_t> &)vScaleBf16,
-                         (MicroAPI::RegTensor<uint16_t> &)vScaleFixNan, maskScaleNan);
-        MicroAPI::Interleave((MicroAPI::RegTensor<uint16_t> &)vScaleBf16,
-                             (MicroAPI::RegTensor<uint16_t> &)vScaleBf16Dup,
-                             (MicroAPI::RegTensor<uint16_t> &)vScaleBf16,
-                             (MicroAPI::RegTensor<uint16_t> &)vScaleBf16);
-        MicroAPI::StoreAlign<bfloat16_t, MicroAPI::StoreDist::DIST_NORM_B16>(
-            ubScaleDst + row * scaleSlotsPerRow, vScaleBf16, mask32);
-    }
-}
-
-template <typename Q_T>
-__simd_vf__ void AntiquantVFImplBIMxfp4(__ubuf__ uint8_t *ubSrcAddr, __ubuf__ bfloat16_t *ubScaleAddr,
-                                        __ubuf__ Q_T *ubDstAddr, uint32_t dealRowCount)
-{
-    StageBIMxfp4Scales<Q_T>(ubSrcAddr, ubScaleAddr, dealRowCount);
-    MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
-
-    constexpr uint32_t rowStrideBytes = 416;
-    constexpr uint32_t nopeDim = 512;
-    constexpr uint32_t dTile = 128;
-    constexpr uint32_t packedTileBytes = dTile / 2;
-    constexpr uint32_t scaleSlotsPerTile = 8;
-    constexpr uint32_t scaleSlotsPerRow = 32;
     constexpr uint32_t blockStride = 17;
     constexpr uint32_t repeatStride = 1;
 
     MicroAPI::RegTensor<fp4x2_e2m1_t> vFp4;
     MicroAPI::RegTensor<bfloat16_t> vBf16, vScale, vMul;
-    MicroAPI::RegTensor<half> vFp16;
+
+    MicroAPI::Gather(vScale, vScaleCompact, (MicroAPI::RegTensor<uint16_t> &)vScaleIndex);
+    MicroAPI::LoadAlign<uint8_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
+        (MicroAPI::RegTensor<uint8_t> &)vFp4, fp4Src);
+    MicroAPI::Cast<bfloat16_t, fp4x2_e2m1_t, castTraitBIFp4>(vBf16, vFp4, maskAll);
+    MicroAPI::Mul<bfloat16_t, MicroAPI::MaskMergeMode::ZEROING>(vMul, vBf16, vScale, maskAll);
+    if constexpr (std::is_same<Q_T, bfloat16_t>::value) {
+        MicroAPI::StoreAlign<Q_T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
+                             MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            dst, vMul, blockStride, repeatStride, maskAll);
+    } else {
+        MicroAPI::RegTensor<half> vFp16;
+        MicroAPI::Cast<half, bfloat16_t, castTraitBIBf16ToQ>(vFp16, vMul, maskAll);
+        MicroAPI::StoreAlign<Q_T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
+                             MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            dst, vFp16, blockStride, repeatStride, maskAll);
+    }
+}
+
+template <typename Q_T>
+__simd_vf__ void AntiquantVFImplBIMxfp4(__ubuf__ uint8_t *ubSrcAddr, __ubuf__ Q_T *ubDstAddr,
+                                        uint32_t dealRowCount)
+{
+    constexpr uint32_t rowStrideBytes = 416;
+    constexpr uint32_t scaleOffsetBytes = 384;
+    constexpr uint32_t dTile = 128;
+    constexpr uint32_t packedTileBytes = dTile / 2;
+    constexpr uint32_t blockStride = 17;
+
+    MicroAPI::RegTensor<fp8_e8m0_t> vScaleE8M0;
+    MicroAPI::RegTensor<bfloat16_t> vScaleCompact;
+    MicroAPI::RegTensor<int16_t> vScaleIndex0, vScaleIndex1, vScaleIndex2, vScaleIndex3;
     MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<Q_T, MicroAPI::MaskPattern::ALL>();
 
-    for (uint32_t dTileIdx = 0; dTileIdx < nopeDim / dTile; ++dTileIdx) {
-        __ubuf__ uint8_t *fp4Row = ubSrcAddr + dTileIdx * packedTileBytes;
-        __ubuf__ Q_T *dst = ubDstAddr + dTileIdx * dTile * blockStride;
-        for (uint32_t row = 0; row < dealRowCount; ++row) {
-            MicroAPI::LoadAlign<uint8_t, MicroAPI::PostLiteral::POST_MODE_UPDATE,
-                                MicroAPI::LoadDist::DIST_UNPACK4_B8>(
-                (MicroAPI::RegTensor<uint8_t> &)vFp4, fp4Row, rowStrideBytes);
-            MicroAPI::Cast<bfloat16_t, fp4x2_e2m1_t, castTraitBIFp4>(vBf16, vFp4, maskAll);
-            __ubuf__ bfloat16_t *scaleRow =
-                ubScaleAddr + row * scaleSlotsPerRow + dTileIdx * scaleSlotsPerTile;
-            MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_E2B_B16>(vScale, scaleRow);
-            MicroAPI::Mul<bfloat16_t, MicroAPI::MaskMergeMode::ZEROING>(vMul, vBf16, vScale, maskAll);
-            if constexpr (std::is_same<Q_T, bfloat16_t>::value) {
-                MicroAPI::StoreAlign<Q_T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
-                                     MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                    dst, vMul, blockStride, repeatStride, maskAll);
-            } else {
-                MicroAPI::Cast<half, bfloat16_t, castTraitBIBf16ToQ>(vFp16, vMul, maskAll);
-                MicroAPI::StoreAlign<Q_T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
-                                     MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                    dst, vFp16, blockStride, repeatStride, maskAll);
-            }
-        }
+    MicroAPI::Arange(vScaleIndex0, 0);
+    MicroAPI::ShiftRights(vScaleIndex0, vScaleIndex0, static_cast<int16_t>(5), maskAll);
+    MicroAPI::Adds(vScaleIndex1, vScaleIndex0, static_cast<int16_t>(4), maskAll);
+    MicroAPI::Adds(vScaleIndex2, vScaleIndex0, static_cast<int16_t>(8), maskAll);
+    MicroAPI::Adds(vScaleIndex3, vScaleIndex0, static_cast<int16_t>(12), maskAll);
+
+    for (uint32_t row = 0; row < dealRowCount; ++row) {
+        __ubuf__ uint8_t *rowSrc = ubSrcAddr + row * rowStrideBytes;
+        MicroAPI::LoadAlign<uint8_t, MicroAPI::LoadDist::DIST_UNPACK_B8>(
+            (MicroAPI::RegTensor<uint8_t> &)vScaleE8M0, rowSrc + scaleOffsetBytes);
+        MicroAPI::Cast<bfloat16_t, fp8_e8m0_t, castTraitBIE8M0ToBf16>(
+            vScaleCompact, vScaleE8M0, maskAll);
+
+        __ubuf__ Q_T *rowDst = ubDstAddr + row * 16;
+        AntiquantBIMxfp4Tile<Q_T>(rowSrc, rowDst, vScaleCompact, vScaleIndex0, maskAll);
+        AntiquantBIMxfp4Tile<Q_T>(rowSrc + packedTileBytes, rowDst + dTile * blockStride,
+                                  vScaleCompact, vScaleIndex1, maskAll);
+        AntiquantBIMxfp4Tile<Q_T>(rowSrc + 2 * packedTileBytes, rowDst + 2 * dTile * blockStride,
+                                  vScaleCompact, vScaleIndex2, maskAll);
+        AntiquantBIMxfp4Tile<Q_T>(rowSrc + 3 * packedTileBytes, rowDst + 3 * dTile * blockStride,
+                                  vScaleCompact, vScaleIndex3, maskAll);
     }
 }
 
@@ -486,9 +466,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
     if (constInfo.dSizeVInput == 400) {
         __ubuf__ uint8_t *ubSrcAddr = (__ubuf__ uint8_t *)(srcTensor.GetPhyAddr());
         __ubuf__ Q_T *ubDstAddr = (__ubuf__ Q_T *)(antiKvTensorAsB16.GetPhyAddr());
-        LocalTensor<bfloat16_t> scaleStage = srcTensor[416 * 16].template ReinterpretCast<bfloat16_t>();
-        __ubuf__ bfloat16_t *ubScaleStage = (__ubuf__ bfloat16_t *)(scaleStage.GetPhyAddr());
-        AntiquantVFImplBIMxfp4<Q_T>(ubSrcAddr, ubScaleStage, ubDstAddr, static_cast<uint32_t>(dealRow));
+        AntiquantVFImplBIMxfp4<Q_T>(ubSrcAddr, ubDstAddr, static_cast<uint32_t>(dealRow));
 
         LocalTensor<Q_T> kRopeUb = srcTensor[256].template ReinterpretCast<Q_T>();
         LocalTensor<Q_T> kRopeUbNz = antiKvTensorAsB16[constInfo.dSizeNope * (16 + 1)];
