@@ -46,8 +46,8 @@ from cann_ops_transformer.op_builder.builder import get_as_library
 # Supported layouts and dtypes (single source of truth, mirrors the kernel:
 # block_sparse_attention_tiling.cpp / block_sparse_attention.cpp).
 _LAYOUTS = ("TND", "BNSD", "BSND")
-_FP_DTYPES = (torch.float16, torch.bfloat16)          # FP16/BF16: out dtype == in dtype
-_FP8_DTYPES = (torch.float8_e4m3fn,)                  # FP8: out dtype ∈ {fp16, bf16}, 950 only
+_FP_DTYPES = (torch.float16, torch.bfloat16)  # FP16/BF16: out dtype == in dtype
+_FP8_DTYPES = (torch.float8_e4m3fn,)  # FP8: out dtype ∈ {fp16, bf16}, 950 only
 _FP8_DEFAULT_OUT_DTYPE = torch.bfloat16
 
 
@@ -137,7 +137,7 @@ class BlockSparseAttentionOpBuilder(OpBuilder):
         super().__init__("block_sparse_attention")
 
     def sources(self):
-        return ['ops/csrc/block_sparse_attention.cpp']
+        return ["ops/csrc/block_sparse_attention.cpp"]
 
     def schema(self) -> str:
         return (
@@ -149,8 +149,8 @@ class BlockSparseAttentionOpBuilder(OpBuilder):
             "int[] actual_seq_lengths_kv, "
             "int num_heads, "
             "int num_key_value_heads, "
-            "str q_input_layout=\"BNSD\", "
-            "str kv_input_layout=\"BNSD\", "
+            'str q_input_layout="BNSD", '
+            'str kv_input_layout="BNSD", '
             "int mask_type=0, "
             "float scale_value=1.0, "
             "int inner_precise=0, "
@@ -167,14 +167,30 @@ class BlockSparseAttentionOpBuilder(OpBuilder):
 
     def register_meta(self):
         @impl(get_as_library(), self.name, "Meta")
-        def _meta(query, key, value, block_sparse_mask, block_shape,
-                  actual_seq_lengths, actual_seq_lengths_kv,
-                  num_heads, num_key_value_heads,
-                  q_input_layout, kv_input_layout,
-                  mask_type, scale_value, inner_precise, block_size,
-                  pre_tokens, next_tokens, softmax_lse_flag,
-                  q_dequant_scale=None, k_dequant_scale=None,
-                  v_dequant_scale=None, attention_out_dtype=None):
+        def _meta(
+            query,
+            key,
+            value,
+            block_sparse_mask,
+            block_shape,
+            actual_seq_lengths,
+            actual_seq_lengths_kv,
+            num_heads,
+            num_key_value_heads,
+            q_input_layout,
+            kv_input_layout,
+            mask_type,
+            scale_value,
+            inner_precise,
+            block_size,
+            pre_tokens,
+            next_tokens,
+            softmax_lse_flag,
+            q_dequant_scale=None,
+            k_dequant_scale=None,
+            v_dequant_scale=None,
+            attention_out_dtype=None,
+        ):
             # Mirror the C++ wrapper's input constraints (block_sparse_attention.cpp)
             # so graph / FakeTensor tracing fails at the same boundary as real
             # execution instead of only erroring deep inside the kernel at run time.
@@ -232,28 +248,30 @@ _op_builder = BlockSparseAttentionOpBuilder()
 
 
 @impl(get_as_library(), _op_builder.name, "PrivateUse1")
-def block_sparse_attention(query,
-                           key,
-                           value,
-                           block_sparse_mask,
-                           block_shape,
-                           actual_seq_lengths,
-                           actual_seq_lengths_kv,
-                           num_heads,
-                           num_key_value_heads,
-                           q_input_layout="BNSD",
-                           kv_input_layout="BNSD",
-                           mask_type=0,
-                           scale_value=1.0,
-                           inner_precise=0,
-                           block_size=0,
-                           pre_tokens=2147483647,
-                           next_tokens=2147483647,
-                           softmax_lse_flag=False,
-                           q_dequant_scale=None,
-                           k_dequant_scale=None,
-                           v_dequant_scale=None,
-                           attention_out_dtype=None):
+def block_sparse_attention(
+    query,
+    key,
+    value,
+    block_sparse_mask,
+    block_shape,
+    actual_seq_lengths,
+    actual_seq_lengths_kv,
+    num_heads,
+    num_key_value_heads,
+    q_input_layout="BNSD",
+    kv_input_layout="BNSD",
+    mask_type=0,
+    scale_value=1.0,
+    inner_precise=0,
+    block_size=0,
+    pre_tokens=2147483647,
+    next_tokens=2147483647,
+    softmax_lse_flag=False,
+    q_dequant_scale=None,
+    k_dequant_scale=None,
+    v_dequant_scale=None,
+    attention_out_dtype=None,
+):
     """Block-sparse attention with optional softmax_lse output.
 
     Args:
@@ -304,12 +322,26 @@ def block_sparse_attention(query,
     # OpBuilder.load() caches in `_loaded_ops`, so later calls are a dict lookup.
     op_module = _op_builder.load()
     return op_module.npu_block_sparse_attention(
-        query, key, value, block_sparse_mask,
-        block_shape, actual_seq_lengths, actual_seq_lengths_kv,
-        num_heads, num_key_value_heads,
-        q_input_layout, kv_input_layout,
-        mask_type, scale_value, inner_precise, block_size,
-        pre_tokens, next_tokens, softmax_lse_flag,
-        q_dequant_scale, k_dequant_scale, v_dequant_scale,
+        query,
+        key,
+        value,
+        block_sparse_mask,
+        block_shape,
+        actual_seq_lengths,
+        actual_seq_lengths_kv,
+        num_heads,
+        num_key_value_heads,
+        q_input_layout,
+        kv_input_layout,
+        mask_type,
+        scale_value,
+        inner_precise,
+        block_size,
+        pre_tokens,
+        next_tokens,
+        softmax_lse_flag,
+        q_dequant_scale,
+        k_dequant_scale,
+        v_dequant_scale,
         resolved_out_dtype,
     )

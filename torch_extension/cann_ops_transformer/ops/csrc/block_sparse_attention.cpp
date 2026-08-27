@@ -55,46 +55,28 @@
 namespace op_api {
 
 std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
-    const at::Tensor &query,
-    const at::Tensor &key,
-    const at::Tensor &value,
-    const at::Tensor &block_sparse_mask,
-    at::IntArrayRef block_shape,
-    at::IntArrayRef actual_seq_lengths,
-    at::IntArrayRef actual_seq_lengths_kv,
-    int64_t num_heads,
-    int64_t num_key_value_heads,
-    c10::string_view q_input_layout,
-    c10::string_view kv_input_layout,
-    int64_t mask_type,
-    double scale_value,
-    int64_t inner_precise,
-    int64_t block_size,
-    int64_t pre_tokens,
-    int64_t next_tokens,
-    bool softmax_lse_flag,
-    const c10::optional<at::Tensor> &q_dequant_scale,
-    const c10::optional<at::Tensor> &k_dequant_scale,
-    const c10::optional<at::Tensor> &v_dequant_scale,
+    const at::Tensor &query, const at::Tensor &key, const at::Tensor &value, const at::Tensor &block_sparse_mask,
+    at::IntArrayRef block_shape, at::IntArrayRef actual_seq_lengths, at::IntArrayRef actual_seq_lengths_kv,
+    int64_t num_heads, int64_t num_key_value_heads, c10::string_view q_input_layout, c10::string_view kv_input_layout,
+    int64_t mask_type, double scale_value, int64_t inner_precise, int64_t block_size, int64_t pre_tokens,
+    int64_t next_tokens, bool softmax_lse_flag, const c10::optional<at::Tensor> &q_dequant_scale,
+    const c10::optional<at::Tensor> &k_dequant_scale, const c10::optional<at::Tensor> &v_dequant_scale,
     at::ScalarType attention_out_dtype)
 {
-    TORCH_CHECK(query.is_contiguous(),            "query must be contiguous");
-    TORCH_CHECK(key.is_contiguous(),              "key must be contiguous");
-    TORCH_CHECK(value.is_contiguous(),            "value must be contiguous");
+    TORCH_CHECK(query.is_contiguous(), "query must be contiguous");
+    TORCH_CHECK(key.is_contiguous(), "key must be contiguous");
+    TORCH_CHECK(value.is_contiguous(), "value must be contiguous");
     TORCH_CHECK(block_sparse_mask.is_contiguous(), "block_sparse_mask must be contiguous");
-    TORCH_CHECK(block_sparse_mask.scalar_type() == at::kChar,
-                "block_sparse_mask must be int8 (torch.int8)");
-    TORCH_CHECK(block_shape.size() == 2,
-                "block_shape must be exactly 2 values [block_x, block_y]");
+    TORCH_CHECK(block_sparse_mask.scalar_type() == at::kChar, "block_sparse_mask must be int8 (torch.int8)");
+    TORCH_CHECK(block_shape.size() == 2, "block_shape must be exactly 2 values [block_x, block_y]");
     TORCH_CHECK(q_input_layout == "BNSD" || q_input_layout == "TND" || q_input_layout == "BSND",
                 "q_input_layout must be 'BNSD', 'BSND' or 'TND'");
     TORCH_CHECK(kv_input_layout == "BNSD" || kv_input_layout == "TND" || kv_input_layout == "BSND",
                 "kv_input_layout must be 'BNSD', 'BSND' or 'TND'");
     TORCH_CHECK(q_input_layout == kv_input_layout,
-                "q_input_layout and kv_input_layout must be identical, got q=",
-                std::string(q_input_layout), ", kv=", std::string(kv_input_layout));
-    TORCH_CHECK(block_size == 0,
-                "block_size must be 0 — paged KV cache is not yet supported by the kernel");
+                "q_input_layout and kv_input_layout must be identical, got q=", std::string(q_input_layout),
+                ", kv=", std::string(kv_input_layout));
+    TORCH_CHECK(block_size == 0, "block_size must be 0 — paged KV cache is not yet supported by the kernel");
     TORCH_CHECK(mask_type == 0,
                 "mask_type must be 0 — fine-grained attention masks are not yet supported by the kernel");
 
@@ -120,9 +102,7 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
     // FP8-only dequant scales (aclnnBlockSparseAttentionV2). Absent on the
     // FP16/BF16 path → passed through as nullptr. When present, the kernel
     // validates the full FP8 shape rules; here we only check the basics.
-    auto is_present = [](const c10::optional<at::Tensor> &t) {
-        return t.has_value() && t->defined();
-    };
+    auto is_present = [](const c10::optional<at::Tensor> &t) { return t.has_value() && t->defined(); };
     // All-or-none contract: the FP8 dequant path needs q, k and v scales
     // together. Reject a partial set here rather than failing obscurely
     // deep inside the kernel.
@@ -132,21 +112,20 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
     TORCH_CHECK(q_present == k_present && k_present == v_present,
                 "q_dequant_scale, k_dequant_scale and v_dequant_scale must be provided "
                 "all together (FP8 dequant path) or all omitted (FP16/BF16 path); got "
-                "q=", q_present, ", k=", k_present, ", v=", v_present);
+                "q=",
+                q_present, ", k=", k_present, ", v=", v_present);
     // The dequant path and the FP8 input dtype are two sides of the same coin:
     // FP8 inputs require the scales, and FP16/BF16 inputs must not carry them.
     if (q_dtype == at::kFloat8_e4m3fn) {
-        TORCH_CHECK(q_present,
-                    "float8_e4m3fn inputs require q_dequant_scale, k_dequant_scale and "
-                    "v_dequant_scale (FP32 4-D reverse-quant factors)");
+        TORCH_CHECK(q_present, "float8_e4m3fn inputs require q_dequant_scale, k_dequant_scale and "
+                               "v_dequant_scale (FP32 4-D reverse-quant factors)");
     } else {
-        TORCH_CHECK(!q_present,
-                    "q/k/v_dequant_scale are only valid for float8_e4m3fn inputs");
+        TORCH_CHECK(!q_present, "q/k/v_dequant_scale are only valid for float8_e4m3fn inputs");
     }
     auto check_dequant = [&is_present](const c10::optional<at::Tensor> &t, const char *name) {
         if (is_present(t)) {
             TORCH_CHECK(t->scalar_type() == at::kFloat, name, " must be float32 when provided");
-            TORCH_CHECK(t->is_contiguous(),             name, " must be contiguous when provided");
+            TORCH_CHECK(t->is_contiguous(), name, " must be contiguous when provided");
         }
     };
     check_dequant(q_dequant_scale, "q_dequant_scale");
@@ -172,7 +151,7 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
     if (softmax_lse_flag) {
         if (q_input_layout == "TND") {
             softmax_lse = at::empty({query.size(0), query.size(1), 1}, opts_f32);
-        } else {  // BNSD or BSND
+        } else { // BNSD or BSND
             softmax_lse = at::empty({query.size(0), query.size(1), query.size(2), 1}, opts_f32);
         }
     } else {
@@ -182,7 +161,7 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
     // Undefined tensors → ConvertType(at::Tensor) returns nullptr
     // (see common/inc/aclnn_common.h:222). Used here for atten_mask and
     // blockTableOptional which we always pass as nullptr.
-    const at::Tensor null_tensor;  // default-constructed = undefined
+    const at::Tensor null_tensor; // default-constructed = undefined
 
     // Layout strings → char*. The aclnn signature takes `char *`, the generic
     // ConvertType<T> template (line 399 of aclnn_common.h) passes them through.
@@ -204,37 +183,22 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
     // The c10::optional dequant scales bind to ConvertTypes(Ts&...) as const
     // lvalues; ConvertType(const c10::optional<at::Tensor>&) yields nullptr
     // when they are absent (the FP16/BF16 path).
-    ACLNN_CMD(aclnnBlockSparseAttentionV2,
-              query, key, value,
-              block_sparse_mask,
-              null_tensor,                    // attenMaskOptional — always nullptr
-              block_shape,
-              actual_seq_lengths,
-              actual_seq_lengths_kv,
-              null_tensor,                    // blockTableOptional — always nullptr (PagedAttention unused)
-              q_dequant_scale,                // qDequantScaleOptional — FP8 only; nullptr for FP16/BF16
-              k_dequant_scale,                // kDequantScaleOptional — FP8 only; nullptr for FP16/BF16
-              v_dequant_scale,                // vDequantScaleOptional — FP8 only; nullptr for FP16/BF16
-              q_layout_ptr,
-              kv_layout_ptr,
-              num_key_value_heads,
-              mask_type,
-              scale_value,
-              inner_precise,
-              block_size,
-              pre_tokens,
-              next_tokens,
-              softmax_lse_flag_i64,
-              attention_out,
-              softmax_lse);
+    ACLNN_CMD(aclnnBlockSparseAttentionV2, query, key, value, block_sparse_mask,
+              null_tensor, // attenMaskOptional — always nullptr
+              block_shape, actual_seq_lengths, actual_seq_lengths_kv,
+              null_tensor,     // blockTableOptional — always nullptr (PagedAttention unused)
+              q_dequant_scale, // qDequantScaleOptional — FP8 only; nullptr for FP16/BF16
+              k_dequant_scale, // kDequantScaleOptional — FP8 only; nullptr for FP16/BF16
+              v_dequant_scale, // vDequantScaleOptional — FP8 only; nullptr for FP16/BF16
+              q_layout_ptr, kv_layout_ptr, num_key_value_heads, mask_type, scale_value, inner_precise, block_size,
+              pre_tokens, next_tokens, softmax_lse_flag_i64, attention_out, softmax_lse);
 
     return std::make_tuple(attention_out, softmax_lse);
 }
 
-}  // namespace op_api
+} // namespace op_api
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("npu_block_sparse_attention", &op_api::npu_block_sparse_attention,
-          "block_sparse_attention");
+    m.def("npu_block_sparse_attention", &op_api::npu_block_sparse_attention, "block_sparse_attention");
 }

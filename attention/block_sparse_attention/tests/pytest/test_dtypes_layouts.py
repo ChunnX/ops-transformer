@@ -59,6 +59,7 @@ torch.npu.set_device(DEVICE)
 # device must not be assumed arch35, or its FP8/BSND cases would run (and fail)
 # on a chip that can't support them.
 
+
 def _device_name():
     """Runtime SoC name, or None if it can't be read (e.g. no NPU present)."""
     try:
@@ -102,14 +103,24 @@ def _make_fp8(*shape, device=DEVICE):
 
 # ── Shared helpers ───────────────────────────────────────────────────────────
 
+
 def _dense_mask(b, n, s_q, s_kv, device=DEVICE, block_q=BLOCK_Q, block_kv=BLOCK_KV):
     q_blocks = (s_q + block_q - 1) // block_q
     kv_blocks = (s_kv + block_kv - 1) // block_kv
     return torch.ones(b, n, q_blocks, kv_blocks, dtype=torch.int8, device=device)
 
 
-def _run_bnsd(q_bnsd, k_bnsd, v_bnsd, n, scale, lse=False, attention_out_dtype=None,
-              dequant=None, block_kv=BLOCK_KV):
+def _run_bnsd(
+    q_bnsd,
+    k_bnsd,
+    v_bnsd,
+    n,
+    scale,
+    lse=False,
+    attention_out_dtype=None,
+    dequant=None,
+    block_kv=BLOCK_KV,
+):
     """q_*_bnsd: [B, N, S, D]. Returns (out[B,N,S,D], lse_or_none).
 
     block_kv overrides the KV block size — FP8 requires it to be a multiple of 256
@@ -117,36 +128,56 @@ def _run_bnsd(q_bnsd, k_bnsd, v_bnsd, n, scale, lse=False, attention_out_dtype=N
     """
     b, _, s_q, _ = q_bnsd.shape
     s_kv = k_bnsd.shape[2]
-    qds, kds, vds = (dequant or (None, None, None))
+    qds, kds, vds = dequant or (None, None, None)
     out, lse_t = cann_ops_transformer.ops.block_sparse_attention(
-        q_bnsd, k_bnsd, v_bnsd,
+        q_bnsd,
+        k_bnsd,
+        v_bnsd,
         block_sparse_mask=_dense_mask(b, n, s_q, s_kv, block_kv=block_kv),
         block_shape=[BLOCK_Q, block_kv],
-        actual_seq_lengths=[s_q] * b, actual_seq_lengths_kv=[s_kv] * b,
-        num_heads=n, num_key_value_heads=n,
-        q_input_layout="BNSD", kv_input_layout="BNSD",
-        mask_type=0, scale_value=float(scale),
-        inner_precise=_INNER_PRECISE, block_size=0,
-        pre_tokens=2147483647, next_tokens=2147483647,
+        actual_seq_lengths=[s_q] * b,
+        actual_seq_lengths_kv=[s_kv] * b,
+        num_heads=n,
+        num_key_value_heads=n,
+        q_input_layout="BNSD",
+        kv_input_layout="BNSD",
+        mask_type=0,
+        scale_value=float(scale),
+        inner_precise=_INNER_PRECISE,
+        block_size=0,
+        pre_tokens=2147483647,
+        next_tokens=2147483647,
         softmax_lse_flag=lse,
-        q_dequant_scale=qds, k_dequant_scale=kds, v_dequant_scale=vds,
+        q_dequant_scale=qds,
+        k_dequant_scale=kds,
+        v_dequant_scale=vds,
         attention_out_dtype=attention_out_dtype,
     )
     return out, (lse_t if lse else None)
 
 
-def _run_tnd(q_tnd, k_tnd, v_tnd, n, s_q, s_kv, scale, lse=False, attention_out_dtype=None):
+def _run_tnd(
+    q_tnd, k_tnd, v_tnd, n, s_q, s_kv, scale, lse=False, attention_out_dtype=None
+):
     """q_*_tnd: [T, N, D] with a single batch (T == S). Returns (out, lse_or_none)."""
     out, lse_t = cann_ops_transformer.ops.block_sparse_attention(
-        q_tnd, k_tnd, v_tnd,
+        q_tnd,
+        k_tnd,
+        v_tnd,
         block_sparse_mask=_dense_mask(1, n, s_q, s_kv),
         block_shape=[BLOCK_Q, BLOCK_KV],
-        actual_seq_lengths=[s_q], actual_seq_lengths_kv=[s_kv],
-        num_heads=n, num_key_value_heads=n,
-        q_input_layout="TND", kv_input_layout="TND",
-        mask_type=0, scale_value=float(scale),
-        inner_precise=_INNER_PRECISE, block_size=0,
-        pre_tokens=2147483647, next_tokens=2147483647,
+        actual_seq_lengths=[s_q],
+        actual_seq_lengths_kv=[s_kv],
+        num_heads=n,
+        num_key_value_heads=n,
+        q_input_layout="TND",
+        kv_input_layout="TND",
+        mask_type=0,
+        scale_value=float(scale),
+        inner_precise=_INNER_PRECISE,
+        block_size=0,
+        pre_tokens=2147483647,
+        next_tokens=2147483647,
         softmax_lse_flag=lse,
         attention_out_dtype=attention_out_dtype,
     )
@@ -158,15 +189,23 @@ def _run_bsnd(q_bsnd, k_bsnd, v_bsnd, n, scale, lse=False, attention_out_dtype=N
     b, s_q = q_bsnd.shape[0], q_bsnd.shape[1]
     s_kv = k_bsnd.shape[1]
     out, lse_t = cann_ops_transformer.ops.block_sparse_attention(
-        q_bsnd, k_bsnd, v_bsnd,
+        q_bsnd,
+        k_bsnd,
+        v_bsnd,
         block_sparse_mask=_dense_mask(b, n, s_q, s_kv),
         block_shape=[BLOCK_Q, BLOCK_KV],
-        actual_seq_lengths=[s_q] * b, actual_seq_lengths_kv=[s_kv] * b,
-        num_heads=n, num_key_value_heads=n,
-        q_input_layout="BSND", kv_input_layout="BSND",
-        mask_type=0, scale_value=float(scale),
-        inner_precise=_INNER_PRECISE, block_size=0,
-        pre_tokens=2147483647, next_tokens=2147483647,
+        actual_seq_lengths=[s_q] * b,
+        actual_seq_lengths_kv=[s_kv] * b,
+        num_heads=n,
+        num_key_value_heads=n,
+        q_input_layout="BSND",
+        kv_input_layout="BSND",
+        mask_type=0,
+        scale_value=float(scale),
+        inner_precise=_INNER_PRECISE,
+        block_size=0,
+        pre_tokens=2147483647,
+        next_tokens=2147483647,
         softmax_lse_flag=lse,
         attention_out_dtype=attention_out_dtype,
     )
@@ -176,6 +215,7 @@ def _run_bsnd(q_bsnd, k_bsnd, v_bsnd, n, scale, lse=False, attention_out_dtype=N
 # ════════════════════════════════════════════════════════════════════════════
 #  Front-end logic (runs on every chip — pure validation, no kernel binary)
 # ════════════════════════════════════════════════════════════════════════════
+
 
 class TestOutDtypeResolution:
     """`_resolve_out_dtype` is the single source of truth for the (in→out) dtype
@@ -219,6 +259,7 @@ def test_fp16_out_dtype_mismatch_raises_in_call():
 #  the kernel with "Cannot find binary for op BlockSparseAttention").
 # ════════════════════════════════════════════════════════════════════════════
 
+
 @pytest.mark.skipif(_IS_ARCH35, reason="guard only fires on arch v220 (A2/A3)")
 def test_fp8_on_v220_raises_clear_error():
     torch.manual_seed(SEED)
@@ -230,17 +271,27 @@ def test_fp8_on_v220_raises_clear_error():
     kds = torch.rand(b, n, ceil_kv, 1, dtype=torch.float32, device=DEVICE) + 0.5
     with pytest.raises(RuntimeError, match="Ascend 950"):
         cann_ops_transformer.ops.block_sparse_attention(
-            q, q, q,
+            q,
+            q,
+            q,
             block_sparse_mask=_dense_mask(b, n, s, s),
             block_shape=[BLOCK_Q, BLOCK_KV],
-            actual_seq_lengths=[s], actual_seq_lengths_kv=[s],
-            num_heads=n, num_key_value_heads=n,
-            q_input_layout="BNSD", kv_input_layout="BNSD",
-            mask_type=0, scale_value=1 / math.sqrt(d),
-            inner_precise=_INNER_PRECISE, block_size=0,
-            pre_tokens=2147483647, next_tokens=2147483647,
+            actual_seq_lengths=[s],
+            actual_seq_lengths_kv=[s],
+            num_heads=n,
+            num_key_value_heads=n,
+            q_input_layout="BNSD",
+            kv_input_layout="BNSD",
+            mask_type=0,
+            scale_value=1 / math.sqrt(d),
+            inner_precise=_INNER_PRECISE,
+            block_size=0,
+            pre_tokens=2147483647,
+            next_tokens=2147483647,
             softmax_lse_flag=False,
-            q_dequant_scale=qds, k_dequant_scale=kds, v_dequant_scale=kds,
+            q_dequant_scale=qds,
+            k_dequant_scale=kds,
+            v_dequant_scale=kds,
             attention_out_dtype=torch.bfloat16,
         )
 
@@ -288,9 +339,13 @@ def test_tnd_matches_bnsd(shape, dtype):
     # TND [S,N,D] → BNSD [1,N,S,D] for comparison
     out_tnd_as_bnsd = out_tnd.transpose(0, 1).unsqueeze(0)
     atol = _EQ_ATOL[dtype]
-    if not torch.allclose(out_tnd_as_bnsd.cpu(), out_bnsd.cpu(), rtol=_EQ_RTOL, atol=atol):
+    if not torch.allclose(
+        out_tnd_as_bnsd.cpu(), out_bnsd.cpu(), rtol=_EQ_RTOL, atol=atol
+    ):
         max_diff = (out_tnd_as_bnsd.float() - out_bnsd.float()).abs().max().item()
-        pytest.fail(f"TND vs BNSD mismatch shape={shape} dtype={dtype}: max_diff={max_diff:.6f}")
+        pytest.fail(
+            f"TND vs BNSD mismatch shape={shape} dtype={dtype}: max_diff={max_diff:.6f}"
+        )
 
 
 @pytest.mark.parametrize("dtype", _EQ_DTYPES, ids=lambda d: str(d).split(".")[-1])
@@ -316,12 +371,15 @@ def test_tnd_lse_shape_and_matches_bnsd(shape, dtype):
     lse_tnd_sn = lse_tnd.squeeze(-1)
     if not torch.allclose(lse_tnd_sn.cpu(), lse_bnsd_sn.cpu(), rtol=1e-3, atol=1e-3):
         max_diff = (lse_tnd_sn.cpu() - lse_bnsd_sn.cpu()).abs().max().item()
-        pytest.fail(f"TND vs BNSD LSE mismatch shape={shape} dtype={dtype}: max_diff={max_diff:.6f}")
+        pytest.fail(
+            f"TND vs BNSD LSE mismatch shape={shape} dtype={dtype}: max_diff={max_diff:.6f}"
+        )
 
 
 # ════════════════════════════════════════════════════════════════════════════
 #  BSND layout (arch35 only) — equivalence vs BNSD
 # ════════════════════════════════════════════════════════════════════════════
+
 
 @_arch35_only
 @pytest.mark.parametrize("dtype", _EQ_DTYPES, ids=lambda d: str(d).split(".")[-1])
@@ -347,9 +405,13 @@ def test_bsnd_matches_bnsd(shape, dtype):
     assert out_bsnd.shape == (1, s, n, d)
     out_bsnd_as_bnsd = out_bsnd.transpose(1, 2)
     atol = _EQ_ATOL[dtype]
-    if not torch.allclose(out_bsnd_as_bnsd.cpu(), out_bnsd.cpu(), rtol=_EQ_RTOL, atol=atol):
+    if not torch.allclose(
+        out_bsnd_as_bnsd.cpu(), out_bnsd.cpu(), rtol=_EQ_RTOL, atol=atol
+    ):
         max_diff = (out_bsnd_as_bnsd.float() - out_bnsd.float()).abs().max().item()
-        pytest.fail(f"BSND vs BNSD mismatch shape={shape} dtype={dtype}: max_diff={max_diff:.6f}")
+        pytest.fail(
+            f"BSND vs BNSD mismatch shape={shape} dtype={dtype}: max_diff={max_diff:.6f}"
+        )
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -359,7 +421,10 @@ def test_bsnd_matches_bnsd(shape, dtype):
 #  reference; this gates the API contract and that a binary exists.)
 # ════════════════════════════════════════════════════════════════════════════
 
-def _fp8_dequant_scales(b, n, kv_n, s_q, s_kv, block_q=128, block_kv=256, device=DEVICE):
+
+def _fp8_dequant_scales(
+    b, n, kv_n, s_q, s_kv, block_q=128, block_kv=256, device=DEVICE
+):
     # The per-block reverse-quant factor counts must match the block grid the kernel
     # derives from block_sparse_mask (ValidateGenericDequantScale,
     # block_sparse_attention_tiling.cpp): q -> ceil(maxQ / blockShapeX),
@@ -381,7 +446,9 @@ FP8_BLOCK_KV = 256
 
 
 @_arch35_only
-@pytest.mark.parametrize("attention_out_dtype", _EQ_DTYPES, ids=lambda d: "out_" + str(d).split(".")[-1])
+@pytest.mark.parametrize(
+    "attention_out_dtype", _EQ_DTYPES, ids=lambda d: "out_" + str(d).split(".")[-1]
+)
 def test_fp8_bnsd_contract(attention_out_dtype):
     torch.manual_seed(SEED)
     b, n, s, d = 1, 2, 512, 128
@@ -389,8 +456,16 @@ def test_fp8_bnsd_contract(attention_out_dtype):
     q = _make_fp8(b, n, s, d)
     qds, kds, vds = _fp8_dequant_scales(b, n, n, s, s, block_kv=FP8_BLOCK_KV)
 
-    out, _ = _run_bnsd(q, q, q, n, scale, attention_out_dtype=attention_out_dtype,
-                       dequant=(qds, kds, vds), block_kv=FP8_BLOCK_KV)
+    out, _ = _run_bnsd(
+        q,
+        q,
+        q,
+        n,
+        scale,
+        attention_out_dtype=attention_out_dtype,
+        dequant=(qds, kds, vds),
+        block_kv=FP8_BLOCK_KV,
+    )
 
     assert out.shape == (b, n, s, d)
     assert out.dtype == attention_out_dtype
@@ -411,6 +486,7 @@ def test_fp8_requires_dequant_scales():
 
 if __name__ == "__main__":
     import logging
+
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     log = logging.getLogger(__name__)
 

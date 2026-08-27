@@ -3,7 +3,7 @@
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, 
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 """
@@ -60,20 +60,23 @@ def bsa_inner_precise(device_name=None):
     return 4 if is_arch35_soc(device_name) else 0
 
 
-FrameWidths = namedtuple('FrameWidths', ['left_cols', 'right_cols', 'top_rows', 'bottom_rows'])
-BlockGrid = namedtuple('BlockGrid', ['s_q', 's_kv', 'block_size_q', 'block_size_kv'])
+FrameWidths = namedtuple(
+    "FrameWidths", ["left_cols", "right_cols", "top_rows", "bottom_rows"]
+)
+BlockGrid = namedtuple("BlockGrid", ["s_q", "s_kv", "block_size_q", "block_size_kv"])
 # Workload identity for one benchmark row / one mask build. Carries the full
 # spatial workload so individual helpers can take a single arg instead of
 # spreading 5–7 scalars across their signatures.
 WorkloadShape = namedtuple(
-    'WorkloadShape', ['b', 'h', 's_q', 's_kv', 'd', 'block_size_q', 'block_size_kv'])
+    "WorkloadShape", ["b", "h", "s_q", "s_kv", "d", "block_size_q", "block_size_kv"]
+)
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(message)s')
+logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
 # Global Definitions
-DEVICE = 'npu'
+DEVICE = "npu"
 DTYPE = torch.bfloat16
 INPUT_LAYOUT = "BNSD"  # [batch_size, num_heads, seq_len, head_dim]
 
@@ -81,7 +84,7 @@ INPUT_LAYOUT = "BNSD"  # [batch_size, num_heads, seq_len, head_dim]
 B_VALS = [1]
 H_VALS = [3]
 S_VALS = [118_806]  # s_q = s_kv
-D_VALS = [128]   # head dimension
+D_VALS = [128]  # head dimension
 
 N_REPEATS = 10
 N_WARMUP = 2
@@ -136,17 +139,15 @@ RUN_REFERENCE = False  # True <--> enables accuracy comparison
 TORCH_REFERENCE = "npu_fusion_attention"
 
 torch.set_printoptions(
-    threshold=100_000_000,
-    linewidth=400,
-    edgeitems=3,
-    precision=4,
-    sci_mode=False
+    threshold=100_000_000, linewidth=400, edgeitems=3, precision=4, sci_mode=False
 )
 
 
 def ref_attention_launcher(
     torch_reference: str,
-    pfa_inputs: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, int, float, torch.Tensor, str],
+    pfa_inputs: Tuple[
+        torch.Tensor, torch.Tensor, torch.Tensor, int, float, torch.Tensor, str
+    ],
     force_dense_sm: bool,
     return_lse: bool = False,
 ):
@@ -168,17 +169,29 @@ def ref_attention_launcher(
     q, k, v, head_num, scale, atten_mask, input_layout = pfa_inputs
     if torch_reference == "custom":
         if return_lse:
-            raise ValueError("return_lse=True is not supported by the 'custom' reference "
-                             "(ref_attention_fp32 does not compute softmax_lse).")
+            raise ValueError(
+                "return_lse=True is not supported by the 'custom' reference "
+                "(ref_attention_fp32 does not compute softmax_lse)."
+            )
         return ref_attention_fp32(q, k, v, scale, atten_mask=atten_mask)
     if torch_reference == "npu_fusion_attention":
         if return_lse:
-            raise ValueError("return_lse=True is not supported by 'npu_fusion_attention'; "
-                             "use 'npu_fused_infer_attention_score' instead.")
-        return torch_npu.npu_fusion_attention(q, k, v, head_num=head_num, input_layout=input_layout,
-                                              scale=scale, pre_tockens=0, next_tockens=0,
-                                              atten_mask=atten_mask,
-                                              sparse_mode=0 if force_dense_sm else 1)[0]
+            raise ValueError(
+                "return_lse=True is not supported by 'npu_fusion_attention'; "
+                "use 'npu_fused_infer_attention_score' instead."
+            )
+        return torch_npu.npu_fusion_attention(
+            q,
+            k,
+            v,
+            head_num=head_num,
+            input_layout=input_layout,
+            scale=scale,
+            pre_tockens=0,
+            next_tockens=0,
+            atten_mask=atten_mask,
+            sparse_mode=0 if force_dense_sm else 1,
+        )[0]
     if torch_reference == "npu_fused_infer_attention_score":
         # FIAS is only supported by this launcher in dense mode (sparse_mode=0).
         # Reason: FIAS does not accept our atten_mask layout — its sparse_mode=1
@@ -201,14 +214,21 @@ def ref_attention_launcher(
         elif input_layout in ("BSND", "BSH"):
             b, s_q, s_kv = q.shape[0], q.shape[1], k.shape[1]
         else:
-            raise ValueError(f"Unsupported input_layout for FIAS reference: {input_layout!r}")
+            raise ValueError(
+                f"Unsupported input_layout for FIAS reference: {input_layout!r}"
+            )
         actual_seq_q = [s_q] * b
         actual_seq_kv = [s_kv] * b
         out, lse = torch_npu.npu_fused_infer_attention_score(
-            q, k, v,
-            num_heads=head_num, scale=scale,
-            input_layout=input_layout, num_key_value_heads=head_num,
-            actual_seq_lengths=actual_seq_q, actual_seq_lengths_kv=actual_seq_kv,
+            q,
+            k,
+            v,
+            num_heads=head_num,
+            scale=scale,
+            input_layout=input_layout,
+            num_key_value_heads=head_num,
+            actual_seq_lengths=actual_seq_q,
+            actual_seq_lengths_kv=actual_seq_kv,
             softmax_lse_flag=return_lse,
         )
         if return_lse:
@@ -222,8 +242,12 @@ def ref_attention_launcher(
 
 
 def generate_sparse_blocks_by_row(
-        grid: BlockGrid, sparsity: float, seed: int,
-        frame: FrameWidths, pad_value: int = SABI_PAD) -> list[list[int]]:
+    grid: BlockGrid,
+    sparsity: float,
+    seed: int,
+    frame: FrameWidths,
+    pad_value: int = SABI_PAD,
+) -> list[list[int]]:
     """Per-row block selection for one head: frame-forced cols/rows + random picks
     chosen to hit the target sparsity. See FRAME comment above for the sink+text
     motivation. Frame-forced and random blocks both count toward the sparsity budget.
@@ -240,21 +264,36 @@ def generate_sparse_blocks_by_row(
     n_total = n_rows * n_cols
     forced_cols, candidate_cols, dense_rows = set(), list(range(n_cols)), set()
     if frame is not None:
-        if max(frame.left_cols, frame.right_cols) > n_cols or max(frame.top_rows, frame.bottom_rows) > n_rows:
-            raise ValueError(f"Frame exceeds block dims: {frame=}, {n_rows=}, {n_cols=}")
-        forced_cols = set(range(min(frame.left_cols, n_cols))) | set(range(max(n_cols - frame.right_cols, 0), n_cols))
+        if (
+            max(frame.left_cols, frame.right_cols) > n_cols
+            or max(frame.top_rows, frame.bottom_rows) > n_rows
+        ):
+            raise ValueError(
+                f"Frame exceeds block dims: {frame=}, {n_rows=}, {n_cols=}"
+            )
+        forced_cols = set(range(min(frame.left_cols, n_cols))) | set(
+            range(max(n_cols - frame.right_cols, 0), n_cols)
+        )
         candidate_cols = sorted(set(range(n_cols)) - forced_cols)
-        dense_rows = set(range(min(frame.top_rows, n_rows))) | set(range(max(n_rows - frame.bottom_rows, 0), n_rows))
+        dense_rows = set(range(min(frame.top_rows, n_rows))) | set(
+            range(max(n_rows - frame.bottom_rows, 0), n_rows)
+        )
     n_sparse_rows = max(n_rows - len(dense_rows), 0)
     n_forced = len(forced_cols) * n_sparse_rows + n_cols * len(dense_rows)
     if n_forced / n_total > (1.0 - sparsity):
-        raise ValueError(f"Frame forces {n_forced}/{n_total} blocks ({n_forced / n_total:.2%}) "
-                         f"— exceeds target sparsity {sparsity:.2%}. Adjust frame or sparsity.")
+        raise ValueError(
+            f"Frame forces {n_forced}/{n_total} blocks ({n_forced / n_total:.2%}) "
+            f"— exceeds target sparsity {sparsity:.2%}. Adjust frame or sparsity."
+        )
     n_max_kept = int(math.floor(n_total * (1.0 - sparsity)))
     # Spread the post-frame budget exactly across sparse rows: the first
     # `extra_rows` rows keep one more random block than the rest, so the total kept
     # == n_max_kept exactly (integer division alone would over/under-shoot).
-    base_per_row, extra_rows = divmod(max(n_max_kept - n_forced, 0), n_sparse_rows) if n_sparse_rows > 0 else (0, 0)
+    base_per_row, extra_rows = (
+        divmod(max(n_max_kept - n_forced, 0), n_sparse_rows)
+        if n_sparse_rows > 0
+        else (0, 0)
+    )
     # ...but never leave a sparse row with zero kept blocks: a fully-masked query
     # row has no keys to attend to, so its softmax is 0/0 (NaN out, LSE = -inf).
     # With no frame to fall back on, keep >= 1 random block per row even if that
@@ -268,19 +307,24 @@ def generate_sparse_blocks_by_row(
         if r in dense_rows:
             rows.append(list(range(n_cols)))
             continue
-        n_kept_this_row = max(base_per_row + (1 if sparse_row_idx < extra_rows else 0), min_kept_per_row)
+        n_kept_this_row = max(
+            base_per_row + (1 if sparse_row_idx < extra_rows else 0), min_kept_per_row
+        )
         sparse_row_idx += 1
         if n_kept_this_row <= 0:
             cols = sorted(forced_cols) + [pad_value] * (n_cols - len(forced_cols))
         else:
             picked = rng.sample(candidate_cols, n_kept_this_row)
-            cols = sorted(list(forced_cols) + picked) + [pad_value] * (n_cols - len(forced_cols) - n_kept_this_row)
+            cols = sorted(list(forced_cols) + picked) + [pad_value] * (
+                n_cols - len(forced_cols) - n_kept_this_row
+            )
         rows.append(cols)
     return rows
 
 
-def make_block_mask(grid: BlockGrid, sparse_blocks_by_row: list[list[int]],
-                    device: str = "cpu") -> torch.Tensor:
+def make_block_mask(
+    grid: BlockGrid, sparse_blocks_by_row: list[list[int]], device: str = "cpu"
+) -> torch.Tensor:
     """Build a dense boolean mask `[1, 1, s_q, s_kv]` from sparse block columns.
 
     True = masked, False = allowed.
@@ -301,8 +345,8 @@ def make_block_mask(grid: BlockGrid, sparse_blocks_by_row: list[list[int]],
 
 
 def generate_sparse_blocks_by_row_per_head(
-        grid: BlockGrid, sparsity: float, num_heads: int,
-        frame: FrameWidths, base_seed: int) -> list[list[list[int]]]:
+    grid: BlockGrid, sparsity: float, num_heads: int, frame: FrameWidths, base_seed: int
+) -> list[list[list[int]]]:
     """Returns sparse blocks per head, shape `[num_heads][n_block_rows][n_block_cols]`."""
     return [
         generate_sparse_blocks_by_row(grid, sparsity, base_seed + h, frame)
@@ -310,8 +354,11 @@ def generate_sparse_blocks_by_row_per_head(
     ]
 
 
-def make_block_mask_per_head(grid: BlockGrid, sparse_blocks_by_row_per_head: list[list[list[int]]],
-                              device: str = "cpu") -> torch.Tensor:
+def make_block_mask_per_head(
+    grid: BlockGrid,
+    sparse_blocks_by_row_per_head: list[list[list[int]]],
+    device: str = "cpu",
+) -> torch.Tensor:
     """Build a dense boolean mask `[1, num_heads, s_q, s_kv]` from sparse block columns.
 
     True = masked, False = allowed.
@@ -323,9 +370,13 @@ def make_block_mask_per_head(grid: BlockGrid, sparse_blocks_by_row_per_head: lis
     return torch.stack(head_masks, dim=0).unsqueeze(0)
 
 
-def block_allclose_map(out: torch.Tensor, ref: torch.Tensor,
-                        block_shape: tuple, tol: tuple = (0.01, 0.01),
-                        print_map: bool = False) -> torch.Tensor:
+def block_allclose_map(
+    out: torch.Tensor,
+    ref: torch.Tensor,
+    block_shape: tuple,
+    tol: tuple = (0.01, 0.01),
+    print_map: bool = False,
+) -> torch.Tensor:
     """Compare two 4D tensors `[dim0, dim1, dim2, dim3]` in (block_h x block_w) tiles over the
     last two dims. Returns a boolean tensor `[dim0, dim1, nby, nbx]` indicating per-tile
     closeness. Optionally prints a 0/1 grid per (batch, head).
@@ -336,9 +387,13 @@ def block_allclose_map(out: torch.Tensor, ref: torch.Tensor,
     block_h, block_w = block_shape
     rtol, atol = tol
     if out.shape != ref.shape:
-        raise ValueError(f"Shape mismatch: out {tuple(out.shape)} vs ref {tuple(ref.shape)}")
+        raise ValueError(
+            f"Shape mismatch: out {tuple(out.shape)} vs ref {tuple(ref.shape)}"
+        )
     if out.ndim != 4:
-        raise ValueError(f"Expected 4D tensors [dim0, dim1, dim2, dim3], got out.ndim={out.ndim}")
+        raise ValueError(
+            f"Expected 4D tensors [dim0, dim1, dim2, dim3], got out.ndim={out.ndim}"
+        )
     if block_h <= 0 or block_w <= 0:
         raise ValueError("block_h and block_w must be positive integers")
 
@@ -350,7 +405,9 @@ def block_allclose_map(out: torch.Tensor, ref: torch.Tensor,
     # Blockwise result: [dim0, dim1, nby, nbx]
     block_ok = close.new_empty((dim0, dim1, nby, nbx), dtype=torch.bool)
 
-    for b, h, by, bx in itertools.product(range(dim0), range(dim1), range(nby), range(nbx)):
+    for b, h, by, bx in itertools.product(
+        range(dim0), range(dim1), range(nby), range(nbx)
+    ):
         y0, x0 = by * block_h, bx * block_w
         y1, x1 = min(y0 + block_h, dim2), min(x0 + block_w, dim3)
         block_ok[b, h, by, bx] = close[b, h, y0:y1, x0:x1].all()
@@ -416,8 +473,9 @@ def ref_attention_fp32(
     return out.to(dtype=q.dtype)
 
 
-def gen_pfa_inputs(shape: WorkloadShape, device: str = "npu:0",
-                   dtype: torch.dtype = DTYPE):
+def gen_pfa_inputs(
+    shape: WorkloadShape, device: str = "npu:0", dtype: torch.dtype = DTYPE
+):
     """Generate common attention inputs (BNSD layout) from a `WorkloadShape`."""
     q = torch.randn(shape.b, shape.h, shape.s_q, shape.d, dtype=dtype, device=device)
     k = torch.randn(shape.b, shape.h, shape.s_kv, shape.d, dtype=dtype, device=device)
@@ -427,8 +485,13 @@ def gen_pfa_inputs(shape: WorkloadShape, device: str = "npu:0",
     return q, k, v, actseqlen, actseqlenkv
 
 
-def create_attention_mask(shape: WorkloadShape, sparsity: float, frame: FrameWidths,
-                          device: str, emit_atten_mask: bool = True):
+def create_attention_mask(
+    shape: WorkloadShape,
+    sparsity: float,
+    frame: FrameWidths,
+    device: str,
+    emit_atten_mask: bool = True,
+):
     """Build the block-sparse selection (`sabi`) and, optionally, the equivalent
     dense token-level mask used by the dense reference kernel.
 
@@ -442,16 +505,21 @@ def create_attention_mask(shape: WorkloadShape, sparsity: float, frame: FrameWid
     scale = 1.0 / math.sqrt(float(shape.d))
     grid = BlockGrid(shape.s_q, shape.s_kv, shape.block_size_q, shape.block_size_kv)
     per_batch_head_block_indices = [
-        generate_sparse_blocks_by_row_per_head(grid, sparsity, shape.h, frame, BLOCK_MASK_SEED + bidx)
+        generate_sparse_blocks_by_row_per_head(
+            grid, sparsity, shape.h, frame, BLOCK_MASK_SEED + bidx
+        )
         for bidx in range(shape.b)
     ]
     sabi = torch.tensor(per_batch_head_block_indices, dtype=torch.uint16, device=device)
     pfa_atten_mask = None
     if emit_atten_mask and sparsity > 0:
-        pfa_atten_mask = torch.cat([
-            make_block_mask_per_head(grid, bi, device=device)
-            for bi in per_batch_head_block_indices
-        ], dim=0)
+        pfa_atten_mask = torch.cat(
+            [
+                make_block_mask_per_head(grid, bi, device=device)
+                for bi in per_batch_head_block_indices
+            ],
+            dim=0,
+        )
     return pfa_atten_mask, sabi, scale
 
 
@@ -485,8 +553,9 @@ def _run_timed(kernel_fn: Callable, input_sets: List, n_warmup: int):
     return start.elapsed_time(end) / n_timed * 1000.0  # ms -> μs
 
 
-def _check_correctness(our_fn: Callable, ref_fn: Callable, shape: WorkloadShape,
-                       device: str) -> str:
+def _check_correctness(
+    our_fn: Callable, ref_fn: Callable, shape: WorkloadShape, device: str
+) -> str:
     """Run both implementations on shared inputs and return 'yes'/'no'."""
     q, k, v, seq, seqkv = gen_pfa_inputs(shape, device=device, dtype=DTYPE)
     out_our = our_fn(q, k, v, seq, seqkv).cpu()
@@ -500,9 +569,13 @@ def _check_correctness(our_fn: Callable, ref_fn: Callable, shape: WorkloadShape,
 
     equal = torch.allclose(out_our, out_ref, rtol=0.02, atol=0.02)
     if not equal and PRINT_BLOCK_EQUALITY:
-        block_allclose_map(out_our, out_ref,
-                           block_shape=(PRINT_HEIGHT, PRINT_WIDTH),
-                           tol=(0.02, 0.02), print_map=True)
+        block_allclose_map(
+            out_our,
+            out_ref,
+            block_shape=(PRINT_HEIGHT, PRINT_WIDTH),
+            tol=(0.02, 0.02),
+            print_map=True,
+        )
     return "yes" if equal else "no"
 
 
@@ -518,8 +591,9 @@ def _fmt_or_na(value, width, spec=".2f"):
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def sabi_to_block_sparse_mask(sabi: torch.Tensor, mask_shape: tuple,
-                              device: str = "npu") -> torch.Tensor:
+def sabi_to_block_sparse_mask(
+    sabi: torch.Tensor, mask_shape: tuple, device: str = "npu"
+) -> torch.Tensor:
     """Convert sabi (sparse attention block indices: uint16 keeper-indices,
     padded 0xFFFF) into the block_sparse_attention kernel's int8
     `[B, H, q_blocks, kv_blocks]` mask.
@@ -529,7 +603,7 @@ def sabi_to_block_sparse_mask(sabi: torch.Tensor, mask_shape: tuple,
     # NPU's aclnnNeScalar / scatter don't support uint16 directly. Cast to
     # int32 first; the operation set on int32 is fully supported.
     sabi_i32 = sabi.to(torch.int32)
-    valid = (sabi_i32 != SABI_PAD)
+    valid = sabi_i32 != SABI_PAD
     sabi_long = sabi_i32.long()
     # For padding entries set the index to 0; src=0 there so scatter_add is a no-op.
     # Use torch.zeros (not zeros_like) so torch_npu doesn't try to inherit the

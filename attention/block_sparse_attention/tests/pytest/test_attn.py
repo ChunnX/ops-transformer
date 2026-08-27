@@ -41,12 +41,19 @@ import torch
 import torch_npu  # noqa: F401  (registers the NPU backend)
 import cann_ops_transformer
 
-sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "..", "benchmark")))
+sys.path.insert(
+    0,
+    os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "..", "benchmark")),
+)
 from util import (  # noqa: E402
-    gen_pfa_inputs, create_attention_mask, FrameWidths, WorkloadShape,
+    gen_pfa_inputs,
+    create_attention_mask,
+    FrameWidths,
+    WorkloadShape,
     ref_attention_launcher,
     sabi_to_block_sparse_mask,
-    bsa_inner_precise, is_arch35_soc,
+    bsa_inner_precise,
+    is_arch35_soc,
 )
 
 # inner_precise is SoC-gated: 950 → 4 (low/high mixed), 910/910_93 → 0 (fp32 softmax).
@@ -73,7 +80,7 @@ ATOL = 0.08 if _IS_ARCH35 else 0.001
 SEED = 42
 DEVICE = "npu:0"
 DTYPE = torch.bfloat16
-INPUT_LAYOUT = 'BNSD'
+INPUT_LAYOUT = "BNSD"
 BLOCK_SIZE_Q = 128
 BLOCK_SIZE_KV = 128
 torch.npu.set_device(DEVICE)
@@ -82,7 +89,7 @@ torch.npu.set_device(DEVICE)
 TORCH_REF_VALS = ["npu_fusion_attention"]
 B_VALS = [1]
 H_VALS = [1, 2, 3, 4]
-S_VALS = [24_000]            # s_q = s_kv
+S_VALS = [24_000]  # s_q = s_kv
 D_VALS = [128]
 FRAME_VALUES = [FrameWidths(0, 0, 0, 0), FrameWidths(2, 1, 3, 1)]
 SPARSITY_VALS = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
@@ -104,30 +111,42 @@ def _run_block_sparse_attention(q, k, v, h, scale, s_q, s_kv, sabi):
     b = q.shape[0]
     q_blocks = (s_q + BLOCK_SIZE_Q - 1) // BLOCK_SIZE_Q
     kv_blocks = (s_kv + BLOCK_SIZE_KV - 1) // BLOCK_SIZE_KV
-    block_mask = sabi_to_block_sparse_mask(sabi, (b, h, q_blocks, kv_blocks), device=DEVICE)
+    block_mask = sabi_to_block_sparse_mask(
+        sabi, (b, h, q_blocks, kv_blocks), device=DEVICE
+    )
 
     actual_seq = [s_q] * b
     actual_seq_kv = [s_kv] * b
     out, _ = cann_ops_transformer.ops.block_sparse_attention(
-        q, k, v,
+        q,
+        k,
+        v,
         block_sparse_mask=block_mask,
         block_shape=[BLOCK_SIZE_Q, BLOCK_SIZE_KV],
         actual_seq_lengths=actual_seq,
         actual_seq_lengths_kv=actual_seq_kv,
-        num_heads=h, num_key_value_heads=h,
-        q_input_layout=INPUT_LAYOUT, kv_input_layout=INPUT_LAYOUT,
-        mask_type=0, scale_value=float(scale),
-        inner_precise=INNER_PRECISE,      # 910: 0 (fp32 sm); 950: 4 (low/high mixed)
-        block_size=0,                     # paged cache not yet supported by kernel; must be 0
-        pre_tokens=2147483647, next_tokens=2147483647,
+        num_heads=h,
+        num_key_value_heads=h,
+        q_input_layout=INPUT_LAYOUT,
+        kv_input_layout=INPUT_LAYOUT,
+        mask_type=0,
+        scale_value=float(scale),
+        inner_precise=INNER_PRECISE,  # 910: 0 (fp32 sm); 950: 4 (low/high mixed)
+        block_size=0,  # paged cache not yet supported by kernel; must be 0
+        pre_tokens=2147483647,
+        next_tokens=2147483647,
         softmax_lse_flag=False,
     )
     return out
 
 
 @pytest.mark.parametrize("torch_ref", TORCH_REF_VALS)
-@pytest.mark.parametrize("frame,sparsity", FRAME_SPARSITY_COMBOS, ids=FRAME_SPARSITY_IDS)
-@pytest.mark.parametrize("shape", SHAPES, ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}")
+@pytest.mark.parametrize(
+    "frame,sparsity", FRAME_SPARSITY_COMBOS, ids=FRAME_SPARSITY_IDS
+)
+@pytest.mark.parametrize(
+    "shape", SHAPES, ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}"
+)
 def test_block_sparse_attention_correctness(torch_ref, shape, frame, sparsity):
     """Test correctness of cann_ops_transformer.ops.block_sparse_attention vs reference implementation."""
     torch.manual_seed(SEED)
@@ -139,7 +158,11 @@ def test_block_sparse_attention_correctness(torch_ref, shape, frame, sparsity):
     # sabi (converted to int8 inside _run_block_sparse_attention); the reference
     # uses the per-token pfa_atten_mask (block-aligned via make_block_mask_per_head).
     pfa_atten_mask, sabi, scale = create_attention_mask(
-        workload, sparsity, frame, DEVICE, emit_atten_mask=True,
+        workload,
+        sparsity,
+        frame,
+        DEVICE,
+        emit_atten_mask=True,
     )
 
     q, k, v, _, _ = gen_pfa_inputs(workload, device=DEVICE, dtype=DTYPE)
@@ -163,6 +186,7 @@ def test_block_sparse_attention_correctness(torch_ref, shape, frame, sparsity):
 
 if __name__ == "__main__":
     import logging
+
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     test_block_sparse_attention_correctness(
         torch_ref="npu_fusion_attention",

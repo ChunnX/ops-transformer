@@ -3,7 +3,7 @@
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, 
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 """
@@ -42,9 +42,15 @@ import cann_ops_transformer
 # All shared workload helpers live in the local `util.py` (autonomous, no
 # cross-tree imports).
 from util import (
-    DEVICE, DTYPE, INPUT_LAYOUT,
-    B_VALS, H_VALS, S_VALS, D_VALS,
-    N_REPEATS, N_WARMUP,
+    DEVICE,
+    DTYPE,
+    INPUT_LAYOUT,
+    B_VALS,
+    H_VALS,
+    S_VALS,
+    D_VALS,
+    N_REPEATS,
+    N_WARMUP,
     SPARSITY_VALS,
     BLOCK_SIZE_Q,
     BLOCK_SIZE_KV as _DEFAULT_BLOCK_SIZE_KV,
@@ -78,9 +84,15 @@ _BSA_FRAME_ENV = os.environ.get("BSA_FRAME")
 if _BSA_FRAME_ENV is not None:
     _parts = [int(x.strip()) for x in _BSA_FRAME_ENV.split(",")]
     if len(_parts) != 4:
-        raise ValueError(f"BSA_FRAME must be 4 comma-separated ints, got {_BSA_FRAME_ENV!r}")
-    FRAME = FrameWidths(left_cols=_parts[0], right_cols=_parts[1],
-                        top_rows=_parts[2], bottom_rows=_parts[3])
+        raise ValueError(
+            f"BSA_FRAME must be 4 comma-separated ints, got {_BSA_FRAME_ENV!r}"
+        )
+    FRAME = FrameWidths(
+        left_cols=_parts[0],
+        right_cols=_parts[1],
+        top_rows=_parts[2],
+        bottom_rows=_parts[3],
+    )
 else:
     FRAME = _DEFAULT_FRAME
 
@@ -96,9 +108,12 @@ def _make_our_fn_block_sparse(block_sparse_mask: torch.Tensor, h: int, scale: fl
     The int8 block mask is built ONCE by the caller (outside the timed
     closure); the timed call here only invokes the kernel.
     """
+
     def fn(q, k, v, seq, seqkv):
         out, _ = cann_ops_transformer.ops.block_sparse_attention(
-            q, k, v,
+            q,
+            k,
+            v,
             block_sparse_mask=block_sparse_mask,
             block_shape=[BLOCK_SIZE_Q, BLOCK_SIZE_KV],
             actual_seq_lengths=seq,
@@ -110,13 +125,14 @@ def _make_our_fn_block_sparse(block_sparse_mask: torch.Tensor, h: int, scale: fl
             mask_type=0,
             scale_value=float(scale),
             inner_precise=INNER_PRECISE,  # 910: 0 (fp32 sm); 950: 4 (low/high mixed)
-            block_size=0,            # paged cache not yet supported by kernel; must be 0
+            block_size=0,  # paged cache not yet supported by kernel; must be 0
             # 2^31-1 means "no causal window" — kernel example uses these
             pre_tokens=2147483647,
             next_tokens=2147483647,
             softmax_lse_flag=False,
         )
         return out
+
     return fn
 
 
@@ -127,16 +143,22 @@ def _make_ref_fn(h, scale, atten_mask, run_ref_sparsity_0):
             pfa_inputs=(q, k, v, h, scale, atten_mask, INPUT_LAYOUT),
             force_dense_sm=run_ref_sparsity_0,
         )
+
     return fn
 
 
 def _print_header():
-    kv_note = (f"  (KV overridden via BSA_BLOCK_SIZE_KV={BLOCK_SIZE_KV})"
-               if BLOCK_SIZE_KV != _DEFAULT_BLOCK_SIZE_KV else "")
+    kv_note = (
+        f"  (KV overridden via BSA_BLOCK_SIZE_KV={BLOCK_SIZE_KV})"
+        if BLOCK_SIZE_KV != _DEFAULT_BLOCK_SIZE_KV
+        else ""
+    )
     frame_note = "  (overridden via BSA_FRAME)" if _BSA_FRAME_ENV is not None else ""
     logger.info("=" * 90)
     logger.info(f"  KERNEL=block_sparse_attention  {DTYPE=}  {INPUT_LAYOUT=}")
-    logger.info(f"  BLOCK_SIZE_Q={BLOCK_SIZE_Q}  BLOCK_SIZE_KV={BLOCK_SIZE_KV}{kv_note}")
+    logger.info(
+        f"  BLOCK_SIZE_Q={BLOCK_SIZE_Q}  BLOCK_SIZE_KV={BLOCK_SIZE_KV}{kv_note}"
+    )
     logger.info(f"  {FRAME}{frame_note}")
     logger.info(f"  {TORCH_REFERENCE=}")
     logger.info("=" * 90)
@@ -161,13 +183,19 @@ def benchmark_block_sparse_attention():
 
     _print_header()
 
-    for b, h, s_kv, d, sparsity in itertools.product(B_VALS, H_VALS, S_VALS, D_VALS, SPARSITY_VALS):
+    for b, h, s_kv, d, sparsity in itertools.product(
+        B_VALS, H_VALS, S_VALS, D_VALS, SPARSITY_VALS
+    ):
         s_q = s_kv
         shape = WorkloadShape(b, h, s_q, s_kv, d, BLOCK_SIZE_Q, BLOCK_SIZE_KV)
 
         try:
             pfa_atten_mask, sabi, scale = create_attention_mask(
-                shape, sparsity, FRAME, DEVICE, emit_atten_mask=run_ref,
+                shape,
+                sparsity,
+                FRAME,
+                DEVICE,
+                emit_atten_mask=run_ref,
             )
         except ValueError:
             # Infeasible (sparsity, frame, S, block_size) — frame forces a higher
@@ -183,7 +211,9 @@ def benchmark_block_sparse_attention():
         q_blocks = (s_q + BLOCK_SIZE_Q - 1) // BLOCK_SIZE_Q
         kv_blocks = (s_kv + BLOCK_SIZE_KV - 1) // BLOCK_SIZE_KV
         block_sparse_mask = sabi_to_block_sparse_mask(
-            sabi, (b, h, q_blocks, kv_blocks), device=DEVICE,
+            sabi,
+            (b, h, q_blocks, kv_blocks),
+            device=DEVICE,
         )
 
         our_fn = _make_our_fn_block_sparse(block_sparse_mask, h, scale)
@@ -193,8 +223,10 @@ def benchmark_block_sparse_attention():
         if run_ref or run_ref_sparsity_0:
             are_equal_ref = _check_correctness(our_fn, ref_fn, shape, DEVICE)
 
-        inputs = [gen_pfa_inputs(shape, device=DEVICE, dtype=DTYPE)
-                  for _ in range(n_warmup + n_repeat)]
+        inputs = [
+            gen_pfa_inputs(shape, device=DEVICE, dtype=DTYPE)
+            for _ in range(n_warmup + n_repeat)
+        ]
         our_duration = _run_timed(our_fn, inputs, n_warmup)
         ref_duration = None
         if run_ref or run_ref_sparsity_0:

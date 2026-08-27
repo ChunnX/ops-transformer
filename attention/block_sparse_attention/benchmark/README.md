@@ -183,4 +183,3 @@ path manipulation.
   units, e.g. `BSA_FRAME=8,1,29,1`). Default is `FrameWidths(29,1,29,1)`.
   Useful for keeping token-coverage matched across different `BSA_BLOCK_SIZE_KV`
   runs, and for avoiding infeasibility at high sparsity + coarse KV granularity.
-

@@ -44,11 +44,18 @@ import torch
 import torch_npu
 import cann_ops_transformer
 
-sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "..", "benchmark")))
+sys.path.insert(
+    0,
+    os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "..", "benchmark")),
+)
 from util import (  # noqa: E402
-    create_attention_mask, FrameWidths, WorkloadShape,
-    sabi_to_block_sparse_mask, SABI_PAD,
-    bsa_inner_precise, is_arch35_soc,
+    create_attention_mask,
+    FrameWidths,
+    WorkloadShape,
+    sabi_to_block_sparse_mask,
+    SABI_PAD,
+    bsa_inner_precise,
+    is_arch35_soc,
 )
 
 # inner_precise is SoC-gated: 950 → 4 (low/high mixed), 910/910_93 → 0 (fp32 softmax).
@@ -74,22 +81,29 @@ torch.npu.set_device(DEVICE)
 
 # ── Dense shapes (B, H, S, D) — 14 × 2 dtypes = 28 tests ────────────────────
 LSE_TEST_SHAPES = [
-    (1, 1, 1024, 128), (1, 2, 1024, 128),
+    (1, 1, 1024, 128),
+    (1, 2, 1024, 128),
     (1, 4, 2048, 128),
-    (1, 4, 4096, 128), (1, 8, 4096, 128),
-    (1, 2, 8192, 128), (1, 4, 8192, 128),
-    (1, 2, 12288, 128), (1, 4, 12288, 128),
-    (1, 2, 16384, 128), (1, 4, 16384, 128),
-    (1, 1, 24000, 128), (1, 2, 24000, 128), (1, 4, 24000, 128),
+    (1, 4, 4096, 128),
+    (1, 8, 4096, 128),
+    (1, 2, 8192, 128),
+    (1, 4, 8192, 128),
+    (1, 2, 12288, 128),
+    (1, 4, 12288, 128),
+    (1, 2, 16384, 128),
+    (1, 4, 16384, 128),
+    (1, 1, 24000, 128),
+    (1, 2, 24000, 128),
+    (1, 4, 24000, 128),
 ]
 LSE_DTYPES = [torch.bfloat16, torch.float16]
 
 # ── Sparse H=1 shapes for FIAS comparison — bfloat16 only (see design notes) ─
 SPARSE_LSE_FIAS_SHAPES = [
-    (1, 1,  1024, 128),
-    (1, 1,  2048, 128),
-    (1, 1,  4096, 128),
-    (1, 1,  8192, 128),
+    (1, 1, 1024, 128),
+    (1, 1, 2048, 128),
+    (1, 1, 4096, 128),
+    (1, 1, 8192, 128),
     (1, 1, 12288, 128),
     (1, 1, 16384, 128),
     (1, 1, 20480, 128),
@@ -105,8 +119,10 @@ SPARSE_FRAME = FrameWidths(left_cols=2, right_cols=1, top_rows=3, bottom_rows=1)
 
 # ── Multi-head sparse shapes for Python-reference comparison ─────────────────
 SPARSE_LSE_MULTIHEAD_SHAPES = [
-    (1, 2,  512, 128), (1, 4,  512, 128),
-    (1, 2, 1024, 128), (1, 4, 1024, 128),
+    (1, 2, 512, 128),
+    (1, 4, 512, 128),
+    (1, 2, 1024, 128),
+    (1, 4, 1024, 128),
 ]
 
 SPARSE_LSE_SPARSITIES = [0.3, 0.5, 0.7, 0.9]
@@ -114,27 +130,32 @@ NO_FRAME = FrameWidths(0, 0, 0, 0)
 
 # ── Zero-input shapes — 5 × 2 dtypes = 10 tests ──────────────────────────────
 ZERO_INPUT_SHAPES = [
-    (1, 1,   512, 128), (1, 2,  1024, 128), (1, 4,  4096, 128),
-    (1, 4, 16384, 128), (1, 2, 24000, 128),
+    (1, 1, 512, 128),
+    (1, 2, 1024, 128),
+    (1, 4, 4096, 128),
+    (1, 4, 16384, 128),
+    (1, 2, 24000, 128),
 ]
 
 # ── Shape/dtype check shapes — 3 tests ───────────────────────────────────────
 SHAPE_DTYPE_SHAPES = [
-    (1, 1,   512, 128),
-    (1, 8,  8192, 128), (1, 4, 24000, 128),
+    (1, 1, 512, 128),
+    (1, 8, 8192, 128),
+    (1, 4, 24000, 128),
 ]
 
 # ── Disabled-LSE shapes — 3 tests ────────────────────────────────────────────
 DISABLED_LSE_SHAPES = [
-    (1, 2,   512, 128),
-    (1, 8,  8192, 128), (1, 4, 24000, 128),
+    (1, 2, 512, 128),
+    (1, 8, 8192, 128),
+    (1, 4, 24000, 128),
 ]
 
 # ── Tolerances ────────────────────────────────────────────────────────────────
 LSE_ATOL = {
     torch.bfloat16: 1e-4,
-    torch.float16:  1e-4,
-    torch.float32:  1e-3,
+    torch.float16: 1e-4,
+    torch.float32: 1e-3,
 }
 # block_sparse_attention sparse-vs-FIAS LSE diverges by ~0.06–0.16 (definitional);
 # this atol documents it. Tests fail only if numerically non-finite or the gap
@@ -147,11 +168,16 @@ SPARSE_REF_ATOL = 0.05
 
 # ── Mask helper ───────────────────────────────────────────────────────────────
 
+
 def _build_sparse_masks(B, H, S, sparsity, frame):
     """Return (sabi, pfa_atten_mask) on DEVICE, built on CPU first."""
     workload = WorkloadShape(B, H, S, S, 128, BLOCK_SIZE_Q, BLOCK_SIZE_KV)
     pfa_atten_mask, sabi, _ = create_attention_mask(
-        workload, sparsity, frame, "cpu", emit_atten_mask=True,
+        workload,
+        sparsity,
+        frame,
+        "cpu",
+        emit_atten_mask=True,
     )
     return sabi.to(DEVICE), pfa_atten_mask.to(DEVICE)
 
@@ -168,6 +194,7 @@ def _sabi_to_int8_mask(sabi, B, H, S):
 
 
 # ── Python float32 reference LSE ──────────────────────────────────────────────
+
 
 def _lse_reference_sparse(q, k, scale, sabi_cpu):
     """Compute exact sparse LSE in float32 using Python loops.
@@ -193,8 +220,9 @@ def _lse_reference_sparse(q, k, scale, sabi_cpu):
                 q_s = qb * BLOCK_SIZE_Q
                 q_e = min(q_s + BLOCK_SIZE_Q, S)
 
-                kept = [int(c) for c in sabi_cpu[b, h, qb].tolist()
-                        if int(c) != _SABI_PAD]
+                kept = [
+                    int(c) for c in sabi_cpu[b, h, qb].tolist() if int(c) != _SABI_PAD
+                ]
                 if not kept:
                     continue
 
@@ -212,6 +240,7 @@ def _lse_reference_sparse(q, k, scale, sabi_cpu):
 
 # ── Kernel helpers ────────────────────────────────────────────────────────────
 
+
 def _run_kernel_with_lse_dense(q, k, v, h, scale, seq_len):
     """block_sparse_attention dense (all-ones mask) with softmax_lse_flag=True.
 
@@ -225,16 +254,23 @@ def _run_kernel_with_lse_dense(q, k, v, h, scale, seq_len):
     mask = torch.ones(B, h, q_blocks, kv_blocks, dtype=torch.int8, device=q.device)
 
     out, lse = cann_ops_transformer.ops.block_sparse_attention(
-        q, k, v,
+        q,
+        k,
+        v,
         block_sparse_mask=mask,
         block_shape=[BLOCK_SIZE_Q, BLOCK_SIZE_KV],
-        actual_seq_lengths=actual_seq, actual_seq_lengths_kv=actual_seq,
-        num_heads=h, num_key_value_heads=h,
-        q_input_layout=INPUT_LAYOUT, kv_input_layout=INPUT_LAYOUT,
-        mask_type=0, scale_value=float(scale),
+        actual_seq_lengths=actual_seq,
+        actual_seq_lengths_kv=actual_seq,
+        num_heads=h,
+        num_key_value_heads=h,
+        q_input_layout=INPUT_LAYOUT,
+        kv_input_layout=INPUT_LAYOUT,
+        mask_type=0,
+        scale_value=float(scale),
         inner_precise=INNER_PRECISE,
         block_size=0,  # paged cache not yet supported by kernel; must be 0
-        pre_tokens=2147483647, next_tokens=2147483647,
+        pre_tokens=2147483647,
+        next_tokens=2147483647,
         softmax_lse_flag=True,
     )
     return out, lse.squeeze(-1)
@@ -247,16 +283,23 @@ def _run_kernel_with_lse_sparse(q, k, v, h, scale, seq_len, sabi):
     mask = _sabi_to_int8_mask(sabi, B, h, seq_len)
 
     out, lse = cann_ops_transformer.ops.block_sparse_attention(
-        q, k, v,
+        q,
+        k,
+        v,
         block_sparse_mask=mask,
         block_shape=[BLOCK_SIZE_Q, BLOCK_SIZE_KV],
-        actual_seq_lengths=actual_seq, actual_seq_lengths_kv=actual_seq,
-        num_heads=h, num_key_value_heads=h,
-        q_input_layout=INPUT_LAYOUT, kv_input_layout=INPUT_LAYOUT,
-        mask_type=0, scale_value=float(scale),
+        actual_seq_lengths=actual_seq,
+        actual_seq_lengths_kv=actual_seq,
+        num_heads=h,
+        num_key_value_heads=h,
+        q_input_layout=INPUT_LAYOUT,
+        kv_input_layout=INPUT_LAYOUT,
+        mask_type=0,
+        scale_value=float(scale),
         inner_precise=INNER_PRECISE,
         block_size=0,  # paged cache not yet supported by kernel; must be 0
-        pre_tokens=2147483647, next_tokens=2147483647,
+        pre_tokens=2147483647,
+        next_tokens=2147483647,
         softmax_lse_flag=True,
     )
     return out, lse.squeeze(-1)
@@ -267,10 +310,15 @@ def _run_fias_with_lse_dense(q, k, v, h, scale, seq_len):
     B = q.shape[0]
     actual_seq = [seq_len] * B
     out, lse = torch_npu.npu_fused_infer_attention_score(
-        q, k, v,
-        num_heads=h, scale=scale,
-        input_layout=INPUT_LAYOUT, num_key_value_heads=h,
-        actual_seq_lengths=actual_seq, actual_seq_lengths_kv=actual_seq,
+        q,
+        k,
+        v,
+        num_heads=h,
+        scale=scale,
+        input_layout=INPUT_LAYOUT,
+        num_key_value_heads=h,
+        actual_seq_lengths=actual_seq,
+        actual_seq_lengths_kv=actual_seq,
         softmax_lse_flag=True,
     )
     return out, lse.squeeze(-1)
@@ -282,11 +330,17 @@ def _run_fias_with_lse_sparse(q, k, v, h, scale, seq_len, pfa_atten_mask):
     B = q.shape[0]
     actual_seq = [seq_len] * B
     out, lse = torch_npu.npu_fused_infer_attention_score(
-        q, k, v,
-        num_heads=h, scale=scale,
-        input_layout=INPUT_LAYOUT, num_key_value_heads=h,
-        actual_seq_lengths=actual_seq, actual_seq_lengths_kv=actual_seq,
-        atten_mask=pfa_atten_mask, sparse_mode=1,
+        q,
+        k,
+        v,
+        num_heads=h,
+        scale=scale,
+        input_layout=INPUT_LAYOUT,
+        num_key_value_heads=h,
+        actual_seq_lengths=actual_seq,
+        actual_seq_lengths_kv=actual_seq,
+        atten_mask=pfa_atten_mask,
+        sparse_mode=1,
         softmax_lse_flag=True,
     )
     return out, lse.squeeze(-1)
@@ -294,9 +348,11 @@ def _run_fias_with_lse_sparse(q, k, v, h, scale, seq_len, pfa_atten_mask):
 
 # ── Test 1: dense LSE vs FIAS (28 tests) ─────────────────────────────────────
 
+
 @pytest.mark.parametrize("dtype", LSE_DTYPES, ids=lambda d: str(d).split(".")[-1])
-@pytest.mark.parametrize("shape", LSE_TEST_SHAPES,
-                          ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}")
+@pytest.mark.parametrize(
+    "shape", LSE_TEST_SHAPES, ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}"
+)
 def test_lse_vs_fias_dense(shape, dtype):
     """block_sparse_attention dense LSE must match FIAS LSE."""
     torch.manual_seed(SEED)
@@ -306,7 +362,7 @@ def test_lse_vs_fias_dense(shape, dtype):
     k = torch.randn(B, H, S, D, dtype=dtype, device=DEVICE)
     v = torch.randn(B, H, S, D, dtype=dtype, device=DEVICE)
 
-    _, our_lse  = _run_kernel_with_lse_dense(q, k, v, H, scale, S)
+    _, our_lse = _run_kernel_with_lse_dense(q, k, v, H, scale, S)
     _, fias_lse = _run_fias_with_lse_dense(q, k, v, H, scale, S)
 
     assert our_lse.shape == (B, H, S)
@@ -316,15 +372,20 @@ def test_lse_vs_fias_dense(shape, dtype):
     rtol = LSE_BF16_A5_RTOL if (_IS_ARCH35 and dtype == torch.bfloat16) else 1e-3
     if not torch.allclose(our_lse.cpu(), fias_lse.cpu().float(), rtol=rtol, atol=atol):
         max_diff = (our_lse.cpu() - fias_lse.cpu().float()).abs().max().item()
-        pytest.fail(f"shape={shape} dtype={dtype}: max_diff={max_diff:.5f} > rtol={rtol} atol={atol}")
+        pytest.fail(
+            f"shape={shape} dtype={dtype}: max_diff={max_diff:.5f} > rtol={rtol} atol={atol}"
+        )
 
 
 # ── Test 2: sparse H=1 LSE vs FIAS (no frame) ────────────────────────────────
 
-@pytest.mark.parametrize("sparsity", SPARSE_LSE_SPARSITIES,
-                          ids=lambda s: f"sp{int(s*100):02d}pct")
-@pytest.mark.parametrize("shape", SPARSE_LSE_FIAS_SHAPES,
-                          ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}")
+
+@pytest.mark.parametrize(
+    "sparsity", SPARSE_LSE_SPARSITIES, ids=lambda s: f"sp{int(s * 100):02d}pct"
+)
+@pytest.mark.parametrize(
+    "shape", SPARSE_LSE_FIAS_SHAPES, ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}"
+)
 def test_lse_vs_fias_sparse(shape, sparsity):
     """Sparse (H=1, no frame) LSE vs FIAS.
 
@@ -344,14 +405,15 @@ def test_lse_vs_fias_sparse(shape, sparsity):
     k = torch.randn(B, H, S, D, dtype=dtype, device=DEVICE)
     v = torch.randn(B, H, S, D, dtype=dtype, device=DEVICE)
 
-    _, our_lse  = _run_kernel_with_lse_sparse(q, k, v, H, scale, S, sabi)
+    _, our_lse = _run_kernel_with_lse_sparse(q, k, v, H, scale, S, sabi)
     _, fias_lse = _run_fias_with_lse_sparse(q, k, v, H, scale, S, pfa_atten_mask)
 
     assert our_lse.shape == (B, H, S)
     assert our_lse.dtype == torch.float32
 
-    if not torch.allclose(our_lse.cpu(), fias_lse.cpu().float(),
-                          rtol=1e-3, atol=SPARSE_FIAS_LSE_ATOL):
+    if not torch.allclose(
+        our_lse.cpu(), fias_lse.cpu().float(), rtol=1e-3, atol=SPARSE_FIAS_LSE_ATOL
+    ):
         max_diff = (our_lse.cpu() - fias_lse.cpu().float()).abs().max().item()
         pytest.fail(
             f"shape={shape} sparsity={sparsity}: "
@@ -361,10 +423,13 @@ def test_lse_vs_fias_sparse(shape, sparsity):
 
 # ── Test 3: sparse H=1 LSE vs FIAS (with border frame) ───────────────────────
 
-@pytest.mark.parametrize("sparsity", SPARSE_LSE_SPARSITIES,
-                          ids=lambda s: f"sp{int(s*100):02d}pct")
-@pytest.mark.parametrize("shape", SPARSE_FRAMED_FIAS_SHAPES,
-                          ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}")
+
+@pytest.mark.parametrize(
+    "sparsity", SPARSE_LSE_SPARSITIES, ids=lambda s: f"sp{int(s * 100):02d}pct"
+)
+@pytest.mark.parametrize(
+    "shape", SPARSE_FRAMED_FIAS_SHAPES, ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}"
+)
 def test_lse_vs_fias_sparse_framed(shape, sparsity):
     """Sparse LSE with FrameWidths(2,1,3,1) on long sequences, H=1, bf16.
     Same FIAS-divergence band as test_lse_vs_fias_sparse."""
@@ -379,11 +444,12 @@ def test_lse_vs_fias_sparse_framed(shape, sparsity):
     k = torch.randn(B, H, S, D, dtype=dtype, device=DEVICE)
     v = torch.randn(B, H, S, D, dtype=dtype, device=DEVICE)
 
-    _, our_lse  = _run_kernel_with_lse_sparse(q, k, v, H, scale, S, sabi)
+    _, our_lse = _run_kernel_with_lse_sparse(q, k, v, H, scale, S, sabi)
     _, fias_lse = _run_fias_with_lse_sparse(q, k, v, H, scale, S, pfa_atten_mask)
 
-    if not torch.allclose(our_lse.cpu(), fias_lse.cpu().float(),
-                          rtol=1e-3, atol=SPARSE_FIAS_LSE_ATOL):
+    if not torch.allclose(
+        our_lse.cpu(), fias_lse.cpu().float(), rtol=1e-3, atol=SPARSE_FIAS_LSE_ATOL
+    ):
         max_diff = (our_lse.cpu() - fias_lse.cpu().float()).abs().max().item()
         pytest.fail(
             f"shape={shape} sparsity={sparsity}: "
@@ -393,10 +459,15 @@ def test_lse_vs_fias_sparse_framed(shape, sparsity):
 
 # ── Test 4: multi-head sparse LSE vs Python float32 reference ────────────────
 
-@pytest.mark.parametrize("sparsity", SPARSE_LSE_SPARSITIES,
-                          ids=lambda s: f"sp{int(s*100):02d}pct")
-@pytest.mark.parametrize("shape", SPARSE_LSE_MULTIHEAD_SHAPES,
-                          ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}")
+
+@pytest.mark.parametrize(
+    "sparsity", SPARSE_LSE_SPARSITIES, ids=lambda s: f"sp{int(s * 100):02d}pct"
+)
+@pytest.mark.parametrize(
+    "shape",
+    SPARSE_LSE_MULTIHEAD_SHAPES,
+    ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}",
+)
 def test_lse_sparse_multihead_vs_python_ref(shape, sparsity):
     """Multi-head sparse LSE vs a CPU float32 reference (independent of FIAS).
     Passing here demonstrates the kernel's LSE is correct in its own
@@ -416,7 +487,7 @@ def test_lse_sparse_multihead_vs_python_ref(shape, sparsity):
     v = torch.randn(B, H, S, D, dtype=dtype, device=DEVICE)
 
     _, our_lse = _run_kernel_with_lse_sparse(q, k, v, H, scale, S, sabi_dev)
-    ref_lse    = _lse_reference_sparse(q, k, scale, sabi_cpu)
+    ref_lse = _lse_reference_sparse(q, k, scale, sabi_cpu)
 
     if not torch.allclose(our_lse.cpu(), ref_lse, rtol=1e-3, atol=SPARSE_REF_ATOL):
         max_diff = (our_lse.cpu() - ref_lse).abs().max().item()
@@ -428,9 +499,11 @@ def test_lse_sparse_multihead_vs_python_ref(shape, sparsity):
 
 # ── Test 5: zero-input — LSE must equal log(S) ───────────────────────────────
 
+
 @pytest.mark.parametrize("dtype", LSE_DTYPES, ids=lambda d: str(d).split(".")[-1])
-@pytest.mark.parametrize("shape", ZERO_INPUT_SHAPES,
-                          ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}")
+@pytest.mark.parametrize(
+    "shape", ZERO_INPUT_SHAPES, ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}"
+)
 def test_lse_zero_input(shape, dtype):
     """Q=K=V=0 → uniform softmax → LSE = log(S)."""
     B, H, S, D = shape
@@ -450,8 +523,10 @@ def test_lse_zero_input(shape, dtype):
 
 # ── Test 6: LSE shape and dtype ───────────────────────────────────────────────
 
-@pytest.mark.parametrize("shape", SHAPE_DTYPE_SHAPES,
-                          ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}")
+
+@pytest.mark.parametrize(
+    "shape", SHAPE_DTYPE_SHAPES, ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}"
+)
 def test_lse_shape_and_dtype(shape):
     """LSE tensor must be 4-D `[B, H, S, 1]` float32 (kernel's infershape spec).
     Squeezed to `[B, H, S]` in `_run_kernel_with_lse_*` for comparison."""
@@ -465,16 +540,23 @@ def test_lse_shape_and_dtype(shape):
     kv_blocks = (S + BLOCK_SIZE_KV - 1) // BLOCK_SIZE_KV
     mask = torch.ones(B, H, q_blocks, kv_blocks, dtype=torch.int8, device=DEVICE)
     _, lse_raw = cann_ops_transformer.ops.block_sparse_attention(
-        q, q, q,
+        q,
+        q,
+        q,
         block_sparse_mask=mask,
         block_shape=[BLOCK_SIZE_Q, BLOCK_SIZE_KV],
-        actual_seq_lengths=[S] * B, actual_seq_lengths_kv=[S] * B,
-        num_heads=H, num_key_value_heads=H,
-        q_input_layout=INPUT_LAYOUT, kv_input_layout=INPUT_LAYOUT,
-        mask_type=0, scale_value=float(scale),
+        actual_seq_lengths=[S] * B,
+        actual_seq_lengths_kv=[S] * B,
+        num_heads=H,
+        num_key_value_heads=H,
+        q_input_layout=INPUT_LAYOUT,
+        kv_input_layout=INPUT_LAYOUT,
+        mask_type=0,
+        scale_value=float(scale),
         inner_precise=INNER_PRECISE,
         block_size=0,  # paged cache not yet supported by kernel; must be 0
-        pre_tokens=2147483647, next_tokens=2147483647,
+        pre_tokens=2147483647,
+        next_tokens=2147483647,
         softmax_lse_flag=True,
     )
     assert lse_raw.shape == torch.Size([B, H, S, 1]), f"Wrong shape: {lse_raw.shape}"
@@ -483,8 +565,10 @@ def test_lse_shape_and_dtype(shape):
 
 # ── Test 7: disabled LSE returns empty tensor ────────────────────────────────
 
-@pytest.mark.parametrize("shape", DISABLED_LSE_SHAPES,
-                          ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}")
+
+@pytest.mark.parametrize(
+    "shape", DISABLED_LSE_SHAPES, ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}"
+)
 def test_lse_disabled_returns_empty(shape):
     """`softmax_lse_flag=False` must produce an empty tensor (`numel()==0`)."""
     torch.manual_seed(SEED)
@@ -496,16 +580,23 @@ def test_lse_disabled_returns_empty(shape):
     kv_blocks = (S + BLOCK_SIZE_KV - 1) // BLOCK_SIZE_KV
     mask = torch.ones(B, H, q_blocks, kv_blocks, dtype=torch.int8, device=DEVICE)
     _, lse = cann_ops_transformer.ops.block_sparse_attention(
-        q, q, q,
+        q,
+        q,
+        q,
         block_sparse_mask=mask,
         block_shape=[BLOCK_SIZE_Q, BLOCK_SIZE_KV],
-        actual_seq_lengths=[S] * B, actual_seq_lengths_kv=[S] * B,
-        num_heads=H, num_key_value_heads=H,
-        q_input_layout=INPUT_LAYOUT, kv_input_layout=INPUT_LAYOUT,
-        mask_type=0, scale_value=float(scale),
+        actual_seq_lengths=[S] * B,
+        actual_seq_lengths_kv=[S] * B,
+        num_heads=H,
+        num_key_value_heads=H,
+        q_input_layout=INPUT_LAYOUT,
+        kv_input_layout=INPUT_LAYOUT,
+        mask_type=0,
+        scale_value=float(scale),
         inner_precise=INNER_PRECISE,
         block_size=0,  # paged cache not yet supported by kernel; must be 0
-        pre_tokens=2147483647, next_tokens=2147483647,
+        pre_tokens=2147483647,
+        next_tokens=2147483647,
         softmax_lse_flag=False,
     )
     assert lse.numel() == 0, f"Expected empty tensor, got shape {lse.shape}"
@@ -515,6 +606,7 @@ def test_lse_disabled_returns_empty(shape):
 
 if __name__ == "__main__":
     import logging
+
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     log = logging.getLogger(__name__)
 
