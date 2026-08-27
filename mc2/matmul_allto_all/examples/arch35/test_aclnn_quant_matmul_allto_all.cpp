@@ -20,20 +20,21 @@
 #include <vector>
 #include <acl/acl.h>
 #include <hccl/hccl.h>
+#include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_quant_matmul_allto_all.h"
 
 int ndev = 2;
 
-#define CHECK_RET(cond, return_expr)                                                                                   \
-    do {                                                                                                               \
-        if (!(cond)) {                                                                                                 \
-            return_expr;                                                                                               \
-        }                                                                                                              \
+#define CHECK_RET(cond, return_expr) \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)                                                                                        \
-    do {                                                                                                               \
-        printf(message, ##__VA_ARGS__);                                                                                \
+#define LOG_PRINT(message, ...) \
+    do { \
+        printf(message, ##__VA_ARGS__); \
     } while (0)
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
@@ -121,12 +122,12 @@ int launchOneThreadQuantMatmulAlltoAll(Args &args)
     long long x1ScaleShapeSize = GetShapeSize(x1ScaleShape);
     long long x2ScaleShapeSize = GetShapeSize(x2ScaleShape);
     long long outShapeSize = GetShapeSize(outShape);
-    std::vector<int16_t> x1HostData(x1ShapeSize, 1);
-    std::vector<int16_t> x2HostData(x2ShapeSize, 1);
-    std::vector<int16_t> biasHostData(biasShapeSize, 1);
-    std::vector<int16_t> x1ScaleHostData(x1ShapeSize, 1);
-    std::vector<int16_t> x2ScaleHostData(x2ShapeSize, 1);
-    std::vector<int16_t> outHostData(outShapeSize, 0);
+    std::vector<int8_t> x1HostData(x1ShapeSize, 1);
+    std::vector<int8_t> x2HostData(x2ShapeSize, 1);
+    std::vector<float> biasHostData(biasShapeSize, 1);
+    std::vector<float> x1ScaleHostData(x1ShapeSize, 1);
+    std::vector<float> x2ScaleHostData(x2ShapeSize, 1);
+    std::vector<op::fp16_t> outHostData(outShapeSize, 0);
     // 创建 tensor
     ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &x1);
     CHECK_RET(ret == ACL_SUCCESS, return ret);

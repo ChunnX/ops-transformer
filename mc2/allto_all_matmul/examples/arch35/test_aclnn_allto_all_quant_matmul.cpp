@@ -1,13 +1,12 @@
 /**
- * This program is free software, you can redistribute it and/or modify.
- * Copyright (c) Huawei Technologies Co., Ltd. 2025-2026. All rights reserved.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
-BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file test_aclnn_allto_all_quant_matmul.cpp
@@ -20,20 +19,21 @@ BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULA
 #include <vector>
 #include <acl/acl.h>
 #include <hccl/hccl.h>
+#include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_allto_all_quant_matmul.h"
 
 int ndev = 2;
 
-#define CHECK_RET(cond, return_expr)                                                                                   \
-    do {                                                                                                               \
-        if (!(cond)) {                                                                                                 \
-            return_expr;                                                                                               \
-        }                                                                                                              \
+#define CHECK_RET(cond, return_expr) \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)                                                                                        \
-    do {                                                                                                               \
-        printf(message, ##__VA_ARGS__);                                                                                \
+#define LOG_PRINT(message, ...) \
+    do { \
+        printf(message, ##__VA_ARGS__); \
     } while (0)
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
@@ -125,12 +125,12 @@ int launchOneThreadAlltoAllQuantMatmul(Args &args)
     long long x2ScaleShapeSize = GetShapeSize(x2ScaleShape);
     long long outShapeSize = GetShapeSize(outShape);
     long long allToAllOutShapeSize = GetShapeSize(allToAllOutShape);
-    std::vector<int16_t> x1HostData(x1ShapeSize, 1);
-    std::vector<int16_t> x2HostData(x2ShapeSize, 1);
-    std::vector<int16_t> biasHostData(biasShapeSize, 1);
-    std::vector<int16_t> x2ScaleHostData(x2ScaleShapeSize, 1);
-    std::vector<int16_t> outHostData(outShapeSize, 0);
-    std::vector<int16_t> allToAllOutHostData(allToAllOutShapeSize, 0);
+    std::vector<op::fp16_t> x1HostData(x1ShapeSize, 1);
+    std::vector<int8_t> x2HostData(x2ShapeSize, 1);
+    std::vector<float> biasHostData(biasShapeSize, 1);
+    std::vector<float> x2ScaleHostData(x2ScaleShapeSize, 1);
+    std::vector<float> outHostData(outShapeSize, 0);
+    std::vector<op::fp16_t> allToAllOutHostData(allToAllOutShapeSize, 0);
     // 创建 tensor
     ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT16, &x1);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
