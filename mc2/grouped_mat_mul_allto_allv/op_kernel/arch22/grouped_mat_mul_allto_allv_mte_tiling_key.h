@@ -9,14 +9,14 @@
  */
 
 /*!
- * \file grouped_mat_mul_allto_allv_aiv_tiling_key.h
+ * \file grouped_mat_mul_allto_allv_mte_tiling_key.h
  * \brief
  */
-#ifndef __GROUPED_MAT_MUL_ALLTO_ALLV_AIV_TILING_KEY_H__
-#define __GROUPED_MAT_MUL_ALLTO_ALLV_AIV_TILING_KEY_H__
+#ifndef __GROUPED_MAT_MUL_ALLTO_ALLV_MTE_TILING_KEY_H__
+#define __GROUPED_MAT_MUL_ALLTO_ALLV_MTE_TILING_KEY_H__
 
 #include "ascendc/host_api/tiling/template_argument.h"
-#include "grouped_mat_mul_allto_allv_aiv_tiling.h"
+#include "grouped_mat_mul_allto_allv_mte_tiling.h"
 #include "../../../quant_grouped_mat_mul_allto_allv/op_kernel/quant_grouped_mat_mul_allto_allv_tiling.h"
 
 // 通信模式
@@ -49,7 +49,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(TILINGKEY_GMM_WEIGHT_TRANS, 0, 1),
         ASCENDC_TPL_BOOL_SEL(TILINGKEY_SHARED_MM_WEIGHT_TRANS, 0, 1),
         ASCENDC_TPL_UINT_SEL(TILINGKEY_COMM_MODE, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_AIV),
-        ASCENDC_TPL_TILING_STRUCT_SEL(GroupedMatMulAlltoAllvAivTilingData)),
+        ASCENDC_TPL_TILING_STRUCT_SEL(GroupedMatMulAlltoAllvMteTilingData)),
 ); // GroupedMatMulAlltoAllv
 
-#endif // __GROUPED_MAT_MUL_ALLTO_ALLV_AIV_TILING_KEY_H__
+#endif // __GROUPED_MAT_MUL_ALLTO_ALLV_MTE_TILING_KEY_H__

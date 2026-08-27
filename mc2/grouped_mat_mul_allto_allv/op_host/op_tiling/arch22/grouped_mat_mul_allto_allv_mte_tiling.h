@@ -9,19 +9,19 @@
  */
 
 /*!
- * \file grouped_mat_mul_allto_allv_aiv_tiling.h
+ * \file grouped_mat_mul_allto_allv_mte_tiling.h
  */
-#ifndef MC2_GROUPED_MATMUL_ALLTO_ALLV_AIV_TILING_STRUCT_H
-#define MC2_GROUPED_MATMUL_ALLTO_ALLV_AIV_TILING_STRUCT_H
+#ifndef MC2_GROUPED_MATMUL_ALLTO_ALLV_MTE_TILING_STRUCT_H
+#define MC2_GROUPED_MATMUL_ALLTO_ALLV_MTE_TILING_STRUCT_H
 
 #include <array>
 
 #include "../../../../quant_grouped_mat_mul_allto_allv/op_host/op_tiling/quant_grouped_mat_mul_allto_allv_tiling_common.h"
 
 namespace optiling {
-class GroupedMatmulAllToAllvAivTiling : public Mc2Tiling::Mc2GroupedMatmul::QuantGroupedMatmulAllToAllvTilingCommon {
+class GroupedMatmulAllToAllvMteTiling : public Mc2Tiling::Mc2GroupedMatmul::QuantGroupedMatmulAllToAllvTilingCommon {
 public:
-    explicit GroupedMatmulAllToAllvAivTiling(gert::TilingContext *context)
+    explicit GroupedMatmulAllToAllvMteTiling(gert::TilingContext *context)
         : Mc2Tiling::Mc2GroupedMatmul::QuantGroupedMatmulAllToAllvTilingCommon(context) {};
 
 protected:
@@ -44,7 +44,7 @@ protected:
     ge::graphStatus GetPlatformInfo() override;
     ge::graphStatus PostTiling() override;
     ge::graphStatus GetWorkspaceSize() override;
-    ge::graphStatus SetAivWorkspaceInfo();
+    ge::graphStatus SetMteWorkspaceInfo();
     uint64_t GetTilingKey() const override;
     uint32_t GetCommModeIndex() const override;
     ge::graphStatus GetAndConvertCommMode(gert::TilingContext *context, uint8_t &commMode) const;
@@ -72,10 +72,13 @@ protected:
     static const std::vector<uint32_t> GMM_WEIGHT_DTYPE_LIST;
     static const std::vector<uint32_t> GMM_Y_DTYPE_LIST;
     static const std::set<int64_t> A5_SUPPORT_RANK_SIZE;
+    static const std::set<int64_t> A2_SUPPORT_RANK_SIZE;
     static const std::set<int64_t> A3_SUPPORT_RANK_SIZE;
 
-    uint64_t aivWorkspaceSize_{0UL};
+    uint64_t mteWorkspaceSize_{0UL};
     std::array<int32_t, MAX_GLOBAL_EXPERT_NUM> sendCounts_{};
+    std::array<int32_t, MAX_GLOBAL_EXPERT_NUM> recvCounts_{};
+    bool isA3_{false};
 };
 } // namespace optiling
 #endif

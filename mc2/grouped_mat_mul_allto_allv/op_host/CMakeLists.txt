@@ -47,6 +47,12 @@ if (BUILD_OPEN_PROJECT)  # custom
                     -DAICORE_EXCEPTION_RESTART
                     -I${CMAKE_SOURCE_DIR}/3rdparty/catlass/include
         )
+    elseif("${CONDITION_UNIT}" STREQUAL "ascend910b")
+        add_ops_compile_options(
+            OP_NAME GroupedMatMulAlltoAllv
+            OPTIONS --cce-auto-sync=off
+                    -I${CMAKE_SOURCE_DIR}/3rdparty/catlass/include
+        )
     endif()
 else() # 回黄host
     add_mc2_modules_sources(

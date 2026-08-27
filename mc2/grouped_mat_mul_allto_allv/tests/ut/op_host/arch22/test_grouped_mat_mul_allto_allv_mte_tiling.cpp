@@ -9,16 +9,15 @@
  */
 #include <iostream>
 #include <gtest/gtest.h>
-#include "../../../../op_host/op_tiling/arch22/grouped_mat_mul_allto_allv_aiv_tiling.h"
+#include "../../../../op_host/op_tiling/arch22/grouped_mat_mul_allto_allv_mte_tiling.h"
 #include "mc2_tiling_case_executor.h"
 
-namespace GroupedMatMulAlltoAllvAivUT {
+namespace GroupedMatMulAlltoAllvMteUT {
 
 constexpr uint64_t DEFAULT_CCL_BUFFER_SIZE = 6000ULL * 1024ULL * 1024ULL;
 constexpr uint64_t SAMPLE_OUTPUT_SIZE = 4096ULL * 4096ULL * sizeof(uint16_t);
 constexpr uint64_t SAMPLE_COUNT_MATRIX_SIZE = 8ULL * 4ULL * sizeof(int32_t);
-constexpr uint64_t SAMPLE_REQUIRED_CCL_BUFFER_SIZE =
-    SAMPLE_OUTPUT_SIZE + SAMPLE_COUNT_MATRIX_SIZE + 16ULL * 1024ULL * 1024ULL;
+constexpr uint64_t SAMPLE_REQUIRED_CCL_BUFFER_SIZE = 200ULL * 1024ULL * 1024ULL;
 
 struct TestParam {
     string testName{};
@@ -98,24 +97,24 @@ std::unordered_map<string, std::function<void(TilingParams &tilingParams, const 
         {"recvCounts",
          [](TilingParams &tilingParams, const std::vector<int64_t> valueVec) { tilingParams.recvCounts = valueVec; }}};
 
-class GroupedMatMulAlltoAllvAivArch22TilingTest : public testing::TestWithParam<TestParam> {
+class GroupedMatMulAlltoAllvMteArch22TilingTest : public testing::TestWithParam<TestParam> {
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "GroupedMatMulAlltoAllvAivArch22TilingTest SetUp" << std::endl;
+        std::cout << "GroupedMatMulAlltoAllvMteArch22TilingTest SetUp" << std::endl;
     }
 
     static void TearDownTestCase()
     {
-        std::cout << "GroupedMatMulAlltoAllvAivArch22TilingTest TearDown" << std::endl;
+        std::cout << "GroupedMatMulAlltoAllvMteArch22TilingTest TearDown" << std::endl;
     }
 };
 
-TEST_P(GroupedMatMulAlltoAllvAivArch22TilingTest, ShapeSize)
+TEST_P(GroupedMatMulAlltoAllvMteArch22TilingTest, ShapeSize)
 {
     auto testParam = GetParam();
-    struct GroupedMatMulAlltoAllvAivCompileInfo {};
-    GroupedMatMulAlltoAllvAivCompileInfo compileInfo;
+    struct GroupedMatMulAlltoAllvMteCompileInfo {};
+    GroupedMatMulAlltoAllvMteCompileInfo compileInfo;
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
@@ -182,7 +181,7 @@ static TestParam g_testParams[] = {
      {{"epWorldSize", "768"}, {"e", "1"}},
      {{"sendCounts", MakeCounts(768, 4096)}, {"recvCounts", MakeCounts(768, 4096)}},
      {},
-     ge::GRAPH_SUCCESS},
+     ge::GRAPH_FAILED},
     {"Test_global_expert_1024",
      {{"epWorldSize", "128"}, {"e", "8"}},
      {{"sendCounts", MakeCounts(1024, 4096)}, {"recvCounts", MakeCounts(1024, 4096)}},
@@ -228,16 +227,16 @@ static TestParam g_testParams[] = {
      ge::GRAPH_FAILED},
 };
 
-INSTANTIATE_TEST_SUITE_P(GroupedMatMulAlltoAllvAiv, GroupedMatMulAlltoAllvAivArch22TilingTest,
+INSTANTIATE_TEST_SUITE_P(GroupedMatMulAlltoAllvMte, GroupedMatMulAlltoAllvMteArch22TilingTest,
                          testing::ValuesIn(g_testParams),
-                         [](const testing::TestParamInfo<GroupedMatMulAlltoAllvAivArch22TilingTest::ParamType> &info) {
+                         [](const testing::TestParamInfo<GroupedMatMulAlltoAllvMteArch22TilingTest::ParamType> &info) {
                              return info.param.testName;
                          });
 
-TEST_F(GroupedMatMulAlltoAllvAivArch22TilingTest, Dim1)
+TEST_F(GroupedMatMulAlltoAllvMteArch22TilingTest, Dim1)
 {
-    struct GroupedMatMulAlltoAllvAivCompileInfo {};
-    GroupedMatMulAlltoAllvAivCompileInfo compileInfo;
+    struct GroupedMatMulAlltoAllvMteCompileInfo {};
+    GroupedMatMulAlltoAllvMteCompileInfo compileInfo;
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
@@ -269,10 +268,10 @@ TEST_F(GroupedMatMulAlltoAllvAivArch22TilingTest, Dim1)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(GroupedMatMulAlltoAllvAivArch22TilingTest, Dim2)
+TEST_F(GroupedMatMulAlltoAllvMteArch22TilingTest, Dim2)
 {
-    struct GroupedMatMulAlltoAllvAivCompileInfo {};
-    GroupedMatMulAlltoAllvAivCompileInfo compileInfo;
+    struct GroupedMatMulAlltoAllvMteCompileInfo {};
+    GroupedMatMulAlltoAllvMteCompileInfo compileInfo;
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
@@ -304,10 +303,10 @@ TEST_F(GroupedMatMulAlltoAllvAivArch22TilingTest, Dim2)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(GroupedMatMulAlltoAllvAivArch22TilingTest, Dim3)
+TEST_F(GroupedMatMulAlltoAllvMteArch22TilingTest, Dim3)
 {
-    struct GroupedMatMulAlltoAllvAivCompileInfo {};
-    GroupedMatMulAlltoAllvAivCompileInfo compileInfo;
+    struct GroupedMatMulAlltoAllvMteCompileInfo {};
+    GroupedMatMulAlltoAllvMteCompileInfo compileInfo;
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
@@ -339,10 +338,10 @@ TEST_F(GroupedMatMulAlltoAllvAivArch22TilingTest, Dim3)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(GroupedMatMulAlltoAllvAivArch22TilingTest, Dim4)
+TEST_F(GroupedMatMulAlltoAllvMteArch22TilingTest, Dim4)
 {
-    struct GroupedMatMulAlltoAllvAivCompileInfo {};
-    GroupedMatMulAlltoAllvAivCompileInfo compileInfo;
+    struct GroupedMatMulAlltoAllvMteCompileInfo {};
+    GroupedMatMulAlltoAllvMteCompileInfo compileInfo;
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
@@ -375,10 +374,10 @@ TEST_F(GroupedMatMulAlltoAllvAivArch22TilingTest, Dim4)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(GroupedMatMulAlltoAllvAivArch22TilingTest, Dim5)
+TEST_F(GroupedMatMulAlltoAllvMteArch22TilingTest, Dim5)
 {
-    struct GroupedMatMulAlltoAllvAivCompileInfo {};
-    GroupedMatMulAlltoAllvAivCompileInfo compileInfo;
+    struct GroupedMatMulAlltoAllvMteCompileInfo {};
+    GroupedMatMulAlltoAllvMteCompileInfo compileInfo;
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
@@ -411,10 +410,10 @@ TEST_F(GroupedMatMulAlltoAllvAivArch22TilingTest, Dim5)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(GroupedMatMulAlltoAllvAivArch22TilingTest, Dim6)
+TEST_F(GroupedMatMulAlltoAllvMteArch22TilingTest, Dim6)
 {
-    struct GroupedMatMulAlltoAllvAivCompileInfo {};
-    GroupedMatMulAlltoAllvAivCompileInfo compileInfo;
+    struct GroupedMatMulAlltoAllvMteCompileInfo {};
+    GroupedMatMulAlltoAllvMteCompileInfo compileInfo;
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
@@ -447,10 +446,10 @@ TEST_F(GroupedMatMulAlltoAllvAivArch22TilingTest, Dim6)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(GroupedMatMulAlltoAllvAivArch22TilingTest, TransMmWeightInvalid)
+TEST_F(GroupedMatMulAlltoAllvMteArch22TilingTest, TransMmWeightInvalid)
 {
-    struct GroupedMatMulAlltoAllvAivCompileInfo {};
-    GroupedMatMulAlltoAllvAivCompileInfo compileInfo;
+    struct GroupedMatMulAlltoAllvMteCompileInfo {};
+    GroupedMatMulAlltoAllvMteCompileInfo compileInfo;
     std::string socVersion = "Ascend910B";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
@@ -481,4 +480,4 @@ TEST_F(GroupedMatMulAlltoAllvAivArch22TilingTest, TransMmWeightInvalid)
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
-} // namespace GroupedMatMulAlltoAllvAivUT
+} // namespace GroupedMatMulAlltoAllvMteUT

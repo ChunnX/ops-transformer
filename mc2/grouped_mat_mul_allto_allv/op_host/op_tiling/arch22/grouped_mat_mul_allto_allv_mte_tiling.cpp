@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file grouped_mat_mul_allto_allv_aiv_tiling.cpp
+ * \file grouped_mat_mul_allto_allv_mte_tiling.cpp
  */
 
-#include "grouped_mat_mul_allto_allv_aiv_tiling.h"
-#include "../../../op_kernel/arch22/grouped_mat_mul_allto_allv_aiv_tiling.h"
+#include "grouped_mat_mul_allto_allv_mte_tiling.h"
+#include "../../../op_kernel/arch22/grouped_mat_mul_allto_allv_mte_tiling.h"
 #include "op_mc2.h"
 #include "mc2_log.h"
 #include "op_host/tiling_templates_registry.h"
@@ -35,24 +35,27 @@ namespace optiling {
 namespace {
 constexpr uint8_t COMM_MODE_AIV = 2U;
 constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8U;
-const std::string AIV_HCCL_ALG_CONFIG = "AlltoAll=level0:fullmesh;level1:pairwise";
+constexpr uint32_t OP_TYPE_MULTI_PUT = 18U;
+const std::string A3_MTE_HCCL_ALG_CONFIG = "AlltoAll=level0:fullmesh;level1:pairwise";
+const std::string A2_MTE_HCCL_ALG_CONFIG = "MultiPut=level0:fullmesh";
 }
 
-const std::vector<uint32_t> GroupedMatmulAllToAllvAivTiling::GMM_X_DTYPE_LIST = {ge::DT_BF16};
-const std::vector<uint32_t> GroupedMatmulAllToAllvAivTiling::GMM_WEIGHT_DTYPE_LIST = {ge::DT_BF16};
-const std::vector<uint32_t> GroupedMatmulAllToAllvAivTiling::GMM_Y_DTYPE_LIST = {ge::DT_BF16};
-const std::set<int64_t> GroupedMatmulAllToAllvAivTiling::A5_SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64};
-const std::set<int64_t> GroupedMatmulAllToAllvAivTiling::A3_SUPPORT_RANK_SIZE{
+const std::vector<uint32_t> GroupedMatmulAllToAllvMteTiling::GMM_X_DTYPE_LIST = {ge::DT_BF16};
+const std::vector<uint32_t> GroupedMatmulAllToAllvMteTiling::GMM_WEIGHT_DTYPE_LIST = {ge::DT_BF16};
+const std::vector<uint32_t> GroupedMatmulAllToAllvMteTiling::GMM_Y_DTYPE_LIST = {ge::DT_BF16};
+const std::set<int64_t> GroupedMatmulAllToAllvMteTiling::A5_SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64};
+const std::set<int64_t> GroupedMatmulAllToAllvMteTiling::A2_SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64, 128};
+const std::set<int64_t> GroupedMatmulAllToAllvMteTiling::A3_SUPPORT_RANK_SIZE{
     2, 4, 8, 16, 32, 64, 128, 256, 512, 768};
 
-ge::graphStatus GroupedMatmulAllToAllvAivTiling::GetShapeAttrsInfo()
+ge::graphStatus GroupedMatmulAllToAllvMteTiling::GetShapeAttrsInfo()
 {
     opName_ = context_->GetNodeName();
     localParams_.opName = opName_;
     return ge::GRAPH_SUCCESS;
 }
 
-bool GroupedMatmulAllToAllvAivTiling::IsCapable()
+bool GroupedMatmulAllToAllvMteTiling::IsCapable()
 {
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
     if (attrs == nullptr) {
@@ -62,28 +65,42 @@ bool GroupedMatmulAllToAllvAivTiling::IsCapable()
     return commMode != nullptr && strncmp(commMode, "aiv", 7UL) == 0;
 }
 
-ge::graphStatus GroupedMatmulAllToAllvAivTiling::DoOpTiling()
+ge::graphStatus GroupedMatmulAllToAllvMteTiling::DoOpTiling()
 {
+    // SyncAll is used by the MIX AIC/AIV path.  Match the arch22
+    // AllToAllMatmul/MatmulAlltoAll scheduling contract so every participating
+    // core is launched as one batch.
+    constexpr uint32_t batchMode = 1U;
+    MC2_CHECK_LOG_RET(opName_, context_->SetScheduleMode(batchMode));
     MC2_CHECK_LOG_RET(opName_, CheckAndSetInputOutputInfo());
     MC2_CHECK_LOG_RET(opName_, SetTilingCommonInfo());
-    MC2_CHECK_LOG_RET(opName_, SetAivWorkspaceInfo());
+    MC2_CHECK_LOG_RET(opName_, SetMteWorkspaceInfo());
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedMatmulAllToAllvAivTiling::SetAivWorkspaceInfo()
+ge::graphStatus GroupedMatmulAllToAllvMteTiling::SetMteWorkspaceInfo()
 {
     const uint64_t dtypeSize = mc2tiling::GetDataTypeSize(opName_, localParams_.gmmYDtype);
+    const uint64_t rowBytes = localParams_.N1 * dtypeSize;
+    OP_TILING_CHECK(rowBytes > MC2KernelTemplate::Gmma2avMteTiling::PAYLOAD_UB_REGION_BYTES,
+                    OP_LOGE(opName_,
+                            "MTE peer copy requires one complete output row in payload UB: row=%lu bytes, "
+                            "capacity=%lu bytes.",
+                            rowBytes, MC2KernelTemplate::Gmma2avMteTiling::PAYLOAD_UB_REGION_BYTES),
+                    return ge::GRAPH_FAILED);
     const uint64_t gmmOutputWorkspaceSize = mc2tiling::AlignUp(
-        localParams_.A * localParams_.N1 * dtypeSize, MC2KernelTemplate::Gmma2avAivTiling::WORKSPACE_ALIGNMENT);
-    const uint64_t countNum = localParams_.epWorldSize * localParams_.ep;
+        localParams_.A * localParams_.N1 * dtypeSize, MC2KernelTemplate::Gmma2avMteTiling::WORKSPACE_ALIGNMENT);
+    const uint64_t countStorageBytes = mc2tiling::AlignUp(
+        localParams_.epWorldSize * localParams_.ep * sizeof(int32_t),
+        MC2KernelTemplate::Gmma2avMteTiling::COUNT_TABLE_ALIGNMENT_BYTES);
     const uint64_t cumsumWorkspaceSize = mc2tiling::AlignUp(
-        countNum * sizeof(int32_t), MC2KernelTemplate::Gmma2avAivTiling::WORKSPACE_ALIGNMENT);
-    aivWorkspaceSize_ = static_cast<uint64_t>(libApiWorkSpaceSize_) +
+        countStorageBytes, MC2KernelTemplate::Gmma2avMteTiling::WORKSPACE_ALIGNMENT);
+    mteWorkspaceSize_ = static_cast<uint64_t>(libApiWorkSpaceSize_) +
                         gmmOutputWorkspaceSize + cumsumWorkspaceSize;
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedMatmulAllToAllvAivTiling::CheckOpInputSingleParamsTensorNotSupport()
+ge::graphStatus GroupedMatmulAllToAllvMteTiling::CheckOpInputSingleParamsTensorNotSupport()
 {
     auto sendCountsTensorShape = context_->GetOptionalInputShape(SEND_COUNTS_TENSOR_OPTIONAL_INDEX);
     auto recvCountsTensorShape = context_->GetOptionalInputShape(RECV_COUNTS_TENSOR_OPTIONAL_INDEX);
@@ -95,12 +112,12 @@ ge::graphStatus GroupedMatmulAllToAllvAivTiling::CheckOpInputSingleParamsTensorN
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedMatmulAllToAllvAivTiling::CheckOpInputSingleParamsTensorSupport()
+ge::graphStatus GroupedMatmulAllToAllvMteTiling::CheckOpInputSingleParamsTensorSupport()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedMatmulAllToAllvAivTiling::CheckOpInputSingleParamsTensorMM()
+ge::graphStatus GroupedMatmulAllToAllvMteTiling::CheckOpInputSingleParamsTensorMM()
 {
     auto mmXTensorShape = context_->GetOptionalInputShape(MM_X_OPTIONAL_INDEX);
     auto mmWeightTensorShape = context_->GetOptionalInputShape(MM_WEIGHT_OPTIONAL_INDEX);
@@ -125,7 +142,7 @@ ge::graphStatus GroupedMatmulAllToAllvAivTiling::CheckOpInputSingleParamsTensorM
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedMatmulAllToAllvAivTiling::CheckAndSetLocalParamsGmm()
+ge::graphStatus GroupedMatmulAllToAllvMteTiling::CheckAndSetLocalParamsGmm()
 {
     auto gmmXDesc = context_->GetInputDesc(GMM_X_INDEX);
     OP_TILING_CHECK(gmmXDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "gmmX"), return ge::GRAPH_FAILED);
@@ -190,7 +207,7 @@ ge::graphStatus GroupedMatmulAllToAllvAivTiling::CheckAndSetLocalParamsGmm()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedMatmulAllToAllvAivTiling::CheckAndSetLocalParamsMm()
+ge::graphStatus GroupedMatmulAllToAllvMteTiling::CheckAndSetLocalParamsMm()
 {
     if (!localParams_.hasSharedMm) {
         return ge::GRAPH_SUCCESS;
@@ -263,7 +280,7 @@ ge::graphStatus GroupedMatmulAllToAllvAivTiling::CheckAndSetLocalParamsMm()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedMatmulAllToAllvAivTiling::CheckAndSetLocalParamsAttr()
+ge::graphStatus GroupedMatmulAllToAllvMteTiling::CheckAndSetLocalParamsAttr()
 {
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs"), return ge::GRAPH_FAILED);
@@ -291,7 +308,7 @@ ge::graphStatus GroupedMatmulAllToAllvAivTiling::CheckAndSetLocalParamsAttr()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedMatmulAllToAllvAivTiling::CheckAndSetLocalParams()
+ge::graphStatus GroupedMatmulAllToAllvMteTiling::CheckAndSetLocalParams()
 {
     auto status = CheckAndSetLocalParamsGmm();
     OP_TILING_CHECK(status != ge::GRAPH_SUCCESS, "", return ge::GRAPH_FAILED);
@@ -304,7 +321,7 @@ ge::graphStatus GroupedMatmulAllToAllvAivTiling::CheckAndSetLocalParams()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedMatmulAllToAllvAivTiling::CheckFormat()
+ge::graphStatus GroupedMatmulAllToAllvMteTiling::CheckFormat()
 {
     auto gmmXDesc = context_->GetInputDesc(GMM_X_INDEX);
     auto gmmWeightDesc = context_->GetInputDesc(GMM_WEIGHT_INDEX);
@@ -349,17 +366,17 @@ ge::graphStatus GroupedMatmulAllToAllvAivTiling::CheckFormat()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedMatmulAllToAllvAivTiling::CheckParamsRelationGmm()
+ge::graphStatus GroupedMatmulAllToAllvMteTiling::CheckParamsRelationGmm()
 {
     return CheckParamsRelationGmmTransShape();
 }
 
-ge::graphStatus GroupedMatmulAllToAllvAivTiling::CheckParamsRelationMm()
+ge::graphStatus GroupedMatmulAllToAllvMteTiling::CheckParamsRelationMm()
 {
     return CheckParamsRelationMmTransShape();
 }
 
-ge::graphStatus GroupedMatmulAllToAllvAivTiling::CheckParamsAttrEpAndSetLocalParams()
+ge::graphStatus GroupedMatmulAllToAllvMteTiling::CheckParamsAttrEpAndSetLocalParams()
 {
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
     const char *group = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
@@ -379,8 +396,8 @@ ge::graphStatus GroupedMatmulAllToAllvAivTiling::CheckParamsAttrEpAndSetLocalPar
                     return ge::GRAPH_FAILED);
 
     std::string supportRankSizeRange;
-    const std::set<int64_t> &supportRankSize =
-        (npuArch_ == NpuArch::DAV_3510) ? A5_SUPPORT_RANK_SIZE : A3_SUPPORT_RANK_SIZE;
+    const std::set<int64_t> &supportRankSize = (npuArch_ == NpuArch::DAV_3510) ? A5_SUPPORT_RANK_SIZE :
+        (isA3_ ? A3_SUPPORT_RANK_SIZE : A2_SUPPORT_RANK_SIZE);
     for (const auto &v : supportRankSize) {
         supportRankSizeRange += (std::to_string(v) + " ");
     }
@@ -401,7 +418,7 @@ ge::graphStatus GroupedMatmulAllToAllvAivTiling::CheckParamsAttrEpAndSetLocalPar
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedMatmulAllToAllvAivTiling::CheckAndSetSendRecvCountsAttr()
+ge::graphStatus GroupedMatmulAllToAllvMteTiling::CheckAndSetSendRecvCountsAttr()
 {
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs"), return ge::GRAPH_FAILED);
@@ -432,6 +449,7 @@ ge::graphStatus GroupedMatmulAllToAllvAivTiling::CheckAndSetSendRecvCountsAttr()
                                 localParams_.BsK),
                         return ge::GRAPH_FAILED);
         sendCounts_[i] = static_cast<int32_t>(sendCounts[i]);
+        recvCounts_[i] = static_cast<int32_t>(recvCounts[i]);
         sendCountsSum += static_cast<uint64_t>(sendCounts[i]);
         recvCountsSum += static_cast<uint64_t>(recvCounts[i]);
     }
@@ -444,7 +462,7 @@ ge::graphStatus GroupedMatmulAllToAllvAivTiling::CheckAndSetSendRecvCountsAttr()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedMatmulAllToAllvAivTiling::CheckLocalParams()
+ge::graphStatus GroupedMatmulAllToAllvMteTiling::CheckLocalParams()
 {
     MC2_CHECK_LOG_RET(opName_,
                       Mc2Tiling::Mc2GroupedMatmul::QuantGroupedMatmulAllToAllvTilingCommon::CheckLocalParams());
@@ -458,7 +476,7 @@ ge::graphStatus GroupedMatmulAllToAllvAivTiling::CheckLocalParams()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedMatmulAllToAllvAivTiling::GetPlatformInfo()
+ge::graphStatus GroupedMatmulAllToAllvMteTiling::GetPlatformInfo()
 {
     auto status = Mc2Tiling::Mc2GroupedMatmul::QuantGroupedMatmulAllToAllvTilingCommon::GetPlatformInfo();
     if (status != ge::GRAPH_SUCCESS) {
@@ -468,14 +486,17 @@ ge::graphStatus GroupedMatmulAllToAllvAivTiling::GetPlatformInfo()
     OP_TILING_CHECK(platformInfo == nullptr, OP_LOGE(opName_, "Failed to get platform info."), return ge::GRAPH_FAILED);
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
     npuArch_ = ascendcPlatform.GetCurNpuArch();
+    std::string socVersion;
+    (void)platformInfo->GetPlatformResWithLock("version", "Short_SoC_version", socVersion);
+    isA3_ = socVersion == "Ascend910_93";
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedMatmulAllToAllvAivTiling::PostTiling()
+ge::graphStatus GroupedMatmulAllToAllvMteTiling::PostTiling()
 {
     context_->SetBlockDim(localParams_.aicCoreNum);
 
-    MC2KernelTemplate::GroupedMatMulAlltoAllvAivTilingData outData{};
+    MC2KernelTemplate::GroupedMatMulAlltoAllvMteTilingData outData{};
     auto &taskTiling = outData.taskTilingInfo;
     taskTiling.BSK = localParams_.BsK;
     taskTiling.BS = localParams_.Bs;
@@ -491,67 +512,82 @@ ge::graphStatus GroupedMatmulAllToAllvAivTiling::PostTiling()
     const uint64_t countNum = localParams_.epWorldSize * localParams_.ep;
     for (uint64_t i = 0UL; i < countNum; ++i) {
         taskTiling.sendCnt[i] = sendCounts_[i];
+        taskTiling.recvCnt[i] = recvCounts_[i];
     }
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs"), return ge::GRAPH_FAILED);
     const char *group = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
     OP_TILING_CHECK(group == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "group"), return ge::GRAPH_FAILED);
-    Mc2CcTilingConfig mc2InitConfig(group, OP_TYPE_ALL_TO_ALL, AIV_HCCL_ALG_CONFIG);
+    outData.isA3 = static_cast<uint32_t>(isA3_);
+    const uint32_t opType = isA3_ ? OP_TYPE_ALL_TO_ALL : OP_TYPE_MULTI_PUT;
+    const std::string &algConfig = isA3_ ? A3_MTE_HCCL_ALG_CONFIG : A2_MTE_HCCL_ALG_CONFIG;
+    Mc2CcTilingConfig mc2InitConfig(group, opType, algConfig);
+    OP_TILING_CHECK(mc2InitConfig.SetCommEngine(Mc2Comm::ENGINE_MTE) != 0,
+                    OP_LOGE(opName_, "Failed to select the MTE communication engine."),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(mc2InitConfig.GetTiling(outData.mc2InitTiling) != 0,
-                    OP_LOGE(opName_, "Failed to generate the AIV Mc2InitTiling header."),
+                    OP_LOGE(opName_, "Failed to generate the MTE Mc2InitTiling header."),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(mc2InitConfig.GetTiling(outData.mc2CcTiling) != 0,
-                    OP_LOGE(opName_, "Failed to generate the AIV Mc2CcTiling descriptor."),
+                    OP_LOGE(opName_, "Failed to generate the MTE Mc2CcTiling descriptor."),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(mc2tiling::GetCclBufferSize(group, &outData.commBufferSize, opName_) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Failed to get CCL buffer size for AIV communication."),
+                    OP_LOGE(opName_, "Failed to get CCL buffer size for MTE communication."),
                     return ge::GRAPH_FAILED);
 
-    const uint64_t countMatrixBytes = countNum * sizeof(int32_t);
-    const uint64_t sendCountStagingBytes = MC2KernelTemplate::Gmma2avAivTiling::SEND_COUNT_STAGING_FROM_TAIL -
-                                           MC2KernelTemplate::Gmma2avAivTiling::SYNC_REGION_FROM_TAIL;
+    const uint64_t countMatrixBytes = mc2tiling::AlignUp(
+        localParams_.epWorldSize * localParams_.ep * sizeof(int32_t),
+        MC2KernelTemplate::Gmma2avMteTiling::COUNT_TABLE_ALIGNMENT_BYTES);
+    const uint64_t sendCountStagingBytes = MC2KernelTemplate::Gmma2avMteTiling::SEND_COUNT_STAGING_FROM_TAIL -
+                                           MC2KernelTemplate::Gmma2avMteTiling::SYNC_REGION_FROM_TAIL;
     OP_TILING_CHECK(countMatrixBytes > sendCountStagingBytes,
-                    OP_LOGE(opName_, "AIV send-count staging requires %lu bytes, but its CCL region has %lu bytes.",
+                    OP_LOGE(opName_, "MTE send-count staging requires %lu bytes, but its CCL region has %lu bytes.",
                             countMatrixBytes, sendCountStagingBytes),
                     return ge::GRAPH_FAILED);
-    const uint64_t syncBytes = localParams_.epWorldSize * MC2KernelTemplate::Gmma2avAivTiling::SYNC_SLOT_BYTES;
-    const uint64_t syncSlotRegionBytes = MC2KernelTemplate::Gmma2avAivTiling::SYNC_REGION_FROM_TAIL -
-                                         MC2KernelTemplate::Gmma2avAivTiling::SYNC_EPOCH_FROM_TAIL;
-    OP_TILING_CHECK(syncBytes > syncSlotRegionBytes,
-                    OP_LOGE(opName_, "AIV sync slots require %lu bytes, but the CCL sync region has %lu bytes.",
-                            syncBytes, syncSlotRegionBytes),
+    const uint64_t syncBytes = localParams_.epWorldSize *
+                               MC2KernelTemplate::Gmma2avMteTiling::SYNC_STORAGE_SLOT_COUNT *
+                               MC2KernelTemplate::Gmma2avMteTiling::SYNC_SLOT_BYTES;
+    OP_TILING_CHECK(syncBytes > MC2KernelTemplate::Gmma2avMteTiling::CCL_TAIL_SAFETY_BYTES,
+                    OP_LOGE(opName_, "MTE sync slots require %lu bytes, but the CCL tail region has %lu bytes.",
+                            syncBytes, MC2KernelTemplate::Gmma2avMteTiling::CCL_TAIL_SAFETY_BYTES),
                     return ge::GRAPH_FAILED);
     const uint64_t dtypeSize = mc2tiling::GetDataTypeSize(opName_, localParams_.gmmYDtype);
-    const uint64_t outputBytes = localParams_.BsK * localParams_.N1 * dtypeSize;
-    const uint64_t requiredCclBufferSize = outputBytes + countMatrixBytes +
-                                           MC2KernelTemplate::Gmma2avAivTiling::CONTROL_REGION_BYTES;
+    const uint64_t sendBytes = localParams_.A * localParams_.N1 * dtypeSize;
+    const uint64_t recvBytes = localParams_.BsK * localParams_.N1 * dtypeSize;
+    const uint64_t dataAndControlBytes = sendBytes + recvBytes + countMatrixBytes +
+                                         MC2KernelTemplate::Gmma2avMteTiling::CONTROL_REGION_BYTES;
+    const uint64_t requiredCclBufferSize =
+        dataAndControlBytes > MC2KernelTemplate::Gmma2avMteTiling::MIN_CCL_BUFFER_BYTES ?
+            dataAndControlBytes : MC2KernelTemplate::Gmma2avMteTiling::MIN_CCL_BUFFER_BYTES;
     OP_TILING_CHECK(outData.commBufferSize < requiredCclBufferSize,
                     OP_LOGE(opName_,
-                            "CCL buffer is too small for AIV communication: actual=%lu bytes, required=%lu bytes "
-                            "(output=%lu bytes, count matrix=%lu bytes, control=%lu bytes).",
-                            outData.commBufferSize, requiredCclBufferSize, outputBytes, countMatrixBytes,
-                            MC2KernelTemplate::Gmma2avAivTiling::CONTROL_REGION_BYTES),
+                            "CCL buffer is too small for MTE communication: actual=%lu bytes, required=%lu bytes "
+                            "(send=%lu bytes, recv=%lu bytes, count matrix=%lu bytes, control=%lu bytes, "
+                            "arch22 minimum=%lu bytes).",
+                            outData.commBufferSize, requiredCclBufferSize, sendBytes, recvBytes, countMatrixBytes,
+                            MC2KernelTemplate::Gmma2avMteTiling::CONTROL_REGION_BYTES,
+                            MC2KernelTemplate::Gmma2avMteTiling::MIN_CCL_BUFFER_BYTES),
                     return ge::GRAPH_FAILED);
 
     outData.cumsumWorkspaceOffset = mc2tiling::AlignUp(
-        localParams_.A * localParams_.N1 * dtypeSize, MC2KernelTemplate::Gmma2avAivTiling::WORKSPACE_ALIGNMENT);
+        localParams_.A * localParams_.N1 * dtypeSize, MC2KernelTemplate::Gmma2avMteTiling::WORKSPACE_ALIGNMENT);
 
-    outData.cocTiling.m0 = MC2KernelTemplate::Gmma2avAivTiling::L1_TILE_M;
-    outData.cocTiling.k0 = MC2KernelTemplate::Gmma2avAivTiling::L1_TILE_K;
-    outData.cocTiling.n0 = MC2KernelTemplate::Gmma2avAivTiling::L1_TILE_N;
-    outData.cocTiling.ubMoveNum = static_cast<int32_t>(MC2KernelTemplate::Gmma2avAivTiling::UB_MOVE_ELEMENTS);
-    outData.cocTiling.swizzlCount = MC2KernelTemplate::Gmma2avAivTiling::SWIZZLE_COUNT;
-    outData.cocTiling.swizzlDirect = MC2KernelTemplate::Gmma2avAivTiling::SWIZZLE_DIRECTION;
+    outData.cocTiling.m0 = MC2KernelTemplate::Gmma2avMteTiling::L1_TILE_M;
+    outData.cocTiling.k0 = MC2KernelTemplate::Gmma2avMteTiling::L1_TILE_K;
+    outData.cocTiling.n0 = MC2KernelTemplate::Gmma2avMteTiling::L1_TILE_N;
+    outData.cocTiling.ubMoveNum = static_cast<int32_t>(localParams_.N1);
+    outData.cocTiling.swizzlCount = MC2KernelTemplate::Gmma2avMteTiling::SWIZZLE_COUNT;
+    outData.cocTiling.swizzlDirect = MC2KernelTemplate::Gmma2avMteTiling::SWIZZLE_DIRECTION;
 
-    auto *outTilingData = context_->GetTilingData<MC2KernelTemplate::GroupedMatMulAlltoAllvAivTilingData>();
+    auto *outTilingData = context_->GetTilingData<MC2KernelTemplate::GroupedMatMulAlltoAllvMteTilingData>();
     size_t tilingBufCap = context_->GetRawTilingData()->GetCapacity();
-    OP_TILING_CHECK(outTilingData == nullptr, OP_LOGE(opName_, "Failed to get AIV tiling data from context"),
+    OP_TILING_CHECK(outTilingData == nullptr, OP_LOGE(opName_, "Failed to get MTE tiling data from context"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(tilingBufCap < sizeof(outData),
                     OP_LOGE(opName_, "TilingBuffer too small, capacity = %zu, need = %zu.", tilingBufCap,
                             sizeof(outData)),
                     return ge::GRAPH_FAILED);
-    static_assert(sizeof(outData) % sizeof(uint64_t) == 0U, "AIV tiling data must be 8-byte aligned");
+    static_assert(sizeof(outData) % sizeof(uint64_t) == 0U, "MTE tiling data must be 8-byte aligned");
     errno_t ret = memcpy_s(outTilingData, tilingBufCap, &outData, sizeof(outData));
     OP_TILING_CHECK(ret != EOK, OP_LOGE(opName_, "postTiling: memcpy_s failed with ret=%d.", ret),
                     return ge::GRAPH_FAILED);
@@ -559,21 +595,21 @@ ge::graphStatus GroupedMatmulAllToAllvAivTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedMatmulAllToAllvAivTiling::GetWorkspaceSize()
+ge::graphStatus GroupedMatmulAllToAllvMteTiling::GetWorkspaceSize()
 {
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "Failed to get workspace."), return ge::GRAPH_FAILED);
-    workspaces[0] = aivWorkspaceSize_;
-    OP_LOGD(opName_, "AIV workspace size=%lu", aivWorkspaceSize_);
+    workspaces[0] = mteWorkspaceSize_;
+    OP_LOGD(opName_, "MTE workspace size=%lu", mteWorkspaceSize_);
     return ge::GRAPH_SUCCESS;
 }
 
-uint32_t GroupedMatmulAllToAllvAivTiling::GetCommModeIndex() const
+uint32_t GroupedMatmulAllToAllvMteTiling::GetCommModeIndex() const
 {
     return ATTR_COMM_MODE;
 }
 
-ge::graphStatus GroupedMatmulAllToAllvAivTiling::GetAndConvertCommMode(gert::TilingContext *context,
+ge::graphStatus GroupedMatmulAllToAllvMteTiling::GetAndConvertCommMode(gert::TilingContext *context,
                                                                     uint8_t &commMode) const
 {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
@@ -584,7 +620,8 @@ ge::graphStatus GroupedMatmulAllToAllvAivTiling::GetAndConvertCommMode(gert::Til
                     return ge::GRAPH_FAILED);
     constexpr size_t maxLength = 7UL;
     OP_TILING_CHECK(npuArch_ == NpuArch::DAV_3510,
-                    OP_LOGE(context->GetNodeName(), "GroupedMatMulAlltoAllv AIV mode only supports Atlas A3."),
+                    OP_LOGE(context->GetNodeName(),
+                            "GroupedMatMulAlltoAllv AIV-driven MTE mode only supports Atlas A2/A3."),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(strncmp(commModeStr, "aiv", maxLength) != 0,
                     OP_LOGE(context->GetNodeName(), "This tiling only supports commMode 'aiv', got %s.",
@@ -594,14 +631,14 @@ ge::graphStatus GroupedMatmulAllToAllvAivTiling::GetAndConvertCommMode(gert::Til
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t GroupedMatmulAllToAllvAivTiling::GetTilingKey() const
+uint64_t GroupedMatmulAllToAllvMteTiling::GetTilingKey() const
 {
     uint8_t commMode = 0;
     if (GetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    // The common quant tiling header declares COMM_MODE as a one-bit field. The AIV implementation additionally
-    // uses value 2, so encode its device tiling-key layout locally: bool/bool/bool/uint2.
+    // The common quant tiling header declares COMM_MODE as a one-bit field. The AIV-driven MTE implementation
+    // additionally uses value 2, so encode its device tiling-key layout locally: bool/bool/bool/uint2.
     constexpr uint64_t commModeShift = 3UL;
     constexpr uint64_t gmmWeightTransShift = 1UL;
     constexpr uint64_t sharedMmWeightTransShift = 2UL;

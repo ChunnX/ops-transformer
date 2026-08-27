@@ -11,8 +11,8 @@
 /*!
  * \file grouped_mat_mul_allto_allv_a3.cpp
  */
-#include "arch22/grouped_mat_mul_allto_allv_aiv_tiling_key.h"
-#include "arch22/grouped_mat_mul_allto_allv_aiv_tiling.h"
+#include "arch22/grouped_mat_mul_allto_allv_mte_tiling_key.h"
+#include "arch22/grouped_mat_mul_allto_allv_mte_tiling.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
@@ -21,8 +21,8 @@
 #endif
 
 #include "../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h"
-#include "arch22/grouped_mat_mul_allto_allv_aiv.h"
-#include "arch22/grouped_mat_mul_allto_allv_aiv_catlass.h"
+#include "arch22/grouped_mat_mul_allto_allv_mte.h"
+#include "arch22/grouped_mat_mul_allto_allv_mte_catlass.h"
 
 #if defined(CONST_TILING)
 #define GET_NESTED_TILING_DATA_MEMBER_ADDR(outerType, innerType, outerMember, innerMember, var, tiling)                \
@@ -47,25 +47,28 @@ using namespace Mc2GroupedMatmulTilingData;
 #endif
 
 template <bool TILINGKEY_COMPUTE_MATMUL, bool TILINGKEY_GMM_WEIGHT_TRANS, bool TILINGKEY_SHARED_MM_WEIGHT_TRANS>
-__aicore__ inline void RunGmmA2avAivPath(
+__aicore__ inline void RunGmmA2avMtePath(
     GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM,
     GM_ADDR yGM, GM_ADDR mmyOptionalGM, GM_ADDR userWorkspace,
-    const GroupedMatMulAlltoAllvAivTilingData *tilingData, AscendC::TPipe *pipe)
+    const GroupedMatMulAlltoAllvMteTilingData *tilingData, AscendC::TPipe *pipe)
 {
     const auto *taskTilingInfo = &tilingData->taskTilingInfo;
-    using CommOpType = GmmA2avAivOp<DTYPE_Y>;
+    using CommOpType = GmmA2avMteOp<DTYPE_Y>;
     using ComputeOpType = CatlassGroupedMatmulOp<DTYPE_GMM_X, TILINGKEY_GMM_WEIGHT_TRANS, false>;
     using SharedGmmExpertOpType =
         CatlassGroupedMatmulOp<DTYPE_GMM_X, TILINGKEY_SHARED_MM_WEIGHT_TRANS, true>;
     using GmmA2avSchedulerType =
-        GmmA2avAivScheduler<CommOpType, ComputeOpType, SharedGmmExpertOpType, TILINGKEY_COMPUTE_MATMUL>;
+        GmmA2avMteScheduler<CommOpType, ComputeOpType, SharedGmmExpertOpType, TILINGKEY_COMPUTE_MATMUL>;
 
+    // The documented memory semantics keep the grouped-matmul result in
+    // workspace. AIV then publishes it into this rank's HCCL window through
+    // MTE3 before peers are allowed to read it.
     GM_ADDR gmmOutputGM = userWorkspace;
     GM_ADDR cumsumGM = userWorkspace + tilingData->cumsumWorkspaceOffset;
 
     CommOpType commOp;
     commOp.Init(taskTilingInfo, gmmOutputGM, yGM, cumsumGM, pipe,
-                &tilingData->cocTiling, tilingData->commBufferSize);
+                &tilingData->cocTiling, tilingData->commBufferSize, tilingData->isA3);
 
     ComputeOpType computeOp;
     computeOp.Init(gmmxGM, gmmweightGM, gmmOutputGM, taskTilingInfo);
@@ -95,20 +98,20 @@ grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCoun
     }
 
     // The legacy layout remains the default for backward-compatible keys;
-    // grouped_mat_mul_allto_allv_aiv_tiling_key.h overrides AIV keys with the
-    // independent AIV structure.
+    // grouped_mat_mul_allto_allv_mte_tiling_key.h selects the independent MTE
+    // path structure for AIV communication-mode keys.
     REGISTER_TILING_DEFAULT(QuantGmmA2avTilingData);
     if constexpr (TILINGKEY_COMM_MODE == TILINGKEY_TPL_AIV) {
-        GET_TILING_DATA_WITH_STRUCT(GroupedMatMulAlltoAllvAivTilingData, tilingData, tilingGM);
+        GET_TILING_DATA_WITH_STRUCT(GroupedMatMulAlltoAllvMteTilingData, tilingData, tilingGM);
         if ASCEND_IS_AIV {
             TPipe pipe;
-            RunGmmA2avAivPath<TILINGKEY_COMPUTE_MATMUL, TILINGKEY_GMM_WEIGHT_TRANS,
+            RunGmmA2avMtePath<TILINGKEY_COMPUTE_MATMUL, TILINGKEY_GMM_WEIGHT_TRANS,
                               TILINGKEY_SHARED_MM_WEIGHT_TRANS>(
                 gmmxGM, gmmweightGM, mmxOptionalGM, mmweightOptionalGM, yGM, mmyOptionalGM,
                 userWorkspace, &tilingData, &pipe);
         }
         if ASCEND_IS_AIC {
-            RunGmmA2avAivPath<TILINGKEY_COMPUTE_MATMUL, TILINGKEY_GMM_WEIGHT_TRANS,
+            RunGmmA2avMtePath<TILINGKEY_COMPUTE_MATMUL, TILINGKEY_GMM_WEIGHT_TRANS,
                               TILINGKEY_SHARED_MM_WEIGHT_TRANS>(
                 gmmxGM, gmmweightGM, mmxOptionalGM, mmweightOptionalGM, yGM, mmyOptionalGM,
                 userWorkspace, &tilingData, nullptr);
