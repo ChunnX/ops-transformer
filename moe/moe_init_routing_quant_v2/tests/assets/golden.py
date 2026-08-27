@@ -158,8 +158,8 @@ class AclnnMoeInitRoutingQuantV2TestSpec:
     @staticmethod
     def customize_inputs(x, expertIdx, *args, **kwargs):
         expertNum = kwargs.get("expertNum", 0)
-        if not expertNum and len(args) >= 3:
-            expertNum = args[2]
+        if not expertNum and len(args) >= 5:
+            expertNum = args[4]
         if not expertNum or expertNum <= 0:
             expertNum = 100
         expertIdx.copy_(torch.randint(0, expertNum, expertIdx.shape, dtype=torch.int32))
