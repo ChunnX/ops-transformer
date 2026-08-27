@@ -20,6 +20,7 @@
 #include "../../../tiling/quant_matmul_tiling_data.h"
 #include "../../../tiling/comm_tiling_data.h"
 #include "../../../core/aiv_comm/collective_comm_context.h"
+#include "../../../mc2_tiling_struct.h"
 
 struct allToAllMatmulTilingData {
     CommTilingData commTilingData;
@@ -40,4 +41,6 @@ struct hcommAllToAllMatmulTilingData {
     CommTilingData commTilingData;
     QuantMatmulTilingData tileQbmmTilingData;
     uint32_t localMatmul{0};
+    uint32_t quantMode{0}; // 0=非量化, 6=MX量化
+    Mc2Tiling::WorkspaceLayoutInfo workspaceLayout{};
 };

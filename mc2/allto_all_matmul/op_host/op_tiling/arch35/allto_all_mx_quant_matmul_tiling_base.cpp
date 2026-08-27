@@ -804,6 +804,8 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::PostTiling()
     if (usingApaceImpl_) {
         // hcomm 路径: 输出 hcommAllToAllMatmulTilingData
         SetHcommTilingInfo(hcommTilingData_.commTilingData);
+        hcommTilingData_.workspaceLayout = workspaceLayout_;
+        hcommTilingData_.quantMode = static_cast<uint32_t>(X1_QUANTMODE_VALUES);
         hcommAllToAllMatmulTilingData *outTilingData = context_->GetTilingData<hcommAllToAllMatmulTilingData>();
         OP_TILING_CHECK((outTilingData == nullptr), OP_LOGE(opName_, "Fail to get hcomm tiling data from context"),
                         return ge::GRAPH_FAILED);
@@ -987,6 +989,43 @@ void AllToAllMxQuantMatmulTilingBase::BuildWorkspaceLayout()
 }
 
 /**
+* @brief 构建apace(hcomm)路线专属的workspace布局，与kernel侧实际存放顺序保持一致
+* 顺序: LIB_API → commX1Scale → commOut → RUNTIME_INFO
+* 注意: apace是纯C核路线，无转置段(transX1Scale/transOut)
+*/
+void AllToAllMxQuantMatmulTilingBase::BuildWorkspaceLayoutApace()
+{
+    uint64_t offset = 0;
+    uint32_t idx = 0;
+
+    // [0] 系统库预留空间，必须在第一个
+    if (libApiWorkSpaceSize_ > 0) {
+        workspaceLayout_.segments[idx++] = {offset, libApiWorkSpaceSize_,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
+        offset += libApiWorkSpaceSize_;
+    }
+    // [1] x1Scale 通信接收区 (commX1Scale)
+    if (inferredInfo_.commScaleLen > 0) {
+        workspaceLayout_.segments[idx++] = {offset, inferredInfo_.commScaleLen,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_DYNAMIC_QUANT), {}};
+        offset += inferredInfo_.commScaleLen;
+    }
+    // [2] x1 数据通信接收区 (commOut)
+    if (inferredInfo_.commLen > 0) {
+        workspaceLayout_.segments[idx++] = {offset, inferredInfo_.commLen,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_COMM_OUT), {}};
+        offset += inferredInfo_.commLen;
+    }
+    // [3] 运行时信息段 (64KB)
+    workspaceLayout_.segments[idx++] = {offset, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE,
+                                        static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
+    offset += Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
+
+    workspaceLayout_.totalSize = offset;
+    workspaceLayout_.segCount = idx;
+}
+
+/**
  * @brief 计算总共需要的workspace大小
  *
  */
@@ -995,7 +1034,11 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::GetWorkspaceSize()
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "get workspace failed"), return ge::GRAPH_FAILED);
     SetUserWorkSpace();
-    BuildWorkspaceLayout();
+    if (usingApaceImpl_) {
+        BuildWorkspaceLayoutApace();
+    } else {
+        BuildWorkspaceLayout();
+    }
     uint64_t workspaceSize = workspaceLayout_.totalSize;
     workspaces[0] = workspaceSize;
     OP_LOGD(opName_, "Workspaces[0] size=%zu, commlen=%zu, permuteLen=%zu", workspaces[0], inferredInfo_.commLen,
