@@ -100,7 +100,38 @@ docker run --name cann_container --device /dev/davinci0 --device /dev/davinci_ma
 
 - **场景2：基于CANN 稳定版本体验分支能力或开发**
 
-    请参考《[CANN快速安装](https://www.hiascend.com/cann/download)》，选择`稳定版本`（仅支持CANN 8.5.0及后续版本），并根据产品系列、CPU架构、操作系统等下载对应包，最后参考页面提供的命令完成安装。
+        - 步骤1：在页面中选择自己的产品系列、CPU架构、操作系统，安装方式选择"在线安装（Yum）"。
+        - 步骤2：按照页面指引依次完成"配置用户属组"、"安装依赖&配源"、"安装NPU驱动"三个环节。
+        - 步骤3：执行`npu-smi info`，若能正常显示NPU设备信息，则说明驱动安装成功。
+
+    2. **安装CANN包**
+
+        请单击[下载链接](https://www.hiascend.com/cann/download?versionId=782&ids=d806%2Ch0501%2Ch0601%2Ch0703)，选择最新时间版本，并根据产品型号和环境架构下载对应包。
+
+        - 安装CANN toolkit包
+
+          ```bash
+          bash ./Ascend-cann-toolkit_${cann_version}_linux-${arch}.run --install --install-path=${install_path}
+          ```
+
+        - 安装CANN ops包（运行态依赖）
+
+            ops包是运行态依赖，若仅编译算子，可不安装此包。
+
+            ```bash
+            bash ./Ascend-cann-${soc_name}-ops_${cann_version}_linux-${arch}.run --install --install-path=${install_path}
+            ```
+
+        变量含义说明：
+
+        - \$\{cann\_version\}：表示CANN包版本号。
+      - \$\{arch\}：表示CPU架构，可通过`uname -m`查询，例如aarch64、x86_64。
+      - \$\{soc\_name\}：表示NPU型号名称。
+      - \$\{install\_path\}：表示指定安装路径，ops包需与toolkit包安装在相同路径，root用户默认安装在`/usr/local/Ascend`目录。
+
+- **场景2：体验已发布版本能力或基于已发布版本进行开发**
+
+    请参考《[CANN快速安装](https://www.hiascend.com/cann/download)》，选择版本（仅支持CANN 8.5.0及后续版本），并根据产品系列、CPU架构、操作系统等下载对应包，最后参考页面提供的命令完成安装。
 
 #### 安装基础依赖
 
