@@ -264,7 +264,7 @@ bool QuantFlashAttnMetadataCpuKernel::HasZeroLengthBatch()
     const bool hasQVarlen = (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) ||
                             (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr);
     const bool hasKvVarlen = (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) ||
-                            (sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr);
+                             (sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr);
     if (!hasQVarlen && !hasKvVarlen) {
         return false;
     }
@@ -272,64 +272,57 @@ bool QuantFlashAttnMetadataCpuKernel::HasZeroLengthBatch()
     if (bSize == 0) {
         return false;
     }
-    const bool bothQ = (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) &&
-                       (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr);
-    const bool bothKv = (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) &&
-                        (sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr);
+    // 直接读原始 varlen 数据 (cu_seqlens 累计值 / seqused 逐 batch 值),
+    // 不使用 ParamsInit 中被累加覆盖的 actualQuerySeqSize/actualKvSeqSize
+    std::vector<int64_t> cuSeqlensQ;
+    std::vector<int64_t> cuSeqlensKv;
+    std::vector<int64_t> seqUsedQ;
+    std::vector<int64_t> seqUsedKv;
+    if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
+        cuSeqlensQ = GetTensorDataAsInt64(cuSeqlensQ_, cuSeqlensQ_->GetTensorShape()->GetDimSize(0));
+    }
+    if (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) {
+        cuSeqlensKv = GetTensorDataAsInt64(cuSeqlensKv_, cuSeqlensKv_->GetTensorShape()->GetDimSize(0));
+    }
+    if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
+        seqUsedQ = GetTensorDataAsInt64(sequsedQ_, sequsedQ_->GetTensorShape()->GetDimSize(0));
+    }
+    if (sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr) {
+        seqUsedKv = GetTensorDataAsInt64(sequsedKv_, sequsedKv_->GetTensorShape()->GetDimSize(0));
+    }
     for (uint32_t bIdx = 0; bIdx < bSize; ++bIdx) {
-        if (baseInfo.isCumulativeQuerySeq) {
-            if (bothQ) {
-                int64_t qCuLen = (bIdx + 1 < baseInfo.actualQuerySeqSize.size())
-                                     ? baseInfo.actualQuerySeqSize[bIdx + 1] - baseInfo.actualQuerySeqSize[bIdx]
-                                     : 0;
-                int64_t qUsedLen = baseInfo.actualQuerySeqSize[bIdx];
-                if (bIdx > 0) {
-                    qUsedLen = baseInfo.actualQuerySeqSize[bIdx] - baseInfo.actualQuerySeqSize[bIdx - 1];
-                }
-                if (qUsedLen < qCuLen) {
-                    return true;
-                }
-            } else if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
-                int64_t qCuLen = (bIdx + 1 < baseInfo.actualQuerySeqSize.size())
-                                     ? baseInfo.actualQuerySeqSize[bIdx + 1] - baseInfo.actualQuerySeqSize[bIdx]
-                                     : 0;
-                if (qCuLen == 0) {
-                    return true;
-                }
-            }
-        } else {
-            if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
-                if (bIdx < baseInfo.actualQuerySeqSize.size() && baseInfo.actualQuerySeqSize[bIdx] == 0) {
-                    return true;
-                }
+        // Q 侧: cu_seqlens_q 差分为 0 → 零长 batch
+        int64_t qAllocLen = -1; // -1 表示未提供 cu_seqlens_q
+        if (bIdx + 1 < cuSeqlensQ.size()) {
+            qAllocLen = cuSeqlensQ[bIdx + 1] - cuSeqlensQ[bIdx];
+            if (qAllocLen == 0) {
+                return true;
             }
         }
-        if (baseInfo.isCumulativeKvSeq) {
-            if (bothKv) {
-                int64_t kvCuLen = (bIdx + 1 < baseInfo.actualKvSeqSize.size())
-                                      ? baseInfo.actualKvSeqSize[bIdx + 1] - baseInfo.actualKvSeqSize[bIdx]
-                                      : 0;
-                int64_t kvUsedLen = baseInfo.actualKvSeqSize[bIdx];
-                if (bIdx > 0) {
-                    kvUsedLen = baseInfo.actualKvSeqSize[bIdx] - baseInfo.actualKvSeqSize[bIdx - 1];
-                }
-                if (kvUsedLen < kvCuLen) {
-                    return true;
-                }
-            } else if (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) {
-                int64_t kvCuLen = (bIdx + 1 < baseInfo.actualKvSeqSize.size())
-                                      ? baseInfo.actualKvSeqSize[bIdx + 1] - baseInfo.actualKvSeqSize[bIdx]
-                                      : 0;
-                if (kvCuLen == 0) {
-                    return true;
-                }
+        // Q 侧: seqused_q 为 0, 或小于 cu_seqlens_q 分配长度 → 输出存在 padding 行, 需要清零
+        if (bIdx < seqUsedQ.size()) {
+            const int64_t qUsedLen = seqUsedQ[bIdx];
+            if (qUsedLen == 0) {
+                return true;
             }
-        } else {
-            if (sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr) {
-                if (bIdx < baseInfo.actualKvSeqSize.size() && baseInfo.actualKvSeqSize[bIdx] == 0) {
-                    return true;
-                }
+            if (qAllocLen >= 0 && qUsedLen < qAllocLen) {
+                return true;
             }
+        }
+        // KV 侧: cu_seqlens_kv 差分为 0 → 零长 batch
+        int64_t kvUsedLen = -1; // -1 表示未提供 kv varlen 信息
+        if (bIdx + 1 < cuSeqlensKv.size()) {
+            kvUsedLen = cuSeqlensKv[bIdx + 1] - cuSeqlensKv[bIdx];
+            if (kvUsedLen == 0) {
+                return true;
+            }
+        }
+        // KV 侧: seqused_kv 为 0 → 该 batch 无有效 kv, 输出应全 0
+        if (bIdx < seqUsedKv.size()) {
+            kvUsedLen = seqUsedKv[bIdx];
+        }
+        if (kvUsedLen == 0) {
+            return true;
         }
     }
     return false;
