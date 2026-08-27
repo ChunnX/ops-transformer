@@ -30,7 +30,7 @@ public:
     using QK_T = float32_t;
     using SCORE_T = typename SIT::scoreType;
 
-    // V121 score-GM path remains uint16-only; other score types keep the legacy UB path.
+    // V121的score-GM路径仍仅支持uint16，其他score类型继续使用原有UB路径。
     static constexpr bool ENABLE_SCORE_GM_TOPK = std::is_same_v<SCORE_T, uint16_t>;
 
     __aicore__ inline SIVector(){};
@@ -90,7 +90,7 @@ protected:
     static constexpr uint32_t PACKED_OUTPUT_SLOT1_OFFSET_BYTES =
         PACKED_OUTPUT_SLOT0_OFFSET_BYTES + PACKED_OUTPUT_SLOT_BYTES;
 
-    // 512-column score tiles are stored in GM and consumed in 1024-column TopK trunks.
+    // 512列score块存入GM，并按1024列TopK分段读取处理。
     static constexpr uint32_t SCORE_GM_TRUNK_LEN = 1024U;
     static constexpr uint32_t SCORE_GM_MERGE_ROW_STRIDE = TOPK_ALIGN_SIZE + SCORE_GM_TRUNK_LEN;
     static constexpr uint32_t SCORE_GM_MERGE_SLOT_BYTES =
@@ -103,7 +103,7 @@ protected:
     static constexpr uint32_t SCORE_GM_TOPK_WORKSPACE_BYTES =
         StemIndexerTopk<uint16_t, SCORE_GM_TRUNK_LEN>::TOPK_WORKSPACE_BYTES;
 
-    // Fast-path views in historyValueBuf_ (32 KiB): merge0 | merge1 | history | packed0 | packed1.
+    // historyValueBuf_（32 KiB）中的快速路径视图：merge0 | merge1 | history | packed0 | packed1。
     static constexpr uint32_t SCORE_GM_MERGE0_OFFSET_BYTES = 0U;
     static constexpr uint32_t SCORE_GM_MERGE1_OFFSET_BYTES = SCORE_GM_MERGE_SLOT_BYTES;
     static constexpr uint32_t SCORE_GM_HISTORY_OFFSET_BYTES = 2U * SCORE_GM_MERGE_SLOT_BYTES;
@@ -114,7 +114,7 @@ protected:
     static constexpr uint32_t SCORE_GM_HISTORY_BUF_USED_BYTES =
         SCORE_GM_LENGTH1_OFFSET_BYTES + SCORE_GM_LENGTH_SLOT_BYTES;
 
-    // Fast-path views in globalIndexBuf_ (64 KiB): TopK workspace | compact global indices.
+    // globalIndexBuf_（64 KiB）中的快速路径视图：TopK工作区 | 紧凑全局索引。
     static constexpr uint32_t SCORE_GM_GLOBAL_INDEX_OFFSET_BYTES = SCORE_GM_TOPK_WORKSPACE_BYTES;
     static constexpr uint32_t SCORE_GM_GLOBAL_BUF_USED_BYTES =
         SCORE_GM_GLOBAL_INDEX_OFFSET_BYTES + SCORE_GM_GLOBAL_INDEX_BYTES;
@@ -158,22 +158,22 @@ private:
                                                const SICommon::TopkNum4 &topkNum4,
                                                const SICommon::S2ValidLen4 &validEnd4, uint32_t batchRowNum,
                                                uint32_t packedSlotIdx);
-    // ================================Local Buffer区====================================
-    // tmp buff for vector
+    // ================================本地缓存区====================================
+    // Vector临时缓存
     TBuf<TPosition::VECCALC> resMm1Buf_;
     LocalTensor<QK_T> resMm1Local_;
-    // tmp buff for vbias
+    // vBias临时缓存
     TBuf<TPosition::VECCALC> vBiasBuf_;
     LocalTensor<float> vBiasLocal_;
 
-    // Persistent TopK history. Current scores, 4-row merge, TopK scratch and packed output reuse resMm1Buf_.
+    // 持久化TopK历史值。当前score、4行merge、TopK临时区和打包输出复用resMm1Buf_。
     TBuf<TPosition::VECCALC> historyValueBuf_;
     LocalTensor<SCORE_T> historyValueLocal_;
 
     TBuf<TPosition::VECCALC> globalIndexBuf_;
     LocalTensor<uint32_t> globalIndexLocal_;
 
-    // Vector-only scratch for the direct-output path. Keep it independent from both TopK history and Cube-owned MM1.
+    // 直出路径的Vector独占临时区，与TopK历史值及Cube持有的MM1缓存相互独立。
     TBuf<TPosition::VECCALC> directIndexBuf_;
     LocalTensor<uint32_t> directIndexLocal_;
     TBuf<TPosition::VECCALC> directLengthBuf_;
@@ -181,7 +181,7 @@ private:
 
     int32_t blockId_ = -1;
     bool needCleanOutput_ = false;
-    // para for vector
+    // Vector参数
     int32_t s2BaseSize_ = 0;
     uint32_t mrgRowStride_ = 0;
     int32_t mBaseSize_ = 0;
@@ -202,7 +202,7 @@ template <typename SIT>
 __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe, bool needCleanOutput)
 {
     needCleanOutput_ = needCleanOutput;
-    // 2 * 64 * 512 * 4B = 256 KiB. Each 128 KiB slot is reused after in-place score conversion.
+    // 2 * 64 * 512 * 4B = 256 KiB。每个128 KiB槽在原地完成score转换后复用。
     pipe->InitBuffer(resMm1Buf_, RES_MM1_DOUBLE_BUFFER_BYTES);
     resMm1Local_ = resMm1Buf_.Get<QK_T>(); // qk
 
@@ -210,15 +210,15 @@ __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe, bool needCleanOut
     pipe->InitBuffer(vBiasBuf_, VBIAS_BYTES);
     vBiasLocal_ = vBiasBuf_.Get<float>(); // vBias
 
-    // 64 rows * 256 uint16 = 32 KiB persistent history.
+    // 64行 * 256个uint16 = 32 KiB持久化历史值。
     pipe->InitBuffer(historyValueBuf_, HISTORY_SCORE_BYTES);
     historyValueLocal_ = historyValueBuf_.Get<SCORE_T>();
 
-    // 64 rows * 256 uint32 = 64 KiB persistent global indices.
+    // 64行 * 256个uint32 = 64 KiB持久化全局索引。
     pipe->InitBuffer(globalIndexBuf_, GLOBAL_INDEX_BYTES);
     globalIndexLocal_ = globalIndexBuf_.Get<uint32_t>();
 
-    // Direct output owns dedicated UB so its short index/length writes cannot alias persistent TopK state.
+    // 直出路径独占专用UB，避免短索引和长度写入与持久化TopK状态发生地址重叠。
     pipe->InitBuffer(directIndexBuf_, DIRECT_INDEX_BYTES);
     directIndexLocal_ = directIndexBuf_.Get<uint32_t>();
     pipe->InitBuffer(directLengthBuf_, DIRECT_LENGTH_BYTES);
@@ -276,7 +276,7 @@ __aicore__ inline void SIVector<SIT>::InitParams(const struct SICommon::ConstInf
     uint32_t scoreGmTileNum = static_cast<uint32_t>(
         (constInfo.kSeqSize + static_cast<uint64_t>(S2_BASIC_BLOCK) - 1ULL) / S2_BASIC_BLOCK);
     scoreGmCoreElems_ = static_cast<uint64_t>(M_BASIC_BLOCK) * scoreGmTileNum * S2_BASIC_BLOCK;
-    // Compact 4-row merge layout: [history 256][current 512].
+    // 紧凑4行merge布局：[历史值256][当前值512]。
     mrgRowStride_ = MAX_TOPK_COUNT + SICommon::TOPK_TRUNK_LEN;
 }
 
@@ -336,7 +336,7 @@ __aicore__ inline void SIVector<SIT>::InitSparseIndicesToNegOne(uint32_t gS1Idx,
     int64_t curGS1Idx = gS1Idx * mBaseSize_;
     // 当前GS1行需要处理的数量（可能小于mBaseSize_，处理尾块）
     int64_t curGS1ProcNum = actMBaseSize;
-    // V121 1C:1V: paired Vector handles all rows produced by its Cube.
+    // V121为1C:1V：配对Vector处理对应Cube产生的全部行。
     int64_t curAivGS1Idx = curGS1Idx;
     int64_t curAivGS1ProcNum = curGS1ProcNum;
     if (curAivGS1ProcNum == 0) {
@@ -380,7 +380,7 @@ __aicore__ inline void SIVector<SIT>::ProcessVec1(const SICommon::RunInfo &info)
     CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_CV_EVENT + pingpong);
 
     auto qkBase = resMm1Local_[pingpong * (RES_MM1_SLOT_BYTES / sizeof(QK_T))];
-    // uint16 score is compacted in place into the low 64 KiB of the current 128 KiB MM1 slot.
+    // uint16 score原地压缩到当前128 KiB MM1槽的低64 KiB区域。
     auto outBase = qkBase.template ReinterpretCast<SCORE_T>();
     auto vBiasBase = vBiasLocal_[pingpong * s2BaseSize_];
 
@@ -399,10 +399,10 @@ __aicore__ inline void SIVector<SIT>::StoreScoreToWorkspace(const SICommon::RunI
     LocalTensor<uint16_t> scoreLocal = resMm1Local_[slotOffset].ReinterpretCast<uint16_t>();
     uint64_t scoreGmOffset = static_cast<uint64_t>(info.s2Idx) * M_BASIC_BLOCK * S2_BASIC_BLOCK;
 
-    // The VC slot cannot be returned until MTE3 has consumed the in-place uint16 score.
+    // 必须等待MTE3读取完原地转换的uint16 score后，才能归还VC槽。
     WaitFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
-    // initial blocks are emitted as a fixed prefix and must not participate in TopK again. Mask them in the
-    // source score tile so every later GM reload/merge observes the same exclusion invariant.
+    // initial blocks作为固定前缀输出，不能再次参与TopK。需要在源score块中将其屏蔽，
+    // 确保后续每次从GM重载或merge时都遵循相同的排除规则。
     if (info.s2Idx == 0U && initialBlocks_ > 0U) {
         TopkUtils::PadMrgRowsInitBlockVF(scoreLocal, S2_BASIC_BLOCK, info.actMBaseSize, 0U, initialBlocks_);
         PipeBarrier<PIPE_V>();
@@ -410,9 +410,8 @@ __aicore__ inline void SIVector<SIT>::StoreScoreToWorkspace(const SICommon::RunI
     SetFlag<HardEvent::V_MTE3>(topkVMte3Event_);
     WaitFlag<HardEvent::V_MTE3>(topkVMte3Event_);
     DataCopy(scoreWorkspaceGm[scoreGmOffset], scoreLocal, info.actMBaseSize * S2_BASIC_BLOCK);
-    // The final score tile is consumed through MTE2 immediately after this store. MTE3->V only protects the
-    // source UB and does not order the independent MTE2 pipeline, so establish the GM write/read dependency
-    // directly. Intermediate stores are not reloaded until the final tile and must not occupy the event slot.
+    // 最后一块score写入后会立即通过MTE2读取。MTE3->V只能保护源UB，不能约束独立的MTE2流水，
+    // 因此需要直接建立GM写后读依赖。中间块写入后要到最后一块才会重载，不应占用该事件槽。
     if (info.isLastS2InnerLoop) {
         SetFlag<HardEvent::MTE3_MTE2>(topkMte3Mte2Event_);
     }
@@ -556,11 +555,11 @@ __aicore__ inline void SIVector<SIT>::CopyOutBatchRows(const SICommon::RunInfo &
         TopkUtils::PackSparseIndicesU32VF(
             packedRowsLocal[lane * PACKED_ROW_STRIDE], globalIndexLocal_[mInnerIdx * MAX_TOPK_COUNT],
             PACKED_ROW_STRIDE, initialBlocks_, topkSelectNum, windowSize_, curS1RealS2Len - windowSize_);
-        // The final indices have been consumed by the pack VF. Reuse this row's first aligned block for its length.
+        // 最终索引已由打包VF读取，可复用当前行的首个对齐块存放长度。
         Duplicate(globalIndexLocal_[mInnerIdx * MAX_TOPK_COUNT], outputLen, 1);
     }
     PipeBarrier<PIPE_V>();
-    // Packing uses the alternate slot while the previous batch is still in MTE3; serialize only before issuing MTE3.
+    // 上一批数据仍由MTE3处理时，打包操作使用另一槽位；仅在发起MTE3前串行等待。
     WaitFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
     SetFlag<HardEvent::V_MTE3>(topkVMte3Event_);
     WaitFlag<HardEvent::V_MTE3>(topkVMte3Event_);
@@ -613,7 +612,7 @@ SIVector<SIT>::RunTopKBatchRows(const SICommon::RunInfo &info, bool isFirstS2Inn
         (packedSlotIdx & 1U) == 0U ? PACKED_OUTPUT_SLOT0_OFFSET_BYTES : PACKED_OUTPUT_SLOT1_OFFSET_BYTES;
     LocalTensor<uint32_t> packedRowsLocal = slotLocal[packedOffsetBytes / sizeof(QK_T)].ReinterpretCast<uint32_t>();
 
-    // Build four compact [history 256][current 512] rows in the current MM1 slot.
+    // 在当前MM1槽中构造4个紧凑的[历史值256][当前值512]行。
     for (uint32_t lane = 0U; lane < TOPK_ROW_BATCH; lane++) {
         uint32_t mInnerIdx = SICommon::GetLane(rowIdx4, lane);
         if (!isFirstS2InnerLoop) {
@@ -821,8 +820,8 @@ __aicore__ inline void SIVector<SIT>::RunScoreGmTopKBatch(
 template <typename SIT>
 __aicore__ inline void SIVector<SIT>::ProcessScoreGmTopK(const SICommon::RunInfo &info)
 {
-    // Consume the dependency once for every final score store, including direct-output-only M blocks. When score
-    // rows are reloaded, this wait and the following DataCopy are both on MTE2 and therefore cannot be reordered.
+    // 每次最终score写入都消费一次依赖，包括仅含直出行的M块。重载score行时，
+    // 当前等待与后续DataCopy均位于MTE2流水上，因此不会发生乱序。
     WaitFlag<HardEvent::MTE3_MTE2>(topkMte3Mte2Event_);
 
     LocalTensor<uint16_t> fastBuf = historyValueBuf_.Get<uint16_t>();
@@ -955,7 +954,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(const SICommon::RunInfo &info,
                 LocalTensor<uint32_t> directLengthLocal = directIndicesLocal[PACKED_ROW_STRIDE];
                 WriteDirectIndices(directOutputLen, baseLenOffset, baseOutOffset, curAivGSize, curAivGS1ProcNum,
                                    info.actS1Size, s1Idx, directIndicesLocal, directLengthLocal);
-                // Direct output uses packed slot 0; let the next TopK batch pack into slot 1 while MTE3 drains it.
+                // 直出使用打包槽0；MTE3搬出期间，下一批TopK可在槽1中进行打包。
                 packedSlotIdx = 1U;
             }
             continue;
@@ -997,7 +996,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(const SICommon::RunInfo &info,
                          curAivGS1Idx, packedSlotIdx);
     }
     if (isLastS2InnerLoop) {
-        // Packed output reuses the current MM1 slot; return it to Cube only after MTE3 completes.
+        // 打包输出复用当前MM1槽，必须等待MTE3完成后再将其归还Cube。
         WaitFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
         SetFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
     }
@@ -1020,7 +1019,7 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
             InitSparseIndicesToNegOne(gS1Idx, actMBaseSize, actS1Size, indiceOutOffset);
         }
 
-        // This branch has no Cube/Vector slot handshake. Use dedicated Vector-only UB, never the Cube-owned MM1 slot.
+        // 此分支没有Cube/Vector槽位握手，必须使用Vector独占UB，不能使用Cube持有的MM1槽。
         LocalTensor<uint32_t> indicesOutLocal = directIndexLocal_;
         LocalTensor<uint32_t> lengthLocal = directLengthLocal_;
 
