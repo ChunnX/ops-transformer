@@ -165,3 +165,4 @@ if __name__ == "cann_ops_transformer.ops":
 
 
 # Centralized operators not yet migrated to distributed structure
+from .block_sparse_attention import block_sparse_attention
