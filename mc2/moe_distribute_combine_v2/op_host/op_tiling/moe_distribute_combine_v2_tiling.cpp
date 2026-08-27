@@ -1745,7 +1745,7 @@ static void UbUsedCal(const uint64_t ubSize, const gert::TilingContext *context,
     totalBufferSize +=
         GetPartialBufferSizeByFlag(axisBS, axisK, isInputTokenMaskFlag, enableSpecialExpert, isInputExpertMaskFlag);
 
-    uint32_t recvAivNum = std::min(axisBS, std::min(32U, tilingData->moeDistributeCombineV2Info.aivNum / 3U));
+    uint32_t recvAivNum = std::min(axisBS, std::min(32U, tilingData->moeDistributeCombineV2Info.aivNum / 2U));
     recvAivNum = recvAivNum == 0U ? 1U : recvAivNum;
     uint32_t tokenPerAivNum = (axisBS + recvAivNum - 1U) / recvAivNum;
     totalBufferSize += (tokenPerAivNum * sizeof(int32_t) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
