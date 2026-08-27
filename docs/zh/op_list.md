@@ -1554,7 +1554,7 @@
     <td>✓</td>
     <td>✗</td>
     <td>AI Core</td>
-    <td>输入Q/K/V融合张量，拆分Q、K、V；对Q/K执行RMSNorm、RoPE、共享rotation矩阵乘和FP8动态量化，输出q_out和q_scale；K/V分支按slot_mapping更新k_cache、k_scale_cache和v_cache。</td>
+    <td>输入Q/K/V融合张量，支持RoPE、M-RoPE和M-RoPE MX场景；对Q/K执行RMSNorm、位置编码及场景对应的矩阵乘或量化，输出q_out及可选q_scale；K/V分支按slot_mapping更新k_cache、k_scale_cache和v_cache。M-RoPE MX场景的q_scale数据类型为FLOAT8_E8M0。</td>
   </tr>
   <tr>
     <td>posembedding</td>
