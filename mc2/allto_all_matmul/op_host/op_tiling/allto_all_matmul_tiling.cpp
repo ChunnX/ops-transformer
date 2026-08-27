@@ -49,6 +49,7 @@ IMPL_OP_OPTILING(AlltoAllMatmul)
     .Tiling(AlltoAllMatmulTilingFunc)
     .TilingParse<AlltoAllMatmulCompileInfo>(TilingParseForAlltoAllMatmul);
 
+#if MC2_DFX_ENABLE
 // Register exception dump func
 inline void AlltoAllMatmulExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
 {
@@ -72,4 +73,5 @@ __attribute__((constructor)) void RegisterAlltoAllMatmulExceptionFunc()
     IMPL_OP(AlltoAllMatmul)
         .ExceptionDumpParseFunc(AlltoAllMatmulExceptionImplWrapper);
 }
+#endif // MC2_DFX_ENABLE
 } // namespace MC2Tiling
