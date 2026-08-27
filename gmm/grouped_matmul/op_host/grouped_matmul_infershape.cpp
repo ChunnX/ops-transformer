@@ -254,9 +254,9 @@ static ge::graphStatus GetAttrsValue(T context, GMMAttrs &gmmAttrs)
     gmmAttrs.outputDtype = *dtypePtr;
     OP_LOGI(context->GetNodeName(), "Attr dtype = %ld", gmmAttrs.outputDtype);
 
-    const auto tuningConfigPtr = attrs->GetAttrPointer<gert::ContinuousVector>(GMM_INDEX_ATTR_TUNING_CONFIG);
+    const auto tuningConfigPtr = attrs->GetAttrPointer<gert::TypedContinuousVector<int64_t>>(GMM_INDEX_ATTR_TUNING_CONFIG);
     gmmAttrs.tuningConfig = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > 0) ?
-                            (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[0] : 0;
+                            tuningConfigPtr->GetData()[0] : 0;
     OP_LOGI(context->GetNodeName(), "Attr tuningConfig = %ld", gmmAttrs.tuningConfig);
 
     const int64_t *groupTypePtr = attrs->GetAttrPointer<int64_t>(GMM_INDEX_ATTR_GROUP_TYPE);
@@ -394,11 +394,11 @@ static bool IsS8S4SpecialWeightFormat(const gert::InferShapeContext* context)
     if (attrs == nullptr) {
         return false;
     }
-    const auto tuningConfigPtr = attrs->GetAttrPointer<gert::ContinuousVector>(GMM_INDEX_ATTR_TUNING_CONFIG);
+    const auto tuningConfigPtr = attrs->GetAttrPointer<gert::TypedContinuousVector<int64_t>>(GMM_INDEX_ATTR_TUNING_CONFIG);
     if (tuningConfigPtr == nullptr || tuningConfigPtr->GetSize() <= 1) {
         return false;
     }
-    const auto tuningConfig = reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData());
+    const auto tuningConfig = tuningConfigPtr->GetData();
     return tuningConfig[1] == 1;
 }
 
@@ -1176,7 +1176,7 @@ static ge::graphStatus SplitMSingleXSingleWeightSingleY(gert::InferShapeContext*
     OP_CHECK_IF(CheckShapeSameLengthTensorList(context, {1, kAxisOfWeight}, innerAxisDimId, tenorXAndWeight, paramsInfo.numX) != GRAPH_SUCCESS,
               OP_LOGE(context->GetNodeName(), "k dim value of x and weight is not matched."),
               return GRAPH_FAILED);
-    innerAxisDimId = specialWeightFormat ? static_cast<int64_t>(weightAxis.n) : (!transposeWeight ? 2 : -1);
+    innerAxisDimId = specialWeightFormat ? static_cast<int64_t>(weightAxis.n) : (!transposeWeight ? 2 : -1);    //转置 weight 的内轴 K 位于第 3 维（索引 2）
     OP_CHECK_IF(CheckInnerAxisOfTensorList(context, GMM_INDEX_IN_WEIGHT, innerAxisDimId, paramsInfo.numWeight) != GRAPH_SUCCESS,
               OP_LOGE(context->GetNodeName(), "inner axis size of weight is larger than %ld!", GMM_MAX_INNER_AXIS),
               return GRAPH_FAILED);
