@@ -41,8 +41,8 @@ public:
     static constexpr uint32_t dVBaseSize = CubeBlockType::dVBaseSize;
 
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
-    static constexpr uint32_t PRELOAD_N = 1; // C1 C1 C2
-    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
+    static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2 C2
+    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N << 1; // 4 (power-of-2 for bitmask)
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
     static constexpr bool FLASH_DECODE = VecFaBlockType::FLASH_DECODE;
@@ -475,9 +475,9 @@ public:
 
     __aicore__ inline void ExecuteTask(uint64_t loop, FlashMlaWithKvcacheRunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        FlashMlaWithKvcacheRunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE]; // 本轮任务
+        FlashMlaWithKvcacheRunInfoX &runInfo0 = taskRunInfo[loop & (PRELOAD_TASK_CACHE_SIZE - 1)]; // 本轮任务
         FlashMlaWithKvcacheRunInfoX &runInfoNegN =
-            taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE]; // 上PRELOAD_N轮任务
+            taskRunInfo[(loop - PRELOAD_N) & (PRELOAD_TASK_CACHE_SIZE - 1)]; // 上PRELOAD_N轮任务
         if (runInfo0.isValid) {
             if ASCEND_IS_AIC {
                 ComputeMm1(runInfo0);
@@ -533,7 +533,7 @@ public:
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
                                       FlashMlaWithKvcacheRunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        FlashMlaWithKvcacheRunInfoX &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE]; // 本轮任务
+        FlashMlaWithKvcacheRunInfoX &runInfo = taskRunInfo[loop & (PRELOAD_TASK_CACHE_SIZE - 1)]; // 本轮任务
         CalcParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
         EnableTask(runInfo);
     }
