@@ -35,27 +35,42 @@ Path(f"rank{rank}.bin").write_bytes(raw[: 2 * 1024 * 1024])
 Use identical trace sources and switches for good and bad builds. Do not compare traced latency with an untraced
 build as an absolute performance number.
 
-## Decode and compare
+## Generate reports
 
 ```bash
-python3 mc2/mega_moe/tools/critical_path_trace/trace_tool.py decode \
-  raw/good/rank0.bin raw/good/rank1.bin \
-  --events-csv good_events.csv \
-  --summary-csv good_summary.csv \
-  --timeline good_timeline.html \
-  --json good_summary.json
+# A case directory: automatically discovers rank*.raw and rank*.bin numerically.
+python3 mc2/mega_moe/tools/critical_path_trace/trace_tool.py raw/good
 
+# One or more explicit rank captures.
+python3 mc2/mega_moe/tools/critical_path_trace/trace_tool.py \
+  raw/good/rank0.bin raw/good/rank1.bin \
+  --output-dir good-trace-report
+
+# Only use this after confirming the platform SYS_CNT frequency.
+python3 mc2/mega_moe/tools/critical_path_trace/trace_tool.py raw/good \
+  --cycles-per-us 1000
+```
+
+For one capture, the default output is `<capture-stem>-trace/`. For a case directory or multiple captures, the
+default output is `trace-report/`. Every rank gets `trace.json`, `events.csv`, `timeline.svg` and an interactive
+`index.html`; the multi-rank root gets `run-summary.json` and an index linking all rank reports. Rank clocks are
+shown on separate axes and are never treated as globally synchronized.
+
+`compare` is an optional aggregate difference report. It groups each side by rank/role/event and writes good,
+bad and `bad - good` count/total/active/wait/mean/max values. It does not replace the per-rank timeline:
+
+```bash
 python3 mc2/mega_moe/tools/critical_path_trace/trace_tool.py compare \
-  --good raw/good/rank0.bin raw/good/rank1.bin \
-  --bad raw/bad/rank0.bin raw/bad/rank1.bin \
-  --csv good_bad.csv --json good_bad.json
+  --good raw/good --bad raw/bad --output-dir good-bad-compare
 
 python3 mc2/mega_moe/tools/critical_path_trace/trace_tool.py synthetic-test
 ```
 
-The decoder validates magic/version, fixed record boundaries, rank/role/core identity, written counts and timestamp
-ordering. It only reads `written_count` events. A nonzero `dropped_count` is reported as `truncated`. Stage summaries
-contain `total_cycles`, explicit child `wait_cycles`, and `active_cycles = total - union(child waits)`.
+The parser validates magic/version, fixed record boundaries, rank/role/core identity, written counts and timestamp
+ordering. It only reads `written_count` events. A nonzero `dropped_count` is reported as `truncated`; an event without
+an end timestamp is retained as an unpaired zero-duration event and listed in `warnings`. Parent stages contain
+explicit child `wait_cycles`, with `active_cycles = total - child waits`. Hover details include wave, expert, tile,
+token range, completion kind and source locations.
 
 ## Completion and perturbation
 
