@@ -426,9 +426,12 @@ aclnnStatus aclnnMhcPreSinkhorn(
 
 ## 约束说明
 
-- 确定性计算
+- 确定性计算：
 
   - aclnnMhcPreSinkhorn默认采用确定性实现，相同输入多次调用结果一致。
+  <!-- npu="950" id7 -->
+  - <term>Ascend 950PR/Ascend 950DT</term>：支持batch一致性，通过aclrtSetSysParamOpt()配置ACL_OPT_DETERMINISTIC为3来开启batch一致性，开启后可以满足计算结果和所在批次大小、位置无关。开启batch一致性后性能可能会有一定程度的劣化。
+  <!-- end id7 -->
 
 - 规格约束
 
@@ -437,18 +440,18 @@ aclnnStatus aclnnMhcPreSinkhorn(
   | numIters      | 20   | 目前只支持20。                        |
   | n             | 4    | 目前只支持4。                         |
 
-  <!-- npu="A3,910b" id7 -->
+  <!-- npu="A3,910b" id8 -->
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     - 输入x仅支持4维BSND格式，shape为(bs, seq_len, n, c)。
     - 尾轴c需为128的倍数且取值范围为[1, 100000]。
-  <!-- end id7 -->
-  <!-- npu="950" id8 -->
+  <!-- end id8 -->
+  <!-- npu="950" id9 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：
     - 输入x支持4维BSND格式和3维TND格式，shape分别为(bs, seq_len, n, c)和(t, n, c)。
     - TND格式下，t表示所有Batch序列长度的累加和；对应输出shape按参数说明中的t轴展开。
     - 尾轴c仅支持4096、7168。
     - 输入phi的数据范围限定在$\pm \frac{1}{\sqrt{nc}}$范围内，eps限定在1e-6，此范围内具有较好的数值稳定性。
-  <!-- end id8 -->
+  <!-- end id9 -->
 
 ## 调用示例
 

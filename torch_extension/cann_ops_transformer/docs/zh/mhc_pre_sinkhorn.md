@@ -261,7 +261,10 @@ cann_ops_transformer.mhc_pre_sinkhorn(x, phi, alpha, bias, hcMult, numIters, hcE
 
 ## 确定性计算
 
-默认支持确定性计算。
+- 默认支持确定性计算。
+<!-- npu="950" id9 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持batch一致性，通过torch_npu.npu.set_deterministic_level()设置确定性级别为3开启batch一致性，开启后可以满足计算结果和所在批次大小和所在批次位置无关。开启batch一致性后性能可能会有一定程度的劣化。
+<!-- end id9 -->
 
 ## 调用说明
 
