@@ -4,7 +4,7 @@
 
 |产品             |  是否支持  |
 |:-------------------------|:----------:|
-|  <term>Ascend 950PR/Ascend 950DT</term>   |     ×    |
+|  <term>Ascend 950PR/Ascend 950DT</term>   |     √    |
 |  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
 |  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
 |  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
@@ -16,34 +16,26 @@
 ## 功能说明
 
 - 算子功能：根据sortedIndices存储的下标位置，去获取permutedTokens中的输入数据与probs相乘，并进行合并累加。
-- 计算公式：
+- 计算公式：设EP有效区间为$[s,e)$，$L$为`sortedIndices`的元素个数；fallback模式下取$s=0,e=L$。第$q$个展开位置的中间量定义如下。
 
 $$
-sortedIndices = sortedIndices[rangeOptional[0]<=i<rangeOptional[1]]
+x_q =
+\begin{cases}
+permutedTokens_{sortedIndices_q-s}, & s \le sortedIndices_q < e \\
+0, & \text{otherwise}
+\end{cases}
 $$
 
-（1）probs非None计算公式如下，其中$i \in {0, 1, 2, ..., num\_tokens - 1}$，$j \in {0, 1, 2, ..., numTopk - 1}$，$k \in {0, 1, 2, ..., num\_tokens * numTopk}$：
+当`probsOptional`非空时，设其shape为$(N,K)$，满足$L=N\times K$，则：
 
 $$
-permutedTokens = permutedTokens.indexSelect(0, sortedIndices)
+out_i = \sum_{j=0}^{K-1}x_{iK+j}\times probsOptional_{i,j}, \quad 0 \le i < N
 $$
 
-$$
-permutedTokens_{k} = permutedTokens_{k} * probs_{i,j}
-$$
+当`probsOptional`为空时，非fallback模式下$K=numTopk$且$N=L/K$；fallback模式下有效$K=1$且$N=L$：
 
 $$
-out_{i} = \sum_{k=i*numTopk}^{(i+1)*numTopk - 1 } permutedTokens_{k}
-$$
-
-（2）probs为None计算公式如下，其中$i \in {0, 1, 2, ..., num\_tokens - 1}$，$j \in {0, 1, 2, ..., numTopk - 1}$：
-
-$$
-permutedTokens = permutedTokens.indexSelect(0, sortedIndices)
-$$
-
-$$
-out_{i} = \sum_{k=i*numTopk}^{(i+1)*numTopk - 1 } permutedTokens_{k}
+out_i = \sum_{j=0}^{K-1}x_{iK+j}, \quad 0 \le i < N
 $$
 
 ## 参数说明
@@ -104,7 +96,7 @@ $$
     <tr>
       <td>restoreShapeOptional</td>
       <td>属性</td>
-      <td>目前仅支持nullptr。</td>
+      <td>目前仅支持nullptr或空数组。</td>
       <td>aclIntArray*</td>
       <td>-</td>
     </tr>
@@ -121,9 +113,11 @@ $$
 
 ## 约束说明
 
-- numTopk <= 512。
+- 非fallback模式下，numTopk取值范围为[1, 512]；fallback模式下忽略numTopk。
 - 不支持paddedMode为`True`。
-- 当rangeOptional为空时，忽略numTopk，执行逻辑回退到[aclnnMoeTokenUnpermute](../moe_token_unpermute/docs/aclnnMoeTokenUnpermute.md)。
+- 当rangeOptional为nullptr、空数组或`[0, 0]`时进入fallback模式，要求permutedTokens第0维等于sortedIndices长度。
+- 非fallback模式下，rangeOptional必须满足`0 <= rangeOptional[0] < rangeOptional[1]`，且permutedTokens第0维等于`rangeOptional[1] - rangeOptional[0]`。
+- restoreShapeOptional仅支持nullptr或空数组。
 
 ## 调用说明
 
