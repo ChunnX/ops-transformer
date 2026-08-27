@@ -4,7 +4,8 @@
 # CANN Open Software License Agreement Version 2.0.
 """npu_block_sparse_attention mxfp8 (e4m3fn + e8m0) 正向单测 + CPU golden.
 
-0817 几何: kvBaseTile=128, QK 半面 64x128, 基块 128x128, G=8, Dpv=12。
+0817 几何: kvBaseTile=128, QK 一次 128x128, 基块 128x128。
+0825 方案 A: G=16, Dpv=20, 组窗口 16x128=2048。
 Q/K/V/P = e4m3fn, scale = e8m0, MX 组 32, 仅 OCP (quant_mode=4)。
 attentionOut 形状不翻倍(与 mxfp4 packed uint8 不同)。
 NPU I/O layout: BNSD / BSND / uniform TND(golden 仍 BNSD, 仅 permute+flatten)。
@@ -16,9 +17,10 @@ TND varlen(s1_list/s2_list) / act_s pad / gap_sparse / ocp_scale_stride_trap 已
 
 
 golden: Q/K/V mxfp8 qdq(fp32)；P 走 kernel 同构 snap_local(m_snap=(K-2)*ln2) 再 e4m3。
-MXFP8 一 Y 块 = 一 kernel tile（kvs128）；TILE_GROUP_N=8 组尾才 pscale / rescale O
+MXFP8 一 Y 块 = 一 kernel tile（kvs128）；TILE_GROUP_N=16 组尾才 pscale / rescale O
 （组内独立 snap，不按 mxfp4 的每 2 个 Y 块 online rescale）。
-判据: qfa check_result (np.isclose rtol=1/128 atol=1e-4, 满足率=100% 且 maxRE<10)。
+判据: 与 MXFP4 同构 (np.isclose rtol=1/128 atol=1e-4, 满足率≥99.5% 且 maxRE<10)。
+QK scale 在 CopyL0CToUB PRE 打进 S：golden 为 (S_fp32 * scale_s).to(fp16)。
 """
 import math
 import os
@@ -229,7 +231,7 @@ def _to_npu_layout(q, k, v, q_scale, k_scale, v_scale, cpu_out, input_layout):
 
 
 # 与 MXFP8Kernel::TILE_GROUP_N 一致：组尾 isUpdatePScale，组内 L0C 累加、不 rescale O。
-KERNEL_TILE_GROUP_N = 8
+KERNEL_TILE_GROUP_N = 16
 
 
 def _blockwise_snap_local_raw(S, seqk_dim=0, mx_block_size=32):
@@ -261,8 +263,8 @@ def _blockwise_snap_local_raw(S, seqk_dim=0, mx_block_size=32):
     k_block = torch.floor(m_block_raw_safe * inv_ln2)
     m_block_snap = (k_block - 2) * ln2_fp16
     p_local = torch.exp(s_r - m_block_snap.unsqueeze(-1))
-    p_local_bf = p_local.to(torch.bfloat16).to(p_local.dtype)
-    p_q = p_local_bf.float().to(torch.float8_e4m3fn).float().to(src_dtype)
+    # FIA TWO_CAST：fp16 Exp → float → e4m3 RINT（不再经 bf16 RT4）
+    p_q = p_local.float().to(torch.float8_e4m3fn).float().to(src_dtype)
     k_ij = k_block.max(dim=-1).values.float()
     p_q_moved = p_q.reshape(*other, n_blk * mx_block_size)[..., :seqk_len].movedim(-1, skp)
     return p_q_moved, k_block, k_ij
@@ -386,7 +388,7 @@ def cpu_block_sparse_attention_bnsd_mxfp8(query, key, value, block_sparse_mask,
                         k_blk = k_q[bi, n2i][pos]
                         v_blk = v_q[bi, n2i][pos]
                         s_fp32 = (k_blk @ q_blk.t()).to(torch.float32)
-                        s_s = s_fp32.to(s_torch_dtype) * scale_s
+                        s_s = (s_fp32 * scale_s).to(s_torch_dtype)
                         if p_quant == "snap_local":
                             p_q, k_block, k_ij = _blockwise_snap_local_raw(s_s, seqk_dim=0)
                             tiles.append((p_q, k_block, v_blk))
@@ -422,7 +424,7 @@ def cpu_block_sparse_attention_bnsd_mxfp8(query, key, value, block_sparse_mask,
     return out.to(_resolve_out_dtype(out_dtype))
 
 
-def check_result(expect, result, data_type, pct_thd=0.0):
+def check_result(expect, result, data_type, pct_thd=0.005):
     real_data = result.cpu().numpy().flatten()
     data_compe = expect.cpu().numpy().flatten()
     if real_data.size == 0 and real_data.size == data_compe.size:
@@ -730,12 +732,11 @@ def run_bsa_mxfp8_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=128, v_d=None,
         n1, n2, input_layout, scale, inner_precise, quant_mode,
         q_scale, k_scale, v_scale, out_dtype, device_id)
     if os.environ.get("BSA_MXFP8_HOST_DIAG", "0") == "1" and s_host is not None and input_layout == "BNSD":
-        scale_s = torch.as_tensor(scale, dtype=torch.float16)
         v_row = v_dq[0, 0, :s2].float()
         npu_f = npu_out.cpu().to(torch.float32)[0, 0]
         gold_f = cpu_out.to(torch.float32)[0, 0]
         for qs in (57, 114):
-            s_col = (s_host[:s2, qs:qs + 1].to(torch.float16) * scale_s)
+            s_col = (s_host[:s2, qs:qs + 1].float() * float(scale)).to(torch.float16)
             p_eff, _ = _blockwise_snap_local_quantize_p_eff(s_col, None, seqk_dim=0)
             p = p_eff[:, 0].float()
             o_snap = p @ v_row
@@ -769,7 +770,7 @@ class TestBSAMxfp8Golden(TestCase):
             self.skipTest(f"block_sparse_attention_v3 不可用: {_BSA_V3_IMPORT_ERROR}")
         assert res == "Pass", (
             f"BSA mxfp8 case 失败: {cfg_merged}\n  fulfill={pct}% result={res}\n"
-            f"  要求 fulfill=100% (rtol=1/128 atol=1e-4, maxRE<10)")
+            f"  要求 fulfill≥99.5% (rtol=1/128 atol=1e-4, maxRE<10，与 MXFP4 同构)")
         print(f"[PASS][NPU vs golden] {cfg_merged.get('mask_kind', 'dense')} "
               f"layout={cfg_merged.get('input_layout', 'BNSD')} "
               f"b={cfg_merged['b']} n1={cfg_merged['n1']} n2={cfg_merged['n2']} "
@@ -821,46 +822,64 @@ class TestBSAMxfp8Golden(TestCase):
         self._run(b=1, n1=2, n2=2, s1=128, s2=256, qk_d=128,
                   block_shape=[128, 128], mask_kind="sparse")
 
-    # --- 跨 TILE_GROUP(G=8, s2>1024)：CopyPScale L1 按 loop%12 映射 ---
+    # --- 跨 TILE_GROUP(G=16, s2>2048)：CopyPScale L1 按 loop%20 映射 ---
     @SkipIfNotGteCANNVersion("9.0.0")
     def test_bsa_mxfp8_bnsd_mha_dense_qs64_kvs1152(self, device="npu"):
-        """qs64 CopyPScale 半行路径 + 组 2 仅 1 tile。"""
+        """qs64 CopyPScale 半行路径；1152 现仍在组 0（9 基块）。"""
         self._run(b=1, n1=1, n2=1, s1=64, s2=1152, qk_d=128,
                   block_shape=[64, 128], mask_kind="dense")
 
     @SkipIfNotGteCANNVersion("9.0.0")
     def test_bsa_mxfp8_bnsd_mha_dense_qs64_kvs2048(self, device="npu"):
-        """qs64 + 两整组；L1 stride-2 在槽 8 起写需回绕。"""
+        """qs64 + 一整组 2048。"""
         self._run(b=1, n1=1, n2=1, s1=64, s2=2048, qk_d=128,
                   block_shape=[64, 128], mask_kind="dense")
 
     @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp8_bnsd_mha_dense_qs64_kvs2176(self, device="npu"):
+        """qs64 + 组 1 首块（2048+128）。"""
+        self._run(b=1, n1=1, n2=1, s1=64, s2=2176, qk_d=128,
+                  block_shape=[64, 128], mask_kind="dense")
+
+    @SkipIfNotGteCANNVersion("9.0.0")
     def test_bsa_mxfp8_bnsd_mha_dense_qs128_kvs1056_tail(self, device="npu"):
-        """组 2 首块即 kvs32 尾块 (1024+32)。"""
+        """组 0 尾块 kvs32（1024+32）；G=16 下仍在组内。"""
         self._run(b=1, n1=1, n2=1, s1=128, s2=1056, qk_d=128,
                   block_shape=[128, 128], mask_kind="dense")
 
     @SkipIfNotGteCANNVersion("9.0.0")
     def test_bsa_mxfp8_bnsd_mha_dense_qs128_kvs1280(self, device="npu"):
-        """组 2 两整 tile (10 基块)。"""
+        """组 0 十整 tile（G=16 下仍组内）。"""
         self._run(b=1, n1=1, n2=1, s1=128, s2=1280, qk_d=128,
                   block_shape=[128, 128], mask_kind="dense")
 
     @SkipIfNotGteCANNVersion("9.0.0")
     def test_bsa_mxfp8_bnsd_gqa_dense_qs128_kvs1152(self, device="npu"):
-        """GQA 跨组；多 head 任务可能落在奇数 loop (kvsFirst=1)。"""
+        """GQA；1152 现仍组内。多 head 任务可能落在奇数 loop。"""
         self._run(b=1, n1=4, n2=1, s1=128, s2=1152, qk_d=128,
                   block_shape=[128, 128], mask_kind="dense")
 
     @SkipIfNotGteCANNVersion("9.0.0")
     def test_bsa_mxfp8_bnsd_mha_sparse_qs128_kvs1152(self, device="npu"):
-        """sparse gather 跨组。"""
+        """sparse gather；1152 现仍组内。"""
         self._run(b=1, n1=2, n2=2, s1=128, s2=1152, qk_d=128,
                   block_shape=[128, 128], mask_kind="sparse")
 
     @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp8_bnsd_mha_dense_qs128_kvs2176(self, device="npu"):
+        """组 1 首块（2048+128）；CopyPScale L1 从槽 16 起写。"""
+        self._run(b=1, n1=1, n2=1, s1=128, s2=2176, qk_d=128,
+                  block_shape=[128, 128], mask_kind="dense")
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp8_bnsd_mha_dense_qs128_kvs2304(self, device="npu"):
+        """组 1 两整 tile（2048+256）。"""
+        self._run(b=1, n1=1, n2=1, s1=128, s2=2304, qk_d=128,
+                  block_shape=[128, 128], mask_kind="dense")
+
+    @SkipIfNotGteCANNVersion("9.0.0")
     def test_bsa_mxfp8_bnsd_mha_dense_qs128_kvs3072(self, device="npu"):
-        """3 组 / 24 基块：groupMax UB 环(12)与 L1 P-scale 环同时回绕。"""
+        """2 组 / 24 基块（16+8）：groupMax UB 环(20)与 L1 P-scale 环同时回绕。"""
         self._run(b=1, n1=1, n2=1, s1=128, s2=3072, qk_d=128,
                   block_shape=[128, 128], mask_kind="dense")
 

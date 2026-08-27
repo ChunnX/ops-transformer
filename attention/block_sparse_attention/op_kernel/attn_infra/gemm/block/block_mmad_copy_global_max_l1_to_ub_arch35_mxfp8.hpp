@@ -97,13 +97,15 @@ public:
 
         // AIC 上 GetSubBlockIdx 恒 0，普通 DataCopy 只写一面且写不到两个 AIV 的 UB。
         // QFA：L1 row0 → AIV0，row1 → AIV1（UB→L1 写 coord(1-sub)，即交换 peer）。
+        // P2-A：用异步 asc_copy_l12ub，不要 _sync。_sync = copy + pipe_barrier(PIPE_ALL)，
+        // Cube 和 Vec 一起停。完成序靠调用方 CrossCoreSetFlag<PIPE_MTE1>（与 QFA DataCopyL1ToUB 同构）。
         constexpr uint16_t burstLen = static_cast<uint16_t>(
             L1_SINGLE_GLOBAL_MAX_SIZE * sizeof(ElementLocalGlobalMax) / BLOCK_SIZE); // 128 half = 8 * 32B
         __ubuf__ void *dst = (__ubuf__ void *)peerGlobalMax.GetPhyAddr();
         __cbuf__ void *src0 = (__cbuf__ void *)localGlobalMax0.GetPhyAddr();
         __cbuf__ void *src1 = (__cbuf__ void *)localGlobalMax1.GetPhyAddr();
-        asc_copy_l12ub_sync(dst, src0, false, 1, burstLen, 0, 0); // VEC0
-        asc_copy_l12ub_sync(dst, src1, true, 1, burstLen, 0, 0);  // VEC1
+        asc_copy_l12ub(dst, src0, false, 1, burstLen, 0, 0); // VEC0
+        asc_copy_l12ub(dst, src1, true, 1, burstLen, 0, 0);  // VEC1
 #endif
     }
 

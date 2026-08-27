@@ -205,7 +205,7 @@ __aicore__ inline uint32_t GetCurQSTileNum(int64_t curQSeqlen, uint32_t blockSha
 } // namespace BsaKernelArch35
 
 namespace MXFP8Kernel {
-static constexpr uint32_t TILE_GROUP_N = 8;
+static constexpr uint32_t TILE_GROUP_N = 16; // 组窗口 16×128=2048
 using TaskInfo = MXFP4Kernel::TaskInfo;
 using TileInfo = MXFP4Kernel::TileInfo;
 using BatchOffsetInfo = MXFP4Kernel::BatchOffsetInfo;

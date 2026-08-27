@@ -30,7 +30,7 @@ using namespace MicroAPI;
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, typename T2,
           uint16_t KvsBaseAlign = 32, uint16_t QsBase = 128>
 __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_vf(__ubuf__ T2 *pDest, __ubuf__ T *s, __ubuf__ T *local_group_max,
-                                                  __ubuf__ T *global_max, __ubuf__ uint8_t *indexesUb, const T dScale,
+                                                  __ubuf__ T *global_max, __ubuf__ uint8_t *indexesUb,
                                                   const T NEG_LOG2_CX)
 {
 // ====================== 寄存器定义 ======================
@@ -88,7 +88,6 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_vf(__ubuf__ T2 *
         Max(curr_group_max, curr_group_max, src_c2, preg_VL64_16bit);
     }
 
-    Muls(curr_group_max, curr_group_max, dScale, preg_VL64_16bit);
     Muls(curr_group_max, curr_group_max, INV_LN2, preg_VL64_16bit);
     if constexpr (MX_QUANT_MODE == MXQuantMode::OCP) {
         Truncate<T, RoundMode::CAST_FLOOR>(curr_group_max, curr_group_max, preg_VL64_16bit);
@@ -131,10 +130,6 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_vf(__ubuf__ T2 *
             LoadAlign(src_c2, s + (rowOffset_cur * QsBase + 2 * QsBase)*2);
             LoadAlign(src_c3, s + (rowOffset_cur * QsBase + 3 * QsBase)*2);
 
-            Muls(src_c0, src_c0, dScale, preg_VL64_16bit);
-            Muls(src_c1, src_c1, dScale, preg_VL64_16bit);
-            Muls(src_c2, src_c2, dScale, preg_VL64_16bit);
-            Muls(src_c3, src_c3, dScale, preg_VL64_16bit);
 
             Sub(src_c0, src_c0, curr_group_max, preg_VL64_16bit);
             Sub(src_c1, src_c1, curr_group_max, preg_VL64_16bit);
@@ -145,8 +140,6 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_vf(__ubuf__ T2 *
             Exp(src_c1, src_c1, preg_VL64_16bit);
             Exp(src_c2, src_c2, preg_VL64_16bit);
             Exp(src_c3, src_c3, preg_VL64_16bit);
-            BSA_MXFP8_FP16_BF16_RT4(src_c0, src_c1, src_c2, src_c3, preg_VL64_16bit);
-
             // K-outer（qs64 仅 lo 64 qs）：C0=0,1 占 TLA 0-15 / 16-31
             Cast<float, T, castTraitZero>(src_f0, src_c0, preg_all_fp32);
             Cast<float, T, castTraitZero>(src_f1, src_c1, preg_all_fp32);
@@ -178,10 +171,6 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_vf(__ubuf__ T2 *
             LoadAlign(src_c2, s + (rowOffset_cur * QsBase + 2 * QsBase)*2);
             LoadAlign(src_c3, s + (rowOffset_cur * QsBase + 3 * QsBase)*2);
 
-            Muls(src_c0, src_c0, dScale, preg_VL64_16bit);
-            Muls(src_c1, src_c1, dScale, preg_VL64_16bit);
-            Muls(src_c2, src_c2, dScale, preg_VL64_16bit);
-            Muls(src_c3, src_c3, dScale, preg_VL64_16bit);
 
             Sub(src_c0, src_c0, curr_group_max, preg_VL64_16bit);
             Sub(src_c1, src_c1, curr_group_max, preg_VL64_16bit);
@@ -192,8 +181,6 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_vf(__ubuf__ T2 *
             Exp(src_c1, src_c1, preg_VL64_16bit);
             Exp(src_c2, src_c2, preg_VL64_16bit);
             Exp(src_c3, src_c3, preg_VL64_16bit);
-            BSA_MXFP8_FP16_BF16_RT4(src_c0, src_c1, src_c2, src_c3, preg_VL64_16bit);
-
             Cast<float, T, castTraitZero>(src_f0, src_c0, preg_all_fp32);
             Cast<float, T, castTraitZero>(src_f1, src_c1, preg_all_fp32);
             Cast<float, T, castTraitZero>(src_f2, src_c2, preg_all_fp32);
@@ -207,7 +194,6 @@ __simd_vf__ inline void softmax_with_group_max_align_qs64_kvs32_vf(__ubuf__ T2 *
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(global_max, group_gmax, preg_all_16bit);
 
         // 下一块最大值归一化
-        // Muls(next_group_max, next_group_max, dScale, preg_valid_max);
         // Muls(next_group_max, next_group_max, INV_LN2, preg_valid_max);
         // Truncate<T, RoundMode::CAST_FLOOR>(next_group_max, next_group_max, preg_valid_max);
         // Max(group_gmax, group_gmax, next_group_max, preg_valid_max);
@@ -232,7 +218,7 @@ __aicore__ inline void SoftmaxWithGroupMaxAlignQs64Kvs32CallVF(const LocalTensor
                                                   const LocalTensor<T> &local_group_max,
                                                   const LocalTensor<T> &global_max,
                                                   const LocalTensor<uint8_t> &indexesBuf,
-                                                  const T scale, const T NEG_LOG2_CX)
+                                                  const T NEG_LOG2_CX)
 {
     __ubuf__ T2 *pDest = (__ubuf__ T2*) dstTensor.GetPhyAddr();
     __ubuf__ T *input_x_local_UB = (__ubuf__ T*) srcTensor.GetPhyAddr();
@@ -241,7 +227,7 @@ __aicore__ inline void SoftmaxWithGroupMaxAlignQs64Kvs32CallVF(const LocalTensor
     __ubuf__ uint8_t * indexesUb = (__ubuf__ uint8_t*)indexesBuf.GetPhyAddr();
 
     softmax_with_group_max_align_qs64_kvs32_vf<MX_QUANT_MODE, clear_gmax, T, T2, KvsBaseAlign, QsBase>(
-        pDest, input_x_local_UB, localGroupMax, globalMax, indexesUb, scale, NEG_LOG2_CX);
+        pDest, input_x_local_UB, localGroupMax, globalMax, indexesUb, NEG_LOG2_CX);
 }
 
 }

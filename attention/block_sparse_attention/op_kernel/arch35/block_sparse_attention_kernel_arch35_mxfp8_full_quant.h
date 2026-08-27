@@ -89,7 +89,7 @@ public:
     static constexpr uint16_t CROSS_CORE_SYNC_C2_V2 = 1;
     static constexpr uint16_t CROSS_CORE_SYNC_V2_C2 = 0;
 
-    static constexpr uint32_t PV_RE_DELAY_N = 12;
+    static constexpr uint32_t PV_RE_DELAY_N = 20; // G=16 → Dpv>=19，取 20
     static constexpr uint32_t DELAY_PSCALE_N = 3;
 
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PV_RE_DELAY_N + 1;
@@ -175,7 +175,8 @@ public:
         // [QK/PV 共享] kernel 层单一 kvBufId，传引用进两 block ctor（QK 先构造预置 4 路 KV event；
         //   PV 后构造、其 ctor 内 InitL0BufferForReduceSum 把 kvBufId 0→1，与 QFA cube 同构）
         uint32_t kvBufId = 0;
-        BlockMmadQK blockMmadQK(resource, kvBufId);
+        uint64_t softmaxScale = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&scaleValue_));
+        BlockMmadQK blockMmadQK(resource, kvBufId, softmaxScale);
         BlockMmadPV blockMmadPV(resource, kvBufId);
         BlockMmadCopyGlobalMaxL1ToUB blockGMaxL1ToUb(resource);
  #endif	 
@@ -191,7 +192,7 @@ public:
         // }
 
 
-        EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, scaleValue_, NEG_LOG2_CX);
+        EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, NEG_LOG2_CX);
         EpilogueCopyGlobalMaxUbToL1 epilogueCopyGlobalMaxUbToL1(resource);
         EpilogueComputePScale epilogueComputePScale(resource, LOG2_CX_CEIL);
         EpilogueRescaleO epilogueRescaleO(resource);
@@ -881,9 +882,9 @@ public:
         if (info.isFirstKvsTile || info.isTileGoupFirstTile) {
             tileLoopIdx_ = (tileLoopIdx_ + 1) % 2;
             tileMaxIdx_ = (tileMaxIdx_ + 1) % 4;
-            pscaleNum_ = (pscaleNum_ + 1) % 12;
+            pscaleNum_ = (pscaleNum_ + 1) % 20;
         }
-        info.pscaleNum = static_cast<uint16_t>(pscaleNum_ / 6);
+        info.pscaleNum = static_cast<uint16_t>(pscaleNum_ / 10);
         info.tileBuffIdx = tileLoopIdx_;
         info.tileMaxIdx = tileMaxIdx_;
         info.updateScaleIdx = updateScaleIdx_;
@@ -1044,7 +1045,7 @@ private:
     uint32_t updateScaleIdx_ = 3;       // C2 Sync 时切换 (循环 0~3)// dm
     uint32_t tileLoopIdx_ = 1;          // 双缓冲索引 (0/1)
     uint32_t tileMaxIdx_ = 3;           // 四缓冲索引 (0~3)
-    uint32_t pscaleNum_ = 11;          // 12 缓冲索引 (0~11)，Dpv=12
+    uint32_t pscaleNum_ = 19;          // 20 缓冲索引 (0~19)，Dpv=20
 };
 
 }

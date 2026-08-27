@@ -414,7 +414,7 @@ __global__ __aicore__ void BsaInferInterfaceMXFP8FullQuant(
     using EpilogueMask2Idx = Epilogue::Block::BlockEpilogue<
         DispatchPolicyMask2Idx, ElementSparseMask, ElementSparseIdx, ElementSparseCount>;
     using L1TileShapeQK = Shape<Int<128>, Int<128>, Int<128>>;
-    using L0TileShapeQK = Shape<Int<128>, Int<128>, Int<128>>;
+    using L0TileShapeQK = Shape<Int<128>, Int<64>, Int<128>>; // M=qs128, N=kvs64×2, K=D128
     using DispatchPolicyQK = Gemm::MmadAtlasA5BsaQKMxfp8<transposedMm1>;
     using TileCopyQK = Gemm::Tile::PackedTileCopyTlaToUB<
         ArchTag, ElementQ, layout::RowMajor, ElementK, layout::ColumnMajor, ElementS, LayoutS,

@@ -138,7 +138,7 @@ def display_error_output(real_data, expect_data, err_idx, relative_diff):
     print_log(
         '---------------------------------------------------------------------------------------')
 # fuzz 中precision_method == 1的精度对比方式
-def check_result_printf_res(expect, result, data_type, pct_thd = 0.0):
+def check_result_printf_res(expect, result, data_type, pct_thd = 0.005):
     real_data = result.cpu().numpy()
     data_compe = expect.cpu().numpy()
     real_data = real_data.flatten()

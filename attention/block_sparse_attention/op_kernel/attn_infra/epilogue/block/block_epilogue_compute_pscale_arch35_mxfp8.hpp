@@ -237,10 +237,10 @@ public:
      template <class TensorDst>
     __aicore__ inline void CopyPScaleUbToL1(TensorDst &l1PScaleTensor, AscendC::LocalTensor<ElementPScale> &pscale1Src, AscendC::LocalTensor<ElementPScale> &pscale2Src, 
                                                 uint32_t subBlockIdx, uint16_t firstLoopStart, uint16_t firstLoop, uint16_t secondLoopStart, uint16_t secondLoop, bool isQsAlign128) {
-        // GetPScaleParams 的 firstLoopStart 是 AIV 本地 groupMax 环（loop/2%12）。
-        // L1 P-scale 与 P 一样按 loop%12 分槽；dstStride 再隔行写入（AIV0 偶数槽 / AIV1 奇数槽）。
-        // 组 0：groupMax 0 → L1 0，skip-2 得到 0,2,4,6，碰巧正确。
-        // 组 1：groupMax 4 必须映射成 L1 8，否则 PV 读 loop%12=8 用到组 0 残留 scale。
+        // GetPScaleParams 的 firstLoopStart 是 AIV 本地 groupMax 环（loop/2%20）。
+        // L1 P-scale 与 P 一样按 loop%20 分槽；dstStride 再隔行写入（AIV0 偶数槽 / AIV1 奇数槽）。
+        // 组 0：groupMax 0 → L1 0，skip-2 得到 0,2,…,14。
+        // 组 1：groupMax 8 必须映射成 L1 16，否则 PV 读 loop%20=16 用到组 0 残留 scale。
         CopyPScaleUbToL1FromGroupMax(l1PScaleTensor, pscale1Src, subBlockIdx, firstLoopStart, firstLoop, isQsAlign128);
         if (secondLoop != 0) {
             CopyPScaleUbToL1FromGroupMax(l1PScaleTensor, pscale2Src, subBlockIdx, secondLoopStart, secondLoop, isQsAlign128);
@@ -337,8 +337,8 @@ private:
     }
 
 private:
-    static constexpr uint32_t GROUP_MAX_SPACE_LEN = 12; // UB_LOCAL_GROUP_MAX_CNT
-    static constexpr uint32_t WHOLE_PROCESS_LOOP = 8;   // TILE_GROUP_N
+    static constexpr uint32_t GROUP_MAX_SPACE_LEN = 20; // UB_LOCAL_GROUP_MAX_CNT
+    static constexpr uint32_t WHOLE_PROCESS_LOOP = 16;  // TILE_GROUP_N
 
     AscendC::LocalTensor<ElementPScale>   pscaleUBTensor[MXFP8::UB_P_SCALE_CNT]; // pScale(复用P)
     AscendC::LocalTensor<ElementGroupMax> peerGlobalMaxUBTensor[MXFP8::UB_PEER_GLOBAL_MAX_CNT]; // peerGlobalMax

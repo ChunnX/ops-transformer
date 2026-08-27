@@ -1,6 +1,6 @@
 # BSA MXFP8 全量化设计说明（kvs128 修订版）
 
-日期：2026-08-17；板上修订：2026-08-18、**2026-08-19（跨组 CopyPScale / layout+fp16out / D=64 / 对标 MXFP4 pytest 1–3）**、**2026-08-20（性能基线；P0 Q 双槽试过 −2% 后回退；S=118800 keep1 vs FIA/MXFP4）**、**2026-08-25（§17.6–17.7 P1 已上板 −3.5%；§17.8 P2：压 AIV 组尾 gmax / softmax VF / pScale）**  
+日期：2026-08-17；板上修订：2026-08-18、**2026-08-19（跨组 CopyPScale / layout+fp16out / D=64 / 对标 MXFP4 pytest 1–3）**、**2026-08-20（性能基线；P0 Q 双槽试过 −2% 后回退；S=118800 keep1 vs FIA/MXFP4）**、**2026-08-25（§17.6–17.7 P1 已上板 −3.5%；§17.8 P2：压 AIV 组尾 gmax / softmax VF / pScale）**。**组窗口 2048（G=16）见 `2026-08-25-bsa-mxfp8-tile2048-design.md`（分支 `mxfp8_0825`）。**  
 基线：`mxfp8_0814` 上已有 MXFP8 脚手架；本文件**取代** `2026-08-14-bsa-mxfp8-design.md` 的几何与内存决策。  
 状态：**官方 qs128 套件 + qs64/kvs128 + 跨 TILE_GROUP（s2>1024）+ BSND/TND 冒烟 + fp16out + D=64（已拷中短例）已过线**；**对标 MXFP4 的 OCP pytest 1–3（TND varlen / act_s pad / BSND·TND×D=64·sparse·非对齐 / gap_sparse / scale-stride-trap）已接线**（分支 `mxfp8_0817`；几何仍为本修订；板上修正见 §15 / §16）  
 画布：Cursor [`S118800-pipe-compare.canvas.tsx`](/home/npu_user5/.cursor/projects/home-npu-user5/canvases/S118800-pipe-compare.canvas.tsx)、`BSA-MXFP8-vs-FP16-analysis.canvas.tsx`、`BSA-MXFP8-design-report.canvas.tsx`；仓库副本 `docs/superpowers/canvases/`
@@ -381,7 +381,7 @@ C0：`FP8_C0_ELEMS = 32`。
 5. **qs64 约 3.125%** → Fixpipe N=64 时 VF 按 QsBase=128 读 even/odd 128-half，VL64 不是连续 qs[0:64)。QK pad N=128 + qs128 VF 后 100%。
 6. **s2>1024 跨组 fulfill 崩**（1152 曾 62.5%，16384 曾 5.15%）→ CopyPScale 用 groupMax 环当下标写 L1，PV 读 `loop%12`。组 1 tile 8 写到槽 4、读到槽 8（组 0 残留 scale）。L1 映射改 `*2` 后 1152=100%、16384=99.71%。
 7. **单 tile s2 不齐 64 出 NaN**（s2=32/48/96 曾 93%～96%，NaN 落在 `D[32:64)`）→ PadVS2 照抄 mxfp4 两段 `halfEmbed=64`，fp8 每面只清 32B/行。改为 4 平面 + Wait-then-Pad 后 s2=96=99.77% 过；s2=32/48 NaN 消失但仍 99.31%/99.39%。
-8. **s2=32/48 qs57 差 0.19pt** → 2-spike softmax 的 k=12 上 fp16 `exp=1.064453`。FIA 路径 `fp16→float→e4m3 RINT` 得到 1.125；golden / mxfp4 是 `fp16→bf16→e4m3` 得到 1.0。`1.125×0.25` 使 rowsum 1.53125 vs 1.500，该行 105/128 D 刚过 rtol。所有 softmax VF 在 Exp 后加 `BSA_MXFP8_FP16_BF16_RT4` 后 s2=32/48/64/128 = 100%。
+8. **s2=32/48 qs57 差 0.19pt**（历史） → 2-spike softmax 的 k=12 上 fp16 `exp=1.064453`。FIA 式 `fp16→float→e4m3 RINT` 得到 1.125；MXFP4 是 `fp16→bf16→e2m1` 得到 1.0 网格。当时用 `BSA_MXFP8_FP16_BF16_RT4` 对齐 MXFP4。**2026-08-26 起按 FIA TWO_CAST 去掉 RT4**（`fp16 Exp → float → e4m3 RINT`），golden 同步；3510 仍没有 `Cast<e4m3, bf16>`。ISA 全文见 `2026-08-25-bsa-mxfp8-tile2048-design.md` §13。门限 ≥99.5%。
 
 
 
@@ -734,7 +734,7 @@ flowchart LR
 | 子轮 | 改什么 | 为何现在做 | 预期 | 风险 |
 | --- | --- | --- | --- | --- |
 | **P2-A 先做** | 组尾 group-max 同步 + 组首/组尾分支 | 每 8 基块 L1 交换；AIC `GetSubBlockIdx()` 恒 0，`asc_copy_l12ub_sync` 让 Cube 和 Vec 都停。这是 P1 之后最大的核间气泡 | Duration 随 wait 降；`aic_time` 与 `aiv_time` 仍接近，但墙上应掉一截 scalar 空等 | **不要加大 G**（精度窗口从 1024 拉长）。跨组 CopyPScale 下标已踩过雷（§15.3.6） |
-| **P2-B** | softmax VF：减 scalar、收 pad / 组首组尾 / exp→e4m3 缝 | 同算量 FIA vec 12.16 vs BSA 16.86 ms。差在 VF/分支/打包，不是峰值 TFLOPS | **主收益**。vec 16.86→~13.5 ms 时 cube 占用才可能 ~0.60；→~12 ms 墙上才有机会靠近 FIA | 精度窗口、`BSA_MXFP8_FP16_BF16_RT4`、qs64/尾块 pad 回归 |
+| **P2-B** | softmax VF：减 scalar、收 pad / 组首组尾 / exp→e4m3 缝 | 同算量 FIA vec 12.16 vs BSA 16.86 ms。差在 VF/分支/打包，不是峰值 TFLOPS | **主收益**。vec 16.86→~13.5 ms 时 cube 占用才可能 ~0.60；→~12 ms 墙上才有机会靠近 FIA | 精度窗口、FIA `fp16→float→e4m3`（已去掉 RT4）、qs64/尾块 pad 回归 |
 | **P2-C** | e8m0 / pScale 与写 P 合并搬 | 同拍仍是 PV → pScale → 写 P，`DELAY_PSCALE_N=3`。缝在 softmax 和下一次 PV 之间 | 少几次 UB/L1 搬，盖一点同步。单独改预计小于 P2-B | L1 P-scale 槽 `loop%12` vs UB `loop/2%12` 映射不可再写错 |
 | **不做** | Q L0B 双槽；D 切 2×64；再单独挪 wait / 延后 fixpipe；kvs 改回 256 | P0/P1 已证或属几何重做 | — | kvs256：softmax 次数可能近 2×，但 L1 P 16→32KB、环深、跨组/GQA 是已知雷区 |
 | **P3 仍仅 S≳1M** | Q tile 按 L2 112MB 分块复用 KV | 当前 S=118800 非 HBM bound | 243k 几乎不变 | 1M 基线 904 ms，HBM 下限 ~785 ms |
