@@ -24,6 +24,18 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> MhcPreSinkhornBackwar
     const at::Tensor &hcBeforeNorm, const at::Tensor &invRms, const at::Tensor &sumOut, const at::Tensor &normOut,
     double hcEps)
 {
+    at::Tensor gradX = at::empty_like(x);
+    at::Tensor gradPhi = at::empty_like(phi);
+    at::Tensor gradAlpha = at::empty_like(alpha);
+    at::Tensor gradBias = at::empty_like(bias);
+
+    // Keep the empty-tensor behavior of aclnnMhcPreSinkhornBackward: no computation is launched.
+    if (gradHin.numel() == 0 || gradHPost.numel() == 0 || gradHRes.numel() == 0 || x.numel() == 0 ||
+        hPre.numel() == 0 || hcBeforeNorm.numel() == 0 || invRms.numel() == 0 || sumOut.numel() == 0 ||
+        normOut.numel() == 0) {
+        return std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>(gradX, gradPhi, gradAlpha, gradBias);
+    }
+
     TORCH_CHECK(x.dim() == 3 || x.dim() == 4, "x dim must be 3 (t, n, d) or 4 (b, s, n, d), but got ", x.dim());
     TORCH_CHECK(sumOut.dim() >= 1 && sumOut.size(0) > 0 && sumOut.size(0) % 2 == 0,
                 "sumOut first dimension must be a positive even number, but got shape ", sumOut.sizes());
@@ -32,9 +44,15 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> MhcPreSinkhornBackwar
 
     const int64_t n = x.size(-2);
     const int64_t numIters = sumOut.size(0) / 2;
+    const bool isFlattenedGradHRes = gradHRes.dim() == x.dim() - 1 && gradHRes.size(-1) == n * n;
+    const bool isMatrixGradHRes = gradHRes.dim() == x.dim() && gradHRes.size(-2) == n && gradHRes.size(-1) == n;
+    TORCH_CHECK(isFlattenedGradHRes || isMatrixGradHRes, "gradHRes shape must be [..., N * N] or [..., N, N], but got ",
+                gradHRes.sizes(), " and N = ", n);
+    for (int64_t i = 0; i < x.dim() - 2; ++i) {
+        TORCH_CHECK(gradHRes.size(i) == x.size(i), "gradHRes prefix dimensions must match x, but got ",
+                    gradHRes.sizes(), " and ", x.sizes());
+    }
     const int64_t totalLength = gradHRes.numel() / (n * n);
-    TORCH_CHECK(gradHRes.size(-1) == n * n, "gradHRes last dimension must equal N * N, but got ", gradHRes.size(-1),
-                " and N = ", n);
     TORCH_CHECK(hcBeforeNorm.size(-1) == n * n + 2 * n,
                 "hcBeforeNorm last dimension must equal N * N + 2 * N, but got ", hcBeforeNorm.size(-1),
                 " and N = ", n);
@@ -61,10 +79,6 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> MhcPreSinkhornBackwar
 
     TORCH_CHECK(invRms.size(-1) == 1, "invRms last dimension must be 1, but got ", invRms.size(-1));
     at::Tensor invRmsSqueezed = invRms.squeeze(-1);
-    at::Tensor gradX = at::empty_like(x);
-    at::Tensor gradPhi = at::empty_like(phi);
-    at::Tensor gradAlpha = at::empty_like(alpha);
-    at::Tensor gradBias = at::empty_like(bias);
     const c10::optional<at::Tensor> gamma = c10::nullopt;
     const c10::optional<at::Tensor> gradXPost = c10::nullopt;
     const c10::optional<at::Tensor> gradGamma = c10::nullopt;
