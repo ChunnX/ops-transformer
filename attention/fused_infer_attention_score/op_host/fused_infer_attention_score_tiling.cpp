@@ -1065,12 +1065,22 @@ ge::graphStatus CheckKVNzShape(const gert::TilingContext *context)
     auto tempK = context->GetInputShape(KEY_INDEX);
     auto tempV = context->GetInputShape(VALUE_INDEX);
 
-    OP_CHECK_IF((tempK->GetStorageShape().GetDim(DIM_4) != 16) || (tempV->GetStorageShape().GetDim(DIM_4) != 16),
-                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "The last dimension of kv should to be 16."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        (tempK->GetStorageShape().GetDim(DIM_4) != 16 && tempK->GetStorageShape().GetDim(DIM_4) != 32) ||
+            (tempV->GetStorageShape().GetDim(DIM_4) != 16 && tempV->GetStorageShape().GetDim(DIM_4) != 32),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "key and value",
+                                               ("dim4: " + std::to_string(tempK->GetStorageShape().GetDim(DIM_4)) +
+                                                " and " + std::to_string(tempV->GetStorageShape().GetDim(DIM_4)))
+                                                   .c_str(),
+                                               "key and value last dim must be 16 or 32"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         (tempK->GetStorageShape().GetDim(DIM_3) != blockSize) || (tempV->GetStorageShape().GetDim(DIM_3) != blockSize),
-        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "The four dimension of kv should to be :%ld.", blockSize),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "key and value",
+                                               ("dim3: " + std::to_string(tempK->GetStorageShape().GetDim(DIM_3)) +
+                                                " and " + std::to_string(tempV->GetStorageShape().GetDim(DIM_3)))
+                                                   .c_str(),
+                                               "key and value dim 3 must be equal to block_size"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1110,6 +1120,10 @@ ge::graphStatus CheckFAIIsTND(gert::TilingContext *context, bool isPageAttention
                     OPS_REPORT_VECTOR_INNER_ERR(
                         context->GetNodeName(),
                         "When input layout is TND and paged cache and kvnz is used, the K and V must have five dims"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(tempK->GetStorageShape().GetDim(DIM_1) != tempV->GetStorageShape().GetDim(DIM_1),
+                    OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                        "When using BNBD layout, K and V must have same kvHeads."),
                     return ge::GRAPH_FAILED);
         if (CheckKVNzShape(context) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
@@ -1652,7 +1666,9 @@ static bool CheckFAIDSizePA4Dim(int64_t tempD, const gert::Shape *tempKShape, co
     int64_t tempVD = tempVShape->GetDim(DIM_3);
     int64_t blockSize = tempKShape->GetDim(DIM_2);
     constexpr int64_t BLOCK_SIZE_ALIGN_16 = 16;
-    bool isFAIDSize = (tempD <= 256 && tempKD <= 256 && tempVD <= 256) && (tempD == tempKD && tempD == tempVD);
+    bool isFAIDSize = (tempD <= 256 && tempKD <= 256 && tempVD <= 256) &&
+                  (tempD == tempKD && tempD == tempVD) &&
+                  (tempD % BLOCK_SIZE_ALIGN_16 == 0);
     bool blockSizeSupported = (blockSize % BLOCK_SIZE_ALIGN_16 == 0) && (blockSize <= MAX_BLOCK_SIZE);
     return isFAIDSize && blockSizeSupported;
 }
