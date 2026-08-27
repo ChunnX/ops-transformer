@@ -575,7 +575,7 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     }
 
     if (ret != ge::GRAPH_SUCCESS) {
-        OP_LOGE(context_, "SparseFlashAttentionGrad the input shpae of TND Layout is invalid.");
+        OP_LOGE(context_, "SparseFlashAttentionGrad the input shape of TND Layout is invalid.");
         return ge::GRAPH_FAILED;
     }
 

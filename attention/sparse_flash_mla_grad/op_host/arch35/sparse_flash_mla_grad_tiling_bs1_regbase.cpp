@@ -228,7 +228,6 @@ ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-
 bool SparseFlashMlaGradTilingBs1Regbase::IsCapable()
 {
     OP_LOGI(context_, "SparseFlashMlaGrad basic template hit.");
@@ -336,18 +335,17 @@ uint64_t SparseFlashMlaGradTilingBs1Regbase::GetTilingKey() const
     baseParams_->set_hasCmpTopK(tmpData.cmpTopK);
     baseParams_->set_isSink(tmpData.sinks);
 
-    OP_LOGI(
-        context_,
-        "SparseFlashMlaGrad get tilingkey, InputDType[%ld], IsTnd[%ld], GTemplateNum[%ld], S2TemplateNum[%ld], \
+    OP_LOGI(context_,
+            "SparseFlashMlaGrad get tilingkey, InputDType[%ld], IsTnd[%ld], GTemplateNum[%ld], S2TemplateNum[%ld], \
         DTemplateNum[%ld], IsOriKVExist[%d], IsCmpKVExist[%d], IsOriKVSparse[%d], IsCmpKVSparse[%d], \
         HasUsedSeqQ[%d], HasUsedSeqOriKV[%d], HasUsedSeqCmpKV[%d], HasOriTopK[%d], HasCmpTopK[%d], IsSink[%d], \
         Deterministic[%d]",
-        inputDtypeSize, isTnd, tmpData.singleM, tmpData.singleN, tmpData.d, static_cast<uint8_t>(tmpData.oriKV),
-        static_cast<uint8_t>(tmpData.cmpKV), static_cast<uint8_t>(tmpData.oriKVSparse),
-        static_cast<uint8_t>(tmpData.cmpKVSparse), static_cast<uint8_t>(tmpData.usedSeqQ),
-        static_cast<uint8_t>(tmpData.usedSeqOriKV), static_cast<uint8_t>(tmpData.usedSeqCmpKV),
-        static_cast<uint8_t>(tmpData.oriTopK), static_cast<uint8_t>(tmpData.cmpTopK),
-        static_cast<uint8_t>(tmpData.sinks), static_cast<uint8_t>(tmpData.deterministic));
+            inputDtypeSize, isTnd, tmpData.singleM, tmpData.singleN, tmpData.d, static_cast<uint8_t>(tmpData.oriKV),
+            static_cast<uint8_t>(tmpData.cmpKV), static_cast<uint8_t>(tmpData.oriKVSparse),
+            static_cast<uint8_t>(tmpData.cmpKVSparse), static_cast<uint8_t>(tmpData.usedSeqQ),
+            static_cast<uint8_t>(tmpData.usedSeqOriKV), static_cast<uint8_t>(tmpData.usedSeqCmpKV),
+            static_cast<uint8_t>(tmpData.oriTopK), static_cast<uint8_t>(tmpData.cmpTopK),
+            static_cast<uint8_t>(tmpData.sinks), static_cast<uint8_t>(tmpData.deterministic));
     // tmpData.singleM 为G方向上固定切分大小 tmpData.singleN为S2方向上固定切分大小
     tilingKey = GET_TPL_TILING_KEY(
         static_cast<uint8_t>(inputDtypeSize), static_cast<uint8_t>(isTnd), static_cast<uint16_t>(tmpData.singleM),
@@ -743,7 +741,7 @@ ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::GetBaseShapeInfo()
             return ge::GRAPH_FAILED;
         }
         if (dimDq < dimDorikv) {
-            OP_LOGE(context_, "head_dim of Query[%ld] can not less than head_dim of ori_kv[%ld].", dimDq, dimDorikv);
+            OP_LOGE(context_, "head_dim of Query[%ld] cannot be less than head_dim of ori_kv[%ld].", dimDq, dimDorikv);
             return ge::GRAPH_FAILED;
         }
         if (strcmp(layoutQ, TND_STR) == 0) {
@@ -772,7 +770,7 @@ ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::GetBaseShapeInfo()
             return ge::GRAPH_FAILED;
         }
         if (dimDq < dimDcmpkv) {
-            OP_LOGE(context_, "head_dim of Query[%ld] can not less than head_dim of cmp_kv[%ld].", dimDq, dimDcmpkv);
+            OP_LOGE(context_, "head_dim of Query[%ld] cannot be less than head_dim of cmp_kv[%ld].", dimDq, dimDcmpkv);
             return ge::GRAPH_FAILED;
         }
         if (strcmp(layoutQ, TND_STR) == 0) {
@@ -838,7 +836,7 @@ ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::GetBaseShapeInfo()
 
     auto cmpRatio = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::CMP_RATIO));
     if (cmpRatio < 1 || cmpRatio > 128) {
-        OP_LOGE(context_, "cmp_ratio must be range [1,128], but now get input cmp_ratio [%ld]!", cmpRatio);
+        OP_LOGE(context_, "cmp_ratio must be in the range [1, 128], but got [%ld].", cmpRatio);
         return ge::GRAPH_FAILED;
     }
     auto usedSeqCmpKV = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::SEQUSED_CMP_KV));
@@ -975,7 +973,7 @@ ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::GetBaseShapeInfo()
     }
 
     if (ret != ge::GRAPH_SUCCESS) {
-        OP_LOGE(context_, "SparseFlashMlaGrad the input shpae of TND Layout is invalid.");
+        OP_LOGE(context_, "SparseFlashMlaGrad the input shape of TND Layout is invalid.");
         return ge::GRAPH_FAILED;
     }
     if (tmpData.layout == static_cast<uint32_t>(InputLayout::TND)) {
@@ -983,7 +981,7 @@ ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::GetBaseShapeInfo()
     }
 
     if (ret != ge::GRAPH_SUCCESS) {
-        OP_LOGE(context_, "SparseFlashMlaGrad the input shpae of TND Layout is invalid.");
+        OP_LOGE(context_, "SparseFlashMlaGrad the input shape of TND Layout is invalid.");
         return ge::GRAPH_FAILED;
     }
     int32_t nNums = tmpData.layout == static_cast<uint32_t>(InputLayout::TND) ? tmpData.t1 : tmpData.b * tmpData.s1;
