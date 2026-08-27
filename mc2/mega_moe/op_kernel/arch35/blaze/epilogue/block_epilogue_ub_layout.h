@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file activation_mx_quant_ub_layout.h
+ * \file block_epilogue_ub_layout.h
  * \brief UB layout helpers for activation and MX quantization.
  */
 
-#ifndef ACTIVATION_MX_QUANT_UB_LAYOUT_H
-#define ACTIVATION_MX_QUANT_UB_LAYOUT_H
+#ifndef BLOCK_EPILOGUE_UB_LAYOUT_H
+#define BLOCK_EPILOGUE_UB_LAYOUT_H
 
 #if defined(__DAV_C310__)
 #if ASC_DEVKIT_MAJOR >= 9
@@ -121,4 +121,4 @@ __aicore__ inline ActivationMxQuantUbPointers<InputType> ResolveActivationMxQuan
 } // namespace MegaMoeImpl
 
 #endif // defined(__DAV_C310__)
-#endif // ACTIVATION_MX_QUANT_UB_LAYOUT_H
+#endif // BLOCK_EPILOGUE_UB_LAYOUT_H
