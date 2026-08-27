@@ -702,7 +702,9 @@ def tiled_flash_attention(q_curr, k_sparse, v_sparse, scale_value, cur_sinks, q_
         k_tile = k_fp32[start:end, :]
         v_tile = v_fp32[start:end, :]
 
-        scale_res = torch.matmul(q_curr.float(), k_tile.float().T) * scale_value
+        #mm1_res = torch.matmul(q_curr.float(), k_tile.float().T)
+        mm1_res = torch.matmul(q_curr.to(torch.float64), k_tile.to(torch.float64).T).float()
+        scale_res = mm1_res * scale_value
         row_max_old = row_max.clone()
         row_max = torch.max(row_max, scale_res.max(dim=1)[0])
         update_mul = torch.exp(row_max_old - row_max)
@@ -710,7 +712,8 @@ def tiled_flash_attention(q_curr, k_sparse, v_sparse, scale_value, cur_sinks, q_
         row_sum = update_mul * row_sum + cur_softmax.sum(dim=1)
 
         cur_softmax = _cast_softmax(cur_softmax, q_dtype)
-        cur_o = torch.matmul(cur_softmax.float(), v_tile.float())
+        #cur_o = torch.matmul(cur_softmax.float(), v_tile.float())
+        cur_o = torch.matmul(cur_softmax.to(torch.float64), v_tile.to(torch.float64)).float()
         cur_attn_out = cur_attn_out * update_mul.unsqueeze(1) + cur_o
 
     return cur_attn_out / row_sum.unsqueeze(1), row_max, row_sum
