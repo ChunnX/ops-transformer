@@ -20,7 +20,7 @@
 #include "../../../tiling/quant_matmul_tiling_data.h"
 #include "../../../tiling/comm_tiling_data.h"
 #include "../../../core/aiv_comm/collective_comm_context.h"
-#include "../../../mc2_tiling_struct.h"
+#include "../../../../mc2_tiling_struct.h"
 
 struct allToAllMatmulTilingData {
     CommTilingData commTilingData;

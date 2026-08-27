@@ -44,7 +44,7 @@
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
 #include "../../matmul/quant_batch_matmul/all_to_all_qbmm_mx_kernel.h"
 #include "include/tensor_api/tensor.h"
-#include "../../../mc2_runtime_info.h"
+#include "../../../../mc2_runtime_info.h"
 
 namespace Apace {
 template <typename T>
