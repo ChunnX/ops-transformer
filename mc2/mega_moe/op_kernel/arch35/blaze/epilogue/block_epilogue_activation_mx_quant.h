@@ -588,12 +588,11 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
         const float invBeta = (activationBeta_ != 0.0f) ? (1.0f / activationBeta_) : 1.0f;
         if (actSubMode_ == static_cast<uint8_t>(ActSubMode::LINEAR)) {
             const float invAlpha = (activationAlpha_ != 0.0f) ? (1.0f / activationAlpha_) : 1.0f;
-            const ActivationImpl::SiTUParams situParams{clampLimit_, activationBeta_, invBeta, activationAlpha_,
-                                                        invAlpha};
-            ActivationImpl::RunSiTU<DataTypeIn, TopkWeightsPrefetch, true, IsInterleaved_>(ctx, situParams);
+            const Activation::SituParams situParams{clampLimit_, activationBeta_, invBeta, activationAlpha_, invAlpha};
+            Activation::RunSiTU<DataTypeIn, TopkWeightsPrefetch, true>(gatedArgs, situParams);
         } else {
-            const ActivationImpl::SiTUParams situParams{clampLimit_, activationBeta_, invBeta, 1.0f, 1.0f};
-            ActivationImpl::RunSiTU<DataTypeIn, TopkWeightsPrefetch, false, IsInterleaved_>(ctx, situParams);
+            const Activation::SituParams situParams{clampLimit_, activationBeta_, invBeta, 1.0f, 1.0f};
+            Activation::RunSiTU<DataTypeIn, TopkWeightsPrefetch, false>(gatedArgs, situParams);
         }
     } else if (activation == ActMode::SWIGLU_STEP) {
         const Activation::SwiGluParams swiGluParams{clampLimit_};
