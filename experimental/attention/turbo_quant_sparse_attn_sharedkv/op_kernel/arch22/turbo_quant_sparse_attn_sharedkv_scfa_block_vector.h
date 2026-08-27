@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file turbo_quant_sparse_attn_sharedkv_scfa_block_vector.h
@@ -27,7 +27,7 @@ using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
 
 template <typename SAST>
-class SASVectorBlock {
+class TurboQuantSparseAttnSharedkvScfaBlockVector {
 public:
     // 中间计算数据类型为float，高精度模式
     using T = float;
@@ -38,7 +38,7 @@ public:
     using MM1_OUT_T = float;
     using MM2_OUT_T = float;
 
-    __aicore__ inline SASVectorBlock(){};
+    __aicore__ inline TurboQuantSparseAttnSharedkvScfaBlockVector(){};
     __aicore__ inline void ProcessVec0L(const RunInfo &runInfo);
     __aicore__ inline void ProcessVec1L(const RunInfo &info);
     __aicore__ inline void ProcessVec2L(const RunInfo &info);
@@ -250,7 +250,7 @@ private:
 };
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::InitBuffers(TPipe *pipe)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::InitBuffers(TPipe *pipe)
 {
     pipe->InitBuffer(inputBuff1, ConstInfo::BUFFER_SIZE_BYTE_32K * 2); // 2:pingpong
     pipe->InitBuffer(inputBuff2, ConstInfo::BUFFER_SIZE_BYTE_16K * 2); // 2:pingpong
@@ -301,7 +301,7 @@ __aicore__ inline void SASVectorBlock<SAST>::InitBuffers(TPipe *pipe)
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::InitParams(
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::InitParams(
     const struct ConstInfo &constInfo, const TurboQuantSparseAttnSharedkvTilingData *__restrict tilingData)
 {
     this->constInfo = constInfo;
@@ -309,12 +309,10 @@ __aicore__ inline void SASVectorBlock<SAST>::InitParams(
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::InitVec0GlobalTensor(const GlobalTensor<KV_T> &kvMergeGm,
-                                                                  const GlobalTensor<KV_T> &oriKvGm,
-                                                                  const GlobalTensor<KV_T> &cmpKvGm,
-                                                                  const GlobalTensor<uint8_t> &cmpTqGm,
-                                                                  const GlobalTensor<int32_t> &oriBlockTableGm,
-                                                                  const GlobalTensor<int32_t> &cmpBlockTableGm)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::InitVec0GlobalTensor(
+    const GlobalTensor<KV_T> &kvMergeGm, const GlobalTensor<KV_T> &oriKvGm, const GlobalTensor<KV_T> &cmpKvGm,
+    const GlobalTensor<uint8_t> &cmpTqGm, const GlobalTensor<int32_t> &oriBlockTableGm,
+    const GlobalTensor<int32_t> &cmpBlockTableGm)
 {
     this->kvMergeGm_ = kvMergeGm;
     this->oriKvGm_ = oriKvGm;
@@ -325,7 +323,7 @@ __aicore__ inline void SASVectorBlock<SAST>::InitVec0GlobalTensor(const GlobalTe
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::InitVec1GlobalTensor(
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::InitVec1GlobalTensor(
     GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm, GlobalTensor<int32_t> actualSeqLengthsQGm,
     GlobalTensor<int32_t> actualSeqLengthsKVGm, GlobalTensor<int32_t> topKGm, GlobalTensor<SINKS_T> sinksGm,
     GlobalTensor<T> softmaxLseGm)
@@ -340,10 +338,9 @@ __aicore__ inline void SASVectorBlock<SAST>::InitVec1GlobalTensor(
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::InitVec2GlobalTensor(GlobalTensor<T> accumOutGm,
-                                                                  GlobalTensor<UPDATE_T> vec2ResGm,
-                                                                  GlobalTensor<MM2_OUT_T> mm2ResGm,
-                                                                  GlobalTensor<OUT_T> attentionOutGm)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::InitVec2GlobalTensor(
+    GlobalTensor<T> accumOutGm, GlobalTensor<UPDATE_T> vec2ResGm, GlobalTensor<MM2_OUT_T> mm2ResGm,
+    GlobalTensor<OUT_T> attentionOutGm)
 {
     this->accumOutGm = accumOutGm;
     this->vec2ResGm = vec2ResGm;
@@ -352,7 +349,7 @@ __aicore__ inline void SASVectorBlock<SAST>::InitVec2GlobalTensor(GlobalTensor<T
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::AllocEventID()
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::AllocEventID()
 {
     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG);
     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_PONG_FLAG);
@@ -363,7 +360,7 @@ __aicore__ inline void SASVectorBlock<SAST>::AllocEventID()
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::FreeEventID()
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::FreeEventID()
 {
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_PONG_FLAG);
@@ -374,7 +371,7 @@ __aicore__ inline void SASVectorBlock<SAST>::FreeEventID()
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::CopySinksIn()
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::CopySinksIn()
 {
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = 1U;
@@ -401,7 +398,8 @@ __aicore__ inline void SASVectorBlock<SAST>::CopySinksIn()
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::SliceAndContactSinksValue(uint32_t nIdx, uint32_t dealRowCount)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::SliceAndContactSinksValue(
+    uint32_t nIdx, uint32_t dealRowCount)
 {
     // WholeReduceMax接口中repeatTimes支持范围（0,255），因此需要分多次调用WholeReduceMax，每次repeatTime=128
     uint32_t repeatTimesOnce = 128;
@@ -420,7 +418,7 @@ __aicore__ inline void SASVectorBlock<SAST>::SliceAndContactSinksValue(uint32_t 
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::InitSoftmaxDefaultBuffer()
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::InitSoftmaxDefaultBuffer()
 {
     CopySinksIn();
     Duplicate(softmaxMaxDefaultUb, SOFTMAX_MIN_NUM, SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T));
@@ -428,9 +426,9 @@ __aicore__ inline void SASVectorBlock<SAST>::InitSoftmaxDefaultBuffer()
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::ElewiseCompute(const RunInfo &info, const MSplitInfo &mSplitInfo,
-                                                            uint32_t startRow, const LocalTensor<T> &mmResUb,
-                                                            uint32_t dealRowCount, uint32_t columnCount)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::ElewiseCompute(
+    const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow, const LocalTensor<T> &mmResUb,
+    uint32_t dealRowCount, uint32_t columnCount)
 {
     Muls(mmResUb, mmResUb, static_cast<T>(tilingData->baseParams.softmaxScale), dealRowCount * columnCount);
 
@@ -469,8 +467,10 @@ __aicore__ inline void SASVectorBlock<SAST>::ElewiseCompute(const RunInfo &info,
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::SetInfInBlk(const LocalTensor<T> &mmResUb, uint32_t dealRowCount,
-                                                         uint32_t columnCount, int64_t startId, int64_t endId)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::SetInfInBlk(const LocalTensor<T> &mmResUb,
+                                                                                      uint32_t dealRowCount,
+                                                                                      uint32_t columnCount,
+                                                                                      int64_t startId, int64_t endId)
 {
     if (startId > endId) {
         return;
@@ -491,7 +491,8 @@ __aicore__ inline void SASVectorBlock<SAST>::SetInfInBlk(const LocalTensor<T> &m
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::ProcessLse(const RunInfo &info, const MSplitInfo &mSplitInfo)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::ProcessLse(const RunInfo &info,
+                                                                                     const MSplitInfo &mSplitInfo)
 {
     if (mSplitInfo.vecDealM == 0) {
         return;
@@ -532,11 +533,9 @@ __aicore__ inline void SASVectorBlock<SAST>::ProcessLse(const RunInfo &info, con
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::SoftmaxFlashV2Compute(const RunInfo &info, const MSplitInfo &mSplitInfo,
-                                                                   LocalTensor<T> &mmResUb,
-                                                                   LocalTensor<uint8_t> &softmaxTmpUb,
-                                                                   uint32_t startRow, uint32_t dealRowCount,
-                                                                   uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::SoftmaxFlashV2Compute(
+    const RunInfo &info, const MSplitInfo &mSplitInfo, LocalTensor<T> &mmResUb, LocalTensor<uint8_t> &softmaxTmpUb,
+    uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     LocalTensor<T> inSumTensor;
     LocalTensor<T> inMaxTensor;
@@ -567,9 +566,9 @@ __aicore__ inline void SASVectorBlock<SAST>::SoftmaxFlashV2Compute(const RunInfo
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::DealBmm1ResBaseBlock(const RunInfo &info, const MSplitInfo &mSplitInfo,
-                                                                  uint32_t startRow, uint32_t dealRowCount,
-                                                                  uint32_t columnCount, uint32_t loopId)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::DealBmm1ResBaseBlock(
+    const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
+    uint32_t loopId)
 {
     uint32_t computeSize = dealRowCount * columnCount;
     uint64_t inOutGmOffset = (info.loop % constInfo.preLoadNum) * constInfo.mmResUbSize +
@@ -606,7 +605,8 @@ __aicore__ inline void SASVectorBlock<SAST>::DealBmm1ResBaseBlock(const RunInfo 
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::ProcessVec1SingleBuf(const RunInfo &info, const MSplitInfo &mSplitInfo)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::ProcessVec1SingleBuf(
+    const RunInfo &info, const MSplitInfo &mSplitInfo)
 {
     if (mSplitInfo.vecDealM == 0) {
         return;
@@ -636,10 +636,9 @@ __aicore__ inline void SASVectorBlock<SAST>::ProcessVec1SingleBuf(const RunInfo 
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::GetRealS2Idx(int64_t s2GmOffset, int64_t &realS2Idx,
-                                                          int64_t topkGmBaseOffset, const RunInfo &runInfo,
-                                                          const LocalTensor<int32_t> &topkCache, int64_t topkCacheStart,
-                                                          uint32_t topkCacheSize)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::GetRealS2Idx(
+    int64_t s2GmOffset, int64_t &realS2Idx, int64_t topkGmBaseOffset, const RunInfo &runInfo,
+    const LocalTensor<int32_t> &topkCache, int64_t topkCacheStart, uint32_t topkCacheSize)
 {
     int64_t cmpS2Offset = s2GmOffset;
     int64_t topkGmIdx = cmpS2Offset / constInfo.sparseBlockSize;
@@ -659,10 +658,9 @@ __aicore__ inline void SASVectorBlock<SAST>::GetRealS2Idx(int64_t s2GmOffset, in
 }
 
 template <typename SAST>
-__aicore__ inline int64_t SASVectorBlock<SAST>::GetKeyGmOffset(int64_t realS2Idx, const RunInfo &runInfo,
-                                                               int64_t s2IdLimit,
-                                                               const LocalTensor<int32_t> &blockTableCache,
-                                                               uint32_t blockTableCacheSize)
+__aicore__ inline int64_t TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::GetKeyGmOffset(
+    int64_t realS2Idx, const RunInfo &runInfo, int64_t s2IdLimit, const LocalTensor<int32_t> &blockTableCache,
+    uint32_t blockTableCacheSize)
 {
     if (realS2Idx < 0 || realS2Idx >= s2IdLimit) {
         return -1;
@@ -694,8 +692,9 @@ __aicore__ inline int64_t SASVectorBlock<SAST>::GetKeyGmOffset(int64_t realS2Idx
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::DequantTq4Rows(LocalTensor<uint8_t> slots, LocalTensor<KV_T> output,
-                                                            int64_t rowCount)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::DequantTq4Rows(LocalTensor<uint8_t> slots,
+                                                                                         LocalTensor<KV_T> output,
+                                                                                         int64_t rowCount)
 {
     LocalTensor<float> work = tmpBuff1.Get<float>();
     LocalTensor<half> signedCodes = tmpBuff1.Get<half>()[TQ4_SIGNED_OFFSET / sizeof(half)];
@@ -763,9 +762,9 @@ __aicore__ inline void SASVectorBlock<SAST>::DequantTq4Rows(LocalTensor<uint8_t>
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx,
-                                                            int64_t realS2Idx, int64_t keyBNBOffset, int64_t s2IdLimit,
-                                                            const RunInfo &runInfo)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::CopyInSingleKv(
+    int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx, int64_t keyBNBOffset,
+    int64_t s2IdLimit, const RunInfo &runInfo)
 {
     if (keyBNBOffset < 0) {
         return;
@@ -805,10 +804,9 @@ __aicore__ inline void SASVectorBlock<SAST>::CopyInSingleKv(int64_t &mte2Size, i
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::CopyInKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx,
-                                                      int64_t realS2Idx1, int64_t realS2Idx2, const RunInfo &runInfo,
-                                                      const LocalTensor<int32_t> &blockTableCache,
-                                                      uint32_t blockTableCacheSize)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::CopyInKv(
+    int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx1, int64_t realS2Idx2,
+    const RunInfo &runInfo, const LocalTensor<int32_t> &blockTableCache, uint32_t blockTableCacheSize)
 {
     int64_t s2IdLimit = runInfo.cmpS2IdLimit;
 
@@ -890,9 +888,8 @@ __aicore__ inline void SASVectorBlock<SAST>::CopyInKv(int64_t &mte2Size, int64_t
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::CopyOutMrgeResult(int64_t mte2Size, int64_t mte3Size,
-                                                               int64_t s2GmStartOffset, int64_t mergeMte3Idx,
-                                                               const RunInfo &runInfo)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::CopyOutMrgeResult(
+    int64_t mte2Size, int64_t mte3Size, int64_t s2GmStartOffset, int64_t mergeMte3Idx, const RunInfo &runInfo)
 {
     if (mte2Size <= mte3Size) {
         return;
@@ -923,7 +920,7 @@ __aicore__ inline void SASVectorBlock<SAST>::CopyOutMrgeResult(int64_t mte2Size,
 
 // b s1 k
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::ProcessVec0L(const RunInfo &runInfo)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::ProcessVec0L(const RunInfo &runInfo)
 {
     int64_t s2ProcessSize = runInfo.v0S2DealSize;
     int64_t s2Pair = CeilDiv(s2ProcessSize, 2 * constInfo.sparseBlockSize);
@@ -1014,7 +1011,7 @@ __aicore__ inline void SASVectorBlock<SAST>::ProcessVec0L(const RunInfo &runInfo
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::ProcessVec1L(const RunInfo &info)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::ProcessVec1L(const RunInfo &info)
 {
     uint32_t nBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
     uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
@@ -1045,13 +1042,15 @@ __aicore__ inline void SASVectorBlock<SAST>::ProcessVec1L(const RunInfo &info)
 }
 
 template <typename SAST>
-__aicore__ inline uint64_t SASVectorBlock<SAST>::CalcAccumOffset(uint32_t bN2Idx, uint32_t gS1Idx)
+__aicore__ inline uint64_t TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::CalcAccumOffset(uint32_t bN2Idx,
+                                                                                              uint32_t gS1Idx)
 {
     return 0;
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::ProcessVec2SingleBuf(const RunInfo &info, const MSplitInfo &mSplitInfo)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::ProcessVec2SingleBuf(
+    const RunInfo &info, const MSplitInfo &mSplitInfo)
 {
     if (mSplitInfo.vecDealM == 0) {
         return;
@@ -1061,7 +1060,7 @@ __aicore__ inline void SASVectorBlock<SAST>::ProcessVec2SingleBuf(const RunInfo 
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::ProcessVec2L(const RunInfo &info)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::ProcessVec2L(const RunInfo &info)
 {
     uint32_t nBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
     uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
@@ -1084,8 +1083,10 @@ __aicore__ inline void SASVectorBlock<SAST>::ProcessVec2L(const RunInfo &info)
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::ProcessVec2Inner(const RunInfo &info, const MSplitInfo &mSplitInfo,
-                                                              uint32_t mStartRow, uint32_t mDealSize)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::ProcessVec2Inner(const RunInfo &info,
+                                                                                           const MSplitInfo &mSplitInfo,
+                                                                                           uint32_t mStartRow,
+                                                                                           uint32_t mDealSize)
 {
     uint32_t mSplitSize = BASE_BLOCK_MAX_ELEMENT_NUM / constInfo.headDim;
     if (mSplitSize > mDealSize) {
@@ -1104,9 +1105,9 @@ __aicore__ inline void SASVectorBlock<SAST>::ProcessVec2Inner(const RunInfo &inf
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::Bmm2FDDataCopyOut(const RunInfo &info, LocalTensor<T> &bmm2ResUb,
-                                                               uint32_t wsMStart, uint32_t dealRowCount,
-                                                               uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::Bmm2FDDataCopyOut(
+    const RunInfo &info, LocalTensor<T> &bmm2ResUb, uint32_t wsMStart, uint32_t dealRowCount, uint32_t columnCount,
+    uint32_t actualColumnCount)
 {
     LocalTensor<T> tmp = outputBuff1.Get<T>();
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
@@ -1133,9 +1134,9 @@ __aicore__ inline void SASVectorBlock<SAST>::Bmm2FDDataCopyOut(const RunInfo &in
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::Bmm2DataCopyOutTrans(const RunInfo &info, LocalTensor<OUT_T> &attenOutUb,
-                                                                  uint32_t wsMStart, uint32_t dealRowCount,
-                                                                  uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::Bmm2DataCopyOutTrans(
+    const RunInfo &info, LocalTensor<OUT_T> &attenOutUb, uint32_t wsMStart, uint32_t dealRowCount, uint32_t columnCount,
+    uint32_t actualColumnCount)
 {
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = dealRowCount;
@@ -1147,9 +1148,9 @@ __aicore__ inline void SASVectorBlock<SAST>::Bmm2DataCopyOutTrans(const RunInfo 
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::Bmm2CastAndCopyOut(const RunInfo &info, LocalTensor<T> &bmm2ResUb,
-                                                                uint32_t wsMStart, uint32_t dealRowCount,
-                                                                uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::Bmm2CastAndCopyOut(
+    const RunInfo &info, LocalTensor<T> &bmm2ResUb, uint32_t wsMStart, uint32_t dealRowCount, uint32_t columnCount,
+    uint32_t actualColumnCount)
 {
     LocalTensor<OUT_T> tmpBmm2ResCastTensor = outputBuff1.Get<OUT_T>();
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
@@ -1166,9 +1167,9 @@ __aicore__ inline void SASVectorBlock<SAST>::Bmm2CastAndCopyOut(const RunInfo &i
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::Bmm2ResCopyOut(const RunInfo &info, LocalTensor<T> &bmm2ResUb,
-                                                            uint32_t wsMStart, uint32_t dealRowCount,
-                                                            uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::Bmm2ResCopyOut(
+    const RunInfo &info, LocalTensor<T> &bmm2ResUb, uint32_t wsMStart, uint32_t dealRowCount, uint32_t columnCount,
+    uint32_t actualColumnCount)
 {
     if constexpr (FLASH_DECODE) {
         if (info.tndIsS2SplitCore) {
@@ -1182,9 +1183,9 @@ __aicore__ inline void SASVectorBlock<SAST>::Bmm2ResCopyOut(const RunInfo &info,
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::DealBmm2ResBaseBlock(const RunInfo &info, const MSplitInfo &mSplitInfo,
-                                                                  uint32_t startRow, uint32_t dealRowCount,
-                                                                  uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::DealBmm2ResBaseBlock(
+    const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
+    uint32_t actualColumnCount)
 {
     uint32_t vec2ComputeSize = dealRowCount * columnCount;
     uint32_t mStart = mSplitInfo.nBufferStartM + mSplitInfo.vecStartM + startRow;
@@ -1260,9 +1261,9 @@ __aicore__ inline void SASVectorBlock<SAST>::DealBmm2ResBaseBlock(const RunInfo 
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::RowDivs(LocalTensor<float> dstUb, LocalTensor<float> src0Ub,
-                                                     LocalTensor<float> src1Ub, uint32_t dealRowCount,
-                                                     uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::RowDivs(
+    LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub, uint32_t dealRowCount,
+    uint32_t columnCount, uint32_t actualColumnCount)
 {
     // divs by row, 每行的元素除以相同的元素
     // dstUb[i, (j * 8) : (j * 8 + 7)] = src0Ub[i, (j * 8) : (j * 8 + 7)] / src1Ub[i, 0 : 7]
@@ -1307,9 +1308,9 @@ __aicore__ inline void SASVectorBlock<SAST>::RowDivs(LocalTensor<float> dstUb, L
 }
 
 template <typename SAST>
-__aicore__ inline void SASVectorBlock<SAST>::RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, LocalTensor<T> src1Ub,
-                                                     uint32_t dealRowCount, uint32_t columnCount,
-                                                     uint32_t actualColumnCount)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::RowMuls(
+    LocalTensor<T> dstUb, LocalTensor<T> src0Ub, LocalTensor<T> src1Ub, uint32_t dealRowCount, uint32_t columnCount,
+    uint32_t actualColumnCount)
 {
     // muls by row, 每行的元素乘以相同的元素
     // dstUb[i, (j * 8) : (j * 8 + 7)] = src0Ub[i, (j * 8) : (j * 8 + 7)] * src1Ub[i, 0 : 7]

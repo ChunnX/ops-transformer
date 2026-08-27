@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file turbo_quant_sparse_attn_sharedkv.cpp
@@ -49,15 +49,15 @@ __global__ __aicore__ void turbo_quant_sparse_attn_sharedkv(
     if constexpr (ORIG_DTYPE_Q == DT_FLOAT16 && ORIG_DTYPE_ORI_KV == DT_FLOAT16 && ORIG_DTYPE_CMP_KV == DT_UINT8 &&
                   ORIG_DTYPE_ATTN_OUT == DT_FLOAT16) {
         if constexpr (TEMPLATE_MODE == SCFA_TEMPLATE) {
-            SAS_OP_IMPL(TurboQuantSparseAttnSharedkvScfa, TurboQuantSparseAttnSharedkvTilingData, half, half, half,
-                        FLASH_DECODE, static_cast<SAS_LAYOUT>(LAYOUT_T), static_cast<SAS_LAYOUT>(KV_LAYOUT_T),
+            SAS_OP_IMPL(TurboQuantSparseAttnSharedkvScfaKernel, TurboQuantSparseAttnSharedkvTilingData, half, half,
+                        half, FLASH_DECODE, static_cast<SAS_LAYOUT>(LAYOUT_T), static_cast<SAS_LAYOUT>(KV_LAYOUT_T),
                         TEMPLATE_MODE);
         }
     }
     if constexpr (ORIG_DTYPE_Q == DT_BF16 && ORIG_DTYPE_ORI_KV == DT_BF16 && ORIG_DTYPE_CMP_KV == DT_UINT8 &&
                   ORIG_DTYPE_ATTN_OUT == DT_BF16) {
         if constexpr (TEMPLATE_MODE == SCFA_TEMPLATE) {
-            SAS_OP_IMPL(TurboQuantSparseAttnSharedkvScfa, TurboQuantSparseAttnSharedkvTilingData, bfloat16_t,
+            SAS_OP_IMPL(TurboQuantSparseAttnSharedkvScfaKernel, TurboQuantSparseAttnSharedkvTilingData, bfloat16_t,
                         bfloat16_t, bfloat16_t, FLASH_DECODE, static_cast<SAS_LAYOUT>(LAYOUT_T),
                         static_cast<SAS_LAYOUT>(KV_LAYOUT_T), TEMPLATE_MODE);
         }

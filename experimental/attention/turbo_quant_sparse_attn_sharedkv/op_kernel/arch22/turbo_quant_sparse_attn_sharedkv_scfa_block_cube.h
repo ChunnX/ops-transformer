@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file turbo_quant_sparse_attn_sharedkv_scfa_block_cube.h
@@ -24,7 +24,7 @@
 
 namespace SASKernel {
 template <typename SAST>
-class SASCubeBlock {
+class TurboQuantSparseAttnSharedkvScfaBlockCube {
 public:
     // 中间计算数据类型为float, 高精度模式
     using T = float;
@@ -33,7 +33,7 @@ public:
     using OUT_T = typename SAST::outputType;
     using MM_OUT_T = T;
 
-    __aicore__ inline SASCubeBlock(){};
+    __aicore__ inline TurboQuantSparseAttnSharedkvScfaBlockCube(){};
     __aicore__ inline void InitParams(const ConstInfo &constInfo);
     __aicore__ inline void InitMm1GlobalTensor(GlobalTensor<Q_T> queryGm, GlobalTensor<KV_T> oriKvGm,
                                                GlobalTensor<KV_T> cmpKV, GlobalTensor<MM_OUT_T> mm1ResGm);
@@ -128,10 +128,7 @@ private:
     LocalTensor<MM_OUT_T> cL0TensorPingPong;
 
     // L0AB m <> mte1 EventID
-    __aicore__ inline uint32_t Mte1MmABEventId(uint32_t idx)
-    {
-        return (L0AB_EVENT0 + idx);
-    }
+    __aicore__ inline uint32_t Mte1MmABEventId(uint32_t idx) { return (L0AB_EVENT0 + idx); }
 
     __aicore__ inline uint32_t GetQPL1RealIdx(uint32_t mIdx, uint32_t k1Idx)
     {
@@ -153,15 +150,14 @@ private:
 };
 
 template <typename SAST>
-__aicore__ inline void SASCubeBlock<SAST>::InitParams(const ConstInfo &constInfo)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockCube<SAST>::InitParams(const ConstInfo &constInfo)
 {
     this->constInfo = constInfo;
 }
 
 template <typename SAST>
-__aicore__ inline void SASCubeBlock<SAST>::InitMm1GlobalTensor(GlobalTensor<Q_T> queryGm, GlobalTensor<KV_T> oriKvGm,
-                                                               GlobalTensor<KV_T> cmpKvGm,
-                                                               GlobalTensor<MM_OUT_T> mm1ResGm)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockCube<SAST>::InitMm1GlobalTensor(
+    GlobalTensor<Q_T> queryGm, GlobalTensor<KV_T> oriKvGm, GlobalTensor<KV_T> cmpKvGm, GlobalTensor<MM_OUT_T> mm1ResGm)
 {
     // mm1
     this->queryGm = queryGm;
@@ -171,9 +167,8 @@ __aicore__ inline void SASCubeBlock<SAST>::InitMm1GlobalTensor(GlobalTensor<Q_T>
 }
 
 template <typename SAST>
-__aicore__ inline void SASCubeBlock<SAST>::InitMm2GlobalTensor(GlobalTensor<KV_T> vec1ResGm,
-                                                               GlobalTensor<MM_OUT_T> mm2ResGm,
-                                                               GlobalTensor<OUT_T> attentionOutGm)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockCube<SAST>::InitMm2GlobalTensor(
+    GlobalTensor<KV_T> vec1ResGm, GlobalTensor<MM_OUT_T> mm2ResGm, GlobalTensor<OUT_T> attentionOutGm)
 {
     // mm2
     this->vec1ResGm = vec1ResGm;
@@ -182,10 +177,9 @@ __aicore__ inline void SASCubeBlock<SAST>::InitMm2GlobalTensor(GlobalTensor<KV_T
 }
 
 template <typename SAST>
-__aicore__ inline void SASCubeBlock<SAST>::InitPageAttentionInfo(GlobalTensor<KV_T> oriKvGm,
-                                                                 const GlobalTensor<KV_T> &kvMergeGm,
-                                                                 GlobalTensor<int32_t> oriBlockTableGm,
-                                                                 GlobalTensor<int32_t> cmpBlockTableGm)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockCube<SAST>::InitPageAttentionInfo(
+    GlobalTensor<KV_T> oriKvGm, const GlobalTensor<KV_T> &kvMergeGm, GlobalTensor<int32_t> oriBlockTableGm,
+    GlobalTensor<int32_t> cmpBlockTableGm)
 {
     this->oriKvGm = oriKvGm;
     this->kvMergeGm_ = kvMergeGm;
@@ -194,7 +188,7 @@ __aicore__ inline void SASCubeBlock<SAST>::InitPageAttentionInfo(GlobalTensor<KV
 }
 
 template <typename SAST>
-__aicore__ inline void SASCubeBlock<SAST>::InitBuffers(TPipe *pipe)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockCube<SAST>::InitBuffers(TPipe *pipe)
 {
     pipe->InitBuffer(bufQPL1, L1_BLOCK_SIZE * 4);
     l1QPTensor = bufQPL1.Get<Q_T>();
@@ -213,7 +207,7 @@ __aicore__ inline void SASCubeBlock<SAST>::InitBuffers(TPipe *pipe)
 }
 
 template <typename SAST>
-__aicore__ inline void SASCubeBlock<SAST>::AllocEventID()
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockCube<SAST>::AllocEventID()
 {
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT0);
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT1);
@@ -227,7 +221,7 @@ __aicore__ inline void SASCubeBlock<SAST>::AllocEventID()
 }
 
 template <typename SAST>
-__aicore__ inline void SASCubeBlock<SAST>::FreeEventID()
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockCube<SAST>::FreeEventID()
 {
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT0);
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT1);
@@ -241,8 +235,10 @@ __aicore__ inline void SASCubeBlock<SAST>::FreeEventID()
 }
 
 template <typename SAST>
-__aicore__ inline void SASCubeBlock<SAST>::CopyGmToL1(LocalTensor<KV_T> &l1Tensor, GlobalTensor<KV_T> &gmSrcTensor,
-                                                      uint32_t srcN, uint32_t srcD, uint32_t srcDstride)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockCube<SAST>::CopyGmToL1(LocalTensor<KV_T> &l1Tensor,
+                                                                                   GlobalTensor<KV_T> &gmSrcTensor,
+                                                                                   uint32_t srcN, uint32_t srcD,
+                                                                                   uint32_t srcDstride)
 {
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
@@ -257,18 +253,19 @@ __aicore__ inline void SASCubeBlock<SAST>::CopyGmToL1(LocalTensor<KV_T> &l1Tenso
 }
 
 template <typename SAST>
-__aicore__ inline void SASCubeBlock<SAST>::CopyInMm1AToL1(LocalTensor<KV_T> &l1Tensor, const RunInfo &info,
-                                                          uint32_t mSeqIdx, uint32_t mSizeAct, uint32_t headSize,
-                                                          uint32_t headOffset)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockCube<SAST>::CopyInMm1AToL1(
+    LocalTensor<KV_T> &l1Tensor, const RunInfo &info, uint32_t mSeqIdx, uint32_t mSizeAct, uint32_t headSize,
+    uint32_t headOffset)
 {
     auto srcGm = queryGm[info.tensorAOffset + mSeqIdx * constInfo.headDim + headOffset];
     CopyGmToL1(l1Tensor, srcGm, mSizeAct, headSize, constInfo.headDim);
 }
 
 template <typename SAST>
-__aicore__ inline void SASCubeBlock<SAST>::LoadDataMm1A(LocalTensor<KV_T> &aL0Tensor, LocalTensor<KV_T> &aL1Tensor,
-                                                        uint32_t idx, uint32_t kSplitSize, uint32_t mSize,
-                                                        uint32_t kSize)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockCube<SAST>::LoadDataMm1A(LocalTensor<KV_T> &aL0Tensor,
+                                                                                     LocalTensor<KV_T> &aL1Tensor,
+                                                                                     uint32_t idx, uint32_t kSplitSize,
+                                                                                     uint32_t mSize, uint32_t kSize)
 {
     LocalTensor<KV_T> srcTensor = aL1Tensor[mSize * kSplitSize * idx];
     LoadData3DParamsV2<KV_T> loadData3DParams;
@@ -300,9 +297,10 @@ __aicore__ inline void SASCubeBlock<SAST>::LoadDataMm1A(LocalTensor<KV_T> &aL0Te
 }
 
 template <typename SAST>
-__aicore__ inline void SASCubeBlock<SAST>::LoadDataMm1B(LocalTensor<KV_T> &l0Tensor, LocalTensor<KV_T> &l1Tensor,
-                                                        uint32_t idx, uint32_t kSplitSize, uint32_t kSize,
-                                                        uint32_t nSize)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockCube<SAST>::LoadDataMm1B(LocalTensor<KV_T> &l0Tensor,
+                                                                                     LocalTensor<KV_T> &l1Tensor,
+                                                                                     uint32_t idx, uint32_t kSplitSize,
+                                                                                     uint32_t kSize, uint32_t nSize)
 {
     // N 方向全载
     LocalTensor<KV_T> srcTensor = l1Tensor[nSize * kSplitSize * idx];
@@ -317,9 +315,11 @@ __aicore__ inline void SASCubeBlock<SAST>::LoadDataMm1B(LocalTensor<KV_T> &l0Ten
 }
 
 template <typename SAST>
-__aicore__ inline void SASCubeBlock<SAST>::CopyInMm2AToL1(LocalTensor<KV_T> &aL1Tensor, const RunInfo &info,
-                                                          uint32_t mSeqIdx, uint32_t subMSizeAct, uint32_t nSize,
-                                                          uint32_t nOffset)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockCube<SAST>::CopyInMm2AToL1(LocalTensor<KV_T> &aL1Tensor,
+                                                                                       const RunInfo &info,
+                                                                                       uint32_t mSeqIdx,
+                                                                                       uint32_t subMSizeAct,
+                                                                                       uint32_t nSize, uint32_t nOffset)
 {
     auto srcGm = vec1ResGm[(info.loop % constInfo.preLoadNum) * constInfo.mmResUbSize +
                            mSeqIdx * info.actualSingleProcessSInnerSizeAlign + nOffset];
@@ -327,7 +327,8 @@ __aicore__ inline void SASCubeBlock<SAST>::CopyInMm2AToL1(LocalTensor<KV_T> &aL1
 }
 
 template <typename SAST>
-__aicore__ inline void SASCubeBlock<SAST>::ComputeMm1(const RunInfo &info, const MSplitInfo mSplitInfo)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockCube<SAST>::ComputeMm1(const RunInfo &info,
+                                                                                   const MSplitInfo mSplitInfo)
 {
     uint32_t mSize = mSplitInfo.nBufferDealM;
     uint32_t mL1Size = M_SPLIT_SIZE;
@@ -571,7 +572,8 @@ __aicore__ inline void SASCubeBlock<SAST>::ComputeMm1(const RunInfo &info, const
 }
 
 template <typename SAST>
-__aicore__ inline void SASCubeBlock<SAST>::ComputeMm2(const RunInfo &info, const MSplitInfo mSplitInfo)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockCube<SAST>::ComputeMm2(const RunInfo &info,
+                                                                                   const MSplitInfo mSplitInfo)
 {
     uint32_t mSize = mSplitInfo.nBufferDealM;
     uint32_t mSizeAlign = (mSize + 16 - 1) / 16;

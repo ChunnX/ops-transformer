@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file turbo_quant_sparse_attn_sharedkv_scfa_kernel.h
@@ -70,7 +70,7 @@ struct TempLoopInfo {
 };
 
 template <typename SAST>
-class TurboQuantSparseAttnSharedkvScfa {
+class TurboQuantSparseAttnSharedkvScfaKernel {
 public:
     // 中间计算数据类型为float，高精度模式
     using T = float;
@@ -82,7 +82,7 @@ public:
     using MM1_OUT_T = T;
     using MM2_OUT_T = T;
 
-    __aicore__ inline TurboQuantSparseAttnSharedkvScfa(){};
+    __aicore__ inline TurboQuantSparseAttnSharedkvScfaKernel(){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV,
                                 __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable,
                                 __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensKV,
@@ -131,8 +131,8 @@ private:
     ConstInfo constInfo{};
     TempLoopInfo tempLoopInfo{};
 
-    SASCubeBlock<SAST> cubeBlock;
-    SASVectorBlock<SAST> vectorBlock;
+    TurboQuantSparseAttnSharedkvScfaBlockCube<SAST> cubeBlock;
+    TurboQuantSparseAttnSharedkvScfaBlockVector<SAST> vectorBlock;
 
     GlobalTensor<Q_T> queryGm;
     GlobalTensor<KV_T> oriKvGm;
@@ -189,7 +189,7 @@ private:
 };
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::InitTilingData()
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::InitTilingData()
 {
     // singleCoreParams
     // singleCoreTensorSize
@@ -238,7 +238,7 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::InitTilingData()
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::InitBuffers()
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::InitBuffers()
 {
     if ASCEND_IS_AIV {
         vectorBlock.InitBuffers(pipe);
@@ -248,8 +248,8 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::InitBuffers()
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ,
-                                                                                __gm__ uint8_t *actualSeqLengthsKV)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::InitActualSeqLen(
+    __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsKV)
 {
     if (constInfo.actualLenDimsKV != 0) {
         actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengthsKV, constInfo.actualLenDimsKV);
@@ -260,9 +260,8 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::InitActualSeqLen(
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ,
-                                                                                __gm__ uint8_t *actualSeqLengthsKV,
-                                                                                __gm__ uint8_t *actualSeqLengthsCmpKV)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::InitActualSeqLen(
+    __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsKV, __gm__ uint8_t *actualSeqLengthsCmpKV)
 {
     if (constInfo.actualLenDimsKV != 0) {
         actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengthsKV, constInfo.actualLenDimsKV);
@@ -274,8 +273,8 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::InitActualSeqLen(
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::InitAllZeroOutput(uint32_t bIdx, uint32_t s1Idx,
-                                                                                 uint32_t n2Idx)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::InitAllZeroOutput(uint32_t bIdx, uint32_t s1Idx,
+                                                                                       uint32_t n2Idx)
 {
     if (constInfo.outputLayout == SAS_LAYOUT::TND) {
         if (tempLoopInfo.actS1Size == 0) {
@@ -307,7 +306,7 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::InitAllZeroOutput
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::InitOutputSingleCore()
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::InitOutputSingleCore()
 {
     uint32_t coreNum = GetBlockNum();
     if (coreNum != 0) {
@@ -323,7 +322,7 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::InitOutputSingleC
 }
 
 template <typename SAST>
-__aicore__ inline int32_t TurboQuantSparseAttnSharedkvScfa<SAST>::GetActualSeqLenQ(uint32_t bIdx)
+__aicore__ inline int32_t TurboQuantSparseAttnSharedkvScfaKernel<SAST>::GetActualSeqLenQ(uint32_t bIdx)
 {
     if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
         int32_t actualSeqQPrefixSum = actualSeqLengthsQGm.GetValue(bIdx);
@@ -341,7 +340,7 @@ __aicore__ inline int32_t TurboQuantSparseAttnSharedkvScfa<SAST>::GetActualSeqLe
 }
 
 template <typename SAST>
-__aicore__ inline int32_t TurboQuantSparseAttnSharedkvScfa<SAST>::GetActualSeqLenKV(uint32_t bIdx)
+__aicore__ inline int32_t TurboQuantSparseAttnSharedkvScfaKernel<SAST>::GetActualSeqLenKV(uint32_t bIdx)
 {
     if constexpr (KV_LAYOUT_T == SAS_LAYOUT::PA_ND) {
         tempLoopInfo.actualSeqKVPrefixSum = static_cast<uint64_t>(bIdx * constInfo.kvSeqSize);
@@ -361,7 +360,7 @@ __aicore__ inline int32_t TurboQuantSparseAttnSharedkvScfa<SAST>::GetActualSeqLe
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::GetSparseActualSeqLen()
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::GetSparseActualSeqLen()
 {
     // 行无效通过ori部分判断, ori部分如果有行无效那么ori和cmp都有
     if (static_cast<int32_t>(tempLoopInfo.s1EndIdx) < -(tempLoopInfo.actOriS2Size - tempLoopInfo.actS1Size)) {
@@ -376,7 +375,7 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::GetSparseActualSe
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::UpdateInnerLoopCond()
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::UpdateInnerLoopCond()
 {
     if ((tempLoopInfo.actCmpS2Size == 0 && tempLoopInfo.actOriS2Size == 0) || (tempLoopInfo.actS1Size == 0)) {
         tempLoopInfo.curActSeqLenIsZero = true;
@@ -389,7 +388,7 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::UpdateInnerLoopCo
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::Init(
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::Init(
     __gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *cmpSparseIndices,
     __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ,
     __gm__ uint8_t *cuSeqlensKV, __gm__ uint8_t *cuSeqlensCmpKV, __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKV,
@@ -500,7 +499,7 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::Init(
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::InitCalcParamsEach()
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::InitCalcParamsEach()
 {
     if (aiCoreIdx != 0) {
         constInfo.bN2Start = metadataGm.GetValue(GetAttrAbsIndex(aiCoreIdx, FA_BN2_START_INDEX, false));
@@ -513,9 +512,9 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::InitCalcParamsEac
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::CalcParams(uint32_t loop, uint32_t cmpLoop,
-                                                                          uint64_t s2Start, uint32_t s2LoopIdx,
-                                                                          RunInfo &info)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::CalcParams(uint32_t loop, uint32_t cmpLoop,
+                                                                                uint64_t s2Start, uint32_t s2LoopIdx,
+                                                                                RunInfo &info)
 {
     info.isValid = s2LoopIdx < tempLoopInfo.s2LoopTimes;
     info.loop = loop;
@@ -602,7 +601,7 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::CalcParams(uint32
     }
 
     info.actualSingleProcessSInnerSizeAlign =
-        SASAlign(info.actualSingleProcessSInnerSize, SASVectorBlock<SAST>::BYTE_BLOCK);
+        SASAlign(info.actualSingleProcessSInnerSize, TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::BYTE_BLOCK);
     if (info.isOriOnly) {
         info.v0S2Start = 0;
         info.v0S2DealSize = 0;
@@ -616,7 +615,7 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::CalcParams(uint32
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::ComputeMm1(const RunInfo &info)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::ComputeMm1(const RunInfo &info)
 {
     uint32_t nBufferLoopTimes = CeilDiv(info.actMBaseSize, constInfo.nBufferMBaseSize);
     uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
@@ -630,7 +629,7 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::ComputeMm1(const 
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::ComputeMm2(const RunInfo &info)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::ComputeMm2(const RunInfo &info)
 {
     uint32_t nBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
     uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
@@ -645,7 +644,7 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::ComputeMm2(const 
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::Process()
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::Process()
 {
     uint32_t hasLoad = metadataGm.GetValue(GetAttrAbsIndex(aiCoreIdx, FA_CORE_ENABLE_INDEX, false));
     if (hasLoad == 0) {
@@ -666,15 +665,15 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::Process()
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::GetBN2Idx(uint32_t bN2Idx, uint32_t &bIdx,
-                                                                         uint32_t &n2Idx)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::GetBN2Idx(uint32_t bN2Idx, uint32_t &bIdx,
+                                                                               uint32_t &n2Idx)
 {
     bIdx = bN2Idx / kvHeadNum;
     n2Idx = bN2Idx % kvHeadNum;
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::ProcessBalance()
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::ProcessBalance()
 {
     RunInfo extraInfo[SAS_PRELOAD_TASK_CACHE_SIZE];
     uint32_t gloop = 0;
@@ -788,7 +787,7 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::ProcessBalance()
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseAttnSharedkvScfa<SAST>::PreloadPipeline(
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::PreloadPipeline(
     uint32_t loop, uint32_t cmpLoop, uint64_t s2Start, uint64_t s2LoopIdx,
     RunInfo extraInfo[SAS_PRELOAD_TASK_CACHE_SIZE])
 {

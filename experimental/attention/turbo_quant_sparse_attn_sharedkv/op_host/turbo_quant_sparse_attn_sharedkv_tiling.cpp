@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file turbo_quant_sparse_attn_sharedkv_tiling.cpp
@@ -157,10 +157,7 @@ ge::graphStatus TQSASInfoParser::CheckRequiredInOutExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TQSASInfoParser::CheckRequiredAttrExistence() const
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus TQSASInfoParser::CheckRequiredAttrExistence() const { return ge::GRAPH_SUCCESS; }
 
 ge::graphStatus TQSASInfoParser::CheckRequiredParaExistence() const
 {
@@ -1039,15 +1036,9 @@ ge::graphStatus TQSASTilingCheck::CheckSingleParaCmpKv() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TQSASTilingCheck::CheckSingleParaNumHeads() const
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus TQSASTilingCheck::CheckSingleParaNumHeads() const { return ge::GRAPH_SUCCESS; }
 
-ge::graphStatus TQSASTilingCheck::CheckSingleParaKvHeadNums() const
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus TQSASTilingCheck::CheckSingleParaKvHeadNums() const { return ge::GRAPH_SUCCESS; }
 
 ge::graphStatus TQSASTilingCheck::CheckSingleParaCmpSparseIndices() const
 {
@@ -1168,25 +1159,13 @@ ge::graphStatus TQSASTilingCheck::CheckSingleParaCmpRatio() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TQSASTilingCheck::CheckSingleParaOriMaskMode() const
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus TQSASTilingCheck::CheckSingleParaOriMaskMode() const { return ge::GRAPH_SUCCESS; }
 
-ge::graphStatus TQSASTilingCheck::CheckSingleParaCmpMaskMode() const
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus TQSASTilingCheck::CheckSingleParaCmpMaskMode() const { return ge::GRAPH_SUCCESS; }
 
-ge::graphStatus TQSASTilingCheck::CheckSingleParaOriKvStride0() const
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus TQSASTilingCheck::CheckSingleParaOriKvStride0() const { return ge::GRAPH_SUCCESS; }
 
-ge::graphStatus TQSASTilingCheck::CheckSingleParaCmpKvStride0() const
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus TQSASTilingCheck::CheckSingleParaCmpKvStride0() const { return ge::GRAPH_SUCCESS; }
 
 ge::graphStatus TQSASTilingCheck::CheckSingleParaOriWinLeft() const
 {
@@ -1195,10 +1174,7 @@ ge::graphStatus TQSASTilingCheck::CheckSingleParaOriWinLeft() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TQSASTilingCheck::CheckSingleParaOriWinRight() const
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus TQSASTilingCheck::CheckSingleParaOriWinRight() const { return ge::GRAPH_SUCCESS; }
 
 ge::graphStatus TQSASTilingCheck::CheckSinglePara() const
 {
@@ -1364,10 +1340,7 @@ ge::graphStatus TQSASTilingCheck::CheckFeatureDtype() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TQSASTilingCheck::CheckFeaturePa() const
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus TQSASTilingCheck::CheckFeaturePa() const { return ge::GRAPH_SUCCESS; }
 
 ge::graphStatus TQSASTilingCheck::CheckFeature() const
 {
@@ -1440,14 +1413,8 @@ ge::graphStatus TQSASTilingCheck::CheckActualSeqLensQ() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TQSASTilingCheck::CheckActualSeqLens() const
-{
-    return ge::GRAPH_SUCCESS;
-}
-ge::graphStatus TQSASTilingCheck::CheckBlockTable() const
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus TQSASTilingCheck::CheckActualSeqLens() const { return ge::GRAPH_SUCCESS; }
+ge::graphStatus TQSASTilingCheck::CheckBlockTable() const { return ge::GRAPH_SUCCESS; }
 
 ge::graphStatus TQSASTilingCheck::CheckMultiParaConsistency()
 {

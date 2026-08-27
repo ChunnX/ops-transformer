@@ -24,6 +24,9 @@ class TurboQuantSparseAttnSharedkvOpBuilder(OpBuilder):
     def sources(self):
         return ["csrc/attention/turbo_quant_sparse_attn_sharedkv.cpp"]
 
+    def ensure_initialized(self):
+        self._ensure_initialized()
+
     def schema(self):
         return (
             "turbo_quant_sparse_attn_sharedkv(Tensor q, *, "
@@ -69,8 +72,8 @@ class TurboQuantSparseAttnSharedkvOpBuilder(OpBuilder):
             return_softmax_lse=False,
             kv_quant_mode=3,
         ):
-            for size in q.shape:
-                torch._check(size > 0, lambda: "all query dimensions must be positive")
+            if any(size <= 0 for size in q.shape):
+                raise ValueError("all query dimensions must be positive")
 
             attn_out = torch.empty(q.shape, dtype=q.dtype, device="meta")
             lse_shape = tuple(q.shape[:-1]) + (1,) if return_softmax_lse else (0,)
@@ -79,7 +82,7 @@ class TurboQuantSparseAttnSharedkvOpBuilder(OpBuilder):
 
 
 turbo_quant_sparse_attn_sharedkv_op_builder = TurboQuantSparseAttnSharedkvOpBuilder()
-turbo_quant_sparse_attn_sharedkv_op_builder._ensure_initialized()
+turbo_quant_sparse_attn_sharedkv_op_builder.ensure_initialized()
 
 
 @impl(get_as_library(), turbo_quant_sparse_attn_sharedkv_op_builder.name, "PrivateUse1")
