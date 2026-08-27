@@ -44,15 +44,14 @@ __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
     using LayoutBias = AscendC::Te::NDExtLayoutPtn;
 
     using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t>;
-    using BaseDispatchPolicy = Blaze::Gemm::MatmulWithWeightQuantMx;
-    using BaseBlockMmad = Blaze::Gemm::Block::BlockMmad<
-        BaseDispatchPolicy,
+    using DispatchPolicy = Blaze::Gemm::MatmulWithWeightQuantMx<Blaze::Gemm::KernelGroupedMmadWithWeightPrologue>;
+    using BlockMmad = Blaze::Gemm::Block::BlockMmad<
+        DispatchPolicy,
         AscendC::Std::tuple<AType, ScaleType>, AscendC::Std::tuple<LayoutA, LayoutScaleA>,
         AscendC::Std::tuple<BType, ScaleType>, AscendC::Std::tuple<LayoutB, LayoutScaleB>,
         CType, LayoutC, BiasTypeT, LayoutBias>;
-    using BlockMmad = Blaze::Gemm::Kernel::GroupedWeightPrologueMmadAdapter<BaseBlockMmad>;
     using Kernel = Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, BlockMmad, void, void>;
-    using GMMTiling = typename Kernel::GMMTiling;
+    using GmmTiling = typename Kernel::GmmTiling;
 
     const int64_t n = static_cast<int64_t>(gmmBaseParams->nSize);
     const int64_t k = static_cast<int64_t>(gmmBaseParams->kSize);
@@ -60,11 +59,17 @@ __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
     const uint64_t baseN = static_cast<uint64_t>(mmTilingData->baseN);
     const uint64_t baseK = static_cast<uint64_t>(mmTilingData->baseK);
     const uint64_t tilingKL1 = static_cast<uint64_t>(mmTilingData->stepKb * mmTilingData->baseK);
-    // Keep one conservative KL1 configuration for the whole grouped stream.
-    // N=256 legacy blocks also use KL1=256; fixing it here lets the grouped
-    // kernel reuse the mainline block without per-block mutation.
-    const uint64_t kL1 = tilingKL1 == 0U ? 256U : (tilingKL1 < 256U ? tilingKL1 : 256U);
+    // The GMM-specific kernel recomputes the legacy KL1 policy from the actual
+    // groupList M split and N resplit blocks. Keep the launcher shape on the
+    // conservative regular path; the kernel expands it to 512 only when the
+    // complete runtime workload satisfies the old small-M/N condition.
+    const uint64_t kAL1 = tilingKL1;
+    // Host tiling keeps baseK at 64 for compatibility. The legacy basic block
+    // used 128 for regular blocks and 256 for small M/N blocks; do not expose
+    // that implementation detail through the shared tiling data.
     const uint64_t l0K = (baseM <= 128U && baseN <= 128U) ? 256U : (baseK < 128U ? 128U : baseK);
+    // The fourth l1TileShape field controls the MX scale-K reuse window.
+    // Keep it aligned with the legacy GMM MX controller; it is not tiling data.
     static constexpr uint64_t kScaleKL1 = 4096U;
 
     GM_ADDR aDataAddr = reinterpret_cast<GM_ADDR>(GetTensorAddr<AType>(0, x));
@@ -87,7 +92,7 @@ __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
     params.mmadParams.l1TileShape = AscendC::Te::MakeShape(
         static_cast<int64_t>(mmTilingData->baseM),
         static_cast<int64_t>(mmTilingData->baseN),
-        static_cast<int64_t>(kL1),
+        static_cast<int64_t>(kAL1),
         static_cast<int64_t>(kScaleKL1));
     params.mmadParams.l0TileShape = AscendC::Te::MakeShape(
         static_cast<int64_t>(baseM), static_cast<int64_t>(baseN), static_cast<int64_t>(l0K));
@@ -95,11 +100,15 @@ __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
     params.mmadParams.hasBias = gmmBaseParams->hasBias == 1;
     params.prologueParams.bGmAddr = weightDataAddr;
     params.prologueParams.biasGmAddr = biasDataAddr;
-    params.prologueParams.kBubSize = kL1 / Blaze::Gemm::DOUBLE_BUFFER_COUNT;
+    // The legacy MXA8W4 basic block splits one K-L1 tile between the two AIV
+    // sub-blocks.  The GMM-specific prologue uses kBubSize as the per-AIV K
+    // slice; passing the whole kAL1 here serializes the conversion on AIV0
+    // whenever one K-L1 tile fits in a single UB slice.
+    params.prologueParams.kBubSize = kAL1 / Blaze::Gemm::DOUBLE_BUFFER_COUNT;
     params.prologueParams.nBubSize = static_cast<uint64_t>(mmTilingData->baseN);
     params.groupListGmAddr = groupList;
 
-    GMMTiling gmmTiling;
+    GmmTiling gmmTiling;
     gmmTiling.groupNum = gmmBaseParams->groupNum;
     gmmTiling.coreNum = gmmBaseParams->coreNum;
     gmmTiling.n = n;
