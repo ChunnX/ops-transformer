@@ -205,9 +205,9 @@ private:
     FragTensorC tailFragC_{};
 
     // ---- Address bookkeeping ----
-    GM_ADDR cFragAddrs_[8]{};
-    GM_ADDR winDataRankBase_[8]{};
-    GM_ADDR winScaleRankBase_[8]{};
+    GM_ADDR cFragAddrs_[16]{};
+    GM_ADDR winDataRankBase_[16]{};
+    GM_ADDR winScaleRankBase_[16]{};
 
     static constexpr uint32_t MAX_FRAG = Apace::Basic::MAX_FRAGMENT_COUNT;
     GM_ADDR headAddrListA_[MAX_FRAG]{};

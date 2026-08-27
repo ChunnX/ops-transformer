@@ -37,7 +37,7 @@ class _AllGatherQuantMatmulOpBuilder(OpBuilder):
             "int[] group_sizes=[], "
             "int? x1_dtype=None, int? x2_dtype=None, "
             "int? x1_scale_dtype=None, int? x2_scale_dtype=None, "
-            "int? y_dtype=None, str comm_mode=\"urma\""
+            "int? y_dtype=None, str comm_mode=\"ai_cpu\""
             ") -> (Tensor, Tensor, Tensor)"
         )
 
@@ -59,7 +59,7 @@ class _AllGatherQuantMatmulOpBuilder(OpBuilder):
             x1_scale_dtype=None,
             x2_scale_dtype=None,
             y_dtype=None,
-            comm_mode="urma",
+            comm_mode="ai_cpu",
         ):
             torch._check(
                 rank_size > 0,
@@ -106,7 +106,7 @@ def _npu_all_gather_quant_matmul(
     x1_scale_dtype=None,
     x2_scale_dtype=None,
     y_dtype=None,
-    comm_mode="urma",
+    comm_mode="ai_cpu",
 ):
     result = _op_module.npu_all_gather_quant_matmul(
         context,
@@ -143,7 +143,7 @@ def all_gather_quant_matmul(
     x1_scale_dtype: Optional[int] = None,
     x2_scale_dtype: Optional[int] = None,
     y_dtype: Optional[int] = None,
-    comm_mode: Optional[str] = "urma",
+    comm_mode: Optional[str] = "ai_cpu",
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """AllGather + MX quantized Matmul fused computation (apace UDMA path).
 
@@ -170,7 +170,8 @@ def all_gather_quant_matmul(
         x1_scale_dtype (int, optional): x1_scale dtype enum for bitcast, None means use tensor dtype.
         x2_scale_dtype (int, optional): x2_scale dtype enum for bitcast, None means use tensor dtype.
         y_dtype (int, optional): Output dtype enum, None means default bfloat16. Only bfloat16/float16 are supported.
-        comm_mode (str, optional): Communication engine, only ``"urma"`` is supported.
+        comm_mode (str, optional): Communication engine. Only ``"urma"`` is supported;
+            the default ``"ai_cpu"`` is rejected, so pass ``"urma"`` explicitly.
 
     Returns:
         Tuple[Tensor, Tensor, Tensor]: (y, gather_out, amax_out) where y has
@@ -180,9 +181,11 @@ def all_gather_quant_matmul(
     """
     if group_sizes is None:
         group_sizes = []  # 不传时使用 OpDef 缺省值 0，由 tiling 从 scale shape 自动推导
+    # 拦截：当前仅支持 urma；缺省值 ai_cpu 不支持，用户不传 comm_mode 时在此拦下并提示
     torch._check(
         comm_mode == "urma",
-        lambda: f"comm_mode only supports 'urma', got '{comm_mode}'.",
+        lambda: f"comm_mode only supports 'urma', but got '{comm_mode}'. "
+                f"Please pass comm_mode='urma' explicitly.",
     )
 
     # 拦截：uint8 tensor 只能搭配 fp4_e2m1 dtype enum（296）传入
