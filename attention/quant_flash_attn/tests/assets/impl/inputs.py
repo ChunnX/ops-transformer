@@ -10,10 +10,12 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import importlib.util
 import logging
 import math
 import os
 import sys
+from pathlib import Path
 from typing import List
 
 import numpy
@@ -29,7 +31,39 @@ import quant_flash_attn_fp8_golden as fp8_golden_mod
 
 logger = logging.getLogger(__name__)
 
-__input__ = {"e2e": {"qfa_wrapper.npu_qfa": "generate_qfa_mxfp8_inputs"}}
+__input__ = {"e2e": {"spec.npu_qfa": "generate_qfa_mxfp8_inputs"}}
+
+
+def load_metadata_protocol():
+    """加载 metadata_protocol 模块（带 sys.modules 缓存和错误处理）。"""
+    name = "qfa_ttk_metadata_protocol"
+    if name in sys.modules:
+        return sys.modules[name]
+    path = Path(__file__).with_name("metadata_protocol.py")
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot create import spec for {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception as exc:
+        sys.modules.pop(name, None)
+        raise RuntimeError(
+            "Failed to load QuantFlashAttn assets metadata protocol; "
+            f"module={path.resolve()}; original error: {type(exc).__name__}: {exc}"
+        ) from exc
+    return module
+
+
+def zero_metadata(metadata):
+    """清零 metadata 占位 tensor/numpy slot。"""
+    if metadata is None:
+        return
+    if torch.is_tensor(metadata):
+        metadata.zero_()
+    else:
+        metadata[...] = 0
 
 _SEED_MAP = {"q": 54, "k": 3, "v": 4}
 
@@ -411,6 +445,32 @@ def generate_qfa_mxfp8_inputs(
         enable_pa,
     )
 
+    # 清零 metadata 占位 + 保存 sidecar (供 npu_preprocess 加载)
+    zero_metadata(metadata_t)
+    testcase_name = kwargs.get("testcase_name")
+    metadata_input_dict = {
+        "num_heads_q": N_q,
+        "num_heads_kv": N_kv,
+        "head_dim": D,
+        "quant_mode": quant_mode,
+        "cu_seqlens_q": cu_seqlens_q,
+        "cu_seqlens_kv": cu_seqlens_kv,
+        "seqused_q": seqused_q,
+        "seqused_kv": seqused_kv,
+        "v_descale": dequant_scale_v,
+        "batch_size": batch_size,
+        "max_seqlen_q": max_seqlen_q,
+        "max_seqlen_kv": max_seqlen_kv,
+        "mask_mode": mask_mode,
+        "layout_q": layout_q,
+        "layout_q_descale": layout_q_descale,
+        "layout_kv": layout_kv,
+        "layout_out": layout_out,
+    }
+    load_metadata_protocol().save_metadata_inputs(
+        "quant_flash_attn", testcase_name, metadata_input_dict
+    )
+
 
 # ==============================================================================
 # GQA FP8 全量化输入生成 (quant_mode=6)
@@ -700,6 +760,32 @@ def generate_qfa_gqa_fp8_inputs(
         tuple(dequant_scale_q.shape),
         tuple(dequant_scale_k.shape),
         tuple(dequant_scale_v.shape),
+    )
+
+    # 清零 metadata 占位 + 保存 sidecar (供 npu_preprocess 加载)
+    zero_metadata(metadata_t)
+    testcase_name = kwargs.get("testcase_name")
+    metadata_input_dict = {
+        "num_heads_q": N_q,
+        "num_heads_kv": N_kv,
+        "head_dim": D,
+        "quant_mode": quant_mode,
+        "cu_seqlens_q": cu_seqlens_q,
+        "cu_seqlens_kv": cu_seqlens_kv,
+        "seqused_q": seqused_q,
+        "seqused_kv": seqused_kv,
+        "v_descale": dequant_scale_v,
+        "batch_size": batch_size,
+        "max_seqlen_q": max_seqlen_q,
+        "max_seqlen_kv": max_seqlen_kv,
+        "mask_mode": mask_mode,
+        "layout_q": kwargs.get("layout_q", input_layout),
+        "layout_q_descale": kwargs.get("layout_q_descale", q_scale_layout),
+        "layout_kv": kwargs.get("layout_kv", kv_cache_layout),
+        "layout_out": kwargs.get("layout_out", "TND"),
+    }
+    load_metadata_protocol().save_metadata_inputs(
+        "quant_flash_attn", testcase_name, metadata_input_dict
     )
 
 
