@@ -218,15 +218,17 @@ nm -D -C "${extract_dir}/packages/vendors/<vendor>_transformer/op_api/lib/libcus
 依赖下载流程。`verify_mixed_run.py` 不安装归档，并会自动检查 registry/manifest
 语义摘要、entry schema v3、12 个公共参数、2 个输出参数、3 个内部 specialization、artifact
 digest、包内 checksum、传统 kernel 数量下限、Provider DSO 数量和混合导出符号；
-同时要求 L0/Custom L2 两个公开头文件存在；
+同时要求 L0/Custom L2 两个公开头文件存在。
 发布配置还可用命令行参数锁定传统 kernel 的精确数量。
 
 ## 实机验证
 
 Ascend950PR 上已完成以下验证：
 
-- `aclnnFlashKdaGetWorkspaceSize` 成功并返回 29,430,272 字节；
-- `aclnnFlashKda` 成功入队并完成 stream 同步；
+- 正式矩阵通过 `aclnnCustomFlashKdaGetWorkspaceSize` 组装 L2 executor，最小
+  shape 返回 29,430,272 字节；`aclnnCustomFlashKda` 成功入队并同步；
+- 原 `aclnnFlashKda*` standalone ACLNN 包装另完成一次独立回归，workspace
+  同为 29,430,272 字节且输出有限；
 - 确定性有效输入下 output 与 final state 均为有限值；
 - 六个有限 variant 的首尾代表性 `(B,H)` 切片中，同输入 ACLNN 与 native
   Provider 的 output/final state 均逐字节一致；
@@ -234,9 +236,9 @@ Ascend950PR 上已完成以下验证：
   `S×D` 和 final state `128×128` 元素的 CPU chunk golden 校验；累计验证
   690 个切片，矩阵最坏 output/state 最大绝对误差分别为 `2.527554e-4` 和
   `1.048915e-3`，通过 `atol=rtol=5e-3`；
-- 同进程 2 streams × 20 waves 通过，40 次完整调用均无非有限值，且每个 stream
-  的后续结果均与首轮逐字节一致；双流 launch+sync 为 `0.698–1.067 ms`，平均
-  `0.744 ms`；
+- `aclnnCustomFlashKda` 同进程 2 streams × 20 waves 通过，40 次完整调用均无
+  非有限值，且每个 stream 的后续结果均与首轮逐字节一致；双流 launch+sync 为
+  `0.677–0.952 ms`，平均 `0.714 ms`；
 - 六个有限 variant 均已用最小合法 shape 完成 GetWorkspace、执行、完整 CPU
   golden 与代表性 native 对拍；
   覆盖 B1/N3/S8192、B1/N3/S32768、B4/N3/S8192、B1/N96/S1024、
@@ -248,24 +250,30 @@ Ascend950PR 上已完成以下验证：
   10 类均返回 `161002`，非空输出哨兵被主动清为 0/null，随后合法调用仍成功；
 - 已生成并只读解包实际混合 `.run`：归档内 SHA256 校验通过，Provider 包内全部
   文件 checksum 通过；包中同时存在 8 个传统 ChunkKda `.o`、6 个 FlashKDA
-  `provider.so`，且 `libcust_opapi.so` 同时导出 ChunkKda ACLNN、FlashKDA ACLNN
-  和 `l0op::FlashKda`。本次官方 CPack 完整构建样本大小为 11,650,113 字节，
+  `provider.so`，且 `libcust_opapi.so` 同时导出 ChunkKda ACLNN、
+  `aclnnFlashKda*`、`aclnnCustomFlashKda*` 和 `l0op::FlashKda`；归档还包含
+  `aclnn_flash_kda.h` 与 `aclnn_custom_flash_kda.h`。本次官方 CPack 完整构建
+  样本大小为 11,651,377 字节，
   整包 SHA256 为
-  `eafe8f89e89f5ee2c05e87dce8c60f427615fb52d77ffdc6f8fc2aaec6ebd566`；
+  `4df66c3e721247ce41e3224bfb9e5e59ffc0d3def698fc8aa84f660fdeb4302c`；
+- 单一 target 生成的报告 `schema_version=1`、`passed=true`，明确记录
+  `delivery_api=aclnnCustomFlashKda`、ops-transformer 提交
+  `1f85c79eb8951d56ac9b5c155ec99ab3aaee5e9e`，报告 SHA256 为
+  `324719793b4526df568342f28f2d20558aa5c28bf85e04308c58b7d2ab823011`。
 
 单流基础时延使用相同 smoke，在每轮重新构造 executor 后，仅测量
-`aclnnFlashKda` 入队至 stream 同步完成的区间；不含输入构造、GetWorkspace、
+`aclnnCustomFlashKda` 入队至 stream 同步完成的区间；不含输入构造、GetWorkspace、
 workspace 分配和 D2H finite/确定性检查。它是当前 Ascend950PR 工程基线，不是
 尚未定义 SLA 的产品性能准入值：
 
 | 最小合法 shape | waves | min / avg / max (ms) |
 | --- | ---: | ---: |
-| B1/N3/S8192 | 5 | 0.573 / 0.617 / 0.651 |
-| B1/N3/S32768 | 3 | 1.123 / 1.167 / 1.223 |
-| B4/N3/S8192 | 3 | 0.863 / 1.591 / 3.026 |
-| B1/N96/S1024 | 3 | 0.815 / 0.929 / 1.089 |
-| B2/N96/S10240 | 3 | 9.436 / 9.464 / 9.516 |
-| B4/N96/S1024 | 3 | 2.579 / 2.637 / 2.729 |
+| B1/N3/S8192 | 3 | 0.653 / 0.696 / 0.727 |
+| B1/N3/S32768 | 3 | 1.123 / 1.187 / 1.312 |
+| B4/N3/S8192 | 3 | 0.848 / 0.980 / 1.058 |
+| B1/N96/S1024 | 3 | 0.826 / 0.975 / 1.069 |
+| B2/N96/S10240 | 3 | 9.493 / 9.627 / 9.884 |
+| B4/N96/S1024 | 3 | 2.530 / 2.635 / 2.831 |
 
 ## 当前 FlashKDA 契约
 
