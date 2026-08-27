@@ -40,14 +40,27 @@ static constexpr uint32_t FLAG_C_MM345_DONE = 6;
 // Ping-pong gather sync (FAG-style IDs 7/9): Q/dO L1 handoff Vector → Cube.
 static constexpr uint32_t FLAG_V_GATHER_C_PING = 7;
 static constexpr uint32_t FLAG_V_GATHER_C_PONG = 9;
-// Softmax 同轮 / MM345 延后 (mode-2). IDs 0..3 match working baseline.
-static constexpr uint32_t FLAG_C1_V1 = 0;
-static constexpr uint32_t FLAG_C2_V2 = 1;
+// MM12→Softmax per ping-pong slot. Pong uses mode-4 flags 13/14 (mode-2 ping 0/1).
+static constexpr uint32_t FLAG_C1_V1_PING = 0;
+static constexpr uint32_t FLAG_C1_V1_PONG = 13;
+static constexpr uint32_t FLAG_C2_V2_PING = 1;
+static constexpr uint32_t FLAG_C2_V2_PONG = 14;
+// Softmax(last) → MM345(last) (single producer per round).
 static constexpr uint32_t FLAG_V1_C3 = 2;
 static constexpr uint32_t FLAG_V2_C45 = 3;
 // FAG arch35: mode=4 + flag / flag+16 for AIV0/AIV1 subblock isolation.
 static constexpr uint32_t CROSS_CORE_SYNC_MODE = 4;
 static constexpr uint32_t AIV0_AIV1_FLAG_OFFSET = 16;
+
+__aicore__ inline uint32_t GsagC1Flag(uint32_t pingPongIdx)
+{
+    return pingPongIdx == 0 ? FLAG_C1_V1_PING : FLAG_C1_V1_PONG;
+}
+
+__aicore__ inline uint32_t GsagC2Flag(uint32_t pingPongIdx)
+{
+    return pingPongIdx == 0 ? FLAG_C2_V2_PING : FLAG_C2_V2_PONG;
+}
 
 struct ConstInfo {
     int32_t q_head_num { 0 };

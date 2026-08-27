@@ -49,12 +49,10 @@ private:
     LocalTensor<float> mm1_res_ub_tensor_ping_, mm1_res_ub_tensor_pong_;
     LocalTensor<float> mm2_res_ub_tensor_ping_, mm2_res_ub_tensor_pong_;
     LocalTensor<float> mm1_res_ub_tensor_, mm2_res_ub_tensor_;
-    // Per-slot gather staging overlays only that slot's mm1+mm2 region (+ NZ pad),
-    // so Gather(curr) never touches Softmax(last)'s mm1/mm2.
-    LocalTensor<INPUT_TYPE> gather_q_nd_ub_ping_, gather_q_nd_ub_pong_;
-    LocalTensor<INPUT_TYPE> gather_dout_nd_ub_ping_, gather_dout_nd_ub_pong_;
-    LocalTensor<INPUT_TYPE> query_nz_ub_tensor_ping_, query_nz_ub_tensor_pong_;
-    LocalTensor<INPUT_TYPE> dout_nz_ub_tensor_ping_, dout_nz_ub_tensor_pong_;
+    // SFAG-style: mm1/mm2 ping-pong slots are exclusive to Softmax/Cube Fixpipe.
+    // Gather ND/NZ uses one shared staging buffer (Preload is serial per task).
+    LocalTensor<INPUT_TYPE> gather_q_nd_ub_, gather_dout_nd_ub_;
+    LocalTensor<INPUT_TYPE> query_nz_ub_tensor_, dout_nz_ub_tensor_;
     LocalTensor<INPUT_TYPE> p_l1_tensor_ping_, p_l1_tensor_pong_;
     LocalTensor<INPUT_TYPE> ds_l1_tensor_ping_, ds_l1_tensor_pong_;
     LocalTensor<INPUT_TYPE> p_l1_tensor_, ds_l1_tensor_;
@@ -95,6 +93,139 @@ private:
     __aicore__ inline bool GatherNeedAiv1(int32_t m, int32_t mAlign) const
     {
         return GatherAivRowCount(m, mAlign, 1) > 0;
+    }
+
+    __aicore__ inline void SetGsagC1(uint32_t pingPongIdx)
+    {
+        CrossCoreSetFlag<2, PIPE_FIX>(GsagC1Flag(pingPongIdx));
+    }
+
+    __aicore__ inline void SetGsagC2(uint32_t pingPongIdx)
+    {
+        CrossCoreSetFlag<2, PIPE_FIX>(GsagC2Flag(pingPongIdx));
+    }
+
+    __aicore__ inline void WaitGsagC1(uint32_t pingPongIdx)
+    {
+        CrossCoreWaitFlag<2, PIPE_V>(GsagC1Flag(pingPongIdx));
+    }
+
+    __aicore__ inline void WaitGsagC2(uint32_t pingPongIdx)
+    {
+        CrossCoreWaitFlag<2, PIPE_V>(GsagC2Flag(pingPongIdx));
+    }
+
+    /** SFAG ProcessPreload: Gather(curr) on AIV — Q/dO L1 for Cube MM12. */
+    __aicore__ inline void ProcessPreloadVec(VecOp<GSAG_TYPE> &vecOp, uint32_t currIdx, uint32_t loopTaskId)
+    {
+        (void)vecOp;
+        const RunTimeInfo &curr = runTimeInfo_[currIdx];
+        if (!curr.need_compute || !curr.use_sparse_gather) {
+            return;
+        }
+        const int32_t m = static_cast<int32_t>(curr.s1Len);
+        const int32_t mAlign = static_cast<int32_t>(curr.s1LenAlign);
+        const int32_t aivHalfIdx = static_cast<int32_t>(GetSubBlockIdx());
+        if (loopTaskId > 0) {
+            CrossCoreWaitFlag<2, PIPE_MTE3>(FLAG_C_GATHER_ARM);
+        }
+        CopyQAndDoutToL1(curr, currIdx);
+        if (GatherAivRowCount(m, mAlign, aivHalfIdx) > 0) {
+            const uint32_t gatherFlagBase = currIdx == 0 ? FLAG_V_GATHER_C_PING : FLAG_V_GATHER_C_PONG;
+            const uint32_t gatherFlag =
+                gatherFlagBase + static_cast<uint32_t>(aivHalfIdx) * AIV0_AIV1_FLAG_OFFSET;
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(gatherFlag);
+        }
+    }
+
+    /** SFAG ProcessNotFirst: Softmax(last) on AIV — overlaps Cube MM12(curr). */
+    __aicore__ inline void ProcessNotFirstVec(VecOp<GSAG_TYPE> &vecOp, uint32_t lastIdx)
+    {
+        const RunTimeInfo &last = runTimeInfo_[lastIdx];
+        if (!last.need_compute) {
+            return;
+        }
+        LocalTensor<float> mm1Last = lastIdx ? mm1_res_ub_tensor_ping_ : mm1_res_ub_tensor_pong_;
+        LocalTensor<float> mm2Last = lastIdx ? mm2_res_ub_tensor_ping_ : mm2_res_ub_tensor_pong_;
+        LocalTensor<INPUT_TYPE> pL1Last = lastIdx ? p_l1_tensor_ping_ : p_l1_tensor_pong_;
+        LocalTensor<INPUT_TYPE> dsL1Last = lastIdx ? ds_l1_tensor_ping_ : ds_l1_tensor_pong_;
+
+        vecOp.SendVecSftPreProcess(last, lastIdx);
+        WaitGsagC1(lastIdx);
+        PipeBarrier<PIPE_ALL>();
+        vecOp.SendVecSoftmax(pL1Last, mm1Last, last);
+        CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V1_C3);
+        WaitGsagC2(lastIdx);
+        vecOp.SendVecSoftmaxGrad(dsL1Last, mm1Last, mm2Last, last);
+        CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V2_C45);
+    }
+
+    __aicore__ inline void ScatterLastVec(VecOp<GSAG_TYPE> &vecOp, uint32_t lastIdx, TBuf<TPosition::VECCALC> &ubBuffer)
+    {
+        const RunTimeInfo &last = runTimeInfo_[lastIdx];
+        if (!last.need_compute || !last.use_sparse_gather) {
+            return;
+        }
+        const uint32_t mm345DoneFlag =
+            FLAG_C_MM345_DONE + static_cast<uint32_t>(GetSubBlockIdx()) * AIV0_AIV1_FLAG_OFFSET;
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(mm345DoneFlag);
+        vecOp.ScatterDqSel(last, ubBuffer, lastIdx);
+    }
+
+    /** SFAG ProcessPreload: MM12(curr) on AIC — overlaps Vec Gather/Softmax. */
+    __aicore__ inline void ProcessPreloadCube(CubeOp<GSAG_TYPE> &cubeOp, GM_ADDR query, GM_ADDR key, GM_ADDR value,
+                                              GM_ADDR dout, uint32_t currIdx, uint32_t loopTaskId)
+    {
+        const RunTimeInfo &curr = runTimeInfo_[currIdx];
+        if (!curr.need_compute) {
+            return;
+        }
+        mm1_res_ub_tensor_ = currIdx ? mm1_res_ub_tensor_ping_ : mm1_res_ub_tensor_pong_;
+        mm2_res_ub_tensor_ = currIdx ? mm2_res_ub_tensor_ping_ : mm2_res_ub_tensor_pong_;
+
+        if (curr.use_sparse_gather) {
+            const uint32_t gatherFlag = currIdx == 0 ? FLAG_V_GATHER_C_PING : FLAG_V_GATHER_C_PONG;
+            const int32_t m = static_cast<int32_t>(curr.s1Len);
+            const int32_t mAlign = static_cast<int32_t>(curr.s1LenAlign);
+            if (loopTaskId > 0) {
+                CrossCoreSetFlag<2, PIPE_FIX>(FLAG_C_GATHER_ARM);
+            }
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE2>(gatherFlag);
+            if (GatherNeedAiv1(m, mAlign)) {
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE2>(gatherFlag + AIV0_AIV1_FLAG_OFFSET);
+            }
+        }
+        cubeOp.SendMatmulQK(query_gm_, key_gm_, mm1_res_ub_tensor_, curr, currIdx);
+        SetGsagC1(currIdx);
+        cubeOp.SendMatmulDyV(dout_gm_, val_gm_, mm2_res_ub_tensor_, curr, currIdx);
+        SetGsagC2(currIdx);
+        (void)query;
+        (void)key;
+        (void)value;
+        (void)dout;
+    }
+
+    /** SFAG ProcessNotFirst: MM345(last) on AIC — after Vec Softmax Sets V*. */
+    __aicore__ inline void ProcessNotFirstCube(CubeOp<GSAG_TYPE> &cubeOp, uint32_t lastIdx)
+    {
+        const RunTimeInfo &last = runTimeInfo_[lastIdx];
+        if (!last.need_compute) {
+            return;
+        }
+        p_l1_tensor_ = lastIdx ? p_l1_tensor_ping_ : p_l1_tensor_pong_;
+        ds_l1_tensor_ = lastIdx ? ds_l1_tensor_ping_ : ds_l1_tensor_pong_;
+
+        CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V1_C3);
+        CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V2_C45);
+        cubeOp.SendMatmulDq(ds_l1_tensor_, dq_workspace_, last, lastIdx);
+        cubeOp.SendMatmulDv(p_l1_tensor_, dv_workspace_, last, lastIdx);
+        cubeOp.SendMatmulDk(ds_l1_tensor_, dk_workspace_, last, lastIdx);
+        SET_FLAG(MTE1, MTE2, EVENT_ID0);
+        WAIT_FLAG(MTE1, MTE2, EVENT_ID0);
+        if (last.use_sparse_gather) {
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(FLAG_C_MM345_DONE);
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(FLAG_C_MM345_DONE + AIV0_AIV1_FLAG_OFFSET);
+        }
     }
 
 public:
@@ -152,51 +283,33 @@ public:
         tPipe->InitBuffer(ub_buffer_, UB_SIZE);
         tPipe->InitBuffer(l1_buffer_, L1_SIZE);
 
-        //todo: 检查这里的UB分配是否超过247KB
-        // Per ping-pong slot layout (bf16/fp16 only):
-        //   [mm1 float MN | mm2 float MN | NZ +1-row pad 4N]
-        // Softmax/Cube Fixpipe use mm1+mm2 of that slot.
-        // Gather ND/NZ overlays the same slot from the start (8MN+4N).
-        // Gather(curr) therefore never touches Softmax(last)'s mm1/mm2.
-        static_assert(sizeof(INPUT_TYPE) == 2, "Gather/mm UB overlay requires bf16/fp16");
+        // Per ping-pong slot: mm1 float MN | mm2 float MN (Softmax / Fixpipe only).
+        // Shared gather staging after both slots — SFAG-style, no mm1/mm2 overlay.
+        static_assert(sizeof(INPUT_TYPE) == 2, "GSAG arch35 expects bf16/fp16");
         const uint32_t mmSlotElems = vec_base_m * vec_base_n;
-        const uint32_t nz_ub_elements = (vec_base_m + 1) * vec_base_n; // +1-row防止UB越界
-        const uint32_t gatherBytes =
+        const uint32_t nz_ub_elements = (vec_base_m + 1) * vec_base_n;
+        const uint32_t mmSlotBytes = 2u * mmSlotElems * static_cast<uint32_t>(sizeof(float));
+        const uint32_t gatherStagingBytes =
             2u * vec_ub_matrix_elements_ * static_cast<uint32_t>(sizeof(INPUT_TYPE)) +
-            2u * nz_ub_elements * static_cast<uint32_t>(sizeof(INPUT_TYPE)); // 8MN+4N
-        const uint32_t slotBytes = gatherBytes;
+            2u * nz_ub_elements * static_cast<uint32_t>(sizeof(INPUT_TYPE));
         const uint32_t mmUbBase = ub_offset_;
         const uint32_t mmFloatBytes = mmSlotElems * static_cast<uint32_t>(sizeof(float));
 
-        // slot 0 (ping)
-        {
-            const uint32_t slotBase = mmUbBase;
-            mm1_res_ub_tensor_ping_ = ub_buffer_.GetWithOffset<float>(mmSlotElems, slotBase);
-            mm2_res_ub_tensor_ping_ = ub_buffer_.GetWithOffset<float>(mmSlotElems, slotBase + mmFloatBytes);
-            uint32_t gOff = slotBase;
-            gather_q_nd_ub_ping_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(vec_ub_matrix_elements_, gOff);
-            gOff += vec_ub_matrix_elements_ * sizeof(INPUT_TYPE);
-            gather_dout_nd_ub_ping_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(vec_ub_matrix_elements_, gOff);
-            gOff += vec_ub_matrix_elements_ * sizeof(INPUT_TYPE);
-            query_nz_ub_tensor_ping_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(nz_ub_elements, gOff);
-            gOff += nz_ub_elements * sizeof(INPUT_TYPE);
-            dout_nz_ub_tensor_ping_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(nz_ub_elements, gOff);
-        }
-        // slot 1 (pong)
-        {
-            const uint32_t slotBase = mmUbBase + slotBytes;
-            mm1_res_ub_tensor_pong_ = ub_buffer_.GetWithOffset<float>(mmSlotElems, slotBase);
-            mm2_res_ub_tensor_pong_ = ub_buffer_.GetWithOffset<float>(mmSlotElems, slotBase + mmFloatBytes);
-            uint32_t gOff = slotBase;
-            gather_q_nd_ub_pong_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(vec_ub_matrix_elements_, gOff);
-            gOff += vec_ub_matrix_elements_ * sizeof(INPUT_TYPE);
-            gather_dout_nd_ub_pong_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(vec_ub_matrix_elements_, gOff);
-            gOff += vec_ub_matrix_elements_ * sizeof(INPUT_TYPE);
-            query_nz_ub_tensor_pong_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(nz_ub_elements, gOff);
-            gOff += nz_ub_elements * sizeof(INPUT_TYPE);
-            dout_nz_ub_tensor_pong_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(nz_ub_elements, gOff);
-        }
-        ub_offset_ = mmUbBase + 2u * slotBytes;
+        mm1_res_ub_tensor_ping_ = ub_buffer_.GetWithOffset<float>(mmSlotElems, mmUbBase);
+        mm2_res_ub_tensor_ping_ = ub_buffer_.GetWithOffset<float>(mmSlotElems, mmUbBase + mmFloatBytes);
+        const uint32_t pongBase = mmUbBase + mmSlotBytes;
+        mm1_res_ub_tensor_pong_ = ub_buffer_.GetWithOffset<float>(mmSlotElems, pongBase);
+        mm2_res_ub_tensor_pong_ = ub_buffer_.GetWithOffset<float>(mmSlotElems, pongBase + mmFloatBytes);
+
+        uint32_t gOff = mmUbBase + 2u * mmSlotBytes;
+        gather_q_nd_ub_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(vec_ub_matrix_elements_, gOff);
+        gOff += vec_ub_matrix_elements_ * sizeof(INPUT_TYPE);
+        gather_dout_nd_ub_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(vec_ub_matrix_elements_, gOff);
+        gOff += vec_ub_matrix_elements_ * sizeof(INPUT_TYPE);
+        query_nz_ub_tensor_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(nz_ub_elements, gOff);
+        gOff += nz_ub_elements * sizeof(INPUT_TYPE);
+        dout_nz_ub_tensor_ = ub_buffer_.GetWithOffset<INPUT_TYPE>(nz_ub_elements, gOff);
+        ub_offset_ = gOff + nz_ub_elements * sizeof(INPUT_TYPE);
 
         p_l1_tensor_ping_ = l1_buffer_.GetWithOffset<INPUT_TYPE>(base_m * base_n, l1_offset_);
         l1_offset_ += base_m * base_n * sizeof(INPUT_TYPE);
@@ -295,16 +408,11 @@ public:
         constexpr event_t evtGatherVmte3 = EVENT_ID6;
         constexpr event_t evtGatherMte3mte2 = EVENT_ID7;
 
-        // Gather ND/NZ overlays only this pingPongIdx slot's mm1+mm2 (+ NZ pad).
-        // Softmax(last) keeps using the other slot — safe to overlap with Gather(curr).
-        LocalTensor<INPUT_TYPE> qUb =
-            pingPongIdx == 0 ? gather_q_nd_ub_ping_ : gather_q_nd_ub_pong_;
-        LocalTensor<INPUT_TYPE> doutUb =
-            pingPongIdx == 0 ? gather_dout_nd_ub_ping_ : gather_dout_nd_ub_pong_;
-        LocalTensor<INPUT_TYPE> qNz =
-            pingPongIdx == 0 ? query_nz_ub_tensor_ping_ : query_nz_ub_tensor_pong_;
-        LocalTensor<INPUT_TYPE> doutNz =
-            pingPongIdx == 0 ? dout_nz_ub_tensor_ping_ : dout_nz_ub_tensor_pong_;
+        // Shared gather staging — never aliases mm1/mm2 ping-pong slots.
+        LocalTensor<INPUT_TYPE> qUb = gather_q_nd_ub_;
+        LocalTensor<INPUT_TYPE> doutUb = gather_dout_nd_ub_;
+        LocalTensor<INPUT_TYPE> qNz = query_nz_ub_tensor_;
+        LocalTensor<INPUT_TYPE> doutNz = dout_nz_ub_tensor_;
 
         const int32_t ndElems = static_cast<int32_t>(vec_ub_matrix_elements_);
         Duplicate(qUb, static_cast<INPUT_TYPE>(0), ndElems);
@@ -383,68 +491,28 @@ public:
         (void)dv;
         (void)workspace;
 
-        // BSAG software pipeline (Softmax 同轮, MM345 延后):
-        //   Curr: Wait gather → MM12 → Set C1/C2
-        //   Last: Wait Softmax(N-1) → MM345(N-1)
-        // task0: Cube Wait gather is armed during Vec Pre (no boot CUBE_POST).
-        // task>0: FLAG_C_GATHER_ARM before Wait gather (lost-wakeup guard).
-        // Per-slot UB: Gather(curr) does not clobber Softmax mm; Q/dO L1[last] lives until MM345.
+        // SFAG: Preload(N)[Gather+MM12] then NotFirst(N-1)[Softmax+MM345]; epilogue for last task.
         while (true) {
             ping_pong_idx = taskId % 2;
             last_ping_pong_idx = 1 - ping_pong_idx;
-            mm1_res_ub_tensor_ = ping_pong_idx ? mm1_res_ub_tensor_ping_ : mm1_res_ub_tensor_pong_;
-            mm2_res_ub_tensor_ = ping_pong_idx ? mm2_res_ub_tensor_ping_ : mm2_res_ub_tensor_pong_;
-            p_l1_tensor_ = last_ping_pong_idx ? p_l1_tensor_ping_ : p_l1_tensor_pong_;
-            ds_l1_tensor_ = last_ping_pong_idx ? ds_l1_tensor_ping_ : ds_l1_tensor_pong_;
             addr_.GetRunTimeInfo(runTimeInfo_[ping_pong_idx]);
-
-            if (runTimeInfo_[ping_pong_idx].need_compute) {
-                if (runTimeInfo_[ping_pong_idx].use_sparse_gather) {
-                    const uint32_t gatherFlag =
-                        ping_pong_idx == 0 ? FLAG_V_GATHER_C_PING : FLAG_V_GATHER_C_PONG;
-                    const int32_t m = static_cast<int32_t>(runTimeInfo_[ping_pong_idx].s1Len);
-                    const int32_t mAlign = static_cast<int32_t>(runTimeInfo_[ping_pong_idx].s1LenAlign);
-                    // Release Vec (taskId>0) then Wait gather — Cube Wait armed before Vec Set.
-                    if (taskId > 0) {
-                        CrossCoreSetFlag<2, PIPE_FIX>(FLAG_C_GATHER_ARM);
-                    }
-                    CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE2>(gatherFlag);
-                    if (GatherNeedAiv1(m, mAlign)) {
-                        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE2>(gatherFlag + AIV0_AIV1_FLAG_OFFSET);
-                    }
-                }
-                cubeOp.SendMatmulQK(query_gm_, key_gm_, mm1_res_ub_tensor_, runTimeInfo_[ping_pong_idx],
-                                    ping_pong_idx);
-                CrossCoreSetFlag<2, PIPE_FIX>(FLAG_C1_V1);
-                cubeOp.SendMatmulDyV(dout_gm_, val_gm_, mm2_res_ub_tensor_, runTimeInfo_[ping_pong_idx],
-                                     ping_pong_idx);
-                CrossCoreSetFlag<2, PIPE_FIX>(FLAG_C2_V2);
-            }
-
-            if (taskId > 0 && runTimeInfo_[last_ping_pong_idx].need_compute) {
-                // Softmax(last) wrote P/dS; Q/dO L1[last] still valid.
-                CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V1_C3);
-                CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V2_C45);
-                // Dq → Dv → Dk (Dv Atomic Fixpipe must not be interrupted by Dq).
-                cubeOp.SendMatmulDq(ds_l1_tensor_, dq_workspace_, runTimeInfo_[last_ping_pong_idx],
-                                    last_ping_pong_idx);
-                cubeOp.SendMatmulDv(p_l1_tensor_, dv_workspace_, runTimeInfo_[last_ping_pong_idx],
-                                    last_ping_pong_idx);
-                cubeOp.SendMatmulDk(ds_l1_tensor_, dk_workspace_, runTimeInfo_[last_ping_pong_idx],
-                                    last_ping_pong_idx);
-                SET_FLAG(MTE1, MTE2, EVENT_ID0);
-                WAIT_FLAG(MTE1, MTE2, EVENT_ID0);
-                if (runTimeInfo_[last_ping_pong_idx].use_sparse_gather) {
-                    CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(FLAG_C_MM345_DONE);
-                    CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(FLAG_C_MM345_DONE +
-                                                                    AIV0_AIV1_FLAG_OFFSET);
-                }
-            }
 
             if (runTimeInfo_[ping_pong_idx].need_compute == false) {
                 break;
             }
+
+            ProcessPreloadCube(cubeOp, query, key, value, dout, ping_pong_idx, taskId);
+            if (taskId > 0) {
+                ProcessNotFirstCube(cubeOp, last_ping_pong_idx);
+            }
             taskId++;
+        }
+        // Epilogue: MM345 for the final task (SFAG: ProcessNotFirst after loop).
+        if (taskId > 0) {
+            const uint32_t epilogueIdx = (taskId + 1) % 2;
+            if (runTimeInfo_[epilogueIdx].need_compute) {
+                ProcessNotFirstCube(cubeOp, epilogueIdx);
+            }
         }
         cubeOp.Destroy();
         AscendC::CrossCoreSetFlag<2, PIPE_FIX>(FLAG_CUBE_POST);
@@ -469,60 +537,33 @@ public:
         vecOp.SendVecSftgFront(dout_gm_, attention_out_gm_, sftg_workspace_, tilingData, ub_buffer_);
         PipeBarrier<PIPE_ALL>();
         SyncAll();
-        // No boot Set FLAG_CUBE_POST: Cube already Wait-gather; first Set is gather after CopyQAndDoutToL1.
         vecOp.SetFlag();
-        // Softmax(curr) with MM12; Scatter(last) after MM345(last) in same NotFirst window.
+        // SFAG: Preload(N)=Gather(curr) then NotFirst(N-1)=Softmax(last); Scatter after MM345(last).
         while (true) {
             ping_pong_idx = taskId % 2;
             last_ping_pong_idx = 1 - ping_pong_idx;
-            mm1_res_ub_tensor_ = ping_pong_idx ? mm1_res_ub_tensor_ping_ : mm1_res_ub_tensor_pong_;
-            mm2_res_ub_tensor_ = ping_pong_idx ? mm2_res_ub_tensor_ping_ : mm2_res_ub_tensor_pong_;
-            p_l1_tensor_ = ping_pong_idx ? p_l1_tensor_ping_ : p_l1_tensor_pong_;
-            ds_l1_tensor_ = ping_pong_idx ? ds_l1_tensor_ping_ : ds_l1_tensor_pong_;
             addr_.GetRunTimeInfo(runTimeInfo_[ping_pong_idx]);
-
-            if (runTimeInfo_[ping_pong_idx].need_compute) {
-                if (runTimeInfo_[ping_pong_idx].use_sparse_gather) {
-                    const int32_t m = static_cast<int32_t>(runTimeInfo_[ping_pong_idx].s1Len);
-                    const int32_t mAlign = static_cast<int32_t>(runTimeInfo_[ping_pong_idx].s1LenAlign);
-                    const int32_t aivHalfIdx = static_cast<int32_t>(GetSubBlockIdx());
-                    if (taskId > 0) {
-                        CrossCoreWaitFlag<2, PIPE_MTE3>(FLAG_C_GATHER_ARM);
-                    }
-                    CopyQAndDoutToL1(runTimeInfo_[ping_pong_idx], ping_pong_idx);
-                    if (GatherAivRowCount(m, mAlign, aivHalfIdx) > 0) {
-                        const uint32_t gatherFlagBase =
-                            ping_pong_idx == 0 ? FLAG_V_GATHER_C_PING : FLAG_V_GATHER_C_PONG;
-                        const uint32_t gatherFlag =
-                            gatherFlagBase + static_cast<uint32_t>(aivHalfIdx) * AIV0_AIV1_FLAG_OFFSET;
-                        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(gatherFlag);
-                    }
-                }
-                vecOp.SendVecSftPreProcess(runTimeInfo_[ping_pong_idx], ping_pong_idx);
-                CrossCoreWaitFlag<2, PIPE_V>(FLAG_C1_V1);
-                PipeBarrier<PIPE_ALL>();
-                vecOp.SendVecSoftmax(p_l1_tensor_, mm1_res_ub_tensor_, runTimeInfo_[ping_pong_idx]);
-                CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V1_C3);
-                CrossCoreWaitFlag<2, PIPE_V>(FLAG_C2_V2);
-                vecOp.SendVecSoftmaxGrad(ds_l1_tensor_, mm1_res_ub_tensor_, mm2_res_ub_tensor_,
-                                         runTimeInfo_[ping_pong_idx]);
-                CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V2_C45);
-            }
-
-            // Scatter(last) after Cube MM345(last); same NotFirst as SFAG.
-            if (taskId > 0 && runTimeInfo_[last_ping_pong_idx].need_compute &&
-                runTimeInfo_[last_ping_pong_idx].use_sparse_gather) {
-                const uint32_t mm345DoneFlag =
-                    FLAG_C_MM345_DONE +
-                    static_cast<uint32_t>(GetSubBlockIdx()) * AIV0_AIV1_FLAG_OFFSET;
-                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(mm345DoneFlag);
-                vecOp.ScatterDqSel(runTimeInfo_[last_ping_pong_idx], ub_buffer_, last_ping_pong_idx);
-            }
 
             if (runTimeInfo_[ping_pong_idx].need_compute == false) {
                 break;
             }
+
+            ProcessPreloadVec(vecOp, ping_pong_idx, taskId);
+            if (taskId > 0 && runTimeInfo_[last_ping_pong_idx].need_compute) {
+                ProcessNotFirstVec(vecOp, last_ping_pong_idx);
+            }
+            if (taskId > 0 && runTimeInfo_[last_ping_pong_idx].need_compute) {
+                ScatterLastVec(vecOp, last_ping_pong_idx, ub_buffer_);
+            }
             taskId++;
+        }
+        // Epilogue: Softmax + Scatter for the final task.
+        if (taskId > 0) {
+            const uint32_t epilogueIdx = (taskId + 1) % 2;
+            if (runTimeInfo_[epilogueIdx].need_compute) {
+                ProcessNotFirstVec(vecOp, epilogueIdx);
+                ScatterLastVec(vecOp, epilogueIdx, ub_buffer_);
+            }
         }
         vecOp.WaitFlag();
         PipeBarrier<PIPE_ALL>();
