@@ -94,7 +94,7 @@ def make_synthetic_capture(
     }
     expected = expected_header_from_metadata(metadata, metadata["output_nbytes"], spec)
     record_words = resolve_record_words(protocol, expected["capture_capacity"])
-    scratch_record_words = 22 + 20 * expected["capture_capacity"]
+    scratch_record_words = 36 + 20 * expected["capture_capacity"]
     metadata["capacity_preflight"] = {
         "protocol_version": int(protocol["version"]),
         "traced_ai_blocks": metadata["aic_core_num"],
@@ -196,6 +196,20 @@ def make_synthetic_capture(
             "cross_rank_sync_end_S": 50,
             "expert_buffer_init_begin_S": 51,
             "expert_buffer_init_end_S": 60,
+            "final_combine_drain_begin_S": 1600,
+            "final_combine_drain_end_S": 1610,
+            "moe_epilogue_begin_S": 1611,
+            "moe_epilogue_end_S": 1640,
+            "moe_tail_sync_begin_S": 1641,
+            "moe_tail_sync_end_S": 1700,
+            "shared_expert_gmm2_begin_S": 1701,
+            "shared_expert_gmm2_end_S": 1702,
+            "output_cross_rank_sync_begin_S": 1703,
+            "output_cross_rank_sync_end_S": 1800,
+            "unpermute_init_begin_S": 1801,
+            "unpermute_init_end_S": 1810,
+            "unpermute_begin_S": 1811,
+            "unpermute_end_S": 2500,
         }
         role_name = spec["trace"]["roles"][role]
         for field in protocol["record_fields"]:
@@ -205,7 +219,8 @@ def make_synthetic_capture(
                     process_begin + fixed_deltas[name]
                 ) & 0xFFFFFFFF
         for stage_index, segments in enumerate(stages):
-            descriptor = base + 16 + stage_index * 2
+            stage_contract = protocol["sparse_segments"]["stages"][stage_index]
+            descriptor = base + int(stage_contract["offset_record_word"])
             words[descriptor] = payload_cursor
             words[descriptor + 1] = len(segments)
             for wave, expert, begin, end in segments:
@@ -319,9 +334,9 @@ class TraceContractTests(unittest.TestCase):
             self.assertLess(block1_aiv0, block1_aiv1)
             self.assertNotIn("Trace-point placement audit", rendered_html)
             normalized = load_json(directory / "rank0.normalized.json")
-            self.assertEqual(normalized["protocol_version"], 13)
-            self.assertEqual(normalized["schema_id"], "0xdae1e878")
-            self.assertEqual(normalized["metadata"]["resolved_record_words"], 26)
+            self.assertEqual(normalized["protocol_version"], 14)
+            self.assertEqual(normalized["schema_id"], "0x0aaba4b5")
+            self.assertEqual(normalized["metadata"]["resolved_record_words"], 40)
             self.assertEqual(normalized["metadata"]["header"]["role_counts"], [2, 2, 2])
             self.assertFalse(normalized["metadata"]["trace_truncated"])
             compact_path = directory / "rank0.compact.json.gz"
@@ -330,7 +345,7 @@ class TraceContractTests(unittest.TestCase):
             )
             compact = json.loads(gzip.decompress(compact_path.read_bytes()))
             self.assertEqual(compact["format"], COMPACT_FORMAT)
-            self.assertEqual(compact["protocol"], [13, "0xdae1e878", 32])
+            self.assertEqual(compact["protocol"], [14, "0x0aaba4b5", 32])
             self.assertEqual(compact["config"]["role_counts"], [2, 2, 2])
             self.assertEqual(len(compact["records"]), 6)
             self.assertEqual(compact["records"][0][0:2], ["AIC", 0])
@@ -410,7 +425,12 @@ class TraceContractTests(unittest.TestCase):
             directory = Path(temp)
             raw_path, metadata_path = make_synthetic_capture(directory)
             raw = bytearray(raw_path.read_bytes())
-            stage0_offset_word = 30 + 16
+            spec = load_json(SPEC)
+            stage0_offset_word = 30 + int(
+                spec["trace"]["protocol"]["sparse_segments"]["stages"][0][
+                    "offset_record_word"
+                ]
+            )
             offset = stage0_offset_word * 4
             current = int.from_bytes(raw[offset : offset + 4], "little")
             raw[offset : offset + 4] = (current + 1).to_bytes(4, "little")
@@ -532,7 +552,7 @@ class TraceContractTests(unittest.TestCase):
                 len(normalized["records"][0]["timestamps"]["gmm1_problem_begin_S"]),
                 2,
             )
-            self.assertEqual(normalized["metadata"]["required_trace_bytes"], 1192)
+            self.assertEqual(normalized["metadata"]["required_trace_bytes"], 1528)
             order = load_json(directory / "rank0.order-check.json")
             self.assertEqual(order["fine_truncated_records"], [])
 
@@ -562,7 +582,7 @@ class TraceContractTests(unittest.TestCase):
             overrides=FORCED_OVERRIDES,
         )
         call = "_critical_path_trace_validate_capacity()"
-        self.assertIn("record_words = 26", transformed)
+        self.assertIn("record_words = 40", transformed)
         self.assertIn(call, transformed)
         self.assertLess(
             transformed.index(call, transformed.index("out_dtype =")),
@@ -607,12 +627,12 @@ class TraceContractTests(unittest.TestCase):
         exec(compile(helper_module, "adapter_capacity_helper.py", "exec"), namespace)
         namespace["_critical_path_trace_validate_capacity"]()
         capacity = namespace["_critical_path_trace_capacity"]
-        self.assertEqual(capacity["record_words"], 26)
+        self.assertEqual(capacity["record_words"], 40)
         self.assertEqual(capacity["record_count"], 108)
-        self.assertEqual(capacity["descriptor_required_y_bytes"], 11352)
+        self.assertEqual(capacity["descriptor_required_y_bytes"], 17400)
         self.assertEqual(capacity["available_y_bytes"], 294912)
         self.assertEqual(capacity["required_segment_capacity"], 9)
-        self.assertEqual(capacity["scratch_required_bytes"], 87264)
+        self.assertEqual(capacity["scratch_required_bytes"], 93312)
         self.assertEqual(capacity["scratch_reserve_bytes"], 50 * 1024 * 1024)
 
     @unittest.skipUnless(

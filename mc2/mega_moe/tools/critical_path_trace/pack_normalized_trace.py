@@ -21,7 +21,7 @@ from typing import Any
 
 
 COMPACT_FORMAT = "mega_moe_compact_trace"
-COMPACT_FORMAT_VERSION = 5
+COMPACT_FORMAT_VERSION = 6
 ROLES = ("AIC", "AIV0", "AIV1")
 CONFIG_FIELDS = (
     "rank",
@@ -74,6 +74,13 @@ FIXED_PHASE_LAYOUTS = (
     ("ls", "local_prepare_sync_begin_S", "local_prepare_sync_end_S"),
     ("rs", "cross_rank_sync_begin_S", "cross_rank_sync_end_S"),
     ("eb", "expert_buffer_init_begin_S", "expert_buffer_init_end_S"),
+    ("fd", "final_combine_drain_begin_S", "final_combine_drain_end_S"),
+    ("me", "moe_epilogue_begin_S", "moe_epilogue_end_S"),
+    ("mt", "moe_tail_sync_begin_S", "moe_tail_sync_end_S"),
+    ("sg", "shared_expert_gmm2_begin_S", "shared_expert_gmm2_end_S"),
+    ("os", "output_cross_rank_sync_begin_S", "output_cross_rank_sync_end_S"),
+    ("ui", "unpermute_init_begin_S", "unpermute_init_end_S"),
+    ("up", "unpermute_begin_S", "unpermute_end_S"),
 )
 
 

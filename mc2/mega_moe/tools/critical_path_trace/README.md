@@ -8,7 +8,7 @@
 
 ## 这版解决什么问题
 
-协议为 v13，schema ID 为 `0xdae1e878`，默认诊断开关为：
+协议为 v14，schema ID 为 `0x0aaba4b5`，默认诊断开关为：
 
 ```cpp
 #define MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE 1
@@ -18,7 +18,7 @@ v8 只记录物理 AI Block 0，而且按整段 Wave 画色块。若一个 Wave 
 Dispatch 或两个 SwiGLU helper，两次调用之间的 cursor 推进、依赖等待也会落入同一
 个色块，容易把空档误读成工作耗时。
 
-v13 在全 AI Block 稀疏任务记录基础上进一步改为：
+v14 在全 AI Block 稀疏任务记录基础上进一步改为：
 
 - 记录全部物理 AI Block；每组固定按 `AIC / AIV0 / AIV1` 排列；
 - 每个 AI Block 用本组 AIC 的 `process_begin_S` 独立归零；组内三角色可直接比较，
@@ -36,6 +36,8 @@ v13 在全 AI Block 稀疏任务记录基础上进一步改为：
 - AIV1 将两个连续有效 Dispatch task 之间的 count 查询、rolling owner 规划、Wave
   cursor 推进和相邻预取调用衔接聚合为一段；最后一个 task 后的尾段丢弃，不跨入
   GMM2/Combine。
+- AIV0/AIV1 在最终 Combine 后继续固定记录 Combine ring drain、MoE 尾部收尾、本卡
+  AIV 汇合、共享专家 GMM2 调用、输出跨 rank 同步、Unpermute 初始化和实际 Unpermute。
 
 | 角色 | 稀疏任务段 | begin | end |
 |---|---|---|---|
@@ -48,6 +50,10 @@ v13 在全 AI Block 稀疏任务记录基础上进一步改为：
 | AIV1 | 有效 Dispatch expert task | 本核获得非空连续行区间后、`DispatchWaveExpertRows` 前 | helper 自带 copy-ring drain 和 ready 发布后 |
 | AIV1 | Dispatch 间 Scalar 调度 | 前一个有效 Dispatch 的 trace 写入后 | 下一有效专家已完成 count/owner 规划且即将建立 Dispatch task |
 | AIV0/AIV1 | Combine 256-token group task | 当前 expert-local group 的 GMM2 N tile 全部 ready 后 | 本核在该 group 的远端 send 经 MTE3_S 桥接到 Scalar 后 |
+
+Combine 后的固定尾部区间按实际调用顺序显示，可直接区分本卡负载不均衡、慢 rank、
+共享专家路径以及本地 Unpermute。Unpermute 结束复用生产路径最终 `MTE3_V` drain，
+不会把未完成的 y 写回藏进 `work_end` 前白色区间。
 
 GMM1/GMM2 为了量化真实工作与 problem 间空洞，在每个本核活跃 problem 末尾显式
 增加 `FIX_S`。它会抑制诊断态跨 problem 的 FIX 尾部重叠，因此 tracing-on 的算子总
@@ -67,7 +73,7 @@ Tracing 仅在诊断态复用最终 BF16 `y[bs,h]` 的字节。正常 Unpermute 
 紧凑 offset，各角色并行复制自己的 payload；最后由 AIC0 发布 header，magic 最后
 写入。因此 tracing-on 的 `y` 是诊断产物，不能再用于精度比较或业务消费。
 
-每个角色/核 record 是 26 个 `uint32`：
+每个角色/核 record 是 40 个 `uint32`：
 
 ```text
 [process_begin, work_end,
@@ -78,6 +84,13 @@ Tracing 仅在诊断态复用最终 BF16 `y[bs,h]` 的字节。正常 Unpermute 
  local_prepare_sync_begin, local_prepare_sync_end,
  cross_rank_sync_begin, cross_rank_sync_end,
  expert_buffer_init_begin, expert_buffer_init_end,
+ final_combine_drain_begin, final_combine_drain_end,
+ moe_epilogue_begin, moe_epilogue_end,
+ moe_tail_sync_begin, moe_tail_sync_end,
+ shared_expert_gmm2_begin, shared_expert_gmm2_end,
+ output_cross_rank_sync_begin, output_cross_rank_sync_end,
+ unpermute_init_begin, unpermute_init_end,
+ unpermute_begin, unpermute_end,
  stage0_offset, stage0_count,
  stage1_offset, stage1_count,
  stage2_offset, stage2_count,
@@ -102,8 +115,8 @@ max_rows        = bs × P × min(top_k, E)
 max_m_groups    = min(max_rows,E) + floor((max_rows-min(max_rows,E))/256)
 segment_need    = max(E, max_m_groups)
 record_count    = 3A
-descriptor_y    = 4 × (30 + record_count × 26)
-scratch_record  = 22 + 5 × 4 × segment_capacity  // 固定点、计数和五个 stage
+descriptor_y    = 4 × (30 + record_count × 40)
+scratch_record  = 36 + 5 × 4 × segment_capacity  // 固定点、计数和五个 stage
 ```
 
 Host 在运行前证明 descriptor 和 50 MiB 预留 scratch 足够；设备结束时再用实际稀疏
@@ -159,7 +172,7 @@ python3 /path/to/pack_normalized_trace.py \
 ```
 
 默认输出同目录的 `rank0.compact.json.gz`。它保留协议/schema、shape、Wave 大小、
-角色核数、32 位时钟信息、每个核的固定前处理
+角色核数、32 位时钟信息、每个核的固定前处理与 Combine 后尾部阶段
 `[阶段类型, begin, end]` 以及稀疏任务
 `[任务类型, wave, expert, begin, end]`；删除 HTML 文案、审计证据、文件哈希、label、
 counter 等分析不需要的重复信息。不能只保留裸时间戳，否则无法判断时间戳属于哪个

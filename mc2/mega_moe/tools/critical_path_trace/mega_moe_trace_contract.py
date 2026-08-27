@@ -25,13 +25,13 @@ class ContractError(RuntimeError):
 
 DISPATCH_API_TO_TILING_KEY = {23: 3, 24: 4, 296: 5}
 EXPECTED_PATH_ID = 2
-EXPECTED_FLAGS_BY_PROTOCOL = {13: 0x1FFF}
+EXPECTED_FLAGS_BY_PROTOCOL = {14: 0x1FFF}
 DISPATCH_GROUP_READY_FLAG = 1 << 13
 TRACE_ROLE_COUNT = 3
-TRACE_RECORD_WORDS = 26
+TRACE_RECORD_WORDS = 40
 TRACE_SEGMENT_WORDS = 4
 TRACE_STAGE_COUNT = 5
-TRACE_SCRATCH_HEADER_WORDS = 22
+TRACE_SCRATCH_HEADER_WORDS = 36
 TRACE_SCRATCH_RESERVE_BYTES = 50 * 1024 * 1024
 GMM_TILE_N = 256
 GMM1_MIN_LOGICAL_TILES_PER_CORE = 4
@@ -78,6 +78,39 @@ FIXED_PRE_DISPATCH_POINTS_BY_ROLE = {
         "cross_rank_sync_end_S",
         "expert_buffer_init_begin_S",
         "expert_buffer_init_end_S",
+    ),
+}
+FIXED_POST_COMBINE_POINTS_BY_ROLE = {
+    "AIC": (),
+    "AIV0": (
+        "moe_epilogue_begin_S",
+        "moe_epilogue_end_S",
+        "moe_tail_sync_begin_S",
+        "moe_tail_sync_end_S",
+        "shared_expert_gmm2_begin_S",
+        "shared_expert_gmm2_end_S",
+        "output_cross_rank_sync_begin_S",
+        "output_cross_rank_sync_end_S",
+        "unpermute_init_begin_S",
+        "unpermute_init_end_S",
+        "unpermute_begin_S",
+        "unpermute_end_S",
+        "work_end_S",
+    ),
+    "AIV1": (
+        "moe_epilogue_begin_S",
+        "moe_epilogue_end_S",
+        "moe_tail_sync_begin_S",
+        "moe_tail_sync_end_S",
+        "shared_expert_gmm2_begin_S",
+        "shared_expert_gmm2_end_S",
+        "output_cross_rank_sync_begin_S",
+        "output_cross_rank_sync_end_S",
+        "unpermute_init_begin_S",
+        "unpermute_init_end_S",
+        "unpermute_begin_S",
+        "unpermute_end_S",
+        "work_end_S",
     ),
 }
 
@@ -662,6 +695,18 @@ def validate_timestamp_order(
                 )
             previous_delta = point_delta
 
+        previous_delta = -1
+        for point_name in FIXED_POST_COMBINE_POINTS_BY_ROLE[record["role"]]:
+            values = timestamps.get(point_name, [])
+            if len(values) != 1 or values[0] == missing:
+                raise ContractError(f"{label} lacks fixed boundary {point_name}")
+            point_delta = _modular_delta(process_begin, values[0], bits)
+            if point_delta < previous_delta or point_delta > process_duration:
+                raise ContractError(
+                    f"{label} fixed post-Combine boundaries are backward at {point_name}"
+                )
+            previous_delta = point_delta
+
         for span in spans:
             if record.get("role") not in span["roles"]:
                 continue
@@ -774,7 +819,7 @@ def validate_timestamp_order(
             "segments on one role/stage are non-overlapping and time-monotonic",
             "every Dispatch Scalar gap is contained between consecutive AIV1 tasks and identifies the following task",
             "no inferred idle interval is converted into a colored work span",
-            "GMM1/GMM2 exact spans use the protocol-v13 tracing-only FIX completion contract",
+            "GMM1/GMM2 exact spans use the protocol-v14 tracing-only FIX completion contract",
         ],
         "record_count": len(records),
         "runtime_waves": runtime_waves,

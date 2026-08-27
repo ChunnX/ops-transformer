@@ -332,6 +332,90 @@ POINT_TEXT_ZH = {
         "proof": "最后一次 CombineWaveTokenRange 返回后执行 MTE3_S SetFlag/WaitFlag，随后才读取 Scalar 系统时钟。",
         "perturbation": "每个本核活跃 group 增加一次 MTE3_S 完成桥、一次时钟和四个 scratch word 写入；会抑制诊断态跨 group MTE3 尾部重叠。",
     },
+    "final_combine_drain_begin_S": {
+        "when": "最终 Wave 的 Combine helper 已返回，即将回收本 AIV 的 row-ring 完成事件。",
+        "why": "确认最后一个 Combine group 之后是否仍有 MTE3 尾部。",
+        "proof": "采样紧邻最终 DrainCombineRowBuffers 之前。",
+        "perturbation": "每个 AIV 一次时钟采样。",
+    },
+    "final_combine_drain_end_S": {
+        "when": "最终 Combine row-ring 的全部在途完成事件已经消费。",
+        "why": "把发送 drain 与 MoE 尾部 Scalar/导出工作分开。",
+        "proof": "采样紧随生产 DrainCombineRowBuffers 返回。",
+        "perturbation": "每个 AIV 一次时钟采样，复用生产事件。",
+    },
+    "moe_epilogue_begin_S": {
+        "when": "最终 Combine/drain 已结束，即将执行 EndSync、状态复位和 count 导出。",
+        "why": "显示 Combine 后、AIV 汇合前的本核尾部工作。",
+        "proof": "仅在最终 Wave 的 ProcessCombineWave 返回后采样。",
+        "perturbation": "每个 AIV 一次时钟采样。",
+    },
+    "moe_epilogue_end_S": {
+        "when": "MoE 专家阶段的 EndSync、状态复位和 count 导出已经返回。",
+        "why": "分离本核收尾与随后负载不均衡等待。",
+        "proof": "采样紧随 ExportCompactExpertTokenCounts。",
+        "perturbation": "每个 AIV 一次时钟采样。",
+    },
+    "moe_tail_sync_begin_S": {
+        "when": "本 AIV 已完成自身 MoE 尾部，即将等待本卡其他 AIV。",
+        "why": "直接量化最终 Combine 负载不均衡造成的本卡等待。",
+        "proof": "采样位于生产 PIPE_ALL/SyncAll 之前。",
+        "perturbation": "每个 AIV 一次时钟采样。",
+    },
+    "moe_tail_sync_end_S": {
+        "when": "本卡全部 AIV 已越过 MoE 尾部 SyncAll。",
+        "why": "把本卡核间等待与慢 rank 等待分开。",
+        "proof": "采样紧随生产 SyncAll 返回。",
+        "perturbation": "每个 AIV 一次时钟采样。",
+    },
+    "shared_expert_gmm2_begin_S": {
+        "when": "即将判断并按需进入共享专家 GMM2 调用路径。",
+        "why": "显示 V 侧共享专家分支开销；实际 Cube 工作仍属于 AIC。",
+        "proof": "采样位于 sharedExpertNum 分支之前。",
+        "perturbation": "每个 AIV 一次时钟采样。",
+    },
+    "shared_expert_gmm2_end_S": {
+        "when": "V 角色已经越过共享专家 GMM2 调用路径。",
+        "why": "分离共享专家分支与输出跨 rank 同步。",
+        "proof": "采样位于可选 ProcessSharedExpertGmm2 返回之后。",
+        "perturbation": "每个 AIV 一次时钟采样，不增加 FIX drain。",
+    },
+    "output_cross_rank_sync_begin_S": {
+        "when": "本 AIV 即将等待所有 rank 完成本轮 Combine 发送。",
+        "why": "判断 Combine 后慢点是否来自其他 rank。",
+        "proof": "采样紧邻第二次 CrossRankSyncInWorldSize 之前。",
+        "perturbation": "每个 AIV 一次时钟采样。",
+    },
+    "output_cross_rank_sync_end_S": {
+        "when": "所有 rank 的 Combine 输出握手已经完成。",
+        "why": "把跨 rank 等待与本地 Unpermute 分开。",
+        "proof": "采样紧随第二次 CrossRankSyncInWorldSize 返回。",
+        "perturbation": "每个 AIV 一次时钟采样。",
+    },
+    "unpermute_init_begin_S": {
+        "when": "即将构造当前 AIV 的 Unpermute UB 视图和 buffer 配置。",
+        "why": "把固定初始化从实际数据流水中拆出。",
+        "proof": "采样紧邻 InitTokenUnpermuteBuffers 之前。",
+        "perturbation": "每个 AIV 一次时钟采样。",
+    },
+    "unpermute_init_end_S": {
+        "when": "当前 AIV 的 Unpermute UB 视图和 buffer 配置已完成。",
+        "why": "识别异常配置下的纯 Scalar 初始化成本。",
+        "proof": "采样紧随 InitTokenUnpermuteBuffers 返回。",
+        "perturbation": "每个 AIV 一次时钟采样。",
+    },
+    "unpermute_begin_S": {
+        "when": "本 AIV 即将读取 Combine 结果并执行 top-k/shared 累加。",
+        "why": "量化完整 Unpermute 数据路径。",
+        "proof": "采样紧邻 UnpermuteTokens 之前。",
+        "perturbation": "每个 AIV 一次时钟采样。",
+    },
+    "unpermute_end_S": {
+        "when": "本 AIV 负责 token 的最终 y 写回已经完成。",
+        "why": "确认尾部慢点是否来自本地读取、累加、转换或写回。",
+        "proof": "UnpermuteTokens 返回前消费最终 MTE3_V output event。",
+        "perturbation": "每个 AIV 一次时钟采样，复用生产完成事件。",
+    },
     "gmm1_begin_S": {
         "when": "AIC 已观察到 Dispatch ready，并完成前序 ping-pong 依赖等待；第一个 GMM1 tile 即将发出 MMAD。",
         "why": "把 Dispatch-ready/前序依赖等待与真正的 GMM1 计算区间分开。",
@@ -449,6 +533,13 @@ SPAN_LABEL_ZH = {
     "swiglu_problem": "SwiGLU + MX（逐 problem）",
     "gmm2_problem": "GMM2（逐 problem，FIX 完成）",
     "combine_group_task": "Combine（逐 256-token group，MTE3 完成边界）",
+    "final_combine_drain": "最终 Combine Ring Drain",
+    "moe_epilogue": "MoE 尾部 EndSync/Count 导出",
+    "moe_tail_sync": "MoE 尾部本卡 AIV 汇合",
+    "shared_expert_gmm2": "共享专家 GMM2（V 侧调用）",
+    "output_cross_rank_sync": "Unpermute 前跨 Rank 同步",
+    "unpermute_init": "Unpermute Buffer 初始化",
+    "unpermute": "Unpermute 累加与输出",
 }
 
 
@@ -2722,7 +2813,7 @@ def _render_html(
             "橙色只连接同一 wave 的相邻专家：它由前一专家 end 与后一专家 causal begin 推断，"
             "包含流水尾部、真实依赖等待和少量 Scalar 调度，不能解释为纯等待指令耗时。"
             "该旧版 expert-indexed 展示只适用于未启用稀疏任务协议的 trace；"
-            "当前 v13 稀疏协议改由下方实际任务及 GMM1/Dispatch 空洞诊断说明定义边界。</div>"
+            "当前 v14 稀疏协议改由下方实际任务、GMM1/Dispatch 空洞及 Combine 后尾部诊断说明定义边界。</div>"
         )
     if sparse_segments is not None:
         warning += (

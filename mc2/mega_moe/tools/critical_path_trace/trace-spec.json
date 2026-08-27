@@ -25,19 +25,19 @@
         "reason": "AIC[i], AIV0[i], and AIV1[i] form one physical AI Block and share a synchronized timestamp; different AI Blocks are not compared by absolute x position"
       },
       "host_only": true,
-      "protocol_impact": "grouping and Chinese wording are host-only; compact route-index preparation, all physical AI Blocks, sparse active-task payloads, GMM1 gap diagnostics, AIV1 inter-Dispatch Scalar diagnostics, and 256-token Combine group tasks are protocol-v13 device ABI"
+      "protocol_impact": "grouping and Chinese wording are host-only; compact route-index preparation, all physical AI Blocks, sparse active-task payloads, GMM1 gap diagnostics, AIV1 inter-Dispatch Scalar diagnostics, 256-token Combine group tasks, and AIV post-Combine tail stages are protocol-v14 device ABI"
     },
     "protocol": {
       "magic": "0x43505452",
-      "version": 13,
-      "schema_id": "0xdae1e878",
+      "version": 14,
+      "schema_id": "0x0aaba4b5",
       "word_bits": 32,
       "endianness": "little",
       "header_words": 30,
-      "record_words": 26,
+      "record_words": 40,
       "record_order": "role-major",
       "record_order_description": "AIC[0..aicNum-1], AIV0[0..aicNum-1], then AIV1[0..aicNum-1], each in ascending physical AI Block index",
-      "header_contract": "30 little-endian uint32 words; record_words=26 contains 16 fixed timestamps followed by ten sparse descriptors for five stages, record_count=3*aicNum, capture_capacity is the per-stage per-core scratch segment capacity, repetition_count is the runtime GMM Wave count, truncated covers scratch or y compaction overflow, and magic is published last",
+      "header_contract": "30 little-endian uint32 words; record_words=40 contains 30 fixed timestamps followed by ten sparse descriptors for five stages, record_count=3*aicNum, capture_capacity is the per-stage per-core scratch segment capacity, repetition_count is the runtime GMM Wave count, truncated covers scratch or y compaction overflow, and magic is published last",
       "flags_contract": "bits[12:0] must equal 0x00001fff; bit12 identifies the PR10302 compact route-index and 256-token Combine group trace semantics; bit13 records MEGA_MOE_A8W8_DISPATCH_GROUP_READY",
       "header_fields": [
         {"name": "magic", "word": 0, "width_words": 1},
@@ -85,7 +85,21 @@
         {"name": "cross_rank_sync_begin_S", "kind": "timestamp", "roles": ["AIC", "AIV0", "AIV1"], "word": 12, "width_words": 1, "count": 1, "stride_words": 1},
         {"name": "cross_rank_sync_end_S", "kind": "timestamp", "roles": ["AIC", "AIV0", "AIV1"], "word": 13, "width_words": 1, "count": 1, "stride_words": 1},
         {"name": "expert_buffer_init_begin_S", "kind": "timestamp", "roles": ["AIC", "AIV0", "AIV1"], "word": 14, "width_words": 1, "count": 1, "stride_words": 1},
-        {"name": "expert_buffer_init_end_S", "kind": "timestamp", "roles": ["AIC", "AIV0", "AIV1"], "word": 15, "width_words": 1, "count": 1, "stride_words": 1}
+        {"name": "expert_buffer_init_end_S", "kind": "timestamp", "roles": ["AIC", "AIV0", "AIV1"], "word": 15, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "final_combine_drain_begin_S", "kind": "timestamp", "roles": ["AIV0", "AIV1"], "word": 16, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "final_combine_drain_end_S", "kind": "timestamp", "roles": ["AIV0", "AIV1"], "word": 17, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "moe_epilogue_begin_S", "kind": "timestamp", "roles": ["AIV0", "AIV1"], "word": 18, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "moe_epilogue_end_S", "kind": "timestamp", "roles": ["AIV0", "AIV1"], "word": 19, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "moe_tail_sync_begin_S", "kind": "timestamp", "roles": ["AIV0", "AIV1"], "word": 20, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "moe_tail_sync_end_S", "kind": "timestamp", "roles": ["AIV0", "AIV1"], "word": 21, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "shared_expert_gmm2_begin_S", "kind": "timestamp", "roles": ["AIV0", "AIV1"], "word": 22, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "shared_expert_gmm2_end_S", "kind": "timestamp", "roles": ["AIV0", "AIV1"], "word": 23, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "output_cross_rank_sync_begin_S", "kind": "timestamp", "roles": ["AIV0", "AIV1"], "word": 24, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "output_cross_rank_sync_end_S", "kind": "timestamp", "roles": ["AIV0", "AIV1"], "word": 25, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "unpermute_init_begin_S", "kind": "timestamp", "roles": ["AIV0", "AIV1"], "word": 26, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "unpermute_init_end_S", "kind": "timestamp", "roles": ["AIV0", "AIV1"], "word": 27, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "unpermute_begin_S", "kind": "timestamp", "roles": ["AIV0", "AIV1"], "word": 28, "width_words": 1, "count": 1, "stride_words": 1},
+        {"name": "unpermute_end_S", "kind": "timestamp", "roles": ["AIV0", "AIV1"], "word": 29, "width_words": 1, "count": 1, "stride_words": 1}
       ],
       "sparse_segments": {
         "entry_words": 4,
@@ -94,8 +108,8 @@
         "stages": [
           {
             "name": "stage0",
-            "offset_record_word": 16,
-            "count_record_word": 17,
+            "offset_record_word": 30,
+            "count_record_word": 31,
             "role_points": {
               "AIC": {"begin": "gmm1_problem_begin_S", "end": "gmm1_problem_end_S", "span": "gmm1_problem"},
               "AIV0": {"begin": "swiglu_problem_begin_S", "end": "swiglu_problem_end_S", "span": "swiglu_problem"},
@@ -104,8 +118,8 @@
           },
           {
             "name": "stage1",
-            "offset_record_word": 18,
-            "count_record_word": 19,
+            "offset_record_word": 32,
+            "count_record_word": 33,
             "role_points": {
               "AIC": {"begin": "gmm2_problem_begin_S", "end": "gmm2_problem_end_S", "span": "gmm2_problem"},
               "AIV0": {"begin": "combine_group_begin_S", "end": "combine_group_end_S", "span": "combine_group_task"},
@@ -114,8 +128,8 @@
           },
           {
             "name": "stage2",
-            "offset_record_word": 20,
-            "count_record_word": 21,
+            "offset_record_word": 34,
+            "count_record_word": 35,
             "role_points": {
               "AIC": {"begin": "gmm1_scalar_setup_begin_S", "end": "gmm1_scalar_setup_end_S", "span": "gmm1_scalar_setup"},
               "AIV1": {"begin": "dispatch_scalar_gap_begin_S", "end": "dispatch_scalar_gap_end_S", "span": "dispatch_scalar_gap"}
@@ -123,16 +137,16 @@
           },
           {
             "name": "stage3",
-            "offset_record_word": 22,
-            "count_record_word": 23,
+            "offset_record_word": 36,
+            "count_record_word": 37,
             "role_points": {
               "AIC": {"begin": "gmm1_dispatch_wait_begin_S", "end": "gmm1_dispatch_wait_end_S", "span": "gmm1_dispatch_wait"}
             }
           },
           {
             "name": "stage4",
-            "offset_record_word": 24,
-            "count_record_word": 25,
+            "offset_record_word": 38,
+            "count_record_word": 39,
             "role_points": {
               "AIC": {"begin": "gmm1_vector_wait_begin_S", "end": "gmm1_vector_wait_end_S", "span": "gmm1_vector_wait"}
             }
@@ -141,7 +155,7 @@
       }
     },
     "output": {
-      "carrier": "after normal BF16 y[bs,h] is complete, its bytes are reused for protocol-v13 fixed timestamps, sparse descriptors, and compact sparse segment payloads",
+      "carrier": "after normal BF16 y[bs,h] is complete, its bytes are reused for protocol-v14 fixed timestamps, sparse descriptors, and compact sparse segment payloads",
       "overwrites_user_output": true,
       "capacity_check": "host preflight proves descriptor and fixed workspace-scratch capacity; AIC0 computes the actual compact payload size after work_end, writes no out-of-bounds payload on overflow, sets truncated, and the default decoder rejects it",
       "write_phase": "each role appends only to its exclusive 50-MiB reserved-workspace slice during useful work; after work_end and y-lifetime rendezvous AIC0 plans offsets, role writers compact payloads, then AIC0 publishes header and magic last",
@@ -352,6 +366,90 @@
       "scope": "与 combine_group_begin_S 一一对应。", "why": "只覆盖当前 256-token group 切片，并在远端发送完成后结束。", "semantics": "当前 group 切片此前发出的所有 MTE3 send 已完成并桥接到 Scalar。", "perturbation": "每个本核活跃 group 增加一次 MTE3_S 完成桥、一次时钟和四个 scratch 写；诊断态会抑制跨 group MTE3 尾部重叠。",
       "source": {"file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h", "symbol": "MegaMoeImpl::CombineWaveExpertRows", "target_anchor": {"mode": "literal", "pattern": "processedTokenCount += rowsInCurrentGroup;"}, "placement": "before", "marker": "TRACE_POINT: combine_group_end_S", "max_line_distance": 8},
       "dependency": {"precondition": "the active group slice has issued all of its Combine rows", "producer_pipeline": "MTE2/Vector/MTE3", "timestamp_pipeline": "Scalar", "bridge": "tracing-only MTE3_S", "proof": "MTE3_S SetFlag/WaitFlag is immediately before sampling, so every earlier remote send is complete"}
+    },
+    {
+      "id": "final_combine_drain_begin_S", "stage": "final_combine_drain", "edge": "begin", "boundary_quality": "causal", "roles": ["AIV0", "AIV1"],
+      "scope": "最终 Wave 上所有 AIV 各一次。", "why": "确认最后一个 Combine group 后是否仍有 row-ring MTE3 尾部需要回收。", "semantics": "最终 Wave 的 Combine 行已全部发出，即将消费仍在途的 row-ring 完成事件。", "perturbation": "每个 AIV 一次时钟读取。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::ProcessCombineWave", "target_anchor": {"mode": "literal", "pattern": "DrainCombineRowBuffers(rowSequence, activeBufferConfig.rowBufferCount);"}, "placement": "before", "marker": "TRACE_POINT: final_combine_drain_begin_S", "max_line_distance": 7},
+      "dependency": {"precondition": "final Wave Combine helpers returned", "producer_pipeline": "MTE3", "timestamp_pipeline": "Scalar", "bridge": "program order", "proof": "marker is immediately before the production row-ring drain"}
+    },
+    {
+      "id": "final_combine_drain_end_S", "stage": "final_combine_drain", "edge": "end", "boundary_quality": "actual", "roles": ["AIV0", "AIV1"],
+      "scope": "与 final_combine_drain_begin_S 一一对应。", "why": "把 Combine 发送尾部与后续 MoE 收尾逻辑分开。", "semantics": "最终 Wave 的全部已用 row-ring MTE3 完成事件已经消费。", "perturbation": "每个 AIV 一次时钟读取，复用生产 drain。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::ProcessCombineWave", "target_anchor": {"mode": "literal", "pattern": "DrainCombineRowBuffers(rowSequence, activeBufferConfig.rowBufferCount);"}, "placement": "after", "marker": "TRACE_POINT: final_combine_drain_end_S", "max_line_distance": 7},
+      "dependency": {"precondition": "DrainCombineRowBuffers returned", "producer_pipeline": "MTE3", "timestamp_pipeline": "Scalar", "bridge": "production MTE3_MTE2 event waits", "proof": "the helper consumes every active row-ring completion event before return"}
+    },
+    {
+      "id": "moe_epilogue_begin_S", "stage": "moe_epilogue", "edge": "begin", "boundary_quality": "causal", "roles": ["AIV0", "AIV1"],
+      "scope": "每个 AIV 在最终 Combine 返回后一次。", "why": "显示最终 Combine 与本地汇合之间的 EndSync、状态复位和 count 导出成本。", "semantics": "最终 Combine/drain 已返回，即将执行 MoE 专家阶段尾部逻辑。", "perturbation": "每个 AIV 一次时钟读取。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::ProcessMoeExpertStages", "target_anchor": {"mode": "literal", "pattern": "waveBeginPosition = waveEndPosition;"}, "placement": "before", "marker": "TRACE_POINT: moe_epilogue_begin_S", "max_line_distance": 9},
+      "dependency": {"precondition": "the final ProcessCombineWave returned", "producer_pipeline": "mixed", "timestamp_pipeline": "Scalar", "bridge": "program order", "proof": "marker is gated by !hasNextWave immediately after ProcessCombineWave"}
+    },
+    {
+      "id": "moe_epilogue_end_S", "stage": "moe_epilogue", "edge": "end", "boundary_quality": "actual", "roles": ["AIV0", "AIV1"],
+      "scope": "与 moe_epilogue_begin_S 一一对应。", "why": "定位 Combine 后非 barrier 的 V 核尾部成本。", "semantics": "EndSync、ping-pong 复位和 compact expert count 导出均已返回。", "perturbation": "每个 AIV 一次时钟读取。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::ProcessMoeExpertStages", "target_anchor": {"mode": "literal", "pattern": "ExportCompactExpertTokenCounts(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);"}, "placement": "after", "marker": "TRACE_POINT: moe_epilogue_end_S", "max_line_distance": 7},
+      "dependency": {"precondition": "expert-count export returned", "producer_pipeline": "Scalar/MTE2/MTE3", "timestamp_pipeline": "Scalar", "bridge": "production helper completion", "proof": "the only exporting AIV drains its MTE3 before return; other AIVs have no export work"}
+    },
+    {
+      "id": "moe_tail_sync_begin_S", "stage": "moe_tail_sync", "edge": "begin", "boundary_quality": "causal", "roles": ["AIV0", "AIV1"],
+      "scope": "所有 AIV 在 MoE 专家阶段返回后一次。", "why": "直接量化快 V 核等待慢 V 核完成最终 Combine/尾部工作的时间。", "semantics": "即将执行 MoE 尾部 PIPE_ALL 和本卡 AIV SyncAll。", "perturbation": "每个 AIV 一次时钟读取。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::ProcessGmmPipeline", "target_anchor": {"mode": "literal", "pattern": "SyncAll<true>();"}, "placement": "before", "marker": "TRACE_POINT: moe_tail_sync_begin_S", "max_line_distance": 8},
+      "dependency": {"precondition": "ProcessMoeExpertStages returned", "producer_pipeline": "mixed local pipelines", "timestamp_pipeline": "Scalar", "bridge": "program order", "proof": "marker precedes the production PIPE_ALL/SyncAll pair"}
+    },
+    {
+      "id": "moe_tail_sync_end_S", "stage": "moe_tail_sync", "edge": "end", "boundary_quality": "actual", "roles": ["AIV0", "AIV1"],
+      "scope": "与 moe_tail_sync_begin_S 一一对应。", "why": "把本卡负载不均衡等待与输出跨卡同步分开。", "semantics": "本卡所有 AIV 已完成 MoE 专家流水并通过 SyncAll。", "perturbation": "每个 AIV 一次时钟读取。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::ProcessGmmPipeline", "target_anchor": {"mode": "literal", "pattern": "SyncAll<true>();"}, "placement": "after", "marker": "TRACE_POINT: moe_tail_sync_end_S", "max_line_distance": 8},
+      "dependency": {"precondition": "production AIV SyncAll returned", "producer_pipeline": "all local AIV pipelines", "timestamp_pipeline": "Scalar", "bridge": "production PIPE_ALL plus SyncAll", "proof": "marker is immediately after the existing synchronization"}
+    },
+    {
+      "id": "shared_expert_gmm2_begin_S", "stage": "shared_expert_gmm2", "edge": "begin", "boundary_quality": "causal", "roles": ["AIV0", "AIV1"],
+      "scope": "每个 AIV 各一次；sharedExpertNum=0 时仅覆盖分支判断。", "why": "显示 V 侧在共享专家 GMM2 调用路径上的调度区间。", "semantics": "即将判断并按需进入共享专家 GMM2 helper；实际 Cube 计算仍由 AIC 完成。", "perturbation": "每个 AIV 一次时钟读取。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::ProcessGmmPipeline", "target_anchor": {"mode": "literal", "pattern": "ProcessSharedExpertGmm2();", "occurrence": 2}, "placement": "before", "marker": "TRACE_POINT: shared_expert_gmm2_begin_S", "max_line_distance": 8},
+      "dependency": {"precondition": "MoE tail SyncAll returned", "producer_pipeline": "Scalar", "timestamp_pipeline": "Scalar", "bridge": "program order", "proof": "marker immediately precedes the sharedExpertNum branch on AIV roles"}
+    },
+    {
+      "id": "shared_expert_gmm2_end_S", "stage": "shared_expert_gmm2", "edge": "end", "boundary_quality": "issue", "roles": ["AIV0", "AIV1"],
+      "scope": "与 shared_expert_gmm2_begin_S 一一对应。", "why": "区分共享专家调用开销与后续输出同步；共享结果等待可能继续落在 Unpermute 内。", "semantics": "AIV 角色已从共享专家 GMM2 helper 返回。", "perturbation": "每个 AIV 一次时钟读取，不增加 Cube/FIX drain。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::ProcessGmmPipeline", "target_anchor": {"mode": "literal", "pattern": "ProcessSharedExpertGmm2();", "occurrence": 2}, "placement": "after", "marker": "TRACE_POINT: shared_expert_gmm2_end_S", "max_line_distance": 8},
+      "dependency": {"precondition": "ProcessSharedExpertGmm2 returned on AIV", "producer_pipeline": "Scalar control", "timestamp_pipeline": "Scalar", "bridge": "program order only", "proof": "no tracing-only completion event is inserted"}
+    },
+    {
+      "id": "output_cross_rank_sync_begin_S", "stage": "output_cross_rank_sync", "edge": "begin", "boundary_quality": "causal", "roles": ["AIV0", "AIV1"],
+      "scope": "所有 AIV 各一次。", "why": "直接量化本 rank 等待其他 rank 完成 Combine 发送的时间。", "semantics": "即将进入 Unpermute 前的输出跨 rank 同步。", "perturbation": "每个 AIV 一次时钟读取。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::Process", "target_anchor": {"mode": "literal", "pattern": "CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);", "occurrence": 2}, "placement": "before", "marker": "TRACE_POINT: output_cross_rank_sync_begin_S", "max_line_distance": 8},
+      "dependency": {"precondition": "local GMM pipeline returned", "producer_pipeline": "Scalar/network", "timestamp_pipeline": "Scalar", "bridge": "program order", "proof": "marker immediately precedes the output rank handshake"}
+    },
+    {
+      "id": "output_cross_rank_sync_end_S", "stage": "output_cross_rank_sync", "edge": "end", "boundary_quality": "actual", "roles": ["AIV0", "AIV1"],
+      "scope": "与 output_cross_rank_sync_begin_S 一一对应。", "why": "把慢 rank 的 Combine 尾部与本地 Unpermute 分开。", "semantics": "所有 rank 的输出握手已完成，本卡 Combine 接收区可读。", "perturbation": "每个 AIV 一次时钟读取。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::Process", "target_anchor": {"mode": "literal", "pattern": "CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);", "occurrence": 2}, "placement": "after", "marker": "TRACE_POINT: output_cross_rank_sync_end_S", "max_line_distance": 8},
+      "dependency": {"precondition": "CrossRankSyncInWorldSize returned", "producer_pipeline": "Scalar/network", "timestamp_pipeline": "Scalar", "bridge": "production rank handshake", "proof": "marker is immediately after the existing cross-rank synchronization"}
+    },
+    {
+      "id": "unpermute_init_begin_S", "stage": "unpermute_init", "edge": "begin", "boundary_quality": "causal", "roles": ["AIV0", "AIV1"],
+      "scope": "所有 AIV 各一次。", "why": "把 UB view/config 构造与 Unpermute 数据流水分开。", "semantics": "即将构造当前 AIV 的 Unpermute buffer 视图。", "perturbation": "每个 AIV 一次时钟读取。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::Process", "target_anchor": {"mode": "literal", "pattern": "UnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();"}, "placement": "before", "marker": "TRACE_POINT: unpermute_init_begin_S", "max_line_distance": 7},
+      "dependency": {"precondition": "output cross-rank sync returned", "producer_pipeline": "Scalar", "timestamp_pipeline": "Scalar", "bridge": "program order", "proof": "marker immediately precedes InitTokenUnpermuteBuffers"}
+    },
+    {
+      "id": "unpermute_init_end_S", "stage": "unpermute_init", "edge": "end", "boundary_quality": "actual", "roles": ["AIV0", "AIV1"],
+      "scope": "与 unpermute_init_begin_S 一一对应。", "why": "识别极端配置下 buffer 规划本身是否异常。", "semantics": "Unpermute UB view 和当前 job bufferConfig 已构造完成。", "perturbation": "每个 AIV 一次时钟读取。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::Process", "target_anchor": {"mode": "literal", "pattern": "UnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();"}, "placement": "after", "marker": "TRACE_POINT: unpermute_init_end_S", "max_line_distance": 8},
+      "dependency": {"precondition": "InitTokenUnpermuteBuffers returned", "producer_pipeline": "Scalar", "timestamp_pipeline": "Scalar", "bridge": "program order", "proof": "helper only constructs local tensor views and returns synchronously"}
+    },
+    {
+      "id": "unpermute_begin_S", "stage": "unpermute", "edge": "begin", "boundary_quality": "causal", "roles": ["AIV0", "AIV1"],
+      "scope": "所有 AIV 各一次。", "why": "量化 Combine 接收数据、top-k/shared 累加与最终 y 写回的整体成本。", "semantics": "Unpermute buffer 已构造，即将进入本核 token range。", "perturbation": "每个 AIV 一次时钟读取。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::Process", "target_anchor": {"mode": "literal", "pattern": "UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>("}, "placement": "before", "marker": "TRACE_POINT: unpermute_begin_S", "max_line_distance": 8},
+      "dependency": {"precondition": "Unpermute buffer initialization completed", "producer_pipeline": "Scalar", "timestamp_pipeline": "Scalar", "bridge": "program order", "proof": "marker immediately precedes UnpermuteTokens"}
+    },
+    {
+      "id": "unpermute_end_S", "stage": "unpermute", "edge": "end", "boundary_quality": "actual", "roles": ["AIV0", "AIV1"],
+      "scope": "与 unpermute_begin_S 一一对应。", "why": "确认尾部慢点是否来自本地反量化/累加/写 y，而不是同步。", "semantics": "本核负责 token 的最终 y MTE3 已全部完成。", "perturbation": "每个 AIV 一次时钟读取，复用 UnpermuteTokens 的生产 MTE3_V drain。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h", "symbol": "MegaMoeA8W8Wave::Process", "target_anchor": {"mode": "literal", "pattern": "UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>("}, "placement": "after", "marker": "TRACE_POINT: unpermute_end_S", "max_line_distance": 8},
+      "dependency": {"precondition": "UnpermuteTokens returned", "producer_pipeline": "MTE2/Vector/MTE3", "timestamp_pipeline": "Scalar", "bridge": "production MTE3_V event wait", "proof": "UnpermuteTokens consumes its outputBufferEvent after the final batch before return"}
     }
   ],
   "spans": [
@@ -371,6 +469,13 @@
     {"id": "gmm1_problem", "label": "GMM1 逐 problem（FIX 完成）", "begin": "gmm1_problem_begin_S", "end": "gmm1_problem_end_S", "roles": ["AIC"], "quality": "exact", "color": "#2563eb"},
     {"id": "swiglu_problem", "label": "SwiGLU/MX 逐 problem", "begin": "swiglu_problem_begin_S", "end": "swiglu_problem_end_S", "roles": ["AIV0"], "quality": "issue", "color": "#16a34a"},
     {"id": "gmm2_problem", "label": "GMM2 逐 problem（FIX 完成）", "begin": "gmm2_problem_begin_S", "end": "gmm2_problem_end_S", "roles": ["AIC"], "quality": "exact", "color": "#7c3aed"},
-    {"id": "combine_group_task", "label": "Combine 逐 256-token group 任务", "begin": "combine_group_begin_S", "end": "combine_group_end_S", "roles": ["AIV0", "AIV1"], "quality": "exact", "color": "#ea580c"}
+    {"id": "combine_group_task", "label": "Combine 逐 256-token group 任务", "begin": "combine_group_begin_S", "end": "combine_group_end_S", "roles": ["AIV0", "AIV1"], "quality": "exact", "color": "#ea580c"},
+    {"id": "final_combine_drain", "label": "最终 Combine Ring Drain", "begin": "final_combine_drain_begin_S", "end": "final_combine_drain_end_S", "roles": ["AIV0", "AIV1"], "quality": "exact", "color": "#c2410c"},
+    {"id": "moe_epilogue", "label": "MoE 尾部 EndSync/Count 导出", "begin": "moe_epilogue_begin_S", "end": "moe_epilogue_end_S", "roles": ["AIV0", "AIV1"], "quality": "exact", "color": "#9a3412"},
+    {"id": "moe_tail_sync", "label": "MoE 尾部本卡 AIV 汇合", "begin": "moe_tail_sync_begin_S", "end": "moe_tail_sync_end_S", "roles": ["AIV0", "AIV1"], "quality": "exact", "color": "#eab308"},
+    {"id": "shared_expert_gmm2", "label": "共享专家 GMM2（V 侧调用）", "begin": "shared_expert_gmm2_begin_S", "end": "shared_expert_gmm2_end_S", "roles": ["AIV0", "AIV1"], "quality": "issue", "color": "#65a30d"},
+    {"id": "output_cross_rank_sync", "label": "Unpermute 前跨 Rank 同步", "begin": "output_cross_rank_sync_begin_S", "end": "output_cross_rank_sync_end_S", "roles": ["AIV0", "AIV1"], "quality": "exact", "color": "#f97316"},
+    {"id": "unpermute_init", "label": "Unpermute Buffer 初始化", "begin": "unpermute_init_begin_S", "end": "unpermute_init_end_S", "roles": ["AIV0", "AIV1"], "quality": "exact", "color": "#64748b"},
+    {"id": "unpermute", "label": "Unpermute 累加与输出", "begin": "unpermute_begin_S", "end": "unpermute_end_S", "roles": ["AIV0", "AIV1"], "quality": "exact", "color": "#db2777"}
   ]
 }

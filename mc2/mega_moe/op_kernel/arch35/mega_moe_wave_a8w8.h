@@ -947,6 +947,13 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     uint32_t waveGlobalRowBegin = GetGlobalRowForPosition(waveBeginPosition);
     uint32_t waveGlobalRowEnd = GetGlobalRowForPosition(waveEndPosition);
     if (waveGlobalRowEnd <= waveGlobalRowBegin) {
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        if (isFinalWave && CriticalPathTracePtr() != nullptr) {
+            // An empty final Wave still publishes a complete fixed-span pair.
+            criticalPathTrace_.BeginFinalCombineDrain();
+            criticalPathTrace_.EndFinalCombineDrain();
+        }
+#endif
         return;
     }
     uint32_t rowSequence = 0U;
@@ -971,7 +978,19 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
 #endif
         );
     }
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+    if (isFinalWave && CriticalPathTracePtr() != nullptr) {
+        // TRACE_POINT: final_combine_drain_begin_S
+        criticalPathTrace_.BeginFinalCombineDrain();
+    }
+#endif
     DrainCombineRowBuffers(rowSequence, activeBufferConfig.rowBufferCount);
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+    if (isFinalWave && CriticalPathTracePtr() != nullptr) {
+        // TRACE_POINT: final_combine_drain_end_S
+        criticalPathTrace_.EndFinalCombineDrain();
+    }
+#endif
 }
 
 template <TemplateMegaMoeA8W8WaveTypeClass>
@@ -1084,6 +1103,14 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                            criticalPathWaveIndex
 #endif
         );
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        if constexpr (g_coreType == AIV) {
+            if (!hasNextWave && CriticalPathTracePtr() != nullptr) {
+                // TRACE_POINT: moe_epilogue_begin_S
+                criticalPathTrace_.BeginMoeEpilogue();
+            }
+        }
+#endif
         waveBeginPosition = waveEndPosition;
     }
 
@@ -1092,6 +1119,14 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     }
     gmm1PingPongIdx_ = 0;
     ExportCompactExpertTokenCounts(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+    if constexpr (g_coreType == AIV) {
+        if (CriticalPathTracePtr() != nullptr) {
+            // TRACE_POINT: moe_epilogue_end_S
+            criticalPathTrace_.EndMoeEpilogue();
+        }
+    }
+#endif
 }
 
 template <TemplateMegaMoeA8W8WaveTypeClass>
@@ -1122,14 +1157,42 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     ProcessMoeExpertStages();
 
     if constexpr (g_coreType == AIV) {
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        if (CriticalPathTracePtr() != nullptr) {
+            // TRACE_POINT: moe_tail_sync_begin_S
+            criticalPathTrace_.BeginMoeTailSync();
+        }
+#endif
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        if (CriticalPathTracePtr() != nullptr) {
+            // TRACE_POINT: moe_tail_sync_end_S
+            criticalPathTrace_.EndMoeTailSync();
+        }
+#endif
     }
 
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+    if constexpr (g_coreType == AIV) {
+        if (CriticalPathTracePtr() != nullptr) {
+            // TRACE_POINT: shared_expert_gmm2_begin_S
+            criticalPathTrace_.BeginSharedExpertGmm2();
+        }
+    }
+#endif
     if (sharedExpertNum_ > 0) {
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::SHARED_EXPERT_GMM2);
         ProcessSharedExpertGmm2();
     }
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+    if constexpr (g_coreType == AIV) {
+        if (CriticalPathTracePtr() != nullptr) {
+            // TRACE_POINT: shared_expert_gmm2_end_S
+            criticalPathTrace_.EndSharedExpertGmm2();
+        }
+    }
+#endif
 }
 
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
@@ -1382,11 +1445,43 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     // 阶段 3：等待所有 rank 的 Combine 发送完成，再执行本卡 Unpermute。
     if constexpr (g_coreType == AIV) {
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_OUTPUT);
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        if (CriticalPathTracePtr() != nullptr) {
+            // TRACE_POINT: output_cross_rank_sync_begin_S
+            criticalPathTrace_.BeginOutputCrossRankSync();
+        }
+#endif
         CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        if (CriticalPathTracePtr() != nullptr) {
+            // TRACE_POINT: output_cross_rank_sync_end_S
+            criticalPathTrace_.EndOutputCrossRankSync();
+        }
+#endif
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::UNPERMUTE);
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        if (CriticalPathTracePtr() != nullptr) {
+            // TRACE_POINT: unpermute_init_begin_S
+            criticalPathTrace_.BeginUnpermuteInit();
+        }
+#endif
         UnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        if (CriticalPathTracePtr() != nullptr) {
+            // TRACE_POINT: unpermute_init_end_S
+            criticalPathTrace_.EndUnpermuteInit();
+            // TRACE_POINT: unpermute_begin_S
+            criticalPathTrace_.BeginUnpermute();
+        }
+#endif
         UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>(
             tokenUnpermuteConfig_, commonConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        if (CriticalPathTracePtr() != nullptr) {
+            // TRACE_POINT: unpermute_end_S
+            criticalPathTrace_.EndUnpermute();
+        }
+#endif
     }
     // 恢复入口时保存的溢出模式。
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);

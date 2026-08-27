@@ -117,19 +117,19 @@ def _critical_path_trace_validate_capacity():
     max_m_groups = first_m_groups + (max_routed_rows - first_m_groups) // 256
     wave_capacity = max(1, (max_m_groups + m_groups_per_wave - 1) // m_groups_per_wave)
     required_segment_capacity = max(expert_count, max_m_groups)
-    record_words = 26
+    record_words = 40
     record_count = 3 * traced_ai_blocks
     descriptor_required_y_bytes = 4 * (30 + record_count * record_words)
     scratch_reserve_bytes = 50 * 1024 * 1024
     scratch_reserve_words = scratch_reserve_bytes // 4
     scratch_words_per_record = scratch_reserve_words // record_count
-    scratch_capacity_limit = max(0, (scratch_words_per_record - 22) // 20)
+    scratch_capacity_limit = max(0, (scratch_words_per_record - 36) // 20)
     segment_capacity = min(required_segment_capacity, scratch_capacity_limit)
-    scratch_record_words = 22 + 20 * segment_capacity
+    scratch_record_words = 36 + 20 * segment_capacity
     scratch_required_bytes = 4 * record_count * scratch_record_words
     _critical_path_trace_capacity = {
-        "protocol_version": 13,
-        "formula": "descriptor=4*(30+3*aic_count*26); scratch_record=22+5*4*segment_capacity",
+        "protocol_version": 14,
+        "formula": "descriptor=4*(30+3*aic_count*40); scratch_record=36+5*4*segment_capacity",
         "traced_ai_blocks": traced_ai_blocks,
         "bs": int(bs),
         "h": int(h),

@@ -31,13 +31,13 @@ namespace MegaMoeImpl {
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
 
 constexpr uint32_t CRITICAL_PATH_TRACE_MAGIC = 0x43505452U;
-constexpr uint32_t CRITICAL_PATH_TRACE_PROTOCOL_VERSION = 13U;
-constexpr uint32_t CRITICAL_PATH_TRACE_SCHEMA_ID = 0xDAE1E878U;
+constexpr uint32_t CRITICAL_PATH_TRACE_PROTOCOL_VERSION = 14U;
+constexpr uint32_t CRITICAL_PATH_TRACE_SCHEMA_ID = 0x0AABA4B5U;
 constexpr uint32_t CRITICAL_PATH_TRACE_HEADER_WORDS = 30U;
 constexpr uint32_t CRITICAL_PATH_TRACE_ROLE_COUNT = 3U;
-constexpr uint32_t CRITICAL_PATH_TRACE_RECORD_WORDS = 26U;
-constexpr uint32_t CRITICAL_PATH_TRACE_FIXED_TIMESTAMP_WORDS = 16U;
-constexpr uint32_t CRITICAL_PATH_TRACE_SCRATCH_HEADER_WORDS = 22U;
+constexpr uint32_t CRITICAL_PATH_TRACE_RECORD_WORDS = 40U;
+constexpr uint32_t CRITICAL_PATH_TRACE_FIXED_TIMESTAMP_WORDS = 30U;
+constexpr uint32_t CRITICAL_PATH_TRACE_SCRATCH_HEADER_WORDS = 36U;
 constexpr uint32_t CRITICAL_PATH_TRACE_SEGMENT_WORDS = 4U;
 constexpr uint32_t CRITICAL_PATH_TRACE_STAGE_COUNT = 5U;
 constexpr uint32_t CRITICAL_PATH_TRACE_M_GROUP_ROWS = 256U;
@@ -246,6 +246,76 @@ public:
         expertBufferInitEnd_ = Now();
     }
 
+    __aicore__ inline void BeginFinalCombineDrain()
+    {
+        finalCombineDrainBegin_ = Now();
+    }
+
+    __aicore__ inline void EndFinalCombineDrain()
+    {
+        finalCombineDrainEnd_ = Now();
+    }
+
+    __aicore__ inline void BeginMoeEpilogue()
+    {
+        moeEpilogueBegin_ = Now();
+    }
+
+    __aicore__ inline void EndMoeEpilogue()
+    {
+        moeEpilogueEnd_ = Now();
+    }
+
+    __aicore__ inline void BeginMoeTailSync()
+    {
+        moeTailSyncBegin_ = Now();
+    }
+
+    __aicore__ inline void EndMoeTailSync()
+    {
+        moeTailSyncEnd_ = Now();
+    }
+
+    __aicore__ inline void BeginSharedExpertGmm2()
+    {
+        sharedExpertGmm2Begin_ = Now();
+    }
+
+    __aicore__ inline void EndSharedExpertGmm2()
+    {
+        sharedExpertGmm2End_ = Now();
+    }
+
+    __aicore__ inline void BeginOutputCrossRankSync()
+    {
+        outputCrossRankSyncBegin_ = Now();
+    }
+
+    __aicore__ inline void EndOutputCrossRankSync()
+    {
+        outputCrossRankSyncEnd_ = Now();
+    }
+
+    __aicore__ inline void BeginUnpermuteInit()
+    {
+        unpermuteInitBegin_ = Now();
+    }
+
+    __aicore__ inline void EndUnpermuteInit()
+    {
+        unpermuteInitEnd_ = Now();
+    }
+
+    __aicore__ inline void BeginUnpermute()
+    {
+        unpermuteBegin_ = Now();
+    }
+
+    __aicore__ inline void EndUnpermute()
+    {
+        unpermuteEnd_ = Now();
+    }
+
     __aicore__ inline void PrepareStage0(uint32_t waveIdx, uint32_t expertIdx)
     {
         stage0ActiveWave_ = waveIdx;
@@ -434,12 +504,26 @@ public:
         WriteWord(scratchRecord_ + 13U, crossRankSyncEnd_);
         WriteWord(scratchRecord_ + 14U, expertBufferInitBegin_);
         WriteWord(scratchRecord_ + 15U, expertBufferInitEnd_);
-        WriteWord(scratchRecord_ + 16U, stage0CapturedCount_);
-        WriteWord(scratchRecord_ + 17U, stage1CapturedCount_);
-        WriteWord(scratchRecord_ + 18U, stage2CapturedCount_);
-        WriteWord(scratchRecord_ + 19U, stage3CapturedCount_);
-        WriteWord(scratchRecord_ + 20U, stage4CapturedCount_);
-        WriteWord(scratchRecord_ + 21U, static_cast<uint32_t>(truncated_));
+        WriteWord(scratchRecord_ + 16U, finalCombineDrainBegin_);
+        WriteWord(scratchRecord_ + 17U, finalCombineDrainEnd_);
+        WriteWord(scratchRecord_ + 18U, moeEpilogueBegin_);
+        WriteWord(scratchRecord_ + 19U, moeEpilogueEnd_);
+        WriteWord(scratchRecord_ + 20U, moeTailSyncBegin_);
+        WriteWord(scratchRecord_ + 21U, moeTailSyncEnd_);
+        WriteWord(scratchRecord_ + 22U, sharedExpertGmm2Begin_);
+        WriteWord(scratchRecord_ + 23U, sharedExpertGmm2End_);
+        WriteWord(scratchRecord_ + 24U, outputCrossRankSyncBegin_);
+        WriteWord(scratchRecord_ + 25U, outputCrossRankSyncEnd_);
+        WriteWord(scratchRecord_ + 26U, unpermuteInitBegin_);
+        WriteWord(scratchRecord_ + 27U, unpermuteInitEnd_);
+        WriteWord(scratchRecord_ + 28U, unpermuteBegin_);
+        WriteWord(scratchRecord_ + 29U, unpermuteEnd_);
+        WriteWord(scratchRecord_ + 30U, stage0CapturedCount_);
+        WriteWord(scratchRecord_ + 31U, stage1CapturedCount_);
+        WriteWord(scratchRecord_ + 32U, stage2CapturedCount_);
+        WriteWord(scratchRecord_ + 33U, stage3CapturedCount_);
+        WriteWord(scratchRecord_ + 34U, stage4CapturedCount_);
+        WriteWord(scratchRecord_ + 35U, static_cast<uint32_t>(truncated_));
     }
 
     __aicore__ inline void WriteStagePayloadTo(__gm__ int32_t *traceOut, uint32_t stage, uint32_t offset,
@@ -540,6 +624,20 @@ private:
     uint32_t crossRankSyncEnd_ = 0U;
     uint32_t expertBufferInitBegin_ = 0U;
     uint32_t expertBufferInitEnd_ = 0U;
+    uint32_t finalCombineDrainBegin_ = 0U;
+    uint32_t finalCombineDrainEnd_ = 0U;
+    uint32_t moeEpilogueBegin_ = 0U;
+    uint32_t moeEpilogueEnd_ = 0U;
+    uint32_t moeTailSyncBegin_ = 0U;
+    uint32_t moeTailSyncEnd_ = 0U;
+    uint32_t sharedExpertGmm2Begin_ = 0U;
+    uint32_t sharedExpertGmm2End_ = 0U;
+    uint32_t outputCrossRankSyncBegin_ = 0U;
+    uint32_t outputCrossRankSyncEnd_ = 0U;
+    uint32_t unpermuteInitBegin_ = 0U;
+    uint32_t unpermuteInitEnd_ = 0U;
+    uint32_t unpermuteBegin_ = 0U;
+    uint32_t unpermuteEnd_ = 0U;
     uint32_t stage0ActiveWave_ = INVALID_INDEX;
     uint32_t stage1ActiveWave_ = INVALID_INDEX;
     uint32_t stage0ActiveExpert_ = INVALID_INDEX;
