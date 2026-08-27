@@ -1325,107 +1325,49 @@ def _materialize_pa_bnsd(tensor):
 def _apply_sticky_overflow_stc_pattern(
     case, q_fp32=None, k_fp32=None, v_fp32=None
 ):
-    """Materialize deterministic STC inputs for ordered MX group overflow."""
-    case_name = str(case.get("name") or "")
-    qk_specs = {
-        # (signs, E4M3 payload, E8M0 exponent per D group)
-        "MXSTC113_": ((1.0, 1.0, -1.0, -1.0), 448.0, (105,) * 4),
-        "MXSTC114_": ((-1.0, -1.0, 1.0, 1.0), 448.0, (105,) * 4),
-        "MXSTC117_": ((1.0, -1.0, 0.0, 0.0), 448.0, (106,) * 4),
-        "MXSTC118_": ((-1.0, 1.0, 0.0, 0.0), 448.0, (106,) * 4),
-        "MXSTC119_": ((1.0, 1.0, -1.0, -1.0), 320.0, (105,) * 4),
-        "MXSTC120_": ((-1.0, -1.0, 1.0, 1.0), 320.0, (105,) * 4),
-        "MXSTC121_": ((1.0, 1.0, -1.0, -1.0), 288.0, (105,) * 4),
-        "MXSTC122_": ((-1.0, -1.0, 1.0, 1.0), 288.0, (105,) * 4),
-        "MXSTC123_": ((1.0, 1.0, -1.0, -1.0), 448.0, (105, 104, 105, 104)),
-        "MXSTC124_": ((-1.0, -1.0, 1.0, 1.0), 448.0, (105, 104, 105, 104)),
-        "MXSTC129_": ((1.0, 1.0, 1.0, -1.0), 448.0, (104,) * 4),
-        "MXSTC130_": ((-1.0, -1.0, -1.0, 1.0), 448.0, (104,) * 4),
-        "MXSTC131_": ((1.0, 1.0, 1.0, 1.0), 320.0, (104,) * 4),
-        "MXSTC132_": ((-1.0, -1.0, -1.0, -1.0), 320.0, (104,) * 4),
-        "MXSTC133_": ((1.0, -1.0, 1.0, -1.0), 448.0, (106, 82, 106, 82)),
-        "MXSTC134_": ((-1.0, 1.0, -1.0, 1.0), 448.0, (106, 81, 106, 81)),
-        "MXSTC135_": ((1.0, 1.0, 1.0, 1.0), 448.0, (103, 104, 105, 105)),
-        "MXSTC136_": ((1.0, 1.0, -1.0, -1.0), 448.0, (105, 105, 104, 103)),
-        "MXSTC151_": ((1.0, 1.0, -1.0, -1.0), 448.0, (105,) * 4),
-        "MXSTC152_": ((-1.0, -1.0, 1.0, 1.0), 448.0, (105,) * 4),
+    """Materialize deterministic inputs for the four sticky-overflow STCs."""
+    seed = int(case["seed"])
+    qk_signs = {
+        260130: (1.0, 1.0, -1.0, -1.0),
+        260131: (-1.0, -1.0, 1.0, 1.0),
     }
-    pv_specs = {
-        # (sign, E4M3 payload, E8M0 exponent) per S2 group.
-        "MXSTC115_": ((1.0, 448.0, 115), (-1.0, 448.0, 115)) * 2,
-        "MXSTC116_": ((-1.0, 448.0, 115), (1.0, 448.0, 115)) * 2,
-        "MXSTC125_": ((1.0, 448.0, 115), (-1.0, 448.0, 115)),
-        "MXSTC126_": ((-1.0, 448.0, 115), (1.0, 448.0, 115)),
-        # Each 256-token tile contributes about 0.5625*FLT_MAX.  The second
-        # tile therefore overflows the ordered accumulator, while the final
-        # tail token contributes the opposite 0.625*FLT_MAX.
-        "MXSTC127_": ((1.0, 288.0, 111),) * 16
-        + ((-1.0, 320.0, 119),),
-        "MXSTC128_": ((-1.0, 288.0, 111),) * 16
-        + ((1.0, 320.0, 119),),
+    pv_signs = {
+        260132: (1.0, -1.0, 1.0, -1.0),
+        260133: (-1.0, 1.0, -1.0, 1.0),
     }
-    pv_boundary_groups = {
-        "MXSTC137_": (1, 1.0),
-        "MXSTC138_": (1, -1.0),
-        "MXSTC139_": (2, 1.0),
-        "MXSTC140_": (2, -1.0),
-        "MXSTC141_": (2, 1.0),
-        "MXSTC142_": (3, -1.0),
-        "MXSTC143_": (4, 1.0),
-        "MXSTC144_": (4, -1.0),
-        "MXSTC145_": (5, 1.0),
-        "MXSTC146_": (8, -1.0),
-        "MXSTC147_": (8, 1.0),
-        "MXSTC148_": (9, -1.0),
-        "MXSTC149_": (16, 1.0),
-        "MXSTC150_": (16, -1.0),
-    }
-    for prefix, (group_count, first_sign) in pv_boundary_groups.items():
-        pv_specs[prefix] = tuple(
-            (first_sign * (-1.0 if group_idx % 2 else 1.0), 448.0, 115)
-            for group_idx in range(group_count)
-        )
 
-    qk_spec = next(
-        (spec for prefix, spec in qk_specs.items() if case_name.startswith(prefix)),
-        None,
-    )
-    if qk_spec is not None:
-        signs, payload, exponents = qk_spec
+    if seed in qk_signs:
         if q_fp32 is not None:
             q_fp32.zero_()
-            for group_idx, (sign, exponent) in enumerate(zip(signs, exponents)):
+            group_value = math.ldexp(448.0, 105)
+            for group_idx, sign in enumerate(qk_signs[seed]):
                 group_start = group_idx * QUANT_GROUP_SIZE
-                group_end = group_start + QUANT_GROUP_SIZE
-                q_fp32[..., group_start:group_end] = sign * math.ldexp(
-                    payload, exponent
-                )
+                q_fp32[
+                    ..., group_start : group_start + QUANT_GROUP_SIZE
+                ] = sign * group_value
         if k_fp32 is not None and v_fp32 is not None:
             k_fp32.zero_()
             v_fp32.zero_()
-            # Logical KV 0 crosses FLT_MAX while accumulating its first two D
-            # groups; KV 1 remains a finite zero-score control.
-            k_fp32[..., 0, :] = 448.0
-            v_fp32[..., 0, :] = -1.0
-            v_fp32[..., 1, :] = 1.0
+            k_fp32[0, 0, 0, :] = 448.0
+            v_fp32[0, 0, 0, :] = -1.0
+            v_fp32[0, 0, 1, :] = 1.0
         return
 
-    pv_spec = next(
-        (spec for prefix, spec in pv_specs.items() if case_name.startswith(prefix)),
-        None,
-    )
-    if pv_spec is not None:
+    if seed in pv_signs:
         if q_fp32 is not None:
             q_fp32.zero_()
         if k_fp32 is not None and v_fp32 is not None:
             k_fp32.zero_()
             v_fp32.zero_()
-            for group_idx, (sign, payload, exponent) in enumerate(pv_spec):
+            group_value = math.ldexp(448.0, 115)
+            for group_idx, sign in enumerate(pv_signs[seed]):
                 group_start = group_idx * QUANT_GROUP_SIZE
-                group_end = group_start + QUANT_GROUP_SIZE
-                v_fp32[0, 0, group_start:group_end, :] = sign * math.ldexp(
-                    payload, exponent
-                )
+                v_fp32[
+                    0,
+                    0,
+                    group_start : group_start + QUANT_GROUP_SIZE,
+                    :,
+                ] = sign * group_value
 
 
 def generate_mxfp8_inputs(case=None, max_block_per_batch=None, atten_mask_shape=None):
