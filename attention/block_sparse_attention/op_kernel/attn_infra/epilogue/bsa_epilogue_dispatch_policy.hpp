@@ -41,17 +41,24 @@ struct EpilogueBsaMask2Idx {
     using ArchTag = Arch::AtlasA5;
 };
 
+template <bool transposedMm1_ = false, bool rescaleOnCube_ = false>
 struct EpilogueOnlineSoftmaxBsa {
     using ArchTag = Arch::AtlasA5;
+    static constexpr bool transposedMm1 = transposedMm1_;
+    static constexpr bool rescaleOnCube = rescaleOnCube_;
 };
 
 template <
     LseMode LSE_MODE_ = LseMode::NONE,
-    LseFormat LSE_FORMAT_ = LseFormat::BNS1>
+    LseFormat LSE_FORMAT_ = LseFormat::BNS1,
+    bool transposedMm1_ = false,
+    bool rescaleOnCube_ = false>
 struct EpilogueAtlasA5BsaRescaleO {
     using ArchTag = Arch::AtlasA5;
     static constexpr LseMode LSE_MODE = LSE_MODE_;
     static constexpr LseFormat LSE_FORMAT = LSE_FORMAT_;
+    static constexpr bool transposedMm1 = transposedMm1_;
+    static constexpr bool rescaleOnCube = rescaleOnCube_;
 };
 
 }  // namespace NpuArch::Epilogue

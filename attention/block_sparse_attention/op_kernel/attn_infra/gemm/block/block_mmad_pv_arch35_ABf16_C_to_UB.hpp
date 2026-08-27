@@ -25,6 +25,7 @@
 #include "../../../attn_infra/gemm/bsa_gemm_dispatch_policy.hpp"
 #include "../../../attn_infra/gemm/bsa_helper.hpp"
 #include "../../../attn_infra/bsa_gemm_coord.hpp"
+#include "../../../attn_infra/gemm/block/block_mmad_arch35_utils.hpp"
 #include "../../../attn_infra/gemm/tile_common/bsa_gemm_tile_copy.hpp"
 #include "../../../attn_infra/gemm/tile_common/bsa_tile_mmad.hpp"
 #include "../../../tla/layout.hpp"
@@ -68,27 +69,31 @@ template <
     class ElementA_,
     class ElementB_,
     class ElementC_,
+    class ElementS_,
     class ElementBias_,
     class TileCopy_,
-    class TileMmad_>
+    class TileMmad_,
+    bool transposedMm1>
 struct BlockMmadTla<
-    MmadAtlasA5BsaPV,
+    MmadAtlasA5BsaPV<transposedMm1, false>,
     L1TileShape_,
     L0TileShape_,
     ElementA_,
     ElementB_,
     ElementC_,
+    ElementS_,
     ElementBias_,
     TileCopy_,
     TileMmad_>
 {
 public:
-    using DispatchPolicy = MmadAtlasA5BsaPV;
+    using DispatchPolicy = MmadAtlasA5BsaPV<transposedMm1>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using TileCopy = TileCopy_;
     using ElementA = ElementA_;
     using ElementB = ElementB_;
     using ElementC = ElementC_;
+    using ElementS = ElementS_;
 
     using TileMmad = TileMmad_;
 
@@ -110,11 +115,9 @@ public:
     static constexpr uint32_t L0B_PINGPONG_BUF_SIZE = ArchTag::L0B_SIZE / L0_STAGES;
     static constexpr uint32_t L0C_HALF_BUF_SIZE = ArchTag::L0C_SIZE / 2;
     static constexpr uint32_t L0C_PINGPONG_BUF_SIZE = L0C_HALF_BUF_SIZE / L0_STAGES;
-
-    static constexpr uint32_t MAX_L1_STAGES = 3; // 编译期常量，为静态L1Tensor数组开辟准备。取一个buffer份数的极大值
-    static constexpr uint32_t V0_V1_FLAG_ID_OFFSET = 16; // 核间同步mode4，AIC侧需要两个flagId分别对应两个AIV
     
     static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementA, fp8_e4m3fn_t>::value;
+    static constexpr bool rescaleOnCube = DispatchPolicy::rescaleOnCube;
 
     __aicore__ inline
     BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart, Mm2L1TileHelper &mm2L1TileHelper)
@@ -142,6 +145,14 @@ public:
             l0CTensor[i] = resource.l0CBuf.template GetBufferByByte<ElementAccumulator>(
                 L0C_HALF_BUF_SIZE + L0C_PINGPONG_BUF_SIZE * i);
         }
+    }
+
+    __aicore__ inline
+    BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart, uint32_t l1DiagAddrStart,
+                 Mm2L1TileHelper &mm2L1TileHelper)
+        : BlockMmadTla(resource, l1BufAddrStart, mm2L1TileHelper)
+    {
+        (void)l1DiagAddrStart;
     }
 
     /// Destructor
@@ -367,16 +378,19 @@ public:
             }
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
             AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
-            // 需要kernel传输ubCTensor的时候确保其shape的m，n是满足32B（8个32位元素）对齐的
-            // rounded up by 8 and splited in half to each AIV
-            // valid rows in AIV0: [0, mFixPAligned8 / 2 - 1]
-            // valid rows in AIV1: [mFixPAligned8 / 2, rowNum - 1]
-            uint32_t mFixPAligned8 = RoundUp(rowNum, 8);
+
+            uint32_t mFixPAligned = 0;
+            if constexpr (DispatchPolicy::transposedMm1) {
+                mFixPAligned =
+                    FULL_QUANT_FP8 ? RoundUp(rowNum, 64) : RoundUp(rowNum, 32);
+            } else {
+                mFixPAligned = RoundUp(rowNum, 8);
+            }
             uint32_t nFixPAligned8 = RoundUp(l0TileNAct, 8);
             if constexpr (FULL_QUANT_FP8) {
                 CopyL0CToDst copyL0CToDstSub0;
                 CopyL0CToDst copyL0CToDstSub1;
-                uint32_t mPerSubCore = mFixPAligned8 / 2;
+                uint32_t mPerSubCore = mFixPAligned / 2;
                 auto ubCTensorTlaTile = GetTile(ubCTensor, tla::MakeCoord(0, nL0Itr * L0_TILE_N),
                                                 tla::MakeShape(mPerSubCore, nFixPAligned8));
                 auto l0CTensorTlaTileSub0 =
@@ -388,7 +402,7 @@ public:
             } else {
                 CopyL0CToDst copyL0CToDst;
                 auto ubCTensorTlaTile = GetTile(ubCTensor, tla::MakeCoord(0, nL0Itr * L0_TILE_N),
-                                                tla::MakeShape(mFixPAligned8, nFixPAligned8));
+                                                tla::MakeShape(mFixPAligned, nFixPAligned8));
                 copyL0CToDst(ubCTensorTlaTile, l0CTensorTla);
             }
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);

@@ -92,6 +92,7 @@ constexpr uint32_t INF_WINDOW_SIZE_PRE_NEXT = 2147483647;
 
 constexpr uint32_t TILE_SIZE_128 = 128;
 constexpr uint32_t TILE_SIZE_256 = 256;
+constexpr uint32_t TILE_SIZE_512 = 512;
 constexpr uint32_t D_SIZE_128 = 128;
 constexpr uint32_t D_SIZE_256 = 256;
 
@@ -783,9 +784,19 @@ ge::graphStatus BSATiling::ParseAttrs(gert::TilingContext *bsaContext)
         innerPrecise_ = *attrs->GetAttrPointer<uint32_t>(INNER_PRECISE_INDEX);
     }
     if (socVer_ == SOC_VER_950_CODE) {
-        if (innerPrecise_ != BsaInnerCalcPrec::LOW_HIGH_MIXED) {
-            OP_LOGE(bsaContext->GetNodeName(), "On chip 950, only innerPrec = 4 is supported, "
-                "but got %u.", innerPrecise_);
+        auto qInputDesc = bsaContext->GetInputDesc(QUERY_INDEX);
+        OP_CHECK_NULL_WITH_CONTEXT(bsaContext, qInputDesc);
+        auto dtypeQ = qInputDesc->GetDataType();
+        if (dtypeQ == ge::DT_FLOAT8_E4M3FN) {
+            if (innerPrecise_ != BsaInnerCalcPrec::LOW_HIGH_MIXED) {
+                OP_LOGE(bsaContext->GetNodeName(),
+                    "On chip 950, float8_e4m3fn dtype only supports innerPrec = 4, but got %u.", innerPrecise_);
+                return ge::GRAPH_FAILED;
+            }
+        } else if (innerPrecise_ != BsaInnerCalcPrec::LOW_HIGH_MIXED &&
+                   innerPrecise_ != BsaInnerCalcPrec::ALL_HIGH) {
+            OP_LOGE(bsaContext->GetNodeName(),
+                "On chip 950, float16 and bfloat16 dtype only support innerPrec = 0 or 4, but got %u.", innerPrecise_);
             return ge::GRAPH_FAILED;
         }
     } else {
@@ -855,11 +866,25 @@ uint32_t BSATiling::GetCurQSTileNum950(int64_t curQSeqlen)
 void BSATiling::CalcBaseTileTilingParams950()
 {
     qBaseTile_ = (blockShapeX_ > TILE_SIZE_128) ? TILE_SIZE_128 : blockShapeX_;
-    if (innerPrecise_ == BsaInnerCalcPrec::LOW_HIGH_MIXED && embeddingSize_ <= D_SIZE_128) {
+    if (dataType_ == ge::DT_FLOAT8_E4M3FN &&
+        innerPrecise_ == BsaInnerCalcPrec::LOW_HIGH_MIXED && embeddingSize_ <= D_SIZE_128) {
+        kvBaseTile_ = TILE_SIZE_512;
+    } else if (innerPrecise_ == BsaInnerCalcPrec::LOW_HIGH_MIXED && embeddingSize_ <= D_SIZE_128) {
         kvBaseTile_ = TILE_SIZE_256;
     } else {
         kvBaseTile_ = TILE_SIZE_128;
     }
+}
+
+void BSATiling::TransposedMatmulConfig950()
+{
+    if (maskType_ == 0 &&
+        (dataType_ == ge::DT_FLOAT8_E4M3FN || innerPrecise_ == BsaInnerCalcPrec::ALL_HIGH)) {
+        transposedMm1_ = true;
+    } else {
+        transposedMm1_ = false;
+    }
+    transposedMm2_ = false;
 }
 
 void BSATiling::CalcSplitCoreTilingParams950()
@@ -990,10 +1015,9 @@ void BSATiling::CalcMatmulPhaseL1TileInfo950()
         mm1L1TileN_ = TILE_SIZE_256;
         mm1L1TileKRight_ = TILE_SIZE_128;
         kL1BufNum_ = DUO_BUF;
-        // V矩阵开启db，D按128分割，kvBaseTile_不分割，指令同样提前于核间同步下发
-        // 如果kvBaseTile_进一步增大，考虑关闭db，使得kvBaseTile_不分割
         mm2L1TileN_ = TILE_SIZE_128;
-        mm2L1TileKLeft_ = TILE_SIZE_256;
+        mm2L1TileKLeft_ =
+            dataType_ == ge::DT_FLOAT8_E4M3FN ? TILE_SIZE_512 : TILE_SIZE_256;
         vL1BufNum_ = DUO_BUF;
         // P矩阵在950上会常驻L1，由于基块的prelaunch为2，因此最好有3 buf，以免基块间流水阻塞
         mm2L1TileM_ = qBaseTileAligned128;
@@ -1153,6 +1177,11 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
         tilingKey += 100000000ULL; // 1 for lse out
     }
 
+    // mmad-qk是否转置
+    if (transposedMm1_) {
+        tilingKey += 1000000000ULL;
+    }
+
     return tilingKey;
 }
 
@@ -1181,6 +1210,7 @@ ge::graphStatus BSATiling::GetBsaTiling(gert::TilingContext *bsaContext, BlockSp
     if (socVer_ == SOC_VER_950_CODE) {
         CalcSplitCoreTilingParams950();
         CalcMatmulPhaseL1TileInfo950();
+        TransposedMatmulConfig950();
         CalcWorkspaceTilingParams950(bsaContext);
     } else {
         ret = CalculateTaskSplit(bsaContext);
