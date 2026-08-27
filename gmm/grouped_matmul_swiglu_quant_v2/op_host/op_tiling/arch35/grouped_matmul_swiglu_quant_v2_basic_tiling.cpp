@@ -407,16 +407,16 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDtype()
                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype)),
                     "the dtypes of scale and per_token_scale must be DT_FLOAT8_E8M0"),
                 return false);
-    OP_CHECK_IF(!(IsFp4(inputParams_.outDataDtype) || IsFp8(inputParams_.outDataDtype)),
-                OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "y",
-                                          ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype),
-                                          "FLOAT8 or FLOAT4"),
-                return false);
-    OP_CHECK_IF(inputParams_.outScaleDtype != ge::DT_FLOAT8_E8M0,
-                OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "out_scale",
-                                          ge::TypeUtils::DataTypeToSerialString(inputParams_.outScaleDtype),
-                                          "DT_FLOAT8_E8M0"),
-                return false);
+    OP_CHECK_IF(
+        !(IsFp4(inputParams_.outDataDtype) || IsFp8(inputParams_.outDataDtype)),
+        OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "y",
+                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype), "FLOAT8 or FLOAT4"),
+        return false);
+    OP_CHECK_IF(
+        inputParams_.outScaleDtype != ge::DT_FLOAT8_E8M0,
+        OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "out_scale",
+                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.outScaleDtype), "DT_FLOAT8_E8M0"),
+        return false);
 
     OP_CHECK_IF(IsFp8Input() && !IsFp8(inputParams_.outDataDtype),
                 OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "y",
@@ -605,7 +605,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
                         return false);
         } else {
             OP_CHECK_IF(!CheckQuantParamsForMXTypeM(xScaleShape, wScaleShape),
-                        OP_LOGE(inputParams_.opName, "CheckShapeForMxQuant failed."), return false);
+                        OP_LOGE(inputParams_.opName, "CheckQuantParamsForMXTypeM failed."), return false);
         }
     }
     return true;
@@ -617,13 +617,12 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckCoreNum() const
     OP_CHECK_IF(compileInfo == nullptr, OP_LOGE(inputParams_.opName, "compileInfo is nullptr."), return false);
     auto aicNum = compileInfo->aicNum_;
     auto aivNum = compileInfo->aivNum_;
-    OP_CHECK_IF(aicNum == 0,
-                OP_LOGE(inputParams_.opName, "aicNum should be positive integer, actual is %u.", aicNum),
+    OP_CHECK_IF(aicNum == 0, OP_LOGE(inputParams_.opName, "aicNum should be positive integer, actual is %u.", aicNum),
                 return false);
-    OP_CHECK_IF(aivNum != GmmConstant::CORE_RATIO * aicNum,
-                OP_LOGE(inputParams_.opName,
-                        "aicNum:aivNum should be 1:2, actual aicNum: %u, aivNum: %u.", aicNum, aivNum),
-                return false);
+    OP_CHECK_IF(
+        aivNum != GmmConstant::CORE_RATIO * aicNum,
+        OP_LOGE(inputParams_.opName, "aicNum:aivNum should be 1:2, actual aicNum: %u, aivNum: %u.", aicNum, aivNum),
+        return false);
     return true;
 }
 
@@ -902,11 +901,11 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDtypePertoken()
                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
                     "the dtypes of x and weight must be within the range FLOAT8, INT8 or HIFLOAT8"),
                 return false);
-    OP_CHECK_IF(inputParams_.perTokenScaleDtype != ge::DT_FLOAT,
-                OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "x_scale",
-                                          ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype),
-                                          "DT_FLOAT"),
-                return false);
+    OP_CHECK_IF(
+        inputParams_.perTokenScaleDtype != ge::DT_FLOAT,
+        OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "x_scale",
+                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype), "DT_FLOAT"),
+        return false);
     OP_CHECK_IF(!(inputParams_.scaleDtype == ge::DT_FLOAT || inputParams_.scaleDtype == ge::DT_BF16 ||
                   (inputParams_.scaleDtype == ge::DT_FLOAT16 && inputParams_.aDtype == ge::DT_INT8)),
                 OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "weight_scale",
@@ -918,11 +917,11 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDtypePertoken()
                                           ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype),
                                           "FLOAT8, INT8 or HIFLOAT8"),
                 return false);
-    OP_CHECK_IF(inputParams_.outScaleDtype != ge::DT_FLOAT,
-                OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "out_scale",
-                                          ge::TypeUtils::DataTypeToSerialString(inputParams_.outScaleDtype),
-                                          "DT_FLOAT"),
-                return false);
+    OP_CHECK_IF(
+        inputParams_.outScaleDtype != ge::DT_FLOAT,
+        OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "out_scale",
+                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.outScaleDtype), "DT_FLOAT"),
+        return false);
     return true;
 }
 

@@ -174,7 +174,7 @@ ge::graphStatus GMMTiling::CheckWeightNZShape(const gert::TilingContext *context
     OP_CHECK_IF(numInOneBlk <= 0,
                 OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
                                             "numInOneBlk, the "
-                                            "input of CheckWeightNZShape has an invaild value %ld",
+                                            "input of CheckWeightNZShape has an invalid value %ld",
                                             numInOneBlk),
                 return ge::GRAPH_FAILED);
     size_t i = 0;
@@ -280,7 +280,7 @@ ge::graphStatus GMMTiling::PrepareTilingData(const gert::TilingContext *context)
             nzFactor_ = transposeWeight_ ? 16 : static_cast<int32_t>(numInOneBlk);
         } else {
             OP_CHECK_IF(CheckWeightNZShape(context, static_cast<int64_t>(numInOneBlk)) != ge::GRAPH_SUCCESS,
-                        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "the shape of nz weight is invaild."),
+                        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "the shape of nz weight is invalid."),
                         return ge::GRAPH_FAILED);
         }
     }
@@ -1333,12 +1333,12 @@ ge::graphStatus GMMTiling::GMMGetAttrs(const gert::TilingContext *context)
     if (((compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND910B ||
           compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND910_93)) &&
         isA4W4_) {
-        OP_CHECK_IF(
-            !((wFormat0 == ge::FORMAT_FRACTAL_NZ) || (wFormat0 != FORMAT_FRACTAL_NZ && transposeWeight_ == 0)),
-            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                                        "A4W4 GMM currently supports only weight tensor nz transpose/untranspose input \
+        OP_CHECK_IF(!((wFormat0 == ge::FORMAT_FRACTAL_NZ) || (wFormat0 != FORMAT_FRACTAL_NZ && transposeWeight_ == 0)),
+                    OPS_REPORT_VECTOR_INNER_ERR(
+                        context->GetNodeName(),
+                        "A4W4 GMM currently supports only weight tensor nz transpose/untranspose input \
 or nd format untranspose input."),
-            return ge::GRAPH_FAILED);
+                    return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
