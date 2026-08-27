@@ -47,6 +47,25 @@ if not logging.getLogger().handlers:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
+# TTK installs multiple root handlers that target the same captured stream.
+# A propagated record is consequently printed once by every handler.  The
+# asset loader imports this module under the private name below; bind that
+# instance to one primary handler while leaving standalone pytest/debug
+# logging untouched.
+if __name__ == "_qbsa_mxfp8_pytest_golden" and logging.getLogger().handlers:
+    root_handlers = logging.getLogger().handlers
+    primary_handler = next(
+        (
+            handler
+            for handler in root_handlers
+            if not isinstance(handler, logging.FileHandler)
+        ),
+        root_handlers[0],
+    )
+    logger.handlers.clear()
+    logger.addHandler(primary_handler)
+    logger.propagate = False
+
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 QBSA_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "../../.."))
 TORCH_OPS_EXTENSION_DIR = os.path.join(QBSA_ROOT, "torch_ops_extension")
@@ -1495,6 +1514,59 @@ def _align_up_to_ln2(value, use_quant_matmul):
     return result.cpu() if use_quant_matmul else result
 
 
+def _accumulate_mxfp8_groups_cpu(group_dot, q_scale, k_scale):
+    """Accumulate MXFP8 D-groups without materializing each scaled group.
+
+    MX Cube keeps the E8M0 exponent separate while adding consecutive D-group
+    dot products.  An intermediate becomes sticky +/-Inf only when the merged
+    accumulator, not an individual ``group_dot * group_scale``, exceeds FP32.
+    Keeping a finite mantissa plus a shared power-of-two exponent reproduces
+    that behavior with CPU FP32 operations and avoids an FP64 fallback.
+    """
+    q_mantissa, q_exponent = torch.frexp(q_scale.to(torch.float32))
+    k_mantissa, k_exponent = torch.frexp(k_scale.to(torch.float32))
+    group_mantissa = (
+        group_dot
+        * q_mantissa.view(-1, 1, group_dot.shape[-1])
+        * k_mantissa.view(1, -1, group_dot.shape[-1])
+    )
+    group_exponent = q_exponent.view(-1, 1, group_dot.shape[-1]) + k_exponent.view(
+        1, -1, group_dot.shape[-1]
+    )
+
+    accumulator = group_mantissa[..., 0]
+    accumulator_exponent = group_exponent[..., 0]
+    accumulator_value = torch.ldexp(accumulator, accumulator_exponent)
+    sticky_overflow = torch.isinf(accumulator_value)
+    sticky_value = torch.where(
+        sticky_overflow, accumulator_value, torch.zeros_like(accumulator_value)
+    )
+
+    for group_idx in range(1, group_dot.shape[-1]):
+        merged_exponent = torch.maximum(
+            accumulator_exponent, group_exponent[..., group_idx]
+        )
+        merged_mantissa = torch.ldexp(
+            accumulator, accumulator_exponent - merged_exponent
+        ) + torch.ldexp(
+            group_mantissa[..., group_idx],
+            group_exponent[..., group_idx] - merged_exponent,
+        )
+        merged_value = torch.ldexp(merged_mantissa, merged_exponent)
+        overflow_now = ~sticky_overflow & torch.isinf(merged_value)
+        sticky_value = torch.where(overflow_now, merged_value, sticky_value)
+        sticky_overflow |= overflow_now
+        accumulator = torch.where(
+            sticky_overflow, accumulator, merged_mantissa
+        )
+        accumulator_exponent = torch.where(
+            sticky_overflow, accumulator_exponent, merged_exponent
+        )
+
+    finite_value = torch.ldexp(accumulator, accumulator_exponent)
+    return torch.where(sticky_overflow, sticky_value, finite_value)
+
+
 def _qk_matmul_cpu(q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax_scale):
     """CPU torch.matmul path: FP32 dequant + matmul."""
     q_dequant = q_block * _expand_d_group_scale(q_scale_block, head_dim)
@@ -1541,28 +1613,15 @@ def _qk_matmul_cpu(q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax
         q_grouped.permute(1, 0, 2),
         k_grouped.permute(1, 2, 0),
     ).permute(1, 2, 0)
-    group_scale = q_scale_block[..., :group_count].view(
-        -1, 1, group_count
-    ) * k_scale_mat[..., :group_count].view(1, -1, group_count)
-    scaled_group_dot = torch.where(
-        group_dot == 0,
-        torch.zeros_like(group_dot),
-        group_dot * group_scale,
+    # MxMatmulFull carries each E8M0 exponent alongside the finite group dot.
+    # Applying q_scale*k_scale to every group first can overflow too early and
+    # lose a cancellation that Cube performs before converting its accumulator
+    # to FP32.  Reproduce the exponent-aligned, sticky-overflow accumulation.
+    cube_order_scores = _accumulate_mxfp8_groups_cpu(
+        group_dot,
+        q_scale_block[..., :group_count],
+        k_scale_mat[..., :group_count],
     )
-    # MXFP8 Cube accumulates D groups in order.  Once the FP32 result
-    # overflows to +/-Inf, later groups do not turn an opposite-sign overflow
-    # into NaN; the first overflow remains sticky.  torch.sum instead applies
-    # IEEE Inf + -Inf semantics and would create an artificial NaN for these
-    # extreme descales.  Reproduce the Cube order only in this non-finite
-    # fallback; the normal dequant + torch.matmul path above is unchanged.
-    cube_order_scores = torch.zeros_like(scaled_group_dot[..., 0])
-    for group_idx in range(group_count):
-        accumulated = cube_order_scores + scaled_group_dot[..., group_idx]
-        cube_order_scores = torch.where(
-            torch.isinf(cube_order_scores),
-            cube_order_scores,
-            accumulated,
-        )
     cube_order_scores = cube_order_scores * softmax_scale
     return torch.where(repair_mask, cube_order_scores, scores)
 

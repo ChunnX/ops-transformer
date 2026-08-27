@@ -20,6 +20,23 @@ import numpy as np
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+# TTK can register more than one root handler for the same captured output.
+# Dispatch this asset's verbose comparison table through one primary handler
+# so every row is printed exactly once.
+if logging.getLogger().handlers:
+    root_handlers = logging.getLogger().handlers
+    primary_handler = next(
+        (
+            handler
+            for handler in root_handlers
+            if not isinstance(handler, logging.FileHandler)
+        ),
+        root_handlers[0],
+    )
+    logger.handlers.clear()
+    logger.addHandler(primary_handler)
+    logger.propagate = False
+
 _FP32_RTOL = 0.005
 _FP32_ATOL = 0.000025
 _BF16_RTOL = 0.0078125
