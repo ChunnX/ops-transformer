@@ -19,6 +19,10 @@ from ..common import CommContextManager
 _CLAMP_DEFAULT = 3.4028234663852886e38
 _ALPHA_DEFAULT = 1.702
 _BETA_DEFAULT = 1.0
+# Diagnostic source switch. Keep this in sync with
+# MEGA_MOE_TORCH_EXTENSION_A8W4_TRACE in csrc/mega_moe.cpp when tracing.
+_A8W4_TRACE_ENABLED = False
+_A8W4_TRACE_OUTPUT_BYTES = 2 * 1024 * 1024
 _ALLOWED_ACTIVATION_KEYS = {
     "swiglu": frozenset(),
     "swiglustep": frozenset(),
@@ -138,7 +142,10 @@ class _MegaMoeOpBuilder(OpBuilder):
             bs = x.size(0)
             h = x.size(1)
             local_moe_expert_num = moe_expert_num // ep_world_size
-            y = x.new_empty(tuple([bs, h]), dtype=x.dtype)
+            y_rows = bs
+            if _A8W4_TRACE_ENABLED:
+                y_rows = max(bs, (_A8W4_TRACE_OUTPUT_BYTES + h * 2 - 1) // (h * 2))
+            y = x.new_empty(tuple([y_rows, h]), dtype=x.dtype)
             expert_token_nums = x.new_empty((local_moe_expert_num), dtype=torch.int32)
             return (y, expert_token_nums)
 

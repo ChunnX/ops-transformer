@@ -26,6 +26,7 @@
 #include "../common/mega_moe_gmm_common.h"
 #include "../common/mega_moe_utils.h"
 #include "../common/mega_moe_mxfp8_utils.h"
+#include "../mega_moe_a8w4_trace.h"
 #if __has_include("../../../common/mc2_kernel_utils.h")
 #include "../../../common/mc2_kernel_utils.h"
 #include "../../../moe_distribute_dispatch_v2/quantize_functions.h"
@@ -485,11 +486,16 @@ __aicore__ inline void CombineWaveTokenRange(const MoeStageCommonConfig &common,
 
 // 等待当前 GMM2 tile 对应的 SwiGLU 输入就绪。
 template <bool IsShared, typename Config>
-__aicore__ inline void WaitForGmm2InputReady(const GMMAddrInfo &gmmAddrInfo, const Config &config, uint32_t mLoc)
+__aicore__ inline void WaitForGmm2InputReady(const GMMAddrInfo &gmmAddrInfo, const Config &config, uint32_t mLoc,
+                                             uint32_t traceTile = static_cast<uint32_t>(-1))
 {
     if constexpr (IsShared) {
         return;
     }
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+    A8W4CriticalPathTrace *trace = GetA8W4Trace(gmmAddrInfo);
+    uint64_t waitBegin = trace == nullptr ? 0U : trace->Now();
+#endif
     if constexpr (Config::IS_WAVE_FLAG_GRAINED) {
         uint32_t waveIdx = mLoc / L1_TILE_M_256;
         uint32_t waveStart = waveIdx * L1_TILE_M_256;
@@ -508,6 +514,12 @@ __aicore__ inline void WaitForGmm2InputReady(const GMMAddrInfo &gmmAddrInfo, con
         uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
         WaitUntilGmFlagEquals(gmmAddrInfo.activationToGmm2Flag, static_cast<int32_t>(targetLoops));
     }
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+    if (trace != nullptr) {
+        trace->RecordWait(A8W4TraceEvent::WAIT_FOR_ACTIVATION, A8W4TraceEvent::GMM2_COMPUTE,
+                          GetA8W4TraceScope(gmmAddrInfo, traceTile), waitBegin, trace->Now());
+    }
+#endif
 }
 
 // Notifies all AIV consumers assigned to the completed GMM2 token group.
@@ -613,6 +625,10 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
         groupSyncSlotLayout = CalcGroupSyncSlotLayout(expertTokenCount, logicalCoreCount);
     }
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+        A8W4CriticalPathTrace *trace = GetA8W4Trace(gmmAddrInfo);
+        uint64_t tileBegin = trace == nullptr ? 0U : trace->Now();
+#endif
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
 
@@ -622,11 +638,11 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
         if constexpr (Config::IS_WAVE_FLAG_GRAINED) {
             uint32_t waveIdx = mLoc / L1_TILE_M_256;
             if (waveIdx != lastWaveWaited) {
-                WaitForGmm2InputReady<IsShared>(gmmAddrInfo, config, mLoc);
+                WaitForGmm2InputReady<IsShared>(gmmAddrInfo, config, mLoc, loopIdx);
                 lastWaveWaited = waveIdx;
             }
         } else if (loopIdx == startLoopIdx) {
-            WaitForGmm2InputReady<IsShared>(gmmAddrInfo, config, mLoc);
+            WaitForGmm2InputReady<IsShared>(gmmAddrInfo, config, mLoc, loopIdx);
         }
 
         auto gmBlockA = gmA.Slice(Te::MakeCoord(mLoc, 0), Te::MakeShape(Get<M_VALUE>(actualShape), config.k));
@@ -638,6 +654,15 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
         auto tensorBlockGm = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc),
                                             Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+        if (trace != nullptr) {
+            AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+            trace->Record(A8W4TraceEvent::GMM2_COMPUTE, A8W4TraceEvent::INVALID,
+                          A8W4_TRACE_END_COMPLETE | A8W4_TRACE_ONLY_COMPLETION, GetA8W4TraceScope(gmmAddrInfo, loopIdx),
+                          tileBegin, trace->Now());
+        }
+#endif
         if constexpr (IsLayered && !IsShared) {
             NotifyCombineConsumersOfTileCompletion(rowOffsetInExpert + mLoc, groupSyncSlotLayout,
                                                    gmmAddrInfo.gmm2CombineSyncCounter);
@@ -650,15 +675,29 @@ __aicore__ inline void Gmm2AicMmadA8W4(BlockMmad &blockMmad, Scheduler &schedule
 // 为一个 GMM2 逻辑 block 的 AIV0 路径展开一段 A8W4 权重。
 template <typename BlockPrologue, typename Scheduler, typename TensorB, typename Config>
 __aicore__ inline void Gmm2Aiv0PrologueA8W4(BlockPrologue &blockPrologue, Scheduler &scheduler, TensorB &gmB,
-                                            const Config &config, uint32_t startLoopIdx, uint32_t tileNum)
+                                            const GMMAddrInfo &gmmAddrInfo, const Config &config, uint32_t startLoopIdx,
+                                            uint32_t tileNum)
 {
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+        A8W4CriticalPathTrace *trace = GetA8W4Trace(gmmAddrInfo);
+        uint64_t tileBegin = trace == nullptr ? 0U : trace->Now();
+#endif
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
         auto mL1Size = Get<M_VALUE>(actualShape);
         auto nL1Size = Get<N_VALUE>(actualShape);
         blockPrologue(gmB, mL1Size, config.k, nL1Size, nLoc, config.n, config.blockMmadTiling.l1Params.kL1);
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+        if (trace != nullptr) {
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(0);
+            trace->Record(A8W4TraceEvent::GMM2_PROLOGUE, A8W4TraceEvent::INVALID,
+                          A8W4_TRACE_END_COMPLETE | A8W4_TRACE_ONLY_COMPLETION, GetA8W4TraceScope(gmmAddrInfo, loopIdx),
+                          tileBegin, trace->Now());
+        }
+#endif
     }
 }
 
@@ -760,7 +799,7 @@ __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const GMMAddrInfo &gmm
             config, startLoopIdx, tileNum, expertTokenCount, rowOffsetInExpert);
     } else if (GetSubBlockIdx() == 0) {
         BlockPrologue blockPrologue;
-        Gmm2Aiv0PrologueA8W4(blockPrologue, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
+        Gmm2Aiv0PrologueA8W4(blockPrologue, workSet.scheduler, workSet.gmB, gmmAddrInfo, config, startLoopIdx, tileNum);
     }
 }
 
@@ -1062,7 +1101,19 @@ __aicore__ inline void RunWaveExpertCombineStage(const MoeStageCommonConfig &com
     WorkRange currentCoreTokenRange = GetWaveCombineOwnedRange<UseAllAivCores>(
         job, currentExpertTokenNum, static_cast<uint64_t>(state.globalTokenStartIndex));
     if (currentCoreTokenRange.count != 0U) {
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+        A8W4CriticalPathTrace *trace = GetA8W4Trace(gmmAddrInfo);
+        uint64_t waitBegin = trace == nullptr ? 0U : trace->Now();
+#endif
         WaitWaveGmm2Ready<UseAllAivCores>(job, params, expertIdx);
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+        if (trace != nullptr) {
+            A8W4TraceEvent parent =
+                UseAllAivCores ? A8W4TraceEvent::FINAL_COMBINE_OR_DRAIN : A8W4TraceEvent::COMBINE_WORK;
+            trace->RecordWait(A8W4TraceEvent::WAIT_FOR_GMM2, parent, GetA8W4TraceScope(gmmAddrInfo), waitBegin,
+                              trace->Now());
+        }
+#endif
     }
     for (uint32_t processedTokenNum = 0U; processedTokenNum < currentCoreTokenRange.count;) {
         uint32_t remainingTokenNum = currentCoreTokenRange.count - processedTokenNum;

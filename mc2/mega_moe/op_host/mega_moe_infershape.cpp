@@ -12,7 +12,9 @@
  * \file mega_moe_infershape.cpp
  */
 
+#include <algorithm>
 #include "register/op_impl_registry.h"
+#include "../op_kernel/arch35/common/mega_moe_a8w4_trace_config.h"
 #include "mc2_log.h"
 #include "platform/platform_info.h"
 #include "runtime/rt_external_base.h"
@@ -77,13 +79,20 @@ static ge::graphStatus InferShapeMegaMoe(gert::InferShapeContext *context)
     int64_t h = xShape->GetDim(1);
 
     yShape->SetDimNum(DIM_TWO);
-    yShape->SetDim(0U, bs);
+    int64_t yRows = bs;
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+    constexpr int64_t bf16Bytes = 2;
+    int64_t traceRows =
+        static_cast<int64_t>((MegaMoeImpl::A8W4_TRACE_OUTPUT_BYTES + h * bf16Bytes - 1) / (h * bf16Bytes));
+    yRows = std::max(bs, traceRows);
+#endif
+    yShape->SetDim(0U, yRows);
     yShape->SetDim(1U, h);
 
     expertTokenNumsShape->SetDimNum(DIM_ONE);
     expertTokenNumsShape->SetDim(0U, *moeExpertNum / *epWorldSize);
 
-    OP_LOGD(context->GetNodeName(), "y shape is [%ld, %ld] after infershape.", bs, h);
+    OP_LOGD(context->GetNodeName(), "y shape is [%ld, %ld] after infershape.", yRows, h);
     OP_LOGD(context->GetNodeName(), "End to do InferShapeMegaMoe.");
     return ge::GRAPH_SUCCESS;
 }
