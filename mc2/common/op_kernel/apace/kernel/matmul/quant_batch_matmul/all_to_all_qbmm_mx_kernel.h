@@ -25,7 +25,9 @@
 #include "blaze/gemm/utils/common_utils.h"
 #include "include/tensor_api/tensor.h"
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"
+#define WINDOW_LEN 1L // 调度器窗口设置为1，非侵入式修改
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
+#undef WINDOW_LEN
 
 namespace Blaze {
 namespace Gemm {
@@ -118,7 +120,7 @@ public:
         uint64_t originalM; // 单卡负责的总 M 行数
         GM_ADDR localAGmAddr;
         GM_ADDR localScaleAGmAddr;
-        uint32_t localMatmul; // 1 means local matmul
+        uint32_t localMatmul; // 0: remote, 1: L0c accumulate (DEFERRED_SYNC), 2: GM accumulate
         uint32_t splitKNum;
         MatmulMode matmulMode; // 1: LOCAL, 2: REMOTE, 3: DEFERRED_SYNC
         uint32_t headTileSize;
@@ -268,12 +270,12 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Ini
     if ASCEND_IS_AIV {
         return;
     }
-    if (params.qbmmParams.isBias == QBMMTiling::BIAS_ENABLED) {
-        isBias_ = true;
-    }
+    isBias_ = (params.mmadParams.biasGmAddr != nullptr);
 
-    if ((params.localParams.matmulMode == MatmulMode::REMOTE) && (params.localParams.localMatmul == 1)) {
-        isAtomicAdd_ = true; // REMOTE 模式需要原子累加
+    if ((params.localParams.matmulMode == MatmulMode::REMOTE) && (params.localParams.localMatmul == 2)) {
+        isAtomicAdd_ = true; // GM累加模式（local已写GM）需要原子累加
+        isBias_ = false;     // GM累加模式：bias 已在 RunLocalMatmul(LOCAL) 阶段写入 GM，
+                             // REMOTE 阶段必须跳过 bias，否则会重复累加 bias 导致精度偏差
     }
     needUpdateTail_ = false;
     ResetGmAddr(params);
@@ -292,9 +294,7 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Res
     localScaleAGmAddr_ = reinterpret_cast<__gm__ ::fp8_e8m0_t *>(params.localParams.localScaleAGmAddr);
     scaleAGmAddr_ = reinterpret_cast<__gm__ ::fp8_e8m0_t *>(params.mmadParams.scaleAGmAddr);
     scaleBGmAddr_ = reinterpret_cast<__gm__ ::fp8_e8m0_t *>(params.mmadParams.scaleBGmAddr);
-    if (isBias_) {
-        biasGmAddr_ = reinterpret_cast<__gm__ BiasType *>(params.mmadParams.biasGmAddr);
-    }
+    biasGmAddr_ = reinterpret_cast<__gm__ BiasType *>(params.mmadParams.biasGmAddr);
 }
 
 QBMM_MX_KERNEL_CLASS_TEM_PARAMS
@@ -315,7 +315,7 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
     auto rankId = params.localParams.rankId;
     auto rankSize = params.localParams.rankSize;
     auto oriM = params.localParams.originalM;
-    bool localFirst = ((params.localParams.matmulMode == MatmulMode::LOCAL) && (params.localParams.localMatmul == 1));
+    bool localFirst = ((params.localParams.matmulMode == MatmulMode::LOCAL) && (params.localParams.localMatmul == 2));
     // DEFERRED_SYNC: per-tile 内 local 先算驻留 L0C → wait_flag → remote 累加 → 单次 fixpipe。
     // wait_flag 必须由 kernel 内部发出（在 self rank 的 mmad 之后、其它 rank 的 mmad 之前）。
     bool deferredSync = (params.localParams.matmulMode == MatmulMode::DEFERRED_SYNC);
@@ -458,8 +458,8 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
                                                     AscendC::Te::MakeShape(Get<MNK_M>(singleShape), scaleKLen));
 
                 if (rank == rankId) {
-                    if (params.localParams.localMatmul == 1) {
-                        continue;
+                    if (params.localParams.localMatmul == 2) {
+                        continue; // GM累加模式：self rank 已在 RunLocalMatmul 计算，REMOTE 阶段跳过
                     } else {
                         gmBlockA = gmALocal.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
                                                   AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_K>(params.problemShape)));
