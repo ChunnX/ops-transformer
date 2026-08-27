@@ -350,9 +350,13 @@ __aicore__ inline void EngramFetchGradUnique::LoadCoreRange(uint32_t numRecv, GM
     preCoreOffset = 0;
     for (int32_t core = static_cast<int32_t>(totalBlocks_) - 1; core >= 0; core--) {
         int32_t segCnt = segUb.GetValue(core);
-        if (segCnt == 0 && nextValidStart >= 0) {
-            ub.SetValue(core, nextValidStart);
-        } else if (segCnt != 0) {
+        if (segCnt == 0) {
+            if (nextValidStart >= 0) {
+                ub.SetValue(core, nextValidStart);
+            } else {
+                ub.SetValue(core, static_cast<int32_t>(numRecv));
+            }
+        } else {
             nextValidStart = ub.GetValue(core);
         }
         if (static_cast<uint32_t>(core) < aivId_) {
