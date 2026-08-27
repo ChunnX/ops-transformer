@@ -156,7 +156,8 @@ public:
         this->pipe_ = tPipe;
         this->tilingData_ = tiling;
 
-        InitConstInfo(metadata);
+        InitConstInfo();
+        constInfo_.needInitOutput = ((__gm__ uint32_t *)metadata)[QFA_HEAD_NEED_INIT_OUTPUT_INDEX] != 0;
 
         keyPtr_ = key;
         valuePtr_ = value;
@@ -242,7 +243,7 @@ public:
         bmm1Buffers_.Init(ubBufferManager_, mm1ResultSize);
     }
 
-    __aicore__ inline void InitConstInfo(__gm__ uint8_t *metadata)
+    __aicore__ inline void InitConstInfo()
     {
         if ASCEND_IS_AIC {
             constInfo_.aicIdx = GetBlockIdx();
@@ -280,7 +281,6 @@ public:
         constInfo_.scaleValue = static_cast<float>(qfaBaseParams.scaleValue);
         constInfo_.isKvContinuous = true;
         constInfo_.coreNum = qfaBaseParams.coreNum;
-        constInfo_.needInitOutput = ((__gm__ uint32_t *)metadata)[QFA_HEAD_NEED_INIT_OUTPUT_INDEX] != 0;
         constInfo_.outputLayout = static_cast<FA_LAYOUT>(qfaBaseParams.outputLayout);
         constInfo_.sparseMode =
             qfaAttenMaskParams.sparseMode; // TODO，后续sparseType、attenMaskCompressMode引用全部改成sparseMode
