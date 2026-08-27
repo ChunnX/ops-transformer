@@ -13,6 +13,7 @@
  * \brief
  */
 #include <climits>
+#include <string>
 #include <graph/utils/type_utils.h>
 #include "register/op_impl_registry.h"
 #include "log/log.h"
@@ -72,8 +73,10 @@ static int64_t CalMaxRowInUb_A8W4(const gert::TilingContext *context, const uint
     }
 
     if (maxRowEstimate < MIN_ROW_THRESHOLD) {
-        OP_LOGE(context->GetNodeName(), "GMM_SWIGLU_QUANT TILING: No valid row found for n = %lu, ubSize = %lu\n", n,
-                ubSize);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+            context->GetNodeName(), "n, ubSize",
+            "n=" + std::to_string(n) + ", ubSize=" + std::to_string(ubSize),
+            "UB must accommodate at least one processing row");
         return 0;
     }
     return maxRowEstimate;
@@ -98,7 +101,10 @@ static int64_t CalMaxRowInUb(const gert::TilingContext *context, const uint64_t 
     }
     if (maxRowInUb < 1) {
         // when n > (ubSize - 72) / 19 = 10330, maxRowInUb < 1
-        OP_LOGE(context->GetNodeName(), "GMM_SWIGLU_QUANT TILING: n should not be greater than 10240, now is %lu\n", n);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+            context->GetNodeName(), "n, ubSize",
+            "n=" + std::to_string(n) + ", ubSize=" + std::to_string(ubSize),
+            "UB must accommodate at least one processing row");
     }
     return maxRowInUb;
 }

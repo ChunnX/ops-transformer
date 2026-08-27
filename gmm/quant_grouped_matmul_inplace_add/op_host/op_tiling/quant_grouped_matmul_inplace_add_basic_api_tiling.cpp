@@ -93,17 +93,34 @@ bool QGMMInplaceAddBasicApiTiling::AnalyzeInputs()
                 return false);
     const gert::Shape &x1ScaleShape = x1ScaleStorageShape->GetOriginShape();
 
-    OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(inputParams_.opName, "SetGroupNum failed."), return false);
-    OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
+    OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opType, "SetGroupNum result", "false", "SetGroupNum must return true"),
+                return false);
+    OP_CHECK_IF(!SetMKN(xShape, wShape),
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                    inputParams_.opType, "x1, x2",
+                    "x1=" + ShapeToString(xShape) + ", x2=" + ShapeToString(wShape), "SetMKN failed."),
+                return false);
 
     // HIFLOAT8 T-T 分支：IsCapable 已保证 wScale 为 (g,) 或 (g,1)，复用合并后的 T-T/T-C 校验
     OP_CHECK_IF(!IsMicroScaling() && !CheckShapeForHif8Quant(x1ScaleShape, wScaleShape, inputParams_),
-                OP_LOGE(inputParams_.opName, "CheckShapeForHif8Quant failed."), return false);
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                    inputParams_.opType, "scale1, scale2",
+                    "scale1=" + ShapeToString(x1ScaleShape) + ", scale2=" + ShapeToString(wScaleShape),
+                    "CheckShapeForHif8Quant failed."),
+                return false);
 
-    OP_CHECK_IF(!SetQuantModeForQGmmInplaceAdd(), OP_LOGE(inputParams_.opName, "SetQuantModeForQGmmInplaceAdd failed."),
+    OP_CHECK_IF(!SetQuantModeForQGmmInplaceAdd(),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opType, "SetQuantModeForQGmmInplaceAdd result", "false",
+                    "SetQuantModeForQGmmInplaceAdd must return true"),
                 return false);
     SetKernelType();
-    OP_CHECK_IF(!CheckCoreNum(), OP_LOGE(inputParams_.opName, "CheckCoreNum failed."), return false);
+    OP_CHECK_IF(!CheckCoreNum(),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opType, "CheckCoreNum result", "false", "CheckCoreNum must return true"),
+                return false);
     return true;
 }
 
@@ -140,8 +157,12 @@ int64_t QGMMInplaceAddBasicApiTiling::LogQuantParams() const
 ge::graphStatus QGMMInplaceAddBasicApiTiling::DoLibApiTiling()
 {
     GroupedQmmTiling::CalBasicBlock();
-    OP_CHECK_IF(GroupedQmmBasicApiTiling::CalL1Tiling() != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed"), return ge::GRAPH_FAILED);
+    auto l1TilingStatus = GroupedQmmBasicApiTiling::CalL1Tiling();
+    OP_CHECK_IF(l1TilingStatus != ge::GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opName, "CalL1Tiling status", std::to_string(static_cast<int64_t>(l1TilingStatus)),
+                    "CalL1Tiling must return GRAPH_SUCCESS"),
+                return ge::GRAPH_FAILED);
     tilingData_.mmTilingData.m = inputParams_.mSize;
     tilingData_.mmTilingData.n = inputParams_.nSize;
     tilingData_.mmTilingData.k = inputParams_.kSize;
@@ -160,12 +181,15 @@ ge::graphStatus QGMMInplaceAddBasicApiTiling::PostTiling()
 {
     context_->SetBlockDim(aicoreParams_.aicNum);
     OP_CHECK_IF(sizeof(tilingData_) % sizeof(uint64_t) != 0,
-                OP_LOGE(context_->GetNodeName(), "Tiling data size[%zu] is not aligned to 8", sizeof(tilingData_)),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "tilingDataSize", std::to_string(sizeof(tilingData_)),
+                    "Tiling data size[" + std::to_string(sizeof(tilingData_)) + "] is not aligned to 8"),
                 return ge::GRAPH_FAILED);
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
                            reinterpret_cast<void *>(&tilingData_), sizeof(tilingData_));
     if (ret != EOK) {
-        OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "memcpy_s status", std::to_string(ret), "memcpy_s must return EOK");
         return ge::GRAPH_FAILED;
     }
     context_->GetRawTilingData()->SetDataSize(sizeof(tilingData_));

@@ -11,6 +11,7 @@
 #include "opdev/op_log.h"
 #include "opdev/op_dfx.h"
 #include "opdev/make_op_executor.h"
+#include "log/log.h"
 #include "grouped_matmul_swiglu_quant.h"
 
 using namespace op;
@@ -27,7 +28,7 @@ GroupedMatmulSwigluQuant(const aclTensor *x, const aclTensor *weight, const aclT
     L0_DFX(GroupedMatmulSwigluQuant, x, weight, perChannelScale, perTokenScale, weightAssistanceMatrix, groupList,
            isEnableWeightAssistanceMatrix, dequantMode);
     if (x == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x is nullptr.");
+        OP_LOGE_WITH_INVALID_INPUT("GroupedMatmulSwigluQuant", "x");
         return std::tuple(nullptr, nullptr);
     }
     int64_t m = perTokenScale->GetViewShape().GetDim(0);
@@ -41,7 +42,9 @@ GroupedMatmulSwigluQuant(const aclTensor *x, const aclTensor *weight, const aclT
                            OP_INPUT(x, weight, perChannelScale, perTokenScale, weightAssistanceMatrix, groupList),
                            OP_OUTPUT(out, scaleOut), OP_ATTR(isEnableWeightAssistanceMatrix, dequantMode));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "InferShape failed.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "GroupedMatmulSwigluQuant", "InferShape status", std::to_string(static_cast<int64_t>(ret)),
+            "InferShape must return ACLNN_SUCCESS");
         return std::tuple(nullptr, nullptr);
     }
     ret = ADD_TO_LAUNCHER_LIST_AICORE(
@@ -49,7 +52,9 @@ GroupedMatmulSwigluQuant(const aclTensor *x, const aclTensor *weight, const aclT
         OP_INPUT(x, weight, perChannelScale, perTokenScale, weightAssistanceMatrix, groupList),
         OP_OUTPUT(out, scaleOut), OP_ATTR(isEnableWeightAssistanceMatrix, dequantMode));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "ADD_TO_LAUNCHER_LIST_AICORE failed.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "GroupedMatmulSwigluQuant", "ADD_TO_LAUNCHER_LIST_AICORE status",
+            std::to_string(static_cast<int64_t>(ret)), "ADD_TO_LAUNCHER_LIST_AICORE must return ACLNN_SUCCESS");
         return std::tuple(nullptr, nullptr);
     }
     return std::tie(out, scaleOut);

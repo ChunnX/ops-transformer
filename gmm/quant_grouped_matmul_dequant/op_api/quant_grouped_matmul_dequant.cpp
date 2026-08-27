@@ -21,6 +21,7 @@
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
+#include "log/log.h"
 #include "opdev/shape_utils.h"
 #include "opdev/common_types.h"
 
@@ -41,8 +42,10 @@ const aclTensor *QuantGroupedMatmulDequant(const aclTensor *x, const aclTensor *
         OP_INPUT(x, weight, weightScale, groupList, bias, xScale, xOffset, smoothScale),
         OP_OUTPUT(out),
         OP_ATTR(xQuantMode, transposeWeight));
-    OP_CHECK(ret ==  ACLNN_SUCCESS, OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
-        "QuantGroupedMatmulDequantAiCore ADD_TO_LAUNCHER_LIST_AICORE failed."),
+    OP_CHECK(ret ==  ACLNN_SUCCESS,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "QuantGroupedMatmulDequant", "ADD_TO_LAUNCHER_LIST_AICORE status",
+            std::to_string(static_cast<int64_t>(ret)), "ADD_TO_LAUNCHER_LIST_AICORE must return ACLNN_SUCCESS"),
         return nullptr);
     return out;
 }

@@ -110,7 +110,10 @@ bool GroupedMatmulActivationQuantTiling950::IsFp8(ge::DataType dtype) const
 bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
 {
     auto attrs = context_->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "attrs is nullptr."), return false);
+    OP_CHECK_IF(attrs == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "GetAttrs result", "nullptr", "attribute lookup failed"),
+                return false);
     const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_W);
     inputParams_.transB = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
     inputParams_.transA = false;
@@ -129,7 +132,12 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
     const char *activationTypePtr = attrs->GetAttrPointer<char>(ATTR_INDEX_ACTIVATION_TYPE);
     OP_CHECK_IF(yDtypePtr == nullptr || roundModePtr == nullptr || scaleAlgPtr == nullptr ||
                     activationTypePtr == nullptr,
-                OP_LOGE(context_->GetNodeName(), "quant attrs must not be nullptr."), return false);
+                OP_LOGE_WITH_INVALID_INPUT(
+                    context_->GetNodeName(),
+                    yDtypePtr == nullptr ? "y_dtype" :
+                    roundModePtr == nullptr ? "round_mode" :
+                    scaleAlgPtr == nullptr ? "scale_alg" : "activation_type"),
+                return false);
     auto yDtype = static_cast<ge::DataType>(*yDtypePtr);
     std::string quantMode = quantModePtr == nullptr ? "" : std::string(quantModePtr);
     if (quantMode.empty()) {
@@ -216,11 +224,24 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeDtype()
     auto yScaleDesc = context_->GetOutputDesc(Y_SCALE_INDEX);
     OP_CHECK_IF(xDesc == nullptr || wDesc == nullptr || xScaleDesc == nullptr || wScaleDesc == nullptr ||
                     yDesc == nullptr || yScaleDesc == nullptr,
-                OP_LOGE(context_->GetNodeName(), "input or output desc is nullptr."), return false);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(),
+                    xDesc == nullptr ? "x descriptor" :
+                    wDesc == nullptr ? "weight descriptor" :
+                    xScaleDesc == nullptr ? "x_scale descriptor" :
+                    wScaleDesc == nullptr ? "weight_scale descriptor" :
+                    yDesc == nullptr ? "y descriptor" : "y_scale descriptor",
+                    "nullptr", "tensor descriptor lookup failed"),
+                return false);
     auto attrs = context_->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "attrs is nullptr."), return false);
+    OP_CHECK_IF(attrs == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "GetAttrs result", "nullptr", "attribute lookup failed"),
+                return false);
     const int64_t *yDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_Y_DTYPE);
-    OP_CHECK_IF(yDtypePtr == nullptr, OP_LOGE(context_->GetNodeName(), "y_dtype must not be nullptr."), return false);
+    OP_CHECK_IF(yDtypePtr == nullptr,
+                OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "y_dtype"),
+                return false);
     inputParams_.aDtype = xDesc->GetDataType();
     yDtype_ = static_cast<ge::DataType>(*yDtypePtr);
     inputParams_.bDtype = wDesc->GetDataType();
@@ -307,13 +328,20 @@ bool GroupedMatmulActivationQuantTiling950::CheckWeightNzShape(const gert::Shape
 bool GroupedMatmulActivationQuantTiling950::CheckCoreNum() const
 {
     auto compileInfo = context_->GetCompileInfo<GMMCompileInfo>();
-    OP_CHECK_IF(compileInfo == nullptr, OP_LOGE(inputParams_.opName, "compileInfo is nullptr."), return false);
+    OP_CHECK_IF(compileInfo == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opName, "GetCompileInfo result", "nullptr", "compile info lookup failed"),
+                return false);
     OP_CHECK_IF(compileInfo->aicNum == 0,
-                OP_LOGE(inputParams_.opName, "aicNum should be positive integer, actual is %u.", compileInfo->aicNum),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "aicNum",
+                                                      std::to_string(compileInfo->aicNum),
+                                                      "aicNum should be positive integer"),
                 return false);
     OP_CHECK_IF(compileInfo->aivNum != GmmConstant::CORE_RATIO * compileInfo->aicNum,
-                OP_LOGE(inputParams_.opName, "aicNum:aivNum should be 1:2, actual %u:%u.", compileInfo->aicNum,
-                        compileInfo->aivNum),
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                    inputParams_.opName, "aicNum, aivNum",
+                    FormatString("%u:%u", compileInfo->aicNum, compileInfo->aivNum),
+                    "aicNum:aivNum should be 1:2"),
                 return false);
     return true;
 }
@@ -326,15 +354,29 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeInputs()
     auto wScaleStorageShape = context_->GetDynamicInputShape(WEIGHT_SCALE_INDEX, 0);
     OP_CHECK_IF(xStorageShape == nullptr || wStorageShape == nullptr || xScaleStorageShape == nullptr ||
                     wScaleStorageShape == nullptr,
-                OP_LOGE(context_->GetNodeName(), "input shape is nullptr."), return false);
-    OP_CHECK_IF(!SetGroupNum(GROUP_LIST_INDEX), OP_LOGE(inputParams_.opName, "SetGroupNum failed."), return false);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(),
+                    xStorageShape == nullptr ? "x shape" :
+                    wStorageShape == nullptr ? "weight shape" :
+                    xScaleStorageShape == nullptr ? "x_scale shape" : "weight_scale shape",
+                    "nullptr", "tensor shape lookup failed"), return false);
+    OP_CHECK_IF(!SetGroupNum(GROUP_LIST_INDEX),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opName, "SetGroupNum result", "false", "SetGroupNum must return true."),
+                return false);
     const auto &xShape = xStorageShape->GetOriginShape();
     const auto &wShape = wStorageShape->GetOriginShape();
     const auto &weightStorageShape = wStorageShape->GetStorageShape();
     const auto &xScaleShape = xScaleStorageShape->GetOriginShape();
     const auto &wScaleShape = wScaleStorageShape->GetOriginShape();
     const auto &weightScaleStorageShape = wScaleStorageShape->GetStorageShape();
-    OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
+    OP_CHECK_IF(
+        !SetMKN(xShape, wShape),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            inputParams_.opName, "x, weight",
+            FormatString("%s, %s", ShapeToDebugString(xShape).c_str(), ShapeToDebugString(wShape).c_str()),
+            "SetMKN failed."),
+        return false);
     OP_CHECK_IF(inputParams_.nSize % N_SIZE_ALIGN != 0,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     inputParams_.opName, "N", std::to_string(inputParams_.nSize),
@@ -351,11 +393,24 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeInputs()
     inputParams_.isSingleX = true;
     inputParams_.isSingleW = true;
     inputParams_.isSingleY = true;
-    OP_CHECK_IF(!CheckMxScaleShape(xScaleStorageShape->GetOriginShape(), wScaleStorageShape->GetOriginShape()),
-                OP_LOGE(inputParams_.opName, "CheckMxScaleShape failed."), return false);
-    OP_CHECK_IF(!CheckWeightNzShape(wStorageShape->GetStorageShape()),
-                OP_LOGE(inputParams_.opName, "CheckWeightNzShape failed."), return false);
-    OP_CHECK_IF(!CheckCoreNum(), OP_LOGE(inputParams_.opName, "CheckCoreNum failed."), return false);
+    OP_CHECK_IF(
+        !CheckMxScaleShape(xScaleStorageShape->GetOriginShape(), wScaleStorageShape->GetOriginShape()),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            inputParams_.opName, "x_scale, weight_scale",
+            FormatString("%s, %s", ShapeToDebugString(xScaleShape).c_str(),
+                         ShapeToDebugString(wScaleShape).c_str()),
+            "CheckMxScaleShape failed."),
+        return false);
+    OP_CHECK_IF(
+        !CheckWeightNzShape(wStorageShape->GetStorageShape()),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opName, "weight storageShape",
+                                              ShapeToDebugString(weightStorageShape),
+                                              "CheckWeightNzShape failed."),
+        return false);
+    OP_CHECK_IF(!CheckCoreNum(),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opName, "CheckCoreNum result", "false", "CheckCoreNum must return true."),
+                return false);
     return true;
 }
 
@@ -378,8 +433,12 @@ ge::graphStatus GroupedMatmulActivationQuantTiling950::DoLibApiTiling()
     // must be identical.
     GroupedQmmTiling::CalBasicBlock();
     basicTiling_.baseM = GroupedMatmul::CeilAlign(basicTiling_.baseM, GmmConstant::CUBE_BLOCK);
-    OP_CHECK_IF(GroupedQmmBasicApiTiling::CalL1Tiling() != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed."), return ge::GRAPH_FAILED);
+    auto l1TilingStatus = GroupedQmmBasicApiTiling::CalL1Tiling();
+    OP_CHECK_IF(l1TilingStatus != ge::GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opName, "CalL1Tiling status", std::to_string(static_cast<int64_t>(l1TilingStatus)),
+                    "CalL1Tiling must return GRAPH_SUCCESS"),
+                return ge::GRAPH_FAILED);
     tilingData_.mmTilingData.m = inputParams_.mSize;
     tilingData_.mmTilingData.n = inputParams_.nSize;
     tilingData_.mmTilingData.k = inputParams_.kSize;
@@ -442,7 +501,9 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForGroupedMatmulActivationQuant(ge
 
 static ge::graphStatus GroupedMatmulActivationQuantTilingFunc(gert::TilingContext *context)
 {
-    OP_CHECK_IF(context == nullptr, OP_LOGE("GroupedMatmulActivationQuant", "tiling context is nullptr."),
+    OP_CHECK_IF(context == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    "GroupedMatmulActivationQuant", "tiling context", "nullptr", "tiling context must not be null"),
                 return ge::GRAPH_FAILED);
     std::vector<int32_t> registerList = {0};
     return TilingRegistry::GetInstance().DoTilingImpl(context, registerList);

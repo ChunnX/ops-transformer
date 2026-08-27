@@ -62,8 +62,14 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulActivationQuant(const ac
     gert::Shape scaleOutShape({m, scaleN, gmaq::MX_SCALE_PAIR});
     auto out = executor->AllocTensor(outShape, static_cast<ge::DataType>(yDtype), ge::FORMAT_ND);
     auto scaleOut = executor->AllocTensor(scaleOutShape, DataType::DT_FLOAT8_E8M0, ge::FORMAT_ND);
-    if (out == nullptr || scaleOut == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Failed to allocate output tensors.");
+    if (out == nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "GroupedMatmulActivationQuant", "out", "nullptr", "output allocation returned nullptr");
+        return std::tuple(nullptr, nullptr);
+    }
+    if (scaleOut == nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "GroupedMatmulActivationQuant", "scaleOut", "nullptr", "scale output allocation returned nullptr");
         return std::tuple(nullptr, nullptr);
     }
 
@@ -72,7 +78,9 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulActivationQuant(const ac
         OP_ATTR(activationType, transposeWeight, groupListType, tuningConfig, quantMode, yDtype, roundMode, scaleAlg,
                 dstTypeMax));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "InferShape failed.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "GroupedMatmulActivationQuant", "INFER_SHAPE result", std::to_string(ret),
+            "INFER_SHAPE must return ACLNN_SUCCESS");
         return std::tuple(nullptr, nullptr);
     }
 
@@ -81,7 +89,9 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulActivationQuant(const ac
         OP_ATTR(activationType, transposeWeight, groupListType, tuningConfig, quantMode, yDtype, roundMode, scaleAlg,
                 dstTypeMax));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "ADD_TO_LAUNCHER_LIST_AICORE failed.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "GroupedMatmulActivationQuant", "ADD_TO_LAUNCHER_LIST_AICORE result", std::to_string(ret),
+            "ADD_TO_LAUNCHER_LIST_AICORE must return ACLNN_SUCCESS");
         return std::tuple(nullptr, nullptr);
     }
 

@@ -13,6 +13,7 @@
  * \brief
  */
 #include "grouped_matmul_finalize_routing_weight_quant_tiling.h"
+#include "../../../../common/op_host/log_format_util.h"
 #include "../../../op_kernel/arch35/weight_quant_basic_block/gmm_fr_weight_quant_tiling_key.h"
 #include "op_host/tiling_templates_registry.h"
 using namespace Ops::Transformer::OpTiling;
@@ -57,15 +58,11 @@ bool GMMFRWeightQuantTiling::IsCapable()
 bool GMMFRWeightQuantTiling::CheckCoreNum() const
 {
     OP_CHECK_IF(coreNum_ <= 0 || aivNum_ <= 0,
-                OP_LOGE(context_->GetNodeName(), "Invalid aicNum[%ld] or aivNum[%ld], expect greater than 0", coreNum_,
-                        aivNum_),
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_->GetNodeName(), "aicNum, aivNum", Ops::Transformer::Gmm::FormatString("%ld, %ld", coreNum_, aivNum_).c_str(), "aicNum and aivNum must be greater than 0."),
                 return false);
 
     OP_CHECK_IF(coreNum_ * static_cast<int64_t>(AIC_AIV_CORE_RATIO) != aivNum_,
-                OP_LOGE(context_->GetNodeName(),
-                        "Invalid cube/vector core ratio. Expected cube:vector = 1:2, "
-                        "but got cube=%ld, vector=%ld",
-                        coreNum_, aivNum_),
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_->GetNodeName(), "aicNum, aivNum", Ops::Transformer::Gmm::FormatString("%ld, %ld", coreNum_, aivNum_).c_str(), "Cube:vector core ratio must be 1:2."),
                 return false);
     return true;
 }
@@ -73,7 +70,10 @@ bool GMMFRWeightQuantTiling::CheckCoreNum() const
 ge::graphStatus GMMFRWeightQuantTiling::GetPlatformInfo()
 {
     auto compileInfoPtr = context_->GetCompileInfo<GroupedMatmulFinalizeRoutingCompileInfo>();
-    OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(OP_NAME, "CompileInfo is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(compileInfoPtr == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    OP_NAME, "GetCompileInfo result", "nullptr", "compile info lookup failed"),
+                return ge::GRAPH_FAILED);
     compileInfoPtr_ = compileInfoPtr;
     coreNum_ = static_cast<int64_t>(compileInfoPtr_->aicNum);
     aivNum_ = static_cast<int64_t>(compileInfoPtr_->aivNum);
@@ -83,7 +83,9 @@ ge::graphStatus GMMFRWeightQuantTiling::GetPlatformInfo()
             compileInfoPtr_->aicNum, compileInfoPtr_->aivNum, compileInfoPtr_->ubSize, compileInfoPtr_->l1Size,
             compileInfoPtr_->l0ASize, compileInfoPtr_->l0BSize, compileInfoPtr_->l0CSize);
 
-    OP_CHECK_IF(!CheckCoreNum(), OP_LOGE(context_->GetNodeName(), "Invalid core number ratio"),
+    OP_CHECK_IF(!CheckCoreNum(),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "CheckCoreNum result", "false", "CheckCoreNum must return true"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -94,10 +96,15 @@ ge::graphStatus GMMFRWeightQuantTiling::GetShapeAttrsInfo()
     inputParams_.opName = context_->GetNodeName();
     OP_LOGD(context_->GetNodeName(), "Start inferring scenario and checking params.");
 
-    OP_CHECK_IF(!InferScenario(), OP_LOGE(inputParams_.opName, "Failed to infer scenario."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!InferScenario(),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opName, "InferScenario result", "false", "InferScenario must return true"),
+                return ge::GRAPH_FAILED);
     OP_LOGD(context_->GetNodeName(), "Scenario inferred successfully, type=%d.", static_cast<int>(scenarioType_));
 
-    OP_CHECK_IF(!RunCheckFunc(), OP_LOGE(inputParams_.opName, "Failed to check input params."),
+    OP_CHECK_IF(!RunCheckFunc(),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opName, "RunCheckFunc result", "false", "RunCheckFunc must return true"),
                 return ge::GRAPH_FAILED);
     OP_LOGD(context_->GetNodeName(), "All input params validated.");
 
@@ -157,7 +164,9 @@ uint64_t GMMFRWeightQuantTiling::GetTilingKey() const
 ge::graphStatus GMMFRWeightQuantTiling::GetWorkspaceSize()
 {
     size_t *workspaces = context_->GetWorkspaceSizes(1); // get second variable
-    OP_CHECK_IF(workspaces == nullptr, OP_LOGE(context_->GetNodeName(), "workspaces is nullptr."),
+    OP_CHECK_IF(workspaces == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "GetWorkspaceSizes result", "nullptr", "workspace lookup failed"),
                 return ge::GRAPH_FAILED); // check workspaces is not null
     workspaces[0] = 16777216U;            // 16777216U: 16 * 1024 * 1024,default workspace size
     return ge::GRAPH_SUCCESS;
@@ -170,12 +179,15 @@ ge::graphStatus GMMFRWeightQuantTiling::PostTiling()
             sizeof(tilingData_));
 
     context_->SetBlockDim(tilingData_.coreNum);
-    OP_CHECK_IF(context_->GetRawTilingData() == nullptr, OP_LOGE(context_->GetNodeName(), "RawTilingData is nullptr."),
+    OP_CHECK_IF(context_->GetRawTilingData() == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "GetRawTilingData result", "nullptr", "raw tiling data lookup failed"),
                 return ge::GRAPH_FAILED);
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
                            reinterpret_cast<void *>(&tilingData_), sizeof(tilingData_));
     if (ret != EOK) {
-        OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret = %d", ret);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "memcpy_s status", std::to_string(ret), "memcpy_s must return EOK");
         return ge::GRAPH_FAILED;
     }
     context_->GetRawTilingData()->SetDataSize(sizeof(tilingData_));
@@ -187,24 +199,28 @@ ge::graphStatus GMMFRWeightQuantTiling::PostTiling()
 void GMMFRWeightQuantTiling::Reset()
 {
     tilingData_ = GMMFinalizeRoutingWeightQuantTilingData();
-    OP_CHECK_IF(memset_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(), 0,
-                         context_->GetRawTilingData()->GetCapacity()) != EOK,
-                OP_LOGE(inputParams_.opName, "Fail to clear tiling data"), return);
+    const errno_t clearStatus = memset_s(
+        context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(), 0,
+        context_->GetRawTilingData()->GetCapacity());
+    OP_CHECK_IF(clearStatus != EOK,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opName, "memset_s status", std::to_string(clearStatus), "memset_s must return EOK"),
+                return);
 }
 
 bool GMMFRWeightQuantTiling::InferScenario()
 {
     auto xDesc = context_->GetInputDesc(X_INDEX);
-    OP_CHECK_IF(xDesc == nullptr, OP_LOGE(context_->GetNodeName(), "Input xDesc is nullptr."), return false);
+    OP_CHECK_IF(xDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "x"), return false);
     auto wDesc = context_->GetInputDesc(W_INDEX);
-    OP_CHECK_IF(wDesc == nullptr, OP_LOGE(context_->GetNodeName(), "Input wDesc is nullptr."), return false);
+    OP_CHECK_IF(wDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "weight"), return false);
 
     auto wFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetStorageFormat()));
     // GetPrimaryFormat returns the format value masked with 0xFF
     // FORMAT_FRACTAL_NZ = 29, FORMAT_FRACTAL_NZ_C0_32 = 51
 
     auto scaleDesc = context_->GetOptionalInputDesc(SCALE_INDEX);
-    OP_CHECK_IF(scaleDesc == nullptr, OP_LOGE(context_->GetNodeName(), "Input scaleDesc is nullptr."), return false);
+    OP_CHECK_IF(scaleDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "scale"), return false);
     auto scaleDtype = scaleDesc->GetDataType();
     auto pertokenScaleDesc = context_->GetOptionalInputDesc(PERTOKEN_SCALE_INDEX);
     auto perTokenScaleDtype = pertokenScaleDesc != nullptr ? pertokenScaleDesc->GetDataType() : ge::DT_INT8;
@@ -238,46 +254,46 @@ bool GMMFRWeightQuantTiling::InferScenario()
 static bool CheckMxA8W4NzInputPtr(gert::TilingContext *context)
 {
     auto xDesc = context->GetInputDesc(X_INDEX);
-    OP_CHECK_IF(xDesc == nullptr, OP_LOGE(context->GetNodeName(), "Input xDesc is nullptr."), return false);
+    OP_CHECK_IF(xDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "xDesc"), return false);
     auto xStorageShape = context->GetInputShape(X_INDEX);
-    OP_CHECK_IF(xStorageShape == nullptr, OP_LOGE(context->GetNodeName(), "Input xStorageShape is nullptr."),
+    OP_CHECK_IF(xStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "xStorageShape"),
                 return false);
 
     auto wDesc = context->GetInputDesc(W_INDEX);
-    OP_CHECK_IF(wDesc == nullptr, OP_LOGE(context->GetNodeName(), "Input wDesc is nullptr."), return false);
+    OP_CHECK_IF(wDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "wDesc"), return false);
     auto wStorageShape = context->GetInputShape(W_INDEX);
-    OP_CHECK_IF(wStorageShape == nullptr, OP_LOGE(context->GetNodeName(), "Input wStorageShape is nullptr."),
+    OP_CHECK_IF(wStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "wStorageShape"),
                 return false);
 
     auto scaleDesc = context->GetOptionalInputDesc(SCALE_INDEX);
-    OP_CHECK_IF(scaleDesc == nullptr, OP_LOGE(context->GetNodeName(), "Input scaleDesc is nullptr."), return false);
+    OP_CHECK_IF(scaleDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "scaleDesc"), return false);
     auto scaleStorageShape = context->GetOptionalInputShape(SCALE_INDEX);
-    OP_CHECK_IF(scaleStorageShape == nullptr, OP_LOGE(context->GetNodeName(), "Input scaleStorageShape is nullptr."),
+    OP_CHECK_IF(scaleStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "scaleStorageShape"),
                 return false);
 
     // pertoken_scale is optional - use GetOptionalInputDesc
     auto pertokenScaleDesc = context->GetOptionalInputDesc(PERTOKEN_SCALE_INDEX);
-    OP_CHECK_IF(pertokenScaleDesc == nullptr, OP_LOGE(context->GetNodeName(), "Input pertokenScaleDesc is nullptr."),
+    OP_CHECK_IF(pertokenScaleDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "pertokenScaleDesc"),
                 return false);
     auto pertokenScaleStorageShape = context->GetOptionalInputShape(PERTOKEN_SCALE_INDEX);
     OP_CHECK_IF(pertokenScaleStorageShape == nullptr,
-                OP_LOGE(context->GetNodeName(), "Input pertokenScaleStorageShape is nullptr."), return false);
+                OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "pertokenScaleStorageShape"), return false);
 
     // Add: group_list must not be nullptr (optional input - use GetOptional API)
     auto groupListDesc = context->GetOptionalInputDesc(GROUPLIST_INDEX);
-    OP_CHECK_IF(groupListDesc == nullptr, OP_LOGE(context->GetNodeName(), "Input groupListDesc is nullptr."),
+    OP_CHECK_IF(groupListDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "groupListDesc"),
                 return false);
     auto groupListStorageShape = context->GetOptionalInputShape(GROUPLIST_INDEX);
     OP_CHECK_IF(groupListStorageShape == nullptr,
-                OP_LOGE(context->GetNodeName(), "Input groupListStorageShape is nullptr."), return false);
+                OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "groupListStorageShape"), return false);
 
     // Add: row_index must not be nullptr (required for 91095 - use GetInput API)
     auto rowIndexDesc = context->GetOptionalInputDesc(ROW_INDEX_INDEX);
-    OP_CHECK_IF(rowIndexDesc == nullptr, OP_LOGE(context->GetNodeName(), "Input rowIndexDesc is nullptr."),
+    OP_CHECK_IF(rowIndexDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "rowIndexDesc"),
                 return false);
     auto rowIndexStorageShape = context->GetOptionalInputShape(ROW_INDEX_INDEX);
     OP_CHECK_IF(rowIndexStorageShape == nullptr,
-                OP_LOGE(context->GetNodeName(), "Input rowIndexStorageShape is nullptr."), return false);
+                OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "rowIndexStorageShape"), return false);
 
     return true;
 }
@@ -285,7 +301,9 @@ static bool CheckMxA8W4NzInputPtr(gert::TilingContext *context)
 static bool CheckMxA8W4NzAttrPtr(gert::TilingContext *context)
 {
     auto attrs = context->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OP_LOGE(context->GetNodeName(), "Attrs is nullptr"), return false);
+    OP_CHECK_IF(attrs == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context->GetNodeName(), "GetAttrs result", "nullptr", "attribute lookup failed"), return false);
 
     const bool *transposeXPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANSPOSE_X);
     OP_CHECK_IF((transposeXPtr != nullptr && (*transposeXPtr)),
@@ -295,14 +313,14 @@ static bool CheckMxA8W4NzAttrPtr(gert::TilingContext *context)
 
     const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANSPOSE_W);
     OP_CHECK_IF(transposeWeightPtr == nullptr,
-                OP_LOGE(context->GetNodeName(), "transposeW cannot be nullptr, but now is nullptr"), return false);
+                OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "transposeW"), return false);
     if (unlikely(!(*transposeWeightPtr))) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "transposeW", "false", "The value of transposeW must be true");
         return false;
     }
 
     const int64_t *groupListTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUP_LIST_TYPE);
-    OP_CHECK_IF(groupListTypePtr == nullptr, OP_LOGE(context->GetNodeName(), "groupListType cannot be nullptr"),
+    OP_CHECK_IF(groupListTypePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "groupListType"),
                 return false);
     if (unlikely(*groupListTypePtr != 0 && *groupListTypePtr != 1)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "groupListType", std::to_string(*groupListTypePtr),
@@ -311,7 +329,7 @@ static bool CheckMxA8W4NzAttrPtr(gert::TilingContext *context)
     }
 
     const int64_t *outputDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DTYPE);
-    OP_CHECK_IF(outputDtypePtr == nullptr, OP_LOGE(context->GetNodeName(), "dtype cannot be nullptr"), return false);
+    OP_CHECK_IF(outputDtypePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "dtype"), return false);
     if (unlikely(*outputDtypePtr != 0)) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(OP_NAME, "dtype", std::to_string(*outputDtypePtr),
                                               "Attr dtype must be 0(float32)");
@@ -573,13 +591,13 @@ static bool CheckMxA8W4InputShape(gert::TilingContext *context)
 {
     // Get w format first
     auto wDesc = context->GetInputDesc(W_INDEX);
-    OP_CHECK_IF(wDesc == nullptr, OP_LOGE(context->GetNodeName(), "Input wDesc is nullptr."), return false);
+    OP_CHECK_IF(wDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "weight"), return false);
     auto wFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetStorageFormat()));
 
     // 1. Validate x shape and get M, K
     int64_t mSize;
     int64_t kSize;
-    OP_CHECK_IF(!ValidateXShape(context, mSize, kSize), OP_LOGE(context->GetNodeName(), "ValidateXShape failed."),
+    OP_CHECK_IF(!ValidateXShape(context, mSize, kSize), OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "x", "ValidateXShape failed."),
                 return false);
 
     // 2. Validate w shape and get E, N, K
@@ -587,7 +605,7 @@ static bool CheckMxA8W4InputShape(gert::TilingContext *context)
     int64_t nSize;
     int64_t kFromW;
     OP_CHECK_IF(!ValidateWShape(context, wFormat, eFromW, nSize, kFromW),
-                OP_LOGE(context->GetNodeName(), "ValidateWShape failed."), return false);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "weight", "ValidateWShape failed."), return false);
 
     // Validate K consistency between x and w
     if (unlikely(kSize != kFromW)) {
@@ -598,34 +616,34 @@ static bool CheckMxA8W4InputShape(gert::TilingContext *context)
     }
 
     OP_CHECK_IF(!CheckKNAlignmentAndMinSize(kSize, nSize),
-                OP_LOGE(context->GetNodeName(), "CheckKNAlignmentAndMinSize failed."), return false);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "x, weight", "CheckKNAlignmentAndMinSize failed."), return false);
 
     // 3. Validate group_list shape
     OP_CHECK_IF(!ValidateGroupListShape(context, eFromW),
-                OP_LOGE(context->GetNodeName(), "ValidateGroupListShape failed."), return false);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "groupList", "ValidateGroupListShape failed."), return false);
 
     // 4. Validate row_index shape
     OP_CHECK_IF(!ValidateRowIndexShape(context, mSize),
-                OP_LOGE(context->GetNodeName(), "ValidateRowIndexShape failed."), return false);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "rowIndex", "ValidateRowIndexShape failed."), return false);
 
     // 5. Validate logit shape
-    OP_CHECK_IF(!ValidateLogitShape(context, mSize), OP_LOGE(context->GetNodeName(), "ValidateLogitShape failed."),
+    OP_CHECK_IF(!ValidateLogitShape(context, mSize), OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "logit", "ValidateLogitShape failed."),
                 return false);
 
     // 6. Validate bias shape
     OP_CHECK_IF(!ValidateBiasShape(context, eFromW, nSize),
-                OP_LOGE(context->GetNodeName(), "ValidateBiasShape failed."), return false);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "bias", "ValidateBiasShape failed."), return false);
 
     // Calculate CeilDiv(K, 64) for scale validation
     int64_t kCeilDiv64 = (kSize + MX_SCALE_BLOCK_SIZE - 1) / MX_SCALE_BLOCK_SIZE;
 
     // 7. Validate scale shape
     OP_CHECK_IF(!ValidateScaleShape(context, eFromW, nSize, kCeilDiv64),
-                OP_LOGE(context->GetNodeName(), "ValidateScaleShape failed."), return false);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "scale", "ValidateScaleShape failed."), return false);
 
     // 8. Validate pertoken_scale shape
     OP_CHECK_IF(!ValidatePertokenScaleShape(context, mSize, kCeilDiv64),
-                OP_LOGE(context->GetNodeName(), "ValidatePertokenScaleShape failed."), return false);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "perTokenScale", "ValidatePertokenScaleShape failed."), return false);
 
     return true;
 }
@@ -633,7 +651,9 @@ static bool CheckMxA8W4InputShape(gert::TilingContext *context)
 static bool CheckMxA8W4AttrWithInput(gert::TilingContext *context)
 {
     auto attrs = context->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OP_LOGE(context->GetNodeName(), "Attrs is nullptr"), return false);
+    OP_CHECK_IF(attrs == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context->GetNodeName(), "GetAttrs result", "nullptr", "attribute lookup failed"), return false);
 
     const int64_t *outputBSPtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_OUTPUT_BS);
     int64_t outputBS = outputBSPtr != nullptr ? *outputBSPtr : 0;
@@ -647,15 +667,15 @@ static bool CheckMxA8W4AttrWithInput(gert::TilingContext *context)
     if (sharedInputDesc != nullptr) {
         auto sharedInputStorageShape = context->GetOptionalInputShape(SHARE_INPUT_INDEX);
         OP_CHECK_IF(sharedInputStorageShape == nullptr,
-                    OP_LOGE(context->GetNodeName(), "Input sharedInputStorageShape cannot be nullptr."), return false);
+                    OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "sharedInput"), return false);
 
         const float *shareInputWeightPtr = attrs->GetAttrPointer<float>(ATTR_INDEX_SHARE_INPUT_WEIGHT);
         OP_CHECK_IF(shareInputWeightPtr == nullptr,
-                    OP_LOGE(context->GetNodeName(), "Input shareInputWeightPtr cannot be nullptr."), return false);
+                    OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "shared_input_weight"), return false);
 
         const int64_t *shareInputOffsetPtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_SHARE_INPUT_OFFSET);
         OP_CHECK_IF(shareInputOffsetPtr == nullptr,
-                    OP_LOGE(context->GetNodeName(), "Input shareInputOffsetPtr cannot be nullptr."), return false);
+                    OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "shared_input_offset"), return false);
 
         if (unlikely((*shareInputOffsetPtr) < 0)) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "shareInputOffset", std::to_string(*shareInputOffsetPtr),
@@ -690,7 +710,9 @@ bool GMMFRWeightQuantTiling::RunCheckFunc()
 {
     for (size_t conditionIdx = 0; conditionIdx < checkConditionFuncs_.size(); conditionIdx++) {
         OP_CHECK_IF(!checkConditionFuncs_[conditionIdx](context_),
-                    OP_LOGE(context_->GetNodeName(), "Failed to check input params in rule[%lu].", conditionIdx),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context_->GetNodeName(), "check rule index", std::to_string(conditionIdx),
+                        "the indexed input-check rule returned false"),
                     return false);
     }
     return true;
@@ -701,7 +723,9 @@ static bool SetMxA8W4NzAttrs(gert::TilingContext *context, GMMFRWeightQuantInput
     OP_LOGD(context->GetNodeName(), "Start extracting attributes.");
 
     auto attrs = context->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OP_LOGE(context->GetNodeName(), "Attrs is nullptr"), return false);
+    OP_CHECK_IF(attrs == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context->GetNodeName(), "GetAttrs result", "nullptr", "attribute lookup failed"), return false);
 
     inputParams.xTrans = false;
     inputParams.wTrans = true;
@@ -722,7 +746,9 @@ static bool SetMxA8W4NzAttrs(gert::TilingContext *context, GMMFRWeightQuantInput
     } else {
         // Use M / E as default value when outputBs is not provided
         OP_CHECK_IF(inputParams.groupNum == 0,
-                    OP_LOGE(context->GetNodeName(), "groupNum(E) is 0, cannot compute default outputBs as M/E."),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context->GetNodeName(), "groupNum", std::to_string(inputParams.groupNum),
+                        "groupNum must be positive to compute outputBs"),
                     return false);
         inputParams.outputBS = inputParams.mSize / inputParams.groupNum;
         OP_LOGI(context->GetNodeName(), "outputBs not provided, using default M/E = %ld/%ld = %ld", inputParams.mSize,
@@ -746,7 +772,7 @@ static bool SetWFormat(gert::TilingContext *context, GMMFRWeightQuantInputParams
     OP_LOGD(context->GetNodeName(), "Start extracting w format.");
 
     auto wDesc = context->GetInputDesc(W_INDEX);
-    OP_CHECK_IF(wDesc == nullptr, OP_LOGE(context->GetNodeName(), "Input wDesc is nullptr."), return false);
+    OP_CHECK_IF(wDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "weight"), return false);
     inputParams.wFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetStorageFormat()));
 
     OP_LOGD(context->GetNodeName(), "wFormat = %s.", Ops::Base::ToString(inputParams.wFormat).c_str());
@@ -759,7 +785,7 @@ static bool ExtractXDimensions(gert::TilingContext *context, GMMFRWeightQuantInp
     OP_LOGD(context->GetNodeName(), "Start extracting M, K from x shape.");
 
     auto xStorageShape = context->GetInputShape(X_INDEX);
-    OP_CHECK_IF(xStorageShape == nullptr, OP_LOGE(context->GetNodeName(), "Input xStorageShape is nullptr."),
+    OP_CHECK_IF(xStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "x"),
                 return false);
     const gert::Shape &xShape = xStorageShape->GetOriginShape();
     uint64_t xDimNum = static_cast<uint64_t>(xShape.GetDimNum());
@@ -776,7 +802,7 @@ static bool ExtractWDimensions(gert::TilingContext *context, GMMFRWeightQuantInp
     OP_LOGD(context->GetNodeName(), "Start extracting E, N from w shape.");
 
     auto wStorageShape = context->GetInputShape(W_INDEX);
-    OP_CHECK_IF(wStorageShape == nullptr, OP_LOGE(context->GetNodeName(), "Input wStorageShape is nullptr."),
+    OP_CHECK_IF(wStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "weight"),
                 return false);
     const gert::Shape &wShape = wStorageShape->GetOriginShape();
 
@@ -830,7 +856,7 @@ static bool SetSharedInputInfo(gert::TilingContext *context, GMMFRWeightQuantInp
     }
     auto sharedInputStorageShape = context->GetOptionalInputShape(SHARE_INPUT_INDEX);
     OP_CHECK_IF(sharedInputStorageShape == nullptr,
-                OP_LOGE(context->GetNodeName(), "Input sharedInputStorageShape is nullptr."), return false);
+                OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "sharedInput"), return false);
     inputParams.sharedInputLen = sharedInputStorageShape->GetOriginShape().GetDim(0);
     OP_LOGD(context->GetNodeName(), "sharedInputLen = %ld.", inputParams.sharedInputLen);
     return true;
@@ -840,14 +866,22 @@ static bool SetMxA8W4NzInput(gert::TilingContext *context, GMMFRWeightQuantInput
 {
     OP_LOGD(context->GetNodeName(), "Start extracting all inputs.");
 
-    OP_CHECK_IF(!SetWFormat(context, inputParams), OP_LOGE(context->GetNodeName(), "SetWFormat failed."), return false);
+    OP_CHECK_IF(!SetWFormat(context, inputParams),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context->GetNodeName(), "SetWFormat result", "false", "SetWFormat must return true"), return false);
     OP_CHECK_IF(!ExtractXDimensions(context, inputParams),
-                OP_LOGE(context->GetNodeName(), "ExtractXDimensions failed."), return false);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context->GetNodeName(), "ExtractXDimensions result", "false",
+                    "ExtractXDimensions must return true"), return false);
     OP_CHECK_IF(!ExtractWDimensions(context, inputParams),
-                OP_LOGE(context->GetNodeName(), "ExtractWDimensions failed."), return false);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context->GetNodeName(), "ExtractWDimensions result", "false",
+                    "ExtractWDimensions must return true"), return false);
     SetBiasInfo(context, inputParams);
     OP_CHECK_IF(!SetSharedInputInfo(context, inputParams),
-                OP_LOGE(context->GetNodeName(), "SetSharedInputInfo failed."), return false);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context->GetNodeName(), "SetSharedInputInfo result", "false",
+                    "SetSharedInputInfo must return true"), return false);
 
     OP_LOGD(context->GetNodeName(), "All inputs extracted successfully.");
     return true;

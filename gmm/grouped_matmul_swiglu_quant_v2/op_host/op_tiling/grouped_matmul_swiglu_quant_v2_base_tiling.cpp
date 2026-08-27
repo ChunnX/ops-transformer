@@ -67,8 +67,10 @@ int64_t GroupedMatmulSwigluQuantV2BaseTiling::CalMaxRowInUbA8W4(const uint64_t u
 
     // 忽略对齐项的初始估计
     if (n == 0 || ubSize <= CONSTANT_TERM + LINEAR_TERM_FACTOR * n) {
-        OP_LOGE(context_->GetNodeName(), "GMM_SWIGLU_QUANT TILING: invalid n or ubSize, n = %lu, ubSize = %lu\n",
-                n, ubSize);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+            context_->GetNodeName(), "n, ubSize",
+            "n=" + std::to_string(n) + ", ubSize=" + std::to_string(ubSize),
+            "n must be greater than 0 and UB must accommodate at least one processing row");
         return 0;
     }
 
@@ -89,8 +91,10 @@ int64_t GroupedMatmulSwigluQuantV2BaseTiling::CalMaxRowInUbA8W4(const uint64_t u
     }
 
     if (maxRowEstimate < MIN_ROW_THRESHOLD) {
-        OP_LOGE(context_->GetNodeName(), "GMM_SWIGLU_QUANT TILING: No valid row found for n = %lu, ubSize = %lu\n", n,
-                ubSize);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+            context_->GetNodeName(), "n, ubSize",
+            "n=" + std::to_string(n) + ", ubSize=" + std::to_string(ubSize),
+            "UB must accommodate at least one processing row");
         return 0;
     }
     return maxRowEstimate;
@@ -99,7 +103,7 @@ int64_t GroupedMatmulSwigluQuantV2BaseTiling::CalMaxRowInUbA8W4(const uint64_t u
 int64_t GroupedMatmulSwigluQuantV2BaseTiling::CalMaxRowInUb(const uint64_t ubSize, const uint64_t n) const
 {
     if (n == 0) {
-        OP_LOGE(context_->GetNodeName(), "GMM_SWIGLU_QUANT TILING: n should not be 0\n");
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "n", "0", "greater than 0");
         return 0;
     }
     uint64_t tmpBufSize = (n / SWIGLU_REDUCE_FACTOR) * FP32_DTYPE_SIZE;
@@ -119,8 +123,10 @@ int64_t GroupedMatmulSwigluQuantV2BaseTiling::CalMaxRowInUb(const uint64_t ubSiz
     }
     if (maxRowInUb < 1) {
         // when n > (ubSize - 72) / 19 = 10330, maxRowInUb < 1
-        OP_LOGE(context_->GetNodeName(), "GMM_SWIGLU_QUANT TILING: n should not be greater than 10240, now is %lu\n",
-                n);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+            context_->GetNodeName(), "n, ubSize",
+            "n=" + std::to_string(n) + ", ubSize=" + std::to_string(ubSize),
+            "UB must accommodate at least one processing row");
     }
     return maxRowInUb;
 }
@@ -174,13 +180,13 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BaseTiling::ParseInputAndAttr()
     const int64_t *dequantModePtr = attr->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_MODE);
     auto dequantMode = dequantModePtr != nullptr ? *dequantModePtr : 0;
     OP_CHECK_IF(!(dequantMode == 0 || dequantMode == 1),
-                OP_LOGE(context_->GetNodeName(), "dequantMode must be 0 or 1, but actual value is %ld.", dequantMode),
+                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "dequantMode", std::to_string(dequantMode), "0 or 1"),
                 return ge::GRAPH_FAILED);
     const int64_t *groupListTypePtr = attr->GetAttrPointer<int64_t>(ATTR_INDEX_GROUPLIST_TYPE);
     groupListType_ = groupListTypePtr != nullptr ? *groupListTypePtr : 0;
     OP_CHECK_IF(
         !(groupListType_ == 0 || groupListType_ == 1),
-        OP_LOGE(context_->GetNodeName(), "GroupListType must be 0 or 1, but actual value is %ld.", groupListType_),
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "groupListType", std::to_string(groupListType_), "0 or 1"),
         return ge::GRAPH_FAILED);
 
     ge::DataType xDType = xDesc->GetDataType();
@@ -198,7 +204,9 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BaseTiling::ParseInputAndAttr()
     }
 
     auto compileInfoPtr = context_->GetCompileInfo<GMMSwigluV2CompileInfo>();
-    OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_->GetNodeName(), "CompileInfo is nullptr"),
+    OP_CHECK_IF(compileInfoPtr == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "GetCompileInfo result", "nullptr", "compile info lookup failed"),
                 return ge::GRAPH_FAILED);
 
     m_ = xShape->GetStorageShape().GetDim(0);

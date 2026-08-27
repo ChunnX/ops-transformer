@@ -13,6 +13,7 @@
  * \brief
  */
 #include <algorithm>
+#include "gmm/common/op_host/log_format_util.h"
 #include "err/ops_err.h"
 #include "grouped_quant_basic_api_matmul_tiling.h"
 #include "../../grouped_matmul_host_util.h"
@@ -68,7 +69,12 @@ ge::graphStatus GroupedQmmBasicApiTiling::DoOpTiling()
 ge::graphStatus GroupedQmmBasicApiTiling::DoLibApiTiling()
 {
     GroupedQmmTiling::CalBasicBlock();
-    OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed"),
+    auto l1TilingStatus = CalL1Tiling();
+    OP_CHECK_IF(l1TilingStatus != ge::GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "CalL1Tiling status",
+                    std::to_string(static_cast<int64_t>(l1TilingStatus)),
+                    "CalL1Tiling must return GRAPH_SUCCESS"),
                 return ge::GRAPH_FAILED);
     tilingData_.mmTilingData.m = inputParams_.mSize;
     tilingData_.mmTilingData.n = inputParams_.nSize;
@@ -128,8 +134,13 @@ ge::graphStatus GroupedQmmBasicApiTiling::CalL1Tiling()
 {
     InitCommonL1TilingFields();
     uint64_t leftL1Size = 0;
-    OP_CHECK_IF(CalcLeftL1Size(leftL1Size) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "CalcLeftL1Size failed"), return ge::GRAPH_FAILED);
+    auto calcLeftStatus = CalcLeftL1Size(leftL1Size);
+    OP_CHECK_IF(calcLeftStatus != ge::GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "CalcLeftL1Size status",
+                    std::to_string(static_cast<int64_t>(calcLeftStatus)),
+                    "CalcLeftL1Size must return GRAPH_SUCCESS"),
+                return ge::GRAPH_FAILED);
     return CalL1Depth(leftL1Size);
 }
 
@@ -145,8 +156,10 @@ ge::graphStatus GroupedQmmBasicApiTiling::CalL1Depth(uint64_t leftL1Size)
     }
     uint64_t baseL1Size = baseASize + baseBSize + baseScaleASize + baseScaleBSize;
     OP_CHECK_IF(leftL1Size < baseL1Size,
-                OP_LOGE(context_->GetNodeName(), "L1 space overflow. Free L1Size : %lu, used space: %lu", leftL1Size,
-                        baseL1Size),
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                    context_->GetNodeName(), "free L1Size, used L1Size",
+                    Ops::Transformer::Gmm::FormatString("%lu, %lu", leftL1Size, baseL1Size).c_str(),
+                    "used L1Size must not exceed free L1Size"),
                 return ge::GRAPH_FAILED);
     uint64_t depthInit = GetDepthA1B1(leftL1Size, baseL1Size, 1UL); // 求A+B和的平均depth
     // 根据一条指令带宽要求的数据量求取A,B各自的depth
@@ -240,9 +253,11 @@ ge::graphStatus GroupedQmmBasicApiTiling::CalScaleFactors()
         leftL1Size / (std::max(basicTiling_.depthA1, basicTiling_.depthB1) * (baseScaleASize + baseScaleBSize)));
     OP_CHECK_IF(
         scaleInit == 0,
-        OP_LOGE(context_->GetNodeName(),
-                "When m(%lu)/n(%lu)/k(%lu)/groupNum(%lu) in mx quant mode, scaleFactor should not be equal to 0.",
-                inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "scaleFactor", std::to_string(scaleInit),
+            Ops::Transformer::Gmm::FormatString(
+                "scaleFactor must be greater than 0 when m=%lu, n=%lu, k=%lu, groupNum=%lu",
+                inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum).c_str()),
         return ge::GRAPH_FAILED);
     // 计算scaleFactorA, scaleFactorB
     // 来自K轴的约束
@@ -329,18 +344,18 @@ ge::graphStatus GroupedS4S4IntQuantTiling::GetPlatformInfo()
     // AiCoreParams (TilingBaseClass) has no aivNum field; read aivNum from compileInfo directly.
     uint32_t aivNum = compileInfoPtr->aivNum;
     OP_CHECK_IF(aicoreParams_.aicNum == 0 || aivNum != S4S4_AIV_PER_AIC * aicoreParams_.aicNum,
-                OP_LOGE(context_->GetNodeName(), "S4S4 mix-core needs aic:aiv=1:2, got aic=%lu aiv=%u",
-                        aicoreParams_.aicNum, aivNum),
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_->GetNodeName(), "aicNum, aivNum", Ops::Transformer::Gmm::FormatString("%lu, %u", aicoreParams_.aicNum, aivNum).c_str(), "S4S4 mix-core needs aic:aiv=1:2."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(aicoreParams_.ubSize == 0,
-                OP_LOGE(context_->GetNodeName(), "ubSize is 0."), return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "tiling", "ubSize is 0."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus GroupedS4S4IntQuantTiling::GetShapeAttrsInfo()
 {
     if (context_ == nullptr) {
-        OP_LOGE("GroupedS4S4IntQuantTiling", "context_ is nullptr.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "GroupedS4S4IntQuantTiling", "tiling context", "nullptr", "tiling context must not be null");
         return ge::GRAPH_FAILED;
     }
     auto xDesc = context_->GetDynamicInputDesc(X_INDEX, 0);
@@ -363,12 +378,14 @@ ge::graphStatus GroupedS4S4IntQuantTiling::GetShapeAttrsInfo()
     inputParams_.bFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetStorageFormat()));
     auto attrs = context_->GetAttrs();
     if (attrs == nullptr) {
-        OP_LOGE(context_->GetNodeName(), "S4S4: attrs is nullptr.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "GetAttrs result", "nullptr", "attribute lookup failed");
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(attrs->GetAttrNum() < ATTR_INDEX_ACT_TYPE + 1,
-                OP_LOGE(context_->GetNodeName(), "S4S4: attr num < %lu, got %zu.",
-                        ATTR_INDEX_ACT_TYPE + 1, attrs->GetAttrNum()),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "attribute count", std::to_string(attrs->GetAttrNum()),
+                    "S4S4 attribute count must be at least " + std::to_string(ATTR_INDEX_ACT_TYPE + 1)),
                 return ge::GRAPH_FAILED);
     const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_W);
     const bool *transposeXPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_X);
@@ -382,13 +399,12 @@ ge::graphStatus GroupedS4S4IntQuantTiling::GetShapeAttrsInfo()
         ? static_cast<uint8_t>(*groupListTypePtr) : inputParams_.groupListType;
     int64_t actTypeVal = (actTypePtr != nullptr) ? *actTypePtr : 0L;
     OP_CHECK_IF(actTypeVal != 0L,
-                OP_LOGE(context_->GetNodeName(), "S4S4: actType must be 0, got %ld.", actTypeVal),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "actType", Ops::Transformer::Gmm::FormatString("%ld", actTypeVal).c_str(), Ops::Transformer::Gmm::FormatString("S4S4: actType must be 0, got %ld.", actTypeVal).c_str()),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(inputParams_.groupType != GroupedMatmul::SPLIT_M,
-                OP_LOGE(context_->GetNodeName(), "S4S4: groupType must be 0(SPLIT_M), got %d.",
-                        static_cast<int32_t>(inputParams_.groupType)),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "groupType", Ops::Transformer::Gmm::FormatString("%d", static_cast<int32_t>(inputParams_.groupType)).c_str(), Ops::Transformer::Gmm::FormatString("S4S4: groupType must be 0(SPLIT_M), got %d.", static_cast<int32_t>(inputParams_.groupType)).c_str()),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(inputParams_.transA, OP_LOGE(context_->GetNodeName(), "S4S4: transA not supported."),
+    OP_CHECK_IF(inputParams_.transA, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "transA", "S4S4: transA not supported."),
                 return ge::GRAPH_FAILED);
     inputParams_.isSingleX = (context_->GetDynamicInputDesc(X_INDEX, 1) == nullptr);
     inputParams_.isSingleW = (context_->GetDynamicInputDesc(WEIGHT_INDEX, 1) == nullptr);
@@ -421,7 +437,10 @@ bool GroupedS4S4IntQuantTiling::SetMKN(const gert::Shape &xShape, const gert::Sh
     uint32_t xDimNum = static_cast<uint32_t>(xShape.GetDimNum());
     uint32_t wDimNum = static_cast<uint32_t>(wShape.GetDimNum());
     OP_CHECK_IF(xDimNum < MIN_ND_DIM || wDimNum < MIN_ND_DIM,
-                OP_LOGE(context_->GetNodeName(), "S4S4: x/weight dim must be >= 2."), return false);
+                OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
+                    context_->GetNodeName(), "x, weight",
+                    std::to_string(xDimNum) + ", " + std::to_string(wDimNum),
+                    "S4S4: x and weight ranks must be at least 2"), return false);
     OP_CHECK_IF(!GroupedQmmBasicApiTiling::SetMKN(xShape, wShape),
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "S4S4 base SetMKN failed."),
                 return false);
@@ -467,19 +486,17 @@ bool GroupedS4S4IntQuantTiling::AnalyzeS4S4()
         inputParams_.bQuantMode = QuantMode::PERGROUP_MODE;
         uint64_t g = static_cast<uint64_t>(scaleShapePtr->GetStorageShape().GetDim(1));
         OP_CHECK_IF(g == 0 || inputParams_.kSize % g != 0,
-                    OP_LOGE(context_->GetNodeName(), "S4S4 pergroup: k(%lu) must be divisible by G(%lu).",
-                            inputParams_.kSize, g),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "weight K/groupNum", Ops::Transformer::Gmm::FormatString("S4S4 pergroup: k(%lu) must be divisible by G(%lu).", inputParams_.kSize, g).c_str()),
                     return false);
         OP_CHECK_IF((inputParams_.kSize / g) % S4S4_QUANT_GROUP_SIZE != 0,
-                    OP_LOGE(context_->GetNodeName(), "S4S4 pergroup: k/G(%lu) must be even (multiple of 2).",
-                            inputParams_.kSize / g),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "weight K/groupNum", Ops::Transformer::Gmm::FormatString("%lu", inputParams_.kSize / g).c_str(), Ops::Transformer::Gmm::FormatString("S4S4 pergroup: k/G(%lu) must be even (multiple of 2).", inputParams_.kSize / g).c_str()),
                     return false);
         s4s4Tiling_.quantGroupNum = static_cast<uint32_t>(g);
     } else if (scaleDimNum == S4S4_PER_CHANNEL_SCALE_DIM) {
         inputParams_.bQuantMode = QuantMode::PERCHANNEL_MODE;
         s4s4Tiling_.quantGroupNum = 1U;
     } else {
-        OP_LOGE(context_->GetNodeName(), "S4S4: scale dim should be 2 or 3, got %u.", scaleDimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "scale", Ops::Transformer::Gmm::FormatString("%u", scaleDimNum).c_str(), Ops::Transformer::Gmm::FormatString("S4S4: scale dim should be 2 or 3, got %u.", scaleDimNum).c_str());
         return false;
     }
     s4s4Tiling_.isPerTokenQuant = (inputParams_.aQuantMode == QuantMode::PERTOKEN_MODE) ? 1U : 0U;
@@ -489,24 +506,36 @@ bool GroupedS4S4IntQuantTiling::AnalyzeS4S4()
 bool GroupedS4S4IntQuantTiling::CheckS4S4Params()
 {
     OP_CHECK_IF(inputParams_.aDtype != ge::DT_INT4 || inputParams_.bDtype != ge::DT_INT4,
-                OP_LOGE(context_->GetNodeName(), "S4S4: x/weight must be INT4."), return false);
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                    context_->GetNodeName(), "x, weight",
+                    ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype) + ", " +
+                        ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype),
+                    "S4S4: x and weight must both be INT4"), return false);
     OP_CHECK_IF(inputParams_.scaleDtype != ge::DT_UINT64,
-                OP_LOGE(context_->GetNodeName(), "S4S4: scale must be UINT64, got %s.",
-                        ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "scale", Ops::Transformer::Gmm::FormatString("%s", ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()).c_str(), Ops::Transformer::Gmm::FormatString("S4S4: scale must be UINT64, got %s.", ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()).c_str()),
                 return false);
     OP_CHECK_IF(inputParams_.aQuantMode == QuantMode::PERTOKEN_MODE && inputParams_.perTokenScaleDtype != ge::DT_FLOAT,
-                OP_LOGE(context_->GetNodeName(), "S4S4: perTokenScale must be FLOAT."), return false);
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                    context_->GetNodeName(), "perTokenScale",
+                    ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype),
+                    "S4S4: perTokenScale must be FLOAT"), return false);
     OP_CHECK_IF(inputParams_.cDtype != ge::DT_FLOAT16 && inputParams_.cDtype != ge::DT_BF16,
-                OP_LOGE(context_->GetNodeName(), "S4S4: y must be FP16/BF16."), return false);
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                    context_->GetNodeName(), "y", ge::TypeUtils::DataTypeToSerialString(inputParams_.cDtype),
+                    "S4S4: y must be FP16 or BF16"), return false);
     OP_CHECK_IF(inputParams_.nSize % S4S4_N_ALIGN != 0,
-                OP_LOGE(context_->GetNodeName(), "S4S4: n(%lu) must be multiple of 8.", inputParams_.nSize),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "weight N", Ops::Transformer::Gmm::FormatString("%lu", inputParams_.nSize).c_str(), Ops::Transformer::Gmm::FormatString("S4S4: n(%lu) must be multiple of 8.", inputParams_.nSize).c_str()),
                 return false);
     OP_CHECK_IF(!inputParams_.isSingleX,
-                OP_LOGE(context_->GetNodeName(), "S4S4 only supports single x."), return false);
+                OP_LOGE_FOR_INVALID_TENSORNUMS_WITH_REASON(
+                    context_->GetNodeName(), "x", "at least 2", "S4S4 only supports one x tensor"), return false);
     OP_CHECK_IF(!inputParams_.isSingleW,
-                OP_LOGE(context_->GetNodeName(), "S4S4 only supports single weight."), return false);
+                OP_LOGE_FOR_INVALID_TENSORNUMS_WITH_REASON(
+                    context_->GetNodeName(), "weight", "at least 2", "S4S4 only supports one weight tensor"),
+                return false);
     OP_CHECK_IF(!inputParams_.isSingleY,
-                OP_LOGE(context_->GetNodeName(), "S4S4 only supports single y."), return false);
+                OP_LOGE_FOR_INVALID_TENSORNUMS_WITH_REASON(
+                    context_->GetNodeName(), "y", "at least 2", "S4S4 only supports one y tensor"), return false);
     return true;
 }
 
@@ -551,7 +580,7 @@ ge::graphStatus GroupedS4S4IntQuantTiling::DoOpTiling()
     OP_CHECK_IF(CalUbDivideS4S4() != ge::GRAPH_SUCCESS,
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "CalUbDivideS4S4 failed."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!SetMKNList(), OP_LOGE(context_->GetNodeName(), "SetMKNList failed."),
+    OP_CHECK_IF(!SetMKNList(), OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "tiling", "SetMKNList failed."),
                 return ge::GRAPH_FAILED);
     s4s4Tiling_.singleN = FindBestSingleN();
     return ge::GRAPH_SUCCESS;
@@ -573,7 +602,7 @@ void GroupedS4S4IntQuantTiling::CalBasicBlockS4S4()
 ge::graphStatus GroupedS4S4IntQuantTiling::CalUbDivideS4S4()
 {
     uint32_t ubSize = static_cast<uint32_t>(aicoreParams_.ubSize);
-    OP_CHECK_IF(ubSize == 0, OP_LOGE(context_->GetNodeName(), "ubSize is 0."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ubSize == 0, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "tiling", "ubSize is 0."), return ge::GRAPH_FAILED);
 
     uint32_t alignBaseN = AlignUp(s4s4Tiling_.baseN, S4S4_N_ALIGN);
     uint32_t ubCalSize = S4S4_VEC_BASE_M_950 * alignBaseN;
@@ -582,16 +611,14 @@ ge::graphStatus GroupedS4S4IntQuantTiling::CalUbDivideS4S4()
     uint32_t epilogueBytes = S4S4_EPILOGUE_UB_COEFF * ubCalSize +
                              S4S4_PER_TOKEN_QUEUE_BYTES_PER_M * s4s4Tiling_.baseM;
     OP_CHECK_IF(epilogueBytes >= ubSize,
-                OP_LOGE(context_->GetNodeName(), "S4S4 epilogue UB overflow: %u >= %u.", epilogueBytes, ubSize),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "tiling", Ops::Transformer::Gmm::FormatString("S4S4 epilogue UB overflow: %u >= %u.", epilogueBytes, ubSize).c_str()),
                 return ge::GRAPH_FAILED);
 
     // ubRestBytes 给 prologue（32B 对齐）
     uint32_t ubRestBytes = ubSize - epilogueBytes;                              // 154624
     ubRestBytes = ubRestBytes / UB_BLOCK_UNIT_SIZE * UB_BLOCK_UNIT_SIZE;        // 154592（32B 对齐）
     OP_CHECK_IF(ubRestBytes < PROLOGUE_MIN_BYTES_950,
-                OP_LOGE(context_->GetNodeName(),
-                        "S4S4 UB not enough for prologue: ubRestBytes=%u < %u. Consider smaller baseN.",
-                        ubRestBytes, PROLOGUE_MIN_BYTES_950),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "tiling", Ops::Transformer::Gmm::FormatString("S4S4 UB not enough for prologue: ubRestBytes=%u < %u. Consider smaller baseN.", ubRestBytes, PROLOGUE_MIN_BYTES_950).c_str()),
                 return ge::GRAPH_FAILED);
     s4s4Tiling_.ubRestBytes = ubRestBytes;
     return ge::GRAPH_SUCCESS;
@@ -620,8 +647,13 @@ ge::graphStatus GroupedS4S4IntQuantTiling::CalL1Tiling()
     InitCommonL1TilingFields();
     if (inputParams_.kSize == 0UL) { return ge::GRAPH_SUCCESS; }
     uint64_t leftL1Size = 0UL;
-    OP_CHECK_IF(CalcLeftL1Size(leftL1Size) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "CalcLeftL1Size failed."), return ge::GRAPH_FAILED);
+    auto calcLeftStatus = CalcLeftL1Size(leftL1Size);
+    OP_CHECK_IF(calcLeftStatus != ge::GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "CalcLeftL1Size status",
+                    std::to_string(static_cast<int64_t>(calcLeftStatus)),
+                    "CalcLeftL1Size must return GRAPH_SUCCESS"),
+                return ge::GRAPH_FAILED);
     return CalL1Depth(leftL1Size);
 }
 
@@ -629,12 +661,10 @@ ge::graphStatus GroupedS4S4IntQuantTiling::CalL1Depth(uint64_t leftL1Size)
 {
     // Validate the double-buffered L0 footprint before deriving the L1 depth.
     OP_CHECK_IF(static_cast<uint64_t>(s4s4Tiling_.baseM) * s4s4Tiling_.baseK * DB_SIZE > aicoreParams_.l0aSize,
-                OP_LOGE(context_->GetNodeName(), "S4S4 L0A overflow: need=%lu cap=%lu.",
-                        static_cast<uint64_t>(s4s4Tiling_.baseM) * s4s4Tiling_.baseK * DB_SIZE, aicoreParams_.l0aSize),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "tiling", Ops::Transformer::Gmm::FormatString("S4S4 L0A overflow: need=%lu cap=%lu.", static_cast<uint64_t>(s4s4Tiling_.baseM) * s4s4Tiling_.baseK * DB_SIZE, aicoreParams_.l0aSize).c_str()),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(static_cast<uint64_t>(s4s4Tiling_.baseN) * s4s4Tiling_.baseK * DB_SIZE > aicoreParams_.l0bSize,
-                OP_LOGE(context_->GetNodeName(), "S4S4 L0B overflow: need=%lu cap=%lu.",
-                        static_cast<uint64_t>(s4s4Tiling_.baseN) * s4s4Tiling_.baseK * DB_SIZE, aicoreParams_.l0bSize),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "tiling", Ops::Transformer::Gmm::FormatString("S4S4 L0B overflow: need=%lu cap=%lu.", static_cast<uint64_t>(s4s4Tiling_.baseN) * s4s4Tiling_.baseK * DB_SIZE, aicoreParams_.l0bSize).c_str()),
                 return ge::GRAPH_FAILED);
 
     // Each half of L1 stores one aligned A/B/scale stage. kAL1 and kBL1 are the K-element counts of one stage.
@@ -679,9 +709,7 @@ ge::graphStatus GroupedS4S4IntQuantTiling::CalL1Depth(uint64_t leftL1Size)
         }
     }
     OP_CHECK_IF(depthA1 < DB_SIZE || depthB1 < DB_SIZE,
-                OP_LOGE(context_->GetNodeName(),
-                        "S4S4 L1 overflow: cannot fit one fixed-tile stage. baseM=%u baseN=%u baseK=%u halfL1=%lu.",
-                        s4s4Tiling_.baseM, s4s4Tiling_.baseN, s4s4Tiling_.baseK, halfL1),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "tiling", Ops::Transformer::Gmm::FormatString("S4S4 L1 overflow: cannot fit one fixed-tile stage. baseM=%u baseN=%u baseK=%u halfL1=%lu.", s4s4Tiling_.baseM, s4s4Tiling_.baseN, s4s4Tiling_.baseK, halfL1).c_str()),
                 return ge::GRAPH_FAILED);
     s4s4Tiling_.depthA1 = depthA1;
     s4s4Tiling_.depthB1 = depthB1;
@@ -692,8 +720,13 @@ ge::graphStatus GroupedS4S4IntQuantTiling::CalL1Depth(uint64_t leftL1Size)
 
 ge::graphStatus GroupedS4S4IntQuantTiling::DoLibApiTiling()
 {
-    OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed."), return ge::GRAPH_FAILED);
+    auto l1TilingStatus = CalL1Tiling();
+    OP_CHECK_IF(l1TilingStatus != ge::GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "CalL1Tiling status",
+                    std::to_string(static_cast<int64_t>(l1TilingStatus)),
+                    "CalL1Tiling must return GRAPH_SUCCESS"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -760,13 +793,13 @@ ge::graphStatus GroupedS4S4IntQuantTiling::PostTiling()
                  (inputParams_.transB ? S4S4_TRANSPOSE_WEIGHT_FLAG : 0ULL) |
                   (weightNzC032_ ? S4S4_WEIGHT_NZ_C0_32_FLAG : 0ULL);
     errno_t retM = memcpy_s(tilingData_.gmmArray.mList, sizeof(tilingData_.gmmArray.mList), mList_, sizeof(mList_));
-    OP_CHECK_IF(retM != EOK, OP_LOGE(context_->GetNodeName(), "memcpy_s mList failed, ret=%d", retM),
+    OP_CHECK_IF(retM != EOK, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "tiling", Ops::Transformer::Gmm::FormatString("memcpy_s mList failed, ret=%d", retM).c_str()),
                 return ge::GRAPH_FAILED);
     errno_t retK = memcpy_s(tilingData_.gmmArray.kList, sizeof(tilingData_.gmmArray.kList), kList_, sizeof(kList_));
-    OP_CHECK_IF(retK != EOK, OP_LOGE(context_->GetNodeName(), "memcpy_s kList failed, ret=%d", retK),
+    OP_CHECK_IF(retK != EOK, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "tiling", Ops::Transformer::Gmm::FormatString("memcpy_s kList failed, ret=%d", retK).c_str()),
                 return ge::GRAPH_FAILED);
     errno_t retN = memcpy_s(tilingData_.gmmArray.nList, sizeof(tilingData_.gmmArray.nList), nList_, sizeof(nList_));
-    OP_CHECK_IF(retN != EOK, OP_LOGE(context_->GetNodeName(), "memcpy_s nList failed, ret=%d", retN),
+    OP_CHECK_IF(retN != EOK, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "tiling", Ops::Transformer::Gmm::FormatString("memcpy_s nList failed, ret=%d", retN).c_str()),
                 return ge::GRAPH_FAILED);
     // mmTilingData(TCubeTiling)
     auto &mm = tilingData_.mmTilingData;

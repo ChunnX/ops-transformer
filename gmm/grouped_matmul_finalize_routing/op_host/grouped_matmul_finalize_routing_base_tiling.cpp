@@ -13,6 +13,7 @@
  * \brief
  */
 #include "grouped_matmul_finalize_routing_base_tiling.h"
+#include "../../common/op_host/log_format_util.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "util/math_util.h"
 #include "err/ops_err.h"
@@ -98,7 +99,8 @@ static ge::graphStatus GetInputDims(const gert::Shape &storageShape, ge::Format 
 ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::GetInputShape()
 {
     if (context_ == nullptr) {
-        OP_LOGE("GroupedMatmulFinalizeRouting", "context is nullptr.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "GroupedMatmulFinalizeRouting", "tiling context", "nullptr", "tiling context must not be null");
         return ge::GRAPH_FAILED;
     }
     auto inputXDesc = context_->GetInputDesc(0);
@@ -108,13 +110,13 @@ ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::GetInputShape()
 
     if (context_->GetInputShape(0) == nullptr || context_->GetInputShape(1) == nullptr || inputXDesc == nullptr
         || inputWDesc == nullptr) {
-        OP_LOGE(context_->GetNodeName(), "invalid input pointer");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "input descriptors or shapes", "Input descriptors or shapes are invalid.");
         return ge::GRAPH_FAILED;
     }
 
     if ((GetInputDims(context_->GetInputShape(0)->GetStorageShape(), inputXDesc->GetStorageFormat(), mkDims) != ge::GRAPH_SUCCESS) ||
         (GetInputDims(context_->GetInputShape(1)->GetStorageShape(), inputWDesc->GetStorageFormat(), knDims) != ge::GRAPH_SUCCESS)) {
-        OP_LOGE(context_->GetNodeName(), "invalid input dim num");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "input dimension", "Input dimension extraction failed.");
         return ge::GRAPH_FAILED;
     }
 
@@ -140,7 +142,8 @@ ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::GetInputShape()
 ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::ParseAttr()
 {
     if (context_ == nullptr) {
-        OP_LOGE("GroupedMatmulFinalizeRouting", "context is nullptr.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "GroupedMatmulFinalizeRouting", "tiling context", "nullptr", "tiling context must not be null");
         return ge::GRAPH_FAILED;
     }
     auto attrs = context_->GetAttrs();
@@ -151,7 +154,11 @@ ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::ParseAttr()
     if (context_->GetOptionalInputDesc(SHARE_INPUT_INDEX) != nullptr && sharedInputOffsetAttr != nullptr) {
         OP_CHECK_IF(*sharedInputOffsetAttr < 0 ||
                         *sharedInputOffsetAttr > static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
-                    OP_LOGE(context_->GetNodeName(), "Attr SHARED_INPUT_OFFSET is out of uint32 range."),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context_->GetNodeName(), "shared_input_offset", std::to_string(*sharedInputOffsetAttr),
+                        Ops::Transformer::Gmm::FormatString(
+                            "shared_input_offset must be in [0, %u]",
+                            std::numeric_limits<uint32_t>::max()).c_str()),
                     return ge::GRAPH_FAILED);
         sharedInputOffset_ = static_cast<uint32_t>(*sharedInputOffsetAttr);
     } else {
@@ -161,18 +168,21 @@ ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::ParseAttr()
     if (attrs->GetAttrPointer<float>(1) != nullptr) {
         residualScale_ = *attrs->GetAttrPointer<float>(1);
     } else {
-        OP_LOGE(context_->GetNodeName(), "Attr RESIDUAL_SCALE is None.");
+        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "shared_input_weight");
         return ge::GRAPH_FAILED;
     }
 
     const auto batchAttr = attrs->GetAttrPointer<int64_t>(BATCH_INDEX);
     if (batchAttr != nullptr) {
         OP_CHECK_IF(*batchAttr < 0 || *batchAttr > static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
-                    OP_LOGE(context_->GetNodeName(), "Attr BATCH is out of uint32 range."),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context_->GetNodeName(), "output_bs", std::to_string(*batchAttr),
+                        Ops::Transformer::Gmm::FormatString(
+                            "output_bs must be in [0, %u]", std::numeric_limits<uint32_t>::max()).c_str()),
                     return ge::GRAPH_FAILED);
         batch_ = static_cast<uint32_t>(*batchAttr);
     } else {
-        OP_LOGE(context_->GetNodeName(), "Attr BATCH is None.");
+        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "output_bs");
         return ge::GRAPH_FAILED;
     }
 
@@ -196,14 +206,19 @@ ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::ParseInputAndAttr()
 {
     uint64_t ubSize, l1Size, l0CSize;
 
-    if (GetInputShape() != ge::GRAPH_SUCCESS) {
-        OP_LOGE(context_->GetNodeName(), "get input shape failed");
+    auto getInputShapeStatus = GetInputShape();
+    if (getInputShapeStatus != ge::GRAPH_SUCCESS) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "GetInputShape status",
+            std::to_string(static_cast<int64_t>(getInputShapeStatus)),
+            "GetInputShape must return GRAPH_SUCCESS");
         return ge::GRAPH_FAILED;
     }
 
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
-        OP_LOGE(context_->GetNodeName(), "get platform info failed");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "GetPlatformInfo result", "nullptr", "platform info lookup failed");
         return ge::GRAPH_FAILED;
     }
 
@@ -225,8 +240,11 @@ ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::ParseInputAndAttr()
         withOffset_ = 1U; // with offset set 1
     }
 
-    if (ParseAttr() != ge::GRAPH_SUCCESS) {
-        OP_LOGE(context_->GetNodeName(), "Parse attr failed");
+    auto parseAttrStatus = ParseAttr();
+    if (parseAttrStatus != ge::GRAPH_SUCCESS) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "ParseAttr status", std::to_string(static_cast<int64_t>(parseAttrStatus)),
+            "ParseAttr must return GRAPH_SUCCESS");
         return ge::GRAPH_FAILED;
     }
 
@@ -260,7 +278,8 @@ ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::W4A8BaseTilingProcess()
     }
 
     if (baseN == 0) {
-        OP_LOGE(context_->GetNodeName(), "GroupedMatmulFinalizeRoutingBaseTiling: baseN is 0! Tling Failed!");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "baseN", std::to_string(baseN), "baseN must be greater than 0");
         return ge::GRAPH_FAILED;
     }
 
@@ -277,13 +296,12 @@ ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::W4A8BaseTilingProcess()
     mm_.SetShape(baseM, n_, k_);
     mm_.SetFixSplit(baseM, baseN, A8W4_MSD_BASE_K);
     if (mm_.GetTiling(tilingData_.matmulTiling) == -1){
-        OP_LOGE(context_->GetNodeName(), "GroupedMatmulFinalizeRoutingBaseTiling Get Tiling Failed!"
-             "m, n, k: %lu, %lu, %lu", m_, n_, k_);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_->GetNodeName(), "m, n, k", Ops::Transformer::Gmm::FormatString("%lu, %lu, %lu", m_, n_, k_).c_str(), "GroupedMatmulFinalizeRoutingBaseTiling Get Tiling Failed.");
         return ge::GRAPH_FAILED;
     }
 
     if (k_ > MAX_K_A8W4_MSD) {
-        OP_LOGE(context_->GetNodeName(), "GMM_tiling: K should be less than 18432 on the A8W4 scenario, but now is %lu", k_);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "K", std::to_string(k_), "GMM_tiling: K should be less than 18432 on the A8W4 scenario.");
         return ge::GRAPH_FAILED;
     }
 
@@ -321,7 +339,8 @@ ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::W4A8L1OptTilingProcess()
     }
 
     if (baseN == 0) {
-        OP_LOGE(context_->GetNodeName(), "GroupedMatmulFinalizeRoutingBaseTiling: baseN is 0! Tling Failed!");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "baseN", std::to_string(baseN), "baseN must be greater than 0");
         return ge::GRAPH_FAILED;
     }
 
@@ -339,8 +358,7 @@ ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::W4A8L1OptTilingProcess()
     mm_.SetSingleShape(baseM, singleN, k_);
     mm_.SetFixSplit(baseM, baseN, A8W4_L1OPT_BASE_K);
     if (mm_.GetTiling(tilingData_.matmulTiling) == -1){
-        OP_LOGE(context_->GetNodeName(), "GroupedMatmulFinalizeRoutingBaseTiling Get Tiling Failed!"
-             "m, n, k: %lu, %lu, %lu", m_, n_, k_);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_->GetNodeName(), "m, n, k", Ops::Transformer::Gmm::FormatString("%lu, %lu, %lu", m_, n_, k_).c_str(), "GroupedMatmulFinalizeRoutingBaseTiling Get Tiling Failed.");
         return ge::GRAPH_FAILED;
     }
 
@@ -392,7 +410,7 @@ ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::W8A8TilingProcess()
     mm_.SetOrgShape(baseM, n_, k_);
     mm_.SetFixSplit(baseM, baseN, BEST_BASE_K);
     if (mm_.GetTiling(tilingData_.matmulTiling) == -1) {
-        OP_LOGE(context_->GetNodeName(), "GroupedMatmulFinalizeRoutingBaseTiling Get Tiling Failed!, m, n, k: %lu, %lu, %lu", m_, n_, k_);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_->GetNodeName(), "m, n, k", Ops::Transformer::Gmm::FormatString("%lu, %lu, %lu", m_, n_, k_).c_str(), "GroupedMatmulFinalizeRoutingBaseTiling Get Tiling Failed.");
         return ge::GRAPH_FAILED;
     }
     
@@ -419,7 +437,8 @@ ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::W8A8TilingProcess()
 ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::OtherSettingTilingProcess()
 {
     if (context_ == nullptr) {
-        OP_LOGE("GroupedMatmulFinalizeRouting", "context is nullptr.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "GroupedMatmulFinalizeRouting", "tiling context", "nullptr", "tiling context must not be null");
         return ge::GRAPH_FAILED;
     }
     // 判断sharedInput是否为空
@@ -427,9 +446,12 @@ ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::OtherSettingTilingProces
         tilingKey_ += SHARED_INPUT_FACTOR;
     }
     auto attrs = context_->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "Attrs is nullptr."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(attrs == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "GetAttrs result", "nullptr", "attribute lookup failed"),
+                return ge::GRAPH_FAILED);
     const auto groupListType = attrs->GetAttrPointer<int64_t>(GROUP_LIST_TYPE_INDEX);
-    OP_CHECK_IF(groupListType == nullptr, OP_LOGE(context_->GetNodeName(), "group_list_type is nullptr."),
+    OP_CHECK_IF(groupListType == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "group_list_type"),
         return ge::GRAPH_FAILED);
     if (*groupListType == 0) {
         tilingKey_ += GROUP_LIST_TYPE_FACTOR;
@@ -521,7 +543,7 @@ ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::DoOpTiling()
     auto inputXDesc = context_->GetInputDesc(0);
     auto inputWDesc = context_->GetInputDesc(1);
     if (inputXDesc == nullptr || inputWDesc == nullptr) {
-        OP_LOGE(context_->GetNodeName(), "invalid input pointer");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "input descriptors or shapes", "Input descriptors or shapes are invalid.");
         return ge::GRAPH_FAILED;
     }
 
@@ -557,7 +579,8 @@ uint64_t GroupedMatmulFinalizeRoutingBaseTiling::GetTilingKey() const
 ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::PostTiling()
 {
     OP_CHECK_IF(tilingData_.GetDataSize() % sizeof(uint64_t) != 0,
-        OP_LOGE(context_->GetNodeName(), "tiling data size[%zu] is not aligned to 8", tilingData_.GetDataSize()),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "tiling data size", std::to_string(tilingData_.GetDataSize()),
+                                             "Tiling data size is not aligned to 8."),
         return ge::GRAPH_FAILED);
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetRawTilingData());
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());

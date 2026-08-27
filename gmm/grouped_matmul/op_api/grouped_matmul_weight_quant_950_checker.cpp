@@ -1013,8 +1013,9 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckUnsupportedApi() c
                    "Only AclnnGroupedMatmulNz supports fp16/bf16-fp4_e2m1, "
                    "fp8_e4m3fn-fp4_e2m1/fp4_e1m2 and int8-int4 for xDtype-weightDtype.");
     } else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Weight quant case with x dtype [%s] and weight dtype [%s] is not supported.",
-                op::ToString(xDtype_).GetString(), op::ToString(weightDtype_).GetString());
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            GetAclnnName(), "x, weight", std::string(op::ToString(xDtype_).GetString()) + ", " +
+            op::ToString(weightDtype_).GetString(), "Weight quant case with x dtype and weight dtype is not supported.");
         return ACLNN_ERR_PARAM_INVALID;
     }
 

@@ -27,6 +27,7 @@
 #include "opdev/shape_utils.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/make_op_executor.h"
+#include "log/log.h"
 #include "grouped_matmul_swiglu_quant_v2.h"
 
 namespace gmm_dsq {
@@ -221,8 +222,7 @@ protected:
         }
 
         if (!gmmDsqParams_.weight || !gmmDsqParams_.weightScale) {
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
-                    "In op [%s], [%s] must not be nullptr.", opName_.c_str(), "weight or weightScale");
+            OP_LOGE_WITH_INVALID_INPUT(opName_, "weight or weightScale");
             return false;
         }
         return true;
@@ -232,15 +232,21 @@ protected:
     {
         for (size_t i = 0; i < gmmDsqParams_.weight->Size(); i++) {
             if ((*gmmDsqParams_.weight)[i]->IsEmpty()) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                        "In op [%s], weight[%zu] must not be an empty container.", opName_.c_str(), i);
+                const std::string paramName = "weight[" + std::to_string(i) + "]";
+                OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+                    opName_.c_str(), paramName.c_str(),
+                    std::to_string((*gmmDsqParams_.weight)[i]->GetViewShape().GetShapeSize()),
+                    "tensor must not be empty");
                 return false;
             }
         }
         for (size_t i = 0; i < gmmDsqParams_.weightScale->Size(); i++) {
             if ((*gmmDsqParams_.weightScale)[i]->IsEmpty()) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                        "In op [%s], weightScale[%zu] must not be an empty container.", opName_.c_str(), i);
+                const std::string paramName = "weightScale[" + std::to_string(i) + "]";
+                OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+                    opName_.c_str(), paramName.c_str(),
+                    std::to_string((*gmmDsqParams_.weightScale)[i]->GetViewShape().GetShapeSize()),
+                    "tensor must not be empty");
                 return false;
             }
         }

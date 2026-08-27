@@ -45,7 +45,7 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(const aclT
     L0_DFX(GroupedMatmulSwigluQuantV2, x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale,
            groupList, dequantMode, dequantDtype, quantMode, quantDtype, transposeWeight, tuningConfigOptional);
     if (x == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x is nullptr.");
+        OP_LOGE_WITH_INVALID_INPUT("GroupedMatmulSwigluQuantV2", "x");
         return std::tuple(nullptr, nullptr);
     }
     int64_t m = xScale->GetViewShape().GetDim(0);
@@ -90,7 +90,9 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(const aclT
                     OP_OUTPUT(out, scaleOut), OP_ATTR(dequantMode, dequantDtype, quantMode, quantDtype, transposeWeight,
                     groupListType, tuningConfigOptional));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "InferShape failed.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "GroupedMatmulSwigluQuantV2", "InferShape status", std::to_string(static_cast<int64_t>(ret)),
+            "InferShape must return ACLNN_SUCCESS");
         return std::tuple(nullptr, nullptr);
     }
 
@@ -100,7 +102,9 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(const aclT
         OP_OUTPUT(out, scaleOut), OP_ATTR(dequantMode, dequantDtype, quantMode, quantDtype, transposeWeight,
                         groupListType, tuningConfigOptional));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "ADD_TO_LAUNCHER_LIST_AICORE failed.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "GroupedMatmulSwigluQuantV2", "ADD_TO_LAUNCHER_LIST_AICORE status",
+            std::to_string(static_cast<int64_t>(ret)), "ADD_TO_LAUNCHER_LIST_AICORE must return ACLNN_SUCCESS");
         return std::tuple(nullptr, nullptr);
     }
 

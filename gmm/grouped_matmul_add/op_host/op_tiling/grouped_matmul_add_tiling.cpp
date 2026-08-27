@@ -87,16 +87,18 @@ static ge::graphStatus CalTCubeTiling(const gert::TilingContext *context, Groupe
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
 
     mm.SetBufferSpace(l1Size, l0_cSize, ubSize);
-    if (mm.GetTiling(tiling.mmTilingData) == -1) {
-        OP_LOGE(nodeName, "GroupedMatmulAdd GetTiling error");
+    const int64_t getTilingStatus = mm.GetTiling(tiling.mmTilingData);
+    if (getTilingStatus == -1) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName, "GetTiling status", std::to_string(getTilingStatus), "GetTiling must not return -1");
         return ge::GRAPH_FAILED;
     }
     uint64_t productMK = static_cast<uint64_t>(baseM) * static_cast<uint64_t>(baseK);
     uint64_t productNK = static_cast<uint64_t>(baseN) * static_cast<uint64_t>(baseK);
     if (productMK > UINT32_MAX || productNK > UINT32_MAX) {
-        OP_LOGE(
-            nodeName, "productMK or productNK > uint32_t max value, productMK:%lu, productNK:%lu", productNK,
-            productMK);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+            nodeName, "productMK, productNK", std::to_string(productMK) + ", " + std::to_string(productNK),
+            "productMK and productNK must not exceed UINT32_MAX");
         return ge::GRAPH_FAILED;
     }
     uint32_t mmStepKa =
@@ -165,11 +167,15 @@ static ge::graphStatus CalMmTiling(
     } else if (xType == ge::DataType::DT_BF16) {
         context->SetTilingKey(TILING_KEY_DEFAULT_BF16);
     } else {
-        OP_LOGE(context->GetNodeName(), "GroupedMatmulAdd GetTiling error : type not support");
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            context->GetNodeName(), "x", Ops::Base::ToString(xType),
+            "GroupedMatmulAdd GetTiling error : type not support");
     }
     auto ret = CalTCubeTiling(context, tiling, m, k, n, baseM, baseN, baseK);
     OP_CHECK_IF(ge::GRAPH_SUCCESS != ret,
-        OP_LOGE(context->GetNodeName(), "GroupedMatmulAdd CalTCubeTiling error"), return ret);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context->GetNodeName(), "CalTCubeTiling status", std::to_string(static_cast<int64_t>(ret)),
+            "CalTCubeTiling must return GRAPH_SUCCESS"), return ret);
     tiling.mmTilingData.set_shareMode(0);
     tiling.mmTilingData.set_baseM(baseM); // set precomputed baseM
     tiling.mmTilingData.set_baseN(baseN); // set precomputed baseN
@@ -236,15 +242,18 @@ static ge::graphStatus TilingCheck4GroupedMatmulAdd(const gert::TilingContext* c
     // 检查输入dim是否符合预期
     OP_CHECK_IF(
         DIMNUM_2D != xDimNum,
-        OP_LOGE(context->GetNodeName(), "xShape error xShape.GetDimNum():%lu", xDimNum),
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            context->GetNodeName(), "x", std::to_string(xDimNum), "x rank must be 2"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         DIMNUM_2D != wDimNum,
-        OP_LOGE(context->GetNodeName(), "wShape error wShape.GetDimNum():%lu", wDimNum),
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            context->GetNodeName(), "weight", std::to_string(wDimNum), "weight rank must be 2"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         DIMNUM_1D != groupListDimNum,
-        OP_LOGE(context->GetNodeName(), "groupListShape error groupListShape.GetDimNum():%lu", groupListDimNum),
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            context->GetNodeName(), "group_list", std::to_string(groupListDimNum), "group_list rank must be 1"),
         return ge::GRAPH_FAILED);
     if (DIMNUM_3D != yRefDimNum) {
         OP_LOGW(context->GetNodeName(), "yRefShape error yRefShape.GetDimNum():%lu", yRefDimNum);
@@ -254,7 +263,11 @@ static ge::graphStatus TilingCheck4GroupedMatmulAdd(const gert::TilingContext* c
     auto xk = xOrgShape.GetDim(DIM0);
     auto wk = wOrgShape.GetDim(DIM0);
     OP_CHECK_IF(
-        xk != wk, OP_LOGE(context->GetNodeName(), "shape Error xk:%ld wk:%ld", xk, wk), return ge::GRAPH_FAILED);
+        xk != wk,
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+            context->GetNodeName(), "x K, weight K", std::to_string(xk) + ", " + std::to_string(wk),
+            "x K must equal weight K"),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -269,9 +282,13 @@ static ge::graphStatus Tiling4GroupedMatmulAdd(gert::TilingContext* context)
     }
     GroupedMatmulAddTilingData tiling;
 
+    auto tilingCheckStatus = TilingCheck4GroupedMatmulAdd(context);
     OP_CHECK_IF(
-        ge::GRAPH_SUCCESS != TilingCheck4GroupedMatmulAdd(context),
-        OP_LOGE(context->GetNodeName(), "GroupedMatmulAdd TilingCheck4GroupedMatmulAdd error"),
+        ge::GRAPH_SUCCESS != tilingCheckStatus,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context->GetNodeName(), "TilingCheck4GroupedMatmulAdd status",
+            std::to_string(static_cast<int64_t>(tilingCheckStatus)),
+            "TilingCheck4GroupedMatmulAdd must return GRAPH_SUCCESS"),
         return ge::GRAPH_FAILED);
 
     // input shapes was checked in TilingCheck4GroupedMatmulAdd. Fix: refactering to avoid repeated cal.
@@ -301,7 +318,11 @@ static ge::graphStatus Tiling4GroupedMatmulAdd(gert::TilingContext* context)
     // 设置其余
     auto ret = CalMmTiling(context, tiling, m, k, n);
     OP_CHECK_IF(
-        ge::GRAPH_SUCCESS != ret, OP_LOGE(context->GetNodeName(), "GroupedMatmulAdd CalMmTiling error"), return ret);
+        ge::GRAPH_SUCCESS != ret,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context->GetNodeName(), "CalMmTiling status", std::to_string(static_cast<int64_t>(ret)),
+            "CalMmTiling must return GRAPH_SUCCESS"),
+        return ret);
     context->SetBlockDim(aicNum);
 
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());

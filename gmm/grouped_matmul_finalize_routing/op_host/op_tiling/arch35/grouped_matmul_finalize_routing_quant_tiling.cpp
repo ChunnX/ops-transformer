@@ -14,6 +14,7 @@
  */
 
 #include "grouped_matmul_finalize_routing_quant_tiling.h"
+#include "../../../../common/op_host/log_format_util.h"
 #include <alog_pub.h>
 #include <climits>
 #include "log/log.h"
@@ -30,9 +31,13 @@ namespace optiling {
 void GroupedMatmulFinalizeRoutingQuantTiling::Reset()
 {
     tilingData_ = GMMFinalizeRoutingTilingData();
-    OP_CHECK_IF(memset_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(), 0,
-                         context_->GetRawTilingData()->GetCapacity()) != EOK,
-                OP_LOGE(inputParams_.opName, "Fail to clear tiling data"), return);
+    const errno_t clearStatus = memset_s(
+        context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(), 0,
+        context_->GetRawTilingData()->GetCapacity());
+    OP_CHECK_IF(clearStatus != EOK,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opName, "memset_s status", std::to_string(clearStatus), "memset_s must return EOK"),
+                return);
     return;
 }
 
@@ -111,13 +116,19 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeAttrs()
     inputParams_.transB = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
     inputParams_.groupType = SPLIT_M;
     sharedInputWeight_ = *shareInputWeightPtr;
-    OP_CHECK_IF(!CheckOptionalAttr(), OP_LOGE(context_->GetNodeName(), "Check Optional Attrs Failed."), return false);
+    OP_CHECK_IF(!CheckOptionalAttr(),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "CheckOptionalAttr result", "false", "CheckOptionalAttr must return true"),
+                return false);
     return true;
 }
 
 bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeDtype()
 {
-    OP_CHECK_IF(!LoadInputDescsForRouting(), OP_LOGE(inputParams_.opName, "LoadInputDescsForRouting failed."),
+    OP_CHECK_IF(!LoadInputDescsForRouting(),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opName, "LoadInputDescsForRouting result", "false",
+                    "LoadInputDescsForRouting must return true"),
                 return false);
     auto outDesc = context_->GetOutputDesc(Y_INDEX);
     OP_CHECK_IF(
@@ -139,7 +150,10 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeDtype()
                 return false);
     inputParams_.biasDtype = inputParams_.hasBias ? biasDesc->GetDataType() : ge::DT_BF16;
 
-    OP_CHECK_IF(!CheckDtype(), OP_LOGE(context_->GetNodeName(), "Required input check failed."), return false);
+    OP_CHECK_IF(!CheckDtype(),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "CheckDtype result", "false", "CheckDtype must return true"),
+                return false);
     return CheckOptionalInputsForRouting();
 }
 
@@ -178,14 +192,14 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::LoadInputDescsForRouting()
 bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalInputsForRouting()
 {
     OP_CHECK_IF(!CheckOptional(GROUPLIST_INDEX, "GroupList", ge::DT_INT64),
-                OP_LOGE(context_->GetNodeName(), "GroupList check failed."), return false);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "groupList", "GroupList check failed."), return false);
     OP_CHECK_IF(!CheckOptional(SHARE_INPUT_INDEX, "SharedInput", ge::DT_BF16),
-                OP_LOGE(context_->GetNodeName(), "SharedInput check failed."), return false);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "sharedInput", "SharedInput check failed."), return false);
     OP_CHECK_IF(!CheckOptional(LOGIT_INDEX, "LogitIndex", ge::DT_FLOAT),
-                OP_LOGE(context_->GetNodeName(), "LogitIndex check failed."), return false);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "logitIndex", "LogitIndex check failed."), return false);
     if (inputParams_.aDtype != ge::DT_INT8) {
         OP_CHECK_IF(!CheckOptional(ROW_INDEX_INDEX, "RowIndex", ge::DT_INT64),
-                    OP_LOGE(context_->GetNodeName(), "RowIndex check failed."), return false);
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->GetNodeName(), "rowIndex", "RowIndex check failed."), return false);
     } else if (context_->GetOptionalInputDesc(ROW_INDEX_INDEX) != nullptr) {
         auto rowIndexDtype = context_->GetOptionalInputDesc(ROW_INDEX_INDEX)->GetDataType();
         if (rowIndexDtype == ge::DT_INT32) {
@@ -421,9 +435,12 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckInputsShape(const gert::Shape
 {
     const gert::Shape &wShape = wStorageShape->GetOriginShape();
     OP_CHECK_IF(!CheckDim(xShape, wShape, pertokenScaleStorageShape, scaleShape, yShape),
-                OP_LOGE(context_->GetNodeName(), "CheckDim failed."), return false);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "CheckDim result", "false", "CheckDim must return true"), return false);
     if (IsMicroScaling()) {
-        OP_CHECK_IF(!CheckFp4Shape(xShape, wShape), OP_LOGE(context_->GetNodeName(), "CheckFp4Shape failed."),
+        OP_CHECK_IF(!CheckFp4Shape(xShape, wShape),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context_->GetNodeName(), "CheckFp4Shape result", "false", "CheckFp4Shape must return true"),
                     return false);
     }
     return true;
@@ -468,15 +485,30 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeInputs()
                         "in K-C/T-C quant mode, the format of weight must be FRACTAL_NZ"),
                     return false);
     }
-    OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(context_->GetNodeName(), "SetGroupNum failed."), return false);
-    OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(context_->GetNodeName(), "SetMKN failed."), return false);
+    OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "SetGroupNum result", "false", "SetGroupNum must return true"), return false);
+    OP_CHECK_IF(!SetMKN(xShape, wShape),
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                    context_->GetNodeName(), "x, weight",
+                    ShapesToString({ShapeToString(xShape), ShapeToString(wShape)}), "SetMKN failed."),
+                return false);
     OP_CHECK_IF(!CheckInputsShape(xShape, wStorageShape, pertokenScaleStorageShape, scaleShape, yShape),
-                OP_LOGE(context_->GetNodeName(), "CheckInputsShape failed."), return false);
-    OP_CHECK_IF(!CheckOptionalInputsShape(), OP_LOGE(context_->GetNodeName(), "CheckOptionalInputsShape failed."),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "CheckInputsShape result", "false", "CheckInputsShape must return true"),
+                return false);
+    OP_CHECK_IF(!CheckOptionalInputsShape(),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "CheckOptionalInputsShape result", "false",
+                    "CheckOptionalInputsShape must return true"),
                 return false);
     OP_CHECK_IF(!SetQuantModeForGMMFinalizeRouting(),
-                OP_LOGE(context_->GetNodeName(), "SetQuantModeForGMMFinalizeRouting failed."), return false);
-    OP_CHECK_IF(!CheckCoreNum(), OP_LOGE(inputParams_.opName, "CheckCoreNum failed."), return false);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context_->GetNodeName(), "SetQuantModeForGMMFinalizeRouting result", "false",
+                    "SetQuantModeForGMMFinalizeRouting must return true"), return false);
+    OP_CHECK_IF(!CheckCoreNum(),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opName, "CheckCoreNum result", "false", "CheckCoreNum must return true"), return false);
     return true;
 }
 
@@ -484,16 +516,16 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckCoreNum() const
 {
     auto compileInfo = context_->GetCompileInfo<GroupedMatmulFinalizeRoutingCompileInfo>();
     OP_CHECK_IF(compileInfo == nullptr,
-                OP_LOGE(inputParams_.opName, "GroupedMatmulFinalizeRouting compileInfo is nullptr."),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opName, "GetCompileInfo result", "nullptr", "compile info lookup failed"),
                 return false);
     auto aicNum = compileInfo->aicNum;
     auto aivNum = compileInfo->aivNum;
     OP_CHECK_IF(aicNum == 0,
-               OP_LOGE(inputParams_.opName, "aicNum should be positive integer, actual is %u.", aicNum),
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "aicNum", std::to_string(aicNum), "aicNum should be positive."),
                return false);
     OP_CHECK_IF(aivNum != GmmConstant::CORE_RATIO * aicNum,
-                OP_LOGE(inputParams_.opName,
-                        "aicNum:aivNum should be 1:2, actual aicNum: %u, aivNum: %u.", aicNum, aivNum),
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(inputParams_.opName, "aicNum, aivNum", Ops::Transformer::Gmm::FormatString("%lu, %lu", aicNum, aivNum).c_str(), "aicNum:aivNum should be 1:2."),
                 return false);
     return true;
 }
@@ -529,8 +561,13 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoOpTiling()
     tilingData_.gmmFinalizeRoutingDataParams.groupListType = static_cast<uint8_t>(inputParams_.groupListType);
     tilingData_.gmmFinalizeRoutingDataParams.hasBias = static_cast<uint8_t>(inputParams_.hasBias ? 1 : 0);
 
-    OP_CHECK_IF(DeterministicTilingProcess() != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "DeterministicTilingProcess failed."), return ge::GRAPH_FAILED);
+    auto deterministicStatus = DeterministicTilingProcess();
+    OP_CHECK_IF(deterministicStatus != ge::GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opName, "DeterministicTilingProcess status",
+                    std::to_string(static_cast<int64_t>(deterministicStatus)),
+                    "DeterministicTilingProcess must return GRAPH_SUCCESS"),
+                return ge::GRAPH_FAILED);
     OP_LOGD(context_->GetNodeName(), "%ld", LogQuantParams());
     return ge::GRAPH_SUCCESS;
 }
@@ -560,7 +597,11 @@ uint64_t GroupedMatmulFinalizeRoutingQuantTiling::GetTilingKey() const
 ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoLibApiTiling()
 {
     CalBasicBlock();
-    OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed"),
+    auto l1TilingStatus = CalL1Tiling();
+    OP_CHECK_IF(l1TilingStatus != ge::GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opName, "CalL1Tiling status", std::to_string(static_cast<int64_t>(l1TilingStatus)),
+                    "CalL1Tiling must return GRAPH_SUCCESS"),
                 return ge::GRAPH_FAILED);
     tilingData_.matmulTiling.M = inputParams_.mSize;
     tilingData_.matmulTiling.N = inputParams_.nSize;
@@ -607,12 +648,14 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::PostTiling()
     context_->SetBlockDim(aicoreParams_.aicNum);
     context_->SetScheduleMode(1);
     OP_CHECK_IF(tilingDataSize % sizeof(uint64_t) != 0,
-                OP_LOGE(context_->GetNodeName(), "Tiling data size[%zu] is not aligned to 8", tilingDataSize),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "tiling data size", std::to_string(tilingDataSize),
+                                                 "Tiling data size is not aligned to 8."),
                 return ge::GRAPH_FAILED);
     error_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
                            reinterpret_cast<void *>(&tilingData_), tilingDataSize);
     if (ret != EOK) {
-        OP_LOGE(inputParams_.opName, "Memcpy_s failed, ret = %d", ret);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            inputParams_.opName, "memcpy_s status", std::to_string(ret), "memcpy_s must return EOK");
         return ge::GRAPH_FAILED;
     }
     context_->GetRawTilingData()->SetDataSize(tilingDataSize);
