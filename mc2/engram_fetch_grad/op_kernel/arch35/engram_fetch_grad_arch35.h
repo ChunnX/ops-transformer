@@ -343,6 +343,10 @@ __aicore__ inline void EngramFetchGradArch35::LocalCopySlice(GM_ADDR dst, GM_ADD
     if (tileIdx >= 2U) {
         AscendC::WaitFlag<HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[last ^ 1U]);
     }
+
+    for (uint64_t off = 0; off < len; off += ALIGNED_LEN_256) {
+        DataCacheCleanAndInvalid<uint8_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(dstGm[off]);
+    }
 }
 
 __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR gradFetched, GM_ADDR permOut,
@@ -984,6 +988,16 @@ __aicore__ inline void EngramFetchGradArch35::UniqueScatterAdd()
     }
 
     InitCompanion(numRecv);
+
+    {
+        GlobalTensor<uint8_t> compFlushGM;
+        compFlushGM.SetGlobalBuffer((__gm__ uint8_t *)sortCompanionGM_);
+        uint64_t compBytes = static_cast<uint64_t>(numRecv) * sizeof(int32_t);
+        for (uint64_t off = 0; off < compBytes; off += ALIGNED_LEN_256) {
+            DataCacheCleanAndInvalid<uint8_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(compFlushGM[off]);
+        }
+    }
+
     SyncAll<true>();
 
     RunSort(numRecv);
