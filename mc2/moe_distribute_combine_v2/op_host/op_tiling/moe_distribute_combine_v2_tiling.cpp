@@ -1645,22 +1645,42 @@ static uint32_t GetPartialBufferSizeByFlag(const uint32_t axisBS, const uint32_t
 
     if (isInputTokenMaskFlag) {
         uint32_t axisBsAlignSize = (axisBS * sizeof(bool) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
-        partialBufferSize += axisBsAlignSize + axisBsAlignSize * sizeof(DTYPE_SIZE_HALF) * BUFFER_NUM;
+        partialBufferSize += axisBsAlignSize + axisBsAlignSize * DTYPE_SIZE_HALF * BUFFER_NUM;
     }
     if (isInputExpertMaskFlag) {
-        partialBufferSize += (axisBS * sizeof(DTYPE_SIZE_HALF) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN +
+        partialBufferSize += (axisBS * DTYPE_SIZE_HALF + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN +
                              (axisBS * sizeof(int32_t) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN +
                              (axisBS * axisK * sizeof(bool) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     }
     if (enableSpecialExpert && !isInputExpertMaskFlag) {
-        partialBufferSize += (axisBS * sizeof(DTYPE_SIZE_HALF) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
+        partialBufferSize += (axisBS * DTYPE_SIZE_HALF + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     }
 
     return partialBufferSize;
 }
 
-static void UbUsedCal(const uint64_t ubSize, const gert::TilingContext *context,
-                      MoeDistributeCombineV2TilingData *tilingData, const CombineV2Config &config)
+static uint32_t GetFloatAlignSize(const gert::TilingContext *context,
+                                  const MoeDistributeCombineV2TilingData *tilingData, const CombineV2Config &config,
+                                  uint32_t alignSize)
+{
+    uint32_t axisH = tilingData->moeDistributeCombineV2Info.h;
+    auto attrs = context->GetAttrs();
+    auto commQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrCommQuantModeIndex));
+    uint32_t commQuantMode = commQuantModePtr == nullptr ? 0U : static_cast<uint32_t>(*commQuantModePtr);
+    uint32_t hFloatSize = axisH * static_cast<uint32_t>(sizeof(float));
+    bool isInt8Quant = commQuantMode == INT8_COMM_QUANT;
+    bool isMxFp8Quant = (commQuantMode == static_cast<CommQuantModeType>(CommQuantMode::MXFP8_E5M2_QUANT)) ||
+                        (commQuantMode == static_cast<CommQuantModeType>(CommQuantMode::MXFP8_E4M3_QUANT));
+
+    // A5 + INT8/MXFP8 场景按512B对齐，其余场景使用调用方指定的对齐大小
+    if (mc2tiling::GetNpuArch(context) == NpuArch::DAV_3510 && (isInt8Quant || isMxFp8Quant)) {
+        alignSize = ALIGNED_LEN * 2U;
+    }
+    return (hFloatSize + alignSize - 1U) / alignSize * alignSize;
+}
+
+static uint64_t GetComputeBufferSize(const gert::TilingContext *context,
+                                     const MoeDistributeCombineV2TilingData *tilingData, const CombineV2Config &config)
 {
     uint32_t axisH = tilingData->moeDistributeCombineV2Info.h, axisBS = tilingData->moeDistributeCombineV2Info.bs;
     uint32_t axisK = tilingData->moeDistributeCombineV2Info.k,
@@ -1671,42 +1691,52 @@ static void UbUsedCal(const uint64_t ubSize, const gert::TilingContext *context,
          isInputTokenMaskFlag = tilingData->moeDistributeCombineV2Info.isTokenMask;
     bool enableSpecialExpert = (constExpertNum + zeroExpertNum + copyExpertNum > 0U);
     auto expandXDesc = context->GetInputDesc(config.expandXIndex);
-    auto attrs = context->GetAttrs();
-    auto commQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrCommQuantModeIndex));
-    uint32_t commQuantMode = commQuantModePtr == nullptr ? 0U : static_cast<uint32_t>(*commQuantModePtr);
     uint32_t expandXTypeSize = static_cast<uint32_t>(ge::GetSizeByDataType(expandXDesc->GetDataType()));
     uint32_t hExpandXTypeSize = axisH * expandXTypeSize;
     uint32_t maxSizeTokenBuf = (hExpandXTypeSize + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint32_t activeMaskAlignSize = axisBS * ((axisK * sizeof(bool) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN);
     uint32_t hExpandXAlign32Size = (hExpandXTypeSize + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
-    uint32_t hFloatSize = axisH * static_cast<uint32_t>(sizeof(float));
-    uint32_t hFloatAlign32Size = (hFloatSize + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
-    uint32_t hFloatAlign256Size = (hFloatSize + ALIGNED_LEN - 1) / ALIGNED_LEN * ALIGNED_LEN;
-    bool isA5 = mc2tiling::GetNpuArch(context) == NpuArch::DAV_3510;
-    bool isInt8Quant = commQuantMode == INT8_COMM_QUANT;
-    bool isMxFp8Quant = (commQuantMode == static_cast<CommQuantModeType>(CommQuantMode::MXFP8_E5M2_QUANT)) ||
-                        (commQuantMode == static_cast<CommQuantModeType>(CommQuantMode::MXFP8_E4M3_QUANT));
-    bool isA5FusedQuant = isA5 && (isInt8Quant || isMxFp8Quant);
-    // A5 + INT8/MXFP8 场景，工作区按 512B 对齐，避免 totalBufferSize 低估导致 UB 溢出
-    if (isA5FusedQuant) {
-        constexpr uint32_t kA5FusedQuantAlign = ALIGNED_LEN * 2U;
-        uint32_t hFloatA5FusedQuantSize =
-            (hFloatSize + kA5FusedQuantAlign - 1) / kA5FusedQuantAlign * kA5FusedQuantAlign;
-        hFloatAlign32Size = hFloatA5FusedQuantSize;
-        hFloatAlign256Size = hFloatA5FusedQuantSize;
-    }
+    uint32_t hFloatAlign32Size = GetFloatAlignSize(context, tilingData, config, UB_ALIGN);
+    uint32_t hFloatAlign256Size = GetFloatAlignSize(context, tilingData, config, ALIGNED_LEN);
     uint32_t bsKFloatAlign = (axisBS * axisK * sizeof(float) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint32_t mulBufSize = hFloatAlign256Size > bsKFloatAlign ? hFloatAlign256Size : bsKFloatAlign;
-    uint32_t flagRcvCount = axisK + tilingData->moeDistributeCombineV2Info.sharedExpertNum,
-             maxSizeRowTmpFloatBuf = hFloatAlign32Size;
+    uint32_t maxSizeRowTmpFloatBuf = hFloatAlign32Size;
 
     if (isInputExpertMaskFlag || enableSpecialExpert) {
-        uint32_t activeMaskAlignHalfSize = activeMaskAlignSize * sizeof(DTYPE_SIZE_HALF);
+        uint32_t activeMaskAlignHalfSize = activeMaskAlignSize * DTYPE_SIZE_HALF;
         maxSizeTokenBuf = (activeMaskAlignSize > hExpandXAlign32Size ? activeMaskAlignSize : hExpandXAlign32Size);
         maxSizeRowTmpFloatBuf =
             (activeMaskAlignHalfSize > hFloatAlign32Size ? activeMaskAlignHalfSize : hFloatAlign32Size);
     }
 
+    uint64_t totalBufferSize = static_cast<uint64_t>(maxSizeTokenBuf) + maxSizeRowTmpFloatBuf + mulBufSize +
+                               hFloatAlign32Size * BUFFER_NUM + UB_ALIGN;
+    if (config.hasAddRmsNorm) {
+        totalBufferSize += hExpandXAlign32Size + NUM_PER_REP_FP32 * sizeof(float) * BUFFER_NUM;
+    }
+    totalBufferSize +=
+        GetPartialBufferSizeByFlag(axisBS, axisK, isInputTokenMaskFlag, enableSpecialExpert, isInputExpertMaskFlag);
+    return totalBufferSize;
+}
+
+static void GetCommBufferSize(const gert::TilingContext *context, const MoeDistributeCombineV2TilingData *tilingData,
+                              const CombineV2Config &config, uint32_t &moeQueueBytes, uint64_t &commBufferSize)
+{
+    uint32_t axisH = tilingData->moeDistributeCombineV2Info.h;
+    uint32_t axisK = tilingData->moeDistributeCombineV2Info.k;
+    uint32_t flagRcvCount = axisK + tilingData->moeDistributeCombineV2Info.sharedExpertNum;
+    auto expandXDesc = context->GetInputDesc(config.expandXIndex);
+    auto attrs = context->GetAttrs();
+    auto commQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrCommQuantModeIndex));
+    uint32_t commQuantMode = commQuantModePtr == nullptr ? 0U : static_cast<uint32_t>(*commQuantModePtr);
+    uint32_t expandXTypeSize = static_cast<uint32_t>(ge::GetSizeByDataType(expandXDesc->GetDataType()));
+    uint32_t hExpandXTypeSize = axisH * expandXTypeSize;
+    uint32_t hExpandXAlign32Size = (hExpandXTypeSize + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
+    uint32_t hFloatAlign256Size = GetFloatAlignSize(context, tilingData, config, ALIGNED_LEN);
+    bool isA5 = mc2tiling::GetNpuArch(context) == NpuArch::DAV_3510;
+    bool isInt8Quant = commQuantMode == INT8_COMM_QUANT;
+    bool isMxFp8Quant = (commQuantMode == static_cast<CommQuantModeType>(CommQuantMode::MXFP8_E5M2_QUANT)) ||
+                        (commQuantMode == static_cast<CommQuantModeType>(CommQuantMode::MXFP8_E4M3_QUANT));
     uint32_t scaleNum = 0U;
     uint32_t scaleNumAlignSize = 0U;
     uint32_t commDataBytes = hExpandXTypeSize;
@@ -1726,7 +1756,7 @@ static void UbUsedCal(const uint64_t ubSize, const gert::TilingContext *context,
     uint32_t packedDataBytes = blockCntPerToken * SPLIT_BLOCK_DATA_SIZE;
     uint32_t rawPackedDataBytes =
         (hExpandXTypeSize + SPLIT_BLOCK_DATA_SIZE - 1) / SPLIT_BLOCK_DATA_SIZE * SPLIT_BLOCK_DATA_SIZE;
-    uint32_t moeQueueBytes = packedDataBytes > rawPackedDataBytes ? packedDataBytes : rawPackedDataBytes;
+    moeQueueBytes = packedDataBytes > rawPackedDataBytes ? packedDataBytes : rawPackedDataBytes;
     moeQueueBytes = moeQueueBytes > hExpandXAlign32Size ? moeQueueBytes : hExpandXAlign32Size;
 
     uint32_t checkFlagCount = flagRcvCount * blockCntPerToken * SPLIT_BLOCK_FLAG_COUNT;
@@ -1734,21 +1764,19 @@ static void UbUsedCal(const uint64_t ubSize, const gert::TilingContext *context,
     uint32_t checkFlagBufSize = (checkCompareCount * sizeof(float) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint32_t checkCompareBufSize = (checkCompareCount * sizeof(uint8_t) + ALIGNED_LEN - 1) / ALIGNED_LEN * ALIGNED_LEN;
     uint32_t clearFlagBufSize = (checkFlagCount * sizeof(float) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
+    commBufferSize =
+        static_cast<uint64_t>(scaleNumAlignSize) + checkFlagBufSize + checkCompareBufSize + clearFlagBufSize;
+}
 
-    uint64_t totalBufferSize = static_cast<uint64_t>(maxSizeTokenBuf) + maxSizeRowTmpFloatBuf + mulBufSize +
-                               hFloatAlign32Size * 2U + checkFlagBufSize + checkCompareBufSize + clearFlagBufSize +
-                               UB_ALIGN;
-    if (config.hasAddRmsNorm) {
-        totalBufferSize += hExpandXAlign32Size + NUM_PER_REP_FP32 * sizeof(float) * BUFFER_NUM;
-    }
-    totalBufferSize += scaleNumAlignSize;
-    totalBufferSize +=
-        GetPartialBufferSizeByFlag(axisBS, axisK, isInputTokenMaskFlag, enableSpecialExpert, isInputExpertMaskFlag);
-
+static uint64_t GetReceiveBufferSize(const MoeDistributeCombineV2TilingData *tilingData)
+{
+    uint32_t axisBS = tilingData->moeDistributeCombineV2Info.bs;
+    uint32_t axisK = tilingData->moeDistributeCombineV2Info.k;
+    uint32_t flagRcvCount = axisK + tilingData->moeDistributeCombineV2Info.sharedExpertNum;
     uint32_t recvAivNum = std::min(axisBS, std::min(32U, tilingData->moeDistributeCombineV2Info.aivNum / 2U));
     recvAivNum = recvAivNum == 0U ? 1U : recvAivNum;
     uint32_t tokenPerAivNum = (axisBS + recvAivNum - 1U) / recvAivNum;
-    totalBufferSize += (tokenPerAivNum * sizeof(int32_t) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
+    uint64_t totalBufferSize = 0U;
     if (tilingData->moeDistributeCombineV2Info.hasExpertScales) {
         totalBufferSize += (tokenPerAivNum * axisK * sizeof(float) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     }
@@ -1757,10 +1785,19 @@ static void UbUsedCal(const uint64_t ubSize, const gert::TilingContext *context,
             (tilingData->moeDistributeCombineV2Info.epWorldSize * sizeof(int64_t) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
         totalBufferSize += (tokenPerAivNum * flagRcvCount * sizeof(int32_t) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     }
+    return totalBufferSize;
+}
 
+static void UbUsedCal(const uint64_t ubSize, const gert::TilingContext *context,
+                      MoeDistributeCombineV2TilingData *tilingData, const CombineV2Config &config)
+{
+    uint32_t moeQueueBytes = 0U;
+    uint64_t commBufferSize = 0U;
+    GetCommBufferSize(context, tilingData, config, moeQueueBytes, commBufferSize);
+    uint64_t totalBufferSize =
+        GetComputeBufferSize(context, tilingData, config) + commBufferSize + GetReceiveBufferSize(tilingData);
     tilingData->moeDistributeCombineV2Info.bufferNum =
         totalBufferSize + moeQueueBytes * BUFFER_NUM > ubSize ? BUFFER_SINGLE : BUFFER_NUM;
-    return;
 }
 
 static ge::graphStatus CheckAndCalWinSize(const gert::TilingContext *context,
