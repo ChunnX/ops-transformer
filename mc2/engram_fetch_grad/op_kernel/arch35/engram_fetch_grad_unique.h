@@ -188,6 +188,11 @@ __aicore__ inline void EngramFetchGradUnique::ZeroGradUnique(uint32_t numRecv, G
             AscendC::DataCopyPad(dstGM[off], zeroBuf, params);
         }
         SyncFunc<AscendC::HardEvent::MTE3_S>(*pipe_);
+
+        for (uint64_t off = start; off < end; off += Mc2Kernel::ALIGNED_LEN_256 / sizeof(float)) {
+            AscendC::DataCacheCleanAndInvalid<float, AscendC::CacheLine::SINGLE_CACHE_LINE,
+                                              AscendC::DcciDst::CACHELINE_OUT>(dstGM[off]);
+        }
     }
 }
 
@@ -401,6 +406,10 @@ __aicore__ inline void EngramFetchGradUnique::ScatterGradSubBatch(uint32_t subSt
         AscendC::DataCopyExtParams gradParams{1U, static_cast<uint32_t>(hiddenBytes_), 0U, 0U, 0U};
         AscendC::GlobalTensor<uint8_t> gradSrcGM;
         gradSrcGM.SetGlobalBuffer((__gm__ uint8_t *)gradAddr);
+        for (uint64_t foff = 0; foff < static_cast<uint64_t>(hiddenBytes_); foff += Mc2Kernel::ALIGNED_LEN_256) {
+            AscendC::DataCacheCleanAndInvalid<uint8_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+                                              AscendC::DcciDst::CACHELINE_OUT>(gradSrcGM[foff]);
+        }
         AscendC::DataCopyPad(gradRaw[static_cast<uint32_t>(j) * static_cast<uint32_t>(hiddenBytes_)], gradSrcGM,
                              gradParams, gradPad);
     }
@@ -535,6 +544,15 @@ __aicore__ inline void EngramFetchGradUnique::ScatterAddAtomicParallel(
     LoadCoreRange(numRecv, coreStartGM, start, end);
     if (start >= end) {
         return;
+    }
+
+    GM_ADDR atomicFlushBase = (outputDtype_ == Mc2Kernel::ENGRAM_DT_FLOAT) ? gradUniqueOutGM : gradUniqueFp32GM;
+    uint64_t atomicFlushBytes = static_cast<uint64_t>(numRecv) * static_cast<uint64_t>(hiddenDim_) * sizeof(float);
+    AscendC::GlobalTensor<uint8_t> atomicFlushGM;
+    atomicFlushGM.SetGlobalBuffer((__gm__ uint8_t *)atomicFlushBase);
+    for (uint64_t foff = 0; foff < atomicFlushBytes; foff += Mc2Kernel::ALIGNED_LEN_256) {
+        AscendC::DataCacheCleanAndInvalid<uint8_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+                                          AscendC::DcciDst::CACHELINE_OUT>(atomicFlushGM[foff]);
     }
 
     int32_t preCoreOffset = ComputePreCoreOffset(segCountGM);
