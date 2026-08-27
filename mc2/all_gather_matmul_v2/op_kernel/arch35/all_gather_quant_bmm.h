@@ -331,9 +331,10 @@ AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, Is
     auto &&cfg = tilingData_->param;
     // 计算本片的块
     // 未用到的AIC核不需要参与计算
-    if ((GetBlockIdx() < tilingData_->quantBmmv3LocalTiling.matmulTiling.usedCoreNum) && (cfg.rankN != 0)) {
-        QuantMatmulLocalCompute();
-    }
+    // 已注释：MXFP4量化中matmul本地块计算
+    // if ((GetBlockIdx() < tilingData_->quantBmmv3LocalTiling.matmulTiling.usedCoreNum) && (cfg.rankN != 0)) {
+    //     QuantMatmulLocalCompute();
+    // }
     Mc2SyncAll<Mc2CoreType::ON_CUBE>();
 
     // 只做本卡计算时，aGM_从本地获取；计算远端卡数据时，aGM_为gather来的数据
