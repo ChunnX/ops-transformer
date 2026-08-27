@@ -1649,7 +1649,6 @@ static uint32_t GetPartialBufferSizeByFlag(const uint32_t axisBS, const uint32_t
     }
     if (isInputExpertMaskFlag) {
         partialBufferSize += (axisBS * DTYPE_SIZE_HALF + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN +
-                             (axisBS * sizeof(int32_t) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN +
                              (axisBS * axisK * sizeof(bool) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     }
     if (enableSpecialExpert && !isInputExpertMaskFlag) {
@@ -1680,7 +1679,8 @@ static uint32_t GetFloatAlignSize(const gert::TilingContext *context,
 }
 
 static uint64_t GetComputeBufferSize(const gert::TilingContext *context,
-                                     const MoeDistributeCombineV2TilingData *tilingData, const CombineV2Config &config)
+                                     const MoeDistributeCombineV2TilingData *tilingData, const CombineV2Config &config,
+                                     uint32_t bufferNum)
 {
     uint32_t axisH = tilingData->moeDistributeCombineV2Info.h, axisBS = tilingData->moeDistributeCombineV2Info.bs;
     uint32_t axisK = tilingData->moeDistributeCombineV2Info.k,
@@ -1710,7 +1710,7 @@ static uint64_t GetComputeBufferSize(const gert::TilingContext *context,
     }
 
     uint64_t totalBufferSize = static_cast<uint64_t>(maxSizeTokenBuf) + maxSizeRowTmpFloatBuf + mulBufSize +
-                               hFloatAlign32Size * BUFFER_NUM + UB_ALIGN;
+                               hFloatAlign32Size * bufferNum + UB_ALIGN;
     if (config.hasAddRmsNorm) {
         totalBufferSize += hExpandXAlign32Size + NUM_PER_REP_FP32 * sizeof(float) * BUFFER_NUM;
     }
@@ -1722,6 +1722,7 @@ static uint64_t GetComputeBufferSize(const gert::TilingContext *context,
 static void GetCommBufferSize(const gert::TilingContext *context, const MoeDistributeCombineV2TilingData *tilingData,
                               const CombineV2Config &config, uint32_t &moeQueueBytes, uint64_t &commBufferSize)
 {
+    uint32_t axisBS = tilingData->moeDistributeCombineV2Info.bs;
     uint32_t axisH = tilingData->moeDistributeCombineV2Info.h;
     uint32_t axisK = tilingData->moeDistributeCombineV2Info.k;
     uint32_t flagRcvCount = axisK + tilingData->moeDistributeCombineV2Info.sharedExpertNum;
@@ -1734,6 +1735,9 @@ static void GetCommBufferSize(const gert::TilingContext *context, const MoeDistr
     uint32_t hExpandXAlign32Size = (hExpandXTypeSize + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint32_t hFloatAlign256Size = GetFloatAlignSize(context, tilingData, config, ALIGNED_LEN);
     bool isA5 = mc2tiling::GetNpuArch(context) == NpuArch::DAV_3510;
+    bool enableSpecialExpert = (tilingData->moeDistributeCombineV2Info.zeroExpertNum > 0U) ||
+                               (tilingData->moeDistributeCombineV2Info.copyExpertNum > 0U) ||
+                               (tilingData->moeDistributeCombineV2Info.constExpertNum > 0U);
     bool isInt8Quant = commQuantMode == INT8_COMM_QUANT;
     bool isMxFp8Quant = (commQuantMode == static_cast<CommQuantModeType>(CommQuantMode::MXFP8_E5M2_QUANT)) ||
                         (commQuantMode == static_cast<CommQuantModeType>(CommQuantMode::MXFP8_E4M3_QUANT));
@@ -1759,13 +1763,15 @@ static void GetCommBufferSize(const gert::TilingContext *context, const MoeDistr
     moeQueueBytes = packedDataBytes > rawPackedDataBytes ? packedDataBytes : rawPackedDataBytes;
     moeQueueBytes = moeQueueBytes > hExpandXAlign32Size ? moeQueueBytes : hExpandXAlign32Size;
 
-    uint32_t checkFlagCount = flagRcvCount * blockCntPerToken * SPLIT_BLOCK_FLAG_COUNT;
-    uint32_t checkCompareCount = (checkFlagCount + 63U) / 64U * 64U;
-    uint32_t checkFlagBufSize = (checkCompareCount * sizeof(float) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
-    uint32_t checkCompareBufSize = (checkCompareCount * sizeof(uint8_t) + ALIGNED_LEN - 1) / ALIGNED_LEN * ALIGNED_LEN;
-    uint32_t clearFlagBufSize = (checkFlagCount * sizeof(float) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
-    commBufferSize =
-        static_cast<uint64_t>(scaleNumAlignSize) + checkFlagBufSize + checkCompareBufSize + clearFlagBufSize;
+    // flag检查和比较复用计算scratch，通信侧只保留清零buffer
+    uint32_t clearFlagCount = flagRcvCount * blockCntPerToken * SPLIT_BLOCK_FLAG_COUNT;
+    uint32_t clearFlagBufSize = (clearFlagCount * sizeof(float) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
+    if (enableSpecialExpert) {
+        uint32_t maskGenerateBufSize =
+            (axisBS * axisK * DTYPE_SIZE_HALF + ALIGNED_LEN - 1U) / ALIGNED_LEN * ALIGNED_LEN / DTYPE_SIZE_HALF;
+        clearFlagBufSize = (clearFlagBufSize > maskGenerateBufSize) ? clearFlagBufSize : maskGenerateBufSize;
+    }
+    commBufferSize = static_cast<uint64_t>(scaleNumAlignSize) + clearFlagBufSize;
 }
 
 static uint64_t GetReceiveBufferSize(const MoeDistributeCombineV2TilingData *tilingData)
@@ -1788,16 +1794,25 @@ static uint64_t GetReceiveBufferSize(const MoeDistributeCombineV2TilingData *til
     return totalBufferSize;
 }
 
-static void UbUsedCal(const uint64_t ubSize, const gert::TilingContext *context,
+static bool UbUsedCal(const uint64_t ubSize, const gert::TilingContext *context,
                       MoeDistributeCombineV2TilingData *tilingData, const CombineV2Config &config)
 {
     uint32_t moeQueueBytes = 0U;
     uint64_t commBufferSize = 0U;
     GetCommBufferSize(context, tilingData, config, moeQueueBytes, commBufferSize);
-    uint64_t totalBufferSize =
-        GetComputeBufferSize(context, tilingData, config) + commBufferSize + GetReceiveBufferSize(tilingData);
+    // 单buf路径必须先通过UB检查，不能依赖运行时分配器兜底
+    uint64_t singleBufferSize = GetComputeBufferSize(context, tilingData, config, BUFFER_SINGLE) + commBufferSize +
+                                GetReceiveBufferSize(tilingData) + moeQueueBytes;
+    if (singleBufferSize > ubSize) {
+        OP_LOGE_WITHOUT_REPORT(context->GetNodeName(),
+                               "MoeDistributeCombineV2 single-buffer UB usage exceeds available UB size");
+        return false;
+    }
+    uint64_t totalBufferSize = GetComputeBufferSize(context, tilingData, config, BUFFER_NUM) + commBufferSize +
+                               GetReceiveBufferSize(tilingData);
     tilingData->moeDistributeCombineV2Info.bufferNum =
         totalBufferSize + moeQueueBytes * BUFFER_NUM > ubSize ? BUFFER_SINGLE : BUFFER_NUM;
+    return true;
 }
 
 static ge::graphStatus CheckAndCalWinSize(const gert::TilingContext *context,
@@ -1935,7 +1950,9 @@ ge::graphStatus CheckAndSetPlatformInfo(gert::TilingContext *context, MoeDistrib
     context->SetBlockDim(numBlocks);
     tilingData->moeDistributeCombineV2Info.aivNum = aivNum;
     tilingData->moeDistributeCombineV2Info.totalUbSize = ubSize;
-    UbUsedCal(ubSize, context, tilingData, config);
+    OP_TILING_CHECK(!UbUsedCal(ubSize, context, tilingData, config),
+                    OP_LOGE_WITHOUT_REPORT(nodeName, "MoeDistributeCombineV2 UB usage exceeds available UB size"),
+                    return ge::GRAPH_FAILED);
     context->SetScheduleMode(1); // 设置为batch mode模式，所有核同时启动
     OP_LOGD(nodeName, "numBlocks = %u, aivNum = %lu, ubsize = %lu", numBlocks, aivNum, ubSize);
     return ge::GRAPH_SUCCESS;
