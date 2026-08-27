@@ -38,8 +38,8 @@ __aicore__ inline void GmmNoQuantTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR bi
     using LayoutC = AscendC::Te::NDExtLayoutPtn;
     using LayoutBias = AscendC::Te::NDExtLayoutPtn;
     using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
-    using DispatchPolicy = Blaze::Gemm::MatmulMultiBlockBasic<
-        0, 0, Blaze::Gemm::KernelGroupedMmadNoQuant, 0, Blaze::Gemm::MatmulOutputMode::OVERWRITE>;
+    using DispatchPolicy = Blaze::Gemm::MatmulMultiBlockBasic<0, 0, Blaze::Gemm::KernelGroupedMmadNoQuant, 0,
+                                                              Blaze::Gemm::MatmulOutputMode::OVERWRITE>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC,
                                                     BiasType, LayoutBias>;
     using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueEmpty;

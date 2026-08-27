@@ -35,8 +35,8 @@ __aicore__ inline void GmmAddTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR groupL
     using LayoutC = AscendC::Te::NDExtLayoutPtn;
     using LayoutBias = AscendC::Te::NDExtLayoutPtn;
     using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
-    using DispatchPolicy = Blaze::Gemm::MatmulMultiBlockBasic<
-        0, 0, Blaze::Gemm::KernelGroupedMmadNoQuant, 0, Blaze::Gemm::MatmulOutputMode::INPLACE_ADD>;
+    using DispatchPolicy = Blaze::Gemm::MatmulMultiBlockBasic<0, 0, Blaze::Gemm::KernelGroupedMmadNoQuant, 0,
+                                                              Blaze::Gemm::MatmulOutputMode::INPLACE_ADD>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC,
                                                     BiasType, LayoutBias>;
     using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueEmpty;
