@@ -8,10 +8,15 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include <iostream>
+#include <limits>
 #include <gtest/gtest.h>
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
 using namespace std;
+
+namespace {
+constexpr uint64_t CORE_NUM = 64U;
+} // namespace
 
 class LightningIndexerV2Tiling : public testing::Test {
 protected:
@@ -56,7 +61,7 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_0)
          {"layout_k", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
          {"mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
          {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"return_value", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
+         {"return_value", Ops::Transformer::AnyValue::CreateFrom<int32_t>(0)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
@@ -94,7 +99,7 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_1)
          {"layout_k", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BBND")},
          {"mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"return_value", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
+         {"return_value", Ops::Transformer::AnyValue::CreateFrom<int32_t>(0)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
@@ -130,7 +135,7 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_2)
          {"layout_k", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BBND")},
          {"mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"return_value", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
+         {"return_value", Ops::Transformer::AnyValue::CreateFrom<int32_t>(0)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
@@ -165,7 +170,7 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_3)
          {"layout_k", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
          {"mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
          {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"return_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+         {"return_value", Ops::Transformer::AnyValue::CreateFrom<int32_t>(0)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
     int64_t expectTilingKey = 203547;
     std::string expectTilingData = "2 167503724608 8796093022272 274877906944 0 3 "
@@ -206,7 +211,7 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_4)
          {"layout_k", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BBND")},
          {"mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
          {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"return_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+         {"return_value", Ops::Transformer::AnyValue::CreateFrom<int32_t>(0)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
     int64_t expectTilingKey = 1090722587;
     std::string expectTilingData = "2 167503724608 8796093022224 274877906944 4294967312 3 "
@@ -244,7 +249,7 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_5)
          {"layout_k", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
          {"mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
          {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"return_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+         {"return_value", Ops::Transformer::AnyValue::CreateFrom<int32_t>(0)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
@@ -279,7 +284,41 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_6)
          {"layout_k", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
          {"mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
          {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"return_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+         {"return_value", Ops::Transformer::AnyValue::CreateFrom<int32_t>(0)}},
         &compileInfo, "Ascend910B", 64, 262144, 16384);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+// A2/A3 kernels ignore seqused_q and output_idx_offset. Keep the historical behavior and do not reject them.
+TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_ignored_optional_inputs)
+{
+    struct LIV2CompileInfo {
+    } compileInfo;
+    int32_t cuSeqlensQ[] = {0, 4, 8};
+    int32_t cuSeqlensK[] = {0, 8, 16};
+    float ignoredSequsedQ[] = {-1.0F};
+    float ignoredOutputOffset[] = {-1.0F};
+    gert::TilingContextPara tilingContextPara(
+        "LightningIndexerV2",
+        {{{{8, 64, 128}, {8, 64, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{16, 1, 128}, {16, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{8, 64}, {8, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{3}, {3}}, ge::DT_INT32, ge::FORMAT_ND, true, cuSeqlensQ},
+         {{{3}, {3}}, ge::DT_INT32, ge::FORMAT_ND, true, cuSeqlensK},
+         {{{1, 1}, {1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND, true, ignoredSequsedQ},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND, true, ignoredOutputOffset},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}},
+        {{{{8, 1, 32}, {8, 1, 32}}, ge::DT_INT32, ge::FORMAT_ND}, {{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{"topk", Ops::Transformer::AnyValue::CreateFrom<int64_t>(32)},
+         {"max_seqlen_q", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+         {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+         {"layout_k", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+         {"mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+         {"return_value", Ops::Transformer::AnyValue::CreateFrom<int32_t>(0)}},
+        &compileInfo, "Ascend910B", CORE_NUM, 262144, 16384);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, std::numeric_limits<uint64_t>::max());
 }
