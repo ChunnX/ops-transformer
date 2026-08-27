@@ -1435,9 +1435,7 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkProcessXRsGradMm(uint32_t bsStart, uin
     }
     vecInQueue0_.FreeTensor(xRsGradMmInBuf_);
 
-    if (!withGamma_) {
-        PipeBarrier<PIPE_V>();
-    }
+    PipeBarrier<PIPE_V>();
 }
 
 template <class T, class P>
