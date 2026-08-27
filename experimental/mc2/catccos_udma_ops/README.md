@@ -255,6 +255,14 @@ profiling. The independent Golden gathers each source rank's packed input as an
 FP32 CPU tensor, reconstructs destination-expert slices from the route matrix,
 and performs CPU FP32 matmul followed by BF16 conversion. Both automatic-output
 and reusable-output calls use the same ordinary input tensor and are checked.
+For AllToAllV-GroupedMatMul, accuracy cases additionally default to one
+consecutive automatic-output repeat and one Gloo-barrier-controlled launch.
+These isolate cross-invocation stage state, cross-Rank launch skew, and the
+caller-provided output overload as separate failure scopes. Set
+`accuracy.auto_repeats: 0` or `accuracy.synchronized_control: false` only when a
+smaller smoke test is required. Caller-provided output tensors are filled with
+NaN before every accuracy launch, so an unwritten output region cannot be
+silently accepted because it happened to contain zero or an earlier result.
 
 The SHMEM heap contains only the fixed communication workspace and
 synchronization state. Inputs and outputs of both public operators use ordinary
@@ -273,7 +281,20 @@ returned row participates in the comparison. Every path/rank writes
 `report.json`, a Top-K error CSV
 including the per-element ULP/hard limit, a downsampled error-ratio heatmap,
 expert and source-rank breakdowns, and a bounded `failure_dump.pt` on failure.
-The batch root contains machine-readable `summary.json` and `summary.csv`.
+The same spatial breakdowns are also emitted as `mismatch_row_runs.csv`,
+`by_local_expert.csv`, and `by_source_rank.csv`. Large failures retain exact selected output rows in
+`failure_dump_compact.pt` instead of dropping the dump. `mismatch_row_runs` in
+each report identifies contiguous failing row intervals and whether they align
+with route-segment boundaries. Every Rank also writes `launch_diagnostics.json`
+with launch order, allocation mode, output addresses and shapes, plus
+`input_diagnostics.json` with route values, tensor metadata, sampled mutation
+fingerprints and exact post-failure NaN/Inf scans. The per-Rank `summary.json`
+contains an evidence-based failure-scope hint, while the batch root contains
+machine-readable `summary.json` and `summary.csv`. The launcher also tees the
+complete combined torchrun stdout/stderr into `torchrun_ep<N>.log` and records
+its exact command, ports and heap selection in `launch_ep<N>.json`, so a copied
+accuracy directory retains failures that occur before a Rank can write its
+report.
 
 Pass/fail counts and maximum error always use every meaningful output element.
 For tensors larger than 1,048,576 elements, diagnostic median/p90/p99 values use

@@ -381,9 +381,16 @@ public:
 #ifdef ENABLE_TIMER
             timer.Tok<Overwrite>(AscendTimer::AIC);
 #endif
-            if (commLoops >= WORKSPACE_STAGES && commIdx < commLoops - WORKSPACE_STAGES) {
-                Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(flagAicFinishStore[stageIdx]);
-            }
+            // Close every stage-ready handshake, including the final rolling
+            // stages.  Earlier versions omitted the final WORKSPACE_STAGES
+            // acknowledgements because those buffers are not reused inside
+            // this invocation.  That also left AIV without proof that the
+            // final AIC consumers had retired before the mixed kernel could
+            // close and a following launch could reuse the rolling stages.
+            // AIV drains these final acknowledgements once at kernel exit,
+            // outside the steady-state communication/GMM pipeline.
+            Catlass::Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(
+                flagAicFinishStore[stageIdx]);
         }
     }
 
@@ -695,10 +702,25 @@ public:
                 }
                 exportPipeline.FinalizeBlockLoop();
             }
-            Catlass::Arch::CrossCoreBarrier<0x0, PIPE_MTE3>();
         } else {
             blockRemoteCopy.FinalizeBlockLoop();
         }
+
+        // The main AIV loop consumes the acknowledgement for stage i before
+        // reusing it at i + WORKSPACE_STAGES.  Only the final rolling stages
+        // remain.  Drain them here so a following invocation starts with no
+        // outstanding stage ownership. This adds only the final rolling-stage
+        // acknowledgements and leaves the per-stage hot path free of any new
+        // barrier.
+        uint32_t finalStageCount = Min(commLoops, WORKSPACE_STAGES);
+        uint32_t firstFinalComm = commLoops - finalStageCount;
+        for (uint32_t commIdx = firstFinalComm;
+             commIdx < commLoops; ++commIdx) {
+            uint32_t stageIdx = commIdx % WORKSPACE_STAGES;
+            Catlass::Arch::CrossCoreWaitFlag(
+                flagAicFinishStore[stageIdx]);
+        }
+        Catlass::Arch::CrossCoreBarrier<0x0, PIPE_MTE3>();
     }
 
 private:

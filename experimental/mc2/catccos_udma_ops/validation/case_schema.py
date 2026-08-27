@@ -42,6 +42,14 @@ def _require_positive_int(case_id: str, name: str, value: Any) -> int:
     return value
 
 
+def _require_nonnegative_int(case_id: str, name: str, value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise CaseManifestError(
+            f"case {case_id}: {name} must be a non-negative integer"
+        )
+    return value
+
+
 def _validate_distribution(case_id: str, distribution: Any) -> Dict[str, Any]:
     if isinstance(distribution, str):
         distribution = {"kind": distribution}
@@ -168,6 +176,15 @@ def _validate_case(raw_case: Mapping[str, Any]) -> Dict[str, Any]:
     accuracy["standard"] = "opbase_experimental"
     accuracy["repeats"] = _require_positive_int(
         case_id, "accuracy.repeats", accuracy.get("repeats", 2)
+    )
+    # Keep consecutive invocation state and caller-provided output storage as
+    # independent test dimensions. One automatically allocated repeat catches
+    # cross-launch kernel state before the reusable-out path is exercised.
+    accuracy["auto_repeats"] = _require_nonnegative_int(
+        case_id, "accuracy.auto_repeats", accuracy.get("auto_repeats", 1)
+    )
+    accuracy["synchronized_control"] = bool(
+        accuracy.get("synchronized_control", True)
     )
     accuracy["topk"] = _require_positive_int(case_id, "accuracy.topk", accuracy.get("topk", 20))
     accuracy["heatmap_bins"] = _require_positive_int(

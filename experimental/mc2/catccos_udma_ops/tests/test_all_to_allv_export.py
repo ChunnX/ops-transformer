@@ -380,7 +380,7 @@ def test_host_binding_forwards_optional_route_metadata_to_kernel():
     assert "unexpected MoeRouteMetadata ABI" in host
 
 
-def test_workspace_reuse_guard_checks_loop_count_before_unsigned_subtraction():
+def test_workspace_reuse_handshake_closes_final_stages_without_unsigned_subtraction():
     kernel = (
         PROJECT_ROOT
         / "csrc"
@@ -391,13 +391,17 @@ def test_workspace_reuse_guard_checks_loop_count_before_unsigned_subtraction():
         / "kernel"
         / "ascend950_alltoallv_grouped_matmul.hpp"
     ).read_text(encoding="utf-8")
-    safe_guard = (
-        "commLoops >= WORKSPACE_STAGES && "
-        "commIdx < commLoops - WORKSPACE_STAGES"
+    assert "commLoops - WORKSPACE_STAGES" not in kernel
+    aic_body = kernel[
+        kernel.index("void operator()<AscendC::AIC>"):
+        kernel.index("void operator()<AscendC::AIV>")
+    ]
+    assert aic_body.count("CrossCoreSetFlag<0x2, PIPE_FIX>") == 1
+    assert "uint32_t finalStageCount = Min(commLoops, WORKSPACE_STAGES);" in kernel
+    assert "uint32_t firstFinalComm = commLoops - finalStageCount;" in kernel
+    assert "flagAicFinishStore[stageIdx]);" in kernel
+    final_drain = kernel.index("uint32_t finalStageCount")
+    final_barrier = kernel.index(
+        "CrossCoreBarrier<0x0, PIPE_MTE3>();", final_drain
     )
-    unsafe_guard = (
-        "commIdx < commLoops - WORKSPACE_STAGES && "
-        "commLoops >= WORKSPACE_STAGES"
-    )
-    assert safe_guard in kernel
-    assert unsafe_guard not in kernel
+    assert final_drain < final_barrier

@@ -7,6 +7,10 @@ defaults:
   seed: 2026
   accuracy:
     standard: opbase_experimental
+    # One automatic repeat plus a barrier-controlled launch diagnose
+    # cross-invocation AIC/AIV state independently from caller-provided out.
+    auto_repeats: 1
+    synchronized_control: true
     repeats: 2
     topk: 20
     heatmap_bins: 32

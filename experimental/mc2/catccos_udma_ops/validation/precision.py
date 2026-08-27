@@ -280,6 +280,78 @@ def _breakdown(
     return list(expert_stats.values()), list(source_stats.values())
 
 
+def _mismatch_row_runs(
+    abs_error: Any,
+    mismatch: Any,
+    segments: Sequence[Mapping[str, int]],
+    *,
+    max_runs: int = 128,
+) -> Dict[str, Any]:
+    """Summarize contiguous failing rows without emitting an unbounded list."""
+    import torch
+
+    failing_rows = torch.nonzero(
+        mismatch.any(dim=1), as_tuple=False
+    ).flatten().tolist()
+    if not failing_rows:
+        return {
+            "rows_with_mismatch": 0,
+            "first_row": None,
+            "last_row": None,
+            "total_runs": 0,
+            "returned_runs": 0,
+            "truncated": False,
+            "runs": [],
+        }
+
+    segment_starts = {int(item["row_start"]) for item in segments}
+    segment_ends = {int(item["row_end"]) for item in segments}
+    runs: List[Dict[str, Any]] = []
+    total_runs = 0
+
+    def finish_run(row_start: int, row_end: int) -> None:
+        nonlocal total_runs
+        total_runs += 1
+        if len(runs) >= max_runs:
+            return
+        run_mismatch = mismatch[row_start:row_end]
+        run_error = abs_error[row_start:row_end]
+        start_expert, start_source = _segment_for_row(segments, row_start)
+        end_expert, end_source = _segment_for_row(segments, row_end - 1)
+        runs.append({
+            "row_start": row_start,
+            "row_end": row_end,
+            "rows": row_end - row_start,
+            "mismatch_elements": int(run_mismatch.sum().item()),
+            "max_abs_error": _safe_float(run_error.max()),
+            "start_local_expert": start_expert,
+            "start_source_rank": start_source,
+            "end_local_expert": end_expert,
+            "end_source_rank": end_source,
+            "starts_at_route_segment_boundary": row_start in segment_starts,
+            "ends_at_route_segment_boundary": row_end in segment_ends,
+        })
+
+    run_start = int(failing_rows[0])
+    previous = run_start
+    for value in failing_rows[1:]:
+        row = int(value)
+        if row != previous + 1:
+            finish_run(run_start, previous + 1)
+            run_start = row
+        previous = row
+    finish_run(run_start, previous + 1)
+    return {
+        "rows_with_mismatch": len(failing_rows),
+        "first_row": int(failing_rows[0]),
+        "last_row": int(failing_rows[-1]),
+        "total_runs": total_runs,
+        "returned_runs": len(runs),
+        "truncated": total_runs > len(runs),
+        "runs": runs,
+    }
+
+
 def _error_ratio_histogram(error_ratio: Any) -> List[Dict[str, Any]]:
     flat = error_ratio.flatten()
     boundaries = [0.25, 0.5, 1.0, 2.0, 4.0]
@@ -392,6 +464,7 @@ def analyze_accuracy(
             f"route table describes {expected_rows} valid rows but compared tensor has {actual.shape[0]} rows"
         )
     expert_stats, source_stats = _breakdown(abs_error, mismatch, segments)
+    mismatch_row_runs = _mismatch_row_runs(abs_error, mismatch, segments)
     actual_nonfinite = _nonfinite_diagnostics(actual_cpu, segments)
     expected_nonfinite = _nonfinite_diagnostics(expected_cpu, segments)
 
@@ -475,6 +548,7 @@ def analyze_accuracy(
         "error_ratio_histogram": _error_ratio_histogram(error_ratio),
         "by_local_expert": expert_stats,
         "by_source_rank": source_stats,
+        "mismatch_row_runs": mismatch_row_runs,
         "segments": segments,
         "top_mismatches": top_mismatches,
         "heatmap": _heatmap(error_ratio, heatmap_bins),
@@ -526,6 +600,25 @@ def write_accuracy_artifacts(
         writer.writeheader()
         writer.writerows(rows)
 
+    for filename, rows, empty_field in (
+        (
+            "mismatch_row_runs.csv",
+            report.get("mismatch_row_runs", {}).get("runs", []),
+            "row_start",
+        ),
+        ("by_local_expert.csv", report.get("by_local_expert", []), "local_expert"),
+        ("by_source_rank.csv", report.get("by_source_rank", []), "source_rank"),
+    ):
+        with (output_path / filename).open(
+            "w", encoding="utf-8", newline=""
+        ) as stream:
+            writer = csv.DictWriter(
+                stream,
+                fieldnames=list(rows[0]) if rows else [empty_field],
+            )
+            writer.writeheader()
+            writer.writerows(rows)
+
     nonfinite_rows = []
     for tensor_name in ("actual", "expected"):
         for row in report.get("{}_nonfinite".format(tensor_name), {}).get(
@@ -562,6 +655,48 @@ def write_accuracy_artifacts(
             report["failure_dump_skipped"] = {
                 "estimated_bytes": estimated_bytes,
                 "limit_bytes": max_dump_bytes,
+            }
+            # Model-sized tensors routinely exceed the full-dump budget. Keep
+            # the exact failing output rows plus all small metadata tensors so
+            # a copied accuracy directory is still self-contained enough for
+            # offline triage.
+            compact_payload = {
+                key: value
+                for key, value in dump_payload.items()
+                if not isinstance(value, torch.Tensor)
+            }
+            selected_rows = sorted({
+                int(item["row"])
+                for item in report.get("top_mismatches", [])
+                if "row" in item
+            })
+            for key, value in dump_payload.items():
+                if not isinstance(value, torch.Tensor):
+                    continue
+                if key in {"actual", "expected"} and value.dim() >= 1:
+                    valid_rows = [
+                        row for row in selected_rows
+                        if 0 <= row < value.shape[0]
+                    ]
+                    if valid_rows:
+                        row_index = torch.tensor(
+                            valid_rows, dtype=torch.long, device=value.device
+                        )
+                        compact_payload["{}_selected_rows".format(key)] = (
+                            value.detach().index_select(0, row_index).cpu()
+                        )
+                elif value.numel() * value.element_size() <= 4 * 1024 * 1024:
+                    compact_payload[key] = value.detach().cpu()
+            compact_payload["selected_output_rows"] = selected_rows
+            compact_payload["top_mismatches"] = report.get(
+                "top_mismatches", []
+            )
+            compact_path = output_path / "failure_dump_compact.pt"
+            torch.save(compact_payload, compact_path)
+            report["failure_dump_compact"] = {
+                "path": compact_path.name,
+                "selected_output_rows": selected_rows,
+                "small_tensor_limit_bytes": 4 * 1024 * 1024,
             }
 
     with (output_path / "report.json").open("w", encoding="utf-8") as stream:

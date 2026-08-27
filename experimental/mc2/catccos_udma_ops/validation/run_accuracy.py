@@ -104,9 +104,38 @@ def main():
                 "--mssanitizer",
                 "--mssanitizer-route-input", args.mssanitizer_route_input,
             ])
+        launch_log = output_root / "torchrun_ep{}.log".format(world_size)
+        write_json(output_root / "launch_ep{}.json".format(world_size), {
+            "world_size": world_size,
+            "command": command,
+            "working_directory": str(output_root),
+            "validation_master_addr": "127.0.0.1",
+            "validation_master_port": rendezvous_port,
+            "udma_master_addr": environment["UDMA_MASTER_ADDR"],
+            "udma_master_port": udma_port,
+            "udma_heap_size": environment.get("UDMA_HEAP_SIZE", "default"),
+            "console_log": launch_log.name,
+        })
         print("+ " + " ".join(command), flush=True)
-        result = subprocess.run(command, cwd=str(output_root), env=environment)
-        if result.returncode:
+        with launch_log.open("w", encoding="utf-8", errors="replace") as log_stream:
+            process = subprocess.Popen(
+                command,
+                cwd=str(output_root),
+                env=environment,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
+            )
+            assert process.stdout is not None
+            for line in process.stdout:
+                print(line, end="", flush=True)
+                log_stream.write(line)
+                log_stream.flush()
+            returncode = process.wait()
+        if returncode:
             failed_launches.extend(case["id"] for case in group_cases)
             if args.fail_fast:
                 break

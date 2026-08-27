@@ -23,6 +23,8 @@ def test_default_manifest_resolves_and_selects_modes():
     assert len(select_cases(cases, mode="accuracy")) == 3
     assert len(select_cases(cases, mode="performance")) == 2
     assert all(case["output_all_to_allv"] for case in cases)
+    assert all(case["accuracy"]["auto_repeats"] == 1 for case in cases)
+    assert all(case["accuracy"]["synchronized_control"] for case in cases)
     assert select_cases(cases, mode="accuracy", include_tags=["normal"])[0]["id"].endswith("normal")
 
 

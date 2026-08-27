@@ -117,3 +117,70 @@ def test_nan_is_an_explicit_failure_with_actionable_location(tmp_path):
     write_accuracy_artifacts(tmp_path, report)
     rows = (tmp_path / "nonfinite_values.csv").read_text(encoding="utf-8")
     assert "actual,7,2,1,0,0,nan" in rows
+
+
+def test_mismatch_report_groups_contiguous_failing_rows_and_route_boundaries():
+    expected = torch.zeros((8, 2), dtype=torch.bfloat16)
+    actual = expected.clone()
+    actual[1:3] = 2.0
+    actual[5] = 3.0
+
+    report = analyze_accuracy(actual, expected, global_table=[[4], [4]])
+    row_runs = report["mismatch_row_runs"]
+
+    assert row_runs["rows_with_mismatch"] == 3
+    assert row_runs["first_row"] == 1
+    assert row_runs["last_row"] == 5
+    assert row_runs["total_runs"] == 2
+    assert row_runs["runs"][0]["row_start"] == 1
+    assert row_runs["runs"][0]["row_end"] == 3
+    assert row_runs["runs"][0]["start_source_rank"] == 0
+    assert row_runs["runs"][1]["row_start"] == 5
+    assert row_runs["runs"][1]["start_source_rank"] == 1
+
+
+def test_accuracy_artifacts_include_row_expert_and_source_breakdowns(tmp_path):
+    expected = torch.zeros((8, 2), dtype=torch.bfloat16)
+    actual = expected.clone()
+    actual[1:3] = 2.0
+    report = analyze_accuracy(actual, expected, global_table=[[4], [4]])
+
+    write_accuracy_artifacts(tmp_path, report)
+
+    assert "1,3,2" in (tmp_path / "mismatch_row_runs.csv").read_text()
+    assert "local_expert,elements,mismatches" in (
+        tmp_path / "by_local_expert.csv"
+    ).read_text()
+    assert "source_rank,elements,mismatches" in (
+        tmp_path / "by_source_rank.csv"
+    ).read_text()
+
+
+def test_oversized_failure_dump_keeps_compact_failing_rows(tmp_path):
+    expected = torch.zeros((8, 4), dtype=torch.bfloat16)
+    actual = expected.clone()
+    actual[3, 2] = 4.0
+    report = analyze_accuracy(actual, expected, global_table=[[8]])
+
+    write_accuracy_artifacts(
+        tmp_path,
+        report,
+        dump_payload={
+            "case": {"id": "compact"},
+            "rank": 0,
+            "actual": actual,
+            "expected": expected,
+            "large_input": torch.zeros(1024, dtype=torch.bfloat16),
+            "local_table": torch.tensor([8], dtype=torch.int64),
+        },
+        max_dump_bytes=1,
+    )
+
+    assert not (tmp_path / "failure_dump.pt").exists()
+    compact_path = tmp_path / "failure_dump_compact.pt"
+    assert compact_path.exists()
+    compact = torch.load(compact_path, weights_only=False)
+    assert 3 in compact["selected_output_rows"]
+    assert compact["actual_selected_rows"].shape[1] == 4
+    assert compact["expected_selected_rows"].shape[1] == 4
+    assert torch.equal(compact["local_table"], torch.tensor([8]))
