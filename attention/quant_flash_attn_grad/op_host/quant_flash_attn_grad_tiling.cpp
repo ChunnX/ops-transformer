@@ -23,7 +23,7 @@ using namespace ge;
 using namespace std;
 
 namespace optiling {
-
+ 
 constexpr int64_t QUERY_IDX = 0;
 constexpr int64_t KEY_IDX = 1;
 constexpr int64_t VALUE_IDX = 2;
@@ -111,24 +111,18 @@ ASCENDC_EXTERN_C ge::graphStatus TilingQuantFlashAttnGrad(gert::TilingContext *c
     return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
 }
 
-ASCENDC_EXTERN_C ge::graphStatus TilingParseForQuantFlashAttnGrad([[maybe_unused]] gert::TilingParseContext *context)
+ASCENDC_EXTERN_C ge::graphStatus TilingParseForQuantFlashAttnGrad([[maybe_unused]]gert::TilingParseContext *context)
 {
-    OP_CHECK_IF(
-        context == nullptr,
-        OP_LOGE(context, "The op [QuantFlashAttentionScoreGrad] received bad params, the reason is: [context is null]"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context == nullptr,
+        OP_LOGE(context, "The op [QuantFlashAttentionScoreGrad] received bad params, the reason is: [context is null]"), return ge::GRAPH_FAILED);
     fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
-    OP_CHECK_IF(
-        platformInfoPtr == nullptr,
-        OP_LOGE(context,
-                "The op [QuantFlashAttentionScoreGrad] received bad params, the reason is: [platformInfoPtr is null]"),
+    OP_CHECK_IF(platformInfoPtr == nullptr,
+        OP_LOGE(context, "The op [QuantFlashAttentionScoreGrad] received bad params, the reason is: [platformInfoPtr is null]"), 
         return ge::GRAPH_FAILED);
-
+    
     auto compileInfoPtr = context->GetCompiledInfo<QuantFlashAttnGradCompileInfo>();
-    OP_CHECK_IF(
-        compileInfoPtr == nullptr,
-        OP_LOGE(context,
-                "The op [QuantFlashAttentionScoreGrad] received bad params, the reason is: [compileInfoPtr is null]"),
+    OP_CHECK_IF(compileInfoPtr == nullptr,
+        OP_LOGE(context, "The op [QuantFlashAttentionScoreGrad] received bad params, the reason is: [compileInfoPtr is null]"), 
         return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
@@ -147,6 +141,6 @@ ASCENDC_EXTERN_C ge::graphStatus TilingParseForQuantFlashAttnGrad([[maybe_unused
 
 IMPL_OP_OPTILING(QuantFlashAttnGrad)
     .Tiling(TilingQuantFlashAttnGrad)
-    .TilingParse<QuantFlashAttnGradCompileInfo>(TilingParseForQuantFlashAttnGrad);  // 向框架注册入口函数
+    .TilingParse<QuantFlashAttnGradCompileInfo>(TilingParseForQuantFlashAttnGrad); //向框架注册入口函数
 
-}  // namespace optiling
+} // namespace optiling

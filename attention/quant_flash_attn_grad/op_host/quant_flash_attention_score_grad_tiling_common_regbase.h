@@ -48,12 +48,12 @@ constexpr uint32_t MAX_BASIC_BLOCK_SIZE = 1024;
 
 constexpr uint32_t ATTEN_MASK_DIM_LENGTH_2 = 2;
 constexpr uint32_t ATTEN_MASK_DIM_LENGTH_4 = 4;
-constexpr int64_t COMPRESS_ATTEN_MASK_SIZE = 2048 * 2048;
+constexpr int64_t COMPRESS_ATTEN_MASK_SIZE = 2048*2048;
 
-constexpr uint32_t INPUT_FORMAT_BS2N2GD = 0;  // BSND BNSD
-constexpr uint32_t INPUT_FORMAT_BN2GS2D = 1;  // BNSD
-constexpr uint32_t INPUT_FORMAT_TND = 2;      // TND
-constexpr uint32_t INPUT_DIM_0 = 0;           // BSH  BSND
+constexpr uint32_t INPUT_FORMAT_BS2N2GD = 0; // BSND BNSD
+constexpr uint32_t INPUT_FORMAT_BN2GS2D = 1; // BNSD
+constexpr uint32_t INPUT_FORMAT_TND = 2;     // TND
+constexpr uint32_t INPUT_DIM_0 = 0;          // BSH  BSND
 constexpr uint32_t INPUT_DIM_1 = 1;
 constexpr uint32_t INPUT_DIM_2 = 2;
 constexpr uint32_t INPUT_DIM_3 = 3;
@@ -180,15 +180,15 @@ enum class AttrIndex : uint32_t {
 };
 
 enum class AttenDataType : uint32_t {
-    ATTEN_MASK_TYPE_SAME = 0,    // 0 表示 AttenMask 数据类型与 qkv 一致
-    ATTEN_MASK_TYPE_U8_BOOL = 1  // 1 表示 AttenMask 数据类型为 u8 bool
+    ATTEN_MASK_TYPE_SAME = 0,   // 0 表示 AttenMask 数据类型与 qkv 一致
+    ATTEN_MASK_TYPE_U8_BOOL = 1 // 1 表示 AttenMask 数据类型为 u8 bool
 };
 
 enum class SparseMode : uint32_t {
-    NO_MASK = 0,  // 未传入attenmask，不做mask操作
+    NO_MASK = 0, // 未传入attenmask，不做mask操作
     ALL_MASK,
-    LEFT_UP_CAUSAL,         // 左上角点划分的三角部分
-    RIGHT_DOWN_CAUSAL = 3,  // 右下角点划分的下三角部分
+    LEFT_UP_CAUSAL,        // 左上角点划分的三角部分
+    RIGHT_DOWN_CAUSAL = 3, // 右下角点划分的下三角部分
     BAND = 4,
     PREFIX = 5,
     PREFIX_COMPRESS = 6,
@@ -235,26 +235,39 @@ enum class ConstAxisTemplateNum : uint32_t {
     NUM768 = 768,
 };
 
-enum class SplitAxisEnum : uint32_t { BN2GS1S2 = 0, BN2 = 1, B = 2, N2 = 3, BN2GS1 = 4, BN2S2 = 5, NONE = 9 };
+enum class SplitAxisEnum : uint32_t {
+    BN2GS1S2 = 0,
+    BN2 = 1,
+    B = 2,
+    N2 = 3,
+    BN2GS1 = 4,
+    BN2S2 = 5,
+    NONE = 9
+};
 
-enum class AttenMaskShapeType : uint32_t { ATTENMASKBN2GS1S2, ATTENMASKBS1S2, ATTENMASKS1S2, ATTENMASKTT = 99 };
+enum class AttenMaskShapeType : uint32_t {
+    ATTENMASKBN2GS1S2,
+    ATTENMASKBS1S2,
+    ATTENMASKS1S2,
+    ATTENMASKTT = 99
+};
 
 enum class SparseType : uint8_t {
     DENSE = 0,
     CASUAL = 1,
     BAND = 2,
-    UNSUPPORTED = 3  // 超L2优化暂不支持sparse的场景
+    UNSUPPORTED = 3 // 超L2优化暂不支持sparse的场景
 };
 
 enum class DeterSparseType : uint32_t {
-    NO_DETER = 0,   // 非确定性
-    DETER_OLD = 1,  // 确定性老实现方案
+    NO_DETER = 0,  // 非确定性
+    DETER_OLD = 1, // 确定性老实现方案
     DETER_DENSE = 2,
     DETER_CAUSAL = 3,
     DETER_BAND = 4
 };
 
-struct FuzzyBaseInfoParamsRegbase {  // 频繁使用的基础参数
+struct FuzzyBaseInfoParamsRegbase { // 频繁使用的基础参数
     uint64_t coreNum;
     uint64_t aicNum;
     uint64_t ubSize;
@@ -270,7 +283,7 @@ struct FuzzyBaseInfoParamsRegbase {  // 频繁使用的基础参数
     int64_t s2;
     int64_t g;
     int64_t d;
-    int64_t d1;  // head dim of value
+    int64_t d1; // head dim of value
 
     int64_t s1Outer;
     int64_t s1Inner;
@@ -418,8 +431,7 @@ inline auto CeilDivideBy(T num1, T num2) -> T
 }
 
 template <class T>
-inline std::vector<T> SliceVector(const std::vector<T> &arr, const int64_t step)
-{
+inline std::vector<T> SliceVector(const std::vector<T> &arr, const int64_t step) {
     if (step == 1) {
         return arr;
     }
@@ -439,38 +451,33 @@ ge::graphStatus CheckAttenMaskShape(FuzzyBaseInfoParamsRegbase &fBaseParams);
 ge::graphStatus QuantShapeValidCheck(gert::TilingContext *context_, const FuzzyBaseInfoParamsRegbase &fBaseParams);
 ge::graphStatus QuantScaleShapeValidCheck(gert::TilingContext *context_, const FuzzyBaseInfoParamsRegbase &fBaseParams);
 ge::graphStatus QuantScaleDtypeValidCheck(gert::TilingContext *context_, const FuzzyBaseInfoParamsRegbase &fBaseParams);
-void JudgeIsNeedDeter(FuzzyBaseInfoParamsRegbase &fBaseParams, std::array<int64_t, CORE_LIST_NUM> &dqOffset,
-                      std::array<int64_t, CORE_LIST_NUM> &dkDvOffset, std::array<int64_t, CORE_LIST_NUM> &dqOffsetpre,
-                      std::array<int64_t, CORE_LIST_NUM> &dkDvOffsetpre, int64_t calcNum, bool &noNeedDeter,
-                      bool &dqNeedDeterpre, bool &dkDvNeedDeterpre);
-void GetOffset(FuzzyBaseInfoParamsRegbase &fBaseParams, int64_t &currentDqOffset, int64_t &currentDkDvOffset,
-               int64_t blockIdx);
-void PrintShapeInfo(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams);
+void JudgeIsNeedDeter(FuzzyBaseInfoParamsRegbase &fBaseParams, std::array<int64_t, CORE_LIST_NUM> &dqOffset, std::array<int64_t, CORE_LIST_NUM> &dkDvOffset, std::array<int64_t, CORE_LIST_NUM> &dqOffsetpre,
+                      std::array<int64_t, CORE_LIST_NUM> &dkDvOffsetpre, int64_t calcNum, bool &noNeedDeter, bool &dqNeedDeterpre, bool &dkDvNeedDeterpre);
+void GetOffset(FuzzyBaseInfoParamsRegbase &fBaseParams, int64_t &currentDqOffset, int64_t &currentDkDvOffset, int64_t blockIdx);
+void PrintShapeInfo(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams);
 bool CheckSparseModeValue(FuzzyBaseInfoParamsRegbase &fBaseParams);
 bool CheckVarLenSparseModeValue(FuzzyBaseInfoParamsRegbase &fBaseParams);
 bool CheckPrefixNExist(FuzzyBaseInfoParamsRegbase &fBaseParams, const int64_t bIdx, const int64_t prefixN,
                        std::vector<std::vector<std::pair<int64_t, int64_t>>> &s1ValidIdx);
 void CalcleBandDeterParam(FuzzyBaseInfoParamsRegbase &fBaseParams);
 void CalcleCausalDeterParam(FuzzyBaseInfoParamsRegbase &fBaseParams);
-void SetSparsePrefixBlockInterval(const FuzzyBaseInfoParamsRegbase &fBaseParams, int64_t bIdx, int64_t nIdx,
-                                  std::vector<std::vector<std::pair<int64_t, int64_t>>> &s1ValidIdx,
-                                  int64_t (&blockStarts)[CORE_LIST_NUM], int64_t (&blockEnds)[CORE_LIST_NUM],
-                                  uint32_t &coreNum, int64_t &tmepBlock);
+void SetSparsePrefixBlockInterval(const FuzzyBaseInfoParamsRegbase &fBaseParams, int64_t bIdx,
+                                  int64_t nIdx, std::vector<std::vector<std::pair<int64_t, int64_t>>> &s1ValidIdx,
+                                  int64_t (&blockStarts)[CORE_LIST_NUM], int64_t (&blockEnds)[CORE_LIST_NUM], uint32_t &coreNum,
+                                  int64_t &tmepBlock);
 std::pair<uint32_t, uint32_t> GetS1S2TemplateType(FuzzyBaseInfoParamsRegbase &fBaseParams);
 uint32_t GetDTemplateType(FuzzyBaseInfoParamsRegbase &fBaseParams);
-void GetCommS1S2OuterInfo(FuzzyBaseInfoParamsRegbase &fBaseParams, const int64_t prefixN,
-                          std::vector<std::pair<int64_t, int64_t>> &s1ValidIdx);
+void GetCommS1S2OuterInfo(FuzzyBaseInfoParamsRegbase &fBaseParams, const int64_t prefixN, std::vector<std::pair<int64_t, int64_t>> &s1ValidIdx);
 void GetCommonS1S2OuterIndex(const FuzzyBaseInfoParamsRegbase &fBaseParams, int64_t (*parseInfo)[ARRAY_LENGTH],
                              int64_t gTail, int64_t &s1oIdx, int64_t &s2oIdx);
-void CalcleActualToken(FuzzyBaseInfoParamsRegbase &fBaseParams, int64_t batchIdx, int64_t &actualCalcS1Token,
-                       int64_t &actualCalcS2Token);
-ge::graphStatus ProcessOptionalInput(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams);
-ge::graphStatus ProcessQuantInfo(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams);
+void CalcleActualToken(FuzzyBaseInfoParamsRegbase &fBaseParams, int64_t batchIdx, int64_t &actualCalcS1Token, int64_t &actualCalcS2Token);
+ge::graphStatus ProcessOptionalInput(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams);
+ge::graphStatus ProcessQuantInfo(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams);
 ge::graphStatus ProcessSparseModeInfo(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams);
 ge::graphStatus ProcessTokensInfo(FuzzyBaseInfoParamsRegbase &fBaseParams);
-void SetQKVStartIdx(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams);
+void SetQKVStartIdx(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams);
 void SetPseLayout(FuzzyBaseInfoParamsRegbase &fBaseParams);
-bool SetSparseParams(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams);
+bool SetSparseParams(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams);
 void DetermineMode(FuzzyBaseInfoParamsRegbase &fBaseParams);
-}  // namespace QuantFag
-}  // namespace optiling
+} // namespace QuantFag
+} // namespace optiling
