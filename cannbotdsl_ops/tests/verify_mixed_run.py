@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import hashlib
 import json
 import pathlib
@@ -37,6 +38,13 @@ REQUIRED_SYMBOLS = [
     "aclnnFlashKdaGetWorkspaceSize",
     "l0op::FlashKda(",
 ]
+
+
+@dataclass(frozen=True)
+class VerifiedMixedRun:
+    report: dict[str, Any]
+    vendor_root: pathlib.Path
+    opapi: pathlib.Path
 
 
 def _load_json(path: pathlib.Path) -> dict[str, Any]:
@@ -235,6 +243,55 @@ def _extract_run(run_file: pathlib.Path, extract_root: pathlib.Path) -> None:
         raise AssertionError("makeself did not report a successful SHA256 check")
 
 
+def verify_run_package(
+    run_file: pathlib.Path,
+    extract_root: pathlib.Path,
+    *,
+    package_name: str = "ops-transformer-flash-kda",
+    expected_provider_count: int = 6,
+    minimum_traditional_kernel_count: int = 2,
+    expected_traditional_kernel_count: int | None = None,
+) -> VerifiedMixedRun:
+    run_file = run_file.resolve()
+    extract_root = extract_root.resolve()
+    if not run_file.is_file():
+        raise FileNotFoundError(run_file)
+    if not extract_root.is_dir():
+        raise NotADirectoryError(extract_root)
+    if expected_provider_count <= 0:
+        raise ValueError("expected Provider count must be positive")
+    if minimum_traditional_kernel_count <= 0:
+        raise ValueError("minimum traditional kernel count must be positive")
+    if (
+        expected_traditional_kernel_count is not None
+        and expected_traditional_kernel_count <= 0
+    ):
+        raise ValueError("expected traditional kernel count must be positive")
+    if any(extract_root.iterdir()):
+        raise ValueError(f"extract root must be empty: {extract_root}")
+
+    _extract_run(run_file, extract_root)
+    vendor_root = _find_vendor_root(extract_root)
+    provider_count, checked_files = _verify_provider_package(
+        vendor_root, package_name, expected_provider_count
+    )
+    traditional_count, opapi = _verify_mixed_contents(
+        vendor_root,
+        minimum_traditional_kernel_count,
+        expected_traditional_kernel_count,
+    )
+    report = {
+        "archive_sha256": _sha256(run_file),
+        "archive_size": run_file.stat().st_size,
+        "checked_package_files": checked_files,
+        "opapi": str(opapi.relative_to(extract_root)),
+        "provider_binaries": provider_count,
+        "traditional_kernel_objects": traditional_count,
+        "vendor": vendor_root.name,
+    }
+    return VerifiedMixedRun(report=report, vendor_root=vendor_root, opapi=opapi)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Verify a mixed AscendC and CANNBotDSL Provider .run package"
@@ -246,43 +303,21 @@ def main() -> int:
     parser.add_argument("--expected-traditional-kernel-count", type=int)
     arguments = parser.parse_args()
 
-    run_file = arguments.run.resolve()
-    if not run_file.is_file():
-        raise FileNotFoundError(run_file)
-    if arguments.expected_provider_count <= 0:
-        raise ValueError("expected Provider count must be positive")
-    if arguments.minimum_traditional_kernel_count <= 0:
-        raise ValueError("minimum traditional kernel count must be positive")
-    if (
-        arguments.expected_traditional_kernel_count is not None
-        and arguments.expected_traditional_kernel_count <= 0
-    ):
-        raise ValueError("expected traditional kernel count must be positive")
-
     with tempfile.TemporaryDirectory(prefix="ops-transformer-mixed-run-") as tmp:
         extract_root = pathlib.Path(tmp)
-        _extract_run(run_file, extract_root)
-        vendor_root = _find_vendor_root(extract_root)
-        provider_count, checked_files = _verify_provider_package(
-            vendor_root,
-            arguments.package_name,
-            arguments.expected_provider_count,
+        verified = verify_run_package(
+            arguments.run,
+            extract_root,
+            package_name=arguments.package_name,
+            expected_provider_count=arguments.expected_provider_count,
+            minimum_traditional_kernel_count=(
+                arguments.minimum_traditional_kernel_count
+            ),
+            expected_traditional_kernel_count=(
+                arguments.expected_traditional_kernel_count
+            ),
         )
-        traditional_count, opapi = _verify_mixed_contents(
-            vendor_root,
-            arguments.minimum_traditional_kernel_count,
-            arguments.expected_traditional_kernel_count,
-        )
-        report = {
-            "archive_sha256": _sha256(run_file),
-            "archive_size": run_file.stat().st_size,
-            "checked_package_files": checked_files,
-            "opapi": str(opapi.relative_to(extract_root)),
-            "provider_binaries": provider_count,
-            "traditional_kernel_objects": traditional_count,
-            "vendor": vendor_root.name,
-        }
-        print(json.dumps(report, indent=2, sort_keys=True))
+        print(json.dumps(verified.report, indent=2, sort_keys=True))
     return 0
 
 

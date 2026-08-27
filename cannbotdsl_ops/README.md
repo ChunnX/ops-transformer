@@ -132,6 +132,24 @@ python cannbotdsl_ops/tests/verify_flash_kda_aclnn_dump.py \
   --all-golden-samples --summary-only
 ```
 
+正式交付验收应直接消费最终混合 `.run`，而不是手工拼接 build-tree 动态库。配置
+时同时指定归档即可生成单一设备验收 target：
+
+```bash
+cmake -S . -B build-provider \
+  -DCANNBOTDSL_BUILD_FLASH_KDA_ACLNN_SMOKE=ON \
+  -DCANNBOTDSL_FLASH_KDA_ACCEPTANCE_RUN=/path/to/cann-ops-transformer-custom_linux-x86_64.run \
+  -DCANNBOTDSL_FLASH_KDA_ACCEPTANCE_REPORT=/tmp/flash-kda-acceptance.json
+cmake --build build-provider --target cannbotdsl_flash_kda_acceptance -j4
+```
+
+该 target 只读校验并解包 `.run`，强制 `ldd` 将 smoke 解析到解包所得
+`libcust_opapi.so` 和指定 Provider ABI v1 `libnnopbase.so`，随后由单一 variant
+策略表驱动六 shape 的完整 CPU golden、代表性 native 位级对拍、三轮单流时延，
+最后执行 2 streams × 20 waves 和 10 类 GetWorkspace 错误矩阵。JSON 报告记录
+归档/二进制 SHA256、源码提交、实际动态库路径、每个 shape 的 workspace/误差/
+时延和 soak 结果；任一子门禁失败时写入 `passed=false` 并使 target 失败。
+
 不要把构建根目录中的 `libcust_opapi.so` 放在上述安装树之前；其相对 Provider
 根目录不满足交付布局，会使 registry 在 `dlopen` 阶段 fail-closed。运行时还必须
 优先加载与构建头文件匹配、含 Provider ABI v1 的 `libnnopbase.so`。

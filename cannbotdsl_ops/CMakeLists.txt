@@ -167,4 +167,33 @@ if(CANNBOTDSL_BUILD_FLASH_KDA_ACLNN_SMOKE)
     opapi_math
     "${CANNBOTDSL_PROVIDER_OPBASE_LIBRARY}"
     "${_cannbotdsl_ascendcl_library}")
+
+  set(CANNBOTDSL_FLASH_KDA_ACCEPTANCE_RUN "" CACHE FILEPATH
+    "Final mixed .run package consumed by the FlashKDA device acceptance target")
+  set(CANNBOTDSL_FLASH_KDA_ACCEPTANCE_REPORT
+    "${CMAKE_BINARY_DIR}/flash_kda_acceptance.json" CACHE FILEPATH
+    "Machine-readable FlashKDA device acceptance report")
+  if(CANNBOTDSL_FLASH_KDA_ACCEPTANCE_RUN)
+    if(NOT IS_ABSOLUTE "${CANNBOTDSL_FLASH_KDA_ACCEPTANCE_RUN}" OR
+       NOT IS_ABSOLUTE "${CANNBOTDSL_FLASH_KDA_ACCEPTANCE_REPORT}")
+      message(FATAL_ERROR
+        "FlashKDA acceptance .run and report paths must be absolute")
+    endif()
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_custom_target(cannbotdsl_flash_kda_acceptance
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_LIST_DIR}/tests/run_flash_kda_acceptance.py"
+        --run "${CANNBOTDSL_FLASH_KDA_ACCEPTANCE_RUN}"
+        --smoke "$<TARGET_FILE:cannbotdsl_flash_kda_aclnn_smoke>"
+        --opbase-library "${CANNBOTDSL_PROVIDER_OPBASE_LIBRARY}"
+        --cannbotdsl-source "${CANNBOTDSL_SOURCE_DIR}"
+        --runtime-root "${CANNBOTDSL_RUNTIME_ROOT}"
+        --library-dir "$<TARGET_FILE_DIR:opapi_math>"
+        --report "${CANNBOTDSL_FLASH_KDA_ACCEPTANCE_REPORT}"
+        --expected-traditional-kernel-count 8
+      DEPENDS cannbotdsl_flash_kda_aclnn_smoke
+      COMMENT "Running final FlashKDA mixed-package device acceptance"
+      USES_TERMINAL
+      VERBATIM)
+  endif()
 endif()
