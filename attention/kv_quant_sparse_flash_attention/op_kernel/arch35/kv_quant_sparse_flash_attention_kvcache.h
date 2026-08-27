@@ -174,6 +174,25 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr &runParam, const ConstIn
         if (constInfo.subBlockIdx == 1) {
             runParam.attentionOutOffset += runParam.firstHalfMRealSize * constInfo.dSizeV;
         }
+#if KV_QUANT_SPARSE_FLASH_ATTENTION_VERSION >= 2
+        if (constInfo.returnSoftmaxLse) {
+            if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
+                runParam.softmaxLseOffset = runParam.n2oIdx * constInfo.s1Size * constInfo.gSize +
+                                            (qsfaSeqOffset + runParam.sOuterOffset) * constInfo.gSize;
+            } else {
+                runParam.softmaxLseOffset = sIdx * constInfo.n2Size * constInfo.s1Size * constInfo.gSize +
+                                            runParam.n2oIdx * constInfo.s1Size * constInfo.gSize +
+                                            runParam.sOuterOffset * constInfo.gSize;
+            }
+            if (IS_SPLIT_G && constInfo.aicIdx % 2U != 0) {
+                runParam.softmaxLseOffset += runParam.goIdx;
+                ;
+            }
+            if (constInfo.subBlockIdx == 1) {
+                runParam.softmaxLseOffset += runParam.firstHalfMRealSize;
+            }
+        }
+#endif
     }
 }
 
