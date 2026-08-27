@@ -11,15 +11,34 @@
 #ifndef ENGRAM_FETCH_TRAIN_ARCH35_H
 #define ENGRAM_FETCH_TRAIN_ARCH35_H
 
+#if __has_include("version/asc_devkit_version.h") && __has_include("version/hcomm_version.h")
+#include "version/asc_devkit_version.h"
+#include "version/hcomm_version.h"
+
+#if (ASC_DEVKIT_MAJOR > 9 || (ASC_DEVKIT_MAJOR == 9 && ASC_DEVKIT_MINOR > 0)) && \
+    (HCOMM_MAJOR > 9 || (HCOMM_MAJOR == 9 && HCOMM_MINOR > 0))
+#define ENABLE_ENGRAM_FETCH_KERNEL
+#endif
+
+#endif
+
+#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
+
 #include "kernel_tiling/kernel_tiling.h"
 #include "../engram_fetch_tiling_data.h"
 #include "../engram_fetch_utils.h"
 #include "adv_api/hccl/hccl.h"
+#if __has_include("adv_api/hcomm/hcomm.h")
 #include "adv_api/hcomm/hcomm.h"
+#endif
 
 namespace Mc2Kernel {
+
+#if defined(ENABLE_ENGRAM_FETCH_KERNEL)
 
 using namespace AscendC;
 
@@ -47,6 +66,14 @@ constexpr AscendC::UrmaWqeEntry URMA_NO_CQE_CFG = {
 };
 
 constexpr AscendC::UrmaWqeEntry URMA_NO_CQE_FENCE_CFG = {
+    .odr = 6,
+    .fence = 1,
+    .se = 0,
+    .cqe = 0,
+    .inlineEn = 0,
+};
+
+constexpr AscendC::UrmaWqeEntry URMA_CQE_FENCE_CFG = {
     .odr = 6,
     .fence = 1,
     .se = 0,
@@ -684,11 +711,10 @@ __aicore__ inline void EngramFetchTrainArch35::SendCountToPeers()
             uint64_t handle = GetCommHandle(dstRank);
             GM_ADDR countSrcAddr = sendCountsOutGM_ + dstRank * UB_ALIGN;
 
-            int32_t ret = hcomm_.WriteWithNotifyNbi(handle, remoteSendCountAddr, countSrcAddr, sizeof(int32_t),
-                                                    remoteFlagAddr, 1);
+            int32_t ret = hcomm_.WriteWithNotifyNbi<true, PIPE_S, PIPE_MTE3, URMA_NO_CQE_FENCE_CFG>(
+                handle, remoteSendCountAddr, countSrcAddr, sizeof(int32_t), remoteFlagAddr, 1);
             ascendc_assert(ret == 0, "WriteWithNotifyNbi failed, ret=%d, tag=SendCount, rankId=%u, dstRank=%u", ret,
                            rankId_, dstRank);
-            DrainChecked(handle);
         }
     }
 }
@@ -905,8 +931,9 @@ __aicore__ inline void EngramFetchTrainArch35::SendIndicesRemote(uint32_t dstRan
         GM_ADDR srcAddr = sortedIndicesGM_ + (sdispl + totalSent) * sizeof(int32_t);
 
         GM_ADDR remoteCounterAddr = GetRemoteWinAddr(dstRank, indicesWriteOffset_) + rankId_ * STATE_OFFSET;
-        int32_t ret = hcomm_.WriteWithNotifyNbi(handle, remoteSlotAddr, srcAddr, chunkLen * sizeof(int32_t),
-                                                remoteCounterAddr, static_cast<uint64_t>(localWriteCnt + 1));
+        int32_t ret = hcomm_.WriteWithNotifyNbi<true, PIPE_S, PIPE_MTE3, URMA_NO_CQE_FENCE_CFG>(
+            handle, remoteSlotAddr, srcAddr, chunkLen * sizeof(int32_t), remoteCounterAddr,
+            static_cast<uint64_t>(localWriteCnt + 1));
         ascendc_assert(ret == 0, "WriteWithNotifyNbi failed, ret=%d, tag=ExIdx_data, rankId=%u, dstRank=%u", ret,
                        rankId_, dstRank);
 
@@ -1373,8 +1400,8 @@ __aicore__ inline void EngramFetchTrainArch35::SendTokenBatchRemote(
         DataCopyParams notifyParams = {1U, static_cast<uint16_t>(sizeof(int32_t)), 0U, 0U};
         DataCopyPad(notifyScratchGM, notifyLocal, notifyParams);
         EngramFetchTrainSyncFunc<HardEvent::MTE3_S>();
-        PrepareWrite<URMA_NO_CQE_FENCE_CFG>(handle, GetRemoteWinAddr(dstRank, 0), remoteCounterAddr, notifyScratchAddr,
-                                            sizeof(int32_t));
+        PrepareWrite<URMA_CQE_FENCE_CFG>(handle, GetRemoteWinAddr(dstRank, 0), remoteCounterAddr, notifyScratchAddr,
+                                         sizeof(int32_t));
         FlushAndDrain();
         j += batchLen;
     }
@@ -1759,6 +1786,8 @@ __aicore__ inline void EngramFetchTrainArch35::Process()
         ReorderAndSaveCtx();
     }
 }
+
+#endif
 
 } // namespace Mc2Kernel
 
