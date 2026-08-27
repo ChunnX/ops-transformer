@@ -137,13 +137,15 @@ struct BlockAttnResPrepareTilingCase {
             "BlockAttnResPrepare",
             {
                 {ops::ut::MakeGertStorageShape(blockDims), ops::ut::ParseGeDtype(blockResDtype), ge::FORMAT_ND},
-                {ops::ut::MakeGertStorageShape({1}), ops::ut::ParseGeDtype(validBlocksDtype), ge::FORMAT_ND},
+                {ops::ut::MakeGertStorageShape(std::vector<int64_t>{1}),
+                 ops::ut::ParseGeDtype(validBlocksDtype), ge::FORMAT_ND},
                 {ops::ut::MakeGertStorageShape(queryDims), ops::ut::ParseGeDtype(pseudoQueryDtype), ge::FORMAT_ND},
             },
             {
-                {ops::ut::MakeGertStorageShape({totalS, totalT, totalD}), ge::DT_FLOAT, ge::FORMAT_ND},
-                {ops::ut::MakeGertStorageShape({totalS, totalT}), ge::DT_FLOAT, ge::FORMAT_ND},
-                {ops::ut::MakeGertStorageShape({totalS, totalT}), ge::DT_FLOAT, ge::FORMAT_ND},
+                {ops::ut::MakeGertStorageShape(std::vector<int64_t>{totalS, totalT, totalD}), ge::DT_FLOAT,
+                 ge::FORMAT_ND},
+                {ops::ut::MakeGertStorageShape(std::vector<int64_t>{totalS, totalT}), ge::DT_FLOAT, ge::FORMAT_ND},
+                {ops::ut::MakeGertStorageShape(std::vector<int64_t>{totalS, totalT}), ge::DT_FLOAT, ge::FORMAT_ND},
             },
             {{"eps", Ops::Transformer::AnyValue::CreateFrom<float>(eps)}}, &compileInfo, socVersion,
             static_cast<uint64_t>(contextCoreNum), ASCEND_950_UB_SIZE, FAKE_L2_SIZE);
