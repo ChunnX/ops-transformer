@@ -43,14 +43,14 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 	const at::Tensor &key,
 	const at::Tensor &value,
 	const at::Tensor &block_sparse_mask,
-	const at::Tensor &block_shape,
+	std::vector<int64_t> block_shape,
 	c10::string_view q_input_layout,
 	c10::string_view kv_input_layout,
 	int64_t num_key_value_heads,
 	double scale_value,
 	int64_t inner_precise,
-	const c10::optional<at::Tensor> &actual_seq_lengths,
-	const c10::optional<at::Tensor> &actual_seq_lengths_kv,
+	const c10::optional<std::vector<int64_t>> &actual_seq_lengths,
+	const c10::optional<std::vector<int64_t>> &actual_seq_lengths_kv,
 	int64_t softmax_lse_flag,
 	int64_t mask_type,
 	int64_t quant_mode,
@@ -66,6 +66,19 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 	const c10::optional<at::Tensor> &p_quant_scale,
 	c10::optional<at::ScalarType> attention_out_dtype)
 {
+	// pybind 按值收下 std::vector<int64_t>（真实拷贝），再在本函数作用域内构建
+	// IntArrayRef，避免直接收 optional<IntArrayRef> 时 pybind 的悬垂指针问题
+	//（inner caster 的 vector 在 load() 返回后即被释放）。
+	at::IntArrayRef block_shape_ref(block_shape);
+	c10::optional<at::IntArrayRef> actual_seq_lengths_ref = c10::nullopt;
+	c10::optional<at::IntArrayRef> actual_seq_lengths_kv_ref = c10::nullopt;
+	if (actual_seq_lengths.has_value()) {
+		actual_seq_lengths_ref = at::IntArrayRef(*actual_seq_lengths);
+	}
+	if (actual_seq_lengths_kv.has_value()) {
+		actual_seq_lengths_kv_ref = at::IntArrayRef(*actual_seq_lengths_kv);
+	}
+
 	// Resolve output dtype: an explicit value passes through unchanged.
 	// A missing value (None) only falls back to the input dtype for
 	// quant_mode=0 (no quant); quantized paths require it explicitly.
@@ -105,31 +118,8 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 	char *q_layout_ptr = const_cast<char *>(q_layout.c_str());
 	char *kv_layout_ptr = const_cast<char *>(kv_layout.c_str());
 
-	// aclnn V3 期望 host 端 aclIntArray；把可选的 seq-len tensor 转成
-	// optional<IntArrayRef> 供 ACLNN_CMD 使用（张量须为 1-D 整型）。
-	std::vector<int64_t> asl_vec, aslkv_vec;
-	c10::optional<at::IntArrayRef> asl = c10::nullopt;
-	c10::optional<at::IntArrayRef> aslkv = c10::nullopt;
-	if (actual_seq_lengths.has_value() && actual_seq_lengths->defined()) {
-		auto t = actual_seq_lengths->cpu().to(at::kLong).contiguous();
-		const int64_t *p = t.data_ptr<int64_t>();
-		asl_vec.assign(p, p + t.numel());
-		asl = at::IntArrayRef(asl_vec);
-	}
-	if (actual_seq_lengths_kv.has_value() && actual_seq_lengths_kv->defined()) {
-		auto t = actual_seq_lengths_kv->cpu().to(at::kLong).contiguous();
-		const int64_t *p = t.data_ptr<int64_t>();
-		aslkv_vec.assign(p, p + t.numel());
-		aslkv = at::IntArrayRef(aslkv_vec);
-	}
-
-	// block_shape tensor -> optional<IntArrayRef>（aclnn 的 blockShapeOptional）
-	std::vector<int64_t> bs_vec;
-	auto t = block_shape.cpu().to(at::kLong).contiguous();
-	const int64_t *p = t.data_ptr<int64_t>();
-	bs_vec.assign(p, p + t.numel());
-	c10::optional<at::IntArrayRef> bs = at::IntArrayRef(bs_vec);
-
+	// block_shape_ref / actual_seq_lengths_ref / actual_seq_lengths_kv_ref 为指向
+	// 本作用域存活数据的 IntArrayRef，ACLNN_CMD 内部 ConvertType 会转成 aclIntArray。
 	if (quant_mode == MXFP4_OCP_QUANT || quant_mode == MXFP4_CX_QUANT) {
 		TensorWrapper q_wrapper = make_wrapper(query, FLOAT4_E2M1);
 		TensorWrapper k_wrapper = make_wrapper(key,   FLOAT4_E2M1);
@@ -141,9 +131,9 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 				q_wrapper, k_wrapper, v_wrapper,
 				block_sparse_mask,
 				atten_mask,
-				bs,
-				asl,
-				aslkv,
+				block_shape_ref,
+				actual_seq_lengths_ref,
+				actual_seq_lengths_kv_ref,
 				block_table,
 				q_descale_wrapper,
 				k_descale_wrapper,
@@ -169,9 +159,9 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 				query, key, value,
 				block_sparse_mask,
 				atten_mask,
-				bs,
-				asl,
-				aslkv,
+				block_shape_ref,
+				actual_seq_lengths_ref,
+				actual_seq_lengths_kv_ref,
 				block_table,
 				q_dequant_scale,
 				k_dequant_scale,
