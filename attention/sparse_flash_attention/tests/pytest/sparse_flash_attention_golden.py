@@ -18,9 +18,9 @@ import copy
 import generate_tensor_data
 
 # 0 不切S2；1 切S2（flash-attention online softmax）
-RUN_MODE = 0
+RUN_MODE = 1
 # S2 分块大小（仅 RUN_MODE == 1 生效）
-S2_BASE_SIZE = 128
+S2_BASE_SIZE = 512
 
 
 def concat_tensor(tensor1, shape1, tensor2, shape2, n, tnd_flag=False):
