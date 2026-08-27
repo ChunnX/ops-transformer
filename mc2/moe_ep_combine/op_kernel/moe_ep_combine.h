@@ -626,10 +626,15 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         }
     }
 
-    // Local rank rows may be split across more AIVs than the published channel count. Wait for every local copy
-    // before any AIV publishes completion; remote payload and flag WQEs remain ordered within each batch handle.
+    // Submit every remote payload before entering the all-AIV barrier. Keeping a prepared, uncommitted Hcomm batch
+    // across SyncAll can leave the channel in a partially built state and deadlock the next Dispatch/Combine round.
+    // Local MTE3 copies must also finish before the completion flag is published.
+    FlushPreparedWrites();
     SyncFunc<AscendC::HardEvent::MTE3_S>();
     SyncAll<true>();
+
+    // Start a fresh batch for the flag. All payload batches were committed before the barrier, so the channel-0 flag
+    // is submitted after every AIV's payload and cannot overtake a slower payload producer.
     constexpr uint32_t completionChannelCount = COMBINE_CHANNEL_COUNT;
     bool publishesChannelFlag =
         aivId_ < activeAivNum && (!splitRankTokens || coreIndexInGroup < completionChannelCount);
