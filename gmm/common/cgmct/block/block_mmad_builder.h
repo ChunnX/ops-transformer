@@ -31,7 +31,7 @@
 #include "../utils/tuple_utils.h"
 
 #include "../tile/tile_copy.h"
-#include "./block_mmad.h"
+#include "./cgmct_block_mmad.h"
 #include "./block_mmad_multi_block.h"
 #include "../policy/cgmct_dispatch_policy.h"
 

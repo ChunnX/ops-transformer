@@ -19,7 +19,7 @@
 #include "lib/matmul/tiling.h"
 #include "lib/matmul/constant_tiling.h"
 
-#include "./block_mmad.h"
+#include "./cgmct_block_mmad.h"
 #include "./block_mmad_utils.h"
 #include "../utils/tensor_utils.h"
 #include "../utils/tuple_utils.h"
