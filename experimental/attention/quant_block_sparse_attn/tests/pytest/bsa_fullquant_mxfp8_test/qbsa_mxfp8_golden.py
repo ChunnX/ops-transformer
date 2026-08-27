@@ -1316,7 +1316,7 @@ def generate_mxfp8_inputs(case=None, max_block_per_batch=None, atten_mask_shape=
         max_block_per_batch=case.get("max_block_per_batch"),
     )
     p_scale_value = case.get("p_scale_value")
-    p_scale_type = case.get("p_scale_type", "e8m0")
+    p_scale_type = case.get("p_scale_type", "float8_e8m0fnu")
     p_scale = None
     if p_scale_value is not None:
         p_scale_fp32 = torch.tensor([float(p_scale_value)], dtype=torch.float32)
@@ -1326,7 +1326,7 @@ def generate_mxfp8_inputs(case=None, max_block_per_batch=None, atten_mask_shape=
             raise ValueError(
                 "P scale input must be positive and finite after FP32 conversion"
             )
-        if p_scale_type == "fp32":
+        if p_scale_type == "float":
             p_scale = p_scale_fp32
         else:
             p_scale = fp32_to_e8m0fnu_safe(
