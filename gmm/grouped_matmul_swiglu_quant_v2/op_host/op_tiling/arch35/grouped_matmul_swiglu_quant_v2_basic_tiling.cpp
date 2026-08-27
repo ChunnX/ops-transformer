@@ -15,6 +15,7 @@
 
 #include <alog_pub.h>
 #include <climits>
+#include <iostream>
 #include "log/log.h"
 #include "op_host/tiling_templates_registry.h"
 #include "op_host/tiling_type.h"
@@ -30,6 +31,10 @@ constexpr int64_t INVALID_MXFP4_WEIGHT_DIM = 1;
 constexpr size_t MIN_X_ORIGIN_SHAPE_DIM = 2;
 constexpr size_t MIN_WEIGHT_ORIGIN_SHAPE_DIM = 2;
 constexpr size_t MX_MULTI_WEIGHT_SCALE_DIM = 3;
+constexpr size_t PERTOKEN_WEIGHT_ORIGIN_DIM = 3;
+constexpr size_t PERTOKEN_WEIGHT_NZ_STORAGE_DIM = 5;
+constexpr int64_t NZ_INNER_SIZE = 16;
+constexpr int64_t B8_NZ_C0_SIZE = 32;
 constexpr uint64_t MXFP_BASEK_FACTOR = 64UL;
 constexpr size_t WEIGHT_ORIGIN_LAST_DIM_OFFSET = 1;
 constexpr size_t WEIGHT_ORIGIN_LAST_SECOND_DIM_OFFSET = 2;
@@ -407,16 +412,16 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDtype()
                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype)),
                     "the dtypes of scale and per_token_scale must be DT_FLOAT8_E8M0"),
                 return false);
-    OP_CHECK_IF(!(IsFp4(inputParams_.outDataDtype) || IsFp8(inputParams_.outDataDtype)),
-                OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "y",
-                                          ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype),
-                                          "FLOAT8 or FLOAT4"),
-                return false);
-    OP_CHECK_IF(inputParams_.outScaleDtype != ge::DT_FLOAT8_E8M0,
-                OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "out_scale",
-                                          ge::TypeUtils::DataTypeToSerialString(inputParams_.outScaleDtype),
-                                          "DT_FLOAT8_E8M0"),
-                return false);
+    OP_CHECK_IF(
+        !(IsFp4(inputParams_.outDataDtype) || IsFp8(inputParams_.outDataDtype)),
+        OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "y",
+                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype), "FLOAT8 or FLOAT4"),
+        return false);
+    OP_CHECK_IF(
+        inputParams_.outScaleDtype != ge::DT_FLOAT8_E8M0,
+        OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "out_scale",
+                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.outScaleDtype), "DT_FLOAT8_E8M0"),
+        return false);
 
     OP_CHECK_IF(IsFp8Input() && !IsFp8(inputParams_.outDataDtype),
                 OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "y",
@@ -617,13 +622,12 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckCoreNum() const
     OP_CHECK_IF(compileInfo == nullptr, OP_LOGE(inputParams_.opName, "compileInfo is nullptr."), return false);
     auto aicNum = compileInfo->aicNum_;
     auto aivNum = compileInfo->aivNum_;
-    OP_CHECK_IF(aicNum == 0,
-                OP_LOGE(inputParams_.opName, "aicNum should be positive integer, actual is %u.", aicNum),
+    OP_CHECK_IF(aicNum == 0, OP_LOGE(inputParams_.opName, "aicNum should be positive integer, actual is %u.", aicNum),
                 return false);
-    OP_CHECK_IF(aivNum != GmmConstant::CORE_RATIO * aicNum,
-                OP_LOGE(inputParams_.opName,
-                        "aicNum:aivNum should be 1:2, actual aicNum: %u, aivNum: %u.", aicNum, aivNum),
-                return false);
+    OP_CHECK_IF(
+        aivNum != GmmConstant::CORE_RATIO * aicNum,
+        OP_LOGE(inputParams_.opName, "aicNum:aivNum should be 1:2, actual aicNum: %u, aivNum: %u.", aicNum, aivNum),
+        return false);
     return true;
 }
 
@@ -704,6 +708,70 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoLibApiTiling()
                 (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_B_BIT) + SCALER_FACTOR_DEFAULT);
         }
     }
+
+    auto &quantParams = tilingData_.gmmSwigluQuantParams;
+    auto &mmTiling = tilingData_.mmTilingData;
+    std::cout << "DoLibApiTiling tilingData:" << std::endl;
+    std::cout << "gmmSwigluQuantParams.groupNum=" << quantParams.get_groupNum() << std::endl;
+    std::cout << "gmmSwigluQuantParams.groupListType=" << static_cast<uint32_t>(quantParams.get_groupListType())
+              << std::endl;
+    std::cout << "gmmSwigluQuantParams.quantDtype=" << static_cast<uint32_t>(quantParams.get_quantDtype()) << std::endl;
+    std::cout << "gmmSwigluQuantParams.isMxWeightNzMultiTensor="
+              << static_cast<uint32_t>(quantParams.get_isMxWeightNzMultiTensor()) << std::endl;
+    std::cout << "gmmSwigluQuantParams.dequantDtype=" << static_cast<uint32_t>(quantParams.get_dequantDtype())
+              << std::endl;
+    std::cout << "gmmSwigluQuantParams.rowLen=" << quantParams.get_rowLen() << std::endl;
+    std::cout << "gmmSwigluQuantParams.ubAvail=" << quantParams.get_ubAvail() << std::endl;
+    std::cout << "mmTilingData.M=" << mmTiling.get_M() << std::endl;
+    std::cout << "mmTilingData.N=" << mmTiling.get_N() << std::endl;
+    std::cout << "mmTilingData.Ka=" << mmTiling.get_Ka() << std::endl;
+    std::cout << "mmTilingData.Kb=" << mmTiling.get_Kb() << std::endl;
+    std::cout << "mmTilingData.usedCoreNum=" << mmTiling.get_usedCoreNum() << std::endl;
+    std::cout << "mmTilingData.baseM=" << mmTiling.get_baseM() << std::endl;
+    std::cout << "mmTilingData.baseN=" << mmTiling.get_baseN() << std::endl;
+    std::cout << "mmTilingData.baseK=" << mmTiling.get_baseK() << std::endl;
+    std::cout << "mmTilingData.singleCoreM=" << mmTiling.get_singleCoreM() << std::endl;
+    std::cout << "mmTilingData.singleCoreN=" << mmTiling.get_singleCoreN() << std::endl;
+    std::cout << "mmTilingData.singleCoreK=" << mmTiling.get_singleCoreK() << std::endl;
+    std::cout << "mmTilingData.depthA1=" << mmTiling.get_depthA1() << std::endl;
+    std::cout << "mmTilingData.depthB1=" << mmTiling.get_depthB1() << std::endl;
+    std::cout << "mmTilingData.stepM=" << mmTiling.get_stepM() << std::endl;
+    std::cout << "mmTilingData.stepN=" << mmTiling.get_stepN() << std::endl;
+    std::cout << "mmTilingData.stepKa=" << mmTiling.get_stepKa() << std::endl;
+    std::cout << "mmTilingData.stepKb=" << mmTiling.get_stepKb() << std::endl;
+    std::cout << "mmTilingData.isBias=" << mmTiling.get_isBias() << std::endl;
+    std::cout << "mmTilingData.transLength=" << mmTiling.get_transLength() << std::endl;
+    std::cout << "mmTilingData.iterateOrder=" << mmTiling.get_iterateOrder() << std::endl;
+    std::cout << "mmTilingData.shareMode=" << mmTiling.get_shareMode() << std::endl;
+    std::cout << "mmTilingData.shareL1Size=" << mmTiling.get_shareL1Size() << std::endl;
+    std::cout << "mmTilingData.shareL0CSize=" << mmTiling.get_shareL0CSize() << std::endl;
+    std::cout << "mmTilingData.shareUbSize=" << mmTiling.get_shareUbSize() << std::endl;
+    std::cout << "mmTilingData.batchM=" << mmTiling.get_batchM() << std::endl;
+    std::cout << "mmTilingData.batchN=" << mmTiling.get_batchN() << std::endl;
+    std::cout << "mmTilingData.singleBatchM=" << mmTiling.get_singleBatchM() << std::endl;
+    std::cout << "mmTilingData.singleBatchN=" << mmTiling.get_singleBatchN() << std::endl;
+    std::cout << "mmTilingData.depthAL1CacheUB=" << mmTiling.get_depthAL1CacheUB() << std::endl;
+    std::cout << "mmTilingData.depthBL1CacheUB=" << mmTiling.get_depthBL1CacheUB() << std::endl;
+    std::cout << "mmTilingData.dbL0A=" << mmTiling.get_dbL0A() << std::endl;
+    std::cout << "mmTilingData.dbL0B=" << mmTiling.get_dbL0B() << std::endl;
+    std::cout << "mmTilingData.dbL0C=" << mmTiling.get_dbL0C() << std::endl;
+    std::cout << "mmTilingData.ALayoutInfoB=" << mmTiling.get_ALayoutInfoB() << std::endl;
+    std::cout << "mmTilingData.ALayoutInfoS=" << mmTiling.get_ALayoutInfoS() << std::endl;
+    std::cout << "mmTilingData.ALayoutInfoN=" << mmTiling.get_ALayoutInfoN() << std::endl;
+    std::cout << "mmTilingData.ALayoutInfoG=" << mmTiling.get_ALayoutInfoG() << std::endl;
+    std::cout << "mmTilingData.ALayoutInfoD=" << mmTiling.get_ALayoutInfoD() << std::endl;
+    std::cout << "mmTilingData.BLayoutInfoB=" << mmTiling.get_BLayoutInfoB() << std::endl;
+    std::cout << "mmTilingData.BLayoutInfoS=" << mmTiling.get_BLayoutInfoS() << std::endl;
+    std::cout << "mmTilingData.BLayoutInfoN=" << mmTiling.get_BLayoutInfoN() << std::endl;
+    std::cout << "mmTilingData.BLayoutInfoG=" << mmTiling.get_BLayoutInfoG() << std::endl;
+    std::cout << "mmTilingData.BLayoutInfoD=" << mmTiling.get_BLayoutInfoD() << std::endl;
+    std::cout << "mmTilingData.CLayoutInfoB=" << mmTiling.get_CLayoutInfoB() << std::endl;
+    std::cout << "mmTilingData.CLayoutInfoS1=" << mmTiling.get_CLayoutInfoS1() << std::endl;
+    std::cout << "mmTilingData.CLayoutInfoN=" << mmTiling.get_CLayoutInfoN() << std::endl;
+    std::cout << "mmTilingData.CLayoutInfoG=" << mmTiling.get_CLayoutInfoG() << std::endl;
+    std::cout << "mmTilingData.CLayoutInfoS2=" << mmTiling.get_CLayoutInfoS2() << std::endl;
+    std::cout << "mmTilingData.BatchNum=" << mmTiling.get_BatchNum() << std::endl;
+    std::cout << "mmTilingData.mxTypePara=" << mmTiling.get_mxTypePara() << std::endl;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -902,11 +970,46 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDtypePertoken()
                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
                     "the dtypes of x and weight must be within the range FLOAT8, INT8 or HIFLOAT8"),
                 return false);
-    OP_CHECK_IF(inputParams_.perTokenScaleDtype != ge::DT_FLOAT,
-                OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "x_scale",
-                                          ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype),
-                                          "DT_FLOAT"),
-                return false);
+    if (inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
+        const bool isInt8 = inputParams_.aDtype == ge::DT_INT8;
+        OP_CHECK_IF(isInt8 && (inputParams_.bDtype != ge::DT_INT8 || inputParams_.outDataDtype != ge::DT_INT8),
+                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                        inputParams_.opType, "x, weight, y",
+                        ListToString(ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
+                                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
+                                     ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype)),
+                        "in per-token mode, when weight format is FRACTAL_NZ and x dtype is INT8, "
+                        "weight and y dtypes must be INT8"),
+                    return false);
+        const bool isHifloat8 = inputParams_.aDtype == ge::DT_HIFLOAT8;
+        OP_CHECK_IF(
+            isHifloat8 && (inputParams_.bDtype != ge::DT_HIFLOAT8 || inputParams_.outDataDtype != ge::DT_HIFLOAT8),
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                inputParams_.opType, "x, weight, y",
+                ListToString(ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
+                                          ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
+                             ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype)),
+                "in per-token mode, when weight format is FRACTAL_NZ and x dtype is HIFLOAT8, "
+                "weight and y dtypes must be HIFLOAT8"),
+            return false);
+        const bool isFp8 = inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN || inputParams_.aDtype == ge::DT_FLOAT8_E5M2;
+        OP_CHECK_IF(isFp8 && (inputParams_.bDtype != ge::DT_FLOAT8_E4M3FN ||
+                              (inputParams_.outDataDtype != ge::DT_FLOAT8_E4M3FN &&
+                               inputParams_.outDataDtype != ge::DT_FLOAT8_E5M2)),
+                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                        inputParams_.opType, "x, weight, y",
+                        ListToString(ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
+                                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
+                                     ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype)),
+                        "in per-token mode, when weight format is FRACTAL_NZ and x dtype is FLOAT8, "
+                        "weight dtype must be FLOAT8_E4M3FN and y dtype must be FLOAT8_E4M3FN or FLOAT8_E5M2"),
+                    return false);
+    }
+    OP_CHECK_IF(
+        inputParams_.perTokenScaleDtype != ge::DT_FLOAT,
+        OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "x_scale",
+                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype), "DT_FLOAT"),
+        return false);
     OP_CHECK_IF(!(inputParams_.scaleDtype == ge::DT_FLOAT || inputParams_.scaleDtype == ge::DT_BF16 ||
                   (inputParams_.scaleDtype == ge::DT_FLOAT16 && inputParams_.aDtype == ge::DT_INT8)),
                 OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "weight_scale",
@@ -918,10 +1021,37 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDtypePertoken()
                                           ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype),
                                           "FLOAT8, INT8 or HIFLOAT8"),
                 return false);
-    OP_CHECK_IF(inputParams_.outScaleDtype != ge::DT_FLOAT,
-                OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "out_scale",
-                                          ge::TypeUtils::DataTypeToSerialString(inputParams_.outScaleDtype),
-                                          "DT_FLOAT"),
+    OP_CHECK_IF(
+        inputParams_.outScaleDtype != ge::DT_FLOAT,
+        OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "out_scale",
+                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.outScaleDtype), "DT_FLOAT"),
+        return false);
+    return true;
+}
+
+bool GroupedMatmulSwigluQuantV2Tiling950::CheckPertokenWeightNzShape(const gert::Shape &wShape,
+                                                                     const gert::Shape &wStorageShape) const
+{
+    OP_CHECK_IF(
+        wShape.GetDimNum() != PERTOKEN_WEIGHT_ORIGIN_DIM,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "weight origin shape", std::to_string(wShape.GetDimNum()),
+                                     std::to_string(PERTOKEN_WEIGHT_ORIGIN_DIM)),
+        return false);
+    OP_CHECK_IF(wStorageShape.GetDimNum() != PERTOKEN_WEIGHT_NZ_STORAGE_DIM,
+                OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "weight storage shape",
+                                             std::to_string(wStorageShape.GetDimNum()),
+                                             std::to_string(PERTOKEN_WEIGHT_NZ_STORAGE_DIM)),
+                return false);
+
+    const int64_t groupNum = wShape.GetDim(0);
+    const int64_t n1 = inputParams_.transB ? GroupedMatmul::CeilDiv(inputParams_.kSize, B8_NZ_C0_SIZE) :
+                                             GroupedMatmul::CeilDiv(inputParams_.nSize, B8_NZ_C0_SIZE);
+    const int64_t k1 = inputParams_.transB ? GroupedMatmul::CeilDiv(inputParams_.nSize, NZ_INNER_SIZE) :
+                                             GroupedMatmul::CeilDiv(inputParams_.kSize, NZ_INNER_SIZE);
+    const gert::Shape expectedStorageShape{groupNum, n1, k1, NZ_INNER_SIZE, B8_NZ_C0_SIZE};
+    OP_CHECK_IF(wStorageShape != expectedStorageShape,
+                OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opType, "weight storage shape", ShapeToString(wStorageShape),
+                                          ShapeToString(expectedStorageShape)),
                 return false);
     return true;
 }
@@ -934,6 +1064,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputsPertoken()
                                                       "wStorageShape cannot be nullptr"),
                 return false);
     const gert::Shape &wShape = wStorageShape->GetOriginShape();
+    const gert::Shape &wNzStorageShape = wStorageShape->GetStorageShape();
     auto scaleStorageShape = context_->GetDynamicInputShape(SCALE_INDEX, 0);
     OP_CHECK_IF(scaleStorageShape == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "weight_scale", "nullptr",
@@ -955,6 +1086,29 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputsPertoken()
                 OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "x_scale", std::to_string(xScaleDimNum), "1"),
                 return false);
     OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(inputParams_.opName, "SetGroupNum failed."), return false);
+    OP_CHECK_IF(wShape.GetDimNum() != PERTOKEN_WEIGHT_ORIGIN_DIM ||
+                    static_cast<uint64_t>(wShape.GetDim(0)) != inputParams_.groupNum,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opType, "weight", ShapeToString(wShape),
+                                                      "weight first dimension must equal groupList length"),
+                return false);
+    OP_CHECK_IF(static_cast<uint64_t>(wScaleShape.GetDim(0)) != inputParams_.groupNum ||
+                    static_cast<uint64_t>(wScaleShape.GetDim(1)) != inputParams_.nSize,
+                OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opType, "weight_scale", ShapeToString(wScaleShape),
+                                          ShapeDimsToString(inputParams_.groupNum, inputParams_.nSize)),
+                return false);
+    OP_CHECK_IF(static_cast<uint64_t>(xScaleShape.GetDim(0)) != inputParams_.mSize,
+                OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opType, "x_scale", ShapeToString(xScaleShape),
+                                          ShapeDimsToString(inputParams_.mSize)),
+                return false);
+    if (inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
+        OP_CHECK_IF(inputParams_.nSize == 0 || inputParams_.nSize % GmmConstant::WEIGHTNZ_64 != 0,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        inputParams_.opType, "weight", ShapeToString(wShape),
+                        "in per-token B8 mode, N of FRACTAL_NZ weight must be positive and aligned to 64"),
+                    return false);
+        OP_CHECK_IF(!CheckPertokenWeightNzShape(wShape, wNzStorageShape),
+                    OP_LOGE(inputParams_.opName, "CheckPertokenWeightNzShape failed."), return false);
+    }
     OP_CHECK_IF(inputParams_.nSize % GmmConstant::EVEN_FACTOR != 0,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opType, "weight", ShapeToString(wShape),
                                                       "n axis element number of weight must be an even number"),
