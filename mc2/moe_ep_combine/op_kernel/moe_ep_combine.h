@@ -404,6 +404,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressT
         }
         SyncFunc<AscendC::HardEvent::MTE2_S>();
 
+        SyncFunc<AscendC::HardEvent::S_V>();
         Duplicate<int32_t>(rankCounts, 0, rankCountElements);
         SyncFunc<AscendC::HardEvent::V_S>();
         for (uint32_t i = 0; i < groupTokens; ++i) {
@@ -713,6 +714,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         aivId_ < activeAivNum && (!splitRankTokens || coreIndexInGroup < completionChannelCount);
     if (publishesChannelFlag) {
         LocalTensor<uint64_t> flagTensor = statusTensor_.ReinterpretCast<uint64_t>();
+        SyncFunc<AscendC::HardEvent::S_V>();
         Duplicate<uint64_t>(flagTensor, 1U, UB_ALIGN / sizeof(uint64_t));
         SyncFunc<AscendC::HardEvent::V_MTE3>();
         GlobalTensor<uint64_t> flagWorkspace;
