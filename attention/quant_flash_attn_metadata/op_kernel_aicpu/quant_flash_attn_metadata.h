@@ -113,23 +113,24 @@ struct FaMetaData {
 };
 
 struct QuantFAGMetaData {
-    uint32_t *headMedata;
+    uint32_t *data;
+    // metadata shape 为 (2, max_schedule_size)，第一维存正向 FA 调度数据，
+    // 第二维存反向 QuantFAG 调度数据，偏移 max_schedule_size 个元素到达第二维起始。
     QuantFAGMetaData(void *metadataPtr)
-        :headMedata(static_cast<uint32_t*>(metadataPtr) + 4096)
+        : data(static_cast<uint32_t*>(metadataPtr) + QUANT_FAG_METADATA_SIZE)
     {
- 
-    }   
-    
+    }
+
     void SetDeterMaxRound(uint32_t metaIdx, int64_t val)
     {
         assert(metaIdx < QUANT_FAG_METADATA_SIZE);
-        headMedata[metaIdx] = val;
+        data[metaIdx] = static_cast<uint32_t>(val);
     }
 
     int64_t GetDeterMaxRound(uint32_t metaIdx)
     {
        assert(metaIdx < QUANT_FAG_METADATA_SIZE);
-       return headMedata[metaIdx]; 
+       return data[metaIdx];
     }
 };
 } // namespace detail
