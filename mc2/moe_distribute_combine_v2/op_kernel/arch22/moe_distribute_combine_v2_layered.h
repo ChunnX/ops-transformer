@@ -285,11 +285,8 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
     worldSize_ = tilingData->moeDistributeCombineV2Info.epWorldSize;
     globalBs_ = tilingData->moeDistributeCombineV2Info.globalBs;
     isInputTokenMaskFlag_ = tilingData->moeDistributeCombineV2Info.isTokenMask;
-    if (globalBs_ >= MAX_LOCAL_BS) {
-        maxLocalBs_ = MAX_LOCAL_BS;
-    } else {
-        maxLocalBs_ = globalBs_;
-    }
+    uint32_t maxBsPerRank = globalBs_ / worldSize_;
+    maxLocalBs_ = maxBsPerRank > MAX_LOCAL_BS ? MAX_LOCAL_BS : maxBsPerRank;
     if constexpr (std::is_same<ExpandXType, half>::value) { // fp16
         scale_granu_ = B16_PER_BLOCK;
         scaleNum_ = axisH_ / scale_granu_;
