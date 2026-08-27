@@ -580,6 +580,8 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
         int64_t hiddenBytes = tilingData.hiddenBytes;
         int64_t totalRecv = tilingData.totalRecv;
         int64_t aivNum = static_cast<int64_t>(tilingData.aivNum);
+        OP_TILING_CHECK(aivNum <= 0, OP_LOGE(nodeName, "aivNum is %ld, must be positive.", aivNum),
+                        return ge::GRAPH_FAILED);
 
         int64_t wsSdispls = AlignTo(numRanks * static_cast<int64_t>(sizeof(int64_t)), UB_ALIGN);
         int64_t wsRdispls = AlignTo(numRanks * static_cast<int64_t>(sizeof(int64_t)), UB_ALIGN);

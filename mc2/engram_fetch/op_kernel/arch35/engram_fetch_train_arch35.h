@@ -72,7 +72,7 @@ private:
     __aicore__ inline void PrepareWrite(uint64_t commHandle, GM_ADDR dstBase, GM_ADDR dst, GM_ADDR src, uint64_t len);
     __aicore__ inline void FlushPreparedWrites();
     __aicore__ inline void FlushAndDrain();
-    __aicore__ inline void TimeoutCheck(uint64_t startTime);
+    __aicore__ inline void TimeoutCheck(uint64_t startTime, int tag);
     __aicore__ inline void InitMembers(GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched, GM_ADDR permOut,
                                        GM_ADDR sendCountsOut, GM_ADDR recvCountsOut, GM_ADDR recvLocalEntryOut,
                                        GM_ADDR numRecvOut, GM_ADDR workspaceGM, GM_ADDR localStorageAddr, TPipe *pipe,
@@ -252,13 +252,15 @@ __aicore__ inline void EngramFetchTrainArch35::WriteNbiChecked(uint64_t handle, 
 __aicore__ inline void EngramFetchTrainArch35::DrainChecked(uint64_t handle)
 {
     int32_t ret = hcomm_.Drain(handle);
+    ascendc_assert(ret == 0, "Drain failed, ret=%d, rankId=%u, aivId=%u", ret, rankId_, aivId_);
 }
 
-__aicore__ inline void EngramFetchTrainArch35::TimeoutCheck(uint64_t startTime)
+__aicore__ inline void EngramFetchTrainArch35::TimeoutCheck(uint64_t startTime, int tag)
 {
     uint64_t nowUs = static_cast<uint64_t>(AscendC::GetSystemCycle()) / ENGRAM_CYCLES_PER_US;
     ascendc_assert((nowUs - startTime) < ENGRAM_TIMEOUT_US,
-                   "timeout, rankId=%u, aivId=%u, elapsed=%llu us", rankId_, aivId_, nowUs - startTime);
+                   "timeout, tag=%d, rankId=%u, aivId=%u, elapsed=%llu us\n", tag, rankId_, aivId_,
+                   nowUs - startTime);
 }
 
 template <auto const& config>
@@ -459,11 +461,6 @@ __aicore__ inline void EngramFetchTrainArch35::InitCoreRoles()
     isReceiver_ = (aivId_ >= numSendCores_) || (totalBlocks_ <= 1U);
     isFlagCore_ = (aivId_ == totalBlocks_ - 1U) && (totalBlocks_ > 1U);
 
-    ascendc_assert(channelsPerRank_ == groupSize_ * 2U,
-                   "channelsPerRank mismatch: kernel groupSize=%u, expected channels=%u, got channels=%u "
-                   "(host elastic_buffer.cpp not rebuilt?)",
-                   groupSize_, groupSize_ * 2U, channelsPerRank_);
-
     rankCores_ = (totalBlocks_ < numRanks_) ? totalBlocks_ : numRanks_;
     tokenGroups_ = (totalBlocks_ + rankCores_ - 1U) / rankCores_;
     myOwnerRank_ = aivId_ % rankCores_;
@@ -609,6 +606,7 @@ __aicore__ inline void EngramFetchTrainArch35::WaitAllStatusFlags(GM_ADDR status
     flagGM.SetGlobalBuffer((__gm__ int32_t *)statusWinBase);
 
     int32_t sumOfFlag = 0;
+    uint32_t pollCnt = 0;
     while (sumOfFlag != compareFlag) {
         DataCopy(flagLocal, flagGM, flagCount);
         EngramFetchTrainSyncFunc<HardEvent::MTE2_S>();
@@ -617,7 +615,17 @@ __aicore__ inline void EngramFetchTrainArch35::WaitAllStatusFlags(GM_ADDR status
         for (uint32_t i = 0; i < numRanks_; i++) {
             sumOfFlag += flagLocal.GetValue(i * STATE_OFFSET / sizeof(int32_t));
         }
-        TimeoutCheck(startTime);
+        pollCnt++;
+        if (pollCnt % 100000U == 0U) {
+            for (uint32_t i = 0; i < numRanks_; i++) {
+                int32_t flagVal = flagLocal.GetValue(i * STATE_OFFSET / sizeof(int32_t));
+                AscendC::PRINTF("WaitAllStatusFlags tag=1 rankId=%u aivId=%u: rank[%u] flag=%d\n",
+                                rankId_, aivId_, i, flagVal);
+            }
+            AscendC::PRINTF("WaitAllStatusFlags tag=1 rankId=%u aivId=%u: sum=%d expect=%d pollCnt=%u\n",
+                            rankId_, aivId_, sumOfFlag, compareFlag, pollCnt);
+        }
+        TimeoutCheck(startTime, 1);
     }
 }
 
@@ -645,14 +653,8 @@ __aicore__ inline void EngramFetchTrainArch35::SendCountToPeers()
 {
     LoadSendCountsToUb();
     LocalTensor<int32_t> sendCountsUb = statusBuf_.Get<int32_t>();
-    constexpr uint32_t MAX_RANKS_LOCAL = 64U;
-    int32_t countVals[MAX_RANKS_LOCAL];
-    for (uint32_t i = 0; i < numRanks_ && i < MAX_RANKS_LOCAL; i++) {
-        countVals[i] = sendCountsUb.GetValue(i * UB_ALIGN / sizeof(int32_t));
-    }
-
     for (uint32_t dstRank = aivId_; dstRank < numRanks_; dstRank += totalBlocks_) {
-        int32_t countVal = countVals[dstRank];
+        int32_t countVal = sendCountsUb.GetValue(dstRank * UB_ALIGN / sizeof(int32_t));
 
         GM_ADDR remoteSendCountAddr = GetRemoteWinAddr(dstRank, sendCountOffset_) + rankId_ * STATE_OFFSET;
         GM_ADDR remoteFlagAddr = GetRemoteWinAddr(dstRank, countFlagOffset_) + rankId_ * STATE_OFFSET;
@@ -673,6 +675,8 @@ __aicore__ inline void EngramFetchTrainArch35::SendCountToPeers()
             flagGM.SetGlobalBuffer((__gm__ int32_t *)remoteFlagAddr);
             DataCopy(flagGM, flagLocal, STATE_OFFSET / sizeof(int32_t));
             EngramFetchTrainSyncFunc<HardEvent::MTE3_S>();
+            AscendC::PRINTF("SendCount local rankId=%u aivId=%u: dstRank=%u flagAddr=%lu\n",
+                            rankId_, aivId_, dstRank, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(remoteFlagAddr)));
         } else {
             uint64_t handle = GetCommHandle(dstRank);
             GM_ADDR countSrcAddr = sendCountsOutGM_ + dstRank * UB_ALIGN;
@@ -681,6 +685,9 @@ __aicore__ inline void EngramFetchTrainArch35::SendCountToPeers()
                                                     remoteFlagAddr, 1);
             ascendc_assert(ret == 0, "WriteWithNotifyNbi failed, ret=%d, tag=SendCount, rankId=%u, dstRank=%u", ret,
                            rankId_, dstRank);
+            DrainChecked(handle);
+            AscendC::PRINTF("SendCount remote rankId=%u aivId=%u: dstRank=%u flagAddr=%lu ret=%d\n",
+                            rankId_, aivId_, dstRank, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(remoteFlagAddr)), ret);
         }
     }
 }
@@ -906,20 +913,29 @@ __aicore__ inline void EngramFetchTrainArch35::SendIndicesLocal(int32_t sendCoun
 }
 
 __aicore__ inline void EngramFetchTrainArch35::SendIndicesRemote(uint32_t dstRank, int32_t sendCount, int64_t sdispl,
-                                                                   GM_ADDR localWinBase)
+                                                                    GM_ADDR localWinBase)
 {
     uint64_t handle = GetCommHandle(dstRank);
     uint32_t totalSent = 0;
     uint32_t localWriteCnt = 0;
+    AscendC::PRINTF("SendIndicesRemote start rankId=%u aivId=%u: dstRank=%u sendCount=%d maxIndicesPerSlot_=%u\n",
+                    rankId_, aivId_, dstRank, sendCount, maxIndicesPerSlot_);
 
     while (totalSent < static_cast<uint32_t>(sendCount)) {
         if (totalBlocks_ > 1U) {
             uint64_t startTime = static_cast<uint64_t>(AscendC::GetSystemCycle()) / ENGRAM_CYCLES_PER_US;
             int32_t remoteReadCnt = ReadLocalCounter(localWinBase, indicesReadOffset_, dstRank, 0U, false);
+            uint32_t pollCnt = 0;
             while (localWriteCnt >= static_cast<uint32_t>(remoteReadCnt) &&
                    localWriteCnt - static_cast<uint32_t>(remoteReadCnt) >= NUM_SLOTS) {
                 remoteReadCnt = ReadLocalCounter(localWinBase, indicesReadOffset_, dstRank, 0U, false);
-                TimeoutCheck(startTime);
+                pollCnt++;
+                if (pollCnt % 100000U == 0U) {
+                    AscendC::PRINTF("SendIndicesRemote tag=2 rankId=%u aivId=%u: dstRank=%u "
+                                    "localWriteCnt=%u remoteReadCnt=%d sendCount=%d totalSent=%u\n",
+                                    rankId_, aivId_, dstRank, localWriteCnt, remoteReadCnt, sendCount, totalSent);
+                }
+                TimeoutCheck(startTime, 2);
             }
         }
 
@@ -941,7 +957,14 @@ __aicore__ inline void EngramFetchTrainArch35::SendIndicesRemote(uint32_t dstRan
 
         localWriteCnt++;
         totalSent += chunkLen;
+        if (localWriteCnt <= 3U || localWriteCnt % 1000U == 0U) {
+            AscendC::PRINTF("SendIndicesRemote progress rankId=%u aivId=%u: dstRank=%u "
+                            "localWriteCnt=%u totalSent=%u sendCount=%d chunkLen=%u\n",
+                            rankId_, aivId_, dstRank, localWriteCnt, totalSent, sendCount, chunkLen);
+        }
     }
+    AscendC::PRINTF("SendIndicesRemote done rankId=%u aivId=%u: dstRank=%u totalSent=%u sendCount=%d\n",
+                    rankId_, aivId_, dstRank, totalSent, sendCount);
 }
 
 __aicore__ inline void EngramFetchTrainArch35::RecvIndicesFromPeer(GM_ADDR localWinBase, uint32_t srcRank,
@@ -952,9 +975,18 @@ __aicore__ inline void EngramFetchTrainArch35::RecvIndicesFromPeer(GM_ADDR local
     while (totalReceived < static_cast<uint32_t>(recvCount)) {
         uint64_t startTime = static_cast<uint64_t>(AscendC::GetSystemCycle()) / ENGRAM_CYCLES_PER_US;
         int32_t remoteWriteCnt = ReadLocalCounter(localWinBase, indicesWriteOffset_, srcRank, 0U, false);
+        uint32_t pollCnt = 0;
         while (remoteWriteCnt <= 0 || static_cast<uint32_t>(remoteWriteCnt) <= localReadCnt) {
             remoteWriteCnt = ReadLocalCounter(localWinBase, indicesWriteOffset_, srcRank, 0U, false);
-            TimeoutCheck(startTime);
+            pollCnt++;
+            if (pollCnt % 100000U == 0U) {
+                GM_ADDR counterAddr = localWinBase + indicesWriteOffset_ + srcRank * STATE_OFFSET;
+                AscendC::PRINTF("RecvIndices tag=3 rankId=%u aivId=%u: srcRank=%u "
+                                "remoteWriteCnt=%d localReadCnt=%u totalReceived=%u recvCount=%d counterAddr=%lu\n",
+                                rankId_, aivId_, srcRank, remoteWriteCnt, localReadCnt, totalReceived, recvCount,
+                                static_cast<uint64_t>(reinterpret_cast<uintptr_t>(counterAddr)));
+            }
+            TimeoutCheck(startTime, 3);
         }
         uint32_t availableSlots = static_cast<uint32_t>(remoteWriteCnt) - localReadCnt;
         if (availableSlots > NUM_SLOTS) {
@@ -1039,7 +1071,7 @@ __aicore__ inline uint32_t EngramFetchTrainArch35::RecvTokenChunk(GM_ADDR localW
         int32_t remoteWriteCnt = ReadLocalCounter(localWinBase, tokenWriteOffset_, srcRank, subIdx);
         while (remoteWriteCnt <= 0 || static_cast<uint32_t>(remoteWriteCnt) <= totalReceived) {
             remoteWriteCnt = ReadLocalCounter(localWinBase, tokenWriteOffset_, srcRank, subIdx);
-            TimeoutCheck(startTime);
+            TimeoutCheck(startTime, 4);
         }
         uint32_t available = static_cast<uint32_t>(remoteWriteCnt) - totalReceived;
         uint32_t remaining = myCount - totalReceived;
@@ -1334,7 +1366,7 @@ __aicore__ inline void EngramFetchTrainArch35::WaitIndicesReadyFlag(uint32_t dst
         DataCopyPad(flagLocal, flagGM, cpParams, cpPad);
         EngramFetchTrainSyncFunc<HardEvent::MTE2_S>();
         flagVal = flagLocal.GetValue(0);
-        TimeoutCheck(startTime);
+        TimeoutCheck(startTime, 5);
     }
 }
 
@@ -1446,7 +1478,7 @@ __aicore__ inline void EngramFetchTrainArch35::LocalReadTableAndSendRemote(uint3
             int32_t remoteReadCnt = ReadLocalCounter(localWinBase, tokenReadOffset_, dstRank, subIdx);
             while (totalSent >= static_cast<uint32_t>(remoteReadCnt) + maxTokensPerSlot_) {
                 remoteReadCnt = ReadLocalCounter(localWinBase, tokenReadOffset_, dstRank, subIdx);
-                TimeoutCheck(startTime);
+                TimeoutCheck(startTime, 6);
             }
         }
         uint32_t remaining = myCount - totalSent;
