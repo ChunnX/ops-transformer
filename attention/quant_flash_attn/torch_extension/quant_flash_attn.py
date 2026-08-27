@@ -7,12 +7,13 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-from typing import Optional, Union
 from enum import IntEnum
+from typing import Optional, Union
+
 import torch
 import torch_npu
-from torch.library import impl
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
+from torch.library import impl
 
 QFA_METADATA_OP_NAME = "quant_flash_attn_metadata"
 
@@ -259,7 +260,6 @@ class QuantFlashAttnOpBuilder(OpBuilder):
 # Instantiate the builder
 quant_flash_attn_op_builder = QuantFlashAttnOpBuilder()
 quant_flash_attn_op_builder._ensure_initialized()
-op_module = quant_flash_attn_op_builder.load()
 
 
 @impl(get_as_library(), QFA_METADATA_OP_NAME, "PrivateUse1")
@@ -288,7 +288,11 @@ def quant_flash_attn_metadata(
     Dispatcher implementation: NPU.
     'PrivateUse1' is dispatch key for custom NPU backends.
     """
-
+    torch._check(
+        quant_mode in (1, 5),
+        lambda: f"quant_mode of quant_flash_attn_metadata only supports 1 or 5, but got "
+        f"{quant_mode}",
+    )
     if layout_q == "TND":
         torch._check(
             batch_size == None,
@@ -414,8 +418,28 @@ def quant_flash_attn(
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
+    torch._check(
+        quant_mode in (1, 5),
+        lambda: f"quant_mode of quant_flash_attn only supports 1 or 5, but got "
+        f"{quant_mode}",
+    )
     quant_mode = _resolve_quant_mode(quant_mode)
     mask_mode = _resolve_mask_mode(mask_mode)
+
+    if quant_mode == int(QuantMode.A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16):
+        if q.dtype != torch.uint8:
+            raise ValueError(
+                f"In MxFP4 mode (quant_mode=5), q must be uint8, but got {q.dtype}"
+            )
+        if k.dtype != torch.uint8:
+            raise ValueError(
+                f"In MxFP4 mode (quant_mode=5), k must be uint8, but got {k.dtype}"
+            )
+        if v.dtype != torch.uint8:
+            raise ValueError(
+                f"In MxFP4 mode (quant_mode=5), v must be uint8, but got {v.dtype}"
+            )
+
     op_module = quant_flash_attn_op_builder.load()
     return op_module.quant_flash_attn(
         q,
