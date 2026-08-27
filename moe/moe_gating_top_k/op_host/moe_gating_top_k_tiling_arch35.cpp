@@ -652,7 +652,6 @@ void MoeGatingTopKTilingRegbase::SplitRows()
     }
     moeGatingTopKTilingData_.set_vmsCount(vmsCount);
 
-    int64_t expertCountAlign = Ops::Base::CeilAlign(expertCount_, 32L);
     int64_t batchRows = DEFAULT_BATCH_ROWS;
     if (expertCount_ == 1) {
         // expertCount==1: no alignment, per-row UB = (xIn + yOut + expertIdx + out) * depth(2)
@@ -663,9 +662,30 @@ void MoeGatingTopKTilingRegbase::SplitRows()
         maxBatchByUb = maxBatchByUb * 4 / 5;
         batchRows = std::min(std::max(maxBatchByUb, static_cast<int64_t>(1)), MAX_SINGLE_EXPERT_BATCH_ROWS);
     } else {
-        int64_t perRowUbSize = expertCountAlign * sizeof(float) * 2;
-        if (perRowUbSize > 0) {
-            int64_t maxBatchByUb = static_cast<int64_t>(aicoreParams_.ubSize) / (perRowUbSize * 2);
+        // Use kernel-matching expertCountAlign: perGroupExpertCountAlign * groupCount
+        int64_t groupExpertCount = expertCount_ / groupCount_;
+        int64_t groupExpertCountAlign = Ops::Base::CeilAlign(groupExpertCount, 32L);
+        int64_t expertCountAlignKernel = groupExpertCountAlign * groupCount_;
+
+        // Fixed UB (not scaled by batchRows):
+        // InitBase: bias+xSigmoid+xBias+index+sortedInGroup+finalSort = (dtypeSize + 28) * ECA
+        // without_group: outOut+xNorm+xNormWithBias+sorted+calcTmp = 60 * ECA
+        int64_t fixedUb = expertCountAlignKernel * (inputDtypeSize_ + 88);
+
+        // Per-batch-row UB:
+        // xInQueue (depth=2): 2 * ECA * sizeof(float) * (sizeof(float)/dtypeSize)
+        int64_t floatRatio = static_cast<int64_t>(sizeof(float)) / inputDtypeSize_;
+        int64_t perRowXIn = 2 * expertCountAlignKernel * static_cast<int64_t>(sizeof(float)) * floatRatio;
+        // yOutQueue + expertIdxOutQueue: kStride * (dtypeSize + int32)
+        int64_t blockElements = 32 / inputDtypeSize_;
+        int64_t kStride = ((k_ + blockElements - 1) / blockElements) * blockElements;
+        int64_t perRowOutput = kStride * (inputDtypeSize_ + static_cast<int64_t>(sizeof(int32_t)));
+        int64_t perRowBatch = perRowXIn + perRowOutput;
+
+        int64_t availableUb = static_cast<int64_t>(aicoreParams_.ubSize) - fixedUb;
+        if (perRowBatch > 0 && availableUb > 0) {
+            int64_t maxBatchByUb = availableUb / perRowBatch;
+            maxBatchByUb = maxBatchByUb * 4 / 5;
             batchRows = std::min(std::max(maxBatchByUb, static_cast<int64_t>(1)), MAX_BATCH_ROWS);
         }
     }
@@ -723,7 +743,7 @@ uint64_t MoeGatingTopKTilingRegbase::GetTilingKey() const
             return MOE_GATING_TOP_K_E_K_FULLLOAD_REGBASE_TILING_KEY;
         }
         bool isSimplifiedPath = (kGroup_ == groupCount_ || groupCount_ == expertCount_);
-        if (isSimplifiedPath && groupCount_ == 1 && k_ == 1) {
+        if (isSimplifiedPath) {
             return MOE_GATING_TOP_K_WITHOUT_GROUP_REGBASE_TILING_KEY;
         }
         return MOE_GATING_TOP_K_REGBASE_TILING_KEY;
@@ -733,13 +753,13 @@ uint64_t MoeGatingTopKTilingRegbase::GetTilingKey() const
     bool isTid2eidInt32 = (tid2eidDtype_ == ge::DataType::DT_INT32);
 
     if (isInputIdsInt32 && !isTid2eidInt32) {
-        return MOE_GATING_TOP_K_REGBASE_TILING_KEY + TILINGKEY_INT32_INT64_SUFFIX;
+        return MOE_GATING_TOP_K_WITHOUT_GROUP_REGBASE_TILING_KEY + TILINGKEY_INT32_INT64_SUFFIX;
     } else if (isInputIdsInt32 && isTid2eidInt32) {
-        return MOE_GATING_TOP_K_REGBASE_TILING_KEY + TILINGKEY_INT32_INT32_SUFFIX;
+        return MOE_GATING_TOP_K_WITHOUT_GROUP_REGBASE_TILING_KEY + TILINGKEY_INT32_INT32_SUFFIX;
     } else if (!isInputIdsInt32 && !isTid2eidInt32) {
-        return MOE_GATING_TOP_K_REGBASE_TILING_KEY + TILINGKEY_INT64_INT64_SUFFIX;
+        return MOE_GATING_TOP_K_WITHOUT_GROUP_REGBASE_TILING_KEY + TILINGKEY_INT64_INT64_SUFFIX;
     } else {
-        return MOE_GATING_TOP_K_REGBASE_TILING_KEY + TILINGKEY_INT64_INT32_SUFFIX;
+        return MOE_GATING_TOP_K_WITHOUT_GROUP_REGBASE_TILING_KEY + TILINGKEY_INT64_INT32_SUFFIX;
     }
 }
 

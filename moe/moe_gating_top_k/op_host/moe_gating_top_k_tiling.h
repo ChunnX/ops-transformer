@@ -80,6 +80,10 @@ TILING_DATA_FIELD_DEF(int64_t, batchRows);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MoeGatingTopK_10000, MoeGatingTopKRegbaseTilingData)
 REGISTER_TILING_DATA_CLASS(MoeGatingTopK_10005, MoeGatingTopKRegbaseTilingData)
+REGISTER_TILING_DATA_CLASS(MoeGatingTopK_10006, MoeGatingTopKRegbaseTilingData)
+REGISTER_TILING_DATA_CLASS(MoeGatingTopK_10007, MoeGatingTopKRegbaseTilingData)
+REGISTER_TILING_DATA_CLASS(MoeGatingTopK_10008, MoeGatingTopKRegbaseTilingData)
+REGISTER_TILING_DATA_CLASS(MoeGatingTopK_10009, MoeGatingTopKRegbaseTilingData)
 REGISTER_TILING_DATA_CLASS(MoeGatingTopK_10010, MoeGatingTopKRegbaseTilingData)
 struct MoeGatingTopKCompileInfo {};
 } // namespace optiling
