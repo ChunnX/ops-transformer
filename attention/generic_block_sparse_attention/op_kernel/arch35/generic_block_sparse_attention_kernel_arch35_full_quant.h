@@ -200,7 +200,7 @@ public:
             uint32_t historyLen = kvSeqlen - qSeqlen;
             uint32_t lastBlockTileSize = (historyLen + qTokenInBatch) % blockShapeY_ + 1;
 
-            constexpr uint32_t MAX_VALID_TOPK = 64U;
+            constexpr uint32_t MAX_VALID_TOPK = 256U;
 
             uint32_t kvSLoopNum = validTopK;
             int32_t validPhysicalIds[MAX_VALID_TOPK];
