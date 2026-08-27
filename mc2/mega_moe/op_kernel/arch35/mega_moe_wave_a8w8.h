@@ -801,6 +801,8 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     ExpertTokenPosition gmm1Position{};
     ExpertTokenPosition gmm2Position{};
     ExpertTokenPosition dispatchEndPosition{};
+    // GMM2 的滞后消费目标（见循环内注释）；首轮为零位置，GMM2 空转一轮。
+    ExpertTokenPosition gmm2LaggedTarget{};
     uint32_t combineBeginExpertIndex = 0U;
     uint32_t allCoreCombineExpertIndex = moeExpertPerRank_;
 
@@ -841,9 +843,23 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM1, ++gmm1Count);
         const uint32_t gmm1EndBlockIndex = startBlockIdx_;
 
+        /*
+         * GMM2 的 AIC 消费目标滞后一个 wave（gmm2LaggedTarget 是上一轮 GMM1 的终点）：
+         * GMM2 wave w 的输入是 wave w 的激活输出，AIV0 epilogue 在末批 MMAD 后仍需一段
+         * 向量时间才发布 activationToGmm2Flag；紧跟消费同一 wave 会让 AIC 反复自旋等激活
+         * （实测约占 E2E 15%）。滞后一个 wave 后等待清零；代价仅是流水尾部多一个 GMM2 wave。
+         * 仅 AIC 滞后：AIV0 的 GMM2 状态机保持原目标推进——它承担 allCoreCombineExpertState
+         * 的保存与本地行偏移推进，滞后它会让全核 combine 专家的状态晚一个 wave 才可用；
+         * combine 门控走 AIC 发布的 per-expert gmm2Ready flag，自动跟随 AIC 滞后，语义不变。
+         */
         GmmRuntimeState gmm2RuntimeState{startBlockIdx_, vecSetSyncCom, gmm2PingPongIdx_};
-        ProcessGmm2Wave(gmm2Position, waveEndPosition, gmm2ExpertState, gmm2AddrInfo, gmm2RuntimeState,
+        ExpertTokenPosition gmm2ConsumeTarget = waveEndPosition;
+        if constexpr (g_coreType == AIC) {
+            gmm2ConsumeTarget = gmm2LaggedTarget;
+        }
+        ProcessGmm2Wave(gmm2Position, gmm2ConsumeTarget, gmm2ExpertState, gmm2AddrInfo, gmm2RuntimeState,
                         allCoreCombineExpertIndex, allCoreCombineExpertState);
+        gmm2LaggedTarget = waveEndPosition;
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
 
         const bool hasNextWave = waveEndPosition.expertIdx < moeExpertPerRank_;
@@ -858,6 +874,17 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                               combineBufferConfig, allCoreCombineExpertIndex, allCoreCombineExpertState);
         combineBeginExpertIndex = combineEndExpertIndex;
         waveBeginPosition = waveEndPosition;
+    }
+
+    // 滞后流水收尾：仅 AIC 补跑最后一个 wave 的 GMM2（AIV 的 GMM2 状态机未滞后，无需补；
+    // combine 已在循环内按 per-expert flag 全量收齐）。
+    if constexpr (g_coreType == AIC) {
+        if (!IsSameExpertTokenPosition(gmm2Position, gmm2LaggedTarget)) {
+            GmmRuntimeState gmm2TailRuntimeState{startBlockIdx_, vecSetSyncCom, gmm2PingPongIdx_};
+            ProcessGmm2Wave(gmm2Position, gmm2LaggedTarget, gmm2ExpertState, gmm2AddrInfo, gmm2TailRuntimeState,
+                            allCoreCombineExpertIndex, allCoreCombineExpertState);
+            UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
+        }
     }
 
     if constexpr (!TopkWeightsPrefetch) {
