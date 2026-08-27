@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python
 # -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
@@ -17,9 +17,6 @@ criteria are kept consistent with tests/pytest/recurrent_gated_delta_rule_golden
 check_result().
 """
 
-import logging
-
-logger = logging.getLogger(__name__)
 import datetime
 import os
 import sys
@@ -36,7 +33,7 @@ _DISPLAY_THRESHOLD = 1 << 20
 
 
 def _print_log(data):
-    logger.info(
+    print(
         "[%s] [INFO]-%s:%s - %s"
         % (
             datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S"),
