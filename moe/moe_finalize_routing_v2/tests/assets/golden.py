@@ -15,6 +15,7 @@ import torch
 
 __spec__ = {
     "moe_finalize_routing_v2": "MoeFinalizeRoutingV2TestSpec",
+    "aclnnMoeFinalizeRoutingV3": "MoeFinalizeRoutingV2TestSpec",
 }
 
 
@@ -32,14 +33,38 @@ class MoeFinalizeRoutingV2TestSpec:
         a1=None,
         a2=None,
         v=None,
-        *,
         drop_pad_mode=0,
         zero_expert_range=None,
         copy_expert_range=None,
         constant_expert_range=None,
+        out=None,
         k=1,
         **kwargs,
     ):
+        def _to_np(t):
+            if t is None or isinstance(t, numpy.ndarray):
+                return t
+            if hasattr(t, "numpy"):
+                if hasattr(t, "detach"):
+                    t = t.detach().cpu()
+                try:
+                    return t.numpy()
+                except TypeError:
+                    return t.float().numpy()
+            return numpy.asarray(t)
+
+        expanded_x = _to_np(expanded_x)
+        expanded_row_idx = _to_np(expanded_row_idx)
+        x1 = _to_np(x1)
+        x2 = _to_np(x2)
+        bias = _to_np(bias)
+        scales = _to_np(scales)
+        expert_idx = _to_np(expert_idx)
+        x = _to_np(x)
+        a1 = _to_np(a1)
+        a2 = _to_np(a2)
+        v = _to_np(v)
+
         if zero_expert_range is None:
             zero_expert_range = []
         if copy_expert_range is None:
@@ -136,9 +161,15 @@ class MoeFinalizeRoutingV2TestSpec:
         a1=None,
         a2=None,
         v=None,
+        drop_pad_mode=None,
+        zero_expert_range=None,
+        copy_expert_range=None,
+        constant_expert_range=None,
+        out=None,
         **kwargs,
     ):
-        drop_pad_mode = kwargs.get("drop_pad_mode", 0)
+        if drop_pad_mode is None:
+            drop_pad_mode = kwargs.get("drop_pad_mode", 0)
         expand_n = expanded_row_idx.shape[0]
         expanded_row_idx = numpy.random.choice(
             expand_n, expand_n, replace=False
@@ -149,8 +180,9 @@ class MoeFinalizeRoutingV2TestSpec:
             expanded_row_idx[expanded_row_idx >= e * c] = -1
         if bias is not None:
             e = bias.shape[0]
+            expert_size = int(numpy.prod(expert_idx.shape))
             expert_idx = (
-                numpy.random.randint(0, e, size=expert_idx.size)
+                numpy.random.randint(0, e, size=expert_size)
                 .reshape(expert_idx.shape)
                 .astype(numpy.int32)
             )
