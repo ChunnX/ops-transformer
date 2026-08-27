@@ -14,7 +14,7 @@
 #include "aclnn_common.h"
 
 // Diagnostic source switch. Keep this in sync with mega_moe.py when tracing.
-#define MEGA_MOE_TORCH_EXTENSION_A8W4_TRACE 0
+#define MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE 0
 
 namespace op_api {
 using npu_utils = at_npu::native::NpuUtils;
@@ -113,7 +113,7 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
         dispatchQuantOutDtype.has_value() ? static_cast<int64_t>(GetAclDataType(dispatchQuantOutDtype.value())) : 28;
 
     at::Tensor y;
-#if MEGA_MOE_TORCH_EXTENSION_A8W4_TRACE
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
     constexpr int64_t traceOutputBytes = 2 * 1024 * 1024;
     constexpr int64_t bf16Bytes = 2;
     int64_t traceRows = (traceOutputBytes + h * bf16Bytes - 1) / (h * bf16Bytes);

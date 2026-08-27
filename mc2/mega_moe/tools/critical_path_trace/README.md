@@ -7,11 +7,12 @@ It is only valid for the FP8-activation/FP4-weight `MegaMoeA8W4Wave` path.
 
 Before rebuilding, manually change all three switches:
 
-1. In `op_kernel/arch35/common/mega_moe_a8w4_trace_config.h`, set
-   `MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE` to `1`. This switch is shared by the kernel, host infer-shape and
-   tiling code.
-2. In `torch_extension/csrc/mega_moe.cpp`, set `MEGA_MOE_TORCH_EXTENSION_A8W4_TRACE` to `1`.
-3. In `torch_extension/mega_moe.py`, set `_A8W4_TRACE_ENABLED = True`.
+Search for `MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE` and change all three definitions:
+
+1. In `op_kernel/arch35/common/mega_moe_a8w4_trace_config.h`, set it to `1`. This switch is shared by the kernel,
+   host infer-shape and tiling code.
+2. In `torch_extension/csrc/mega_moe.cpp`, set it to `1`.
+3. In `torch_extension/mega_moe.py`, set it to `True`.
 
 The second and third switches are only needed for the torch extension. A direct ACLNN caller must instead allocate
 `y` with shape `[max(bs, ceil(2 MiB / (h * sizeof(y_dtype)))), h]` itself.
