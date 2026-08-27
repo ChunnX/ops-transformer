@@ -41,10 +41,12 @@ L2 组装的 ACLNN L0，输入输出契约和 workspace 规划由本目录的手
 
 FlashKDA 的 `@entry` 公共参数严格对应 `l0op::FlashKda`：8 个输入 tensor、
 `scale/lowerBound` 两个属性、2 个输出 tensor；`group/dv_base/block_num` 是
-构建期 variant 选择值，只记录在 schema v2 的 `internal_parameters` 中，不进入 L0
+构建期 variant 选择值，只记录在 schema v3 的 `internal_parameters` 中，不进入 L0
 公共签名。registry 生成阶段会把每个 variant 的 entry binding plan 与 Provider
 sidecar/HostSchema 逐项校验；runtime binding、constexpr、workspace dtype/shape 或
 六个 variant 间的公共 entry 身份任一漂移都会使混合包构建失败。
+schema v3 还显式声明 `output_parameters=["o", "st_out"]`，使后续通用 C++
+lowering 可以可靠生成 `OP_INPUT/OP_OUTPUT`，无需按参数位置猜测输出。
 
 ## 构建
 
@@ -136,7 +138,7 @@ nm -D -C "${extract_dir}/packages/vendors/<vendor>_transformer/op_api/lib/libcus
 新版 Provider ABI `libnnopbase.so` 匹配的 `LD_LIBRARY_PATH` 做 `ldd`/`dlopen`
 检查。离线构建还必须预置项目声明的第三方依赖，否则 CPack preinstall 可能进入
 依赖下载流程。`verify_mixed_run.py` 不安装归档，并会自动检查 registry/manifest
-语义摘要、entry schema v2、12 个公共参数、3 个内部 specialization、artifact
+语义摘要、entry schema v3、12 个公共参数、2 个输出参数、3 个内部 specialization、artifact
 digest、包内 checksum、传统 kernel 数量、Provider DSO 数量和混合导出符号。
 
 ## 实机验证

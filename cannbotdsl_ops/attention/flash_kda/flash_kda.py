@@ -2001,6 +2001,7 @@ def flash_kda_provider(
     name="FlashKda",
     provider_family="flash_kda_provider",
     internal_parameters=("group", "dv_base", "block_num"),
+    output_parameters=("o", "st_out"),
 )
 def flash_kda_l0_entry(
     ctx: cannbotdsl.EntryContext,

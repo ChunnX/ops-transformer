@@ -29,6 +29,7 @@ PUBLIC_PARAMETERS = [
     "st_out",
 ]
 INTERNAL_PARAMETERS = ["group", "dv_base", "block_num"]
+OUTPUT_PARAMETERS = ["o", "st_out"]
 REQUIRED_SYMBOLS = [
     "aclnnChunkKdaFwd",
     "aclnnChunkKdaFwdGetWorkspaceSize",
@@ -154,12 +155,14 @@ def _verify_provider_package(
         if not isinstance(artifact, dict):
             raise AssertionError(f"artifact {index} is not an object")
         entry = artifact.get("entry")
-        if not isinstance(entry, dict) or entry.get("schema_version") != 2:
-            raise AssertionError(f"artifact {index} does not carry entry schema v2")
+        if not isinstance(entry, dict) or entry.get("schema_version") != 3:
+            raise AssertionError(f"artifact {index} does not carry entry schema v3")
         if entry.get("public_parameters") != PUBLIC_PARAMETERS:
             raise AssertionError(f"artifact {index} public L0 parameters drifted")
         if entry.get("internal_parameters") != INTERNAL_PARAMETERS:
             raise AssertionError(f"artifact {index} internal parameters drifted")
+        if entry.get("output_parameters") != OUTPUT_PARAMETERS:
+            raise AssertionError(f"artifact {index} output parameters drifted")
         binary = _resolve_relative(manifest_path.parent, artifact["binary"])
         sidecar = _resolve_relative(manifest_path.parent, artifact["sidecar"])
         if _sha256(binary) != artifact.get("binary_sha256"):
