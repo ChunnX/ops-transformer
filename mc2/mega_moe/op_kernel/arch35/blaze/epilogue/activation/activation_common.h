@@ -73,7 +73,7 @@ struct SwiGluParams {
     float clampLimit = 0.0F;
 };
 
-struct SituParams {
+struct SituGluParams {
     float clampLimit = 0.0F;
     float beta = 0.0F;
     float invBeta = 0.0F;
@@ -103,6 +103,14 @@ struct ActivationLoopPlan {
     uint32_t fullVectorLoopCountPerRow = 0U;
     uint32_t tailElementCountPerRow = 0U;
     uint32_t outputPaddingElementCountPerRow = 0U;
+
+    // 以下字段均为尾块的标量派生结果，具体激活仅在自身 VecScope 内据此创建 mask。
+    uint32_t tailColumnOffsetElements = 0U;
+    uint32_t tailComputeMaskElementCount = 0U;
+    uint32_t firstTailStoreMaskElementCount = 0U;
+    uint32_t secondPaddingStoreMaskElementCount = 0U;
+    uint16_t tailLoopCount = 0U;
+    uint16_t secondPaddingLoopCount = 0U;
 };
 
 template <typename InputType>
@@ -118,6 +126,21 @@ __aicore__ inline ActivationLoopPlan BuildActivationLoopPlan(const GatedActivati
     plan.outputPaddingElementCountPerRow = args.outputRowStrideElements > args.validColumnCount
                                                ? args.outputRowStrideElements - args.validColumnCount
                                                : 0U;
+    if (plan.tailElementCountPerRow > 0U) {
+        plan.tailColumnOffsetElements = plan.fullVectorLoopCountPerRow * VECTOR_LENGTH_FP32;
+        plan.tailComputeMaskElementCount = plan.tailElementCountPerRow;
+        plan.tailLoopCount = 1U;
+
+        const uint32_t firstTailAndPaddingElementCount =
+            plan.tailElementCountPerRow + plan.outputPaddingElementCountPerRow;
+        if (firstTailAndPaddingElementCount <= VECTOR_LENGTH_FP32) {
+            plan.firstTailStoreMaskElementCount = firstTailAndPaddingElementCount;
+        } else {
+            plan.firstTailStoreMaskElementCount = VECTOR_LENGTH_FP32;
+            plan.secondPaddingStoreMaskElementCount = firstTailAndPaddingElementCount - VECTOR_LENGTH_FP32;
+            plan.secondPaddingLoopCount = 1U;
+        }
+    }
     return plan;
 }
 

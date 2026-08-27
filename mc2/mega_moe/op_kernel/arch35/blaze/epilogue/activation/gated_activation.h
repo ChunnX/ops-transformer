@@ -18,9 +18,9 @@
 
 #if defined(__DAV_C310__)
 #include "activation_common.h"
-#include "situ_activation.h"
+#include "situglu_activation.h"
 #include "swiglu_activation.h"
-#include "swiglu_oai_activation.h"
+#include "swigluoai_activation.h"
 
 namespace MegaMoeImpl {
 namespace Activation {
@@ -33,18 +33,18 @@ __aicore__ inline void RunGatedActivation(
         const float invBeta = params.beta != 0.0f ? 1.0f / params.beta : 1.0f;
         if (params.subMode == MegaMoeActSubMode::LINEAR) {
             const float invAlpha = params.alpha != 0.0f ? 1.0f / params.alpha : 1.0f;
-            const SituParams situParams{params.clampLimit, params.beta, invBeta, params.alpha, invAlpha};
-            RunSiTU<InputType, FuseTopkWeight, true>(args, situParams);
+            const SituGluParams situGluParams{params.clampLimit, params.beta, invBeta, params.alpha, invAlpha};
+            RunSiTUGLU<InputType, FuseTopkWeight, true>(args, situGluParams);
         } else {
-            const SituParams situParams{params.clampLimit, params.beta, invBeta, 1.0f, 1.0f};
-            RunSiTU<InputType, FuseTopkWeight, false>(args, situParams);
+            const SituGluParams situGluParams{params.clampLimit, params.beta, invBeta, 1.0f, 1.0f};
+            RunSiTUGLU<InputType, FuseTopkWeight, false>(args, situGluParams);
         }
     } else if (params.mode == MegaMoeActMode::SWIGLU_STEP) {
         const SwiGluParams swiGluParams{params.clampLimit};
         RunSwiGLU<InputType, FuseTopkWeight, true>(args, swiGluParams);
     } else if (params.mode == MegaMoeActMode::SWIGLU_OAI) {
         const SwiGluOaiParams swiGluOaiParams{params.clampLimit, params.alpha, params.beta};
-        RunSwiGLUOai<InputType, FuseTopkWeight>(args, swiGluOaiParams);
+        RunSwiGLUOAI<InputType, FuseTopkWeight>(args, swiGluOaiParams);
     } else {
         const SwiGluParams swiGluParams{params.clampLimit};
         RunSwiGLU<InputType, FuseTopkWeight, false>(args, swiGluParams);
