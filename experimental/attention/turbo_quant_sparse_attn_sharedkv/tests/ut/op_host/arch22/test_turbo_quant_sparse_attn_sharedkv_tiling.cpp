@@ -3,6 +3,9 @@
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 #include <gtest/gtest.h>
@@ -37,8 +40,7 @@ std::vector<TensorDesc> Inputs(ge::DataType dtype = ge::DT_BF16)
 
 std::vector<TensorDesc> Outputs(ge::DataType dtype = ge::DT_BF16)
 {
-    return {{{{1, 64, 512}, {1, 64, 512}}, dtype, ge::FORMAT_ND},
-            {{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND}};
+    return {{{{1, 64, 512}, {1, 64, 512}}, dtype, ge::FORMAT_ND}, {{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND}};
 }
 
 std::vector<OpAttr> Attrs()
@@ -69,11 +71,11 @@ std::vector<OpAttr> AttrsWith(const std::string &name, const AnyValue &value)
 }
 
 bool RunTilingCaseWithOutputs(const std::vector<TensorDesc> &inputs, const std::vector<TensorDesc> &outputs,
-                    const std::vector<OpAttr> &attrs, TilingInfo &info)
+                              const std::vector<OpAttr> &attrs, TilingInfo &info)
 {
     CompileInfo compileInfo;
-    gert::TilingContextPara para("TurboQuantSparseAttnSharedkv", inputs, outputs, attrs, &compileInfo,
-                                 "Ascend910B", 64, 262144, 16384);
+    gert::TilingContextPara para("TurboQuantSparseAttnSharedkv", inputs, outputs, attrs, &compileInfo, "Ascend910B", 64,
+                                 262144, 16384);
     return ExecuteTiling(para, info);
 }
 
@@ -113,17 +115,17 @@ TEST(TurboQuantSparseAttnSharedkvTiling, AcceptsSupportedCompressionRatios)
 
 TEST(TurboQuantSparseAttnSharedkvTiling, RejectsWrongTurboQuantContract)
 {
-    for (const auto &entry : std::vector<std::pair<std::string, AnyValue>>{
-             {"cmp_ratio", AnyValue::CreateFrom<int64_t>(8)},
-             {"cmp_kv_stride", AnyValue::CreateFrom<int64_t>(0)},
-             {"kv_quant_mode", AnyValue::CreateFrom<int64_t>(1)},
-             {"cmp_kv_stride", AnyValue::CreateFrom<int64_t>(33025)},
-             {"ori_mask_mode", AnyValue::CreateFrom<int64_t>(3)},
-             {"cmp_mask_mode", AnyValue::CreateFrom<int64_t>(4)},
-             {"ori_win_left", AnyValue::CreateFrom<int64_t>(-1)},
-             {"ori_win_right", AnyValue::CreateFrom<int64_t>(1)},
-             {"layout_q", AnyValue::CreateFrom<std::string>("BSND")},
-             {"layout_kv", AnyValue::CreateFrom<std::string>("BSND")}}) {
+    for (const auto &entry :
+         std::vector<std::pair<std::string, AnyValue>>{{"cmp_ratio", AnyValue::CreateFrom<int64_t>(8)},
+                                                       {"cmp_kv_stride", AnyValue::CreateFrom<int64_t>(0)},
+                                                       {"kv_quant_mode", AnyValue::CreateFrom<int64_t>(1)},
+                                                       {"cmp_kv_stride", AnyValue::CreateFrom<int64_t>(33025)},
+                                                       {"ori_mask_mode", AnyValue::CreateFrom<int64_t>(3)},
+                                                       {"cmp_mask_mode", AnyValue::CreateFrom<int64_t>(4)},
+                                                       {"ori_win_left", AnyValue::CreateFrom<int64_t>(-1)},
+                                                       {"ori_win_right", AnyValue::CreateFrom<int64_t>(1)},
+                                                       {"layout_q", AnyValue::CreateFrom<std::string>("BSND")},
+                                                       {"layout_kv", AnyValue::CreateFrom<std::string>("BSND")}}) {
         TilingInfo info;
         EXPECT_FALSE(RunTilingCase(Inputs(), AttrsWith(entry.first, entry.second), info)) << entry.first;
     }
@@ -191,7 +193,6 @@ TEST(TurboQuantSparseAttnSharedkvTiling, RejectsWrongAuxiliaryInput)
     emptyOriBlockTable[5] = {{{1, 0}, {1, 0}}, ge::DT_INT32, ge::FORMAT_ND};
     TilingInfo emptyOriBlockTableInfo;
     EXPECT_FALSE(RunTilingCase(emptyOriBlockTable, Attrs(), emptyOriBlockTableInfo));
-
 }
 
 TEST(TurboQuantSparseAttnSharedkvTiling, ChecksSlotAndTopkShape)

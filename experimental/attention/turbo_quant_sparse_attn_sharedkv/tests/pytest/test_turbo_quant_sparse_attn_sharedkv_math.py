@@ -1,3 +1,15 @@
+#!/usr/bin/env python3
+# -*- coding: UTF-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 import math
 
 import numpy as np
@@ -60,7 +72,9 @@ def test_corrected_scale_preserves_quantized_row_norm():
     selected = ascending[ascending_codes]
     corrected_scale = np.linalg.norm(latent) / np.linalg.norm(selected)
     reconstructed = selected * corrected_scale
-    np.testing.assert_allclose(np.linalg.norm(reconstructed), np.linalg.norm(latent), rtol=2e-7)
+    np.testing.assert_allclose(
+        np.linalg.norm(reconstructed), np.linalg.norm(latent), rtol=2e-7
+    )
 
 
 def test_shared_kv_attention_is_hadamard_basis_invariant():
@@ -141,7 +155,9 @@ def test_attention_fold_preserves_original_and_compressed_regions():
     )
 
     original_scores = query @ original.T / math.sqrt(query.shape[-1])
-    compressed_scores = (query @ compressed.T) * scales[None, :] / math.sqrt(query.shape[-1])
+    compressed_scores = (
+        (query @ compressed.T) * scales[None, :] / math.sqrt(query.shape[-1])
+    )
     scores = np.concatenate((original_scores, compressed_scores), axis=-1)
     max_values = np.maximum(scores.max(axis=-1), sinks)
     score_exp = np.exp(scores - max_values[:, None])
@@ -168,8 +184,12 @@ def test_padding_scales_are_neutral_before_masking():
 
     folded_scores = (query @ centroids.T) * scales[None, :]
     folded_scores[:, valid_columns:] = -np.inf
-    reference_scores = query @ (centroids[:valid_columns] * scales[:valid_columns, None]).T
-    np.testing.assert_allclose(folded_scores[:, :valid_columns], reference_scores, rtol=2e-12, atol=2e-12)
+    reference_scores = (
+        query @ (centroids[:valid_columns] * scales[:valid_columns, None]).T
+    )
+    np.testing.assert_allclose(
+        folded_scores[:, :valid_columns], reference_scores, rtol=2e-12, atol=2e-12
+    )
     assert np.all(np.isneginf(folded_scores[:, valid_columns:]))
 
 
@@ -177,13 +197,21 @@ def test_fp16_fold_rounding_remains_numerically_close():
     rng = np.random.default_rng(5)
     query = rng.standard_normal((8, 64)).astype(np.float32)
     centroids = rng.standard_normal((41, 64)).astype(np.float32)
-    scales = np.exp(rng.uniform(np.log(2**-4), np.log(2**4), centroids.shape[0])).astype(np.float16)
+    scales = np.exp(
+        rng.uniform(np.log(2**-4), np.log(2**4), centroids.shape[0])
+    ).astype(np.float16)
     sinks = rng.standard_normal(query.shape[0]).astype(np.float32)
 
-    baseline_kv = (centroids * scales.astype(np.float32)[:, None]).astype(np.float16).astype(np.float32)
+    baseline_kv = (
+        (centroids * scales.astype(np.float32)[:, None])
+        .astype(np.float16)
+        .astype(np.float32)
+    )
     folded_kv = centroids.astype(np.float16).astype(np.float32)
     reference = _attention_with_sinks(query, baseline_kv, baseline_kv, sinks)
-    folded = _folded_shared_kv_attention(query, folded_kv, scales.astype(np.float32), sinks)
+    folded = _folded_shared_kv_attention(
+        query, folded_kv, scales.astype(np.float32), sinks
+    )
 
     output_error = folded[0] - reference[0]
     assert np.linalg.norm(output_error) / np.linalg.norm(reference[0]) < 2e-3

@@ -62,8 +62,7 @@ private:
     static constexpr uint32_t K_L0_SPLIT_SIZE = 128;  // k方向L0切分
     static constexpr uint32_t K_L1_SPLIT_SIZE = 256;  // k方向L1切分
     static constexpr uint32_t N_WORKSPACE_SIZE = 512; // n方向切分
-    static constexpr uint32_t D_SPLIT_SIZE = 256; // d轴切分
-
+    static constexpr uint32_t D_SPLIT_SIZE = 256;     // d轴切分
 
     static constexpr uint32_t L1_BLOCK_SIZE = (64 * 512 * sizeof(Q_T));
     static constexpr uint32_t L1_BLOCK_OFFSET = 64 * 512;
@@ -129,10 +128,7 @@ private:
     LocalTensor<MM_OUT_T> cL0TensorPingPong;
 
     // L0AB m <> mte1 EventID
-    __aicore__ inline uint32_t Mte1MmABEventId(uint32_t idx)
-    {
-        return (L0AB_EVENT0 + idx);
-    }
+    __aicore__ inline uint32_t Mte1MmABEventId(uint32_t idx) { return (L0AB_EVENT0 + idx); }
 
     __aicore__ inline uint32_t GetQPL1RealIdx(uint32_t mIdx, uint32_t k1Idx)
     {
@@ -183,9 +179,10 @@ __aicore__ inline void SASCubeBlock<SAST>::InitMm2GlobalTensor(GlobalTensor<KV_T
 }
 
 template <typename SAST>
-__aicore__ inline void
-SASCubeBlock<SAST>::InitPageAttentionInfo(GlobalTensor<KV_T> oriKvGm, const GlobalTensor<KV_T> &kvMergeGm,
-                                          GlobalTensor<int32_t> oriBlockTableGm, GlobalTensor<int32_t> cmpBlockTableGm)
+__aicore__ inline void SASCubeBlock<SAST>::InitPageAttentionInfo(GlobalTensor<KV_T> oriKvGm,
+                                                                 const GlobalTensor<KV_T> &kvMergeGm,
+                                                                 GlobalTensor<int32_t> oriBlockTableGm,
+                                                                 GlobalTensor<int32_t> cmpBlockTableGm)
 {
     this->oriKvGm = oriKvGm;
     this->kvMergeGm_ = kvMergeGm;
@@ -391,7 +388,8 @@ __aicore__ inline void SASCubeBlock<SAST>::ComputeMm1(const RunInfo &info, const
                         startPos.bIdx = info.bIdx;
                         startPos.n2Idx = info.n2Idx;
                         startPos.s2Idx = curS2Offset;
-                        startPos.dIdx = kL1 * D_SPLIT_SIZE;  // mm1 右矩阵 bn2s2d, d为k轴不切; mm2 右矩阵, s2为k轴, d轴切分
+                        startPos.dIdx =
+                            kL1 * D_SPLIT_SIZE; // mm1 右矩阵 bn2s2d, d为k轴不切; mm2 右矩阵, s2为k轴, d轴切分
                         DataCopyPA<KV_T>(kTensor, oriKvGm, oriBlockTableGm, shape, startPos);
 
                         // 更新循环变量
@@ -409,12 +407,13 @@ __aicore__ inline void SASCubeBlock<SAST>::ComputeMm1(const RunInfo &info, const
                     nd2nzPara.srcNdMatrixStride = 0;
                     nd2nzPara.dstNzMatrixStride = 0;
 
-                    uint32_t headStride  = constInfo.headDim;
-                    uint32_t seqStride   = constInfo.kvHeadNum * constInfo.headDim;
+                    uint32_t headStride = constInfo.headDim;
+                    uint32_t seqStride = constInfo.kvHeadNum * constInfo.headDim;
                     uint32_t batchStride = constInfo.kvSeqSize * seqStride;
 
                     uint32_t curS2 = info.s2Idx * constInfo.s2BaseSize + info.s2StartPoint;
-                    uint64_t offset = (uint64_t)info.bIdx * batchStride + (uint64_t)curS2 * seqStride + (uint64_t)info.n2Idx * headStride + kL1 * D_SPLIT_SIZE;
+                    uint64_t offset = (uint64_t)info.bIdx * batchStride + (uint64_t)curS2 * seqStride +
+                                      (uint64_t)info.n2Idx * headStride + kL1 * D_SPLIT_SIZE;
                     DataCopy(bL1Tensor, oriKvGm[offset], nd2nzPara);
                 } else if constexpr (KV_LAYOUT_T == SAS_LAYOUT::TND) {
                     uint32_t curS2Offset = info.s2Idx * constInfo.s2BaseSize + info.s2StartPoint;
@@ -428,8 +427,10 @@ __aicore__ inline void SASCubeBlock<SAST>::ComputeMm1(const RunInfo &info, const
                         nd2nzPara.dstNzNStride = 1;
                         nd2nzPara.srcNdMatrixStride = 0;
                         nd2nzPara.dstNzMatrixStride = 0;
-                        DataCopy(bL1Tensor, oriKvGm[info.tensorBOffset + curS2Offset * constInfo.headDim +
-                                nL1 * N_SPLIT_SIZE * constInfo.headDim], nd2nzPara);
+                        DataCopy(bL1Tensor,
+                                 oriKvGm[info.tensorBOffset + curS2Offset * constInfo.headDim +
+                                         nL1 * N_SPLIT_SIZE * constInfo.headDim],
+                                 nd2nzPara);
                     } else {
                         Nd2NzParams nd2nzPara;
                         nd2nzPara.ndNum = 1;
@@ -441,9 +442,9 @@ __aicore__ inline void SASCubeBlock<SAST>::ComputeMm1(const RunInfo &info, const
                         nd2nzPara.srcNdMatrixStride = 0;
                         nd2nzPara.dstNzMatrixStride = 0;
                         DataCopy(bL1Tensor,
-                                    oriKvGm[info.tensorBOffset + curS2Offset * constInfo.headDim + (constInfo.headDim >> 1) +
-                                        nL1 * N_SPLIT_SIZE * constInfo.headDim],
-                                    nd2nzPara);
+                                 oriKvGm[info.tensorBOffset + curS2Offset * constInfo.headDim +
+                                         (constInfo.headDim >> 1) + nL1 * N_SPLIT_SIZE * constInfo.headDim],
+                                 nd2nzPara);
                     }
                 }
             } else {
@@ -566,7 +567,6 @@ __aicore__ inline void SASCubeBlock<SAST>::ComputeMm1(const RunInfo &info, const
     qpL1BufIter += mL1Loops;
 }
 
-
 template <typename SAST>
 __aicore__ inline void SASCubeBlock<SAST>::ComputeMm2(const RunInfo &info, const MSplitInfo mSplitInfo)
 {
@@ -641,7 +641,8 @@ __aicore__ inline void SASCubeBlock<SAST>::ComputeMm2(const RunInfo &info, const
                             startPos.bIdx = info.bIdx;
                             startPos.n2Idx = info.n2Idx;
                             startPos.s2Idx = curS2Offset;
-                            startPos.dIdx = nL1 * N_SPLIT_SIZE;  // mm1 右矩阵 bn2s2d, d为k轴不切; mm2 右矩阵, s2为k轴, d轴切分
+                            startPos.dIdx =
+                                nL1 * N_SPLIT_SIZE; // mm1 右矩阵 bn2s2d, d为k轴不切; mm2 右矩阵, s2为k轴, d轴切分
                             PAShape shape;
                             shape.blockSize = constInfo.paOriBlockSize;
                             shape.headNum = constInfo.kvHeadNum;
@@ -670,12 +671,13 @@ __aicore__ inline void SASCubeBlock<SAST>::ComputeMm2(const RunInfo &info, const
                         nd2nzPara.srcNdMatrixStride = 0;
                         nd2nzPara.dstNzMatrixStride = 0;
 
-                        uint32_t headStride  = constInfo.headDim;
-                        uint32_t seqStride   = constInfo.kvHeadNum * constInfo.headDim;
+                        uint32_t headStride = constInfo.headDim;
+                        uint32_t seqStride = constInfo.kvHeadNum * constInfo.headDim;
                         uint32_t batchStride = constInfo.kvSeqSize * seqStride;
 
                         uint32_t curS2 = info.s2Idx * constInfo.s2BaseSize + info.s2StartPoint;
-                        uint64_t offset = (uint64_t)info.bIdx * batchStride + (uint64_t)curS2 * seqStride + (uint64_t)info.n2Idx * headStride + nL1 * N_SPLIT_SIZE;
+                        uint64_t offset = (uint64_t)info.bIdx * batchStride + (uint64_t)curS2 * seqStride +
+                                          (uint64_t)info.n2Idx * headStride + nL1 * N_SPLIT_SIZE;
                         subvTensor = bL1Tensor[(kL1 - kOffset) * 128 * N_SPLIT_SIZE];
                         DataCopy(subvTensor, oriKvGm[offset], nd2nzPara);
                     } else if constexpr (KV_LAYOUT_T == SAS_LAYOUT::TND) {
@@ -690,8 +692,9 @@ __aicore__ inline void SASCubeBlock<SAST>::ComputeMm2(const RunInfo &info, const
                         nd2nzPara.srcNdMatrixStride = 0;
                         nd2nzPara.dstNzMatrixStride = 0;
                         DataCopy(bL1Tensor[(kL1 - kOffset) * 128 * N_SPLIT_SIZE],
-                                oriKvGm[info.tensorBOffset + curS2Offset * constInfo.headDim + kL1 * 128 * constInfo.headDim +
-                                nL1 * N_SPLIT_SIZE], nd2nzPara);
+                                 oriKvGm[info.tensorBOffset + curS2Offset * constInfo.headDim +
+                                         kL1 * 128 * constInfo.headDim + nL1 * N_SPLIT_SIZE],
+                                 nd2nzPara);
                     }
                 } else {
                     Nd2NzParams nd2nzPara;

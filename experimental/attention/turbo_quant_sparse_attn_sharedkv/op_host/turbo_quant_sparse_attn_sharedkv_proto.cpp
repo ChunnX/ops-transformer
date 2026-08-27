@@ -59,5 +59,7 @@ ge::graphStatus InferDataTypeTurboQuantSparseAttnSharedkv(gert::InferDataTypeCon
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP(TurboQuantSparseAttnSharedkv).InferShape(InferShapeTurboQuantSparseAttnSharedkv).InferDataType(InferDataTypeTurboQuantSparseAttnSharedkv);
+IMPL_OP(TurboQuantSparseAttnSharedkv)
+    .InferShape(InferShapeTurboQuantSparseAttnSharedkv)
+    .InferDataType(InferDataTypeTurboQuantSparseAttnSharedkv);
 } // namespace ops

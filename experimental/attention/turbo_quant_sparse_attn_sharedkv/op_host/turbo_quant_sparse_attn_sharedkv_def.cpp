@@ -18,7 +18,8 @@
 namespace ops {
 class TurboQuantSparseAttnSharedkv : public OpDef {
 public:
-    explicit TurboQuantSparseAttnSharedkv(const char *name) : OpDef(name)
+    explicit TurboQuantSparseAttnSharedkv(const char *name)
+        : OpDef(name)
     {
         this->Input("q")
             .ParamType(REQUIRED)
@@ -100,10 +101,10 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Attr("softmax_scale").AttrType(REQUIRED).Float(1.0);
         this->Attr("cmp_ratio").AttrType(REQUIRED).Int(4);
-        this->Attr("ori_mask_mode").AttrType(REQUIRED).Int(4); // ori_mask_mode默认值4
-        this->Attr("cmp_mask_mode").AttrType(REQUIRED).Int(3); // cmp_mask_mode默认值3
-        this->Attr("ori_kv_stride").AttrType(REQUIRED).Int(0); // stride of ori_kv block in elements
-        this->Attr("cmp_kv_stride").AttrType(REQUIRED).Int(0); // stride of cmp_kv block in elements
+        this->Attr("ori_mask_mode").AttrType(REQUIRED).Int(4);  // ori_mask_mode默认值4
+        this->Attr("cmp_mask_mode").AttrType(REQUIRED).Int(3);  // cmp_mask_mode默认值3
+        this->Attr("ori_kv_stride").AttrType(REQUIRED).Int(0);  // stride of ori_kv block in elements
+        this->Attr("cmp_kv_stride").AttrType(REQUIRED).Int(0);  // stride of cmp_kv block in elements
         this->Attr("ori_win_left").AttrType(OPTIONAL).Int(127); // ori_win_left默认值127
         this->Attr("ori_win_right").AttrType(OPTIONAL).Int(0);
         this->Attr("layout_q").AttrType(OPTIONAL).String("TND");

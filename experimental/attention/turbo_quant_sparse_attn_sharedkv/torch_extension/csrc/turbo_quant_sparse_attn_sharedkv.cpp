@@ -42,8 +42,8 @@ std::tuple<at::Tensor, at::Tensor> TurboQuantSparseAttnSharedkv(
     const c10::optional<at::Tensor> &cuSeqlensCmpKv, const c10::optional<at::Tensor> &sequsedQ,
     const c10::optional<at::Tensor> &sequsedKv, const c10::optional<at::Tensor> &sinks,
     const c10::optional<at::Tensor> &metadata, double softmaxScale, int64_t cmpRatio, int64_t oriMaskMode,
-    int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight, c10::string_view layoutQ,
-    c10::string_view layoutKv, bool returnSoftmaxLse, int64_t kvQuantMode)
+    int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight, c10::string_view layoutQ, c10::string_view layoutKv,
+    bool returnSoftmaxLse, int64_t kvQuantMode)
 {
     std::string layoutQStr(layoutQ);
     std::string layoutKvStr(layoutKv);
@@ -55,16 +55,15 @@ std::tuple<at::Tensor, at::Tensor> TurboQuantSparseAttnSharedkv(
     char *layoutQPtr = const_cast<char *>(layoutQStr.c_str());
     char *layoutKvPtr = const_cast<char *>(layoutKvStr.c_str());
 
-    ACLNN_CMD(aclnnTurboQuantSparseAttnSharedkv, q, oriKv, cmpKv, oriSparseIndices, cmpSparseIndices,
-              oriBlockTable, cmpBlockTable, cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, sequsedQ, sequsedKv,
-              sinks, metadata, softmaxScale, cmpRatio, oriMaskMode, cmpMaskMode, oriKvStride, cmpKvStride,
-              oriWinLeft, oriWinRight, layoutQPtr, layoutKvPtr, returnSoftmaxLse, kvQuantMode, attnOut, softmaxLse);
+    ACLNN_CMD(aclnnTurboQuantSparseAttnSharedkv, q, oriKv, cmpKv, oriSparseIndices, cmpSparseIndices, oriBlockTable,
+              cmpBlockTable, cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, sequsedQ, sequsedKv, sinks, metadata,
+              softmaxScale, cmpRatio, oriMaskMode, cmpMaskMode, oriKvStride, cmpKvStride, oriWinLeft, oriWinRight,
+              layoutQPtr, layoutKvPtr, returnSoftmaxLse, kvQuantMode, attnOut, softmaxLse);
     return {attnOut, softmaxLse};
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("turbo_quant_sparse_attn_sharedkv", &TurboQuantSparseAttnSharedkv,
-          "turbo_quant_sparse_attn_sharedkv");
+    m.def("turbo_quant_sparse_attn_sharedkv", &TurboQuantSparseAttnSharedkv, "turbo_quant_sparse_attn_sharedkv");
 }
 } // namespace op_api

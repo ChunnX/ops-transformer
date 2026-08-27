@@ -77,9 +77,6 @@ kv_hat[d] = centroid[code[d]] * corrected_scale
 
 ## 测试与性能
 
-完整环境准备、命令、泛化矩阵、性能采集方法、二级冒烟和 PR 结果模板见
-[TEST_GUIDE.md](TEST_GUIDE.md)。
-
 TQ4 c4 cache 的理论 payload 压缩比为 `512 * 2 / 258 = 3.97x`。该数值不等于整个 KV 池
 或整模型 HBM 收益；端到端还包含未压缩 SWA cache、indexer cache、block table、workspace
 及权重。性能报告应分别列出算子时延、KV pool 容量和端到端吞吐/并发，不混为一个指标。
