@@ -168,7 +168,7 @@ aclnnStatus AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<T>::CheckHif8QuantPa
 {
     auto groupNum = gmmParams_.groupTensorOptional->GetViewShape().GetDim(0);
     for (size_t i = 0; i < GetInputTensorSize(gmmParams_.weight); ++i) {
-        auto weightDimNumber = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDimNum();
+        //auto weightDimNumber = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDimNum();
         auto scaleDimNumber = GetInputTensor(gmmParams_.scaleOptional, i)->GetViewShape().GetDimNum();
         auto perTokenDimNumber = GetInputTensor(gmmParams_.perTokenScaleOptional, i)->GetViewShape().GetDimNum();
         const auto *perTokenScaleTensor = GetInputTensor(gmmParams_.perTokenScaleOptional, i);
