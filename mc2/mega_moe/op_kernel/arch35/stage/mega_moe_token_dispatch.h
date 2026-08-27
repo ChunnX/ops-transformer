@@ -33,6 +33,9 @@ struct TokenDispatchConfig {
     uint32_t quantTokenAlignBytes;
     uint32_t quantScaleAlignBytes;
     uint32_t quantTokenScaleAlignBytes;
+    // 遍历序错峰的发射者身份：rankId×J + jobIdx 与 W×J（J=dispatch 任务数），用于段内环形旋转起始相位。
+    uint32_t scatterWorkerIdx;
+    uint32_t scatterWorkerCount;
 };
 
 template <typename ActivationType>
@@ -53,6 +56,8 @@ struct TokenDispatchScratch {
     int64_t revTokenElemCnt;
     int64_t revScaleElemCnt;
     uint64_t cumsumRevCntInRank;
+    // 段内遍历序是否启用环形旋转；冷启动豁免（本 rank 的 expert 0，全部 job）时置 0，保持升序与 baseline 一致。
+    uint32_t rotateEnable;
 };
 
 /** 表示当前 Dispatch core 在当前专家 row 空间中负责的相对 row range。 */
@@ -82,10 +87,13 @@ struct ExpertTokenCountExportScratch {
 // 由 tiling/peermem/quant 配置装配 Token Dispatch 阶段配置（普通与 wave 编排模板共用）。
 __aicore__ inline TokenDispatchConfig CreateTokenDispatchConfig(const Params &params,
                                                                 const QuantProcessConfig &quantProcessConfig,
-                                                                uint32_t maskAlignSize)
+                                                                uint32_t maskAlignSize,
+                                                                const MoeStageCommonConfig &common,
+                                                                const BlockJobContext &dispatchJob)
 {
     uint64_t quantWinOffset =
         static_cast<uint64_t>(params.peermemInfo.quantTokenScalePtr - params.peermemInfo.rankSyncInWorldPtr);
+    uint32_t jobCount = dispatchJob.totalJobs == 0U ? 1U : dispatchJob.totalJobs;
     return {.maxOutputSize = params.tilingData->maxOutputSize,
             .numMaxTokensPerRank = params.tilingData->numMaxTokensPerRank,
             .bufferConfig = params.tilingData->dispatchBufferConfig,
@@ -94,7 +102,9 @@ __aicore__ inline TokenDispatchConfig CreateTokenDispatchConfig(const Params &pa
             .quantWinOffset = quantWinOffset,
             .quantTokenAlignBytes = quantProcessConfig.quantTokenAlignBytes,
             .quantScaleAlignBytes = quantProcessConfig.quantScaleAlignBytes,
-            .quantTokenScaleAlignBytes = quantProcessConfig.quantTokenScaleAlignBytes};
+            .quantTokenScaleAlignBytes = quantProcessConfig.quantTokenScaleAlignBytes,
+            .scatterWorkerIdx = common.rankId * jobCount + dispatchJob.jobIndex,
+            .scatterWorkerCount = common.worldSize * jobCount};
 }
 
 // 返回专家在本卡紧凑接收序列中的全局起始行（cumsum 前缀，0 号专家恒为 0）。
@@ -160,7 +170,9 @@ __aicore__ inline void FetchDispatchTokenAndMetaInfo(const TokenDispatchConfig &
     }
 }
 
-// copyIdx 同时是段内目标行号：三个调用点的 ring 排空顺序保证写出行与匹配序恒一一对应。
+// copyIdx 是段内匹配序数（同时是本地密排目标行号）；遍历序错峰启用时按环形旋转访问序数
+// （每核从 (rankId×J+jobIdx) 相位起步、升序环形推进），buffer 槽位与事件仍绑定发射位置，
+// 与序数身份解耦——循环移位保证每序数恰好 issue/store 一次，写出行与匹配序恒一一对应。
 template <typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
 __aicore__ inline void StoreDispatchTokenAndMetaInfo(const TokenDispatchConfig &context, const Params &params,
                                                      TokenDispatchScratch<ActivationType> &scratch, int32_t bufferIdx,
@@ -221,26 +233,38 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(const TokenDispatchConfig &c
     // The only caller enters this function for a non-empty match interval, so copyNum is at least one.
     // GatherMask's V-to-S synchronization covers the first scalar read, and the drain below covers
     // cross-call reuse of the copy and metadata rings.
-    int32_t firstTopkIndex = scratch.validTopkIndexTensor.GetValue(copyStartIdx);
+    // 遍历序错峰（环形旋转）：第 j 次发射取序数 issuePermIdx，步长 1 环形推进；起始相位由
+    // (rankId×J+jobIdx)/(W×J) 决定，rotateEnable==0（冷启动豁免）时恒为 0，与升序完全一致。
+    int32_t issuePermIdx =
+        scratch.rotateEnable != 0U ?
+            static_cast<int32_t>((static_cast<uint64_t>(context.scatterWorkerIdx) * static_cast<uint32_t>(copyNum)) /
+                                 context.scatterWorkerCount) :
+            0;
+    int32_t prevPermIdx = issuePermIdx;
+    int32_t firstTopkIndex = scratch.validTopkIndexTensor.GetValue(copyStartIdx + issuePermIdx);
     FetchDispatchTokenAndMetaInfo<false, TopkWeightsPrefetch>(context, params, scratch, 0, firstTopkIndex,
                                                               remoteRankIdx, remoteRankGlobalTensor);
 
     int32_t firstUseEnd = copyNum < bufferCount ? copyNum : bufferCount;
     for (int32_t issueIdx = 1; issueIdx < firstUseEnd; ++issueIdx) {
-        int32_t copyIdx = issueIdx - 1;
-        int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(copyStartIdx + issueIdx);
+        issuePermIdx = issuePermIdx + 1 == copyNum ? 0 : issuePermIdx + 1;
+        int32_t copyIdx = prevPermIdx;
+        prevPermIdx = issuePermIdx;
+        int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(copyStartIdx + issuePermIdx);
         FetchDispatchTokenAndMetaInfo<false, TopkWeightsPrefetch>(context, params, scratch, issueIdx, topkIndex,
                                                                   remoteRankIdx, remoteRankGlobalTensor);
         StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-            context, params, scratch, copyIdx, tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
+            context, params, scratch, issueIdx - 1, tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
             copyStartIdx, copyIdx);
     }
 
     for (int32_t issueIdx = bufferCount; issueIdx < copyNum; ++issueIdx) {
-        int32_t copyIdx = issueIdx - 1;
+        issuePermIdx = issuePermIdx + 1 == copyNum ? 0 : issuePermIdx + 1;
+        int32_t copyIdx = prevPermIdx;
+        prevPermIdx = issuePermIdx;
         int32_t issueBufferIdx = issueIdx % bufferCount;
-        int32_t copyBufferIdx = copyIdx % bufferCount;
-        int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(copyStartIdx + issueIdx);
+        int32_t copyBufferIdx = (issueIdx - 1) % bufferCount;
+        int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(copyStartIdx + issuePermIdx);
         FetchDispatchTokenAndMetaInfo<true, TopkWeightsPrefetch>(context, params, scratch, issueBufferIdx, topkIndex,
                                                                  remoteRankIdx, remoteRankGlobalTensor);
         StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
@@ -250,7 +274,7 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(const TokenDispatchConfig &c
 
     StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
         context, params, scratch, (copyNum - 1) % bufferCount, tokenRevGlobalTensor, scaleRevGlobalTensor,
-        metaInfoGlobalTensor, copyStartIdx, copyNum - 1);
+        metaInfoGlobalTensor, copyStartIdx, prevPermIdx);
 
     for (int32_t bufferIdx = 0; bufferIdx < firstUseEnd; ++bufferIdx) {
         TEventID eventId = static_cast<TEventID>(bufferIdx);
@@ -428,6 +452,9 @@ __aicore__ inline void DispatchExpertTokensByRankShard(
     int32_t expertGlobalRowBegin)
 {
     constexpr int32_t gmm1TileRowCount = static_cast<int32_t>(PipelineTileM);
+    // 冷启动豁免：本 rank 的 0 号专家整体（全部 job）保持升序发射——tile 0 可能跨多个 job 覆盖，
+    // 仅豁免单个 job 无法保证 GMM1 首 tile 坡道与 baseline 一致；其余专家全部旋转。
+    scratch.rotateEnable = localExpertId != 0U ? 1U : 0U;
     uint32_t rankShardCount = countWorkspace.blockNum / common.worldSize;
     rankShardCount = rankShardCount == 0U ? 1U : rankShardCount;
 
@@ -481,6 +508,9 @@ __aicore__ inline void DispatchExpertTokensByRows(const TokenDispatchConfig &con
     }
 
     constexpr int32_t gmm1TileRowCount = static_cast<int32_t>(PipelineTileM);
+    // 冷启动豁免：本 rank 的 0 号专家整体（全部 job）保持升序发射——tile 0 可能跨多个 job 覆盖，
+    // 仅豁免单个 job 无法保证 GMM1 首 tile 坡道与 baseline 一致；其余专家全部旋转。
+    scratch.rotateEnable = localExpertId != 0U ? 1U : 0U;
     uint32_t dispatchCoreCount = blockJob.totalJobs == 0U ? 1U : blockJob.totalJobs;
     int32_t rowsPerCore =
         Ops::Base::CeilDiv(static_cast<int32_t>(dispatchRowCount), static_cast<int32_t>(dispatchCoreCount));
