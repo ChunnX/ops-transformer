@@ -60,15 +60,6 @@ static string MakeAscend950SocInfo(uint32_t cubeCoreCnt)
     return MakeAscend950SocInfo(cubeCoreCnt, cubeCoreCnt * 2);
 }
 
-static optiling::MhcPreCompileInfo MakeMhcPreCompileInfo(uint32_t cubeCoreCnt, uint32_t vectorCoreCnt)
-{
-    optiling::MhcPreCompileInfo info{};
-    info.aicNum = cubeCoreCnt;
-    info.aivNum = vectorCoreCnt;
-    info.ubSize = 262144;
-    return info;
-}
-
 /*
  * 测试用例1：B=1，S=1，n=4，d=1，x的数据类型为bf16
  * alpha的值为[0.1, 0.1, 0.1]，norm_eps值为0.000001，hc_eps值为0.000001
@@ -88,7 +79,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case01_B1_S1_n4_d1_BF16)
     float alpha[3] = {0.1f, 0.1f, 0.1f}; // alpha = [0.1, 0.1, 0.1]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -134,7 +125,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case02_B1_S1_n6_d65535_FP16)
     float alpha[3] = {0.5f, 0.5f, 0.5f}; // alpha = [0.5, 0.5, 0.5]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -176,7 +167,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case03_B65535_S1_n8_d1_BF16)
     float alpha[3] = {-0.3f, -0.3f, -0.3f}; // alpha = [-0.3, -0.3, -0.3]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -218,7 +209,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case04_B2_S4096_n4_d1536_BF16)
     float alpha[3] = {0.2f, 0.2f, 0.2f}; // alpha = [0.2, 0.2, 0.2]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -265,7 +256,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case05_B2_S4096_n6_d2048_FP16)
     float alpha[3] = {0.6f, 0.6f, 0.6f}; // alpha = [0.6, 0.6, 0.6]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -312,7 +303,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case06_B2_S4096_n8_d6144_BF16)
     float alpha[3] = {-0.5f, -0.5f, -0.5f}; // alpha = [-0.5, -0.5, -0.5]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -359,7 +350,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case07_B256_S1024_n4_d2048_BF16)
     float alpha[3] = {0.3f, 0.3f, 0.3f}; // alpha = [0.3, 0.3, 0.3]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -406,7 +397,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case08_B20_S4096_n6_d1024_FP16)
     float alpha[3] = {0.7f, 0.7f, 0.7f}; // alpha = [0.7, 0.7, 0.7]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -453,7 +444,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case09_B8_S512_n8_d768_FP16)
     float alpha[3] = {-0.2f, -0.2f, -0.2f}; // alpha = [-0.2, -0.2, -0.2]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -500,7 +491,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case10_B32_S256_n4_d512_BF16)
     float alpha[3] = {0.4f, 0.4f, 0.4f}; // alpha = [0.4, 0.4, 0.4]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -547,7 +538,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case11_B1_S8192_n6_d256_FP16)
     float alpha[3] = {0.8f, 0.8f, 0.8f}; // alpha = [0.8, 0.8, 0.8]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -594,7 +585,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case12_B128_S64_n8_d1024_BF16)
     float alpha[3] = {-0.4f, -0.4f, -0.4f}; // alpha = [-0.4, -0.4, -0.4]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -641,7 +632,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case13_B4_S2048_n4_d3072_FP16)
     float alpha[3] = {0.15f, 0.15f, 0.15f}; // alpha = [0.15, 0.15, 0.15]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -688,7 +679,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case14_B16_S1024_n6_d128_BF16)
     float alpha[3] = {0.65f, 0.65f, 0.65f}; // alpha = [0.65, 0.65, 0.65]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -735,7 +726,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case15_B64_S128_n8_d4096_FP16)
     float alpha[3] = {-0.35f, -0.35f, -0.35f}; // alpha = [-0.35, -0.35, -0.35]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -782,7 +773,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case16_B2_S32768_n4_d512_BF16)
     float alpha[3] = {0.25f, 0.25f, 0.25f}; // alpha = [0.25, 0.25, 0.25]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -829,7 +820,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case17_B48_S512_n6_d2048_FP16)
     float alpha[3] = {0.75f, 0.75f, 0.75f}; // alpha = [0.75, 0.75, 0.75]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -876,7 +867,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case18_B12_S1536_n8_d1536_BF16)
     float alpha[3] = {-0.25f, -0.25f, -0.25f}; // alpha = [-0.25, -0.25, -0.25]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -923,7 +914,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case19_B1_S1_n4_d128_FP16)
     float alpha[3] = {0.35f, 0.35f, 0.35f}; // alpha = [0.35, 0.35, 0.35]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -970,7 +961,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case20_B1024_S32_n6_d768_BF16)
     float alpha[3] = {0.85f, 0.85f, 0.85f}; // alpha = [0.85, 0.85, 0.85]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -1016,7 +1007,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case21_T1024_n6_d768_BF16)
     float alpha[3] = {0.85f, 0.85f, 0.85f}; // alpha = [0.85, 0.85, 0.85]
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -1063,7 +1054,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case22_B2_S4096_n4_d1536_NoGamma)
     float alpha[3] = {0.2f, 0.2f, 0.2f};
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     // 不包含gamma输入，只有4个输入：x, phi, alpha, bias（gamma为可选输入，此处不填）
     gert::TilingContextPara tilingContextPara(
@@ -1115,7 +1106,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case23_OutFlag1_SplitBS_BSND_BF16)
     float alpha[3] = {0.3f, 0.3f, 0.3f};
     uint32_t outFlag = 1;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -1163,7 +1154,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case24_OutFlag1_SplitND_BSND_FP16)
     float alpha[3] = {0.5f, 0.5f, 0.5f};
     uint32_t outFlag = 1;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -1210,7 +1201,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case25_OutFlag1_SplitBS_TND_BF16)
     float alpha[3] = {0.4f, 0.4f, 0.4f};
     uint32_t outFlag = 1;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -1257,7 +1248,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case26_OutFlag1_SplitND_TND_FP16)
     float alpha[3] = {0.6f, 0.6f, 0.6f};
     uint32_t outFlag = 1;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -1305,7 +1296,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case27_OutFlag1_LongSeq_BSND_BF16)
     float alpha[3] = {0.5f, 0.5f, 0.5f};
     uint32_t outFlag = 1;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -1349,7 +1340,7 @@ TEST_F(MhcPreTiling, Ut_Check_BasicApi_N4_SplitBS_HasResi_Gamma)
     float hcEps = 0.000001f;
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -1398,7 +1389,7 @@ TEST_F(MhcPreTiling, Ut_Check_BasicApi_N6_SplitBS)
     float hcEps = 0.000001f;
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -1442,7 +1433,7 @@ TEST_F(MhcPreTiling, Ut_Check_BasicApi_N8_LongM_Workspace)
     float hcEps = 0.000001f;
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara("MhcPre",
                                               {{{{B, S, n, d}, {B, S, n, d}}, ge::DT_BF16, ge::FORMAT_ND},
                                                {{{phiDim0, phiDim1}, {phiDim0, phiDim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
@@ -1485,7 +1476,7 @@ TEST_F(MhcPreTiling, Ut_Check_MK_N4_M1024_D5120_HasResi)
     float hcEps = 0.000001f;
     uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -1587,7 +1578,7 @@ TEST_F(MhcPreTiling, Ut_Check_InvalidAlphaRank)
     constexpr uint32_t d = 256;
     constexpr uint32_t phiDim0 = n * n + 2 * n;
     constexpr uint32_t phiDim1 = n * d;
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara("MhcPre",
                                               {{{{T, n, d}, {T, n, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -1616,7 +1607,7 @@ TEST_F(MhcPreTiling, Ut_Check_InvalidAlphaShape)
     constexpr uint32_t d = 256;
     constexpr uint32_t phiDim0 = n * n + 2 * n;
     constexpr uint32_t phiDim1 = n * d;
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara("MhcPre",
                                               {{{{T, n, d}, {T, n, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -1645,7 +1636,7 @@ TEST_F(MhcPreTiling, Ut_Check_InvalidXRank)
     constexpr uint32_t d = 256;
     constexpr uint32_t phiDim0 = n * n + 2 * n;
     constexpr uint32_t phiDim1 = n * d;
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara("MhcPre",
                                               {{{{T, n}, {T, n}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -1674,7 +1665,7 @@ TEST_F(MhcPreTiling, Ut_Check_InvalidHMixShape)
     constexpr uint32_t d = 256;
     constexpr uint32_t phiDim0 = n * n + 2 * n;
     constexpr uint32_t phiDim1 = n * d;
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara("MhcPre",
                                               {{{{T, n, d}, {T, n, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -1704,7 +1695,7 @@ static void CheckMkGeneralizedTiling(uint32_t totalLength, uint32_t n, uint32_t 
     uint32_t phiDim0 = hasResi ? n * n + 2U * n : 2U * n;
     uint32_t alphaDim0 = hasResi ? 3U : 2U;
     uint32_t phiDim1 = n * d;
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(32, 64);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",
@@ -1889,7 +1880,7 @@ static void CheckCoreRatioFailure(uint32_t cubeCoreCnt, uint32_t vectorCoreCnt)
     constexpr float hcEps = 0.000001f;
     constexpr uint32_t outFlag = 0;
 
-    optiling::MhcPreCompileInfo compileInfo = MakeMhcPreCompileInfo(cubeCoreCnt, vectorCoreCnt);
+    optiling::MhcPreCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPre",

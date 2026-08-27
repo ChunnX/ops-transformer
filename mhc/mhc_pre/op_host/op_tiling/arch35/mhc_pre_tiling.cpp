@@ -560,22 +560,25 @@ ge::graphStatus MhcPreBaseTiling::ParseInputAndAttr()
 }
 ge::graphStatus MhcPreBaseTiling::InitPlatformMemory()
 {
-    auto compileInfo = context_->GetCompileInfo<MhcPreCompileInfo>();
-    OP_CHECK_IF(compileInfo == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "compileInfo", "nullptr",
-                                                      "compile info must not be nullptr"),
+    auto platformInfo = context_->GetPlatformInfo();
+    OP_CHECK_IF(platformInfo == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "platformInfo", "nullptr",
+                                                      "platform info must not be nullptr"),
                 return ge::GRAPH_FAILED);
 
-    blockDim_ = static_cast<uint32_t>(compileInfo->aicNum);
-    aivBlockDim_ = static_cast<uint32_t>(compileInfo->aivNum);
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    uint64_t ubSize;
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    blockDim_ = static_cast<uint32_t>(ascendcPlatform.GetCoreNumAic());
+    aivBlockDim_ = static_cast<uint32_t>(ascendcPlatform.GetCoreNumAiv());
 
     if (aivBlockDim_ != blockDim_ * NUM_TWO) {
-        OP_LOGE(context_->GetNodeName(), "MhcPre only support aivNum == aicNum * 2, aicNum: %lu, aivNum: %lu",
-                compileInfo->aicNum, compileInfo->aivNum);
+        OP_LOGE(context_->GetNodeName(), "MhcPre only support aivNum == aicNum * 2, aicNum: %u, aivNum: %u", blockDim_,
+                aivBlockDim_);
         return ge::GRAPH_FAILED;
     }
 
-    ubSize_ = compileInfo->ubSize; // Save UB size for later validation
+    ubSize_ = ubSize; // Save UB size for later validation
 
     return ge::GRAPH_SUCCESS;
 }
