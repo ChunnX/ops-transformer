@@ -56,6 +56,9 @@ using GMMS8S4BasicApiTilingData = GroupedMatmulTilingData::GMMS8S4BasicApiTiling
 #include "arch35/weight_quant_basic_block/weight_quant_basic_block.h"
 #include "arch35/weight_quant_basic_block/weight_quant_vcv_basic_block.h"
 #include "arch35/weight_quant_basic_block/weight_quant_tiling_key.h"
+#if IS_BLAZE && (defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510)
+#include "arch35/weight_quant_basic_block/gmm_wqgmm_mx_tensor_api.h"
+#endif
 #if defined(V310_GMM_S8S4_UINT64_SCALE)
 #include "arch35/weight_quant_basic_block/gmm_s8s4_perchannel_tensor_api.h"
 #endif
@@ -428,8 +431,26 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
                       WQ_A_TRANS == WQGMM_NO_TRANS && TEMPLATE_CUSTOM_SC == WQGMM_MTE2_INNER_SIZE_DYNAMIC_BUF_NUM_4 &&
                       ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_TAIL_RESPLIT &&
                       ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
+#if IS_BLAZE && (defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510)
+            constexpr bool IS_WQGMM_MX_TENSOR_API_TYPE =
+                (AscendC::IsSameType<DTYPE_Y, half>::value || AscendC::IsSameType<DTYPE_Y, bfloat16_t>::value) &&
+                AscendC::IsSameType<DTYPE_BIAS, DTYPE_Y>::value;
+            if constexpr (IS_WQGMM_MX_TENSOR_API_TYPE) {
+                GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, gmmWeightQuantParam, wqgmmMxParams_, tiling);
+                GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, mmTilingData, wqgmmMxMmadTiling_, tiling);
+                GROUPED_MATMUL::WqgmmMxTensorApi::InvokeWqgmmMxTensorApi<
+                    DTYPE_X, DTYPE_WEIGHT, DTYPE_PER_TOKEN_SCALE, DTYPE_ANTIQUANT_SCALE, DTYPE_BIAS, DTYPE_Y>(
+                    x, weight, antiquantScale, bias, groupList, perTokenScale, y, &wqgmmMxParams_,
+                    &wqgmmMxMmadTiling_);
+            } else {
+                // Keep unsupported type pairs on the original controller path.
+                INVOKE_GMM_WEIGHT_QUANT_MXA8W4_CONTROLLER_OP_IMPL(GMMWeightQuantResplitController, MXA8W4_NZNK,
+                                                                  VEC_ANTIQUANT_CONFIG_DYNAMIC);
+            }
+#else
             INVOKE_GMM_WEIGHT_QUANT_MXA8W4_CONTROLLER_OP_IMPL(GMMWeightQuantResplitController, MXA8W4_NZNK,
                                                               VEC_ANTIQUANT_CONFIG_DYNAMIC);
+#endif
         }
 #elif ORIG_DTYPE_ANTIQUANT_SCALE == DT_FLOAT8_E8M0
         if constexpr (W_TYPE == WQGMM_FRACTAL_NZ &&
