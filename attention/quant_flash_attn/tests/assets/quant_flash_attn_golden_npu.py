@@ -1219,8 +1219,10 @@ def _build_attention_mask(b, Sq, Skv, actual_seq_q, actual_seq_kv, sparse_mode):
     else:
         return q_padding_mask | k_padding_mask
 
-def _compute_c1_npu(Qi, Kj, deq_scale_q_i, deq_scale_k_j, softmax_scale,
-                     Qri=None, Krj=None):
+
+def _compute_c1_npu(
+    Qi, Kj, deq_scale_q_i, deq_scale_k_j, softmax_scale, Qri=None, Krj=None
+):
     """计算单个 S block (attention score)"""
     B, N, S1, D = Qi.shape
     _, _, S2, _ = Kj.shape
@@ -1236,11 +1238,22 @@ def _compute_c1_npu(Qi, Kj, deq_scale_q_i, deq_scale_k_j, softmax_scale,
             pertoken_scale = deq_scale_q_i[b, n, :, :]
             pertoken_scale = pertoken_scale.reshape(S1, -1, 2)
             torch.npu.synchronize()
-            tmp_res = torch_npu.npu_quant_matmul(Qi_tmp, Kj_tmp.t(), input_deq_scale.transpose(0,1), pertoken_scale=pertoken_scale, output_dtype=torch.float32, pertoken_scale_dtype=torch_npu.float8_e8m0fnu, scale_dtype=torch_npu.float8_e8m0fnu, group_sizes=[1, 1, 32])
+            tmp_res = torch_npu.npu_quant_matmul(
+                Qi_tmp,
+                Kj_tmp.t(),
+                input_deq_scale.transpose(0, 1),
+                pertoken_scale=pertoken_scale,
+                output_dtype=torch.float32,
+                pertoken_scale_dtype=torch_npu.float8_e8m0fnu,
+                scale_dtype=torch_npu.float8_e8m0fnu,
+                group_sizes=[1, 1, 32],
+            )
             torch.npu.synchronize()
             S_ij[b, n, :, :] = tmp_res
     if Qri is not None and Krj is not None:
-        S_ij += torch.matmul(Qri.to(torch.float32), Krj.to(torch.float32).permute(0, 1, 3, 2))
+        S_ij += torch.matmul(
+            Qri.to(torch.float32), Krj.to(torch.float32).permute(0, 1, 3, 2)
+        )
     S_ij = S_ij * softmax_scale
     return S_ij
 
@@ -1250,7 +1263,7 @@ def _compute_c2_npu(P, V, deq_scale_p, deq_scale_v):
     batch, headnum, M, PK = P.shape
     _, _, VK, N = V.shape
     if PK != VK:
-        print(f"❌ x1's K must be same with x2's K")
+        print("❌ x1's K must be same with x2's K")
     P = P.npu()
     V = V.npu()
     deq_scale_v = deq_scale_v.npu()
@@ -1260,12 +1273,23 @@ def _compute_c2_npu(P, V, deq_scale_p, deq_scale_v):
         for n in range(headnum):
             P_tmp = P[b, n, :, :].to(torch.float8_e4m3fn)
             V_tmp = V[b, n, :, :].to(torch.float8_e4m3fn)
-            input_deq_scale = deq_scale_v[b, n, :, :].permute(1,0)
-            input_deq_scale = input_deq_scale.reshape(N, -1, 2).permute(1,0,2).contiguous()
+            input_deq_scale = deq_scale_v[b, n, :, :].permute(1, 0)
+            input_deq_scale = (
+                input_deq_scale.reshape(N, -1, 2).permute(1, 0, 2).contiguous()
+            )
             pertoken_scale = deq_scale_p[b, n, :, :]
             pertoken_scale = pertoken_scale.reshape(M, -1, 2)
             torch.npu.synchronize()
-            tmp_res = torch_npu.npu_quant_matmul(P_tmp, V_tmp, input_deq_scale, pertoken_scale=pertoken_scale, output_dtype=torch.float32, pertoken_scale_dtype=torch_npu.float8_e8m0fnu, scale_dtype=torch_npu.float8_e8m0fnu, group_sizes=[1, 1, 32])
+            tmp_res = torch_npu.npu_quant_matmul(
+                P_tmp,
+                V_tmp,
+                input_deq_scale,
+                pertoken_scale=pertoken_scale,
+                output_dtype=torch.float32,
+                pertoken_scale_dtype=torch_npu.float8_e8m0fnu,
+                scale_dtype=torch_npu.float8_e8m0fnu,
+                group_sizes=[1, 1, 32],
+            )
             torch.npu.synchronize()
             S_ij[b, n, :, :] = tmp_res
     return S_ij
@@ -1386,9 +1410,9 @@ def cpu_mxfp8_golden(
     dequant_scale_q = torch.from_numpy(dequant_scale_q_np).npu()
     dequant_scale_k = torch.from_numpy(dequant_scale_k_np).npu()
     groups_num = dequant_scale_v.shape[2]
-    if groups_num % 2 != 0: # s2没有64对齐
+    if groups_num % 2 != 0:  # s2没有64对齐
         dequant_scale_v = F.pad(dequant_scale_v, (0, 0, 0, 1))
-        dequant_scale_v[:,:,-1,:] = 1.0
+        dequant_scale_v[:, :, -1, :] = 1.0
     dequant_scale_v = sanitize_e8m0_scale(dequant_scale_v, "dequant_scale_v")
     dequant_scale_v_np = dequant_scale_v.numpy().astype("float8_e8m0").view(np.int8)
     dequant_scale_v = torch.from_numpy(dequant_scale_v_np)
@@ -1429,7 +1453,9 @@ def cpu_mxfp8_golden(
                 Sk1_end = min(Sk1_start + K_BLOCK_SIZE, Skv)
                 deq_scale_k_j1 = dequant_scale_k[:, :, Sk1_start:Sk1_end, :]
 
-                S_ij1 = _compute_c1_npu(Qi, Kj1, deq_scale_q_i, deq_scale_k_j1, softmax_scale)
+                S_ij1 = _compute_c1_npu(
+                    Qi, Kj1, deq_scale_q_i, deq_scale_k_j1, softmax_scale
+                )
                 mask_j1 = mask_global[:, :, Sq_start:Sq_end, Sk1_start:Sk1_end]
                 m_block_j1, s_block_j1, P_ij1_drop = _online_softmax_update(
                     S_ij1, mask_j1, m_block_j, s_block_j, oi, ln_p_scale, minValue
@@ -1439,9 +1465,13 @@ def cpu_mxfp8_golden(
                 Vj = V_BLOCKS[j // 2]
                 Sv_start = (j // 2) * V_BLOCK_SIZE
                 Sv_end = min(Sv_start + V_BLOCK_SIZE, math.ceil(Skv / 64) * 64)
-                deq_scale_v_j = dequant_scale_v[:, :, Sv_start//QUANT_GROUP_SIZE:Sv_end//QUANT_GROUP_SIZE, :]
-                
-                P_ij = torch.cat((P_ij_drop * torch.exp(m_block_j - m_block_j1), P_ij1_drop), dim=3)
+                deq_scale_v_j = dequant_scale_v[
+                    :, :, Sv_start // QUANT_GROUP_SIZE : Sv_end // QUANT_GROUP_SIZE, :
+                ]
+
+                P_ij = torch.cat(
+                    (P_ij_drop * torch.exp(m_block_j - m_block_j1), P_ij1_drop), dim=3
+                )
                 actual_s2size = Vj.shape[2]
                 padded_s2size = 0
                 if actual_s2size % 64 != 0:
@@ -1449,7 +1479,16 @@ def cpu_mxfp8_golden(
                     P_ij = F.pad(P_ij, (0, padded_s2size))
                     Vj = F.pad(Vj, (0, 0, 0, padded_s2size))
 
-                deq_scale_p = torch.ones(P_ij.shape[0], P_ij.shape[1], P_ij.shape[2], P_ij.shape[3]//QUANT_GROUP_SIZE, dtype=torch.int8)*127
+                deq_scale_p = (
+                    torch.ones(
+                        P_ij.shape[0],
+                        P_ij.shape[1],
+                        P_ij.shape[2],
+                        P_ij.shape[3] // QUANT_GROUP_SIZE,
+                        dtype=torch.int8,
+                    )
+                    * 127
+                )
                 P_ij_Vj = _compute_c2_npu(P_ij, Vj, deq_scale_p, deq_scale_v_j)
 
                 update_mul_si = torch.exp(mi - m_block_j1)
@@ -1465,8 +1504,10 @@ def cpu_mxfp8_golden(
                 Vj = V_BLOCKS[j // 2]
                 Sv_start = j * K_BLOCK_SIZE
                 Sv_end = min(Sv_start + K_BLOCK_SIZE, math.ceil(Skv / 64) * 64)
-                deq_scale_v_j = dequant_scale_v[:, :, Sv_start//QUANT_GROUP_SIZE:Sv_end//QUANT_GROUP_SIZE, :]
-                
+                deq_scale_v_j = dequant_scale_v[
+                    :, :, Sv_start // QUANT_GROUP_SIZE : Sv_end // QUANT_GROUP_SIZE, :
+                ]
+
                 actual_s2size = Vj.shape[2]
                 padded_s2size = 0
                 if actual_s2size % 64 != 0:
@@ -1474,9 +1515,17 @@ def cpu_mxfp8_golden(
                     P_ij_drop = F.pad(P_ij_drop, (0, padded_s2size))
                     Vj = F.pad(Vj, (0, 0, 0, padded_s2size))
 
-                deq_scale_p = torch.ones(P_ij_drop.shape[0], P_ij_drop.shape[1], P_ij_drop.shape[2], P_ij_drop.shape[3]//QUANT_GROUP_SIZE, dtype=torch.int8)*127
+                deq_scale_p = (
+                    torch.ones(
+                        P_ij_drop.shape[0],
+                        P_ij_drop.shape[1],
+                        P_ij_drop.shape[2],
+                        P_ij_drop.shape[3] // QUANT_GROUP_SIZE,
+                        dtype=torch.int8,
+                    )
+                    * 127
+                )
                 P_ij_Vj = _compute_c2_npu(P_ij_drop, Vj, deq_scale_p, deq_scale_v_j)
-                
 
                 update_mul_si = torch.exp(mi - m_block_j)
                 si_new = update_mul_si * si + s_block_j
