@@ -32,7 +32,10 @@ Coverage:
   - topk: 16..256 base, 512/2048 (recommended), 3072/4096/8192 (special values)
   - Known defect (arch22): pool_size>=32 with topk>=6144 triggers aicore
     exception (EE9999/507015) and poisons the process; crash combos are
-    documented in TEST_CASES comments but NOT executed (see NOTE)
+    documented in TEST_CASES comments but NOT executed (see NOTE).
+    2026-08-26: arch35 复测不复现, 已纳入
+    test_pool_key_indexer_known_defects.py 回归保护(见该文件与
+    docs/build_fix_record.md); arch22 待责任人处理
   - pool_tail_k: random, deterministic 0 / pool_size-1 / per-batch mixed
   - n1: 1 (min), 4..32, 64 (max); S1=1 minimal shape
   - PA: unequal pool counts per batch (block_table -1 slots + padded tail
@@ -672,7 +675,11 @@ TEST_CASES = [
     # NOTE 已知缺陷(arch22/910B, 2026-08-24 二分定位): pool_size>=32 且
     # topk>=6144 的组合(如 TND ps32/topk6144、BSND ps64/topk8192, k=16384)
     # 触发 aicore exception(EE9999/507015), 且崩溃会污染进程内后续用例,
-    # 因此不作为 xfail 用例纳入(避免 CI 雪崩)。kernel 修复后可补充:
+    # 因此不作为 xfail 用例纳入(避免 CI 雪崩)。
+    # 2026-08-26 arch35(950) 复测: 该组合已由
+    # test_pool_key_indexer_known_defects.py 覆盖且全部通过(arch35 TopK 为
+    # VF 直通路径, 无 arch22 的 LD 跨核归并路径); arch22 侧待责任人修复,
+    # 修复后可补充:
     #   - tnd_fp16_ps32_topk6144_causal
     #   - bsnd_fp16_ps64_topk8192_causal
     # --- pool_size 极值(64 / 上限 128, sparseCount 退化为 1~4) ---

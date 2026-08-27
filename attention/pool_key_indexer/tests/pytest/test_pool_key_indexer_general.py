@@ -37,15 +37,19 @@ PoolKeyIndexer 泛化验证测试 (generalization tests).
   block_size 全档 / tail 边界), 未命中即失败, 防止泛化退化为定点复读。
 
 未纳入泛化的功能与已知缺陷(详见文末打印的分析报告, 供排定修复优先级):
-  A. quant_mode=0/1(FP8/mxFP8): 仅 Ascend 950(DAV_3510)支持, 本机 910B3 无法验证;
+  A. quant_mode=0/1(FP8/mxFP8): 仅 Ascend 950(DAV_3510)支持, host 已 fail-fast
+     拒绝(kernel 反量化未实现), 实现后需补泛化;
   B. BSND + actual_seq_q/actual_seq_k: 接口文档称可选, tiling 实际拒绝(EZ1008);
-  C. pool_size ∈ [2,7] 及非 8 的倍数: aicore 崩溃(EE9999/507015), 任意 shape 复现;
-  D. topk ∈ {5120, 6144, 7168}: shape 相关崩溃(如 ps=16/s2pool∈{384,512} 崩,
-     s2pool=640 正常), 崩溃面不稳定;
-  E. pool_size>=32 且 topk>=6144: 已知缺陷(test_pool_key_indexer.py 已记录);
-  F. 0 池 batch(actual_seq_k 含 0): 非确定性数据污染 —— 0 池 batch 的首个输出
-     行偶发残留脏索引(脏分配器下 17/30 复现, TND/PA 与 TND/TND 均命中),
-     规格声称"有效 pool 数不小于 0"允许 0 池; 实测 0 长度 query batch 安全。
+  C. pool_size ∈ [2,7] 及非 8 的倍数: arch22 任意 shape 崩溃(EE9999/507015);
+     arch35(950) 已于 2026-08-26 修复(向量写非 32B 对齐根因, 标量退化路径,
+     见 docs/build_fix_record.md), 用例纳入 test_pool_key_indexer_known_defects.py;
+  D. topk ∈ {5120, 6144, 7168}: arch22 shape 相关崩溃(如 ps=16/s2pool∈{384,512}
+     崩, s2pool=640 正常), 崩溃面不稳定; arch35(950) 复测不复现(2026-08-26,
+      known_defects 套件 9 例全过), arch22 待责任人处理;
+  E. pool_size>=32 且 topk>=6144: arch22 已知缺陷(见 test_pool_key_indexer.py
+     NOTE); arch35(950) 复测不复现(2026-08-26, known_defects 套件 5 例全过);
+  F. 0 池 batch(actual_seq_k 含 0): 非确定性数据污染 —— 已修复(2026-08-25,
+     CleanInvalidOutput 补 V->MTE3 跨流水同步), 0 池用例已回补进泛化。
 """
 
 import os
@@ -73,8 +77,12 @@ MASTER_SEED = 20260824
 # ---------------------------------------------------------------------------
 # 已实测验证可用的参数包络 (arch22 / Atlas A2 910B3, 2026-08-24)
 # ---------------------------------------------------------------------------
-# pool_size: 规格允许 [1,128] 任意整数, 但实测仅 {1} ∪ {8 的倍数} 可用;
-#            其余值(2/3/4/5/7/12/100 等)任意 shape 均触发 aicore 崩溃。
+# pool_size: 规格允许 [1,128] 任意整数; arch22 实测仅 {1} ∪ {8 的倍数} 可用
+#            (其余值触发 aicore 崩溃, 根因为向量写非 32B 对齐);
+#            arch35(950) 已于 2026-08-26 修复全部 pool_size(见
+#            docs/build_fix_record.md 与 test_pool_key_indexer_known_defects.py),
+#            本随机层的采样包络保持不变(泛化基准稳定性), 非 8 倍数由
+#            known_defects 套件覆盖。
 POOL_SIZES_VALID = [
     1,
     8,
@@ -978,9 +986,9 @@ def test_zz_generalization_coverage_summary():
     # ---- 未覆盖功能分析报告(供排定优先级, 不影响本用例判定) ----
     print("\n---- 未纳入泛化的功能/缺陷分析(供识别优先级) ----")
     print(
-        "A. [平台限制] quant_mode=0(FP8 per-token-head)/1(mxFP8): 仅 Ascend 950\n"
-        "   (DAV_3510) 支持, 本机 910B3 tiling 直接拒绝 FP8 输入; golden 亦无\n"
-        "   反量化路径, 需 950 环境补充泛化。"
+        "A. [平台限制+实现缺失] quant_mode=0(FP8 per-token-head)/1(mxFP8): 仅\n"
+        "   Ascend 950(DAV_3510) 支持; kernel 侧反量化(q_descale/k_descale 消费)\n"
+        "   未实现, host 已 fail-fast 拒绝(不会静默出错), 实现并验证后需补泛化。"
     )
     print(
         "B. [文档-实现不一致] BSND + actual_seq_q/actual_seq_k: 接口文档标注\n"
@@ -988,18 +996,24 @@ def test_zz_generalization_coverage_summary():
         "   实测确认被拒; 需决策: 补实现 or 修文档。"
     )
     print(
-        "C. [kernel 缺陷] pool_size ∈ [2,7] 及非 8 的倍数(如 12/100): 任意 shape\n"
-        "   触发 aicore exception(EE9999/507015)且污染进程; 规格声称 [1,128]\n"
-        "   任意整数, 实测仅 {1} ∪ {8 的倍数} 可用。"
+        "C. [kernel 缺陷, arch35 已修复/arch22 待修] pool_size ∈ [2,7] 及非 8 的\n"
+        "   倍数(如 12/100): arch22 任意 shape 触发 aicore exception(EE9999/507015)\n"
+        "   且污染进程; 根因为 ExpandAndAppendIndices 向量写偏移(outOff=k*ps /\n"
+        "   tailPos=topk / validExpand=v*ps)非 32B 操作数地址对齐。arch35(950)\n"
+        "   已于 2026-08-26 修复(ps%8!=0 退化标量精确写路径), 用例纳入\n"
+        "   test_pool_key_indexer_known_defects.py。"
     )
     print(
-        "D. [kernel 缺陷] topk ∈ {5120, 6144, 7168}: shape 相关崩溃\n"
-        "   (ps=16/topk=5120 在 s2pool=384/512 崩、640 正常; ps=32/topk>=6144 崩;\n"
-        "   ps=1/8 全部正常), 崩溃面不稳定, 已整体排除出泛化用例。"
+        "D. [kernel 缺陷, arch22 待修] topk ∈ {5120, 6144, 7168}: arch22 shape\n"
+        "   相关崩溃(ps=16/topk=5120 在 s2pool=384/512 崩、640 正常; ps=32/\n"
+        "   topk>=6144 崩; ps=1/8 全部正常), 崩溃面不稳定; arch35(950) 复测\n"
+        "   不复现(2026-08-26, known_defects 套件 9 例全过, 含原崩溃形态)。"
     )
     print(
-        "E. [已知缺陷] pool_size>=32 且 topk>=6144 崩溃(test_pool_key_indexer.py\n"
-        "   已记录, 与 D 部分重叠)。"
+        "E. [arch22 待修] pool_size>=32 且 topk>=6144 崩溃(test_pool_key_indexer.py\n"
+        "   已记录, 与 D 部分重叠); arch35(950) 复测不复现(2026-08-26,\n"
+        "   known_defects 套件 5 例全过, 含 TND ps32/topk6144 与 BSND\n"
+        "   ps64/topk8192 原始崩溃形态)。"
     )
     print(
         "F. [已修复 2026-08-25] 0 池 batch(actual_seq_k 含 0)曾非确定性残留脏\n"
@@ -1014,10 +1028,12 @@ def test_zz_generalization_coverage_summary():
         "   未做全 shape 扫描, 其余形态待 D/E 修复后补测。"
     )
     print(
-        "H. [arch35 移植待验证] arch22 的 4 处 poolSize>1 行宽修复(批次基址/\n"
+        "H. [arch35 已闭环] arch22 的 4 处 poolSize>1 行宽修复(批次基址/\n"
         "   清理偏移/values 行宽换算/ProcessInvalid 越界)已按同模式移植到\n"
-        "   arch35(950), 但本机无 950 硬件且 arch35 VF 路径存在既有 fp8 编译\n"
-        "   阻塞(见 docs/build_fix_record.md), 编译与运行时验证待 950 环境完成。"
+        "   arch35(950), 并于 2026-08-25 在 950 上板验证 42/42 通过;\n"
+        "   2026-08-26 缺陷 C/D/E 在 arch35 复测并修复/确认不复现(见\n"
+        "   docs/build_fix_record.md 与 test_pool_key_indexer_known_defects.py),\n"
+        "   arch22 侧待责任人处理。"
     )
 
     assert not problems, "泛化覆盖率不足: " + "; ".join(problems)
