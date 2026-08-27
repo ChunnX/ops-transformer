@@ -115,6 +115,9 @@ packages/vendors/<vendor>_transformer/
 
 ```bash
 run_file=/path/to/cann-ops-transformer-<vendor>_linux-<arch>.run
+python cannbotdsl_ops/tests/verify_mixed_run.py --run "${run_file}"
+
+# 下列命令用于按层排查验收失败
 extract_dir=$(mktemp -d /tmp/ops-transformer-run.XXXXXX)
 
 sha256sum "${run_file}"
@@ -132,7 +135,9 @@ nm -D -C "${extract_dir}/packages/vendors/<vendor>_transformer/op_api/lib/libcus
 `--extract`。动态库依赖应对解包后的 `libcust_opapi.so` 使用与目标 CANN、驱动和
 新版 Provider ABI `libnnopbase.so` 匹配的 `LD_LIBRARY_PATH` 做 `ldd`/`dlopen`
 检查。离线构建还必须预置项目声明的第三方依赖，否则 CPack preinstall 可能进入
-依赖下载流程。
+依赖下载流程。`verify_mixed_run.py` 不安装归档，并会自动检查 registry/manifest
+语义摘要、entry schema v2、12 个公共参数、3 个内部 specialization、artifact
+digest、包内 checksum、传统 kernel 数量、Provider DSO 数量和混合导出符号。
 
 ## 实机验证
 
