@@ -817,8 +817,10 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     ExpertTokenPosition gmm1Position{};
     ExpertTokenPosition gmm2Position{};
     ExpertTokenPosition dispatchEndPosition{};
-    // GMM2 的滞后消费目标（见循环内注释）；首轮为零位置，GMM2 空转一轮。
+    // GMM2 的滞后消费目标（见循环内注释）；滞后深度 2：前两轮 GMM2 空转，
+    // 消化「短 wave 紧邻切换」下深度 1 仍残留的激活等待（实测残余 ~580us）。
     ExpertTokenPosition gmm2LaggedTarget{};
+    ExpertTokenPosition gmm2PrevWaveEnd{};
     uint32_t combineBeginExpertIndex = 0U;
 
     if constexpr (g_coreType == AIV) {
@@ -862,7 +864,8 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         ProcessGmm2Wave(gmm2Position, gmm2LaggedTarget, gmm2ExpertState, gmm2AddrInfo, gmm2RuntimeState);
         MC2_TS_STOP(TS_GMM2_WAVE);
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
-        gmm2LaggedTarget = waveEndPosition;
+        gmm2LaggedTarget = gmm2PrevWaveEnd;
+        gmm2PrevWaveEnd = waveEndPosition;
 
         const bool hasNextWave = waveEndPosition.expertIdx < moeExpertPerRank_;
         const bool fixedRoleResonance =
@@ -880,13 +883,14 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         waveBeginPosition = waveEndPosition;
     }
 
-    // 滞后流水收尾：补跑最后一个 wave 的 GMM2（AIV1 在 ProcessGmm2Wave 内自行早退；
+    // 滞后流水收尾：把 GMM2 补到全部专家终点（AIV1 在 ProcessGmm2Wave 内自行早退；
     // combine 已在循环内按 per-expert flag 全量收齐，无需补）。
-    if (!IsSameExpertTokenPosition(gmm2Position, gmm2LaggedTarget)) {
+    const ExpertTokenPosition gmm2FinalTarget{moeExpertPerRank_, 0U};
+    if (!IsSameExpertTokenPosition(gmm2Position, gmm2FinalTarget)) {
         int32_t gmm2TailTileSequence = 0;
         GmmRuntimeState gmm2TailRuntimeState{startBlockIdx_, vecSetSyncCom, gmm2TailTileSequence, gmm2PingPongIdx_};
         MC2_TS_START(TS_GMM2_WAVE);
-        ProcessGmm2Wave(gmm2Position, gmm2LaggedTarget, gmm2ExpertState, gmm2AddrInfo, gmm2TailRuntimeState);
+        ProcessGmm2Wave(gmm2Position, gmm2FinalTarget, gmm2ExpertState, gmm2AddrInfo, gmm2TailRuntimeState);
         MC2_TS_STOP(TS_GMM2_WAVE);
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
     }
