@@ -37,6 +37,7 @@
 #include "stage/mega_moe_gmm1_activation.h"
 #include "stage/mega_moe_gmm2_combine.h"
 #include "stage/mega_moe_unpermute.h"
+#include "common/mc2_kernel_timing.h"
 #if __has_include("../../common/quantize_functions.h")
 #include "../../common/quantize_functions.h"
 #else
@@ -288,6 +289,11 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Init(
     InitGmmConfigs(dispatchFlagSlotsPerExpert);
     InitTokenUnpermuteConfig();
 
+    if constexpr (g_coreType == AIC) {
+        MC2_TS_INIT(yOut, static_cast<int32_t>(blockIdx_));
+    } else {
+        MC2_TS_INIT(yOut, static_cast<int32_t>(blockNum_ + aivCoreIdx_));
+    }
     gmmLoopCount_ = MegaMoeImpl::RegisterMegaMoeExceptionDump(exceptionDump_, dumpBase, tilingGM, tilingData,
                                                               params_.peermemInfo, sendMaskConfig_.maskAlignSize,
                                                               reinterpret_cast<GM_ADDR>(&mc2Context_->epRankId));
@@ -620,12 +626,16 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Dispatc
      * 在 GMM pipeline 开始前完成所有专家的 Dispatch。每个专家单独使用全部
      * Dispatch core，复用与普通模板一致的单专家 Dispatch 入口。
      */
+    MC2_TS_START(TS_DISPATCH_ALL);
     for (uint32_t expertIdx = 0U; expertIdx < moeExpertPerRank_; ++expertIdx) {
         uint32_t expertTokenCount = 0U;
+        MC2_TS_START(TS_DISPATCH_EXPERT);
         RunMoeExpertDispatchStage<ActivationType, QuantScaleOutType, false, GMM1_TILE_M, TopkWeightsPrefetch>(
             tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, countWorkspace_, syncWorkspaceLayout_,
             params_, g_winRankAddr_, tokenDispatchScratch_, expertIdx, expertTokenCount);
+        MC2_TS_STOP(TS_DISPATCH_EXPERT);
     }
+    MC2_TS_STOP(TS_DISPATCH_ALL);
 }
 
 template <TemplateMegaMoeA8W8WaveTypeClass>
@@ -650,8 +660,10 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
     uint32_t processedMGroupCount = 0U;
     while (gmm1Position.expertIdx < moeExpertPerRank_ && processedMGroupCount < mGroupsPerWave_) {
         if (gmm1Position.tokenIndexInExpert == 0U) {
+            MC2_TS_START(TS_GMM1_WAIT_COUNT);
             WaitForMoeExpertTokenCountReady(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace_,
                                             gmm1Position.expertIdx);
+            MC2_TS_STOP(TS_GMM1_WAIT_COUNT);
             uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr,
                                                                          countWorkspace_, gmm1Position.expertIdx);
             UpdateExpertLoopState(gmm1ExpertState, gmm1Position.expertIdx, expertTokenCount);
@@ -822,17 +834,23 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
             if (GetSubBlockIdx() == 1U) {
                 waveEndPosition = dispatchEndPosition;
             } else {
+                MC2_TS_START(TS_GMM1_WAVE);
                 waveEndPosition = ProcessGmm1Wave(gmm1Position, gmm1ExpertState, gmm1AddrInfo, gmm1RuntimeState);
+                MC2_TS_STOP(TS_GMM1_WAVE);
             }
         } else {
+            MC2_TS_START(TS_GMM1_WAVE);
             waveEndPosition = ProcessGmm1Wave(gmm1Position, gmm1ExpertState, gmm1AddrInfo, gmm1RuntimeState);
+            MC2_TS_STOP(TS_GMM1_WAVE);
         }
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM1, ++gmm1Count);
         const uint32_t gmm1EndBlockIndex = startBlockIdx_;
 
         int32_t gmm2TileSequence = 0;
         GmmRuntimeState gmm2RuntimeState{startBlockIdx_, vecSetSyncCom, gmm2TileSequence, gmm2PingPongIdx_};
+        MC2_TS_START(TS_GMM2_WAVE);
         ProcessGmm2Wave(gmm2Position, waveEndPosition, gmm2ExpertState, gmm2AddrInfo, gmm2RuntimeState);
+        MC2_TS_STOP(TS_GMM2_WAVE);
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
 
         const bool hasNextWave = waveEndPosition.expertIdx < moeExpertPerRank_;
@@ -843,8 +861,10 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         }
 
         uint32_t combineEndExpertIndex = waveEndPosition.expertIdx;
+        MC2_TS_START(TS_COMBINE_TOTAL);
         ProcessCombineExperts(combineBeginExpertIndex, combineEndExpertIndex, combineExpertState, combineAddrInfo,
                               combineBufferConfig);
+        MC2_TS_STOP(TS_COMBINE_TOTAL);
         combineBeginExpertIndex = combineEndExpertIndex;
         waveBeginPosition = waveEndPosition;
     }
@@ -867,14 +887,18 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
 
     // 等待所有 rank 完成本轮输入准备，再读取远端 dispatch 数据。
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_INPUT);
+    MC2_TS_START(TS_CROSS_SYNC_IN);
     CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
+    MC2_TS_STOP(TS_CROSS_SYNC_IN);
 
     // Dispatch 的全部专家先完成，随后按 GMM wave 执行 GMM1、SwiGLU、GMM2 与 Combine。
     ProcessMoeExpertStages();
 
     if constexpr (g_coreType == AIV) {
+        MC2_TS_START(TS_SYNC_AFTER_MOE);
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
+        MC2_TS_STOP(TS_SYNC_AFTER_MOE);
     }
 
     if (sharedExpertNum_ > 0) {
@@ -887,12 +911,14 @@ template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process()
 {
     // 保存入口时的溢出模式，并初始化输入准备阶段使用的 UB。
+    MC2_TS_START(TS_TOTAL);
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
     SendAndQuantBuffInit();
 
     // 阶段 1：AIV 完成本卡输入量化、路由 mask 推送和 flag 清零。
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::INPUT_PREPARE);
+    MC2_TS_START(TS_INPUT_PREP);
     QuantizeLocalTokens<QuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
         aivJob_, commonConfig_, params_, quantProcessConfig_, quantProcessScratch_);
     GatherAndSendExpertMasks(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_, sendMaskScratch_);
@@ -906,6 +932,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
             PipeBarrier<PIPE_ALL>();
         }
     }
+    MC2_TS_STOP(TS_INPUT_PREP);
     SyncAll<false>(); // AIC 等待 AIV 完成输入准备与 flag 清零后再进入计算
 
     ProcessGmmPipeline();
@@ -913,14 +940,25 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     // 阶段 3：等待所有 rank 的 Combine 发送完成，再执行本卡 Unpermute。
     if constexpr (g_coreType == AIV) {
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_OUTPUT);
+        MC2_TS_START(TS_CROSS_SYNC_OUT);
         CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
+        MC2_TS_STOP(TS_CROSS_SYNC_OUT);
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::UNPERMUTE);
+        MC2_TS_START(TS_UNPERMUTE);
         UnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();
         UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>(
             tokenUnpermuteConfig_, commonConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);
+        MC2_TS_STOP(TS_UNPERMUTE);
     }
     // 恢复入口时保存的溢出模式。
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+    MC2_TS_STOP(TS_TOTAL);
+#ifdef MC2_KERNEL_TIMING_ENABLE
+    // timing 区复用 yOut 头：先做覆盖全部核的同步，确保所有业务写（含 Unpermute）已落地。
+    PipeBarrier<PIPE_ALL>();
+    SyncAll<false>();
+#endif
+    MC2_TS_FLUSH();
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::COMPLETE);
 }
 
