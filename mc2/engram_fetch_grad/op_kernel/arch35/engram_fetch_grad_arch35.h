@@ -130,17 +130,6 @@ private:
     uint32_t tileBytes_{0};
     uint32_t gradSubBatch_{Mc2Kernel::GRAD_SUB_BATCH};
 
-    uint64_t uniqueScatterAddStartCycle_{0};
-    uint64_t uniqueScatterAddEndCycle_{0};
-    uint64_t usaInitAndOverlapSendCycle_{0};
-    uint64_t usaZeroCycle_{0};
-    uint64_t usaSortCycle_{0};
-    uint64_t usaDrainRecvCycle_{0};
-    uint64_t processStartCycle_{0};
-    uint64_t processEndCycle_{0};
-    uint64_t sendStartCycle_{0};
-    uint64_t sendEndCycle_{0};
-
     uint64_t barrierFlagOffset_{0};
     uint64_t tokenWriteOffset_{0};
     uint64_t tokenReadOffset_{0};
@@ -997,30 +986,21 @@ __aicore__ inline void EngramFetchGradArch35::UniqueScatterAdd()
         return;
     }
 
-    // uint64_t t0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
     InitCompanion(numRecv);
     SyncAll<true>();
-    // uint64_t t1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
     RunSort(numRecv);
-    // uint64_t t2 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
     uniqueScatter_.CountUniquesParallel(numRecv, recvLocalEntryOutGM_, coreStartGM_, segCountGM_);
-    // uint64_t tc = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
     uniqueScatter_.ZeroGradUnique(numRecv, gradUniqueOutGM_);
 
     FinishExchangeGrad();
     SyncAll<true>();
-    // uint64_t t3 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
     uniqueScatter_.RunScatterCast(numRecv, recvLocalEntryOutGM_, uniqueLocalEntryOutGM_, numUniqueOutGM_,
                                   gradUniqueOutGM_, recvGradGM_, coreStartGM_, segCountGM_,
                                   sortCompanionGM_);
-
-    // usaInitAndOverlapSendCycle_ = t1 - t0;
-    // usaSortCycle_ = t2 - t1;
-    // usaDrainRecvCycle_ = t3 - tc - uniqueScatter_.usaZeroCycle_;
 }
 
 __aicore__ inline void EngramFetchGradArch35::InitFlagsAndDispls()
@@ -1133,7 +1113,6 @@ __aicore__ inline void EngramFetchGradArch35::CrossRankBarrier()
 __aicore__ inline void EngramFetchGradArch35::Process()
 {
     if ASCEND_IS_AIV {
-        processStartCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
         InitFlagsAndDispls();
         ClearWinCounters();
         SyncAll<true>();
@@ -1141,9 +1120,7 @@ __aicore__ inline void EngramFetchGradArch35::Process()
         CrossRankBarrier();
         UnsortGrad();
         SyncAll<true>();
-        sendStartCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
         SendGradToPeers();
-        sendEndCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
         RecvGradFromPeers();
         DrainAndSendFlags();
         SyncAll<true>();
@@ -1152,51 +1129,18 @@ __aicore__ inline void EngramFetchGradArch35::Process()
         numRecvGM.SetGlobalBuffer((__gm__ int32_t *)numRecvOutGM_);
         DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(numRecvGM);
         uint32_t numRecv = static_cast<uint32_t>(numRecvGM.GetValue(0));
-        uint64_t t0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
         if (numRecv == 0) {
             uniqueScatter_.WriteNumUniqueZero(numUniqueOutGM_);
-            processEndCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
-            AscendC::printf("ENGRAM core=%uu numRecv=0\n", aivId_);
         } else {
             InitCompanion(numRecv);
             SyncAll<true>();
-            if (aivId_ == 0) {
-                LocalTensor<int32_t> dUb = indicesBuf_.Get<int32_t>();
-                GlobalTensor<int32_t> cGM; cGM.SetGlobalBuffer((__gm__ int32_t *)sortCompanionGM_);
-                DataCopyPad(dUb, cGM[0], AscendC::DataCopyExtParams{1U, 4U * sizeof(int32_t), 0U, 0U, 0U},
-                            AscendC::DataCopyPadExtParams<int32_t>{false, 0, 0, 0});
-                EngramFetchGradSyncFunc<HardEvent::MTE2_S>();
-                AscendC::printf("ENGRAM DUMP-compAfterInit core=%uu c0=%d c1=%d c2=%d c3=%d\n", aivId_,
-                                dUb.GetValue(0), dUb.GetValue(1), dUb.GetValue(2), dUb.GetValue(3));
-                GlobalTensor<int32_t> eGM; eGM.SetGlobalBuffer((__gm__ int32_t *)recvLocalEntryOutGM_);
-                DataCopyPad(dUb, eGM[0], AscendC::DataCopyExtParams{1U, 4U * sizeof(int32_t), 0U, 0U, 0U},
-                            AscendC::DataCopyPadExtParams<int32_t>{false, 0, 0, 0});
-                EngramFetchGradSyncFunc<HardEvent::MTE2_S>();
-                AscendC::printf("ENGRAM DUMP-entAfterInit core=%uu e0=%d e1=%d e2=%d e3=%d\n", aivId_,
-                                dUb.GetValue(0), dUb.GetValue(1), dUb.GetValue(2), dUb.GetValue(3));
-            }
-            uint64_t t1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
             sortPool_.Reset();
             uint32_t maxSortCount = static_cast<uint32_t>(totalRecv_);
             sorter_.Init(maxSortCount, totalBlocks_, recvLocalEntryOutGM_, sortCompanionGM_, sortWorkspaceGm_,
                          *tpipe_, sortPool_);
             RunSort(numRecv);
-            if (aivId_ == 0) {
-                LocalTensor<int32_t> dUb = indicesBuf_.Get<int32_t>();
-                GlobalTensor<int32_t> cGM; cGM.SetGlobalBuffer((__gm__ int32_t *)sortCompanionGM_);
-                DataCopyPad(dUb, cGM[0], AscendC::DataCopyExtParams{1U, 4U * sizeof(int32_t), 0U, 0U, 0U},
-                            AscendC::DataCopyPadExtParams<int32_t>{false, 0, 0, 0});
-                EngramFetchGradSyncFunc<HardEvent::MTE2_S>();
-                AscendC::printf("ENGRAM DUMP-compAfterSort core=%uu c0=%d c1=%d c2=%d c3=%d\n", aivId_,
-                                dUb.GetValue(0), dUb.GetValue(1), dUb.GetValue(2), dUb.GetValue(3));
-                GlobalTensor<int32_t> eGM; eGM.SetGlobalBuffer((__gm__ int32_t *)recvLocalEntryOutGM_);
-                DataCopyPad(dUb, eGM[0], AscendC::DataCopyExtParams{1U, 4U * sizeof(int32_t), 0U, 0U, 0U},
-                            AscendC::DataCopyPadExtParams<int32_t>{false, 0, 0, 0});
-                EngramFetchGradSyncFunc<HardEvent::MTE2_S>();
-                AscendC::printf("ENGRAM DUMP-entAfterSort core=%uu e0=%d e1=%d e2=%d e3=%d\n", aivId_,
-                                dUb.GetValue(0), dUb.GetValue(1), dUb.GetValue(2), dUb.GetValue(3));
-            }
+
             sortPool_.Reset();
             sortPool_.InitBuffer(entryBuf_, 64U * 1024U);
             sortPool_.InitBuffer(gradBuf_, 64U * 1024U);
@@ -1214,32 +1158,13 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             uniqueScatter_.SetCastBuf(castFp32Buf_);
             uniqueScatter_.SetAccumBuf(accumBuf_);
             uniqueScatter_.SetGradSubBatch(gradSubBatch_);
-            uint64_t t2 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
             uniqueScatter_.CountUniquesParallel(numRecv, recvLocalEntryOutGM_, coreStartGM_, segCountGM_);
-            uint64_t t3 = static_cast<uint64_t>(AscendC::GetSystemCycle());
-
             uniqueScatter_.ZeroGradUnique(numRecv, gradUniqueOutGM_);
-            uint64_t t4 = static_cast<uint64_t>(AscendC::GetSystemCycle());
-
             SyncAll<true>();
-            uint64_t t5 = static_cast<uint64_t>(AscendC::GetSystemCycle());
-
             uniqueScatter_.RunScatterCast(numRecv, recvLocalEntryOutGM_, uniqueLocalEntryOutGM_, numUniqueOutGM_,
                                           gradUniqueOutGM_, recvGradGM_, coreStartGM_, segCountGM_,
                                           sortCompanionGM_);
-            uint64_t t6 = static_cast<uint64_t>(AscendC::GetSystemCycle());
-
-            processEndCycle_ = t6;
-
-            uint64_t preUs = (sendStartCycle_ - processStartCycle_) / 1000U;
-            uint64_t sendUs = (sendEndCycle_ - sendStartCycle_) / 1000U;
-            uint64_t gapUs = (t0 - sendEndCycle_) / 1000U;
-            uint64_t totalUs = (t6 - processStartCycle_) / 1000U;
-            AscendC::printf("ENGRAM core=%uu pre=%lluu send=%lluu gap=%lluu init=%lluu sort=%lluu count=%lluu "
-                            "zero=%lluu scatterCast=%lluu total=%lluu\n",
-                            aivId_, preUs, sendUs, gapUs, (t1 - t0) / 1000U, (t2 - t1) / 1000U, (t3 - t2) / 1000U,
-                            (t4 - t3) / 1000U, (t6 - t5) / 1000U, totalUs);
         }
     }
 }
