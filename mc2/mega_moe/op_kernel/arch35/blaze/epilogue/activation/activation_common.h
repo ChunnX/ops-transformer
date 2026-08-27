@@ -10,7 +10,7 @@
 
 /*!
  * \file activation_common.h
- * \brief A5（arch35）门控激活公共数据结构、参数和常量。
+ * \brief 门控激活公共数据结构、参数和常量。
  */
 
 #ifndef MEGA_MOE_ARCH35_ACTIVATION_COMMON_H
@@ -56,6 +56,8 @@ struct GatedActivationArgs {
     uint32_t validRowCount = 0U;
     uint32_t validColumnCount = 0U;
     uint32_t inputRowStrideElements = 0U;
+    // 当前 Block Epilogue 使用 CeilAlign(validColumnCount, 32)；直接调用接口保留
+    // 更广输出物理行距下的两段写回和补零能力。
     uint32_t outputRowStrideElements = 0U;
 };
 
@@ -107,12 +109,24 @@ struct ActivationLoopPlan {
     // 以下字段均为尾块的标量派生结果。UpdateMask 接收可写引用，具体激活需复制 mask 计数后再调用。
     uint32_t tailColumnOffsetElements = 0U;
     uint32_t tailComputeMaskElementCount = 0U;
-    uint32_t firstTailStoreMaskElementCount = 0U;
-    uint32_t secondPaddingStoreMaskElementCount = 0U;
-    uint16_t tailLoopCount = 0U;
-    uint16_t secondPaddingLoopCount = 0U;
+    uint32_t tailStoreMaskElementCount = 0U;
+    uint32_t additionalPaddingStoreMaskElementCount = 0U;
+    // 0/1 标志：是否需要尾 Vector 计算，为保持原 VecScope for-loop 形态直接作为循环上界。
+    uint16_t needTailVectorCompute = 0U;
+    // 0/1 标志：是否需要额外补零写回，为保持原 VecScope for-loop 形态直接作为循环上界。
+    uint16_t needAdditionalPaddingStore = 0U;
 };
 
+/**
+ * \brief 根据逻辑有效行列范围和 UB 物理行距构建逐行激活 Vector 循环规划。
+ *
+ * 计算完整 Vector 循环、尾部有效元素、输出对齐补零范围、尾部地址偏移、三个 Mask 元素计数和两个
+ * 0/1 循环标志，供具体激活执行主循环、尾计算、尾写回及额外补零。
+ *
+ * \tparam InputType 输入元素类型。
+ * \param args 包含逻辑有效行列范围、输入和输出 UB 物理行距的门控激活参数。
+ * \return 逐行激活的主循环、尾处理和补零规划。
+ */
 template <typename InputType>
 __aicore__ inline ActivationLoopPlan BuildActivationLoopPlan(const GatedActivationArgs<InputType> &args)
 {
@@ -129,16 +143,16 @@ __aicore__ inline ActivationLoopPlan BuildActivationLoopPlan(const GatedActivati
     if (plan.tailElementCountPerRow > 0U) {
         plan.tailColumnOffsetElements = plan.fullVectorLoopCountPerRow * VECTOR_LENGTH_FP32;
         plan.tailComputeMaskElementCount = plan.tailElementCountPerRow;
-        plan.tailLoopCount = 1U;
+        plan.needTailVectorCompute = 1U;
 
-        const uint32_t firstTailAndPaddingElementCount =
+        const uint32_t tailAndPaddingElementCount =
             plan.tailElementCountPerRow + plan.outputPaddingElementCountPerRow;
-        if (firstTailAndPaddingElementCount <= VECTOR_LENGTH_FP32) {
-            plan.firstTailStoreMaskElementCount = firstTailAndPaddingElementCount;
+        if (tailAndPaddingElementCount <= VECTOR_LENGTH_FP32) {
+            plan.tailStoreMaskElementCount = tailAndPaddingElementCount;
         } else {
-            plan.firstTailStoreMaskElementCount = VECTOR_LENGTH_FP32;
-            plan.secondPaddingStoreMaskElementCount = firstTailAndPaddingElementCount - VECTOR_LENGTH_FP32;
-            plan.secondPaddingLoopCount = 1U;
+            plan.tailStoreMaskElementCount = VECTOR_LENGTH_FP32;
+            plan.additionalPaddingStoreMaskElementCount = tailAndPaddingElementCount - VECTOR_LENGTH_FP32;
+            plan.needAdditionalPaddingStore = 1U;
         }
     }
     return plan;

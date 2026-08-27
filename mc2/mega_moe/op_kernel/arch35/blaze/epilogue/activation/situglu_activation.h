@@ -10,7 +10,7 @@
 
 /*!
  * \file situglu_activation.h
- * \brief A5（arch35）SiTUGLU DEFAULT 和 LINEAR 门控激活实现。
+ * \brief SiTUGLU DEFAULT 和 LINEAR 门控激活实现。
  */
 
 #ifndef MEGA_MOE_ARCH35_SITUGLU_ACTIVATION_H
@@ -60,12 +60,13 @@ __aicore__ inline void RunSiTUGLU(const GatedActivationArgs<InputType> &args, co
     __ubuf__ InputType *gateTail = args.gate + plan.tailColumnOffsetElements;
     __ubuf__ InputType *upTail = args.up + plan.tailColumnOffsetElements;
     __ubuf__ bfloat16_t *outputTail = args.output + plan.tailColumnOffsetElements;
-    __ubuf__ bfloat16_t *secondPaddingOutput = outputTail + plan.tailLoopCount * VECTOR_LENGTH_FP32;
+    __ubuf__ bfloat16_t *additionalPaddingOutput =
+        outputTail + plan.needTailVectorCompute * VECTOR_LENGTH_FP32;
     const uint16_t rowLoopCount = static_cast<uint16_t>(plan.validRowCount);
     const uint16_t fullVectorLoopCount = static_cast<uint16_t>(plan.fullVectorLoopCountPerRow);
     uint32_t tailComputeMaskElementCount = plan.tailComputeMaskElementCount;
-    uint32_t firstTailStoreMaskElementCount = plan.firstTailStoreMaskElementCount;
-    uint32_t secondPaddingStoreMaskElementCount = plan.secondPaddingStoreMaskElementCount;
+    uint32_t tailStoreMaskElementCount = plan.tailStoreMaskElementCount;
+    uint32_t additionalPaddingStoreMaskElementCount = plan.additionalPaddingStoreMaskElementCount;
     __VEC_SCOPE__
     {
         AscendC::MicroAPI::RegTensor<InputType> gateReg;
@@ -94,10 +95,10 @@ __aicore__ inline void RunSiTUGLU(const GatedActivationArgs<InputType> &args, co
             AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
         AscendC::MicroAPI::MaskReg tailComputeMask =
             AscendC::MicroAPI::UpdateMask<float>(tailComputeMaskElementCount);
-        AscendC::MicroAPI::MaskReg firstTailStoreMask =
-            AscendC::MicroAPI::UpdateMask<float>(firstTailStoreMaskElementCount);
-        AscendC::MicroAPI::MaskReg secondPaddingStoreMask =
-            AscendC::MicroAPI::UpdateMask<bfloat16_t>(secondPaddingStoreMaskElementCount);
+        AscendC::MicroAPI::MaskReg tailStoreMask =
+            AscendC::MicroAPI::UpdateMask<float>(tailStoreMaskElementCount);
+        AscendC::MicroAPI::MaskReg additionalPaddingStoreMask =
+            AscendC::MicroAPI::UpdateMask<bfloat16_t>(additionalPaddingStoreMaskElementCount);
         AscendC::MicroAPI::Duplicate(oneReg, scalarOne);
         AscendC::MicroAPI::Duplicate(c1Reg, tanhC1);
         AscendC::MicroAPI::Duplicate(c2Reg, tanhC2);
@@ -155,7 +156,7 @@ __aicore__ inline void RunSiTUGLU(const GatedActivationArgs<InputType> &args, co
                 AscendC::MicroAPI::CreateAddrReg<InputType>(rowIndex, plan.inputRowStrideElements);
             AscendC::MicroAPI::AddrReg tailOutputOffset =
                 AscendC::MicroAPI::CreateAddrReg<bfloat16_t>(rowIndex, plan.outputRowStrideElements);
-            for (uint16_t tailIndex = 0; tailIndex < plan.tailLoopCount; tailIndex++) {
+            for (uint16_t tailIndex = 0; tailIndex < plan.needTailVectorCompute; tailIndex++) {
                 AscendC::MicroAPI::DataCopy<InputType, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
                     gateReg, gateTail, tailInputOffset);
                 AscendC::MicroAPI::DataCopy<InputType, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
@@ -194,12 +195,13 @@ __aicore__ inline void RunSiTUGLU(const GatedActivationArgs<InputType> &args, co
                 AscendC::MicroAPI::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(
                     outputReg, outputFp32Reg, tailComputeMask);
                 AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
-                    outputTail, outputReg, tailOutputOffset, firstTailStoreMask);
+                    outputTail, outputReg, tailOutputOffset, tailStoreMask);
             }
-            for (uint16_t paddingIndex = 0; paddingIndex < plan.secondPaddingLoopCount; paddingIndex++) {
+            for (uint16_t additionalPaddingIndex = 0;
+                 additionalPaddingIndex < plan.needAdditionalPaddingStore; additionalPaddingIndex++) {
                 AscendC::MicroAPI::Duplicate(zeroReg, zeroValue);
                 AscendC::MicroAPI::DataCopy<bfloat16_t>(
-                    secondPaddingOutput, zeroReg, tailOutputOffset, secondPaddingStoreMask);
+                    additionalPaddingOutput, zeroReg, tailOutputOffset, additionalPaddingStoreMask);
             }
         }
     }

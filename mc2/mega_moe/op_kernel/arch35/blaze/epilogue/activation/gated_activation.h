@@ -10,7 +10,7 @@
 
 /*!
  * \file gated_activation.h
- * \brief A5（arch35）门控激活统一入口和运行时分派。
+ * \brief 门控激活统一入口和运行时分派。
  */
 
 #ifndef MEGA_MOE_ARCH35_ACTIVATION_GATED_ACTIVATION_H

@@ -10,7 +10,7 @@
 
 /*!
  * \file mx_quant_fp8.h
- * \brief A5（arch35）MX FP8 数据量化。
+ * \brief MX FP8 数据量化。
  */
 
 #ifndef MEGA_MOE_ARCH35_MX_QUANT_FP8_H

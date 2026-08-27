@@ -10,7 +10,7 @@
 
 /*!
  * \file mx_quant_common.h
- * \brief A5（arch35）MX 量化公共参数、常量和转换属性。
+ * \brief MX 量化公共参数、常量和转换属性。
  */
 
 #ifndef MEGA_MOE_ARCH35_MX_QUANT_COMMON_H
