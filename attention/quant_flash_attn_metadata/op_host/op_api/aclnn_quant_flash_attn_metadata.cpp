@@ -39,12 +39,12 @@ aclnnStatus aclnnQuantFlashAttnMetadataGetWorkspaceSize(
     const aclTensor *sequsedKvOptional, const aclTensor *vDescaleOptional, int64_t batchSize, int64_t maxSeqlenQ,
     int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t quantMode, int64_t maskMode,
     int64_t winLeft, int64_t winRight, const char *layoutQ, const char *layoutQDescale, const char *layoutKv,
-    const char *layoutOut, const aclTensor *metaData, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const char *layoutOut, bool isTraining, const aclTensor *metaData, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnQuantFlashAttnMetadata,
                    DFX_IN(cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional,
                           vDescaleOptional, batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim,
-                          quantMode, maskMode, winLeft, winRight, layoutQ, layoutQDescale, layoutKv, layoutOut),
+                          quantMode, maskMode, winLeft, winRight, layoutQ, layoutQDescale, layoutKv, layoutOut, isTraining),
                    DFX_OUT(metaData));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -54,7 +54,7 @@ aclnnStatus aclnnQuantFlashAttnMetadataGetWorkspaceSize(
                                                         sequsedKvOptional, vDescaleOptional, batchSize,
                                                         maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim,
                                                         quantMode, maskMode, winLeft, winRight, layoutQ,
-                                                        layoutQDescale, layoutKv, layoutOut, metaData);
+                                                        layoutQDescale, layoutKv, layoutOut, isTraining, metaData);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
@@ -65,7 +65,7 @@ aclnnStatus aclnnQuantFlashAttnMetadataGetWorkspaceSize(
     auto output = l0op::QuantFlashAttnMetadata(cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional,
                                                sequsedKvOptional, vDescaleOptional, batchSize, maxSeqlenQ,
                                                maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, quantMode, maskMode,
-                                               winLeft, winRight, layoutQ, layoutQDescale, layoutKv, layoutOut,
+                                               winLeft, winRight, layoutQ, layoutQDescale, layoutKv, layoutOut, isTraining,
                                                socVersion, aicCoreNum, aivCoreNum, metaData, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
