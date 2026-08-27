@@ -134,6 +134,36 @@ __aicore__ inline WorkRange GetBalancedTokenRange(uint32_t totalTokens, uint32_t
     return {workerIdx * base + extraBefore, base + static_cast<uint32_t>(workerIdx < remainder)};
 }
 
+/*
+ * 遍历序错峰置换：多 rank 的多核并发访问同一远端窗口（如 Combine PUSH incast）时，
+ * 各任务按互素步长从各自相位起始环形遍历本任务区间，打散地址同相热点。
+ * 纯排列——不改变 (元素 -> 地址) 映射，仅改变访问次序，消费侧按 flag/计数收数，零感知。
+ * 用法：permIdx = GetScatterVisitStart(...); stride = GetScatterVisitStride(...);
+ *       循环体使用 permIdx 后执行 permIdx += stride; 若 permIdx >= totalCount 则减去 totalCount。
+ */
+// 环形步长：与 totalCount 互素，保证遍历 totalCount 次恰好覆盖每个元素一次；totalCount <= 2 时退化为自然序。
+__aicore__ inline uint32_t GetScatterVisitStride(uint32_t totalCount)
+{
+    if (totalCount <= 2U) {
+        return 1U;
+    }
+    uint32_t stride = totalCount / 2U + 1U;
+    if (((totalCount & 1U) == 0U) && ((stride & 1U) == 0U)) {
+        ++stride;
+    }
+    return stride;
+}
+
+// 环形起始相位：按 (rankId, jobIndex) 组合身份均匀铺开——同 rank 的各核也须错相，纯 rankId 不够。
+__aicore__ inline uint32_t GetScatterVisitStart(uint32_t totalCount, const MoeStageCommonConfig &common,
+                                                const AivJobContext &job)
+{
+    uint32_t jobCount = job.totalJobs == 0U ? 1U : job.totalJobs;
+    uint64_t workerCount = static_cast<uint64_t>(common.worldSize) * jobCount;
+    uint64_t workerIdx = static_cast<uint64_t>(common.rankId) * jobCount + job.jobIndex;
+    return static_cast<uint32_t>((workerIdx * totalCount) / workerCount);
+}
+
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
 // 使用调用方准备的全零 UB Tensor，清理当前 AIV 任务负责的连续 GM 区域。
 template <int32_t JobAlignment>
