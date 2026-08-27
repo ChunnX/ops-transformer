@@ -80,7 +80,9 @@ private:
     __aicore__ inline void SendGradToPeers();
     __aicore__ inline void SendGradRemote(uint32_t dstRank, uint32_t senderIdx, int32_t sendCount, int64_t sdispl,
                                           GM_ADDR localWinBase);
+    __aicore__ inline void DrainAndSendFlags();
     __aicore__ inline void RecvGradFromPeers();
+    __aicore__ inline void FinishExchangeGrad();
     __aicore__ inline void UniqueScatterAdd();
     __aicore__ inline void InitCompanion(uint32_t numRecv);
     __aicore__ inline void RunSort(uint32_t numRecv);
@@ -126,6 +128,18 @@ private:
     uint64_t winSize_{0};
     uint64_t ubSize_{0};
     uint32_t tileBytes_{0};
+    uint32_t gradSubBatch_{Mc2Kernel::GRAD_SUB_BATCH};
+
+    uint64_t uniqueScatterAddStartCycle_{0};
+    uint64_t uniqueScatterAddEndCycle_{0};
+    uint64_t usaInitAndOverlapSendCycle_{0};
+    uint64_t usaZeroCycle_{0};
+    uint64_t usaSortCycle_{0};
+    uint64_t usaDrainRecvCycle_{0};
+    uint64_t processStartCycle_{0};
+    uint64_t processEndCycle_{0};
+    uint64_t sendStartCycle_{0};
+    uint64_t sendEndCycle_{0};
 
     uint64_t barrierFlagOffset_{0};
     uint64_t tokenWriteOffset_{0};
@@ -137,6 +151,9 @@ private:
     uint32_t numSendCores_{0};
     uint32_t numRecvCores_{0};
     uint32_t sendersPerRank_{1};
+    uint32_t pendingHandleCount_{0};
+    uint64_t pendingHandles_[8]{0};
+    uint32_t pendingDstRanks_[8]{0};
     bool isSender_{false};
     bool isReceiver_{false};
     bool isFlagCore_{false};
@@ -153,10 +170,10 @@ private:
     GM_ADDR segCountGM_{0};
     GM_ADDR coreStartGM_{0};
     GM_ADDR sortCompanionGM_{0};
-    GM_ADDR gradUniqueFp32GM_{0};
+    GM_ADDR sortWorkspaceGm_{0};
 
-    TBuf<> pingBuf_;
-    TBuf<> pongBuf_;
+    TBuf<> entryBuf_;
+    TBuf<> gradBuf_;
     int32_t ppEvtMte2ToMte3_[2] = {0, 0};
     int32_t ppEvtMte3ToMte2_[2] = {0, 0};
     TBuf<> hcommBuf_;
@@ -164,7 +181,9 @@ private:
     TBuf<> tempBuf_;
     TBuf<> indicesBuf_;
     uint32_t indicesBufElements_{0};
-    TBuf<> gradSumBuf_;
+    TBuf<> castFp32Buf_;
+    TBuf<> accumBuf_;
+    TBufPool<TPosition::VECCALC, 16> sortPool_;
 
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
     EngramFetchGradSort::EngramFetchGradSort sorter_;
@@ -177,10 +196,7 @@ __aicore__ inline void EngramFetchGradArch35::WriteNbiChecked(uint64_t handle, G
     ascendc_assert(ret == 0, "WriteNbi failed, ret=%d, rankId=%u, aivId=%u", ret, rankId_, aivId_);
 }
 
-__aicore__ inline void EngramFetchGradArch35::DrainChecked(uint64_t handle)
-{
-    int32_t ret = hcomm_.Drain(handle);
-}
+__aicore__ inline void EngramFetchGradArch35::DrainChecked(uint64_t handle) { int32_t ret = hcomm_.Drain(handle); }
 
 __aicore__ inline void EngramFetchGradArch35::TimeoutCheck(uint64_t startTime)
 {
@@ -279,8 +295,8 @@ __aicore__ inline void EngramFetchGradArch35::LocalCopySlice(GM_ADDR dst, GM_ADD
     srcGm.SetGlobalBuffer((__gm__ uint8_t *)src);
     dstGm.SetGlobalBuffer((__gm__ uint8_t *)dst);
 
-    LocalTensor<uint8_t> buf0 = pingBuf_.Get<uint8_t>();
-    LocalTensor<uint8_t> buf1 = pongBuf_.Get<uint8_t>();
+    LocalTensor<uint8_t> buf0 = entryBuf_.Get<uint8_t>();
+    LocalTensor<uint8_t> buf1 = gradBuf_.Get<uint8_t>();
 
     DataCopyPadExtParams<uint8_t> pad{false, 0, 0, 0};
 
@@ -374,6 +390,10 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     inputDtype_ = tilingData->inputDtype;
     outputDtype_ = tilingData->outputDtype;
     ubSize_ = tilingData->ubSize;
+    gradSubBatch_ = tilingData->gradSubBatch;
+    if (gradSubBatch_ == 0U) {
+        gradSubBatch_ = Mc2Kernel::GRAD_SUB_BATCH;
+    }
 
     winSize_ = tilingData->commBufferSize;
 
@@ -427,8 +447,6 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     LocalTensor<uint8_t> hcommTensor = hcommBuf_.Get<uint8_t>();
     hcomm_.Init(hcommTensor, HCOMM_INIT_SIZE);
 
-    tpipe_->InitBuffer(pingBuf_, tileBytes_);
-    tpipe_->InitBuffer(pongBuf_, tileBytes_);
     ppEvtMte2ToMte3_[0] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
     ppEvtMte2ToMte3_[1] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
     ppEvtMte3ToMte2_[0] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
@@ -463,12 +481,6 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     wsOffset += sortCompanionSize;
     uint64_t sortWorkspaceSize = EngramFetchGradSort::EngramFetchGradSort::GetWorkspaceSize(maxSortCount, totalBlocks_);
 
-    sorter_.Init(maxSortCount, totalBlocks_, recvLocalEntryOutGM_, sortCompanionGM_, workspaceGM_ + wsOffset, *tpipe_);
-    wsOffset += sortWorkspaceSize;
-
-    gradUniqueFp32GM_ = workspaceGM_ + wsOffset;
-    wsOffset += static_cast<uint64_t>(totalRecv_) * static_cast<uint64_t>(hiddenDim_) * sizeof(float);
-
     uint32_t statusBufSize = Ceil(numRanks_ * STATE_OFFSET, UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(statusBuf_, statusBufSize);
     uint32_t tempBufSize = statusBufSize;
@@ -476,14 +488,11 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     if (tempBufSize < entryBatchBytes) {
         tempBufSize = entryBatchBytes;
     }
-    uint32_t coreArrayBytes = Ceil(static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    uint32_t coreArrayBytes = Ceil(static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t) * 2U, UB_ALIGN) * UB_ALIGN;
     if (tempBufSize < coreArrayBytes) {
         tempBufSize = coreArrayBytes;
     }
     tpipe_->InitBuffer(tempBuf_, tempBufSize);
-    uint32_t gradSumBufSize =
-        Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float) * GRAD_SUB_BATCH, UB_ALIGN) * UB_ALIGN;
-    tpipe_->InitBuffer(gradSumBuf_, gradSumBufSize);
     uint32_t indicesBufSize = 4U * 1024U;
     if (indicesBufSize < statusBufSize) {
         indicesBufSize = statusBufSize;
@@ -491,9 +500,29 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     tpipe_->InitBuffer(indicesBuf_, indicesBufSize);
     indicesBufElements_ = indicesBufSize / sizeof(int32_t);
 
+    uint32_t sortUbSize = EngramFetchGradSort::EngramFetchGradSort::GetUbSize(maxSortCount, totalBlocks_);
+    constexpr uint32_t COMM_BUF_SIZE = 2U * 64U * 1024U;
+    uint32_t maxByPong = (32U * 1024U) / static_cast<uint32_t>(hiddenBytes_);
+    if (maxByPong < 1U) { maxByPong = 1U; }
+    if (maxByPong > gradSubBatch_) { maxByPong = gradSubBatch_; }
+    uint32_t castBufSize = (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) ?
+        Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float) * maxByPong * 2U, UB_ALIGN) * UB_ALIGN : 0U;
+    uint32_t accumBufSize = Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float), UB_ALIGN) * UB_ALIGN * 2U;
+    uint32_t uniqueBufSize = COMM_BUF_SIZE + castBufSize + accumBufSize;
+    uint32_t poolSize = sortUbSize;
+    if (uniqueBufSize > poolSize) {
+        poolSize = uniqueBufSize;
+    }
+    tpipe_->InitBufPool(sortPool_, poolSize);
+    sortPool_.InitBuffer(entryBuf_, 64U * 1024U);
+    sortPool_.InitBuffer(gradBuf_, 64U * 1024U);
+
+    sortWorkspaceGm_ = workspaceGM_ + wsOffset;
+    wsOffset += sortWorkspaceSize;
+
     uniqueScatter_.Init(aivId_, totalBlocks_, rankId_, numRanks_, numEntriesPerRank_, hiddenDim_, hiddenBytes_,
-                        inputDtype_, outputDtype_, tpipe_, pingBuf_, pongBuf_, indicesBuf_, tempBuf_, statusBuf_,
-                        gradSumBuf_);
+                        inputDtype_, outputDtype_, tpipe_, entryBuf_, gradBuf_, indicesBuf_, tempBuf_, statusBuf_,
+                        castFp32Buf_, accumBuf_);
 }
 
 __aicore__ inline uint32_t EngramFetchGradArch35::LoadGradChunk(int64_t pos, int64_t end, LocalTensor<uint8_t> &buf,
@@ -566,7 +595,6 @@ __aicore__ inline void EngramFetchGradArch35::StoreGradChunk(int64_t base, uint3
     uint64_t dstOff = static_cast<uint64_t>(base) * static_cast<uint64_t>(hiddenBytes_);
     uint64_t totalBytes = static_cast<uint64_t>(count) * static_cast<uint64_t>(hiddenBytes_);
     uint64_t srcOff = 0;
-    constexpr uint32_t MAX_BLOCK_BYTES = 65535U;
     while (totalBytes > 0) {
         uint32_t chunkBytes = (totalBytes > MAX_BLOCK_BYTES) ? MAX_BLOCK_BYTES : static_cast<uint32_t>(totalBytes);
         DataCopyExtParams sParams{1U, chunkBytes, 0U, 0U, 0U};
@@ -637,8 +665,8 @@ __aicore__ inline void EngramFetchGradArch35::UnsortGrad()
         tokensPerBuf = indicesBufElements_;
     }
 
-    LocalTensor<uint8_t> buf0 = pingBuf_.Get<uint8_t>();
-    LocalTensor<uint8_t> buf1 = pongBuf_.Get<uint8_t>();
+    LocalTensor<uint8_t> buf0 = entryBuf_.Get<uint8_t>();
+    LocalTensor<uint8_t> buf1 = gradBuf_.Get<uint8_t>();
     LocalTensor<int32_t> idxUb = indicesBuf_.Get<int32_t>();
 
     int32_t curBuf = 0;
@@ -689,18 +717,18 @@ __aicore__ inline void EngramFetchGradArch35::UnsortGrad()
     }
 }
 
-__aicore__ inline void EngramFetchGradArch35::ExchangeGrad()
+__aicore__ inline void EngramFetchGradArch35::FinishExchangeGrad()
 {
     GM_ADDR localWinBase = (GM_ADDR)ctxPtr_->commBuffer[rankId_];
 
-    SendGradToPeers();
+    DrainAndSendFlags();
     RecvGradFromPeers();
 
     SyncAll<true>();
 }
-
 __aicore__ inline void EngramFetchGradArch35::SendGradToPeers()
 {
+    pendingHandleCount_ = 0;
     if (!isSender_) {
         return;
     }
@@ -797,6 +825,18 @@ __aicore__ inline void EngramFetchGradArch35::SendGradRemote(uint32_t dstRank, u
         localWriteCnt++;
         totalSent += chunkLen;
     }
+
+    pendingHandles_[pendingHandleCount_] = handle;
+    pendingDstRanks_[pendingHandleCount_] = dstRank;
+    pendingHandleCount_++;
+}
+
+__aicore__ inline void EngramFetchGradArch35::DrainAndSendFlags()
+{
+    for (uint32_t i = 0; i < pendingHandleCount_; i++) {
+        DrainChecked(pendingHandles_[i]);
+    }
+    pendingHandleCount_ = 0;
 }
 
 __aicore__ inline void EngramFetchGradArch35::RecvGradFromPeers()
@@ -939,7 +979,9 @@ __aicore__ inline void EngramFetchGradArch35::InitCompanion(uint32_t numRecv)
 
 __aicore__ inline void EngramFetchGradArch35::RunSort(uint32_t numRecv)
 {
-    sorter_.SetMaxValue(static_cast<uint32_t>(numRanks_) * static_cast<uint32_t>(numEntriesPerRank_));
+    int32_t offset = static_cast<int32_t>(rankId_) * static_cast<int32_t>(numEntriesPerRank_);
+    sorter_.SetValueOffset(offset);
+    sorter_.SetMaxValue(static_cast<uint32_t>(numEntriesPerRank_));
     sorter_.Process(numRecv, *tpipe_);
 }
 
@@ -950,18 +992,35 @@ __aicore__ inline void EngramFetchGradArch35::UniqueScatterAdd()
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(numRecvGM);
     uint32_t numRecv = static_cast<uint32_t>(numRecvGM.GetValue(0));
     if (numRecv == 0) {
+        FinishExchangeGrad();
         uniqueScatter_.WriteNumUniqueZero(numUniqueOutGM_);
         return;
     }
 
+    // uint64_t t0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
     InitCompanion(numRecv);
     SyncAll<true>();
+    // uint64_t t1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
     RunSort(numRecv);
-    SyncAll<true>();
+    // uint64_t t2 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
-    uniqueScatter_.Run(numRecv, recvLocalEntryOutGM_, uniqueLocalEntryOutGM_, numUniqueOutGM_, gradUniqueOutGM_,
-                       gradUniqueFp32GM_, recvGradGM_, coreStartGM_, segCountGM_, sortCompanionGM_);
+    uniqueScatter_.CountUniquesParallel(numRecv, recvLocalEntryOutGM_, coreStartGM_, segCountGM_);
+    // uint64_t tc = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
+    uniqueScatter_.ZeroGradUnique(numRecv, gradUniqueOutGM_);
+
+    FinishExchangeGrad();
+    SyncAll<true>();
+    // uint64_t t3 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
+    uniqueScatter_.RunScatterCast(numRecv, recvLocalEntryOutGM_, uniqueLocalEntryOutGM_, numUniqueOutGM_,
+                                  gradUniqueOutGM_, recvGradGM_, coreStartGM_, segCountGM_,
+                                  sortCompanionGM_);
+
+    // usaInitAndOverlapSendCycle_ = t1 - t0;
+    // usaSortCycle_ = t2 - t1;
+    // usaDrainRecvCycle_ = t3 - tc - uniqueScatter_.usaZeroCycle_;
 }
 
 __aicore__ inline void EngramFetchGradArch35::InitFlagsAndDispls()
@@ -1028,7 +1087,7 @@ __aicore__ inline void EngramFetchGradArch35::ClearWinCounters()
     GM_ADDR localWinBase = (GM_ADDR)ctxPtr_->commBuffer[rankId_];
     uint32_t cleanElements = numRanks_ * sendersPerRank_ * STATE_OFFSET / sizeof(int32_t);
     uint32_t totalCleanElements = 2U * cleanElements;
-    LocalTensor<int32_t> cleanLocal = pingBuf_.Get<int32_t>(totalCleanElements);
+    LocalTensor<int32_t> cleanLocal = entryBuf_.Get<int32_t>(totalCleanElements);
     Duplicate<int32_t>(cleanLocal, 0, totalCleanElements);
     EngramFetchGradSyncFunc<HardEvent::V_MTE3>();
     GlobalTensor<int32_t> countersGM;
@@ -1074,16 +1133,82 @@ __aicore__ inline void EngramFetchGradArch35::CrossRankBarrier()
 __aicore__ inline void EngramFetchGradArch35::Process()
 {
     if ASCEND_IS_AIV {
+        processStartCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
         InitFlagsAndDispls();
         ClearWinCounters();
         SyncAll<true>();
 
         CrossRankBarrier();
         UnsortGrad();
-        SyncAll<true>();
+        sendStartCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
+        SendGradToPeers();
+        sendEndCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
-        ExchangeGrad();
-        UniqueScatterAdd();
+        GlobalTensor<int32_t> numRecvGM;
+        numRecvGM.SetGlobalBuffer((__gm__ int32_t *)numRecvOutGM_);
+        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(numRecvGM);
+        uint32_t numRecv = static_cast<uint32_t>(numRecvGM.GetValue(0));
+        uint64_t t0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+        if (numRecv == 0) {
+            FinishExchangeGrad();
+            uniqueScatter_.WriteNumUniqueZero(numUniqueOutGM_);
+            processEndCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
+            AscendC::printf("ENGRAM core=%uu numRecv=0\n", aivId_);
+        } else {
+            InitCompanion(numRecv);
+            SyncAll<true>();
+            uint64_t t1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
+            sortPool_.Reset();
+            uint32_t maxSortCount = static_cast<uint32_t>(totalRecv_);
+            sorter_.Init(maxSortCount, totalBlocks_, recvLocalEntryOutGM_, sortCompanionGM_, sortWorkspaceGm_,
+                         *tpipe_, sortPool_);
+            RunSort(numRecv);
+            sortPool_.Reset();
+            sortPool_.InitBuffer(entryBuf_, 64U * 1024U);
+            sortPool_.InitBuffer(gradBuf_, 64U * 1024U);
+            uint32_t maxByPong = (32U * 1024U) / static_cast<uint32_t>(hiddenBytes_);
+            if (maxByPong < 1U) { maxByPong = 1U; }
+            if (maxByPong > gradSubBatch_) { maxByPong = gradSubBatch_; }
+            if (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) {
+                uint32_t castBufSize =
+                    Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float) * maxByPong * 2U, UB_ALIGN) * UB_ALIGN;
+                sortPool_.InitBuffer(castFp32Buf_, castBufSize);
+            }
+            uint32_t accumBufSize =
+                Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float), UB_ALIGN) * UB_ALIGN * 2U;
+            sortPool_.InitBuffer(accumBuf_, accumBufSize);
+            uniqueScatter_.SetCastBuf(castFp32Buf_);
+            uniqueScatter_.SetAccumBuf(accumBuf_);
+            uniqueScatter_.SetGradSubBatch(gradSubBatch_);
+            uint64_t t2 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
+            uniqueScatter_.CountUniquesParallel(numRecv, recvLocalEntryOutGM_, coreStartGM_, segCountGM_);
+            uint64_t t3 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
+            uniqueScatter_.ZeroGradUnique(numRecv, gradUniqueOutGM_);
+            uint64_t t4 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
+            FinishExchangeGrad();
+            SyncAll<true>();
+            uint64_t t5 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
+            uniqueScatter_.RunScatterCast(numRecv, recvLocalEntryOutGM_, uniqueLocalEntryOutGM_, numUniqueOutGM_,
+                                          gradUniqueOutGM_, recvGradGM_, coreStartGM_, segCountGM_,
+                                          sortCompanionGM_);
+            uint64_t t6 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
+            processEndCycle_ = t6;
+
+            uint64_t preUs = (sendStartCycle_ - processStartCycle_) / 1000U;
+            uint64_t sendUs = (sendEndCycle_ - sendStartCycle_) / 1000U;
+            uint64_t gapUs = (t0 - sendEndCycle_) / 1000U;
+            uint64_t totalUs = (t6 - processStartCycle_) / 1000U;
+            AscendC::printf("ENGRAM core=%uu pre=%lluu send=%lluu gap=%lluu init=%lluu sort=%lluu count=%lluu "
+                            "zero=%lluu drain=%lluu scatterCast=%lluu total=%lluu\n",
+                            aivId_, preUs, sendUs, gapUs, (t1 - t0) / 1000U, (t2 - t1) / 1000U, (t3 - t2) / 1000U,
+                            (t4 - t3) / 1000U, (t5 - t4) / 1000U, (t6 - t5) / 1000U, totalUs);
+        }
     }
 }
 
