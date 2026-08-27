@@ -573,6 +573,16 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
     ctx.mask2Num = mask2Num;
     ctx.mask3Num = mask3Num;
 
+    Activation::GatedActivationArgs<DataTypeIn> gatedArgs;
+    gatedArgs.gate = firstSrc;
+    gatedArgs.up = secondSrc;
+    gatedArgs.output = gluResAddr;
+    gatedArgs.topkWeights = ctx.weightUbAddr;
+    gatedArgs.validRowCount = mSize;
+    gatedArgs.validColumnCount = nSize;
+    gatedArgs.inputRowStrideElements = nSrcUbAligned;
+    gatedArgs.outputRowStrideElements = nDstUbAligned;
+
     const auto activation = static_cast<ActMode>(actMode_);
     if (activation == ActMode::SITU) {
         const float invBeta = (activationBeta_ != 0.0f) ? (1.0f / activationBeta_) : 1.0f;
@@ -586,14 +596,14 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<BLOCK_EPILOGUE_DEQUANT_FUN
             ActivationImpl::RunSiTU<DataTypeIn, TopkWeightsPrefetch, false, IsInterleaved_>(ctx, situParams);
         }
     } else if (activation == ActMode::SWIGLU_STEP) {
-        const ActivationImpl::SwiGLUParams swiGluParams{clampLimit_};
-        ActivationImpl::RunSwiGLU<DataTypeIn, TopkWeightsPrefetch, true, IsInterleaved_>(ctx, swiGluParams);
+        const Activation::SwiGluParams swiGluParams{clampLimit_};
+        Activation::RunSwiGLU<DataTypeIn, TopkWeightsPrefetch, true>(gatedArgs, swiGluParams);
     } else if (activation == ActMode::SWIGLU_OAI) {
         const ActivationImpl::SwiGLUOaiParams swiGluOaiParams{clampLimit_, activationAlpha_, activationBeta_};
         ActivationImpl::RunSwiGLUOai<DataTypeIn, TopkWeightsPrefetch, IsInterleaved_>(ctx, swiGluOaiParams);
     } else {
-        const ActivationImpl::SwiGLUParams swiGluParams{clampLimit_};
-        ActivationImpl::RunSwiGLU<DataTypeIn, TopkWeightsPrefetch, false, IsInterleaved_>(ctx, swiGluParams);
+        const Activation::SwiGluParams swiGluParams{clampLimit_};
+        Activation::RunSwiGLU<DataTypeIn, TopkWeightsPrefetch, false>(gatedArgs, swiGluParams);
     }
 }
 
