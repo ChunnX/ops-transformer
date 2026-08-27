@@ -53,10 +53,10 @@ struct GatedActivationArgs {
     __ubuf__ bfloat16_t *output = nullptr;
     __ubuf__ float *topkWeights = nullptr;
 
-    uint32_t rows = 0U;
-    uint32_t cols = 0U;
-    uint32_t srcRowStride = 0U;
-    uint32_t dstRowStride = 0U;
+    uint32_t validRowCount = 0U;
+    uint32_t validColumnCount = 0U;
+    uint32_t inputRowStrideElements = 0U;
+    uint32_t outputRowStrideElements = 0U;
 };
 
 // Epilogue 向激活调度层传递的通用参数。
@@ -90,36 +90,42 @@ struct SwiGluOaiParams {
 /*
  * VecScope 外的标量循环规划。
  *
- * fullVectorLoops 和 tailElements 只描述有效激活元素；paddingElements
- * 描述每行有效输出之后需要清零的元素数。具体实现据此在自己的
- * VecScope 内创建 mask、定位尾块地址并完成补零。
+ * validRowCount 和 validColumnCount 描述逻辑有效范围，两个 RowStride
+ * 描述 UB 物理布局，单位均为元素。非交织尾块的输入物理行距由调用方
+ * 按生产端布局传入（当前为 TileN），不得用 validColumnCount 替代。
+ * 具体激活在自己的 VecScope 内根据每行规划创建 mask 并完成补零。
  */
 struct ActivationLoopPlan {
-    uint32_t rows = 0U;
-    uint32_t fullVectorLoops = 0U;
-    uint32_t tailElements = 0U;
-    uint32_t paddingElements = 0U;
-    uint32_t srcRowStride = 0U;
-    uint32_t dstRowStride = 0U;
+    uint32_t validRowCount = 0U;
+    uint32_t validColumnCount = 0U;
+    uint32_t inputRowStrideElements = 0U;
+    uint32_t outputRowStrideElements = 0U;
+    uint32_t fullVectorLoopCountPerRow = 0U;
+    uint32_t tailElementCountPerRow = 0U;
+    uint32_t outputPaddingElementCountPerRow = 0U;
 };
 
 __aicore__ inline ActivationLoopPlan BuildActivationLoopPlan(
-    uint32_t rows, uint32_t cols, uint32_t srcRowStride, uint32_t dstRowStride)
+    uint32_t validRowCount, uint32_t validColumnCount, uint32_t inputRowStrideElements,
+    uint32_t outputRowStrideElements)
 {
     ActivationLoopPlan plan;
-    plan.rows = rows;
-    plan.fullVectorLoops = cols / VECTOR_LENGTH_FP32;
-    plan.tailElements = cols % VECTOR_LENGTH_FP32;
-    plan.paddingElements = dstRowStride > cols ? dstRowStride - cols : 0U;
-    plan.srcRowStride = srcRowStride;
-    plan.dstRowStride = dstRowStride;
+    plan.validRowCount = validRowCount;
+    plan.validColumnCount = validColumnCount;
+    plan.inputRowStrideElements = inputRowStrideElements;
+    plan.outputRowStrideElements = outputRowStrideElements;
+    plan.fullVectorLoopCountPerRow = validColumnCount / VECTOR_LENGTH_FP32;
+    plan.tailElementCountPerRow = validColumnCount % VECTOR_LENGTH_FP32;
+    plan.outputPaddingElementCountPerRow =
+        outputRowStrideElements > validColumnCount ? outputRowStrideElements - validColumnCount : 0U;
     return plan;
 }
 
 template <typename InputType>
 __aicore__ inline ActivationLoopPlan BuildActivationLoopPlan(const GatedActivationArgs<InputType> &args)
 {
-    return BuildActivationLoopPlan(args.rows, args.cols, args.srcRowStride, args.dstRowStride);
+    return BuildActivationLoopPlan(args.validRowCount, args.validColumnCount, args.inputRowStrideElements,
+                                   args.outputRowStrideElements);
 }
 
 } // namespace Activation
