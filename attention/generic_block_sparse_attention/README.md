@@ -191,7 +191,7 @@ KV方向: ceil(1024/128)=8块 [0, 1, 2, 3, 4, 5, 6, 7]
 3. layoutKv当前仅支持"PAGED_BBND"。
 4. blockShape当前仅支持[1, 128]；headDim当前仅支持128；KV页blockSize当前仅支持128，且须等于blockShapeY。
 5. isPackedGQA当前仅支持1；maskType当前仅支持1；attenMaskOptional当前只支持传入nullptr。
-6. sparseBlockIdx最后一维maxSparseBlockCount须≥sparseBlockCount中所有元素的最大值，且当前上限为64。
+6. sparseBlockIdx最后一维maxSparseBlockCount须≥sparseBlockCount中所有元素的最大值，且当前上限为256。
 7. metadataOptional、blockTableOptional、cuSeqLengthsQOptional、cuSeqLengthsKvOptional当前必须传入。
 8. winLeft和winRight当前只支持-1。
 9. quantType当前支持0；Ascend 950上可选5；quantType为1~4当前不支持。
