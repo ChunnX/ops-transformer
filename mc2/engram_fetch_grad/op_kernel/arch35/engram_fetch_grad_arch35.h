@@ -500,7 +500,6 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     tpipe_->InitBuffer(indicesBuf_, indicesBufSize);
     indicesBufElements_ = indicesBufSize / sizeof(int32_t);
 
-    uint32_t sortUbSize = EngramFetchGradSort::EngramFetchGradSort::GetUbSize(maxSortCount, totalBlocks_);
     constexpr uint32_t COMM_BUF_SIZE = 2U * 64U * 1024U;
     uint32_t maxByPong = (32U * 1024U) / static_cast<uint32_t>(hiddenBytes_);
     if (maxByPong < 1U) { maxByPong = 1U; }
@@ -509,16 +508,15 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
         Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float) * maxByPong * 2U, UB_ALIGN) * UB_ALIGN : 0U;
     uint32_t accumBufSize = Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float), UB_ALIGN) * UB_ALIGN * 2U;
     uint32_t uniqueBufSize = COMM_BUF_SIZE + castBufSize + accumBufSize;
-    uint32_t poolSize = sortUbSize;
-    if (uniqueBufSize > poolSize) {
-        poolSize = uniqueBufSize;
-    }
+    uint32_t poolSize = uniqueBufSize;
     tpipe_->InitBufPool(sortPool_, poolSize);
     sortPool_.InitBuffer(entryBuf_, 64U * 1024U);
     sortPool_.InitBuffer(gradBuf_, 64U * 1024U);
 
     sortWorkspaceGm_ = workspaceGM_ + wsOffset;
     wsOffset += sortWorkspaceSize;
+
+    sorter_.Init(maxSortCount, totalBlocks_, recvLocalEntryOutGM_, sortCompanionGM_, sortWorkspaceGm_, *tpipe_);
 
     uniqueScatter_.Init(aivId_, totalBlocks_, rankId_, numRanks_, numEntriesPerRank_, hiddenDim_, hiddenBytes_,
                         inputDtype_, outputDtype_, tpipe_, entryBuf_, gradBuf_, indicesBuf_, tempBuf_, statusBuf_,
@@ -979,9 +977,7 @@ __aicore__ inline void EngramFetchGradArch35::InitCompanion(uint32_t numRecv)
 
 __aicore__ inline void EngramFetchGradArch35::RunSort(uint32_t numRecv)
 {
-    int32_t offset = static_cast<int32_t>(rankId_) * static_cast<int32_t>(numEntriesPerRank_);
-    sorter_.SetValueOffset(offset);
-    sorter_.SetMaxValue(static_cast<uint32_t>(numEntriesPerRank_));
+    sorter_.SetMaxValue(static_cast<uint32_t>(numRanks_) * static_cast<uint32_t>(numEntriesPerRank_));
     sorter_.Process(numRecv, *tpipe_);
 }
 
@@ -1177,10 +1173,6 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             }
             uint64_t t1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
-            sortPool_.Reset();
-            uint32_t maxSortCount = static_cast<uint32_t>(totalRecv_);
-            sorter_.Init(maxSortCount, totalBlocks_, recvLocalEntryOutGM_, sortCompanionGM_, sortWorkspaceGm_,
-                         *tpipe_, sortPool_);
             RunSort(numRecv);
             if (aivId_ == 0) {
                 LocalTensor<int32_t> dUb = indicesBuf_.Get<int32_t>();
