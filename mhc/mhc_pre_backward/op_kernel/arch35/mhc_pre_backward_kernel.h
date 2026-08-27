@@ -117,8 +117,8 @@ public:
 
     template <bool hasGamma, bool reuseGamma>
     __aicore__ inline void VFDoV2GammaMulXRsGradMm(__ubuf__ P *xGradVec3Addr, __ubuf__ P *xRsGradMmAddr,
-                                                   __ubuf__ P *xRsFp32Addr, __ubuf__ P *invRmsAddr,
-                                                   __ubuf__ P *gammaInAddr,
+                                                   __ubuf__ P *gammaGradOutAddr, __ubuf__ P *xRsFp32Addr,
+                                                   __ubuf__ P *invRmsAddr, __ubuf__ P *gammaInAddr,
                                                    uint32_t currentChunkSize, uint32_t copySizeND);
 
     template <bool hasGradXPost>
@@ -1126,8 +1126,8 @@ template <class T, class P>
 template <bool hasGamma, bool reuseGamma>
 __aicore__ inline void
 MhcPreBackwardKernel<T, P>::VFDoV2GammaMulXRsGradMm(__ubuf__ P *xGradVec3Addr, __ubuf__ P *xRsGradMmAddr,
-                                                    __ubuf__ P *xRsFp32Addr, __ubuf__ P *invRmsAddr,
-                                                    __ubuf__ P *gammaInAddr,
+                                                    __ubuf__ P *gammaGradOutAddr, __ubuf__ P *xRsFp32Addr,
+                                                    __ubuf__ P *invRmsAddr, __ubuf__ P *gammaInAddr,
                                                     uint32_t currentChunkSize, uint32_t copySizeND)
 {
     uint32_t eleNumPerVf = 64;
@@ -1162,7 +1162,7 @@ MhcPreBackwardKernel<T, P>::VFDoV2GammaMulXRsGradMm(__ubuf__ P *xGradVec3Addr, _
                     MicroAPI::Mul(xRsGradReg, gammaReg, xRsGradMmReg, mask);
                     MicroAPI::Add(xGradReg, xGradReg, xRsGradReg, mask);
                     MicroAPI::Mul(gammaGradReg, xRsFp32Reg, xRsGradMmReg, mask);
-                    MicroAPI::StoreAlign(xRsGradMmAddr + offset, gammaGradReg, mask);
+                    MicroAPI::StoreAlign(gammaGradOutAddr + offset, gammaGradReg, mask);
                 } else {
                     MicroAPI::Add(xGradReg, xGradReg, xRsGradMmReg, mask);
                 }
@@ -1424,27 +1424,28 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkProcessXRsGradMm(uint32_t bsStart, uin
                                                            uint32_t currentChunkSize, uint32_t buffId,
                                                            LocalTensor<P> &sumBuf)
 {
-    // SplitNMatmulPolicy已将每个AIV负责的copySizeND列连续写入对应UB缓冲。
-    // 因此行步长是copySizeND，不再从GM workspace按ND_BLOCK_SIZE步长搬运。
+    // C0结果通过共享UB传入V2；这里只建立只读视图，处理结果必须写入V2私有缓冲。
+    // 当前地址解释仍按每个AIV的copySizeND列连续存放，布局适配在功能跑通后单独验证。
     uint32_t offsetXRsGradMm = (bsChunkStart - bsStart) * copySizeND;
     xRsGradMmInBuf_ = c0OutUb_[buffId % DOUBLE_BUFFER][offsetXRsGradMm];
 
     __ubuf__ P *xRsGradMmInBufAddr = (__ubuf__ P *)xRsGradMmInBuf_.GetPhyAddr();
     __ubuf__ P *xGradVec3Addr = (__ubuf__ P *)xGradVec3Buf_.GetPhyAddr();
     __ubuf__ P *xRsFp32Addr = (__ubuf__ P *)xRsFp32Buf_.GetPhyAddr();
+    __ubuf__ P *gammaGradOutAddr = (__ubuf__ P *)xRsGradMmUb_.GetPhyAddr();
     __ubuf__ P *invRmsAddr = (__ubuf__ P *)invRmsUb_.GetPhyAddr();
     if (withGamma_) {
         __ubuf__ P *gammaInAddr = (__ubuf__ P *)gammaIn_.GetPhyAddr();
         if (totalLength_ >= GAMMA_REG_REUSE_T_THRESHOLD) {
-            VFDoV2GammaMulXRsGradMm<true, true>(xGradVec3Addr, xRsGradMmInBufAddr, xRsFp32Addr, invRmsAddr,
-                                               gammaInAddr, currentChunkSize, copySizeND);
+            VFDoV2GammaMulXRsGradMm<true, true>(xGradVec3Addr, xRsGradMmInBufAddr, gammaGradOutAddr, xRsFp32Addr,
+                                               invRmsAddr, gammaInAddr, currentChunkSize, copySizeND);
         } else {
-            VFDoV2GammaMulXRsGradMm<true, false>(xGradVec3Addr, xRsGradMmInBufAddr, xRsFp32Addr, invRmsAddr,
-                                                gammaInAddr, currentChunkSize, copySizeND);
+            VFDoV2GammaMulXRsGradMm<true, false>(xGradVec3Addr, xRsGradMmInBufAddr, gammaGradOutAddr, xRsFp32Addr,
+                                                invRmsAddr, gammaInAddr, currentChunkSize, copySizeND);
         }
     } else {
-        VFDoV2GammaMulXRsGradMm<false, false>(xGradVec3Addr, xRsGradMmInBufAddr, xRsFp32Addr, invRmsAddr, nullptr,
-                                             currentChunkSize, copySizeND);
+        VFDoV2GammaMulXRsGradMm<false, false>(xGradVec3Addr, xRsGradMmInBufAddr, nullptr, xRsFp32Addr, invRmsAddr,
+                                             nullptr, currentChunkSize, copySizeND);
     }
 
     uint32_t srcReduceShape[] = {currentChunkSize, copySizeND};
@@ -1452,9 +1453,9 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkProcessXRsGradMm(uint32_t bsStart, uin
         LocalTensor<P> reduceSumBuf = xRsFp32Buf_;
         PipeBarrier<PIPE_V>();
         if (bsChunkStart == 0) {
-            ReduceSum<P, Pattern::Reduce::RA, true>(sumBuf, xRsGradMmInBuf_, srcReduceShape, true);
+            ReduceSum<P, Pattern::Reduce::RA, true>(sumBuf, xRsGradMmUb_, srcReduceShape, true);
         } else {
-            ReduceSum<P, Pattern::Reduce::RA, true>(reduceSumBuf, xRsGradMmInBuf_, srcReduceShape, true);
+            ReduceSum<P, Pattern::Reduce::RA, true>(reduceSumBuf, xRsGradMmUb_, srcReduceShape, true);
             PipeBarrier<PIPE_V>();
             Add(sumBuf, sumBuf, reduceSumBuf, copySizeND);
         }
