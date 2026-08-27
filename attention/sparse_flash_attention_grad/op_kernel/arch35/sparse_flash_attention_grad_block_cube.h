@@ -23,6 +23,24 @@
 
 using namespace commondef;
 
+#ifndef FA_BASE_MATMUL_MATMUL_BASE_DEFINED
+#define FA_BASE_MATMUL_MATMUL_BASE_DEFINED
+template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL,
+          typename L0AType, typename L0BType>
+__aicore__ inline void MatmulBase(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor, L0AType &aL0BuffsDb,
+                                  L0BType &bL0BuffsDb, const LocalTensor<C> &cL0Tensor, struct MMParam &param)
+{
+    if ((param.singleK + baseK - 1) / baseK > 1) {
+        MatmulK<A, B, C, baseM, baseN, baseK, AL, BL>(aL1Tensor, bL1Tensor, aL0BuffsDb, bL0BuffsDb, cL0Tensor, param);
+    } else if ((param.singleN + baseN - 1) / baseN > 1) {
+        MatmulN<A, B, C, baseM, baseN, baseK, AL, BL>(aL1Tensor, bL1Tensor, aL0BuffsDb, bL0BuffsDb, cL0Tensor, param);
+    } else {
+        MatmulFull<A, B, C, baseM, baseN, baseK, AL, BL>(aL1Tensor, bL1Tensor, aL0BuffsDb, bL0BuffsDb, cL0Tensor,
+                                                         param);
+    }
+}
+#endif
+
 namespace SfagBaseApi {
 
 constexpr static uint32_t L0_SINGLE_BUFFER_SIZE = 32 * 1024;
