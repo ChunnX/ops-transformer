@@ -72,7 +72,7 @@ private:
     bool IsS8S4AsymmetricQuant() const;
     bool IsA16W4() const;
     bool IsMultiTensorWeight() const;
-    bool IsA16W4Pergroup(const size_t xIdx) const;
+    bool IsA16W4Pergroup(const size_t idx) const;
 
     std::string GetDataFlowString() const;
     const char *GetAclnnName() const;
