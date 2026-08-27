@@ -551,6 +551,7 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor *x1, const 
     uint32_t rankSize = 0;
     bool transposeX1 = IsTransposeLastTwoDims(x1);
     bool transposeX2 = IsTransposeLastTwoDims(x2);
+    std::cout << "aclnn transposeX2:" << transposeX2 << std::endl;
 
     CHECK_RET(CheckShape(x1, x2, output, gatherOut, transposeX1), ACLNN_ERR_PARAM_INVALID);
     bool isGatherOut = IsGatherOut(gatherOut);

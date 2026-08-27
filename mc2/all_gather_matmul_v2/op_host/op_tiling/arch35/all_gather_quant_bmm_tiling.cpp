@@ -277,6 +277,7 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckMXFPScaleInput()
         return ge::GRAPH_FAILED);
 
     bool isTransB = *context_->GetAttrs()->GetAttrPointer<bool>(IS_TRANS_B);
+    std::cout << "tiling mx isTransB:" << isTransB << std::endl;
     if (isTransB) {
         OP_TILING_CHECK(
             (scale2FirstDim != args_.nValue) || (scale2SecondDim != ceilKAlign) || (scale2ThirdDim != EVEN_ALIGN),
@@ -309,6 +310,7 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckMXFPScaleInput()
     scale1kSpaceSize_ = mc2tiling::AlignUp(
         args_.rankDim * scale1FirstDim * scale1SecondDim * scale1ThirdDim * sizeof(ge::DT_FLOAT8_E8M0), alignAddrLen);
     OP_LOGI(opName_, "scale1kSpaceSize_=%lu.", scale1kSpaceSize_);
+    std::cout << "tiling mx args_.rankDim:" << args_.rankDim << std::endl;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -905,6 +907,7 @@ const gert::Shape AllGatherQuantBmmHelper::GetX2Shape(const size_t index)
         return gert::Shape({1, 1, 1, 1, static_cast<int64_t>(tilingProcesser_.args_.nValue),
                             static_cast<int64_t>(tilingProcesser_.args_.kValue)});
     }
+    std::cout << "tiling 910 tilingProcesser_.args_.isBTrans:" << tilingProcesser_.args_.isBTrans << std::endl;
     return gert::Shape(
         {1, 1, 1, 1, static_cast<int64_t>(tilingProcesser_.args_.kValue),
          static_cast<int64_t>(
