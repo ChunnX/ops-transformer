@@ -1,320 +1,608 @@
-# FP8 DN 场景 rescaleO 上移 CUBE 方案设计
+# FP8 DN 场景 RescaleO 上移 CUBE 设计
 
-> 状态：**已实现（未上板实测）**——代码完成于 2026-08-03 会话，修复了实现期发现的 4 类缺陷（见 §10）；待 950 板端 UT/精度验证
-> 日期：2026-08-01
-> 涉及算子：BlockSparseAttention（950 / arch35 / AtlasA5）
-> 目标场景：FP8 输入、FP16 输出、transposedMm1=true（DN）、qBaseTile=128、kvBaseTile=256、D=128
+> 文档基线：`45c26f409d0a37ef0311d23c8667f5b571669fa4`
+>
+> 最终实现：`79aa0fc8fc7e6b312a0778c3f086ef0a03b8276d`
+>
+> 适用平台：Atlas A5 / arch35 / 950
+>
+> 目标路径：FP8 E4M3 输入，FP16 或 BF16 输出，`transposedMm1=true`，`rescaleOnCube=true`，`innerPrecise=LOW_HIGH_MIXED`，`D<=128`
 
-## 1. 背景与动机
+本文以最终提交 `79aa0fc8` 的源码为事实来源。`45c26f4..79aa0fc8` 之间包含打印、定位代码、失败实验和后续修复；这些中间状态不作为最终设计。文中的“已实现”表示最终源码中存在该逻辑，不等价于声明所有测试组合均已执行。
 
-现状（arch35 主循环，四级流水 PRE_LAUNCH=2）：
+## 1. 背景与目标
 
-```
-MM1(CUBE): K×Q^t → S^t [kvS,qS] → L0C → FixPipe → UB S
-softmax(VEC): S → P（nZ 散布）→ L1；同时产出 lm/gm/ll/gl/dm
-MM2(CUBE): P×V → OTmp [qS,D] → L0C → FixPipe → UB OTmp(lo)
-rescaleO(VEC): go = go·dm + lo（逐行 broadcast 系数乘 + 加），末块 ÷gl → cast → GM O
-```
+原始 FP8 路径在每个 KV tile 上执行：
 
-### 1.1 性能动机：算子为 vector-bound，FP8 的 CUBE 收益被 VEC 掩盖
-
-- 主循环的耗时瓶颈在 VEC 单元（mask2idx + online softmax + rescaleO），CUBE 侧 MM1/MM2 相对空闲；
-- FP8 场景 Q/K/V 均为 fp8，CUBE 计算时间较 FP16/BF16 明显下降，但 VEC 侧工作量**不降反增**（FP8 的 P 量化路径比 half 多出 ×448、cast 拆分、Or/DeInterleave 等操作，见 `ComputePAndLocalSumFP8`）；
-- 结果：FP8 相对非量化的执行时间收益没有体现出来；
-- 因此把 rescale 阶段从 VEC 迁移到 CUBE：削掉每 tile 一次 `[qS,D]` 逐行乘加的 VEC 循环，同时消除 OTmp 的 FixPipe→UB 搬运链，压低 VEC 关键路径。
-
-### 1.2 问题与目标
-
-问题：rescaleO 的 `go·dm + lo` 在 VEC 上逐行执行，`lo`（OTmp）需要完整的 FixPipe→UB 搬运链和 2 份 UB 缓冲；VEC 侧 rescale 循环占用向量算力。
-
-方案目标：把 rescale 重解释为**对角矩阵乘**，融合进 MM2 的 L0C 累加器（bias），在 CUBE 上完成 `GO_{i+1} = diag(dm)·GO_i + P·V`，从而：
-
-- 删除 OTmp（lo）的 UB staged 缓冲与逐 tile 的 FixPipe→UB 搬运；
-- VEC rescaleO 只剩末块的 ÷gl/cast/写 GM；
-- rescale 的矩阵乘按转置分块（方法 3）实现，算量减半；并按 16×16 对角块只乘非零块（mmad 层跳过零块，见 §2.2）后再降 1/4。
-
-## 2. 数学基础
-
-### 2.1 矩阵乘等价
-
-```
-现状：  GO_{i+1} = GO_i · dm_{i+1} + LO_{i+1}，其中 LO_{i+1} = P_{i+1}·V_{i+1}（逐元素系数乘 + 矩阵加）
-等价：  GO_{i+1} = diag(dm_{i+1}) · GO_i + P_{i+1}·V_{i+1}
+```text
+MM1(CUBE):      K × Q^T -> S^T -> FixPipe -> UB S
+Softmax(VEC):   S -> P，同时更新 lm/gm/ll/gl/dm
+MM2(CUBE):      P × V -> lo -> FixPipe -> UB lo
+RescaleO(VEC):  go = go * dm + lo
+Last tile:      O = go / gl -> cast -> GM
 ```
 
-`diag(dm)` 为对角矩阵 `[qS,qS]`，行系数 = 每行（每个 q）的 rescale 系数。
+FP8 使 QK/PV 的 CUBE 计算变快，但 VEC 仍要承担 online softmax、P 的 FP8 转换和逐 tile 的 `go * dm + lo`。本方案把后者改写为对角矩阵乘，并与转置 PV 的 L0C 累加融合：
 
-### 2.2 转置分块（方法 3）
-
-基于 `(D·R)^T = R^T·D^T`，整个融合模块在**转置空间**运算（DN 世界的天然形态，与 MM1 的 K×Q^t 同构）：
-
-```
-(GO_{i+1})^T = MMAD( A = (GO_i)^T        [D, qS]
-                    B = diag(dm/vScale)^T [qS, qS]
-                    bias = (V)^T·(P)^T    [D, qS]  ← PV^T 结果留在 L0C 作累加器 )
-                   · vScale
+```text
+PV^T:       C = V^T × P^T
+Rescale:    C += GO_prev^T × DIAGDM
+Middle:     C 原样写入 L1，作为下一 tile 的 GO_prev^T
+Last:       C 经 NZ2DN 和 vScale 写入 UB，VEC 只做 /gl、×(1/448)、cast 和写 GM
 ```
 
-CUBE 单实例全量计算（与现有 MM1/PV 同风格——mmad 全量、双子核划分只发生在 FixPipe 的 Sub0/Sub1 显式调用）：
+目标是：
 
-```
-(GO_{i+1})^T = MMAD( A = (GO_i)^T        [D, qS]
-                    B = diag(dm/vScale)  [qS, qS]（双子核块拼接）
-                    bias = (V)^T·(P)^T   [D, qS] ) · vScale
-```
+- 删除目标路径中逐 tile 的 UB `lo` 双缓冲和 VEC rescale 乘加；
+- 保持 PV 与 rescale 共用同一份 L0C，不产生额外中间矩阵；
+- DIAGDM 只保存和计算非零的 `16×16` 对角块；
+- 不改变非量化、非转置和 `rescaleOnCube=false` 路径。
 
-- 跳过了对角矩阵的零区域，算量降为 **4×2×128×16×16 = 0.26M MACs**（方法 1 为 128³ = 2.1M）；
-- K=qS 按 16 切（见下文，K=16 合法性见 §6.1）；
-- diag 双子核块（每块 zN [64,64]，L1 顺序排布）：RE 按 frGrp 选双子核块（批 0 → 块 0、批 1 → 块 1），B 子块在 L0B 内取对角位置 (j*16, j*16)。
+## 2. 路径选择与范围隔离
 
-**16×16 块级优化（方法 3 的进一步裁剪）**：B_s=diag 块 [64,64] fp32 = 4×8 个 16×8 fractal，非零的只有对角斜带 8 个（fractal 行 fr 的列 2fr、2fr+1）；按 16×16 块（= 2 个 fractal）合并为 4×4 块网格后，**只有 4 个对角块 (fr,fr) 非零**（其余 12 块全零）。**实际实现（与初版设计不同，已按实现更新）**：
+full-quant kernel 中的最终开关是：
 
-- **B（diag）双子核块整块大搬**：`copyL1ToL0B`（float zN→nZ 转置特化）把双子核块 [64,64] fp32 **全量**各一次搬入 L0B（**2 次并行发、地址 0/16KB 隔离**），一次搬满 1 个 L0B stage、两批共用（L0B 计数固定 +1）；qS<128 时有效区 [qS/2,qS/2] 在块内前部，**多搬部分不被 mmad 消费**——不做初版的 1/4 搬运裁剪（16×16 块级 copy 需 8 次子块搬、且 L0B 反正一次搬满），跳过零块的收益全部在 mmad 层体现；
-- **A（GO）按批大搬**：每批搬 `[D块, qHalf]`（qHalf = qS/2 = 64，fp32 32KB 满 1 个 L0A buf），**mL0 先行循环预取**（与 mmad 循环分离，先搬后乘），双缓冲 2 批装完 GO 全量 64KB；
-- **RE mmad 批内切 16 列子块**：每 (frGrp, mL0) 内 nGrpAct 个 `[D块,16]×[16,16]` 小 mmad（K=16 合法，`MmadParams.k ∈ [0,4095]` 无对齐约束，fp32 粒度 8 元素，见 §6.1 修正；**尾块用实际列数 K=nAct**，见 §8 待验证项 4 的修复），**B 子块从 L0B 内 `GetTile(j*16, j*16)` 取对角位置 [16, nAct]**——跳过零块在 mmad 层实现（只乘对角子块，其余 C 列区贡献为 0）；每次 `initMmad=false` **累加**到 PV^T 留下的 bias 上；总次数 = frGrpNum × mL0LoopNum × nGrpAct（D=128、qS=128 时 = 2×1×4 = 8 次，与 §7.2 一致）；
-- 算量：**2×4×128×16×16 = 0.26M MACs**（方法 3 的 1/4，零块不乘的收益不变）；
-- frGrp 按 qHalf 分 2 批（批 0 列 [0, qHalf)、批 1 列 [qHalf, rowNum)），批间交叉项为 0（对角矩阵不同批的列区间不相交，故两批可复用同一 L0B 双子核块）；
-- PV^T 段不受影响（仍用现有 copyL1ToL0A/L0B 封装）。
-
-### 2.3 反量化 scale 记账（关键正确性论证）
-
-FP8 场景 bias 是 raw fp8 累加（未反量化），而 GO 存反量化后的 float 值。方案通过 **B 里先除 vScale、整体最后乘 vScale** 让两项同时正确：
-
-```
-方案计算:  GO_{i+1} = [ GO_i^T·diag(dm/vScale) + V^T·P^T_raw ] · vScale
-逐项展开:  = GO_i·diag(dm)  +  PV_raw·vScale        ✓✓ 与原始语义逐项相等
+```cpp
+static constexpr bool RESCALE_ON_CUBE =
+    transposedMm1 && BlockMmadPV::rescaleOnCube;
 ```
 
-- 两项量纲不同（一项已反量化、一项 raw），靠一个 `×vScale` 同时摆平；
-- 对 **vScale 逐 tile 变化**鲁棒（`vScale/vScale` 恒消掉），不要求 vScale 跨 tile 常量；
-- 末次的 `×vScale` 即 FixPipe 现有的 `deqScalar` 参数——反量化零新增成本；
-- GO 存反量化 float，保持现状"go 为 float"的数值语义（不做每 tile 截断）。
+接口只允许 `rescaleOnCube=true` 与 `transposedMm1=true` 同时出现：
 
-## 3. 目标场景参数
+```cpp
+static_assert(!rescaleOnCube || transposedMm1,
+    "rescaleOnCube=true is only valid with transposedMm1=true (DN + FP8 input)");
+```
 
-| 参数 | 值 | 来源 |
+目标 tiling key 将 `BsaInferInterfaceFullQuant` 实例化为 `<..., true, true>`。FP8 ND、普通 FP16/BF16、high-precision softmax 和旧 PV/RescaleO 路径继续使用原实现。
+
+当前 host 规则还有两点需要区分：
+
+- FP8 full-quant 要求 `blockShapeX=128`，`blockShapeY` 只在 host 侧校验为256的整数倍；
+- `kvBaseTile=512` 后的性能/精度验证应使用与512基块匹配的 `blockShapeY`，但当前代码没有新增“必须为512整数倍”的 host 校验。
+
+## 3. 数学等价与量化比例
+
+### 3.1 Rescale 改写为对角矩阵乘
+
+对第 `t` 个 KV tile，online softmax 的递推为：
+
+```text
+GO_t = dm_t ⊙ GO_(t-1) + PV_t
+```
+
+其中 `dm_t` 按 q 行广播。令 `D_t = diag(dm_t)`，转置后为：
+
+```text
+GO_t^T = GO_(t-1)^T × D_t + V_t^T × P_t^T
+```
+
+因此 PV 的结果可以留在 L0C，随后用 `initC=false` 的 FP32 MMAD 把对角矩阵乘累加进去。
+
+### 3.2 为什么对角系数是dm×vScalePrev/vScaleCurr
+
+FP8 的 `V^T×P^T` 先在 CUBE 中得到 raw FP32 累加值。定义：
+
+```text
+A_t = V_raw,t^T × P_raw,t^T
+v_t = 第t个KV tile的V反量化scale
+R_t = 截止第t个tile、尚未除global sum的真实分子
+C_t = L0C/L1中保存的raw域GO^T
+```
+
+真实数值希望满足：
+
+```text
+R_t = dm_t × R_(t-1) + v_t × A_t
+```
+
+而中间 tile 的 L0C→L1 使用 `DataCopy(CO1→C1)` 保形搬运。这个通路负责把 FP32 L0C 的 `16×16` fractal 拆成 L1 标准 `16×8` fractal，但不能同时执行 FP32→FP32 的随路反量化。因此 L1 中保存的是 `C_(t-1)`，并且：
+
+```text
+R_(t-1) = v_(t-1) × C_(t-1)
+```
+
+把它代入真实递推：
+
+```text
+R_t = dm_t × v_(t-1) × C_(t-1) + v_t × A_t
+```
+
+提取当前 tile 的 `v_t`：
+
+```text
+R_t = v_t × [A_t + C_(t-1) × dm_t × v_(t-1)/v_t]
+```
+
+因此 CUBE 内部必须计算：
+
+```text
+C_t = A_t + C_(t-1) × diag(dm_t × v_(t-1)/v_t)
+```
+
+末块再由 FixPipe 用当前 `deqScalar=v_t` 统一乘回真实域。这样两项分别变为：
+
+```text
+当前PV项: v_t × A_t
+历史GO项: v_t × C_(t-1) × dm_t × v_(t-1)/v_t
+         = v_(t-1) × C_(t-1) × dm_t
+         = R_(t-1) × dm_t
+```
+
+所以 `SetDiagonalDeltaMax()` 生成的是：
+
+```text
+diag(dm × vScalePrev / vScaleCurr)
+```
+
+而不是旧文档中的简单 `diag(dm/vScale)`。该比值使不同 KV tile 使用不同 `vScale` 时仍能逐项消元。首 tile 不执行 DIAGDM；传入的 `vScalePrev=1.0` 只是占位。
+
+### 3.3 Softmax scale 折叠进QK FixPipe
+
+目标路径中，attention `scaleValue` 已合入 QK 的 FixPipe 标量：
+
+```cpp
+float combinedDeqScalar = qDequantScaleValue * kDequantScaleValue;
+if constexpr (RESCALE_ON_CUBE) {
+    combinedDeqScalar *= scaleValue_;
+}
+```
+
+所以 UB 中的 S 已是：
+
+```text
+S_UB = QK_acc × qScale × kScale × scaleValue
+```
+
+half/BF16 两条 low-prec S_trans 实现使用 `FULL_QUANT_FP8` 隔离：
+
+- FP8 P 路径的 `ComputeLocalMax()` 不再重复乘 `scaleValue`；
+- `ComputePAndLocalSumFP8()` 不再接收或逐行乘 `scaleValue`；
+- 非 FP8 路径仍在 softmax VEC 中执行原有 scale，不受影响。
+
+## 4. 总体流水
+
+```mermaid
+flowchart LR
+    KQ[GM K/Q] --> QK[QK CUBE]
+    QK -->|FixPipe: qScale*kScale*scaleValue| SUB[UB S]
+    SUB --> SM[Online Softmax VEC]
+    SM -->|FP8 P, 3 stages| PL1[L1 P]
+    SM -->|dm -> packed DIAGDM| DL1[L1 DIAGDM]
+    VGM[GM V] --> VL1[L1 V]
+    PL1 --> PV[PV transpose CUBE]
+    VL1 --> PV
+    PV --> L0C[L0C: V^T*P^T]
+    GOL1[L1 GO_prev^T] --> RE[FP32 rescale MMAD]
+    DL1 --> RE
+    RE -->|accumulate| L0C
+    L0C -->|middle: CO1->C1| GOL1
+    L0C -->|last: NZ2DN + vScale| GOUB[UB go]
+    GOUB -->|/gl, FP8乘1/448, cast| OGM[GM O]
+```
+
+主循环保留 `PRE_LAUNCH=2`：QK/softmax 处理当前 tile，PV/RE 消费两拍前的 tile。P 和 DIAGDM 均采用三 stage，以匹配该流水距离。
+
+## 5. Tiling与片上内存
+
+### 5.1 最终基础tile
+
+`CalcBaseTileTilingParams950()` 的最终策略是：
+
+| 条件 | qBaseTile | kvBaseTile |
+|---|---:|---:|
+| FP8、LOW_HIGH_MIXED、D≤128 | min(blockShapeX,128) | 512 |
+| 非量化 LOW_HIGH_MIXED、D≤128 | min(blockShapeX,128) | 256 |
+| 其他 | min(blockShapeX,128) | 128 |
+
+D按128对齐时，`CalcMatmulPhaseL1TileInfo950()` 生成：
+
+| 阶段 | L1 tile | buffer数 |
+|---|---|---:|
+| Q | `128×128 FP8` | 1 |
+| K | `256×128 FP8` | 2 |
+| P | `128×512 FP8` | 3 |
+| V | `512×128 FP8` | 2 |
+
+K 仍以256行为一个 L1 tile；V 和 P 则完整覆盖512长度的 MM2 基块。
+
+### 5.2 D=128时的L1分配
+
+L1 总容量为512KB。目标路径的最终布局为：
+
+| 区域 | 字节区间 | 单份 | 份数 | 合计 |
+|---|---:|---:|---:|---:|
+| Q | `[0,16KB)` | 16KB | 1 | 16KB |
+| K | `[16KB,80KB)` | 32KB | 2 | 64KB |
+| P | `[80KB,272KB)` | 64KB | 3 | 192KB |
+| V | `[272KB,400KB)` | 64KB | 2 | 128KB |
+| GO^T FP32 | `[400KB,464KB)` | 64KB | 1 | 64KB |
+| DIAGDM FP32 | `[464KB,488KB)` | 8KB | 3 | 24KB |
+| 剩余 | `[488KB,512KB)` | - | - | 24KB |
+
+DIAGDM 每 stage 固定为：
+
+```text
+2 groups × 64 rows × 16 cols × sizeof(float)
+= 2048 float
+= 8KB
+```
+
+它不再为每个 group 预留完整 `64×64 FP32=16KB`，因此总容量由旧方案的96KB压缩为24KB。
+
+三份固定地址为：
+
+| DIAG stage | L1区间 | 对应P stage |
+|---|---:|---:|
+| 0 | `[464KB,472KB)` | `l1PBufId=0` |
+| 1 | `[472KB,480KB)` | `l1PBufId=1` |
+| 2 | `[480KB,488KB)` | `l1PBufId=2` |
+
+一个 group 的4KB所有权并不是L1中单段连续4KB，而是H0占stage前半中的2KB、H1占stage后半中的2KB；这种拆分正是完整 `zN[128,16]` 的物理要求，详见 §7.4～§7.5。
+
+### 5.3 D=128、kvBaseTile=512时的UB分配
+
+每个 AIV 拥有256KB UB。half/BF16 S 均为2B，P为FP8。`CalcUBufTileInfo()` 得到：
+
+| 区域 | 起始偏移 | 大小 | 说明 |
+|---|---:|---:|---|
+| S stage 0/1 | 0 | 131072B | `2×64×512×2B` |
+| P stage 0/1 | 131072B | 65600B | `2×(64×512×1B+32B)` |
+| DIAGDM中转 | 196672B | 16608B | `64×64×4B + 224B` padding，1份 |
+| go | 213280B | 32768B | `64×128×4B`，1份 |
+| lm | 246048B | 256B | 64行状态 |
+| gm | 246304B | 256B | 64行状态 |
+| dm | 246560B | 768B | `3×64×4B` |
+| ll | 247328B | 256B | 64行状态 |
+| gl | 247584B | 256B | 64行状态 |
+| lse | 247840B | 2048B | `64×8×4B` |
+| `maskStartOffset` | 249888B | - | 该点之后剩余12256B |
+
+两个 padding 必须区分：
+
+- P 每 stage 只额外分配一个32B DataBlock，取代旧的 `Max(qBaseTilePerSubCore, kvBaseTilePerSubCore)` 过量分配；
+- DIAGDM UB 使用 `diagDmRound+1` 的 StoreAlign 跨距，64行满块共有7个32B间隔，因此额外分配224B。
+
+目标路径不再为 `lo` 分配 UB 双缓冲。
+
+### 5.4 L0分配
+
+- L0A：64KB，两个32KB ping/pong stage；PV^T 和 RE 分时复用同一物理区域；
+- L0B：64KB，两个32KB ping/pong stage；一次 DIAGDM 搬运只占8KB；
+- L0C：256KB，MM1 使用前半，PV^T+RE 使用后半的两个64KB stage；
+- qS=128、D=128时，每个 RE group 的 GO^T 块为 `128×64 FP32=32KB`，正好占一个 L0A stage。
+
+## 6. QK阶段：512基块与两次K L1循环
+
+`kvBaseTile` 扩大到512后，Q常驻 L1，K 仍按256行加载，因此 `block_mmad_k_qt_st_arch35.hpp` 每个完整 KV tile 执行两次 K 的 L1 循环：
+
+```cpp
+mL1LoopNumAct       = CeilDiv(kSTile, l1ATileM);
+mL1LoopNumBase      = CeilDiv(kvSBaseTile, l1ATileM);
+mL0LoopNumPerL1Tile = CeilDiv(l1ATileM, L0_TILE_M);
+mL0LoopNumBase      = CeilDiv(kvSBaseTile, L0_TILE_M);
+```
+
+其中：
+
+- `Act` 控制尾 tile 实际执行次数；
+- `Base` 固定不同 KV tile 之间的 stage counter 跨距，防止最后一个短 tile 改变 ping/pong 映射；
+- `mGlobalOffset = mL1Itr*l1ATileM + mL0Itr*L0_TILE_M`，保证第二个256行块写入 S UB 的 `[256,512)`，不覆盖前半；
+- 反向 `mm1ToSmFlag` 只在 `mL1Itr==0 && mL0Itr==0` 时等待一次；
+- Q→L0B 的无重复加载判定覆盖完整的两次 L1 循环，Q不因K分块而重复搬运。
+
+每个子核的 S 视图仍为 `[kvSTile,64]`；完整512基块写满各自的 `512×64` UB 区域。
+
+## 7. Online Softmax与DIAGDM生产
+
+### 7.1 P路径
+
+FP8 P 路径保持：
+
+```text
+S -> exp(S-historicalMax) -> ×448
+  -> half/BF16到float
+  -> float到FP8 E4M3
+  -> Or + DeInterleave
+  -> DATA_BLOCK_COPY StoreAlign到P UB
+  -> MTE3到L1 P
+```
+
+当前最终提交仍使用 DeInterleave；后续 Gather/Pack 探索不属于本设计基线。
+
+### 7.2 为什么不再保存两个完整64×64
+
+qS最大为128，两个 AIV/group 各负责最多64个 q 行。最直观的旧方案是为每个 group 保存一个 `64×64 FP32` 对角矩阵：
+
+```text
+每group: 64×64×4B = 16KB
+每stage: 2×16KB   = 32KB
+三stage: 3×32KB   = 96KB
+```
+
+但一个 `64×64` 对角矩阵按 `16×16` 划分后是4×4个块，只有4个块非零：
+
+```text
+[D0  0  0  0]
+[ 0 D1  0  0]
+[ 0  0 D2  0]
+[ 0  0  0 D3]
+```
+
+每个非零 `16×16 FP32` 块由两个 `16×8` fractal组成，因此一个 group 真正需要：
+
+```text
+4 tiles × 16×16 × 4B = 4KB
+```
+
+两个 group 合计8KB，三 stage 合计24KB。被删除的72KB全是永远不会参与MMAD的零块槽位。计算仍按4个 `16×16` 对角块执行，没有把零区重新算回来。
+
+### 7.3 从dm生成UB对角矩阵
+
+非首 tile 先由 `UpdateDeltaMaxGlobalMaxAndGlobalSum()` 生成 `dm`，存入三份轮转的 `dmUbTensor[l1PBufId]`。随后 `SetDiagonalDeltaMax()`：
+
+1. 读取当前 dm；
+2. 计算 `vScalePrev/vScaleCurr`，将整个 dm 向量乘该比例；
+3. 使用两次 Select 只保留每行的对角元素；
+4. 使用 `DATA_BLOCK_COPY + POST_MODE_UPDATE` 写入带 bank-conflict padding 的 UB；
+5. 满64行时优先双发生成前半行与后半行，尾部才进入单发循环。
+
+FP32 一个小分形为 `16×8`。UB 中的完整逻辑对角矩阵含有意义的小分形为：
+
+```text
+F(0,0), F(0,1),
+F(1,2), F(1,3),
+F(2,4), F(2,5),
+F(3,6), F(3,7)
+```
+
+### 7.4 UB→L1：两次DataCopy打包成stage级zN
+
+每个 AIV 对自己负责的 group 执行两次 DataCopy：
+
+```cpp
+blockCount = diagDmRound / 16;
+blockLen   = 16;
+srcStride  = 2 * (diagDmRound + 1);
+dstStride  = 0;
+```
+
+源端第二次起点为：
+
+```cpp
+srcSecondFractalOffset = (diagDmRound + 1) * 8; // float元素
+```
+
+第一次抽取每个对角 `16×16` tile 的H0分形，第二次抽取H1分形。目标 stage 的16个 `16×8 FP32` fractal 顺序为：
+
+```text
+fractal  0..3  : group0 H0, tile0..3
+fractal  4..7  : group1 H0, tile0..3
+fractal  8..11 : group0 H1, tile0..3
+fractal 12..15 : group1 H1, tile0..3
+```
+
+两个 AIV 的写入区互不重叠：
+
+```text
+stage前4KB: [G0-H0 2KB][G1-H0 2KB]
+stage后4KB: [G0-H1 2KB][G1-H1 2KB]
+```
+
+三份 stage 按 `l1DiagAddrStart + stageId×8KB` 排列，对应 `l1PBufId=0/1/2`。
+
+### 7.5 为什么必须声明zN[128,16]，而不是zN[16,128]
+
+这里的两个shape在元素数上都等于2048 float，也都是8KB，但它们的 fractal 外层方向和 stride 不同，不能互换：
+
+```text
+zN[128,16]: K/M方向有8个16行块，N方向有2个8列半分形
+zN[16,128]: K/M方向只有1个16行块，N方向有16个8列半分形
+```
+
+当前物理排布先连续放所有tile的H0，再连续放所有tile的H1，正好对应 `zN[128,16]` 的外层组织。已有 `zN→nZ` Copy特化由Tensor shape/stride推导LoadData参数。对 `zN[128,16]→nZ[128,16]`，它得到：
+
+```text
+mStep=8, kStep=2, srcStride=8, dstStride=1, ifTranspose=true
+```
+
+这样一次LoadData能把H0/H1重新组合成L0B中的8个连续 `16×16` nZ tile。
+
+旧尝试把若干独立tile按“每tile H0紧跟H1”的方式存放，却在消费侧把父Tensor声明成 `zN[16,128]` 或把紧凑tile误解释为一个大父矩阵。LoadData会按父Tensor的外层stride跨步，H0/H1的物理位置与它推导的位置不一致：小shape或部分随机数据可能碰巧通过，但qS跨过16行、需要第二个及后续tile时就会读错分形。最终方案不是只交换两个常量的书写顺序，而是生产端物理顺序和消费端逻辑layout一起统一为真正的 `zN[128,16]`。
+
+`diagDmRound=16/32/48/64` 时，每个 group 分别写入1/2/3/4个有效 `16×16` tile；未写槽位允许保留旧值，因为后续 MMAD 只索引有效 tile。
+
+## 8. PV^T与CUBE Rescale
+
+### 8.1 PV^T
+
+PV 采用转置计算：
+
+```text
+C[D,qS] = V^T[D,kvS] × P^T[kvS,qS]
+```
+
+- V 从 GM 以 ColumnMajor `[D,kvS]` 视图 gather 到 L1 nZ；
+- P 由 softmax 写入 L1 zN，从 `[kvS,qS]` 视角直接作为 B；
+- `kvBaseTile=512`、`L0_TILE_K=128` 时，PV 每个完整基块执行4次 K方向 MMAD；
+- V 和 P 都已完整覆盖512，无需像QK的K那样再增加一层 L1 循环；
+- PV 结果保留在 L0C，作为后续 RE 的 bias。
+
+### 8.2 DIAGDM一次搬入L0B
+
+RE 把整个 stage 构造成：
+
+```cpp
+L1:  zN[128,16]
+L0B: nZ[128,16]
+```
+
+然后复用仓库已有的 Atlas A5 非B8 `zN→nZ` `CopyL1ToL0B` 特化，只调用一次：
+
+```cpp
+copyL1ToL0BRescale(l0BDiagStageTensorTla, l1DiagStageTensorTla);
+```
+
+FP32满stage对应的LoadData参数为：
+
+```text
+mStep       = 8
+kStep       = 2
+srcStride   = 8
+dstStride   = 1
+ifTranspose = true
+```
+
+搬运量固定为8KB，远小于一个32KB L0B ping/pong stage。这里没有新增 DIAGDM 专用 `CopyL1ToL0B` 特化；正确性的关键是生产端真实匹配 `zN[128,16]`。
+
+与旧“两个完整64×64”方案相比：
+
+| 项目 | 旧方案 | 最终方案 |
+|---|---:|---:|
+| L1每group | 16KB | 4KB |
+| L1每stage | 32KB | 8KB |
+| L1三stage | 96KB | 24KB |
+| L1→L0B | 每group一次，最多2次且共32KB | 每stage一次，固定8KB |
+| MMAD | 每group4个非零tile | 不变，仍每group4个非零tile |
+
+所以容量和搬运量下降，但数学计算量没有增加。
+
+### 8.3 GO^T搬运和8次独立MMAD
+
+qS=128时分成两个64列 group。每个 group：
+
+- 从 L1 GO^T 搬 `D×64 FP32` 到一个 L0A stage；
+- 从 L0B父 Tensor 通过 `GetTile(tileIdx*16,0)` 取得4个 `16×16` 对角块；
+- 对每块执行：
+
+```text
+A = D×16
+B = 16×16
+C = D×16
+```
+
+因此 qS=128 时共8次 rescale MMAD。尾块使用实际 `nAct` 作为 N/K，不增加无效的完整 `128×128` 对角矩阵计算。
+
+每次 MMAD 的 L0A列区、L0B tile 和 L0C列区均互不重叠。目标路径使用 Atlas A5 专用 `TileMmadRescaleTla`：其参数、Tensor offset 和 `AscendC::Mmad` 调用与公共 TileMmad 一致，但不执行公共实现中小case使用的 `PIPE_M` barrier。普通 QK/PV 继续使用原 TileMmad。
+
+### 8.4 L0C搬出
+
+| tile类型 | 搬出方式 | 结果 |
 |---|---|---|
-| 平台 | 950（AtlasA5，arch35） | — |
-| 输入/输出 | fp8_e4m3fn_t / half | BsaInferInterfaceFullQuant |
-| transposedMm1 | true（host 恒置） | TransposedMatmulConfig950 |
-| qBaseTile / kvBaseTile | 128 / 256 | CalcSplitCoreTilingParams950（innerPrecise==4 且 D≤128） |
-| D (embed) | 128 | CheckQKVDimVal |
-| L1 tile 参数 | mm1TileM/KLeft=128、mm1TileN/KRight=256、qL1=1、kL1=2；mm2TileM/KLeft=128/256、mm2TileN/KRight=128/256、pL1=3、vL1=2 | CalcMatmulPhaseL1TileInfo950（D=128 分支） |
-| PRE_LAUNCH | 2（MAX_CROSS_CORE_BUF_STAGES=3） | 常量 |
+| 单tile且为末tile | NZ2DN FixPipe→UB | 直接得到row-major `[qS,D]` |
+| 首/中间tile | DataCopy CO1→C1，`channelSplit=true` | raw `GO^T` zN写L1 |
+| 最后tile | NZ2DN FixPipe→UB，`deqScalar=vScaleCurr` | 反量化后的go |
 
-## 4. 总体数据流（融合 PV^T + Rescale）
+中间路径使用 `CopyL0CToL1Tla<AtlasA5>`，原因是 FP32 L0C fractal 为 `16×16`，而标准 L1 NZ fractal 为 `16×8`；CO1→C1 DataCopy 的 `channelSplit` 完成该拆分。末块 NZ2DN 将转置空间 `[D,qS]` 还原成 UB 中按行存放的 `[qS,D]`。
 
-### 4.1 四种 tile 类型
+VEC RescaleO 在目标路径只处理末块：
 
-| tile 类型 | 条件 | CUBE 动作 | FixPipe 目标 | 说明 |
-|---|---|---|---|---|
-| 单块（首=末） | kvSLoopNum==1 | PV^T（init） | NZ2DN → UB（deqScalar） | 无 diag、无 rescale；VEC ÷gl/cast → GM |
-| 首块 | i==0 | PV^T（init） | NZ → L1（deqScalar） | 结果即 GO^T₁，作下块 A |
-| 中间块 | 0 < i < last | PV^T（init）→ **RE（累加）** | NZ → L1（deqScalar） | bias 留 L0C，RE 累加后出 |
-| 末块 | i == last | PV^T（init）→ **RE（累加）** | NZ2DN → UB（deqScalar） | VEC ÷gl ×(1/448) cast → GM O |
-
-### 4.2 流水结构（PRE_LAUNCH=2）
-
-```
-迭代 t（CUBE）:
-  MM1(t):  K gather→L1→L0A，Q→L0B → S^t→L0C → FixPipe(Nz2ND)→UB S
-  PV^T(t-2): V gather 提前发射（早于跨核等待）→ PV^T → L0C [D,qS]（bias 保留）
-  RE(t-2):   A=GO^T_{t-1}（L1→L0A 按批大搬，mL0 先行预取）、B=diag(t-2)（双子核块整块 L1→L0B）
-             → 批内 16 列子块 mmad（K=nAct，initMmad=false）累加到同一 L0C tile
-  FixPipe(t-2): 中间块 CFG_NZ→L1；末块 CFG_COLUMN_MAJOR→UB
-
-迭代 t（VEC）:
-  softmax(t): S→P→L1；lm/gm/ll/gl；读 vScale(t)（当前索引，无 De）
-              → 算 dm 存 dmUb → SetDiagonalDeltaMax 生成 diag(dm/vScale) 块 [qS/2,qS/2] fp32 到 UB 中转（3 份轮转）→ MTE3 → L1（3 份轮转）
-  rescaleO(t-2): 仅末块执行（÷gl/cast）
+```text
+go /= gl
+go *= 1/448
+optional LSE
+cast to FP16/BF16
+write GM O
 ```
 
-### 4.3 跨核同步
+`1/448` 与 softmax 中写入 FP8 P 之前的 `×448` 对消；它仍在 `GoDivFunc()` 中执行，没有折叠进 DIAGDM 或末块 FixPipe。
 
-| flag | id | 方向 | 说明 |
-|---|---|---|---|
-| Mm1ToSm | ubSBufId（0/1） | CUBE→VEC | 现有，不变 |
-| smToMm2 | l1PBufId + 2（2/3/4） | VEC→CUBE | 现有，不变 |
-| Mm2ToRe | UB_S_OTMP_BUF_STAGES + pL1BufNum（5，固定） | CUBE→VEC | go 单份（仅末块），现有语义收窄 |
-| **diag 就绪/消费** | 6/7/8（3 份） | 双向 | 新增：同一 flag **双向交替**——CUBE RE 读 diag 前 wait ready（VEC set）、RE 末尾 set consumed；VEC DataCopy 前 wait consumed、DataCopy 后 set ready |
+## 9. 同步与buffer生命周期
 
-- GO^T 由 CUBE 自己写（迭代 t）自己读（迭代 t+1），同核顺序访问，**无需跨核 flag**，只需同核 FixPipe→MTE 同步（`FIX_MTE1` 事件，`GO_READY_EVENT_ID=4`，FIX_M 的 l0C 释放用 0-3）；
-- diag 块 3 份轮转（VEC 迭代 t 写、CUBE 迭代 t+2 读），与现有 dm 3 份语义一致；mode-4 下 CUBE 的 set 需对双 AIV 各发一次（flagId 与 flagId+16 成对，InitSyncFlags 预置 6/22、7/23、8/24）；AIV1 分到 0 行时（rowNum ≤ nCopyOffset 的尾块）主路径跳过，由 softmax 的 n==0 分支做 flag 双向转发。
+### 9.1 跨核flag
 
-## 5. 内存分配
+| flag | id | 协议 |
+|---|---:|---|
+| MM1→Softmax | 0/1 | S UB两stage就绪/释放 |
+| Softmax→PV | 2/3/4 | P L1三stage就绪/释放 |
+| PV→RescaleO | 5 | 末块go UB就绪/释放 |
+| DIAGDM | 6/7/8 | 三stage ready/consumed双向token |
 
-### 5.1 L1（A1）：400KB / 512KB
+mode-4 下 CUBE 对两个 AIV 分别操作成对 flag：6/22、7/23、8/24。若 AIV1 在短 qS 下分到0行，softmax 的 `n==0` 分支仍需转发 DIAGDM token，避免 CUBE 等待不到第二个 ready。
 
-| 段 | 偏移 | 每份 | 份数 | 合计 | 说明 |
-|---|---|---|---|---|---|
-| Q | 0 | 128×128×1B = 16KB | 1 | 16KB | ColumnMajor [D,qS]，常驻 |
-| K | 16KB | 256×128×1B = 32KB | 2 | 64KB | RowMajor [kvS,D]，gather 轮转 |
-| P | 80KB | 128×256×1B = 32KB | 3 | 96KB | zN（[kvS,qS] 视角），softmax 写/MM2 读 |
-| V | 176KB | 256×128×1B = 32KB | 2 | 64KB | ColumnMajor [D,kvS] 进 L1（nZ 落 L1），gather 轮转 |
-| GO^T（float） | 240KB | 128×128×4B = 64KB | 1 | 64KB | 转置空间 [D,qS]，1 份（同核串行读写） |
-| diag 块（float） | 304KB | [64,64]×4B = 16KB | 2×3 | 96KB | 每子核 1 个块 × 3 份流水 |
-| 合计 | | | | **400KB** | 剩 112KB |
+### 9.2 同核事件
 
-要点：
+- `MTE3_V EVENT_ID5`：保护唯一一份 DIAGDM UB，中转数据被MTE3读完前不能覆写；
+- `FIX_MTE1 GO_READY_EVENT_ID=4`：中间 GO^T 写入L1后通知下一次RE读取；
+- L0A/L0B 使用既有 `M_MTE1`、`MTE1_M` 事件；
+- L0C 首次使用前等待 `FIX_M`，最终 FixPipe/DataCopy 后再释放；
+- 无barrier的 rescale MMAD只移除了 `PIPE_M` barrier，不移除以上数据就绪和buffer生命周期事件。
 
-- 全部数据段为 fp8（1B），比 FP16（480KB）省一半，是方案可行性的容量基础；
-- **GO^T 1 份即可**：写（FixPipe→L1）与读（下块 L1→L0A）在同一 CUBE 核串行，无跨核竞争；
-- **diag 只需双子核两个 [64,64] 对角块**而非整张 [128,128]（方法 3 的结构红利）：排布固定 zN [64,64]（每 stage 16KB×2，3 份对齐 PRE_LAUNCH 流水），qS<128 时有效区 [qS/2,qS/2] 在块内前部；
-- `mm2L1AddrStart_` 之后的排布顺延：P/V 后接 GO^T（`l1GoAddrStart_`，qBaseTile×embed×4B）、diag（`l1DiagAddrStart_ = l1GoAddrStart_ + qBaseTile×embed×4B`）。
+## 10. 关键实现文件
 
-### 5.2 UB（VECCALC）：每子核 ~180KB / 256KB
-
-| 段 | 大小 | 份数 | 变化 |
-|---|---|---|---|
-| S | 64×256×2B = 32KB | 2 | 不变（half） |
-| P | (64×256+256)×1B = 16.25KB | 2 | 不变（fp8，含 pExtraElemNum 填充） |
-| **OTmp (lo)** | — | — | **删除**（-64KB，PV^T 结果留 L0C） |
-| go | 64×128×4B = 32KB | 1 | 保留（float，仅末块） |
-| **diag 块中转** | [64,64]×4B = 16KB | **3**（l1PBufId 轮转） | **新增**（float，VF 算完 → UB → MTE3 → L1；与 dm 3 份、L1 diag 3 份同节奏） |
-| lm / gm / ll / gl | 128B / 256B / 128B / 256B | 1 | 不变 |
-| **dm 向量** | 64×4B = 256B | 3（PRE_LAUNCH+1 轮转） | 保留（`UpdateDeltaMaxGlobalMaxAndGlobalSum` 先算 dm 存 dmUb，`SetDiagonalDeltaMax` 据此生成 diag） |
-| lse | 64×8×4B = 2KB | 1 | 不变 |
-| 合计 | | | **≈ 180KB** |
-
-要点：
-
-- 删除 OTmp 的 2 份 staged 缓冲后，diag 中转（3 份轮转）紧随 P 段之后（`diagStartOffset`），go 再其后；
-- mask2idx 的硬编码区（0~237568B）与主循环区时间复用，不受影响；
-- 本表为每 AIV 子核一份（AIV0/AIV1 各自独立 UB）。
-
-### 5.3 L0A / L0B / L0C
-
-| 缓冲 | 分配 | 每 task 阶段计数（新增 RE 后） |
-|---|---|---|
-| L0A（64KB，2×32KB） | MM1/PV^T/RE 共享，全局 stage 计数取模 | MM1: 2；MM2 段（PV^T+RE）: 4（PV^T A 2 次 + RE 2 批各 1 次，A 块 [D,64] fp32 32KB 满 1 buf） |
-| L0B（64KB，2×32KB） | 同上 | MM1: 1；MM2 段: 3（PV^T B 2 次 + diag 双子核块 [64,64]×2 整块 1 次，两批共用） |
-| L0C（256KB） | MM1 前半 [0,128K)，MM2+RE 后半 [128K,256K)，各 2×64KB | — |
-
-- RE 的 stage 计数并入 `CalcCrossMm1Mm2PrefixSumL0ABStages`（kernel `mm2L0ATotalStages_`/`mm2L0BTotalStages_`）：
-  `mm2L0ATotalStages_ = (D/L0_TILE_M)×(kvS/L0_TILE_K) + CeilDiv(qS, qS/2)×(D/L0_TILE_M)`（PV^T A 分块数 + RE 批数）、
-  `mm2L0BTotalStages_ = (kvS/L0_TILE_K)×(qS/L0_TILE_N) + 1`（PV^T B 分块数 + diag 整块 1 次）；
-  D=128、qS=128、kvS=256、L0TileShapePV=128×128×128 时：L0A = 2+2 = 4、L0B = 2+1 = 3；
-- RE 的 mmad：每 (frGrp, mL0) 内 nGrpAct 次 `M=D块、N=nAct、K=nAct`（尾块 K=nAct<16，K 粒度合法见 §6.1），`initMmad=false` 累加到 PV^T 的 L0C 结果上；D=128、qS=128 时共 2×1×4 = 8 次（每批 4 个 16 列子块）。
-
-## 6. 硬件能力确认（已查证）
-
-### 6.1 fp32 mmad（CUBE）
-
-- Ascend 950PR/950DT 的 Mmad 明确支持 **float×float→float**（带/不带 bias 组合表均有）；
-- fp32 fractal 为 **16×8**（half 为 16×16）；`MmadParams.k ∈ [0,4095]` **无对齐约束**（官方文档，K=70 非 16 倍数亦合法），fp32 的 K 粒度由 `kDirectionAlign=false`（950 仅支持 false）决定为 **8 元素** → RE 的 K=16 小块 mmad 合法；
-- `SetHF32Mode` 可切换 HF32 舍入模式（默认关闭 = 原生 FP32），可用于精度问题定位。
-
-### 6.2 FixPipe（L0C 搬出）——已按官方文档确认（Fixpipe L0C→L1 / L0C→UB）
-
-- **L0C→L1 通路正式支持**（dst 为 L1 Buffer / TPosition C1；950 支持 NZ/ND/DN 三种输出格式）；`FixpipeConfig{CO2Layout format; bool isToUB}`，isToUB 指定目标是否 UB；
-- **NZ2DN 是 950（351x）新增**；`TransformParams<CO2Layout::COLUMN_MAJOR>::PARAMS = Nz2DnParams{dnNum=1, srcNzMatrixStride=0, dstDnMatrixStride=0, srcNzC0Stride=0}`：
-  - dnNum=1 时 `srcNzMatrixStride`/`dstDnMatrixStride` 置 0 不生效；
-  - **`srcNzC0Stride` 启用 NZ2DN 时必须非 0（填 1），且 =1 时才兼容 unitFlag**；
-- **L0C→L1 通路无 `dualDstCtrl`/`subBlockId`**（二者仅 L0C→UB 通路有效）→ 中间块 GO^T 是**单次整块搬运**（nSize=qS=128、mSize=D=128），无需按 AIV 切分；末块 NZ2DN→UB 仍走两次单目标调用（subBlockId 0/1）；
-- **反量化**：950 的 QuantMode_t 支持 `QF322F32_PRE`（float→float scalar 反量化）——中间块 GO^T 落 L1 与末块落 UB 均使用 + `deqScalar=vScale`；
-- 关键参数（FixpipeParamsArch3510）：nSize∈[0,4095] 且为 16 倍数（且 nSize×sizeof(T) 为 32 倍数）；mSize∈[0,65535] 且 NZ2DN 时 mSize×sizeof(T) 为 32 倍数；srcStride = mSize 对 16 向上取整（C0_Size=16×sizeof(T) 单位）；dstStride（NZ2ND/NZ2DN）= 目的矩阵每行元素数；
-- NZ2DN 输出语义：DN[D,qS] 的列主序内存序 ≡ 行主序 [qS,D] 的内存序。**末块必须用 NZ2DN 而非 NZ2ND**：整个循环中 GO^T 保持倒置（[D,qS]）状态，NZ2ND 输出 row-major [D,qS] 仍是倒置的，而 rescaleO 的 ÷gl 按 q 行（[qS,D] 的行方向）广播，方向会错；NZ2DN 相当于"把倒置的再倒置"转回 ND，搬到 UB 的 go **直接就是 O 的 row-major [qS,D]**，现有 rescaleO 的逐行 ÷gl/cast 逻辑可原样复用。
-
-## 7. 代码改动清单
-
-### 7.1 Dispatch policy（模板参数）
-
-`MmadAtlasA5BsaPV` 增加第二模板参数 `rescaleOnCube`，特化仅两种：
-
-| policy 实例 | 特化文件 |
+| 文件 | 最终职责 |
 |---|---|
-| `MmadAtlasA5BsaPV<transposedMm1, false>` | 现有 `block_mmad_pv_arch35_ABf16_C_to_UB.hpp`（特化键补 `false`，唯一改动） |
-| `MmadAtlasA5BsaPV<true, true>` | **新文件** `block_mmad_pv_transposed_rescale_arch35.hpp` |
+| `op_host/block_sparse_attention_tiling.cpp` | FP8 `kvBaseTile=512`；D=128时P/V L1 tile和buffer数量 |
+| `op_kernel/block_sparse_attention.cpp` | FP8 DN tiling key实例化 `<transposedMm1=true,rescaleOnCube=true>` |
+| `op_kernel/block_sparse_attention_kernel_interface.cpp` | full-quant接口、dispatch policy、合法组合约束 |
+| `op_kernel/arch35/block_sparse_attention_kernel_arch35_full_quant.h` | 主流水、L1/UB地址、scale折叠、vScale索引、同步初始化 |
+| `gemm/block/block_mmad_k_qt_st_arch35.hpp` | 512基块下K的双L1循环、counter和S UB全局偏移 |
+| `gemm/block/block_mmad_pv_transposed_rescale_arch35.hpp` | PV^T、DIAGDM一次搬运、GO×DIAGDM、L0C输出 |
+| `gemm/tile_common/copy_l0c_to_l1_a5.hpp` | FP32 CO1→C1 `channelSplit`，中间GO写L1 |
+| `gemm/tile_common/copy_l0c_to_ub_a5.hpp` | 末块NZ2DN和随路vScale |
+| `gemm/tile_common/bsa_tile_mmad_rescale.hpp` | Atlas A5 FP32 rescale专用无`PIPE_M` barrier MMAD |
+| `epilogue/block/block_epilogue_online_softmax_arch35_reg_low_prec_S_trans.hpp` | half S路径，P量化、dm和紧凑DIAGDM生产 |
+| `epilogue/block/block_epilogue_online_softmax_arch35_reg_low_prec_bf16_S_trans.hpp` | BF16 S路径的同构实现 |
+| `epilogue/block/block_epilogue_rescale_o_arch35_reg_high_prec.hpp` | 目标路径末块 `/gl`、cast、O/LSE写出 |
 
-- `rescaleOnCube=false` 时全链路与现状一致，保证兼容性；
-- **interface 的 LayoutPDummy/LayoutV 不改**（仅用于 TileCopy 推导 L1A/L1B tag；新 PV 文件全部硬编码布局 tag、不依赖这两个推导）；
-- **kernel 类 LayoutV 条件化**（full_quant kernel）：rescaleOnCube 时 V 以 ColumnMajor [D,kvS] 进 L1（GM→L1 走 ColumnMajor→nZ 特化，与 Q 的 DN 加载同构），L1→L0A 走 nZ→zN 转置加载（vShape 同步交换）；
-- 新 PV 文件内布局 tag 全部硬编码：V 的 gather 声明 **nZ**、B=(P)^T 声明 **zN [kvS,qS]**（P 在 L1 从 [kvS,qS] 视角即 zN，走 copyL1ToL0B zN→nZ 特化，与 B=V、diag 同构）、GO^T/diag 声明 **zN**。
+## 11. 最终实现与历史中间方案的区别
 
-### 7.2 新 PV 文件（`<true, true>`）
+以下描述均已过时，不应再用于解释最终代码：
 
-- **结构模板**：ND 与转置的对照参考 `bsa_block_mmad_qk.hpp`（ND QK）与 `block_mmad_k_qt_st_arch35.hpp`（转置 QK：L0C 结果保持 Nz，仅搬出时转 row-major）这一对文件的写法；
-- PV^T：C=[D,qS] 全量（CUBE 单实例，无子核分摊），K=kvS=256 分 2 块；A=(V)^T 的 L1 声明硬编码 **nZ**（不依赖 LayoutTagL1A/L1B 推导，interface 保持原样）；
-- RE：PV^T 后按 frGrp 分 2 批（批宽 qHalf = qS/2），**B 整块大搬**——diag 双子核块 [64,64] fp32 各一次 `copyL1ToL0B`（float zN→nZ 转置，2 次并行发、L0B 地址 0/16KB 隔离、一次搬满 stage 两批共用）；**A 按批大搬**——GO^T 的 [D块, qHalf]（mL0 先行循环预取）；mmad 批内 nGrpAct 个 16 列子块（尾块 `K=nAct`），**B 子块从 L0B 内 `GetTile(j*16, j*16)` 取对角位置 [16, nAct]**，`initMmad=false` 累加到 bias（K=16/nAct 合法，见 §6.1 与 §8 待验证项 4）；D=128、qS=128 时共 8 次（见 §2.2）；
-- FixPipe 三路径：首/中间块 `CFG_NZ→L1`（保持倒置的 Nz 状态——下块 rescale 的 A 同为倒置，零转换闭环）、末块 `CFG_COLUMN_MAJOR→UB`（**Sub0/Sub1 两次显式调用**，各搬 [D,qS/2] 半区到对应 AIV 的 UB，subBlockId 0/1 路由，带 deqScalar）；
-- 单块特判：仅 PV^T + `CFG_COLUMN_MAJOR→UB`（同样 Sub0/Sub1 两次）。
+- `kvBaseTile=256`；最终目标路径为512；
+- P L1=96KB、V L1=64KB；最终分别为192KB和128KB；
+- DIAGDM L1=`2×3×64×64×4B=96KB`；最终为24KB；
+- 每个group把完整 `64×64` 搬入L0B；最终每stage一次搬8KB；
+- 把独立 `16×16` tile物理拼接后声明成 `zN[16,128]`；该布局不能由一次父Tensor LoadData正确解释；
+- L1→L0B需要新增公共Copy特化；最终复用已有float `zN→nZ` 特化；
+- DIAGDM只使用 `dm/vScale`；最终因中间GO为raw域，使用 `dm×vScalePrev/vScaleCurr`；
+- FP8 softmax中继续逐行乘attention scale；最终已折叠到QK FixPipe；
+- Gather/Pack替换DeInterleave；不属于 `79aa0fc8` 最终基线。
 
-### 7.3 CATLASS FixPipe 特化
+## 12. 验证建议与验收标准
 
-新增两类（现有 `CopyL0CToUBTla` 的 6 个特化均硬编码 `CFG_ROW_MAJOR_UB`，不动）：
+本节是基于实现推导的回归建议，不冒充已执行记录。
 
-1. **新增独立 copy 类 `CopyL0CToL1Tla`**：`CFG_NZ` + isToUB=false → L1，**单次整块搬运**（无 subBlockId），quantPre=`QF322F32_PRE` + deqScalar（首/中间块 GO^T 反量化落 L1）；dstStride = `mSize × C0_Size(32B) / sizeof(T)`（fixpipe_l0c2l1 样例：`dstStride = baseM × c0Size`，c0Size 单位 B——已按样例确认）；
-2. `CopyL0CToUBTla` 新增 `CFG_COLUMN_MAJOR`（NZ2DN）特化：`Nz2DnParams{dnNum=1, srcNzMatrixStride=0, dstDnMatrixStride=0, srcNzC0Stride=1}`，两次单目标调用（subBlockId 0/1），dstStride = DN 目的矩阵每行元素数；
-3. 配置值（[D,64] 每子核 / [D,128] 整块）：nSize=64/128、mSize=128、srcStride=128、dstStride=128。
-
-### 7.4 OnlineSoftmax（VEC）
-
-- `UpdateDeltaMaxGlobalMaxAndGlobalSum` 先算 dm 存 dmUb（3 份轮转）→ **`SetDiagonalDeltaMax<diagDmTileNum>`** 读 dmUb 生成 **diag(dm/vScale) 块** [qS/2, qS/2] fp32（zN 布局，UB 中转 3 份轮转、索引 l1PBufId）→ MTE3 → L1（3 份轮转）：
-  - **÷vScale 并入生成**：LoadAlign 后对 dmVreg 整体 `Div`（vScale 先 Duplicate 成寄存器，VL64 全宽）——与 CUBE 侧 FixPipe 的 deqScalar=vScale 对消（§2.3 记账）；
-  - **双 Select 构造对角行**：`Select(dmVreg, allZero, maskPlusOne)`（保留 0..i 元素）再 `Select(allZero, diagVreg, mask)`（清零 0..i-1）→ 行 i 的对角元素 = dm[i]；
-  - **DATA_BLOCK_COPY 散布存储**（blockStride = diagDmRound+1，datablock = 8 float）一步写出 zN 布局；**双发射**：行 i 与行 i+diagDmRound/2 双发写前/后半区（diagDmUb0 / diagDmUb1 偏移 4×diagDmRound 元素）；按 diagDmTileNum（0/1/2）分派；
-  - **MTE3 → L1**：`DataCopy`（blockCount = diagDmRound/8、blockLen = diagDmRound、srcStride=1、dstStride=0），双子核各写各块（stage 内偏移 subBlockIdx × 4096 元素）；L1 排布 zN [64,64] 固定（与 CUBE 读侧一致），qS<128 时有效区在块内前部；
-  - **同步**：覆写中转前 `WaitFlag<MTE3_V>(EVENT_ID5 + l1PBufId)`（等上轮 MTE3 读完成）、生成后 `SetFlag<V_MTE3>/WaitFlag<V_MTE3>(EVENT_ID2 + l1PBufId)`（VF→MTE3）、DataCopy 后 `SetFlag<MTE3_V>(EVENT_ID5 + l1PBufId)`；跨核 diag flag（6+l1PBufId）双向：DataCopy 前 wait consumed（CUBE 上一轮 RE 读完才覆写）、DataCopy 后 set ready（见 §4.3）；
-- **VEC 每 task 读 vScale**（GM，当前索引无 De）：`yBlockIndex = (gatheredKvSTileIdx·kvBaseTile_)/blockShapeY_` → `gSparseIdx` → `gVDequantScale[curBatch·kvHeads·yBlockNumAligned + kvHeadIdx·yBlockNumAligned + yBlockIndex]`，kernel 读取后经 operator() 尾参传入，与 CUBE 侧 FixPipe 用 De 索引各取各的；
-- 保留 dm 向量缓冲（3 份轮转）：先经过 `UpdateDeltaMaxGlobalMaxAndGlobalSum` 得到 dm 结果，再据此生成 diag(dm/vScale) 块。
-
-### 7.5 RescaleO（VEC）
-
-- **rescaleOnCube 时仅走末块路径**（`if constexpr (DispatchPolicy::rescaleOnCube)`）：输入即 row-major [qS,D]（NZ2DN 输出，反量化已在 FixPipe 完成），VEC 只做 `go/gl`（`GoDivFunc`）、FP8 时 ×(1/448)、cast、写 GM O；go 缓冲保留；
-- **旧逐 tile 的 rescale 计算不删除、由 `else` 分支保留**（`RescaleFunc` / `RescaleFuncLastNotFirst` / `DivFuncLastAndFirst` 及 `SubCoreCompute` 的非末块分支）——FP8 ND（rescaleOnCube=false）12 个活跃键仍走旧路径，与 §10 修复记录 4 的 if constexpr 守卫配套；
-- 末块处理逻辑本身不变（÷gl 的逐行广播方向要求 go 为 [qS,D] 行主序，NZ2DN 恰好满足）。
-
-### 7.6 跨核同步
-
-- 新增 diag flag（6/7/8，3 份）**双向 token 交替**：CUBE RE 读 diag 前 `WaitCrossCoreSync`（ready 方向，等 VEC 写完成）、RE 末尾 `SetCrossCoreSync`（consumed 方向）；VEC DataCopy 前 wait（consumed，CUBE 上一轮读完才覆写）、DataCopy 后 set（ready）——沿用"每份 dst 缓冲一个 id、顺序递增"的加法规律；mode-4 下 CUBE set 需对双 AIV 各发一次（flagId 与 flagId+16 成对，InitSyncFlags 预置 6/22、7/23、8/24）；
-- 末块 go 的 CUBE→VEC 同步（rescaleO 等待末次 FixPipe 完成）沿用 Mm2ToRe 的语义（rescaleOnCube 时 `Mm2ToReFlagId` 固定 = UB_S_OTMP_BUF_STAGES + pL1BufNum = 5，不随 ubOTmpBufId 交替）；
-- GO^T 无需跨核 flag：同核 FIX→MTE 同步已实现（`FIX_MTE1` 事件，`GO_READY_EVENT_ID=4`，中间块 set / 非首块 RE wait，见 §8 待验证项 3）。
-
-### 7.7 Kernel 主循环（block_sparse_attention_kernel_arch35_full_quant.h）
-
-- L1/UB 偏移表更新（`CalcUBufTileInfo` 与 L1 排布：lo 删除、diag 中转 3 份、go 后移）；
-- 首/中/末块分支 + 单块特判（新 PV 的 operator() 传入 isFirstKvSTile/isLastKvSTile）；
-- `CalcCrossMm1Mm2PrefixSumL0ABStages` 计入 RE 的 stage 计数（`mm2L0ATotalStages_`/`mm2L0BTotalStages_`，公式见 §5.3）；
-- VEC 侧读取 vScale（当前索引，无 De）传入 softmax 尾参；CUBE 侧 FixPipe 的 deqScalar 用 De 索引——两侧各取各的。
-
-### 7.8 内存分配改动文件清单（所有涉及内存分配的文件同步修改）
-
-| 文件 | 改动 |
-|---|---|
-| `block_sparse_attention_kernel_arch35_full_quant.h` | `CalcUBufTileInfo`（删 lo 段、保留 dm 段、增 diag 中转段）、L1 排布（Q/K/P/V 后接 GO^T 64KB + diag 块 96KB）、`InitCrossCoreDstBuf`、`mm2L1AddrStart_` 语义、**LayoutV 条件化 + vShape 交换**（rescaleOnCube 时 V 以 ColumnMajor [D,kvS] 进 L1） |
-| `block_epilogue_arch35_utils.hpp`（UBufTileHelper） | 偏移字段调整：保留 dm、增 diag 中转 |
-| `block_epilogue_online_softmax_arch35_reg_low_prec_S_trans.hpp` / `_bf16_S_trans.hpp` | 构造缓冲：保留 dmUb（3 份轮转）、增 diag 块中转缓冲（3 份轮转）；`UpdateDeltaMax...` 先算 dm 存 dmUb，再 `SetDiagonalDeltaMax` 生成 diag(dm/vScale) 块 → MTE3 → L1（3 份轮转，见 §7.4） |
-| `block_epilogue_rescale_o_arch35_reg_high_prec.hpp` | go 缓冲偏移随新布局；rescaleOnCube 时仅末块（÷gl/cast），旧逐 tile rescale 逻辑保留给 FP8 ND 路径（见 §7.5） |
-| 新 PV 文件（`<true,true>`） | 构造函数：diag 块的 L1 起始地址传入（沿用 `mm2L1AddrStart_` 式传参）、L0 缓冲；GO^T 与 go 的 UB/L1 TLA 均由 kernel 构造传入（模板参数 TensorGo/TensorC，与现有 PV 的 TLA 传入风格一致） |
-| 现有 PV 文件（`<*,false>`） | 特化键补 `false`；缓冲逻辑不动 |
-
-> 仅全量化（FP8）路径涉及；常规路径（`rescaleOnCube=false`）的 kernel/softmax/rescaleO 全部不动。
-
-## 8. 待验证项
-
-| # | 项 | 说明 |
+| 验证场景 | 建议用例 | 预期结果 |
 |---|---|---|
-| 1 | ~~FixPipe `CFG_NZ` 输出与 tla 布局 tag 的对应~~ **已确认** | 昇腾社区术语 **NZ ≡ tla zN**（同一种 fractal 布局的两种写法）；FixPipe `CFG_NZ` 保形输出 = L0C NZ 物理 = tla zN → GO^T 声明 zN、RE 走 zN→zN 恒等特化正确（dump 实验可作为上线前保险，非必需） |
-| 2 | ~~CANN 头文件确认 NZ2DN 参数~~ **已完成** | `Nz2DnParams` 结构体与语义已按官方 Fixpipe 文档确认（dnNum=1 时 matrix stride 置 0、srcNzC0Stride=1 且 =1 才兼容 unitFlag）；L0C→L1 通路无 dualDstCtrl/subBlockId，单次整块搬运 |
-| 3 | ~~FixPipe→L1 的同步语义~~ **已实现** | GO^T 的 L1 写完成用独立同核事件（`FIX_MTE1`，`GO_READY_EVENT_ID=4`，FIX_M 的 l0C 释放用 0-3）：中间块 FixPipe(CFG_NZ→L1) 后 set、非首块 RE 读 GO^T 前 wait（严格交替，单 id 即可）；**不能尾部统一 set**（末块 NZ2DN→UB 与 GO^T 无关，会污染跨 task 的 wait 提前通过）；l0C 释放时序不变（每 tile 仍 FixPipe + FIX_M 释放，仅目标分级） |
-| 4 | ~~尾块 RE 丢列~~ **已修复并已按此实现** | 批内 `nGrpAct = CeilDiv(grpCols, 16)` + 批尾块 `nAct`（`grpColEnd - grpColStart - j*16`），mmad 用 `n=nAct, k=nAct`（k/n 实际值有先例：PV^T 的 K 尾块同惯例）；**对角零贡献保证无污染**：k 对齐填充读的 B 行在 C 的列区（< grpColStart+j*16+nAct）内为 0（对角矩阵行 k 非零在列 k），`A×0=0` 恒成立——即使硬件按 8 对齐读 A 的填充列；B 子块从 L0B 内取 [16, nAct] 对角位置（双子核块宽 64 ≥ 批尾块边界，物理够），仅 mmad 参数用 nAct。待板端实测 |
+| qS边界 | `8,10,16,17,32,33,40,64,65,127,128` | 单/双group及尾 `nAct` 均与golden一致 |
+| kvS边界 | `257,512,769,1024,1536,2048` | K双L1循环、PV四K块及KV尾块正确 |
+| D | `64,128` | L0A大小、MMAD M和L1容量正确 |
+| 输出dtype | FP16、BF16 | 两条S_trans路径均正确 |
+| 格式 | TND、BNSD、BSND | GM offset和最终布局正确 |
+| attention scale | `1.0,0.125,1/sqrt(D)` | FixPipe折叠后与旧数学路径一致 |
+| vScale | 跨tile相同和不同 | `vPrev/vCurr`比值补偿正确 |
+| 稀疏 | `sparsity_ratio=1`及非连续块 | gather索引和scale索引一致 |
+| 稳定性 | `seed=77`及多个seed，多次重复 | 无偶发精度错误、hang或buffer提前复用 |
 
-## 10. 实现期修复记录（2026-08-03）
+还应检查：
 
-实现审查（对照旧 PV/QK 惯例逐事件核对）发现的缺陷及修复：
+- L1各段结束于488KB，未越过512KB；
+- UB `maskStartOffset=249888B`，未越过256KB；
+- 每次RE只有一次8KB DIAGDM `CopyL1ToL0B`；
+- qS=128时RE仍为8次 `D×16 × 16×16`，没有扩成一次 `D×128 × 128×128`；
+- 普通PV/QK仍调用公共 TileMmad，只有rescale循环调用 `tileMmadRescale`；
+- 非FP8和 `rescaleOnCube=false` 生成路径无行为变化。
 
-| # | 位置 | 缺陷 | 修复 |
-|---|---|---|---|
-| 1 | 新 PV K/RE 循环 mmad 前 | M 侧 wait 用了 `M_MTE1`（应为 `MTE1_M`），每轮迭代 M_MTE1 事件 0 set 2 wait | 改 `WaitFlag<MTE1_M>`（mmad 后 `SetFlag<M_MTE1>` 原本正确） |
-| 2 | 新 PV FixPipe 段 | 额外 `WaitFlag(FIX_M)`（mmad 循环 kL0Itr==0 已有），L0C 事件双消费 | 删除 FixPipe 段的重复 wait |
-| 3 | half/bf16 S_trans diag DataCopy | 单缓冲 diagUbTensor 无 MTE3 围栏，下轮 Duplicate 覆盖在飞 MTE3 读 | 新增 `MTE3_V EVENT_ID5`：覆写前 wait（`SetDiagonalDeltaMax` 生成 diag 前，UpdateDeltaMax 之后）、DataCopy 后 set；kernel Init/ReleaseSyncFlags 同步预置/收尾 |
-| 4 | full_quant kernel | rescaleOnCube 专属改动全部无条件：`CalcUBufTileInfo` 新布局、`BlockMmadPV` 4 参构造、softmax 8 参调用、rescaleO 仅末块、`Mm2ToReFlagId` 固定、InitSyncFlags 删 FLAG_ID6 —— **FP8 ND 12 活跃键（rescaleOnCube=false）编译失败 + 运行破坏** | 引入 `RESCALE_ON_CUBE = transposedMm1 && BlockMmadPV::rescaleOnCube`，全部 if constexpr 守卫；旧路径恢复 lo/dm/ll 原布局、ubOTmpTensor 2 份、flag 5/6 交替、逐 tile rescaleO |
-| 5 | 旧 PV 构造 | kernel 统一 4 参调用与 3 参构造不兼容 | 旧 PV 加 4 参委托构造（默认参数不可行：3 参调用的第 3 参类型不匹配） |
-| 6 | kernel `mm2L0ATotalStages_` | 未计入 RE 的 mmad（L0A/L0B 双缓冲 stage 计数不足，会互相覆盖） | rescaleOnCube 分支（后续演进为最终形态）：`mm2L0ATotalStages_ = (D/L0_TILE_M)×(kvS/L0_TILE_K) + CeilDiv(qS, qS/2)×(D/L0_TILE_M)`（PV^T A 分块数 + RE 批数）、`mm2L0BTotalStages_ = (kvS/L0_TILE_K)×(qS/L0_TILE_N) + 1`（PV^T B 分块数 + diag 整块 1 次），见 §5.3 |
-| 7 | bf16 S_trans softmax | 上一会话只改了 half 版，bf16 版未加 rescaleOnCube 支持（FP8 OBF16 DN 6 活跃键编译失败） | 同步移植：模板参数、diag 缓冲、`SetDiagonalDeltaMax`、operator() 尾参默认值 |
+## 13. 提交追溯原则
 
-## 9. 参考
+- `45c26f4`：用户指定的分析起点；
+- `54608a8f5`：初版 rescale-on-cube 集成和旧设计文档；
+- 后续多次 `add print`、`try`、`plan2`：只用于定位，不按提交标题推断最终行为；
+- `ff115f98b` 之后形成最终 DIAGDM stage级布局；
+- `8f8ee4a08`：rescale专用无barrier MMAD；
+- `80f393307`：FP8 P UB精确32B padding；
+- `a1f55ae45`：FP8 `kvBaseTile=512`及QK双L1循环；
+- `79aa0fc8`：attention scale折叠到QK FixPipe，是本文最终实现边界。
 
-- 代码：`block_mmad_k_qt_st_arch35.hpp`（DN 转置 + n 切分参考）、`block_mmad_qk_arch35_ABf16_C_to_UB.hpp`（ND 对照）、`block_mmad_pv_arch35_ABf16_C_to_UB.hpp`（现有 PV）、**`block_mmad_pv_transposed_rescale_arch35.hpp`（新 PV：PV^T + RE 融合）**、`copy_l0c_to_ub_a5.hpp` / `copy_l0c_to_l1_a5.hpp`（FixPipe 封装）、`block_epilogue_online_softmax_arch35_reg_low_prec_S_trans.hpp` / `_bf16_S_trans.hpp`（diag 生成）、`block_epilogue_rescale_o_arch35_reg_high_prec.hpp`、`block_sparse_attention_kernel_arch35_full_quant.h`
-- 官方样例：`fixpipe_l0c2gm`、`fixpipe_nz2dn_tensor_quantization_f322f16`（asc-devkit）
-- 文档：SetFixPipeConfig（CO1→GM/CO1→A1）、220x→351x 架构变更（NZ2DN 新增）、asc-devkit Mmad.md（950PR/DT float×float→float）
+如果提交说明与最终源码冲突，以 `79aa0fc8` 的源码为准。
+
+## 14. 参考位置
+
+- 转置QK参考：`block_mmad_k_qt_st_arch35.hpp`
+- 转置PV+RE：`block_mmad_pv_transposed_rescale_arch35.hpp`
+- L1→L0B已有特化：`copy_l1_to_l0b_a5.hpp`
+- L0C→L1：`copy_l0c_to_l1_a5.hpp`
+- L0C→UB NZ2DN：`copy_l0c_to_ub_a5.hpp`
+- DIAGDM生成：`block_epilogue_online_softmax_arch35_reg_low_prec_S_trans.hpp`、`block_epilogue_online_softmax_arch35_reg_low_prec_bf16_S_trans.hpp`
+- 最终VEC输出：`block_epilogue_rescale_o_arch35_reg_high_prec.hpp`
