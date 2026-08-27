@@ -383,8 +383,10 @@ __aicore__ inline void SendWaveCombineToken(const MoeStageCommonConfig &common,
 }
 
 // 使用行级流水发送当前逻辑 AIV 任务负责的已就绪 token 区间。
+// 遍历序错峰：第 k 次发射取 tokenIdx = permIdx（互素步长环形置换），行环槽位
+// （slot/rowSequence）与事件纪律仍绑定发射位置，与 token 身份解耦，置换不破坏流水。
 template <uint8_t CombineMode>
-__aicore__ inline void CombineWaveTokenRange(const MoeStageCommonConfig &common,
+__aicore__ inline void CombineWaveTokenRange(const MoeStageCommonConfig &common, const AivJobContext &job,
                                              const WaveCombineBufferConfig &bufferConfig, WaveCombineScratch &scratch,
                                              const Params &params, GM_ADDR gmm2OutGlobal, uint32_t tokenStart,
                                              uint32_t tokenCount, uint32_t metaInfoUbTokenOffset, uint32_t &rowSequence)
@@ -404,22 +406,30 @@ __aicore__ inline void CombineWaveTokenRange(const MoeStageCommonConfig &common,
         static_cast<uint64_t>(params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr);
     constexpr uint32_t rowBufferCount =
         CombineMode == COMBINE_NO_QUANT ? WAVE_COMBINE_NO_QUANT_ROW_BUFFER_NUM : WAVE_COMBINE_QUANT_ROW_BUFFER_NUM;
+    uint32_t permStride = GetScatterVisitStride(tokenCount);
+    uint32_t permIdx = GetScatterVisitStart(tokenCount, common, job);
     uint32_t tokenIdxInSlice = 0U;
     uint32_t firstUseCount = rowSequence < rowBufferCount ? rowBufferCount - rowSequence : 0U;
     firstUseCount = firstUseCount < tokenCount ? firstUseCount : tokenCount;
     for (; tokenIdxInSlice < firstUseCount; ++tokenIdxInSlice, ++rowSequence) {
         uint32_t slot = rowSequence % rowBufferCount;
-        LocalTensor<int32_t> tokenMetaInfo =
-            scratch.metaInfoTensor[(metaInfoUbTokenOffset + tokenIdxInSlice) * META_INFO_SIZE];
+        LocalTensor<int32_t> tokenMetaInfo = scratch.metaInfoTensor[(metaInfoUbTokenOffset + permIdx) * META_INFO_SIZE];
         SendWaveCombineToken<CombineMode, false>(common, bufferConfig, scratch, params, gmm2OutGm, gmRemoteBaseOffset,
-                                                 tokenStart + tokenIdxInSlice, tokenMetaInfo, slot);
+                                                 tokenStart + permIdx, tokenMetaInfo, slot);
+        permIdx += permStride;
+        if (permIdx >= tokenCount) {
+            permIdx -= tokenCount;
+        }
     }
     for (; tokenIdxInSlice < tokenCount; ++tokenIdxInSlice, ++rowSequence) {
         uint32_t slot = rowSequence % rowBufferCount;
-        LocalTensor<int32_t> tokenMetaInfo =
-            scratch.metaInfoTensor[(metaInfoUbTokenOffset + tokenIdxInSlice) * META_INFO_SIZE];
+        LocalTensor<int32_t> tokenMetaInfo = scratch.metaInfoTensor[(metaInfoUbTokenOffset + permIdx) * META_INFO_SIZE];
         SendWaveCombineToken<CombineMode, true>(common, bufferConfig, scratch, params, gmm2OutGm, gmRemoteBaseOffset,
-                                                tokenStart + tokenIdxInSlice, tokenMetaInfo, slot);
+                                                tokenStart + permIdx, tokenMetaInfo, slot);
+        permIdx += permStride;
+        if (permIdx >= tokenCount) {
+            permIdx -= tokenCount;
+        }
     }
 }
 
@@ -1126,19 +1136,27 @@ __aicore__ inline void RunWaveExpertCombineStage(const MoeStageCommonConfig &com
     if (currentCoreTokenRange.count != 0U) {
         WaitWaveGmm2Ready(job, params, expertIdx);
     }
-    for (uint32_t processedTokenNum = 0U; processedTokenNum < currentCoreTokenRange.count;) {
-        uint32_t remainingTokenNum = currentCoreTokenRange.count - processedTokenNum;
+    // 遍历序错峰：chunk 访问序同样做互素步长环形置换（chunk 边界按容量等分，可由索引直查）。
+    uint32_t chunkCount = Ops::Base::CeilDiv(currentCoreTokenRange.count, WAVE_COMBINE_META_INFO_TOKEN_CAPACITY);
+    uint32_t chunkStride = GetScatterVisitStride(chunkCount);
+    uint32_t chunkIdx = GetScatterVisitStart(chunkCount, common, job);
+    for (uint32_t visitedChunkNum = 0U; visitedChunkNum < chunkCount; ++visitedChunkNum) {
+        uint32_t chunkTokenStart = chunkIdx * WAVE_COMBINE_META_INFO_TOKEN_CAPACITY;
+        uint32_t remainingTokenNum = currentCoreTokenRange.count - chunkTokenStart;
         uint32_t chunkTokenNum = remainingTokenNum < WAVE_COMBINE_META_INFO_TOKEN_CAPACITY ?
                                      remainingTokenNum :
                                      WAVE_COMBINE_META_INFO_TOKEN_CAPACITY;
         PreloadWaveCombineMetaInfo(
             params, scratch,
-            static_cast<uint64_t>(state.globalTokenStartIndex) + currentCoreTokenRange.start + processedTokenNum,
+            static_cast<uint64_t>(state.globalTokenStartIndex) + currentCoreTokenRange.start + chunkTokenStart,
             chunkTokenNum, 0U);
-        CombineWaveTokenRange<CombineMode>(common, bufferConfig, scratch, params, gmmAddrInfo.gmm2OutGlobal,
-                                           currentCoreTokenRange.start + processedTokenNum, chunkTokenNum, 0U,
+        CombineWaveTokenRange<CombineMode>(common, job, bufferConfig, scratch, params, gmmAddrInfo.gmm2OutGlobal,
+                                           currentCoreTokenRange.start + chunkTokenStart, chunkTokenNum, 0U,
                                            rowSequence);
-        processedTokenNum += chunkTokenNum;
+        chunkIdx += chunkStride;
+        if (chunkIdx >= chunkCount) {
+            chunkIdx -= chunkCount;
+        }
     }
 }
 
