@@ -1079,15 +1079,9 @@ ge::graphStatus TQSASTilingCheck::CheckSingleParaCmpKv() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TQSASTilingCheck::CheckSingleParaNumHeads() const
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus TQSASTilingCheck::CheckSingleParaNumHeads() const { return ge::GRAPH_SUCCESS; }
 
-ge::graphStatus TQSASTilingCheck::CheckSingleParaKvHeadNums() const
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus TQSASTilingCheck::CheckSingleParaKvHeadNums() const { return ge::GRAPH_SUCCESS; }
 
 ge::graphStatus TQSASTilingCheck::CheckSingleParaCmpSparseIndices() const
 {
@@ -1208,25 +1202,13 @@ ge::graphStatus TQSASTilingCheck::CheckSingleParaCmpRatio() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TQSASTilingCheck::CheckSingleParaOriMaskMode() const
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus TQSASTilingCheck::CheckSingleParaOriMaskMode() const { return ge::GRAPH_SUCCESS; }
 
-ge::graphStatus TQSASTilingCheck::CheckSingleParaCmpMaskMode() const
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus TQSASTilingCheck::CheckSingleParaCmpMaskMode() const { return ge::GRAPH_SUCCESS; }
 
-ge::graphStatus TQSASTilingCheck::CheckSingleParaOriKvStride0() const
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus TQSASTilingCheck::CheckSingleParaOriKvStride0() const { return ge::GRAPH_SUCCESS; }
 
-ge::graphStatus TQSASTilingCheck::CheckSingleParaCmpKvStride0() const
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus TQSASTilingCheck::CheckSingleParaCmpKvStride0() const { return ge::GRAPH_SUCCESS; }
 
 ge::graphStatus TQSASTilingCheck::CheckSingleParaOriWinLeft() const
 {
@@ -1235,10 +1217,7 @@ ge::graphStatus TQSASTilingCheck::CheckSingleParaOriWinLeft() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TQSASTilingCheck::CheckSingleParaOriWinRight() const
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus TQSASTilingCheck::CheckSingleParaOriWinRight() const { return ge::GRAPH_SUCCESS; }
 
 ge::graphStatus TQSASTilingCheck::CheckSinglePara() const
 {
@@ -1404,10 +1383,7 @@ ge::graphStatus TQSASTilingCheck::CheckFeatureDtype() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TQSASTilingCheck::CheckFeaturePa() const
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus TQSASTilingCheck::CheckFeaturePa() const { return ge::GRAPH_SUCCESS; }
 
 ge::graphStatus TQSASTilingCheck::CheckFeature() const
 {
@@ -1480,14 +1456,8 @@ ge::graphStatus TQSASTilingCheck::CheckActualSeqLensQ() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TQSASTilingCheck::CheckActualSeqLens() const
-{
-    return ge::GRAPH_SUCCESS;
-}
-ge::graphStatus TQSASTilingCheck::CheckBlockTable() const
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus TQSASTilingCheck::CheckActualSeqLens() const { return ge::GRAPH_SUCCESS; }
+ge::graphStatus TQSASTilingCheck::CheckBlockTable() const { return ge::GRAPH_SUCCESS; }
 
 ge::graphStatus TQSASTilingCheck::CheckMultiParaConsistency()
 {
