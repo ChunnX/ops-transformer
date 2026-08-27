@@ -18,12 +18,12 @@ class FlashAttnInferShapeTest : public testing::TestWithParam<FlashAttnInferShap
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "FlashAttn InferShapeTest SetUp" << std::endl;
+        // std::cout << "FlashAttn InferShapeTest SetUp" << std::endl;
     }
 
     static void TearDownTestCase()
     {
-        std::cout << "FlashAttn InferShapeTest TearDown" << std::endl;
+        // std::cout << "FlashAttn InferShapeTest TearDown" << std::endl;
     }
 };
 
