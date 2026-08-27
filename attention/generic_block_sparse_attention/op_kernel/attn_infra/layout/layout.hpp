@@ -15,4 +15,4 @@
 #include "../../attn_infra/layout/matrix.hpp"
 #include "../../attn_infra/layout/vector.hpp"
 
-#endif  // LAYOUT_LAYOUT_HPP
+#endif // LAYOUT_LAYOUT_HPP
