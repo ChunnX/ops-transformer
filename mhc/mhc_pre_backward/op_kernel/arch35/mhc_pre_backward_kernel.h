@@ -209,6 +209,8 @@ private:
     TQue<QuePosition::VECOUT, 1> vecOutQueueSmall_;
 
     TBuf<TPosition::VECCALC> fp32TBuf_;
+    TBuf<TPosition::VECIN> c0OutTBuf_;
+    LocalTensor<P> c0OutUb_[DOUBLE_BUFFER];
 
     uint32_t hPreMaxBufLen_;
     uint32_t hPostMaxBufLen_;
@@ -279,6 +281,11 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitGlobalBuffersAndTiling(In
 template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParams initParams)
 {
+    pipe_ = initParams.tPipeIn;
+    pipe_->InitBuffer(c0OutTBuf_, DOUBLE_BUFFER * C0_UB_BUFFER_SIZE);
+    c0OutUb_[0] = c0OutTBuf_.GetWithOffset<P>(C0_UB_BUFFER_SIZE / sizeof(P), 0);
+    c0OutUb_[1] = c0OutTBuf_.GetWithOffset<P>(C0_UB_BUFFER_SIZE / sizeof(P), C0_UB_BUFFER_SIZE);
+
     vecDealChunk_ = N_ > LARGE_N_THRESHOLD ? VEC_DEAL_CHUNK_LARGE_N : VEC_DEAL_CHUNK_SMALL_N;
     hPreMaxBufLen_ = vecDealChunk_ * N_;
     hPostMaxBufLen_ = hPreMaxBufLen_;
@@ -287,7 +294,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParam
     gradHResBufLen_ = vecDealChunk_ * N_ * N_;
     hFusionBufLen_ = hPreMaxBufLen_ + hPostMaxBufLen_ + gradHResBufLen_;
     if ASCEND_IS_AIV {
-        pipe_ = initParams.tPipeIn;
         pipe_->InitBuffer(vecInQueue0_, 1, INOUT_QUEUE_SIZE);
         pipe_->InitBuffer(vecOutQueue1_, 1, INOUT_QUEUE_SIZE);
         pipe_->InitBuffer(vecInQueue1_, 1, INOUT_QUEUE_SIZE);
@@ -933,35 +939,36 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
         AscendC::SetHF32TransMode(1);
     }
 
-    uint32_t currentNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - dealStartND_);
-    uint32_t currentBSBlock = Min(SINGLE_M, uint32_t(totalLength_));
     uint32_t buffId = 0;
-    // 预执行第一个C0
-    ProcessC0(dealStartND_, currentNDBlock, 0, currentBSBlock, buffId);
+    uint32_t prevOffsetND = 0;
+    uint32_t prevNDBlock = 0;
+    uint32_t prevOffsetBS = 0;
+    uint32_t prevBSBlock = 0;
+    bool hasPrev = false;
 
     for (uint32_t offsetND = dealStartND_; offsetND < dealEndND_; offsetND += ND_BLOCK_SIZE) {
-        currentNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - offsetND);
+        uint32_t currentNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - offsetND);
 
         for (uint32_t offsetBS = 0; offsetBS < totalLength_; offsetBS += SINGLE_M) {
-            currentBSBlock = Min(SINGLE_M, uint32_t(totalLength_ - offsetBS));
+            uint32_t currentBSBlock = Min(SINGLE_M, uint32_t(totalLength_ - offsetBS));
 
-            uint32_t nextOffsetBS = offsetBS + SINGLE_M;
-            if (nextOffsetBS < totalLength_) { // BS还有未计算
-                uint32_t nextBSBlock = Min(SINGLE_M, uint32_t(totalLength_ - nextOffsetBS));
-                ProcessC0(offsetND, currentNDBlock, nextOffsetBS, nextBSBlock, (buffId + 1));
-            } else { // 预计算下一个nD块的C0
-                uint32_t nextOffsetND = offsetND + ND_BLOCK_SIZE;
-                if (nextOffsetND < dealEndND_) { // ND 还有未计算
-                    uint32_t nextNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - nextOffsetND);
-                    nextOffsetBS = 0;
-                    uint32_t nextBSBlock = Min(SINGLE_M, uint32_t(totalLength_ - nextOffsetBS));
-                    ProcessC0(nextOffsetND, nextNDBlock, nextOffsetBS, nextBSBlock, (buffId + 1));
-                }
+            // C0将当前分块写入双UB缓冲，C1延迟一拍消费上一分块的V2输出。
+            ProcessC0(offsetND, currentNDBlock, offsetBS, currentBSBlock, buffId);
+            if (hasPrev) {
+                ProcessC1(prevOffsetND, prevNDBlock, prevOffsetBS, prevBSBlock, buffId - 1);
             }
 
-            ProcessC1(offsetND, currentNDBlock, offsetBS, currentBSBlock, buffId);
+            prevOffsetND = offsetND;
+            prevNDBlock = currentNDBlock;
+            prevOffsetBS = offsetBS;
+            prevBSBlock = currentBSBlock;
+            hasPrev = true;
             buffId++;
         }
+    }
+
+    if (hasPrev) {
+        ProcessC1(prevOffsetND, prevNDBlock, prevOffsetBS, prevBSBlock, buffId - 1);
     }
 
     if ASCEND_IS_AIC {
@@ -975,7 +982,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, 
                                                              uint32_t offsetBS, uint32_t currentBSBlock,
                                                              uint32_t buffIdx)
 {
-    buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
+    buffIdx = buffIdx % DOUBLE_BUFFER;
     // 设置矩阵形状
     mm0.SetOrgShape(totalLength_, nD_, fusionSize_);
     mm0.SetSingleShape(currentBSBlock, currentNDBlock, fusionSize_);
@@ -983,15 +990,19 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, 
     mm0.SetTensorA(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)]); // [BS, N^2+2N]
     mm0.SetTensorB(phiGm_[offsetND], false);                                 // [N^2+2N, ND]
     // 计算
-    uint64_t writeOffset = workspaceBuf_.GetXRsGradOffset(GetBlockIdx(), buffIdx);
+    uint64_t writeOffset = 0;
     while (mm0.Iterate()) {
-        mm0.GetTensorC(workSpaceGm_[writeOffset], 0, true); // 连续写
+        mm0.GetTensorC(c0OutUb_[buffIdx][writeOffset], 0, true);
         writeOffset += MATMUL_WRITE_OFFSET_M * MATMUL_WRITE_OFFSET_N;
     }
     mm0.End();
 
-    // 通知V2计算
-    AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_FIX>(CROSS_CORE_WAIT_FLAG_C0);
+    // buf0和buffer1使用独立flag，避免双缓冲周期相互覆盖。
+    if (buffIdx == 0) {
+        AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_FIX>(CROSS_CORE_WAIT_FLAG_C0_BUF0);
+    } else {
+        AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_FIX>(CROSS_CORE_WAIT_FLAG_C0_BUF1);
+    }
 }
 
 template <class T, class P>
@@ -999,7 +1010,11 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC1(uint32_t offsetND, 
                                                              uint32_t offsetBS, uint32_t currentBSBlock,
                                                              uint32_t buffIdx)
 {
-    AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1);
+    if (buffIdx % DOUBLE_BUFFER == 0) {
+        AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1_BUF0);
+    } else {
+        AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1_BUF1);
+    }
     // 1C2V 对应操作两块 workspaceGm_
     buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
     // 设置矩阵形状
@@ -1043,14 +1058,22 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2Pipeline()
         LocalTensor<P> sumBuf = vecOutQueueSmall_.AllocTensor<P>();
         for (uint32_t offsetBS = 0; offsetBS < totalLength_; offsetBS += SINGLE_M) {
             uint32_t currentBSBlock = Min(SINGLE_M, uint32_t(totalLength_ - offsetBS));
-            // 等待C0完成计算
-            AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C0);
+            // 等待C0写完当前的UB缓冲。
+            if (buffId % DOUBLE_BUFFER == 0) {
+                AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C0_BUF0);
+            } else {
+                AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C0_BUF1);
+            }
 
             // 执行当前的V2
             ProcessV2(offsetND, copySizeND, offsetBS, offsetBS + currentBSBlock, sumBuf, buffId);
             buffId++;
-            // 通知C1计算
-            AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_MTE3>(CROSS_CORE_WAIT_FLAG_C1);
+            // 通知C1消费V2写回GM的x_rs。
+            if ((buffId - 1) % DOUBLE_BUFFER == 0) {
+                AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_MTE3>(CROSS_CORE_WAIT_FLAG_C1_BUF0);
+            } else {
+                AscendC::CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_MTE3>(CROSS_CORE_WAIT_FLAG_C1_BUF1);
+            }
         }
         if (withGamma_) {
             vecOutQueueSmall_.EnQue(sumBuf);
@@ -1203,7 +1226,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
     uint32_t currentN = static_cast<uint32_t>(offsetND / D_);
     uint32_t chunkSize = N_ > 4 ? (PROCESS_V2_CHUNK_SIZE / 2) : PROCESS_V2_CHUNK_SIZE;
     uint32_t currentBsSize = bsEnd - bsStart;
-    buffId = buffId % VEC_CORE_VECIDX_MOD;
+    buffId = buffId % DOUBLE_BUFFER;
 
     // ==========================================================
     // Buffer分配 - 按最大CHUNK大小分配 (存到全局变量)
@@ -1409,21 +1432,10 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkProcessXRsGradMm(uint32_t bsStart, uin
                                                            uint32_t currentChunkSize, uint32_t buffId,
                                                            LocalTensor<P> &sumBuf)
 {
-    DataCopyPadParams dataCopyPadParams;
-    dataCopyPadParams.isPad = false;
-    uint32_t vecIdx = blockIdx_ % 2;
-    uint64_t offsetXRsGradMm = workspaceBuf_.GetXRsGradOffset(GetBlockIdx() / VEC_DEAL_VECIDX_DIV, buffId);
-    offsetXRsGradMm += (bsChunkStart - bsStart) * ND_BLOCK_SIZE + vecIdx * (ND_BLOCK_SIZE / 2);
-
-    vecInQueue0_.AllocTensor<P>(xRsGradMmInBuf_);
-    DataCopyParams blockCopyParams;
-    blockCopyParams.blockCount = currentChunkSize;
-    blockCopyParams.blockLen = copySizeND * sizeof(P);
-    blockCopyParams.srcStride = (ND_BLOCK_SIZE - copySizeND) * sizeof(P);
-    blockCopyParams.dstStride = 0;
-    DataCopyPad(xRsGradMmInBuf_, workSpaceGm_[offsetXRsGradMm], blockCopyParams, dataCopyPadParams);
-    vecInQueue0_.EnQue(xRsGradMmInBuf_);
-    vecInQueue0_.DeQue<P>(xRsGradMmInBuf_);
+    // SplitNMatmulPolicy已将每个AIV负责的copySizeND列连续写入对应UB缓冲。
+    // 因此行步长是copySizeND，不再从GM workspace按ND_BLOCK_SIZE步长搬运。
+    uint32_t offsetXRsGradMm = (bsChunkStart - bsStart) * copySizeND;
+    xRsGradMmInBuf_ = c0OutUb_[buffId % DOUBLE_BUFFER][offsetXRsGradMm];
 
     __ubuf__ P *xRsGradMmInBufAddr = (__ubuf__ P *)xRsGradMmInBuf_.GetPhyAddr();
     __ubuf__ P *xGradVec3Addr = (__ubuf__ P *)xGradVec3Buf_.GetPhyAddr();
@@ -1456,8 +1468,6 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkProcessXRsGradMm(uint32_t bsStart, uin
         }
         PipeBarrier<PIPE_V>();
     }
-    vecInQueue0_.FreeTensor(xRsGradMmInBuf_);
-
     PipeBarrier<PIPE_V>();
 }
 
