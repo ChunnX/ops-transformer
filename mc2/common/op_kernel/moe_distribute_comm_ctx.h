@@ -42,4 +42,13 @@ struct CommContextForDump {
     uint64_t kfcContextAddr = 0;
     uint64_t epHcclBufffer_[EP_HCCL_BUFFER_RANK_NUM];
 };
+
+constexpr uint32_t URMA_MAX_RANK_NUM = 64;
+
+struct UrmaCommContextForDump {
+    uint32_t rankId = 0;
+    uint32_t rankSize = 0;
+    uint64_t channelHandles[URMA_MAX_RANK_NUM] = {0};
+    uint64_t commBufferAddrs[URMA_MAX_RANK_NUM] = {0};
+};
 #endif

@@ -954,12 +954,110 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
     }
     OP_LOGE(OP_NAME, "Workspace dump done: op=%s, deviceId=%u.", op, deviceId);
 }
+
+inline void Mc2DumpUrmaContext(aclrtExceptionInfo *args, const char *op, uint32_t contextArgIdx,
+                               uint32_t argsOffset = 0U)
+{
+    if (args == nullptr || op == nullptr) {
+        return;
+    }
+
+    auto getArgsFunc = GetAclrtGetArgsFromExceptionInfoFunc();
+    if (getArgsFunc == nullptr) {
+        OP_LOGE(OP_NAME, "Failed to load aclrtGetArgsFromExceptionInfo function.");
+        return;
+    }
+
+    void *devArgsPtr = nullptr;
+    uint32_t devArgsLen = 0U;
+    if (getArgsFunc(args, &devArgsPtr, &devArgsLen) != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtGetArgsFromExceptionInfo failed.");
+        return;
+    }
+
+    uint32_t deviceId = aclrtGetDeviceIdFromExceptionInfo(args);
+    OP_LOGE(OP_NAME, "UrmaContext dump start: op=%s, contextArgIdx=%u, argsOffset=%u", op, contextArgIdx, argsOffset);
+
+    uint32_t contextOffset = argsOffset + contextArgIdx * sizeof(uint64_t);
+    if (contextOffset + sizeof(uint64_t) > devArgsLen) {
+        OP_LOGE(OP_NAME, "contextOffset=%u + 8 > devArgsLen=%u, args too short.", contextOffset, devArgsLen);
+        return;
+    }
+
+    auto dumpPathFunc = GetAcldumpGetPathFunc();
+    if (dumpPathFunc == nullptr) {
+        OP_LOGE(OP_NAME, "Failed to load acldumpGetPath function.");
+        return;
+    }
+    const char *dumpPath = dumpPathFunc(acldumpType::AIC_ERR_BRIEF_DUMP);
+    if (dumpPath == nullptr) {
+        OP_LOGE(OP_NAME, "acldumpGetPath returned NULL.");
+        return;
+    }
+
+    // 1. 读取 context 指针 (arg 0)
+    uint64_t contextAddr = 0U;
+    if (aclrtMemcpy(&contextAddr, sizeof(uint64_t),
+                    reinterpret_cast<uint8_t *>(devArgsPtr) + contextOffset,
+                    sizeof(uint64_t), ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtMemcpy context pointer failed, offset=%u.", contextOffset);
+        return;
+    }
+    OP_LOGE(OP_NAME, "contextAddr=0x%lx (offset=%u)", contextAddr, contextOffset);
+    if (contextAddr == 0U) {
+        OP_LOGE(OP_NAME, "contextAddr is 0, skip urma context dump.");
+        return;
+    }
+
+    // 2. D2H 拷贝 CommContext (UrmaCommContextForDump) -> comm_context
+    constexpr uint32_t ctxDumpSize = sizeof(UrmaCommContextForDump);
+    std::vector<uint8_t> ctxBuf(ctxDumpSize, 0);
+    if (aclrtMemcpy(ctxBuf.data(), ctxDumpSize, reinterpret_cast<void *>(contextAddr), ctxDumpSize,
+                    ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtMemcpy UrmaCommContext failed.");
+        return;
+    }
+    if (DumpToFileWithSize(std::string(dumpPath), GenDumpFileNameWithPrefix(args, op, "comm_context_"), deviceId,
+                           ctxBuf.data(), ctxDumpSize) != 0) {
+        OP_LOGE(OP_NAME, "Failed to dump comm context.");
+    }
+
+    // 3. 解析 peermem 窗口地址
+    UrmaCommContextForDump *urmaCtx = reinterpret_cast<UrmaCommContextForDump *>(ctxBuf.data());
+    uint32_t rankId = urmaCtx->rankId;
+    OP_LOGE(OP_NAME, "urmaCtx: rankId=%u, rankSize=%u", rankId, urmaCtx->rankSize);
+    if (rankId >= URMA_MAX_RANK_NUM) {
+        OP_LOGE(OP_NAME, "rankId=%u >= URMA_MAX_RANK_NUM=%u, skip peermem dump.", rankId, URMA_MAX_RANK_NUM);
+        return;
+    }
+    uint64_t selfWinAddr = urmaCtx->commBufferAddrs[rankId];
+    OP_LOGE(OP_NAME, "selfWinAddr=0x%lx (commBufferAddrs[%u])", selfWinAddr, rankId);
+    if (selfWinAddr == 0U) {
+        OP_LOGE(OP_NAME, "selfWinAddr is 0, skip peermem dump.");
+        return;
+    }
+
+    // 4. D2H 拷贝 peermem 窗口 -> peermem_window
+    std::vector<uint8_t> winBuf(WIN_SIZE, 0);
+    if (aclrtMemcpy(winBuf.data(), WIN_SIZE, reinterpret_cast<void *>(selfWinAddr), WIN_SIZE,
+                    ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtMemcpy peermem window failed.");
+        return;
+    }
+    if (DumpToFileWithSize(std::string(dumpPath), GenDumpFileNameWithPrefix(args, op, "peermem_window_"), deviceId,
+                           winBuf.data(), WIN_SIZE) != 0) {
+        OP_LOGE(OP_NAME, "Failed to dump peermem window.");
+    }
+    OP_LOGE(OP_NAME, "UrmaContext dump done: op=%s, deviceId=%u.", op, deviceId);
+}
 #else  // !MC2_DFX_ENABLE
 inline void Mc2ExceptionImplTmp(aclrtExceptionInfo *args, void *userdata, const char *op) {}
 inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t tilingGmArgIdx,
                             uint32_t argsOffset = 0U, uint32_t workspaceGmArgIdx = 0U,
                             uint32_t quantModeOffset = 0U, uint32_t wsLayoutOffsetNonQuant = 0U,
                             uint32_t wsLayoutOffsetQuant = 0U, uint32_t wsLayoutOffsetApace = 0U) {}
+inline void Mc2DumpUrmaContext(aclrtExceptionInfo *args, const char *op, uint32_t contextArgIdx,
+                               uint32_t argsOffset = 0U) {}
 #endif // MC2_DFX_ENABLE
  
 } // namespace Mc2Exception
