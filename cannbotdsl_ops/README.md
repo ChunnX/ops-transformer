@@ -15,8 +15,9 @@
 - `l0op::FlashKda` 可被其他 L2 ACLNN 实现直接组装；
 - `aclnnFlashKdaGetWorkspaceSize` / `aclnnFlashKda` 提供独立的两阶段 ACLNN
   调用入口；
-- L0 executor 内同时包含 `CopyToNpu`/`CreateView` 常量准备和 Provider
-  节点，因而验证了混合执行拓扑，而非仅把两类文件放在同一个安装目录。
+- L0 executor 内同时包含生成的 workspace 分配、`CopyToNpu`/`CreateView`
+  常量与 view 准备以及 Provider 节点，因而验证了混合执行拓扑，而非仅把
+  两类文件放在同一个安装目录。
 
 ## 依赖与 ABI
 
@@ -36,9 +37,10 @@ kernel/registry ABI v1 做了编译期断言；CMake 还会链接
 `RequireProviderAclnnRuntimeAbiV1`，在配置阶段拒绝旧运行库。
 
 当前方案不生成传统 OpDef、InferShape、TilingData 或 TilingKey。FlashKDA 是供
-L2 组装的 ACLNN L0，输入输出契约和 workspace 规划由本目录的手写 L0 adapter
-负责；物理 Provider 参数结构、`OP_INPUT/OP_OUTPUT/OP_ATTR` 顺序和 workspace
-登记函数由 schema v3 生成，Provider 变体选择由生成 registry 完成。
+L2 组装的 ACLNN L0；本目录只手写公共契约校验以及 `group/dv_base/block_num`
+调度策略，`@entry` 的 workspace/constant/view、checked shape 表达式、物理
+Provider 参数结构、`OP_INPUT/OP_OUTPUT/OP_ATTR` 顺序和 workspace 登记均由
+schema v3 adapter 生成，Provider 变体选择由生成 registry 完成。
 
 FlashKDA 的 `@entry` 公共参数严格对应 `l0op::FlashKda`：8 个输入 tensor、
 `scale/lowerBound` 两个属性、2 个输出 tensor；`group/dv_base/block_num` 是
@@ -47,8 +49,10 @@ FlashKDA 的 `@entry` 公共参数严格对应 `l0op::FlashKda`：8 个输入 te
 sidecar/HostSchema 逐项校验；runtime binding、constexpr、workspace dtype/shape 或
 六个 variant 间的公共 entry 身份任一漂移都会使混合包构建失败。
 schema v3 还显式声明 `output_parameters=["o", "st_out"]`；当前生成器已据此生成
-并接入 `FlashKdaProviderArguments`、`MakeFlashKdaProviderOpArgContext` 和
-`SetFlashKdaProviderWorkspaceTensors`，无需按参数位置猜测输出或手写物理顺序。
+并接入 `FlashKdaEntryArguments`、`PrepareFlashKdaProviderArguments`、
+`FlashKdaProviderArguments`、`MakeFlashKdaProviderOpArgContext` 和
+`SetFlashKdaProviderWorkspaceTensors`。因此七段 scratch、identity 常量、view、
+checked runtime shape 求值、物理参数顺序和底层 workspace 登记均无需手写。
 
 ## 构建
 
@@ -82,6 +86,13 @@ cmake --build build-provider --target package -j
 
 ```bash
 cmake --build build-provider --target cannbotdsl_flash_kda_aclnn_smoke -j
+
+# Provider 路径按最终 op_api/lib -> ../../op_impl/cannbotdsl 布局解析 DSO。
+# 先生成安装树，并确保运行时优先加载安装树中的 libcust_opapi.so。
+stage=/tmp/ops-transformer-provider-stage
+cmake --install build-provider --prefix "${stage}"
+vendor_dir=custom_transformer
+export LD_LIBRARY_PATH="${stage}/packages/vendors/${vendor_dir}/op_api/lib:${LD_LIBRARY_PATH}"
 ./build-provider/cannbotdsl_ops/cannbotdsl_flash_kda_aclnn_smoke
 
 # 同进程双 stream × 两轮，并验证 lower_bound 越界 fail-closed
@@ -100,6 +111,10 @@ python cannbotdsl_ops/tests/verify_flash_kda_aclnn_dump.py \
   --dump-dir /tmp/flash-kda-dump \
   --cannbotdsl-source /path/to/cannbot-dsl --verify-native
 ```
+
+不要把构建根目录中的 `libcust_opapi.so` 放在上述安装树之前；其相对 Provider
+根目录不满足交付布局，会使 registry 在 `dlopen` 阶段 fail-closed。运行时还必须
+优先加载与构建头文件匹配、含 Provider ABI v1 的 `libnnopbase.so`。
 
 未开启 `ENABLE_CANNBOTDSL_PROVIDER_ACLNN` 时，既有传统算子构建流程不变。
 
@@ -174,9 +189,9 @@ Ascend950PR 上已完成以下验证：
 - 已生成并只读解包实际混合 `.run`：归档内 SHA256 校验通过，Provider 包内全部
   文件 checksum 通过；包中同时存在 8 个传统 ChunkKda `.o`、6 个 FlashKDA
   `provider.so`，且 `libcust_opapi.so` 同时导出 ChunkKda ACLNN、FlashKDA ACLNN
-  和 `l0op::FlashKda`。本次官方 CPack 完整构建样本大小为 11,653,862 字节，
+  和 `l0op::FlashKda`。本次官方 CPack 完整构建样本大小为 11,650,480 字节，
   整包 SHA256 为
-  `b8bf3bf6b1c8851c23d165cd81bcb3eb524446109be621db36528d77a0432e3e`；
+  `169d3c5cf8020327deb3d17d7e4d1b49daf985f95e26cd1aefe4b919967d9bf9`；
 
 ## 当前 FlashKDA 契约
 

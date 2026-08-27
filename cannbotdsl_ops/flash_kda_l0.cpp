@@ -6,7 +6,6 @@
 
 #include "flash_kda_l0.h"
 
-#include <array>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -26,11 +25,9 @@ namespace {
 
 constexpr int64_t kChunkSize = 64;
 constexpr int64_t kHeadDim = 128;
-constexpr int64_t kHalfHeadDim = 64;
 // Ascend950PR has 28 cube cores. FlashKDA uses a whole-grid barrier, so the
 // packaged launch must fit in a single resident cube-core wave.
 constexpr int64_t kBlockNum = 28;
-constexpr uint64_t kWorkspaceAlignment = 512U;
 
 static_assert(op::PROVIDER_KERNEL_SPEC_ABI_VERSION == 1U,
               "FlashKDA requires opbase Provider kernel ABI v1");
@@ -120,23 +117,21 @@ int64_t ResolveGroup(int64_t bnTotal, int64_t sequence)
     return group > 0 ? group : 1;
 }
 
-bool CheckedMultiply(int64_t lhs, int64_t rhs, int64_t& result)
+int64_t ResolveDvBase(int64_t bnTotal, int64_t sequence)
 {
-    if (lhs <= 0 || rhs <= 0 ||
-        lhs > std::numeric_limits<int64_t>::max() / rhs) {
-        return false;
+    if (sequence / kChunkSize < 1) {
+        return kHeadDim;
     }
-    result = lhs * rhs;
-    return true;
-}
-
-op::Shape MakeShape(std::initializer_list<int64_t> dimensions)
-{
-    op::Shape shape;
-    for (const int64_t dimension : dimensions) {
-        shape.AppendDim(dimension);
+    if (bnTotal <= 4) {
+        return 16;
     }
-    return shape;
+    if (bnTotal <= 8) {
+        return 32;
+    }
+    if (bnTotal <= 16) {
+        return 64;
+    }
+    return kHeadDim;
 }
 
 bool CheckTensorContract(
@@ -184,24 +179,6 @@ bool CheckTensorContract(
     return true;
 }
 
-const aclTensor* BuildIdentity16(aclOpExecutor* executor)
-{
-    std::array<op::fp16_t, 16U * 16U> values{};
-    for (size_t index = 0U; index < 16U; ++index) {
-        values[index * 16U + index] = op::fp16_t(1.0);
-    }
-    const aclTensor* host = executor->ConvertToTensor(
-        values.data(), values.size(), op::DataType::DT_FLOAT16);
-    if (host == nullptr) {
-        return nullptr;
-    }
-    const aclTensor* device = op::CopyToNpu(host, executor);
-    if (device == nullptr) {
-        return nullptr;
-    }
-    return executor->CreateView(device, MakeShape({16, 16}), 0);
-}
-
 }  // namespace
 
 namespace l0op {
@@ -228,79 +205,43 @@ aclnnStatus FlashKda(
     const int64_t batch = Dim(v, 0U);
     const int64_t heads = Dim(v, 1U);
     const int64_t sequence = Dim(v, 2U);
-    int64_t bnTotal = 0;
-    if (!CheckedMultiply(batch, heads, bnTotal)) {
+    if (batch <= 0 || heads <= 0 ||
+        batch > std::numeric_limits<int64_t>::max() / heads) {
         return ACLNN_ERR_PARAM_INVALID;
     }
+    const int64_t bnTotal = batch * heads;
     const int64_t group = ResolveGroup(bnTotal, sequence);
-    int64_t workspaceTokens = 0;
-    int64_t groupTokens = 0;
-    if (!CheckedMultiply(bnTotal, group, groupTokens) ||
-        !CheckedMultiply(groupTokens, kChunkSize, workspaceTokens)) {
-        return ACLNN_ERR_PARAM_INVALID;
-    }
 
-    aclTensor* qkExchange = op::AllocProviderWorkspaceTensor(
-        executor, MakeShape({kBlockNum, 2, kChunkSize, kHalfHeadDim}),
-        op::DataType::DT_FLOAT, kWorkspaceAlignment);
-    aclTensor* kRestored = op::AllocProviderWorkspaceTensor(
-        executor, MakeShape({workspaceTokens, kHeadDim}),
-        op::DataType::DT_BF16, kWorkspaceAlignment);
-    aclTensor* gamma = op::AllocProviderWorkspaceTensor(
-        executor, MakeShape({groupTokens * kHeadDim, 1}),
-        op::DataType::DT_FLOAT, kWorkspaceAlignment);
-    aclTensor* qDecayed = op::AllocProviderWorkspaceTensor(
-        executor, MakeShape({workspaceTokens, kHeadDim}),
-        op::DataType::DT_BF16, kWorkspaceAlignment);
-    aclTensor* w = op::AllocProviderWorkspaceTensor(
-        executor, MakeShape({workspaceTokens, kHeadDim}),
-        op::DataType::DT_BF16, kWorkspaceAlignment);
-    aclTensor* mqk = op::AllocProviderWorkspaceTensor(
-        executor, MakeShape({workspaceTokens, kChunkSize}),
-        op::DataType::DT_BF16, kWorkspaceAlignment);
-    aclTensor* u = op::AllocProviderWorkspaceTensor(
-        executor, MakeShape({workspaceTokens, kHeadDim}),
-        op::DataType::DT_BF16, kWorkspaceAlignment);
-    if (qkExchange == nullptr || kRestored == nullptr || gamma == nullptr ||
-        qDecayed == nullptr || w == nullptr || mqk == nullptr || u == nullptr) {
-        return ACLNN_ERR_INNER_NULLPTR;
-    }
-    const aclTensor* identity = BuildIdentity16(executor);
-    if (identity == nullptr) {
-        return ACLNN_ERR_INNER_NULLPTR;
-    }
-
+    cannbotdsl::generated::FlashKdaEntryArguments entryArguments;
+    entryArguments.K = k;
+    entryArguments.V = v;
+    entryArguments.Q = q;
+    entryArguments.beta = beta;
+    entryArguments.g = g;
+    entryArguments.A_log = aLog;
+    entryArguments.dt_bias = dtBias;
+    entryArguments.st_in = initialState;
+    entryArguments.scale = scale;
+    entryArguments.lower_bound = lowerBound;
+    entryArguments.o = out;
+    entryArguments.st_out = finalState;
+    entryArguments.group = group;
+    entryArguments.dv_base = ResolveDvBase(bnTotal, sequence);
+    entryArguments.block_num = kBlockNum;
     cannbotdsl::generated::FlashKdaProviderArguments providerArguments;
-    providerArguments.K = k;
-    providerArguments.V = v;
-    providerArguments.Q = q;
-    providerArguments.beta = beta;
-    providerArguments.g = g;
-    providerArguments.qk_exchange = qkExchange;
-    providerArguments.A_log = aLog;
-    providerArguments.dt_bias = dtBias;
-    providerArguments.kr = kRestored;
-    providerArguments.gamma = gamma;
-    providerArguments.qd = qDecayed;
-    providerArguments.w = w;
-    providerArguments.mqk = mqk;
-    providerArguments.u = u;
-    providerArguments.st_in = initialState;
-    providerArguments.ident = identity;
-    providerArguments.o = out;
-    providerArguments.st_out = finalState;
-    providerArguments.bnt = bnTotal;
-    providerArguments.s = sequence;
-    providerArguments.scale = scale;
-    providerArguments.lower_bound = lowerBound;
+    aclnnStatus status =
+        cannbotdsl::generated::PrepareFlashKdaProviderArguments(
+            executor, entryArguments, providerArguments);
+    if (status != ACLNN_SUCCESS) {
+        return status;
+    }
     op::OpArgContext* args =
         cannbotdsl::generated::MakeFlashKdaProviderOpArgContext(providerArguments);
     if (args == nullptr) {
         return ACLNN_ERR_INNER_NULLPTR;
     }
-    aclnnStatus status =
-        cannbotdsl::generated::SetFlashKdaProviderWorkspaceTensors(
-            executor, args, providerArguments);
+    status = cannbotdsl::generated::SetFlashKdaProviderWorkspaceTensors(
+        executor, args, providerArguments);
     if (status != ACLNN_SUCCESS) {
         return status;
     }
