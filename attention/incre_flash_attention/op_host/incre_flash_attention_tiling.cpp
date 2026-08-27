@@ -473,7 +473,7 @@ ge::graphStatus IFATiling::GetInOutLayout4BSH(const std::string layout, uint32_t
     inputLayout_ = IfaLayout::BSH_BSND;
     outputLayout_ = (layout == "BSH") ?  inputLayout_ : IfaLayout::NBSD;
     OP_CHECK_IF(ifaContext_->query.shape->GetStorageShape().GetDim(2) % numHeads_ != 0U,
-            OP_LOGE(ifaContext_->opName, "H should be an interger multiple of numHeads"),
+            OP_LOGE(ifaContext_->opName, "H should be an integer multiple of numHeads"),
             return ge::GRAPH_FAILED);
     sOfQuery = ifaContext_->query.shape->GetStorageShape().GetDim(1);
     headDim_ = ifaContext_->query.shape->GetStorageShape().GetDim(2) / numHeads_; // 2, QK dim of H
@@ -635,7 +635,7 @@ ge::graphStatus IFATiling::InputAttrsPreProcess()
         OP_CHECK_IF(
             inputKvType_ == ge::DT_INT4 && inputLayout_ != IfaLayout::BSH_BSND,
             OP_LOGE(ifaContext_->opName,
-                "IFA don't support PageAttenion if the KV Inputtype is INT4 or INT32 and inputlayout isn't BSH_BSND currently."),
+                "IFA don't support PageAttention if the KV Inputtype is INT4 or INT32 and inputlayout isn't BSH_BSND currently."),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             ifaContext_->blockTable.tensor->GetStorageShape().GetShapeSize() == 0,
@@ -673,7 +673,7 @@ ge::graphStatus IFATiling::SetQuantFlag()
     // 全量化基本校验
     if (inputQType_ == ge::DT_INT8) {
         OP_CHECK_IF(!pageAttentionFlag_ || inputKvLayout_ != IfaLayout::NZ,
-                OP_LOGE(ifaContext_->opName, "when the dtype of query is int8 in MLA, PageAttetion should be enabled and KV layout must be NZ"),
+                OP_LOGE(ifaContext_->opName, "when the dtype of query is int8 in MLA, PageAttention should be enabled and KV layout must be NZ"),
                 return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -814,7 +814,7 @@ ge::graphStatus IFATiling::KvShapePostProcess()
         }
 
         if (!ShapeEqual(keyShape->GetStorageShape(), valueShape->GetStorageShape())) {
-            OP_LOGE(ifaContext_->opName, "k v shape shoud be same ");
+            OP_LOGE(ifaContext_->opName, "k and v shape should be same");
             return ge::GRAPH_FAILED;
         }
 
@@ -1028,7 +1028,7 @@ ge::graphStatus IFATiling::ParseActualSeqLens()
                           "the value of the key/value's actual sequence lengths[%u] must be greater than or equal to 0, but it is %ld", i,
                           actLen),
                 return ge::GRAPH_FAILED);
-            OP_LOGI(ifaContext_->opName, "The vlaue of the key/value's actual sequence lengths[%u] is %ld.", i, actLen);
+            OP_LOGI(ifaContext_->opName, "The value of the key/value's actual sequence lengths[%u] is %ld.", i, actLen);
             if (!pageAttentionFlag_) {
                 uint32_t seqSize = (kvListSeqLens_.size() == 1) ? kvListSeqLens_[0] : kvListSeqLens_[i];
                 OP_CHECK_IF(static_cast<uint32_t>(actLen) > seqSize,
@@ -1390,7 +1390,7 @@ ge::graphStatus IFATiling::CheckKVAntiQuantMode()
             (antiquantMode_ != DEQUANT_PER_TOKEN_PA_MODE) &&
             (antiquantMode_ != DEQUANT_PER_TOKEN_HEAD_PA_MODE)) {
         OP_LOGE(ifaContext_->opName,
-            "antiquantMode value:%u is invalid, it should be 0、1、2、3、4 or 5", antiquantMode_);
+            "antiquantMode value:%u is invalid, it should be 0, 1, 2, 3, 4 or 5", antiquantMode_);
         return ge::GRAPH_FAILED;
     }
 
@@ -1518,7 +1518,7 @@ ge::graphStatus IFATiling::CheckAntiQuantParamKeyType(const gert::Tensor *antiqu
 {
     ge::DataType antiquantScaleType = antiquantScaleDesc->GetDataType();
     if (antiquantScaleType != inputQType_) {
-        OP_LOGE(ifaContext_->opName, "illegal datatype of antiquant scale, it should be same with input qtype");
+        OP_LOGE(ifaContext_->opName, "illegal datatype of antiquant scale, it should be the same as the input qtype");
         return ge::GRAPH_FAILED;
     }
 
@@ -1562,7 +1562,7 @@ ge::graphStatus IFATiling::ProcessAntiQuant()
                             keyAntiquantScaleTensor != nullptr || keyAntiquantOffsetTensor != nullptr ||
                             valueAntiquantScaleTensor != nullptr || valueAntiquantOffsetTensor != nullptr ||
                             keyRopeAntiquantScaleTensor != nullptr)) && !quantFlag_) {
-        OP_LOGE(ifaContext_->opName, "KV antiquant is unenabled, but antiquant antiquantScale/antiquantOffset exist");
+        OP_LOGE(ifaContext_->opName, "KV antiquant is not enabled, but antiquant antiquantScale/antiquantOffset exist");
         return ge::GRAPH_FAILED;
     }
 
@@ -1845,7 +1845,7 @@ uint32_t IFATiling::GetAntiquantSeqLength() const
         return seqSize_;
     }
     if (kvAntiParamSplitFlag_ && ifaContext_->valueAntiquantScale.tensor->GetStorageShape().GetDimNum() != DIM_NUM_THREE) {
-        OP_LOGW(ifaContext_->opName, "the pertoken antiquant's dimensions is [%u], which neeb to be (1, Batch, AntiquantSeqlen)",
+        OP_LOGW(ifaContext_->opName, "the pertoken antiquant's dimensions is [%u], which need to be (1, Batch, AntiquantSeqlen)",
             ifaContext_->valueAntiquantScale.tensor->GetStorageShape().GetDimNum());
     }
     const size_t antiquantSIdx = (gqaKvNZFlag_) || 
@@ -2233,7 +2233,7 @@ ge::graphStatus IFATiling::SplitBalancedFd()
     OP_LOGI(ifaContext_->opName, "usedCoreNum_:%u", usedCoreNum_);
     OP_LOGI(ifaContext_->opName, "tnd FD Core Array Length:%u", tilingInfo.tndFDCoreArrLen);
     OP_LOGI(ifaContext_->opName, "max Kv Split Part:%u", tilingInfo.maxKvSplitPart);
-    OP_LOGI(ifaContext_->opName, "avgerage S2 Length:%lu", seqTilingInfo.avgS2Length);
+    OP_LOGI(ifaContext_->opName, "average S2 Length:%lu", seqTilingInfo.avgS2Length);
     OP_LOGI(ifaContext_->opName, "sInnerSize_:%u", sInnerSize_);
 
     if (IsFlashDecode(coreNum_, perfMode_)) {
@@ -2302,7 +2302,7 @@ ge::graphStatus IFATiling::SplitBalanced()
     OP_LOGI(ifaContext_->opName, "usedCoreNum_:%u", usedCoreNum_);
     OP_LOGI(ifaContext_->opName, "tnd FD Core Array Length:%u", tilingInfo.tndFDCoreArrLen);
     OP_LOGI(ifaContext_->opName, "max Kv Split Part:%u", tilingInfo.maxKvSplitPart);
-    OP_LOGI(ifaContext_->opName, "avgerage S2 Length:%lu", seqTilingInfo.avgS2Length);
+    OP_LOGI(ifaContext_->opName, "average S2 Length:%lu", seqTilingInfo.avgS2Length);
     OP_LOGI(ifaContext_->opName, "sInnerSize_:%u", sInnerSize_);
 
     if (IsFlashDecode(coreNum_, perfMode_)) {

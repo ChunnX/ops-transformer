@@ -116,7 +116,7 @@ graphStatus IncreHostExecuteFunc(OpExecutePrepareContext *host_api_ctx)
                        actSeqArray, dequantScale1Ge, quantScale1Ge, dequantScale2Ge, quantScale2Ge, quantOffset2Ge,
                        antiquantScaleGe, antiquantOffsetGe, blocktableGe, kvPaddingSizeGe, *num_heads, dScaleValue,
                        layout, *kvHeadNum, *blockSize, *innerPrecise, output);
-    OP_CHECK_IF(api_ret != GRAPH_SUCCESS, OP_LOGE(host_api_ctx->GetNodeName(), "api_ret faild:%u", api_ret), return GRAPH_FAILED);
+    OP_CHECK_IF(api_ret != GRAPH_SUCCESS, OP_LOGE(host_api_ctx->GetNodeName(), "api_ret failed:%u", api_ret), return GRAPH_FAILED);
 
     return GRAPH_SUCCESS;
 }

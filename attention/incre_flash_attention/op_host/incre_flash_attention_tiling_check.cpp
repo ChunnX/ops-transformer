@@ -227,9 +227,12 @@ ge::graphStatus IFATiling::ProcessCheckATBInputWithPage() const
         OP_LOGE(ifaContext_->opName, "blockTables dim num %lu, invalid, should be %lu",
             blockTablesShape.GetDimNum(), BLOCK_TABLE_DIM_NUM),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF((taskNumI64 > UINT32_MAX), OP_LOGE(ifaContext_->opName, "param is invalid"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((taskNumI64 > UINT32_MAX),
+        OP_LOGE(ifaContext_->opName, "taskNum(%lu) exceeds UINT32_MAX(%u)", taskNumI64, UINT32_MAX),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF((blockSize_ <= 0 || blockSize_ % 16U != 0),
-        OP_LOGE(ifaContext_->opName, "blockSize is invalid"), return ge::GRAPH_FAILED);
+        OP_LOGE(ifaContext_->opName, "blockSize(%u) is invalid, should be positive and multiple of 16", blockSize_),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF((static_cast<uint64_t>(headDim_) * blockSize_ > 128U * 128U),
         OP_LOGE(ifaContext_->opName, "headDim * blockSize should no greater than 128 * 128"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -266,11 +269,13 @@ ge::graphStatus IFATiling::CheckValueShapeInput() const
 ge::graphStatus IFATiling::ProcessCheckATBInput()
 {
     OP_CHECK_IF((numHeads_ <= 0),
-        OP_LOGE(ifaContext_->opName, "headSize is invalid."),
+        OP_LOGE(ifaContext_->opName, "numHeads(%u) is invalid, should be greater than 0.", numHeads_),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF((numKvHeads_ <= 0 || numKvHeads_ > numHeads_ || numHeads_ % numKvHeads_ != 0),
-            OP_LOGE(ifaContext_->opName, "kvHead is invalid."),
+            OP_LOGE(ifaContext_->opName,
+                    "numKvHeads(%u) is invalid, should be in (0, %u] and numHeads should be divisible by numKvHeads.",
+                    numKvHeads_, numHeads_),
             return ge::GRAPH_FAILED);
 
     static const size_t Q_CACHE_DIM_NUM = 4;
@@ -305,12 +310,14 @@ ge::graphStatus IFATiling::ProcessCheckATBInput()
     }
 
     OP_CHECK_IF((headDim_ > 256 || headDim_ <= 0),
-        OP_LOGE(ifaContext_->opName, "headdim is invalid"), return ge::GRAPH_FAILED);
+        OP_LOGE(ifaContext_->opName, "headDim(%u) is invalid, should be in (0, 256]", headDim_),
+        return ge::GRAPH_FAILED);
 
     int32_t numTokens = queryShape->GetStorageShape().GetDim(2);
 
     OP_CHECK_IF((numTokens <= 0 || batchSize_ <= 0 || numHeads_ <= 0),
-            OP_LOGE(ifaContext_->opName, "param must > 0"),
+            OP_LOGE(ifaContext_->opName, "numTokens(%d), batchSize(%u) or numHeads(%u) should be greater than 0",
+            numTokens, batchSize_, numHeads_),
             return ge::GRAPH_FAILED);
 
     if (ifaContext_->pseShift.tensor != nullptr) {
@@ -851,7 +858,8 @@ ge::graphStatus IFATiling::CheckAntiQuantParam(const gert::Tensor *antiquantScal
     ge::DataType antiquantScaleType = antiquantScaleDesc->GetDataType();
     if (antiquantMode_ == DEQUANT_PER_CHANNEL_MODE) {
         if (antiquantScaleType != inputQType_) {
-            OP_LOGE(ifaContext_->opName, "illegal datatype of antiquant scale, it should be same with input qtype");
+            OP_LOGE(ifaContext_->opName, "illegal datatype of antiquant scale, "
+                "it should be the same as the input qtype");
             return ge::GRAPH_FAILED;
         }
     }
@@ -941,7 +949,7 @@ ge::graphStatus IFATiling::SharedPrefixCheckShapes(const gert::Shape &keyShape, 
 
     OP_CHECK_IF(
         keyShape.GetDimNum() != ifaContext_->query.shape->GetStorageShape().GetDimNum(),
-        OP_LOGE(ifaContext_->opName, "tensor shape dim of key_shared_prefix[%lu] is not compatable with query",
+        OP_LOGE(ifaContext_->opName, "tensor shape dim of key_shared_prefix[%lu] is not compatible with query",
             keyShape.GetDimNum()),
         return ge::GRAPH_FAILED);
 
@@ -1377,14 +1385,14 @@ ge::graphStatus IFATiling::CheckTreeSparseMask()
             qActSize = (b == 0) ? actualSeqQTnd[0] : (actualSeqQTnd[b] - actualSeqQTnd[b - 1]);
             OP_CHECK_IF(qActSize > kvActSize,
                 OP_LOGE(ifaContext_->opName,
-                    "In MLA full quant situation, when sparse is %d, qSize(%ld) should less than or equal to kvSize(%ld).",
+                    "In MLA full quant situation, when sparse is %d, qSize(%ld) should be less than or equal to kvSize(%ld).",
                     sparseMode_, qActSize, kvActSize),
             return ge::GRAPH_FAILED);
         }
     } else {
         OP_CHECK_IF(qSeqSize_ > seqSize_,
             OP_LOGE(ifaContext_->opName,
-                    "In MLA full quant situation, when sparse is %d, qSize(%ld) should less than or equal to kvSize(%ld).", 
+                    "In MLA full quant situation, when sparse is %d, qSize(%ld) should be less than or equal to kvSize(%ld).",
                     sparseMode_, qSeqSize_, seqSize_),
             return ge::GRAPH_FAILED);
     }
@@ -1875,7 +1883,7 @@ ge::graphStatus IFATiling::CheckDefaultMisc(std::string scene) const
         OP_LOGE(ifaContext_->opName, "PseShift is not supported in %s.", scene.c_str()),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(!batchContinuousFlag_,
-        OP_LOGE(ifaContext_->opName, "Kvcache must be continues in %s.", scene.c_str()),
+        OP_LOGE(ifaContext_->opName, "Kvcache must be continuous in %s.", scene.c_str()),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(sysPrefixFlag_,
@@ -1976,14 +1984,14 @@ ge::graphStatus IFATiling::CheckGqaAntiquantType() const
         DataTypeToSerialString(ifaContext_->keyAntiquantScale.desc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
         OP_CHECK_IF(ifaContext_->valueAntiquantScale.desc->GetDataType() != ge::DT_BF16,
         OPS_REPORT_VECTOR_INNER_ERR(ifaContext_->opName, "In IFA GQA with KV NZ perchannel antiquant, the value's dequant scale type should be BFLOAT16, but now it's %s!",
-        DataTypeToSerialString(ifaContext_->keyAntiquantScale.desc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
+        DataTypeToSerialString(ifaContext_->valueAntiquantScale.desc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
     } else if (antiquantMode_ == PER_TOKEN_MODE) {
         OP_CHECK_IF(ifaContext_->keyAntiquantScale.desc->GetDataType() != ge::DT_FLOAT,
         OPS_REPORT_VECTOR_INNER_ERR(ifaContext_->opName, "In IFA GQA with KV NZ pertoken antiquant, the key's dequant scale type should be DT_FLOAT, but now it's %s!",
         DataTypeToSerialString(ifaContext_->keyAntiquantScale.desc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
         OP_CHECK_IF(ifaContext_->valueAntiquantScale.desc->GetDataType() != ge::DT_FLOAT,
         OPS_REPORT_VECTOR_INNER_ERR(ifaContext_->opName, "In IFA GQA with KV NZ pertoken antiquant, the value's dequant scale type should be DT_FLOAT, but now it's %s!",
-        DataTypeToSerialString(ifaContext_->keyAntiquantScale.desc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
+        DataTypeToSerialString(ifaContext_->valueAntiquantScale.desc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -2113,7 +2121,7 @@ ge::graphStatus IFATiling::CheckGqaAttribute() const
         OP_LOGE(ifaContext_->opName, "blockSize(%u) only support 128 and 512 in GQA.", blockSize_), return ge::GRAPH_FAILED);
 
     OP_CHECK_IF((innerPrecise_ != IFA_HIGH_PERFORMANCE),
-        OP_LOGE(ifaContext_->opName, "precision mode[%u] only support 1(hign performance) in GQA antiquant with KV NZ", innerPrecise_), return ge::GRAPH_FAILED);
+        OP_LOGE(ifaContext_->opName, "precision mode[%u] only support 1(high performance) in GQA antiquant with KV NZ", innerPrecise_), return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(CheckGqaSeqSize() != ge::GRAPH_SUCCESS,
         OP_LOGE(ifaContext_->opName, "Invalid query S %u with sparseMode %d and attenMask", qSeqSize_,
