@@ -25,7 +25,7 @@
 
 #include <limits>
 
-#include "../../../common/op_kernel/arch35/attenmask_gs1_arch35.h"
+#include "attenmask_gs1.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "adv_api/activation/softmax.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
@@ -368,13 +368,8 @@ public:
         const uint32_t maskBufId = runInfo.loop % DB;
         if constexpr (hasAtten) {
             attenMaskUb = ubMaskBuffers_[maskBufId * UB_MASK_BUF_BYTES];
-            // per-slot 生产-消费握手（FA 同构）：加载(main 槽 maskBufId + pre 槽 maskBufId^1) 前
-            // 等待两槽上一轮 V 消费完毕（旧深度1队列的进出队语义，表 2 UB_IN_MASK_EVENT0/1=6/7）
-            Mutex::Lock<PIPE_MTE2>(UB_IN_MASK_EVENT0 + maskBufId);
-            Mutex::Lock<PIPE_MTE2>(UB_IN_MASK_EVENT0 + (maskBufId ^ 1U));
+            // [flash_attn 同款协议] 两槽生产-消费锁全部在 AttenMaskCopyIn 内部，调用点不再套锁
             AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo); // 全量拷贝（含 pre 槽与 MergeMask）
-            Mutex::Unlock<PIPE_MTE2>(UB_IN_MASK_EVENT0 + (maskBufId ^ 1U));
-            Mutex::Unlock<PIPE_MTE2>(UB_IN_MASK_EVENT0 + maskBufId);
         }
 
         LocalTensor<float> sumUb =
@@ -438,6 +433,7 @@ public:
 
         if constexpr (hasAtten) {
             // per-slot 消费端释放（V 管道到达此处即两槽读完成，允许下一轮 MTE2 覆写）
+            // [flash_attn 同款协议] 与 AttenMaskCopyIn 内部生产端 MTE2 锁配对，缺此块会死锁
             Mutex::Lock<PIPE_V>(UB_IN_MASK_EVENT0 + (maskBufId ^ 1U));
             Mutex::Unlock<PIPE_V>(UB_IN_MASK_EVENT0 + (maskBufId ^ 1U));
             Mutex::Lock<PIPE_V>(UB_IN_MASK_EVENT0 + maskBufId);
@@ -825,21 +821,32 @@ public:
 
         bool IsSkipMask = IsSkipAttentionmask(maskInfo);
         bool IsSkipMaskForPre = IsSkipAttentionmaskForPre(maskInfo);
+        // [flash_attn 同款协议] 锁全部内置于本函数（各槽 PIPE_V/MTE2 握手在拷贝内完成）
+        const uint32_t maskBufId = runInfo.loop % DB;
         if (IsSkipMask && IsSkipMaskForPre) {
+            Mutex::Lock<PIPE_V>(UB_IN_MASK_EVENT0 + maskBufId);
             Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSize);
+            Mutex::Unlock<PIPE_V>(UB_IN_MASK_EVENT0 + maskBufId);
             return;
         }
 
         if (!IsSkipMask) {
-            AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(attenMaskUb, attenMaskGmInt, maskInfo);
+            AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(attenMaskUb, attenMaskGmInt, maskInfo, false,
+                                                                        UB_IN_MASK_EVENT0 + maskBufId);
         } else {
+            Mutex::Lock<PIPE_V>(UB_IN_MASK_EVENT0 + maskBufId);
             Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSize);
+            Mutex::Unlock<PIPE_V>(UB_IN_MASK_EVENT0 + maskBufId);
         }
 
         if (!IsSkipMaskForPre) {
-            LocalTensor<uint8_t> attenMaskUbPre = ubMaskBuffers_[(1 - runInfo.loop % DB) * UB_MASK_BUF_BYTES];
-            AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(attenMaskUbPre, attenMaskGmInt, maskInfo, true);
+            const uint32_t preBufId = maskBufId ^ 1U;
+            LocalTensor<uint8_t> attenMaskUbPre = ubMaskBuffers_[preBufId * UB_MASK_BUF_BYTES];
+            AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(attenMaskUbPre, attenMaskGmInt, maskInfo, true,
+                                                                        UB_IN_MASK_EVENT0 + preBufId);
+            Mutex::Lock<PIPE_V>(UB_IN_MASK_EVENT0 + preBufId);
             MergeMask(attenMaskUb, attenMaskUbPre, maskInfo.gs1dealNum, s2BaseSize);
+            Mutex::Unlock<PIPE_V>(UB_IN_MASK_EVENT0 + preBufId);
         }
     }
 };
