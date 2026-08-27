@@ -10,10 +10,10 @@
 #ifndef ARCH35_CATLASS_BLOCK_DAVID_UB_ANTIQUANT_SCMC_H
 #define ARCH35_CATLASS_BLOCK_DAVID_UB_ANTIQUANT_SCMC_H
 
-#include "../dispatch_policy.h"
+#include "../wq_dispatch_policy.h"
 #include "block_decl.h"
 #include "block_utils.h"
-#include "../utils/constant.h"
+#include "../utils/wq_utils_constant.h"
 
 namespace Mc2WeightQuantBatchMatmulV2::Arch35::Catlass {
 

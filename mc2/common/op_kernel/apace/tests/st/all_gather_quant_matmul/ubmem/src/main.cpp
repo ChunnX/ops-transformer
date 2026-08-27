@@ -31,11 +31,11 @@
 #include "hccl/hccl.h"
 #include "utils.h"
 #include "apace/utils/constant.h"
-#include "apace/utils/common_utils.h"
+#include "apace/utils/apace_common_utils.h"
 #include "apace/tiling/quant_matmul_tiling_swat.h"
 #include "apace/tiling/quant_matmul_tiling_data.h"
 #include "tiling/hccl/hccl_tiling.h"
-#include "kernel_launcher.h"
+#include "apace_agm_kernel_launcher.h"
 
 extern "C" HcclResult HcclCommInitAll(uint32_t commNum, int32_t *devIds, HcclComm *comm);
 extern "C" HcclResult HcclCommDestroy(HcclComm comm);

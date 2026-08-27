@@ -9,7 +9,7 @@
  */
 
 #include "log/log.h"
-#include "util/math_util.h"
+#include "util/mc2_math_util.h"
 #include "op_host/tiling_util.h"
 #include "op_host/tiling_templates_registry.h"
 #include "../op_kernel/lightning_indexer_kl_loss_tiling_data.h"

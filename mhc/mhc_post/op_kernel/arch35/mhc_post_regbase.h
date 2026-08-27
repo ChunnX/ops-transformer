@@ -21,7 +21,7 @@
 
 #include "kernel_operator.h"
 #include "basic_api/kernel_operator_utils_intf.h"
-#include "op_kernel/math_util.h"
+#include "op_kernel/mc2_math_util.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "mhc_post_tiling_data.h"
 #include "mhc_post_tiling_key.h"

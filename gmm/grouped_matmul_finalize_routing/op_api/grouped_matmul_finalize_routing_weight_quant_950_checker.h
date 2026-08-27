@@ -14,7 +14,7 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "quant_grouped_matmul_finalize_routing_util.h"
 #include "../../grouped_matmul/op_api/grouped_matmul_util.h"
-#include "util/math_util.h"
+#include "util/mc2_math_util.h"
 #include "log/log.h"
 
 #define OP_CHECK_DTYPE_NOT_SUPPORT_WITH_REASON(aclnnName, tensor, supportList, retExpr)                               \

@@ -18,7 +18,7 @@
 
 #include "moe_v3_common.h"
 #include "op_kernel/platform_util.h"
-#include "op_kernel/math_util.h"
+#include "op_kernel/mc2_math_util.h"
 
 namespace MoeInitRoutingV3 {
 using namespace AscendC;

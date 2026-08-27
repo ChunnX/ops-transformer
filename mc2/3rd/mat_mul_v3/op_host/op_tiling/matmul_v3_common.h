@@ -18,7 +18,7 @@
 #include <cstdint>
 #include <map>
 #include "graph/types.h"
-#include "util/math_util.h"
+#include "util/mc2_math_util.h"
 #include "mc2_log_compat.h"
 
 namespace optiling {

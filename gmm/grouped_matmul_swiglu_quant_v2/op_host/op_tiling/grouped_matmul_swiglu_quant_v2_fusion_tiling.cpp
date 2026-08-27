@@ -13,7 +13,7 @@
  * \brief
  */
 #include "grouped_matmul_swiglu_quant_v2_fusion_tiling.h"
-#include "util/math_util.h"
+#include "util/mc2_math_util.h"
 #include "err/ops_err.h"
 
 namespace optiling {

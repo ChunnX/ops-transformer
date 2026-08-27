@@ -18,7 +18,7 @@
 #include <cstdint>
 #include <cstdio>
 
-#include "../utils/common_utils.h"
+#include "../utils/apace_common_utils.h"
 #include "quant_matmul_tiling_common.h"
 #include "quant_matmul_tiling_data.h"
 #include "../utils/constant.h"

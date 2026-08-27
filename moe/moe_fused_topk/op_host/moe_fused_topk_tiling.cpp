@@ -17,7 +17,7 @@
 #include "platform/platform_info.h"
 #include "log/log.h"
 #include "err/ops_err.h"
-#include "util/math_util.h"
+#include "util/mc2_math_util.h"
 #include "moe_fused_topk_tiling.h"
 
 namespace {

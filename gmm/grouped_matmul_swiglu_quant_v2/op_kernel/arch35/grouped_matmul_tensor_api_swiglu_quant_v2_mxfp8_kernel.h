@@ -26,7 +26,7 @@
 
 #include "blaze/gemm/block/block_mmad_qgmm_mx.h"
 #include "blaze/gemm/block/block_scheduler_gmm_swat_with_tail_split.h"
-#include "blaze/gemm/policy/dispatch_policy.h"
+#include "blaze/gemm/policy/cgmct_dispatch_policy.h"
 #include "blaze/gemm/kernel/kernel_qgmm_swiglu_mx.h"
 #include "blaze/epilogue/block/block_epilogue_swiglu_mx_quant.h"
 #include "../grouped_matmul_swiglu_quant_v2_utils_kernel.h"

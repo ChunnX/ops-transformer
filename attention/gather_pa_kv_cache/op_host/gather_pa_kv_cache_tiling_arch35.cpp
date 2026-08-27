@@ -19,7 +19,7 @@
 #include "platform/platform_info_def.h"
 #include "tiling/tiling_api.h"
 #include "op_host/tiling_util.h"
-#include "util/math_util.h"
+#include "util/mc2_math_util.h"
 #include "gather_pa_kv_cache_tiling.h"
 
 using namespace AscendC;

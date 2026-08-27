@@ -21,7 +21,7 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "op_kernel/platform_util.h"
-#include "op_kernel/math_util.h"
+#include "op_kernel/mc2_math_util.h"
 #include "stem_oam_prep_paged_kv_tiling_data.h"
 #include "stem_oam_prep_paged_kv_base.h"
 

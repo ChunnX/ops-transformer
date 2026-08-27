@@ -22,7 +22,7 @@
 #include "../../../../kernel_utils/block/block_mmad_pingpong_tla_multi.hpp"
 #include "catlass/gemm/block/kda_block_swizzle.hpp"
 #include "../block/block_scheduler_kda_fwd_h_arch22.hpp"
-#include "catlass/gemm/dispatch_policy.hpp"
+#include "catlass/gemm/kda_gemm_dispatch_policy.hpp"
 #include "catlass/gemm/kda_gemm_type.hpp"
 #include "catlass/layout/kda_layout.hpp"
 #include "catlass/kda_gemm_coord.hpp"

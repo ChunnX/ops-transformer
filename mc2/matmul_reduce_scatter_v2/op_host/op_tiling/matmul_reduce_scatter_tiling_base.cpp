@@ -30,7 +30,7 @@
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "matmul_reduce_scatter_tiling_base_v2.h"
 #include "../../op_kernel/matmul_reduce_scatter_v2_apt_tiling_key.h"
-#include "util/math_util.h"
+#include "util/mc2_math_util.h"
 
 using namespace AscendC;
 using namespace ge;

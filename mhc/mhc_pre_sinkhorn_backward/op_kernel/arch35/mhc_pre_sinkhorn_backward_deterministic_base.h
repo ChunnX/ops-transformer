@@ -17,7 +17,7 @@
 
 #include "kernel_operator.h"
 #include "op_kernel/platform_util.h"
-#include "op_kernel/math_util.h"
+#include "op_kernel/mc2_math_util.h"
 
 using namespace AscendC;
 

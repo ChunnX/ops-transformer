@@ -25,8 +25,8 @@
 #include <kernel_operator.h>
 #include <kernel_operator_intf.h>
 #endif
-#include <blaze/gemm/utils/common_utils.h>
-#include <blaze/gemm/utils/layout_utils.h>
+#include <blaze/gemm/utils/cgmct_common_utils.h>
+#include <blaze/gemm/utils/cgmct_layout_utils.h>
 
 namespace GROUPED_MATMUL::INT4_PREPROCESS {
 

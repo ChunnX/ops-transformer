@@ -23,7 +23,7 @@
 #include "./block_mmad_utils.h"
 #include "../utils/tensor_utils.h"
 #include "../utils/tuple_utils.h"
-#include "../policy/dispatch_policy.h"
+#include "../policy/cgmct_dispatch_policy.h"
 #include "../tile/tile_copy.h"
 
 namespace Cgmct {

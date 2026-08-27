@@ -16,7 +16,7 @@
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_templates_registry.h"
 #include "tiling/tiling_api.h"
-#include "util/math_util.h"
+#include "util/mc2_math_util.h"
 namespace optiling {
 BEGIN_TILING_DATA_DEF(MoeV2GradComputeTilingData)
 TILING_DATA_FIELD_DEF(int64_t, needCoreNum);

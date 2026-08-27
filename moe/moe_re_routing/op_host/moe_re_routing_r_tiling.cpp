@@ -13,7 +13,7 @@
  * \brief
  */
 #include <iostream>
-#include "util/math_util.h"
+#include "util/mc2_math_util.h"
 #include "log/log.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "op_common/op_host/util/platform_util.h"

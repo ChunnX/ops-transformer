@@ -15,7 +15,7 @@
 #include "register/op_impl_registry.h"
 #include "log/log.h"
 #include "platform/platform_info.h"
-#include "util/math_util.h"
+#include "util/mc2_math_util.h"
 #include "graph/utils/type_utils.h"
 
 #include <sstream>

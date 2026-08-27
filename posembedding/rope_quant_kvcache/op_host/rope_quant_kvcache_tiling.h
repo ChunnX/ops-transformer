@@ -19,7 +19,7 @@
 #include "register/tilingdata_base.h"
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_templates_registry.h"
-#include "util/math_util.h"
+#include "util/mc2_math_util.h"
 namespace optiling {
 BEGIN_TILING_DATA_DEF(RopeQuantKvcacheTilingData)
 TILING_DATA_FIELD_DEF(uint64_t, qHeadNum);

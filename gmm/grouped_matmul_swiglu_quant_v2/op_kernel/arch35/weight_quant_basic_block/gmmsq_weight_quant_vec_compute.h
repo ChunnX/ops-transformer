@@ -16,7 +16,7 @@
 #define GMMSQ_WEIGHT_QUANT_VEC_COMPUTE_H
 
 #include "kernel_cube_intf.h"
-#include "op_kernel/math_util.h"
+#include "op_kernel/mc2_math_util.h"
 #include "basic_block_config.h"
 #include "basic_block_vf_mx.h"
 #include "weight_quant_tool.h"
