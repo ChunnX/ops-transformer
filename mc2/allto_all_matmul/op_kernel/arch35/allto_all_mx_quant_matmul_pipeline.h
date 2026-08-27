@@ -134,7 +134,7 @@ template <typename CommunicationType, typename TransposeType, typename ScaleTran
 __aicore__ inline void AlltoAllMXQuantMatmulPipeLine<CommunicationType, TransposeType, ScaleTransposeType,
                                                      ComputationType, ContextType>::ProcessScale()
 {
-    // execTurn_++;
+    execTurn_++;
     if ASCEND_IS_AIV {
         commStage_->PrepareAll(1);
         if (runtimeInfo_ != nullptr) {
