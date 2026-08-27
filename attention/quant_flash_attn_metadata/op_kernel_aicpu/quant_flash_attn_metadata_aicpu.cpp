@@ -61,7 +61,7 @@ bool QuantFlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "layout_q_descale", layoutQDescale_);
     GetAttrValueOpt(ctx, "layout_kv", layoutKv_);
     GetAttrValueOpt(ctx, "layout_out", layoutOut_);
-    GetAttrValueOpt(ctx, "is_grad_enabled", isGradEnable_);
+    GetAttrValueOpt(ctx, "is_training", isTraining_);
     return ParamsInit();
 }
 
@@ -252,7 +252,7 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
             }
         }
     }
-    if (isGradEnable_) {
+    if (isTraining_) {
         int64_t deterMaxRound = CalDeterMaxRound();
         detail::QuantFAGMetaData quantFAGMetaData(metaData_->GetData());
         quantFAGMetaData.SetDeterMaxRound(optiling::QUANT_FAG_DETER_MAX_NUM_INDEX, deterMaxRound);

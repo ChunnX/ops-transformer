@@ -113,7 +113,7 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             "int? mask_mode=0, int? win_left=-1, int? win_right=-1, "
             'str? layout_q="BSND", str? layout_q_descale="BSND", '
             'str? layout_kv="BSND", str? layout_out="BSND", '
-            'bool is_grad_enabled=False) -> Tensor',
+            'bool is_training=False) -> Tensor',
             "quant_flash_attn(Tensor q, Tensor k, Tensor v, "
             "Tensor q_descale, Tensor k_descale, Tensor v_descale, int quant_mode, "
             "Tensor? block_table=None, Tensor? p_scale=None, "
@@ -153,7 +153,7 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             layout_q_descale: Optional[str] = "BSND",
             layout_kv: Optional[str] = "BSND",
             layout_out: Optional[str] = "BSND",
-            is_grad_enabled: Optional[bool] = False,
+            is_training: Optional[bool] = False,
         ):
             metadata_size = _calculate_metadata_size()
             return torch.empty((metadata_size,), dtype=torch.int32, device="npu")
@@ -284,7 +284,7 @@ def quant_flash_attn_metadata(
     layout_q_descale: Optional[str] = "BSND",
     layout_kv: Optional[str] = "BSND",
     layout_out: Optional[str] = "BSND",
-    is_grad_enabled: Optional[bool] = False,
+    is_training: Optional[bool] = False,
 ):
     """
     Dispatcher implementation: NPU.
@@ -296,9 +296,8 @@ def quant_flash_attn_metadata(
         f"{quant_mode}",
     )
     torch._check(
-        (quant_mode == 0) == (is_grad_enabled is True),
-        lambda: f"quant_mode==0 and is_grad_enabled==True must be both true or both false, "
-        f"but got quant_mode={quant_mode}, is_grad_enabled={is_grad_enabled}",
+        is_training is not True or quant_mode == 0,
+        lambda: f"When is_training is True, quant_mode must be 0, but got quant_mode={quant_mode}",
     )
     if layout_q == "TND":
         torch._check(
@@ -341,7 +340,7 @@ def quant_flash_attn_metadata(
         layout_q_descale,
         layout_kv,
         layout_out,
-        is_grad_enabled,
+        is_training,
         output,
     )
 
@@ -367,7 +366,7 @@ def quant_flash_attn_metadata_fallback(
     layout_q_descale: Optional[str] = "BSND",
     layout_kv: Optional[str] = "BSND",
     layout_out: Optional[str] = "BSND",
-    is_grad_enabled: Optional[bool] = False,
+    is_training: Optional[bool] = False,
 ):
     # 处理所有 tensor 都为 None 的情况
     return quant_flash_attn_metadata(
@@ -390,7 +389,7 @@ def quant_flash_attn_metadata_fallback(
         layout_q_descale,
         layout_kv,
         layout_out,
-        is_grad_enabled,
+        is_training,
     )
 
 

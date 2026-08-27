@@ -87,7 +87,7 @@ private:
     int32_t aivCoreNum_ = 72U;
     uint32_t s1Size_ = 0;
     uint32_t s2Size_ = 0;
-    bool isGradEnable_ = false;
+    bool isTraining_ = false;
 
     uint32_t groupSize_ = 0;
     uint32_t mBaseSize_ = NUM_64;
