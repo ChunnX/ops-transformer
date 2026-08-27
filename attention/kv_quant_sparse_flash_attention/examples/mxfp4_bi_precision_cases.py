@@ -279,7 +279,7 @@ def build_tnd_prefix_inputs():
     import torch
 
     batch0 = PrecisionCase("tnd_batch0", "bf16", "TND", "TND", 3, (0, 1, 2, -1), 32)
-    batch1 = PrecisionCase("tnd_batch1", "bf16", "TND", "TND", 4, (0, 1, 3, -1), 32)
+    batch1 = PrecisionCase("tnd_batch1", "bf16", "TND", "TND", 4, (0, 1, 3, 2), 32)
     records0 = make_records(batch0, token_offset=0)
     records1 = make_records(batch1, token_offset=23)
     q0 = torch.tensor([0.015625 * (((d * 3) % 17) - 8) for d in range(576)], dtype=torch.bfloat16)
@@ -287,7 +287,7 @@ def build_tnd_prefix_inputs():
     inputs = {
         "query": torch.stack((q0, q1)).reshape(2, 1, 576),
         "key": records_to_int8(records0 + records1).reshape(7, 1, RECORD_BYTES),
-        "sparse_indices": torch.tensor(((0, 1, 2, -1), (0, 1, 3, -1)), dtype=torch.int32).reshape(2, 1, 4),
+        "sparse_indices": torch.tensor(((0, 1, 2, -1), (0, 1, 3, 2)), dtype=torch.int32).reshape(2, 1, 4),
         # TND actual lengths are cumulative: batch0=[0,3), batch1=[3,7).
         "actual_seq_lengths_query": torch.tensor((1, 2), dtype=torch.int32),
         "actual_seq_lengths_kv": torch.tensor((3, 7), dtype=torch.int32),
@@ -296,7 +296,7 @@ def build_tnd_prefix_inputs():
         "block_table": None,
     }
     inputs["value"] = torch.zeros((7, 1, NOPE_DIM), dtype=torch.int8)
-    return inputs, ((records0, (0, 1, 2, -1)), (records1, (0, 1, 3, -1)))
+    return inputs, ((records0, (0, 1, 2, -1)), (records1, (0, 1, 3, 2)))
 
 
 def cpu_reference_tnd_prefix(inputs, batches):
