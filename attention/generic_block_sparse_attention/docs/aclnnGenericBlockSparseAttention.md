@@ -190,7 +190,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
           </ul>
         </ul>
         其中 totalQBlocks = Σ ceilDiv(qStorageLen_i, blockShapeX)，i 为 batch 索引；qStorageLen_i 为 cuSeqLengthsQOptional 前缀和差分得到的<strong>存储长度</strong>（与seqused双长度语义见约束说明）。
-<br>maxSparseBlockCount为sparseBlockCount tensor中所有元素的最大值，即所有Q块选择的KV块数量的最大值。传入值须 >= 该最大值，当前上限为64。
+<br>maxSparseBlockCount为sparseBlockCount tensor中所有元素的最大值，即所有Q块选择的KV块数量的最大值。传入值须 >= 该最大值，当前上限为256。
       </td>
       <td>INT32</td>
       <td>ND</td>
@@ -919,7 +919,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
 - isPackedGQA当前仅支持1。
 - maskType当前仅支持1（算子内置causal）；attenMaskOptional须传入nullptr；winLeft和winRight当前只支持-1。
 - blockShape当前仅支持[1,128]；query/key/value的headDim(D)当前仅支持128；KV页blockSize当前仅支持128，且须等于blockShapeY。
-- TND + isPackedGQA=1时：sparseBlockIdx为[N2, totalQBlocks, topK]，sparseBlockCount为[N2, totalQBlocks]；totalQBlocks按cu存储长度分块；maxSparseBlockCount（即topK）须≥sparseBlockCount中所有元素的最大值，且当前上限为64。
+- TND + isPackedGQA=1时：sparseBlockIdx为[N2, totalQBlocks, topK]，sparseBlockCount为[N2, totalQBlocks]；totalQBlocks按cu存储长度分块；maxSparseBlockCount（即topK）须≥sparseBlockCount中所有元素的最大值，且当前上限为256。
 - metadataOptional、blockTableOptional、cuSeqLengthsQOptional、cuSeqLengthsKvOptional当前必须传入；blockTableOptional为nullptr（原始KV）当前不支持。
 - cuSeqLengthsQOptional在layoutQ为"TND"时必选；cuSeqLengthsKvOptional在layoutKv为"PAGED_BBND"时必选。
 - sequsedQOptional/sequsedKvOptional可选，可与cu前缀和同时传入；不传（nullptr）时按cu差分得到的存储长度处理。传入时：分核/任务空间按各batch实际有效长度（seqused）累加；sparseBlockIdx/sparseBlockCount分块与QKV寻址仍按cu存储长度计算；各batch的seqused元素须≤对应cu存储长度，且须与Metadata侧完全一致。

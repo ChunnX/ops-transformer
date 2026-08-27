@@ -192,14 +192,14 @@ public:
             uint32_t historyLen = kvSeqlen - qSeqlen;
             uint32_t lastBlockTileSize = (historyLen + qTokenInBatch) % blockShapeY_ + 1;
 
-            constexpr uint32_t MAX_VALID_TOPK = 64U;
+            constexpr uint32_t MAX_VALID_TOPK = 256U;
 
             uint32_t kvSLoopNum = validTopK;
             int32_t validPhysicalIds[MAX_VALID_TOPK];
             uint32_t validTileSize[MAX_VALID_TOPK];
             uint32_t lastLogicalBlockId = (historyLen + qTokenInBatch) / blockShapeY_;
             uint32_t actualLoopNum = 0;
-            for (uint32_t i = 0; i < kvSLoopNum && i < topK_; i++) {
+            for (uint32_t i = 0; i < kvSLoopNum && i < topK_ && actualLoopNum < MAX_VALID_TOPK; i++) {
                 int32_t logicalId = gSparseBlockIdx.GetValue(sparseIdxBase + i);
                 if (logicalId < 0)
                     continue;
