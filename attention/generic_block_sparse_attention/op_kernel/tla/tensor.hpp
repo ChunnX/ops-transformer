@@ -12,8 +12,8 @@
 #define TLA_TENSOR_HPP
 
 #include "../attn_infra/arch/arch.hpp"
-#include "../tla/layout.hpp"                     // tla::Shape
-#include "../tla/numeric/integral_constant.hpp"  // tla::is_integral
+#include "../tla/layout.hpp"                    // tla::Shape
+#include "../tla/numeric/integral_constant.hpp" // tla::is_integral
 #include "../tla/int_tuple.hpp"
 
 namespace tla {
@@ -28,57 +28,49 @@ struct Tensor {
     using Coord = Coord_;
     static constexpr AscendC::TPosition position = Position;
 
-    HOST_DEVICE constexpr
-    Tensor() {}
+    HOST_DEVICE constexpr Tensor() {}
 
-    HOST_DEVICE constexpr
-    Tensor(BuiltinTensor const& builtinTensor, Layout const& layout, Coord const& coord = {})
-        : rep_(builtinTensor, layout, coord) {}
+    HOST_DEVICE constexpr Tensor(BuiltinTensor const &builtinTensor, Layout const &layout, Coord const &coord = {})
+        : rep_(builtinTensor, layout, coord)
+    {}
 
     //
     // Accessors
     //
 
-    static constexpr int rank  = Layout::rank;
+    static constexpr int rank = Layout::rank;
 
-    HOST_DEVICE constexpr
-    decltype(auto) tensor() const
+    HOST_DEVICE constexpr decltype(auto) tensor() const
     {
         return *this;
     }
 
-    HOST_DEVICE constexpr
-    decltype(auto) data() const
+    HOST_DEVICE constexpr decltype(auto) data() const
     {
         return get<0>(rep_);
     }
 
-    HOST_DEVICE constexpr
-    decltype(auto) data()
+    HOST_DEVICE constexpr decltype(auto) data()
     {
         return get<0>(rep_);
     }
 
-    HOST_DEVICE constexpr
-    decltype(auto) layout() const
+    HOST_DEVICE constexpr decltype(auto) layout() const
     {
         return get<1>(rep_);
     }
 
-    HOST_DEVICE constexpr
-    decltype(auto) coord() const
+    HOST_DEVICE constexpr decltype(auto) coord() const
     {
         return get<2>(rep_);
     }
 
-    HOST_DEVICE constexpr
-    decltype(auto) shape() const
+    HOST_DEVICE constexpr decltype(auto) shape() const
     {
         return layout().shape();
     }
 
-    HOST_DEVICE constexpr
-    decltype(auto) stride() const
+    HOST_DEVICE constexpr decltype(auto) stride() const
     {
         return layout().stride();
     }
@@ -87,23 +79,20 @@ struct Tensor {
 };
 
 template <class BuiltinTensor, class Layout, class PositionType>
-HOST_DEVICE constexpr
-auto MakeTensor(BuiltinTensor const& builtinTensor, Layout const& layout, PositionType)
+HOST_DEVICE constexpr auto MakeTensor(BuiltinTensor const &builtinTensor, Layout const &layout, PositionType)
 {
     using Coord = detail::MakeZeroTuple<Layout::rank>;
     return Tensor<BuiltinTensor, Layout, Coord, PositionType::value>(builtinTensor, layout);
 }
 
 template <class BuiltinTensor, class Layout, class Coord, class PositionType>
-HOST_DEVICE constexpr
-auto MakeTensor(BuiltinTensor const& builtinTensor, Layout const& layout, Coord const& coord, PositionType)
+HOST_DEVICE constexpr auto MakeTensor(BuiltinTensor const &builtinTensor, Layout const &layout, Coord const &coord, PositionType)
 {
     return Tensor<BuiltinTensor, Layout, Coord, PositionType::value>(builtinTensor, layout, coord);
 }
 
 template <class Tensor, class Coord, class Shape>
-__aicore__ inline constexpr
-auto GetTile(Tensor const& tensor, Coord const& coord, Shape const& shape)
+__aicore__ inline constexpr auto GetTile(Tensor const &tensor, Coord const &coord, Shape const &shape)
 {
     auto layout = tensor.layout();
     auto builtinTensor = tensor.data();

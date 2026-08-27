@@ -32,7 +32,6 @@
 #endif
 #include "../../../attn_infra/gemm/helper.hpp"
 
-
 namespace NpuArch::Gemm::Tile {
 
 #if (__CCE_AICORE__ == 220)
@@ -46,8 +45,7 @@ template <
     /// GemmType type for C matrix operand
     class CType,
     /// GemmType type for Bias operand
-    class BiasType = void
->
+    class BiasType = void>
 struct TileCopy {
     using ElementA = typename AType::Element;
     using ElementB = typename BType::Element;
@@ -63,10 +61,10 @@ struct TileCopy {
     using CopyL0CToGm = Gemm::Tile::CopyL0CToGm<ArchTag, ElementAccumulator, CType>;
     using BiasTypeSelector = helper::L1BiasTypeSelector<BiasType, ElementAccumulator>;
     using CopyGmToL1Bias = std::conditional_t<std::is_same_v<BiasType, void>,
-        void,
-        Gemm::Tile::CopyGmToL1<ArchTag,
-            typename BiasTypeSelector::GMBiasType,
-            typename BiasTypeSelector::L1BiasType>>;
+                                              void,
+                                              Gemm::Tile::CopyGmToL1<ArchTag,
+                                                                     typename BiasTypeSelector::GMBiasType,
+                                                                     typename BiasTypeSelector::L1BiasType>>;
 };
 #endif
 
@@ -82,8 +80,7 @@ template <
     class ElementBias = void,
     bool ReluEnable_ = false,
     ScaleGranularity DEQUANT_GRANULARITY = ScaleGranularity::NO_QUANT,
-    class L0CCopyMode = CopyToGM
->
+    class L0CCopyMode = CopyToGM>
 struct PackedTileCopyTla {
     using ElementA = ElementA_;
     using ElementB = ElementB_;
@@ -115,7 +112,7 @@ struct PackedTileCopyTla {
         tla::Tensor<AscendC::LocalTensor<ElementA>, LayoutL1A, tla::Coord<tla::_0>, AscendC::TPosition::A1>;
     using TensorL1ALayout =
         tla::Tensor<AscendC::LocalTensor<ElementA>, LayoutL1A, tla::Coord<tla::_0, tla::_0>, AscendC::TPosition::A1>;
-    
+
     using TensorL1A = std::conditional_t<tla::detail::isVector<LayoutTagA>::value, TensorL1AVectorLayout, TensorL1ALayout>;
     using TensorL1B =
         tla::Tensor<AscendC::LocalTensor<ElementB>, LayoutL1B, tla::Coord<tla::_0, tla::_0>, AscendC::TPosition::A1>;
@@ -124,7 +121,7 @@ struct PackedTileCopyTla {
     using TensorL0B =
         tla::Tensor<AscendC::LocalTensor<ElementB>, LayoutL0B, tla::Coord<tla::_0, tla::_0>, AscendC::TPosition::B2>;
     using TensorL0C = tla::Tensor<AscendC::LocalTensor<ElementAccumulator>, LayoutL0C, tla::Coord<tla::_0, tla::_0>,
-        AscendC::TPosition::CO1>;
+                                  AscendC::TPosition::CO1>;
     using TensorL1Bias = std::conditional_t<
         HAS_BIAS,
         tla::Tensor<AscendC::LocalTensor<ElementBias>, detail::TagToLayout_t<ElementBias, layout::VectorLayout>,
@@ -175,8 +172,7 @@ template <
     class ElementBias = void,
     CopyL0CToUBMode CopyMode_ = CopyL0CToUBMode::NO_SPLIT,
     bool ReluEnable = false,
-    ScaleGranularity DEQUANT_GRANULARITY = ScaleGranularity::NO_QUANT
->
+    ScaleGranularity DEQUANT_GRANULARITY = ScaleGranularity::NO_QUANT>
 struct PackedTileCopyTlaToUB : public PackedTileCopyTla<ArchTag, ElementA_, LayoutTagA, ElementB_, LayoutTagB,
                                                         ElementC_, LayoutTagC, ElementBias> {
     static constexpr CopyL0CToUBMode CopyMode = CopyMode_;

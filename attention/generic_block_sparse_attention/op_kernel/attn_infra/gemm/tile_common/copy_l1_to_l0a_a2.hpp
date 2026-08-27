@@ -17,37 +17,33 @@
 #include "../../../attn_infra/gemm/gemm_type.hpp"
 #include "../../../attn_infra/gemm/tile_common/tile_copy_tla.hpp"
 
-
 namespace NpuArch::Gemm::Tile {
 
 template <
     class ArchTag,
     class L1Type,
-    class L0Type = void
->
+    class L0Type = void>
 struct CopyL1ToL0A {
     static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported copy l1 to l0, can not find the specialization.");
 };
 
 ////////////////////////////////
 /// new add gemm
-template<class ArchTag, class Element>
-struct CopyL1ToL0A<ArchTag, NpuArch::Gemm::GemmType<Element, layout::zN, AscendC::TPosition::A1>, NpuArch::Gemm::GemmType<Element, layout::zZ, AscendC::TPosition::A2>>{
+template <class ArchTag, class Element>
+struct CopyL1ToL0A<ArchTag, NpuArch::Gemm::GemmType<Element, layout::zN, AscendC::TPosition::A1>, NpuArch::Gemm::GemmType<Element, layout::zZ, AscendC::TPosition::A2>> {
     using LayoutDst = layout::zZ;
     using LayoutSrc = layout::zN;
 
-    static constexpr uint32_t ELE_NUM_PER_C0 =  BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
     static constexpr uint32_t ELE_NUM_PER_FRACTAL = BYTE_PER_FRACTAL / sizeof(Element);
 
-    __aicore__ inline
-    CopyL1ToL0A(){}
+    __aicore__ inline CopyL1ToL0A() {}
 
-    __aicore__ inline
-    void operator()(
+    __aicore__ inline void operator()(
         AscendC::LocalTensor<Element> dstTensor,
         AscendC::LocalTensor<Element> srcTensor,
-        LayoutDst layoutDst, LayoutSrc layoutSrc
-    ){
+        LayoutDst layoutDst, LayoutSrc layoutSrc)
+    {
         AscendC::LoadData2DParams loadDataParams;
         loadDataParams.startIndex = 0;
         loadDataParams.repeatTimes = static_cast<uint16_t>(layoutDst.shape(3));
@@ -63,82 +59,77 @@ struct CopyL1ToL0A<ArchTag, NpuArch::Gemm::GemmType<Element, layout::zN, AscendC
     }
 };
 
-template<class ArchTag, class Element>
-struct CopyL1ToL0A<ArchTag, NpuArch::Gemm::GemmType<Element, layout::nN, AscendC::TPosition::A1>, NpuArch::Gemm::GemmType<Element, layout::zZ, AscendC::TPosition::A2>>{
+template <class ArchTag, class Element>
+struct CopyL1ToL0A<ArchTag, NpuArch::Gemm::GemmType<Element, layout::nN, AscendC::TPosition::A1>, NpuArch::Gemm::GemmType<Element, layout::zZ, AscendC::TPosition::A2>> {
     using LayoutDst = layout::zZ;
     using LayoutSrc = layout::nN;
 
-    static constexpr uint32_t ELE_NUM_PER_C0 =  BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
 
-    __aicore__ inline
-    CopyL1ToL0A(){}
+    __aicore__ inline CopyL1ToL0A() {}
 
-    __aicore__ inline
-    void operator()(
+    __aicore__ inline void operator()(
         AscendC::LocalTensor<Element> dstTensor,
         AscendC::LocalTensor<Element> srcTensor,
-        LayoutDst layoutDst, LayoutSrc layoutSrc
-    ){
+        LayoutDst layoutDst, LayoutSrc layoutSrc)
+    {
         AscendC::LoadData2DParams loadDataParams;
         loadDataParams.startIndex = 0;
         loadDataParams.repeatTimes = static_cast<uint16_t>(CeilDiv<C0_NUM_PER_FRACTAL>(layoutDst.orgShape(1)));
-        loadDataParams.srcStride = static_cast<uint16_t>(CeilDiv<ELE_NUM_PER_C0>(layoutSrc.orgShape(0)));;
+        loadDataParams.srcStride = static_cast<uint16_t>(CeilDiv<ELE_NUM_PER_C0>(layoutSrc.orgShape(0)));
+        ;
         loadDataParams.sid = 0;
         loadDataParams.dstGap = 0;
         loadDataParams.ifTranspose = true;
         loadDataParams.addrMode = 0;
-        for(uint32_t i = 0; i < CeilDiv<ELE_NUM_PER_C0>(layoutSrc.orgShape(0)); i++){
+        for (uint32_t i = 0; i < CeilDiv<ELE_NUM_PER_C0>(layoutSrc.orgShape(0)); i++) {
             AscendC::LoadData(dstTensor[i * layoutDst.stride(1)], srcTensor[i * layoutSrc.stride(1)], loadDataParams);
         }
     }
 };
 
-template<class ArchTag>
-struct CopyL1ToL0A<ArchTag, NpuArch::Gemm::GemmType<float, layout::nN, AscendC::TPosition::A1>, NpuArch::Gemm::GemmType<float, layout::zZ, AscendC::TPosition::A2>>{
+template <class ArchTag>
+struct CopyL1ToL0A<ArchTag, NpuArch::Gemm::GemmType<float, layout::nN, AscendC::TPosition::A1>, NpuArch::Gemm::GemmType<float, layout::zZ, AscendC::TPosition::A2>> {
     using Element = float;
     using LayoutDst = layout::zZ;
     using LayoutSrc = layout::nN;
 
-    static constexpr uint32_t ELE_NUM_PER_C0 =  BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
 
-    __aicore__ inline
-    CopyL1ToL0A(){}
+    __aicore__ inline CopyL1ToL0A() {}
 
-    __aicore__ inline
-    void operator()(
+    __aicore__ inline void operator()(
         AscendC::LocalTensor<Element> dstTensor,
         AscendC::LocalTensor<Element> srcTensor,
-        LayoutDst layoutDst, LayoutSrc layoutSrc
-    ){
+        LayoutDst layoutDst, LayoutSrc layoutSrc)
+    {
         AscendC::LoadData2dTransposeParams loadDataParams;
         loadDataParams.startIndex = 0;
         loadDataParams.repeatTimes = static_cast<uint16_t>(CeilDiv<C0_NUM_PER_FRACTAL>(layoutDst.orgShape(1)));
         loadDataParams.srcStride = static_cast<uint16_t>(CeilDiv<C0_NUM_PER_FRACTAL>(layoutSrc.orgShape(0)));
         loadDataParams.dstGap = 1;
         loadDataParams.dstFracGap = 0;
-        for(uint32_t i = 0; i < CeilDiv<C0_NUM_PER_FRACTAL>(layoutSrc.orgShape(0)); i++){
+        for (uint32_t i = 0; i < CeilDiv<C0_NUM_PER_FRACTAL>(layoutSrc.orgShape(0)); i++) {
             AscendC::LoadDataWithTranspose(dstTensor[i * layoutDst.stride(1)], srcTensor[i * layoutSrc.stride(1) * 2], loadDataParams);
         }
     }
 };
 
-template<class ArchTag>
-struct CopyL1ToL0A<ArchTag, NpuArch::Gemm::GemmType<int8_t, layout::nZ, AscendC::TPosition::A1>, NpuArch::Gemm::GemmType<int8_t, layout::zZ, AscendC::TPosition::A2>>{
+template <class ArchTag>
+struct CopyL1ToL0A<ArchTag, NpuArch::Gemm::GemmType<int8_t, layout::nZ, AscendC::TPosition::A1>, NpuArch::Gemm::GemmType<int8_t, layout::zZ, AscendC::TPosition::A2>> {
     using Element = int8_t;
     using LayoutDst = layout::zZ;
     using LayoutSrc = layout::nZ;
 
-    static constexpr uint32_t ELE_NUM_PER_C0 =  BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
 
-    __aicore__ inline
-    CopyL1ToL0A(){}
+    __aicore__ inline CopyL1ToL0A() {}
 
-    __aicore__ inline
-    void operator()(
+    __aicore__ inline void operator()(
         AscendC::LocalTensor<Element> dstTensor,
         AscendC::LocalTensor<Element> srcTensor,
-        LayoutDst layoutDst, LayoutSrc layoutSrc
-    ){
+        LayoutDst layoutDst, LayoutSrc layoutSrc)
+    {
         AscendC::LoadData2dTransposeParams loadDataParams;
 
         loadDataParams.startIndex = 0;
@@ -167,11 +158,9 @@ struct CopyL1ToL0A<ArchTag, Gemm::GemmType<Element, layout::zN, AscendC::TPositi
 
     // Methods
 
-    __aicore__ inline
-    CopyL1ToL0A() {};
+    __aicore__ inline CopyL1ToL0A(){};
 
-    __aicore__ inline
-    void operator()(
+    __aicore__ inline void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,
         LayoutDst const &layoutDst, LayoutSrc const &layoutSrc)
@@ -204,11 +193,9 @@ struct CopyL1ToL0A<ArchTag, Gemm::GemmType<float, layout::zN, AscendC::TPosition
 
     // Methods
 
-    __aicore__ inline
-    CopyL1ToL0A() {};
+    __aicore__ inline CopyL1ToL0A(){};
 
-    __aicore__ inline
-    void operator()(
+    __aicore__ inline void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,
         LayoutDst const &layoutDst, LayoutSrc const &layoutSrc)
@@ -237,11 +224,9 @@ struct CopyL1ToL0A<ArchTag, Gemm::GemmType<Element, layout::nZ, AscendC::TPositi
     static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
     static constexpr uint32_t ELE_NUM_PER_FRACTAL = BYTE_PER_FRACTAL / sizeof(Element);
 
-    __aicore__ inline
-    CopyL1ToL0A() {};
+    __aicore__ inline CopyL1ToL0A(){};
 
-    __aicore__ inline
-    void operator()(
+    __aicore__ inline void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,
         LayoutDst const &layoutDst, LayoutSrc const &layoutSrc)
@@ -274,11 +259,9 @@ struct CopyL1ToL0A<ArchTag, Gemm::GemmType<int8_t, layout::nZ, AscendC::TPositio
 
     // Methods
 
-    __aicore__ inline
-    CopyL1ToL0A() {};
+    __aicore__ inline CopyL1ToL0A(){};
 
-    __aicore__ inline
-    void operator()(
+    __aicore__ inline void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,
         LayoutDst const &layoutDst, LayoutSrc const &layoutSrc)
@@ -311,11 +294,9 @@ struct CopyL1ToL0A<ArchTag, Gemm::GemmType<float, layout::nZ, AscendC::TPosition
 
     // Methods
 
-    __aicore__ inline
-    CopyL1ToL0A() {};
+    __aicore__ inline CopyL1ToL0A(){};
 
-    __aicore__ inline
-    void operator()(
+    __aicore__ inline void operator()(
         AscendC::LocalTensor<Element> const &dstTensor,
         AscendC::LocalTensor<Element> const &srcTensor,
         LayoutDst const &layoutDst, LayoutSrc const &layoutSrc)

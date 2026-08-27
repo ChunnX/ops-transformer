@@ -138,7 +138,7 @@ ge::graphStatus ParseBlockShapeAttr(gert::TilingContext *context,
     return ge::GRAPH_SUCCESS;
 }
 
-}  // namespace
+} // namespace
 
 ge::graphStatus GBSATiling::ParseCapabilityAttrs(gert::TilingContext *context)
 {
@@ -365,10 +365,12 @@ ge::graphStatus GBSATiling::ParseKvCacheStride0(gert::TilingContext *context)
 
     auto *keyStrides = context->GetRequiredInputStride(KEY_INDEX);
     kStride0_ = (keyStrides != nullptr && keyStrides->GetDimNum() > 0 && keyStrides->GetStride(0) > 0) ?
-        static_cast<uint64_t>(keyStrides->GetStride(0)) : pageElems;
+                    static_cast<uint64_t>(keyStrides->GetStride(0)) :
+                    pageElems;
     auto *valueStrides = context->GetRequiredInputStride(VALUE_INDEX);
     vStride0_ = (valueStrides != nullptr && valueStrides->GetDimNum() > 0 && valueStrides->GetStride(0) > 0) ?
-        static_cast<uint64_t>(valueStrides->GetStride(0)) : pageElems;
+                    static_cast<uint64_t>(valueStrides->GetStride(0)) :
+                    pageElems;
 
     const uint64_t rowElems =
         static_cast<uint64_t>(kvHeads_) * static_cast<uint64_t>(embeddingSize_);
@@ -785,7 +787,7 @@ ge::graphStatus GBSATiling::FillTilingData(gert::TilingContext *context)
     tilingData_->set_qL1BufNum(1);
     tilingData_->set_kL1BufNum(1);
     tilingData_->set_vL1BufNum(1);
-    tilingData_->set_pL1BufNum(3);  // PRE_LAUNCH + 1
+    tilingData_->set_pL1BufNum(3); // PRE_LAUNCH + 1
     tilingData_->set_kStride0(kStride0_);
     tilingData_->set_vStride0(vStride0_);
 
@@ -793,7 +795,7 @@ ge::graphStatus GBSATiling::FillTilingData(gert::TilingContext *context)
 }
 
 ge::graphStatus GBSATiling::GetTiling(gert::TilingContext *context,
-    GenericBlockSparseAttentionTilingData &tilingData)
+                                      GenericBlockSparseAttentionTilingData &tilingData)
 {
     tilingData_ = &tilingData;
     ge::graphStatus ret = GetNpuInfo(context);
@@ -827,21 +829,21 @@ ge::graphStatus GBSATiling::GetTiling(gert::TilingContext *context,
 }
 
 ge::graphStatus GBSATiling::SetTilingData(gert::TilingContext *context,
-    GenericBlockSparseAttentionTilingData &tilingData)
+                                          GenericBlockSparseAttentionTilingData &tilingData)
 {
     OP_CHECK_IF(context->GetRawTilingData() == nullptr,
-        OPS_REPORT_VECTOR_INNER_ERR("GenericBlockSparseAttention",
-        "RawTilingData got from GE context is nullptr."), return ge::GRAPH_FAILED);
+                OPS_REPORT_VECTOR_INNER_ERR("GenericBlockSparseAttention",
+                                            "RawTilingData got from GE context is nullptr."),
+                return ge::GRAPH_FAILED);
     tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(),
                             context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
     return ge::GRAPH_SUCCESS;
 }
 
-ASCENDC_EXTERN_C ge::graphStatus TilingGenericBlockSparseAttention(gert::TilingContext* context)
+ASCENDC_EXTERN_C ge::graphStatus TilingGenericBlockSparseAttention(gert::TilingContext *context)
 {
-    OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("GenericBlockSparseAttention",
-        "Context is nullptr."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("GenericBlockSparseAttention", "Context is nullptr."), return ge::GRAPH_FAILED);
     GenericBlockSparseAttentionTilingData tilingData;
     GBSATiling tiling;
     if (tiling.GetTiling(context, tilingData) == ge::GRAPH_SUCCESS) {
@@ -853,7 +855,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingGenericBlockSparseAttention(gert::TilingC
     }
 }
 
-ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForGenericBlockSparseAttention(gert::TilingParseContext* context)
+ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForGenericBlockSparseAttention(gert::TilingParseContext *context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;
@@ -863,4 +865,4 @@ IMPL_OP_OPTILING(GenericBlockSparseAttention)
     .Tiling(TilingGenericBlockSparseAttention)
     .TilingParse<GenericBlockSparseAttentionCompileInfo>(TilingPrepareForGenericBlockSparseAttention);
 
-}  // namespace optiling
+} // namespace optiling

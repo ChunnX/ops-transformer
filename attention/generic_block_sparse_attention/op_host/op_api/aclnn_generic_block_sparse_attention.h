@@ -61,4 +61,4 @@ __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttent
 }
 #endif
 
-#endif  // ACLNN_GENERIC_BLOCK_SPARSE_ATTENTION_H_
+#endif // ACLNN_GENERIC_BLOCK_SPARSE_ATTENTION_H_

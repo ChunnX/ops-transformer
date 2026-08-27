@@ -14,11 +14,17 @@
 #include "../../attn_infra/base_defs.hpp"
 #include "../../attn_infra/arch/arch.hpp"
 
-namespace NpuArch::Epilogue 
-{
+namespace NpuArch::Epilogue {
 
-enum class LseMode {NONE = 0, OUT_ONLY = 1};
-enum class LseFormat {TN1 = 0, BNS1 = 1, BSN1 = 2};
+enum class LseMode {
+    NONE = 0,
+    OUT_ONLY = 1
+};
+enum class LseFormat {
+    TN1 = 0,
+    BNS1 = 1,
+    BSN1 = 2
+};
 // For AtlasA2, FA Infer online Softmax
 template <LseMode LSE_MODE_, typename SM_DTYPE_>
 struct EpilogueAtlasA2OnlineSoftmax {
@@ -54,6 +60,6 @@ struct EpilogueAtlasA5BsaRescaleO {
     static constexpr LseFormat LSE_FORMAT = LSE_FORMAT_;
 };
 
-}  // namespace NpuArch::Epilogue
+} // namespace NpuArch::Epilogue
 
-#endif  // EPILOGUE_DISPATCH_POLICY_HPP
+#endif // EPILOGUE_DISPATCH_POLICY_HPP

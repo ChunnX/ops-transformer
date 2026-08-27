@@ -58,9 +58,7 @@ const std::array<const aclTensor *, 2> GenericBlockSparseAttention(
            blockShape, isPackedGQA, layoutQ, layoutKv, scaleValue,
            maskType, quantType, dstTypeMax, softmaxPrecision, winLeft, winRight, returnSoftmaxlse);
 
-    DataType outDtype = (query->GetDataType() == DataType::DT_FLOAT8_E4M3FN)
-                            ? attentionOut->GetDataType()
-                            : query->GetDataType();
+    DataType outDtype = (query->GetDataType() == DataType::DT_FLOAT8_E4M3FN) ? attentionOut->GetDataType() : query->GetDataType();
     auto attentionOutTensor = executor->AllocTensor(outDtype, Format::FORMAT_ND, Format::FORMAT_ND);
     auto softmaxLseTensor = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
 
@@ -111,4 +109,4 @@ const std::array<const aclTensor *, 2> GenericBlockSparseAttention(
     return {attentionOutTensor, softmaxLseTensor};
 }
 
-}  // namespace l0op
+} // namespace l0op

@@ -42,10 +42,8 @@ struct CopyL0CToUBTla<
     __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t unitFlag = 0)
     {
         static_assert(
-            tla::detail::isRowMajor<typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::CO1
-                && TensorDst::position == AscendC::TPosition::VECCALC,
-            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor"
-        );
+            tla::detail::isRowMajor<typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::CO1 && TensorDst::position == AscendC::TPosition::VECCALC,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor");
 
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> intriParams;
 
@@ -67,15 +65,13 @@ struct CopyL0CToUBTla<
         AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(
             dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
     }
-    
+
     template <class TensorDst, class TensorSrc>
     __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, bool subBlockId, uint8_t unitFlag = 0)
     {
         static_assert(
-            tla::detail::isRowMajor<typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::CO1
-                && TensorDst::position == AscendC::TPosition::VECCALC,
-            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor"
-        );
+            tla::detail::isRowMajor<typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::CO1 && TensorDst::position == AscendC::TPosition::VECCALC,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor");
 
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> intriParams;
 
@@ -121,10 +117,8 @@ struct CopyL0CToUBTla<
     __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t unitFlag = 0)
     {
         static_assert(
-            tla::detail::isRowMajor<typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::CO1
-                && TensorDst::position == AscendC::TPosition::VECCALC,
-            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor"
-        );
+            tla::detail::isRowMajor<typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::CO1 && TensorDst::position == AscendC::TPosition::VECCALC,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor");
 
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> intriParams;
 
@@ -169,10 +163,8 @@ struct CopyL0CToUBTla<
     __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t unitFlag = 0)
     {
         static_assert(
-            tla::detail::isRowMajor<typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::CO1
-                && TensorDst::position == AscendC::TPosition::VECCALC,
-            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor"
-        );
+            tla::detail::isRowMajor<typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::CO1 && TensorDst::position == AscendC::TPosition::VECCALC,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor");
 
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> intriParams;
 
@@ -218,10 +210,8 @@ struct CopyL0CToUBTla<
                                       bool subBlockId, uint8_t unitFlag = 0)
     {
         static_assert(
-            tla::detail::isRowMajor<typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::CO1
-                && TensorDst::position == AscendC::TPosition::VECCALC,
-            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor"
-        );
+            tla::detail::isRowMajor<typename TensorDst::Layout>::value && TensorSrc::position == AscendC::TPosition::CO1 && TensorDst::position == AscendC::TPosition::VECCALC,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor");
 
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> intriParams;
 

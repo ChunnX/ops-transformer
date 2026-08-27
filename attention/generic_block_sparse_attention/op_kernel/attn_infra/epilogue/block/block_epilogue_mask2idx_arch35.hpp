@@ -22,14 +22,12 @@ namespace NpuArch::Epilogue::Block {
 template <
     class ElementSparseMask_,
     class ElementSparseIdx_,
-    class ElementSparseCount_
->
-class BlockEpilogue <
+    class ElementSparseCount_>
+class BlockEpilogue<
     EpilogueBsaMask2Idx,
     ElementSparseMask_,
     ElementSparseIdx_,
-    ElementSparseCount_>
-{
+    ElementSparseCount_> {
 public:
     using DispatchPolicy = EpilogueBsaMask2Idx;
     using ArchTag = typename DispatchPolicy::ArchTag;
@@ -42,16 +40,15 @@ public:
     static constexpr uint32_t PRE_COL_TILE = 64;
     static constexpr uint32_t PRE_ELEM_NUM_PER_LOOP = PRE_ROW_TILE * PRE_COL_TILE;
 
-    __aicore__ inline
-    BlockEpilogue(Arch::Resource<ArchTag> &resource)
+    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource)
     {
         constexpr uint32_t MASK_PAT_IN_UINT8 = 0;
         constexpr uint32_t MASK_PAT_IN_FP16 = 2 * PRE_ELEM_NUM_PER_LOOP;
         constexpr uint32_t MASK_PAT_IN_FP32 = 4 * PRE_ELEM_NUM_PER_LOOP; // 2(db)+2
-        constexpr uint32_t MASK_PAT_IN_BIT = 8 * PRE_ELEM_NUM_PER_LOOP; // 1+2+4
-        constexpr uint32_t MASK_IDX = 9 * PRE_ELEM_NUM_PER_LOOP; // 1+2+4+1
-        constexpr uint32_t SPARSE_IDX = 13 * PRE_ELEM_NUM_PER_LOOP; // 1+2+4+1+4
-        constexpr uint32_t SPARSE_COUNT = 21 * PRE_ELEM_NUM_PER_LOOP; // 1+2+4+1+4+8(db)
+        constexpr uint32_t MASK_PAT_IN_BIT = 8 * PRE_ELEM_NUM_PER_LOOP;  // 1+2+4
+        constexpr uint32_t MASK_IDX = 9 * PRE_ELEM_NUM_PER_LOOP;         // 1+2+4+1
+        constexpr uint32_t SPARSE_IDX = 13 * PRE_ELEM_NUM_PER_LOOP;      // 1+2+4+1+4
+        constexpr uint32_t SPARSE_COUNT = 21 * PRE_ELEM_NUM_PER_LOOP;    // 1+2+4+1+4+8(db)
 
         for (uint32_t i = 0; i < IO_STAGES; i++) {
             maskPatUb8[i] = resource.ubBuf.template GetBufferByByte<ElementSparseMask>(
@@ -68,8 +65,7 @@ public:
         maskIdxUb = resource.ubBuf.template GetBufferByByte<ElementSparseIdx>(MASK_IDX);
     }
 
-    __aicore__ inline
-    void operator()(
+    __aicore__ inline void operator()(
         AscendC::GlobalTensor<ElementSparseMask> gSparseMask,
         AscendC::GlobalTensor<ElementSparseIdx> gSparseIdx,
         AscendC::GlobalTensor<ElementSparseCount> gSparseCount,
@@ -81,8 +77,9 @@ public:
         uint32_t subCoreIdx = AscendC::GetBlockIdx();
         uint32_t curSubCoreRowOffset = subCoreIdx * avgRowPerSubCore;
         uint32_t actDealtRow = (subCoreIdx == preActiveSubCoreNum - 1) ?
-            (totalRowNumBlockMask - curSubCoreRowOffset) : avgRowPerSubCore;
-        
+                                   (totalRowNumBlockMask - curSubCoreRowOffset) :
+                                   avgRowPerSubCore;
+
         if (subCoreIdx < preActiveSubCoreNum) {
             uint32_t rowLoop = CeilDiv(actDealtRow, PRE_ROW_TILE);
             uint32_t colLoop = CeilDiv(yBlockNumAligned, PRE_COL_TILE);
@@ -142,15 +139,13 @@ public:
                             true, actDealtColCurLoop, {1, 1, 0, 0}, sparseCountPerRowCurColLoop[k]);
                         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
 
-
                         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
                         if (k == 0) {
                             AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(0);
                         }
                         AscendC::DataCopyPad(
-                            gSparseIdx[
-                                globalRowOffset * yBlockNumAligned + k * yBlockNumAligned +
-                                sparseCountPerRow[k]],
+                            gSparseIdx[globalRowOffset * yBlockNumAligned + k * yBlockNumAligned +
+                                       sparseCountPerRow[k]],
                             sparseIdxUb[IdxPingPongFlag][k * PRE_COL_TILE],
                             AscendC::DataCopyExtParams(
                                 1, sparseCountPerRowCurColLoop[k] * sizeof(ElementSparseIdx), 0, 0, 0));
@@ -183,17 +178,18 @@ public:
             }
         }
     }
+
 private:
     AscendC::LocalTensor<uint8_t> maskPatUb8[IO_STAGES];
     AscendC::LocalTensor<int32_t> sparseCountUb[IO_STAGES];
     AscendC::LocalTensor<uint8_t> maskPatInBitUb8;
     AscendC::LocalTensor<uint32_t> maskPatInBitUb32;
-    
+
     AscendC::LocalTensor<int32_t> maskIdxUb;
     AscendC::LocalTensor<int32_t> sparseIdxUb[IO_STAGES];
     AscendC::LocalTensor<half> maskPatUb16;
     AscendC::LocalTensor<float> maskPatUb32;
 };
 
-}  // namespace NpuArch::Epilogue::Block
+} // namespace NpuArch::Epilogue::Block
 #endif

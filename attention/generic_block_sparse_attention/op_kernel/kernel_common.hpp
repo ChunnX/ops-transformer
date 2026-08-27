@@ -22,11 +22,11 @@ struct GenericBlockSparseAttentionTilingData {
     uint32_t numHeads;
     uint32_t kvHeads;
     uint32_t embeddingSize;
-    uint32_t blockShapeX;   // Q sparse block size (default 1)
-    uint32_t blockShapeY;   // KV sparse block size (default 128)
-    uint32_t blockSize;     // Paged KV cache block size, parsed from KV tensor shape
-    uint32_t topK;          // sparseBlockIdx dim-3 (KVb): selected KV blocks per Q block
-    uint32_t qBlockNum;     // sparseBlockIdx dim-2 (Qb): total Q blocks
+    uint32_t blockShapeX; // Q sparse block size (default 1)
+    uint32_t blockShapeY; // KV sparse block size (default 128)
+    uint32_t blockSize;   // Paged KV cache block size, parsed from KV tensor shape
+    uint32_t topK;        // sparseBlockIdx dim-3 (KVb): selected KV blocks per Q block
+    uint32_t qBlockNum;   // sparseBlockIdx dim-2 (Qb): total Q blocks
     uint32_t maxBlocksPerBatch;
     float scaleValue;
     uint64_t mm1OutSize;
@@ -57,6 +57,6 @@ struct GenericBlockSparseAttentionTilingData {
     uint64_t vStride0;
 };
 
-}  // namespace GenericBlockSparseAttn
+} // namespace GenericBlockSparseAttn
 
-#endif  // KERNEL_COMMON_HPP
+#endif // KERNEL_COMMON_HPP

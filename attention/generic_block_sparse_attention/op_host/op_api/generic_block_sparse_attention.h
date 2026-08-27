@@ -48,6 +48,6 @@ const std::array<const aclTensor *, 2> GenericBlockSparseAttention(
     const aclTensor *attentionOut,
     aclOpExecutor *executor);
 
-}  // namespace l0op
+} // namespace l0op
 
-#endif  // GENERIC_BLOCK_SPARSE_ATTENTION_H_
+#endif // GENERIC_BLOCK_SPARSE_ATTENTION_H_

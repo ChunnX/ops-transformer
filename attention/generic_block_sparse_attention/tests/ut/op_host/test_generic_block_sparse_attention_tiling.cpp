@@ -119,7 +119,7 @@ std::vector<gert::TilingContextPara::OpAttr> MakeAttrs(int64_t maskType, int64_t
         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<int64_t>(returnLse)},
     };
 }
-}  // namespace
+} // namespace
 
 TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_fp16_910b)
 {
