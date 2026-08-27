@@ -1322,9 +1322,7 @@ def _materialize_pa_bnsd(tensor):
 # ==============================================================================
 
 
-def _apply_sticky_overflow_stc_pattern(
-    case, q_fp32=None, k_fp32=None, v_fp32=None
-):
+def _apply_sticky_overflow_stc_pattern(case, q_fp32=None, k_fp32=None, v_fp32=None):
     """Materialize deterministic inputs for the four sticky-overflow STCs."""
     seed = int(case["seed"])
     qk_signs = {
@@ -1342,9 +1340,9 @@ def _apply_sticky_overflow_stc_pattern(
             group_value = math.ldexp(448.0, 105)
             for group_idx, sign in enumerate(qk_signs[seed]):
                 group_start = group_idx * QUANT_GROUP_SIZE
-                q_fp32[
-                    ..., group_start : group_start + QUANT_GROUP_SIZE
-                ] = sign * group_value
+                q_fp32[..., group_start : group_start + QUANT_GROUP_SIZE] = (
+                    sign * group_value
+                )
         if k_fp32 is not None and v_fp32 is not None:
             k_fp32.zero_()
             v_fp32.zero_()
