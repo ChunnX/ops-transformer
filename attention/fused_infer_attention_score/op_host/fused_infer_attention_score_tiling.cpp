@@ -1121,7 +1121,7 @@ ge::graphStatus CheckFAIIsTND(gert::TilingContext *context, bool isPageAttention
                         context->GetNodeName(),
                         "When input layout is TND and paged cache and kvnz is used, the K and V must have five dims"),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(tempK->GetStorageShape().GetDim(DIM_1) != tempV->GetStorageShape().GetDim(DIM_1),
+        OP_CHECK_IF(keyShape->GetStorageShape().GetDim(DIM_1) != valueShape->GetStorageShape().GetDim(DIM_1),
                     OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
                                                 "When using BNBD layout, K and V must have same kvHeads."),
                     return ge::GRAPH_FAILED);
