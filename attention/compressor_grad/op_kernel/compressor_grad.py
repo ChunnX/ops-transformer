@@ -556,13 +556,19 @@ def _compute_dx_partial(matmul_ctx, db_idx, cv_l0a, cv_l0b, cv_l0c, l1_w_db,
 
 def _mm2_store(matmul_ctx, round_idx, w_idx, row_off, col_off, l0c,
                d_wkv_result_gm, d_w_gate_result_gm):
-    """mm2 单个 (wIdx) 结果写回：全轮次统一原子加（首轮 dw ws 已由 vec 刷 0，round0 也在 0 上累加）"""
+    """mm2 单个 (wIdx) 结果写回：round 0 覆盖写 / round 1+ 原子加（跨轮累加）"""
     if w_idx == 0:
-        pl.store(d_wkv_result_gm, l0c, [row_off, col_off],
-                 atomic=pl.AtomicType.AtomicAdd)
+        if round_idx == 0:
+            pl.store(d_wkv_result_gm, l0c, [row_off, col_off])
+        else:
+            pl.store(d_wkv_result_gm, l0c, [row_off, col_off],
+                     atomic=pl.AtomicType.AtomicAdd)
     else:
-        pl.store(d_w_gate_result_gm, l0c, [row_off, col_off],
-                 atomic=pl.AtomicType.AtomicAdd)
+        if round_idx == 0:
+            pl.store(d_w_gate_result_gm, l0c, [row_off, col_off])
+        else:
+            pl.store(d_w_gate_result_gm, l0c, [row_off, col_off],
+                     atomic=pl.AtomicType.AtomicAdd)
 
 
 def _mm2_l0a_load(matmul_ctx, sub_vec_idx, w_idx, n_tile_rows, m_start, h,
@@ -700,33 +706,6 @@ def _reduce_ape(vec_ctx, core_idx, group_idx, db_idx, round_blocks,
         pl.load(reduce_ld, tensor_d_ape_ws_flat, [flat_row_base + r, rg_start])
         _vf_kahan_accumulate(reduce_acc, reduce_ld, reduce_comp, rg_end - rg_start)
     pl.store(tensor_d_ape_flat, reduce_acc, [0, rg_start])
-
-
-def _reduce_d_weight_ws_zero(vec_ctx, core_idx, zero_tile, ws_kv_gm, ws_gate_gm):
-    """首轮对 dw ws 两块区域（d_wkv / d_wgate 单缓冲）按 cube 核行带刷 0。
-
-    每个 vec 核（block）只刷与本 block 同 AIC 的 cube 核行带（dw_row_base..+D_BASE_SIZE 行 × hidden 列），
-    可见性由 round0 的 set_cross_core(INTRA_BLOCK) / cube 侧 wait 配对保证（与 Phase1 的 x 搬运同模式）。
-    目的：dw 全轮次统一原子累加（round0 在 0 上累加），消除「round0 普通写 + round1+ 原子加」的
-    读写混合，避免内存端 RMW 基于非零/垃圾初值做累加。
-    """
-    hidden_size = vec_ctx.hidden_size
-    total_head_dim = vec_ctx.total_head_dim
-    group_size = vec_ctx.group_size
-    group_num = vec_ctx.group_num
-    cube_core_idx = core_idx // 2
-    group_idx = cube_core_idx // group_size
-    intra_group_idx = cube_core_idx % group_size
-    dw_row_base = group_idx * total_head_dim + intra_group_idx * D_BASE_SIZE
-    # 零 tile 初始化一次（清满 tile 物理空间），循环复用
-    pl.set_validshape(zero_tile, [1, BASE_SIZE * BASE_SIZE])
-    _vf_tile_zero(zero_tile, 1, BASE_SIZE * BASE_SIZE)
-    for r in pl.range(0, D_BASE_SIZE):
-        for hi in pl.range(0, hidden_size, BASE_SIZE * BASE_SIZE):
-            cur_w_num = min(BASE_SIZE * BASE_SIZE, hidden_size - hi)
-            pl.set_validshape(zero_tile, [1, cur_w_num])
-            pl.store(ws_kv_gm, zero_tile, [dw_row_base + r, hi])
-            pl.store(ws_gate_gm, zero_tile, [dw_row_base + r, hi])
 
 
 def _reduce_d_weight(vec_ctx, core_idx, group_idx, db_idx, round_blocks,
@@ -1937,12 +1916,6 @@ def compressor_grad(
                                     l1_score0_tile_group_nz, l1_score1_tile_group_nz,
                                     move_x_tile_group, x_arrange_gm,
                                     start_pos, seq_used, cu_seqlens, seq_ctx)
-
-
-                # ── round0：首轮对 dw ws 两块区域按 cube 核行带刷 0（全轮次统一原子累加的前提）──
-                if round_idx == 0:
-                    _reduce_d_weight_ws_zero(vec_ctx, core_idx, reduce_acc,
-                                             d_wkv_result_gm, d_w_gate_result_gm)
 
 
                 # ── CV 通路: 本轮 v1 完成即发信号（供 cube c1(i) 消费）──
