@@ -554,13 +554,21 @@ def _compute_dx_partial(matmul_ctx, db_idx, cv_l0a, cv_l0b, cv_l0c, l1_w_db,
                               n_start, dx_row_base)
 
 
-def _mm2_store(matmul_ctx, db_idx, w_idx, row_off, col_off, l0c,
+def _mm2_store(matmul_ctx, round_idx, w_idx, row_off, col_off, l0c,
                d_wkv_result_gm, d_w_gate_result_gm):
-    """mm2 单个 (wIdx) 结果写回：每轮普通覆盖写至 db 双缓冲槽（跨轮累加由 vec 每轮归约完成，无 FIX atomic）"""
+    """mm2 单个 (wIdx) 结果写回：round 0 覆盖写 / round 1+ 原子加（跨轮累加）"""
     if w_idx == 0:
-        pl.store(d_wkv_result_gm, l0c, [db_idx, row_off, col_off])
+        if round_idx == 0:
+            pl.store(d_wkv_result_gm, l0c, [row_off, col_off])
+        else:
+            pl.store(d_wkv_result_gm, l0c, [row_off, col_off],
+                     atomic=pl.AtomicType.AtomicAdd)
     else:
-        pl.store(d_w_gate_result_gm, l0c, [db_idx, row_off, col_off])
+        if round_idx == 0:
+            pl.store(d_w_gate_result_gm, l0c, [row_off, col_off])
+        else:
+            pl.store(d_w_gate_result_gm, l0c, [row_off, col_off],
+                     atomic=pl.AtomicType.AtomicAdd)
 
 
 def _mm2_l0a_load(matmul_ctx, sub_vec_idx, w_idx, n_tile_rows, m_start, h,
@@ -579,7 +587,7 @@ def _mm2_l0a_load(matmul_ctx, sub_vec_idx, w_idx, n_tile_rows, m_start, h,
         pl.load(w_l1, x_arrange_gm, [x_off, h])
 
 
-def _mm2_core(matmul_ctx, db_idx, sub_vec_idx, w_idx, n_l0, h, dw_row_base, m_start,
+def _mm2_core(matmul_ctx, round_idx, sub_vec_idx, w_idx, n_l0, h, dw_row_base, m_start,
               cv_l0a, cv_l0b, cv_l0c, l1_w_db,
               l1_kv0_t, l1_kv1_t, l1_sb0_t, l1_sb1_t,
               x_arrange_gm, d_wkv_result_gm, d_w_gate_result_gm):
@@ -603,41 +611,41 @@ def _mm2_core(matmul_ctx, db_idx, sub_vec_idx, w_idx, n_l0, h, dw_row_base, m_st
         pl.matmul(l0c, l0a, l0b)
     if sub_vec_idx == 1 or Coff == 2:
         dw_row_off = 0 if Coff == 1 else sub_vec_idx * matmul_ctx.head_dim
-        _mm2_store(matmul_ctx, db_idx, w_idx, dw_row_base + dw_row_off, h + n_l0, l0c,
+        _mm2_store(matmul_ctx, round_idx, w_idx, dw_row_base + dw_row_off, h + n_l0, l0c,
                    d_wkv_result_gm, d_w_gate_result_gm)
 
 
-def _mm2_sub_block(matmul_ctx, db_idx, sub_vec_idx, n_l0, h, dw_row_base, m_start,
+def _mm2_sub_block(matmul_ctx, round_idx, sub_vec_idx, n_l0, h, dw_row_base, m_start,
                    cv_l0a, cv_l0b, cv_l0c, l1_w_db,
                    l1_kv0_t, l1_kv1_t, l1_sb0_t, l1_sb1_t,
                    x_arrange_gm, d_wkv_result_gm, d_w_gate_result_gm):
     """mm2 nL0 块：wIdx（wkv/wgate）遍历"""
     for w_idx in pl.range(0, 2):
-        _mm2_core(matmul_ctx, db_idx, sub_vec_idx, w_idx, n_l0, h, dw_row_base, m_start,
+        _mm2_core(matmul_ctx, round_idx, sub_vec_idx, w_idx, n_l0, h, dw_row_base, m_start,
                   cv_l0a, cv_l0b, cv_l0c, l1_w_db,
                   l1_kv0_t, l1_kv1_t, l1_sb0_t, l1_sb1_t,
                   x_arrange_gm, d_wkv_result_gm, d_w_gate_result_gm)
 
 
-def _mm2_sub_vec(matmul_ctx, db_idx, sub_vec_idx, h, dw_row_base, m_start,
+def _mm2_sub_vec(matmul_ctx, round_idx, sub_vec_idx, h, dw_row_base, m_start,
                  cv_l0a, cv_l0b, cv_l0c, l1_w_db,
                  l1_kv0_t, l1_kv1_t, l1_sb0_t, l1_sb1_t,
                  x_arrange_gm, d_wkv_result_gm, d_w_gate_result_gm):
     """mm2 subVecIdx 块：nL0 遍历"""
     for n_l0 in pl.range(0, H_L1_BASE_SIZE, H_BASE_SIZE):
-        _mm2_sub_block(matmul_ctx, db_idx, sub_vec_idx, n_l0, h, dw_row_base, m_start,
+        _mm2_sub_block(matmul_ctx, round_idx, sub_vec_idx, n_l0, h, dw_row_base, m_start,
                        cv_l0a, cv_l0b, cv_l0c, l1_w_db,
                        l1_kv0_t, l1_kv1_t, l1_sb0_t, l1_sb1_t,
                        x_arrange_gm, d_wkv_result_gm, d_w_gate_result_gm)
 
 
-def _compute_dw_partial(matmul_ctx, db_idx, cv_l0a, cv_l0b, cv_l0c, l1_w_db,
+def _compute_dw_partial(matmul_ctx, round_idx, db_idx, cv_l0a, cv_l0b, cv_l0c, l1_w_db,
                         l1_kv0_t, l1_kv1_t, l1_sb0_t, l1_sb1_t,
                         x_arrange_gm, d_wkv_result_gm, d_w_gate_result_gm):
     """Matmul #2: dkv@x + dsb@x → dWkv/dWgate partial（h×subVecIdx 循环骨架）
 
-    跨轮累加方案：每轮覆盖写至 db 双缓冲槽（普通 store，无原子）；
-    vec 侧每轮把上一轮槽累加进 FP32 累计区，末轮 cast 输出。
+    末轮归约方案：round 0 覆盖写初始化固定槽，round 1+ 原子加（跨轮累加），
+    ws 单缓冲（无 dbIdx），末轮由 Phase 3 一次跨核归约。
     """
     cube_core_idx = pl.get_block_idx()
     group_size = matmul_ctx.group_size
@@ -651,7 +659,7 @@ def _compute_dw_partial(matmul_ctx, db_idx, cv_l0a, cv_l0b, cv_l0c, l1_w_db,
     m_start = db_idx * db_row_cnt + group_idx * matmul_ctx.group_row_stride + (Coff - 1) * matmul_ctx.cmp_ratio
     for h in pl.range(0, matmul_ctx.hidden_size, H_L1_BASE_SIZE):
         for sub_vec_idx in pl.range(0, 2):
-            _mm2_sub_vec(matmul_ctx, db_idx, sub_vec_idx, h, dw_row_base, m_start,
+            _mm2_sub_vec(matmul_ctx, round_idx, sub_vec_idx, h, dw_row_base, m_start,
                          cv_l0a, cv_l0b, cv_l0c, l1_w_db,
                          l1_kv0_t, l1_kv1_t, l1_sb0_t, l1_sb1_t,
                          x_arrange_gm, d_wkv_result_gm, d_w_gate_result_gm)
@@ -700,14 +708,14 @@ def _reduce_ape(vec_ctx, core_idx, group_idx, db_idx, round_blocks,
     pl.store(tensor_d_ape_flat, reduce_acc, [0, rg_start])
 
 
-def _reduce_d_weight_acc_zero(vec_ctx, core_idx, reduce_acc,
-                              ws_kv_flat, ws_gate_flat):
-    """清零 dw FP32 累计区（acc 行块 = flat 行 [2*groupNum, 3*groupNum)）。
-    workspace 初值未定义，首次累加前必须置零。"""
+def _reduce_d_weight(vec_ctx, core_idx, group_idx, db_idx, round_blocks,
+                     reduce_acc, reduce_ld_group, p3_cast,
+                     tensor_dw_kv_flat, tensor_dw_kv_ws_flat, tensor_dw_gate_flat, tensor_dw_gate_ws_flat):
+    """Phase 3: dWkv/dWgate 跨核归约（每核处理 rgStart..rgEnd 的 chunk，累加器从零开始）"""
     core_num = vec_ctx.core_num
     group_num = vec_ctx.group_num
     total_head_dim = vec_ctx.total_head_dim
-    acc_base = 2 * group_num
+    flat_row_base = db_idx * group_num
     rg_chunk_num = (total_head_dim * vec_ctx.hidden_size) // D_BASE_SIZE
     rg_per_core = rg_chunk_num // core_num
     rg_remain = rg_chunk_num % core_num
@@ -715,81 +723,27 @@ def _reduce_d_weight_acc_zero(vec_ctx, core_idx, reduce_acc,
     rg_end = rg_start + rg_per_core + (1 if core_idx < rg_remain else 0)
     rg_start = rg_start * D_BASE_SIZE
     rg_end = rg_end * D_BASE_SIZE
+    valid_rows = (round_blocks + vec_ctx.group_deal_sc_num - 1) // vec_ctx.group_deal_sc_num
     for cur_rg_start in pl.range(rg_start, rg_end, (BASE_SIZE * BASE_SIZE)):
         cur_rg_num = min(BASE_SIZE * BASE_SIZE, rg_end - cur_rg_start)
         pl.set_validshape(reduce_acc, [1, cur_rg_num])
+        # dWkv：末轮一次性归约，累加器从零开始（输出 tensor 不保证清零，不能读入做 RMW）
         _vf_tile_zero(reduce_acc, 1, cur_rg_num)
-        pl.store(ws_kv_flat, reduce_acc, [acc_base, cur_rg_start])
-        pl.store(ws_gate_flat, reduce_acc, [acc_base, cur_rg_start])
-
-
-def _reduce_d_weight_inc(vec_ctx, core_idx, prev_db_idx, prev_blocks,
-                         reduce_acc, reduce_ld_group,
-                         ws_kv_flat, ws_gate_flat):
-    """每轮增量归约：acc[*, :] += Σ_{r<validRows} slot[prevDb][r, :]。
-
-    ws flat 布局（每输出 3*groupNum 行）：行 [0,g)=槽0、[g,2g)=槽1、[2g,3g)=FP32 累计区。
-    vec 侧普通 load/add/store 累加（无原子指令，指令内依赖链串行）。
-    """
-    core_num = vec_ctx.core_num
-    group_num = vec_ctx.group_num
-    total_head_dim = vec_ctx.total_head_dim
-    acc_base = 2 * group_num
-    slot_base = prev_db_idx * group_num
-    rg_chunk_num = (total_head_dim * vec_ctx.hidden_size) // D_BASE_SIZE
-    rg_per_core = rg_chunk_num // core_num
-    rg_remain = rg_chunk_num % core_num
-    rg_start = core_idx * rg_per_core + (core_idx if core_idx < rg_remain else rg_remain)
-    rg_end = rg_start + rg_per_core + (1 if core_idx < rg_remain else 0)
-    rg_start = rg_start * D_BASE_SIZE
-    rg_end = rg_end * D_BASE_SIZE
-    valid_rows = (prev_blocks + vec_ctx.group_deal_sc_num - 1) // vec_ctx.group_deal_sc_num
-    for cur_rg_start in pl.range(rg_start, rg_end, (BASE_SIZE * BASE_SIZE)):
-        cur_rg_num = min(BASE_SIZE * BASE_SIZE, rg_end - cur_rg_start)
-        pl.set_validshape(reduce_acc, [1, cur_rg_num])
-        # dWkv：acc += Σ slot[prevDb]
-        pl.load(reduce_acc, ws_kv_flat, [acc_base, cur_rg_start])
         for r in pl.range(0, valid_rows):
             reduce_ld = reduce_ld_group.next()
             pl.set_validshape(reduce_ld, [1, cur_rg_num])
-            pl.load(reduce_ld, ws_kv_flat, [slot_base + r, cur_rg_start])
+            pl.load(reduce_ld, tensor_dw_kv_ws_flat, [flat_row_base + r, cur_rg_start])
             pl.add(reduce_acc, reduce_acc, reduce_ld)
-        pl.store(ws_kv_flat, reduce_acc, [acc_base, cur_rg_start])
-        # dWgate：同上
-        pl.load(reduce_acc, ws_gate_flat, [acc_base, cur_rg_start])
-        for r in pl.range(0, valid_rows):
-            reduce_ld = reduce_ld_group.next()
-            pl.set_validshape(reduce_ld, [1, cur_rg_num])
-            pl.load(reduce_ld, ws_gate_flat, [slot_base + r, cur_rg_start])
-            pl.add(reduce_acc, reduce_acc, reduce_ld)
-        pl.store(ws_gate_flat, reduce_acc, [acc_base, cur_rg_start])
-
-
-def _reduce_d_weight_final(vec_ctx, core_idx, reduce_acc, p3_cast,
-                           ws_kv_flat, ws_gate_flat,
-                           tensor_dw_kv_flat, tensor_dw_gate_flat):
-    """末轮：acc（FP32）→ cast → 写回 FP16/BF16 输出 GM（每核处理 rgStart..rgEnd 的 chunk）"""
-    core_num = vec_ctx.core_num
-    group_num = vec_ctx.group_num
-    total_head_dim = vec_ctx.total_head_dim
-    acc_base = 2 * group_num
-    rg_chunk_num = (total_head_dim * vec_ctx.hidden_size) // D_BASE_SIZE
-    rg_per_core = rg_chunk_num // core_num
-    rg_remain = rg_chunk_num % core_num
-    rg_start = core_idx * rg_per_core + (core_idx if core_idx < rg_remain else rg_remain)
-    rg_end = rg_start + rg_per_core + (1 if core_idx < rg_remain else 0)
-    rg_start = rg_start * D_BASE_SIZE
-    rg_end = rg_end * D_BASE_SIZE
-    for cur_rg_start in pl.range(rg_start, rg_end, (BASE_SIZE * BASE_SIZE)):
-        cur_rg_num = min(BASE_SIZE * BASE_SIZE, rg_end - cur_rg_start)
-        pl.set_validshape(reduce_acc, [1, cur_rg_num])
-        # dWkv
-        pl.load(reduce_acc, ws_kv_flat, [acc_base, cur_rg_start])
         pl.set_validshape(p3_cast, [1, cur_rg_num])
         pl.cast(p3_cast, reduce_acc, mode=pl.RoundMode.CAST_ROUND)
         pl.store(tensor_dw_kv_flat, p3_cast, [0, cur_rg_start])
-        # dWgate
-        pl.load(reduce_acc, ws_gate_flat, [acc_base, cur_rg_start])
+        # dWgate：同上，从零开始
+        _vf_tile_zero(reduce_acc, 1, cur_rg_num)
+        for r in pl.range(0, valid_rows):
+            reduce_ld = reduce_ld_group.next()
+            pl.set_validshape(reduce_ld, [1, cur_rg_num])
+            pl.load(reduce_ld, tensor_dw_gate_ws_flat, [flat_row_base + r, cur_rg_start])
+            pl.add(reduce_acc, reduce_acc, reduce_ld)
         pl.set_validshape(p3_cast, [1, cur_rg_num])
         pl.cast(p3_cast, reduce_acc, mode=pl.RoundMode.CAST_ROUND)
         pl.store(tensor_dw_gate_flat, p3_cast, [0, cur_rg_start])
@@ -1458,13 +1412,12 @@ def _phase2_matmul(round_idx, db_idx, deal_tc_size, hidden_size, head_dim,
     _compute_dx_partial(matmul_ctx, db_idx, cv_l0a, cv_l0b, cv_l0c, l1_w_db,
                         l1_kv0, l1_kv1, l1_sb0, l1_sb1,
                         wkv_t, wgate_t, d_x_result_gm)
-    _compute_dw_partial(matmul_ctx, db_idx, cv_l0a, cv_l0b, cv_l0c, l1_w_db,
+    _compute_dw_partial(matmul_ctx, round_idx, db_idx, cv_l0a, cv_l0b, cv_l0c, l1_w_db,
                         l1_kv0_t, l1_kv1_t, l1_sb0_t, l1_sb1_t,
                         x_arrange_gm, d_wkv_result_gm, d_w_gate_result_gm)
 
 
 def _phase3_reduce(vec_ctx, core_idx, group_idx, round_idx, round_cnt, max_round_blocks,
-                   prev_blocks,
                    prev_db_idx, prev_b_idx_start, prev_sc_idx_start,
                    prev_b_idx_end, prev_sc_idx_end,
                    reduce_acc, reduce_comp, reduce_load_tile_group, p3_cast,
@@ -1472,10 +1425,9 @@ def _phase3_reduce(vec_ctx, core_idx, group_idx, round_idx, round_cnt, max_round
                    d_x, d_wkv, d_wgate, d_ape, io_d_type,
                    x_rows, total_head_dim, hidden_size, cmp_size,
                    d_weight_work_space_size,
-                   tensor_dw_kv_ws_flat, tensor_dw_gate_ws_flat,
                    work_space_ptr, d_w_kv_work_space_ptr, d_w_gate_work_space_ptr,
                    start_pos, seq_used, cu_seqlens, seq_ctx):
-    """Phase 3: dX reduce（上一轮 start/end 节点）+ dWkv/dWgate 每轮增量归约 + 末轮 dApe/dW 输出"""
+    """Phase 3: dX reduce（上一轮 start/end 节点）+ 末轮 dApe/dW 一次性跨核归约"""
     d_x_out_gm = pl.make_tensor(d_x, [x_rows, hidden_size],
                                 [hidden_size, 1], dtype=io_d_type)
     tensor_d_ape_flat = pl.make_tensor(d_ape, [1, cmp_size],
@@ -1483,6 +1435,12 @@ def _phase3_reduce(vec_ctx, core_idx, group_idx, round_idx, round_cnt, max_round
     tensor_d_ape_ws_flat = pl.make_tensor(work_space_ptr,
                                           [vec_ctx.group_num * vec_ctx.coff_coef, cmp_size],
                                           [cmp_size, 1], dtype=pl.DT_FP32)
+    tensor_dw_kv_ws_flat = pl.make_tensor(d_w_kv_work_space_ptr,
+        [d_weight_work_space_size // (total_head_dim * hidden_size), total_head_dim * hidden_size],
+        [total_head_dim * hidden_size, 1], dtype=pl.DT_FP32)
+    tensor_dw_gate_ws_flat = pl.make_tensor(d_w_gate_work_space_ptr,
+        [d_weight_work_space_size // (total_head_dim * hidden_size), total_head_dim * hidden_size],
+        [total_head_dim * hidden_size, 1], dtype=pl.DT_FP32)
     # dW 输出为 FP16/BF16（与 op 注册一致），归约在 FP32 完成、写回前 cast
     tensor_dw_kv_flat = pl.make_tensor(d_wkv, [1, total_head_dim * hidden_size],
                                        [total_head_dim * hidden_size, 1], dtype=io_d_type)
@@ -1494,23 +1452,17 @@ def _phase3_reduce(vec_ctx, core_idx, group_idx, round_idx, round_cnt, max_round
                d_x_cache_gm, d_x_result_gm, d_x_out_gm,
                start_pos, seq_used, cu_seqlens, seq_ctx)
 
-    # ── dWkv/dWgate：每轮增量归约（上一轮槽 → FP32 累计区，vec 普通指令，无原子）──
-    # 累计区清零已在 round0 完成（与首次增量隔开整轮同步）
-    _reduce_d_weight_inc(vec_ctx, core_idx, prev_db_idx, prev_blocks,
-                         reduce_acc, reduce_load_tile_group,
-                         tensor_dw_kv_ws_flat, tensor_dw_gate_ws_flat)
 
-
-    # ── 末轮：dApe/dW 一次性跨核输出 ──
-    # prevBlocks = 上一轮实际处理块数：validRows 只覆盖写过数据的行
-    #（不满轮时 groupIdx >= ceil(prevBlocks/groupDealScNum) 的核未执行
-    #  Phase 1/2 写入，其 ws 区域未参与累加）
+    # ── 末轮：dApe/dW 一次性跨核归约（生产者侧已按轮累加至 ws 固定槽）──
+    # roundBlocks 传 maxRoundBlocks：validRows 只覆盖写过数据的行
+    #（不满轮时 groupIdx >= ceil(maxRoundBlocks/groupDealScNum) 的核未执行
+    #  Phase 1/2 写入，其 ws 区域是初始值，不能参与归约）
     if round_idx == round_cnt:
         _reduce_ape(vec_ctx, core_idx, group_idx, 0, max_round_blocks,
                     reduce_acc, reduce_comp, reduce_load_tile_group, tensor_d_ape_flat, tensor_d_ape_ws_flat)
-        _reduce_d_weight_final(vec_ctx, core_idx, reduce_acc, p3_cast,
-                               tensor_dw_kv_ws_flat, tensor_dw_gate_ws_flat,
-                               tensor_dw_kv_flat, tensor_dw_gate_flat)
+        _reduce_d_weight(vec_ctx, core_idx, group_idx, 0, max_round_blocks,
+                         reduce_acc, reduce_load_tile_group, p3_cast,
+                         tensor_dw_kv_flat, tensor_dw_kv_ws_flat, tensor_dw_gate_flat, tensor_dw_gate_ws_flat)
 
 
 def _init_scalars(batch_size, seq_size, cmp_ratio, start_pos, seq_used, cu_seqlens):
@@ -1831,7 +1783,7 @@ def compressor_grad(
     # ── Workspace 分块: APE 区域 + dX 区域──
     ape_work_space_size = tiling.dape_ws_size
     d_x_work_space_size = tiling.d_x_ws_size
-    d_weight_work_space_size = tiling.d_w_weight_ws_size * 3   # 每输出：槽0/槽1 双缓冲 + FP32 累计区
+    d_weight_work_space_size = tiling.d_w_weight_ws_size
     x_work_space_size = tiling.x_ws_size
     d_x_cache_work_space_size = tiling.d_x_cache_ws_size
 
@@ -1848,20 +1800,10 @@ def compressor_grad(
         d_x_work_space_ptr,
         [Coff, d_x_work_space_size // tiling.hidden_size // Coff, tiling.hidden_size],
         [d_x_work_space_size // Coff, tiling.hidden_size, 1], dtype=pl.DT_FP32)
-    dw_rows = tiling.d_w_weight_ws_size // tiling.hidden_size   # = groupNum * totalHeadDim
     d_wkv_result_gm = pl.make_tensor(d_w_kv_work_space_ptr,
-        [2, dw_rows, tiling.hidden_size],
-        [dw_rows * tiling.hidden_size, tiling.hidden_size, 1], dtype=pl.DT_FP32)
+        [d_weight_work_space_size // tiling.hidden_size, tiling.hidden_size], [tiling.hidden_size, 1], dtype=pl.DT_FP32)
     d_w_gate_result_gm = pl.make_tensor(d_w_gate_work_space_ptr,
-        [2, dw_rows, tiling.hidden_size],
-        [dw_rows * tiling.hidden_size, tiling.hidden_size, 1], dtype=pl.DT_FP32)
-    # dW ws flat（供 Phase 3 每轮增量归约 / 清零 / 末轮输出；行 [0,g)=槽0、[g,2g)=槽1、[2g,3g)=FP32 累计区）
-    tensor_dw_kv_ws_flat = pl.make_tensor(d_w_kv_work_space_ptr,
-        [d_weight_work_space_size // (tiling.total_head_dim * tiling.hidden_size), tiling.total_head_dim * tiling.hidden_size],
-        [tiling.total_head_dim * tiling.hidden_size, 1], dtype=pl.DT_FP32)
-    tensor_dw_gate_ws_flat = pl.make_tensor(d_w_gate_work_space_ptr,
-        [d_weight_work_space_size // (tiling.total_head_dim * tiling.hidden_size), tiling.total_head_dim * tiling.hidden_size],
-        [tiling.total_head_dim * tiling.hidden_size, 1], dtype=pl.DT_FP32)
+        [d_weight_work_space_size // tiling.hidden_size, tiling.hidden_size], [tiling.hidden_size, 1], dtype=pl.DT_FP32)
     x_arrange_gm = pl.make_tensor(x_work_space_ptr,
         [x_work_space_size // tiling.hidden_size, tiling.hidden_size], [tiling.hidden_size, 1], dtype=io_d_type)
     d_x_cache_gm = pl.make_tensor(d_x_cache_ptr,
@@ -1976,12 +1918,6 @@ def compressor_grad(
                                     start_pos, seq_used, cu_seqlens, seq_ctx)
 
 
-                # ── round0：清零 dW FP32 累计区（与首次增量归约隔开整轮同步）──
-                if round_idx == 0:
-                    _reduce_d_weight_acc_zero(vec_ctx, core_idx, reduce_acc,
-                                              tensor_dw_kv_ws_flat, tensor_dw_gate_ws_flat)
-
-
                 # ── CV 通路: 本轮 v1 完成即发信号（供 cube c1(i) 消费）──
                 b_idx, sc_idx = b_idx_end, sc_idx_end
                 pl.system.set_cross_core(pipe=pl.PipeType.MTE3, event_id=db_idx,
@@ -1996,12 +1932,9 @@ def compressor_grad(
                     prev_b_idx_end, prev_sc_idx_end = cur_b_idx_end, cur_sc_idx_end
 
             if round_idx > 0:
-                prev_blocks = min(tiling.total_sc_num_per_round,
-                                  compressed_cnt - (round_idx - 1) * tiling.total_sc_num_per_round)
                 pl.system.sync_all(core_type=pl.SyncCoreType.MIX)
 
                 _phase3_reduce(vec_ctx, core_idx, group_idx, round_idx, round_cnt, max_round_blocks,
-                               prev_blocks,
                                prev_db_idx, prev_b_idx_start, prev_sc_idx_start,
                                prev_b_idx_end, prev_sc_idx_end,
                                reduce_acc, reduce_comp, reduce_load_tile_group, p3_cast,
@@ -2009,7 +1942,6 @@ def compressor_grad(
                                d_x, d_wkv, d_wgate, d_ape, io_d_type,
                                tiling.x_rows, tiling.total_head_dim, tiling.hidden_size, tiling.cmp_size,
                                d_weight_work_space_size,
-                               tensor_dw_kv_ws_flat, tensor_dw_gate_ws_flat,
                                work_space_ptr, d_w_kv_work_space_ptr, d_w_gate_work_space_ptr,
                                start_pos, seq_used, cu_seqlens, seq_ctx)
 

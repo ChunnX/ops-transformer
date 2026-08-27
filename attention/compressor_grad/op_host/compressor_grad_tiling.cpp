@@ -157,18 +157,16 @@ ge::graphStatus CalcWorkSpace(CompressorGradContext &compressorGradContext,
     uint32_t dbRatio = 2;
 
     // 与 kernel 的 workspace 指针链逐分区对齐（元素数，FP32）:
-    //   ape 单缓冲；dWkv/dWgate 每输出 3 份单槽（槽0/槽1 双缓冲 + FP32 累计区，绕开 FIX atomic 跨轮 RMW）；
-    //   dX / x / dXCache 按 dbRatio=2 双缓冲
+    //   ape / dWkv / dWgate 单缓冲；dX / x / dXCache 按 dbRatio=2 双缓冲
     uint64_t apeWorkSpaceSize = static_cast<uint64_t>(groupNum) * cmpSize * coffCoef;
     uint64_t dXWorkSpaceSize = static_cast<uint64_t>(dbRatio) * cubeCoreNum * (M_BASE_SIZE * 2) * hiddenSize;
     uint64_t dWeightWorkSpaceSize = static_cast<uint64_t>(groupNum) * totalHeadDim * hiddenSize;
-    // dWkv / dWGate 各占 3*单槽（2 写槽 + 1 累计区）
-    constexpr uint32_t DW_SLOT_CNT = 3;  // slot0 / slot1 / acc
+    // dWkv / dWGate 各占一份 dWeightWorkSpaceSize
     uint64_t xWorkSpaceSize = static_cast<uint64_t>(dbRatio) * groupNum * groupRowStride * hiddenSize;
     uint64_t dXCacheWorkSpaceSize = static_cast<uint64_t>(dbRatio) * cmpRatio * hiddenSize;
 
     workspaceSize = libapiSize;
-    workspaceSize += (apeWorkSpaceSize + dXWorkSpaceSize + dWeightWorkSpaceSize * DW_SLOT_CNT * 2 +
+    workspaceSize += (apeWorkSpaceSize + dXWorkSpaceSize + dWeightWorkSpaceSize * 2 +
                      xWorkSpaceSize + dXCacheWorkSpaceSize) * MM1_RES_ELEM_SIZE;
 
     if (compressorGradContext.workSpaces) {
@@ -178,7 +176,7 @@ ge::graphStatus CalcWorkSpace(CompressorGradContext &compressorGradContext,
     OP_LOGI(compressorGradContext.opName,
             "Tiling info: workspaceSize = %zu (ape=%llu dx=%llu dw=%llu x=%llu dxcache=%llu)",
             workspaceSize, apeWorkSpaceSize, dXWorkSpaceSize,
-            dWeightWorkSpaceSize * DW_SLOT_CNT * 2, xWorkSpaceSize, dXCacheWorkSpaceSize);
+            dWeightWorkSpaceSize * 2, xWorkSpaceSize, dXCacheWorkSpaceSize);
     return ge::GRAPH_SUCCESS;
 }
 
