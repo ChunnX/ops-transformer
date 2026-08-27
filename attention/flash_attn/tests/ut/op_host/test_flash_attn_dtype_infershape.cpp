@@ -19,12 +19,12 @@ class FlashAttnInferDTypeTest : public testing::TestWithParam<FlashAttnInferDTyp
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "FlashAttn InferDTypeTest SetUp" << std::endl;
+        // std::cout << "FlashAttn InferDTypeTest SetUp" << std::endl;
     }
 
     static void TearDownTestCase()
     {
-        std::cout << "FlashAttn InferDTypeTest TearDown" << std::endl;
+        // std::cout << "FlashAttn InferDTypeTest TearDown" << std::endl;
     }
 };
 
