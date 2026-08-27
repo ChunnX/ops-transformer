@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file mx_scale.h
- * \brief A5（arch35）MX 分组最大指数和 Scale 计算。
+ * \file mx_quant_compute_scale.h
+ * \brief MX 分组最大指数和 Scale 计算。
  */
 
-#ifndef MEGA_MOE_ARCH35_MX_SCALE_H
-#define MEGA_MOE_ARCH35_MX_SCALE_H
+#ifndef MEGA_MOE_ARCH35_MX_QUANT_COMPUTE_SCALE_H
+#define MEGA_MOE_ARCH35_MX_QUANT_COMPUTE_SCALE_H
 
 #if defined(__DAV_C310__)
 #include "mx_quant_common.h"
@@ -118,4 +118,4 @@ __aicore__ inline void ComputeMxScale(__ubuf__ uint16_t *maxExp, __ubuf__ uint16
 } // namespace MegaMoeImpl
 
 #endif // defined(__DAV_C310__)
-#endif // MEGA_MOE_ARCH35_MX_SCALE_H
+#endif // MEGA_MOE_ARCH35_MX_QUANT_COMPUTE_SCALE_H
