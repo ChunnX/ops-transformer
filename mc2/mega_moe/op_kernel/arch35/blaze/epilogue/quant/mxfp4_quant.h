@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file mx_quant_fp4.h
- * \brief A5（arch35）MX FP4 数据量化。
+ * \file mxfp4_quant.h
+ * \brief MX FP4 数据量化。
  */
 
-#ifndef MEGA_MOE_ARCH35_MX_QUANT_FP4_H
-#define MEGA_MOE_ARCH35_MX_QUANT_FP4_H
+#ifndef MEGA_MOE_ARCH35_MXFP4_QUANT_H
+#define MEGA_MOE_ARCH35_MXFP4_QUANT_H
 
 #if defined(__DAV_C310__)
 #include "mx_quant_common.h"
@@ -64,4 +64,4 @@ __aicore__ inline void QuantizeMxFp4Data(__ubuf__ bfloat16_t *input, __ubuf__ ui
 } // namespace MegaMoeImpl
 
 #endif // defined(__DAV_C310__)
-#endif // MEGA_MOE_ARCH35_MX_QUANT_FP4_H
+#endif // MEGA_MOE_ARCH35_MXFP4_QUANT_H
