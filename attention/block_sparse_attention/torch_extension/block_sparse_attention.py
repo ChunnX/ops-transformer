@@ -27,7 +27,7 @@ class BlockSparseAttentionOpBuilder(OpBuilder):
         super().__init__("block_sparse_attention")
 
     def sources(self):
-        return ['csrc/attention/block_sparse_attention.cpp']
+        return ["csrc/attention/block_sparse_attention.cpp"]
 
     def schema(self) -> str:
         return (
@@ -35,8 +35,8 @@ class BlockSparseAttentionOpBuilder(OpBuilder):
             "Tensor query, Tensor key, Tensor value, "
             "Tensor block_sparse_mask, "
             "int[] block_shape, *, "
-            "str q_input_layout=\"TND\", "
-            "str kv_input_layout=\"TND\", "
+            'str q_input_layout="TND", '
+            'str kv_input_layout="TND", '
             "int num_key_value_heads=1, "
             "float scale_value=1.0, "
             "int inner_precise=1, "
@@ -101,7 +101,10 @@ class BlockSparseAttentionOpBuilder(OpBuilder):
                     "attention_out_dtype must be specified when quant_mode != 0"
                 )
             # FP4: two values pack into one uint8 byte, so last dim is 2*D
-            if query.dtype == torch.uint8 and quant_mode in (QuantMode.MXFP4_OCP_QUANT, QuantMode.MXFP4_CX_QUANT):
+            if query.dtype == torch.uint8 and quant_mode in (
+                QuantMode.MXFP4_OCP_QUANT,
+                QuantMode.MXFP4_CX_QUANT,
+            ):
                 attn_shape = list(query.shape)
                 attn_shape[-1] *= 2
                 attn = query.new_empty(tuple(attn_shape), dtype=out_dtype)
@@ -153,16 +156,30 @@ def block_sparse_attention(
     attention_out_dtype: Optional[torch.dtype] = None,
 ):
     return _op_module.npu_block_sparse_attention(
-        query, key, value, block_sparse_mask,
+        query,
+        key,
+        value,
+        block_sparse_mask,
         block_shape,
-        q_input_layout, kv_input_layout,
+        q_input_layout,
+        kv_input_layout,
         num_key_value_heads,
-        scale_value, inner_precise,
-        actual_seq_lengths, actual_seq_lengths_kv,
+        scale_value,
+        inner_precise,
+        actual_seq_lengths,
+        actual_seq_lengths_kv,
         return_softmax_lse,
-        mask_type, quant_mode, block_size, pre_tokens, next_tokens,
+        mask_type,
+        quant_mode,
+        block_size,
+        pre_tokens,
+        next_tokens,
         dst_type_max,
-        atten_mask, block_table,
-        q_dequant_scale, k_dequant_scale, v_dequant_scale, p_quant_scale,
+        atten_mask,
+        block_table,
+        q_dequant_scale,
+        k_dequant_scale,
+        v_dequant_scale,
+        p_quant_scale,
         attention_out_dtype,
     )
