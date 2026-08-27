@@ -45,7 +45,7 @@ namespace MoeDistributeCombineV2A5MteImpl {
 using namespace MoeDistributeV2Base;
 using namespace Mc2Kernel;
 using namespace Mc2Aclnn;
-#define A5MteCombineTypeClass                                                                                          \
+#define A5MteCombineTypeClass \
     typename ExpandXType, typename XType, typename ExpandIdxType, uint8_t QuantMode, bool HasAddRmsNorm
 #define A5MteCombineTypeFunc ExpandXType, XType, ExpandIdxType, QuantMode, HasAddRmsNorm
 
@@ -422,8 +422,8 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::InitIn
 }
 
 template <A5MteCombineTypeClass>
-__aicore__ inline void
-MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::InitTilingAttrs(const MoeDistributeCombineV2TilingData *tilingData)
+__aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::InitTilingAttrs(
+    const MoeDistributeCombineV2TilingData *tilingData)
 {
     axisBS_ = tilingData->moeDistributeCombineV2Info.bs;
     axisH_ = tilingData->moeDistributeCombineV2Info.h;
@@ -454,9 +454,8 @@ MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::InitTilingAttrs(const MoeDist
 }
 
 template <A5MteCombineTypeClass>
-__aicore__ inline void
-MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::InitCommContext(GM_ADDR mc2Context,
-                                                                   const MoeDistributeCombineV2TilingData *tilingData)
+__aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::InitCommContext(
+    GM_ADDR mc2Context, const MoeDistributeCombineV2TilingData *tilingData)
 {
     uint32_t epRankIdHccl{0};
     uint32_t epWorldSizeHccl{0};
@@ -488,9 +487,8 @@ MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::InitCommContext(GM_ADDR mc2Co
 }
 
 template <A5MteCombineTypeClass>
-__aicore__ inline void
-MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::InitAttrs(GM_ADDR mc2Context,
-                                                             const MoeDistributeCombineV2TilingData *tilingData)
+__aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::InitAttrs(
+    GM_ADDR mc2Context, const MoeDistributeCombineV2TilingData *tilingData)
 {
     InitTilingAttrs(tilingData);
     InitCommContext(mc2Context, tilingData);
@@ -632,8 +630,7 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Dispat
     uint64_t fixedEndUbAddr = fixedEndBuf.Get<uint8_t>().GetPhyAddr();
     uint64_t fixedUbSize = fixedEndUbAddr - beginUbAddr + UB_ALIGN;
     uint64_t reservedUbSize = perDispatchBufBytes + UB_ALIGN;
-    uint64_t remainUbSize =
-        (ubSize_ > fixedUbSize + reservedUbSize) ? (ubSize_ - fixedUbSize - reservedUbSize) : 0U;
+    uint64_t remainUbSize = (ubSize_ > fixedUbSize + reservedUbSize) ? (ubSize_ - fixedUbSize - reservedUbSize) : 0U;
     remainUbSize = remainUbSize / UB_ALIGN * UB_ALIGN;
     uint32_t tokenBufSize = EXPAND_IDX_INFO * sizeof(ExpandIdxType);
     maxTokenNumInUB_ = MIN(sendCntNum_, static_cast<uint32_t>(remainUbSize / tokenBufSize));
@@ -1096,8 +1093,8 @@ __aicore__ inline uint32_t MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Ch
 }
 
 template <A5MteCombineTypeClass>
-__aicore__ inline uint32_t
-MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::CheckPackedTokenArrive(GM_ADDR rankGM, uint32_t slotCount)
+__aicore__ inline uint32_t MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::CheckPackedTokenArrive(GM_ADDR rankGM,
+                                                                                                     uint32_t slotCount)
 {
     if ((blockCntPerToken_ == 0U) || (slotCount == 0U)) {
         return slotCount;
@@ -1105,9 +1102,8 @@ MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::CheckPackedTokenArrive(GM_ADD
     const uint32_t flagCountPerSlot = blockCntPerToken_ * SPLIT_BLOCK_FLAG_COUNT;
     const uint32_t blockCount = slotCount * blockCntPerToken_;
     const uint32_t flagFloatNum = slotCount * flagCountPerSlot;
-    uint32_t arriveFlagNum =
-        CheckPackedFlagRangeArrive(rankGM + SPLIT_BLOCK_DATA_SIZE, static_cast<uint16_t>(blockCount), flagFloatNum,
-                                   SPLIT_BLOCK_DATA_SIZE);
+    uint32_t arriveFlagNum = CheckPackedFlagRangeArrive(
+        rankGM + SPLIT_BLOCK_DATA_SIZE, static_cast<uint16_t>(blockCount), flagFloatNum, SPLIT_BLOCK_DATA_SIZE);
     return arriveFlagNum / flagCountPerSlot;
 }
 
@@ -1159,8 +1155,7 @@ __aicore__ inline uint32_t MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Wa
                                                                                            uint32_t slotCount,
                                                                                            uint32_t tokenLocalIdx)
 {
-    GM_ADDR wAddr =
-        (__gm__ uint8_t *)(epWindowGM_) + (tokenIndex * flagRcvCount_ + slotIdx) * hAlignWinSize_;
+    GM_ADDR wAddr = (__gm__ uint8_t *)(epWindowGM_) + (tokenIndex * flagRcvCount_ + slotIdx) * hAlignWinSize_;
     uint32_t arriveSlotCount = CheckPackedTokenArrive(wAddr, slotCount);
     if (arriveSlotCount == 0U) {
         return 0U;
@@ -1240,9 +1235,8 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::AddRms
 }
 
 template <A5MteCombineTypeClass>
-__aicore__ inline void
-MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::CalConstExpertAlpha(GlobalTensor<ExpandXType> constExpertAlphaGM,
-                                                                       uint32_t const_expert_idx, float &alphaFloat)
+__aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::CalConstExpertAlpha(
+    GlobalTensor<ExpandXType> constExpertAlphaGM, uint32_t const_expert_idx, float &alphaFloat)
 {
     LocalTensor<ExpandXType> weightLocal = moeMainSumQueue_.AllocTensor<ExpandXType>();
     LocalTensor<float> weightFloatLocal = mulBuf_.Get<float>();
@@ -1269,9 +1263,8 @@ MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::CalConstExpertAlpha(GlobalTen
 
 // 处理常量专家
 template <A5MteCombineTypeClass>
-__aicore__ inline void
-MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ProcessConstantExpert(uint32_t tokenIndex, uint32_t const_expert_idx,
-                                                                         float scaleVal)
+__aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ProcessConstantExpert(
+    uint32_t tokenIndex, uint32_t const_expert_idx, float scaleVal)
 {
     PipeBarrier<PIPE_ALL>();
     LocalTensor<ExpandXType> rowTmpLocal = tokenBuf_.Get<ExpandXType>();
@@ -1393,8 +1386,7 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Proces
         if (hasExpertScalesFlag_) {
             quantInst_.DeQuantProcess(tmpUb, outLocalTensor, rowTmpFloatLocal_, sumFloatBufLocal_, scaleVal);
         } else {
-            quantInst_.DeQuantProcessWithoutExpertScale(
-                tmpUb, outLocalTensor, rowTmpFloatLocal_, sumFloatBufLocal_);
+            quantInst_.DeQuantProcessWithoutExpertScale(tmpUb, outLocalTensor, rowTmpFloatLocal_, sumFloatBufLocal_);
         }
     } else {
         Cast(rowTmpFloatLocal_, tmpUb, AscendC::RoundMode::CAST_NONE, processLen);
@@ -1419,10 +1411,9 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Expert
     if (hasExpertScalesFlag_) {
         tpipe_->InitBuffer(expertScalesBuf_, Ceil(expertScaleCntPerCore * sizeof(float), UB_ALIGN) * UB_ALIGN);
         expertScalesLocal_ = expertScalesBuf_.Get<float>();
-        const DataCopyExtParams tokenScaleParams{static_cast<uint16_t>(tokenPerAivNum),
-                                                 static_cast<uint32_t>(axisK_ * sizeof(float)),
-                                                 static_cast<uint32_t>((receiveAivNum - 1U) * axisK_ * sizeof(float)), 0U,
-                                                 0U};
+        const DataCopyExtParams tokenScaleParams{
+            static_cast<uint16_t>(tokenPerAivNum), static_cast<uint32_t>(axisK_ * sizeof(float)),
+            static_cast<uint32_t>((receiveAivNum - 1U) * axisK_ * sizeof(float)), 0U, 0U};
         const DataCopyPadExtParams<float> copyPadFloatParams{false, 0U, 0U, 0U};
         DataCopyPad<float, PaddingMode::Compact>(expertScalesLocal_, expertScalesGM_[beginIndex * axisK_],
                                                  tokenScaleParams, copyPadFloatParams);
