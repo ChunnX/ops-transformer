@@ -128,6 +128,9 @@ def build_metadata_arguments(q, dequant_scale_v, cu_seqlens_q, cu_seqlens_kv,
         else:
             batch_size = 0
 
+    if layout_q == "TND":
+        batch_size = None
+
     # max_seqlen_q/kv: 从 kwargs 取（-1 为显式值），无值时从 cu_seqlens/seqused 推导
     max_seqlen_q_attr = get_attribute(kwargs, "max_seqlen_q")
     if max_seqlen_q_attr is not None:
@@ -160,7 +163,7 @@ def build_metadata_arguments(q, dequant_scale_v, cu_seqlens_q, cu_seqlens_kv,
         "seqused_q": seqused_q,
         "seqused_kv": seqused_kv,
         "v_descale": dequant_scale_v,
-        "batch_size": int(batch_size),
+        "batch_size": int(batch_size) if batch_size is not None else None,
         "max_seqlen_q": max_seqlen_q,
         "max_seqlen_kv": max_seqlen_kv,
         "mask_mode": int(get_attribute(kwargs, "mask_mode", 0)),
@@ -194,7 +197,7 @@ def run_metadata(arguments, metadata):
         seqused_q=move_to_device(arguments.get("seqused_q"), metadata),
         seqused_kv=move_to_device(arguments.get("seqused_kv"), metadata),
         v_descale=move_to_device(arguments.get("v_descale"), metadata),
-        batch_size=int(arguments["batch_size"]),
+        batch_size=int(arguments["batch_size"]) if arguments["batch_size"] is not None else None,
         max_seqlen_q=int(arguments["max_seqlen_q"]),
         max_seqlen_kv=int(arguments["max_seqlen_kv"]),
         mask_mode=int(arguments["mask_mode"]),
@@ -233,12 +236,16 @@ def run(q, k, v, dequant_scale_q, dequant_scale_k, dequant_scale_v,
         source = "main API fallback (sidecar unavailable)"
     logging.info("[%s] build QFA metadata from %s", testcase_name, source)
     generated = run_metadata(arguments, metadata_t)
-    if tuple(metadata_t.shape) != tuple(generated.shape):
-        raise ValueError(
-            "QFA metadata shape mismatch: "
-            f"placeholder={tuple(metadata_t.shape)}, generated={tuple(generated.shape)}"
-        )
-    metadata_t.copy_(generated.to(dtype=metadata_t.dtype, device=metadata_t.device))
+    generated_cpu = generated.detach().cpu()
+    if tuple(metadata_t.shape) != tuple(generated_cpu.shape):
+        if metadata_t.numel() == 0:
+            metadata_t.resize_(generated_cpu.shape)
+        else:
+            raise ValueError(
+                "QFA metadata shape mismatch: "
+                f"placeholder={tuple(metadata_t.shape)}, generated={tuple(generated_cpu.shape)}"
+            )
+    metadata_t.copy_(generated_cpu.to(dtype=metadata_t.dtype, device=metadata_t.device))
     rewritten = protocol.rewrite_metadata_input(
         OPERATOR,
         testcase_name,

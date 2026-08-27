@@ -85,6 +85,22 @@ def _inputs_dispatch(*args, **kwargs):
 # 这两个函数只做参数名映射, 不做 metadata 构建/golden globals/prepare_npu_inputs。
 # ==============================================================================
 
+def _infer_layout(tensor, default="BSND"):
+    """从 tensor 维度数推断 layout: 3D→TND, 4D→BSND, 5D→PA_NZ。"""
+    if tensor is None or not hasattr(tensor, "ndim"):
+        return default
+    return {3: "TND", 4: "BSND", 5: "PA_NZ"}.get(tensor.ndim, default)
+
+
+def _empty_to_none(t):
+    """空 tensor (shape 含 0 或 numel==0) → None，避免算子校验空 shape 报错。"""
+    if t is None:
+        return None
+    if hasattr(t, "numel") and t.numel() == 0:
+        return None
+    return t
+
+
 def npu_qfa(q, k, v, dequant_scale_q, dequant_scale_k, dequant_scale_v,
              p_scale, block_table, cu_seqlens_q_t, cu_seqlens_kv_t,
              seqused_q_t, seqused_kv_t, sinks_t, attn_mask_t, metadata_t,
@@ -93,7 +109,14 @@ def npu_qfa(q, k, v, dequant_scale_q, dequant_scale_k, dequant_scale_v,
 
     参数名映射: dequant_scale_* -> *_descale, *_t 后缀去掉。
     metadata 由 npu_preprocess 预填, 其余 tensor 由 inputs.py 生成。
+    layout_q/kv/out 在 kwargs 缺失时从 tensor ndim 推断, 避免 profiling 等
+    未传 attributes 的场景回退到 BSND 导致 shape 不匹配。
+    cu_seqlens/seqused 的空 slot (shape (0,)) 转为 None, 表示 "未提供"。
     """
+    layout_q = kwargs.get("layout_q") or _infer_layout(q)
+    layout_kv = kwargs.get("layout_kv") or _infer_layout(k)
+    layout_out = kwargs.get("layout_out") or layout_q
+    layout_q_descale = kwargs.get("layout_q_descale") or layout_q
     atten_out, lse_out = torch.ops.cann_ops_transformer.quant_flash_attn(
         q,
         k,
@@ -102,14 +125,14 @@ def npu_qfa(q, k, v, dequant_scale_q, dequant_scale_k, dequant_scale_v,
         dequant_scale_k,
         dequant_scale_v,
         int(quant_mode),
-        block_table=block_table,
+        block_table=_empty_to_none(block_table),
         p_scale=p_scale,
-        cu_seqlens_q=cu_seqlens_q_t,
-        cu_seqlens_kv=cu_seqlens_kv_t,
-        seqused_q=seqused_q_t,
-        seqused_kv=seqused_kv_t,
-        sinks=sinks_t,
-        attn_mask=attn_mask_t,
+        cu_seqlens_q=_empty_to_none(cu_seqlens_q_t),
+        cu_seqlens_kv=_empty_to_none(cu_seqlens_kv_t),
+        seqused_q=_empty_to_none(seqused_q_t),
+        seqused_kv=_empty_to_none(seqused_kv_t),
+        sinks=_empty_to_none(sinks_t),
+        attn_mask=_empty_to_none(attn_mask_t),
         metadata=metadata_t,
         softmax_scale=kwargs.get("softmax_scale", 1.0),
         mask_mode=kwargs.get("mask_mode", 0),
@@ -117,10 +140,10 @@ def npu_qfa(q, k, v, dequant_scale_q, dequant_scale_k, dequant_scale_v,
         win_right=kwargs.get("win_right", -1),
         max_seqlen_q=kwargs.get("max_seqlen_q", -1),
         max_seqlen_kv=kwargs.get("max_seqlen_kv", -1),
-        layout_q=kwargs.get("layout_q", "BSND"),
-        layout_q_descale=kwargs.get("layout_q_descale", "BSND"),
-        layout_kv=kwargs.get("layout_kv", "BSND"),
-        layout_out=kwargs.get("layout_out", "BSND"),
+        layout_q=layout_q,
+        layout_q_descale=layout_q_descale,
+        layout_kv=layout_kv,
+        layout_out=layout_out,
         return_softmax_lse=bool(kwargs.get("enable_lse", False)),
     )
     if not bool(kwargs.get("enable_lse", False)):
@@ -136,24 +159,28 @@ def run_metadata(q, k, v, dequant_scale_q, dequant_scale_k, dequant_scale_v,
 
     metadata 算子直接接收 cu_seqlens_q/cu_seqlens_kv/seqused_q/seqused_kv 作为参数。
     """
+    layout_q = kwargs.get("layout_q") or _infer_layout(q)
+    layout_kv = kwargs.get("layout_kv") or _infer_layout(k)
+    layout_out = kwargs.get("layout_out") or layout_q
+    layout_q_descale = kwargs.get("layout_q_descale") or layout_q
     metadata = torch.ops.cann_ops_transformer.quant_flash_attn_metadata(
         int(kwargs.get("N_q", 0)),
         int(kwargs.get("N_kv", 0)),
         int(kwargs.get("D", 0)),
         int(quant_mode),
-        cu_seqlens_q=cu_seqlens_q_t,
-        cu_seqlens_kv=cu_seqlens_kv_t,
-        seqused_q=seqused_q_t,
-        seqused_kv=seqused_kv_t,
-        v_descale=dequant_scale_v,
+        cu_seqlens_q=_empty_to_none(cu_seqlens_q_t),
+        cu_seqlens_kv=_empty_to_none(cu_seqlens_kv_t),
+        seqused_q=_empty_to_none(seqused_q_t),
+        seqused_kv=_empty_to_none(seqused_kv_t),
+        v_descale=_empty_to_none(dequant_scale_v),
         batch_size=kwargs.get("batch_size"),
         max_seqlen_q=kwargs.get("max_seqlen_q", -1),
         max_seqlen_kv=kwargs.get("max_seqlen_kv", -1),
         mask_mode=kwargs.get("mask_mode", 0),
-        layout_q=kwargs.get("layout_q", "BSND"),
-        layout_q_descale=kwargs.get("layout_q_descale", "BSND"),
-        layout_kv=kwargs.get("layout_kv", "BSND"),
-        layout_out=kwargs.get("layout_out", "BSND"),
+        layout_q=layout_q,
+        layout_q_descale=layout_q_descale,
+        layout_kv=layout_kv,
+        layout_out=layout_out,
     )
     return [metadata]
 

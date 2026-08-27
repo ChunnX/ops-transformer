@@ -173,7 +173,7 @@ _TENSOR_SPECS = [
         False,
     ),
     ("attn_mask_shape", "attn_mask_dtype", "attn_mask_datarange", "int8", False),
-    ("metadata_shape", "metadata_dtype", "metadata_datarange", "float32", False),
+    ("metadata_shape", "metadata_dtype", "metadata_datarange", "int32", False),
 ]
 
 _DRANGE_PLACEHOLDER = (0, 1)

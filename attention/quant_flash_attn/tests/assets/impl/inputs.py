@@ -71,24 +71,25 @@ _SEED_MAP = {"q": 54, "k": 3, "v": 4}
 def _write_int32_list(slot, values, slot_name):
     """把 attributes 里的 int 值列表写进 CSV tensor slot（覆盖 ttk 随机生成）。
 
-    空 slot（shape (0,)，无数据）或 values 为 None 时跳过。
+    values 为 None 时返回 None（调用方应将 slot 置为 None）。
+    空 slot（shape (0,)，无数据）时跳过并原样返回 slot。
     dst 可为 numpy 或 CPU torch tensor（ttk 经 backend.inputs_from_numpy 传入）。
 
     按 slot 的目标 dtype 写入（不硬编码 int32）——保留 CSV tensor_dtypes。
     正常用例 slot 是 int32；异常用例若把 cu_seqlens/seqused 设为 int8，
     此处用 int8 写（值可能溢出并抛错，或被 AICPU 校验拦截），tensor_dtypes 真正生效。
     """
-    if slot is None:
-        return
     if values is None:
-        return
+        return None
+    if slot is None:
+        return None
     # 空 slot（shape (0,)，无数据）→ 跳过，不覆盖（PA 布局下 cu_seqlens/seqused 可能
     # 留空，属性 value 是无意义的残留值）。
     if isinstance(slot, torch.Tensor):
         if slot.numel() == 0:
-            return
+            return slot
     elif numpy.asarray(slot).size == 0:
-        return
+        return slot
     if isinstance(slot, torch.Tensor):
         arr = torch.as_tensor(list(values), dtype=slot.dtype)
         if tuple(slot.shape) != tuple(arr.shape):
@@ -108,6 +109,7 @@ def _write_int32_list(slot, values, slot_name):
                 f"Check Excel shape vs cu_seqlens/seqused value."
             )
         slot[...] = arr
+    return slot
 
 
 def generate_qfa_mxfp8_inputs(
@@ -430,10 +432,10 @@ def generate_qfa_mxfp8_inputs(
     # sinks/metadata (slot 12,14) 无 value，保持 None 语义（CSV shape (0,) → 空 tensor，
     # wrapper/golden 不消费）；attn_mask (slot 13) 不传值覆盖——mask 由 golden
     # _build_causal_mask() 按 attributes 里 attn_mask_shape 重建。 -----
-    _write_int32_list(cu_seqlens_q_t, cu_seqlens_q, "cu_seqlens_q (slot 8)")
-    _write_int32_list(cu_seqlens_kv_t, cu_seqlens_kv, "cu_seqlens_kv (slot 9)")
-    _write_int32_list(seqused_q_t, seqused_q, "seqused_q (slot 10)")
-    _write_int32_list(seqused_kv_t, seqused_kv, "seqused_kv (slot 11)")
+    cu_seqlens_q_t = _write_int32_list(cu_seqlens_q_t, cu_seqlens_q, "cu_seqlens_q (slot 8)")
+    cu_seqlens_kv_t = _write_int32_list(cu_seqlens_kv_t, cu_seqlens_kv, "cu_seqlens_kv (slot 9)")
+    seqused_q_t = _write_int32_list(seqused_q_t, seqused_q, "seqused_q (slot 10)")
+    seqused_kv_t = _write_int32_list(seqused_kv_t, seqused_kv, "seqused_kv (slot 11)")
 
     logger.info(
         "[INPUTS] in-place wrote fp8 q/k/v (q=%s), e8m0 descale (dq=%s, dk=%s, dv=%s), "
@@ -746,10 +748,10 @@ def generate_qfa_gqa_fp8_inputs(
     # ----- 新增 slot 8-14: 用 attributes 真实值覆盖 ttk 随机生成的 cu_seqlens/seqused。
     # sinks/metadata (slot 12,14) 无 value，保持 None 语义（空 tensor）；attn_mask (slot 13)
     # 不传值覆盖，mask 由 golden 按 attn_mask_shape 重建。 -----
-    _write_int32_list(cu_seqlens_q_t, cu_seqlens_q, "cu_seqlens_q (slot 8)")
-    _write_int32_list(cu_seqlens_kv_t, cu_seqlens_kv, "cu_seqlens_kv (slot 9)")
-    _write_int32_list(seqused_q_t, seqused_q, "seqused_q (slot 10)")
-    _write_int32_list(seqused_kv_t, seqused_kv, "seqused_kv (slot 11)")
+    cu_seqlens_q_t = _write_int32_list(cu_seqlens_q_t, cu_seqlens_q, "cu_seqlens_q (slot 8)")
+    cu_seqlens_kv_t = _write_int32_list(cu_seqlens_kv_t, cu_seqlens_kv, "cu_seqlens_kv (slot 9)")
+    seqused_q_t = _write_int32_list(seqused_q_t, seqused_q, "seqused_q (slot 10)")
+    seqused_kv_t = _write_int32_list(seqused_kv_t, seqused_kv, "seqused_kv (slot 11)")
 
     logger.info(
         "[INPUTS GQA FP8] in-place wrote fp8 q (NTD %s), k/v (PA cache %s, %s), "
