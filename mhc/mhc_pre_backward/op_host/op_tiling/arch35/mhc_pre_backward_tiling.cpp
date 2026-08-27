@@ -51,7 +51,6 @@ const constexpr uint32_t LEGAL_N_COUNT = 3;
 const constexpr float DEFAULT_HC_EPS = 1e-6f;
 
 const constexpr uint32_t C0_SET_VALUE = 1;
-const constexpr uint32_t C0_L0C_DOUBLE_BUFFER = 2;
 const constexpr uint32_t ALPHA_GRAD_CORE_FACTOR = 24;
 const constexpr uint32_t BUFFER_NUM = 2;
 const constexpr uint32_t EXTRA_BUFFER_SIZE = 2 * 1024 * 1024;
@@ -253,8 +252,7 @@ ge::graphStatus MhcPreBackwardTiling::ParseInputAndAttr()
 
 void MhcPreBackwardTiling::SetC0TilingParams()
 {
-    // 单个FP32 L0C tile为256*128*4=128KB，双缓冲正好占满256KB L0C。
-    tilingData_.matmulTilingC0.set_dbL0C(C0_L0C_DOUBLE_BUFFER);
+    tilingData_.matmulTilingC0.set_dbL0C(C0_SET_VALUE);
     tilingData_.matmulTilingC0.set_stepKa(C0_SET_VALUE);
     tilingData_.matmulTilingC0.set_stepKb(C0_SET_VALUE);
     tilingData_.matmulTilingC0.set_depthA1(C0_SET_VALUE);
