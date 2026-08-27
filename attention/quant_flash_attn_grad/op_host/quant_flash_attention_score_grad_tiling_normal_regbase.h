@@ -23,12 +23,12 @@
 using namespace Ops::Transformer::OpTiling;
 namespace optiling {
 namespace QuantFag {
-    
+
 class QuantFlashAttentionScoreGradTilingNormalRegbase : public TilingBaseClass {
 public:
-    explicit QuantFlashAttentionScoreGradTilingNormalRegbase(gert::TilingContext *curContext_): TilingBaseClass(curContext_)
-    {
-    }
+    explicit QuantFlashAttentionScoreGradTilingNormalRegbase(gert::TilingContext *curContext_)
+        : TilingBaseClass(curContext_)
+    {}
     ~QuantFlashAttentionScoreGradTilingNormalRegbase() override = default;
 
     QuantFlashAttnGradTiling *quantFagTilingData_ = nullptr;
@@ -68,5 +68,5 @@ protected:
     NpuArch npuArch = NpuArch::DAV_RESV;
 };
 
-} // namespace fag
-} // namespace optiling
+}  // namespace QuantFag
+}  // namespace optiling

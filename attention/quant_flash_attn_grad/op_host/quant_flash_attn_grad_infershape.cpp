@@ -50,8 +50,8 @@ ge::graphStatus InferShapeQuantFlashAttnGrad(gert::InferShapeContext *context)
     for (auto &c : kvInputLayoutStr) {
         c = toupper(c);
     }
-    if ((qInputLayoutStr != "BSND" && qInputLayoutStr != "BNSD") || (kvInputLayoutStr != "BSND" && kvInputLayoutStr != "BNSD") 
-        || kvInputLayoutStr != qInputLayoutStr) {
+    if ((qInputLayoutStr != "BSND" && qInputLayoutStr != "BNSD") ||
+        (kvInputLayoutStr != "BSND" && kvInputLayoutStr != "BNSD") || kvInputLayoutStr != qInputLayoutStr) {
         OP_LOGI(context, "QuantFlashAttnGrad inputLayout error.");
         return GRAPH_FAILED;
     }
@@ -66,7 +66,7 @@ ge::graphStatus InferShapeQuantFlashAttnGrad(gert::InferShapeContext *context)
     *dqShape = *queryShape;
     gert::Shape *dkShape = context->GetOutputShape(OUTPUT_IDX_DK);
     OP_CHECK_NULL_WITH_CONTEXT(context, dkShape);
-        *dkShape = *keyShape;
+    *dkShape = *keyShape;
     gert::Shape *dvShape = context->GetOutputShape(OUTPUT_IDX_DV);
     OP_CHECK_NULL_WITH_CONTEXT(context, dvShape);
     *dvShape = *valueShape;
@@ -90,4 +90,4 @@ IMPL_OP_INFERSHAPE(QuantFlashAttnGrad)
     .InferShape(InferShapeQuantFlashAttnGrad)
     .InferDataType(InferDataTypeQuantFlashAttnGrad);
 
-} // namespace ops
+}  // namespace ops

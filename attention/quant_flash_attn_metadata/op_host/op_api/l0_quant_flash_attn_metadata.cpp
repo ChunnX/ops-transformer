@@ -28,18 +28,18 @@ OP_TYPE_REGISTER(QuantFlashAttnMetadata);
 
 const aclTensor *QuantFlashAttnMetadata(const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
                                         const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
-                                        const aclTensor *vDescaleOptional, int64_t batchSize,
-                                        int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
-                                        int64_t numHeadsKv, int64_t headDim, int64_t quantMode, int64_t maskMode,
-                                        int64_t winLeft, int64_t winRight, const char *layoutQ,
-                                        const char *layoutQDescale, const char *layoutKv,
-                                        const char *layoutOut, bool isGradEnable, const char *socVersion, int64_t aicCoreNum,
-                                        int64_t aivCoreNum, const aclTensor *metaData, aclOpExecutor *executor)
+                                        const aclTensor *vDescaleOptional, int64_t batchSize, int64_t maxSeqlenQ,
+                                        int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
+                                        int64_t quantMode, int64_t maskMode, int64_t winLeft, int64_t winRight,
+                                        const char *layoutQ, const char *layoutQDescale, const char *layoutKv,
+                                        const char *layoutOut, bool isGradEnable, const char *socVersion,
+                                        int64_t aicCoreNum, int64_t aivCoreNum, const aclTensor *metaData,
+                                        aclOpExecutor *executor)
 {
     L0_DFX(QuantFlashAttnMetadata, cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional,
            vDescaleOptional, batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, quantMode,
-           maskMode, winLeft, winRight, layoutQ, layoutQDescale, layoutKv, layoutOut, isGradEnable, socVersion, aicCoreNum,
-           aivCoreNum, metaData);
+           maskMode, winLeft, winRight, layoutQ, layoutQDescale, layoutKv, layoutOut, isGradEnable, socVersion,
+           aicCoreNum, aivCoreNum, metaData);
 
     static internal::AicpuTaskSpace space("QuantFlashAttnMetadata");
 
@@ -52,7 +52,8 @@ const aclTensor *QuantFlashAttnMetadata(const aclTensor *cuSeqlensQOptional, con
         OP_INPUT(cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional, vDescaleOptional),
         OP_OUTPUT(metaData),
         OP_ATTR(batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, quantMode, maskMode, winLeft,
-                winRight, layoutQ, layoutQDescale, layoutKv, layoutOut, isGradEnable, socVersion, aicCoreNum, aivCoreNum));
+                winRight, layoutQ, layoutQDescale, layoutKv, layoutOut, isGradEnable, socVersion, aicCoreNum,
+                aivCoreNum));
     OP_CHECK(ret == ACL_SUCCESS,
              OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "QuantFlashAttnMetadata"
                                               " ADD_TO_LAUNCHER_LIST_AICPU failed."),

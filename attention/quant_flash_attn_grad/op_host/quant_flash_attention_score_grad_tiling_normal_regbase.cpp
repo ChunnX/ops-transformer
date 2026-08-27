@@ -27,9 +27,9 @@ namespace QuantFag {
 ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
 {
     fBaseParams.isDeterministic = true;
-    const gert::StorageShape *queryShape = context_->GetInputShape(QUERY_IDX); // [B, N2, G, S1, D]
-    const gert::StorageShape *keyShape = context_->GetInputShape(KEY_IDX);     // [B, N2, 1, S2, D]
-    const gert::StorageShape *valueShape = context_->GetInputShape(VALUE_IDX); // [B, N2, 1, S2, D_V]
+    const gert::StorageShape *queryShape = context_->GetInputShape(QUERY_IDX);  // [B, N2, G, S1, D]
+    const gert::StorageShape *keyShape = context_->GetInputShape(KEY_IDX);      // [B, N2, 1, S2, D]
+    const gert::StorageShape *valueShape = context_->GetInputShape(VALUE_IDX);  // [B, N2, 1, S2, D_V]
 
     const char *inputLayout = context_->GetAttrs()->GetAttrPointer<char>(static_cast<size_t>(AttrIndex::LAYOUT_Q));
     if (inputLayout == nullptr) {
@@ -58,9 +58,13 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsIn
         fBaseParams.d = queryShape->GetStorageShape().GetDim(INPUT_DIM_3);
         fBaseParams.d1 = valueShape->GetStorageShape().GetDim(INPUT_DIM_3);
         fBaseParams.s2 = keyShape->GetStorageShape().GetDim(INPUT_DIM_2);
-        OP_LOGD(context_, "inputLayout == BNSD queryShape", "%ld, %ld, %ld, %ld,",
-                queryShape->GetStorageShape().GetDim(INPUT_DIM_0), queryShape->GetStorageShape().GetDim(INPUT_DIM_1),
-                queryShape->GetStorageShape().GetDim(INPUT_DIM_2), queryShape->GetStorageShape().GetDim(INPUT_DIM_3));
+        OP_LOGD(context_,
+                "inputLayout == BNSD queryShape",
+                "%ld, %ld, %ld, %ld,",
+                queryShape->GetStorageShape().GetDim(INPUT_DIM_0),
+                queryShape->GetStorageShape().GetDim(INPUT_DIM_1),
+                queryShape->GetStorageShape().GetDim(INPUT_DIM_2),
+                queryShape->GetStorageShape().GetDim(INPUT_DIM_3));
     } else {
         OP_LOGD(context_, "inputLayout == BSND queryShape");
         // inputLayout = "BSND"
@@ -77,8 +81,7 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsIn
 
     fBaseParams.n1 = fBaseParams.n2 * fBaseParams.g;
 
-
-    auto ret= ProcessOptionalInput(context_, fBaseParams);
+    auto ret = ProcessOptionalInput(context_, fBaseParams);
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
@@ -87,7 +90,7 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsIn
 
 ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetPlatformInfo()
 {
-    uint32_t coreNum = CORE_INIT_NUM; // 40 is init core num
+    uint32_t coreNum = CORE_INIT_NUM;  // 40 is init core num
 
     auto platformInfoPtr = context_->GetPlatformInfo();
     if (platformInfoPtr == nullptr) {
@@ -116,12 +119,14 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetPlatformInfo
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, fBaseParams.l2CacheSize);
     }
     OP_CHECK_IF((fBaseParams.coreNum == 0) || (fBaseParams.aicNum == 0),
-                OP_LOGE(context_->GetNodeName(), "num of coreNum(aivNum) is %lu, num of aicNum is %lu.",
-                        fBaseParams.coreNum, fBaseParams.aicNum),
+                OP_LOGE(context_->GetNodeName(),
+                        "num of coreNum(aivNum) is %lu, num of aicNum is %lu.",
+                        fBaseParams.coreNum,
+                        fBaseParams.aicNum),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(fBaseParams.ubSize <= 0, OP_LOGE(context_->GetNodeName(), "ubSize is invalid."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        fBaseParams.ubSize <= 0, OP_LOGE(context_->GetNodeName(), "ubSize is invalid."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -186,7 +191,7 @@ void QuantFlashAttentionScoreGradTilingNormalRegbase::DoSplit()
 
 ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::DoSparse()
 {
-    fBaseParams.sparseType = GetSparseType(); // 非确定性计算下获取sparseType
+    fBaseParams.sparseType = GetSparseType();  // 非确定性计算下获取sparseType
     fBaseParams.deterSparseType = GetDeterSparseTilingKey();
     CalcleDeterParam();
     fBaseParams.splitAxis = SplitAxisEnum::BN2GS1S2;
@@ -222,8 +227,8 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::DoSparse()
     }
     // each bit init 1
     std::fill(std::begin(fBaseParams.dqIsNeedDeter), std::end(fBaseParams.dqIsNeedDeter), static_cast<uint64_t>(-1));
-    std::fill(std::begin(fBaseParams.dkDvIsNeedDeter), std::end(fBaseParams.dkDvIsNeedDeter),
-              static_cast<uint64_t>(-1));
+    std::fill(
+        std::begin(fBaseParams.dkDvIsNeedDeter), std::end(fBaseParams.dkDvIsNeedDeter), static_cast<uint64_t>(-1));
     if (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_OLD)) {
         GetIsDeterArr();
     }
@@ -231,37 +236,35 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::DoSparse()
 }
 
 bool QuantFlashAttentionScoreGradTilingNormalRegbase::CheckSparseLeftAndRight(int64_t s1oDimIdx, int64_t s2IdxLeft,
-                                                                         int64_t s2IdxRight, int64_t bIdx,
-                                                                         int64_t blockIdx)
+                                                                              int64_t s2IdxRight, int64_t bIdx,
+                                                                              int64_t blockIdx)
 {
     if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) ||
         fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::PREFIX) ||
         fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::PREFIX_COMPRESS)) {
         int64_t s2IgnoredEndLen = static_cast<int64_t>(fBaseParams.s1) -
-                                    static_cast<int64_t>(fBaseParams.s1Inner * S1CV_RATIO_DEFAULT * (s1oDimIdx + 1));
-        int64_t s2EndLen = static_cast<int64_t>(fBaseParams.s2) > s2IgnoredEndLen ?
-                                static_cast<int64_t>(fBaseParams.s2) - s2IgnoredEndLen :
-                                0;
+                                  static_cast<int64_t>(fBaseParams.s1Inner * S1CV_RATIO_DEFAULT * (s1oDimIdx + 1));
+        int64_t s2EndLen = static_cast<int64_t>(fBaseParams.s2) > s2IgnoredEndLen
+                               ? static_cast<int64_t>(fBaseParams.s2) - s2IgnoredEndLen
+                               : 0;
         if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::PREFIX) ||
             fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::PREFIX_COMPRESS)) {
-            int64_t curBIdx =
-                blockIdx / (fBaseParams.n2 * fBaseParams.g * fBaseParams.s1Outer * fBaseParams.s2Outer);
+            int64_t curBIdx = blockIdx / (fBaseParams.n2 * fBaseParams.g * fBaseParams.s1Outer * fBaseParams.s2Outer);
             s2EndLen = std::min(std::max(s2EndLen, static_cast<int64_t>(fBaseParams.prefixN[curBIdx])),
                                 static_cast<int64_t>(fBaseParams.s2));
         }
         bool isValid = s2IdxLeft < s2EndLen;
         return isValid;
     } else {
-            int64_t s2SparseLeft = std::max(fBaseParams.s1Inner * S1CV_RATIO_DEFAULT * s1oDimIdx - fBaseParams.s1Token,
-                                            static_cast<int64_t>(0));
-            s2SparseLeft = AlignTo(s2SparseLeft, ALIGN64);
-            int64_t s2SparseRight =
-                AlignTo(std::min(fBaseParams.s1Inner * S1CV_RATIO_DEFAULT * (s1oDimIdx + 1), fBaseParams.s1) +
-                            fBaseParams.s2Token,
-                        static_cast<int64_t>(64));
-            s2SparseRight = std::min(s2SparseRight, fBaseParams.s2);
-            bool isValid = s2IdxLeft < s2SparseRight && s2IdxRight > s2SparseLeft;
-            return isValid;
+        int64_t s2SparseLeft = std::max(fBaseParams.s1Inner * S1CV_RATIO_DEFAULT * s1oDimIdx - fBaseParams.s1Token,
+                                        static_cast<int64_t>(0));
+        s2SparseLeft = AlignTo(s2SparseLeft, ALIGN64);
+        int64_t s2SparseRight = AlignTo(
+            std::min(fBaseParams.s1Inner * S1CV_RATIO_DEFAULT * (s1oDimIdx + 1), fBaseParams.s1) + fBaseParams.s2Token,
+            static_cast<int64_t>(64));
+        s2SparseRight = std::min(s2SparseRight, fBaseParams.s2);
+        bool isValid = s2IdxLeft < s2SparseRight && s2IdxRight > s2SparseLeft;
+        return isValid;
     }
 }
 
@@ -317,13 +320,13 @@ uint8_t QuantFlashAttentionScoreGradTilingNormalRegbase::GetSparseType()
     // CASUAL: 1）LEFT_UP_CASUAL；2）RIGHT_DOWN_CASUAL；3）NO_MASK & preToken>=Sq & nextToken=0；4）BAND &
     // preToken>=Sq & nextToken=0
     casualCondition = (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::LEFT_UP_CAUSAL) &&
-                        fBaseParams.s1 <= fBaseParams.s2) ||
-                        (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::NO_MASK) &&
-                        fBaseParams.s1Token >= fBaseParams.s1 && fBaseParams.s2Token == 0) ||
-                        (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) &&
-                        fBaseParams.s1 <= fBaseParams.s2) ||
-                        (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::BAND) &&
-                        fBaseParams.s1Token >= fBaseParams.s1 && fBaseParams.s2Token == 0);
+                       fBaseParams.s1 <= fBaseParams.s2) ||
+                      (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::NO_MASK) &&
+                       fBaseParams.s1Token >= fBaseParams.s1 && fBaseParams.s2Token == 0) ||
+                      (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) &&
+                       fBaseParams.s1 <= fBaseParams.s2) ||
+                      (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::BAND) &&
+                       fBaseParams.s1Token >= fBaseParams.s1 && fBaseParams.s2Token == 0);
 
     // BAND: 1）NO_MASK剩余场景；2）BAND剩余场景；3）LEFT_UP_CAUSAL剩余场景；4）RIGHT_DOWN_CAUSAL剩余场景
     bandCondition = fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::NO_MASK) ||
@@ -419,8 +422,15 @@ void QuantFlashAttentionScoreGradTilingNormalRegbase::GetIsDeterArr()
             GetOffset(fBaseParams, dqOffset[cBlockIdx], dkDvOffset[cBlockIdx], validBlockIdx);
             loopIdx[cBlockIdx]++;
         }
-        JudgeIsNeedDeter(fBaseParams, dqOffset, dkDvOffset, dqOffsetpre, dkDvOffsetpre, calcNum,
-                         fBaseParams.noNeedDeter, dqNeedDeterpre, dkDvNeedDeterpre);
+        JudgeIsNeedDeter(fBaseParams,
+                         dqOffset,
+                         dkDvOffset,
+                         dqOffsetpre,
+                         dkDvOffsetpre,
+                         calcNum,
+                         fBaseParams.noNeedDeter,
+                         dqNeedDeterpre,
+                         dkDvNeedDeterpre);
         calcNum++;
     }
 }
@@ -437,18 +447,18 @@ uint64_t QuantFlashAttentionScoreGradTilingNormalRegbase::DoPreSfmgTiling()
     // 计算单loop的计算量及loop次数, hifp8场景按128对齐, quantblock大小为128 * 4, 目前仅支持D <= 256
     int64_t singleLoopNBurstNum = 128;
     if (fBaseParams.queryType == ge::DT_FLOAT8_E5M2 || fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN ||
-               fBaseParams.queryType == ge::DT_HIFLOAT8) {
+        fBaseParams.queryType == ge::DT_HIFLOAT8) {
         inputSize = 1;
         outDtypeSize = FP16_BYTES;
     }
     uint32_t availUbSize = fBaseParams.ubSize - UB_RESERVE_SPACE;
     // valueDAlign * inputSize * sizeof(dtype) * 2 * 2 --  dy, y size is valueDAlign * inputSize
     // first 2 is dy + y total size, second 2 is double buffer, then get max split s1
-    uint32_t sfmgDyBufferLen = 
+    uint32_t sfmgDyBufferLen =
         availUbSize / (valueDAlign * (inputSize * 2 + outDtypeSize * 2) + 2 * 8 * FP32_BYTES) * valueDAlign * inputSize;
     uint32_t sfmgYBufferLen = availUbSize / (valueDAlign * (inputSize * 2 + outDtypeSize * 2) + 2 * 8 * FP32_BYTES) *
                               valueDAlign * outDtypeSize;
-    uint32_t sfmgOutputBufferLen = 
+    uint32_t sfmgOutputBufferLen =
         availUbSize / (valueDAlign * (inputSize * 2 + outDtypeSize * 2) + 2 * 8 * FP32_BYTES) * 8 * FP32_BYTES;
 
     // 计算单核的计算量
@@ -471,9 +481,19 @@ uint64_t QuantFlashAttentionScoreGradTilingNormalRegbase::DoPreSfmgTiling()
             "is %d."
             "singleLoopNBurstNum = %d, normalCoreLoopTimes is %d, normalCoreLastLoopNBurstNum is %d."
             "tailCoreLoopTimes = %d, tailCoreLastLoopNBurstNum is %d.",
-            sfmgUsedCoreNum, availUbSize, valueDAlign, normalAxisSize, normalCoreSize, sfmgDyBufferLen, sfmgYBufferLen,
-            sfmgOutputBufferLen, singleLoopNBurstNum, normalCoreLoopTimes, normalCoreLastLoopNBurstNum,
-            tailCoreLoopTimes, tailCoreLastLoopNBurstNum);
+            sfmgUsedCoreNum,
+            availUbSize,
+            valueDAlign,
+            normalAxisSize,
+            normalCoreSize,
+            sfmgDyBufferLen,
+            sfmgYBufferLen,
+            sfmgOutputBufferLen,
+            singleLoopNBurstNum,
+            normalCoreLoopTimes,
+            normalCoreLastLoopNBurstNum,
+            tailCoreLoopTimes,
+            tailCoreLastLoopNBurstNum);
     quantFagTilingData_->sfmg_used_core_num = sfmgUsedCoreNum;
     quantFagTilingData_->sfmg_dy_buffer_len = sfmgDyBufferLen;
     quantFagTilingData_->sfmg_y_buffer_len = sfmgYBufferLen;
@@ -491,7 +511,7 @@ uint64_t QuantFlashAttentionScoreGradTilingNormalRegbase::DoPreSfmgTiling()
 
 void QuantFlashAttentionScoreGradTilingNormalRegbase::DoPreTiling()
 {
-    uint64_t inputBufferLen = PRE_BUFFER_SIZE; // x / 8 + 2 * x + 32 = fBaseParams.ubSize
+    uint64_t inputBufferLen = PRE_BUFFER_SIZE;  // x / 8 + 2 * x + 32 = fBaseParams.ubSize
     uint64_t singleUBProcessNum = static_cast<uint64_t>(CAST_BUFFER_LEN) / 2;
 
     uint64_t maskSize = AlignTo(fBaseParams.dropMaskSize, static_cast<uint64_t>(BOOL_BLOCK_NUMS));
@@ -500,11 +520,11 @@ void QuantFlashAttentionScoreGradTilingNormalRegbase::DoPreTiling()
     uint64_t maskUsedCoreNum = 0;
     fBaseParams.enablePreSfmg =
         (fBaseParams.queryType == ge::DT_HIFLOAT8) ||
-         ((fBaseParams.queryType == ge::DT_BF16 || fBaseParams.queryType == ge::DT_FLOAT16) &&
-          fBaseParams.d > static_cast<uint32_t>(ConstAxisTemplateNum::NUM64) &&
-          fBaseParams.d <= static_cast<uint32_t>(ConstAxisTemplateNum::NUM768) &&
-          (fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 || fBaseParams.splitAxis == SplitAxisEnum::BN2S2) &&
-          !fBaseParams.isDeterministic && fBaseParams.dropoutIsDivisibleBy8);
+        ((fBaseParams.queryType == ge::DT_BF16 || fBaseParams.queryType == ge::DT_FLOAT16) &&
+         fBaseParams.d > static_cast<uint32_t>(ConstAxisTemplateNum::NUM64) &&
+         fBaseParams.d <= static_cast<uint32_t>(ConstAxisTemplateNum::NUM768) &&
+         (fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 || fBaseParams.splitAxis == SplitAxisEnum::BN2S2) &&
+         !fBaseParams.isDeterministic && fBaseParams.dropoutIsDivisibleBy8);
     if (fBaseParams.enablePreSfmg) {
         maskUsedCoreNum = static_cast<uint64_t>(DoPreSfmgTiling());
     } else {
@@ -596,7 +616,7 @@ void QuantFlashAttentionScoreGradTilingNormalRegbase::DoPostTiling()
 
 ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::DoLibApiTiling()
 {
-     return ge::GRAPH_SUCCESS;
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSize()
@@ -624,8 +644,7 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSiz
     // fp8 vScaleDs
     if (fBaseParams.queryType == ge::DT_FLOAT8_E5M2 || fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN ||
         fBaseParams.queryType == ge::DT_HIFLOAT8) {
-        workspaceSize =
-            (workspaceSize + fBaseParams.coreNum * ALIGN128 * FP32_BYTES + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
+        workspaceSize = (workspaceSize + fBaseParams.coreNum * ALIGN128 * FP32_BYTES + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
     }
 
     // mask bool workspace size
@@ -669,10 +688,13 @@ uint64_t QuantFlashAttentionScoreGradTilingNormalRegbase::GetTilingKey() const
     uint32_t d_template_num = 128;
     uint32_t is_n_equal = 1;
     uint32_t layout = fBaseParams.layoutType;
-    uint64_t tilingKey =
-        GET_TPL_TILING_KEY(static_cast<uint8_t>(has_attn_mask), static_cast<uint8_t>(has_sink),
-          static_cast<uint16_t>(s1_template_num), static_cast<uint16_t>(s2_template_num), static_cast<uint8_t>(d_template_num),
-          static_cast<uint8_t>(is_n_equal), static_cast<uint8_t>(layout));
+    uint64_t tilingKey = GET_TPL_TILING_KEY(static_cast<uint8_t>(has_attn_mask),
+                                            static_cast<uint8_t>(has_sink),
+                                            static_cast<uint16_t>(s1_template_num),
+                                            static_cast<uint16_t>(s2_template_num),
+                                            static_cast<uint8_t>(d_template_num),
+                                            static_cast<uint8_t>(is_n_equal),
+                                            static_cast<uint8_t>(layout));
     OP_LOGI(context_, "QuantFAGTiling DoTiling success, tiling is %lu.", tilingKey);
     return tilingKey;
 }
@@ -696,8 +718,10 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::PostTiling()
         numBlocks = fBaseParams.aicNum;
     }
     OP_CHECK_IF(numBlocks == 0,
-                OP_LOGE("QuantFlashAttentionScoreGradTilingNormalRegbase", "numBlocks is 0, aicNum is %lu, aivNum is %lu.",
-                        fBaseParams.aicNum, fBaseParams.coreNum),
+                OP_LOGE("QuantFlashAttentionScoreGradTilingNormalRegbase",
+                        "numBlocks is 0, aicNum is %lu, aivNum is %lu.",
+                        fBaseParams.aicNum,
+                        fBaseParams.coreNum),
                 return ge::GRAPH_FAILED);
     context_->SetBlockDim(numBlocks);
 
@@ -736,15 +760,20 @@ void QuantFlashAttentionScoreGradTilingNormalRegbase::GetParseS1S2OuterInfo(int6
                 invalidS1Array[j] = true;
             }
         }
-        OP_LOGD("Sparse", " idx = %ld: Begin = %ld, End = %ld, Length = %ld, total_Length = %ld", i, parseInfo[i][0],
-                parseInfo[i][1], tmpSize, parseInfo[i][LENGTH_IDX]);
+        OP_LOGD("Sparse",
+                " idx = %ld: Begin = %ld, End = %ld, Length = %ld, total_Length = %ld",
+                i,
+                parseInfo[i][0],
+                parseInfo[i][1],
+                tmpSize,
+                parseInfo[i][LENGTH_IDX]);
     }
 }
 
 ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetSparseBlockInfo()
 {
     // [s2OuterIdx][begin, end, length]
-    int64_t(*parseInfo)[ARRAY_LENGTH] = new int64_t[fBaseParams.s2Outer][ARRAY_LENGTH];
+    int64_t (*parseInfo)[ARRAY_LENGTH] = new int64_t[fBaseParams.s2Outer][ARRAY_LENGTH];
     GetParseS1S2OuterInfo(parseInfo);
     int64_t s1s2oCount = parseInfo[fBaseParams.s2Outer - 1][LENGTH_IDX];
 
@@ -754,7 +783,10 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetSparseBlockI
     int64_t blockOuter = (fusedOuter + blockFactor - 1) / blockFactor;
     int64_t blockTailTmp = fusedOuter % blockFactor;
     int64_t blockTail = blockTailTmp == 0 ? blockFactor : blockTailTmp;
-    OP_LOGD("Sparse", "Sparse parseInfo fusedOuter = %ld: blockFactor = %ld, blockTail = %ld", fusedOuter, blockFactor,
+    OP_LOGD("Sparse",
+            "Sparse parseInfo fusedOuter = %ld: blockFactor = %ld, blockTail = %ld",
+            fusedOuter,
+            blockFactor,
             blockTail);
     fBaseParams.blockOuter = blockOuter;
     fBaseParams.blockFactor = blockFactor;
@@ -790,7 +822,13 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetSparseBlockI
         OP_LOGD("Sparse",
                 "Sparse parseInfo currentIdx = %ld: bIdx = %ld, bTail = %ld, n2Idx = %ld, n2Tail = %ld, gIdx = %ld, "
                 "gTail = %ld",
-                currentIdx, bIdx, bTail, n2Idx, n2Tail, gIdx, gTail);
+                currentIdx,
+                bIdx,
+                bTail,
+                n2Idx,
+                n2Tail,
+                gIdx,
+                gTail);
         GetCommonS1S2OuterIndex(fBaseParams, parseInfo, gTail, s1oIdx, s2oIdx);
 
         // total indx in bngs1os2o (range is [))
@@ -816,7 +854,7 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetSparsePrefix
 {
     std::vector<std::vector<std::pair<int64_t, int64_t>>> s1ValidIdx(
         fBaseParams.b, std::vector<std::pair<int64_t, int64_t>>(fBaseParams.s2Outer, {0, 0}));
-    uint64_t totalValidBaseBlock = 0; // include nRation, baseN * nRation
+    uint64_t totalValidBaseBlock = 0;  // include nRation, baseN * nRation
     int32_t comBIdx = -1;
     for (int64_t bIdx = 0; bIdx < fBaseParams.b; ++bIdx) {
         int64_t prefixN = fBaseParams.prefixN[bIdx];
@@ -840,11 +878,14 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetSparsePrefix
 
     totalValidBaseBlock *= fBaseParams.n2 * fBaseParams.g;
     int64_t blockFactor =
-        (totalValidBaseBlock + fBaseParams.aicNum - 1) / fBaseParams.aicNum; // 每个核处理的最多数据个数
-    int64_t blockOuter = (static_cast<int64_t>(totalValidBaseBlock) + blockFactor - 1) / blockFactor; // 实际使用的核数
+        (totalValidBaseBlock + fBaseParams.aicNum - 1) / fBaseParams.aicNum;  // 每个核处理的最多数据个数
+    int64_t blockOuter = (static_cast<int64_t>(totalValidBaseBlock) + blockFactor - 1) / blockFactor;  // 实际使用的核数
 
-    OP_LOGD("Sparse", "Sparse parseInfo totalValidBaseBlock = %lu: blockFactor = %ld, blockOuter = %ld",
-            totalValidBaseBlock, blockFactor, blockOuter);
+    OP_LOGD("Sparse",
+            "Sparse parseInfo totalValidBaseBlock = %lu: blockFactor = %ld, blockOuter = %ld",
+            totalValidBaseBlock,
+            blockFactor,
+            blockOuter);
     fBaseParams.blockOuter = blockOuter;
     fBaseParams.blockFactor = blockFactor;
     fBaseParams.maxValidBBLen = blockFactor;
@@ -858,8 +899,8 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetSparsePrefix
     int64_t tmepBlock = 0;
     for (int64_t bIdx = 0; bIdx < fBaseParams.b; ++bIdx) {
         for (int64_t nIdx = 0; nIdx < fBaseParams.n2; ++nIdx) {
-            SetSparsePrefixBlockInterval(fBaseParams, bIdx, nIdx, s1ValidIdx, blockStarts, blockEnds, coreNum,
-                                         tmepBlock);
+            SetSparsePrefixBlockInterval(
+                fBaseParams, bIdx, nIdx, s1ValidIdx, blockStarts, blockEnds, coreNum, tmepBlock);
         }
     }
 
@@ -905,5 +946,5 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::SaveToTilingDat
 
 REGISTER_TILING_TEMPLATE_WITH_ARCH(QuantFlashAttnGrad, QuantFlashAttentionScoreGradTilingNormalRegbase,
                                    static_cast<int32_t>(NpuArch::DAV_3510), 950);
-} // namespace QuantFag
-} // namespace optiling
+}  // namespace QuantFag
+}  // namespace optiling
