@@ -1026,11 +1026,13 @@ ge::graphStatus PoolKeyIndexerTiling::DoTiling(PoolKeyIndexerTilingInfo *tilingI
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
 
     // Set workspace size
+    // GE 图模式运行期 tiling 时 workspaces[0] 可能为 -1(SIZE_MAX) 哨兵(未定态),
+    // 若与计算值取 max 会把 SIZE_MAX 烘焙进图, 导致 GenTask 溢出检查失败或
+    // 巨量内存分配(E29999/OOM)。必须直接覆写(参照 lightning_indexer_v2 /
+    // grouped_matmul_finalize_routing 的权威写法)。
     size_t *workspaces = context_->GetWorkspaceSizes(1);
-    size_t curWsSize = (workspaces != nullptr) ? workspaces[0] : 0;
-    size_t finalWsSize = std::max(curWsSize, static_cast<size_t>(workspaceSize));
     if (workspaces != nullptr) {
-        workspaces[0] = finalWsSize;
+        workspaces[0] = static_cast<size_t>(workspaceSize);
     }
 
     // Set tiling key: map runtime attributes to template tiling key values
@@ -1055,7 +1057,7 @@ ge::graphStatus PoolKeyIndexerTiling::DoTiling(PoolKeyIndexerTilingInfo *tilingI
     uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(info.aivNum, info.aicNum, info.aivNum);
     context_->SetBlockDim(blockDim);
     OP_LOGI(info.opName, "PoolKeyIndexer DoTiling: tilingKey=%lu, blockDim=%u, aicNum=%u, aivNum=%u, wsSize=%lu",
-            tilingKey, blockDim, info.aicNum, info.aivNum, finalWsSize);
+            tilingKey, blockDim, info.aicNum, info.aivNum, workspaceSize);
     if (info.pageAttention) {
         OP_LOGI(info.opName, "PoolKeyIndexer PA: keyStride0=%u, blockSize=%u, maxBlkPerBatch=%u, s2Size=%u",
                 info.keyStride0, info.blockSize, info.maxBlockNumPerBatch, info.s2Size);

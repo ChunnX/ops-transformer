@@ -1637,3 +1637,84 @@ visibleTailK 计算正确 → kernel 能读到真实 ptk 值）。已全部回�
 （`git checkout` def.cpp/csrc/kernel，ATK/文档手工恢复），真实根因为上述
 kernel 流水线竞态。教训：**placeholder 假设无直接证据时不应改 op_def 这种
 全局影响面最大的文件；应先做读值判别实验。**
+
+---
+
+# A5（Ascend 950PR）GE 图模式回归与 workspace 哨兵值修复（2026-08-26）
+
+> A2 上完成 GE 图问题修复（前节）后在 A5（8×Ascend950PR，CANN 9.1.0-beta.3）回归时发现。
+
+## 问题现象
+
+GE 图模式用例**间歇性**失败（约 1/3 进程），两种表现：
+
+1. `torch.OutOfMemoryError: Tried to allocate ~1.2e14~1.4e14 字节`（报错数字每次不同，
+   量级恰为 aarch64 用户态堆指针区间——实际是垃圾值被当 size 用，非真指针）
+2. `E29999: offset[0] + size[18446744073709551615] should not be greater than total_size[350208]`
+
+eager 同参数全部正常（42/42）。同一进程内首跑失败后进程即坏（后续 E19999），
+故 flakiness 是**每次编译独立**的。
+
+## 根因：tiling 写 workspace 时与 -1 哨兵取 max
+
+DEBUG 日志（`ASCEND_GLOBAL_LOG_LEVEL=0 + ASCEND_SLOG_PRINT_TO_STDOUT=1`）抓到关键行：
+
+```
+PoolKeyIndexer workspace: scoreGm=7340032, ldScore=29360128, ldIdx=57344, total=36757504
+PoolKeyIndexer DoTiling: ... wsSize=18446744073709551615   ← SIZE_MAX！
+```
+
+workspace 计算值 36MB 正常，但最终写入值为 SIZE_MAX。`DoTiling` 原实现（初版遗留）：
+
+```cpp
+size_t *workspaces = context_->GetWorkspaceSizes(1);
+size_t curWsSize = (workspaces != nullptr) ? workspaces[0] : 0;   // ← 读到哨兵
+size_t finalWsSize = std::max(curWsSize, workspaceSize);          // ← max(-1, x) = -1
+workspaces[0] = finalWsSize;
+```
+
+**GE 图模式运行期 tiling 路径**（te 缓存 json 中 `blockDim:-1 / workspace:-1` 标记
+GERT 运行期 tiling）中 `workspaces[0]` 可能是 -1（SIZE_MAX，"未定态"哨兵）而非 0——
+`max()` 把哨兵当有效值保留，SIZE_MAX 被烘焙进图：GenTask 溢出检查捕获时报 E29999；
+未被捕获时 GE 按垃圾 size 分配 → OOM 报文里就是各种 1e14 量级"指针样"垃圾数。
+
+**A2 为何不复发**：A2 图编译走编译期 tiling（workspaces[0] 初始为 0），运行期 tiling
+路径的哨兵语义未触发；属平台/CANN 版本差异下暴露的同源缺陷。
+
+## 修复（`op_host/pool_key_indexer_tiling.cpp`）
+
+对齐仓内权威范式（`lightning_indexer_v2_tiling.cpp:1086`、
+`grouped_matmul_finalize_routing_base_tiling.cpp:567`）——**直接覆写，不读不取 max**：
+
+```cpp
+size_t *workspaces = context_->GetWorkspaceSizes(1);
+if (workspaces != nullptr) {
+    workspaces[0] = static_cast<size_t>(workspaceSize);
+}
+```
+
+## 验证（Ascend950PR）
+
+| 项目 | 结果 |
+|------|------|
+| 最小复现脚本（BSND baseline 图模式，新进程 ×10） | 10/10 OK（修复前 ~1/3 失败） |
+| GE 图模式定点（7 例，含 2 竞态回归） | 7 passed |
+| eager 定点 42 例 | 42 passed |
+| eager 泛化 60 + 覆盖率收口 + known_defects 26 | 87 passed |
+| GE 泛化（60 例 + 汇总） | 61 passed |
+| boundary_causal_test.py | ALL PASS |
+| simple_test.py | PASSED |
+| `--soc=ascend910b --pkg` 编译回归（共用 tiling 代码） | exit=0 |
+
+## 附：A5 环境准备踩坑
+
+1. **GE/tbe 初始化缺 Python 依赖**（torch29 conda 环境逐个暴露）：`decorator`、
+   `scipy`、`psutil`、`attrs`（报错形态 `Environment_Error_Import_Python_Module_Failed
+   (EC0010): No module named 'xxx'`，需装齐后 GE 才能初始化）
+2. **torchair 无需单独安装**：torch_npu 2.9.0 自带（`torch_npu/dynamo/torchair`，
+   import torch_npu 后 `import torchair` 生效）；单独安装源码版反而与自带版冲突
+   （`npu_format_cast_via_cpu` ImportError）
+3. **pip 包影子旧版**：`~/.local/lib/python3.10/site-packages/` 残留旧版
+   cann-ops-transformer（无 key_stride0 修复），sys.path 优先级高于 conda env，
+   必须删除，否则 graph_convert 修复静默失效
+4. simple_test.py 硬编码 `set_device(2)`，单卡可见环境需改设备号执行
