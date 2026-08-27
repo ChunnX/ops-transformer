@@ -12,11 +12,11 @@ class FlashAttnArch35TilingTest : public testing::TestWithParam<FlashAttnTilingU
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "FlashAttn Arch35 TilingTest SetUp" << std::endl;
+        // std::cout << "FlashAttn Arch35 TilingTest SetUp" << std::endl;
     }
     static void TearDownTestCase()
     {
-        std::cout << "FlashAttn Arch35 TilingTest TearDown" << std::endl;
+        // std::cout << "FlashAttn Arch35 TilingTest TearDown" << std::endl;
     }
 };
 

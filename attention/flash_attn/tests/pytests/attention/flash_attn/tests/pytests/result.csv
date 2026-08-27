@@ -1,0 +1,7 @@
+case,dtype,attn_pass,attn_max_abs,attn_fail_ratio,lse_pass,lse_max_abs,lse_fail_ratio,error
+test_cases.functional_redline_train/flash_atten_test_0002,bf16,True,0.043292999267578125,0.4785%,,0.0,,
+test_cases.functional_redline_train/flash_atten_test_0002,bf16,True,0.043292999267578125,0.4785%,,0.0,,
+test_cases.functional_redline_train/flash_atten_test_0002,bf16,True,0.043292999267578125,0.4785%,,0.0,,
+test_cases.functional_redline_train/flash_atten_test_0002,bf16,True,0.043292999267578125,0.4785%,,0.0,,
+test_cases.functional_redline_train/flash_atten_test_0002,bf16,True,0.043292999267578125,0.4785%,,0.0,,
+test_cases.functional_redline_train/flash_atten_test_0002,bf16,True,0.043292999267578125,0.4785%,,0.0,,
