@@ -1338,6 +1338,7 @@ def quant_flash_attn_grad(
     seqused_q: pl.Ptr[pl.DT_UINT8],
     seqused_kv: pl.Ptr[pl.DT_UINT8],
     sinks: pl.Ptr[pl.DT_UINT8],
+    attn_mask: pl.Ptr[pl.DT_UINT8],
     metadata: pl.Ptr[pl.DT_UINT8],
     dq: pl.Ptr[pl.DT_UINT8],
     dk: pl.Ptr[pl.DT_UINT8],
