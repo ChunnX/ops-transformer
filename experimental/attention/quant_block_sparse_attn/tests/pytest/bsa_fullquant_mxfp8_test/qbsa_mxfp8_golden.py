@@ -1326,7 +1326,7 @@ def generate_mxfp8_inputs(case=None, max_block_per_batch=None, atten_mask_shape=
             raise ValueError(
                 "P scale input must be positive and finite after FP32 conversion"
             )
-        if p_scale_type == "float":
+        if p_scale_type == "float32":
             p_scale = p_scale_fp32
         else:
             p_scale = fp32_to_e8m0fnu_safe(
