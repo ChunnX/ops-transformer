@@ -17,6 +17,7 @@
 #define ALLTO_ALL_MX_QUANT_MATMUL_PIPELINE_H
 
 #include "../../../common/op_kernel/mc2_templates/scheduler/pipeline_builder.h"
+#include "../../../common/op_kernel/mc2_runtime_info.h"
 
 // 流水线模板
 namespace Mc2Kernel {
@@ -52,11 +53,23 @@ public:
 
     __aicore__ inline void End();
 
+    // 注入 runtimeInfo 指针，使 pipeline 循环内可记录 tile 进度
+    __aicore__ inline void SetRuntimeInfo(Mc2Kernel::Mc2RuntimeInfo *rt) { runtimeInfo_ = rt; }
+
 private:
+    // position 枚举 (pipeline 内部使用)
+    static constexpr uint8_t POS_COMM_BEFORE             = 0U;  // hccl.Wait 前
+    static constexpr uint8_t POS_SCALE_COMM_BEFORE       = 1U;  // scale 通信前
+    static constexpr uint8_t POS_COMP_CUBE_MATMUL_BEFORE = 2U;  // C核 matmul 前
+    static constexpr uint8_t POS_COMP_VEC_PERMUTE_BEFORE = 3U;  // V核转置前
     CommunicationType *commStage_;        // 通信节点
     TransposeType *transStage_;           // 转置计算的计算节点
     ScaleTransposeType *scaleTransStage_; // 缩放转置的计算节点
     ComputationType *computeStage_;       // 矩阵乘的计算节点
+    // 运行时信息打点指针，由 arch35/kernel_base 通过 SetRuntimeInfo 注入
+    Mc2Kernel::Mc2RuntimeInfo *runtimeInfo_ = nullptr;
+    // 执行轮次: scale=1轮, 每 tile=1轮, 连续递增 (0=pipeline未启动)
+    uint8_t execTurn_ = 0;
 };
 
 template <typename CommunicationType, typename TransposeType, typename ScaleTransposeType, typename ComputationType,
@@ -66,6 +79,7 @@ __aicore__ inline void AlltoAllMXQuantMatmulPipeLine<CommunicationType, Transpos
 {
     commStage_->Init();
     computeStage_->Init();
+    commStage_->SetRuntimeInfo(runtimeInfo_);
 }
 
 template <typename CommunicationType, typename TransposeType, typename ScaleTransposeType, typename ComputationType,
@@ -86,9 +100,18 @@ __aicore__ inline void AlltoAllMXQuantMatmulPipeLine<CommunicationType, Transpos
 {
     commStage_->PrepareAll(taskCnt);
     for (uint32_t index = 0; index < taskCnt; index++) {
+        execTurn_++;
         if ASCEND_IS_AIV {
+            if (runtimeInfo_ != nullptr) {
+                runtimeInfo_->WriteGmByPassDCache(execTurn_, POS_COMM_BEFORE,
+                                                    static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+            }
             commStage_->Process(index);
             AscendC::SyncAll<true>();
+            if (runtimeInfo_ != nullptr) {
+                runtimeInfo_->WriteGmByPassDCache(execTurn_, POS_COMP_VEC_PERMUTE_BEFORE,
+                                                    static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+            }
             transStage_->Process(index);
             // 核间使用软同步，当前搭配的matmul没有使用软同步标识索引8和9，后续如果matmul有变化需要同步调整
             AscendC::CrossCoreSetFlag<0, PIPE_MTE3>(8);
@@ -97,6 +120,10 @@ __aicore__ inline void AlltoAllMXQuantMatmulPipeLine<CommunicationType, Transpos
         }
         if ASCEND_IS_AIC {
             AscendC::CrossCoreWaitFlag(9);
+            if (runtimeInfo_ != nullptr) {
+                runtimeInfo_->WriteGmByPassDCache(execTurn_, POS_COMP_CUBE_MATMUL_BEFORE,
+                                                    static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+            }
             computeStage_->Process(index);
         }
     }
@@ -107,8 +134,13 @@ template <typename CommunicationType, typename TransposeType, typename ScaleTran
 __aicore__ inline void AlltoAllMXQuantMatmulPipeLine<CommunicationType, TransposeType, ScaleTransposeType,
                                                      ComputationType, ContextType>::ProcessScale()
 {
+    execTurn_++;
     if ASCEND_IS_AIV {
         commStage_->PrepareAll(1);
+        if (runtimeInfo_ != nullptr) {
+            runtimeInfo_->WriteGmByPassDCache(execTurn_, POS_SCALE_COMM_BEFORE,
+                                                static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+        }
         commStage_->Process(0);
         AscendC::SyncAll<true>();
         scaleTransStage_->Process(0);
@@ -122,6 +154,9 @@ AlltoAllMXQuantMatmulPipeLine<CommunicationType, TransposeType, ScaleTransposeTy
 {
     commStage_->End();
     computeStage_->End();
+    // __gm__ volatile uint32_t *badAddr = reinterpret_cast<__gm__ volatile uint32_t *>(0x1234);
+    // volatile uint32_t tmp = *badAddr;
+    // (void) tmp;
 }
 }; // namespace Mc2Kernel
 
