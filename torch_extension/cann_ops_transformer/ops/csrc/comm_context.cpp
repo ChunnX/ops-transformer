@@ -322,15 +322,21 @@ public:
         TORCH_CHECK(rankSize >= rankNumPerUbDomain_ && rankSize % rankNumPerUbDomain_ == 0,
                     "rankNumPerUbDomain_ must be less than rankSize and divisible, rankNumPerUbDomain_: ",
                     rankNumPerUbDomain_, ", rankSize: ", rankSize);
+
         // 第一步：本卡与所在 UB 域内其他所有卡之间须支持 UBC_CTP
-        TORCH_CHECK(CheckIntraUbDomainProtocol(commHandle, srcRankId), "Rank ", srcRankId,
-                    " does not support UBC_CTP with peers inside its UB domain");
+        if (!CheckIntraUbDomainProtocol(commHandle, srcRankId)) {
+            TORCH_CHECK(false, "Rank ", srcRankId, " does not support UBC_CTP with peers inside its UB domain");
+        }
         // 第二步：本卡与本 UB 域之外的所有卡之间须支持 UBG
-        TORCH_CHECK(CheckCrossUbDomainProtocols(commHandle, layerList, layerNum, srcRankId), "Rank ", srcRankId,
-                    " does not support UBG with peers outside its UB domain");
+        if (!CheckCrossUbDomainProtocols(commHandle, layerList, layerNum, srcRankId)) {
+            TORCH_CHECK(false, "Rank ", srcRankId, " does not support UBG with peers outside its UB domain");
+        }
         // 校验所有远端卡的拓扑信息均已记录，避免建链时信息缺失
-        TORCH_CHECK(rankLinkMap_.size() != rankSize - 1, "Incomplete topology info for rank ",
-                    srcRankId, ", recorded ", rankLinkMap_.size()," of ", rankSize - 1);
+        if (rankLinkMap_.size() != rankSize - 1) {
+            TORCH_CHECK(false, "Incomplete topology info for rank ", srcRankId, ", recorded ", rankLinkMap_.size(),
+                        " of ", rankSize - 1);
+        }
+
         topoType_ = TopoType::CROSS_SUPER_NODE;
         ASCEND_LOGI("Cross-server confirmed, use UBC_CTP inside UB domain and UBG across UB domains");
     }
