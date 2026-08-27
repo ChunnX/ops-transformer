@@ -39,7 +39,7 @@ kernel/registry ABI v1 做了编译期断言；CMake 还会链接
 L2 组装的 ACLNN L0，输入输出契约和 workspace 规划由本目录的手写 L0 adapter
 负责，Provider 变体选择由生成 registry 完成。
 
-FlashKDA 的 `` 公共参数严格对应 `l0op::FlashKda`：8 个输入 tensor、
+FlashKDA 的 `@entry` 公共参数严格对应 `l0op::FlashKda`：8 个输入 tensor、
 `scale/lowerBound` 两个属性、2 个输出 tensor；`group/dv_base/block_num` 是
 构建期 variant 选择值，只记录在 schema v2 的 `internal_parameters` 中，不进入 L0
 公共签名。registry 生成阶段会把每个 variant 的 entry binding plan 与 Provider
@@ -65,6 +65,7 @@ cmake -S . -B build-provider \
 
 cmake --build build-provider --target cust_opapi -j
 cmake --install build-provider --prefix /path/to/stage
+cmake --build build-provider --target package -j
 ```
 
 需要编译设备 smoke 时，在配置命令中增加
@@ -101,11 +102,37 @@ packages/vendors/<vendor>_transformer/
 │   ├── include/aclnnop/aclnn_flash_kda.h
 │   └── lib/libcust_opapi.so
 └── op_impl/cannbotdsl/
-    ├── index.json
+    ├── registry.json
     └── packages/ops-transformer-flash-kda/0.1.0/
         ├── manifest.json
         └── artifacts/ascend950pr/<variant-id>/provider.so
 ```
+
+### 混合 `.run` 离线验收
+
+`package` 目标生成的同一个自解压包必须同时包含传统 AscendC 算子和 Provider
+算子。建议在安装前使用只解包模式完成归档、内容和 ABI 三层检查：
+
+```bash
+run_file=/path/to/cann-ops-transformer-<vendor>_linux-<arch>.run
+extract_dir=$(mktemp -d /tmp/ops-transformer-run.XXXXXX)
+
+sha256sum "${run_file}"
+"${run_file}" --check --noexec --extract="${extract_dir}"
+
+provider_pkg="${extract_dir}/packages/vendors/<vendor>_transformer/op_impl/cannbotdsl/packages/ops-transformer-flash-kda/0.1.0"
+(cd "${provider_pkg}" && sha256sum -c checksums.sha256)
+
+nm -D -C "${extract_dir}/packages/vendors/<vendor>_transformer/op_api/lib/libcust_opapi.so" \
+  | grep -E 'aclnn(ChunkKdaFwd|FlashKda)|l0op::FlashKda'
+```
+
+该 makeself 封装的单独 `--check` 会继续执行内嵌 `install.sh`；内嵌脚本又会忽略
+未知的 `--check` 参数，因此它不是只读检查。必须同时传入 `--noexec` 和
+`--extract`。动态库依赖应对解包后的 `libcust_opapi.so` 使用与目标 CANN、驱动和
+新版 Provider ABI `libnnopbase.so` 匹配的 `LD_LIBRARY_PATH` 做 `ldd`/`dlopen`
+检查。离线构建还必须预置项目声明的第三方依赖，否则 CPack preinstall 可能进入
+依赖下载流程。
 
 ## 实机验证
 
@@ -125,6 +152,11 @@ Ascend950PR 上已完成以下验证：
   barrier 单波驻留约束；
 - `lower_bound=-5.01` 在 GetWorkspace 阶段返回 `161002`，调用前设置的非零
   workspace/executor 哨兵被主动清为 0/null；
+- 已生成并只读解包实际混合 `.run`：归档内 SHA256 校验通过，Provider 包内全部
+  文件 checksum 通过；包中同时存在 2 个传统 ChunkKda `.o`、6 个 FlashKDA
+  `provider.so`，且 `libcust_opapi.so` 同时导出 ChunkKda ACLNN、FlashKDA ACLNN
+  和 `l0op::FlashKda`。本次验证样本大小为 5,792,597 字节，整包 SHA256 为
+  `f03be6c3132873f29dc5a4994b2795568d45d0bcb6f7f087cc5c11540deffded`；
 
 ## 当前 FlashKDA 契约
 
