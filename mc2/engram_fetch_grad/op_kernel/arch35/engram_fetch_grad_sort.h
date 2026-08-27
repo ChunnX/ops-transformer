@@ -682,11 +682,14 @@ __aicore__ inline void EngramFetchGradSort::ProcessScatter(
 
             AscendC::LocalTensor<uint8_t> sortTemp =
                 sortWorkspace_.GetWithOffset<uint8_t>(tileAlignBytes_, 3U * tileAlignBytes_);
-            if (tileLen < tileElements_) {
-                AscendC::Duplicate<uint8_t>(keyLocal[tileLen], 0xFF, tileElements_ - tileLen);
-                AscendC::PipeBarrier<PIPE_V>();
+            uint32_t sortLen = (tileLen + VECTOR_LEN_INT8 - 1U) / VECTOR_LEN_INT8 * VECTOR_LEN_INT8;
+            if (sortLen > tileElements_) {
+                sortLen = tileElements_;
             }
-            AscendC::Sort<uint8_t, false, sortConfig>(sortedKey, sortIndices, keyLocal, sortTemp, tileLen);
+            if (tileLen < sortLen) {
+                AscendC::Duplicate<uint8_t>(keyLocal[tileLen], 0xFF, sortLen - tileLen);
+            }
+            AscendC::Sort<uint8_t, false, sortConfig>(sortedKey, sortIndices, keyLocal, sortTemp, sortLen);
 
             AscendC::PipeBarrier<PIPE_V>();
 
