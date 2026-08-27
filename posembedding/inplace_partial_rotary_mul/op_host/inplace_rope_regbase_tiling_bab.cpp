@@ -40,8 +40,8 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClassBAB::DoOpTiling()
         return ge::GRAPH_FAILED;
     }
     if (blockNumB_ * blockNumS_ > coreNum_) {
-        OP_LOGE(
-            context_->GetNodeName(), "split coreNum [%ld] larger than coreNum[%ld]", blockNumB_ * blockNumS_, coreNum_);
+        OP_LOGE(context_->GetNodeName(), "split coreNum [%ld] larger than coreNum[%ld]", blockNumB_ * blockNumS_,
+                coreNum_);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -137,30 +137,13 @@ void InplacePartialRopeRegBaseTilingClassBAB::PrintTilingData()
             "ubFactorS is %ld, ubTailFactorS %ld, ubLoopNumB is %ld, ubFactorB is %ld,"
             "ubTailFactorB is %ld, ubLoopNumN is %ld, ubFactorN is %ld, ubTailFactorN is %ld,"
             "rotaryMode is %ld, tilingKey is %ld, sliceStart is %ld, sliceEnd is %ld, sliceLength is %ld",
-            usedCoreNum_,
-            tilingData_.get_B(),
-            tilingData_.get_CosB(),
-            tilingData_.get_S(),
-            tilingData_.get_D(),
-            tilingData_.get_N(),
-            tilingData_.get_blockNumB(),
-            tilingData_.get_blockFactorB(),
-            tilingData_.get_blockNumS(),
-            tilingData_.get_blockFactorS(),
-            tilingData_.get_ubLoopNumS(),
-            tilingData_.get_ubFactorS(),
-            tilingData_.get_ubTailFactorS(),
-            tilingData_.get_ubLoopNumB(),
-            tilingData_.get_ubFactorB(),
-            tilingData_.get_ubTailFactorB(),
-            tilingData_.get_ubLoopNumN(),
-            tilingData_.get_ubFactorN(),
-            tilingData_.get_ubTailFactorN(),
-            tilingData_.get_rotaryMode(),
-            tilingKey_,
-            tilingData_.get_sliceStart(),
-            tilingData_.get_sliceEnd(),
-            tilingData_.get_sliceLength());
+            usedCoreNum_, tilingData_.get_B(), tilingData_.get_CosB(), tilingData_.get_S(), tilingData_.get_D(),
+            tilingData_.get_N(), tilingData_.get_blockNumB(), tilingData_.get_blockFactorB(),
+            tilingData_.get_blockNumS(), tilingData_.get_blockFactorS(), tilingData_.get_ubLoopNumS(),
+            tilingData_.get_ubFactorS(), tilingData_.get_ubTailFactorS(), tilingData_.get_ubLoopNumB(),
+            tilingData_.get_ubFactorB(), tilingData_.get_ubTailFactorB(), tilingData_.get_ubLoopNumN(),
+            tilingData_.get_ubFactorN(), tilingData_.get_ubTailFactorN(), tilingData_.get_rotaryMode(), tilingKey_,
+            tilingData_.get_sliceStart(), tilingData_.get_sliceEnd(), tilingData_.get_sliceLength());
     return;
 }
 

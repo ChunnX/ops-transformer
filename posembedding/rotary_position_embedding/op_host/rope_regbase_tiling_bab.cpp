@@ -26,9 +26,9 @@ constexpr int64_t TILING_KEY_BAB = 20020;
 
 class RopeRegBaseTilingClassBAB : public RopeRegBaseTilingClass {
 public:
-    explicit RopeRegBaseTilingClassBAB(gert::TilingContext *context_) : RopeRegBaseTilingClass(context_)
-    {
-    }
+    explicit RopeRegBaseTilingClassBAB(gert::TilingContext *context_)
+        : RopeRegBaseTilingClass(context_)
+    {}
     ~RopeRegBaseTilingClassBAB() override = default;
     void Reset(gert::TilingContext *context_) override
     {
