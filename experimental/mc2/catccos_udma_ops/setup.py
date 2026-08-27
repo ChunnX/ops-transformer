@@ -18,6 +18,8 @@ VERSION = runpy.run_path(
     os.path.join(os.path.dirname(__file__), PACKAGE_NAME, "_version.py")
 )["__version__"]
 MINIMUM_CMAKE_VERSION = (3, 18, 4)
+_TRUE_ENV_VALUES = {"1", "on", "true", "yes"}
+_FALSE_ENV_VALUES = {"", "0", "off", "false", "no"}
 
 
 def find_cmake():
@@ -49,6 +51,15 @@ def find_cmake():
             f"CMake >= {required} is required, but {cmake} reports {actual_text}."
         )
     return cmake
+
+
+def cmake_boolean_from_env(name):
+    value = os.environ.get(name, "0").strip().lower()
+    if value in _TRUE_ENV_VALUES:
+        return "ON"
+    if value in _FALSE_ENV_VALUES:
+        return "OFF"
+    raise RuntimeError(f"{name} must be a boolean value")
 
 
 class BinaryDistribution(Distribution):
@@ -97,6 +108,9 @@ class CMakeBuild(Command):
             f"-DTORCH_NPU_PATH={torch_npu_path}",
             "-DNPU_SOC_VERSION=ascend950",
             f"-DCANN_3RD_LIB_PATH={third_party_dir}",
+            "-DCATCCOS_UDMA_MSSANITIZER={}".format(
+                cmake_boolean_from_env("CATCCOS_UDMA_MSSANITIZER")
+            ),
         ]
         if os.environ.get("CATCCOS_SOURCE_PATH"):
             config.append(f"-DCATCCOS_SOURCE_PATH={os.environ['CATCCOS_SOURCE_PATH']}")

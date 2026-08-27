@@ -247,7 +247,10 @@ def _padding_stats(tensor, valid_rows):
     }
 
 
-def _run_case(case, rank, world_size, device, output_root, memory_options):
+def _run_case(
+    case, rank, world_size, device, output_root, memory_options,
+    mssanitizer_options,
+):
     shape = case["shape"]
     m, n, k = shape["m"], shape["n"], shape["k"]
     expert_num = case["expert_num"]
@@ -261,6 +264,7 @@ def _run_case(case, rank, world_size, device, output_root, memory_options):
         else m
     )
     memory_enabled = memory_options["enabled"]
+    mssanitizer_enabled = mssanitizer_options["enabled"]
     memory_report = None
     if memory_enabled:
         memory_report = {
@@ -333,6 +337,15 @@ def _run_case(case, rank, world_size, device, output_root, memory_options):
             for item in guarded_inputs
         }
     global_table_2d = global_table.view(world_size, expert_num // world_size)
+    launch_local_table = local_table
+    launch_global_table = global_table
+    launch_route_path = "device_tensor"
+    if mssanitizer_enabled and mssanitizer_options["route_input"] == "list":
+        # Use the Host values that already exist instead of introducing a D2H
+        # solely to prepare the list-mode sanitizer launch.
+        launch_local_table = list(local_values)
+        launch_global_table = list(global_values)
+        launch_route_path = "python_list"
     candidates = []
     candidate_guards = {}
     segments_override = None
@@ -349,7 +362,7 @@ def _run_case(case, rank, world_size, device, output_root, memory_options):
             _prepare_memory_safety_launch([])
             memory_report["launches"].append({"path": "ordinary", "workspace_poisoned": True})
         ordinary = udma.grouped_mat_mul_all_to_allv(
-            x, weight, local_table, global_table,
+            x, weight, launch_local_table, launch_global_table,
             ep_size=world_size, expert_num=expert_num,
         )
         torch_npu.npu.synchronize()
@@ -357,52 +370,57 @@ def _run_case(case, rank, world_size, device, output_root, memory_options):
         del ordinary
         gc.collect()
 
-        reusable_guard = None
-        if memory_enabled:
-            reusable_guard = _guarded_tensor(
-                expected.shape, torch.bfloat16, device, "gmm_a2av_out",
-                memory_options, output=True,
-            )
-            reusable_out = reusable_guard.tensor
-        else:
-            reusable_out = torch.empty(expected.shape, dtype=torch.bfloat16, device=device)
-        for repeat in range(case["accuracy"]["repeats"]):
-            path = "out_repeat_{}".format(repeat)
+        if not mssanitizer_enabled:
+            reusable_guard = None
             if memory_enabled:
-                _prepare_memory_safety_launch([reusable_guard])
-                memory_report["launches"].append({"path": path, "workspace_poisoned": True})
-            out_actual = udma.grouped_mat_mul_all_to_allv(
-                x, weight, local_table, global_table,
-                ep_size=world_size, expert_num=expert_num, out=reusable_out,
-            )
-            torch_npu.npu.synchronize()
-            candidates.append((
-                path, out_actual.clone(),
-                _padding_stats(out_actual, valid_rows),
-            ))
-            if memory_enabled:
-                candidate_guards[path] = [reusable_guard.check()]
+                reusable_guard = _guarded_tensor(
+                    expected.shape, torch.bfloat16, device, "gmm_a2av_out",
+                    memory_options, output=True,
+                )
+                reusable_out = reusable_guard.tensor
+            else:
+                reusable_out = torch.empty(
+                    expected.shape, dtype=torch.bfloat16, device=device
+                )
+            for repeat in range(case["accuracy"]["repeats"]):
+                path = "out_repeat_{}".format(repeat)
+                if memory_enabled:
+                    _prepare_memory_safety_launch([reusable_guard])
+                    memory_report["launches"].append({
+                        "path": path, "workspace_poisoned": True,
+                    })
+                out_actual = udma.grouped_mat_mul_all_to_allv(
+                    x, weight, local_table, global_table,
+                    ep_size=world_size, expert_num=expert_num, out=reusable_out,
+                )
+                torch_npu.npu.synchronize()
+                candidates.append((
+                    path, out_actual.clone(),
+                    _padding_stats(out_actual, valid_rows),
+                ))
+                if memory_enabled:
+                    candidate_guards[path] = [reusable_guard.check()]
 
-        if memory_enabled:
-            local_host = local_table.cpu().tolist()
-            global_host = global_table.cpu().tolist()
-            _prepare_memory_safety_launch([reusable_guard])
-            memory_report["launches"].append({
-                "path": "host_route", "workspace_poisoned": True,
-                "route_path": "host_list_with_h2d",
-            })
-            out_actual = udma.grouped_mat_mul_all_to_allv(
-                x, weight, local_host, global_host,
-                ep_size=world_size, expert_num=expert_num, out=reusable_out,
-            )
-            torch_npu.npu.synchronize()
-            candidates.append((
-                "host_route", out_actual.clone(),
-                _padding_stats(out_actual, valid_rows),
-            ))
-            candidate_guards["host_route"] = [reusable_guard.check()]
-        del out_actual, reusable_out
-        gc.collect()
+            if memory_enabled:
+                local_host = local_table.cpu().tolist()
+                global_host = global_table.cpu().tolist()
+                _prepare_memory_safety_launch([reusable_guard])
+                memory_report["launches"].append({
+                    "path": "host_route", "workspace_poisoned": True,
+                    "route_path": "host_list_with_h2d",
+                })
+                out_actual = udma.grouped_mat_mul_all_to_allv(
+                    x, weight, local_host, global_host,
+                    ep_size=world_size, expert_num=expert_num, out=reusable_out,
+                )
+                torch_npu.npu.synchronize()
+                candidates.append((
+                    "host_route", out_actual.clone(),
+                    _padding_stats(out_actual, valid_rows),
+                ))
+                candidate_guards["host_route"] = [reusable_guard.check()]
+            del out_actual, reusable_out
+            gc.collect()
     else:
         expected = _golden(x, weight, route_matrix, rank, world_size, expert_num)
         expected_all_to_allv = _all_to_allv_golden(
@@ -420,7 +438,7 @@ def _run_case(case, rank, world_size, device, output_root, memory_options):
             })
         if export_enabled:
             ordinary, exported_all_to_allv = udma.all_to_allv_grouped_mat_mul(
-                x, weight, local_table, global_table,
+                x, weight, launch_local_table, launch_global_table,
                 ep_size=world_size, expert_num=expert_num,
                 received_rows=received_rows,
                 output_all_to_allv=True,
@@ -440,7 +458,7 @@ def _run_case(case, rank, world_size, device, output_root, memory_options):
             additional_reports.append(("all_to_allv_export", export_report))
         else:
             ordinary = udma.all_to_allv_grouped_mat_mul(
-                x, weight, local_table, global_table,
+                x, weight, launch_local_table, launch_global_table,
                 ep_size=world_size, expert_num=expert_num,
                 received_rows=received_rows,
             )
@@ -450,116 +468,126 @@ def _run_case(case, rank, world_size, device, output_root, memory_options):
             ordinary.clone(), _padding_stats(ordinary, valid_rows),
         ))
 
-        reusable_guard = None
-        reusable_export_guard = None
-        if memory_enabled:
-            reusable_guard = _guarded_tensor(
-                ordinary.shape, torch.bfloat16, device, "a2av_gmm_out",
-                memory_options, output=True,
-            )
-            reusable_out = reusable_guard.tensor
-            if export_enabled:
-                reusable_export_guard = _guarded_tensor(
-                    expected_all_to_allv.shape, torch.bfloat16, device,
-                    "all_to_allv_export", memory_options, output=True,
-                )
-                reusable_all_to_allv_out = reusable_export_guard.tensor
-            else:
-                reusable_all_to_allv_out = None
-        else:
-            reusable_out = torch.zeros_like(ordinary)
-            reusable_all_to_allv_out = (
-                torch.empty_like(expected_all_to_allv) if export_enabled else None
-            )
-        for repeat in range(case["accuracy"]["repeats"]):
-            path = "out_repeat_{}".format(repeat)
+        if not mssanitizer_enabled:
+            reusable_guard = None
+            reusable_export_guard = None
             if memory_enabled:
+                reusable_guard = _guarded_tensor(
+                    ordinary.shape, torch.bfloat16, device, "a2av_gmm_out",
+                    memory_options, output=True,
+                )
+                reusable_out = reusable_guard.tensor
+                if export_enabled:
+                    reusable_export_guard = _guarded_tensor(
+                        expected_all_to_allv.shape, torch.bfloat16, device,
+                        "all_to_allv_export", memory_options, output=True,
+                    )
+                    reusable_all_to_allv_out = reusable_export_guard.tensor
+                else:
+                    reusable_all_to_allv_out = None
+            else:
+                reusable_out = torch.zeros_like(ordinary)
+                reusable_all_to_allv_out = (
+                    torch.empty_like(expected_all_to_allv) if export_enabled else None
+                )
+            for repeat in range(case["accuracy"]["repeats"]):
+                path = "out_repeat_{}".format(repeat)
+                if memory_enabled:
+                    launch_guards = [reusable_guard]
+                    if reusable_export_guard is not None:
+                        launch_guards.append(reusable_export_guard)
+                    _prepare_memory_safety_launch(launch_guards)
+                    memory_report["launches"].append({
+                        "path": path, "workspace_poisoned": True,
+                    })
+                else:
+                    reusable_out.zero_()
+                if export_enabled:
+                    out_actual, export_actual = udma.all_to_allv_grouped_mat_mul(
+                        x, weight, local_table, global_table,
+                        ep_size=world_size, expert_num=expert_num, out=reusable_out,
+                        received_rows=received_rows,
+                        output_all_to_allv=True,
+                        all_to_allv_out=reusable_all_to_allv_out,
+                    )
+                else:
+                    out_actual = udma.all_to_allv_grouped_mat_mul(
+                        x, weight, local_table, global_table,
+                        ep_size=world_size, expert_num=expert_num, out=reusable_out,
+                        received_rows=received_rows,
+                    )
+                torch_npu.npu.synchronize()
+                candidates.append((
+                    path, out_actual.clone(),
+                    _padding_stats(out_actual, valid_rows),
+                ))
+                if memory_enabled:
+                    candidate_guards[path] = [guard.check() for guard in launch_guards]
+                if export_enabled and memory_enabled:
+                    repeat_export_report = analyze_accuracy(
+                        export_actual, expected_all_to_allv,
+                        global_table=global_table_2d.cpu().tolist(),
+                        topk=case["accuracy"]["topk"],
+                        heatmap_bins=case["accuracy"]["heatmap_bins"],
+                    )
+                    repeat_export_report.update(
+                        case_id=case["id"], rank=rank,
+                        path="all_to_allv_export_repeat_{}".format(repeat),
+                        valid_rows=expected_all_to_allv.shape[0],
+                        padding={"elements": 0, "nonzero_count": 0, "max_abs": 0.0},
+                    )
+                    additional_reports.append((
+                        repeat_export_report["path"], repeat_export_report,
+                    ))
+
+            if memory_enabled:
+                local_host = local_table.cpu().tolist()
+                global_host = global_table.cpu().tolist()
                 launch_guards = [reusable_guard]
                 if reusable_export_guard is not None:
                     launch_guards.append(reusable_export_guard)
                 _prepare_memory_safety_launch(launch_guards)
-                memory_report["launches"].append({"path": path, "workspace_poisoned": True})
-            else:
-                reusable_out.zero_()
-            if export_enabled:
-                out_actual, export_actual = udma.all_to_allv_grouped_mat_mul(
-                    x, weight, local_table, global_table,
-                    ep_size=world_size, expert_num=expert_num, out=reusable_out,
-                    received_rows=received_rows,
-                    output_all_to_allv=True,
-                    all_to_allv_out=reusable_all_to_allv_out,
-                )
-            else:
-                out_actual = udma.all_to_allv_grouped_mat_mul(
-                    x, weight, local_table, global_table,
-                    ep_size=world_size, expert_num=expert_num, out=reusable_out,
-                    received_rows=received_rows,
-                )
-            torch_npu.npu.synchronize()
-            candidates.append((
-                path, out_actual.clone(),
-                _padding_stats(out_actual, valid_rows),
-            ))
-            if memory_enabled:
-                candidate_guards[path] = [guard.check() for guard in launch_guards]
-            if export_enabled and memory_enabled:
-                repeat_export_report = analyze_accuracy(
-                    export_actual, expected_all_to_allv,
-                    global_table=global_table_2d.cpu().tolist(),
-                    topk=case["accuracy"]["topk"],
-                    heatmap_bins=case["accuracy"]["heatmap_bins"],
-                )
-                repeat_export_report.update(
-                    case_id=case["id"], rank=rank,
-                    path="all_to_allv_export_repeat_{}".format(repeat),
-                    valid_rows=expected_all_to_allv.shape[0],
-                    padding={"elements": 0, "nonzero_count": 0, "max_abs": 0.0},
-                )
-                additional_reports.append((repeat_export_report["path"], repeat_export_report))
-
-        if memory_enabled:
-            local_host = local_table.cpu().tolist()
-            global_host = global_table.cpu().tolist()
-            launch_guards = [reusable_guard]
-            if reusable_export_guard is not None:
-                launch_guards.append(reusable_export_guard)
-            _prepare_memory_safety_launch(launch_guards)
-            memory_report["launches"].append({
-                "path": "host_route", "workspace_poisoned": True,
-                "route_path": "host_list_with_h2d_and_route_metadata",
-            })
-            if export_enabled:
-                out_actual, export_actual = udma.all_to_allv_grouped_mat_mul(
-                    x, weight, local_host, global_host,
-                    ep_size=world_size, expert_num=expert_num, out=reusable_out,
-                    received_rows=received_rows, output_all_to_allv=True,
-                    all_to_allv_out=reusable_all_to_allv_out,
-                )
-            else:
-                out_actual = udma.all_to_allv_grouped_mat_mul(
-                    x, weight, local_host, global_host,
-                    ep_size=world_size, expert_num=expert_num, out=reusable_out,
-                    received_rows=received_rows,
-                )
-            torch_npu.npu.synchronize()
-            candidates.append((
-                "host_route", out_actual.clone(),
-                _padding_stats(out_actual, valid_rows),
-            ))
-            candidate_guards["host_route"] = [guard.check() for guard in launch_guards]
-            if export_enabled:
-                host_export_report = analyze_accuracy(
-                    export_actual, expected_all_to_allv,
-                    global_table=global_table_2d.cpu().tolist(),
-                    topk=case["accuracy"]["topk"],
-                    heatmap_bins=case["accuracy"]["heatmap_bins"],
-                )
-                host_export_report.update(
-                    case_id=case["id"], rank=rank, path="all_to_allv_export_host_route",
-                    valid_rows=expected_all_to_allv.shape[0],
-                    padding={"elements": 0, "nonzero_count": 0, "max_abs": 0.0},
-                )
-                additional_reports.append((host_export_report["path"], host_export_report))
+                memory_report["launches"].append({
+                    "path": "host_route", "workspace_poisoned": True,
+                    "route_path": "host_list_with_h2d_and_route_metadata",
+                })
+                if export_enabled:
+                    out_actual, export_actual = udma.all_to_allv_grouped_mat_mul(
+                        x, weight, local_host, global_host,
+                        ep_size=world_size, expert_num=expert_num, out=reusable_out,
+                        received_rows=received_rows, output_all_to_allv=True,
+                        all_to_allv_out=reusable_all_to_allv_out,
+                    )
+                else:
+                    out_actual = udma.all_to_allv_grouped_mat_mul(
+                        x, weight, local_host, global_host,
+                        ep_size=world_size, expert_num=expert_num, out=reusable_out,
+                        received_rows=received_rows,
+                    )
+                torch_npu.npu.synchronize()
+                candidates.append((
+                    "host_route", out_actual.clone(),
+                    _padding_stats(out_actual, valid_rows),
+                ))
+                candidate_guards["host_route"] = [
+                    guard.check() for guard in launch_guards
+                ]
+                if export_enabled:
+                    host_export_report = analyze_accuracy(
+                        export_actual, expected_all_to_allv,
+                        global_table=global_table_2d.cpu().tolist(),
+                        topk=case["accuracy"]["topk"],
+                        heatmap_bins=case["accuracy"]["heatmap_bins"],
+                    )
+                    host_export_report.update(
+                        case_id=case["id"], rank=rank,
+                        path="all_to_allv_export_host_route",
+                        valid_rows=expected_all_to_allv.shape[0],
+                        padding={"elements": 0, "nonzero_count": 0, "max_abs": 0.0},
+                    )
+                    additional_reports.append((
+                        host_export_report["path"], host_export_report,
+                    ))
 
     if memory_enabled:
         torch_npu.npu.synchronize()
@@ -709,6 +737,12 @@ def _run_case(case, rank, world_size, device, output_root, memory_options):
             }
             if memory_enabled else {"enabled": False}
         ),
+        "mssanitizer": {
+            "enabled": mssanitizer_enabled,
+            "route_input": launch_route_path if mssanitizer_enabled else None,
+            "target_launches_per_rank": 1 if mssanitizer_enabled else None,
+            "caller_provided_out": False if mssanitizer_enabled else None,
+        },
     }
     write_json(case_root / "summary.json", summary)
     del candidates
@@ -721,17 +755,27 @@ def main():
     parser.add_argument("--resolved-cases", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--memory-safety", action="store_true")
+    parser.add_argument("--mssanitizer", action="store_true")
+    parser.add_argument(
+        "--mssanitizer-route-input", choices=("tensor", "list"), default="tensor"
+    )
     parser.add_argument("--hbm-reserve-bytes", type=int, default=2 << 30)
     parser.add_argument("--hbm-poison-chunk-bytes", type=int, default=256 << 20)
     parser.add_argument("--guard-bytes", type=int, default=16 << 20)
     parser.add_argument("--fingerprint-elements", type=int, default=1 << 20)
     args = parser.parse_args()
+    if args.memory_safety and args.mssanitizer:
+        raise ValueError("--memory-safety and --mssanitizer are mutually exclusive")
     memory_options = {
         "enabled": args.memory_safety,
         "hbm_reserve_bytes": args.hbm_reserve_bytes,
         "hbm_poison_chunk_bytes": args.hbm_poison_chunk_bytes,
         "guard_bytes": args.guard_bytes,
         "fingerprint_elements": args.fingerprint_elements,
+    }
+    mssanitizer_options = {
+        "enabled": args.mssanitizer,
+        "route_input": args.mssanitizer_route_input,
     }
     cases = read_resolved_cases(args.resolved_cases)
     rank = int(os.environ["RANK"])
@@ -766,7 +810,8 @@ def main():
         initialized_udma = True
         for case in cases:
             summary = _run_case(
-                case, rank, world_size, device, output_root, memory_options
+                case, rank, world_size, device, output_root, memory_options,
+                mssanitizer_options,
             )
             dist.barrier()
             if rank == 0:

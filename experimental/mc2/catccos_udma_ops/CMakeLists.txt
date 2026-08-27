@@ -60,6 +60,19 @@ include("${OPS_TRANSFORMER_ROOT}/cmake/third_party/catccos.cmake")
 
 set(NPU_SOC_VERSION "ascend950" CACHE STRING "NPU SOC version")
 set(EXTENSION_MODULE_NAME "ops_transformer_catccos_udma" CACHE STRING "PyTorch operator namespace")
+option(CATCCOS_UDMA_MSSANITIZER
+    "Build Ascend device kernels with msSanitizer instrumentation and line information" OFF)
+set(CATCCOS_UDMA_ASCEND_SANITIZER_FLAGS "")
+set(CATCCOS_UDMA_ASCEND_SANITIZER_LINK_OPTIONS "")
+if(CATCCOS_UDMA_MSSANITIZER)
+    set(CATCCOS_UDMA_ASCEND_SANITIZER_FLAGS "-g --cce-enable-sanitizer")
+    set(CATCCOS_UDMA_ASCEND_SANITIZER_LINK_OPTIONS
+        --cce-fatobj-link
+        --cce-enable-sanitizer
+    )
+    message(STATUS
+        "Enable Ascend device msSanitizer instrumentation and source-line information")
+endif()
 if(NOT NPU_SOC_VERSION STREQUAL "ascend950")
     message(FATAL_ERROR "CatCCOS UDMA operators currently support only NPU_SOC_VERSION=ascend950")
 endif()
@@ -208,7 +221,10 @@ set_target_properties(_C PROPERTIES
     INSTALL_RPATH "\$ORIGIN/.libs"
     BUILD_RPATH_USE_ORIGIN ON
 )
-target_link_options(_C PRIVATE -Wl,--disable-new-dtags)
+target_link_options(_C PRIVATE
+    -Wl,--disable-new-dtags
+    ${CATCCOS_UDMA_ASCEND_SANITIZER_LINK_OPTIONS}
+)
 target_compile_definitions(_C PRIVATE Py_LIMITED_API=0x03080000)
 target_compile_options(_C PRIVATE ${COMPILE_OPTIONS})
 target_include_directories(_C PRIVATE ${INCLUDE_DIRECTORIES})

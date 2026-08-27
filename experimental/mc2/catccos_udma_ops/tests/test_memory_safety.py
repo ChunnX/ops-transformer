@@ -31,16 +31,47 @@ def test_workspace_poison_excludes_sync_tail_and_is_registered():
     assert 'm.def("_poison_udma_workspace' in host_source
 
 
-def test_mssanitizer_filters_nan_fill_kernels_by_default():
+def test_mssanitizer_uses_single_launch_path_without_nan_poison():
     launcher = (
         PROJECT_ROOT / "scripts" / "run_mssanitizer.sh"
     ).read_text(encoding="utf-8")
     filter_position = launcher.index('command+=(--kernel-name="${kernel_name}")')
-    worker_position = launcher.index(
-        'command+=(-- bash "${SCRIPT_DIR}/run_memory_safety.sh" "$@")'
-    )
+    worker_position = launcher.index('python3 "${PROJECT_DIR}/validation/run_accuracy.py"')
     assert "MSSANITIZER_KERNEL_NAME:-Grouped" in launcher
     assert filter_position < worker_position
+    assert "run_memory_safety.sh" not in launcher
+    assert "--mssanitizer" in launcher
+    assert "MSSANITIZER_ROUTE_INPUT:-tensor" in launcher
+
+    controller = (
+        PROJECT_ROOT / "validation" / "run_accuracy.py"
+    ).read_text(encoding="utf-8")
+    worker = (
+        PROJECT_ROOT / "validation" / "accuracy_worker.py"
+    ).read_text(encoding="utf-8")
+    assert "--mssanitizer requires exactly one selected case" in controller
+    assert "if not mssanitizer_enabled:" in worker
+    assert '"target_launches_per_rank": 1 if mssanitizer_enabled else None' in worker
+    assert '"caller_provided_out": False if mssanitizer_enabled else None' in worker
+
+
+def test_mssanitizer_wheel_enables_device_debug_and_instrumentation():
+    root_cmake = (PROJECT_ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+    setup_source = (PROJECT_ROOT / "setup.py").read_text(encoding="utf-8")
+    assert "option(CATCCOS_UDMA_MSSANITIZER" in root_cmake
+    assert (
+        'set(CATCCOS_UDMA_ASCEND_SANITIZER_FLAGS '
+        '"-g --cce-enable-sanitizer")'
+    ) in root_cmake
+    assert "--cce-fatobj-link" in root_cmake
+    assert "${CATCCOS_UDMA_ASCEND_SANITIZER_LINK_OPTIONS}" in root_cmake
+    assert 'cmake_boolean_from_env("CATCCOS_UDMA_MSSANITIZER")' in setup_source
+    for relative in (
+        "csrc/all_to_allv_grouped_mat_mul_udma/ascend950/CMakeLists.txt",
+        "csrc/grouped_mat_mul_all_to_allv_udma/ascend950/CMakeLists.txt",
+    ):
+        source = (PROJECT_ROOT / relative).read_text(encoding="utf-8")
+        assert "${CATCCOS_UDMA_ASCEND_SANITIZER_FLAGS}" in source
 
 
 def test_nan_red_zones_detect_a_corrupted_suffix():

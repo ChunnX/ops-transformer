@@ -34,6 +34,14 @@ def main():
         "--memory-safety", action="store_true",
         help="poison HBM/workspace and add red-zone, unwritten-output and mutation checks",
     )
+    parser.add_argument(
+        "--mssanitizer", action="store_true",
+        help="launch exactly one selected case once per rank for msSanitizer",
+    )
+    parser.add_argument(
+        "--mssanitizer-route-input", choices=("tensor", "list"), default="tensor",
+        help="route metadata representation used by the single msSanitizer launch",
+    )
     parser.add_argument("--hbm-reserve-gib", type=float, default=2.0)
     parser.add_argument("--hbm-poison-chunk-mib", type=int, default=256)
     parser.add_argument("--guard-mib", type=int, default=16)
@@ -43,6 +51,12 @@ def main():
         load_case_manifest(args.cases), mode="accuracy",
         case_ids=args.case_id, include_tags=args.include_tag,
     )
+    if args.memory_safety and args.mssanitizer:
+        raise ValueError("--memory-safety and --mssanitizer are mutually exclusive")
+    if args.mssanitizer and len(cases) != 1:
+        raise ValueError(
+            "--mssanitizer requires exactly one selected case; pass one --case-id"
+        )
     output_root = Path(args.output_dir or (HERE.parent / "validation_results" / timestamp() / "accuracy")).resolve()
     if output_root.exists() and any(output_root.iterdir()):
         raise RuntimeError("output directory is not empty: {}".format(output_root))
@@ -84,6 +98,11 @@ def main():
                 "--hbm-poison-chunk-bytes", str(args.hbm_poison_chunk_mib << 20),
                 "--guard-bytes", str(args.guard_mib << 20),
                 "--fingerprint-elements", str(args.fingerprint_elements),
+            ])
+        elif args.mssanitizer:
+            command.extend([
+                "--mssanitizer",
+                "--mssanitizer-route-input", args.mssanitizer_route_input,
             ])
         print("+ " + " ".join(command), flush=True)
         result = subprocess.run(command, cwd=str(output_root), env=environment)

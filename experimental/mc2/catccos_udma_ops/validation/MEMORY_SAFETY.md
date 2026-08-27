@@ -39,13 +39,38 @@ bash scripts/run_memory_safety.sh \
 
 ## msSanitizer（补充手段）
 
+普通 Release Wheel 没有 Device sanitizer 插桩和源码行信息。先显式构建并安装专用 Wheel：
+
+```bash
+CATCCOS_UDMA_MSSANITIZER=1 bash scripts/build_wheel.sh
+python3 -m pip install --force-reinstall --no-deps dist/*.whl
+```
+
+该开关会对两个 Ascend Device kernel 添加 `-g --cce-enable-sanitizer`，并在扩展链接阶段添加 `--cce-fatobj-link --cce-enable-sanitizer`。其中 `-g` 用于让异常报告显示文件名、代码行和调用栈。sanitizer Wheel 含调试信息且只用于定位，完成检查后应重新安装默认 Release Wheel。
+
+随后运行：
+
 ```bash
 bash scripts/run_mssanitizer.sh --case-id mem_a2av_gmm_tail_zero_experts_ep2
 ```
 
-默认启用 `memcheck,initcheck`，可用 `MSSANITIZER_TOOLS=memcheck` 覆盖。该工具适合发现本地 GM/MTE 越界和未初始化访问；当前交付固定的 SHMEM 版本不保证所有 UDMA peer 访存都能被插桩，因此它不能替代 workspace poison、red zone 与多 rank 精度检查。
+msSanitizer 路径与前述 NaN poison/red-zone 测试相互独立：不刷写 HBM、workspace 或输出，不传入可复用 `out`，并要求最终只选中一个 case；使用默认的四 case 清单时必须传入一个 `--case-id`。每个 Rank 只 launch 一次目标 kernel；通信算子必须由所有 Rank 共同执行，所以 EP=N 时整次任务仍会看到 N 个 Rank 各自的一次 launch。
 
-脚本默认向 msSanitizer 传入 `--kernel-name=Grouped`，只插桩两个交付 kernel，HBM/workspace/output 的 NaN Fill 仍会执行但不会进入采集结果。若本地编译产物的 kernel 名发生变化，可通过环境变量覆盖；也可以用下面两个精确模式分别检测两个方向：
+路由默认使用 Device Tensor。需要单独检测 Python list 路由路径时，可以任选一种写法；该模式会用 list 替代 Tensor 完成唯一一次 launch，而不是额外增加一次 launch：
+
+```bash
+MSSANITIZER_ROUTE_INPUT=list \
+  bash scripts/run_mssanitizer.sh \
+  --case-id mem_a2av_gmm_tail_zero_experts_ep2
+
+bash scripts/run_mssanitizer.sh \
+  --mssanitizer-route-input list \
+  --case-id mem_a2av_gmm_tail_zero_experts_ep2
+```
+
+默认启用 `memcheck,initcheck`，可用 `MSSANITIZER_TOOLS=memcheck` 覆盖。该工具适合发现本地 GM/MTE 越界和未初始化访问；当前交付固定的 SHMEM 版本不保证所有 UDMA peer 访存都能被插桩，因此独立的 workspace poison、red zone 与多 Rank 精度检查仍然保留在 `run_memory_safety.sh` 中。
+
+脚本默认向 msSanitizer 传入 `--kernel-name=Grouped`，只插桩两个交付 kernel；sanitizer 路径不会再执行 HBM/workspace/output 的 NaN Fill。若本地编译产物的 kernel 名发生变化，可通过环境变量覆盖；也可以用下面两个精确模式分别检测两个方向：
 
 ```bash
 MSSANITIZER_KERNEL_NAME=Ascend950AllToAllVGroupedMatmul \
