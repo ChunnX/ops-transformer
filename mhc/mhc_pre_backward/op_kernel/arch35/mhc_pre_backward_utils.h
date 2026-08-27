@@ -18,7 +18,6 @@
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
-#include "mm_extension_interface/mm_custom_mm_policy.h"
 
 namespace MhcPreBackwardUtils {
 
