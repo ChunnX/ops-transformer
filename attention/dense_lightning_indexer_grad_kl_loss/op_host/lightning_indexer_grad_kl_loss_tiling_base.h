@@ -39,6 +39,7 @@ using namespace AscendC;
 namespace optiling {
 
 static const int64_t MAX_VAR_LEN_SEQ_LEN = 4096L;
+static constexpr int64_t MAX_SEQ_LENGTH = 1024L * 1024L;
 static const int64_t PING_PONG_VALUE = 2L;
 static const int64_t GM_ALIGN = 512;
 static const int32_t FRACTAL_NUM = 16L;

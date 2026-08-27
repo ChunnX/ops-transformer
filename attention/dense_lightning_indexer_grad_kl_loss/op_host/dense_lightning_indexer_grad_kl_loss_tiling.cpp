@@ -351,6 +351,8 @@ bool DenseLightningIndexerGradKLLossTilingBase::Analyze3DimLayout(const gert::Sh
                 return false);
             maxS1Val = *std::max_element(actualSeqLenData.begin(), actualSeqLenData.end());
             maxS2Val = *std::max_element(actualSeqLenKData.begin(), actualSeqLenKData.end());
+            OP_CHECK_IF(!CheckSeqLenLimit(maxS1Val, maxS2Val),
+                OP_LOGE(opName, "TND sequence length check failed."), return false);
             s1Size = maxS1Val;
             s2Size = maxS2Val;
             n2Size = keyShape.GetDim(1);
@@ -370,6 +372,8 @@ bool DenseLightningIndexerGradKLLossTilingBase::Analyze3DimLayout(const gert::Sh
         }
     } else if (layoutLen == 4UL){
         if (inputLayout[0] == 'B' && inputLayout[1] == 'S' && inputLayout[2] == 'N' && inputLayout[3] == 'D') {
+            OP_CHECK_IF(!CheckSeqLenLimit(queryShape.GetDim(1), keyShape.GetDim(1)),
+                OP_LOGE(opName, "BSND sequence length check failed."), return false);
             bSize = queryShape.GetDim(0);
             s1Size = queryShape.GetDim(1);
             s2Size = keyShape.GetDim(1);
@@ -399,6 +403,20 @@ bool DenseLightningIndexerGradKLLossTilingBase::Analyze3DimLayout(const gert::Sh
         return false;
     }
 
+    return true;
+}
+
+bool DenseLightningIndexerGradKLLossTilingBase::CheckSeqLenLimit(int64_t querySeqLength,
+                                                                 int64_t keySeqLength) const
+{
+    OP_CHECK_IF(querySeqLength < 0 || querySeqLength > MAX_SEQ_LENGTH,
+                OP_LOGE(opName, "Query sequence length[%ld] exceeds max supported sequence length[%ld].",
+                        querySeqLength, MAX_SEQ_LENGTH),
+                return false);
+    OP_CHECK_IF(keySeqLength < 0 || keySeqLength > MAX_SEQ_LENGTH,
+                OP_LOGE(opName, "Key sequence length[%ld] exceeds max supported sequence length[%ld].",
+                        keySeqLength, MAX_SEQ_LENGTH),
+                return false);
     return true;
 }
 

@@ -70,6 +70,8 @@ protected:
         s2Size = 0;
         accumS1 = 0;
         accumS2 = 0;
+        maxS1Val = 0;
+        maxS2Val = 0;
         sparseMode = 3;
         scaleValue = 1.0f;
 
@@ -104,6 +106,7 @@ protected:
     bool AnalyzeDtype();
     bool AnalyzeLayout();
     bool CrossShapeVerify(const gert::Shape &queryRopeShape, const gert::Shape &keyRopeShape);
+    bool CheckSeqLenLimit(int64_t querySeqLength, int64_t keySeqLength) const;
     bool Analyze3DimLayout(const gert::Shape &queryShape, const gert::Shape &keyShape,
                            const gert::Shape &queryIndexShape, const gert::Shape &keyIndexShape,
                            size_t layoutLen, const gert::Shape &queryRopeShape, const gert::Shape &keyRopeShape);
