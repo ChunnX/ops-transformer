@@ -661,7 +661,7 @@ __aicore__ inline void QuantCompressorVec1SliceIterator<COMP>::IteratorSlice()
                 //   超出的行属于下一个 batch 或窗口外，不得推进。
                 if (sliceInfo_.sIdx > 0) {
                     uint64_t nextAlignSIdx =
-                        Align(sliceInfo_.bStartPos + sliceInfo_.sIdx, static_cast<uint64_t>(cmpRatio)) -
+                        Align(sliceInfo_.bStartPos + sliceInfo_.sIdx, (cmpRatio)) -
                         sliceInfo_.bStartPos;
                     uint32_t align =
                         min(static_cast<uint32_t>(nextAlignSIdx - sliceInfo_.sIdx), seqLength - sliceInfo_.sIdx);
@@ -681,12 +681,12 @@ __aicore__ inline void QuantCompressorVec1SliceIterator<COMP>::IteratorSlice()
                 uint32_t tcGap;
                 if (sliceInfo_.sIdx == 0) {
                     tcGap = static_cast<uint32_t>(
-                        CeilDivT(sliceInfo_.bStartPos + seqLength, static_cast<uint64_t>(cmpRatio)) -
-                        sliceInfo_.bStartPos / static_cast<uint64_t>(cmpRatio));
+                        CeilDivT(sliceInfo_.bStartPos + seqLength, (cmpRatio)) -
+                        sliceInfo_.bStartPos / (cmpRatio));
                 } else {
                     tcGap = static_cast<uint32_t>(
-                        CeilDivT(sliceInfo_.bStartPos + seqLength, static_cast<uint64_t>(cmpRatio)) -
-                        CeilDivT(sliceInfo_.bStartPos + sliceInfo_.sIdx, static_cast<uint64_t>(cmpRatio)));
+                        CeilDivT(sliceInfo_.bStartPos + seqLength, (cmpRatio)) -
+                        CeilDivT(sliceInfo_.bStartPos + sliceInfo_.sIdx, (cmpRatio)));
                 }
 
                 if (needDealTcSize_ < tcGap) {

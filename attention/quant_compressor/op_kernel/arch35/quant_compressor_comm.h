@@ -83,7 +83,7 @@ enum class CACHE_MODE : std::uint8_t {
 
 enum class QUANT_MODE : std::uint8_t { A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL = static_cast<std::uint8_t>(1) };
 
-enum class TEMPLATE_ID : uint8_t { NORMAL = 0, EMPTY_X = 1, FULL_LOAD = 2 };
+enum class TEMPLATE_ID : uint8_t { EMPTY_X = 0, NORMAL = 1, FULL_LOAD = 2 };
 
 template <X_LAYOUT X_L, X_DTYPE X_T, COFF C, CACHE_MODE Cache_Mode, QUANT_MODE Quant_Mode, typename... Args>
 struct COMPType {

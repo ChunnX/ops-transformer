@@ -90,7 +90,7 @@ enum class GRAD_ENABLED : std::uint8_t {
     DISABLE = static_cast<std::uint8_t>(0),
     ENABLE  = static_cast<std::uint8_t>(1)
 };
-enum class TEMPLATE_ID : uint8_t { NORMAL = 0, EMPTY_X = 1, FULL_LOAD = 2 };
+enum class TEMPLATE_ID : uint8_t { EMPTY_X = 0, NORMAL = 1, FULL_LOAD = 2 };
 
 template <X_LAYOUT X_L, X_DTYPE X_T, COFF C, CACHE_MODE Cache_Mode, GRAD_ENABLED G, typename... Args>
 struct COMPType {
