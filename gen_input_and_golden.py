@@ -1727,44 +1727,12 @@ class GenInputAndGolden():
         gate_row = gmm1_row[:half_width]
         self.print_golden_debug_values(910002, "gmm1_gate", gate_row, 20)
         self.print_golden_debug_values(910002, "gmm1_up", gmm1_row[half_width:], 20)
-        self.print_golden_debug_values(912201, "gmm1_fixpipe_control", gate_row, 20)
 
     def print_activation_debug_values(self, swiglu_row, quant_row, scale_row):
         self.print_golden_debug_values(910003, "swiglu", swiglu_row, 20)
         self.print_golden_debug_values(910003, "quant_data", quant_row, 20)
         self.print_golden_debug_values(910003, "quant_scale", scale_row, 8)
 
-    def print_gmm2_partial_debug_values(
-        self, quant_input, weight, weight_scale, input_scale, unit_weight_scale
-    ):
-        input_dequant = _dequant_qbmm_input(quant_input, input_scale)
-        weight_dequant = _dequant_qbmm_weight(
-            weight, weight_scale, unit_weight_scale
-        )
-        input_tensor = torch.from_numpy(input_dequant[:1]).to(torch.float32)
-        weight_tensor = torch.from_numpy(weight_dequant).to(torch.float32)
-        partial = torch.zeros((1, weight_tensor.shape[-1]), dtype=torch.float32)
-        chunk_k = 128
-        marker = 912101
-        for k_start in range(0, input_tensor.shape[-1], chunk_k):
-            k_end = min(k_start + chunk_k, input_tensor.shape[-1])
-            chunk = torch.matmul(
-                input_tensor[:, k_start:k_end], weight_tensor[k_start:k_end, :]
-            )
-            partial += chunk
-            self.print_golden_debug_values(
-                marker,
-                f"gmm2_partial_k{k_end}",
-                partial[0].to(torch.bfloat16),
-                20,
-            )
-            self.print_golden_debug_values(
-                marker + 10,
-                f"gmm2_isolated_chunk_k{k_start}_{k_end}",
-                chunk[0].to(torch.bfloat16),
-                20,
-            )
-            marker += 1
 
     def __init__(self, **kwargs):
         self.bs = kwargs['bs']
@@ -2367,14 +2335,6 @@ class GenInputAndGolden():
             stage_times["swiglu_quant"] = time.perf_counter() - stage_start
 
             stage_start = time.perf_counter()
-            if global_expert_idx == 0:
-                self.print_gmm2_partial_debug_values(
-                    quant_output,
-                    weight2[0],
-                    weight_scale2[0],
-                    per_token_scale,
-                    use_fast_random_weight,
-                )
             output2 = qbmm_mx_golden_calculate(
                 [quant_output],
                 [weight2[0]],
@@ -2946,14 +2906,6 @@ class GenInputAndGolden():
                 quant_scale_output = [
                     perTokenScale_input[split_indices[i]:split_indices[i + 1]] for i in range(cur_expert_num)
                 ]
-                if debug_expert_zero:
-                    self.print_gmm2_partial_debug_values(
-                        quant_output[0],
-                        weight2_list[0],
-                        weight2_scale_list[0],
-                        quant_scale_output[0],
-                        use_fast_random_weight,
-                    )
                 output2 = qbmm_mx_golden_calculate(
                     quant_output, weight2_list, weight2_scale_list, quant_scale_output,
                     batch_matmul=self.golden_batch_matmul,

@@ -23,7 +23,7 @@
 
 | 编号 | 优先级 | 状态 | 整改项 | 主要依赖 |
 |---|---|---|---|---|
-| R01 | P0 | 定位中 | 修正 arch92 自研 A8W8 BlockMmad 的 GMM2 结果 | A6 实机日志 |
+| R01 | P1/P2 | 单 L0 slot 正确性已闭环/双 slot 待恢复 | 验证并恢复 arch92 自研 MX FP8 BlockMmad 的 L0 operand 双缓冲 | arch92 原生 MX MMAD 参考与 A6 实机验证 |
 | R02 | P0 | 外部阻塞/本仓有绕过 | 恢复共享专家 GMM1 路径 | CANN CopyL0C2UB 接口一致性或本地兼容实现 |
 | R03 | P1 | 未完成 | 删除 arch92 A8W4/A4W4 类型和控制流残留 | R01 稳定后执行 |
 | R04 | P1 | 未完成 | 系统清理 1C2V、AIV0/AIV1、subBlock 遗留语义 | 无 |
@@ -38,37 +38,143 @@
 | R13 | P3 | 待 profiling | 扩大量化 Combine ring | R09 |
 | R14 | P3 | 未实现 | Dispatch/Activation/Combine 跨阶段 MTE 重叠 | R09、R10/R11 |
 | R15 | P3 | 明确延后 | 改进 Wave 专家装箱，使每轮在超过目标负载后尽量贴近目标 | 当前首版正确性稳定 |
-| R16 | P1 | 待正确性闭环后清理 | 删除 BlockMmad 临时诊断代码和解码脚本 | R01 |
+| R16 | P1 | 待一次干净回归后清理 | 删除 BlockMmad 临时诊断代码和解码脚本 | R01 的定位结论已固化 |
 | R17 | P1 | 未完成 | 清理 arch92 Params/公共类型中的 URMA 不可达代码 | R01、R02 稳定后执行 |
 
 ## 3. P0 正确性与功能缺口
 
-### R01 修正自研 A8W8 BlockMmad 的 GMM2 结果
+### R01 验证并恢复自研 MX FP8 BlockMmad 的 L0 operand 双缓冲
 
-**当前事实**
+#### 1. 问题背景与原始现象
 
-- Dispatch、GMM1 gate/up、SwiGLU、Activation 量化数据和量化 scale 已与 golden 对齐。
-- GMM2 的完整 Activation、ScaleA、Weight2、ScaleB hash 已与 golden 对齐。
-- 第一个错误边界是 GMM2 输出。
-- 当前典型问题形状为 `M=1, N=4096, K=512, scaleK=16`，首个输出 tile 为 `1x256`。
-- arch92 使用仓内专用 `mega_moe_block_mmad_mx_fp8.h`，不能依赖 A6 CANN 包中不存在的 A5 `BlockMmad<MatmulWithScaleMx>` 实现。
+arch92 A8W8 不能依赖目标 A6 CANN 包中缺失的 A5
+`BlockMmad<MatmulWithScaleMx>` 实例，因此当前使用仓内实现：
 
-**待修改**
+`mc2/mega_moe/op_kernel/arch92/blaze/gemm/block/mega_moe_block_mmad_mx_fp8.h`
 
-1. 根据一次性打点结果确定首次错误发生在：
-   - 第一个或后续 K=128 累加片段；
-   - MX ScaleA/ScaleB 的 K-group 地址或装载布局；
-   - L1/L0A/L0B 搬运和 ND/NZ 路由；
-   - MMAD 累加初始化/复用；
-   - L0C 到 GM 的 Fixpipe 输出。
-2. 对照 `ops-tensor/include/blaze/gemm/block` 中 A6 原生 A8W8 实现核对以下行为，而不是直接引用 ops-tensor 头文件：
-   - `baseM/baseN/baseK` 和小 M 路由；
-   - ScaleA/ScaleB 的物理排布、stride 和 K-group 推进；
-   - K-tail 与 `scaleK` 对齐；
-   - L0A/L0B ping-pong 和 L0C 累加生命周期；
-   - Fixpipe 的 dtype、quant mode、stride 和同步。
-3. 保持 GMM1 与 GMM2 共用同一 BlockMmad 主体，但不能以“GMM1 正确”推断 GMM2 的所有参数组合正确；两者的 M、N、K、尾块和权重布局不同。
-4. 修复必须作用于业务输出路径，不能只修改诊断用的 L0C2UB 旁路。
+初版仿照 A5/3510 QBMM，对每个 K=128 的 MMAD chunk 交替使用两个 L0 operand slot：
+
+```cpp
+bufferIndex = l0BufferIndex & 1;
+l0Offset = bufferIndex * halfL0Size;
+```
+
+同一个 `bufferIndex/l0Offset` 同时选择 L0A、L0B、L0ScaleA、L0ScaleB 以及对应的
+`MTE1_M`/`M_MTE1` Event。目标 GMM2 首个输出 tile 的形状为
+`M=1, N=256, K=512`，由四个 K=128 chunk 累加。原始 golden 前 4 个结果为
+`[31.0, 48.5, -39.0, 33.75]`，错误结果前 4 个为
+`[75.5, 37.5, -24.25, 59.0]`。
+
+Dispatch、GMM1 gate/up、SwiGLU、Activation FP8 量化数据与 E8M0 scale 均已对齐，
+错误首次出现在 GMM2 内部。
+
+#### 2. 已验证的定位证据
+
+GMM2 进入 BlockMmad 前的以下数据已与 golden 对齐：
+
+- Activation FP8 A 与 E8M0 ScaleA。
+- Weight2 FP8 B 与 E8M0 ScaleB。
+- 完整 Activation、Weight2、ScaleA、ScaleB hash。
+- GMM2 的 M/N/K、K chunk offset 和 scale offset。
+
+`912101..912104` 分别输出每个 K=128 chunk 累加后的生产 L0C。双 slot 版本中，
+`912101` 正确，`912102` 开始偏离，说明第一次错误发生在第二个 K chunk 参与计算时。
+
+为排除生产 L0C 的历史累加影响，`912111..912114` 又将四个 K chunk 分别放入独立初始化的
+debug L0C 计算。在物理 AIC8 上结果如下：
+
+| Marker | K 范围 | 使用的 L0 slot | 双 slot 版本结果 |
+|---|---:|---:|---|
+| `912111` | 0-128 | 0 | 与 golden 一致 |
+| `912112` | 128-256 | 1 | 错误 |
+| `912113` | 256-384 | 0 | 与 golden 一致 |
+| `912114` | 384-512 | 1 | 错误 |
+
+其中两组 slot1 错误具有稳定复现值：
+
+- `912112` golden 前 4 个为 `[-8.4375, 8.0625, -38.5, 1.28125]`，slot1 实际为
+  `[2.078125, 11.875, -42.5, 6.9375]`。
+- `912114` golden 前 4 个为 `[41.0, 30.875, 28.875, -11.4375]`，slot1 实际为
+  `[75.0, 16.125, 47.25, 8.0625]`。
+
+强制所有 chunk 都复用 slot0 后：
+
+- `912111..912114` 四个独立 chunk 全部与 golden 对齐。
+- `912101..912104` 四个累计结果全部与 golden 对齐。
+- GMM2、Combine 以及算子最终输出均正确。
+
+因此，问题已经精确收敛到 **arch92 本地 MX FP8 BlockMmad 的 L0 slot1 operand 路径**。
+
+#### 3. 已排除的范围
+
+现有证据已经排除以下环节是首错点：
+
+- Dispatch、GMM1、SwiGLU 与 Activation 量化。
+- GMM2 的 GM A/B、GM ScaleA/ScaleB 数据生成和外层 K 切片。
+- 在 L0 operand 有效时的 MX MMAD 数学计算。
+- L0C 初始化与跨 K chunk 累加。
+- GMM2 业务 Fixpipe、Combine 和最终输出处理。
+
+将原先写死的 `32KB` slot stride 改成 `AscendC::TOTAL_L0A_SIZE / 2` 后数值完全不变，
+所以不能把根因简单归结为这一处 stride。它在当前环境下可能得到相同的有效地址，或者错误来自
+slot1 的其他 operand/scale/Event 组件。
+
+#### 4. 尚未证明的具体根因
+
+实验是把 A、B、ScaleA、ScaleB 和 Event 一起切换到 slot1，因此目前只能证明 slot1 整体有问题，
+不能继续无证据地断言某一个子组件必然错误。剩余候选为：
+
+1. L0A slot1 地址、stride 或地址单位。
+2. L0B slot1 地址、stride 或地址单位。
+3. L0ScaleA slot1 地址及其 16-byte 地址换算。
+4. L0ScaleB slot1 地址及其 16-byte 地址换算。
+5. arch92 MX MMAD 中 data slot 与 scale slot 的绑定关系。
+6. slot1 对应 `MTE1_M`/`M_MTE1` Event 的选择或复用时机。
+7. arch92 MX Cube 指令/API 对第二 operand slot 的新约束。
+
+L0Scale 是高优先级嫌疑点，因为该 GMM2 使用非均匀的 per-group Activation scale，而部分其他路径的
+scale 更均匀、对错误 scale slot 不够敏感。但现有实验并未单独切换 scale，不能把“高优先级嫌疑”
+写成“已证实根因”。同理，GMM1 正确也不能证明 GMM2 的 slot1 正确，因为两者实际覆盖的
+M/N/K、尾块和 scale 分布不同。
+
+#### 5. 当前单 slot 正确性修复
+
+业务 BlockMmad 当前固定使用：
+
+```cpp
+constexpr uint64_t bufferIndex = 0U;
+constexpr uint64_t l0Offset = 0U;
+```
+
+其效果是：
+
+- L0A、L0B、L0ScaleA、L0ScaleB 始终使用 slot0。
+- 每个 K chunk 串行等待上一轮 MMAD 释放 slot0 后再进行下一轮 L1 到 L0 搬运。
+- L0C 仍按原逻辑完成全部 K chunk 累加。
+- L1 data/scale 双缓冲没有关闭。
+- GMM 跨核调度和 MegaMoe 外层 Wave 流水没有改变。
+- Dispatch/GMM1/SwiGLU/GMM2/Combine 的算子级并行关系没有改变。
+
+这是第一版可接受的正确性方案，但会失去“上一 slot MMAD 时预取下一 slot L0 operand”的重叠，
+存在性能回退。真实损失必须在删除诊断 MMAD/Fixpipe 后单独 profiling，不能用带打点版本估算。
+
+#### 6. 双缓冲恢复方案
+
+当前结论不代表 A6 硬件不支持 L0 operand 双缓冲，只说明直接照搬 A5/3510 的 slot1 约定在当前
+arch92 MX 路径上不成立。恢复步骤如下：
+
+1. 寻找 arch92 原生参考，必须同时具备 FP8 E4M3/E5M2 A/B、E8M0 ScaleA/ScaleB、MX MMAD、
+   多 L0 operand slot 和显式 L1 到 L0 scale copy；重点核对地址单位、slot stride、data/scale
+   slot 绑定和 Event ID，而不是只看高层循环。
+2. 建立最小 Cube-only slot parity 用例：相同 L1 A/B/scale 分别经 slot0 和候选 slot1 独立计算，
+   输出到不同 GM 区域，要求 BF16 结果 bitwise equal。
+3. parity 用例同时覆盖 unit scale 和非均匀 ScaleA/ScaleB。如果 unit scale 正确、非均匀 scale 错误，
+   优先检查 L0Scale 映射；如果 unit scale 也错误，优先检查 L0A/L0B 地址与 Event。
+4. 将 slot1 data address、scale address 和 Event 分开验证，不再一次切换全部变量；同时对比 slot0/slot1
+   搬运与 MMAD 的生成指令。
+5. 单测通过后才恢复 `l0BufferIndex & 1`，保留一次 `912111..912114` 独立 chunk 验证。
+6. 完整覆盖 1/2/3/4 个 K chunk、M/N tail、E4M3/E5M2、非均匀 ScaleA/ScaleB，以及 GMM1/GMM2。
+7. 通过一次无诊断旁路的干净算子回归后，执行 R16，并对比单 slot/双 slot 性能。
 
 **主要文件**
 
@@ -79,10 +185,10 @@
 
 **完成标准**
 
-- GMM1 和 GMM2 的关键中间值及最终输出均与 golden 对齐。
-- 覆盖至少小 M、正常 M、K-tail、ND/NZ 权重和 E4M3/E5M2 合法组合。
-- 修复后没有保留会覆盖业务结果的诊断旁路。
-
+- slot0/slot1 最小用例在 unit scale 和非均匀 scale 下均等价。
+- 恢复双 slot 后 GMM1、GMM2 中间值及最终输出与 golden 对齐。
+- 覆盖 1/2/3/4 个 K chunk、小 M、M/N/K tail、ND/NZ 权重及 E4M3/E5M2 合法组合。
+- 删除诊断旁路后完成一次正确性回归，并确认双 slot 相对单 slot 有可测量的性能收益。
 ### R02 恢复共享专家 GMM1
 
 **当前事实**
@@ -320,19 +426,20 @@ bank1: gate 64KB + up 64KB = 128KB
 
 ### R16 删除 BlockMmad 诊断设施
 
-R01 完成前保留一次性诊断，避免每次 A6 用例运行半小时却只得到单一结果。R01 正确性闭环后必须删除：
+R01 的问题边界和单 slot 正确性方案已经固化在本文。先用当前单 slot 业务路径完成一次不依赖诊断旁路的
+干净回归；确认结果稳定后删除：
 
-- `912101..912106`、`912201..912203` 等条件日志 marker。
+- `912101..912114`、`912201..912203` 等条件日志 marker。
 - GMM1 Fixpipe 对照、GMM1/GMM2 direct L0C2UB 对照和 partial-K dump。
 - 仅为诊断预留的 UB 地址、helper 和编译期开关。
 - `mc2/mega_moe/tests/decode_arch92_mmad_debug.py`；如果仍有复用价值，则迁入明确的 debug 工具目录并默认不参与产品构建。
 - golden 脚本中只为本次 BlockMmad 定位添加、且不属于长期回归接口的密集 hash/window 输出。
 
-清理前保存最后一次有效定位结论，防止删掉打点后丢失问题边界。
-
+如果近期立即开展双 slot 恢复，可先把 `912111..912114` 收敛为默认关闭的最小诊断开关；恢复完成并通过
+slot parity 与整算子回归后再彻底删除。不得长期保留会增加业务 MMAD/Fixpipe 工作量的诊断路径。
 ## 8. 推荐执行顺序
 
-1. **R01**：先闭环当前 GMM2 正确性。
+1. **R01（单 slot 已完成）**：保留当前正确性 fallback；双 slot 恢复作为独立整改，不阻塞后续结构清理。
 2. **R02**：恢复共享专家，补齐 A5 已有功能。
 3. **R16**：删除临时诊断，恢复干净业务代码。
 4. **R03 + R04 + R06 + R17**：集中清理 A8W4/A4W4、1C2V、URMA 和 Host 不可达分支。
@@ -348,7 +455,7 @@ R01 完成前保留一次性诊断，避免每次 A6 用例运行半小时却只
 - arch92 Kernel 入口放到 `op_kernel/mega_moe_apt.cpp`，并显式包含 arch92 头。
 - arch92 Host Tiling 使用可解析的本地头文件路径。
 - FP8 类型去掉错误的 `AscendC::` 命名空间前缀。
-- arch92 本地 A8W8 BlockMmad 已建立，当前剩余的是 R01 正确性问题。
+- arch92 本地 A8W8 BlockMmad 已建立；L0 slot1 异常已定位，当前用单 slot 闭环正确性，剩余任务是按 R01 验证并恢复双 slot 性能。
 - BlockMmad 诊断中的 `GetBlockIdx` 已改为 `AscendC::GetBlockIdx`。
 - 第一版沿用 A5 最新 A8W4 token-grained Wave 的专家内切分能力。
 - Host 已通过平台接口读取 UB 大小并生成 Dispatch、SendMask、Unpermute 自适应 buffer 配置。

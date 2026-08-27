@@ -591,11 +591,6 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
             Te::MakeCoord(0, nLoc), Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
         auto gmBlockC = workSet.gmC.Slice(Te::MakeCoord(mLoc, nLoc),
                                           Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-        if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered) {
-            if (rowOffsetInExpert + mLoc == 0U && nLoc == 0U) {
-                blockMmad.EnableOneShotDebug(912101U, true);
-            }
-        }
         blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, gmBlockC, singleShape);
         if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
             NotifyCombineConsumersOfTileCompletion(rowOffsetInExpert + mLoc, groupSyncSlotLayout,
@@ -717,7 +712,7 @@ __aicore__ inline void Gmm2Aiv0PrologueA8W4(BlockPrologue &blockPrologue, Schedu
         auto mL1Size = Get<M_VALUE>(actualShape);
         auto nL1Size = Get<N_VALUE>(actualShape);
         blockPrologue(gmB, mL1Size, config.k, nL1Size, nLoc, config.n,
-                      config.blockMmadTiling.l1Params.kL1);
+                      config.blockMmadTiling.l1Params.kBL1);
     }
 }
 

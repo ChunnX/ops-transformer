@@ -19,7 +19,7 @@ namespace MegaMoeImpl {
 constexpr uint32_t ARCH92_GMM1_TILES_PER_JOB_TARGET = 2U;
 
 template <uint32_t TileM>
-__aicore__ inline uint32_t AdvanceArch92ExpertTokenPositionInWave(
+__aicore__ inline uint32_t  AdvanceArch92ExpertTokenPositionInWave(
     uint32_t expertTokenCount, uint32_t waveMGroupTarget, uint32_t &waveMGroupCount,
     ExpertTokenPosition &position)
 {
