@@ -554,6 +554,20 @@ public:
             AscendC::DataCopyPad(xLocal, this->kvGm[xUbOffset], xDataCopyParams, padParams);
             AscendC::DataCopyPad(gammaLocal, this->gammaGm[gammaUbOffset], xDataCopyParams, padParams);
 
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+            if (tilingData_->vScaleType == 1) {
+                BroadcastQuantParamNddma<float>(vScaleLocal, this->vScaleGm, this->ubFactor);
+            } else {
+                xDataCopyParams.blockLen = tmpFactor * sizeof(float);
+                AscendC::DataCopyPad(vScaleLocal, this->vScaleGm[vScaleUbOffset], xDataCopyParams, padParams);
+            }
+            if (tilingData_->vOffsetType == 1) {
+                BroadcastQuantParamNddma<float>(vOffsetLocal, this->vOffsetGm, this->ubFactor);
+            } else if (tilingData_->vOffsetType > 1) {
+                xDataCopyParams.blockLen = tmpFactor * sizeof(float);
+                AscendC::DataCopyPad(vOffsetLocal, this->vOffsetGm[vOffsetUbOffset], xDataCopyParams, padParams);
+            }
+#else
             if (tilingData_->vScaleType > 1) {
                 xDataCopyParams.blockLen = tmpFactor * sizeof(float);
                 AscendC::DataCopyPad(vScaleLocal, this->vScaleGm[vScaleUbOffset], xDataCopyParams, padParams);
@@ -569,6 +583,7 @@ public:
                 xDataCopyParams.blockLen = sizeof(float);
                 AscendC::DataCopyPad(vOffsetLocal, this->vOffsetGm, xDataCopyParams, padParams);
             }
+#endif
 
             inQueueX.EnQue<T_KV>(xLocal);
             inQueueGamma.EnQue<T_KV>(gammaLocal);
@@ -577,6 +592,7 @@ public:
             vScaleOffsetQueue.EnQue<float>(vScaleLocal);
             vScaleLocal = vScaleOffsetQueue.DeQue<float>();
 
+#if !defined(__NPU_ARCH__) || (__NPU_ARCH__ != 3510)
             // 将scale和offset Brc方便VF处理
             if (tilingData_->vScaleType == 1) {
                 AscendC::Duplicate<float>(vScaleLocal, vScaleLocal, this->ubFactor);
@@ -585,6 +601,7 @@ public:
             if (tilingData_->vOffsetType == 1) {
                 AscendC::Duplicate<float>(vOffsetLocal, vOffsetLocal, this->ubFactor);
             }
+#endif
 
             CalculateVOutAsymQuantWithKvVF(vPtr, xPtr, gammaPtr, xSumPtr, vScalePtr, vOffsetPtr, vQuantPtr, tmpFactor);
 
@@ -709,6 +726,14 @@ public:
             AscendC::DataCopyPad(xLocal, this->kvGm[xUbOffset], xDataCopyParams, padParams);
             AscendC::DataCopyPad(gammaLocal, this->gammaGm[gammaUbOffset], xDataCopyParams, padParams);
 
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+            if (tilingData_->vScaleType == 1) {
+                BroadcastQuantParamNddma<float>(vScaleLocal, this->vScaleGm, this->ubFactor);
+            } else {
+                xDataCopyParams.blockLen = tmpFactor * sizeof(float);
+                AscendC::DataCopyPad(vScaleLocal, this->vScaleGm[vScaleUbOffset], xDataCopyParams, padParams);
+            }
+#else
             if (tilingData_->vScaleType > 1) {
                 xDataCopyParams.blockLen = tmpFactor * sizeof(float);
                 AscendC::DataCopyPad(vScaleLocal, this->vScaleGm[vScaleUbOffset], xDataCopyParams, padParams);
@@ -716,6 +741,7 @@ public:
                 xDataCopyParams.blockLen = sizeof(float);
                 AscendC::DataCopyPad(vScaleLocal, this->vScaleGm, xDataCopyParams, padParams);
             }
+#endif
 
             inQueueX.EnQue<T_KV>(xLocal);
             inQueueGamma.EnQue<T_KV>(gammaLocal);
@@ -724,10 +750,12 @@ public:
             vScaleOffsetQueue.EnQue<float>(vScaleLocal);
             vScaleLocal = vScaleOffsetQueue.DeQue<float>();
 
+#if !defined(__NPU_ARCH__) || (__NPU_ARCH__ != 3510)
             // 将scale Brc方便VF处理
             if (tilingData_->vScaleType == 1) {
                 AscendC::Duplicate<float>(vScaleLocal, vScaleLocal, this->ubFactor);
             }
+#endif
 
             CalculateVOutSymQuantWithKvVF(vPtr, xPtr, gammaPtr, xSumPtr, vScalePtr, vQuantPtr, tmpFactor);
 
@@ -854,6 +882,20 @@ public:
             AscendC::DataCopyPad(xLocal, this->kvGm[xUbOffset], xDataCopyParams, padParams);
             AscendC::DataCopyPad(gammaLocal, this->gammaGm[gammaUbOffset], xDataCopyParams, padParams);
 
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+            if (tilingData_->vScaleType == 1) {
+                BroadcastQuantParamNddma<float>(vScaleLocal, this->vScaleGm, this->ubFactor);
+            } else {
+                xDataCopyParams.blockLen = tmpFactor * sizeof(float);
+                AscendC::DataCopyPad(vScaleLocal, this->vScaleGm[vScaleUbOffset], xDataCopyParams, padParams);
+            }
+            if (tilingData_->vOffsetType == 1) {
+                BroadcastQuantParamNddma<float>(vOffsetLocal, this->vOffsetGm, this->ubFactor);
+            } else if (tilingData_->vOffsetType > 1) {
+                xDataCopyParams.blockLen = tmpFactor * sizeof(float);
+                AscendC::DataCopyPad(vOffsetLocal, this->vOffsetGm[vOffsetUbOffset], xDataCopyParams, padParams);
+            }
+#else
             if (tilingData_->vScaleType > 1) {
                 xDataCopyParams.blockLen = tmpFactor * sizeof(float);
                 AscendC::DataCopyPad(vScaleLocal, this->vScaleGm[vScaleUbOffset], xDataCopyParams, padParams);
@@ -869,6 +911,7 @@ public:
                 xDataCopyParams.blockLen = sizeof(float);
                 AscendC::DataCopyPad(vOffsetLocal, this->vOffsetGm, xDataCopyParams, padParams);
             }
+#endif
 
             inQueueX.EnQue<T_KV>(xLocal);
             xLocal = inQueueX.DeQue<T_KV>();
@@ -877,6 +920,7 @@ public:
             vScaleOffsetQueue.EnQue<float>(vScaleLocal);
             vScaleLocal = vScaleOffsetQueue.DeQue<float>();
 
+#if !defined(__NPU_ARCH__) || (__NPU_ARCH__ != 3510)
             // 将scale和offset Brc方便VF处理
             if (tilingData_->vScaleType == 1) {
                 AscendC::Duplicate<float>(vScaleLocal, vScaleLocal, this->ubFactor);
@@ -885,6 +929,7 @@ public:
             if (tilingData_->vOffsetType == 1) {
                 AscendC::Duplicate<float>(vOffsetLocal, vOffsetLocal, this->ubFactor);
             }
+#endif
 
             CalculateVOutAsymQuantVF(xPtr, gammaPtr, xSumPtr, vScalePtr, vOffsetPtr, vQuantPtr, tmpFactor);
 
@@ -1114,6 +1159,14 @@ public:
             AscendC::DataCopyPad(xLocal, this->kvGm[xUbOffset], xDataCopyParams, padParams);
             AscendC::DataCopyPad(gammaLocal, this->gammaGm[gammaUbOffset], xDataCopyParams, padParams);
 
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+            if (tilingData_->vScaleType == 1) {
+                BroadcastQuantParamNddma<float>(vScaleLocal, this->vScaleGm, this->ubFactor);
+            } else {
+                xDataCopyParams.blockLen = tmpFactor * sizeof(float);
+                AscendC::DataCopyPad(vScaleLocal, this->vScaleGm[vScaleUbOffset], xDataCopyParams, padParams);
+            }
+#else
             if (tilingData_->vScaleType > 1) {
                 xDataCopyParams.blockLen = tmpFactor * sizeof(float);
                 AscendC::DataCopyPad(vScaleLocal, this->vScaleGm[vScaleUbOffset], xDataCopyParams, padParams);
@@ -1121,6 +1174,7 @@ public:
                 xDataCopyParams.blockLen = sizeof(float);
                 AscendC::DataCopyPad(vScaleLocal, this->vScaleGm, xDataCopyParams, padParams);
             }
+#endif
 
             inQueueX.EnQue<T_KV>(xLocal);
             xLocal = inQueueX.DeQue<T_KV>();
@@ -1129,10 +1183,12 @@ public:
             vScaleOffsetQueue.EnQue<float>(vScaleLocal);
             vScaleLocal = vScaleOffsetQueue.DeQue<float>();
 
+#if !defined(__NPU_ARCH__) || (__NPU_ARCH__ != 3510)
             // 将scale Brc方便VF处理
             if (tilingData_->vScaleType == 1) {
                 AscendC::Duplicate<float>(vScaleLocal, vScaleLocal, this->ubFactor);
             }
+#endif
 
             CalculateVOutSymQuantVF(vQuantPtr, xPtr, gammaPtr, xSumPtr, vScalePtr, tmpFactor);
 
@@ -1578,6 +1634,15 @@ public:
             AscendC::DataCopyPad(sinLocalPart1, this->sinGm[cosSinOffset1], xDataCopyParams, padParams);
             AscendC::DataCopyPad(sinLocalPart2, this->sinGm[cosSinOffset2], xDataCopyParams, padParams);
 
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+            if (tilingData_->kScaleType == 1) {
+                BroadcastQuantParamNddma<float>(kScaleLocalPart1, this->kScaleGm, this->ubFactor);
+            } else {
+                xDataCopyParams.blockLen = cosSinLen * sizeof(float);
+                AscendC::DataCopyPad(kScaleLocalPart1, this->kScaleGm[kScaleOffset1], xDataCopyParams, padParams);
+                AscendC::DataCopyPad(kScaleLocalPart2, this->kScaleGm[kScaleOffset2], xDataCopyParams, padParams);
+            }
+#else
             if (tilingData_->kScaleType > 1) {
                 xDataCopyParams.blockLen = cosSinLen * sizeof(float);
                 AscendC::DataCopyPad(kScaleLocalPart1, this->kScaleGm[kScaleOffset1], xDataCopyParams, padParams);
@@ -1586,6 +1651,7 @@ public:
                 xDataCopyParams.blockLen = sizeof(float);
                 AscendC::DataCopyPad(kScaleLocalPart1, this->kScaleGm, xDataCopyParams, padParams);
             }
+#endif
 
             inQueueX.EnQue<T_KV>(ropeLocal);
             ropeLocal = inQueueX.DeQue<T_KV>();
@@ -1594,10 +1660,12 @@ public:
             kScaleOffsetQueue.EnQue<float>(kScaleLocalPart1);
             kScaleLocalPart1 = kScaleOffsetQueue.DeQue<float>();
 
+#if !defined(__NPU_ARCH__) || (__NPU_ARCH__ != 3510)
             // 将scale brc
             if (tilingData_->kScaleType == 1) {
                 AscendC::Duplicate<float>(kScaleLocalPart1, kScaleLocalPart1, this->ubFactor);
             }
+#endif
 
             RopeSymQuantWithVF(kOutPtr1, kOutPtr2, kQuantPtr1, kQuantPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2,
                                scalePtr1, scalePtr2, tmpBufferPtr, tmpFactor);
@@ -1806,6 +1874,22 @@ public:
             AscendC::DataCopyPad(sinLocalPart1, this->sinGm[cosSinOffset1], xDataCopyParams, padParams);
             AscendC::DataCopyPad(sinLocalPart2, this->sinGm[cosSinOffset2], xDataCopyParams, padParams);
 
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+            if (tilingData_->kScaleType == 1) {
+                BroadcastQuantParamNddma<float>(kScaleLocalPart1, this->kScaleGm, this->ubFactor);
+            } else {
+                xDataCopyParams.blockLen = cosSinLen * sizeof(float);
+                AscendC::DataCopyPad(kScaleLocalPart1, this->kScaleGm[kScaleOffset1], xDataCopyParams, padParams);
+                AscendC::DataCopyPad(kScaleLocalPart2, this->kScaleGm[kScaleOffset2], xDataCopyParams, padParams);
+            }
+            if (tilingData_->kOffsetType == 1) {
+                BroadcastQuantParamNddma<float>(kOffsetLocalPart1, this->kOffsetGm, this->ubFactor);
+            } else if (tilingData_->kOffsetType > 1) {
+                xDataCopyParams.blockLen = cosSinLen * sizeof(float);
+                AscendC::DataCopyPad(kOffsetLocalPart1, this->kOffsetGm[kOffset1], xDataCopyParams, padParams);
+                AscendC::DataCopyPad(kOffsetLocalPart2, this->kOffsetGm[kOffset2], xDataCopyParams, padParams);
+            }
+#else
             if (tilingData_->kScaleType > 1) {
                 xDataCopyParams.blockLen = cosSinLen * sizeof(float);
                 AscendC::DataCopyPad(kScaleLocalPart1, this->kScaleGm[kScaleOffset1], xDataCopyParams, padParams);
@@ -1823,6 +1907,7 @@ public:
                 xDataCopyParams.blockLen = sizeof(float);
                 AscendC::DataCopyPad(kOffsetLocalPart1, this->kOffsetGm, xDataCopyParams, padParams);
             }
+#endif
 
             inQueueX.EnQue<T_KV>(ropeLocal);
             ropeLocal = inQueueX.DeQue<T_KV>();
@@ -1831,6 +1916,7 @@ public:
             kScaleOffsetQueue.EnQue<float>(kScaleLocalPart1);
             kScaleLocalPart1 = kScaleOffsetQueue.DeQue<float>();
 
+#if !defined(__NPU_ARCH__) || (__NPU_ARCH__ != 3510)
             // 将scale brc方便处理
             if (tilingData_->kScaleType == 1) {
                 AscendC::Duplicate<float>(kScaleLocalPart1, kScaleLocalPart1, this->ubFactor);
@@ -1839,6 +1925,7 @@ public:
             if (tilingData_->kOffsetType == 1) {
                 AscendC::Duplicate<float>(kOffsetLocalPart1, kOffsetLocalPart1, this->ubFactor);
             }
+#endif
 
             RopeAsymQuantVF(kQuantPtr1, kQuantPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2, scalePtr1, scalePtr2,
                             offsetPtr1, offsetPtr2, tmpBufferPtr, tmpFactor);
@@ -2150,6 +2237,15 @@ public:
             AscendC::DataCopyPad(sinLocalPart1, this->sinGm[cosSinOffset1], xDataCopyParams, padParams);
             AscendC::DataCopyPad(sinLocalPart2, this->sinGm[cosSinOffset2], xDataCopyParams, padParams);
 
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+            if (tilingData_->kScaleType == 1) {
+                BroadcastQuantParamNddma<float>(kScaleLocalPart1, this->kScaleGm, this->ubFactor);
+            } else {
+                xDataCopyParams.blockLen = cosSinLen * sizeof(float);
+                AscendC::DataCopyPad(kScaleLocalPart1, this->kScaleGm[kScaleOffset1], xDataCopyParams, padParams);
+                AscendC::DataCopyPad(kScaleLocalPart2, this->kScaleGm[kScaleOffset2], xDataCopyParams, padParams);
+            }
+#else
             if (tilingData_->kScaleType > 1) {
                 xDataCopyParams.blockLen = cosSinLen * sizeof(float);
                 AscendC::DataCopyPad(kScaleLocalPart1, this->kScaleGm[kScaleOffset1], xDataCopyParams, padParams);
@@ -2158,6 +2254,7 @@ public:
                 xDataCopyParams.blockLen = sizeof(float);
                 AscendC::DataCopyPad(kScaleLocalPart1, this->kScaleGm, xDataCopyParams, padParams);
             }
+#endif
 
             inQueueX.EnQue<T_KV>(ropeLocal);
             ropeLocal = inQueueX.DeQue<T_KV>();
@@ -2166,10 +2263,12 @@ public:
             kScaleOffsetQueue.EnQue<float>(kScaleLocalPart1);
             kScaleLocalPart1 = kScaleOffsetQueue.DeQue<float>();
 
+#if !defined(__NPU_ARCH__) || (__NPU_ARCH__ != 3510)
             // 将scale brc
             if (tilingData_->kScaleType == 1) {
                 AscendC::Duplicate<float>(kScaleLocalPart1, kScaleLocalPart1, this->ubFactor);
             }
+#endif
 
             RopeSymQuantVF(kQuantPtr1, kQuantPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2, scalePtr1, scalePtr2,
                            tmpBufferPtr, tmpFactor);
@@ -2467,6 +2566,22 @@ public:
             AscendC::DataCopyPad(sinLocalPart1, this->sinGm[cosSinOffset1], xDataCopyParams, padParams);
             AscendC::DataCopyPad(sinLocalPart2, this->sinGm[cosSinOffset2], xDataCopyParams, padParams);
 
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+            if (tilingData_->kScaleType == 1) {
+                BroadcastQuantParamNddma<float>(kScaleLocalPart1, this->kScaleGm, this->ubFactor);
+            } else {
+                xDataCopyParams.blockLen = cosSinLen * sizeof(float);
+                AscendC::DataCopyPad(kScaleLocalPart1, this->kScaleGm[kScaleOffset1], xDataCopyParams, padParams);
+                AscendC::DataCopyPad(kScaleLocalPart2, this->kScaleGm[kScaleOffset2], xDataCopyParams, padParams);
+            }
+            if (tilingData_->kOffsetType == 1) {
+                BroadcastQuantParamNddma<float>(kOffsetLocalPart1, this->kOffsetGm, this->ubFactor);
+            } else if (tilingData_->kOffsetType > 1) {
+                xDataCopyParams.blockLen = cosSinLen * sizeof(float);
+                AscendC::DataCopyPad(kOffsetLocalPart1, this->kOffsetGm[kOffset1], xDataCopyParams, padParams);
+                AscendC::DataCopyPad(kOffsetLocalPart2, this->kOffsetGm[kOffset2], xDataCopyParams, padParams);
+            }
+#else
             if (tilingData_->kScaleType > 1) {
                 xDataCopyParams.blockLen = cosSinLen * sizeof(float);
                 AscendC::DataCopyPad(kScaleLocalPart1, this->kScaleGm[kScaleOffset1], xDataCopyParams, padParams);
@@ -2484,6 +2599,7 @@ public:
                 xDataCopyParams.blockLen = sizeof(float);
                 AscendC::DataCopyPad(kOffsetLocalPart1, this->kOffsetGm, xDataCopyParams, padParams);
             }
+#endif
 
             inQueueX.EnQue<T_KV>(ropeLocal);
             ropeLocal = inQueueX.DeQue<T_KV>();
@@ -2492,6 +2608,7 @@ public:
             kScaleOffsetQueue.EnQue<float>(kScaleLocalPart1);
             kScaleLocalPart1 = kScaleOffsetQueue.DeQue<float>();
 
+#if !defined(__NPU_ARCH__) || (__NPU_ARCH__ != 3510)
             // 将scale brc方便处理
             if (tilingData_->kScaleType == 1) {
                 AscendC::Duplicate<float>(kScaleLocalPart1, kScaleLocalPart1, this->ubFactor);
@@ -2500,6 +2617,7 @@ public:
             if (tilingData_->kOffsetType == 1) {
                 AscendC::Duplicate<float>(kOffsetLocalPart1, kOffsetLocalPart1, this->ubFactor);
             }
+#endif
 
             RopeAsymQuantWithKvVF(kOutPtr1, kOutPtr2, kQuantPtr1, kQuantPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1,
                                   sinPtr2, scalePtr1, scalePtr2, offsetPtr1, offsetPtr2, tmpBufferPtr, tmpFactor);
