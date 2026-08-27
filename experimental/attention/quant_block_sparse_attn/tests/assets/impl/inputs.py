@@ -328,6 +328,7 @@ def _mxfp8_assemble_case(
     data_range_q,
     data_range_k,
     data_range_v,
+    testcase_name,
 ):
     batch = int(sparse_indices.shape[0])
     cu_q = [int(value) for value in cu_seqlens_q_value]
@@ -336,6 +337,7 @@ def _mxfp8_assemble_case(
     seq_kv = [int(value) for value in seqused_kv_value]
     normalized_blocknum = None if blocknum is None else int(blocknum)
     return {
+        "name": testcase_name,
         "B": batch,
         "N1": int(query.shape[1]),
         "N2": int(key.shape[1]),
@@ -440,6 +442,7 @@ def _mxfp8_customize_inputs(
         data_range_q=data_range_q,
         data_range_k=data_range_k,
         data_range_v=data_range_v,
+        testcase_name=testcase_name,
     )
     # Golden owns MXFP8 validation and all input construction, including the
     # random block table. TTK only supplies CSV attributes and allocated shapes.
