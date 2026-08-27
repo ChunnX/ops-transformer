@@ -97,9 +97,8 @@ std::vector<gert::TilingContextPara::TensorDescription> MakeOutputs(ge::DataType
 }
 
 std::vector<gert::TilingContextPara::OpAttr> MakeAttrs(int64_t maskType, int64_t quantType, int64_t softmaxPrec,
-                                                       int64_t returnLse, float dstTypeMax = 0.0f,
-                                                       int64_t winLeft = -1, int64_t winRight = -1,
-                                                       int64_t isPackedGqa = 1,
+                                                       int64_t returnLse, float dstTypeMax = 0.0f, int64_t winLeft = -1,
+                                                       int64_t winRight = -1, int64_t isPackedGqa = 1,
                                                        const std::string &layoutQ = "TND",
                                                        const std::string &layoutKv = "PAGED_BBND",
                                                        const std::vector<int64_t> &blockShape = kBlockShape)
@@ -119,77 +118,77 @@ std::vector<gert::TilingContextPara::OpAttr> MakeAttrs(int64_t maskType, int64_t
         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<int64_t>(returnLse)},
     };
 }
-}  // namespace
+} // namespace
 
 TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_fp16_910b)
 {
     GenericBlockSparseAttentionCompileInfo compileInfo;
-    gert::TilingContextPara tilingContextPara(
-        "GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16), MakeOutputs(ge::DT_FLOAT16, false),
-        MakeAttrs(1, 0, 0, 0), &compileInfo, "Ascend910B", 40, 196608);
+    gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16),
+                                              MakeOutputs(ge::DT_FLOAT16, false), MakeAttrs(1, 0, 0, 0), &compileInfo,
+                                              "Ascend910B", 40, 196608);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kFp16Tiling910B);
 }
 
 TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_fp16_halfsm_910b)
 {
     GenericBlockSparseAttentionCompileInfo compileInfo;
-    gert::TilingContextPara tilingContextPara(
-        "GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16), MakeOutputs(ge::DT_FLOAT16, false),
-        MakeAttrs(1, 0, 1, 0), &compileInfo, "Ascend910B", 40, 196608);
+    gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16),
+                                              MakeOutputs(ge::DT_FLOAT16, false), MakeAttrs(1, 0, 1, 0), &compileInfo,
+                                              "Ascend910B", 40, 196608);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kFp16HalfSmTiling910B);
 }
 
 TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_bf16_910b)
 {
     GenericBlockSparseAttentionCompileInfo compileInfo;
-    gert::TilingContextPara tilingContextPara(
-        "GenericBlockSparseAttention", MakeInputs(ge::DT_BF16), MakeOutputs(ge::DT_BF16, false),
-        MakeAttrs(1, 0, 0, 0), &compileInfo, "Ascend910B", 40, 196608);
+    gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_BF16),
+                                              MakeOutputs(ge::DT_BF16, false), MakeAttrs(1, 0, 0, 0), &compileInfo,
+                                              "Ascend910B", 40, 196608);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kBf16Tiling910B);
 }
 
 TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_fp16_lse_910b)
 {
     GenericBlockSparseAttentionCompileInfo compileInfo;
-    gert::TilingContextPara tilingContextPara(
-        "GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16), MakeOutputs(ge::DT_FLOAT16, true),
-        MakeAttrs(1, 0, 0, 1), &compileInfo, "Ascend910B", 40, 196608);
+    gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16),
+                                              MakeOutputs(ge::DT_FLOAT16, true), MakeAttrs(1, 0, 0, 1), &compileInfo,
+                                              "Ascend910B", 40, 196608);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kFp16Tiling910B + kLseOffset);
 }
 
 TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_fp16_950)
 {
     GenericBlockSparseAttentionCompileInfo compileInfo;
-    gert::TilingContextPara tilingContextPara(
-        "GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16), MakeOutputs(ge::DT_FLOAT16, false),
-        MakeAttrs(1, 0, 1, 0), &compileInfo, "Ascend950", 56, 262144);
+    gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16),
+                                              MakeOutputs(ge::DT_FLOAT16, false), MakeAttrs(1, 0, 1, 0), &compileInfo,
+                                              "Ascend950", 56, 262144);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kFp16Tiling950);
 }
 
 TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_bf16_950)
 {
     GenericBlockSparseAttentionCompileInfo compileInfo;
-    gert::TilingContextPara tilingContextPara(
-        "GenericBlockSparseAttention", MakeInputs(ge::DT_BF16), MakeOutputs(ge::DT_BF16, false),
-        MakeAttrs(1, 0, 1, 0), &compileInfo, "Ascend950", 56, 262144);
+    gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_BF16),
+                                              MakeOutputs(ge::DT_BF16, false), MakeAttrs(1, 0, 1, 0), &compileInfo,
+                                              "Ascend950", 56, 262144);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kBf16Tiling950);
 }
 
 TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_fp8_out_fp16_950)
 {
     GenericBlockSparseAttentionCompileInfo compileInfo;
-    gert::TilingContextPara tilingContextPara(
-        "GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT8_E4M3FN), MakeOutputs(ge::DT_FLOAT16, false),
-        MakeAttrs(1, 5, 1, 0), &compileInfo, "Ascend950", 56, 262144);
+    gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT8_E4M3FN),
+                                              MakeOutputs(ge::DT_FLOAT16, false), MakeAttrs(1, 5, 1, 0), &compileInfo,
+                                              "Ascend950", 56, 262144);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kFp8Fp16Tiling950);
 }
 
 TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_fp8_out_bf16_950)
 {
     GenericBlockSparseAttentionCompileInfo compileInfo;
-    gert::TilingContextPara tilingContextPara(
-        "GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT8_E4M3FN), MakeOutputs(ge::DT_BF16, false),
-        MakeAttrs(1, 5, 1, 0), &compileInfo, "Ascend950", 56, 262144);
+    gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT8_E4M3FN),
+                                              MakeOutputs(ge::DT_BF16, false), MakeAttrs(1, 5, 1, 0), &compileInfo,
+                                              "Ascend950", 56, 262144);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kFp8Bf16Tiling950);
 }
 
@@ -214,9 +213,9 @@ TEST_F(generic_block_sparse_attention_tiling_ut, unsupported_is_packed_gqa)
 TEST_F(generic_block_sparse_attention_tiling_ut, unsupported_mask_type)
 {
     GenericBlockSparseAttentionCompileInfo compileInfo;
-    gert::TilingContextPara tilingContextPara(
-        "GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16), MakeOutputs(ge::DT_FLOAT16, false),
-        MakeAttrs(0, 0, 0, 0), &compileInfo, "Ascend910B", 40, 196608);
+    gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16),
+                                              MakeOutputs(ge::DT_FLOAT16, false), MakeAttrs(0, 0, 0, 0), &compileInfo,
+                                              "Ascend910B", 40, 196608);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
@@ -234,36 +233,36 @@ TEST_F(generic_block_sparse_attention_tiling_ut, unsupported_block_shape_x)
 TEST_F(generic_block_sparse_attention_tiling_ut, unsupported_win_left)
 {
     GenericBlockSparseAttentionCompileInfo compileInfo;
-    gert::TilingContextPara tilingContextPara(
-        "GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16), MakeOutputs(ge::DT_FLOAT16, false),
-        MakeAttrs(1, 0, 0, 0, 0.0f, 127, -1), &compileInfo, "Ascend910B", 40, 196608);
+    gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16),
+                                              MakeOutputs(ge::DT_FLOAT16, false), MakeAttrs(1, 0, 0, 0, 0.0f, 127, -1),
+                                              &compileInfo, "Ascend910B", 40, 196608);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
 TEST_F(generic_block_sparse_attention_tiling_ut, unsupported_bf16_halfsm_910b)
 {
     GenericBlockSparseAttentionCompileInfo compileInfo;
-    gert::TilingContextPara tilingContextPara(
-        "GenericBlockSparseAttention", MakeInputs(ge::DT_BF16), MakeOutputs(ge::DT_BF16, false),
-        MakeAttrs(1, 0, 1, 0), &compileInfo, "Ascend910B", 40, 196608);
+    gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_BF16),
+                                              MakeOutputs(ge::DT_BF16, false), MakeAttrs(1, 0, 1, 0), &compileInfo,
+                                              "Ascend910B", 40, 196608);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
 TEST_F(generic_block_sparse_attention_tiling_ut, unsupported_fp8_on_910b)
 {
     GenericBlockSparseAttentionCompileInfo compileInfo;
-    gert::TilingContextPara tilingContextPara(
-        "GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT8_E4M3FN), MakeOutputs(ge::DT_FLOAT16, false),
-        MakeAttrs(1, 5, 0, 0), &compileInfo, "Ascend910B", 40, 196608);
+    gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT8_E4M3FN),
+                                              MakeOutputs(ge::DT_FLOAT16, false), MakeAttrs(1, 5, 0, 0), &compileInfo,
+                                              "Ascend910B", 40, 196608);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
 TEST_F(generic_block_sparse_attention_tiling_ut, quant_type_dtype_mismatch)
 {
     GenericBlockSparseAttentionCompileInfo compileInfo;
-    gert::TilingContextPara tilingContextPara(
-        "GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16), MakeOutputs(ge::DT_FLOAT16, false),
-        MakeAttrs(1, 5, 0, 0), &compileInfo, "Ascend910B", 40, 196608);
+    gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", MakeInputs(ge::DT_FLOAT16),
+                                              MakeOutputs(ge::DT_FLOAT16, false), MakeAttrs(1, 5, 0, 0), &compileInfo,
+                                              "Ascend910B", 40, 196608);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
@@ -272,8 +271,7 @@ TEST_F(generic_block_sparse_attention_tiling_ut, missing_metadata)
     GenericBlockSparseAttentionCompileInfo compileInfo;
     auto inputs = MakeInputs(ge::DT_FLOAT16);
     inputs[5] = {{}, ge::DT_UNDEFINED, ge::FORMAT_ND};
-    gert::TilingContextPara tilingContextPara(
-        "GenericBlockSparseAttention", inputs, MakeOutputs(ge::DT_FLOAT16, false), MakeAttrs(1, 0, 0, 0),
-        &compileInfo, "Ascend910B", 40, 196608);
+    gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", inputs, MakeOutputs(ge::DT_FLOAT16, false),
+                                              MakeAttrs(1, 0, 0, 0), &compileInfo, "Ascend910B", 40, 196608);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }

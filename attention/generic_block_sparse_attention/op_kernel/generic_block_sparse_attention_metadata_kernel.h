@@ -55,10 +55,8 @@ enum CombineScheduleIndex : uint32_t {
 };
 
 constexpr uint32_t DECODE_SCHEDULE_OFFSET = HEADER_SIZE;
-constexpr uint32_t COMBINE_SCHEDULE_OFFSET =
-    DECODE_SCHEDULE_OFFSET + MAX_DECODE_CORE_NUM * DECODE_SCHEDULE_FIELD_NUM;
-constexpr uint32_t METADATA_USED_SIZE =
-    COMBINE_SCHEDULE_OFFSET + MAX_COMBINE_TASK_NUM * COMBINE_SCHEDULE_FIELD_NUM;
+constexpr uint32_t COMBINE_SCHEDULE_OFFSET = DECODE_SCHEDULE_OFFSET + MAX_DECODE_CORE_NUM * DECODE_SCHEDULE_FIELD_NUM;
+constexpr uint32_t METADATA_USED_SIZE = COMBINE_SCHEDULE_OFFSET + MAX_COMBINE_TASK_NUM * COMBINE_SCHEDULE_FIELD_NUM;
 
 inline constexpr uint32_t GetDecodeScheduleIndex(uint32_t coreIdx, uint32_t fieldIdx)
 {
@@ -109,6 +107,6 @@ static_assert(sizeof(DecodeSchedule) == DECODE_SCHEDULE_FIELD_NUM * sizeof(Metad
 static_assert(sizeof(CombineSchedule) == COMBINE_SCHEDULE_FIELD_NUM * sizeof(MetadataType),
               "CombineSchedule layout mismatch");
 
-}  // namespace GbsaMetadata
+} // namespace GbsaMetadata
 
-#endif  // GENERIC_BLOCK_SPARSE_ATTENTION_METADATA_KERNEL_H
+#endif // GENERIC_BLOCK_SPARSE_ATTENTION_METADATA_KERNEL_H

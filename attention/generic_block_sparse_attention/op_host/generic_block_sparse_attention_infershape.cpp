@@ -114,9 +114,7 @@ static ge::graphStatus InferShapeGenericBlockSparseAttention(gert::InferShapeCon
     }
 
     if (queryShape->GetDimNum() != TND_DIM_NUM) {
-        OP_LOGE(context->GetNodeName(),
-                "layout_q=TND requires queryDims=3, but got %zu.",
-                queryShape->GetDimNum());
+        OP_LOGE(context->GetNodeName(), "layout_q=TND requires queryDims=3, but got %zu.", queryShape->GetDimNum());
         return ge::GRAPH_FAILED;
     }
 
@@ -140,9 +138,8 @@ static ge::graphStatus InferShapeGenericBlockSparseAttention(gert::InferShapeCon
     const int64_t vD = valueShape->GetDim(PAGED_BBND_DIM_D);
 
     if (kD != qD || vD != qD) {
-        OP_LOGE(context->GetNodeName(),
-                "key/value D must match query D=%ld, but got keyD=%ld, valueD=%ld.",
-                qD, kD, vD);
+        OP_LOGE(context->GetNodeName(), "key/value D must match query D=%ld, but got keyD=%ld, valueD=%ld.", qD, kD,
+                vD);
         return ge::GRAPH_FAILED;
     }
     if (kBlockNum != vBlockNum || kBlockSize != vBlockSize || kNkv != vNkv) {
@@ -155,8 +152,7 @@ static ge::graphStatus InferShapeGenericBlockSparseAttention(gert::InferShapeCon
 
     const gert::Shape *blockTableShape = context->GetOptionalInputShape(BLOCK_TABLE_INDEX);
     if (blockTableShape == nullptr) {
-        OP_LOGE(context->GetNodeName(),
-                "layout_kv=PAGED_BBND requires block_table, but it is nullptr.");
+        OP_LOGE(context->GetNodeName(), "layout_kv=PAGED_BBND requires block_table, but it is nullptr.");
         return ge::GRAPH_FAILED;
     }
 
@@ -165,8 +161,7 @@ static ge::graphStatus InferShapeGenericBlockSparseAttention(gert::InferShapeCon
     const int64_t *lseFlagPtr = attrs->GetAttrPointer<int64_t>(ATTR_RETURN_SOFTMAX_LSE_INDEX);
     const int64_t returnSoftmaxLse = (lseFlagPtr != nullptr) ? *lseFlagPtr : 0;
     if (returnSoftmaxLse != 0 && returnSoftmaxLse != 1) {
-        OP_LOGE(context->GetNodeName(),
-                "Unsupported return_softmax_lse=%ld, only 0 or 1 are supported.",
+        OP_LOGE(context->GetNodeName(), "Unsupported return_softmax_lse=%ld, only 0 or 1 are supported.",
                 returnSoftmaxLse);
         return ge::GRAPH_FAILED;
     }
@@ -210,4 +205,4 @@ IMPL_OP_INFERSHAPE(GenericBlockSparseAttention)
     .InferShape(InferShapeGenericBlockSparseAttention)
     .InferDataType(InferDataTypeGenericBlockSparseAttention);
 
-}  // namespace ops
+} // namespace ops

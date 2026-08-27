@@ -59,10 +59,8 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, normal)
     auto query = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto key = TensorDesc({kMaxBlocks, kBlockSize, kN2, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto value = TensorDesc({kMaxBlocks, kBlockSize, kN2, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto sparseBlockIdx =
-        TensorDesc({kN2, kTotalQBlocks, kTopK}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
-    auto sparseBlockCount =
-        TensorDesc({kN2, kTotalQBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{1});
+    auto sparseBlockIdx = TensorDesc({kN2, kTotalQBlocks, kTopK}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
+    auto sparseBlockCount = TensorDesc({kN2, kTotalQBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{1});
     auto metadata = TensorDesc({1024}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockTable = TensorDesc({kBatch, kMaxBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockShape = IntArrayDesc(vector<int64_t>{kBlockShapeX, kBlockSize});
@@ -71,34 +69,34 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, normal)
     auto attentionOut = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
-                        INPUT(query,             // query
-                              key,               // key
-                              value,             // value
-                              sparseBlockIdx,    // sparseBlockIdx
-                              sparseBlockCount,  // sparseBlockCount
-                              metadata,          // metadataOptional
-                              nullptr,           // attenMaskOptional
-                              nullptr,           // qDequantScaleOptional
-                              nullptr,           // kDequantScaleOptional
-                              nullptr,           // vDequantScaleOptional
-                              nullptr,           // pQuantScaleOptional
-                              nullptr,           // cuSeqLengthsQOptional
-                              nullptr,           // cuSeqLengthsKvOptional
-                              nullptr,           // sequsedQOptional
-                              nullptr,           // sequsedKvOptional
-                              blockTable,        // blockTableOptional
-                              blockShape,        // blockShape
-                              1,                 // isPackedGQA
-                              layoutQ,           // layoutQ
-                              layoutKv,          // layoutKv
-                              kScale,            // scaleValue
-                              1,                 // maskType
-                              0,                 // quantType
-                              0.0,               // dstTypeMax
-                              0,                 // softmaxPrecision
-                              -1,                // winLeft
-                              -1,                // winRight
-                              0                  // returnSoftmaxlse
+                        INPUT(query,            // query
+                              key,              // key
+                              value,            // value
+                              sparseBlockIdx,   // sparseBlockIdx
+                              sparseBlockCount, // sparseBlockCount
+                              metadata,         // metadataOptional
+                              nullptr,          // attenMaskOptional
+                              nullptr,          // qDequantScaleOptional
+                              nullptr,          // kDequantScaleOptional
+                              nullptr,          // vDequantScaleOptional
+                              nullptr,          // pQuantScaleOptional
+                              nullptr,          // cuSeqLengthsQOptional
+                              nullptr,          // cuSeqLengthsKvOptional
+                              nullptr,          // sequsedQOptional
+                              nullptr,          // sequsedKvOptional
+                              blockTable,       // blockTableOptional
+                              blockShape,       // blockShape
+                              1,                // isPackedGQA
+                              layoutQ,          // layoutQ
+                              layoutKv,         // layoutKv
+                              kScale,           // scaleValue
+                              1,                // maskType
+                              0,                // quantType
+                              0.0,              // dstTypeMax
+                              0,                // softmaxPrecision
+                              -1,               // winLeft
+                              -1,               // winRight
+                              0                 // returnSoftmaxlse
                               ),
                         OUTPUT(attentionOut, nullptr));
 
@@ -114,10 +112,8 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_query)
 {
     auto key = TensorDesc({kMaxBlocks, kBlockSize, kN2, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto value = TensorDesc({kMaxBlocks, kBlockSize, kN2, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto sparseBlockIdx =
-        TensorDesc({kN2, kTotalQBlocks, kTopK}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
-    auto sparseBlockCount =
-        TensorDesc({kN2, kTotalQBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{1});
+    auto sparseBlockIdx = TensorDesc({kN2, kTotalQBlocks, kTopK}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
+    auto sparseBlockCount = TensorDesc({kN2, kTotalQBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{1});
     auto metadata = TensorDesc({1024}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockTable = TensorDesc({kBatch, kMaxBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockShape = IntArrayDesc(vector<int64_t>{kBlockShapeX, kBlockSize});
@@ -126,34 +122,34 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_query)
     auto attentionOut = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
-                        INPUT(nullptr,           // query
-                              key,               // key
-                              value,             // value
-                              sparseBlockIdx,    // sparseBlockIdx
-                              sparseBlockCount,  // sparseBlockCount
-                              metadata,          // metadataOptional
-                              nullptr,           // attenMaskOptional
-                              nullptr,           // qDequantScaleOptional
-                              nullptr,           // kDequantScaleOptional
-                              nullptr,           // vDequantScaleOptional
-                              nullptr,           // pQuantScaleOptional
-                              nullptr,           // cuSeqLengthsQOptional
-                              nullptr,           // cuSeqLengthsKvOptional
-                              nullptr,           // sequsedQOptional
-                              nullptr,           // sequsedKvOptional
-                              blockTable,        // blockTableOptional
-                              blockShape,        // blockShape
-                              1,                 // isPackedGQA
-                              layoutQ,           // layoutQ
-                              layoutKv,          // layoutKv
-                              kScale,            // scaleValue
-                              1,                 // maskType
-                              0,                 // quantType
-                              0.0,               // dstTypeMax
-                              0,                 // softmaxPrecision
-                              -1,                // winLeft
-                              -1,                // winRight
-                              0                  // returnSoftmaxlse
+                        INPUT(nullptr,          // query
+                              key,              // key
+                              value,            // value
+                              sparseBlockIdx,   // sparseBlockIdx
+                              sparseBlockCount, // sparseBlockCount
+                              metadata,         // metadataOptional
+                              nullptr,          // attenMaskOptional
+                              nullptr,          // qDequantScaleOptional
+                              nullptr,          // kDequantScaleOptional
+                              nullptr,          // vDequantScaleOptional
+                              nullptr,          // pQuantScaleOptional
+                              nullptr,          // cuSeqLengthsQOptional
+                              nullptr,          // cuSeqLengthsKvOptional
+                              nullptr,          // sequsedQOptional
+                              nullptr,          // sequsedKvOptional
+                              blockTable,       // blockTableOptional
+                              blockShape,       // blockShape
+                              1,                // isPackedGQA
+                              layoutQ,          // layoutQ
+                              layoutKv,         // layoutKv
+                              kScale,           // scaleValue
+                              1,                // maskType
+                              0,                // quantType
+                              0.0,              // dstTypeMax
+                              0,                // softmaxPrecision
+                              -1,               // winLeft
+                              -1,               // winRight
+                              0                 // returnSoftmaxlse
                               ),
                         OUTPUT(attentionOut, nullptr));
 
@@ -170,10 +166,8 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_metadata)
     auto query = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto key = TensorDesc({kMaxBlocks, kBlockSize, kN2, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto value = TensorDesc({kMaxBlocks, kBlockSize, kN2, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto sparseBlockIdx =
-        TensorDesc({kN2, kTotalQBlocks, kTopK}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
-    auto sparseBlockCount =
-        TensorDesc({kN2, kTotalQBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{1});
+    auto sparseBlockIdx = TensorDesc({kN2, kTotalQBlocks, kTopK}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
+    auto sparseBlockCount = TensorDesc({kN2, kTotalQBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{1});
     auto blockTable = TensorDesc({kBatch, kMaxBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockShape = IntArrayDesc(vector<int64_t>{kBlockShapeX, kBlockSize});
     char layoutQ[] = "TND";
@@ -181,34 +175,34 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_metadata)
     auto attentionOut = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
-                        INPUT(query,             // query
-                              key,               // key
-                              value,             // value
-                              sparseBlockIdx,    // sparseBlockIdx
-                              sparseBlockCount,  // sparseBlockCount
-                              nullptr,           // metadataOptional
-                              nullptr,           // attenMaskOptional
-                              nullptr,           // qDequantScaleOptional
-                              nullptr,           // kDequantScaleOptional
-                              nullptr,           // vDequantScaleOptional
-                              nullptr,           // pQuantScaleOptional
-                              nullptr,           // cuSeqLengthsQOptional
-                              nullptr,           // cuSeqLengthsKvOptional
-                              nullptr,           // sequsedQOptional
-                              nullptr,           // sequsedKvOptional
-                              blockTable,        // blockTableOptional
-                              blockShape,        // blockShape
-                              1,                 // isPackedGQA
-                              layoutQ,           // layoutQ
-                              layoutKv,          // layoutKv
-                              kScale,            // scaleValue
-                              1,                 // maskType
-                              0,                 // quantType
-                              0.0,               // dstTypeMax
-                              0,                 // softmaxPrecision
-                              -1,                // winLeft
-                              -1,                // winRight
-                              0                  // returnSoftmaxlse
+                        INPUT(query,            // query
+                              key,              // key
+                              value,            // value
+                              sparseBlockIdx,   // sparseBlockIdx
+                              sparseBlockCount, // sparseBlockCount
+                              nullptr,          // metadataOptional
+                              nullptr,          // attenMaskOptional
+                              nullptr,          // qDequantScaleOptional
+                              nullptr,          // kDequantScaleOptional
+                              nullptr,          // vDequantScaleOptional
+                              nullptr,          // pQuantScaleOptional
+                              nullptr,          // cuSeqLengthsQOptional
+                              nullptr,          // cuSeqLengthsKvOptional
+                              nullptr,          // sequsedQOptional
+                              nullptr,          // sequsedKvOptional
+                              blockTable,       // blockTableOptional
+                              blockShape,       // blockShape
+                              1,                // isPackedGQA
+                              layoutQ,          // layoutQ
+                              layoutKv,         // layoutKv
+                              kScale,           // scaleValue
+                              1,                // maskType
+                              0,                // quantType
+                              0.0,              // dstTypeMax
+                              0,                // softmaxPrecision
+                              -1,               // winLeft
+                              -1,               // winRight
+                              0                 // returnSoftmaxlse
                               ),
                         OUTPUT(attentionOut, nullptr));
 
@@ -224,10 +218,8 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_key)
 {
     auto query = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto value = TensorDesc({kMaxBlocks, kBlockSize, kN2, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto sparseBlockIdx =
-        TensorDesc({kN2, kTotalQBlocks, kTopK}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
-    auto sparseBlockCount =
-        TensorDesc({kN2, kTotalQBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{1});
+    auto sparseBlockIdx = TensorDesc({kN2, kTotalQBlocks, kTopK}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
+    auto sparseBlockCount = TensorDesc({kN2, kTotalQBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{1});
     auto metadata = TensorDesc({1024}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockTable = TensorDesc({kBatch, kMaxBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockShape = IntArrayDesc(vector<int64_t>{kBlockShapeX, kBlockSize});
@@ -236,34 +228,34 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_key)
     auto attentionOut = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
-                        INPUT(query,             // query
-                              nullptr,           // key
-                              value,             // value
-                              sparseBlockIdx,    // sparseBlockIdx
-                              sparseBlockCount,  // sparseBlockCount
-                              metadata,          // metadataOptional
-                              nullptr,           // attenMaskOptional
-                              nullptr,           // qDequantScaleOptional
-                              nullptr,           // kDequantScaleOptional
-                              nullptr,           // vDequantScaleOptional
-                              nullptr,           // pQuantScaleOptional
-                              nullptr,           // cuSeqLengthsQOptional
-                              nullptr,           // cuSeqLengthsKvOptional
-                              nullptr,           // sequsedQOptional
-                              nullptr,           // sequsedKvOptional
-                              blockTable,        // blockTableOptional
-                              blockShape,        // blockShape
-                              1,                 // isPackedGQA
-                              layoutQ,           // layoutQ
-                              layoutKv,          // layoutKv
-                              kScale,            // scaleValue
-                              1,                 // maskType
-                              0,                 // quantType
-                              0.0,               // dstTypeMax
-                              0,                 // softmaxPrecision
-                              -1,                // winLeft
-                              -1,                // winRight
-                              0                  // returnSoftmaxlse
+                        INPUT(query,            // query
+                              nullptr,          // key
+                              value,            // value
+                              sparseBlockIdx,   // sparseBlockIdx
+                              sparseBlockCount, // sparseBlockCount
+                              metadata,         // metadataOptional
+                              nullptr,          // attenMaskOptional
+                              nullptr,          // qDequantScaleOptional
+                              nullptr,          // kDequantScaleOptional
+                              nullptr,          // vDequantScaleOptional
+                              nullptr,          // pQuantScaleOptional
+                              nullptr,          // cuSeqLengthsQOptional
+                              nullptr,          // cuSeqLengthsKvOptional
+                              nullptr,          // sequsedQOptional
+                              nullptr,          // sequsedKvOptional
+                              blockTable,       // blockTableOptional
+                              blockShape,       // blockShape
+                              1,                // isPackedGQA
+                              layoutQ,          // layoutQ
+                              layoutKv,         // layoutKv
+                              kScale,           // scaleValue
+                              1,                // maskType
+                              0,                // quantType
+                              0.0,              // dstTypeMax
+                              0,                // softmaxPrecision
+                              -1,               // winLeft
+                              -1,               // winRight
+                              0                 // returnSoftmaxlse
                               ),
                         OUTPUT(attentionOut, nullptr));
 
@@ -280,10 +272,8 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_attention_out)
     auto query = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto key = TensorDesc({kMaxBlocks, kBlockSize, kN2, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto value = TensorDesc({kMaxBlocks, kBlockSize, kN2, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto sparseBlockIdx =
-        TensorDesc({kN2, kTotalQBlocks, kTopK}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
-    auto sparseBlockCount =
-        TensorDesc({kN2, kTotalQBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{1});
+    auto sparseBlockIdx = TensorDesc({kN2, kTotalQBlocks, kTopK}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
+    auto sparseBlockCount = TensorDesc({kN2, kTotalQBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{1});
     auto metadata = TensorDesc({1024}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockTable = TensorDesc({kBatch, kMaxBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockShape = IntArrayDesc(vector<int64_t>{kBlockShapeX, kBlockSize});
@@ -291,34 +281,34 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_attention_out)
     char layoutKv[] = "PAGED_BBND";
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
-                        INPUT(query,             // query
-                              key,               // key
-                              value,             // value
-                              sparseBlockIdx,    // sparseBlockIdx
-                              sparseBlockCount,  // sparseBlockCount
-                              metadata,          // metadataOptional
-                              nullptr,           // attenMaskOptional
-                              nullptr,           // qDequantScaleOptional
-                              nullptr,           // kDequantScaleOptional
-                              nullptr,           // vDequantScaleOptional
-                              nullptr,           // pQuantScaleOptional
-                              nullptr,           // cuSeqLengthsQOptional
-                              nullptr,           // cuSeqLengthsKvOptional
-                              nullptr,           // sequsedQOptional
-                              nullptr,           // sequsedKvOptional
-                              blockTable,        // blockTableOptional
-                              blockShape,        // blockShape
-                              1,                 // isPackedGQA
-                              layoutQ,           // layoutQ
-                              layoutKv,          // layoutKv
-                              kScale,            // scaleValue
-                              1,                 // maskType
-                              0,                 // quantType
-                              0.0,               // dstTypeMax
-                              0,                 // softmaxPrecision
-                              -1,                // winLeft
-                              -1,                // winRight
-                              0                  // returnSoftmaxlse
+                        INPUT(query,            // query
+                              key,              // key
+                              value,            // value
+                              sparseBlockIdx,   // sparseBlockIdx
+                              sparseBlockCount, // sparseBlockCount
+                              metadata,         // metadataOptional
+                              nullptr,          // attenMaskOptional
+                              nullptr,          // qDequantScaleOptional
+                              nullptr,          // kDequantScaleOptional
+                              nullptr,          // vDequantScaleOptional
+                              nullptr,          // pQuantScaleOptional
+                              nullptr,          // cuSeqLengthsQOptional
+                              nullptr,          // cuSeqLengthsKvOptional
+                              nullptr,          // sequsedQOptional
+                              nullptr,          // sequsedKvOptional
+                              blockTable,       // blockTableOptional
+                              blockShape,       // blockShape
+                              1,                // isPackedGQA
+                              layoutQ,          // layoutQ
+                              layoutKv,         // layoutKv
+                              kScale,           // scaleValue
+                              1,                // maskType
+                              0,                // quantType
+                              0.0,              // dstTypeMax
+                              0,                // softmaxPrecision
+                              -1,               // winLeft
+                              -1,               // winRight
+                              0                 // returnSoftmaxlse
                               ),
                         OUTPUT(nullptr, nullptr));
 
@@ -335,10 +325,8 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, normal_with_lse)
     auto query = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto key = TensorDesc({kMaxBlocks, kBlockSize, kN2, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto value = TensorDesc({kMaxBlocks, kBlockSize, kN2, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto sparseBlockIdx =
-        TensorDesc({kN2, kTotalQBlocks, kTopK}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
-    auto sparseBlockCount =
-        TensorDesc({kN2, kTotalQBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{1});
+    auto sparseBlockIdx = TensorDesc({kN2, kTotalQBlocks, kTopK}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
+    auto sparseBlockCount = TensorDesc({kN2, kTotalQBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{1});
     auto metadata = TensorDesc({1024}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockTable = TensorDesc({kBatch, kMaxBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockShape = IntArrayDesc(vector<int64_t>{kBlockShapeX, kBlockSize});
@@ -348,34 +336,34 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, normal_with_lse)
     auto softmaxLse = TensorDesc({kT, kN1, 1}, ACL_FLOAT, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
-                        INPUT(query,             // query
-                              key,               // key
-                              value,             // value
-                              sparseBlockIdx,    // sparseBlockIdx
-                              sparseBlockCount,  // sparseBlockCount
-                              metadata,          // metadataOptional
-                              nullptr,           // attenMaskOptional
-                              nullptr,           // qDequantScaleOptional
-                              nullptr,           // kDequantScaleOptional
-                              nullptr,           // vDequantScaleOptional
-                              nullptr,           // pQuantScaleOptional
-                              nullptr,           // cuSeqLengthsQOptional
-                              nullptr,           // cuSeqLengthsKvOptional
-                              nullptr,           // sequsedQOptional
-                              nullptr,           // sequsedKvOptional
-                              blockTable,        // blockTableOptional
-                              blockShape,        // blockShape
-                              1,                 // isPackedGQA
-                              layoutQ,           // layoutQ
-                              layoutKv,          // layoutKv
-                              kScale,            // scaleValue
-                              1,                 // maskType
-                              0,                 // quantType
-                              0.0,               // dstTypeMax
-                              0,                 // softmaxPrecision
-                              -1,                // winLeft
-                              -1,                // winRight
-                              1                  // returnSoftmaxlse
+                        INPUT(query,            // query
+                              key,              // key
+                              value,            // value
+                              sparseBlockIdx,   // sparseBlockIdx
+                              sparseBlockCount, // sparseBlockCount
+                              metadata,         // metadataOptional
+                              nullptr,          // attenMaskOptional
+                              nullptr,          // qDequantScaleOptional
+                              nullptr,          // kDequantScaleOptional
+                              nullptr,          // vDequantScaleOptional
+                              nullptr,          // pQuantScaleOptional
+                              nullptr,          // cuSeqLengthsQOptional
+                              nullptr,          // cuSeqLengthsKvOptional
+                              nullptr,          // sequsedQOptional
+                              nullptr,          // sequsedKvOptional
+                              blockTable,       // blockTableOptional
+                              blockShape,       // blockShape
+                              1,                // isPackedGQA
+                              layoutQ,          // layoutQ
+                              layoutKv,         // layoutKv
+                              kScale,           // scaleValue
+                              1,                // maskType
+                              0,                // quantType
+                              0.0,              // dstTypeMax
+                              0,                // softmaxPrecision
+                              -1,               // winLeft
+                              -1,               // winRight
+                              1                 // returnSoftmaxlse
                               ),
                         OUTPUT(attentionOut, softmaxLse));
 
@@ -392,10 +380,8 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, invalid_layout_q)
     auto query = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto key = TensorDesc({kMaxBlocks, kBlockSize, kN2, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto value = TensorDesc({kMaxBlocks, kBlockSize, kN2, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto sparseBlockIdx =
-        TensorDesc({kN2, kTotalQBlocks, kTopK}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
-    auto sparseBlockCount =
-        TensorDesc({kN2, kTotalQBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{1});
+    auto sparseBlockIdx = TensorDesc({kN2, kTotalQBlocks, kTopK}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
+    auto sparseBlockCount = TensorDesc({kN2, kTotalQBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{1});
     auto metadata = TensorDesc({1024}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockTable = TensorDesc({kBatch, kMaxBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockShape = IntArrayDesc(vector<int64_t>{kBlockShapeX, kBlockSize});
@@ -422,10 +408,8 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_block_shape)
     auto query = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto key = TensorDesc({kMaxBlocks, kBlockSize, kN2, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto value = TensorDesc({kMaxBlocks, kBlockSize, kN2, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto sparseBlockIdx =
-        TensorDesc({kN2, kTotalQBlocks, kTopK}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
-    auto sparseBlockCount =
-        TensorDesc({kN2, kTotalQBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{1});
+    auto sparseBlockIdx = TensorDesc({kN2, kTotalQBlocks, kTopK}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
+    auto sparseBlockCount = TensorDesc({kN2, kTotalQBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{1});
     auto metadata = TensorDesc({1024}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockTable = TensorDesc({kBatch, kMaxBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     char layoutQ[] = "TND";
@@ -451,10 +435,8 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, invalid_block_shape_size)
     auto query = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto key = TensorDesc({kMaxBlocks, kBlockSize, kN2, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto value = TensorDesc({kMaxBlocks, kBlockSize, kN2, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto sparseBlockIdx =
-        TensorDesc({kN2, kTotalQBlocks, kTopK}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
-    auto sparseBlockCount =
-        TensorDesc({kN2, kTotalQBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{1});
+    auto sparseBlockIdx = TensorDesc({kN2, kTotalQBlocks, kTopK}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
+    auto sparseBlockCount = TensorDesc({kN2, kTotalQBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{1});
     auto metadata = TensorDesc({1024}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockTable = TensorDesc({kBatch, kMaxBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockShape = IntArrayDesc(vector<int64_t>{kBlockShapeX});
@@ -481,10 +463,8 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, dtype_mismatch)
     auto query = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto key = TensorDesc({kMaxBlocks, kBlockSize, kN2, kD}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto value = TensorDesc({kMaxBlocks, kBlockSize, kN2, kD}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto sparseBlockIdx =
-        TensorDesc({kN2, kTotalQBlocks, kTopK}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
-    auto sparseBlockCount =
-        TensorDesc({kN2, kTotalQBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{1});
+    auto sparseBlockIdx = TensorDesc({kN2, kTotalQBlocks, kTopK}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
+    auto sparseBlockCount = TensorDesc({kN2, kTotalQBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{1});
     auto metadata = TensorDesc({1024}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockTable = TensorDesc({kBatch, kMaxBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockShape = IntArrayDesc(vector<int64_t>{kBlockShapeX, kBlockSize});
@@ -511,10 +491,8 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, invalid_softmax_precision)
     auto query = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto key = TensorDesc({kMaxBlocks, kBlockSize, kN2, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto value = TensorDesc({kMaxBlocks, kBlockSize, kN2, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto sparseBlockIdx =
-        TensorDesc({kN2, kTotalQBlocks, kTopK}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
-    auto sparseBlockCount =
-        TensorDesc({kN2, kTotalQBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{1});
+    auto sparseBlockIdx = TensorDesc({kN2, kTotalQBlocks, kTopK}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
+    auto sparseBlockCount = TensorDesc({kN2, kTotalQBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{1});
     auto metadata = TensorDesc({1024}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockTable = TensorDesc({kBatch, kMaxBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockShape = IntArrayDesc(vector<int64_t>{kBlockShapeX, kBlockSize});

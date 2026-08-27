@@ -15,15 +15,12 @@
 
 namespace NpuArch::Epilogue::Block {
 
-template <
-    class DispatchPolicy,
-    class... Args
->
+template <class DispatchPolicy, class... Args>
 class BlockEpilogue {
     static_assert(DEPENDENT_FALSE<DispatchPolicy>, "Could not find an epilogue specialization");
 };
 
-}  // namespace NpuArch::Epilogue::Block
+} // namespace NpuArch::Epilogue::Block
 #if (__CCE_AICORE__ == 220)
 #include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax.hpp"
 #include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax_low_prec.hpp"
@@ -36,4 +33,4 @@ class BlockEpilogue {
 #include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax_arch35_reg_low_prec.hpp"
 #include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax_arch35_reg_low_prec_bf16.hpp"
 #endif
-#endif  // EPILOGUE_BLOCK_BLOCK_EPILOGUE_HPP
+#endif // EPILOGUE_BLOCK_BLOCK_EPILOGUE_HPP
