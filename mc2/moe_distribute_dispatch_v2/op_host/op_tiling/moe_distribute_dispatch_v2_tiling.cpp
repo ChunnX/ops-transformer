@@ -63,6 +63,8 @@ constexpr int64_t BS_UPPER_BOUND = 512;
 constexpr int64_t BS_UPPER_BOUND_LAYERED = 256;
 constexpr int64_t FULLMESH_BS_UPPER_BOUND_A3 = 256;
 constexpr int64_t FULLMESH_BS_UPPER_BOUND_A5 = BS_UPPER_BOUND;
+constexpr int64_t FULLMESH_V1_EP_WORLD_SIZE_THRESHOLD = 16;
+constexpr int64_t FULLMESH_V1_BS_THRESHOLD = 32;
 constexpr uint32_t H_BASIC_BLOCK_LAYERED = 32;
 constexpr uint32_t RANK_NUM_PER_NODE = 16U;
 
@@ -709,6 +711,8 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::CheckOtherAttrParams(cons
     auto quantModePtr = attrs->GetAttrPointer<int64_t>(config.attrQuantModeIndex);
     auto expertTokenNumsTypePtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(config.attrExpertTokenNumsTypeIndex));
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
+    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(config.attrEpWorldSizeIndex);
+    auto globalBsPtr = attrs->GetAttrPointer<int64_t>(config.attrGlobalBsIndex);
     if (config.isMc2Context) {
         if (strcmp(commAlgPtr, "hierarchy") == 0) {
             std::string reason = "hierarchy does not support mc2 context mode";
@@ -733,7 +737,23 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::CheckOtherAttrParams(cons
         return ge::GRAPH_FAILED;
     }
 
-    isSetFullMeshV2 = ((strcmp(commAlgPtr, "fullmesh_v2") == 0) ? true : false);
+    isSetFullMeshV2 = (strcmp(commAlgPtr, "fullmesh_v2") == 0);
+    if (isSetFullMeshV2 && (mc2tiling::GetSocVersion(context) == "Ascend950")) {
+        const gert::StorageShape *xStorageShape = context->GetInputShape(config.xIndex);
+        OP_TILING_CHECK(globalBsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "globalBsPtr"),
+                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(xStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "xShape"),
+                        return ge::GRAPH_FAILED);
+
+        const int64_t epWorldSize = *epWorldSizePtr;
+        const int64_t localBs = xStorageShape->GetStorageShape().GetDim(0);
+        const int64_t maxBs = (*globalBsPtr > 0 && epWorldSize > 0) ? *globalBsPtr / epWorldSize : localBs;
+        if ((epWorldSize > 0) && (epWorldSize <= FULLMESH_V1_EP_WORLD_SIZE_THRESHOLD) && (maxBs > 0) &&
+            (maxBs < FULLMESH_V1_BS_THRESHOLD)) {
+            isSetFullMeshV2 = false;
+            OP_LOGI(nodeName, "Use fullmesh_v1, epWorldSize=%ld, maxBs=%ld.", epWorldSize, maxBs);
+        }
+    }
     OP_LOGD(nodeName, "MoeDistributeDispatchV2 isSetFullMeshV2 = %d\n", isSetFullMeshV2);
 
     return ge::GRAPH_SUCCESS;
