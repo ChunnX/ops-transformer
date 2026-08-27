@@ -238,14 +238,14 @@ __aicore__ inline void GmSignalWaitBarrier(__gm__ int32_t *sigAddr, int32_t comp
 __aicore__ inline uint64_t GetUrmaCommHandle(__gm__ Mc2MoeContext *mc2Context, uint32_t rankId, uint32_t epRankId)
 {
     uint32_t index = rankId > epRankId ? rankId - 1U : rankId;
-    return mc2Context->hcommHandle[index];
+    return mc2Context->hcommHandle_[index];
 }
 
-inline GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
+inline GM_ADDR g_winRankAddr_[HCCL_MAX_RANK_SIZE];
 
 __aicore__ inline GM_ADDR GetRankWinAddrWithOffset(uint32_t rankId, uint64_t offset)
 {
-    return (GM_ADDR)(winRankAddr_[rankId] + offset);
+    return (GM_ADDR)(g_winRankAddr_[rankId] + offset);
 }
 
 __aicore__ inline GM_ADDR GetTensorAddr(uint16_t index, GM_ADDR tensorPtr)
@@ -296,6 +296,24 @@ __aicore__ inline void UpdateExpertLoopState(ExpertLoopState &state, uint32_t ex
     }
     state.expertIdx = expertIdx;
     Get<M_VALUE>(state.problemShape) = static_cast<int64_t>(expertTokenCount);
+}
+
+// 按当前 Wave 的剩余容量推进专家 token 位置，返回本次推进覆盖的 token 数。
+template <uint32_t TileM>
+__aicore__ inline uint32_t AdvanceExpertTokenPositionInWave(uint32_t expertTokenCount, uint32_t waveMGroupTarget,
+                                                            uint32_t &waveMGroupCount, ExpertTokenPosition &position)
+{
+    uint32_t expertRemainingTokenCount = expertTokenCount - position.tokenIndexInExpert;
+    uint32_t waveRemainingTokenCapacity = (waveMGroupTarget - waveMGroupCount) * TileM;
+    uint32_t sliceTokenCount =
+        expertRemainingTokenCount < waveRemainingTokenCapacity ? expertRemainingTokenCount : waveRemainingTokenCapacity;
+    waveMGroupCount += Ops::Base::CeilDiv(sliceTokenCount, TileM);
+    position.tokenIndexInExpert += sliceTokenCount;
+    if (position.tokenIndexInExpert >= expertTokenCount) {
+        ++position.expertIdx;
+        position.tokenIndexInExpert = 0U;
+    }
+    return sliceTokenCount;
 }
 
 // 轮询 GM 中的 int32 ready flag，并在两次读取之间加入短暂退避。
@@ -368,7 +386,7 @@ __aicore__ inline void CrossRankSyncInWorldSize(GM_ADDR rankSyncInWorldPtr, uint
     int32_t count = ReadGmByPassDCache(syncCount) + 1;
     for (uint32_t rankIdx = aivJob.jobIndex; rankIdx < worldSize; rankIdx += aivJob.totalJobs) {
         __gm__ int32_t *remoteSyncAddr =
-            reinterpret_cast<__gm__ int32_t *>(winRankAddr_[rankIdx]) + rankId * INT_CACHELINE;
+            reinterpret_cast<__gm__ int32_t *>(g_winRankAddr_[rankIdx]) + rankId * INT_CACHELINE;
         WriteGmByPassDCache(remoteSyncAddr, count);
         GmSignalWaitBarrier(syncRank + rankIdx * INT_CACHELINE, count);
     }

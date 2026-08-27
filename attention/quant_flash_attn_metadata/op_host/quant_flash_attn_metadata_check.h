@@ -109,14 +109,13 @@ inline aclnnStatus QuantFlashAttnMetadataCheck::CheckBaseAttr(int64_t batchSize,
     CHECK_COND((batchSize == -1 || batchSize > 0), ACLNN_ERR_RUNTIME_ERROR,
                "batchSize must be -1 or greater than 0, but got %ld", batchSize);
 
-    // quant_compute_mode 枚举值定义，当前仅支持 mode=1
     constexpr int64_t A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 1;
-    constexpr int64_t QUANT_MODE_GQA_FP8_FULLQUANT = 6;
+    constexpr int64_t A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32 = 0;
     static const std::unordered_set<int64_t> quantModeSet = {A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32,
-                                                             QUANT_MODE_GQA_FP8_FULLQUANT};
+                                                             A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32};
     CHECK_COND(quantModeSet.count(quantMode) > 0, ACLNN_ERR_RUNTIME_ERROR,
                "quantMode only supports 1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) "
-               "and 6(A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) "
+               "and 0(A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32) "
                "but got %ld",
                quantMode);
 
@@ -159,6 +158,11 @@ inline aclnnStatus QuantFlashAttnMetadataCheck::CheckBaseAttr(int64_t batchSize,
     CHECK_COND(!(quantMode == A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 && strcmp(layoutOut, "TND") != 0),
                ACLNN_ERR_RUNTIME_ERROR, "When quantMode is %ld (MxFP8), layoutOut only supports TND, but got %s",
                quantMode, layoutOut);
+
+    // 一致性校验: MxFP8 (quantMode=1) 场景下 layout_q 仅支持 TND
+    CHECK_COND(!(quantMode == A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 && strcmp(layoutQ, "TND") != 0),
+               ACLNN_ERR_RUNTIME_ERROR, "When quantMode is %ld (MxFP8), layoutQ only supports TND, but got %s",
+               quantMode, layoutQ);
 
     return ACLNN_SUCCESS;
 }

@@ -48,6 +48,8 @@ PACKAGE_TYPE="run"
 PACKAGE_TYPE_SET=FALSE
 KERNEL_TEMPLATE_INPUT=""
 ASCEND_SOC_UNITS="ascend910b"
+# 标记用户是否显式指定了 --soc; 未指定时由 detect_soc_from_npu_smi 自动探测 NPU 芯片型号
+SOC_USER_SPECIFIED=false
 # 支持的 SoC 列表(校验用, 单一数据源): 取自 cmake/scripts/util/const_var.py 的 SOC_MAP_EXT keys(出包遍历的 kernel 编译 soc 集合)
 # + CMakeLists.txt SOC_VERSION_LIST 中的 mc62。不在 CMakeLists.txt SOC_VERSION_LIST 的 soc 会走空包(cpack_empty_package)
 SUPPORT_COMPUTE_UNIT_SHORT=("ascend910b" "ascend910_93" "ascend950" "ascend310p" "ascend310b" "ascend910" "ascend610lite" "kirinx90" "kirin9030" "mc62")
@@ -370,6 +372,7 @@ function help_info() {
     echo "    --jit build run package without kernel bin"
     echo "    --pkg build run package with kernel bin"
     echo "    --pkg-type=<TYPE> Specify package type(TYPE options: run/rpm/deb/all), Default: run"
+    echo "    --torch_extension           Build torch_extension whl only, support --ops for single op packaging"
     echo "    --torch_extension_only       Build torch_extension whl package only"
     echo "    --experimental build experimental version"
     echo "    --opkernel_aicpu build aicpu kernel"
@@ -609,18 +612,23 @@ function build_example()
         echo "Currently $ASCEND_SOC_UNITS is not supported, please input a valid soc."
         return 1
     fi
+    # 非 experimental 模式下排除 experimental 目录,避免 built-in 算子修改误触发 experimental 算子的 example
+    local exclude_experimental=()
+    if [[ "$ENABLE_EXPERIMENTAL" != "TRUE" ]]; then
+        exclude_experimental=(-not -path "*/experimental/*")
+    fi
     # Obtain the example file corresponding to the input soc unit.
     if [[ "$ASCEND_SOC_UNITS" == "ascend950" ]]; then
         # 1. ascend950/ascend950 example is independent of other soc units.
-        files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/arch35/${pattern}*.cpp"))
+        files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/arch35/${pattern}*.cpp" "${exclude_experimental[@]}"))
         if [[ -z "$files" ]]; then
             # 2. Example is shared with other soc units, or the current operator only supports ascend950/ascend950.
-            files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/${pattern}*.cpp"))
+            files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/${pattern}*.cpp" "${exclude_experimental[@]}"))
         fi
     else
         # Except for ascend950/ascend950, the examples of other soc units are temporarily shared.
         # If you need to add independent examples, you can refer to the method of adding a directory for isolation.
-        files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/${pattern}*.cpp"))
+        files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/${pattern}*.cpp" "${exclude_experimental[@]}"))
     fi
     # Compile and Execute
     if [[ "${EXAMPLE_MODE}" == "eager" ]]; then
@@ -798,6 +806,10 @@ function collect_rpm_deb_package() {
 }
 
 function build_package(){
+    if [ -f "${BUILD_PATH}/no_ops.flag" ]; then
+        echo "[INFO] No operator can be compiled (all requested ops skipped by CANN version check), skip package generation."
+        return 0
+    fi
     if [[ "${PACKAGE_TYPE}" == "all" ]]; then
         local saved_pkg_type="${PACKAGE_TYPE}"
         local option=""
@@ -827,6 +839,10 @@ function build_host(){
 }
 
 function build_kernel(){
+    if [ -f "${BUILD_PATH}/no_ops.flag" ]; then
+        echo "[INFO] No operator can be compiled (all requested ops skipped by CANN version check), skip kernel build."
+        return 0
+    fi
     build ops_transformer_kernel
 }
 
@@ -842,6 +858,19 @@ function build_torch_extension_whl() {
             log "[WARNING] Python build module not found, skipping whl build"
             cd "${original_dir}"
             return 0
+        fi
+
+        if [[ -n "${ascend_op_name}" ]]; then
+            export TORCH_EXTENSION_OPS="${ascend_op_name}"
+            if [[ -n "${vendor_name}" ]]; then
+                export TORCH_EXTENSION_VENDOR="${vendor_name}"
+            else
+                export TORCH_EXTENSION_VENDOR="custom"
+            fi
+            log "[INFO] Building torch_extension whl with ops: ${ascend_op_name}, vendor: ${TORCH_EXTENSION_VENDOR}"
+        else
+            unset TORCH_EXTENSION_OPS
+            unset TORCH_EXTENSION_VENDOR
         fi
 
         python3 -m build --wheel -n 2>&1 || {
@@ -1021,6 +1050,68 @@ function process_soc_input(){
         echo "Warning: The current environment is configured for $ASCEND_SOC_UNITS, Please use ${SOC_HARDWARE_MAP[$ASCEND_SOC_UNITS]} series hardware for optimal performance."
     else
         echo "Warning: Hardware type '$ASCEND_SOC_UNITS' detected. Please ensure you are using compatible hardware."
+    fi
+
+    # 标记用户已显式指定 --soc, 后续 detect_soc_from_npu_smi 据此跳过自动探测
+    SOC_USER_SPECIFIED=true
+}
+
+# detect_soc_from_npu_smi - 在用户未显式指定 --soc 时, 通过 npu-smi info 自动探测 NPU 芯片型号,
+# 映射为编译用 soc_version 并赋值给 ASCEND_SOC_UNITS; 探测失败则保持默认值(ascend910b)。
+# 映射依据: cmake/scripts/util/const_var.py 的 SOC_MAP_EXT 与 opdesc_parser.py 的 SOC_TO_SHORT_SOC_MAP。
+function detect_soc_from_npu_smi() {
+    # 用户已显式指定 --soc, 跳过自动探测
+    if [[ "$SOC_USER_SPECIFIED" == "true" ]]; then
+        return 0
+    fi
+
+    # npu-smi 不可用时, 保持默认 soc
+    if ! command -v npu-smi &>/dev/null; then
+        echo "[INFO] npu-smi not found, using default soc: $ASCEND_SOC_UNITS"
+        return 0
+    fi
+
+    # 从 npu-smi info 输出提取首个 NPU 的芯片名(第三字段)
+    # 输出行格式: "| 0     910B3               | OK  | ..." -> $3 为芯片名
+    local chip_name
+    chip_name=$(npu-smi info 2>/dev/null | grep -E '^\| [0-9]+\s+[0-9A-Za-z]+\s+\|' | head -1 | awk '{print $3}')
+
+    if [[ -z "$chip_name" ]]; then
+        echo "[INFO] No NPU detected by npu-smi, using default soc: $ASCEND_SOC_UNITS"
+        return 0
+    fi
+
+    # 芯片名 -> soc_version 映射(大小写不敏感: ${chip_name^^} 转大写后匹配; * 通配匹配同系列变体)
+    local detected_soc="unknown"
+    case "${chip_name^^}" in
+        910A|910)
+            detected_soc="ascend910"
+            ;;
+        910B*)
+            detected_soc="ascend910b"
+            ;;
+        910_93*)
+            detected_soc="ascend910_93"
+            ;;
+        310P*)
+            detected_soc="ascend310p"
+            ;;
+        310B*)
+            detected_soc="ascend310b"
+            ;;
+        950*)
+            detected_soc="ascend950"
+            ;;
+        *)
+            detected_soc="unknown"
+            ;;
+    esac
+
+    if [[ "$detected_soc" != "unknown" ]]; then
+        ASCEND_SOC_UNITS="$detected_soc"
+        echo "[INFO] Auto-detected NPU chip: $chip_name -> soc_version: $detected_soc"
+    else
+        echo "[INFO] Unrecognized NPU chip name '$chip_name', using default soc: $ASCEND_SOC_UNITS"
     fi
 }
 
@@ -1235,7 +1326,7 @@ set_example_opt() {
 # 所有支持的长选项（不含值），用于参数合法性校验
 SUPPORTED_LONG_OPTS=(
   "help" "list_soc" "pkg" "pkg-type=" "static" "jit" "noaicpu" "opkernel_aicpu" "opkernel"
-  "experimental" "noexec" "torch_extension_only" "oom" "make_clean"
+  "experimental" "noexec" "torch_extension" "torch_extension_only" "oom" "make_clean"
   "mssanitizer" "dump_cce"
   "ophost" "opapi" "opgraph" "onnxplugin"
   "ophost_test" "opapi_test" "opgraph_test" "opkernel_test"
@@ -1895,6 +1986,10 @@ while [[ $# -gt 0 ]]; do
         ENABLE_UT_EXEC=FALSE
         shift
         ;;
+    --torch_extension)
+        ENABLE_TORCH_EXTENSION_ONLY=TRUE
+        shift
+        ;;
     --torch_extension_only)
         ENABLE_TORCH_EXTENSION_ONLY=TRUE
         shift
@@ -2203,6 +2298,10 @@ function process_ci_smoke_with_changed_list()
         fi
     done
 }
+
+# 参数解析完成后, 若用户未显式指定 --soc, 则通过 npu-smi info 自动探测 NPU 芯片型号
+detect_soc_from_npu_smi
+
 if [[ "$ENABLE_SMOKE" == "TRUE" ]]; then
     process_ci_smoke_with_changed_list
 fi
