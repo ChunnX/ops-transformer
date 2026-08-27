@@ -20,10 +20,10 @@ using namespace AscendC;
 using namespace MoeGatingTopK;
 
 #define TILING_KEY_REGBASE 10000
-#define TILING_KEY_HASH_INT32_INT64 10001
-#define TILING_KEY_HASH_INT32_INT32 10002
-#define TILING_KEY_HASH_INT64_INT64 10003
-#define TILING_KEY_HASH_INT64_INT32 10004
+#define TILING_KEY_HASH_INT32_INT64 10006
+#define TILING_KEY_HASH_INT32_INT32 10007
+#define TILING_KEY_HASH_INT64_INT64 10008
+#define TILING_KEY_HASH_INT64_INT32 10009
 #define TILING_KEY_WITHOUT_GROUP_REGBASE 10005
 #define TILING_KEY_E_K_FULLLOAD_REGBASE 10010
 
@@ -55,22 +55,26 @@ extern "C" __global__ __aicore__ void moe_gating_top_k(GM_ADDR x, GM_ADDR bias, 
         op.Process();
     } else if (TILING_KEY_IS(TILING_KEY_WITHOUT_GROUP_REGBASE)) {
         MoeGatingTopKWithoutGroupRegbase<DTYPE_X> op;
-        op.Init(x, bias, y, expertIdx, out, userWS, tilingData, &tPipe);
-        op.Process();
-    } else if (TILING_KEY_IS(TILING_KEY_REGBASE) || TILING_KEY_IS(TILING_KEY_HASH_INT32_INT32)) {
-        MoeGatingTopKRegbase<DTYPE_X> op;
-        op.Init(x, bias, inputIds, tid2eid, y, expertIdx, out, userWS, tilingData, &tPipe);
+        op.Init(x, bias, nullptr, nullptr, y, expertIdx, out, userWS, tilingData, &tPipe);
         op.Process();
     } else if (TILING_KEY_IS(TILING_KEY_HASH_INT32_INT64)) {
-        MoeGatingTopKRegbase<DTYPE_X, int32_t, int64_t> op;
+        MoeGatingTopKWithoutGroupRegbase<DTYPE_X, int32_t, int64_t> op;
+        op.Init(x, bias, inputIds, tid2eid, y, expertIdx, out, userWS, tilingData, &tPipe);
+        op.Process();
+    } else if (TILING_KEY_IS(TILING_KEY_HASH_INT32_INT32)) {
+        MoeGatingTopKWithoutGroupRegbase<DTYPE_X, int32_t, int32_t> op;
         op.Init(x, bias, inputIds, tid2eid, y, expertIdx, out, userWS, tilingData, &tPipe);
         op.Process();
     } else if (TILING_KEY_IS(TILING_KEY_HASH_INT64_INT64)) {
-        MoeGatingTopKRegbase<DTYPE_X, int64_t, int64_t> op;
+        MoeGatingTopKWithoutGroupRegbase<DTYPE_X, int64_t, int64_t> op;
         op.Init(x, bias, inputIds, tid2eid, y, expertIdx, out, userWS, tilingData, &tPipe);
         op.Process();
     } else if (TILING_KEY_IS(TILING_KEY_HASH_INT64_INT32)) {
-        MoeGatingTopKRegbase<DTYPE_X, int64_t, int32_t> op;
+        MoeGatingTopKWithoutGroupRegbase<DTYPE_X, int64_t, int32_t> op;
+        op.Init(x, bias, inputIds, tid2eid, y, expertIdx, out, userWS, tilingData, &tPipe);
+        op.Process();
+    } else if (TILING_KEY_IS(TILING_KEY_REGBASE)) {
+        MoeGatingTopKRegbase<DTYPE_X> op;
         op.Init(x, bias, inputIds, tid2eid, y, expertIdx, out, userWS, tilingData, &tPipe);
         op.Process();
     }
