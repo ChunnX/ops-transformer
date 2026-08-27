@@ -1718,3 +1718,109 @@ if (workspaces != nullptr) {
    cann-ops-transformer（无 key_stride0 修复），sys.path 优先级高于 conda env，
    必须删除，否则 graph_convert 修复静默失效
 4. simple_test.py 硬编码 `set_device(2)`，单卡可见环境需改设备号执行
+
+---
+---
+
+# arch22（A2 / 910B3）缺陷 D/E 运行时修复记录（UB 越界 507015）
+
+> 2026-08-27 排查修复。环境：8×910B3（arch22 / dav_2201），CANN 9.1.0。
+> 背景：缺陷 D（topk∈{5120,6144,7168}）与缺陷 E（poolSize≥32 且 topk≥6144）
+> 此前仅在 arch35（950，UB 248KB + VF 直通 TopK 路径）修复/确认不复现，
+> arch22 侧在 `docs/build_fix_record.md` 的 2026-08-26 章节登记为"待责任人处理"。
+> 本次在 A2 上逐个复现、定位并修复，`test_pool_key_indexer_known_defects.py`
+> 缺陷 D/E 全程落到 `ExpandAndAppendIndices`/`CleanInvalidOutput` 的整行 UB 缓冲。
+
+## 问题现象
+
+- 缺陷套件 26 例中 D/E 两族共 10 例 CRASH（`507015` aicore exception，EZ9999），
+  家族 C（pool_size 非 8 倍数，11 例）与全部 canary 对照正常
+- plog 关键行（`/root/ascend/log/debug/plog/`）：
+  - `The address for the VEC instruction to read/write UB is out of bounds`
+  - 内核：`ffftsplus aivector error`，出错核在 AIV（空闲核也报，崩在 InitBuffers
+    的 UB 静态分配越界，非计算数据越界）
+
+## 根因：expandOutLocal_ 按整行 outputLen 分配，叠加固定缓冲越 192KB UB
+
+arch22（dav_2201）的 UB 物理上限 **192KB**（`TOTAL_UB_SIZE`），TPipe 可分配
+上限 **184KB**（`TOTAL_VEC_LOCAL_SIZE`，`kernel_utils_constants.h`）。`InitBuffers`
+的固定缓冲（outQueue 33KB + tmpBuf 68KB + sortOutBuf 64KB + 若干小缓冲）合计
+**~171KB**；在此基础上 `poolSize>1` 分支再按**整行** `outputLen = topk + poolSize - 1`
+分配 `expandOutBuf_`/`workBuf_`。
+
+| 用例 | topk/ps | outputLen | expandOutBuf | 累计 | 结果 |
+|------|---------|-----------|--------------|------|------|
+| d2 canary ps16/topk4096 | 4096/16 | 4111 | ~16.7KB | ~205KB | 通过 |
+| d2 s2p384 ps16/topk5120 | 5120/16 | 5135 | ~20.8KB | 越界挤压 | CRASH |
+| d3 ps64/topk8192 | 8192/64 | 8255 | ~33KB | ~238KB | CRASH |
+| d3 ps128/topk8192 | 8192/128 | 8319 | ~33.5KB | ~243KB | CRASH |
+
+缺陷 D（topk 5120/6144/7168）与 E（topk 8192 × ps 32/64/128）的 `outputLen` 均
+≥ 5100，`expandOutBuf_` 随 topk 线性膨胀，叠加 ~171KB 固定缓冲后越过 192KB。
+arch22 与 arch35 的本质差异：
+- arch35 走 VF 直通 TopK（`vf/pool_key_indexer_topk.h` 直方图/radix），无 arch22
+  的 64KB `sortOutBuf_` + 68KB `tmpBuf_`，固定缓冲小；且 UB 为 248KB 更大；
+- arch22 走 Sort+MrgSort+LD 跨核归并，固定缓冲大；`ExpandAndAppendIndices` 是
+  相对 LIV2 新增的 poolSize>1 展开逻辑，沿用了"整行 UB 缓冲 + 一次性 DataCopyPad"
+  的写法，未按 arch22 UB 约束重新核算。
+
+## 修复（`op_kernel/arch22/pool_key_indexer_service_vector.h`）
+
+核心：**展开输出改分段生成 + 分段写 GM**，`expandOutLocal_` 固定
+`EXPAND_CHUNK=1024` 元素（4KB），不再随 outputLen 线性增长。
+
+1. 新增常量 `EXPAND_CHUNK = 1024`（int32 元素数）与跨流水同步 helper
+   `VToMTE3Sync`/`MTE3ToVSync`（对齐已有 `VToSSync/SToVSync/SToMTE3Sync` 硬同步族）
+2. `ExpandAndAppendIndices`：改分段循环，段边界按**池对齐**（`poolSize` 粒度，
+   每段 ≤ EXPAND_CHUNK），展开区 [0, topk) 逐段 `Duplicate(-1)` 铺底 →
+   逐池 `Duplicate(base)+Add(offsetTpl)` 向量展开 → `VToMTE3Sync`+`DataCopyPad`
+   写 GM → 下一段前 `MTE3ToVSync`；尾块区 [topk, totalOut) 单独一段处理
+3. `CleanInvalidOutput`：同法分段铺 -1 + 逐段 `DataCopyPad`
+4. 三处调用点（ProcessVec 直出 1 处 + ProcessLD 2 处）传 GM 目标与行基址，
+   移除函数外冗余的整行 `DataCopyPad`
+
+## SIMD 优化（对齐 arch35，性能）
+
+`ExpandAndAppendIndices` 原为每行证明 `ps` 次 `SetValue` 重建 offsetTpl 模板 +
+一次 `SToVSync`，且分段边界按固定 1024 元素切（切碎非 2 幂 poolSize 的池时退化
+逐 token 标量写）。参考 arch35 `pool_key_indexer_service_vector.h` 的
+"展开模板一次性构建"优化：
+
+1. **offsetTpl 模板常驻**：`InitBuffers`/`InitLDBuffers` 中 `poolSize%8==0` 时用
+   `AscendC::CreateVecIndex(workLocal_, 0, poolSize_)` 一次性构建 0..ps-1 并常驻
+   workLocal_ 头部，`ExpandAndAppendIndices` 不再逐行标量重建（省 ps 次 SetValue
+   + SToVSync 硬同步）。CreateVecIndex 为 V pipe 向量写（arch22 dav_c220 已支持
+   count 版本），与消费它的 Add 同 pipe，中间隔多次向量操作与跨核同步，有序性足够
+2. **分段按池对齐**：`poolsPerSeg = max(1, EXPAND_CHUNK / poolSize)`，段边界落在池
+   边界，向量路径每池完整落段内 → 纯 `Duplicate+Add` SIMD，不再有切碎池的逐 token
+   标量补边；非 8 倍数 poolSize 场景（家族 C，topk 小）仍走标量写，不受影响
+
+## 验证（Atlas A2 910B3）
+
+| 项目 | 结果 |
+|------|------|
+| `test_pool_key_indexer_known_defects.py`（C/D/E 26 例，进程隔离） | 26 passed |
+| `test_pool_key_indexer.py` + `test_pool_key_indexer_general.py` | 103 passed |
+| GE 图模式 `ge_graph.py` + `general_ge_graph.py`（清 kernel_cache 后） | 68 passed |
+| 缺陷 D 崩溃点单用例（s2p384/512/640、ps32/topk6144、ps128/topk8192） | 全 PASS |
+| `--soc=ascend910b --pkg` 编译 | exit=0 |
+
+## 排障陷阱（留档）
+
+1. **UB 越界的空核报告假象**：崩溃常报在空闲 AIV 核上——空闲核同样执行
+   `InitBuffers`（静态分配），越界发生在分配阶段而非计算阶段。切勿被"崩在空核"
+   误导去查跨核同步/计算数据流；应先按 `InitBuffers` 各 buffer 尺寸公式逐用例
+   核算 UB 峰值（本仓 `kernel_utils_constants.h` 的 `TOTAL_UB_SIZE /
+   TOTAL_VEC_LOCAL_SIZE` 是权威上限）
+2. **分段同步要覆盖"标量写"支路**：分段后若某段既有向量写又有标量写（池被切碎
+   或尾块），标量 `SetValue` 前后必须补 `VToSSync` + `SToMTE3Sync`，否则响应返回
+   "精度错乱"（visible count 不一致）而非崩溃——首版分段只做了 `VToMTE3Sync`，
+   泛化 `ps=112`/`ps=24` 用例当场暴露
+3. **测试需 `ASCEND_CUSTOM_OPP_PATH` 环境变量**：指向
+   `cann-9.1.0/opp/vendors/custom_transformer`（或 source 其 bin/set_env.bash）
+   否则 torch_extension 通过 `GetCustOpApiHandlers` 找不到
+   `libcust_opapi.so` 的 `aclnnPoolKeyIndexer` 符号，报
+   `not in libopapi.so, or libopapi_transformer.so not found`（与 kernel 无关的
+   环境噪声）
+4. **/tmp 磁盘满会中断 tbe 编译**：`No space left on device`（tmpfs 多为 core/perf
+   转储占满），编译前留足 tmpfs 空间
