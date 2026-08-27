@@ -1821,6 +1821,10 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
     inputParams.kScaleStrides.set_n2Stride(0);
     inputParams.vScaleStrides.set_bnStride(0);
     inputParams.vScaleStrides.set_n2Stride(0);
+    inputParams.kOffsetStrides.set_bnStride(0);
+    inputParams.kOffsetStrides.set_n2Stride(0);
+    inputParams.vOffsetStrides.set_bnStride(0);
+    inputParams.vOffsetStrides.set_n2Stride(0);
     inputParams.set_bSize(fiaInfo.bSize);
     inputParams.set_t1Size(fiaInfo.qTSize);
     inputParams.set_t2Size(fiaInfo.kTSize);
@@ -1863,15 +1867,44 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
             inputParams.vScaleStrides.set_bnStride(bnStride == contigBn ? 0 : bnStride);
             inputParams.vScaleStrides.set_n2Stride(n2Stride == contigN2 ? 0 : n2Stride);
         }
+        if (fiaInfo.kOffsetStrides != nullptr && fiaInfo.kOffsetStrides->GetDimNum() > 0) {
+            const auto &offsetShape = fiaInfo.opParamInfo.keyAntiquantOffset.tensor->GetStorageShape();
+            uint64_t contigN2 = 1;
+            for (size_t i = 2; i < offsetShape.GetDimNum(); ++i) {
+                contigN2 *= static_cast<uint64_t>(offsetShape.GetDim(i));
+            }
+            uint64_t contigBn = static_cast<uint64_t>(offsetShape.GetDim(1)) * contigN2;
+            uint64_t bnStride = fiaInfo.kOffsetStrides->GetStride(0);
+            uint64_t n2Stride = fiaInfo.kOffsetStrides->GetDimNum() > 1 ? fiaInfo.kOffsetStrides->GetStride(1) : 0;
+            inputParams.kOffsetStrides.set_bnStride(bnStride == contigBn ? 0 : bnStride);
+            inputParams.kOffsetStrides.set_n2Stride(n2Stride == contigN2 ? 0 : n2Stride);
+        }
+        if (fiaInfo.vOffsetStrides != nullptr && fiaInfo.vOffsetStrides->GetDimNum() > 0) {
+            const auto &offsetShape = fiaInfo.opParamInfo.valueAntiquantOffset.tensor->GetStorageShape();
+            uint64_t contigN2 = 1;
+            for (size_t i = 2; i < offsetShape.GetDimNum(); ++i) {
+                contigN2 *= static_cast<uint64_t>(offsetShape.GetDim(i));
+            }
+            uint64_t contigBn = static_cast<uint64_t>(offsetShape.GetDim(1)) * contigN2;
+            uint64_t bnStride = fiaInfo.vOffsetStrides->GetStride(0);
+            uint64_t n2Stride = fiaInfo.vOffsetStrides->GetDimNum() > 1 ? fiaInfo.vOffsetStrides->GetStride(1) : 0;
+            inputParams.vOffsetStrides.set_bnStride(bnStride == contigBn ? 0 : bnStride);
+            inputParams.vOffsetStrides.set_n2Stride(n2Stride == contigN2 ? 0 : n2Stride);
+        }
     }
     OP_LOGI(fiaInfo.opName, "stride_path: hasViewStride=%d keyBn=%lu keyN2=%lu valBn=%lu valN2=%lu "
-        "kScaleBn=%lu kScaleN2=%lu vScaleBn=%lu vScaleN2=%lu",
+        "kScaleBn=%lu kScaleN2=%lu vScaleBn=%lu vScaleN2=%lu "
+        "kOffsetBn=%lu kOffsetN2=%lu vOffsetBn=%lu vOffsetN2=%lu",
         static_cast<int>(fiaInfo.hasViewStride), fiaInfo.keyBnStride, fiaInfo.keyN2Stride,
         fiaInfo.valueBnStride, fiaInfo.valueN2Stride,
         (fiaInfo.kScaleStrides != nullptr && fiaInfo.kScaleStrides->GetDimNum() > 0) ? fiaInfo.kScaleStrides->GetStride(0) : 0,
         (fiaInfo.kScaleStrides != nullptr && fiaInfo.kScaleStrides->GetDimNum() > 1) ? fiaInfo.kScaleStrides->GetStride(1) : 0,
         (fiaInfo.vScaleStrides != nullptr && fiaInfo.vScaleStrides->GetDimNum() > 0) ? fiaInfo.vScaleStrides->GetStride(0) : 0,
-        (fiaInfo.vScaleStrides != nullptr && fiaInfo.vScaleStrides->GetDimNum() > 1) ? fiaInfo.vScaleStrides->GetStride(1) : 0);
+        (fiaInfo.vScaleStrides != nullptr && fiaInfo.vScaleStrides->GetDimNum() > 1) ? fiaInfo.vScaleStrides->GetStride(1) : 0,
+        (fiaInfo.kOffsetStrides != nullptr && fiaInfo.kOffsetStrides->GetDimNum() > 0) ? fiaInfo.kOffsetStrides->GetStride(0) : 0,
+        (fiaInfo.kOffsetStrides != nullptr && fiaInfo.kOffsetStrides->GetDimNum() > 1) ? fiaInfo.kOffsetStrides->GetStride(1) : 0,
+        (fiaInfo.vOffsetStrides != nullptr && fiaInfo.vOffsetStrides->GetDimNum() > 0) ? fiaInfo.vOffsetStrides->GetStride(0) : 0,
+        (fiaInfo.vOffsetStrides != nullptr && fiaInfo.vOffsetStrides->GetDimNum() > 1) ? fiaInfo.vOffsetStrides->GetStride(1) : 0);
     inputParams.set_dSizeRope(DSIZE_64);
     inputParams.set_scaleValue(fiaInfo.scaleValue);
     inputParams.set_preTokens(fiaInfo.preToken);

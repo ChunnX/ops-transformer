@@ -320,7 +320,11 @@ struct RunInfo<false> {
     uint64_t kScaleBnStride; \
     uint64_t kScaleN2Stride; \
     uint64_t vScaleBnStride; \
-    uint64_t vScaleN2Stride
+    uint64_t vScaleN2Stride; \
+    uint64_t kOffsetBnStride; \
+    uint64_t kOffsetN2Stride; \
+    uint64_t vOffsetBnStride; \
+    uint64_t vOffsetN2Stride
 
 #define ROPE_INFO \
     /* rope参数 */ \
@@ -551,6 +555,10 @@ struct CVSharedParams<true, true> {
     uint64_t kScaleN2Stride;
     uint64_t vScaleBnStride;
     uint64_t vScaleN2Stride;
+    uint64_t kOffsetBnStride;
+    uint64_t kOffsetN2Stride;
+    uint64_t vOffsetBnStride;
+    uint64_t vOffsetN2Stride;
 
     // prefix
     bool isActualSharedPrefixLenNull;
