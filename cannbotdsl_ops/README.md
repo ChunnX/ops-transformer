@@ -109,14 +109,26 @@ export LD_LIBRARY_PATH="${stage}/packages/vendors/${vendor_dir}/op_api/lib:${LD_
 ./build-provider/cannbotdsl_ops/cannbotdsl_flash_kda_aclnn_smoke \
   --batch 2 --heads 96 --sequence 10240
 
-# 导出一组 ACLNN 输入输出并执行 ACLNN/native/CPU golden 三方对拍
+# 导出任一已发布 shape 的完整 ACLNN 输入输出；metadata.txt 自描述 B/N/S 和标量
 mkdir -p /tmp/flash-kda-dump
 ./build-provider/cannbotdsl_ops/cannbotdsl_flash_kda_aclnn_smoke \
+  --batch 2 --heads 96 --sequence 10240 \
   --dump-dir /tmp/flash-kda-dump
+
+# 完整输出先做流式 finite 检查，再对指定 batch/head 切片执行
+# ACLNN/native/CPU golden 三方对拍。--golden-sample 可重复，CPU 峰值内存为 O(S*D)。
 PYTHONPATH=/path/to/cannbot-dsl/build/python_packages \
 python cannbotdsl_ops/tests/verify_flash_kda_aclnn_dump.py \
   --dump-dir /tmp/flash-kda-dump \
-  --cannbotdsl-source /path/to/cannbot-dsl --verify-native
+  --cannbotdsl-source /path/to/cannbot-dsl \
+  --golden-sample 0:0 --golden-sample 1:95 --verify-native
+
+# 发布验收可不启用 native，顺序遍历所有 batch/head，完成全输出逐元素 CPU golden：
+PYTHONPATH=/path/to/cannbot-dsl/build/python_packages \
+python cannbotdsl_ops/tests/verify_flash_kda_aclnn_dump.py \
+  --dump-dir /tmp/flash-kda-dump \
+  --cannbotdsl-source /path/to/cannbot-dsl \
+  --all-golden-samples --summary-only
 ```
 
 不要把构建根目录中的 `libcust_opapi.so` 放在上述安装树之前；其相对 Provider
@@ -182,11 +194,15 @@ Ascend950PR 上已完成以下验证：
 - `aclnnFlashKdaGetWorkspaceSize` 成功并返回 29,430,272 字节；
 - `aclnnFlashKda` 成功入队并完成 stream 同步；
 - 确定性有效输入下 output 与 final state 均为有限值；
-- 同输入 ACLNN 与 native Provider 的 output/final state 逐字节一致；
-- 相对 CPU chunk golden，output/state 最大绝对误差分别为
-  `2.350081e-4` 和 `6.781593e-4`，通过 `atol=rtol=5e-3`；
+- 六个有限 variant 的首尾代表性 `(B,H)` 切片中，同输入 ACLNN 与 native
+  Provider 的 output/final state 均逐字节一致；
+- 六个 variant 的最小合法 shape 均已按 `(B,H)` 顺序遍历，完成全部 output
+  `S×D` 和 final state `128×128` 元素的 CPU chunk golden 校验；累计验证
+  690 个切片，矩阵最坏 output/state 最大绝对误差分别为 `2.527554e-4` 和
+  `1.048915e-3`，通过 `atol=rtol=5e-3`；
 - 同进程 2 streams × 2 waves 通过，无非有限值且第二轮结果与第一轮逐字节一致；
-- 六个有限 variant 均已用最小合法 shape 完成 GetWorkspace、执行与有限值检查；
+- 六个有限 variant 均已用最小合法 shape 完成 GetWorkspace、执行、完整 CPU
+  golden 与代表性 native 对拍；
   覆盖 B1/N3/S8192、B1/N3/S32768、B4/N3/S8192、B1/N96/S1024、
   B2/N96/S10240 和 B4/N96/S1024；
 - Provider launch 固定为 28 blocks，满足该目标 28 个 Cube core 的整网格
@@ -211,6 +227,6 @@ Ascend950PR 上已完成以下验证：
 - 7 个内部临时张量由 executor workspace 分配并在 launch 前回填地址；
 - Provider 物理 ABI 为 16 个 tensor inputs、2 个 tensor outputs、4 个 scalar
   attributes；顺序必须与生成 registry 完全一致；
-- 当前完成 AOT、registry、host 编译/链接、混合符号、安装布局、B1/N3/S8192
-  三方精度、双 stream/repeat 和六变体最小 shape 实机执行。其余 5 个变体的
-  三方精度、全变体性能、更多错误注入和长稳压力仍是量产验收项。
+- 当前完成 AOT、registry、host 编译/链接、混合符号、安装布局、六变体最小
+  shape 的完整 CPU golden/代表性 native 对拍，以及双 stream/repeat。产品目标
+  输入域确认与扩展、全变体性能、更多错误注入和长稳压力仍是量产验收项。

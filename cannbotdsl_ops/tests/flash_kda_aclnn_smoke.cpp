@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <iomanip>
 #include <string>
 #include <utility>
 #include <vector>
@@ -224,6 +225,24 @@ bool DumpInvocationInputs(const Invocation &invocation, const std::string &dumpD
     return true;
 }
 
+bool DumpInvocationMetadata(const ShapeConfig &shape, const std::string &dumpDir)
+{
+    std::ofstream output(dumpDir + "/metadata.txt");
+    if (!output) {
+        std::fprintf(stderr, "open dump metadata failed: %s\n", dumpDir.c_str());
+        return false;
+    }
+    output << "schema=1\n"
+           << "batch=" << shape.batch << "\n"
+           << "heads=" << shape.heads << "\n"
+           << "sequence=" << shape.sequence << "\n"
+           << "head_dim=" << kHeadDim << "\n"
+           << std::setprecision(17)
+           << "scale=" << kScale << "\n"
+           << "lower_bound=" << kLowerBound << "\n";
+    return output.good();
+}
+
 bool DumpInvocationOutputs(const Invocation &invocation, const std::string &dumpDir)
 {
     return DumpTensor(invocation.resources[8], dumpDir + "/out.bf16") &&
@@ -399,15 +418,6 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    if (dump && (shape.batch != kDefaultBatch ||
-                 shape.heads != kDefaultHeads ||
-                 shape.sequence != kDefaultSequence)) {
-        std::fprintf(
-            stderr,
-            "--dump-dir currently supports only B1/N3/S8192 because the "
-            "golden verifier records that shape contract\n");
-        return EXIT_FAILURE;
-    }
     std::printf("shape=B%lld/N%lld/S%lld\n",
                 static_cast<long long>(shape.batch),
                 static_cast<long long>(shape.heads),
@@ -435,7 +445,8 @@ int main(int argc, char **argv)
             }
         }
         if (success && dump && wave == 0U &&
-            !DumpInvocationInputs(invocations[0], dumpDir)) {
+            (!DumpInvocationMetadata(shape, dumpDir) ||
+             !DumpInvocationInputs(invocations[0], dumpDir))) {
             success = false;
         }
         for (size_t streamIndex = 0;
