@@ -934,11 +934,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
     if (GetBlockIdx() >= v1UsedCubeCoreNum_) {
         return;
     }
-    if ASCEND_IS_AIC {
-        AscendC::SetHF32Mode(1);
-        AscendC::SetHF32TransMode(1);
-    }
-
     uint32_t buffId = 0;
     uint32_t prevOffsetND = 0;
     uint32_t prevNDBlock = 0;
@@ -971,9 +966,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
         ProcessC1(prevOffsetND, prevNDBlock, prevOffsetBS, prevBSBlock, buffId - 1);
     }
 
-    if ASCEND_IS_AIC {
-        AscendC::SetHF32Mode(0);
-    }
 }
 
 
