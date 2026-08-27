@@ -574,6 +574,7 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::SetFlagTo
         SyncFunc<AscendC::HardEvent::V_S>();
     }
 
+
     for (uint32_t ffnIdx = startFFNId; ffnIdx < endFFNId; ++ffnIdx) {
         if constexpr (isSync) {
             if (ffnStatusTensor_.GetValue(ffnIdx - startFFNId) == 0) {
