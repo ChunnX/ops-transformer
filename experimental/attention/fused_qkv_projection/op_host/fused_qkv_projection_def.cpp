@@ -36,11 +36,7 @@ public:
             .Format(kFusedQkvFormats)
             .AutoContiguous();
 
-        this->Input("bias")
-            .ParamType(OPTIONAL)
-            .DataType(kFusedQkvDataTypes)
-            .Format(kFusedQkvFormats)
-            .AutoContiguous();
+        this->Input("bias").ParamType(OPTIONAL).DataType(kFusedQkvDataTypes).Format(kFusedQkvFormats).AutoContiguous();
 
         this->Output("query")
             .ParamType(REQUIRED)
@@ -48,11 +44,7 @@ public:
             .Format(kFusedQkvFormats)
             .AutoContiguous();
 
-        this->Output("key")
-            .ParamType(REQUIRED)
-            .DataType(kFusedQkvDataTypes)
-            .Format(kFusedQkvFormats)
-            .AutoContiguous();
+        this->Output("key").ParamType(REQUIRED).DataType(kFusedQkvDataTypes).Format(kFusedQkvFormats).AutoContiguous();
 
         this->Output("value")
             .ParamType(REQUIRED)

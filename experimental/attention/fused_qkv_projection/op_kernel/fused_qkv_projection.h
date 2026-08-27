@@ -21,9 +21,7 @@ using namespace matmul;
 template <typename T>
 class FusedQkvProjection {
 public:
-    __aicore__ inline FusedQkvProjection()
-    {
-    }
+    __aicore__ inline FusedQkvProjection() {}
     __aicore__ inline void Init(GM_ADDR hs, GM_ADDR wt, GM_ADDR bias, GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR ws,
                                 const FusedQkvProjectionTilingData *td);
     __aicore__ inline void Process();
