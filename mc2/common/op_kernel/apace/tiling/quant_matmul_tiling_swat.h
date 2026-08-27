@@ -281,7 +281,7 @@ private:
 
         uint64_t blockNum = CeilDiv(args_.m, runInfo_.baseM) * CeilDiv(args_.n, runInfo_.baseN);
         if (blockNum < platformInfo_.aicNum) {
-            AdjustBasicBlock();
+            // AdjustBasicBlock();
         }
         CHECK_COND(runInfo_.baseM != 0UL && runInfo_.baseN != 0UL && runInfo_.baseK != 0UL,
                    "Failed to derive a valid tiling base shape: baseM, baseN, and baseK must all be non-zero.");

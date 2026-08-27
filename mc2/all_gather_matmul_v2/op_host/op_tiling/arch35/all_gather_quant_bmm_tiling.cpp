@@ -64,6 +64,7 @@ constexpr int32_t IDX_B_LOW = 6;
 constexpr uint32_t X1_INDEX = 0;
 constexpr uint32_t X2_INDEX = 1;
 constexpr uint64_t APACE_KERNEL_ALIGN_M = 256;
+constexpr uint32_t APACE_TAIL_ALIGN = 16;
 } // namespace
 
 static constexpr int64_t CMP_MAX_LEN = 7;
@@ -301,7 +302,7 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckMXFPScaleInput()
                     .c_str()),
             return ge::GRAPH_FAILED);
     }
-    scale1kSpaceSize_ = args_.rankDim * scale1FirstDim * scale1SecondDim * scale1ThirdDim * sizeof(ge::DT_FLOAT8_E8M0);
+    scale1kSpaceSize_ = args_.rankDim * scale1FirstDim * scale1SecondDim * scale1ThirdDim * sizeof(uint8_t);
     OP_LOGI(opName_, "scale1kSpaceSize_=%lu.", scale1kSpaceSize_);
     return ge::GRAPH_SUCCESS;
 }
@@ -578,8 +579,8 @@ ge::graphStatus AllGatherQuantBmmTiling::DoApaceMatmulTiling()
     param.tailCnt = static_cast<uint32_t>(cutRes.numShortTile);
 
     uint32_t tileM = static_cast<uint32_t>(tileMValue_);
-    uint32_t paddedTailM = (param.tailM > 0) ? static_cast<uint32_t>((param.tailM + APACE_KERNEL_ALIGN_M - 1) /
-                                                                     APACE_KERNEL_ALIGN_M * APACE_KERNEL_ALIGN_M) :
+    uint32_t paddedTailM = (param.tailM > 0) ? static_cast<uint32_t>((param.tailM + APACE_TAIL_ALIGN - 1) /
+                                                                     APACE_TAIL_ALIGN * APACE_TAIL_ALIGN) :
                                                0U;
     uint32_t totalLogicalM =
         static_cast<uint32_t>(args_.rankDim) * (param.tileCnt * tileM + param.tailCnt * paddedTailM);
