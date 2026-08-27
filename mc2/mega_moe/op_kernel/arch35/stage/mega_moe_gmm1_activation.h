@@ -18,7 +18,7 @@
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
 #include "tensor_api/tensor.h"
-#include "../blaze/epilogue/block_epilogue_activation_mx_quant.h"
+#include "../epilogue/block_epilogue_activation_mx_quant.h"
 #include "../common/mega_moe_gmm_common.h"
 
 namespace MegaMoeImpl {
