@@ -7,6 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # --------------------------------------------------------------------------------
+require_pypto_pro(quant_flash_attn_grad)
 add_op_to_compiled_list()
 
 if (BUILD_OPEN_PROJECT)
@@ -14,6 +15,7 @@ if (BUILD_OPEN_PROJECT)
         quant_flash_attn_grad_def.cpp
     )
     add_modules_sources(OPTYPE quant_flash_attn_grad ACLNNTYPE aclnn_inner)
+    enable_pypto_kernel(quant_flash_attn_grad)
 endif()
 
 # ascend950 条件编译—缺少此项会导致 kernel binary 未编译
@@ -21,7 +23,6 @@ set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if("${CONDITION_UNIT}" STREQUAL "ascend950")
     # PyPTO kernel: run codegen at configure time and exposes PYPTO_GEN_DIR for the host tiling -I below.
     # Must be called BEFORE add_modules_sources(...) (which reads PYPTO_GEN_DIR).
-    enable_pypto_kernel(quant_flash_attn_grad)
     add_ops_compile_options(
         OP_NAME QuantFlashAttnGrad
         COMPUTE_UNIT Ascend950PR_9599
