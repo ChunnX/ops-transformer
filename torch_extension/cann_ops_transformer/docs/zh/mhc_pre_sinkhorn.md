@@ -259,9 +259,20 @@ cann_ops_transformer.mhc_pre_sinkhorn(x, phi, alpha, bias, hcMult, numIters, hcE
     - 输入phi的数据范围限定在$\pm \frac{1}{\sqrt{NC}}$范围内，eps限定在1e-6，此范围内具有较好的数值稳定性。
   <!-- end id8 -->
 
-## 确定性计算
+## 确定性/Batch一致性
 
-默认支持确定性计算。
+- 确定性计算：
+    - 默认支持确定性计算。
+
+- Batch一致性：
+    <!-- npu="A3,910b" id9 -->
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+        - 默认不支持Batch一致性。
+    <!-- end id9 -->
+    <!-- npu="950" id10 -->
+    - <term>Ascend 950PR/Ascend 950DT</term>：
+        - 默认不支持Batch一致性，可通过Pytorch开关（[《TorchNPU自定义API》](https://www.hiascend.com/document/detail/zh/Pytorch/latest/apiref/customapi/docs/zh/custom_APIs/overview.md)中torch_npu.npu.set_deterministic_level）支持。开启Batch一致性后性能可能会有一定程度的劣化。
+    <!-- end id10 -->
 
 ## 调用说明
 
