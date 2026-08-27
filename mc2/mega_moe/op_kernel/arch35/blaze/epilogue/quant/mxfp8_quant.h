@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file mx_quant_fp8.h
- * \brief A5（arch35）MX FP8 数据量化。
+ * \file mxfp8_quant.h
+ * \brief MX FP8 数据量化。
  */
 
-#ifndef MEGA_MOE_ARCH35_MX_QUANT_FP8_H
-#define MEGA_MOE_ARCH35_MX_QUANT_FP8_H
+#ifndef MEGA_MOE_ARCH35_MXFP8_QUANT_H
+#define MEGA_MOE_ARCH35_MXFP8_QUANT_H
 
 #if defined(__DAV_C310__)
 #include "mx_quant_common.h"
@@ -89,4 +89,4 @@ __aicore__ inline void QuantizeMxFp8Data(__ubuf__ bfloat16_t *input, __ubuf__ ui
 } // namespace MegaMoeImpl
 
 #endif // defined(__DAV_C310__)
-#endif // MEGA_MOE_ARCH35_MX_QUANT_FP8_H
+#endif // MEGA_MOE_ARCH35_MXFP8_QUANT_H

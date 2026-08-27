@@ -10,7 +10,7 @@
 
 /*!
  * \file gated_activation.h
- * \brief A5（arch35）门控激活统一入口和运行时分派。
+ * \brief 门控激活统一入口和运行时分派。
  */
 
 #ifndef MEGA_MOE_ARCH35_ACTIVATION_GATED_ACTIVATION_H
@@ -24,6 +24,15 @@
 
 namespace MegaMoeImpl {
 namespace Activation {
+
+// Epilogue 向激活调度层传递的通用参数。
+struct ActivationParams {
+    float clampLimit = 0.0F;
+    float alpha = 0.0F;
+    float beta = 0.0F;
+    MegaMoeActMode mode = MegaMoeActMode::SWIGLU;
+    MegaMoeActSubMode subMode = MegaMoeActSubMode::DEFAULT;
+};
 
 template <typename InputType, bool FuseTopkWeight>
 __aicore__ inline void RunGatedActivation(

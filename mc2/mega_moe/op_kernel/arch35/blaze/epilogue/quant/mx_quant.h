@@ -10,7 +10,7 @@
 
 /*!
  * \file mx_quant.h
- * \brief A5（arch35）MX 量化统一入口。
+ * \brief MX 量化统一入口。
  */
 
 #ifndef MEGA_MOE_ARCH35_MX_QUANT_H
@@ -18,9 +18,9 @@
 
 #if defined(__DAV_C310__)
 #include "mx_quant_common.h"
-#include "mx_quant_fp4.h"
-#include "mx_quant_fp8.h"
-#include "mx_scale.h"
+#include "mxfp4_quant.h"
+#include "mxfp8_quant.h"
+#include "mx_quant_compute_scale.h"
 
 namespace MegaMoeImpl {
 namespace MxQuant {

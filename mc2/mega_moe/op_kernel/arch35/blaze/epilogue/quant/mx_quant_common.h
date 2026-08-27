@@ -10,7 +10,7 @@
 
 /*!
  * \file mx_quant_common.h
- * \brief A5（arch35）MX 量化公共参数、常量和转换属性。
+ * \brief MX 量化公共参数、常量和转换属性。
  */
 
 #ifndef MEGA_MOE_ARCH35_MX_QUANT_COMMON_H
@@ -44,25 +44,25 @@ constexpr int64_t SCALE_ELEMENT_COUNT_PER_VECTOR = 128;
 constexpr int64_t SCALE_PACK_ELEMENT_COUNT = 64;
 constexpr int64_t FP4_OUTPUT_ELEMENT_COUNT_PER_STORE = 64;
 
-static constexpr AscendC::MicroAPI::CastTrait CAST_BF16_TO_FP32_ZERO_LAYOUT = {
+constexpr AscendC::MicroAPI::CastTrait CAST_BF16_TO_FP32_ZERO_LAYOUT = {
     AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN,
     AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
-static constexpr AscendC::MicroAPI::CastTrait CAST_BF16_TO_FP32_ONE_LAYOUT = {
+constexpr AscendC::MicroAPI::CastTrait CAST_BF16_TO_FP32_ONE_LAYOUT = {
     AscendC::MicroAPI::RegLayout::ONE, AscendC::MicroAPI::SatMode::UNKNOWN,
     AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
-static constexpr AscendC::MicroAPI::CastTrait CAST_FP32_TO_FP8_LAYOUT_ZERO = {
+constexpr AscendC::MicroAPI::CastTrait CAST_FP32_TO_FP8_LAYOUT_ZERO = {
     AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::SAT,
     AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
-static constexpr AscendC::MicroAPI::CastTrait CAST_FP32_TO_FP8_LAYOUT_ONE = {
+constexpr AscendC::MicroAPI::CastTrait CAST_FP32_TO_FP8_LAYOUT_ONE = {
     AscendC::MicroAPI::RegLayout::ONE, AscendC::MicroAPI::SatMode::SAT,
     AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
-static constexpr AscendC::MicroAPI::CastTrait CAST_FP32_TO_FP8_LAYOUT_TWO = {
+constexpr AscendC::MicroAPI::CastTrait CAST_FP32_TO_FP8_LAYOUT_TWO = {
     AscendC::MicroAPI::RegLayout::TWO, AscendC::MicroAPI::SatMode::SAT,
     AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
-static constexpr AscendC::MicroAPI::CastTrait CAST_FP32_TO_FP8_LAYOUT_THREE = {
+constexpr AscendC::MicroAPI::CastTrait CAST_FP32_TO_FP8_LAYOUT_THREE = {
     AscendC::MicroAPI::RegLayout::THREE, AscendC::MicroAPI::SatMode::SAT,
     AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
-static constexpr AscendC::MicroAPI::CastTrait CAST_BF16_TO_FP4 = {
+constexpr AscendC::MicroAPI::CastTrait CAST_BF16_TO_FP4 = {
     AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN,
     AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
 
