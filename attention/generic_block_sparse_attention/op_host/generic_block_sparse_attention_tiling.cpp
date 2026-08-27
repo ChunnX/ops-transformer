@@ -442,7 +442,7 @@ ge::graphStatus GBSATiling::ParseSparseTensors(gert::TilingContext *context)
                 groupSize, numHeads_, kvHeads_, GBSA_MAX_GROUP_SIZE);
         return ge::GRAPH_FAILED;
     }
-    constexpr uint32_t GBSA_MAX_TOPK = 64U;
+    constexpr uint32_t GBSA_MAX_TOPK = 256U;
     if (topK_ > GBSA_MAX_TOPK) {
         OP_LOGE(context->GetNodeName(), "Unsupported topK=%u, only topK<=%u is supported on this build.", topK_,
                 GBSA_MAX_TOPK);
