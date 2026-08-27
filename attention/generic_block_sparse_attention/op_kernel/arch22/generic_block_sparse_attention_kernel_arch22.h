@@ -266,7 +266,6 @@ public:
             uint32_t preLaunch = (kvSLoopNum > PRE_LAUNCH) ? PRE_LAUNCH : 0;
 
             uint32_t rowNum = groupSize;
-            uint32_t kvYBlockNum = (kvSeqlen + blockShapeY_ - 1) / blockShapeY_;
             int64_t blockTOffset = static_cast<int64_t>(batchIdx) * maxBlocksPerBatch_;
             // qS tile along TND S-axis; equals tokens per Q-block (tiling currently requires ==1).
             uint32_t qSBlockSize = blockShapeX_;
