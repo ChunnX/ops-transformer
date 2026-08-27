@@ -10,7 +10,7 @@
 
 /*!
  * \file mx_quant.h
- * \brief A5（arch35）MX 量化统一入口。
+ * \brief MX 量化统一入口。
  */
 
 #ifndef MEGA_MOE_ARCH35_MX_QUANT_H

@@ -10,7 +10,7 @@
 
 /*!
  * \file mx_scale.h
- * \brief A5（arch35）MX 分组最大指数和 Scale 计算。
+ * \brief MX 分组最大指数和 Scale 计算。
  */
 
 #ifndef MEGA_MOE_ARCH35_MX_SCALE_H
