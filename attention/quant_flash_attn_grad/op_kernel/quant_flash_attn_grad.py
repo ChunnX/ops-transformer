@@ -3,13 +3,12 @@ from dataclasses import dataclass
 import pypto_pro.language as pl
 from pypto_pro.runtime.tilingkey import TilingKeyField
 
-# ── Constants ──────────────────────────────────────────────────────────
-D_SIZE = 128
-HALF_D_SIZE = 64
 
 # ================================================================
 #  Tile dimensions and constants
 # ================================================================
+D_SIZE = 128
+HALF_D_SIZE = 64
 TS = 128
 TS_HALF = 64
 TKV = 128
@@ -28,7 +27,7 @@ K_SIZE = 256
 QUANT_S1_BASE_COUNT = 64
 QUANT_S2_BASE_COUNT = 8
 BLOCK_SIZE = 32
-# ---- VEC addresses (248KB on a5) ----
+# ---- VEC addresses ----
 CUBE_BUFFER_NUM = 2
 VEC_BUFFER_NUM = 2
 VB4_KV = TS_HALF * TS * 4 * VEC_BUFFER_NUM  # [TS_HALF, TS] FP32 = 64KB
@@ -64,7 +63,7 @@ VA0_PRE = _align_up(VAQ_PRE + VB_Q)
 VA1_PRE = _align_up(VA0_PRE + VB1_Y)
 VA2_PRE = _align_up(VA1_PRE + VB2_DX)
 
-VA0 = 0  # qk_vec  [TKV, TS_HALF] FP32
+VA0 = 0
 VA1 = _align_up(VA0 + VB4_KV)
 VA2 = _align_up(VA1 + VB4_KV)
 VA3 = _align_up(VA2 + VB4_KV)
@@ -803,7 +802,6 @@ def iterate_mm_ds_k(ds_l1_tensor0, ds_l1_tensor1, const_info, run_info, tensor_i
     pl.move(right_second, k_l1_second, [0, 0])
     pl.set_validshape(left, [128, real_k])
     pl.set_validshape(right, [real_k, D_SIZE])
-    # pl.set_validshape(mm_acc, [real_m, D_SIZE])
     if run_info.is_dq_fix_out:
         pl.matmul_acc(mm_acc, mm_acc, left, right)
     else:
@@ -899,7 +897,6 @@ def iterate_mm_ds_q(ds_l1_tensor0, ds_l1_tensor1, const_info, run_info, tensor_i
 
     pl.set_validshape(left, [128, real_k])
     pl.set_validshape(right, [real_k, D_SIZE])
-    # pl.set_validshape(acc, [real_m, D_SIZE])
     if run_info.is_dk_fix_out:
         pl.matmul_acc(acc, acc, left, right)
     else:
@@ -2029,8 +2026,8 @@ def quant_flash_attn_grad(
         s2_real_size = 0,
         inner_s1_loop_num = 0,
         inner_s2_loop_num = 0,
-        inner_s1_real_size = [0, 0, 0, 0], #todo
-        inner_s2_real_size = [0, 0, 0, 0], #todo
+        inner_s1_real_size = [0, 0, 0, 0],
+        inner_s2_real_size = [0, 0, 0, 0],
         maxsum_offset = 0,
 
         deq_scale_q_value = 0.0,
@@ -2067,13 +2064,13 @@ def quant_flash_attn_grad(
     )
     next_core_first_block_coordinate_info = coordinate_infos[2]
 
-    # # process presfmg
+    # process presfmg
     presfmg_quant_inner_hif8(const_info, tensor_info)
     pl.system.sync_all()
 
     # process kernel
     alloc_event_id()
-    loop_max = cal_deter_max_loop_num(const_info) #todo
+    loop_max = cal_deter_max_loop_num(const_info)
     task_id = 0
 
     init_coordinate_info(const_info, 0, 0, coordinate_infos[0])
