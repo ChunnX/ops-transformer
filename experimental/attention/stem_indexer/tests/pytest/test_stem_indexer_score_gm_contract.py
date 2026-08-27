@@ -4,13 +4,58 @@ from pathlib import Path
 ARCH_920R1 = Path(__file__).resolve().parents[2] / "op_kernel" / "arch-920r1"
 
 
-def test_uint16_always_uses_score_gm_topk():
+def test_uint16_and_uint32_always_use_score_gm_topk():
     kernel = (ARCH_920R1 / "stem_indexer_kernel.h").read_text(encoding="utf-8")
+    service = (ARCH_920R1 / "stem_indexer_service_vector.h").read_text(encoding="utf-8")
 
+    assert "std::is_same_v<SCORE_T, uint16_t> || std::is_same_v<SCORE_T, uint32_t>" in service
     assert "if constexpr (SIVector<SIT>::ENABLE_SCORE_GM_TOPK)" in kernel
     assert "if (s2BlockNum > 1U)" not in kernel
     assert "vectorService.ProcessVec1ScoreGm(runInfo);" in kernel
     assert "vectorService.ProcessScoreGmTopK(runInfo);" in kernel
+
+
+def test_score_gm_storage_uses_selected_score_type():
+    service = (ARCH_920R1 / "stem_indexer_service_vector.h").read_text(encoding="utf-8")
+
+    assert "GlobalTensor<SCORE_T> scoreWorkspaceGm;" in service
+    assert "StemIndexerTopk<SCORE_T, SCORE_GM_TRUNK_LEN> scoreGmTopkOp_;" in service
+    assert "sizeof(SCORE_T)" in service[service.index("SCORE_GM_MERGE_SLOT_BYTES"):service.index("private:")]
+    assert "(__gm__ SCORE_T *)workspace" in service
+    assert "LocalTensor<SCORE_T> scoreLocal" in service
+    assert "LocalTensor<SCORE_T> batchHistoryLocal" in service
+
+
+def test_score_gm_dependent_reinterpret_casts_use_template_disambiguator():
+    service = (ARCH_920R1 / "stem_indexer_service_vector.h").read_text(encoding="utf-8")
+
+    dependent_cast_lines = [
+        line.strip()
+        for line in service.splitlines()
+        if "fastBuf[" in line and "ReinterpretCast<uint32_t>()" in line
+    ]
+
+    assert len(dependent_cast_lines) == 4
+    assert all(".template ReinterpretCast<uint32_t>()" in line for line in dependent_cast_lines)
+
+
+def test_a6_uint32_score_gm_uses_compact_buffers_within_single_384k_ub():
+    service = (ARCH_920R1 / "stem_indexer_service_vector.h").read_text(encoding="utf-8")
+
+    assert "SCORE_GM_HISTORY_ALLOC_BYTES" in service
+    assert "SCORE_GM_GLOBAL_ALLOC_BYTES" in service
+    assert "VECTOR_UB_CAPACITY_BYTES = 384U * 1024U" in service
+    assert "static_assert(VECTOR_UB_USED_BYTES <= VECTOR_UB_CAPACITY_BYTES" in service
+    assert "InitBuffer(historyValueBuf_, SCORE_GM_HISTORY_ALLOC_BYTES)" in service
+    assert "InitBuffer(globalIndexBuf_, SCORE_GM_GLOBAL_ALLOC_BYTES)" in service
+
+
+def test_a6_score_gm_workspace_bytes_follow_topk_score_precision():
+    tiling = (ARCH_920R1.parents[1] / "op_host" / "stem_indexer_tiling.cpp").read_text(encoding="utf-8")
+
+    assert "tilingInfo->topkScorePrecision == TOPK_SCORE_PRECISION_UINT32" in tiling
+    assert "sizeof(uint32_t)" in tiling[tiling.index("size_t workspaceSize"):tiling.index("workspaces[0]")]
+    assert "scoreElementBytes" in tiling
 
 
 def test_score_gm_write_is_ordered_before_mte2_reload():
