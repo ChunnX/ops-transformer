@@ -17,6 +17,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <map>
 #include <string>
 #include "acl/acl.h"
 #include "acl/acl_rt.h"
@@ -190,6 +191,38 @@ public:
     }
 
 private:
+    // 跨超节点/跨 server 场景下，HCCL 拓扑存在多个 net layer（层内 rank 可达、层间不可达）。
+    // 对每个 peer 找到存在目标协议 link 的 layer，构建 rank->layer 映射；单层拓扑留空映射（用 netLayers[0]）。
+    void BuildLayerMap(::CommProtocol protocol, const uint32_t *layers, uint32_t layerNum,
+                       std::map<uint32_t, uint32_t> &layerMap)
+    {
+        for (uint32_t li = 0U; li < layerNum; ++li) {
+            uint32_t *rankList = nullptr;
+            uint32_t rankCnt = 0;
+            if (HcclRankGraphGetRanksByLayer(comm_, layers[li], &rankList, &rankCnt) != ::HCCL_SUCCESS) {
+                continue;
+            }
+            for (uint32_t ri = 0U; ri < rankCnt; ++ri) {
+                uint32_t peer = rankList[ri];
+                if (peer == rankId_ || layerMap.count(peer) != 0U) {
+                    continue;
+                }
+                CommLink *links = nullptr;
+                uint32_t linkNum = 0;
+                if (HcclRankGraphGetLinks(comm_, layers[li], rankId_, peer, &links, &linkNum) != ::HCCL_SUCCESS ||
+                    linkNum == 0 || links == nullptr) {
+                    continue;
+                }
+                for (uint32_t k = 0U; k < linkNum; ++k) {
+                    if (links[k].linkAttr.linkProtocol == protocol) {
+                        layerMap[peer] = layers[li];
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     bool BuildChannels(ChannelMode mode, bool useHcclBuf,
                        ::CommProtocol protocol, HcclMemHandle memHandle,
                        const char *memTag, uint64_t *channels, uint64_t *remoteAddrs)
@@ -199,12 +232,20 @@ private:
         if (HcclRankGraphGetLayers(comm_, &netLayers, &netLayerNum) != ::HCCL_SUCCESS || netLayerNum == 0) {
             return false;
         }
-        uint32_t layerId = netLayers[0];
+        uint32_t defaultLayerId = netLayers[0];
+
+        // 多层拓扑（跨 server/超节点）：按目的 rank 选可达 link 所在的层，避免对跨 server peer 用错层导致 linkNum==0
+        std::map<uint32_t, uint32_t> layerMap;
+        if (netLayerNum > 1U) {
+            BuildLayerMap(protocol, netLayers, netLayerNum, layerMap);
+        }
 
         for (uint32_t peer = 0; peer < rankNum_; peer++) {
             if (peer == rankId_) {
                 continue;
             }
+
+            uint32_t layerId = (netLayerNum > 1U && layerMap.count(peer) != 0U) ? layerMap[peer] : defaultLayerId;
 
             ChannelHandle channel = 0;
             uint64_t remoteAddr = 0;
