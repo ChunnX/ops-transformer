@@ -791,6 +791,13 @@ void LightningIndexerV2MetadataCpuKernel::CalcSplitPlan(int64_t costLimit, const
         }
         assignContext.curCoreIdx = i;
         AssignBlockToCore(splitContext, assignContext, result);
+        // Keep trailing zero-cost batches in the last AIC range so their outputs are initialized.
+        if (!assignContext.isFinished && assignContext.unassignedCost <= 0) {
+            result.bN2End[i] = batchSize_ * numHeadsK_;
+            result.gS1End[i] = 0U;
+            result.s2End[i] = 0U;
+            assignContext.isFinished = true;
+        }
     }
     result.usedCoreNum = assignContext.curCoreIdx + 1;
 }
