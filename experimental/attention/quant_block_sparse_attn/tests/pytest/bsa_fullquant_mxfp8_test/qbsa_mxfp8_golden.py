@@ -1322,6 +1322,59 @@ def _materialize_pa_bnsd(tensor):
 # ==============================================================================
 
 
+def _apply_sticky_overflow_stc_pattern(
+    case, q_fp32=None, k_fp32=None, v_fp32=None
+):
+    """Materialize deterministic STC inputs for ordered MX group overflow."""
+    case_name = str(case.get("name") or "")
+    qk_signs = {
+        "MXSTC113_": (1.0, 1.0, -1.0, -1.0),
+        "MXSTC114_": (-1.0, -1.0, 1.0, 1.0),
+    }
+    pv_signs = {
+        "MXSTC115_": (1.0, 1.0, -1.0, -1.0),
+        "MXSTC116_": (-1.0, -1.0, 1.0, 1.0),
+    }
+
+    qk_pattern = next(
+        (signs for prefix, signs in qk_signs.items() if case_name.startswith(prefix)),
+        None,
+    )
+    if qk_pattern is not None:
+        if q_fp32 is not None:
+            q_fp32.zero_()
+            q_group_value = math.ldexp(448.0, 105)
+            for group_idx, sign in enumerate(qk_pattern):
+                group_start = group_idx * QUANT_GROUP_SIZE
+                group_end = group_start + QUANT_GROUP_SIZE
+                q_fp32[..., group_start:group_end] = sign * q_group_value
+        if k_fp32 is not None and v_fp32 is not None:
+            k_fp32.zero_()
+            v_fp32.zero_()
+            # Logical KV 0 crosses FLT_MAX while accumulating its first two D
+            # groups; KV 1 remains a finite zero-score control.
+            k_fp32[0, 0, 0, :] = 448.0
+            v_fp32[0, 0, 0, :] = -1.0
+            v_fp32[0, 0, 1, :] = 1.0
+        return
+
+    pv_pattern = next(
+        (signs for prefix, signs in pv_signs.items() if case_name.startswith(prefix)),
+        None,
+    )
+    if pv_pattern is not None:
+        if q_fp32 is not None:
+            q_fp32.zero_()
+        if k_fp32 is not None and v_fp32 is not None:
+            k_fp32.zero_()
+            v_fp32.zero_()
+            v_group_value = math.ldexp(448.0, 114)
+            for group_idx, sign in enumerate(pv_pattern):
+                group_start = group_idx * QUANT_GROUP_SIZE
+                group_end = group_start + QUANT_GROUP_SIZE
+                v_fp32[0, 0, group_start:group_end, :] = sign * v_group_value
+
+
 def generate_mxfp8_inputs(case=None, max_block_per_batch=None, atten_mask_shape=None):
     """Generate test inputs with paired fp8 + descale.
 
@@ -1356,6 +1409,7 @@ def generate_mxfp8_inputs(case=None, max_block_per_batch=None, atten_mask_shape=
     head_dim = case["D"]
     # Q: fp32 随机 → MXFP8 配套量化 (per-32-group along D)
     q_fp32 = _rand_float((total_q, n1, head_dim), generator, DATA_RANGE_Q)
+    _apply_sticky_overflow_stc_pattern(case, q_fp32=q_fp32)
     query, q_descale = quantize_mxfp8_qk(
         q_fp32.unsqueeze(0), FP8_DTYPE, QUANT_GROUP_SIZE
     )
@@ -1369,6 +1423,7 @@ def generate_mxfp8_inputs(case=None, max_block_per_batch=None, atten_mask_shape=
     #   V descale [BlockNum, N2, ceil(BlockSize/64), D, 2]
     k_fp32 = _rand_float((BLOCK_NUM, n2, BLOCK_SIZE, head_dim), generator, DATA_RANGE_K)
     v_fp32 = _rand_float((BLOCK_NUM, n2, BLOCK_SIZE, head_dim), generator, DATA_RANGE_V)
+    _apply_sticky_overflow_stc_pattern(case, k_fp32=k_fp32, v_fp32=v_fp32)
     _log_tensor_ranges(
         "original FP32 range",
         q=q_fp32,
