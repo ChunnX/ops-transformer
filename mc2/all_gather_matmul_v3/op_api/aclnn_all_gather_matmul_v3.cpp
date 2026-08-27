@@ -87,18 +87,28 @@ static const aclTensor *TransX2Tensor(const aclTensor *x2)
                            storageDimsNum, x2->GetTensor()->GetAddr());
 }
 
-// CheckNotNull: 校验 REQUIRED 输入/输出非空（本次交付不使能 gather_out/amax_out，不做校验）
-aclnnStatus CheckNotNull(const aclTensor *context, const aclTensor *x1, const aclTensor *x2,
-                         const aclTensor *output, const uint64_t *workspaceSize,
-                         const aclOpExecutor **executor)
+// CheckNullParams: 校验 REQUIRED 输入/输出非空（本次交付不使能 gather_out/amax_out，不做校验）
+static bool CheckNullParams(const aclTensor *context, const aclTensor *x1, const aclTensor *x2,
+                            const aclTensor *output, uint64_t *workspaceSize,
+                            aclOpExecutor **executor)
 {
-    OP_CHECK_NULL(context, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(x1, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(x2, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(output, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(workspaceSize, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(executor, return ACLNN_ERR_PARAM_NULLPTR);
-    return ACLNN_SUCCESS;
+    if (context == nullptr || x1 == nullptr || x2 == nullptr || output == nullptr || workspaceSize == nullptr ||
+        executor == nullptr) {
+        if (context == nullptr)
+            OP_LOGE_WITH_INVALID_INPUT("aclnnAllGatherQuantMatmulV3", "context");
+        if (x1 == nullptr)
+            OP_LOGE_WITH_INVALID_INPUT("aclnnAllGatherQuantMatmulV3", "x1");
+        if (x2 == nullptr)
+            OP_LOGE_WITH_INVALID_INPUT("aclnnAllGatherQuantMatmulV3", "x2");
+        if (output == nullptr)
+            OP_LOGE_WITH_INVALID_INPUT("aclnnAllGatherQuantMatmulV3", "output");
+        if (workspaceSize == nullptr)
+            OP_LOGE_WITH_INVALID_INPUT("aclnnAllGatherQuantMatmulV3", "workspaceSize");
+        if (executor == nullptr)
+            OP_LOGE_WITH_INVALID_INPUT("aclnnAllGatherQuantMatmulV3", "executor");
+        return false;
+    }
+    return true;
 }
 
 // CheckDtype: dtype 校验
@@ -247,7 +257,10 @@ aclnnStatus CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor
 // CheckAttrs: 仅校验 REQUIRED 属性（group、hccl_buffer_size）；OPTIONAL 属性（comm_mode 等）不在此拦截
 aclnnStatus CheckAttrs(const char *group, int64_t hcclBufferSize)
 {
-    OP_CHECK_NULL(group, return ACLNN_ERR_PARAM_NULLPTR);
+    if (group == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT("aclnnAllGatherQuantMatmulV3", "group");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
     // group 名长度须在 [1, 128)：空串与超长（含未 \0 结尾）均拦截
     size_t groupLen = strnlen(group, HCCL_GROUP_NAME_LENGTH_MAX);  // 长度 >= 128 时返回 128
     if (groupLen == 0 || groupLen >= HCCL_GROUP_NAME_LENGTH_MAX) {
@@ -277,10 +290,10 @@ extern "C" aclnnStatus aclnnAllGatherQuantMatmulV3GetWorkspaceSize(
     OP_LOGD("aclnnAllGatherQuantMatmulV3GetWorkspaceSize start");
 
     // 校验顺序：null -> dtype -> format -> attrs -> shape
-    aclnnStatus ret = CheckNotNull(context, x1, x2, output, workspaceSize,
-                                   const_cast<const aclOpExecutor **>(executor));
-    CHECK_RET(ret == ACLNN_SUCCESS, ret);
-    ret = CheckDtype(x1, x2, biasOptional, x1ScaleOptional, x2ScaleOptional, output);
+    if (!CheckNullParams(context, x1, x2, output, workspaceSize, executor)) {
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+    aclnnStatus ret = CheckDtype(x1, x2, biasOptional, x1ScaleOptional, x2ScaleOptional, output);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     ret = CheckFormat(context, x1, x2, biasOptional, x1ScaleOptional, x2ScaleOptional, output);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
