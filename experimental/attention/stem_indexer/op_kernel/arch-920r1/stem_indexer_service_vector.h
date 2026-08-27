@@ -30,14 +30,9 @@ public:
     using QK_T = float32_t;
     using SCORE_T = typename SIT::scoreType;
 
-<<<<<<< HEAD
-    // V121的score-GM路径仍仅支持uint16，其他score类型继续使用原有UB路径。
-    static constexpr bool ENABLE_SCORE_GM_TOPK = std::is_same_v<SCORE_T, uint16_t>;
-=======
     // Both supported score precisions use the Score-GM path on V121.
     static constexpr bool ENABLE_SCORE_GM_TOPK =
         std::is_same_v<SCORE_T, uint16_t> || std::is_same_v<SCORE_T, uint32_t>;
->>>>>>> c4e3c556e (add uint32)
 
     __aicore__ inline SIVector(){};
     __aicore__ inline void ProcessVec1(const SICommon::RunInfo &info);
@@ -109,11 +104,7 @@ protected:
     static constexpr uint32_t SCORE_GM_TOPK_WORKSPACE_BYTES =
         StemIndexerTopk<SCORE_T, SCORE_GM_TRUNK_LEN>::TOPK_WORKSPACE_BYTES;
 
-<<<<<<< HEAD
-    // historyValueBuf_（32 KiB）中的快速路径视图：merge0 | merge1 | history | packed0 | packed1。
-=======
     // Score-GM views in historyValueBuf_: merge0 | merge1 | history | packed0 | packed1.
->>>>>>> c4e3c556e (add uint32)
     static constexpr uint32_t SCORE_GM_MERGE0_OFFSET_BYTES = 0U;
     static constexpr uint32_t SCORE_GM_MERGE1_OFFSET_BYTES = SCORE_GM_MERGE_SLOT_BYTES;
     static constexpr uint32_t SCORE_GM_HISTORY_OFFSET_BYTES = 2U * SCORE_GM_MERGE_SLOT_BYTES;
@@ -124,11 +115,7 @@ protected:
     static constexpr uint32_t SCORE_GM_HISTORY_BUF_USED_BYTES =
         SCORE_GM_LENGTH1_OFFSET_BYTES + SCORE_GM_LENGTH_SLOT_BYTES;
 
-<<<<<<< HEAD
-    // globalIndexBuf_（64 KiB）中的快速路径视图：TopK工作区 | 紧凑全局索引。
-=======
     // Score-GM views in globalIndexBuf_: TopK workspace | compact global indices.
->>>>>>> c4e3c556e (add uint32)
     static constexpr uint32_t SCORE_GM_GLOBAL_INDEX_OFFSET_BYTES = SCORE_GM_TOPK_WORKSPACE_BYTES;
     static constexpr uint32_t SCORE_GM_GLOBAL_BUF_USED_BYTES =
         SCORE_GM_GLOBAL_INDEX_OFFSET_BYTES + SCORE_GM_GLOBAL_INDEX_BYTES;
@@ -239,21 +226,12 @@ __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe, bool needCleanOut
     pipe->InitBuffer(vBiasBuf_, VBIAS_BYTES);
     vBiasLocal_ = vBiasBuf_.Get<float>(); // vBias
 
-<<<<<<< HEAD
-    // 64行 * 256个uint16 = 32 KiB持久化历史值。
-    pipe->InitBuffer(historyValueBuf_, HISTORY_SCORE_BYTES);
-    historyValueLocal_ = historyValueBuf_.Get<SCORE_T>();
-
-    // 64行 * 256个uint32 = 64 KiB持久化全局索引。
-    pipe->InitBuffer(globalIndexBuf_, GLOBAL_INDEX_BYTES);
-=======
     // uint16 keeps the existing 32 KiB allocation; uint32 uses the compact 4-row Score-GM layout.
     pipe->InitBuffer(historyValueBuf_, SCORE_GM_HISTORY_ALLOC_BYTES);
     historyValueLocal_ = historyValueBuf_.Get<SCORE_T>();
 
     // uint16 keeps the existing 64 KiB allocation; uint32 stores only TopK scratch and four compact index rows.
     pipe->InitBuffer(globalIndexBuf_, SCORE_GM_GLOBAL_ALLOC_BYTES);
->>>>>>> c4e3c556e (add uint32)
     globalIndexLocal_ = globalIndexBuf_.Get<uint32_t>();
 
     // 直出路径独占专用UB，避免短索引和长度写入与持久化TopK状态发生地址重叠。
@@ -418,11 +396,7 @@ __aicore__ inline void SIVector<SIT>::ProcessVec1(const SICommon::RunInfo &info)
     CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_CV_EVENT + pingpong);
 
     auto qkBase = resMm1Local_[pingpong * (RES_MM1_SLOT_BYTES / sizeof(QK_T))];
-<<<<<<< HEAD
-    // uint16 score原地压缩到当前128 KiB MM1槽的低64 KiB区域。
-=======
     // SCORE_T is generated in place in the current 128 KiB MM1 slot.
->>>>>>> c4e3c556e (add uint32)
     auto outBase = qkBase.template ReinterpretCast<SCORE_T>();
     auto vBiasBase = vBiasLocal_[pingpong * s2BaseSize_];
 
@@ -441,11 +415,7 @@ __aicore__ inline void SIVector<SIT>::StoreScoreToWorkspace(const SICommon::RunI
     LocalTensor<SCORE_T> scoreLocal = resMm1Local_[slotOffset].ReinterpretCast<SCORE_T>();
     uint64_t scoreGmOffset = static_cast<uint64_t>(info.s2Idx) * M_BASIC_BLOCK * S2_BASIC_BLOCK;
 
-<<<<<<< HEAD
-    // 必须等待MTE3读取完原地转换的uint16 score后，才能归还VC槽。
-=======
     // The VC slot cannot be returned until MTE3 has consumed the in-place score.
->>>>>>> c4e3c556e (add uint32)
     WaitFlag<HardEvent::MTE3_V>(topkMte3VEvent_);
     // initial blocks作为固定前缀输出，不能再次参与TopK。需要在源score块中将其屏蔽，
     // 确保后续每次从GM重载或merge时都遵循相同的排除规则。
