@@ -37,7 +37,7 @@ protected:
     bool IsCapable() override;
     ge::graphStatus DoOpTiling() override;
     ge::graphStatus GetWorkspaceSize() override;
-    void BuildWorkspaceLayout() override;
+    void BuildWorkspaceLayout();
     ge::graphStatus PostTiling() override;
     uint64_t GetTilingKey() const override;
     CutResult GetTilingResult() override;
