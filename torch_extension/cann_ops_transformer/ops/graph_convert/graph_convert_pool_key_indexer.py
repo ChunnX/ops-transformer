@@ -35,6 +35,35 @@ except ImportError:
 
 if _TORCHAIR_AVAILABLE:
 
+    def _pool_key_stride0(pool_key) -> int:
+        """Read stride(0) of pool_key at conversion time (element unit).
+
+        Used for PA_BBND 0-axis non-contiguous addressing: the eager/aclnn path
+        reads at::Tensor::stride(0) in the C++ wrapper (csrc/pool_key_indexer.cpp)
+        and passes it as the key_stride0 attribute; the GE graph path must do the
+        same because the host tiling consumes the attribute first (see
+        pool_key_indexer_tiling.cpp, priority: attr > runtime stride > shape).
+
+        Returns -1 (not specified) when stride metadata is unavailable at
+        conversion time (e.g. contiguous input or older torchair); the host
+        tiling then falls back to the runtime stride reported by the framework
+        or the shape-derived contiguous stride. A specified value conflicting
+        with the runtime stride is rejected by the host tiling.
+        """
+        for accessor in (
+            lambda t: t.stride(0),  # torchair ge Tensor with stride metadata
+            lambda t: t.stride[0],  # stride exposed as a plain sequence
+            lambda t: t.tensor.stride(0),  # wrapped original torch tensor
+        ):
+            try:
+                val = accessor(pool_key)
+                if callable(val):
+                    val = val()
+                return int(val)
+            except (AttributeError, TypeError, ValueError, IndexError):
+                continue
+        return -1
+
     @register_fx_node_ge_converter(
         torch.ops.cann_ops_transformer.pool_key_indexer.default
     )
@@ -79,6 +108,9 @@ if _TORCHAIR_AVAILABLE:
                 "mask_mode": attr.Int(mask_mode),
                 "quant_mode": attr.Int(quant_mode),
                 "return_value": attr.Bool(return_value),
+                # PA_BBND 0-axis non-contiguous support (attr index 7, must be
+                # the last attr to match the op_def registration order)
+                "key_stride0": attr.Int(_pool_key_stride0(pool_key)),
             },
             outputs=["sparse_indices_out", "sparse_values_out"],
         )
