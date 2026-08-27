@@ -25,7 +25,7 @@
 
 #include "memory_copy_arch35.h"
 
-namespace BaseApi {
+namespace FlashAttnKernel {
 struct TaskInfo {
     uint32_t bIdx;
     uint32_t n2Idx;
@@ -90,7 +90,6 @@ private:
     static constexpr float FLOAT_INF = 3e+99;
     uint32_t preLoadNum_ = 2U;
     uint32_t dSizeV_Align_;
-    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
 
 protected:
     GlobalTensor<float> lseSumFdGm_;
@@ -108,7 +107,7 @@ protected:
     uint64_t actSeqLensKv_ = 0;
     uint64_t actSeqLensQ_ = 0;
     // ================================类成员变量====================================
-    const ConstInfoX &constInfo_;
+    const ConstInfo_t &constInfo_;
     TaskInfo taskInfo_{};
 
     using SEQLEN_T = uint32_t;
@@ -137,7 +136,7 @@ private:
     LocalTensor<T> fdLseUbBuf_;
 
 public:
-    __aicore__ inline FiaBlockVecFlashDecode(ConstInfoX &constInfo, SeqLensTool<LAYOUT_T, SEQLEN_T> &qSeqLensTool,
+    __aicore__ inline FiaBlockVecFlashDecode(ConstInfo_t &constInfo, SeqLensTool<LAYOUT_T, SEQLEN_T> &qSeqLensTool,
                                              SeqLensTool<LAYOUT_KV, SEQLEN_T> &kvSeqLensTool)
         : constInfo_(constInfo),
           qSeqLensTool_(qSeqLensTool),
@@ -402,7 +401,7 @@ protected:
     }
 
 public:
-    __aicore__ inline void FlashDecode(FDparamsX &fd)
+    __aicore__ inline void FlashDecode(FDparams &fd)
     {
         if (!fd.fdCoreEnable) {
             return;
@@ -456,20 +455,20 @@ public:
                 if constexpr (LAYOUT_T == FA_LAYOUT::TND) {
                     uint32_t prefixBS1 = qSeqLensTool_.cuSeqLensParser.GetTBase(taskInfo_.bIdx);
                     uint64_t bN2Offset = taskInfo_.n2Idx * constInfo_.gSize * constInfo_.t1Size + prefixBS1;
-                    DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
-                                                                   actualGSplitSize, constInfo_);
+                    DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfo_t>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
+                                                                    actualGSplitSize, constInfo_);
                 } else if constexpr (LAYOUT_T == FA_LAYOUT::BSND) {
                     uint64_t bN2Offset = taskInfo_.bIdx * constInfo_.gSize * constInfo_.n2Size * constInfo_.s1Size +
                                          taskInfo_.n2Idx * constInfo_.gSize * constInfo_.s1Size;
                     uint64_t qActSeqLens = qSeqLensTool_.seqUsedParser.GetActualSeqLength(taskInfo_.bIdx);
-                    DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
-                                                                actualGSplitSize, constInfo_);
+                    DataCopySoftmaxLseBSNDArch35<T, ConstInfo_t>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
+                                                                 actualGSplitSize, constInfo_);
                 } else if constexpr (LAYOUT_T == FA_LAYOUT::BNSD) {
                     uint64_t bN2Offset = taskInfo_.bIdx * constInfo_.gSize * constInfo_.n2Size * constInfo_.s1Size +
                                          taskInfo_.n2Idx * constInfo_.gSize * constInfo_.s1Size;
                     uint64_t qActSeqLens = qSeqLensTool_.seqUsedParser.GetActualSeqLength(taskInfo_.bIdx);
-                    DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
-                                                                actualGSplitSize, constInfo_, qActSeqLens);
+                    DataCopySoftmaxLseBNSDArch35<T, ConstInfo_t>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
+                                                                 actualGSplitSize, constInfo_, qActSeqLens);
                 }
                 Mutex::Unlock<PIPE_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
             }
@@ -492,5 +491,5 @@ public:
     }
 };
 
-} // namespace BaseApi
+} // namespace FlashAttnKernel
 #endif
