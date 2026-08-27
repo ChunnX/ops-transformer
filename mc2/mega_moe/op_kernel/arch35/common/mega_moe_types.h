@@ -16,7 +16,14 @@
 #include "../mega_moe_tiling.h"
 #include "mega_moe_constants.h"
 #include "mega_moe_workspace.h"
+#if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
 #include "adv_api/hcomm/hcomm.h"
+#endif
+#if __has_include("../../../common/mc2_moe_context.h")
+#include "../../../common/mc2_moe_context.h"
+#else
+#include "../../../../common/op_kernel/mc2_moe_context.h"
+#endif
 
 namespace MegaMoeImpl {
 
@@ -32,19 +39,21 @@ struct ExpertLoopState {
     uint32_t expertIdx = 0U;
 };
 
+// GMM1/GMM2 执行期间共同维护的流水状态；引用成员将更新直接回写到调用方持有的状态。
+struct GmmRuntimeState {
+    uint32_t &startBlockIdx;
+    int32_t &vecSetSyncCom;
+    int32_t &gmTileSequence;
+    uint16_t &pingpongIdx;
+};
+
 // 标识 MoE 专家序列中的二维 token 位置。
 struct ExpertTokenPosition {
     uint32_t expertIdx = 0U;
     uint32_t tokenIndexInExpert = 0U;
 };
 
-struct Mc2MoeContext {
-    uint32_t epRankId = 0;
-    uint32_t rankSizePerServer = 0;
-    uint64_t kfcContextAddr = 0; // 通信 API 所需的地址
-    uint64_t epHcclBuffer[HCCL_MAX_RANK_SIZE] = {};
-    uint64_t hcommHandle[HCCL_MAX_RANK_SIZE] = {}; // 支持 ROCE 或 URMA
-};
+using Mc2MoeContext = Mc2Aclnn::Mc2MoeContext;
 
 struct GMMAddrInfo {
     GM_ADDR aGlobal;
@@ -62,11 +71,13 @@ struct GMMAddrInfo {
     __gm__ int32_t *sharedExpertGmm2TileCounter;
 };
 
+#if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
 struct CombineCommParams {
     uint32_t rankId;
     Hcomm<COMM_PROTOCOL_UBC_CTP> *hcomm;
     __gm__ Mc2MoeContext *mc2Context;
 };
+#endif
 
 // 保存 TensorList 入口地址，供按 expert 布局解析当前专家权重。
 struct ExpertWeightTensorListAddrs {
@@ -93,7 +104,9 @@ struct Params {
     WorkspaceInfo workspaceInfo;
     PeermemInfo peermemInfo;
     MegaMoeTilingData *tilingData;
+#if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
     CombineCommParams combineCommParams;
+#endif
 };
 
 enum class AddrUpdateMode : int32_t {
@@ -146,11 +159,6 @@ struct MoeSyncWorkspaceLayout {
     int32_t activationFlagSlotCountPerExpert;
     uint32_t gmm1TileStatusCountPerExpert;
     uint64_t combineSyncSlotCountPerExpert;
-};
-
-struct DispatchPrepareConfig {
-    AivJobContext job;
-    MoeStageCommonConfig common;
 };
 
 struct GroupSyncSlotLayout {

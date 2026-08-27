@@ -366,7 +366,11 @@ __aicore__ inline int64_t FlashAttentionScoreGradKernelDeter<CubeBlockType, VecB
         }
         if constexpr (BaseClass::IS_N_EQUAL) {
             if (unlikely(this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx)) {
-                CalCausalSwizzleIndex(k, m, n, b, j, r, coordinateInfo);
+                if (this->constInfo.sparseMode == LEFT_UP_CAUSAL || this->constInfo.sparseMode == NO_MASK) {
+                    CalLeftUpCausalSwizzleIndex(k, m, n, b, j, r, coordinateInfo);
+                } else {
+                    CalCausalSwizzleIndex(k, m, n, b, j, r, coordinateInfo);
+                }
             } else {
                 CalCausalIndex(k, m, n, b, j, r, coordinateInfo);
             }
@@ -436,8 +440,7 @@ __aicore__ inline int64_t FlashAttentionScoreGradKernelDeter<CubeBlockType, VecB
                 this->actualSeqQlenAddr, this->actualSeqKvlenAddr,
                 this->tilingData->tndSwizzleParam.tndS2BlockPrefixSum, this->constInfo.bSize, this->constInfo.n2Size,
                 this->constInfo.commonConstInfo.gSize, j,
-                static_cast<int64_t>(this->tilingData->s1s2BNGS1S2BaseParams.coreNum / NUM_TWO), r, this->deltaCnt,
-                coordinateInfo);
+                static_cast<int64_t>(this->tilingData->s1s2BNGS1S2BaseParams.coreNum / NUM_TWO), r, coordinateInfo);
         } else {
             int64_t b = this->constInfo.bSize;
             CalTNDDenseIndex<BaseClass::CUBE_BASEM, BaseClass::CUBE_BASEN, BaseClass::DETER_SPARSE_TYPE,
@@ -457,8 +460,9 @@ __aicore__ inline int64_t FlashAttentionScoreGradKernelDeter<CubeBlockType, VecB
                 CalDenseIndex(k, this->constInfo.s1Outer, this->constInfo.s2Outer, b, j, r, coordinateInfo);
             }
         } else {
+            int64_t denseRound = this->tilingData->baseDeterParam.deterMaxRound / this->constInfo.s1Outer;
             CalGQADenseIndex(k, this->constInfo.s1Outer, this->constInfo.s2Outer, b, j, r,
-                             this->constInfo.commonConstInfo.gSize, coordinateInfo);
+                             this->constInfo.commonConstInfo.gSize, coordinateInfo, denseRound);
         }
     }
 
@@ -610,6 +614,9 @@ __aicore__ inline int64_t FlashAttentionScoreGradKernelDeter<CubeBlockType, VecB
     InitCoordinateInfo(this->constInfo.s1Outer, this->constInfo.s2Outer, 0, 0, this->coordinateInfos[1]);
     if constexpr (BaseClass::DETER_SPARSE_TYPE == DETER_CAUSAL) {
         if (unlikely(this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx)) {
+            if (this->constInfo.sparseMode == LEFT_UP_CAUSAL || this->constInfo.sparseMode == NO_MASK) {
+                return CalLeftUpCausalSwizzleMaxRound(k, m, n, b);
+            }
             return Max(this->constInfo.s1Outer * Ceil<int64_t>((n + 1) * (b >> 1), k), n + 1);
         }
         return this->tilingData->baseDeterParam.deterMaxRound;
@@ -619,6 +626,9 @@ __aicore__ inline int64_t FlashAttentionScoreGradKernelDeter<CubeBlockType, VecB
         if constexpr (BaseClass::IS_N_EQUAL) {
             return Ceil<int64_t>(n * b, Min(k, m * b)) * m;
         } else {
+            if (this->tilingData->baseDeterParam.deterMaxRound > 0) {
+                return this->tilingData->baseDeterParam.deterMaxRound;
+            }
             return Max(Max(Ceil<int64_t>(b * n * this->constInfo.commonConstInfo.gSize,
                                          (Min(Min(k, b * this->constInfo.commonConstInfo.gSize * m), b * n))),
                            Ceil<int64_t>(n, m)),

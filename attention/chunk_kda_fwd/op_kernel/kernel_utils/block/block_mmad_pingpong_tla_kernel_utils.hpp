@@ -13,7 +13,7 @@
 
 #include "catlass/catlass.hpp"
 #include "catlass/arch/resource.hpp"
-#include "catlass/kda_coord.hpp"
+#include "catlass/coord.hpp"
 #include "catlass/gemm_coord.hpp"
 #include "catlass/gemm/dispatch_policy.hpp"
 #include "catlass/gemm/helper.hpp"
@@ -21,7 +21,7 @@
 #include "catlass/gemm/tile/tile_mmad.hpp"
 #include "../tile/copy_l0c_to_ub.hpp"
 #include "tla/layout.hpp"
-#include "tla/kda_tensor.hpp"
+#include "tla/tensor.hpp"
 
 namespace Common {
 
