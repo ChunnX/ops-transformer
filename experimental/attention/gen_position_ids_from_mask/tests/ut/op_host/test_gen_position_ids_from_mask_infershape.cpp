@@ -16,7 +16,10 @@
 
 class GenPositionIdsFromMaskInferShapeTest : public testing::Test {
 protected:
-    static void SetUpTestCase() { std::cout << "--- GenPositionIdsFromMask InferShape UT SetUp ---" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "--- GenPositionIdsFromMask InferShape UT SetUp ---" << std::endl;
+    }
     static void TearDownTestCase()
     {
         std::cout << "--- GenPositionIdsFromMask InferShape UT TearDown ---" << std::endl;

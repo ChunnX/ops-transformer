@@ -21,8 +21,14 @@ using namespace ge;
 
 class GenPositionIdsFromMaskTilingTest : public testing::Test {
 protected:
-    static void SetUpTestCase() { std::cout << "--- GenPositionIdsFromMask Tiling UT SetUp ---" << std::endl; }
-    static void TearDownTestCase() { std::cout << "--- GenPositionIdsFromMask Tiling UT TearDown ---" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "--- GenPositionIdsFromMask Tiling UT SetUp ---" << std::endl;
+    }
+    static void TearDownTestCase()
+    {
+        std::cout << "--- GenPositionIdsFromMask Tiling UT TearDown ---" << std::endl;
+    }
 };
 
 // int32 mask -> tiling key 1
