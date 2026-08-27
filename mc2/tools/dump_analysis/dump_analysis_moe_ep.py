@@ -16,7 +16,6 @@ import logging
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import List
 
 import numpy as np
 from openpyxl import Workbook
@@ -174,7 +173,7 @@ def get_context(target_path: str):
             raw = context.tobytes()
             # 前 2 个 uint32: epRankId, rankSizePerServer
             ep_rank_id = int(context[0])
-            rank_size = int(context[1])
+            rank_size = min(int(context[1]) & 0xFFFFFFFF, 1024)
             logging.info("epRankId=%d, rankSizePerServer=%d", ep_rank_id, rank_size)
             # epHcclBuffer: 1024 个 uint64, 打印 rankSize 个 (Win区地址)
             offset = 8
@@ -320,7 +319,7 @@ def analyze_expert_count(target_path: str, ep_world_size: int, local_expert_num:
         start = i * 512
         end = (i + 1) * 512
         block = raw_data[start:end].view(np.uint32)
-        per_rank = [int(block[j]) for j in range(local_expert_num)]
+        per_rank = [int(block[j]) for j in range(min(local_expert_num, 128))]
         expert_counts.append(per_rank)
     logging.info(
         "数据(epWorldSize=%d, 每 rank 一个 512B 块, 每 block 取 localExpertNum=%d 个 uint32): %s",
@@ -570,7 +569,7 @@ if __name__ == "__main__":
         )
         sys.exit(1)
 
-    target_dir = sys.argv[1]
+    target_dir = os.path.realpath(sys.argv[1])
     file_num = int(sys.argv[2])
     is_multi = int(sys.argv[3])
     if not os.path.isdir(target_dir):
