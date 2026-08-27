@@ -22,7 +22,7 @@
 #include "log/error_code.h"
 #include "register/op_def_registry.h"
 #include "../qfa_tiling_info.h"
-#include "common_checker.h"
+#include "common_checker_quant_flash_attn.h"
 
 namespace optiling {
 namespace quant_flash_attn {
@@ -40,7 +40,7 @@ using namespace Ops::Base;
 
 ge::graphStatus CommonChecker::CheckSingleParaLayout(const QfaTilingInfo &qfaInfo)
 {
-    const std::vector<QfaLayout> supportedQLayouts = {QfaLayout::BSND, QfaLayout::BNSD, QfaLayout::TND};
+    const std::vector<QfaLayout> supportedQLayouts = {QfaLayout::BSND, QfaLayout::BNSD, QfaLayout::TND, QfaLayout::NTD};
     const std::vector<QfaLayout> supportedKvLayouts = {QfaLayout::BSND,    QfaLayout::BNSD,    QfaLayout::TND,
                                                        QfaLayout::PA_BBND, QfaLayout::PA_BNBD, QfaLayout::PA_NZ};
     const std::vector<QfaLayout> supportedOutLayouts = {QfaLayout::BSND, QfaLayout::BNSD, QfaLayout::TND};
@@ -48,9 +48,15 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const QfaTilingInfo &qfaInf
     if (std::find(supportedQLayouts.begin(), supportedQLayouts.end(), qfaInfo.qLayout) == supportedQLayouts.end()) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "layout_q",
                                               QfaLayoutToSerialString(qfaInfo.qLayout).c_str(),
-                                              "The value of layout_q must be in BSND/BNSD/TND");
+                                              "The value of layout_q must be in BSND/BNSD/TND/NTD");
         return ge::GRAPH_FAILED;
     }
+
+    OP_CHECK_IF((qfaInfo.kvLayout == QfaLayout::PA_NZ) && (qfaInfo.qkHeadDim == 72),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    qfaInfo.opName, "layout_kv", QfaLayoutToSerialString(qfaInfo.kvLayout).c_str(),
+                    "When quant_mode is MxFP8 and qkHeadDim is 72, layout_kv cannot be PA_NZ"),
+                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(
         std::find(supportedKvLayouts.begin(), supportedKvLayouts.end(), qfaInfo.kvLayout) == supportedKvLayouts.end(),
@@ -252,8 +258,10 @@ ge::graphStatus CommonChecker::CheckHeadNum(const QfaTilingInfo &qfaInfo)
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(qfaInfo.n1Size < qfaInfo.n2Size,
-                OP_LOGE(qfaInfo.opName, "numHeads(%ld) should be greater than or equal to numKeyValueHeads(%ld)!",
-                        qfaInfo.n1Size, qfaInfo.n2Size),
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                    qfaInfo.opName, "num_heads, num_key_value_heads",
+                    (std::to_string(qfaInfo.n1Size) + ", " + std::to_string(qfaInfo.n2Size)).c_str(),
+                    "The value of num_heads must be greater than or equal to num_key_value_heads"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(
@@ -300,26 +308,27 @@ ge::graphStatus CommonChecker::CheckAxis(const QfaTilingInfo &qfaInfo)
     }
 
     OP_CHECK_IF(
-        qfaInfo.s1Size < 0 && qfaInfo.qLayout != QfaLayout::TND,
+        qfaInfo.s1Size < 0 && qfaInfo.qLayout != QfaLayout::TND && qfaInfo.qLayout != QfaLayout::NTD,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
             qfaInfo.opName, QUERY_NAME.c_str(), ToString(qfaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
-            "When layout of query is not TND, S of query must be greater than or equal to 0"),
+            "When layout of query is not TND or NTD, S of query must be greater than or equal to 0"),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(qfaInfo.s2Size < 0,
-                OP_LOGE(qfaInfo.opName, "The axis KV_S must be greater than or equal to 0, the current is %ld.",
-                        qfaInfo.s2Size),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        qfaInfo.s2Size < 0,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "axis KV_S", std::to_string(qfaInfo.s2Size).c_str(),
+                                              "The value of axis KV_S must be greater than or equal to 0"),
+        return ge::GRAPH_FAILED);
 
-    const std::vector<int64_t> supportedHeadDims = {64, 128};
+    const std::vector<int64_t> supportedHeadDims = {64, 72, 128, 256};
     OP_CHECK_IF(CheckValueSupport(qfaInfo.qkHeadDim, supportedHeadDims) != ge::GRAPH_SUCCESS,
-                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(qfaInfo.opName, "axis D of query and key",
-                                                       std::to_string(qfaInfo.qkHeadDim).c_str(),
-                                                       "The value of axis D of query and key can only be 64/128"),
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                    qfaInfo.opName, "axis D of query and key", std::to_string(qfaInfo.qkHeadDim).c_str(),
+                    "The value of axis D of query and key can only be 64/72/128/256"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(CheckValueSupport(qfaInfo.vHeadDim, supportedHeadDims) != ge::GRAPH_SUCCESS,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "axis D of value",
                                                       std::to_string(qfaInfo.vHeadDim).c_str(),
-                                                      "The value of axis D of value can only be 64/128"),
+                                                      "The value of axis D of value can only be 64/72/128/256"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

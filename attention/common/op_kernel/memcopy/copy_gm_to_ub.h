@@ -113,8 +113,7 @@ public:
             ProcessAntiqPerChannelOrPerToken(dstTensor, srcTensor, antiqGmCoord);
         }
         // per token + PA
-        else if constexpr ((GM_FORMAT == GmFormat::PA_BnBs) || (GM_FORMAT == GmFormat::PA_BnNBs) ||
-                           (GM_FORMAT == GmFormat::PA_BnNBs_KS)) {
+        else if constexpr ((GM_FORMAT == GmFormat::PA_BnBs) || (GM_FORMAT == GmFormat::PA_BnNBs)) {
             ProcessAntiqPA(dstTensor, srcTensor, antiqGmCoord);
         }
     }
@@ -166,17 +165,22 @@ private:
 template <typename T, GmFormat GM_FORMAT>
 class CopyQueryScaleGmToUb {
 public:
-    __aicore__ inline void operator()(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor, GmCoord &gmCoord)
+    template <typename FaGmTensorType>
+    __aicore__ inline void operator()(FaUbTensor<T> &dstTensor, FaGmTensorType &srcTensor, GmCoord &gmCoord)
     {
         if constexpr (GM_FORMAT == GmFormat::NGT) {
             ProcessGS1(dstTensor, srcTensor, gmCoord);
         }
+        if constexpr (GM_FORMAT == GmFormat::TNG) {
+            ProcessS1G(dstTensor, srcTensor, gmCoord);
+        }
     }
 
 private:
-    __aicore__ inline void ProcessGS1(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor, GmCoord &gmCoord)
+    template <typename FaGmTensorType>
+    __aicore__ inline void ProcessGS1(FaUbTensor<T> &dstTensor, FaGmTensorType &srcTensor, GmCoord &gmCoord)
     {
-        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+        auto &offsetCalculator = srcTensor.offsetCalculator;
         uint64_t s1Size = 0;
         s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
         uint32_t gIdxStart = gmCoord.gS1Idx / s1Size;
@@ -185,14 +189,33 @@ private:
         uint64_t queryGmbaseOffset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gIdxStart, 0);
 
         DataCopyExtParams dataCopyParams;
-        dataCopyParams.blockCount = 1; // 外部传入
+        dataCopyParams.blockCount = 1;
         dataCopyParams.blockLen = static_cast<uint16_t>(gmCoord.gS1DealSize) * sizeof(T);
         dataCopyParams.srcStride = 0;
-        dataCopyParams.dstStride = 0; // 外部传入
+        dataCopyParams.dstStride = 0;
 
         DataCopyPadExtParams<T> dataCopyPadParams;
         DataCopyPad(dstTensor.tensor, srcTensor.gmTensor[queryGmbaseOffset + s1IdxStart], dataCopyParams,
                     dataCopyPadParams);
+    }
+
+    __aicore__ inline void ProcessS1G(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor, GmCoord &gmCoord)
+    {
+        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+        uint64_t gSize = offsetCalculator.GetDimG();
+        uint32_t s1IdxStart = gmCoord.gS1Idx / gSize;
+        uint32_t gIdxStart = gmCoord.gS1Idx % gSize;
+
+        uint64_t queryGmbaseOffset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gIdxStart, s1IdxStart);
+
+        DataCopyExtParams dataCopyParams;
+        dataCopyParams.blockCount = 1;
+        dataCopyParams.blockLen = static_cast<uint16_t>(gmCoord.gS1DealSize) * sizeof(T);
+        dataCopyParams.srcStride = 0;
+        dataCopyParams.dstStride = 0;
+
+        DataCopyPadExtParams<T> dataCopyPadParams;
+        DataCopyPad(dstTensor.tensor, srcTensor.gmTensor[queryGmbaseOffset], dataCopyParams, dataCopyPadParams);
     }
 };
 

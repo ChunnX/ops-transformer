@@ -343,6 +343,21 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         <td>-</td>
         </tr>
         <tr>
+        <td>sinks</td>
+        <td>可选输入</td>
+        <td>用于修正target distribution（p）归一化因子的附加softmax项，仅Ascend 950支持，仅aclnnSparseLightningIndexerGradKLLossV2接口接收。</td>
+        <td>
+              <ul>
+                <li>需为1维且长度等于query的N维度。</li>
+                <li>该参数可选，不传入时与aclnnSparseLightningIndexerGradKLLoss接口行为一致。</li>
+              </ul>
+        </td>
+        <td>FLOAT32</td>
+        <td>ND</td>
+        <td>(N1,)</td>
+        <td>√</td>
+        </tr>
+        <tr>
         <td>deterministic</td>
             <td>输入</td>
             <td>确定性计算。</td>
@@ -572,7 +587,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tr>
         <tr>
             <td>S1、S2</td>
-            <td>S1支持1~8K，S2支持1~512K</td>
+            <td>S1支持1~32K，S2支持1~1M</td>
             <td>S1、S2支持不等长；S1必须小于等于S2</td>
         </tr>
         <tr>
@@ -664,6 +679,17 @@ void PrintOutResult(std::vector<int64_t> &shape, void** deviceAddr) {
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
   for (int64_t i = 0; i < size; i++) {
     LOG_PRINT("mean result[%ld] is: %f\n", i, resultData[i]);
+  }
+}
+
+void PrintOutResultFp16(std::vector<int64_t> &shape, void** deviceAddr) {
+  auto size = GetShapeSize(shape);
+  std::vector<aclFloat16> resultData(size, 0);
+  auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]),
+                         *deviceAddr, size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
+  for (int64_t i = 0; i < size; i++) {
+    LOG_PRINT("mean result[%ld] is: %f\n", i, aclFloat16ToFloat(resultData[i]));
   }
 }
 
@@ -849,9 +875,9 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
   // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
-  PrintOutResult(dQIndexShape, &dQIndexDeviceAddr);
-  PrintOutResult(dKIndexShape, &dKIndexDeviceAddr);
-  PrintOutResult(dWeightShape, &dWeightDeviceAddr);
+  PrintOutResultFp16(dQIndexShape, &dQIndexDeviceAddr);
+  PrintOutResultFp16(dKIndexShape, &dKIndexDeviceAddr);
+  PrintOutResultFp16(dWeightShape, &dWeightDeviceAddr);
   PrintOutResult(lossShape, &lossDeviceAddr);
 
   // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改

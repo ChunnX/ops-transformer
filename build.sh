@@ -44,9 +44,13 @@ ENABLE_BUILT_CUSTOM=FALSE
 ENABLE_STATIC=FALSE
 ENABLE_EXPERIMENTAL=FALSE
 ENABLE_TORCH_EXTENSION_ONLY=FALSE
+PACKAGE_TYPE="run"
+PACKAGE_TYPE_SET=FALSE
 KERNEL_TEMPLATE_INPUT=""
 ASCEND_SOC_UNITS="ascend910b"
-SUPPORT_COMPUTE_UNIT_SHORT=("ascend910b" "ascend910_93" "ascend950" "ascend310p" "kirinx90" "kirin9030" "mc62")
+# 支持的 SoC 列表(校验用, 单一数据源): 取自 cmake/scripts/util/const_var.py 的 SOC_MAP_EXT keys(出包遍历的 kernel 编译 soc 集合)
+# + CMakeLists.txt SOC_VERSION_LIST 中的 mc62。不在 CMakeLists.txt SOC_VERSION_LIST 的 soc 会走空包(cpack_empty_package)
+SUPPORT_COMPUTE_UNIT_SHORT=("ascend910b" "ascend910_93" "ascend950" "ascend310p" "ascend310b" "ascend910" "ascend610lite" "kirinx90" "kirin9030" "mc62")
 CMAKE_BUILD_MODE=""
 BUILD_TYPE=""
 VERSION=""
@@ -101,6 +105,7 @@ function help_info() {
                 echo "Package Build Options:"
                 echo $dotted_line
                 echo "    --pkg                  Build run package with kernel bin"
+                echo "    --pkg-type=<TYPE>      Specify package type(TYPE options: run/rpm/deb/all), Default: run"
                 echo "    --jit                  Build run package without kernel bin"
                 echo "    --soc=soc_version      Compile for specified Ascend SoC (comma-separated for multiple)"
                 echo "    --vendor_name=name     Specify custom operator package vendor name"
@@ -122,6 +127,9 @@ function help_info() {
                 echo $dotted_line
                 echo "Examples:"
                 echo "    bash build.sh --pkg --soc=ascend910b --vendor_name=customize -j16 -O3"
+                echo "    bash build.sh --pkg --pkg-type=deb --soc=ascend910b"
+                echo "    bash build.sh --pkg --pkg-type=rpm --soc=ascend910b"
+                echo "    bash build.sh --pkg --pkg-type=all --soc=ascend910b"
                 echo "    bash build.sh --pkg --ops=add,sub"
                 echo "    bash build.sh --pkg --experimental --soc=ascend910b"
                 echo "    bash build.sh --pkg --experimental --soc=ascend910b --ops=abs --oom"
@@ -351,7 +359,8 @@ function help_info() {
     echo "    --ops Compile specified operator, use snake name, like: --ops=add,add_lora, use ',' to separate different operator"
     echo "    --module Compile specified module, like: --module=mc2,attention, use ',' to separate different modules (supported: mc2,attention,moe,ffn,mhc,posembedding,gmm)"
     echo "    --soc Compile binary with specified Ascend SoC, like: --soc=ascend910b,ascend910_93,ascend950 use ',' to separate different SoC"
-    echo "    --soc supported parameters must only in [ascend910b ascend910_93 ascend950 ascend310p kirinx90 kirin9030 mc62], A3(--soc=ascend910_93)"
+    echo "    --soc supported parameters must only in [$(get_supported_soc_text)], A3(--soc=ascend910_93)"
+    echo "    --list_soc List all supported Ascend SoC"
     echo "    --vendor_name Specify the custom operator package vendor name, like: --vendor_name=customize, default to custom"
     echo "    --opgraph build graph_plugin_transformer.so"
     echo "    --onnxplugin build oponnx_plugin_transformer.so"
@@ -360,6 +369,8 @@ function help_info() {
     echo "    --opkernel build binary kernel"
     echo "    --jit build run package without kernel bin"
     echo "    --pkg build run package with kernel bin"
+    echo "    --pkg-type=<TYPE> Specify package type(TYPE options: run/rpm/deb/all), Default: run"
+    echo "    --torch_extension           Build torch_extension whl only, support --ops for single op packaging"
     echo "    --torch_extension_only       Build torch_extension whl package only"
     echo "    --experimental build experimental version"
     echo "    --opkernel_aicpu build aicpu kernel"
@@ -382,9 +393,25 @@ export BASE_PATH=$(
     pwd
 )
 export BUILD_PATH="${BASE_PATH}/build"
+# source SoC 名称校验库, 并复用 SUPPORT_COMPUTE_UNIT_SHORT 作为唯一支持列表(单一数据源)
+if [[ -f "${BASE_PATH}/scripts/util/soc_validator.sh" ]]; then
+    source "${BASE_PATH}/scripts/util/soc_validator.sh"
+else
+    echo "[ERROR] scripts/util/soc_validator.sh not found, please check the repository integrity."
+    exit 1
+fi
+SUPPORTED_SOC_LIST=("${SUPPORT_COMPUTE_UNIT_SHORT[@]}")
 function log() {
     local current_time=`date +"%Y-%m-%d %H:%M:%S"`
     echo "[$current_time] "$1
+}
+
+check_pkg_type() {
+  local pkg_type="$1"
+  if [[ "$pkg_type" != "run" && "$pkg_type" != "rpm" && "$pkg_type" != "deb" && "$pkg_type" != "all" ]]; then
+    echo "[ERROR] --pkg-type only supports run/rpm/deb/all, got: $pkg_type"
+    exit 1
+  fi
 }
 
 function set_env()
@@ -583,18 +610,23 @@ function build_example()
         echo "Currently $ASCEND_SOC_UNITS is not supported, please input a valid soc."
         return 1
     fi
+    # 非 experimental 模式下排除 experimental 目录,避免 built-in 算子修改误触发 experimental 算子的 example
+    local exclude_experimental=()
+    if [[ "$ENABLE_EXPERIMENTAL" != "TRUE" ]]; then
+        exclude_experimental=(-not -path "*/experimental/*")
+    fi
     # Obtain the example file corresponding to the input soc unit.
     if [[ "$ASCEND_SOC_UNITS" == "ascend950" ]]; then
         # 1. ascend950/ascend950 example is independent of other soc units.
-        files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/arch35/${pattern}*.cpp"))
+        files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/arch35/${pattern}*.cpp" "${exclude_experimental[@]}"))
         if [[ -z "$files" ]]; then
             # 2. Example is shared with other soc units, or the current operator only supports ascend950/ascend950.
-            files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/${pattern}*.cpp"))
+            files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/${pattern}*.cpp" "${exclude_experimental[@]}"))
         fi
     else
         # Except for ascend950/ascend950, the examples of other soc units are temporarily shared.
         # If you need to add independent examples, you can refer to the method of adding a directory for isolation.
-        files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/${pattern}*.cpp"))
+        files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/${pattern}*.cpp" "${exclude_experimental[@]}"))
     fi
     # Compile and Execute
     if [[ "${EXAMPLE_MODE}" == "eager" ]]; then
@@ -719,8 +751,85 @@ function build_example()
     return 0
 }
 
+function find_rpm_deb_package() {
+    if [[ "$PACKAGE_TYPE" == "run" ]]; then
+        return 0
+    fi
+
+    find "${BUILD_PATH}" -type f -name "cann-*-ops-transformer*.${PACKAGE_TYPE}" | sort
+}
+
+function clean_rpm_deb_package() {
+    if [[ "$PACKAGE_TYPE" == "run" ]]; then
+        return 0
+    fi
+
+    local package_files=()
+    while IFS= read -r package_file; do
+        package_files+=("${package_file}")
+    done < <(find_rpm_deb_package)
+
+    if [[ ${#package_files[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    for package_file in "${package_files[@]}"; do
+        rm -f "${package_file}"
+        echo "[INFO] Removed stale package artifact: ${package_file}"
+    done
+}
+
+function collect_rpm_deb_package() {
+    if [[ "$PACKAGE_TYPE" == "run" ]]; then
+        return 0
+    fi
+
+    local package_files=()
+    while IFS= read -r package_file; do
+        package_files+=("${package_file}")
+    done < <(find_rpm_deb_package)
+
+    if [[ ${#package_files[@]} -eq 0 ]]; then
+        echo "[ERROR] No .${PACKAGE_TYPE} package found in ${BUILD_PATH}"
+        exit 1
+    fi
+
+    if [ ! -d "${BUILD_OUT_DIR}" ]; then
+        mkdir -p "${BUILD_OUT_DIR}"
+    fi
+    for package_file in "${package_files[@]}"; do
+        cp -f "${package_file}" "${BUILD_OUT_DIR}/"
+        echo "[INFO] Package artifact copied to ${BUILD_OUT_DIR}/$(basename "${package_file}")"
+    done
+}
+
 function build_package(){
-    build package
+    if [ -f "${BUILD_PATH}/no_ops.flag" ]; then
+        echo "[INFO] No operator can be compiled (all requested ops skipped by CANN version check), skip package generation."
+        return 0
+    fi
+    if [[ "${PACKAGE_TYPE}" == "all" ]]; then
+        local saved_pkg_type="${PACKAGE_TYPE}"
+        local option=""
+        if [ "${VERBOSE}" == "true" ]; then
+            option="--verbose"
+        fi
+        for PACKAGE_TYPE in run rpm deb; do
+            clean_rpm_deb_package
+            cmake -DPACKAGE_TYPE="${PACKAGE_TYPE}" "${BUILD_PATH}" > /dev/null 2>&1
+            cmake --build . --target package ${JOB_NUM} ${option}
+            if [ $? -ne 0 ]; then
+                echo "[ERROR] target:package (${PACKAGE_TYPE}) build failed!"
+                exit 1
+            fi
+            collect_rpm_deb_package
+        done
+        PACKAGE_TYPE="${saved_pkg_type}"
+    else
+        clean_rpm_deb_package
+        build package
+        collect_rpm_deb_package
+    fi
 }
 
 function build_host(){
@@ -728,6 +837,10 @@ function build_host(){
 }
 
 function build_kernel(){
+    if [ -f "${BUILD_PATH}/no_ops.flag" ]; then
+        echo "[INFO] No operator can be compiled (all requested ops skipped by CANN version check), skip kernel build."
+        return 0
+    fi
     build ops_transformer_kernel
 }
 
@@ -743,6 +856,19 @@ function build_torch_extension_whl() {
             log "[WARNING] Python build module not found, skipping whl build"
             cd "${original_dir}"
             return 0
+        fi
+
+        if [[ -n "${ascend_op_name}" ]]; then
+            export TORCH_EXTENSION_OPS="${ascend_op_name}"
+            if [[ -n "${vendor_name}" ]]; then
+                export TORCH_EXTENSION_VENDOR="${vendor_name}"
+            else
+                export TORCH_EXTENSION_VENDOR="custom"
+            fi
+            log "[INFO] Building torch_extension whl with ops: ${ascend_op_name}, vendor: ${TORCH_EXTENSION_VENDOR}"
+        else
+            unset TORCH_EXTENSION_OPS
+            unset TORCH_EXTENSION_VENDOR
         fi
 
         python3 -m build --wheel -n 2>&1 || {
@@ -793,7 +919,9 @@ build_static_lib() {
     if echo "${all_targets}" | grep -wq "ophost_transformer_static"; then
         cmake --build . --target ophost_transformer_static ${JOB_NUM} ${option}
     fi
-    cmake --build . --target opapi_transformer_static ${JOB_NUM} ${option}
+    if echo "${all_targets}" | grep -wq "opapi_transformer_static"; then
+        cmake --build . --target opapi_transformer_static ${JOB_NUM} ${option}
+    fi
     local jit_command=""
     if [[ "$ENABLE_BUILT_JIT" == "TRUE" ]]; then
         jit_command="-j"
@@ -804,7 +932,9 @@ build_static_lib() {
     python3 "${BASE_PATH}/scripts/util/build_opp_kernel_static.py" StaticCompile -s ${unit} -b ${BUILD_PATH} -n=0 -a=${ARCH_INFO} ${jit_command}
 
     cd "${BUILD_PATH}" && cmake ${CUSTOM_OPTION} .. -DENABLE_STATIC=ON -DASCEND_COMPUTE_UNIT=${unit}
-    cmake --build . --target cann_transformer_static ${JOB_NUM} ${option}
+    if echo "${all_targets}" | grep -wq "cann_transformer_static"; then
+        cmake --build . --target cann_transformer_static ${JOB_NUM} ${option}
+    fi
     echo "Build static lib success!"
 }
 
@@ -841,7 +971,6 @@ package_static() {
     fi
     # Get filename of *.run file and set new directory name
     local run_file=$(basename "${run_files[0]}")
-    echo "Found .run file: $run_file"
     if [[ "$run_file" != *"ops-transformer"* ]]; then
         echo "Error: Filename '$run_file' does not contain 'ops-transformer'."
         return 1
@@ -852,8 +981,7 @@ package_static() {
     # Check weather $BUILD_PATH/static_library_files directory exists and not empty
     local static_files_dir="$BUILD_PATH/static_library_files"
     if [ ! -d "$static_files_dir" ]; then
-        echo "Error: Directory $static_files_dir does not exist."
-        return 1
+        return 0
     fi
     if [ -z "$(ls -A "$static_files_dir")" ]; then
         echo "Error: Directory $static_files_dir is empty."
@@ -891,11 +1019,29 @@ function process_soc_input(){
     local value_part="${input_string#*=}"
     ASCEND_SOC_UNITS="${value_part//,/;}"
 
+    # 校验 --soc 输入的每个 SoC 名称, 任一非法立即报错退出
+    if ! validate_soc_list "${ASCEND_SOC_UNITS}"; then
+        if [[ -z "${INVALID_SOC_ITEM}" ]]; then
+            echo "[ERROR] The input soc is empty or contains empty items. Please use one of: $(get_supported_soc_text)"
+        else
+            echo "[ERROR] The input soc ${INVALID_SOC_ITEM} is not supported. Please use one of: $(get_supported_soc_text)"
+        fi
+        exit 1
+    fi
+
+    # 归一化为小写, 与 CMakeLists.txt 中 SOC_VERSION_LIST 的大小写敏感精确匹配保持一致
+    ASCEND_SOC_UNITS="${ASCEND_SOC_UNITS,,}"
+
     declare -A SOC_HARDWARE_MAP=(
+        # 命名依据: README.md(Atlas A2/A3系列产品, Ascend 950PR/Ascend 950DT, KirinX90系列产品)
+        # 与 cmake/scripts/util/const_var.py 的 SOC_MAP_EXT
         [ascend910b]="Atlas A2"
         [ascend910_93]="Atlas A3"
-        [ascend310p]="Atlas Inference"
+        [ascend310p]="Ascend310P3"
         [ascend950]="Ascend 950PR/Ascend 950DT"
+        [kirinx90]="KirinX90"
+        [kirin9030]="Kirin9030"
+        # mc62 在本仓 README/docs/const_var.py 及 ops-nn 仓中均无官方产品命名, 暂不配置, 走通用提示
     )
 
     if [[ ${SOC_HARDWARE_MAP[$ASCEND_SOC_UNITS]} ]]; then
@@ -1115,8 +1261,8 @@ set_example_opt() {
 
 # 所有支持的长选项（不含值），用于参数合法性校验
 SUPPORTED_LONG_OPTS=(
-  "help" "pkg" "static" "jit" "noaicpu" "opkernel_aicpu" "opkernel"
-  "experimental" "noexec" "torch_extension_only" "oom" "make_clean"
+  "help" "list_soc" "pkg" "pkg-type=" "static" "jit" "noaicpu" "opkernel_aicpu" "opkernel"
+  "experimental" "noexec" "torch_extension" "torch_extension_only" "oom" "make_clean"
   "mssanitizer" "dump_cce"
   "ophost" "opapi" "opgraph" "onnxplugin"
   "ophost_test" "opapi_test" "opgraph_test" "opkernel_test"
@@ -1209,6 +1355,17 @@ assemble_cmake_args() {
   fi
 
   if [ -n "${ascend_compute_unit}" ];then
+    # 校验 -c/--compute-unit 输入的 SoC 名称, 任一非法立即报错退出
+    if ! validate_soc_list "${ascend_compute_unit}"; then
+      if [[ -z "${INVALID_SOC_ITEM}" ]]; then
+        echo "[ERROR] The input soc is empty or contains empty items. Please use one of: $(get_supported_soc_text)"
+      else
+        echo "[ERROR] The input soc ${INVALID_SOC_ITEM} is not supported. Please use one of: $(get_supported_soc_text)"
+      fi
+      exit 1
+    fi
+    # 归一化为小写, 与 CMakeLists.txt 中 SOC_VERSION_LIST 的大小写敏感精确匹配保持一致
+    ascend_compute_unit="${ascend_compute_unit,,}"
     CUSTOM_OPTION="${CUSTOM_OPTION} -DASCEND_COMPUTE_UNIT=${ascend_compute_unit}"
   fi
 
@@ -1407,6 +1564,12 @@ assemble_cmake_args() {
     CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_STATIC=${ENABLE_STATIC}"
   fi
 
+  if [[ "$ENABLE_BUILD_PKG" == "TRUE" ]]; then
+    cmake_pkg_type="${PACKAGE_TYPE}"
+    [[ "${PACKAGE_TYPE}" == "all" ]] && cmake_pkg_type="run"
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DPACKAGE_TYPE=${cmake_pkg_type}"
+  fi
+
   if [[ "$ENABLE_AICPU" == "FALSE" ]]; then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_AICPU=OFF -DENABLE_TILING_SINK=OFF "
   fi
@@ -1474,6 +1637,11 @@ while [[ $# -gt 0 ]]; do
     -h|--help)
         help_info
         exit
+        ;;
+    --list_soc)
+        # 输出当前支持的 SoC 列表(来自单一数据源 SUPPORTED_SOC_LIST), 供用户选择正确的芯片型号
+        echo "Supported SoC list: $(get_supported_soc_text)"
+        exit 0
         ;;
     --pkg)
         ENABLE_BUILD_PKG=TRUE
@@ -1754,6 +1922,10 @@ while [[ $# -gt 0 ]]; do
         ENABLE_UT_EXEC=FALSE
         shift
         ;;
+    --torch_extension)
+        ENABLE_TORCH_EXTENSION_ONLY=TRUE
+        shift
+        ;;
     --torch_extension_only)
         ENABLE_TORCH_EXTENSION_ONLY=TRUE
         shift
@@ -1777,6 +1949,17 @@ while [[ $# -gt 0 ]]; do
     --build-type=*)
         OPTARG=$1
         BUILD_TYPE=${OPTARG#*=}
+        shift
+        ;;
+    --pkg-type)
+        echo "[ERROR] --pkg-type requires a value: run/rpm/deb/all"
+        exit 1
+        ;;
+    --pkg-type=*)
+        OPTARG=$1
+        PACKAGE_TYPE=${OPTARG#*=}
+        check_pkg_type "${PACKAGE_TYPE}"
+        PACKAGE_TYPE_SET=TRUE
         shift
         ;;
     --version=*)
@@ -1839,6 +2022,26 @@ set_ut_mode
 
 check_param
 
+if [[ "$PACKAGE_TYPE_SET" == "TRUE" && "$ENABLE_BUILD_PKG" != "TRUE" ]]; then
+    echo "[ERROR] --pkg-type can only be used with --pkg"
+    exit 1
+fi
+
+if [[ "$PACKAGE_TYPE" != "run" && "$PACKAGE_TYPE" != "all" ]]; then
+    if [[ "$ENABLE_STATIC" == "TRUE" ]]; then
+        echo "[ERROR] --pkg-type=${PACKAGE_TYPE} cannot be used with --static"
+        exit 1
+    fi
+    if [[ "$ENABLE_BUILT_JIT" == "TRUE" ]]; then
+        echo "[ERROR] --pkg-type=${PACKAGE_TYPE} cannot be used with --jit"
+        exit 1
+    fi
+    if [[ "$ENABLE_BUILT_CUSTOM" == "TRUE" || "$ENABLE_EXPERIMENTAL" == "TRUE" ]]; then
+        echo "[ERROR] --pkg-type=${PACKAGE_TYPE} only supports built-in ops-transformer packages; do not use --ops, --vendor_name, or --experimental"
+        exit 1
+    fi
+fi
+
 assemble_cmake_args
 
 function get_cpu_num() {
@@ -1862,35 +2065,32 @@ fi
 
 # 非打包命令调用，打包模式会打进同一个包里
 function set_compute_unit_option() {
-    local IS_SUPPORT_SOC_INPUT=false
-    for support_unit in "${SUPPORT_COMPUTE_UNIT_SHORT[@]}"; do
-        lowercase_word=$(echo "$ASCEND_SOC_UNITS" | tr '[:upper:]' '[:lower:]')
-        if [[ "$lowercase_word" == "$support_unit" ]]; then
-            IS_SUPPORT_SOC_INPUT=true
-            break
-        fi
-    done
-    if [[ "${IS_SUPPORT_SOC_INPUT}" == "true" ]]; then
-        CUSTOM_OPTION="$CUSTOM_OPTION -DASCEND_COMPUTE_UNIT=$ASCEND_SOC_UNITS"
-    else
-        echo "[ERROR] The input soc $ASCEND_SOC_UNITS is not supported."
+    # 使用共享校验库逐项校验 SoC 列表(支持逗号/分号分隔的多个 soc), 替换原有的整串精确匹配
+    if ! validate_soc_list "${ASCEND_SOC_UNITS}"; then
+        echo "[ERROR] The input soc ${INVALID_SOC_ITEM} is not supported. Please use one of: $(get_supported_soc_text)"
         exit 1
     fi
+    CUSTOM_OPTION="$CUSTOM_OPTION -DASCEND_COMPUTE_UNIT=$ASCEND_SOC_UNITS"
 }
 
 # 上面的set_compute_unit_option修改成只能传入一个soc后导致ut有问题，现在复制一份旧的支持多个soc传入，用于ut
 function set_compute_unit_option_ut() {
     IFS=';' read -ra SOC_ARRAY <<< "$ASCEND_SOC_UNITS"  # 分割字符串为数组
     local COMPUTE_UNIT_SHORT=""
+    local soc=""
+    local trimmed_soc=""
     for soc in "${SOC_ARRAY[@]}"; do
-    for support_unit in "${SUPPORT_COMPUTE_UNIT_SHORT[@]}"; do
-        lowercase_word=$(echo "$soc" | tr '[:upper:]' '[:lower:]')
-        if [[ "$lowercase_word" == *"$support_unit"* ]]; then
-        COMPUTE_UNIT_SHORT="$COMPUTE_UNIT_SHORT$support_unit;"
-        break
+        # 裁剪前后空白后, 通过共享校验库逐项精确匹配(替换原有错误的子串匹配逻辑)
+        trimmed_soc="${soc#"${soc%%[![:space:]]*}"}"
+        trimmed_soc="${trimmed_soc%"${trimmed_soc##*[![:space:]]}"}"
+        if soc_is_supported "${trimmed_soc}"; then
+            COMPUTE_UNIT_SHORT="${COMPUTE_UNIT_SHORT}${trimmed_soc,,};"
         fi
     done
-    done
+    if [[ -z "${COMPUTE_UNIT_SHORT}" ]]; then
+        echo "[ERROR] The input soc ${ASCEND_SOC_UNITS} is not supported. Please use one of: $(get_supported_soc_text)"
+        exit 1
+    fi
     CUSTOM_OPTION="$CUSTOM_OPTION -DASCEND_COMPUTE_UNIT=$COMPUTE_UNIT_SHORT"
  }
 

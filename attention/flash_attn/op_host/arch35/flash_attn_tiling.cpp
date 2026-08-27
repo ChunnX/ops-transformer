@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "flash_attn_tiling.h"
+#include "flash_attn_tiling_arch35.h"
 #include "../flash_attn_tiling.h"
 #include "../fa_adjust_sinner_souter.h"
 #include <map>
@@ -119,6 +119,12 @@ void FlashAttnTilingImpl::SplitPolicy()
     if (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK) ||
         faInfo_->maskMode == static_cast<int64_t>(MaskMode::CAUSAL)) {
         winLeft = MASK_MODE_INT_MAX;
+        winRight = MASK_MODE_INT_MAX;
+    }
+    if (winLeft == -1) {
+        winLeft = MASK_MODE_INT_MAX;
+    }
+    if (winRight == -1) {
         winRight = MASK_MODE_INT_MAX;
     }
     fa_tiling_util::AdjustSinnerAndSouter(static_cast<uint32_t>(faInfo_->vHeadDim),
@@ -307,7 +313,6 @@ void FlashAttnTilingImpl::SetFATilingData()
     tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensKVSize = faInfo_->kvLayout == FaLayout::TND ? (faInfo_->bSize + 1) : 0;
     tilingData_.baseTiling.flashAttnBaseParams.seqUsedQSize = seqUsedQFlag_ ? faInfo_->bSize : 0;
     tilingData_.baseTiling.flashAttnBaseParams.seqUsedKvSize = seqUsedKvFlag_ ? faInfo_->bSize : 0;
-    tilingData_.baseTiling.flashAttnBaseParams.isKvContinuous = true;
     tilingData_.baseTiling.flashAttnBaseParams.isSoftMaxLseEnable = faInfo_->softmaxLseFlag;
     tilingData_.baseTiling.flashAttnBaseParams.iscuSeqLengthsNull = !cuSeqLenQFlag_;
     tilingData_.baseTiling.flashAttnBaseParams.iscuSeqLengthsKVNull = !cuSeqLenKVFlag_;
@@ -402,7 +407,6 @@ void FlashAttnTilingImpl::PrintAllTilingData()
     OP_LOGD(faInfo_->opName, "scaleValue:%f", flashAttnBaseParams.scaleValue);
     OP_LOGD(faInfo_->opName, "iscuSeqLengthsNull:%d", flashAttnBaseParams.iscuSeqLengthsNull);
     OP_LOGD(faInfo_->opName, "iscuSeqLengthsKVNull:%d", flashAttnBaseParams.iscuSeqLengthsKVNull);
-    OP_LOGD(faInfo_->opName, "isKvContinuous:%d", flashAttnBaseParams.isKvContinuous);
     OP_LOGD(faInfo_->opName, "isSoftMaxLseEnable:%d", flashAttnBaseParams.isSoftMaxLseEnable);
     OP_LOGD(faInfo_->opName, "coreNum:%d", flashAttnBaseParams.coreNum);
 

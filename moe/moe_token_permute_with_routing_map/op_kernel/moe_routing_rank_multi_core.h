@@ -16,8 +16,8 @@
 #define MOE_ROUTING_RANK_MULTI_CORE_H
 
 #include "kernel_tiling/kernel_tiling.h"
-#include "moe_common.h"
-#include "moe_sort_base.h"
+#include "moe_token_permute_with_routing_map_common.h"
+#include "moe_sort_base_with_routing_map.h"
 
 namespace MoeTokenPermute {
 using namespace AscendC;

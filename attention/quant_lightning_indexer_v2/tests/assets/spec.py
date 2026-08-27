@@ -41,15 +41,17 @@ def load_impl_module(stem):
     return module
 
 
+npu_preprocess_module = load_impl_module("npu_preprocess")
 golden_module = load_impl_module("golden")
 inputs_module = load_impl_module("inputs")
+metadata_inputs_module = load_impl_module("metadata_inputs")
 compare_module = load_impl_module("compare")
-graph_module = load_impl_module("graph")
 
 
 class QuantLightningIndexerV2Spec:
     golden = golden_module.cpu_quant_lightning_indexer_v2
     customize_inputs = inputs_module.generate_qli_v2_inputs
+    npu_preprocess = npu_preprocess_module.run
     tolerance = {
         "float16": {"standard": "stat_rel_err"},
         "bfloat16": {"standard": "stat_rel_err"},
@@ -58,18 +60,39 @@ class QuantLightningIndexerV2Spec:
 
     def compare(*outputs, compare_context=None, **kwargs):
         del kwargs
-        testcase_name = None if compare_context is None else compare_context.testcase_name
+        testcase_name = (
+            None if compare_context is None else compare_context.testcase_name
+        )
         data = golden_module.get_compare_data(testcase_name)
         if data is None:
             if compare_context is None:
-                raise RuntimeError("QuantLightningIndexerV2 pytest compare requires compare_context")
+                raise RuntimeError(
+                    "QuantLightningIndexerV2 pytest compare requires compare_context"
+                )
             data = inputs_module.rebuild_qli_v2_compare_data(compare_context)
             golden_module.set_compare_data(compare_context.testcase_name, data)
-        return compare_module.compare(*outputs, compare_data=data)
+        try:
+            return compare_module.compare(*outputs, compare_data=data)
+        finally:
+            golden_module.discard_compare_data(data)
 
-    torch_graph = graph_module.QuantLightningIndexerV2AclGraph
+
+class AclnnQuantLightningIndexerV2Spec(QuantLightningIndexerV2Spec):
+    golden = golden_module.cpu_aclnn_qli_v2
+    customize_inputs = inputs_module.generate_aclnn_qli_v2_inputs
+    npu_preprocess = npu_preprocess_module.run_aclnn
+
+
+class QuantLightningIndexerMetadataSpec:
+    customize_inputs = (
+        metadata_inputs_module.generate_quant_lightning_indexer_metadata_inputs
+    )
 
 
 __spec__ = {
-    "qli_v2_ttk_ops.quant_lightning_indexer_v2": "QuantLightningIndexerV2Spec",
+    "torch.ops.cann_ops_transformer.quant_lightning_indexer": "QuantLightningIndexerV2Spec",
+    "torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata": (
+        "QuantLightningIndexerMetadataSpec"
+    ),
+    "aclnnQuantLightningIndexerV2": "AclnnQuantLightningIndexerV2Spec",
 }

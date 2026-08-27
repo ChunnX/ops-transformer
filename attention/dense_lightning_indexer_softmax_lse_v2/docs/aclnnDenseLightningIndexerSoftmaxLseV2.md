@@ -183,9 +183,9 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2(
      </tr>
      <tr>
       <td>metadataOptional（aclTensor*）</td>
-      <td>可选输入</td>
+      <td>输入</td>
       <td>前置 AICPU 算子输出的分核负载均衡信息。</td>
-      <td><ul><li>支持空 Tensor。</li><li>由 aclnnDenseLightningIndexerSoftmaxLseV2Metadata 算子输出，减少 tiling 阶段对 host array 的访问。</li></ul></td>
+      <td><ul><li>必须传入。由 aclnnDenseLightningIndexerSoftmaxLseV2Metadata 算子输出，减少 tiling 阶段对 host array 的访问。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维，shape 为 (64,)</td>
@@ -270,30 +270,34 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2(
 
     第一段接口完成入参校验，出现以下场景时报错：
 
-    <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
-    <col style="width: 319px">
-    <col style="width: 144px">
-    <col style="width: 671px">
-    </colgroup>
-    <thead>
-     <tr>
-      <th>返回值</th>
-      <th>错误码</th>
-      <th>描述</th>
-     </tr>
-    </thead>
-    <tbody>
-     <tr>
-      <td>ACLNN_ERR_PARAM_NULLPTR</td>
-      <td>161001</td>
-      <td>必选参数或者输出是空指针。</td>
-     </tr>
-     <tr>
-      <td>ACLNN_ERR_PARAM_INVALID</td>
-      <td>161002</td>
-      <td>queryIndex、keyIndex、weight 等输入变量的数据类型和数据格式不在支持的范围内，或 layoutQ/layoutK 非法，或 maskMode/cmpRatio 取值不合法。</td>
-     </tr>
-    </tbody>
+    <table style="undefined;table-layout: fixed;width: 1155px">
+        <colgroup>
+            <col style="width: 319px">
+            <col style="width: 144px">
+            <col style="width: 671px">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>返回值</th>
+                <th>错误码</th>
+                <th>描述</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>ACLNN_ERR_PARAM_NULLPTR</td>
+                <td>161001</td>
+                <td>参数中存在非法的nullptr。</td>
+            </tr>
+            <tr>
+                <td rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
+                <td rowspan="2">161002</td>
+                <td>输入的数据类型不满足支持类型。</td>
+            </tr>
+            <tr>
+                <td>queryIndex、keyIndex、weight、softmaxLseOut必选输入/输出未传。</td>
+            </tr>
+        </tbody>
     </table>
 
 ## aclnnDenseLightningIndexerSoftmaxLseV2
@@ -437,7 +441,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2(
     - 当 maskMode=3 且 cmpRatio>1 时，必须传入 cmpResidualK，且 cmpResidualK 的每个值必须小于 cmpRatio。
     - seqUsedQ 的每个值不大于各 Batch 的实际 seqlen_q。
     - seqUsedK 的每个值不大于各 Batch 的实际 seqlen_k。
-    - metadataOptional 为前置算子 aclnnDenseLightningIndexerSoftmaxLseV2Metadata 的输出，建议传入以优化性能。
+    - metadataOptional 为前置算子 aclnnDenseLightningIndexerSoftmaxLseV2Metadata 的输出，必须传入以执行相关负载均衡策略。
 
 ## 调用示例
 
@@ -452,6 +456,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2(
 #include "securec.h"
 #include "acl/acl.h"
 #include "aclnnop/aclnn_dense_lightning_indexer_softmax_lse_v2.h"
+#include "aclnnop/aclnn_dense_lightning_indexer_softmax_lse_v2_metadata.h"
 
 #define CHECK_RET(cond, return_expr) \
   do {                               \
@@ -553,7 +558,7 @@ int main() {
   std::vector<aclFloat16> qIndexHostData(B * S1 * N1 * D, aclFloatToFloat16(0.2));
   std::vector<aclFloat16> kIndexHostData(B * S2 * 1 * D, aclFloatToFloat16(0.1));
   std::vector<float> weightHostData(B * S1 * N1, 0.005f);
-  std::vector<float> softmaxLseHostData(B * S1, 0.0f);
+  std::vector<float> softmaxLseHostData(B * N2 * S1, 0.0f);
   std::vector<int32_t> metadataHostData(64, 0);
 
   ret = CreateAclTensor(qIndexHostData, qIndexShape, &qIndexDeviceAddr, aclDataType::ACL_FLOAT16, &qIndex);
@@ -588,8 +593,32 @@ int main() {
   int64_t maskMode = 0;
   int64_t cmpRatio = 1;
 
+  // 1. 调用 metadata 前置算子，生成分核负载均衡信息
+  uint64_t metadataWorkspaceSize = 0;
+  aclOpExecutor* metadataExecutor = nullptr;
+  ret = aclnnDenseLightningIndexerSoftmaxLseV2MetadataGetWorkspaceSize(
+      nullptr, nullptr, nullptr, nullptr, nullptr, B, S1, S2, N1, N2, D, layoutQ, layoutK, maskMode, cmpRatio,
+      metadata, &metadataWorkspaceSize, &metadataExecutor);
+  CHECK_RET(ret == ACL_SUCCESS,
+            LOG_PRINT("aclnnDenseLightningIndexerSoftmaxLseV2MetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
+            return ret);
+
+  void* metadataWorkspaceAddr = nullptr;
+  if (metadataWorkspaceSize > 0) {
+    ret = aclrtMalloc(&metadataWorkspaceAddr, metadataWorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate metadata workspace failed. ERROR: %d\n", ret); return ret);
+  }
+
+  ret = aclnnDenseLightningIndexerSoftmaxLseV2Metadata(metadataWorkspaceAddr, metadataWorkspaceSize,
+                                                        metadataExecutor, stream);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnDenseLightningIndexerSoftmaxLseV2Metadata failed. ERROR: %d\n", ret);
+            return ret);
+  ret = aclrtSynchronizeStream(stream);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
+
+  // 2. 调用主算子
   uint64_t workspaceSize = 0;
-  aclOpExecutor* executor;
+  aclOpExecutor* executor = nullptr;
 
   ret = aclnnDenseLightningIndexerSoftmaxLseV2GetWorkspaceSize(
             qIndex, kIndex, weight,
@@ -631,6 +660,9 @@ int main() {
 
   if (workspaceSize > 0) {
     aclrtFree(workspaceAddr);
+  }
+  if (metadataWorkspaceSize > 0) {
+    aclrtFree(metadataWorkspaceAddr);
   }
   aclrtDestroyStream(stream);
   aclrtDestroyContext(context);

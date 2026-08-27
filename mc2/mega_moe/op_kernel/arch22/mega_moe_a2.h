@@ -29,21 +29,21 @@ using namespace AscendC;
 #endif
 
 #include "mega_moe_tiling_a2a3.h"
-#include "moe_init_routing_v2/moe_init_routing_v2_tiling.h"
+#include "moe_init_routing_v2/mc2_mega_moe_moe_init_routing_v2_tiling.h"
 
-#include "template_linear_algebra_v2/catlass.hpp"
-#include "template_linear_algebra_v2/arch/arch.hpp"
-#include "template_linear_algebra_v2/epilogue/dispatch_policy.hpp"
-#include "template_linear_algebra_v2/epilogue/block/block_epilogue.hpp"
-#include "template_linear_algebra_v2/epilogue/tile/tile_copy.hpp"
-#include "template_linear_algebra_v2/epilogue/tile/tile_elemwise_add.hpp"
-#include "template_linear_algebra_v2/epilogue/tile/tile_elemwise_muls.hpp"
-#include "template_linear_algebra_v2/gemm/block/block_mmad.hpp"
-#include "template_linear_algebra_v2/gemm/block/block_swizzle.hpp"
-#include "template_linear_algebra_v2/gemm/dispatch_policy.hpp"
-#include "template_linear_algebra_v2/gemm/kernel/matmul_epilogue.hpp"
-#include "template_linear_algebra_v2/gemm/gemm_type.hpp"
-#include "template_linear_algebra_v2/layout/layout.hpp"
+#include "template_linear_algebra_v2/mega_moe_catlass.hpp"
+#include "template_linear_algebra_v2/arch/mega_moe_arch.hpp"
+#include "template_linear_algebra_v2/epilogue/mega_moe_epilogue_dispatch_policy.hpp"
+#include "template_linear_algebra_v2/epilogue/block/mega_moe_block_epilogue.hpp"
+#include "template_linear_algebra_v2/epilogue/tile/mega_moe_epilogue_tile_copy.hpp"
+#include "template_linear_algebra_v2/epilogue/tile/mega_moe_tile_elemwise_add.hpp"
+#include "template_linear_algebra_v2/epilogue/tile/mega_moe_tile_elemwise_muls.hpp"
+#include "template_linear_algebra_v2/gemm/block/mega_moe_block_mmad.hpp"
+#include "template_linear_algebra_v2/gemm/block/mega_moe_block_swizzle.hpp"
+#include "template_linear_algebra_v2/gemm/mega_moe_gemm_dispatch_policy.hpp"
+#include "template_linear_algebra_v2/gemm/kernel/mega_moe_matmul_epilogue.hpp"
+#include "template_linear_algebra_v2/gemm/mega_moe_gemm_type.hpp"
+#include "template_linear_algebra_v2/layout/mega_moe_layout.hpp"
 
 #include "utils/select_helper.hpp"
 #include "utils/const_args.hpp"
@@ -129,7 +129,10 @@ private:
     uint64_t maxOutputSize_;
     int32_t epWorldSize_;
     int32_t listLen_;
+    uint32_t activationCode_;
     float activationClamp_;
+    float activationParams1_;
+    float activationParams2_;
 
     MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
     MoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
@@ -177,7 +180,10 @@ MegaMoeA2<MegaMoeFuncA2>::Init(GM_ADDR contextGM, GM_ADDR xGM, GM_ADDR topkIdsGM
         maxOutputSize_ = tilingData.common.maxRecvTokenNum;
         listLen_ = tilingData.common.listLen;
 
+        activationCode_ = tilingData.common.activationCode;
         activationClamp_ = tilingData.common.activationClamp;
+        activationParams1_ = tilingData.common.activationParams1;
+        activationParams2_ = tilingData.common.activationParams2;
 
         moeInitRoutingQuantV2TilingData = tilingData.moeInitRoutingQuantV2TilingData;
         initRoutingQuantTilingKey = tilingData.common.initRoutingQuantTilingKey;
@@ -195,7 +201,10 @@ MegaMoeA2<MegaMoeFuncA2>::Init(GM_ADDR contextGM, GM_ADDR xGM, GM_ADDR topkIdsGM
         maxOutputSize_ = tilingData.common.maxRecvTokenNum;
         listLen_ = tilingData.common.listLen;
 
+        activationCode_ = tilingData.common.activationCode;
         activationClamp_ = tilingData.common.activationClamp;
+        activationParams1_ = tilingData.common.activationParams1;
+        activationParams2_ = tilingData.common.activationParams2;
 
         moeInitRoutingV2TilingData = tilingData.moeInitRoutingV2TilingData;
         initRoutingQuantTilingKey = tilingData.common.initRoutingQuantTilingKey;
@@ -352,10 +361,13 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
                                                                              gmExpertTokenNums_,
                                                                              xActiveMaskGM_,
                                                                              scalesGM_,
-                                                                             moeInitRoutingQuantV2TilingData,
-                                                                             epilogueGranularity,
-                                                                             activationClamp_,
-                                                                             tilingGM_};
+                                                                              moeInitRoutingQuantV2TilingData,
+                                                                              epilogueGranularity,
+                                                                              activationClamp_,
+                                                                              activationCode_,
+                                                                              activationParams1_,
+                                                                              activationParams2_,
+                                                                              tilingGM_};
         MatmulKernel kernel(params);
         kernel(params);
     } else if constexpr (isInt8) {
@@ -398,10 +410,13 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
                                              gmExpertTokenNums_,
                                              xActiveMaskGM_,
                                              scalesGM_,
-                                             moeInitRoutingQuantV2TilingData,
-                                             epilogueGranularity,
-                                             activationClamp_,
-                                             tilingGM_};
+                                              moeInitRoutingQuantV2TilingData,
+                                              epilogueGranularity,
+                                              activationClamp_,
+                                              activationCode_,
+                                              activationParams1_,
+                                              activationParams2_,
+                                              tilingGM_};
 
         MatmulKernel kernel(params);
         kernel(params);
@@ -444,10 +459,13 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
                                              gmExpertTokenNums_,
                                              xActiveMaskGM_,
                                              scalesGM_,
-                                             moeInitRoutingV2TilingData,
-                                             epilogueGranularity,
-                                             activationClamp_,
-                                             tilingGM_};
+                                              moeInitRoutingV2TilingData,
+                                              epilogueGranularity,
+                                              activationClamp_,
+                                              activationCode_,
+                                              activationParams1_,
+                                              activationParams2_,
+                                              tilingGM_};
 
         MatmulKernel kernel(params);
         kernel(params);

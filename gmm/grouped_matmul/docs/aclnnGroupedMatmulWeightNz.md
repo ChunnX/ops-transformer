@@ -35,7 +35,7 @@
       - 输入的weight会被接口按AI处理器亲和数据排布格式（FRACTAL_NZ）解析。
       - 新增参数quantGroupSize，整数型参数，代表分组量化（per-group）的分组大小，不涉及分组量化时，填0。
       <!-- npu="950" id7 -->
-      - <term>Ascend 950PR/Ascend 950DT</term>：暂不支持quantGroupSize参数。
+      - <term>Ascend 950PR/Ascend 950DT</term>：支持quantGroupSize参数，综合约束请参见<a href="#约束说明">约束说明</a>。
       <!-- end id7 -->
 
   - **计算公式**：
@@ -195,7 +195,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>输入</td>
     <td>公式中的输入<code>x</code>。</td>
     <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
-    <td>FLOAT16、BFLOAT16、INT8、INT4<sup>1</sup>、INT32<sup>1</sup>、FLOAT8_E4M3FN<sup>2</sup>、FLOAT4_E2M1<sup>2</sup>、FLOAT4_E1M2<sup>2</sup></td>
+    <td>FLOAT16、BFLOAT16、INT8、INT4、INT32<sup>1</sup>、FLOAT8_E4M3FN<sup>2</sup>、FLOAT4_E2M1<sup>2</sup>、FLOAT4_E1M2<sup>2</sup></td>
     <td>ND</td>
     <td>-</td>
     <td>-</td>
@@ -360,8 +360,8 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <tr>
     <td>tuningConfigOptional（aclIntArray *）</td>
     <td>可选输入</td>
-    <td>第一个数代表各个专家处理的token数的预期值，用于优化tiling。</td>
-    <td>兼容历史版本，用户如不使用该参数，不传（即为nullptr）即可。</td>
+    <td>第一个数代表各个专家处理的token数的预期值；第二个数表示是否开启weight亲和格式（先转置再NZ）。当前仅<a href="#ascend950-weightnz-s8s4场景约束">S8S4</a>场景支持。</td>
+    <td>用户如不使用该参数，不传（即为nullptr）即可。</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -371,7 +371,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>quantGroupSize</td>
     <td>输入</td>
     <td>代表分组量化（per-group）的分组大小。</td>
-    <td>不涉及分组量化时，填0。</td>
+    <td>不涉及分组量化时，填0。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -434,9 +434,9 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     - <term>Ascend 950PR/Ascend 950DT</term>：
       - 上表数据类型列中的角标"1"代表该系列不支持的数据类型。
       - `weight`支持FRACTAL_NZ格式。当最后两根轴其中一根轴为1（即n=1或k=1）时，不支持私有格式，不能调用该接口。可使用aclnnNpuFormatCast接口完成输入Format从ND到AI处理器亲和数据排布格式（NZ）的转换。如原始weight为转置状态且想使用性能更高的非转置通路计算，可使用aclnnPermute接口转为非转置后再调用aclnnNpuFormatCast接口。非全量化场景，当数据类型为FLOAT4_E2M1时，还需要在aclnnNpuFormatCast调用后，调用aclnnCast接口将FLOAT32表示的FLOAT4_E2M1转换为正确的类型。但当为INT4类型时，需要使用aclnnConvertWeightToInt4Pack接口完成数据格式从ND到NZ和数据类型从INT32到INT4的转换。当传入FLOAT32或者INT32时，接口内部每个FLOAT32/INT32识别成8个FLOAT4_E2M1/INT4。
-      - `offsetOptional`、`antiquantOffsetOptional`暂不支持。
+      - `offsetOptional`支持，`antiquantOffsetOptional`暂不支持。综合约束请参见<a href="#约束说明">约束说明</a>。
       - `groupType`支持m轴分组，仅非量化支持不分组。
-      - `quantGroupSize`暂不支持。
+      - `quantGroupSize`支持，综合约束请参见<a href="#约束说明">约束说明</a>。
       - `actType`支持0、1、2、4、5。综合约束请参见<a href="#约束说明">约束说明</a>。
       - 输入参数`x`、`weight`，输出参数`out`在非量化场景支持最多1024个tensor，在伪量化场景支持最多128个tensor。在全量化场景下，输入参数`x`、输出参数`out`最多支持1个tensor；动态量化（mx量化）场景下，输入参数`weight`支持多tensor，最多支持1024个tensor。
     <!-- end id8 -->
@@ -624,6 +624,47 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       |-1/0   |FLOAT16     |FLOAT16     |FLOAT16/FLOAT32/null    | FLOAT16|
 
   - 伪量化场景支持的数据类型为：
+    <a id="ascend950-weightnz-s8s4场景约束"></a>
+
+    **S8S4场景：**
+
+    - 以下入参为空：antiquantScaleOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
+    - 不为空的参数支持的数据类型组合要满足下表：
+
+      |groupType| x | weight | biasOptional | scaleOptional | offsetOptional | perTokenScaleOptional | groupListOptional | out |
+      |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+      |0|INT8|INT4|FLOAT|UINT64|null|FLOAT|INT64|BFLOAT16|
+      |0|INT8|INT4|FLOAT|UINT64|FLOAT/null|FLOAT|INT64|FLOAT16|
+
+    - scaleOptional与offsetOptional要满足下表（其中E为分组数）：
+
+      | 子场景 | offsetOptional | scaleOptional shape | offsetOptional shape | quantGroupSize | out |
+      |:---:|:---:|:---:|:---:|:---:|:---:|
+      | 对称per-group | null | `[E, K/256, N]` | - | 256 | FLOAT16/BFLOAT16 |
+      | 非对称per-channel | FLOAT32 | `[E, 1, N]` | `[E, 1, N]` | 0 | FLOAT16 |
+
+    - 约束说明：
+
+      除公共约束外，S8S4场景其余约束如下：
+
+      |groupType| splitItem | actType | groupListType |
+      |:---:|:---:|:---:|:---|
+      |0|2/3|0|1（count）|
+
+      | 输入输出 | 子场景 | shape限制 |
+      |:---:|:---|:---|
+      | x | 单Tensor | 2维，shape为`[M,K]`，不支持转置 |
+      | weight | 单Tensor | 3维，shape为`[E,K,N]`，不支持转置 |
+      | biasOptional | 必选输入 | 2维，shape为`[E,N]`，数据类型FLOAT32 |
+      | perTokenScaleOptional | 单Tensor | 1维，shape为`[M]` |
+      | out | 单Tensor | - |
+
+      - x、weight、scaleOptional、biasOptional、perTokenScaleOptional和out均为长度1的TensorList。
+      - biasOptional为必选输入，是INT4权重离线转换的校正量，按`8 × weight × scale`沿K轴规约得到。
+      - 对称per-group场景下，K不大于18432且必须是256的整数倍。
+      - S8S4 offsetOptional不为空的per-channel场景下，tuningConfigOptional数组第二个元素可置1。此时weight需按`[E,N,K]`排布并转换为NZ，仅支持长度为1的weight TensorList。
+
+    **其他伪量化场景：**
     - 以下入参为空：offsetOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
     - 不为空的参数支持的数据类型组合要满足下表
 
@@ -715,6 +756,26 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
         |:---------:|:---------:| :------ |
         |0|x单tensor|每个tensor 3维，shape为（M, ceil(K / 64), 2）|
 
+  - S4S4（全量化INT4×INT4）场景支持的输入类型为：
+    - 以下入参为空：biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
+    - 不为空的参数支持的数据类型组合要满足下表：
+
+      |groupType| x | weight | scaleOptional | perTokenScaleOptional | out |
+      |:---:|:---:|:---:|:---:|:---:|:---:|
+      |0|INT4|INT4|UINT64|FLOAT32/null|FLOAT16/BFLOAT16|
+
+    - scaleOptional要满足下表：
+
+      |groupType| 使用场景 | shape限制 | 其他限制 |
+      |:---:|:---:|:---:| :------ |
+      |0|perchannel|每个tensor 2维，shape为（E, N）| |
+      |0|pergroup|每个tensor 3维，shape为（E, G, N）| $G$必须要能整除$K$，且$k/G$需为偶数 |
+
+    - 约束说明：
+
+      - 仅支持x、weight、out均为长度为1的TensorList。
+      - weight支持NZ转置输入，即输入为[E,N,K]，但view shape为[E,K,N]以保证算子识别转置状态，转置输入下，$k/G$要求按照64对齐，K按照64对齐，N按照16对齐。
+
   - 不同groupType支持场景:
 
     - 支持场景中单表示单tensor，多表示多tensor，表示顺序为x，weight，out，例如单多单表示支持x为单tensor，weight多tensor，out单tensor的场景。
@@ -732,6 +793,341 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 ## 调用示例
 
 调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
+
+<!-- npu="950" id12 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：
+
+  MX_A8W4场景下，先调用`aclnnWeightQuantPreprocess`同步预处理weight和weightScale，再将预处理输出直接作为weight和antiquantScaleOptional调用本接口完成分组矩阵乘。
+
+  ```cpp
+  #include <algorithm>
+  #include <cstring>
+  #include <iostream>
+  #include <memory>
+  #include <vector>
+
+  #include "acl/acl.h"
+  #include "aclnn/opdev/float4_e2m1.h"
+  #include "aclnnop/aclnn_grouped_matmul_weight_nz.h"
+  #include "aclnnop/aclnn_weight_quant_preprocess.h"
+
+  #define CHECK_RET(cond, return_expr) \
+      do {                             \
+          if (!(cond)) {               \
+              return_expr;             \
+          }                            \
+      } while (0)
+
+  #define LOG_PRINT(message, ...)         \
+      do {                                \
+          printf(message, ##__VA_ARGS__); \
+      } while (0)
+
+  #define CEIL_DIV(x, y) (((x) + (y) - 1) / (y))
+
+  int64_t GetShapeSize(const std::vector<int64_t>& shape)
+  {
+      int64_t shapeSize = 1;
+      for (auto dim : shape) {
+          shapeSize *= dim;
+      }
+      return shapeSize;
+  }
+
+  class AclRuntimeGuard {
+  public:
+      explicit AclRuntimeGuard(int32_t deviceId) : deviceId_(deviceId) {}
+
+      ~AclRuntimeGuard()
+      {
+          if (stream_ != nullptr) {
+              aclrtDestroyStream(stream_);
+          }
+          if (deviceSet_) {
+              aclrtResetDevice(deviceId_);
+          }
+          if (aclInited_) {
+              aclFinalize();
+          }
+      }
+
+      int Init(aclrtStream* stream)
+      {
+          auto ret = aclInit(nullptr);
+          CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
+          aclInited_ = true;
+
+          ret = aclrtSetDevice(deviceId_);
+          CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); return ret);
+          deviceSet_ = true;
+
+          ret = aclrtCreateStream(stream);
+          CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); return ret);
+          stream_ = *stream;
+          return ACL_SUCCESS;
+      }
+
+  private:
+      int32_t deviceId_;
+      aclrtStream stream_ = nullptr;
+      bool deviceSet_ = false;
+      bool aclInited_ = false;
+  };
+
+  template <typename T>
+  int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& viewShape,
+                      const std::vector<int64_t>& viewStrides, const std::vector<int64_t>& storageShape,
+                      aclDataType dataType, aclFormat format, void** deviceAddr, aclTensor** tensor)
+  {
+      auto size = hostData.size() * sizeof(T);
+      auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
+      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
+
+      ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
+      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
+
+      const int64_t* strides = viewStrides.empty() ? nullptr : viewStrides.data();
+      *tensor = aclCreateTensor(viewShape.data(), viewShape.size(), dataType, strides, 0, format, storageShape.data(),
+                                storageShape.size(), *deviceAddr);
+      CHECK_RET(*tensor != nullptr, LOG_PRINT("aclCreateTensor failed.\n"); return ACL_ERROR_INVALID_PARAM);
+      return ACL_SUCCESS;
+  }
+
+  int CreateSingleTensorList(aclTensor* tensor, aclTensorList** tensorList)
+  {
+      aclTensor* tensors[] = {tensor};
+      *tensorList = aclCreateTensorList(tensors, 1);
+      CHECK_RET(*tensorList != nullptr, LOG_PRINT("aclCreateTensorList failed.\n"); return ACL_ERROR_INVALID_PARAM);
+      return ACL_SUCCESS;
+  }
+
+  std::vector<uint8_t> PackFp4(const std::vector<float>& data)
+  {
+      std::vector<uint8_t> packedData((data.size() + 1) / 2, 0);
+      for (size_t i = 0; i < data.size(); i += 2) {
+          uint8_t low = op::Float4E2M1(data[i]).value;
+          uint8_t high = i + 1 < data.size() ? op::Float4E2M1(data[i + 1]).value : 0;
+          packedData[i / 2] = static_cast<uint8_t>((high << 4) | low);
+      }
+      return packedData;
+  }
+
+  float Bf16ToFloat(uint16_t value)
+  {
+      uint32_t bits = static_cast<uint32_t>(value) << 16;
+      float result;
+      std::memcpy(&result, &bits, sizeof(result));
+      return result;
+  }
+
+  int AclnnGroupedMatmulWeightNzMxA8W4PreprocessTest(int32_t deviceId)
+  {
+      aclrtStream stream = nullptr;
+      AclRuntimeGuard runtime(deviceId);
+      auto ret = runtime.Init(&stream);
+      CHECK_RET(ret == ACL_SUCCESS, return ret);
+
+      const int64_t groupNum = 2;
+      const int64_t m = 64;
+      const int64_t k = 128;
+      const int64_t n = 64;
+      const int64_t kGroupSize = 32;
+      const int64_t scaleK = CEIL_DIV(k, 64);
+
+      std::vector<int64_t> xShape = {m, k};
+      std::vector<int64_t> xStrides = {k, 1};
+      std::vector<int64_t> weightViewShape = {groupNum, k, n};
+      std::vector<int64_t> weightStorageShape = {groupNum, n, k};
+      std::vector<int64_t> weightStrides = {k * n, 1, k};
+      std::vector<int64_t> xScaleShape = {m, scaleK, 2};
+      std::vector<int64_t> xScaleStrides = {scaleK * 2, 2, 1};
+      std::vector<int64_t> weightScaleViewShape = {groupNum, scaleK, n, 2};
+      std::vector<int64_t> weightScaleStorageShape = {groupNum, n, scaleK, 2};
+      std::vector<int64_t> weightScaleStrides = {n * scaleK * 2, 2, scaleK * 2, 1};
+      std::vector<int64_t> outWeightStorageShape = {
+          groupNum, CEIL_DIV(k, 32), CEIL_DIV(n, 16), 16, 32};
+      std::vector<int64_t> outShape = {m, n};
+      std::vector<int64_t> outStrides = {n, 1};
+      std::vector<int64_t> groupListShape = {groupNum};
+      std::vector<int64_t> groupListStrides = {1};
+
+      std::vector<uint8_t> xHostData(GetShapeSize(xShape), 0b00111000); // FLOAT8_E4M3FN 1.0
+      std::vector<float> weightFloatData(GetShapeSize(weightStorageShape), 1.0f);
+      std::vector<uint8_t> weightHostData = PackFp4(weightFloatData);
+      std::vector<uint8_t> xScaleHostData(GetShapeSize(xScaleShape), 0b01111111); // FLOAT8_E8M0 1.0
+      std::vector<uint8_t> weightScaleHostData(GetShapeSize(weightScaleStorageShape),
+                                               0b10000101); // FLOAT8_E8M0 64.0
+      std::vector<uint8_t> outWeightHostData(GetShapeSize(outWeightStorageShape) / 2, 0);
+      std::vector<uint8_t> outWeightScaleHostData(GetShapeSize(weightScaleStorageShape), 0);
+      std::vector<uint16_t> outHostData(GetShapeSize(outShape), 0);
+      std::vector<int64_t> groupListHostData = {m / groupNum, m};
+
+      void* xDeviceAddr = nullptr;
+      void* weightDeviceAddr = nullptr;
+      void* xScaleDeviceAddr = nullptr;
+      void* weightScaleDeviceAddr = nullptr;
+      void* outWeightDeviceAddr = nullptr;
+      void* outWeightScaleDeviceAddr = nullptr;
+      void* outDeviceAddr = nullptr;
+      void* groupListDeviceAddr = nullptr;
+
+      aclTensor* xTensor = nullptr;
+      aclTensor* weightTensor = nullptr;
+      aclTensor* xScaleTensor = nullptr;
+      aclTensor* weightScaleTensor = nullptr;
+      aclTensor* outWeightTensor = nullptr;
+      aclTensor* outWeightScaleTensor = nullptr;
+      aclTensor* outTensor = nullptr;
+      aclTensor* groupListTensor = nullptr;
+      aclTensorList* x = nullptr;
+      aclTensorList* weight = nullptr;
+      aclTensorList* perTokenScale = nullptr;
+      aclTensorList* antiquantScale = nullptr;
+      aclTensorList* out = nullptr;
+
+      ret = CreateAclTensor(xHostData, xShape, xStrides, xShape, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND, &xDeviceAddr,
+                            &xTensor);
+      std::unique_ptr<void, aclError (*)(void*)> xDeviceAddrPtr(xDeviceAddr, aclrtFree);
+      std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor*)> xTensorGuard(xTensor, aclDestroyTensor);
+      CHECK_RET(ret == ACL_SUCCESS, return ret);
+      ret = CreateSingleTensorList(xTensor, &x);
+      CHECK_RET(ret == ACL_SUCCESS, return ret);
+      std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList*)> xPtr(x, aclDestroyTensorList);
+      xTensorGuard.release();
+
+      ret = CreateAclTensor(weightHostData, weightViewShape, weightStrides, weightStorageShape, ACL_FLOAT4_E2M1,
+                            ACL_FORMAT_ND, &weightDeviceAddr, &weightTensor);
+      std::unique_ptr<void, aclError (*)(void*)> weightDeviceAddrPtr(weightDeviceAddr, aclrtFree);
+      std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor*)> weightTensorPtr(weightTensor, aclDestroyTensor);
+      CHECK_RET(ret == ACL_SUCCESS, return ret);
+
+      ret = CreateAclTensor(xScaleHostData, xScaleShape, xScaleStrides, xScaleShape, ACL_FLOAT8_E8M0, ACL_FORMAT_ND,
+                            &xScaleDeviceAddr, &xScaleTensor);
+      std::unique_ptr<void, aclError (*)(void*)> xScaleDeviceAddrPtr(xScaleDeviceAddr, aclrtFree);
+      std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor*)> xScaleTensorGuard(xScaleTensor, aclDestroyTensor);
+      CHECK_RET(ret == ACL_SUCCESS, return ret);
+      ret = CreateSingleTensorList(xScaleTensor, &perTokenScale);
+      CHECK_RET(ret == ACL_SUCCESS, return ret);
+      std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList*)> perTokenScalePtr(perTokenScale,
+                                                                                             aclDestroyTensorList);
+      xScaleTensorGuard.release();
+
+      ret = CreateAclTensor(weightScaleHostData, weightScaleViewShape, weightScaleStrides, weightScaleStorageShape,
+                            ACL_FLOAT8_E8M0, ACL_FORMAT_ND, &weightScaleDeviceAddr, &weightScaleTensor);
+      std::unique_ptr<void, aclError (*)(void*)> weightScaleDeviceAddrPtr(weightScaleDeviceAddr, aclrtFree);
+      std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor*)> weightScaleTensorPtr(weightScaleTensor,
+                                                                                          aclDestroyTensor);
+      CHECK_RET(ret == ACL_SUCCESS, return ret);
+
+      // 保留weight的转置stride，使GroupedMatmul能够从tensor元数据识别转置布局。
+      ret = CreateAclTensor(outWeightHostData, weightViewShape, weightStrides, outWeightStorageShape,
+                            ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, &outWeightDeviceAddr, &outWeightTensor);
+      std::unique_ptr<void, aclError (*)(void*)> outWeightDeviceAddrPtr(outWeightDeviceAddr, aclrtFree);
+      std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor*)> outWeightTensorGuard(outWeightTensor,
+                                                                                         aclDestroyTensor);
+      CHECK_RET(ret == ACL_SUCCESS, return ret);
+      ret = CreateSingleTensorList(outWeightTensor, &weight);
+      CHECK_RET(ret == ACL_SUCCESS, return ret);
+      std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList*)> outWeightPtr(weight, aclDestroyTensorList);
+      outWeightTensorGuard.release();
+
+      ret = CreateAclTensor(outWeightScaleHostData, weightScaleViewShape, weightScaleStrides, weightScaleStorageShape,
+                            ACL_FLOAT8_E8M0, ACL_FORMAT_ND, &outWeightScaleDeviceAddr, &outWeightScaleTensor);
+      std::unique_ptr<void, aclError (*)(void*)> outWeightScaleDeviceAddrPtr(outWeightScaleDeviceAddr, aclrtFree);
+      std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor*)> outWeightScaleTensorGuard(outWeightScaleTensor,
+                                                                                              aclDestroyTensor);
+      CHECK_RET(ret == ACL_SUCCESS, return ret);
+      ret = CreateSingleTensorList(outWeightScaleTensor, &antiquantScale);
+      CHECK_RET(ret == ACL_SUCCESS, return ret);
+      std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList*)> outWeightScalePtr(antiquantScale,
+                                                                                              aclDestroyTensorList);
+      outWeightScaleTensorGuard.release();
+
+      ret = CreateAclTensor(outHostData, outShape, outStrides, outShape, ACL_BF16, ACL_FORMAT_ND, &outDeviceAddr,
+                            &outTensor);
+      std::unique_ptr<void, aclError (*)(void*)> outDeviceAddrPtr(outDeviceAddr, aclrtFree);
+      std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor*)> outTensorGuard(outTensor, aclDestroyTensor);
+      CHECK_RET(ret == ACL_SUCCESS, return ret);
+      ret = CreateSingleTensorList(outTensor, &out);
+      CHECK_RET(ret == ACL_SUCCESS, return ret);
+      std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList*)> outPtr(out, aclDestroyTensorList);
+      outTensorGuard.release();
+
+      ret = CreateAclTensor(groupListHostData, groupListShape, groupListStrides, groupListShape, ACL_INT64,
+                            ACL_FORMAT_ND, &groupListDeviceAddr, &groupListTensor);
+      std::unique_ptr<void, aclError (*)(void*)> groupListDeviceAddrPtr(groupListDeviceAddr, aclrtFree);
+      std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor*)> groupListPtr(groupListTensor, aclDestroyTensor);
+      CHECK_RET(ret == ACL_SUCCESS, return ret);
+
+      uint64_t workspaceSize = 0;
+      aclOpExecutor* executor = nullptr;
+      ret = aclnnWeightQuantPreprocessGetWorkspaceSize(
+          weightTensor, weightScaleTensor, nullptr, nullptr, ACL_FLOAT8_E4M3FN, ACL_FLOAT8_E8M0, kGroupSize,
+          outWeightTensor, outWeightScaleTensor, nullptr, nullptr, &workspaceSize, &executor);
+      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnWeightQuantPreprocessGetWorkspaceSize failed. ERROR: %d\n", ret);
+                return ret);
+
+      void* preprocessWorkspaceAddr = nullptr;
+      std::unique_ptr<void, aclError (*)(void*)> preprocessWorkspacePtr(nullptr, aclrtFree);
+      if (workspaceSize > 0) {
+          ret = aclrtMalloc(&preprocessWorkspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+          CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate preprocess workspace failed. ERROR: %d\n", ret);
+                    return ret);
+          preprocessWorkspacePtr.reset(preprocessWorkspaceAddr);
+      }
+
+      ret = aclnnWeightQuantPreprocess(preprocessWorkspaceAddr, workspaceSize, executor, stream);
+      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnWeightQuantPreprocess failed. ERROR: %d\n", ret); return ret);
+      ret = aclrtSynchronizeStream(stream);
+      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream after preprocess failed. ERROR: %d\n", ret);
+                return ret);
+
+      workspaceSize = 0;
+      executor = nullptr;
+      // WeightQuantPreprocess的输出直接作为weight和antiquantScaleOptional使用。
+      ret = aclnnGroupedMatmulWeightNzGetWorkspaceSize(
+          x, weight, nullptr, nullptr, nullptr, antiquantScale, nullptr, perTokenScale, groupListTensor, nullptr,
+          nullptr, nullptr, 3, 0, 0, 0, nullptr, 0, out, nullptr, nullptr, &workspaceSize, &executor);
+      CHECK_RET(ret == ACL_SUCCESS,
+                LOG_PRINT("aclnnGroupedMatmulWeightNzGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
+
+      void* groupedMatmulWorkspaceAddr = nullptr;
+      std::unique_ptr<void, aclError (*)(void*)> groupedMatmulWorkspacePtr(nullptr, aclrtFree);
+      if (workspaceSize > 0) {
+          ret = aclrtMalloc(&groupedMatmulWorkspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+          CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate grouped matmul workspace failed. ERROR: %d\n", ret);
+                    return ret);
+          groupedMatmulWorkspacePtr.reset(groupedMatmulWorkspaceAddr);
+      }
+
+      ret = aclnnGroupedMatmulWeightNz(groupedMatmulWorkspaceAddr, workspaceSize, executor, stream);
+      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulWeightNz failed. ERROR: %d\n", ret); return ret);
+      ret = aclrtSynchronizeStream(stream);
+      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream after grouped matmul failed. ERROR: %d\n", ret);
+                return ret);
+
+      std::vector<uint16_t> resultData(GetShapeSize(outShape), 0);
+      ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), outDeviceAddr,
+                        resultData.size() * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
+      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
+      for (size_t i = 0; i < std::min<size_t>(resultData.size(), 10); ++i) {
+          LOG_PRINT("result[%zu] is: %.1f\n", i, Bf16ToFloat(resultData[i]));
+      }
+      return ACL_SUCCESS;
+  }
+
+  int main()
+  {
+      // WeightQuantPreprocess当前仅支持Ascend 950PR/Ascend 950DT。
+      int32_t deviceId = 0;
+      auto ret = AclnnGroupedMatmulWeightNzMxA8W4PreprocessTest(deviceId);
+      CHECK_RET(ret == ACL_SUCCESS,
+                LOG_PRINT("AclnnGroupedMatmulWeightNzMxA8W4PreprocessTest failed. ERROR: %d\n", ret); return ret);
+      return 0;
+  }
+  ```
+
+<!-- end id12 -->
 
 伪量化调用示例
 

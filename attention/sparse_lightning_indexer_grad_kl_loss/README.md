@@ -187,6 +187,13 @@
     <td>-</td>
     </tr>
     <tr>
+        <td>sinks</td>
+        <td>可选输入</td>
+        <td>用于修正target distribution（p）归一化因子的附加softmax项，仅Ascend 950支持，仅aclnnSparseLightningIndexerGradKLLossV2接口接收，需为1维且长度等于query的N维度。</td>
+        <td>FLOAT32</td>
+        <td>ND</td>
+    </tr>
+    <tr>
     <td>deterministic</td>
         <td>输入</td>
         <td>确定性计算。</td>
@@ -319,7 +326,7 @@
         </tr>
         <tr>
             <td>S1、S2</td>
-            <td>S1支持1~8K，S2支持1~512K</td>
+            <td>S1支持1~32K，S2支持1~1M</td>
             <td>S1、S2支持不等长；S1必须小于等于S2</td>
         </tr>
         <tr>

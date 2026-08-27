@@ -15,12 +15,11 @@
  */
 
 #include "arch35/flash_attn_template_tiling_key.h"
-#include "utils/flash_attn_utils.h"
 #include "utils/flash_attn_common_def.h"
-#if __has_include("../../common/op_kernel/arch35/flash_attention_score_common_regbase.h")
-#include "../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#if __has_include("../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h")
+#include "../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #else
-#include "../common/arch35/flash_attention_score_common_regbase.h"
+#include "../common/arch35/flash_attention_score_common_regbase_arch35.h"
 #endif
 #include "arch35/flash_attn_kernel_dn.h"
 #include "arch35/flash_attn_kernel_nd.h"
@@ -93,11 +92,12 @@ __aicore__ inline constexpr bool EnableSoftmaxDn()
 }
 
 template <uint8_t inOutLayoutType, uint8_t KvLayoutType, bool hasAttenMask, uint8_t config>
-__global__ __aicore__ void
-flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable,
-           __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
-           __gm__ uint8_t *sinks, __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata, __gm__ uint8_t *attnOut,
-           __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+__global__ __aicore__ void flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
+                                      __gm__ uint8_t *blockTable, __gm__ uint8_t *cuSeqLensQ,
+                                      __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
+                                      __gm__ uint8_t *sinks, __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata,
+                                      __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
+                                      __gm__ uint8_t *tiling)
 {
     REGISTER_TILING_DEFAULT(optiling::FlashAttnTilingData);
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
@@ -138,34 +138,34 @@ flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __
 
     InitSocState();
 
-    using FA_T = BaseApi::FAType<INPUT_T, OUT_T, pageAttention, qLayout, kvLayout, outLayout, s1TemplateType,
-                                 s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask>;
+    using FA_T = FlashAttnKernel::FAType<INPUT_T, OUT_T, pageAttention, qLayout, kvLayout, outLayout, s1TemplateType,
+                                         s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask>;
 
     if constexpr (useDn) {
-        using CubeBlock = BaseApi::FANoQuantGqaBlockCubeDn<FA_T>;
-        using VecFaBlock = BaseApi::FANoQuantGqaBlockVecDn<FA_T>;
-        using VecFdBlock = BaseApi::FiaBlockVecFlashDecode<FA_T>;
-        using VecDummy = BaseApi::FANoQuantGqaBlockVecDummyDn<FA_T>;
-        using CubeDummy = BaseApi::FANoQuantGqaBlockCubeDummyDn<FA_T>;
+        using CubeBlock = FlashAttnKernel::FANoQuantGqaBlockCubeDn<FA_T>;
+        using VecFaBlock = FlashAttnKernel::FANoQuantGqaBlockVecDn<FA_T>;
+        using VecFdBlock = FlashAttnKernel::FiaBlockVecFlashDecode<FA_T>;
+        using VecDummy = FlashAttnKernel::FANoQuantGqaBlockVecDummyDn<FA_T>;
+        using CubeDummy = FlashAttnKernel::FANoQuantGqaBlockCubeDummyDn<FA_T>;
 #ifdef __DAV_C310_CUBE__
-        using Kernel = BaseApi::FlashAttentionNoQuantGqaKernelDn<FA_T, CubeBlock, VecDummy, VecDummy>;
+        using Kernel = FlashAttnKernel::FlashAttentionNoQuantGqaKernelDn<FA_T, CubeBlock, VecDummy, VecDummy>;
 #else
-        using Kernel = BaseApi::FlashAttentionNoQuantGqaKernelDn<FA_T, CubeDummy, VecFaBlock, VecFdBlock>;
+        using Kernel = FlashAttnKernel::FlashAttentionNoQuantGqaKernelDn<FA_T, CubeDummy, VecFaBlock, VecFdBlock>;
 #endif
         Kernel op;
         op.Init(query, key, value, blockTable, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, sinks, attnMask, metadata,
                 attnOut, softmaxLse, user, &tilingData->baseTiling);
         op.Process();
     } else {
-        using CubeBlock = BaseApi::FANoQuantGqaBlockCubeNd<FA_T>;
-        using VecFaBlock = BaseApi::FANoQuantGqaBlockVecNd<FA_T>;
-        using VecFdBlock = BaseApi::FiaBlockVecFlashDecode<FA_T>;
-        using VecDummy = BaseApi::FANoQuantGqaBlockVecDummyNd<FA_T>;
-        using CubeDummy = BaseApi::FANoQuantGqaBlockCubeDummyNd<FA_T>;
+        using CubeBlock = FlashAttnKernel::FANoQuantGqaBlockCubeNd<FA_T>;
+        using VecFaBlock = FlashAttnKernel::FANoQuantGqaBlockVecNd<FA_T>;
+        using VecFdBlock = FlashAttnKernel::FiaBlockVecFlashDecode<FA_T>;
+        using VecDummy = FlashAttnKernel::FANoQuantGqaBlockVecDummyNd<FA_T>;
+        using CubeDummy = FlashAttnKernel::FANoQuantGqaBlockCubeDummyNd<FA_T>;
 #ifdef __DAV_C310_CUBE__
-        using Kernel = BaseApi::FlashAttentionNoQuantGqaKernelNd<FA_T, CubeBlock, VecDummy, VecDummy>;
+        using Kernel = FlashAttnKernel::FlashAttentionNoQuantGqaKernelNd<FA_T, CubeBlock, VecDummy, VecDummy>;
 #else
-        using Kernel = BaseApi::FlashAttentionNoQuantGqaKernelNd<FA_T, CubeDummy, VecFaBlock, VecFdBlock>;
+        using Kernel = FlashAttnKernel::FlashAttentionNoQuantGqaKernelNd<FA_T, CubeDummy, VecFaBlock, VecFdBlock>;
 #endif
         Kernel op;
         op.Init(query, key, value, blockTable, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, sinks, attnMask, metadata,
