@@ -544,7 +544,6 @@ private:
         uint32_t layerNum = 0;
         uint32_t *layerList = nullptr;
         GetNetLayers(commHandle, layerList, layerNum);
-        TORCH_CHECK(layerNum > 0 && layerList != nullptr, "Get HCCL layers returned an empty layer list");
 
         if (layerNum == HCCL_COMM_LAYERS_MTE_CCU) {
             GetRankSizePerServer(commHandle, rankNumPerUbDomain_);
@@ -554,54 +553,62 @@ private:
         CheckProtocolSupport(commHandle, layerList, layerNum, protocol);
     }
 
+    bool SupportsProtocol(const HcclComm &commHandle, uint32_t layerId, uint32_t srcRankId, uint32_t dstRankId,
+                          const CommProtocol &protocol) const
+    {
+        CommLink *linksList = nullptr;
+        uint32_t netLinkNum = 0;
+        auto hcclRet = HcclRankGraphGetLinksFunc(commHandle, layerId, srcRankId, dstRankId, &linksList, &netLinkNum);
+        if (hcclRet != HCCL_SUCCESS || netLinkNum == 0) {
+            ASCEND_LOGW("Get HCCL links failed when checking protocol support, srcRankId: %u, dstRankId: %u, "
+                        "layerId: %u, protocol: %u, ret: %d, netLinkNum: %u",
+                        srcRankId, dstRankId, layerId, protocol, hcclRet, netLinkNum);
+            return false;
+        }
+        return HasLinkWithProtocol(linksList, netLinkNum, protocol);
+    }
+
     void CheckProtocolSupport(const HcclComm &commHandle, const uint32_t *layerList, uint32_t layerNum,
                               const CommProtocol &protocol)
     {
         uint32_t srcRankId = 0;
         uint32_t rankSize = 0;
         GetRankInfo(commHandle, srcRankId, rankSize);
-        TORCH_CHECK(rankSize >= HCCL_MIN_RANK_SIZE && rankSize <= HCCL_MAX_RANK_SIZE,
-                    "Invalid HCCL rank size ", rankSize);
-        TORCH_CHECK(srcRankId < rankSize, "Invalid HCCL rank ID ", srcRankId, " for rank size ", rankSize);
         rankLinkMap_.clear();
         rankNumPerUbDomain_ = 0;
 
         LayerRanks ubDomain;
-        TORCH_CHECK(FindUbDomain(commHandle, layerList, layerNum, protocol, srcRankId, rankSize, ubDomain),
-                    "Failed to determine UB domain for rank ", srcRankId,
-                    ", rank has no peer supporting protocol ", static_cast<int>(protocol));
+        if (!FindUbDomain(commHandle, layerList, layerNum, protocol, srcRankId, ubDomain)) {
+            TORCH_CHECK(false, "Failed to determine UB domain for rank ", srcRankId,
+                        ", rank has no peer supporting protocol ", static_cast<int>(protocol));
+        }
         rankNumPerUbDomain_ = static_cast<uint32_t>(ubDomain.ranks.size());
         ASCEND_LOGI("Layer %u is current rank's UB domain, rankNumPerUbDomain_: %u", ubDomain.layer,
                     rankNumPerUbDomain_);
 
-        if (ubDomain.ranks.size() == rankSize) {
-            TORCH_CHECK(rankLinkMap_.size() == rankSize - 1, "Incomplete UB domain topology for rank ", srcRankId,
-                        ", recorded ", rankLinkMap_.size(), " of ", rankSize - 1);
+        if (IsSingleUbDomain(ubDomain, rankSize)) {
             return;
         }
 
-        TORCH_CHECK(rankNumPerUbDomain_ > 0 && rankSize >= rankNumPerUbDomain_ &&
-                        rankSize % rankNumPerUbDomain_ == 0,
+        TORCH_CHECK(rankSize >= rankNumPerUbDomain_ && rankSize % rankNumPerUbDomain_ == 0,
                     "rankNumPerUbDomain_ must be less than rankSize and divisible, rankNumPerUbDomain_: ",
                     rankNumPerUbDomain_, ", rankSize: ", rankSize);
 
         TORCH_CHECK(CheckIntraUbDomainProtocol(commHandle, srcRankId), "Rank ", srcRankId,
                     " does not support UBC_CTP with peers inside its UB domain");
-        TORCH_CHECK(CheckCrossUbDomainProtocols(commHandle, layerList, layerNum, srcRankId, rankSize), "Rank ",
-                    srcRankId, " does not support UBG with peers outside its UB domain");
-        TORCH_CHECK(rankLinkMap_.size() == rankSize - 1, "Incomplete topology info for rank ", srcRankId,
-                    ", recorded ", rankLinkMap_.size(), " of ", rankSize - 1);
+        TORCH_CHECK(CheckCrossUbDomainProtocols(commHandle, layerList, layerNum, srcRankId), "Rank ", srcRankId,
+                    " does not support UBG with peers outside its UB domain");
+        TORCH_CHECK(rankLinkMap_.size() == rankSize - 1, "Incomplete topology info for rank ", srcRankId, ", recorded ",
+                    rankLinkMap_.size(), " of ", rankSize - 1);
         ASCEND_LOGI("Cross-server confirmed, use UBC_CTP inside UB domain and UBG across UB domains");
     }
 
     bool FindUbDomain(const HcclComm &commHandle, const uint32_t *layerList, uint32_t layerNum,
-                      const CommProtocol &domainProtocol, uint32_t srcRankId, uint32_t rankSize,
-                      LayerRanks &ubDomain)
+                      const CommProtocol &domainProtocol, uint32_t srcRankId, LayerRanks &ubDomain)
     {
         bool hasDomainLayer = false;
         for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
-            LayerRanks layer = GetLayerRanks(commHandle, layerList[layerIndex], srcRankId, rankSize);
-            ValidateLayerContainsRecordedDomainRanks(layer);
+            LayerRanks layer = GetLayerRanks(commHandle, layerList[layerIndex]);
             if (!SupportsDomainProtocolWithAllRanks(commHandle, layer, domainProtocol, srcRankId)) {
                 break;
             }
@@ -617,10 +624,9 @@ private:
         for (auto &linkEntry : rankLinkMap_) {
             uint32_t dstRank = linkEntry.first;
             uint32_t layer = linkEntry.second.layer;
-            if (!SupportsProtocol(commHandle, layer, srcRankId, dstRank,
-                                  CommProtocol::COMM_PROTOCOL_UBC_CTP)) {
-                ASCEND_LOGW("Rank %u does not support UBC_CTP with rank %u in UB domain layer %u", srcRankId,
-                            dstRank, layer);
+            if (!SupportsProtocol(commHandle, layer, srcRankId, dstRank, CommProtocol::COMM_PROTOCOL_UBC_CTP)) {
+                ASCEND_LOGW("Rank %u does not support UBC_CTP with rank %u in UB domain layer %u", srcRankId, dstRank,
+                            layer);
                 return false;
             }
             linkEntry.second.protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
@@ -629,25 +635,33 @@ private:
     }
 
     bool CheckCrossUbDomainProtocols(const HcclComm &commHandle, const uint32_t *layerList, uint32_t layerNum,
-                                     uint32_t srcRankId, uint32_t rankSize)
+                                     uint32_t srcRankId)
     {
-        bool hasCrossDomainUb = false;
+        bool isSupportUBG = false;
         for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
-            LayerRanks layer = GetLayerRanks(commHandle, layerList[layerIndex], srcRankId, rankSize);
+            LayerRanks layer = GetLayerRanks(commHandle, layerList[layerIndex]);
             for (uint32_t dstRank : layer.ranks) {
                 if (dstRank == srcRankId || rankLinkMap_.count(dstRank) > 0) {
                     continue;
                 }
-                if (SupportsProtocol(commHandle, layer.layer, srcRankId, dstRank,
-                                      CommProtocol::COMM_PROTOCOL_UBG)) {
-                    // ASCEND_LOGW("Rank %u does not support UBG with cross-domain rank %u in layer %u", srcRankId,
-                    //            dstRank, layer.layer);
+                if (SupportsProtocol(commHandle, layer.layer, srcRankId, dstRank, CommProtocol::COMM_PROTOCOL_UBG)) {
+                    ASCEND_LOGI("Rank %u does support UBG with cross-domain rank %u in layer %u", srcRankId, dstRank,
+                                layer.layer);
+                    isSupportUBG = true;
                     rankLinkMap_[dstRank] = {CommProtocol::COMM_PROTOCOL_UBG, layer.layer};
-                    hasCrossDomainUb = true;
                 }
             }
         }
-        return hasCrossDomainUb;
+        return isSupportUBG;
+    }
+
+    LayerRanks GetLayerRanks(const HcclComm &commHandle, uint32_t layerId) const
+    {
+        uint32_t rankNum = 0;
+        uint32_t *rankList = nullptr;
+        auto hcclRet = HcclRankGraphGetRanksByLayerFunc(commHandle, layerId, &rankList, &rankNum);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank IDs by layer failed, ret: ", hcclRet);
+        return {layerId, std::vector<uint32_t>(rankList, rankList + rankNum)};
     }
 
     bool SupportsDomainProtocolWithAllRanks(const HcclComm &commHandle, const LayerRanks &layer,
@@ -664,6 +678,11 @@ private:
         return true;
     }
 
+    bool IsSingleUbDomain(const LayerRanks &ubDomain, uint32_t rankSize) const
+    {
+        return ubDomain.ranks.size() == rankSize;
+    }
+
     void RecordDomainLayerRanks(const CommProtocol &protocol, const LayerRanks &layer, uint32_t srcRankId)
     {
         for (uint32_t dstRank : layer.ranks) {
@@ -673,62 +692,10 @@ private:
         }
     }
 
-    void ValidateLayerContainsRecordedDomainRanks(const LayerRanks &layer) const
-    {
-        for (const auto &linkEntry : rankLinkMap_) {
-            TORCH_CHECK(std::find(layer.ranks.begin(), layer.ranks.end(), linkEntry.first) != layer.ranks.end(),
-                        "Layer ", layer.layer, " does not contain rank ", linkEntry.first,
-                        " recorded in an inner topology layer");
-        }
-    }
-
-    bool SupportsProtocol(const HcclComm &commHandle, uint32_t layerId, uint32_t srcRankId, uint32_t dstRankId,
-                          const CommProtocol &protocol) const
-    {
-        CommLink *linksList = nullptr;
-        uint32_t netLinkNum = 0;
-        auto hcclRet = HcclRankGraphGetLinksFunc(commHandle, layerId, srcRankId, dstRankId, &linksList, &netLinkNum);
-        if (hcclRet != HCCL_SUCCESS || netLinkNum == 0 || linksList == nullptr) {
-            ASCEND_LOGW("Get HCCL links failed when checking protocol support, srcRankId: %u, dstRankId: %u, "
-                        "layerId: %u, ret: %d, netLinkNum: %u",
-                        srcRankId, dstRankId, layerId, hcclRet, netLinkNum);
-            return false;
-        }
-        return HasLinkWithProtocol(linksList, netLinkNum, protocol);
-    }
-
-    LayerRanks GetLayerRanks(const HcclComm &commHandle, uint32_t layerId, uint32_t srcRankId,
-                             uint32_t rankSize) const
-    {
-        uint32_t rankNum = 0;
-        uint32_t *rankList = nullptr;
-        auto hcclRet = HcclRankGraphGetRanksByLayerFunc(commHandle, layerId, &rankList, &rankNum);
-        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank IDs by layer failed, ret: ", hcclRet);
-        TORCH_CHECK(rankNum > 0 && rankList != nullptr, "Rank list is empty for layer ", layerId);
-        TORCH_CHECK(rankNum <= rankSize, "Rank count ", rankNum, " exceeds HCCL rank size ", rankSize,
-                    " for layer ", layerId);
-
-        std::vector<bool> seenRanks(rankSize, false);
-        bool containsSrcRank = false;
-        std::vector<uint32_t> ranks;
-        ranks.reserve(rankNum);
-        for (uint32_t rankIndex = 0; rankIndex < rankNum; ++rankIndex) {
-            uint32_t rankId = rankList[rankIndex];
-            TORCH_CHECK(rankId < rankSize, "Invalid rank ID ", rankId, " in layer ", layerId,
-                        " for rank size ", rankSize);
-            TORCH_CHECK(!seenRanks[rankId], "Duplicate rank ID ", rankId, " in layer ", layerId);
-            seenRanks[rankId] = true;
-            containsSrcRank = containsSrcRank || rankId == srcRankId;
-            ranks.push_back(rankId);
-        }
-        TORCH_CHECK(containsSrcRank, "Layer ", layerId, " does not contain source rank ", srcRankId);
-        return {layerId, std::move(ranks)};
-    }
-
     static bool HasLinkWithProtocol(const CommLink *linksList, uint32_t netLinkNum, const CommProtocol &protocol)
     {
-        for (uint32_t i = 0; i < netLinkNum; ++i) {
-            if (linksList[i].linkAttr.linkProtocol == protocol) {
+        for (uint32_t linkIdx = 0; linkIdx < netLinkNum; ++linkIdx) {
+            if (linksList[linkIdx].linkAttr.linkProtocol == protocol) {
                 return true;
             }
         }
@@ -742,8 +709,8 @@ private:
         uint32_t netLinkNum = 0;
         auto hcclRet = HcclRankGraphGetLinksFunc(commHandle, netLayerId, srcRankId, dstRankId, &linksList, &netLinkNum);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL Communication link failed, ret: ", hcclRet);
-        TORCH_CHECK(netLinkNum > 0 && linksList != nullptr, "The Net Link Is nullptr. srcRankId is ", srcRankId,
-                    ", dstRankId is ", dstRankId, ", layerId is ", netLayerId);
+        TORCH_CHECK(netLinkNum > 0, "The Net Link Is nullptr. srcRankId is ", srcRankId, ", dstRankId is ", dstRankId,
+                    ", layerId is ", netLayerId);
         uint32_t index = 0;
         for (; index < netLinkNum; ++index) {
             if (linksList[index].linkAttr.linkProtocol == protocol) {
@@ -753,6 +720,8 @@ private:
         }
         TORCH_CHECK(index < netLinkNum, "No matching communication protocol found in HCCL links, protocol is ",
                     static_cast<int>(protocol));
+        ASCEND_LOGI("Get HCCL Communication link Success,srcRankId %u, dstRankId %u, protocol is: %u", srcRankId,
+                    dstRankId, protocol);
     }
 
     void InitHcclChannel(const HcclComm &commHandle, uint32_t rankDim, uint32_t srcRankId, uint32_t channelsPerRank,
@@ -765,15 +734,14 @@ private:
         uint32_t netLayerNum = 0;
         uint32_t *netLayerList = nullptr;
         GetNetLayers(commHandle, netLayerList, netLayerNum);
-        TORCH_CHECK(netLayerNum > 0 && netLayerList != nullptr,
-                    "Get HCCL net layers failed, netLayerNum is ", netLayerNum);
+        TORCH_CHECK(netLayerNum > 0, "Get HCCL net layers failed, netLayerNum is ", netLayerNum);
 
         for (uint32_t peer = 0; peer < rankDim; ++peer) {
             if (peer == srcRankId) {
                 continue;
             }
             uint32_t peerIndex = (peer > srcRankId) ? (peer - 1) : peer;
-            RankLinkInfo linkInfo = ResolveLinkInfo(peer, protocol, netLayerList, netLayerNum);
+            RankLinkInfo linkInfo = ResolveLinkInfo(peer, protocol, netLayerList);
             CommLink *links = nullptr;
             GetHcclCommLink(commHandle, linkInfo.layer, srcRankId, peer, linkInfo.protocol, links);
             for (uint32_t channel = 0; channel < channelsPerRank; ++channel) {
@@ -788,17 +756,12 @@ private:
         }
     }
 
-    RankLinkInfo ResolveLinkInfo(uint32_t dstRank, const CommProtocol &protocol, const uint32_t *netLayerList,
-                                 uint32_t netLayerNum) const
+    RankLinkInfo ResolveLinkInfo(uint32_t dstRank, const CommProtocol &protocol, const uint32_t *netLayerList) const
     {
         auto linkIter = rankLinkMap_.find(dstRank);
         if (linkIter != rankLinkMap_.end()) {
             return linkIter->second;
         }
-        TORCH_CHECK(netLayerNum == HCCL_COMM_LAYERS_MTE_CCU && rankLinkMap_.empty(),
-                    "Topology info not found for dstRank ", dstRank, " in a multi-layer topology");
-        TORCH_CHECK(netLayerList != nullptr && netLayerNum > HCCL_COMM_LAYERS_UB_MEM,
-                    "Cannot resolve fallback topology for dstRank ", dstRank, ", netLayerNum is ", netLayerNum);
         uint32_t fallbackLayer = netLayerList[HCCL_COMM_LAYERS_UB_MEM];
         ASCEND_LOGW("Topology info not found for dstRank: %u, fallback to layer %u with protocol %d", dstRank,
                     fallbackLayer, static_cast<int>(protocol));
@@ -808,9 +771,7 @@ private:
     void GetHcclCommChannel(const HcclComm &commHandle, const CommEngine &engine, uint32_t rankDim, uint32_t srcRankId,
                             const CommProtocol &protocol, MoeCommContext &context)
     {
-        TORCH_CHECK(rankDim >= HCCL_MIN_RANK_SIZE && rankDim <= HCCL_MAX_RANK_SIZE,
-                    "Invalid HCCL rank size ", rankDim);
-        TORCH_CHECK(srcRankId < rankDim, "Invalid HCCL rank ID ", srcRankId, " for rank size ", rankDim);
+        TORCH_CHECK(rankDim >= HCCL_MIN_RANK_SIZE && rankDim <= HCCL_MAX_RANK_SIZE, "Invalid HCCL rank size ", rankDim);
         uint32_t remoteRankNum = rankDim - 1;
         context.channelsPerRank = static_cast<uint32_t>(CeilDiv(MOE_CHANNEL_HANDLE_NUM, rankDim));
         TORCH_CHECK(context.channelsPerRank > 0, "No HCCL channel capacity for rank size ", rankDim);
@@ -872,8 +833,6 @@ private:
         uint32_t *netLayerList = nullptr;
         uint32_t netLayerNum = 0;
         GetNetLayers(commHandle, netLayerList, netLayerNum);
-        TORCH_CHECK(netLayerNum > GET_LOCAL_SERVER_RANK_SIZE_LAYER && netLayerList != nullptr,
-                    "Get HCCL layers returned an invalid local-server layer list");
 
         uint32_t netLayers = netLayerList[GET_LOCAL_SERVER_RANK_SIZE_LAYER];
         auto hcclRet = HcclRankGraphGetRankSizeByLayerFunc(commHandle, netLayers, &rankSizePerServer);
