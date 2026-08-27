@@ -10,10 +10,12 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import importlib.util
 import logging
 import math
 import os
 import sys
+from pathlib import Path
 from typing import List
 
 import numpy
@@ -29,7 +31,39 @@ import quant_flash_attn_fp8_golden as fp8_golden_mod
 
 logger = logging.getLogger(__name__)
 
-__input__ = {"e2e": {"qfa_wrapper.npu_qfa": "generate_qfa_mxfp8_inputs"}}
+__input__ = {"e2e": {"spec.npu_qfa": "generate_qfa_mxfp8_inputs"}}
+
+
+def load_metadata_protocol():
+    """加载 metadata_protocol 模块（带 sys.modules 缓存和错误处理）。"""
+    name = "qfa_ttk_metadata_protocol"
+    if name in sys.modules:
+        return sys.modules[name]
+    path = Path(__file__).with_name("metadata_protocol.py")
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot create import spec for {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception as exc:
+        sys.modules.pop(name, None)
+        raise RuntimeError(
+            "Failed to load QuantFlashAttn assets metadata protocol; "
+            f"module={path.resolve()}; original error: {type(exc).__name__}: {exc}"
+        ) from exc
+    return module
+
+
+def zero_metadata(metadata):
+    """清零 metadata 占位 tensor/numpy slot。"""
+    if metadata is None:
+        return
+    if torch.is_tensor(metadata):
+        metadata.zero_()
+    else:
+        metadata[...] = 0
 
 _SEED_MAP = {"q": 54, "k": 3, "v": 4}
 
@@ -411,6 +445,32 @@ def generate_qfa_mxfp8_inputs(
         enable_pa,
     )
 
+    # 清零 metadata 占位 + 保存 sidecar (供 npu_preprocess 加载)
+    zero_metadata(metadata_t)
+    testcase_name = kwargs.get("testcase_name")
+    metadata_input_dict = {
+        "num_heads_q": N_q,
+        "num_heads_kv": N_kv,
+        "head_dim": D,
+        "quant_mode": quant_mode,
+        "cu_seqlens_q": cu_seqlens_q,
+        "cu_seqlens_kv": cu_seqlens_kv,
+        "seqused_q": seqused_q,
+        "seqused_kv": seqused_kv,
+        "v_descale": dequant_scale_v,
+        "batch_size": batch_size,
+        "max_seqlen_q": max_seqlen_q,
+        "max_seqlen_kv": max_seqlen_kv,
+        "mask_mode": mask_mode,
+        "layout_q": layout_q,
+        "layout_q_descale": layout_q_descale,
+        "layout_kv": layout_kv,
+        "layout_out": layout_out,
+    }
+    load_metadata_protocol().save_metadata_inputs(
+        "quant_flash_attn", testcase_name, metadata_input_dict
+    )
+
 
 # ==============================================================================
 # GQA FP8 全量化输入生成 (quant_mode=6)
@@ -702,260 +762,28 @@ def generate_qfa_gqa_fp8_inputs(
         tuple(dequant_scale_v.shape),
     )
 
-
-def generate_qfa_hif8_inputs(
-    q: torch.Tensor,
-    k: torch.Tensor,
-    v: torch.Tensor,
-    dequant_scale_q: torch.Tensor,
-    dequant_scale_k: torch.Tensor,
-    dequant_scale_v: torch.Tensor,
-    p_scale: torch.Tensor,
-    block_table: torch.Tensor,
-    cu_seqlens_q_t: torch.Tensor,
-    cu_seqlens_kv_t: torch.Tensor,
-    seqused_q_t: torch.Tensor,
-    seqused_kv_t: torch.Tensor,
-    sinks_t: torch.Tensor,
-    attn_mask_t: torch.Tensor,
-    metadata_t: torch.Tensor,
-    *,
-    batch_size: int,
-    N_q: int,
-    N_kv: int,
-    D: int,
-    cu_seqlens_q: List[int],
-    cu_seqlens_kv: List[int],
-    seqused_q: List[int],
-    seqused_kv: List[int],
-    max_seqlen_q: int,
-    max_seqlen_kv: int,
-    enable_pa: bool,
-    kv_cache_layout: str,
-    block_size: int,
-    mask_mode: int,
-    q_scale_layout: str,
-    quant_mode: int = 0,
-    enable_lse: bool = False,
-    graph_path: int = 0,
-    input_layout: str = "TND",
-    layout_q: str = None,
-    layout_kv: str = None,
-    layout_out: str = None,
-    is_contiguous: bool = True,
-    device_id: int = 0,
-    softmax_scale: float = None,
-    data_range_q: float = 1.0,
-    data_range_k: float = 1.0,
-    data_range_v: float = 1.0,
-    **kwargs,
-):
-    """HIF8 输入生成 (quant_mode=0, per-tensor, 仅 TND, 无 PA)。
-
-    输出 slot 约定 (in-place 写入 ttk 分配的 numpy slot):
-      q slot:    TND [T_q, N_q, D] uint8 (hifloat8 编码)
-      k slot:    TND [T_kv, N_kv, D] uint8
-      v slot:    TND [T_kv, N_kv, D] uint8
-      dq slot:   (1,) float32 per-tensor descale
-      dk slot:   (1,) float32 per-tensor descale
-      dv slot:   (1,) float32 per-tensor descale
-      p_scale:   (1,) float32
-      block_table: (0,) int32 (无 PA)
-    """
-    import quant_flash_attn_hif8_golden as hif8_golden_mod
-
-    input_layout = layout_q or input_layout
-    cu_seqlens_q = list(cu_seqlens_q) if cu_seqlens_q is not None else [0]
-    cu_seqlens_kv = list(cu_seqlens_kv) if cu_seqlens_kv is not None else [0]
-
-    B = (
-        batch_size
-        if batch_size is not None and batch_size > 0
-        else (
-            max(1, len(cu_seqlens_q) - 1)
-            if cu_seqlens_q and len(cu_seqlens_q) >= 2
-            else len(list(seqused_q))
-            if seqused_q is not None and len(list(seqused_q)) > 0
-            else 1
-        )
-    )
-
-    if len(cu_seqlens_q) > 1:
-        actual_seq_q = [
-            cu_seqlens_q[i + 1] - cu_seqlens_q[i] for i in range(len(cu_seqlens_q) - 1)
-        ]
-    elif seqused_q is not None and len(list(seqused_q)) > 0:
-        actual_seq_q = list(seqused_q)
-    elif max_seqlen_q is not None and max_seqlen_q > 0:
-        actual_seq_q = [max_seqlen_q] * B
-    else:
-        actual_seq_q = [0]
-    if len(cu_seqlens_kv) > 1:
-        actual_seq_kv = [
-            cu_seqlens_kv[i + 1] - cu_seqlens_kv[i]
-            for i in range(len(cu_seqlens_kv) - 1)
-        ]
-    elif seqused_kv is not None and len(list(seqused_kv)) > 0:
-        actual_seq_kv = list(seqused_kv)
-    elif max_seqlen_kv is not None and max_seqlen_kv > 0:
-        actual_seq_kv = [max_seqlen_kv] * B
-    else:
-        actual_seq_kv = [0]
-
-    # B 可能为-1
-    if B is None or B <= 0:
-        B = len(actual_seq_q)
-
-    max_sq = max(actual_seq_q) if actual_seq_q else D
-    max_skv = max(actual_seq_kv) if actual_seq_kv else D
-
-    for gkey, gval in [
-        ("B", B),
-        ("N_q", N_q),
-        ("N_kv", N_kv),
-        ("D", D),
-        ("CU_SEQLENS_Q", cu_seqlens_q),
-        ("CU_SEQLENS_KV", cu_seqlens_kv if cu_seqlens_kv else None),
-        ("SEQUSED_Q", list(seqused_q) if seqused_q is not None else None),
-        ("SEQUSED_KV", list(seqused_kv) if seqused_kv is not None else None),
-        ("MAX_SEQLEN_Q", max_seqlen_q),
-        ("MAX_SEQLEN_KV", max_seqlen_kv),
-        ("SPARSE_MODE", mask_mode),
-        ("Q_SCALE_LAYOUT", q_scale_layout),
-        ("INPUT_LAYOUT", input_layout),
-        ("IS_CONTIGUOUS", is_contiguous),
-        ("DEVICE_ID", device_id),
-        ("GRAPH_PATH", graph_path),
-        ("SOFTMAX_SCALE", softmax_scale),
-    ]:
-        setattr(hif8_golden_mod, gkey, gval)
-
-    input_ranges = kwargs.get("input_ranges")
-
-    def _range_of(idx, default=(-1.0, 1.0)):
-        if input_ranges is None or idx >= len(input_ranges):
-            return default
-        r = input_ranges[idx]
-        if r is None:
-            return default
-        return (float(r[0]), float(r[1]))
-
-    rq_min, rq_max = _range_of(0, (-1.0, 1.0))
-    rk_min, rk_max = _range_of(1, (-1.0, 1.0))
-    rv_min, rv_max = _range_of(2, (-1.0, 1.0))
-
-    data_range_q_eff = (
-        data_range_q if data_range_q is not None and data_range_q > 0 else 1.0
-    )
-    data_range_k_eff = (
-        data_range_k if data_range_k is not None and data_range_k > 0 else 1.0
-    )
-    data_range_v_eff = (
-        data_range_v if data_range_v is not None and data_range_v > 0 else 1.0
-    )
-
-    torch.manual_seed(_SEED_MAP["q"])
-    q_fp16 = (
-        torch.rand(B, N_q, max_sq, D, dtype=torch.float16) * 2 - 1
-    ) * data_range_q_eff
-    torch.manual_seed(_SEED_MAP["k"])
-    k_fp16 = (
-        torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1
-    ) * data_range_k_eff
-    torch.manual_seed(_SEED_MAP["v"])
-    v_fp16 = (
-        torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1
-    ) * data_range_v_eff
-
-    quant_scale_q = hif8_golden_mod.get_hif8_per_tensor_quant_scale(
-        q_fp16.to(torch.float32)
-    )
-    quant_scale_k = hif8_golden_mod.get_hif8_per_tensor_quant_scale(
-        k_fp16.to(torch.float32)
-    )
-    quant_scale_v = hif8_golden_mod.get_hif8_per_tensor_quant_scale(
-        v_fp16.to(torch.float32)
-    )
-
-    q_hif8_bnsd = hif8_golden_mod.hif8_per_tensor_quant(
-        q_fp16.to(torch.float32), quant_scale_q
-    )
-    k_hif8_bnsd = hif8_golden_mod.hif8_per_tensor_quant(
-        k_fp16.to(torch.float32), quant_scale_k
-    )
-    v_hif8_bnsd = hif8_golden_mod.hif8_per_tensor_quant(
-        v_fp16.to(torch.float32), quant_scale_v
-    )
-
-    q_final = (
-        hif8_golden_mod.convert_q_bnsd_to_layout(
-            q_hif8_bnsd,
-            actual_seq_q,
-            input_layout,
-            cu_seqlens=cu_seqlens_q
-            if (input_layout == "TND" and len(cu_seqlens_q) > 1)
-            else None,
-        )
-        .contiguous()
-        .view(torch.float8_e4m3fn)
-    )
-    k_final = (
-        hif8_golden_mod.convert_kv_bnsd_to_layout(
-            k_hif8_bnsd,
-            actual_seq_kv,
-            input_layout,
-            cu_seqlens=cu_seqlens_kv
-            if (input_layout == "TND" and len(cu_seqlens_kv) > 1)
-            else None,
-        )
-        .contiguous()
-        .view(torch.float8_e4m3fn)
-    )
-    v_final = (
-        hif8_golden_mod.convert_kv_bnsd_to_layout(
-            v_hif8_bnsd,
-            actual_seq_kv,
-            input_layout,
-            cu_seqlens=cu_seqlens_kv
-            if (input_layout == "TND" and len(cu_seqlens_kv) > 1)
-            else None,
-        )
-        .contiguous()
-        .view(torch.float8_e4m3fn)
-    )
-
-    def _inplace_write(dst, src_torch, slot_name):
-        if tuple(dst.shape) != tuple(src_torch.shape):
-            raise ValueError(
-                f"[INPUTS HIF8] {slot_name} shape mismatch: slot {tuple(dst.shape)} "
-                f"!= computed {tuple(src_torch.shape)}."
-            )
-        dst.copy_(src_torch.view(dst.dtype))
-
-    _inplace_write(q, q_final, "q (slot 0)")
-    _inplace_write(k, k_final, "k (slot 1)")
-    _inplace_write(v, v_final, "v (slot 2)")
-    _inplace_write(dequant_scale_q, quant_scale_q, "descale_q (slot 3)")
-    _inplace_write(dequant_scale_k, quant_scale_k, "descale_k (slot 4)")
-    _inplace_write(dequant_scale_v, quant_scale_v, "descale_v (slot 5)")
-
-    p_scale_value = kwargs.get("p_scale_value", 1.0)
-    if isinstance(p_scale_value, torch.Tensor):
-        p_scale_value = float(p_scale_value.item())
-    p_scale.copy_(torch.tensor([float(p_scale_value)], dtype=torch.float32))
-    block_table.copy_(torch.zeros_like(block_table))
-
-    # ----- slot 8-14: 用 attributes 真实值覆盖 ttk 随机生成的 cu_seqlens/seqused -----
-    _write_int32_list(cu_seqlens_q_t, cu_seqlens_q, "cu_seqlens_q (slot 8)")
-    _write_int32_list(cu_seqlens_kv_t, cu_seqlens_kv, "cu_seqlens_kv (slot 9)")
-    _write_int32_list(seqused_q_t, seqused_q, "seqused_q (slot 10)")
-    _write_int32_list(seqused_kv_t, seqused_kv, "seqused_kv (slot 11)")
-
-    logger.info(
-        "[INPUTS] HIF8 in-place wrote q/k/v (q=%s), fp32 descale (dq=%s, dk=%s, dv=%s), "
-        "fp32 p_scale, int32 block_table (pa=False)",
-        tuple(q.shape),
-        tuple(dequant_scale_q.shape),
-        tuple(dequant_scale_k.shape),
-        tuple(dequant_scale_v.shape),
+    # 清零 metadata 占位 + 保存 sidecar (供 npu_preprocess 加载)
+    zero_metadata(metadata_t)
+    testcase_name = kwargs.get("testcase_name")
+    metadata_input_dict = {
+        "num_heads_q": N_q,
+        "num_heads_kv": N_kv,
+        "head_dim": D,
+        "quant_mode": quant_mode,
+        "cu_seqlens_q": cu_seqlens_q,
+        "cu_seqlens_kv": cu_seqlens_kv,
+        "seqused_q": seqused_q,
+        "seqused_kv": seqused_kv,
+        "v_descale": dequant_scale_v,
+        "batch_size": batch_size,
+        "max_seqlen_q": max_seqlen_q,
+        "max_seqlen_kv": max_seqlen_kv,
+        "mask_mode": mask_mode,
+        "layout_q": kwargs.get("layout_q", input_layout),
+        "layout_q_descale": kwargs.get("layout_q_descale", q_scale_layout),
+        "layout_kv": kwargs.get("layout_kv", kv_cache_layout),
+        "layout_out": kwargs.get("layout_out", "TND"),
+    }
+    load_metadata_protocol().save_metadata_inputs(
+        "quant_flash_attn", testcase_name, metadata_input_dict
     )
