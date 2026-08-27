@@ -709,6 +709,11 @@ else()
             SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}
     )
 endif ()
+
+if (ENABLE_CANNBOTDSL_PROVIDER_ACLNN)
+    add_subdirectory(cannbotdsl_ops)
+endif ()
+
 target_sources(cust_opapi PRIVATE
     $<$<TARGET_EXISTS:${OPHOST_NAME}_opapi_obj>:$<TARGET_OBJECTS:${OPHOST_NAME}_opapi_obj>>)
 target_link_libraries(

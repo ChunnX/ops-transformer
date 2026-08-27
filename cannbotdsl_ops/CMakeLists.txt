@@ -1,0 +1,77 @@
+if(NOT CANNBOTDSL_SOURCE_DIR)
+  get_filename_component(_cannbotdsl_sibling
+    "${CMAKE_SOURCE_DIR}/../cannbot-dsl" ABSOLUTE)
+  if(EXISTS "${_cannbotdsl_sibling}/cmake/CANNBotDSLOperatorPackage.cmake")
+    set(CANNBOTDSL_SOURCE_DIR "${_cannbotdsl_sibling}")
+  endif()
+endif()
+if(NOT EXISTS "${CANNBOTDSL_SOURCE_DIR}/cmake/CANNBotDSLOperatorPackage.cmake")
+  message(FATAL_ERROR
+    "ENABLE_CANNBOTDSL_PROVIDER_ACLNN requires CANNBOTDSL_SOURCE_DIR")
+endif()
+if(NOT CANNBOTDSL_RUNTIME_ROOT)
+  set(CANNBOTDSL_RUNTIME_ROOT
+    "${CANNBOTDSL_SOURCE_DIR}/build/python_packages")
+endif()
+if(NOT EXISTS "${CANNBOTDSL_RUNTIME_ROOT}/cannbotdsl/package/cli.py")
+  message(FATAL_ERROR
+    "CANNBOTDSL_RUNTIME_ROOT must contain cannbotdsl/package/cli.py: "
+    "${CANNBOTDSL_RUNTIME_ROOT}")
+endif()
+if(NOT "${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950")
+  message(FATAL_ERROR
+    "FlashKDA Provider package currently requires ASCEND_COMPUTE_UNIT=ascend950")
+endif()
+
+include("${CANNBOTDSL_SOURCE_DIR}/cmake/CANNBotDSLOperatorPackage.cmake")
+
+set(_cannbotdsl_stage_dir "${CMAKE_BINARY_DIR}/cannbotdsl_component")
+set(_cannbotdsl_registry_dir "${CMAKE_BINARY_DIR}/cannbotdsl_provider_aclnn")
+cannbotdsl_stage_operator_packages(
+  TARGET cannbotdsl_operator_packages
+  RUNTIME_ROOT "${CANNBOTDSL_RUNTIME_ROOT}"
+  OUTPUT_DIR "${_cannbotdsl_stage_dir}"
+  INSTALL_DESTINATION
+    "packages/vendors/${VENDOR_NAME}_transformer/op_impl/cannbotdsl"
+  SPECS
+    "${CMAKE_CURRENT_LIST_DIR}/attention/flash_kda/package.toml")
+
+cannbotdsl_generate_provider_aclnn_registry(
+  TARGET cannbotdsl_provider_aclnn_registry
+  STAGE_TARGET cannbotdsl_operator_packages
+  STAGE_DIR "${_cannbotdsl_stage_dir}"
+  OUTPUT_DIR "${_cannbotdsl_registry_dir}"
+  RUNTIME_ROOT "${CANNBOTDSL_RUNTIME_ROOT}")
+
+set(CANNBOTDSL_PROVIDER_OPBASE_SOURCE_DIR "" CACHE PATH
+  "opbase source tree containing opdev/provider_kernel.h")
+if(NOT CANNBOTDSL_PROVIDER_OPBASE_SOURCE_DIR AND
+   EXISTS "${CMAKE_SOURCE_DIR}/../opbase/include/nnopbase/opdev/provider_kernel.h")
+  get_filename_component(CANNBOTDSL_PROVIDER_OPBASE_SOURCE_DIR
+    "${CMAKE_SOURCE_DIR}/../opbase" ABSOLUTE)
+endif()
+if(NOT EXISTS
+   "${CANNBOTDSL_PROVIDER_OPBASE_SOURCE_DIR}/include/nnopbase/opdev/provider_kernel.h")
+  message(FATAL_ERROR
+    "Provider ACLNN requires an opbase tree with opdev/provider_kernel.h")
+endif()
+
+if(NOT TARGET ${OPHOST_NAME}_opapi_obj)
+  add_opapi_modules()
+endif()
+set_source_files_properties(
+  "${CANNBOTDSL_PROVIDER_ACLNN_REGISTRY_SOURCE}"
+  TARGET_DIRECTORY ${OPHOST_NAME}_opapi_obj
+  PROPERTIES GENERATED TRUE)
+target_sources(${OPHOST_NAME}_opapi_obj PRIVATE
+  "${CANNBOTDSL_PROVIDER_ACLNN_REGISTRY_SOURCE}"
+  "${CMAKE_CURRENT_LIST_DIR}/flash_kda_l0.cpp")
+add_dependencies(${OPHOST_NAME}_opapi_obj
+  cannbotdsl_provider_aclnn_registry)
+target_include_directories(${OPHOST_NAME}_opapi_obj BEFORE PRIVATE
+  "${CANNBOTDSL_PROVIDER_OPBASE_SOURCE_DIR}/include/nnopbase"
+  "${_cannbotdsl_registry_dir}"
+  "${CMAKE_CURRENT_LIST_DIR}")
+
+install(FILES "${CMAKE_CURRENT_LIST_DIR}/aclnn_flash_kda.h"
+  DESTINATION "${ACLNN_INC_INSTALL_DIR}")
