@@ -29,9 +29,15 @@ public:
                                     })";
 
 protected:
-    static void SetUpTestCase() { std::cout << "RotaryPositionEmbedding3dTiling SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "RotaryPositionEmbedding3dTiling SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "RotaryPositionEmbedding3dTiling TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "RotaryPositionEmbedding3dTiling TearDown" << std::endl;
+    }
 };
 
 TEST_F(RotaryPositionEmbedding3dTiling, RotaryPositionEmbedding3d_fp16_001)

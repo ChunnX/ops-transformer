@@ -210,7 +210,10 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingParse(gert::TilingParseContext *) { return ge::GRAPH_SUCCESS; }
+static ge::graphStatus TilingParse(gert::TilingParseContext *)
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 IMPL_OP_OPTILING(RotaryPositionEmbedding3d).Tiling(TilingFunc).TilingParse<CompileInfo>(TilingParse);
 } // namespace optiling
