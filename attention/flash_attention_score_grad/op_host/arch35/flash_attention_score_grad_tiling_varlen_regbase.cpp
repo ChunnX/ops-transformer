@@ -247,8 +247,10 @@ inline void CalcleTNDSparseDeterParam(FuzzyBaseInfoParamsRegbase &p)
     const int64_t k = static_cast<int64_t>(p.aicNum);
     const int64_t n1 = p.n2;
     const int64_t pairCountOne = GetTNDPairBatchCount(n1) / NUM_TWO;
-    const bool leftUp = (p.sparseMode == static_cast<uint32_t>(SparseMode::LEFT_UP_CAUSAL));
-    const bool isBand = (p.sparseMode == static_cast<uint32_t>(SparseMode::BAND));
+    const bool isBand = (p.sparseMode == static_cast<uint32_t>(SparseMode::BAND)) ||
+                        (p.sparseMode == static_cast<uint32_t>(SparseMode::NO_MASK) &&
+                         p.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND));
+    const bool leftUp = !isBand && (p.sparseMode != static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL));
 
     std::vector<int64_t> prefixSolo = {0};
     std::vector<int64_t> prefixPool = {0};
@@ -409,9 +411,6 @@ protected:
         std::fill(std::begin(fBaseParams.deterPrefix2), std::end(fBaseParams.deterPrefix2), static_cast<int64_t>(0));
 
         if (fBaseParams.g == 1 &&
-            (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::LEFT_UP_CAUSAL) ||
-             fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) ||
-             fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::BAND)) &&
             (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL) ||
              fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND))) {
             CalcleTNDSparseDeterParam(fBaseParams);
