@@ -96,10 +96,12 @@ if(NOT TARGET ${OPHOST_NAME}_opapi_obj)
 endif()
 set_source_files_properties(
   "${CANNBOTDSL_PROVIDER_ACLNN_REGISTRY_SOURCE}"
+  "${CANNBOTDSL_PROVIDER_ACLNN_ADAPTER_SOURCE}"
   TARGET_DIRECTORY ${OPHOST_NAME}_opapi_obj
   PROPERTIES GENERATED TRUE)
 target_sources(${OPHOST_NAME}_opapi_obj PRIVATE
   "${CANNBOTDSL_PROVIDER_ACLNN_REGISTRY_SOURCE}"
+  "${CANNBOTDSL_PROVIDER_ACLNN_ADAPTER_SOURCE}"
   "${CMAKE_CURRENT_LIST_DIR}/flash_kda_l0.cpp")
 add_dependencies(${OPHOST_NAME}_opapi_obj
   cannbotdsl_provider_aclnn_registry)

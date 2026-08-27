@@ -37,7 +37,8 @@ kernel/registry ABI v1 做了编译期断言；CMake 还会链接
 
 当前方案不生成传统 OpDef、InferShape、TilingData 或 TilingKey。FlashKDA 是供
 L2 组装的 ACLNN L0，输入输出契约和 workspace 规划由本目录的手写 L0 adapter
-负责，Provider 变体选择由生成 registry 完成。
+负责；物理 Provider 参数结构、`OP_INPUT/OP_OUTPUT/OP_ATTR` 顺序和 workspace
+登记函数由 schema v3 生成，Provider 变体选择由生成 registry 完成。
 
 FlashKDA 的 `@entry` 公共参数严格对应 `l0op::FlashKda`：8 个输入 tensor、
 `scale/lowerBound` 两个属性、2 个输出 tensor；`group/dv_base/block_num` 是
@@ -45,8 +46,9 @@ FlashKDA 的 `@entry` 公共参数严格对应 `l0op::FlashKda`：8 个输入 te
 公共签名。registry 生成阶段会把每个 variant 的 entry binding plan 与 Provider
 sidecar/HostSchema 逐项校验；runtime binding、constexpr、workspace dtype/shape 或
 六个 variant 间的公共 entry 身份任一漂移都会使混合包构建失败。
-schema v3 还显式声明 `output_parameters=["o", "st_out"]`，使后续通用 C++
-lowering 可以可靠生成 `OP_INPUT/OP_OUTPUT`，无需按参数位置猜测输出。
+schema v3 还显式声明 `output_parameters=["o", "st_out"]`；当前生成器已据此生成
+并接入 `FlashKdaProviderArguments`、`MakeFlashKdaProviderOpArgContext` 和
+`SetFlashKdaProviderWorkspaceTensors`，无需按参数位置猜测输出或手写物理顺序。
 
 ## 构建
 

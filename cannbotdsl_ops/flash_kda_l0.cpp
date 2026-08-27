@@ -13,6 +13,7 @@
 
 #include "aclnn_flash_kda.h"
 #include "opdev/framework_op.h"
+#include "cannbotdsl_provider_adapter.h"
 #include "cannbotdsl_provider_registry.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_def.h"
@@ -269,20 +270,37 @@ aclnnStatus FlashKda(
         return ACLNN_ERR_INNER_NULLPTR;
     }
 
-    op::OpArgContext* args = op::GetOpArgContext(
-        OP_INPUT(k, v, q, beta, g, qkExchange, aLog, dtBias, kRestored,
-                 gamma, qDecayed, w, mqk, u, initialState, identity),
-        OP_OUTPUT(out, finalState),
-        OP_ATTR(bnTotal, sequence, scale, lowerBound));
+    cannbotdsl::generated::FlashKdaProviderArguments providerArguments;
+    providerArguments.K = k;
+    providerArguments.V = v;
+    providerArguments.Q = q;
+    providerArguments.beta = beta;
+    providerArguments.g = g;
+    providerArguments.qk_exchange = qkExchange;
+    providerArguments.A_log = aLog;
+    providerArguments.dt_bias = dtBias;
+    providerArguments.kr = kRestored;
+    providerArguments.gamma = gamma;
+    providerArguments.qd = qDecayed;
+    providerArguments.w = w;
+    providerArguments.mqk = mqk;
+    providerArguments.u = u;
+    providerArguments.st_in = initialState;
+    providerArguments.ident = identity;
+    providerArguments.o = out;
+    providerArguments.st_out = finalState;
+    providerArguments.bnt = bnTotal;
+    providerArguments.s = sequence;
+    providerArguments.scale = scale;
+    providerArguments.lower_bound = lowerBound;
+    op::OpArgContext* args =
+        cannbotdsl::generated::MakeFlashKdaProviderOpArgContext(providerArguments);
     if (args == nullptr) {
         return ACLNN_ERR_INNER_NULLPTR;
     }
-    const aclTensor* workspaceTensors[] = {
-        qkExchange, kRestored, gamma, qDecayed, w, mqk, u,
-    };
-    aclnnStatus status = op::SetProviderWorkspaceTensors(
-        executor, args, workspaceTensors,
-        sizeof(workspaceTensors) / sizeof(workspaceTensors[0]));
+    aclnnStatus status =
+        cannbotdsl::generated::SetFlashKdaProviderWorkspaceTensors(
+            executor, args, providerArguments);
     if (status != ACLNN_SUCCESS) {
         return status;
     }
