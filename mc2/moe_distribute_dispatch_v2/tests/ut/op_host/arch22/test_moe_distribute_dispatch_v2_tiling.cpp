@@ -2184,7 +2184,8 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A3HierarchyVariableBsSuccess)
         &compileInfo, "Ascend910_93", coreNum, ubSize);
 
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 16}};
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS);
+    uint64_t expectTilingKey = 576UL; // no quant + no scales + hierarchy + MTE + A3
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 
     if (originalEnv.empty()) {
         unsetenv("HCCL_BUFFSIZE");
