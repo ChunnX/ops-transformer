@@ -56,6 +56,41 @@ if(NOT EXISTS
     "Provider ACLNN requires an opbase tree with opdev/provider_kernel.h")
 endif()
 
+if(NOT CANNBOTDSL_PROVIDER_OPBASE_LIBRARY)
+  set(_cannbotdsl_installed_nnopbase
+    "${ASCEND_CANN_PACKAGE_PATH}/lib64/libnnopbase.so")
+  if(EXISTS "${_cannbotdsl_installed_nnopbase}")
+    set(CANNBOTDSL_PROVIDER_OPBASE_LIBRARY
+      "${_cannbotdsl_installed_nnopbase}")
+  endif()
+endif()
+if(NOT EXISTS "${CANNBOTDSL_PROVIDER_OPBASE_LIBRARY}")
+  message(FATAL_ERROR
+    "Provider ACLNN requires CANNBOTDSL_PROVIDER_OPBASE_LIBRARY to name "
+    "a Provider ABI v1 libnnopbase.so")
+endif()
+get_filename_component(CANNBOTDSL_PROVIDER_OPBASE_LIBRARY
+  "${CANNBOTDSL_PROVIDER_OPBASE_LIBRARY}" REALPATH)
+
+set(_cannbotdsl_abi_probe
+  "${CMAKE_BINARY_DIR}/cannbotdsl_provider_abi_probe.cpp")
+file(WRITE "${_cannbotdsl_abi_probe}"
+  "namespace op { void RequireProviderAclnnRuntimeAbiV1(); }\n"
+  "int main() { op::RequireProviderAclnnRuntimeAbiV1(); return 0; }\n")
+try_compile(_cannbotdsl_has_provider_abi_v1
+  "${CMAKE_BINARY_DIR}/cannbotdsl_provider_abi_probe"
+  SOURCES "${_cannbotdsl_abi_probe}"
+  LINK_LIBRARIES "${CANNBOTDSL_PROVIDER_OPBASE_LIBRARY}"
+  OUTPUT_VARIABLE _cannbotdsl_abi_probe_log)
+if(NOT _cannbotdsl_has_provider_abi_v1)
+  message(FATAL_ERROR
+    "libnnopbase.so does not provide Provider ACLNN runtime ABI v1: "
+    "${CANNBOTDSL_PROVIDER_OPBASE_LIBRARY}\n"
+    "${_cannbotdsl_abi_probe_log}")
+endif()
+message(STATUS "Validated Provider ACLNN runtime ABI v1: "
+  "${CANNBOTDSL_PROVIDER_OPBASE_LIBRARY}")
+
 if(NOT TARGET ${OPHOST_NAME}_opapi_obj)
   add_opapi_modules()
 endif()
@@ -72,6 +107,8 @@ target_include_directories(${OPHOST_NAME}_opapi_obj BEFORE PRIVATE
   "${CANNBOTDSL_PROVIDER_OPBASE_SOURCE_DIR}/include/nnopbase"
   "${_cannbotdsl_registry_dir}"
   "${CMAKE_CURRENT_LIST_DIR}")
+target_link_libraries(cust_opapi PRIVATE
+  "${CANNBOTDSL_PROVIDER_OPBASE_LIBRARY}")
 
 install(FILES "${CMAKE_CURRENT_LIST_DIR}/aclnn_flash_kda.h"
   DESTINATION "${ACLNN_INC_INSTALL_DIR}")

@@ -67,6 +67,8 @@ set(CANNBOTDSL_SOURCE_DIR "" CACHE PATH
     "CANNBotDSL source tree providing package CMake integration")
 set(CANNBOTDSL_RUNTIME_ROOT "" CACHE PATH
     "Built CANNBotDSL Python runtime root containing cannbotdsl/package/cli.py")
+set(CANNBOTDSL_PROVIDER_OPBASE_LIBRARY "" CACHE FILEPATH
+    "Provider ABI v1 libnnopbase.so used to validate and link the mixed package")
 set_property(CACHE PACKAGE_TYPE PROPERTY STRINGS run rpm deb all)
 set(SUPPORTED_PACKAGE_TYPES run rpm deb all)
 if(NOT PACKAGE_TYPE IN_LIST SUPPORTED_PACKAGE_TYPES)

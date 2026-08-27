@@ -27,12 +27,13 @@ Provider kernel ABI v1，并在构建及运行时提供下列符号：
 - `op::AllocProviderWorkspaceTensor`
 - `op::SetProviderWorkspaceTensors`
 - `op::AddProviderKernelLauncher`
+- `op::RequireProviderAclnnRuntimeAbiV1`
 
 仅将新 opbase 头文件传给 ops-transformer、但运行时仍加载旧 `libnnopbase.so`，会
 导致动态链接失败。开发验证时应先从对应 opbase 分支构建并安装 `nnopbase`；正式
 发布时应把该 opbase 变更纳入匹配的 CANN 基础包。`flash_kda_l0.cpp` 对 Provider
-kernel/registry ABI v1 做了编译期断言，但共享库符号是否存在仍由匹配的 opbase
-运行库保证。
+kernel/registry ABI v1 做了编译期断言；CMake 还会链接
+`RequireProviderAclnnRuntimeAbiV1`，在配置阶段拒绝旧运行库。
 
 当前方案不生成传统 OpDef、InferShape、TilingData 或 TilingKey。FlashKDA 是供
 L2 组装的 ACLNN L0，输入输出契约和 workspace 规划由本目录的手写 L0 adapter
@@ -51,6 +52,7 @@ cmake -S . -B build-provider \
   -DCANNBOTDSL_SOURCE_DIR=/path/to/cannbot-dsl \
   -DCANNBOTDSL_RUNTIME_ROOT=/path/to/cannbot-dsl/build/python_packages \
   -DCANNBOTDSL_PROVIDER_OPBASE_SOURCE_DIR=/path/to/opbase \
+  -DCANNBOTDSL_PROVIDER_OPBASE_LIBRARY=/path/to/new/libnnopbase.so \
   -DOPBASE_SOURCE_PATH=/path/to/opbase \
   -DCUSTOM_ASCEND_CANN_PACKAGE_PATH=/path/to/cann
 
