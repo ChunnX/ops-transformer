@@ -91,7 +91,6 @@ protected:
     {
         return ge::GRAPH_SUCCESS;
     }
-    virtual void BuildWorkspaceLayout();
     void Reset();
 
     mc2tiling::HcclDataType GetDataType(ge::DataType type);
