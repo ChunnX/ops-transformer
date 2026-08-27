@@ -151,10 +151,9 @@ using cT_C0 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using MT_C0 = matmul::MatmulImpl<aT_C0, bT_C0, cT_C0>;
 
 using aT_C1 = MatmulType<TPosition::GM, CubeFormat::ND, float, true>;
-// 与GMM的MatmulL1GmType一致：Tensor实际位于TSCM，但沿用GM来源的tiling与初始化语义。
-struct bT_C1 : MatmulType<TPosition::TSCM, CubeFormat::NZ, float> {
-    constexpr static TPosition srcPos = TPosition::GM;
-};
+// C1右矩阵实际位于TSCM，数据由V2的VECOUT经MTE3写入L1。
+using bT_C1 = MatmulType<TPosition::TSCM, CubeFormat::NZ, float, false, LayoutMode::NONE, false,
+                         TPosition::VECOUT>;
 using cT_C1 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using MT_C1 = matmul::MatmulImpl<aT_C1, bT_C1, cT_C1>;
 
