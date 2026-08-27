@@ -203,5 +203,10 @@ struct MegaMoeTilingData {
     // 全卡一致的单卡 token 数上界（attr num_max_tokens_per_rank；attr=0 时 host 置为 bs）。
     // 跨卡窗口布局、mask 槽几何与收发批网格一律用该上界，bs 仅描述本卡真实 token 数。
     uint32_t numMaxTokensPerRank;
+    // A8W8 MTE Wave 直接发送 compact topkIndex；独立配置避免为已消除的 mask 扫描保留 UB。
+    // 追加在 tiling 末尾，保持既有字段偏移不变。
+    MegaMoeDispatchBufferConfig compactDispatchBufferConfig;
+    MegaMoeSendMaskBufferConfig compactSendConfigForCoreWithExtraExpert;
+    MegaMoeSendMaskBufferConfig compactSendConfigForCoreWithoutExtraExpert;
 };
 #endif

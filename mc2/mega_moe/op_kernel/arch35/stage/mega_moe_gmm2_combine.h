@@ -370,11 +370,7 @@ __aicore__ inline WorkRange GetWaveCombineOwnedRange(const AivJobContext &job, u
     if (combineJob.totalJobs == 0U || combineJob.jobIndex >= combineJob.totalJobs) {
         return {};
     }
-    uint32_t firstOwnerJob = expertRowPrefix % combineJob.totalJobs;
-    uint32_t logicalJobIndex = combineJob.jobIndex >= firstOwnerJob ?
-                                   combineJob.jobIndex - firstOwnerJob :
-                                   combineJob.jobIndex + combineJob.totalJobs - firstOwnerJob;
-    return GetBalancedTokenRange(tokenCount, logicalJobIndex, combineJob.totalJobs);
+    return GetRotatedBalancedTokenRange(tokenCount, combineJob.jobIndex, combineJob.totalJobs, expertRowPrefix);
 }
 
 // 等待并消费当前 Wave 的 Combine 发送在行环形 buffer 上产生的全部完成事件，使该环不再有在途 slot。
@@ -1048,6 +1044,78 @@ __aicore__ inline void WaitWaveGmm2Ready(const AivJobContext &job, const Params 
         int64_t waitStart = AscendC::GetSystemCycle();
         while (AscendC::GetSystemCycle() - waitStart < GM_FLAG_POLL_BACKOFF_CYCLES) {
         }
+    }
+}
+
+// A8W8 global-wave 路径：每个 AIC 只维护一个单调递增序号，避免逐专家 ready 槽和重复发布。
+__aicore__ inline void NotifyGlobalWaveGmm2Ready(const AivJobContext &job, const Params &params,
+                                                 uint32_t completedWaveSequence)
+{
+    if constexpr (g_coreType == AIC) {
+        AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+        __gm__ int32_t *readyBase = reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm2ReadyPtr);
+        AscendC::WriteGmByPassDCache(readyBase + static_cast<uint64_t>(job.jobIndex) * INT_CACHELINE,
+                                     static_cast<int32_t>(completedWaveSequence));
+    }
+}
+
+template <bool UseAllAivCores = false>
+__aicore__ inline void WaitGlobalWaveGmm2Ready(const AivJobContext &job, const Params &params,
+                                               uint32_t requiredWaveSequence)
+{
+    if constexpr (g_coreType == AIC) {
+        return;
+    }
+    if (!IsWaveCombineWorker<UseAllAivCores>() || job.totalJobs == 0U) {
+        return;
+    }
+    uint32_t readyElements = job.totalJobs * static_cast<uint32_t>(INT_CACHELINE);
+    GlobalTensor<int32_t> readyGm;
+    readyGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm2ReadyPtr));
+    LocalTensor<int32_t> scanUb(TPosition::VECCALC, WAVE_GMM2_READY_SCAN_UB_ADDR, readyElements);
+    while (true) {
+        DataCopy(scanUb, readyGm, readyElements);
+        SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
+        bool allReady = true;
+        for (uint32_t jobIdx = 0U; jobIdx < job.totalJobs; ++jobIdx) {
+            if (static_cast<uint32_t>(scanUb.GetValue(jobIdx * INT_CACHELINE)) < requiredWaveSequence) {
+                allReady = false;
+                break;
+            }
+        }
+        if (allReady) {
+            return;
+        }
+        int64_t waitStart = AscendC::GetSystemCycle();
+        while (AscendC::GetSystemCycle() - waitStart < GM_FLAG_POLL_BACKOFF_CYCLES) {
+        }
+    }
+}
+
+template <uint8_t CombineMode, bool UseAllAivCores = false>
+__aicore__ inline void RunGlobalWaveCombineStage(const MoeStageCommonConfig &common, const AivJobContext &job,
+                                                 const WaveCombineBufferConfig &bufferConfig,
+                                                 WaveCombineScratch &scratch, const Params &params,
+                                                 uint32_t waveGlobalRowBegin, uint32_t waveRowCount,
+                                                 uint32_t requiredWaveSequence, uint32_t &rowSequence)
+{
+    WorkRange currentCoreTokenRange = GetWaveCombineOwnedRange<UseAllAivCores>(job, waveRowCount, waveGlobalRowBegin);
+    if (currentCoreTokenRange.count != 0U) {
+        WaitGlobalWaveGmm2Ready<UseAllAivCores>(job, params, requiredWaveSequence);
+    }
+    for (uint32_t processedTokenNum = 0U; processedTokenNum < currentCoreTokenRange.count;) {
+        uint32_t remainingTokenNum = currentCoreTokenRange.count - processedTokenNum;
+        uint32_t chunkTokenNum = remainingTokenNum < WAVE_COMBINE_META_INFO_TOKEN_CAPACITY ?
+                                     remainingTokenNum :
+                                     WAVE_COMBINE_META_INFO_TOKEN_CAPACITY;
+        uint32_t globalRowBegin = waveGlobalRowBegin + currentCoreTokenRange.start + processedTokenNum;
+        PreloadWaveCombineMetaInfo(params, scratch, globalRowBegin, chunkTokenNum, 0U);
+        CombineWaveTokenRange<CombineMode, UseAllAivCores>(common, bufferConfig, scratch, params,
+                                                           params.workspaceInfo.gmm2MmadResPtr, globalRowBegin,
+                                                           chunkTokenNum, 0U, rowSequence);
+        processedTokenNum += chunkTokenNum;
     }
 }
 
