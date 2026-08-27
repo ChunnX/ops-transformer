@@ -89,6 +89,7 @@ private:
     __aicore__ inline void CrossRankBarrier();
     __aicore__ inline void VerifyRecvGrad();
     __aicore__ inline void VerifyGradUnique();
+    __aicore__ inline void InvalidateCommWindow();
 
     __aicore__ inline void WaitAllStatusFlags(GM_ADDR statusWinBase, uint32_t expectCount);
     __aicore__ inline void ClearStatusFlags(GM_ADDR statusWinBase);
@@ -286,10 +287,6 @@ __aicore__ inline void EngramFetchGradArch35::LocalCopySlice(GM_ADDR dst, GM_ADD
     GlobalTensor<uint8_t> dstGm;
     srcGm.SetGlobalBuffer((__gm__ uint8_t *)src);
     dstGm.SetGlobalBuffer((__gm__ uint8_t *)dst);
-
-    for (uint64_t off = 0; off < len; off += ALIGNED_LEN_256) {
-        DataCacheCleanAndInvalid<uint8_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(srcGm[off]);
-    }
 
     LocalTensor<uint8_t> buf0 = pingBuf_.Get<uint8_t>();
     LocalTensor<uint8_t> buf1 = pongBuf_.Get<uint8_t>();
@@ -1049,23 +1046,6 @@ __aicore__ inline void EngramFetchGradArch35::InitFlagsAndDispls()
         sAccum += sCount;
         rAccum += rCount;
     }
-
-    GM_ADDR localWinBase = (GM_ADDR)ctxPtr_->commBuffer[rankId_];
-    uint64_t totalRanksOffset =
-        static_cast<uint64_t>(numRanks_) * static_cast<uint64_t>(sendersPerRank_) * STATE_OFFSET;
-    uint64_t clearBytes = 3U * totalRanksOffset;
-    uint32_t clearElements = static_cast<uint32_t>(clearBytes / sizeof(int32_t));
-    LocalTensor<int32_t> zeroWin = pingBuf_.Get<int32_t>();
-    Duplicate<int32_t>(zeroWin, 0, clearElements);
-    EngramFetchGradSyncFunc<HardEvent::V_MTE3>();
-    GlobalTensor<int32_t> winGM;
-    winGM.SetGlobalBuffer((__gm__ int32_t *)localWinBase);
-    DataCopy(winGM, zeroWin, clearElements);
-    EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
-    for (uint64_t off = 0; off < clearBytes; off += ALIGNED_LEN_256) {
-        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
-            winGM[off / sizeof(int32_t)]);
-    }
 }
 
 __aicore__ inline void EngramFetchGradArch35::PrimeChannels()
@@ -1208,6 +1188,16 @@ __aicore__ inline void EngramFetchGradArch35::VerifyGradUnique()
     }
 }
 
+__aicore__ inline void EngramFetchGradArch35::InvalidateCommWindow()
+{
+    GM_ADDR localWinBase = (GM_ADDR)ctxPtr_->commBuffer[rankId_];
+    GlobalTensor<uint8_t> winGM;
+    winGM.SetGlobalBuffer((__gm__ uint8_t *)localWinBase);
+    for (uint64_t off = 0; off < winSize_; off += ALIGNED_LEN_256) {
+        DataCacheCleanAndInvalid<uint8_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(winGM[off]);
+    }
+}
+
 __aicore__ inline void EngramFetchGradArch35::Process()
 {
     if ASCEND_IS_AIV {
@@ -1217,6 +1207,9 @@ __aicore__ inline void EngramFetchGradArch35::Process()
         currentGen_ = 1U;
 
         UnsortGrad();
+        SyncAll<true>();
+
+        InvalidateCommWindow();
         SyncAll<true>();
 
         ExchangeGrad();
