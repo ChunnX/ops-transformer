@@ -696,6 +696,13 @@ protected:
 
         OP_LOGI(opName, "localMatmul precisionMode=%u", precisionMode_);
 
+        td->workspaceLayout.totalSize = libApiWorkSpaceSize_ + Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
+        td->workspaceLayout.segCount = 2;
+        td->workspaceLayout.segments[0] = {0UL, libApiWorkSpaceSize_,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
+        td->workspaceLayout.segments[1] = {libApiWorkSpaceSize_, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE,
+                                            static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
+
         return ge::GRAPH_SUCCESS;
     }
 
@@ -710,7 +717,8 @@ protected:
     ge::graphStatus GetWorkspaceSize() override
     {
         platform_ascendc::PlatformAscendC ascendcPlatform(context_->GetPlatformInfo());
-        workspaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
+        libApiWorkSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
+        workspaceSize_ = libApiWorkSpaceSize_ + Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE;
         auto *wsBuf = context_->GetWorkspaceSizes(1);
         if (wsBuf != nullptr) {
             wsBuf[0] = workspaceSize_;
@@ -729,6 +737,7 @@ private:
     uint64_t m_{0}, k_{0}, n_{0};
     uint64_t worldSize_{1};
     uint32_t precisionMode_{0};
+    uint64_t libApiWorkSpaceSize_{0};
     QuantMatmulPlatformInfo quantPlatformInfo_;
 };
 
