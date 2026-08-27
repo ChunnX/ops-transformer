@@ -66,6 +66,22 @@ cmake --install build-provider --prefix /path/to/stage
 ```bash
 cmake --build build-provider --target cannbotdsl_flash_kda_aclnn_smoke -j
 ./build-provider/cannbotdsl_ops/cannbotdsl_flash_kda_aclnn_smoke
+
+# 同进程双 stream × 两轮，并验证 lower_bound 越界 fail-closed
+./build-provider/cannbotdsl_ops/cannbotdsl_flash_kda_aclnn_smoke --stress --negative
+
+# 指定任一已发布有限 variant 的 shape 做设备执行/有限值检查
+./build-provider/cannbotdsl_ops/cannbotdsl_flash_kda_aclnn_smoke \
+  --batch 2 --heads 96 --sequence 10240
+
+# 导出一组 ACLNN 输入输出并执行 ACLNN/native/CPU golden 三方对拍
+mkdir -p /tmp/flash-kda-dump
+./build-provider/cannbotdsl_ops/cannbotdsl_flash_kda_aclnn_smoke \
+  --dump-dir /tmp/flash-kda-dump
+PYTHONPATH=/path/to/cannbot-dsl/build/python_packages \
+python cannbotdsl_ops/tests/verify_flash_kda_aclnn_dump.py \
+  --dump-dir /tmp/flash-kda-dump \
+  --cannbotdsl-source /path/to/cannbot-dsl --verify-native
 ```
 
 未开启 `ENABLE_CANNBOTDSL_PROVIDER_ACLNN` 时，既有传统算子构建流程不变。
@@ -86,24 +102,33 @@ packages/vendors/<vendor>_transformer/
 
 ## 实机验证
 
-Ascend950PR 上的 B1/N3/S8192 smoke 已验证：
+Ascend950PR 上已完成以下验证：
 
 - `aclnnFlashKdaGetWorkspaceSize` 成功并返回 29,430,272 字节；
 - `aclnnFlashKda` 成功入队并完成 stream 同步；
 - 确定性有效输入下 output 与 final state 均为有限值；
+- 同输入 ACLNN 与 native Provider 的 output/final state 逐字节一致；
+- 相对 CPU chunk golden，output/state 最大绝对误差分别为
+  `2.350081e-4` 和 `6.781593e-4`，通过 `atol=rtol=5e-3`；
+- 同进程 2 streams × 2 waves 通过，无非有限值且第二轮结果与第一轮逐字节一致；
+- 六个有限 variant 均已用最小合法 shape 完成 GetWorkspace、执行与有限值检查；
+  覆盖 B1/N3/S8192、B1/N3/S32768、B4/N3/S8192、B1/N96/S1024、
+  B2/N96/S10240 和 B4/N96/S1024；
 - Provider launch 固定为 28 blocks，满足该目标 28 个 Cube core 的整网格
-  barrier 单波驻留约束。
+  barrier 单波驻留约束；
+- `lower_bound=-5.01` 在 GetWorkspace 阶段返回 `161002`，调用前设置的非零
+  workspace/executor 哨兵被主动清为 0/null；
 
 ## 当前 FlashKDA 契约
 
 - 布局固定为 BNSD，`K/V/Q/G/O` 为 BF16；`A_log/dt_bias/initial_state/
   final_state` 为 FP32；
 - head dimension 固定为 128，chunk size 固定为 64；
+- `lower_bound` 必须为有限值且位于闭区间 `[-5, 0]`；
 - 当前仅发布 package provider 声明中的 6 组有限 `(B, N, S)` 变体；
 - 7 个内部临时张量由 executor workspace 分配并在 launch 前回填地址；
 - Provider 物理 ABI 为 16 个 tensor inputs、2 个 tensor outputs、4 个 scalar
   attributes；顺序必须与生成 registry 完全一致；
-- 当前完成 AOT、registry、host 编译/链接、混合符号、安装布局及单 stream
-  Ascend950PR 实机 smoke；B1/N3/S8192 原生 DSL 对 golden 精度回归也已通过。
-  混合 ACLNN 与 golden 的逐元素三方对拍、多 stream、全变体性能和错误路径仍是
-  量产验收项。
+- 当前完成 AOT、registry、host 编译/链接、混合符号、安装布局、B1/N3/S8192
+  三方精度、双 stream/repeat 和六变体最小 shape 实机执行。其余 5 个变体的
+  三方精度、全变体性能、更多错误注入和长稳压力仍是量产验收项。

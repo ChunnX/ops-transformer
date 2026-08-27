@@ -219,7 +219,8 @@ aclnnStatus FlashKda(
     if (executor == nullptr ||
         !CheckTensorContract(k, v, q, beta, g, aLog, dtBias, initialState,
                              out, finalState) ||
-        !std::isfinite(scale) || !std::isfinite(lowerBound)) {
+        !std::isfinite(scale) || !std::isfinite(lowerBound) ||
+        lowerBound < -5.0F || lowerBound > 0.0F) {
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -299,8 +300,17 @@ extern "C" aclnnStatus aclnnFlashKdaGetWorkspaceSize(
     double lowerBound, const aclTensor* out, const aclTensor* finalState,
     uint64_t* workspaceSize, aclOpExecutor** executor)
 {
-    if (workspaceSize == nullptr || executor == nullptr ||
-        !std::isfinite(scale) || !std::isfinite(lowerBound) ||
+    if (workspaceSize != nullptr) {
+        *workspaceSize = 0U;
+    }
+    if (executor != nullptr) {
+        *executor = nullptr;
+    }
+    if (workspaceSize == nullptr || executor == nullptr) {
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (!std::isfinite(scale) || !std::isfinite(lowerBound) ||
+        lowerBound < -5.0 || lowerBound > 0.0 ||
         scale > std::numeric_limits<float>::max() ||
         scale < -std::numeric_limits<float>::max() ||
         lowerBound > std::numeric_limits<float>::max() ||

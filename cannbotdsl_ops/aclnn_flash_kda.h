@@ -8,6 +8,11 @@
 extern "C" {
 #endif
 
+/**
+ * scale must be finite and representable as float; lowerBound must be in [-5, 0].
+ * On failure, non-null workspaceSize/executor outputs are reset to 0/null.
+ */
+
 ACLNN_API aclnnStatus aclnnFlashKdaGetWorkspaceSize(
     const aclTensor* k, const aclTensor* v, const aclTensor* q,
     const aclTensor* beta, const aclTensor* g, const aclTensor* aLog,
