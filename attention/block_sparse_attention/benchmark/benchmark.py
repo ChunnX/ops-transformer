@@ -67,9 +67,21 @@ from util import (
     _fmt_or_na,
     sabi_to_block_sparse_mask,
     bsa_inner_precise,
+    gen_quant_inputs,
 )
 
 BLOCK_SIZE_KV = int(os.environ.get("BSA_BLOCK_SIZE_KV", _DEFAULT_BLOCK_SIZE_KV))
+
+# Quantization mode (aclnnBlockSparseAttentionV3): 0 = none (default, fp16/bf16),
+# 1 = FP8, 2 = MXFP4 OCP, 3 = MXFP4 CX. Modes 1/2/3 need an Ascend 950 and
+# force a KV block size that is a multiple of 256 (FP8 tiling constraint).
+# BSA_DST_TYPE_MAX (default 0.0) sets the MXFP4 CX custom quant range.
+QUANT_MODE = int(os.environ.get("BSA_QUANT_MODE", "0"))
+DST_TYPE_MAX = float(os.environ.get("BSA_DST_TYPE_MAX", "0.0"))
+if QUANT_MODE not in (0, 1, 2, 3):
+    raise ValueError(f"BSA_QUANT_MODE must be 0/1/2/3, got {QUANT_MODE}")
+if QUANT_MODE != 0 and BLOCK_SIZE_KV % 256 != 0:
+    BLOCK_SIZE_KV = 256
 
 # inner_precise is SoC-gated: 950 → 4 (low/high mixed), 910/910_93 → 0 (fp32 softmax).
 INNER_PRECISE = bsa_inner_precise()
@@ -102,12 +114,17 @@ logger = logging.getLogger(__name__)
 RUN_REFERENCE = False  # set True to enable per-row correctness comparison
 
 
-def _make_our_fn_block_sparse(block_sparse_mask: torch.Tensor, h: int, scale: float):
+def _make_our_fn_block_sparse(
+    block_sparse_mask: torch.Tensor, h: int, scale: float, dequant_scales=None
+):
     """Build the closure that the benchmark timing harness invokes.
 
-    The int8 block mask is built ONCE by the caller (outside the timed
-    closure); the timed call here only invokes the kernel.
+    The int8 block mask (and, for quant modes, the dequant scales) is built
+    ONCE by the caller (outside the timed closure); the timed call here only
+    invokes the kernel. When QUANT_MODE != 0 the closure passes the V3
+    quantization arguments (quant_mode, dequant scales, bf16 out).
     """
+    qs, ks, vs = dequant_scales if dequant_scales is not None else (None, None, None)
 
     def fn(q, k, v, seq, seqkv):
         out, _ = cann_ops_transformer.ops.block_sparse_attention(
@@ -130,6 +147,13 @@ def _make_our_fn_block_sparse(block_sparse_mask: torch.Tensor, h: int, scale: fl
             pre_tokens=2147483647,
             next_tokens=2147483647,
             softmax_lse_flag=False,
+            q_dequant_scale=qs,
+            k_dequant_scale=ks,
+            v_dequant_scale=vs,
+            quant_mode=QUANT_MODE,
+            dst_type_max=DST_TYPE_MAX,
+            # quantized kernels dequantize internally and emit fp16/bf16 only
+            attention_out_dtype=torch.bfloat16 if QUANT_MODE != 0 else None,
         )
         return out
 
@@ -154,8 +178,14 @@ def _print_header():
         else ""
     )
     frame_note = "  (overridden via BSA_FRAME)" if _BSA_FRAME_ENV is not None else ""
+    quant_names = {0: "none (fp16/bf16)", 1: "FP8", 2: "MXFP4 OCP", 3: "MXFP4 CX"}
     logger.info("=" * 90)
     logger.info(f"  KERNEL=block_sparse_attention  {DTYPE=}  {INPUT_LAYOUT=}")
+    if QUANT_MODE != 0:
+        logger.info(
+            f"  QUANT_MODE={QUANT_MODE} ({quant_names[QUANT_MODE]})  "
+            f"DST_TYPE_MAX={DST_TYPE_MAX}  (Ascend 950 only; out dtype bf16)"
+        )
     logger.info(
         f"  BLOCK_SIZE_Q={BLOCK_SIZE_Q}  BLOCK_SIZE_KV={BLOCK_SIZE_KV}{kv_note}"
     )
@@ -207,7 +237,9 @@ def benchmark_block_sparse_attention():
             logger.info(pfa_atten_mask.int())
             logger.info(pfa_atten_mask.shape)
 
-        run_ref_sparsity_0 = sparsity == 0
+        # The npu_fusion_attention reference is fp16/bf16-only: no reference
+        # comparison for the quantized modes (fp8/fp4 in, bf16 out).
+        run_ref_sparsity_0 = sparsity == 0 and QUANT_MODE == 0
         q_blocks = (s_q + BLOCK_SIZE_Q - 1) // BLOCK_SIZE_Q
         kv_blocks = (s_kv + BLOCK_SIZE_KV - 1) // BLOCK_SIZE_KV
         block_sparse_mask = sabi_to_block_sparse_mask(
@@ -216,17 +248,29 @@ def benchmark_block_sparse_attention():
             device=DEVICE,
         )
 
-        our_fn = _make_our_fn_block_sparse(block_sparse_mask, h, scale)
+        # Dequant scales are shape-dependent but data-independent: built once
+        # per shape and closed over, so the timed loop only swaps q/k/v.
+        dequant_scales = None
+        if QUANT_MODE != 0:
+            *_, dequant_scales = gen_quant_inputs(shape, QUANT_MODE, device=DEVICE)
+
+        our_fn = _make_our_fn_block_sparse(block_sparse_mask, h, scale, dequant_scales)
         ref_fn = _make_ref_fn(h, scale, pfa_atten_mask, run_ref_sparsity_0)
 
         are_equal_ref = "N/A"
-        if run_ref or run_ref_sparsity_0:
+        if (run_ref and QUANT_MODE == 0) or run_ref_sparsity_0:
             are_equal_ref = _check_correctness(our_fn, ref_fn, shape, DEVICE)
 
-        inputs = [
-            gen_pfa_inputs(shape, device=DEVICE, dtype=DTYPE)
-            for _ in range(n_warmup + n_repeat)
-        ]
+        if QUANT_MODE != 0:
+            inputs = [
+                gen_quant_inputs(shape, QUANT_MODE, device=DEVICE)[:5]
+                for _ in range(n_warmup + n_repeat)
+            ]
+        else:
+            inputs = [
+                gen_pfa_inputs(shape, device=DEVICE, dtype=DTYPE)
+                for _ in range(n_warmup + n_repeat)
+            ]
         our_duration = _run_timed(our_fn, inputs, n_warmup)
         ref_duration = None
         if run_ref or run_ref_sparsity_0:

@@ -10,9 +10,9 @@
 
 /*!
  * \file block_sparse_attention.cpp
- * \brief Torch extension wrapper for `aclnnBlockSparseAttentionV2` (from
+ * \brief Torch extension wrapper for `aclnnBlockSparseAttentionV3` (from
  *        `attention/block_sparse_attention/`). The kernel + aclnn library
- *        (`libcust_opapi.so` shipping the symbol `aclnnBlockSparseAttentionV2`)
+ *        (`libcust_opapi.so` shipping the symbol `aclnnBlockSparseAttentionV3`)
  *        must be built and installed via:
  *
  *            bash build.sh --make_clean -j96 --pkg --soc=ascend910b \
@@ -23,6 +23,30 @@
  *        first, then falls back to `libopapi.so` — no link-time dependency on
  *        the vendor lib (see common/inc/aclnn_common.h:141).
  *
+ *        V3 vs V2: for FP16/BF16 (quant_mode 0) and FP8 (quant_mode 1) both
+ *        entry points reach the identical inner `l0op::BlockSparseAttention`
+ *        with identical arguments (V2 derives quantMode internally and passes
+ *        pQuantScale=nullptr, dstTypeMax=0.0), so behavior and performance on
+ *        those paths are unchanged by construction. V3 additionally exposes
+ *        the MXFP4 quantization modes (quant_mode 2/3, Ascend 950 only).
+ *
+ *        Quantization modes (quant_mode):
+ *        • 0 — no quant:  q/k/v FP16/BF16, no scales.
+ *        • 1 — FP8:       q/k/v FLOAT8_E4M3FN, q/k/v_dequant_scale FP32 4-D.
+ *          For backward compatibility, quant_mode=0 with FP8 inputs is
+ *          auto-upgraded to 1 (mirrors aclnn V2's internal derivation).
+ *        • 2 — MXFP4 OCP / 3 — MXFP4 CX: q/k/v torch.float4_e2m1fn_x2 (two
+ *          FP4 values packed per byte; the tensor's last dim is D/2 packed
+ *          elements — ConvertType unpacks the logical shape, see
+ *          aclnn_common.h CollectB4ShapeInfo). q/k/v_dequant_scale are
+ *          torch.float8_e8m0fnu MX block scales:
+ *            BNSD: q [B,N,S,D/64,2]  k [B,kvN,S,D/64,2]  v [B,kvN,ceil(S/64),D,2]
+ *            (BSND swaps the leading S/N dims; TND uses the 4-D variants.)
+ *          Constraints (enforced by aclnn/tiling, mirrored here for clear
+ *          errors): inner_precise must be 4, softmax_lse_flag must be false,
+ *          and attention_out is FP16/BF16 with logical last dim 2*packed.
+ *          quant_mode 3 additionally takes dst_type_max (0.0, or [6.0, 12.0]).
+ *
  *        Notes:
  *        • `block_sparse_mask` must be int8 [B, H, q_blocks, kv_blocks],
  *          1 = block kept, 0 = block skipped.
@@ -30,20 +54,19 @@
  *        • Layouts: q/kv_input_layout ∈ {"TND", "BNSD", "BSND"} and must match.
  *          BSND is only supported on Ascend 950 (arch35); the Python frontend
  *          guards this before reaching the kernel.
- *        • `atten_mask` is intentionally NOT exposed: the kernel does not
- *          support fine-grained intra-block masking on CANN 8.5.0-beta.1
- *          (per the kernel's own README). The wrapper passes nullptr.
- *        • `attention_out_dtype` is the dtype of `attentionOut`. For FP16/BF16 inputs it
- *          must equal the input dtype (the only combination the kernel emits a
- *          binary for). For FLOAT8_E4M3FN inputs the kernel dequantizes and
- *          writes FP16 or BF16 — there is NO fp8→fp8 binary, so `attention_out_dtype` MUST
- *          be float16 or bfloat16 (the Python frontend defaults it to bfloat16).
+ *        • `atten_mask` and `block_table` are intentionally NOT exposed: the
+ *          kernel supports neither fine-grained masks (mask_type must be 0)
+ *          nor PagedAttention (block_size must be 0) on current CANN; the
+ *          wrapper passes nullptr for both.
+ *        • `p_quant_scale` is accepted for aclnn V3 signature parity but the
+ *          current kernel requires it to be absent in every quant_mode; the
+ *          wrapper rejects a non-None value up front.
+ *        • `attention_out_dtype` is the dtype of `attentionOut`. quant_mode 0:
+ *          must equal the input dtype. quant_mode 1/2/3: FP16 or BF16 (the
+ *          kernel dequantizes; there is no fp8/fp4 output binary).
  *        • `softmaxLseOptional` shape, when enabled, is layout-dependent
  *          (the kernel's infershape hardcodes LSE_DIM_D=1):
  *            TND → [T, N, 1];  BNSD → [B, N, S, 1];  BSND → [B, S, N, 1].
- *        • `q/k/v_dequant_scale` are FP8-only (FLOAT8_E4M3FN inputs) FP32 4-D
- *          reverse-quant factors. On the FP16/BF16 path they are absent and the
- *          wrapper passes nullptr (the V2 contract). See aclnnBlockSparseAttentionV2.md.
  *        • `pre_tokens` / `next_tokens` should be 2147483647 (max int32 =
  *          "no causal window") — the kernel README says window restrictions
  *          are "当前不支持".
@@ -54,6 +77,17 @@
 
 namespace op_api {
 
+namespace {
+// Mirrors the kernel's quantMode attr (block_sparse_attention_def.cpp /
+// aclnn_block_sparse_attention_v3.cpp).
+enum QuantMode : int64_t {
+    NO_QUANT = 0,
+    FP8_QUANT = 1,
+    MXFP4_OCP_QUANT = 2,
+    MXFP4_CX_QUANT = 3,
+};
+} // namespace
+
 std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
     const at::Tensor &query, const at::Tensor &key, const at::Tensor &value, const at::Tensor &block_sparse_mask,
     at::IntArrayRef block_shape, at::IntArrayRef actual_seq_lengths, at::IntArrayRef actual_seq_lengths_kv,
@@ -61,6 +95,7 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
     int64_t mask_type, double scale_value, int64_t inner_precise, int64_t block_size, int64_t pre_tokens,
     int64_t next_tokens, bool softmax_lse_flag, const c10::optional<at::Tensor> &q_dequant_scale,
     const c10::optional<at::Tensor> &k_dequant_scale, const c10::optional<at::Tensor> &v_dequant_scale,
+    const c10::optional<at::Tensor> &p_quant_scale, int64_t quant_mode, double dst_type_max,
     at::ScalarType attention_out_dtype)
 {
     TORCH_CHECK(query.is_contiguous(), "query must be contiguous");
@@ -79,52 +114,87 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
     TORCH_CHECK(block_size == 0, "block_size must be 0 — paged KV cache is not yet supported by the kernel");
     TORCH_CHECK(mask_type == 0,
                 "mask_type must be 0 — fine-grained attention masks are not yet supported by the kernel");
+    TORCH_CHECK(quant_mode >= NO_QUANT && quant_mode <= MXFP4_CX_QUANT,
+                "quant_mode must be 0 (none), 1 (FP8), 2 (MXFP4 OCP) or 3 (MXFP4 CX), got ", quant_mode);
 
-    // q/k/v must share one dtype (kernel constraint) and be one of the three
-    // supported input dtypes. The (input dtype → attentionOut dtype) pairing is
-    // what selects the kernel binary: FP16→FP16, BF16→BF16, FP8_E4M3FN→{FP16,BF16}.
-    // There is no fp8→fp8 binary, so allocating attentionOut as FP8 (the old
-    // `query.options()` behaviour) made the op fail with "Cannot find binary".
+    // q/k/v must share one dtype (kernel constraint). The (quant_mode, input
+    // dtype → attentionOut dtype) pairing selects the kernel binary:
+    //   0: FP16→FP16, BF16→BF16;  1: FP8_E4M3FN→{FP16,BF16};
+    //   2/3: FP4_E2M1(packed x2)→{FP16,BF16}.
     const at::ScalarType q_dtype = query.scalar_type();
     TORCH_CHECK(key.scalar_type() == q_dtype && value.scalar_type() == q_dtype,
                 "query/key/value must share the same dtype");
-    if (q_dtype == at::kFloat8_e4m3fn) {
+
+    // Backward compatibility with the previous (V2-era) wrapper: FP8 inputs
+    // without an explicit quant_mode auto-select the FP8 path, exactly like
+    // aclnn V2 derived quantMode internally.
+    int64_t effective_quant_mode = quant_mode;
+    if (quant_mode == NO_QUANT && q_dtype == at::kFloat8_e4m3fn) {
+        effective_quant_mode = FP8_QUANT;
+    }
+
+    // Per-mode input dtype / output dtype rules (mirrors aclnn V3's
+    // CheckQuantModeAndDtype so misuse fails here with a clear message).
+    const bool is_mxfp4 = (effective_quant_mode == MXFP4_OCP_QUANT || effective_quant_mode == MXFP4_CX_QUANT);
+    if (effective_quant_mode == NO_QUANT) {
+        TORCH_CHECK(q_dtype == at::kHalf || q_dtype == at::kBFloat16,
+                    "quant_mode 0 requires float16 or bfloat16 query/key/value");
+        TORCH_CHECK(attention_out_dtype == q_dtype,
+                    "attention_out_dtype must equal the input dtype for float16/bfloat16 inputs");
+    } else if (effective_quant_mode == FP8_QUANT) {
+        TORCH_CHECK(q_dtype == at::kFloat8_e4m3fn, "quant_mode 1 (FP8) requires float8_e4m3fn query/key/value");
         TORCH_CHECK(attention_out_dtype == at::kHalf || attention_out_dtype == at::kBFloat16,
                     "attention_out_dtype must be torch.float16 or torch.bfloat16 for float8_e4m3fn "
                     "inputs (the kernel dequantizes; there is no fp8 output binary)");
+    } else { // MXFP4 OCP / CX
+        TORCH_CHECK(q_dtype == at::ScalarType::Float4_e2m1fn_x2,
+                    "quant_mode 2/3 (MXFP4) requires torch.float4_e2m1fn_x2 query/key/value "
+                    "(two FP4 values packed per byte, last dim = D/2 packed elements)");
+        TORCH_CHECK(attention_out_dtype == at::kHalf || attention_out_dtype == at::kBFloat16,
+                    "attention_out_dtype must be torch.float16 or torch.bfloat16 for MXFP4 inputs");
+        TORCH_CHECK(inner_precise == 4, "inner_precise must be 4 for MXFP4 (quant_mode 2/3), got ", inner_precise);
+        TORCH_CHECK(!softmax_lse_flag, "softmax_lse_flag is not supported for MXFP4 (quant_mode 2/3)");
+    }
+    // dst_type_max is meaningful only for MXFP4 (custom quant range for CX):
+    // 0.0, or a value in [6.0, 12.0]. Keep it 0.0 elsewhere so a stray value
+    // is not silently ignored.
+    if (is_mxfp4) {
+        TORCH_CHECK(dst_type_max == 0.0 || (dst_type_max >= 6.0 && dst_type_max <= 12.0),
+                    "dst_type_max must be 0.0 or in [6.0, 12.0] for MXFP4 (quant_mode 2/3), got ", dst_type_max);
     } else {
-        TORCH_CHECK(q_dtype == at::kHalf || q_dtype == at::kBFloat16,
-                    "query/key/value dtype must be float16, bfloat16 or float8_e4m3fn");
-        TORCH_CHECK(attention_out_dtype == q_dtype,
-                    "attention_out_dtype must equal the input dtype for float16/bfloat16 inputs");
+        TORCH_CHECK(dst_type_max == 0.0, "dst_type_max is only meaningful for MXFP4 (quant_mode 2/3); got ",
+                    dst_type_max, " with quant_mode ", effective_quant_mode);
     }
 
-    // FP8-only dequant scales (aclnnBlockSparseAttentionV2). Absent on the
-    // FP16/BF16 path → passed through as nullptr. When present, the kernel
-    // validates the full FP8 shape rules; here we only check the basics.
+    // The current kernel accepts pQuantScale in no quant_mode (aclnn V3
+    // rejects a non-null value). Exposed for signature parity / future use.
     auto is_present = [](const c10::optional<at::Tensor> &t) { return t.has_value() && t->defined(); };
-    // All-or-none contract: the FP8 dequant path needs q, k and v scales
-    // together. Reject a partial set here rather than failing obscurely
-    // deep inside the kernel.
+    TORCH_CHECK(!is_present(p_quant_scale),
+                "p_quant_scale must be None — the current kernel does not accept it in any quant_mode");
+
+    // Dequant scales: all-or-none, and present exactly when quantized.
+    // Reject a partial set here rather than failing obscurely in the kernel.
     const bool q_present = is_present(q_dequant_scale);
     const bool k_present = is_present(k_dequant_scale);
     const bool v_present = is_present(v_dequant_scale);
     TORCH_CHECK(q_present == k_present && k_present == v_present,
                 "q_dequant_scale, k_dequant_scale and v_dequant_scale must be provided "
-                "all together (FP8 dequant path) or all omitted (FP16/BF16 path); got "
+                "all together (quantized path) or all omitted (FP16/BF16 path); got "
                 "q=",
                 q_present, ", k=", k_present, ", v=", v_present);
-    // The dequant path and the FP8 input dtype are two sides of the same coin:
-    // FP8 inputs require the scales, and FP16/BF16 inputs must not carry them.
-    if (q_dtype == at::kFloat8_e4m3fn) {
-        TORCH_CHECK(q_present, "float8_e4m3fn inputs require q_dequant_scale, k_dequant_scale and "
-                               "v_dequant_scale (FP32 4-D reverse-quant factors)");
+    if (effective_quant_mode == NO_QUANT) {
+        TORCH_CHECK(!q_present, "q/k/v_dequant_scale are only valid for quantized inputs (quant_mode 1/2/3)");
     } else {
-        TORCH_CHECK(!q_present, "q/k/v_dequant_scale are only valid for float8_e4m3fn inputs");
+        TORCH_CHECK(q_present, is_mxfp4 ? "MXFP4 inputs require q/k/v_dequant_scale (float8_e8m0fnu MX block scales)" :
+                                          "float8_e4m3fn inputs require q_dequant_scale, k_dequant_scale and "
+                                          "v_dequant_scale (FP32 4-D reverse-quant factors)");
     }
-    auto check_dequant = [&is_present](const c10::optional<at::Tensor> &t, const char *name) {
+    // Scale dtype per mode: FP8 → FP32; MXFP4 → FLOAT8_E8M0 (mirrors aclnn V3).
+    const at::ScalarType expected_scale_dtype = is_mxfp4 ? at::ScalarType::Float8_e8m0fnu : at::kFloat;
+    auto check_dequant = [&](const c10::optional<at::Tensor> &t, const char *name) {
         if (is_present(t)) {
-            TORCH_CHECK(t->scalar_type() == at::kFloat, name, " must be float32 when provided");
+            TORCH_CHECK(t->scalar_type() == expected_scale_dtype, name, " must be ",
+                        is_mxfp4 ? "float8_e8m0fnu" : "float32", " for quant_mode ", effective_quant_mode);
             TORCH_CHECK(t->is_contiguous(), name, " must be contiguous when provided");
         }
     };
@@ -132,12 +202,18 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
     check_dequant(k_dequant_scale, "k_dequant_scale");
     check_dequant(v_dequant_scale, "v_dequant_scale");
 
-    // Pre-allocate outputs. Use at::empty with explicit sizes+options instead
-    // of empty_like so torch_npu doesn't attempt to inherit `query`'s memory
-    // format and warn under allow_internal_format=False. attentionOut keeps
-    // query's shape but takes `attention_out_dtype` — which differs from the input dtype
-    // on the FP8 dequant path (fp8 in → fp16/bf16 out).
-    at::Tensor attention_out = at::empty(query.sizes(), query.options().dtype(attention_out_dtype));
+    // Pre-allocate outputs. attentionOut keeps query's logical shape with
+    // `attention_out_dtype`. For MXFP4 the input is PACKED (float4_e2m1fn_x2:
+    // last dim holds D/2 bytes = D values), while attentionOut is FP16/BF16
+    // with the LOGICAL head dim — so its last dim is 2x the packed input's.
+    at::Tensor attention_out;
+    if (is_mxfp4) {
+        auto out_sizes = query.sizes().vec();
+        out_sizes.back() *= 2; // packed D/2 → logical D
+        attention_out = at::empty(out_sizes, query.options().dtype(attention_out_dtype));
+    } else {
+        attention_out = at::empty(query.sizes(), query.options().dtype(attention_out_dtype));
+    }
 
     // LSE shape is layout-dependent (kernel infershape hardcodes LSE_DIM_D=1, see
     // attention/block_sparse_attention/op_host/block_sparse_attention_infershape.cpp):
@@ -145,7 +221,7 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
     //   BNSD → [B, N, S, 1] (query is [B, N, S, D])
     //   BSND → [B, S, N, 1] (query is [B, S, N, D])
     // BNSD and BSND both take query dims {0,1,2} + a trailing 1; TND takes {0,1} + 1.
-    // When disabled, an empty {0} tensor is passed (kernel ignores it).
+    // When disabled (always the case for MXFP4), an empty {0} tensor is passed.
     at::Tensor softmax_lse;
     auto opts_f32 = query.options().dtype(at::kFloat);
     if (softmax_lse_flag) {
@@ -164,34 +240,35 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
     const at::Tensor null_tensor; // default-constructed = undefined
 
     // Layout strings → char*. The aclnn signature takes `char *`, the generic
-    // ConvertType<T> template (line 399 of aclnn_common.h) passes them through.
+    // ConvertType<T> template of aclnn_common.h passes them through.
     std::string q_layout(q_input_layout);
     std::string kv_layout(kv_input_layout);
     char *q_layout_ptr = const_cast<char *>(q_layout.c_str());
     char *kv_layout_ptr = const_cast<char *>(kv_layout.c_str());
 
     // ACLNN_CMD → ConvertTypes(Ts &...args) takes args by non-const lvalue
-    // reference (see common/inc/aclnn_common.h:487, :619). All call-site args
-    // MUST be lvalues — rvalue temporaries like `static_cast<int64_t>(...)`
-    // don't bind. Materialize the int64 LSE flag in a named local.
+    // reference. All call-site args MUST be lvalues — rvalue temporaries like
+    // `static_cast<int64_t>(...)` don't bind. Materialize computed values in
+    // named locals (function parameters are already lvalues).
     int64_t softmax_lse_flag_i64 = softmax_lse_flag ? 1 : 0;
 
-    // Single line replaces ~180 lines of manual aclTensor / workspace / sync
-    // plumbing from the standalone torch_interface.cpp. Arg order must match
-    // aclnnBlockSparseAttentionV2GetWorkspaceSize() in
-    // attention/block_sparse_attention/op_host/op_api/aclnn_block_sparse_attention_v2.h.
-    // The c10::optional dequant scales bind to ConvertTypes(Ts&...) as const
-    // lvalues; ConvertType(const c10::optional<at::Tensor>&) yields nullptr
-    // when they are absent (the FP16/BF16 path).
-    ACLNN_CMD(aclnnBlockSparseAttentionV2, query, key, value, block_sparse_mask,
+    // Arg order must match aclnnBlockSparseAttentionV3GetWorkspaceSize() in
+    // attention/block_sparse_attention/op_host/op_api/aclnn_block_sparse_attention_v3.h:
+    // (..., vDequantScaleOptional, pQuantScaleOptional, qInputLayout, ...,
+    //  softmaxLseFlag, quantMode, dstTypeMax, attentionOut, softmaxLseOptional).
+    // The c10::optional scales bind to ConvertTypes(Ts&...) as const lvalues;
+    // ConvertType(const c10::optional<at::Tensor>&) yields nullptr when absent.
+    ACLNN_CMD(aclnnBlockSparseAttentionV3, query, key, value, block_sparse_mask,
               null_tensor, // attenMaskOptional — always nullptr
               block_shape, actual_seq_lengths, actual_seq_lengths_kv,
               null_tensor,     // blockTableOptional — always nullptr (PagedAttention unused)
-              q_dequant_scale, // qDequantScaleOptional — FP8 only; nullptr for FP16/BF16
-              k_dequant_scale, // kDequantScaleOptional — FP8 only; nullptr for FP16/BF16
-              v_dequant_scale, // vDequantScaleOptional — FP8 only; nullptr for FP16/BF16
+              q_dequant_scale, // qDequantScaleOptional — FP8: FP32; MXFP4: E8M0; nullptr for FP16/BF16
+              k_dequant_scale, // kDequantScaleOptional — idem
+              v_dequant_scale, // vDequantScaleOptional — idem
+              p_quant_scale,   // pQuantScaleOptional — must be nullptr on the current kernel
               q_layout_ptr, kv_layout_ptr, num_key_value_heads, mask_type, scale_value, inner_precise, block_size,
-              pre_tokens, next_tokens, softmax_lse_flag_i64, attention_out, softmax_lse);
+              pre_tokens, next_tokens, softmax_lse_flag_i64, effective_quant_mode, dst_type_max, attention_out,
+              softmax_lse);
 
     return std::make_tuple(attention_out, softmax_lse);
 }

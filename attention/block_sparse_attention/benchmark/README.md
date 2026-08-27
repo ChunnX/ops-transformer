@@ -183,3 +183,13 @@ path manipulation.
   units, e.g. `BSA_FRAME=8,1,29,1`). Default is `FrameWidths(29,1,29,1)`.
   Useful for keeping token-coverage matched across different `BSA_BLOCK_SIZE_KV`
   runs, and for avoiding infeasibility at high sparsity + coarse KV granularity.
+- `BSA_QUANT_MODE` — quantization mode (aclnnBlockSparseAttentionV3):
+  `0` = none (default, fp16/bf16), `1` = FP8 (`float8_e4m3fn` + FP32 dequant
+  scales), `2` = MXFP4 OCP, `3` = MXFP4 CX (`float4_e2m1fn_x2` + `float8_e8m0fnu`
+  MX block scales). Modes 1/2/3 require an **Ascend 950** (v220 has no FP8/FP4
+  binaries), force `BLOCK_SIZE_KV` to a multiple of 256, emit bf16 outputs, and
+  skip the (fp16/bf16-only) reference comparison. Example on a 950:
+  `BSA_QUANT_MODE=1 python benchmark.py`.
+- `BSA_DST_TYPE_MAX` — MXFP4 CX custom quant range (only with
+  `BSA_QUANT_MODE=3`): `0.0` (default, use the dtype max) or a value in
+  `[6.0, 12.0]`.

@@ -485,6 +485,61 @@ def gen_pfa_inputs(
     return q, k, v, actseqlen, actseqlenkv
 
 
+def gen_quant_inputs(shape: WorkloadShape, quant_mode: int, device: str = "npu:0"):
+    """Generate quantized q/k/v (BNSD) for `quant_mode` 1 (FP8) or 2/3 (MXFP4).
+
+    Returns (q, k, v, actseqlen, actseqlenkv, (q_scale, k_scale, v_scale)).
+    Ascend 950 only — v220 has no FP8/FP4 binaries.
+
+    FP8  : q/k/v float8_e4m3fn; FP32 per-block reverse-quant factors —
+           q [B, N, ceil(Sq/128), 1]; k/v [B, N, ceil(Skv/block_kv), 1]
+           (blockShapeX must be 128 and blockShapeY a multiple of 256 for FP8).
+    MXFP4: q/k/v torch.float4_e2m1fn_x2 (packed: last dim D/2, built as random
+           bytes — FP4 E2M1 has no NaN/Inf encodings); float8_e8m0fnu MX block
+           scales set to 2^0=1.0 (byte 127) —
+           q [B, N, S, D/64, 2]; k [B, N, S, D/64, 2]; v [B, N, ceil(S/64), D, 2].
+    """
+    b, h, s_q, s_kv, d = shape.b, shape.h, shape.s_q, shape.s_kv, shape.d
+    actseqlen, actseqlenkv = [s_q] * b, [s_kv] * b
+    if quant_mode == 1:  # FP8
+
+        def fp8(*sz):
+            return torch.randn(*sz).to(torch.float8_e4m3fn).to(device)
+
+        q, k, v = fp8(b, h, s_q, d), fp8(b, h, s_kv, d), fp8(b, h, s_kv, d)
+        block_kv = max(shape.block_size_kv, 256)  # FP8: blockShapeY % 256 == 0
+        ceil_q = (s_q + 127) // 128
+        ceil_kv = (s_kv + block_kv - 1) // block_kv
+        qs = torch.rand(b, h, ceil_q, 1, dtype=torch.float32, device=device) + 0.5
+        ks = torch.rand(b, h, ceil_kv, 1, dtype=torch.float32, device=device) + 0.5
+        vs = torch.rand(b, h, ceil_kv, 1, dtype=torch.float32, device=device) + 0.5
+        return q, k, v, actseqlen, actseqlenkv, (qs, ks, vs)
+    if quant_mode in (2, 3):  # MXFP4
+        fp4 = getattr(torch, "float4_e2m1fn_x2", None)
+        e8m0 = getattr(torch, "float8_e8m0fnu", None)
+        if fp4 is None or e8m0 is None:
+            raise RuntimeError(
+                "MXFP4 needs torch >= 2.8 (float4_e2m1fn_x2 / float8_e8m0fnu)"
+            )
+
+        def mxfp4(*sz):
+            return torch.randint(0, 256, sz, dtype=torch.uint8, device=device).view(fp4)
+
+        def ones_e8m0(*sz):
+            return torch.full(sz, 127, dtype=torch.uint8, device=device).view(e8m0)
+
+        q = mxfp4(b, h, s_q, d // 2)
+        k = mxfp4(b, h, s_kv, d // 2)
+        v = mxfp4(b, h, s_kv, d // 2)
+        qs = ones_e8m0(b, h, s_q, d // 64, 2)
+        ks = ones_e8m0(b, h, s_kv, d // 64, 2)
+        vs = ones_e8m0(b, h, (s_kv + 63) // 64, d, 2)
+        return q, k, v, actseqlen, actseqlenkv, (qs, ks, vs)
+    raise ValueError(
+        f"quant_mode must be 1, 2 or 3 for gen_quant_inputs, got {quant_mode}"
+    )
+
+
 def create_attention_mask(
     shape: WorkloadShape,
     sparsity: float,

@@ -11,15 +11,18 @@
 Data-type × layout coverage for `cann_ops_transformer.ops.block_sparse_attention`.
 
 This complements test_attn.py / test_lse.py (which fix dtype=bf16, layout=BNSD)
-by exercising the full support matrix the kernel advertises:
+by exercising the full support matrix the kernel advertises
+(aclnnBlockSparseAttentionV3):
 
-                 │ out dtype        │ SoC          │ layouts
-  ───────────────┼──────────────────┼──────────────┼──────────────────
-  float16        │ float16          │ all          │ TND, BNSD, BSND*
-  bfloat16       │ bfloat16         │ all          │ TND, BNSD, BSND*
-  float8_e4m3fn  │ float16/bfloat16 │ 950 (arch35) │ TND, BNSD, BSND
+                     │ quant_mode │ out dtype        │ SoC          │ layouts
+  ───────────────────┼────────────┼──────────────────┼──────────────┼─────────────────
+  float16            │ 0          │ float16          │ all          │ TND, BNSD, BSND*
+  bfloat16           │ 0          │ bfloat16         │ all          │ TND, BNSD, BSND*
+  float8_e4m3fn      │ 1 (or 0→1) │ float16/bfloat16 │ 950 (arch35) │ TND, BNSD, BSND
+  float4_e2m1fn_x2   │ 2 / 3      │ float16/bfloat16 │ 950 (arch35) │ TND, BNSD, BSND
 
-  *BSND requires an Ascend 950 (arch35).
+  *BSND requires an Ascend 950 (arch35). MXFP4 (quant_mode 2/3) additionally
+  requires inner_precise=4 and does not support softmax_lse.
 
 What runs where
 ───────────────
@@ -27,11 +30,13 @@ What runs where
   These are validated *numerically* by layout-equivalence: the same data fed as
   TND must match the BNSD result (the kernel does identical math, only the
   memory layout differs). No external reference needed.
-• FP8 and BSND          → require arch35; SKIPPED on A2/A3 with a clear reason.
+• FP8, MXFP4 and BSND   → require arch35; SKIPPED on A2/A3 with a clear reason.
   On arch35 they run as contract tests (shape / dtype / finiteness) plus, for
-  BSND, layout-equivalence vs BNSD.
-• The SoC guard and attention_out_dtype validation are checked on every chip — those are
-  pure front-end logic and must reject bad combinations *before* the kernel.
+  BSND, layout-equivalence vs BNSD, and for FP8, explicit-vs-auto quant_mode
+  equality.
+• The SoC guard, quant_mode resolution, MXFP4 constraint checks and
+  attention_out_dtype validation are checked on every chip — those are pure
+  front-end logic and must reject bad combinations *before* the kernel.
 
 Run with:
     pytest test_dtypes_layouts.py -v
@@ -44,7 +49,9 @@ import torch
 import torch_npu  # noqa: F401  (registers the NPU backend)
 import cann_ops_transformer
 from cann_ops_transformer.ops.block_sparse_attention import (
+    _check_mxfp4_constraints,
     _resolve_out_dtype,
+    _resolve_quant_mode,
 )
 
 SEED = 42
@@ -120,6 +127,9 @@ def _run_bnsd(
     attention_out_dtype=None,
     dequant=None,
     block_kv=BLOCK_KV,
+    quant_mode=0,
+    dst_type_max=0.0,
+    p_quant_scale=None,
 ):
     """q_*_bnsd: [B, N, S, D]. Returns (out[B,N,S,D], lse_or_none).
 
@@ -151,6 +161,9 @@ def _run_bnsd(
         q_dequant_scale=qds,
         k_dequant_scale=kds,
         v_dequant_scale=vds,
+        p_quant_scale=p_quant_scale,
+        quant_mode=quant_mode,
+        dst_type_max=dst_type_max,
         attention_out_dtype=attention_out_dtype,
     )
     return out, (lse_t if lse else None)
@@ -242,7 +255,7 @@ class TestOutDtypeResolution:
             _resolve_out_dtype(torch.float8_e4m3fn, torch.float8_e4m3fn)
 
     def test_unsupported_input_dtype(self):
-        with pytest.raises(ValueError, match="must be float16, bfloat16 or float8"):
+        with pytest.raises(ValueError, match="must be float16, bfloat16, float8"):
             _resolve_out_dtype(torch.float32, None)
 
 
@@ -482,6 +495,275 @@ def test_fp8_requires_dequant_scales():
         _run_bnsd(q, q, q, n, 1 / math.sqrt(d), attention_out_dtype=torch.bfloat16)
 
 
+# ════════════════════════════════════════════════════════════════════════════
+#  aclnn V3 quantization surface — quant_mode / MXFP4 / p_quant_scale /
+#  dst_type_max.
+#  • Resolution & constraint checks are pure front-end logic → run on EVERY
+#    chip (they must reject bad combinations before the kernel).
+#  • MXFP4 execution (quant_mode 2/3) needs an Ascend 950 binary → gated, like
+#    FP8, on _arch35_only (plus torch >= 2.8 for the packed FP4 dtype).
+# ════════════════════════════════════════════════════════════════════════════
+
+_FP4_DTYPE = getattr(torch, "float4_e2m1fn_x2", None)
+_MX_SCALE_DTYPE = getattr(torch, "float8_e8m0fnu", None)
+_HAS_MX_DTYPES = _FP4_DTYPE is not None and _MX_SCALE_DTYPE is not None
+_needs_mx_dtypes = pytest.mark.skipif(
+    not _HAS_MX_DTYPES,
+    reason="torch build lacks float4_e2m1fn_x2 / float8_e8m0fnu (needs torch >= 2.8)",
+)
+# MXFP4 follows the FP8 block-shape constraint superset (KV block multiple of
+# 256 also satisfies the 950's 16-aligned rule).
+MXFP4_BLOCK_KV = 256
+
+
+def _make_mxfp4(*shape, device=DEVICE):
+    """Packed-FP4 tensor: random bytes viewed as float4_e2m1fn_x2.
+
+    The last dim of `shape` is in PACKED elements (D/2 bytes for logical D).
+    FP4 E2M1 has no NaN/Inf encodings, so random bytes are always finite —
+    good enough for contract tests (shape/dtype/finiteness). `view` is
+    metadata-only, so building uint8 on-device first avoids relying on
+    torch_npu fp4 copy support.
+    """
+    raw = torch.randint(0, 256, shape, dtype=torch.uint8, device=device)
+    return raw.view(_FP4_DTYPE)
+
+
+def _mxfp4_scales(b, n, kv_n, s, d, device=DEVICE):
+    """E8M0 MX block scales, all set to 2^0 = 1.0 (byte 127). BNSD shapes per
+    block_sparse_attention_tiling.cpp ValidateMxfp4DequantScale:
+      q [B, N, S, D/64, 2];  k [B, kvN, S, D/64, 2];  v [B, kvN, ceil(S/64), D, 2].
+    `d` is the LOGICAL head dim (the packed q/k/v tensors carry d/2)."""
+
+    def ones_e8m0(*shape):
+        raw = torch.full(shape, 127, dtype=torch.uint8, device=device)
+        return raw.view(_MX_SCALE_DTYPE)
+
+    s_div64 = (s + 63) // 64
+    qds = ones_e8m0(b, n, s, d // 64, 2)
+    kds = ones_e8m0(b, kv_n, s, d // 64, 2)
+    vds = ones_e8m0(b, kv_n, s_div64, d, 2)
+    return qds, kds, vds
+
+
+class TestQuantModeResolution:
+    """Pure-function checks (no device): quant_mode ↔ dtype pairing and the
+    MXFP4 constraint mirror. Runs on every chip."""
+
+    def test_fp16_bf16_default_to_no_quant(self):
+        assert _resolve_quant_mode(torch.float16, 0) == 0
+        assert _resolve_quant_mode(torch.bfloat16, 0) == 0
+
+    def test_fp8_auto_upgrades_to_mode_1(self):
+        # V2-era callers pass no quant_mode: FP8 must select the FP8 path.
+        assert _resolve_quant_mode(torch.float8_e4m3fn, 0) == 1
+
+    def test_fp8_explicit_mode_1(self):
+        assert _resolve_quant_mode(torch.float8_e4m3fn, 1) == 1
+
+    def test_invalid_quant_mode_value(self):
+        with pytest.raises(ValueError, match="quant_mode must be"):
+            _resolve_quant_mode(torch.bfloat16, 5)
+
+    def test_mode_dtype_mismatch(self):
+        with pytest.raises(ValueError, match="quant_mode 1"):
+            _resolve_quant_mode(torch.bfloat16, 1)
+        with pytest.raises(ValueError, match="MXFP4"):
+            _resolve_quant_mode(torch.bfloat16, 2)
+        with pytest.raises(ValueError, match="MXFP4"):
+            _resolve_quant_mode(torch.float8_e4m3fn, 3)
+
+    @_needs_mx_dtypes
+    def test_fp4_requires_mxfp4_mode(self):
+        assert _resolve_quant_mode(_FP4_DTYPE, 2) == 2
+        assert _resolve_quant_mode(_FP4_DTYPE, 3) == 3
+        with pytest.raises(ValueError, match="quant_mode 0"):
+            _resolve_quant_mode(_FP4_DTYPE, 0)
+
+    def test_mxfp4_constraints(self):
+        # inner_precise must be 4
+        with pytest.raises(ValueError, match="inner_precise must be 4"):
+            _check_mxfp4_constraints(2, 0, False, None, 0.0)
+        # LSE unsupported
+        with pytest.raises(ValueError, match="softmax_lse_flag"):
+            _check_mxfp4_constraints(2, 4, True, None, 0.0)
+        # dst_type_max: 0.0 or [6, 12] for MXFP4; must be 0.0 otherwise
+        _check_mxfp4_constraints(3, 4, False, None, 0.0)
+        _check_mxfp4_constraints(3, 4, False, None, 8.0)
+        with pytest.raises(ValueError, match="dst_type_max"):
+            _check_mxfp4_constraints(3, 4, False, None, 5.0)
+        with pytest.raises(ValueError, match="dst_type_max"):
+            _check_mxfp4_constraints(0, 0, False, None, 8.0)
+
+    def test_p_quant_scale_rejected_in_all_modes(self):
+        sentinel = torch.zeros(1)
+        for mode in (0, 1, 2, 3):
+            with pytest.raises(ValueError, match="p_quant_scale must be None"):
+                _check_mxfp4_constraints(mode, 4, False, sentinel, 0.0)
+
+    @_needs_mx_dtypes
+    def test_fp4_out_dtype_defaults_to_bf16(self):
+        assert _resolve_out_dtype(_FP4_DTYPE, None) == torch.bfloat16
+        assert _resolve_out_dtype(_FP4_DTYPE, torch.float16) == torch.float16
+        with pytest.raises(ValueError, match="float16 or torch.bfloat16"):
+            _resolve_out_dtype(_FP4_DTYPE, torch.float32)
+
+
+def test_p_quant_scale_rejected_in_call():
+    """A non-None p_quant_scale must be rejected by the front-end on any chip
+    (the current kernel accepts it in no quant_mode)."""
+    torch.manual_seed(SEED)
+    b, n, s, d = 1, 1, 256, 128
+    q = torch.randn(b, n, s, d, dtype=torch.bfloat16, device=DEVICE)
+    pqs = torch.ones(b, n, (s + 127) // 128, 1, dtype=torch.float32, device=DEVICE)
+    with pytest.raises((RuntimeError, ValueError), match="p_quant_scale"):
+        _run_bnsd(q, q, q, n, 1 / math.sqrt(d), p_quant_scale=pqs)
+
+
+def test_dst_type_max_rejected_without_mxfp4():
+    """dst_type_max is MXFP4-only; a stray value must not be silently ignored."""
+    torch.manual_seed(SEED)
+    b, n, s, d = 1, 1, 256, 128
+    q = torch.randn(b, n, s, d, dtype=torch.bfloat16, device=DEVICE)
+    with pytest.raises((RuntimeError, ValueError), match="dst_type_max"):
+        _run_bnsd(q, q, q, n, 1 / math.sqrt(d), dst_type_max=8.0)
+
+
+def test_invalid_quant_mode_rejected_in_call():
+    torch.manual_seed(SEED)
+    b, n, s, d = 1, 1, 256, 128
+    q = torch.randn(b, n, s, d, dtype=torch.bfloat16, device=DEVICE)
+    with pytest.raises((RuntimeError, ValueError), match="quant_mode"):
+        _run_bnsd(q, q, q, n, 1 / math.sqrt(d), quant_mode=7)
+
+
+@_needs_mx_dtypes
+@pytest.mark.skipif(_IS_ARCH35, reason="guard only fires on arch v220 (A2/A3)")
+def test_mxfp4_on_v220_raises_clear_error():
+    """MXFP4 inputs on A2/A3 must fail with a clear 'requires Ascend 950' error
+    (mirrors test_fp8_on_v220_raises_clear_error)."""
+    torch.manual_seed(SEED)
+    b, n, s, d = 1, 1, 256, 128
+    q = _make_mxfp4(b, n, s, d // 2)  # packed: last dim = D/2
+    qds, kds, vds = _mxfp4_scales(b, n, n, s, d)
+    with pytest.raises(RuntimeError, match="Ascend 950"):
+        _run_bnsd(
+            q,
+            q,
+            q,
+            n,
+            1 / math.sqrt(d),
+            attention_out_dtype=torch.bfloat16,
+            dequant=(qds, kds, vds),
+            block_kv=MXFP4_BLOCK_KV,
+            quant_mode=2,
+        )
+
+
+@_arch35_only
+def test_fp8_explicit_quant_mode_matches_auto():
+    """quant_mode=1 explicitly and quant_mode=0 (auto-upgraded for FP8 inputs)
+    must select the same kernel and produce identical outputs."""
+    torch.manual_seed(SEED)
+    b, n, s, d = 1, 2, 512, 128
+    scale = 1 / math.sqrt(d)
+    q = _make_fp8(b, n, s, d)
+    qds, kds, vds = _fp8_dequant_scales(b, n, n, s, s, block_kv=FP8_BLOCK_KV)
+
+    kwargs = dict(
+        attention_out_dtype=torch.bfloat16,
+        dequant=(qds, kds, vds),
+        block_kv=FP8_BLOCK_KV,
+    )
+    out_auto, _ = _run_bnsd(q, q, q, n, scale, **kwargs)  # quant_mode=0 → auto 1
+    out_explicit, _ = _run_bnsd(q, q, q, n, scale, quant_mode=1, **kwargs)
+    assert torch.equal(out_auto.cpu(), out_explicit.cpu()), (
+        "explicit quant_mode=1 diverged from the auto-upgraded FP8 path"
+    )
+
+
+@_arch35_only
+@_needs_mx_dtypes
+@pytest.mark.parametrize(
+    "attention_out_dtype", _EQ_DTYPES, ids=lambda d: "out_" + str(d).split(".")[-1]
+)
+def test_mxfp4_ocp_bnsd_contract(attention_out_dtype):
+    """MXFP4 OCP (quant_mode=2): op must run and return a finite fp16/bf16
+    tensor with the LOGICAL head dim (2x the packed input's last dim)."""
+    torch.manual_seed(SEED)
+    b, n, s, d = 1, 2, 512, 128
+    q = _make_mxfp4(b, n, s, d // 2)
+    qds, kds, vds = _mxfp4_scales(b, n, n, s, d)
+
+    out, lse = _run_bnsd(
+        q,
+        q,
+        q,
+        n,
+        1 / math.sqrt(d),
+        attention_out_dtype=attention_out_dtype,
+        dequant=(qds, kds, vds),
+        block_kv=MXFP4_BLOCK_KV,
+        quant_mode=2,
+    )
+    assert out.shape == (b, n, s, d), "MXFP4 out must carry the logical head dim"
+    assert out.dtype == attention_out_dtype
+    assert lse is None  # LSE unsupported for MXFP4 (flag defaults to False)
+    assert torch.isfinite(out.float()).all(), (
+        "MXFP4 attention produced non-finite values"
+    )
+
+
+@_arch35_only
+@_needs_mx_dtypes
+@pytest.mark.parametrize("dst_type_max", [0.0, 8.0], ids=["dstmax_default", "dstmax_8"])
+def test_mxfp4_cx_bnsd_contract(dst_type_max):
+    """MXFP4 CX (quant_mode=3) with default and custom dst_type_max."""
+    torch.manual_seed(SEED)
+    b, n, s, d = 1, 2, 512, 128
+    q = _make_mxfp4(b, n, s, d // 2)
+    qds, kds, vds = _mxfp4_scales(b, n, n, s, d)
+
+    out, _ = _run_bnsd(
+        q,
+        q,
+        q,
+        n,
+        1 / math.sqrt(d),
+        attention_out_dtype=torch.bfloat16,
+        dequant=(qds, kds, vds),
+        block_kv=MXFP4_BLOCK_KV,
+        quant_mode=3,
+        dst_type_max=dst_type_max,
+    )
+    assert out.shape == (b, n, s, d)
+    assert torch.isfinite(out.float()).all()
+
+
+@_arch35_only
+@_needs_mx_dtypes
+def test_mxfp4_rejects_lse_and_wrong_inner_precise():
+    """On a 950, MXFP4 misuse must still fail fast at the front-end."""
+    torch.manual_seed(SEED)
+    b, n, s, d = 1, 1, 256, 128
+    q = _make_mxfp4(b, n, s, d // 2)
+    qds, kds, vds = _mxfp4_scales(b, n, n, s, d)
+    common = dict(
+        attention_out_dtype=torch.bfloat16,
+        dequant=(qds, kds, vds),
+        block_kv=MXFP4_BLOCK_KV,
+        quant_mode=2,
+    )
+    with pytest.raises((RuntimeError, ValueError), match="softmax_lse_flag"):
+        _run_bnsd(q, q, q, n, 1 / math.sqrt(d), lse=True, **common)
+    with pytest.raises(
+        (RuntimeError, ValueError), match="MXFP4.*requires torch.float4|inner_precise"
+    ):
+        # fp16 data with an MXFP4 quant_mode: rejected by the dtype pairing.
+        q16 = torch.randn(b, n, s, d, dtype=torch.float16, device=DEVICE)
+        _run_bnsd(q16, q16, q16, n, 1 / math.sqrt(d), **common)
+
+
 # ── __main__ smoke ───────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -504,6 +786,8 @@ if __name__ == "__main__":
     if not _IS_ARCH35:
         test_fp8_on_v220_raises_clear_error()
         test_bsnd_on_v220_raises_clear_error()
-        log.info("SoC guard raises clean errors for FP8/BSND on v220 OK")
+        if _HAS_MX_DTYPES:
+            test_mxfp4_on_v220_raises_clear_error()
+        log.info("SoC guard raises clean errors for FP8/MXFP4/BSND on v220 OK")
 
     log.info("Smoke tests passed.")
