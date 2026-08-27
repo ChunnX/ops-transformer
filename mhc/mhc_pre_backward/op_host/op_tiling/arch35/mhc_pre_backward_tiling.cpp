@@ -51,6 +51,7 @@ const constexpr uint32_t LEGAL_N_COUNT = 3;
 const constexpr float DEFAULT_HC_EPS = 1e-6f;
 
 const constexpr uint32_t C0_SET_VALUE = 1;
+const constexpr uint32_t C1_L1_DOUBLE_BUFFER_DEPTH = 2;
 const constexpr uint32_t ALPHA_GRAD_CORE_FACTOR = 24;
 const constexpr uint32_t BUFFER_NUM = 2;
 const constexpr uint32_t EXTRA_BUFFER_SIZE = 2 * 1024 * 1024;
@@ -269,8 +270,9 @@ void MhcPreBackwardTiling::SetC1TilingParams()
     tilingData_.matmulTilingC1.set_dbL0C(C0_SET_VALUE);
     tilingData_.matmulTilingC1.set_stepKa(C0_SET_VALUE);
     tilingData_.matmulTilingC1.set_stepKb(C0_SET_VALUE);
-    tilingData_.matmulTilingC1.set_depthA1(C0_SET_VALUE);
-    tilingData_.matmulTilingC1.set_depthB1(C0_SET_VALUE);
+    // depth为step的两倍，开启C1的L1双缓冲，使下一块搬运能够与当前块计算重叠。
+    tilingData_.matmulTilingC1.set_depthA1(C1_L1_DOUBLE_BUFFER_DEPTH);
+    tilingData_.matmulTilingC1.set_depthB1(C1_L1_DOUBLE_BUFFER_DEPTH);
     tilingData_.matmulTilingC1.set_stepM(C0_SET_VALUE);
     tilingData_.matmulTilingC1.set_stepN(C0_SET_VALUE);
 }
