@@ -935,6 +935,10 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
     uint32_t currentNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - dealStartND_);
     uint32_t currentBSBlock = Min(SINGLE_M, uint32_t(totalLength_));
     uint32_t buffId = 0;
+    // 单L1缓冲初始为空，先分别向两个AIV投放一次写入许可；后续许可由C1消费完成后归还。
+    AscendC::CrossCoreSetFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE1>(CROSS_CORE_WAIT_FLAG_C1_CONSUMED);
+    AscendC::CrossCoreSetFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE1>(
+        CROSS_CORE_WAIT_FLAG_C1_CONSUMED + CROSS_CORE_SUBBLOCK_FLAG_OFFSET);
     // 预执行第一个C0
     ProcessC0(dealStartND_, currentNDBlock, 0, currentBSBlock, buffId);
 
@@ -1044,11 +1048,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2Pipeline()
         LocalTensor<P> sumBuf = vecOutQueueSmall_.AllocTensor<P>();
         for (uint32_t offsetBS = 0; offsetBS < totalLength_; offsetBS += SINGLE_M) {
             uint32_t currentBSBlock = Min(SINGLE_M, uint32_t(totalLength_ - offsetBS));
-            if (buffId > 0) {
-                // L1只有一块，等待C1完成上一分块后再覆盖。
-                AscendC::CrossCoreWaitFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE3>(
-                    CROSS_CORE_WAIT_FLAG_C1_CONSUMED);
-            }
+            // 每轮先取得AIC归还的单L1缓冲写入许可，首轮许可由AIC预先投放。
+            AscendC::CrossCoreWaitFlag<CROSS_CORE_C1_FLAG_INDEX, PIPE_MTE3>(
+                CROSS_CORE_WAIT_FLAG_C1_CONSUMED);
             // 等待C0完成计算
             AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C0);
 
