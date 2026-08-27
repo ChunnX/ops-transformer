@@ -1325,9 +1325,23 @@ static MegaMoeUnpermuteBufferConfig CalcUnpermuteBufferConfig(const MegaMoeTilin
 
 static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilingData)
 {
-    // MTE 统一使用 per-expert AIC ready 表；group counter 只服务 layered 量化 Combine。
-    if (tilingData->topoType != TOPO_TYPE_URMA || tilingData->combineQuantMode == COMBINE_NO_QUANT ||
-        tilingData->moeExpertPerRank == 0U) {
+    if (tilingData->moeExpertPerRank == 0U) {
+        return 0U;
+    }
+
+    // Compact A8W8 MTE wave 的 GMM2/Combine 依赖按 expert-local 256-token group 发布。
+    // 同一 token 的 topK expert id 不重复，因此单专家从每张卡最多接收 numMaxTokensPerRank 行；
+    // 再与整卡 maxOutputSize 取小，避免按整卡容量为每个专家重复预留 counter。
+    if (UseCompactRouteIndex(tilingData->topoType, tilingData->groupedMatmulMode)) {
+        uint64_t maxTokenCountForOneExpert =
+            static_cast<uint64_t>(tilingData->numMaxTokensPerRank) * tilingData->epWorldSize;
+        maxTokenCountForOneExpert =
+            std::min(maxTokenCountForOneExpert, static_cast<uint64_t>(tilingData->maxOutputSize));
+        return ops::CeilDiv(maxTokenCountForOneExpert, static_cast<uint64_t>(COMBINE_TOKEN_GROUP_SIZE));
+    }
+
+    // URMA group counter 仅服务 layered 量化 Combine。
+    if (tilingData->topoType != TOPO_TYPE_URMA || tilingData->combineQuantMode == COMBINE_NO_QUANT) {
         return 0U;
     }
 
@@ -1349,7 +1363,7 @@ static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilin
 static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
 {
     bool useMteWaveCombine = tilingData->topoType == TOPO_TYPE_MTE;
-    bool useGlobalWaveSequence = UseCompactRouteIndex(tilingData->topoType, tilingData->groupedMatmulMode);
+    bool useMteGroupReady = UseCompactRouteIndex(tilingData->topoType, tilingData->groupedMatmulMode);
     bool useGroupGrainedActivationFlag = tilingData->topoType == TOPO_TYPE_MTE;
     bool useGroupSyncCounters = tilingData->topoType == TOPO_TYPE_URMA;
     uint64_t maxWavesPerExpert = ops::CeilDiv<uint64_t>(tilingData->maxOutputSize, L1_TILE_M_256);
@@ -1365,8 +1379,12 @@ static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
         flagElementCount += static_cast<uint64_t>(tilingData->aicNum) * INT_CACHELINE;
     }
     if (useMteWaveCombine) {
-        uint64_t readySlotCount = useGlobalWaveSequence ? 1U : moeExpertCount;
-        flagElementCount += readySlotCount * tilingData->aicNum * INT_CACHELINE;
+        if (useMteGroupReady) {
+            flagElementCount +=
+                tilingData->combineSyncSlotCountPerExpert * moeExpertCount * static_cast<uint64_t>(INT_CACHELINE);
+        } else {
+            flagElementCount += moeExpertCount * tilingData->aicNum * INT_CACHELINE;
+        }
     }
     if (useGroupSyncCounters) {
         flagElementCount += tilingData->combineSyncSlotCountPerExpert * moeExpertCount * INT_CACHELINE;

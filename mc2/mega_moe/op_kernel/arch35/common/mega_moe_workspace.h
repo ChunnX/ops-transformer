@@ -119,7 +119,7 @@ struct WorkspaceInfo {
         // 以下三组 flag 仅由 MoE 专家使用；共享专家路径不使用这些 flag。
         bool useGroupGrainedActivationFlag = tilingData->topoType == TOPO_TYPE_MTE;
         bool useMteWaveCombine = tilingData->topoType == TOPO_TYPE_MTE;
-        bool useGlobalWaveSequence = UseCompactRouteIndex(tilingData->topoType, tilingData->groupedMatmulMode);
+        bool useMteGroupReady = UseCompactRouteIndex(tilingData->topoType, tilingData->groupedMatmulMode);
         bool useGroupSyncCounters = tilingData->topoType == TOPO_TYPE_URMA;
 
         int64_t maxWavesPerExpert =
@@ -153,9 +153,17 @@ struct WorkspaceInfo {
 
         if (useMteWaveCombine) {
             gmm2ReadyPtr = base + workspaceSize;
-            // A8W8 用每 AIC 一个单调递增的全局 wave 序号；W4 保持逐专家槽，避免改变既有路径。
-            int64_t readySlotCount = useGlobalWaveSequence ? 1 : moeExpertCount;
-            workspaceSize += SIZE_INT_32 * readySlotCount * tilingData->aicNum * INT_CACHELINE;
+            if (useMteGroupReady) {
+                // Compact A8W8 的每个 expert-local 256-token group 使用一个完成 counter；GMM2 的每个 N tile
+                // 完成后累加，Combine 只等待自己即将消费的 group。沿用 gmm2ReadyPtr 作为该区域的起点，
+                // 同时暴露语义更明确的 counter 指针，避免额外分配两份同步区。
+                gmm2CombineSyncCounterPtr = gmm2ReadyPtr;
+                workspaceSize += SIZE_INT_32 * static_cast<int64_t>(tilingData->combineSyncSlotCountPerExpert) *
+                                 moeExpertCount * INT_CACHELINE;
+            } else {
+                // W4 保持逐专家、逐 AIC ready 槽，避免改变既有路径。
+                workspaceSize += SIZE_INT_32 * moeExpertCount * tilingData->aicNum * INT_CACHELINE;
+            }
         }
 
         if (useGroupSyncCounters) {
