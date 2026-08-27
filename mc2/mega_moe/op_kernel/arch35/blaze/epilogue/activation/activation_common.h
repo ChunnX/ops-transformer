@@ -105,27 +105,20 @@ struct ActivationLoopPlan {
     uint32_t outputPaddingElementCountPerRow = 0U;
 };
 
-__aicore__ inline ActivationLoopPlan BuildActivationLoopPlan(
-    uint32_t validRowCount, uint32_t validColumnCount, uint32_t inputRowStrideElements,
-    uint32_t outputRowStrideElements)
-{
-    ActivationLoopPlan plan;
-    plan.validRowCount = validRowCount;
-    plan.validColumnCount = validColumnCount;
-    plan.inputRowStrideElements = inputRowStrideElements;
-    plan.outputRowStrideElements = outputRowStrideElements;
-    plan.fullVectorLoopCountPerRow = validColumnCount / VECTOR_LENGTH_FP32;
-    plan.tailElementCountPerRow = validColumnCount % VECTOR_LENGTH_FP32;
-    plan.outputPaddingElementCountPerRow =
-        outputRowStrideElements > validColumnCount ? outputRowStrideElements - validColumnCount : 0U;
-    return plan;
-}
-
 template <typename InputType>
 __aicore__ inline ActivationLoopPlan BuildActivationLoopPlan(const GatedActivationArgs<InputType> &args)
 {
-    return BuildActivationLoopPlan(args.validRowCount, args.validColumnCount, args.inputRowStrideElements,
-                                   args.outputRowStrideElements);
+    ActivationLoopPlan plan;
+    plan.validRowCount = args.validRowCount;
+    plan.validColumnCount = args.validColumnCount;
+    plan.inputRowStrideElements = args.inputRowStrideElements;
+    plan.outputRowStrideElements = args.outputRowStrideElements;
+    plan.fullVectorLoopCountPerRow = args.validColumnCount / VECTOR_LENGTH_FP32;
+    plan.tailElementCountPerRow = args.validColumnCount % VECTOR_LENGTH_FP32;
+    plan.outputPaddingElementCountPerRow = args.outputRowStrideElements > args.validColumnCount
+                                               ? args.outputRowStrideElements - args.validColumnCount
+                                               : 0U;
+    return plan;
 }
 
 } // namespace Activation
