@@ -101,6 +101,7 @@ private:
     int32_t numEntriesPerRank_{0};
     int64_t hiddenDim_{0};
     int64_t hiddenBytes_{0};
+    uint32_t numRecv_{0};
     int32_t inputDtype_{0};
     int32_t outputDtype_{0};
     AscendC::TPipe *pipe_{nullptr};
@@ -164,6 +165,9 @@ __aicore__ inline void EngramFetchGradUnique::RunScatterCast(uint32_t numRecv, G
     flushEvtVMte3Arr_[1] = static_cast<int32_t>(pipe_->FetchEventID(AscendC::HardEvent::V_MTE3));
     flushEvtMte3VArr_[0] = static_cast<int32_t>(pipe_->FetchEventID(AscendC::HardEvent::MTE3_V));
     flushEvtMte3VArr_[1] = static_cast<int32_t>(pipe_->FetchEventID(AscendC::HardEvent::MTE3_V));
+    numRecv_ = numRecv;
+    AscendC::printf("ENGRAM SCATTER-IN core=%uu numRecv=%u totalBlocks=%u numEntriesPerRank=%d hiddenDim=%lld\n",
+                    aivId_, numRecv, totalBlocks_, numEntriesPerRank_, static_cast<int64_t>(hiddenDim_));
     accumIdx_ = 0;
     flushPending_[0] = false;
     flushPending_[1] = false;
@@ -371,6 +375,13 @@ __aicore__ inline void EngramFetchGradUnique::LoadCoreRange(uint32_t numRecv, GM
         end = static_cast<uint32_t>(ub.GetValue(aivId_ + 1U));
     }
 
+    if (end > numRecv || start > numRecv || start > end) {
+        AscendC::printf("ENGRAM OOB-LCR core=%uu numRecv=%u start=%u end=%u preOff=%d\n", aivId_, numRecv, start, end,
+                        preCoreOffset);
+        if (end > numRecv) { end = numRecv; }
+        if (start > numRecv) { start = numRecv; }
+        if (start > end) { start = end; }
+    }
     myPreCoreOffset_ = preCoreOffset;
 }
 
@@ -382,6 +393,11 @@ __aicore__ inline void EngramFetchGradUnique::FlushAccum(GM_ADDR gradUniqueOutGM
     uint32_t outDtypeSize = GetDtypeSize(outputDtype_);
     uint64_t gmByteOffset =
         static_cast<uint64_t>(accumCompactIdx_) * static_cast<uint64_t>(hiddenDim_) * outDtypeSize;
+    if (accumCompactIdx_ < 0 || accumCompactIdx_ >= numEntriesPerRank_) {
+        AscendC::printf("ENGRAM OOB-FlushAccum core=%uu accumCompactIdx=%d numEntriesPerRank=%d\n", aivId_,
+                        accumCompactIdx_, numEntriesPerRank_);
+        return;
+    }
     constexpr uint32_t MAX_BLOCK_BYTES = 65535U;
 
     if (outputDtype_ == Mc2Kernel::ENGRAM_DT_FLOAT) {
@@ -506,6 +522,11 @@ __aicore__ inline void EngramFetchGradUnique::AccumulateSubBatch(AscendC::LocalT
             continue;
         }
         int32_t compactIdx = compactIdxBuf.GetValue(subStart + j);
+        if (compactIdx < 0 || compactIdx >= numEntriesPerRank_) {
+            AscendC::printf("ENGRAM OOB-accumIdx core=%uu compactIdx=%d numEntriesPerRank=%d\n", aivId_, compactIdx,
+                            numEntriesPerRank_);
+            continue;
+        }
         if (compactIdx != accumCompactIdx_) {
             if (accumDirty_) {
                 FlushAccum(gradUniqueOutGM);
@@ -546,6 +567,14 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessBatchUnique(uint32_t cu
     AscendC::GlobalTensor<int32_t> compGM;
     sortedEntryGM.SetGlobalBuffer((__gm__ int32_t *)recvLocalEntryOutGM);
     compGM.SetGlobalBuffer((__gm__ int32_t *)sortCompanionGM);
+    if (cur >= numRecv_) {
+        AscendC::printf("ENGRAM OOB-PBU core=%uu cur=%u numRecv=%u\n", aivId_, cur, numRecv_);
+        return 0;
+    }
+    if (cur + batchLen > numRecv_) {
+        AscendC::printf("ENGRAM OOB-PBU2 core=%uu cur=%u batchLen=%u numRecv=%u\n", aivId_, cur, batchLen, numRecv_);
+        batchLen = numRecv_ - cur;
+    }
     AscendC::DataCopyExtParams cpParams{1U, static_cast<uint32_t>(batchLen * sizeof(int32_t)), 0U, 0U, 0U};
     AscendC::DataCopyPadExtParams<int32_t> cpPad{false, 0, 0, 0};
     AscendC::DataCopyPad(entryUb, sortedEntryGM[cur], cpParams, cpPad);
@@ -670,6 +699,11 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
 
         for (uint32_t j = 0; j < subLen; j++) {
             int32_t recvIdx = recvIdxBuf.GetValue(subStart + j);
+            if (recvIdx < 0 || static_cast<uint32_t>(recvIdx) >= numRecv_) {
+                AscendC::printf("ENGRAM OOB-recvIdx core=%uu numRecv=%u recvIdx=%d subStart=%u j=%u cur?\n", aivId_,
+                                numRecv_, recvIdx, subStart, j);
+                recvIdx = 0;
+            }
             GM_ADDR gradAddr = recvGradGM + static_cast<uint64_t>(recvIdx) * hiddenBytes_;
             AscendC::DataCopyExtParams gradParams{1U, static_cast<uint32_t>(hiddenBytes_), 0U, 0U, 0U};
             AscendC::GlobalTensor<uint8_t> gradSrcGM;
@@ -703,6 +737,11 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessScatterBatch(
             for (uint32_t j = 0; j < subLen; j++) {
                 if (directFlagBuf.GetValue(subStart + j) != 0) {
                     int32_t compactIdx = compactIdxBuf.GetValue(subStart + j);
+                    if (compactIdx < 0 || compactIdx >= numEntriesPerRank_) {
+                        AscendC::printf("ENGRAM OOB-compactIdx core=%uu compactIdx=%d numEntriesPerRank=%d\n", aivId_,
+                                        compactIdx, numEntriesPerRank_);
+                        continue;
+                    }
                     FlushDirect(gradRaw, j, compactIdx, gradUniqueOutGM);
                 }
             }
