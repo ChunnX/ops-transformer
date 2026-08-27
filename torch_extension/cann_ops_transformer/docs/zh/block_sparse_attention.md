@@ -44,7 +44,7 @@
   self-attention的计算公式一般定义如下，其中$Q、K、V$为输入样本的重要属性元素，是输入样本经过空间变换得到，且可以统一到一个特征空间中。公式及算子名称中的"Attention"为"self-attention"的简写。稀疏块大小为$blockShapeX \times blockShapeY$，由`block_sparse_mask`指定稀疏模式。
 
   $$
-  attentionOut = Softmax(scale \cdot query \cdot key_{sparse}^T) \cdot value_{sparse}
+  attentionOut = Softmax(scale \cdot query \cdot key_{sparse}^T + atten\_mask) \cdot value_{sparse}
   $$
 
   其中$scale$为缩放系数，一般取$scale = D^{-0.5}$，$key_{sparse}$、$value_{sparse}$为`block_sparse_mask`选取的KV块。
