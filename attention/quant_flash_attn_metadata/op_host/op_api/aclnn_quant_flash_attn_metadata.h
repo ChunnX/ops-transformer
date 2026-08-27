@@ -24,8 +24,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnQuantFlashAttnMetadataGe
     int64_t winLeft, int64_t winRight, const char *layoutQ, const char *layoutQDescale, const char *layoutKv,
     const char *layoutOut, bool isTraining, const aclTensor *metaData, uint64_t *workspaceSize, aclOpExecutor **executor);
 
-__attribute__((visibility("default"))) aclnnStatus aclnnQuantFlashAttnMetadata(void *workspace,
-                                                                               uint64_t workspaceSize,
+__attribute__((visibility("default"))) aclnnStatus aclnnQuantFlashAttnMetadata(void *workspace, uint64_t workspaceSize,
                                                                                aclOpExecutor *executor,
                                                                                aclrtStream stream);
 
@@ -33,4 +32,4 @@ __attribute__((visibility("default"))) aclnnStatus aclnnQuantFlashAttnMetadata(v
 }
 #endif
 
-#endif // ACLNN_QUANT_FLASH_ATTN_METADATA_H
+#endif  // ACLNN_QUANT_FLASH_ATTN_METADATA_H
