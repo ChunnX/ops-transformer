@@ -23,7 +23,7 @@
 namespace GroupedMatmulAdd {
 
 template <typename LayoutA, typename LayoutB>
-__aicore__ inline void GmmAddTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR groupList, GM_ADDR y, GM_ADDR tiling)
+__aicore__ inline void GroupedMatMulAddKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR groupList, GM_ADDR y, GM_ADDR tiling)
 {
     GET_TILING_DATA_MEMBER(GmmAddTilingDataParams, gmmAddParams, gmmAddParams, tiling);
     GET_TILING_DATA_MEMBER(GmmAddTilingDataParams, mmTilingData, mmTilingData, tiling);

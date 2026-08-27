@@ -400,7 +400,7 @@ extern "C" __global__ __aicore__ void grouped_matmul_add(GM_ADDR x, GM_ADDR weig
     REGISTER_TILING_DEFAULT(GroupedMatmulAdd::GmmAddTilingDataParams);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIC_ONLY);
     if (TILING_KEY_IS(10000900009000090001UL)) { // split_k
-        GroupedMatmulAdd::GmmAddTensorApi<AscendC::Te::DNExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>(
+        GroupedMatmulAdd::GroupedMatMulAddKernel<AscendC::Te::DNExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>(
             x, weight, groupList, y, tiling);
     }
 #else
