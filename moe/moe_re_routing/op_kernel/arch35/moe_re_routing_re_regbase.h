@@ -18,7 +18,7 @@
 
 #include "kernel_operator.h"
 #include "platform.h"
-#include "op_kernel/math_util.h"
+#include "op_kernel/mc2_math_util.h"
 #include "moe_re_routing_common.h"
 
 namespace MoeReRouting {

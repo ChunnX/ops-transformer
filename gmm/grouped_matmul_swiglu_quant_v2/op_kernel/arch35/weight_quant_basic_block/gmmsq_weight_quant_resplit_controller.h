@@ -17,7 +17,7 @@
 
 #include "kernel_cube_intf.h"
 #include "kernel_operator_list_tensor_intf.h"
-#include "op_kernel/math_util.h"
+#include "op_kernel/mc2_math_util.h"
 #include "basic_block_config.h"
 #include "basic_block_vf_mx.h"
 #include "weight_quant_tool.h"

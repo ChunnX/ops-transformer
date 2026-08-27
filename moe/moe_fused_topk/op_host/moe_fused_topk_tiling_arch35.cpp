@@ -25,7 +25,7 @@
 #include "platform/platform_info.h"
 #include "securec.h"
 #include "tiling/tiling_api.h"
-#include "util/math_util.h"
+#include "util/mc2_math_util.h"
 
 namespace {
 constexpr uint32_t BYTE_BLOCK = 32;

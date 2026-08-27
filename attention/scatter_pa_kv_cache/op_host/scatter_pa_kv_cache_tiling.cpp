@@ -18,7 +18,7 @@
 #include "tiling/tiling_api.h"
 #include "scatter_pa_kv_cache_tiling.h"
 #include "log/log.h"
-#include "util/math_util.h"
+#include "util/mc2_math_util.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "platform/platform_info_def.h"
 #include "op_common/op_host/util/platform_util.h"

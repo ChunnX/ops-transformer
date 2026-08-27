@@ -18,7 +18,7 @@
 #include "log/log.h"
 #include "register/op_impl_registry.h"
 #include "tiling/platform/platform_ascendc.h"
-#include "util/math_util.h"
+#include "util/mc2_math_util.h"
 #include "util/shape_util.h"
 #include "ring_attention_update_tiling.h"
 #include "ring_attention_update_tiling_arch35.h"

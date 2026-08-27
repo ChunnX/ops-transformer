@@ -19,7 +19,7 @@
 #include <cstdint>
 
 #include "kernel_operator.h"
-#include "op_kernel/math_util.h"
+#include "op_kernel/mc2_math_util.h"
 #include "mega_moe_constants.h"
 #include "mega_moe_types.h"
 

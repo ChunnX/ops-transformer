@@ -24,7 +24,7 @@
 #include "../op_kernel/arch35/rotary_position_embedding_grad_tiling_data.h"
 #include "platform/platform_info.h"
 #include "atvoss/reduce/reduce_tiling.h"
-#include "util/math_util.h"
+#include "util/mc2_math_util.h"
 
 namespace optiling {
 

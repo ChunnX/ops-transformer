@@ -20,7 +20,7 @@
 #include "register/op_def_registry.h"
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_templates_registry.h"
-#include "util/math_util.h"
+#include "util/mc2_math_util.h"
 #include "platform/platform_infos_def.h"
 #include "platform/platform_ascendc.h"
 #include "moe_gating_top_k_backward_tiling.h"

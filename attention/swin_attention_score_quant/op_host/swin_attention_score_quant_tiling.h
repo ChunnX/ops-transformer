@@ -21,7 +21,7 @@
 #include "op_host/tiling_type.h"
 #include "register/tilingdata_base.h"
 #include "register/op_def_registry.h"
-#include "util/math_util.h" 
+#include "util/mc2_math_util.h" 
 #include "platform/platform_info.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "platform/platform_infos_def.h"

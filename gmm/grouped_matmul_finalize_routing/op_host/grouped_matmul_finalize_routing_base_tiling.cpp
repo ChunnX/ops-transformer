@@ -14,7 +14,7 @@
  */
 #include "grouped_matmul_finalize_routing_base_tiling.h"
 #include "tiling/platform/platform_ascendc.h"
-#include "util/math_util.h"
+#include "util/mc2_math_util.h"
 #include "err/ops_err.h"
 
 #include <limits>

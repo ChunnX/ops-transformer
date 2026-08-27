@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "op_kernel/math_util.h"
+#include "op_kernel/mc2_math_util.h"
 #include "op_kernel/platform_util.h"
 
 #ifndef SCATTER_PA_KV_CACHE_ARCH35_COMMON_H

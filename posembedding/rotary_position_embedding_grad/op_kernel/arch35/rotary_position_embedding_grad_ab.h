@@ -15,7 +15,7 @@
 #ifndef ROTARY_POSITION_EMBEDDING_GRAD_AB_H
 #define ROTARY_POSITION_EMBEDDING_GRAD_AB_H
 
-#include "op_kernel/math_util.h"
+#include "op_kernel/mc2_math_util.h"
 #include "op_kernel/load_store_utils.h"
 #include "rotary_position_embedding_grad_common.h"
 #include "rotary_position_embedding_grad_tiling_data.h"

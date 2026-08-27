@@ -22,7 +22,7 @@
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_util.h"
 #include "platform/platform_info.h"
-#include "util/math_util.h"
+#include "util/mc2_math_util.h"
 
 namespace optiling {
 
