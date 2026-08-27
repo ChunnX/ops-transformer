@@ -72,7 +72,7 @@ public:
     static constexpr uint32_t dVTemplateAlign64 = Align64Func((uint16_t)FA_T::dVBaseSize);
 
     static constexpr uint32_t DB = 2;
-    static constexpr uint32_t PRELOAD_N = 1; // C1 C1 C2
+    static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2 C2
     static constexpr bool HAS_MASK = hasAtten;
     static constexpr bool FLASH_DECODE = FA_T::flashDecode;
     static constexpr bool HAS_DROP = false;                             // 不支持drop mask
