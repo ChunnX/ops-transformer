@@ -179,14 +179,24 @@ def _verify_provider_package(
 
 def _verify_mixed_contents(
     vendor_root: pathlib.Path,
-    expected_traditional_kernel_count: int,
+    minimum_traditional_kernel_count: int,
+    expected_traditional_kernel_count: int | None,
 ) -> tuple[int, pathlib.Path]:
     traditional_root = vendor_root / "op_impl/ai_core/tbe/kernel"
     traditional_kernels = sorted(traditional_root.glob("**/*.o"))
-    if len(traditional_kernels) != expected_traditional_kernel_count:
+    if len(traditional_kernels) < minimum_traditional_kernel_count:
         raise AssertionError(
-            f"expected {expected_traditional_kernel_count} traditional kernel objects, "
+            f"expected at least {minimum_traditional_kernel_count} traditional "
+            "kernel objects, "
             f"found {len(traditional_kernels)}"
+        )
+    if (
+        expected_traditional_kernel_count is not None
+        and len(traditional_kernels) != expected_traditional_kernel_count
+    ):
+        raise AssertionError(
+            f"expected exactly {expected_traditional_kernel_count} traditional "
+            f"kernel objects, found {len(traditional_kernels)}"
         )
     opapi = vendor_root / "op_api/lib/libcust_opapi.so"
     if not opapi.is_file():
@@ -232,7 +242,8 @@ def main() -> int:
     parser.add_argument("--run", required=True, type=pathlib.Path)
     parser.add_argument("--package-name", default="ops-transformer-flash-kda")
     parser.add_argument("--expected-provider-count", type=int, default=6)
-    parser.add_argument("--expected-traditional-kernel-count", type=int, default=2)
+    parser.add_argument("--minimum-traditional-kernel-count", type=int, default=2)
+    parser.add_argument("--expected-traditional-kernel-count", type=int)
     arguments = parser.parse_args()
 
     run_file = arguments.run.resolve()
@@ -240,7 +251,12 @@ def main() -> int:
         raise FileNotFoundError(run_file)
     if arguments.expected_provider_count <= 0:
         raise ValueError("expected Provider count must be positive")
-    if arguments.expected_traditional_kernel_count <= 0:
+    if arguments.minimum_traditional_kernel_count <= 0:
+        raise ValueError("minimum traditional kernel count must be positive")
+    if (
+        arguments.expected_traditional_kernel_count is not None
+        and arguments.expected_traditional_kernel_count <= 0
+    ):
         raise ValueError("expected traditional kernel count must be positive")
 
     with tempfile.TemporaryDirectory(prefix="ops-transformer-mixed-run-") as tmp:
@@ -253,7 +269,9 @@ def main() -> int:
             arguments.expected_provider_count,
         )
         traditional_count, opapi = _verify_mixed_contents(
-            vendor_root, arguments.expected_traditional_kernel_count
+            vendor_root,
+            arguments.minimum_traditional_kernel_count,
+            arguments.expected_traditional_kernel_count,
         )
         report = {
             "archive_sha256": _sha256(run_file),

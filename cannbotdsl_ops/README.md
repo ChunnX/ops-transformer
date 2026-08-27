@@ -60,6 +60,8 @@ cmake -S . -B build-provider \
   -DBUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG=ON \
   -DASCEND_COMPUTE_UNIT=ascend950 \
   -DENABLE_CANNBOTDSL_PROVIDER_ACLNN=ON \
+  -DENABLE_BUILD_PKG=ON \
+  -DCANN_3RD_LIB_PATH=/path/to/preinstalled/third_party \
   -DCANNBOTDSL_SOURCE_DIR=/path/to/cannbot-dsl \
   -DCANNBOTDSL_RUNTIME_ROOT=/path/to/cannbot-dsl/build/python_packages \
   -DCANNBOTDSL_PROVIDER_OPBASE_SOURCE_DIR=/path/to/opbase \
@@ -71,6 +73,9 @@ cmake --build build-provider --target cust_opapi -j
 cmake --install build-provider --prefix /path/to/stage
 cmake --build build-provider --target package -j
 ```
+
+离线打包时，`CANN_3RD_LIB_PATH` 下可预置 `makeself/makeself.sh`；CPack 会优先
+复用该目录，不要求在 ops-transformer 源码树内另建 `third_party/makeself`。
 
 需要编译设备 smoke 时，在配置命令中增加
 `-DCANNBOTDSL_BUILD_FLASH_KDA_ACLNN_SMOKE=ON`，然后执行：
@@ -121,6 +126,10 @@ packages/vendors/<vendor>_transformer/
 run_file=/path/to/cann-ops-transformer-<vendor>_linux-<arch>.run
 python cannbotdsl_ops/tests/verify_mixed_run.py --run "${run_file}"
 
+# 发布配置需要锁定传统 kernel 变体数时，可增加精确数量门禁
+python cannbotdsl_ops/tests/verify_mixed_run.py --run "${run_file}" \
+  --expected-traditional-kernel-count 8
+
 # 下列命令用于按层排查验收失败
 extract_dir=$(mktemp -d /tmp/ops-transformer-run.XXXXXX)
 
@@ -141,7 +150,8 @@ nm -D -C "${extract_dir}/packages/vendors/<vendor>_transformer/op_api/lib/libcus
 检查。离线构建还必须预置项目声明的第三方依赖，否则 CPack preinstall 可能进入
 依赖下载流程。`verify_mixed_run.py` 不安装归档，并会自动检查 registry/manifest
 语义摘要、entry schema v3、12 个公共参数、2 个输出参数、3 个内部 specialization、artifact
-digest、包内 checksum、传统 kernel 数量、Provider DSO 数量和混合导出符号。
+digest、包内 checksum、传统 kernel 数量下限、Provider DSO 数量和混合导出符号；
+发布配置还可用命令行参数锁定传统 kernel 的精确数量。
 
 ## 实机验证
 
@@ -162,10 +172,11 @@ Ascend950PR 上已完成以下验证：
 - `lower_bound=-5.01` 在 GetWorkspace 阶段返回 `161002`，调用前设置的非零
   workspace/executor 哨兵被主动清为 0/null；
 - 已生成并只读解包实际混合 `.run`：归档内 SHA256 校验通过，Provider 包内全部
-  文件 checksum 通过；包中同时存在 2 个传统 ChunkKda `.o`、6 个 FlashKDA
+  文件 checksum 通过；包中同时存在 8 个传统 ChunkKda `.o`、6 个 FlashKDA
   `provider.so`，且 `libcust_opapi.so` 同时导出 ChunkKda ACLNN、FlashKDA ACLNN
-  和 `l0op::FlashKda`。本次验证样本大小为 5,792,597 字节，整包 SHA256 为
-  `f03be6c3132873f29dc5a4994b2795568d45d0bcb6f7f087cc5c11540deffded`；
+  和 `l0op::FlashKda`。本次官方 CPack 完整构建样本大小为 11,653,862 字节，
+  整包 SHA256 为
+  `b8bf3bf6b1c8851c23d165cd81bcb3eb524446109be621db36528d77a0432e3e`；
 
 ## 当前 FlashKDA 契约
 
