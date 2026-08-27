@@ -36,6 +36,7 @@ const static int64_t CS_PERFORMANCE_MODE_TOP_K = 8LL;           // 对齐 A3 PER
 const static int64_t CS_PERFORMANCE_MODE_RANGE_MAX = 32LL;      // 对齐 A3 PERFORMANCE_MODE_RANGE_MAX
 const static int64_t CS_COUNTING_SORT_THRESHOLD = 1536LL;       // 对齐 A3 COUNTING_SORT_THRESHOLD
 const static int64_t CS_ASSIST_NUM = 256LL;                     // 对齐 A3 ASSIST_NUM
+const static int64_t NUM_32 = 32;
 
 ge::graphStatus MoeInitRoutingV3TilingArch35::GetPlatformInfo()
 {
@@ -141,11 +142,14 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::DoOpTiling()
             // 形状与语义可能不符；此处保持与 A3 对齐，用例需保证无过滤（effective==n*k）才自洽。
             int64_t perCoreTokensEst = Ops::Base::CeilDiv(n_, aivCoreNum_);
             int64_t estUb = EstimateArch35CountingSortFullLoadUB(perCoreTokensEst);
+            bool expandDtypeValid = (expandedXDtype_ == ge::DT_INT8 || expandedXDtype_ == ge::DT_FLOAT16 ||
+                                     expandedXDtype_ == ge::DT_BF16 || expandedXDtype_ == ge::DT_FLOAT);
             bool fullLoadCond = estUb > 0 && estUb <= availUbSize_ - LENGTH_1024 && ep_ == 1 &&
                                 quantMode_ == QUANT_MODE_UNQUANT && k_ == CS_PERFORMANCE_MODE_TOP_K &&
                                 dropPadMode_ == DROP_PAD_MODE_DROPLESS &&
                                 expertTokensNumType_ == EXPERT_TOKENS_TYPE_COUNT &&
-                                actualExpertNum <= CS_FULLLOAD_MAX_ACTUAL_EXPERT_NUM && actualExpertNum > 0;
+                                actualExpertNum <= CS_FULLLOAD_MAX_ACTUAL_EXPERT_NUM && actualExpertNum > 0 &&
+                                ((expertEnd_ - expertStart_) <= NUM_32 && expandDtypeValid);
             if (fullLoadCond) {
                 ComputeArch35CountingSortFullLoadTiling();
                 // 回读实际模式：Compute 内部 UB 校验失败会置 0
