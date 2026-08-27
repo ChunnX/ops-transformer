@@ -1140,9 +1140,13 @@ __aicore__ inline void EngramFetchGradArch35::Process()
 
         CrossRankBarrier();
         UnsortGrad();
+        SyncAll<true>();
         sendStartCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
         SendGradToPeers();
         sendEndCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
+        RecvGradFromPeers();
+        DrainAndSendFlags();
+        SyncAll<true>();
 
         GlobalTensor<int32_t> numRecvGM;
         numRecvGM.SetGlobalBuffer((__gm__ int32_t *)numRecvOutGM_);
@@ -1150,7 +1154,6 @@ __aicore__ inline void EngramFetchGradArch35::Process()
         uint32_t numRecv = static_cast<uint32_t>(numRecvGM.GetValue(0));
         uint64_t t0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
         if (numRecv == 0) {
-            FinishExchangeGrad();
             uniqueScatter_.WriteNumUniqueZero(numUniqueOutGM_);
             processEndCycle_ = static_cast<uint64_t>(AscendC::GetSystemCycle());
             AscendC::printf("ENGRAM core=%uu numRecv=0\n", aivId_);
@@ -1189,7 +1192,6 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             uniqueScatter_.ZeroGradUnique(numRecv, gradUniqueOutGM_);
             uint64_t t4 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
-            FinishExchangeGrad();
             SyncAll<true>();
             uint64_t t5 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
@@ -1205,9 +1207,9 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             uint64_t gapUs = (t0 - sendEndCycle_) / 1000U;
             uint64_t totalUs = (t6 - processStartCycle_) / 1000U;
             AscendC::printf("ENGRAM core=%uu pre=%lluu send=%lluu gap=%lluu init=%lluu sort=%lluu count=%lluu "
-                            "zero=%lluu drain=%lluu scatterCast=%lluu total=%lluu\n",
+                            "zero=%lluu scatterCast=%lluu total=%lluu\n",
                             aivId_, preUs, sendUs, gapUs, (t1 - t0) / 1000U, (t2 - t1) / 1000U, (t3 - t2) / 1000U,
-                            (t4 - t3) / 1000U, (t5 - t4) / 1000U, (t6 - t5) / 1000U, totalUs);
+                            (t4 - t3) / 1000U, (t6 - t5) / 1000U, totalUs);
         }
     }
 }
