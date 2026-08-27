@@ -411,6 +411,9 @@ def _mxfp8_customize_inputs(
     **kwargs,
 ):
     module = _mxfp8_load_golden_module()
+    # 根据 p_scale tensor 的 dtype 自动推断 p_scale_type
+    if p_scale is not None and _numel(p_scale) > 0 and p_scale.dtype == torch.float32:
+        p_scale_type = "float32"
     case = _mxfp8_assemble_case(
         query,
         key,
