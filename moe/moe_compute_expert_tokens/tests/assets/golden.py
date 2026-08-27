@@ -14,34 +14,51 @@ import numpy
 
 __spec__ = {
     "moe_compute_expert_tokens": "MoeComputeExpertTokensTestSpec",
+    "aclnnMoeComputeExpertTokens": "MoeComputeExpertTokensTestSpec",
 }
 
 
 class MoeComputeExpertTokensTestSpec:
     @staticmethod
-    def golden(sorted_experts, *, num_experts, **kwargs):
-        arr_length = sorted_experts.shape[-1]
-        res = numpy.arange(num_experts, dtype=numpy.int32)
-        for i in range(num_experts):
-            target = i
-            low = 0
-            high = arr_length - 1
-            target_location = -1
-            while low <= high:
-                mid = (low + high) // 2
-                if sorted_experts[mid] > target:
-                    high = mid - 1
-                else:
-                    low = mid + 1
-                    target_location = mid
-            res[i] = target_location + 1
+    def golden(sorted_experts, num_experts=None, out=None, **kwargs):
+        if num_experts is None:
+            num_experts = kwargs.get("num_experts", kwargs.get("numExperts", 0))
+        if hasattr(num_experts, "item"):
+            num_experts = num_experts.item()
+        if hasattr(sorted_experts, "numpy"):
+            sorted_experts = (
+                sorted_experts.detach().cpu().numpy()
+                if hasattr(sorted_experts, "detach")
+                else sorted_experts.numpy()
+            )
+        elif not isinstance(sorted_experts, numpy.ndarray):
+            sorted_experts = numpy.asarray(sorted_experts)
+        sorted_experts = sorted_experts.flatten()
+        res = numpy.array(
+            [numpy.count_nonzero(sorted_experts <= i) for i in range(num_experts)],
+            dtype=numpy.int32,
+        )
         return [res]
 
     @staticmethod
-    def customize_inputs(sorted_experts, **kwargs):
-        sorted_experts = numpy.sort(sorted_experts.flatten()).reshape(
-            sorted_experts.shape
-        )
+    def customize_inputs(sorted_experts, num_experts=None, out=None, **kwargs):
+        if isinstance(sorted_experts, numpy.ndarray):
+            flat = sorted_experts.ravel()
+            flat.sort()
+        elif hasattr(sorted_experts, "numpy"):
+            np_arr = (
+                sorted_experts.detach().cpu().numpy()
+                if hasattr(sorted_experts, "detach")
+                else sorted_experts.numpy()
+            )
+            np_arr = numpy.sort(np_arr.flatten())
+            import torch
+
+            sorted_experts.copy_(
+                torch.from_numpy(np_arr.reshape(sorted_experts.shape)).to(
+                    sorted_experts.dtype
+                )
+            )
         return (sorted_experts,)
 
     tolerance = {

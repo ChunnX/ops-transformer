@@ -158,8 +158,8 @@ class AclnnMoeInitRoutingQuantV2TestSpec:
     @staticmethod
     def customize_inputs(x, expertIdx, *args, **kwargs):
         expertNum = kwargs.get("expertNum", 0)
-        if not expertNum and len(args) >= 3:
-            expertNum = args[2]
+        if not expertNum and len(args) >= 5:
+            expertNum = args[4]
         if not expertNum or expertNum <= 0:
             expertNum = 100
         expertIdx.copy_(torch.randint(0, expertNum, expertIdx.shape, dtype=torch.int32))
@@ -304,10 +304,29 @@ class MoeInitRoutingQuantV2TestSpec:
         expert_num = kwargs.get("expert_num", 0)
         if not expert_num or expert_num <= 0:
             expert_num = 100
-        expert_idx = numpy.random.randint(
-            0, expert_num, size=expert_idx.size, dtype=numpy.int32
-        ).reshape(expert_idx.shape)
-        return (x, expert_idx)
+        if hasattr(expert_idx, "numpy"):
+            expert_idx_np = (
+                expert_idx.detach().cpu().numpy()
+                if hasattr(expert_idx, "detach")
+                else expert_idx.numpy()
+            )
+            expert_idx_np = numpy.random.randint(
+                0,
+                expert_num,
+                size=int(numpy.prod(expert_idx_np.shape)),
+                dtype=numpy.int32,
+            ).reshape(expert_idx_np.shape)
+            if hasattr(expert_idx, "copy_"):
+                expert_idx.copy_(expert_idx_np) if not hasattr(
+                    expert_idx, "detach"
+                ) else expert_idx.copy_(
+                    torch.from_numpy(expert_idx_np).to(expert_idx.dtype)
+                )
+        else:
+            expert_idx = numpy.random.randint(
+                0, expert_num, size=int(numpy.prod(expert_idx.shape)), dtype=numpy.int32
+            ).reshape(expert_idx.shape)
+        return (x, expert_idx) + tuple(args)
 
     tolerance = {
         "float32": {"standard": "stat_rel_err"},
