@@ -16,20 +16,19 @@
 #ifndef BLOCK_MX_MM_AIC_TO_AIV_BUILDER_H
 #define BLOCK_MX_MM_AIC_TO_AIV_BUILDER_H
 
-
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
 #else
 #include "kernel_operator.h"
 #endif
 
-#include "../utils/common_utils.h"
-#include "../utils/layout_utils.h"
+#include "../utils/cgmct_common_utils.h"
+#include "../utils/cgmct_layout_utils.h"
 #include "../utils/status_utils.h"
 #include "../utils/tuple_utils.h"
 
-#include "../block/block_mmad.h"
-#include "../policy/dispatch_policy.h"
+#include "../block/cgmct_block_mmad.h"
+#include "../policy/cgmct_dispatch_policy.h"
 #include "block_quant_with_tile_mmad_multi_block.h"
 
 namespace Cgmct {
@@ -103,13 +102,9 @@ public:
     // params
     using Params = Arguments;
 
-    __aicore__ inline BlockMxMmAicToAivBuilder()
-    {
-    }
+    __aicore__ inline BlockMxMmAicToAivBuilder() {}
 
-    __aicore__ inline ~BlockMxMmAicToAivBuilder()
-    {
-    }
+    __aicore__ inline ~BlockMxMmAicToAivBuilder() {}
 };
 } // namespace Block
 } // namespace Gemm

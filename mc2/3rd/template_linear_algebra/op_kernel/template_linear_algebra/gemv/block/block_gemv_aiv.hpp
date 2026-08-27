@@ -15,11 +15,11 @@
 #include "../../arch/resource.hpp"
 #include "../../coord.hpp"
 #include "../../gemv_coord.hpp"
-#include "../../gemv/helper.hpp"
-#include "../../gemm/helper.hpp"
+#include "../../gemv/tla_gemv_helper.hpp"
+#include "../../gemm/tla_gemm_helper.hpp"
 #include "../../layout/layout.hpp"
 #include "../../detail/alignment.hpp"
-#include "../../gemm/dispatch_policy.hpp"
+#include "../../gemm/tla_gemm_dispatch_policy.hpp"
 
 namespace Catlass::Gemv::Block {
 template <class UBTileShape_, class AType_, class XType_, class YType_, class BiasType_, class TileCopy_,
@@ -52,9 +52,7 @@ public:
     static constexpr uint32_t Ybuf_SIZE_ = 16 * 1024;
     static constexpr uint32_t workspace_SIZE_ = 32 * 1024;
     CATLASS_DEVICE
-    BlockGemv()
-    {
-    }
+    BlockGemv() {}
     /// Construct
     CATLASS_DEVICE
     BlockGemv(Arch::Resource<ArchTag> &resource, uint32_t UBufAddrStart = 0)

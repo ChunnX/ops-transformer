@@ -15,29 +15,29 @@
 
 #include "tests/utils/op_info_with_socversion.h"
 #include "tests/utils/platform.h"
-#include "tests/utils/log.h"
+#include "tests/utils/tests_utils_log.h"
 
 using namespace ops::adv::tests::utils;
 
-OpInfoWithSocversion::OpInfoWithSocversion() : OpInfoWithSocversion(ControlInfo(true, false))
-{
-}
+OpInfoWithSocversion::OpInfoWithSocversion()
+    : OpInfoWithSocversion(ControlInfo(true, false))
+{}
 
 OpInfoWithSocversion::OpInfoWithSocversion(const ControlInfo &ctr)
     : OpInfoWithSocversion(ctr, ExpectInfoWithSocversion())
-{
-}
+{}
 
 OpInfoWithSocversion::OpInfoWithSocversion(const ControlInfo &ctr, const ExpectInfoWithSocversion &exp)
     : OpInfoWithSocversion("Undefined", ctr, exp)
-{
-}
+{}
 
 OpInfoWithSocversion::OpInfoWithSocversion(const char *name, const ControlInfo &ctr,
                                            const ExpectInfoWithSocversion &exp)
-    : mName(name), mCtr(ctr), mExp(exp), mCtx(nullptr)
-{
-}
+    : mName(name),
+      mCtr(ctr),
+      mExp(exp),
+      mCtx(nullptr)
+{}
 
 bool OpInfoWithSocversion::SetContext(ContextIntf *ctxParam)
 {

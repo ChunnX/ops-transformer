@@ -15,21 +15,19 @@
 
 #include "tests/utils/tensor.h"
 #include <tikicpulib.h>
-#include "tests/utils/log.h"
+#include "tests/utils/tests_utils_log.h"
 
 using namespace ops::adv::tests::utils;
 
 Tensor::Tensor(const char *name, const std::initializer_list<int64_t> &shape, const char *shapeType, ge::DataType dType,
                ge::Format format, TensorType type)
     : TensorIntf(name, shape, shapeType, dType, format, type)
-{
-}
+{}
 
 Tensor::Tensor(const char *name, const std::vector<int64_t> &shape, const char *shapeType, ge::DataType dType,
                ge::Format format, TensorType type)
     : TensorIntf(name, shape, shapeType, dType, format, type)
-{
-}
+{}
 
 Tensor::~Tensor()
 {

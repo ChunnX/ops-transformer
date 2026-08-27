@@ -14,7 +14,7 @@
  */
 
 #include <utility>
-#include "tests/utils/log.h"
+#include "tests/utils/tests_utils_log.h"
 #include "aclnn_ffn.h"
 #include "aclnn_ffn_v2.h"
 #include "aclnn_ffn_v3.h"
@@ -90,16 +90,17 @@ bool FFNKernelRunCbf(void *curCase)
     return ret == ACL_SUCCESS;
 }
 
-AclnnFFNCase::AclnnFFNCase() : FFNCase(), mAclnnCtx(AclnnContext()), mAclnnParam(AclnnFFNParam())
-{
-}
+AclnnFFNCase::AclnnFFNCase()
+    : FFNCase(),
+      mAclnnCtx(AclnnContext()),
+      mAclnnParam(AclnnFFNParam())
+{}
 
 AclnnFFNCase::AclnnFFNCase(const char *name, bool enable, const char *dbgInfo, OpInfo opInfo, AclnnFFNParam aclnnParam,
                            int32_t tilingTemplatePriority)
     : FFNCase(name, enable, dbgInfo, std::move(opInfo), Param(), tilingTemplatePriority),
       mAclnnParam(std::move(aclnnParam))
-{
-}
+{}
 
 bool AclnnFFNCase::InitParam()
 {

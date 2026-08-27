@@ -15,8 +15,8 @@
 #include "../../arch/cross_core_sync.hpp"
 #include "../../arch/resource.hpp"
 #include "../../coord.hpp"
-#include "../../gemm/dispatch_policy.hpp"
-#include "../../gemm/helper.hpp"
+#include "../../gemm/tla_gemm_dispatch_policy.hpp"
+#include "../../gemm/tla_gemm_helper.hpp"
 #include "../../gemm_coord.hpp"
 
 ////////////////////////////////////////////////////////////////////
@@ -89,9 +89,7 @@ public:
 
     /// Destructor
     CATLASS_DEVICE
-    ~BlockMmad()
-    {
-    }
+    ~BlockMmad() {}
 
     /// Perform a block-scoped matrix multiply-accumulate
     CATLASS_DEVICE

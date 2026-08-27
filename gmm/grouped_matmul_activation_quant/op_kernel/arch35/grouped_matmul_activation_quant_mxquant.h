@@ -19,7 +19,7 @@
 #include "cgmct/kernel/kernel_gmm_activation_mxquant.h"
 #include "cgmct/block/block_mmad_mx.h"
 #include "cgmct/block/block_scheduler_gmm_aswt_with_tail_split.h"
-#include "cgmct/policy/dispatch_policy.h"
+#include "cgmct/policy/cgmct_dispatch_policy.h"
 #include "grouped_matmul_activation_quant_tiling_data.h"
 
 using namespace Cgmct::Gemm;
@@ -75,15 +75,15 @@ __aicore__ inline void GmmActivationMxQuant(GM_ADDR x, GM_ADDR weight, GM_ADDR w
                         mmTilingData_.dbL0C,
                         static_cast<int8_t>(GroupedMatmul::GMM_SPLIT_M),
                         gmmActivationQuantParams_.groupListType};
-    Params params = {{DEFAULT_PROBLEM_SHAPE_VALUE, DEFAULT_PROBLEM_SHAPE_VALUE, DEFAULT_PROBLEM_SHAPE_VALUE,
-                      DEFAULT_PROBLEM_SHAPE_VALUE},
-                     {x, weight, weightScale, xScale, nullptr, nullptr, groupList},
-                     {y, yScale, nullptr, nullptr, nullptr, static_cast<uint32_t>(mmTilingData_.baseM),
-                      static_cast<uint32_t>(mmTilingData_.baseN),
-                      static_cast<uint32_t>(gmmActivationQuantParams_.roundMode),
-                      static_cast<uint32_t>(gmmActivationQuantParams_.scaleAlg), gmmActivationQuantParams_.dstTypeMax,
-                      static_cast<uint32_t>(gmmActivationQuantParams_.activationType)},
-                     gmmParams};
+    Params params = {
+        {DEFAULT_PROBLEM_SHAPE_VALUE, DEFAULT_PROBLEM_SHAPE_VALUE, DEFAULT_PROBLEM_SHAPE_VALUE,
+         DEFAULT_PROBLEM_SHAPE_VALUE},
+        {x, weight, weightScale, xScale, nullptr, nullptr, groupList},
+        {y, yScale, nullptr, nullptr, nullptr, static_cast<uint32_t>(mmTilingData_.baseM),
+         static_cast<uint32_t>(mmTilingData_.baseN), static_cast<uint32_t>(gmmActivationQuantParams_.roundMode),
+         static_cast<uint32_t>(gmmActivationQuantParams_.scaleAlg), gmmActivationQuantParams_.dstTypeMax,
+         static_cast<uint32_t>(gmmActivationQuantParams_.activationType)},
+        gmmParams};
     QGmmKernel op;
     op(params);
 }

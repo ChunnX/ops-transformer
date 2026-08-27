@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 /* !
  * \file matmul_v3_stream_k_tiling.cc
  * \brief
@@ -17,7 +16,7 @@
 #include "matmul_v3_stream_k_tiling.h"
 #include "matmul_tiling_registry.h"
 #include "matmul_v3_tiling_strategy.h"
-#include "common/op_host/math_util.h"
+#include "common/op_host/mc2_3rd_math_util.h"
 
 using Ops::Transformer::MathUtil;
 namespace {

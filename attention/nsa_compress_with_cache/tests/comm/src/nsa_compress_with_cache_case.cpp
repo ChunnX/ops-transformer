@@ -18,7 +18,7 @@
 #include <tikicpulib.h>
 #include <graph/utils/type_utils.h>
 #include <register/op_impl_registry.h>
-#include "tests/utils/log.h"
+#include "tests/utils/tests_utils_log.h"
 #include "tests/utils/platform.h"
 #include "tiling/ncwc/tiling_data.h"
 #include "op_host/tiling_templates_registry.h"
@@ -102,12 +102,13 @@ bool RunNsaCompressWithCache(void *func, uint64_t tilingKey, int64_t blockDim, s
 
 NsaCompressWithCacheCase::NsaCompressWithCacheCase()
     : NsaCompressWithCacheCase("Undefined", true, "", OpInfo(), NsaCompressWithCacheParam(), 0)
-{
-}
+{}
 
 NsaCompressWithCacheCase::NsaCompressWithCacheCase(const char *name, bool enable, const char *dbgInfo, OpInfo opinfo,
                                                    NsaCompressWithCacheParam param, int32_t tilingTemplatePriority)
-    : Case(name, enable, dbgInfo, tilingTemplatePriority), mOpInfo(std::move(opinfo)), mParam(std::move(param))
+    : Case(name, enable, dbgInfo, tilingTemplatePriority),
+      mOpInfo(std::move(opinfo)),
+      mParam(std::move(param))
 {
     mOpInfo.mName = "NsaCompressWithCache";
     mNsaCompressWithCacheOriginTilingFuncName = "NsaCompressWithCache";

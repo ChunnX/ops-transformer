@@ -24,15 +24,15 @@
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
 
-#include "../utils/common_utils.h"
-#include "../utils/layout_utils.h"
+#include "../utils/cgmct_common_utils.h"
+#include "../utils/cgmct_layout_utils.h"
 #include "../utils/tuple_utils.h"
 #include "../utils/coord_utils.h"
 #include "../utils/tensor_utils.h"
 #include "../utils/status_utils.h"
 
 #include "../block/block_grouped_matmul_builder.h"
-#include "../epilogue/block_epilogue_empty.h"
+#include "../epilogue/cgmct_block_epilogue_empty.h"
 #include "../block/block_scheduler_utils.h"
 #include "../block/block_scheduler_grouped_matmul_aswt.h"
 
@@ -67,12 +67,8 @@ class KernelGroupedMatmul<
     ProblemShape_, BlockMmadBuilder_, BlockEpilogue_, BlockScheduler_,
     AscendC::Std::enable_if_t<AscendC::Std::is_same_v<BlockScheduler_, GroupedMatmulAswtScheduler>>> {
 public:
-    __aicore__ inline KernelGroupedMatmul()
-    {
-    }
-    __aicore__ inline ~KernelGroupedMatmul()
-    {
-    }
+    __aicore__ inline KernelGroupedMatmul() {}
+    __aicore__ inline ~KernelGroupedMatmul() {}
 
     using BlockEpilogue = BlockEpilogue_;
     using BlockMmadBuilder = BlockMmadBuilder_;
@@ -136,15 +132,20 @@ public:
         uint64_t nTailCnt;
         uint32_t weightNoL2Cache;
         const TCubeTiling *__restrict matmulTiling;
-        __aicore__ GMMTiling()
-        {
-        }
+        __aicore__ GMMTiling() {}
         __aicore__ GMMTiling(uint32_t groupNum_, int32_t groupType_, uint32_t groupListType_, uint64_t singleX_,
                              uint64_t singleWeight_, uint64_t singleY_, uint32_t hasBias_ = 0, uint64_t mTailCnt_ = 1,
                              uint64_t nTailCnt_ = 1, uint32_t weightNoL2Cache_ = 0)
-            : groupNum(groupNum_), groupType(groupType_), groupListType(groupListType_), singleX(singleX_),
-              singleWeight(singleWeight_), singleY(singleY_), hasBias(hasBias_), mTailCnt(mTailCnt_),
-              nTailCnt(nTailCnt_), weightNoL2Cache(weightNoL2Cache_)
+            : groupNum(groupNum_),
+              groupType(groupType_),
+              groupListType(groupListType_),
+              singleX(singleX_),
+              singleWeight(singleWeight_),
+              singleY(singleY_),
+              hasBias(hasBias_),
+              mTailCnt(mTailCnt_),
+              nTailCnt(nTailCnt_),
+              weightNoL2Cache(weightNoL2Cache_)
         {
             singleTensor = singleX == 1 && singleWeight == 1 && singleY == 1;
         }

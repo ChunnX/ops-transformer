@@ -24,15 +24,15 @@
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
 
-#include "../utils/common_utils.h"
-#include "../utils/layout_utils.h"
+#include "../utils/cgmct_common_utils.h"
+#include "../utils/cgmct_layout_utils.h"
 #include "../utils/tuple_utils.h"
 #include "../utils/coord_utils.h"
 #include "../utils/tensor_utils.h"
 #include "../utils/status_utils.h"
 
 #include "../block/block_grouped_matmul_builder.h"
-#include "../epilogue/block_epilogue_empty.h"
+#include "../epilogue/cgmct_block_epilogue_empty.h"
 #include "../block/block_scheduler_utils.h"
 #include "../block/block_scheduler_grouped_matmul_aswt.h"
 
@@ -61,12 +61,8 @@ class KernelGroupedMatmulAdd<
     ProblemShape_, BlockMmadBuilder_, BlockEpilogue_, BlockScheduler_,
     AscendC::Std::enable_if_t<AscendC::Std::is_same_v<BlockScheduler_, GroupedMatmulAswtScheduler>>> {
 public:
-    __aicore__ inline KernelGroupedMatmulAdd()
-    {
-    }
-    __aicore__ inline ~KernelGroupedMatmulAdd()
-    {
-    }
+    __aicore__ inline KernelGroupedMatmulAdd() {}
+    __aicore__ inline ~KernelGroupedMatmulAdd() {}
 
     using BlockEpilogue = BlockEpilogue_;
     using BlockMmadBuilder = BlockMmadBuilder_;
@@ -117,14 +113,14 @@ public:
         uint64_t mTailCnt;
         uint64_t nTailCnt;
         const TCubeTiling *__restrict matmulTiling;
-        __aicore__ GMMAddTiling()
-        {
-        }
+        __aicore__ GMMAddTiling() {}
         __aicore__ GMMAddTiling(uint32_t groupNum_, uint32_t groupListType_, uint64_t mTailCnt_ = 1,
                                 uint64_t nTailCnt_ = 1)
-            : groupNum(groupNum_), groupListType(groupListType_), mTailCnt(mTailCnt_), nTailCnt(nTailCnt_)
-        {
-        }
+            : groupNum(groupNum_),
+              groupListType(groupListType_),
+              mTailCnt(mTailCnt_),
+              nTailCnt(nTailCnt_)
+        {}
     };
 
     struct Arguments {

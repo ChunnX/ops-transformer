@@ -17,7 +17,7 @@
 #include <map>
 #include <graph/utils/type_utils.h>
 #include <acl/acl.h>
-#include "tests/utils/log.h"
+#include "tests/utils/tests_utils_log.h"
 #include "tests/utils/io.h"
 
 namespace {
@@ -44,8 +44,10 @@ using namespace ops::adv::tests::utils;
 AclnnTensorList::AclnnTensorList(const char *name, const std::vector<std::vector<int64_t>> &shapes,
                                  const char *shapeType, ge::DataType dType, ge::Format format, TensorType type,
                                  bool isTrans)
-    : TensorIntf(name, {}, shapeType, dType, format, type), aclDataType_(ACL_DT_UNDEFINED),
-      aclTensorListDataStrides_({}), aclTensorList_(nullptr)
+    : TensorIntf(name, {}, shapeType, dType, format, type),
+      aclDataType_(ACL_DT_UNDEFINED),
+      aclTensorListDataStrides_({}),
+      aclTensorList_(nullptr)
 {
     for (auto shape : shapes) {
         std::vector<int64_t> shapeView{};
@@ -90,8 +92,7 @@ AclnnTensorList::AclnnTensorList(const char *name, const std::vector<std::vector
 AclnnTensorList::AclnnTensorList(const TensorList &t, bool isTrans)
     : AclnnTensorList(t.Name().c_str(), t.ShapesView(), t.ShapeType().c_str(), t.GetDataType(), t.GetFormat(),
                       t.GetTensorType(), isTrans)
-{
-}
+{}
 
 AclnnTensorList::~AclnnTensorList()
 {

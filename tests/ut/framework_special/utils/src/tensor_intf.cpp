@@ -16,16 +16,22 @@
 #include "tests/utils/tensor_intf.h"
 #include <sstream>
 #include "tests/utils/io.h"
-#include "tests/utils/log.h"
+#include "tests/utils/tests_utils_log.h"
 
 using namespace ops::adv::tests::utils;
 
 TensorIntf::TensorIntf(const char *name, const std::initializer_list<int64_t> &shape, const char *shapeType,
                        ge::DataType dType, ge::Format format, TensorType type)
-    : name_(name), shape_(shape), shapeView_(shape), shapeType_(shapeType), dType_(dType), format_(format), type_(type),
-      devData_(nullptr), devDataSize_(0)
-{
-}
+    : name_(name),
+      shape_(shape),
+      shapeView_(shape),
+      shapeType_(shapeType),
+      dType_(dType),
+      format_(format),
+      type_(type),
+      devData_(nullptr),
+      devDataSize_(0)
+{}
 
 TensorIntf::TensorIntf(const char *name, const std::vector<int64_t> &shape, const char *shapeType, ge::DataType dType,
                        ge::Format format, TensorType type)

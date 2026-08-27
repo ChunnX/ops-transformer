@@ -15,7 +15,7 @@
 
 #include "aclnn_nsa_compress_with_cache_case.h"
 #include <utility>
-#include "tests/utils/log.h"
+#include "tests/utils/tests_utils_log.h"
 #include "aclnn_nsa_compress_with_cache.h"
 
 using namespace ops::adv::tests::NsaCompressWithCache;
@@ -55,11 +55,11 @@ bool NsaCompressWithCacheKernelRunCbf(void *curCase)
     return ret == ACL_SUCCESS;
 }
 
-
 AclnnNsaCompressWithCacheCase::AclnnNsaCompressWithCacheCase()
-    : NsaCompressWithCacheCase(), mAclnnCtx(AclnnContext()), mAclnnParam(AclnnNsaCompressWithCacheParam())
-{
-}
+    : NsaCompressWithCacheCase(),
+      mAclnnCtx(AclnnContext()),
+      mAclnnParam(AclnnNsaCompressWithCacheParam())
+{}
 
 AclnnNsaCompressWithCacheCase::AclnnNsaCompressWithCacheCase(const char *name, bool enable, const char *dbgInfo,
                                                              OpInfo opInfo, const AclnnNsaCompressWithCacheParam &param,
@@ -67,8 +67,7 @@ AclnnNsaCompressWithCacheCase::AclnnNsaCompressWithCacheCase(const char *name, b
     : NsaCompressWithCacheCase(name, enable, dbgInfo, std::move(opInfo), NsaCompressWithCacheParam(),
                                tilingTemplatePriority),
       mAclnnParam(param)
-{
-}
+{}
 
 bool AclnnNsaCompressWithCacheCase::InitParam()
 {
@@ -93,7 +92,6 @@ bool AclnnNsaCompressWithCacheCase::InitCurrentCasePtr()
     Case::mCurrentCasePtr = this;
     return true;
 }
-
 
 bool AclnnNsaCompressWithCacheCase::Run()
 {
