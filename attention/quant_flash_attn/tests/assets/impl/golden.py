@@ -27,7 +27,7 @@ import quant_flash_attn_fp8_golden as fp8_golden_mod
 
 logger = logging.getLogger(__name__)
 
-__golden__ = {"e2e": {"qfa_wrapper.npu_qfa": "cpu_qfa_mxfp8"}}
+__golden__ = {"e2e": {"spec.npu_qfa": "cpu_qfa_mxfp8"}}
 
 
 # ==============================================================================
