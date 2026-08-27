@@ -714,10 +714,14 @@ __aicore__ inline void CompressorVec1SliceIterator<COMP>::IteratorSlice()
                     //   跳过 needTc 个块后，行位置落在
                     //   (floor(globalStart/cr) + needTc) * cr。
                     //   结果再 clamp 到当前空洞，避免越过 batch 末尾。
-                    uint64_t globalStartSeqIdx = sliceInfo_.bStartPos + sliceInfo_.sIdx;
-                    uint64_t skipEndSeqIdx = (globalStartSeqIdx / static_cast<uint64_t>(cmpRatio) + needDealTcSize_) *
-                                             static_cast<uint64_t>(cmpRatio);
-                    uint32_t skip = min(static_cast<uint32_t>(skipEndSeqIdx - globalStartSeqIdx), gapRows);
+                    uint32_t skip = 0;
+                    if (needDealTcSize_ > 0) {
+                        uint64_t globalStartSeqIdx = sliceInfo_.bStartPos + sliceInfo_.sIdx;
+                        uint64_t skipEndSeqIdx =
+                            (globalStartSeqIdx / static_cast<uint64_t>(cmpRatio) + needDealTcSize_) *
+                            static_cast<uint64_t>(cmpRatio);
+                        skip = min(static_cast<uint32_t>(skipEndSeqIdx - globalStartSeqIdx), gapRows);
+                    }
                     sliceInfo_.dealedSeqCnt += skip;
                     sliceInfo_.sIdx += skip;
                     needDealTcSize_ = 0;
