@@ -37,13 +37,62 @@
 #include "adv_api/reduce/reduce.h"
 #include "attention_to_ffn_v2_tiling.h"
 
-#if __has_include("../attention_to_ffn/attention_to_ffn.h")
-#include "../attention_to_ffn/attention_to_ffn.h"
+#if __has_include("../common/attention_ffn_context.h")
+#include "../common/attention_ffn_context.h"
+#include "../common/mc2_kernel_utils.h"
 #else
-#include "../../attention_to_ffn/op_kernel/attention_to_ffn.h"
+#include "../../common/op_kernel/attention_ffn_context.h"
+#include "../../common/op_kernel/mc2_kernel_utils.h"
+#endif
+
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#if __has_include("../common/quantize_functions.h")
+#include "../common/quantize_functions.h"
+#else
+#include "../../common/op_kernel/quantize_functions.h"
+#endif
+#endif
+
+#ifndef FLOAT_OVERFLOW_MODE_CTRL
+#define FLOAT_OVERFLOW_MODE_CTRL 60
 #endif
 
 namespace AttentionToFFNImpl {
+
+#ifndef ATTN_FFN_URMA_SHARED_CONSTANTS
+#define ATTN_FFN_URMA_SHARED_CONSTANTS
+constexpr uint8_t BUFFER_NUM = 2;
+constexpr uint32_t UB_ALIGN = 32;
+constexpr uint8_t WIN_OFFSET_CNT = 2;
+constexpr uint32_t SCALE_PARAM_PAD_SIZE = 128;
+constexpr uint32_t WIN_ALIGN = 512;
+constexpr uint32_t REP_STRIDE = 8;
+constexpr uint32_t EXPERT_TABLE_REP_STRIDE = 16;
+constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 128;
+constexpr uint32_t DYNAMIC_QUANT = 2;
+constexpr uint32_t MX_QUANT = 3;
+constexpr uint32_t MX_CLIP_QUANT = 4;
+constexpr uint32_t RANK_OFFSET_STRIDE = 2;
+constexpr uint32_t TOKEN_INFO_TABLE_RS = 2;
+constexpr uint32_t TOKEN_INFO_TABLE_COPY_BLOCK_CNT = 2;
+constexpr float INT8_MAX_VALUE = 127.0f;
+constexpr uint32_t FP4_ELEMS_PER_BYTE = 2;
+constexpr uint32_t MX_BLOCK_SIZE = 32;
+constexpr uint32_t PERGROUP_BLOCK_SIZE = 128;
+
+__aicore__ constexpr bool IsMxQuant(uint32_t qm)
+{
+    return qm == MX_QUANT;
+}
+__aicore__ constexpr bool IsMxClipQuant(uint32_t qm)
+{
+    return qm == MX_CLIP_QUANT;
+}
+__aicore__ constexpr bool IsMxOrMxClipQuant(uint32_t qm)
+{
+    return qm == MX_QUANT || qm == MX_CLIP_QUANT;
+}
+#endif // ATTN_FFN_URMA_SHARED_CONSTANTS
 
 constexpr uint32_t URMA_HCOMM_INIT_SIZE = 512U;
 constexpr uint32_t URMA_FLAG_SLOT_SIZE = 32U;
