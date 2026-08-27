@@ -1570,13 +1570,14 @@ def _align_up_to_ln2(value, use_quant_matmul):
 
 
 def _accumulate_mxfp8_groups_cpu(group_dot, q_scale, k_scale):
-    """Accumulate MXFP8 D-groups without materializing each scaled group.
+    """Accumulate ordered MXFP8 groups without materializing each scaled group.
 
-    MX Cube keeps the E8M0 exponent separate while adding consecutive D-group
-    dot products.  An intermediate becomes sticky +/-Inf only when the merged
-    accumulator, not an individual ``group_dot * group_scale``, exceeds FP32.
-    Keeping a finite mantissa plus a shared power-of-two exponent reproduces
-    that behavior with CPU FP32 operations and avoids an FP64 fallback.
+    MX Cube keeps the E8M0 exponent separate while adding consecutive QK
+    D-groups or PV S2-groups.  An intermediate becomes sticky +/-Inf only when
+    the merged accumulator, not an individual ``group_dot * group_scale``,
+    exceeds FP32.  Keeping a finite mantissa plus a shared power-of-two
+    exponent reproduces that behavior with CPU FP32 operations and avoids an
+    FP64 fallback.
     """
     q_mantissa, q_exponent = torch.frexp(q_scale.to(torch.float32))
     k_mantissa, k_exponent = torch.frexp(k_scale.to(torch.float32))
@@ -1620,6 +1621,24 @@ def _accumulate_mxfp8_groups_cpu(group_dot, q_scale, k_scale):
     return torch.where(sticky_overflow, sticky_value, finite_value)
 
 
+def _mxfp8_dot_may_overflow(lhs_grouped, lhs_scale, rhs_grouped, rhs_scale):
+    """Conservatively select output pairs whose ordered group sum may overflow."""
+    lhs_bound = (
+        lhs_grouped.to(torch.float32).abs().amax(dim=-1)
+        * lhs_scale.to(torch.float32).abs()
+    )
+    rhs_bound = (
+        rhs_grouped.to(torch.float32).abs().amax(dim=-1)
+        * rhs_scale.to(torch.float32).abs()
+    )
+    absolute_dot_bound = (
+        torch.matmul(lhs_bound, rhs_bound.transpose(0, 1)) * QUANT_GROUP_SIZE
+    )
+    return (~torch.isfinite(absolute_dot_bound)) | (
+        absolute_dot_bound > torch.finfo(torch.float32).max
+    )
+
+
 def _qk_matmul_cpu(q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax_scale):
     """CPU torch.matmul path: FP32 dequant + matmul."""
     q_dequant = q_block * _expand_d_group_scale(q_scale_block, head_dim)
@@ -1635,22 +1654,11 @@ def _qk_matmul_cpu(q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax
     # finite FP8 payloads in each 32-element group and applies the group
     # descales afterwards.
     #
-    # Keep the established dequant + torch.matmul path for normal values and
-    # repair only its artificial non-finite results.  NaNs present in either
-    # FP8 payload are deliberately excluded from repair and therefore continue
-    # to propagate.  A genuine Cube overflow remains non-finite after the
-    # grouped recomputation, so replacing it is also semantics-preserving.
-    repair_mask = ~torch.isfinite(scores)
-    if not bool(repair_mask.any()):
-        return scores
-
-    payload_has_nan = torch.isnan(q_block).any(dim=-1).view(-1, 1) | torch.isnan(
-        k_mat
-    ).any(dim=-1).view(1, -1)
-    repair_mask &= ~payload_has_nan
-    if not bool(repair_mask.any()):
-        return scores
-
+    # Keep the established dequant + torch.matmul path for normal values.  The
+    # grouped path repairs artificial non-finite results and finite CPU results
+    # whose ordered Cube accumulation becomes sticky +/-Inf.  NaNs present in
+    # either FP8 payload are deliberately excluded from repair and therefore
+    # continue to propagate.
     group_count = math.ceil(head_dim / QUANT_GROUP_SIZE)
     aligned_head_dim = group_count * QUANT_GROUP_SIZE
     q_payload = q_block[..., :head_dim]
@@ -1662,6 +1670,30 @@ def _qk_matmul_cpu(q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax
 
     q_grouped = q_payload.reshape(-1, group_count, QUANT_GROUP_SIZE)
     k_grouped = k_payload.reshape(-1, group_count, QUANT_GROUP_SIZE)
+
+    # A balanced CPU reduction can remain finite after positive and negative
+    # groups cancel even though Cube's ordered accumulator crossed FLT_MAX at
+    # an earlier group and became sticky +/-Inf.  Such rows are invisible to
+    # the original ``~isfinite(scores)`` trigger.  Use a cheap absolute upper
+    # bound over the four D groups to select only pairs that can overflow; the
+    # normal torch.matmul result remains untouched for all other finite pairs.
+    potential_cube_overflow = _mxfp8_dot_may_overflow(
+        q_grouped,
+        q_scale_block[..., :group_count],
+        k_grouped,
+        k_scale_mat[..., :group_count],
+    )
+    repair_candidate = (~torch.isfinite(scores)) | potential_cube_overflow
+    if not bool(repair_candidate.any()):
+        return scores
+
+    payload_has_nan = torch.isnan(q_block).any(dim=-1).view(-1, 1) | torch.isnan(
+        k_mat
+    ).any(dim=-1).view(1, -1)
+    repair_candidate &= ~payload_has_nan
+    if not bool(repair_candidate.any()):
+        return scores
+
     group_dot = torch.matmul(
         q_grouped.permute(1, 0, 2),
         k_grouped.permute(1, 2, 0),
@@ -1676,6 +1708,9 @@ def _qk_matmul_cpu(q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax
         k_scale_mat[..., :group_count],
     )
     cube_order_scores = cube_order_scores * softmax_scale
+    repair_mask = repair_candidate & (
+        (~torch.isfinite(scores)) | (~torch.isfinite(cube_order_scores))
+    )
     return torch.where(repair_mask, cube_order_scores, scores)
 
 
@@ -1881,39 +1916,47 @@ def _pv_matmul_cpu(
         # the opposite order: it accumulates finite P/V payloads in each
         # 32-element group and applies the group descales afterwards.
         #
-        # Preserve the established fast path and repair only non-finite values
-        # introduced by its operation order.  NaNs already present in the P or
-        # V payload must keep propagating and are deliberately not repaired.
-        repair_mask = ~torch.isfinite(pv_subloop)
-        if bool(repair_mask.any()):
+        # Preserve the established fast path for normal finite values.  The
+        # grouped path repairs artificial non-finite results and finite CPU
+        # results whose ordered Cube accumulation becomes sticky +/-Inf.  NaNs
+        # already present in P or V must keep propagating and are not repaired.
+        subloop_k = p_quant_subloop.shape[1]
+        group_count = math.ceil(subloop_k / QUANT_GROUP_SIZE)
+        aligned_k = group_count * QUANT_GROUP_SIZE
+        p_payload = p_quant_subloop
+        v_payload = v_mat
+        if aligned_k != subloop_k:
+            pad_k = aligned_k - subloop_k
+            p_payload = torch.nn.functional.pad(p_payload, (0, pad_k))
+            v_payload = torch.nn.functional.pad(v_payload, (0, 0, 0, pad_k))
+
+        p_grouped = p_payload.reshape(nq, group_count, QUANT_GROUP_SIZE)
+        v_grouped = v_payload.reshape(group_count, QUANT_GROUP_SIZE, head_dim)
+        p_group_scale = subloop_rescale.view(nq, 1).expand(nq, group_count)
+        v_group_scale = v_scale_mat[::QUANT_GROUP_SIZE].transpose(0, 1)
+        potential_cube_overflow = _mxfp8_dot_may_overflow(
+            p_grouped,
+            p_group_scale,
+            v_grouped.permute(2, 0, 1),
+            v_group_scale,
+        )
+        repair_candidate = (~torch.isfinite(pv_subloop)) | potential_cube_overflow
+        if bool(repair_candidate.any()):
             payload_has_nan = torch.isnan(p_quant_subloop).any(dim=-1).view(
                 nq, 1
             ) | torch.isnan(v_mat).any(dim=0).view(1, head_dim)
-            repair_mask &= ~payload_has_nan
+            repair_candidate &= ~payload_has_nan
 
-            if bool(repair_mask.any()):
-                subloop_k = p_quant_subloop.shape[1]
-                group_count = math.ceil(subloop_k / QUANT_GROUP_SIZE)
-                aligned_k = group_count * QUANT_GROUP_SIZE
-                p_payload = p_quant_subloop
-                v_payload = v_mat
-                if aligned_k != subloop_k:
-                    pad_k = aligned_k - subloop_k
-                    p_payload = torch.nn.functional.pad(p_payload, (0, pad_k))
-                    v_payload = torch.nn.functional.pad(v_payload, (0, 0, 0, pad_k))
-
-                p_grouped = p_payload.reshape(nq, group_count, QUANT_GROUP_SIZE)
-                v_grouped = v_payload.reshape(group_count, QUANT_GROUP_SIZE, head_dim)
+            if bool(repair_candidate.any()):
                 group_dot = torch.matmul(p_grouped.unsqueeze(-2), v_grouped).squeeze(-2)
-                group_scale = subloop_rescale.view(nq, 1, 1) * v_scale_mat[
-                    ::QUANT_GROUP_SIZE
-                ].view(1, group_count, head_dim)
-                scaled_group_dot = torch.where(
-                    group_dot == 0,
-                    torch.zeros_like(group_dot),
-                    group_dot * group_scale,
+                cube_order_pv = _accumulate_mxfp8_groups_cpu(
+                    group_dot.permute(0, 2, 1),
+                    p_group_scale,
+                    v_group_scale,
                 )
-                cube_order_pv = scaled_group_dot.sum(dim=1)
+                repair_mask = repair_candidate & (
+                    (~torch.isfinite(pv_subloop)) | (~torch.isfinite(cube_order_pv))
+                )
                 pv_subloop = torch.where(repair_mask, cube_order_pv, pv_subloop)
 
         pv += pv_subloop
