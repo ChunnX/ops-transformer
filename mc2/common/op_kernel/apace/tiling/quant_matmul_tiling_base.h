@@ -87,6 +87,7 @@ protected:
     uint32_t coreLimitAivNum_{0};
     bool enableMTailAlign_{false};
     fe::PlatFormInfos *platformInfoPtr_{nullptr};
+    bool enableAdjustBasicBlock_{true};
 
     virtual const char *TilingName() const = 0;
 
