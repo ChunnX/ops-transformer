@@ -203,6 +203,18 @@ float RoundQ(float value, QKind kind)
     return DecodeQ(EncodeQ(value, kind), kind);
 }
 
+float CubeInputValue(float value, QKind kind)
+{
+    if (kind != QKind::BF16) {
+        return value;
+    }
+    uint16_t bits = FloatToBf16(value);
+    if ((bits & 0x7F80U) == 0U) {
+        bits &= 0x8000U;
+    }
+    return Bf16ToFloat(bits);
+}
+
 float Fp4E2M1Value(uint8_t code)
 {
     float sign = (code & 0x8U) == 0U ? 1.0F : -1.0F;
@@ -499,7 +511,8 @@ std::vector<uint16_t> CpuReference(const CaseSpec &spec, const PreparedCase &dat
             std::vector<float> scores(selected.size(), 0.0F);
             for (size_t i = 0; i < selected.size(); ++i) {
                 for (int64_t d = 0; d < kQueryDim; ++d) {
-                    scores[i] += DecodeQ(query[d], spec.qKind) * decoded[selected[i]][d];
+                    scores[i] += CubeInputValue(DecodeQ(query[d], spec.qKind), spec.qKind) *
+                                 CubeInputValue(decoded[selected[i]][d], spec.qKind);
                 }
                 scores[i] /= std::sqrt(static_cast<float>(kQueryDim));
             }
@@ -515,7 +528,7 @@ std::vector<uint16_t> CpuReference(const CaseSpec &spec, const PreparedCase &dat
             for (int64_t d = 0; d < kNopeDim; ++d) {
                 float value = 0.0F;
                 for (size_t i = 0; i < selected.size(); ++i) {
-                    value += scores[i] * decoded[selected[i]][d];
+                    value += scores[i] * CubeInputValue(decoded[selected[i]][d], spec.qKind);
                 }
                 expected[(b * spec.n1 + head) * kNopeDim + d] = EncodeQ(value, spec.qKind);
             }
