@@ -177,7 +177,7 @@ private:
 
     GM_ADDR winRankAddr_[Mc2Aclnn::HCCL_MAX_RANK_SIZE];
     uint64_t hcommHandle_[Mc2Aclnn::HCCL_MAX_RANK_SIZE];
-    GM_ADDR flagWorkspaceAddr_{nullptr};
+    GM_ADDR flagSourceAddr_{nullptr};
     GM_ADDR perCoreRankCountWorkspaceAddr_{nullptr};
     GM_ADDR rankOffsetsWorkspaceAddr_{nullptr};
     uint64_t perCoreRankCountStride_{0};
@@ -205,8 +205,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
     perSlotBytes_ = tilingData_->cfg.perSlotBytes;
     aivNum_ = tilingData_->aivNum;
     localmoeNum_ = tilingData_->cfg.numLocalExperts;
-    flagWorkspaceAddr_ = workspace + static_cast<uint64_t>(aivId_) * WIN_ADDR_ALIGN;
-    perCoreRankCountWorkspaceAddr_ = workspace + static_cast<uint64_t>(aivNum_) * WIN_ADDR_ALIGN;
+    perCoreRankCountWorkspaceAddr_ = workspace;
     perCoreRankCountStride_ =
         Ceil(static_cast<uint64_t>(epWorldSize_) * sizeof(int32_t), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
     rankOffsetsWorkspaceAddr_ =
@@ -237,6 +236,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
 
     combineStateWinOffset_ = tilingData->combineStateWinOffset;
     combineDataWinOffset_ = tilingData->combineDataWinOffset;
+    uint64_t flagSourceOffset = (static_cast<uint64_t>(numMaxTokensPerRank_) * topK_ + epWorldSize_) * WIN_ADDR_ALIGN;
+    flagSourceAddr_ = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) + flagSourceOffset;
 
     xGm_.SetGlobalBuffer((__gm__ XType *)x);
     recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t *)recvSrcMetadata);
@@ -538,7 +539,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendChannelFl
         return;
     }
     BeginPreparedWrites(dstRank);
-    PrepareWrite<CHANNEL_FLAG_WQE_CONFIG>(flagAddr, flagWorkspaceAddr_, WIN_ADDR_ALIGN);
+    PrepareWrite<CHANNEL_FLAG_WQE_CONFIG>(flagAddr, flagSourceAddr_, WIN_ADDR_ALIGN);
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -637,9 +638,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         LocalTensor<uint64_t> flagTensor = statusTensor_.ReinterpretCast<uint64_t>();
         Duplicate<uint64_t>(flagTensor, 1U, UB_ALIGN / sizeof(uint64_t));
         SyncFunc<AscendC::HardEvent::V_MTE3>();
-        GlobalTensor<uint64_t> flagWorkspace;
-        flagWorkspace.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(flagWorkspaceAddr_));
-        DataCopy(flagWorkspace, flagTensor, UB_ALIGN / sizeof(uint64_t));
+        GlobalTensor<uint64_t> flagSource;
+        flagSource.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(flagSourceAddr_));
+        DataCopy(flagSource, flagTensor, UB_ALIGN / sizeof(uint64_t));
         SyncFunc<AscendC::HardEvent::MTE3_S>();
         if (splitRankTokens) {
             SendChannelFlag(targetRank);

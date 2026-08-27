@@ -99,13 +99,13 @@ static inline int64_t AlignTo(int64_t x, int64_t y)
     return CeilDiv(x, y) * y;
 }
 
-static inline void CheckMoeEpMetadataTensor(const at::Tensor &metadata, const char *name,
-                                            int64_t expectedCapacity, const at::Device &expectedDevice)
+static inline void CheckMoeEpMetadataTensor(const at::Tensor &metadata, const char *name, int64_t expectedCapacity,
+                                            const at::Device &expectedDevice)
 {
     TORCH_CHECK(metadata.scalar_type() == at::kInt, name, " dtype must be int32, but got ", metadata.scalar_type());
     TORCH_CHECK(metadata.dim() == DIM_TWO, name, " dims must be 2, but got ", metadata.dim());
-    TORCH_CHECK(metadata.size(0) == expectedCapacity, name, " dim0 must equal recv_x dim0(A_alloc)=",
-                expectedCapacity, ", but got ", metadata.size(0));
+    TORCH_CHECK(metadata.size(0) == expectedCapacity, name, " dim0 must equal recv_x dim0(A_alloc)=", expectedCapacity,
+                ", but got ", metadata.size(0));
     TORCH_CHECK(metadata.size(1) == MOE_EP_METADATA_FIELDS, name, " dim1 must be ", MOE_EP_METADATA_FIELDS,
                 ", but got ", metadata.size(1));
     TORCH_CHECK(metadata.device() == expectedDevice, name, " must be on device ", expectedDevice, ", but got ",

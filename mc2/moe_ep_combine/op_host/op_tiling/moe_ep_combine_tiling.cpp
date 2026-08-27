@@ -337,7 +337,8 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
     uint64_t dispatchNotifySize = (nmt + NOTIFY_CNT_ALIGN - 1) / NOTIFY_CNT_ALIGN * epWorldSize * COMM_ALIGN;
     uint64_t dispatchWinStateSize =
         epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) + epWorldSize * COMM_ALIGN + dispatchNotifySize;
-    uint64_t combineWinStateSize = nmt * topK * COMM_ALIGN + epWorldSize * COMM_ALIGN;
+    // Keep one persistent block after the completion flags as the no-CQE flag WQE source.
+    uint64_t combineWinStateSize = nmt * topK * COMM_ALIGN + (epWorldSize + 1UL) * COMM_ALIGN;
     uint64_t hiddenAlign = (info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint64_t topKAlign = (topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint64_t dispatchReservedPerSlotBytes = AlignUpWin(hiddenAlign + topKAlign * 2 + UB_ALIGN);
@@ -426,10 +427,10 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
         ops::CeilDiv(static_cast<uint64_t>(info.cfg.epWorldSize) * sizeof(int32_t), COMM_ALIGN) * COMM_ALIGN;
     uint64_t rankOffsetsBytes =
         ops::CeilDiv((static_cast<uint64_t>(info.cfg.epWorldSize) + 1UL) * sizeof(int32_t), COMM_ALIGN) * COMM_ALIGN;
-    // Per-AIV flag sources, compact per-core rank counts, and rank_offsets[ep_world_size + 1].
+    // Compact per-core rank counts and rank_offsets[ep_world_size + 1]. The flag source lives in the HCCL window
+    // so it cannot be overwritten when a following operator reuses this temporary workspace.
     // Sorted metadata is consumed directly, so no per-token address table is needed.
-    workSpaces[0] = SYSTEM_NEED_WORKSPACE + static_cast<uint64_t>(aivNum) * COMM_ALIGN +
-                    static_cast<uint64_t>(aivNum) * perCoreRankCountStride + rankOffsetsBytes;
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE + static_cast<uint64_t>(aivNum) * perCoreRankCountStride + rankOffsetsBytes;
 
     OP_LOGD(nodeName, "tilingKey=%lu, blockDim=%u, aivNum=%u", tilingKey, blockDim, aivNum);
     PrintTilingDataInfo(nodeName, info);
