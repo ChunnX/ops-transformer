@@ -318,7 +318,6 @@ void QuantFlashAttnTilingImpl::SetQFATilingData()
         !(cuSeqLenKVFlag_ && qfaInfo_->kvLayout == QfaLayout::TND);
     tilingData_.baseTiling.quantFlashAttnBaseParams.coreNum = numBlocks_;
     tilingData_.baseTiling.quantFlashAttnBaseParams.outputLayout = static_cast<uint32_t>(qfaInfo_->outLayout);
-    tilingData_.baseTiling.quantFlashAttnBaseParams.needInitOutput = false; // 由 metadata 算子判断, kernel 从 metadata head 读
 
     tilingData_.baseTiling.quantFlashAttnAttenMaskParams.winLefts = qfaInfo_->winLeft;
     tilingData_.baseTiling.quantFlashAttnAttenMaskParams.winRights = qfaInfo_->winRight;
@@ -410,7 +409,6 @@ void QuantFlashAttnTilingImpl::PrintAllTilingData()
     OP_LOGD(qfaInfo_->opName, "isSoftMaxLseEnable:%d", params.isSoftMaxLseEnable);
     OP_LOGD(qfaInfo_->opName, "coreNum:%d", params.coreNum);
     OP_LOGD(qfaInfo_->opName, "outputLayout:%d", params.outputLayout);
-    OP_LOGD(qfaInfo_->opName, "needInitOutput:%d", params.needInitOutput);
 
     OP_LOGD(qfaInfo_->opName, "maskMode:%d", maskParams.sparseMode);
     OP_LOGD(qfaInfo_->opName, "winLefts:%d", maskParams.winLefts);

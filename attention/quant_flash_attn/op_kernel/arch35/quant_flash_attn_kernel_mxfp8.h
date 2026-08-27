@@ -156,7 +156,7 @@ public:
         this->pipe_ = tPipe;
         this->tilingData_ = tiling;
 
-        InitConstInfo();
+        InitConstInfo(metadata);
 
         keyPtr_ = key;
         valuePtr_ = value;
@@ -174,7 +174,6 @@ public:
             seqUsedGmKv_.SetGlobalBuffer((__gm__ int32_t *)sequsedKv, constInfo_.seqUsedKvSize);
         }
         sectionNum_ = ((__gm__ uint32_t *)metadata)[0];
-        constInfo_.needInitOutput = ((__gm__ uint32_t *)metadata)[QFA_HEAD_NEED_INIT_OUTPUT_INDEX] != 0;
 
         faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)(metadata + FA_METADATA_HEADER_OFFSET),
                                       QFA_AIC_CORE_NUM * 16U * sectionNum_);
@@ -243,7 +242,7 @@ public:
         bmm1Buffers_.Init(ubBufferManager_, mm1ResultSize);
     }
 
-    __aicore__ inline void InitConstInfo()
+    __aicore__ inline void InitConstInfo(__gm__ uint8_t *metadata)
     {
         if ASCEND_IS_AIC {
             constInfo_.aicIdx = GetBlockIdx();
@@ -281,7 +280,7 @@ public:
         constInfo_.scaleValue = static_cast<float>(qfaBaseParams.scaleValue);
         constInfo_.isKvContinuous = true;
         constInfo_.coreNum = qfaBaseParams.coreNum;
-        constInfo_.needInitOutput = qfaBaseParams.needInitOutput;
+        constInfo_.needInitOutput = ((__gm__ uint32_t *)metadata)[QFA_HEAD_NEED_INIT_OUTPUT_INDEX] != 0;
         constInfo_.outputLayout = static_cast<FA_LAYOUT>(qfaBaseParams.outputLayout);
         constInfo_.sparseMode =
             qfaAttenMaskParams.sparseMode; // TODO，后续sparseType、attenMaskCompressMode引用全部改成sparseMode
