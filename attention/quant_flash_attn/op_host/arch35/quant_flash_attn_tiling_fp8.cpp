@@ -260,7 +260,7 @@ void QuantFlashAttnTilingFp8Impl::SetQFATilingData()
         !(cuSeqLenKVFlag_ && qfaInfo_->kvLayout == QfaLayout::TND);
     tilingData_.baseTiling.quantFlashAttnBaseParams.coreNum = numBlocks_;
     tilingData_.baseTiling.quantFlashAttnBaseParams.outputLayout = static_cast<uint32_t>(qfaInfo_->outLayout);
-    tilingData_.baseTiling.quantFlashAttnBaseParams.needInitOutput = CheckNeedInitOutput();
+    tilingData_.baseTiling.quantFlashAttnBaseParams.needInitOutput = false; // 由 metadata 算子判断, kernel 从 metadata head 读
 
     tilingData_.baseTiling.quantFlashAttnAttenMaskParams.winLefts = qfaInfo_->winLeft;
     tilingData_.baseTiling.quantFlashAttnAttenMaskParams.winRights = qfaInfo_->winRight;

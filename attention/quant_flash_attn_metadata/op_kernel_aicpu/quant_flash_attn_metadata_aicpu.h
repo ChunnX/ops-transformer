@@ -54,6 +54,8 @@ private:
     bool BalanceSchedule(SectionStreamKResult &splitRes);
     bool GenMetaData(SectionStreamKResult &splitRes);
     bool ParamsInit();
+    bool HasZeroLengthBatch();
+    bool CheckNeedInitOutput();
     std::vector<int64_t> GetTensorDataAsInt64(Tensor *tensor, size_t size);
 
 private:
@@ -86,6 +88,7 @@ private:
     uint32_t groupSize_ = 0;
     uint32_t mBaseSize_ = NUM_64;
     uint32_t s2BaseSize_ = NUM_128;
+    bool needInitOutput_ = false;
     load_balance::DeviceInfo deviceInfo;
     load_balance::BaseInfo baseInfo;
     load_balance::SectionStreamKParam param;

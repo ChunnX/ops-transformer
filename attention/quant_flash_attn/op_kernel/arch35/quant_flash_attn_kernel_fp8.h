@@ -156,6 +156,7 @@ public:
         seqUsedGmKv_.SetGlobalBuffer((__gm__ int32_t *)sequsedKv, constInfo_.seqUsedKvSize);
 
         sectionNum_ = ((__gm__ uint32_t *)metadata)[0];
+        constInfo_.needInitOutput = ((__gm__ uint32_t *)metadata)[QFA_HEAD_NEED_INIT_OUTPUT_INDEX] != 0;
 
         InitQCuSeqLensParser(cuSeqLensQ, sequsedQ);
         InitKvCuSeqLensParser(cuSeqLensKv, sequsedKv);
