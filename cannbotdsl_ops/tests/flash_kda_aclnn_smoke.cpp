@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -10,6 +11,7 @@
 #include <cstring>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -279,22 +281,92 @@ bool PrepareInvocation(Invocation &invocation, const ShapeConfig &shape,
     }
 
     if (checkNegative) {
-        uint64_t rejectedWorkspaceSize = 123U;
-        aclOpExecutor *rejectedExecutor =
+        auto expectRejected = [&](const char *label, const aclTensor *rejectedK,
+                                  const aclTensor *rejectedV, double scale,
+                                  double lowerBound) {
+            uint64_t rejectedWorkspaceSize = 123U;
+            aclOpExecutor *rejectedExecutor =
+                reinterpret_cast<aclOpExecutor *>(static_cast<uintptr_t>(1U));
+            const aclnnStatus rejectedStatus = aclnnFlashKdaGetWorkspaceSize(
+                rejectedK, rejectedV, resources[2].tensor,
+                resources[3].tensor, resources[4].tensor,
+                resources[5].tensor, resources[6].tensor,
+                resources[7].tensor, scale, lowerBound,
+                resources[8].tensor, resources[9].tensor,
+                &rejectedWorkspaceSize, &rejectedExecutor);
+            std::printf(
+                "negative_case=%s status=%d workspace_size=%llu executor=%p\n",
+                label, rejectedStatus,
+                static_cast<unsigned long long>(rejectedWorkspaceSize),
+                static_cast<void *>(rejectedExecutor));
+            return rejectedStatus != kAclnnSuccess &&
+                   rejectedWorkspaceSize == 0U && rejectedExecutor == nullptr;
+        };
+        const bool rejectedScalars =
+            expectRejected("lower_bound_below", resources[0].tensor,
+                           resources[1].tensor, kScale, -5.01) &&
+            expectRejected("lower_bound_above", resources[0].tensor,
+                           resources[1].tensor, kScale, 0.01) &&
+            expectRejected("lower_bound_nan", resources[0].tensor,
+                           resources[1].tensor, kScale,
+                           std::numeric_limits<double>::quiet_NaN()) &&
+            expectRejected("scale_nan", resources[0].tensor,
+                           resources[1].tensor,
+                           std::numeric_limits<double>::quiet_NaN(),
+                           kLowerBound) &&
+            expectRejected("scale_float_overflow", resources[0].tensor,
+                           resources[1].tensor,
+                           std::numeric_limits<double>::max(), kLowerBound);
+        const bool rejectedTensors =
+            expectRejected("null_k", nullptr, resources[1].tensor,
+                           kScale, kLowerBound) &&
+            expectRejected("invalid_k_contract", resources[5].tensor,
+                           resources[1].tensor, kScale, kLowerBound);
+        const std::vector<int64_t> unsupportedShape{
+            shape.batch * shape.heads, 1, shape.sequence, kHeadDim};
+        const std::vector<int64_t> unsupportedStrides{
+            shape.sequence * kHeadDim, shape.sequence * kHeadDim,
+            kHeadDim, 1};
+        aclTensor *unsupportedV = aclCreateTensor(
+            unsupportedShape.data(), unsupportedShape.size(), ACL_BF16,
+            unsupportedStrides.data(), 0, ACL_FORMAT_ND,
+            unsupportedShape.data(), unsupportedShape.size(),
+            resources[1].device);
+        const bool rejectedUnsupported = unsupportedV != nullptr &&
+            expectRejected("unsupported_variant", resources[0].tensor,
+                           unsupportedV, kScale, kLowerBound);
+        if (unsupportedV != nullptr) {
+            aclDestroyTensor(unsupportedV);
+        }
+        uint64_t nullOutputWorkspaceSize = 123U;
+        aclOpExecutor *nullOutputExecutor =
             reinterpret_cast<aclOpExecutor *>(static_cast<uintptr_t>(1U));
-        const aclnnStatus rejectedStatus = aclnnFlashKdaGetWorkspaceSize(
-            resources[0].tensor, resources[1].tensor, resources[2].tensor,
-            resources[3].tensor, resources[4].tensor, resources[5].tensor,
-            resources[6].tensor, resources[7].tensor, kScale, -5.01,
-            resources[8].tensor, resources[9].tensor,
-            &rejectedWorkspaceSize, &rejectedExecutor);
+        const aclnnStatus nullWorkspaceOutputStatus =
+            aclnnFlashKdaGetWorkspaceSize(
+                resources[0].tensor, resources[1].tensor,
+                resources[2].tensor, resources[3].tensor,
+                resources[4].tensor, resources[5].tensor,
+                resources[6].tensor, resources[7].tensor, kScale,
+                kLowerBound, resources[8].tensor, resources[9].tensor,
+                nullptr, &nullOutputExecutor);
+        const aclnnStatus nullExecutorOutputStatus =
+            aclnnFlashKdaGetWorkspaceSize(
+                resources[0].tensor, resources[1].tensor,
+                resources[2].tensor, resources[3].tensor,
+                resources[4].tensor, resources[5].tensor,
+                resources[6].tensor, resources[7].tensor, kScale,
+                kLowerBound, resources[8].tensor, resources[9].tensor,
+                &nullOutputWorkspaceSize, nullptr);
         std::printf(
-            "negative_lower_bound_status=%d workspace_size=%llu executor=%p\n",
-            rejectedStatus,
-            static_cast<unsigned long long>(rejectedWorkspaceSize),
-            static_cast<void *>(rejectedExecutor));
-        if (rejectedStatus == kAclnnSuccess || rejectedWorkspaceSize != 0U ||
-            rejectedExecutor != nullptr) {
+            "negative_case=null_outputs workspace_status=%d executor_status=%d "
+            "workspace_size=%llu executor=%p\n",
+            nullWorkspaceOutputStatus, nullExecutorOutputStatus,
+            static_cast<unsigned long long>(nullOutputWorkspaceSize),
+            static_cast<void *>(nullOutputExecutor));
+        if (!rejectedScalars || !rejectedTensors || !rejectedUnsupported ||
+            nullWorkspaceOutputStatus == kAclnnSuccess ||
+            nullExecutorOutputStatus == kAclnnSuccess ||
+            nullOutputWorkspaceSize != 0U || nullOutputExecutor != nullptr) {
             return false;
         }
     }
@@ -333,7 +405,7 @@ bool LaunchInvocation(Invocation &invocation, size_t wave, size_t streamIndex)
     return invocation.status == kAclnnSuccess;
 }
 
-bool SynchronizeAndValidate(Invocation &invocation, size_t wave, size_t streamIndex)
+bool SynchronizeInvocation(Invocation &invocation)
 {
     if (invocation.status != kAclnnSuccess ||
         !Check(aclrtSynchronizeStream(invocation.stream),
@@ -341,6 +413,11 @@ bool SynchronizeAndValidate(Invocation &invocation, size_t wave, size_t streamIn
         invocation.status = kAclnnFailure;
         return false;
     }
+    return true;
+}
+
+bool ValidateInvocation(Invocation &invocation, size_t wave, size_t streamIndex)
+{
     const bool outFinite = IsFiniteBf16(invocation.resources[8]);
     const bool stateFinite = IsFiniteFloat(invocation.resources[9]);
     std::printf(
@@ -370,6 +447,7 @@ int main(int argc, char **argv)
     bool dump = false;
     bool stress = false;
     bool negative = false;
+    int64_t requestedWaves = 0;
     std::string dumpDir;
     ShapeConfig shape;
     auto parsePositive = [](const char *text, int64_t &value) {
@@ -391,6 +469,9 @@ int main(int argc, char **argv)
             stress = true;
         } else if (option == "--negative") {
             negative = true;
+        } else if (option == "--waves" && index + 1 < argc &&
+                   parsePositive(argv[index + 1], requestedWaves)) {
+            ++index;
         } else if (option == "--batch" && index + 1 < argc &&
                    parsePositive(argv[index + 1], shape.batch)) {
             ++index;
@@ -404,7 +485,7 @@ int main(int argc, char **argv)
             std::fprintf(
                 stderr,
                 "usage: %s [--dump-dir DIR] [--stress] [--negative] "
-                "[--batch B] [--heads N] [--sequence S]\n",
+                "[--waves N] [--batch B] [--heads N] [--sequence S]\n",
                 argv[0]);
             return EXIT_FAILURE;
         }
@@ -415,6 +496,10 @@ int main(int argc, char **argv)
                      static_cast<long long>(shape.batch),
                      static_cast<long long>(shape.heads),
                      static_cast<long long>(shape.sequence));
+        return EXIT_FAILURE;
+    }
+    if (requestedWaves > 10000) {
+        std::fprintf(stderr, "--waves must not exceed 10000\n");
         return EXIT_FAILURE;
     }
 
@@ -429,9 +514,12 @@ int main(int argc, char **argv)
     }
 
     const size_t streamCount = stress ? 2U : 1U;
-    const size_t waveCount = stress ? 2U : 1U;
+    const size_t waveCount = requestedWaves > 0
+        ? static_cast<size_t>(requestedWaves)
+        : (stress ? 2U : 1U);
     std::vector<std::vector<uint8_t>> outputBaseline(streamCount);
     std::vector<std::vector<uint8_t>> stateBaseline(streamCount);
+    std::vector<double> waveElapsedMilliseconds;
     bool success = true;
     for (size_t wave = 0; wave < waveCount && success; ++wave) {
         std::vector<Invocation> invocations(streamCount);
@@ -449,6 +537,7 @@ int main(int argc, char **argv)
              !DumpInvocationInputs(invocations[0], dumpDir))) {
             success = false;
         }
+        const auto waveStart = std::chrono::steady_clock::now();
         for (size_t streamIndex = 0;
              streamIndex < streamCount && success; ++streamIndex) {
             success = LaunchInvocation(
@@ -456,7 +545,18 @@ int main(int argc, char **argv)
         }
         for (size_t streamIndex = 0;
              streamIndex < streamCount && success; ++streamIndex) {
-            success = SynchronizeAndValidate(
+            success = SynchronizeInvocation(invocations[streamIndex]);
+        }
+        if (success) {
+            const auto waveEnd = std::chrono::steady_clock::now();
+            const double elapsed = std::chrono::duration<double, std::milli>(
+                waveEnd - waveStart).count();
+            waveElapsedMilliseconds.push_back(elapsed);
+            std::printf("wave=%zu launch_sync_ms=%.3f\n", wave, elapsed);
+        }
+        for (size_t streamIndex = 0;
+             streamIndex < streamCount && success; ++streamIndex) {
+            success = ValidateInvocation(
                 invocations[streamIndex], wave, streamIndex);
         }
         for (size_t streamIndex = 0;
@@ -489,6 +589,21 @@ int main(int argc, char **argv)
         for (auto &invocation : invocations) {
             DestroyInvocation(invocation);
         }
+    }
+
+    if (success && !waveElapsedMilliseconds.empty()) {
+        const auto bounds = std::minmax_element(
+            waveElapsedMilliseconds.begin(), waveElapsedMilliseconds.end());
+        double total = 0.0;
+        for (const double elapsed : waveElapsedMilliseconds) {
+            total += elapsed;
+        }
+        std::printf(
+            "timing streams=%zu waves=%zu launch_sync_ms_min=%.3f "
+            "avg=%.3f max=%.3f\n",
+            streamCount, waveElapsedMilliseconds.size(), *bounds.first,
+            total / static_cast<double>(waveElapsedMilliseconds.size()),
+            *bounds.second);
     }
 
     aclrtResetDevice(0);

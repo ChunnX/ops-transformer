@@ -102,8 +102,9 @@ vendor_dir=custom_transformer
 export LD_LIBRARY_PATH="${stage}/packages/vendors/${vendor_dir}/op_api/lib:${LD_LIBRARY_PATH}"
 ./build-provider/cannbotdsl_ops/cannbotdsl_flash_kda_aclnn_smoke
 
-# 同进程双 stream × 两轮，并验证 lower_bound 越界 fail-closed
-./build-provider/cannbotdsl_ops/cannbotdsl_flash_kda_aclnn_smoke --stress --negative
+# 同进程双 stream × 20 轮，执行错误矩阵、确定性长稳和 launch+sync 统计
+./build-provider/cannbotdsl_ops/cannbotdsl_flash_kda_aclnn_smoke \
+  --stress --negative --waves 20
 
 # 指定任一已发布有限 variant 的 shape 做设备执行/有限值检查
 ./build-provider/cannbotdsl_ops/cannbotdsl_flash_kda_aclnn_smoke \
@@ -200,21 +201,38 @@ Ascend950PR 上已完成以下验证：
   `S×D` 和 final state `128×128` 元素的 CPU chunk golden 校验；累计验证
   690 个切片，矩阵最坏 output/state 最大绝对误差分别为 `2.527554e-4` 和
   `1.048915e-3`，通过 `atol=rtol=5e-3`；
-- 同进程 2 streams × 2 waves 通过，无非有限值且第二轮结果与第一轮逐字节一致；
+- 同进程 2 streams × 20 waves 通过，40 次完整调用均无非有限值，且每个 stream
+  的后续结果均与首轮逐字节一致；双流 launch+sync 为 `0.698–1.067 ms`，平均
+  `0.744 ms`；
 - 六个有限 variant 均已用最小合法 shape 完成 GetWorkspace、执行、完整 CPU
   golden 与代表性 native 对拍；
   覆盖 B1/N3/S8192、B1/N3/S32768、B4/N3/S8192、B1/N96/S1024、
   B2/N96/S10240 和 B4/N96/S1024；
 - Provider launch 固定为 28 blocks，满足该目标 28 个 Cube core 的整网格
   barrier 单波驻留约束；
-- `lower_bound=-5.01` 在 GetWorkspace 阶段返回 `161002`，调用前设置的非零
-  workspace/executor 哨兵被主动清为 0/null；
+- GetWorkspace 错误矩阵覆盖 lower_bound 上下越界/NaN、scale NaN/float 溢出、
+  null K、错误 K 契约、未发布 variant、null workspaceSize/executor 输出指针；
+  10 类均返回 `161002`，非空输出哨兵被主动清为 0/null，随后合法调用仍成功；
 - 已生成并只读解包实际混合 `.run`：归档内 SHA256 校验通过，Provider 包内全部
   文件 checksum 通过；包中同时存在 8 个传统 ChunkKda `.o`、6 个 FlashKDA
   `provider.so`，且 `libcust_opapi.so` 同时导出 ChunkKda ACLNN、FlashKDA ACLNN
   和 `l0op::FlashKda`。本次官方 CPack 完整构建样本大小为 11,650,113 字节，
   整包 SHA256 为
   `eafe8f89e89f5ee2c05e87dce8c60f427615fb52d77ffdc6f8fc2aaec6ebd566`；
+
+单流基础时延使用相同 smoke，在每轮重新构造 executor 后，仅测量
+`aclnnFlashKda` 入队至 stream 同步完成的区间；不含输入构造、GetWorkspace、
+workspace 分配和 D2H finite/确定性检查。它是当前 Ascend950PR 工程基线，不是
+尚未定义 SLA 的产品性能准入值：
+
+| 最小合法 shape | waves | min / avg / max (ms) |
+| --- | ---: | ---: |
+| B1/N3/S8192 | 5 | 0.573 / 0.617 / 0.651 |
+| B1/N3/S32768 | 3 | 1.123 / 1.167 / 1.223 |
+| B4/N3/S8192 | 3 | 0.863 / 1.591 / 3.026 |
+| B1/N96/S1024 | 3 | 0.815 / 0.929 / 1.089 |
+| B2/N96/S10240 | 3 | 9.436 / 9.464 / 9.516 |
+| B4/N96/S1024 | 3 | 2.579 / 2.637 / 2.729 |
 
 ## 当前 FlashKDA 契约
 
@@ -228,5 +246,6 @@ Ascend950PR 上已完成以下验证：
 - Provider 物理 ABI 为 16 个 tensor inputs、2 个 tensor outputs、4 个 scalar
   attributes；顺序必须与生成 registry 完全一致；
 - 当前完成 AOT、registry、host 编译/链接、混合符号、安装布局、六变体最小
-  shape 的完整 CPU golden/代表性 native 对拍，以及双 stream/repeat。产品目标
-  输入域确认与扩展、全变体性能、更多错误注入和长稳压力仍是量产验收项。
+  shape 的完整 CPU golden/代表性 native 对拍、六 shape 基础时延、10 类错误
+  注入，以及双 stream × 20 waves。产品目标输入域确认与扩展、SLA/基线对比、
+  更长 soak 和目标发布包安装验收仍是量产项。
