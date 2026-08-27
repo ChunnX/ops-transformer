@@ -15,6 +15,7 @@
 
 #include <alog_pub.h>
 #include <climits>
+#include <iostream>
 #include "log/log.h"
 #include "op_host/tiling_templates_registry.h"
 #include "op_host/tiling_type.h"
@@ -770,7 +771,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoLibApiTiling()
         << ", CLayoutInfoS2=" << mmTiling.get_CLayoutInfoS2()
         << ", BatchNum=" << mmTiling.get_BatchNum()
         << ", mxTypePara=" << mmTiling.get_mxTypePara() << "}";
-    OP_LOGI(context_->GetNodeName(), "%s", oss.str().c_str());
+    std::cout << oss.str() << std::endl;
 
     return ge::GRAPH_SUCCESS;
 }
