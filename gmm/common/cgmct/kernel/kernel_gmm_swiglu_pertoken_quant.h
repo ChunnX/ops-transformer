@@ -310,8 +310,6 @@ public:
         int64_t k = Get<K_VALUES>(problemShape_);
         TupleShape resProblemShape{Get<M_VALUES>(problemShape_), Get<N_VALUES>(problemShape_) >> 1,
                                    Get<K_VALUES>(problemShape_)};
-        BaseMBalance(bs, m, params.gmmParams.baseM);
-        bs.UpdateNextProblem(resProblemShape);
         epilogueDequantAndSwigluOp_.UpdateNextProblem(resProblemShape);
         UpdateGlobalBuffer(params);
         CoordClass coord(m, n, k, curBaseM_, params.gmmParams.baseN, params.gmmParams.baseK);
@@ -371,6 +369,11 @@ public:
             if (!UpdateGroupParams(params, groupIdx)) {
                 continue;
             }
+            int64_t m = Get<M_VALUES>(problemShape_);
+            TupleShape resProblemShape{Get<M_VALUES>(problemShape_), Get<N_VALUES>(problemShape_) >> 1,
+                                       Get<K_VALUES>(problemShape_)};
+            BaseMBalance(bs, m, params.gmmParams.baseM);
+            bs.UpdateNextProblem(resProblemShape);
             ProcessSingleGroup(params, bs, groupIdx);
         }
         End();
