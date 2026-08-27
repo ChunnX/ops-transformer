@@ -1865,13 +1865,18 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
         }
     }
     OP_LOGI(fiaInfo.opName, "stride_path: hasViewStride=%d keyBn=%lu keyN2=%lu valBn=%lu valN2=%lu "
-        "kScaleBn=%lu kScaleN2=%lu vScaleBn=%lu vScaleN2=%lu",
+        "kScaleBn=%lu kScaleN2=%lu vScaleBn=%lu vScaleN2=%lu "
+        "kOffsetBn=%lu kOffsetN2=%lu vOffsetBn=%lu vOffsetN2=%lu",
         static_cast<int>(fiaInfo.hasViewStride), fiaInfo.keyBnStride, fiaInfo.keyN2Stride,
         fiaInfo.valueBnStride, fiaInfo.valueN2Stride,
         (fiaInfo.kScaleStrides != nullptr && fiaInfo.kScaleStrides->GetDimNum() > 0) ? fiaInfo.kScaleStrides->GetStride(0) : 0,
         (fiaInfo.kScaleStrides != nullptr && fiaInfo.kScaleStrides->GetDimNum() > 1) ? fiaInfo.kScaleStrides->GetStride(1) : 0,
         (fiaInfo.vScaleStrides != nullptr && fiaInfo.vScaleStrides->GetDimNum() > 0) ? fiaInfo.vScaleStrides->GetStride(0) : 0,
-        (fiaInfo.vScaleStrides != nullptr && fiaInfo.vScaleStrides->GetDimNum() > 1) ? fiaInfo.vScaleStrides->GetStride(1) : 0);
+        (fiaInfo.vScaleStrides != nullptr && fiaInfo.vScaleStrides->GetDimNum() > 1) ? fiaInfo.vScaleStrides->GetStride(1) : 0,
+        (fiaInfo.kOffsetStrides != nullptr && fiaInfo.kOffsetStrides->GetDimNum() > 0) ? fiaInfo.kOffsetStrides->GetStride(0) : 0,
+        (fiaInfo.kOffsetStrides != nullptr && fiaInfo.kOffsetStrides->GetDimNum() > 1) ? fiaInfo.kOffsetStrides->GetStride(1) : 0,
+        (fiaInfo.vOffsetStrides != nullptr && fiaInfo.vOffsetStrides->GetDimNum() > 0) ? fiaInfo.vOffsetStrides->GetStride(0) : 0,
+        (fiaInfo.vOffsetStrides != nullptr && fiaInfo.vOffsetStrides->GetDimNum() > 1) ? fiaInfo.vOffsetStrides->GetStride(1) : 0);
     inputParams.set_dSizeRope(DSIZE_64);
     inputParams.set_scaleValue(fiaInfo.scaleValue);
     inputParams.set_preTokens(fiaInfo.preToken);
