@@ -591,6 +591,8 @@ __aicore__ inline void SoftmaxSmallRegBase(const LocalTensor<float> &vecMeta, ui
         PipeBarrier<PIPE_V>();
     }
     CopyFloatsUbExact(brcMeta[body], vecMeta[body], remBlk);
+    Duplicate(workScalar, 0.0f, ELEM_PER_BLK_FP32);
+    PipeBarrier<PIPE_V>();
     ReduceMaxHalfInterval(workScalar, brcMeta, curColNum);
 
     // half-interval 破坏 brcMeta，重新铺 score
@@ -605,6 +607,8 @@ __aicore__ inline void SoftmaxSmallRegBase(const LocalTensor<float> &vecMeta, ui
     BrcbScalarRow1(brcScratch, workScalar);
     SubLastDimRow1NoBrc(brcMeta, brcMeta, brcScratch, curColNum);
     Exp(brcMeta, brcMeta, metaAlign);
+    PipeBarrier<PIPE_V>();
+    Duplicate(workScalar, 0.0f, ELEM_PER_BLK_FP32);
     PipeBarrier<PIPE_V>();
 
     if (blockCount > kVlFp32) {
