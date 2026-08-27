@@ -70,7 +70,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> quant_flash_attn_grad
     at::Tensor dk = at::empty(dkSize, query.options().dtype(at::kBFloat16));
     at::Tensor dv = at::empty(dkSize, query.options().dtype(at::kBFloat16));
     at::Tensor dsink = at::empty(dsinkSize, query.options().dtype(at::kFloat));
-    TORCH_CHECK(quant_mode == 0, "quant mode must be 0 now is: ", stateCacheDim);
+    // TORCH_CHECK(quant_mode == 0, "quant mode must be 0 now is: ", stateCacheDim);
     TensorWrapper q_wrapper = make_wrapper(query, ACL_HIFLOAT8);
     TensorWrapper k_wrapper = make_wrapper(key, ACL_HIFLOAT8);
     TensorWrapper v_wrapper = make_wrapper(value, ACL_HIFLOAT8);
