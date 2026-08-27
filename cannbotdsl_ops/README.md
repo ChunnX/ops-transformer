@@ -39,6 +39,13 @@ kernel/registry ABI v1 做了编译期断言；CMake 还会链接
 L2 组装的 ACLNN L0，输入输出契约和 workspace 规划由本目录的手写 L0 adapter
 负责，Provider 变体选择由生成 registry 完成。
 
+FlashKDA 的 `` 公共参数严格对应 `l0op::FlashKda`：8 个输入 tensor、
+`scale/lowerBound` 两个属性、2 个输出 tensor；`group/dv_base/block_num` 是
+构建期 variant 选择值，只记录在 schema v2 的 `internal_parameters` 中，不进入 L0
+公共签名。registry 生成阶段会把每个 variant 的 entry binding plan 与 Provider
+sidecar/HostSchema 逐项校验；runtime binding、constexpr、workspace dtype/shape 或
+六个 variant 间的公共 entry 身份任一漂移都会使混合包构建失败。
+
 ## 构建
 
 先构建 CANNBotDSL Python runtime，然后在 ops-transformer 根目录配置：

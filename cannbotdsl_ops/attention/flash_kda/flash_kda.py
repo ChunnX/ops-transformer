@@ -2000,6 +2000,7 @@ def flash_kda_provider(
 @cannbotdsl.entry(
     name="FlashKda",
     provider_family="flash_kda_provider",
+    internal_parameters=("group", "dv_base", "block_num"),
 )
 def flash_kda_l0_entry(
     ctx: cannbotdsl.EntryContext,
@@ -2011,11 +2012,12 @@ def flash_kda_l0_entry(
     g: Tensor,
     A_log: Tensor,
     dt_bias: Tensor,
-    o: Tensor,
     st_in: Tensor,
-    st_out: Tensor,
     scale: float,
     lower_bound: float,
+    o: Tensor,
+    st_out: Tensor,
+    *,
     group: int,
     dv_base: int,
     block_num: int,
