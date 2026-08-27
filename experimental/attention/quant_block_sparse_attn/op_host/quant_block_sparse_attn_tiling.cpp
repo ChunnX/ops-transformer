@@ -284,7 +284,10 @@ void QuantBlockSparseAttnTiling::CalcTilingKey()
     }
 }
 
-void QuantBlockSparseAttnTiling::CalcWorkspaceSize() { workspaceSize_ = 0; }
+void QuantBlockSparseAttnTiling::CalcWorkspaceSize()
+{
+    workspaceSize_ = 0;
+}
 
 void QuantBlockSparseAttnTiling::PrintAllTilingData()
 {
