@@ -18,7 +18,7 @@
 
 
 #include "blaze/gemm/block/block_mmad_qgmm_mx.h"
-#include "blaze/gemm/kernel/cgmct_kernel_qgmm_mx.h"
+#include "cgmct/kernel/cgmct_kernel_qgmm_mx.h"
 #include "../../grouped_matmul_utils.h"
 #include "../grouped_matmul_tiling_data_apt.h"
 
