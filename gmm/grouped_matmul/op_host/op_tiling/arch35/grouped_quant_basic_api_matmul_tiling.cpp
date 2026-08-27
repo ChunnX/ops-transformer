@@ -400,11 +400,11 @@ ge::graphStatus GroupedS4S4IntQuantTiling::GetShapeAttrsInfo()
     const auto &weightStorageShape = wShapePtr->GetStorageShape();
     weightNzC032_ = inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ &&
                     weightStorageShape.GetDimNum() > 0U &&
-                    weightStorageShape.GetDim(weightStorageShape.GetDimNum() - 1U) == 32;
-    OP_CHECK_IF(!SetMKN(xShapePtr->GetOriginShape(), wShapePtr->GetOriginShape()),
+                    weightStorageShape.GetDim(weightStorageShape.GetDimNum() - 1U) == INT8_NZ_C0;
+    OP_CHECK_IF(!SetMKNForS4S4(xShapePtr->GetOriginShape(), wShapePtr->GetOriginShape()),
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "S4S4 SetMKN failed."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX),
+    OP_CHECK_IF(!SetGroupNumForS4S4(GROUPLIST_INDEX),
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "S4S4 SetGroupNum failed."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!AnalyzeS4S4(),
@@ -416,7 +416,7 @@ ge::graphStatus GroupedS4S4IntQuantTiling::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-bool GroupedS4S4IntQuantTiling::SetMKN(const gert::Shape &xShape, const gert::Shape &wShape)
+bool GroupedS4S4IntQuantTiling::SetMKNForS4S4(const gert::Shape &xShape, const gert::Shape &wShape)
 {
     uint32_t xDimNum = static_cast<uint32_t>(xShape.GetDimNum());
     uint32_t wDimNum = static_cast<uint32_t>(wShape.GetDimNum());
@@ -433,7 +433,7 @@ bool GroupedS4S4IntQuantTiling::SetMKN(const gert::Shape &xShape, const gert::Sh
     return true;
 }
 
-bool GroupedS4S4IntQuantTiling::SetGroupNum(uint32_t groupListIndex)
+bool GroupedS4S4IntQuantTiling::SetGroupNumForS4S4(uint32_t groupListIndex)
 {
     OP_CHECK_IF(!GroupedQmmBasicApiTiling::SetGroupNum(groupListIndex),
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "S4S4 base SetGroupNum failed."),
@@ -442,7 +442,7 @@ bool GroupedS4S4IntQuantTiling::SetGroupNum(uint32_t groupListIndex)
     return true;
 }
 
-bool GroupedS4S4IntQuantTiling::SetMKNList()
+bool GroupedS4S4IntQuantTiling::SetMKNListForS4S4()
 {
     // Base's mList_/kList_/nList_ is private (inaccessible to derived).
     // Write to our own shadow arrays (mimic base GroupedQmmTiling::SetMKNList).
@@ -486,7 +486,7 @@ bool GroupedS4S4IntQuantTiling::AnalyzeS4S4()
     return true;
 }
 
-bool GroupedS4S4IntQuantTiling::CheckS4S4Params()
+bool GroupedS4S4IntQuantTiling::CheckS4S4Params() const
 {
     OP_CHECK_IF(inputParams_.aDtype != ge::DT_INT4 || inputParams_.bDtype != ge::DT_INT4,
                 OP_LOGE(context_->GetNodeName(), "S4S4: x/weight must be INT4."), return false);
@@ -551,7 +551,7 @@ ge::graphStatus GroupedS4S4IntQuantTiling::DoOpTiling()
     OP_CHECK_IF(CalUbDivideS4S4() != ge::GRAPH_SUCCESS,
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "CalUbDivideS4S4 failed."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!SetMKNList(), OP_LOGE(context_->GetNodeName(), "SetMKNList failed."),
+    OP_CHECK_IF(!SetMKNListForS4S4(), OP_LOGE(context_->GetNodeName(), "SetMKNList failed."),
                 return ge::GRAPH_FAILED);
     s4s4Tiling_.singleN = FindBestSingleN();
     return ge::GRAPH_SUCCESS;
@@ -597,7 +597,7 @@ ge::graphStatus GroupedS4S4IntQuantTiling::CalUbDivideS4S4()
     return ge::GRAPH_SUCCESS;
 }
 
-void GroupedS4S4IntQuantTiling::InitCommonL1TilingFields()
+void GroupedS4S4IntQuantTiling::InitS4S4CommonL1TilingFields()
 {
     s4s4Tiling_.stepM = 1UL;
     s4s4Tiling_.stepN = 1UL;
@@ -609,7 +609,7 @@ void GroupedS4S4IntQuantTiling::InitCommonL1TilingFields()
                          DATA_SIZE_L0C * DB_SIZE <= aicoreParams_.l0cSize) ? DB_SIZE : 1U;
 }
 
-ge::graphStatus GroupedS4S4IntQuantTiling::CalcLeftL1Size(uint64_t &leftL1Size) const
+ge::graphStatus GroupedS4S4IntQuantTiling::CalcS4S4LeftL1Size(uint64_t &leftL1Size) const
 {
     leftL1Size = aicoreParams_.l1Size;
     return ge::GRAPH_SUCCESS;
@@ -617,11 +617,11 @@ ge::graphStatus GroupedS4S4IntQuantTiling::CalcLeftL1Size(uint64_t &leftL1Size) 
 
 ge::graphStatus GroupedS4S4IntQuantTiling::CalL1Tiling()
 {
-    InitCommonL1TilingFields();
+    InitS4S4CommonL1TilingFields();
     if (inputParams_.kSize == 0UL) { return ge::GRAPH_SUCCESS; }
     uint64_t leftL1Size = 0UL;
-    OP_CHECK_IF(CalcLeftL1Size(leftL1Size) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "CalcLeftL1Size failed."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(CalcS4S4LeftL1Size(leftL1Size) != ge::GRAPH_SUCCESS,
+            OP_LOGE(context_->GetNodeName(), "CalcS4S4LeftL1Size failed."), return ge::GRAPH_FAILED);
     return CalL1Depth(leftL1Size);
 }
 
@@ -644,16 +644,16 @@ ge::graphStatus GroupedS4S4IntQuantTiling::CalL1Depth(uint64_t leftL1Size)
     constexpr uint64_t elemBytes = 1UL;
     constexpr uint64_t scaleElemBytes = sizeof(uint64_t);
     auto AlignUpL = [](uint64_t v, uint64_t a) -> uint64_t { return (v + a - 1UL) / a * a; };
-    auto GetAL1Bytes = [&](uint64_t kAL1) -> uint64_t {
+    auto GetAL1Bytes = [this](uint64_t kAL1) -> uint64_t {
         return AlignUpL(s4s4Tiling_.baseM, CUBE_BLOCK) * AlignUpL(kAL1, INT8_C0) * elemBytes;
     };
-    auto GetBL1Bytes = [&](uint64_t kBL1) -> uint64_t {
+    auto GetBL1Bytes = [this](uint64_t kBL1) -> uint64_t {
         return AlignUpL(kBL1, INT8_C0) * AlignUpL(s4s4Tiling_.baseN, CUBE_BLOCK) * elemBytes;
     };
-    auto GetScaleL1Bytes = [&]() -> uint64_t {
+    auto GetScaleL1Bytes = [this]() -> uint64_t {
         return AlignUpL(s4s4Tiling_.baseN * scaleElemBytes, DATA_BLOCK_BYTES);
     };
-    auto GetL1StageBytes = [&](uint64_t kAL1, uint64_t kBL1) -> uint64_t {
+    auto GetL1StageBytes = [this](uint64_t kAL1, uint64_t kBL1) -> uint64_t {
         return AlignUpL(GetAL1Bytes(kAL1), DATA_BLOCK_BYTES) +
                AlignUpL(GetBL1Bytes(kBL1), DATA_BLOCK_BYTES) + GetScaleL1Bytes();
     };
