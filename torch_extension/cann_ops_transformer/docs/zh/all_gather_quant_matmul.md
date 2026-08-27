@@ -105,13 +105,17 @@ cann_ops_transformer.all_gather_quant_matmul(
 - 适用场景：该接口支持训练、推理场景下使用。
 - 调用方式：该接口支持单算子模式调用，需要在多卡通信域下使用。
 - 仅支持Ascend 950系列产品。
-- `rank_size`需为2、4、8、16之一。
-- `M`（单卡M轴长度）取值范围为[1, 2147483647]；`N`取值范围为[1, 2147483647]。
-- `x1`、`x2`需为2D Tensor。
-- `K`取值范围为[256, 65535)；FP4场景`K`须为偶数。
-- `x1`与`x2`需同为FP8或同为FP4。
-- `x2`须传入`[N, K]`存储的`.t()`转置视图。
-- `y`仅支持BF16/FP16输出。
+- 输入输出Tensor的数据格式仅支持ND。
+- 输入`x1`为2维，shape为`(M, K)`；输入`x2`为2维，须传入`[N, K]`存储的`.t()`转置视图（is_trans_b必须为true）。`x1`与`x2`的K轴相等，`K`取值范围为[256, 65535)；FP4场景`K`须为偶数。
+- `M`（单卡M轴长度）、`N`取值范围为[1, 2147483647]（INT32_MAX）。
+- `bias`为1维，shape为`(N,)`，dtype为`torch.float32`。
+- `x1_scale`、`x2_scale`为3维，shape分别为`(M, ceil(K/64), 2)`、`(N, ceil(K/64), 2)`，dtype为`torch.float8_e8m0fnu`（或uint8存储搭配scale_dtype=293）。
+- 输出`y`为2维，shape为`(M * rank_size, N)`，dtype仅支持BF16/FP16。
+- `x1`与`x2`需同为FP8（float8_e4m3fn与float8_e5m2可混用）或同为FP4。
+- `rank_size`需为2、4、8、16之一，且不超过设备实际可用计算核数。
+- `comm_mode`当前仅支持`"urma"`。
+- `group_sizes`在MX场景仅支持`[1, 1, 32]`（显式传入或自动推导结果均须满足）。
+- 通信域`group`名称长度需在[1, 128)范围内；`hccl_buffer_size`需为正整数。
 - 通信buffer大小约束：本算子使用HCCL内置通信buffer完成AllGather通信，该buffer大小由环境变量`HCCL_BUFFSIZE`（单位MB）控制。通信数据总量（all-gather的`x1`数据 + `x1_scale`）不能超过该buffer，大shape场景需提前通过`export HCCL_BUFFSIZE=<取值>`调大buffer。
 
 ## 调用说明
