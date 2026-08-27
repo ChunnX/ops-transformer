@@ -306,6 +306,24 @@ __aicore__ inline void CopyInLineAlign(
     DataCopyPad(dstUb, srcGm, copyInParams, padParams);
 }
 
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+template <typename T>
+__aicore__ inline void BroadcastQuantParamNddma(
+    const LocalTensor<T> &dstUb, const GlobalTensor<T> &srcGm, uint32_t broadcastCount)
+{
+    constexpr uint8_t NDDMA_DIM = 1;
+    MultiCopyParams<T, NDDMA_DIM> params{};
+    params.constantValue = static_cast<T>(0);
+    params.loopInfo.loopSize[0] = broadcastCount;
+    params.loopInfo.loopSrcStride[0] = 0;
+    params.loopInfo.loopDstStride[0] = 1;
+    params.loopInfo.loopLpSize[0] = 0;
+    params.loopInfo.loopRpSize[0] = 0;
+    AscendC::NdDmaDci();
+    DataCopy<T, NDDMA_DIM, kDefaultNdDmaConfig>(dstUb, srcGm, params);
+}
+#endif
+
 /*
 ub->gm拷出
 lineNum：拷入的行数

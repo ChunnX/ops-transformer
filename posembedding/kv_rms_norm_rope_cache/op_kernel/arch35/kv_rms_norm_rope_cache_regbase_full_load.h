@@ -680,6 +680,27 @@ public:
             imgKScaleLocal = realKScaleLocal[tilingData_->halfDkAlign];
             realKOffsetLocal = imgKScaleLocal[tilingData_->halfDkAlign];
             imgKOffsetLocal = realKOffsetLocal[tilingData_->halfDkAlign];
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+            if (tilingData_->kScaleType == 1) {
+                BroadcastQuantParamNddma<float>(realKScaleLocal, this->kScaleGm, tilingData_->halfDkAlign);
+                BroadcastQuantParamNddma<float>(imgKScaleLocal, this->kScaleGm, tilingData_->halfDkAlign);
+            } else {
+                CopyInLineAlign<float>(realKScaleLocal, this->kScaleGm, 1, kScaleCopyLen, kScaleCopyLen);
+                CopyInLineAlign<float>(imgKScaleLocal, this->kScaleGm[kScaleCopyOffset], 1, kScaleCopyLen, kScaleCopyLen);
+            }
+            if (tilingData_->kOffsetType > 0) {
+                if (tilingData_->kOffsetType == 1) {
+                    BroadcastQuantParamNddma<float>(realKOffsetLocal, this->kOffsetGm, tilingData_->halfDkAlign);
+                    BroadcastQuantParamNddma<float>(imgKOffsetLocal, this->kOffsetGm, tilingData_->halfDkAlign);
+                } else {
+                    CopyInLineAlign<float>(realKOffsetLocal, this->kOffsetGm, 1, kOffsetCopyLen, kOffsetCopyLen);
+                    CopyInLineAlign<float>(
+                        imgKOffsetLocal, this->kOffsetGm[kOffsetCopyOffset], 1, kOffsetCopyLen, kOffsetCopyLen);
+                }
+            }
+            kScaleOffsetQueue.EnQue(realKScaleLocal);
+            realKScaleLocal = kScaleOffsetQueue.DeQue<float>();
+#else
             CopyInLineAlign<float>(realKScaleLocal, this->kScaleGm, 1, kScaleCopyLen, kScaleCopyLen);
             CopyInLineAlign<float>(imgKScaleLocal, this->kScaleGm[kScaleCopyOffset], 1, kScaleCopyLen, kScaleCopyLen);
             if (tilingData_->kOffsetType > 0) {
@@ -698,11 +719,28 @@ public:
                 Duplicate<float>(realKOffsetLocal, realKOffsetLocal, tilingData_->halfDkAlign);
                 Duplicate<float>(imgKOffsetLocal, imgKOffsetLocal, tilingData_->halfDkAlign);
             }
+#endif
         }
         if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
                       IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
             vScaleLocal = vScaleOffsetQueue.AllocTensor<float>();
             vOffsetLocal = vScaleLocal[tilingData_->dvAlign];
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+            if (tilingData_->vScaleType == 1) {
+                BroadcastQuantParamNddma<float>(vScaleLocal, this->vScaleGm, tilingData_->dvAlign);
+            } else {
+                CopyInLineAlign<float>(vScaleLocal, this->vScaleGm, 1, vScaleCopyLen, vScaleCopyLen);
+            }
+            if (tilingData_->vOffsetType > 0) {
+                if (tilingData_->vOffsetType == 1) {
+                    BroadcastQuantParamNddma<float>(vOffsetLocal, this->vOffsetGm, tilingData_->dvAlign);
+                } else {
+                    CopyInLineAlign<float>(vOffsetLocal, this->vOffsetGm, 1, vOffsetCopyLen, vOffsetCopyLen);
+                }
+            }
+            vScaleOffsetQueue.EnQue(vScaleLocal);
+            vScaleLocal = vScaleOffsetQueue.DeQue<float>();
+#else
             CopyInLineAlign<float>(vScaleLocal, this->vScaleGm, 1, vScaleCopyLen, vScaleCopyLen);
             if (tilingData_->vOffsetType > 0) {
                 CopyInLineAlign<float>(vOffsetLocal, this->vOffsetGm, 1, vOffsetCopyLen, vOffsetCopyLen);
@@ -716,6 +754,7 @@ public:
             if (tilingData_->vOffsetType == 1) {
                 Duplicate<float>(vOffsetLocal, vOffsetLocal, tilingData_->dvAlign);
             }
+#endif
         }
         for (int64_t loopIdx = 0; loopIdx < this->ubLoop; ++loopIdx) {
             if (loopIdx == this->ubLoop - 1) {
