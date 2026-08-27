@@ -25,11 +25,9 @@
 #include "include/tensor_api/tensor.h"
 
 #include "adv_api/hcomm/hcomm.h"
-#include "blaze/gemm/utils/common_utils.h"
-#include "blaze/gemm/block/block_mmad_qbmm_mx.h"
-#include "blaze/gemm/block/block_scheduler_qbmm.h"
-#include "blaze/gemm/policy/dispatch_policy.h"
 #include "../../matmul/quant_batch_matmul/all_to_all_qbmm_mx_kernel.h"
+#include "blaze/gemm/utils/common_utils.h"
+#include "blaze/gemm/policy/dispatch_policy.h"
 #include "all_to_all_matmul_tiling_data.h"
 
 #include "apace/core/aiv_comm/collective_comm_api.h"
@@ -74,7 +72,7 @@ public:
     __aicore__ inline void Init(__gm__ CommContext *hcommCtx,
                                 GM_ADDR aGM, GM_ADDR scaleAGM,
                                 GM_ADDR bGM, GM_ADDR scaleBGM,
-                                GM_ADDR cGM,
+                                GM_ADDR cGM, GM_ADDR biasGM,
                                 const allToAllMatmulTilingData *tilingData);
     /**
      * @brief 执行算子逻辑（包含 AIC/AIV 分离逻辑）
@@ -140,6 +138,7 @@ private:
         GM_ADDR bGm{nullptr};
         GM_ADDR scaleBGm{nullptr};
         GM_ADDR cGm{nullptr};
+        GM_ADDR biasGm{nullptr};
 
         uint32_t rankId{0};
         int32_t commTurn{0};     // 总流水步数
@@ -170,7 +169,7 @@ private:
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA, TransB>::Init(
     __gm__ CommContext *hcommCtx, GM_ADDR aGM, GM_ADDR scaleAGM, GM_ADDR bGM, GM_ADDR scaleBGM, GM_ADDR cGM,
-    const allToAllMatmulTilingData *tilingData)
+    GM_ADDR biasGM, const allToAllMatmulTilingData *tilingData)
 {
     tilingData_ = tilingData;
     baseParams_.aGm = aGM;
@@ -178,6 +177,7 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     baseParams_.bGm = bGM;
     baseParams_.scaleBGm = scaleBGM;
     baseParams_.cGm = cGM;
+    baseParams_.biasGm = biasGM;
 
     syncBuffer_ = &(hcommCtx->ubmemCtx);
     udmaCtx_ = &(hcommCtx->udmaCtx);
@@ -211,8 +211,8 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     }
 
     if ASCEND_IS_AIC {
-        if (tilingData_->localMatmul == 1) {
-            RunLocalMatmul(); // AIC local计算前置
+        if (tilingData_->localMatmul == 2) {
+            RunLocalMatmul(); // AIC local计算前置（GM累加模式）
         }
         RunMatmul(); // AIC 通信块计算（带同步等待）
     }
@@ -265,6 +265,10 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 
     // 计算地址偏移所需的参数
     baseParams_.rankDataBytes = baseParams_.axisM * baseParams_.axisKa * sizeof(AType);
+    if constexpr (IsFp4<AType>()) {
+        // MXFP4 打包存储(2 个 fp4 占 1 字节)，A 矩阵通信字节数减半
+        baseParams_.rankDataBytes >>= 1;
+    }
 }
 
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
@@ -281,16 +285,17 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     if (matmulMode == MatmulMode::LOCAL) {
         mmadParams.cGmAddr = baseParams_.cGm; // 本地模式直接写入输出
     } else {
-        if (tilingData_->localMatmul == 1) {
-            localParams.splitKNum = baseParams_.rankSize - 1; // 低精度模式通信块计算只有rankSize-1个远程卡参与
+        if (tilingData_->localMatmul == 2) {
+            localParams.splitKNum = baseParams_.rankSize - 1; // GM累加模式通信块计算只有rankSize-1个远程卡参与
         } else {
-            // localMatmul==0（融合）和==2（DEFERRED_SYNC）都需要 splitKNum=rankSize
+            // localMatmul==0（remote融合）和==1（L0c累加/DEFERRED_SYNC）都需要 splitKNum=rankSize
             localParams.splitKNum = baseParams_.rankSize;
         }
     }
 
     mmadParams.bGmAddr = baseParams_.bGm;
     mmadParams.scaleBGmAddr = baseParams_.scaleBGm;
+    mmadParams.biasGmAddr = baseParams_.biasGm;
 
     // 调度器参数
     BlockSchedulerParams schedulerParams{
@@ -314,7 +319,7 @@ template <typename AType, typename BType, typename CType, bool TransA, bool Tran
 __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA, TransB>::RunMatmul()
 {
     Params params;
-    MatmulMode mode = (tilingData_->localMatmul == 2) ? MatmulMode::DEFERRED_SYNC : MatmulMode::REMOTE;
+    MatmulMode mode = (tilingData_->localMatmul == 1) ? MatmulMode::DEFERRED_SYNC : MatmulMode::REMOTE;
     SetupParams(&tilingData_->tileQbmmTilingData, params, mode);
     params.mmadParams.aGmAddr = baseParams_.selfWinAddr;
     params.mmadParams.scaleAGmAddr = baseParams_.selfWinAddr + baseParams_.rankSize * baseParams_.rankDataBytes;

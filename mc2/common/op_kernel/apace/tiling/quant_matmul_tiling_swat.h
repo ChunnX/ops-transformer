@@ -29,6 +29,11 @@ public:
 
     void SetMaxBaseM(uint64_t v) { maxBaseM_ = v; }
 
+    // 当 M/N 方向 base 块总数小于 2 倍核数时，启用 baseM 减半使 M 方向块数翻倍，
+    // 保证每个核至少分到两轮 base 块、通信与计算充分流水。默认关闭，仅需要该
+    // 行为的算子（如 MC2 通算融合）显式开启，避免影响其他算子。
+    void EnableBaseMHalving(bool enable) { enableBaseMHalving_ = enable; }
+
 protected:
     const char *TilingName() const override { return "swat"; }
 
@@ -56,6 +61,7 @@ private:
     using Base::enableMTailAlign_;
 
     uint64_t maxBaseM_{0};
+    bool enableBaseMHalving_{false};
 
 private:
     uint32_t CalcScaleKL1() const
@@ -283,6 +289,9 @@ private:
         if (blockNum < platformInfo_.aicNum) {
             AdjustBasicBlock();
         }
+        if (enableBaseMHalving_) {
+            HalveBaseMForPipeline();
+        }
         CHECK_COND(runInfo_.baseM != 0UL && runInfo_.baseN != 0UL && runInfo_.baseK != 0UL,
                    "Failed to derive a valid tiling base shape: baseM, baseN, and baseK must all be non-zero.");
 
@@ -294,6 +303,23 @@ private:
         runInfo_.nTailSize = args_.n - (runInfo_.nBlockCnt - 1UL) * runInfo_.baseN;
         runInfo_.dbL0c =
             runInfo_.baseM * runInfo_.baseN * DATA_SIZE_L0C * DB_SIZE <= platformInfo_.l0cSize ? DB_SIZE : 1U;
+    }
+
+    void HalveBaseMForPipeline()
+    {
+        // 当 M/N 方向 base 块总数小于 2 倍核数时，部分核只算一轮 base 块即结束，
+        // 通信与计算无法充分流水。此时将 baseM 减半使 M 方向块数翻倍，
+        // 让每个核至少能分到两轮 base 块。
+        // 减半约束：
+        // 1. baseM 需为 2*对齐粒度 的整数倍，保证减半后仍是 CUBE_BLOCK 对齐；
+        // 2. baseM < M，即 M 方向至少两个 base 块时才减半；极小 shape（baseM >= M）
+        //    不承诺性能，也无需走该逻辑，避免减半制造出 tail 引入精度风险。
+        uint64_t baseMAlignNum = args_.transA ? GetShapeWithDataType<aDataType>(L1_ALIGN_SIZE) : CUBE_BLOCK;
+        uint64_t blockNumAfterAdjust = CeilDiv(args_.m, runInfo_.baseM) * CeilDiv(args_.n, runInfo_.baseN);
+        if (blockNumAfterAdjust < NUM_TWO * platformInfo_.aicNum && runInfo_.baseM % (NUM_TWO * baseMAlignNum) == 0UL &&
+            runInfo_.baseM < args_.m) {
+            runInfo_.baseM = runInfo_.baseM / NUM_TWO;
+        }
     }
 
     void OptimizeEdgeBasicBlock()
