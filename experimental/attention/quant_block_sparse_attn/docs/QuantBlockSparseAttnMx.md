@@ -635,7 +635,7 @@ QuantBlockSparseAttnMx 算子约束分为 4 个档位，按约束复杂程度递
   - `q_descale` 的 token/head/D-group 维度必须与 `query` 的 `QueryTokenNum`、`N1`、`D` 对齐。
   - `k_descale` 的 PA block、KV head、block 内 token、D-group 维度必须与 `key`、`block_table`、`pa_block_size`、`D` 对齐。
   - `v_descale` 的 PA block、KV head、S-group、D_v 维度必须与 `value`、`block_table`、`pa_block_size`、`D_v` 对齐。
-  - `p_scale` 非空时数值应大于 0；Tiling 阶段无法读取 Tensor 数值，该数值合法性由调用者保证。
+  - `p_scale` 非空时数值应大于 0，且是有限正数；Tiling 阶段无法读取 Tensor 数值，该数值合法性由调用者保证。
 
 
 - 特性交叉约束
