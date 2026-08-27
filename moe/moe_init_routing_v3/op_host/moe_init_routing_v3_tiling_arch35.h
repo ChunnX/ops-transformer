@@ -131,6 +131,8 @@ constexpr int64_t DROP_MODE_TILINGKEY_BASE = 100LL;
 constexpr uint64_t EMPTY_TENSOR_TILINGKEY = 3000000ULL;
 constexpr int64_t KEY_VALUE_MODE_DIM0_NUM = 2LL;
 
+const static int64_t CS_FULLLOAD_UNQUANT_TILINGKEY_BASE = 400000LL; // 计数排序全载模板
+
 inline static int64_t CeilLog4(int64_t x)
 {
     if (x <= 0) {
@@ -417,7 +419,7 @@ private:
     void SetLastCoreIndicesTiling(MoeV3Arch35GatherOutComputeTilingData *gatherOutTiling,
                                   int64_t lastCoreIndicesElements, int64_t perLoopMaxIndicesElements);
 
-    // CountingSort 性能模板（模板1 FullLoad / 模板2 CutOrigin）
+    // CountingSort 性能模板
     bool IsCountingSortApplicable();
     int64_t EstimateArch35CountingSortFullLoadUB(int64_t perCoreTokens);
     void ComputeArch35CountingSortFullLoadTiling();

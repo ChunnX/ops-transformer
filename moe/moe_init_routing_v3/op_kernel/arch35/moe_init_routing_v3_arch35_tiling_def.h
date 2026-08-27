@@ -88,10 +88,10 @@ struct MoeV3Arch35SrcToDstCapacityComputeTilingData {
     int64_t colLoops{0};
 };
 
-// CountingSort性能模板TilingData（模板1 FullLoad / 模板2 CutOrigin 共用）
+// CountingSort性能模板TilingData
 // countingSortMode: 0=未启用, 1=FullLoad(核内全载), 2=CutOrigin(核内4096 chunk切T)
 struct MoeV3Arch35CountingSortTilingData {
-    int64_t countingSortMode{0};    // 0/1/2
+    int64_t countingSortMode{0};
     int64_t filterNeedCoreNum{0};   // 过滤阶段使用的核数
     int64_t filterPerCoreTokens{0}; // 每核处理的 token 数（按 n 维切）
     int64_t lastCoreTokens{0};      // 尾核 token 数

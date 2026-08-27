@@ -18,10 +18,6 @@ namespace optiling {
 constexpr int64_t DIM_VALUE_ONE = 1LL;
 constexpr int64_t DIM_VALUE_TWO = 2LL;
 
-// CountingSort 性能模板 TilingKey 基址
-const static int64_t CS_FULLLOAD_UNQUANT_TILINGKEY_BASE = 400000LL; // 模板1 非量化
-
-// CountingSort 适用性常量
 const static int64_t CS_MIN_N = 256LL;
 const static int64_t CS_MAX_N = 1024LL * 1024LL;
 const static int64_t CS_FILTER_CHUNK_SIZE = 4096LL;
@@ -30,12 +26,12 @@ const static int64_t CS_MAX_ACTUAL_EXPERT_NUM = 256LL;
 const static int64_t CS_ONE_BLOCK_ELEMENT = 8LL;
 const static int64_t CS_HISTOGRAM_BIN_SIZE = 128LL; // Histogram BIN0[0-127]/BIN1[128-255]
 
-// A3 ComputeCountingSortTiling 对齐常量（模板1 FullLoad 门槛 / 性能模式排除）
-const static int64_t CS_FULLLOAD_MAX_ACTUAL_EXPERT_NUM = 128LL; // 对齐 A3 COUNTING_SORT_MAX_ACTUAL_EXPERT_NUM
-const static int64_t CS_PERFORMANCE_MODE_TOP_K = 8LL;           // 对齐 A3 PERFORMANCE_MODE_TOP_K
-const static int64_t CS_PERFORMANCE_MODE_RANGE_MAX = 32LL;      // 对齐 A3 PERFORMANCE_MODE_RANGE_MAX
-const static int64_t CS_COUNTING_SORT_THRESHOLD = 1536LL;       // 对齐 A3 COUNTING_SORT_THRESHOLD
-const static int64_t CS_ASSIST_NUM = 256LL;                     // 对齐 A3 ASSIST_NUM
+const static int64_t CS_FULLLOAD_MAX_ACTUAL_EXPERT_NUM = 128LL;
+const static int64_t CS_PERFORMANCE_MODE_TOP_K = 8LL;
+const static int64_t CS_PERFORMANCE_MODE_RANGE_MAX = 32LL;
+const static int64_t CS_COUNTING_SORT_THRESHOLD = 1536LL;
+const static int64_t CS_ASSIST_NUM = 256LL;
+const static int64_t NUM_32 = 32;
 
 ge::graphStatus MoeInitRoutingV3TilingArch35::GetPlatformInfo()
 {
@@ -120,15 +116,13 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::DoOpTiling()
 
     isFullload_ = IsFullLoad();
 
-    // CountingSort 性能模板判定（仅模板1 FullLoad 非量化，与 A3 ComputeCountingSortTiling 语义对齐）。
-    // 仅当未命中 FullLoad 且场景适配时尝试。命中场景：n ∈ [256, 1M]、expertNum ≤ 1024、
-    // 非动态量化（含 int8/int4）、LE 满足约束。
+    // CountingSort 性能模板判定 仅当未命中 FullLoad 且场景适配时尝试
     countingSortMode_ = 0;
     tilingDataPtr_->countingSortParamsOp.countingSortMode = 0;
     if (!isFullload_ && IsCountingSortApplicable()) {
         int64_t actualExpertNum = expertEnd_ - expertStart_;
-        // A3 性能模式排除（ComputeCountingSortTiling L828-833）：n<=1536 && scatter && ep1 && expertNum==256
-        // && LE<=32 && unquant && k==8 && dropless && COUNT 时直接返回，不走计数排序
+        // n<=1536 && scatter && ep1 && expertNum==256 && LE<=32 && unquant && k==8 && dropless && COUNT
+        // 时直接返回，不走计数排序
         if (n_ <= CS_COUNTING_SORT_THRESHOLD && rowIdxType_ == ROW_IDX_SCATTER && ep_ == 1 &&
             expertNum_ == CS_ASSIST_NUM && actualExpertNum <= CS_PERFORMANCE_MODE_RANGE_MAX &&
             quantMode_ == QUANT_MODE_UNQUANT && k_ == CS_PERFORMANCE_MODE_TOP_K &&
@@ -136,16 +130,17 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::DoOpTiling()
             actualExpertNum > 0) {
             countingSortMode_ = 0;
         } else {
-            // 模板1（FullLoad UB 全载）：与 A3 条件一致（ep_==1，部分 expert 区间）。
-            // 注：部分区间 + 有过滤时 FullLoad 声明输出 activeNum_ 行但 dropless 只写 [0, effective)，
-            // 形状与语义可能不符；此处保持与 A3 对齐，用例需保证无过滤（effective==n*k）才自洽。
+            // 模板1（FullLoad UB 全载）
             int64_t perCoreTokensEst = Ops::Base::CeilDiv(n_, aivCoreNum_);
             int64_t estUb = EstimateArch35CountingSortFullLoadUB(perCoreTokensEst);
+            bool expandDtypeValid = (expandedXDtype_ == ge::DT_INT8 || expandedXDtype_ == ge::DT_FLOAT16 ||
+                                     expandedXDtype_ == ge::DT_BF16 || expandedXDtype_ == ge::DT_FLOAT);
             bool fullLoadCond = estUb > 0 && estUb <= availUbSize_ - LENGTH_1024 && ep_ == 1 &&
                                 quantMode_ == QUANT_MODE_UNQUANT && k_ == CS_PERFORMANCE_MODE_TOP_K &&
                                 dropPadMode_ == DROP_PAD_MODE_DROPLESS &&
                                 expertTokensNumType_ == EXPERT_TOKENS_TYPE_COUNT &&
-                                actualExpertNum <= CS_FULLLOAD_MAX_ACTUAL_EXPERT_NUM && actualExpertNum > 0;
+                                actualExpertNum <= CS_FULLLOAD_MAX_ACTUAL_EXPERT_NUM && actualExpertNum > 0 &&
+                                ((expertEnd_ - expertStart_) <= NUM_32 && expandDtypeValid);
             if (fullLoadCond) {
                 ComputeArch35CountingSortFullLoadTiling();
                 // 回读实际模式：Compute 内部 UB 校验失败会置 0
@@ -193,7 +188,6 @@ uint64_t MoeInitRoutingV3TilingArch35::GetTilingKey() const
         return static_cast<uint64_t>(FULLLOAD_TILINGKEY_BASE + quantModeFactor * QUANT_MODE_TILINGKEY_BASE);
     }
 
-    // CountingSort 性能模板（仅模板1 FullLoad 非量化）
     if (countingSortMode_ == 1) {
         return static_cast<uint64_t>(CS_FULLLOAD_UNQUANT_TILINGKEY_BASE + rowIdxType_ * ROWIDX_TYPE_TILINGKEY_BASE +
                                      dropPadMode_ * DROP_MODE_TILINGKEY_BASE);
@@ -1961,15 +1955,12 @@ bool MoeInitRoutingV3TilingArch35::IsFullLoad()
 
 bool MoeInitRoutingV3TilingArch35::IsCountingSortApplicable()
 {
-    // n 范围
     if (n_ < CS_MIN_N || n_ > CS_MAX_N) {
         return false;
     }
-    // expertNum 上限（Histogram 256 bin）
     if (expertNum_ > 1024LL) {
         return false;
     }
-    // 动态量化场景不支持 CountingSort（含 int8/int4）：与 A3 ShouldEnableCountingSortByShape 对齐
     if (IsAnyDynamicQuantCase()) {
         return false;
     }
@@ -1987,7 +1978,6 @@ bool MoeInitRoutingV3TilingArch35::IsCountingSortApplicable()
         return false;
     }
     // dropless 时要求 actualExpertNum*2 <= expertNum（实际专家数不超过一半，计数排序才有收益）
-    // 例外：actualExpertNum == expertNum（全专家范围）时也走计数排序
     if (dropPadMode_ == DROP_PAD_MODE_DROPLESS) {
         if (actualExpertNum != expertNum_ && actualExpertNum * NUM_TWO > expertNum_) {
             return false;

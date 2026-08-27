@@ -164,9 +164,7 @@
 /*
  * CountingSort 性能模板（计数排序）
  */
-#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED 400000 // 模板1、非量化、GATHER
-// rowIdxType=1(Scatter) 变体：base + ROWIDX_TYPE_TILINGKEY_BASE(1000)。
-// kernel 内部按运行时 rowIdxType_ 分流(GATHER/SCATTER)，此处枚举 key 仅为让编译系统生成对应 binary。
+#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED 400000   // 模板1、非量化、GATHER
 #define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_S 401000 // 模板1、非量化、SCATTER
 
 #define EMPTY_TENSOR 3000000
@@ -320,8 +318,8 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         return;
     }
 
-    // CountingSort 性能模板（模板1 FullLoad 非量化）
-    // 类型守卫：仅承接 X∈{bf16,fp16,fp32} 的非量化场景，其余扩展类型回退到原分阶段路径。
+    // CountingSort 全载模板
+    // 类型守卫：仅承接 X∈{bf16,fp16,fp32,int8} 的非量化场景，其余扩展类型回退到原分阶段路径。
     if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_S)) {
         if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
