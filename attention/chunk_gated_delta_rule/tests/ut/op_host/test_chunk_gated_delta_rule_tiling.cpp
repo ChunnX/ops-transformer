@@ -30,6 +30,7 @@
  *   - bs（batch size）最大为 8
  */
 
+
 #include <iostream>
 #include <vector>
 #include <string>
@@ -54,12 +55,12 @@ class ChunkGatedDeltaRuleTilingTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        // std::cout << "ChunkGatedDeltaRuleTilingTest SetUp" << std::endl;
+        std::cout << "ChunkGatedDeltaRuleTilingTest SetUp" << std::endl;
     }
 
     static void TearDownTestCase()
     {
-        // std::cout << "ChunkGatedDeltaRuleTilingTest TearDown" << std::endl;
+        std::cout << "ChunkGatedDeltaRuleTilingTest TearDown" << std::endl;
     }
 };
 
@@ -189,7 +190,8 @@ TEST_F(ChunkGatedDeltaRuleTilingTest, BasicFp32StateWithoutGamma)
                                               {
                                                   {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
                                               },
-                                              &compileinfo, "Ascend950");
+                                              &compileinfo,
+                                              "Ascend950");
 
     int64_t expectTilingKey = 1UL;
     TilingInfo tilingInfo;
@@ -234,7 +236,8 @@ TEST_F(ChunkGatedDeltaRuleTilingTest, BasicFp32StateWithGamma)
                                               {
                                                   {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
                                               },
-                                              &compileinfo, "Ascend950");
+                                              &compileinfo,
+                                              "Ascend950");
 
     int64_t expectTilingKey = 11UL;
     TilingInfo tilingInfo;
