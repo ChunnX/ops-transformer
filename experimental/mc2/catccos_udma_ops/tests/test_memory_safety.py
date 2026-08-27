@@ -55,16 +55,14 @@ def test_mssanitizer_uses_single_launch_path_without_nan_poison():
     assert '"caller_provided_out": False if mssanitizer_enabled else None' in worker
 
 
-def test_mssanitizer_wheel_enables_device_debug_and_instrumentation():
+def test_mssanitizer_wheel_enables_supported_ascend950_debug_information():
     root_cmake = (PROJECT_ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
     setup_source = (PROJECT_ROOT / "setup.py").read_text(encoding="utf-8")
     assert "option(CATCCOS_UDMA_MSSANITIZER" in root_cmake
-    assert (
-        'set(CATCCOS_UDMA_ASCEND_SANITIZER_FLAGS '
-        '"-g --cce-enable-sanitizer")'
-    ) in root_cmake
-    assert "--cce-fatobj-link" in root_cmake
-    assert "${CATCCOS_UDMA_ASCEND_SANITIZER_LINK_OPTIONS}" in root_cmake
+    assert 'set(CATCCOS_UDMA_ASCEND_SANITIZER_FLAGS "-g")' in root_cmake
+    assert 'CATCCOS_UDMA_ASCEND_SANITIZER_LINK_OPTIONS' not in root_cmake
+    assert '"-g --cce-enable-sanitizer"' not in root_cmake
+    assert "--cce-fatobj-link" not in root_cmake
     assert 'cmake_boolean_from_env("CATCCOS_UDMA_MSSANITIZER")' in setup_source
     for relative in (
         "csrc/all_to_allv_grouped_mat_mul_udma/ascend950/CMakeLists.txt",

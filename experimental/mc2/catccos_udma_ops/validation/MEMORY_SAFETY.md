@@ -39,14 +39,14 @@ bash scripts/run_memory_safety.sh \
 
 ## msSanitizer（补充手段）
 
-普通 Release Wheel 没有 Device sanitizer 插桩和源码行信息。先显式构建并安装专用 Wheel：
+普通 Release Wheel 没有 Device 源码行调试信息。先显式构建并安装 msSanitizer 定位专用 Wheel：
 
 ```bash
 CATCCOS_UDMA_MSSANITIZER=1 bash scripts/build_wheel.sh
 python3 -m pip install --force-reinstall --no-deps dist/*.whl
 ```
 
-该开关会对两个 Ascend Device kernel 添加 `-g --cce-enable-sanitizer`，并在扩展链接阶段添加 `--cce-fatobj-link --cce-enable-sanitizer`。其中 `-g` 用于让异常报告显示文件名、代码行和调用栈。sanitizer Wheel 含调试信息且只用于定位，完成检查后应重新安装默认 Release Wheel。
+该开关只对两个 Ascend Device kernel 添加 `-g`，用于让异常报告显示文件名、代码行和调用栈。Ascend 950 当前不支持 `--cce-enable-sanitizer`、`--sanitizer` 和 `-O0`，因此工程不会添加这些完整插桩参数，也不会添加 `--cce-fatobj-link --cce-enable-sanitizer` 链接参数。否则 SHMEM 会启用依赖 `sanitizer_report.h` 的 MSTX 路径，并在当前 950 工具链上编译失败。该 Wheel 含调试信息且只用于定位，完成检查后应重新安装默认 Release Wheel。
 
 随后运行：
 
