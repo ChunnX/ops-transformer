@@ -350,29 +350,6 @@ void QuantFlashAttnTilingImpl::SetQFATilingData()
     }
 }
 
-bool QuantFlashAttnTilingImpl::CheckNeedInitOutput() const
-{
-    if (seqUsedQFlag_ || seqUsedKvFlag_) {
-        return true;
-    }
-    if (qfaInfo_->qLayout == QfaLayout::TND && qfaInfo_->kvLayout == QfaLayout::TND) {
-        return qfaInfo_->maskMode != static_cast<int64_t>(MaskMode::NO_MASK);
-    }
-    if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) {
-        return false;
-    }
-    if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::CAUSAL)) {
-        return qfaInfo_->s1Size > qfaInfo_->s2Size;
-    }
-    if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::SLIDING_WINDOW)) {
-        if (qfaInfo_->winRight == -1) {
-            return false;
-        }
-        return (qfaInfo_->s1Size - qfaInfo_->s2Size) > qfaInfo_->winRight;
-    }
-    return false;
-}
-
 ge::graphStatus QuantFlashAttnTilingImpl::SetTilingData(QuantFlashAttnTilingData &tilingData)
 {
     QuantFlashAttnTilingData *tiling = context_->GetTilingData<QuantFlashAttnTilingData>();
