@@ -26,7 +26,16 @@ class MhcPreSinkhornFunction(torch.autograd.Function):
         )
 
         ctx.save_for_backward(
-            x, phi, alpha, bias, h_pre, hc_before_norm, inv_rms, sum_out, norm_out
+            x,
+            phi,
+            alpha,
+            bias,
+            h_pre,
+            h_post,
+            hc_before_norm,
+            inv_rms,
+            sum_out,
+            norm_out,
         )
         ctx.hc_eps = hc_eps
 
@@ -34,9 +43,18 @@ class MhcPreSinkhornFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_hin, grad_h_post, grad_h_res):
-        x, phi, alpha, bias, h_pre, hc_before_norm, inv_rms, sum_out, norm_out = (
-            ctx.saved_tensors
-        )
+        (
+            x,
+            phi,
+            alpha,
+            bias,
+            h_pre,
+            h_post,
+            hc_before_norm,
+            inv_rms,
+            sum_out,
+            norm_out,
+        ) = ctx.saved_tensors
         hc_eps = ctx.hc_eps
 
         from ..mhc_pre_sinkhorn_backward import (
@@ -52,6 +70,7 @@ class MhcPreSinkhornFunction(torch.autograd.Function):
             alpha,
             bias,
             h_pre,
+            h_post,
             hc_before_norm,
             inv_rms,
             sum_out,
@@ -98,10 +117,12 @@ class MhcPreSinkhornOpBuilder(OpBuilder):
                     )
                     inv_rms = torch.empty(t, 1, dtype=phi.dtype, device="meta")
                     sum_out = torch.empty(
-                        2 * num_iters, t, n, dtype=phi.dtype, device="meta"
+                        2 * num_iters * t * 8, dtype=phi.dtype, device="meta"
                     )
                     norm_out = torch.empty(
-                        2 * num_iters, t, n, n, dtype=phi.dtype, device="meta"
+                        2 * num_iters * t * n * 8,
+                        dtype=phi.dtype,
+                        device="meta",
                     )
                 else:
                     h_pre = torch.empty(0, dtype=phi.dtype, device="meta")
@@ -123,10 +144,14 @@ class MhcPreSinkhornOpBuilder(OpBuilder):
                     )
                     inv_rms = torch.empty(b, s, 1, dtype=phi.dtype, device="meta")
                     sum_out = torch.empty(
-                        2 * num_iters, b, s, n, dtype=phi.dtype, device="meta"
+                        2 * num_iters * b * s * 8,
+                        dtype=phi.dtype,
+                        device="meta",
                     )
                     norm_out = torch.empty(
-                        2 * num_iters, b, s, n, n, dtype=phi.dtype, device="meta"
+                        2 * num_iters * b * s * n * 8,
+                        dtype=phi.dtype,
+                        device="meta",
                     )
                 else:
                     h_pre = torch.empty(0, dtype=phi.dtype, device="meta")

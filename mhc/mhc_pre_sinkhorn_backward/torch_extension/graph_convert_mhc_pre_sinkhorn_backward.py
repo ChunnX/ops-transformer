@@ -7,157 +7,84 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-# GE Converter for Graph Mode
+# GE converter for the decomposed MhcPreSinkhorn backward graph.
 
 try:
     import torch
     import torch_npu
     import torchair
-    from torch.library import impl
+    from typing import Optional
     from torchair._ge_concrete_graph import ge_apis as ge
-    from torchair.ge._ge_graph import Tensor, TensorSpec
+    from torchair._ge_concrete_graph.compat_ir import IrDef, ge_op
     from torchair._ge_concrete_graph.fx2ge_converter import (
-        declare_supported,
         register_fx_node_ge_converter,
     )
-    from torchair._ge_concrete_graph.supported_declaration import Support
-    from typing import Any, Dict, List, Tuple, Union, Callable, Optional
-    from torchair._ge_concrete_graph.ge_ir_pb2 import (
-        GraphDef,
-        OpDef,
-        TensorDescriptor,
-        TensorDef,
-    )
-    from torchair.ge._ge_graph import get_default_ge_graph, next_unique_name
-    from torchair.ge._ge_graph import auto_convert_to_tensor
-    from torchair.ge._ge_graph import Tensor, TensorSpec, DataType, TensorType
-    from torchair.ge._ge_graph import compat_as_bytes, compat_as_bytes_list
-    from torchair.ge._ge_graph import trans_to_list_list_int, trans_to_list_list_float
-    from torchair.ge._ge_graph import get_invalid_desc
-    from torchair._ge_concrete_graph.compat_ir import ge_op, IrDef
     from torchair.ge import attr
+    from torchair.ge._ge_graph import DataType, Tensor, TensorSpec
 
     _TORCHAIR_AVAILABLE = True
 except ImportError:
     _TORCHAIR_AVAILABLE = False
 
+
 if _TORCHAIR_AVAILABLE:
 
-    @auto_convert_to_tensor(
-        [
-            False,
-            False,
-            False,
-            False,
-            False,
-            False,
-            False,
-            False,
-            False,
-            False,
-            False,
-            False,
-        ],
-        [
-            False,
-            False,
-            False,
-            False,
-            False,
-            False,
-            False,
-            False,
-            False,
-            False,
-            False,
-            False,
-        ],
-    )
-    def MhcPreSinkhornBackward(
-        grad_hin: Tensor,
-        grad_h_post: Tensor,
-        grad_h_res: Tensor,
+    def _mhc_sinkhorn_backward(grad_h_res: Tensor, norm_out: Tensor, sum_out: Tensor):
+        return ge_op(
+            op_type="MhcSinkhornBackward",
+            inputs={"grad_y": grad_h_res, "norm": norm_out, "sum": sum_out},
+            outputs=["grad_input"],
+            ir=IrDef("MhcSinkhornBackward")
+            .input("grad_y", "DT_FLOAT")
+            .input("norm", "DT_FLOAT")
+            .input("sum", "DT_FLOAT")
+            .output("grad_input", "DT_FLOAT"),
+        )
+
+    def _mhc_pre_backward(
         x: Tensor,
         phi: Tensor,
         alpha: Tensor,
-        bias: Tensor,
-        h_pre: Tensor,
-        hc_before_norm: Tensor,
+        grad_hin: Tensor,
+        grad_h_post: Tensor,
+        grad_h_res: Tensor,
         inv_rms: Tensor,
-        sum_out: Tensor,
-        norm_out: Tensor,
-        *,
-        hc_eps: float = 1e-6,
-        dependencies=None,
-        node_name=None,
+        h_mix: Tensor,
+        h_pre: Tensor,
+        h_post: Tensor,
+        hc_eps: float,
     ):
-        """REG_OP(MhcPreSinkhornBackward)\n
-        .INPUT(grad_hin, TensorType({DT_BF16, DT_FLOAT16}))\n
-        .INPUT(grad_h_post, TensorType({DT_FLOAT}))\n
-        .INPUT(grad_h_res, TensorType({DT_FLOAT}))\n
-        .INPUT(x, TensorType({DT_BF16, DT_FLOAT16}))\n
-        .INPUT(phi, TensorType({DT_FLOAT}))\n
-        .INPUT(alpha, TensorType({DT_FLOAT}))\n
-        .INPUT(bias, TensorType({DT_FLOAT}))\n
-        .INPUT(h_pre, TensorType({DT_FLOAT}))\n
-        .INPUT(hc_before_norm, TensorType({DT_FLOAT}))\n
-        .INPUT(inv_rms, TensorType({DT_FLOAT}))\n
-        .INPUT(sum_out, TensorType({DT_FLOAT}))\n
-        .INPUT(norm_out, TensorType({DT_FLOAT}))\n
-        .OUTPUT(grad_x, TensorType({DT_BF16, DT_FLOAT16}))\n
-        .OUTPUT(grad_phi, TensorType({DT_FLOAT}))\n
-        .OUTPUT(grad_alpha, TensorType({DT_FLOAT}))\n
-        .OUTPUT(grad_bias, TensorType({DT_FLOAT}))\n
-        .ATTR(hc_eps, Float, 1e-6)\n
-        """
-        if dependencies is None:
-            dependencies = []
-
-        inputs = {
-            "grad_hin": grad_hin,
-            "grad_h_post": grad_h_post,
-            "grad_h_res": grad_h_res,
-            "x": x,
-            "phi": phi,
-            "alpha": alpha,
-            "bias": bias,
-            "h_pre": h_pre,
-            "hc_before_norm": hc_before_norm,
-            "inv_rms": inv_rms,
-            "sum_out": sum_out,
-            "norm_out": norm_out,
-        }
-
-        attrs = {
-            "hc_eps": attr.Float(hc_eps),
-        }
-
-        outputs = [
-            "grad_x",
-            "grad_phi",
-            "grad_alpha",
-            "grad_bias",
-        ]
-
         return ge_op(
-            op_type="MhcPreSinkhornBackward",
-            inputs=inputs,
-            attrs=attrs,
-            outputs=outputs,
-            dependencies=dependencies,
-            ir=IrDef("MhcPreSinkhornBackward")
-            .input("grad_hin", "DT_BF16, DT_FLOAT16")
-            .input("grad_h_post", "DT_FLOAT")
-            .input("grad_h_res", "DT_FLOAT")
+            op_type="MhcPreBackward",
+            inputs={
+                "x": x,
+                "phi": phi,
+                "alpha": alpha,
+                "grad_h_in": grad_hin,
+                "grad_h_post": grad_h_post,
+                "grad_h_res": grad_h_res,
+                "inv_rms": inv_rms,
+                "h_mix": h_mix,
+                "h_pre": h_pre,
+                "h_post": h_post,
+                "gamma": None,
+                "grad_x_post": None,
+            },
+            attrs={"hc_eps": attr.Float(hc_eps)},
+            outputs=["grad_x", "grad_phi", "grad_alpha", "grad_bias"],
+            ir=IrDef("MhcPreBackward")
             .input("x", "DT_BF16, DT_FLOAT16")
             .input("phi", "DT_FLOAT")
             .input("alpha", "DT_FLOAT")
-            .input("bias", "DT_FLOAT")
-            .input("h_pre", "DT_FLOAT")
-            .input("hc_before_norm", "DT_FLOAT")
+            .input("grad_h_in", "DT_BF16, DT_FLOAT16")
+            .input("grad_h_post", "DT_FLOAT")
+            .input("grad_h_res", "DT_FLOAT")
             .input("inv_rms", "DT_FLOAT")
-            .input("sum_out", "DT_FLOAT")
-            .input("norm_out", "DT_FLOAT")
+            .input("h_mix", "DT_FLOAT")
+            .input("h_pre", "DT_FLOAT")
+            .input("h_post", "DT_FLOAT")
+            .optional_input("gamma", "DT_FLOAT")
+            .optional_input("grad_x_post", "DT_BF16, DT_FLOAT16")
             .attr("hc_eps", attr.Float(1e-6))
             .output("grad_x", "DT_BF16, DT_FLOAT16")
             .output("grad_phi", "DT_FLOAT")
@@ -177,25 +104,39 @@ if _TORCHAIR_AVAILABLE:
         alpha: Tensor,
         bias: Tensor,
         h_pre: Tensor,
+        h_post: Tensor,
         hc_before_norm: Tensor,
         inv_rms: Tensor,
         sum_out: Tensor,
         norm_out: Tensor,
         hc_eps: float,
-        meta_outputs: TensorSpec = None,
+        meta_outputs: Optional[TensorSpec] = None,
     ):
-        return MhcPreSinkhornBackward(
-            grad_hin=grad_hin,
-            grad_h_post=grad_h_post,
-            grad_h_res=grad_h_res,
-            x=x,
-            phi=phi,
-            alpha=alpha,
-            bias=bias,
-            h_pre=h_pre,
-            hc_before_norm=hc_before_norm,
-            inv_rms=inv_rms,
-            sum_out=sum_out,
-            norm_out=norm_out,
-            hc_eps=hc_eps,
+        del meta_outputs
+        int64_zero = ge.Const(0, dtype=DataType.DT_INT64)
+        h_post_shape = ge.Shape(h_post)
+        n = ge.GatherV2(
+            h_post_shape,
+            ge.Const([h_post.rank - 1], dtype=DataType.DT_INT64),
+            int64_zero,
+        )
+        grad_h_res_shape = ge.ConcatV2([h_post_shape, n], 0, N=2)
+        grad_h_res_matrix = ge.Reshape(grad_h_res, grad_h_res_shape)
+
+        grad_h_res_before_sinkhorn = _mhc_sinkhorn_backward(
+            grad_h_res_matrix, norm_out, sum_out
+        )
+        inv_rms_squeezed = ge.Squeeze(inv_rms, axis=[-1])
+        return _mhc_pre_backward(
+            x,
+            phi,
+            alpha,
+            grad_hin,
+            grad_h_post,
+            grad_h_res_before_sinkhorn,
+            inv_rms_squeezed,
+            hc_before_norm,
+            h_pre,
+            h_post,
+            hc_eps,
         )

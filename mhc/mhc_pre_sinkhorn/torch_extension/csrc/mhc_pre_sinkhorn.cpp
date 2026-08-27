@@ -10,13 +10,17 @@
 
 /*!
  * \file mhc_pre_sinkhorn.cpp
- * \brief ACLNN Wrapper for aclnnMhcPreSinkhorn
+ * \brief ACLNN Wrapper composed from aclnnMhcPre and aclnnMhcSinkhorn
  */
 
 #include <torch/extension.h>
 #include "aclnn_common.h"
 
 namespace op_api {
+
+namespace {
+constexpr int64_t SINKHORN_ALIGN_N = 8;
+}
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>
 MhcPreSinkhorn(const at::Tensor &x, const at::Tensor &phi, const at::Tensor &alpha, const at::Tensor &bias,
@@ -27,6 +31,7 @@ MhcPreSinkhorn(const at::Tensor &x, const at::Tensor &phi, const at::Tensor &alp
 
     at::Tensor hin;
     at::Tensor hPost;
+    at::Tensor hResBeforeSinkhorn;
     at::Tensor hRes;
     at::Tensor hPre;
     at::Tensor hcBeforeNorm;
@@ -46,9 +51,9 @@ MhcPreSinkhorn(const at::Tensor &x, const at::Tensor &phi, const at::Tensor &alp
         if (outFlag) {
             hPre = at::empty({t, n}, phi.options());
             hcBeforeNorm = at::empty({t, n * n + 2 * n}, phi.options());
-            invRms = at::empty({t, 1}, phi.options());
-            sumOut = at::empty({2 * skIterCount, t, n}, phi.options());
-            normOut = at::empty({2 * skIterCount, t, n, n}, phi.options());
+            invRms = at::empty({t}, phi.options());
+            sumOut = at::empty({2 * skIterCount * t * SINKHORN_ALIGN_N}, phi.options());
+            normOut = at::empty({2 * skIterCount * t * n * SINKHORN_ALIGN_N}, phi.options());
         } else {
             hPre = at::empty({0}, phi.options());
             hcBeforeNorm = at::empty({0}, phi.options());
@@ -66,9 +71,9 @@ MhcPreSinkhorn(const at::Tensor &x, const at::Tensor &phi, const at::Tensor &alp
         if (outFlag) {
             hPre = at::empty({b, s, n}, phi.options());
             hcBeforeNorm = at::empty({b, s, n * n + 2 * n}, phi.options());
-            invRms = at::empty({b, s, 1}, phi.options());
-            sumOut = at::empty({2 * skIterCount, b, s, n}, phi.options());
-            normOut = at::empty({2 * skIterCount, b, s, n, n}, phi.options());
+            invRms = at::empty({b, s}, phi.options());
+            sumOut = at::empty({2 * skIterCount * b * s * SINKHORN_ALIGN_N}, phi.options());
+            normOut = at::empty({2 * skIterCount * b * s * n * SINKHORN_ALIGN_N}, phi.options());
         } else {
             hPre = at::empty({0}, phi.options());
             hcBeforeNorm = at::empty({0}, phi.options());
@@ -78,8 +83,31 @@ MhcPreSinkhorn(const at::Tensor &x, const at::Tensor &phi, const at::Tensor &alp
         }
     }
 
-    ACLNN_CMD(aclnnMhcPreSinkhorn, x, phi, alpha, bias, hcMult, numIters, hcEps, normEps, outFlag, hin, hPost, hRes,
-              hPre, hcBeforeNorm, invRms, sumOut, normOut);
+    c10::SmallVector<int64_t, 5> hResMatrixShape(hPost.sizes().begin(), hPost.sizes().end());
+    hResMatrixShape.emplace_back(n);
+    hResBeforeSinkhorn = at::empty(hResMatrixShape, phi.options());
+    at::Tensor hResMatrix = at::empty_like(hResBeforeSinkhorn);
+
+    const c10::optional<at::Tensor> gamma = c10::nullopt;
+    c10::optional<at::Tensor> invRmsOptional = outFlag ? c10::optional<at::Tensor>(invRms) : c10::nullopt;
+    c10::optional<at::Tensor> hcBeforeNormOptional = outFlag ? c10::optional<at::Tensor>(hcBeforeNorm) : c10::nullopt;
+    c10::optional<at::Tensor> hPreOptional = outFlag ? c10::optional<at::Tensor>(hPre) : c10::nullopt;
+    ACLNN_CMD(aclnnMhcPre, x, phi, alpha, bias, gamma, normEps, hcEps, hin, hPost, hResBeforeSinkhorn, invRmsOptional,
+              hcBeforeNormOptional, hPreOptional);
+
+    if (!outFlag) {
+        sumOut = at::empty({1}, phi.options());
+        normOut = at::empty({1}, phi.options());
+    }
+    ACLNN_CMD(aclnnMhcSinkhorn, hResBeforeSinkhorn, hcEps, numIters, hResMatrix, normOut, sumOut);
+    hRes = hResMatrix.flatten(-2);
+
+    if (outFlag) {
+        invRms = invRms.unsqueeze(-1);
+    } else {
+        sumOut = at::empty({0}, phi.options());
+        normOut = at::empty({0}, phi.options());
+    }
 
     return std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>(
         hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut);

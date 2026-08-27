@@ -25,7 +25,7 @@ class MhcPreSinkhornBackwardOpBuilder(OpBuilder):
         return (
             "mhc_pre_sinkhorn_backward(Tensor gradHin, Tensor gradHPost, Tensor gradHRes, "
             "Tensor x, Tensor phi, Tensor alpha, Tensor bias, "
-            "Tensor hPre, Tensor hcBeforeNorm, Tensor invRms, "
+            "Tensor hPre, Tensor hPost, Tensor hcBeforeNorm, Tensor invRms, "
             "Tensor sumOut, Tensor normOut, float hcEps) -> "
             "(Tensor, Tensor, Tensor, Tensor)"
         )
@@ -41,6 +41,7 @@ class MhcPreSinkhornBackwardOpBuilder(OpBuilder):
             alpha,
             bias,
             h_pre,
+            h_post,
             hc_before_norm,
             inv_rms,
             sum_out,
@@ -68,6 +69,7 @@ def mhc_pre_sinkhorn_backward(
     alpha,
     bias,
     h_pre,
+    h_post,
     hc_before_norm,
     inv_rms,
     sum_out,
@@ -84,6 +86,7 @@ def mhc_pre_sinkhorn_backward(
         alpha,
         bias,
         h_pre,
+        h_post,
         hc_before_norm,
         inv_rms,
         sum_out,

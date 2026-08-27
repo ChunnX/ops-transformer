@@ -10,7 +10,7 @@
 
 /*!
  * \file mhc_pre_sinkhorn_backward.cpp
- * \brief ACLNN Wrapper for aclnnMhcPreSinkhornBackward
+ * \brief ACLNN Wrapper composed from aclnnMhcSinkhornBackward and aclnnMhcPreBackward
  */
 
 #include <torch/extension.h>
@@ -21,16 +21,32 @@ namespace op_api {
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> MhcPreSinkhornBackward(
     const at::Tensor &gradHin, const at::Tensor &gradHPost, const at::Tensor &gradHRes, const at::Tensor &x,
     const at::Tensor &phi, const at::Tensor &alpha, const at::Tensor &bias, const at::Tensor &hPre,
-    const at::Tensor &hcBeforeNorm, const at::Tensor &invRms, const at::Tensor &sumOut, const at::Tensor &normOut,
-    double hcEps)
+    const at::Tensor &hPost, const at::Tensor &hcBeforeNorm, const at::Tensor &invRms, const at::Tensor &sumOut,
+    const at::Tensor &normOut, double hcEps)
 {
+    const int64_t n = hPost.size(-1);
+    TORCH_CHECK(gradHRes.size(-1) == n * n, "gradHRes last dimension must equal N * N, but got ", gradHRes.size(-1),
+                " and N = ", n);
+
+    c10::SmallVector<int64_t, 5> gradHResShape(hPost.sizes().begin(), hPost.sizes().end());
+    gradHResShape.emplace_back(n);
+    at::Tensor gradHResMatrix = gradHRes.reshape(gradHResShape);
+
+    at::Tensor gradHResBeforeSinkhorn = at::empty_like(gradHResMatrix);
+    ACLNN_CMD(aclnnMhcSinkhornBackward, gradHResMatrix, normOut, sumOut, gradHResBeforeSinkhorn);
+
+    TORCH_CHECK(invRms.size(-1) == 1, "invRms last dimension must be 1, but got ", invRms.size(-1));
+    at::Tensor invRmsSqueezed = invRms.squeeze(-1);
     at::Tensor gradX = at::empty_like(x);
     at::Tensor gradPhi = at::empty_like(phi);
     at::Tensor gradAlpha = at::empty_like(alpha);
     at::Tensor gradBias = at::empty_like(bias);
+    const c10::optional<at::Tensor> gamma = c10::nullopt;
+    const c10::optional<at::Tensor> gradXPost = c10::nullopt;
+    const c10::optional<at::Tensor> gradGamma = c10::nullopt;
 
-    ACLNN_CMD(aclnnMhcPreSinkhornBackward, gradHin, gradHPost, gradHRes, x, phi, alpha, bias, hPre, hcBeforeNorm,
-              invRms, sumOut, normOut, hcEps, gradX, gradPhi, gradAlpha, gradBias);
+    ACLNN_CMD(aclnnMhcPreBackward, x, phi, alpha, gradHin, gradHPost, gradHResBeforeSinkhorn, invRmsSqueezed,
+              hcBeforeNorm, hPre, hPost, gamma, gradXPost, hcEps, gradX, gradPhi, gradAlpha, gradBias, gradGamma);
 
     return std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>(gradX, gradPhi, gradAlpha, gradBias);
 }
