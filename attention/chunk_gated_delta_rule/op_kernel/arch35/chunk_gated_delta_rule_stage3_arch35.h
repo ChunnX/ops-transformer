@@ -133,8 +133,8 @@ public:
         // gated 路径先将长度为 curChunkSize_ 的 g 向量搬入独立 TBuf；随后 qkt 的 MTE2
         // 搬运与 DeQue 保证此前的 g 搬运也已完成，使两个输入可由同一次 VF_CALL 读取。
         if constexpr (gOptional) {
-            DataCopyExtParams gInParams{static_cast<uint16_t>(1),
-                                        static_cast<uint32_t>(curChunkSize_ * sizeof(float)), 0, 0, 0};
+            DataCopyExtParams gInParams{static_cast<uint16_t>(1), static_cast<uint32_t>(curChunkSize_ * sizeof(float)),
+                                        0, 0, 0};
             DataCopyPadExtParams<float> gPadParams{false, 0, 0, 0};
             DataCopyPad(tmpBuffer1_, sTP_->gCumExp[nvId * Sp_ + chunkPos], gInParams, gPadParams);
         }

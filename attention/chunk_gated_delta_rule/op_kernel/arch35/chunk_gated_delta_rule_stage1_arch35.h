@@ -73,9 +73,10 @@ public:
     using vInnerType = std::conditional_t<kStateIsFp32, float, bfloat16_t>;
     using MMBf16 = StageOneMTT<bfloat16_t>;
     using MMVInner = StageOneMTT<vInnerType>;
-    __aicore__ inline Stage1(MMBf16 &mmBf16, MMVInner &mmVInner) : mmBf16_(mmBf16), mmVInner_(mmVInner)
-    {
-    }
+    __aicore__ inline Stage1(MMBf16 &mmBf16, MMVInner &mmVInner)
+        : mmBf16_(mmBf16),
+          mmVInner_(mmVInner)
+    {}
     __aicore__ inline void SetGlobalTensors(const GDRStageOneInitParams<vInnerType> &initParams)
     {
         queryGm_ = initParams.query;
@@ -443,8 +444,7 @@ private:
         auto gCumAddr = reinterpret_cast<__ubuf__ float *>(gCumSumUbFloat.GetPhyAddr());
         auto gCumExpAddr = reinterpret_cast<__ubuf__ float *>(gCumExpUbFloat.GetPhyAddr());
         auto gammaAddr = reinterpret_cast<__ubuf__ float *>(gammaUbFloat.GetPhyAddr());
-        AscendC::VF_CALL<CumSumExpVF>(gAddr, gCumAddr, gCumExpAddr, gammaAddr,
-                                     static_cast<uint32_t>(chunkSize_));
+        AscendC::VF_CALL<CumSumExpVF>(gAddr, gCumAddr, gCumExpAddr, gammaAddr, static_cast<uint32_t>(chunkSize_));
         PipeBarrier<PIPE_V>();
 
         if (subBlockIdx_ == 0) {

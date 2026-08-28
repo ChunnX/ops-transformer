@@ -106,8 +106,8 @@ public:
             uint64_t outQueueSize = Std::max((uint64_t)chunkSize_ * chunkSize_ * sizeof(bfloat16_t),
                                              (uint64_t)Dv_ * curDk_ * sizeof(bfloat16_t));
             pipe_->InitBuffer(outQueue_, BUFFER_NUM_ONE, outQueueSize);
-            pipe_->InitBuffer(tmpBuff_, (Std::max((uint64_t)chunkSize_, (uint64_t)Dv_) * curDk_ + BLOCK_FLOAT_NUM) *
-                                            sizeof(float));
+            pipe_->InitBuffer(
+                tmpBuff_, (Std::max((uint64_t)chunkSize_, (uint64_t)Dv_) * curDk_ + BLOCK_FLOAT_NUM) * sizeof(float));
             uint32_t buffOffset = 0;
             tmpBuffer1_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(Dv_ * curDk_), buffOffset);
             buffOffset += Ceil(Dv_ * curDk_ * sizeof(float), BLOCK_SIZE) * BLOCK_SIZE;
@@ -230,8 +230,7 @@ public:
         DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(gCum[curChunkSize_ - 1]);
         float gVal = gCum.GetValue(curChunkSize_ - 1);
         auto stateFp32Addr = reinterpret_cast<__ubuf__ float *>(stateFp32Ub_.GetPhyAddr());
-        AscendC::VF_CALL<ScaleFp32StateByExpVF>(stateFp32Addr, gVal,
-                                               static_cast<uint32_t>(Dv_ * curDk_));
+        AscendC::VF_CALL<ScaleFp32StateByExpVF>(stateFp32Addr, gVal, static_cast<uint32_t>(Dv_ * curDk_));
         PipeBarrier<PIPE_V>();
     }
 

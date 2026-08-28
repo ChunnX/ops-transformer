@@ -47,15 +47,14 @@ __simd_vf__ inline void ScaleFp32StateByExpVF(__ubuf__ float *stateAddr, float g
  * BF16 gated 状态缩放：scale = exp(gCumLast)，dst = BF16(FP32(src) * scale)。
  * Cast、Exp、Mul、Cast 在同一个 VF 中完成，FP32 中间结果不再写回临时 UB。
  */
-__simd_vf__ inline void ScaleBf16StateByExpVF(__ubuf__ bfloat16_t *dstAddr,
-                                              __ubuf__ bfloat16_t *srcAddr,
+__simd_vf__ inline void ScaleBf16StateByExpVF(__ubuf__ bfloat16_t *dstAddr, __ubuf__ bfloat16_t *srcAddr,
                                               float gCumLast, uint32_t count)
 {
     constexpr uint32_t elementsPerRepeat = VECTOR_REG_WIDTH / sizeof(float);
-    static constexpr CastTrait castBf16ToFp32 = {
-        RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-    static constexpr CastTrait castFp32ToBf16 = {
-        RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr CastTrait castBf16ToFp32 = {RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING,
+                                                 RoundMode::UNKNOWN};
+    static constexpr CastTrait castFp32ToBf16 = {RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING,
+                                                 RoundMode::CAST_RINT};
     RegTensor<bfloat16_t> srcBf16Reg;
     RegTensor<bfloat16_t> dstBf16Reg;
     RegTensor<float> stateReg;
@@ -80,14 +79,13 @@ __simd_vf__ inline void ScaleBf16StateByExpVF(__ubuf__ bfloat16_t *dstAddr,
 }
 
 /* 无门控路径保持原 Cast -> Muls(1.0) -> Cast 顺序，并在寄存器中完成。 */
-__simd_vf__ inline void ScaleBf16StateVF(__ubuf__ bfloat16_t *dstAddr,
-                                         __ubuf__ bfloat16_t *srcAddr, uint32_t count)
+__simd_vf__ inline void ScaleBf16StateVF(__ubuf__ bfloat16_t *dstAddr, __ubuf__ bfloat16_t *srcAddr, uint32_t count)
 {
     constexpr uint32_t elementsPerRepeat = VECTOR_REG_WIDTH / sizeof(float);
-    static constexpr CastTrait castBf16ToFp32 = {
-        RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-    static constexpr CastTrait castFp32ToBf16 = {
-        RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    static constexpr CastTrait castBf16ToFp32 = {RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING,
+                                                 RoundMode::UNKNOWN};
+    static constexpr CastTrait castFp32ToBf16 = {RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING,
+                                                 RoundMode::CAST_RINT};
     RegTensor<bfloat16_t> srcBf16Reg;
     RegTensor<bfloat16_t> dstBf16Reg;
     RegTensor<float> stateReg;

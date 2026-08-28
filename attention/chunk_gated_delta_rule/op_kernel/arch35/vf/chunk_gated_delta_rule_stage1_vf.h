@@ -24,9 +24,8 @@ using namespace MicroAPI;
  *   gamma[i, j] = j < i ? exp(gCum[i] - gCum[j]) : 0
  * gCum 计算完后保留在寄存器中直接生成 Gamma，避免再次从 UB 加载以及两次 Broadcast。
  */
-__simd_vf__ inline void CumSumExpVF(__ubuf__ float *gAddr, __ubuf__ float *gCumAddr,
-                                    __ubuf__ float *gCumExpAddr, __ubuf__ float *gammaAddr,
-                                    uint32_t chunkSize)
+__simd_vf__ inline void CumSumExpVF(__ubuf__ float *gAddr, __ubuf__ float *gCumAddr, __ubuf__ float *gCumExpAddr,
+                                    __ubuf__ float *gammaAddr, uint32_t chunkSize)
 {
     // chunkSize <= 单个 FP32 Vector 寄存器的元素数，因此一个寄存器可保存整个 chunk 的 g/gCum
     RegTensor<float> gCumReg;
@@ -53,8 +52,7 @@ __simd_vf__ inline void CumSumExpVF(__ubuf__ float *gAddr, __ubuf__ float *gCumA
         // 再通过 addMask 屏蔽，因此这些 lane 保持原值，不会重复累加 gCumReg[0]
         Adds<int32_t>(gatherIndexReg, laneIndexReg, -stride, allMask);
         Maxs<int32_t>(gatherIndexReg, gatherIndexReg, static_cast<int32_t>(0), allMask);
-        Gather<float, uint32_t>(shiftedReg, gCumReg,
-                                reinterpret_cast<RegTensor<uint32_t> &>(gatherIndexReg));
+        Gather<float, uint32_t>(shiftedReg, gCumReg, reinterpret_cast<RegTensor<uint32_t> &>(gatherIndexReg));
         Compares<int32_t, CMPMODE::GE>(addMask, laneIndexReg, stride, validMask);
         Add<float, MaskMergeMode::MERGING>(gCumReg, gCumReg, shiftedReg, addMask);
     }
@@ -70,8 +68,7 @@ __simd_vf__ inline void CumSumExpVF(__ubuf__ float *gAddr, __ubuf__ float *gCumA
     for (uint16_t row = 1; row < static_cast<uint16_t>(chunkSize); ++row) {
         uint32_t rowOffset = static_cast<uint32_t>(row) * chunkSize;
         Duplicate(reinterpret_cast<RegTensor<uint32_t> &>(gatherIndexReg), static_cast<uint32_t>(row));
-        Gather<float, uint32_t>(shiftedReg, gCumReg,
-                                reinterpret_cast<RegTensor<uint32_t> &>(gatherIndexReg));
+        Gather<float, uint32_t>(shiftedReg, gCumReg, reinterpret_cast<RegTensor<uint32_t> &>(gatherIndexReg));
         Compares<int32_t, CMPMODE::LT>(gammaMask, laneIndexReg, static_cast<int32_t>(row), validMask);
         Sub<float, MaskMergeMode::ZEROING>(gCumExpReg, shiftedReg, gCumReg, gammaMask);
         Exp<float, MaskMergeMode::ZEROING>(gCumExpReg, gCumExpReg, gammaMask);
@@ -88,8 +85,8 @@ __simd_vf__ inline void CumSumExpVF(__ubuf__ float *gAddr, __ubuf__ float *gCumA
  *   eiUb must be pre-filled by the caller (unit-diagonal identity in the first N rows).
  */
 template <uint32_t N>
-__simd_vf__ inline void InverseAIVVFImpl(__ubuf__ float *attnUb, __ubuf__ float *invResUb,
-                                         __ubuf__ float *eiUb, uint32_t offset, uint32_t chunkSize)
+__simd_vf__ inline void InverseAIVVFImpl(__ubuf__ float *attnUb, __ubuf__ float *invResUb, __ubuf__ float *eiUb,
+                                         uint32_t offset, uint32_t chunkSize)
 {
     // N<=64, 单寄存器容纳一行; UpdateMask 生成前 N 个 lane 有效的掩码
     uint32_t maskLen = N;
