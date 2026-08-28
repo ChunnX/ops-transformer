@@ -18,8 +18,14 @@
 namespace ops {
 class MoeDistributeDispatchSetup : public OpDef {
 public:
-    explicit MoeDistributeDispatchSetup(const char *name) : OpDef(name)
+    explicit MoeDistributeDispatchSetup(const char *name)
+        : OpDef(name)
     {
+        this->Input("context")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16,
@@ -41,7 +47,6 @@ public:
             .DataTypeList({ge::DT_BOOL})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-
         this->Output("y")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_INT8, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN,
@@ -50,10 +55,10 @@ public:
         this->Output("expand_idx").ParamType(REQUIRED).DataTypeList({ge::DT_INT32}).FormatList({ge::FORMAT_ND});
         this->Output("comm_cmd_info").ParamType(REQUIRED).DataTypeList({ge::DT_INT32}).FormatList({ge::FORMAT_ND});
 
-        this->Attr("group_ep").AttrType(REQUIRED).String();
         this->Attr("ep_world_size").AttrType(REQUIRED).Int();
         this->Attr("ep_rank_id").AttrType(REQUIRED).Int();
         this->Attr("moe_expert_num").AttrType(REQUIRED).Int();
+        this->Attr("ccl_buffer_size").AttrType(REQUIRED).Int();
         this->Attr("expert_shard_type").AttrType(OPTIONAL).Int(0);
         this->Attr("shared_expert_num").AttrType(OPTIONAL).Int(1);
         this->Attr("shared_expert_rank_num").AttrType(OPTIONAL).Int(0);
@@ -61,6 +66,7 @@ public:
         this->Attr("global_bs").AttrType(OPTIONAL).Int(0);
         this->Attr("comm_type").AttrType(OPTIONAL).Int(0);
         this->Attr("comm_alg").AttrType(OPTIONAL).String("");
+        this->Attr("y_dtype").AttrType(OPTIONAL).Int(28);
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
@@ -75,7 +81,6 @@ public:
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
 
         this->AICore().AddConfig("ascend950", aicore_config);
-        this->MC2().HcclGroup({"group_ep"});
     }
 };
 
