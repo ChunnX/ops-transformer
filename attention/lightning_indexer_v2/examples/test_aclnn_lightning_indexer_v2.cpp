@@ -15,6 +15,8 @@
 #include "securec.h"
 #include "acl/acl.h"
 #include "aclnnop/aclnn_lightning_indexer_v2.h"
+#include "aclnnop/aclnn_lightning_indexer_v2_metadata.h"
+#include "aclnn/opdev/platform.h"
 
 using namespace std;
 
@@ -88,6 +90,7 @@ struct TensorResources {
     void *keyDeviceAddr = nullptr;
     void *weightsDeviceAddr = nullptr;
     void *cmpResidualKDeviceAddr = nullptr;
+    void *metadataDeviceAddr = nullptr;
     void *sparseIndicesDeviceAddr = nullptr;
     void *sparseValuesDeviceAddr = nullptr;
 
@@ -116,12 +119,14 @@ int InitializeTensors(TensorResources &resources)
     std::vector<int64_t> keyShape = {B, S2Compressed, N2, D};
     std::vector<int64_t> weightsShape = {B, S1, N1};
     std::vector<int64_t> cmpResidualKShape = {B};
+    std::vector<int64_t> metadataShape = {1024};
     std::vector<int64_t> sparseIndicesShape = {B, S1, N2, topk};
     std::vector<int64_t> sparseValuesShape = {B, S1, N2, topk};
 
     int64_t queryShapeSize = GetShapeSize(queryShape);
     int64_t keyShapeSize = GetShapeSize(keyShape);
     int64_t weightsShapeSize = GetShapeSize(weightsShape);
+    int64_t metadataShapeSize = GetShapeSize(metadataShape);
     int64_t sparseIndicesShapeSize = GetShapeSize(sparseIndicesShape);
     int64_t sparseValuesShapeSize = GetShapeSize(sparseValuesShape);
 
@@ -129,6 +134,7 @@ int InitializeTensors(TensorResources &resources)
     std::vector<uint16_t> keyHostData(keyShapeSize, 0x3C00);
     std::vector<float> weightsHostData(weightsShapeSize, 1.0f);
     std::vector<int32_t> cmpResidualKHostData(B, static_cast<int32_t>(resK));
+    std::vector<int32_t> metadataHostData(metadataShapeSize, 0);
     std::vector<int32_t> sparseIndicesHostData(sparseIndicesShapeSize, 0);
     std::vector<float> sparseValuesHostData(sparseValuesShapeSize, 0.0f);
 
@@ -156,6 +162,11 @@ int InitializeTensors(TensorResources &resources)
         return ret;
     }
 
+    ret = CreateAclTensor(metadataHostData, metadataShape, &resources.metadataDeviceAddr, aclDataType::ACL_INT32,
+                          &resources.metadataTensor);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        return ret;
+    }
     ret = CreateAclTensor(sparseIndicesHostData, sparseIndicesShape, &resources.sparseIndicesDeviceAddr,
                           aclDataType::ACL_INT32, &resources.sparseIndicesTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
@@ -171,6 +182,67 @@ int InitializeTensors(TensorResources &resources)
     return ACL_SUCCESS;
 }
 
+int GenerateMetadata(TensorResources &resources, aclrtStream stream, int64_t B, int64_t S1, int64_t S2, int64_t N1,
+                     int64_t N2, int64_t D, int64_t topk, int64_t quantMode, int64_t maskMode, int64_t cmpRatio)
+{
+    constexpr const char layoutQ[] = "BSND";
+    constexpr const char layoutK[] = "BSND";
+    constexpr size_t layoutLen = sizeof(layoutQ);
+    char layoutQCopy[layoutLen];
+    char layoutKCopy[layoutLen];
+    errno_t memcpyRet = memcpy_s(layoutQCopy, sizeof(layoutQCopy), layoutQ, layoutLen);
+    if (!CHECK_RET(memcpyRet == 0)) {
+        LOG_PRINT("metadata memcpy_s layoutQ failed. ERROR: %d\n", memcpyRet);
+        return -1;
+    }
+    memcpyRet = memcpy_s(layoutKCopy, sizeof(layoutKCopy), layoutK, layoutLen);
+    if (!CHECK_RET(memcpyRet == 0)) {
+        LOG_PRINT("metadata memcpy_s layoutK failed. ERROR: %d\n", memcpyRet);
+        return -1;
+    }
+
+    aclOpExecutor *executor;
+    uint64_t workspaceSize = 0;
+    int ret = aclnnLightningIndexerV2MetadataGetWorkspaceSize(
+        nullptr, nullptr, nullptr, nullptr, nullptr, N1, N2, D, topk, quantMode, B, S1, S2, layoutQCopy, layoutKCopy,
+        maskMode, cmpRatio, resources.metadataTensor, &workspaceSize, &executor);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("aclnnLightningIndexerV2MetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
+        return ret;
+    }
+
+    void *metadataWsAddr = nullptr;
+    if (workspaceSize > 0ULL) {
+        ret = aclrtMalloc(&metadataWsAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        if (!CHECK_RET(ret == ACL_SUCCESS)) {
+            LOG_PRINT("metadata allocate workspace failed. ERROR: %d\n", ret);
+            return ret;
+        }
+    }
+
+    ret = aclnnLightningIndexerV2Metadata(metadataWsAddr, workspaceSize, executor, stream);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("aclnnLightningIndexerV2Metadata failed. ERROR: %d\n", ret);
+        if (metadataWsAddr) {
+            (void)aclrtFree(metadataWsAddr);
+        }
+        return ret;
+    }
+
+    ret = aclrtSynchronizeStream(stream);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("metadata synchronize stream failed. ERROR: %d\n", ret);
+        if (metadataWsAddr) {
+            (void)aclrtFree(metadataWsAddr);
+        }
+        return ret;
+    }
+
+    if (metadataWsAddr) {
+        (void)aclrtFree(metadataWsAddr);
+    }
+    return ACL_SUCCESS;
+}
 int ExecuteLightningIndexerV2(TensorResources &resources, aclrtStream stream, void **workspaceAddr,
                               uint64_t *workspaceSize)
 {
@@ -199,8 +271,9 @@ int ExecuteLightningIndexerV2(TensorResources &resources, aclrtStream stream, vo
 
     int ret = aclnnLightningIndexerV2GetWorkspaceSize(
         resources.queryTensor, resources.keyTensor, resources.weightsTensor, nullptr, nullptr, nullptr, nullptr,
-        resources.cmpResidualKTensor, nullptr, nullptr, nullptr, topk, maxSeqlenQ, layoutQuery, layoutKey, maskMode,
-        cmpRatio, returnValue, resources.sparseIndicesTensor, resources.sparseValuesTensor, workspaceSize, &executor);
+        resources.cmpResidualKTensor, nullptr, nullptr, resources.metadataTensor, topk, maxSeqlenQ, layoutQuery,
+        layoutKey, maskMode, cmpRatio, returnValue, resources.sparseIndicesTensor, resources.sparseValuesTensor,
+        workspaceSize, &executor);
 
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("aclnnLightningIndexerV2GetWorkspaceSize failed. ERROR: %d\n", ret);
@@ -254,6 +327,9 @@ void CleanupResources(TensorResources &resources, void *workspaceAddr, aclrtStre
     if (resources.cmpResidualKTensor) {
         aclDestroyTensor(resources.cmpResidualKTensor);
     }
+    if (resources.metadataTensor) {
+        aclDestroyTensor(resources.metadataTensor);
+    }
     if (resources.sparseIndicesTensor) {
         aclDestroyTensor(resources.sparseIndicesTensor);
     }
@@ -294,6 +370,9 @@ void CleanupResources(TensorResources &resources, void *workspaceAddr, aclrtStre
 
 int main()
 {
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
+        return 0;
+    }
     int32_t deviceId = 0;
     aclrtStream stream = nullptr;
     TensorResources resources = {};
@@ -318,7 +397,12 @@ int main()
         CleanupResources(resources, workspaceAddr, stream, deviceId);
         return ret;
     }
-
+    ret = GenerateMetadata(resources, stream, B, S1, S2, N1, N2, D, topk, 1, 0, 1);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("GenerateMetadata failed. ERROR: %d\n", ret);
+        CleanupResources(resources, workspaceAddr, stream, deviceId);
+        return ret;
+    }
     ret = ExecuteLightningIndexerV2(resources, stream, &workspaceAddr, &workspaceSize);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("ExecuteLightningIndexerV2 failed. ERROR: %d\n", ret);
