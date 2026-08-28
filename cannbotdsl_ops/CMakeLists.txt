@@ -25,23 +25,24 @@ endif()
 
 include("${CANNBOTDSL_SOURCE_DIR}/cmake/CANNBotDSLOperatorPackage.cmake")
 
-set(_cannbotdsl_stage_dir "${CMAKE_BINARY_DIR}/cannbotdsl_component")
-set(_cannbotdsl_registry_dir "${CMAKE_BINARY_DIR}/cannbotdsl_provider_aclnn")
-cannbotdsl_stage_operator_packages(
-  TARGET cannbotdsl_operator_packages
-  RUNTIME_ROOT "${CANNBOTDSL_RUNTIME_ROOT}"
-  OUTPUT_DIR "${_cannbotdsl_stage_dir}"
-  INSTALL_DESTINATION
-    "packages/vendors/${VENDOR_NAME}_transformer/op_impl/cannbotdsl"
-  SPECS
-    "${CMAKE_CURRENT_LIST_DIR}/attention/flash_kda/package.toml")
-
-cannbotdsl_generate_provider_aclnn_registry(
+set(_cannbotdsl_delivery_dir "${CMAKE_BINARY_DIR}/cannbotdsl_flash_kda_delivery")
+set(_cannbotdsl_stage_dir "${_cannbotdsl_delivery_dir}/component")
+set(_cannbotdsl_registry_dir "${_cannbotdsl_delivery_dir}/generated")
+cannbotdsl_add_acl_operator(
   TARGET cannbotdsl_provider_aclnn_registry
-  STAGE_TARGET cannbotdsl_operator_packages
-  STAGE_DIR "${_cannbotdsl_stage_dir}"
-  OUTPUT_DIR "${_cannbotdsl_registry_dir}"
-  RUNTIME_ROOT "${CANNBOTDSL_RUNTIME_ROOT}")
+  SOURCE "${CMAKE_CURRENT_LIST_DIR}/attention/flash_kda/flash_kda.py"
+  ENTRY "FlashKda"
+  OPERATOR "ops-transformer::attention/flash_kda"
+  PACKAGE_NAME "ops-transformer-flash-kda"
+  VERSION "0.1.0"
+  VENDOR "ops-transformer"
+  TARGET_SOC "ascend950pr"
+  NPU_ARCH "dav-3510"
+  ARTIFACT "provider_dso_v1"
+  OUTPUT_DIR "${_cannbotdsl_delivery_dir}"
+  RUNTIME_ROOT "${CANNBOTDSL_RUNTIME_ROOT}"
+  INSTALL_DESTINATION
+    "packages/vendors/${VENDOR_NAME}_transformer/op_impl/cannbotdsl")
 
 set(CANNBOTDSL_PROVIDER_OPBASE_SOURCE_DIR "" CACHE PATH
   "opbase source tree containing opdev/provider_kernel.h")

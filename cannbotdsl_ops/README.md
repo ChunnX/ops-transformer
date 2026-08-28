@@ -8,7 +8,7 @@
 当前首个接入算子是 FlashKDA：
 
 - Python 源码及公开 support contract 保留在
-  `attention/flash_kda/flash_kda.py`；`package.toml` 只引用 `@entry`；
+  `attention/flash_kda/flash_kda.py`；构建仅声明 SOURCE 和公开 `@entry` 名；
 - 构建阶段调用 CANNBotDSL AOT，生成 6 个 `ascend950pr` Provider DSO；
 - 生成的 Provider registry 与 `flash_kda_l0.cpp` 一同编入
   `libcust_opapi.so`；

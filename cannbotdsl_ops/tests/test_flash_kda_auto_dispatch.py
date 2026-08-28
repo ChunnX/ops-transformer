@@ -5,6 +5,7 @@ from pathlib import Path
 import tomllib
 
 from cannbotdsl.package.dispatch import synthesize_aot_dispatch
+from cannbotdsl.package.stage_source import direct_package_spec
 
 
 _OPERATOR_DIR = Path(__file__).resolve().parents[1] / "attention" / "flash_kda"
@@ -48,7 +49,27 @@ def test_flash_kda_source_uses_entry_only_auto_dispatch():
     }
 
 
-def test_package_spec_has_no_manual_function_or_variant_provider():
-    payload = tomllib.loads(
-        (_OPERATOR_DIR / "package.toml").read_text(encoding="utf-8")
+def test_direct_source_entry_has_no_manual_function_or_variant_provider():
+    source = _OPERATOR_DIR / "flash_kda.py"
+    path, text = direct_package_spec(
+        source=source,
+        entry="FlashKda",
+        operator="ops-transformer::attention/flash_kda",
+        package_name="ops-transformer-flash-kda",
+        version="0.1.0",
+        vendor="ops-transformer",
+        target_soc="ascend950pr",
+        npu_arch="dav-3510",
     )
+    payload = tomllib.loads(text)
+
+    assert path == source
+    assert payload["operators"] == [
+        {
+            "operator": "ops-transformer::attention/flash_kda",
+            "entry": "flash_kda:FlashKda",
+            "entry_public_name": True,
+        }
+    ]
+    assert "function" not in payload["operators"][0]
+    assert "provider" not in payload["operators"][0]
