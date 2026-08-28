@@ -21,11 +21,19 @@
 #ifndef FLASH_MLA_WITH_KVCACHE_TYPE_H_
 #define FLASH_MLA_WITH_KVCACHE_TYPE_H_
 
+#if __has_include("../../../common/op_kernel/arch35/util_regbase.h")
 #include "../../../common/op_kernel/arch35/util_regbase.h"
 #include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
 #include "../../../common/op_kernel/memcopy/parser.h"
 #include "../../../common/op_kernel/memcopy/gm_layout.h"
 #include "../../../common/op_kernel/memcopy/fa_ub_tensor.h"
+#else
+#include "../../common/arch35/util_regbase.h"
+#include "../../common/arch35/infer_flash_attention_comm_arch35.h"
+#include "../../common/memcopy/parser.h"
+#include "../../common/memcopy/gm_layout.h"
+#include "../../common/memcopy/fa_ub_tensor.h"
+#endif
 
 namespace FlashAttnKernel {
 
