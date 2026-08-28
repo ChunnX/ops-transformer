@@ -9,8 +9,12 @@
 // -----------------------------------------------------------------------------------------------------------
 
 #include <torch/extension.h>
+#include <algorithm>
 #include <cstring>
 #include "aclnn_common.h"
+
+// Diagnostic source switch. Keep this in sync with mega_moe.py when tracing.
+#define MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE 0
 
 namespace op_api {
 using npu_utils = at_npu::native::NpuUtils;
@@ -109,7 +113,14 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
         dispatchQuantOutDtype.has_value() ? static_cast<int64_t>(GetAclDataType(dispatchQuantOutDtype.value())) : 28;
 
     at::Tensor y;
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+    constexpr int64_t traceOutputBytes = 8 * 1024 * 1024;
+    constexpr int64_t bf16Bytes = 2;
+    int64_t traceRows = (traceOutputBytes + h * bf16Bytes - 1) / (h * bf16Bytes);
+    y = at::empty({std::max(bs, traceRows), h}, topkIds.options().dtype(x.scalar_type()));
+#else
     y = at::empty({bs, h}, topkIds.options().dtype(x.scalar_type()));
+#endif
 
     TensorListWrapper weight1Wrapper = {weight1Ref, weight1RefDtype};
     TensorListWrapper weight2Wrapper = {weight2Ref, weight2RefDtype};

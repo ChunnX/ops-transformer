@@ -16,6 +16,7 @@
 #include "../mega_moe_tiling.h"
 #include "mega_moe_constants.h"
 #include "mega_moe_workspace.h"
+#include "mega_moe_a8w4_trace_config.h"
 #if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
 #include "adv_api/hcomm/hcomm.h"
 #endif
@@ -69,6 +70,15 @@ struct GMMAddrInfo {
     __gm__ int32_t *gmmToEpilogueFlag;
     __gm__ int32_t *gmm1TileStatus;
     __gm__ int32_t *sharedExpertGmm2TileCounter;
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+    void *criticalPathTrace = nullptr;
+    uint32_t traceWave = 0xffffffffU;
+    uint32_t traceExpert = 0xffffffffU;
+    uint32_t traceTile = 0xffffffffU;
+    uint32_t traceTokenStart = 0U;
+    uint32_t traceTokenCount = 0U;
+    uint32_t traceWorkCount = 0U;
+#endif
 };
 
 #if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)

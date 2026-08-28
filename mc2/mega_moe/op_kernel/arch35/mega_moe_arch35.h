@@ -28,6 +28,7 @@
 #include "common/mega_moe_workspace.h"
 #include "common/mega_moe_utils.h"
 #include "common/mega_moe_exception_dump_policy.h"
+#include "mega_moe_a8w4_trace.h"
 #include "blaze/epilogue/block_epilogue_activation_mx_quant.h"
 #include "stage/mega_moe_token_quant.h"
 #include "stage/mega_moe_send_mask.h"
@@ -177,6 +178,9 @@ protected:
     TokenUnpermuteScratch tokenUnpermuteScratch_;
     MegaMoeImpl::ExceptionDumpEngine exceptionDump_;
     __gm__ MegaMoeImpl::GmmLoopCount *gmmLoopCount_{nullptr};
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+    A8W4CriticalPathTrace trace_{};
+#endif
 };
 
 template <TemplateMegaMoeTypeClass>
@@ -293,6 +297,18 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     gmmLoopCount_ = MegaMoeImpl::RegisterMegaMoeExceptionDump(exceptionDump_, dumpBase, tilingGM, tilingData,
                                                               params_.peermemInfo, sendMaskConfig_.maskAlignSize,
                                                               reinterpret_cast<GM_ADDR>(&mc2Context_->epRankId));
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+    if constexpr (ENABLE_A8W4) {
+        A8W4TraceRole traceRole = A8W4TraceRole::AIC;
+        if constexpr (g_coreType == AIV) {
+            traceRole = GetSubBlockIdx() == 0U ? A8W4TraceRole::AIV0 : A8W4TraceRole::AIV1;
+        }
+        trace_.Init(workspaceGM, params_.workspaceInfo.workspaceSize, yOut, blockNum_, traceRole, blockIdx_, rankId_,
+                    tilingData->bs, tilingData->h, tilingData->hiddenDim, tilingData->topK,
+                    tilingData->moeExpertPerRank, tilingData->epWorldSize);
+        trace_.SetWaveMGroupTarget(mGroupsPerWave_);
+    }
+#endif
 }
 
 // 普通模板 Token Dispatch 使用的 UB/GM 视图。
@@ -599,6 +615,12 @@ template <TemplateMegaMoeTypeClass>
 template <typename Derived>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &derived)
 {
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+    uint64_t opPreBegin = 0U;
+    if constexpr (ENABLE_A8W4) {
+        opPreBegin = trace_.Now();
+    }
+#endif
     // 保存入口时的溢出模式，计算期间关闭溢出检查。
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
@@ -610,23 +632,68 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
         PipeBarrier<PIPE_ALL>();
     }
     SyncAll<false>(); // AIC 等待 AIV 完成输入准备后再进入 GMM。
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+    if constexpr (ENABLE_A8W4) {
+        trace_.Record(A8W4TraceEvent::OP_PRE_MOE, A8W4TraceEvent::INVALID, A8W4_TRACE_END_COMPLETE, {}, opPreBegin,
+                      trace_.Now());
+    }
+#endif
 
     int32_t gmTileSequence = 0;
     if (sharedExpertNum_ > 0U) {
         // 阶段 2：可选的共享专家 GMM1 及 Activation。
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::SHARED_EXPERT_GMM1);
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+        uint64_t sharedGmm1Begin = ENABLE_A8W4 ? trace_.Now() : 0U;
+#endif
         ProcessSharedExpertGmm1(gmTileSequence);
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+        if constexpr (ENABLE_A8W4) {
+            if constexpr (g_coreType == AIC) {
+                AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+                AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+            } else {
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(0);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(0);
+            }
+            trace_.Record(A8W4TraceEvent::SHARED_GMM1_ACTIVATION, A8W4TraceEvent::INVALID,
+                          A8W4_TRACE_END_COMPLETE | A8W4_TRACE_ONLY_COMPLETION, {}, sharedGmm1Begin, trace_.Now());
+        }
+#endif
     }
 
     // 等待所有 rank 完成输入准备，再消费远端 Dispatch 数据。
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_INPUT);
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+    uint64_t inputSyncBegin = ENABLE_A8W4 ? trace_.Now() : 0U;
+#endif
     CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+    if constexpr (ENABLE_A8W4) {
+        trace_.RecordWait(A8W4TraceEvent::CROSS_RANK_INPUT_SYNC, A8W4TraceEvent::INVALID, {}, inputSyncBegin,
+                          trace_.Now());
+    }
+#endif
     // 阶段 3：由派生类编排 MoE 专家的 Dispatch、GMM1/Activation 和 GMM2/Combine。
     derived.ProcessMoeExpertStages(gmTileSequence);
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+    uint64_t opPostBegin = ENABLE_A8W4 ? trace_.Now() : 0U;
+#endif
     if constexpr (g_coreType == AIV) {
         // 导出各 MoE 专家最终 token 数，并在进入后续阶段前完成核间同步。
         if (GetSubBlockIdx() == 1U && countWorkspace_.blockIdx == 0U) {
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+            uint64_t countExportBegin = ENABLE_A8W4 ? trace_.Now() : 0U;
+#endif
             ExportExpertTokenCounts<ActivationType, true>(commonConfig_, tokenDispatchScratch_, params_);
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+            if constexpr (ENABLE_A8W4) {
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(0);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(0);
+                trace_.Record(A8W4TraceEvent::COUNT_EXPORT, A8W4TraceEvent::OP_POST_MOE,
+                              A8W4_TRACE_END_COMPLETE | A8W4_TRACE_ONLY_COMPLETION, {}, countExportBegin, trace_.Now());
+            }
+#endif
         }
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
@@ -634,22 +701,63 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     if (sharedExpertNum_ > 0U) {
         // 阶段 4：可选的共享专家 GMM2，其结果由输出聚合阶段合并。
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::SHARED_EXPERT_GMM2);
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+        uint64_t sharedGmm2Begin = ENABLE_A8W4 ? trace_.Now() : 0U;
+#endif
         ProcessSharedExpertGmm2(gmTileSequence);
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+        if constexpr (ENABLE_A8W4) {
+            if constexpr (g_coreType == AIC) {
+                AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+                AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+            } else {
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(0);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(0);
+            }
+            trace_.Record(A8W4TraceEvent::SHARED_GMM2, A8W4TraceEvent::OP_POST_MOE,
+                          A8W4_TRACE_END_COMPLETE | A8W4_TRACE_ONLY_COMPLETION, {}, sharedGmm2Begin, trace_.Now());
+        }
+#endif
     }
 
     // 阶段 5：所有 rank 完成 Combine 结果发送后，AIV 执行输出聚合。
     if constexpr (g_coreType == AIV) {
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_OUTPUT);
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+        uint64_t outputSyncBegin = ENABLE_A8W4 ? trace_.Now() : 0U;
+#endif
         CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+        if constexpr (ENABLE_A8W4) {
+            trace_.RecordWait(A8W4TraceEvent::CROSS_RANK_OUTPUT_SYNC, A8W4TraceEvent::OP_POST_MOE, {}, outputSyncBegin,
+                              trace_.Now());
+        }
+        uint64_t unpermuteBegin = ENABLE_A8W4 ? trace_.Now() : 0U;
+#endif
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::UNPERMUTE);
         MegaMoeUnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();
         UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>(
             tokenUnpermuteConfig_, commonConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+        if constexpr (ENABLE_A8W4) {
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(0);
+            trace_.Record(A8W4TraceEvent::UNPERMUTE, A8W4TraceEvent::OP_POST_MOE,
+                          A8W4_TRACE_END_COMPLETE | A8W4_TRACE_ONLY_COMPLETION, {}, unpermuteBegin, trace_.Now());
+        }
+#endif
     }
 
     // 恢复入口时的溢出模式。
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::COMPLETE);
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+    if constexpr (ENABLE_A8W4) {
+        trace_.Record(A8W4TraceEvent::OP_POST_MOE, A8W4TraceEvent::INVALID, A8W4_TRACE_END_COMPLETE, {}, opPostBegin,
+                      trace_.Now());
+        trace_.Finish();
+    }
+#endif
 }
 
 } // namespace MegaMoeImpl
