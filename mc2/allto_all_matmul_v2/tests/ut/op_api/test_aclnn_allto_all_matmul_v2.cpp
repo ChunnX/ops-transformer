@@ -68,6 +68,13 @@ TEST_P(AclnnAlltoAllMatmulV2Test, param)
     auto aclnnRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
     if (param.expectResult == ACLNN_SUCCESS) {
         EXPECT_NE(ACLNN_ERR_PARAM_INVALID, aclnnRet);
+        // Call execute to cover the AlltoAllMatmulV2 execute function (L163-177).
+        // Only when GetWorkspaceSize succeeds do we have a valid executor.
+        if (aclnnRet == ACLNN_SUCCESS && executor != nullptr) {
+            auto execRet = AlltoAllMatmulV2(nullptr, workspace_size, executor, nullptr);
+            // Stubs make execute succeed; error path L173-174 stays uncovered.
+            EXPECT_EQ(ACLNN_SUCCESS, execRet);
+        }
     } else {
         EXPECT_EQ(param.expectResult, aclnnRet);
     }
@@ -77,5 +84,50 @@ INSTANTIATE_TEST_SUITE_P(
     AlltoAllMatmulV2, AclnnAlltoAllMatmulV2Test,
     testing::ValuesIn(GetCasesFromCsv<AlltoAllMatmulV2ApiUtParam>(ReplaceFileExtension2Csv(__FILE__))),
     PrintCaseInfoString<AlltoAllMatmulV2ApiUtParam>);
+
+// Cover defensive nullptr branches in AlltoAllMatmulV2GetWorkspaceSize that
+// the parameterised CSV framework cannot trigger (it always passes non-null
+// workspaceSize / executor pointers).
+TEST(AclnnAlltoAllMatmulV2NullptrTest, NullWorkspaceSizeAndExecutor)
+{
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+    TensorDesc context({1, 2052}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc x1({57086, 1536}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    TensorDesc x2({9216, 3072}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    TensorDesc x1Scale({57086, 24, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+    TensorDesc x2Scale({9216, 48, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+    TensorDesc output({28543, 9216}, ACL_BF16, ACL_FORMAT_ND);
+    TensorDesc alltoAllOut({28543, 3072}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+
+    // workspaceSize == nullptr  → covers L97
+    aclOpExecutor *executor = nullptr;
+    auto ret1 = AlltoAllMatmulV2GetWorkspaceSize(
+        context.ToAclTypeRawPtr(), x1.ToAclTypeRawPtr(), x2.ToAclTypeRawPtr(), nullptr,
+        x1Scale.ToAclTypeRawPtr(), x2Scale.ToAclTypeRawPtr(), "group", 2, 0, 6, 6, 4295032864,
+        "urma", 0, output.ToAclTypeRawPtr(), alltoAllOut.ToAclTypeRawPtr(), nullptr, &executor);
+    EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ret1);
+
+    // executor == nullptr → covers L99
+    uint64_t workspaceSize = 0;
+    auto ret2 = AlltoAllMatmulV2GetWorkspaceSize(
+        context.ToAclTypeRawPtr(), x1.ToAclTypeRawPtr(), x2.ToAclTypeRawPtr(), nullptr,
+        x1Scale.ToAclTypeRawPtr(), x2Scale.ToAclTypeRawPtr(), "group", 2, 0, 6, 6, 4295032864,
+        "urma", 0, output.ToAclTypeRawPtr(), alltoAllOut.ToAclTypeRawPtr(), &workspaceSize, nullptr);
+    EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ret2);
+}
+
+// Cover the AlltoAllMatmulV2 execute function (L163-177) which the CSV-driven
+// parameterised tests never call.  The stubbed NnopbaseSetHcclServerType and
+// NnopbaseRunWithWorkspace make it safe to call with nullptr executor/workspace.
+TEST(AclnnAlltoAllMatmulV2ExecuteTest, ExecuteCoversExecuteFunc)
+{
+    // AlltoAllMatmulV2 calls NnopbaseSetHcclServerType (stubbed no-op) then
+    // aclnnInnerAlltoAllMatmulV2.  With nullptr executor the inner function's
+    // NnopbaseGetUnContExecutor returns aclInExecutor=nullptr, inContWsSize=0,
+    // the workspaceSize check passes (0 < 0 is false), and the stubbed
+    // NnopbaseRunWithWorkspace returns OK → execute returns ACLNN_SUCCESS.
+    auto execRet = AlltoAllMatmulV2(nullptr, 0, nullptr, nullptr);
+    EXPECT_EQ(ACLNN_SUCCESS, execRet);
+}
 
 } // namespace AlltoAllMatmulV2UT
