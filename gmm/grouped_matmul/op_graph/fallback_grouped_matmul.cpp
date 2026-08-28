@@ -283,49 +283,117 @@ static bool IsPerTileQuantMode(const OpExecuteContext* host_api_ctx, bool transp
   return (scaleNDim == (weightNDim + PERTILE_GROUP_SIZE - 1) / PERTILE_GROUP_SIZE && isKdimValid);
 }
 
+struct GmmExecuteAttrs {
+  const int64_t* splitItemGe;
+  const bool* isWeightTransposedPtr;
+  const bool* isXTransposed;
+  const int64_t* groupTypeGe;
+  const int64_t* groupListTypeGe;
+  const int64_t* actTypeGe;
+  const gert::TypedContinuousVector<int64_t>* tuningConfigGe;
+};
+
+static graphStatus GetGmmAttrs(const OpExecuteContext* host_api_ctx, GmmExecuteAttrs& out)
+{
+  auto attrs = host_api_ctx->GetAttrs();
+  OP_CHECK_IF(attrs == nullptr, OP_LOGE("aclnnfallback", "attrs is null"), return GRAPH_FAILED);
+  out.splitItemGe = attrs->GetAttrPointer<int64_t>(INDEX_GMM_ATTR_SPLIT_ITEM);
+  OP_CHECK_IF(out.splitItemGe == nullptr, OP_LOGE("aclnnfallback", "splitItemGe is null"), return GRAPH_FAILED);
+  out.isWeightTransposedPtr = attrs->GetAttrPointer<bool>(INDEX_GMM_ATTR_TRANSPOSE_WEIGHT);
+  OP_CHECK_IF(out.isWeightTransposedPtr == nullptr, OP_LOGE("aclnnfallback", "isWeightTransposedPtr is null"),
+            return GRAPH_FAILED);
+  out.isXTransposed = attrs->GetAttrPointer<bool>(INDEX_GMM_ATTR_TRANSPOSE_X);
+  OP_CHECK_IF(out.isXTransposed == nullptr, OP_LOGE("aclnnfallback", "isXTransposed is null"), return GRAPH_FAILED);
+  out.groupTypeGe = attrs->GetAttrPointer<int64_t>(INDEX_GMM_ATTR_GROUP_TYPE);
+  OP_CHECK_IF(out.groupTypeGe == nullptr, OP_LOGE("aclnnfallback", "groupTypeGe is null"), return GRAPH_FAILED);
+  out.groupListTypeGe = attrs->GetAttrPointer<int64_t>(INDEX_GMM_ATTR_GROUP_LIST_TYPE);
+  OP_CHECK_IF(out.groupListTypeGe == nullptr, OP_LOGE("aclnnfallback", "groupListTypeGe is null"), return GRAPH_FAILED);
+  out.actTypeGe = attrs->GetAttrPointer<int64_t>(INDEX_GMM_ATTR_ACT_TYPE);
+  OP_CHECK_IF(out.actTypeGe == nullptr, OP_LOGE("aclnnfallback", "actTypeGe is null"), return GRAPH_FAILED);
+  out.tuningConfigGe = attrs->GetListInt(INDEX_GMM_ATTR_TUNING_CONFIG);
+  OP_CHECK_IF(out.tuningConfigGe == nullptr, OP_LOGE("aclnnfallback", "tuningConfigGe is null"), return GRAPH_FAILED);
+  return GRAPH_SUCCESS;
+}
+
+static graphStatus PreparePerTokenScaleList(const OpExecuteContext* host_api_ctx,
+                                            std::vector<const aclTensor*>& perTokenScaleVec,
+                                            bool isXTransposed, bool isPerTile)
+{
+  auto perTokenScaleTensor = host_api_ctx->GetOptionalInputTensor(INDEX_GMM_INPUT_PER_TOKEN_SCALE);
+  auto perTokenScale = ConvertType(perTokenScaleTensor);
+  if (perTokenScale == nullptr) {
+    std::vector<int64_t> shape{0};
+    static const auto aclCreateTensor = GET_OP_API_FUNC(aclCreateTensor);
+    OP_CHECK_IF(aclCreateTensor == nullptr, OP_LOGE("aclnnfallback", "aclCreateTensor nullptr"), return GRAPH_FAILED);
+    perTokenScale = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_FLOAT, shape.data(),
+                                    0, aclFormat::ACL_FORMAT_ND, shape.data(), shape.size(), nullptr);
+    OP_CHECK_IF(perTokenScale == nullptr, OP_LOGE("aclnnfallback", "perTokenScale nullptr"), return GRAPH_FAILED);
+  }
+  if (perTokenScaleTensor != nullptr && (perTokenScaleTensor->GetDataType() == ge::DataType::DT_FLOAT8_E8M0 ||
+                                         isPerTile)) {
+    PrepareAclTensorVector(host_api_ctx, perTokenScaleVec, INDEX_GMM_INPUT_PER_TOKEN_SCALE, isXTransposed, false);
+  } else {
+    perTokenScaleVec.push_back(perTokenScale);
+  }
+  return GRAPH_SUCCESS;
+}
+
+static graphStatus ExecuteGmmApi(
+    aclTensorList* aclTensorListX, aclTensorList* aclTensorListWeight,
+    std::vector<const gert::Tensor*>& geTensorVectorBias, aclTensorList* aclTensorListScale,
+    std::vector<const gert::Tensor*>& geTensorVectorOffset,
+    std::vector<const gert::Tensor*>& geTensorVectorAntiquantScale,
+    std::vector<const gert::Tensor*>& geTensorVectorAntiquantOffset,
+    aclTensorList* aclTensorListPerTokenScale, const gert::Tensor* groupListTensor,
+    int64_t splitItem, int64_t groupType, int64_t groupListType, int64_t actType,
+    std::vector<int64_t>& tuningConfig, std::vector<const gert::Tensor*>& geTensorVectorY)
+{
+  aclTensorList* activationInputOptional = nullptr;
+  aclTensorList* activationQuantScaleOptional = nullptr;
+  aclTensorList* activationQuantOffsetOptional = nullptr;
+  aclTensorList* actFeatureOutOptional = nullptr;
+  aclTensorList* dynQuantScaleOutOptional = nullptr;
+  auto api_ret_gmm = EXEC_OPAPI_CMD(aclnnGroupedMatmulV5, aclTensorListX, aclTensorListWeight, geTensorVectorBias,
+                                aclTensorListScale, geTensorVectorOffset, geTensorVectorAntiquantScale,
+                                geTensorVectorAntiquantOffset, aclTensorListPerTokenScale, groupListTensor,
+                                activationInputOptional, activationQuantScaleOptional, activationQuantOffsetOptional,
+                                splitItem, groupType, groupListType, actType, tuningConfig,
+                                geTensorVectorY, actFeatureOutOptional, dynQuantScaleOutOptional);
+  OP_CHECK_IF(api_ret_gmm != GRAPH_SUCCESS, OP_LOGE("aclnnfallback", "api_ret failed:%u", api_ret_gmm),
+            return GRAPH_FAILED);
+  return GRAPH_SUCCESS;
+}
+
 static graphStatus GroupedMatmulExecuteFunc(OpExecuteContext* host_api_ctx)
 {
   OP_CHECK_IF(host_api_ctx == nullptr, OP_LOGE("aclnnfallback", "host_api_ctx is null"), return GRAPH_FAILED);
 
-  auto attrs = host_api_ctx->GetAttrs();
-  OP_CHECK_IF(attrs == nullptr, OP_LOGE("aclnnfallback", "attrs is null"), return GRAPH_FAILED);
-  const int64_t* splitItemGe = attrs->GetAttrPointer<int64_t>(INDEX_GMM_ATTR_SPLIT_ITEM);
-  OP_CHECK_IF(splitItemGe == nullptr, OP_LOGE("aclnnfallback", "splitItemGe is null"), return GRAPH_FAILED);
-  const bool* isWeightTransposedPtr = attrs->GetAttrPointer<bool>(INDEX_GMM_ATTR_TRANSPOSE_WEIGHT);
-  OP_CHECK_IF(isWeightTransposedPtr == nullptr, OP_LOGE("aclnnfallback", "isWeightTransposedPtr is null"),
-            return GRAPH_FAILED);
-  const bool* isXTransposed = attrs->GetAttrPointer<bool>(INDEX_GMM_ATTR_TRANSPOSE_X);
-  OP_CHECK_IF(isXTransposed == nullptr, OP_LOGE("aclnnfallback", "isXTransposed is null"), return GRAPH_FAILED);
-  const int64_t* groupTypeGe = attrs->GetAttrPointer<int64_t>(INDEX_GMM_ATTR_GROUP_TYPE);
-  OP_CHECK_IF(groupTypeGe == nullptr, OP_LOGE("aclnnfallback", "groupTypeGe is null"), return GRAPH_FAILED);
-  const int64_t* groupListTypeGe = attrs->GetAttrPointer<int64_t>(INDEX_GMM_ATTR_GROUP_LIST_TYPE);
-  OP_CHECK_IF(groupListTypeGe == nullptr, OP_LOGE("aclnnfallback", "groupListTypeGe is null"), return GRAPH_FAILED);
-  const int64_t* actTypeGe = attrs->GetAttrPointer<int64_t>(INDEX_GMM_ATTR_ACT_TYPE);
-  OP_CHECK_IF(actTypeGe == nullptr, OP_LOGE("aclnnfallback", "actTypeGe is null"), return GRAPH_FAILED);
-  const auto tuningConfigGe = attrs->GetListInt(INDEX_GMM_ATTR_TUNING_CONFIG);
-  OP_CHECK_IF(tuningConfigGe == nullptr, OP_LOGE("aclnnfallback", "tuningConfigGe is null"), return GRAPH_FAILED);
+  GmmExecuteAttrs attrs{};
+  auto attrRet = GetGmmAttrs(host_api_ctx, attrs);
+  OP_CHECK_IF(attrRet != GRAPH_SUCCESS, return attrRet);
 
   static const auto aclCreateTensorList = GET_OP_API_FUNC(aclCreateTensorList);
   OP_CHECK_IF(aclCreateTensorList == nullptr,
             OP_LOGE("aclnnfallback", "Get opapi func aclCreateTensorList failed"), return GRAPH_FAILED);
 
   std::vector<const aclTensor*> aclTensorVectorX;
-  PrepareAclTensorVector(host_api_ctx, aclTensorVectorX, INDEX_GMM_INPUT_X, *isXTransposed, false);
+  PrepareAclTensorVector(host_api_ctx, aclTensorVectorX, INDEX_GMM_INPUT_X, *attrs.isXTransposed, false);
   auto aclTensorListX = aclCreateTensorList(aclTensorVectorX.data(), aclTensorVectorX.size());
 
   std::vector<const aclTensor*> aclTensorVectorWeight;
-  PrepareAclTensorVector(host_api_ctx, aclTensorVectorWeight, INDEX_GMM_INPUT_WEIGHT, *isWeightTransposedPtr, true);
+  PrepareAclTensorVector(host_api_ctx, aclTensorVectorWeight, INDEX_GMM_INPUT_WEIGHT, *attrs.isWeightTransposedPtr, true);
   size_t numGeWeight = aclTensorVectorWeight.size();
   auto aclTensorListWeight = aclCreateTensorList(aclTensorVectorWeight.data(), aclTensorVectorWeight.size());
 
   std::vector<const gert::Tensor*> geTensorVectorBias;
   PrepareGeTensorVector(host_api_ctx, geTensorVectorBias, INDEX_GMM_INPUT_BIAS);
+
   bool isScaleTransposed = false;
   const bool* isScaleTransposedPtr = &isScaleTransposed;
   auto scaleTensor = host_api_ctx->GetDynamicInputTensor(INDEX_GMM_INPUT_SCALE, 0);
-  bool isPerTile = IsPerTileQuantMode(host_api_ctx, *isXTransposed, *isWeightTransposedPtr, *groupTypeGe);
+  bool isPerTile = IsPerTileQuantMode(host_api_ctx, *attrs.isXTransposed, *attrs.isWeightTransposedPtr, *attrs.groupTypeGe);
   if (scaleTensor != nullptr && (scaleTensor->GetDataType() == ge::DataType::DT_FLOAT8_E8M0 || isPerTile)) {
-    isScaleTransposedPtr = isWeightTransposedPtr;
+    isScaleTransposedPtr = attrs.isWeightTransposedPtr;
   }
   std::vector<const aclTensor*> aclTensorVectorScale;
   PrepareAclTensorVector(host_api_ctx, aclTensorVectorScale, INDEX_GMM_INPUT_SCALE, *isScaleTransposedPtr, false);
@@ -342,49 +410,24 @@ static graphStatus GroupedMatmulExecuteFunc(OpExecuteContext* host_api_ctx)
 
   auto groupListTensor = host_api_ctx->GetOptionalInputTensor(INDEX_GMM_INPUT_GROUP_LIST);
 
-  auto perTokenScaleTensor = host_api_ctx->GetOptionalInputTensor(INDEX_GMM_INPUT_PER_TOKEN_SCALE);
   std::vector<const aclTensor*> geTensorVectorPerTokenScale;
-  auto perTokenScale = ConvertType(perTokenScaleTensor);
-  if (perTokenScale == nullptr) {
-    std::vector<int64_t> shape{0};
-    static const auto aclCreateTensor = GET_OP_API_FUNC(aclCreateTensor);
-    OP_CHECK_IF(aclCreateTensor == nullptr, OP_LOGE("aclnnfallback", "aclCreateTensor nullptr"), return GRAPH_FAILED);
-    perTokenScale = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_FLOAT, shape.data(),
-                                    0, aclFormat::ACL_FORMAT_ND, shape.data(), shape.size(), nullptr);
-    OP_CHECK_IF(perTokenScale == nullptr, OP_LOGE("aclnnfallback", "perTokenScale nullptr"), return GRAPH_FAILED);
-  }
-  if (perTokenScaleTensor != nullptr && (perTokenScaleTensor->GetDataType() == ge::DataType::DT_FLOAT8_E8M0 ||
-                                         isPerTile)) {
-    PrepareAclTensorVector(host_api_ctx, geTensorVectorPerTokenScale, INDEX_GMM_INPUT_PER_TOKEN_SCALE,
-                           *isXTransposed, false);
-  } else {
-    geTensorVectorPerTokenScale.push_back(perTokenScale);
-  }
+  auto ptsRet = PreparePerTokenScaleList(host_api_ctx, geTensorVectorPerTokenScale, *attrs.isXTransposed, isPerTile);
+  OP_CHECK_IF(ptsRet != GRAPH_SUCCESS, return ptsRet);
   auto aclTensorListPerTokenScale = aclCreateTensorList(geTensorVectorPerTokenScale.data(),
                                                         geTensorVectorPerTokenScale.size());
 
   std::vector<const gert::Tensor*> geTensorVectorY;
-  PrepareOutputTensorVector(host_api_ctx, geTensorVectorY, INDEX_GMM_OUTPUT_Y, numGeWeight, *splitItemGe);
+  PrepareOutputTensorVector(host_api_ctx, geTensorVectorY, INDEX_GMM_OUTPUT_Y, numGeWeight, *attrs.splitItemGe);
 
-  aclTensorList* activationInputOptional = nullptr;
-  aclTensorList* activationQuantScaleOptional = nullptr;
-  aclTensorList* activationQuantOffsetOptional = nullptr;
-  aclTensorList* actFeatureOutOptional = nullptr;
-  aclTensorList* dynQuantScaleOutOptional = nullptr;
   std::vector<int64_t> tuningConfig;
   tuningConfig.reserve(1);
-  tuningConfig.push_back(tuningConfigGe->GetData()[0]);
+  tuningConfig.push_back(attrs.tuningConfigGe->GetData()[0]);
 
-  // execute opapi
-  auto api_ret_gmm = EXEC_OPAPI_CMD(aclnnGroupedMatmulV5, aclTensorListX, aclTensorListWeight, geTensorVectorBias,
-                                aclTensorListScale, geTensorVectorOffset, geTensorVectorAntiquantScale,
-                                geTensorVectorAntiquantOffset, aclTensorListPerTokenScale, groupListTensor,
-                                activationInputOptional, activationQuantScaleOptional, activationQuantOffsetOptional,
-                                *splitItemGe, *groupTypeGe, *groupListTypeGe, *actTypeGe, tuningConfig,
-                                geTensorVectorY, actFeatureOutOptional, dynQuantScaleOutOptional);
-  OP_CHECK_IF(api_ret_gmm != GRAPH_SUCCESS, OP_LOGE("aclnnfallback", "api_ret failed:%u", api_ret_gmm),
-            return GRAPH_FAILED);
-  return GRAPH_SUCCESS;
+  return ExecuteGmmApi(aclTensorListX, aclTensorListWeight, geTensorVectorBias, aclTensorListScale,
+                       geTensorVectorOffset, geTensorVectorAntiquantScale, geTensorVectorAntiquantOffset,
+                       aclTensorListPerTokenScale, groupListTensor,
+                       *attrs.splitItemGe, *attrs.groupTypeGe, *attrs.groupListTypeGe, *attrs.actTypeGe,
+                       tuningConfig, geTensorVectorY);
 }
 
 IMPL_OP(GroupedMatmul).OpExecuteFunc(GroupedMatmulExecuteFunc);
