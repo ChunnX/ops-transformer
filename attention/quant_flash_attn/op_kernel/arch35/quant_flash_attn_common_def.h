@@ -205,8 +205,8 @@ struct RunInfoX {
 };
 
 struct StridesConstInfo {
-    uint64_t bnStride = 0;
-    uint64_t n2Stride = 0;
+    uint64_t bnStride = -1;
+    uint64_t n2Stride = -1;
 };
 
 struct CommonConstInfo {
