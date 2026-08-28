@@ -3324,7 +3324,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_7, 0, preg_134);
     RegTensor<uint8_t> idx_nd2nz;
     LoadAlign(idx_nd2nz, indexesUb);
-    uint16_t loopNum = ubN / 8; // ubN：s2BaseSize = 256
+    constexpr uint16_t loopNum = ubN / 8; // ubN：s2BaseSize = 256
 
     if constexpr (hasAtten) {
         LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
@@ -3552,13 +3552,12 @@ __simd_vf__ inline void ProcessVec1DnUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__ f
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_x_sum_2, 0, preg_134);
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_x_sum_3, 0, preg_134);
     RegTensor<uint8_t> idx_nd2nz;
-    uint16_t loopNum;
+    constexpr uint16_t loopNum = ubN / 8;
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_x_sum_4, 0, preg_134);
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_x_sum_5, 0, preg_134);
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_x_sum_6, 0, preg_134);
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_x_sum_7, 0, preg_134);
     LoadAlign(idx_nd2nz, indexesUb);
-    loopNum = ubN / 8;
 
     if constexpr (hasAtten) {
         LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
@@ -3700,7 +3699,7 @@ __aicore__ inline void ProcessVec1DnUpdateHif8(const LocalTensor<T2> &dstTensor,
 }
 
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 256,
-          bool hasSink = false>
+          bool hasSink = false, bool isTail = false>
 __aicore__ inline void ProcessVec1VfDnHif8(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
                                            const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
                                            const LocalTensor<T> &expMaxTensor, TBuf<> *vselrIndexesBuf,

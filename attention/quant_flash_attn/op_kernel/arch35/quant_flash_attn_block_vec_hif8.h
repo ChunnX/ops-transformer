@@ -339,13 +339,27 @@ public:
 
         if (unlikely(runInfo.isFirstS2Loop)) {
             if (unlikely(!isSkipMask_)) {
-                FaVectorApi::ProcessVec1VfDnHif8<T, INPUT_T, false, hasAtten, s2BaseSize>(
+                FaVectorApi::ProcessVec1VfDnHif8<T, INPUT_T, false, hasAtten, s2BaseSize, false, true>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf_,
                     ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign, s2CalcSize,
                     static_cast<T>(constInfo_.scaleValue), descaleQKValue_, pScaleValue_, negativeFloatScalar_, 0.0F,
                     maskLine);
             } else {
-                FaVectorApi::ProcessVec1VfDnHif8<T, INPUT_T, false, false, s2BaseSize>(
+                FaVectorApi::ProcessVec1VfDnHif8<T, INPUT_T, false, false, s2BaseSize, false, true>(
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf_,
+                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign, s2CalcSize,
+                    static_cast<T>(constInfo_.scaleValue), descaleQKValue_, pScaleValue_, negativeFloatScalar_, 0.0F,
+                    maskLine);
+            }
+        } else if (unlikely(runInfo.isLastS2Loop)) {
+            if (unlikely(!isSkipMask_)) {
+                FaVectorApi::ProcessVec1VfDnHif8<T, INPUT_T, true, hasAtten, s2BaseSize, false, true>(
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf_,
+                    ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign, s2CalcSize,
+                    static_cast<T>(constInfo_.scaleValue), descaleQKValue_, pScaleValue_, negativeFloatScalar_, 0.0F,
+                    maskLine);
+            } else {
+                FaVectorApi::ProcessVec1VfDnHif8<T, INPUT_T, true, false, s2BaseSize, false, true>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf_,
                     ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign, s2CalcSize,
                     static_cast<T>(constInfo_.scaleValue), descaleQKValue_, pScaleValue_, negativeFloatScalar_, 0.0F,
