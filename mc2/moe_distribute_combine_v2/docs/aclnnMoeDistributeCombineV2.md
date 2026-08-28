@@ -954,7 +954,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
         );
         CHECK_RET(
             ret == ACL_SUCCESS,
-            LOG_PRINT("[ERROR] aclnnMoeDistributedispatchV2GetWorkspaceSize failed. ret = %d\n", ret); return ret
+            LOG_PRINT("[ERROR] aclnnMoeDistributeDispatchV2GetWorkspaceSize failed. ret = %d\n", ret); return ret
         );
         // 根据dispatchV2算子第一阶段接口计算出的workspaceSize申请device内存
         if (dispatchV2WorkspaceSize > 0) {
@@ -963,7 +963,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
         }
         // 调用dispatchV2算子第二阶段接口
         ret = aclnnMoeDistributeDispatchV2(dispatchV2WorkspaceAddr, dispatchV2WorkspaceSize, dispatchV2Executor, args.dispatchV2Stream);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributedispatchV2 failed. ret = %d\n", ret); return ret);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributeDispatchV2 failed. ret = %d\n", ret); return ret);
         // （固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStreamWithTimeout(args.dispatchV2Stream, 10000);
         CHECK_RET(
@@ -980,7 +980,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
             commAlg.c_str(), x, &combineV2WorkspaceSize, &combineV2Executor);
         CHECK_RET(
             ret == ACL_SUCCESS,
-            LOG_PRINT("[ERROR] aclnnMoeDistributecombineV2GetWorkspaceSize failed. ret = %d\n", ret); return ret
+            LOG_PRINT("[ERROR] aclnnMoeDistributeCombineV2GetWorkspaceSize failed. ret = %d\n", ret); return ret
         );
         // 根据combineV2算子第一阶段接口计算出的workspaceSize申请device内存
         if (combineV2WorkspaceSize > 0) {
@@ -989,7 +989,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
         }
         // 调用combineV2算子第二阶段接口
         ret = aclnnMoeDistributeCombineV2(combineV2WorkspaceAddr, combineV2WorkspaceSize, combineV2Executor, args.combineV2Stream);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributecombineV2 failed. ret = %d\n", ret); return ret);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributeCombineV2 failed. ret = %d\n", ret); return ret);
         // （固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStreamWithTimeout(args.combineV2Stream, 10000);
         CHECK_RET(
@@ -997,7 +997,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
             LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d\n", ret); return ret
         );
 
-        LOG_PRINT("[INFO] device_%d aclnnMoeDistributedispatchV2 and aclnnMoeDistributecombineV2 execute successfully.\n", args.rankId);
+        LOG_PRINT("[INFO] device_%d aclnnMoeDistributeDispatchV2 and aclnnMoeDistributeCombineV2 execute successfully.\n", args.rankId);
 
         // 释放device资源
         if (dispatchV2WorkspaceSize > 0) {
