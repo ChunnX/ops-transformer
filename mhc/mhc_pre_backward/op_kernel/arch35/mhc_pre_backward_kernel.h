@@ -781,13 +781,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart
     vecInQueue1_.EnQue(fp32InputBuf);
     LocalTensor<P> invRmsBufLocal = vecInQueue1_.DeQue<P>();
 
-    // 提前发起 h_mix 搬运，使 MTE2 与 inv_rms 广播计算重叠。
-    LocalTensor<P> hMixBuf;
-    vecInQueue0_.AllocTensor<P>(hMixBuf);
-    dataCopyParams.blockLen = curBSSize * fusionSize_ * sizeof(P);
-    DataCopyPad(hMixBuf, hMixGm_[runBSStart * fusionSize_], dataCopyParams, dataCopyPadParams);
-    vecInQueue0_.EnQue(hMixBuf);
-
     const uint32_t xRowSumBroadCastDst[2] = {curBSSize, static_cast<uint32_t>(fusionSize_)};
     const uint32_t xRowSumBroadCastSrc[2] = {curBSSize, 1};
     BroadCast<float, 2, 1>(buffers.invRmsBuf, invRmsBufLocal, xRowSumBroadCastDst, xRowSumBroadCastSrc,
@@ -796,6 +789,11 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart
     vecInQueue1_.FreeTensor(invRmsBufLocal);
 
     PipeBarrier<PIPE_V>();
+    LocalTensor<P> hMixBuf;
+    vecInQueue0_.AllocTensor<P>(hMixBuf);
+    dataCopyParams.blockLen = curBSSize * fusionSize_ * sizeof(P);
+    DataCopyPad(hMixBuf, hMixGm_[runBSStart * fusionSize_], dataCopyParams, dataCopyPadParams);
+    vecInQueue0_.EnQue(hMixBuf);
     vecInQueue0_.DeQue<P>(hMixBuf);
 
     PipeBarrier<PIPE_V>();
