@@ -383,22 +383,18 @@ private:
         RegTensor<half> pVregScaleMaxValue0;
         RegTensor<half> pVregScaleMaxValue1;
 
+        RegTensor<half> interleaveVreg0;
+        RegTensor<half> interleaveVreg1;
+        RegTensor<half> interleaveVreg2;
+        RegTensor<half> interleaveVreg3;
+
         RegTensor<half> hmVreg;
 
         RegTensor<float> pVregFloat0;
         RegTensor<float> pVregFloat1;
-        RegTensor<float> pVregFloat2;
-        RegTensor<float> pVregFloat3;
-        
+
         RegTensor<fp8_e4m3fn_t> pVregFP80;
         RegTensor<fp8_e4m3fn_t> pVregFP81;
-        RegTensor<fp8_e4m3fn_t> pVregFP82;
-        RegTensor<fp8_e4m3fn_t> pVregFP83;
-
-        RegTensor<fp8_e4m3fn_t> deInterleaveVreg0;
-        RegTensor<fp8_e4m3fn_t> deInterleaveVreg1;
-        RegTensor<fp8_e4m3fn_t> deInterleaveVreg2;
-        RegTensor<fp8_e4m3fn_t> deInterleaveVreg3;
 
         RegTensor<half> sumVreg0;
         RegTensor<half> sumVreg1;
@@ -407,9 +403,7 @@ private:
         Duplicate(sumVreg1, 0);
 
         MaskReg maskReg8VL64 = CreateMask<uint8_t, MaskPattern::VL64>();
-        MaskReg maskReg8All = CreateMask<uint8_t, MaskPattern::ALL>();
         MaskReg maskReg16TailN = UpdateMask<half>(tailN);
-        MaskReg maskReg16VL64 = CreateMask<half, MaskPattern::VL64>();
         MaskReg maskReg16ALL = CreateMask<half, MaskPattern::ALL>();
         MaskReg maskReg32ALL = CreateMask<float, MaskPattern::ALL>();
 
@@ -420,22 +414,8 @@ private:
             AscendC::RoundMode::UNKNOWN,
         };
 
-        constexpr static CastTrait castTraitOneUNKNOWN = {
-            RegLayout::ONE,
-            SatMode::UNKNOWN,
-            MaskMergeMode::ZEROING,
-            AscendC::RoundMode::UNKNOWN,
-        };
-
         constexpr static CastTrait castTraitZeroRINT = {
             RegLayout::ZERO,
-            SatMode::SAT,
-            MaskMergeMode::ZEROING,
-            AscendC::RoundMode::CAST_RINT,
-        };
-
-        constexpr static CastTrait castTraitTwoRINT = {
-            RegLayout::TWO,
             SatMode::SAT,
             MaskMergeMode::ZEROING,
             AscendC::RoundMode::CAST_RINT,
@@ -460,36 +440,31 @@ private:
             Exp(pVreg0, sVreg0, maskReg16TailN);
             Exp(pVreg1, sVreg1, maskReg16TailN);
 
-            Muls(pVregScaleMaxValue0, pVreg0, maxValueFP8, maskReg16TailN);
-            Muls(pVregScaleMaxValue1, pVreg1, maxValueFP8, maskReg16TailN);
-
-            Cast<float, half, castTraitZeroUNKNOWN>(pVregFloat0, pVregScaleMaxValue0, maskReg16ALL);
-            Cast<float, half, castTraitOneUNKNOWN>(pVregFloat1, pVregScaleMaxValue0, maskReg16ALL);
-            Cast<float, half, castTraitZeroUNKNOWN>(pVregFloat2, pVregScaleMaxValue1, maskReg16ALL);
-            Cast<float, half, castTraitOneUNKNOWN>(pVregFloat3, pVregScaleMaxValue1, maskReg16ALL);
-
-            Cast<fp8_e4m3fn_t, float, castTraitZeroRINT>(pVregFP80, pVregFloat0, maskReg32ALL);
-            Cast<fp8_e4m3fn_t, float, castTraitTwoRINT>(pVregFP81, pVregFloat1, maskReg32ALL);
-            Cast<fp8_e4m3fn_t, float, castTraitZeroRINT>(pVregFP82, pVregFloat2, maskReg32ALL);
-            Cast<fp8_e4m3fn_t, float, castTraitTwoRINT>(pVregFP83, pVregFloat3, maskReg32ALL);
-
-            Or((RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP81, maskReg8All);
-            Or((RegTensor<uint8_t> &)pVregFP82, (RegTensor<uint8_t> &)pVregFP82, (RegTensor<uint8_t> &)pVregFP83, maskReg8All);
-
-            DeInterleave(deInterleaveVreg0, deInterleaveVreg1, pVregFP80, pVregFP80);
-            DeInterleave(deInterleaveVreg2, deInterleaveVreg3, pVregFP82, pVregFP82);
-
-            StoreAlign<fp8_e4m3fn_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
-                pUb0, deInterleaveVreg0, mRound + 1, 1, maskReg8VL64);
-            StoreAlign<fp8_e4m3fn_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
-                pUb1, deInterleaveVreg2, mRound + 1, 1, maskReg8VL64);
-
             if constexpr (mTileNum >= MAlignedTileNum::Zero) {
                 Add(sumVreg0, sumVreg0, pVreg0, maskReg16TailN);
             }
             if constexpr (mTileNum >= MAlignedTileNum::One) {
                 Add(sumVreg1, sumVreg1, pVreg1, maskReg16TailN);
             }
+
+            Muls(pVregScaleMaxValue0, pVreg0, maxValueFP8, maskReg16TailN);
+            Muls(pVregScaleMaxValue1, pVreg1, maxValueFP8, maskReg16TailN);
+
+            Interleave(interleaveVreg0, interleaveVreg1, pVregScaleMaxValue0, pVregScaleMaxValue0);
+            Interleave(interleaveVreg2, interleaveVreg3, pVregScaleMaxValue1, pVregScaleMaxValue1);
+
+            Cast<float, half, castTraitZeroUNKNOWN>(pVregFloat0, interleaveVreg0, maskReg16ALL);
+            Cast<float, half, castTraitZeroUNKNOWN>(pVregFloat1, interleaveVreg2, maskReg16ALL);
+            Cast<fp8_e4m3fn_t, float, castTraitZeroRINT>(pVregFP80, pVregFloat0, maskReg32ALL);
+            Cast<fp8_e4m3fn_t, float, castTraitZeroRINT>(pVregFP81, pVregFloat1, maskReg32ALL);
+
+            // The S rows are no longer needed after Exp. Reuse their first 64 bytes for packed FP8 P.
+            __ubuf__ fp8_e4m3fn_t *pScratchUb0 =
+                reinterpret_cast<__ubuf__ fp8_e4m3fn_t *>(sUb + i * s2BaseSize);
+            __ubuf__ fp8_e4m3fn_t *pScratchUb1 = reinterpret_cast<__ubuf__ fp8_e4m3fn_t *>(
+                sUb + mRound * s2BaseSize / 2 + i * s2BaseSize);
+            StoreAlign<fp8_e4m3fn_t, StoreDist::DIST_PACK4_B32>(pScratchUb0, pVregFP80, maskReg32ALL);
+            StoreAlign<fp8_e4m3fn_t, StoreDist::DIST_PACK4_B32>(pScratchUb1, pVregFP81, maskReg32ALL);
         }
         if constexpr (mTileNum < MAlignedTileNum::Two) {
             for (uint16_t i = mFirstTile; i < mRound / 2; i++) {
@@ -501,30 +476,49 @@ private:
 
                 Exp(pVreg0, sVreg0, maskReg16TailN);
 
-                Muls(pVregScaleMaxValue0, pVreg0, maxValueFP8, maskReg16TailN);
-
-                Cast<float, half, castTraitZeroUNKNOWN>(pVregFloat0, pVregScaleMaxValue0, maskReg16ALL);
-                Cast<float, half, castTraitOneUNKNOWN>(pVregFloat1, pVregScaleMaxValue0, maskReg16ALL);
-
-                Cast<fp8_e4m3fn_t, float, castTraitZeroRINT>(pVregFP80, pVregFloat0, maskReg32ALL);
-                Cast<fp8_e4m3fn_t, float, castTraitTwoRINT>(pVregFP81, pVregFloat1, maskReg32ALL);
-
-                Or((RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP80, (RegTensor<uint8_t> &)pVregFP81,
-                   maskReg8All);
-
-                DeInterleave(deInterleaveVreg0, deInterleaveVreg1, pVregFP80, pVregFP80);
-
-                StoreAlign<fp8_e4m3fn_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
-                    pUb0, deInterleaveVreg0, mRound + 1, 1, maskReg8VL64);
-
                 if constexpr (mTileNum > MAlignedTileNum::Zero) {
                     Add(sumVreg0, sumVreg0, pVreg0, maskReg16TailN);
                 }
+
+                Muls(pVregScaleMaxValue0, pVreg0, maxValueFP8, maskReg16TailN);
+
+                Interleave(interleaveVreg0, interleaveVreg1, pVregScaleMaxValue0, pVregScaleMaxValue0);
+                Cast<float, half, castTraitZeroUNKNOWN>(pVregFloat0, interleaveVreg0, maskReg16ALL);
+                Cast<fp8_e4m3fn_t, float, castTraitZeroRINT>(pVregFP80, pVregFloat0, maskReg32ALL);
+
+                __ubuf__ fp8_e4m3fn_t *pScratchUb0 =
+                    reinterpret_cast<__ubuf__ fp8_e4m3fn_t *>(sUb + i * s2BaseSize);
+                StoreAlign<fp8_e4m3fn_t, StoreDist::DIST_PACK4_B32>(pScratchUb0, pVregFP80, maskReg32ALL);
             }
         }
         Add(sumVreg0, sumVreg0, sumVreg1, maskReg16TailN);
 
         StoreAlign<half, StoreDist::DIST_NORM_B16>(llUb, sumVreg0, maskReg16TailN);
+
+        // Complete all PACK4 stores before loading the packed rows back for the NZ StoreAlign.
+        LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+
+        for (uint16_t i = 0; i < mFirstTile; i++) {
+            __ubuf__ fp8_e4m3fn_t *pScratchUb0 =
+                reinterpret_cast<__ubuf__ fp8_e4m3fn_t *>(sUb + i * s2BaseSize);
+            __ubuf__ fp8_e4m3fn_t *pScratchUb1 = reinterpret_cast<__ubuf__ fp8_e4m3fn_t *>(
+                sUb + mRound * s2BaseSize / 2 + i * s2BaseSize);
+            LoadAlign(pVregFP80, pScratchUb0);
+            LoadAlign(pVregFP81, pScratchUb1);
+            StoreAlign<fp8_e4m3fn_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
+                pUb0, pVregFP80, mRound + 1, 1, maskReg8VL64);
+            StoreAlign<fp8_e4m3fn_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
+                pUb1, pVregFP81, mRound + 1, 1, maskReg8VL64);
+        }
+        if constexpr (mTileNum < MAlignedTileNum::Two) {
+            for (uint16_t i = mFirstTile; i < mRound / 2; i++) {
+                __ubuf__ fp8_e4m3fn_t *pScratchUb0 =
+                    reinterpret_cast<__ubuf__ fp8_e4m3fn_t *>(sUb + i * s2BaseSize);
+                LoadAlign(pVregFP80, pScratchUb0);
+                StoreAlign<fp8_e4m3fn_t, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
+                    pUb0, pVregFP80, mRound + 1, 1, maskReg8VL64);
+            }
+        }
     }
     
     __simd_vf__ inline void SetGlobalMaxAndGlobalSum(__ubuf__ half *lmUb, __ubuf__ float *gmUb, __ubuf__ half *llUb,
