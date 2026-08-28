@@ -432,27 +432,10 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
                       ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_TAIL_RESPLIT &&
                       ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
 #if IS_BLAZE
-            constexpr bool IS_WQGMM_SAMPLE_MX_TYPE =
-                (AscendC::IsSameType<DTYPE_WEIGHT, fp4x2_e2m1_t>::value ||
-                 AscendC::IsSameType<DTYPE_WEIGHT, fp4x2_e1m2_t>::value) &&
-                (AscendC::IsSameType<DTYPE_Y, half>::value ||
-                 AscendC::IsSameType<DTYPE_Y, bfloat16_t>::value);
-            if constexpr (IS_WQGMM_SAMPLE_MX_TYPE) {
-                GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, gmmWeightQuantParam, gmmBaseParams_, tiling);
-                GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, mmTilingData, mmTilingData_, tiling);
-                if (gmmBaseParams_.hasBias == 0 &&
-                    (gmmBaseParams_.singleWeight == 1 || IS_SINGLE_MULTI_SINGLE)) {
-                    GROUPED_MATMUL::GmmWeightQuantSampleMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_ANTIQUANT_SCALE,
-                                                                 DTYPE_Y>(
-                        x, weight, antiquantScale, groupList, perTokenScale, y, &gmmBaseParams_, &mmTilingData_);
-                } else {
-                    INVOKE_GMM_WEIGHT_QUANT_MXA8W4_CONTROLLER_OP_IMPL(GMMWeightQuantResplitController, MXA8W4_NZNK,
-                                                                      VEC_ANTIQUANT_CONFIG_DYNAMIC);
-                }
-            } else {
-                INVOKE_GMM_WEIGHT_QUANT_MXA8W4_CONTROLLER_OP_IMPL(GMMWeightQuantResplitController, MXA8W4_NZNK,
-                                                                  VEC_ANTIQUANT_CONFIG_DYNAMIC);
-            }
+            GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, gmmWeightQuantParam, gmmBaseParams_, tiling);
+            GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, mmTilingData, mmTilingData_, tiling);
+            GROUPED_MATMUL::GmmWeightQuantSampleMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_ANTIQUANT_SCALE, DTYPE_Y>(
+                x, weight, antiquantScale, groupList, perTokenScale, y, &gmmBaseParams_, &mmTilingData_);
 #else
             INVOKE_GMM_WEIGHT_QUANT_MXA8W4_CONTROLLER_OP_IMPL(GMMWeightQuantResplitController, MXA8W4_NZNK,
                                                               VEC_ANTIQUANT_CONFIG_DYNAMIC);
