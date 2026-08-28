@@ -162,7 +162,7 @@ ge::graphStatus CalcWorkSpace(CompressorGradContext &compressorGradContext,
     uint64_t dXWorkSpaceSize = static_cast<uint64_t>(dbRatio) * cubeCoreNum * (M_BASE_SIZE * 2) * hiddenSize;
     uint64_t dWeightWorkSpaceSize = static_cast<uint64_t>(groupNum) * totalHeadDim * hiddenSize;
     // dWkv / dWGate 各占一份 dWeightWorkSpaceSize
-    uint64_t xWorkSpaceSize = static_cast<uint64_t>(dbRatio) * groupNum * groupRowStride * hiddenSize;
+    uint64_t xWorkSpaceSize = static_cast<uint64_t>(dbRatio) * groupNum * groupRowStride * hiddenSize * groupSize;
     uint64_t dXCacheWorkSpaceSize = static_cast<uint64_t>(dbRatio) * cmpRatio * hiddenSize;
 
     workspaceSize = libapiSize;
@@ -1073,10 +1073,10 @@ static ge::graphStatus CompressorGradTilingFunc(gert::TilingContext *context)
     // ── workspace 分区（FP32 元素数；ape/dW 单缓冲，dX/x/dXCache 双缓冲 dbRatio=2）──
     tilingData->dape_ws_size = tilingData->group_num * tilingData->cmp_size * tilingData->coff_coef;
     tilingData->d_x_ws_size = 2 * tilingData->cube_core_num * 256 * compressorGradBaseParams.hiddenSize;
-    tilingData->d_w_weight_ws_size = tilingData->group_num * tilingData->total_head_dim *
+    tilingData->d_w_weight_ws_size = tilingData->group_num * tilingData->total_head_dim * 
         compressorGradBaseParams.hiddenSize;
     tilingData->x_ws_size = 2 * tilingData->group_num * tilingData->group_row_stride *
-        compressorGradBaseParams.hiddenSize;
+        compressorGradBaseParams.hiddenSize * tilingData->group_size;
     tilingData->d_x_cache_ws_size = 2 * compressorGradBaseParams.cmpRatio * compressorGradBaseParams.hiddenSize;
 
     context->SetTilingKey(compressorGradContext.tilingKey);

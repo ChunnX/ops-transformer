@@ -584,7 +584,7 @@ def _mm2_l0a_load(matmul_ctx, sub_vec_idx, w_idx, n_tile_rows, m_start, h,
         if Coff == 2 and sub_vec_idx == 0:
             x_off = x_off - matmul_ctx.cmp_ratio
         pl.set_validshape(w_l1, [n_tile_rows, H_L1_BASE_SIZE])
-        pl.load(w_l1, x_arrange_gm, [x_off, h])
+        pl.load(w_l1, x_arrange_gm, [matmul_ctx.intra_group_idx, x_off, h])
 
 
 def _mm2_core(matmul_ctx, round_idx, sub_vec_idx, w_idx, n_l0, h, dw_row_base, m_start,
@@ -1181,7 +1181,7 @@ def _advance_block_boundary(b_idx, sc_idx, blk_in_batch, batch_size):
     return (b_idx, sc_idx, ended)
 
 
-def _arrange_x_zero_fill(move_x_tiles, x_arrange_gm, rows, dst_row, hidden_size):
+def _arrange_x_zero_fill(move_x_tiles, x_arrange_gm, intra_group_idx, rows, dst_row, hidden_size):
     """xArrangeGm 指定区域显式清零（防 mm2 读到未初始化 workspace 的 NaN 位模式）"""
     for hi in pl.range(0, hidden_size, D_BASE_SIZE * 2):
         mx_tie = move_x_tiles.next()
@@ -1190,34 +1190,42 @@ def _arrange_x_zero_fill(move_x_tiles, x_arrange_gm, rows, dst_row, hidden_size)
             _vf_tile_zero_bf16(mx_tie, rows, D_BASE_SIZE * 2)
         else:
             _vf_tile_zero_f16(mx_tie, rows, D_BASE_SIZE * 2)
-        pl.store(x_arrange_gm, mx_tie, [dst_row, hi])
+        pl.store(x_arrange_gm, mx_tie, [intra_group_idx, dst_row, hi])
 
 
-def _arrange_x_copy_zone(move_x_tiles, src_gm, dst_gm, rows, src_row, dst_row, hidden_size):
+def _arrange_x_copy_zone(move_x_tiles, src_gm, dst_gm, intra_group_idx, rows, src_row, dst_row, hidden_size):
     """xArrangeGm 区域拷贝（load src_gm → store dst_gm，源可为 x_gm 或 xArrangeGm）"""
     for hi in pl.range(0, hidden_size, D_BASE_SIZE * 2):
         mx_tie = move_x_tiles.next()
         pl.set_validshape(mx_tie, [rows, D_BASE_SIZE * 2])
         pl.load(mx_tie, src_gm, [src_row, hi])
-        pl.store(dst_gm, mx_tie, [dst_row, hi])
+        pl.store(dst_gm, mx_tie, [intra_group_idx, dst_row, hi])
+        
+def _arrange_x_copy_zone_self(move_x_tiles, src_gm, dst_gm, intra_group_idx, rows, src_row, dst_row, hidden_size):
+    """xArrangeGm 区域拷贝（load src_gm → store dst_gm，源可为 x_gm 或 xArrangeGm）"""
+    for hi in pl.range(0, hidden_size, D_BASE_SIZE * 2):
+        mx_tie = move_x_tiles.next()
+        pl.set_validshape(mx_tie, [rows, D_BASE_SIZE * 2])
+        pl.load(mx_tie, src_gm, [intra_group_idx, src_row, hi])
+        pl.store(dst_gm, mx_tie, [intra_group_idx, dst_row, hi])
 
 
-def _arrange_x_prev_head(vec_ctx, db_idx, group_idx, src_idx, move_x_tiles, x_gm, x_arrange_gm):
+def _arrange_x_prev_head(vec_ctx, intra_group_idx, db_idx, group_idx, src_idx, move_x_tiles, x_gm, x_arrange_gm):
     """coff=2 prev 头部补写：前 cr-srcIdx 行清零（cache 历史），后 srcIdx 行拷贝上一块 cur"""
     cmp_ratio = vec_ctx.cmp_ratio
     hidden_size = vec_ctx.hidden_size
     head_dst = db_idx * vec_ctx.db_row_cnt + group_idx * vec_ctx.group_row_stride
     head_zero = cmp_ratio - src_idx if src_idx < cmp_ratio else 0
     if head_zero > 0:
-        _arrange_x_zero_fill(move_x_tiles, x_arrange_gm, head_zero, head_dst, hidden_size)
+        _arrange_x_zero_fill(move_x_tiles, x_arrange_gm, intra_group_idx, head_zero, head_dst, hidden_size)
     head_src = max(src_idx - cmp_ratio, 0)
     head_rows = cmp_ratio - head_zero
     if head_rows > 0:
-        _arrange_x_copy_zone(move_x_tiles, x_gm, x_arrange_gm, head_rows, head_src,
+        _arrange_x_copy_zone(move_x_tiles, x_gm, x_arrange_gm, intra_group_idx, head_rows, head_src,
                              head_dst + head_zero, hidden_size)
 
 
-def _arrange_x_batch_slice(vec_ctx, db_idx, group_idx, db_row_cnt,
+def _arrange_x_batch_slice(vec_ctx, intra_group_idx, db_idx, group_idx, db_row_cnt,
                            b_idx, sc_idx, sub_slot, processed, taken,
                            move_x_tiles, x_gm, x_arrange_gm,
                            start_pos, seq_used, cu_seqlens, seq_ctx):
@@ -1243,13 +1251,13 @@ def _arrange_x_batch_slice(vec_ctx, db_idx, group_idx, db_row_cnt,
         # d_wkv/d_wgate）
         zero_rows = b_start_pos % cmp_ratio
         cur_base = dst_idx - zero_rows
-        _arrange_x_zero_fill(move_x_tiles, x_arrange_gm, zero_rows, cur_base, hidden_size)
+        _arrange_x_zero_fill(move_x_tiles, x_arrange_gm, intra_group_idx, zero_rows, cur_base, hidden_size)
     if Coff == 2 and processed == 0 and group_idx > 0:
-        _arrange_x_prev_head(vec_ctx, db_idx, group_idx, src_idx, move_x_tiles, x_gm, x_arrange_gm)
-    _arrange_x_copy_zone(move_x_tiles, x_gm, x_arrange_gm, mx_rows, src_idx, dst_idx, hidden_size)
+        _arrange_x_prev_head(vec_ctx, intra_group_idx, db_idx, group_idx, src_idx, move_x_tiles, x_gm, x_arrange_gm)
+    _arrange_x_copy_zone(move_x_tiles, x_gm, x_arrange_gm, intra_group_idx, mx_rows, src_idx, dst_idx, hidden_size)
 
 
-def _arrange_x(vec_ctx, db_idx, group_idx, db_row_cnt, deal_tc_size,
+def _arrange_x(vec_ctx, intra_group_idx, db_idx, group_idx, db_row_cnt, deal_tc_size,
                b_idx, sc_idx, sub_slot, move_x_tiles, x_gm, x_arrange_gm,
                start_pos, seq_used, cu_seqlens, seq_ctx):
     """Phase 1: x 搬运（cache copy + 块排列 + coff=2 头部补写）"""
@@ -1262,13 +1270,13 @@ def _arrange_x(vec_ctx, db_idx, group_idx, db_row_cnt, deal_tc_size,
     if Coff == 2 and group_idx == 0 and sc_idx != 0:
         first_src_idx = ((db_idx + db_ratio - 1) % db_ratio) * db_row_cnt + db_row_cnt - cmp_ratio
         first_dst_idx = db_idx * db_row_cnt
-        _arrange_x_copy_zone(move_x_tiles, x_arrange_gm, x_arrange_gm, cmp_ratio,
+        _arrange_x_copy_zone_self(move_x_tiles, x_arrange_gm, x_arrange_gm, intra_group_idx, cmp_ratio,
                              first_src_idx, first_dst_idx, hidden_size)
     elif Coff == 2 and group_idx == 0 and sc_idx == 0:
         # 轮首/批次首块：prev 头部无有效数据（对应 dkv prev 半区已被 scatter mask
         # 为 0，matmul 贡献恒 0），显式清零——防止 mm2 读到未初始化 workspace
         #（FP32 随机位模式按 FP16 视图解释 → NaN/Inf → 0×NaN 传染 d_wkv/d_wgate）
-        _arrange_x_zero_fill(move_x_tiles, x_arrange_gm, cmp_ratio, db_idx * db_row_cnt, hidden_size)
+        _arrange_x_zero_fill(move_x_tiles, x_arrange_gm, intra_group_idx, cmp_ratio, db_idx * db_row_cnt, hidden_size)
     processed = 0
     while processed < deal_tc_size:
         b_start_pos = _get_start_pos(b_idx, start_pos, seq_ctx)
@@ -1279,7 +1287,7 @@ def _arrange_x(vec_ctx, db_idx, group_idx, db_row_cnt, deal_tc_size,
         remaining = blk_in_batch - sc_idx
         if remaining > 0:
             taken = min(deal_tc_size - processed, remaining)
-            _arrange_x_batch_slice(vec_ctx, db_idx, group_idx, db_row_cnt,
+            _arrange_x_batch_slice(vec_ctx, intra_group_idx, db_idx, group_idx, db_row_cnt,
                                    b_idx, sc_idx, sub_slot, processed, taken,
                                    move_x_tiles, x_gm, x_arrange_gm,
                                    start_pos, seq_used, cu_seqlens, seq_ctx)
@@ -1320,7 +1328,7 @@ def _phase1_scatter(vec_ctx, round_idx, pre_deal_tc_size, deal_tc_size,
                     tile_temp,
                     d_cmp_kv, kv, softmax_score, x, io_d_type,
                     cmp_kv_rows, head_dim, cmp_size, token_size,
-                    work_space_ptr, group_num,
+                    work_space_ptr, group_num, intra_group_idx,
                     tile_ape_local,
                     tile_dkv_cast, tile_dkv_cast_md, tile_dkv_nz,
                     tile_dkv_nz_md_prev, tile_dkv_nz_md_cur,
@@ -1365,15 +1373,16 @@ def _phase1_scatter(vec_ctx, round_idx, pre_deal_tc_size, deal_tc_size,
 
     # 搬运x（subSlot: coff=1 的 M 轴子核槽位偏移；coff=2 恒 0）
     sub_slot = sub_core_idx * deal_sc_num if Coff == 1 else 0
-    _arrange_x(vec_ctx, db_idx, group_idx, db_row_cnt, deal_tc_size,
-               b_idx, sc_idx, sub_slot, move_x_tile_group, x_gm, x_arrange_gm,
-               start_pos, seq_used, cu_seqlens, seq_ctx)
+    if sub_idx == 0:
+        _arrange_x(vec_ctx, intra_group_idx, db_idx, group_idx, db_row_cnt, deal_tc_size,
+                b_idx, sc_idx, sub_slot, move_x_tile_group, x_gm, x_arrange_gm,
+                start_pos, seq_used, cu_seqlens, seq_ctx)
 
 
 def _phase2_matmul(round_idx, db_idx, deal_tc_size, hidden_size, head_dim,
                    deal_sc_num, cube_m_base_size, cmp_ratio,
                    cube_core_num, group_size, group_num, total_head_dim,
-                   db_row_cnt, group_row_stride,
+                   db_row_cnt, group_row_stride, intra_group_idx,
                    cv_l0a, cv_l0b, cv_l0c, l1_w_db,
                    l1_kv0_tile_group_nz, l1_kv1_tile_group_nz,
                    l1_score0_tile_group_nz, l1_score1_tile_group_nz,
@@ -1405,7 +1414,7 @@ def _phase2_matmul(round_idx, db_idx, deal_tc_size, hidden_size, head_dim,
         cube_m_base_size=cube_m_base_size, cmp_ratio=cmp_ratio,
         cube_core_num=cube_core_num, group_size=group_size,
         group_num=group_num, total_head_dim=total_head_dim,
-        db_row_cnt=db_row_cnt, group_row_stride=group_row_stride)
+        db_row_cnt=db_row_cnt, group_row_stride=group_row_stride, intra_group_idx=intra_group_idx)
 
 
     # ── Matmul #1/#2：提取子函数（coff=1/2 统一）──
@@ -1805,7 +1814,7 @@ def compressor_grad(
     d_w_gate_result_gm = pl.make_tensor(d_w_gate_work_space_ptr,
         [d_weight_work_space_size // tiling.hidden_size, tiling.hidden_size], [tiling.hidden_size, 1], dtype=pl.DT_FP32)
     x_arrange_gm = pl.make_tensor(x_work_space_ptr,
-        [x_work_space_size // tiling.hidden_size, tiling.hidden_size], [tiling.hidden_size, 1], dtype=io_d_type)
+        [tiling.group_size, x_work_space_size // tiling.group_size // tiling.hidden_size, tiling.hidden_size], [x_work_space_size // tiling.group_size, tiling.hidden_size, 1], dtype=io_d_type)
     d_x_cache_gm = pl.make_tensor(d_x_cache_ptr,
         [d_x_cache_work_space_size // tiling.hidden_size, tiling.hidden_size],
         [tiling.hidden_size, 1], dtype=pl.DT_FP32)
@@ -1906,7 +1915,7 @@ def compressor_grad(
                                     tile_temp,
                                     d_cmp_kv, kv, softmax_score, x, io_d_type,
                                     tiling.cmp_kv_rows, tiling.head_dim, tiling.cmp_size, tiling.token_size,
-                                    work_space_ptr, tiling.group_num,
+                                    work_space_ptr, tiling.group_num, intra_group_idx,
                                     tile_ape_local,
                                     tile_dkv_cast, tile_dkv_cast_md, tile_dkv_nz,
                                     tile_dkv_nz_md_prev, tile_dkv_nz_md_cur,
@@ -1967,7 +1976,7 @@ def compressor_grad(
                     _phase2_matmul(round_idx, db_idx, deal_tc_size, tiling.hidden_size, tiling.head_dim,
                                    tiling.deal_sc_num, tiling.cube_m_base_size, tiling.cmp_ratio,
                                    tiling.cube_core_num, tiling.group_size, tiling.group_num, tiling.total_head_dim,
-                                   tiling.db_row_cnt, group_row_stride,
+                                   tiling.db_row_cnt, group_row_stride, intra_group_idx,
                                    cv_l0a, cv_l0b, cv_l0c, l1_w_db,
                                    l1_kv0_tile_group_nz, l1_kv1_tile_group_nz,
                                    l1_score0_tile_group_nz, l1_score1_tile_group_nz,
