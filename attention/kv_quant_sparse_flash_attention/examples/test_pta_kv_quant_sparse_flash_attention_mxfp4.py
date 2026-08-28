@@ -3,18 +3,9 @@
 
 import argparse
 import math
-from pathlib import Path
-import sys
 
 import torch
 import torch_npu
-
-
-EXAMPLE_DIR = Path(__file__).resolve().parent
-GOLDEN_DIR = EXAMPLE_DIR.parent / "tests" / "pytest"
-sys.path.insert(0, str(GOLDEN_DIR))
-import kv_quant_sparse_flash_attention_golden as qsfa_golden
-
 
 B = 4
 S1 = 8
@@ -88,49 +79,57 @@ def build_inputs():
         "value_dequant_scale": torch.ones((1,), dtype=torch.float32),
         "actual_seq_lengths_query": torch.full((B,), S1, dtype=torch.int32),
         "actual_seq_lengths_kv": torch.full((B,), S2, dtype=torch.int32),
-        "packed_nope": packed_nope,
-        "key_rope": key_rope,
-        "scale_e8m0": scale_e8m0,
     }
 
 
-def build_golden(inputs):
+def decode_packed_key(key):
+    packed_nope = key[..., :FP4_BYTES]
+    rope_bytes = key[..., FP4_BYTES:FP4_BYTES + ROPE_D * 2]
+    scale_bytes = key[..., FP4_BYTES + ROPE_D * 2:].view(torch.uint8)
+
     fp4_lut = torch.tensor(
         [0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0,
          -0.0, -0.5, -1.0, -1.5, -2.0, -3.0, -4.0, -6.0],
         dtype=torch.float32,
     )
-    fp4_codes = unpack_fp4_e2m1(inputs["packed_nope"])
+    fp4_codes = unpack_fp4_e2m1(packed_nope)
     fp4_values = fp4_lut[fp4_codes.long()]
     scale_values = torch.ldexp(
-        torch.ones(inputs["scale_e8m0"].shape, dtype=torch.float32),
-        inputs["scale_e8m0"].to(torch.int32) - 127,
+        torch.ones(scale_bytes.shape, dtype=torch.float32),
+        scale_bytes.to(torch.int32) - 127,
     )
     nope = (fp4_values * torch.repeat_interleave(scale_values, 32, dim=-1)).to(torch.bfloat16)
-    decoded_key = torch.cat((nope, inputs["key_rope"]), dim=-1).permute(0, 2, 1, 3).contiguous()
+    rope = rope_bytes.contiguous().view(torch.bfloat16)
+    return torch.cat((nope, rope), dim=-1)
 
-    fa_param = {
-        "b": B,
-        "numHeads": G,
-        "numKeyValueHeads": N2,
-        "actualSeqLengths_q": [S1] * B,
-        "actualSeqLengths_kv": [S2] * B,
-        "scaleValue": 1.0 / math.sqrt(float(QUERY_D)),
-        "sparse_blocksize": 1,
-        "sparse_blockcount": S2,
-        "sparse_indices_bnsd_tensor": inputs["sparse_indices"].permute(0, 2, 1, 3).contiguous(),
-        "q_bnsd_shape": [B, G, S1, QUERY_D],
-        "v_bnsd_shape": [B, N2, S2, NOPE_D],
-        "q_bnsd_tensor": inputs["query"].permute(0, 2, 1, 3).contiguous(),
-        "k_bnsd_tensor": decoded_key,
-        "k_dequant_scale_bnsd_tensor": torch.ones((B, N2, S2, 4), dtype=torch.float32),
-        "v_bnsd_tensor": nope.permute(0, 2, 1, 3).contiguous(),
-        "v_dequant_scale_bnsd_tensor": torch.ones((B, N2, S2, 4), dtype=torch.float32),
-        "q_dtype": "bfloat16",
-        "sparse_mode": 3,
-        "sinks_tensor": None,
-    }
-    return qsfa_golden._t_increattention_bnsd(fa_param).permute(0, 2, 1, 3).contiguous()
+
+def build_golden(inputs):
+    decoded_key = decode_packed_key(inputs["key"])
+    output = torch.zeros((B, S1, G, NOPE_D), dtype=torch.float32)
+    scale = 1.0 / math.sqrt(float(QUERY_D))
+
+    for batch_idx in range(B):
+        actual_s1 = int(inputs["actual_seq_lengths_query"][batch_idx])
+        actual_s2 = int(inputs["actual_seq_lengths_kv"][batch_idx])
+        for s1_idx in range(actual_s1):
+            causal_limit = actual_s2 - actual_s1 + s1_idx + 1
+            sparse_row = inputs["sparse_indices"][batch_idx, s1_idx, 0]
+            valid_count = min(sparse_row.numel(), max(causal_limit, 0))
+            selected = []
+            for token_idx in sparse_row[:valid_count].tolist():
+                if token_idx == -1:
+                    break
+                if 0 <= token_idx < causal_limit:
+                    selected.append(token_idx)
+            if not selected:
+                continue
+
+            query = inputs["query"][batch_idx, s1_idx].float()
+            key = decoded_key[batch_idx, selected, 0].float()
+            scores = torch.matmul(query, key.transpose(0, 1)) * scale
+            probability = torch.softmax(scores, dim=-1).to(torch.bfloat16).float()
+            output[batch_idx, s1_idx] = torch.matmul(probability, key[:, :NOPE_D])
+    return output
 
 
 def main():
