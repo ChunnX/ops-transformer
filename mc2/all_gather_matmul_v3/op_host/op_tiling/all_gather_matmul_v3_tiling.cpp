@@ -736,7 +736,7 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
     tilingData->commTile.splitAxisTailCnt = tailCnt;
     tilingData->commTile.nonSplitAxisSize = k;
 
-    // mm tiling via SWAT engine：按 x1 实际 dtype 分发。 fp8 内 e4m3/e5m2 布局一致，统一用 e4m3 实例化
+    // mm tiling via SWAT engine：按 x1 实际 dtype 分发。 fp8 统一用 e4m3 实例化，fp4统一用 e2m1 实例化
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     if (context->GetInputDesc(IDX_INPUT_X1)->GetDataType() == ge::DT_FLOAT4_E2M1) {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1> tilingEngine;
