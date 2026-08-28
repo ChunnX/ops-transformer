@@ -125,7 +125,7 @@ public:
 
 private:
     // ---------------- 通信相关组件与参数 ----------------
-    __gm__ CommUbmemContext *syncBuffer_{nullptr};
+    __gm__ CommUbmemContext *barrierCtx_{nullptr};
     __gm__ CommUdmaContext *udmaCtx_{nullptr};
     CollectiveComm<CommCollectiveOp::AllToAll, CommMode::PUT, AType, TeamBarrier> allToAllA_;
     CollectiveComm<
@@ -193,7 +193,7 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     auto commScaleBuf = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset); // 用512B
     ubOffset += COMM_WORKSPACE_SIZE;
     auto barrierBuf = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset);
-    teamBarrier_.Init(barrierBuf.Get(), syncBuffer_, baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()));
+    teamBarrier_.Init(barrierBuf.Get(), barrierCtx_, baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()));
 
     allToAllA_.template Init<BARRIER_NONE>(udmaCtx_, teamBarrier_, tilingData->commTilingData, baseParams_.aGm,
                                            commBuf.Get(), baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()));
