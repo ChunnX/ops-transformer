@@ -787,9 +787,12 @@ template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::DispatchAndCombineInterleaved(
     ExpertLoopState &combineState, GMMAddrInfo &combineAddrInfo, const CombineBufferConfig &bufferConfig)
 {
-    constexpr int32_t DISPATCH_LOOKAHEAD_CAP = 3;
-    // 空转退避：过短会形成 GM 读风暴（探测走绕 cache 直读，实测拖慢 AIC mte2 权重流）。
-    constexpr int64_t IDLE_BACKOFF_CYCLES = 3000;
+    // 领先额度：CAP=3 为严格领先一个 wave（含发布相位），实测相位余量过薄——任何反应
+    // 延迟都让 GMM1 每 wave 继承 ~60us 等待（相位锁）；CAP=5（有效领先 2~3 wave）吸收
+    // 反应延迟，同时保持「dispatch 有界领先、防饿不囤积」的节拍语义。
+    constexpr int32_t DISPATCH_LOOKAHEAD_CAP = 5;
+    // 空转退避：过短形成 GM 读风暴，过深加大对放行窗口的反应延迟。
+    constexpr int64_t IDLE_BACKOFF_CYCLES = 500;
     WaveReplayState dispatchReplay{};
     WaveCombineCursor cursor{};
     int32_t dispatchedWaves = 0;
