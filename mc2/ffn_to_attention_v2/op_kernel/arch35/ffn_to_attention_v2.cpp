@@ -42,7 +42,7 @@ static_assert(sizeof(FFNToAttentionV2TilingData) == sizeof(FFNToAttentionTilingD
  *   ArchTag: A5.
  *   CommModeType: MTE or URMA.
  */
-
+template <bool RankTableMode, uint8_t ArchTag>
 __global__ __aicore__ void ffn_to_attention_v2(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR sessionIds,
                                                GM_ADDR microBatchIds, GM_ADDR tokenIds, GM_ADDR expertOffsets,
                                                GM_ADDR actualTokenNum, GM_ADDR attnRankTable, GM_ADDR workspaceGM,
