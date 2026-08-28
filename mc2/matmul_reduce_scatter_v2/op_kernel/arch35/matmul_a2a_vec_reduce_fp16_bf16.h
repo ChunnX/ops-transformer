@@ -26,6 +26,7 @@
 #include "../../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_tiling_data.h"
 #include "../matmul_reduce_scatter_v2_c_tiling.h"
 #include "../../../common/op_kernel/reduce_sum_cast_fp32.h"
+#include "../../../common/op_kernel/mc2_runtime_info.h"
 
 #define TEMPLATE_CLASS_PARAMS                                                                                          \
     template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
@@ -81,9 +82,10 @@ private:
     GM_ADDR recvBuf_;                         // 存放 All2All 接收的 slices（内容为
                                               // [slice_r_from_rank0][slice_r_from_rank1]...[slice_r_from_rankR-1]）
     uint32_t rankId_{0};
-    uint64_t aivNum_{0};
+        uint64_t aivNum_{0};
     uint64_t fullMN_{0};
     uint64_t tileOffset_{0};
+    Mc2Kernel::Mc2RuntimeInfo runtimeInfo_;
 };
 
 TEMPLATE_CLASS_PARAMS
@@ -114,8 +116,10 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Init(
 
     // all2all 通信相关参数, 划分workspace
     fullMN_ = static_cast<uint64_t>(cfg.rankM) * static_cast<uint64_t>(cfg.rankN); // M * N
-    sendBuf_ = workspaceGM;                                                        // [0, fullMN)
+        sendBuf_ = workspaceGM;                                                        // [0, fullMN)
     recvBuf_ = sendBuf_ + fullMN_ * sizeof(C_DTYPE);                               // [fullMN, 2*fullMN)
+    // 初始化运行时信息
+    runtimeInfo_.Init(workspaceGM, &tilingData->workspaceLayout, cfg.aicCoreNum);
 }
 
 TEMPLATE_CLASS_PARAMS
@@ -131,6 +135,8 @@ TEMPLATE_CLASS_PARAMS
 __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Process()
 {
     InnerProcess(); // 核心计算+通信
+    runtimeInfo_.WriteGmByPassDCache(0, 3,
+                                     static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
     PostProcess();  // 等待计算与通信完成, 终止hcclserver
 }
 
@@ -178,7 +184,9 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
     MC2MatmulV3::MC2MatmulAswKernelDerive<AType, BType, CType, BiasType, MC2MatmulV3::MC2MatmulAswBlockDerive> mmv3;
     mmv3.Init(aGM_, bGM_, sendBuf_, biasGM_, nullptr, nullptr, &tiling, GetTPipePtr(), cfg, isTail, false);
 
-    for (uint32_t i = 0; i < count; i++) {
+        for (uint32_t i = 0; i < count; i++) {
+        runtimeInfo_.WriteGmByPassDCache(isTail ? 1U : 0U, 1,
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         mmv3.UpdateSlice(i, isTail);                // 更新 slice 偏移
         mmv3.Process(isLast && (i == (count - 1))); // 执行 MatMul
 
@@ -219,6 +227,8 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
 
     // --- Prologue: 启动第 0 轮通信 ---
     VecWaitCube(); // 确保依赖的 MatMul 已完成
+    runtimeInfo_.WriteGmByPassDCache(0, 0,
+                                     static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
     handles_[0 + handleShift] =
         hccl_.template AlltoAll<true>(currSendPtr, currRecvPtr, rankSliceElems, dataType_, stride, repeat);
 
@@ -227,9 +237,11 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
     currRecvPtr += rankSliceBytes;
     currOutPtr += rankSliceBytes;
 
-    // --- Loop: 重叠执行 (等待上一轮 + 归约上一轮 + 启动下一轮) ---
+        // --- Loop: 重叠执行 (等待上一轮 + 归约上一轮 + 启动下一轮) ---
     for (uint32_t i = 0; i < count - 1; i++) {
         // 1. 等待上一轮 (i) 通信结束
+        runtimeInfo_.WriteGmByPassDCache(isTail ? 1U : 0U, 0,
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         if (GetBlockIdx() == 0) {
             hccl_.Wait(handles_[i + handleShift]);
         }
@@ -241,6 +253,8 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
             hccl_.template AlltoAll<true>(currSendPtr, currRecvPtr, rankSliceElems, dataType_, stride, repeat);
 
         // 3. 执行上一轮 (i) 数据的 ReduceSum
+        runtimeInfo_.WriteGmByPassDCache(isTail ? 1U : 0U, 2,
+                                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
         // 计算地址 = 当前指针 - 一步偏移
         GM_ADDR calcRecvPtr = currRecvPtr - rankSliceBytes;
         GM_ADDR calcOutPtr = currOutPtr - rankSliceBytes;

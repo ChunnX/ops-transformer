@@ -33,13 +33,11 @@ struct CommContext {
     Apace::AivComm::CommUbmemContext ubmemCtx;
 };
 
-// Hcomm通信MX量化tiling结构体
-namespace Apace {
-struct hcommAllToAllMatmulTilingData {
+// Ccu通信MX量化tiling结构体
+struct ccuAllToAllMatmulTilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
     CommTilingData commTilingData;
     QuantMatmulTilingData tileQbmmTilingData;
     uint32_t localMatmul{0};
 };
-} // namespace Apace
