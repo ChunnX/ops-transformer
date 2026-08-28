@@ -111,7 +111,8 @@ public:
     using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
     using MM2_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
 
-    using L1KvType = BuffersPolicy4buff<BufferType::L1>;
+    using L1KType = BuffersPolicy4buff<BufferType::L1>;
+    using L1VType = BuffersPolicy4buff<BufferType::L1>;
     using L0AType = typename L0ABuffSel::Type;
     using L0BType = typename L0BBuffSel<s2BaseSize, dBaseSize>::Type;
     using L0CType = typename L0CBuffSel<mBaseSize, s2BaseSize, dVBaseSize>::Type;
@@ -155,7 +156,11 @@ public:
     BufferManager<BufferType::L0C> l0cBufferManager_;
 
     BuffersPolicyDB<BufferType::L1> l1QBuffers_;
-    L1KvType l1KVBuffers_;
+    L1KType l1KBuffers_;
+    L1VType l1VBuffers_;
+    // policy的Get()会推进计数，跨语句的异步预取必须缓存句柄
+    Buffer<BufferType::L1> curKBuf_;
+    Buffer<BufferType::L1> vIssueBufs_[3]; // 3: 与kernel侧PRELOAD_TASK_CACHE_SIZE一致
 
     L0AType mmL0ABuffers_;
     L0BType mmL0BBuffers_;
@@ -191,7 +196,8 @@ public:
         constexpr uint32_t mmKVSize = dBaseSize * s2BaseSizeCur * sizeof(INPUT_T);
 
         l1QBuffers_.Init((*l1BufferManagerPtr_), mm1QSize);
-        l1KVBuffers_.Init((*l1BufferManagerPtr_), mmKVSize);
+        l1KBuffers_.Init((*l1BufferManagerPtr_), mmKVSize);
+        l1VBuffers_.Init((*l1BufferManagerPtr_), mmKVSize);
 
         // L0A B C 当前写死，能否通过基础api获取
         l0aBufferManager_.Init(tPipe_, 65536);  // 64 * 1024
@@ -267,7 +273,8 @@ public:
     __aicore__ inline void FreeEventID()
     {
         l1QBuffers_.Uninit((*l1BufferManagerPtr_));
-        l1KVBuffers_.Uninit((*l1BufferManagerPtr_));
+        l1KBuffers_.Uninit((*l1BufferManagerPtr_));
+        l1VBuffers_.Uninit((*l1BufferManagerPtr_));
         mmL0ABuffers_.Uninit(l0aBufferManager_);
         mmL0BBuffers_.Uninit(l0bBufferManager_);
         mmL0CBuffers_.Uninit(l0cBufferManager_);
@@ -384,6 +391,27 @@ public:
         Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
     }
 
+    // 任务入口异步发起本任务K/V的GM->L1拷贝: K由本拍mm2链路的M_FIX/fixpipe等待掩盖,
+    // V在两拍后被mm2消费
+    __aicore__ inline void PrefetchKV(RunInfoX &runInfo)
+    {
+        uint32_t s2CalcSize = runInfo.actSingleLoopS2Size;
+
+        curKBuf_ = l1KBuffers_.Get();
+        curKBuf_.Wait<HardEvent::MTE1_MTE2>();
+        CopyKeyTile(curKBuf_.GetTensor<KV_T>(), runInfo, s2CalcSize);
+        curKBuf_.Set<HardEvent::MTE2_MTE1>();
+
+        Buffer<BufferType::L1> mm2B = l1VBuffers_.Get();
+        mm2B.Wait<HardEvent::MTE1_MTE2>();
+        if (unlikely(runInfo.isLastS2Loop)) {
+            InitValueL1BufferNoTrans(mm2B.GetTensor<KV_T>(), s2CalcSize, (uint32_t)constInfo_.dSizeV);
+        }
+        CopyValueSlice(mm2B.GetTensor<KV_T>(), runInfo.s2Idx, s2CalcSize, 0, constInfo_.dSizeV, runInfo);
+        mm2B.Set<HardEvent::MTE2_MTE1>();
+        vIssueBufs_[runInfo.loop % 3] = mm2B;
+    }
+
     /* 针对S1Base=128, S2Base = 256, D = 128场景, L1全载/L0全载, K * Q^T, Q矩阵驻留. GS1>80, S=S1*S2 */
     __aicore__ inline void IterateBmm1Dn(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
     {
@@ -400,26 +428,21 @@ public:
             mm1B.Set<HardEvent::MTE2_MTE1>();
         }
 
-        Buffer<BufferType::L1> mm1A = l1KVBuffers_.Get();
-        mm1A.Wait<HardEvent::MTE1_MTE2>();
-        LocalTensor<KV_T> mm1ATensor = mm1A.GetTensor<KV_T>();
-        CopyKeyTile(mm1ATensor, runInfo, s2CalcSize);
-        mm1A.Set<HardEvent::MTE2_MTE1>();
-        mm1A.Wait<HardEvent::MTE2_MTE1>();
+        curKBuf_.Wait<HardEvent::MTE2_MTE1>();
         mm1B.Wait<HardEvent::MTE2_MTE1>();
 
         Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers_.Get();
         mm1ResL0C.Wait<HardEvent::FIX_M>();
         MMParam param =
             MakeMMParam((uint32_t)s2CalcSize, (uint32_t)runInfo.actMSize, (uint32_t)constInfo_.dSize, false, true);
-        MatmulFullMX<Q_T, KV_T, T, 256, 128, dBaseSize, ABLayout::MK, ABLayout::KN, L0AType, L0BType, float, float,
-                     INPUT_T, INPUT_T>(mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers_,
-                                       mmL0BBuffers_, mm1ResL0C.GetTensor<T>(), param);
+        MatmulFull<Q_T, KV_T, T, 256, 128, dBaseSize, ABLayout::MK, ABLayout::KN, L0AType, L0BType>(
+            curKBuf_.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers_, mmL0BBuffers_,
+            mm1ResL0C.GetTensor<T>(), param);
 
         if (unlikely(runInfo.isLastS2Loop)) {
             mm1B.Set<HardEvent::MTE1_MTE2>();
         }
-        mm1A.Set<HardEvent::MTE1_MTE2>();
+        curKBuf_.Set<HardEvent::MTE1_MTE2>();
         mm1ResL0C.Set<HardEvent::M_FIX>();
         mm1ResL0C.Wait<HardEvent::M_FIX>();
 
@@ -459,34 +482,15 @@ public:
         Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers_.Get();
         mm2ResL0C.Wait<HardEvent::FIX_M>();
 
-        constexpr uint32_t baseK = s2BaseSize;
-        uint32_t s2RealSizeAlign = ((runInfo.actSingleLoopS2Size + 63) >> 6) << 6;
-        uint64_t l1BaseKOffset = s2RealSizeAlign * mBaseSize;
-        uint32_t kLoops = (runInfo.actSingleLoopS2Size + baseK - 1) / baseK;
-        uint32_t realK = baseK;
-        for (uint32_t k = 0; k < kLoops; k++) {
-            Buffer<BufferType::L1> mm2B = l1KVBuffers_.Get();
-            if (k == kLoops - 1) {
-                realK = runInfo.actSingleLoopS2Size - k * baseK;
-            }
-            mm2B.Wait<HardEvent::MTE1_MTE2>();
-            LocalTensor<KV_T> mm2BTensor = mm2B.GetTensor<KV_T>();
-            if (unlikely(runInfo.isLastS2Loop)) {
-                InitValueL1BufferNoTrans(mm2BTensor, realK, (uint32_t)constInfo_.dSizeV);
-            }
-            CopyValueSlice(mm2BTensor, runInfo.s2Idx + k * baseK, realK, 0, constInfo_.dSizeV, runInfo);
-            mm2B.Set<HardEvent::MTE2_MTE1>();
+        uint32_t realK = runInfo.actSingleLoopS2Size;
+        Buffer<BufferType::L1> mm2B = vIssueBufs_[runInfo.loop % 3];
+        mm2B.Wait<HardEvent::MTE2_MTE1>();
 
-            mm2B.Wait<HardEvent::MTE2_MTE1>();
-            MMParam param =
-                MakeMMParam((uint32_t)mBaseSize, (uint32_t)constInfo_.dSizeV,
-                            (realK + 63) / MXFP_DIVISOR_SIZE * MXFP_DIVISOR_SIZE, USE_DN, false, k == 0, k == 0);
-            MatmulFullMX<INPUT_T, KV_T, T, 128, dVBaseSize, baseK, ABLayout::MK, ABLayout::KN, L0AType, L0BType, float,
-                         float, INPUT_T, INPUT_T>(mm2A.GetTensor<INPUT_T>()[k * l1BaseKOffset], mm2BTensor,
-                                                  mmL0ABuffers_, mmL0BBuffers_, mm2ResL0C.GetTensor<T>(), param,
-                                                  dummyScale_, dummyScale_);
-            mm2B.Set<HardEvent::MTE1_MTE2>();
-        }
+        MMParam param = MakeMMParam((uint32_t)mBaseSize, (uint32_t)constInfo_.dSizeV, realK, USE_DN, false, true, true);
+        MatmulFull<INPUT_T, KV_T, T, 128, dVBaseSize, s2BaseSize, ABLayout::MK, ABLayout::KN, L0AType, L0BType>(
+            mm2A.GetTensor<INPUT_T>(), mm2B.GetTensor<KV_T>(), mmL0ABuffers_, mmL0BBuffers_,
+            mm2ResL0C.GetTensor<T>(), param);
+        mm2B.Set<HardEvent::MTE1_MTE2>();
 
         mm2ResL0C.Set<HardEvent::M_FIX>();
         mm2ResL0C.Wait<HardEvent::M_FIX>();
