@@ -139,6 +139,24 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     GMMAddrInfo gmm1AddrInfo{};
     GMMAddrInfo gmm2AddrInfo{};
 
+    // 权重 L2 预取（策略写死，不经 tiling 下发）：仅 AIV0 构造游标（AIC/AIV1 传空指针保持原行为）；
+    // 各 block 的 AIV0 以 (blockIdx, blockNum) 为 worker 标识在权重区域内按 chunk 交错认领，聚合
+    // 覆盖率随核数放大；预算为全部 worker 共享的全局常量、内部按 workerCount 均摊。A4W4 的 GMM1
+    // 走 generic（权重 AIC GM->L1，默认不 bypass L2）、GMM2 复用 A8W4 prologue（AIV0 MTE2），
+    // 两侧权重读均命中预热。
+    WeightL2PrefetchCursor weightPrefetchCursor{};
+    WeightL2PrefetchCursor *weightPrefetch = nullptr;
+    if constexpr (g_coreType == AIV) {
+        if (GetSubBlockIdx() == 0U) {
+            WeightL2PrefetchInit(weightPrefetchCursor, moeWeightTensorListAddrs_.weight1,
+                                 moeWeightTensorListAddrs_.weight2, gmmExecutionConfig_.isPerExpertWeightTensor,
+                                 commonConfig_.gmm1OutputDim, commonConfig_.tokenHiddenDim,
+                                 commonConfig_.moeExpertPerRank, countWorkspace_.blockIdx, countWorkspace_.blockNum,
+                                 WEIGHT_L2_PREFETCH_MAX_BUDGET_BYTES);
+            weightPrefetch = &weightPrefetchCursor;
+        }
+    }
+
     // 同一 Block 内绑定的 1C2V 各自持有分核游标，必须按相同调用顺序推进并始终保持一致。
     // 某个角色即使不参与当前 GMM 计算，也必须使用该 problem 的 tile 数更新游标。
     uint32_t startBlockIdx = 0U;
@@ -201,7 +219,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
 
             if (currentWaveNeedsGmm1) {
                 if (gmm1Position.tokenIndexInExpert == 0U) {
-                    this->template PrepareGmmExpertState<true>(gmm1State, gmm1Position.expertIdx);
+                    this->template PrepareGmmExpertState<true>(gmm1State, gmm1Position.expertIdx, weightPrefetch);
                 }
                 uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(gmm1State.problemShape));
                 uint32_t sliceTokenStartIndexInExpert = gmm1Position.tokenIndexInExpert;

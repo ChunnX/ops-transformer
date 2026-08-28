@@ -268,6 +268,122 @@ __aicore__ inline GM_ADDR GetExpertWeightAddr(GM_ADDR tensorListAddr, bool isPer
     return tensorAddr + elementOffset * sizeof(ElementType);
 }
 
+// ======================================================================================
+// A8W4/A4W4 权重 L2 预取：等待 token count 的自旋窗口内，各 block 的 AIV0 用 fire-and-forget
+// 的 GM->UB 拷贝把 W4 权重原始数据拉进 L2（只填 L2，UB 数据从不消费），使后续权重读命中 L2。
+// 权重地址只依赖 expertIdx 与 tiling 常量（见 GetExpertWeightAddr 调用点），count 未就绪即可预取。
+// 分片：全部 AIV0（每 block 一个，workerCount = blockNum）在每个权重区域内按 chunk 交错认领
+// （worker c 取区域内偏移 c、c+N、... 的 chunk），聚合覆盖率随核数放大（上限为 HBM/L2 带宽）；
+// 区域之间保持串行（先全部 W1 再全部 W2，镜像消费顺序），覆盖形状与消费序一致。偶发的同
+// chunk 重叠由 L2 去重，无害。
+// ======================================================================================
+
+struct WeightL2PrefetchCursor {
+    __gm__ uint8_t *chunkAddr = nullptr; // 本 worker 在当前区域内的下一 chunk 地址
+    __gm__ uint8_t *regionEnd = nullptr; // 当前区域结束地址（exclusive）
+    uint32_t regionIndex = 0U;           // 当前区域编号：[0, E)=W1 各专家，[E, 2E)=W2 各专家
+    uint32_t regionCount = 0U;           // 2 * expertCount；regionIndex >= regionCount 表示耗尽
+    uint32_t workerIdx = 0U;
+    uint32_t workerCount = 1U;
+    uint64_t budgetRemaining = 0U; // 本 worker 的字节预算（全局预算 / workerCount）
+    GM_ADDR weight1List = nullptr;
+    GM_ADDR weight2List = nullptr;
+    bool isPerExpertWeightTensor = false;
+    uint32_t expertCount = 0U;
+    uint64_t w1BytesPerExpert = 0U;
+    uint64_t w2BytesPerExpert = 0U;
+};
+
+// 把 regionIndex 映射到 (tensor list, expertIdx, 区域字节数) 并定位本 worker 的起始 chunk。
+__aicore__ inline void WeightL2PrefetchSetupRegion(WeightL2PrefetchCursor &cursor)
+{
+    if (cursor.regionIndex >= cursor.regionCount) {
+        return;
+    }
+    bool isW1 = cursor.regionIndex < cursor.expertCount;
+    uint32_t expertIdx = isW1 ? cursor.regionIndex : cursor.regionIndex - cursor.expertCount;
+    uint64_t regionBytes = isW1 ? cursor.w1BytesPerExpert : cursor.w2BytesPerExpert;
+    __gm__ uint8_t *regionBase = reinterpret_cast<__gm__ uint8_t *>(
+        GetExpertWeightAddr<uint8_t>(isW1 ? cursor.weight1List : cursor.weight2List, cursor.isPerExpertWeightTensor,
+                                     expertIdx, static_cast<uint64_t>(expertIdx) * regionBytes));
+    cursor.regionEnd = regionBase + regionBytes;
+    // 区域内 chunk 交错认领：worker c 从偏移 (c * CHUNK) mod regionBytes 起步。区域小于
+    // workerCount * CHUNK 时回绕会与低号 worker 重叠，L2 去重，无害。
+    uint64_t startOffset = regionBytes == 0U ?
+                               0U :
+                               (static_cast<uint64_t>(cursor.workerIdx) * WEIGHT_L2_PREFETCH_CHUNK_BYTES) % regionBytes;
+    cursor.chunkAddr = regionBase + startOffset;
+}
+
+// 初始化预取游标。W1 = hiddenDim * tokenHiddenDim / 2，W2 = tokenHiddenDim * (hiddenDim / 2) / 2
+// （fp4 两个 element 共 1 字节，SwiGLU 把 GMM1 输出劈成 gate/up 两半），与
+// UpdateMoeExpertGmm1/Gmm2GlobalBuffer 的 B 侧寻址公式同源。budgetBytes 为全部 worker 共享的
+// 全局预算，内部按 workerCount 均摊（分摊不足一个 chunk 时保底 1 个 chunk）。
+__aicore__ inline void WeightL2PrefetchInit(WeightL2PrefetchCursor &cursor, GM_ADDR weight1List, GM_ADDR weight2List,
+                                            bool isPerExpertWeightTensor, uint64_t hiddenDim, uint64_t tokenHiddenDim,
+                                            uint32_t expertCount, uint32_t workerIdx, uint32_t workerCount,
+                                            uint64_t budgetBytes)
+{
+    cursor.weight1List = weight1List;
+    cursor.weight2List = weight2List;
+    cursor.isPerExpertWeightTensor = isPerExpertWeightTensor;
+    cursor.expertCount = expertCount;
+    cursor.regionCount = 2U * expertCount;
+    cursor.workerIdx = workerIdx;
+    cursor.workerCount = workerCount > 0U ? workerCount : 1U;
+    cursor.w1BytesPerExpert = hiddenDim * tokenHiddenDim / 2U;
+    cursor.w2BytesPerExpert = tokenHiddenDim * (hiddenDim / ACTIVATION_N_HALF) / 2U;
+    cursor.budgetRemaining = budgetBytes / cursor.workerCount;
+    if (budgetBytes != 0U && cursor.budgetRemaining == 0U) {
+        cursor.budgetRemaining = WEIGHT_L2_PREFETCH_CHUNK_BYTES;
+    }
+    cursor.regionIndex = 0U;
+    WeightL2PrefetchSetupRegion(cursor);
+}
+
+// 本 worker 在当前区域的 chunk 走完后推进到下一区域（全部 W1 之后是全部 W2）。
+// 指针表解析（GetTensorAddr 两级 GM 读）每个区域只做一次，摊到该区域的 chunk 上。
+__aicore__ inline void WeightL2PrefetchAdvanceRegion(WeightL2PrefetchCursor &cursor)
+{
+    ++cursor.regionIndex;
+    WeightL2PrefetchSetupRegion(cursor);
+}
+
+// 发射一个 chunk 的 GM->UB fire-and-forget 拷贝（不等待完成）；返回 false 表示本 worker 游标
+// 已耗尽（预算用完或全部区域走完）。单缓冲 scratch 即可：MTE2 队列按序执行保证 UB 写-写按
+// 程序序，且 scratch 数据从不被消费。
+__aicore__ inline bool WeightL2PrefetchTryIssue(WeightL2PrefetchCursor &cursor)
+{
+    while (cursor.regionIndex < cursor.regionCount && cursor.budgetRemaining != 0U) {
+        if (cursor.chunkAddr >= cursor.regionEnd) {
+            WeightL2PrefetchAdvanceRegion(cursor);
+            continue;
+        }
+        uint64_t bytesToRegionEnd = static_cast<uint64_t>(cursor.regionEnd - cursor.chunkAddr);
+        // 拷贝量同时被区域尾与剩余预算钳住，防止预算均摊后不足一个 chunk 时 uint64 回绕。
+        uint64_t copyLimit = bytesToRegionEnd < cursor.budgetRemaining ? bytesToRegionEnd : cursor.budgetRemaining;
+        uint32_t copyBytes = copyLimit < WEIGHT_L2_PREFETCH_CHUNK_BYTES ? static_cast<uint32_t>(copyLimit) :
+                                                                          WEIGHT_L2_PREFETCH_CHUNK_BYTES;
+        GlobalTensor<uint8_t> weightGm;
+        weightGm.SetGlobalBuffer(cursor.chunkAddr);
+        LocalTensor<uint8_t> scratch(TPosition::VECCALC, WEIGHT_L2_PREFETCH_UB_OFFSET, copyBytes);
+        DataCopyPad(scratch, weightGm, {1U, copyBytes, 0U, 0U, 0U}, {false, 0U, 0U, 0U});
+        cursor.budgetRemaining -= copyBytes;
+        // 下一 chunk 跳过其它 worker 认领的 chunk（步长 = workerCount 个 chunk）。
+        cursor.chunkAddr += static_cast<uint64_t>(cursor.workerCount) * WEIGHT_L2_PREFETCH_CHUNK_BYTES;
+        return true;
+    }
+    return false;
+}
+
+// 排空在飞的预取拷贝：SetFlag 进入 MTE2 队列、按序在全部已发射拷贝完成后置位事件。每次预取会话
+// 必须以 Drain 收尾，防止残留拷贝与后续 prologue/unpermute 的 MTE2 访问交错。
+__aicore__ inline void WeightL2PrefetchDrain()
+{
+    SetFlag<HardEvent::MTE2_V>(WEIGHT_L2_PREFETCH_MTE2_V_EVENT_ID);
+    WaitFlag<HardEvent::MTE2_V>(WEIGHT_L2_PREFETCH_MTE2_V_EVENT_ID);
+}
+
 template <size_t I, typename T>
 __aicore__ constexpr inline decltype(auto) Get(T &&value)
 {
@@ -338,6 +454,28 @@ __aicore__ inline void WaitForMoeExpertTokenCountReady(GM_ADDR tokenCountReadyFl
                                           static_cast<uint64_t>(expertIdx) * countWorkspace.blockNum * INT_CACHELINE +
                                           static_cast<uint64_t>(countWorkspace.blockIdx) * INT_CACHELINE;
     WaitUntilGmFlagIsNonZero(tokenCountReadyFlag);
+}
+
+/*
+ * WaitForMoeExpertTokenCountReady 的预取变体：自旋间隙发 fire-and-forget 权重预取。
+ * 每轮先查 flag 再发块（预取不得推迟就绪检测）；flag 就绪即停发并 Drain——在飞 chunk 正是
+ * prologue 最先要读的数据，Drain 时间不浪费。游标耗尽后退化为原 100-cycle 退避自旋。
+ */
+__aicore__ inline void WaitForMoeExpertTokenCountReadyWithPrefetch(GM_ADDR tokenCountReadyFlagWorkspace,
+                                                                   const BlockWorkspaceContext &countWorkspace,
+                                                                   uint32_t expertIdx,
+                                                                   WeightL2PrefetchCursor &cursor)
+{
+    __gm__ int32_t *tokenCountReadyFlag = reinterpret_cast<__gm__ int32_t *>(tokenCountReadyFlagWorkspace) +
+                                          static_cast<uint64_t>(expertIdx) * countWorkspace.blockNum * INT_CACHELINE +
+                                          static_cast<uint64_t>(countWorkspace.blockIdx) * INT_CACHELINE;
+    while (AscendC::ReadGmByPassDCache(tokenCountReadyFlag) == 0) {
+        if (!WeightL2PrefetchTryIssue(cursor)) {
+            WaitUntilGmFlagIsNonZero(tokenCountReadyFlag);
+            break;
+        }
+    }
+    WeightL2PrefetchDrain();
 }
 
 // 从当前 expert/block 对应的稳定 workspace 槽读取专家 token 数。

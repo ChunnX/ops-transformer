@@ -99,7 +99,8 @@ protected:
     __aicore__ inline void ProcessInputPreparationStage();
     __aicore__ inline uint32_t DispatchMoeExpert(uint32_t expertIdx);
     template <bool WaitForTokenCountReady>
-    __aicore__ inline void PrepareGmmExpertState(ExpertLoopState &state, uint32_t expertIdx);
+    __aicore__ inline void PrepareGmmExpertState(ExpertLoopState &state, uint32_t expertIdx,
+                                                 WeightL2PrefetchCursor *weightPrefetch = nullptr);
     __aicore__ inline void ProcessSharedExpertGmm1(int32_t &gmTileSequence);
     __aicore__ inline void ProcessSharedExpertGmm2(int32_t &gmTileSequence);
     template <typename Derived>
@@ -562,15 +563,29 @@ __aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::DispatchMoeExpert(u
 }
 
 // 从 workspace 读取 token 数并准备 GMM 专家状态；GMM1 可按需先等待 token count ready。
+// weightPrefetch 非空（仅 AIV0 在开启预取时构造）且本核为 AIV 时，等待自旋间隙执行权重 L2 预取；
+// 其余调用方不传该参数，行为与原先完全一致。
 template <TemplateMegaMoeTypeClass>
 template <bool WaitForTokenCountReady>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::PrepareGmmExpertState(ExpertLoopState &state,
-                                                                               uint32_t expertIdx)
+                                                                               uint32_t expertIdx,
+                                                                               WeightL2PrefetchCursor *weightPrefetch)
 {
     if constexpr (WaitForTokenCountReady) {
         if (GetSubBlockIdx() == 0U) {
-            WaitForMoeExpertTokenCountReady(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace_,
-                                            expertIdx);
+            bool prefetched = false;
+            if constexpr (g_coreType == AIV) {
+                if (weightPrefetch != nullptr) {
+                    // 游标跨等待窗口持续使用（预算结转）；每个窗口以 Drain 收尾，无残留拷贝。
+                    WaitForMoeExpertTokenCountReadyWithPrefetch(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr,
+                                                                countWorkspace_, expertIdx, *weightPrefetch);
+                    prefetched = true;
+                }
+            }
+            if (!prefetched) {
+                WaitForMoeExpertTokenCountReady(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace_,
+                                                expertIdx);
+            }
         }
     }
     uint32_t expertTokenCount =

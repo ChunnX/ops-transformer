@@ -64,6 +64,18 @@ constexpr uint32_t SYNC_EVENT_ID2 = 2;
 constexpr uint32_t SYNC_EVENT_ID3 = 3;
 constexpr uint32_t SYNC_EVENT_ID4 = 4;
 constexpr uint32_t SYNC_EVENT_ID5 = 5;
+// A8W4/A4W4 权重 L2 预取（fire-and-forget，策略在 kernel 内写死，不经 tiling 下发）：
+//   - Drain 排空用 MTE2->V 事件 ID（避开 prologue 的 MTE2_V ID 0）；
+//   - 预取 scratch 的 UB 偏移必须位于 AIV0 prologue 权重区之上（4bit 64KB + 8bit 128KB = 192KB，
+//     blaze/prologue/block_prologue_mx_fp8fp4.h），修改 prologue UB 布局时必须同步校验；scratch 仅在
+//     等待窗内活跃且每次会话以 Drain 收尾，后续阶段（unpermute 等）在 Drain 之后复用该区无冲突；
+//   - chunk 为单次 fire-and-forget 拷贝粒度（与 prologue 的 MTE2 粒度一致）；
+//   - 预算上限防过量预热挤掉 L2 内有复用价值的数据，游标内部再夹紧到本卡专家权重总量。
+constexpr uint32_t WEIGHT_L2_PREFETCH_MTE2_V_EVENT_ID = 4U;
+constexpr uint32_t WEIGHT_L2_PREFETCH_UB_OFFSET = 192U * 1024U;
+constexpr uint32_t WEIGHT_L2_PREFETCH_CHUNK_BYTES = 16U * 1024U;
+constexpr uint32_t WEIGHT_L2_PREFETCH_UB_BYTES = 16U * 1024U;
+constexpr uint32_t WEIGHT_L2_PREFETCH_MAX_BUDGET_BYTES = 32U * 1024U * 1024U;
 constexpr int64_t E5M2_QUANT = 3U;
 constexpr int64_t E2M1_QUANT = 5U;
 constexpr int64_t OVERFLOW_MODE_CTRL = 60U;
