@@ -526,20 +526,21 @@ __aicore__ inline void DispatchExpertTokenSlice(const TokenDispatchConfig &conte
 
     constexpr int32_t gmm1TileRowCount = static_cast<int32_t>(PipelineTileM);
     uint32_t dispatchCoreCount = blockJob.totalJobs == 0U ? 1U : blockJob.totalJobs;
-    // 分核域按「专家行数 vs wave 窗口」自适应（两个 regime 实测最优相反）：
-    //  - 专家 ≤ 2 个窗口（泛化形状主体）：专家全域固定份额、wave 窗口取交集——每核
-    //    持有专家内一段连续行、跨 wave 头尾相接，远端窗口读地址流连续（slice 域均分
-    //    会让行流碎片化，bt_L17/L18 基线对表坐实 dispatch 慢 2~3 倍，AIV1-bound 形状
-    //    直接进 E2E）；
-    //  - 专家 > 2 个窗口（穿刺型跨 wave 大专家）：slice 域全核均分——专家域份额此时
-    //    每 wave 仅 ~窗口/份额 个核参与，供数节奏掉 ~3 倍，AIC-bound 形状 GMM1 等数据
-    //    放大（A/B 实测 +679us）。
+    // 分核域按形状的计算/搬运比自适应（两个 regime 实测最优相反）：
+    //  - AIV1-bound（n 小，如 N=3072 泛化族）：dispatch 时长直接进 E2E，分工取专家
+    //    全域固定份额、wave 窗口取交集——每核持有专家内一段连续行、跨 wave 头尾
+    //    相接，远端窗口读地址流连续（slice 域均分会让行流碎片化，bt_L17/L18 基线
+    //    对表坐实 dispatch 慢 2~3 倍；tb0 热专家同样吃连续收益，A/B −414us）；
+    //  - AIC-bound（n 大，如 N=6144 穿刺）：GMM 每 wave 时间 ∝ 行×h×n 远大于
+    //    dispatch 每 wave ∝ 行×h，关键是供数节奏——跨 wave 大专家的专家域份额每
+    //    wave 仅 ~窗口/份额 个核参与，供数掉 ~3 倍（A/B +679us），取 slice 域全核
+    //    均分。判据 n≥4096 是「计算/搬运比 ∝ n」的静态代理，锚两端实测。
     // 两种划分下各核区间之并 = [sliceRowBegin, sliceRowEnd) 且两两不交，
     // PublishGmm1TileReady 的行数累加（等值判定）契约不变。
     uint32_t sliceRows = sliceRowEnd - sliceRowBegin;
     int32_t coreDispatchRowBegin;
     int32_t coreDispatchRowEnd;
-    if (expertShareRows > sliceRows * 2U) {
+    if (common.gmm1OutputDim >= 4096U && expertShareRows > sliceRows * 2U) {
         int32_t rowsPerCore =
             Ops::Base::CeilDiv(static_cast<int32_t>(sliceRows), static_cast<int32_t>(dispatchCoreCount));
         coreDispatchRowBegin =
