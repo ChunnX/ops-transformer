@@ -27,10 +27,21 @@ public:
     {}
     ~QuantMatmulTilingSwat() override = default;
 
-    void SetMaxBaseM(uint64_t v) { maxBaseM_ = v; }
+    void SetMaxBaseM(uint64_t v)
+    {
+        maxBaseM_ = v;
+    }
+
+    void EnableBaseMHalving(bool enable)
+    {
+        enableBaseMHalving_ = enable;
+    }
 
 protected:
-    const char *TilingName() const override { return "swat"; }
+    const char *TilingName() const override
+    {
+        return "swat";
+    }
 
     void DoOpTiling(QuantMatmulTilingData &tilingData) override
     {
@@ -56,6 +67,7 @@ private:
     using Base::enableMTailAlign_;
 
     uint64_t maxBaseM_{0};
+    bool enableBaseMHalving_{false};
 
 private:
     uint32_t CalcScaleKL1() const
@@ -283,6 +295,9 @@ private:
         if (blockNum < platformInfo_.aicNum) {
             AdjustBasicBlock();
         }
+        if (enableBaseMHalving_) {
+            HalveBaseMForPipeline();
+        }
         CHECK_COND(runInfo_.baseM != 0UL && runInfo_.baseN != 0UL && runInfo_.baseK != 0UL,
                    "Failed to derive a valid tiling base shape: baseM, baseN, and baseK must all be non-zero.");
 
@@ -294,6 +309,21 @@ private:
         runInfo_.nTailSize = args_.n - (runInfo_.nBlockCnt - 1UL) * runInfo_.baseN;
         runInfo_.dbL0c =
             runInfo_.baseM * runInfo_.baseN * DATA_SIZE_L0C * DB_SIZE <= platformInfo_.l0cSize ? DB_SIZE : 1U;
+    }
+
+    void HalveBaseMForPipeline()
+    {
+        // baseM/baseN may still be zero at this point (CHECK_COND runs later in
+        // CalcBasicBlock), so guard against divide-by-zero in the CeilDiv below.
+        if (runInfo_.baseM == 0UL || runInfo_.baseN == 0UL) {
+            return;
+        }
+        uint64_t baseMAlignNum = args_.transA ? GetShapeWithDataType<aDataType>(L1_ALIGN_SIZE) : CUBE_BLOCK;
+        uint64_t blockNumAfterAdjust = CeilDiv(args_.m, runInfo_.baseM) * CeilDiv(args_.n, runInfo_.baseN);
+        if (blockNumAfterAdjust < NUM_TWO * platformInfo_.aicNum && runInfo_.baseM % (NUM_TWO * baseMAlignNum) == 0UL &&
+            runInfo_.baseM < args_.m) {
+            runInfo_.baseM = runInfo_.baseM / NUM_TWO;
+        }
     }
 
     void OptimizeEdgeBasicBlock()
