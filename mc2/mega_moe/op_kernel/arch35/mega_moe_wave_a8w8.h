@@ -803,7 +803,10 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Dispatc
     while (!dispatchDone) {
         bool didWork = false;
         // 节流放行：counter 最小值 ≥ dispatchedWaves − CAP + 1 即允许再取一个 wave。
-        if (CachedGmm2ProgressAtLeast(cachedWaves, dispatchedWaves - DISPATCH_LOOKAHEAD_CAP + 1)) {
+        // dispatch 优先清空全部放行额度再做 combine：若因任何扰动滑落，一个突发
+        // （≤CAP×单 wave 耗时）即重建领先；逐 wave 与 combine 交替会把补给速率压到
+        // GMM 节奏、锁死在零领先平衡点（v10 双模态实测根因）。
+        while (!dispatchDone && CachedGmm2ProgressAtLeast(cachedWaves, dispatchedWaves - DISPATCH_LOOKAHEAD_CAP + 1)) {
             MC2_TS_START(TS_DISPATCH_EXPERT);
             if (TryDispatchNextWave(dispatchReplay)) {
                 ++dispatchedWaves;
