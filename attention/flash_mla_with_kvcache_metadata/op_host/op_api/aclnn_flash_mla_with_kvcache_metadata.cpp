@@ -48,20 +48,48 @@ aclnnStatus aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    auto ret = FlashMlaWithKvcacheMetadataCheck::ParamsCheck(cuSeqlensQOptional, cacheSeqlensOptional, sequsedQOptional,
-                                                             maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv,
-                                                             headDimQk, headDimV, maskMode, layoutQ, metaData);
-    CHECK_RET(ret == ACLNN_SUCCESS, ret);
-
+    // 平台参数由 GetCurrentPlatformInfo（硬件）推导，先取出供容量校验和 l0 透传使用
     const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
     uint32_t aicCoreNum = npuInfo.GetCubeCoreNum();
     uint32_t aivCoreNum = npuInfo.GetVectorCoreNum();
     const char *socVersion = npuInfo.GetSocLongVersion().c_str();
 
+    auto ret = FlashMlaWithKvcacheMetadataCheck::ParamsCheck(cuSeqlensQOptional, cacheSeqlensOptional, sequsedQOptional,
+                                                             maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv,
+                                                             headDimQk, headDimV, maskMode, layoutQ, metaData,
+                                                             aicCoreNum, aivCoreNum);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+
+    // 前置处理：seqlens 输入转连续（AICPU kernel 按连续内存读取原始数据）
+    const aclTensor *cuSeqlensQContiguous = nullptr;
+    if (cuSeqlensQOptional != nullptr) {
+        cuSeqlensQContiguous = l0op::Contiguous(cuSeqlensQOptional, uniqueExecutor.get());
+        if (cuSeqlensQContiguous == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "cu_seqlens_q contiguous is null");
+            return ACLNN_ERR_INNER_NULLPTR;
+        }
+    }
+    const aclTensor *cacheSeqlensContiguous = nullptr;
+    if (cacheSeqlensOptional != nullptr) {
+        cacheSeqlensContiguous = l0op::Contiguous(cacheSeqlensOptional, uniqueExecutor.get());
+        if (cacheSeqlensContiguous == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "cache_seqlens contiguous is null");
+            return ACLNN_ERR_INNER_NULLPTR;
+        }
+    }
+    const aclTensor *sequsedQContiguous = nullptr;
+    if (sequsedQOptional != nullptr) {
+        sequsedQContiguous = l0op::Contiguous(sequsedQOptional, uniqueExecutor.get());
+        if (sequsedQContiguous == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "seqused_q contiguous is null");
+            return ACLNN_ERR_INNER_NULLPTR;
+        }
+    }
+
     // l0 函数输入槽位与 meta.txt 定义的 3 输入契约一致：
     //   slot0=cuSeqlensQ, slot1=cacheSeqlens, slot2=sequsedQ
     // 平台参数 socVersion/aicCoreNum/aivCoreNum 由 GetCurrentPlatformInfo 推导后透传。
-    auto output = l0op::FlashMlaWithKvcacheMetadata(cuSeqlensQOptional, cacheSeqlensOptional, sequsedQOptional,
+    auto output = l0op::FlashMlaWithKvcacheMetadata(cuSeqlensQContiguous, cacheSeqlensContiguous, sequsedQContiguous,
                                                     maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDimQk,
                                                     headDimV, maskMode, layoutQ, socVersion, aicCoreNum,
                                                     aivCoreNum, metaData, uniqueExecutor.get());
