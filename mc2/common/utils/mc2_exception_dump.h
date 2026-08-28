@@ -203,6 +203,7 @@ inline int DumpToFile(std::string dir, std::string name, uint32_t id, void *buf,
 #if MC2_DFX_ENABLE
 const uint32_t XN_ADDR_DUMP_SIZE = 64U * 64U * 8U;
 const uint32_t CKE_ADDR_DUMP_SIZE = 64U * 2U * 8U;
+const uint32_t MAX_PEERMEM_DUMP_SIZE = 64U * 1024U * 1024U;
 
 inline std::string GenDumpFileNameWithPrefix(aclrtExceptionInfo *args, const char *op, const char *prefix)
 {
@@ -956,7 +957,8 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
 }
 
 inline void Mc2DumpUrmaContext(aclrtExceptionInfo *args, const char *op, uint32_t contextArgIdx,
-                               uint32_t argsOffset = 0U)
+                               uint32_t argsOffset = 0U, uint32_t tilingGmArgIdx = 0U,
+                               uint32_t peermemSizeOffset = 0U)
 {
     if (args == nullptr || op == nullptr) {
         return;
@@ -1037,15 +1039,40 @@ inline void Mc2DumpUrmaContext(aclrtExceptionInfo *args, const char *op, uint32_
         return;
     }
 
-    // 4. D2H 拷贝 peermem 窗口 -> peermem_window
-    std::vector<uint8_t> winBuf(WIN_SIZE, 0);
-    if (aclrtMemcpy(winBuf.data(), WIN_SIZE, reinterpret_cast<void *>(selfWinAddr), WIN_SIZE,
+    // 4. 确定 peermem dump 大小
+    uint32_t peermemDumpSize = WIN_SIZE;
+    if (tilingGmArgIdx != 0U && peermemSizeOffset != 0U) {
+        uint32_t tilingGmOffset = argsOffset + tilingGmArgIdx * sizeof(uint64_t);
+        if (tilingGmOffset + sizeof(uint64_t) <= devArgsLen) {
+            uint64_t tilingGM = 0U;
+            if (aclrtMemcpy(&tilingGM, sizeof(uint64_t),
+                            reinterpret_cast<uint8_t *>(devArgsPtr) + tilingGmOffset,
+                            sizeof(uint64_t), ACL_MEMCPY_DEVICE_TO_HOST) == ACL_SUCCESS && tilingGM != 0U) {
+                uint64_t peermemDataSize = 0U;
+                if (aclrtMemcpy(&peermemDataSize, sizeof(uint64_t),
+                                reinterpret_cast<void *>(tilingGM + peermemSizeOffset),
+                                sizeof(uint64_t), ACL_MEMCPY_DEVICE_TO_HOST) == ACL_SUCCESS) {
+                    if (peermemDataSize > 0 && peermemDataSize <= MAX_PEERMEM_DUMP_SIZE) {
+                        peermemDumpSize = static_cast<uint32_t>(peermemDataSize);
+                    } else {
+                        OP_LOGE(OP_NAME, "peermemDataSize=%lu, using fallback WIN_SIZE=%u",
+                                peermemDataSize, WIN_SIZE);
+                    }
+                }
+            }
+        }
+    }
+    OP_LOGE(OP_NAME, "peermemDumpSize=%u", peermemDumpSize);
+
+    // 5. D2H 拷贝 peermem 窗口 -> peermem_window
+    std::vector<uint8_t> winBuf(peermemDumpSize, 0);
+    if (aclrtMemcpy(winBuf.data(), peermemDumpSize, reinterpret_cast<void *>(selfWinAddr), peermemDumpSize,
                     ACL_MEMCPY_DEVICE_TO_HOST) != ACL_SUCCESS) {
         OP_LOGE(OP_NAME, "aclrtMemcpy peermem window failed.");
         return;
     }
     if (DumpToFileWithSize(std::string(dumpPath), GenDumpFileNameWithPrefix(args, op, "peermem_window_"), deviceId,
-                           winBuf.data(), WIN_SIZE) != 0) {
+                           winBuf.data(), peermemDumpSize) != 0) {
         OP_LOGE(OP_NAME, "Failed to dump peermem window.");
     }
     OP_LOGE(OP_NAME, "UrmaContext dump done: op=%s, deviceId=%u.", op, deviceId);
@@ -1057,7 +1084,8 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
                             uint32_t quantModeOffset = 0U, uint32_t wsLayoutOffsetNonQuant = 0U,
                             uint32_t wsLayoutOffsetQuant = 0U, uint32_t wsLayoutOffsetApace = 0U) {}
 inline void Mc2DumpUrmaContext(aclrtExceptionInfo *args, const char *op, uint32_t contextArgIdx,
-                               uint32_t argsOffset = 0U) {}
+                               uint32_t argsOffset = 0U, uint32_t tilingGmArgIdx = 0U,
+                               uint32_t peermemSizeOffset = 0U) {}
 #endif // MC2_DFX_ENABLE
  
 } // namespace Mc2Exception
