@@ -266,27 +266,15 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
 
     GlobalTensor<xType> tokenDataGMTensor;
     tokenDataGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ xType *>(remoteDataAddr));
-    // if constexpr (URMA_FLAG_TRACE) {
-    //     PRINTF("[F2A_URMA][LOCAL_DATA_BEGIN] rank=%u aiv=%u yOffset=%lu dataAddr=%lu flagAddr=%lu\n", rankId_,
-    //            aivId_, yOffset, reinterpret_cast<uint64_t>(remoteDataAddr),
-    //            reinterpret_cast<uint64_t>(remoteFlagAddr));
-    // }
     DataCopyPad(tokenDataGMTensor, xTmpTensor_, xCopyParams);
     xQueue_.FreeTensor<xType>(xTmpTensor_);
     PipeBarrier<PIPE_MTE3>();
-    // if constexpr (URMA_FLAG_TRACE) {
-    //     PRINTF("[F2A_URMA][LOCAL_DATA_DONE] rank=%u aiv=%u yOffset=%lu\n", rankId_, aivId_, yOffset);
-    // }
 
     GlobalTensor<int32_t> tokenInfoTableGMTensor;
     tokenInfoTableGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(remoteFlagAddr));
     DataCopyExtParams flagCopyParams = {1U, sizeof(int32_t), 0U, 0U, 0U};
     DataCopyPad(tokenInfoTableGMTensor, statusTensor_, flagCopyParams);
     SyncFunc<HardEvent::MTE3_S>();
-    // if constexpr (URMA_FLAG_TRACE) {
-    //     PRINTF("[F2A_URMA][LOCAL_FLAG_WRITE_DONE] rank=%u aiv=%u yOffset=%lu flagAddr=%lu stagedFlag=%d\n",
-    //            rankId_, aivId_, yOffset, reinterpret_cast<uint64_t>(remoteFlagAddr), URMA_FLAG_VALUE);
-    // }
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -295,10 +283,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
 {
     DataCopyPadExtParams<xType> copyPadExtParams{false, 0U, 0U, 0U};
     xTmpTensor_ = xQueue_.AllocTensor<xType>();
-    // if constexpr (URMA_FLAG_TRACE) {
-    //     PRINTF("[F2A_URMA][REMOTE_STAGE_BEGIN] rank=%u aiv=%u yOffset=%lu localDataAddr=%lu\n", rankId_, aivId_,
-    //            yOffset, reinterpret_cast<uint64_t>(localDataAddr_));
-    // }
     DataCopyPad(xTmpTensor_, xGMTensor_[yOffset * axisH_], xCopyParams, copyPadExtParams);
     xQueue_.EnQue(xTmpTensor_);
     xTmpTensor_ = xQueue_.DeQue<xType>();
@@ -308,10 +292,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
     DataCopyPad(localDataGMTensor, xTmpTensor_, xCopyParams);
     xQueue_.FreeTensor<xType>(xTmpTensor_);
     SyncFunc<HardEvent::MTE3_S>();
-    // if constexpr (URMA_FLAG_TRACE) {
-    //     PRINTF("[F2A_URMA][REMOTE_STAGE_DONE] rank=%u aiv=%u yOffset=%lu localDataAddr=%lu bytes=%lu\n", rankId_,
-    //            aivId_, yOffset, reinterpret_cast<uint64_t>(localDataAddr_), hSize_);
-    // }
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -323,45 +303,17 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
                    aivNum_);
     GM_ADDR sourceDataAddr = localDataAddr_ + static_cast<uint64_t>(sourceAivId) * dataWorkspaceStride_;
     uint64_t channel = GetUrmaCommHandle(dstRank);
-    // if constexpr (URMA_FLAG_TRACE) {
-    //     PRINTF("[F2A_URMA][REMOTE_DATA_BEGIN] rank=%u dstRank=%u sourceAiv=%u channel=%lu localAddr=%lu "
-    //            "remoteAddr=%lu bytes=%lu\n",
-    //            rankId_, dstRank, sourceAivId, channel, reinterpret_cast<uint64_t>(sourceDataAddr),
-    //            reinterpret_cast<uint64_t>(remoteDataAddr), hSize_);
-    // }
     int32_t ret = hcomm_.WriteNbi(channel, remoteDataAddr, sourceDataAddr, static_cast<int64_t>(hSize_));
-    // if constexpr (URMA_FLAG_TRACE) {
-    //     PRINTF("[F2A_URMA][REMOTE_DATA_WRITE] rank=%u dstRank=%u sourceAiv=%u ret=%d\n", rankId_, dstRank,
-    //            sourceAivId, ret);
-    // }
     ascendc_assert(ret == 0, "WriteNbi data failed, ret=%d, rankId=%u, dstRank=%u, sourceAivId=%u", ret, rankId_,
                    dstRank, sourceAivId);
     ret = hcomm_.Drain(channel);
-    // if constexpr (URMA_FLAG_TRACE) {
-    //     PRINTF("[F2A_URMA][REMOTE_DATA_DRAIN] rank=%u dstRank=%u sourceAiv=%u ret=%d\n", rankId_, dstRank,
-    //            sourceAivId, ret);
-    // }
     ascendc_assert(ret == 0, "Drain data failed, ret=%d, rankId=%u, dstRank=%u, sourceAivId=%u", ret, rankId_,
                    dstRank, sourceAivId);
     // Publish the flag only after the token data has reached the destination window.
-    // if constexpr (URMA_FLAG_TRACE) {
-    //     PRINTF("[F2A_URMA][REMOTE_FLAG_BEGIN] rank=%u dstRank=%u sourceAiv=%u channel=%lu localFlagAddr=%lu "
-    //            "stagedFlag=%d remoteFlagAddr=%lu\n",
-    //            rankId_, dstRank, sourceAivId, channel,
-    //            reinterpret_cast<uint64_t>(localFlagAddr_), URMA_FLAG_VALUE, reinterpret_cast<uint64_t>(remoteFlagAddr));
-    // }
     ret = hcomm_.WriteNbi(channel, remoteFlagAddr, localFlagAddr_, static_cast<int64_t>(sizeof(int32_t)));
-    // if constexpr (URMA_FLAG_TRACE) {
-    //     PRINTF("[F2A_URMA][REMOTE_FLAG_WRITE] rank=%u dstRank=%u sourceAiv=%u ret=%d\n", rankId_, dstRank,
-    //            sourceAivId, ret);
-    // }
     ascendc_assert(ret == 0, "WriteNbi flag failed, ret=%d, rankId=%u, dstRank=%u, sourceAivId=%u", ret, rankId_,
                    dstRank, sourceAivId);
     ret = hcomm_.Drain(channel);
-    // if constexpr (URMA_FLAG_TRACE) {
-    //     PRINTF("[F2A_URMA][REMOTE_FLAG_DRAIN] rank=%u dstRank=%u sourceAiv=%u stagedFlag=%d ret=%d\n",
-    //            rankId_, dstRank, sourceAivId, URMA_FLAG_VALUE, ret);
-    // }
     ascendc_assert(ret == 0, "Drain flag failed, ret=%d, rankId=%u, dstRank=%u, sourceAivId=%u", ret, rankId_, dstRank,
                    sourceAivId);
 }
@@ -370,18 +322,12 @@ template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::Process()
 {
     if ASCEND_IS_AIV {
-        // if constexpr (URMA_FLAG_TRACE) {
-        //     PRINTF("[F2A_URMA][PROCESS_BEGIN] rank=%u aiv=%u\n", rankId_, aivId_);
-        // }
         if (aivId_ == 0U) {
             HcommInit();
         }
         InitLocalFlag();
 
         const uint64_t roundNum = Ceil(actualTokenNum_, static_cast<uint64_t>(aivNum_));
-        // if constexpr (URMA_FLAG_TRACE) {
-        //     PRINTF("[F2A_URMA][TOKEN_SPLIT] rank=%u aiv=%u roundNum=%lu\n", rankId_, aivId_, roundNum);
-        // }
 
         DataCopyExtParams xCopyParams = {1U, static_cast<uint32_t>(hSize_), 0U, 0U, 0U};
         for (uint64_t round = 0; round < roundNum; ++round) {
@@ -460,9 +406,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
             // overwrite their per-core staging slots in the next round.
             SyncAll<true>();
         }
-        // if constexpr (URMA_FLAG_TRACE) {
-        //     PRINTF("[F2A_URMA][PROCESS_DONE] rank=%u aiv=%u roundNum=%lu\n", rankId_, aivId_, roundNum);
-        // }
     }
 }
 
