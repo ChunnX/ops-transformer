@@ -600,21 +600,32 @@ h2 {{ margin:0 0 14px; font-size:17px; }}
 .controls {{ position:relative; display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:14px; }}
 select,button {{ padding:6px 9px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; color:var(--text); }}
 button {{ cursor:pointer; }} button:hover {{ background:#f1f5f9; }}
-.event-picker {{ position:static; }}
-.event-picker summary {{ padding:6px 9px; border:1px solid #cbd5e1; border-radius:6px; background:#fff;
-                         cursor:pointer; list-style:none; }}
-.event-picker summary::-webkit-details-marker {{ display:none; }}
+.event-picker,.wave-picker {{ position:static; }}
+.event-picker summary,.wave-picker summary {{ padding:6px 9px; border:1px solid #cbd5e1; border-radius:6px; background:#fff;
+                                              cursor:pointer; list-style:none; }}
+.event-picker summary::-webkit-details-marker,.wave-picker summary::-webkit-details-marker {{ display:none; }}
 .event-picker-menu {{ position:absolute; z-index:20; top:calc(100% + 4px); left:0; width:min(720px,100%); max-width:100%; max-height:520px;
                       overflow:auto; padding:12px; border:1px solid #cbd5e1; border-radius:8px; background:#fff;
                       box-shadow:0 8px 24px #10182824; }}
-.event-picker-actions {{ display:flex; gap:8px; margin-bottom:10px; }}
+.wave-picker-menu {{ position:absolute; z-index:21; top:calc(100% + 4px); left:0; width:min(360px,100%); max-height:420px;
+                     overflow:auto; padding:12px; border:1px solid #cbd5e1; border-radius:8px; background:#fff;
+                     box-shadow:0 8px 24px #10182824; }}
+.event-picker-actions,.wave-picker-actions {{ display:flex; gap:8px; margin-bottom:10px; }}
+.wave-options {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(90px,1fr)); gap:6px 10px; }}
+.wave-option {{ display:block; padding:3px 5px; border-radius:4px; background:#f8fafc; font:12px/1.5 monospace; }}
+.wave-option input {{ margin-right:5px; vertical-align:middle; }}
 .event-groups {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:8px; }}
 .event-group {{ padding:8px; border:1px solid #e5e7eb; border-radius:6px; background:#f8fafc; }}
 .event-group > label {{ display:block; margin-bottom:5px; font-weight:700; }}
 .event-option {{ display:block; margin:3px 0; font:11px/1.4 monospace; }}
 .event-option input,.event-group input {{ margin-right:5px; vertical-align:middle; }}
 .legend {{ display:flex; flex-wrap:wrap; gap:10px 16px; color:var(--muted); }}
-.legend i {{ display:inline-block; width:10px; height:10px; margin-right:5px; border-radius:2px; }}
+.legend-item {{ display:inline-flex; align-items:center; padding:4px 7px; border-color:#dbe2ea; color:var(--muted);
+                font-size:11px; line-height:1.3; }}
+.legend-item i {{ display:inline-block; width:10px; height:10px; margin-right:5px; border-radius:2px; }}
+.legend-item:not(.active) {{ opacity:.42; background:#f8fafc; }}
+.legend-item.active {{ border-color:#94a3b8; background:#fff; color:var(--text); box-shadow:0 1px 2px #10182814; }}
+.legend-item:hover {{ opacity:1; }}
 #timeline {{ min-height:140px; overflow-x:auto; }}
 .timeline-viewport {{ position:relative; overflow:auto; min-height:140px; max-height:70vh; border:1px solid var(--line);
                       border-radius:8px; background:#fff; }}
@@ -675,7 +686,16 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
   <h2>流水时间线</h2>
   <div class="controls">
     <label>显示 Block <select id="coreSelect"></select></label>
-    <label>Wave <select id="waveSelect"><option value="all">全部</option></select></label>
+    <details id="wavePicker" class="wave-picker">
+      <summary>Wave：<span id="waveSelectionCount"></span></summary>
+      <div class="wave-picker-menu">
+        <div class="wave-picker-actions">
+          <button type="button" id="selectAllWaves">全选</button>
+          <button type="button" id="clearAllWaves">清空</button>
+        </div>
+        <div id="waveOptions" class="wave-options"></div>
+      </div>
+    </details>
     <label>等待筛选 <select id="waitFilter">
       <option value="all">全部</option><option value="with-wait">存在等待</option>
       <option value="without-wait">无等待</option><option value="truncated">已截断</option>
@@ -716,6 +736,7 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
     </details>
     <span id="selectionSummary" class="muted"></span>
   </div>
+  <div class="muted">点击图例可直接显示或隐藏单个事件；阶段/事件选择器用于批量选择。</div>
   <div class="legend" id="legend"></div>
   <div class="muted">每个 role/core 只使用一条泳道。父阶段显示完整执行区间，等待按真实 begin/end cycle
   覆盖在同一泳道；Active = Total - 这些真实等待区间。可固定整个 Block 或单条泳道到顶部对比区。</div>
@@ -924,11 +945,13 @@ function requestAggregation(type,events) {{
 }}
 const coreSelect = document.getElementById('coreSelect');
 const statsCoreSelect = document.getElementById('statsCoreSelect');
-const waveSelect = document.getElementById('waveSelect');
+const wavePicker = document.getElementById('wavePicker');
+const waveOptionsRoot = document.getElementById('waveOptions');
 const waitFilter = document.getElementById('waitFilter');
 const laneSort = document.getElementById('laneSort');
 const laneLimit = document.getElementById('laneLimit');
 const phasePreset = document.getElementById('phasePreset');
+const eventPicker = document.getElementById('eventPicker');
 const eventGroupsRoot = document.getElementById('eventGroups');
 const canvasTooltip = document.getElementById('canvasTooltip');
 const eventTableScroll = document.getElementById('eventTableScroll');
@@ -946,6 +969,7 @@ let virtualWaveRows=[];
 let virtualWaveFrame=null;
 let deferredRenderGeneration=0;
 let visibleEventGeneration=0;
+let redrawTimelineSelection=null;
 const eventRowHeight=32;
 const eventRowOverscan=12;
 const availableEvents = new Set(trace.records.flatMap(record=>record.events.map(event=>event.event)));
@@ -957,7 +981,29 @@ for (let core=0; core<trace.header.logical_core_count; core++) {{
   statsCoreSelect.add(new Option(String(core),String(core)));
 }}
 const waves = [...new Set(trace.records.flatMap(r=>r.events.map(e=>e.wave)))].sort((a,b)=>a-b);
-for (const wave of waves) waveSelect.add(new Option(String(wave),String(wave)));
+const selectedWaves = new Set(waves);
+function updateWaveSelection() {{
+  const count=selectedWaves.size;
+  document.getElementById('waveSelectionCount').textContent=count===waves.length?`全部 (${{count}})`:`${{count}} / ${{waves.length}}`;
+}}
+function renderWavePicker() {{
+  waveOptionsRoot.innerHTML=waves.map(wave=>`<label class="wave-option"><input type="checkbox" data-wave="${{wave}}" ${{selectedWaves.has(wave)?'checked':''}}>Wave ${{wave}}</label>`).join('');
+  waveOptionsRoot.querySelectorAll('[data-wave]').forEach(input=>input.addEventListener('change',()=>{{
+    const wave=Number(input.dataset.wave);
+    input.checked?selectedWaves.add(wave):selectedWaves.delete(wave);
+    updateWaveSelection(); render();
+  }}));
+  updateWaveSelection();
+}}
+document.getElementById('selectAllWaves').addEventListener('click',()=>{{
+  for(const wave of waves) selectedWaves.add(wave); renderWavePicker(); render();
+}});
+document.getElementById('clearAllWaves').addEventListener('click',()=>{{
+  selectedWaves.clear(); renderWavePicker(); render();
+}});
+wavePicker.addEventListener('toggle',()=>{{ if(wavePicker.open) eventPicker.open=false; }});
+eventPicker.addEventListener('toggle',()=>{{ if(eventPicker.open) wavePicker.open=false; }});
+renderWavePicker();
 function renderEventPicker() {{
   eventGroupsRoot.innerHTML=Object.entries(eventGroups).map(([group,names])=>{{
     const present=names.filter(name=>availableEvents.has(name));
@@ -1069,10 +1115,9 @@ function compareBlockGroups(a,b) {{
 }}
 const laneKey=(core,role)=>`${{core}}|${{role}}`;
 function allBlockGroupsForWave() {{
-  const wave=waveSelect.value;
   const records=trace.records
     .map(r=>withLaneMetrics({{...r,events:r.events.filter(e=>
-      selectedEvents.has(e.event)&&(wave==='all'||e.wave===Number(wave)))}}))
+      selectedEvents.has(e.event)&&selectedWaves.has(e.wave))}}))
   return [...new Set(records.map(r=>r.core))].map(block=>
     withBlockMetrics(records.filter(r=>r.core===block).sort((a,b)=>roles.indexOf(a.role)-roles.indexOf(b.role))))
     .filter(group=>group.records.some(r=>r.events.length));
@@ -1116,9 +1161,19 @@ function renderDisplay(refreshStats=false) {{
   const records=currentDisplayBlockGroups.flatMap(group=>group.records);
   currentDisplayEvents=records.flatMap(r=>r.events);
   document.getElementById('selectionSummary').textContent=`${{currentDisplayBlockGroups.length}} 个 Block · ${{records.length}} 条泳道 · ${{currentDisplayEvents.length}} 个事件 · ${{selectedEvents.size}} 种事件`;
-  document.getElementById('legend').innerHTML = Object.entries(legendColors)
-    .filter(([name])=>selectedEvents.has(name))
-    .map(([name,color])=>`<span><i style="background:${{color}}"></i>${{name}}</span>`).join('');
+  const legend=document.getElementById('legend');
+  legend.innerHTML = Object.entries(legendColors)
+    .filter(([name])=>availableEvents.has(name))
+    .map(([name,color])=>{{
+      const active=selectedEvents.has(name);
+      return `<button type="button" class="legend-item${{active?' active':''}}" data-legend-event="${{name}}" aria-pressed="${{active}}"><i style="background:${{color}}"></i>${{name}}</button>`;
+    }}).join('');
+  legend.querySelectorAll('[data-legend-event]').forEach(button=>button.addEventListener('click',()=>{{
+    const name=button.dataset.legendEvent;
+    selectedEvents.has(name)?selectedEvents.delete(name):selectedEvents.add(name);
+    phasePreset.value='custom';
+    renderEventPicker(); render();
+  }}));
   renderTimeline(currentDisplayBlockGroups,currentBlockGroups,currentDisplayEvents);
   renderLaneTable(currentDisplayBlockGroups);
   scheduleDeferredPanels(currentDisplayEvents,refreshStats);
@@ -1130,6 +1185,7 @@ function render() {{
 function renderTimeline(blockGroups,pinSourceGroups,events) {{
   const root=document.getElementById('timeline');
   canvasTooltip.style.display='none';
+  redrawTimelineSelection=null;
   if(timelineResizeObserver) {{ timelineResizeObserver.disconnect(); timelineResizeObserver=null; }}
   const pinnedBlockGroups=pinSourceGroups.filter(group=>pinnedBlocks.has(group.core));
   const pinnedLaneRecords=pinSourceGroups.flatMap(group=>group.records)
@@ -1138,9 +1194,15 @@ function renderTimeline(blockGroups,pinSourceGroups,events) {{
     ...pinnedLaneRecords.flatMap(record=>record.events)];
   const hasPinnedEvents=pinnedEvents.length>0;
   if (!events.length&&!hasPinnedEvents) {{
+    selectedTimelineEvent=null;
+    resetEventDetail();
     root.innerHTML='<div class="empty">当前筛选条件下没有事件</div>'; return;
   }}
   const domainEvents=[...events,...pinnedEvents];
+  if(selectedTimelineEvent&&!domainEvents.includes(selectedTimelineEvent)) {{
+    selectedTimelineEvent=null;
+    resetEventDetail();
+  }}
   let domainStart=Infinity,domainEnd=-Infinity;
   for(const event of domainEvents) {{
     domainStart=Math.min(domainStart,signedCycleDelta(event.begin_cycle));
@@ -1286,6 +1348,7 @@ function renderTimeline(blockGroups,pinSourceGroups,events) {{
       context.fillText(`${{cycle.toLocaleString()}}  +${{offset.toLocaleString()}}`,Math.min(x+3,width-125),12);
     }}
   }};
+  redrawTimelineSelection=drawCanvas;
   const hitTest=(x,y)=>{{
     for(let index=hitBoxes.length-1;index>=0;index--) {{
       const box=hitBoxes[index];
@@ -1315,7 +1378,7 @@ function renderTimeline(blockGroups,pinSourceGroups,events) {{
   }});
   canvas.addEventListener('click',event=>{{
     const bounds=canvas.getBoundingClientRect(),box=hitTest(event.clientX-bounds.left,event.clientY-bounds.top);
-    if(!box) return;
+    if(!box||selectedTimelineEvent===box.event) {{ clearTimelineSelection(); return; }}
     selectedTimelineEvent=box.event;
     drawCanvas();
     showEventDetail({{event:box.event,record:box.record}});
@@ -1354,6 +1417,16 @@ function renderTimeline(blockGroups,pinSourceGroups,events) {{
     renderTimeline(currentDisplayBlockGroups,currentBlockGroups,currentDisplayEvents);
   }}));
 }}
+function resetEventDetail() {{
+  document.getElementById('eventDetail').textContent='点击时间线中的事件块查看完整起止 cycle 与打点位置。';
+}}
+function clearTimelineSelection() {{
+  if(!selectedTimelineEvent) return;
+  selectedTimelineEvent=null;
+  resetEventDetail();
+  if(redrawTimelineSelection) redrawTimelineSelection();
+}}
+document.addEventListener('keydown',event=>{{ if(event.key==='Escape') clearTimelineSelection(); }});
 function showEventDetail(item) {{
   const e=item.event, r=item.record;
   const waitKnown=e.wait_cycles!==null;
@@ -1542,7 +1615,7 @@ eventTableScroll.addEventListener('scroll',()=>{{
 }});
 statsCoreSelect.addEventListener('change',renderStatistics);
 for(const control of [coreSelect,laneSort,laneLimit]) control.addEventListener('change',()=>renderDisplay(false));
-for(const control of [waveSelect,waitFilter]) control.addEventListener('change',render);
+waitFilter.addEventListener('change',render);
 render();
 </script>
 </main></body></html>
@@ -1879,12 +1952,18 @@ def run_synthetic_tests() -> int:
         assert len(embedded_trace["records"][0]) == 8
         assert len(embedded_trace["records"][0][7][0]) == 15
         assert 'id="eventGroups"' in rank_page
+        assert 'id="waveOptions"' in rank_page
+        assert 'id="waveSelect"' not in rank_page
+        assert "selectedWaves.has(e.wave)" in rank_page
         assert 'id="phasePreset"' in rank_page
         assert 'id="statsCoreSelect"' in rank_page
         assert 'id="selectionStatsTable"' in rank_page
         assert "moe:['DISPATCH_WORK'" in rank_page
         assert "按 1000 cycles/μs 换算" in rank_page
         assert "selectedEvents.has(e.event)" in rank_page
+        assert 'data-legend-event="${name}"' in rank_page
+        assert "selectedEvents.delete(name):selectedEvents.add(name)" in rank_page
+        assert ".filter(([name])=>availableEvents.has(name))" in rank_page
         assert "const domainEvents=[...events,...pinnedEvents]" in rank_page
         assert '<option value="all" selected>全部 Block</option>' in rank_page
         assert 'id="timelineEventLimit"' not in rank_page
@@ -1901,6 +1980,9 @@ def run_synthetic_tests() -> int:
         assert "virtualEventRows.slice(first,last)" in rank_page
         assert "virtualWaveRows.slice(first,last)" in rank_page
         assert "selectedTimelineEvent=box.event" in rank_page
+        assert "selectedTimelineEvent===box.event" in rank_page
+        assert "clearTimelineSelection()" in rank_page
+        assert "event.key==='Escape'" in rank_page
         assert "renderDisplay(false)" in rank_page
         assert "allEventsInTableOrder.filter" in rank_page
         assert "mega-moe-html-columns-v1" in rank_page
