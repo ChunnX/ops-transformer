@@ -68,7 +68,7 @@ const static int64_t ROUTED_SCALING_FACTOR_ATTR_INDEX = 7;
 const static int64_t EPS_ATTR_INDEX = 8;
 const static int64_t DEFAULT_WORKSPACE_SIZE = static_cast<int64_t>(16 * 1024 * 1024); // 预留16M空间
 const static int64_t DEFAULT_BATCH_ROWS = 4;
-const static int64_t MAX_BATCH_ROWS = 16;
+const static int64_t MAX_BATCH_ROWS = 128;
 const static int64_t MAX_SINGLE_EXPERT_BATCH_ROWS = 4096;
 
 class MoeGatingTopKTilingRegbase : public Ops::Transformer::OpTiling::TilingBaseClass {
@@ -663,10 +663,22 @@ void MoeGatingTopKTilingRegbase::SplitRows()
         maxBatchByUb = maxBatchByUb * 4 / 5;
         batchRows = std::min(std::max(maxBatchByUb, static_cast<int64_t>(1)), MAX_SINGLE_EXPERT_BATCH_ROWS);
     } else {
-        int64_t perRowUbSize = expertCountAlign * sizeof(float) * 2;
-        if (perRowUbSize > 0) {
-            int64_t maxBatchByUb = static_cast<int64_t>(aicoreParams_.ubSize) / (perRowUbSize * 2);
-            batchRows = std::min(std::max(maxBatchByUb, static_cast<int64_t>(1)), MAX_BATCH_ROWS);
+        bool isSimplifiedPath = (kGroup_ == groupCount_ || groupCount_ == expertCount_);
+        if (isSimplifiedPath && !hashFlag_) {
+            // without_group path: batchRows scales xIn/yOut/expertIdx, fixed buffers occupy UB too
+            int64_t dtypeRatio = sizeof(float) / inputDtypeSize_;
+            int64_t blockElements = 32 / inputDtypeSize_;
+            int64_t kStride = Ops::Base::CeilAlign(k_, blockElements);
+            // fixed: outOutQueue + biasBuf + xNormBuf + xNormWithBiasBuf + sortedBuf + calcTmpBuf + indexBuf
+            int64_t fixedUb = expertCountAlign * sizeof(float) * (16 + dtypeRatio);
+            // per-row: xInQueue + yOutQueue + expertIdxOutQueue
+            int64_t perRowUb =
+                expertCountAlign * sizeof(float) * dtypeRatio + kStride * sizeof(float) + kStride * sizeof(int32_t);
+            int64_t availableUb = static_cast<int64_t>(aicoreParams_.ubSize) - fixedUb;
+            if (perRowUb > 0 && availableUb > 0) {
+                int64_t maxBatchByUb = availableUb / perRowUb;
+                batchRows = std::min(std::max(maxBatchByUb, static_cast<int64_t>(1)), MAX_BATCH_ROWS);
+            }
         }
     }
     moeGatingTopKTilingData_.set_batchRows(batchRows);
@@ -723,7 +735,7 @@ uint64_t MoeGatingTopKTilingRegbase::GetTilingKey() const
             return MOE_GATING_TOP_K_E_K_FULLLOAD_REGBASE_TILING_KEY;
         }
         bool isSimplifiedPath = (kGroup_ == groupCount_ || groupCount_ == expertCount_);
-        if (isSimplifiedPath && groupCount_ == 1 && k_ == 1) {
+        if (isSimplifiedPath) {
             return MOE_GATING_TOP_K_WITHOUT_GROUP_REGBASE_TILING_KEY;
         }
         return MOE_GATING_TOP_K_REGBASE_TILING_KEY;

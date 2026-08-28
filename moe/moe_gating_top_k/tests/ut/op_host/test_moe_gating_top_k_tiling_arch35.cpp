@@ -1216,6 +1216,96 @@ TEST_F(MoeGatingTopKTilingArch35, moe_gating_top_k_tiling_arch35_hash_fail_06_ti
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 10001, "", {});
 }
 
+TEST_F(MoeGatingTopKTilingArch35, moe_gating_top_k_tiling_arch35_succ_18_without_group_softmax_fp16_k8)
+{
+    optiling::MoeGatingTopKCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara(
+        "MoeGatingTopK",
+        {
+            {{{16, 256}, {16, 256}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{256}, {256}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{16, 8}, {16, 8}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{16, 8}, {16, 8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{16, 256}, {16, 256}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"k", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"k_group", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"group_count", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"group_select_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"renorm", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"norm_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"routed_scaling_factor", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
+            {"eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-20f)},
+        },
+        &compileInfo, "Ascend950");
+    std::vector<size_t> expectWorkspaces = {16777216};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10005, "", expectWorkspaces);
+}
+
+TEST_F(MoeGatingTopKTilingArch35, moe_gating_top_k_tiling_arch35_succ_19_without_group_softmax_fp16_k1_norenorm)
+{
+    optiling::MoeGatingTopKCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara(
+        "MoeGatingTopK",
+        {
+            {{{16, 256}, {16, 256}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{256}, {256}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{16, 1}, {16, 1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{16, 1}, {16, 1}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{16, 256}, {16, 256}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"k", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"k_group", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"group_count", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"group_select_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"renorm", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"norm_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"routed_scaling_factor", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
+            {"eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-20f)},
+        },
+        &compileInfo, "Ascend950");
+    std::vector<size_t> expectWorkspaces = {16777216};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10005, "", expectWorkspaces);
+}
+
+TEST_F(MoeGatingTopKTilingArch35, moe_gating_top_k_tiling_arch35_succ_20_without_group_softmax_fp16_k1_renorm)
+{
+    optiling::MoeGatingTopKCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara(
+        "MoeGatingTopK",
+        {
+            {{{16, 256}, {16, 256}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{256}, {256}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{16, 1}, {16, 1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{16, 1}, {16, 1}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{16, 256}, {16, 256}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"k", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"k_group", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"group_count", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"group_select_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"renorm", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"norm_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"routed_scaling_factor", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
+            {"eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-20f)},
+        },
+        &compileInfo, "Ascend950");
+    std::vector<size_t> expectWorkspaces = {16777216};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10005, "", expectWorkspaces);
+}
+
 TEST_F(MoeGatingTopKTilingArch35, moe_gating_top_k_tiling_arch35_parse_succ_01)
 {
     gert::OpTilingParseContextBuilder builder;
