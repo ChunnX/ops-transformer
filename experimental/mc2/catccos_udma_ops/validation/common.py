@@ -101,6 +101,9 @@ def environment_fingerprint() -> Dict[str, Any]:
         "catccos_udma_validate_routes": os.environ.get(
             "CATCCOS_UDMA_VALIDATE_ROUTES", "0"
         ),
+        "catccos_udma_sync_diagnostic_mode": os.environ.get(
+            "CATCCOS_UDMA_SYNC_DIAGNOSTIC_MODE", "baseline"
+        ),
     }
     try:
         import torch

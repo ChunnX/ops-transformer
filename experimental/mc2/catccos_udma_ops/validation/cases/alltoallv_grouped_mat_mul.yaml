@@ -47,3 +47,19 @@ cases:
     input_distribution: {kind: uniform, low: -5.0, high: 5.0}
     run: [accuracy, performance]
     tags: [multi_k, uniform]
+
+  - id: model_case_1
+    world_size: 8
+    shape: {m: 131072, n: 1024, k: 2048}
+    expert_num: 256
+    input_distribution: {kind: uniform, low: -5.0, high: 5.0}
+    run: [accuracy, performance]
+    tags: [multi_k, uniform]
+
+  - id: model_case_2
+    world_size: 8
+    shape: {m: 131072, n: 512, k: 2048}
+    expert_num: 256
+    input_distribution: {kind: uniform, low: -5.0, high: 5.0}
+    run: [accuracy, performance]
+    tags: [multi_k, uniform]

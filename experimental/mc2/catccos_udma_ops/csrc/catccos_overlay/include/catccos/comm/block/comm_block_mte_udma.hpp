@@ -68,6 +68,24 @@ public:
         }
     }
 
+    /// Strong remote completion path.  Self copies continue to use the local
+    /// MTE branch and are joined by the caller's AIV hardware barrier.
+    CATLASS_DEVICE
+    void PutRemoteContiguousWithSignal(
+        AscendC::GlobalTensor<ElementSrc> const &gmSrc,
+        LayoutSrc const &layoutSrc,
+        AscendC::GlobalTensor<ElementDst> const &gmDst,
+        LayoutDst const &layoutDst,
+        Catlass::MatrixCoord const &actualCommBlockShape,
+        __gm__ uint64_t *signalAddress,
+        uint64_t signalValue,
+        uint32_t peerIdx)
+    {
+        remoteComm.PutContiguousWithSignal(
+            gmSrc, layoutSrc, gmDst, layoutDst, actualCommBlockShape,
+            signalAddress, signalValue, peerIdx);
+    }
+
 private:
     LocalCommBlock localComm;
     RemoteCommBlock remoteComm;

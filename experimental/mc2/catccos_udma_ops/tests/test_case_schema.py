@@ -19,13 +19,17 @@ MEMORY_CASES = Path(__file__).parents[1] / "validation" / "cases" / "memory_safe
 
 def test_default_manifest_resolves_and_selects_modes():
     cases = load_case_manifest(CASES)
-    assert len(cases) == 3
-    assert len(select_cases(cases, mode="accuracy")) == 3
-    assert len(select_cases(cases, mode="performance")) == 2
+    assert len(cases) == 5
+    assert len(select_cases(cases, mode="accuracy")) == 5
+    assert len(select_cases(cases, mode="performance")) == 4
     assert all(case["output_all_to_allv"] for case in cases)
     assert all(case["accuracy"]["auto_repeats"] == 1 for case in cases)
     assert all(case["accuracy"]["synchronized_control"] for case in cases)
     assert select_cases(cases, mode="accuracy", include_tags=["normal"])[0]["id"].endswith("normal")
+    model_cases = {case["id"]: case for case in cases if case["id"].startswith("model_case_")}
+    assert model_cases["model_case_1"]["shape"] == {"m": 131072, "n": 1024, "k": 2048}
+    assert model_cases["model_case_2"]["shape"] == {"m": 131072, "n": 512, "k": 2048}
+    assert all(case["world_size"] == 8 and case["expert_num"] == 256 for case in model_cases.values())
 
 
 def test_unknown_case_is_rejected():
@@ -35,10 +39,14 @@ def test_unknown_case_is_rejected():
 
 def test_grouped_mat_mul_all_to_allv_manifest_uses_stricter_expert_limit():
     cases = load_case_manifest(GROUPED_CASES)
-    assert len(cases) == 3
+    assert len(cases) == 5
     assert all(case["operator"] == "grouped_mat_mul_all_to_allv" for case in cases)
     assert all(not case["output_all_to_allv"] for case in cases)
-    assert len(select_cases(cases, mode="performance")) == 2
+    assert len(select_cases(cases, mode="performance")) == 4
+    model_cases = {case["id"]: case for case in cases if case["id"].startswith("model_case_")}
+    assert model_cases["model_case_1"]["shape"] == {"m": 131072, "n": 2048, "k": 1024}
+    assert model_cases["model_case_2"]["shape"] == {"m": 131072, "n": 2048, "k": 512}
+    assert all(case["world_size"] == 8 and case["expert_num"] == 256 for case in model_cases.values())
 
 
 def test_memory_safety_manifest_covers_both_directions_and_tail_cases():

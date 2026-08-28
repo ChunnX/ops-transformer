@@ -23,6 +23,7 @@
 #include "platform/platform_ascendc.h"
 
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
 #include <string>
 #include <tuple>
@@ -33,6 +34,7 @@ namespace {
 constexpr uint32_t kMaxLocalExperts = 64;
 constexpr uint64_t kSymmetricDataBytes =
     200UL * 1024 * 1024 * sizeof(uint16_t);
+constexpr uint64_t kMaxUdmaWriteNotifyBytes = 256UL * 1024 * 1024;
 constexpr uint32_t kMaxK0 = 256;
 static_assert(sizeof(Catccos::DGemm::MoeRouteSegment) == 24,
               "unexpected MoeRouteSegment ABI");
@@ -72,6 +74,31 @@ struct TilingProfile {
     uint32_t exportCoreCount;
     uint32_t selfCopyCores;
 };
+
+enum class CompletionDiagnosticMode : uint32_t {
+    kBaseline = 0,
+    kStrongReady = 1,
+    kStrongReadyCacheSafe = 2,
+};
+
+CompletionDiagnosticMode GetCompletionDiagnosticMode()
+{
+    const char *raw = std::getenv("CATCCOS_UDMA_SYNC_DIAGNOSTIC_MODE");
+    const std::string value = raw == nullptr ? "baseline" : raw;
+    if (value.empty() || value == "baseline" || value == "legacy" || value == "0") {
+        return CompletionDiagnosticMode::kBaseline;
+    }
+    if (value == "strong_ready" || value == "1") {
+        return CompletionDiagnosticMode::kStrongReady;
+    }
+    if (value == "strong_ready_cache_safe" || value == "2") {
+        return CompletionDiagnosticMode::kStrongReadyCacheSafe;
+    }
+    TORCH_CHECK(false,
+        "CATCCOS_UDMA_SYNC_DIAGNOSTIC_MODE must be one of "
+        "baseline, strong_ready, or strong_ready_cache_safe; got ", value);
+    return CompletionDiagnosticMode::kBaseline;
+}
 
 constexpr TilingProfile kDefaultTiling{
     KernelVariant::kM0_128, 128, 256, 256, 10, 64, 64, 1, 16,
@@ -215,6 +242,8 @@ void InitializeAndLaunch(
     uint8_t *workspace,
     uint8_t *allToAllVOutput,
     uint8_t *routeMetadata,
+    uint64_t launchEpoch,
+    uint32_t completionMode,
     uint32_t blockDim,
     aclrtStream stream,
     uint64_t fftsAddress)
@@ -252,6 +281,8 @@ void InitializeAndLaunch(
         tiling.stageRows,
         tiling.exportCoreCount,
         tiling.selfCopyCores,
+        launchEpoch,
+        completionMode,
     };
 
     DeviceOp deviceOp;
@@ -380,6 +411,29 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
         CheckNoTensorOverlap(allToAllVOutput, "all_to_allv_out", routeMetadata,
                              "route_metadata");
     }
+    const CompletionDiagnosticMode completionDiagnosticMode =
+        GetCompletionDiagnosticMode();
+    TORCH_CHECK(
+        completionDiagnosticMode == CompletionDiagnosticMode::kBaseline ||
+            allToAllVOutputOptional.has_value(),
+        "strong completion diagnostics require output_all_to_allv=True");
+    if (completionDiagnosticMode != CompletionDiagnosticMode::kBaseline) {
+        const uint64_t stageRows = tiling.stageRows == 0
+            ? static_cast<uint64_t>(tiling.commInterval) * tiling.m0
+            : tiling.stageRows;
+        const uint64_t maximumPeerSliceBytes =
+            stageRows * static_cast<uint64_t>(k64) * sizeof(uint16_t);
+        TORCH_CHECK(
+            maximumPeerSliceBytes <= kMaxUdmaWriteNotifyBytes,
+            "strong completion diagnostics require each staged peer slice to "
+            "fit one UDMA write-with-notify request; got ",
+            maximumPeerSliceBytes, " bytes, maximum ",
+            kMaxUdmaWriteNotifyBytes);
+    }
+    const uint64_t launchEpoch =
+        completionDiagnosticMode == CompletionDiagnosticMode::kBaseline
+            ? 0
+            : runtime.NextAllToAllVGroupedMatMulEpoch();
     aclrtStream stream = c10_npu::getCurrentNPUStream().stream(false);
     runtime.RecordStream(stream);
 
@@ -417,6 +471,8 @@ at::Tensor AllToAllVGroupedMatMulUdmaImpl(
             routeMetadataOptional.has_value()
                 ? reinterpret_cast<uint8_t *>(routeMetadataOptional.value().data_ptr())
                 : nullptr,
+            launchEpoch,
+            static_cast<uint32_t>(completionDiagnosticMode),
             blockDim, stream, fftsAddress);
     };
     auto launchByMSplit = [&](auto mSplit1, auto mSplit2, auto mSplit4) {
