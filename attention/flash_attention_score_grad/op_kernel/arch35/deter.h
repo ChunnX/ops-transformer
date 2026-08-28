@@ -29,10 +29,7 @@ constexpr int64_t DETER_PREFIX_THRESHOLD = 128;
 constexpr int64_t M_BASE_64 = 64;
 constexpr int64_t N_BASE_128 = 128;
 
-__aicore__ inline int64_t Square(int64_t num)
-{
-    return num * num;
-}
+__aicore__ inline int64_t Square(int64_t num) { return num * num; }
 
 __aicore__ inline int64_t Gcd(int64_t a, int64_t b)
 {
@@ -1610,13 +1607,12 @@ template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
 __aicore__ inline void CalTNDDenseSwizzleIndex(const __gm__ uint8_t *actualSeqQlenAddr,
                                                const __gm__ uint8_t *actualSeqKvlenAddr,
                                                const __gm__ uint64_t *tndS2BlockPrefixSum, int64_t b, int64_t n2,
-                                               int64_t g, int64_t j, int64_t k, int64_t r,
+                                               int64_t g, int64_t j, int64_t k, int64_t r, int64_t &deltaCnt,
                                                CoordinateInfo &coordinateInfo)
 {
     j -= 1;
     r -= 1;
     coordinateInfo.batchId = -1;
-    int64_t n1 = n2 * g;
     for (int64_t bIdx = 0; bIdx < b; bIdx++) {
         if (r < tndS2BlockPrefixSum[bIdx + 1]) {
             int64_t actualS1Len = 0;
@@ -1624,15 +1620,19 @@ __aicore__ inline void CalTNDDenseSwizzleIndex(const __gm__ uint8_t *actualSeqQl
             GetSeqQlenKvlenByBidx(actualSeqQlenAddr, actualSeqKvlenAddr, bIdx, actualS1Len, actualS2Len);
             int64_t s1OuterTmp = (actualS1Len + CUBE_BASEM - 1) / CUBE_BASEM;
             int64_t s2OuterTmp = (actualS2Len + CUBE_BASEN - 1) / CUBE_BASEN;
-            int64_t batchPrefix = static_cast<int64_t>(tndS2BlockPrefixSum[bIdx]);
-            int64_t delta = r - batchPrefix;
-            int64_t linearIdx = delta / s1OuterTmp * k + j;
-            if (linearIdx >= s2OuterTmp * n1) {
-                break;
+            int64_t delta = r - tndS2BlockPrefixSum[bIdx] + deltaCnt;
+            // 更正delta
+            if (delta < 0) {
+                deltaCnt += (-delta);
+                delta = 0;
             }
-            // Keep this coordinate order identical to Python mode 2: head-major S2, then rotate S1.
-            int64_t n1Idx = linearIdx / s2OuterTmp;
-            int64_t s2Idx = linearIdx % s2OuterTmp;
+            // delta / s1OuterTmp表示在此bIdx下，s2的绝对idx
+            int64_t s2IdxTmp = delta / s1OuterTmp * k + j;
+            if (s2IdxTmp >= s2OuterTmp * n2 * g) {
+                continue;
+            }
+            int64_t n1Idx = s2IdxTmp / s2OuterTmp;
+            int64_t s2Idx = s2IdxTmp % s2OuterTmp;
             int64_t s1Idx = (s2Idx + delta) % s1OuterTmp;
             coordinateInfo.actualS1Len = actualS1Len;
             coordinateInfo.actualS2Len = actualS2Len;
