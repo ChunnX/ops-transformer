@@ -644,11 +644,11 @@ private:
                 if (dstRank == srcRankId || rankLinkMap_.count(dstRank) > 0) {
                     continue;
                 }
-                if (SupportsProtocol(commHandle, layer.layer, srcRankId, dstRank, CommProtocol::COMM_PROTOCOL_UBG)) {
+                if (SupportsProtocol(commHandle, layer.layer, srcRankId, dstRank, CommProtocol::COMM_PROTOCOL_UB_RTP)) {
                     ASCEND_LOGI("Rank %u does support UBG with cross-domain rank %u in layer %u", srcRankId, dstRank,
                                 layer.layer);
                     isSupportUBG = true;
-                    rankLinkMap_[dstRank] = {CommProtocol::COMM_PROTOCOL_UBG, layer.layer};
+                    rankLinkMap_[dstRank] = {CommProtocol::COMM_PROTOCOL_UB_RTP, layer.layer};
                 }
             }
         }
