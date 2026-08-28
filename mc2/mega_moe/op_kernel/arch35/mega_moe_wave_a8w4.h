@@ -137,6 +137,23 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
     GMMAddrInfo gmm1AddrInfo{};
     GMMAddrInfo gmm2AddrInfo{};
 
+    // A8W4 权重 L2 预取（策略写死，不经 tiling 下发）：仅 AIV0 构造游标（AIC/AIV1 传空指针保持
+    // 原行为）。各 block 的 AIV0 以 (blockIdx, blockNum) 为 worker 标识在权重区域内按 chunk 交错
+    // 认领，聚合覆盖率随核数放大；预算为全部 worker 共享的全局常量、内部按 workerCount 均摊。
+    // 游标在 GMM1 各专家的 token-count 等待窗口内持续推进，flag 就绪或预算耗尽后退化为原自旋。
+    WeightL2PrefetchCursor weightPrefetchCursor{};
+    WeightL2PrefetchCursor *weightPrefetch = nullptr;
+    if constexpr (g_coreType == AIV) {
+        if (GetSubBlockIdx() == 0U) {
+            WeightL2PrefetchInit(weightPrefetchCursor, moeWeightTensorListAddrs_.weight1,
+                                 moeWeightTensorListAddrs_.weight2, gmmExecutionConfig_.isPerExpertWeightTensor,
+                                 commonConfig_.gmm1OutputDim, commonConfig_.tokenHiddenDim,
+                                 commonConfig_.moeExpertPerRank, countWorkspace_.blockIdx, countWorkspace_.blockNum,
+                                 WEIGHT_L2_PREFETCH_MAX_BUDGET_BYTES);
+            weightPrefetch = &weightPrefetchCursor;
+        }
+    }
+
     // A8W4 GMM1 与 GMM2 按相同的跨 Wave tile 顺序执行，因此共用分核起点。
     uint32_t startBlockIdx = 0U;
 
@@ -193,7 +210,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
 
             if (currentWaveNeedsGmm1) {
                 if (gmm1Position.tokenIndexInExpert == 0U) {
-                    this->template PrepareGmmExpertState<true>(gmm1State, gmm1Position.expertIdx);
+                    this->template PrepareGmmExpertState<true>(gmm1State, gmm1Position.expertIdx, weightPrefetch);
                 }
                 uint32_t expertTokenCount = static_cast<uint32_t>(Get<M_VALUE>(gmm1State.problemShape));
                 uint32_t sliceTokenStartIndexInExpert = gmm1Position.tokenIndexInExpert;
