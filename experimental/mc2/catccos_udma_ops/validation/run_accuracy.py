@@ -8,15 +8,26 @@ import json
 import os
 import subprocess
 import sys
+import time
 from collections import defaultdict
 from pathlib import Path
 
 try:
     from .case_schema import load_case_manifest, select_cases, write_resolved_cases
     from .common import environment_fingerprint, timestamp, write_csv, write_json
+    from .runtime_log_collection import (
+        collect_runtime_logs,
+        runtime_log_roots,
+        snapshot_runtime_logs,
+    )
 except ImportError:
     from case_schema import load_case_manifest, select_cases, write_resolved_cases
     from common import environment_fingerprint, timestamp, write_csv, write_json
+    from runtime_log_collection import (
+        collect_runtime_logs,
+        runtime_log_roots,
+        snapshot_runtime_logs,
+    )
 
 
 HERE = Path(__file__).resolve().parent
@@ -46,6 +57,28 @@ def main():
     parser.add_argument("--hbm-poison-chunk-mib", type=int, default=256)
     parser.add_argument("--guard-mib", type=int, default=16)
     parser.add_argument("--fingerprint-elements", type=int, default=1 << 20)
+    parser.add_argument(
+        "--no-runtime-log-collection", action="store_true",
+        help="disable automatic per-launch SHMEM and CANN plog collection",
+    )
+    parser.add_argument(
+        "--shmem-log-dir", action="append", default=[],
+        help=(
+            "additional SHMEM log file/directory to snapshot; may be repeated "
+            "(defaults include ~/shmem/log)"
+        ),
+    )
+    parser.add_argument(
+        "--plog-dir", action="append", default=[],
+        help=(
+            "additional CANN plog/slog file or directory to snapshot; may be "
+            "repeated"
+        ),
+    )
+    parser.add_argument(
+        "--runtime-log-settle-seconds", type=float, default=1.0,
+        help="delay after each torchrun launch before snapshotting runtime logs",
+    )
     parser.add_argument(
         "--automatic-only", action="store_true",
         help=(
@@ -88,6 +121,8 @@ def main():
             case["accuracy"]["auto_repeats"] = args.auto_repeats
     if args.max_failure_dumps_per_role < -1:
         raise ValueError("--max-failure-dumps-per-role must be -1 or non-negative")
+    if args.runtime_log_settle_seconds < 0:
+        raise ValueError("--runtime-log-settle-seconds must be non-negative")
     if args.mssanitizer and len(cases) != 1:
         raise ValueError(
             "--mssanitizer requires exactly one selected case; pass one --case-id"
@@ -96,12 +131,27 @@ def main():
     if output_root.exists() and any(output_root.iterdir()):
         raise RuntimeError("output directory is not empty: {}".format(output_root))
     output_root.mkdir(parents=True, exist_ok=True)
-    write_json(output_root / "environment.json", environment_fingerprint())
+    log_roots = []
+    if not args.no_runtime_log_collection:
+        log_roots = runtime_log_roots(
+            os.environ,
+            shmem_log_dirs=args.shmem_log_dir,
+            plog_dirs=args.plog_dir,
+        )
+    environment = environment_fingerprint()
+    environment["runtime_log_collection"] = {
+        "enabled": not args.no_runtime_log_collection,
+        "strategy": "per-launch new files and appended byte ranges",
+        "settle_seconds": args.runtime_log_settle_seconds,
+        "roots": log_roots,
+    }
+    write_json(output_root / "environment.json", environment)
     grouped = defaultdict(list)
     for case in cases:
         grouped[case["world_size"]].append(case)
 
     failed_launches = []
+    runtime_log_results = []
     for group_index, (world_size, group_cases) in enumerate(sorted(grouped.items())):
         resolved = output_root / "resolved_ep{}.json".format(world_size)
         write_resolved_cases(resolved, group_cases)
@@ -146,6 +196,9 @@ def main():
                 "--mssanitizer-route-input", args.mssanitizer_route_input,
             ])
         launch_log = output_root / "torchrun_ep{}.log".format(world_size)
+        runtime_log_output = (
+            output_root / "runtime_logs" / "launch_ep{}".format(world_size)
+        )
         write_json(output_root / "launch_ep{}.json".format(world_size), {
             "world_size": world_size,
             "command": command,
@@ -161,8 +214,12 @@ def main():
             "automatic_only": args.automatic_only,
             "max_failure_dumps_per_role": args.max_failure_dumps_per_role,
             "console_log": launch_log.name,
+            "runtime_log_manifest": (
+                str(runtime_log_output / "manifest.json") if log_roots else None
+            ),
         })
         print("+ " + " ".join(command), flush=True)
+        log_snapshot = snapshot_runtime_logs(log_roots) if log_roots else None
         with launch_log.open("w", encoding="utf-8", errors="replace") as log_stream:
             process = subprocess.Popen(
                 command,
@@ -181,6 +238,25 @@ def main():
                 log_stream.write(line)
                 log_stream.flush()
             returncode = process.wait()
+        if log_snapshot is not None:
+            if args.runtime_log_settle_seconds:
+                time.sleep(args.runtime_log_settle_seconds)
+            collected = collect_runtime_logs(
+                log_snapshot, log_roots, runtime_log_output
+            )
+            collected["world_size"] = world_size
+            runtime_log_results.append(collected)
+            print(
+                "[accuracy] runtime_logs ep={} files={} bytes={} errors={} "
+                "manifest={}".format(
+                    world_size,
+                    collected["captured_file_count"],
+                    collected["captured_bytes"],
+                    collected["error_count"],
+                    collected["manifest"],
+                ),
+                flush=True,
+            )
         if returncode:
             failed_launches.extend(case["id"] for case in group_cases)
             if args.fail_fast:
@@ -219,6 +295,7 @@ def main():
         ),
         "automatic_only": args.automatic_only,
         "auto_repeats_override": args.auto_repeats,
+        "runtime_logs": runtime_log_results,
     })
     print("accuracy results: {}".format(output_root), flush=True)
     return 0 if overall else 1

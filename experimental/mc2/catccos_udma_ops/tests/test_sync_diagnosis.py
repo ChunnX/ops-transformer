@@ -1,10 +1,16 @@
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 
+import json
 from pathlib import Path
 
 from validation.run_sync_diagnosis import (
     _collect_runtime_evidence,
     classify_mode_results,
+)
+from validation.runtime_log_collection import (
+    collect_runtime_logs,
+    runtime_log_roots,
+    snapshot_runtime_logs,
 )
 
 
@@ -151,6 +157,69 @@ def test_runtime_evidence_extracts_cq_and_shmem_failures(tmp_path):
     assert evidence["counts"]["udma_quiet_cq_failure"] == 1
     assert evidence["counts"]["udma_cq_timeout"] == 1
     assert evidence["counts"]["udma_channel_failure"] == 1
+
+
+def test_runtime_evidence_extracts_shmem_init_timeout(tmp_path):
+    log = tmp_path / "torchrun_ep8.log"
+    log.write_text(
+        "Wait hcomm UDMA channel ready timeout, channelNum = 7\n"
+        "aclshmemx_init_attr failed: -7\n",
+        encoding="utf-8",
+    )
+    evidence = _collect_runtime_evidence(tmp_path)
+    assert evidence["detected"]
+    assert evidence["counts"]["udma_channel_failure"] == 1
+    assert evidence["counts"]["shmem_initialization_failure"] == 1
+
+
+def test_runtime_log_collection_keeps_only_new_and_appended_bytes(tmp_path):
+    shmem = tmp_path / "shmem"
+    plog = tmp_path / "plog"
+    shmem.mkdir()
+    plog.mkdir()
+    existing = shmem / "aclshmem_rank0.log"
+    existing.write_text("old line\n", encoding="utf-8")
+    roots = runtime_log_roots(
+        {"HOME": str(tmp_path / "unused")},
+        shmem_log_dirs=[str(shmem)],
+        plog_dirs=[str(plog)],
+    )
+    before = snapshot_runtime_logs(roots)
+
+    with existing.open("a", encoding="utf-8") as stream:
+        stream.write("new shmem line\n")
+    new_plog = plog / "plog-123.log"
+    new_plog.write_text("new plog line\n", encoding="utf-8")
+
+    mode_output = tmp_path / "mode"
+    result = collect_runtime_logs(before, roots, mode_output / "runtime_logs")
+    manifest = json.loads(Path(result["manifest"]).read_text(encoding="utf-8"))
+    assert result["captured_file_count"] == 2
+    assert result["error_count"] == 0
+    by_source = {Path(item["source"]).name: item for item in manifest["files"]}
+    appended = by_source[existing.name]
+    created = by_source[new_plog.name]
+    assert appended["reason"] == "appended"
+    assert Path(appended["destination"]).read_text(encoding="utf-8") == (
+        "new shmem line\n"
+    )
+    assert created["reason"] == "created"
+    assert Path(created["destination"]).read_text(encoding="utf-8") == (
+        "new plog line\n"
+    )
+
+
+def test_accuracy_launcher_collects_runtime_logs_without_double_collection():
+    accuracy = (PROJECT_ROOT / "validation" / "run_accuracy.py").read_text(
+        encoding="utf-8"
+    )
+    diagnosis = (
+        PROJECT_ROOT / "validation" / "run_sync_diagnosis.py"
+    ).read_text(encoding="utf-8")
+    assert '"--no-runtime-log-collection", action="store_true"' in accuracy
+    assert "log_snapshot = snapshot_runtime_logs(log_roots)" in accuracy
+    assert '"runtime_logs": runtime_log_results' in accuracy
+    assert '"--no-runtime-log-collection",' in diagnosis
 
 
 def test_kernel_and_runner_keep_the_five_modes_isolated():

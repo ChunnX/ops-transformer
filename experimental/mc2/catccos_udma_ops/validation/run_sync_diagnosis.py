@@ -16,9 +16,19 @@ from pathlib import Path
 try:
     from .case_schema import load_case_manifest, select_cases
     from .common import timestamp, write_json
+    from .runtime_log_collection import (
+        collect_runtime_logs as _collect_mode_runtime_logs,
+        runtime_log_roots as _runtime_log_roots,
+        snapshot_runtime_logs as _snapshot_runtime_logs,
+    )
 except ImportError:
     from case_schema import load_case_manifest, select_cases
     from common import timestamp, write_json
+    from runtime_log_collection import (
+        collect_runtime_logs as _collect_mode_runtime_logs,
+        runtime_log_roots as _runtime_log_roots,
+        snapshot_runtime_logs as _snapshot_runtime_logs,
+    )
 
 
 HERE = Path(__file__).resolve().parent
@@ -59,7 +69,9 @@ RUNTIME_EVIDENCE_PATTERNS = (
         "udma_channel_failure",
         re.compile(
             r"(?:HcommChannelCreate failed|Async connect failed|"
-            r"Transport Manager ConnectWithOptions failed)",
+            r"Transport Manager ConnectWithOptions failed|"
+            r"Wait hcomm UDMA channel ready timeout|"
+            r"Check hcomm UDMA channel status failed)",
             re.IGNORECASE,
         ),
     ),
@@ -67,7 +79,8 @@ RUNTIME_EVIDENCE_PATTERNS = (
         "shmem_initialization_failure",
         re.compile(
             r"(?:PrepareOpenDevice failed|Failed to open device|"
-            r"(?:setup|reserve)_heap\(\) failed)",
+            r"(?:setup|reserve)_heap\(\) failed|"
+            r"aclshmemx?_init_attr failed|return shmem error)",
             re.IGNORECASE,
         ),
     ),
@@ -396,6 +409,24 @@ def main():
         "--max-failure-dumps-per-role", type=int, default=1,
         help="large dumps kept per rank for GMM and AllToAllV outputs",
     )
+    parser.add_argument(
+        "--shmem-log-dir", action="append", default=[],
+        help=(
+            "additional SHMEM log file/directory to snapshot; may be repeated "
+            "(defaults include ~/shmem/log)"
+        ),
+    )
+    parser.add_argument(
+        "--plog-dir", action="append", default=[],
+        help=(
+            "additional CANN plog/slog file or directory to snapshot; may be "
+            "repeated"
+        ),
+    )
+    parser.add_argument(
+        "--runtime-log-settle-seconds", type=float, default=1.0,
+        help="delay after each mode before snapshotting asynchronous logs",
+    )
     args = parser.parse_args()
 
     if args.launches < 2 or args.baseline_launches < 2:
@@ -404,6 +435,8 @@ def main():
         raise ValueError("--max-failure-dumps-per-role must be non-negative")
     if args.mode_timeout_seconds < 0:
         raise ValueError("--mode-timeout-seconds must be non-negative")
+    if args.runtime_log_settle_seconds < 0:
+        raise ValueError("--runtime-log-settle-seconds must be non-negative")
 
     selected = select_cases(
         load_case_manifest(args.cases), mode="accuracy", case_ids=[args.case_id]
@@ -439,6 +472,11 @@ def main():
         "strong_ready": args.launches,
         "strong_ready_cache_safe": args.launches,
     }
+    runtime_log_roots = _runtime_log_roots(
+        os.environ,
+        shmem_log_dirs=args.shmem_log_dir,
+        plog_dirs=args.plog_dir,
+    )
     plan = {
         "case_manifest": str(Path(args.cases).resolve()),
         "case_id": args.case_id,
@@ -449,6 +487,18 @@ def main():
         "checks": ["operator_output", "all_to_allv_export"],
         "max_failure_dumps_per_role": args.max_failure_dumps_per_role,
         "mode_timeout_seconds": args.mode_timeout_seconds,
+        "runtime_log_collection": {
+            "enabled": True,
+            "strategy": "per-mode new files and appended byte ranges",
+            "settle_seconds": args.runtime_log_settle_seconds,
+            "roots": runtime_log_roots,
+            "environment_overrides": [
+                "CATCCOS_UDMA_SHMEM_LOG_DIRS",
+                "CATCCOS_UDMA_PLOG_DIRS",
+                "CATCCOS_UDMA_SYNC_SHMEM_LOG_DIRS",
+                "CATCCOS_UDMA_SYNC_PLOG_DIRS",
+            ],
+        },
         "diagnostic_matrix": {
             "baseline": {
                 "entry_barrier": False,
@@ -503,6 +553,7 @@ def main():
             "--case-id", args.case_id,
             "--output-dir", str(mode_output),
             "--automatic-only",
+            "--no-runtime-log-collection",
             "--auto-repeats", str(launches - 1),
             "--max-failure-dumps-per-role",
             str(args.max_failure_dumps_per_role),
@@ -513,8 +564,22 @@ def main():
             ),
             flush=True,
         )
-        execution = _run_with_timeout(
-            command, environment, args.mode_timeout_seconds
+        log_snapshot = _snapshot_runtime_logs(runtime_log_roots)
+        try:
+            execution = _run_with_timeout(
+                command, environment, args.mode_timeout_seconds
+            )
+        except BaseException:
+            if args.runtime_log_settle_seconds:
+                time.sleep(args.runtime_log_settle_seconds)
+            _collect_mode_runtime_logs(
+                log_snapshot, runtime_log_roots, mode_output / "runtime_logs"
+            )
+            raise
+        if args.runtime_log_settle_seconds:
+            time.sleep(args.runtime_log_settle_seconds)
+        runtime_logs = _collect_mode_runtime_logs(
+            log_snapshot, runtime_log_roots, mode_output / "runtime_logs"
         )
         result = _read_mode_result(
             mode,
@@ -525,6 +590,7 @@ def main():
             elapsed_seconds=execution["elapsed_seconds"],
             timeout_seconds=args.mode_timeout_seconds,
         )
+        result["runtime_logs"] = runtime_logs
         mode_results.append(result)
         write_json(
             output_root / "progress.json",
@@ -541,6 +607,17 @@ def main():
                 execution["timed_out"], execution["elapsed_seconds"],
                 result["failed_report_count"],
                 result["runtime_evidence"]["counts"],
+            ),
+            flush=True,
+        )
+        print(
+            "[sync-diagnosis] mode={} runtime_logs files={} bytes={} "
+            "errors={} manifest={}".format(
+                mode,
+                runtime_logs["captured_file_count"],
+                runtime_logs["captured_bytes"],
+                runtime_logs["error_count"],
+                runtime_logs["manifest"],
             ),
             flush=True,
         )
