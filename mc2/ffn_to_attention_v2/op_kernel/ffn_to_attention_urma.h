@@ -63,8 +63,9 @@ private:
     __aicore__ inline void InitLocalFlag();
     __aicore__ inline void SendToLocal(GM_ADDR remoteDataAddr, GM_ADDR remoteFlagAddr, uint64_t yOffset,
                                        const DataCopyExtParams &xCopyParams);
-    __aicore__ inline void SendToRemote(uint32_t dstRank, GM_ADDR remoteDataAddr, GM_ADDR remoteFlagAddr,
-                                        uint64_t yOffset, const DataCopyExtParams &xCopyParams);
+    __aicore__ inline void StageRemoteData(uint64_t yOffset, const DataCopyExtParams &xCopyParams);
+    __aicore__ inline void SendToRemote(uint32_t sourceAivId, uint32_t dstRank, GM_ADDR remoteDataAddr,
+                                        GM_ADDR remoteFlagAddr);
 
     TPipe *tpipe_{nullptr};
     Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
@@ -320,15 +321,14 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
-__aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::SendToRemote(
-    uint32_t dstRank, GM_ADDR remoteDataAddr, GM_ADDR remoteFlagAddr, uint64_t yOffset,
-    const DataCopyExtParams &xCopyParams)
+__aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::StageRemoteData(
+    uint64_t yOffset, const DataCopyExtParams &xCopyParams)
 {
     DataCopyPadExtParams<xType> copyPadExtParams{false, 0U, 0U, 0U};
     xTmpTensor_ = xQueue_.AllocTensor<xType>();
     if constexpr (URMA_FLAG_TRACE) {
-        PRINTF("[F2A_URMA][REMOTE_STAGE_BEGIN] rank=%u dstRank=%u aiv=%u yOffset=%lu localDataAddr=%lu\n",
-               rankId_, dstRank, aivId_, yOffset, reinterpret_cast<uint64_t>(localDataAddr_));
+        PRINTF("[F2A_URMA][REMOTE_STAGE_BEGIN] rank=%u aiv=%u yOffset=%lu localDataAddr=%lu\n", rankId_, aivId_,
+               yOffset, reinterpret_cast<uint64_t>(localDataAddr_));
     }
     DataCopyPad(xTmpTensor_, xGMTensor_[yOffset * axisH_], xCopyParams, copyPadExtParams);
     xQueue_.EnQue(xTmpTensor_);
@@ -340,52 +340,61 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
     xQueue_.FreeTensor<xType>(xTmpTensor_);
     SyncFunc<HardEvent::MTE3_S>();
     if constexpr (URMA_FLAG_TRACE) {
-        PRINTF("[F2A_URMA][REMOTE_STAGE_DONE] rank=%u dstRank=%u aiv=%u yOffset=%lu localDataAddr=%lu bytes=%lu\n",
-               rankId_, dstRank, aivId_, yOffset, reinterpret_cast<uint64_t>(localDataAddr_), hSize_);
+        PRINTF("[F2A_URMA][REMOTE_STAGE_DONE] rank=%u aiv=%u yOffset=%lu localDataAddr=%lu bytes=%lu\n", rankId_,
+               aivId_, yOffset, reinterpret_cast<uint64_t>(localDataAddr_), hSize_);
     }
+}
 
+template <TemplateFFNToAttentionUrmaTypeClass>
+__aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::SendToRemote(
+    uint32_t sourceAivId, uint32_t dstRank, GM_ADDR remoteDataAddr, GM_ADDR remoteFlagAddr)
+{
+    ascendc_assert(aivId_ == 0U, "only AIV0 may submit URMA writes, aivId=%u", aivId_);
+    ascendc_assert(sourceAivId < aivNum_, "sourceAivId out of range, sourceAivId=%u, aivNum=%u", sourceAivId,
+                   aivNum_);
+    GM_ADDR sourceDataAddr = localDataAddr_ + static_cast<uint64_t>(sourceAivId) * dataWorkspaceStride_;
     uint64_t channel = GetUrmaCommHandle(dstRank);
     if constexpr (URMA_FLAG_TRACE) {
-        PRINTF("[F2A_URMA][REMOTE_DATA_BEGIN] rank=%u dstRank=%u aiv=%u yOffset=%lu channel=%lu localAddr=%lu "
+        PRINTF("[F2A_URMA][REMOTE_DATA_BEGIN] rank=%u dstRank=%u sourceAiv=%u channel=%lu localAddr=%lu "
                "remoteAddr=%lu bytes=%lu\n",
-               rankId_, dstRank, aivId_, yOffset, channel, reinterpret_cast<uint64_t>(localDataAddr_),
+               rankId_, dstRank, sourceAivId, channel, reinterpret_cast<uint64_t>(sourceDataAddr),
                reinterpret_cast<uint64_t>(remoteDataAddr), hSize_);
     }
-    int32_t ret = hcomm_.WriteNbi(channel, remoteDataAddr, localDataAddr_, static_cast<int64_t>(hSize_));
+    int32_t ret = hcomm_.WriteNbi(channel, remoteDataAddr, sourceDataAddr, static_cast<int64_t>(hSize_));
     if constexpr (URMA_FLAG_TRACE) {
-        PRINTF("[F2A_URMA][REMOTE_DATA_WRITE] rank=%u dstRank=%u aiv=%u yOffset=%lu ret=%d\n", rankId_, dstRank,
-               aivId_, yOffset, ret);
+        PRINTF("[F2A_URMA][REMOTE_DATA_WRITE] rank=%u dstRank=%u sourceAiv=%u ret=%d\n", rankId_, dstRank,
+               sourceAivId, ret);
     }
-    ascendc_assert(ret == 0, "WriteNbi data failed, ret=%d, rankId=%u, dstRank=%u, aivId=%u", ret, rankId_, dstRank,
-                   aivId_);
+    ascendc_assert(ret == 0, "WriteNbi data failed, ret=%d, rankId=%u, dstRank=%u, sourceAivId=%u", ret, rankId_,
+                   dstRank, sourceAivId);
     ret = hcomm_.Drain(channel);
     if constexpr (URMA_FLAG_TRACE) {
-        PRINTF("[F2A_URMA][REMOTE_DATA_DRAIN] rank=%u dstRank=%u aiv=%u yOffset=%lu ret=%d\n", rankId_, dstRank,
-               aivId_, yOffset, ret);
+        PRINTF("[F2A_URMA][REMOTE_DATA_DRAIN] rank=%u dstRank=%u sourceAiv=%u ret=%d\n", rankId_, dstRank,
+               sourceAivId, ret);
     }
-    ascendc_assert(ret == 0, "Drain data failed, ret=%d, rankId=%u, dstRank=%u, aivId=%u", ret, rankId_, dstRank,
-                   aivId_);
+    ascendc_assert(ret == 0, "Drain data failed, ret=%d, rankId=%u, dstRank=%u, sourceAivId=%u", ret, rankId_,
+                   dstRank, sourceAivId);
     // Publish the flag only after the token data has reached the destination window.
     if constexpr (URMA_FLAG_TRACE) {
-        PRINTF("[F2A_URMA][REMOTE_FLAG_BEGIN] rank=%u dstRank=%u aiv=%u yOffset=%lu channel=%lu "
-               "localFlagAddr=%lu stagedFlag=%d remoteFlagAddr=%lu\n",
-               rankId_, dstRank, aivId_, yOffset, channel, reinterpret_cast<uint64_t>(localFlagAddr_), URMA_FLAG_VALUE,
-               reinterpret_cast<uint64_t>(remoteFlagAddr));
+        PRINTF("[F2A_URMA][REMOTE_FLAG_BEGIN] rank=%u dstRank=%u sourceAiv=%u channel=%lu localFlagAddr=%lu "
+               "stagedFlag=%d remoteFlagAddr=%lu\n",
+               rankId_, dstRank, sourceAivId, channel,
+               reinterpret_cast<uint64_t>(localFlagAddr_), URMA_FLAG_VALUE, reinterpret_cast<uint64_t>(remoteFlagAddr));
     }
     ret = hcomm_.WriteNbi(channel, remoteFlagAddr, localFlagAddr_, static_cast<int64_t>(sizeof(int32_t)));
     if constexpr (URMA_FLAG_TRACE) {
-        PRINTF("[F2A_URMA][REMOTE_FLAG_WRITE] rank=%u dstRank=%u aiv=%u yOffset=%lu ret=%d\n", rankId_, dstRank,
-               aivId_, yOffset, ret);
+        PRINTF("[F2A_URMA][REMOTE_FLAG_WRITE] rank=%u dstRank=%u sourceAiv=%u ret=%d\n", rankId_, dstRank,
+               sourceAivId, ret);
     }
-    ascendc_assert(ret == 0, "WriteNbi flag failed, ret=%d, rankId=%u, dstRank=%u, aivId=%u", ret, rankId_, dstRank,
-                   aivId_);
+    ascendc_assert(ret == 0, "WriteNbi flag failed, ret=%d, rankId=%u, dstRank=%u, sourceAivId=%u", ret, rankId_,
+                   dstRank, sourceAivId);
     ret = hcomm_.Drain(channel);
     if constexpr (URMA_FLAG_TRACE) {
-        PRINTF("[F2A_URMA][REMOTE_FLAG_DRAIN] rank=%u dstRank=%u aiv=%u yOffset=%lu stagedFlag=%d ret=%d\n",
-               rankId_, dstRank, aivId_, yOffset, URMA_FLAG_VALUE, ret);
+        PRINTF("[F2A_URMA][REMOTE_FLAG_DRAIN] rank=%u dstRank=%u sourceAiv=%u stagedFlag=%d ret=%d\n",
+               rankId_, dstRank, sourceAivId, URMA_FLAG_VALUE, ret);
     }
-    ascendc_assert(ret == 0, "Drain flag failed, ret=%d, rankId=%u, dstRank=%u, aivId=%u", ret, rankId_, dstRank,
-                   aivId_);
+    ascendc_assert(ret == 0, "Drain flag failed, ret=%d, rankId=%u, dstRank=%u, sourceAivId=%u", ret, rankId_, dstRank,
+                   sourceAivId);
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -395,65 +404,95 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
         if constexpr (URMA_FLAG_TRACE) {
             PRINTF("[F2A_URMA][PROCESS_BEGIN] rank=%u aiv=%u\n", rankId_, aivId_);
         }
-        HcommInit();
+        if (aivId_ == 0U) {
+            HcommInit();
+        }
         InitLocalFlag();
 
-        uint64_t sendTokenNum = actualTokenNum_ / aivNum_;
-        uint64_t remainderTokenNum = actualTokenNum_ % aivNum_;
-        if (aivId_ < remainderTokenNum) {
-            sendTokenNum += 1U;
-        }
+        const uint64_t roundNum = Ceil(actualTokenNum_, static_cast<uint64_t>(aivNum_));
         if constexpr (URMA_FLAG_TRACE) {
-            PRINTF("[F2A_URMA][TOKEN_SPLIT] rank=%u aiv=%u sendTokenNum=%lu remainder=%lu\n", rankId_, aivId_,
-                   sendTokenNum, remainderTokenNum);
+            PRINTF("[F2A_URMA][TOKEN_SPLIT] rank=%u aiv=%u roundNum=%lu\n", rankId_, aivId_, roundNum);
         }
 
         DataCopyExtParams xCopyParams = {1U, static_cast<uint32_t>(hSize_), 0U, 0U, 0U};
-        for (uint64_t tokenCnt = 0; tokenCnt < sendTokenNum; ++tokenCnt) {
-            uint64_t yOffset = static_cast<uint64_t>(aivId_) + tokenCnt * aivNum_;
-            ReadTokenMetaDataStruct metaDataStruct;
-            ReadTokenMetaData(metaDataStruct, yOffset);
-
-            GM_ADDR curRankWinAddr = GetWindowAddr(metaDataStruct.curAttenWorkRank);
-            ascendc_assert(curRankWinAddr != nullptr, "window address is null, dstRank=%u",
-                           metaDataStruct.curAttenWorkRank);
-            const uint64_t tokenSlot =
-                (static_cast<uint64_t>(metaDataStruct.curMicroBatchIds) * axisBS_ +
-                 metaDataStruct.curTokenBatchOffset) *
-                    expertNumPerToken_ +
-                metaDataStruct.curTokenTopkOffset;
-            const uint64_t tokenDataOffset = tokenSlot * axisHS_ * sizeof(xType);
-            const uint64_t remoteDataOffset = winTokenInfoTableSize_ + tokenDataOffset;
-            const uint64_t remoteFlagOffset = tokenSlot * sizeof(int32_t);
-            ascendc_assert(remoteDataOffset <= requiredWindowSize_ &&
-                               hSize_ <= requiredWindowSize_ - remoteDataOffset,
-                           "token data address exceeds window, dataOffset=%lu, dataSize=%lu, windowSize=%lu",
-                           remoteDataOffset, hSize_, requiredWindowSize_);
-            ascendc_assert(remoteFlagOffset <= winTokenInfoTableSize_ &&
-                               sizeof(int32_t) <= winTokenInfoTableSize_ - remoteFlagOffset,
-                           "token flag address exceeds info table, flagOffset=%lu, infoSize=%lu", remoteFlagOffset,
-                           winTokenInfoTableSize_);
-            GM_ADDR remoteDataAddr = curRankWinAddr + remoteDataOffset;
-            GM_ADDR remoteFlagAddr = curRankWinAddr + remoteFlagOffset;
-            if constexpr (URMA_FLAG_TRACE) {
-                PRINTF("[F2A_URMA][TOKEN_SLOT] rank=%u dstRank=%u aiv=%u yOffset=%lu microBatch=%u token=%u "
-                       "expertOffset=%u slot=%lu winAddr=%lu dataOffset=%lu flagOffset=%lu dataAddr=%lu "
-                       "flagAddr=%lu\n",
-                       rankId_, metaDataStruct.curAttenWorkRank, aivId_, yOffset,
-                       metaDataStruct.curMicroBatchIds, metaDataStruct.curTokenBatchOffset,
-                       metaDataStruct.curTokenTopkOffset, tokenSlot, reinterpret_cast<uint64_t>(curRankWinAddr),
-                       remoteDataOffset, remoteFlagOffset, reinterpret_cast<uint64_t>(remoteDataAddr),
-                       reinterpret_cast<uint64_t>(remoteFlagAddr));
+        for (uint64_t round = 0; round < roundNum; ++round) {
+            const uint64_t yOffset = static_cast<uint64_t>(aivId_) + round * aivNum_;
+            if (yOffset < actualTokenNum_) {
+                ReadTokenMetaDataStruct metaDataStruct;
+                ReadTokenMetaData(metaDataStruct, yOffset);
+                if (metaDataStruct.curAttenWorkRank == rankId_) {
+                    GM_ADDR curRankWinAddr = GetWindowAddr(metaDataStruct.curAttenWorkRank);
+                    ascendc_assert(curRankWinAddr != nullptr, "window address is null, dstRank=%u",
+                                   metaDataStruct.curAttenWorkRank);
+                    const uint64_t tokenSlot =
+                        (static_cast<uint64_t>(metaDataStruct.curMicroBatchIds) * axisBS_ +
+                         metaDataStruct.curTokenBatchOffset) *
+                            expertNumPerToken_ +
+                        metaDataStruct.curTokenTopkOffset;
+                    const uint64_t remoteDataOffset =
+                        winTokenInfoTableSize_ + tokenSlot * axisHS_ * sizeof(xType);
+                    const uint64_t remoteFlagOffset = tokenSlot * sizeof(int32_t);
+                    ascendc_assert(remoteDataOffset <= requiredWindowSize_ &&
+                                       hSize_ <= requiredWindowSize_ - remoteDataOffset,
+                                   "token data address exceeds window, dataOffset=%lu, dataSize=%lu, windowSize=%lu",
+                                   remoteDataOffset, hSize_, requiredWindowSize_);
+                    ascendc_assert(remoteFlagOffset <= winTokenInfoTableSize_ &&
+                                       sizeof(int32_t) <= winTokenInfoTableSize_ - remoteFlagOffset,
+                                   "token flag address exceeds info table, flagOffset=%lu, infoSize=%lu",
+                                   remoteFlagOffset, winTokenInfoTableSize_);
+                    SendToLocal(curRankWinAddr + remoteDataOffset, curRankWinAddr + remoteFlagOffset, yOffset,
+                                xCopyParams);
+                } else {
+                    StageRemoteData(yOffset, xCopyParams);
+                }
             }
 
-            if (metaDataStruct.curAttenWorkRank == rankId_) {
-                SendToLocal(remoteDataAddr, remoteFlagAddr, yOffset, xCopyParams);
-            } else {
-                SendToRemote(metaDataStruct.curAttenWorkRank, remoteDataAddr, remoteFlagAddr, yOffset, xCopyParams);
+            // Every AIV stages at most one token. Core 0 must not read another
+            // core's workspace slot until its MTE3 copy has completed.
+            SyncAll<true>();
+
+            if (aivId_ == 0U) {
+                for (uint32_t sourceAivId = 0U; sourceAivId < aivNum_; ++sourceAivId) {
+                    const uint64_t sourceYOffset = static_cast<uint64_t>(sourceAivId) + round * aivNum_;
+                    if (sourceYOffset >= actualTokenNum_) {
+                        break;
+                    }
+                    ReadTokenMetaDataStruct metaDataStruct;
+                    ReadTokenMetaData(metaDataStruct, sourceYOffset);
+                    if (metaDataStruct.curAttenWorkRank == rankId_) {
+                        continue;
+                    }
+
+                    GM_ADDR curRankWinAddr = GetWindowAddr(metaDataStruct.curAttenWorkRank);
+                    ascendc_assert(curRankWinAddr != nullptr, "window address is null, dstRank=%u",
+                                   metaDataStruct.curAttenWorkRank);
+                    const uint64_t tokenSlot =
+                        (static_cast<uint64_t>(metaDataStruct.curMicroBatchIds) * axisBS_ +
+                         metaDataStruct.curTokenBatchOffset) *
+                            expertNumPerToken_ +
+                        metaDataStruct.curTokenTopkOffset;
+                    const uint64_t tokenDataOffset = tokenSlot * axisHS_ * sizeof(xType);
+                    const uint64_t remoteDataOffset = winTokenInfoTableSize_ + tokenDataOffset;
+                    const uint64_t remoteFlagOffset = tokenSlot * sizeof(int32_t);
+                    ascendc_assert(remoteDataOffset <= requiredWindowSize_ &&
+                                       hSize_ <= requiredWindowSize_ - remoteDataOffset,
+                                   "token data address exceeds window, dataOffset=%lu, dataSize=%lu, windowSize=%lu",
+                                   remoteDataOffset, hSize_, requiredWindowSize_);
+                    ascendc_assert(remoteFlagOffset <= winTokenInfoTableSize_ &&
+                                       sizeof(int32_t) <= winTokenInfoTableSize_ - remoteFlagOffset,
+                                   "token flag address exceeds info table, flagOffset=%lu, infoSize=%lu",
+                                   remoteFlagOffset, winTokenInfoTableSize_);
+                    SendToRemote(sourceAivId, metaDataStruct.curAttenWorkRank, curRankWinAddr + remoteDataOffset,
+                                 curRankWinAddr + remoteFlagOffset);
+                }
             }
+
+            // Core 0 must finish all WriteNbi/Drain operations before workers
+            // overwrite their per-core staging slots in the next round.
+            SyncAll<true>();
         }
         if constexpr (URMA_FLAG_TRACE) {
-            PRINTF("[F2A_URMA][PROCESS_DONE] rank=%u aiv=%u sendTokenNum=%lu\n", rankId_, aivId_, sendTokenNum);
+            PRINTF("[F2A_URMA][PROCESS_DONE] rank=%u aiv=%u roundNum=%lu\n", rankId_, aivId_, roundNum);
         }
     }
 }
