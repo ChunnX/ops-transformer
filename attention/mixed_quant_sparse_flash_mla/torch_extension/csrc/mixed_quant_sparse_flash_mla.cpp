@@ -13,7 +13,6 @@
  */
 
 #include <torch/extension.h>
-#include <iostream>
 #include "aclnn_common.h"
 
 namespace op_api {
