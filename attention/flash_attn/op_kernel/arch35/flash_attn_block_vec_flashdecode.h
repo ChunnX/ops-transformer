@@ -15,15 +15,22 @@
 #ifndef FLASH_ATTN_BLOCK_VEC_FLASHDECODE_H
 #define FLASH_ATTN_BLOCK_VEC_FLASHDECODE_H
 
+#include "adv_api/activation/softmax.h"
 #include "../utils/attenmask_gs1.h"
 
 #if __has_include("../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h")
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
+#include "../../../common/op_kernel/vector_common.h"
+#include "../../../common/op_kernel/memcopy/fa_gm_tensor.h"
+#include "../../../common/op_kernel/memcopy/copy_gm_to_l1.h"
+#include "../../../common/op_kernel/memcopy/copy_ub_to_gm.h"
 #else
 #include "../../common/arch35/vf/vf_flash_decode_arch35.h"
+#include "../../common/vector_common.h"
+#include "../../common/memcopy/fa_gm_tensor.h"
+#include "../../common/memcopy/copy_gm_to_l1.h"
+#include "../../common/memcopy/copy_ub_to_gm.h"
 #endif
-
-#include "memory_copy_arch35.h"
 
 namespace FlashAttnKernel {
 struct TaskInfo {
@@ -119,6 +126,11 @@ protected:
     FaGmTensorOut outGmTensor_;
     CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm_;
 
+    static constexpr GmFormat LSE_FORMAT = (LAYOUT_T == FA_LAYOUT::TND) ? GmFormat::LSE_N2GT : GmFormat::LSE_BN2GS1;
+    using LseGmTensorOut = FaGmTensor<T, LSE_FORMAT, SEQLEN_T, IS_TND<LAYOUT_OUT>()>;
+    LseGmTensorOut lseGmTensor_;
+    CopyLseUbToGm<T, LSE_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyLseUbToGm_;
+
 private:
     // ================================FD Local Buffer区====================================
     LocalTensor<T> fdSumBuf1_;          // 1.5k: 16*24*4
@@ -158,6 +170,8 @@ public:
 
         if (constInfo_.isSoftmaxLseEnable) {
             softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
+            InitLseOutBuffer(constInfo_.bSize, constInfo_.n2Size, constInfo_.gSize, constInfo_.s1Size, lseGmTensor_,
+                             softmaxLse);
         }
     }
 
@@ -238,6 +252,17 @@ protected:
             outGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, headDim, qSeqLensTool_.seqUsedParser);
         } else {
             outGmTensor.offsetCalculator.Init(n2Size, gSize, headDim, qSeqLensTool_.cuSeqLensParser);
+        }
+    }
+
+    __aicore__ inline void InitLseOutBuffer(uint32_t batchSize, uint32_t n2Size, uint32_t gSize, uint32_t qSeqSize,
+                                            LseGmTensorOut &lseGmTensor, __gm__ uint8_t *gm)
+    {
+        lseGmTensor.gmTensor.SetGlobalBuffer((__gm__ T *)gm);
+        if constexpr (GmLayoutParams<LSE_FORMAT>::CATEGORY == FormatCategory::GM_LSE_BN2GS1) {
+            lseGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, qSeqLensTool_.seqUsedParser);
+        } else {
+            lseGmTensor.offsetCalculator.Init(n2Size, gSize, qSeqLensTool_.cuSeqLensParser);
         }
     }
 
@@ -452,24 +477,14 @@ public:
                 LocalTensor<T> maxLseUb = fdLseUbBuf_;
                 Mutex::Lock<PIPE_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
                 uint32_t mOffset = taskInfo_.gS1Idx + startRow;
-                if constexpr (LAYOUT_T == FA_LAYOUT::TND) {
-                    uint32_t prefixBS1 = qSeqLensTool_.cuSeqLensParser.GetTBase(taskInfo_.bIdx);
-                    uint64_t bN2Offset = taskInfo_.n2Idx * constInfo_.gSize * constInfo_.t1Size + prefixBS1;
-                    DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfo_t>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
-                                                                    actualGSplitSize, constInfo_);
-                } else if constexpr (LAYOUT_T == FA_LAYOUT::BSND) {
-                    uint64_t bN2Offset = taskInfo_.bIdx * constInfo_.gSize * constInfo_.n2Size * constInfo_.s1Size +
-                                         taskInfo_.n2Idx * constInfo_.gSize * constInfo_.s1Size;
-                    uint64_t qActSeqLens = qSeqLensTool_.seqUsedParser.GetActualSeqLength(taskInfo_.bIdx);
-                    DataCopySoftmaxLseBSNDArch35<T, ConstInfo_t>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
-                                                                 actualGSplitSize, constInfo_);
-                } else if constexpr (LAYOUT_T == FA_LAYOUT::BNSD) {
-                    uint64_t bN2Offset = taskInfo_.bIdx * constInfo_.gSize * constInfo_.n2Size * constInfo_.s1Size +
-                                         taskInfo_.n2Idx * constInfo_.gSize * constInfo_.s1Size;
-                    uint64_t qActSeqLens = qSeqLensTool_.seqUsedParser.GetActualSeqLength(taskInfo_.bIdx);
-                    DataCopySoftmaxLseBNSDArch35<T, ConstInfo_t>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
-                                                                 actualGSplitSize, constInfo_, qActSeqLens);
-                }
+                GmCoord gmCoord{.bIdx = taskInfo_.bIdx,
+                                .n2Idx = taskInfo_.n2Idx,
+                                .gS1Idx = mOffset,
+                                .dIdx = 0,
+                                .gS1DealSize = actualGSplitSize,
+                                .dDealSize = 0};
+                copyLseUbToGm_(lseGmTensor_, maxLseUb, gmCoord);
+
                 Mutex::Unlock<PIPE_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
             }
 
