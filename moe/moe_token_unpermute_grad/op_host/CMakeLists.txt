@@ -8,17 +8,29 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if (BUILD_OPEN_PROJECT)
     set(moe_token_unpermute_grad_depends moe/moe_finalize_routing_v2_grad CACHE INTERNAL "Dependencies for moe_token_unpermute_grad")
     target_sources(op_host_aclnnInner PRIVATE
         moe_token_unpermute_grad_def.cpp
     )
-    add_ops_compile_options(
-        OP_NAME MoeTokenUnpermuteGrad
-        OPTIONS --cce-auto-sync=on
-                -Wno-deprecated-declarations
-                -Werror
-    )
+    if(CONDITION_UNIT STREQUAL "ascend950")
+        add_ops_compile_options(
+            OP_NAME MoeTokenUnpermuteGrad
+            OPTIONS --cce-auto-sync=on
+                    -Wno-deprecated-declarations
+                    -Werror
+                    -mllvm 
+                    -cce-aicore-dcci-before-kernel-end=false
+        )
+    else()
+        add_ops_compile_options(
+            OP_NAME MoeTokenUnpermuteGrad
+            OPTIONS --cce-auto-sync=on
+                    -Wno-deprecated-declarations
+                    -Werror
+        )
+    endif()
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
