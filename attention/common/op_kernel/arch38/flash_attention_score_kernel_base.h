@@ -74,7 +74,10 @@ public:
     __aicore__ inline void ComputeBmm1Tail(RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam);
     __aicore__ inline void GetSeqQlenKvlenByBoidx(int64_t boIdx, int64_t &actualSeqQlen, int64_t &actualSeqKvLen);
 
-    __aicore__ inline ChildClass *GetDerived() { return static_cast<ChildClass *>(this); }
+    __aicore__ inline ChildClass *GetDerived()
+    {
+        return static_cast<ChildClass *>(this);
+    }
     TPipe *pipe;
 
     const FlashAttentionScoreSimplifiedTilingData *__restrict tilingData;
