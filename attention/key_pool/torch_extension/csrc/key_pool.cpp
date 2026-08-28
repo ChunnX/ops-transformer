@@ -17,6 +17,7 @@
 #include "aclnn_common.h"
 
 namespace op_api {
+const int64_t DIM_ONE = 1;
 const int64_t DIM_TWO = 2;
 const int64_t DIM_THREE = 3;
 const int64_t MAX_DIM_SIZE = 8;
