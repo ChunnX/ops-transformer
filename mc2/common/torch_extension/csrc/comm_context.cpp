@@ -222,9 +222,8 @@ public:
         } else {
             protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
         }
-
         GetCommProtocol(hcclHandle, protocol);
-        protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
+
         CommContext commContextStruct;
         BuildContext(hcclHandle, group, opName, protocol, commContextStruct, cclBufferSize);
         rankNumPerServer_ = rankNumPerUbDomain_;
