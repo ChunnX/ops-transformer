@@ -836,6 +836,12 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Dispatc
         while (cursor.nextExpert < moeExpertPerRank_ && CachedExpertGmm2Ready(cursor, dispatchReplay.pos.expertIdx)) {
             CombineWholeExpert(cursor, combineState, combineAddrInfo, bufferConfig);
             combined = true;
+            // 补给优先响应：burst 途中一旦 dispatch 放行额度出现即让路（gather 是热点
+            // rank 的稀缺资源，无界连续收取会挤占它、放大 GMM1 等数据）；burst 内
+            // 连续收取仍摊薄 Drain。
+            if (!dispatchDone && CachedGmm2ProgressAtLeast(cachedWaves, dispatchedWaves - DISPATCH_LOOKAHEAD_CAP + 1)) {
+                break;
+            }
         }
         if (combined) {
             DrainWaveCombineRowRing<CombineQuantMode>(cursor.rowSequence);
