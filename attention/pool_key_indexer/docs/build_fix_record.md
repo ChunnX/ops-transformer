@@ -1824,3 +1824,74 @@ arch22 与 arch35 的本质差异：
    环境噪声）
 4. **/tmp 磁盘满会中断 tbe 编译**：`No space left on device`（tmpfs 多为 core/perf
    转储占满），编译前留足 tmpfs 空间
+
+# aclgraph（NPUGraph）捕获打通：ValueDepend 值输入设备分流（2026-08-27）
+
+## 背景
+
+`test_pool_key_indexer_aclgraph.py` 冒烟（2026-08-27 新增）暴露：NPU device tensor
+作为 `pool_tail_k`/`actual_seq_q/k` 输入时，NPUGraph 捕获期内报
+`EE1006 107030 "operation not permitted when a stream is capturing"`，仅 CPU 输入可捕获。
+
+## 根因（两层）
+
+1. **csrc 无条件 D2H**：`pool_key_indexer.cpp` 对三个 ValueDepend 输入无条件执行
+   `.cpu()`（阻塞式 rtMemcpy + rtStreamSynchronize）。捕获期内 CANN 运行时禁止同步
+   拷贝 → 捕获失败。CPU 输入则免拷贝（aclIntArray 直接取 host 指针），可捕获。
+2. **生成的 aclnn API 本就双变体**（aclnnPoolKeyIndexer.h）：
+   - `aclnnPoolKeyIndexerGetWorkspaceSize`：`aclIntArray*`（host 值，框架桥接 fake
+     tensor 为 kOnHost，tiling `GetData()` 可读）—— csrc 现用；
+   - `aclnnPoolKeyIndexerTensorGetWorkspaceSize`：`aclTensor*`（device 直传）—— 存在
+     但未使用。直接切换会在 tiling 内段错误：`GetData()` 对 device tensor 返回
+     **非空 device 地址**（gert::Tensor 不区分放置位置），tiling 只做 null 检查就
+     host 解引用（实测 placement=0/kOnDeviceHbm，崩溃于 ParseAndCheckParams）。
+
+参考仓内先例：`fused_infer_attention_score` 的 op_api 适配层（FakeArray 桥接）与
+`sparse_flash_mla`（csrc 无 .cpu()，seq-lens 全程 tensor 直传，其
+`call_npu_graph` 为 aclgraph 图模式现成范例）——该模式可行，但本算子的 Tensor
+变体需要 tiling 侧 placement 保护配合。
+
+## 修复（两处协同）
+
+1. **tiling**（`pool_key_indexer_tiling.cpp`）：新增 `IsHostVisibleValue()`，三处
+   ValueDepend 取值点（asqData/askData/ptkData）先判 `GetPlacement()` 为
+   `kOnHost/kFollowing` 再 `GetData()`。device tensor 跳过 host 值校验（与既有
+   GE 图模式 null 分支同口径），kernel 运行期从 GM 读值（kernel 本就如此，无需改动）。
+2. **csrc**（`pool_key_indexer.cpp`）：按值输入设备分流——
+   - 全 CPU → 既有 Array 变体（tiling 值校验保留，捕获后值为图常量）；
+   - 任一 NPU → `aclnnPoolKeyIndexerTensorGetWorkspaceSize`（`AclnnCallNamed`
+     辅助函数，GWS/run 函数名显式指定，run 共享 `aclnnPoolKeyIndexer`），
+     无阻塞 D2H；混布输入统一 `.to(device)`（H2D 仅 eager 可用）。
+
+## 行为变化（显式契约）
+
+| 路径 | eager | aclgraph 捕获/回放 |
+|------|-------|--------------------|
+| 值输入全 CPU（Array 变体） | 值校验保留 | 可捕获，值为图常量（改值需重捕获） |
+| 任一值输入 NPU（Tensor 变体） | **值校验跳过**（原 host 校验经 D2H 执行）；**消除每次调用 D2H 同步点** | **可捕获**；device 输入为图输入，**改 buffer 内容 replay 自动生效** |
+
+NPU 输入失去 eager host 值校验是本改造的代价（tiling 数据本就不嵌入这些值，仅
+校验用途；与 GE 图模式行为对齐）。GE converter 路径不受影响。
+
+## 验证（Ascend 950PR，2026-08-27）
+
+| 项目 | 结果 |
+|------|------|
+| 定点 `test_pool_key_indexer.py` + `known_defects.py`（全 NPU 输入，走 Tensor 变体） | 68 passed |
+| 泛化 `test_pool_key_indexer_general.py`（60 例随机+定向） | 61 passed |
+| aclgraph 冒烟 `test_pool_key_indexer_aclgraph.py`（重写：device 捕获/变值回放/host 路径/路由固化） | 5 passed |
+| GE 图模式冒烟（converter 路径回归，PKI_GE_GENERAL_MAX=2） | 2 passed（coverage 汇总为子集运行预期失败） |
+| 手工矩阵：TND NPU eager golden / TND NPU 捕获 golden / 混布输入 eager / CPU 非法 tail 仍被拒 / NPU 非法 tail 不再被拒 | 全部符合预期 |
+
+## 排障要点（留档）
+
+1. **gert::Tensor::GetData() 不是 host 可见性判据**：device tensor 同样返回非空
+   指针，解引用即段错误；必须先查 `GetPlacement()`。GE 图模式恰好 null、Array
+   变体 fake tensor 恰好 kOnHost，掩盖了该语义——Tensor 变体首次暴露。
+2. **ACLNN_CMD 宏绑死 GWS 函数名前缀**（`#api "GetWorkspaceSize"`），Tensor 变体
+   GWS 与共享 run 函数名不同前缀，无法直接用宏；`AclnnCallNamed` 以显式函数名
+   调用，地址按名称缓存（GetOpApiFuncAddr 无 dlsym 缓存，宏靠函数局部 static）。
+3. **修改部署顺序**：tiling 改动须重建 `cust_opmaster` 并同步 vendor 目录
+   （`opp/vendors/custom_transformer/op_impl/.../libcust_opmaster_rt2.0.so`），
+   csrc 改动同步 site-packages 后由 ninja 自动重编；两者不同步会出现
+   "Tensor 变体 + 旧 tiling" 的段错误组合。

@@ -124,7 +124,8 @@ cann_ops_transformer.pool_key_indexer(
 - B（Batch）表示输入样本批量大小。
 - 参数query、pool_key的数据类型应保持一致。
 - topk需能被pool_size整除。
-- pool_tail_k取值范围为[0, pool_size-1]。
+- pool_tail_k取值范围为[0, pool_size-1]。取值校验仅对CPU输入在host侧执行；NPU输入经aclnn Tensor变体直传device数据，host侧不做值校验（与TorchAir图模式一致），调用方须自行保证取值合法，否则kernel行为未定义。
+- pool_tail_k、actual_seq_q、actual_seq_k支持CPU或NPU输入：全部为CPU时走host取值链路（aclgraph捕获后值为图常量，修改需重新捕获）；任一为NPU时自动切换为device输入链路（无阻塞D2H，aclgraph捕获后修改buffer内容replay自动生效）。
 - 当pool_size=1且pool_tail_k=0时，退化为lightning_indexer行为，输出维度为topk。
 - sparse_indices无效部分填-1；sparse_values无效部分填-inf。
 - 参数actual_seq_q、actual_seq_k要求其值为当前Batch与前序Batch有效token数的累加值（TND场景），后一个元素的值必须大于等于前一个元素的值。

@@ -19,6 +19,22 @@
 using namespace ge;
 namespace optiling {
 
+// ValueDepend 输入(pool_tail_k / actual_seq_q / actual_seq_k)的 host 可见性判断。
+// GetData() 对 device tensor 同样返回非空指针(device 地址), 在 host 侧解引用会
+// 段错误, 因此取值前必须先确认数据位于 host。仅以下两种来源允许读取值:
+//   - aclnn Array 变体(eager CPU 输入): 框架桥接的 fake tensor, kOnHost;
+//   - aclnn Tensor 变体的 CPU 输入: host 指针原样包装, kOnHost/kFollowing。
+// device tensor(GE 图模式 / eager 经 Tensor 变体直传 NPU 输入)跳过 host 侧值
+// 校验, 由 kernel 运行期从 GM 读值(GetActualSeqLen), 与既有 GE 图模式口径一致。
+static bool IsHostVisibleValue(const gert::Tensor *tensor)
+{
+    if (tensor == nullptr) {
+        return false;
+    }
+    const auto placement = tensor->GetPlacement();
+    return (placement == gert::kOnHost) || (placement == gert::kFollowing);
+}
+
 static uint32_t AlignUp(uint32_t val, uint32_t align)
 {
     return (align == 0) ? val : (val + align - 1) / align * align;
@@ -706,12 +722,11 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
         // GE graph mode.
         int64_t asqCount = asqTensor->GetShapeSize();
         info.bSize = static_cast<uint32_t>(asqCount);
-        const int64_t *asqData = asqTensor->GetData<int64_t>();
+        const int64_t *asqData = IsHostVisibleValue(asqTensor) ? asqTensor->GetData<int64_t>() : nullptr;
         if (asqData == nullptr) {
-            // GE graph mode: actual_seq_q is a device tensor whose values are not
-            // visible at tiling time. Skip host-side value validation; the kernel
-            // reads the prefix sums from GM at run time (GetActualSeqLen).
-            OP_LOGI(context_, "TND: actual_seq_q data is null (GE graph mode), skip value validation");
+            // Device tensor(GE 图模式 / eager Tensor 变体 NPU 输入): tiling 期值不可见。
+            // 跳过 host 侧值校验; kernel 运行期从 GM 读前缀和(GetActualSeqLen)。
+            OP_LOGI(context_, "TND: actual_seq_q data is not host-visible (device tensor), skip value validation");
         } else {
             int64_t prev = 0;
             for (int64_t i = 0; i < asqCount; ++i) {
@@ -737,18 +752,17 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
     if (info.layoutK == PkiDataLayout::TND || info.pageAttention) {
         const gert::Tensor *askTensor = context_->GetOptionalInputTensor(PKI_ACTUAL_SEQ_K_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context_, askTensor);
-        const int64_t *askData = askTensor->GetData<int64_t>();
+        const int64_t *askData = IsHostVisibleValue(askTensor) ? askTensor->GetData<int64_t>() : nullptr;
         int64_t askCount = askTensor->GetShapeSize();
         OP_CHECK_IF(static_cast<uint32_t>(askCount) != info.bSize,
                     OP_LOGE(context_, "actual_seq_k count(%ld) must equal B(%u)", askCount, info.bSize),
                     return ge::GRAPH_FAILED);
 
         if (askData == nullptr) {
-            // GE graph mode: values not visible at tiling time. Skip host-side
-            // value validation; the kernel reads the values from GM at run time
-            // (GetActualSeqLen). The PA maxBlockNumPerSeq check is likewise
-            // deferred (block_table upper bound is enforced by kernel addressing).
-            OP_LOGI(context_, "actual_seq_k data is null (GE graph mode), skip value validation");
+            // Device tensor(GE 图模式 / eager Tensor 变体 NPU 输入): tiling 期值不可见。
+            // 跳过 host 侧值校验; kernel 运行期从 GM 读值(GetActualSeqLen)。
+            // PA maxBlockNumPerSeq 检查同样推迟(block_table 上界由 kernel 寻址保证)。
+            OP_LOGI(context_, "actual_seq_k data is not host-visible (device tensor), skip value validation");
         } else if (info.layoutK == PkiDataLayout::TND) {
             int64_t prev = 0;
             for (int64_t i = 0; i < askCount; ++i) {
@@ -805,7 +819,7 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
                     OP_LOGE(context_, "pool_tail_k count(%ld) must equal B(%u)",
                             ptkTensor->GetShapeSize(), info.bSize),
                     return ge::GRAPH_FAILED);
-        const int64_t *ptkData = ptkTensor->GetData<int64_t>();
+        const int64_t *ptkData = IsHostVisibleValue(ptkTensor) ? ptkTensor->GetData<int64_t>() : nullptr;
         if (ptkData != nullptr) {
             int64_t ptkCount = ptkTensor->GetShapeSize();
             for (int64_t i = 0; i < ptkCount; ++i) {
