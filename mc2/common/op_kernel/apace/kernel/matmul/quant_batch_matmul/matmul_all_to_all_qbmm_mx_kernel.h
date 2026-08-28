@@ -92,6 +92,29 @@ public:
 
     __aicore__ inline void operator()(const Params &params)
     {
+        Init(params);
+        Process(params);
+    }
+
+    /**
+     * Initialize the Blaze BlockMmad resources once for a group of M tiles
+     * sharing the same tiling. The caller may then invoke Process repeatedly
+     * with updated GM addresses without rebuilding the MMAD pipeline.
+     */
+    __aicore__ inline void Init(const Params &params)
+    {
+        if (params.rankDim == 0) {
+            return;
+        }
+        BlockShape l0TileShape{
+            params.qbmmParams.baseM, params.qbmmParams.baseN, params.qbmmParams.baseK, 0};
+        const bool isBias = params.qbmmParams.isBias != 0;
+        mmOp_.Init(params.problemShape, l0TileShape, params.l1Params, isBias,
+                   params.qbmmParams.dbL0C > 1, 1U);
+    }
+
+    __aicore__ inline void Process(const Params &params)
+    {
         Run(params);
     }
 
@@ -140,10 +163,6 @@ __aicore__ inline void MatmulAllToAllQbmmMxKernel<ProblemShape, BlockMmad, Block
         return;
     }
     const int64_t fullN = rankN * static_cast<int64_t>(params.rankDim);
-
-    BlockShape l0TileShape{params.qbmmParams.baseM, params.qbmmParams.baseN, params.qbmmParams.baseK, 0};
-    const bool isBias = params.qbmmParams.isBias != 0;
-    mmOp_.Init(params.problemShape, l0TileShape, params.l1Params, isBias, params.qbmmParams.dbL0C > 1, 1U);
 
     auto layoutA = MakeLayoutA{}(Te::Get<MNK_M>(params.problemShape), Te::Get<MNK_K>(params.problemShape));
     auto layoutScaleA = MakeLayoutScaleA{}(

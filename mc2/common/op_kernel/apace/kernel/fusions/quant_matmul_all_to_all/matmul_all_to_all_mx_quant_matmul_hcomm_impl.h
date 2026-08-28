@@ -115,6 +115,9 @@ private:
 
     static constexpr uint64_t MXFP_GROUP_SIZE = 64UL;
     static constexpr uint64_t MXFP_SCALE_FACTOR = 2UL;
+    // mode 0 is the AIC-only barrier used by existing MC2 matmul-first kernels.
+    // Keep this ID separate from the events owned internally by Blaze BlockMmad.
+    static constexpr uint16_t AIC_BARRIER_FLAG_ID = 8U;
 
     __aicore__ inline void SetupParams(Params &params, uint64_t rowOffset,
                                        const QuantMatmulTilingData &mmTile)
@@ -145,11 +148,46 @@ private:
                   static_cast<uint64_t>(tilingInfo.rankM) * rankNPerPeer, tilingInfo.rankDim};
     }
 
-    __aicore__ inline void MatmulProcess(uint64_t rowOffset, const QuantMatmulTilingData &mmTile)
+    __aicore__ inline void SyncAicBeforeCommunication()
+    {
+        // Every AIC publishes completion only after its FixPipe output reaches
+        // GM. The paired wait forms an AIC-only barrier, so block 0 cannot
+        // submit Hcomm while another Cube core is still writing this tile.
+        AscendC::CrossCoreSetFlag<0, PIPE_FIX>(AIC_BARRIER_FLAG_ID);
+        AscendC::CrossCoreWaitFlag<0, PIPE_S>(AIC_BARRIER_FLAG_ID);
+    }
+
+    __aicore__ inline void MatmulProcess(uint64_t startRow, uint32_t taskM, uint32_t taskCnt,
+                                         const QuantMatmulTilingData &mmTile)
     {
         Params params;
-        SetupParams(params, rowOffset, mmTile);
-        kernel_(params);
+        SetupParams(params, startRow, mmTile);
+        const auto &tilingInfo = tilingData_->matmulAllToAllTilingInfo;
+        const uint64_t rankNPerPeer = static_cast<uint64_t>(tilingInfo.rankN) / tilingInfo.rankDim;
+        const uint64_t scaleK = Blaze::Gemm::CeilDiv(
+            static_cast<uint64_t>(tilingInfo.rankK), MXFP_GROUP_SIZE) * MXFP_SCALE_FACTOR;
+        const uint64_t aTaskElements = static_cast<uint64_t>(taskM) * tilingInfo.rankK;
+        const uint64_t scaleATaskElements = static_cast<uint64_t>(taskM) * scaleK;
+        const uint64_t cTaskElements = static_cast<uint64_t>(taskM) * rankNPerPeer;
+
+        // Main tiles (or tail tiles) share one Blaze resource lifetime. Only
+        // GM addresses advance between iterations; MMAD resources and tiling
+        // parameters are initialized once for the whole batch.
+        kernel_.Init(params);
+        for (uint32_t index = 0; index < taskCnt; ++index) {
+            kernel_.Process(params);
+            SyncAicBeforeCommunication();
+            communication_.Process(index);
+
+            if (index + 1 < taskCnt) {
+                params.mmParams.aGmAddr =
+                    MatmulAllToAllMxGmAddr<X1Type>(params.mmParams.aGmAddr, aTaskElements);
+                params.mmParams.scaleAGmAddr = MatmulAllToAllMxGmAddr<AscendC::fp8_e8m0_t>(
+                    params.mmParams.scaleAGmAddr, scaleATaskElements);
+                params.mmParams.cGmAddr =
+                    MatmulAllToAllMxGmAddr<YType>(params.mmParams.cGmAddr, cTaskElements);
+            }
+        }
     }
 
     /**
@@ -173,11 +211,7 @@ private:
         communicationContext->hcclDataType = tilingInfo.hcclDataType;
 
         communication_.PrepareAll(taskCnt);
-        for (uint32_t index = 0; index < taskCnt; ++index) {
-            MatmulProcess(startRow + static_cast<uint64_t>(index) * taskM, mmTile);
-            AscendC::SyncAll();
-            communication_.Process(index);
-        }
+        MatmulProcess(startRow, taskM, taskCnt, mmTile);
     }
 
     TilingDataType *tilingData_;
