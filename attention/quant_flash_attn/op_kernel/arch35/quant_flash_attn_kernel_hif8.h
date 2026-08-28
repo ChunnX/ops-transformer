@@ -576,22 +576,31 @@ public:
     {
         RunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];                  // 本轮任务
         RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE]; // 上PRELOAD_N轮任务
-        if (runInfo0.isValid) {
-            if ASCEND_IS_AIC {
+        if ASCEND_IS_AIC {
+            // 先发起本任务K/V预取, 再执行上一轮mm2: 其M_FIX/fixpipe等待掩盖K/V拷贝延迟,
+            // 最后执行本任务mm1时K已就绪
+            if (runInfo0.isValid) {
+                cubeBlock_.PrefetchKV(runInfo0);
+            }
+            if (loop >= PRELOAD_N) {
+                if (runInfoNegN.isValid) {
+                    ComputeMm2(runInfoNegN);
+                    runInfoNegN.isValid = false;
+                }
+            }
+            if (runInfo0.isValid) {
                 ComputeMm1(runInfo0);
-            } else {
+            }
+        } else {
+            if (runInfo0.isValid) {
                 ComputeVec1(runInfo0);
             }
-        }
 
-        if (loop >= PRELOAD_N) {
-            if (runInfoNegN.isValid) {
-                if ASCEND_IS_AIC {
-                    ComputeMm2(runInfoNegN);
-                } else {
+            if (loop >= PRELOAD_N) {
+                if (runInfoNegN.isValid) {
                     ComputeVec2(runInfoNegN);
+                    runInfoNegN.isValid = false;
                 }
-                runInfoNegN.isValid = false;
             }
         }
     }
