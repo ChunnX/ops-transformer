@@ -17,30 +17,28 @@
 #define OP_KERNEL_GROUPED_MATMUL_DEQUANT_SWIGLU_QUANT_V2_UTILS_H
 
 // A8W4 MSD场景
-#if defined(ORIG_DTYPE_X) && defined(DT_INT8) && ORIG_DTYPE_X == DT_INT8 && defined(ORIG_DTYPE_WEIGHT) &&              \
+#if defined(ORIG_DTYPE_X) && defined(DT_INT8) && ORIG_DTYPE_X == DT_INT8 && defined(ORIG_DTYPE_WEIGHT) && \
     defined(DT_INT4) && ORIG_DTYPE_WEIGHT == DT_INT4
-        #define GMM_SWIGLU_QUANT_V2_A8W4_MSD
-        using DTYPE_X_A8W4_MSD = AscendC::int4b_t;
+#define GMM_SWIGLU_QUANT_V2_A8W4_MSD
+using DTYPE_X_A8W4_MSD = AscendC::int4b_t;
 // A4W4 场景
-#elif defined(ORIG_DTYPE_X) && defined(DT_INT4) && ORIG_DTYPE_X == DT_INT4 && defined(ORIG_DTYPE_WEIGHT) &&              \
+#elif defined(ORIG_DTYPE_X) && defined(DT_INT4) && ORIG_DTYPE_X == DT_INT4 && defined(ORIG_DTYPE_WEIGHT) && \
     defined(DT_INT4) && ORIG_DTYPE_WEIGHT == DT_INT4
-        #define GMM_SWIGLU_QUANT_V2_A4W4
+#define GMM_SWIGLU_QUANT_V2_A4W4
 // A8W8 场景
-#elif defined(ORIG_DTYPE_X) && defined(DT_INT8) && ORIG_DTYPE_X == DT_INT8 && defined(ORIG_DTYPE_WEIGHT) &&            \
+#elif defined(ORIG_DTYPE_X) && defined(DT_INT8) && ORIG_DTYPE_X == DT_INT8 && defined(ORIG_DTYPE_WEIGHT) && \
     defined(DT_INT8) && ORIG_DTYPE_WEIGHT == DT_INT8
-        #define GMM_SWIGLU_QUANT_V2_A8W8
+#define GMM_SWIGLU_QUANT_V2_A8W8
 #endif // 场景分类
 
 #if defined(FORMAT_WEIGHT) && FORMAT_WEIGHT == FORMAT_FRACTAL_NZ
-    constexpr CubeFormat wFormat = CubeFormat::NZ;
+constexpr CubeFormat wFormat = CubeFormat::NZ;
 #elif defined(FORMAT_WEIGHT) && FORMAT_WEIGHT == FORMAT_ND
-    constexpr CubeFormat wFormat = CubeFormat::ND;
+constexpr CubeFormat wFormat = CubeFormat::ND;
 #endif // weight格式分类
-
 
 namespace GroupedMatmulDequantSwigluQuant {
 using namespace AscendC;
-
 
 constexpr uint32_t UB_BLOCK_UNIT_SIZE = 32;
 constexpr uint32_t FLOAT_UB_BLOCK_UNIT_SIZE = 8;
@@ -62,12 +60,12 @@ constexpr int64_t SIZE_OF_HALF_2 = 2;
 constexpr uint8_t NUM_8 = 8;
 constexpr float QUANT_SCALE_INT8 = 127.0f;
 
-constexpr MatmulConfig matmulCFGUnitFlag{false, false, true, 0, 0, 0, false, false, false, false, false, 0, 0, 0,
-                                        0, 0, 0, 0, false};
+constexpr MatmulConfig matmulCFGUnitFlag{false, false, true, 0, 0, 0, false, false, false, false,
+                                         false, 0,     0,    0, 0, 0, 0,     0,     false};
 constexpr MatmulConfig NZ_CFG_MDL = GetMDLConfig(false, false, 0, true, false, false, false);
 constexpr MatmulConfig CUSTOM_CFG_MDL = GetMDLConfig(false, false, 0, true, false, false, true);
 
-template <class AT_, class BT_, class CT_, class BiasT_, const MatmulConfig& MMCFG_>
+template <class AT_, class BT_, class CT_, class BiasT_, const MatmulConfig &MMCFG_>
 struct MMImplType {
     using AT = AT_;
     using BT = BT_;
@@ -218,16 +216,19 @@ __aicore__ inline void ReduceMaxSmall(const LocalTensor<float> &dstLocal, const 
     uint32_t repeat = count / VEC_LEN_ONCE_REPEAT_ELE;
     uint32_t tailNum = count % VEC_LEN_ONCE_REPEAT_ELE;
     if (likely(repeat > 0)) {
+        PipeBarrier<PIPE_V>();
         WholeReduceMax(workLocal, srcLocal, VEC_LEN_ONCE_REPEAT_ELE, repeat, 1, 1, VEC_LEN_ONCE_REPEAT_BLOCK,
                        ReduceOrder::ORDER_ONLY_VALUE);
         PipeBarrier<PIPE_V>();
     }
     if (unlikely(tailNum != 0)) {
+        PipeBarrier<PIPE_V>();
         WholeReduceMax(workLocal[repeat], srcLocal[count - tailNum], tailNum, 1, 1, 1, VEC_LEN_ONCE_REPEAT_BLOCK,
                        ReduceOrder::ORDER_ONLY_VALUE);
         PipeBarrier<PIPE_V>();
         repeat += 1;
     }
+    PipeBarrier<PIPE_V>();
     WholeReduceMax(dstLocal, workLocal, repeat, 1, 1, 1, VEC_LEN_ONCE_REPEAT_BLOCK, ReduceOrder::ORDER_ONLY_VALUE);
 }
 
@@ -243,12 +244,15 @@ __aicore__ inline void ReduceMaxTemplate(const LocalTensor<float> &dstLocal, con
         ReduceMaxSmall(dstLocal, workLocal, srcLocal, count);
         PipeBarrier<PIPE_V>();
     } else {
+        PipeBarrier<PIPE_V>();
         BlockReduceMax(workLocal, srcLocal, REPEAT_64, VEC_LEN_ONCE_REPEAT_ELE, 1, 1, VEC_LEN_ONCE_REPEAT_BLOCK);
         PipeBarrier<PIPE_V>();
 
+        PipeBarrier<PIPE_V>();
         BlockReduceMax(workLocal, workLocal, REPEAT_8, VEC_LEN_ONCE_REPEAT_ELE, 1, 1, VEC_LEN_ONCE_REPEAT_BLOCK);
         PipeBarrier<PIPE_V>();
 
+        PipeBarrier<PIPE_V>();
         WholeReduceMax(resTmpLocal, workLocal, VEC_LEN_ONCE_REPEAT_ELE, 1, 1, 1, VEC_LEN_ONCE_REPEAT_BLOCK,
                        ReduceOrder::ORDER_ONLY_VALUE);
         PipeBarrier<PIPE_V>();
@@ -257,6 +261,7 @@ __aicore__ inline void ReduceMaxTemplate(const LocalTensor<float> &dstLocal, con
         PipeBarrier<PIPE_V>();
 
         const BinaryRepeatParams repeatParams = {1, 1, 1, NUM_8, NUM_8, NUM_8};
+        PipeBarrier<PIPE_V>();
         Max(dstLocal, dstLocal, resTmpLocal, 1, 1, repeatParams);
     }
 }
@@ -265,18 +270,31 @@ __aicore__ inline void CastFp32ToInt8Template(LocalTensor<int8_t> &dstLocal, Loc
                                               LocalTensor<int8_t> &oneBlockWorkspace, int32_t dstOffset,
                                               int32_t srcOffset, int32_t count)
 {
+    PipeBarrier<PIPE_V>();
     Cast(srcLocal[srcOffset].ReinterpretCast<half>(), srcLocal[srcOffset], RoundMode::CAST_RINT, count);
     PipeBarrier<PIPE_V>();
     if ((dstOffset & MOD_32_MASK) == 0) {
+        PipeBarrier<PIPE_V>();
+        SetFlag<HardEvent::S_V>(EVENT_ID0);
+        WaitFlag<HardEvent::S_V>(EVENT_ID0);
         Cast(dstLocal[dstOffset], srcLocal[srcOffset].ReinterpretCast<half>(), RoundMode::CAST_RINT, count);
     } else if ((dstOffset & MOD_16_MASK) == 0) {
+        PipeBarrier<PIPE_V>();
+        SetFlag<HardEvent::S_V>(EVENT_ID0);
+        WaitFlag<HardEvent::S_V>(EVENT_ID0);
         Cast(dstLocal[dstOffset + ALIGN_16_ELE], srcLocal[srcOffset + ALIGN_8_ELE].ReinterpretCast<half>(),
              RoundMode::CAST_RINT, count - ALIGN_16_ELE);
         PipeBarrier<PIPE_V>();
+        SetFlag<HardEvent::S_V>(EVENT_ID0);
+        WaitFlag<HardEvent::S_V>(EVENT_ID0);
         Cast(oneBlockWorkspace, srcLocal[srcOffset].ReinterpretCast<half>(), RoundMode::CAST_RINT, ALIGN_16_ELE);
         PipeBarrier<PIPE_ALL>();
         for (int32_t i = 0; i < ALIGN_16_ELE; i++) {
+            SetFlag<HardEvent::V_S>(EVENT_ID0);
+            WaitFlag<HardEvent::V_S>(EVENT_ID0);
             int8_t temp = oneBlockWorkspace.GetValue(i);
+            SetFlag<HardEvent::V_S>(EVENT_ID0);
+            WaitFlag<HardEvent::V_S>(EVENT_ID0);
             dstLocal.SetValue(dstOffset + i, temp);
         }
         PipeBarrier<PIPE_ALL>();
@@ -284,13 +302,13 @@ __aicore__ inline void CastFp32ToInt8Template(LocalTensor<int8_t> &dstLocal, Loc
 }
 
 template <typename T>
-__aicore__ inline __gm__ T* GetTensorAddr(uint16_t index, GM_ADDR tensorPtr)
+__aicore__ inline __gm__ T *GetTensorAddr(uint16_t index, GM_ADDR tensorPtr)
 {
-    __gm__ uint64_t* dataAddr = reinterpret_cast<__gm__ uint64_t*>(tensorPtr);
+    __gm__ uint64_t *dataAddr = reinterpret_cast<__gm__ uint64_t *>(tensorPtr);
     uint64_t tensorPtrOffset = *dataAddr;
 
-    __gm__ uint64_t* retPtr = dataAddr + (tensorPtrOffset >> 3);
-    return reinterpret_cast<__gm__ T*>(*(retPtr + index));
+    __gm__ uint64_t *retPtr = dataAddr + (tensorPtrOffset >> 3);
+    return reinterpret_cast<__gm__ T *>(*(retPtr + index));
 }
 } // namespace GroupedMatmulDequantSwigluQuant
 
