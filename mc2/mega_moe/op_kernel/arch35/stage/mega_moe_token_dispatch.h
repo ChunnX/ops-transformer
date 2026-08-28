@@ -518,7 +518,7 @@ __aicore__ inline void DispatchExpertTokenSlice(const TokenDispatchConfig &conte
                                                 const MoeSyncWorkspaceLayout &syncLayout, const Params &params,
                                                 GM_ADDR *winRankAddr, TokenDispatchScratch<ActivationType> &scratch,
                                                 uint32_t localExpertId, int32_t expertGlobalRowBegin,
-                                                uint32_t sliceRowBegin, uint32_t sliceRowEnd)
+                                                uint32_t sliceRowBegin, uint32_t sliceRowEnd, uint32_t expertShareRows)
 {
     if (sliceRowEnd <= sliceRowBegin) {
         return;
@@ -526,14 +526,23 @@ __aicore__ inline void DispatchExpertTokenSlice(const TokenDispatchConfig &conte
 
     constexpr int32_t gmm1TileRowCount = static_cast<int32_t>(PipelineTileM);
     uint32_t dispatchCoreCount = blockJob.totalJobs == 0U ? 1U : blockJob.totalJobs;
+    // 分核在专家全域（expertShareRows 为该专家可发行数）固定划分，与基线整专家
+    // dispatch 同构：每核持有专家内一段连续行，跨 wave 头尾相接，保持远端窗口读的
+    // 地址流连续。wave 切片只作为时间闸门取交集——按 slice 域均分会让每核行流跨
+    // wave 碎片化，实测 dispatch 慢 2~3 倍（bt_L17/L18 基线打点对表坐实）。
+    // 各核交集之并 = [sliceRowBegin, sliceRowEnd) 且两两不交，PublishGmm1TileReady
+    // 的行数累加（等值判定）契约不变。
     int32_t rowsPerCore =
-        Ops::Base::CeilDiv(static_cast<int32_t>(sliceRowEnd - sliceRowBegin), static_cast<int32_t>(dispatchCoreCount));
-    int32_t coreDispatchRowBegin =
-        static_cast<int32_t>(sliceRowBegin) + static_cast<int32_t>(blockJob.jobIndex) * rowsPerCore;
-    int32_t coreDispatchRowEnd = coreDispatchRowBegin + rowsPerCore;
-    if (coreDispatchRowEnd > static_cast<int32_t>(sliceRowEnd)) {
-        coreDispatchRowEnd = static_cast<int32_t>(sliceRowEnd);
+        Ops::Base::CeilDiv(static_cast<int32_t>(expertShareRows), static_cast<int32_t>(dispatchCoreCount));
+    int32_t shareBegin = static_cast<int32_t>(blockJob.jobIndex) * rowsPerCore;
+    int32_t shareEnd = shareBegin + rowsPerCore;
+    if (shareEnd > static_cast<int32_t>(expertShareRows)) {
+        shareEnd = static_cast<int32_t>(expertShareRows);
     }
+    int32_t coreDispatchRowBegin =
+        shareBegin > static_cast<int32_t>(sliceRowBegin) ? shareBegin : static_cast<int32_t>(sliceRowBegin);
+    int32_t coreDispatchRowEnd =
+        shareEnd < static_cast<int32_t>(sliceRowEnd) ? shareEnd : static_cast<int32_t>(sliceRowEnd);
     if (coreDispatchRowBegin >= coreDispatchRowEnd) {
         return;
     }

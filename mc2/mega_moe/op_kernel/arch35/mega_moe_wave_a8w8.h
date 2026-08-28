@@ -734,7 +734,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Dispatc
             DispatchExpertTokenSlice<ActivationType, QuantScaleOutType, GMM1_TILE_M, TopkWeightsPrefetch>(
                 tokenDispatchConfig_, commonConfig_, gmmExecutionConfig_.blockJob, syncWorkspaceLayout_, params_,
                 g_winRankAddr_, tokenDispatchScratch_, expertIdx, static_cast<int32_t>(expertGlobalRowBegin), partBegin,
-                clampedPartEnd);
+                clampedPartEnd, static_cast<uint32_t>(clampedRowCount));
         }
         expertGlobalRowBegin += expertTokenCount;
     }
