@@ -322,8 +322,11 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressT
 
         for (uint32_t i = 0; i < curChunkTokens; ++i) {
             int32_t srcRank = metadataLocal.GetValue(i * RECV_META_FIELDS);
-            if (srcRank < 0 || srcRank >= static_cast<int32_t>(epWorldSize_) ||
-                srcRank == static_cast<int32_t>(rankId_)) {
+            int32_t srcTokenIdx = metadataLocal.GetValue(i * RECV_META_FIELDS + 1);
+            int32_t srcTopKIdx = metadataLocal.GetValue(i * RECV_META_FIELDS + 2);
+            if (srcRank < 0 || srcRank >= static_cast<int32_t>(epWorldSize_) || srcTokenIdx < 0 ||
+                srcTokenIdx >= static_cast<int32_t>(numMaxTokensPerRank_) || srcTopKIdx < 0 ||
+                srcTopKIdx >= static_cast<int32_t>(topK_)) {
                 continue;
             }
             uint32_t countOffset = static_cast<uint32_t>(srcRank) * rankCountBlockElements;
@@ -365,7 +368,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressT
     }
     SyncFunc<AscendC::HardEvent::V_S>();
 
-    // rankCounts still holds this core's row. The last AIV writes prefix + own count as each remote rank's total.
+    // rankCounts still holds this core's row. The last AIV writes prefix + own count as each rank's total.
     if (aivId_ == aivNum_ - 1U) {
         for (uint32_t rank = 0; rank < epWorldSize_; ++rank) {
             uint32_t countOffset = rank * rankCountBlockElements;
@@ -386,8 +389,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressT
     DataCopyParams addressCopyParams{
         0U, static_cast<uint16_t>(ADDRESS_ENTRY_UB_BYTES / UB_ALIGN), 0U,
         static_cast<uint16_t>((ADDRESS_ENTRY_GM_BYTES - ADDRESS_ENTRY_UB_BYTES) / UB_ALIGN)};
-    GM_ADDR localDataBase = GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_);
-    GM_ADDR localStateBase = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_);
     for (uint64_t groupStart = scanStart; groupStart < scanEnd; groupStart += entriesPerRank) {
         uint64_t groupEnd = (groupStart + entriesPerRank > scanEnd) ? scanEnd : groupStart + entriesPerRank;
         uint32_t groupTokens = static_cast<uint32_t>(groupEnd - groupStart);
@@ -408,19 +409,17 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressT
         SyncFunc<AscendC::HardEvent::V_S>();
         for (uint32_t i = 0; i < groupTokens; ++i) {
             int32_t srcRank = metadataLocal.GetValue(i * RECV_META_FIELDS);
-            if (srcRank < 0 || srcRank >= static_cast<int32_t>(epWorldSize_)) {
+            int32_t srcTokenIdx = metadataLocal.GetValue(i * RECV_META_FIELDS + 1);
+            int32_t srcTopKIdx = metadataLocal.GetValue(i * RECV_META_FIELDS + 2);
+            if (srcRank < 0 || srcRank >= static_cast<int32_t>(epWorldSize_) || srcTokenIdx < 0 ||
+                srcTokenIdx >= static_cast<int32_t>(numMaxTokensPerRank_) || srcTopKIdx < 0 ||
+                srcTopKIdx >= static_cast<int32_t>(topK_)) {
                 continue;
             }
             uint32_t tokenIndex = static_cast<uint32_t>(groupStart) + i;
-            int32_t srcTokenIdx = metadataLocal.GetValue(i * RECV_META_FIELDS + 1);
-            int32_t srcTopKIdx = metadataLocal.GetValue(i * RECV_META_FIELDS + 2);
             uint32_t weight = 0U;
             if constexpr (HasTopkWeight == 1) {
                 weight = weightsLocal.GetValue(i);
-            }
-            if (srcRank == static_cast<int32_t>(rankId_)) {
-                SendLocalSlot(tokenIndex, srcTokenIdx, srcTopKIdx, weight, localDataBase, localStateBase);
-                continue;
             }
             uint32_t countOffset = static_cast<uint32_t>(srcRank) * rankCountBlockElements;
             uint32_t localIndex = static_cast<uint32_t>(rankCounts.GetValue(countOffset));
@@ -506,9 +505,17 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendAddressTa
             int32_t srcTokenIdx = static_cast<int32_t>(entriesLocal.GetValue(offset + 1));
             int32_t srcTopKIdx = static_cast<int32_t>(entriesLocal.GetValue(offset + 2));
             uint32_t weight = entriesLocal.GetValue(offset + 3);
-            SendRemoteSlot(tokenIndex, srcTokenIdx, srcTopKIdx, weight, remoteDataBase, remoteStateBase, tokenBytes);
+            if (targetRank == rankId_) {
+                SendLocalSlot(tokenIndex, srcTokenIdx, srcTopKIdx, weight, remoteDataBase, remoteStateBase);
+            } else {
+                SendRemoteSlot(tokenIndex, srcTokenIdx, srcTopKIdx, weight, remoteDataBase, remoteStateBase,
+                               tokenBytes);
+            }
         }
         SyncFunc<AscendC::HardEvent::S_MTE2>();
+    }
+    if (targetRank == rankId_) {
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
     }
 }
 
@@ -632,7 +639,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::GetCoreAssign
     uint32_t maxChannelAivNum = epWorldSize_ * COMBINE_CHANNEL_COUNT;
     bool assignRemainingToLocal = totalBlocks > maxChannelAivNum;
     if (assignRemainingToLocal) {
-        // Put all remote communication AIVs first, then give every remaining AIV to local copies.
+        // Put all remote communication AIVs first, then reserve one AIV for local copies.
         uint32_t remoteAivNum = (epWorldSize_ - 1U) * COMBINE_CHANNEL_COUNT;
         if (aivId_ < remoteAivNum) {
             uint32_t remoteRankIndex = aivId_ / COMBINE_CHANNEL_COUNT;
@@ -640,9 +647,18 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::GetCoreAssign
             coreIndexInGroup = aivId_ % COMBINE_CHANNEL_COUNT;
             groupSize = COMBINE_CHANNEL_COUNT;
         } else {
-            targetRank = rankId_;
-            coreIndexInGroup = aivId_ - remoteAivNum;
-            groupSize = totalBlocks - remoteAivNum;
+            // Keep the local window single-writer as well. Remaining AIVs still participate in
+            // BuildAddressTable barriers, but do not consume or publish any rank table.
+            uint32_t localCoreIndex = aivId_ - remoteAivNum;
+            if (localCoreIndex == 0U) {
+                targetRank = rankId_;
+                coreIndexInGroup = 0U;
+                groupSize = 1U;
+            } else {
+                targetRank = epWorldSize_;
+                coreIndexInGroup = 0U;
+                groupSize = 0U;
+            }
         }
         return;
     }
@@ -688,7 +704,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     if (splitRankTokens && aivId_ < activeAivNum) {
         GetCoreAssignment(activeAivNum, targetRank, coreIndexInGroup, groupSize);
     }
-    bool sendsTokens = actualA_ != 0 && aivId_ < activeAivNum;
+    bool hasRankAssignment = !splitRankTokens || (targetRank < epWorldSize_ && groupSize != 0U);
+    bool sendsTokens = actualA_ != 0 && aivId_ < activeAivNum && hasRankAssignment;
     if (sendsTokens) {
         if (splitRankTokens) {
             uint32_t entryCount = GetAddressTableCount(targetRank);
@@ -706,11 +723,11 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         }
     }
 
-    // Local copies completed before BuildAddressTable's final barrier. Each remote rank publishes one completion
-    // flag through channel 0 without a second all-core barrier here.
+    // Each rank has exactly one table consumer. That consumer publishes the rank's completion flag after all of
+    // its local copies or remote writes have been issued, without requiring another all-core barrier here.
     constexpr uint32_t completionChannelCount = COMBINE_CHANNEL_COUNT;
     bool publishesChannelFlag =
-        aivId_ < activeAivNum && (!splitRankTokens || coreIndexInGroup < completionChannelCount);
+        aivId_ < activeAivNum && hasRankAssignment && (!splitRankTokens || coreIndexInGroup < completionChannelCount);
     if (publishesChannelFlag) {
         LocalTensor<uint64_t> flagTensor = statusTensor_.ReinterpretCast<uint64_t>();
         Duplicate<uint64_t>(flagTensor, 1U, UB_ALIGN / sizeof(uint64_t));
