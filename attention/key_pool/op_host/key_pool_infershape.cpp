@@ -46,6 +46,7 @@ constexpr uint32_t DIM_NUM_2 = 2;
 constexpr uint32_t DIM_NUM_3 = 3;
 constexpr uint32_t DIM_INDEX_0 = 0;
 constexpr uint32_t DIM_INDEX_1 = 1;
+constexpr uint32_t DIM_INDEX_2 = 2;
 
 ge::graphStatus GetKeyPoolShapeDim(const gert::InferShapeContext* context, KeyPoolProtoShapeParam &shapeParam)
 {
