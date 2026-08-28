@@ -230,8 +230,8 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
     do { \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling); \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling); \
-        using wLayoutWithScale = AscendC::Std::conditional_t<scaleNz, \
-            AscendC::Std::tuple<wLayout, AscendC::Te::NNLayoutPtn>, wLayout>; \
+        using wLayoutWithScale = \
+            AscendC::Std::conditional_t<scaleNz, AscendC::Std::tuple<wLayout, AscendC::Te::NNLayoutPtn>, wLayout>; \
         GmmTensorApiMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, \
                              wLayoutWithScale, yLayout, DTYPE_L0C_LOCAL>( \
             x, weight, bias, scale, groupList, perTokenScale, y, user1, &gmmQuantParams_, &mmTilingData_, &tPipe); \
