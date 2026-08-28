@@ -15,6 +15,7 @@
 #include "securec.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
+#include "opdev/format_utils.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
@@ -145,10 +146,10 @@ static bool CheckInputNotNullImpl(const aclTensor *tensor, const char *name)
     return true;
 }
 
-static bool CheckTensorFormat(const aclTensor *tensor, const char *name)
+static bool IsFormatSupport(const aclTensor *tensor, const char *name)
 {
-    if (tensor->GetStorageFormat() != op::Format::FORMAT_ND) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s tensor format must be ND, but got %s", name,
+    if (tensor != nullptr && op::IsPrivateFormat(tensor->GetStorageFormat())) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s's format should be ND, but got %s.", name,
                 op::ToString(tensor->GetStorageFormat()).GetString());
         return false;
     }
@@ -157,14 +158,14 @@ static bool CheckTensorFormat(const aclTensor *tensor, const char *name)
 
 static bool CheckFormat(const AclnnMhcPreSinkhornBackwardParams &params)
 {
-    return CheckTensorFormat(params.gradHin, "gradHin") && CheckTensorFormat(params.gradHPost, "gradHPost") &&
-           CheckTensorFormat(params.gradHRes, "gradHRes") && CheckTensorFormat(params.x, "x") &&
-           CheckTensorFormat(params.phi, "phi") && CheckTensorFormat(params.alpha, "alpha") &&
-           CheckTensorFormat(params.bias, "bias") && CheckTensorFormat(params.hPre, "hPre") &&
-           CheckTensorFormat(params.hcBeforeNorm, "hcBeforeNorm") && CheckTensorFormat(params.invRms, "invRms") &&
-           CheckTensorFormat(params.sumOut, "sumOut") && CheckTensorFormat(params.normOut, "normOut") &&
-           CheckTensorFormat(params.gradX, "gradX") && CheckTensorFormat(params.gradPhi, "gradPhi") &&
-           CheckTensorFormat(params.gradAlpha, "gradAlpha") && CheckTensorFormat(params.gradBias, "gradBias");
+    return IsFormatSupport(params.gradHin, "gradHin") && IsFormatSupport(params.gradHPost, "gradHPost") &&
+           IsFormatSupport(params.gradHRes, "gradHRes") && IsFormatSupport(params.x, "x") &&
+           IsFormatSupport(params.phi, "phi") && IsFormatSupport(params.alpha, "alpha") &&
+           IsFormatSupport(params.bias, "bias") && IsFormatSupport(params.hPre, "hPre") &&
+           IsFormatSupport(params.hcBeforeNorm, "hcBeforeNorm") && IsFormatSupport(params.invRms, "invRms") &&
+           IsFormatSupport(params.sumOut, "sumOut") && IsFormatSupport(params.normOut, "normOut") &&
+           IsFormatSupport(params.gradX, "gradX") && IsFormatSupport(params.gradPhi, "gradPhi") &&
+           IsFormatSupport(params.gradAlpha, "gradAlpha") && IsFormatSupport(params.gradBias, "gradBias");
 }
 
 static bool CheckNotNull(const AclnnMhcPreSinkhornBackwardParams &params)
