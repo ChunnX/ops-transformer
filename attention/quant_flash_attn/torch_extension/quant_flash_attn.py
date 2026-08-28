@@ -428,7 +428,7 @@ def quant_flash_attn(
     quant_mode = _resolve_quant_mode(quant_mode)
     mask_mode = _resolve_mask_mode(mask_mode)
 
-    # 取 shape 前校验 q/v 非空及维度, 避免 None 或维度不足导致 C++ 侧崩溃
+    # 取 shape 前校验 q/v 非空及维度, 避免 None 或维度不足导致 AttributeError/IndexError
     torch._check(q is not None, lambda: "q must not be None")
     torch._check(v is not None, lambda: "v must not be None")
     q_expected = _LAYOUT_EXPECTED_NDIM.get(layout_q)
