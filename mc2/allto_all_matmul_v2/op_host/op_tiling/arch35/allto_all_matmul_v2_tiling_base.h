@@ -703,6 +703,11 @@ protected:
         td->workspaceLayout.segments[1] = {libApiWorkSpaceSize_, Mc2Tiling::RUNTIME_INFO_TOTAL_SIZE,
                                             static_cast<uint8_t>(Mc2Tiling::WS_SEG_RUNTIME_INFO), {}};
 
+        double typeSize = (x1Dtype == ge::DT_FLOAT4_E2M1) ? 0.5 : 1.0;
+        uint64_t scaleKDim = (k_ + 63UL) / 64UL;
+        td->peermemDataSize = worldSize_ * m_ *
+            (static_cast<uint64_t>(static_cast<double>(k_) * typeSize) + scaleKDim * 2UL);
+
         return ge::GRAPH_SUCCESS;
     }
 
