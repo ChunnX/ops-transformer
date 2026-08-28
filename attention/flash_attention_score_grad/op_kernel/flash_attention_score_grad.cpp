@@ -671,6 +671,9 @@ __global__ __aicore__ void flash_attention_score_grad(
                 } else if constexpr(DTemplateType == 1) {
                     INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_SAMEAB_L1_CUSTOM_IMPL(bfloat16_t, HasAttenMask, HasPse, HasDropOut, mm12Format, mock_layout,
                                         mm345Format, IsDeterministic, STemplateType::Aligned512, STemplateType::Aligned512, DTemplateType::Aligned64);
+                } else if constexpr(DTemplateType == 2) {
+                    INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_SAMEAB_L1_CUSTOM_IMPL(bfloat16_t, HasAttenMask, HasPse, HasDropOut, mm12Format, mock_layout,
+                                        mm345Format, IsDeterministic, STemplateType::Aligned512, STemplateType::Aligned512, DTemplateType::Aligned80);
                 } else if constexpr (DTemplateType == 5) {
                     INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_SAMEAB_L1_CUSTOM_IMPL(bfloat16_t, HasAttenMask, HasPse, HasDropOut, mm12Format, mock_layout,
                                         mm345Format, IsDeterministic, STemplateType::Aligned512, STemplateType::Aligned512, DTemplateType::Aligned128);

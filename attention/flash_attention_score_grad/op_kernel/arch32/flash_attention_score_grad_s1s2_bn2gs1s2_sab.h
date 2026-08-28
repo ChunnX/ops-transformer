@@ -173,13 +173,13 @@ public:
 
     using aType1 = typename AscendC::Conditional<
         S1TEMPLATETYPE == STemplateType::Aligned512 && S2TEMPLATETYPE == STemplateType::Aligned512
-            && (DTEMPLATETYPE == DTemplateType::Aligned128 || DTEMPLATETYPE == DTemplateType::Aligned192 || DTEMPLATETYPE == DTemplateType::Aligned64),
+            && (DTEMPLATETYPE == DTemplateType::Aligned128 || DTEMPLATETYPE == DTemplateType::Aligned192 || DTEMPLATETYPE == DTemplateType::Aligned64 || DTEMPLATETYPE == DTemplateType::Aligned80),
         MatmulType<TPosition::TSCM, CubeFormat::ND, T1, false, LayoutMode::NONE, true>,
         MatmulType<TPosition::GM, CubeFormat::ND, T1, false, LayoutMode::NONE, true>>::type;
 
     using bType1 = typename AscendC::Conditional<
         S1TEMPLATETYPE == STemplateType::Aligned512 && S2TEMPLATETYPE == STemplateType::Aligned512
-            && (DTEMPLATETYPE == DTemplateType::Aligned128 || DTEMPLATETYPE == DTemplateType::Aligned192 || DTEMPLATETYPE == DTemplateType::Aligned64),
+            && (DTEMPLATETYPE == DTemplateType::Aligned128 || DTEMPLATETYPE == DTemplateType::Aligned192 || DTEMPLATETYPE == DTemplateType::Aligned64 || DTEMPLATETYPE == DTemplateType::Aligned80),
         MatmulType<TPosition::TSCM, CubeFormat::ND, T1, true, LayoutMode::NONE, true>,
         MatmulType<TPosition::GM, CubeFormat::ND, T1, true, LayoutMode::NONE, true>>::type;
     using cType1 = MatmulType<TPosition::GM, MM_OUT_FORMAT, T2>;
@@ -187,39 +187,41 @@ public:
 
     using aType2 = typename AscendC::Conditional<
         S1TEMPLATETYPE == STemplateType::Aligned512 && S2TEMPLATETYPE == STemplateType::Aligned512
-            && (DTEMPLATETYPE == DTemplateType::Aligned128 || DTEMPLATETYPE == DTemplateType::Aligned192 || DTEMPLATETYPE == DTemplateType::Aligned64),
+            && (DTEMPLATETYPE == DTemplateType::Aligned128 || DTEMPLATETYPE == DTemplateType::Aligned192 || DTEMPLATETYPE == DTemplateType::Aligned64 || DTEMPLATETYPE == DTemplateType::Aligned80),
         MatmulType<TPosition::TSCM, MM_OUT_FORMAT, T1, true, LayoutMode::NONE, true>,
         MatmulType<TPosition::GM, MM_OUT_FORMAT, T1, true, LayoutMode::NONE, true>>::type;
 
     using bType2 = typename AscendC::Conditional<
         S1TEMPLATETYPE == STemplateType::Aligned512 && S2TEMPLATETYPE == STemplateType::Aligned512
-            && (DTEMPLATETYPE == DTemplateType::Aligned128 || DTEMPLATETYPE == DTemplateType::Aligned192 || DTEMPLATETYPE == DTemplateType::Aligned64),
+            && (DTEMPLATETYPE == DTemplateType::Aligned128 || DTEMPLATETYPE == DTemplateType::Aligned192 || DTEMPLATETYPE == DTemplateType::Aligned64 || DTEMPLATETYPE == DTemplateType::Aligned80),
         MatmulType<TPosition::TSCM, CubeFormat::ND, T1, false, LayoutMode::NONE, true>,
         MatmulType<TPosition::GM, CubeFormat::ND, T1, false, LayoutMode::NONE, true>>::type;
     using cType2 = MatmulType<TPosition::GM, MM2_OUT_FORMAT, float>;
     using biasType2 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
-    constexpr static MatmulConfig mm12TemplateParam = 
-        (S1TEMPLATETYPE == STemplateType::Aligned512 && 
-        S2TEMPLATETYPE == STemplateType::Aligned512 && 
+    constexpr static MatmulConfig mm12TemplateParam =
+        (S1TEMPLATETYPE == STemplateType::Aligned512 &&
+        S2TEMPLATETYPE == STemplateType::Aligned512 &&
         (DTEMPLATETYPE == DTemplateType::Aligned192))
         ? CFG_DIS_UNIT_FLAG_EXCEED
         : SAB_NORM_DISABLE_INIT;
     using mm1Type = matmul::MatmulImpl<aType1, bType1, cType1, biasType1, mm12TemplateParam>;
     mm1Type mm1;
-    constexpr static MatmulConfig mm34TemplateParam = 
-        (S1TEMPLATETYPE == STemplateType::Aligned512 && 
-        S2TEMPLATETYPE == STemplateType::Aligned512 && 
-        (DTEMPLATETYPE == DTemplateType::Aligned128 || 
-        DTEMPLATETYPE == DTemplateType::Aligned192 || 
-        DTEMPLATETYPE == DTemplateType::Aligned64))
+    constexpr static MatmulConfig mm34TemplateParam =
+        (S1TEMPLATETYPE == STemplateType::Aligned512 &&
+        S2TEMPLATETYPE == STemplateType::Aligned512 &&
+        (DTEMPLATETYPE == DTemplateType::Aligned128 ||
+        DTEMPLATETYPE == DTemplateType::Aligned192 ||
+        DTEMPLATETYPE == DTemplateType::Aligned64 ||
+        DTEMPLATETYPE == DTemplateType::Aligned80))
         ? CFG_DIS_UNIT_FLAG_EXCEED
         : SAB_NORM_DISABLE_INIT;
-    
+
     using modeTypeMm = typename AscendC::Conditional<
         (MM2_OUT_FORMAT == CubeFormat::NZ &&
-        !(DTEMPLATETYPE == DTemplateType::Aligned128 || 
-        DTEMPLATETYPE == DTemplateType::Aligned192 || 
-        DTEMPLATETYPE == DTemplateType::Aligned64)),
+        !(DTEMPLATETYPE == DTemplateType::Aligned128 ||
+        DTEMPLATETYPE == DTemplateType::Aligned192 ||
+        DTEMPLATETYPE == DTemplateType::Aligned64 ||
+        DTEMPLATETYPE == DTemplateType::Aligned80)),
         matmul::MatmulImpl<aType2, bType2, cType2, biasType2, mm34TemplateParam, MatmulCallBackFunc<DataCopyOutForNz>>,
         matmul::MatmulImpl<aType2, bType2, cType2, biasType2, mm34TemplateParam>>::type;
     modeTypeMm mm3;
@@ -883,6 +885,16 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::InitTscm
             dxL1Tensor = dsBufL1.Get<T1>();
             kL1Tensor = keyBufL1.Get<T1>();
             vL1Tensor = keyBufL1.Get<T1>();
+        } else if constexpr (DTEMPLATETYPE == DTemplateType::Aligned80) {
+            // d=80: keyBufL1 128KB 承载 mm1 的 k/v 与 MMDqkv 的 key/query(dx) ND 块(128*80 NZ 对齐步长);
+            // dsBufL1 384KB 承载 Aligned192 式 slice 布局的 ds(NZ, 最大 256KB) 与 mm1 的 q/dx 块
+            pipe->InitBuffer(keyBufL1, 512 * 128 * 2);
+            pipe->InitBuffer(dsBufL1, 512 * 384 * 2);
+            qL1Tensor = dsBufL1.Get<T1>();
+            dsL1Tensor = dsBufL1.Get<T1>();
+            dxL1Tensor = dsBufL1.Get<T1>();
+            kL1Tensor = keyBufL1.Get<T1>();
+            vL1Tensor = keyBufL1.Get<T1>();
         } else if constexpr (DTEMPLATETYPE == DTemplateType::Aligned192) {
             pipe->InitBuffer(keyBufL1, 512 * 256 * 2);
             pipe->InitBuffer(dsBufL1, 512 * 256* 2);
@@ -1437,7 +1449,7 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::ComputeM
     event_t eventIdMte2ToMte1 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE1));
     event_t eventIdMToFixpipe = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::M_FIX));
     event_t eventIdFixpipeToM = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::FIX_M));
-    if (DTEMPLATETYPE == DTemplateType::Aligned64){
+    if (DTEMPLATETYPE == DTemplateType::Aligned64 || DTEMPLATETYPE == DTemplateType::Aligned80){
         // mm-dyv
         mm1.SetOrgShape(s1_size, dbParam.actualS2Len, specify_for_v_s1Stride, specify_for_v_s2Stride, dbParam.s2CvExtendAlign);
         for (uint32_t m = 0; m < mLoops; m++) {
@@ -1963,7 +1975,7 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::ComputeM
     uint32_t valueDTail = value_d - (valueDLoops - 1) * dSplitSize;
     uint32_t gmBaseBlockOffset = 0;
     
-    if (DTEMPLATETYPE == DTemplateType::Aligned192) {
+    if (DTEMPLATETYPE == DTemplateType::Aligned192 || DTEMPLATETYPE == DTemplateType::Aligned80) {
         ///////////////////////////////////////////////////////////////
         // Matmal4 dq
         ///////////////////////////////////////////////////////////////
@@ -3222,7 +3234,7 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::Process(
             // ---非确定性计算---
             if constexpr (IS_DTM != ENABLE) {
                 if ASCEND_IS_AIC {
-                    if constexpr(!(DTEMPLATETYPE == DTemplateType::Aligned128 || DTEMPLATETYPE == DTemplateType::Aligned192 || DTEMPLATETYPE == DTemplateType::Aligned64)) {
+                    if constexpr(!(DTEMPLATETYPE == DTemplateType::Aligned128 || DTEMPLATETYPE == DTemplateType::Aligned192 || DTEMPLATETYPE == DTemplateType::Aligned64 || DTEMPLATETYPE == DTemplateType::Aligned80)) {
                         AscendC::SetFlag<HardEvent::MTE1_MTE2>(static_cast<int32_t>(eventIdMte1ToMte2));
                         AscendC::WaitFlag<HardEvent::MTE1_MTE2>(static_cast<int32_t>(eventIdMte1ToMte2));
                     }

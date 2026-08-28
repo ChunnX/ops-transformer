@@ -101,6 +101,7 @@ enum class STemplateTypeSab {
 enum class DTemplateTypeSab {
     NonAligned = 0,
     Aligned64 = 1,
+    Aligned80 = 2,
     Aligned128 = 5,
     Aligned192 = 6,
     DTemplateBottom
@@ -229,6 +230,8 @@ uint64_t FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::GetTilingKey() const
         s2TemplateType = STemplateTypeSab::Aligned512;
         if (fBaseParams.d == 64) {
             dTemplateType = DTemplateTypeSab::Aligned64;
+        } else if (fBaseParams.d == 80) {
+            dTemplateType = DTemplateTypeSab::Aligned80;
         } else if (fBaseParams.d == SPECIAL_HEADDIM_128) {
             dTemplateType = DTemplateTypeSab::Aligned128;
         } else if (fBaseParams.d > SPECIAL_HEADDIM_128 && fBaseParams.d <= SPECIAL_HEADDIM_256) {
@@ -1168,10 +1171,30 @@ void FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::AdjustCvInner()
 void FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::ChooseL1Custom()
 {
     // enable L1 custom + constant propagation
-    // disable: pse, drop, dtm, fp32, tnd
+    // disable: pse, drop, dtm, fp32
     // support: long sequence, s1/s2CvInner=512, special d
+    // TND: 仅 d=80 且逐 batch 等长（t1==t2）时放开，其余 d 的 TND 仍走非 L1 custom 路径
 
-    bool inputCond = fBaseParams.layoutType != INPUT_FORMAT_TND && fBaseParams.queryType == ge::DT_BF16 &&
+    bool tndCond = fBaseParams.layoutType != INPUT_FORMAT_TND;
+    if (!tndCond && fBaseParams.d == 80) {
+        tndCond = fBaseParams.t1 == fBaseParams.t2;
+        auto actualSeqQlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_LEN);
+        auto actualSeqKvlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_KV_LEN);
+        if (tndCond && actualSeqQlenTensor != nullptr && actualSeqKvlenTensor != nullptr) {
+            auto &actualSeqQLenShape = actualSeqQlenTensor->GetShape().GetStorageShape();
+            const int64_t *actQValue = actualSeqQlenTensor->GetData<int64_t>();
+            const int64_t *actKvValue = actualSeqKvlenTensor->GetData<int64_t>();
+            for (int64_t i = 0; i < actualSeqQLenShape.GetDim(0); ++i) {
+                if (actQValue[i] != actKvValue[i]) {
+                    tndCond = false;
+                    break;
+                }
+            }
+        } else {
+            tndCond = false;
+        }
+    }
+    bool inputCond = tndCond && fBaseParams.queryType == ge::DT_BF16 &&
                      (fBaseParams.s1 >= 512 && fBaseParams.s2 >= 512);                              // long sequence
     bool optionalInputCond = fBaseParams.pseOptional != NORMAL_TENSOR && fBaseParams.keepProb >= 1; // no pse, no drop
     bool dtmCond = context_->GetDeterministic() != 1;
@@ -1193,6 +1216,13 @@ void FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::ChooseL1Custom()
                 fBaseParams.enableL1Custom = true;
                 fBaseParams.mm1IsNZOut = true;
                 fBaseParams.mm2IsNZOut = false;
+            }
+        } else if (fBaseParams.d == 80) {
+            // d=80: TSCM A/B + NZ 输出（mm1/mm2 双 NZ），L1 布局 keyBuf 128KB + dsBuf 384KB
+            if (fBaseParams.rope_d == 0) {  // L1 custom d=80 路径暂不支持 rope
+                fBaseParams.enableL1Custom = true;
+                fBaseParams.mm1IsNZOut = true;
+                fBaseParams.mm2IsNZOut = true;
             }
         }
         OP_LOGD(context_, "FAGTiling sameAB enable L1 custom is %d, mm1IsNZOut is %d, mm2IsNZOut is %d.",
