@@ -15,6 +15,7 @@ import sys
 import time
 import traceback
 import unicodedata
+from datetime import datetime
 import torch
 import socket
 import torch_npu
@@ -655,6 +656,14 @@ def get_golden_cache_paths(cache_key):
         os.path.join(cache_case_dir, "input_data.pt"),
     )
 
+def build_golden_cache_case_name():
+    shape = (
+        f"w4a8_ep{ep_world_size}_bs{bs}_h{h}_n{n}_"
+        f"topk{k}_local{local_moe_expert_num}"
+    )
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    return f"{shape}_{timestamp}"
+
 def golden_cache_payload_matches(saved_payload, cache_payload):
     if not isinstance(saved_payload, dict):
         return False
@@ -741,6 +750,8 @@ def load_or_generate_input_data():
             "golden_generate_seconds": golden_elapsed_time,
             "input_summary": summarize_input_data(input_data),
         }
+        cache_case_name = build_golden_cache_case_name()
+        cache_case_dir, metadata_path, data_path = get_golden_cache_paths(cache_case_name)
         save_cached_input_data(input_data, metadata_path, data_path, metadata)
         print(f"[INFO] Golden cache saved: {cache_case_dir}")
 
