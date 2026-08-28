@@ -219,7 +219,7 @@ cann_ops_transformer.quant_flash_attn(
 | p_scale | Tensor | 可选 | P的量化参数 | float32 | ND | (1,) | × |
 | sinks | Tensor | 可选 | 指定每batch中实际使用的序列长度，截断冗余运算 | float32 | ND | (Q_N,) | × |
 | attn_mask | Tensor | 可选 | 掩码矩阵 | int8/uint8/bool | ND | (2048, 2048) | × |
-| metadata | Tensor | 可选 | `quant_flash_attn_metadata`生成的任务切分结果，传入后可优化调度 | int32 | ND | (2, max_schedule_size) | x |
+| metadata | Tensor | 可选 | `quant_flash_attn_metadata`生成的任务切分结果，传入后可优化调度 | int32 | ND | (max_schedule_size,) | x |
 | softmax_scale | float | 可选 | 可显式设置缩放因子，覆盖默认计算 | float32 | - | - | - |
 | mask_mode | int/MaskMode | 可选 | 掩码模式，支持传入枚举或对应 int 值，枚举定义见「mask_mode 枚举」 | int32 | - | - | - |
 | win_left | int | 可选 | window左界限 | int32 | - | - | - |
@@ -238,7 +238,7 @@ cann_ops_transformer.quant_flash_attn(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 | 非连续Tensor |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| metadata | Tensor | 必选 | quant_flash_attn的任务切分数据 | int32 | ND | (2, max_schedule_size) | x |
+| metadata | Tensor | 必选 | quant_flash_attn的任务切分数据 | int32 | ND | shape根据batch_size和num_heads_kv动态计算 | x |
 
 ### quant_flash_attn
 
