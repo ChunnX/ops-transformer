@@ -70,11 +70,7 @@ ge::graphStatus BlockAttnResPrepareBaseTiling::GetPlatformInfo()
     platform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, l0BSize_);
     platform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, l0CSize_);
     systemWorkspaceSize_ = platform.GetLibApiWorkSpaceSize();
-    OP_CHECK_IF(aicCoreNum_ == 0, OP_LOGE(context_->GetNodeName(), "AIC core number is zero"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(aivCoreNum_ != aicCoreNum_ * AIV_CORE_NUM_PER_AIC,
-                OP_LOGE(context_->GetNodeName(), "AIV core number must be twice the AIC core number: AIC=%lu, AIV=%lu",
-                        aicCoreNum_, aivCoreNum_),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(aivCoreNum_ == 0, OP_LOGE(context_->GetNodeName(), "AIV core number is zero"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         aicCoreNum_ > std::numeric_limits<uint16_t>::max() || aivCoreNum_ > std::numeric_limits<uint16_t>::max(),
         OP_LOGE(context_->GetNodeName(), "core count exceeds uint16 range: AIC=%lu, AIV=%lu", aicCoreNum_, aivCoreNum_),
