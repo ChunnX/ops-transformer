@@ -190,6 +190,14 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::InitTilingData(const QLIV2TilingDat
 
     constInfo.kHeadNum = K_HEAD_NUM;
     constInfo.headDim = HEAD_DIM;
+    constInfo.keyStride0 = tilingData->keyStride0;
+    if (constInfo.keyStride0 == 0) {
+        constInfo.keyStride0 = constInfo.kCacheBlockSize * constInfo.kHeadNum * constInfo.headDim;
+    }
+    constInfo.keyDequantScaleStride0 = tilingData->keyDequantScaleStride0;
+    if (constInfo.keyDequantScaleStride0 == 0) {
+        constInfo.keyDequantScaleStride0 = constInfo.kCacheBlockSize;
+    }
 
     constInfo.mBaseSize = M_BASE_SIZE;
     constInfo.s2BaseSize = S2_BASE_SIZE;

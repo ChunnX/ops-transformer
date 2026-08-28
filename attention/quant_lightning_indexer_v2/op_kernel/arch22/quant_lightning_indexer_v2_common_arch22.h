@@ -102,6 +102,8 @@ struct ConstInfo {
     uint64_t qSeqSize = 1ULL;          // q最大S长度
     uint32_t kCacheBlockSize = 0;      // PA场景的block size
     uint32_t maxBlockNumPerBatch = 0;  // PA场景的最大单batch block number
+    uint32_t keyStride0 = 0;           // PA 0-axis stride of key (elements)
+    uint32_t keyDequantScaleStride0 = 0; // PA 0-axis stride of key scale (elements)
     LI_LAYOUT outputLayout;            // 输出的格式
     bool attenMaskFlag = false;
     uint32_t cmpRatio = 1;             // 压缩率
