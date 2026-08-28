@@ -139,7 +139,6 @@ std::tuple<at::Tensor, at::Tensor> ConstructMixedQuantSparseFlashMlaAttenOutTens
         softmaxLseSize = {0};
     }
     at::Tensor softmaxLse = at::empty(softmaxLseSize, q.options().dtype(torch::kFloat32));
-    std::cout << "softmaxLse: " << softmaxLse << std::endl;
 
     return std::tuple<at::Tensor, at::Tensor>(attenOut, softmaxLse);
 }

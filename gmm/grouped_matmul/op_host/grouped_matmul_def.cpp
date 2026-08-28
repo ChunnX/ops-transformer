@@ -941,7 +941,7 @@ public:
             .ExtendCfgInfo("coreType.value", "AiCore")
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
             .ExtendCfgInfo("opFile.value", "grouped_matmul_apt");
-        // this->AICore().AddConfig("ascend950", config950);
+        this->AICore().AddConfig("ascend950", config950);
 
         OpAICoreConfig config_kirin = GetKirinCoreConfig();
         this->AICore().AddConfig("kirinx90", config_kirin);
