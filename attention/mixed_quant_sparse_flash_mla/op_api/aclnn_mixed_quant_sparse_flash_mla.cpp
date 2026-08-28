@@ -59,9 +59,6 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaGetWorkspaceSize(
     MixedQuantSparseFlashMlaKvTensorPreProcess(cmpKvOptional, "cmp_kv");
     MixedQuantSparseFlashMlaProcessSinks(sinksOptional);
 
-    const aclTensor *placeHolder = nullptr;
-    const aclTensor *tempTensor = nullptr;
-
     aclnnStatus ret = CheckTensorContiguous(oriKvOptional, cmpKvOptional);
     if (ret != ACLNN_SUCCESS && NnopbaseSupportTensorV2 == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER, "When tensor is not contiguous, opbase package version check failed");
@@ -73,12 +70,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaGetWorkspaceSize(
         sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional, cmpTopkLengthOptional,
         sinksOptional, metadataOptional, quantMode, ropeHeadDim, softmaxScale, cmpRatio, oriMaskMode, cmpMaskMode,
         oriWinLeft, oriWinRight, layoutQOptional, layoutKvOptional, topkValueMode, returnSoftmaxLse, attnOut,
-        placeHolder, workspaceSize, executor);
-
-    if (!returnSoftmaxLse) {
-        aclDestroyTensor(tempTensor);
-    }
-
+        softmaxLseOptional, workspaceSize, executor);
     return ret;
 }
 
