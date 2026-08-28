@@ -50,9 +50,7 @@ class AlltoAllAllGatherBatchMatMulE2ESpec:
     """TestSpec for mindspeed.npu_alltoall_allgather_bmm (E2E multi-device path)."""
 
     @staticmethod
-    def golden(
-        cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True
-    ):
+    def golden(cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True):
         return _load_impl_module("golden").a2a_ag_bmm_e2e_golden(
             cpu_inputs_per_rank, attrs, rank, ws, dist_avail
         )

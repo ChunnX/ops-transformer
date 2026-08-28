@@ -46,9 +46,7 @@ class AlltoAllMatmulE2ESpec:
     """TestSpec for torch_npu.npu_all_to_all_matmul (E2E multi-device path)."""
 
     @staticmethod
-    def golden(
-        cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True
-    ):
+    def golden(cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True):
         return _load_impl_module("golden").all_to_all_matmul_e2e_golden(
             cpu_inputs_per_rank, attrs, rank, ws, dist_avail
         )

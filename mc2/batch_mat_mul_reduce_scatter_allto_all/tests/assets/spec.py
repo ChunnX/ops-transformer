@@ -50,9 +50,7 @@ class BatchMatMulReduceScatterAlltoAllE2ESpec:
     """TestSpec for mindspeed.npu_bmm_reducescatter_alltoall (E2E multi-device path)."""
 
     @staticmethod
-    def golden(
-        cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True
-    ):
+    def golden(cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True):
         return _load_impl_module("golden").bmm_rs_a2a_e2e_golden(
             cpu_inputs_per_rank, attrs, rank, ws, dist_avail
         )

@@ -49,9 +49,7 @@ class QuantGroupedMatMulAlltoAllvE2ESpec:
     """TestSpec for torch_npu.npu_quant_gmm_alltoallv (E2E multi-device path)."""
 
     @staticmethod
-    def golden(
-        cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True
-    ):
+    def golden(cpu_inputs_per_rank, attrs, rank=None, ws=None, dist_avail=True):
         return _load_impl_module("golden").quant_grouped_mat_mul_allto_allv_e2e_golden(
             cpu_inputs_per_rank, attrs, rank, ws, dist_avail
         )

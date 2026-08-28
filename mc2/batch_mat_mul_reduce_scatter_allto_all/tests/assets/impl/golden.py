@@ -242,9 +242,11 @@ def bmm_rs_a2a_cpu_golden(thread_contexts, device_ids, ep_ws, tp_ws, world_size)
             # reduce_scatter: cyclic accumulation with bf16 truncation after each step
             # (matching original TTK mc2_golden.py — simulates HCCL bf16 reduce)
             start = (local_idx + 1) % n_tp
-            acc = all_parts[start][
-                local_idx * E_div_ep : (local_idx + 1) * E_div_ep
-            ].clone().float()
+            acc = (
+                all_parts[start][local_idx * E_div_ep : (local_idx + 1) * E_div_ep]
+                .clone()
+                .float()
+            )
             for step in range(1, n_tp):
                 src_idx = (start + step) % n_tp
                 src_chunk = all_parts[src_idx][
