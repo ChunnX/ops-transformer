@@ -30,9 +30,11 @@
 #include "arch35/moe_v3_gather_out_mxfp8.h"
 #include "arch35/moe_v3_gather_out_mxfp4.h"
 #include "arch35/moe_v3_gather_mxfp4_quant.h"
+#include "arch35/moe_v3_counting_sort_full_load_unquantized.h"
 #include "arch35/moe_v3_full_load_unquantized_arch35.h"
 #include "arch35/moe_v3_full_load_dynamic_quant_arch35.h"
 #include "arch35/moe_v3_full_load_static_quant_arch35.h"
+#include "arch35/moe_v3_counting_sort_unfull_load.h"
 #include "arch35/moe_v3_row_idx_gather_droppad_arch35.h"
 #include "arch35/moe_v3_gather_out_droppad_arch35.h"
 #include "arch35/moe_v3_topk_weight_out.h"
@@ -160,7 +162,34 @@
 #define MOE_INIT_ROUTING_V3_FULLLOAD_STATIC_QUANT 210000  // 全载、静态量化
 #define MOE_INIT_ROUTING_V3_FULLLOAD_DYNAMIC_QUANT 220000 // 全载、动态量化
 
+/*
+ * CountingSort 性能模板（计数排序）
+ */
+#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED 400000   // 模板1、非量化、GATHER
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED 500000  // 模板2、非量化、GATHER
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT 510000 // 模板2、静态量化、GATHER
+// rowIdxType=1(Scatter) 变体：base + ROWIDX_TYPE_TILINGKEY_BASE(1000)。
+// kernel 内部按运行时 rowIdxType_ 分流(GATHER/SCATTER)，此处枚举 key 仅为让编译系统生成对应 binary。
+#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_S 401000   // 模板1、非量化、SCATTER
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_S 501000  // 模板2、非量化、SCATTER
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_S 511000 // 模板2、静态量化、SCATTER
+// dropPadMode=1 变体：base + DROP_MODE_TILINGKEY_BASE(100)。
+// 算子契约(ValidateQuantMode/ValidateRowIdxType)强制 dropPad => quant_mode=-1 且 GATHER，
+// 因此仅非量化 GATHER 的 dropPad key 可达。
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_D 500100 // 模板2、非量化、GATHER、dropPad
+
 #define EMPTY_TENSOR 3000000
+
+/*
+ * PERF 阶段占比测量开关（临时，仅影响 11000000 SORTMULTICORE_GATHER 链）：
+ *   PERF_STAGE5_ENABLE=0 -> 跳过阶段5 x搬运(MoeGatherOut)
+ *   PERF_STAGE3_ENABLE=0 -> 跳过阶段3 RowIdxGather
+ *   PERF_STAGE2_ENABLE=0 -> 跳过阶段2 ExpertTokensCount
+ * 差分：gather=基线-Run2；rowIdx=Run2-Run3；count=Run3-Run4；sort=Run4
+ */
+#define PERF_STAGE5_ENABLE 0
+#define PERF_STAGE3_ENABLE 0
+#define PERF_STAGE2_ENABLE 0
 
 using namespace AscendC;
 using namespace MoeInitRoutingV3;
@@ -192,6 +221,17 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
     auto t = &tilingData;
     const bool isInt8DynamicQuant = t->quantMode == MOE_INIT_ROUTING_V3_QUANT_MODE_DYNAMIC;
     const bool isInt4DynamicQuant = t->quantMode == MOE_INIT_ROUTING_V3_QUANT_MODE_INT4_DYNAMIC;
+
+    // CutOrigin 拆分（模板2）可达 key 分类：GATHER / SCATTER / dropPad。
+    // A/B 阶段完成后不再 return，需让 Stage3/Stage5 的 dispatch（以 SORTONECORE_*/SORTMULTICORE_* 为条件）
+    // 命中对应 CS key；此处预判以复用（PERF_STAGE3_ENABLE/PERF_STAGE5_ENABLE 运行时或门）。
+    const bool isCsCutOriginGather = TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED) ||
+                                     TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT);
+    const bool isCsCutOriginScatter = TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_S) ||
+                                      TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_S);
+    const bool isCsCutOriginDropPad = TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_D);
+    const bool isCsCutOriginUnquant = TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED) ||
+                                      TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED_S);
 
     if (TILING_KEY_IS(EMPTY_TENSOR)) {
         if (GetBlockIdx() != 0) {
@@ -273,10 +313,8 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             if (isInt8DynamicQuant) {
                 TPipe fullLoadPipe;
                 MoeV3FullLoadDynamicQuant<DTYPE_X> fullLoadOp;
-                fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx,
-                                expertTokensCountOrCumsum, expandedScale,
-                                nullptr, nullptr,
-                                userWS, t, &fullLoadPipe);
+                fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum,
+                                expandedScale, nullptr, nullptr, userWS, t, &fullLoadPipe);
                 fullLoadOp.Process();
                 fullLoadPipe.Destroy();
             }
@@ -285,10 +323,8 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             if (isInt4DynamicQuant) {
                 TPipe fullLoadPipe;
                 MoeV3FullLoadDynamicQuant<DTYPE_X, int4b_t> fullLoadOp;
-                fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx,
-                                expertTokensCountOrCumsum, expandedScale,
-                                nullptr, nullptr,
-                                userWS, t, &fullLoadPipe);
+                fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum,
+                                expandedScale, nullptr, nullptr, userWS, t, &fullLoadPipe);
                 fullLoadOp.Process();
                 fullLoadPipe.Destroy();
             }
@@ -313,6 +349,47 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 #endif
         return;
+    }
+
+    // CountingSort 性能模板（模板1 FullLoad / 模板2 CutOrigin）
+    // 类型守卫：仅承接 X∈{bf16,fp16,fp32} 的非量化/静态量化场景（dynamic 已被 tiling IsCountingSortApplicable 排除），
+    // 其余扩展类型（fp8/fp4/hifloat8/int8 X 等）回退到原分阶段路径。
+    if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED) ||
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED_S)) {
+        if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
+                      IsSameType<DTYPE_X, float>::value) {
+            TPipe csPipe;
+            MoeV3CountingSortFullLoadUnquantized<DTYPE_X> csOp;
+            csOp.Init(x, expertIdx, scale, offset, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
+                      userWS, t, &csPipe);
+            csOp.Process();
+            csPipe.Destroy();
+        }
+#if (__NPU_ARCH__ == 3510)
+        SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+#endif
+        return;
+    } else if (isCsCutOriginGather || isCsCutOriginScatter || isCsCutOriginDropPad) {
+        // CutOrigin 拆分（模板2）：单类 MoeV3CutOriginPhaseAB 一个 Process 内串行执行
+        // Phase A（Filter + Count）→ Phase B（Offset + 离散搬出 + bridge 产物）。
+        // 可达 key：unquant GATHER（500000）、unquant SCATTER（501000）、dropPad（500100）、static（510000/511000），
+        // dynamic 已被 tiling 排除。A/B 完成过滤计数 + 离散搬出（sortedRowIdx / expandedExpertIdx / expertTotalCount）
+        // 后 **不再 return**，落入下方既有 Stage3（RowIdxGather）+ Stage5（搬出/量化）的 dispatch。
+        // Phase A+B 单类：Filter（过滤 [expertStart, expertEnd) 生成 pairs + 逐核 expertCount）
+        // → Offset + 离散搬出 → sortedRowIdx（GATHER）/ expandedRowIdx（SCATTER）+ expertTotalCount；
+        // dropPad（500100）额外写 expandedExpertIdx + expertIdxValue。
+        // Process 内部已处理所有 SyncAll 栅栏（A→B、B 内、B→Stage3/Stage5），apt 侧无需再 SyncAll。
+        // 类型守卫移除：Phase AB 模板不依赖 DTYPE_X（仅操作 int32 expertIdx/pairs），所有 dtype 均可执行；
+        // Stage3/Stage5 的 dtype 守卫在各自 dispatch 点自行处理。
+        TPipe phasePipe;
+        MoeV3CutOriginPhaseAB<DTYPE_X> phaseOp;
+        phaseOp.Init(expertIdx, expandedRowIdx, expertTokensCountOrCumsum, userWS, t, &phasePipe);
+        phaseOp.Process();
+        phasePipe.Destroy();
+#if (__NPU_ARCH__ == 3510)
+        SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+#endif
+        // 注意：这里不 return，继续落入 Stage3/Stage5 复用既有 dispatch。
     }
 
     // 1.排序阶段，计算SortedExpertIdx和SortedRowIdx。若rowIdxType=1(Scatter)，则SortedRowIdx直接写到输出expandedRowIdx。
@@ -383,11 +460,13 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
     sortPipe.Destroy();
 
     // 2.TokensCount阶段，计算输出expertTokensCountOrCumsum
+#if PERF_STAGE2_ENABLE
     TPipe histogramPipe;
     ExpertTokensCount countOp;
     countOp.Init(expandedRowIdx, expertTokensCountOrCumsum, userWS, t, &histogramPipe);
     countOp.Process();
     histogramPipe.Destroy();
+#endif
 
     // 3.若rowIdxType=0(Gather)，映射计算输出expandedRowIdx；否则该输出在阶段1就被写出
     // GATHER模式：直接调用RowIdxGather生成expandedRowIdx
@@ -417,10 +496,15 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP4QUANT_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP4QUANT_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8PERBLOCK_QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8PERBLOCK_QUANT_GATHER)) {
-        RowIdxGather rowIdxGatherOp;
-        rowIdxGatherOp.Init(expandedRowIdx, userWS, t);
-        rowIdxGatherOp.Process();
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8PERBLOCK_QUANT_GATHER) ||
+        isCsCutOriginGather) {
+        // CutOrigin GATHER（500000/510000）：RowIdxGather 读 sortedRowIdx + expertTotalCount 生成 expandedRowIdx。
+        // PERF_STAGE3_ENABLE 仅影响 11000000 SORTMULTICORE_GATHER 链，CS 需无条件执行（运行时或门）。
+        if (PERF_STAGE3_ENABLE || isCsCutOriginGather) {
+            RowIdxGather rowIdxGatherOp;
+            rowIdxGatherOp.Init(expandedRowIdx, userWS, t);
+            rowIdxGatherOp.Process();
+        }
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_SCATTER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_SCATTER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8QUANT_SCATTER) ||
@@ -436,8 +520,12 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             rowIdxGatherOp.Init(expandedRowIdx, userWS, t);
             rowIdxGatherOp.Process();
         }
+    } else if (isCsCutOriginScatter) {
+        // CS SCATTER（501000/511000）：expandedRowIdx 已由 Phase B 离散搬出直接写到输出，
+        // 跳过 Stage3（Stage5 SCATTER 分支直接读输出 expandedRowIdx 作 subRowIdx）。
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER_DROP) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP)) {
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP) ||
+               isCsCutOriginDropPad) {
         // GATHER索引 + DropPad
         if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
                       IsSameType<DTYPE_X, float32_t>::value || IsSameType<DTYPE_X, int8_t>::value ||
@@ -466,7 +554,8 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
     if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_SCATTER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_SCATTER)) {
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_SCATTER) ||
+        isCsCutOriginUnquant) {
         if constexpr (IsSameType<DTYPE_EXPANDED_X, fp8_e4m3fn_t>::value ||
                       IsSameType<DTYPE_EXPANDED_X, fp8_e5m2_t>::value) {
             TPipe gatherPipe;
@@ -481,16 +570,21 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             gatherOp.Process();
             gatherPipe.Destroy();
         } else {
-            // 非量化
-            TPipe gatherPipe;
-            MoeGatherOut<DTYPE_X> gatherOp;
-            gatherOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
-            gatherOp.Process();
-            gatherPipe.Destroy();
+            // CutOrigin 非量化（500000/501000）：MoeGatherOut 读 subRowIdx（GATHER=sortedRowIdx 切片 /
+            // SCATTER=输出 expandedRowIdx）。PERF_STAGE5_ENABLE 仅影响 11000000 SORTMULTICORE_GATHER 链，CS 需无条件执行。
+            if (PERF_STAGE5_ENABLE || isCsCutOriginUnquant) {
+                // 非量化
+                TPipe gatherPipe;
+                MoeGatherOut<DTYPE_X> gatherOp;
+                gatherOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
+                gatherOp.Process();
+                gatherPipe.Destroy();
+            }
         }
-    // 5.直接搬运或是搬运的过程中对x进行量化
+        // 5.直接搬运或是搬运的过程中对x进行量化
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER_DROP) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP)) {
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP) ||
+               isCsCutOriginDropPad) {
         if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
                       IsSameType<DTYPE_X, float32_t>::value || IsSameType<DTYPE_X, int8_t>::value ||
                       IsSameType<DTYPE_X, hifloat8_t>::value) {
@@ -504,8 +598,11 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_STATICQUANT_GATHER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_STATICQUANT_SCATTER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_STATICQUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_STATICQUANT_SCATTER)) {
-        // 静态量化
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_STATICQUANT_SCATTER) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT_S)) {
+        // 静态量化（含 CutOrigin 510000/511000：MoeV3GatherStaticQuant 读 subRowIdx，GATHER=sortedRowIdx 切片 /
+        // SCATTER=输出 expandedRowIdx）
         if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
                       IsSameType<DTYPE_X, float>::value) {
             TPipe gatherPipe;
