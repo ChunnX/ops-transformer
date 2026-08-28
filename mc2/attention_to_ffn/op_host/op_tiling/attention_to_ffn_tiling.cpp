@@ -226,7 +226,8 @@ static bool CheckAndSetAttrs(gert::TilingContext *context, const char *nodeName,
         return false);
     if (config.allowMxQuantMode) {
         OP_TILING_CHECK(
-            *quantModePtr != 0 && *quantModePtr != 2 && !IsMxQuantMode(static_cast<uint32_t>(*quantModePtr)),
+            *quantModePtr != UNQUANT_MODE && *quantModePtr != DYNAMIC_QUANT_MODE &&
+            !IsMxQuantMode(static_cast<uint32_t>(*quantModePtr)),
             OP_LOGE_WITH_INVALID_ATTR(ATTN_FFN_INNER_DEBUG, "quant_mode", std::to_string(*quantModePtr).c_str(),
                                       "0, 2, 3, 4, 5, 6 or 7"),
             return false);

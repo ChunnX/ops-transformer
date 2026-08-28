@@ -45,6 +45,7 @@ constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 9U;
 constexpr size_t URMA_FLAG_SLOT_SIZE = 32U;
 constexpr size_t URMA_WORKSPACE_ALIGN = 32U;
 constexpr size_t SCALE_PARAM_PAD_SIZE = 128U;
+constexpr size_t MX_PARAM_PAD_SIZE = 256U;
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1U;
 constexpr size_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 64LL;
 
@@ -140,7 +141,7 @@ ge::graphStatus SetUrmaWorkspace(gert::TilingContext *context, AttentionToFfnV2T
         } else {
             outDataBytes = axisH * sizeof(int8_t);
         }
-        size_t hOutSizeAlign = (outDataBytes + 255U) / 256U * 256U;
+        size_t hOutSizeAlign = (outDataBytes + 255U) / MX_PARAM_PAD_SIZE * MX_PARAM_PAD_SIZE;
         size_t mxScaleNum = ((axisH + 31U) / 32U + 1U) / 2U * 2U;
         commuBytes = hOutSizeAlign + mxScaleNum;
     }
@@ -244,7 +245,7 @@ ge::graphStatus AttentionToFfnV2TilingFunc(gert::TilingContext *context)
                     return ge::GRAPH_FAILED);
     uint32_t quantMode = static_cast<uint32_t>(*quantModePtr);
 
-    const gert::StorageShape *scalesShape = context->GetOptionalInputShape(7U);
+    const gert::StorageShape *scalesShape = context->GetOptionalInputShape(7U); // scales输入索引
     bool isScales = scalesShape != nullptr && scalesShape->GetStorageShape().GetDimNum() != 0U;
     OP_TILING_CHECK(CheckQuantMode(context->GetNodeName(), quantMode, isScales) != ge::GRAPH_SUCCESS,
                     OP_LOGE(context->GetNodeName(), "quant mode validation failed"),

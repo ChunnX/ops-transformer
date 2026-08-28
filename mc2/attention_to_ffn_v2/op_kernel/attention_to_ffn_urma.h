@@ -297,7 +297,7 @@ AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::Init(GM_ADDR mc2Context,
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(layerIdGMTensor_);
     layerId_ = layerIdGMTensor_.GetValue(0);
 
-    expertIdsCnt_ = axisX_ * axisBS_ * axisK_;
+    expertIdsCnt_ = axisX_ * axisBS_ * (axisK_ + sharedExpertNum_);
     expertRankTableCnt_ = expertNum_ * expRankTableM_;
     layIdsExpRankTableOffset_ = layerId_ * expertRankTableCnt_;
     ffnNumAlignSize_ = Ceil(ffnNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
@@ -341,8 +341,9 @@ AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::Init(GM_ADDR mc2Context,
                     WIN_ALIGN;
     winInfoTableOffset_ = (sessionId_ * microBatchNum_ * infoTableLastDimNum_ + microBatchId_ * infoTableLastDimNum_) *
                           sizeof(int32_t);
-    winTokenDataOffset_ = (sessionId_ * microBatchNum_ * axisBS_ * (axisK_ + sharedExpertNum_) * axisHS_) +
-                          (microBatchId_ * axisBS_ * (axisK_ + sharedExpertNum_) * axisHS_);
+    winTokenDataOffset_ = (static_cast<uint64_t>(sessionId_) * microBatchNum_ * axisBS_ *
+                           (axisK_ + sharedExpertNum_) * axisHS_) +
+                          (static_cast<uint64_t>(microBatchId_) * axisBS_ * (axisK_ + sharedExpertNum_) * axisHS_);
 
     dataWorkspaceStride_ = Ceil(hCommuSize_, static_cast<uint64_t>(URMA_FLAG_SLOT_SIZE)) * URMA_FLAG_SLOT_SIZE;
     const uint64_t urmaWorkspaceOffset = tilingData->attentionToFfnV2Info.urmaWorkspaceOffset;
@@ -521,7 +522,8 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::Q
         PipeBarrier<PIPE_V>();
         ReduceMaxInplace(floatLocalAbsTemp, axisH_);
         SyncFunc<AscendC::HardEvent::V_S>();
-        dynamicScale = float(INT8_MAX_VALUE) / floatLocalAbsTemp.GetValue(0);
+        float maxAbs = floatLocalAbsTemp.GetValue(0);
+        dynamicScale = (maxAbs == 0.0f) ? 1.0f : float(INT8_MAX_VALUE) / maxAbs;
         SyncFunc<AscendC::HardEvent::S_V>();
         Muls(floatLocalTemp, floatLocalTemp, dynamicScale, axisH_);
         PipeBarrier<PIPE_V>();
@@ -548,6 +550,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::F
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
         expertRankTableGMTensor_[expRankTableOffset]);
     uint32_t rankCnt = expertRankTableGMTensor_.GetValue(expRankTableOffset);
+    if (rankCnt == 0) { return; }
     uint32_t rankOffset = (sessionId_ % rankCnt) * RANK_OFFSET_STRIDE + 1;
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
         expertRankTableGMTensor_[expRankTableOffset + rankOffset]);
@@ -892,7 +895,10 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
                     if (round == 0) {
                         SyncFunc<AscendC::HardEvent::V_S>();
                     }
-                    ffnStatusTensor_.SetValue(metaData.toRankId - static_cast<int32_t>(ffnStartRankId_), 1);
+                    int32_t ffnIdx = metaData.toRankId - static_cast<int32_t>(ffnStartRankId_);
+                    if (ffnIdx >= 0 && static_cast<uint32_t>(ffnIdx) < ffnNum_) {
+                        ffnStatusTensor_.SetValue(ffnIdx, 1);
+                    }
                 }
 
                 if (metaData.toRankId == static_cast<int32_t>(rankId_)) {

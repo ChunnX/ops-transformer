@@ -31,11 +31,12 @@ enum NnopbaseHcclServerType {
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 // check nullptr
-static bool CheckNullStatus(const aclTensor *x, const aclTensor *sessionId, const aclTensor *microBatchId,
+static bool CheckNullStatus(const aclTensor *context, const aclTensor *x, const aclTensor *sessionId, const aclTensor *microBatchId,
                             const aclTensor *layerId, const aclTensor *expertIds, const aclTensor *expertRankTable,
                             const char *group)
 {
     // 检查必选入参出参为非空
+    OP_CHECK_NULL(context, return false);
     OP_CHECK_NULL(x, return false);
     OP_CHECK_NULL(sessionId, return false);
     OP_CHECK_NULL(microBatchId, return false);
@@ -46,16 +47,15 @@ static bool CheckNullStatus(const aclTensor *x, const aclTensor *sessionId, cons
         OP_LOGE_WITH_INVALID_INPUT("aclnnAttentionToFfnV2", "group");
         return false;
     }
-
     return true;
 }
 
 // 入参校验
-static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *sessionId, const aclTensor *microBatchId,
+static aclnnStatus CheckParams(const aclTensor *context, const aclTensor *x, const aclTensor *sessionId, const aclTensor *microBatchId,
                                const aclTensor *layerId, const aclTensor *expertIds, const aclTensor *expertRankTable,
                                const char *group)
 {
-    CHECK_RET(CheckNullStatus(x, sessionId, microBatchId, layerId, expertIds, expertRankTable, group),
+    CHECK_RET(CheckNullStatus(context, x, sessionId, microBatchId, layerId, expertIds, expertRankTable, group),
               ACLNN_ERR_PARAM_NULLPTR);
 
     if (strnlen(group, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
@@ -77,7 +77,7 @@ aclnnStatus aclnnAttentionToFfnV2GetWorkspaceSize(
     int64_t ffnStartRankId, int64_t cclBufferSize, uint64_t *workspaceSize, aclOpExecutor **executor)
 
 {
-    auto retParam = CheckParams(x, sessionId, microBatchId, layerId, expertIds, expertRankTable, group);
+    auto retParam = CheckParams(context, x, sessionId, microBatchId, layerId, expertIds, expertRankTable, group);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     aclnnStatus ret = aclnnInnerAttentionToFfnV2GetWorkspaceSize(
         context, x, sessionId, microBatchId, layerId, expertIds, expertRankTable, scalesOptional, activeMaskOptional,
