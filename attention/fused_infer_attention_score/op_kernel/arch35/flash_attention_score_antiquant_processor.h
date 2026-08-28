@@ -556,6 +556,8 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAnt
         copyFinishElmenCnt += copyElmenCnt;
         curSequence += copyElmenCnt;
     }
+    printf("--------------------dstLocal------------------------\n");
+    DumpTensor(dstLocal,__LINE__,1024);
 }
 
 template <ANTIQUANT_PROCESSOR_TEMPLATE_DEF, const bool ANTIQUANT_PER_TOKEN>

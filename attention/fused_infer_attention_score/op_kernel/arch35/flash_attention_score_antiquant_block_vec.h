@@ -483,10 +483,18 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitQuant(
         } else {
             keyAntiqScaleGm.SetGlobalBuffer((__gm__ KEY_ANTIQ_PARAMS_T *)keyAntiquantScale);
             valueAntiqScaleGm.SetGlobalBuffer((__gm__ VALUE_ANTIQ_PARAMS_T *)valueAntiquantScale);
+            printf("-------------------keyAntiqScaleGm-----------------------\n");
+            DumpTensor(keyAntiqScaleGm,__LINE__,1024);
+            printf("-------------------valueAntiqScaleGm-----------------------\n");
+            DumpTensor(valueAntiqScaleGm,__LINE__,1024);
             antiqOffsetExistFlag = (keyAntiquantOffset != nullptr);
             if (antiqOffsetExistFlag) {
                 keyAntiquantOffsetGm.SetGlobalBuffer((__gm__ KEY_ANTIQ_PARAMS_T *)keyAntiquantOffset);
                 valueAntiquantOffsetGm.SetGlobalBuffer((__gm__ VALUE_ANTIQ_PARAMS_T *)valueAntiquantOffset);
+                printf("-------------------valueAntiquantOffsetGm-----------------------\n");
+                DumpTensor(valueAntiquantOffsetGm,__LINE__,1024);
+                printf("-------------------keyAntiquantOffsetGm-----------------------\n");
+                DumpTensor(keyAntiquantOffsetGm,__LINE__,1024);
             }
         }
     }
