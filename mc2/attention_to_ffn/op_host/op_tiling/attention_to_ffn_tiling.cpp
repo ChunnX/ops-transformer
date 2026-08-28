@@ -204,7 +204,7 @@ static bool CheckAndSetAttrs(gert::TilingContext *context, const char *nodeName,
                     return false);
 
     uint32_t moeExpertNum = *moeExpertNumPtr;
-    uint32_t worldSize = *worldSizePtr
+    uint32_t worldSize = *worldSizePtr;
     
     OP_TILING_CHECK(
         (moeExpertNum <= 0) || (moeExpertNum > MOE_EXPERT_MAX_NUM),
