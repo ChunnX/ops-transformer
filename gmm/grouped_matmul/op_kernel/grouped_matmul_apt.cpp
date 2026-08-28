@@ -439,7 +439,8 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
                 GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, gmmWeightQuantParam, wqgmmMxParams_, tiling);
                 GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, mmTilingData, wqgmmMxMmadTiling_, tiling);
                 GROUPED_MATMUL::WqgmmMxTensorApi::InvokeWqgmmMxTensorApi<
-                    DTYPE_X, DTYPE_WEIGHT, DTYPE_PER_TOKEN_SCALE, DTYPE_ANTIQUANT_SCALE, DTYPE_BIAS, DTYPE_Y>(
+                    DTYPE_X, DTYPE_WEIGHT, DTYPE_PER_TOKEN_SCALE, DTYPE_ANTIQUANT_SCALE, DTYPE_BIAS, DTYPE_Y,
+                    IS_SINGLE_MULTI_SINGLE>(
                     x, weight, antiquantScale, bias, groupList, perTokenScale, y, &wqgmmMxParams_,
                     &wqgmmMxMmadTiling_);
             } else {
