@@ -80,7 +80,7 @@ __aicore__ inline constexpr GmFormat GetKvLayoutMla()
 template <uint8_t inOutLayoutType, uint8_t KvLayoutType, bool hasAttenMask, uint8_t config>
 // 形参序必须吃齐 def 输入序 cache_seqlens(3)/cu_seqlens_q(4)/seqused_q(5)（运行时按 def 序绑槽位；
 // 曾用 FIA 内部序致 cacheSeqlens 收到 seqused_q=NULL 槽 → kv 长度解析解引用 GM 0 越界）。
-__global__ __aicore__ void flash_mla_with_kvcache(__gm__ uint8_t *query, __gm__ uint8_t *key,
+__global__ __aicore__ void flash_mla_with_kvcache(__gm__ uint8_t *query, __gm__ uint8_t *kCache,
                                                   __gm__ uint8_t *blockTable, __gm__ uint8_t *cacheSeqlens,
                                                   __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
                                                   __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata,
@@ -149,7 +149,7 @@ __global__ __aicore__ void flash_mla_with_kvcache(__gm__ uint8_t *query, __gm__ 
     // value 与 key 同一 GM 指针（k_cache 的 nope 段即 V，k==v 语义）。
     // metadata（GM 输入，AICPU 多 section 布局）直接透传，section 循环在 Process 内。
     // 静态 tensor 模型：block 内自管 buffer（与 flash_attn Init 15 参风格一致，入口仅接地址）
-    op.Init(query, key, key, attnMask, cuSeqlensQ, sequsedQ, cacheSeqlens, blockTable, softmaxLse, attnOut, user,
+    op.Init(query, kCache, attnMask, cuSeqlensQ, sequsedQ, cacheSeqlens, blockTable, softmaxLse, attnOut, user,
             metadata, tilingData);
     op.Process();
 

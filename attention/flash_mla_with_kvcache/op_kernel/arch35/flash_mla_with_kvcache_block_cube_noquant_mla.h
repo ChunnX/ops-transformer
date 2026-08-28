@@ -154,10 +154,9 @@ public:
         : constInfo(constInfo),
           seqLensTool_(seqLensTool){};
 
-    __aicore__ inline void InitCubeBlock(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                         __gm__ uint8_t *blockTable)
+    __aicore__ inline void InitCubeBlock(__gm__ uint8_t *query, __gm__ uint8_t *kCache, __gm__ uint8_t *blockTable)
     {
-        InitCubeInput(query, key, value, blockTable);
+        InitCubeInput(query, kCache, blockTable);
     }
 
     __aicore__ inline void InitBuffers()
@@ -191,8 +190,7 @@ public:
         l0CBuffers_ = LocalTensor<uint8_t>(TPosition::CO1, 0U, L0C_BUFCNT * L0C_BUF_BYTES);
     }
 
-    __aicore__ inline void InitCubeInput(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                         __gm__ uint8_t *blockTable)
+    __aicore__ inline void InitCubeInput(__gm__ uint8_t *query, __gm__ uint8_t *kCache, __gm__ uint8_t *blockTable)
     {
         if constexpr (PAGE_ATTENTION) {
             blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
@@ -204,12 +202,12 @@ public:
                     constInfo.dSize + constInfo.dSizeRope, seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize,
                     queryGm, query);
 
-        keyPtr = key;
-        valuePtr = value;
+        keyPtr = kCache;
+        valuePtr = kCache;
         // k_cache 为普通 ND 张量（非 TensorList）：直接取裸指针，
         // 不能用 ListTensorDesc 解码（会把 k_cache 数据首部误解析为 list 描述符 → GM 越界）
-        __gm__ uint8_t *key_ = key;
-        __gm__ uint8_t *value_ = value;
+        __gm__ uint8_t *key_ = kCache;
+        __gm__ uint8_t *value_ = kCache;
 
         // k_cache 576 宽单张量（nope 512 + rope 64 合并）——key 与 value 同源（k==v）：
         // bmm2 的 V 段 = L1 上 nope 区（512 宽，mm1 后仍留在 L1），valueGm 仅初始化不再单独读取
