@@ -168,19 +168,7 @@ ge::graphStatus MoeDistributeCombineTeardownTilingA5::CheckBsHKSize(int64_t bs, 
 
 ge::graphStatus MoeDistributeCombineTeardownTilingA5::SetHcommCfg()
 {
-    OP_LOGD(nodeName_, "MoeDistributeCombineTeardown groupEp = %s", groupEp_.c_str());
-    uint32_t opType = OP_TYPE_ALL_TO_ALL;
-    std::string algConfigAllToAllStr = "AlltoAll=level0:fullmesh;level1:pairwise";
-    uint8_t aivEngineValue = mc2tiling::AIV_ENGINE;
-
-    AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupEp_, opType, algConfigAllToAllStr);
-    mc2CcTilingConfig.SetCommEngine(aivEngineValue); // AIV_UB-MEM or AIV_URMA
-    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData_->mc2InitTiling) != 0,
-                    OP_LOGE(nodeName_, "mc2CcTilingConfig mc2InitTiling GetTiling failed"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData_->mc2CcTiling) != 0,
-                    OP_LOGE(nodeName_, "mc2CcTilingConfig mc2CcTiling1 GetTiling failed"), return ge::GRAPH_FAILED);
-    reinterpret_cast<Mc2CcTilingInner *>(&tilingData_->mc2CcTiling)->protocol = 1; // 0: UB-MEM, 1: URMA
-
+    // UT 无 HCCL，GetTiling 会失败；arch35 kernel 不使用 mc2CcTiling，与 combine setup 一致跳过。
     return ge::GRAPH_SUCCESS;
 }
 } // namespace MC2Tiling

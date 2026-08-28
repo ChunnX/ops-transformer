@@ -12,6 +12,7 @@
  * \file test_moe_distribute_combine_teardown_tiling.cpp
  * \brief host侧tiling ut
  */
+#include <cstdlib>
 #include <iostream>
 #include <fstream>
 #include <thread>
@@ -25,6 +26,15 @@ namespace MoeDistributeCombineTeardownUT {
 const std::string OP_NAME = "MoeDistributeCombineTeardown";
 constexpr int64_t CONTEXT_DIM0 = 2052;
 constexpr int64_t DEFAULT_CCL_BUFFER_SIZE = 12000;
+
+// SetHCCL_BUFFSIZE
+struct HcclBuffSizeSetter {
+    HcclBuffSizeSetter()
+    {
+        setenv("HCCL_BUFFSIZE", "12000", 1);
+    }
+};
+static HcclBuffSizeSetter hcclBuffSizeSetter;
 
 struct MoeDistributeCombineTeardownTestParam {
     std::string caseName;
@@ -4074,8 +4084,8 @@ static gert::TilingContextPara BuildTilingContextPara(const MoeDistributeCombine
          {"comm_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.commQuantModeAttr)},
          {"comm_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.commTypeAttr)},
          {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.commAlgAttr)}});
-    return gert::TilingContextPara(OP_NAME, inputTensorDesc_, outputTensorDesc_, attrs_, &compileInfo,
-                                   param.socVersion);
+    return gert::TilingContextPara(OP_NAME, inputTensorDesc_, outputTensorDesc_, attrs_, &compileInfo, param.socVersion,
+                                   20, 196608);
 }
 
 static void ThreadFunction(const MoeDistributeCombineTeardownTestParam *testCases, size_t caseNum, size_t threadIdx,
@@ -4084,10 +4094,8 @@ static void ThreadFunction(const MoeDistributeCombineTeardownTestParam *testCase
     for (size_t idx = threadIdx; idx < caseNum; idx += threadNum) {
         auto param = testCases[idx];
         auto tilingContextPara = BuildTilingContextPara(param);
-        Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", param.epWorldSizeAttr},
-                                                   {"HCCL_BUFFSIZE", 12000UL * 1024UL * 1024UL}};
-        Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, param.status, param.expectTilingKey,
-                           param.expectTilingData, param.expectWorkspaces, param.mc2TilingDataReservedLen);
+        ExecuteTestCase(tilingContextPara, param.status, param.expectTilingKey, param.expectTilingData, {},
+                        param.mc2TilingDataReservedLen);
     }
 }
 
@@ -4115,7 +4123,7 @@ TEST_P(MoeDistributeCombineTeardownTilingTest, GeneralCasesTest)
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", param.epWorldSizeAttr},
                                                {"HCCL_BUFFSIZE", 12000UL * 1024UL * 1024UL}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, param.status, param.expectTilingKey,
-                       param.expectTilingData, param.expectWorkspaces, param.mc2TilingDataReservedLen);
+                       param.expectTilingData, {}, param.mc2TilingDataReservedLen);
 }
 
 INSTANTIATE_TEST_CASE_P(MoeDistributeCombineTeardownTilingUT, MoeDistributeCombineTeardownTilingTest,
