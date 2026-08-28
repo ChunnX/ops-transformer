@@ -350,7 +350,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLossV2(
             <td>输入</td>
             <td>左侧mask保留的token数。</td>
             <td>
-            值依赖。
+            -
             </td>
             <td>INT64</td>
             <td>-</td>
@@ -362,7 +362,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLossV2(
             <td>输入</td>
             <td>右侧mask保留的token数。</td>
             <td>
-            值依赖。
+            -
             </td>
             <td>INT64</td>
             <td>-</td>

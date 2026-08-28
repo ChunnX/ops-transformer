@@ -3,70 +3,86 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
+
 - <term>Ascend 950PR/Ascend 950DT</term>：支持
+
 <!-- end id1 -->
+
 <!-- npu="A3" id2 -->
+
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+
 <!-- end id2 -->
+
 <!-- npu="910b" id3 -->
+
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+
 <!-- end id3 -->
+
 <!-- npu="310b" id4 -->
+
 - <term>Atlas 200I/500 A2 推理产品</term>：不支持
+
 <!-- end id4 -->
+
 <!-- npu="310p" id5 -->
+
 - <term>Atlas 推理系列产品</term>：不支持
+
 <!-- end id5 -->
+
 <!-- npu="910" id6 -->
+
 - <term>Atlas 训练系列产品</term>：不支持
+
 <!-- end id6 -->
 
 ## 功能说明
 
 - 接口功能：SparselightningIndexerGradKlLoss算子是LightningIndexer的反向算子，再额外融合了Loss计算功能。LightningIndexer算子将QueryToken和KeyToken之间的最高内在联系的TopK个筛选出来，存放在SparseIndices中，从而减少长序列场景下Attention的计算量，加速长序列的网络的推理和训练的性能。
-
 - 计算公式：
-   用于取Top-k的value的计算公式可以表示为：
+  用于取Top-k的value的计算公式可以表示为：
 
-   $$
-   I_{t,:}=W_{t,:}@ReLU(q_{t,:}@(K_{:t,:})^T)
-   $$
+  $$
+  I_{t,:}=W_{t,:}@ReLU(q_{t,:}@(K_{:t,:})^T)
+  $$
 
-   其中，$W$是第$t$个token对应的weights，$q$是第$t$个token对应的$G$个query头合轴后的矩阵，$K$为$t$行$K$矩阵。
+  其中，$W$是第$t$个token对应的weights，$q$是第$t$个token对应的$G$个query头合轴后的矩阵，$K$为$t$行$K$矩阵。
 
-   LightningIndexer会单独训练，对应的loss function为：
+  LightningIndexer会单独训练，对应的loss function为：
 
-   $$
-   L(I){=}\sum_tD_{KL}(p_{t,:}||Softmax(I_{t,:}))
-   $$
+  $$
+  L(I){=}\sum_tD_{KL}(p_{t,:}||Softmax(I_{t,:}))
+  $$
 
-   其中，$p$是target distribution，通过对main attention score进行所有的head的求和，然后把求和结果沿着上下文方向进行L1正则化得到。$D_{KL}$为KL散度，其表达式为：
+  其中，$p$是target distribution，通过对main attention score进行所有的head的求和，然后把求和结果沿着上下文方向进行L1正则化得到。$D_{KL}$为KL散度，其表达式为：
 
-   $$
-   D_{KL}(a||b){=}\sum_ia_i\mathrm{log}{\left(\frac{a_i}{b_i}\right)}
-   $$
+  $$
+  D_{KL}(a||b){=}\sum_ia_i\mathrm{log}{\left(\frac{a_i}{b_i}\right)}
+  $$
 
-   通过求导可得Loss的梯度表达式：
+  通过求导可得Loss的梯度表达式：
 
-   $$
-   dI\mathop{{}}\nolimits_{{t,:}}=Softmax \left( I\mathop{{}}\nolimits_{{t,:}} \left) -p\mathop{{}}\nolimits_{{t,:}}\right. \right.
-   $$
+  $$
+  dI\mathop{{}}\nolimits_{{t,:}}=Softmax \left( I\mathop{{}}\nolimits_{{t,:}} \left) -p\mathop{{}}\nolimits_{{t,:}}\right. \right.
+  $$
 
-   利用链式法则可以进行weights，query和key矩阵的梯度计算：
+  利用链式法则可以进行weights，query和key矩阵的梯度计算：
 
-   $$
-   dW\mathop{{}}\nolimits_{{t,:}}=dI\mathop{{}}\nolimits_{{t,:}}\text{@} \left( ReLU \left( S\mathop{{}}\nolimits_{{t,:}} \left)  \left) \mathop{{}}\nolimits^{{T}}\right. \right. \right. \right.
-   $$
+  $$
+  dW\mathop{{}}\nolimits_{{t,:}}=dI\mathop{{}}\nolimits_{{t,:}}\text{@} \left( ReLU \left( S\mathop{{}}\nolimits_{{t,:}} \left)  \left) \mathop{{}}\nolimits^{{T}}\right. \right. \right. \right.
+  $$
 
-   $$
-   d\mathop{{q}}\nolimits_{{t,:}}=dS\mathop{{}}\nolimits_{{t,:}}@K\mathop{{}}\nolimits_{{:t,:}}
-   $$
+  $$
+  d\mathop{{q}}\nolimits_{{t,:}}=dS\mathop{{}}\nolimits_{{t,:}}@K\mathop{{}}\nolimits_{{:t,:}}
+  $$
 
-   $$
-   dK\mathop{{}}\nolimits_{{:t,:}}= \left( dS\mathop{{}}\nolimits_{{t,:}} \left) \mathop{{}}\nolimits^{{T}}@q\mathop{{}}\nolimits_{{:t,:}}\right. \right.
-   $$
+  $$
+  dK\mathop{{}}\nolimits_{{:t,:}}= \left( dS\mathop{{}}\nolimits_{{t,:}} \left) \mathop{{}}\nolimits^{{T}}@q\mathop{{}}\nolimits_{{:t,:}}\right. \right.
+  $$
 
-   其中，S为QK矩阵softmax的结果。
+  其中，S为QK矩阵softmax的结果。
 
 <!-- - **说明**：
    <blockquote>query、key、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
@@ -116,7 +132,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
 
 - **参数说明:**
 
-    <table style="undefined;table-layout: fixed; width: 1550px">
+  <table style="undefined;table-layout: fixed; width: 1550px">
         <colgroup>
             <col style="width: 220px">
             <col style="width: 120px">
@@ -347,7 +363,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>输入</td>
             <td>左侧mask保留的token数。</td>
             <td>
-            值依赖。
+            -
             </td>
             <td>INT64</td>
             <td>-</td>
@@ -359,7 +375,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>输入</td>
             <td>右侧mask保留的token数。</td>
             <td>
-            值依赖。
+            -
             </td>
             <td>INT64</td>
             <td>-</td>
@@ -422,17 +438,19 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
     </table>
 
 <!-- npu="A3,910b" id7 -->
+
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
   - T1支持大于等于actualSeqLengthsQuery的累加和，T2支持大于等于actualSeqLengthsKey的累加和。
 
 <!-- end id7 -->
+
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
-    第一段接口完成入参校验，出现以下场景时报错：
+  第一段接口完成入参校验，出现以下场景时报错：
 
-    <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
+  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
     <col style="width: 319px">
     <col style="width: 144px">
     <col style="width: 671px">
@@ -465,7 +483,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
 
 - **参数说明：**
 
-    <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
+  <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
     <col style="width: 144px">
     <col style="width: 125px">
     <col style="width: 700px">
@@ -499,22 +517,24 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tr>
     </tbody>
     </table>
-
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 确定性计算：
+
   - aclnnSparseLightningIndexerGradKLLoss默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 - 公共约束
-    - 参数query、key、queryIndex、keyIndex的数据类型应保持一致。
-    - 参数weights不为float32时，参数query、key、queryIndex、keyIndex、weights的数据类型应保持一致。
-    - 入参为空的场景处理：
-        - query为空Tensor：直接返回。
-        - 公共约束里入参为空的场景和FAG保持一致。
-    <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
+
+  - 参数query、key、queryIndex、keyIndex的数据类型应保持一致。
+  - 参数weights不为float32时，参数query、key、queryIndex、keyIndex、weights的数据类型应保持一致。
+  - 入参为空的场景处理：
+    - query为空Tensor：直接返回。
+    - 公共约束里入参为空的场景和FAG保持一致。
+
+  <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
         <col style="width: 100px">
         <col style="width: 740px">
         <col style="width: 360px">
@@ -574,9 +594,9 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tr>
         </tbody>
     </table>
-
 - 规格约束
-    <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
+
+  <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
         <col style="width: 100px">
         <col style="width: 300px">
         <col style="width: 360px">
@@ -646,9 +666,9 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tbody>
     </table>
 
-    <term>Ascend 950PR/Ascend 950DT</term>：N1额外支持48，Nidx1额外支持24，二者仅允许(48,24)组合，禁止其余数值配对。
+  <term>Ascend 950PR/Ascend 950DT</term>：N1额外支持48，Nidx1额外支持24，二者仅允许(48,24)组合，禁止其余数值配对。
 
-    <term>Ascend 950PR/Ascend 950DT</term>：B、S1、S2均支持泛化。
+  <term>Ascend 950PR/Ascend 950DT</term>：B、S1、S2均支持泛化。
 
 ## 调用示例
 
