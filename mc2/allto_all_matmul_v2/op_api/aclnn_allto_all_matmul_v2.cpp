@@ -3,7 +3,7 @@
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
@@ -62,7 +62,10 @@ static aclTensor *TransX2Tensor(const aclTensor *x2)
     viewDim[0] = x2->GetViewShape().GetDim(1);
     viewDim[1] = x2->GetViewShape().GetDim(0);
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
-    aclGetDataType(x2, &dataType);
+    if (aclGetDataType(x2, &dataType) != ACL_SUCCESS) {
+        OP_LOGE_WITH_INVALID_INPUT("AlltoAllMatmulV2", "x2 dtype");
+        return nullptr;
+    }
     std::vector<int64_t> stride(viewShapeDimNum);
     auto transStride = x2->GetViewStrides();
     stride = std::vector<int64_t>(transStride.begin(), transStride.end());
@@ -102,9 +105,9 @@ static bool CheckNullParams(const aclTensor *x1, const aclTensor *x2, const aclT
 extern "C" aclnnStatus AlltoAllMatmulV2GetWorkspaceSize(
     const aclTensor *context, const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
     const aclTensor *x1ScaleOptional, const aclTensor *x2ScaleOptional, const char *group, int64_t worldSize,
-    int64_t hcclBufferSize, int64_t x1QuantMode, int64_t x2QuantMode,
-    int64_t groupSize, const char *commMode, int64_t precisionMode, const aclTensor *output,
-    const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
+    int64_t hcclBufferSize, int64_t x1QuantMode, int64_t x2QuantMode, int64_t groupSize, const char *commMode,
+    int64_t precisionMode, const aclTensor *output, const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 {
     OP_LOGD("AlltoAllMatmulV2GetWorkspaceSize start");
 
@@ -134,17 +137,19 @@ extern "C" aclnnStatus AlltoAllMatmulV2GetWorkspaceSize(
     // y_dtype 从 output 的 tensor dtype 推导（acl 枚举与 ge 枚举一致），
     // 未显式指定 BF16/FP16（默认 fp32）时由 tiling 侧校验拒绝。
     aclDataType outputAclDtype = ACL_DT_UNDEFINED;
-    (void)aclGetDataType(output, &outputAclDtype);
+    if (aclGetDataType(output, &outputAclDtype) != ACL_SUCCESS) {
+        OP_LOGE_WITH_INVALID_INPUT("AlltoAllMatmulV2", "output dtype");
+        return ACLNN_ERR_INNER;
+    }
     int64_t yDtype = static_cast<int64_t>(outputAclDtype);
 
     constexpr int64_t kDefaultX1QuantDtype = 28; // ge::DT_UNDEFINED
     constexpr bool kDefaultTransposeX1 = false;
     aclnnStatus ret = aclnnInnerAlltoAllMatmulV2GetWorkspaceSize(
-        context, x1, transX2, biasOptional, x1ScaleOptional, x2ScaleOptional,
-        const_cast<char *>(group), worldSize, hcclBufferSize, yDtype,
-        x1QuantMode, x2QuantMode, kDefaultX1QuantDtype, kDefaultTransposeX1, transposeX2,
-        groupSize, const_cast<char *>(effectiveCommMode), precisionMode, output,
-        alltoAllOutOptional, workspaceSize, executor);
+        context, x1, transX2, biasOptional, x1ScaleOptional, x2ScaleOptional, const_cast<char *>(group), worldSize,
+        hcclBufferSize, yDtype, x1QuantMode, x2QuantMode, kDefaultX1QuantDtype, kDefaultTransposeX1, transposeX2,
+        groupSize, const_cast<char *>(effectiveCommMode), precisionMode, output, alltoAllOutOptional, workspaceSize,
+        executor);
 
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER, "aclnnInnerAlltoAllMatmulV2GetWorkspaceSize failed, ret=%d", ret);
@@ -159,7 +164,9 @@ extern "C" aclnnStatus AlltoAllMatmulV2(void *workspace, uint64_t workspaceSize,
 {
     OP_LOGD("AlltoAllMatmulV2 start");
 
-    NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
+    if (NnopbaseSetHcclServerType != nullptr) {
+        NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
+    }
     aclnnStatus ret = aclnnInnerAlltoAllMatmulV2(workspace, workspaceSize, executor, stream);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER, "aclnnInnerAlltoAllMatmulV2 failed, ret=%d", ret);

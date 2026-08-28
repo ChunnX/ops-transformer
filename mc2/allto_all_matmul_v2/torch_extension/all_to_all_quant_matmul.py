@@ -3,7 +3,7 @@
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
@@ -13,7 +13,7 @@ import torch
 from torch.library import impl
 from torch_npu.utils._error_code import ErrCode, ops_error
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
-from cann_ops_transformer.common.comm_channel_builder_manager import CommChannelBuilderManager
+from ..common import CommChannelBuilderManager
 
 
 _ACL_DTYPE_TO_TORCH_DTYPE = {
@@ -40,7 +40,7 @@ class _AllToAllQuantMatmulOpBuilder(OpBuilder):
             "int[] group_sizes=[], "
             "int? x1_dtype=None, int? x2_dtype=None, "
             "int? x1_scale_dtype=None, int? x2_scale_dtype=None, "
-            "int? y_dtype=None, str comm_mode=\"ai_cpu\", int precision_mode=0"
+            "int? y_dtype=None, str? comm_mode=None, int? precision_mode=None"
             ") -> (Tensor, Tensor)"
         )
 
@@ -64,8 +64,8 @@ class _AllToAllQuantMatmulOpBuilder(OpBuilder):
             x1_scale_dtype=None,
             x2_scale_dtype=None,
             y_dtype=None,
-            comm_mode="ai_cpu",
-            precision_mode=0,
+            comm_mode=None,
+            precision_mode=None,
         ):
             torch._check(
                 world_size > 0,
@@ -116,8 +116,8 @@ def _npu_all_to_all_quant_matmul(
     x1_scale_dtype=None,
     x2_scale_dtype=None,
     y_dtype=None,
-    comm_mode="ai_cpu",
-    precision_mode=0,
+    comm_mode=None,
+    precision_mode=None,
 ):
     op_module = _all_to_all_quant_matmul_op_builder.load()
     result = op_module.npu_all_to_all_quant_matmul(
@@ -148,6 +148,8 @@ def _prepare_comm_context(group, rank_id):
     world_size = torch.distributed.get_world_size(group)
     if world_size <= 0:
         world_size = torch.distributed.get_world_size()  # fallback to default group
+    if world_size <= 0:
+        raise ValueError(f"world_size should be greater than 0, got {world_size}.")
     group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(rank_id)
     channel_builder = CommChannelBuilderManager(group_name)
     context = channel_builder.create_context(group_name + "allto_all_matmul")
@@ -163,16 +165,18 @@ def all_to_all_quant_matmul(
     bias: Optional[torch.Tensor] = None,
     x1_scale: Optional[torch.Tensor] = None,
     x2_scale: Optional[torch.Tensor] = None,
-    x1_quant_mode: int = 0,
-    x2_quant_mode: int = 0,
+    x1_quant_mode: Optional[int] = None,
+    x2_quant_mode: Optional[int] = None,
     group_sizes: Optional[List[int]] = None,
-    x1_dtype: int = -1,
-    x2_dtype: int = -1,
-    x1_scale_dtype: int = -1,
-    x2_scale_dtype: int = -1,
-    y_dtype: int = 6,  # fp32，未显式指定 BF16(15)/FP16(5) 时算子侧会校验失败
+    x1_dtype: Optional[int] = None,
+    x2_dtype: Optional[int] = None,
+    x1_scale_dtype: Optional[int] = None,
+    x2_scale_dtype: Optional[int] = None,
+    y_dtype: Optional[
+        int
+    ] = None,  # fp32，未显式指定 BF16(15)/FP16(5) 时算子侧会校验失败
     comm_mode: Optional[str] = None,
-    precision_mode: int = 0,
+    precision_mode: Optional[int] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """AlltoAll + Matmul fused computation.
 
@@ -209,7 +213,9 @@ def all_to_all_quant_matmul(
         supported yet (returned as an empty tensor).
     """
     rank_id = torch.distributed.get_rank(group)
-    world_size, group_name, context, hccl_buffer_size = _prepare_comm_context(group, rank_id)
+    world_size, group_name, context, hccl_buffer_size = _prepare_comm_context(
+        group, rank_id
+    )
 
     result = torch.ops.cann_ops_transformer.npu_all_to_all_quant_matmul(
         context,
@@ -221,14 +227,14 @@ def all_to_all_quant_matmul(
         bias=bias,
         x1_scale=x1_scale,
         x2_scale=x2_scale,
-        x1_quant_mode=None if x1_quant_mode == 0 else x1_quant_mode,
-        x2_quant_mode=None if x2_quant_mode == 0 else x2_quant_mode,
+        x1_quant_mode=x1_quant_mode,
+        x2_quant_mode=x2_quant_mode,
         group_sizes=group_sizes if group_sizes is not None else [],
-        x1_dtype=None if x1_dtype == -1 else x1_dtype,
-        x2_dtype=None if x2_dtype == -1 else x2_dtype,
-        x1_scale_dtype=None if x1_scale_dtype == -1 else x1_scale_dtype,
-        x2_scale_dtype=None if x2_scale_dtype == -1 else x2_scale_dtype,
-        y_dtype=None if y_dtype == 6 else y_dtype,
+        x1_dtype=x1_dtype,
+        x2_dtype=x2_dtype,
+        x1_scale_dtype=x1_scale_dtype,
+        x2_scale_dtype=x2_scale_dtype,
+        y_dtype=y_dtype,
         comm_mode=comm_mode,
         precision_mode=precision_mode,
     )

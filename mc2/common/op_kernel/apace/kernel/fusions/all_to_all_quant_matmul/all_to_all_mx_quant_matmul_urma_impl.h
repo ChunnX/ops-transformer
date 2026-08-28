@@ -72,10 +72,8 @@ public:
     /**
      * @brief 初始化算子状态和参数
      */
-    __aicore__ inline void Init(__gm__ CommContext *hcommCtx,
-                                GM_ADDR aGM, GM_ADDR scaleAGM,
-                                GM_ADDR bGM, GM_ADDR scaleBGM,
-                                GM_ADDR cGM, GM_ADDR biasGM,
+    __aicore__ inline void Init(__gm__ CommContext *hcommCtx, GM_ADDR aGM, GM_ADDR scaleAGM, GM_ADDR bGM,
+                                GM_ADDR scaleBGM, GM_ADDR cGM, GM_ADDR biasGM,
                                 const allToAllMatmulTilingData *tilingData);
     /**
      * @brief 执行算子逻辑（包含 AIC/AIV 分离逻辑）
@@ -109,13 +107,13 @@ public:
         AscendC::Std::Int<SCALE_C0>>;
 
     // 组件定义
-    using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerQuantBatchMatmulV3<ProblemShape,
-                                                                                NONE_FULL_LOAD_MODE, LayoutA, LayoutB, TypeA>;
+    using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerQuantBatchMatmulV3<ProblemShape, NONE_FULL_LOAD_MODE,
+                                                                                LayoutA, LayoutB, TypeA>;
     using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<NONE_FULL_LOAD_MODE, false>;
-    using BlockMmad = Blaze::Gemm::Block::BlockMmad<
-        DispatchPolicy, TypeA, LayoutA, TypeB, LayoutB, TypeC, LayoutC, BiasType, LayoutBias>;
-    using QuantMatmulKernelImpl = Kernel::AllToAllQbmmMxKernel<ProblemShape, BlockMmad, BlockScheduler,
-                                                               UrmaCommWaitPolicy>;
+    using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, TypeA, LayoutA, TypeB, LayoutB, TypeC, LayoutC,
+                                                    BiasType, LayoutBias>;
+    using QuantMatmulKernelImpl =
+        Kernel::AllToAllQbmmMxKernel<ProblemShape, BlockMmad, BlockScheduler, UrmaCommWaitPolicy>;
 
     // 参数类型
     using Params = typename QuantMatmulKernelImpl::Params;
@@ -133,9 +131,7 @@ private:
     __gm__ CommUbmemContext *syncBuffer_{nullptr};
     __gm__ CommUdmaContext *udmaCtx_{nullptr};
     CollectiveComm<CommCollectiveOp::AllToAll, CommMode::PUT, AType, TeamBarrier> allToAllA_;
-    CollectiveComm<
-        CommCollectiveOp::AllToAll, CommMode::PUT, TypeScaleA, TeamBarrier>
-        allToAllScaleA_;
+    CollectiveComm<CommCollectiveOp::AllToAll, CommMode::PUT, TypeScaleA, TeamBarrier> allToAllScaleA_;
     TeamBarrier teamBarrier_;
 
     struct BaseParams {
@@ -169,8 +165,7 @@ private:
 
     // ---------------- 私有方法 ----------------
     __aicore__ inline void InitBaseParams(const allToAllMatmulTilingData *tilingData);
-    __aicore__ inline void SetupParams(const QuantMatmulTilingData *mmTile,
-                                       Params &out, MatmulMode matmulMode);
+    __aicore__ inline void SetupParams(const QuantMatmulTilingData *mmTile, Params &out, MatmulMode matmulMode);
 
     __aicore__ inline void RunAllToAll();    // AIV 通信任务
     __aicore__ inline void RunLocalMatmul(); // AIC 本地计算任务
@@ -300,8 +295,9 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     baseParams_.scaleKaSize =
         CeilDiv(baseParams_.axisKa, Blaze::Gemm::MXFP_DIVISOR_SIZE) * Blaze::Gemm::MXFP_MULTI_BASE_SIZE;
 
-    // 计算地址偏移所需的参数
-    baseParams_.rankDataBytes = baseParams_.axisM * baseParams_.axisKa * sizeof(AType);
+    // 计算地址偏移所需的参数（static_cast<uint64_t> 提升首操作数，避免中间溢出）
+    baseParams_.rankDataBytes =
+        static_cast<uint64_t>(baseParams_.axisM) * static_cast<uint64_t>(baseParams_.axisKa) * sizeof(AType);
     if constexpr (IsFp4<AType>()) {
         // MXFP4 打包存储(2 个 fp4 占 1 字节)，A 矩阵通信字节数减半
         baseParams_.rankDataBytes >>= 1;
@@ -314,10 +310,16 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 {
     ProblemShape problemShape{mmTile->m, mmTile->n, mmTile->k, 1UL};
     BlockMmadParams mmadParams;
-    LocalParams localParams{baseParams_.rankId, baseParams_.rankSize, baseParams_.axisM, baseParams_.aGm,
-                            baseParams_.scaleAGm, tilingData_->localMatmul, 1UL, matmulMode, static_cast<uint32_t>(baseParams_.headMSize)};
-    L1Params l1Params{static_cast<uint64_t>(mmTile->stepK) * mmTile->baseK, mmTile->scaleKL1,
-                      mmTile->nBufferNum};
+    LocalParams localParams{baseParams_.rankId,
+                            baseParams_.rankSize,
+                            baseParams_.axisM,
+                            baseParams_.aGm,
+                            baseParams_.scaleAGm,
+                            tilingData_->localMatmul,
+                            1UL,
+                            matmulMode,
+                            static_cast<uint32_t>(baseParams_.headMSize)};
+    L1Params l1Params{static_cast<uint64_t>(mmTile->stepK) * mmTile->baseK, mmTile->scaleKL1, mmTile->nBufferNum};
 
     if (matmulMode == MatmulMode::LOCAL) {
         mmadParams.cGmAddr = baseParams_.cGm; // 本地模式直接写入输出
@@ -335,9 +337,14 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     mmadParams.biasGmAddr = baseParams_.biasGm;
 
     // 调度器参数
-    BlockSchedulerParams schedulerParams{
-        mmTile->baseM, mmTile->baseN, mmTile->mTailTile, mmTile->nTailTile,
-        mmTile->mBaseTailSplitCnt, mmTile->nBaseTailSplitCnt, mmTile->mTailMain, mmTile->nTailMain};
+    BlockSchedulerParams schedulerParams{mmTile->baseM,
+                                         mmTile->baseN,
+                                         mmTile->mTailTile,
+                                         mmTile->nTailTile,
+                                         mmTile->mBaseTailSplitCnt,
+                                         mmTile->nBaseTailSplitCnt,
+                                         mmTile->mTailMain,
+                                         mmTile->nTailMain};
     // 基础 Tiling 参数
     QBMMTiling qbmmParams{mmTile->baseM, mmTile->baseN, mmTile->baseK, mmTile->dbL0c, false};
 

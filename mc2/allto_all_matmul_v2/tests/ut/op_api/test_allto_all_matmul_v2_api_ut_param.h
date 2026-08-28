@@ -52,8 +52,8 @@ struct AlltoAllMatmulV2ApiUtParam {
             if (!x2StrideStr.empty()) {
                 aclDataType dtype = ReadMap(ACL_DTYPE, ReadMap(csvMap, "x2_dtype"), ACL_DT_UNDEFINED);
                 aclFormat format = ReadMap(ACL_FORMAT, ReadMap(csvMap, "x2_format"), ACL_FORMAT_UNDEFINED);
-                this->x2 = TensorDesc(GetShapeArr(ReadMap(csvMap, "x2_shape")), dtype, format,
-                                      GetShapeArr(x2StrideStr), 0, GetShapeArr(ReadMap(csvMap, "x2_storage_shape")));
+                this->x2 = TensorDesc(GetShapeArr(ReadMap(csvMap, "x2_shape")), dtype, format, GetShapeArr(x2StrideStr),
+                                      0, GetShapeArr(ReadMap(csvMap, "x2_storage_shape")));
             }
         }
         this->bias = GetTensorACL(csvMap, "bias_shape", "bias_dtype", "bias_format");
