@@ -261,10 +261,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     return ge::GRAPH_SUCCESS;
 }
 
-static uint64_t AlignUpWin(const uint64_t data)
-{
-    return (data + COMM_ALIGN - 1) / COMM_ALIGN * COMM_ALIGN;
-}
+static uint64_t AlignUpWin(const uint64_t data) { return (data + COMM_ALIGN - 1) / COMM_ALIGN * COMM_ALIGN; }
 
 static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *context, MoeEpCombineEpilogueInfo &info,
                                                  uint32_t networkMode, uint32_t serverNum, const char *nodeName)
