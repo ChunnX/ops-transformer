@@ -608,10 +608,13 @@ button {{ cursor:pointer; }} button:hover {{ background:#f1f5f9; }}
 .event-picker-menu {{ position:absolute; z-index:20; top:calc(100% + 4px); left:0; width:min(720px,100%); max-width:100%; max-height:520px;
                       overflow:auto; padding:12px; border:1px solid #cbd5e1; border-radius:8px; background:#fff;
                       box-shadow:0 8px 24px #10182824; }}
-.wave-picker-menu {{ position:absolute; z-index:21; top:calc(100% + 4px); left:0; width:min(360px,100%); max-height:420px;
+.wave-picker-menu {{ position:absolute; z-index:21; top:calc(100% + 4px); left:0; width:min(440px,100%); max-height:420px;
                      overflow:auto; padding:12px; border:1px solid #cbd5e1; border-radius:8px; background:#fff;
                      box-shadow:0 8px 24px #10182824; }}
-.event-picker-actions,.wave-picker-actions {{ display:flex; gap:8px; margin-bottom:10px; }}
+.event-picker-actions,.wave-picker-actions,.wave-range-actions {{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; }}
+.wave-range-actions {{ align-items:center; padding-bottom:10px; border-bottom:1px solid #e5e7eb; }}
+.wave-range-actions label {{ display:flex; align-items:center; gap:5px; font-size:12px; }}
+.wave-range-actions input {{ width:64px; padding:5px 6px; border:1px solid #cbd5e1; border-radius:5px; font:inherit; }}
 .wave-options {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(90px,1fr)); gap:6px 10px; }}
 .wave-option {{ display:block; padding:3px 5px; border-radius:4px; background:#f8fafc; font-size:12px; line-height:1.5; }}
 .wave-option input {{ margin-right:5px; vertical-align:middle; }}
@@ -645,6 +648,7 @@ button {{ cursor:pointer; }} button:hover {{ background:#f1f5f9; }}
 .timeline-label.lane-label small {{ display:block; overflow:hidden; color:var(--muted); font-size:9px; font-weight:400;
                                     text-overflow:ellipsis; white-space:nowrap; }}
 .timeline-canvas {{ position:absolute; left:142px; top:0; z-index:2; cursor:default; }}
+.timeline-measurement {{ display:inline-block; margin-left:10px; color:#175cd3; font-weight:600; }}
 .pin-button {{ flex:0 0 auto; width:24px; height:24px; padding:0; border-color:transparent; color:#98a2b3;
                font-size:13px; line-height:22px; }}
 .pin-button.active {{ border-color:#f59e0b; background:#fffbeb; color:#b45309; }}
@@ -695,6 +699,13 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
         <div class="wave-picker-actions">
           <button type="button" id="selectAllWaves">全选</button>
           <button type="button" id="clearAllWaves">清空</button>
+          <button type="button" id="invertWaves">反选</button>
+        </div>
+        <div class="wave-range-actions">
+          <label>起始 <input type="number" id="waveRangeStart"></label>
+          <label>结束 <input type="number" id="waveRangeEnd"></label>
+          <button type="button" id="selectWaveRange">仅选范围</button>
+          <button type="button" id="addWaveRange">追加范围</button>
         </div>
         <div id="waveOptions" class="wave-options"></div>
       </div>
@@ -743,7 +754,7 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
   <div class="legend" id="legend"></div>
   <div class="muted">每个 role/core 只使用一条泳道。父阶段显示完整执行区间，等待按真实 begin/end cycle
   覆盖在同一泳道；Active = Total - 这些真实等待区间。可固定整个 Block 或单条泳道到顶部对比区；拖动视口
-  右下角可调整高度，固定对比区可单独收起。</div>
+  右下角可调整高度，固定对比区可单独收起。<span id="timelineMeasurement" class="timeline-measurement">测量：在时间线上水平拖动</span></div>
   <div id="timeline"></div>
   <div id="eventDetail" class="event-detail">点击时间线中的事件块查看完整起止 cycle 与打点位置。</div>
   <div id="canvasTooltip" class="canvas-tooltip"></div>
@@ -896,11 +907,11 @@ const legendColors = colors;
 const eventGroups = {{
   '算子边界':['OP_PRE_MOE','OP_POST_MOE'],
   '跨 Rank 同步':['CROSS_RANK_INPUT_SYNC','CROSS_RANK_OUTPUT_SYNC'],
-  'Dispatch':['DISPATCH_WORK','WAIT_FOR_DISPATCH'],
-  'GMM1':['GMM1_PROLOGUE','GMM1_COMPUTE','WAIT_FOR_GMM1'],
-  'Activation':['ACTIVATION_WORK','WAIT_FOR_ACTIVATION'],
-  'GMM2':['GMM2_PROLOGUE','GMM2_COMPUTE','WAIT_FOR_GMM2'],
-  'Combine / 收尾':['COMBINE_WORK','FINAL_COMBINE_OR_DRAIN','COUNT_EXPORT','UNPERMUTE'],
+  'Dispatch':['DISPATCH_WORK'],
+  'GMM1':['WAIT_FOR_DISPATCH','GMM1_PROLOGUE','GMM1_COMPUTE'],
+  'Activation':['WAIT_FOR_GMM1','ACTIVATION_WORK'],
+  'GMM2':['WAIT_FOR_ACTIVATION','GMM2_PROLOGUE','GMM2_COMPUTE'],
+  'Combine / 收尾':['WAIT_FOR_GMM2','COMBINE_WORK','FINAL_COMBINE_OR_DRAIN','COUNT_EXPORT','UNPERMUTE'],
   'Shared':['SHARED_GMM1_ACTIVATION','SHARED_GMM2'],
 }};
 const phasePresets = {{
@@ -974,6 +985,7 @@ let virtualWaveFrame=null;
 let deferredRenderGeneration=0;
 let visibleEventGeneration=0;
 let redrawTimelineSelection=null;
+let clearTimelineMeasurement=null;
 let timelineViewportHeight=null;
 let pinnedPartitionCollapsed=false;
 const eventRowHeight=32;
@@ -986,20 +998,42 @@ for (let core=0; core<trace.header.logical_core_count; core++) {{
   coreSelect.add(new Option(String(core),String(core)));
   statsCoreSelect.add(new Option(String(core),String(core)));
 }}
-const waves = [...new Set(trace.records.flatMap(r=>r.events.map(e=>e.wave)))].sort((a,b)=>a-b);
+const waves = [...new Set(trace.records.flatMap(r=>r.events.map(e=>e.wave)).filter(wave=>wave!==null))].sort((a,b)=>a-b);
 const selectedWaves = new Set(waves);
+const waveRangeStart = document.getElementById('waveRangeStart');
+const waveRangeEnd = document.getElementById('waveRangeEnd');
+if(waves.length) {{
+  waveRangeStart.min=waveRangeEnd.min=waves[0];
+  waveRangeStart.max=waveRangeEnd.max=waves[waves.length-1];
+  waveRangeStart.value=waves[0];
+  waveRangeEnd.value=waves[waves.length-1];
+}}
+let lastWaveClicked=null;
 function updateWaveSelection() {{
   const count=selectedWaves.size;
   document.getElementById('waveSelectionCount').textContent=count===waves.length?`全部 (${{count}})`:`${{count}} / ${{waves.length}}`;
 }}
 function renderWavePicker() {{
   waveOptionsRoot.innerHTML=waves.map(wave=>`<label class="wave-option"><input type="checkbox" data-wave="${{wave}}" ${{selectedWaves.has(wave)?'checked':''}}>Wave ${{wave}}</label>`).join('');
-  waveOptionsRoot.querySelectorAll('[data-wave]').forEach(input=>input.addEventListener('change',()=>{{
+  waveOptionsRoot.querySelectorAll('[data-wave]').forEach(input=>input.addEventListener('click',event=>{{
     const wave=Number(input.dataset.wave);
-    input.checked?selectedWaves.add(wave):selectedWaves.delete(wave);
+    if(event.shiftKey&&lastWaveClicked!==null) {{
+      const begin=Math.min(waves.indexOf(lastWaveClicked),waves.indexOf(wave));
+      const end=Math.max(waves.indexOf(lastWaveClicked),waves.indexOf(wave));
+      for(const rangeWave of waves.slice(begin,end+1)) input.checked?selectedWaves.add(rangeWave):selectedWaves.delete(rangeWave);
+    }} else input.checked?selectedWaves.add(wave):selectedWaves.delete(wave);
+    lastWaveClicked=wave;
     updateWaveSelection(); render();
   }}));
   updateWaveSelection();
+}}
+function applyWaveRange(additive) {{
+  let begin=Number(waveRangeStart.value),end=Number(waveRangeEnd.value);
+  if(!Number.isFinite(begin)||!Number.isFinite(end)) return;
+  if(begin>end) [begin,end]=[end,begin];
+  if(!additive) selectedWaves.clear();
+  for(const wave of waves) if(wave>=begin&&wave<=end) selectedWaves.add(wave);
+  renderWavePicker(); render();
 }}
 document.getElementById('selectAllWaves').addEventListener('click',()=>{{
   for(const wave of waves) selectedWaves.add(wave); renderWavePicker(); render();
@@ -1007,8 +1041,24 @@ document.getElementById('selectAllWaves').addEventListener('click',()=>{{
 document.getElementById('clearAllWaves').addEventListener('click',()=>{{
   selectedWaves.clear(); renderWavePicker(); render();
 }});
+document.getElementById('invertWaves').addEventListener('click',()=>{{
+  for(const wave of waves) selectedWaves.has(wave)?selectedWaves.delete(wave):selectedWaves.add(wave);
+  renderWavePicker(); render();
+}});
+document.getElementById('selectWaveRange').addEventListener('click',()=>applyWaveRange(false));
+document.getElementById('addWaveRange').addEventListener('click',()=>applyWaveRange(true));
 wavePicker.addEventListener('toggle',()=>{{ if(wavePicker.open) eventPicker.open=false; }});
 eventPicker.addEventListener('toggle',()=>{{ if(eventPicker.open) wavePicker.open=false; }});
+document.addEventListener('pointerdown',event=>{{
+  if(wavePicker.open&&!wavePicker.contains(event.target)) wavePicker.open=false;
+  if(eventPicker.open&&!eventPicker.contains(event.target)) eventPicker.open=false;
+}});
+document.addEventListener('keydown',event=>{{
+  if(event.key==='Escape') {{
+    wavePicker.open=false; eventPicker.open=false;
+    if(clearTimelineMeasurement) clearTimelineMeasurement();
+  }}
+}});
 renderWavePicker();
 function renderEventPicker() {{
   eventGroupsRoot.innerHTML=Object.entries(eventGroups).map(([group,names])=>{{
@@ -1123,7 +1173,7 @@ const laneKey=(core,role)=>`${{core}}|${{role}}`;
 function allBlockGroupsForWave() {{
   const records=trace.records
     .map(r=>withLaneMetrics({{...r,events:r.events.filter(e=>
-      selectedEvents.has(e.event)&&selectedWaves.has(e.wave))}}))
+      selectedEvents.has(e.event)&&(e.wave===null||selectedWaves.has(e.wave)))}}))
   return [...new Set(records.map(r=>r.core))].map(block=>
     withBlockMetrics(records.filter(r=>r.core===block).sort((a,b)=>roles.indexOf(a.role)-roles.indexOf(b.role))))
     .filter(group=>group.records.some(r=>r.events.length));
@@ -1190,8 +1240,11 @@ function render() {{
 }}
 function renderTimeline(blockGroups,pinSourceGroups,events) {{
   const root=document.getElementById('timeline');
+  const measurementStatus=document.getElementById('timelineMeasurement');
   canvasTooltip.style.display='none';
+  measurementStatus.textContent='测量：在时间线上水平拖动';
   redrawTimelineSelection=null;
+  clearTimelineMeasurement=null;
   if(timelineResizeObserver) {{ timelineResizeObserver.disconnect(); timelineResizeObserver=null; }}
   const pinnedBlockGroups=pinSourceGroups.filter(group=>pinnedBlocks.has(group.core));
   const pinnedLaneRecords=pinSourceGroups.flatMap(group=>group.records)
@@ -1276,6 +1329,16 @@ function renderTimeline(blockGroups,pinSourceGroups,events) {{
   }};
   let hoveredEvent=null;
   let hitBoxes=[];
+  let measurement=null,measurementDrag=null,suppressTimelineClick=false,canvasCssWidth=1;
+  const measurementText=value=>{{
+    const cycles=Math.abs(Math.round(value));
+    return `Δ ${{cycles.toLocaleString()}} cycles${{cyclesPerUs?` · ${{(cycles/cyclesPerUs).toFixed(3)}} μs`:''}}`;
+  }};
+  const updateMeasurementStatus=()=>{{
+    measurementStatus.textContent=measurement?
+      `测量：${{Math.min(measurement.startCycle,measurement.endCycle).toLocaleString()}} → ${{Math.max(measurement.startCycle,measurement.endCycle).toLocaleString()}} · ${{measurementText(measurement.endCycle-measurement.startCycle)}}`:
+      '测量：在时间线上水平拖动';
+  }};
   const emphasizeEvent=(context,box,selected)=>{{
     const width=Math.max(2,box.right-box.left),height=box.bottom-box.top;
     context.save();
@@ -1301,6 +1364,7 @@ function renderTimeline(blockGroups,pinSourceGroups,events) {{
   }};
   const drawCanvas=()=>{{
     const width=Math.max(1,content.clientWidth-labelWidth),height=Math.max(1,viewport.clientHeight),dpr=window.devicePixelRatio||1;
+    canvasCssWidth=width;
     canvas.style.width=`${{width}}px`; canvas.style.height=`${{height}}px`;
     const pixelWidth=Math.max(1,Math.round(width*dpr)),pixelHeight=Math.max(1,Math.round(height*dpr));
     if(canvas.width!==pixelWidth||canvas.height!==pixelHeight) {{ canvas.width=pixelWidth; canvas.height=pixelHeight; }}
@@ -1359,6 +1423,23 @@ function renderTimeline(blockGroups,pinSourceGroups,events) {{
       context.strokeStyle='#98a2b3'; context.beginPath(); context.moveTo(x+.5,axisHeight-7); context.lineTo(x+.5,axisHeight); context.stroke();
       context.fillText(`${{cycle.toLocaleString()}}  +${{offset.toLocaleString()}}`,Math.min(x+3,width-125),12);
     }}
+    if(measurement) {{
+      const startX=relativeCycle(measurement.startCycle)/domainSpan*width;
+      const endX=relativeCycle(measurement.endCycle)/domainSpan*width;
+      const left=Math.min(startX,endX),right=Math.max(startX,endX);
+      context.fillStyle='#2e90fa22';
+      context.fillRect(left,axisHeight,Math.max(1,right-left),Math.max(0,height-axisHeight));
+      context.strokeStyle='#1570ef'; context.lineWidth=1.5;
+      for(const x of [startX,endX]) {{
+        context.beginPath(); context.moveTo(x+.5,axisHeight); context.lineTo(x+.5,height); context.stroke();
+      }}
+      const label=measurementText(measurement.endCycle-measurement.startCycle);
+      context.font='bold 11px Arial';
+      const measureLabelWidth=context.measureText(label).width+12;
+      const labelX=Math.max(2,Math.min((left+right-measureLabelWidth)/2,width-measureLabelWidth-2));
+      context.fillStyle='#175cd3'; context.fillRect(labelX,axisHeight+4,measureLabelWidth,20);
+      context.fillStyle='#fff'; context.fillText(label,labelX+6,axisHeight+18);
+    }}
   }};
   redrawTimelineSelection=drawCanvas;
   const hitTest=(x,y)=>{{
@@ -1375,7 +1456,7 @@ function renderTimeline(blockGroups,pinSourceGroups,events) {{
       hoveredEvent=hit;
       drawCanvas();
     }}
-    canvas.style.cursor=hit?'pointer':'default';
+    canvas.style.cursor=hit?'pointer':'crosshair';
     if(!hit) {{ canvasTooltip.style.display='none'; return; }}
     canvasTooltip.innerHTML=eventTooltipHtml(hit,box.record);
     canvasTooltip.style.display='block';
@@ -1383,18 +1464,57 @@ function renderTimeline(blockGroups,pinSourceGroups,events) {{
     canvasTooltip.style.left=`${{Math.max(8,Math.min(mouseEvent.clientX+12,window.innerWidth-tooltipWidth-8))}}px`;
     canvasTooltip.style.top=`${{Math.max(8,Math.min(mouseEvent.clientY+12,window.innerHeight-tooltipHeight-8))}}px`;
   }};
-  canvas.addEventListener('mousemove',moveTooltip);
+  const pointerCycle=pointerEvent=>{{
+    const bounds=canvas.getBoundingClientRect();
+    const x=Math.max(0,Math.min(pointerEvent.clientX-bounds.left,canvasCssWidth));
+    return Math.round(absoluteCycle(domainSpan*x/canvasCssWidth));
+  }};
+  canvas.addEventListener('pointerdown',event=>{{
+    if(event.button!==0) return;
+    measurementDrag={{pointerId:event.pointerId,startX:event.clientX,startCycle:pointerCycle(event),moved:false}};
+    canvas.setPointerCapture(event.pointerId);
+    canvasTooltip.style.display='none'; hoveredEvent=null; canvas.style.cursor='crosshair';
+    event.preventDefault();
+  }});
+  canvas.addEventListener('pointermove',event=>{{
+    if(!measurementDrag) {{ moveTooltip(event); return; }}
+    if(Math.abs(event.clientX-measurementDrag.startX)>=3) measurementDrag.moved=true;
+    if(!measurementDrag.moved) return;
+    measurement={{startCycle:measurementDrag.startCycle,endCycle:pointerCycle(event)}};
+    updateMeasurementStatus(); drawCanvas();
+  }});
+  const finishMeasurement=event=>{{
+    if(!measurementDrag||event.pointerId!==measurementDrag.pointerId) return;
+    const moved=measurementDrag.moved;
+    if(canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+    measurementDrag=null;
+    if(moved) {{
+      suppressTimelineClick=true;
+      setTimeout(()=>{{ suppressTimelineClick=false; }},0);
+      updateMeasurementStatus(); drawCanvas();
+    }}
+  }};
+  canvas.addEventListener('pointerup',finishMeasurement);
+  canvas.addEventListener('pointercancel',finishMeasurement);
   canvas.addEventListener('mouseleave',()=>{{
-    canvasTooltip.style.display='none'; canvas.style.cursor='default';
+    canvasTooltip.style.display='none'; canvas.style.cursor='crosshair';
     if(hoveredEvent) {{ hoveredEvent=null; drawCanvas(); }}
   }});
   canvas.addEventListener('click',event=>{{
+    if(suppressTimelineClick) {{ suppressTimelineClick=false; return; }}
     const bounds=canvas.getBoundingClientRect(),box=hitTest(event.clientX-bounds.left,event.clientY-bounds.top);
-    if(!box||selectedTimelineEvent===box.event) {{ clearTimelineSelection(); return; }}
+    if(!box) {{ measurement=null; updateMeasurementStatus(); drawCanvas(); clearTimelineSelection(); return; }}
+    if(selectedTimelineEvent===box.event) {{ clearTimelineSelection(); return; }}
     selectedTimelineEvent=box.event;
     drawCanvas();
     showEventDetail({{event:box.event,record:box.record}});
   }});
+  clearTimelineMeasurement=()=>{{
+    if(measurementDrag&&canvas.hasPointerCapture(measurementDrag.pointerId))
+      canvas.releasePointerCapture(measurementDrag.pointerId);
+    measurement=null; measurementDrag=null; updateMeasurementStatus(); drawCanvas();
+  }};
+  updateMeasurementStatus();
   let scrollFrame=null;
   const syncViewport=()=>{{
     canvas.style.transform=`translateY(${{viewport.scrollTop}}px)`;
@@ -1972,12 +2092,27 @@ def run_synthetic_tests() -> int:
         assert len(embedded_trace["records"][0][7][0]) == 15
         assert 'id="eventGroups"' in rank_page
         assert 'id="waveOptions"' in rank_page
+        assert 'id="selectWaveRange"' in rank_page
+        assert 'id="addWaveRange"' in rank_page
+        assert 'id="invertWaves"' in rank_page
         assert 'id="waveSelect"' not in rank_page
-        assert "selectedWaves.has(e.wave)" in rank_page
+        assert ".filter(wave=>wave!==null)" in rank_page
+        assert "e.wave===null||selectedWaves.has(e.wave)" in rank_page
+        assert "event.shiftKey&&lastWaveClicked!==null" in rank_page
+        assert "wavePicker.open&&!wavePicker.contains(event.target)" in rank_page
+        assert "event.key==='Escape'" in rank_page
         assert 'id="phasePreset"' in rank_page
         assert 'id="statsCoreSelect"' in rank_page
         assert 'id="selectionStatsTable"' in rank_page
         assert "moe:['DISPATCH_WORK'" in rank_page
+        assert (
+            "'GMM1':['WAIT_FOR_DISPATCH','GMM1_PROLOGUE','GMM1_COMPUTE']" in rank_page
+        )
+        assert "'Activation':['WAIT_FOR_GMM1','ACTIVATION_WORK']" in rank_page
+        assert (
+            "'GMM2':['WAIT_FOR_ACTIVATION','GMM2_PROLOGUE','GMM2_COMPUTE']" in rank_page
+        )
+        assert "'Combine / 收尾':['WAIT_FOR_GMM2','COMBINE_WORK'" in rank_page
         assert "按 1000 cycles/μs 换算" in rank_page
         assert "selectedEvents.has(e.event)" in rank_page
         assert 'data-legend-event="${name}"' in rank_page
@@ -1993,6 +2128,12 @@ def run_synthetic_tests() -> int:
         assert 'id="eventTableScroll"' in rank_page
         assert 'id="waveTableScroll"' in rank_page
         assert "const drawCanvas=()=>" in rank_page
+        assert (
+            "measurementText(measurement.endCycle-measurement.startCycle)" in rank_page
+        )
+        assert "canvas.addEventListener('pointerdown'" in rank_page
+        assert "canvas.addEventListener('pointermove'" in rank_page
+        assert "suppressTimelineClick=true" in rank_page
         assert 'class="timeline-pinned-divider"' in rank_page
         assert "resize:vertical" in rank_page
         assert "data-toggle-pinned" in rank_page

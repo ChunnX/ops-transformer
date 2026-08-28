@@ -62,6 +62,14 @@ selection statistics follow the statistics Block, Wave, wait and event filters a
 total/active/wait time, mean, P50, P95, maximum and wall-clock coverage span in both cycles and μs. The default
 conversion for this platform is `1000 cycles/μs`. Summed intervals can overlap when a
 parent stage and its child wait are both selected, so the sum is not an operator wall-clock duration.
+Stage groups follow the consumer/parent stage: `WAIT_FOR_DISPATCH` belongs to GMM1, `WAIT_FOR_GMM1` to Activation,
+`WAIT_FOR_ACTIVATION` to GMM2, and `WAIT_FOR_GMM2` to Combine.
+The Wave selector lists only numeric Wave scopes. Operator-wide events whose Wave is `null` remain visible and are
+controlled by the stage/event selector rather than by Wave selection.
+Large Wave sets can be selected in bulk with an inclusive start/end range, appended to the current selection,
+inverted, or selected contiguously with Shift-click.
+The Canvas timeline supports free horizontal measurement: drag in either direction to show begin/end cycles,
+delta cycles and converted microseconds. Press Escape or click empty timeline space to clear the measurement.
 
 The display Block selector controls the timeline, lane overview, Wave summary and event details. A separate
 statistics Block selector controls only the selection statistics, making it possible to display one Block while
