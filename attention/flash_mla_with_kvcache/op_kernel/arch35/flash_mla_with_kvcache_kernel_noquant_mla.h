@@ -105,7 +105,7 @@ public:
         : cubeBlock_(constInfo_, seqLensTool_),
           vecFaBlock_(constInfo_, seqLensTool_),
           vecFdBlock_(constInfo_, seqLensTool_){};
-    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
+    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *kCache,
                                 __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
                                 __gm__ uint8_t *cacheSeqlens, __gm__ uint8_t *blockTable, __gm__ uint8_t *softmaxLse,
                                 __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, __gm__ uint8_t *metadata,
@@ -125,8 +125,8 @@ public:
 
         InitConstInfo();
 
-        keyPtr_ = key;
-        valuePtr_ = value;
+        keyPtr_ = kCache;
+        valuePtr_ = kCache;
 
         // seq-lens 全部 INT32（ACTLEN_T=uint32_t），无 int64 GM 物化、无预核 pass；
         // parser 所有权收敛到 kernel 层（FlashMlaSeqLensTool），block 只读引用
@@ -139,7 +139,7 @@ public:
         }
 
         if ASCEND_IS_AIC {
-            cubeBlock_.InitCubeBlock(query, key, value, blockTable);
+            cubeBlock_.InitCubeBlock(query, kCache, blockTable);
         }
 
         if constexpr (FLASH_DECODE) {
