@@ -23,7 +23,7 @@
 
 - **接口功能**：BlockSparseAttentionV3稀疏注意力计算，支持灵活的块级稀疏模式，通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。
 
-  相比于BlockSparseAttentionV3,本接口新增pQuantScaleOptional、quantMode、dstTypeMax参数。
+  相比于BlockSparseAttentionV2,本接口新增pQuantScaleOptional、quantMode、dstTypeMax参数。
 - **计算公式**：稀疏块大小：$blockShapeX \times blockShapeY$，selectIdx指定稀疏模式
 
   $$
@@ -714,7 +714,6 @@ aclnnStatus aclnnBlockSparseAttentionV3(
 - **quantMode=2/3 (MXFP4量化模式)相关约束（新增）**
 
   - 仅Ascend 950PR/Ascend 950DT支持
-  - blockShapeX 仅支持64的倍数；
   - D仅支持64/128;
   - attentionOut数据类型仅支持FLOAT16或BFLOAT16；
   - 暂不支持attenMaskOptional、PagedAttention、softmaxLse等高阶特性。
