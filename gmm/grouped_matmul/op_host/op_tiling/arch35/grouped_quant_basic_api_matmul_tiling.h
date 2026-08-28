@@ -132,6 +132,9 @@ protected:
     ge::graphStatus CalcS4S4LeftL1Size(uint64_t &leftL1Size) const;
     ge::graphStatus CalL1Tiling();
     ge::graphStatus CalL1Depth(uint64_t leftL1Size);
+    void SetS4S4Params();
+    ge::graphStatus SetArrayParams();
+    void SetMmTilingData();
 
 private:
     struct S4S4BasicTiling {

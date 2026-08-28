@@ -894,7 +894,7 @@ uint64_t GroupedS4S4IntQuantTiling::GetTilingKey() const
     return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transB ? 1 : 0), 0UL, S4S4_KERNEL_TYPE_MIX);
 }
 
-ge::graphStatus GroupedS4S4IntQuantTiling::PostTiling()
+void GroupedS4S4IntQuantTiling::SetS4S4Params()
 {
     using namespace GroupedMatmulTilingData;
     auto &p = tilingData_.gmmS4S4Params;
@@ -916,7 +916,11 @@ ge::graphStatus GroupedS4S4IntQuantTiling::PostTiling()
     p.groupListType = s4s4Tiling_.groupListType;
     p.reserved = ((inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) ? S4S4_WEIGHT_NZ_FLAG : 0ULL) |
                  (inputParams_.transB ? S4S4_TRANSPOSE_WEIGHT_FLAG : 0ULL) |
-                 (weightNzC032_ ? S4S4_WEIGHT_NZ_C0_32_FLAG : 0ULL);
+                  (weightNzC032_ ? S4S4_WEIGHT_NZ_C0_32_FLAG : 0ULL);
+}
+
+ge::graphStatus GroupedS4S4IntQuantTiling::SetArrayParams()
+{
     errno_t retM = memcpy_s(tilingData_.gmmArray.mList, sizeof(tilingData_.gmmArray.mList), mList_, sizeof(mList_));
     OP_CHECK_IF(retM != EOK, OP_LOGE(context_->GetNodeName(), "memcpy_s mList failed, ret=%d", retM),
                 return ge::GRAPH_FAILED);
@@ -926,6 +930,11 @@ ge::graphStatus GroupedS4S4IntQuantTiling::PostTiling()
     errno_t retN = memcpy_s(tilingData_.gmmArray.nList, sizeof(tilingData_.gmmArray.nList), nList_, sizeof(nList_));
     OP_CHECK_IF(retN != EOK, OP_LOGE(context_->GetNodeName(), "memcpy_s nList failed, ret=%d", retN),
                 return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+void GroupedS4S4IntQuantTiling::SetMmTilingData()
+{
     // mmTilingData(TCubeTiling)
     auto &mm = tilingData_.mmTilingData;
     mm.M = inputParams_.mSize;
@@ -950,6 +959,16 @@ ge::graphStatus GroupedS4S4IntQuantTiling::PostTiling()
     mm.dbL0A = DB_SIZE;
     mm.dbL0B = DB_SIZE;
     mm.dbL0C = s4s4Tiling_.dbL0c;
+}
+
+ge::graphStatus GroupedS4S4IntQuantTiling::PostTiling()
+{
+    SetS4S4Params();
+    if (SetArrayParams() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    SetMmTilingData();
+    auto &p = tilingData_.gmmS4S4Params;
     OP_LOGI(context_->GetNodeName(),
             "S4S4 tiling: baseM=%u baseN=%u baseK=%u ubCalSize=%u ubRestBytes=%u quantGroupNum=%u isPerToken=%u "
             "depthA1=%lu depthB1=%lu",
