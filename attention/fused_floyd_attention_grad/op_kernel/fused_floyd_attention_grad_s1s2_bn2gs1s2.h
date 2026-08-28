@@ -93,8 +93,8 @@ __aicore__ inline void DataCopyOut(const __gm__ void *gm, const LocalTensor<int8
 {
     const DataCopyOutParams *param = reinterpret_cast<const DataCopyOutParams *>(dataCopyOutParams);
     uint64_t dstStride = dataPtr * 16 / 8 - param->burstLen;
-    FixpipeParams<float> fixpipeParams(param->cBurstNum, param->burstLen, param->srcStride,
-                                       static_cast<uint32_t>(dstStride));
+    FixpipeParamsV220 fixpipeParams(param->cBurstNum, param->burstLen, param->srcStride,
+                                    static_cast<uint32_t>(dstStride), false);
 
     if (param->enUnitFlag) {
         fixpipeParams.unitFlag = 3;
