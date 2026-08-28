@@ -180,6 +180,7 @@ __aicore__ inline void EngramFetchGradArch35::WriteNbiChecked(uint64_t handle, G
 __aicore__ inline void EngramFetchGradArch35::DrainChecked(uint64_t handle)
 {
     int32_t ret = hcomm_.Drain(handle);
+    ascendc_assert(ret == 0, "DrainChecked failed, ret=%d, handle=%llu", ret, handle);
 }
 
 __aicore__ inline void EngramFetchGradArch35::TimeoutCheck(uint64_t startTime)
@@ -237,6 +238,7 @@ __aicore__ inline void EngramFetchGradArch35::WriteRemoteCounter(uint32_t dstRan
     GM_ADDR remoteCounterAddr = GetRemoteWinAddr(dstRank, counterOffset) +
                                 (static_cast<uint64_t>(rankId_) * sendersPerRank_ + senderIdx) * STATE_OFFSET;
     WriteNbiChecked(handle, remoteCounterAddr, srcAddr, sizeof(int32_t));
+    DrainChecked(handle);
 }
 
 __aicore__ inline void EngramFetchGradArch35::WaitAllStatusFlags(GM_ADDR statusWinBase, uint32_t expectCount)
