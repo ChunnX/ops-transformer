@@ -29,20 +29,6 @@ void MixedQuantSparseFlashMlaKvTensorPreProcess(const aclTensor *&kvTensor, cons
     }
 }
 
-void MixedQuantSparseFlashMlaProcessSoftmaxLse(bool returnSoftmaxLse, const aclTensor *softmaxLse,
-                                               const aclTensor *&tempTensor, const aclTensor *&placeHolder)
-{
-    if (!returnSoftmaxLse) {
-        std::vector<int64_t> shape = {0};
-        int64_t addr = 0xff;
-        tempTensor = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_FLOAT, shape.data(), 0, ACL_FORMAT_ND,
-                                     shape.data(), shape.size(), static_cast<void *>(&addr));
-        placeHolder = tempTensor;
-    } else {
-        placeHolder = softmaxLse;
-    }
-}
-
 void MixedQuantSparseFlashMlaProcessSinks(const aclTensor *&sinksOptional)
 {
     if (sinksOptional != nullptr) {

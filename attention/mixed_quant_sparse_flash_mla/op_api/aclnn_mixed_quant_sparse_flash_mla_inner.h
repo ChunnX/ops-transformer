@@ -36,9 +36,6 @@ extern aclnnStatus aclnnInnerMixedQuantSparseFlashMla(void *workspace, uint64_t 
 
 void MixedQuantSparseFlashMlaKvTensorPreProcess(const aclTensor *&kvTensor, const char *tensorName);
 
-void MixedQuantSparseFlashMlaProcessSoftmaxLse(bool returnSoftmaxLse, const aclTensor *softmaxLse,
-                                               const aclTensor *&tempTensor, const aclTensor *&placeHolder);
-
 void MixedQuantSparseFlashMlaProcessSinks(const aclTensor *&sinksOptional);
 
 #ifdef __cplusplus

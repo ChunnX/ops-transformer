@@ -62,8 +62,6 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaGetWorkspaceSize(
     const aclTensor *placeHolder = nullptr;
     const aclTensor *tempTensor = nullptr;
 
-    MixedQuantSparseFlashMlaProcessSoftmaxLse(returnSoftmaxLse, softmaxLseOptional, tempTensor, placeHolder);
-
     aclnnStatus ret = CheckTensorContiguous(oriKvOptional, cmpKvOptional);
     if (ret != ACLNN_SUCCESS && NnopbaseSupportTensorV2 == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER, "When tensor is not contiguous, opbase package version check failed");
