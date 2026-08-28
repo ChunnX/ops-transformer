@@ -97,21 +97,9 @@ private:
     __aicore__ inline void smallKAlignEVF(LocalTensor<float> xSigmoidTensor, LocalTensor<int32_t> mrgSortTensor,
                                           LocalTensor<int32_t> expertIdxTensor, LocalTensor<T> yTensor, uint32_t k,
                                           float eps, float routedScalingFactor);
-    __aicore__ inline void smallKAlignEVFNoNorm(LocalTensor<float> xSigmoidTensor, LocalTensor<int32_t> mrgSortTensor,
-                                                LocalTensor<int32_t> expertIdxTensor, LocalTensor<T> yTensor,
-                                                uint32_t k, float routedScalingFactor);
-    __aicore__ inline void smallKAlignEVFWithNorm(LocalTensor<float> xSigmoidTensor, LocalTensor<int32_t> mrgSortTensor,
-                                                  LocalTensor<int32_t> expertIdxTensor, LocalTensor<T> yTensor,
-                                                  uint32_t k, float eps, float routedScalingFactor);
     __aicore__ inline void largeKAlignEVF(LocalTensor<float> xSigmoidTensor, LocalTensor<int32_t> mrgSortTensor,
                                           LocalTensor<int32_t> expertIdxTensor, LocalTensor<T> yTensor, uint32_t k,
                                           float eps, float routedScalingFactor);
-    __aicore__ inline void LargeKAlignEVFNoNorm(LocalTensor<float> xSigmoidTensor, LocalTensor<int32_t> mrgSortTensor,
-                                                LocalTensor<int32_t> expertIdxTensor, LocalTensor<T> yTensor,
-                                                uint32_t k, float routedScalingFactor);
-    __aicore__ inline void LargeKAlignEVFWithNorm(LocalTensor<float> xSigmoidTensor, LocalTensor<int32_t> mrgSortTensor,
-                                                  LocalTensor<int32_t> expertIdxTensor, LocalTensor<T> yTensor,
-                                                  uint32_t k, float eps, float routedScalingFactor);
     __aicore__ inline void smallKNotAlignEVF(LocalTensor<float> xSigmoidTensor, LocalTensor<int32_t> mrgSortTensor,
                                              LocalTensor<int32_t> expertIdxTensor, LocalTensor<T> yTensor, uint32_t k,
                                              float eps, float routedScalingFactor, int32_t expertIdxPad,
@@ -1005,87 +993,40 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::FinalSortAfterKGroup()
 
 template <typename T, typename U1, typename U2>
 __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::smallKAlignEVF(LocalTensor<float> xSigmoidTensor,
-                                                                       LocalTensor<int32_t> mrgSortTensor,
-                                                                       LocalTensor<int32_t> expertIdxTensor,
-                                                                       LocalTensor<T> yTensor, uint32_t k, float eps,
-                                                                       float routedScalingFactor)
+                                                                        LocalTensor<int32_t> mrgSortTensor,
+                                                                        LocalTensor<int32_t> expertIdxTensor,
+                                                                        LocalTensor<T> yTensor, uint32_t k, float eps,
+                                                                        float routedScalingFactor)
 {
+    __ubuf__ float *inputAddr = (__ubuf__ float *)xSigmoidTensor.GetPhyAddr();
+    __ubuf__ T *outputAddr = (__ubuf__ T *)yTensor.GetPhyAddr();
+    __ubuf__ uint32_t *mrgSortAddr = (__ubuf__ uint32_t *)mrgSortTensor.GetPhyAddr();
+    __ubuf__ uint32_t *expertIdxAddr = (__ubuf__ uint32_t *)expertIdxTensor.GetPhyAddr();
     if (noNorm_) {
-        smallKAlignEVFNoNorm(xSigmoidTensor, mrgSortTensor, expertIdxTensor, yTensor, k, routedScalingFactor);
+        SmallKAlignEVFNoNorm<T>(inputAddr, mrgSortAddr, outputAddr, expertIdxAddr, k, routedScalingFactor);
     } else {
-        smallKAlignEVFWithNorm(xSigmoidTensor, mrgSortTensor, expertIdxTensor, yTensor, k, eps, routedScalingFactor);
+        SmallKAlignEVFWithNorm<T>(inputAddr, mrgSortAddr, outputAddr, expertIdxAddr, k, eps, routedScalingFactor);
     }
-}
-
-template <typename T, typename U1, typename U2>
-__aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::smallKAlignEVFNoNorm(LocalTensor<float> xSigmoidTensor,
-                                                                              LocalTensor<int32_t> mrgSortTensor,
-                                                                              LocalTensor<int32_t> expertIdxTensor,
-                                                                              LocalTensor<T> yTensor, uint32_t k,
-                                                                              float routedScalingFactor)
-{
-    __ubuf__ float *inputAddr = (__ubuf__ float *)xSigmoidTensor.GetPhyAddr();
-    __ubuf__ T *outputAddr = (__ubuf__ T *)yTensor.GetPhyAddr();
-    __ubuf__ uint32_t *mrgSortAddr = (__ubuf__ uint32_t *)mrgSortTensor.GetPhyAddr();
-    __ubuf__ uint32_t *expertIdxAddr = (__ubuf__ uint32_t *)expertIdxTensor.GetPhyAddr();
-    SmallKAlignEVFNoNorm<T>(inputAddr, mrgSortAddr, outputAddr, expertIdxAddr, k, routedScalingFactor);
-}
-
-template <typename T, typename U1, typename U2>
-__aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::smallKAlignEVFWithNorm(LocalTensor<float> xSigmoidTensor,
-                                                                                LocalTensor<int32_t> mrgSortTensor,
-                                                                                LocalTensor<int32_t> expertIdxTensor,
-                                                                                LocalTensor<T> yTensor, uint32_t k,
-                                                                                float eps, float routedScalingFactor)
-{
-    __ubuf__ float *inputAddr = (__ubuf__ float *)xSigmoidTensor.GetPhyAddr();
-    __ubuf__ T *outputAddr = (__ubuf__ T *)yTensor.GetPhyAddr();
-    __ubuf__ uint32_t *mrgSortAddr = (__ubuf__ uint32_t *)mrgSortTensor.GetPhyAddr();
-    __ubuf__ uint32_t *expertIdxAddr = (__ubuf__ uint32_t *)expertIdxTensor.GetPhyAddr();
-    SmallKAlignEVFWithNorm<T>(inputAddr, mrgSortAddr, outputAddr, expertIdxAddr, k, eps, routedScalingFactor);
-}
-
-template <typename T, typename U1, typename U2>
-__aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::LargeKAlignEVFNoNorm(LocalTensor<float> xSigmoidTensor,
-                                                                              LocalTensor<int32_t> mrgSortTensor,
-                                                                              LocalTensor<int32_t> expertIdxTensor,
-                                                                              LocalTensor<T> yTensor, uint32_t k,
-                                                                              float routedScalingFactor)
-{
-    __ubuf__ float *inputAddr = (__ubuf__ float *)xSigmoidTensor.GetPhyAddr();
-    __ubuf__ T *outputAddr = (__ubuf__ T *)yTensor.GetPhyAddr();
-    __ubuf__ uint32_t *mrgSortAddr = (__ubuf__ uint32_t *)mrgSortTensor.GetPhyAddr();
-    __ubuf__ uint32_t *expertIdxAddr = (__ubuf__ uint32_t *)expertIdxTensor.GetPhyAddr();
-    LargeKAlignEVFNoNorm<T>(inputAddr, mrgSortAddr, outputAddr, expertIdxAddr, k, routedScalingFactor);
-}
-
-template <typename T, typename U1, typename U2>
-__aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::LargeKAlignEVFWithNorm(LocalTensor<float> xSigmoidTensor,
-                                                                                LocalTensor<int32_t> mrgSortTensor,
-                                                                                LocalTensor<int32_t> expertIdxTensor,
-                                                                                LocalTensor<T> yTensor, uint32_t k,
-                                                                                float eps, float routedScalingFactor)
-{
-    __ubuf__ float *inputAddr = (__ubuf__ float *)xSigmoidTensor.GetPhyAddr();
-    __ubuf__ T *outputAddr = (__ubuf__ T *)yTensor.GetPhyAddr();
-    __ubuf__ uint32_t *mrgSortAddr = (__ubuf__ uint32_t *)mrgSortTensor.GetPhyAddr();
-    __ubuf__ uint32_t *expertIdxAddr = (__ubuf__ uint32_t *)expertIdxTensor.GetPhyAddr();
-    LargeKAlignEVFWithNorm<T>(inputAddr, mrgSortAddr, outputAddr, expertIdxAddr, k, eps, routedScalingFactor);
 }
 
 template <typename T, typename U1, typename U2>
 __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::largeKAlignEVF(LocalTensor<float> xSigmoidTensor,
-                                                                       LocalTensor<int32_t> mrgSortTensor,
-                                                                       LocalTensor<int32_t> expertIdxTensor,
-                                                                       LocalTensor<T> yTensor, uint32_t k, float eps,
-                                                                       float routedScalingFactor)
+                                                                        LocalTensor<int32_t> mrgSortTensor,
+                                                                        LocalTensor<int32_t> expertIdxTensor,
+                                                                        LocalTensor<T> yTensor, uint32_t k, float eps,
+                                                                        float routedScalingFactor)
 {
+    __ubuf__ float *inputAddr = (__ubuf__ float *)xSigmoidTensor.GetPhyAddr();
+    __ubuf__ T *outputAddr = (__ubuf__ T *)yTensor.GetPhyAddr();
+    __ubuf__ uint32_t *mrgSortAddr = (__ubuf__ uint32_t *)mrgSortTensor.GetPhyAddr();
+    __ubuf__ uint32_t *expertIdxAddr = (__ubuf__ uint32_t *)expertIdxTensor.GetPhyAddr();
     if (noNorm_) {
-        LargeKAlignEVFNoNorm(xSigmoidTensor, mrgSortTensor, expertIdxTensor, yTensor, k, routedScalingFactor);
+        LargeKAlignEVFNoNorm<T>(inputAddr, mrgSortAddr, outputAddr, expertIdxAddr, k, routedScalingFactor);
     } else {
-        LargeKAlignEVFWithNorm(xSigmoidTensor, mrgSortTensor, expertIdxTensor, yTensor, k, eps, routedScalingFactor);
+        LargeKAlignEVFWithNorm<T>(inputAddr, mrgSortAddr, outputAddr, expertIdxAddr, k, eps, routedScalingFactor);
     }
 }
+
 template <typename T, typename U1, typename U2>
 __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::smallKNotAlignEVF(
     LocalTensor<float> xSigmoidTensor, LocalTensor<int32_t> mrgSortTensor, LocalTensor<int32_t> expertIdxTensor,
