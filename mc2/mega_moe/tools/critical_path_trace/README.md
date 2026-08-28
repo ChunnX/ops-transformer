@@ -67,11 +67,42 @@ The display Block selector controls the timeline, lane overview, Wave summary an
 statistics Block selector controls only the selection statistics, making it possible to display one Block while
 aggregating another Block or all Blocks. Display Top-N limits do not truncate the statistics selection.
 
-The report retains every event and event-detail row in the selected display scope. The timeline batch-draws all
-events on one Canvas per lane, while the detail table keeps the complete sorted row set and materializes only the
-visible scroll window. These are lossless interaction optimizations, not event limits: scrolling, hit-testing,
-filtering and statistics still use the full selected data. Statistics-Block changes refresh only the statistics
-panel, and all display consumers reuse one filtered Block model per interaction.
+The report retains every event and event-detail row in the selected display scope. Its embedded payload uses a
+versioned compact row protocol instead of repeated JSON event objects. The timeline uses one Canvas for the whole
+view and draws only lanes intersecting the vertical viewport; the event-detail and Wave tables materialize only their
+visible scroll windows. Exact selection statistics and Wave aggregation run in a zero-dependency Web Worker, with a
+main-thread fallback when Worker creation is unavailable. Hovered events are raised with an outline and shadow;
+clicking keeps a persistent selected marker while showing the event details. These are lossless interaction
+optimizations, not event limits: scrolling, hit-testing, filtering and statistics still use the full selected data.
+Statistics-Block changes refresh only the statistics panel; display-only Block, sorting, Top-N and pin changes reuse
+the filtered model; and expensive summary/detail updates are split across animation frames.
+
+## Optional Parquet / DuckDB analysis
+
+The interactive HTML remains the only timeline implementation. For batch SQL, commit bisection and good/bad
+aggregation, the same canonical `events.csv` can additionally be converted to Zstd-compressed Parquet with DuckDB:
+
+```bash
+python3 -m pip install duckdb
+python3 mc2/mega_moe/tools/critical_path_trace/trace_tool.py raw/good \
+  --parquet --output-dir good-trace-report
+
+python3 - <<'PY'
+import duckdb
+
+duckdb.sql("""
+  SELECT role, core, event, count(*) AS count,
+         sum(duration_cycles) AS total_cycles,
+         quantile_cont(duration_cycles, 0.95) AS p95_cycles
+  FROM read_parquet('good-trace-report/rank0/events.parquet')
+  GROUP BY role, core, event
+  ORDER BY total_cycles DESC
+""").show()
+PY
+```
+
+`--parquet` is optional and does not affect HTML generation. Without the `duckdb` package the normal JSON, CSV,
+SVG and HTML artifacts continue to work; requesting `--parquet` reports the missing dependency explicitly.
 
 High-level presets provide one-click views for `PRE_MOE`, the MoE main pipeline (event IDs 2 through 13),
 `COUNT_EXPORT`, `UNPERMUTE`, `POST_MOE`, shared experts and cross-rank synchronization. Selecting individual events

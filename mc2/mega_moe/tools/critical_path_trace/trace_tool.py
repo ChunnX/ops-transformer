@@ -20,7 +20,9 @@ import re
 import shutil
 import struct
 import subprocess
+import sys
 import tempfile
+from array import array
 from pathlib import Path
 
 MAGIC = 0x41385452
@@ -151,14 +153,19 @@ def attach_wait_intervals(events: list[dict]) -> None:
         event["active_cycles"] = max(0, event["duration_cycles"] - event["wait_cycles"])
 
 
-def read_words(path: Path) -> tuple[int, ...]:
-    data = path.read_bytes()
-    if len(data) % 4 != 0:
-        raise ValueError(f"{path}: byte size {len(data)} is not divisible by four")
-    return struct.unpack(f"<{len(data) // 4}I", data)
+def read_words(path: Path) -> array:
+    byte_size = path.stat().st_size
+    if byte_size % 4 != 0:
+        raise ValueError(f"{path}: byte size {byte_size} is not divisible by four")
+    words = array("I")
+    with path.open("rb") as stream:
+        words.fromfile(stream, byte_size // 4)
+    if sys.byteorder != "little":
+        words.byteswap()
+    return words
 
 
-def parse_trace(words: tuple[int, ...]) -> dict:
+def parse_trace(words: array) -> dict:
     if len(words) < HEADER_WORDS:
         raise ValueError("capture is smaller than the trace header")
     if words[0] != MAGIC:
@@ -328,6 +335,7 @@ def parse_trace(words: tuple[int, ...]) -> dict:
 
 def write_csv(trace: dict, path: Path) -> None:
     columns = [
+        "rank",
         "role",
         "core",
         "event",
@@ -360,8 +368,39 @@ def write_csv(trace: dict, path: Path) -> None:
         for record in trace["records"]:
             for event in record["events"]:
                 writer.writerow(
-                    {"role": record["role"], "core": record["core"], **event}
+                    {
+                        "rank": record["rank"],
+                        "role": record["role"],
+                        "core": record["core"],
+                        **event,
+                    }
                 )
+
+
+def write_parquet_with_duckdb(csv_path: Path, parquet_path: Path) -> None:
+    """Convert the canonical event CSV to typed Parquet using optional DuckDB."""
+    try:
+        import duckdb
+    except ImportError as error:
+        raise RuntimeError(
+            "--parquet requires the optional 'duckdb' Python package; "
+            "install it with: python3 -m pip install duckdb"
+        ) from error
+
+    def literal(path: Path) -> str:
+        return "'" + str(path.resolve()).replace("'", "''") + "'"
+
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute(
+            "COPY (SELECT * FROM read_csv_auto("
+            + literal(csv_path)
+            + ", header=true, nullstr='')) TO "
+            + literal(parquet_path)
+            + " (FORMAT PARQUET, COMPRESSION ZSTD)"
+        )
+    finally:
+        connection.close()
 
 
 def write_svg(trace: dict, path: Path) -> None:
@@ -465,9 +504,60 @@ def write_svg(trace: dict, path: Path) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def pack_html_trace(trace: dict) -> dict:
+    """Pack repeated event dictionaries into compact, versioned rows for HTML."""
+    records = []
+    for record in trace["records"]:
+        event_rows = [
+            [
+                event["event_id"],
+                event["parent_event_id"],
+                event["flags"],
+                event["wave"],
+                event["expert"],
+                event["tile"],
+                event["token_start_in_expert"],
+                event["token_count"],
+                event["work_count"],
+                event["begin_cycle"],
+                event["end_cycle"],
+                event["wait_cycles"],
+                event["active_cycles"],
+                event["wait_event_count"],
+                event["paired"],
+            ]
+            for event in record["events"]
+        ]
+        records.append(
+            [
+                ROLE_NAMES.index(record["role"]),
+                record["core"],
+                record["process_begin_cycle"],
+                record["process_end_cycle"],
+                record["rank"],
+                record["written_count"],
+                record["dropped_count"],
+                event_rows,
+            ]
+        )
+    metadata = {
+        str(event_id): [name, *EVENT_TRACE_POINTS.get(event_id, ("未知", "未知"))]
+        for event_id, name in EVENT_NAMES.items()
+    }
+    return {
+        "format": "mega-moe-html-columns-v1",
+        "header": trace["header"],
+        "warnings": trace.get("warnings", []),
+        "event_metadata": metadata,
+        "records": records,
+    }
+
+
 def write_html(trace: dict, path: Path) -> None:
     """Write a self-contained interactive report without external JavaScript dependencies."""
-    payload = json.dumps(trace, ensure_ascii=False).replace("</", "<\\/")
+    payload = json.dumps(
+        pack_html_trace(trace), ensure_ascii=False, separators=(",", ":")
+    ).replace("</", "<\\/")
     header = trace["header"]
     event_count = sum(len(record["events"]) for record in trace["records"])
     truncated_count = sum(record["truncated"] for record in trace["records"])
@@ -526,31 +616,21 @@ button {{ cursor:pointer; }} button:hover {{ background:#f1f5f9; }}
 .legend {{ display:flex; flex-wrap:wrap; gap:10px 16px; color:var(--muted); }}
 .legend i {{ display:inline-block; width:10px; height:10px; margin-right:5px; border-radius:2px; }}
 #timeline {{ min-height:140px; overflow-x:auto; }}
-.axis {{ position:relative; height:24px; margin-left:142px; border-bottom:1px solid var(--line); min-width:900px; }}
-.tick {{ position:absolute; bottom:0; height:7px; border-left:1px solid #98a2b3; }}
-.tick span {{ position:absolute; top:-18px; left:3px; white-space:nowrap; font-size:10px; color:var(--muted); }}
-.lane-wrap {{ display:grid; grid-template-columns:var(--lane-label-width) minmax(900px,1fr); gap:10px;
-              align-items:center; margin-top:4px; }}
-.lane-name {{ display:flex; align-items:center; gap:5px; min-width:0; font-weight:600; text-align:left; line-height:1.3; }}
-.lane-name-text {{ min-width:0; }}
-.lane-wrap.lane-pinned .lane {{ border-color:#f59e0b; box-shadow:0 0 0 1px #f59e0b33; }}
-.lane-name small {{ display:block; margin-top:2px; overflow:hidden; color:var(--muted); font-size:10px;
-                    font-weight:400; text-overflow:ellipsis; white-space:nowrap; }}
+.timeline-viewport {{ position:relative; overflow:auto; min-height:140px; max-height:70vh; border:1px solid var(--line);
+                      border-radius:8px; background:#fff; }}
+.timeline-content {{ position:relative; min-width:1050px; }}
+.timeline-label-layer {{ position:absolute; left:0; top:0; z-index:3; width:142px; pointer-events:none; }}
+.timeline-label {{ position:absolute; left:0; width:142px; display:flex; align-items:center; gap:5px; padding:0 7px;
+                   overflow:hidden; border-right:1px solid var(--line); background:#fff; pointer-events:auto; }}
+.timeline-label.block {{ background:#eef2f6; color:var(--muted); font-size:11px; font-weight:700; }}
+.timeline-label.section {{ background:#fffbeb; color:#92400e; font-size:11px; font-weight:700; }}
+.timeline-label.lane-label {{ font-weight:600; }}
+.timeline-label.lane-label small {{ display:block; overflow:hidden; color:var(--muted); font-size:9px; font-weight:400;
+                                    text-overflow:ellipsis; white-space:nowrap; }}
+.timeline-canvas {{ position:absolute; left:142px; top:0; z-index:2; cursor:default; }}
 .pin-button {{ flex:0 0 auto; width:24px; height:24px; padding:0; border-color:transparent; color:#98a2b3;
                font-size:13px; line-height:22px; }}
 .pin-button.active {{ border-color:#f59e0b; background:#fffbeb; color:#b45309; }}
-.block-group {{ margin-top:9px; padding:6px 8px 8px; background:#f8fafc; border:1px solid var(--line);
-                border-radius:8px; }}
-.block-group:nth-of-type(even) {{ background:#f3f6fa; }}
-.block-group.pinned {{ border-color:#f59e0b; background:#fffbeb66; }}
-.block-header {{ display:flex; align-items:center; justify-content:space-between; min-height:25px; color:var(--muted);
-                 font-size:11px; font-weight:600; }}
-.pinned-section {{ margin:9px 0 13px; padding:8px; border:1px dashed #f59e0b; border-radius:8px; background:#fffbeb55; }}
-.pinned-title {{ margin-bottom:4px; color:#92400e; font-size:12px; font-weight:700; }}
-.pinned-lanes {{ display:grid; gap:5px; }}
-.pinned-lane {{ padding:4px 7px 7px; border:1px solid #fbbf24; border-radius:7px; background:#fff; }}
-.lane {{ position:relative; height:32px; overflow:hidden; background:#f8fafc; border:1px solid #e5e7eb; border-radius:5px; }}
-.lane-canvas {{ display:block; width:100%; height:30px; cursor:crosshair; }}
 .canvas-tooltip {{ display:none; position:fixed; z-index:100; max-width:min(620px,calc(100vw - 24px)); padding:8px 10px;
                    border:1px solid #94a3b8; border-radius:6px; background:#0f172a; color:#f8fafc;
                    box-shadow:0 8px 24px #0f172a33; font:11px/1.45 monospace; pointer-events:none; }}
@@ -565,6 +645,8 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
 .table-scroll {{ max-height:470px; overflow:auto; border:1px solid #e5e7eb; border-radius:6px; }}
 #eventTable tbody tr:not(.virtual-spacer) {{ height:32px; }}
 #eventTable .virtual-spacer td {{ height:0; padding:0; border:0; }}
+#waveTable tbody tr:not(.virtual-spacer) {{ height:32px; }}
+#waveTable .virtual-spacer td {{ height:0; padding:0; border:0; }}
 .lane-summary-row {{ cursor:pointer; }}
 .lane-summary-row:hover {{ background:#f1f5f9; }}
 .block-summary-row {{ background:#f8fafc; font-weight:600; }}
@@ -659,7 +741,7 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
 </section>
 <section class="panel">
   <h2>Wave 汇总</h2>
-  <div class="table-scroll"><table id="waveTable"><thead><tr>
+  <div class="table-scroll" id="waveTableScroll"><table id="waveTable"><thead><tr>
     <th>AI Block</th><th>Wave</th><th>角色</th><th>阶段</th><th>事件数</th><th>Token 数</th><th>Work count</th>
     <th>总时间</th><th>Active</th><th>Wait</th><th>Wait 占比</th><th>最长事件</th>
   </tr></thead><tbody></tbody></table></div>
@@ -677,11 +759,105 @@ thead th {{ position:sticky; top:0; background:#f8fafc; z-index:1; }}
     <th>总耗时 (μs)</th><th>Begin 打点</th><th>End 打点</th>
   </tr></thead><tbody></tbody></table></div>
 </section>
+<script id="traceWorkerSource" type="text/plain">
+(()=>{{
+let columns=null,eventNames={{}},groupNames={{}},groupOrder=[];
+const metric=()=>({{count:0,total:0,active:0,wait:0,waitKnown:true,first:Infinity,last:-Infinity,durations:[]}});
+const addMetric=(target,index)=>{{
+  const duration=columns.duration[index],wait=columns.wait[index];
+  target.count++; target.total+=duration; target.active+=columns.active[index];
+  if(wait<0) target.waitKnown=false; else target.wait+=wait;
+  target.first=Math.min(target.first,columns.begin[index]); target.last=Math.max(target.last,columns.end[index]);
+  target.durations.push(duration);
+}};
+const finishMetric=(value,group,event,role,summary)=>{{
+  value.durations.sort((a,b)=>a-b);
+  const pick=ratio=>value.durations[Math.ceil((value.durations.length-1)*ratio)];
+  return {{group,event,role,summary,count:value.count,total:value.total,active:value.active,
+    wait:value.waitKnown?value.wait:null,mean:Math.round(value.total/value.count),p50:pick(.5),p95:pick(.95),
+    max:value.durations[value.durations.length-1],first:value.first,last:value.last,span:value.last-value.first}};
+}};
+const aggregateStats=indices=>{{
+  const groups=new Map(),details=new Map();
+  for(const index of indices) {{
+    const eventId=columns.eventId[index],group=groupNames[eventId]||'其他',role=columns.role[index];
+    if(!groups.has(group)) groups.set(group,metric()); addMetric(groups.get(group),index);
+    const key=`${{group}}|${{eventId}}|${{role}}`;
+    if(!details.has(key)) details.set(key,metric()); addMetric(details.get(key),index);
+  }}
+  const rows=[];
+  for(const group of [...groupOrder,'其他']) {{
+    if(!groups.has(group)) continue;
+    rows.push(finishMetric(groups.get(group),group,'阶段汇总','全部',true));
+    const matching=[...details.entries()].filter(([key])=>key.startsWith(`${{group}}|`)).sort((a,b)=>a[0].localeCompare(b[0]));
+    for(const [key,value] of matching) {{
+      const parts=key.split('|'),eventId=Number(parts[1]),role=Number(parts[2]);
+      rows.push(finishMetric(value,group,eventNames[eventId]||`unknown(${{eventId}})`,role, false));
+    }}
+  }}
+  return rows;
+}};
+const aggregateWaves=indices=>{{
+  const groups=new Map();
+  for(const index of indices) {{
+    const key=`${{columns.core[index]}}|${{columns.wave[index]}}|${{columns.role[index]}}|${{columns.eventId[index]}}`;
+    let row=groups.get(key);
+    if(!row) {{ row={{core:columns.core[index],wave:columns.wave[index],role:columns.role[index],event:eventNames[columns.eventId[index]],count:0,tokens:0,mGroups:0,cycles:0,active:0,wait:0,waitKnown:true,max:0}}; groups.set(key,row); }}
+    row.count++;
+    if(columns.isWait[index]) {{ row.tokens=Math.max(row.tokens,columns.tokens[index]); row.mGroups=Math.max(row.mGroups,columns.work[index]); }}
+    else {{ row.tokens+=columns.tokens[index]; row.mGroups+=columns.work[index]; }}
+    row.cycles+=columns.duration[index]; row.active+=columns.active[index];
+    if(columns.wait[index]<0) row.waitKnown=false; else row.wait+=columns.wait[index];
+    row.max=Math.max(row.max,columns.duration[index]);
+  }}
+  return [...groups.values()].sort((a,b)=>a.core-b.core||a.wave-b.wave||a.role-b.role||a.event.localeCompare(b.event));
+}};
+self.onmessage=message=>{{
+  const data=message.data;
+  if(data.type==='init') {{
+    const count=data.records.reduce((sum,record)=>sum+record[7].length,0);
+    columns={{eventId:new Uint16Array(count),role:new Uint8Array(count),core:new Uint16Array(count),wave:new Uint32Array(count),
+      duration:new Float64Array(count),active:new Float64Array(count),wait:new Float64Array(count),begin:new Float64Array(count),
+      end:new Float64Array(count),tokens:new Uint32Array(count),work:new Uint32Array(count),isWait:new Uint8Array(count)}};
+    let index=0;
+    for(const record of data.records) for(const event of record[7]) {{
+      columns.eventId[index]=event[0]; columns.role[index]=record[0]; columns.core[index]=record[1]; columns.wave[index]=event[3];
+      columns.duration[index]=event[10]-event[9]; columns.active[index]=event[12]; columns.wait[index]=event[11]===null?-1:event[11];
+      columns.begin[index]=event[9]; columns.end[index]=event[10]; columns.tokens[index]=event[7]; columns.work[index]=event[8];
+      columns.isWait[index]=Boolean(event[2]&4); index++;
+    }}
+    eventNames=data.eventNames; groupNames=data.groupNames; groupOrder=data.groupOrder;
+    self.postMessage({{type:'ready'}}); return;
+  }}
+  const rows=data.type==='stats'?aggregateStats(data.indices):aggregateWaves(data.indices);
+  self.postMessage({{type:data.type,requestId:data.requestId,rows}});
+}};
+}})();
+</script>
 <script id="traceData" type="application/json">{payload}</script>
 <script>
-const trace = JSON.parse(document.getElementById('traceData').textContent);
+const packedTrace = JSON.parse(document.getElementById('traceData').textContent);
+if(packedTrace.format!=='mega-moe-html-columns-v1') throw new Error(`unsupported HTML trace format: ${{packedTrace.format}}`);
+const packedRoles=['AIC','AIV0','AIV1'];
+const unpackEvent=row=>{{
+  const metadata=packedTrace.event_metadata[String(row[0])]||[`unknown(${{row[0]}})`,'未知','未知'];
+  return {{
+    event:metadata[0],event_id:row[0],parent_event:row[1]?(packedTrace.event_metadata[String(row[1])]||[])[0]||null:null,
+    parent_event_id:row[1],flags:row[2],is_wait_event:Boolean(row[2]&4),completion:(row[2]&2)?'submit':'complete',
+    trace_only_completion:Boolean(row[2]&8),wave:row[3],expert:row[4],tile:row[5],token_start_in_expert:row[6],
+    token_count:row[7],work_count:row[8],begin_cycle:row[9],end_cycle:row[10],duration_cycles:row[10]-row[9],
+    wait_cycles:row[11],active_cycles:row[12],wait_event_count:row[13],paired:row[14],
+    begin_trace_point:metadata[1],end_trace_point:metadata[2],
+  }};
+}};
+const trace={{header:packedTrace.header,warnings:packedTrace.warnings,records:packedTrace.records.map(row=>({{
+  role:packedRoles[row[0]],core:row[1],process_begin_cycle:row[2],process_end_cycle:row[3],rank:row[4],
+  process_duration_cycles:row[3]-row[2],written_count:row[5],dropped_count:row[6],truncated:row[6]>0,
+  events:row[7].map(unpackEvent),
+}}))}};
+let nextEventIndex=0;
 for(const record of trace.records) {{
-  for(const event of record.events) {{ event.role=record.role; event.core=record.core; }}
+  for(const event of record.events) {{ event.role=record.role; event.core=record.core; event._index=nextEventIndex++; }}
 }}
 const colors = {{OP_PRE_MOE:'#64748b',DISPATCH_WORK:'#06b6d4',WAIT_FOR_DISPATCH:'#cbd5e1',GMM1_PROLOGUE:'#a855f7',GMM1_COMPUTE:'#2563eb',WAIT_FOR_GMM1:'#cbd5e1',ACTIVATION_WORK:'#22c55e',WAIT_FOR_ACTIVATION:'#cbd5e1',GMM2_PROLOGUE:'#c084fc',GMM2_COMPUTE:'#ef4444',WAIT_FOR_GMM2:'#cbd5e1',COMBINE_WORK:'#f97316',FINAL_COMBINE_OR_DRAIN:'#fb923c',COUNT_EXPORT:'#14b8a6',UNPERMUTE:'#0ea5e9',OP_POST_MOE:'#475569',CROSS_RANK_INPUT_SYNC:'#94a3b8',CROSS_RANK_OUTPUT_SYNC:'#94a3b8',SHARED_GMM1_ACTIVATION:'#84cc16',SHARED_GMM2:'#eab308'}};
 const legendColors = colors;
@@ -708,6 +884,37 @@ const phasePresets = {{
 }};
 const eventToGroup = new Map(Object.entries(eventGroups).flatMap(([group,names])=>names.map(name=>[name,group])));
 const roles = ['AIC','AIV0','AIV1'];
+let aggregationWorker=null;
+let workerRequestId=0;
+const latestWorkerRequest={{stats:0,waves:0}};
+try {{
+  const workerSource=document.getElementById('traceWorkerSource').textContent;
+  aggregationWorker=new Worker(URL.createObjectURL(new Blob([workerSource],{{type:'text/javascript'}})));
+  aggregationWorker.onmessage=message=>{{
+    const data=message.data;
+    if(data.type==='stats'&&data.requestId===latestWorkerRequest.stats) applySelectionStatsRows(data.rows);
+    if(data.type==='waves'&&data.requestId===latestWorkerRequest.waves) applyWaveRows(data.rows);
+  }};
+  aggregationWorker.onerror=()=>{{
+    aggregationWorker=null;
+    renderStatistics();
+    renderWaveTable(currentDisplayEvents);
+  }};
+  const eventNames=Object.fromEntries(Object.entries(packedTrace.event_metadata).map(([id,metadata])=>[id,metadata[0]]));
+  const groupNames={{}};
+  for(const [id,name] of Object.entries(eventNames)) groupNames[id]=eventToGroup.get(name)||'其他';
+  aggregationWorker.postMessage({{type:'init',records:packedTrace.records,eventNames,groupNames,groupOrder:Object.keys(eventGroups)}});
+  packedTrace.records=[];
+}} catch(error) {{ aggregationWorker=null; }}
+function requestAggregation(type,events) {{
+  if(!aggregationWorker) return false;
+  const indices=new Uint32Array(events.length);
+  for(let index=0;index<events.length;index++) indices[index]=events[index]._index;
+  const requestId=++workerRequestId;
+  latestWorkerRequest[type]=requestId;
+  aggregationWorker.postMessage({{type,requestId,indices}},[indices.buffer]);
+  return true;
+}}
 const coreSelect = document.getElementById('coreSelect');
 const statsCoreSelect = document.getElementById('statsCoreSelect');
 const waveSelect = document.getElementById('waveSelect');
@@ -718,12 +925,20 @@ const phasePreset = document.getElementById('phasePreset');
 const eventGroupsRoot = document.getElementById('eventGroups');
 const canvasTooltip = document.getElementById('canvasTooltip');
 const eventTableScroll = document.getElementById('eventTableScroll');
+const waveTableScroll = document.getElementById('waveTableScroll');
 const pinnedBlocks = new Set();
 const pinnedLanes = new Set();
 let currentBlockGroups=[];
+let currentDisplayBlockGroups=[];
+let currentDisplayEvents=[];
 let timelineResizeObserver=null;
+let selectedTimelineEvent=null;
 let virtualEventRows=[];
 let virtualEventFrame=null;
+let virtualWaveRows=[];
+let virtualWaveFrame=null;
+let deferredRenderGeneration=0;
+let visibleEventGeneration=0;
 const eventRowHeight=32;
 const eventRowOverscan=12;
 const availableEvents = new Set(trace.records.flatMap(record=>record.events.map(event=>event.event)));
@@ -780,6 +995,8 @@ const cycleAnchor = trace.records.length ? trace.records[0].process_begin_cycle 
 function signedCycleDelta(cycle) {{
   return cycle-cycleAnchor;
 }}
+const allEventsInTableOrder=trace.records.flatMap(record=>record.events).sort((a,b)=>
+  a.core-b.core||a.wave-b.wave||roles.indexOf(a.role)-roles.indexOf(b.role)||a.begin_cycle-b.begin_cycle);
 const durationText=cycles=>cyclesPerUs?`${{cycles.toLocaleString()}} cycles (${{(cycles/cyclesPerUs).toFixed(3)}} μs)`:`${{cycles.toLocaleString()}} cycles`;
 const cycleDelta=(begin,end)=>end-begin;
 function withLaneMetrics(record) {{
@@ -870,17 +1087,36 @@ function renderStatistics() {{
   document.getElementById('statsSelectionSummary').textContent=`统计 ${{statsBlockText}}：${{statsBlockGroups.length}} 个 Block · ${{statsEvents.length}} 个事件`;
   renderSelectionStats(statsEvents);
 }}
-function render() {{
-  currentBlockGroups=allBlockGroupsForWave();
-  const blockGroups=selectedBlockGroups(currentBlockGroups,coreSelect.value,true);
-  const records=blockGroups.flatMap(group=>group.records);
-  const events=records.flatMap(r=>r.events);
-  document.getElementById('selectionSummary').textContent=`${{blockGroups.length}} 个 Block · ${{records.length}} 条泳道 · ${{events.length}} 个事件 · ${{selectedEvents.size}} 种事件`;
+function scheduleDeferredPanels(events,refreshStats) {{
+  const generation=++deferredRenderGeneration;
+  requestAnimationFrame(()=>{{
+    if(generation!==deferredRenderGeneration) return;
+    if(refreshStats) renderStatistics();
+    requestAnimationFrame(()=>{{
+      if(generation!==deferredRenderGeneration) return;
+      renderWaveTable(events);
+      requestAnimationFrame(()=>{{
+        if(generation!==deferredRenderGeneration) return;
+        renderEventTable(events);
+      }});
+    }});
+  }});
+}}
+function renderDisplay(refreshStats=false) {{
+  currentDisplayBlockGroups=selectedBlockGroups(currentBlockGroups,coreSelect.value,true);
+  const records=currentDisplayBlockGroups.flatMap(group=>group.records);
+  currentDisplayEvents=records.flatMap(r=>r.events);
+  document.getElementById('selectionSummary').textContent=`${{currentDisplayBlockGroups.length}} 个 Block · ${{records.length}} 条泳道 · ${{currentDisplayEvents.length}} 个事件 · ${{selectedEvents.size}} 种事件`;
   document.getElementById('legend').innerHTML = Object.entries(legendColors)
     .filter(([name])=>selectedEvents.has(name))
     .map(([name,color])=>`<span><i style="background:${{color}}"></i>${{name}}</span>`).join('');
-  renderTimeline(blockGroups,currentBlockGroups,events);
-  renderStatistics(); renderLaneTable(blockGroups); renderWaveTable(events); renderEventTable(events);
+  renderTimeline(currentDisplayBlockGroups,currentBlockGroups,currentDisplayEvents);
+  renderLaneTable(currentDisplayBlockGroups);
+  scheduleDeferredPanels(currentDisplayEvents,refreshStats);
+}}
+function render() {{
+  currentBlockGroups=allBlockGroupsForWave();
+  renderDisplay(true);
 }}
 function renderTimeline(blockGroups,pinSourceGroups,events) {{
   const root=document.getElementById('timeline');
@@ -904,47 +1140,43 @@ function renderTimeline(blockGroups,pinSourceGroups,events) {{
   const domainSpan=Math.max(domainEnd-domainStart,1);
   const relativeCycle=cycle=>signedCycleDelta(cycle)-domainStart;
   const absoluteCycle=offset=>cycleAnchor+domainStart+offset;
-  const laneModels=[];
-  let out='<div class="axis">';
-  for(let i=0;i<=5;i++) {{
-    const x=i*20, offset=Math.round(domainSpan*i/5), cycle=Math.round(absoluteCycle(offset));
-    out+=`<div class="tick" style="left:${{x}}%"><span>${{cycle.toLocaleString()}}<br>+${{offset.toLocaleString()}}</span></div>`;
-  }}
-  out+='</div>';
-
-  const renderLane=(record,highlightPinned=false)=>{{
-    const metrics=record.laneMetrics;
-    const lastEvent=metrics.lastEvent;
-    const key=laneKey(record.core,record.role);
-    const lanePinned=pinnedLanes.has(key);
-    const laneTip=`Process begin=${{record.process_begin_cycle}} end=${{record.process_end_cycle}} total=${{record.process_duration_cycles}} cycles | event span=${{metrics.eventSpanCycles}} | wait=${{metrics.waitCycles}} | last=${{lastEvent?lastEvent.event:'none'}}@${{lastEvent?lastEvent.end_cycle:'—'}} | tail=${{metrics.tailCycles}}`;
-    const laneEvents=[...record.events].sort((a,b)=>Number(a.is_wait_event)-Number(b.is_wait_event));
-    const laneIndex=laneModels.push({{record,events:laneEvents,hitBoxes:[]}})-1;
-    let laneOut=`<div class="lane-wrap${{highlightPinned&&lanePinned?' lane-pinned':''}}"><div class="lane-name" title="${{esc(laneTip)}}">`
-      +`<button class="pin-button${{lanePinned?' active':''}}" data-pin-lane="${{key}}" title="${{lanePinned?'取消固定':'固定该泳道'}}">📌</button>`
-      +`<span class="lane-name-text">${{record.role}}`
-      +`<small>P/W ${{durationText(record.process_duration_cycles)}} / ${{durationText(metrics.waitCycles)}}</small>`
-      +`</span></div><div class="lane"><canvas class="lane-canvas" data-lane-index="${{laneIndex}}"></canvas></div></div>`;
-    return laneOut;
+  const axisHeight=32,blockHeight=28,laneHeight=38,sectionHeight=28,labelWidth=142;
+  const rows=[];
+  let rowTop=axisHeight;
+  const appendRow=row=>{{ row.top=rowTop; rows.push(row); rowTop+=row.height; }};
+  const appendBlock=(group,pinned=false)=>{{
+    appendRow({{type:'block',core:group.core,pinned,height:blockHeight}});
+    for(const record of group.records) appendRow({{type:'lane',record,pinned,height:laneHeight}});
   }};
-  const renderBlockGroup=(group,highlightPinned=false)=>{{
-    const blockPinned=pinnedBlocks.has(group.core);
-    return `<div class="block-group${{highlightPinned&&blockPinned?' pinned':''}}"><div class="block-header"><span>Block ${{group.core}}</span>`
-      +`<button class="pin-button${{blockPinned?' active':''}}" data-pin-block="${{group.core}}" title="${{blockPinned?'取消固定':'固定整个 Block'}}">📌</button></div>`
-      +group.records.map(record=>renderLane(record,highlightPinned)).join('')+'</div>';
-  }};
-
   if(pinnedBlockGroups.length||pinnedLaneRecords.length) {{
-    out+='<div class="pinned-section"><div class="pinned-title">固定对比</div>';
-    out+=pinnedBlockGroups.map(group=>renderBlockGroup(group,true)).join('');
-    if(pinnedLaneRecords.length) {{
-      out+='<div class="pinned-lanes">'+pinnedLaneRecords.map(record=>
-        `<div class="pinned-lane"><div class="block-header">Block ${{record.core}}</div>${{renderLane(record,true)}}</div>`).join('')+'</div>';
+    appendRow({{type:'section',label:'固定对比',height:sectionHeight}});
+    for(const group of pinnedBlockGroups) appendBlock(group,true);
+    for(const record of pinnedLaneRecords) {{
+      appendRow({{type:'block',core:record.core,pinned:true,height:blockHeight}});
+      appendRow({{type:'lane',record,pinned:true,height:laneHeight}});
     }}
-    out+='</div>';
   }}
-  out+=blockGroups.map(group=>renderBlockGroup(group,false)).join('');
-  root.innerHTML=out;
+  for(const group of blockGroups) appendBlock(group,false);
+  const contentHeight=Math.max(rowTop,140);
+  const viewportHeight=Math.min(Math.max(contentHeight,140),650);
+  const labels=rows.map(row=>{{
+    if(row.type==='section') return `<div class="timeline-label section" style="top:${{row.top}}px;height:${{row.height}}px">${{row.label}}</div>`;
+    if(row.type==='block') {{
+      const active=pinnedBlocks.has(row.core);
+      return `<div class="timeline-label block" style="top:${{row.top}}px;height:${{row.height}}px"><span>Block ${{row.core}}</span>`
+        +`<button class="pin-button${{active?' active':''}}" data-pin-block="${{row.core}}" title="${{active?'取消固定':'固定整个 Block'}}">📌</button></div>`;
+    }}
+    const record=row.record,metrics=record.laneMetrics,key=laneKey(record.core,record.role),active=pinnedLanes.has(key);
+    const last=metrics.lastEvent;
+    const tip=`Process begin=${{record.process_begin_cycle}} end=${{record.process_end_cycle}} total=${{record.process_duration_cycles}} cycles | event span=${{metrics.eventSpanCycles}} | wait=${{metrics.waitCycles}} | last=${{last?last.event:'none'}}@${{last?last.end_cycle:'—'}} | tail=${{metrics.tailCycles}}`;
+    return `<div class="timeline-label lane-label" style="top:${{row.top}}px;height:${{row.height}}px" title="${{esc(tip)}}">`
+      +`<button class="pin-button${{active?' active':''}}" data-pin-lane="${{key}}" title="${{active?'取消固定':'固定该泳道'}}">📌</button>`
+      +`<span>${{record.role}}<small>P/W ${{durationText(record.process_duration_cycles)}} / ${{durationText(metrics.waitCycles)}}</small></span></div>`;
+  }}).join('');
+  root.innerHTML=`<div class="timeline-viewport" style="height:${{viewportHeight}}px"><div class="timeline-content" style="height:${{contentHeight}}px">`
+    +`<div class="timeline-label-layer">${{labels}}</div><canvas class="timeline-canvas"></canvas></div></div>`;
+  const viewport=root.querySelector('.timeline-viewport'),content=root.querySelector('.timeline-content');
+  const labelLayer=root.querySelector('.timeline-label-layer'),canvas=root.querySelector('.timeline-canvas');
   const eventTooltipHtml=(event,record)=>{{
     const waitText=event.wait_cycles===null?'未拆分':durationText(event.wait_cycles);
     const parentText=event.parent_event?` · parent=${{esc(event.parent_event)}}`:'';
@@ -955,72 +1187,139 @@ function renderTimeline(blockGroups,pinSourceGroups,events) {{
       +`completion=${{esc(event.completion)}} · trace-only=${{event.trace_only_completion}}<br>`
       +`begin point=${{esc(event.begin_trace_point)}}<br>end point=${{esc(event.end_trace_point)}}`;
   }};
-  const drawCanvases=()=>{{
-    for(const canvas of root.querySelectorAll('.lane-canvas')) {{
-      const model=laneModels[Number(canvas.dataset.laneIndex)];
-      const width=Math.max(1,canvas.clientWidth),height=30,dpr=window.devicePixelRatio||1;
-      const pixelWidth=Math.max(1,Math.round(width*dpr)),pixelHeight=Math.max(1,Math.round(height*dpr));
-      if(canvas.width!==pixelWidth||canvas.height!==pixelHeight) {{ canvas.width=pixelWidth; canvas.height=pixelHeight; }}
-      const context=canvas.getContext('2d');
-      context.setTransform(dpr,0,0,dpr,0,0);
-      context.clearRect(0,0,width,height);
-      model.hitBoxes=[];
-      for(const event of model.events) {{
-        const left=relativeCycle(event.begin_cycle)/domainSpan*width;
-        const visualWidth=Math.max(1,event.duration_cycles/domainSpan*width);
-        context.globalAlpha=event.is_wait_event?.95:.9;
-        context.fillStyle=colors[event.event]||'#64748b';
-        context.fillRect(left,5,visualWidth,20);
-        if(event.is_wait_event) {{
-          context.globalAlpha=1; context.strokeStyle='#94a3b8'; context.lineWidth=1;
-          context.strokeRect(left+.5,5.5,Math.max(0,visualWidth-1),19);
-        }}
-        model.hitBoxes.push({{left,right:left+visualWidth,event}});
+  let hoveredEvent=null;
+  let hitBoxes=[];
+  const emphasizeEvent=(context,box,selected)=>{{
+    const width=Math.max(2,box.right-box.left),height=box.bottom-box.top;
+    context.save();
+    context.globalAlpha=1;
+    context.fillStyle=colors[box.event.event]||'#64748b';
+    context.shadowColor=selected?'#0f172acc':'#33415588';
+    context.shadowBlur=selected?7:4;
+    context.shadowOffsetY=selected?2:1;
+    context.fillRect(box.left,box.top-1,width,height+2);
+    context.shadowColor='transparent';
+    context.lineWidth=selected?2:1.5;
+    context.strokeStyle='#ffffff';
+    context.strokeRect(box.left+.5,box.top-.5,Math.max(0,width-1),height+1);
+    context.lineWidth=1;
+    context.strokeStyle=selected?'#0f172a':'#334155';
+    context.strokeRect(box.left+1.5,box.top+.5,Math.max(0,width-3),Math.max(0,height-1));
+    if(selected) {{
+      const markerX=box.left+Math.min(width/2,8);
+      context.fillStyle='#0f172a';
+      context.beginPath(); context.moveTo(markerX-4,box.top-4); context.lineTo(markerX+4,box.top-4); context.lineTo(markerX,box.top); context.closePath(); context.fill();
+    }}
+    context.restore();
+  }};
+  const drawCanvas=()=>{{
+    const width=Math.max(1,content.clientWidth-labelWidth),height=Math.max(1,viewport.clientHeight),dpr=window.devicePixelRatio||1;
+    canvas.style.width=`${{width}}px`; canvas.style.height=`${{height}}px`;
+    const pixelWidth=Math.max(1,Math.round(width*dpr)),pixelHeight=Math.max(1,Math.round(height*dpr));
+    if(canvas.width!==pixelWidth||canvas.height!==pixelHeight) {{ canvas.width=pixelWidth; canvas.height=pixelHeight; }}
+    const context=canvas.getContext('2d');
+    context.setTransform(dpr,0,0,dpr,0,0);
+    context.clearRect(0,0,width,height);
+    hitBoxes=[];
+    const scrollTop=viewport.scrollTop;
+    for(const row of rows) {{
+      const y=row.top-scrollTop;
+      if(y+row.height<axisHeight||y>height) continue;
+      if(row.type==='block'||row.type==='section') {{
+        context.fillStyle=row.type==='section'?'#fffbeb':'#eef2f6'; context.fillRect(0,y,width,row.height-1); continue;
       }}
-      context.globalAlpha=1;
+      context.fillStyle=row.pinned?'#fffbeb':'#f8fafc'; context.fillRect(0,y+2,width,row.height-4);
+      context.strokeStyle=row.pinned?'#f59e0b':'#e5e7eb'; context.strokeRect(.5,y+2.5,width-1,row.height-5);
+      for(let waitPass=0;waitPass<2;waitPass++) {{
+        for(const event of row.record.events) {{
+          if(Number(event.is_wait_event)!==waitPass) continue;
+          const left=relativeCycle(event.begin_cycle)/domainSpan*width;
+          const visualWidth=Math.max(1,event.duration_cycles/domainSpan*width),top=y+7,eventHeight=row.height-14;
+          context.globalAlpha=event.is_wait_event?.95:.9;
+          context.fillStyle=colors[event.event]||'#64748b';
+          context.fillRect(left,top,visualWidth,eventHeight);
+          if(event.is_wait_event) {{
+            context.globalAlpha=1; context.strokeStyle='#94a3b8'; context.lineWidth=1;
+            context.strokeRect(left+.5,top+.5,Math.max(0,visualWidth-1),Math.max(0,eventHeight-1));
+          }}
+          hitBoxes.push({{left,right:left+visualWidth,top,bottom:top+eventHeight,event,record:row.record}});
+        }}
+      }}
+    }}
+    context.globalAlpha=1;
+    const selectedBox=hitBoxes.find(box=>box.event===selectedTimelineEvent);
+    if(selectedBox) emphasizeEvent(context,selectedBox,true);
+    const hoveredBox=hitBoxes.find(box=>box.event===hoveredEvent);
+    if(hoveredBox&&hoveredBox!==selectedBox) emphasizeEvent(context,hoveredBox,false);
+    context.globalAlpha=1; context.fillStyle='#ffffff'; context.fillRect(0,0,width,axisHeight);
+    context.strokeStyle='#dbe2ea'; context.beginPath(); context.moveTo(0,axisHeight-.5); context.lineTo(width,axisHeight-.5); context.stroke();
+    context.fillStyle='#667085'; context.font='10px Arial';
+    for(let tick=0;tick<=5;tick++) {{
+      const x=width*tick/5,offset=Math.round(domainSpan*tick/5),cycle=Math.round(absoluteCycle(offset));
+      context.strokeStyle='#98a2b3'; context.beginPath(); context.moveTo(x+.5,axisHeight-7); context.lineTo(x+.5,axisHeight); context.stroke();
+      context.fillText(`${{cycle.toLocaleString()}}  +${{offset.toLocaleString()}}`,Math.min(x+3,width-125),12);
     }}
   }};
-  const moveTooltip=(mouseEvent,model)=>{{
-    const bounds=mouseEvent.currentTarget.getBoundingClientRect();
-    const x=mouseEvent.clientX-bounds.left;
-    let hit=null;
-    for(let index=model.hitBoxes.length-1;index>=0;index--) {{
-      const box=model.hitBoxes[index];
-      if(x>=box.left&&x<=box.right) {{ hit=box.event; break; }}
+  const hitTest=(x,y)=>{{
+    for(let index=hitBoxes.length-1;index>=0;index--) {{
+      const box=hitBoxes[index];
+      if(x>=box.left&&x<=box.right&&y>=box.top&&y<=box.bottom) return box;
     }}
+    return null;
+  }};
+  const moveTooltip=mouseEvent=>{{
+    const bounds=canvas.getBoundingClientRect(),box=hitTest(mouseEvent.clientX-bounds.left,mouseEvent.clientY-bounds.top);
+    const hit=box?box.event:null;
+    if(hoveredEvent!==hit) {{
+      hoveredEvent=hit;
+      drawCanvas();
+    }}
+    canvas.style.cursor=hit?'pointer':'default';
     if(!hit) {{ canvasTooltip.style.display='none'; return; }}
-    canvasTooltip.innerHTML=eventTooltipHtml(hit,model.record);
+    canvasTooltip.innerHTML=eventTooltipHtml(hit,box.record);
     canvasTooltip.style.display='block';
     const tooltipWidth=canvasTooltip.offsetWidth,tooltipHeight=canvasTooltip.offsetHeight;
     canvasTooltip.style.left=`${{Math.max(8,Math.min(mouseEvent.clientX+12,window.innerWidth-tooltipWidth-8))}}px`;
     canvasTooltip.style.top=`${{Math.max(8,Math.min(mouseEvent.clientY+12,window.innerHeight-tooltipHeight-8))}}px`;
   }};
-  root.querySelectorAll('.lane-canvas').forEach(canvas=>{{
-    const model=laneModels[Number(canvas.dataset.laneIndex)];
-    canvas.addEventListener('mousemove',event=>moveTooltip(event,model));
-    canvas.addEventListener('mouseleave',()=>{{ canvasTooltip.style.display='none'; }});
-    canvas.addEventListener('click',event=>{{
-      const bounds=canvas.getBoundingClientRect(),x=event.clientX-bounds.left;
-      for(let index=model.hitBoxes.length-1;index>=0;index--) {{
-        const box=model.hitBoxes[index];
-        if(x>=box.left&&x<=box.right) {{ showEventDetail({{event:box.event,record:model.record}}); break; }}
-      }}
-    }});
+  canvas.addEventListener('mousemove',moveTooltip);
+  canvas.addEventListener('mouseleave',()=>{{
+    canvasTooltip.style.display='none'; canvas.style.cursor='default';
+    if(hoveredEvent) {{ hoveredEvent=null; drawCanvas(); }}
   }});
-  requestAnimationFrame(drawCanvases);
+  canvas.addEventListener('click',event=>{{
+    const bounds=canvas.getBoundingClientRect(),box=hitTest(event.clientX-bounds.left,event.clientY-bounds.top);
+    if(!box) return;
+    selectedTimelineEvent=box.event;
+    drawCanvas();
+    showEventDetail({{event:box.event,record:box.record}});
+  }});
+  let scrollFrame=null;
+  const syncViewport=()=>{{
+    canvas.style.transform=`translateY(${{viewport.scrollTop}}px)`;
+    labelLayer.style.transform=`translateX(${{viewport.scrollLeft}}px)`;
+    drawCanvas();
+  }};
+  viewport.addEventListener('scroll',()=>{{
+    canvas.style.transform=`translateY(${{viewport.scrollTop}}px)`;
+    labelLayer.style.transform=`translateX(${{viewport.scrollLeft}}px)`;
+    if(scrollFrame!==null) return;
+    scrollFrame=requestAnimationFrame(()=>{{ scrollFrame=null; drawCanvas(); }});
+  }});
+  requestAnimationFrame(syncViewport);
   if('ResizeObserver' in window) {{
-    timelineResizeObserver=new ResizeObserver(()=>requestAnimationFrame(drawCanvases));
-    timelineResizeObserver.observe(root);
+    timelineResizeObserver=new ResizeObserver(()=>requestAnimationFrame(syncViewport));
+    timelineResizeObserver.observe(viewport);
   }}
   root.querySelectorAll('[data-pin-block]').forEach(button=>button.addEventListener('click',()=>{{
     const core=Number(button.dataset.pinBlock);
     if(pinnedBlocks.has(core)) pinnedBlocks.delete(core); else pinnedBlocks.add(core);
-    render();
+    renderTimeline(currentDisplayBlockGroups,currentBlockGroups,currentDisplayEvents);
   }}));
   root.querySelectorAll('[data-pin-lane]').forEach(button=>button.addEventListener('click',()=>{{
     const key=button.dataset.pinLane;
     if(pinnedLanes.has(key)) pinnedLanes.delete(key); else pinnedLanes.add(key);
-    render();
+    renderTimeline(currentDisplayBlockGroups,currentBlockGroups,currentDisplayEvents);
   }}));
 }}
 function showEventDetail(item) {{
@@ -1092,7 +1391,7 @@ function selectionMetricRow(group,event,role,items,summary=false) {{
     +`<td>${{durationText(percentile(durations,.95))}}</td><td>${{durationText(durations[durations.length-1])}}</td>`
     +`<td>${{first}}</td><td>${{last}}</td><td>${{durationText(last-first)}}</td></tr>`;
 }}
-function renderSelectionStats(events) {{
+function renderSelectionStatsMain(events) {{
   const tbody=document.querySelector('#selectionStatsTable tbody');
   if(!events.length) {{ tbody.innerHTML='<tr><td colspan="14" class="empty">当前筛选条件下没有事件</td></tr>'; return; }}
   const groups=new Map();
@@ -1120,7 +1419,23 @@ function renderSelectionStats(events) {{
   }}
   tbody.innerHTML=rows.join('');
 }}
-function renderWaveTable(events) {{
+function applySelectionStatsRows(rows) {{
+  const tbody=document.querySelector('#selectionStatsTable tbody');
+  if(!rows.length) {{ tbody.innerHTML='<tr><td colspan="14" class="empty">当前筛选条件下没有事件</td></tr>'; return; }}
+  tbody.innerHTML=rows.map(row=>{{
+    const wait=row.wait===null?'—':durationText(row.wait);
+    const role=typeof row.role==='number'?roles[row.role]:row.role;
+    return `<tr class="${{row.summary?'block-summary-row':''}}"><td>${{esc(row.group)}}</td><td>${{esc(row.event)}}</td><td>${{role}}</td>`
+      +`<td>${{row.count}}</td><td>${{durationText(row.total)}}</td><td>${{durationText(row.active)}}</td><td>${{wait}}</td>`
+      +`<td>${{durationText(row.mean)}}</td><td>${{durationText(row.p50)}}</td><td>${{durationText(row.p95)}}</td>`
+      +`<td>${{durationText(row.max)}}</td><td>${{row.first}}</td><td>${{row.last}}</td><td>${{durationText(row.span)}}</td></tr>`;
+  }}).join('');
+}}
+function renderSelectionStats(events) {{
+  if(!events.length) {{ latestWorkerRequest.stats=++workerRequestId; applySelectionStatsRows([]); return; }}
+  if(!requestAggregation('stats',events)) renderSelectionStatsMain(events);
+}}
+function renderWaveTableMain(events) {{
   const groups=new Map();
   for(const e of events) {{
     const key=`${{e.core}}|${{e.wave}}|${{e.role}}|${{e.event}}`;
@@ -1132,11 +1447,33 @@ function renderWaveTable(events) {{
     if(e.wait_cycles===null) g.waitKnown=false; else g.wait+=e.wait_cycles;
     g.max=Math.max(g.max,e.duration_cycles); groups.set(key,g);
   }}
-  const rows=[...groups.values()].sort((a,b)=>a.core-b.core||a.wave-b.wave||roles.indexOf(a.role)-roles.indexOf(b.role)||a.event.localeCompare(b.event));
-  document.querySelector('#waveTable tbody').innerHTML=rows.map(g=>{{
-    const wait=g.waitKnown?durationText(g.wait):'—', waitPercent=g.waitKnown&&g.cycles?(g.wait/g.cycles*100).toFixed(1)+'%':'—';
-    return `<tr><td>${{g.core}}</td><td>${{g.wave}}</td><td>${{g.role}}</td><td>${{g.event}}</td><td>${{g.count}}</td><td>${{g.tokens}}</td><td>${{g.mGroups}}</td><td>${{durationText(g.cycles)}}</td><td>${{durationText(g.active)}}</td><td>${{wait}}</td><td>${{waitPercent}}</td><td>${{durationText(g.max)}}</td></tr>`;
-  }}).join('');
+  virtualWaveRows=[...groups.values()].sort((a,b)=>a.core-b.core||a.wave-b.wave||roles.indexOf(a.role)-roles.indexOf(b.role)||a.event.localeCompare(b.event));
+  waveTableScroll.scrollTop=0;
+  renderVirtualWaveRows();
+}}
+function applyWaveRows(rows) {{
+  virtualWaveRows=rows.map(row=>({{...row,role:typeof row.role==='number'?roles[row.role]:row.role}}));
+  waveTableScroll.scrollTop=0;
+  renderVirtualWaveRows();
+}}
+function renderWaveTable(events) {{
+  if(!requestAggregation('waves',events)) renderWaveTableMain(events);
+}}
+function waveTableRow(g) {{
+  const wait=g.waitKnown?durationText(g.wait):'—', waitPercent=g.waitKnown&&g.cycles?(g.wait/g.cycles*100).toFixed(1)+'%':'—';
+  return `<tr><td>${{g.core}}</td><td>${{g.wave}}</td><td>${{g.role}}</td><td>${{g.event}}</td><td>${{g.count}}</td><td>${{g.tokens}}</td><td>${{g.mGroups}}</td><td>${{durationText(g.cycles)}}</td><td>${{durationText(g.active)}}</td><td>${{wait}}</td><td>${{waitPercent}}</td><td>${{durationText(g.max)}}</td></tr>`;
+}}
+function renderVirtualWaveRows() {{
+  const tbody=document.querySelector('#waveTable tbody');
+  if(!virtualWaveRows.length) {{ tbody.innerHTML='<tr><td colspan="12" class="empty">当前筛选条件下没有事件</td></tr>'; return; }}
+  const viewportHeight=Math.max(waveTableScroll.clientHeight,470);
+  const first=Math.max(0,Math.floor(waveTableScroll.scrollTop/eventRowHeight)-eventRowOverscan);
+  const last=Math.min(virtualWaveRows.length,Math.ceil((waveTableScroll.scrollTop+viewportHeight)/eventRowHeight)+eventRowOverscan);
+  const topHeight=first*eventRowHeight,bottomHeight=(virtualWaveRows.length-last)*eventRowHeight;
+  const top=`<tr class="virtual-spacer"><td colspan="12" style="height:${{topHeight}}px"></td></tr>`;
+  const rows=virtualWaveRows.slice(first,last).map(waveTableRow).join('');
+  const bottom=`<tr class="virtual-spacer"><td colspan="12" style="height:${{bottomHeight}}px"></td></tr>`;
+  tbody.innerHTML=top+rows+bottom;
 }}
 function eventTableRow(e) {{
     const wait=e.wait_cycles===null?'—':e.wait_cycles.toLocaleString();
@@ -1157,16 +1494,23 @@ function renderVirtualEventRows() {{
   tbody.innerHTML=top+rows+bottom;
 }}
 function renderEventTable(events) {{
-  virtualEventRows=[...events].sort((a,b)=>a.core-b.core||a.wave-b.wave||roles.indexOf(a.role)-roles.indexOf(b.role)||signedCycleDelta(a.begin_cycle)-signedCycleDelta(b.begin_cycle));
+  const generation=++visibleEventGeneration;
+  for(const event of events) event._visibleEventGeneration=generation;
+  virtualEventRows=allEventsInTableOrder.filter(event=>event._visibleEventGeneration===generation);
   eventTableScroll.scrollTop=0;
   renderVirtualEventRows();
 }}
+waveTableScroll.addEventListener('scroll',()=>{{
+  if(virtualWaveFrame!==null) return;
+  virtualWaveFrame=requestAnimationFrame(()=>{{ virtualWaveFrame=null; renderVirtualWaveRows(); }});
+}});
 eventTableScroll.addEventListener('scroll',()=>{{
   if(virtualEventFrame!==null) return;
   virtualEventFrame=requestAnimationFrame(()=>{{ virtualEventFrame=null; renderVirtualEventRows(); }});
 }});
 statsCoreSelect.addEventListener('change',renderStatistics);
-for(const control of [coreSelect,waveSelect,waitFilter,laneSort,laneLimit]) control.addEventListener('change',render);
+for(const control of [coreSelect,laneSort,laneLimit]) control.addEventListener('change',()=>renderDisplay(false));
+for(const control of [waveSelect,waitFilter]) control.addEventListener('change',render);
 render();
 </script>
 </main></body></html>
@@ -1205,7 +1549,10 @@ def collect_captures(inputs: list[Path]) -> list[Path]:
 
 
 def write_trace_artifacts(
-    capture: Path, output_dir: Path, cycles_per_us: float | None = 1000.0
+    capture: Path,
+    output_dir: Path,
+    cycles_per_us: float | None = 1000.0,
+    parquet: bool = False,
 ) -> dict:
     output_dir.mkdir(parents=True, exist_ok=True)
     trace = parse_trace(read_words(capture))
@@ -1213,7 +1560,10 @@ def write_trace_artifacts(
     (output_dir / "trace.json").write_text(
         json.dumps(trace, indent=2) + "\n", encoding="utf-8"
     )
-    write_csv(trace, output_dir / "events.csv")
+    csv_path = output_dir / "events.csv"
+    write_csv(trace, csv_path)
+    if parquet:
+        write_parquet_with_duckdb(csv_path, output_dir / "events.parquet")
     write_svg(trace, output_dir / "timeline.svg")
     write_html(trace, output_dir / "index.html")
     return {
@@ -1229,6 +1579,7 @@ def write_trace_artifacts(
             record["dropped_count"] for record in trace["records"]
         ),
         "warning_count": len(trace["warnings"]),
+        "parquet": parquet,
     }
 
 
@@ -1246,7 +1597,13 @@ def write_run_index(summaries: list[dict], output_dir: Path) -> None:
             f"<td>{summary['truncated_record_count']}</td>"
             f'<td><a href="{report_dir}/index.html">交互报告</a> · '
             f'<a href="{report_dir}/events.csv">CSV</a> · '
-            f'<a href="{report_dir}/timeline.svg">SVG</a></td>'
+            f'<a href="{report_dir}/timeline.svg">SVG</a>'
+            + (
+                f' · <a href="{report_dir}/events.parquet">Parquet</a>'
+                if summary.get("parquet")
+                else ""
+            )
+            + "</td>"
             "</tr>"
         )
     page = f"""<!doctype html>
@@ -1479,6 +1836,16 @@ def run_synthetic_tests() -> int:
         ]
         assert all(path.exists() and path.stat().st_size for path in required)
         rank_page = (output / "rank2" / "index.html").read_text(encoding="utf-8")
+        embedded_trace = json.loads(
+            re.search(
+                r'<script id="traceData" type="application/json">(.*?)</script>',
+                rank_page,
+                re.DOTALL,
+            ).group(1)
+        )
+        assert embedded_trace["format"] == "mega-moe-html-columns-v1"
+        assert len(embedded_trace["records"][0]) == 8
+        assert len(embedded_trace["records"][0][7][0]) == 15
         assert 'id="eventGroups"' in rank_page
         assert 'id="phasePreset"' in rank_page
         assert 'id="statsCoreSelect"' in rank_page
@@ -1490,11 +1857,20 @@ def run_synthetic_tests() -> int:
         assert '<option value="all" selected>全部 Block</option>' in rank_page
         assert 'id="timelineEventLimit"' not in rank_page
         assert 'id="eventTableLimit"' not in rank_page
-        assert 'class="lane-canvas"' in rank_page
+        assert 'class="timeline-canvas"' in rank_page
+        assert 'class="lane-canvas"' not in rank_page
         assert 'id="eventTableScroll"' in rank_page
-        assert "const drawCanvases=()=>" in rank_page
+        assert 'id="waveTableScroll"' in rank_page
+        assert "const drawCanvas=()=>" in rank_page
         assert "new ResizeObserver" in rank_page
         assert "virtualEventRows.slice(first,last)" in rank_page
+        assert "virtualWaveRows.slice(first,last)" in rank_page
+        assert "selectedTimelineEvent=box.event" in rank_page
+        assert "renderDisplay(false)" in rank_page
+        assert "allEventsInTableOrder.filter" in rank_page
+        assert "mega-moe-html-columns-v1" in rank_page
+        assert 'id="traceWorkerSource"' in rank_page
+        assert "requestAggregation('stats',events)" in rank_page
         assert '<div class="bar ' not in rank_page
         assert (
             "selectedBlockGroups(currentBlockGroups,statsCoreSelect.value,false)"
@@ -1528,6 +1904,19 @@ def run_synthetic_tests() -> int:
         )
         assert (compare_output / "comparison.csv").stat().st_size
         assert (compare_output / "comparison.json").stat().st_size
+        parquet_path = case / "events.parquet"
+        try:
+            __import__("duckdb")
+        except ImportError:
+            try:
+                write_parquet_with_duckdb(output / "rank2" / "events.csv", parquet_path)
+            except RuntimeError as error:
+                assert "optional 'duckdb'" in str(error)
+            else:
+                raise AssertionError("missing DuckDB dependency was accepted")
+        else:
+            write_parquet_with_duckdb(output / "rank2" / "events.csv", parquet_path)
+            assert parquet_path.stat().st_size
         bad_words = list(read_words(captures[0]))
         for index, value in ((0, 0), (1, VERSION + 1), (4, EVENT_WORDS - 1)):
             mutated = bad_words.copy()
@@ -1550,6 +1939,37 @@ def run_synthetic_tests() -> int:
             js_path = case / "report.js"
             js_path.write_text(js, encoding="utf-8")
             subprocess.run([node, "--check", str(js_path)], check=True)
+            worker_source = re.search(
+                r'<script id="traceWorkerSource" type="text/plain">(.*?)</script>',
+                page,
+                re.DOTALL,
+            ).group(1)
+            packed_trace = pack_html_trace(trace)
+            event_names = {str(key): value for key, value in EVENT_NAMES.items()}
+            group_names = {key: "synthetic" for key in event_names}
+            event_total = sum(len(record["events"]) for record in trace["records"])
+            worker_init = {
+                "type": "init",
+                "records": packed_trace["records"],
+                "eventNames": event_names,
+                "groupNames": group_names,
+                "groupOrder": ["synthetic"],
+            }
+            worker_test = (
+                "const messages=[];globalThis.self={postMessage:message=>messages.push(message)};\n"
+                + worker_source
+                + "\nself.onmessage({data:"
+                + json.dumps(worker_init)
+                + "});\nconst indices=new Uint32Array("
+                + json.dumps(list(range(event_total)))
+                + ");\nself.onmessage({data:{type:'stats',requestId:1,indices}});"
+                + "\nself.onmessage({data:{type:'waves',requestId:2,indices}});"
+                + "\nif(messages.length!==3||!messages[1].rows.length||!messages[2].rows.length)"
+                + " throw new Error(JSON.stringify(messages));\n"
+            )
+            worker_path = case / "worker-test.js"
+            worker_path.write_text(worker_test, encoding="utf-8")
+            subprocess.run([node, str(worker_path)], check=True)
     print("synthetic trace/report tests passed")
     return 0
 
@@ -1578,6 +1998,11 @@ def main(argv: list[str] | None = None) -> int:
         default=1000.0,
         help="platform SYS_CNT frequency for time display (default: 1000)",
     )
+    parser.add_argument(
+        "--parquet",
+        action="store_true",
+        help="also write events.parquet using the optional duckdb Python package",
+    )
     args = parser.parse_args(argv)
     captures = collect_captures(args.inputs)
     batch_mode = len(captures) > 1 or any(
@@ -1587,7 +2012,9 @@ def main(argv: list[str] | None = None) -> int:
     if not batch_mode:
         capture = captures[0]
         output_dir = args.output_dir or capture.parent / f"{capture.stem}-trace"
-        summary = write_trace_artifacts(capture, output_dir, args.cycles_per_us)
+        summary = write_trace_artifacts(
+            capture, output_dir, args.cycles_per_us, args.parquet
+        )
         print(
             f"parsed {summary['event_count']} events from {summary['record_count']} records"
         )
@@ -1601,7 +2028,9 @@ def main(argv: list[str] | None = None) -> int:
     summaries = []
     for capture in captures:
         rank_output_dir = output_dir / capture.stem
-        summary = write_trace_artifacts(capture, rank_output_dir, args.cycles_per_us)
+        summary = write_trace_artifacts(
+            capture, rank_output_dir, args.cycles_per_us, args.parquet
+        )
         summaries.append(summary)
         print(
             f"{capture.name}: {summary['event_count']} events, "
