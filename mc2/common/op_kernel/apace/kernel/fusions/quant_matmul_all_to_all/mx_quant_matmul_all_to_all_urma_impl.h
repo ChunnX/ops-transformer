@@ -24,11 +24,11 @@
 #include "matmul_all_to_all_tiling_data.h"
 #include "adv_api/hcomm/hcomm.h"
 
-#include "all_to_all_qbmm_mx_kernel_tpn.h"
-#include "../../block/aiv_comm/collective_comm_api.h"
-#include "../../block/aiv_comm/collective_comm_context.h"
-#include "../../tiling/comm_tiling_data.h"
-#include "../../block/aiv_comm/barrier/barrier_ubmem.h"
+#include "../../matmul/quant_batch_matmul/all_to_all_qbmm_mx_kernel_tpn.h"
+#include "../../../core/aiv_comm/collective_comm_api.h"
+#include "../../../core/aiv_comm/collective_comm_context.h"
+#include "../../../tiling/comm_tiling_data.h"
+#include "../../../core/aiv_comm/barrier/barrier_ubmem.h"
 
 namespace Apace {
 
@@ -267,7 +267,7 @@ __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::Ru
     GM_ADDR aCur = baseParams_.aGm;
     GM_ADDR aScaleCur = baseParams_.scaleAGm;
     GM_ADDR cSelfCur = baseParams_.selfCBase;
-    uint32_t lastTiling = 0;
+    uint32_t lastTiling = 0; //修改命名tile块
     for (uint32_t tid = 0; tid < baseParams_.totalTileCnt; ++tid) {
         bool isTail = (tid >= baseParams_.tileCnt);
         uint32_t curTileM = isTail ? baseParams_.tailM : baseParams_.tileM;
@@ -283,7 +283,9 @@ __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::Ru
         param.mmadParams.aGmAddr = aCur;
         param.mmadParams.scaleAGmAddr = aScaleCur;
         param.mmadParams.cGmAddr = cCur;
-        if (!LocalDelay) { param.localParams.cGmSelfAddr = cSelfCur; }
+        if (!LocalDelay) {
+            param.localParams.cGmSelfAddr = cSelfCur; 
+        }
         quantMatmulKernelImpl_(param);
 
         CrossCoreSetFlag<0x2, PIPE_FIX>(tid);
@@ -296,6 +298,7 @@ __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::Ru
 template <typename AType, typename BType, typename CType, bool LocalDelay>
 __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::RunLocalMatmul()
 {   
+    //注释
     AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(MTE1_MTE2_EVENT_FLAG);
     AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(MTE1_MTE2_EVENT_FLAG);
     Params localParam;
@@ -317,9 +320,7 @@ __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::Ru
             allToAll_.Wait(true);
         }
     }
-    if (GetBlockIdx() < baseParams_.rankSize) {
-        allToAll_.Finalize();
-    }
+    allToAll_.Finalize();
 }
 
 // =================================================================================
