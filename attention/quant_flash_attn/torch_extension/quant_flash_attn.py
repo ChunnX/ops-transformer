@@ -78,7 +78,7 @@ def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
     return 0
 
 
-def _calculate_metadata_size():
+def _calculate_max_schedule_size():
     return 4096
 
 
@@ -154,8 +154,8 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             layout_kv: Optional[str] = "BSND",
             layout_out: Optional[str] = "BSND",
         ):
-            metadata_size = _calculate_metadata_size()
-            return torch.empty((metadata_size,), dtype=torch.int32, device="npu")
+            max_schedule_size = _calculate_max_schedule_size()
+            return torch.empty((2, max_schedule_size), dtype=torch.int32, device="npu")
 
         @impl(get_as_library(), self.name, "Meta")
         def quant_flash_attn_meta(
@@ -310,8 +310,8 @@ def quant_flash_attn_metadata(
     layout_kv = "BSND" if layout_kv is None else layout_kv
     layout_out = "BSND" if layout_out is None else layout_out
 
-    metadata_size = _calculate_metadata_size()
-    output = torch.empty((metadata_size,), dtype=torch.int32, device="npu")
+    max_schedule_size = _calculate_max_schedule_size()
+    output = torch.empty((2, max_schedule_size), dtype=torch.int32, device="npu")
 
     op_module = quant_flash_attn_op_builder.load()
     return op_module.quant_flash_attn_metadata(
