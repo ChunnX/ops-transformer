@@ -25,19 +25,19 @@
         "reason": "AIC[i], AIV0[i], and AIV1[i] form one physical AI Block and share a synchronized timestamp; different AI Blocks are not compared by absolute x position"
       },
       "host_only": true,
-      "protocol_impact": "grouping and Chinese wording are host-only; compact route-index preparation, all physical AI Blocks, sparse active-task payloads, GMM1 gap diagnostics, AIV1 inter-Dispatch Scalar diagnostics, 256-token Combine group tasks, and AIV post-Combine tail stages are protocol-v14 device ABI"
+      "protocol_impact": "grouping, per-Wave problem ordinals, and Chinese wording are host-only; compact route-index preparation, all physical AI Blocks, sparse active-task payloads, GMM1 gap diagnostics, AIV1 inter-Dispatch Scalar diagnostics, GMM2 activation-ready waits, production group-ready FIX waits, 256-token Combine group tasks, and AIV post-Combine tail stages are protocol-v17 device ABI"
     },
     "protocol": {
       "magic": "0x43505452",
-      "version": 14,
-      "schema_id": "0x0aaba4b5",
+      "version": 17,
+      "schema_id": "0xbdd34b32",
       "word_bits": 32,
       "endianness": "little",
       "header_words": 30,
-      "record_words": 40,
+      "record_words": 44,
       "record_order": "role-major",
       "record_order_description": "AIC[0..aicNum-1], AIV0[0..aicNum-1], then AIV1[0..aicNum-1], each in ascending physical AI Block index",
-      "header_contract": "30 little-endian uint32 words; record_words=40 contains 30 fixed timestamps followed by ten sparse descriptors for five stages, record_count=3*aicNum, capture_capacity is the per-stage per-core scratch segment capacity, repetition_count is the runtime GMM Wave count, truncated covers scratch or y compaction overflow, and magic is published last",
+      "header_contract": "30 little-endian uint32 words; record_words=44 contains 30 fixed timestamps followed by fourteen sparse descriptors for seven stages, record_count=3*aicNum, capture_capacity is the per-stage per-core scratch segment capacity, repetition_count is the runtime GMM Wave count, truncated covers scratch or y compaction overflow, and magic is published last",
       "flags_contract": "bits[12:0] must equal 0x00001fff; bit12 identifies the PR10302 compact route-index and 256-token Combine group trace semantics; bit13 records MEGA_MOE_A8W8_DISPATCH_GROUP_READY",
       "header_fields": [
         {"name": "magic", "word": 0, "width_words": 1},
@@ -150,12 +150,28 @@
             "role_points": {
               "AIC": {"begin": "gmm1_vector_wait_begin_S", "end": "gmm1_vector_wait_end_S", "span": "gmm1_vector_wait"}
             }
+          },
+          {
+            "name": "stage5",
+            "offset_record_word": 40,
+            "count_record_word": 41,
+            "role_points": {
+              "AIC": {"begin": "gmm2_input_wait_begin_S", "end": "gmm2_input_wait_end_S", "span": "gmm2_input_wait"}
+            }
+          },
+          {
+            "name": "stage6",
+            "offset_record_word": 42,
+            "count_record_word": 43,
+            "role_points": {
+              "AIC": {"begin": "gmm2_ready_fix_wait_begin_S", "end": "gmm2_ready_fix_wait_end_S", "span": "gmm2_ready_fix_wait"}
+            }
           }
         ]
       }
     },
     "output": {
-      "carrier": "after normal BF16 y[bs,h] is complete, its bytes are reused for protocol-v14 fixed timestamps, sparse descriptors, and compact sparse segment payloads",
+      "carrier": "after normal BF16 y[bs,h] is complete, its bytes are reused for protocol-v17 fixed timestamps, sparse descriptors, and compact sparse segment payloads",
       "overwrites_user_output": true,
       "capacity_check": "host preflight proves descriptor and fixed workspace-scratch capacity; AIC0 computes the actual compact payload size after work_end, writes no out-of-bounds payload on overflow, sets truncated, and the default decoder rejects it",
       "write_phase": "each role appends only to its exclusive 50-MiB reserved-workspace slice during useful work; after work_end and y-lifetime rendezvous AIC0 plans offsets, role writers compact payloads, then AIC0 publishes header and magic last",
@@ -356,6 +372,30 @@
       "dependency": {"precondition": "RunMoeExpertGmm2Stage returned with an owned tile", "producer_pipeline": "FIX", "timestamp_pipeline": "Scalar", "bridge": "tracing-only FIX_S", "proof": "HasStage1Begin gates an immediately preceding FIX_S SetFlag/WaitFlag pair"}
     },
     {
+      "id": "gmm2_input_wait_begin_S", "stage": "gmm2_input_wait", "edge": "begin", "boundary_quality": "causal", "roles": ["AIC"],
+      "scope": "所有有 owned tile 的 AIC，每次进入生产 GMM2 activation-ready 轮询一次。", "why": "显式显示同一 Wave 内每个 GMM2 problem 前等待 SwiGLU/Quant 输出的时间。", "semantics": "当前 owned M group 即将等待 activationToGmm2 ready。", "perturbation": "每次生产 ready 轮询增加一次起点时钟；不新增同步。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h", "symbol": "TraceGmm2InputWaitBegin", "target_anchor": {"mode": "literal", "pattern": "trace->BeginGmm2InputWait(CriticalPathTrace::Now());"}, "placement": "before", "marker": "TRACE_POINT: gmm2_input_wait_begin_S", "max_line_distance": 2},
+      "dependency": {"precondition": "the scheduler selected an owned GMM2 M group", "producer_pipeline": "Scalar", "timestamp_pipeline": "Scalar", "bridge": "program order", "proof": "sample is immediately before the production WaitForGmm2InputReady call"}
+    },
+    {
+      "id": "gmm2_input_wait_end_S", "stage": "gmm2_input_wait", "edge": "end", "boundary_quality": "actual", "roles": ["AIC"],
+      "scope": "与 gmm2_input_wait_begin_S 一一对应。", "why": "直接量化每个 GMM2 problem 的 activation 输入等待。", "semantics": "生产 WaitForGmm2InputReady 已观察到 ready 并返回。", "perturbation": "每次 ready 返回增加一次时钟和四个 scratch word 写；不新增同步。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h", "symbol": "TraceGmm2InputWaitEnd", "target_anchor": {"mode": "literal", "pattern": "trace->EndGmm2InputWait(CriticalPathTrace::Now());"}, "placement": "before", "marker": "TRACE_POINT: gmm2_input_wait_end_S", "max_line_distance": 2},
+      "dependency": {"precondition": "the production ready wait returned", "producer_pipeline": "AIV0 ready publication", "timestamp_pipeline": "Scalar", "bridge": "production bypass-GM polling", "proof": "sample is immediately after WaitForGmm2InputReady"}
+    },
+    {
+      "id": "gmm2_ready_fix_wait_begin_S", "stage": "gmm2_ready_fix_wait", "edge": "begin", "boundary_quality": "causal", "roles": ["AIC"],
+      "scope": "所有 routed A8W8 GMM2 owned N tile，每次发布 256-token group ready 前一次。", "why": "区分 GMM2 MMAD/FIX 发出与生产 group-ready 的逐 tile FIX completion 等待。", "semantics": "当前 GMM2 tile 的 blockMmad 已返回，马上等待 FIX 完成后再 AtomicAdd group counter。", "perturbation": "每个 owned N tile 增加一次起点时钟；它位于生产 FIX_S 之前，会改变诊断态 Scalar/FIX 调度。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h", "symbol": "MegaMoeImpl::NotifyWaveCombineGroupCompletion", "target_anchor": {"mode": "literal", "pattern": "criticalPathTrace->BeginGmm2ReadyFixWait(CriticalPathTrace::Now());"}, "placement": "before", "marker": "TRACE_POINT: gmm2_ready_fix_wait_begin_S", "max_line_distance": 2},
+      "dependency": {"precondition": "the current blockMmad call returned", "producer_pipeline": "Scalar issue boundary after Cube/FIX submission", "timestamp_pipeline": "Scalar", "bridge": "program order", "proof": "sample immediately precedes the production FIX_S used by group-ready publication"}
+    },
+    {
+      "id": "gmm2_ready_fix_wait_end_S", "stage": "gmm2_ready_fix_wait", "edge": "end", "boundary_quality": "actual", "roles": ["AIC"],
+      "scope": "与 gmm2_ready_fix_wait_begin_S 一一对应。", "why": "将逐 tile FIX completion 与随后 AtomicAdd counter 分开；本段不包含 counter 原子写。", "semantics": "当前 tile 的 FIX 写回已完成并桥接到 Scalar，但 group counter 尚未 AtomicAdd。", "perturbation": "每个 owned N tile 一次结束时钟和四个 scratch word 写；时间戳/写 scratch 发生在 AtomicAdd 前。",
+      "source": {"file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h", "symbol": "MegaMoeImpl::NotifyWaveCombineGroupCompletion", "target_anchor": {"mode": "literal", "pattern": "criticalPathTrace->EndGmm2ReadyFixWait(CriticalPathTrace::Now());"}, "placement": "before", "marker": "TRACE_POINT: gmm2_ready_fix_wait_end_S", "max_line_distance": 2},
+      "dependency": {"precondition": "the production FIX_S wait returned", "producer_pipeline": "FIX", "timestamp_pipeline": "Scalar", "bridge": "production FIX_S", "proof": "sample is after WaitFlag<FIX_S> and before AtomicAdd of the group-ready counter"}
+    },
+    {
       "id": "combine_group_begin_S", "stage": "combine", "edge": "begin", "boundary_quality": "causal", "roles": ["AIV0", "AIV1"],
       "scope": "所有参与 Combine 的 AIV，每个本核 owned expert-local 256-token group 切片一次。", "why": "直接观察本次新增的 256-token group ready 是否让 Combine 提前启动，并排除 ready 轮询。", "semantics": "当前 expert-local 256-token group 的 GMM2 N-tile 计数已齐，即将读取并发送本核所负责行。", "perturbation": "每活跃 group 一次条件判断和时钟。",
       "source": {"file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h", "symbol": "MegaMoeImpl::CombineWaveExpertRows", "target_anchor": {"mode": "literal", "pattern": "WaitWaveCombineGroupReady(common, syncLayout, params, expertIdx, tokenGroupIdx);"}, "placement": "after", "marker": "TRACE_POINT: combine_group_begin_S", "max_line_distance": 8},
@@ -469,6 +509,8 @@
     {"id": "gmm1_problem", "label": "GMM1 逐 problem（FIX 完成）", "begin": "gmm1_problem_begin_S", "end": "gmm1_problem_end_S", "roles": ["AIC"], "quality": "exact", "color": "#2563eb"},
     {"id": "swiglu_problem", "label": "SwiGLU/MX 逐 problem", "begin": "swiglu_problem_begin_S", "end": "swiglu_problem_end_S", "roles": ["AIV0"], "quality": "issue", "color": "#16a34a"},
     {"id": "gmm2_problem", "label": "GMM2 逐 problem（FIX 完成）", "begin": "gmm2_problem_begin_S", "end": "gmm2_problem_end_S", "roles": ["AIC"], "quality": "exact", "color": "#7c3aed"},
+    {"id": "gmm2_input_wait", "label": "GMM2 等待 activation-ready", "begin": "gmm2_input_wait_begin_S", "end": "gmm2_input_wait_end_S", "roles": ["AIC"], "quality": "exact", "color": "#e11d48"},
+    {"id": "gmm2_ready_fix_wait", "label": "GMM2 group-ready 逐 tile FIX 等待（生产）", "begin": "gmm2_ready_fix_wait_begin_S", "end": "gmm2_ready_fix_wait_end_S", "roles": ["AIC"], "quality": "exact", "color": "#f43f5e"},
     {"id": "combine_group_task", "label": "Combine 逐 256-token group 任务", "begin": "combine_group_begin_S", "end": "combine_group_end_S", "roles": ["AIV0", "AIV1"], "quality": "exact", "color": "#ea580c"},
     {"id": "final_combine_drain", "label": "最终 Combine Ring Drain", "begin": "final_combine_drain_begin_S", "end": "final_combine_drain_end_S", "roles": ["AIV0", "AIV1"], "quality": "exact", "color": "#c2410c"},
     {"id": "moe_epilogue", "label": "MoE 尾部 EndSync/Count 导出", "begin": "moe_epilogue_begin_S", "end": "moe_epilogue_end_S", "roles": ["AIV0", "AIV1"], "quality": "exact", "color": "#9a3412"},

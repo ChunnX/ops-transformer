@@ -508,6 +508,22 @@ __aicore__ inline void WaitForGmm2InputReady(const GMMAddrInfo &gmmAddrInfo, con
 }
 
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+__aicore__ inline void TraceGmm2InputWaitBegin(CriticalPathTrace *trace)
+{
+    if (trace != nullptr) {
+        // TRACE_POINT: gmm2_input_wait_begin_S
+        trace->BeginGmm2InputWait(CriticalPathTrace::Now());
+    }
+}
+
+__aicore__ inline void TraceGmm2InputWaitEnd(CriticalPathTrace *trace)
+{
+    if (trace != nullptr) {
+        // TRACE_POINT: gmm2_input_wait_end_S
+        trace->EndGmm2InputWait(CriticalPathTrace::Now());
+    }
+}
+
 // Called after the current problem's first owned GMM2 tile has observed
 // SwiGLU-ready and immediately before the first MMAD is issued.
 __aicore__ inline void TraceGmm2ProblemBeginAfterReady(CriticalPathTrace *trace)
@@ -539,10 +555,27 @@ __aicore__ inline void NotifyCombineConsumersOfTileCompletion(uint32_t rowTileOf
 
 // Compact A8W8 MTE wave 使用一个 counter 表示一个 expert-local 256-token group 已完成的 GMM2 N tile 数。
 // FIX_S 保证 consumer 观察到完成计数前，对应 GMM2 输出已经写入 GM。
-__aicore__ inline void NotifyWaveCombineGroupCompletion(uint32_t rowTileOffset, __gm__ int32_t *expertCounterBase)
+__aicore__ inline void NotifyWaveCombineGroupCompletion(uint32_t rowTileOffset, __gm__ int32_t *expertCounterBase
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                                                        ,
+                                                        CriticalPathTrace *criticalPathTrace = nullptr
+#endif
+)
 {
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+    if (criticalPathTrace != nullptr) {
+        // TRACE_POINT: gmm2_ready_fix_wait_begin_S
+        criticalPathTrace->BeginGmm2ReadyFixWait(CriticalPathTrace::Now());
+    }
+#endif
     AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
     AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+    if (criticalPathTrace != nullptr) {
+        // TRACE_POINT: gmm2_ready_fix_wait_end_S
+        criticalPathTrace->EndGmm2ReadyFixWait(CriticalPathTrace::Now());
+    }
+#endif
 
     uint32_t tokenGroupIndex = rowTileOffset / COMBINE_TOKEN_GROUP_SIZE;
     AscendC::AtomicAdd(GetCombineSyncCounterAddress(expertCounterBase, tokenGroupIndex), int32_t(1));
@@ -600,11 +633,23 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
         if constexpr (std::remove_reference_t<decltype(config)>::IS_WAVE_FLAG_GRAINED) {
             uint32_t waveIdx = mLoc / L1_TILE_M_256;
             if (waveIdx != lastWaveWaited) {
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                TraceGmm2InputWaitBegin(criticalPathTrace);
+#endif
                 WaitForGmm2InputReady<IsShared>(gmmAddrInfo, config, mLoc);
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                TraceGmm2InputWaitEnd(criticalPathTrace);
+#endif
                 lastWaveWaited = waveIdx;
             }
         } else if (loopIdx == startLoopIdx) {
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+            TraceGmm2InputWaitBegin(criticalPathTrace);
+#endif
             WaitForGmm2InputReady<IsShared>(gmmAddrInfo, config, mLoc);
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+            TraceGmm2InputWaitEnd(criticalPathTrace);
+#endif
         }
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
         TraceGmm2ProblemBeginAfterReady(criticalPathTrace);
@@ -621,7 +666,12 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
                                           Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, gmBlockC, singleShape);
         if constexpr (UseGroupCombineReady && !IsShared) {
-            NotifyWaveCombineGroupCompletion(rowOffsetInExpert + mLoc, gmmAddrInfo.gmm2CombineSyncCounter);
+            NotifyWaveCombineGroupCompletion(rowOffsetInExpert + mLoc, gmmAddrInfo.gmm2CombineSyncCounter
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                                             ,
+                                             criticalPathTrace
+#endif
+            );
         } else if constexpr (IsLayered && !IsShared) {
             NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout, gmmAddrInfo.gmm2CombineSyncCounter);
         } else if constexpr (IsShared && !IsLayered) {

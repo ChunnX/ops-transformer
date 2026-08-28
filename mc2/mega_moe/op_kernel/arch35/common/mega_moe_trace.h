@@ -31,15 +31,15 @@ namespace MegaMoeImpl {
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
 
 constexpr uint32_t CRITICAL_PATH_TRACE_MAGIC = 0x43505452U;
-constexpr uint32_t CRITICAL_PATH_TRACE_PROTOCOL_VERSION = 14U;
-constexpr uint32_t CRITICAL_PATH_TRACE_SCHEMA_ID = 0x0AABA4B5U;
+constexpr uint32_t CRITICAL_PATH_TRACE_PROTOCOL_VERSION = 17U;
+constexpr uint32_t CRITICAL_PATH_TRACE_SCHEMA_ID = 0xbdd34b32U;
 constexpr uint32_t CRITICAL_PATH_TRACE_HEADER_WORDS = 30U;
 constexpr uint32_t CRITICAL_PATH_TRACE_ROLE_COUNT = 3U;
-constexpr uint32_t CRITICAL_PATH_TRACE_RECORD_WORDS = 40U;
+constexpr uint32_t CRITICAL_PATH_TRACE_RECORD_WORDS = 44U;
 constexpr uint32_t CRITICAL_PATH_TRACE_FIXED_TIMESTAMP_WORDS = 30U;
-constexpr uint32_t CRITICAL_PATH_TRACE_SCRATCH_HEADER_WORDS = 36U;
+constexpr uint32_t CRITICAL_PATH_TRACE_SCRATCH_HEADER_WORDS = 38U;
 constexpr uint32_t CRITICAL_PATH_TRACE_SEGMENT_WORDS = 4U;
-constexpr uint32_t CRITICAL_PATH_TRACE_STAGE_COUNT = 5U;
+constexpr uint32_t CRITICAL_PATH_TRACE_STAGE_COUNT = 7U;
 constexpr uint32_t CRITICAL_PATH_TRACE_M_GROUP_ROWS = 256U;
 constexpr uint32_t CRITICAL_PATH_TRACE_REQUIRED_FLAGS = 0x1FFFU;
 constexpr uint32_t CRITICAL_PATH_TRACE_DISPATCH_GROUP_READY_FLAG = 1U << 13U;
@@ -81,11 +81,18 @@ __aicore__ inline uint64_t CriticalPathTraceWaveCapacity(uint32_t bs, uint32_t e
 
 // Dispatch/Combine can contribute one segment per expert, while a hot expert
 // can contribute one GMM problem per M group in the most fragmented case.
+// The production GMM2 group-ready path additionally emits one FIX wait per
+// owned N tile, so reserve enough entries for the worst per-core tile share.
 __aicore__ inline uint64_t CriticalPathTraceRequiredSegmentCapacity(uint32_t bs, uint32_t epWorldSize, uint32_t topK,
-                                                                    uint32_t expertCount)
+                                                                    uint32_t expertCount, uint32_t h, uint32_t aicCount)
 {
     const uint64_t maxMGroups = CriticalPathTraceMaxMGroups(bs, epWorldSize, topK, expertCount);
-    return maxMGroups < expertCount ? expertCount : maxMGroups;
+    const uint64_t gmm2NTiles =
+        (static_cast<uint64_t>(h) + CRITICAL_PATH_TRACE_M_GROUP_ROWS - 1ULL) / CRITICAL_PATH_TRACE_M_GROUP_ROWS;
+    const uint64_t fixWaitsPerMGroup = aicCount == 0U ? gmm2NTiles : (gmm2NTiles + aicCount - 1ULL) / aicCount;
+    const uint64_t maxFixWaits = maxMGroups * fixWaitsPerMGroup;
+    uint64_t required = maxMGroups < expertCount ? expertCount : maxMGroups;
+    return required < maxFixWaits ? maxFixWaits : required;
 }
 
 __aicore__ inline uint32_t CriticalPathTraceScratchRecordWords(uint32_t segmentCapacity)
@@ -428,6 +435,40 @@ public:
         gmm1VectorWaitBegin_ = 0U;
     }
 
+    // A GMM2 problem can contain multiple M groups. Record every production
+    // activation-ready poll while that problem remains active.
+    __aicore__ inline void BeginGmm2InputWait(uint32_t value)
+    {
+        if (stage1ActiveWave_ != INVALID_INDEX) {
+            gmm2InputWaitBegin_ = value;
+        }
+    }
+
+    __aicore__ inline void EndGmm2InputWait(uint32_t value)
+    {
+        if (gmm2InputWaitBegin_ == 0U) {
+            return;
+        }
+        AppendSegment(stage1ActiveWave_, stage1ActiveExpert_, gmm2InputWaitBegin_, value, 5U, stage5CapturedCount_);
+        gmm2InputWaitBegin_ = 0U;
+    }
+
+    __aicore__ inline void BeginGmm2ReadyFixWait(uint32_t value)
+    {
+        if (HasStage1Begin()) {
+            gmm2ReadyFixWaitBegin_ = value;
+        }
+    }
+
+    __aicore__ inline void EndGmm2ReadyFixWait(uint32_t value)
+    {
+        if (gmm2ReadyFixWaitBegin_ == 0U) {
+            return;
+        }
+        AppendSegment(stage1ActiveWave_, stage1ActiveExpert_, gmm2ReadyFixWaitBegin_, value, 6U, stage6CapturedCount_);
+        gmm2ReadyFixWaitBegin_ = 0U;
+    }
+
     // 无 owner tile 或空专家不会进入 ready wait；退出 problem 时把剩余时间
     // 归入 Scalar 准备/ownership 判断，然后清理活动诊断状态。
     __aicore__ inline void EndGmm1Gap(uint32_t value)
@@ -523,7 +564,9 @@ public:
         WriteWord(scratchRecord_ + 32U, stage2CapturedCount_);
         WriteWord(scratchRecord_ + 33U, stage3CapturedCount_);
         WriteWord(scratchRecord_ + 34U, stage4CapturedCount_);
-        WriteWord(scratchRecord_ + 35U, static_cast<uint32_t>(truncated_));
+        WriteWord(scratchRecord_ + 35U, stage5CapturedCount_);
+        WriteWord(scratchRecord_ + 36U, stage6CapturedCount_);
+        WriteWord(scratchRecord_ + 37U, static_cast<uint32_t>(truncated_));
     }
 
     __aicore__ inline void WriteStagePayloadTo(__gm__ int32_t *traceOut, uint32_t stage, uint32_t offset,
@@ -558,6 +601,8 @@ private:
         stage1ActiveWave_ = INVALID_INDEX;
         stage1ActiveExpert_ = INVALID_INDEX;
         stage1ActiveBegin_ = 0U;
+        gmm2InputWaitBegin_ = 0U;
+        gmm2ReadyFixWaitBegin_ = 0U;
     }
 
     __aicore__ inline void ClearGmm1Gap()
@@ -650,11 +695,15 @@ private:
     uint32_t gmm1DispatchWaitBegin_ = 0U;
     uint32_t gmm1VectorWaitBegin_ = 0U;
     uint32_t dispatchGapBegin_ = 0U;
+    uint32_t gmm2InputWaitBegin_ = 0U;
+    uint32_t gmm2ReadyFixWaitBegin_ = 0U;
     uint32_t stage0CapturedCount_ = 0U;
     uint32_t stage1CapturedCount_ = 0U;
     uint32_t stage2CapturedCount_ = 0U;
     uint32_t stage3CapturedCount_ = 0U;
     uint32_t stage4CapturedCount_ = 0U;
+    uint32_t stage5CapturedCount_ = 0U;
+    uint32_t stage6CapturedCount_ = 0U;
     bool truncated_ = false;
 };
 

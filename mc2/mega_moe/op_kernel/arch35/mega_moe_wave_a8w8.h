@@ -303,8 +303,8 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Init(
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
     const uint64_t carrierBytes = static_cast<uint64_t>(tilingData->bs) * tilingData->h * sizeof(OutputType);
     criticalPathTraceCarrierWords_ = carrierBytes / sizeof(uint32_t);
-    const uint64_t requiredSegmentCapacity =
-        CriticalPathTraceRequiredSegmentCapacity(tilingData->bs, worldSize_, tilingData->topK, moeExpertPerRank_);
+    const uint64_t requiredSegmentCapacity = CriticalPathTraceRequiredSegmentCapacity(
+        tilingData->bs, worldSize_, tilingData->topK, moeExpertPerRank_, k_, tilingData->aicNum);
     const uint64_t scratchCapacityLimit = CriticalPathTraceScratchCapacityLimit(tilingData->aicNum);
     const uint64_t traceSegmentCapacity =
         requiredSegmentCapacity < scratchCapacityLimit ? requiredSegmentCapacity : scratchCapacityLimit;

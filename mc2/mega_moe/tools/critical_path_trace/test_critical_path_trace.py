@@ -64,7 +64,7 @@ def make_synthetic_capture(
     spec = load_json(spec_path)
     protocol = spec["trace"]["protocol"]
     metadata = {
-        "adapter_version": 9,
+        "adapter_version": 10,
         "dispatch_group_ready": dispatch_group_ready,
         "rank": 0,
         "bs": 24,
@@ -94,7 +94,7 @@ def make_synthetic_capture(
     }
     expected = expected_header_from_metadata(metadata, metadata["output_nbytes"], spec)
     record_words = resolve_record_words(protocol, expected["capture_capacity"])
-    scratch_record_words = 36 + 20 * expected["capture_capacity"]
+    scratch_record_words = 38 + 28 * expected["capture_capacity"]
     metadata["capacity_preflight"] = {
         "protocol_version": int(protocol["version"]),
         "traced_ai_blocks": metadata["aic_core_num"],
@@ -146,6 +146,8 @@ def make_synthetic_capture(
             [(0, 0, 100, 180), (0, 1, 430, 500)],
             [(0, 0, 180, 190), (0, 1, 500, 510)],
             [(0, 0, 190, 200), (0, 1, 510, 520)],
+            [(0, 0, 1110, 1120), (1, 2, 1470, 1480)],
+            [(0, 0, 960, 970), (0, 0, 1010, 1020), (1, 2, 1360, 1370)],
         ),
         (
             [(0, 0, 230, 390)],
@@ -153,13 +155,17 @@ def make_synthetic_capture(
             [(0, 0, 120, 210)],
             [(0, 0, 210, 220)],
             [(0, 0, 220, 230)],
+            [(0, 0, 1070, 1080)],
+            [(0, 0, 970, 980)],
         ),
-        ([(0, 0, 440, 500), (0, 1, 740, 820)], [], [], [], []),
-        ([(0, 0, 410, 470)], [], [], [], []),
+        ([(0, 0, 440, 500), (0, 1, 740, 820)], [], [], [], [], [], []),
+        ([(0, 0, 410, 470)], [], [], [], [], [], []),
         (
             [(0, 0, 80, 160), (0, 1, 260, 350), (1, 2, 1180, 1260)],
             [(0, 0, 1140, 1210), (1, 2, 1510, 1580)],
             [(0, 1, 165, 255)],
+            [],
+            [],
             [],
             [],
         ),
@@ -167,6 +173,8 @@ def make_synthetic_capture(
             [(0, 0, 100, 175), (0, 1, 300, 365)],
             [(0, 0, 1110, 1180)],
             [(0, 1, 180, 295)],
+            [],
+            [],
             [],
             [],
         ),
@@ -334,9 +342,9 @@ class TraceContractTests(unittest.TestCase):
             self.assertLess(block1_aiv0, block1_aiv1)
             self.assertNotIn("Trace-point placement audit", rendered_html)
             normalized = load_json(directory / "rank0.normalized.json")
-            self.assertEqual(normalized["protocol_version"], 14)
-            self.assertEqual(normalized["schema_id"], "0x0aaba4b5")
-            self.assertEqual(normalized["metadata"]["resolved_record_words"], 40)
+            self.assertEqual(normalized["protocol_version"], 17)
+            self.assertEqual(normalized["schema_id"], "0xbdd34b32")
+            self.assertEqual(normalized["metadata"]["resolved_record_words"], 44)
             self.assertEqual(normalized["metadata"]["header"]["role_counts"], [2, 2, 2])
             self.assertFalse(normalized["metadata"]["trace_truncated"])
             compact_path = directory / "rank0.compact.json.gz"
@@ -345,13 +353,15 @@ class TraceContractTests(unittest.TestCase):
             )
             compact = json.loads(gzip.decompress(compact_path.read_bytes()))
             self.assertEqual(compact["format"], COMPACT_FORMAT)
-            self.assertEqual(compact["protocol"], [14, "0x0aaba4b5", 32])
+            self.assertEqual(compact["protocol"], [17, "0xbdd34b32", 32])
             self.assertEqual(compact["config"]["role_counts"], [2, 2, 2])
             self.assertEqual(len(compact["records"]), 6)
             self.assertEqual(compact["records"][0][0:2], ["AIC", 0])
             self.assertIn("ls", {phase[0] for phase in compact["records"][0][4]})
             self.assertIn("g1", {task[0] for task in compact["records"][0][5]})
             self.assertIn("gs", {task[0] for task in compact["records"][0][5]})
+            self.assertIn("gi", {task[0] for task in compact["records"][0][5]})
+            self.assertIn("fr", {task[0] for task in compact["records"][0][5]})
             compact_aiv1_core0 = next(
                 record for record in compact["records"] if record[0:2] == ["AIV1", 0]
             )
@@ -359,8 +369,10 @@ class TraceContractTests(unittest.TestCase):
             self.assertLess(pack_stats["output_bytes"], pack_stats["input_bytes"])
             self.assertIn("Dispatch（本核有效专家行）", rendered_html)
             self.assertIn("Dispatch 间 Scalar 规划/游标推进", rendered_html)
+            self.assertIn("GMM2 等待 activation-ready", rendered_html)
+            self.assertIn("GMM2 group-ready 逐 tile FIX 等待（生产）", rendered_html)
             self.assertIn("Combine（逐 256-token group，MTE3 完成边界）", rendered_html)
-            self.assertIn("Wave 0 / 专家 1 / 本核任务 1", rendered_html)
+            self.assertIn("Wave 0 / P1 / 专家 1 / 本核记录 1", rendered_html)
             order = load_json(directory / "rank0.order-check.json")
             self.assertEqual(order["status"], "passed")
             self.assertEqual(order["span_summary"]["process"]["count"], 6)
@@ -552,7 +564,7 @@ class TraceContractTests(unittest.TestCase):
                 len(normalized["records"][0]["timestamps"]["gmm1_problem_begin_S"]),
                 2,
             )
-            self.assertEqual(normalized["metadata"]["required_trace_bytes"], 1528)
+            self.assertEqual(normalized["metadata"]["required_trace_bytes"], 1736)
             order = load_json(directory / "rank0.order-check.json")
             self.assertEqual(order["fine_truncated_records"], [])
 
@@ -582,7 +594,7 @@ class TraceContractTests(unittest.TestCase):
             overrides=FORCED_OVERRIDES,
         )
         call = "_critical_path_trace_validate_capacity()"
-        self.assertIn("record_words = 40", transformed)
+        self.assertIn("record_words = 44", transformed)
         self.assertIn(call, transformed)
         self.assertLess(
             transformed.index(call, transformed.index("out_dtype =")),
@@ -627,12 +639,12 @@ class TraceContractTests(unittest.TestCase):
         exec(compile(helper_module, "adapter_capacity_helper.py", "exec"), namespace)
         namespace["_critical_path_trace_validate_capacity"]()
         capacity = namespace["_critical_path_trace_capacity"]
-        self.assertEqual(capacity["record_words"], 40)
+        self.assertEqual(capacity["record_words"], 44)
         self.assertEqual(capacity["record_count"], 108)
-        self.assertEqual(capacity["descriptor_required_y_bytes"], 17400)
+        self.assertEqual(capacity["descriptor_required_y_bytes"], 19128)
         self.assertEqual(capacity["available_y_bytes"], 294912)
         self.assertEqual(capacity["required_segment_capacity"], 9)
-        self.assertEqual(capacity["scratch_required_bytes"], 93312)
+        self.assertEqual(capacity["scratch_required_bytes"], 125280)
         self.assertEqual(capacity["scratch_reserve_bytes"], 50 * 1024 * 1024)
 
     @unittest.skipUnless(

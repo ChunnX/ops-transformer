@@ -3,11 +3,11 @@
 - Status: `pass`
 - Phase: `plan`
 - Trace: `mega-moe-pr10302-token-group-wave-active-task-critical-path`
-- Repository: `/home/mace/workspace/ops-transformer_megaMoeOpt`
-- Revision: `a2b1c66f36efd5e93756492635f895eb10d90a5f`
+- Repository: `/home/mace/workspace/ops-transformer_megaMoeOpt_wave_interleave_trace`
+- Revision: `3037a11518f70ede3c7ad54eafc13a06dc490646`
 - Branch: `codex/pr10302-wave-interleave-sendindex-critical-path-trace`
 - Dirty: `True`
-- Spec SHA-256: `76a523a7604e09a72b713072b9eb7816740962d02a9719d8644a90d4ee5f13b5`
+- Spec SHA-256: `96bed16cb0c4aa70fb8074a8619ca3019266765c759d9395424a879f7b8b2788`
 
 ## Placement summary
 
@@ -33,8 +33,8 @@
 | dispatch_task_end_S | AIV1 | mc2/mega_moe/op_kernel/arch35/stage/mega_moe_token_dispatch.h:624 | 624 | after | actual | production helper's existing ring drain and MTE3_S | 只覆盖本核实际负责的专家行 Dispatch，不包住下一专家或 cursor 推进。 |
 | dispatch_scalar_gap_begin_S | AIV1 | mc2/mega_moe/op_kernel/arch35/stage/mega_moe_token_dispatch.h:624 | 624 | after | causal | program order after the existing Dispatch completion contract | 直接量化相邻有效 Dispatch 之间由专家 count 查询、rolling owner 规划、Wave cursor 推进以及相邻预取调用衔接产生的 Scalar 空隙。 |
 | dispatch_scalar_gap_end_S | AIV1 | mc2/mega_moe/op_kernel/arch35/stage/mega_moe_token_dispatch.h:624 | 624 | before | actual | none; same-pipeline program order | 判断 HTML 中 Dispatch 之间的白色区间是否就是 AIV1 的逐专家 Scalar 扫描，而不是隐藏的通信或等待。 |
-| gmm1_scalar_setup_begin_S | AIC | mc2/mega_moe/op_kernel/arch35/common/mega_moe_trace.h:359 | 359 | before | causal | program order | 判断 GMM1 空洞是否来自逐专家状态准备、地址更新和 rolling ownership 跳过，而不是通信依赖。 |
-| gmm1_scalar_setup_end_S | AIC | mc2/mega_moe/op_kernel/arch35/common/mega_moe_trace.h:545 | 545 | before | actual | program order | 把 Scalar 调度与随后真实 Dispatch-ready 等待分开。 |
+| gmm1_scalar_setup_begin_S | AIC | mc2/mega_moe/op_kernel/arch35/common/mega_moe_trace.h:366 | 366 | before | causal | program order | 判断 GMM1 空洞是否来自逐专家状态准备、地址更新和 rolling ownership 跳过，而不是通信依赖。 |
+| gmm1_scalar_setup_end_S | AIC | mc2/mega_moe/op_kernel/arch35/common/mega_moe_trace.h:588 | 588 | before | actual | program order | 把 Scalar 调度与随后真实 Dispatch-ready 等待分开。 |
 | gmm1_dispatch_wait_begin_S | AIC | mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm1_activation.h:81 | 81 | before | causal | program order | 直接验证下一段 GMM1 是否仍被 Dispatch-ready flag 阻塞。 |
 | gmm1_dispatch_wait_end_S | AIC | mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm1_activation.h:89 | 89 | before | actual | bypass-GM polling then program order | 量化 Dispatch 是否真的落在两段 GMM1 之间。 |
 | gmm1_vector_wait_begin_S | AIC | mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm1_activation.h:97 | 97 | before | causal | program order | 判断前一段 SwiGLU 是否尚未释放 GMM1 输出槽，从而阻塞下一段 GMM1。 |
@@ -43,10 +43,14 @@
 | gmm1_problem_end_S | AIC | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:779 | 779 | after | actual | tracing-only FIX_S | 只把本 problem 真正完成的 FIX 工作染色，使 problem 间白色可解释为调度/依赖空洞。 |
 | swiglu_problem_begin_S | AIV0 | mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm1_activation.h:73 | 73 | before | causal | V_S or production program order | 排除 WaitForCube/ready，并拆开 Wave 内多次 SwiGLU。 |
 | swiglu_problem_end_S | AIV0 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:779 | 779 | after | issue | program order only | 不把下一 problem 前的等待算入 SwiGLU。 |
-| gmm2_problem_begin_S | AIC | mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h:519 | 519 | before | causal | bypass-GM ready polling then program order | 排除 SwiGLU-ready 轮询并拆开 Wave 内多个 problem。 |
+| gmm2_problem_begin_S | AIC | mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h:535 | 535 | before | causal | bypass-GM ready polling then program order | 排除 SwiGLU-ready 轮询并拆开 Wave 内多个 problem。 |
 | gmm2_problem_end_S | AIC | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:892 | 892 | after | actual | tracing-only FIX_S | 让大量短 GMM2 段覆盖真实 FIX 执行，而不是只显示 Scalar 发出。 |
-| combine_group_begin_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h:1178 | 1178 | after | causal | bypass-GM polling then program order | 直接观察本次新增的 256-token group ready 是否让 Combine 提前启动，并排除 ready 轮询。 |
-| combine_group_end_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h:1207 | 1207 | before | actual | tracing-only MTE3_S | 只覆盖当前 256-token group 切片，并在远端发送完成后结束。 |
+| gmm2_input_wait_begin_S | AIC | mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h:515 | 515 | before | causal | program order | 显式显示同一 Wave 内每个 GMM2 problem 前等待 SwiGLU/Quant 输出的时间。 |
+| gmm2_input_wait_end_S | AIC | mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h:523 | 523 | before | actual | production bypass-GM polling | 直接量化每个 GMM2 problem 的 activation 输入等待。 |
+| gmm2_ready_fix_wait_begin_S | AIC | mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h:568 | 568 | before | causal | program order | 区分 GMM2 MMAD/FIX 发出与生产 group-ready 的逐 tile FIX completion 等待。 |
+| gmm2_ready_fix_wait_end_S | AIC | mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h:576 | 576 | before | actual | production FIX_S | 将逐 tile FIX completion 与随后 AtomicAdd counter 分开；本段不包含 counter 原子写。 |
+| combine_group_begin_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h:1228 | 1228 | after | causal | bypass-GM polling then program order | 直接观察本次新增的 256-token group ready 是否让 Combine 提前启动，并排除 ready 轮询。 |
+| combine_group_end_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h:1257 | 1257 | before | actual | tracing-only MTE3_S | 只覆盖当前 256-token group 切片，并在远端发送完成后结束。 |
 | final_combine_drain_begin_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:987 | 987 | before | causal | program order | 确认最后一个 Combine group 后是否仍有 row-ring MTE3 尾部需要回收。 |
 | final_combine_drain_end_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:987 | 987 | after | actual | production MTE3_MTE2 event waits | 把 Combine 发送尾部与后续 MoE 收尾逻辑分开。 |
 | moe_epilogue_begin_S | AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h:1114 | 1114 | before | causal | program order | 显示最终 Combine 与本地汇合之间的 EndSync、状态复位和 count 导出成本。 |
@@ -73,7 +77,7 @@
 - Dependency: kernel role entered Process
 - Pipeline proof: `Scalar` → `Scalar` using `program order` — marker precedes the first production statement
 - Perturbation: 每角色一次时钟读取和寄存器赋值。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1354  #endif
@@ -92,7 +96,7 @@
 - Dependency: overflow mode configured
 - Pipeline proof: `Scalar` → `Scalar` using `program order` — marker is immediately before SendAndQuantBuffInit
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1364      }
@@ -111,7 +115,7 @@
 - Dependency: SendAndQuantBuffInit returned
 - Pipeline proof: `Scalar plus Vector issue` → `Scalar` using `program order only` — no tracing-only Vector drain is inserted
 - Perturbation: 每个 AIV 一次时钟读取，不新增 Vector drain。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1364      }
@@ -130,7 +134,7 @@
 - Dependency: input UB views are configured
 - Pipeline proof: `Scalar` → `Scalar` using `program order` — marker precedes QuantizeLocalTokens
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1384      }
@@ -149,7 +153,7 @@
 - Dependency: QuantizeLocalTokens returned
 - Pipeline proof: `MTE2/Vector/MTE3` → `Scalar` using `production MTE3_MTE2 ring drain` — QuantizeLocalTokens waits both MTE3_MTE2 events before return
 - Perturbation: 每个 AIV 一次时钟读取；复用 helper 已有双 buffer MTE3 回收。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1384      }
@@ -168,7 +172,7 @@
 - Dependency: input quantization helper returned
 - Pipeline proof: `Scalar` → `Scalar` using `program order` — marker immediately precedes the compact route-index helper
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1396      }
@@ -187,7 +191,7 @@
 - Dependency: GatherAndSendExpertCompactRoutes returned
 - Pipeline proof: `Vector/MTE3` → `Scalar` using `production ring drain` — helper returns after every active compact-route MTE3 slot is drained
 - Perturbation: 每个 AIV 一次时钟读取；复用 helper 生产事件。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1396      }
@@ -206,7 +210,7 @@
 - Dependency: compact route-index helper returned
 - Pipeline proof: `Scalar` → `Scalar` using `program order` — marker immediately precedes ResetSyncStatus
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1408      }
@@ -225,7 +229,7 @@
 - Dependency: ResetDispatchWorkspace returned
 - Pipeline proof: `MTE3` → `Scalar` using `tracing-only MTE3_S` — MTE3_S SetFlag/WaitFlag completes immediately before sampling
 - Perturbation: 诊断态每个 AIV 增加一次 MTE3_S；会把原本由随后 SyncAll 吸收的等待前移。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1408      }
@@ -244,7 +248,7 @@
 - Dependency: role-local input preparation issued
 - Pipeline proof: `mixed local pipelines` → `Scalar` using `program order` — marker is immediately before the mixed AIC/AIV rendezvous
 - Perturbation: 每角色一次时钟读取。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1433      }
@@ -263,7 +267,7 @@
 - Dependency: SyncAll returned
 - Pipeline proof: `mixed local pipelines` → `Scalar` using `production rendezvous` — sample occurs after SyncAll
 - Perturbation: 每角色一次时钟读取。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1433      }
@@ -282,7 +286,7 @@
 - Dependency: local input preparation rendezvous completed
 - Pipeline proof: `Scalar/remote GM` → `Scalar` using `program order` — marker immediately precedes the first cross-rank barrier
 - Perturbation: 每角色一次时钟读取。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1146      }
@@ -301,7 +305,7 @@
 - Dependency: CrossRankSyncInWorldSize returned
 - Pipeline proof: `Scalar/remote GM` → `Scalar` using `production remote barrier` — sample occurs after the cross-rank wait
 - Perturbation: 每角色一次时钟读取。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1146      }
@@ -320,7 +324,7 @@
 - Dependency: cross-rank input barrier completed
 - Pipeline proof: `Scalar` → `Scalar` using `program order` — marker precedes the three buffer initialization helpers
 - Perturbation: 每角色一次时钟读取。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1007      }
@@ -339,7 +343,7 @@
 - Dependency: all expert buffer helpers returned
 - Pipeline proof: `Scalar` → `Scalar` using `program order` — helpers only bind buffer views and scalar fields
 - Perturbation: 每角色一次时钟读取。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1011      DispatchBuffInit();
@@ -358,7 +362,7 @@
 - Dependency: all production work for this role returned
 - Pipeline proof: `mixed production pipelines` → `Scalar` using `production completion plus program order` — sample is after ProcessGmmPipeline, final AIV cross-rank wait/Unpermute, and control restoration
 - Perturbation: 每角色一次时钟读取和寄存器赋值。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1486      // 恢复入口时保存的溢出模式。
@@ -446,40 +450,40 @@
 
 ### `gmm1_scalar_setup_begin_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/common/mega_moe_trace.h:359` in `CriticalPathTrace::PrepareGmm1Gap`; `before` target line `359`.
+- Where: `mc2/mega_moe/op_kernel/arch35/common/mega_moe_trace.h:366` in `CriticalPathTrace::PrepareGmm1Gap`; `before` target line `366`.
 - Cardinality: 每个 AIC 从上一个活跃 GMM1 problem 后开始，跨越连续空专家或无 owner problem，直到下一个 owned tile 的 ready 检查。
 - Boundary claim: `causal` — 开始为后续 GMM1 owned problem 扫描并准备专家状态；连续无 owner problem 合并为一个低扰动区间。
 - Why: 判断 GMM1 空洞是否来自逐专家状态准备、地址更新和 rolling ownership 跳过，而不是通信依赖。
 - Dependency: ProcessGmm1Wave entered the next expert/problem attempt
 - Pipeline proof: `Scalar` → `Scalar` using `program order` — the first pending setup timestamp is sampled before expert state preparation; later skipped experts retain that timestamp
 - Perturbation: 每段一次起点时钟；连续无 owner 专家不逐项写 trace，避免诊断写放大空洞。
-- Source SHA-256: `05a286e04454e59ea939ee60486c8839b1d1f3c4a67e7d63aabbc4e2bbe465dd`
+- Source SHA-256: `154a5c1b3c9d7313d9f83cdde4750553cef6c384ee7fc11fc1d38e7ef3ee1316`
 
 ```text
-   357          // TRACE_POINT: gmm1_scalar_setup_begin_S
-   358          if (gmm1SetupBegin_ == 0U) {
-   359              gmm1SetupBegin_ = begin;
-   360          }
-   361          gmm1GapWave_ = waveIdx;
+   364          // TRACE_POINT: gmm1_scalar_setup_begin_S
+   365          if (gmm1SetupBegin_ == 0U) {
+   366              gmm1SetupBegin_ = begin;
+   367          }
+   368          gmm1GapWave_ = waveIdx;
 ```
 
 ### `gmm1_scalar_setup_end_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/common/mega_moe_trace.h:545` in `CriticalPathTrace::EndGmm1Setup`; `before` target line `545`.
+- Where: `mc2/mega_moe/op_kernel/arch35/common/mega_moe_trace.h:588` in `CriticalPathTrace::EndGmm1Setup`; `before` target line `588`.
 - Cardinality: 与聚合后的 gmm1_scalar_setup_begin_S 一一对应。
 - Boundary claim: `actual` — 本核已找到下一个 owned tile 并完成 BlockMmad/problem 构造，或本 Wave 已无 owned tile。
 - Why: 把 Scalar 调度与随后真实 Dispatch-ready 等待分开。
 - Dependency: owned-tile ready check is about to start, or ProcessGmm1Wave is returning
 - Pipeline proof: `Scalar` → `Scalar` using `program order` — active paths close setup immediately before WaitForGmm1InputReady; tail paths close it at Wave exit
 - Perturbation: 每聚合段一次结束时钟和四个 scratch 标量写。
-- Source SHA-256: `05a286e04454e59ea939ee60486c8839b1d1f3c4a67e7d63aabbc4e2bbe465dd`
+- Source SHA-256: `154a5c1b3c9d7313d9f83cdde4750553cef6c384ee7fc11fc1d38e7ef3ee1316`
 
 ```text
-   543          }
-   544          // TRACE_POINT: gmm1_scalar_setup_end_S
-   545          AppendSegment(gmm1GapWave_, gmm1GapExpert_, gmm1SetupBegin_, value, 2U, stage2CapturedCount_);
-   546          gmm1SetupBegin_ = 0U;
-   547      }
+   586          }
+   587          // TRACE_POINT: gmm1_scalar_setup_end_S
+   588          AppendSegment(gmm1GapWave_, gmm1GapExpert_, gmm1SetupBegin_, value, 2U, stage2CapturedCount_);
+   589          gmm1SetupBegin_ = 0U;
+   590      }
 ```
 
 ### `gmm1_dispatch_wait_begin_S`
@@ -586,7 +590,7 @@
 - Dependency: RunGmm1ActivationByMode returned with an owned tile
 - Pipeline proof: `FIX` → `Scalar` using `tracing-only FIX_S` — HasStage0Begin gates an immediately preceding FIX_S SetFlag/WaitFlag pair
 - Perturbation: 每个活跃 AIC problem 增加一次 FIX_S、一次时钟和四个 scratch 写；诊断态会抑制跨 problem FIX 尾部重叠。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
    777          uint32_t waveTokenStartIndex =
@@ -624,7 +628,7 @@
 - Dependency: RunGmm1ActivationByMode returned on AIV0
 - Pipeline proof: `Vector/MTE3 issue and ready publication` → `Scalar` using `program order only` — no tracing-only completion event is introduced; boundary is conservatively issue
 - Perturbation: 一次时钟和四个 scratch 写；不增加额外排空。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
    777          uint32_t waveTokenStartIndex =
@@ -636,21 +640,21 @@
 
 ### `gmm2_problem_begin_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h:519` in `TraceGmm2ProblemBeginAfterReady`; `before` target line `519`.
+- Where: `mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h:535` in `TraceGmm2ProblemBeginAfterReady`; `before` target line `535`.
 - Cardinality: 所有 AIC，每个拥有 tile 的 GMM2 problem 一次。
 - Boundary claim: `causal` — 首个 owned GMM2 tile 已 ready，即将发出。
 - Why: 排除 SwiGLU-ready 轮询并拆开 Wave 内多个 problem。
 - Dependency: first owned tile observed SwiGLU-ready
 - Pipeline proof: `AIV0 MTE3/ready` → `Scalar` using `bypass-GM ready polling then program order` — helper is called only after WaitForGmm2InputReady returns
 - Perturbation: 每活跃 problem 一次条件判断和时钟。
-- Source SHA-256: `69f4ff431c0de4f77db8db0e68fa3b22da58b4f02728d5563908e1c969a118f6`
+- Source SHA-256: `892e854d8fbee610122d77b03628520577de8b728cfb84d414fe4d860cecec42`
 
 ```text
-   517      }
-   518      // TRACE_POINT: gmm2_problem_begin_S
-   519      trace->BeginStage1(CriticalPathTrace::Now());
-   520  }
-   521  #endif
+   533      }
+   534      // TRACE_POINT: gmm2_problem_begin_S
+   535      trace->BeginStage1(CriticalPathTrace::Now());
+   536  }
+   537  #endif
 ```
 
 ### `gmm2_problem_end_S`
@@ -662,7 +666,7 @@
 - Dependency: RunMoeExpertGmm2Stage returned with an owned tile
 - Pipeline proof: `FIX` → `Scalar` using `tracing-only FIX_S` — HasStage1Begin gates an immediately preceding FIX_S SetFlag/WaitFlag pair
 - Perturbation: 每个活跃 AIC problem 增加一次 FIX_S、一次时钟和四个 scratch 写；诊断态会串行化跨 problem FIX 尾部。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
    890          }
@@ -672,42 +676,118 @@
    894              gmmExecutionConfig_, gmm2AddrInfo, gmm2WaveProblemShape, runtimeState, nullptr, isWholeExpert,
 ```
 
+### `gmm2_input_wait_begin_S`
+
+- Where: `mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h:515` in `TraceGmm2InputWaitBegin`; `before` target line `515`.
+- Cardinality: 所有有 owned tile 的 AIC，每次进入生产 GMM2 activation-ready 轮询一次。
+- Boundary claim: `causal` — 当前 owned M group 即将等待 activationToGmm2 ready。
+- Why: 显式显示同一 Wave 内每个 GMM2 problem 前等待 SwiGLU/Quant 输出的时间。
+- Dependency: the scheduler selected an owned GMM2 M group
+- Pipeline proof: `Scalar` → `Scalar` using `program order` — sample is immediately before the production WaitForGmm2InputReady call
+- Perturbation: 每次生产 ready 轮询增加一次起点时钟；不新增同步。
+- Source SHA-256: `892e854d8fbee610122d77b03628520577de8b728cfb84d414fe4d860cecec42`
+
+```text
+   513      if (trace != nullptr) {
+   514          // TRACE_POINT: gmm2_input_wait_begin_S
+   515          trace->BeginGmm2InputWait(CriticalPathTrace::Now());
+   516      }
+   517  }
+```
+
+### `gmm2_input_wait_end_S`
+
+- Where: `mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h:523` in `TraceGmm2InputWaitEnd`; `before` target line `523`.
+- Cardinality: 与 gmm2_input_wait_begin_S 一一对应。
+- Boundary claim: `actual` — 生产 WaitForGmm2InputReady 已观察到 ready 并返回。
+- Why: 直接量化每个 GMM2 problem 的 activation 输入等待。
+- Dependency: the production ready wait returned
+- Pipeline proof: `AIV0 ready publication` → `Scalar` using `production bypass-GM polling` — sample is immediately after WaitForGmm2InputReady
+- Perturbation: 每次 ready 返回增加一次时钟和四个 scratch word 写；不新增同步。
+- Source SHA-256: `892e854d8fbee610122d77b03628520577de8b728cfb84d414fe4d860cecec42`
+
+```text
+   521      if (trace != nullptr) {
+   522          // TRACE_POINT: gmm2_input_wait_end_S
+   523          trace->EndGmm2InputWait(CriticalPathTrace::Now());
+   524      }
+   525  }
+```
+
+### `gmm2_ready_fix_wait_begin_S`
+
+- Where: `mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h:568` in `MegaMoeImpl::NotifyWaveCombineGroupCompletion`; `before` target line `568`.
+- Cardinality: 所有 routed A8W8 GMM2 owned N tile，每次发布 256-token group ready 前一次。
+- Boundary claim: `causal` — 当前 GMM2 tile 的 blockMmad 已返回，马上等待 FIX 完成后再 AtomicAdd group counter。
+- Why: 区分 GMM2 MMAD/FIX 发出与生产 group-ready 的逐 tile FIX completion 等待。
+- Dependency: the current blockMmad call returned
+- Pipeline proof: `Scalar issue boundary after Cube/FIX submission` → `Scalar` using `program order` — sample immediately precedes the production FIX_S used by group-ready publication
+- Perturbation: 每个 owned N tile 增加一次起点时钟；它位于生产 FIX_S 之前，会改变诊断态 Scalar/FIX 调度。
+- Source SHA-256: `892e854d8fbee610122d77b03628520577de8b728cfb84d414fe4d860cecec42`
+
+```text
+   566      if (criticalPathTrace != nullptr) {
+   567          // TRACE_POINT: gmm2_ready_fix_wait_begin_S
+   568          criticalPathTrace->BeginGmm2ReadyFixWait(CriticalPathTrace::Now());
+   569      }
+   570  #endif
+```
+
+### `gmm2_ready_fix_wait_end_S`
+
+- Where: `mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h:576` in `MegaMoeImpl::NotifyWaveCombineGroupCompletion`; `before` target line `576`.
+- Cardinality: 与 gmm2_ready_fix_wait_begin_S 一一对应。
+- Boundary claim: `actual` — 当前 tile 的 FIX 写回已完成并桥接到 Scalar，但 group counter 尚未 AtomicAdd。
+- Why: 将逐 tile FIX completion 与随后 AtomicAdd counter 分开；本段不包含 counter 原子写。
+- Dependency: the production FIX_S wait returned
+- Pipeline proof: `FIX` → `Scalar` using `production FIX_S` — sample is after WaitFlag<FIX_S> and before AtomicAdd of the group-ready counter
+- Perturbation: 每个 owned N tile 一次结束时钟和四个 scratch word 写；时间戳/写 scratch 发生在 AtomicAdd 前。
+- Source SHA-256: `892e854d8fbee610122d77b03628520577de8b728cfb84d414fe4d860cecec42`
+
+```text
+   574      if (criticalPathTrace != nullptr) {
+   575          // TRACE_POINT: gmm2_ready_fix_wait_end_S
+   576          criticalPathTrace->EndGmm2ReadyFixWait(CriticalPathTrace::Now());
+   577      }
+   578  #endif
+```
+
 ### `combine_group_begin_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h:1178` in `MegaMoeImpl::CombineWaveExpertRows`; `after` target line `1178`.
+- Where: `mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h:1228` in `MegaMoeImpl::CombineWaveExpertRows`; `after` target line `1228`.
 - Cardinality: 所有参与 Combine 的 AIV，每个本核 owned expert-local 256-token group 切片一次。
 - Boundary claim: `causal` — 当前 expert-local 256-token group 的 GMM2 N-tile 计数已齐，即将读取并发送本核所负责行。
 - Why: 直接观察本次新增的 256-token group ready 是否让 Combine 提前启动，并排除 ready 轮询。
 - Dependency: current 256-token group's complete GMM2 N-tile count was observed
 - Pipeline proof: `AIC FIX plus bypass-GM counter` → `Scalar` using `bypass-GM polling then program order` — marker is immediately after WaitWaveCombineGroupReady
 - Perturbation: 每活跃 group 一次条件判断和时钟。
-- Source SHA-256: `69f4ff431c0de4f77db8db0e68fa3b22da58b4f02728d5563908e1c969a118f6`
+- Source SHA-256: `892e854d8fbee610122d77b03628520577de8b728cfb84d414fe4d860cecec42`
 
 ```text
-  1176              rowsInCurrentGroup = remainingTokenCount;
-  1177          }
-  1178          WaitWaveCombineGroupReady(common, syncLayout, params, expertIdx, tokenGroupIdx);
-  1179  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-  1180          if (criticalPathTrace != nullptr) {
+  1226              rowsInCurrentGroup = remainingTokenCount;
+  1227          }
+  1228          WaitWaveCombineGroupReady(common, syncLayout, params, expertIdx, tokenGroupIdx);
+  1229  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  1230          if (criticalPathTrace != nullptr) {
 ```
 
 ### `combine_group_end_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h:1207` in `MegaMoeImpl::CombineWaveExpertRows`; `before` target line `1207`.
+- Where: `mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h:1257` in `MegaMoeImpl::CombineWaveExpertRows`; `before` target line `1257`.
 - Cardinality: 与 combine_group_begin_S 一一对应。
 - Boundary claim: `actual` — 当前 group 切片此前发出的所有 MTE3 send 已完成并桥接到 Scalar。
 - Why: 只覆盖当前 256-token group 切片，并在远端发送完成后结束。
 - Dependency: the active group slice has issued all of its Combine rows
 - Pipeline proof: `MTE2/Vector/MTE3` → `Scalar` using `tracing-only MTE3_S` — MTE3_S SetFlag/WaitFlag is immediately before sampling, so every earlier remote send is complete
 - Perturbation: 每个本核活跃 group 增加一次 MTE3_S 完成桥、一次时钟和四个 scratch 写；诊断态会抑制跨 group MTE3 尾部重叠。
-- Source SHA-256: `69f4ff431c0de4f77db8db0e68fa3b22da58b4f02728d5563908e1c969a118f6`
+- Source SHA-256: `892e854d8fbee610122d77b03628520577de8b728cfb84d414fe4d860cecec42`
 
 ```text
-  1205          }
-  1206  #endif
-  1207          processedTokenCount += rowsInCurrentGroup;
-  1208      }
-  1209  }
+  1255          }
+  1256  #endif
+  1257          processedTokenCount += rowsInCurrentGroup;
+  1258      }
+  1259  }
 ```
 
 ### `final_combine_drain_begin_S`
@@ -719,7 +799,7 @@
 - Dependency: final Wave Combine helpers returned
 - Pipeline proof: `MTE3` → `Scalar` using `program order` — marker is immediately before the production row-ring drain
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
    985      }
@@ -738,7 +818,7 @@
 - Dependency: DrainCombineRowBuffers returned
 - Pipeline proof: `MTE3` → `Scalar` using `production MTE3_MTE2 event waits` — the helper consumes every active row-ring completion event before return
 - Perturbation: 每个 AIV 一次时钟读取，复用生产 drain。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
    985      }
@@ -757,7 +837,7 @@
 - Dependency: the final ProcessCombineWave returned
 - Pipeline proof: `mixed` → `Scalar` using `program order` — marker is gated by !hasNextWave immediately after ProcessCombineWave
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1112          }
@@ -776,7 +856,7 @@
 - Dependency: expert-count export returned
 - Pipeline proof: `Scalar/MTE2/MTE3` → `Scalar` using `production helper completion` — the only exporting AIV drains its MTE3 before return; other AIVs have no export work
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1119      }
@@ -795,7 +875,7 @@
 - Dependency: ProcessMoeExpertStages returned
 - Pipeline proof: `mixed local pipelines` → `Scalar` using `program order` — marker precedes the production PIPE_ALL/SyncAll pair
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1165  #endif
@@ -814,7 +894,7 @@
 - Dependency: production AIV SyncAll returned
 - Pipeline proof: `all local AIV pipelines` → `Scalar` using `production PIPE_ALL plus SyncAll` — marker is immediately after the existing synchronization
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1165  #endif
@@ -833,7 +913,7 @@
 - Dependency: MoE tail SyncAll returned
 - Pipeline proof: `Scalar` → `Scalar` using `program order` — marker immediately precedes the sharedExpertNum branch on AIV roles
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1184      if (sharedExpertNum_ > 0) {
@@ -852,7 +932,7 @@
 - Dependency: ProcessSharedExpertGmm2 returned on AIV
 - Pipeline proof: `Scalar control` → `Scalar` using `program order only` — no tracing-only completion event is inserted
 - Perturbation: 每个 AIV 一次时钟读取，不增加 Cube/FIX drain。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1184      if (sharedExpertNum_ > 0) {
@@ -871,7 +951,7 @@
 - Dependency: local GMM pipeline returned
 - Pipeline proof: `Scalar/network` → `Scalar` using `program order` — marker immediately precedes the output rank handshake
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1452          }
@@ -890,7 +970,7 @@
 - Dependency: CrossRankSyncInWorldSize returned
 - Pipeline proof: `Scalar/network` → `Scalar` using `production rank handshake` — marker is immediately after the existing cross-rank synchronization
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1452          }
@@ -909,7 +989,7 @@
 - Dependency: output cross-rank sync returned
 - Pipeline proof: `Scalar` → `Scalar` using `program order` — marker immediately precedes InitTokenUnpermuteBuffers
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1466          }
@@ -928,7 +1008,7 @@
 - Dependency: InitTokenUnpermuteBuffers returned
 - Pipeline proof: `Scalar` → `Scalar` using `program order` — helper only constructs local tensor views and returns synchronously
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1466          }
@@ -947,7 +1027,7 @@
 - Dependency: Unpermute buffer initialization completed
 - Pipeline proof: `Scalar` → `Scalar` using `program order` — marker immediately precedes UnpermuteTokens
 - Perturbation: 每个 AIV 一次时钟读取。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1475          }
@@ -966,7 +1046,7 @@
 - Dependency: UnpermuteTokens returned
 - Pipeline proof: `MTE2/Vector/MTE3` → `Scalar` using `production MTE3_V event wait` — UnpermuteTokens consumes its outputBufferEvent after the final batch before return
 - Perturbation: 每个 AIV 一次时钟读取，复用 UnpermuteTokens 的生产 MTE3_V drain。
-- Source SHA-256: `b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d`
+- Source SHA-256: `29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109`
 
 ```text
   1475          }
@@ -981,6 +1061,7 @@
 ```text
 M mc2/mega_moe/op_kernel/arch35/common/mega_moe_trace.h
  M mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h
+ M mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h
  M mc2/mega_moe/tools/critical_path_trace/README.md
  M mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.json
  M mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.md
@@ -992,7 +1073,4 @@ M mc2/mega_moe/op_kernel/arch35/common/mega_moe_trace.h
  M mc2/mega_moe/tools/critical_path_trace/test_critical_path_trace.py
  M mc2/mega_moe/tools/critical_path_trace/trace-spec.json
  M mc2/mega_moe/tools/critical_path_trace/trace_tool.py
-?? mc2/mega_moe/REMOVE_COMBINE_GLOBAL_SYNC_DESIGN.md
-?? mc2/mega_moe/REMOVE_DISPATCH_GLOBAL_SYNC_DESIGN.md
-?? mc2/mega_moe/REMOVE_GLOBAL_SYNC_DESIGN.md
 ```

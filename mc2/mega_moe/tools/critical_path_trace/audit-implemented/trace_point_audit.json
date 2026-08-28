@@ -2,17 +2,18 @@
   "audit_schema_version": 1,
   "status": "pass",
   "phase": "implemented",
-  "generated_at_utc": "2026-08-27T13:46:33.687058+00:00",
+  "generated_at_utc": "2026-08-28T12:08:23.140331+00:00",
   "trace_name": "mega-moe-pr10302-token-group-wave-active-task-critical-path",
-  "repo_root": "/home/mace/workspace/ops-transformer_megaMoeOpt",
+  "repo_root": "/home/mace/workspace/ops-transformer_megaMoeOpt_wave_interleave_trace",
   "git": {
     "is_git_repository": true,
-    "revision": "a2b1c66f36efd5e93756492635f895eb10d90a5f",
+    "revision": "3037a11518f70ede3c7ad54eafc13a06dc490646",
     "branch": "codex/pr10302-wave-interleave-sendindex-critical-path-trace",
     "dirty": true,
     "status_short": [
       "M mc2/mega_moe/op_kernel/arch35/common/mega_moe_trace.h",
       " M mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h",
+      " M mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h",
       " M mc2/mega_moe/tools/critical_path_trace/README.md",
       " M mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.json",
       " M mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.md",
@@ -23,19 +24,16 @@
       " M mc2/mega_moe/tools/critical_path_trace/run_critical_path_trace.py",
       " M mc2/mega_moe/tools/critical_path_trace/test_critical_path_trace.py",
       " M mc2/mega_moe/tools/critical_path_trace/trace-spec.json",
-      " M mc2/mega_moe/tools/critical_path_trace/trace_tool.py",
-      "?? mc2/mega_moe/REMOVE_COMBINE_GLOBAL_SYNC_DESIGN.md",
-      "?? mc2/mega_moe/REMOVE_DISPATCH_GLOBAL_SYNC_DESIGN.md",
-      "?? mc2/mega_moe/REMOVE_GLOBAL_SYNC_DESIGN.md"
+      " M mc2/mega_moe/tools/critical_path_trace/trace_tool.py"
     ],
     "status_truncated": false,
-    "tracked_diff_raw_sha256": "4bdbcf3a784b25860d883e941f304d1554846c9585778729cae4cdb61f7776bb"
+    "tracked_diff_raw_sha256": "7418c8917b20e530207983947981f93235d13049eb3958f0d8582d1aaacde2b5"
   },
   "spec": {
-    "path": "/home/mace/workspace/ops-transformer_megaMoeOpt/mc2/mega_moe/tools/critical_path_trace/trace-spec.json",
-    "sha256": "76a523a7604e09a72b713072b9eb7816740962d02a9719d8644a90d4ee5f13b5",
-    "protocol_version": 14,
-    "schema_id": "0x0aaba4b5"
+    "path": "/home/mace/workspace/ops-transformer_megaMoeOpt_wave_interleave_trace/mc2/mega_moe/tools/critical_path_trace/trace-spec.json",
+    "sha256": "96bed16cb0c4aa70fb8074a8619ca3019266765c759d9395424a879f7b8b2788",
+    "protocol_version": 17,
+    "schema_id": "0xbdd34b32"
   },
   "points": [
     {
@@ -114,7 +112,7 @@
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "提供同一 AI Block 内三角色共同参考起点。",
       "semantics": "Process 的第一条诊断指令，尚未执行正常算子语句。",
       "dependency": {
@@ -202,7 +200,7 @@
         ]
       },
       "max_line_distance": 6,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "分离输入准备 UB 布局与后续 token 量化。",
       "semantics": "即将构造 quant/route-index/reset 的 UB 视图并发出 resetTensor Duplicate。",
       "dependency": {
@@ -290,7 +288,7 @@
         ]
       },
       "max_line_distance": 6,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "量化前单独显示 UB 地址构造和零张量发出成本。",
       "semantics": "UB 视图已构造且 Duplicate 已发出；Vector 尾部可继续运行。",
       "dependency": {
@@ -377,7 +375,7 @@
         ]
       },
       "max_line_distance": 7,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "量化本卡输入 token 的固定成本独立可见。",
       "semantics": "即将进入 QuantizeLocalTokens。",
       "dependency": {
@@ -464,7 +462,7 @@
         ]
       },
       "max_line_distance": 7,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "区分 token 量化与后续 compact route-index 通信。",
       "semantics": "本核负责 token 的量化结果已写回 GM。",
       "dependency": {
@@ -551,7 +549,7 @@
         ]
       },
       "max_line_distance": 5,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "单独量化 compact route index 构造、count 整理与跨 rank 发送。",
       "semantics": "即将进入 GatherAndSendExpertCompactRoutes。",
       "dependency": {
@@ -638,7 +636,7 @@
         ]
       },
       "max_line_distance": 7,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "把 compact route index/count 远端发送完成与 workspace 清零分开。",
       "semantics": "本核所有 compact route/count ring 槽的 MTE3 写已完成。",
       "dependency": {
@@ -725,7 +723,7 @@
         ]
       },
       "max_line_distance": 5,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "量化 flag/workspace 清零成本和同步等待。",
       "semantics": "即将发出本核负责的 workspace 清零。",
       "dependency": {
@@ -812,7 +810,7 @@
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "不把未完成的 MTE3 清零尾部错误归入后续本地 barrier。",
       "semantics": "本核此前发出的 workspace 清零 MTE3 已完成。",
       "dependency": {
@@ -900,7 +898,7 @@
         ]
       },
       "max_line_distance": 6,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "直接量化 AIC 等待 AIV 输入准备和 flag 可见的本地 barrier。",
       "semantics": "即将进入输入准备后的 SyncAll。",
       "dependency": {
@@ -988,7 +986,7 @@
         ]
       },
       "max_line_distance": 6,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "区分单卡角色同步与随后跨 rank 同步。",
       "semantics": "本 AI Block 所有角色已越过输入准备 rendezvous。",
       "dependency": {
@@ -1077,7 +1075,7 @@
         ]
       },
       "max_line_distance": 6,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "直接量化 Dispatch 前由最慢 rank 决定的全卡等待。",
       "semantics": "即将进入 CrossRankSyncInWorldSize。",
       "dependency": {
@@ -1166,7 +1164,7 @@
         ]
       },
       "max_line_distance": 6,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "把全 rank 等待与本地专家 buffer 初始化分开。",
       "semantics": "本角色已观察到所有 rank 输入准备完成。",
       "dependency": {
@@ -1254,7 +1252,7 @@
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "量化进入首轮 Dispatch/GMM 前的专家阶段 buffer 和状态初始化。",
       "semantics": "即将构造 Dispatch、Combine 和 token-count export 的本地视图。",
       "dependency": {
@@ -1342,7 +1340,7 @@
         ]
       },
       "max_line_distance": 6,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "分离本地视图构造与后续 cursor/problem 状态建立及首个 Dispatch。",
       "semantics": "三个 buffer 初始化 helper 已完成；这些 helper 仅构造 Scalar/LocalTensor 状态。",
       "dependency": {
@@ -1430,7 +1428,7 @@
         ]
       },
       "max_line_distance": 6,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "把有效工作与 tracing 终结同步/落盘分离。",
       "semantics": "正常 routed/shared 流水、跨 rank 尾部和 Unpermute 已结束，尚未进入 tracing rendezvous。",
       "dependency": {
@@ -1803,64 +1801,64 @@
         "pattern": "gmm1SetupBegin_ = begin;"
       },
       "target_match_count": 1,
-      "target_line": 359,
+      "target_line": 366,
       "target_context": {
-        "start_line": 357,
-        "end_line": 361,
+        "start_line": 364,
+        "end_line": 368,
         "lines": [
           {
-            "line": 357,
+            "line": 364,
             "text": "        // TRACE_POINT: gmm1_scalar_setup_begin_S"
           },
           {
-            "line": 358,
+            "line": 365,
             "text": "        if (gmm1SetupBegin_ == 0U) {"
           },
           {
-            "line": 359,
+            "line": 366,
             "text": "            gmm1SetupBegin_ = begin;"
           },
           {
-            "line": 360,
+            "line": 367,
             "text": "        }"
           },
           {
-            "line": 361,
+            "line": 368,
             "text": "        gmm1GapWave_ = waveIdx;"
           }
         ]
       },
       "marker": "TRACE_POINT: gmm1_scalar_setup_begin_S",
       "marker_match_count": 1,
-      "marker_line": 357,
+      "marker_line": 364,
       "marker_context": {
-        "start_line": 355,
-        "end_line": 359,
+        "start_line": 362,
+        "end_line": 366,
         "lines": [
           {
-            "line": 355,
+            "line": 362,
             "text": "    __aicore__ inline void PrepareGmm1Gap(uint32_t waveIdx, uint32_t expertIdx, uint32_t begin)"
           },
           {
-            "line": 356,
+            "line": 363,
             "text": "    {"
           },
           {
-            "line": 357,
+            "line": 364,
             "text": "        // TRACE_POINT: gmm1_scalar_setup_begin_S"
           },
           {
-            "line": 358,
+            "line": 365,
             "text": "        if (gmm1SetupBegin_ == 0U) {"
           },
           {
-            "line": 359,
+            "line": 366,
             "text": "            gmm1SetupBegin_ = begin;"
           }
         ]
       },
       "max_line_distance": 4,
-      "source_file_sha256": "05a286e04454e59ea939ee60486c8839b1d1f3c4a67e7d63aabbc4e2bbe465dd",
+      "source_file_sha256": "154a5c1b3c9d7313d9f83cdde4750553cef6c384ee7fc11fc1d38e7ef3ee1316",
       "why": "判断 GMM1 空洞是否来自逐专家状态准备、地址更新和 rolling ownership 跳过，而不是通信依赖。",
       "semantics": "开始为后续 GMM1 owned problem 扫描并准备专家状态；连续无 owner problem 合并为一个低扰动区间。",
       "dependency": {
@@ -1889,64 +1887,64 @@
         "pattern": "AppendSegment(gmm1GapWave_, gmm1GapExpert_, gmm1SetupBegin_, value, 2U,"
       },
       "target_match_count": 1,
-      "target_line": 545,
+      "target_line": 588,
       "target_context": {
-        "start_line": 543,
-        "end_line": 547,
+        "start_line": 586,
+        "end_line": 590,
         "lines": [
           {
-            "line": 543,
+            "line": 586,
             "text": "        }"
           },
           {
-            "line": 544,
+            "line": 587,
             "text": "        // TRACE_POINT: gmm1_scalar_setup_end_S"
           },
           {
-            "line": 545,
+            "line": 588,
             "text": "        AppendSegment(gmm1GapWave_, gmm1GapExpert_, gmm1SetupBegin_, value, 2U, stage2CapturedCount_);"
           },
           {
-            "line": 546,
+            "line": 589,
             "text": "        gmm1SetupBegin_ = 0U;"
           },
           {
-            "line": 547,
+            "line": 590,
             "text": "    }"
           }
         ]
       },
       "marker": "TRACE_POINT: gmm1_scalar_setup_end_S",
       "marker_match_count": 1,
-      "marker_line": 544,
+      "marker_line": 587,
       "marker_context": {
-        "start_line": 542,
-        "end_line": 546,
+        "start_line": 585,
+        "end_line": 589,
         "lines": [
           {
-            "line": 542,
+            "line": 585,
             "text": "            return;"
           },
           {
-            "line": 543,
+            "line": 586,
             "text": "        }"
           },
           {
-            "line": 544,
+            "line": 587,
             "text": "        // TRACE_POINT: gmm1_scalar_setup_end_S"
           },
           {
-            "line": 545,
+            "line": 588,
             "text": "        AppendSegment(gmm1GapWave_, gmm1GapExpert_, gmm1SetupBegin_, value, 2U, stage2CapturedCount_);"
           },
           {
-            "line": 546,
+            "line": 589,
             "text": "        gmm1SetupBegin_ = 0U;"
           }
         ]
       },
       "max_line_distance": 2,
-      "source_file_sha256": "05a286e04454e59ea939ee60486c8839b1d1f3c4a67e7d63aabbc4e2bbe465dd",
+      "source_file_sha256": "154a5c1b3c9d7313d9f83cdde4750553cef6c384ee7fc11fc1d38e7ef3ee1316",
       "why": "把 Scalar 调度与随后真实 Dispatch-ready 等待分开。",
       "semantics": "本核已找到下一个 owned tile 并完成 BlockMmad/problem 构造，或本 Wave 已无 owned tile。",
       "dependency": {
@@ -2463,7 +2461,7 @@
         ]
       },
       "max_line_distance": 24,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "只把本 problem 真正完成的 FIX 工作染色，使 problem 间白色可解释为调度/依赖空洞。",
       "semantics": "本 problem 已发出的全部 FIX 工作已完成并桥接到 Scalar。",
       "dependency": {
@@ -2636,7 +2634,7 @@
         ]
       },
       "max_line_distance": 28,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "不把下一 problem 前的等待算入 SwiGLU。",
       "semantics": "当前 problem helper 已返回并完成生产路径的输出/ready 提交。",
       "dependency": {
@@ -2665,64 +2663,64 @@
         "pattern": "trace->BeginStage1(CriticalPathTrace::Now());"
       },
       "target_match_count": 1,
-      "target_line": 519,
+      "target_line": 535,
       "target_context": {
-        "start_line": 517,
-        "end_line": 521,
+        "start_line": 533,
+        "end_line": 537,
         "lines": [
           {
-            "line": 517,
+            "line": 533,
             "text": "    }"
           },
           {
-            "line": 518,
+            "line": 534,
             "text": "    // TRACE_POINT: gmm2_problem_begin_S"
           },
           {
-            "line": 519,
+            "line": 535,
             "text": "    trace->BeginStage1(CriticalPathTrace::Now());"
           },
           {
-            "line": 520,
+            "line": 536,
             "text": "}"
           },
           {
-            "line": 521,
+            "line": 537,
             "text": "#endif"
           }
         ]
       },
       "marker": "TRACE_POINT: gmm2_problem_begin_S",
       "marker_match_count": 1,
-      "marker_line": 518,
+      "marker_line": 534,
       "marker_context": {
-        "start_line": 516,
-        "end_line": 520,
+        "start_line": 532,
+        "end_line": 536,
         "lines": [
           {
-            "line": 516,
+            "line": 532,
             "text": "        return;"
           },
           {
-            "line": 517,
+            "line": 533,
             "text": "    }"
           },
           {
-            "line": 518,
+            "line": 534,
             "text": "    // TRACE_POINT: gmm2_problem_begin_S"
           },
           {
-            "line": 519,
+            "line": 535,
             "text": "    trace->BeginStage1(CriticalPathTrace::Now());"
           },
           {
-            "line": 520,
+            "line": 536,
             "text": "}"
           }
         ]
       },
       "max_line_distance": 2,
-      "source_file_sha256": "69f4ff431c0de4f77db8db0e68fa3b22da58b4f02728d5563908e1c969a118f6",
+      "source_file_sha256": "892e854d8fbee610122d77b03628520577de8b728cfb84d414fe4d860cecec42",
       "why": "排除 SwiGLU-ready 轮询并拆开 Wave 内多个 problem。",
       "semantics": "首个 owned GMM2 tile 已 ready，即将发出。",
       "dependency": {
@@ -2809,7 +2807,7 @@
         ]
       },
       "max_line_distance": 24,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "让大量短 GMM2 段覆盖真实 FIX 执行，而不是只显示 Scalar 发出。",
       "semantics": "本 problem 已发出的全部 GMM2 FIX 工作已完成并桥接到 Scalar。",
       "dependency": {
@@ -2820,6 +2818,350 @@
         "proof": "HasStage1Begin gates an immediately preceding FIX_S SetFlag/WaitFlag pair"
       },
       "perturbation": "每个活跃 AIC problem 增加一次 FIX_S、一次时钟和四个 scratch 写；诊断态会串行化跨 problem FIX 尾部。"
+    },
+    {
+      "id": "gmm2_input_wait_begin_S",
+      "stage": "gmm2_input_wait",
+      "edge": "begin",
+      "boundary_quality": "causal",
+      "roles": [
+        "AIC"
+      ],
+      "scope": "所有有 owned tile 的 AIC，每次进入生产 GMM2 activation-ready 轮询一次。",
+      "file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h",
+      "symbol": "TraceGmm2InputWaitBegin",
+      "placement": "before",
+      "target_anchor": {
+        "mode": "literal",
+        "pattern": "trace->BeginGmm2InputWait(CriticalPathTrace::Now());"
+      },
+      "target_match_count": 1,
+      "target_line": 515,
+      "target_context": {
+        "start_line": 513,
+        "end_line": 517,
+        "lines": [
+          {
+            "line": 513,
+            "text": "    if (trace != nullptr) {"
+          },
+          {
+            "line": 514,
+            "text": "        // TRACE_POINT: gmm2_input_wait_begin_S"
+          },
+          {
+            "line": 515,
+            "text": "        trace->BeginGmm2InputWait(CriticalPathTrace::Now());"
+          },
+          {
+            "line": 516,
+            "text": "    }"
+          },
+          {
+            "line": 517,
+            "text": "}"
+          }
+        ]
+      },
+      "marker": "TRACE_POINT: gmm2_input_wait_begin_S",
+      "marker_match_count": 1,
+      "marker_line": 514,
+      "marker_context": {
+        "start_line": 512,
+        "end_line": 516,
+        "lines": [
+          {
+            "line": 512,
+            "text": "{"
+          },
+          {
+            "line": 513,
+            "text": "    if (trace != nullptr) {"
+          },
+          {
+            "line": 514,
+            "text": "        // TRACE_POINT: gmm2_input_wait_begin_S"
+          },
+          {
+            "line": 515,
+            "text": "        trace->BeginGmm2InputWait(CriticalPathTrace::Now());"
+          },
+          {
+            "line": 516,
+            "text": "    }"
+          }
+        ]
+      },
+      "max_line_distance": 2,
+      "source_file_sha256": "892e854d8fbee610122d77b03628520577de8b728cfb84d414fe4d860cecec42",
+      "why": "显式显示同一 Wave 内每个 GMM2 problem 前等待 SwiGLU/Quant 输出的时间。",
+      "semantics": "当前 owned M group 即将等待 activationToGmm2 ready。",
+      "dependency": {
+        "precondition": "the scheduler selected an owned GMM2 M group",
+        "producer_pipeline": "Scalar",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "program order",
+        "proof": "sample is immediately before the production WaitForGmm2InputReady call"
+      },
+      "perturbation": "每次生产 ready 轮询增加一次起点时钟；不新增同步。"
+    },
+    {
+      "id": "gmm2_input_wait_end_S",
+      "stage": "gmm2_input_wait",
+      "edge": "end",
+      "boundary_quality": "actual",
+      "roles": [
+        "AIC"
+      ],
+      "scope": "与 gmm2_input_wait_begin_S 一一对应。",
+      "file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h",
+      "symbol": "TraceGmm2InputWaitEnd",
+      "placement": "before",
+      "target_anchor": {
+        "mode": "literal",
+        "pattern": "trace->EndGmm2InputWait(CriticalPathTrace::Now());"
+      },
+      "target_match_count": 1,
+      "target_line": 523,
+      "target_context": {
+        "start_line": 521,
+        "end_line": 525,
+        "lines": [
+          {
+            "line": 521,
+            "text": "    if (trace != nullptr) {"
+          },
+          {
+            "line": 522,
+            "text": "        // TRACE_POINT: gmm2_input_wait_end_S"
+          },
+          {
+            "line": 523,
+            "text": "        trace->EndGmm2InputWait(CriticalPathTrace::Now());"
+          },
+          {
+            "line": 524,
+            "text": "    }"
+          },
+          {
+            "line": 525,
+            "text": "}"
+          }
+        ]
+      },
+      "marker": "TRACE_POINT: gmm2_input_wait_end_S",
+      "marker_match_count": 1,
+      "marker_line": 522,
+      "marker_context": {
+        "start_line": 520,
+        "end_line": 524,
+        "lines": [
+          {
+            "line": 520,
+            "text": "{"
+          },
+          {
+            "line": 521,
+            "text": "    if (trace != nullptr) {"
+          },
+          {
+            "line": 522,
+            "text": "        // TRACE_POINT: gmm2_input_wait_end_S"
+          },
+          {
+            "line": 523,
+            "text": "        trace->EndGmm2InputWait(CriticalPathTrace::Now());"
+          },
+          {
+            "line": 524,
+            "text": "    }"
+          }
+        ]
+      },
+      "max_line_distance": 2,
+      "source_file_sha256": "892e854d8fbee610122d77b03628520577de8b728cfb84d414fe4d860cecec42",
+      "why": "直接量化每个 GMM2 problem 的 activation 输入等待。",
+      "semantics": "生产 WaitForGmm2InputReady 已观察到 ready 并返回。",
+      "dependency": {
+        "precondition": "the production ready wait returned",
+        "producer_pipeline": "AIV0 ready publication",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "production bypass-GM polling",
+        "proof": "sample is immediately after WaitForGmm2InputReady"
+      },
+      "perturbation": "每次 ready 返回增加一次时钟和四个 scratch word 写；不新增同步。"
+    },
+    {
+      "id": "gmm2_ready_fix_wait_begin_S",
+      "stage": "gmm2_ready_fix_wait",
+      "edge": "begin",
+      "boundary_quality": "causal",
+      "roles": [
+        "AIC"
+      ],
+      "scope": "所有 routed A8W8 GMM2 owned N tile，每次发布 256-token group ready 前一次。",
+      "file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h",
+      "symbol": "MegaMoeImpl::NotifyWaveCombineGroupCompletion",
+      "placement": "before",
+      "target_anchor": {
+        "mode": "literal",
+        "pattern": "criticalPathTrace->BeginGmm2ReadyFixWait(CriticalPathTrace::Now());"
+      },
+      "target_match_count": 1,
+      "target_line": 568,
+      "target_context": {
+        "start_line": 566,
+        "end_line": 570,
+        "lines": [
+          {
+            "line": 566,
+            "text": "    if (criticalPathTrace != nullptr) {"
+          },
+          {
+            "line": 567,
+            "text": "        // TRACE_POINT: gmm2_ready_fix_wait_begin_S"
+          },
+          {
+            "line": 568,
+            "text": "        criticalPathTrace->BeginGmm2ReadyFixWait(CriticalPathTrace::Now());"
+          },
+          {
+            "line": 569,
+            "text": "    }"
+          },
+          {
+            "line": 570,
+            "text": "#endif"
+          }
+        ]
+      },
+      "marker": "TRACE_POINT: gmm2_ready_fix_wait_begin_S",
+      "marker_match_count": 1,
+      "marker_line": 567,
+      "marker_context": {
+        "start_line": 565,
+        "end_line": 569,
+        "lines": [
+          {
+            "line": 565,
+            "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
+          },
+          {
+            "line": 566,
+            "text": "    if (criticalPathTrace != nullptr) {"
+          },
+          {
+            "line": 567,
+            "text": "        // TRACE_POINT: gmm2_ready_fix_wait_begin_S"
+          },
+          {
+            "line": 568,
+            "text": "        criticalPathTrace->BeginGmm2ReadyFixWait(CriticalPathTrace::Now());"
+          },
+          {
+            "line": 569,
+            "text": "    }"
+          }
+        ]
+      },
+      "max_line_distance": 2,
+      "source_file_sha256": "892e854d8fbee610122d77b03628520577de8b728cfb84d414fe4d860cecec42",
+      "why": "区分 GMM2 MMAD/FIX 发出与生产 group-ready 的逐 tile FIX completion 等待。",
+      "semantics": "当前 GMM2 tile 的 blockMmad 已返回，马上等待 FIX 完成后再 AtomicAdd group counter。",
+      "dependency": {
+        "precondition": "the current blockMmad call returned",
+        "producer_pipeline": "Scalar issue boundary after Cube/FIX submission",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "program order",
+        "proof": "sample immediately precedes the production FIX_S used by group-ready publication"
+      },
+      "perturbation": "每个 owned N tile 增加一次起点时钟；它位于生产 FIX_S 之前，会改变诊断态 Scalar/FIX 调度。"
+    },
+    {
+      "id": "gmm2_ready_fix_wait_end_S",
+      "stage": "gmm2_ready_fix_wait",
+      "edge": "end",
+      "boundary_quality": "actual",
+      "roles": [
+        "AIC"
+      ],
+      "scope": "与 gmm2_ready_fix_wait_begin_S 一一对应。",
+      "file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h",
+      "symbol": "MegaMoeImpl::NotifyWaveCombineGroupCompletion",
+      "placement": "before",
+      "target_anchor": {
+        "mode": "literal",
+        "pattern": "criticalPathTrace->EndGmm2ReadyFixWait(CriticalPathTrace::Now());"
+      },
+      "target_match_count": 1,
+      "target_line": 576,
+      "target_context": {
+        "start_line": 574,
+        "end_line": 578,
+        "lines": [
+          {
+            "line": 574,
+            "text": "    if (criticalPathTrace != nullptr) {"
+          },
+          {
+            "line": 575,
+            "text": "        // TRACE_POINT: gmm2_ready_fix_wait_end_S"
+          },
+          {
+            "line": 576,
+            "text": "        criticalPathTrace->EndGmm2ReadyFixWait(CriticalPathTrace::Now());"
+          },
+          {
+            "line": 577,
+            "text": "    }"
+          },
+          {
+            "line": 578,
+            "text": "#endif"
+          }
+        ]
+      },
+      "marker": "TRACE_POINT: gmm2_ready_fix_wait_end_S",
+      "marker_match_count": 1,
+      "marker_line": 575,
+      "marker_context": {
+        "start_line": 573,
+        "end_line": 577,
+        "lines": [
+          {
+            "line": 573,
+            "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
+          },
+          {
+            "line": 574,
+            "text": "    if (criticalPathTrace != nullptr) {"
+          },
+          {
+            "line": 575,
+            "text": "        // TRACE_POINT: gmm2_ready_fix_wait_end_S"
+          },
+          {
+            "line": 576,
+            "text": "        criticalPathTrace->EndGmm2ReadyFixWait(CriticalPathTrace::Now());"
+          },
+          {
+            "line": 577,
+            "text": "    }"
+          }
+        ]
+      },
+      "max_line_distance": 2,
+      "source_file_sha256": "892e854d8fbee610122d77b03628520577de8b728cfb84d414fe4d860cecec42",
+      "why": "将逐 tile FIX completion 与随后 AtomicAdd counter 分开；本段不包含 counter 原子写。",
+      "semantics": "当前 tile 的 FIX 写回已完成并桥接到 Scalar，但 group counter 尚未 AtomicAdd。",
+      "dependency": {
+        "precondition": "the production FIX_S wait returned",
+        "producer_pipeline": "FIX",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "production FIX_S",
+        "proof": "sample is after WaitFlag<FIX_S> and before AtomicAdd of the group-ready counter"
+      },
+      "perturbation": "每个 owned N tile 一次结束时钟和四个 scratch word 写；时间戳/写 scratch 发生在 AtomicAdd 前。"
     },
     {
       "id": "combine_group_begin_S",
@@ -2839,64 +3181,64 @@
         "pattern": "WaitWaveCombineGroupReady(common, syncLayout, params, expertIdx, tokenGroupIdx);"
       },
       "target_match_count": 1,
-      "target_line": 1178,
+      "target_line": 1228,
       "target_context": {
-        "start_line": 1176,
-        "end_line": 1180,
+        "start_line": 1226,
+        "end_line": 1230,
         "lines": [
           {
-            "line": 1176,
+            "line": 1226,
             "text": "            rowsInCurrentGroup = remainingTokenCount;"
           },
           {
-            "line": 1177,
+            "line": 1227,
             "text": "        }"
           },
           {
-            "line": 1178,
+            "line": 1228,
             "text": "        WaitWaveCombineGroupReady(common, syncLayout, params, expertIdx, tokenGroupIdx);"
           },
           {
-            "line": 1179,
+            "line": 1229,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1180,
+            "line": 1230,
             "text": "        if (criticalPathTrace != nullptr) {"
           }
         ]
       },
       "marker": "TRACE_POINT: combine_group_begin_S",
       "marker_match_count": 1,
-      "marker_line": 1182,
+      "marker_line": 1232,
       "marker_context": {
-        "start_line": 1180,
-        "end_line": 1184,
+        "start_line": 1230,
+        "end_line": 1234,
         "lines": [
           {
-            "line": 1180,
+            "line": 1230,
             "text": "        if (criticalPathTrace != nullptr) {"
           },
           {
-            "line": 1181,
+            "line": 1231,
             "text": "            criticalPathTrace->PrepareStage1(criticalPathWaveIndex, expertIdx);"
           },
           {
-            "line": 1182,
+            "line": 1232,
             "text": "            // TRACE_POINT: combine_group_begin_S"
           },
           {
-            "line": 1183,
+            "line": 1233,
             "text": "            criticalPathTrace->BeginStage1(CriticalPathTrace::Now());"
           },
           {
-            "line": 1184,
+            "line": 1234,
             "text": "        }"
           }
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "69f4ff431c0de4f77db8db0e68fa3b22da58b4f02728d5563908e1c969a118f6",
+      "source_file_sha256": "892e854d8fbee610122d77b03628520577de8b728cfb84d414fe4d860cecec42",
       "why": "直接观察本次新增的 256-token group ready 是否让 Combine 提前启动，并排除 ready 轮询。",
       "semantics": "当前 expert-local 256-token group 的 GMM2 N-tile 计数已齐，即将读取并发送本核所负责行。",
       "dependency": {
@@ -2926,64 +3268,64 @@
         "pattern": "processedTokenCount += rowsInCurrentGroup;"
       },
       "target_match_count": 1,
-      "target_line": 1207,
+      "target_line": 1257,
       "target_context": {
-        "start_line": 1205,
-        "end_line": 1209,
+        "start_line": 1255,
+        "end_line": 1259,
         "lines": [
           {
-            "line": 1205,
+            "line": 1255,
             "text": "        }"
           },
           {
-            "line": 1206,
+            "line": 1256,
             "text": "#endif"
           },
           {
-            "line": 1207,
+            "line": 1257,
             "text": "        processedTokenCount += rowsInCurrentGroup;"
           },
           {
-            "line": 1208,
+            "line": 1258,
             "text": "    }"
           },
           {
-            "line": 1209,
+            "line": 1259,
             "text": "}"
           }
         ]
       },
       "marker": "TRACE_POINT: combine_group_end_S",
       "marker_match_count": 1,
-      "marker_line": 1203,
+      "marker_line": 1253,
       "marker_context": {
-        "start_line": 1201,
-        "end_line": 1205,
+        "start_line": 1251,
+        "end_line": 1255,
         "lines": [
           {
-            "line": 1201,
+            "line": 1251,
             "text": "            AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID5);"
           },
           {
-            "line": 1202,
+            "line": 1252,
             "text": "            AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID5);"
           },
           {
-            "line": 1203,
+            "line": 1253,
             "text": "            // TRACE_POINT: combine_group_end_S"
           },
           {
-            "line": 1204,
+            "line": 1254,
             "text": "            criticalPathTrace->EndStage1(CriticalPathTrace::Now());"
           },
           {
-            "line": 1205,
+            "line": 1255,
             "text": "        }"
           }
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "69f4ff431c0de4f77db8db0e68fa3b22da58b4f02728d5563908e1c969a118f6",
+      "source_file_sha256": "892e854d8fbee610122d77b03628520577de8b728cfb84d414fe4d860cecec42",
       "why": "只覆盖当前 256-token group 切片，并在远端发送完成后结束。",
       "semantics": "当前 group 切片此前发出的所有 MTE3 send 已完成并桥接到 Scalar。",
       "dependency": {
@@ -3070,7 +3412,7 @@
         ]
       },
       "max_line_distance": 7,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "确认最后一个 Combine group 后是否仍有 row-ring MTE3 尾部需要回收。",
       "semantics": "最终 Wave 的 Combine 行已全部发出，即将消费仍在途的 row-ring 完成事件。",
       "dependency": {
@@ -3157,7 +3499,7 @@
         ]
       },
       "max_line_distance": 7,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "把 Combine 发送尾部与后续 MoE 收尾逻辑分开。",
       "semantics": "最终 Wave 的全部已用 row-ring MTE3 完成事件已经消费。",
       "dependency": {
@@ -3244,7 +3586,7 @@
         ]
       },
       "max_line_distance": 9,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "显示最终 Combine 与本地汇合之间的 EndSync、状态复位和 count 导出成本。",
       "semantics": "最终 Combine/drain 已返回，即将执行 MoE 专家阶段尾部逻辑。",
       "dependency": {
@@ -3331,7 +3673,7 @@
         ]
       },
       "max_line_distance": 7,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "定位 Combine 后非 barrier 的 V 核尾部成本。",
       "semantics": "EndSync、ping-pong 复位和 compact expert count 导出均已返回。",
       "dependency": {
@@ -3418,7 +3760,7 @@
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "直接量化快 V 核等待慢 V 核完成最终 Combine/尾部工作的时间。",
       "semantics": "即将执行 MoE 尾部 PIPE_ALL 和本卡 AIV SyncAll。",
       "dependency": {
@@ -3505,7 +3847,7 @@
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "把本卡负载不均衡等待与输出跨卡同步分开。",
       "semantics": "本卡所有 AIV 已完成 MoE 专家流水并通过 SyncAll。",
       "dependency": {
@@ -3593,7 +3935,7 @@
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "显示 V 侧在共享专家 GMM2 调用路径上的调度区间。",
       "semantics": "即将判断并按需进入共享专家 GMM2 helper；实际 Cube 计算仍由 AIC 完成。",
       "dependency": {
@@ -3681,7 +4023,7 @@
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "区分共享专家调用开销与后续输出同步；共享结果等待可能继续落在 Unpermute 内。",
       "semantics": "AIV 角色已从共享专家 GMM2 helper 返回。",
       "dependency": {
@@ -3769,7 +4111,7 @@
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "直接量化本 rank 等待其他 rank 完成 Combine 发送的时间。",
       "semantics": "即将进入 Unpermute 前的输出跨 rank 同步。",
       "dependency": {
@@ -3857,7 +4199,7 @@
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "把慢 rank 的 Combine 尾部与本地 Unpermute 分开。",
       "semantics": "所有 rank 的输出握手已完成，本卡 Combine 接收区可读。",
       "dependency": {
@@ -3944,7 +4286,7 @@
         ]
       },
       "max_line_distance": 7,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "把 UB view/config 构造与 Unpermute 数据流水分开。",
       "semantics": "即将构造当前 AIV 的 Unpermute buffer 视图。",
       "dependency": {
@@ -4031,7 +4373,7 @@
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "识别极端配置下 buffer 规划本身是否异常。",
       "semantics": "Unpermute UB view 和当前 job bufferConfig 已构造完成。",
       "dependency": {
@@ -4118,7 +4460,7 @@
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "量化 Combine 接收数据、top-k/shared 累加与最终 y 写回的整体成本。",
       "semantics": "Unpermute buffer 已构造，即将进入本核 token range。",
       "dependency": {
@@ -4205,7 +4547,7 @@
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "b94c9ea3d079c6ab84fa33464216df632b035833640d93697f7ebabf0dcb0b4d",
+      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
       "why": "确认尾部慢点是否来自本地反量化/累加/写 y，而不是同步。",
       "semantics": "本核负责 token 的最终 y MTE3 已全部完成。",
       "dependency": {

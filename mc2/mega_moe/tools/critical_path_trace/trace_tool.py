@@ -320,6 +320,30 @@ POINT_TEXT_ZH = {
         "proof": "只有记录过 begin 的 AIC 才执行 FIX_S，随后读取 Scalar 时钟。",
         "perturbation": "每个活跃 problem 增加一次 FIX_S 和结束采样，会串行化诊断态跨 problem FIX 尾部。",
     },
+    "gmm2_input_wait_begin_S": {
+        "when": "当前 owned GMM2 M group 即将等待 activation-ready。",
+        "why": "区分上游 SwiGLU/Quant 输入延迟和 GMM2 problem 本体。",
+        "proof": "时间戳紧邻生产 WaitForGmm2InputReady 之前。",
+        "perturbation": "每次生产 ready 轮询一次时钟读取。",
+    },
+    "gmm2_input_wait_end_S": {
+        "when": "生产 WaitForGmm2InputReady 已观察到 activation-ready 并返回。",
+        "why": "直接显示同一 Wave 内每个 GMM2 problem 的输入等待。",
+        "proof": "时间戳紧邻生产 ready 轮询返回之后。",
+        "perturbation": "每次 ready 返回一次时钟和四个 scratch word 写。",
+    },
+    "gmm2_ready_fix_wait_begin_S": {
+        "when": "当前 GMM2 tile 的 blockMmad 已返回，即将执行生产 group-ready FIX_S。",
+        "why": "判断逐 tile group-ready fence 是否是 GMM2 变长的来源。",
+        "proof": "时间戳在 NotifyWaveCombineGroupCompletion 的生产 SetFlag<FIX_S> 之前。",
+        "perturbation": "每个 owned N tile 一次时钟读取。",
+    },
+    "gmm2_ready_fix_wait_end_S": {
+        "when": "当前 GMM2 tile 的生产 FIX_S 已完成，尚未 AtomicAdd group counter。",
+        "why": "单独显示 FIX completion，排除随后 counter 原子写的影响。",
+        "proof": "时间戳在生产 WaitFlag<FIX_S> 之后、AtomicAdd 之前。",
+        "perturbation": "每个 owned N tile 一次时钟和四个 scratch word 写；打点版会扰动 Scalar/FIX 调度。",
+    },
     "combine_group_begin_S": {
         "when": "本 AIV0/AIV1 已观察到当前 expert-local 256-token group 的全部 GMM2 N tile 完成，马上开始 Combine。",
         "why": "逐 group 切开 Combine，ready 前等待和相邻 group 间隙保持空白。",
@@ -532,6 +556,8 @@ SPAN_LABEL_ZH = {
     "gmm1_problem": "GMM1（逐 problem，FIX 完成）",
     "swiglu_problem": "SwiGLU + MX（逐 problem）",
     "gmm2_problem": "GMM2（逐 problem，FIX 完成）",
+    "gmm2_input_wait": "GMM2 等待 activation-ready",
+    "gmm2_ready_fix_wait": "GMM2 group-ready 逐 tile FIX 等待（生产）",
     "combine_group_task": "Combine（逐 256-token group，MTE3 完成边界）",
     "final_combine_drain": "最终 Combine Ring Drain",
     "moe_epilogue": "MoE 尾部 EndSync/Count 导出",
@@ -2412,6 +2438,20 @@ def _render_html(
             "不同记录之间的空隙不可比较"
         )
 
+    problem_experts_by_wave: dict[int, set[int]] = {}
+    for record in records:
+        for span_id in ("gmm1_problem", "swiglu_problem", "gmm2_problem"):
+            for segment in record.get("segments", {}).get(span_id, []):
+                wave = segment.get("wave")
+                expert = segment.get("expert")
+                if isinstance(wave, int) and isinstance(expert, int):
+                    problem_experts_by_wave.setdefault(wave, set()).add(expert)
+    problem_ids = {
+        (wave, expert): problem
+        for wave, experts in problem_experts_by_wave.items()
+        for problem, expert in enumerate(sorted(experts))
+    }
+
     plotted: list[int] = []
     rendered_spans: dict[tuple[str, int], list[dict[str, Any]]] = {}
     for record in records:
@@ -2463,6 +2503,7 @@ def _render_html(
                         "span": span,
                         "occurrence": occurrence,
                         "wave_id": wave_id,
+                        "problem_id": problem_ids.get((wave_id, expert_id)),
                         "expert_id": expert_id,
                         "derived_gap": None,
                         "begin_raw": begin,
@@ -2498,6 +2539,7 @@ def _render_html(
                         },
                         "occurrence": current["occurrence"],
                         "wave_id": current["wave_id"],
+                        "problem_id": current.get("problem_id"),
                         "expert_id": current.get("expert_id"),
                         "derived_gap": gap_contract,
                         "begin_raw": previous["end_raw"],
@@ -2617,9 +2659,14 @@ def _render_html(
             css_class = "" if exact else "nonexact"
             opacity = "0.92" if exact else "0.42"
             if rendered["wave_id"] is not None and rendered["expert_id"] is not None:
+                problem_label = (
+                    f"P{rendered['problem_id']} / "
+                    if rendered.get("problem_id") is not None
+                    else ""
+                )
                 wave_label = (
-                    f"Wave {rendered['wave_id']} / 专家 {rendered['expert_id']} / "
-                    f"本核任务 {rendered['occurrence']}"
+                    f"Wave {rendered['wave_id']} / {problem_label}专家 {rendered['expert_id']} / "
+                    f"本核记录 {rendered['occurrence']}"
                 )
             else:
                 wave_label = f"记录项 {rendered['occurrence']}"
@@ -2642,8 +2689,14 @@ def _render_html(
                 )
             svg.append(
                 f'<rect class="{css_class}" x="{x_begin:.2f}" y="{y + 7}" width="{width:.2f}" '
-                f'height="16" rx="2" fill="{span["color"]}" opacity="{opacity}"><title>{title}</title></rect>'
+                f'height="16" rx="2" fill="{span["color"]}" opacity="{opacity}" '
+                f'stroke="#ffffff" stroke-width="0.8"><title>{title}</title></rect>'
             )
+            if rendered.get("problem_id") is not None and width >= 20.0:
+                svg.append(
+                    f'<text x="{x_begin + 3:.2f}" y="{y + 19}" font-size="9" '
+                    f'fill="#ffffff">P{rendered["problem_id"]}</text>'
+                )
 
         raw_reference = row_references[(record["role"], record["core"])]
         for point_id, values in record["timestamps"].items():
@@ -2813,15 +2866,15 @@ def _render_html(
             "橙色只连接同一 wave 的相邻专家：它由前一专家 end 与后一专家 causal begin 推断，"
             "包含流水尾部、真实依赖等待和少量 Scalar 调度，不能解释为纯等待指令耗时。"
             "该旧版 expert-indexed 展示只适用于未启用稀疏任务协议的 trace；"
-            "当前 v14 稀疏协议改由下方实际任务、GMM1/Dispatch 空洞及 Combine 后尾部诊断说明定义边界。</div>"
+            "当前 v17 稀疏协议改由下方实际任务、GMM1/Dispatch 空洞、GMM2 输入/FIX 分段及 Combine 后尾部诊断说明定义边界。</div>"
         )
     if sparse_segments is not None:
         warning += (
             '<div class="warning"><strong>实际任务区间：</strong>每次 Dispatch、GMM problem、'
             "SwiGLU problem 和 Combine 专家任务独立记录；相邻任务之间的 ready 轮询、cursor "
-            "推进和无工作时间保持空白。GMM1/GMM2 与 Combine 已分别用 FIX_S/MTE3_S 给出"
-            "实际完成边界；输入 UB 初始化与 SwiGLU 的虚线半透明段仍是 issue/return 边界。"
-            "逐 problem FIX_S 会抑制诊断态重叠，禁止把 tracing-on 总延迟当作生产性能。</div>"
+            "推进和无工作时间保持空白。GMM problem 与 Combine group 分别采用 trace-only FIX/MTE3 完成边界，"
+            "GMM2 activation-ready 等待与生产 group-ready 逐 tile FIX 等待另行分段。"
+            "诊断 fence 与 scratch 写会扰动流水，禁止把 tracing-on 总延迟当作生产性能。</div>"
         )
     return (
         '<!doctype html><html><head><meta charset="utf-8">'

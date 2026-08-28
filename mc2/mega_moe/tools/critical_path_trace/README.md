@@ -8,7 +8,7 @@
 
 ## 这版解决什么问题
 
-协议为 v14，schema ID 为 `0x0aaba4b5`，默认诊断开关为：
+协议为 v17，schema ID 为 `0xbdd34b32`，默认诊断开关为：
 
 ```cpp
 #define MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE 1
@@ -18,18 +18,21 @@ v8 只记录物理 AI Block 0，而且按整段 Wave 画色块。若一个 Wave 
 Dispatch 或两个 SwiGLU helper，两次调用之间的 cursor 推进、依赖等待也会落入同一
 个色块，容易把空档误读成工作耗时。
 
-v14 在全 AI Block 稀疏任务记录基础上进一步改为：
+v17 在全 AI Block 稀疏任务记录基础上进一步改为：
 
 - 记录全部物理 AI Block；每组固定按 `AIC / AIV0 / AIV1` 排列；
 - 每个 AI Block 用本组 AIC 的 `process_begin_S` 独立归零；组内三角色可直接比较，
   不比较不同 AI Block 的绝对时间戳；
 - 只在真正进入 production helper 时追加稀疏任务段；同一 Wave 内相邻 helper
   之间的空档保持白色；
-- 每段携带 `wave` 和 `expert`，HTML 悬浮框可直接核验来源；
+- 每段携带 `wave` 和 `expert`；HTML 会按同一 Wave 中的专家顺序派生
+  `P0/P1/...`，相邻 problem 用白边分隔并直接标号；
 - 无 owned tile/token 的核不产生对应 GMM/SwiGLU/Combine 色块。
 - Dispatch 前固定记录输入 UB 初始化、量化、compact route index/count、workspace reset、单卡同步、跨 rank
   同步和专家 buffer 初始化；
-- GMM1/GMM2 的结束点均经过 tracing-only `FIX_S`，显示实际 FIX 完成而不是 helper 发出。
+- GMM1/GMM2 的结束点均经过 tracing-only `FIX_S`，显示实际 FIX 完成而不是 helper 发出；
+- GMM2 额外拆出每次生产 SwiGLU-ready 轮询和 group-ready 的逐 tile `FIX_S`，
+  可区分输入延迟、MMAD/FIX helper 区间和生产 ready fence；
 - AIC 的 GMM1 空洞额外分成 Scalar 调度/无 owner 跳过、Dispatch-ready
   轮询、SwiGLU ping-pong 回压三类非 MMAD 区间；连续无 owner 专家聚合记录，
   不逐专家写 trace。
@@ -45,7 +48,9 @@ v14 在全 AI Block 稀疏任务记录基础上进一步改为：
 | AIC | GMM1 Scalar 调度 | 开始扫描/准备下一个 problem | 找到 owned tile 或当前 Wave 扫描结束 |
 | AIC | GMM1 Dispatch 等待 | owned tile 即将轮询 ready | ready 值已观察到 |
 | AIC | GMM1 SwiGLU 回压 | 生产路径即将 `WaitForVector` | ping-pong 槽位已归还 |
+| AIC | GMM2 input-ready 等待 | 进入生产 ready 轮询前 | ready 已观察到 |
 | AIC | GMM2 problem | 首个 owned tile 观察到 SwiGLU-ready 后 | 本 problem 的 FIX 经 FIX_S 完成后 |
+| AIC | GMM2 group-ready FIX 等待 | 每个 owned N tile 的 blockMmad 返回后 | 生产 FIX_S 返回、AtomicAdd ready counter 前 |
 | AIV0 | SwiGLU/MX problem | 首个 owned epilogue tile ready 后 | helper 返回 |
 | AIV1 | 有效 Dispatch expert task | 本核获得非空连续行区间后、`DispatchWaveExpertRows` 前 | helper 自带 copy-ring drain 和 ready 发布后 |
 | AIV1 | Dispatch 间 Scalar 调度 | 前一个有效 Dispatch 的 trace 写入后 | 下一有效专家已完成 count/owner 规划且即将建立 Dispatch task |
@@ -73,7 +78,7 @@ Tracing 仅在诊断态复用最终 BF16 `y[bs,h]` 的字节。正常 Unpermute 
 紧凑 offset，各角色并行复制自己的 payload；最后由 AIC0 发布 header，magic 最后
 写入。因此 tracing-on 的 `y` 是诊断产物，不能再用于精度比较或业务消费。
 
-每个角色/核 record 是 40 个 `uint32`：
+每个角色/核 record 是 44 个 `uint32`：
 
 ```text
 [process_begin, work_end,
@@ -95,7 +100,9 @@ Tracing 仅在诊断态复用最终 BF16 `y[bs,h]` 的字节。正常 Unpermute 
  stage1_offset, stage1_count,
  stage2_offset, stage2_count,
  stage3_offset, stage3_count,
- stage4_offset, stage4_count]
+ stage4_offset, stage4_count,
+ stage5_offset, stage5_count,
+ stage6_offset, stage6_count]
 ```
 
 每个稀疏 entry 是：
@@ -108,15 +115,16 @@ Header `flags` 的 bit13 记录构建时的
 `MEGA_MOE_A8W8_DISPATCH_GROUP_READY`：0 表示专家段完成后批量发布，1 表示逐
 256-token group 发布。脚本会校验该位，防止将两种构建的结果混在一起。
 
-令 `A=aic_core_num`、`E=local_moe_expert_num`、`P=ep_world_size`：
+令 `A=aic_core_num`、`E=local_moe_expert_num`、`P=ep_world_size`、`T=ceil(h/256)`：
 
 ```text
 max_rows        = bs × P × min(top_k, E)
 max_m_groups    = min(max_rows,E) + floor((max_rows-min(max_rows,E))/256)
-segment_need    = max(E, max_m_groups)
+fix_per_group   = ceil(T/A)
+segment_need    = max(E, max_m_groups, max_m_groups × fix_per_group)
 record_count    = 3A
-descriptor_y    = 4 × (30 + record_count × 40)
-scratch_record  = 36 + 5 × 4 × segment_capacity  // 固定点、计数和五个 stage
+descriptor_y    = 4 × (30 + record_count × 44)
+scratch_record  = 38 + 7 × 4 × segment_capacity  // 固定点、计数和七个 stage
 ```
 
 Host 在运行前证明 descriptor 和 50 MiB 预留 scratch 足够；设备结束时再用实际稀疏
@@ -174,7 +182,7 @@ python3 /path/to/pack_normalized_trace.py \
 默认输出同目录的 `rank0.compact.json.gz`。它保留协议/schema、shape、Wave 大小、
 角色核数、32 位时钟信息、每个核的固定前处理与 Combine 后尾部阶段
 `[阶段类型, begin, end]` 以及稀疏任务
-`[任务类型, wave, expert, begin, end]`；删除 HTML 文案、审计证据、文件哈希、label、
+`[任务类型, wave, problem, expert, begin, end]`；删除 HTML 文案、审计证据、文件哈希、label、
 counter 等分析不需要的重复信息。不能只保留裸时间戳，否则无法判断时间戳属于哪个
 核、Wave、专家，也无法正确处理时钟回绕。
 

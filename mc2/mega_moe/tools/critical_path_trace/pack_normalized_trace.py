@@ -21,7 +21,7 @@ from typing import Any
 
 
 COMPACT_FORMAT = "mega_moe_compact_trace"
-COMPACT_FORMAT_VERSION = 6
+COMPACT_FORMAT_VERSION = 8
 ROLES = ("AIC", "AIV0", "AIV1")
 CONFIG_FIELDS = (
     "rank",
@@ -62,6 +62,18 @@ TASK_LAYOUTS = (
     ("gv", "gmm1_vector_wait", "gmm1_vector_wait_begin_S", "gmm1_vector_wait_end_S"),
     ("g1", "gmm1_problem", "gmm1_problem_begin_S", "gmm1_problem_end_S"),
     ("g2", "gmm2_problem", "gmm2_problem_begin_S", "gmm2_problem_end_S"),
+    (
+        "gi",
+        "gmm2_input_wait",
+        "gmm2_input_wait_begin_S",
+        "gmm2_input_wait_end_S",
+    ),
+    (
+        "fr",
+        "gmm2_ready_fix_wait",
+        "gmm2_ready_fix_wait_begin_S",
+        "gmm2_ready_fix_wait_end_S",
+    ),
     ("s", "swiglu_problem", "swiglu_problem_begin_S", "swiglu_problem_end_S"),
     ("d", "dispatch_task", "dispatch_task_begin_S", "dispatch_task_end_S"),
     ("c", "combine_group_task", "combine_group_begin_S", "combine_group_end_S"),
@@ -169,6 +181,27 @@ def compact_normalized_trace(normalized: dict[str, Any]) -> dict[str, Any]:
     for _, _, begin_name, end_name in TASK_LAYOUTS:
         known_timestamp_names.update((begin_name, end_name))
 
+    problem_experts_by_wave: dict[int, set[int]] = {}
+    for record_value in records:
+        if not isinstance(record_value, dict):
+            continue
+        segments = record_value.get("segments", {})
+        if not isinstance(segments, dict):
+            continue
+        for span_name in ("gmm1_problem", "swiglu_problem", "gmm2_problem"):
+            for segment in segments.get(span_name, []):
+                if not isinstance(segment, dict):
+                    continue
+                wave = segment.get("wave")
+                expert = segment.get("expert")
+                if isinstance(wave, int) and isinstance(expert, int):
+                    problem_experts_by_wave.setdefault(wave, set()).add(expert)
+    problem_ids = {
+        (wave, expert): problem
+        for wave, experts in problem_experts_by_wave.items()
+        for problem, expert in enumerate(sorted(experts))
+    }
+
     compact_records: list[list[Any]] = []
     actual_records: set[tuple[str, int]] = set()
     cycle_mask = (1 << clock_bits) - 1
@@ -246,8 +279,9 @@ def compact_normalized_trace(normalized: dict[str, Any]) -> dict[str, Any]:
                     segment.get("expert"),
                     f"{location}.segments.{span_name}[{occurrence}].expert",
                 )
-                tasks.append([kind, wave, expert, begin, end])
-        tasks.sort(key=lambda task: ((task[3] - process_begin) & cycle_mask, task[0]))
+                problem = problem_ids.get((wave, expert), -1)
+                tasks.append([kind, wave, problem, expert, begin, end])
+        tasks.sort(key=lambda task: ((task[4] - process_begin) & cycle_mask, task[0]))
         compact_records.append([role, core, process_begin, work_end, phases, tasks])
 
     if actual_records != expected_records:
@@ -282,7 +316,7 @@ def compact_normalized_trace(normalized: dict[str, Any]) -> dict[str, Any]:
             "rs": "cross_rank_sync",
             "eb": "expert_buffer_init",
         },
-        "task_columns": ["kind", "wave", "expert", "begin", "end"],
+        "task_columns": ["kind", "wave", "problem", "expert", "begin", "end"],
         "task_kinds": {
             "gs": "gmm1_scalar_setup",
             "ds": "dispatch_scalar_gap",
@@ -290,6 +324,8 @@ def compact_normalized_trace(normalized: dict[str, Any]) -> dict[str, Any]:
             "gv": "gmm1_vector_wait",
             "g1": "gmm1_problem",
             "g2": "gmm2_problem",
+            "gi": "gmm2_input_wait",
+            "fr": "gmm2_ready_fix_wait",
             "s": "swiglu_problem",
             "d": "dispatch_task",
             "c": "combine_group_task",

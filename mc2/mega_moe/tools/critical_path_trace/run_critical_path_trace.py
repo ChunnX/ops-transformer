@@ -35,7 +35,7 @@ from mega_moe_trace_contract import (
 )
 
 
-ADAPTER_VERSION = 9
+ADAPTER_VERSION = 10
 TESTED_MOE_TEST_COMMIT = "90319bbd05993d2fbe7674d693395d5520732553"
 TESTED_SCRIPT_SHA256 = (
     "35f600ca443782fd8f210a33af879af651a9dea011f32afa51191ae2bf9ee43e"
@@ -116,20 +116,25 @@ def _critical_path_trace_validate_capacity():
     first_m_groups = min(max_routed_rows, expert_count)
     max_m_groups = first_m_groups + (max_routed_rows - first_m_groups) // 256
     wave_capacity = max(1, (max_m_groups + m_groups_per_wave - 1) // m_groups_per_wave)
-    required_segment_capacity = max(expert_count, max_m_groups)
-    record_words = 40
+    gmm2_fix_waits_per_m_group = (gmm2_tiles_per_m_group + aic_count - 1) // aic_count
+    required_segment_capacity = max(
+        expert_count,
+        max_m_groups,
+        max_m_groups * gmm2_fix_waits_per_m_group,
+    )
+    record_words = 44
     record_count = 3 * traced_ai_blocks
     descriptor_required_y_bytes = 4 * (30 + record_count * record_words)
     scratch_reserve_bytes = 50 * 1024 * 1024
     scratch_reserve_words = scratch_reserve_bytes // 4
     scratch_words_per_record = scratch_reserve_words // record_count
-    scratch_capacity_limit = max(0, (scratch_words_per_record - 36) // 20)
+    scratch_capacity_limit = max(0, (scratch_words_per_record - 38) // 28)
     segment_capacity = min(required_segment_capacity, scratch_capacity_limit)
-    scratch_record_words = 36 + 20 * segment_capacity
+    scratch_record_words = 38 + 28 * segment_capacity
     scratch_required_bytes = 4 * record_count * scratch_record_words
     _critical_path_trace_capacity = {
-        "protocol_version": 14,
-        "formula": "descriptor=4*(30+3*aic_count*40); scratch_record=36+5*4*segment_capacity",
+        "protocol_version": 17,
+        "formula": "descriptor=4*(30+3*aic_count*44); scratch_record=38+7*4*segment_capacity",
         "traced_ai_blocks": traced_ai_blocks,
         "bs": int(bs),
         "h": int(h),
@@ -187,7 +192,7 @@ def _critical_path_trace_capture_y(y, rank):
     raw_path = os.path.join(artifact_dir, f"rank{rank}.raw")
     metadata_path = os.path.join(artifact_dir, f"rank{rank}.runtime.json")
     metadata = {
-        "adapter_version": 9,
+        "adapter_version": 10,
         "dispatch_group_ready": int(os.environ["MEGA_MOE_CRITICAL_PATH_TRACE_DISPATCH_GROUP_READY"]),
         "capture_policy": "last_iteration_only",
         "executed_iterations": int(loop_acc_time),
