@@ -86,7 +86,7 @@ TEST_F(CompressorTilingArch35, test1)
             {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(262144)},
         },
         &compileInfo, "Ascend950", Compressor_tiling_A5SocInfo, 4096);
-    int64_t expectTilingKey = 32;
+    int64_t expectTilingKey = 544;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
@@ -527,7 +527,7 @@ TEST_F(CompressorTilingArch35, test2)
             {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(262144)},
         },
         &compileInfo, "Ascend950", Compressor_tiling_A5SocInfo, 4096);
-    int64_t expectTilingKey = 34;
+    int64_t expectTilingKey = 546;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
@@ -561,7 +561,7 @@ TEST_F(CompressorTilingArch35, test3)
             {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65536)},
         },
         &compileInfo, "Ascend950", Compressor_tiling_A5SocInfo, 4096);
-    int64_t expectTilingKey = 32;
+    int64_t expectTilingKey = 544;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
@@ -595,7 +595,7 @@ TEST_F(CompressorTilingArch35, test4)
             {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(131072)},
         },
         &compileInfo, "Ascend950", Compressor_tiling_A5SocInfo, 4096);
-    int64_t expectTilingKey = 0;
+    int64_t expectTilingKey = 512;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
@@ -629,7 +629,7 @@ TEST_F(CompressorTilingArch35, test5)
             {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65536)},
         },
         &compileInfo, "Ascend950", Compressor_tiling_A5SocInfo, 4096);
-    int64_t expectTilingKey = 32;
+    int64_t expectTilingKey = 544;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
@@ -667,7 +667,7 @@ TEST_F(CompressorTilingArch35, test6)
             {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(262144)},
         },
         &compileInfo, "Ascend950", Compressor_tiling_A5SocInfo, 4096);
-    int64_t expectTilingKey = 33;
+    int64_t expectTilingKey = 545;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
@@ -705,7 +705,7 @@ TEST_F(CompressorTilingArch35, test7)
             {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(262144)},
         },
         &compileInfo, "Ascend950", Compressor_tiling_A5SocInfo, 4096);
-    int64_t expectTilingKey = 32;
+    int64_t expectTilingKey = 544;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
 
@@ -739,7 +739,7 @@ TEST_F(CompressorTilingArch35, test8)
             {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(262144)},
         },
         &compileInfo, "Ascend950", Compressor_tiling_A5SocInfo, 4096);
-    int64_t expectTilingKey = 32;
+    int64_t expectTilingKey = 544;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
 
@@ -773,7 +773,7 @@ TEST_F(CompressorTilingArch35, test9)
             {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(262144)},
         },
         &compileInfo, "Ascend950", Compressor_tiling_A5SocInfo, 4096);
-    int64_t expectTilingKey = 32;
+    int64_t expectTilingKey = 544;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
 
@@ -807,6 +807,6 @@ TEST_F(CompressorTilingArch35, test10)
             {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(262144)},
         },
         &compileInfo, "Ascend950", Compressor_tiling_A5SocInfo, 4096);
-    int64_t expectTilingKey = 32;
+    int64_t expectTilingKey = 544;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
