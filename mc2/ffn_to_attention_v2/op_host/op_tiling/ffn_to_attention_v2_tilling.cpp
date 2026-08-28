@@ -42,6 +42,8 @@ using namespace ge;
 using namespace Mc2Tiling;
 
 namespace MC2Tiling {
+constexpr size_t URMA_FLAG_SLOT_SIZE = 32U;
+
 ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
 {
     FFNToAttentionTilingConfig config;
@@ -65,10 +67,16 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
         return ret;
     }
 
-    // Override tiling key from A3 to A5 after V1's tiling completes
+    // Reserve one GM flag slot for every AIV. WriteNbi uses the slot as the source of the remote token flag.
     FFNToAttentionV2TilingData *tilingData = context->GetTilingData<FFNToAttentionV2TilingData>();
+    size_t *workSpaces = context->GetWorkspaceSizes(1);
+    OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "workSpaces"),
+                    return ge::GRAPH_FAILED);
+    workSpaces[0] += static_cast<size_t>(tilingData->ffnToAttentionV2Info.aivNum) * URMA_FLAG_SLOT_SIZE;
+
+    // FFNToAttentionV2 on A5 uses the URMA communication implementation.
     bool rankTableMode = tilingData->ffnToAttentionV2Info.isInputRankTable;
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(rankTableMode, TILINGKEY_TPL_A5);
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(rankTableMode, TILINGKEY_TPL_A5, TILINGKEY_COMM_URMA);
     context->SetTilingKey(tilingKey);
     OP_LOGD(context->GetNodeName(), "FFNToAttentionV2 cur case tilingKey is %lu", tilingKey);
 
