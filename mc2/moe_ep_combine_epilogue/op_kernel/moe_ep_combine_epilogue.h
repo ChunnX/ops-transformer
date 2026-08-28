@@ -17,6 +17,8 @@
 #ifndef MOE_EP_COMBINE_EPILOGUE_H
 #define MOE_EP_COMBINE_EPILOGUE_H
 
+#include <cstddef>
+
 #if __has_include("version/asc_devkit_version.h") && __has_include("version/hcomm_version.h")
 #include "version/asc_devkit_version.h"
 #include "version/hcomm_version.h"
@@ -41,10 +43,12 @@
 #include "../common/moe_distribute_base.h"
 #include "../common/mc2_kernel_utils.h"
 #include "../common/mc2_moe_context.h"
+#include "../common/moe_ep_exception_dump_writer.h"
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../common/op_kernel/mc2_moe_context.h"
+#include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
 #endif
 
 #include "moe_ep_combine_epilogue_tiling_key.h"
@@ -96,6 +100,7 @@ private:
     TPipe *tpipe_{nullptr};
     const MoeEpCombineEpilogueInfo *tilingData_{nullptr};
     __gm__ Mc2Aclnn::MoeCommContext *mc2Context_{nullptr};
+    MoeEpExceptionDump::MoeEpCoreDiagWriter diagWriter_;
 
     uint32_t rankId_{0};
     uint32_t epWorldSize_{0};
@@ -149,6 +154,10 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
 
     mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
     rankId_ = mc2Context_->epRankId;
+    constexpr size_t metadataOffset = offsetof(MoeEpCombineEpilogueTilingData, moeEpCombineEpilogueInfo) +
+                                      offsetof(MoeEpCombineEpilogueInfo, dumpMetadata);
+    MoeEpExceptionDump::WriteMetadata(context, tilingGM + metadataOffset);
+    diagWriter_.Init(context, MOE_EP_CORE_DIAG_COMBINE_EPILOGUE, tpipe_);
     for (uint32_t i = 0; i < epWorldSize_; ++i) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
     }
