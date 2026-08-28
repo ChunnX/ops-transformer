@@ -109,7 +109,8 @@ public:
                     s2SeqLen);
                 if (loopIdx == s2LoopNum - 1) {
                     PipeBarrier<PIPE_V>();
-                    if ((loopIdx + 1) % 2 == 1) { // 2:pingpong
+        // FIX2: parity condition removed
+        if (true) {
                         AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2], // 2:pingpong
                             QLICommon::Align(topK, (uint32_t)256)); // 256:topk对齐256
                     }
