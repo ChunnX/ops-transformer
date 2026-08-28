@@ -804,6 +804,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart
     LocalTensor<P> hMixGradOutBuf = vecOutQueue1_.DeQue<P>();
     dataCopyParams.blockLen = curBSSize * fusionSize_ * sizeof(P);
     DataCopyPad(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(runBSStart)], hMixGradOutBuf, dataCopyParams);
+    PipeBarrier<PIPE_V>();
 
     uint32_t shape[] = {curBSSize, static_cast<uint32_t>(fusionSize_)};
     // inv rms grad
