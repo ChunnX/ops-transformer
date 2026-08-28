@@ -571,6 +571,7 @@ static ge::graphStatus CheckInputTensor(const gert::TilingContext *context, cons
     info.perSlotBytes =
         ((hAlign32 + scalesSizeAlign32 + kAlign32 * 2 + UB_ALIGN + WIN_ADDR_ALIGN - 1) / WIN_ADDR_ALIGN) *
         WIN_ADDR_ALIGN;
+    info.metaSlotBytes = scalesSizeAlign32 + kAlign32 * 2 + UB_ALIGN;
     info.isTopkWeights = (context->GetOptionalInputShape(TOPK_WEIGHTS_INDEX) != nullptr) ? 1 : 0;
     OP_LOGD(nodeName, "perSlotBytes = %u (hidden=%u)", info.perSlotBytes, info.cfg.hidden);
 
@@ -747,6 +748,8 @@ static uint64_t BuildDispatchWorkspaceLayout(MoeEpDispatchInfo &info)
     uint64_t sendCntPerRankBytes = epWorldSize * WIN_ADDR_ALIGN;
 
     uint64_t sendCntBytes = counterBytes + sendCntPerRankBytes + sendCntPerExpertBytes;
+    // urma发送 地址信息暂存区
+    uint64_t addrTableBytes = static_cast<uint64_t>(info.cfg.numMaxTokensPerRank) * WIN_ADDR_ALIGN * epWorldSize;
     // scaleout counter 与 scaleup counter 一样按每 AIV 一份，SendPhase 用它做 slot prefix。
     uint64_t scaleoutCounterBytes =
         (info.networkMode == NETWORK_HYBRID) ? aivNum * AlignUpWin(superNodeCount * sizeof(int32_t)) : 0UL;
@@ -767,7 +770,7 @@ static uint64_t BuildDispatchWorkspaceLayout(MoeEpDispatchInfo &info)
     info.workspace.routeWorkspaceOffset = 0UL;
     info.workspace.scaleoutSendEntryOffset = 0UL;
     info.workspace.scaleupSendEntryOffset = 0UL;
-    return SYSTEM_NEED_WORKSPACE + sendCntBytes + globalABytes;
+    return SYSTEM_NEED_WORKSPACE + sendCntBytes + addrTableBytes + globalABytes;
 }
 
 static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *context, MoeEpDispatchInfo &info,
@@ -781,21 +784,23 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
     uint64_t epWorldSize = static_cast<uint64_t>(info.cfg.epWorldSize);
     uint64_t nmt = static_cast<uint64_t>(info.cfg.numMaxTokensPerRank);
     uint64_t moeExpertNumPerRank = static_cast<uint64_t>(info.cfg.numLocalExperts);
+    uint64_t hidden = static_cast<uint64_t>(info.cfg.hidden);
     uint64_t topK = static_cast<uint64_t>(info.cfg.topK);
     uint64_t superNodeCount = static_cast<uint64_t>(info.hybrid.serverNum);
 
     uint64_t cntWinStateSize =
         epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) + epWorldSize * WIN_ADDR_ALIGN;
-    uint64_t dispatchNotifyCount = (nmt + NOTIFY_CNT_ALIGN - 1) / NOTIFY_CNT_ALIGN;
-    uint64_t dispatchWinStateSize = cntWinStateSize + dispatchNotifyCount * epWorldSize * WIN_ADDR_ALIGN;
+    uint64_t dispatchNotifyCount = 2UL;    // 打桩调试 先固定为 2
+    uint64_t slotWinStateSize = dispatchNotifyCount * epWorldSize * WIN_ADDR_ALIGN;
+    uint64_t dispatchWinStateSize = cntWinStateSize + slotWinStateSize + WIN_ADDR_ALIGN;
     uint64_t combineWinStateSize = nmt * topK * WIN_ADDR_ALIGN + epWorldSize * WIN_ADDR_ALIGN;
     uint64_t totalStateWinSizeEp = dispatchWinStateSize + combineWinStateSize;
-    uint64_t hiddenAlign = (info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN * UB_ALIGN;
-    uint32_t topKAlign = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
+    uint64_t hiddenAlign = AlignUpUb(hidden * MAX_OUT_DTYPE_SIZE);
+    uint64_t topKAlign = AlignUpUb(topK * METADATA_DTYPE_SIZE);
     uint64_t dispatchReservedPerSlotBytes = AlignUpWin(hiddenAlign + topKAlign * 2 + UB_ALIGN);
     // 布局按固定保留stride计算，与epilogue/combine保持一致；kernel仍使用真实slot大小寻址和搬运
     uint64_t scaleoutReservedPerSlotBytes = AlignUpWin(dispatchReservedPerSlotBytes + topK * sizeof(int32_t));
-    uint64_t combineWinDataSize = nmt * topK * AlignUpWin(static_cast<uint64_t>(hiddenAlign + UB_ALIGN));
+    uint64_t combineWinDataSize = nmt * topK * AlignUpWin(hiddenAlign + UB_ALIGN);
     uint64_t winNeed;
     if (info.networkMode == NETWORK_HYBRID) {
         uint64_t scaleoutRecvDataSize = superNodeCount * nmt * scaleoutReservedPerSlotBytes;
@@ -811,13 +816,15 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
         winNeed = info.window.payloadStashWinOffset + payloadStashWinSize;
     } else {
         uint64_t dispatchRecvWinDataReservedSize = epWorldSize * nmt * dispatchReservedPerSlotBytes;
-        uint64_t stateAndRecvDataWinSize = dispatchRecvWinDataReservedSize + combineWinDataSize + totalStateWinSizeEp;
-        uint64_t dispatchSendWinDataReservedSize = dispatchRecvWinDataReservedSize;
+        uint64_t stateAndRecvDataWinSize =
+            dispatchRecvWinDataReservedSize + combineWinDataSize + totalStateWinSizeEp;
+        uint64_t dispatchMetaPerSlotBytes = AlignUpWin(AlignUpUb(hidden) + topKAlign * 2 + UB_ALIGN);
+        uint64_t stashWinSize = nmt * dispatchMetaPerSlotBytes;
         info.window.scaleoutRecvDataOffset = 0UL;
         info.window.scaleoutRecvStatusOffset = 0UL;
         info.window.winDataOffset = totalStateWinSizeEp;
         info.window.payloadStashWinOffset = stateAndRecvDataWinSize;
-        winNeed = stateAndRecvDataWinSize + dispatchSendWinDataReservedSize;
+        winNeed = stateAndRecvDataWinSize + stashWinSize;
     }
     OP_TILING_CHECK(winNeed > maxWindowSize,
                     OP_LOGE(nodeName, "HCCL_BUFFSIZE is too SMALL, need %luMB, available %luMB.",
@@ -827,6 +834,7 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
     info.dispatchNotifyCount = static_cast<uint32_t>(dispatchNotifyCount);
     info.window.cntWinStateOffset = 0UL;
     info.window.slotWinStateOffset = cntWinStateSize;
+    info.window.payloadWinStateOffset = cntWinStateSize + slotWinStateSize;
     OP_LOGD(nodeName, "windowSize = %lu", maxWindowSize);
     return ge::GRAPH_SUCCESS;
 }
