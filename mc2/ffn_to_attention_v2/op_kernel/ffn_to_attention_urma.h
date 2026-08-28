@@ -34,6 +34,10 @@ namespace FFNToAttentionImpl {
 
 constexpr uint32_t URMA_HCOMM_INIT_SIZE = 512U;
 constexpr uint32_t URMA_FLAG_SLOT_SIZE = 32U;
+#ifndef FFN_TO_ATTENTION_URMA_FLAG_TRACE
+#define FFN_TO_ATTENTION_URMA_FLAG_TRACE 1
+#endif
+constexpr bool URMA_FLAG_TRACE = FFN_TO_ATTENTION_URMA_FLAG_TRACE != 0;
 
 #define TemplateFFNToAttentionUrmaTypeClass typename xType, bool isInputRankTable
 #define TemplateFFNToAttentionUrmaTypeFunc xType, isInputRankTable
@@ -161,6 +165,12 @@ FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::Init(GM_ADDR mc2Context,
         WIN_ADDR_ALIGN;
     const uint64_t totalSlotNum = static_cast<uint64_t>(microBatchNum_) * axisBS_ * expertNumPerToken_;
     requiredWindowSize_ = winTokenInfoTableSize_ + totalSlotNum * axisHS_ * sizeof(xType);
+    if constexpr (URMA_FLAG_TRACE) {
+        PRINTF("[F2A_URMA][INIT] rank=%u aiv=%u actualTokenNum=%lu aivNum=%u workspaceFlagAddr=%lu "
+               "infoSize=%lu windowSize=%lu\n",
+               rankId_, aivId_, actualTokenNum_, aivNum_, static_cast<uint64_t>(localFlagAddr_),
+               winTokenInfoTableSize_, requiredWindowSize_);
+    }
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -176,6 +186,11 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
 {
     constexpr uint32_t flagSlotElementNum = URMA_FLAG_SLOT_SIZE / sizeof(int32_t);
     Duplicate<int32_t>(statusTensor_, 1, flagSlotElementNum);
+    SyncFunc<HardEvent::V_S>();
+    if constexpr (URMA_FLAG_TRACE) {
+        PRINTF("[F2A_URMA][FLAG_INIT_UB] rank=%u aiv=%u value=%d\n", rankId_, aivId_,
+               statusTensor_.GetValue(0));
+    }
     SyncFunc<HardEvent::V_MTE3>();
     GlobalTensor<int32_t> localFlagGMTensor;
     localFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(localFlagAddr_));
@@ -184,6 +199,10 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(localFlagGMTensor);
     DataSyncBarrier<MemDsbT::DDR>();
     int32_t localFlagValue = localFlagGMTensor.GetValue(0);
+    if constexpr (URMA_FLAG_TRACE) {
+        PRINTF("[F2A_URMA][FLAG_INIT_GM_AFTER_DCCI] rank=%u aiv=%u addr=%lu value=%d\n", rankId_, aivId_,
+               static_cast<uint64_t>(localFlagAddr_), localFlagValue);
+    }
     ascendc_assert(localFlagValue == 1, "URMA local flag initialization failed, flag=%d, aivId=%u", localFlagValue,
                    aivId_);
 }
@@ -266,14 +285,32 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
 
     GlobalTensor<xType> tokenDataGMTensor;
     tokenDataGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ xType *>(remoteDataAddr));
+    if constexpr (URMA_FLAG_TRACE) {
+        PRINTF("[F2A_URMA][LOCAL_DATA_BEGIN] rank=%u aiv=%u yOffset=%lu dataAddr=%lu flagAddr=%lu\n", rankId_,
+               aivId_, yOffset, static_cast<uint64_t>(remoteDataAddr), static_cast<uint64_t>(remoteFlagAddr));
+    }
     DataCopyPad(tokenDataGMTensor, xTmpTensor_, xCopyParams);
     xQueue_.FreeTensor<xType>(xTmpTensor_);
     PipeBarrier<PIPE_MTE3>();
+    if constexpr (URMA_FLAG_TRACE) {
+        PRINTF("[F2A_URMA][LOCAL_DATA_DONE] rank=%u aiv=%u yOffset=%lu\n", rankId_, aivId_, yOffset);
+    }
 
     GlobalTensor<int32_t> tokenInfoTableGMTensor;
     tokenInfoTableGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(remoteFlagAddr));
     DataCopyExtParams flagCopyParams = {1U, sizeof(int32_t), 0U, 0U, 0U};
     DataCopyPad(tokenInfoTableGMTensor, statusTensor_, flagCopyParams);
+    SyncFunc<HardEvent::MTE3_S>();
+    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(tokenInfoTableGMTensor);
+    DataSyncBarrier<MemDsbT::DDR>();
+    int32_t localRemoteFlagAfterDcci = tokenInfoTableGMTensor.GetValue(0);
+    if constexpr (URMA_FLAG_TRACE) {
+        PRINTF("[F2A_URMA][LOCAL_FLAG_DONE] rank=%u aiv=%u yOffset=%lu flagAddr=%lu flag=%d\n", rankId_,
+               aivId_, yOffset, static_cast<uint64_t>(remoteFlagAddr), localRemoteFlagAfterDcci);
+    }
+    ascendc_assert(localRemoteFlagAfterDcci == 1,
+                   "local token flag write failed, flag=%d, rankId=%u, aivId=%u, yOffset=%lu",
+                   localRemoteFlagAfterDcci, rankId_, aivId_, yOffset);
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -282,17 +319,53 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
 {
     uint64_t channel = GetUrmaCommHandle(dstRank);
     GM_ADDR localDataAddr = xAddr_ + static_cast<uint64_t>(yOffset) * hSize_;
+    if constexpr (URMA_FLAG_TRACE) {
+        PRINTF("[F2A_URMA][REMOTE_DATA_BEGIN] rank=%u dstRank=%u aiv=%u yOffset=%lu channel=%lu localAddr=%lu "
+               "remoteAddr=%lu bytes=%lu\n",
+               rankId_, dstRank, aivId_, yOffset, channel, static_cast<uint64_t>(localDataAddr),
+               static_cast<uint64_t>(remoteDataAddr), hSize_);
+    }
     int32_t ret = hcomm_.WriteNbi(channel, remoteDataAddr, localDataAddr, hSize_);
+    if constexpr (URMA_FLAG_TRACE) {
+        PRINTF("[F2A_URMA][REMOTE_DATA_WRITE] rank=%u dstRank=%u aiv=%u yOffset=%lu ret=%d\n", rankId_, dstRank,
+               aivId_, yOffset, ret);
+    }
     ascendc_assert(ret == 0, "WriteNbi data failed, ret=%d, rankId=%u, dstRank=%u, aivId=%u", ret, rankId_, dstRank,
                    aivId_);
     ret = hcomm_.Drain(channel);
+    if constexpr (URMA_FLAG_TRACE) {
+        PRINTF("[F2A_URMA][REMOTE_DATA_DRAIN] rank=%u dstRank=%u aiv=%u yOffset=%lu ret=%d\n", rankId_, dstRank,
+               aivId_, yOffset, ret);
+    }
     ascendc_assert(ret == 0, "Drain data failed, ret=%d, rankId=%u, dstRank=%u, aivId=%u", ret, rankId_, dstRank,
                    aivId_);
     // Publish the flag only after the token data has reached the destination window.
+    GlobalTensor<int32_t> localFlagGMTensor;
+    localFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(localFlagAddr_));
+    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(localFlagGMTensor);
+    DataSyncBarrier<MemDsbT::DDR>();
+    int32_t localFlagValue = localFlagGMTensor.GetValue(0);
+    if constexpr (URMA_FLAG_TRACE) {
+        PRINTF("[F2A_URMA][REMOTE_FLAG_BEGIN] rank=%u dstRank=%u aiv=%u yOffset=%lu channel=%lu "
+               "localFlagAddr=%lu localFlag=%d remoteFlagAddr=%lu\n",
+               rankId_, dstRank, aivId_, yOffset, channel, static_cast<uint64_t>(localFlagAddr_), localFlagValue,
+               static_cast<uint64_t>(remoteFlagAddr));
+    }
+    ascendc_assert(localFlagValue == 1,
+                   "URMA flag source changed before send, flag=%d, rankId=%u, dstRank=%u, aivId=%u, yOffset=%lu",
+                   localFlagValue, rankId_, dstRank, aivId_, yOffset);
     ret = hcomm_.WriteNbi(channel, remoteFlagAddr, localFlagAddr_, sizeof(int32_t));
+    if constexpr (URMA_FLAG_TRACE) {
+        PRINTF("[F2A_URMA][REMOTE_FLAG_WRITE] rank=%u dstRank=%u aiv=%u yOffset=%lu ret=%d\n", rankId_, dstRank,
+               aivId_, yOffset, ret);
+    }
     ascendc_assert(ret == 0, "WriteNbi flag failed, ret=%d, rankId=%u, dstRank=%u, aivId=%u", ret, rankId_, dstRank,
                    aivId_);
     ret = hcomm_.Drain(channel);
+    if constexpr (URMA_FLAG_TRACE) {
+        PRINTF("[F2A_URMA][REMOTE_FLAG_DRAIN] rank=%u dstRank=%u aiv=%u yOffset=%lu sourceFlag=%d ret=%d\n",
+               rankId_, dstRank, aivId_, yOffset, localFlagValue, ret);
+    }
     ascendc_assert(ret == 0, "Drain flag failed, ret=%d, rankId=%u, dstRank=%u, aivId=%u", ret, rankId_, dstRank,
                    aivId_);
 }
@@ -301,7 +374,9 @@ template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::Process()
 {
     if ASCEND_IS_AIV {
-        AscendC::PRINTF("ENTER URMA !!!!!!\n");
+        if constexpr (URMA_FLAG_TRACE) {
+            PRINTF("[F2A_URMA][PROCESS_BEGIN] rank=%u aiv=%u\n", rankId_, aivId_);
+        }
         HcommInit();
         InitLocalFlag();
 
@@ -309,6 +384,10 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
         uint64_t remainderTokenNum = actualTokenNum_ % aivNum_;
         if (aivId_ < remainderTokenNum) {
             sendTokenNum += 1U;
+        }
+        if constexpr (URMA_FLAG_TRACE) {
+            PRINTF("[F2A_URMA][TOKEN_SPLIT] rank=%u aiv=%u sendTokenNum=%lu remainder=%lu\n", rankId_, aivId_,
+                   sendTokenNum, remainderTokenNum);
         }
 
         DataCopyExtParams xCopyParams = {1U, static_cast<uint32_t>(hSize_), 0U, 0U, 0U};
@@ -338,12 +417,25 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                            winTokenInfoTableSize_);
             GM_ADDR remoteDataAddr = curRankWinAddr + remoteDataOffset;
             GM_ADDR remoteFlagAddr = curRankWinAddr + remoteFlagOffset;
+            if constexpr (URMA_FLAG_TRACE) {
+                PRINTF("[F2A_URMA][TOKEN_SLOT] rank=%u dstRank=%u aiv=%u yOffset=%lu microBatch=%u token=%u "
+                       "expertOffset=%u slot=%lu winAddr=%lu dataOffset=%lu flagOffset=%lu dataAddr=%lu "
+                       "flagAddr=%lu\n",
+                       rankId_, metaDataStruct.curAttenWorkRank, aivId_, yOffset,
+                       metaDataStruct.curMicroBatchIds, metaDataStruct.curTokenBatchOffset,
+                       metaDataStruct.curTokenTopkOffset, tokenSlot, static_cast<uint64_t>(curRankWinAddr),
+                       remoteDataOffset, remoteFlagOffset, static_cast<uint64_t>(remoteDataAddr),
+                       static_cast<uint64_t>(remoteFlagAddr));
+            }
 
             if (metaDataStruct.curAttenWorkRank == rankId_) {
                 SendToLocal(remoteDataAddr, remoteFlagAddr, yOffset, xCopyParams);
             } else {
                 SendToRemote(metaDataStruct.curAttenWorkRank, remoteDataAddr, remoteFlagAddr, yOffset);
             }
+        }
+        if constexpr (URMA_FLAG_TRACE) {
+            PRINTF("[F2A_URMA][PROCESS_DONE] rank=%u aiv=%u sendTokenNum=%lu\n", rankId_, aivId_, sendTokenNum);
         }
     }
 }
