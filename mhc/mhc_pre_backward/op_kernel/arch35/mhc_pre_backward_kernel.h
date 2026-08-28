@@ -1360,10 +1360,10 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadXAndGamma(u
     xCopyParams.dstStride = 0;
 
     // 使用q0双缓冲队列，使x的GM搬运能够与前后向量计算流水重叠。
-    bf16InputBuf_ = vecInQueue0_.AllocTensor<T>();
+    vecInQueue0_.AllocTensor<T>(bf16InputBuf_);
     DataCopyPad(bf16InputBuf_, xGm_[bsChunkStart * nD_ + offsetND], xCopyParams, xCopyPadParams);
     vecInQueue0_.EnQue(bf16InputBuf_);
-    bf16InputBuf_ = vecInQueue0_.DeQue<T>();
+    vecInQueue0_.DeQue<T>(bf16InputBuf_);
 
     // 计算xRs和gamma
     __ubuf__ T *bf16InputAddr = (__ubuf__ T *)bf16InputBuf_.GetPhyAddr();
