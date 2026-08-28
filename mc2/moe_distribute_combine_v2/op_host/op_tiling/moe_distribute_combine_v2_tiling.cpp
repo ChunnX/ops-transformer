@@ -327,7 +327,7 @@ static ge::graphStatus GetAttrAndSetTilingData(const gert::TilingContext *contex
 
     OP_TILING_CHECK(commQuantModePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "commQuantMode"),
                     return ge::GRAPH_FAILED);
-    isLayered = strcmp(commAlgPtr, "hierarchy") == 0;
+    isLayered = (commAlgPtr != nullptr) && (strcmp(commAlgPtr, "hierarchy") == 0);
     if (config.isMc2Context) {
         OP_TILING_CHECK(
             isLayered, OP_LOGE_FOR_INVALID_VALUE(nodeName, "commAlg", commAlgPtr, "does not support comm with context"),
@@ -1639,7 +1639,7 @@ static ge::graphStatus SetHCommCfg(const gert::TilingContext *context, MoeDistri
 }
 
 static uint32_t GetPartialBufferSizeByFlag(const uint32_t axisBS, const uint32_t axisK, const bool isInputTokenMaskFlag,
-                                           const bool enableSpecialExpert, const bool isInputExpertMaskFlag)
+                                           const bool isInputExpertMaskFlag)
 {
     uint32_t partialBufferSize = 0;
 
@@ -1651,10 +1651,6 @@ static uint32_t GetPartialBufferSizeByFlag(const uint32_t axisBS, const uint32_t
         partialBufferSize += (axisBS * DTYPE_SIZE_HALF + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN +
                              (axisBS * axisK * sizeof(bool) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     }
-    if (enableSpecialExpert && !isInputExpertMaskFlag) {
-        partialBufferSize += (axisBS * DTYPE_SIZE_HALF + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
-    }
-
     return partialBufferSize;
 }
 
@@ -1683,13 +1679,9 @@ static uint64_t GetComputeBufferSize(const gert::TilingContext *context,
                                      uint32_t bufferNum)
 {
     uint32_t axisH = tilingData->moeDistributeCombineV2Info.h, axisBS = tilingData->moeDistributeCombineV2Info.bs;
-    uint32_t axisK = tilingData->moeDistributeCombineV2Info.k,
-             zeroExpertNum = tilingData->moeDistributeCombineV2Info.zeroExpertNum;
-    uint32_t copyExpertNum = tilingData->moeDistributeCombineV2Info.copyExpertNum,
-             constExpertNum = tilingData->moeDistributeCombineV2Info.constExpertNum;
+    uint32_t axisK = tilingData->moeDistributeCombineV2Info.k;
     bool isInputExpertMaskFlag = tilingData->moeDistributeCombineV2Info.isExpertMask,
          isInputTokenMaskFlag = tilingData->moeDistributeCombineV2Info.isTokenMask;
-    bool enableSpecialExpert = (constExpertNum + zeroExpertNum + copyExpertNum > 0U);
     auto expandXDesc = context->GetInputDesc(config.expandXIndex);
     uint32_t expandXTypeSize = static_cast<uint32_t>(ge::GetSizeByDataType(expandXDesc->GetDataType()));
     uint32_t hExpandXTypeSize = axisH * expandXTypeSize;
@@ -1702,7 +1694,7 @@ static uint64_t GetComputeBufferSize(const gert::TilingContext *context,
     uint32_t mulBufSize = hFloatAlign256Size > bsKFloatAlign ? hFloatAlign256Size : bsKFloatAlign;
     uint32_t maxSizeRowTmpFloatBuf = hFloatAlign32Size;
 
-    if (isInputExpertMaskFlag || enableSpecialExpert) {
+    if (isInputExpertMaskFlag) {
         uint32_t activeMaskAlignHalfSize = activeMaskAlignSize * DTYPE_SIZE_HALF;
         maxSizeTokenBuf = (activeMaskAlignSize > hExpandXAlign32Size ? activeMaskAlignSize : hExpandXAlign32Size);
         maxSizeRowTmpFloatBuf =
@@ -1714,15 +1706,13 @@ static uint64_t GetComputeBufferSize(const gert::TilingContext *context,
     if (config.hasAddRmsNorm) {
         totalBufferSize += hExpandXAlign32Size + NUM_PER_REP_FP32 * sizeof(float) * BUFFER_NUM;
     }
-    totalBufferSize +=
-        GetPartialBufferSizeByFlag(axisBS, axisK, isInputTokenMaskFlag, enableSpecialExpert, isInputExpertMaskFlag);
+    totalBufferSize += GetPartialBufferSizeByFlag(axisBS, axisK, isInputTokenMaskFlag, isInputExpertMaskFlag);
     return totalBufferSize;
 }
 
 static void GetCommBufferSize(const gert::TilingContext *context, const MoeDistributeCombineV2TilingData *tilingData,
                               const CombineV2Config &config, uint32_t &moeQueueBytes, uint64_t &commBufferSize)
 {
-    uint32_t axisBS = tilingData->moeDistributeCombineV2Info.bs;
     uint32_t axisH = tilingData->moeDistributeCombineV2Info.h;
     uint32_t axisK = tilingData->moeDistributeCombineV2Info.k;
     uint32_t flagRcvCount = axisK + tilingData->moeDistributeCombineV2Info.sharedExpertNum;
@@ -1735,9 +1725,6 @@ static void GetCommBufferSize(const gert::TilingContext *context, const MoeDistr
     uint32_t hExpandXAlign32Size = (hExpandXTypeSize + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint32_t hFloatAlign256Size = GetFloatAlignSize(context, tilingData, config, ALIGNED_LEN);
     bool isA5 = mc2tiling::GetNpuArch(context) == NpuArch::DAV_3510;
-    bool enableSpecialExpert = (tilingData->moeDistributeCombineV2Info.zeroExpertNum > 0U) ||
-                               (tilingData->moeDistributeCombineV2Info.copyExpertNum > 0U) ||
-                               (tilingData->moeDistributeCombineV2Info.constExpertNum > 0U);
     bool isInt8Quant = commQuantMode == INT8_COMM_QUANT;
     bool isMxFp8Quant = (commQuantMode == static_cast<CommQuantModeType>(CommQuantMode::MXFP8_E5M2_QUANT)) ||
                         (commQuantMode == static_cast<CommQuantModeType>(CommQuantMode::MXFP8_E4M3_QUANT));
@@ -1766,11 +1753,6 @@ static void GetCommBufferSize(const gert::TilingContext *context, const MoeDistr
     // flag检查和比较复用计算scratch，通信侧只保留清零buffer
     uint32_t clearFlagCount = flagRcvCount * blockCntPerToken * SPLIT_BLOCK_FLAG_COUNT;
     uint32_t clearFlagBufSize = (clearFlagCount * sizeof(float) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
-    if (enableSpecialExpert) {
-        uint32_t maskGenerateBufSize =
-            (axisBS * axisK * DTYPE_SIZE_HALF + ALIGNED_LEN - 1U) / ALIGNED_LEN * ALIGNED_LEN / DTYPE_SIZE_HALF;
-        clearFlagBufSize = (clearFlagBufSize > maskGenerateBufSize) ? clearFlagBufSize : maskGenerateBufSize;
-    }
     commBufferSize = static_cast<uint64_t>(scaleNumAlignSize) + clearFlagBufSize;
 }
 
@@ -1779,7 +1761,9 @@ static uint64_t GetReceiveBufferSize(const MoeDistributeCombineV2TilingData *til
     uint32_t axisBS = tilingData->moeDistributeCombineV2Info.bs;
     uint32_t axisK = tilingData->moeDistributeCombineV2Info.k;
     uint32_t flagRcvCount = axisK + tilingData->moeDistributeCombineV2Info.sharedExpertNum;
-    uint32_t recvAivNum = std::min(axisBS, std::min(32U, tilingData->moeDistributeCombineV2Info.aivNum / 2U));
+    uint32_t maxBs =
+        tilingData->moeDistributeCombineV2Info.globalBs / tilingData->moeDistributeCombineV2Info.epWorldSize;
+    uint32_t recvAivNum = std::min(maxBs, std::min(32U, tilingData->moeDistributeCombineV2Info.aivNum / 2U));
     recvAivNum = recvAivNum == 0U ? 1U : recvAivNum;
     uint32_t tokenPerAivNum = (axisBS + recvAivNum - 1U) / recvAivNum;
     uint64_t totalBufferSize = 0U;
@@ -1831,7 +1815,7 @@ static ge::graphStatus CheckAndCalWinSize(const gert::TilingContext *context,
     winSizeData.globalBs = static_cast<uint64_t>(tilingData.moeDistributeCombineV2Info.globalBs);
     winSizeData.moeExpertNum = static_cast<uint64_t>(tilingData.moeDistributeCombineV2Info.moeExpertNum);
     winSizeData.tpWorldSize = static_cast<uint64_t>(tilingData.moeDistributeCombineV2Info.tpWorldSize);
-    winSizeData.isSetFullMeshV2 = false;
+    winSizeData.isSetFullMeshV2 = isSetFullMeshV2;
     winSizeData.isLayered = isLayered;
     winSizeData.isMc2Context = config.isMc2Context;
     OP_TILING_CHECK(CheckWinSize(context, nodeName, winSizeData) != ge::GRAPH_SUCCESS,
@@ -1974,11 +1958,14 @@ ge::graphStatus MoeDistributeCombineV2TilingFuncBase::MoeDistributeCombineA3Tili
     bool hasExpertScales = false;
     uint32_t localMoeExpertNum = 1;
     uint32_t commQuantMode = 0U;
+    bool isSetFullMeshV2 = false;
 
     // 获取入参属性
     OP_TILING_CHECK(GetAttrAndSetTilingData(context, *tilingData, nodeName, groupEp, commQuantMode, config,
                                             isLayered) == ge::GRAPH_FAILED,
                     OP_LOGE_WITHOUT_REPORT(nodeName, "Getting attr failed."), return ge::GRAPH_FAILED);
+    auto commAlgPtr = context->GetAttrs()->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
+    isSetFullMeshV2 = (commAlgPtr != nullptr) && (strcmp(commAlgPtr, "fullmesh_v2") == 0);
 
     // 检查并填充可选输入
     OP_TILING_CHECK(CheckAndGetOptionalInput(context, tilingData, config, isActiveMask, hasElasticInfo, isPerformance,
@@ -1997,8 +1984,8 @@ ge::graphStatus MoeDistributeCombineV2TilingFuncBase::MoeDistributeCombineA3Tili
                     OP_LOGE_WITHOUT_REPORT(nodeName, "Tiling check input param failed."), return ge::GRAPH_FAILED);
 
     // 校验win区大小
-    OP_TILING_CHECK(CheckAndCalWinSize(context, *tilingData, nodeName, false, localMoeExpertNum, isLayered, config) !=
-                        ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(CheckAndCalWinSize(context, *tilingData, nodeName, isSetFullMeshV2, localMoeExpertNum, isLayered,
+                                       config) != ge::GRAPH_SUCCESS,
                     OP_LOGE_WITHOUT_REPORT(nodeName, "Tiling check window size failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(SetWorkspace(context, nodeName) != ge::GRAPH_SUCCESS,
