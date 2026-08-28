@@ -100,7 +100,7 @@ __aicore__ inline void AlltoAllMatmulAddBiasPipeLine<CommunicationType, Transpos
             AscendC::SyncAll<true>();
             AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(8);
             if (index > 0) {
-                AscendC::CrossCoreWaitFlag(9);
+                AscendC::CrossCoreWaitFlag(10);
                 addBiasStage_->Process(index - 1);
                 AscendC::SyncAll<true>();
             }
@@ -108,12 +108,14 @@ __aicore__ inline void AlltoAllMatmulAddBiasPipeLine<CommunicationType, Transpos
         if ASCEND_IS_AIC {
             AscendC::CrossCoreWaitFlag(8);
             computeStage_->Process(index);
-            AscendC::CrossCoreSetFlag<2, PIPE_FIX>(9);
+            AscendC::CrossCoreSetFlag<0, PIPE_FIX>(9);
+            AscendC::CrossCoreWaitFlag(9);
+            AscendC::CrossCoreSetFlag<2, PIPE_FIX>(10);
         }
     }
     // 尾部: 最后一轮的 add_bias(n-1) (matmul(n-1) 已在循环末尾完成)
     if ASCEND_IS_AIV {
-        AscendC::CrossCoreWaitFlag(9);
+        AscendC::CrossCoreWaitFlag(10);
         addBiasStage_->Process(taskCnt - 1);
         AscendC::SyncAll<true>();
     }
