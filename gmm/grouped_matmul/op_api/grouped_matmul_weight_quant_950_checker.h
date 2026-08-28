@@ -38,9 +38,21 @@ private:
     aclnnStatus CheckTensorDtype(const aclTensorList *tensorList, const DataType &tensorDtype, size_t idx,
                                  const std::string &tensorType) const;
     aclnnStatus CheckTensorShape(const aclTensorList *tensorList, size_t idx, const std::string &tensorType) const;
+    static aclnnStatus GetExpectedDimNum(const AclnnGroupedMatmulWeightQuantDAV3510Checker &checker,
+                                         const std::string &tensorType, size_t tensorDimNum,
+                                         size_t &expectedDimNum);
+    static aclnnStatus CheckBatchSizeConsistency(const AclnnGroupedMatmulWeightQuantDAV3510Checker &checker,
+                                                 const op::Shape &tensorShape, const op::Shape &weightShape,
+                                                 const std::string &tensorType);
+    static aclnnStatus CheckNDimConsistency(const AclnnGroupedMatmulWeightQuantDAV3510Checker &checker,
+                                            const op::Shape &tensorShape, const op::Shape &weightShape,
+                                            size_t tensorDimNum, const std::string &tensorType);
 
     aclnnStatus CheckWeightInnerAxisEven(size_t idx) const;
     aclnnStatus CheckDimNumAndFormat(size_t xIdx, size_t yIdx, size_t wIdx) const;
+    aclnnStatus CheckInputFormat(size_t xIdx, size_t yIdx) const;
+    aclnnStatus CheckWeightFormat(size_t wIdx) const;
+    aclnnStatus CheckDimNumByGroupType(size_t xIdx, size_t wIdx, size_t xDimNum, size_t weightDimNum) const;
     aclnnStatus CheckTransposeStatus() const;
     aclnnStatus CheckDimValue(size_t xIdx, size_t yIdx, size_t wIdx) const;
     aclnnStatus CheckDimMatching(size_t xIdx, size_t yIdx, size_t wIdx) const;
