@@ -23,12 +23,12 @@
 #include "../../../sparse_flash_attention/op_kernel/arch35/common/util_regbase.h"
 #endif
 
-#if __has_include("../../common/op_kernel/buffer.h")
+#if __has_include("../../common/op_kernel/attn_buffer.h")
 #include "../../common/op_kernel/attn_buffer.h"
 #else
 #include "../../common/attn_buffer.h"
 #endif
-#if __has_include("../../common/op_kernel/buffer_manager.h")
+#if __has_include("../../common/op_kernel/attn_buffer_manager.h")
 #include "../../common/op_kernel/attn_buffer_manager.h"
 #else
 #include "../../common/attn_buffer_manager.h"

@@ -48,12 +48,12 @@ using AscendC::Reg::StoreDist;
 #else
 #include "../common/buffers_policy.h"
 #endif
-#if __has_include("../../common/op_kernel/buffer_manager.h")
+#if __has_include("../../common/op_kernel/attn_buffer_manager.h")
 #include "../../common/op_kernel/attn_buffer_manager.h"
 #else
 #include "../common/attn_buffer_manager.h"
 #endif
-#if __has_include("../../common/op_kernel/buffer.h")
+#if __has_include("../../common/op_kernel/attn_buffer.h")
 #include "../../common/op_kernel/attn_buffer.h"
 #else
 #include "../common/attn_buffer.h"
