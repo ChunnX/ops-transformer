@@ -63,8 +63,8 @@ using namespace AscendC;
 constexpr uint32_t DOUBLE_BUFFER = 2;
 constexpr uint32_t INOUT_QUEUE_SIZE = 32 * 1024;              // 32KB
 constexpr uint32_t SMALL_QUEUE_SIZE = 1 * 1024;               // 1KB
-constexpr uint32_t FP32_BUF_SIZE = (248 - 32 * 5 - 1) * 1024; // 87KB；输入q0和输出q1均使用双缓冲
-constexpr uint32_t PROCESS_V2_CHUNK_SIZE = 64;                // 输出双缓冲下统一使用64行chunk
+constexpr uint32_t FP32_BUF_SIZE = (248 - 32 * 4 - 1) * 1024; // 119KB；vecInQueue0_使用双缓冲
+constexpr uint32_t PROCESS_V2_CHUNK_SIZE = 128;               // ProcessV2函数使用的chunk大小
 constexpr uint32_t SINGLE_M = 1024;
 constexpr uint32_t ND_BLOCK_SIZE = 128;
 constexpr uint32_t ALPHA_GRAD_LAST_DIM_SIZE = 3;
