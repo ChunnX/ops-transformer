@@ -157,7 +157,7 @@
     <tr>
     <td style="white-space: nowrap">cclBufferSize</td>
     <td style="white-space: nowrap">属性</td>
-    <td style="white-space: nowrap">CCL通信缓冲区总大小（Bytes），由 <code>get_attention_to_ffn_v2_ccl_buffer_size</code> 接口计算得到。需 >= token_info_size + token_data_size（按2MB向上对齐）。</td>
+    <td style="white-space: nowrap">CCL通信缓冲区总大小（Bytes），由 <code>get_buffer_for_attention_to_ffn_v2</code> 接口内部自动计算。需 >= token_info_size + token_data_size（按2MB向上对齐）。</td>
     <td style="white-space: nowrap">INT64</td>
     <td style="white-space: nowrap">-</td>
     </tr>
@@ -194,7 +194,7 @@ $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{toke
   - INT8/FP8量化模式：`tokenDataSize = attentionWorkerNum × microBatchNum × BS × (K+shared) × HS × 1B`
   - FP4量化模式：`HS`已按打包字节计算，`tokenDataSize = attentionWorkerNum × microBatchNum × BS × (K+shared) × HS × 1B`
 
-可通过 `get_attention_to_ffn_v2_ccl_buffer_size` 接口计算所需最小值。
+该大小由 `get_buffer_for_attention_to_ffn_v2` 接口内部自动计算，用户无需自行计算或设置`ccl_buffer_size`。
 
 - MX/MX_CLIP量化约束：
   - MX模式（quantMode 3/4/5）及MX_CLIP模式（quantMode 6/7）不支持传入scales参数。

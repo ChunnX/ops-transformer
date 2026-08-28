@@ -7,7 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-from typing import Optional, List, Union
+from typing import Optional, List
 
 import torch
 import torch_npu
@@ -208,6 +208,9 @@ class AttentionToFfnV2Buffer:
         self.rank_id = torch.distributed.get_rank(group)
         self.group_name = _get_hccl_comm_name(group, self.rank_id)
         self.ep_world_size = world_size
+        self.ffn_token_info_table_shape = list(ffn_token_info_table_shape)
+        self.ffn_token_data_shape = list(ffn_token_data_shape)
+        self.quant_mode = quant_mode
 
         required_buffer_size = _calc_window_size(ffn_token_info_table_shape, ffn_token_data_shape, quant_mode)
         self._ctx_manager = CommContextManager(
@@ -244,25 +247,56 @@ class AttentionToFfnV2Buffer:
         return int(addr_bytes.value)
 
 
+def get_buffer_for_attention_to_ffn_v2(
+    group: "torch.distributed.ProcessGroup",
+    world_size: int,
+    ffn_token_info_table_shape: List[int],
+    ffn_token_data_shape: List[int],
+    *,
+    quant_mode: int = 0,
+) -> AttentionToFfnV2Buffer:
+    """Create a communication buffer for attention_to_ffn_v2.
+
+    This is a thin factory around ``AttentionToFfnV2Buffer`` that computes the
+    required CCL buffer size, creates the communication context, and returns a
+    buffer object holding all the information ``attention_to_ffn_v2`` needs.
+
+    Args:
+        group (ProcessGroup): HCCL process group.
+        world_size (int): Communication domain size.
+        ffn_token_info_table_shape (List[int]): 3-element list.
+        ffn_token_data_shape (List[int]): 5-element list
+            [attnWorkerNum, microBatchNum, BS, K+shared, HS].
+        quant_mode (int): Quantization mode. 0=none, 2=pertoken+INT8,
+            3=mx+FP8_E5M2, 4=mx+FP8_E4M3, 5=mx+FP4_E2M1,
+            6=mx_clip+FP8_E5M2, 7=mx_clip+FP8_E4M3. Default 0.
+
+    Returns:
+        AttentionToFfnV2Buffer: Buffer holding the communication context,
+        CCL buffer size and the FFN-side token shapes.
+    """
+    return AttentionToFfnV2Buffer(
+        group,
+        world_size,
+        ffn_token_info_table_shape,
+        ffn_token_data_shape,
+        quant_mode=quant_mode,
+    )
+
+
 def attention_to_ffn_v2(
-    context: torch.Tensor,
+    buffer: AttentionToFfnV2Buffer,
     x: torch.Tensor,
     session_id: torch.Tensor,
     micro_batch_id: torch.Tensor,
     layer_id: torch.Tensor,
     expert_ids: torch.Tensor,
     expert_rank_table: torch.Tensor,
-    group: Union[str, "torch.distributed.ProcessGroup"],
-    world_size: int,
-    ffn_token_info_table_shape: List[int],
-    ffn_token_data_shape: List[int],
     attn_token_info_table_shape: List[int],
     moe_expert_num: int,
-    quant_mode: int = 0,
+    *,
     sync_flag: int = 0,
     ffn_start_rank_id: int = 0,
-    ccl_buffer_size: int = 0,
-    *,
     scales: Optional[torch.Tensor] = None,
     active_mask: Optional[torch.Tensor] = None,
 ) -> None:
@@ -272,8 +306,10 @@ def attention_to_ffn_v2(
     addresses to the kernel, compatible with Ascend 950 (Channel backend).
 
     Args:
-        context (Tensor): Communication context tensor created by
-            ``AttentionToFfnV2Buffer``.
+        buffer (AttentionToFfnV2Buffer): Communication buffer created by
+            ``get_buffer_for_attention_to_ffn_v2``. Holds the context tensor,
+            group name, world size, FFN-side token shapes, quant mode and CCL
+            buffer size.
         x (Tensor): Token data to send, shape (1, BS, H), dtype float16/bfloat16.
         session_id (Tensor): Session ID, shape (1,), dtype int32.
         micro_batch_id (Tensor): Micro batch ID, shape (1,), dtype int32.
@@ -281,16 +317,8 @@ def attention_to_ffn_v2(
         expert_ids (Tensor): Per-token topK expert indices, shape (1, BS, K), dtype int32.
         expert_rank_table (Tensor): Expert-to-rank mapping table,
             shape (1, expertNum, expRankTableM), dtype int32.
-        group (str | ProcessGroup): HCCL communicator name, or a
-            ``torch.distributed.ProcessGroup`` from which the name is resolved.
-        world_size (int): Communication domain size.
-        ffn_token_info_table_shape (List[int]): 3-element list.
-        ffn_token_data_shape (List[int]): 5-element list [attnWorkerNum, microBatchNum, BS, K+shared, HS].
         attn_token_info_table_shape (List[int]): 3-element list.
         moe_expert_num (int): Number of MOE (routed) experts.
-        quant_mode (int): Quantization mode. 0=none, 2=pertoken+INT8,
-            3=mx+FP8_E5M2, 4=mx+FP8_E4M3, 5=mx+FP4_E2M1,
-            6=mx_clip+FP8_E5M2, 7=mx_clip+FP8_E4M3. Default 0.
         sync_flag (int): Sync flag, 0=async, 1=sync. Default 0.
         ffn_start_rank_id (int): Starting rank ID of FFN workers. Default 0.
         scales (Tensor, optional): Smooth scales for quantization,
@@ -301,29 +329,24 @@ def attention_to_ffn_v2(
     Returns:
         None. Data is sent to peer ranks via the HCCL window; no host-visible output.
     """
-    if not isinstance(group, str):
-        group_name = _get_hccl_comm_name(group, torch.distributed.get_rank(group))
-    else:
-        group_name = group
-
     torch.ops.cann_ops_transformer.npu_attention_to_ffn_v2(
-        context,
+        buffer.context,
         x,
         session_id,
         micro_batch_id,
         layer_id,
         expert_ids,
         expert_rank_table,
-        group_name,
-        world_size,
-        ffn_token_info_table_shape,
-        ffn_token_data_shape,
+        buffer.group_name,
+        buffer.ep_world_size,
+        buffer.ffn_token_info_table_shape,
+        buffer.ffn_token_data_shape,
         attn_token_info_table_shape,
         moe_expert_num,
-        quant_mode,
+        buffer.quant_mode,
         sync_flag,
         ffn_start_rank_id,
-        ccl_buffer_size,
+        buffer.ccl_buffer_size,
         scales=scales,
         active_mask=active_mask,
     )

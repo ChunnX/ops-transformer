@@ -26,9 +26,8 @@
 - **接口功能**：
 
   - attention_to_ffn_v2算子将Attention节点上的token数据发送至FFN节点，用于MoE（Mixture of Experts）场景下Attention与FFN分离部署时的前向数据通信。算子根据每个token选择的专家索引及专家到FFN卡的映射表，将token数据路由到目标FFN卡，并支持可选的量化传输以降低通信带宽开销。
-  - 该算子提供了attention_to_ffn_v2与AttentionToFfnV2Buffer、get_attention_to_ffn_v2_ccl_buffer_size等接口配套使用。
-  - get_attention_to_ffn_v2_ccl_buffer_size：用于计算attention_to_ffn_v2算子运行所需的CCL通信缓冲区大小。
-  - AttentionToFfnV2Buffer：用于封装输入参数并创建通信上下文（context），生成`context`和`ccl_buffer_size`等attention_to_ffn_v2算子运行所需信息。
+  - 该算子提供了attention_to_ffn_v2与get_buffer_for_attention_to_ffn_v2等接口配套使用。
+  - get_buffer_for_attention_to_ffn_v2：用于封装输入参数并创建通信上下文（context），生成`context`、`ccl_buffer_size`等attention_to_ffn_v2算子运行所需信息，返回buffer对象。
 
 - **计算公式**：
 
@@ -134,61 +133,19 @@
 
 ## 函数原型
 
-先调用get_attention_to_ffn_v2_ccl_buffer_size接口计算CCL通信缓冲区大小，再通过AttentionToFfnV2Buffer创建通信上下文，最后调用attention_to_ffn_v2接口进行数据发送。
+先用get_buffer_for_attention_to_ffn_v2接口封装输入参数并创建通信上下文（buffer），再调用attention_to_ffn_v2接口进行数据发送。
 
 ```python
-get_attention_to_ffn_v2_ccl_buffer_size(ffn_token_info_table_shape, ffn_token_data_shape, *, quant_mode=0) -> int
+get_buffer_for_attention_to_ffn_v2(group, world_size, ffn_token_info_table_shape, ffn_token_data_shape, *, quant_mode=0) -> AttentionToFfnV2Buffer
 ```
 
 ```python
-AttentionToFfnV2Buffer(group, world_size, ffn_token_info_table_shape, ffn_token_data_shape, *, quant_mode=0)
-```
-
-```python
-attention_to_ffn_v2(context, x, session_id, micro_batch_id, layer_id, expert_ids, expert_rank_table, group, world_size, ffn_token_info_table_shape, ffn_token_data_shape, attn_token_info_table_shape, moe_expert_num, *, quant_mode=0, sync_flag=0, ffn_start_rank_id=0, ccl_buffer_size=0, scales=None, active_mask=None) -> None
+attention_to_ffn_v2(buffer, x, session_id, micro_batch_id, layer_id, expert_ids, expert_rank_table, attn_token_info_table_shape, moe_expert_num, *, sync_flag=0, ffn_start_rank_id=0, scales=None, active_mask=None) -> None
 ```
 
 ## 参数说明
 
-### get_attention_to_ffn_v2_ccl_buffer_size
-
-<table style="undefined;table-layout: fixed; width:840px"><colgroup>
-<col style="width: 180px">
-<col style="width: 140px">
-<col style="width: 80px">
-<col style="width: 440px">
-</colgroup>
-<thead>
-<tr>
-    <th>参数名</th>
-    <th>参数类型</th>
-    <th>可选/必选</th>
-    <th>描述</th>
-</tr>
-</thead>
-<tbody>
-    <tr>
-        <td>ffn_token_info_table_shape</td>
-        <td>List[int]</td>
-        <td>必选</td>
-        <td>FFN节点上token信息表格的shape，长度为3，格式为<code>[attnWorkerNum, X, infoTableLastDim]</code>。</td>
-    </tr>
-    <tr>
-        <td>ffn_token_data_shape</td>
-        <td>List[int]</td>
-        <td>必选</td>
-        <td>FFN节点上token数据表格的shape，长度为5，格式为<code>[attnWorkerNum, microBatchNum, BS, K+sharedExpertNum, HS]</code>。</td>
-    </tr>
-    <tr>
-        <td>quant_mode</td>
-        <td>int</td>
-        <td>可选</td>
-        <td>量化模式。0表示非量化，2表示PERTOKEN+INT8，3表示MX+FP8_E5M2，4表示MX+FP8_E4M3，5表示MX+FP4_E2M1，6表示MX_CLIP+FP8_E5M2，7表示MX_CLIP+FP8_E4M3。默认值为0。</td>
-    </tr>
-</tbody>
-</table>
-
-### AttentionToFfnV2Buffer
+### get_buffer_for_attention_to_ffn_v2
 
 <table style="undefined;table-layout: fixed; width:840px"><colgroup>
 <col style="width: 180px">
@@ -221,22 +178,24 @@ attention_to_ffn_v2(context, x, session_id, micro_batch_id, layer_id, expert_ids
         <td>ffn_token_info_table_shape</td>
         <td>List[int]</td>
         <td>必选</td>
-        <td>FFN节点上token信息表格的shape，长度为3。</td>
+        <td>FFN节点上token信息表格的shape，长度为3，格式为<code>[attnWorkerNum, X, infoTableLastDim]</code>。</td>
     </tr>
     <tr>
         <td>ffn_token_data_shape</td>
         <td>List[int]</td>
         <td>必选</td>
-        <td>FFN节点上token数据表格的shape，长度为5。</td>
+        <td>FFN节点上token数据表格的shape，长度为5，格式为<code>[attnWorkerNum, microBatchNum, BS, K+sharedExpertNum, HS]</code>。</td>
     </tr>
     <tr>
         <td>quant_mode</td>
         <td>int</td>
         <td>可选</td>
-        <td>量化模式，各取值含义同<code>get_attention_to_ffn_v2_ccl_buffer_size</code>中的<code>quant_mode</code>。默认值为0。</td>
+        <td>量化模式。0表示非量化，2表示PERTOKEN+INT8，3表示MX+FP8_E5M2，4表示MX+FP8_E4M3，5表示MX+FP4_E2M1，6表示MX_CLIP+FP8_E5M2，7表示MX_CLIP+FP8_E4M3。默认值为0。</td>
     </tr>
 </tbody>
 </table>
+
+该接口返回<code>AttentionToFfnV2Buffer</code>对象，内部自动计算CCL通信缓冲区大小并创建通信上下文，供<code>attention_to_ffn_v2</code>使用。
 
 ### attention_to_ffn_v2
 
@@ -262,10 +221,10 @@ attention_to_ffn_v2(context, x, session_id, micro_batch_id, layer_id, expert_ids
 </thead>
 <tbody>
     <tr>
-        <td>context</td>
-        <td>Tensor</td>
+        <td>buffer</td>
+        <td>AttentionToFfnV2Buffer</td>
         <td>必选</td>
-        <td>由<a href="#attentiontoffnv2buffer">AttentionToFfnV2Buffer</a>创建的通信上下文tensor。</td>
+        <td>由<a href="#get_buffer_for_attention_to_ffn_v2">get_buffer_for_attention_to_ffn_v2</a>创建的通信buffer，内部封装了<code>context</code>、<code>group</code>、<code>world_size</code>、<code>ffn_token_info_table_shape</code>、<code>ffn_token_data_shape</code>、<code>quant_mode</code>及<code>ccl_buffer_size</code>。</td>
         <td>int32</td>
         <td>ND</td>
         <td>(contextSize,)</td>
@@ -325,42 +284,6 @@ attention_to_ffn_v2(context, x, session_id, micro_batch_id, layer_id, expert_ids
         <td>(L, moeExpertNum + sharedExpertNum, M)</td>
     </tr>
     <tr>
-        <td>group</td>
-        <td>str | ProcessGroup</td>
-        <td>必选</td>
-        <td>EP通信域名称或ProcessGroup对象。</td>
-        <td>str</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>world_size</td>
-        <td>int</td>
-        <td>必选</td>
-        <td>通信域大小。</td>
-        <td>int</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>ffn_token_info_table_shape</td>
-        <td>List[int]</td>
-        <td>必选</td>
-        <td>FFN节点上token信息表格的shape，长度为3。</td>
-        <td>int</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>ffn_token_data_shape</td>
-        <td>List[int]</td>
-        <td>必选</td>
-        <td>FFN节点上token数据表格的shape，长度为5，格式为<code>[attnWorkerNum, microBatchNum, BS, K+shared, HS]</code>。</td>
-        <td>int</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
         <td>attn_token_info_table_shape</td>
         <td>List[int]</td>
         <td>必选</td>
@@ -379,15 +302,6 @@ attention_to_ffn_v2(context, x, session_id, micro_batch_id, layer_id, expert_ids
         <td>-</td>
     </tr>
     <tr>
-        <td>quant_mode</td>
-        <td>int</td>
-        <td>可选</td>
-        <td>量化模式，各取值含义同上。默认值为0。</td>
-        <td>int</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
         <td>sync_flag</td>
         <td>int</td>
         <td>可选</td>
@@ -401,15 +315,6 @@ attention_to_ffn_v2(context, x, session_id, micro_batch_id, layer_id, expert_ids
         <td>int</td>
         <td>可选</td>
         <td>FFN节点的起始Rank Id。默认值为0。</td>
-        <td>int</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>ccl_buffer_size</td>
-        <td>int</td>
-        <td>可选</td>
-        <td>CCL通信缓冲区总大小（Bytes），由<code>AttentionToFfnV2Buffer</code>自动计算并填充。默认值为0。</td>
         <td>int</td>
         <td>-</td>
         <td>-</td>
@@ -441,9 +346,9 @@ attention_to_ffn_v2(context, x, session_id, micro_batch_id, layer_id, expert_ids
 
 ## 约束说明
 
-- 调用算子过程中使用的`group`、`world_size`、`ffn_token_info_table_shape`、`ffn_token_data_shape`、`attn_token_info_table_shape`参数及`ccl_buffer_size`取值所有卡需保持一致，网络中不同层中也需保持一致。
+- 调用算子过程中使用的`group`、`world_size`、`ffn_token_info_table_shape`、`ffn_token_data_shape`、`attn_token_info_table_shape`参数及`ccl_buffer_size`取值所有卡需保持一致，网络中不同层中也需保持一致。其中`group`、`world_size`、`ffn_token_info_table_shape`、`ffn_token_data_shape`、`quant_mode`及`ccl_buffer_size`由`get_buffer_for_attention_to_ffn_v2`创建的buffer封装，调用`attention_to_ffn_v2`时无需单独传入。
 
-- `ccl_buffer_size`为HBM上分配的CCL通信缓冲区**总大小**（Bytes），需满足：
+- `ccl_buffer_size`为HBM上分配的CCL通信缓冲区**总大小**（Bytes），由`get_buffer_for_attention_to_ffn_v2`内部自动计算，需满足：
 
 $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{tokenDataSize},\ 2\,\mathrm{MB})$$
 
@@ -453,7 +358,7 @@ $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{toke
   - INT8/FP8量化模式：`tokenDataSize = attnWorkerNum × microBatchNum × BS × (K+shared) × HS × 1B`
   - FP4量化模式：`HS`已按打包字节计算，`tokenDataSize = attnWorkerNum × microBatchNum × BS × (K+shared) × HS × 1B`
 
-可通过 `get_attention_to_ffn_v2_ccl_buffer_size` 接口计算所需最小值。
+该大小由`get_buffer_for_attention_to_ffn_v2`内部自动计算，用户无需自行计算或设置`ccl_buffer_size`。
 
 - 量化模式说明：
 
@@ -498,7 +403,7 @@ $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{toke
 
 - 单算子模式调用：
 
-  下面示例展示了attention_to_ffn_v2的完整调用流程：先初始化通信域，再用AttentionToFfnV2Buffer构造通信上下文，最后调用attention_to_ffn_v2发送token数据。
+  下面示例展示了attention_to_ffn_v2的完整调用流程：先初始化通信域，再用get_buffer_for_attention_to_ffn_v2创建通信buffer，最后调用attention_to_ffn_v2发送token数据。
 
   ```python
   import os
@@ -509,8 +414,7 @@ $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{toke
   from torch.multiprocessing import Process, Manager
   from cann_ops_transformer.ops import (
       attention_to_ffn_v2,
-      AttentionToFfnV2Buffer,
-      get_attention_to_ffn_v2_ccl_buffer_size,
+      get_buffer_for_attention_to_ffn_v2,
   )
 
   WORLD_SIZE = 8
@@ -551,16 +455,14 @@ $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{toke
       ffn_token_data_shape = [ATTENTION_WORKER_NUM, X, BS, expertNumPerToken, H]
       attn_token_info_table_shape = [X, BS, expertNumPerToken]
 
-      # 步骤1：创建通信上下文
-      buffer = AttentionToFfnV2Buffer(
+      # 步骤1：创建通信buffer
+      buffer = get_buffer_for_attention_to_ffn_v2(
           ep_group,
           WORLD_SIZE,
           ffn_token_info_table_shape,
           ffn_token_data_shape,
           quant_mode=quantMode,
       )
-      context = buffer.context
-      ccl_buffer_size = buffer.ccl_buffer_size
 
       # 步骤2：构造输入数据
       x = torch.randn((X, BS, H), dtype=torch.bfloat16, device="npu")
@@ -574,23 +476,17 @@ $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{toke
 
       # 步骤3：调用attention_to_ffn_v2发送token数据
       attention_to_ffn_v2(
-          context,
+          buffer,
           x,
           session_id,
           micro_batch_id,
           layer_id,
           expert_ids,
           expert_rank_table,
-          ep_group,
-          WORLD_SIZE,
-          ffn_token_info_table_shape,
-          ffn_token_data_shape,
           attn_token_info_table_shape,
           moeExpertNum,
-          quant_mode=quantMode,
           sync_flag=syncFlag,
           ffn_start_rank_id=ffnStartRankId,
-          ccl_buffer_size=ccl_buffer_size,
       )
 
       torch.npu.synchronize()
