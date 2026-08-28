@@ -2232,7 +2232,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
         return;
     }
     uint64_t v0ResSize = static_cast<uint64_t>(constInfo.s2BaseSize) * constInfo.dSize * sizeof(Q_T);
-    uint64_t v0RegionSize = v0ResSize * 3 * (IS_SPLIT_G ? (GetBlockNum() >> 1U) : GetBlockNum());
+    uint64_t v0RegionSize = v0ResSize * 4 * (IS_SPLIT_G ? (GetBlockNum() >> 1U) : GetBlockNum());
     uint64_t totalBS1 =
         (LAYOUT_T == QSMLA_LAYOUT::TND) ? constInfo.s1Size : static_cast<uint64_t>(constInfo.bSize) * constInfo.s1Size;
     uint64_t oriPhyAddrSize = 0;

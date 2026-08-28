@@ -95,7 +95,7 @@ constexpr uint32_t L0C_ELEM_PER_BUF = 32768;        // T   元素, 每个 L0C bu
 #define CROSSCORE_L1P(s) (s) // 0,1
 #define CROSSCORE_BMM2 (2)
 #define CROSSCORE_BMM1(s) (3 + (s))  // 3,4
-#define CROSSCORE_V0RES(s) (5 + (s)) // 5,6,7 (GM backward)
+#define CROSSCORE_V0RES(s) (5 + (s)) // 5,6,7,8 (GM backward)
 
 namespace BaseApi {
 __aicore__ constexpr uint64_t Align2Func(uint64_t data)
