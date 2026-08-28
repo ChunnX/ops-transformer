@@ -612,19 +612,24 @@ protected:
             auto x1Dtype = x1Desc->GetDataType();
             uint64_t mTotal = x1sh ? x1sh->GetStorageShape().GetDim(0U) : 0;
             uint64_t kPerRank = k_; // Ka = per-rank K（AlltoAll 通信 x1 的 K 维是 Ka，非 K_total）
-            // 通信数据量 = rank_size * m_per_rank * (x1 data + x1_scale) + 2MB 预留
+            // 每个 rank 的 commBuffer 需容纳所有 rank 写来的数据：
+            //   worldSize * m_per_rank * (x1_data + x1_scale) + 2MB 预留
+            // x1_data = kPerRank * sizeof(dtype)，fp4 打包存储(4bit)所以用 bit 精确计算
+            // x1_scale = ceil(kPerRank / MX_SCALE_ALIGN) * SCALE_LAST_DIM * sizeof(uint8)
             uint64_t x1Bits = (x1Dtype == ge::DT_FLOAT4_E2M1) ? 4UL : 8UL;
             uint64_t scaleKGroups = (kPerRank + MX_SCALE_ALIGN - 1UL) / MX_SCALE_ALIGN;
-            uint64_t commDataBits = m_ * (kPerRank * x1Bits + scaleKGroups * SCALE_LAST_DIM * 8UL);
+            uint64_t perRankBits = kPerRank * x1Bits + scaleKGroups * SCALE_LAST_DIM * 8UL;
+            uint64_t commDataBits = worldSize_ * m_ * perRankBits;
             uint64_t commDataBytes = (commDataBits + 7UL) / 8UL;
             constexpr uint64_t HCCL_BUFFER_RESERVED_BYTES = 2UL * 1024UL * 1024UL;
             uint64_t needBytes = commDataBytes + HCCL_BUFFER_RESERVED_BYTES;
             if (hccBufPtr != nullptr && static_cast<uint64_t>(*hccBufPtr) < needBytes) {
                 OP_LOGE_WITHOUT_REPORT(opName,
                                        "[hcclBufferSize] hcclBufferSize(%ld) is less than "
-                                       "commData(%lu) + reserved(%lu) = %lu bytes",
-                                       static_cast<long>(*hccBufPtr), commDataBytes, HCCL_BUFFER_RESERVED_BYTES,
-                                       needBytes);
+                                       "worldSize(%lu) * m_per_rank(%lu) * (Ka(%lu) * %lu bits + "
+                                       "scale(%lu * %lu * 8 bits)) / 8 + reserved(%lu) = %lu bytes",
+                                       static_cast<long>(*hccBufPtr), worldSize_, m_, kPerRank, x1Bits, scaleKGroups,
+                                       SCALE_LAST_DIM, HCCL_BUFFER_RESERVED_BYTES, needBytes);
                 return ge::GRAPH_FAILED;
             }
         }
