@@ -743,9 +743,9 @@ ge::graphStatus KeyPoolTiling::CheckFeature() const
                 return ge::GRAPH_FAILED);
     uint64_t cacheStride =
         context_->stateCache.shape->GetShape().GetDim(1) * context_->stateCache.shape->GetShape().GetDim(2);
-    OP_CHECK_IF(cacheStride != baseParams_->stateCacheStrideDim0,
+    OP_CHECK_IF(baseParams_->stateCacheStrideDim0 < cacheStride,
                 OP_LOGE(context_->opName,
-                        "state_cache must be contiguous, first axes stride should be equal to %lu, but got %lu",
+                        "state_cache first axis stride should be no less than %lu, but got %lu",
                         cacheStride, baseParams_->stateCacheStrideDim0),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
