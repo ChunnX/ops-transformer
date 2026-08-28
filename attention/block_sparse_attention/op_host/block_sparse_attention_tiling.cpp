@@ -121,9 +121,18 @@ enum QuantMode : int64_t {
 };
 
 // 判断是否为 mxfp4 量化(OCP 或 CX)
-static bool IsMxfp4Quant(int64_t qm) { return qm == MXFP4_OCP_QUANT || qm == MXFP4_CX_QUANT; }
-static bool IsMxfp8Quant(int64_t qm) { return qm == MXFP8_OCP_QUANT; }
-static bool IsMxFullQuant(int64_t qm) { return IsMxfp4Quant(qm) || IsMxfp8Quant(qm); }
+static bool IsMxfp4Quant(int64_t qm)
+{
+    return qm == MXFP4_OCP_QUANT || qm == MXFP4_CX_QUANT;
+}
+static bool IsMxfp8Quant(int64_t qm)
+{
+    return qm == MXFP8_OCP_QUANT;
+}
+static bool IsMxFullQuant(int64_t qm)
+{
+    return IsMxfp4Quant(qm) || IsMxfp8Quant(qm);
+}
 
 static std::string DataTypeToString(ge::DataType dataType)
 {
@@ -504,7 +513,7 @@ ge::graphStatus BSATiling::ParseQKVInBSND(gert::TilingContext *bsaContext)
         OP_LOGE(bsaContext->GetNodeName(), "Check query/key/value dim values failed.");
         return ge::GRAPH_FAILED;
     }
-    if (IsMxfp4Quant(quantMode_) &&
+    if (IsMxFullQuant(quantMode_) &&
         (embeddingSize_ != VALID_EMBEDDING_SIZE_64 && embeddingSize_ != VALID_EMBEDDING_SIZE_128)) {
         OP_LOGE(bsaContext->GetNodeName(),
                 "(quantMode:%d)mxfp4 requires embeddingSize to be multiple of 64 or 128, but got %u.", quantMode_,
@@ -730,7 +739,7 @@ ge::graphStatus BSATiling::ParseSparsePattern(gert::TilingContext *bsaContext)
         return ge::GRAPH_FAILED;
     }
     // V3 新增:mxfp4 要求 blockShapeX 为 64 的倍数
-    if (IsMxfp4Quant(quantMode_) && blockShapeX_ % 64 != 0) {
+    if (IsMxFullQuant(quantMode_) && blockShapeX_ % 64 != 0) {
         OP_LOGE(bsaContext->GetNodeName(), "mxfp4 requires blockShapeX to be multiple of 64, but got %u.",
                 blockShapeX_);
         return ge::GRAPH_FAILED;
@@ -825,7 +834,7 @@ ge::graphStatus BSATiling::ValidateGenericDequantScale(gert::TilingContext *bsaC
                     NUM_1, dequantScaleBatch, dequantScaleNumHeads, dequantScaleBlockNum, dequantScaleLastDim);
             return ge::GRAPH_FAILED;
         }
-    } else if (IsMxfp4Quant(quantMode_)) {
+    } else if (IsMxFullQuant(quantMode_)) {
         return ValidateMxfp4DequantScale(bsaContext, parameterIndex);
     } else {
         if (dequantScaleTensor != nullptr) {
@@ -951,8 +960,8 @@ ge::graphStatus BSATiling::CheckBlockShapeQuantConstraint(gert::TilingContext *b
         // MXFP8 kvs128：blockShapeY 按 128 对齐；其它 float8 全量化路径仍要求 256 倍数
         const int64_t supportedMultipleOfBlockShapeY =
             (quantMode_ == MXFP8_OCP_QUANT) ? static_cast<int64_t>(TILE_SIZE_128) : static_cast<int64_t>(TILE_SIZE_256);
-        const bool mxfp8QsOk = (quantMode_ == MXFP8_OCP_QUANT) &&
-            (blockShapeX_ == SUPPORTED_BLOCK_SHAPE_X || blockShapeX_ == SUPPORTED_BLOCK_SHAPE_X_QS64);
+        const bool mxfp8QsOk = (quantMode_ == MXFP8_OCP_QUANT) && (blockShapeX_ == SUPPORTED_BLOCK_SHAPE_X ||
+                                                                   blockShapeX_ == SUPPORTED_BLOCK_SHAPE_X_QS64);
         if (!mxfp8QsOk && blockShapeX_ != SUPPORTED_BLOCK_SHAPE_X) {
             OP_LOGE(bsaContext->GetNodeName(),
                     "In the float8_e4m3fn full-quant scenario, blockShape element 0 must be 64 or 128 for MXFP8 "

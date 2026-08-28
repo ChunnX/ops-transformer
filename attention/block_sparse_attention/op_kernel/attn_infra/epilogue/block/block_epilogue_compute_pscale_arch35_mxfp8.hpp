@@ -17,8 +17,8 @@
 #include "../../../attn_infra/epilogue/tile_common/bsa_epilogue_tile_copy.hpp"
 #include "../../../attn_infra/bsa_gemm_coord.hpp"
 #include "../../../attn_infra/bsa_matrix_coord.hpp"
-#include "../../../tla/tensor.hpp"
-#include "../../../tla/layout.hpp"
+#include "../../../tla/tensor_bsa.hpp"
+#include "../../../tla/layout_bsa.hpp"
 #include "block_epilogue_arch35_utils.hpp"
 #include "mxfp8_vf/vf_computeScale_dn_mxfp8.h"
 #include "mxfp8_vf/vf_onlyUpdateScale_dn_mxfp8.h"
@@ -28,17 +28,8 @@ namespace NpuArch::Epilogue::Block {
 
 using namespace MXFP8Kernel;
 
-template <
-    MXQuantMode MX_QUANT_MODE_,
-    class ElementGroupMax_,
-    class ElementDm_,
-    class PScaleType_>
-class BlockEpilogue<
-    EpilogueComputePScaleBsaMxfp8<true, MX_QUANT_MODE_>,
-    ElementGroupMax_,
-    ElementDm_,
-    PScaleType_>
-{
+template <MXQuantMode MX_QUANT_MODE_, class ElementGroupMax_, class ElementDm_, class PScaleType_>
+class BlockEpilogue<EpilogueComputePScaleBsaMxfp8<true, MX_QUANT_MODE_>, ElementGroupMax_, ElementDm_, PScaleType_> {
 public:
     using DispatchPolicy = EpilogueComputePScaleBsaMxfp8<true, MX_QUANT_MODE_>;
     static constexpr MXQuantMode MX_QUANT_MODE = DispatchPolicy::MX_QUANT_MODE;
@@ -49,10 +40,11 @@ public:
     using LayoutPScale = typename PScaleType::Layout;
     using ElementDm = ElementDm_;
 
-    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, ElementGroupMax LOG2_CX_CEIL) {
+    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, ElementGroupMax LOG2_CX_CEIL)
+    {
         for (uint32_t i = 0; i < MXFP8::UB_P_SCALE_CNT; i++) {
-            pscaleUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementPScale>(
-                MXFP8::UB_P_SCALE_BUF_OFFSET + MXFP8::UB_P_SCALE_BUF_SIZE * i);
+            pscaleUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementPScale>(MXFP8::UB_P_SCALE_BUF_OFFSET +
+                                                                                       MXFP8::UB_P_SCALE_BUF_SIZE * i);
         }
         for (uint32_t i = 0; i < MXFP8::UB_PEER_GLOBAL_MAX_CNT; i++) {
             peerGlobalMaxUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementGroupMax>(
@@ -68,8 +60,8 @@ public:
                 MXFP8::UB_LOCAL_GLOBAL_MAX_BUF_OFFSET + MXFP8::UB_LOCAL_GLOBAL_MAX_BUF_SIZE * i);
         }
         for (uint32_t i = 0; i < MXFP8::UB_UPDATE_SCALE_CNT; i++) {
-            dmUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementDm>(
-                MXFP8::UB_UPDATE_SCALE_BUF_OFFSET + MXFP8::UB_UPDATE_SCALE_BUF_SIZE * i);
+            dmUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementDm>(MXFP8::UB_UPDATE_SCALE_BUF_OFFSET +
+                                                                               MXFP8::UB_UPDATE_SCALE_BUF_SIZE * i);
         }
         LOG2_CX_CEIL_ = LOG2_CX_CEIL;
     }
@@ -97,8 +89,6 @@ public:
             return;
         }
 
-        
-
         uint16_t firstLoop = 0;
         uint16_t secondLoop = 0;
         uint16_t firstLoopStart = 0;
@@ -123,21 +113,16 @@ public:
 #if BSA_MXFP8_DUMP
         if (tileInfo.isLastKvsTile && tileInfo.curKvsTileLoopIdx < 4) {
             AscendC::PipeBarrier<PIPE_ALL>();
-            AscendC::printf("[MXFP8-DUMP] pscale-pre blk=%u sub=%u "
+            AscendC::printf(
+                "[MXFP8-DUMP] pscale-pre blk=%u sub=%u "
                 "lgm0=%f lgm57=%f lgm58=%f lgm63=%f lgm64=%f lgm114=%f "
                 "peer0=%f peer57=%f peer114=%f grp0_57=%f grp1_57=%f grp0_114=%f\n",
-                AscendC::GetBlockIdx(), subBlockIdx,
-                static_cast<float>(localGlobalMax.GetValue(0)),
-                static_cast<float>(localGlobalMax.GetValue(57)),
-                static_cast<float>(localGlobalMax.GetValue(58)),
-                static_cast<float>(localGlobalMax.GetValue(63)),
-                static_cast<float>(localGlobalMax.GetValue(64)),
-                static_cast<float>(localGlobalMax.GetValue(114)),
-                static_cast<float>(peerGlobalMax.GetValue(0)),
-                static_cast<float>(peerGlobalMax.GetValue(57)),
-                static_cast<float>(peerGlobalMax.GetValue(114)),
-                static_cast<float>(localGroupMax1.GetValue(57)),
-                static_cast<float>(localGroupMax1.GetValue(128 + 57)),
+                AscendC::GetBlockIdx(), subBlockIdx, static_cast<float>(localGlobalMax.GetValue(0)),
+                static_cast<float>(localGlobalMax.GetValue(57)), static_cast<float>(localGlobalMax.GetValue(58)),
+                static_cast<float>(localGlobalMax.GetValue(63)), static_cast<float>(localGlobalMax.GetValue(64)),
+                static_cast<float>(localGlobalMax.GetValue(114)), static_cast<float>(peerGlobalMax.GetValue(0)),
+                static_cast<float>(peerGlobalMax.GetValue(57)), static_cast<float>(peerGlobalMax.GetValue(114)),
+                static_cast<float>(localGroupMax1.GetValue(57)), static_cast<float>(localGroupMax1.GetValue(128 + 57)),
                 static_cast<float>(localGroupMax1.GetValue(114)));
         }
 #endif
@@ -147,25 +132,21 @@ public:
         if (tileInfo.curKvsTileLoopIdx / MXFP8Kernel::TILE_GROUP_N == 0) {
             if (sRowIsQs128) {
                 Mxfp8VF::computePscale<MX_QUANT_MODE, true, ElementGroupMax, MXFP8::QS_BASE_SIZE>(
-                    pscale1, pscale2, localGroupMax1, localGroupMax2,
-                    localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
+                    pscale1, pscale2, localGroupMax1, localGroupMax2, localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
                     firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
             } else {
                 Mxfp8VF::computePscaleQS64CallVF<MX_QUANT_MODE, true, ElementGroupMax, MXFP8::QS_BASE_SIZE>(
-                    pscale1, pscale2, localGroupMax1, localGroupMax2,
-                    localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
+                    pscale1, pscale2, localGroupMax1, localGroupMax2, localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
                     firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
             }
         } else {
             if (sRowIsQs128) {
                 Mxfp8VF::computePscale<MX_QUANT_MODE, false, ElementGroupMax, MXFP8::QS_BASE_SIZE>(
-                    pscale1, pscale2, localGroupMax1, localGroupMax2,
-                    localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
+                    pscale1, pscale2, localGroupMax1, localGroupMax2, localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
                     firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
             } else {
                 Mxfp8VF::computePscaleQS64CallVF<MX_QUANT_MODE, false, ElementGroupMax, MXFP8::QS_BASE_SIZE>(
-                    pscale1, pscale2, localGroupMax1, localGroupMax2,
-                    localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
+                    pscale1, pscale2, localGroupMax1, localGroupMax2, localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
                     firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
             }
         }
@@ -180,13 +161,11 @@ public:
         //     AscendC::DumpTensor(pscale1[32*5*i], 128, 32*4);
         // }
         //  AscendC::printf("pscale1 end : \n \n");
-        
+
         //  AscendC::printf("softmaxMaxOld: \n");
         // for (int i =0; i < 1; i++) {
         //     AscendC::DumpTensor(softmaxMaxOld[128*i], 128, 128);
         //         }
-
-
 
 #ifndef BSA_MXFP8_DUMP
 #define BSA_MXFP8_DUMP 0
@@ -197,19 +176,15 @@ public:
             AscendC::DumpTensor(pscale1, 212, 32);
             AscendC::DumpTensor(localGlobalMax, 214, 32);
             AscendC::DumpTensor(peerGlobalMax, 215, 32);
-            AscendC::printf("[MXFP8-DUMP] pscale desc=212 blk=%u sub=%u "
+            AscendC::printf(
+                "[MXFP8-DUMP] pscale desc=212 blk=%u sub=%u "
                 "lgm0=%f lgm57=%f lgm58=%f lgm63=%f lgm64=%f lgm114=%f "
                 "peer0=%f peer57=%f peer114=%f\n",
-                AscendC::GetBlockIdx(), subBlockIdx,
-                static_cast<float>(localGlobalMax.GetValue(0)),
-                static_cast<float>(localGlobalMax.GetValue(57)),
-                static_cast<float>(localGlobalMax.GetValue(58)),
-                static_cast<float>(localGlobalMax.GetValue(63)),
-                static_cast<float>(localGlobalMax.GetValue(64)),
-                static_cast<float>(localGlobalMax.GetValue(114)),
-                static_cast<float>(peerGlobalMax.GetValue(0)),
-                static_cast<float>(peerGlobalMax.GetValue(57)),
-                static_cast<float>(peerGlobalMax.GetValue(114)));
+                AscendC::GetBlockIdx(), subBlockIdx, static_cast<float>(localGlobalMax.GetValue(0)),
+                static_cast<float>(localGlobalMax.GetValue(57)), static_cast<float>(localGlobalMax.GetValue(58)),
+                static_cast<float>(localGlobalMax.GetValue(63)), static_cast<float>(localGlobalMax.GetValue(64)),
+                static_cast<float>(localGlobalMax.GetValue(114)), static_cast<float>(peerGlobalMax.GetValue(0)),
+                static_cast<float>(peerGlobalMax.GetValue(57)), static_cast<float>(peerGlobalMax.GetValue(114)));
         }
 #endif
 
@@ -219,47 +194,50 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(MXFP8::SYNC_VEC1_RES_BUF0_FLAG);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(MXFP8::SYNC_VEC1_RES_BUF1_FLAG);
 
-        
-        // DataCopy(l1PScaleTensor.data()[subBlockIdx*(32*5*8)+firstLoopStart*(32*5*8)], pscale1, {static_cast<uint16_t>(firstLoop), 40, 0, 40});
-        // if (secondLoop != 0) {
-        //     DataCopy(l1PScaleTensor.data()[subBlockIdx*(32*5*8)+secondLoopStart*(32*5*8)], pscale1[firstLoop*(32*5*8)], {static_cast<uint16_t>(secondLoop), 40, 0, 40});
+        // DataCopy(l1PScaleTensor.data()[subBlockIdx*(32*5*8)+firstLoopStart*(32*5*8)], pscale1,
+        // {static_cast<uint16_t>(firstLoop), 40, 0, 40}); if (secondLoop != 0) {
+        //     DataCopy(l1PScaleTensor.data()[subBlockIdx*(32*5*8)+secondLoopStart*(32*5*8)],
+        //     pscale1[firstLoop*(32*5*8)], {static_cast<uint16_t>(secondLoop), 40, 0, 40});
         // }
 
         // copy pscale1 ub to l1
         // 与 softmax/pscale VF 一致：pad-to-128 后按 128 宽写 L1，不要用 mxfp4 的 align64。
         bool isQsAlign128 = taskInfo.qsActBaseTileAlign128 == MXFP8::QS_BASE_SIZE;
-        CopyPScaleUbToL1(l1PScaleTensor, pscale1, pscale2, subBlockIdx, firstLoopStart, firstLoop, secondLoopStart, secondLoop, isQsAlign128);
+        CopyPScaleUbToL1(l1PScaleTensor, pscale1, pscale2, subBlockIdx, firstLoopStart, firstLoop, secondLoopStart,
+                         secondLoop, isQsAlign128);
 
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP8::SYNC_VEC1_RES_BUF0_FLAG);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP8::SYNC_VEC1_RES_BUF1_FLAG);
     }
 
-     template <class TensorDst>
-    __aicore__ inline void CopyPScaleUbToL1(TensorDst &l1PScaleTensor, AscendC::LocalTensor<ElementPScale> &pscale1Src, AscendC::LocalTensor<ElementPScale> &pscale2Src, 
-                                                uint32_t subBlockIdx, uint16_t firstLoopStart, uint16_t firstLoop, uint16_t secondLoopStart, uint16_t secondLoop, bool isQsAlign128) {
+    template <class TensorDst>
+    __aicore__ inline void CopyPScaleUbToL1(TensorDst &l1PScaleTensor, AscendC::LocalTensor<ElementPScale> &pscale1Src,
+                                            AscendC::LocalTensor<ElementPScale> &pscale2Src, uint32_t subBlockIdx,
+                                            uint16_t firstLoopStart, uint16_t firstLoop, uint16_t secondLoopStart,
+                                            uint16_t secondLoop, bool isQsAlign128)
+    {
         // GetPScaleParams 的 firstLoopStart 是 AIV 本地 groupMax 环（loop/2%20）。
         // L1 P-scale 与 P 一样按 loop%20 分槽；dstStride 再隔行写入（AIV0 偶数槽 / AIV1 奇数槽）。
         // 组 0：groupMax 0 → L1 0，skip-2 得到 0,2,…,14。
         // 组 1：groupMax 8 必须映射成 L1 16，否则 PV 读 loop%20=16 用到组 0 残留 scale。
         CopyPScaleUbToL1FromGroupMax(l1PScaleTensor, pscale1Src, subBlockIdx, firstLoopStart, firstLoop, isQsAlign128);
         if (secondLoop != 0) {
-            CopyPScaleUbToL1FromGroupMax(l1PScaleTensor, pscale2Src, subBlockIdx, secondLoopStart, secondLoop, isQsAlign128);
+            CopyPScaleUbToL1FromGroupMax(l1PScaleTensor, pscale2Src, subBlockIdx, secondLoopStart, secondLoop,
+                                         isQsAlign128);
         }
     }
 
 private:
     template <class TensorDst>
-    __aicore__ inline void CopyPScaleUbToL1Seg(TensorDst &l1PScaleTensor,
-                                               AscendC::LocalTensor<ElementPScale> &src,
+    __aicore__ inline void CopyPScaleUbToL1Seg(TensorDst &l1PScaleTensor, AscendC::LocalTensor<ElementPScale> &src,
                                                uint16_t l1MStart, uint16_t count, bool isQsAlign128)
     {
         if (count == 0) {
             return;
         }
         uint32_t l1PScaleTensorNSize = tla::get<1>(l1PScaleTensor.shape());
-        auto l1TlaTile = tla::GetTile(l1PScaleTensor,
-            tla::MakeCoord(l1MStart, 0),
-            tla::MakeShape(1, l1PScaleTensorNSize));
+        auto l1TlaTile =
+            tla::GetTile(l1PScaleTensor, tla::MakeCoord(l1MStart, 0), tla::MakeShape(1, l1PScaleTensorNSize));
         uint32_t dstOffset = l1TlaTile.layout()(l1TlaTile.coord());
         uint16_t pscaleGroupLen = static_cast<uint16_t>(l1PScaleTensorNSize / MXFP8::DATA_BLOCK_BYTE);
         uint16_t pscaleGroupHalfLen = static_cast<uint16_t>(l1PScaleTensorNSize / 2 / MXFP8::DATA_BLOCK_BYTE);
@@ -273,9 +251,8 @@ private:
 
     template <class TensorDst>
     __aicore__ inline void CopyPScaleUbToL1FromGroupMax(TensorDst &l1PScaleTensor,
-                                                        AscendC::LocalTensor<ElementPScale> &src,
-                                                        uint32_t subBlockIdx, uint16_t groupMaxStart,
-                                                        uint16_t count, bool isQsAlign128)
+                                                        AscendC::LocalTensor<ElementPScale> &src, uint32_t subBlockIdx,
+                                                        uint16_t groupMaxStart, uint16_t count, bool isQsAlign128)
     {
         if (count == 0) {
             return;
@@ -296,9 +273,8 @@ private:
         }
     }
 
-    __aicore__ inline void GetPScaleParams(const TileInfo &tileInfo, uint32_t subBlockIdx,
-                                           uint16_t &firstLoopStart, uint16_t &firstLoop, uint16_t &secondLoopStart,
-                                           uint16_t &secondLoop)
+    __aicore__ inline void GetPScaleParams(const TileInfo &tileInfo, uint32_t subBlockIdx, uint16_t &firstLoopStart,
+                                           uint16_t &firstLoop, uint16_t &secondLoopStart, uint16_t &secondLoop)
     {
         uint16_t isLoopFirstTaskVecCore = (subBlockIdx == tileInfo.kvsFirstTileStartVecCore);
         uint32_t loop = tileInfo.loop;
@@ -311,20 +287,20 @@ private:
         // 对照 mxfp4：两个 AIV 交替 softmax，每核只处理自己做过的 softmax。
         // mxfp4 用 isLoopFirst + 偶对齐 + /2 把「2 槽单位」折成 softmax 数；
         // kvs128 一槽一 softmax，直接 ceil/floor(组内 tile 数 / 2)。
-        uint16_t tilesInGroup = static_cast<uint16_t>(
-            (curS2LoopIdx + 1) - (curS2LoopIdx / WHOLE_PROCESS_LOOP) * WHOLE_PROCESS_LOOP);
+        uint16_t tilesInGroup =
+            static_cast<uint16_t>((curS2LoopIdx + 1) - (curS2LoopIdx / WHOLE_PROCESS_LOOP) * WHOLE_PROCESS_LOOP);
         if (tilesInGroup == 0) {
             tilesInGroup = WHOLE_PROCESS_LOOP;
         }
-        uint16_t toProcessGroupMaxLoopLen = isLoopFirstTaskVecCore
-            ? static_cast<uint16_t>((tilesInGroup + 1) / 2)
-            : static_cast<uint16_t>(tilesInGroup / 2);
+        uint16_t toProcessGroupMaxLoopLen = isLoopFirstTaskVecCore ? static_cast<uint16_t>((tilesInGroup + 1) / 2) :
+                                                                     static_cast<uint16_t>(tilesInGroup / 2);
         if (toProcessGroupMaxLoopLen > WHOLE_PROCESS_LOOP) {
             toProcessGroupMaxLoopLen = WHOLE_PROCESS_LOOP;
         }
         firstLoop = toProcessGroupMaxLoopLen;
         secondLoop = 0;
-        int32_t firstLoopStartNotU = static_cast<int32_t>(groupMaxEndIdx) - static_cast<int32_t>(toProcessGroupMaxLoopLen) + 1;
+        int32_t firstLoopStartNotU =
+            static_cast<int32_t>(groupMaxEndIdx) - static_cast<int32_t>(toProcessGroupMaxLoopLen) + 1;
         if (firstLoopStartNotU < 0) {
             firstLoopStart = static_cast<uint16_t>(firstLoopStartNotU + GROUP_MAX_SPACE_LEN);
             firstLoop = static_cast<uint16_t>(GROUP_MAX_SPACE_LEN - firstLoopStart);
@@ -340,15 +316,15 @@ private:
     static constexpr uint32_t GROUP_MAX_SPACE_LEN = 20; // UB_LOCAL_GROUP_MAX_CNT
     static constexpr uint32_t WHOLE_PROCESS_LOOP = 16;  // TILE_GROUP_N
 
-    AscendC::LocalTensor<ElementPScale>   pscaleUBTensor[MXFP8::UB_P_SCALE_CNT]; // pScale(复用P)
-    AscendC::LocalTensor<ElementGroupMax> peerGlobalMaxUBTensor[MXFP8::UB_PEER_GLOBAL_MAX_CNT]; // peerGlobalMax
-    AscendC::LocalTensor<ElementGroupMax> softmaxMaxUBTensor;                    // softmaxMax
-    AscendC::LocalTensor<ElementGroupMax> localGroupMaxUBTensor[MXFP8::UB_LOCAL_GROUP_MAX_CNT]; // LocalGroupMax
+    AscendC::LocalTensor<ElementPScale> pscaleUBTensor[MXFP8::UB_P_SCALE_CNT];                    // pScale(复用P)
+    AscendC::LocalTensor<ElementGroupMax> peerGlobalMaxUBTensor[MXFP8::UB_PEER_GLOBAL_MAX_CNT];   // peerGlobalMax
+    AscendC::LocalTensor<ElementGroupMax> softmaxMaxUBTensor;                                     // softmaxMax
+    AscendC::LocalTensor<ElementGroupMax> localGroupMaxUBTensor[MXFP8::UB_LOCAL_GROUP_MAX_CNT];   // LocalGroupMax
     AscendC::LocalTensor<ElementGroupMax> localGlobalMaxUBTensor[MXFP8::UB_LOCAL_GLOBAL_MAX_CNT]; // LocalGlobalMax
-    AscendC::LocalTensor<ElementDm>       dmUBTensor[MXFP8::UB_UPDATE_SCALE_CNT]; // updateScale
-    ElementGroupMax                       LOG2_CX_CEIL_;
+    AscendC::LocalTensor<ElementDm> dmUBTensor[MXFP8::UB_UPDATE_SCALE_CNT];                       // updateScale
+    ElementGroupMax LOG2_CX_CEIL_;
 };
 
-}  // namespace NpuArch::Epilogue::Block
+} // namespace NpuArch::Epilogue::Block
 
-#endif  // EPILOGUE_BLOCK_BLOCK_EPILOGUE_COMPUTE_PSCALE_ARCH35_MXFP8
+#endif // EPILOGUE_BLOCK_BLOCK_EPILOGUE_COMPUTE_PSCALE_ARCH35_MXFP8
