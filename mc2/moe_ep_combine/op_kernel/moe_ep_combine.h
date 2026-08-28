@@ -626,8 +626,12 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendChannelFl
         DataCacheCleanAndInvalid<uint64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(localFlag);
         return;
     }
+    // Keep the completion flag out of the token batch. Recreating the handle after committing the token WQEs
+    // snapshots the advanced SQ head, so the flag is posted after all token writes on this channel.
+    FlushPreparedWrites();
     BeginPreparedWrites(dstRank);
     PrepareWrite<CHANNEL_FLAG_WQE_CONFIG>(flagAddr, flagWorkspaceAddr_, WIN_ADDR_ALIGN);
+    FlushPreparedWrites();
 }
 
 template <TemplateMoeEpCombineTypeClass>
