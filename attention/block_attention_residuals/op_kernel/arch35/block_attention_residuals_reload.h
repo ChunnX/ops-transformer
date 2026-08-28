@@ -124,6 +124,8 @@ private:
         metaSoftmax_ = metaSoftmaxBuf_.Get<float>();
         metaBrc_ = metaBrcBuf_.Get<float>();
         scalarLocal_ = scalarBuf_.Get<float>();
+        Duplicate(scalarLocal_, 0.0f, SCALAR_LOCAL_ELEMS);
+        PipeBarrier<PIPE_V>();
 
         if (needBackward_) {
             // inv：每行 1 标量经 invQue_；probs：Softmax 后每 token 一次搬 B 个经 probsQue_

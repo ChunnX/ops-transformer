@@ -127,6 +127,8 @@ private:
         metaSoftmax_ = metaSoftmaxBuf_.Get<float>();
         metaBrc_ = metaBrcBuf_.Get<float>();
         scalarLocal_ = scalarBuf_.Get<float>();
+        Duplicate(scalarLocal_, 0.0f, SCALAR_LOCAL_ELEMS);
+        PipeBarrier<PIPE_V>();
         sumSqAcc_ = sumSqBuf_.Get<float>();
         scoreAcc_ = scoreBuf_.Get<float>();
 

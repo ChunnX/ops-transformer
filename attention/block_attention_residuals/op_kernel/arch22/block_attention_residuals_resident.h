@@ -112,6 +112,8 @@ private:
         metaSoftmax_ = metaSoftmaxBuf_.Get<float>();
         metaBrc_ = metaBrcBuf_.Get<float>();
         scalarLocal_ = scalarBuf_.Get<float>();
+        Duplicate(scalarLocal_, 0.0f, SCALAR_LOCAL_ELEMS);
+        PipeBarrier<PIPE_V>();
 
         if (needBackward_) {
             pipe_->InitBuffer(invQue_, 1, ELEM_PER_BLK_FP32 * sizeof(float));

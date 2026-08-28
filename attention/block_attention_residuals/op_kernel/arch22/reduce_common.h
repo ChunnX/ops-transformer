@@ -559,8 +559,6 @@ __aicore__ inline void SoftmaxSmallVec(const LocalTensor<float>& vecMeta, uint32
     Duplicate(foldWork, SOFTMAX_PAD, metaAlign);
     PipeBarrier<PIPE_V>();
     CopyCompactFloatsUb(foldWork, vecMeta, blockCount);
-    Duplicate(workScalar, 0.0f, ELEM_PER_BLK_FP32);
-    PipeBarrier<PIPE_V>();
     ReduceMaxHalfInterval(workScalar, foldWork, curColNum);
 
     // brcMeta = score - max；Exp（pad 区 ≈0）
@@ -573,8 +571,6 @@ __aicore__ inline void SoftmaxSmallVec(const LocalTensor<float>& vecMeta, uint32
     Duplicate(foldWork, 0.0f, metaAlign);
     PipeBarrier<PIPE_V>();
     CopyCompactFloatsUb(foldWork, brcMeta, blockCount);
-    Duplicate(workScalar, 0.0f, ELEM_PER_BLK_FP32);
-    PipeBarrier<PIPE_V>();
     ReduceSumHalfInterval(workScalar, foldWork, curColNum);
 
     // prob = exp / sum
