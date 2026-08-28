@@ -38,7 +38,8 @@ const constexpr int64_t INDEX_T = 0;
 const constexpr int64_t INDEX_N = 1;
 const constexpr int64_t INDEX_D_TND = 1;
 
-const constexpr int32_t C0_BASE_M = 256;
+// C0 的 K 很小，增大 M 基本块以减少 1024 行任务的分块次数。
+const constexpr int32_t C0_BASE_M = 512;
 const constexpr int32_t C0_BASE_N = 128;
 const constexpr int32_t C0_BASE_K = 32;
 const constexpr uint32_t MIN_D_LENGTH = 1;
