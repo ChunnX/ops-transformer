@@ -788,7 +788,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart
     PipeBarrier<PIPE_V>();
     vecInQueue1_.FreeTensor(invRmsBufLocal);
 
-    PipeBarrier<PIPE_V>();
     LocalTensor<P> hMixBuf;
     vecInQueue0_.AllocTensor<P>(hMixBuf);
     dataCopyParams.blockLen = curBSSize * fusionSize_ * sizeof(P);
