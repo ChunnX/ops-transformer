@@ -116,7 +116,7 @@ cann_ops_transformer.all_gather_quant_matmul(
 - `comm_mode`当前仅支持`"urma"`。
 - `group_sizes`在MX场景仅支持`[1, 1, 32]`（显式传入或自动推导结果均须满足）。
 - 通信域`group`名称长度需在[1, 128)范围内；`hccl_buffer_size`需为正整数。
-- 通信buffer大小约束：本算子使用HCCL内置通信buffer完成AllGather通信，该buffer大小由环境变量`HCCL_BUFFSIZE`（单位MB）控制。通信数据总量（all-gather的`x1`数据 + `x1_scale`）不能超过该buffer，大shape场景需提前通过`export HCCL_BUFFSIZE=<取值>`调大buffer。
+- 通信buffer大小约束：本算子使用HCCL内置通信buffer完成AllGather通信，该buffer大小由环境变量`HCCL_BUFFSIZE`（单位MB）控制。要求`通信数据总量 + 2MB <= hccl_buffer_size`，其中通信数据总量为`rank_size * M * (x1数据 + x1_scale)`；该约束在torch接口层与tiling层双重拦截，不满足时tiling阶段报错并提示建议的`HCCL_BUFFSIZE`取值，可通过`export HCCL_BUFFSIZE=<取值>`调大buffer后重试。
 
 ## 调用说明
 
