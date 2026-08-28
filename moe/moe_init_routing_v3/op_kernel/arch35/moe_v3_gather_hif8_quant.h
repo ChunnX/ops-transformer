@@ -190,17 +190,13 @@ template <typename T>
 __aicore__ inline void MoeGatherOutHif8Quant<T>::XTransformToHif8(int64_t curLoopCols)
 {
     LocalTensor<T> xLocal = xCopyInQueue_.DeQue<T>();
-    LocalTensor<hifloat8_t> xRowLocalHif8;
+    LocalTensor<hifloat8_t> xRowLocalHif8 = xCopyOutQueue_.AllocTensor<hifloat8_t>();
     if constexpr (IsSameType<T, bfloat16_t>::value) {
-        LocalTensor<bfloat16_t> xRowLocal = xLocal[0];
-        xRowLocalHif8 = xRowLocal.ReinterpretCast<hifloat8_t>();
         LocalTensor<float> xLocalFloatTemp = xLocalFloatTempBuf_.Get<float>();
         Cast(xLocalFloatTemp, xLocal, RoundMode::CAST_NONE, curLoopCols);
         Cast(xRowLocalHif8, xLocalFloatTemp, RoundMode::CAST_ROUND, curLoopCols);
     } else if constexpr (IsSameType<T, half>::value) {
-        LocalTensor<half> xRowLocal = xLocal[0];
-        xRowLocalHif8 = xRowLocal.ReinterpretCast<hifloat8_t>();
-        Cast(xRowLocalHif8, xRowLocal, RoundMode::CAST_ROUND, curLoopCols);
+        Cast(xRowLocalHif8, xLocal, RoundMode::CAST_ROUND, curLoopCols);
     }
     xCopyOutQueue_.EnQue(xRowLocalHif8);
     xCopyInQueue_.FreeTensor(xLocal);
