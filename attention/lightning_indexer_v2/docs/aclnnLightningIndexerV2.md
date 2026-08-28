@@ -597,7 +597,7 @@ int InitializeTensors(TensorResources& resources) {
 int ExecuteLightningIndexerV2(TensorResources& resources, aclrtStream stream,
                                  void** workspaceAddr, uint64_t* workspaceSize) {
     int64_t topk = 32;
-    int64_t maxSeqlenQ = 64;
+    int64_t maxSeqlenQ = -1;
     int64_t maskMode = 3;
     int64_t cmpRatio = 4;
     int64_t returnValue = 0;
