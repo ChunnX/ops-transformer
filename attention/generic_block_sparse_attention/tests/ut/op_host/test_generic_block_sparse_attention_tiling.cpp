@@ -74,8 +74,8 @@ std::vector<gert::TilingContextPara::TensorDescription> MakeInputs(ge::DataType 
         {{}, ge::DT_UNDEFINED, ge::FORMAT_ND},
         {{}, ge::DT_UNDEFINED, ge::FORMAT_ND},
         {{}, ge::DT_UNDEFINED, ge::FORMAT_ND},
-        {{}, ge::DT_UNDEFINED, ge::FORMAT_ND},
-        {{}, ge::DT_UNDEFINED, ge::FORMAT_ND},
+        {{{kBatch + 1}, {kBatch + 1}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{kBatch + 1}, {kBatch + 1}}, ge::DT_INT64, ge::FORMAT_ND},
         {{}, ge::DT_UNDEFINED, ge::FORMAT_ND},
         {{}, ge::DT_UNDEFINED, ge::FORMAT_ND},
         {{{kBatch, kMaxBlocks}, {kBatch, kMaxBlocks}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -271,6 +271,26 @@ TEST_F(generic_block_sparse_attention_tiling_ut, missing_metadata)
     GenericBlockSparseAttentionCompileInfo compileInfo;
     auto inputs = MakeInputs(ge::DT_FLOAT16);
     inputs[5] = {{}, ge::DT_UNDEFINED, ge::FORMAT_ND};
+    gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", inputs, MakeOutputs(ge::DT_FLOAT16, false),
+                                              MakeAttrs(1, 0, 0, 0), &compileInfo, "Ascend910B", 40, 196608);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(generic_block_sparse_attention_tiling_ut, missing_cu_seq_lengths_q)
+{
+    GenericBlockSparseAttentionCompileInfo compileInfo;
+    auto inputs = MakeInputs(ge::DT_FLOAT16);
+    inputs[11] = {{}, ge::DT_UNDEFINED, ge::FORMAT_ND};
+    gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", inputs, MakeOutputs(ge::DT_FLOAT16, false),
+                                              MakeAttrs(1, 0, 0, 0), &compileInfo, "Ascend910B", 40, 196608);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(generic_block_sparse_attention_tiling_ut, missing_cu_seq_lengths_kv)
+{
+    GenericBlockSparseAttentionCompileInfo compileInfo;
+    auto inputs = MakeInputs(ge::DT_FLOAT16);
+    inputs[12] = {{}, ge::DT_UNDEFINED, ge::FORMAT_ND};
     gert::TilingContextPara tilingContextPara("GenericBlockSparseAttention", inputs, MakeOutputs(ge::DT_FLOAT16, false),
                                               MakeAttrs(1, 0, 0, 0), &compileInfo, "Ascend910B", 40, 196608);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
