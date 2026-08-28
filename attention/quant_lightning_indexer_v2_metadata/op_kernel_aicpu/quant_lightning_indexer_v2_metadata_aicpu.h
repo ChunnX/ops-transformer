@@ -33,11 +33,7 @@ constexpr uint32_t COST_WEIGHT_S2 = 10U;
 constexpr uint32_t S1_BASE_SIZE_SMALL = 2;
 constexpr uint32_t TOPK_6K = 6144;
 
-enum BlockType : uint32_t {
-    NORMAL_BLOCK = 0,
-    TAIL_BLOCK,
-    BLOCK_MAX_TYPE
-};
+enum BlockType : uint32_t { NORMAL_BLOCK = 0, TAIL_BLOCK, BLOCK_MAX_TYPE };
 
 enum class SparseMode : uint8_t {
     DEFAULT_MASK = 0,
@@ -48,11 +44,7 @@ enum class SparseMode : uint8_t {
     SPARSE_BUTT,
 };
 
-enum class ValidSocVersion {
-    ASCEND910B = 0,
-    ASCEND950,
-    RESERVED_VERSION = 99999
-};
+enum class ValidSocVersion { ASCEND910B = 0, ASCEND950, RESERVED_VERSION = 99999 };
 
 template <class T>
 using Range = std::pair<T, T>;
@@ -117,11 +109,7 @@ struct SplitResult {
     FlashDecodeResult fdRes{0U, 0U};                 // FD信息
 
     SplitResult(uint32_t aicNum, uint32_t aivNum)
-        : bN2End(aicNum),
-          gS1End(aicNum),
-          s2End(aicNum),
-          firstFdDataWorkspaceIdx(aicNum),
-          fdRes(aicNum, aivNum) {};
+        : bN2End(aicNum), gS1End(aicNum), s2End(aicNum), firstFdDataWorkspaceIdx(aicNum), fdRes(aicNum, aivNum) {};
 };
 
 // 分核功能模块内部使用：记录切分信息
@@ -133,10 +121,7 @@ struct SplitInfo {
     bool isKvSeqAllZero{true};
 
     explicit SplitInfo(uint32_t batchSize)
-        : s1GBaseNum(batchSize),
-          s2BaseNum(batchSize),
-          s1GTailSize(batchSize),
-          s2TailSize(batchSize)
+        : s1GBaseNum(batchSize), s2BaseNum(batchSize), s1GTailSize(batchSize), s2TailSize(batchSize)
     {}
 };
 
@@ -150,9 +135,7 @@ struct CostInfo {
     uint64_t maxS1GCost{0}; // 新增
 
     explicit CostInfo(uint32_t batchSize)
-        : bN2CostOfEachBatch(batchSize),
-          bN2BlockOfEachBatch(batchSize),
-          bN2LastBlockCostOfEachBatch(batchSize)
+        : bN2CostOfEachBatch(batchSize), bN2BlockOfEachBatch(batchSize), bN2LastBlockCostOfEachBatch(batchSize)
     {}
 };
 
@@ -161,10 +144,7 @@ struct SplitContext {
     SplitInfo splitInfo{0U};
     CostInfo costInfo{0U};
 
-    explicit SplitContext(uint32_t batchSize)
-        : splitInfo(batchSize),
-          costInfo(batchSize)
-    {}
+    explicit SplitContext(uint32_t batchSize) : splitInfo(batchSize), costInfo(batchSize) {}
 };
 
 // 分核功能模块内部使用：记录batch相关的临时信息
@@ -223,11 +203,6 @@ public:
 private:
     bool Prepare(CpuKernelContext &ctx);
     bool ParamsCheck();
-    bool CheckCuSeqlensQ(int32_t batchSize) const;
-    bool CheckCuSeqlensK(int32_t batchSize) const;
-    bool CheckSequsedQ(int32_t batchSize) const;
-    bool CheckSequsedK(int32_t batchSize) const;
-    bool CheckCmpResidualK(int32_t batchSize) const;
     int32_t GetQueryBatchSize();
     ValidSocVersion ProcessSocVersion();
     bool ParamsInit();
@@ -238,12 +213,12 @@ private:
     uint32_t GetS1SeqSize(uint32_t bIdx);
     uint32_t GetS2SeqSize(uint32_t bIdx);
     uint64_t GetRevertS2Size(uint32_t bIdx);
-    int64_t CalcPreTokenLeftUp(uint32_t s1Size, uint64_t s2Size) const;
-    int64_t CalcNextTokenLeftUp(uint32_t s1Size, uint64_t s2Size) const;
+    int64_t CalcPreTokenLeftUp(uint32_t s1Size, uint64_t s2Size);
+    int64_t CalcNextTokenLeftUp(uint32_t s1Size, uint64_t s2Size);
     Range<int64_t> CalcS2TokenRange(uint32_t s1GIdx, const BatchCache &batchCache);
-    int64_t CalcCost(uint32_t basicM, uint32_t basicS2) const;
+    int64_t CalcCost(uint32_t basicM, uint32_t basicS2);
     BlockCost<int64_t> CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t s1GTailSize,
-                                     uint32_t s2TailSize) const;
+                                     uint32_t s2TailSize);
 
     // cache calculation
     void CalcBatchCache(uint32_t bIdx, const SplitContext &splitContext, BatchCache &batchCache);
@@ -272,6 +247,7 @@ private:
     void CalcSplitPlan(int64_t costLimit, const SplitContext &splitContext, SplitResult &result);
 
 private:
+    CpuKernelContext *context_ = nullptr;
     // input
     Tensor *cuSeqlensQ_ = nullptr;
     Tensor *cuSeqlensK_ = nullptr;

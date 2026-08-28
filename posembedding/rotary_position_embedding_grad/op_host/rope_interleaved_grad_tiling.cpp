@@ -105,7 +105,7 @@ using namespace Ops::Base;
 
 RotaryPositionEmbeddingGradTilingData tiling;
 
-static void PrintInfo(gert::TilingContext *context)
+static void PrintInfo(gert::TilingContext* context)
 {
     OP_LOGD(context->GetNodeName(), " batchSize=%ld.", tiling.ropeInterleavedGradParams.get_batchSize());
     OP_LOGD(context->GetNodeName(), " seqLen=%ld.", tiling.ropeInterleavedGradParams.get_seqLen());
@@ -127,12 +127,13 @@ static void PrintInfo(gert::TilingContext *context)
     OP_LOGD(context->GetNodeName(), " numHeadsLength=%ld.", tiling.ropeInterleavedGradParams.get_numHeadsLength());
     OP_LOGD(context->GetNodeName(), " numHeadsLoop=%ld.", tiling.ropeInterleavedGradParams.get_numHeadsLoop());
     OP_LOGD(context->GetNodeName(), " numHeadsTail=%ld.", tiling.ropeInterleavedGradParams.get_numHeadsTail());
-    OP_LOGD(context->GetNodeName(), " batchNumHeadsLength=%ld.",
-            tiling.ropeInterleavedGradParams.get_batchNumHeadsLength());
-    OP_LOGD(context->GetNodeName(), " batchNumHeadsLoop=%ld.",
-            tiling.ropeInterleavedGradParams.get_batchNumHeadsLoop());
-    OP_LOGD(context->GetNodeName(), " batchNumHeadsTail=%ld.",
-            tiling.ropeInterleavedGradParams.get_batchNumHeadsTail());
+    OP_LOGD(
+        context->GetNodeName(), " batchNumHeadsLength=%ld.",
+        tiling.ropeInterleavedGradParams.get_batchNumHeadsLength());
+    OP_LOGD(
+        context->GetNodeName(), " batchNumHeadsLoop=%ld.", tiling.ropeInterleavedGradParams.get_batchNumHeadsLoop());
+    OP_LOGD(
+        context->GetNodeName(), " batchNumHeadsTail=%ld.", tiling.ropeInterleavedGradParams.get_batchNumHeadsTail());
     OP_LOGD(context->GetNodeName(), " layout=%ld.", tiling.ropeInterleavedGradParams.get_layout());
 }
 
@@ -229,15 +230,22 @@ static void SetMaxElementNum(ge::DataType dataDtype, uint64_t reserveBufferSize,
     maxElementNum = GetDiv(bufferSize, wholeBufferBytes);
 }
 
-ge::graphStatus RopeCheckInputShape(gert::TilingContext *context, const gert::StorageShape *xShape,
-                                    const gert::StorageShape *cosShape, const gert::StorageShape *sinShape)
+ge::graphStatus RopeCheckInputShape(
+    gert::TilingContext* context, const gert::StorageShape* xShape, const gert::StorageShape* cosShape,
+    const gert::StorageShape* sinShape)
 {
-    OP_CHECK_IF(xShape == nullptr, OP_LOGE(context->GetNodeName(), "[RopeCheckInputShape] xShape is null."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(cosShape == nullptr, OP_LOGE(context->GetNodeName(), "[RopeCheckInputShape] cosShape is null."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(sinShape == nullptr, OP_LOGE(context->GetNodeName(), "[RopeCheckInputShape] sinShape is null."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        xShape == nullptr,
+        OP_LOGE(context->GetNodeName(), "[RopeCheckInputShape] xShape is null."),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        cosShape == nullptr,
+        OP_LOGE(context->GetNodeName(), "[RopeCheckInputShape] cosShape is null."),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        sinShape == nullptr,
+        OP_LOGE(context->GetNodeName(), "[RopeCheckInputShape] sinShape is null."),
+        return ge::GRAPH_FAILED);
     size_t xDimNum = xShape->GetStorageShape().GetDimNum();
     size_t cosDimNum = cosShape->GetStorageShape().GetDimNum();
     size_t sinDimNum = sinShape->GetStorageShape().GetDimNum();
@@ -253,19 +261,18 @@ ge::graphStatus RopeCheckInputShape(gert::TilingContext *context, const gert::St
     }
 
     if (xDimNum != inputDimNum || cosDimNum != inputDimNum || sinDimNum != inputDimNum) {
-        std::string dimNumMsg =
-            std::to_string(xDimNum) + ", " + std::to_string(cosDimNum) + " and " + std::to_string(sinDimNum);
-        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
-            context->GetNodeName(), "dy, cos and sin", dimNumMsg.c_str(),
+        std::string dimNumMsg = std::to_string(xDimNum) + ", " +
+        std::to_string(cosDimNum) + " and " + std::to_string(sinDimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context->GetNodeName(), "dy, cos and sin", dimNumMsg.c_str(),
             "The numbers of dimensions of input dy, cos and sin should all be 3D or 4D");
         return ge::GRAPH_FAILED;
     }
     for (size_t i = 0; i < xDimNum; ++i) {
         if (cosShape->GetStorageShape().GetDim(i) != sinShape->GetStorageShape().GetDim(i)) {
-            std::string shapeMsg =
-                ToString(cosShape->GetStorageShape()) + " and " + ToString(sinShape->GetStorageShape());
+            std::string shapeMsg = ToString(cosShape->GetStorageShape()) + " and " +
+                ToString(sinShape->GetStorageShape());
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "cos and sin", shapeMsg.c_str(),
-                                                   "The shapes of input cos and sin should be the same");
+                "The shapes of input cos and sin should be the same");
             return ge::GRAPH_FAILED;
         }
     }
@@ -273,17 +280,16 @@ ge::graphStatus RopeCheckInputShape(gert::TilingContext *context, const gert::St
     uint32_t cosHeadDim = cosShape->GetStorageShape().GetDim(headDimIndex);
     uint32_t sinHeadDim = sinShape->GetStorageShape().GetDim(headDimIndex);
     if ((xHeadDim != cosHeadDim) && (xHeadDim != sinHeadDim)) {
-        std::string shapeMsg = ToString(xShape->GetStorageShape()) + ", " + ToString(cosShape->GetStorageShape()) +
-                               " and " + ToString(sinShape->GetStorageShape());
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-            context->GetNodeName(), "dy, cos and sin", shapeMsg.c_str(),
+        std::string shapeMsg = ToString(xShape->GetStorageShape()) + ", " +
+            ToString(cosShape->GetStorageShape()) + " and " + ToString(sinShape->GetStorageShape());
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "dy, cos and sin", shapeMsg.c_str(),
             "The D axis of input dy, cos and sin should be the same, where D refers to the last dim");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeCheckOptInputShape(gert::TilingContext *context)
+ge::graphStatus RopeCheckOptInputShape(gert::TilingContext* context)
 {
     auto xOptionalInput = context->GetOptionalInputDesc(INPUT_X_IDX);
     auto xOptionalShape = context->GetOptionalInputShape(INPUT_X_IDX);
@@ -294,22 +300,24 @@ ge::graphStatus RopeCheckOptInputShape(gert::TilingContext *context)
         if (xOptionalStorageShape != dyStorageShape) {
             std::string shapeMsg = ToString(xOptionalStorageShape) + " and " + ToString(dyStorageShape);
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "x and dy", shapeMsg.c_str(),
-                                                   "The shapes of input x and input dy should be the same");
+                "The shapes of input x and input dy should be the same");
             return ge::GRAPH_FAILED;
         }
     }
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingSplitS(gert::TilingContext *context, uint64_t coreNum, uint64_t ubSize)
+static ge::graphStatus TilingSplitS(gert::TilingContext* context, uint64_t coreNum, uint64_t ubSize)
 {
     batchSize = tiling.ropeInterleavedGradParams.get_batchSize();
     seqLen = tiling.ropeInterleavedGradParams.get_seqLen();
     numHeads = tiling.ropeInterleavedGradParams.get_numHeads();
     headDim = tiling.ropeInterleavedGradParams.get_headDim();
     auto inputGradIdx = context->GetInputDesc(INPUT_GRAD_IDX);
-    OP_CHECK_IF(inputGradIdx == nullptr, OP_LOGE(context->GetNodeName(), "[TilingSplitS] inputGradIdx is null."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        inputGradIdx == nullptr,
+        OP_LOGE(context->GetNodeName(), "[TilingSplitS] inputGradIdx is null."),
+        return ge::GRAPH_FAILED);
     auto dataDtype = inputGradIdx->GetDataType();
     if (dataDtype == ge::DT_FLOAT16 || dataDtype == ge::DT_BF16) {
         alignHeadDim = GetCeilInt(headDim, ALIGN_FP16_BLOCK) * ALIGN_FP16_BLOCK;
@@ -346,13 +354,15 @@ static ge::graphStatus TilingSplitS(gert::TilingContext *context, uint64_t coreN
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingLayoutSplit(gert::TilingContext *context, const gert::StorageShape *xShape,
-                                  const gert::StorageShape *cosShape)
+ge::graphStatus TilingLayoutSplit(
+    gert::TilingContext* context, const gert::StorageShape* xShape, const gert::StorageShape* cosShape)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint64_t coreNum = ascendcPlatform.GetCoreNumAiv();
-    OP_CHECK_IF(coreNum == 0, OP_LOGE(context->GetNodeName(), "[TilingLayoutSplit] coreNum is zero."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        coreNum == 0,
+        OP_LOGE(context->GetNodeName(), "[TilingLayoutSplit] coreNum is zero."),
+        return ge::GRAPH_FAILED);
     uint64_t ubSize;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
 
@@ -390,7 +400,7 @@ ge::graphStatus TilingLayoutSplit(gert::TilingContext *context, const gert::Stor
         return ge::GRAPH_FAILED;
     }
     if (tiling.ropeInterleavedGradParams.get_batchSize() * tiling.ropeInterleavedGradParams.get_numHeads() >= MAX_BN) {
-        OP_LOGE(context->GetNodeName(), "B * N should be smaller than 1000.");
+        OP_LOGE(context->GetNodeName(), "B * N should smaller than 1000.");
         return ge::GRAPH_FAILED;
     }
     if (context->GetInputShape(INPUT_X_IDX) != nullptr) {
@@ -403,15 +413,17 @@ ge::graphStatus TilingLayoutSplit(gert::TilingContext *context, const gert::Stor
 
 ge::graphStatus RopeInterLeavedGradTlingClass::DoOpTiling()
 {
-    const gert::StorageShape *xShape = context_->GetInputShape(INPUT_GRAD_IDX);
-    const gert::StorageShape *cosShape = context_->GetInputShape(INPUT_COS_IDX);
-    const gert::StorageShape *sinShape = context_->GetInputShape(INPUT_SIN_IDX);
+    const gert::StorageShape* xShape = context_->GetInputShape(INPUT_GRAD_IDX);
+    const gert::StorageShape* cosShape = context_->GetInputShape(INPUT_COS_IDX);
+    const gert::StorageShape* sinShape = context_->GetInputShape(INPUT_SIN_IDX);
 
-    OP_CHECK_IF(RopeCheckInputShape(context_, xShape, cosShape, sinShape) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "RopeCheckInputShape fail."), return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(RopeCheckOptInputShape(context_) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "RopeCheckOptInputShape fail."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        RopeCheckInputShape(context_, xShape, cosShape, sinShape) != ge::GRAPH_SUCCESS,
+        OP_LOGE(context_->GetNodeName(), "RopeCheckInputShape fail."), return ge::GRAPH_FAILED);
+    
+    OP_CHECK_IF(
+        RopeCheckOptInputShape(context_) != ge::GRAPH_SUCCESS,
+        OP_LOGE(context_->GetNodeName(), "RopeCheckOptInputShape fail."), return ge::GRAPH_FAILED);
 
     tilingKey = BASE_TILING_KEY;
     auto dataDtype = context_->GetInputDesc(INPUT_GRAD_IDX)->GetDataType();
@@ -429,15 +441,16 @@ ge::graphStatus RopeInterLeavedGradTlingClass::DoOpTiling()
         OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "dy", dataDtypeStr.c_str(), "FLOAT, BF16 or FLOAT16");
         return ge::GRAPH_FAILED;
     }
-    OP_CHECK_IF(TilingLayoutSplit(context_, xShape, cosShape) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "TilingSplitS fail."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        TilingLayoutSplit(context_, xShape, cosShape) != ge::GRAPH_SUCCESS,
+        OP_LOGE(context_->GetNodeName(), "TilingSplitS fail."), return ge::GRAPH_FAILED);
 
     context_->SetTilingKey(tilingKey);
     tiling.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
     size_t usr_workspace_size = 0;
     size_t sys_work_space_size = 16 * 1024 * 1024;
-    size_t *current_workspace = context_->GetWorkspaceSizes(1);
+    size_t* current_workspace = context_->GetWorkspaceSizes(1);
     current_workspace[0] = usr_workspace_size + sys_work_space_size;
     PrintInfo(context_);
     return ge::GRAPH_SUCCESS;
