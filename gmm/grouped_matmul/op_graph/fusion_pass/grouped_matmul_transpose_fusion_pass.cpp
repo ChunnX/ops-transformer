@@ -305,6 +305,24 @@ bool IsMxWeightQuantMode(const GNode& groupedMatmulNode)
            antiquantScaleDesc.GetDataType() == DT_FLOAT8_E8M0;
 }
 
+bool GetTransposeAxesForScale(bool isMxScale, bool isMxPertokenScale, std::size_t dimNum,
+                              std::size_t &firstTransposeAxis, std::size_t &secondTransposeAxis)
+{
+    firstTransposeAxis = dimNum - kMiniShapeLen;
+    secondTransposeAxis = dimNum - 1;
+    if (isMxScale) {
+        if (dimNum < kPermScale.size()) {
+            return false;
+        }
+        firstTransposeAxis = dimNum - 3;     //倒数索引，定位N轴
+        secondTransposeAxis = dimNum - 2;    //倒数索引，定位K/gs
+    } else if (isMxPertokenScale) {
+        firstTransposeAxis = 0;
+        secondTransposeAxis = 1;
+    }
+    return true;
+}
+
 bool IsReshapeTransForScale(
     int32_t index, const GNodePtr& nodePerInput, bool isMxQuantMode, bool allowFullyDynamicMxFp4Scale)
 {
@@ -325,20 +343,14 @@ bool IsReshapeTransForScale(
         return false;
     }
 
-    std::size_t firstTransposeAxis = expectedOutputDims.size() - kMiniShapeLen;
-    std::size_t secondTransposeAxis = expectedOutputDims.size() - 1;
     const bool isMxScale =
         index == kScaleIndex && (isMxQuantMode || inputDesc.GetDataType() == DT_FLOAT8_E8M0);
     const bool isMxPertokenScale = index == kPertokenScaleIndex && inputDesc.GetDataType() == DT_FLOAT8_E8M0;
-    if (isMxScale) {
-        if (expectedOutputDims.size() < kPermScale.size()) {
-            return false;
-        }
-        firstTransposeAxis = expectedOutputDims.size() - 3;     //倒数索引，定位N轴
-        secondTransposeAxis = expectedOutputDims.size() - 2;    //倒数索引，定位K/gs
-    } else if (isMxPertokenScale) {
-        firstTransposeAxis = 0;
-        secondTransposeAxis = 1;
+    std::size_t firstTransposeAxis = 0;
+    std::size_t secondTransposeAxis = 0;
+    if (!GetTransposeAxesForScale(isMxScale, isMxPertokenScale, expectedOutputDims.size(), firstTransposeAxis,
+                                  secondTransposeAxis)) {
+        return false;
     }
 
     if (expectedOutputDims[firstTransposeAxis] != 1 && expectedOutputDims[secondTransposeAxis] != 1) {
