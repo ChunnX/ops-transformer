@@ -84,9 +84,10 @@ public:
             tilingData_->splitAxisTileSize : tilingData_->splitAxisTailSize) * nonSplitAxisBytes;
 
         if constexpr (EnableReuse) {
+            uint64_t commTiles = tilingData_->splitAxisTileCnt + tilingData_->splitAxisTailCnt;
             bufferCount_ = tilingData_->bufferCount;
-            if (bufferCount_ == 0) {
-                bufferCount_ = tilingData_->splitAxisTileCnt + tilingData_->splitAxisTailCnt;
+            if (bufferCount_ == 0 || bufferCount_ >= commTiles) {
+                bufferCount_ = commTiles;
                 dstChunkBytes_ = chunkBytes_;
             } else {
                 dstChunkBytes_ = bufferCount_ * tileMaxByteSize_;

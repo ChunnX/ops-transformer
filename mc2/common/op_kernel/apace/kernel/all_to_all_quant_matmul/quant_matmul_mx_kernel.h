@@ -326,11 +326,12 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
         MXFP_MULTI_BASE_SIZE;
 
     uint32_t bufferCount = commPolicy_.bufferCount;
-    uint64_t winPerRank = oriM;
+    uint64_t winPerRound = oriM;
+    uint64_t winTotalM = rankSize * oriM;
     if (bufferCount > 0) {
-        winPerRank = static_cast<uint64_t>(bufferCount) * params.localParams.headTileSize;
+        winPerRound = rankSize * params.localParams.headTileSize;
+        winTotalM = static_cast<uint64_t>(bufferCount) * winPerRound;
     }
-    auto winTotalM = rankSize * winPerRank;
 
     // 构建各 Tensor 的全局布局
     auto layoutA = MakeLayoutA{}(winTotalM, Te::Get<MNK_K>(params.problemShape));
@@ -440,7 +441,7 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
                     uint64_t slotIdx = tileIdx % static_cast<uint64_t>(bufferCount);
                     uint64_t tileOffset = static_cast<uint64_t>(mPos) -
                         tileIdx * params.localParams.headTileSize;
-                    actualMPos = rank * winPerRank + slotIdx * params.localParams.headTileSize + tileOffset;
+                    actualMPos = slotIdx * winPerRound + rank * params.localParams.headTileSize + tileOffset;
                 } else {
                     actualMPos = denseMPos;
                 }
@@ -473,7 +474,7 @@ __aicore__ inline void QuantMatmulMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Proc
                     uint64_t slotIdx = tileIdx % static_cast<uint64_t>(bufferCount);
                     uint64_t tileOffset = static_cast<uint64_t>(mPos) -
                         tileIdx * params.localParams.headTileSize;
-                    actualMPos = rank * winPerRank + slotIdx * params.localParams.headTileSize + tileOffset;
+                    actualMPos = slotIdx * winPerRound + rank * params.localParams.headTileSize + tileOffset;
                 } else {
                     actualMPos = denseMPos;
                 }

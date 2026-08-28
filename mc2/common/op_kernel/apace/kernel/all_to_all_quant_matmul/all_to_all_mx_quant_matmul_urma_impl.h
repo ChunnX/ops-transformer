@@ -286,6 +286,10 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     baseParams_.rankDataBytes = baseParams_.axisM * baseParams_.axisKa * sizeof(AType);
 
     baseParams_.bufferCount = tilingData->commTilingData.bufferCount;
+    uint64_t commTiles = tilingData->commTilingData.splitAxisTileCnt + tilingData->commTilingData.splitAxisTailCnt;
+    if (baseParams_.bufferCount >= commTiles) {
+        baseParams_.bufferCount = 0;
+    }
     if (baseParams_.bufferCount > 0) {
         uint64_t maxTileSize = tilingData->commTilingData.splitAxisTileSize >
             tilingData->commTilingData.splitAxisTailSize ?

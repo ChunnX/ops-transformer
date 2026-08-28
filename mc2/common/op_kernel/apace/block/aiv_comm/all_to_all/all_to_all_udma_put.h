@@ -52,7 +52,7 @@ private:
         if constexpr (EnableReuse) {
             uint64_t slotIdx = this->currentTileIdx_ % this->bufferCount_;
             dstAddr = reinterpret_cast<GM_ADDR>(this->udmaCtx_->commBufferAddrs[targetRankId] + this->winOffset_) +
-                this->udmaCtx_->rankId * this->dstChunkBytes_ + slotIdx * this->tileMaxByteSize_;
+                slotIdx * (this->udmaCtx_->rankSize * this->tileMaxByteSize_) + this->udmaCtx_->rankId * this->tileMaxByteSize_;
         } else {
             dstAddr = reinterpret_cast<GM_ADDR>(this->udmaCtx_->commBufferAddrs[targetRankId] + this->winOffset_) +
                 this->udmaCtx_->rankId * this->chunkBytes_ + this->tileByteOffset_;
