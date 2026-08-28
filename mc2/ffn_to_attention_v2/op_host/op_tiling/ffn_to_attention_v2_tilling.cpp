@@ -47,6 +47,7 @@ constexpr size_t URMA_FLAG_SLOT_SIZE = 32U;
 constexpr size_t URMA_WORKSPACE_ALIGN = 32U;
 constexpr size_t URMA_X_TYPE_SIZE = sizeof(uint16_t);
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1U;
+constexpr size_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 64LL;
 
 ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
 {
@@ -103,7 +104,7 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
     const size_t flagWorkspaceSize = aivNum * URMA_FLAG_SLOT_SIZE;
     OP_TILING_CHECK(dataWorkspaceSize > std::numeric_limits<size_t>::max() - flagWorkspaceSize,
                     OP_LOGE(context->GetNodeName(), "URMA workspace size overflow"), return ge::GRAPH_FAILED);
-    const size_t urmaWorkspaceSize = dataWorkspaceSize + flagWorkspaceSize;
+    const size_t urmaWorkspaceSize = dataWorkspaceSize + flagWorkspaceSize + RESERVED_WORKSPACE_SIZE;
     const size_t urmaWorkspaceOffset =
         (workSpaces[0] + URMA_WORKSPACE_ALIGN - 1U) / URMA_WORKSPACE_ALIGN * URMA_WORKSPACE_ALIGN;
     OP_TILING_CHECK(urmaWorkspaceOffset > std::numeric_limits<size_t>::max() - urmaWorkspaceSize,
