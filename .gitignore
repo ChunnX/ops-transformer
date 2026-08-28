@@ -26,6 +26,9 @@ build/
 build_out/
 output/
 
+# CANN kernel compile meta cache
+kernel_meta/
+
 # binary files
 *.so
 *.a

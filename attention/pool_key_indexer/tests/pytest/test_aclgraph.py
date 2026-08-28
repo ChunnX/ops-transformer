@@ -113,9 +113,7 @@ def _assert_output_spec(indices, values, cfg):
         f"indices shape {tuple(indices.shape)} != {exp_idx}"
     )
     if cfg["return_value"]:
-        assert values.dtype == torch.float32, (
-            f"values dtype {values.dtype} != float32"
-        )
+        assert values.dtype == torch.float32, f"values dtype {values.dtype} != float32"
         assert tuple(values.shape) == exp_val, (
             f"values shape {tuple(values.shape)} != {exp_val}"
         )
@@ -199,8 +197,10 @@ def test_aclgraph_bsnd_device_value():
         actual_seq_k=None,
         block_table=None,
     )
-    print(f"\n=== AclGraph-BSND-device: batch={batch} s1={s1} pools={pools} "
-          f"topk={topk} ps={ps} mask={mask_mode} dtype=fp16 ===")
+    print(
+        f"\n=== AclGraph-BSND-device: batch={batch} s1={s1} pools={pools} "
+        f"topk={topk} ps={ps} mask={mask_mode} dtype=fp16 ==="
+    )
 
     g, (si, sv) = _capture_with_warmup(run)
     g.replay()
@@ -215,14 +215,20 @@ def test_aclgraph_bsnd_device_value():
     compare_values(g_values, npu_values, dtype, label="aclgraph-values")
 
     # ---- 变值回放: 原地修改 device buffer, replay 读到新值 ----
-    old_sets = [tuple(sorted(r[r >= 0].tolist())) for r in npu_indices.reshape(-1, topk + ps - 1)]
+    old_sets = [
+        tuple(sorted(r[r >= 0].tolist()))
+        for r in npu_indices.reshape(-1, topk + ps - 1)
+    ]
     pool_tail_k.copy_((pool_tail_k + 1) % ps)
     g.replay()
     torch.npu.synchronize()
     new_indices = si.cpu()
     inputs["pool_tail_k"] = pool_tail_k.cpu()
     g_indices2, g_values2 = _golden(cfg, inputs)
-    new_sets = [tuple(sorted(r[r >= 0].tolist())) for r in new_indices.reshape(-1, topk + ps - 1)]
+    new_sets = [
+        tuple(sorted(r[r >= 0].tolist()))
+        for r in new_indices.reshape(-1, topk + ps - 1)
+    ]
     assert new_sets != old_sets, "buffer 值修改后 replay 输出未变化(疑似烘焙常量语义)"
     ok2 = compare_indices(g_indices2, new_indices)
     assert ok2, "aclgraph(BSND device-value) 变值回放 indices mismatch vs 新 golden"
@@ -283,8 +289,10 @@ def test_aclgraph_tnd_device_value():
         mask_mode=mask_mode,
         return_value=False,
     )
-    print(f"\n=== AclGraph-TND-device: q_lens={q_lens} k_pools={k_pools} "
-          f"topk={topk} ps={ps} mask={mask_mode} dtype=bf16 ===")
+    print(
+        f"\n=== AclGraph-TND-device: q_lens={q_lens} k_pools={k_pools} "
+        f"topk={topk} ps={ps} mask={mask_mode} dtype=bf16 ==="
+    )
 
     g, (si, sv) = _capture_with_warmup(run)
     g.replay()
@@ -314,10 +322,19 @@ def test_aclgraph_tnd_device_value():
     mutated = si.cpu()
     ok2 = compare_indices(
         pool_key_indexer_reference(
-            query.cpu(), pool_key.cpu(), weights.cpu(), pool_tail_k.cpu(),
-            actual_seq_q=actual_seq_q.cpu(), actual_seq_k=actual_seq_k.cpu(),
-            block_table=None, layout_q="TND", layout_k="TND", topk=topk,
-            pool_size=ps, mask_mode=mask_mode, return_value=False,
+            query.cpu(),
+            pool_key.cpu(),
+            weights.cpu(),
+            pool_tail_k.cpu(),
+            actual_seq_q=actual_seq_q.cpu(),
+            actual_seq_k=actual_seq_k.cpu(),
+            block_table=None,
+            layout_q="TND",
+            layout_k="TND",
+            topk=topk,
+            pool_size=ps,
+            mask_mode=mask_mode,
+            return_value=False,
         )[0],
         mutated,
     )
@@ -376,8 +393,10 @@ def test_aclgraph_bsnd_host_value():
         mask_mode=mask_mode,
         return_value=True,
     )
-    print(f"\n=== AclGraph-BSND-host: batch={batch} s1={s1} pools={pools} "
-          f"topk={topk} ps={ps} mask={mask_mode} dtype=fp16 ===")
+    print(
+        f"\n=== AclGraph-BSND-host: batch={batch} s1={s1} pools={pools} "
+        f"topk={topk} ps={ps} mask={mask_mode} dtype=fp16 ==="
+    )
 
     g, (si, sv) = _capture_with_warmup(run)
     g.replay()
@@ -458,8 +477,10 @@ def test_aclgraph_tnd_host_value():
         mask_mode=mask_mode,
         return_value=False,
     )
-    print(f"\n=== AclGraph-TND-host: q_lens={q_lens} k_pools={k_pools} "
-          f"topk={topk} ps={ps} mask={mask_mode} dtype=bf16 ===")
+    print(
+        f"\n=== AclGraph-TND-host: q_lens={q_lens} k_pools={k_pools} "
+        f"topk={topk} ps={ps} mask={mask_mode} dtype=bf16 ==="
+    )
 
     g, (si, sv) = _capture_with_warmup(run)
     g.replay()
@@ -510,9 +531,16 @@ def test_value_input_host_validation_routing():
     # CPU 非法 tail(= pool_size, 越界) -> tiling 值校验拒绝
     with pytest.raises(Exception, match="pool_tail_k"):
         torch.ops.cann_ops_transformer.pool_key_indexer(
-            q, k, w, torch.tensor([ps], dtype=torch.int64),
-            layout_q="BSND", layout_k="BSND",
-            topk=topk, pool_size=ps, mask_mode=3, quant_mode=-1,
+            q,
+            k,
+            w,
+            torch.tensor([ps], dtype=torch.int64),
+            layout_q="BSND",
+            layout_k="BSND",
+            topk=topk,
+            pool_size=ps,
+            mask_mode=3,
+            quant_mode=-1,
             return_value=True,
         )
     print("=== VALUE-INPUT ROUTING (CPU validation preserved) PASSED ===")

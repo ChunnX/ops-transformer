@@ -1,0 +1,46 @@
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.0.3, pluggy-1.6.0 -- /root/miniconda3/envs/gjw_/bin/python
+cachedir: .pytest_cache
+rootdir: /opt/gjw/ops-transformer/attention/pool_key_indexer/tests/pytest
+configfile: pytest.ini
+plugins: anyio-4.13.0, timeout-2.4.0
+collecting ... ninja: no work to do.
+ninja: no work to do.
+ninja: no work to do.
+ninja: no work to do.
+ninja: no work to do.
+ninja: no work to do.
+collected 11 items
+
+test_aclgraph.py::test_aclgraph_case[aclgraph_bsnd_baseline] ninja: no work to do.
+XFAIL (...)
+test_aclgraph.py::test_aclgraph_case[aclgraph_bsnd_ps1] XFAIL (csrc ...)
+test_aclgraph.py::test_aclgraph_case[aclgraph_bsnd_mask0] XFAIL (csr...)
+test_aclgraph.py::test_aclgraph_case[aclgraph_tnd] XFAIL (csrc 将 po...)
+test_aclgraph.py::test_aclgraph_case[aclgraph_bsnd_pa] XFAIL (csrc ...)
+test_aclgraph.py::test_aclgraph_case[aclgraph_tnd_pa] XFAIL (csrc 将...)
+test_aclgraph.py::test_aclgraph_case[aclgraph_bsnd_noval] XFAIL (csr...)
+test_aclgraph.py::test_aclgraph_case[aclgraph_bsnd_pools_lt_sparse] XFAIL
+test_aclgraph.py::test_aclgraph_case[aclgraph_bsnd_ps128_tail127] XFAIL
+test_aclgraph.py::test_aclgraph_case[aclgraph_tnd_zero_pool] XFAIL (...)
+test_aclgraph.py::test_aclgraph_case_inventory PASSED
+
+=============================== warnings summary ===============================
+../../../../../../../root/miniconda3/envs/gjw_/lib/python3.11/site-packages/torch/jit/_script.py:362: 14 warnings
+  /root/miniconda3/envs/gjw_/lib/python3.11/site-packages/torch/jit/_script.py:362: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+test_aclgraph.py: 10 warnings
+  /root/miniconda3/envs/gjw_/lib/python3.11/site-packages/torch_npu/dynamo/torchair/configs/compiler_config.py:105: UserWarning: The following torchair config or properties may not take effect or report error in reduce-overhead mode: config.experimental_config.enable_view_optimize:True, set_dim_gears, dynamo_export, scope, npu_print
+    warnings.warn(
+
+test_aclgraph.py: 10 warnings
+  /root/miniconda3/envs/gjw_/lib/python3.11/site-packages/torch_npu/dynamo/torchair/configs/compiler_config.py:112: DeprecationWarning: The "reduce-overhead" mode configuration will be deprecated. Please use the "npugraph_ex" backend.
+    warnings.warn("The \"reduce-overhead\" mode configuration will be deprecated. "
+
+test_aclgraph.py::test_aclgraph_case[aclgraph_bsnd_baseline]
+  /root/miniconda3/envs/gjw_/lib/python3.11/site-packages/torch_npu/dynamo/torchair/_acl_concrete_graph/acl_graph.py:1169: UserWarning: Cannot create tensor with interal format while allow_internel_format=False, tensor will be created with base format. (Triggered internally at ../torch_npu/csrc/aten/common/TensorFactories.cpp:340.)
+    args_list[input_idx] = torch.empty_like(args_list[input_idx], memory_format=torch.contiguous_format)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================= 1 passed, 10 xfailed, 35 warnings in 13.80s ==================

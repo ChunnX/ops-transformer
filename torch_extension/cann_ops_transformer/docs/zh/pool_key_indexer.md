@@ -120,7 +120,7 @@ cann_ops_transformer.pool_key_indexer(
 ## 约束说明
 
 - 该接口支持推理场景下使用。
-- 该接口支持单算子模式和TorchAir（aclgraph）图模式调用。
+- 该接口支持单算子模式、TorchAir（GE图）模式和TorchAir（aclgraph）图模式调用。
 - B（Batch）表示输入样本批量大小。
 - 参数query、pool_key的数据类型应保持一致。
 - topk需能被pool_size整除。
@@ -164,7 +164,6 @@ cann_ops_transformer.pool_key_indexer(
   ```python
   import torch
   import torch_npu
-  import numpy as np
   from cann_ops_transformer import pool_key_indexer
 
   B = 2
@@ -182,7 +181,7 @@ cann_ops_transformer.pool_key_indexer(
   query = torch.randn(B, S1, N1, D, dtype=torch.float16).npu()
   pool_key = torch.randn(B, S2, N2, D, dtype=torch.float16).npu()
   weights = torch.randn(B, S1, N1, dtype=torch.float16).npu()
-  pool_tail_k = torch.tensor([0, 8], dtype=torch.int32).npu()  # batch0尾块满, batch1尾块8个token
+  pool_tail_k = torch.tensor([0, 8], dtype=torch.int64).npu()  # batch0尾块满, batch1尾块8个token
 
   # 执行pool_key_indexer
   sparse_indices, sparse_values = pool_key_indexer(
@@ -195,18 +194,16 @@ cann_ops_transformer.pool_key_indexer(
       quant_mode=-1,
       return_value=return_value
   )
-  print(f"sparse_indices shape: {sparse_indices.shape}")
-  print(f"sparse_values shape: {sparse_values.shape}")
+  print(f"sparse_indices shape: {sparse_indices.shape}")  # (2, 64, 143)
+  print(f"sparse_values shape: {sparse_values.shape}")    # (2, 64, 8)
   ```
 - 单算子模式调用（TND + 无掩码 + 退化场景pool_size=1）：
 
   ```python
   import torch
   import torch_npu
-  import numpy as np
   from cann_ops_transformer import pool_key_indexer
 
-  B = 2
   q_lens = [32, 48]
   k_lens = [128, 192]
   N1 = 8
@@ -222,10 +219,10 @@ cann_ops_transformer.pool_key_indexer(
   query = torch.randn(total_q, N1, D, dtype=torch.float16).npu()
   pool_key = torch.randn(total_k, N2, D, dtype=torch.float16).npu()
   weights = torch.randn(total_q, N1, dtype=torch.float16).npu()
-  pool_tail_k = torch.tensor([0, 0], dtype=torch.int32).npu()
+  pool_tail_k = torch.tensor([0, 0], dtype=torch.int64).npu()
   # TND前缀和
-  actual_seq_q = torch.tensor([q_lens[0], q_lens[0] + q_lens[1]], dtype=torch.int32).npu()
-  actual_seq_k = torch.tensor([k_lens[0], k_lens[0] + k_lens[1]], dtype=torch.int32).npu()
+  actual_seq_q = torch.tensor([q_lens[0], q_lens[0] + q_lens[1]], dtype=torch.int64).npu()
+  actual_seq_k = torch.tensor([k_lens[0], k_lens[0] + k_lens[1]], dtype=torch.int64).npu()
 
   sparse_indices, sparse_values = pool_key_indexer(
       query, pool_key, weights, pool_tail_k,
@@ -239,15 +236,14 @@ cann_ops_transformer.pool_key_indexer(
       quant_mode=-1,
       return_value=False
   )
-  print(f"sparse_indices shape: {sparse_indices.shape}")
+  print(f"sparse_indices shape: {sparse_indices.shape}")  # (80, 64)
   # return_value=False时sparse_values为空tensor
   ```
-- TorchAir（aclgraph）图模式调用：
+- TorchAir（GE图）模式调用：
 
   ```python
   import torch
   import torch_npu
-  import numpy as np
   import torchair
   from cann_ops_transformer import pool_key_indexer
 
@@ -257,37 +253,77 @@ cann_ops_transformer.pool_key_indexer(
   N1 = 8
   N2 = 1
   D = 128
-  topk = 128
-  pool_size = 16
-  mask_mode = 3
 
   query = torch.randn(B, S1, N1, D, dtype=torch.float16).npu()
   pool_key = torch.randn(B, S2, N2, D, dtype=torch.float16).npu()
   weights = torch.randn(B, S1, N1, dtype=torch.float16).npu()
-  pool_tail_k = torch.tensor([0], dtype=torch.int32).npu()
+  pool_tail_k = torch.tensor([0], dtype=torch.int64).npu()
 
   class PoolKeyIndexerNetwork(torch.nn.Module):
-      def __init__(self):
-          super(PoolKeyIndexerNetwork, self).__init__()
-
       def forward(self, query, pool_key, weights, pool_tail_k):
           return torch.ops.cann_ops_transformer.pool_key_indexer(
               query, pool_key, weights, pool_tail_k,
               layout_q="BSND",
               layout_k="BSND",
-              topk=topk,
-              pool_size=pool_size,
-              mask_mode=mask_mode,
+              topk=128,
+              pool_size=16,
+              mask_mode=3,
               quant_mode=-1,
               return_value=True
           )
 
   from torchair.configs.compiler_config import CompilerConfig
   config = CompilerConfig()
-  config.mode = "reduce-overhead"
+  config.mode = "max-autotune"
   npu_backend = torchair.get_npu_backend(compiler_config=config)
   torch._dynamo.reset()
   npu_mode = torch.compile(PoolKeyIndexerNetwork(), fullgraph=True, backend=npu_backend, dynamic=False)
+  sparse_indices, sparse_values = npu_mode(query, pool_key, weights, pool_tail_k)
+  print(f"sparse_indices shape: {sparse_indices.shape}")
+  ```
+- TorchAir（aclgraph）图模式调用：
+
+  ```python
+  import torch
+  import torch_npu
+  import torchair
+  from cann_ops_transformer import pool_key_indexer
+
+  B = 1
+  S1 = 64
+  S2 = 256
+  N1 = 8
+  N2 = 1
+  D = 128
+
+  query = torch.randn(B, S1, N1, D, dtype=torch.float16).npu()
+  pool_key = torch.randn(B, S2, N2, D, dtype=torch.float16).npu()
+  weights = torch.randn(B, S1, N1, dtype=torch.float16).npu()
+  pool_tail_k = torch.tensor([0], dtype=torch.int64).npu()
+
+  class PoolKeyIndexerNetwork(torch.nn.Module):
+      def forward(self, query, pool_key, weights, pool_tail_k):
+          return torch.ops.cann_ops_transformer.pool_key_indexer(
+              query, pool_key, weights, pool_tail_k,
+              layout_q="BSND",
+              layout_k="BSND",
+              topk=128,
+              pool_size=16,
+              mask_mode=3,
+              quant_mode=-1,
+              return_value=True
+          )
+
+  from torchair.configs.compiler_config import CompilerConfig
+  config = CompilerConfig()
+  # npugraph_ex 为 aclgraph 捕获/回放路径（等价于已废弃的 reduce-overhead）
+  config.mode = "npugraph_ex"
+  npu_backend = torchair.get_npu_backend(compiler_config=config)
+  torch._dynamo.reset()
+  npu_mode = torch.compile(PoolKeyIndexerNetwork(), fullgraph=True, backend=npu_backend, dynamic=False)
+  # 首次调用触发捕获，其后调用走回放；值输入为NPU tensor时为图输入，
+  # 回放期读取buffer当前内容，修改后无需重新捕获
+  npu_mode(query, pool_key, weights, pool_tail_k)
   sparse_indices, sparse_values = npu_mode(query, pool_key, weights, pool_tail_k)
   print(f"sparse_indices shape: {sparse_indices.shape}")
   ```
