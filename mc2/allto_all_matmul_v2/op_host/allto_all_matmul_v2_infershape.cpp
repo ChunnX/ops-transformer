@@ -26,10 +26,10 @@ using Ops::Base::CeilDiv;
 
 namespace {
 
-constexpr size_t INDEX_IN_X1 = 0;
-constexpr size_t INDEX_IN_X2 = 1;
-constexpr size_t INDEX_IN_X1_SCALE = 3;
-constexpr size_t INDEX_IN_X2_SCALE = 4;
+constexpr size_t INDEX_IN_X1 = 1;
+constexpr size_t INDEX_IN_X2 = 2;
+constexpr size_t INDEX_IN_X1_SCALE = 4;
+constexpr size_t INDEX_IN_X2_SCALE = 5;
 constexpr size_t INDEX_OUT_Y = 0;
 constexpr size_t INDEX_ATTR_WORLD_SIZE = 1;
 constexpr size_t INDEX_ATTR_Y_DTYPE = 3;

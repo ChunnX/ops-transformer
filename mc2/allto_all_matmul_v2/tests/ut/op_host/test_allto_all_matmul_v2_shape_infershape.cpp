@@ -31,19 +31,21 @@ TEST_P(InferShapeTest, param)
 {
     auto param = GetParam();
     std::vector<gert::InfershapeContextPara::TensorDescription> inputTensorDesc;
-    if (param.inputInstance[0] == 1) {
+    // context: op_def 第 0 个输入，InferShape 不使用但需占位以保持索引一致
+    inputTensorDesc.emplace_back(param.context);
+    if (param.inputInstance[1] == 1) {
         inputTensorDesc.emplace_back(param.x1);
     }
-    if (param.inputInstance[1] == 1) {
+    if (param.inputInstance[2] == 1) {
         inputTensorDesc.emplace_back(param.x2);
     }
-    if (param.inputInstance[2] == 1) {
+    if (param.inputInstance[3] == 1) {
         inputTensorDesc.emplace_back(param.bias);
     }
-    if (param.inputInstance[3] == 1) {
+    if (param.inputInstance[4] == 1) {
         inputTensorDesc.emplace_back(param.x1Scale);
     }
-    if (param.inputInstance[4] == 1) {
+    if (param.inputInstance[5] == 1) {
         inputTensorDesc.emplace_back(param.x2Scale);
     }
 
