@@ -34,6 +34,7 @@
 #include "../../../op_kernel/arch35/mega_moe_tiling_key.h"
 #include "../../../op_kernel/arch35/common/mega_moe_constants.h"
 #include "../../../op_kernel/arch35/common/mega_moe_workspace.h"
+#include "../../../op_kernel/arch35/common/mega_moe_a8w4_trace_config.h"
 
 using namespace Mc2Tiling;
 using namespace AscendC;
@@ -1750,11 +1751,19 @@ static ge::graphStatus CheckOutputTensorDim(const gert::TilingContext *context, 
     OP_LOGD(nodeName, "y dim0 = %ld", yDim0);
     OP_LOGD(nodeName, "y dim1 = %ld", yDim1);
 
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+    constexpr int64_t bf16Bytes = 2;
+    int64_t traceRows =
+        static_cast<int64_t>((MegaMoeImpl::A8W4_TRACE_OUTPUT_BYTES + h * bf16Bytes - 1) / (h * bf16Bytes));
+    int64_t expectedYDim0 = std::max(bs, traceRows);
+#else
+    int64_t expectedYDim0 = bs;
+#endif
     OP_TILING_CHECK(
-        yDim0 != bs || yDim1 != h,
+        yDim0 != expectedYDim0 || yDim1 != h,
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
             nodeName, "y", (std::string("[") + std::to_string(yDim0) + ", " + std::to_string(yDim1) + "]").c_str(),
-            (std::string("The shape of y must be [bs, h] = [") + std::to_string(bs) + ", " + std::to_string(h) + "].")
+            (std::string("The shape of y must be [") + std::to_string(expectedYDim0) + ", " + std::to_string(h) + "].")
                 .c_str()),
         return ge::GRAPH_FAILED);
 

@@ -20,6 +20,7 @@
 #include "tensor_api/tensor.h"
 #include "../blaze/epilogue/block_epilogue_activation_mx_quant.h"
 #include "../common/mega_moe_gmm_common.h"
+#include "../mega_moe_a8w4_trace.h"
 
 namespace MegaMoeImpl {
 
@@ -30,7 +31,8 @@ constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_128 = 128U * 256U;
 
 // 等待当前 GMM1 tile 对应的 Dispatch 输入就绪。
 template <bool IsShared, typename Config>
-__aicore__ inline void WaitForGmm1InputReady(const GMMAddrInfo &gmmAddrInfo, const Config &config, uint32_t mLoc)
+__aicore__ inline void WaitForGmm1InputReady(const GMMAddrInfo &gmmAddrInfo, const Config &config, uint32_t mLoc,
+                                             uint32_t traceTile = static_cast<uint32_t>(-1))
 {
     if constexpr (IsShared) {
         return;
@@ -39,7 +41,17 @@ __aicore__ inline void WaitForGmm1InputReady(const GMMAddrInfo &gmmAddrInfo, con
     uint32_t targetValue = (mLoc + config.tileM > config.m) ? (config.m - mLoc) : config.tileM;
     uint64_t flagOffset = static_cast<uint64_t>(waveIdx) * INT_CACHELINE;
     __gm__ int32_t *flagValueAddr = gmmAddrInfo.dispatchToGmm1Flag + flagOffset;
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+    A8W4CriticalPathTrace *trace = GetA8W4Trace(gmmAddrInfo);
+    uint64_t waitBegin = trace == nullptr ? 0U : trace->Now();
+#endif
     WaitUntilGmFlagEquals(flagValueAddr, static_cast<int32_t>(targetValue));
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+    if (trace != nullptr) {
+        trace->RecordWait(A8W4TraceEvent::WAIT_FOR_DISPATCH, A8W4TraceEvent::GMM1_COMPUTE,
+                          GetA8W4TraceScope(gmmAddrInfo, traceTile), waitBegin, trace->Now());
+    }
+#endif
 }
 
 namespace GmmKernel {
@@ -280,13 +292,17 @@ __aicore__ inline void Gmm1AicMmadA8W4(WorkSet &workSet, const Params &params, c
 
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+        A8W4CriticalPathTrace *trace = GetA8W4Trace(gmmAddrInfo);
+        uint64_t tileBegin = trace == nullptr ? 0U : trace->Now();
+#endif
         auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
         auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
         uint32_t waveIdx = mLoc / config.tileM;
         if (waveIdx != lastWaveWaited) {
-            WaitForGmm1InputReady<IsShared>(gmmAddrInfo, config, mLoc);
+            WaitForGmm1InputReady<IsShared>(gmmAddrInfo, config, mLoc, loopIdx);
             lastWaveWaited = waveIdx;
         }
 
@@ -300,6 +316,12 @@ __aicore__ inline void Gmm1AicMmadA8W4(WorkSet &workSet, const Params &params, c
         } else {
             AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag, ++gmTileSequence);
         }
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+        if (trace != nullptr) {
+            trace->Record(A8W4TraceEvent::GMM1_COMPUTE, A8W4TraceEvent::INVALID, A8W4_TRACE_END_COMPLETE,
+                          GetA8W4TraceScope(gmmAddrInfo, loopIdx), tileBegin, trace->Now());
+        }
+#endif
     }
 }
 
@@ -572,10 +594,14 @@ __aicore__ inline void Gmm1Aiv1EpilogueTileA8W4(ActivationQuantOp &activationQua
 // 为一个 GMM1 逻辑 block 的 AIV0 路径展开两段 A8W4 权重。
 template <typename BlockPrologue, typename Scheduler, typename TensorB, typename Config>
 __aicore__ inline void Gmm1Aiv0PrologueA8W4(Scheduler &scheduler, TensorB &gmB, const Config &config,
-                                            uint32_t startLoopIdx, uint32_t tileNum)
+                                            const GMMAddrInfo &gmmAddrInfo, uint32_t startLoopIdx, uint32_t tileNum)
 {
     BlockPrologue blockPrologue;
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+        A8W4CriticalPathTrace *trace = GetA8W4Trace(gmmAddrInfo);
+        uint64_t tileBegin = trace == nullptr ? 0U : trace->Now();
+#endif
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
@@ -586,6 +612,15 @@ __aicore__ inline void Gmm1Aiv0PrologueA8W4(Scheduler &scheduler, TensorB &gmB, 
             auto nOffset = nLoc + weightBlock * config.outputN;
             blockPrologue(gmB, mL1Size, config.k, nL1Size, nOffset, config.n, config.blockMmadTiling.l1Params.kL1);
         }
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+        if (trace != nullptr) {
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(0);
+            trace->Record(A8W4TraceEvent::GMM1_PROLOGUE, A8W4TraceEvent::INVALID,
+                          A8W4_TRACE_END_COMPLETE | A8W4_TRACE_ONLY_COMPLETION, GetA8W4TraceScope(gmmAddrInfo, loopIdx),
+                          tileBegin, trace->Now());
+        }
+#endif
     }
 }
 
@@ -593,7 +628,17 @@ __aicore__ inline void WaitGmm1TileStatus(const GMMAddrInfo &gmmAddrInfo, uint32
 {
     __gm__ int32_t *statusAddr = gmmAddrInfo.gmm1TileStatus + static_cast<uint64_t>(loopIdx) * INT_CACHELINE;
     int32_t roundTag = static_cast<int32_t>(expertIdx + 1);
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+    A8W4CriticalPathTrace *trace = GetA8W4Trace(gmmAddrInfo);
+    uint64_t waitBegin = trace == nullptr ? 0U : trace->Now();
+#endif
     WaitUntilGmFlagEquals(statusAddr, roundTag);
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+    if (trace != nullptr) {
+        trace->RecordWait(A8W4TraceEvent::WAIT_FOR_GMM1, A8W4TraceEvent::ACTIVATION_WORK,
+                          GetA8W4TraceScope(gmmAddrInfo, loopIdx), waitBegin, trace->Now());
+    }
+#endif
 }
 
 // Prefetch 路径的 AIV0 等待 GM tile 就绪，再执行 SwiGLU/量化。
@@ -739,6 +784,10 @@ __aicore__ inline void Gmm1Aiv1PrefetchEpilogueA8W4(WorkSet &workSet, const Para
                                                     uint32_t expertIdx)
 {
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+        A8W4CriticalPathTrace *trace = GetA8W4Trace(gmmAddrInfo);
+        uint64_t tileBegin = trace == nullptr ? 0U : trace->Now();
+#endif
         auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
         auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
@@ -747,6 +796,12 @@ __aicore__ inline void Gmm1Aiv1PrefetchEpilogueA8W4(WorkSet &workSet, const Para
         Gmm1Aiv1PrefetchEpilogueTileA8W4<ElementC, MakeLayoutC, IsWaveFlagGrained>(
             activationQuantOp, workSet.gmC, workSet.metaInfoGm, gmmAddrInfo, config, actualShape, mLoc, nLoc,
             expertBeforeCnt);
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+        if (trace != nullptr) {
+            trace->Record(A8W4TraceEvent::ACTIVATION_WORK, A8W4TraceEvent::INVALID, A8W4_TRACE_END_COMPLETE,
+                          GetA8W4TraceScope(gmmAddrInfo, loopIdx), tileBegin, trace->Now());
+        }
+#endif
     }
 }
 
@@ -758,15 +813,34 @@ __aicore__ inline void Gmm1Aiv1EpilogueA8W4(WorkSet &workSet, const GMMAddrInfo 
                                             ActivationQuantOp &activationQuantOp)
 {
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+        A8W4CriticalPathTrace *trace = GetA8W4Trace(gmmAddrInfo);
+        uint64_t tileBegin = trace == nullptr ? 0U : trace->Now();
+#endif
         auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
         auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
         int32_t expectedReadySequence = gmTileSequence + 1;
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+        uint64_t waitBegin = trace == nullptr ? 0U : trace->Now();
+#endif
         WaitUntilGmFlagAtLeast(gmmAddrInfo.gmmToEpilogueFlag, expectedReadySequence);
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+        if (trace != nullptr) {
+            trace->RecordWait(A8W4TraceEvent::WAIT_FOR_GMM1, A8W4TraceEvent::ACTIVATION_WORK,
+                              GetA8W4TraceScope(gmmAddrInfo, loopIdx), waitBegin, trace->Now());
+        }
+#endif
         Gmm1Aiv1EpilogueTileA8W4<ElementC, MakeLayoutC, IsWaveFlagGrained>(activationQuantOp, workSet.gmC, gmmAddrInfo,
                                                                            config, actualShape, mLoc, nLoc);
         gmTileSequence = expectedReadySequence;
+#if MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE
+        if (trace != nullptr) {
+            trace->Record(A8W4TraceEvent::ACTIVATION_WORK, A8W4TraceEvent::INVALID, A8W4_TRACE_END_COMPLETE,
+                          GetA8W4TraceScope(gmmAddrInfo, loopIdx), tileBegin, trace->Now());
+        }
+#endif
     }
 }
 
@@ -813,7 +887,7 @@ __aicore__ inline void Gmm1ExecA8W4(Scheduler &scheduler, const Params &params, 
         Gmm1AicMmadA8W4<BlockMmad, IsShared, TopkWeightsPrefetch>(workSet, params, gmmAddrInfo, config, startLoopIdx,
                                                                   tileNum, gmTileSequence, expertIdx);
     } else if (GetSubBlockIdx() == 0) {
-        Gmm1Aiv0PrologueA8W4<BlockPrologue>(workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
+        Gmm1Aiv0PrologueA8W4<BlockPrologue>(workSet.scheduler, workSet.gmB, config, gmmAddrInfo, startLoopIdx, tileNum);
     } else {
         if constexpr (TopkWeightsPrefetch) {
             Gmm1Aiv1PrefetchEpilogueA8W4<ElementC, MakeLayoutC, IsWaveFlagGrained>(
