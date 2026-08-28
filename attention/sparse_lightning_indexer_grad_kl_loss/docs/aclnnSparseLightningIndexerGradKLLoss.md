@@ -343,28 +343,28 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         <td>-</td>
         </tr>
         <tr>
-        <td>pre_tokens</td>
-        <td>输入</td>
-        <td>左侧mask保留的token数。</td>
-        <td>
-        -
-        </td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
+            <td>pre_tokens</td>
+            <td>输入</td>
+            <td>左侧mask保留的token数。</td>
+            <td>
+            -
+            </td>
+            <td>INT64</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
         </tr>
         <tr>
-        <td>next_tokens</td>
-        <td>输入</td>
-        <td>右侧mask保留的token数。</td>
-        <td>
-        -
-        </td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
+            <td>next_tokens</td>
+            <td>输入</td>
+            <td>右侧mask保留的token数。</td>
+            <td>
+            -
+            </td>
+            <td>INT64</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
         </tr>
         <tr>
         <td>deterministic</td>
