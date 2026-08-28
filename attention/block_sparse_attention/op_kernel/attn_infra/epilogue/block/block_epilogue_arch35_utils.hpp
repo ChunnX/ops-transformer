@@ -11,7 +11,86 @@
 #ifndef BLOCK_EPILOGUE_ARCH35_UTILS_HPP
 #define BLOCK_EPILOGUE_ARCH35_UTILS_HPP
 
+#include "../../../attn_infra/bsa_base_defs.hpp"
+#include "../../../attn_infra/arch/bsa_resource.hpp"
+
 namespace NpuArch::Epilogue::Block {
+
+struct UBufTileHelper {
+    uint32_t qBaseTilePerSubCore;
+    uint32_t kvBaseTilePerSubCore;
+    uint32_t embedPerSubCore;
+    uint32_t sStartOffset;
+    uint32_t pStartOffset;
+    uint32_t loStartOffset;
+    uint32_t diagStartOffset;
+    uint32_t goStartOffset;
+    uint32_t lmStartOffset;
+    uint32_t gmStartOffset;
+    uint32_t dmStartOffset;
+    uint32_t llStartOffset;
+    uint32_t glStartOffset;
+    uint32_t lseStartOffset;
+    uint32_t maskStartOffset;
+
+    __aicore__ inline
+    UBufTileHelper()
+    {
+    }
+
+    __aicore__ inline
+    UBufTileHelper(
+        uint32_t qs,
+        uint32_t kvs,
+        uint32_t d,
+        uint32_t s,
+        uint32_t p,
+        uint32_t lo,
+        uint32_t go,
+        uint32_t lm,
+        uint32_t gm,
+        uint32_t dm,
+        uint32_t ll,
+        uint32_t gl,
+        uint32_t lse,
+        uint32_t mask,
+        uint32_t diag = 0)
+        : qBaseTilePerSubCore(qs),
+          kvBaseTilePerSubCore(kvs),
+          embedPerSubCore(d),
+          sStartOffset(s),
+          pStartOffset(p),
+          loStartOffset(lo),
+          diagStartOffset(diag),
+          goStartOffset(go),
+          lmStartOffset(lm),
+          gmStartOffset(gm),
+          dmStartOffset(dm),
+          llStartOffset(ll),
+          glStartOffset(gl),
+          lseStartOffset(lse),
+          maskStartOffset(mask)
+    {
+    }
+};
+
+template <uint32_t MODE, pipe_t PIPE>
+__aicore__ inline void SetCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+{
+    // In mode 4, AIC sets the flag for two AIVs separately.
+    if constexpr (MODE == 4U) {
+        Arch::CrossCoreSetFlag<MODE, PIPE>(crossCoreFlag);
+    }
+}
+
+template <uint32_t MODE, pipe_t PIPE>
+__aicore__ inline void WaitCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+{
+    // In mode 4, AIC waits for two AIVs separately.
+    if constexpr (MODE == 4U) {
+        Arch::CrossCoreWaitFlag<MODE, PIPE>(crossCoreFlag);
+    }
+}
 
 namespace MXFP4 {
 static constexpr uint32_t KB_BYTE = 1024;
@@ -19,7 +98,7 @@ static constexpr uint32_t QS_BASE_SIZE = 128;
 static constexpr uint32_t KVS_BASE_SIZE = 256;
 static constexpr uint32_t DATA_BLOCK_BYTE = 32;
 
-// UB 分配
+// UB allocation
 // mm1Res(S): single 64K, BUFCNT=2, FIXPIPE<->V
 static constexpr uint32_t UB_S_BUF_CNT = 2;
 static constexpr uint32_t UB_S_INNER_BUF_OFFSET = 256;
@@ -30,7 +109,7 @@ static constexpr uint32_t UB_S_BUF_OFFSET = 0;
 static constexpr uint32_t UB_OTMP_BUF_SIZE = 32 * KB_BYTE;
 static constexpr uint32_t UB_OTMP_BUF_OFFSET = 128 * KB_BYTE;
 
-// LocalRowSum: 0.25K, BUFCNT=1,
+// LocalRowSum: 0.25K, BUFCNT=1
 static constexpr uint32_t UB_LOCAL_ROW_SUM_BUF_SIZE = 256;
 static constexpr uint32_t UB_LOCAL_ROW_SUM_BUF_OFFSET = 160 * KB_BYTE;
 
@@ -77,7 +156,7 @@ static constexpr uint32_t UB_LOCAL_GLOBAL_MAX_CNT = 4;
 static constexpr uint32_t UB_LOCAL_GLOBAL_MAX_BUF_SIZE = 256;
 static constexpr uint32_t UB_LOCAL_GLOBAL_MAX_BUF_OFFSET = 245 * KB_BYTE + 768;
 
-// updateScale(缩放因子dm): single 0.25K, BUFCNT=4, resident
+// updateScale(dm): single 0.25K, BUFCNT=4, resident
 static constexpr uint32_t UB_UPDATE_SCALE_CNT = 4;
 static constexpr uint32_t UB_UPDATE_SCALE_BUF_SIZE = 256;
 static constexpr uint32_t UB_UPDATE_SCALE_BUF_OFFSET = 246 * KB_BYTE + 768;
@@ -86,7 +165,7 @@ static constexpr uint32_t UB_UPDATE_SCALE_BUF_OFFSET = 246 * KB_BYTE + 768;
 static constexpr uint32_t UB_INDEX_BUF_SIZE = 256;
 static constexpr uint32_t UB_INDEX_BUF_OFFSET = 247 * KB_BYTE + 768;
 
-// vec同步eventID
+// Vector synchronization event IDs
 static constexpr uint64_t SYNC_P_BUF0_FLAG = 0;
 static constexpr uint64_t SYNC_P_BUF1_FLAG = 1;
 static constexpr uint64_t SYNC_GMAX_UB_TO_L1_BUF0_FLAG = 2;

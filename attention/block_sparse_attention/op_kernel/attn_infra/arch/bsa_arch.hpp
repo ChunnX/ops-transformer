@@ -41,6 +41,7 @@ using PositionType = std::integral_constant<AscendC::TPosition, POS>;
 
 using PositionGM = PositionType<AscendC::TPosition::GM>;
 using PositionL1 = PositionType<AscendC::TPosition::A1>;
+using PositionC1 = PositionType<AscendC::TPosition::C1>;
 using PositionL0A = PositionType<AscendC::TPosition::A2>;
 using PositionL0B = PositionType<AscendC::TPosition::B2>;
 using PositionL0C = PositionType<AscendC::TPosition::CO1>;

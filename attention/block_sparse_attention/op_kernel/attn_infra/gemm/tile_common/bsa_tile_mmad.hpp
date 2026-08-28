@@ -138,10 +138,12 @@ struct TileMmadTla {
             mmadParams.kDirectionAlign = true;
         }
 #endif
-
-        AscendC::Mmad(l0CTensor.data(),
-                      l0ATensor.data(),
-                      l0BTensor.data(),
+        auto cOffset = l0CTensor.layout()(l0CTensor.coord());
+        auto aOffset = l0ATensor.layout()(l0ATensor.coord());
+        auto bOffset = l0BTensor.layout()(l0BTensor.coord());
+        AscendC::Mmad(l0CTensor.data()[cOffset],
+                      l0ATensor.data()[aOffset],
+                      l0BTensor.data()[bOffset],
                       mmadParams);
 
         const uint32_t PIPE_M_BARRIER_THRESHOLD = 10;
@@ -173,10 +175,12 @@ struct TileMmadTla {
             mmadParams.kDirectionAlign = true;
         }
 #endif
-
-        AscendC::Mmad(l0CTensor.data(),
-                      l0ATensor.data(),
-                      l0BTensor.data(),
+        auto cOffset = l0CTensor.layout()(l0CTensor.coord());
+        auto aOffset = l0ATensor.layout()(l0ATensor.coord());
+        auto bOffset = l0BTensor.layout()(l0BTensor.coord());
+        AscendC::Mmad(l0CTensor.data()[cOffset],
+                      l0ATensor.data()[aOffset],
+                      l0BTensor.data()[bOffset],
                       l0BiasTensor.data(),
                       mmadParams);
 
