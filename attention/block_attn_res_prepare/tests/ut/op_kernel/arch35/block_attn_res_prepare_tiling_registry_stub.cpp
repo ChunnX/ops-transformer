@@ -45,8 +45,6 @@ TILING_DATA_FIELD_DEF(uint8_t, totalN);
 TILING_DATA_FIELD_DEF(uint8_t, qL1BufferNum);
 TILING_DATA_FIELD_DEF(uint8_t, vL1BufferNum);
 TILING_DATA_FIELD_DEF(uint8_t, vUbBufferNum);
-TILING_DATA_FIELD_DEF(uint8_t, l1CacheMode);
-TILING_DATA_FIELD_DEF(uint8_t, vL1CacheRows);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(BlockAttnResPrepare, BlockAttnResPrepareCubeTilingData)

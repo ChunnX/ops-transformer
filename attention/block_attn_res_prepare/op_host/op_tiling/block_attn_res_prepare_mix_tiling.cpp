@@ -42,7 +42,6 @@ constexpr uint32_t CUBE_MIN_S = 16U;
 constexpr uint32_t CUBE_MIN_D = 256U;
 constexpr uint32_t STAT_VECTOR_COUNT = 2U;
 constexpr uint64_t DOUBLE_BUFFER_NUM = 2UL;
-constexpr uint64_t AIV_CORE_NUM_PER_AIC = 2UL;
 constexpr uint64_t L1_SLOT_NUM = 4UL;
 constexpr uint64_t CUBE_BASE_S_LARGE = 128UL;
 constexpr uint64_t CUBE_BASE_S_MEDIUM = 64UL;
@@ -56,18 +55,6 @@ constexpr uint64_t CUBE_MM1_MAX_BASE_K = 64UL;
 constexpr size_t CUBE_BASE_S_CANDIDATE_NUM = 5;
 constexpr size_t CUBE_BASE_T_CANDIDATE_NUM = 4;
 constexpr size_t CUBE_BASE_D_CANDIDATE_NUM = 3;
-
-template <typename T>
-constexpr T CeilDiv(T value, T factor)
-{
-    return (value + factor - 1) / factor;
-}
-
-template <typename T>
-constexpr T AlignUp(T value, T factor)
-{
-    return CeilDiv(value, factor) * factor;
-}
 
 } // namespace
 
@@ -266,8 +253,6 @@ ge::graphStatus BlockAttnResPrepareMixTiling::DoOpTiling()
     tilingData_.qL1BufferNum = static_cast<uint8_t>(qL1BufferNum_);
     tilingData_.vL1BufferNum = static_cast<uint8_t>(vL1BufferNum_);
     tilingData_.vUbBufferNum = static_cast<uint8_t>(vUbBufferNum_);
-    tilingData_.l1CacheMode = static_cast<uint8_t>(BlockAttnResPrepareVCacheMode::RELOAD);
-    tilingData_.vL1CacheRows = static_cast<uint8_t>(0U);
     tilingData_.qL1Elems = qL1Elems_;
     tilingData_.vL1Elems = vL1Elems_;
     tilingData_.eL1Elems = eL1Elems_;
