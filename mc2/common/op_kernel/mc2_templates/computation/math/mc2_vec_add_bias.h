@@ -211,43 +211,32 @@ protected:
 
     // --- MTE2 / V / MTE3 三级流水 ---
 
-    // CopyIn: FP32 路径等 castDoneEvent (Cast 完成释放 matmulTile_); 直连路径等 copyOutEvent
     __aicore__ inline void CopyIn(uint64_t offset, uint32_t curTileM, uint32_t curTileN, uint32_t bufIdx)
     {
-        if constexpr (NEED_FP32_COMPUTE) {
-            AscendC::WaitFlag<AscendC::HardEvent::V_S>(castDoneEvent_[bufIdx]);
-        } else {
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(copyOutDoneEvent_[bufIdx]);
-        }
         uint32_t blockLen = curTileN * sizeof(MatmulDataType);
         DataCopyExtParams params{static_cast<uint16_t>(curTileM), blockLen,
                                  static_cast<int64_t>((context_.N - curTileN) * sizeof(MatmulDataType)), 0, 0};
         DataCopyPad(matmulTile_[bufIdx], matmulGm_[offset], params, PadParams<MatmulDataType>());
         AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(copyInEvent_[bufIdx]);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(copyInEvent_[bufIdx]);
     }
 
-    // ubRowStride: UB 中每行实际占用的元素数 (含 32B padding), 用于行偏移计算
     __aicore__ inline void Compute(const LocalTensor<float> &bias, uint32_t curTileM, uint32_t curTileN,
                                    uint32_t ubRowStride, uint32_t bufIdx)
     {
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(copyInEvent_[bufIdx]);
         if constexpr (NEED_FP32_COMPUTE) {
             ComputeFp32(bias, curTileM, curTileN, ubRowStride, bufIdx);
         } else {
             ComputeDirect(bias, curTileM, curTileN, ubRowStride, bufIdx);
         }
-        AscendC::SetFlag<AscendC::HardEvent::V_S>(computeEvent_[bufIdx]);
     }
 
-    // FP32 路径: Cast↑(matmul→float) → [Set castDone: matmulTile_ 释放] → Add<float> → [Wait copyOutDone: matmulOut_
-    // 释放] → Cast↓(float→matmulOut_)
     __aicore__ inline void ComputeFp32(const LocalTensor<float> &bias, uint32_t curTileM, uint32_t curTileN,
                                        uint32_t ubRowStride, uint32_t bufIdx)
     {
         uint32_t ubRowStrideFp32 = Ceil(curTileN, FP32_ELEMS_PER_BLOCK) * FP32_ELEMS_PER_BLOCK;
         bool rowContiguous = (ubRowStride == curTileN);
 
-        // Step 1: Cast half→float (matmulFp32_ 单缓冲, V in-order 保证上轮 CastBack 已完成读取)
         if (rowContiguous) {
             Cast<float, MatmulDataType>(matmulFp32_, matmulTile_[bufIdx], RoundMode::CAST_NONE,
                                         (int32_t)(curTileM * curTileN));
@@ -257,10 +246,9 @@ protected:
                                             RoundMode::CAST_NONE, (int32_t)curTileN);
             }
         }
-        // Cast 完成 → matmulTile_ 释放, 下一轮 CopyIn 可开始 (等 castDoneEvent)
         AscendC::SetFlag<AscendC::HardEvent::V_S>(castDoneEvent_[bufIdx]);
+        AscendC::WaitFlag<AscendC::HardEvent::V_S>(castDoneEvent_[bufIdx]);
 
-        // Step 2: Add<float> 广播 (V pipe in-order, 无需 Wait)
         uint32_t segCnt = Ceil(curTileN, FP32_ELEMS_PER_REPEAT);
         uint8_t repStrideFp32 = static_cast<uint8_t>(ubRowStrideFp32 / FP32_ELEMS_PER_BLOCK);
         for (uint32_t s = 0; s < segCnt; s++) {
@@ -276,9 +264,9 @@ protected:
                 }
             }
         }
+        AscendC::SetFlag<AscendC::HardEvent::V_S>(computeEvent_[bufIdx]);
+        AscendC::WaitFlag<AscendC::HardEvent::V_S>(computeEvent_[bufIdx]);
 
-        // Step 3: Cast float→half, 写入 matmulOut_[bufIdx] (需等上上轮 CopyOut 释放)
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(copyOutDoneEvent_[bufIdx]);
         if (rowContiguous) {
             Cast<MatmulDataType, float>(matmulOut_[bufIdx], matmulFp32_, RoundMode::CAST_ROUND,
                                         (int32_t)(curTileM * curTileN));
@@ -288,13 +276,13 @@ protected:
                                             RoundMode::CAST_ROUND, (int32_t)curTileN);
             }
         }
+        AscendC::SetFlag<AscendC::HardEvent::V_S>(castDoneEvent_[bufIdx]);
+        AscendC::WaitFlag<AscendC::HardEvent::V_S>(castDoneEvent_[bufIdx]);
     }
 
-    // float 路径: 直接 Add<float> (matmul 已是 float, 无需 Cast)
     __aicore__ inline void ComputeDirect(const LocalTensor<float> &bias, uint32_t curTileM, uint32_t curTileN,
                                          uint32_t ubRowStride, uint32_t bufIdx)
     {
-        // MatmulDataType == float 时 matmulTile_ 即为 float tensor
         LocalTensor<float> matmulFp32 = matmulTile_[bufIdx].template ReinterpretCast<float>();
         uint32_t segCnt = Ceil(curTileN, FP32_ELEMS_PER_REPEAT);
         uint8_t repStride = static_cast<uint8_t>(ubRowStride / FP32_ELEMS_PER_BLOCK);
@@ -311,11 +299,12 @@ protected:
                 }
             }
         }
+        AscendC::SetFlag<AscendC::HardEvent::V_S>(computeEvent_[bufIdx]);
+        AscendC::WaitFlag<AscendC::HardEvent::V_S>(computeEvent_[bufIdx]);
     }
 
     __aicore__ inline void CopyOut(uint64_t offset, uint32_t curTileM, uint32_t curTileN, uint32_t bufIdx)
     {
-        AscendC::WaitFlag<AscendC::HardEvent::V_S>(computeEvent_[bufIdx]);
         uint32_t blockLen = curTileN * sizeof(MatmulDataType);
         DataCopyExtParams params{static_cast<uint16_t>(curTileM), blockLen, 0,
                                  static_cast<int64_t>((context_.N - curTileN) * sizeof(MatmulDataType)), 0};
@@ -325,6 +314,7 @@ protected:
             DataCopyPad(matmulGm_[offset], matmulTile_[bufIdx], params);
         }
         AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(copyOutDoneEvent_[bufIdx]);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(copyOutDoneEvent_[bufIdx]);
     }
 
     __aicore__ inline void ProcessMTile(uint64_t offset, uint32_t curTileM, uint32_t curTileN, uint32_t ubRowStride,
@@ -457,12 +447,6 @@ __aicore__ inline void MC2VecAddBias<MatmulDataType, BiasDataType, SplitModeVal>
         copyOutDoneEvent_[i] = tPipe_->template AllocEventID<AscendC::HardEvent::MTE3_S>();
         castDoneEvent_[i] = tPipe_->template AllocEventID<AscendC::HardEvent::V_S>();
         biasInEvent_[i] = tPipe_->template AllocEventID<AscendC::HardEvent::MTE2_S>();
-        if constexpr (NEED_FP32_COMPUTE) {
-            AscendC::SetFlag<AscendC::HardEvent::V_S>(castDoneEvent_[i]);       // CopyIn 首轮通过
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(copyOutDoneEvent_[i]); // CastBack 首轮通过
-        } else {
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(copyOutDoneEvent_[i]); // CopyIn 首轮通过
-        }
     }
 
     if constexpr (MODE == SplitMode::MN_SPLIT) {
@@ -482,12 +466,6 @@ __aicore__ inline void MC2VecAddBias<MatmulDataType, BiasDataType, SplitModeVal>
     }
 
     for (uint32_t i = 0; i < BUFFER_NUM; i++) {
-        if constexpr (NEED_FP32_COMPUTE) {
-            AscendC::WaitFlag<AscendC::HardEvent::V_S>(castDoneEvent_[i]);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(copyOutDoneEvent_[i]);
-        } else {
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(copyOutDoneEvent_[i]);
-        }
         tPipe_->template ReleaseEventID<AscendC::HardEvent::MTE2_S>(copyInEvent_[i]);
         tPipe_->template ReleaseEventID<AscendC::HardEvent::V_S>(computeEvent_[i]);
         tPipe_->template ReleaseEventID<AscendC::HardEvent::MTE3_S>(copyOutDoneEvent_[i]);
