@@ -29,7 +29,6 @@ constexpr int32_t CONSTANT_TWO = 2;
 constexpr int32_t CONSTANT_THREE = 3;
 constexpr int32_t CONSTANT_FOUR = 4;
 constexpr int32_t CONSTANT_EIGHT = 8;
-constexpr uint32_t VL_FLOAT_SIZE = VECTOR_REG_WIDTH / sizeof(float);
 constexpr MicroAPI::DivSpecificMode mode = {MicroAPI::MaskMergeMode::ZEROING, true};
 
 template <typename T, typename U1 = int32_t, typename U2 = int32_t>
