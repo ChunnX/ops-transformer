@@ -242,7 +242,7 @@ private:
     Range<int64_t> CalcS2TokenRange(uint32_t s1GIdx, const BatchCache &batchCache);
     int64_t CalcCost(uint32_t basicM, uint32_t basicS2) const;
     BlockCost<int64_t> CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t s1GTailSize,
-                                     uint32_t s2TailSize);
+                                     uint32_t s2TailSize) const;
 
     // cache calculation
     void CalcBatchCache(uint32_t bIdx, const SplitContext &splitContext, BatchCache &batchCache);
@@ -271,7 +271,6 @@ private:
     void CalcSplitPlan(int64_t costLimit, const SplitContext &splitContext, SplitResult &result);
 
 private:
-    CpuKernelContext *context_ = nullptr;
     // input
     Tensor *cuSeqlensQ_ = nullptr;
     Tensor *cuSeqlensK_ = nullptr;

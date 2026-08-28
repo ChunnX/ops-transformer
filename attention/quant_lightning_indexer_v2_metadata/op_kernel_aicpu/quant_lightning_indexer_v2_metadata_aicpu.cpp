@@ -374,7 +374,8 @@ int64_t QuantLightningIndexerV2MetadataCpuKernel::CalcCost(uint32_t basicM, uint
 }
 
 BlockCost<int64_t> QuantLightningIndexerV2MetadataCpuKernel::CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize,
-                                                                           uint32_t s1GTailSize, uint32_t s2TailSize)
+                                                                           uint32_t s1GTailSize,
+                                                                           uint32_t s2TailSize) const
 {
     BlockCost<int64_t> typeCost{};
     typeCost[NORMAL_BLOCK][NORMAL_BLOCK] = CalcCost(s1NormalSize, s2NormalSize);
