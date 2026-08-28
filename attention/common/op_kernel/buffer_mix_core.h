@@ -29,6 +29,11 @@ namespace fa_base_matmul {
 __BLOCK_LOCAL__ __inline__ uint32_t idCounterNum;
 #define MAKE_ID ((++idCounterNum) % 11)
 
+__aicore__ inline void ResetIdCounter()
+{
+    idCounterNum = 0;
+}
+
 enum class BufferType {
     L1 = 0,
     L0A = 1,

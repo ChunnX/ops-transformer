@@ -139,7 +139,7 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
     __gm__ uint8_t *softmaxSum, __gm__ uint8_t *softmaxOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
     __gm__ uint8_t *workspace, const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe)
 {
-    fa_base_matmul::idCounterNum = 0;
+    fa_base_matmul::ResetIdCounter();
     constInfo.subBlockIdx = GetSubBlockIdx();
     constInfo.aivIdx = GetBlockIdx();
     this->aicIdx = constInfo.aivIdx;
