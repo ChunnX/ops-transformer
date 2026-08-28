@@ -643,36 +643,63 @@ __aicore__ inline void KeyPoolVec1SliceIterator<COMP>::IteratorSlice()
     sliceInfo_.sIdx += sliceInfo_.validSeqCnt;
     if (sliceInfo_.sIdx >= sliceInfo_.bSeqUsed) {
         do {
-            uint32_t seqLength = tools_.GetSeqLength(sliceInfo_.bIdx);
+            const uint32_t seqLength = tools_.GetSeqLength(sliceInfo_.bIdx);
             if (sliceInfo_.bSeqUsed < seqLength) {
-                uint64_t nextAlignSIdx = Align(sliceInfo_.bStartPos + sliceInfo_.sIdx, (uint64_t)cmpRatio) -
-                    sliceInfo_.bStartPos;
-                sliceInfo_.dealedSeqCnt += nextAlignSIdx - sliceInfo_.sIdx;
-                uint32_t tcGap = CeilDivT(static_cast<int32_t>(seqLength - nextAlignSIdx),
-                                    static_cast<int32_t>(cmpRatio));
-                if (sliceInfo_.bSeqUsed == 0 && nextAlignSIdx > sliceInfo_.sIdx) {
-                    // 此时bseqused所在压缩块未被纳入计算
-                    tcGap++;
+                if (sliceInfo_.sIdx > 0) {
+                    uint64_t nextAlignSIdx =
+                        Align(sliceInfo_.bStartPos + sliceInfo_.sIdx, static_cast<uint64_t>(cmpRatio)) -
+                        sliceInfo_.bStartPos;
+                    uint32_t align =
+                        min(static_cast<uint32_t>(nextAlignSIdx - sliceInfo_.sIdx), seqLength - sliceInfo_.sIdx);
+                    sliceInfo_.dealedSeqCnt += align;
+                    sliceInfo_.sIdx += align;
                 }
-                sliceInfo_.sIdx = nextAlignSIdx;
+
+                const uint32_t gapRows = seqLength - sliceInfo_.sIdx;
+                uint32_t tcGap;
+                if (sliceInfo_.sIdx == 0) {
+                    tcGap = static_cast<uint32_t>(
+                        CeilDivT(sliceInfo_.bStartPos + seqLength, static_cast<uint64_t>(cmpRatio)) -
+                        sliceInfo_.bStartPos / static_cast<uint64_t>(cmpRatio));
+                } else {
+                    tcGap = static_cast<uint32_t>(
+                        CeilDivT(sliceInfo_.bStartPos + seqLength, static_cast<uint64_t>(cmpRatio)) -
+                        CeilDivT(sliceInfo_.bStartPos + sliceInfo_.sIdx, static_cast<uint64_t>(cmpRatio)));
+                }
+
                 if (needDealTcSize_ < tcGap) {
-                    sliceInfo_.dealedSeqCnt += needDealTcSize_ * cmpRatio;
-                    sliceInfo_.sIdx += needDealTcSize_ * cmpRatio;
+                    uint32_t skip = 0;
+                    if (needDealTcSize_ > 0) {
+                        uint64_t globalStartSeqIdx = sliceInfo_.bStartPos + sliceInfo_.sIdx;
+                        uint64_t skipEndSeqIdx =
+                            (globalStartSeqIdx / static_cast<uint64_t>(cmpRatio) + needDealTcSize_) *
+                            static_cast<uint64_t>(cmpRatio);
+                        skip = min(static_cast<uint32_t>(skipEndSeqIdx - globalStartSeqIdx), gapRows);
+                    }
+                    sliceInfo_.dealedSeqCnt += skip;
+                    sliceInfo_.sIdx += skip;
                     needDealTcSize_ = 0;
                     break;
                 }
-                sliceInfo_.dealedSeqCnt += seqLength - sliceInfo_.sIdx;
+                sliceInfo_.dealedSeqCnt += gapRows;
+                sliceInfo_.sIdx += gapRows;
                 needDealTcSize_ -= tcGap;
             }
             sliceInfo_.bIdx++;
             if (sliceInfo_.bIdx == batch_size_) {
-                sliceInfo_.bIdx = 0;
+                sliceInfo_.bIdx = batch_size_ - 1;
+                sliceInfo_.sIdx = 0;
+                sliceInfo_.bSeqUsed = 0;
+                sliceInfo_.bStartPos = tools_.GetStartPos(sliceInfo_.bIdx);
+                sliceInfo_.bSeqLength = tools_.GetSeqLength(sliceInfo_.bIdx);
+                needDealTcSize_ = 0;
+                break;
             }
             sliceInfo_.sIdx = 0;
             sliceInfo_.bSeqUsed = tools_.GetSeqUsed(sliceInfo_.bIdx);
-        } while (sliceInfo_.bSeqUsed == 0);
+            sliceInfo_.bStartPos = tools_.GetStartPos(sliceInfo_.bIdx);
             sliceInfo_.bSeqLength = tools_.GetSeqLength(sliceInfo_.bIdx);
-        sliceInfo_.bStartPos = tools_.GetStartPos(sliceInfo_.bIdx);
+        } while (sliceInfo_.bSeqUsed == 0);
     }
     if (isFirst_) {
         isFirst_ = false;
