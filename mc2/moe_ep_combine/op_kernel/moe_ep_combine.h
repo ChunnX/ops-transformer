@@ -339,6 +339,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressT
     SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopy(perCoreRankCounts, rankCounts, rankCountElements);
     SyncFunc<AscendC::HardEvent::MTE3_S>();
+    PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
 
     // Group preceding rows into a few MTE2 copies, as in PR 10309 GetSlotStartNum().
@@ -451,6 +452,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuildAddressT
         SyncFunc<AscendC::HardEvent::MTE3_S>();
         SyncFunc<AscendC::HardEvent::S_MTE2>();
     }
+    PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
 }
 
@@ -675,6 +677,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
 
     // Build once with all AIVs; communication AIVs consume only their compact rank table below.
     BuildAddressTable();
+    PipeBarrier<PIPE_ALL>();
+    SyncAll<true>();
 
     activeBatchHandle_ = {};
     activeBatchChannel_ = 0;
@@ -706,8 +710,12 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         }
     }
 
-    // Local copies completed before BuildAddressTable's final barrier. Each remote rank publishes one completion
-    // flag through channel 0 without a second all-core barrier here.
+    // Diagnostic barrier: every AIV reaches this point before any completion flag is published. Do not move this
+    // barrier into the rank/core-dependent branches above, where different execution counts would deadlock.
+    PipeBarrier<PIPE_ALL>();
+    SyncAll<true>();
+
+    // Each remote rank publishes one completion flag through channel 0 after all AIVs have issued their token work.
     constexpr uint32_t completionChannelCount = COMBINE_CHANNEL_COUNT;
     bool publishesChannelFlag =
         aivId_ < activeAivNum && (!splitRankTokens || coreIndexInGroup < completionChannelCount);
@@ -728,6 +736,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         }
     }
     FlushPreparedWrites();
+    PipeBarrier<PIPE_ALL>();
+    SyncAll<true>();
     if (sendsTokens) {
         DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
     }
