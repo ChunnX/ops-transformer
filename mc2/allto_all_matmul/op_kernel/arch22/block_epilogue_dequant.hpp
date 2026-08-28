@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file allto_all_matmul_block_epilogue_dequant.hpp
+ * \file block_epilogue_dequant.hpp
  * \brief
  */
 
-#ifndef ALLTO_ALL_MATMUL_BLOCK_EPILOGUE_DEQUANT_HPP
-#define ALLTO_ALL_MATMUL_BLOCK_EPILOGUE_DEQUANT_HPP
+#ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_DEQUANT_HPP
+#define CATLASS_EPILOGUE_BLOCK_EPILOGUE_DEQUANT_HPP
 
 #include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
 #include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
@@ -364,4 +364,4 @@ private:
 };
 } // namespace Catlass::Epilogue::Block
 
-#endif // ALLTO_ALL_MATMUL_BLOCK_EPILOGUE_DEQUANT_HPP
+#endif // CATLASS_EPILOGUE_BLOCK_EPILOGUE_DEQUANT_HPP

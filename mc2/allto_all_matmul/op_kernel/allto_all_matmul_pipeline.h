@@ -48,6 +48,7 @@ public:
 
     __aicore__ inline void End();
 
+
 private:
     CommunicationType *commStage_;  // 通信节点
     TransposeType *transStage_;     // 转置计算的计算节点

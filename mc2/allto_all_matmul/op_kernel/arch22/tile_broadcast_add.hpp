@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_ALLTO_ALL_MATMUL_TILE_BROADCAST_ADD_HPP
-#define CATLASS_ALLTO_ALL_MATMUL_TILE_BROADCAST_ADD_HPP
+#ifndef CATLASS_EPILOGUE_TILE_TILE_BROADCAST_ADD_HPP
+#define CATLASS_EPILOGUE_TILE_TILE_BROADCAST_ADD_HPP
 
 #include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
 

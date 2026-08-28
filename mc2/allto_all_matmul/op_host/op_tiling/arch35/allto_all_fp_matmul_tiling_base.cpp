@@ -48,16 +48,16 @@ bool AllToAllFpMatmulTilingBase::IsCapable()
  */
 ge::graphStatus AllToAllFpMatmulTilingBase::CheckOpInputInfo()
 {
-    OP_TILING_CHECK(
-        MatmulAlltoAllTilingUtil::CheckAttrsInfo(context_, opName_, ALLTOALL_MATMUL_INDEX_SCHEMA) != ge::GRAPH_SUCCESS,
-        OP_LOGE(opName_, "Tiling check Attrs failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckAttrsInfo(context_, opName_, ALLTOALL_MATMUL_INDEX_SCHEMA) !=
+                        ge::GRAPH_SUCCESS,
+                    OP_LOGE(opName_, "Tiling check Attrs failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckTensorFormat(context_, opName_) != ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Tiling check format failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckNonQuantTensorDataType(context_, opName_) != ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Tiling check Dtype failed."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        MatmulAlltoAllTilingUtil::CheckShapeInfo(context_, opName_, ALLTOALL_MATMUL_INDEX_SCHEMA) != ge::GRAPH_SUCCESS,
-        OP_LOGE(opName_, "Tiling check shape failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckShapeInfo(context_, opName_, ALLTOALL_MATMUL_INDEX_SCHEMA) !=
+                        ge::GRAPH_SUCCESS,
+                    OP_LOGE(opName_, "Tiling check shape failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckMatrixMulShapes(context_, opName_) != ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Tiling check shape input and output shape failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckAlltoAllOut(context_, opName_) != ge::GRAPH_SUCCESS,
@@ -267,6 +267,8 @@ ge::graphStatus AllToAllFpMatmulTilingBase::PostTiling()
                             sizeof(localTilingData_)),
                     return ge::GRAPH_FAILED);
 
+    localTilingData_.workspaceLayout = workspaceLayout_;
+
     errno_t ret = memcpy_s(outTilingData, tilingBufCap, &localTilingData_, sizeof(localTilingData_));
     if (ret != EOK) {
         OP_LOGE(opName_, "PostTiling: memcpy_s tiling data failed, ret=%d.", ret);
@@ -279,6 +281,7 @@ ge::graphStatus AllToAllFpMatmulTilingBase::PostTiling()
     context_->GetRawTilingData()->SetDataSize(sizeof(AlltoAllMatmulTilingData));
     context_->SetBlockDim(contextInfo_.args_.aicCoreNum);
     PrintAlltoAllMatmulTilingData(*outTilingData);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -357,8 +360,8 @@ void AllToAllFpMatmulTilingBase::PrintMMV3TilingData(const std::string &opName, 
     OP_LOGD(opName, " MMtiling.nTailCnt %d", tiling.nTailCnt);
     OP_LOGD(opName, " MMtiling.kTailCnt %d", tiling.kTailCnt);
     OP_LOGD(opName, " MMtiling.isHf32 %d", tiling.isHf32);
-    OP_LOGD(opName, " MMtiling.mBaseTailSplitCnt %d", tiling.mBaseTailSplitCnt);
-    OP_LOGD(opName, " MMtiling.nBaseTailSplitCnt %d", tiling.nBaseTailSplitCnt);
+    OP_LOGD(opName, " MMtiling.mBaseTailSpiltCnt %d", tiling.mBaseTailSplitCnt);
+    OP_LOGD(opName, " MMtiling.nBaseTailSpiltCnt %d", tiling.nBaseTailSplitCnt);
     OP_LOGD(opName, " MMtiling.mTailMain %d", tiling.mTailMain);
     OP_LOGD(opName, " MMtiling.nTailMain %d", tiling.nTailMain);
     OP_LOGD(opName, " MMtiling.aswWindowLen %d", tiling.aswWindowLen);
@@ -366,7 +369,8 @@ void AllToAllFpMatmulTilingBase::PrintMMV3TilingData(const std::string &opName, 
 
 AllToAllFpMatmulTilingBase::AllToAllFpMatmulTilingBase(gert::TilingContext *context)
     : AllToAllMatmulTilingBase(context)
-{}
+{
+}
 
 // 注册tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(AlltoAllMatmul, AllToAllFpMatmulTilingBase, static_cast<int32_t>(NpuArch::DAV_3510),

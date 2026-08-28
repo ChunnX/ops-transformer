@@ -85,7 +85,6 @@ AlltoAllMatmulKernelBase<SchedulerType, SchedulerContextType, AlltoAllMatmulTili
         ProcessTail(mc2Tiling_.tailCnt);
     }
 
-    // 结束流水线
     pipeLine_->End();
 }
 
