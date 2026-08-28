@@ -46,11 +46,10 @@ int64_t CheckAndGetGroupSizeAg(at::IntArrayRef groupSizeList)
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor> NpuAllGatherQuantMatmul(
     const at::Tensor &context, const at::Tensor &x1, const at::Tensor &x2, int64_t hcclBufferSize, std::string group,
-    int64_t rankSize, const c10::optional<at::Tensor> &biasOptional,
-    const c10::optional<at::Tensor> &x1ScaleOptional, const c10::optional<at::Tensor> &x2ScaleOptional,
-    c10::IntArrayRef groupSizes, c10::optional<int64_t> x1Dtype, c10::optional<int64_t> x2Dtype,
-    c10::optional<int64_t> x1ScaleDtype, c10::optional<int64_t> x2ScaleDtype, c10::optional<int64_t> yDtype,
-    std::string commMode)
+    int64_t rankSize, const c10::optional<at::Tensor> &biasOptional, const c10::optional<at::Tensor> &x1ScaleOptional,
+    const c10::optional<at::Tensor> &x2ScaleOptional, c10::IntArrayRef groupSizes, c10::optional<int64_t> x1Dtype,
+    c10::optional<int64_t> x2Dtype, c10::optional<int64_t> x1ScaleDtype, c10::optional<int64_t> x2ScaleDtype,
+    c10::optional<int64_t> yDtype, std::string commMode)
 {
     TORCH_CHECK(x1.dim() == DIM_TWO,
                 "The x1 input of allgatherquantmatmul is required to be 2D, but the actual x1 input is ", x1.dim(),
@@ -69,7 +68,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> NpuAllGatherQuantMatmul(
     int64_t n = x2Size[1]; // x2 传 .t() view [K, N]，dim1=N
 
     at::ScalarType outScalarType = at::kBFloat16;
-    if (yDtype.has_value() && yDtype.value() != static_cast<int64_t>(-1)) {
+    if (yDtype.has_value()) {
         aclDataType outAclDtype = GetAclDataType(yDtype.value());
         // V3 仅支持 bf16/fp16 输出，其余枚举前置拦截（之前非三者之一会静默 fallback 到 bf16 放行）
         TORCH_CHECK(outAclDtype == ACL_FLOAT16 || outAclDtype == ACL_BF16,
@@ -85,12 +84,12 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> NpuAllGatherQuantMatmul(
     std::string groupStr = std::string(group);
     char *groupPtr = const_cast<char *>(groupStr.c_str());
 
-    aclDataType x1AclDtype = (x1Dtype.has_value() && x1Dtype.value() != -1) ? GetAclDataType(x1Dtype.value()) :
-                                                                              ConvertToAclDataType(x1.scalar_type());
-    aclDataType x2AclDtype = (x2Dtype.has_value() && x2Dtype.value() != -1) ? GetAclDataType(x2Dtype.value()) :
-                                                                              ConvertToAclDataType(x2.scalar_type());
+    aclDataType x1AclDtype =
+        x1Dtype.has_value() ? GetAclDataType(x1Dtype.value()) : ConvertToAclDataType(x1.scalar_type());
+    aclDataType x2AclDtype =
+        x2Dtype.has_value() ? GetAclDataType(x2Dtype.value()) : ConvertToAclDataType(x2.scalar_type());
 
-    // gather_out / amax_out: 本次交付不使能，gather_out 为 def REQUIRED 输出，
+    // gather_out / amax_out 当前不使能，
     // torch 侧传 {0} 空占位 tensor 经 aclnn 透传 inner（aclnn/tiling/kernel 均不处理），并原样返回给 torch。
     at::Tensor gatherOut = at::empty({0}, x1.options().dtype(x1.scalar_type()));
     at::Tensor amaxOut = at::empty({0}, x1.options().dtype(at::kFloat));
@@ -98,11 +97,11 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> NpuAllGatherQuantMatmul(
     const at::Tensor &x1ScaleReal = x1ScaleOptional.value_or(at::Tensor());
     const at::Tensor &x2ScaleReal = x2ScaleOptional.value_or(at::Tensor());
     aclDataType x1ScaleAclDtype =
-        (x1ScaleDtype.has_value() && x1ScaleDtype.value() != -1) ?
+        x1ScaleDtype.has_value() ?
             GetAclDataType(x1ScaleDtype.value()) :
             (x1ScaleReal.defined() ? ConvertToAclDataType(x1ScaleReal.scalar_type()) : ACL_DT_UNDEFINED);
     aclDataType x2ScaleAclDtype =
-        (x2ScaleDtype.has_value() && x2ScaleDtype.value() != -1) ?
+        x2ScaleDtype.has_value() ?
             GetAclDataType(x2ScaleDtype.value()) :
             (x2ScaleReal.defined() ? ConvertToAclDataType(x2ScaleReal.scalar_type()) : ACL_DT_UNDEFINED);
 

@@ -67,14 +67,17 @@ public:
         platformInfoPtr_ = ptr;
     }
 
-    // 允许调用方限制计算tiling的核 
+    // 允许调用方限制计算tiling的核
     void SetCoreLimit(uint32_t aicNum, uint32_t aivNum)
     {
         coreLimitAicNum_ = aicNum;
         coreLimitAivNum_ = aivNum;
         hasCoreLimit_ = true;
     }
-    void SetAdjustBasicBlockEnable(bool enable) { enableAdjustBasicBlock_ = enable; }
+    void SetAdjustBasicBlockEnable(bool enable)
+    {
+        enableAdjustBasicBlock_ = enable;
+    }
 
 protected:
     QuantMatmulArgs args_{};

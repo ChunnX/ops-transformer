@@ -287,11 +287,11 @@ def all_gather_quant_matmul(
         x1_scale=x1_scale,
         x2_scale=x2_scale,
         group_sizes=group_sizes,
-        x1_dtype=None if x1_dtype == -1 else x1_dtype,
-        x2_dtype=None if x2_dtype == -1 else x2_dtype,
-        x1_scale_dtype=None if x1_scale_dtype == -1 else x1_scale_dtype,
-        x2_scale_dtype=None if x2_scale_dtype == -1 else x2_scale_dtype,
-        y_dtype=None if y_dtype == -1 else y_dtype,
+        x1_dtype=x1_dtype,
+        x2_dtype=x2_dtype,
+        x1_scale_dtype=x1_scale_dtype,
+        x2_scale_dtype=x2_scale_dtype,
+        y_dtype=y_dtype,
         comm_mode=comm_mode,
     )
     print(

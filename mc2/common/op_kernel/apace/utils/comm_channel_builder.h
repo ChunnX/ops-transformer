@@ -51,8 +51,7 @@ struct CommCtxTrait<ChannelMode::UBMEM> {
     using type = Apace::AivComm::CommUbmemContext;
 };
 
-template <ChannelMode DataChannelMode = ChannelMode::URMA,
-          ChannelMode BarrierChannelMode = ChannelMode::UBMEM>
+template <ChannelMode DataChannelMode = ChannelMode::URMA, ChannelMode BarrierChannelMode = ChannelMode::UBMEM>
 class CommChannelBuilder {
 public:
     explicit CommChannelBuilder(HcclComm comm)
@@ -77,12 +76,18 @@ public:
     /*!
      * \brief 获取 rankId
      */
-    uint32_t GetRankId() const { return rankId_; }
+    uint32_t GetRankId() const
+    {
+        return rankId_;
+    }
 
     /*!
      * \brief 获取 rankNum
      */
-    uint32_t GetRankSize() const { return rankNum_; }
+    uint32_t GetRankSize() const
+    {
+        return rankNum_;
+    }
 
     /*!
      * \brief 使用 HCCL 内置 buffer + 建链，填充外部 context 对应字段
@@ -92,11 +97,10 @@ public:
      * \param [out] remoteAddrs  context 中远端地址数组字段
      * \return true 成功, false 失败
      */
-    bool AllocRegAndBuildChannels(
-        ChannelMode mode, const char *memTag,
-        uint64_t *channels, uint64_t *remoteAddrs)
+    bool AllocRegAndBuildChannels(ChannelMode mode, const char *memTag, uint64_t *channels, uint64_t *remoteAddrs)
     {
-        ::CommProtocol protocol = (mode == ChannelMode::URMA) ? ::CommProtocol::COMM_PROTOCOL_UBC_CTP : ::CommProtocol::COMM_PROTOCOL_UB_MEM;
+        ::CommProtocol protocol =
+            (mode == ChannelMode::URMA) ? ::CommProtocol::COMM_PROTOCOL_UBC_CTP : ::CommProtocol::COMM_PROTOCOL_UB_MEM;
 
         void *buf = nullptr;
         uint64_t hcclBufSize = 0;
@@ -156,16 +160,14 @@ public:
         if constexpr (DataChannelMode == ChannelMode::URMA) {
             channelHandles = dataCtx->channelHandles;
         }
-        if (!AllocRegAndBuildChannels(DataChannelMode, dataBufTag.c_str(),
-                                      channelHandles, dataCtx->commBufferAddrs)) {
+        if (!AllocRegAndBuildChannels(DataChannelMode, dataBufTag.c_str(), channelHandles, dataCtx->commBufferAddrs)) {
             return nullptr;
         }
 
         if (barrierCtx != nullptr) {
             barrierCtx->rankId = rankId_;
             barrierCtx->rankSize = rankNum_;
-            void *barrierBuf = reinterpret_cast<void *>(
-                reinterpret_cast<uintptr_t>(devCtx) + ctxSize);
+            void *barrierBuf = reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(devCtx) + ctxSize);
             CommMem regMem = {};
             regMem.type = COMM_MEM_TYPE_DEVICE;
             regMem.addr = barrierBuf;
@@ -177,9 +179,9 @@ public:
             }
             barrierCtx->commBufferAddrs[barrierCtx->rankId] = reinterpret_cast<uint64_t>(barrierBuf);
             if (!BuildChannels(BarrierChannelMode, false,
-                               (BarrierChannelMode == ChannelMode::URMA) ? ::CommProtocol::COMM_PROTOCOL_UBC_CTP : ::CommProtocol::COMM_PROTOCOL_UB_MEM,
-                               memHandle, syncBufTag.c_str(),
-                               nullptr, barrierCtx->commBufferAddrs)) {
+                               (BarrierChannelMode == ChannelMode::URMA) ? ::CommProtocol::COMM_PROTOCOL_UBC_CTP :
+                                                                           ::CommProtocol::COMM_PROTOCOL_UB_MEM,
+                               memHandle, syncBufTag.c_str(), nullptr, barrierCtx->commBufferAddrs)) {
                 return nullptr;
             }
         }
@@ -223,8 +225,7 @@ private:
         }
     }
 
-    bool BuildChannels(ChannelMode mode, bool useHcclBuf,
-                       ::CommProtocol protocol, HcclMemHandle memHandle,
+    bool BuildChannels(ChannelMode mode, bool useHcclBuf, ::CommProtocol protocol, HcclMemHandle memHandle,
                        const char *memTag, uint64_t *channels, uint64_t *remoteAddrs)
     {
         uint32_t *netLayers = nullptr;
@@ -250,11 +251,9 @@ private:
             ChannelHandle channel = 0;
             uint64_t remoteAddr = 0;
             if (useHcclBuf) {
-                ASC_CHECK(AcquireChannelAndRemoteMemHcclBuf(layerId, protocol,
-                                                            peer, channel, remoteAddr));
+                ASC_CHECK(AcquireChannelAndRemoteMemHcclBuf(layerId, protocol, peer, channel, remoteAddr));
             } else {
-                ASC_CHECK(AcquireChannelAndRemoteMem(layerId, protocol, memHandle, memTag,
-                                                     peer, channel, remoteAddr));
+                ASC_CHECK(AcquireChannelAndRemoteMem(layerId, protocol, memHandle, memTag, peer, channel, remoteAddr));
             }
             if (channels != nullptr) {
                 channels[peer] = static_cast<uint64_t>(channel);
@@ -264,10 +263,8 @@ private:
         return true;
     }
 
-    bool AcquireChannelAndRemoteMem(uint32_t layerId, ::CommProtocol protocol,
-                                    HcclMemHandle memHandle, const char *memTag,
-                                    uint32_t peer,
-                                    ChannelHandle &channel, uint64_t &remoteAddr)
+    bool AcquireChannelAndRemoteMem(uint32_t layerId, ::CommProtocol protocol, HcclMemHandle memHandle,
+                                    const char *memTag, uint32_t peer, ChannelHandle &channel, uint64_t &remoteAddr)
     {
         channel = 0;
         remoteAddr = 0;
@@ -277,8 +274,8 @@ private:
         uint32_t memNum = 0;
         CommMem *remoteMems = nullptr;
         char **memTags = nullptr;
-        if (HcclChannelGetRemoteMems(comm_, channel, &memNum, &remoteMems, &memTags) != ::HCCL_SUCCESS ||
-            memNum == 0 || remoteMems == nullptr) {
+        if (HcclChannelGetRemoteMems(comm_, channel, &memNum, &remoteMems, &memTags) != ::HCCL_SUCCESS || memNum == 0 ||
+            remoteMems == nullptr) {
             return false;
         }
 
@@ -295,8 +292,7 @@ private:
         return remoteAddr != 0;
     }
 
-    bool AcquireChannelAndRemoteMemHcclBuf(uint32_t layerId, ::CommProtocol protocol,
-                                           uint32_t peer,
+    bool AcquireChannelAndRemoteMemHcclBuf(uint32_t layerId, ::CommProtocol protocol, uint32_t peer,
                                            ChannelHandle &channel, uint64_t &remoteAddr)
     {
         channel = 0;
@@ -315,16 +311,15 @@ private:
         return true;
     }
 
-    bool AcquireChannel(uint32_t layerId, ::CommProtocol protocol,
-                        uint32_t peer, ChannelHandle &channel,
+    bool AcquireChannel(uint32_t layerId, ::CommProtocol protocol, uint32_t peer, ChannelHandle &channel,
                         HcclMemHandle memHandle = nullptr)
     {
         channel = 0;
 
         CommLink *links = nullptr;
         uint32_t linkNum = 0;
-        if (HcclRankGraphGetLinks(comm_, layerId, rankId_, peer, &links, &linkNum) != ::HCCL_SUCCESS ||
-            linkNum == 0 || links == nullptr) {
+        if (HcclRankGraphGetLinks(comm_, layerId, rankId_, peer, &links, &linkNum) != ::HCCL_SUCCESS || linkNum == 0 ||
+            links == nullptr) {
             return false;
         }
 

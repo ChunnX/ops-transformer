@@ -44,7 +44,8 @@ using DefaultCommChannelBuilder = CommChannelBuilder<ChannelMode::URMA, ChannelM
 
 class CommChannelBuilderManager {
 public:
-    explicit CommChannelBuilderManager(const std::string &group) : group_(group)
+    explicit CommChannelBuilderManager(const std::string &group)
+        : group_(group)
     {
         InitHcclEngineCtxFunctions();
 
