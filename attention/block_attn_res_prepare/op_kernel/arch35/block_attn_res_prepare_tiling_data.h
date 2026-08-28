@@ -18,11 +18,6 @@ namespace optiling {
 constexpr uint64_t BLOCK_ATTN_RES_PREPARE_VECTOR_KEY = 0UL;
 constexpr uint64_t BLOCK_ATTN_RES_PREPARE_MIX_CUBE_KEY = 1UL;
 
-enum class BlockAttnResPrepareVCacheMode : uint8_t {
-    RELOAD = 0,
-    CACHE_IF_RUNTIME_FITS = 1,
-};
-
 // Tiling data is deliberately declared as a plain struct.  The host writes
 // the scalar fields directly into the raw tiling buffer and the kernel reads
 // the same layout, so no generated setter/serialization methods are required
@@ -41,7 +36,6 @@ struct BlockAttnResPrepareTilingData {
     // Vector kernel derives dAlign/baseDAlign (one FP32 vector-register alignment), dTileNum and
     // the Q/V/O single-buffer element count from totalD/baseD.
     uint32_t statUbElems;
-    uint32_t workUbElems;
     float eps;
 
     uint16_t usedCoreNum;
@@ -93,8 +87,6 @@ struct BlockAttnResPrepareCubeTilingData {
     uint8_t qL1BufferNum;
     uint8_t vL1BufferNum;
     uint8_t vUbBufferNum;
-    uint8_t l1CacheMode;
-    uint8_t vL1CacheRows;
 };
 
 } // namespace optiling

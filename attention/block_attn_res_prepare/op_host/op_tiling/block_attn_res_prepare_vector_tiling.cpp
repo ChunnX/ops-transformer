@@ -45,18 +45,6 @@ constexpr uint64_t VECTOR_BASE_D_MEDIUM = 512UL;
 constexpr uint64_t VECTOR_BASE_D_SMALL = 256UL;
 constexpr size_t VECTOR_BASE_D_CANDIDATE_NUM = 4;
 
-template <typename T>
-constexpr T CeilDiv(T value, T factor)
-{
-    return (value + factor - 1) / factor;
-}
-
-template <typename T>
-constexpr T AlignUp(T value, T factor)
-{
-    return CeilDiv(value, factor) * factor;
-}
-
 } // namespace
 
 bool BlockAttnResPrepareVectorTiling::IsCapable()
@@ -85,14 +73,14 @@ bool BlockAttnResPrepareVectorTiling::SelectVectorBaseD(bool hasMultipleWorkRoun
         const uint64_t baseDAlign = AlignUp<uint64_t>(candidate, VECTOR_UB_ROW_ALIGN_ELEMS);
         const uint64_t dTileNum = CeilDiv(totalD_, candidate);
         const uint64_t qBufferNum = (dTileNum > 1 || hasMultipleWorkRounds) ? DOUBLE_BUFFER_NUM : 1UL;
-        const uint64_t oBufferNum = (dTileNum > 1) ? DOUBLE_BUFFER_NUM : 1UL;
+        const uint64_t oBufferNum = (dTileNum > 1 || hasMultipleWorkRounds) ? DOUBLE_BUFFER_NUM : 1UL;
         OP_CHECK_IF(dTileNum > std::numeric_limits<uint64_t>::max() / totalN_,
                     OP_LOGE(context_->GetNodeName(),
                             "Vector D tile count times N overflows uint64: dTileNum=%lu, N=%lu, baseD=%lu", dTileNum,
                             totalN_, candidate),
                     return false);
         const uint64_t vLoopNum = dTileNum * totalN_;
-        const uint64_t vBufferNum = (vLoopNum > 1) ? DOUBLE_BUFFER_NUM : 1UL;
+        const uint64_t vBufferNum = (vLoopNum > 1 || hasMultipleWorkRounds) ? DOUBLE_BUFFER_NUM : 1UL;
         const uint64_t fixedElems = (qBufferNum + vBufferNum + oBufferNum) * baseDAlign +
                                     static_cast<uint64_t>(STAT_BUFFER_NUM) * STAT_UB_ELEMS;
         const uint64_t fixedBytes = fixedElems * FP32_BYTES;
@@ -144,7 +132,6 @@ ge::graphStatus BlockAttnResPrepareVectorTiling::DoOpTiling()
     tilingData_.vBufferNum = static_cast<uint8_t>(vBufferNum_);
     tilingData_.oBufferNum = static_cast<uint8_t>(oBufferNum_);
     tilingData_.statUbElems = STAT_UB_ELEMS;
-    tilingData_.workUbElems = 0U;
     tilingData_.eps = eps_;
     return ge::GRAPH_SUCCESS;
 }

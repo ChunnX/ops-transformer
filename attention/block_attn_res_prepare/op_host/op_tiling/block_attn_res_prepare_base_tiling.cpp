@@ -44,7 +44,6 @@ constexpr uint64_t UB_RESERVED_BYTES = 8UL * 1024UL;
 constexpr uint32_t D_ALIGN_ELEMS = 64U;
 constexpr uint64_t MAX_HEAD_DIM = 8192UL;
 constexpr uint32_t MAX_BLOCK_NUM = 64U;
-constexpr uint32_t SCHEDULE_MODE = 1U;
 constexpr uint64_t MAX_ALIGNED_D = static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) - (D_ALIGN_ELEMS - 1U);
 
 bool IsPositiveShape(const gert::Shape &shape)
@@ -71,7 +70,11 @@ ge::graphStatus BlockAttnResPrepareBaseTiling::GetPlatformInfo()
     platform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, l0BSize_);
     platform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, l0CSize_);
     systemWorkspaceSize_ = platform.GetLibApiWorkSpaceSize();
-    OP_CHECK_IF(aivCoreNum_ == 0, OP_LOGE(context_->GetNodeName(), "AIV core number is zero"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(aicCoreNum_ == 0, OP_LOGE(context_->GetNodeName(), "AIC core number is zero"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(aivCoreNum_ != aicCoreNum_ * AIV_CORE_NUM_PER_AIC,
+                OP_LOGE(context_->GetNodeName(), "AIV core number must be twice the AIC core number: AIC=%lu, AIV=%lu",
+                        aicCoreNum_, aivCoreNum_),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         aicCoreNum_ > std::numeric_limits<uint16_t>::max() || aivCoreNum_ > std::numeric_limits<uint16_t>::max(),
         OP_LOGE(context_->GetNodeName(), "core count exceeds uint16 range: AIC=%lu, AIV=%lu", aicCoreNum_, aivCoreNum_),
@@ -208,12 +211,11 @@ ge::graphStatus BlockAttnResPrepareBaseTiling::GetShapeAttrsInfo()
     const auto *attrs = context_->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "attrs is null"), return ge::GRAPH_FAILED);
     const float *eps = attrs->GetFloat(EPS_ATTR_INDEX);
-    const float epsValue = eps == nullptr ? BLOCK_ATTN_RES_PREPARE_DEFAULT_EPS : *eps;
-    OP_CHECK_IF(!std::isfinite(epsValue) || epsValue <= 0.0F,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "eps", std::to_string(epsValue).c_str(),
+    eps_ = eps == nullptr ? BLOCK_ATTN_RES_PREPARE_DEFAULT_EPS : *eps;
+    OP_CHECK_IF(!std::isfinite(eps_) || eps_ <= 0.0F,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "eps", std::to_string(eps_).c_str(),
                                                       "eps must be finite and be greater than zero"),
                 return ge::GRAPH_FAILED);
-    eps_ = epsValue;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -266,7 +268,6 @@ ge::graphStatus BlockAttnResPrepareBaseTiling::PostTiling()
 {
     context_->SetBlockDim(usedCoreNum_);
     context_->SetTilingKey(GetTilingKey());
-    context_->SetScheduleMode(SCHEDULE_MODE);
 
     const TilingDataView tilingDataView = GetTilingDataView();
     const char *templateName = tilingDataView.templateName == nullptr ? "unknown" : tilingDataView.templateName;
