@@ -1736,7 +1736,7 @@ uint64_t FlashAttentionScoreGradTilingNormalRegbase::GetTilingKey() const
     auto splitAxis = fBaseParams.splitAxis;
     bool isDeterNEqual = fBaseParams.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_OLD) &&
                          fBaseParams.deterSparseType != static_cast<uint32_t>(DeterSparseType::NO_DETER) &&
-                         fBaseParams.g == 1;
+                         fBaseParams.g == 1 && fBaseParams.tndSparseDeter;
     OP_LOGI(
         context_,
         "splitAxis[%d], inputDtype[%d], isTnd[%d], dropValue[%d], pseValue[%d], attenMaskCfg[%d], s1TemplateType[%d], "
