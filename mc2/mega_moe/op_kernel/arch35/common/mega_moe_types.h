@@ -19,11 +19,6 @@
 #if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
 #include "adv_api/hcomm/hcomm.h"
 #endif
-#if __has_include("../../../common/mc2_moe_context.h")
-#include "../../../common/mc2_moe_context.h"
-#else
-#include "../../../../common/op_kernel/mc2_moe_context.h"
-#endif
 
 namespace MegaMoeImpl {
 
@@ -53,7 +48,13 @@ struct ExpertTokenPosition {
     uint32_t tokenIndexInExpert = 0U;
 };
 
-using Mc2MoeContext = Mc2Aclnn::Mc2MoeContext;
+struct Mc2MoeContext {
+    uint32_t epRankId = 0;
+    uint32_t rankSizePerServer = 0;
+    uint64_t kfcContextAddr = 0; // 通信 API 所需的地址
+    uint64_t epHcclBuffer[HCCL_MAX_RANK_SIZE] = {};
+    uint64_t hcommHandle[HCCL_MAX_RANK_SIZE] = {}; // 支持 ROCE 或 URMA
+};
 
 struct GMMAddrInfo {
     GM_ADDR aGlobal;

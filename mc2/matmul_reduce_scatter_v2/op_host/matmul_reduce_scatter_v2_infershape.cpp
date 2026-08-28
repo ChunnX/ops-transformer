@@ -20,21 +20,13 @@
 
 using namespace ge;
 namespace ops {
-
-// input tensor index
-const size_t INDEX_IN_X1 = 0;
-// attr index
-const size_t INDEX_ATTR_Y_DTYPE = 9;
-// output tensor index
-const size_t INDEX_OUT = 0;
+const size_t Y_DTYPE = 9;
 
 static ge::graphStatus InferShapeMatmulReduceScatterV2(gert::InferShapeContext *context)
 {
     OP_LOGE_IF(InferMatmulReduceScatterCommon(context) != GRAPH_SUCCESS, GRAPH_FAILED, context->GetNodeName(),
                "infer shape execute failed.");
-    auto attrs = context->GetAttrs();
-    OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const bool *isAmaxOut = attrs->GetAttrPointer<bool>(RS_IS_AMAX_OUT);
+    const bool *isAmaxOut = context->GetAttrs()->GetAttrPointer<bool>(RS_IS_AMAX_OUT);
     OPS_CHECK_NULL_WITH_CONTEXT(context, isAmaxOut);
     gert::Shape *amaxOutShape = context->GetOutputShape(1);
     OPS_CHECK_NULL_WITH_CONTEXT(context, amaxOutShape);
@@ -50,22 +42,14 @@ static ge::graphStatus InferShapeMatmulReduceScatterV2(gert::InferShapeContext *
 
 static ge::graphStatus InferDataTypeMatmulReduceScatterV2(gert::InferDataTypeContext *context)
 {
-    auto attrs = context->GetAttrs();
-    OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
     // 如果是bf16/fp16 输入和输出保持一致，如果是fp8 则使用y_dtype
-    const auto x1Dtype = context->GetInputDataType(INDEX_IN_X1);
-    ge::DataType yDtype = ge::DataType::DT_UNDEFINED;
-    if ((x1Dtype == ge::DataType::DT_FLOAT16) || (x1Dtype == ge::DataType::DT_BF16)) {
-        yDtype = x1Dtype;
+    auto d_type = ge::DataType::DT_FLOAT;
+    if ((d_type == ge::DataType::DT_FLOAT16) || (d_type == ge::DataType::DT_BF16)) {
+        d_type = context->GetInputDataType(0);
     } else {
-        const int64_t *yDtypePtr = attrs->GetInt(INDEX_ATTR_Y_DTYPE);
-        if (yDtypePtr == nullptr || *yDtypePtr == static_cast<int64_t>(ge::DataType::DT_UNDEFINED)) {
-            OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "yDtype", "DT_UNDEFINED", "valid dtype value");
-            return ge::GRAPH_FAILED;
-        }
-        yDtype = static_cast<ge::DataType>(*yDtypePtr);
+        d_type = static_cast<ge::DataType>(*context->GetAttrs()->GetAttrPointer<int64_t>(Y_DTYPE));
     }
-    context->SetOutputDataType(INDEX_OUT, yDtype);
+    context->SetOutputDataType(0, d_type);
     return GRAPH_SUCCESS;
 }
 

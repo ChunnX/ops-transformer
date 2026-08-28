@@ -36,8 +36,7 @@ public:
     [[nodiscard]] virtual uint32_t GetGroupSize() const = 0;
     [[nodiscard]] virtual uint32_t GetQueryHeadNum() const = 0;
     [[nodiscard]] virtual uint32_t GetKvHeadNum() const = 0;
-    [[nodiscard]] virtual uint32_t GetHeadDimQk() const = 0;
-    [[nodiscard]] virtual uint32_t GetHeadDimV() const = 0;
+    [[nodiscard]] virtual uint32_t GetHeadDim() const = 0;
     [[nodiscard]] virtual uint32_t GetQuerySeqSize() const = 0;
     [[nodiscard]] virtual uint32_t GetQuerySeqSize(uint32_t batchIdx) const = 0;
     [[nodiscard]] virtual uint32_t GetKvSeqSize() const = 0;
@@ -80,14 +79,9 @@ public:
         return kvHeadNum;
     }
 
-    [[nodiscard]] uint32_t GetHeadDimQk() const override
+    [[nodiscard]] uint32_t GetHeadDim() const override
     {
-        return headDimQk;
-    }
-
-    [[nodiscard]] uint32_t GetHeadDimV() const override
-    {
-        return headDimV;
+        return headDim;
     }
 
     [[nodiscard]] uint32_t GetQuerySeqSize() const override
@@ -208,8 +202,7 @@ public:
     uint32_t querySeqSize{0U};
     uint32_t kvHeadNum{0U};
     uint32_t kvSeqSize{0U};
-    uint32_t headDimQk{64U};
-    uint32_t headDimV{64U};
+    uint32_t headDim{64U};
     bool attenMaskFlag{false};
     uint32_t sparseMode{0U};
     uint32_t preToken{0U};
