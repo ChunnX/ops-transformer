@@ -1494,6 +1494,8 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
         tilingKey += 1000000000ULL;
     }
 
+    printf("tkd tilingkey: %lu\n", tilingKey);
+
     return tilingKey;
 }
 
