@@ -608,6 +608,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0(uint32_t runBSStart
     auto hMixGradBuf = buffers.calcTmpBuf;
     dataCopyParams.blockLen = buffers.stepLength * sizeof(P);
 
+    PipeBarrier<PIPE_MTE2>();
     DataCopyPad(fp32InputBuf, hPreGm_[runBSStart * N_], dataCopyParams, dataCopyPadParams);
     vecInQueue1_.EnQue(fp32InputBuf);
     LocalTensor<P> hPre = vecInQueue1_.DeQue<P>();
