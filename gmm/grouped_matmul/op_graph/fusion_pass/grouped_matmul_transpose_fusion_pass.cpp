@@ -61,6 +61,7 @@ constexpr char kXInputName[] = "x";
 constexpr char kWeightInputName[] = "weight";
 constexpr char kFixPipeIntrinsic[] = "Intrinsic_fix_pipe_l0c2out";
 constexpr char kDav3510ShortSocVersion[] = "Ascend950";
+constexpr char kDav3510ShortSocVersion350[] = "Ascend350";
 
 constexpr int32_t kXIndex = 0;
 constexpr int32_t kWeightIndex = 1;
@@ -250,7 +251,8 @@ bool CheckPlatformIsDav3510ForGmm()
         OP_LOGW(kPassName, "Get platform information failed.");
         return false;
     }
-    return platformInfo.str_info.short_soc_version == kDav3510ShortSocVersion;
+    return platformInfo.str_info.short_soc_version == kDav3510ShortSocVersion ||
+           platformInfo.str_info.short_soc_version == kDav3510ShortSocVersion350;
 }
 
 bool CheckPlatformSupportReshapePattern()
