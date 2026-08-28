@@ -16,30 +16,37 @@ from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 MLA_METADATA_OP_NAME = "flash_mla_with_kvcache_metadata"
 
 
+def _get_core_nums():
+    """从硬件获取 AIC/AIV 核数（与 aclnn host 侧 GetCurrentPlatformInfo 同源）。"""
+    props = torch.npu.get_device_properties()
+    return props.cube_core_num, props.vector_core_num
+
+
 def _calculate_batch_size(cache_seqlens: torch.Tensor):
     """batch size 由必传的 cache_seqlens 长度推导（每 batch 一项，即 size(0)）。"""
     return cache_seqlens.size(0)
 
 
-def _calculate_metadata_size(batch_size):
+def _calculate_metadata_size(batch_size, aic_core_num, aiv_core_num):
     """计算 metadata tensor 的对齐后大小。
 
     MLA 硬约束 kv head num == 1（B2/D16 上界公式，禁止按 num_heads_kv>1 放大）：
-    最坏容量 = ((36 + 72) * batch_size * 1 + 1) * 16 个 int32（AIC 36 + AIV 72 核，每核 16 word，
+    最坏容量 = ((aic + aiv) * batch_size * 1 + 1) * 16 个 int32（每核 16 word，
     外加 1 个 header），对齐 4096（照 flash_attn.py 同款对齐，Oracle caveat 8）。
+    核数从硬件获取，见 _get_core_nums。
     """
-    metadata_size = ((36 + 72) * batch_size * 1 + 1) * 16
+    metadata_size = ((aic_core_num + aiv_core_num) * batch_size * 1 + 1) * 16
     return ((metadata_size + 4095) // 4096) * 4096
 
 
-def _check_metadata_capacity(metadata, batch_size):
+def _check_metadata_capacity(metadata, batch_size, aic_core_num, aiv_core_num):
     """显式容量校验（B2/D16）：metadata 张量必须不小于 kv==1 上界容量。"""
-    required = _calculate_metadata_size(batch_size)
+    required = _calculate_metadata_size(batch_size, aic_core_num, aiv_core_num)
     torch._check(
         metadata.numel() >= required,
         lambda: f"The metadata tensor is too small: {metadata.numel()} elements, required at least "
-        f"{required} elements for batch_size={batch_size} (capacity = ((36 + 72) * batch_size * 1 + 1) "
-        f"* 16, aligned to 4096; kv head num is 1 for MLA).",
+        f"{required} elements for batch_size={batch_size} (capacity = ((aic {aic_core_num} + aiv {aiv_core_num})"
+        f" * batch_size * 1 + 1) * 16, aligned to 4096; kv head num is 1 for MLA).",
     )
 
 
@@ -94,7 +101,8 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
             layout_q: Optional[str] = None,
         ):
             b_size = _calculate_batch_size(cache_seqlens)
-            metadata_size = _calculate_metadata_size(b_size)
+            aic_core_num, aiv_core_num = _get_core_nums()
+            metadata_size = _calculate_metadata_size(b_size, aic_core_num, aiv_core_num)
             return torch.empty((metadata_size,), dtype=torch.int32, device="meta")
 
         @torch.library.register_fake("cann_ops_transformer::flash_mla_with_kvcache")
@@ -182,6 +190,7 @@ def flash_mla_with_kvcache_metadata(
     'PrivateUse1' is dispatch key for custom NPU backends.
     """
     b_size = _calculate_batch_size(cache_seqlens)
+    aic_core_num, aiv_core_num = _get_core_nums()
 
     max_seqlen_q = -1 if max_seqlen_q is None else max_seqlen_q
     max_seqlen_kv = -1 if max_seqlen_kv is None else max_seqlen_kv
@@ -189,7 +198,7 @@ def flash_mla_with_kvcache_metadata(
     layout_q = "BSND" if layout_q is None else layout_q
 
     op_module = flash_mla_with_kvcache_op_builder.load()
-    metadata_size = _calculate_metadata_size(b_size)
+    metadata_size = _calculate_metadata_size(b_size, aic_core_num, aiv_core_num)
     output = torch.empty((metadata_size,), dtype=torch.int32, device="npu")
 
     return op_module.flash_mla_with_kvcache_metadata(
@@ -204,6 +213,8 @@ def flash_mla_with_kvcache_metadata(
         head_dim_v,
         mask_mode,
         layout_q,
+        aic_core_num,
+        aiv_core_num,
         output,
     )
 
@@ -232,6 +243,7 @@ def flash_mla_with_kvcache(
     Dispatcher implementation for NPU (DeepSeek MLA flash attention).
     'PrivateUse1' is the combine key for custom NPU backends.
     """
+    aic_core_num, aiv_core_num = _get_core_nums()
     if metadata is not None:
         # 显式容量校验（B2/D16）：主算子侧对用户传入的 metadata 做防呆
         batch_size = None
@@ -240,7 +252,7 @@ def flash_mla_with_kvcache(
         elif cu_seqlens_q is not None and cu_seqlens_q.size(0) > 0:
             batch_size = cu_seqlens_q.size(0) - 1
         if batch_size is not None:
-            _check_metadata_capacity(metadata, batch_size)
+            _check_metadata_capacity(metadata, batch_size, aic_core_num, aiv_core_num)
 
     layout_q = "TND" if layout_q is None else layout_q
     layout_kv = "PA_NZ" if layout_kv is None else layout_kv
@@ -266,6 +278,8 @@ def flash_mla_with_kvcache(
         layout_kv,
         layout_out,
         return_softmax_lse,
+        aic_core_num,
+        aiv_core_num,
     )
 
 
