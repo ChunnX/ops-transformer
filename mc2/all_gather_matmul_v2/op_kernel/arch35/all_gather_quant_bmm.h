@@ -345,7 +345,7 @@ AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, Is
         }
     }
     // 已注释：MXFP4量化中matmul gather块计算
-    // QuantMatmulGatherCompute();
+    // QuantMatmulGatherCompute(); 
 }
 
 template <typename AType, typename BType, typename BiasType, typename X2ScaleType, typename CType, bool ATrans,
