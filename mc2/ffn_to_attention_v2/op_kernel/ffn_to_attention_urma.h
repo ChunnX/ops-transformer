@@ -154,7 +154,6 @@ FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::Init(GM_ADDR mc2Context,
     tpipe_->InitBuffer(xQueue_, BUFFER_NUM, hSize_);
     tpipe_->InitBuffer(statusBuf_, UB_ALIGN);
     statusTensor_ = statusBuf_.Get<int32_t>();
-    statusTensor_.SetValue(0, 1);
 
     batchSizeSendCnt_ = static_cast<uint64_t>(axisBS_) * expertNumPerToken_;
     winTokenInfoTableSize_ =
@@ -175,14 +174,18 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::H
 template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::InitLocalFlag()
 {
-    SyncFunc<HardEvent::S_MTE3>();
+    constexpr uint32_t flagSlotElementNum = URMA_FLAG_SLOT_SIZE / sizeof(int32_t);
+    Duplicate<int32_t>(statusTensor_, 1, flagSlotElementNum);
+    SyncFunc<HardEvent::V_MTE3>();
     GlobalTensor<int32_t> localFlagGMTensor;
     localFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(localFlagAddr_));
-    DataCopyExtParams flagCopyParams = {1U, sizeof(int32_t), 0U, 0U, 0U};
-    DataCopyPad(localFlagGMTensor, statusTensor_, flagCopyParams);
+    DataCopy(localFlagGMTensor, statusTensor_, flagSlotElementNum);
     SyncFunc<HardEvent::MTE3_S>();
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(localFlagGMTensor);
     DataSyncBarrier<MemDsbT::DDR>();
+    int32_t localFlagValue = localFlagGMTensor.GetValue(0);
+    ascendc_assert(localFlagValue == 1, "URMA local flag initialization failed, flag=%d, aivId=%u", localFlagValue,
+                   aivId_);
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
