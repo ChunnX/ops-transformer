@@ -13,6 +13,7 @@
  */
 
 #include <torch/extension.h>
+#include <iostream>
 #include "aclnn_common.h"
 
 namespace op_api {
@@ -132,7 +133,8 @@ std::tuple<at::Tensor, at::Tensor> MakeSparseFlashMlaOutputs(const at::Tensor &q
                                q.options().dtype(torch::kFloat32));
     } else {
         softmaxLse =
-            at::empty({kvHeadNum, q.size(DIM_0), q.size(DIM_1) / kvHeadNum}, q.options().dtype(torch::kFloat32));
+            at::zeros({kvHeadNum, q.size(DIM_0), q.size(DIM_1) / kvHeadNum}, q.options().dtype(torch::kFloat32));
+        std::cout << "softmaxLse: " << softmaxLse << std::endl;
     }
     return {attenOut, softmaxLse};
 }
