@@ -1201,7 +1201,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
     // 初始化
     // ==========================================================
     uint32_t currentN = static_cast<uint32_t>(offsetND / D_);
-    uint32_t chunkSize = N_ > 4 ? (PROCESS_V2_CHUNK_SIZE / 2) : PROCESS_V2_CHUNK_SIZE;
+    // Keep the largest V2 queue tensor at 64 * 64 * sizeof(float) = 16 KB.
+    // This is the safe queue-block prerequisite for the subsequent q0 double-buffer experiment.
+    uint32_t chunkSize = PROCESS_V2_CHUNK_SIZE / 2;
     uint32_t currentBsSize = bsEnd - bsStart;
     buffId = buffId % VEC_CORE_VECIDX_MOD;
 
