@@ -66,6 +66,7 @@ public:
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
             .ExtendCfgInfo("opFile.value","quant_grouped_matmul_inplace_add_apt");
         this->AICore().AddConfig("ascend950", config91095);
+        this->AICore().AddConfig("ascend350", config91095);
     }
 };
 
