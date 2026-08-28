@@ -375,27 +375,20 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         // 可达 key：unquant GATHER（500000）、unquant SCATTER（501000）、dropPad（500100）、static（510000/511000），
         // dynamic 已被 tiling 排除。A/B 完成过滤计数 + 离散搬出（sortedRowIdx / expandedExpertIdx / expertTotalCount）
         // 后 **不再 return**，落入下方既有 Stage3（RowIdxGather）+ Stage5（搬出/量化）的 dispatch。
-        constexpr bool isUnquantOrStatic = IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
-                                           IsSameType<DTYPE_X, float>::value;
-        if constexpr (isUnquantOrStatic) {
-            // Phase A+B 单类：Filter（过滤 [expertStart, expertEnd) 生成 pairs + 逐核 expertCount）
-            // → Offset + 离散搬出 → sortedRowIdx（GATHER）/ expandedRowIdx（SCATTER）+ expertTotalCount；
-            // dropPad（500100）额外写 expandedExpertIdx + expertIdxValue。
-            // Process 内部已处理所有 SyncAll 栅栏（A→B、B 内、B→Stage3/Stage5），apt 侧无需再 SyncAll。
-            TPipe phasePipe;
-            MoeV3CutOriginPhaseAB<DTYPE_X> phaseOp;
-            phaseOp.Init(expertIdx, expandedRowIdx, expertTokensCountOrCumsum, userWS, t, &phasePipe);
-            phaseOp.Process();
-            phasePipe.Destroy();
-        }
+        // Phase A+B 单类：Filter（过滤 [expertStart, expertEnd) 生成 pairs + 逐核 expertCount）
+        // → Offset + 离散搬出 → sortedRowIdx（GATHER）/ expandedRowIdx（SCATTER）+ expertTotalCount；
+        // dropPad（500100）额外写 expandedExpertIdx + expertIdxValue。
+        // Process 内部已处理所有 SyncAll 栅栏（A→B、B 内、B→Stage3/Stage5），apt 侧无需再 SyncAll。
+        // 类型守卫移除：Phase AB 模板不依赖 DTYPE_X（仅操作 int32 expertIdx/pairs），所有 dtype 均可执行；
+        // Stage3/Stage5 的 dtype 守卫在各自 dispatch 点自行处理。
+        TPipe phasePipe;
+        MoeV3CutOriginPhaseAB<DTYPE_X> phaseOp;
+        phaseOp.Init(expertIdx, expandedRowIdx, expertTokensCountOrCumsum, userWS, t, &phasePipe);
+        phaseOp.Process();
+        phasePipe.Destroy();
 #if (__NPU_ARCH__ == 3510)
         SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 #endif
-        if constexpr (!isUnquantOrStatic) {
-            // 与单类一致：不支持 dtype（int8/hifloat8 UNQUANT，tiling 未排除但 CS 无对应模板）直接 return，
-            // 不落入 Stage3/Stage5（否则会读未写 sortedRowIdx/expertTotalCount 的 workspace）。
-            return;
-        }
         // 注意：这里不 return，继续落入 Stage3/Stage5 复用既有 dispatch。
     }
 

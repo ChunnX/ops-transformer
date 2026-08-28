@@ -91,6 +91,28 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(SIMT_THREAD_NUM) inline void ScatterPairsSta
     }
 }
 
+// ========================== FillTailNegOneVF（Phase A 尾块非对齐填充，SIMD VF）==========================
+// 作用：把 UB 上 [dstAddr, dstAddr + count) 的 float 元素填为 -1.0f，起始地址可能非 32B 对齐。
+// 背景：传统 Duplicate 要求 dst 32B 对齐，当 chunkLength 非 8 的倍数时 expertIdxFp32Local[chunkLength]
+// 起始字节非 32B 对齐（如 chunkLength=143 -> 字节偏移 572 -> 572%32=28）-> VEC_ERROR。
+// 方案：MicroAPI 在寄存器内 Duplicate(-1.0f)，再用 StoreUnAlign/StoreUnAlignPost 非对齐写出，
+// 规避 Duplicate 的 32B 对齐约束。
+// 约束：count <= Ceil(chunkLength,64)*64 - chunkLength < 64，不足一个 VL(64 float)，单次 StoreUnAlign 即可。
+// template <typename T>
+// __simd_vf__ inline void FillTailNegOneVF(__ubuf__ T *dstAddr, uint32_t count)
+// {
+//     using namespace AscendC::MicroAPI;
+//     RegTensor<T> negOneReg;
+//     Duplicate(negOneReg, static_cast<T>(-1));
+//     MaskReg mask = UpdateMask<T>(count);
+//     // Select: 按 mask 从 negOneReg 选出 count 个有效元素到 outReg（mask 外置零，写出时被 mask 屏蔽）
+//     RegTensor<T> outReg;
+//     And<T>(outReg, negOneReg, negOneReg, mask);
+//     UnalignRegForStore ureg;
+//     StoreUnAlign(dstAddr, outReg, ureg);
+//     StoreUnAlignPost(dstAddr, ureg, 0);
+// }
+
 // ========================== MoeV3CutOriginPhaseAB（Phase A + Phase B 单类）==========================
 template <typename T>
 class MoeV3CutOriginPhaseAB {
@@ -329,10 +351,12 @@ __aicore__ inline void MoeV3CutOriginPhaseAB<T>::Process()
 {
     if (blockIdx_ >= filterNeedCoreNum_) {
         // 非 filter 核不参与 A/B 计算，但必须参与所有 SyncAll 栅栏（与 filter 核计数一致），保证无死锁。
+        // filter 核路径含 3 次 SyncAll（A→B / B内 / B→Stage3），此处对齐补齐。
+        SyncAll();
+        SyncAll();
         SyncAll();
         return;
     }
-
     // ===== Phase A: filter + count =====
     FilterAndCountChunked();
     WriteExpertCountToWorkspace();
@@ -455,6 +479,25 @@ __aicore__ inline void MoeV3CutOriginPhaseAB<T>::FilterAndCountChunked()
             Cast(expertIdxFp32Local, expertIdxLocal, RoundMode::CAST_ROUND, alignedLen);
             PipeBarrier<PIPE_V>();
 
+            // 尾块（partial chunk）修复：DataCopyPad 只填 [0, chunkLength)，[chunkLength, alignedLen)
+            // 是上一 chunk 残留数据，经 CompareScalar 产生陈旧 mask 位 -> GatherMask(Counter 方式一)
+            // 的 rsvdCnt 虚高 -> count/pairs 虚高 -> scatter 写垃圾 -> RowIdxGather 越界 vec error。
+            // 填 -1（必然 < expertStart_>=0，GE 不满足）清零尾块 mask 位，保证 rsvdCnt 精确。
+            // chunkLength 可能非 8 的倍数 -> expertIdxFp32Local[chunkLength] 起始非 32B 对齐 ->
+            // 传统 Duplicate 会 VEC_ERROR，改用 MicroAPI VF (StoreUnAlign) 非对齐写出。
+            // if (chunkLength < alignedLen) {
+            //     auto fp32TailAddr = reinterpret_cast<__ubuf__ float *>(
+            //         expertIdxFp32Local[chunkLength].GetPhyAddr());
+            //     VF_CALL<FillTailNegOneVF<float>>(
+            //         fp32TailAddr, static_cast<uint32_t>(alignedLen - chunkLength));
+            //     PipeBarrier<PIPE_V>();
+            // }
+            if (chunkLength < alignedLen) {
+                for(int32_t i =0; i < alignedLen - chunkLength; i++){
+                    expertIdxFp32Local.SetValue( chunkLength + i, static_cast<float>(-1));
+                }
+                SetWaitFlag<HardEvent::S_V>(HardEvent::S_V);
+            }
             LocalTensor<uint8_t> compareMask0 = buf_.Get<uint8_t>()[compareMask0Off];
             LocalTensor<uint8_t> compareMask1 = buf_.Get<uint8_t>()[compareMask1Off];
             LocalTensor<uint8_t> gatherMaskLocal = buf_.Get<uint8_t>()[gatherMaskOff];
@@ -534,9 +577,6 @@ __aicore__ inline void MoeV3CutOriginPhaseAB<T>::WriteExpertCountToWorkspace()
 template <typename T>
 __aicore__ inline void MoeV3CutOriginPhaseAB<T>::ComputeGlobalOffset()
 {
-    // Invalidate cache to see workspace writes from all cores (Phase A)
-    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(expertCountWorkspaceGm_);
-
     int64_t expertCountAlign =
         OpsBaseCeilAlign(expertCountStride_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
     int64_t batchCores = batchBufSize_ / expertCountAlign;
@@ -636,7 +676,6 @@ __aicore__ inline void MoeV3CutOriginPhaseAB<T>::ScatterToSortedRowIdx()
 
     // Invalidate cache to see pairs written in Phase A
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(pairsWorkspaceGm_);
-
     LocalTensor<int32_t> expertCountLocal = buf_.Get<int32_t>()[expertCountLocalOffset_ / sizeof(int32_t)];
     LocalTensor<int32_t> flatIdxLocal = buf_.Get<int32_t>()[scatterFlatIdxOffset_ / sizeof(int32_t)];
     LocalTensor<int32_t> expertIdxLocal = buf_.Get<int32_t>()[scatterExpertIdxOffset_ / sizeof(int32_t)];
@@ -672,8 +711,10 @@ __aicore__ inline void MoeV3CutOriginPhaseAB<T>::ScatterToSortedRowIdx()
             expertCountLocal.SetValue(e, pos + 1);
         }
 
+        SetWaitFlag<HardEvent::S_V>(HardEvent::S_V);
         asc_vf_call<ScatterPairsStableSimt>(dim3{SIMT_THREAD_NUM, 1, 1}, static_cast<int32_t>(batchSize),
                                             flatIdxAddr, rankAddr, dstGmAddr);
+        SetWaitFlag<HardEvent::V_MTE2>(HardEvent::V_MTE2);
 
         pairCursor += batchSize;
     }
