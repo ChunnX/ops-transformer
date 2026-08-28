@@ -66,9 +66,9 @@ TEST_P(AllGatherMatmulV3Arch35TilingTest, param)
                        MC2_TILING_DATA_RESERVED_LEN);
 }
 
-INSTANTIATE_TEST_SUITE_P(AllGatherMatmulV3TilingUT, AllGatherMatmulV3Arch35TilingTest,
-                         testing::ValuesIn(GetCasesFromCsv<AllGatherMatmulV3TilingUtParam>(
-                             ReplaceFileExtension2Csv(__FILE__))),
-                         PrintCaseInfoString<AllGatherMatmulV3TilingUtParam>);
+INSTANTIATE_TEST_SUITE_P(
+    AllGatherMatmulV3TilingUT, AllGatherMatmulV3Arch35TilingTest,
+    testing::ValuesIn(GetCasesFromCsv<AllGatherMatmulV3TilingUtParam>(ReplaceFileExtension2Csv(__FILE__))),
+    PrintCaseInfoString<AllGatherMatmulV3TilingUtParam>);
 
 } // namespace AllGatherMatmulV3UT

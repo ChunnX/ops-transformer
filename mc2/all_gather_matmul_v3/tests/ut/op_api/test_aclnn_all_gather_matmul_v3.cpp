@@ -22,8 +22,8 @@ extern "C" aclnnStatus aclnnAllGatherQuantMatmulV3GetWorkspaceSize(
     const aclTensor *x1ScaleOptional, const aclTensor *x2ScaleOptional, const char *group, int64_t rankSize,
     int64_t hcclBufferSize, int64_t groupSize, const char *commMode, const aclTensor *output,
     const aclTensor *gatherOut, uint64_t *workspaceSize, aclOpExecutor **executor);
-extern "C" aclnnStatus aclnnAllGatherQuantMatmulV3(void *workspace, uint64_t workspaceSize,
-                                                   aclOpExecutor *executor, aclrtStream stream);
+extern "C" aclnnStatus aclnnAllGatherQuantMatmulV3(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                                   aclrtStream stream);
 
 namespace AllGatherMatmulV3UT {
 
@@ -86,8 +86,8 @@ TEST_F(TestAclnnAllGatherMatmulV3, NullGroupTest)
     TensorDesc outputDesc = TensorDesc({8192, 2560}, ACL_BF16, ACL_FORMAT_ND);
     TensorDesc gatherOutDesc = TensorDesc({8192, 4096}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnAllGatherQuantMatmulV3,
-                        INPUT(contextDesc, x1Desc, x2Desc, nullptr, x1ScaleDesc, x2ScaleDesc,
-                              (const char *)nullptr, 4, 200, 4295032864L, "urma"),
+                        INPUT(contextDesc, x1Desc, x2Desc, nullptr, x1ScaleDesc, x2ScaleDesc, (const char *)nullptr, 4,
+                              200, 4295032864L, "urma"),
                         OUTPUT(outputDesc, gatherOutDesc));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -104,19 +104,19 @@ TEST_F(TestAclnnAllGatherMatmulV3, EmptyGroupTest)
     TensorDesc x2ScaleDesc = TensorDesc({2560, 64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc outputDesc = TensorDesc({8192, 2560}, ACL_BF16, ACL_FORMAT_ND);
     TensorDesc gatherOutDesc = TensorDesc({8192, 4096}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnAllGatherQuantMatmulV3,
-                        INPUT(contextDesc, x1Desc, x2Desc, nullptr, x1ScaleDesc, x2ScaleDesc,
-                              "", 4, 200, 4295032864L, "urma"),
-                        OUTPUT(outputDesc, gatherOutDesc));
+    auto ut = OP_API_UT(
+        aclnnAllGatherQuantMatmulV3,
+        INPUT(contextDesc, x1Desc, x2Desc, nullptr, x1ScaleDesc, x2ScaleDesc, "", 4, 200, 4295032864L, "urma"),
+        OUTPUT(outputDesc, gatherOutDesc));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-INSTANTIATE_TEST_SUITE_P(AllGatherMatmulV3, TestAclnnAllGatherMatmulV3,
-                         testing::ValuesIn(GetCasesFromCsv<AllGatherMatmulV3ApiUtParam>(
-                             ReplaceFileExtension2Csv(__FILE__))),
-                         PrintCaseInfoString<AllGatherMatmulV3ApiUtParam>);
+INSTANTIATE_TEST_SUITE_P(
+    AllGatherMatmulV3, TestAclnnAllGatherMatmulV3,
+    testing::ValuesIn(GetCasesFromCsv<AllGatherMatmulV3ApiUtParam>(ReplaceFileExtension2Csv(__FILE__))),
+    PrintCaseInfoString<AllGatherMatmulV3ApiUtParam>);
 
 } // namespace AllGatherMatmulV3UT

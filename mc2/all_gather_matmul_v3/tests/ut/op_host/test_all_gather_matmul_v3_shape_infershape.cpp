@@ -68,9 +68,9 @@ TEST_P(AllGatherMatmulV3InferShapeTest, param)
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, param.expectResult, param.expectOutputShape);
 }
 
-INSTANTIATE_TEST_SUITE_P(AllGatherMatmulV3InferShapeUT, AllGatherMatmulV3InferShapeTest,
-                         testing::ValuesIn(GetCasesFromCsv<AllGatherMatmulV3InferShapeUtParam>(
-                             ReplaceFileExtension2Csv(__FILE__))),
-                         PrintCaseInfoString<AllGatherMatmulV3InferShapeUtParam>);
+INSTANTIATE_TEST_SUITE_P(
+    AllGatherMatmulV3InferShapeUT, AllGatherMatmulV3InferShapeTest,
+    testing::ValuesIn(GetCasesFromCsv<AllGatherMatmulV3InferShapeUtParam>(ReplaceFileExtension2Csv(__FILE__))),
+    PrintCaseInfoString<AllGatherMatmulV3InferShapeUtParam>);
 
 } // namespace AllGatherMatmulV3UT
