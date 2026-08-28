@@ -31,7 +31,7 @@
 
 #include "flash_mla_with_kvcache_tiling_data.h"
 
-namespace BaseApi {
+namespace FlashAttnKernel {
 template <typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
 class FlashAttentionNoQuantMlaKernel {
 public:
@@ -567,7 +567,7 @@ public:
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
         }
         info.actSingleLoopS2SizeAlign =
-            AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
+            AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(BaseApi::FA_BYTE_BLOCK / sizeof(INPUT_T)));
         info.isChangeBatch = false;
 
         GetPreNextTokenLeftUp(actSeqLensQ_, actSeqLensKv_, info.preTokensLeftUp, info.nextTokensLeftUp);
@@ -681,6 +681,6 @@ public:
     }
 }; // FlashAttentionNoQuantMlaKernel
 
-} // namespace BaseApi
+} // namespace FlashAttnKernel
 
 #endif // FLASH_MLA_WITH_KVCACHE_KERNEL_NOQUANT_MLA_H_

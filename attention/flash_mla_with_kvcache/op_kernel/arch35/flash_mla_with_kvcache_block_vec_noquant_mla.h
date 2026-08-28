@@ -25,7 +25,7 @@
 
 #include <limits>
 
-#include "attenmask_gs1.h"
+#include "../utils/attenmask_gs1.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "adv_api/activation/softmax.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
@@ -53,7 +53,7 @@ using namespace AttentionCommon;
 #define MLA_SIZE_OF_MEMBER(TYPE, MEMBER) (sizeof(((TYPE *)0)->MEMBER))
 #endif
 
-namespace BaseApi {
+namespace FlashAttnKernel {
 template <typename FA_T>
 class FlashMlaWithKvcacheNoQuantMlaBlockVec {
 public:
@@ -69,7 +69,7 @@ public:
     static constexpr uint32_t dVBaseSize = (uint32_t)FA_T::dVBaseSize;
     static constexpr uint32_t vec1HalfS1BaseSize = mBaseSize >> 1;
     static constexpr uint32_t vec1Srcstride = (mBaseSize >> 1) + 1; // 解bank冲突，需要加1行
-    static constexpr uint32_t dVTemplateAlign64 = Align64Func((uint16_t)FA_T::dVBaseSize);
+    static constexpr uint32_t dVTemplateAlign64 = BaseApi::Align64Func((uint16_t)FA_T::dVBaseSize);
 
     static constexpr uint32_t DB = 2;
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2 C2
@@ -709,7 +709,7 @@ public:
         DataCopyExtParams dataCopyParams;
         dataCopyParams.blockCount = mDealSize;
         dataCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
-        dataCopyParams.srcStride = (dSizeAligned64 - constInfo.dSizeV) / (FA_BYTE_BLOCK / sizeof(T));
+        dataCopyParams.srcStride = (dSizeAligned64 - constInfo.dSizeV) / (BaseApi::FA_BYTE_BLOCK / sizeof(T));
         dataCopyParams.dstStride = 0;
         DataCopyPad(accumOutGm[gmOffset], vec2ResUb, dataCopyParams);
     }
@@ -865,6 +865,6 @@ public:
                                                                  FlashMlaSeqLensToolT &seqLensTool){};
 };
 
-} // namespace BaseApi
+} // namespace FlashAttnKernel
 
 #endif // FLASH_MLA_WITH_KVCACHE_BLOCK_VEC_NOQUANT_MLA_H_

@@ -36,7 +36,7 @@ using namespace AttentionCommon;
 #define MLA_SIZE_OF_MEMBER(TYPE, MEMBER) (sizeof(((TYPE *)0)->MEMBER))
 #endif
 
-namespace BaseApi {
+namespace FlashAttnKernel {
 
 template <typename FA_T>
 class FlashMlaWithKvcacheNoQuantMlaBlockCube {
@@ -500,6 +500,6 @@ public:
                                                                   FlashMlaSeqLensToolT &seqLensTool){};
 };
 
-} // namespace BaseApi
+} // namespace FlashAttnKernel
 
 #endif // FLASH_MLA_WITH_KVCACHE_BLOCK_CUBE_NOQUANT_MLA_H_
