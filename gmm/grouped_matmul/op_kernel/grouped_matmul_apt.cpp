@@ -230,12 +230,10 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
     do { \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling); \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling); \
-        using scaleLayout = AscendC::Std::conditional_t< \
-            scaleNz, AscendC::Te::NNLayoutPtn, \
-            AscendC::Std::conditional_t<Blaze::Gemm::IsTrans<wLayout>::value, AscendC::Te::ScaleBDNLayoutPtn, \
-                                        AscendC::Te::ScaleBNDLayoutPtn>>; \
-        GmmTensorApiMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, wLayout, \
-                             scaleLayout, yLayout, DTYPE_L0C_LOCAL>( \
+        using wLayoutWithScale = AscendC::Std::conditional_t<scaleNz, \
+            AscendC::Std::tuple<wLayout, AscendC::Te::NNLayoutPtn>, wLayout>; \
+        GmmTensorApiMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, \
+                             wLayoutWithScale, yLayout, DTYPE_L0C_LOCAL>( \
             x, weight, bias, scale, groupList, perTokenScale, y, user1, &gmmQuantParams_, &mmTilingData_, &tPipe); \
     } while (0)
 #else
