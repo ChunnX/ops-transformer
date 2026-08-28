@@ -595,10 +595,10 @@ namespace GmmKernel {
 
 // 执行通用 GMM2 tile 循环。
 template <uint8_t CombineQuantMode, typename BlockMmad, bool IsShared, bool IsLayered = false,
-          bool UseGroupCombineReady = false, typename WorkSet, typename Config>
+          bool UseGroupCombineReady = false, bool UsePairwiseTileCombine = false, typename WorkSet, typename Config>
 __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet, const GMMAddrInfo &gmmAddrInfo,
                                           const Config &config, uint32_t startLoopIdx, uint32_t tileNum,
-                                          uint32_t rowOffsetInExpert = 0U
+                                          uint32_t rowOffsetInExpert = 0U, int32_t *gmTileSequence = nullptr
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
                                           ,
                                           CriticalPathTrace *criticalPathTrace = nullptr
@@ -665,7 +665,23 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
         auto gmBlockC = workSet.gmC.Slice(Te::MakeCoord(mLoc, nLoc),
                                           Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, gmBlockC, singleShape);
-        if constexpr (UseGroupCombineReady && !IsShared) {
+        if constexpr (UsePairwiseTileCombine && !IsShared) {
+            // 与本 AIC 配对的 AIV1 使用同一 scheduler 次序。FIX 写出完成后只发布本核单调序号，
+            // 因而每个 tile 恰好一个 writer、一个 reader，不需要跨核 fan-in 或 AtomicAdd。
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+            if (criticalPathTrace != nullptr) {
+                criticalPathTrace->BeginGmm2ReadyFixWait(CriticalPathTrace::Now());
+            }
+#endif
+            AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+            if (criticalPathTrace != nullptr) {
+                criticalPathTrace->EndGmm2ReadyFixWait(CriticalPathTrace::Now());
+            }
+#endif
+            AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag, ++(*gmTileSequence));
+        } else if constexpr (UseGroupCombineReady && !IsShared) {
             NotifyWaveCombineGroupCompletion(rowOffsetInExpert + mLoc, gmmAddrInfo.gmm2CombineSyncCounter
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
                                              ,
@@ -677,6 +693,48 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
         } else if constexpr (IsShared && !IsLayered) {
             NotifySharedExpertTileCompletion(mLoc, gmmAddrInfo.sharedExpertGmm2TileCounter);
         }
+    }
+}
+
+// A8W8 非量化 Combine 的 1:1 tile consumer。它与配对 AIC 重放完全相同的 scheduler，
+// 每次只在本核序号到达后读取一个 [M tile, 256-N tile]，随即把该 tile 分段发送到目标 rank。
+// UB 从 64 KiB 起步，避开 AIV1 Dispatch 跨 wave 保留在低区的 cumsum 状态。
+template <typename ElementC, typename MakeLayoutC, typename Scheduler, typename TensorC, typename Config>
+__aicore__ inline void Gmm2Aiv1EpilogueGeneric(Scheduler &scheduler, TensorC &l0cOutGm, const Params &params,
+                                               const GMMAddrInfo &gmmAddrInfo, int32_t &gmTileSequence,
+                                               const Config &config, uint32_t startLoopIdx, uint32_t tileNum)
+{
+    for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
+        auto blockCoord = scheduler.GetBlockCoord(loopIdx);
+        auto actualShape = scheduler.GetBlockShape(blockCoord);
+        uint32_t mLoc = Get<M_VALUE>(blockCoord);
+        uint32_t nLoc = Get<N_VALUE>(blockCoord);
+
+        int32_t expectedReadySequence = gmTileSequence + 1;
+        WaitUntilGmFlagAtLeast(gmmAddrInfo.gmmToEpilogueFlag, expectedReadySequence);
+        auto tensorBlockGm = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc),
+                                            Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+        constexpr uint32_t tileUbBase = WAVE_COMBINE_UB_BASE;
+        auto layoutTileUb = MakeLayoutC{}(config.tileM, L1_TILE_N);
+        auto tensorBlockUb = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(tileUbBase), layoutTileUb);
+        LocalTensor<ElementC> tileUb = LocalTensor<ElementC>(TPosition::VECIN, tileUbBase, config.tileM * L1_TILE_N);
+        auto copyGM2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
+        AscendC::Te::Copy(copyGM2UB, tensorBlockUb, tensorBlockGm);
+
+        int32_t lenTile = Get<M_VALUE>(actualShape);
+        GlobalTensor<int32_t> metaInfoGm;
+        LocalTensor<int32_t> metaInfoTensor =
+            LocalTensor<int32_t>(TPosition::VECCALC, META_INFO_TENSOR_ADDR, lenTile * META_INFO_SIZE);
+        metaInfoGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+            gmmAddrInfo.metaInfoGlobal + static_cast<uint64_t>(mLoc) * META_INFO_SIZE * sizeof(int32_t)));
+        AscendC::DataCopy(metaInfoTensor, metaInfoGm, lenTile * META_INFO_SIZE);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
+        CombineImpl::CombineTokens<ElementC, decltype(actualShape)>(nLoc, config.n, metaInfoTensor, tileUb, actualShape,
+                                                                    L1_TILE_N, params);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
+        gmTileSequence = expectedReadySequence;
     }
 }
 
@@ -746,11 +804,13 @@ __aicore__ inline void Gmm2Aiv0PrologueA8W4(BlockPrologue &blockPrologue, Schedu
 
 // 根据 GM 地址建立执行资源，并执行通用 GMM2 阶段。
 template <uint8_t CombineQuantMode, typename BlockMmad, typename ElementC, bool IsLayered = false,
-          bool IsShared = false, bool UseGroupCombineReady = false, typename Scheduler, typename Config>
+          bool IsShared = false, bool UseGroupCombineReady = false, bool UsePairwiseTileCombine = false,
+          typename Scheduler, typename Config>
 __aicore__ inline void Gmm2ExecGeneric(Scheduler &scheduler, const GMMAddrInfo &gmmAddrInfo, const Config &config,
                                        uint32_t startLoopIdx, uint32_t tileNum,
                                        BlockMmadContext<BlockMmad> *blockMmadContext, bool allowWeightL2Bypass,
-                                       uint32_t rowOffsetInExpert = 0U
+                                       uint32_t rowOffsetInExpert = 0U, const Params *params = nullptr,
+                                       int32_t *gmTileSequence = nullptr
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
                                        ,
                                        CriticalPathTrace *criticalPathTrace = nullptr
@@ -790,23 +850,31 @@ __aicore__ inline void Gmm2ExecGeneric(Scheduler &scheduler, const GMMAddrInfo &
     if constexpr (g_coreType == AscendC::AIC) {
         if (blockMmadContext != nullptr) {
             InitBlockMmad(*blockMmadContext, config);
-            Gmm2AicMmadGeneric<CombineQuantMode, BlockMmad, IsShared, IsLayered, UseGroupCombineReady>(
-                blockMmadContext->blockMmad, workSet, gmmAddrInfo, config, startLoopIdx, tileNum, rowOffsetInExpert
+            Gmm2AicMmadGeneric<CombineQuantMode, BlockMmad, IsShared, IsLayered, UseGroupCombineReady,
+                               UsePairwiseTileCombine>(blockMmadContext->blockMmad, workSet, gmmAddrInfo, config,
+                                                       startLoopIdx, tileNum, rowOffsetInExpert, gmTileSequence
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-                ,
-                criticalPathTrace
+                                                       ,
+                                                       criticalPathTrace
 #endif
             );
         } else {
             BlockMmadContext<BlockMmad> localBlockMmadContext;
             InitBlockMmad(localBlockMmadContext, config);
-            Gmm2AicMmadGeneric<CombineQuantMode, BlockMmad, IsShared, IsLayered, UseGroupCombineReady>(
-                localBlockMmadContext.blockMmad, workSet, gmmAddrInfo, config, startLoopIdx, tileNum, rowOffsetInExpert
+            Gmm2AicMmadGeneric<CombineQuantMode, BlockMmad, IsShared, IsLayered, UseGroupCombineReady,
+                               UsePairwiseTileCombine>(localBlockMmadContext.blockMmad, workSet, gmmAddrInfo, config,
+                                                       startLoopIdx, tileNum, rowOffsetInExpert, gmTileSequence
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-                ,
-                criticalPathTrace
+                                                       ,
+                                                       criticalPathTrace
 #endif
             );
+        }
+    } else if constexpr (UsePairwiseTileCombine && !IsShared) {
+        if (GetSubBlockIdx() == 1U) {
+            using MakeLayoutC = typename KernelConfig::MakeLayoutC;
+            Gmm2Aiv1EpilogueGeneric<ElementC, MakeLayoutC>(workSet.scheduler, workSet.gmC, *params, gmmAddrInfo,
+                                                           *gmTileSequence, config, startLoopIdx, tileNum);
         }
     }
 }
@@ -869,11 +937,12 @@ __aicore__ inline void Gmm2ExecA8W4(Scheduler &scheduler, const GMMAddrInfo &gmm
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, bool IsWeightNZ = false, bool IsLayered = false, uint32_t Gmm1TileM = L1_TILE_M_256,
           bool TopkWeightsPrefetch = false, bool IsShared = false, bool IsGmm1Interleaved = false,
-          bool IsWaveFlagGrained = false, bool UseGroupCombineReady = false>
+          bool IsWaveFlagGrained = false, bool UseGroupCombineReady = false, bool UsePairwiseTileCombine = false>
 __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                       const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
                                       const BlockJobContext &blockJob, void *blockMmadContext = nullptr,
-                                      bool allowWeightL2Bypass = false, uint32_t rowOffsetInExpert = 0U
+                                      bool allowWeightL2Bypass = false, uint32_t rowOffsetInExpert = 0U,
+                                      const Params *params = nullptr, int32_t *gmTileSequence = nullptr
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
                                       ,
                                       CriticalPathTrace *criticalPathTrace = nullptr
@@ -890,7 +959,7 @@ __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int
                                             static_cast<int64_t>(config.tileM), static_cast<int64_t>(L1_TILE_N))});
     uint32_t tileNum = scheduler.GetTileNum();
 
-    if constexpr (CombineQuantMode == COMBINE_NO_QUANT && g_coreType == AscendC::AIV) {
+    if constexpr (CombineQuantMode == COMBINE_NO_QUANT && g_coreType == AscendC::AIV && !UsePairwiseTileCombine) {
         startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
         return;
     }
@@ -900,12 +969,13 @@ __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int
     using BlockMmad = typename GmmConfig::BlockMmad;
     using MmadContext = GmmKernel::BlockMmadContext<BlockMmad>;
     auto *typedBlockMmadContext = reinterpret_cast<MmadContext *>(blockMmadContext);
-    GmmKernel::Gmm2ExecGeneric<CombineQuantMode, BlockMmad, ElementC, IsLayered, IsShared, UseGroupCombineReady>(
-        scheduler, gmmAddrInfo, config, startLoopIdx, tileNum, typedBlockMmadContext, allowWeightL2Bypass,
-        rowOffsetInExpert
+    GmmKernel::Gmm2ExecGeneric<CombineQuantMode, BlockMmad, ElementC, IsLayered, IsShared, UseGroupCombineReady,
+                               UsePairwiseTileCombine>(scheduler, gmmAddrInfo, config, startLoopIdx, tileNum,
+                                                       typedBlockMmadContext, allowWeightL2Bypass, rowOffsetInExpert,
+                                                       params, gmTileSequence
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-        ,
-        criticalPathTrace
+                                                       ,
+                                                       criticalPathTrace
 #endif
     );
 
@@ -915,11 +985,12 @@ __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, bool IsWeightNZ = false, bool IsLayered = false, uint32_t Gmm1TileM = L1_TILE_M_256,
           bool TopkWeightsPrefetch = false, bool IsShared = false, bool IsGmm1Interleaved = false,
-          bool IsWaveFlagGrained = false, bool UseGroupCombineReady = false>
+          bool IsWaveFlagGrained = false, bool UseGroupCombineReady = false, bool UsePairwiseTileCombine = false>
 __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                       const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
                                       void *blockMmadContext = nullptr, bool allowWeightL2Bypass = false,
-                                      uint32_t rowOffsetInExpert = 0U
+                                      uint32_t rowOffsetInExpert = 0U, const Params *params = nullptr,
+                                      int32_t *gmTileSequence = nullptr
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
                                       ,
                                       CriticalPathTrace *criticalPathTrace = nullptr
@@ -930,11 +1001,12 @@ __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int
                              static_cast<uint32_t>(GetBlockNum())};
     RunGmm2Generic<CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, IsWeightNZ,
                    IsLayered, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained,
-                   UseGroupCombineReady>(problemShape, gmmAddrInfo, startBlockIdx, blockJob, blockMmadContext,
-                                         allowWeightL2Bypass, rowOffsetInExpert
+                   UseGroupCombineReady, UsePairwiseTileCombine>(problemShape, gmmAddrInfo, startBlockIdx, blockJob,
+                                                                 blockMmadContext, allowWeightL2Bypass,
+                                                                 rowOffsetInExpert, params, gmTileSequence
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-                                         ,
-                                         criticalPathTrace
+                                                                 ,
+                                                                 criticalPathTrace
 #endif
     );
 }
@@ -1088,11 +1160,12 @@ __aicore__ inline void UpdateSharedExpertGmm2GlobalBuffer(const MoeStageCommonCo
 template <uint8_t CombineMode, typename GenericElementA, typename A8W4ElementA, typename WeightType,
           typename QuantScaleType, bool EnableA8W4, bool EnableA4W4, uint32_t Gmm1TileM, bool TopkWeightsPrefetch,
           bool IsShared, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false,
-          bool UseGroupCombineReady = false>
+          bool UseGroupCombineReady = false, bool UsePairwiseTileCombine = false>
 __aicore__ inline void RunGmm2ByMode(const GmmExecutionConfig &gmmConfig, const GMMAddrInfo &gmmAddrInfo,
                                      const ProblemShape &problemShape, GmmRuntimeState &runtimeState,
                                      void *persistentBlockMmadContext = nullptr, bool allowWeightL2Bypass = false,
-                                     uint32_t rowOffsetInExpert = 0U
+                                     uint32_t rowOffsetInExpert = 0U, const Params *params = nullptr,
+                                     int32_t *gmTileSequence = nullptr
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
                                      ,
                                      CriticalPathTrace *criticalPathTrace = nullptr
@@ -1108,21 +1181,23 @@ __aicore__ inline void RunGmm2ByMode(const GmmExecutionConfig &gmmConfig, const 
                gmmConfig.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
         RunGmm2Generic<CombineMode, GenericElementA, GenericElementA, bfloat16_t, QuantScaleType, QuantScaleType, true,
                        false, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained,
-                       UseGroupCombineReady>(problemShape, gmmAddrInfo, runtimeState.startBlockIdx, gmmConfig.blockJob,
-                                             persistentBlockMmadContext, allowWeightL2Bypass, rowOffsetInExpert
+                       UseGroupCombineReady, UsePairwiseTileCombine>(
+            problemShape, gmmAddrInfo, runtimeState.startBlockIdx, gmmConfig.blockJob, persistentBlockMmadContext,
+            allowWeightL2Bypass, rowOffsetInExpert, params, gmTileSequence
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-                                             ,
-                                             criticalPathTrace
+            ,
+            criticalPathTrace
 #endif
         );
     } else {
         RunGmm2Generic<CombineMode, GenericElementA, GenericElementA, bfloat16_t, QuantScaleType, QuantScaleType, false,
                        false, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained,
-                       UseGroupCombineReady>(problemShape, gmmAddrInfo, runtimeState.startBlockIdx, gmmConfig.blockJob,
-                                             persistentBlockMmadContext, allowWeightL2Bypass, rowOffsetInExpert
+                       UseGroupCombineReady, UsePairwiseTileCombine>(
+            problemShape, gmmAddrInfo, runtimeState.startBlockIdx, gmmConfig.blockJob, persistentBlockMmadContext,
+            allowWeightL2Bypass, rowOffsetInExpert, params, gmTileSequence
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-                                             ,
-                                             criticalPathTrace
+            ,
+            criticalPathTrace
 #endif
         );
     }

@@ -144,7 +144,8 @@ struct WorkspaceInfo {
 
         // 每个 AIC 的就绪序列与前面的 flag 连续存放，使 ResetFlagList 能用同一次 MTE reset 清理；
         // 每个序列独占一个 64B cache line。
-        if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
+        bool useA8W8PairwiseTileCombine = useMteGroupReady && tilingData->combineQuantMode == COMBINE_NO_QUANT;
+        if (useA8W8PairwiseTileCombine || tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
             flagGmmToEpiloguePtr = base + workspaceSize;
@@ -152,16 +153,17 @@ struct WorkspaceInfo {
         }
 
         if (useMteWaveCombine) {
-            gmm2ReadyPtr = base + workspaceSize;
             if (useMteGroupReady) {
-                // Compact A8W8 的每个 expert-local 256-token group 使用一个完成 counter；GMM2 的每个 N tile
-                // 完成后累加，Combine 只等待自己即将消费的 group。沿用 gmm2ReadyPtr 作为该区域的起点，
-                // 同时暴露语义更明确的 counter 指针，避免额外分配两份同步区。
-                gmm2CombineSyncCounterPtr = gmm2ReadyPtr;
-                workspaceSize += SIZE_INT_32 * static_cast<int64_t>(tilingData->combineSyncSlotCountPerExpert) *
-                                 moeExpertCount * INT_CACHELINE;
+                if (tilingData->combineQuantMode != COMBINE_NO_QUANT) {
+                    gmm2ReadyPtr = base + workspaceSize;
+                    // 量化 Combine 仍按 expert-local 256-token group 汇聚 GMM2 N tile。
+                    gmm2CombineSyncCounterPtr = gmm2ReadyPtr;
+                    workspaceSize += SIZE_INT_32 * static_cast<int64_t>(tilingData->combineSyncSlotCountPerExpert) *
+                                     moeExpertCount * INT_CACHELINE;
+                }
             } else {
                 // W4 保持逐专家、逐 AIC ready 槽，避免改变既有路径。
+                gmm2ReadyPtr = base + workspaceSize;
                 workspaceSize += SIZE_INT_32 * moeExpertCount * tilingData->aicNum * INT_CACHELINE;
             }
         }
