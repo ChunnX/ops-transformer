@@ -55,8 +55,9 @@ public:
                                      float alphaPost, float alphaComb);
     __aicore__ inline void ProcessV1(uint32_t runBSStart, uint32_t runBSEnd, V0V1Buffers<P> &buffers,
                                      uint32_t vecRuntimesId, LocalTensor<P> &sumBuf);
-    __aicore__ inline void AIV02Process(V0V1Buffers<P> &buffers, LocalTensor<P> &hMixGradBuf, uint64_t currentDealBsNum,
-                                        float alphaPre, float alphaPost, float alphaComb);
+    __aicore__ inline void AIV02Process(V0V1Buffers<P> &buffers, LocalTensor<P> &hMixGradBuf,
+                                        LocalTensor<P> &gradHResBuf, uint64_t currentDealBsNum, float alphaPre,
+                                        float alphaPost, float alphaComb);
     __aicore__ inline void AIV21Process(LocalTensor<P> &invRmsInBuf, LocalTensor<P> &invRmsUb,
                                         LocalTensor<P> &invRmsGradUb, uint32_t currentChunkSize);
     // C0/C1 流程 (矩阵计算)
@@ -639,12 +640,10 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0(uint32_t runBSStart
     vecInQueue1_.EnQue(fp32InputBuf);
     LocalTensor<P> gradHResBuf = vecInQueue1_.DeQue<P>();
 
-    Muls(buffers.hResBufS1, gradHResBuf, ONE, buffers.stepLength * N_);
+    uint32_t currentDealBsNum = runBSEnd - runBSStart;
+    AIV02Process(buffers, hMixGradBuf, gradHResBuf, currentDealBsNum, alphaPre, alphaPost, alphaComb);
     PipeBarrier<PIPE_V>();
     vecInQueue1_.FreeTensor(gradHResBuf);
-
-    uint32_t currentDealBsNum = runBSEnd - runBSStart;
-    AIV02Process(buffers, hMixGradBuf, currentDealBsNum, alphaPre, alphaPost, alphaComb);
 }
 
 template <class T, class P>
@@ -672,12 +671,14 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV0ProcessGradHPost(__ubuf
 
 template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::AIV02Process(V0V1Buffers<P> &buffers, LocalTensor<P> &hMixGradBuf,
+                                                                LocalTensor<P> &gradHResBuf,
                                                                 uint64_t currentDealBsNum, float alphaPre,
                                                                 float alphaPost, float alphaComb)
 {
     __ubuf__ P *hPreBufAddr = (__ubuf__ P *)buffers.hPreBufS1.GetPhyAddr();
     __ubuf__ P *hPostBufAddr = (__ubuf__ P *)buffers.hPostBufS1.GetPhyAddr();
-    __ubuf__ P *hResBufAddr = (__ubuf__ P *)buffers.hResBufS1.GetPhyAddr();
+    // 直接读取队列中的 grad_h_res，避免先乘 1 写入 UB 副本再读回。
+    __ubuf__ P *hResBufAddr = (__ubuf__ P *)gradHResBuf.GetPhyAddr();
     __ubuf__ P *gatherFusionOutBufAddr = (__ubuf__ P *)buffers.gatherFusionOutBuf.GetPhyAddr();
     __ubuf__ P *hMixGradBufAddr = (__ubuf__ P *)hMixGradBuf.GetPhyAddr();
 
