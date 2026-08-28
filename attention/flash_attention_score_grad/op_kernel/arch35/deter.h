@@ -2373,8 +2373,10 @@ template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
 __aicore__ inline int64_t GateTNDPoolBaseNum(const __gm__ uint8_t *actualSeqQlenAddr,
                                              const __gm__ uint8_t *actualSeqKvlenAddr, int64_t b, int64_t w, int64_t n1,
                                              int64_t k, int64_t copies, int64_t virtMode, int64_t rawP, int64_t rawQ,
-                                             int64_t virtM, int64_t virtN, CoordinateInfo &coordinateInfo)
+                                             int64_t virtM, int64_t virtN, CoordinateInfo &coordinateInfo,
+                                             int64_t &runEnd)
 {
+    runEnd = w;
     const int64_t base = virtM * virtN * copies;
     if (base <= 0 || n1 < 1) {
         return 0;
@@ -2384,7 +2386,6 @@ __aicore__ inline int64_t GateTNDPoolBaseNum(const __gm__ uint8_t *actualSeqQlen
         tmpInfo.p = rawP;
         tmpInfo.q = rawQ;
         int64_t runHead = w;
-        int64_t runEnd = w;
         int64_t bm = 0;
         int64_t bn = 0;
         int64_t bp = 0;
@@ -2401,7 +2402,6 @@ __aicore__ inline int64_t GateTNDPoolBaseNum(const __gm__ uint8_t *actualSeqQlen
         const bool leftUp = (virtMode == 0 || virtMode == 2);
         CoordinateInfo tmpInfo;
         int64_t runHead = w;
-        int64_t runEnd = w;
         int64_t cm = 0;
         int64_t cn = 0;
         ExpandTNDCausalRun<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, b, w, leftUp, runHead, runEnd,
@@ -2453,23 +2453,33 @@ __aicore__ inline bool CalTNDDenseByAreaPrefix(const __gm__ uint8_t *actualSeqQl
     int64_t n = 0;
     int64_t virtM = 0;
     int64_t virtN = 0;
-    LoadTNDAreaVirt<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, w, virtMode, rawP, rawQ,
-                                            coordinateInfo, m, n, virtM, virtN);
-    int64_t batchBaseNum = GateTNDPoolBaseNum<CUBE_BASEM, CUBE_BASEN>(
-        actualSeqQlenAddr, actualSeqKvlenAddr, b, w, n1, k, copies, virtMode, rawP, rawQ, virtM, virtN, coordinateInfo);
-    while (w < b && (batchBaseNum <= 0 || delta > batchBaseNum)) {
-        if (batchBaseNum > 0) {
-            delta -= batchBaseNum;
-        }
-        w += 1;
-        if (w >= b) {
-            return false;
-        }
+    bool located = false;
+    while (w < b) {
         LoadTNDAreaVirt<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, w, virtMode, rawP, rawQ,
                                                 coordinateInfo, m, n, virtM, virtN);
-        batchBaseNum =
+        int64_t runEnd = w;
+        const int64_t batchBaseNum =
             GateTNDPoolBaseNum<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, b, w, n1, k, copies,
-                                                       virtMode, rawP, rawQ, virtM, virtN, coordinateInfo);
+                                                       virtMode, rawP, rawQ, virtM, virtN, coordinateInfo, runEnd);
+        if (batchBaseNum > 0) {
+            const int64_t runArea = batchBaseNum * (runEnd - w + 1);
+            if (delta <= runArea) {
+                const int64_t skip = (delta - 1) / batchBaseNum;
+                if (skip > 0) {
+                    w += skip;
+                    delta -= skip * batchBaseNum;
+                    LoadTNDAreaVirt<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, w, virtMode, rawP,
+                                                            rawQ, coordinateInfo, m, n, virtM, virtN);
+                }
+                located = true;
+                break;
+            }
+            delta -= runArea;
+        }
+        w = runEnd + 1;
+    }
+    if (!located) {
+        return false;
     }
 
     const int64_t currentBaseNum = virtM * virtN;
