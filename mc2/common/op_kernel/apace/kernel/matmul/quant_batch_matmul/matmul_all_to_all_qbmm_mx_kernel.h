@@ -80,6 +80,14 @@ public:
         uint32_t isBias;
     };
 
+    // Describes the GM address stride between two adjacent communication slices.
+    struct SliceParams {
+        uint64_t aByteStride;
+        uint64_t scaleAByteStride;
+        uint64_t cByteStride;
+        uint32_t sliceCount;
+    };
+
     struct Params {
         ProblemShape problemShape;
         BlockMmadParams mmParams;
@@ -88,19 +96,27 @@ public:
         QBMMTiling qbmmParams;
         uint64_t rankStride;
         uint32_t rankDim;
+        SliceParams sliceParams;
     };
 
     __aicore__ inline void operator()(const Params &params)
     {
         Init(params);
-        Process(params);
+        Run(params);
     }
 
-    /**
-     * Initialize the Blaze BlockMmad resources once for a group of M tiles
-     * sharing the same tiling. The caller may then invoke Process repeatedly
-     * with updated GM addresses without rebuilding the MMAD pipeline.
-     */
+    // Inject communication as a policy so QBMM owns the compute/sync/communication sequence.
+    template <typename CommPolicy>
+    __aicore__ inline void operator()(const Params &params, CommPolicy &commPolicy)
+    {
+        RunSliceGroup(params, commPolicy);
+    }
+
+private:
+    static constexpr uint16_t AIC_BARRIER_FLAG_ID = 8U;
+
+    BlockMmad mmOp_;
+
     __aicore__ inline void Init(const Params &params)
     {
         if (params.rankDim == 0) {
@@ -113,15 +129,35 @@ public:
                    params.qbmmParams.dbL0C > 1, 1U);
     }
 
-    __aicore__ inline void Process(const Params &params)
-    {
-        Run(params);
-    }
-
-private:
-    BlockMmad mmOp_;
-
     __aicore__ inline void Run(const Params &params);
+
+    template <typename CommPolicy>
+    __aicore__ inline void RunSliceGroup(const Params &groupParams, CommPolicy &commPolicy)
+    {
+        const auto &sliceParams = groupParams.sliceParams;
+        if (groupParams.rankDim == 0 || sliceParams.sliceCount == 0) {
+            return;
+        }
+
+        // All slices in a group share one BlockMmad resource lifetime.
+        Init(groupParams);
+
+        Params params = groupParams;
+        for (uint32_t sliceIdx = 0; sliceIdx < sliceParams.sliceCount; ++sliceIdx) {
+            Run(params);
+
+            // Do not submit this slice until every AIC has completed its FixPipe write to GM.
+            AscendC::CrossCoreSetFlag<0, PIPE_FIX>(AIC_BARRIER_FLAG_ID);
+            AscendC::CrossCoreWaitFlag<0, PIPE_S>(AIC_BARRIER_FLAG_ID);
+            commPolicy.IssueSlice(sliceIdx);
+
+            if (sliceIdx + 1 < sliceParams.sliceCount) {
+                params.mmParams.aGmAddr += sliceParams.aByteStride;
+                params.mmParams.scaleAGmAddr += sliceParams.scaleAByteStride;
+                params.mmParams.cGmAddr += sliceParams.cByteStride;
+            }
+        }
+    }
 
     template <typename TensorB, typename TensorScaleB>
     __aicore__ inline void SetL2Cache(const ProblemShape &shape, uint64_t curBaseM,
