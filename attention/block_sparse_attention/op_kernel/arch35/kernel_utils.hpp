@@ -87,6 +87,7 @@ struct TileInfo {
     bool isTileGoupFirstTile =
         false; // Kvs上16个softmax是一个TileGroup，这是每一个TileGroup(16个kvs基本块)的第一个softmax 任务，isC2Sync
     uint32_t kvsFirstTileStartVecCore = 0; // Kvs上第一个softmax分给哪个vec core
+    uint32_t tileBuffIdx = 0;              // 当前 tile 分给哪个 buff（MXFP8 仍写入）
     uint32_t tileMaxIdx = 0;
     uint32_t updateScaleIdx = 0;
     bool isKvsFirstTilePerCore = false; // 16个softmax均分在两个core, 当前任务是否是分在当前core上的第一个，
@@ -100,6 +101,13 @@ struct TileInfo {
     uint16_t pscaleNum = 0;
 };
 } // namespace MXFP4Kernel
+
+namespace MXFP8Kernel {
+static constexpr uint32_t TILE_GROUP_N = 16; // 组窗口 16×128=2048
+using TaskInfo = MXFP4Kernel::TaskInfo;
+using TileInfo = MXFP4Kernel::TileInfo;
+using BatchOffsetInfo = MXFP4Kernel::BatchOffsetInfo;
+} // namespace MXFP8Kernel
 
 #include "../attn_infra/epilogue/block/bsa_block_epilogue.hpp"
 #include "../attn_infra/epilogue/bsa_epilogue_dispatch_policy.hpp"
@@ -203,5 +211,13 @@ __aicore__ inline uint32_t GetCurQSTileNum(int64_t curQSeqlen, uint32_t blockSha
 }
 
 } // namespace BsaKernelArch35
+
+namespace MXFP8Kernel {
+using BsaFullQuantKernelParamsArch35 = BsaKernelArch35::BsaFullQuantKernelParamsArch35;
+__aicore__ inline uint32_t GetCurQSTileNum(int64_t curQSeqlen, uint32_t blockShapeX, uint32_t qBaseTile)
+{
+    return BsaKernelArch35::GetCurQSTileNum(curQSeqlen, blockShapeX, qBaseTile);
+}
+} // namespace MXFP8Kernel
 
 #endif

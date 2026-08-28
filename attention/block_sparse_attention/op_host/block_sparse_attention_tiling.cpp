@@ -117,10 +117,22 @@ enum QuantMode : int64_t {
     FP8_QUANT = 1,
     MXFP4_OCP_QUANT = 2,
     MXFP4_CX_QUANT = 3,
+    MXFP8_OCP_QUANT = 4,
 };
 
 // 判断是否为 mxfp4 量化(OCP 或 CX)
-static bool IsMxfp4Quant(int64_t qm) { return qm == MXFP4_OCP_QUANT || qm == MXFP4_CX_QUANT; }
+static bool IsMxfp4Quant(int64_t qm)
+{
+    return qm == MXFP4_OCP_QUANT || qm == MXFP4_CX_QUANT;
+}
+static bool IsMxfp8Quant(int64_t qm)
+{
+    return qm == MXFP8_OCP_QUANT;
+}
+static bool IsMxFullQuant(int64_t qm)
+{
+    return IsMxfp4Quant(qm) || IsMxfp8Quant(qm);
+}
 
 static std::string DataTypeToString(ge::DataType dataType)
 {
@@ -501,7 +513,7 @@ ge::graphStatus BSATiling::ParseQKVInBSND(gert::TilingContext *bsaContext)
         OP_LOGE(bsaContext->GetNodeName(), "Check query/key/value dim values failed.");
         return ge::GRAPH_FAILED;
     }
-    if (IsMxfp4Quant(quantMode_) &&
+    if (IsMxFullQuant(quantMode_) &&
         (embeddingSize_ != VALID_EMBEDDING_SIZE_64 && embeddingSize_ != VALID_EMBEDDING_SIZE_128)) {
         OP_LOGE(bsaContext->GetNodeName(),
                 "(quantMode:%d)mxfp4 requires embeddingSize to be multiple of 64 or 128, but got %u.", quantMode_,
@@ -727,7 +739,7 @@ ge::graphStatus BSATiling::ParseSparsePattern(gert::TilingContext *bsaContext)
         return ge::GRAPH_FAILED;
     }
     // V3 新增:mxfp4 要求 blockShapeX 为 64 的倍数
-    if (IsMxfp4Quant(quantMode_) && blockShapeX_ % 64 != 0) {
+    if (IsMxFullQuant(quantMode_) && blockShapeX_ % 64 != 0) {
         OP_LOGE(bsaContext->GetNodeName(), "mxfp4 requires blockShapeX to be multiple of 64, but got %u.",
                 blockShapeX_);
         return ge::GRAPH_FAILED;
@@ -822,7 +834,7 @@ ge::graphStatus BSATiling::ValidateGenericDequantScale(gert::TilingContext *bsaC
                     NUM_1, dequantScaleBatch, dequantScaleNumHeads, dequantScaleBlockNum, dequantScaleLastDim);
             return ge::GRAPH_FAILED;
         }
-    } else if (IsMxfp4Quant(quantMode_)) {
+    } else if (IsMxFullQuant(quantMode_)) {
         return ValidateMxfp4DequantScale(bsaContext, parameterIndex);
     } else {
         if (dequantScaleTensor != nullptr) {
@@ -940,6 +952,34 @@ ge::graphStatus BSATiling::ValidateVDequantScale(gert::TilingContext *bsaContext
     return ValidateGenericDequantScale(bsaContext, V_DEQUANT_SCALE_INDEX);
 }
 
+ge::graphStatus BSATiling::CheckBlockShapeQuantConstraint(gert::TilingContext *bsaContext)
+{
+    if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
+        constexpr int64_t SUPPORTED_BLOCK_SHAPE_X = 128;
+        constexpr int64_t SUPPORTED_BLOCK_SHAPE_X_QS64 = 64;
+        // MXFP8 kvs128：blockShapeY 按 128 对齐；其它 float8 全量化路径仍要求 256 倍数
+        const int64_t supportedMultipleOfBlockShapeY =
+            (quantMode_ == MXFP8_OCP_QUANT) ? static_cast<int64_t>(TILE_SIZE_128) : static_cast<int64_t>(TILE_SIZE_256);
+        const bool mxfp8QsOk = (quantMode_ == MXFP8_OCP_QUANT) && (blockShapeX_ == SUPPORTED_BLOCK_SHAPE_X ||
+                                                                   blockShapeX_ == SUPPORTED_BLOCK_SHAPE_X_QS64);
+        if (!mxfp8QsOk && blockShapeX_ != SUPPORTED_BLOCK_SHAPE_X) {
+            OP_LOGE(bsaContext->GetNodeName(),
+                    "In the float8_e4m3fn full-quant scenario, blockShape element 0 must be 64 or 128 for MXFP8 "
+                    "(quantMode=4), or 128 otherwise, but now it is %ld.",
+                    blockShapeX_);
+            return ge::GRAPH_FAILED;
+        }
+        if (blockShapeY_ % supportedMultipleOfBlockShapeY != 0) {
+            OP_LOGE(bsaContext->GetNodeName(),
+                    "In the float8_e4m3fn full-quant scenario, blockShape element 1 must be a multiple of %ld, but now "
+                    "it is %ld.",
+                    supportedMultipleOfBlockShapeY, blockShapeY_);
+            return ge::GRAPH_FAILED;
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus BSATiling::ParseOptionalTensors(gert::TilingContext *bsaContext)
 {
     if (ParseSeqlens(bsaContext) != ge::GRAPH_SUCCESS || ParseSparsePattern(bsaContext) != ge::GRAPH_SUCCESS ||
@@ -950,7 +990,8 @@ ge::graphStatus BSATiling::ParseOptionalTensors(gert::TilingContext *bsaContext)
     if (socVer_ == SOC_VER_950_CODE) {
         if (ValidateQDequantScale(bsaContext) != ge::GRAPH_SUCCESS ||
             ValidateKDequantScale(bsaContext) != ge::GRAPH_SUCCESS ||
-            ValidateVDequantScale(bsaContext) != ge::GRAPH_SUCCESS) {
+            ValidateVDequantScale(bsaContext) != ge::GRAPH_SUCCESS ||
+            CheckBlockShapeQuantConstraint(bsaContext) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
     }
@@ -1136,7 +1177,10 @@ void BSATiling::CalcBaseTileTilingParams950()
 {
     qBaseTile_ = (blockShapeX_ > TILE_SIZE_128) ? TILE_SIZE_128 : static_cast<uint32_t>(blockShapeX_);
     const bool isMixedPrecision = (innerPrecise_ == BsaInnerCalcPrec::LOW_HIGH_MIXED && embeddingSize_ <= D_SIZE_128);
-    if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
+    if (quantMode_ == MXFP8_OCP_QUANT) {
+        // MXFP8 kvs128：softmax 基块 128×128
+        kvBaseTile_ = TILE_SIZE_128;
+    } else if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
         const uint32_t preferredTile = isMixedPrecision ? TILE_SIZE_256 : TILE_SIZE_128;
         kvBaseTile_ = CalcFp8KvBaseTile(static_cast<uint32_t>(blockShapeY_), preferredTile);
     } else {
@@ -1393,7 +1437,13 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
     } else if (dataType_ == ge::DT_BF16) {
         tilingKey += 22220ULL; // 22 for BF16 -> 9000000030000002 + 22220 = 9000000030022222
     } else if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
-        if (attentionOutDataType_ == ge::DT_FLOAT16) {
+        if (quantMode_ == MXFP8_OCP_QUANT) {
+            if (attentionOutDataType_ == ge::DT_FLOAT16) {
+                tilingKey += 51;
+            } else {
+                tilingKey += 50;
+            }
+        } else if (attentionOutDataType_ == ge::DT_FLOAT16) {
             tilingKey += 10;
         } else if (attentionOutDataType_ == ge::DT_BF16) {
             tilingKey += 20;

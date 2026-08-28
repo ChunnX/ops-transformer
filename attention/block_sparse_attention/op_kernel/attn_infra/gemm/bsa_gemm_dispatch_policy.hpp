@@ -67,7 +67,23 @@ struct MmadAtlasA5BsaPVMX : public MmadAtlasA5 {
     static constexpr bool transposedMm1 = transposedMm1_;
 };
 
+template <bool transposedMm1_ = false>
+struct MmadAtlasA5BsaQKMxfp8 : public MmadAtlasA5 {
+    static constexpr uint32_t L0_STAGES = 2;
+    static constexpr bool transposedMm1 = transposedMm1_;
+};
+
+template <bool transposedMm1_ = false>
+struct MmadAtlasA5BsaPVMxfp8 : public MmadAtlasA5 {
+    static constexpr uint32_t L0_STAGES = 2;
+    static constexpr bool transposedMm1 = transposedMm1_;
+};
+
 struct CopyGlobalMaxL1ToUBBsa : public MmadAtlasA5 {
+    static constexpr uint32_t L0_STAGES = 2;
+};
+
+struct CopyGlobalMaxL1ToUBBsaMxfp8 : public MmadAtlasA5 {
     static constexpr uint32_t L0_STAGES = 2;
 };
 

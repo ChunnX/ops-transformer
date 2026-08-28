@@ -47,7 +47,8 @@ struct CopyGmToL1MxScaleDn2NzA5 {
         dn2nzParams.srcDValue = headMul * scaleRowHalf;
         dn2nzParams.dstNzC0Stride = scaleRowHalf;
         dn2nzParams.dstNzNStride = 1;
-        dn2nzParams.dstNzMatrixStride = 0;
+        // FIA CopySingleMXScaleDNToNZ: dstNzMatrixStride = nValue（half 列数）
+        dn2nzParams.dstNzMatrixStride = dn2nzParams.nValue;
 
         AscendC::DataCopy(l1ScaleB16[dstB16Off], gScaleB16[srcB16Off], dn2nzParams);
     }
