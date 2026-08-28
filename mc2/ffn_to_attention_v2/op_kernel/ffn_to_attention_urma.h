@@ -251,6 +251,7 @@ template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::Process()
 {
     if ASCEND_IS_AIV {
+        AscendC::PRINTF("ENTER URMA !!!!!!\n");
         HcommInit();
         InitLocalFlag();
 
