@@ -92,6 +92,8 @@ std::vector<TensorDescription> BuildInputs(bool rankTableMode, InvalidInput inva
             break;
         case InvalidInput::NONE:
             break;
+        default:
+            break;
     }
     return inputs;
 }
