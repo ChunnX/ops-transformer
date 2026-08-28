@@ -38,6 +38,7 @@ _ARCH_MAP = {
     "ascend910b": "a3",
     "ascend910c": "a3",
     "ascend950": "a5",
+    "ascend350": "a5",
 }
 
 

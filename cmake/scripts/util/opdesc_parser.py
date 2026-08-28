@@ -45,6 +45,7 @@ SOC_TO_SHORT_SOC_MAP = {
     "bs9sx1aa": "bs9sx1a",
     "ascend610lite": "ascend610lite",
     "ascend950pr_9599": "ascend950",
+    "ascend350_355e": "ascend350",
 }
 CONFLICT_KEYWORDS = {
     "and",
@@ -355,7 +356,7 @@ def _get_op_custom_options(op_descs: list, auto_gen_dir: str):
             op_type = param_list[0]
             if op_type.upper() == "ALL":
                 op_type = OP_ALL
-            if op_type != OP_ALL and _is_op_type_in_opdesc(op_descs, op_type) == False:
+            if op_type != OP_ALL and not _is_op_type_in_opdesc(op_descs, op_type):
                 continue
             soc_ver_compile_options = {}
             soc_ver = param_list[1]

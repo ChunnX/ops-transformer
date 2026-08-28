@@ -274,6 +274,7 @@ public:
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
             .ExtendCfgInfo("opFile.value","grouped_matmul_finalize_routing_apt");
         this->AICore().AddConfig("ascend950", config91095);
+        this->AICore().AddConfig("ascend350", config91095);
     }
 };
 

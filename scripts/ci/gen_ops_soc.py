@@ -55,6 +55,7 @@ group_op_dict = {
         "flash_attention_score_grad": 5,
         "mega_moe": 20,
     },
+    "ascend350": {},
 }
 
 
@@ -249,18 +250,6 @@ def parse_foreach_config(config_str):
     """
     解析 FOREACH_OPDEF 中的配置字符串
     """
-    config_mapping = {
-        "A2": "ascend910b",
-        "910_93": "ascend910_93",
-        "A5": "ascend950",
-        "910B": "ascend910b",
-        "910B_93": "ascend910_93",
-        "910B_95": "ascend950",
-        "950": "ascend950",
-        "910": "ascend910",
-        "910_55": "ascend910_55",
-    }
-
     found_configs = []
     config_str_upper = config_str.upper()
 
@@ -273,6 +262,7 @@ def parse_foreach_config(config_str):
         ("910B_93", "ascend910_93"),
         ("910B_95", "ascend950"),
         ("950", "ascend950"),
+        ("350", "ascend350"),
         ("910", "ascend910"),
     ]
 
