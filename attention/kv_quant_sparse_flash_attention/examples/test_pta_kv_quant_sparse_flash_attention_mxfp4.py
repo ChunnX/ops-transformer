@@ -106,6 +106,14 @@ def build_golden(cpu_inputs, records_by_batch):
 
 def run_once(iteration: int) -> None:
     cpu_inputs, records_by_batch = build_inputs_and_records()
+    if cpu_inputs["query"].shape[-1] != QUERY_DIM:
+        raise AssertionError(f"query D must be {QUERY_DIM}, got {cpu_inputs['query'].shape[-1]}")
+    if cpu_inputs["key"].shape[-1] != bi.RECORD_BYTES:
+        raise AssertionError(f"packed key D must be {bi.RECORD_BYTES}, got {cpu_inputs['key'].shape[-1]}")
+    print(
+        f"[INPUT] query_shape={tuple(cpu_inputs['query'].shape)} "
+        f"key_shape={tuple(cpu_inputs['key'].shape)} output_shape=({BATCH},{S1},{G},{bi.NOPE_DIM})"
+    )
     expected = build_golden(cpu_inputs, records_by_batch)
     npu_inputs = bi.move_inputs_to_npu(cpu_inputs, STORAGE_OFFSET_BYTES)
 
