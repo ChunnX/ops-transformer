@@ -74,6 +74,11 @@ inline int64_t GetTNDPairBatchCount(int64_t n1)
     return (n1 % NUM_TWO == 0) ? n1 : (n1 - 1);
 }
 
+inline int64_t GetTNDRightDownRowShift(int64_t m, int64_t n)
+{
+    return std::max(static_cast<int64_t>(0), m - n - 1);
+}
+
 inline void GetTNDLeftUpVirt(int64_t m, int64_t n, int64_t &virtM, int64_t &virtN)
 {
     if (m < n) {
@@ -85,11 +90,14 @@ inline void GetTNDLeftUpVirt(int64_t m, int64_t n, int64_t &virtM, int64_t &virt
 
 inline void GetTNDRightDownVirt(int64_t m, int64_t n, int64_t &virtM, int64_t &virtN)
 {
-    if (m > n) {
-        m = n;
+    m -= GetTNDRightDownRowShift(m, n);
+    if (m < 1 || n < 1) {
+        virtM = 0;
+        virtN = 0;
+        return;
     }
     virtM = m;
-    virtN = (m == n) ? (n + 1) : (NUM_TWO * n - m + NUM_THREE);
+    virtN = NUM_TWO * n - m + NUM_THREE;
 }
 
 inline void ClassifyTNDPairCols(int64_t k, int64_t virtM, int64_t virtN, int64_t pairCount, bool &isSmall,
@@ -129,9 +137,7 @@ inline TNDRunShape MakeTNDCausalRunShape(const FuzzyBaseInfoParamsRegbase &p, in
         }
         s.kind = 2;
     } else {
-        if (s.m > s.n) {
-            s.m = s.n;
-        }
+        s.m -= GetTNDRightDownRowShift(s.m, s.n);
         s.kind = 3;
     }
     return s;
@@ -241,9 +247,36 @@ inline int64_t CalTNDBandNarrowRounds(int64_t k, int64_t n1, int64_t m, int64_t 
     return seg * CeilDivideBy((nNew - overlap) * n1 + overlap, k);
 }
 
-inline void CalcleTNDSparseDeterParam(FuzzyBaseInfoParamsRegbase &p)
+struct TNDSparseDeterPack {
+    std::vector<int64_t> prefixSolo = {0};
+    std::vector<int64_t> prefixPool = {0};
+    std::vector<int64_t> prefixSingle = {0};
+    int64_t rLine = 0;
+    int64_t rPool = 0;
+    int64_t rSingle = 0;
+};
+
+inline bool TNDHasLargeCube(const FuzzyBaseInfoParamsRegbase &p)
 {
-    p.splitAxis = SplitAxisEnum::BN2GS1S2;
+    for (int64_t i = 0; i < p.b; ++i) {
+        int64_t m = 0;
+        int64_t n = 0;
+        GetTNDOuterMN(p, i, m, n);
+        if (m > NUM_TWO || n > NUM_TWO) {
+            return true;
+        }
+    }
+    return false;
+}
+
+inline bool PreferTNDSparseDeter(const FuzzyBaseInfoParamsRegbase &p)
+{
+    return p.n2 >= NUM_TWO && p.b > static_cast<int64_t>(p.aicNum) && TNDHasLargeCube(p);
+}
+
+inline TNDSparseDeterPack BuildTNDSparseDeter(FuzzyBaseInfoParamsRegbase &p)
+{
+    TNDSparseDeterPack pack;
     const int64_t k = static_cast<int64_t>(p.aicNum);
     const int64_t n1 = p.n2;
     const int64_t pairCountOne = GetTNDPairBatchCount(n1) / NUM_TWO;
@@ -347,19 +380,27 @@ inline void CalcleTNDSparseDeterParam(FuzzyBaseInfoParamsRegbase &p)
         i += groupSize;
     }
 
-    const int64_t rLine = prefixSolo.back();
+    pack.prefixSolo = std::move(prefixSolo);
+    pack.prefixPool = std::move(prefixPool);
+    pack.prefixSingle = std::move(prefixSingle);
+    pack.rLine = pack.prefixSolo.back();
     const int64_t poolCopies = isBand ? n1 : pairCountOne;
-    const int64_t rPool = (prefixPool.back() > 0 && poolCopies > 0) ?
-                              std::max(CeilDivideBy(prefixPool.back() * poolCopies, k), std::max(poolMMax, poolNMax)) :
-                              0;
-    const int64_t rSingle = (prefixSingle.back() > 0) ?
-                                std::max(CeilDivideBy(prefixSingle.back(), k), std::max(singleMMax, singleNMax)) :
-                                0;
+    pack.rPool = (pack.prefixPool.back() > 0 && poolCopies > 0) ?
+                     std::max(CeilDivideBy(pack.prefixPool.back() * poolCopies, k), std::max(poolMMax, poolNMax)) :
+                     0;
+    pack.rSingle = (pack.prefixSingle.back() > 0) ?
+                       std::max(CeilDivideBy(pack.prefixSingle.back(), k), std::max(singleMMax, singleNMax)) :
+                       0;
+    return pack;
+}
 
-    p.deterMaxRound = rLine + rPool + rSingle;
-    StoreTNDPrefix(prefixSolo, p.deterPrefixStep, rLine, p.deterPrefix0);
-    StoreTNDPrefix(prefixPool, p.deterPrefixStep, rPool, p.deterPrefix1);
-    StoreTNDPrefix(prefixSingle, p.deterPrefixStep, rSingle, p.deterPrefix2);
+inline void ApplyTNDSparseDeterParam(FuzzyBaseInfoParamsRegbase &p, const TNDSparseDeterPack &pack)
+{
+    p.splitAxis = SplitAxisEnum::BN2GS1S2;
+    p.deterMaxRound = pack.rLine + pack.rPool + pack.rSingle;
+    StoreTNDPrefix(pack.prefixSolo, p.deterPrefixStep, pack.rLine, p.deterPrefix0);
+    StoreTNDPrefix(pack.prefixPool, p.deterPrefixStep, pack.rPool, p.deterPrefix1);
+    StoreTNDPrefix(pack.prefixSingle, p.deterPrefixStep, pack.rSingle, p.deterPrefix2);
 
     std::vector<int64_t> deterPrefix = {0};
     std::vector<int64_t> deterPrefixAlign = {0};
@@ -413,8 +454,12 @@ protected:
         if (fBaseParams.g == 1 &&
             (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL) ||
              fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND))) {
-            CalcleTNDSparseDeterParam(fBaseParams);
-            return;
+            if (PreferTNDSparseDeter(fBaseParams)) {
+                fBaseParams.tndSparseDeter = true;
+                ApplyTNDSparseDeterParam(fBaseParams, BuildTNDSparseDeter(fBaseParams));
+                return;
+            }
+            fBaseParams.tndSparseDeter = false;
         }
 
         CalcleTNDDenseDeterParam();
@@ -499,7 +544,7 @@ protected:
         std::copy(deterPrefixData.deterPrefixAlign.begin(), deterPrefixData.deterPrefixAlign.end(),
                   fBaseParams.deterPrefixAlign);
 
-        if (fBaseParams.g == 1) {
+        if (fBaseParams.g == 1 && fBaseParams.tndSparseDeter) {
             CalcleTNDCausalDeterParamNormal(deterPrefixData, m0Max, m1Max, m2Max);
         } else {
             CalcleTNDCausalDeterParamGQA(deterPrefixData, m0Max, m1Max, m2Max);
@@ -511,14 +556,18 @@ protected:
         if (fBaseParams.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_BAND)) {
             return;
         }
-        int64_t N11 = fBaseParams.n1 / fBaseParams.aicNum;
-        int64_t N12 = fBaseParams.n1 % fBaseParams.aicNum;
+        int64_t N11 = 0;
+        int64_t N12 = fBaseParams.n1;
+        if (fBaseParams.g == 1 && fBaseParams.tndSparseDeter) {
+            N11 = fBaseParams.n1 / fBaseParams.aicNum;
+            N12 = fBaseParams.n1 % fBaseParams.aicNum;
+        }
         int64_t mnMax = 0;
 
         DeterPrefixData deterPrefixData;
         CalcleTNDBandDeterPrefix(deterPrefixData, N11, mnMax);
 
-        if (N11 > 0 && fBaseParams.g == 1) {
+        if (N11 > 0 && fBaseParams.g == 1 && fBaseParams.tndSparseDeter) {
             int64_t R0 = deterPrefixData.prefix0.back();
             deterPrefixData.prefix0 = SliceVector(deterPrefixData.prefix0, fBaseParams.deterPrefixStep);
             deterPrefixData.prefix0.push_back(R0);
@@ -526,13 +575,14 @@ protected:
 
         // 将最大轮次append在了prefix的最后，需要的时候可以直接取用，形式更简洁
         // prefix0的是乘了N1的结果，也可以不乘，乘了后二分查找不用额外申请空间
-        int64_t R1 = fBaseParams.g == 1 ? (N12 > 0 ? std::max(CeilDivideBy(deterPrefixData.prefix1.back() * N12,
-                                                                           static_cast<int64_t>(fBaseParams.aicNum)),
-                                                              mnMax) :
-                                                     0) :
-                                          std::max(CeilDivideBy(deterPrefixData.prefix1.back() * fBaseParams.n1,
-                                                                static_cast<int64_t>(fBaseParams.aicNum)),
-                                                   mnMax);
+        int64_t R1 = (fBaseParams.g == 1 && fBaseParams.tndSparseDeter) ?
+                         (N12 > 0 ? std::max(CeilDivideBy(deterPrefixData.prefix1.back() * N12,
+                                                          static_cast<int64_t>(fBaseParams.aicNum)),
+                                             mnMax) :
+                                    0) :
+                         std::max(CeilDivideBy(deterPrefixData.prefix1.back() * fBaseParams.n1,
+                                               static_cast<int64_t>(fBaseParams.aicNum)),
+                                  mnMax);
         std::vector<int64_t> slicePrefix1 = SliceVector(deterPrefixData.prefix1, fBaseParams.deterPrefixStep);
         deterPrefixData.prefix1.push_back(R1);
         slicePrefix1.push_back(R1);
@@ -579,7 +629,9 @@ protected:
 
     void CalcleTNDCausalDeterPrefix(DeterPrefixData &deterPrefixData, int64_t &m0Max, int64_t &m1Max, int64_t &m2Max)
     {
-        int64_t N12 = fBaseParams.g == 1 ? fBaseParams.n2 % fBaseParams.aicNum % NUM_TWO : fBaseParams.n2 % NUM_TWO;
+        int64_t N12 = (fBaseParams.g == 1 && fBaseParams.tndSparseDeter) ?
+                          fBaseParams.n2 % fBaseParams.aicNum % NUM_TWO :
+                          fBaseParams.n2 % NUM_TWO;
         for (int64_t i = 0; i < fBaseParams.b; i++) {
             int64_t actualS1Outer =
                 CeilDivideBy(fBaseParams.actualSeqQlen[i], fBaseParams.s1Inner * fBaseParams.s1CvRatio);
