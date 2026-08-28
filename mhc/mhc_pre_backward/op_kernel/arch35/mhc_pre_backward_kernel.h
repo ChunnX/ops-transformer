@@ -749,6 +749,11 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart
 
     AscendC::LocalTensor<P> fp32OutBuf = vecOutQueue1_.AllocTensor<P>();
     AscendC::LocalTensor<P> invRmsGradUb = vecOutQueueSmall_.AllocTensor<P>();
+    // 提前发起 inv_rms 搬运，使 MTE2 与 bias 梯度的向量计算及回写重叠。
+    dataCopyParams.blockLen = curBSSize * sizeof(P);
+    AscendC::LocalTensor<P> fp32InputBuf = vecInQueue1_.AllocTensor<P>();
+    DataCopyPad(fp32InputBuf, invRmsGm_[runBSStart], dataCopyParams, dataCopyPadParams);
+    vecInQueue1_.EnQue(fp32InputBuf);
     if (N_ == 8) {
         VFDoV1ProcessBiasGradForN8((__ubuf__ P *)fp32OutBuf.GetPhyAddr(),
                                    (__ubuf__ P *)buffers.gatherFusionOutBuf.GetPhyAddr(), curBSSize);
@@ -775,10 +780,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart
 
     auto hMixGradBuf = buffers.calcTmpBuf;
     fp32OutBuf = vecOutQueue1_.AllocTensor<P>();
-    dataCopyParams.blockLen = curBSSize * sizeof(P);
-    AscendC::LocalTensor<P> fp32InputBuf = vecInQueue1_.AllocTensor<P>();
-    DataCopyPad(fp32InputBuf, invRmsGm_[runBSStart], dataCopyParams, dataCopyPadParams);
-    vecInQueue1_.EnQue(fp32InputBuf);
     LocalTensor<P> invRmsBufLocal = vecInQueue1_.DeQue<P>();
 
     const uint32_t xRowSumBroadCastDst[2] = {curBSSize, static_cast<uint32_t>(fusionSize_)};
