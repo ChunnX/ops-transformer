@@ -90,8 +90,8 @@ public:
         InitMMResBuf();
         cubeBlock.Init(pipe, &l1BufferManager, queryPtr, keyPtr, valuePtr, blockTable, qScale, kScale, vScale);
         __gm__ uint8_t *pScalePtr = (tilingData->scaleParams.pScaleShapeSize == 0U) ? nullptr : pScale;
-        vecBlock.Init(pipe, pScalePtr, softmaxLse, attentionOut, attenMask, tilingData->attenMaskParams.attenMaskS2Size,
-                      tilingData->scaleParams.pScaleDtype);
+        vecBlock.Init(pipe, pScalePtr, softmaxLse, attentionOut, attenMask,
+                      tilingData->attenMaskParams.attenMaskS2Size);
     }
 
     __aicore__ inline void Process()

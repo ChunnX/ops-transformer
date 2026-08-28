@@ -10,6 +10,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+
 import importlib.util
 from pathlib import Path
 
@@ -42,13 +43,10 @@ graph_module = load_impl_module("graph")
 # Spec 类的 golden/customize_inputs 绑定 dispatcher, 运行时按 kwargs 派发。
 # ==============================================================================
 
-
 def _golden_dispatch(*args, **kwargs):
     qm = kwargs.get("quant_mode", 1)
     if qm == 6:
         return golden_module.cpu_qfa_gqa_fp8(*args, **kwargs)
-    if qm == 0:
-        return golden_module.cpu_qfa_hif8(*args, **kwargs)
     return golden_module.cpu_qfa_mxfp8(*args, **kwargs)
 
 
@@ -56,8 +54,6 @@ def _inputs_dispatch(*args, **kwargs):
     qm = kwargs.get("quant_mode", 1)
     if qm == 6:
         return inputs_module.generate_qfa_gqa_fp8_inputs(*args, **kwargs)
-    if qm == 0:
-        return inputs_module.generate_qfa_hif8_inputs(*args, **kwargs)
     return inputs_module.generate_qfa_mxfp8_inputs(*args, **kwargs)
 
 

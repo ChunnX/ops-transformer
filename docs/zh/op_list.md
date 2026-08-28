@@ -68,16 +68,6 @@
   </tr>
   <tr>
     <td>attention</td>
-    <td><a href="../../attention/block_attn_res_update/README.md">block_attn_res_update</a></td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✗</td>
-    <td>✗</td>
-    <td>AI Core</td>
-    <td>BlockAttnRes第二阶段更新算子，用于更新partial block并计算在线Softmax状态对应的注意力输出。</td>
-  </tr>
-  <tr>
-    <td>attention</td>
     <td><a href="../../attention/block_sparse_attention_grad/README.md">block_sparse_attention_grad</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -115,16 +105,6 @@
     <td>✗</td>
     <td>AI CPU</td>
     <td>dense_lightning_indexer_softmax_lse_v2算子的前置算子，用于计算dense_lightning_indexer_softmax_lse_v2的负载均衡。</td>
-  </tr>
-  <tr>
-    <td>attention</td>
-    <td><a href="../../attention/flash_attn/README.md">flash_attn</a></td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✗</td>
-    <td>✗</td>
-    <td>AI Core</td>
-    <td>基于FlashAttention算法实现self-attention（自注意力）的计算，训练推理归一化，仅支持非量化场景。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -545,16 +525,6 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>增量推理场景的Recurrent Gated Delta Rule算子。</td>
-  </tr>
-  <tr>
-    <td>attention</td>
-    <td><a href="../../attention/recurrent_kda/README.md">recurrent_kda</a></td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✗</td>
-    <td>AI Core</td>
-    <td>完成KDA（Kimi Delta Attention）的递归前向计算，面向decode和MTP短序列场景。</td>
   </tr>
   <tr>
     <td>attention</td>
