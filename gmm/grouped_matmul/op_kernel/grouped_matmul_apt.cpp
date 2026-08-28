@@ -50,11 +50,15 @@ using GMMS8S4BasicApiTilingData = GroupedMatmulTilingData::GMMS8S4BasicApiTiling
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_cgmct_pertile_kernel.h"
 #endif
 #elif defined(V310_GMM_ANTI_QUANT)
+#if IS_BLAZE && defined(ORIG_DTYPE_X) && defined(DT_FLOAT8_E4M3FN) && ORIG_DTYPE_X == DT_FLOAT8_E4M3FN
+#include "arch35/quant_adaptive_sliding_window_templates/gmm_weight_quant_lower_api_mx_kernel.h"
+#else
 #include "arch35/weight_quant_basic_block/basic_block_config.h"
 #include "arch35/weight_quant_basic_block/grouped_matmul_weight_quant_basic_controller.h"
 #include "arch35/weight_quant_basic_block/grouped_matmul_weight_quant_resplit_controller.h"
 #include "arch35/weight_quant_basic_block/weight_quant_basic_block.h"
 #include "arch35/weight_quant_basic_block/weight_quant_vcv_basic_block.h"
+#endif
 #include "arch35/weight_quant_basic_block/weight_quant_tiling_key.h"
 #if defined(V310_GMM_S8S4_UINT64_SCALE)
 #include "arch35/weight_quant_basic_block/gmm_s8s4_perchannel_tensor_api.h"
