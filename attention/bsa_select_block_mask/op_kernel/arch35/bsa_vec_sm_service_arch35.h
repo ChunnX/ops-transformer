@@ -36,14 +36,15 @@ public:
                                       const optiling::BSASelectBlockMaskTilingData *__restrict tilingData);
     __aicore__ inline void InitBuffers(TBuf<> *uBuf_);
 
-    __aicore__ inline void InitGM(GlobalTensor<T> &ScoreFp32Gm, GlobalTensor<OUT_T> &attnScoreFp16Gm);
+    __aicore__ inline void InitGM(
+        GlobalTensor<T> &ScoreFp32Gm, GlobalTensor<OUT_T> &attnScoreFp16Gm);
 
     __aicore__ inline void OnlineSoftmaxFirstPassChunk(uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
                                                        uint32_t kChunkSize, uint32_t validYBlocks);
 
-    __aicore__ inline void SoftmaxSecondPassAndCast(uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
-                                                    uint32_t kChunkSize, uint32_t batchIdx, uint32_t headIdx,
-                                                    uint32_t validYBlocks);
+    __aicore__ inline void SoftmaxSecondPassAndCast(uint32_t qChunkStart, uint32_t qChunkSize,
+                                                    uint32_t kChunkStart, uint32_t kChunkSize,
+                                                    uint32_t batchIdx, uint32_t headIdx, uint32_t validYBlocks);
 
 private:
     BSAConstInfo constInfo;
@@ -148,14 +149,16 @@ __aicore__ inline void BSAVecSmService<BSAT>::InitBuffers(TBuf<> *uBuf_)
 }
 
 template <typename BSAT>
-__aicore__ inline void BSAVecSmService<BSAT>::InitGM(GlobalTensor<T> &ScoreFp32Gm, GlobalTensor<OUT_T> &attnScoreFp16Gm)
+__aicore__ inline void BSAVecSmService<BSAT>::InitGM(
+    GlobalTensor<T> &ScoreFp32Gm, GlobalTensor<OUT_T> &attnScoreFp16Gm)
 {
     this->attnScoreFp16GmTensor = attnScoreFp16Gm;
     this->scoreFp32GmTensor = ScoreFp32Gm;
 }
 
-__aicore__ inline void SubBroadcast(LocalTensor<float> const &ubOut, LocalTensor<float> const &ubIn0,
-                                    LocalTensor<float> const &ubIn1, uint64_t row, uint64_t col)
+__aicore__ inline void SubBroadcast(
+    LocalTensor<float> const &ubOut, LocalTensor<float> const &ubIn0,
+    LocalTensor<float> const &ubIn1, uint64_t row, uint64_t col)
 {
     // 默认 col 安装32字节对齐
     // 分核逻辑的关系，矩阵shape不会超过[128, 128 * 5], 若启动俩个vector，shape不会超过[64, 128 * 5]
@@ -178,13 +181,15 @@ __aicore__ inline void SubBroadcast(LocalTensor<float> const &ubOut, LocalTensor
         if (i == colLoop - 1 && remain != 0) {
             mask = remain;
         }
-        AscendC::Sub(ubOut[i * countEachRepeat], ubIn0[i * countEachRepeat], ubIn1[0], mask, repeatTimes, repeatParams);
+        AscendC::Sub(
+            ubOut[i * countEachRepeat], ubIn0[i * countEachRepeat], ubIn1[0], mask, repeatTimes, repeatParams);
     }
     AscendC::PipeBarrier<PIPE_V>();
 }
 
-__aicore__ inline void DivBroadcast(LocalTensor<float> const &ubOut, LocalTensor<float> const &ubIn0,
-                                    LocalTensor<float> const &ubIn1, uint64_t row, uint64_t col)
+__aicore__ inline void DivBroadcast(
+    LocalTensor<float> const &ubOut, LocalTensor<float> const &ubIn0,
+    LocalTensor<float> const &ubIn1, uint64_t row, uint64_t col)
 {
     // 默认 col 安装32字节对齐
     // 分核逻辑的关系，矩阵shape不会超过[128, 128 * 5], 若启动俩个vector，shape不会超过[64, 128 * 5]
@@ -207,7 +212,8 @@ __aicore__ inline void DivBroadcast(LocalTensor<float> const &ubOut, LocalTensor
         if (i == colLoop - 1 && remain != 0) {
             mask = remain;
         }
-        AscendC::Div(ubOut[i * countEachRepeat], ubIn0[i * countEachRepeat], ubIn1[0], mask, repeatTimes, repeatParams);
+        AscendC::Div(
+            ubOut[i * countEachRepeat], ubIn0[i * countEachRepeat], ubIn1[0], mask, repeatTimes, repeatParams);
     }
     AscendC::PipeBarrier<PIPE_V>();
 }
@@ -232,9 +238,9 @@ __aicore__ inline void DivBroadcast(LocalTensor<float> const &ubOut, LocalTensor
  * @param[out] lFinal 跨所有 K-Chunk 累积后的逐行 exp 和（FP32）
  */
 template <typename BSAT>
-__aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32_t qChunkStart, uint32_t qChunkSize,
-                                                                          uint32_t kChunkStart, uint32_t kChunkSize,
-                                                                          uint32_t validYBlocks)
+__aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(
+    uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
+    uint32_t kChunkSize, uint32_t validYBlocks)
 {
     // 更新max
     // M = ReduceMax(score_partial)
@@ -265,9 +271,13 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
     WaitFlag<HardEvent::V_MTE2>(eventSft);
 
     // score 矩阵workspace存储还需再想想
-    DataCopyPad(scoreUb, scoreFp32GmTensor[actualQRowStart * constInfo.yBlocks + kChunkStart],
-                {static_cast<uint16_t>(actualQExcuteRow), static_cast<uint32_t>(kChunkSize * sizeof(float)),
-                 static_cast<uint32_t>((constInfo.yBlocks - kChunkSize) * sizeof(float)), 0, 0},
+    DataCopyPad(scoreUb,
+                scoreFp32GmTensor[actualQRowStart * constInfo.yBlocks + kChunkStart],
+                {static_cast<uint16_t>(actualQExcuteRow),
+                 static_cast<uint32_t>(kChunkSize * sizeof(float)),
+                 static_cast<uint32_t>((constInfo.yBlocks - kChunkSize) * sizeof(float)),
+                 0,
+                 0},
                 {true, 0, static_cast<uint8_t>(kChunkSizeAlign - kChunkSize), SOFTMAX_NEG_INF});
 
     SetFlag<HardEvent::MTE2_V>(eventSft);
@@ -280,8 +290,8 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
     uint32_t maxShape[] = {actualQExcuteRow, kChunkSizeAlign};
     bool isSrcInnerPad = true;
 
-    AscendC::ReduceMax<T, AscendC::Pattern::Reduce::AR, false>(tmpMax, scoreUb, reduceSharedTemp, maxShape,
-                                                               isSrcInnerPad);
+    AscendC::ReduceMax<T, AscendC::Pattern::Reduce::AR, false>(
+        tmpMax, scoreUb, reduceSharedTemp, maxShape, isSrcInnerPad);
     AscendC::PipeBarrier<PIPE_V>();
 
     // 更新global sum = global_sum * exp(global_max - newMax)  + exp(score - newMax).sum(dim=-1)
@@ -316,8 +326,8 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
     // t5 = torch.exp(t4)
     // t6 = t5.sum(dim=1)
     // global_sum = t3 + t6
-    uint8_t repeatimes = BSACeilDiv(actualQExcuteRow, BROC_BASE_NUM);
 #if !BSA_ENABLE_SOFTMAX_FIRST_PASS_VF
+    uint8_t repeatimes = BSACeilDiv(actualQExcuteRow, BROC_BASE_NUM);
     Brcb(globalMaxBroc, tmpMax, repeatimes, {1, 8});
     AscendC::PipeBarrier<PIPE_V>();
 
@@ -326,12 +336,13 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
     AscendC::Exp(scoreUb, scoreUb, actualQExcuteRow * kChunkSizeAlign);
     AscendC::PipeBarrier<PIPE_V>();
 #else
-    BSASelectBlockMaskVF::DoSoftmaxFirstPassExpFp32VfWrapper(scoreUb, tmpMax, actualQExcuteRow, kChunkSizeAlign);
+    BSASelectBlockMaskVF::DoSoftmaxFirstPassExpFp32VfWrapper(
+        scoreUb, tmpMax, actualQExcuteRow, kChunkSizeAlign);
 #endif
 
     uint32_t sumShape[] = {actualQExcuteRow, kChunkSizeAlign};
-    AscendC::ReduceSum<T, AscendC::Pattern::Reduce::AR, true>(tmpSum, scoreUb, reduceSharedTemp, sumShape,
-                                                              isSrcInnerPad);
+    AscendC::ReduceSum<T, AscendC::Pattern::Reduce::AR, true>(
+        tmpSum, scoreUb, reduceSharedTemp, sumShape, isSrcInnerPad);
     AscendC::PipeBarrier<PIPE_V>();
 
     AscendC::Add(globalSum, tmpSum, globalSum, actualQExcuteRow);
@@ -339,6 +350,7 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
 
     // 最后一次k循环第二轮循环存储sumbroc
 #if !BSA_ENABLE_SOFTMAX_SECOND_PASS_VF
+    uint8_t repeatimes = BSACeilDiv(actualQExcuteRow, BROC_BASE_NUM);
     if (kChunkStart + kChunkSize >= validYBlocks) {
         Brcb(globalSumBroc, globalSum, repeatimes, {1, 8});
         AscendC::PipeBarrier<PIPE_V>();
@@ -350,10 +362,9 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
 }
 
 template <typename BSAT>
-__aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(uint32_t qChunkStart, uint32_t qChunkSize,
-                                                                       uint32_t kChunkStart, uint32_t kChunkSize,
-                                                                       uint32_t batchIdx, uint32_t headIdx,
-                                                                       uint32_t validYBlocks)
+__aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(
+    uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
+    uint32_t kChunkSize, uint32_t batchIdx, uint32_t headIdx, uint32_t validYBlocks)
 {
     uint32_t actualQRowStart = 0, actualQExcuteRow = 0;
     if (vecSubBlockIdx == 0) {
@@ -383,15 +394,23 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(uint32_t 
 
     if (kChunkSizeAlign32 * sizeof(IN_T) % VEC_ALIGN_SIZE == 0) {
         // CAST TO FP16时候保持32字节对齐
-        DataCopyPad(scoreUb, scoreFp32GmTensor[actualQRowStart * constInfo.yBlocks + kChunkStart],
-                    {static_cast<uint16_t>(actualQExcuteRow), static_cast<uint32_t>(kChunkSize * sizeof(float)),
-                     static_cast<uint32_t>((constInfo.yBlocks - kChunkSize) * sizeof(float)), 0, 0},
+        DataCopyPad(scoreUb,
+                    scoreFp32GmTensor[actualQRowStart * constInfo.yBlocks + kChunkStart],
+                    {static_cast<uint16_t>(actualQExcuteRow),
+                     static_cast<uint32_t>(kChunkSize * sizeof(float)),
+                     static_cast<uint32_t>((constInfo.yBlocks - kChunkSize) * sizeof(float)),
+                     0,
+                     0},
                     {true, 0, static_cast<uint8_t>(kChunkSizeAlign32 - kChunkSize), SOFTMAX_NEG_INF});
     } else {
         // CAST TO FP16时候未保持32字节对齐，需要加一个1个fp32的block
-        DataCopyPad(scoreUb, scoreFp32GmTensor[actualQRowStart * constInfo.yBlocks + kChunkStart],
-                    {static_cast<uint16_t>(actualQExcuteRow), static_cast<uint32_t>(kChunkSize * sizeof(float)),
-                     static_cast<uint32_t>((constInfo.yBlocks - kChunkSize) * sizeof(float)), 1, 0},
+        DataCopyPad(scoreUb,
+                    scoreFp32GmTensor[actualQRowStart * constInfo.yBlocks + kChunkStart],
+                    {static_cast<uint16_t>(actualQExcuteRow),
+                     static_cast<uint32_t>(kChunkSize * sizeof(float)),
+                     static_cast<uint32_t>((constInfo.yBlocks - kChunkSize) * sizeof(float)),
+                     1,
+                     0},
                     {true, 0, static_cast<uint8_t>(kChunkSizeAlign32 - kChunkSize), SOFTMAX_NEG_INF});
     }
 
@@ -429,9 +448,13 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(uint32_t 
     uint64_t attnScoreOffset = static_cast<uint64_t>(sftOutQRowOffset) * validYBlocks + kChunkStart;
     GlobalTensor<OUT_T> attnScoreChunkGm;
     attnScoreChunkGm.SetGlobalBuffer((__gm__ OUT_T *)(attnScoreFp16GmTensor.GetPhyAddr() + attnScoreOffset));
-    DataCopyPad(attnScoreChunkGm[0], scoreFp16Ub,
-                {static_cast<uint16_t>(actualQExcuteRow), static_cast<uint32_t>(kChunkSize * sizeof(OUT_T)), 0,
-                 static_cast<uint32_t>((validYBlocks - kChunkSize) * sizeof(OUT_T)), 0});
+    DataCopyPad(attnScoreChunkGm[0],
+                scoreFp16Ub,
+                {static_cast<uint16_t>(actualQExcuteRow),
+                 static_cast<uint32_t>(kChunkSize * sizeof(OUT_T)),
+                 0,
+                 static_cast<uint32_t>((validYBlocks - kChunkSize) * sizeof(OUT_T)),
+                 0});
 }
 
 #endif // BSA_VEC_SM_SERVICE_ARCH35_H

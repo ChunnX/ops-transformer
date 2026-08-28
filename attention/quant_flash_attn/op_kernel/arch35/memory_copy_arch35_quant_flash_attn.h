@@ -164,11 +164,10 @@ __aicore__ inline void DataCopySoftmaxLseBSNDArch35(GlobalTensor<float> softmaxL
                                                     uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
                                                     const CONST_INFO_T &constInfo, uint64_t s1LeftPaddingSize = 0)
 {
-    // USE_DN时，realGSize=1(G合入N2)
-    uint32_t startS1Idx = mOffset / constInfo.realGSize;
-    uint32_t startGIdx = mOffset % constInfo.realGSize;
-    uint32_t endS1Idx = (mOffset + dealCount - 1) / constInfo.realGSize;
-    uint32_t endGIdx = (mOffset + dealCount - 1) % constInfo.realGSize;
+    uint32_t startS1Idx = mOffset / constInfo.gSize;
+    uint32_t startGIdx = mOffset % constInfo.gSize;
+    uint32_t endS1Idx = (mOffset + dealCount - 1) / constInfo.gSize;
+    uint32_t endGIdx = (mOffset + dealCount - 1) % constInfo.gSize;
     uint64_t outOffset = 0;
     uint64_t ubOffset = 0;
     uint32_t curDealRowCount = 0;
@@ -176,7 +175,7 @@ __aicore__ inline void DataCopySoftmaxLseBSNDArch35(GlobalTensor<float> softmaxL
     for (uint32_t s1Idx = startS1Idx; s1Idx <= endS1Idx; s1Idx++) {
         outOffset = bN2Offset + startGIdx * constInfo.s1Size + s1Idx + s1LeftPaddingSize;
         if (s1Idx != endS1Idx) {
-            curDealRowCount = constInfo.realGSize - startGIdx;
+            curDealRowCount = constInfo.gSize - startGIdx;
         } else {
             curDealRowCount = endGIdx + 1 - startGIdx;
         }
