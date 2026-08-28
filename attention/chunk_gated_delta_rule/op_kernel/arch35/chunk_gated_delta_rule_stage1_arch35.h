@@ -431,8 +431,7 @@ private:
         auto gCumAddr = reinterpret_cast<__ubuf__ float *>(gCumSumUbFloat.GetPhyAddr());
         auto gCumExpAddr = reinterpret_cast<__ubuf__ float *>(gCumExpUbFloat.GetPhyAddr());
         auto gammaAddr = reinterpret_cast<__ubuf__ float *>(gammaUbFloat.GetPhyAddr());
-        AscendC::VF_CALL<CumSumExpVF>(gAddr, gCumAddr, gCumExpAddr, gammaAddr,
-                                     static_cast<uint32_t>(chunkSize_));
+        AscendC::VF_CALL<CumSumExpVF>(gAddr, gCumAddr, gCumExpAddr, gammaAddr, static_cast<uint32_t>(chunkSize_));
         PipeBarrier<PIPE_V>();
 
         if (subBlockIdx_ == 0) {

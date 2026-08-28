@@ -228,8 +228,7 @@ public:
         DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(gCum[curChunkSize_ - 1]);
         float gVal = gCum.GetValue(curChunkSize_ - 1);
         auto stateFp32Addr = reinterpret_cast<__ubuf__ float *>(stateFp32Ub_.GetPhyAddr());
-        AscendC::VF_CALL<ScaleFp32StateByExpVF>(stateFp32Addr, gVal,
-                                               static_cast<uint32_t>(Dv_ * curDk_));
+        AscendC::VF_CALL<ScaleFp32StateByExpVF>(stateFp32Addr, gVal, static_cast<uint32_t>(Dv_ * curDk_));
         PipeBarrier<PIPE_V>();
     }
 
