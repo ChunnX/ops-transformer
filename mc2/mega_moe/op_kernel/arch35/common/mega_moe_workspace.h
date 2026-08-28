@@ -149,7 +149,9 @@ struct WorkspaceInfo {
             gmm2ReadyPtr = base + workspaceSize;
             // PER_EXPERT 模式下 slotIdx 为 expertIdx，PER_BATCH 模式下为 batchIdx；
             // 每个 AIC 到达标记独占一个 64B cache line。
-            workspaceSize += SIZE_INT_32 * moeExpertCount * tilingData->aicNum * INT_CACHELINE;
+            // 末尾额外 1 槽（slotIdx = moeExpertCount）承载 wave 粒度 GMM2 进度计数，
+            // 仅供 dispatch 领先额度节流使用（与 host 侧 flagElementCount 同步 +1）。
+            workspaceSize += SIZE_INT_32 * (moeExpertCount + 1) * tilingData->aicNum * INT_CACHELINE;
         }
 
         if (useGroupSyncCounters) {

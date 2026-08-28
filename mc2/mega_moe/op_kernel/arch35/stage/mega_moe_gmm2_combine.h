@@ -1058,61 +1058,44 @@ __aicore__ inline void ScheduleQuantizedMoeExpertCombine(
     }
 }
 
+__aicore__ inline uint64_t GetWaveGmm2ReadySlotStride(const AivJobContext &job)
+{
+    return static_cast<uint64_t>(job.totalJobs) * INT_CACHELINE;
+}
+
 /*
- * wave 粒度 GMM2→Combine 进度通道：每个 AIC 在 gmm2Ready 区第 0 槽行内独占一条
- * cacheline，写入自己已完成的 GMM2 wave 单调计数（沿用每 launch 清零的 reset 语义，
- * 无需扩 workspace）。Combine 侧取全体 AIC 计数的最小值与目标比较。
+ * 专家粒度 GMM2→Combine 就绪槽（gmm2Ready 区 slot 0..E-1）：每个 AIC 完成某专家的
+ * GMM2 份额后立即在该专家槽内自己的 cacheline 置 1。就绪判据 = 全体 AIC 到位。
+ * 相比 wave 计数（发布滞后一拍、粒度整 wave），专家槽即时置位且不放大 AIC 间
+ * wave 进度偏斜——tb0 类专家不均衡形状实测靠它避免逐 wave 继承慢核等待。
  */
-__aicore__ inline void PublishGmm2WaveProgress(const AivJobContext &job, const Params &params, int32_t completedWaves)
+__aicore__ inline void NotifyWaveGmm2Ready(const AivJobContext &job, const Params &params, uint32_t expertIdx)
 {
     if constexpr (g_coreType == AIC) {
         AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
         __gm__ int32_t *readyBase = reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm2ReadyPtr);
-        AscendC::WriteGmByPassDCache(readyBase + static_cast<uint64_t>(job.jobIndex) * INT_CACHELINE, completedWaves);
+        uint64_t slotOffset = static_cast<uint64_t>(expertIdx) * GetWaveGmm2ReadySlotStride(job);
+        AscendC::WriteGmByPassDCache(readyBase + slotOffset + static_cast<uint64_t>(job.jobIndex) * INT_CACHELINE,
+                                     int32_t(1));
     }
 }
 
-// 非阻塞探测：全部 AIC 的 GMM2 wave 计数是否已达 targetWaves（单趟标量 min 扫描）。
-__aicore__ inline bool ProbeGmm2WaveProgress(const AivJobContext &job, const Params &params, int32_t targetWaves)
+/*
+ * wave 粒度 GMM2 进度通道（gmm2Ready 区末位槽 slotIdx = moeExpertPerRank，host/device
+ * 已同步扩 1 槽）：每个 AIC 写入自己已完成的 GMM2 wave 单调计数。仅供 dispatch
+ * 领先额度节流（CachedGmm2ProgressAtLeast）消费；combine 就绪门改走上面的专家槽。
+ */
+__aicore__ inline void PublishGmm2WaveProgress(const AivJobContext &job, const Params &params,
+                                               uint32_t moeExpertPerRank, int32_t completedWaves)
 {
     if constexpr (g_coreType == AIC) {
-        return false;
-    }
-    if (GetSubBlockIdx() != 1U || job.totalJobs == 0U) {
-        return false;
-    }
-    __gm__ int32_t *readyBase = reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm2ReadyPtr);
-    for (uint32_t aicIdx = 0U; aicIdx < job.totalJobs; ++aicIdx) {
-        if (AscendC::ReadGmByPassDCache(readyBase + static_cast<uint64_t>(aicIdx) * INT_CACHELINE) < targetWaves) {
-            return false;
-        }
-    }
-    return true;
-}
-
-// AIV1 自旋等待全部 AIC 的 GMM2 wave 计数到达 targetWaves（标量 min 扫描，绕 DCache）。
-__aicore__ inline void WaitGmm2WaveProgress(const AivJobContext &job, const Params &params, int32_t targetWaves)
-{
-    if constexpr (g_coreType == AIC) {
-        return;
-    }
-    if (GetSubBlockIdx() != 1U || job.totalJobs == 0U) {
-        return;
-    }
-    __gm__ int32_t *readyBase = reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm2ReadyPtr);
-    while (true) {
-        int32_t minWaves = 0x7FFFFFFF;
-        for (uint32_t aicIdx = 0U; aicIdx < job.totalJobs; ++aicIdx) {
-            int32_t waves = AscendC::ReadGmByPassDCache(readyBase + static_cast<uint64_t>(aicIdx) * INT_CACHELINE);
-            minWaves = waves < minWaves ? waves : minWaves;
-        }
-        if (minWaves >= targetWaves) {
-            return;
-        }
-        int64_t waitStart = AscendC::GetSystemCycle();
-        while (AscendC::GetSystemCycle() - waitStart < 100) {
-        }
+        AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+        __gm__ int32_t *readyBase = reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm2ReadyPtr);
+        uint64_t slotOffset = static_cast<uint64_t>(moeExpertPerRank) * GetWaveGmm2ReadySlotStride(job);
+        AscendC::WriteGmByPassDCache(readyBase + slotOffset + static_cast<uint64_t>(job.jobIndex) * INT_CACHELINE,
+                                     completedWaves);
     }
 }
 

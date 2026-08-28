@@ -39,15 +39,15 @@ enum MegaMoeWaveTs : int32_t {
     TS_TOTAL = 0,               // Process 全程（各核）
     TS_INPUT_PREP = 1,          // quant + send_mask + reset (+prep) 段（AIV）
     TS_CROSS_SYNC_IN = 2,       // 输入侧跨卡屏障（AIV）
-    TS_DISPATCH_ALL = 3,        // DispatchAllExpertTokens 整段（AIV1）
-    TS_DISPATCH_EXPERT = 4,     // 累加：单专家 RunMoeExpertDispatchStage（AIV1）
+    TS_DISPATCH_ALL = 3,        // DispatchAndCombineInterleaved 交错段整体（AIV1，含 combine 与节流）
+    TS_DISPATCH_EXPERT = 4,     // 累加：单 wave TryDispatchNextWave（AIV1，hit=已 dispatch 的 wave 数）
     TS_GMM1_WAIT_COUNT = 5,     // 累加：WaitForMoeExpertTokenCountReady（AIC/AIV0）
     TS_GMM1_WAVE = 6,           // 累加：ProcessGmm1Wave 每次调用（AIC/AIV0）
     TS_GMM1_WAIT_DATA = 7,      // 累加：WaitForGmm1InputReady 自旋（AIC）
     TS_GMM2_WAVE = 8,           // 累加：ProcessGmm2Wave 每次调用（AIC）
     TS_GMM2_WAIT_ACT = 9,       // 累加：WaitForGmm2InputReady 自旋（AIC）
-    TS_COMBINE_TOTAL = 10,      // 累加：ProcessCombineExperts 每次调用（AIV1）
-    TS_COMBINE_WAIT_READY = 11, // 累加：WaitWaveGmm2Ready 自旋（AIV1）
+    TS_COMBINE_TOTAL = 10,      // 累加：combine 全部段（交错段每轮 burst + 尾段收齐，AIV1）
+    TS_COMBINE_WAIT_READY = 11, // 累加：尾段专家槽就绪自旋（AIV1；交错段非阻塞判定不计入）
     TS_SYNC_AFTER_MOE = 12,     // MoE 段后 SyncAll（AIV）
     TS_CROSS_SYNC_OUT = 13,     // 输出侧跨卡屏障（AIV）
     TS_UNPERMUTE = 14,          // Unpermute（AIV）
