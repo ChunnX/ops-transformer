@@ -196,7 +196,10 @@ __aicore__ inline void EngramFetchGradArch35::WriteNbiChecked(uint64_t handle, G
     ascendc_assert(ret == 0, "WriteNbi failed, ret=%d, rankId=%u, aivId=%u", ret, rankId_, aivId_);
 }
 
-__aicore__ inline void EngramFetchGradArch35::DrainChecked(uint64_t handle) { int32_t ret = hcomm_.Drain(handle); }
+__aicore__ inline void EngramFetchGradArch35::DrainChecked(uint64_t handle)
+{
+    int32_t ret = hcomm_.Drain(handle);
+}
 
 __aicore__ inline void EngramFetchGradArch35::TimeoutCheck(uint64_t startTime)
 {
@@ -503,10 +506,16 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     uint32_t sortUbSize = EngramFetchGradSort::EngramFetchGradSort::GetUbSize(maxSortCount, totalBlocks_);
     constexpr uint32_t COMM_BUF_SIZE = 2U * 64U * 1024U;
     uint32_t maxByPong = (32U * 1024U) / static_cast<uint32_t>(hiddenBytes_);
-    if (maxByPong < 1U) { maxByPong = 1U; }
-    if (maxByPong > gradSubBatch_) { maxByPong = gradSubBatch_; }
-    uint32_t castBufSize = (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) ?
-        Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float) * maxByPong * 2U, UB_ALIGN) * UB_ALIGN : 0U;
+    if (maxByPong < 1U) {
+        maxByPong = 1U;
+    }
+    if (maxByPong > gradSubBatch_) {
+        maxByPong = gradSubBatch_;
+    }
+    uint32_t castBufSize =
+        (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) ?
+            Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float) * maxByPong * 2U, UB_ALIGN) * UB_ALIGN :
+            0U;
     uint32_t accumBufSize = Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float), UB_ALIGN) * UB_ALIGN * 2U;
     uint32_t uniqueBufSize = COMM_BUF_SIZE + castBufSize + accumBufSize;
     uint32_t poolSize = sortUbSize;
@@ -852,7 +861,11 @@ __aicore__ inline void EngramFetchGradArch35::RecvGradFromPeers()
         return;
     }
 
-    for (uint32_t wIdx = recvIdx % totalWorkUnits; wIdx < totalWorkUnits; wIdx += numRecvCores_) {
+    // Each work unit must be owned by EXACTLY one receiver core: with numRecvCores_ >
+    // totalWorkUnits, `recvIdx % totalWorkUnits` would map several cores onto the same
+    // (srcRank, senderIdx) unit and race on the tokenRead counters (flow-control slots
+    // get reused while the slower duplicate is still copying -> recvGrad corruption).
+    for (uint32_t wIdx = recvIdx; wIdx < totalWorkUnits; wIdx += numRecvCores_) {
         uint32_t adjustedSrcRank = wIdx / sendersPerRank_;
         uint32_t srcRank = (adjustedSrcRank >= rankId_) ? (adjustedSrcRank + 1U) : adjustedSrcRank;
         uint32_t si = wIdx % sendersPerRank_;
@@ -1016,8 +1029,7 @@ __aicore__ inline void EngramFetchGradArch35::UniqueScatterAdd()
     // uint64_t t3 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
     uniqueScatter_.RunScatterCast(numRecv, recvLocalEntryOutGM_, uniqueLocalEntryOutGM_, numUniqueOutGM_,
-                                  gradUniqueOutGM_, recvGradGM_, coreStartGM_, segCountGM_,
-                                  sortCompanionGM_);
+                                  gradUniqueOutGM_, recvGradGM_, coreStartGM_, segCountGM_, sortCompanionGM_);
 
     // usaInitAndOverlapSendCycle_ = t1 - t0;
     // usaSortCycle_ = t2 - t1;
@@ -1158,8 +1170,8 @@ __aicore__ inline void EngramFetchGradArch35::Process()
 
             sortPool_.Reset();
             uint32_t maxSortCount = static_cast<uint32_t>(totalRecv_);
-            sorter_.Init(maxSortCount, totalBlocks_, recvLocalEntryOutGM_, sortCompanionGM_, sortWorkspaceGm_,
-                         *tpipe_, sortPool_);
+            sorter_.Init(maxSortCount, totalBlocks_, recvLocalEntryOutGM_, sortCompanionGM_, sortWorkspaceGm_, *tpipe_,
+                         sortPool_);
             RunSort(numRecv);
             SyncAll<true>();
 
@@ -1167,15 +1179,18 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             sortPool_.InitBuffer(entryBuf_, 64U * 1024U);
             sortPool_.InitBuffer(gradBuf_, 64U * 1024U);
             uint32_t maxByPong = (32U * 1024U) / static_cast<uint32_t>(hiddenBytes_);
-            if (maxByPong < 1U) { maxByPong = 1U; }
-            if (maxByPong > gradSubBatch_) { maxByPong = gradSubBatch_; }
+            if (maxByPong < 1U) {
+                maxByPong = 1U;
+            }
+            if (maxByPong > gradSubBatch_) {
+                maxByPong = gradSubBatch_;
+            }
             if (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) {
                 uint32_t castBufSize =
                     Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float) * maxByPong * 2U, UB_ALIGN) * UB_ALIGN;
                 sortPool_.InitBuffer(castFp32Buf_, castBufSize);
             }
-            uint32_t accumBufSize =
-                Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float), UB_ALIGN) * UB_ALIGN * 2U;
+            uint32_t accumBufSize = Ceil(static_cast<uint32_t>(hiddenDim_) * sizeof(float), UB_ALIGN) * UB_ALIGN * 2U;
             sortPool_.InitBuffer(accumBuf_, accumBufSize);
             uniqueScatter_.SetCastBuf(castFp32Buf_);
             uniqueScatter_.SetAccumBuf(accumBuf_);
@@ -1185,8 +1200,7 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             uniqueScatter_.ZeroGradUnique(numRecv, gradUniqueOutGM_);
             SyncAll<true>();
             uniqueScatter_.RunScatterCast(numRecv, recvLocalEntryOutGM_, uniqueLocalEntryOutGM_, numUniqueOutGM_,
-                                          gradUniqueOutGM_, recvGradGM_, coreStartGM_, segCountGM_,
-                                          sortCompanionGM_);
+                                          gradUniqueOutGM_, recvGradGM_, coreStartGM_, segCountGM_, sortCompanionGM_);
         }
     }
 }
