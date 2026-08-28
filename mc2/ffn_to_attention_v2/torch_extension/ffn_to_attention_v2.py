@@ -7,23 +7,22 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-from typing import Optional, List, Union
+from typing import Optional, List
 
 import torch
 import torch_npu
 from torch.library import impl
 from torch_npu.utils._error_code import ErrCode, ops_error
-from cann_ops_transformer.op_builder.builder import OpBuilder
-from cann_ops_transformer.op_builder.builder import AS_LIBRARY
-from .comm_context import CommContextManager
+from cann_ops_transformer.op_builder import OpBuilder, get_as_library
+from ..common import CommContextManager
 
 
 class _FFNToAttentionV2OpBuilder(OpBuilder):
     def __init__(self):
-        super(_FFNToAttentionV2OpBuilder, self).__init__("npu_ffn_to_attention_v2")
+        super(_FFNToAttentionV2OpBuilder, self).__init__("npu_ffn_to_attention_v2", category="mc2")
 
     def sources(self):
-        return ["ops/csrc/ffn_to_attention_v2.cpp"]
+        return ["csrc/mc2/ffn_to_attention_v2.cpp"]
 
     def schema(self) -> str:
         return (
@@ -35,7 +34,7 @@ class _FFNToAttentionV2OpBuilder(OpBuilder):
         )
 
     def register_meta(self):
-        @impl(AS_LIBRARY, self.name, "Meta")
+        @impl(get_as_library(), self.name, "Meta")
         def npu_ffn_to_attention_v2_meta(
             context,
             x,
@@ -76,9 +75,10 @@ class _FFNToAttentionV2OpBuilder(OpBuilder):
 
 
 _ffn_to_attention_v2_op_builder = _FFNToAttentionV2OpBuilder()
+_ffn_to_attention_v2_op_builder._ensure_initialized()
 
 
-@impl(AS_LIBRARY, _ffn_to_attention_v2_op_builder.name, "PrivateUse1")
+@impl(get_as_library(), _ffn_to_attention_v2_op_builder.name, "PrivateUse1")
 def _npu_ffn_to_attention_v2(
     context,
     x,
@@ -120,37 +120,10 @@ def _get_hccl_comm_name(group, rank_id):
     return get_backend(torch.device("npu")).get_hccl_comm_name(rank_id, init_comm=False)
 
 
-def _get_npu_backend(group):
-    """Get the NPU backend from a torch.distributed.ProcessGroup."""
-    get_backend = getattr(group, "".join(["_get", "_backend"]))
-    return get_backend(torch.device("npu"))
-
-
 def _calc_window_size(token_info_table_shape, token_data_shape):
     """Calculate the required window buffer size in bytes."""
     _op_module = _ffn_to_attention_v2_op_builder.load()
     return _op_module.get_ffn_to_attention_v2_ccl_buffer_size(token_info_table_shape, token_data_shape)
-
-
-def get_ffn_to_attention_v2_ccl_buffer_size(
-    token_info_table_shape: List[int],
-    token_data_shape: List[int],
-) -> int:
-    """Calculate the required CCL buffer size (bytes) for ffn_to_attention_v2.
-
-    The returned value should be passed to ``FFNToAttentionV2Buffer`` (or used as
-    ``customCclBufferSize`` when constructing ``CommContextManager`` directly).
-
-    Args:
-        token_info_table_shape (List[int]): 3-element list
-            [microBatchNum, BS, expertNumPerToken].
-        token_data_shape (List[int]): 4-element list
-            [microBatchNum, BS, expertNumPerToken, HS].
-
-    Returns:
-        int: Required CCL buffer size in bytes, aligned to 2 MB.
-    """
-    return _calc_window_size(token_info_table_shape, token_data_shape)
 
 
 class FFNToAttentionV2Buffer:
@@ -171,6 +144,8 @@ class FFNToAttentionV2Buffer:
         self.rank_id = torch.distributed.get_rank(group)
         self.group_name = _get_hccl_comm_name(group, self.rank_id)
         self.ep_world_size = world_size
+        self.token_info_table_shape = list(token_info_table_shape)
+        self.token_data_shape = list(token_data_shape)
 
         required_buffer_size = _calc_window_size(token_info_table_shape, token_data_shape)
         self._ctx_manager = CommContextManager(
@@ -210,19 +185,44 @@ class FFNToAttentionV2Buffer:
         return int(addr_bytes.value)
 
 
+def get_buffer_for_ffn_to_attention_v2(
+    group: "torch.distributed.ProcessGroup",
+    world_size: int,
+    token_info_table_shape: List[int],
+    token_data_shape: List[int],
+) -> FFNToAttentionV2Buffer:
+    """Create a communication buffer for ffn_to_attention_v2.
+
+    This is a thin factory around ``FFNToAttentionV2Buffer`` that computes the
+    required CCL buffer size, creates the communication context, and returns a
+    buffer object holding all the information ``ffn_to_attention_v2`` needs.
+
+    Args:
+        group (ProcessGroup): HCCL process group.
+        world_size (int): Communication domain size.
+        token_info_table_shape (List[int]): 3-element list [microBatchNum, BS, expertNumPerToken].
+        token_data_shape (List[int]): 4-element list [microBatchNum, BS, expertNumPerToken, HS].
+
+    Returns:
+        FFNToAttentionV2Buffer: Buffer holding the communication context, group
+        name, world size, token table shapes and CCL buffer size.
+    """
+    return FFNToAttentionV2Buffer(
+        group,
+        world_size,
+        token_info_table_shape,
+        token_data_shape,
+    )
+
+
 def ffn_to_attention_v2(
-    context: torch.Tensor,
+    buffer: FFNToAttentionV2Buffer,
     x: torch.Tensor,
     session_ids: torch.Tensor,
     micro_batch_ids: torch.Tensor,
     token_ids: torch.Tensor,
     expert_offsets: torch.Tensor,
     actual_token_num: torch.Tensor,
-    group: Union[str, "torch.distributed.ProcessGroup"],
-    world_size: int,
-    token_info_table_shape: List[int],
-    token_data_shape: List[int],
-    ccl_buffer_size: int = 0,
     *,
     attn_rank_table: Optional[torch.Tensor] = None,
 ) -> None:
@@ -232,42 +232,33 @@ def ffn_to_attention_v2(
     addresses to the kernel, compatible with Ascend 950 (Channel backend).
 
     Args:
-        context (Tensor): Communication context tensor created by
-            ``FFNToAttentionV2Buffer``.
+        buffer (FFNToAttentionV2Buffer): Communication buffer created by
+            ``get_buffer_for_ffn_to_attention_v2``. Holds the context tensor,
+            group name, world size, token table shapes and CCL buffer size.
         x (Tensor): Token data to send, shape (Y, H), dtype float16/bfloat16.
         session_ids (Tensor): Per-token attention worker index, shape (Y,), dtype int32.
         micro_batch_ids (Tensor): Per-token micro batch index, shape (Y,), dtype int32.
         token_ids (Tensor): Per-token batch offset, shape (Y,), dtype int32.
         expert_offsets (Tensor): Per-token topk expert offset, shape (Y,), dtype int32.
         actual_token_num (Tensor): Actual token count to send, shape (1,), dtype int64.
-        group (str | ProcessGroup): HCCL communicator name, or a
-            ``torch.distributed.ProcessGroup`` from which the name is resolved.
-        world_size (int): Communication domain size.
-        token_info_table_shape (List[int]): 3-element list [microBatchNum, BS, expertNumPerToken].
-        token_data_shape (List[int]): 4-element list [microBatchNum, BS, expertNumPerToken, HS].
         attn_rank_table (Tensor, optional): Maps attention worker id to rank id,
             shape (attnRankNum,), dtype int32. If None, worker id == rank id.
 
     Returns:
         None. Data is sent to peer ranks via the HCCL window; no host-visible output.
     """
-    if not isinstance(group, str):
-        group_name = _get_hccl_comm_name(group, torch.distributed.get_rank(group))
-    else:
-        group_name = group
-
     torch.ops.cann_ops_transformer.npu_ffn_to_attention_v2(
-        context,
+        buffer.context,
         x,
         session_ids,
         micro_batch_ids,
         token_ids,
         expert_offsets,
         actual_token_num,
-        group_name,
-        world_size,
-        token_info_table_shape,
-        token_data_shape,
-        ccl_buffer_size,
+        buffer.group_name,
+        buffer.ep_world_size,
+        buffer.token_info_table_shape,
+        buffer.token_data_shape,
+        buffer.ccl_buffer_size,
         attn_rank_table=attn_rank_table,
     )
