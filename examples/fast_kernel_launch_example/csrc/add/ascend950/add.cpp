@@ -63,8 +63,11 @@ std::tuple<int64_t, int64_t, int64_t> calc_tiling_params(int64_t totalLength)
 
 template <typename T>
 __global__ __aicore__ void add_kernel(GM_ADDR x, GM_ADDR y, GM_ADDR z, int64_t totalLength, int64_t blockLength,
-                                      uint32_t tileSize)
+                                      uint32_t tileSize, GM_ADDR cycleData)
 {
+    // T0: kernel 第一行
+    int64_t T0 = AscendC::GetSystemCycle();
+
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     constexpr static int64_t PIPELINE_DEPTH = 2;
     AscendC::TPipe pipe;
@@ -86,6 +89,12 @@ __global__ __aicore__ void add_kernel(GM_ADDR x, GM_ADDR y, GM_ADDR z, int64_t t
     int64_t elementNumPerTile = tileSize / sizeof(T);
     int64_t tileNum = currentBlockLength / elementNumPerTile;
     int64_t tailTileElementNum = currentBlockLength - tileNum * elementNumPerTile;
+
+    // T1: prologue 之后
+    int64_t T1 = AscendC::GetSystemCycle();
+    __gm__ int64_t *cycleBuf = (__gm__ int64_t *)cycleData + AscendC::GetBlockIdx() * 2;
+    cycleBuf[0] = T0;
+    cycleBuf[1] = T1;
 
     // 头开销测试: 计算流程注释掉，只保留 InitBuffer + SetGlobalBuffer 初始化
     // KERNEL_TASK_TYPE_DEFAULT 显式声明 kernel 类型，无需编译器从 API 调用推导
@@ -163,23 +172,35 @@ torch::Tensor add_npu(const torch::Tensor &x, const torch::Tensor &y)
     auto x_ptr = (GM_ADDR)x.data_ptr();
     auto y_ptr = (GM_ADDR)y.data_ptr();
     auto z_ptr = (GM_ADDR)z.data_ptr();
+    auto cycle_options = torch::TensorOptions().dtype(torch::kInt64).device(x.device());
+    auto cycle_tensor = torch::empty({64 * 2}, cycle_options);  // 最多 64 blocks
+    auto cycle_ptr = (GM_ADDR)cycle_tensor.data_ptr();
     auto acl_call = [=]() -> int {
         AT_DISPATCH_SWITCH(x.scalar_type(), "add_npu", AT_DISPATCH_CASE(torch::kFloat32, [&] {
                                using scalar_t = float;
                                add_kernel<scalar_t><<<64, nullptr, stream>>>(x_ptr, y_ptr, z_ptr, totalLength,
-                                                                                    blockLength, tileSize);
+                                                                                    blockLength, tileSize, cycle_ptr);
                            }) AT_DISPATCH_CASE(torch::kFloat16, [&] {
                                using scalar_t = half;
                                add_kernel<scalar_t><<<64, nullptr, stream>>>(x_ptr, y_ptr, z_ptr, totalLength,
-                                                                                    blockLength, tileSize);
+                                                                                    blockLength, tileSize, cycle_ptr);
                            }) AT_DISPATCH_CASE(torch::kInt32, [&] {
                                using scalar_t = int32_t;
                                add_kernel<scalar_t><<<64, nullptr, stream>>>(x_ptr, y_ptr, z_ptr, totalLength,
-                                                                                    blockLength, tileSize);
+                                                                                    blockLength, tileSize, cycle_ptr);
                            }));
         return 0;
     };
     at_npu::native::OpCommand::RunOpApi("Add", acl_call);
+    aclrtSynchronizeStream(stream);
+    auto cycle_cpu = cycle_tensor.to(torch::kCPU);
+    int64_t *vals = cycle_cpu.data_ptr<int64_t>();
+    for (int64_t b = 0; b < numBlocks; ++b) {
+        int64_t t0 = vals[b * 2];
+        int64_t t1 = vals[b * 2 + 1];
+        std::cerr << "Block " << b << ": T1-T0 = " << (t1 - t0) << " cycles ("
+                  << (double)(t1 - t0) / 283.0 << " us)" << std::endl;
+    }
     return z;
 }
 
