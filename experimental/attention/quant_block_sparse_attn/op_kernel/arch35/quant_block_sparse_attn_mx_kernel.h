@@ -317,10 +317,15 @@ private:
         runInfo.isFirstS2Loop = isFirstValidS2Loop;
         runInfo.isLastS2Loop = s2LoopIdx + runInfo.sparseBlockCount - 1U >= s2LoopEnd;
         if ASCEND_IS_AIC {
+            // GM 元素偏移可能超过 32 位；从 token 基址开始宽化，并保证 head 内偏移也在 64 位域计算。
+            const uint64_t queryTokenOffset =
+                static_cast<uint64_t>(runInfo.queryTokenBase) + static_cast<uint64_t>(runInfo.s1Idx);
             runInfo.queryOffset =
-                (runInfo.queryTokenBase + runInfo.s1Idx) * constInfo.n2GD + runInfo.realN2Idx * constInfo.dSize;
-            runInfo.queryScaleOffset = (runInfo.queryTokenBase + runInfo.s1Idx) * constInfo.qScaleN1D +
-                                       runInfo.realN2Idx * constInfo.queryScaleDSize * constInfo.scaleLastDim;
+                queryTokenOffset * static_cast<uint64_t>(constInfo.n2GD) +
+                static_cast<uint64_t>(runInfo.realN2Idx) * constInfo.dSize;
+            runInfo.queryScaleOffset =
+                queryTokenOffset * static_cast<uint64_t>(constInfo.qScaleN1D) +
+                static_cast<uint64_t>(runInfo.realN2Idx) * constInfo.queryScaleDSize * constInfo.scaleLastDim;
         }
     }
 
