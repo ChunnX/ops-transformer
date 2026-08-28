@@ -388,7 +388,6 @@ ge::graphStatus TilingNewQuantMode(gert::TilingContext *context, uint32_t quantM
                         requiredWindowBytes > static_cast<uint64_t>(*cclBufferSizePtr),
                     OP_LOGE(nodeName, "window buffer is smaller than required size %lu", requiredWindowBytes),
                     return ge::GRAPH_FAILED);
-    info.totalWinSize = maxWindowSize;
 
     OP_TILING_CHECK(SetPlatformAndCommTiling(context, groupPtr, *tilingData) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "failed to set platform or communication tiling"), return ge::GRAPH_FAILED);

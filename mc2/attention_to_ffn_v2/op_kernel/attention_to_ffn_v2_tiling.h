@@ -41,14 +41,8 @@ struct AttentionToFfnV2Info {
     bool isActiveMask;
     uint8_t windowType;
     // A5 V2 URMA reuses the V1-only fields without changing the shared tiling layout.
-    union {
-        uint64_t totalUbSize;
-        uint64_t maxTokenNum;
-    };
-    union {
-        uint64_t totalWinSize;
-        uint64_t urmaWorkspaceOffset;
-    };
+    uint64_t totalUbSize;
+    uint64_t urmaWorkspaceOffset;
 };
 
 struct AttentionToFfnV2TilingData {
