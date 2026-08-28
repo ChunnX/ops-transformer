@@ -412,9 +412,9 @@ public:
         mm1ResL0C.Wait<HardEvent::FIX_M>();
         MMParam param =
             MakeMMParam((uint32_t)s2CalcSize, (uint32_t)runInfo.actMSize, (uint32_t)constInfo_.dSize, false, true);
-        MatmulFullMX<Q_T, KV_T, T, 256, 128, dBaseSize, ABLayout::MK, ABLayout::KN, L0AType, L0BType, float, float,
-                     INPUT_T, INPUT_T>(mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers_,
-                                       mmL0BBuffers_, mm1ResL0C.GetTensor<T>(), param);
+        MatmulFull<Q_T, KV_T, T, 256, 128, dBaseSize, ABLayout::MK, ABLayout::KN, L0AType, L0BType>(
+            mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers_, mmL0BBuffers_,
+            mm1ResL0C.GetTensor<T>(), param);
 
         if (unlikely(runInfo.isLastS2Loop)) {
             mm1B.Set<HardEvent::MTE1_MTE2>();
@@ -459,34 +459,21 @@ public:
         Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers_.Get();
         mm2ResL0C.Wait<HardEvent::FIX_M>();
 
-        constexpr uint32_t baseK = s2BaseSize;
-        uint32_t s2RealSizeAlign = ((runInfo.actSingleLoopS2Size + 63) >> 6) << 6;
-        uint64_t l1BaseKOffset = s2RealSizeAlign * mBaseSize;
-        uint32_t kLoops = (runInfo.actSingleLoopS2Size + baseK - 1) / baseK;
-        uint32_t realK = baseK;
-        for (uint32_t k = 0; k < kLoops; k++) {
-            Buffer<BufferType::L1> mm2B = l1KVBuffers_.Get();
-            if (k == kLoops - 1) {
-                realK = runInfo.actSingleLoopS2Size - k * baseK;
-            }
-            mm2B.Wait<HardEvent::MTE1_MTE2>();
-            LocalTensor<KV_T> mm2BTensor = mm2B.GetTensor<KV_T>();
-            if (unlikely(runInfo.isLastS2Loop)) {
-                InitValueL1BufferNoTrans(mm2BTensor, realK, (uint32_t)constInfo_.dSizeV);
-            }
-            CopyValueSlice(mm2BTensor, runInfo.s2Idx + k * baseK, realK, 0, constInfo_.dSizeV, runInfo);
-            mm2B.Set<HardEvent::MTE2_MTE1>();
-
-            mm2B.Wait<HardEvent::MTE2_MTE1>();
-            MMParam param =
-                MakeMMParam((uint32_t)mBaseSize, (uint32_t)constInfo_.dSizeV,
-                            (realK + 63) / MXFP_DIVISOR_SIZE * MXFP_DIVISOR_SIZE, USE_DN, false, k == 0, k == 0);
-            MatmulFullMX<INPUT_T, KV_T, T, 128, dVBaseSize, baseK, ABLayout::MK, ABLayout::KN, L0AType, L0BType, float,
-                         float, INPUT_T, INPUT_T>(mm2A.GetTensor<INPUT_T>()[k * l1BaseKOffset], mm2BTensor,
-                                                  mmL0ABuffers_, mmL0BBuffers_, mm2ResL0C.GetTensor<T>(), param,
-                                                  dummyScale_, dummyScale_);
-            mm2B.Set<HardEvent::MTE1_MTE2>();
+        uint32_t realK = runInfo.actSingleLoopS2Size;
+        Buffer<BufferType::L1> mm2B = l1KVBuffers_.Get();
+        mm2B.Wait<HardEvent::MTE1_MTE2>();
+        LocalTensor<KV_T> mm2BTensor = mm2B.GetTensor<KV_T>();
+        if (unlikely(runInfo.isLastS2Loop)) {
+            InitValueL1BufferNoTrans(mm2BTensor, realK, (uint32_t)constInfo_.dSizeV);
         }
+        CopyValueSlice(mm2BTensor, runInfo.s2Idx, realK, 0, constInfo_.dSizeV, runInfo);
+        mm2B.Set<HardEvent::MTE2_MTE1>();
+        mm2B.Wait<HardEvent::MTE2_MTE1>();
+
+        MMParam param = MakeMMParam((uint32_t)mBaseSize, (uint32_t)constInfo_.dSizeV, realK, USE_DN, false, true, true);
+        MatmulFull<INPUT_T, KV_T, T, 128, dVBaseSize, s2BaseSize, ABLayout::MK, ABLayout::KN, L0AType, L0BType>(
+            mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers_, mmL0BBuffers_, mm2ResL0C.GetTensor<T>(), param);
+        mm2B.Set<HardEvent::MTE1_MTE2>();
 
         mm2ResL0C.Set<HardEvent::M_FIX>();
         mm2ResL0C.Wait<HardEvent::M_FIX>();
