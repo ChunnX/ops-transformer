@@ -780,10 +780,10 @@ static void CalWinSize(AttentionToFFNTilingData &tilingData, const uint32_t quan
     tilingData.attentionToFFNInfo.totalWinSize = maxWindowSize;
 
     OP_LOGD(ATTN_FFN_INNER_DEBUG,
-            "BS is %lu K is %lu HS is %u microBatchNum is %lu attentionWorkerNum is %lu infoTableLastDimNum is %lu.",
+            "BS is %lu K is %lu HS is %lu microBatchNum is %lu attentionWorkerNum is %lu infoTableLastDimNum is %lu.",
             BS, K, HS, microBatchNum, attentionWorkerNum, infoTableLastDimNum);
     OP_LOGD(ATTN_FFN_INNER_DEBUG,
-            "actualNeedWinSize is %lu tokenInfoNeedWinSize is %lu tokenDataNeedWinSize is %u neededSize is %lu.",
+            "actualNeedWinSize is %lu tokenInfoNeedWinSize is %lu tokenDataNeedWinSize is %lu neededSize is %lu.",
             actualNeedWinSize, tokenInfoNeedWinSize, tokenDataNeedWinSize, neededSize);
     return;
 }
