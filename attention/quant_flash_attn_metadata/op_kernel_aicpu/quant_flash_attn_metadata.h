@@ -29,6 +29,7 @@ using FA_METADATA_T = uint32_t;
 constexpr uint32_t HEAD_METADATA_SIZE = 16U;
 constexpr uint32_t FA_METADATA_SIZE = 16U;
 constexpr uint32_t FD_METADATA_SIZE = 16U;
+constexpr uint32_t QUANT_FAG_METADATA_SIZE = 4096U;
 
 constexpr uint32_t HEAD_SECTION_NUM_INDEX = 0U;
 constexpr uint32_t HEAD_IS_FD_INDEX = 1U;
@@ -49,6 +50,7 @@ constexpr uint32_t FD_WORKSPACE_IDX_INDEX = 2U;
 constexpr uint32_t FD_WORKSPACE_NUM_INDEX = 3U;
 constexpr uint32_t FD_M_START_INDEX = 4U;
 constexpr uint32_t FD_M_NUM_INDEX = 5U;
+constexpr uint32_t QUANT_FAG_DETER_MAX_NUM_INDEX = 0U;
 
 namespace detail {
 struct FaMetaData {
@@ -107,6 +109,21 @@ struct FaMetaData {
         assert(aivIdx < AIV_CORE_NUM);
         assert(metaIdx < FD_METADATA_SIZE);
         return fdMetadata[AIV_CORE_NUM * FD_METADATA_SIZE * sectionIdx + FD_METADATA_SIZE * aivIdx + metaIdx];
+    }
+};
+
+struct QuantFAGMetaData {
+    uint32_t *headMedata;
+    QuantFAGMetaData(void *metadataPtr)
+        :headMedata(static_cast<uint32_t*>(metadataPtr) + 4096)
+    {
+ 
+    }   
+    
+    void SetDeterMaxRound(uint32_t metaIdx)
+    {
+        assert(metaIdx < QUANT_FAG_METADATA_SIZE);
+        return headMedata[metaIdx];
     }
 };
 } // namespace detail

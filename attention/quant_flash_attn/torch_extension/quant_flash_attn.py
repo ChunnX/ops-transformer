@@ -80,7 +80,7 @@ def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
 
 
 def _calculate_metadata_size():
-    return 4096
+    return 4096*2
 
 
 # 各 layout 期望的 Q/K/V tensor 维度数 (N2TGD 是 descale 专用 layout, 不在此表)
@@ -113,8 +113,9 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             "Tensor? seqused_kv=None, Tensor? v_descale=None, "
             "int? batch_size=None, int? max_seqlen_q=-1, int? max_seqlen_kv=-1, "
             "int? mask_mode=0, int? win_left=-1, int? win_right=-1, "
-            'str? layout_q="BSND", str? layout_q_descale="BSND", '
-            'str? layout_kv="BSND", str? layout_out="BSND") -> Tensor',
+                        'str? layout_q="BSND", str? layout_q_descale="BSND", '
+            'str? layout_kv="BSND", str? layout_out="BSND", '
+            'bool is_grad_enabled=False) -> Tensor',
             "quant_flash_attn(Tensor q, Tensor k, Tensor v, "
             "Tensor q_descale, Tensor k_descale, Tensor v_descale, int quant_mode, "
             "Tensor? block_table=None, Tensor? p_scale=None, "
@@ -134,7 +135,7 @@ class QuantFlashAttnOpBuilder(OpBuilder):
         """
 
         @torch.library.register_fake("cann_ops_transformer::" + QFA_METADATA_OP_NAME)
-        def quant_flash_attn_metadata_meta(
+                def quant_flash_attn_metadata_meta(
             num_heads_q: int,
             num_heads_kv: int,
             head_dim: int,
@@ -154,6 +155,7 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             layout_q_descale: Optional[str] = "BSND",
             layout_kv: Optional[str] = "BSND",
             layout_out: Optional[str] = "BSND",
+            is_grad_enabled: Optional[bool] = False,
         ):
             metadata_size = _calculate_metadata_size()
             return torch.empty((metadata_size,), dtype=torch.int32, device="npu")
@@ -283,6 +285,7 @@ def quant_flash_attn_metadata(
     layout_q_descale: Optional[str] = "BSND",
     layout_kv: Optional[str] = "BSND",
     layout_out: Optional[str] = "BSND",
+    is_grad_enabled: Optional[bool] = False,
 ):
     """
     Dispatcher implementation: NPU.
@@ -314,7 +317,7 @@ def quant_flash_attn_metadata(
     metadata_size = _calculate_metadata_size()
     output = torch.empty((metadata_size,), dtype=torch.int32, device="npu")
 
-    op_module = quant_flash_attn_op_builder.load()
+        op_module = quant_flash_attn_op_builder.load()
     return op_module.quant_flash_attn_metadata(
         cu_seqlens_q,
         cu_seqlens_kv,
@@ -335,6 +338,7 @@ def quant_flash_attn_metadata(
         layout_q_descale,
         layout_kv,
         layout_out,
+        is_grad_enabled,
         output,
     )
 
@@ -360,6 +364,7 @@ def quant_flash_attn_metadata_fallback(
     layout_q_descale: Optional[str] = "BSND",
     layout_kv: Optional[str] = "BSND",
     layout_out: Optional[str] = "BSND",
+    is_grad_enabled: Optional[bool] = False,
 ):
     # 处理所有 tensor 都为 None 的情况
     return quant_flash_attn_metadata(
@@ -382,6 +387,7 @@ def quant_flash_attn_metadata_fallback(
         layout_q_descale,
         layout_kv,
         layout_out,
+        is_grad_enabled,
     )
 
 
