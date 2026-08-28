@@ -629,7 +629,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0(uint32_t runBSStart
 
     VFDoV0HPreGrad(hPreBufS1Addr, hPreAddr, gradHInAddr, buffers.stepLength);
     vecInQueue1_.FreeTensor(hPre);
-    hPost = vecInQueue0_.DeQue<P>();
+    vecInQueue0_.DeQue<P>(hPost);
     vecInQueue0_.DeQue<P>(gradHPost);
     VFDoV0ProcessGradHPost((__ubuf__ P *)hPost.GetPhyAddr(), (__ubuf__ P *)gradHPost.GetPhyAddr(),
                            (__ubuf__ P *)buffers.hPostBufS1.GetPhyAddr(), buffers.stepLength);
