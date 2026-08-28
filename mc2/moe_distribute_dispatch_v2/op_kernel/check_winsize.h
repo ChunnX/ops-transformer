@@ -28,6 +28,10 @@ __aicore__ inline void CheckWindowSize(uint64_t tilingWinSizeBytes, uint64_t rea
                                        GM_ADDR exceptionAddr)
 {
     if (unlikely(realWinSizeBytes < tilingWinSizeBytes)) {
+        ascendc_assert((realWinSizeBytes < tilingWinSizeBytes),
+                       "realWinSizeBytes < tilingWinSizeBytes, "
+                       "realWinSizeBytes = %lu, tilingWinSizeBytes = %lu",
+                       realWinSizeBytes, tilingWinSizeBytes);
         constexpr uint64_t DATA_SIZE = 256; // 定义数据大小为256字节
         AscendC::GlobalTensor<int32_t> exceptionGlobal;
         exceptionGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(exceptionAddr), DATA_SIZE);
