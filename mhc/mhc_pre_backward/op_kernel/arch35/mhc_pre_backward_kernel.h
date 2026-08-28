@@ -770,7 +770,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart
         DataCopyPad(workSpaceGm_[workspaceBuf_.GetBiasGradOffset(coreId)], BiasOutBuf, dataCopyParams);
         PipeBarrier<PIPE_MTE3>();
     }
-    PipeBarrier<PIPE_V>();
     vecOutQueue1_.FreeTensor(BiasOutBuf);
 
     auto hMixGradBuf = buffers.calcTmpBuf;
