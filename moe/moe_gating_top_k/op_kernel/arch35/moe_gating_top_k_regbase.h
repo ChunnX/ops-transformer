@@ -1570,50 +1570,28 @@ template <typename T, typename U1, typename U2>
 __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::Process()
 {
     CopyInBias();
-    if (kGroup_ == groupCount_ || groupCount_ == expertCount_) {
-        CopyInX(0);
-        for (int64_t row = 1; row < curCoreRowCount_; row++) {
-            ComputeX();
-            CopyOutXNorm(row - 1);
+    if (hashFlag_) {
+        for (int64_t row = 0; row < curCoreRowCount_; row++) {
             CopyInX(row);
-            if (hashFlag_) {
-                HashCompute(row - 1 + tilingData_->perCoreRowCount * blockIdx_);
-            } else {
-                TopKCompute();
-            }
-            CopyOut(row - 1);
+            ComputeX();
+            CopyOutXNorm(row);
+            HashCompute(row + tilingData_->perCoreRowCount * blockIdx_);
+            CopyOut(row);
         }
-        ComputeX();
-        CopyOutXNorm(curCoreRowCount_ - 1);
-        if (hashFlag_) {
-            HashCompute(curCoreRowCount_ - 1 + tilingData_->perCoreRowCount * blockIdx_);
-        } else {
-            TopKCompute();
-        }
-        CopyOut(curCoreRowCount_ - 1);
         return;
     }
 
-    CopyInX(0);
-    for (int64_t row = 1; row < curCoreRowCount_; row++) {
+    for (int64_t row = 0; row < curCoreRowCount_; row++) {
+        CopyInX(row);
         ComputeX();
-        CopyOutXNorm(row - 1);
+        CopyOutXNorm(row);
         SortInGroup();
         SelectTopKGroupIndex();
-        CopyInX(row);
         FinalSortByKGroup();
         FinalSortAfterKGroup();
         SelectTopKExpertScore();
-        CopyOut(row - 1);
+        CopyOut(row);
     }
-    ComputeX();
-    CopyOutXNorm(curCoreRowCount_ - 1);
-    SortInGroup();
-    SelectTopKGroupIndex();
-    FinalSortByKGroup();
-    FinalSortAfterKGroup();
-    SelectTopKExpertScore();
-    CopyOut(curCoreRowCount_ - 1);
 }
 } // namespace MoeGatingTopK
 #endif // MOE_GATING_TOP_K_REGBASE_H

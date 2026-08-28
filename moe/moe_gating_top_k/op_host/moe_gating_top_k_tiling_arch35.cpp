@@ -723,7 +723,7 @@ uint64_t MoeGatingTopKTilingRegbase::GetTilingKey() const
             return MOE_GATING_TOP_K_E_K_FULLLOAD_REGBASE_TILING_KEY;
         }
         bool isSimplifiedPath = (kGroup_ == groupCount_ || groupCount_ == expertCount_);
-        if (isSimplifiedPath && groupCount_ == 1 && k_ == 1) {
+        if (isSimplifiedPath) {
             return MOE_GATING_TOP_K_WITHOUT_GROUP_REGBASE_TILING_KEY;
         }
         return MOE_GATING_TOP_K_REGBASE_TILING_KEY;
