@@ -20,14 +20,14 @@ namespace GROUPED_MATMUL::WqgmmMxTensorApi {
 
 #if (defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510)
 template <typename XType, typename WeightType, typename ScaleAType, typename ScaleBType, typename BiasType,
-          typename YType>
+          typename YType, bool IsSingleMultiSingle_ = false>
 __aicore__ inline void InvokeWqgmmMxTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR bias,
                                               GM_ADDR groupList, GM_ADDR perTokenScale, GM_ADDR y,
                                               const GroupedMatmulTilingData::GMMWeightQuantParam *gmmTiling,
                                               const TCubeTiling *mmTiling)
 {
-    using Kernel = Blaze::Gemm::Kernel::DefaultKernelWqgmmMixWeightPrologue<XType, WeightType, ScaleAType, ScaleBType,
-                                                                            BiasType, YType>;
+    using Kernel = Blaze::Gemm::Kernel::DefaultKernelWqgmmMixWeightPrologue<
+        XType, WeightType, ScaleAType, ScaleBType, BiasType, YType, IsSingleMultiSingle_>;
     using Params = typename Kernel::Params;
 
     // Copy fields explicitly so transformer tiling ABI does not leak into ops-tensor.
@@ -48,9 +48,10 @@ __aicore__ inline void InvokeWqgmmMxTensorApi(GM_ADDR x, GM_ADDR weight, GM_ADDR
     params.gmmParams.coreNum = gmmTiling->coreNum;
     params.gmmParams.kSize = gmmTiling->kSize;
     params.gmmParams.nSize = gmmTiling->nSize;
-    params.gmmParams.singleX = gmmTiling->singleX;
-    params.gmmParams.singleWeight = gmmTiling->singleWeight;
-    params.gmmParams.singleY = gmmTiling->singleY;
+    if constexpr (!IsSingleMultiSingle_) {
+        // Host tiling restricts non-SMS inputs to all-single or all-list tensors.
+        params.gmmParams.singleX = gmmTiling->singleX;
+    }
     params.gmmParams.groupType = gmmTiling->groupType;
     params.gmmParams.groupListType = gmmTiling->groupListType;
     params.gmmParams.hasBias = gmmTiling->hasBias;
