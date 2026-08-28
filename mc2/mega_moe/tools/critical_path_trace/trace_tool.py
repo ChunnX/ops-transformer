@@ -285,40 +285,40 @@ POINT_TEXT_ZH = {
         "perturbation": "每次真实 ping-pong 等待一次时钟和四个 scratch word 写入。",
     },
     "gmm1_problem_begin_S": {
-        "when": "当前专家 problem 的首个本核 owned tile 已满足 Dispatch-ready/ping-pong 依赖，即将发出 GMM1。",
-        "why": "排除 problem 之前的 ready 轮询，并把同一 Wave 内多个专家 problem 分成独立区间。",
-        "proof": "公共入口仅在首个 owned tile 的生产等待返回后采样；无 owned tile 的核不产生区间。",
-        "perturbation": "每个活跃 problem 一次状态判断；部分路径复用因果 bridge 后读取时钟。",
+        "when": "当前本核 owned GMM1 tile 已满足 Dispatch-ready/ping-pong 依赖，即将发出。",
+        "why": "排除每个 tile 前的 ready 轮询，并展开同一 Wave 内的实际 scheduler tile。",
+        "proof": "公共入口在每个 owned tile 的生产等待返回后采样；无 owned tile 的核不产生区间。",
+        "perturbation": "每个活跃 tile 一次状态判断；部分路径复用因果 bridge 后读取时钟。",
     },
     "gmm1_problem_end_S": {
-        "when": "当前 GMM1 problem 的本核 FIX 已全部真正完成。",
-        "why": "让后续白色区间表示调度、ownership 或依赖空洞，而不是隐藏的 FIX 尾部。",
-        "proof": "只有记录过 begin 的 AIC 才执行 FIX_S，随后读取 Scalar 时钟。",
-        "perturbation": "每个活跃 problem 增加一次 FIX_S 和结束采样，会抑制诊断态跨 problem FIX 重叠。",
+        "when": "当前 GMM1 tile 的本核 FIX 已真正完成。",
+        "why": "让 tile 间白色区间表示调度、ownership 或依赖空洞，而不是隐藏的 FIX 尾部。",
+        "proof": "prefetch 复用生产 FIX_S；非 prefetch 仅对已记录 begin 的 tile 增加 FIX_S。",
+        "perturbation": "非 prefetch 每个活跃 tile 增加一次 FIX_S 和结束采样。",
     },
     "swiglu_problem_begin_S": {
-        "when": "当前专家 problem 的首个本核 owned epilogue tile 已满足 GMM1/ping-pong 依赖，即将执行 SwiGLU/MX。",
-        "why": "把同一 Wave 内多次 SwiGLU helper 分开，前置 WaitForCube 和 problem 间空白不染色。",
-        "proof": "采样位于生产路径 readiness wait 之后；无 owned tile 的 AIV0 不记录。",
-        "perturbation": "每个活跃 problem 一次条件判断、因果 bridge 和时钟采样。",
+        "when": "当前本核 owned epilogue tile 已满足 GMM1/ping-pong 依赖，即将执行 SwiGLU/MX。",
+        "why": "把同一 Wave 内每个 SwiGLU tile 分开，前置 WaitForCube 和 tile 间空白不染色。",
+        "proof": "采样位于每个 tile 的生产 readiness wait 之后；无 owned tile 的 AIV0 不记录。",
+        "perturbation": "每个活跃 tile 一次条件判断、因果 bridge 和时钟采样。",
     },
     "swiglu_problem_end_S": {
-        "when": "当前 SwiGLU/MX problem helper 已返回并完成其生产路径的输出/ready 提交。",
-        "why": "结束在本次 helper 返回处，不把下一次 SwiGLU 前的调度或等待计入。",
-        "proof": "时间戳紧随 RunGmm1ActivationByMode 返回；不额外排空后续流水。",
-        "perturbation": "每个活跃 problem 一次结束时钟和四个 scratch word 写入。",
+        "when": "当前 SwiGLU/MX tile 的 Vector 与 MTE3 输出已经完成。",
+        "why": "结束在本 tile helper 返回处，不把下一 tile 前的调度或等待计入。",
+        "proof": "activationQuantOp 内部已有 MTE3_S，时间戳紧随 tile helper 返回。",
+        "perturbation": "每个活跃 tile 一次结束时钟和四个 scratch word 写入，不新增排空。",
     },
     "gmm2_problem_begin_S": {
-        "when": "当前专家 problem 的首个本核 owned GMM2 tile 已观察到 SwiGLU-ready，即将发出 MMAD。",
-        "why": "排除 ready 轮询，并把同一 Wave 内多个 GMM2 problem 分开显示。",
-        "proof": "时间戳位于 WaitForGmm2InputReady 返回之后、首个 blockMmad 之前。",
-        "perturbation": "每个活跃 problem 一次条件判断和时钟采样。",
+        "when": "当前本核 owned GMM2 tile 已观察到 SwiGLU-ready，即将发出 MMAD。",
+        "why": "排除 ready 轮询，并展开同一 Wave 内每个 GMM2 scheduler tile。",
+        "proof": "时间戳位于生产 ready 返回之后、当前 blockMmad 之前。",
+        "perturbation": "每个活跃 tile 一次条件判断和时钟采样。",
     },
     "gmm2_problem_end_S": {
-        "when": "当前 GMM2 problem 的本核 FIX 直写已全部真正完成。",
-        "why": "避免 256×256 GMM2 只显示约 400 cycle 的 Scalar 发出区间。",
-        "proof": "只有记录过 begin 的 AIC 才执行 FIX_S，随后读取 Scalar 时钟。",
-        "perturbation": "每个活跃 problem 增加一次 FIX_S 和结束采样，会串行化诊断态跨 problem FIX 尾部。",
+        "when": "当前 GMM2 tile 的本核 FIX 直写及生产通知已经完成。",
+        "why": "逐 tile 显示真实 FIX 完成，避免整个 Wave 被合成一段。",
+        "proof": "复用 pairwise sequence 或 group-ready 发布前的生产 FIX_S。",
+        "perturbation": "每个活跃 tile 一次结束采样和四个 scratch word 写入。",
     },
     "gmm2_input_wait_begin_S": {
         "when": "当前 owned GMM2 M group 即将等待 activation-ready。",
@@ -345,16 +345,16 @@ POINT_TEXT_ZH = {
         "perturbation": "每个 owned N tile 一次时钟和四个 scratch word 写；打点版会扰动 Scalar/FIX 调度。",
     },
     "combine_group_begin_S": {
-        "when": "本 AIV0/AIV1 已观察到当前 expert-local 256-token group 的全部 GMM2 N tile 完成，马上开始 Combine。",
-        "why": "逐 group 切开 Combine，ready 前等待和相邻 group 间隙保持空白。",
-        "proof": "时间戳紧随 WaitWaveCombineGroupReady 成功返回，并受本核 owned range 非空条件保护。",
-        "perturbation": "每个本核活跃 group 一次条件判断和时钟采样。",
+        "when": "非量化 AIV1 已观察到配对 AIC 的 tile sequence；量化路径已观察到 256-token group ready。",
+        "why": "逐工作单元切开 Combine，flag 轮询和相邻单元间隙保持空白。",
+        "proof": "一对一路径紧随 WaitUntilGmFlagAtLeast；量化路径紧随 WaitWaveCombineGroupReady。",
+        "perturbation": "每个本核活跃工作单元一次条件判断和时钟采样。",
     },
     "combine_group_end_S": {
-        "when": "该 256-token group 中本核负责的 Combine row 已发出，且 MTE3_S 已证明此前的远端发送全部完成。",
-        "why": "让 Dispatch 与 Combine 都以真实 MTE3 完成为结束口径，同时不把后续 group 计入当前色块。",
-        "proof": "最后一次 CombineWaveTokenRange 返回后执行 MTE3_S SetFlag/WaitFlag，随后才读取 Scalar 系统时钟。",
-        "perturbation": "每个本核活跃 group 增加一次 MTE3_S 完成桥、一次时钟和四个 scratch word 写入；会抑制诊断态跨 group MTE3 尾部重叠。",
+        "when": "当前 pairwise tile 或量化 group 的 Combine 数据已发出，且 MTE3_S 已证明远端发送完成。",
+        "why": "以真实 MTE3 完成为结束口径，同时不把后续工作单元计入当前色块。",
+        "proof": "当前工作单元发送返回后执行 MTE3_S SetFlag/WaitFlag，随后才读取 Scalar 系统时钟。",
+        "perturbation": "每个本核活跃工作单元增加一次 MTE3_S 完成桥、一次时钟和四个 scratch word 写入。",
     },
     "final_combine_drain_begin_S": {
         "when": "最终 Wave 的 Combine helper 已返回，即将回收本 AIV 的 row-ring 完成事件。",
@@ -553,12 +553,12 @@ SPAN_LABEL_ZH = {
     "gmm1_scalar_setup": "GMM1 Scalar 调度/无 owner 跳过",
     "gmm1_dispatch_wait": "GMM1 等待 Dispatch-ready",
     "gmm1_vector_wait": "GMM1 等待 SwiGLU 释放槽位",
-    "gmm1_problem": "GMM1（逐 problem，FIX 完成）",
-    "swiglu_problem": "SwiGLU + MX（逐 problem）",
-    "gmm2_problem": "GMM2（逐 problem，FIX 完成）",
+    "gmm1_problem": "GMM1（逐 tile，FIX 完成）",
+    "swiglu_problem": "SwiGLU + MX（逐 tile，MTE3 完成）",
+    "gmm2_problem": "GMM2（逐 tile，FIX 完成）",
     "gmm2_input_wait": "GMM2 等待 activation-ready",
     "gmm2_ready_fix_wait": "GMM2 group-ready 逐 tile FIX 等待（生产）",
-    "combine_group_task": "Combine（逐 256-token group，MTE3 完成边界）",
+    "combine_group_task": "Combine（非量化 tile / 量化 group，MTE3 完成）",
     "final_combine_drain": "最终 Combine Ring Drain",
     "moe_epilogue": "MoE 尾部 EndSync/Count 导出",
     "moe_tail_sync": "MoE 尾部本卡 AIV 汇合",
@@ -2866,14 +2866,14 @@ def _render_html(
             "橙色只连接同一 wave 的相邻专家：它由前一专家 end 与后一专家 causal begin 推断，"
             "包含流水尾部、真实依赖等待和少量 Scalar 调度，不能解释为纯等待指令耗时。"
             "该旧版 expert-indexed 展示只适用于未启用稀疏任务协议的 trace；"
-            "当前 v17 稀疏协议改由下方实际任务、GMM1/Dispatch 空洞、GMM2 输入/FIX 分段及 Combine 后尾部诊断说明定义边界。</div>"
+            "当前 v18 稀疏协议改由下方逐 tile 任务、GMM1/Dispatch 空洞、GMM2 输入/FIX 分段及 Combine 后尾部诊断说明定义边界。</div>"
         )
     if sparse_segments is not None:
         warning += (
-            '<div class="warning"><strong>实际任务区间：</strong>每次 Dispatch、GMM problem、'
-            "SwiGLU problem 和 Combine 专家任务独立记录；相邻任务之间的 ready 轮询、cursor "
-            "推进和无工作时间保持空白。GMM problem 与 Combine group 分别采用 trace-only FIX/MTE3 完成边界，"
-            "GMM2 activation-ready 等待与生产 group-ready 逐 tile FIX 等待另行分段。"
+            '<div class="warning"><strong>实际任务区间：</strong>每次 Dispatch、GMM tile、'
+            "SwiGLU tile 和 Combine 工作单元独立记录；相邻任务之间的 ready 轮询、cursor "
+            "推进和无工作时间保持空白。GMM1/GMM2 以 FIX 完成为界，SwiGLU 与 Combine 以 MTE3 完成为界，"
+            "GMM2 activation-ready 等待与生产逐 tile FIX 等待另行分段。"
             "诊断 fence 与 scratch 写会扰动流水，禁止把 tracing-on 总延迟当作生产性能。</div>"
         )
     return (

@@ -8,7 +8,7 @@
 
 ## 这版解决什么问题
 
-协议为 v17，schema ID 为 `0xbdd34b32`，默认诊断开关为：
+协议为 v18，schema ID 为 `0x85acff99`，默认诊断开关为：
 
 ```cpp
 #define MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE 1
@@ -18,19 +18,19 @@ v8 只记录物理 AI Block 0，而且按整段 Wave 画色块。若一个 Wave 
 Dispatch 或两个 SwiGLU helper，两次调用之间的 cursor 推进、依赖等待也会落入同一
 个色块，容易把空档误读成工作耗时。
 
-v17 在全 AI Block 稀疏任务记录基础上进一步改为：
+v18 在全 AI Block 稀疏任务记录基础上进一步改为：
 
 - 记录全部物理 AI Block；每组固定按 `AIC / AIV0 / AIV1` 排列；
 - 每个 AI Block 用本组 AIC 的 `process_begin_S` 独立归零；组内三角色可直接比较，
   不比较不同 AI Block 的绝对时间戳；
 - 只在真正进入 production helper 时追加稀疏任务段；同一 Wave 内相邻 helper
   之间的空档保持白色；
-- 每段携带 `wave` 和 `expert`；HTML 会按同一 Wave 中的专家顺序派生
-  `P0/P1/...`，相邻 problem 用白边分隔并直接标号；
+- 每段携带 `wave` 和 `expert`；同一专家内连续的 GMM/SwiGLU scheduler tile
+  分别显示，相邻 tile 的依赖等待保持白色；
 - 无 owned tile/token 的核不产生对应 GMM/SwiGLU/Combine 色块。
 - Dispatch 前固定记录输入 UB 初始化、量化、compact route index/count、workspace reset、单卡同步、跨 rank
   同步和专家 buffer 初始化；
-- GMM1/GMM2 的结束点均经过 tracing-only `FIX_S`，显示实际 FIX 完成而不是 helper 发出；
+- GMM1/GMM2 的每个 tile 结束点均经过生产或 tracing-only `FIX_S`，显示实际 FIX 完成；
 - GMM2 额外拆出每次生产 SwiGLU-ready 轮询和 group-ready 的逐 tile `FIX_S`，
   可区分输入延迟、MMAD/FIX helper 区间和生产 ready fence；
 - AIC 的 GMM1 空洞额外分成 Scalar 调度/无 owner 跳过、Dispatch-ready
@@ -44,27 +44,28 @@ v17 在全 AI Block 稀疏任务记录基础上进一步改为：
 
 | 角色 | 稀疏任务段 | begin | end |
 |---|---|---|---|
-| AIC | GMM1 problem | 首个 owned tile 的 ready/wait 返回后 | 本 problem 的 FIX 经 FIX_S 完成后 |
+| AIC | GMM1 tile | 当前 owned tile 的 ready/wait 返回后 | 当前 tile 的 FIX 经 FIX_S 完成后 |
 | AIC | GMM1 Scalar 调度 | 开始扫描/准备下一个 problem | 找到 owned tile 或当前 Wave 扫描结束 |
 | AIC | GMM1 Dispatch 等待 | owned tile 即将轮询 ready | ready 值已观察到 |
 | AIC | GMM1 SwiGLU 回压 | 生产路径即将 `WaitForVector` | ping-pong 槽位已归还 |
 | AIC | GMM2 input-ready 等待 | 进入生产 ready 轮询前 | ready 已观察到 |
-| AIC | GMM2 problem | 首个 owned tile 观察到 SwiGLU-ready 后 | 本 problem 的 FIX 经 FIX_S 完成后 |
+| AIC | GMM2 tile | 当前 owned tile 观察到 SwiGLU-ready 后 | 当前 tile 的 FIX 经 FIX_S 完成后 |
 | AIC | GMM2 group-ready FIX 等待 | 每个 owned N tile 的 blockMmad 返回后 | 生产 FIX_S 返回、AtomicAdd ready counter 前 |
-| AIV0 | SwiGLU/MX problem | 首个 owned epilogue tile ready 后 | helper 返回 |
+| AIV0 | SwiGLU/MX tile | 当前 owned epilogue tile ready 后 | helper 内生产 MTE3_S 完成后 |
 | AIV1 | 有效 Dispatch expert task | 本核获得非空连续行区间后、`DispatchWaveExpertRows` 前 | helper 自带 copy-ring drain 和 ready 发布后 |
 | AIV1 | Dispatch 间 Scalar 调度 | 前一个有效 Dispatch 的 trace 写入后 | 下一有效专家已完成 count/owner 规划且即将建立 Dispatch task |
-| AIV0/AIV1 | Combine 256-token group task | 当前 expert-local group 的 GMM2 N tile 全部 ready 后 | 本核在该 group 的远端 send 经 MTE3_S 桥接到 Scalar 后 |
+| AIV1 | 非量化 pairwise Combine tile | 配对 AIC 的 tile sequence ready 后 | 当前 tile 的远端 send 经 MTE3_S 桥接到 Scalar 后 |
+| AIV0/AIV1 | 量化 Combine 256-token group task | 当前 expert-local group 的 GMM2 N tile 全部 ready 后 | 本核在该 group 的远端 send 经 MTE3_S 桥接到 Scalar 后 |
 
 Combine 后的固定尾部区间按实际调用顺序显示，可直接区分本卡负载不均衡、慢 rank、
 共享专家路径以及本地 Unpermute。Unpermute 结束复用生产路径最终 `MTE3_V` drain，
 不会把未完成的 y 写回藏进 `work_end` 前白色区间。
 
-GMM1/GMM2 为了量化真实工作与 problem 间空洞，在每个本核活跃 problem 末尾显式
-增加 `FIX_S`。它会抑制诊断态跨 problem 的 FIX 尾部重叠，因此 tracing-on 的算子总
+GMM1/GMM2 为了量化真实工作与 tile 间空洞，在每个本核活跃 tile 末尾显式或复用
+`FIX_S`。它会抑制诊断态跨 tile 的 FIX 尾部重叠，因此 tracing-on 的算子总
 耗时不能当作生产性能；关闭 tracing 后没有额外同步。Dispatch 复用生产 helper 已有
-的 MTE3 完成语义；Combine 在每个本核活跃 256-token group 末尾显式增加 `MTE3_S`。
-因此 tracing-on 的 Combine group 之间会被刻意串行化，用来看分项时间，不用来代表生产态端到端性能。完整的打点原因、
+的 MTE3 完成语义；Combine 在每个活跃 pairwise tile 或量化 group 末尾显式增加 `MTE3_S`。
+因此 tracing-on 的 Combine 工作单元会被刻意串行化，用来看分项时间，不用来代表生产态端到端性能。完整的打点原因、
 依赖证明和潜在扰动见：
 
 - [`trace-spec.json`](trace-spec.json)：机器可读 trace spec；

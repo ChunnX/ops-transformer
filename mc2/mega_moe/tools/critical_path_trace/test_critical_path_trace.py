@@ -342,8 +342,8 @@ class TraceContractTests(unittest.TestCase):
             self.assertLess(block1_aiv0, block1_aiv1)
             self.assertNotIn("Trace-point placement audit", rendered_html)
             normalized = load_json(directory / "rank0.normalized.json")
-            self.assertEqual(normalized["protocol_version"], 17)
-            self.assertEqual(normalized["schema_id"], "0xbdd34b32")
+            self.assertEqual(normalized["protocol_version"], 18)
+            self.assertEqual(normalized["schema_id"], "0x85acff99")
             self.assertEqual(normalized["metadata"]["resolved_record_words"], 44)
             self.assertEqual(normalized["metadata"]["header"]["role_counts"], [2, 2, 2])
             self.assertFalse(normalized["metadata"]["trace_truncated"])
@@ -353,7 +353,7 @@ class TraceContractTests(unittest.TestCase):
             )
             compact = json.loads(gzip.decompress(compact_path.read_bytes()))
             self.assertEqual(compact["format"], COMPACT_FORMAT)
-            self.assertEqual(compact["protocol"], [17, "0xbdd34b32", 32])
+            self.assertEqual(compact["protocol"], [18, "0x85acff99", 32])
             self.assertEqual(compact["config"]["role_counts"], [2, 2, 2])
             self.assertEqual(len(compact["records"]), 6)
             self.assertEqual(compact["records"][0][0:2], ["AIC", 0])
@@ -371,7 +371,9 @@ class TraceContractTests(unittest.TestCase):
             self.assertIn("Dispatch 间 Scalar 规划/游标推进", rendered_html)
             self.assertIn("GMM2 等待 activation-ready", rendered_html)
             self.assertIn("GMM2 group-ready 逐 tile FIX 等待（生产）", rendered_html)
-            self.assertIn("Combine（逐 256-token group，MTE3 完成边界）", rendered_html)
+            self.assertIn(
+                "Combine（非量化 tile / 量化 group，MTE3 完成）", rendered_html
+            )
             self.assertIn("Wave 0 / P1 / 专家 1 / 本核记录 1", rendered_html)
             order = load_json(directory / "rank0.order-check.json")
             self.assertEqual(order["status"], "passed")
@@ -643,8 +645,8 @@ class TraceContractTests(unittest.TestCase):
         self.assertEqual(capacity["record_count"], 108)
         self.assertEqual(capacity["descriptor_required_y_bytes"], 19128)
         self.assertEqual(capacity["available_y_bytes"], 294912)
-        self.assertEqual(capacity["required_segment_capacity"], 9)
-        self.assertEqual(capacity["scratch_required_bytes"], 125280)
+        self.assertEqual(capacity["required_segment_capacity"], 18)
+        self.assertEqual(capacity["scratch_required_bytes"], 234144)
         self.assertEqual(capacity["scratch_reserve_bytes"], 50 * 1024 * 1024)
 
     @unittest.skipUnless(

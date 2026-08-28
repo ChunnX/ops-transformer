@@ -116,11 +116,13 @@ def _critical_path_trace_validate_capacity():
     first_m_groups = min(max_routed_rows, expert_count)
     max_m_groups = first_m_groups + (max_routed_rows - first_m_groups) // 256
     wave_capacity = max(1, (max_m_groups + m_groups_per_wave - 1) // m_groups_per_wave)
-    gmm2_fix_waits_per_m_group = (gmm2_tiles_per_m_group + aic_count - 1) // aic_count
+    gmm1_tiles_per_m_group_per_core = (gmm1_tiles_per_m_group + aic_count - 1) // aic_count
+    gmm2_tiles_per_m_group_per_core = (gmm2_tiles_per_m_group + aic_count - 1) // aic_count
     required_segment_capacity = max(
         expert_count,
         max_m_groups,
-        max_m_groups * gmm2_fix_waits_per_m_group,
+        max_m_groups
+        * max(gmm1_tiles_per_m_group_per_core, gmm2_tiles_per_m_group_per_core),
     )
     record_words = 44
     record_count = 3 * traced_ai_blocks
@@ -133,7 +135,7 @@ def _critical_path_trace_validate_capacity():
     scratch_record_words = 38 + 28 * segment_capacity
     scratch_required_bytes = 4 * record_count * scratch_record_words
     _critical_path_trace_capacity = {
-        "protocol_version": 17,
+        "protocol_version": 18,
         "formula": "descriptor=4*(30+3*aic_count*44); scratch_record=38+7*4*segment_capacity",
         "traced_ai_blocks": traced_ai_blocks,
         "bs": int(bs),

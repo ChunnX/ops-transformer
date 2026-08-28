@@ -2,17 +2,18 @@
   "audit_schema_version": 1,
   "status": "pass",
   "phase": "implemented",
-  "generated_at_utc": "2026-08-28T12:08:23.140331+00:00",
+  "generated_at_utc": "2026-08-28T13:23:45.080452+00:00",
   "trace_name": "mega-moe-pr10302-token-group-wave-active-task-critical-path",
   "repo_root": "/home/mace/workspace/ops-transformer_megaMoeOpt_wave_interleave_trace",
   "git": {
     "is_git_repository": true,
-    "revision": "3037a11518f70ede3c7ad54eafc13a06dc490646",
+    "revision": "99b65637adac9456c313c505a7aa4a2b34e61058",
     "branch": "codex/pr10302-wave-interleave-sendindex-critical-path-trace",
     "dirty": true,
     "status_short": [
       "M mc2/mega_moe/op_kernel/arch35/common/mega_moe_trace.h",
       " M mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h",
+      " M mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm1_activation.h",
       " M mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h",
       " M mc2/mega_moe/tools/critical_path_trace/README.md",
       " M mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.json",
@@ -20,20 +21,19 @@
       " M mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.json",
       " M mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.md",
       " M mc2/mega_moe/tools/critical_path_trace/mega_moe_trace_contract.py",
-      " M mc2/mega_moe/tools/critical_path_trace/pack_normalized_trace.py",
       " M mc2/mega_moe/tools/critical_path_trace/run_critical_path_trace.py",
       " M mc2/mega_moe/tools/critical_path_trace/test_critical_path_trace.py",
       " M mc2/mega_moe/tools/critical_path_trace/trace-spec.json",
       " M mc2/mega_moe/tools/critical_path_trace/trace_tool.py"
     ],
     "status_truncated": false,
-    "tracked_diff_raw_sha256": "7418c8917b20e530207983947981f93235d13049eb3958f0d8582d1aaacde2b5"
+    "tracked_diff_raw_sha256": "eec31b82b87e3729699ee16592e2d5195a6497a7fca014a93fa1ff881e6d699c"
   },
   "spec": {
     "path": "/home/mace/workspace/ops-transformer_megaMoeOpt_wave_interleave_trace/mc2/mega_moe/tools/critical_path_trace/trace-spec.json",
-    "sha256": "96bed16cb0c4aa70fb8074a8619ca3019266765c759d9395424a879f7b8b2788",
-    "protocol_version": 17,
-    "schema_id": "0xbdd34b32"
+    "sha256": "779497cfb4e60978b8731351d09b6cb5f563c74291757d382a7ddc3ec1fc9c35",
+    "protocol_version": 18,
+    "schema_id": "0x85acff99"
   },
   "points": [
     {
@@ -55,64 +55,64 @@
         "pattern": "int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();"
       },
       "target_match_count": 1,
-      "target_line": 1356,
+      "target_line": 1387,
       "target_context": {
-        "start_line": 1354,
-        "end_line": 1358,
+        "start_line": 1385,
+        "end_line": 1389,
         "lines": [
           {
-            "line": 1354,
+            "line": 1385,
             "text": "#endif"
           },
           {
-            "line": 1355,
+            "line": 1386,
             "text": "    // 保存入口时的溢出模式，并初始化输入准备阶段使用的 UB。"
           },
           {
-            "line": 1356,
+            "line": 1387,
             "text": "    int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();"
           },
           {
-            "line": 1357,
+            "line": 1388,
             "text": "    SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);"
           },
           {
-            "line": 1358,
+            "line": 1389,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           }
         ]
       },
       "marker": "TRACE_POINT: process_begin_S",
       "marker_match_count": 1,
-      "marker_line": 1351,
+      "marker_line": 1382,
       "marker_context": {
-        "start_line": 1349,
-        "end_line": 1353,
+        "start_line": 1380,
+        "end_line": 1384,
         "lines": [
           {
-            "line": 1349,
+            "line": 1380,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1350,
+            "line": 1381,
             "text": "    if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 1351,
+            "line": 1382,
             "text": "        // TRACE_POINT: process_begin_S"
           },
           {
-            "line": 1352,
+            "line": 1383,
             "text": "        criticalPathTrace_.BeginProcess();"
           },
           {
-            "line": 1353,
+            "line": 1384,
             "text": "    }"
           }
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "提供同一 AI Block 内三角色共同参考起点。",
       "semantics": "Process 的第一条诊断指令，尚未执行正常算子语句。",
       "dependency": {
@@ -143,64 +143,64 @@
         "occurrence": 2
       },
       "target_match_count": 2,
-      "target_line": 1366,
+      "target_line": 1397,
       "target_context": {
-        "start_line": 1364,
-        "end_line": 1368,
+        "start_line": 1395,
+        "end_line": 1399,
         "lines": [
           {
-            "line": 1364,
+            "line": 1395,
             "text": "    }"
           },
           {
-            "line": 1365,
+            "line": 1396,
             "text": "#endif"
           },
           {
-            "line": 1366,
+            "line": 1397,
             "text": "    SendAndQuantBuffInit();"
           },
           {
-            "line": 1367,
+            "line": 1398,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1368,
+            "line": 1399,
             "text": "    if constexpr (g_coreType == AIV) {"
           }
         ]
       },
       "marker": "TRACE_POINT: input_buffer_init_begin_S",
       "marker_match_count": 1,
-      "marker_line": 1361,
+      "marker_line": 1392,
       "marker_context": {
-        "start_line": 1359,
-        "end_line": 1363,
+        "start_line": 1390,
+        "end_line": 1394,
         "lines": [
           {
-            "line": 1359,
+            "line": 1390,
             "text": "    if constexpr (g_coreType == AIV) {"
           },
           {
-            "line": 1360,
+            "line": 1391,
             "text": "        if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 1361,
+            "line": 1392,
             "text": "            // TRACE_POINT: input_buffer_init_begin_S"
           },
           {
-            "line": 1362,
+            "line": 1393,
             "text": "            criticalPathTrace_.BeginInputBufferInit();"
           },
           {
-            "line": 1363,
+            "line": 1394,
             "text": "        }"
           }
         ]
       },
       "max_line_distance": 6,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "分离输入准备 UB 布局与后续 token 量化。",
       "semantics": "即将构造 quant/route-index/reset 的 UB 视图并发出 resetTensor Duplicate。",
       "dependency": {
@@ -231,64 +231,64 @@
         "occurrence": 2
       },
       "target_match_count": 2,
-      "target_line": 1366,
+      "target_line": 1397,
       "target_context": {
-        "start_line": 1364,
-        "end_line": 1368,
+        "start_line": 1395,
+        "end_line": 1399,
         "lines": [
           {
-            "line": 1364,
+            "line": 1395,
             "text": "    }"
           },
           {
-            "line": 1365,
+            "line": 1396,
             "text": "#endif"
           },
           {
-            "line": 1366,
+            "line": 1397,
             "text": "    SendAndQuantBuffInit();"
           },
           {
-            "line": 1367,
+            "line": 1398,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1368,
+            "line": 1399,
             "text": "    if constexpr (g_coreType == AIV) {"
           }
         ]
       },
       "marker": "TRACE_POINT: input_buffer_init_end_S",
       "marker_match_count": 1,
-      "marker_line": 1370,
+      "marker_line": 1401,
       "marker_context": {
-        "start_line": 1368,
-        "end_line": 1372,
+        "start_line": 1399,
+        "end_line": 1403,
         "lines": [
           {
-            "line": 1368,
+            "line": 1399,
             "text": "    if constexpr (g_coreType == AIV) {"
           },
           {
-            "line": 1369,
+            "line": 1400,
             "text": "        if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 1370,
+            "line": 1401,
             "text": "            // TRACE_POINT: input_buffer_init_end_S"
           },
           {
-            "line": 1371,
+            "line": 1402,
             "text": "            criticalPathTrace_.EndInputBufferInit();"
           },
           {
-            "line": 1372,
+            "line": 1403,
             "text": "        }"
           }
         ]
       },
       "max_line_distance": 6,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "量化前单独显示 UB 地址构造和零张量发出成本。",
       "semantics": "UB 视图已构造且 Duplicate 已发出；Vector 尾部可继续运行。",
       "dependency": {
@@ -318,64 +318,64 @@
         "pattern": "QuantizeLocalTokens<QuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>("
       },
       "target_match_count": 1,
-      "target_line": 1386,
+      "target_line": 1417,
       "target_context": {
-        "start_line": 1384,
-        "end_line": 1388,
+        "start_line": 1415,
+        "end_line": 1419,
         "lines": [
           {
-            "line": 1384,
+            "line": 1415,
             "text": "    }"
           },
           {
-            "line": 1385,
+            "line": 1416,
             "text": "#endif"
           },
           {
-            "line": 1386,
+            "line": 1417,
             "text": "    QuantizeLocalTokens<QuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>("
           },
           {
-            "line": 1387,
+            "line": 1418,
             "text": "        aivJob_, commonConfig_, params_, quantProcessConfig_, quantProcessScratch_);"
           },
           {
-            "line": 1388,
+            "line": 1419,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           }
         ]
       },
       "marker": "TRACE_POINT: input_quantize_begin_S",
       "marker_match_count": 1,
-      "marker_line": 1381,
+      "marker_line": 1412,
       "marker_context": {
-        "start_line": 1379,
-        "end_line": 1383,
+        "start_line": 1410,
+        "end_line": 1414,
         "lines": [
           {
-            "line": 1379,
+            "line": 1410,
             "text": "    if constexpr (g_coreType == AIV) {"
           },
           {
-            "line": 1380,
+            "line": 1411,
             "text": "        if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 1381,
+            "line": 1412,
             "text": "            // TRACE_POINT: input_quantize_begin_S"
           },
           {
-            "line": 1382,
+            "line": 1413,
             "text": "            criticalPathTrace_.BeginInputQuantize();"
           },
           {
-            "line": 1383,
+            "line": 1414,
             "text": "        }"
           }
         ]
       },
       "max_line_distance": 7,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "量化本卡输入 token 的固定成本独立可见。",
       "semantics": "即将进入 QuantizeLocalTokens。",
       "dependency": {
@@ -405,64 +405,64 @@
         "pattern": "QuantizeLocalTokens<QuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>("
       },
       "target_match_count": 1,
-      "target_line": 1386,
+      "target_line": 1417,
       "target_context": {
-        "start_line": 1384,
-        "end_line": 1388,
+        "start_line": 1415,
+        "end_line": 1419,
         "lines": [
           {
-            "line": 1384,
+            "line": 1415,
             "text": "    }"
           },
           {
-            "line": 1385,
+            "line": 1416,
             "text": "#endif"
           },
           {
-            "line": 1386,
+            "line": 1417,
             "text": "    QuantizeLocalTokens<QuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>("
           },
           {
-            "line": 1387,
+            "line": 1418,
             "text": "        aivJob_, commonConfig_, params_, quantProcessConfig_, quantProcessScratch_);"
           },
           {
-            "line": 1388,
+            "line": 1419,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           }
         ]
       },
       "marker": "TRACE_POINT: input_quantize_end_S",
       "marker_match_count": 1,
-      "marker_line": 1391,
+      "marker_line": 1422,
       "marker_context": {
-        "start_line": 1389,
-        "end_line": 1393,
+        "start_line": 1420,
+        "end_line": 1424,
         "lines": [
           {
-            "line": 1389,
+            "line": 1420,
             "text": "    if constexpr (g_coreType == AIV) {"
           },
           {
-            "line": 1390,
+            "line": 1421,
             "text": "        if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 1391,
+            "line": 1422,
             "text": "            // TRACE_POINT: input_quantize_end_S"
           },
           {
-            "line": 1392,
+            "line": 1423,
             "text": "            criticalPathTrace_.EndInputQuantize();"
           },
           {
-            "line": 1393,
+            "line": 1424,
             "text": "            // TRACE_POINT: route_index_begin_S"
           }
         ]
       },
       "max_line_distance": 7,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "区分 token 量化与后续 compact route-index 通信。",
       "semantics": "本核负责 token 的量化结果已写回 GM。",
       "dependency": {
@@ -492,64 +492,64 @@
         "pattern": "GatherAndSendExpertCompactRoutes(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_,"
       },
       "target_match_count": 1,
-      "target_line": 1398,
+      "target_line": 1429,
       "target_context": {
-        "start_line": 1396,
-        "end_line": 1400,
+        "start_line": 1427,
+        "end_line": 1431,
         "lines": [
           {
-            "line": 1396,
+            "line": 1427,
             "text": "    }"
           },
           {
-            "line": 1397,
+            "line": 1428,
             "text": "#endif"
           },
           {
-            "line": 1398,
+            "line": 1429,
             "text": "    GatherAndSendExpertCompactRoutes(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_,"
           },
           {
-            "line": 1399,
+            "line": 1430,
             "text": "                                     sendMaskScratch_);"
           },
           {
-            "line": 1400,
+            "line": 1431,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           }
         ]
       },
       "marker": "TRACE_POINT: route_index_begin_S",
       "marker_match_count": 1,
-      "marker_line": 1393,
+      "marker_line": 1424,
       "marker_context": {
-        "start_line": 1391,
-        "end_line": 1395,
+        "start_line": 1422,
+        "end_line": 1426,
         "lines": [
           {
-            "line": 1391,
+            "line": 1422,
             "text": "            // TRACE_POINT: input_quantize_end_S"
           },
           {
-            "line": 1392,
+            "line": 1423,
             "text": "            criticalPathTrace_.EndInputQuantize();"
           },
           {
-            "line": 1393,
+            "line": 1424,
             "text": "            // TRACE_POINT: route_index_begin_S"
           },
           {
-            "line": 1394,
+            "line": 1425,
             "text": "            criticalPathTrace_.BeginRouteIndex();"
           },
           {
-            "line": 1395,
+            "line": 1426,
             "text": "        }"
           }
         ]
       },
       "max_line_distance": 5,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "单独量化 compact route index 构造、count 整理与跨 rank 发送。",
       "semantics": "即将进入 GatherAndSendExpertCompactRoutes。",
       "dependency": {
@@ -579,64 +579,64 @@
         "pattern": "GatherAndSendExpertCompactRoutes(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_,"
       },
       "target_match_count": 1,
-      "target_line": 1398,
+      "target_line": 1429,
       "target_context": {
-        "start_line": 1396,
-        "end_line": 1400,
+        "start_line": 1427,
+        "end_line": 1431,
         "lines": [
           {
-            "line": 1396,
+            "line": 1427,
             "text": "    }"
           },
           {
-            "line": 1397,
+            "line": 1428,
             "text": "#endif"
           },
           {
-            "line": 1398,
+            "line": 1429,
             "text": "    GatherAndSendExpertCompactRoutes(aivJob_, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_,"
           },
           {
-            "line": 1399,
+            "line": 1430,
             "text": "                                     sendMaskScratch_);"
           },
           {
-            "line": 1400,
+            "line": 1431,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           }
         ]
       },
       "marker": "TRACE_POINT: route_index_end_S",
       "marker_match_count": 1,
-      "marker_line": 1403,
+      "marker_line": 1434,
       "marker_context": {
-        "start_line": 1401,
-        "end_line": 1405,
+        "start_line": 1432,
+        "end_line": 1436,
         "lines": [
           {
-            "line": 1401,
+            "line": 1432,
             "text": "    if constexpr (g_coreType == AIV) {"
           },
           {
-            "line": 1402,
+            "line": 1433,
             "text": "        if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 1403,
+            "line": 1434,
             "text": "            // TRACE_POINT: route_index_end_S"
           },
           {
-            "line": 1404,
+            "line": 1435,
             "text": "            criticalPathTrace_.EndRouteIndex();"
           },
           {
-            "line": 1405,
+            "line": 1436,
             "text": "            // TRACE_POINT: workspace_reset_begin_S"
           }
         ]
       },
       "max_line_distance": 7,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "把 compact route index/count 远端发送完成与 workspace 清零分开。",
       "semantics": "本核所有 compact route/count ring 槽的 MTE3 写已完成。",
       "dependency": {
@@ -666,64 +666,64 @@
         "pattern": "ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);"
       },
       "target_match_count": 1,
-      "target_line": 1410,
+      "target_line": 1441,
       "target_context": {
-        "start_line": 1408,
-        "end_line": 1412,
+        "start_line": 1439,
+        "end_line": 1443,
         "lines": [
           {
-            "line": 1408,
+            "line": 1439,
             "text": "    }"
           },
           {
-            "line": 1409,
+            "line": 1440,
             "text": "#endif"
           },
           {
-            "line": 1410,
+            "line": 1441,
             "text": "    ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);"
           },
           {
-            "line": 1411,
+            "line": 1442,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1412,
+            "line": 1443,
             "text": "    if constexpr (g_coreType == AIV) {"
           }
         ]
       },
       "marker": "TRACE_POINT: workspace_reset_begin_S",
       "marker_match_count": 1,
-      "marker_line": 1405,
+      "marker_line": 1436,
       "marker_context": {
-        "start_line": 1403,
-        "end_line": 1407,
+        "start_line": 1434,
+        "end_line": 1438,
         "lines": [
           {
-            "line": 1403,
+            "line": 1434,
             "text": "            // TRACE_POINT: route_index_end_S"
           },
           {
-            "line": 1404,
+            "line": 1435,
             "text": "            criticalPathTrace_.EndRouteIndex();"
           },
           {
-            "line": 1405,
+            "line": 1436,
             "text": "            // TRACE_POINT: workspace_reset_begin_S"
           },
           {
-            "line": 1406,
+            "line": 1437,
             "text": "            criticalPathTrace_.BeginWorkspaceReset();"
           },
           {
-            "line": 1407,
+            "line": 1438,
             "text": "        }"
           }
         ]
       },
       "max_line_distance": 5,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "量化 flag/workspace 清零成本和同步等待。",
       "semantics": "即将发出本核负责的 workspace 清零。",
       "dependency": {
@@ -753,64 +753,64 @@
         "pattern": "ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);"
       },
       "target_match_count": 1,
-      "target_line": 1410,
+      "target_line": 1441,
       "target_context": {
-        "start_line": 1408,
-        "end_line": 1412,
+        "start_line": 1439,
+        "end_line": 1443,
         "lines": [
           {
-            "line": 1408,
+            "line": 1439,
             "text": "    }"
           },
           {
-            "line": 1409,
+            "line": 1440,
             "text": "#endif"
           },
           {
-            "line": 1410,
+            "line": 1441,
             "text": "    ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);"
           },
           {
-            "line": 1411,
+            "line": 1442,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1412,
+            "line": 1443,
             "text": "    if constexpr (g_coreType == AIV) {"
           }
         ]
       },
       "marker": "TRACE_POINT: workspace_reset_end_S",
       "marker_match_count": 1,
-      "marker_line": 1415,
+      "marker_line": 1446,
       "marker_context": {
-        "start_line": 1413,
-        "end_line": 1417,
+        "start_line": 1444,
+        "end_line": 1448,
         "lines": [
           {
-            "line": 1413,
+            "line": 1444,
             "text": "        if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 1414,
+            "line": 1445,
             "text": "            SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();"
           },
           {
-            "line": 1415,
+            "line": 1446,
             "text": "            // TRACE_POINT: workspace_reset_end_S"
           },
           {
-            "line": 1416,
+            "line": 1447,
             "text": "            criticalPathTrace_.EndWorkspaceReset();"
           },
           {
-            "line": 1417,
+            "line": 1448,
             "text": "        }"
           }
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "不把未完成的 MTE3 清零尾部错误归入后续本地 barrier。",
       "semantics": "本核此前发出的 workspace 清零 MTE3 已完成。",
       "dependency": {
@@ -841,64 +841,64 @@
         "pattern": "SyncAll<false>(); // AIC 等待 AIV 完成输入准备与 flag 清零后再进入计算"
       },
       "target_match_count": 1,
-      "target_line": 1435,
+      "target_line": 1466,
       "target_context": {
-        "start_line": 1433,
-        "end_line": 1437,
+        "start_line": 1464,
+        "end_line": 1468,
         "lines": [
           {
-            "line": 1433,
+            "line": 1464,
             "text": "    }"
           },
           {
-            "line": 1434,
+            "line": 1465,
             "text": "#endif"
           },
           {
-            "line": 1435,
+            "line": 1466,
             "text": "    SyncAll<false>(); // AIC 等待 AIV 完成输入准备与 flag 清零后再进入计算"
           },
           {
-            "line": 1436,
+            "line": 1467,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1437,
+            "line": 1468,
             "text": "    if (CriticalPathTracePtr() != nullptr) {"
           }
         ]
       },
       "marker": "TRACE_POINT: local_prepare_sync_begin_S",
       "marker_match_count": 1,
-      "marker_line": 1431,
+      "marker_line": 1462,
       "marker_context": {
-        "start_line": 1429,
-        "end_line": 1433,
+        "start_line": 1460,
+        "end_line": 1464,
         "lines": [
           {
-            "line": 1429,
+            "line": 1460,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1430,
+            "line": 1461,
             "text": "    if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 1431,
+            "line": 1462,
             "text": "        // TRACE_POINT: local_prepare_sync_begin_S"
           },
           {
-            "line": 1432,
+            "line": 1463,
             "text": "        criticalPathTrace_.BeginLocalPrepareSync();"
           },
           {
-            "line": 1433,
+            "line": 1464,
             "text": "    }"
           }
         ]
       },
       "max_line_distance": 6,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "直接量化 AIC 等待 AIV 输入准备和 flag 可见的本地 barrier。",
       "semantics": "即将进入输入准备后的 SyncAll。",
       "dependency": {
@@ -929,64 +929,64 @@
         "pattern": "SyncAll<false>(); // AIC 等待 AIV 完成输入准备与 flag 清零后再进入计算"
       },
       "target_match_count": 1,
-      "target_line": 1435,
+      "target_line": 1466,
       "target_context": {
-        "start_line": 1433,
-        "end_line": 1437,
+        "start_line": 1464,
+        "end_line": 1468,
         "lines": [
           {
-            "line": 1433,
+            "line": 1464,
             "text": "    }"
           },
           {
-            "line": 1434,
+            "line": 1465,
             "text": "#endif"
           },
           {
-            "line": 1435,
+            "line": 1466,
             "text": "    SyncAll<false>(); // AIC 等待 AIV 完成输入准备与 flag 清零后再进入计算"
           },
           {
-            "line": 1436,
+            "line": 1467,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1437,
+            "line": 1468,
             "text": "    if (CriticalPathTracePtr() != nullptr) {"
           }
         ]
       },
       "marker": "TRACE_POINT: local_prepare_sync_end_S",
       "marker_match_count": 1,
-      "marker_line": 1438,
+      "marker_line": 1469,
       "marker_context": {
-        "start_line": 1436,
-        "end_line": 1440,
+        "start_line": 1467,
+        "end_line": 1471,
         "lines": [
           {
-            "line": 1436,
+            "line": 1467,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1437,
+            "line": 1468,
             "text": "    if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 1438,
+            "line": 1469,
             "text": "        // TRACE_POINT: local_prepare_sync_end_S"
           },
           {
-            "line": 1439,
+            "line": 1470,
             "text": "        criticalPathTrace_.EndLocalPrepareSync();"
           },
           {
-            "line": 1440,
+            "line": 1471,
             "text": "    }"
           }
         ]
       },
       "max_line_distance": 6,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "区分单卡角色同步与随后跨 rank 同步。",
       "semantics": "本 AI Block 所有角色已越过输入准备 rendezvous。",
       "dependency": {
@@ -1018,64 +1018,64 @@
         "occurrence": 1
       },
       "target_match_count": 2,
-      "target_line": 1148,
+      "target_line": 1179,
       "target_context": {
-        "start_line": 1146,
-        "end_line": 1150,
+        "start_line": 1177,
+        "end_line": 1181,
         "lines": [
           {
-            "line": 1146,
+            "line": 1177,
             "text": "    }"
           },
           {
-            "line": 1147,
+            "line": 1178,
             "text": "#endif"
           },
           {
-            "line": 1148,
+            "line": 1179,
             "text": "    CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);"
           },
           {
-            "line": 1149,
+            "line": 1180,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1150,
+            "line": 1181,
             "text": "    if (CriticalPathTracePtr() != nullptr) {"
           }
         ]
       },
       "marker": "TRACE_POINT: cross_rank_sync_begin_S",
       "marker_match_count": 1,
-      "marker_line": 1144,
+      "marker_line": 1175,
       "marker_context": {
-        "start_line": 1142,
-        "end_line": 1146,
+        "start_line": 1173,
+        "end_line": 1177,
         "lines": [
           {
-            "line": 1142,
+            "line": 1173,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1143,
+            "line": 1174,
             "text": "    if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 1144,
+            "line": 1175,
             "text": "        // TRACE_POINT: cross_rank_sync_begin_S"
           },
           {
-            "line": 1145,
+            "line": 1176,
             "text": "        criticalPathTrace_.BeginCrossRankSync();"
           },
           {
-            "line": 1146,
+            "line": 1177,
             "text": "    }"
           }
         ]
       },
       "max_line_distance": 6,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "直接量化 Dispatch 前由最慢 rank 决定的全卡等待。",
       "semantics": "即将进入 CrossRankSyncInWorldSize。",
       "dependency": {
@@ -1107,64 +1107,64 @@
         "occurrence": 1
       },
       "target_match_count": 2,
-      "target_line": 1148,
+      "target_line": 1179,
       "target_context": {
-        "start_line": 1146,
-        "end_line": 1150,
+        "start_line": 1177,
+        "end_line": 1181,
         "lines": [
           {
-            "line": 1146,
+            "line": 1177,
             "text": "    }"
           },
           {
-            "line": 1147,
+            "line": 1178,
             "text": "#endif"
           },
           {
-            "line": 1148,
+            "line": 1179,
             "text": "    CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);"
           },
           {
-            "line": 1149,
+            "line": 1180,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1150,
+            "line": 1181,
             "text": "    if (CriticalPathTracePtr() != nullptr) {"
           }
         ]
       },
       "marker": "TRACE_POINT: cross_rank_sync_end_S",
       "marker_match_count": 1,
-      "marker_line": 1151,
+      "marker_line": 1182,
       "marker_context": {
-        "start_line": 1149,
-        "end_line": 1153,
+        "start_line": 1180,
+        "end_line": 1184,
         "lines": [
           {
-            "line": 1149,
+            "line": 1180,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1150,
+            "line": 1181,
             "text": "    if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 1151,
+            "line": 1182,
             "text": "        // TRACE_POINT: cross_rank_sync_end_S"
           },
           {
-            "line": 1152,
+            "line": 1183,
             "text": "        criticalPathTrace_.EndCrossRankSync();"
           },
           {
-            "line": 1153,
+            "line": 1184,
             "text": "    }"
           }
         ]
       },
       "max_line_distance": 6,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "把全 rank 等待与本地专家 buffer 初始化分开。",
       "semantics": "本角色已观察到所有 rank 输入准备完成。",
       "dependency": {
@@ -1195,64 +1195,64 @@
         "pattern": "tokenDispatchScratch_.expertRevNumsGlobalTensor.SetGlobalBuffer("
       },
       "target_match_count": 1,
-      "target_line": 1009,
+      "target_line": 1031,
       "target_context": {
-        "start_line": 1007,
-        "end_line": 1011,
+        "start_line": 1029,
+        "end_line": 1033,
         "lines": [
           {
-            "line": 1007,
+            "line": 1029,
             "text": "    }"
           },
           {
-            "line": 1008,
+            "line": 1030,
             "text": "#endif"
           },
           {
-            "line": 1009,
+            "line": 1031,
             "text": "    tokenDispatchScratch_.expertRevNumsGlobalTensor.SetGlobalBuffer("
           },
           {
-            "line": 1010,
+            "line": 1032,
             "text": "        reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.expertRevTokenNumsPtr));"
           },
           {
-            "line": 1011,
+            "line": 1033,
             "text": "    DispatchBuffInit();"
           }
         ]
       },
       "marker": "TRACE_POINT: expert_buffer_init_begin_S",
       "marker_match_count": 1,
-      "marker_line": 1005,
+      "marker_line": 1027,
       "marker_context": {
-        "start_line": 1003,
-        "end_line": 1007,
+        "start_line": 1025,
+        "end_line": 1029,
         "lines": [
           {
-            "line": 1003,
+            "line": 1025,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1004,
+            "line": 1026,
             "text": "    if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 1005,
+            "line": 1027,
             "text": "        // TRACE_POINT: expert_buffer_init_begin_S"
           },
           {
-            "line": 1006,
+            "line": 1028,
             "text": "        criticalPathTrace_.BeginExpertBufferInit();"
           },
           {
-            "line": 1007,
+            "line": 1029,
             "text": "    }"
           }
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "量化进入首轮 Dispatch/GMM 前的专家阶段 buffer 和状态初始化。",
       "semantics": "即将构造 Dispatch、Combine 和 token-count export 的本地视图。",
       "dependency": {
@@ -1283,64 +1283,64 @@
         "pattern": "PrepareMoeExpertTokenCountTable(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);"
       },
       "target_match_count": 1,
-      "target_line": 1013,
+      "target_line": 1038,
       "target_context": {
-        "start_line": 1011,
-        "end_line": 1015,
+        "start_line": 1036,
+        "end_line": 1040,
         "lines": [
           {
-            "line": 1011,
-            "text": "    DispatchBuffInit();"
+            "line": 1036,
+            "text": "        combineBufferConfig = InitCombineBuffers();"
           },
           {
-            "line": 1012,
-            "text": "    CombineBufferConfig combineBufferConfig = InitCombineBuffers();"
+            "line": 1037,
+            "text": "    }"
           },
           {
-            "line": 1013,
+            "line": 1038,
             "text": "    PrepareMoeExpertTokenCountTable(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);"
           },
           {
-            "line": 1014,
+            "line": 1039,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1015,
+            "line": 1040,
             "text": "    if (CriticalPathTracePtr() != nullptr) {"
           }
         ]
       },
       "marker": "TRACE_POINT: expert_buffer_init_end_S",
       "marker_match_count": 1,
-      "marker_line": 1016,
+      "marker_line": 1041,
       "marker_context": {
-        "start_line": 1014,
-        "end_line": 1018,
+        "start_line": 1039,
+        "end_line": 1043,
         "lines": [
           {
-            "line": 1014,
+            "line": 1039,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1015,
+            "line": 1040,
             "text": "    if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 1016,
+            "line": 1041,
             "text": "        // TRACE_POINT: expert_buffer_init_end_S"
           },
           {
-            "line": 1017,
+            "line": 1042,
             "text": "        criticalPathTrace_.EndExpertBufferInit();"
           },
           {
-            "line": 1018,
+            "line": 1043,
             "text": "    }"
           }
         ]
       },
       "max_line_distance": 6,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "分离本地视图构造与后续 cursor/problem 状态建立及首个 Dispatch。",
       "semantics": "三个 buffer 初始化 helper 已完成；这些 helper 仅构造 Scalar/LocalTensor 状态。",
       "dependency": {
@@ -1371,64 +1371,64 @@
         "pattern": "exceptionDump_.UpdateStage(MegaMoeImpl::Stage::COMPLETE);"
       },
       "target_match_count": 1,
-      "target_line": 1488,
+      "target_line": 1519,
       "target_context": {
-        "start_line": 1486,
-        "end_line": 1490,
+        "start_line": 1517,
+        "end_line": 1521,
         "lines": [
           {
-            "line": 1486,
+            "line": 1517,
             "text": "    // 恢复入口时保存的溢出模式。"
           },
           {
-            "line": 1487,
+            "line": 1518,
             "text": "    SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);"
           },
           {
-            "line": 1488,
+            "line": 1519,
             "text": "    exceptionDump_.UpdateStage(MegaMoeImpl::Stage::COMPLETE);"
           },
           {
-            "line": 1489,
+            "line": 1520,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1490,
+            "line": 1521,
             "text": "    if (CriticalPathTracePtr() != nullptr) {"
           }
         ]
       },
       "marker": "TRACE_POINT: work_end_S",
       "marker_match_count": 1,
-      "marker_line": 1491,
+      "marker_line": 1522,
       "marker_context": {
-        "start_line": 1489,
-        "end_line": 1493,
+        "start_line": 1520,
+        "end_line": 1524,
         "lines": [
           {
-            "line": 1489,
+            "line": 1520,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1490,
+            "line": 1521,
             "text": "    if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 1491,
+            "line": 1522,
             "text": "        // TRACE_POINT: work_end_S"
           },
           {
-            "line": 1492,
+            "line": 1523,
             "text": "        criticalPathTrace_.EndWork();"
           },
           {
-            "line": 1493,
+            "line": 1524,
             "text": "    }"
           }
         ]
       },
       "max_line_distance": 6,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "把有效工作与 tracing 终结同步/落盘分离。",
       "semantics": "正常 routed/shared 流水、跨 rank 尾部和 Unpermute 已结束，尚未进入 tracing rendezvous。",
       "dependency": {
@@ -1801,64 +1801,64 @@
         "pattern": "gmm1SetupBegin_ = begin;"
       },
       "target_match_count": 1,
-      "target_line": 366,
+      "target_line": 371,
       "target_context": {
-        "start_line": 364,
-        "end_line": 368,
+        "start_line": 369,
+        "end_line": 373,
         "lines": [
           {
-            "line": 364,
+            "line": 369,
             "text": "        // TRACE_POINT: gmm1_scalar_setup_begin_S"
           },
           {
-            "line": 365,
+            "line": 370,
             "text": "        if (gmm1SetupBegin_ == 0U) {"
           },
           {
-            "line": 366,
+            "line": 371,
             "text": "            gmm1SetupBegin_ = begin;"
           },
           {
-            "line": 367,
+            "line": 372,
             "text": "        }"
           },
           {
-            "line": 368,
+            "line": 373,
             "text": "        gmm1GapWave_ = waveIdx;"
           }
         ]
       },
       "marker": "TRACE_POINT: gmm1_scalar_setup_begin_S",
       "marker_match_count": 1,
-      "marker_line": 364,
+      "marker_line": 369,
       "marker_context": {
-        "start_line": 362,
-        "end_line": 366,
+        "start_line": 367,
+        "end_line": 371,
         "lines": [
           {
-            "line": 362,
+            "line": 367,
             "text": "    __aicore__ inline void PrepareGmm1Gap(uint32_t waveIdx, uint32_t expertIdx, uint32_t begin)"
           },
           {
-            "line": 363,
+            "line": 368,
             "text": "    {"
           },
           {
-            "line": 364,
+            "line": 369,
             "text": "        // TRACE_POINT: gmm1_scalar_setup_begin_S"
           },
           {
-            "line": 365,
+            "line": 370,
             "text": "        if (gmm1SetupBegin_ == 0U) {"
           },
           {
-            "line": 366,
+            "line": 371,
             "text": "            gmm1SetupBegin_ = begin;"
           }
         ]
       },
       "max_line_distance": 4,
-      "source_file_sha256": "154a5c1b3c9d7313d9f83cdde4750553cef6c384ee7fc11fc1d38e7ef3ee1316",
+      "source_file_sha256": "842d9f48bde18c13aaaebb9f035bbf0ece8e5098502890a2ce93eb6448f87340",
       "why": "判断 GMM1 空洞是否来自逐专家状态准备、地址更新和 rolling ownership 跳过，而不是通信依赖。",
       "semantics": "开始为后续 GMM1 owned problem 扫描并准备专家状态；连续无 owner problem 合并为一个低扰动区间。",
       "dependency": {
@@ -1887,64 +1887,64 @@
         "pattern": "AppendSegment(gmm1GapWave_, gmm1GapExpert_, gmm1SetupBegin_, value, 2U,"
       },
       "target_match_count": 1,
-      "target_line": 588,
+      "target_line": 595,
       "target_context": {
-        "start_line": 586,
-        "end_line": 590,
+        "start_line": 593,
+        "end_line": 597,
         "lines": [
           {
-            "line": 586,
+            "line": 593,
             "text": "        }"
           },
           {
-            "line": 587,
+            "line": 594,
             "text": "        // TRACE_POINT: gmm1_scalar_setup_end_S"
           },
           {
-            "line": 588,
+            "line": 595,
             "text": "        AppendSegment(gmm1GapWave_, gmm1GapExpert_, gmm1SetupBegin_, value, 2U, stage2CapturedCount_);"
           },
           {
-            "line": 589,
+            "line": 596,
             "text": "        gmm1SetupBegin_ = 0U;"
           },
           {
-            "line": 590,
+            "line": 597,
             "text": "    }"
           }
         ]
       },
       "marker": "TRACE_POINT: gmm1_scalar_setup_end_S",
       "marker_match_count": 1,
-      "marker_line": 587,
+      "marker_line": 594,
       "marker_context": {
-        "start_line": 585,
-        "end_line": 589,
+        "start_line": 592,
+        "end_line": 596,
         "lines": [
           {
-            "line": 585,
+            "line": 592,
             "text": "            return;"
           },
           {
-            "line": 586,
+            "line": 593,
             "text": "        }"
           },
           {
-            "line": 587,
+            "line": 594,
             "text": "        // TRACE_POINT: gmm1_scalar_setup_end_S"
           },
           {
-            "line": 588,
+            "line": 595,
             "text": "        AppendSegment(gmm1GapWave_, gmm1GapExpert_, gmm1SetupBegin_, value, 2U, stage2CapturedCount_);"
           },
           {
-            "line": 589,
+            "line": 596,
             "text": "        gmm1SetupBegin_ = 0U;"
           }
         ]
       },
       "max_line_distance": 2,
-      "source_file_sha256": "154a5c1b3c9d7313d9f83cdde4750553cef6c384ee7fc11fc1d38e7ef3ee1316",
+      "source_file_sha256": "842d9f48bde18c13aaaebb9f035bbf0ece8e5098502890a2ce93eb6448f87340",
       "why": "把 Scalar 调度与随后真实 Dispatch-ready 等待分开。",
       "semantics": "本核已找到下一个 owned tile 并完成 BlockMmad/problem 构造，或本 Wave 已无 owned tile。",
       "dependency": {
@@ -1973,64 +1973,64 @@
         "pattern": "trace->BeginGmm1DispatchWait(CriticalPathTrace::Now());"
       },
       "target_match_count": 1,
-      "target_line": 81,
+      "target_line": 106,
       "target_context": {
-        "start_line": 79,
-        "end_line": 83,
+        "start_line": 104,
+        "end_line": 108,
         "lines": [
           {
-            "line": 79,
+            "line": 104,
             "text": "    if (trace != nullptr && trace->NeedsStage0Begin()) {"
           },
           {
-            "line": 80,
+            "line": 105,
             "text": "        // TRACE_POINT: gmm1_dispatch_wait_begin_S"
           },
           {
-            "line": 81,
+            "line": 106,
             "text": "        trace->BeginGmm1DispatchWait(CriticalPathTrace::Now());"
           },
           {
-            "line": 82,
+            "line": 107,
             "text": "    }"
           },
           {
-            "line": 83,
+            "line": 108,
             "text": "}"
           }
         ]
       },
       "marker": "TRACE_POINT: gmm1_dispatch_wait_begin_S",
       "marker_match_count": 1,
-      "marker_line": 80,
+      "marker_line": 105,
       "marker_context": {
-        "start_line": 78,
-        "end_line": 82,
+        "start_line": 103,
+        "end_line": 107,
         "lines": [
           {
-            "line": 78,
+            "line": 103,
             "text": "{"
           },
           {
-            "line": 79,
+            "line": 104,
             "text": "    if (trace != nullptr && trace->NeedsStage0Begin()) {"
           },
           {
-            "line": 80,
+            "line": 105,
             "text": "        // TRACE_POINT: gmm1_dispatch_wait_begin_S"
           },
           {
-            "line": 81,
+            "line": 106,
             "text": "        trace->BeginGmm1DispatchWait(CriticalPathTrace::Now());"
           },
           {
-            "line": 82,
+            "line": 107,
             "text": "    }"
           }
         ]
       },
       "max_line_distance": 1,
-      "source_file_sha256": "8ba04f8c99f1e3a236aa47f15458c4c6fe824024d55919ebcc6ba3784f050132",
+      "source_file_sha256": "bde807a62afaedcc1272fc82b1f2226fa0de172a849123304bd0bf644850d0f5",
       "why": "直接验证下一段 GMM1 是否仍被 Dispatch-ready flag 阻塞。",
       "semantics": "即将轮询当前 256-row group 的 Dispatch-ready flag。",
       "dependency": {
@@ -2059,64 +2059,64 @@
         "pattern": "trace->EndGmm1DispatchWait(CriticalPathTrace::Now());"
       },
       "target_match_count": 1,
-      "target_line": 89,
+      "target_line": 114,
       "target_context": {
-        "start_line": 87,
-        "end_line": 91,
+        "start_line": 112,
+        "end_line": 116,
         "lines": [
           {
-            "line": 87,
+            "line": 112,
             "text": "    if (trace != nullptr && trace->NeedsStage0Begin()) {"
           },
           {
-            "line": 88,
+            "line": 113,
             "text": "        // TRACE_POINT: gmm1_dispatch_wait_end_S"
           },
           {
-            "line": 89,
+            "line": 114,
             "text": "        trace->EndGmm1DispatchWait(CriticalPathTrace::Now());"
           },
           {
-            "line": 90,
+            "line": 115,
             "text": "    }"
           },
           {
-            "line": 91,
+            "line": 116,
             "text": "}"
           }
         ]
       },
       "marker": "TRACE_POINT: gmm1_dispatch_wait_end_S",
       "marker_match_count": 1,
-      "marker_line": 88,
+      "marker_line": 113,
       "marker_context": {
-        "start_line": 86,
-        "end_line": 90,
+        "start_line": 111,
+        "end_line": 115,
         "lines": [
           {
-            "line": 86,
+            "line": 111,
             "text": "{"
           },
           {
-            "line": 87,
+            "line": 112,
             "text": "    if (trace != nullptr && trace->NeedsStage0Begin()) {"
           },
           {
-            "line": 88,
+            "line": 113,
             "text": "        // TRACE_POINT: gmm1_dispatch_wait_end_S"
           },
           {
-            "line": 89,
+            "line": 114,
             "text": "        trace->EndGmm1DispatchWait(CriticalPathTrace::Now());"
           },
           {
-            "line": 90,
+            "line": 115,
             "text": "    }"
           }
         ]
       },
       "max_line_distance": 1,
-      "source_file_sha256": "8ba04f8c99f1e3a236aa47f15458c4c6fe824024d55919ebcc6ba3784f050132",
+      "source_file_sha256": "bde807a62afaedcc1272fc82b1f2226fa0de172a849123304bd0bf644850d0f5",
       "why": "量化 Dispatch 是否真的落在两段 GMM1 之间。",
       "semantics": "目标 Dispatch-ready 值已经被本核观察到。",
       "dependency": {
@@ -2145,64 +2145,64 @@
         "pattern": "trace->BeginGmm1VectorWait(CriticalPathTrace::Now());"
       },
       "target_match_count": 1,
-      "target_line": 97,
+      "target_line": 122,
       "target_context": {
-        "start_line": 95,
-        "end_line": 99,
+        "start_line": 120,
+        "end_line": 124,
         "lines": [
           {
-            "line": 95,
+            "line": 120,
             "text": "    if (trace != nullptr && trace->NeedsStage0Begin()) {"
           },
           {
-            "line": 96,
+            "line": 121,
             "text": "        // TRACE_POINT: gmm1_vector_wait_begin_S"
           },
           {
-            "line": 97,
+            "line": 122,
             "text": "        trace->BeginGmm1VectorWait(CriticalPathTrace::Now());"
           },
           {
-            "line": 98,
+            "line": 123,
             "text": "    }"
           },
           {
-            "line": 99,
+            "line": 124,
             "text": "}"
           }
         ]
       },
       "marker": "TRACE_POINT: gmm1_vector_wait_begin_S",
       "marker_match_count": 1,
-      "marker_line": 96,
+      "marker_line": 121,
       "marker_context": {
-        "start_line": 94,
-        "end_line": 98,
+        "start_line": 119,
+        "end_line": 123,
         "lines": [
           {
-            "line": 94,
+            "line": 119,
             "text": "{"
           },
           {
-            "line": 95,
+            "line": 120,
             "text": "    if (trace != nullptr && trace->NeedsStage0Begin()) {"
           },
           {
-            "line": 96,
+            "line": 121,
             "text": "        // TRACE_POINT: gmm1_vector_wait_begin_S"
           },
           {
-            "line": 97,
+            "line": 122,
             "text": "        trace->BeginGmm1VectorWait(CriticalPathTrace::Now());"
           },
           {
-            "line": 98,
+            "line": 123,
             "text": "    }"
           }
         ]
       },
       "max_line_distance": 1,
-      "source_file_sha256": "8ba04f8c99f1e3a236aa47f15458c4c6fe824024d55919ebcc6ba3784f050132",
+      "source_file_sha256": "bde807a62afaedcc1272fc82b1f2226fa0de172a849123304bd0bf644850d0f5",
       "why": "判断前一段 SwiGLU 是否尚未释放 GMM1 输出槽，从而阻塞下一段 GMM1。",
       "semantics": "Dispatch 已 ready，即将等待 AIV0 归还当前 ping-pong 槽。",
       "dependency": {
@@ -2231,64 +2231,64 @@
         "pattern": "trace->EndGmm1VectorWait(CriticalPathTrace::Now());"
       },
       "target_match_count": 1,
-      "target_line": 105,
+      "target_line": 130,
       "target_context": {
-        "start_line": 103,
-        "end_line": 107,
+        "start_line": 128,
+        "end_line": 132,
         "lines": [
           {
-            "line": 103,
+            "line": 128,
             "text": "    if (trace != nullptr && trace->NeedsStage0Begin()) {"
           },
           {
-            "line": 104,
+            "line": 129,
             "text": "        // TRACE_POINT: gmm1_vector_wait_end_S"
           },
           {
-            "line": 105,
+            "line": 130,
             "text": "        trace->EndGmm1VectorWait(CriticalPathTrace::Now());"
           },
           {
-            "line": 106,
+            "line": 131,
             "text": "    }"
           },
           {
-            "line": 107,
+            "line": 132,
             "text": "}"
           }
         ]
       },
       "marker": "TRACE_POINT: gmm1_vector_wait_end_S",
       "marker_match_count": 1,
-      "marker_line": 104,
+      "marker_line": 129,
       "marker_context": {
-        "start_line": 102,
-        "end_line": 106,
+        "start_line": 127,
+        "end_line": 131,
         "lines": [
           {
-            "line": 102,
+            "line": 127,
             "text": "{"
           },
           {
-            "line": 103,
+            "line": 128,
             "text": "    if (trace != nullptr && trace->NeedsStage0Begin()) {"
           },
           {
-            "line": 104,
+            "line": 129,
             "text": "        // TRACE_POINT: gmm1_vector_wait_end_S"
           },
           {
-            "line": 105,
+            "line": 130,
             "text": "        trace->EndGmm1VectorWait(CriticalPathTrace::Now());"
           },
           {
-            "line": 106,
+            "line": 131,
             "text": "    }"
           }
         ]
       },
       "max_line_distance": 1,
-      "source_file_sha256": "8ba04f8c99f1e3a236aa47f15458c4c6fe824024d55919ebcc6ba3784f050132",
+      "source_file_sha256": "bde807a62afaedcc1272fc82b1f2226fa0de172a849123304bd0bf644850d0f5",
       "why": "把 SwiGLU backpressure 与下一段 GMM1 实际 MMAD 分开。",
       "semantics": "AIV0 已归还所需 ping-pong 槽。",
       "dependency": {
@@ -2308,7 +2308,7 @@
       "roles": [
         "AIC"
       ],
-      "scope": "所有 AIC，每个拥有 tile 的 GMM1 problem 一次。",
+      "scope": "所有 AIC，每个本核 owned GMM1 scheduler tile 一次。",
       "file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm1_activation.h",
       "symbol": "TraceGmm1ProblemBeginAfterReady",
       "placement": "before",
@@ -2318,66 +2318,66 @@
         "occurrence": 1
       },
       "target_match_count": 2,
-      "target_line": 70,
+      "target_line": 71,
       "target_context": {
-        "start_line": 68,
-        "end_line": 72,
+        "start_line": 69,
+        "end_line": 73,
         "lines": [
           {
-            "line": 68,
+            "line": 69,
             "text": "    if constexpr (g_coreType == AscendC::AIC) {"
           },
           {
-            "line": 69,
+            "line": 70,
             "text": "        // TRACE_POINT: gmm1_problem_begin_S"
           },
           {
-            "line": 70,
+            "line": 71,
             "text": "        trace->BeginStage0(CriticalPathTrace::Now());"
           },
           {
-            "line": 71,
+            "line": 72,
             "text": "    } else {"
           },
           {
-            "line": 72,
+            "line": 73,
             "text": "        // TRACE_POINT: swiglu_problem_begin_S"
           }
         ]
       },
       "marker": "TRACE_POINT: gmm1_problem_begin_S",
       "marker_match_count": 1,
-      "marker_line": 69,
+      "marker_line": 70,
       "marker_context": {
-        "start_line": 67,
-        "end_line": 71,
+        "start_line": 68,
+        "end_line": 72,
         "lines": [
           {
-            "line": 67,
+            "line": 68,
             "text": "    }"
           },
           {
-            "line": 68,
+            "line": 69,
             "text": "    if constexpr (g_coreType == AscendC::AIC) {"
           },
           {
-            "line": 69,
+            "line": 70,
             "text": "        // TRACE_POINT: gmm1_problem_begin_S"
           },
           {
-            "line": 70,
+            "line": 71,
             "text": "        trace->BeginStage0(CriticalPathTrace::Now());"
           },
           {
-            "line": 71,
+            "line": 72,
             "text": "    } else {"
           }
         ]
       },
       "max_line_distance": 2,
-      "source_file_sha256": "8ba04f8c99f1e3a236aa47f15458c4c6fe824024d55919ebcc6ba3784f050132",
-      "why": "排除首 tile 的 Dispatch-ready/ping-pong 等待，并拆开 Wave 内多个 problem。",
-      "semantics": "首个 owned GMM1 tile 已 ready，即将发出。",
+      "source_file_sha256": "bde807a62afaedcc1272fc82b1f2226fa0de172a849123304bd0bf644850d0f5",
+      "why": "排除每个 tile 前的 Dispatch-ready/ping-pong 等待，并展开 Wave 内实际计算块。",
+      "semantics": "当前 owned GMM1 tile 已 ready，即将发出。",
       "dependency": {
         "precondition": "first owned tile's production readiness wait returned",
         "producer_pipeline": "Dispatch/FIX or ping-pong producer",
@@ -2385,7 +2385,7 @@
         "bridge": "SCALAR, FIX_S, or V_S selected by production variant",
         "proof": "all routed generic call sites invoke the helper after their production wait"
       },
-      "perturbation": "每活跃 problem 一次条件判断、必要的因果 bridge 和时钟。"
+      "perturbation": "每活跃 tile 一次条件判断、必要的因果 bridge 和时钟。"
     },
     {
       "id": "gmm1_problem_end_S",
@@ -2395,83 +2395,84 @@
       "roles": [
         "AIC"
       ],
-      "scope": "与有 owned tile 的 gmm1_problem_begin_S 一一对应。",
-      "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h",
-      "symbol": "MegaMoeA8W8Wave::ProcessGmm1Wave",
-      "placement": "after",
+      "scope": "与 gmm1_problem_begin_S 逐 tile 一一对应。",
+      "file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm1_activation.h",
+      "symbol": "TraceGmm1TileEnd",
+      "placement": "before",
       "target_anchor": {
         "mode": "literal",
-        "pattern": "RunGmm1GenericByWeightFormat<QuantOutType, ActivationType, QuantScaleOutType, GMM1_TILE_M, EPILOGUE_TILE_M,"
+        "pattern": "trace->EndStage0(CriticalPathTrace::Now());",
+        "occurrence": 1
       },
-      "target_match_count": 1,
-      "target_line": 779,
+      "target_match_count": 2,
+      "target_line": 95,
       "target_context": {
-        "start_line": 777,
-        "end_line": 781,
+        "start_line": 93,
+        "end_line": 97,
         "lines": [
           {
-            "line": 777,
-            "text": "        uint32_t waveTokenStartIndex ="
+            "line": 93,
+            "text": "    if constexpr (g_coreType == AscendC::AIC) {"
           },
           {
-            "line": 778,
-            "text": "            static_cast<uint32_t>(gmm1ExpertState.globalTokenStartIndex) + gmm1Position.tokenIndexInExpert;"
+            "line": 94,
+            "text": "        // TRACE_POINT: gmm1_problem_end_S"
           },
           {
-            "line": 779,
-            "text": "        RunGmm1GenericByWeightFormat<QuantOutType, ActivationType, QuantScaleOutType, GMM1_TILE_M, EPILOGUE_TILE_M,"
+            "line": 95,
+            "text": "        trace->EndStage0(CriticalPathTrace::Now());"
           },
           {
-            "line": 780,
-            "text": "                                     TopkWeightsPrefetch, GMM1_INTERLEAVED, true>("
+            "line": 96,
+            "text": "    } else {"
           },
           {
-            "line": 781,
-            "text": "            gmmExecutionConfig_, params_, epilogueOp_, gmm1AddrInfo, gmm1WaveProblemShape, waveTokenStartIndex,"
+            "line": 97,
+            "text": "        // TRACE_POINT: swiglu_problem_end_S"
           }
         ]
       },
       "marker": "TRACE_POINT: gmm1_problem_end_S",
       "marker_match_count": 1,
-      "marker_line": 794,
+      "marker_line": 94,
       "marker_context": {
-        "start_line": 792,
-        "end_line": 796,
+        "start_line": 92,
+        "end_line": 96,
         "lines": [
           {
-            "line": 792,
-            "text": "                    AscendC::SetFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);"
+            "line": 92,
+            "text": "    }"
           },
           {
-            "line": 793,
-            "text": "                    AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);"
+            "line": 93,
+            "text": "    if constexpr (g_coreType == AscendC::AIC) {"
           },
           {
-            "line": 794,
-            "text": "                    // TRACE_POINT: gmm1_problem_end_S"
+            "line": 94,
+            "text": "        // TRACE_POINT: gmm1_problem_end_S"
           },
           {
-            "line": 795,
-            "text": "                } else {"
+            "line": 95,
+            "text": "        trace->EndStage0(CriticalPathTrace::Now());"
           },
           {
-            "line": 796,
-            "text": "                    // TRACE_POINT: swiglu_problem_end_S"
+            "line": 96,
+            "text": "    } else {"
           }
         ]
       },
-      "max_line_distance": 24,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
-      "why": "只把本 problem 真正完成的 FIX 工作染色，使 problem 间白色可解释为调度/依赖空洞。",
-      "semantics": "本 problem 已发出的全部 FIX 工作已完成并桥接到 Scalar。",
+      "max_line_distance": 2,
+      "source_file_sha256": "bde807a62afaedcc1272fc82b1f2226fa0de172a849123304bd0bf644850d0f5",
+      "why": "只把当前 tile 真正完成的 FIX 工作染色，使 tile 间依赖等待保持空白。",
+      "semantics": "当前 GMM1 tile 的 FIX 工作已完成并桥接到 Scalar。",
       "dependency": {
-        "precondition": "RunGmm1ActivationByMode returned with an owned tile",
+        "precondition": "the current owned GMM1 tile helper returned",
         "producer_pipeline": "FIX",
         "timestamp_pipeline": "Scalar",
-        "bridge": "tracing-only FIX_S",
-        "proof": "HasStage0Begin gates an immediately preceding FIX_S SetFlag/WaitFlag pair"
+        "bridge": "production or tracing-only FIX_S",
+        "proof": "prefetch callers invoke after production FIX_S; non-prefetch callers request the FIX bridge in TraceGmm1TileEnd"
       },
-      "perturbation": "每个活跃 AIC problem 增加一次 FIX_S、一次时钟和四个 scratch 写；诊断态会抑制跨 problem FIX 尾部重叠。"
+      "perturbation": "非 prefetch 路径每个 owned tile 增加一次 FIX_S；prefetch 复用生产 FIX_S；每 tile 写一个稀疏段。"
     },
     {
       "id": "swiglu_problem_begin_S",
@@ -2481,7 +2482,7 @@
       "roles": [
         "AIV0"
       ],
-      "scope": "所有 AIV0，每个拥有 epilogue tile 的 GMM1 problem 一次。",
+      "scope": "所有 AIV0，每个本核 owned epilogue scheduler tile 一次。",
       "file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm1_activation.h",
       "symbol": "TraceGmm1ProblemBeginAfterReady",
       "placement": "before",
@@ -2491,66 +2492,66 @@
         "occurrence": 2
       },
       "target_match_count": 2,
-      "target_line": 73,
+      "target_line": 74,
       "target_context": {
-        "start_line": 71,
-        "end_line": 75,
+        "start_line": 72,
+        "end_line": 76,
         "lines": [
           {
-            "line": 71,
+            "line": 72,
             "text": "    } else {"
           },
           {
-            "line": 72,
+            "line": 73,
             "text": "        // TRACE_POINT: swiglu_problem_begin_S"
           },
           {
-            "line": 73,
+            "line": 74,
             "text": "        trace->BeginStage0(CriticalPathTrace::Now());"
           },
           {
-            "line": 74,
+            "line": 75,
             "text": "    }"
           },
           {
-            "line": 75,
+            "line": 76,
             "text": "}"
           }
         ]
       },
       "marker": "TRACE_POINT: swiglu_problem_begin_S",
       "marker_match_count": 1,
-      "marker_line": 72,
+      "marker_line": 73,
       "marker_context": {
-        "start_line": 70,
-        "end_line": 74,
+        "start_line": 71,
+        "end_line": 75,
         "lines": [
           {
-            "line": 70,
-            "text": "        trace->BeginStage0(CriticalPathTrace::Now());"
-          },
-          {
             "line": 71,
-            "text": "    } else {"
+            "text": "        trace->BeginStage0(CriticalPathTrace::Now());"
           },
           {
             "line": 72,
-            "text": "        // TRACE_POINT: swiglu_problem_begin_S"
+            "text": "    } else {"
           },
           {
             "line": 73,
-            "text": "        trace->BeginStage0(CriticalPathTrace::Now());"
+            "text": "        // TRACE_POINT: swiglu_problem_begin_S"
           },
           {
             "line": 74,
+            "text": "        trace->BeginStage0(CriticalPathTrace::Now());"
+          },
+          {
+            "line": 75,
             "text": "    }"
           }
         ]
       },
       "max_line_distance": 2,
-      "source_file_sha256": "8ba04f8c99f1e3a236aa47f15458c4c6fe824024d55919ebcc6ba3784f050132",
-      "why": "排除 WaitForCube/ready，并拆开 Wave 内多次 SwiGLU。",
-      "semantics": "首个 owned epilogue tile 已 ready，即将执行 SwiGLU/MX。",
+      "source_file_sha256": "bde807a62afaedcc1272fc82b1f2226fa0de172a849123304bd0bf644850d0f5",
+      "why": "排除每个 tile 前的 WaitForCube/ready，并展开 Wave 内多次 SwiGLU。",
+      "semantics": "当前 owned epilogue tile 已 ready，即将执行 SwiGLU/MX。",
       "dependency": {
         "precondition": "first owned epilogue tile readiness wait returned",
         "producer_pipeline": "GMM1/FIX",
@@ -2558,93 +2559,94 @@
         "bridge": "V_S or production program order",
         "proof": "marker is after WaitForCube/WaitGmm1TileStatus and before the first epilogue tile helper"
       },
-      "perturbation": "每活跃 problem 一次条件判断、因果 bridge 和时钟。"
+      "perturbation": "每活跃 tile 一次条件判断、因果 bridge 和时钟。"
     },
     {
       "id": "swiglu_problem_end_S",
       "stage": "swiglu",
       "edge": "end",
-      "boundary_quality": "issue",
+      "boundary_quality": "actual",
       "roles": [
         "AIV0"
       ],
-      "scope": "与有 owned tile 的 swiglu_problem_begin_S 一一对应。",
-      "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h",
-      "symbol": "MegaMoeA8W8Wave::ProcessGmm1Wave",
-      "placement": "after",
+      "scope": "与 swiglu_problem_begin_S 逐 tile 一一对应。",
+      "file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm1_activation.h",
+      "symbol": "TraceGmm1TileEnd",
+      "placement": "before",
       "target_anchor": {
         "mode": "literal",
-        "pattern": "RunGmm1GenericByWeightFormat<QuantOutType, ActivationType, QuantScaleOutType, GMM1_TILE_M, EPILOGUE_TILE_M,"
+        "pattern": "trace->EndStage0(CriticalPathTrace::Now());",
+        "occurrence": 2
       },
-      "target_match_count": 1,
-      "target_line": 779,
+      "target_match_count": 2,
+      "target_line": 98,
       "target_context": {
-        "start_line": 777,
-        "end_line": 781,
+        "start_line": 96,
+        "end_line": 100,
         "lines": [
           {
-            "line": 777,
-            "text": "        uint32_t waveTokenStartIndex ="
+            "line": 96,
+            "text": "    } else {"
           },
           {
-            "line": 778,
-            "text": "            static_cast<uint32_t>(gmm1ExpertState.globalTokenStartIndex) + gmm1Position.tokenIndexInExpert;"
+            "line": 97,
+            "text": "        // TRACE_POINT: swiglu_problem_end_S"
           },
           {
-            "line": 779,
-            "text": "        RunGmm1GenericByWeightFormat<QuantOutType, ActivationType, QuantScaleOutType, GMM1_TILE_M, EPILOGUE_TILE_M,"
+            "line": 98,
+            "text": "        trace->EndStage0(CriticalPathTrace::Now());"
           },
           {
-            "line": 780,
-            "text": "                                     TopkWeightsPrefetch, GMM1_INTERLEAVED, true>("
+            "line": 99,
+            "text": "    }"
           },
           {
-            "line": 781,
-            "text": "            gmmExecutionConfig_, params_, epilogueOp_, gmm1AddrInfo, gmm1WaveProblemShape, waveTokenStartIndex,"
+            "line": 100,
+            "text": "}"
           }
         ]
       },
       "marker": "TRACE_POINT: swiglu_problem_end_S",
       "marker_match_count": 1,
-      "marker_line": 796,
+      "marker_line": 97,
       "marker_context": {
-        "start_line": 794,
-        "end_line": 798,
+        "start_line": 95,
+        "end_line": 99,
         "lines": [
           {
-            "line": 794,
-            "text": "                    // TRACE_POINT: gmm1_problem_end_S"
+            "line": 95,
+            "text": "        trace->EndStage0(CriticalPathTrace::Now());"
           },
           {
-            "line": 795,
-            "text": "                } else {"
+            "line": 96,
+            "text": "    } else {"
           },
           {
-            "line": 796,
-            "text": "                    // TRACE_POINT: swiglu_problem_end_S"
+            "line": 97,
+            "text": "        // TRACE_POINT: swiglu_problem_end_S"
           },
           {
-            "line": 797,
-            "text": "                }"
+            "line": 98,
+            "text": "        trace->EndStage0(CriticalPathTrace::Now());"
           },
           {
-            "line": 798,
-            "text": "                criticalPathTrace_.EndStage0(CriticalPathTrace::Now());"
+            "line": 99,
+            "text": "    }"
           }
         ]
       },
-      "max_line_distance": 28,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
-      "why": "不把下一 problem 前的等待算入 SwiGLU。",
-      "semantics": "当前 problem helper 已返回并完成生产路径的输出/ready 提交。",
+      "max_line_distance": 2,
+      "source_file_sha256": "bde807a62afaedcc1272fc82b1f2226fa0de172a849123304bd0bf644850d0f5",
+      "why": "不把下一 tile 前的等待算入 SwiGLU。",
+      "semantics": "当前 SwiGLU/MX tile 的 Vector 与 MTE3 输出已完成。",
       "dependency": {
-        "precondition": "RunGmm1ActivationByMode returned on AIV0",
-        "producer_pipeline": "Vector/MTE3 issue and ready publication",
+        "precondition": "the current epilogue tile helper returned on AIV0",
+        "producer_pipeline": "Vector/MTE3",
         "timestamp_pipeline": "Scalar",
-        "bridge": "program order only",
-        "proof": "no tracing-only completion event is introduced; boundary is conservatively issue"
+        "bridge": "production MTE3_S then program order",
+        "proof": "activationQuantOp drains MTE3 before returning; caller immediately invokes TraceGmm1TileEnd"
       },
-      "perturbation": "一次时钟和四个 scratch 写；不增加额外排空。"
+      "perturbation": "每 tile 一次时钟和四个 scratch 写；复用 activationQuantOp 内已有的 MTE3_S，不增加排空。"
     },
     {
       "id": "gmm2_problem_begin_S",
@@ -2654,15 +2656,16 @@
       "roles": [
         "AIC"
       ],
-      "scope": "所有 AIC，每个拥有 tile 的 GMM2 problem 一次。",
+      "scope": "所有 AIC，每个本核 owned GMM2 scheduler tile 一次。",
       "file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h",
       "symbol": "TraceGmm2ProblemBeginAfterReady",
       "placement": "before",
       "target_anchor": {
         "mode": "literal",
-        "pattern": "trace->BeginStage1(CriticalPathTrace::Now());"
+        "pattern": "trace->BeginStage1(CriticalPathTrace::Now());",
+        "occurrence": 1
       },
-      "target_match_count": 1,
+      "target_match_count": 2,
       "target_line": 535,
       "target_context": {
         "start_line": 533,
@@ -2686,7 +2689,7 @@
           },
           {
             "line": 537,
-            "text": "#endif"
+            "text": ""
           }
         ]
       },
@@ -2720,9 +2723,9 @@
         ]
       },
       "max_line_distance": 2,
-      "source_file_sha256": "892e854d8fbee610122d77b03628520577de8b728cfb84d414fe4d860cecec42",
-      "why": "排除 SwiGLU-ready 轮询并拆开 Wave 内多个 problem。",
-      "semantics": "首个 owned GMM2 tile 已 ready，即将发出。",
+      "source_file_sha256": "3002f302a7d41494d530425ccd3e5ad34d55384941e16f701020d79a45d98344",
+      "why": "排除每个 tile 前的 SwiGLU-ready 轮询并展开 Wave 内实际 GMM2 块。",
+      "semantics": "当前 owned GMM2 tile 已 ready，即将发出。",
       "dependency": {
         "precondition": "first owned tile observed SwiGLU-ready",
         "producer_pipeline": "AIV0 MTE3/ready",
@@ -2730,7 +2733,7 @@
         "bridge": "bypass-GM ready polling then program order",
         "proof": "helper is called only after WaitForGmm2InputReady returns"
       },
-      "perturbation": "每活跃 problem 一次条件判断和时钟。"
+      "perturbation": "每活跃 tile 一次条件判断和时钟。"
     },
     {
       "id": "gmm2_problem_end_S",
@@ -2740,84 +2743,84 @@
       "roles": [
         "AIC"
       ],
-      "scope": "与有 owned tile 的 gmm2_problem_begin_S 一一对应。",
-      "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave_a8w8.h",
-      "symbol": "MegaMoeA8W8Wave::ProcessGmm2Wave",
-      "placement": "after",
+      "scope": "与 gmm2_problem_begin_S 逐 tile 一一对应。",
+      "file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h",
+      "symbol": "TraceGmm2TileEndAfterFix",
+      "placement": "before",
       "target_anchor": {
         "mode": "literal",
-        "pattern": "RunGmm2ByMode<COMBINE_NO_QUANT, QuantOutType, ActivationType, Weight1Type, QuantScaleOutType, false, false,",
-        "occurrence": 2
+        "pattern": "trace->EndStage1(CriticalPathTrace::Now());",
+        "occurrence": 1
       },
       "target_match_count": 2,
-      "target_line": 892,
+      "target_line": 542,
       "target_context": {
-        "start_line": 890,
-        "end_line": 894,
+        "start_line": 540,
+        "end_line": 544,
         "lines": [
           {
-            "line": 890,
-            "text": "        }"
+            "line": 540,
+            "text": "    if (trace != nullptr && trace->HasStage1Begin()) {"
           },
           {
-            "line": 891,
-            "text": "#endif"
+            "line": 541,
+            "text": "        // TRACE_POINT: gmm2_problem_end_S"
           },
           {
-            "line": 892,
-            "text": "        RunGmm2ByMode<COMBINE_NO_QUANT, QuantOutType, ActivationType, Weight1Type, QuantScaleOutType, false, false,"
+            "line": 542,
+            "text": "        trace->EndStage1(CriticalPathTrace::Now());"
           },
           {
-            "line": 893,
-            "text": "                      GMM1_TILE_M, TopkWeightsPrefetch, false, GMM1_INTERLEAVED, true, true>("
+            "line": 543,
+            "text": "    }"
           },
           {
-            "line": 894,
-            "text": "            gmmExecutionConfig_, gmm2AddrInfo, gmm2WaveProblemShape, runtimeState, nullptr, isWholeExpert,"
+            "line": 544,
+            "text": "}"
           }
         ]
       },
       "marker": "TRACE_POINT: gmm2_problem_end_S",
       "marker_match_count": 1,
-      "marker_line": 908,
+      "marker_line": 541,
       "marker_context": {
-        "start_line": 906,
-        "end_line": 910,
+        "start_line": 539,
+        "end_line": 543,
         "lines": [
           {
-            "line": 906,
-            "text": "                    AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);"
+            "line": 539,
+            "text": "{"
           },
           {
-            "line": 907,
-            "text": "                }"
+            "line": 540,
+            "text": "    if (trace != nullptr && trace->HasStage1Begin()) {"
           },
           {
-            "line": 908,
-            "text": "                // TRACE_POINT: gmm2_problem_end_S"
+            "line": 541,
+            "text": "        // TRACE_POINT: gmm2_problem_end_S"
           },
           {
-            "line": 909,
-            "text": "                criticalPathTrace_.EndStage1(CriticalPathTrace::Now());"
+            "line": 542,
+            "text": "        trace->EndStage1(CriticalPathTrace::Now());"
           },
           {
-            "line": 910,
-            "text": "            } else {"
+            "line": 543,
+            "text": "    }"
           }
         ]
       },
-      "max_line_distance": 24,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
-      "why": "让大量短 GMM2 段覆盖真实 FIX 执行，而不是只显示 Scalar 发出。",
-      "semantics": "本 problem 已发出的全部 GMM2 FIX 工作已完成并桥接到 Scalar。",
+      "max_line_distance": 2,
+      "source_file_sha256": "3002f302a7d41494d530425ccd3e5ad34d55384941e16f701020d79a45d98344",
+      "why": "让每个 GMM2 tile 覆盖真实 FIX 完成，而不是只显示 Scalar 发出。",
+      "semantics": "当前 GMM2 tile 的 FIX 写回及生产通知已完成。",
       "dependency": {
-        "precondition": "RunMoeExpertGmm2Stage returned with an owned tile",
+        "precondition": "the current GMM2 tile production FIX and ready publication returned",
         "producer_pipeline": "FIX",
         "timestamp_pipeline": "Scalar",
-        "bridge": "tracing-only FIX_S",
-        "proof": "HasStage1Begin gates an immediately preceding FIX_S SetFlag/WaitFlag pair"
+        "bridge": "production FIX_S",
+        "proof": "both pairwise and group-ready callers invoke only after their production FIX_S path"
       },
-      "perturbation": "每个活跃 AIC problem 增加一次 FIX_S、一次时钟和四个 scratch 写；诊断态会串行化跨 problem FIX 尾部。"
+      "perturbation": "复用 pairwise/group-ready 生产 FIX_S；每 tile 一次时钟和四个 scratch 写。"
     },
     {
       "id": "gmm2_input_wait_begin_S",
@@ -2893,7 +2896,7 @@
         ]
       },
       "max_line_distance": 2,
-      "source_file_sha256": "892e854d8fbee610122d77b03628520577de8b728cfb84d414fe4d860cecec42",
+      "source_file_sha256": "3002f302a7d41494d530425ccd3e5ad34d55384941e16f701020d79a45d98344",
       "why": "显式显示同一 Wave 内每个 GMM2 problem 前等待 SwiGLU/Quant 输出的时间。",
       "semantics": "当前 owned M group 即将等待 activationToGmm2 ready。",
       "dependency": {
@@ -2979,7 +2982,7 @@
         ]
       },
       "max_line_distance": 2,
-      "source_file_sha256": "892e854d8fbee610122d77b03628520577de8b728cfb84d414fe4d860cecec42",
+      "source_file_sha256": "3002f302a7d41494d530425ccd3e5ad34d55384941e16f701020d79a45d98344",
       "why": "直接量化每个 GMM2 problem 的 activation 输入等待。",
       "semantics": "生产 WaitForGmm2InputReady 已观察到 ready 并返回。",
       "dependency": {
@@ -3005,67 +3008,68 @@
       "placement": "before",
       "target_anchor": {
         "mode": "literal",
-        "pattern": "criticalPathTrace->BeginGmm2ReadyFixWait(CriticalPathTrace::Now());"
+        "pattern": "criticalPathTrace->BeginGmm2ReadyFixWait(CriticalPathTrace::Now());",
+        "occurrence": 2
       },
-      "target_match_count": 1,
-      "target_line": 568,
+      "target_match_count": 2,
+      "target_line": 699,
       "target_context": {
-        "start_line": 566,
-        "end_line": 570,
+        "start_line": 697,
+        "end_line": 701,
         "lines": [
           {
-            "line": 566,
-            "text": "    if (criticalPathTrace != nullptr) {"
+            "line": 697,
+            "text": "            if (criticalPathTrace != nullptr) {"
           },
           {
-            "line": 567,
-            "text": "        // TRACE_POINT: gmm2_ready_fix_wait_begin_S"
+            "line": 698,
+            "text": "                // TRACE_POINT: gmm2_ready_fix_wait_begin_S"
           },
           {
-            "line": 568,
-            "text": "        criticalPathTrace->BeginGmm2ReadyFixWait(CriticalPathTrace::Now());"
+            "line": 699,
+            "text": "                criticalPathTrace->BeginGmm2ReadyFixWait(CriticalPathTrace::Now());"
           },
           {
-            "line": 569,
-            "text": "    }"
+            "line": 700,
+            "text": "            }"
           },
           {
-            "line": 570,
+            "line": 701,
             "text": "#endif"
           }
         ]
       },
       "marker": "TRACE_POINT: gmm2_ready_fix_wait_begin_S",
       "marker_match_count": 1,
-      "marker_line": 567,
+      "marker_line": 698,
       "marker_context": {
-        "start_line": 565,
-        "end_line": 569,
+        "start_line": 696,
+        "end_line": 700,
         "lines": [
           {
-            "line": 565,
+            "line": 696,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 566,
-            "text": "    if (criticalPathTrace != nullptr) {"
+            "line": 697,
+            "text": "            if (criticalPathTrace != nullptr) {"
           },
           {
-            "line": 567,
-            "text": "        // TRACE_POINT: gmm2_ready_fix_wait_begin_S"
+            "line": 698,
+            "text": "                // TRACE_POINT: gmm2_ready_fix_wait_begin_S"
           },
           {
-            "line": 568,
-            "text": "        criticalPathTrace->BeginGmm2ReadyFixWait(CriticalPathTrace::Now());"
+            "line": 699,
+            "text": "                criticalPathTrace->BeginGmm2ReadyFixWait(CriticalPathTrace::Now());"
           },
           {
-            "line": 569,
-            "text": "    }"
+            "line": 700,
+            "text": "            }"
           }
         ]
       },
       "max_line_distance": 2,
-      "source_file_sha256": "892e854d8fbee610122d77b03628520577de8b728cfb84d414fe4d860cecec42",
+      "source_file_sha256": "3002f302a7d41494d530425ccd3e5ad34d55384941e16f701020d79a45d98344",
       "why": "区分 GMM2 MMAD/FIX 发出与生产 group-ready 的逐 tile FIX completion 等待。",
       "semantics": "当前 GMM2 tile 的 blockMmad 已返回，马上等待 FIX 完成后再 AtomicAdd group counter。",
       "dependency": {
@@ -3091,67 +3095,68 @@
       "placement": "before",
       "target_anchor": {
         "mode": "literal",
-        "pattern": "criticalPathTrace->EndGmm2ReadyFixWait(CriticalPathTrace::Now());"
+        "pattern": "criticalPathTrace->EndGmm2ReadyFixWait(CriticalPathTrace::Now());",
+        "occurrence": 2
       },
-      "target_match_count": 1,
-      "target_line": 576,
+      "target_match_count": 2,
+      "target_line": 707,
       "target_context": {
-        "start_line": 574,
-        "end_line": 578,
+        "start_line": 705,
+        "end_line": 709,
         "lines": [
           {
-            "line": 574,
-            "text": "    if (criticalPathTrace != nullptr) {"
+            "line": 705,
+            "text": "            if (criticalPathTrace != nullptr) {"
           },
           {
-            "line": 575,
-            "text": "        // TRACE_POINT: gmm2_ready_fix_wait_end_S"
+            "line": 706,
+            "text": "                // TRACE_POINT: gmm2_ready_fix_wait_end_S"
           },
           {
-            "line": 576,
-            "text": "        criticalPathTrace->EndGmm2ReadyFixWait(CriticalPathTrace::Now());"
+            "line": 707,
+            "text": "                criticalPathTrace->EndGmm2ReadyFixWait(CriticalPathTrace::Now());"
           },
           {
-            "line": 577,
-            "text": "    }"
+            "line": 708,
+            "text": "            }"
           },
           {
-            "line": 578,
+            "line": 709,
             "text": "#endif"
           }
         ]
       },
       "marker": "TRACE_POINT: gmm2_ready_fix_wait_end_S",
       "marker_match_count": 1,
-      "marker_line": 575,
+      "marker_line": 706,
       "marker_context": {
-        "start_line": 573,
-        "end_line": 577,
+        "start_line": 704,
+        "end_line": 708,
         "lines": [
           {
-            "line": 573,
+            "line": 704,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 574,
-            "text": "    if (criticalPathTrace != nullptr) {"
+            "line": 705,
+            "text": "            if (criticalPathTrace != nullptr) {"
           },
           {
-            "line": 575,
-            "text": "        // TRACE_POINT: gmm2_ready_fix_wait_end_S"
+            "line": 706,
+            "text": "                // TRACE_POINT: gmm2_ready_fix_wait_end_S"
           },
           {
-            "line": 576,
-            "text": "        criticalPathTrace->EndGmm2ReadyFixWait(CriticalPathTrace::Now());"
+            "line": 707,
+            "text": "                criticalPathTrace->EndGmm2ReadyFixWait(CriticalPathTrace::Now());"
           },
           {
-            "line": 577,
-            "text": "    }"
+            "line": 708,
+            "text": "            }"
           }
         ]
       },
       "max_line_distance": 2,
-      "source_file_sha256": "892e854d8fbee610122d77b03628520577de8b728cfb84d414fe4d860cecec42",
+      "source_file_sha256": "3002f302a7d41494d530425ccd3e5ad34d55384941e16f701020d79a45d98344",
       "why": "将逐 tile FIX completion 与随后 AtomicAdd counter 分开；本段不包含 counter 原子写。",
       "semantics": "当前 tile 的 FIX 写回已完成并桥接到 Scalar，但 group counter 尚未 AtomicAdd。",
       "dependency": {
@@ -3172,83 +3177,84 @@
         "AIV0",
         "AIV1"
       ],
-      "scope": "所有参与 Combine 的 AIV，每个本核 owned expert-local 256-token group 切片一次。",
+      "scope": "非量化 A8W8 的配对 AIV1 每个 owned GMM2 tile 一次；量化旧路径仍按 256-token group 一次。",
       "file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h",
-      "symbol": "MegaMoeImpl::CombineWaveExpertRows",
-      "placement": "after",
+      "symbol": "TracePairwiseCombineTileBegin",
+      "placement": "before",
       "target_anchor": {
         "mode": "literal",
-        "pattern": "WaitWaveCombineGroupReady(common, syncLayout, params, expertIdx, tokenGroupIdx);"
+        "pattern": "trace->BeginStage1(CriticalPathTrace::Now());",
+        "occurrence": 2
       },
-      "target_match_count": 1,
-      "target_line": 1228,
+      "target_match_count": 2,
+      "target_line": 550,
       "target_context": {
-        "start_line": 1226,
-        "end_line": 1230,
+        "start_line": 548,
+        "end_line": 552,
         "lines": [
           {
-            "line": 1226,
-            "text": "            rowsInCurrentGroup = remainingTokenCount;"
+            "line": 548,
+            "text": "    if (trace != nullptr && trace->NeedsStage1Begin()) {"
           },
           {
-            "line": 1227,
-            "text": "        }"
+            "line": 549,
+            "text": "        // TRACE_POINT: combine_group_begin_S"
           },
           {
-            "line": 1228,
-            "text": "        WaitWaveCombineGroupReady(common, syncLayout, params, expertIdx, tokenGroupIdx);"
+            "line": 550,
+            "text": "        trace->BeginStage1(CriticalPathTrace::Now());"
           },
           {
-            "line": 1229,
-            "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
+            "line": 551,
+            "text": "    }"
           },
           {
-            "line": 1230,
-            "text": "        if (criticalPathTrace != nullptr) {"
+            "line": 552,
+            "text": "}"
           }
         ]
       },
       "marker": "TRACE_POINT: combine_group_begin_S",
       "marker_match_count": 1,
-      "marker_line": 1232,
+      "marker_line": 549,
       "marker_context": {
-        "start_line": 1230,
-        "end_line": 1234,
+        "start_line": 547,
+        "end_line": 551,
         "lines": [
           {
-            "line": 1230,
-            "text": "        if (criticalPathTrace != nullptr) {"
+            "line": 547,
+            "text": "{"
           },
           {
-            "line": 1231,
-            "text": "            criticalPathTrace->PrepareStage1(criticalPathWaveIndex, expertIdx);"
+            "line": 548,
+            "text": "    if (trace != nullptr && trace->NeedsStage1Begin()) {"
           },
           {
-            "line": 1232,
-            "text": "            // TRACE_POINT: combine_group_begin_S"
+            "line": 549,
+            "text": "        // TRACE_POINT: combine_group_begin_S"
           },
           {
-            "line": 1233,
-            "text": "            criticalPathTrace->BeginStage1(CriticalPathTrace::Now());"
+            "line": 550,
+            "text": "        trace->BeginStage1(CriticalPathTrace::Now());"
           },
           {
-            "line": 1234,
-            "text": "        }"
+            "line": 551,
+            "text": "    }"
           }
         ]
       },
-      "max_line_distance": 8,
-      "source_file_sha256": "892e854d8fbee610122d77b03628520577de8b728cfb84d414fe4d860cecec42",
-      "why": "直接观察本次新增的 256-token group ready 是否让 Combine 提前启动，并排除 ready 轮询。",
-      "semantics": "当前 expert-local 256-token group 的 GMM2 N-tile 计数已齐，即将读取并发送本核所负责行。",
+      "max_line_distance": 2,
+      "source_file_sha256": "3002f302a7d41494d530425ccd3e5ad34d55384941e16f701020d79a45d98344",
+      "why": "观察一对一 sequence ready 后每个 Combine tile 的真实发送，并排除 flag 轮询。",
+      "semantics": "当前 pairwise tile sequence 已 ready，即将 MTE2 读取并发送；量化路径表示 group counter 已齐。",
       "dependency": {
-        "precondition": "current 256-token group's complete GMM2 N-tile count was observed",
-        "producer_pipeline": "AIC FIX plus bypass-GM counter",
+        "precondition": "the paired AIC tile sequence was observed",
+        "producer_pipeline": "AIC FIX plus bypass-GM sequence",
         "timestamp_pipeline": "Scalar",
         "bridge": "bypass-GM polling then program order",
-        "proof": "marker is immediately after WaitWaveCombineGroupReady"
+        "proof": "pairwise helper is called immediately after WaitUntilGmFlagAtLeast"
       },
-      "perturbation": "每活跃 group 一次条件判断和时钟。"
+      "perturbation": "每活跃工作单元一次条件判断和时钟。"
     },
     {
       "id": "combine_group_end_S",
@@ -3259,83 +3265,84 @@
         "AIV0",
         "AIV1"
       ],
-      "scope": "与 combine_group_begin_S 一一对应。",
+      "scope": "与 combine_group_begin_S 的 pairwise tile 或量化 group 工作单元一一对应。",
       "file": "mc2/mega_moe/op_kernel/arch35/stage/mega_moe_gmm2_combine.h",
-      "symbol": "MegaMoeImpl::CombineWaveExpertRows",
+      "symbol": "TracePairwiseCombineTileEnd",
       "placement": "before",
       "target_anchor": {
         "mode": "literal",
-        "pattern": "processedTokenCount += rowsInCurrentGroup;"
+        "pattern": "trace->EndStage1(CriticalPathTrace::Now());",
+        "occurrence": 2
       },
-      "target_match_count": 1,
-      "target_line": 1257,
+      "target_match_count": 2,
+      "target_line": 562,
       "target_context": {
-        "start_line": 1255,
-        "end_line": 1259,
+        "start_line": 560,
+        "end_line": 564,
         "lines": [
           {
-            "line": 1255,
-            "text": "        }"
+            "line": 560,
+            "text": "    AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID5);"
           },
           {
-            "line": 1256,
-            "text": "#endif"
+            "line": 561,
+            "text": "    // TRACE_POINT: combine_group_end_S"
           },
           {
-            "line": 1257,
-            "text": "        processedTokenCount += rowsInCurrentGroup;"
+            "line": 562,
+            "text": "    trace->EndStage1(CriticalPathTrace::Now());"
           },
           {
-            "line": 1258,
-            "text": "    }"
-          },
-          {
-            "line": 1259,
+            "line": 563,
             "text": "}"
+          },
+          {
+            "line": 564,
+            "text": "#endif"
           }
         ]
       },
       "marker": "TRACE_POINT: combine_group_end_S",
       "marker_match_count": 1,
-      "marker_line": 1253,
+      "marker_line": 561,
       "marker_context": {
-        "start_line": 1251,
-        "end_line": 1255,
+        "start_line": 559,
+        "end_line": 563,
         "lines": [
           {
-            "line": 1251,
-            "text": "            AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID5);"
+            "line": 559,
+            "text": "    AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID5);"
           },
           {
-            "line": 1252,
-            "text": "            AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID5);"
+            "line": 560,
+            "text": "    AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID5);"
           },
           {
-            "line": 1253,
-            "text": "            // TRACE_POINT: combine_group_end_S"
+            "line": 561,
+            "text": "    // TRACE_POINT: combine_group_end_S"
           },
           {
-            "line": 1254,
-            "text": "            criticalPathTrace->EndStage1(CriticalPathTrace::Now());"
+            "line": 562,
+            "text": "    trace->EndStage1(CriticalPathTrace::Now());"
           },
           {
-            "line": 1255,
-            "text": "        }"
+            "line": 563,
+            "text": "}"
           }
         ]
       },
-      "max_line_distance": 8,
-      "source_file_sha256": "892e854d8fbee610122d77b03628520577de8b728cfb84d414fe4d860cecec42",
-      "why": "只覆盖当前 256-token group 切片，并在远端发送完成后结束。",
-      "semantics": "当前 group 切片此前发出的所有 MTE3 send 已完成并桥接到 Scalar。",
+      "max_line_distance": 2,
+      "source_file_sha256": "3002f302a7d41494d530425ccd3e5ad34d55384941e16f701020d79a45d98344",
+      "why": "只覆盖当前 Combine 工作单元，并在远端发送完成后结束。",
+      "semantics": "当前 tile/group 此前发出的所有 MTE3 send 已完成并桥接到 Scalar。",
       "dependency": {
-        "precondition": "the active group slice has issued all of its Combine rows",
-        "producer_pipeline": "MTE2/Vector/MTE3",
+        "precondition": "the active pairwise tile has issued all remote sends",
+        "producer_pipeline": "MTE2/MTE3",
         "timestamp_pipeline": "Scalar",
         "bridge": "tracing-only MTE3_S",
-        "proof": "MTE3_S SetFlag/WaitFlag is immediately before sampling, so every earlier remote send is complete"
+        "proof": "MTE3_S SetFlag/WaitFlag is immediately before sampling"
       },
-      "perturbation": "每个本核活跃 group 增加一次 MTE3_S 完成桥、一次时钟和四个 scratch 写；诊断态会抑制跨 group MTE3 尾部重叠。"
+      "perturbation": "每个活跃工作单元增加一次 MTE3_S 完成桥、一次时钟和四个 scratch 写。"
     },
     {
       "id": "final_combine_drain_begin_S",
@@ -3355,64 +3362,64 @@
         "pattern": "DrainCombineRowBuffers(rowSequence, activeBufferConfig.rowBufferCount);"
       },
       "target_match_count": 1,
-      "target_line": 987,
+      "target_line": 1009,
       "target_context": {
-        "start_line": 985,
-        "end_line": 989,
+        "start_line": 1007,
+        "end_line": 1011,
         "lines": [
           {
-            "line": 985,
+            "line": 1007,
             "text": "    }"
           },
           {
-            "line": 986,
+            "line": 1008,
             "text": "#endif"
           },
           {
-            "line": 987,
+            "line": 1009,
             "text": "    DrainCombineRowBuffers(rowSequence, activeBufferConfig.rowBufferCount);"
           },
           {
-            "line": 988,
+            "line": 1010,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 989,
+            "line": 1011,
             "text": "    if (isFinalWave && CriticalPathTracePtr() != nullptr) {"
           }
         ]
       },
       "marker": "TRACE_POINT: final_combine_drain_begin_S",
       "marker_match_count": 1,
-      "marker_line": 983,
+      "marker_line": 1005,
       "marker_context": {
-        "start_line": 981,
-        "end_line": 985,
+        "start_line": 1003,
+        "end_line": 1007,
         "lines": [
           {
-            "line": 981,
+            "line": 1003,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 982,
+            "line": 1004,
             "text": "    if (isFinalWave && CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 983,
+            "line": 1005,
             "text": "        // TRACE_POINT: final_combine_drain_begin_S"
           },
           {
-            "line": 984,
+            "line": 1006,
             "text": "        criticalPathTrace_.BeginFinalCombineDrain();"
           },
           {
-            "line": 985,
+            "line": 1007,
             "text": "    }"
           }
         ]
       },
       "max_line_distance": 7,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "确认最后一个 Combine group 后是否仍有 row-ring MTE3 尾部需要回收。",
       "semantics": "最终 Wave 的 Combine 行已全部发出，即将消费仍在途的 row-ring 完成事件。",
       "dependency": {
@@ -3442,64 +3449,64 @@
         "pattern": "DrainCombineRowBuffers(rowSequence, activeBufferConfig.rowBufferCount);"
       },
       "target_match_count": 1,
-      "target_line": 987,
+      "target_line": 1009,
       "target_context": {
-        "start_line": 985,
-        "end_line": 989,
+        "start_line": 1007,
+        "end_line": 1011,
         "lines": [
           {
-            "line": 985,
+            "line": 1007,
             "text": "    }"
           },
           {
-            "line": 986,
+            "line": 1008,
             "text": "#endif"
           },
           {
-            "line": 987,
+            "line": 1009,
             "text": "    DrainCombineRowBuffers(rowSequence, activeBufferConfig.rowBufferCount);"
           },
           {
-            "line": 988,
+            "line": 1010,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 989,
+            "line": 1011,
             "text": "    if (isFinalWave && CriticalPathTracePtr() != nullptr) {"
           }
         ]
       },
       "marker": "TRACE_POINT: final_combine_drain_end_S",
       "marker_match_count": 1,
-      "marker_line": 990,
+      "marker_line": 1012,
       "marker_context": {
-        "start_line": 988,
-        "end_line": 992,
+        "start_line": 1010,
+        "end_line": 1014,
         "lines": [
           {
-            "line": 988,
+            "line": 1010,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 989,
+            "line": 1011,
             "text": "    if (isFinalWave && CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 990,
+            "line": 1012,
             "text": "        // TRACE_POINT: final_combine_drain_end_S"
           },
           {
-            "line": 991,
+            "line": 1013,
             "text": "        criticalPathTrace_.EndFinalCombineDrain();"
           },
           {
-            "line": 992,
+            "line": 1014,
             "text": "    }"
           }
         ]
       },
       "max_line_distance": 7,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "把 Combine 发送尾部与后续 MoE 收尾逻辑分开。",
       "semantics": "最终 Wave 的全部已用 row-ring MTE3 完成事件已经消费。",
       "dependency": {
@@ -3529,64 +3536,64 @@
         "pattern": "waveBeginPosition = waveEndPosition;"
       },
       "target_match_count": 1,
-      "target_line": 1114,
+      "target_line": 1145,
       "target_context": {
-        "start_line": 1112,
-        "end_line": 1116,
+        "start_line": 1143,
+        "end_line": 1147,
         "lines": [
           {
-            "line": 1112,
+            "line": 1143,
             "text": "        }"
           },
           {
-            "line": 1113,
+            "line": 1144,
             "text": "#endif"
           },
           {
-            "line": 1114,
+            "line": 1145,
             "text": "        waveBeginPosition = waveEndPosition;"
           },
           {
-            "line": 1115,
+            "line": 1146,
             "text": "    }"
           },
           {
-            "line": 1116,
+            "line": 1147,
             "text": ""
           }
         ]
       },
       "marker": "TRACE_POINT: moe_epilogue_begin_S",
       "marker_match_count": 1,
-      "marker_line": 1109,
+      "marker_line": 1140,
       "marker_context": {
-        "start_line": 1107,
-        "end_line": 1111,
+        "start_line": 1138,
+        "end_line": 1142,
         "lines": [
           {
-            "line": 1107,
+            "line": 1138,
             "text": "        if constexpr (g_coreType == AIV) {"
           },
           {
-            "line": 1108,
+            "line": 1139,
             "text": "            if (!hasNextWave && CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 1109,
+            "line": 1140,
             "text": "                // TRACE_POINT: moe_epilogue_begin_S"
           },
           {
-            "line": 1110,
+            "line": 1141,
             "text": "                criticalPathTrace_.BeginMoeEpilogue();"
           },
           {
-            "line": 1111,
+            "line": 1142,
             "text": "            }"
           }
         ]
       },
       "max_line_distance": 9,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "显示最终 Combine 与本地汇合之间的 EndSync、状态复位和 count 导出成本。",
       "semantics": "最终 Combine/drain 已返回，即将执行 MoE 专家阶段尾部逻辑。",
       "dependency": {
@@ -3616,64 +3623,64 @@
         "pattern": "ExportCompactExpertTokenCounts(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);"
       },
       "target_match_count": 1,
-      "target_line": 1121,
+      "target_line": 1152,
       "target_context": {
-        "start_line": 1119,
-        "end_line": 1123,
+        "start_line": 1150,
+        "end_line": 1154,
         "lines": [
           {
-            "line": 1119,
+            "line": 1150,
             "text": "    }"
           },
           {
-            "line": 1120,
+            "line": 1151,
             "text": "    gmm1PingPongIdx_ = 0;"
           },
           {
-            "line": 1121,
+            "line": 1152,
             "text": "    ExportCompactExpertTokenCounts(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);"
           },
           {
-            "line": 1122,
+            "line": 1153,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1123,
+            "line": 1154,
             "text": "    if constexpr (g_coreType == AIV) {"
           }
         ]
       },
       "marker": "TRACE_POINT: moe_epilogue_end_S",
       "marker_match_count": 1,
-      "marker_line": 1125,
+      "marker_line": 1156,
       "marker_context": {
-        "start_line": 1123,
-        "end_line": 1127,
+        "start_line": 1154,
+        "end_line": 1158,
         "lines": [
           {
-            "line": 1123,
+            "line": 1154,
             "text": "    if constexpr (g_coreType == AIV) {"
           },
           {
-            "line": 1124,
+            "line": 1155,
             "text": "        if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 1125,
+            "line": 1156,
             "text": "            // TRACE_POINT: moe_epilogue_end_S"
           },
           {
-            "line": 1126,
+            "line": 1157,
             "text": "            criticalPathTrace_.EndMoeEpilogue();"
           },
           {
-            "line": 1127,
+            "line": 1158,
             "text": "        }"
           }
         ]
       },
       "max_line_distance": 7,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "定位 Combine 后非 barrier 的 V 核尾部成本。",
       "semantics": "EndSync、ping-pong 复位和 compact expert count 导出均已返回。",
       "dependency": {
@@ -3703,64 +3710,64 @@
         "pattern": "SyncAll<true>();"
       },
       "target_match_count": 1,
-      "target_line": 1167,
+      "target_line": 1198,
       "target_context": {
-        "start_line": 1165,
-        "end_line": 1169,
+        "start_line": 1196,
+        "end_line": 1200,
         "lines": [
           {
-            "line": 1165,
+            "line": 1196,
             "text": "#endif"
           },
           {
-            "line": 1166,
+            "line": 1197,
             "text": "        PipeBarrier<PIPE_ALL>();"
           },
           {
-            "line": 1167,
+            "line": 1198,
             "text": "        SyncAll<true>();"
           },
           {
-            "line": 1168,
+            "line": 1199,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1169,
+            "line": 1200,
             "text": "        if (CriticalPathTracePtr() != nullptr) {"
           }
         ]
       },
       "marker": "TRACE_POINT: moe_tail_sync_begin_S",
       "marker_match_count": 1,
-      "marker_line": 1162,
+      "marker_line": 1193,
       "marker_context": {
-        "start_line": 1160,
-        "end_line": 1164,
+        "start_line": 1191,
+        "end_line": 1195,
         "lines": [
           {
-            "line": 1160,
+            "line": 1191,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1161,
+            "line": 1192,
             "text": "        if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 1162,
+            "line": 1193,
             "text": "            // TRACE_POINT: moe_tail_sync_begin_S"
           },
           {
-            "line": 1163,
+            "line": 1194,
             "text": "            criticalPathTrace_.BeginMoeTailSync();"
           },
           {
-            "line": 1164,
+            "line": 1195,
             "text": "        }"
           }
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "直接量化快 V 核等待慢 V 核完成最终 Combine/尾部工作的时间。",
       "semantics": "即将执行 MoE 尾部 PIPE_ALL 和本卡 AIV SyncAll。",
       "dependency": {
@@ -3790,64 +3797,64 @@
         "pattern": "SyncAll<true>();"
       },
       "target_match_count": 1,
-      "target_line": 1167,
+      "target_line": 1198,
       "target_context": {
-        "start_line": 1165,
-        "end_line": 1169,
+        "start_line": 1196,
+        "end_line": 1200,
         "lines": [
           {
-            "line": 1165,
+            "line": 1196,
             "text": "#endif"
           },
           {
-            "line": 1166,
+            "line": 1197,
             "text": "        PipeBarrier<PIPE_ALL>();"
           },
           {
-            "line": 1167,
+            "line": 1198,
             "text": "        SyncAll<true>();"
           },
           {
-            "line": 1168,
+            "line": 1199,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1169,
+            "line": 1200,
             "text": "        if (CriticalPathTracePtr() != nullptr) {"
           }
         ]
       },
       "marker": "TRACE_POINT: moe_tail_sync_end_S",
       "marker_match_count": 1,
-      "marker_line": 1170,
+      "marker_line": 1201,
       "marker_context": {
-        "start_line": 1168,
-        "end_line": 1172,
+        "start_line": 1199,
+        "end_line": 1203,
         "lines": [
           {
-            "line": 1168,
+            "line": 1199,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1169,
+            "line": 1200,
             "text": "        if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 1170,
+            "line": 1201,
             "text": "            // TRACE_POINT: moe_tail_sync_end_S"
           },
           {
-            "line": 1171,
+            "line": 1202,
             "text": "            criticalPathTrace_.EndMoeTailSync();"
           },
           {
-            "line": 1172,
+            "line": 1203,
             "text": "        }"
           }
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "把本卡负载不均衡等待与输出跨卡同步分开。",
       "semantics": "本卡所有 AIV 已完成 MoE 专家流水并通过 SyncAll。",
       "dependency": {
@@ -3878,64 +3885,64 @@
         "occurrence": 2
       },
       "target_match_count": 2,
-      "target_line": 1186,
+      "target_line": 1217,
       "target_context": {
-        "start_line": 1184,
-        "end_line": 1188,
+        "start_line": 1215,
+        "end_line": 1219,
         "lines": [
           {
-            "line": 1184,
+            "line": 1215,
             "text": "    if (sharedExpertNum_ > 0) {"
           },
           {
-            "line": 1185,
+            "line": 1216,
             "text": "        exceptionDump_.UpdateStage(MegaMoeImpl::Stage::SHARED_EXPERT_GMM2);"
           },
           {
-            "line": 1186,
+            "line": 1217,
             "text": "        ProcessSharedExpertGmm2();"
           },
           {
-            "line": 1187,
+            "line": 1218,
             "text": "    }"
           },
           {
-            "line": 1188,
+            "line": 1219,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           }
         ]
       },
       "marker": "TRACE_POINT: shared_expert_gmm2_begin_S",
       "marker_match_count": 1,
-      "marker_line": 1179,
+      "marker_line": 1210,
       "marker_context": {
-        "start_line": 1177,
-        "end_line": 1181,
+        "start_line": 1208,
+        "end_line": 1212,
         "lines": [
           {
-            "line": 1177,
+            "line": 1208,
             "text": "    if constexpr (g_coreType == AIV) {"
           },
           {
-            "line": 1178,
+            "line": 1209,
             "text": "        if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 1179,
+            "line": 1210,
             "text": "            // TRACE_POINT: shared_expert_gmm2_begin_S"
           },
           {
-            "line": 1180,
+            "line": 1211,
             "text": "            criticalPathTrace_.BeginSharedExpertGmm2();"
           },
           {
-            "line": 1181,
+            "line": 1212,
             "text": "        }"
           }
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "显示 V 侧在共享专家 GMM2 调用路径上的调度区间。",
       "semantics": "即将判断并按需进入共享专家 GMM2 helper；实际 Cube 计算仍由 AIC 完成。",
       "dependency": {
@@ -3966,64 +3973,64 @@
         "occurrence": 2
       },
       "target_match_count": 2,
-      "target_line": 1186,
+      "target_line": 1217,
       "target_context": {
-        "start_line": 1184,
-        "end_line": 1188,
+        "start_line": 1215,
+        "end_line": 1219,
         "lines": [
           {
-            "line": 1184,
+            "line": 1215,
             "text": "    if (sharedExpertNum_ > 0) {"
           },
           {
-            "line": 1185,
+            "line": 1216,
             "text": "        exceptionDump_.UpdateStage(MegaMoeImpl::Stage::SHARED_EXPERT_GMM2);"
           },
           {
-            "line": 1186,
+            "line": 1217,
             "text": "        ProcessSharedExpertGmm2();"
           },
           {
-            "line": 1187,
+            "line": 1218,
             "text": "    }"
           },
           {
-            "line": 1188,
+            "line": 1219,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           }
         ]
       },
       "marker": "TRACE_POINT: shared_expert_gmm2_end_S",
       "marker_match_count": 1,
-      "marker_line": 1191,
+      "marker_line": 1222,
       "marker_context": {
-        "start_line": 1189,
-        "end_line": 1193,
+        "start_line": 1220,
+        "end_line": 1224,
         "lines": [
           {
-            "line": 1189,
+            "line": 1220,
             "text": "    if constexpr (g_coreType == AIV) {"
           },
           {
-            "line": 1190,
+            "line": 1221,
             "text": "        if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 1191,
+            "line": 1222,
             "text": "            // TRACE_POINT: shared_expert_gmm2_end_S"
           },
           {
-            "line": 1192,
+            "line": 1223,
             "text": "            criticalPathTrace_.EndSharedExpertGmm2();"
           },
           {
-            "line": 1193,
+            "line": 1224,
             "text": "        }"
           }
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "区分共享专家调用开销与后续输出同步；共享结果等待可能继续落在 Unpermute 内。",
       "semantics": "AIV 角色已从共享专家 GMM2 helper 返回。",
       "dependency": {
@@ -4054,64 +4061,64 @@
         "occurrence": 2
       },
       "target_match_count": 2,
-      "target_line": 1454,
+      "target_line": 1485,
       "target_context": {
-        "start_line": 1452,
-        "end_line": 1456,
+        "start_line": 1483,
+        "end_line": 1487,
         "lines": [
           {
-            "line": 1452,
+            "line": 1483,
             "text": "        }"
           },
           {
-            "line": 1453,
+            "line": 1484,
             "text": "#endif"
           },
           {
-            "line": 1454,
+            "line": 1485,
             "text": "        CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);"
           },
           {
-            "line": 1455,
+            "line": 1486,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1456,
+            "line": 1487,
             "text": "        if (CriticalPathTracePtr() != nullptr) {"
           }
         ]
       },
       "marker": "TRACE_POINT: output_cross_rank_sync_begin_S",
       "marker_match_count": 1,
-      "marker_line": 1450,
+      "marker_line": 1481,
       "marker_context": {
-        "start_line": 1448,
-        "end_line": 1452,
+        "start_line": 1479,
+        "end_line": 1483,
         "lines": [
           {
-            "line": 1448,
+            "line": 1479,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1449,
+            "line": 1480,
             "text": "        if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 1450,
+            "line": 1481,
             "text": "            // TRACE_POINT: output_cross_rank_sync_begin_S"
           },
           {
-            "line": 1451,
+            "line": 1482,
             "text": "            criticalPathTrace_.BeginOutputCrossRankSync();"
           },
           {
-            "line": 1452,
+            "line": 1483,
             "text": "        }"
           }
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "直接量化本 rank 等待其他 rank 完成 Combine 发送的时间。",
       "semantics": "即将进入 Unpermute 前的输出跨 rank 同步。",
       "dependency": {
@@ -4142,64 +4149,64 @@
         "occurrence": 2
       },
       "target_match_count": 2,
-      "target_line": 1454,
+      "target_line": 1485,
       "target_context": {
-        "start_line": 1452,
-        "end_line": 1456,
+        "start_line": 1483,
+        "end_line": 1487,
         "lines": [
           {
-            "line": 1452,
+            "line": 1483,
             "text": "        }"
           },
           {
-            "line": 1453,
+            "line": 1484,
             "text": "#endif"
           },
           {
-            "line": 1454,
+            "line": 1485,
             "text": "        CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);"
           },
           {
-            "line": 1455,
+            "line": 1486,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1456,
+            "line": 1487,
             "text": "        if (CriticalPathTracePtr() != nullptr) {"
           }
         ]
       },
       "marker": "TRACE_POINT: output_cross_rank_sync_end_S",
       "marker_match_count": 1,
-      "marker_line": 1457,
+      "marker_line": 1488,
       "marker_context": {
-        "start_line": 1455,
-        "end_line": 1459,
+        "start_line": 1486,
+        "end_line": 1490,
         "lines": [
           {
-            "line": 1455,
+            "line": 1486,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1456,
+            "line": 1487,
             "text": "        if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 1457,
+            "line": 1488,
             "text": "            // TRACE_POINT: output_cross_rank_sync_end_S"
           },
           {
-            "line": 1458,
+            "line": 1489,
             "text": "            criticalPathTrace_.EndOutputCrossRankSync();"
           },
           {
-            "line": 1459,
+            "line": 1490,
             "text": "        }"
           }
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "把慢 rank 的 Combine 尾部与本地 Unpermute 分开。",
       "semantics": "所有 rank 的输出握手已完成，本卡 Combine 接收区可读。",
       "dependency": {
@@ -4229,64 +4236,64 @@
         "pattern": "UnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();"
       },
       "target_match_count": 1,
-      "target_line": 1468,
+      "target_line": 1499,
       "target_context": {
-        "start_line": 1466,
-        "end_line": 1470,
+        "start_line": 1497,
+        "end_line": 1501,
         "lines": [
           {
-            "line": 1466,
+            "line": 1497,
             "text": "        }"
           },
           {
-            "line": 1467,
+            "line": 1498,
             "text": "#endif"
           },
           {
-            "line": 1468,
+            "line": 1499,
             "text": "        UnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();"
           },
           {
-            "line": 1469,
+            "line": 1500,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1470,
+            "line": 1501,
             "text": "        if (CriticalPathTracePtr() != nullptr) {"
           }
         ]
       },
       "marker": "TRACE_POINT: unpermute_init_begin_S",
       "marker_match_count": 1,
-      "marker_line": 1464,
+      "marker_line": 1495,
       "marker_context": {
-        "start_line": 1462,
-        "end_line": 1466,
+        "start_line": 1493,
+        "end_line": 1497,
         "lines": [
           {
-            "line": 1462,
+            "line": 1493,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1463,
+            "line": 1494,
             "text": "        if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 1464,
+            "line": 1495,
             "text": "            // TRACE_POINT: unpermute_init_begin_S"
           },
           {
-            "line": 1465,
+            "line": 1496,
             "text": "            criticalPathTrace_.BeginUnpermuteInit();"
           },
           {
-            "line": 1466,
+            "line": 1497,
             "text": "        }"
           }
         ]
       },
       "max_line_distance": 7,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "把 UB view/config 构造与 Unpermute 数据流水分开。",
       "semantics": "即将构造当前 AIV 的 Unpermute buffer 视图。",
       "dependency": {
@@ -4316,64 +4323,64 @@
         "pattern": "UnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();"
       },
       "target_match_count": 1,
-      "target_line": 1468,
+      "target_line": 1499,
       "target_context": {
-        "start_line": 1466,
-        "end_line": 1470,
+        "start_line": 1497,
+        "end_line": 1501,
         "lines": [
           {
-            "line": 1466,
+            "line": 1497,
             "text": "        }"
           },
           {
-            "line": 1467,
+            "line": 1498,
             "text": "#endif"
           },
           {
-            "line": 1468,
+            "line": 1499,
             "text": "        UnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();"
           },
           {
-            "line": 1469,
+            "line": 1500,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1470,
+            "line": 1501,
             "text": "        if (CriticalPathTracePtr() != nullptr) {"
           }
         ]
       },
       "marker": "TRACE_POINT: unpermute_init_end_S",
       "marker_match_count": 1,
-      "marker_line": 1471,
+      "marker_line": 1502,
       "marker_context": {
-        "start_line": 1469,
-        "end_line": 1473,
+        "start_line": 1500,
+        "end_line": 1504,
         "lines": [
           {
-            "line": 1469,
+            "line": 1500,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1470,
+            "line": 1501,
             "text": "        if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 1471,
+            "line": 1502,
             "text": "            // TRACE_POINT: unpermute_init_end_S"
           },
           {
-            "line": 1472,
+            "line": 1503,
             "text": "            criticalPathTrace_.EndUnpermuteInit();"
           },
           {
-            "line": 1473,
+            "line": 1504,
             "text": "            // TRACE_POINT: unpermute_begin_S"
           }
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "识别极端配置下 buffer 规划本身是否异常。",
       "semantics": "Unpermute UB view 和当前 job bufferConfig 已构造完成。",
       "dependency": {
@@ -4403,64 +4410,64 @@
         "pattern": "UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>("
       },
       "target_match_count": 1,
-      "target_line": 1477,
+      "target_line": 1508,
       "target_context": {
-        "start_line": 1475,
-        "end_line": 1479,
+        "start_line": 1506,
+        "end_line": 1510,
         "lines": [
           {
-            "line": 1475,
+            "line": 1506,
             "text": "        }"
           },
           {
-            "line": 1476,
+            "line": 1507,
             "text": "#endif"
           },
           {
-            "line": 1477,
+            "line": 1508,
             "text": "        UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>("
           },
           {
-            "line": 1478,
+            "line": 1509,
             "text": "            tokenUnpermuteConfig_, commonConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);"
           },
           {
-            "line": 1479,
+            "line": 1510,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           }
         ]
       },
       "marker": "TRACE_POINT: unpermute_begin_S",
       "marker_match_count": 1,
-      "marker_line": 1473,
+      "marker_line": 1504,
       "marker_context": {
-        "start_line": 1471,
-        "end_line": 1475,
+        "start_line": 1502,
+        "end_line": 1506,
         "lines": [
           {
-            "line": 1471,
+            "line": 1502,
             "text": "            // TRACE_POINT: unpermute_init_end_S"
           },
           {
-            "line": 1472,
+            "line": 1503,
             "text": "            criticalPathTrace_.EndUnpermuteInit();"
           },
           {
-            "line": 1473,
+            "line": 1504,
             "text": "            // TRACE_POINT: unpermute_begin_S"
           },
           {
-            "line": 1474,
+            "line": 1505,
             "text": "            criticalPathTrace_.BeginUnpermute();"
           },
           {
-            "line": 1475,
+            "line": 1506,
             "text": "        }"
           }
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "量化 Combine 接收数据、top-k/shared 累加与最终 y 写回的整体成本。",
       "semantics": "Unpermute buffer 已构造，即将进入本核 token range。",
       "dependency": {
@@ -4490,64 +4497,64 @@
         "pattern": "UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>("
       },
       "target_match_count": 1,
-      "target_line": 1477,
+      "target_line": 1508,
       "target_context": {
-        "start_line": 1475,
-        "end_line": 1479,
+        "start_line": 1506,
+        "end_line": 1510,
         "lines": [
           {
-            "line": 1475,
+            "line": 1506,
             "text": "        }"
           },
           {
-            "line": 1476,
+            "line": 1507,
             "text": "#endif"
           },
           {
-            "line": 1477,
+            "line": 1508,
             "text": "        UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>("
           },
           {
-            "line": 1478,
+            "line": 1509,
             "text": "            tokenUnpermuteConfig_, commonConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);"
           },
           {
-            "line": 1479,
+            "line": 1510,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           }
         ]
       },
       "marker": "TRACE_POINT: unpermute_end_S",
       "marker_match_count": 1,
-      "marker_line": 1481,
+      "marker_line": 1512,
       "marker_context": {
-        "start_line": 1479,
-        "end_line": 1483,
+        "start_line": 1510,
+        "end_line": 1514,
         "lines": [
           {
-            "line": 1479,
+            "line": 1510,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1480,
+            "line": 1511,
             "text": "        if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 1481,
+            "line": 1512,
             "text": "            // TRACE_POINT: unpermute_end_S"
           },
           {
-            "line": 1482,
+            "line": 1513,
             "text": "            criticalPathTrace_.EndUnpermute();"
           },
           {
-            "line": 1483,
+            "line": 1514,
             "text": "        }"
           }
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "29fcc620fd794b6bc0660c831635415f3921d262412fd836c191ad1603f31109",
+      "source_file_sha256": "e87eedf9032f0f54fc9011dffbb516ebcf4f3aa4ac9f0db62595b62be1facf9a",
       "why": "确认尾部慢点是否来自本地反量化/累加/写 y，而不是同步。",
       "semantics": "本核负责 token 的最终 y MTE3 已全部完成。",
       "dependency": {

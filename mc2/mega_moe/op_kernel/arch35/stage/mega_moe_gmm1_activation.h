@@ -50,14 +50,15 @@ enum class CriticalPathGmm1ReadyBridge : uint8_t {
     VECTOR = 2U,
 };
 
-// Routed A8W8 GMM1/SwiGLU variants call this after the current problem's first
-// owned tile is ready. The outer scheduler prepares a new segment per problem.
+// Routed A8W8 GMM1/SwiGLU variants call this after every owned tile is ready.
+// The outer scheduler keeps the Wave/expert identity active across the problem.
 __aicore__ inline void TraceGmm1ProblemBeginAfterReady(CriticalPathTrace *trace, CriticalPathGmm1ReadyBridge bridge)
 {
     if (trace == nullptr || !trace->NeedsStage0Begin()) {
         return;
     }
-    trace->CompleteGmm1Gap();
+    const uint32_t begin = CriticalPathTrace::Now();
+    trace->CompleteGmm1Gap(begin);
     if (bridge == CriticalPathGmm1ReadyBridge::FIX) {
         AscendC::SetFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
@@ -71,6 +72,30 @@ __aicore__ inline void TraceGmm1ProblemBeginAfterReady(CriticalPathTrace *trace,
     } else {
         // TRACE_POINT: swiglu_problem_begin_S
         trace->BeginStage0(CriticalPathTrace::Now());
+    }
+}
+
+// End one actual GMM1/SwiGLU tile. AIC non-prefetch output needs an explicit
+// FIX-to-Scalar bridge; prefetch GMM1 and SwiGLU callers already return after
+// their production FIX/MTE3 completion fences.
+__aicore__ inline void TraceGmm1TileEnd(CriticalPathTrace *trace, CriticalPathGmm1ReadyBridge bridge)
+{
+    if (trace == nullptr || !trace->HasStage0Begin()) {
+        return;
+    }
+    if (bridge == CriticalPathGmm1ReadyBridge::FIX) {
+        AscendC::SetFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
+    } else if (bridge == CriticalPathGmm1ReadyBridge::VECTOR) {
+        AscendC::SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+    }
+    if constexpr (g_coreType == AscendC::AIC) {
+        // TRACE_POINT: gmm1_problem_end_S
+        trace->EndStage0(CriticalPathTrace::Now());
+    } else {
+        // TRACE_POINT: swiglu_problem_end_S
+        trace->EndStage0(CriticalPathTrace::Now());
     }
 }
 
@@ -282,6 +307,9 @@ __aicore__ inline void Gmm1AicPrefetchMmadGeneric(WorkSet &workSet, const Params
                                                                  kLoc, gmBlockA, gmBlockScaleA);
         AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        TraceGmm1TileEnd(criticalPathTrace, CriticalPathGmm1ReadyBridge::SCALAR);
+#endif
         NotifyGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
     }
 }
@@ -359,6 +387,9 @@ __aicore__ inline void Gmm1AicMmadGeneric(WorkSet &workSet, const GMMAddrInfo &g
         Gmm1AicMmadTileToUbGeneric<BlockMmad, IsGmm1Interleaved>(
             blockMmad, config, workSet.gmB, workSet.gmScaleB, workSet.gmBias, actualShape, nLoc, kLoc, gmBlockA,
             gmBlockScaleA, l0cOutUbFirst, l0cOutUbSecond, pingpongIdx);
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        TraceGmm1TileEnd(criticalPathTrace, CriticalPathGmm1ReadyBridge::FIX);
+#endif
 
         if constexpr (IsGmm1Interleaved) {
             NotifyVector(pingpongIdx);
@@ -733,6 +764,9 @@ __aicore__ inline void Gmm1Aiv0PrefetchEpilogueGeneric(WorkSet &workSet, const P
                 config, workSet.gmC, workSet.metaInfoGm, activationQuantOp, gmmAddrInfo, expertBeforeCnt, actualShape,
                 mLoc, nLoc);
         }
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        TraceGmm1TileEnd(criticalPathTrace, CriticalPathGmm1ReadyBridge::SCALAR);
+#endif
     }
 }
 
@@ -759,6 +793,9 @@ __aicore__ inline void Gmm1Aiv0EpilogueGeneric(WorkSet &workSet, const GMMAddrIn
 #endif
             Gmm1Aiv0InterleavedEpilogueTileGeneric<IsWaveFlagGrained>(config, activationQuantOp, gmmAddrInfo,
                                                                       actualShape, mLoc, nLoc, pingpongIdx);
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+            TraceGmm1TileEnd(criticalPathTrace, CriticalPathGmm1ReadyBridge::SCALAR);
+#endif
             NotifyCube(pingpongIdx);
             pingpongIdx = 1U - pingpongIdx;
         } else {
@@ -768,6 +805,9 @@ __aicore__ inline void Gmm1Aiv0EpilogueGeneric(WorkSet &workSet, const GMMAddrIn
 #endif
             Gmm1Aiv0EpilogueTileGeneric<IsWaveFlagGrained>(config, activationQuantOp, gmmAddrInfo, actualShape, mLoc,
                                                            nLoc);
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+            TraceGmm1TileEnd(criticalPathTrace, CriticalPathGmm1ReadyBridge::SCALAR);
+#endif
             NotifyCube();
         }
     }

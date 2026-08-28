@@ -31,8 +31,8 @@ namespace MegaMoeImpl {
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
 
 constexpr uint32_t CRITICAL_PATH_TRACE_MAGIC = 0x43505452U;
-constexpr uint32_t CRITICAL_PATH_TRACE_PROTOCOL_VERSION = 17U;
-constexpr uint32_t CRITICAL_PATH_TRACE_SCHEMA_ID = 0xbdd34b32U;
+constexpr uint32_t CRITICAL_PATH_TRACE_PROTOCOL_VERSION = 18U;
+constexpr uint32_t CRITICAL_PATH_TRACE_SCHEMA_ID = 0x85acff99U;
 constexpr uint32_t CRITICAL_PATH_TRACE_HEADER_WORDS = 30U;
 constexpr uint32_t CRITICAL_PATH_TRACE_ROLE_COUNT = 3U;
 constexpr uint32_t CRITICAL_PATH_TRACE_RECORD_WORDS = 44U;
@@ -79,20 +79,25 @@ __aicore__ inline uint64_t CriticalPathTraceWaveCapacity(uint32_t bs, uint32_t e
     return maxWaves == 0ULL ? 1ULL : maxWaves;
 }
 
-// Dispatch/Combine can contribute one segment per expert, while a hot expert
-// can contribute one GMM problem per M group in the most fragmented case.
-// The production GMM2 group-ready path additionally emits one FIX wait per
-// owned N tile, so reserve enough entries for the worst per-core tile share.
+// GMM1/SwiGLU/GMM2 and pairwise Combine emit one segment per owned scheduler
+// tile. Dispatch/quantized Combine can contribute one segment per expert/group.
+// Reserve enough entries for the larger per-core GMM1/GMM2 tile share.
 __aicore__ inline uint64_t CriticalPathTraceRequiredSegmentCapacity(uint32_t bs, uint32_t epWorldSize, uint32_t topK,
-                                                                    uint32_t expertCount, uint32_t h, uint32_t aicCount)
+                                                                    uint32_t expertCount, uint32_t h,
+                                                                    uint32_t hiddenDim, uint32_t aicCount)
 {
     const uint64_t maxMGroups = CriticalPathTraceMaxMGroups(bs, epWorldSize, topK, expertCount);
+    const uint64_t gmm1NTiles =
+        (static_cast<uint64_t>(hiddenDim) + CRITICAL_PATH_TRACE_M_GROUP_ROWS - 1ULL) / CRITICAL_PATH_TRACE_M_GROUP_ROWS;
     const uint64_t gmm2NTiles =
         (static_cast<uint64_t>(h) + CRITICAL_PATH_TRACE_M_GROUP_ROWS - 1ULL) / CRITICAL_PATH_TRACE_M_GROUP_ROWS;
-    const uint64_t fixWaitsPerMGroup = aicCount == 0U ? gmm2NTiles : (gmm2NTiles + aicCount - 1ULL) / aicCount;
-    const uint64_t maxFixWaits = maxMGroups * fixWaitsPerMGroup;
-    uint64_t required = maxMGroups < expertCount ? expertCount : maxMGroups;
-    return required < maxFixWaits ? maxFixWaits : required;
+    const uint64_t gmm1TilesPerMGroupPerCore = aicCount == 0U ? gmm1NTiles : (gmm1NTiles + aicCount - 1ULL) / aicCount;
+    const uint64_t gmm2TilesPerMGroupPerCore = aicCount == 0U ? gmm2NTiles : (gmm2NTiles + aicCount - 1ULL) / aicCount;
+    const uint64_t maxTilesPerMGroupPerCore =
+        gmm1TilesPerMGroupPerCore > gmm2TilesPerMGroupPerCore ? gmm1TilesPerMGroupPerCore : gmm2TilesPerMGroupPerCore;
+    const uint64_t maxTileSegments = maxMGroups * maxTilesPerMGroupPerCore;
+    const uint64_t dispatchOrCombineSegments = maxMGroups < expertCount ? expertCount : maxMGroups;
+    return dispatchOrCombineSegments < maxTileSegments ? maxTileSegments : dispatchOrCombineSegments;
 }
 
 __aicore__ inline uint32_t CriticalPathTraceScratchRecordWords(uint32_t segmentCapacity)
@@ -402,7 +407,7 @@ public:
 
     __aicore__ inline void BeginGmm1DispatchWait(uint32_t value)
     {
-        if (gmm1SetupBegin_ == 0U) {
+        if (gmm1GapWave_ == INVALID_INDEX) {
             return;
         }
         EndGmm1Setup(value);
@@ -483,9 +488,11 @@ public:
         ClearGmm1Gap();
     }
 
-    __aicore__ inline void CompleteGmm1Gap()
+    __aicore__ inline void CompleteGmm1Gap(uint32_t value)
     {
-        ClearGmm1Gap();
+        EndGmm1Setup(value);
+        gmm1DispatchWaitBegin_ = 0U;
+        gmm1VectorWaitBegin_ = 0U;
     }
 
     __aicore__ inline void BeginStage0(uint32_t value)
@@ -505,7 +512,7 @@ public:
     __aicore__ inline void EndStage0(uint32_t value)
     {
         AppendSegment(stage0ActiveWave_, stage0ActiveExpert_, stage0ActiveBegin_, value, 0U, stage0CapturedCount_);
-        ClearStage0();
+        stage0ActiveBegin_ = 0U;
     }
 
     __aicore__ inline void CancelStage0()
@@ -516,7 +523,7 @@ public:
     __aicore__ inline void EndStage1(uint32_t value)
     {
         AppendSegment(stage1ActiveWave_, stage1ActiveExpert_, stage1ActiveBegin_, value, 1U, stage1CapturedCount_);
-        ClearStage1();
+        stage1ActiveBegin_ = 0U;
     }
 
     __aicore__ inline void CancelStage1()

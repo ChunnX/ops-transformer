@@ -524,8 +524,8 @@ __aicore__ inline void TraceGmm2InputWaitEnd(CriticalPathTrace *trace)
     }
 }
 
-// Called after the current problem's first owned GMM2 tile has observed
-// SwiGLU-ready and immediately before the first MMAD is issued.
+// Called after every owned GMM2 tile has observed SwiGLU-ready and immediately
+// before its MMAD is issued.
 __aicore__ inline void TraceGmm2ProblemBeginAfterReady(CriticalPathTrace *trace)
 {
     if (trace == nullptr || !trace->NeedsStage1Begin()) {
@@ -533,6 +533,33 @@ __aicore__ inline void TraceGmm2ProblemBeginAfterReady(CriticalPathTrace *trace)
     }
     // TRACE_POINT: gmm2_problem_begin_S
     trace->BeginStage1(CriticalPathTrace::Now());
+}
+
+__aicore__ inline void TraceGmm2TileEndAfterFix(CriticalPathTrace *trace)
+{
+    if (trace != nullptr && trace->HasStage1Begin()) {
+        // TRACE_POINT: gmm2_problem_end_S
+        trace->EndStage1(CriticalPathTrace::Now());
+    }
+}
+
+__aicore__ inline void TracePairwiseCombineTileBegin(CriticalPathTrace *trace)
+{
+    if (trace != nullptr && trace->NeedsStage1Begin()) {
+        // TRACE_POINT: combine_group_begin_S
+        trace->BeginStage1(CriticalPathTrace::Now());
+    }
+}
+
+__aicore__ inline void TracePairwiseCombineTileEnd(CriticalPathTrace *trace)
+{
+    if (trace == nullptr || !trace->HasStage1Begin()) {
+        return;
+    }
+    AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID5);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID5);
+    // TRACE_POINT: combine_group_end_S
+    trace->EndStage1(CriticalPathTrace::Now());
 }
 #endif
 
@@ -564,7 +591,6 @@ __aicore__ inline void NotifyWaveCombineGroupCompletion(uint32_t rowTileOffset, 
 {
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
     if (criticalPathTrace != nullptr) {
-        // TRACE_POINT: gmm2_ready_fix_wait_begin_S
         criticalPathTrace->BeginGmm2ReadyFixWait(CriticalPathTrace::Now());
     }
 #endif
@@ -572,7 +598,6 @@ __aicore__ inline void NotifyWaveCombineGroupCompletion(uint32_t rowTileOffset, 
     AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
     if (criticalPathTrace != nullptr) {
-        // TRACE_POINT: gmm2_ready_fix_wait_end_S
         criticalPathTrace->EndGmm2ReadyFixWait(CriticalPathTrace::Now());
     }
 #endif
@@ -670,6 +695,7 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
             // 因而每个 tile 恰好一个 writer、一个 reader，不需要跨核 fan-in 或 AtomicAdd。
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
             if (criticalPathTrace != nullptr) {
+                // TRACE_POINT: gmm2_ready_fix_wait_begin_S
                 criticalPathTrace->BeginGmm2ReadyFixWait(CriticalPathTrace::Now());
             }
 #endif
@@ -677,10 +703,14 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
             AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
             if (criticalPathTrace != nullptr) {
+                // TRACE_POINT: gmm2_ready_fix_wait_end_S
                 criticalPathTrace->EndGmm2ReadyFixWait(CriticalPathTrace::Now());
             }
 #endif
             AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag, ++(*gmTileSequence));
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+            TraceGmm2TileEndAfterFix(criticalPathTrace);
+#endif
         } else if constexpr (UseGroupCombineReady && !IsShared) {
             NotifyWaveCombineGroupCompletion(rowOffsetInExpert + mLoc, gmmAddrInfo.gmm2CombineSyncCounter
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
@@ -688,6 +718,9 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
                                              criticalPathTrace
 #endif
             );
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+            TraceGmm2TileEndAfterFix(criticalPathTrace);
+#endif
         } else if constexpr (IsLayered && !IsShared) {
             NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout, gmmAddrInfo.gmm2CombineSyncCounter);
         } else if constexpr (IsShared && !IsLayered) {
@@ -702,7 +735,12 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
 template <typename ElementC, typename MakeLayoutC, typename Scheduler, typename TensorC, typename Config>
 __aicore__ inline void Gmm2Aiv1EpilogueGeneric(Scheduler &scheduler, TensorC &l0cOutGm, const Params &params,
                                                const GMMAddrInfo &gmmAddrInfo, int32_t &gmTileSequence,
-                                               const Config &config, uint32_t startLoopIdx, uint32_t tileNum)
+                                               const Config &config, uint32_t startLoopIdx, uint32_t tileNum
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                                               ,
+                                               CriticalPathTrace *criticalPathTrace = nullptr
+#endif
+)
 {
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
@@ -712,6 +750,9 @@ __aicore__ inline void Gmm2Aiv1EpilogueGeneric(Scheduler &scheduler, TensorC &l0
 
         int32_t expectedReadySequence = gmTileSequence + 1;
         WaitUntilGmFlagAtLeast(gmmAddrInfo.gmmToEpilogueFlag, expectedReadySequence);
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        TracePairwiseCombineTileBegin(criticalPathTrace);
+#endif
         auto tensorBlockGm = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc),
                                             Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         constexpr uint32_t tileUbBase = WAVE_COMBINE_UB_BASE;
@@ -734,6 +775,9 @@ __aicore__ inline void Gmm2Aiv1EpilogueGeneric(Scheduler &scheduler, TensorC &l0
                                                                     L1_TILE_N, params);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        TracePairwiseCombineTileEnd(criticalPathTrace);
+#endif
         gmTileSequence = expectedReadySequence;
     }
 }
@@ -874,7 +918,12 @@ __aicore__ inline void Gmm2ExecGeneric(Scheduler &scheduler, const GMMAddrInfo &
         if (GetSubBlockIdx() == 1U) {
             using MakeLayoutC = typename KernelConfig::MakeLayoutC;
             Gmm2Aiv1EpilogueGeneric<ElementC, MakeLayoutC>(workSet.scheduler, workSet.gmC, *params, gmmAddrInfo,
-                                                           *gmTileSequence, config, startLoopIdx, tileNum);
+                                                           *gmTileSequence, config, startLoopIdx, tileNum
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                                                           ,
+                                                           criticalPathTrace
+#endif
+            );
         }
     }
 }
@@ -1304,7 +1353,6 @@ __aicore__ inline void CombineWaveExpertRows(const MoeStageCommonConfig &common,
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
         if (criticalPathTrace != nullptr) {
             criticalPathTrace->PrepareStage1(criticalPathWaveIndex, expertIdx);
-            // TRACE_POINT: combine_group_begin_S
             criticalPathTrace->BeginStage1(CriticalPathTrace::Now());
         }
 #endif
@@ -1325,7 +1373,6 @@ __aicore__ inline void CombineWaveExpertRows(const MoeStageCommonConfig &common,
         if (criticalPathTrace != nullptr && criticalPathTrace->HasStage1Begin()) {
             AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID5);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID5);
-            // TRACE_POINT: combine_group_end_S
             criticalPathTrace->EndStage1(CriticalPathTrace::Now());
         }
 #endif

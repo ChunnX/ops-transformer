@@ -307,7 +307,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Init(
     const uint64_t carrierBytes = static_cast<uint64_t>(tilingData->bs) * tilingData->h * sizeof(OutputType);
     criticalPathTraceCarrierWords_ = carrierBytes / sizeof(uint32_t);
     const uint64_t requiredSegmentCapacity = CriticalPathTraceRequiredSegmentCapacity(
-        tilingData->bs, worldSize_, tilingData->topK, moeExpertPerRank_, k_, tilingData->aicNum);
+        tilingData->bs, worldSize_, tilingData->topK, moeExpertPerRank_, k_, tilingData->hiddenDim, tilingData->aicNum);
     const uint64_t scratchCapacityLimit = CriticalPathTraceScratchCapacityLimit(tilingData->aicNum);
     const uint64_t traceSegmentCapacity =
         requiredSegmentCapacity < scratchCapacityLimit ? requiredSegmentCapacity : scratchCapacityLimit;
@@ -818,20 +818,9 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
         );
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
         if (CriticalPathTracePtr() != nullptr) {
-            if (criticalPathTrace_.HasStage0Begin()) {
-                if constexpr (g_coreType == AIC) {
-                    AscendC::SetFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
-                    AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
-                    // TRACE_POINT: gmm1_problem_end_S
-                } else {
-                    // TRACE_POINT: swiglu_problem_end_S
-                }
-                criticalPathTrace_.EndStage0(CriticalPathTrace::Now());
-            } else {
-                criticalPathTrace_.CancelStage0();
-                if constexpr (g_coreType == AIC) {
-                    criticalPathTrace_.EndGmm1Gap(CriticalPathTrace::Now());
-                }
+            criticalPathTrace_.CancelStage0();
+            if constexpr (g_coreType == AIC) {
+                criticalPathTrace_.EndGmm1Gap(CriticalPathTrace::Now());
             }
         }
 #endif
@@ -942,16 +931,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         );
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
         if (CriticalPathTracePtr() != nullptr) {
-            if (criticalPathTrace_.HasStage1Begin()) {
-                if constexpr (g_coreType == AIC) {
-                    AscendC::SetFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
-                    AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
-                }
-                // TRACE_POINT: gmm2_problem_end_S
-                criticalPathTrace_.EndStage1(CriticalPathTrace::Now());
-            } else {
-                criticalPathTrace_.CancelStage1();
-            }
+            criticalPathTrace_.CancelStage1();
         }
 #endif
 

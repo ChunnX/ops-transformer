@@ -25,7 +25,7 @@ class ContractError(RuntimeError):
 
 DISPATCH_API_TO_TILING_KEY = {23: 3, 24: 4, 296: 5}
 EXPECTED_PATH_ID = 2
-EXPECTED_FLAGS_BY_PROTOCOL = {17: 0x1FFF}
+EXPECTED_FLAGS_BY_PROTOCOL = {18: 0x1FFF}
 DISPATCH_GROUP_READY_FLAG = 1 << 13
 TRACE_ROLE_COUNT = 3
 TRACE_RECORD_WORDS = 44
@@ -267,6 +267,7 @@ def calc_segment_capacity(
     top_k: int,
     expert_count: int,
     h: int,
+    hidden_dim: int,
     aic_count: int,
 ) -> tuple[int, int, int]:
     max_m_groups = calc_max_m_groups(
@@ -275,11 +276,20 @@ def calc_segment_capacity(
         top_k=top_k,
         expert_count=expert_count,
     )
+    gmm1_n_tiles = ceil_div(hidden_dim, GMM_TILE_N)
     gmm2_n_tiles = ceil_div(h, GMM_TILE_N)
-    fix_waits_per_m_group = (
+    gmm1_tiles_per_m_group_per_core = (
+        gmm1_n_tiles if aic_count == 0 else ceil_div(gmm1_n_tiles, aic_count)
+    )
+    gmm2_tiles_per_m_group_per_core = (
         gmm2_n_tiles if aic_count == 0 else ceil_div(gmm2_n_tiles, aic_count)
     )
-    required = max(expert_count, max_m_groups, max_m_groups * fix_waits_per_m_group)
+    required = max(
+        expert_count,
+        max_m_groups,
+        max_m_groups
+        * max(gmm1_tiles_per_m_group_per_core, gmm2_tiles_per_m_group_per_core),
+    )
     record_count = TRACE_ROLE_COUNT * aic_count
     if record_count <= 0:
         return required, 0, 0
@@ -339,6 +349,7 @@ def expected_header_from_metadata(
         top_k=top_k,
         expert_count=moe_experts,
         h=h,
+        hidden_dim=hidden_dim,
         aic_count=aic_count,
     )
     topk_prefetch = int(bool(metadata.get("topk_weights_type", False)))
@@ -828,7 +839,7 @@ def validate_timestamp_order(
             "segments on one role/stage are non-overlapping and time-monotonic",
             "every Dispatch Scalar gap is contained between consecutive AIV1 tasks and identifies the following task",
             "no inferred idle interval is converted into a colored work span",
-            "protocol-v17 splits each Wave into per-problem work, GMM2 activation-ready waits, and production group-ready FIX waits",
+            "protocol-v18 splits each Wave into per-tile GMM1/SwiGLU/GMM2 work, pairwise Combine tiles, activation-ready waits, and production FIX waits",
         ],
         "record_count": len(records),
         "runtime_waves": runtime_waves,
