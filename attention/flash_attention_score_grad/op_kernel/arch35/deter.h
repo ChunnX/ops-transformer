@@ -2321,10 +2321,10 @@ __aicore__ inline bool CalTNDDenseOnRect(int64_t k, int64_t virtM, int64_t virtN
 }
 
 template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
-__aicore__ inline void LoadTNDAreaVirt(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t *actualSeqKvlenAddr,
-                                       int64_t w, int64_t virtMode, int64_t rawP, int64_t rawQ,
-                                       CoordinateInfo &coordinateInfo, int64_t &m, int64_t &n, int64_t &virtM,
-                                       int64_t &virtN)
+__aicore__ inline void LoadTNDAreaVirt(const __gm__ uint8_t *actualSeqQlenAddr,
+                                       const __gm__ uint8_t *actualSeqKvlenAddr, int64_t w, int64_t virtMode,
+                                       int64_t rawP, int64_t rawQ, CoordinateInfo &coordinateInfo, int64_t &m,
+                                       int64_t &n, int64_t &virtM, int64_t &virtN)
 {
     LoadTNDOuterMN<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, w, m, n, coordinateInfo);
     virtM = m;
@@ -2426,8 +2426,8 @@ __aicore__ inline int64_t GateTNDPoolBaseNum(const __gm__ uint8_t *actualSeqQlen
 template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
 __aicore__ inline bool CalTNDDenseByAreaPrefix(const __gm__ uint8_t *actualSeqQlenAddr,
                                                const __gm__ uint8_t *actualSeqKvlenAddr, const __gm__ int64_t *prefix,
-                                               int64_t rMax, int64_t b, int64_t copies, int64_t n1, int64_t k, int64_t j,
-                                               int64_t r, int64_t step, int64_t virtMode,
+                                               int64_t rMax, int64_t b, int64_t copies, int64_t n1, int64_t k,
+                                               int64_t j, int64_t r, int64_t step, int64_t virtMode,
                                                CoordinateInfo &coordinateInfo, int64_t &copyId, int64_t &x, int64_t &y,
                                                int64_t &realM, int64_t &realN)
 {
@@ -2467,9 +2467,9 @@ __aicore__ inline bool CalTNDDenseByAreaPrefix(const __gm__ uint8_t *actualSeqQl
         }
         LoadTNDAreaVirt<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, w, virtMode, rawP, rawQ,
                                                 coordinateInfo, m, n, virtM, virtN);
-        batchBaseNum = GateTNDPoolBaseNum<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, b, w, n1, k,
-                                                                  copies, virtMode, rawP, rawQ, virtM, virtN,
-                                                                  coordinateInfo);
+        batchBaseNum =
+            GateTNDPoolBaseNum<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, b, w, n1, k, copies,
+                                                       virtMode, rawP, rawQ, virtM, virtN, coordinateInfo);
     }
 
     const int64_t currentBaseNum = virtM * virtN;
@@ -2607,8 +2607,8 @@ __aicore__ inline void CalTNDCausalRunIndex(const __gm__ uint8_t *actualSeqQlenA
                 ok = CalTNDDenseLine(k, m, n, 1, j, singleRound, w, x, y) && IsTNDRightDownValid(m, n, x, y);
             }
             if (ok) {
-                BindTNDCausalMappedBatch<CUBE_BASEM, CUBE_BASEN, LEFT_UP>(actualSeqQlenAddr, actualSeqKvlenAddr, runHead,
-                                                                          n1, total, x, y, coordinateInfo);
+                BindTNDCausalMappedBatch<CUBE_BASEM, CUBE_BASEN, LEFT_UP>(actualSeqQlenAddr, actualSeqKvlenAddr,
+                                                                          runHead, n1, total, x, y, coordinateInfo);
             }
             return;
         }
@@ -3107,8 +3107,8 @@ __aicore__ inline void CalTNDBandIndex(const __gm__ uint8_t *actualSeqQlenAddr,
         int64_t m = 0;
         int64_t n = 0;
         if (!CalTNDDenseByAreaPrefix<CUBE_BASEM, CUBE_BASEN>(actualSeqQlenAddr, actualSeqKvlenAddr, prefix1, rPool, b,
-                                                             N1, N1, k, j, r - rLine, step, 4, coordinateInfo, copyId, x,
-                                                             y, m, n)) {
+                                                             N1, N1, k, j, r - rLine, step, 4, coordinateInfo, copyId,
+                                                             x, y, m, n)) {
             return;
         }
         const int64_t p = coordinateInfo.p;
