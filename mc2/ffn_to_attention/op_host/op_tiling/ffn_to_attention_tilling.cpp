@@ -51,6 +51,8 @@ constexpr uint32_t INDEX_ONE = 1;
 constexpr uint32_t INDEX_TWO = 2;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16 * 1024 * 1024;
 constexpr uint64_t MB_SIZE = 1024 * 1024;
+constexpr uint64_t TOKEN_INFO_ALIGN_SIZE = 512;
+constexpr uint64_t CCL_BUFFER_ALIGN_SIZE = 2 * MB_SIZE;
 constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8;
 constexpr int64_t BS_UPPER_BOUND = 512;
 constexpr int64_t H_MIN = 1024;
@@ -497,6 +499,11 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const char *no
     return ge::GRAPH_SUCCESS;
 }
 
+static uint64_t AlignUp(uint64_t value, uint64_t alignment)
+{
+    return (value + alignment - 1U) / alignment * alignment;
+}
+
 static void CalWinSize(FFNToAttentionTilingData &tilingData, uint64_t &neededSize, uint64_t &viableWindowSize)
 {
     uint64_t microBatchNum = static_cast<uint64_t>(tilingData.ffnToAttentionInfo.microBatchNum);
@@ -507,8 +514,9 @@ static void CalWinSize(FFNToAttentionTilingData &tilingData, uint64_t &neededSiz
     uint64_t tokenDataNeedWinSize = microBatchNum * BS * expertNumPerToken * HS * TOKEN_DATA_SIZE;
     uint64_t tokenInfoTableNeedWinSize = microBatchNum * BS * expertNumPerToken * TOKEN_INFO_SIZE;
     uint64_t maxWindowSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
-    neededSize = (tokenDataNeedWinSize + tokenInfoTableNeedWinSize) / MB_SIZE + 1;
-    viableWindowSize = maxWindowSize / MB_SIZE;
+    uint64_t tokenInfoTableAlignedSize = AlignUp(tokenInfoTableNeedWinSize, TOKEN_INFO_ALIGN_SIZE);
+    neededSize = tokenInfoTableAlignedSize + tokenDataNeedWinSize;
+    viableWindowSize = maxWindowSize;
     tilingData.ffnToAttentionInfo.totalWinSize = maxWindowSize;
 
     return;
@@ -602,9 +610,7 @@ ge::graphStatus FFNToAttentionTilingFuncBase(gert::TilingContext *context,
                         OP_LOGE_FOR_INVALID_VALUE(nodeName, "ccl_buffer_size",
                                                   std::to_string(*cclBufferSizePtr).c_str(), "greater than 0"),
                         return ge::GRAPH_FAILED);
-        // neededSize is in MB (CalWinSize divides by MB_SIZE and adds 1).
-        // ccl_buffer_size is in bytes. Minimum required bytes = neededSize * MB_SIZE.
-        uint64_t leastCclBufferSizeBytes = neededSize * MB_SIZE;
+        uint64_t leastCclBufferSizeBytes = AlignUp(neededSize, CCL_BUFFER_ALIGN_SIZE);
         OP_TILING_CHECK(static_cast<uint64_t>(*cclBufferSizePtr) < leastCclBufferSizeBytes,
                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                             nodeName, "ccl_buffer_size", std::to_string(*cclBufferSizePtr).c_str(),
